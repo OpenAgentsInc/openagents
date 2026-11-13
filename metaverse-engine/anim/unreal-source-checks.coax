@@ -1,0 +1,42 @@
+AI_UNREAL_TEST :: "{\"schema\":\"anim.unreal.source.v1\",\"project\":\"/private/Source.uproject\",\"profile\":\"generic\",\"meshes\":[{\"asset\":\"/Game/Characters/Mesh\",\"name\":\"character\"}],\"animations\":[{\"asset\":\"/Game/Motion/Walk\",\"name\":\"walk\",\"face_only\":false}]}";
+#test "Unreal source plans own typed asset paths and select only known export profiles" {
+ p:[1]AuSource;#assert au_source(AI_UNREAL_TEST,p[..])==0 && p[0].meshes==1 && p[0].clips==1 && p[0].profile==0 && p[0].project_n==24 && p[0].mesh[0].path_n==21 && anim_equal(p[0].clip[0].name,anim_named("walk")) && !p[0].clip[0].face;
+ for path:[2]string.["/Game/A","/Game/Characters/Mesh.Mesh"] {#assert au_asset_path(path);}for path:[6]string.["","/Engine/A","/Game/","/Game/A/../B","/Game/A B","/Game/A;run"] {#assert !au_asset_path(path);}
+ text:[4096]u8;for row:[9]string.["anim.unreal.source.v1|other","generic|unknown","/private/Source.uproject|relative.uproject","/Game/Characters/Mesh|/Engine/Other","character|bad name","face_only\":false|face_only\":0","\"meshes\":[{|\"meshes\":[{\"extra\":1,","\"animations\":[{|\"animations\":[{\"extra\":1,","\"profile\":\"generic\"|\"profile\":\"echo-a0\""] {split:=0;for c,k:row {if c=='|' {split=k;break;}}n:=au_test_replace(AI_UNREAL_TEST,row[0..<split],row[split+1..<row.count],text[..]);#assert n>0;e:=au_source(cast(string)text[0..<n],p[..]);if row=="\"profile\":\"generic\"|\"profile\":\"echo-a0\"" {#assert e==0 && p[0].profile==1;}else {#assert e!=0;}}
+}
+
+au_test_replace :: (text:string,from:string,to:string,out:[]u8)->int {
+ start:= -1;for k:0..<text.count-from.count+1 {if text[k..<k+from.count]==from {start=k;break;}}if start<0 {return -1;}n:=0;for c:text[0..<start] {out[n]=c;n+=1;}for c:to {out[n]=c;n+=1;}for c:text[start+from.count..<text.count] {out[n]=c;n+=1;}return n;
+}
+
+au_test_many :: (out:[]u8,meshes:int,clips:int)->int {
+ o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.unreal.source.v1");jo_key(o[..],"project");jo_str(o[..],"/private/Source.uproject");jo_key(o[..],"profile");jo_str(o[..],"generic");
+ for pass:0..<2 {jo_key(o[..],ifx pass==0 then "meshes" else "animations");jo_arr(o[..]);count:=ifx pass==0 then meshes else clips;for k:0..<count {name:[16]u8;name[0]='n';name[1]=cast(u8)('0'+k/10);name[2]=cast(u8)('0'+k%10);jo_obj(o[..]);jo_key(o[..],"asset");jo_str(o[..],"/Game/Asset");jo_key(o[..],"name");jo_str(o[..],cast(string)name[0..<3]);if pass==1 {jo_key(o[..],"face_only");jo_bool(o[..],k%2==1);}jo_end(o[..]);}jo_end(o[..]);}jo_end(o[..]);return o[0].n;
+}
+#test "Unreal source plan exact collection bounds preserve all owned rows and flags" {
+ text:[32768]u8;p:[1]AuSource;n:=au_test_many(text[..],8,64);#assert au_source(cast(string)text[0..<n],p[..])==0 && p[0].meshes==8 && p[0].clips==64;
+ for k:0..<8 {#assert p[0].mesh[k].path_n==11 && p[0].mesh[k].name.n==3 && p[0].mesh[k].name.bytes[2]==cast(u8)('0'+k) && !p[0].mesh[k].face;}
+ for k:0..<64 {#assert p[0].clip[k].path_n==11 && p[0].clip[k].name.n==3 && p[0].clip[k].name.bytes[1]==cast(u8)('0'+k/10) && p[0].clip[k].name.bytes[2]==cast(u8)('0'+k%10) && p[0].clip[k].face==(k%2==1);}
+ for k:0..<4 {n=au_test_many(text[..],[4]int.[0,9,1,1][k],[4]int.[1,1,0,65][k]);#assert au_source(cast(string)text[0..<n],p[..])==ANIM_LIMIT;}
+ n=au_test_many(text[..],1,0);#assert au_source(cast(string)text[0..<n],p[..])==ANIM_LIMIT;
+ changed:[32768]u8;n=au_test_many(text[..],2,2);n=au_test_replace(cast(string)text[0..<n],"n01","n00",changed[..]);#assert n>0 && au_source(cast(string)changed[0..<n],p[..])==ANIM_NAME;
+ n=au_test_many(text[..],1,2);n=au_test_replace(cast(string)text[0..<n],"n01","n00",changed[..]);#assert n>0 && au_source(cast(string)changed[0..<n],p[..])==ANIM_NAME;
+}
+#test "Unreal asset paths enforce their byte alphabet and complete size limits" {
+ alphabet:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./";path:[1025]u8;for c,k:"/Game/" {path[k]=c;}
+ for value:0..<128 {path[6]=cast(u8)value;expected:=false;for c:alphabet {if c==cast(u8)value {expected=true;}}#assert au_asset_path(cast(string)path[0..<7])==expected;}
+ for k:6..<1025 {path[k]='A';}#assert au_asset_path(cast(string)path[0..<1024]) && !au_asset_path(cast(string)path[..]);
+}
+
+au_test_bad :: (from:string,to:string,expected:int) {
+ text:[4096]u8;n:=au_test_replace(AI_UNREAL_TEST,from,to,text[..]);#assert n>0;p:[1]AuSource;#assert au_source(cast(string)text[0..<n],p[..])==expected;
+}
+#test "Unreal source refusals preserve named schema and name error codes" {
+ au_test_bad("anim.unreal.source.v1","other",ANIM_SCHEMA);au_test_bad("\"profile\":\"generic\"","\"profile\":\"unknown\"",ANIM_NAME);au_test_bad("/private/Source.uproject","relative",ANIM_NAME);au_test_bad("/private/Source.uproject","",ANIM_NAME);au_test_bad("/Game/Characters/Mesh","",ANIM_NAME);au_test_bad("/Game/Characters/Mesh","/Engine/A",ANIM_NAME);au_test_bad("character","bad name",ANIM_NAME);au_test_bad("walk","bad name",ANIM_NAME);au_test_bad("\"face_only\":false","\"face_only\":0",ANIM_SCHEMA);au_test_bad("\"meshes\":[{","\"meshes\":[{\"extra\":0,",ANIM_SCHEMA);au_test_bad("\"animations\":[{","\"animations\":[{\"extra\":0,",ANIM_SCHEMA);
+ text:[4096]u8;p:[1]AuSource;n:=au_test_replace(AI_UNREAL_TEST,"/private/Source.uproject","/",text[..]);#assert n>0 && au_source(cast(string)text[0..<n],p[..])==0;n=au_test_replace(AI_UNREAL_TEST,"character","n",text[..]);#assert n>0 && au_source(cast(string)text[0..<n],p[..])==0;
+ au_test_bad("\"asset\":\"/Game/Characters/Mesh\",","",ANIM_NAME);
+}
+
+#test "Unreal asset dot pairs are rejected inside and at the end of a package path" {
+ for path:[4]string.["/Game/A..B","/Game/A..","/.","/Game/...A"] {#assert !au_asset_path(path);}
+}

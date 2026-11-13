@@ -132,7 +132,7 @@ the start).
 | DOWN (right side, while the dragon flies) | The dragon lands |
 | MOUNT, DISMOUNT (right side, beside a mount) | The same as E |
 
-The stick is the engine's (`aethyr/core/sticks.coax`), the one Everglade II walks
+The stick is the engine's (`metaverse-engine/core/sticks.coax`), the one Everglade II walks
 on. Which finger is the thumb's, and JUMP, UP and DOWN, are the zone's
 ([`everglade/zone-touch.coax`](../zone-touch.coax)), so Everglade
 Experimental has them too. FOOT, HORSE, DRAGON and RESET are the range's. A
@@ -171,14 +171,14 @@ in the range. The range's module is an Everglade zone with the range on it.
 
 | Piece | Where | Layer |
 | --- | --- | --- |
-| The draw, the arrow's arc, the launch | [`aethyr/action/bow.coax`](../../aethyr/action/bow.coax) | Engine |
-| The archer: the frame of a draw, the reticle's sight line, each arrow's flight and what it meets, a finger's draw, the reticle on a draw | [`aethyr/action/archery.coax`](../../aethyr/action/archery.coax) | Engine |
-| A static target a projectile strikes | [`aethyr/action/target.coax`](../../aethyr/action/target.coax) | Engine |
-| A zone's own colliders | [`aethyr/world/props.coax`](../../aethyr/world/props.coax) | Engine |
-| The crosshair, the camera over the shoulder, the walker | `aethyr/cam/reticle.coax`, `aethyr/cam/boom.coax`, `aethyr/move/walk.coax` | Engine |
-| Mounting, riding and flying | `aethyr/action/mount.coax`, `aethyr/action/flight.coax`, `aethyr/action/ride-pose.coax` | Engine |
-| The butts' and faces' meshes | [`aethyr/world/build-site-mesh.coax`](../../aethyr/world/build-site-mesh.coax) | Engine |
-| The HUD panel and hit numbers | `aethyr/ui/hud-menu.coax`, `aethyr/action/floats.coax` | Engine |
+| The draw, the arrow's arc, the launch | [`metaverse-engine/action/bow.coax`](../../metaverse-engine/action/bow.coax) | Engine |
+| The archer: the frame of a draw, the reticle's sight line, each arrow's flight and what it meets, a finger's draw, the reticle on a draw | [`metaverse-engine/action/archery.coax`](../../metaverse-engine/action/archery.coax) | Engine |
+| A static target a projectile strikes | [`metaverse-engine/action/target.coax`](../../metaverse-engine/action/target.coax) | Engine |
+| A zone's own colliders | [`metaverse-engine/world/props.coax`](../../metaverse-engine/world/props.coax) | Engine |
+| The crosshair, the camera over the shoulder, the walker | `metaverse-engine/cam/reticle.coax`, `metaverse-engine/cam/boom.coax`, `metaverse-engine/move/walk.coax` | Engine |
+| Mounting, riding and flying | `metaverse-engine/action/mount.coax`, `metaverse-engine/action/flight.coax`, `metaverse-engine/action/ride-pose.coax` | Engine |
+| The butts' and faces' meshes | [`metaverse-engine/world/build-site-mesh.coax`](../../metaverse-engine/world/build-site-mesh.coax) | Engine |
+| The HUD panel and hit numbers | `metaverse-engine/ui/hud-menu.coax`, `metaverse-engine/action/floats.coax` | Engine |
 | **The zone**: one player's world. Its state (`EgZone`), your body's step, the keys and the pointer, the frame, the host's messages | [`everglade/zone.coax`](../zone.coax) | Game: moved out of `fivelab.coax` |
 | The bow in a zone: its ground and walls, its monsters as bodies, the SRD Longbow attack, the draw and the loose | [`everglade/zone-bow.coax`](../zone-bow.coax) | Game: moved out of `everglade/zone-combat.coax` |
 | Riding in a zone: E, the saddle, the dragon's Fire Breath | [`everglade/zone-ride.coax`](../zone-ride.coax) | Game: moved out of `experimental-ride.coax` |
@@ -211,11 +211,11 @@ mouse buttons, and its room resolves the arrow.
 Check the Coax:
 
 ```sh
-coax/bin/coax test --library aethyr/action/archery.coax
+coax/bin/coax test --library metaverse-engine/action/archery.coax
 coax/bin/coax test --library everglade/longbow.coax
 coax/bin/coax test --library everglade/mounts.coax
-coax/bin/coax test --library aethyr/action/target.coax
-coax/bin/coax test --library aethyr/world/props.coax
+coax/bin/coax test --library metaverse-engine/action/target.coax
+coax/bin/coax test --library metaverse-engine/world/props.coax
 coax/bin/coax test --library everglade/range/score.coax
 coax/bin/coax test --library everglade/range/place.coax
 COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/archery-range.coax   # the zone's checks and the range's four, about 10 s
@@ -239,7 +239,7 @@ It is also a module of its own, `archery-range`:
 
 The module has none of the 5E Lab's tabletop: no battle of armies, class
 turns, siege, Warlock, film or sliders. It draws with Character Create's passes
-(`charactercreator.wgsl`, which `aethyr/render/page-render.coax` names for the
+(`charactercreator.wgsl`, which `metaverse-engine/render/page-render.coax` names for the
 page) and the glade's effects (`fivelab-fx.wgsl`), and loads the glade pack, as
 Experimental does.
 

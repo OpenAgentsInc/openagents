@@ -1,0 +1,206 @@
+// How Everglade's sounds mix (#12832): each sound's voice limit, whether it ducks the town's bed and
+// its level, and a cue (a sound at a world point, or at the listener) made into the host's lines
+// through the mixer (mix.coax): placed (the page from its camera with space.coax's au_place, the lab
+// on a flat field with egm_flat, the same law), varied, limited, sent some of it to the room. The page (apps/openagents-web/everglade-sound.coax) and Audio Lab's raid mix
+// (apps/openagents-web/audiolab.coax) both play through here, so the lab sounds as the game does.
+//   coax/bin/coax test metaverse-engine/audio/everglade-mix.coax --library
+// It loads no points.coax, so Audio Lab can load it beside projects.coax.
+#load "sfx.coax";
+#load "attenuation.coax";
+#load "mix.coax";
+#load "everglade-bank.coax";
+
+EGM_REFERENCE :: 5.0;        // metres: a sound plays at its level this near (space.coax's AuRoom)
+EGM_CUTOFF :: 85.0;          // metres: past this, not at all
+EGM_BRIGHT :: AU_BRIGHT;       // Hz: the lowpass corner at the reference distance
+EGM_DULLEST :: AU_DULLEST;
+EGM_SPEED :: AU_SPEED_OF_SOUND;          // metres a second
+
+// Where a voice plays: as space.coax's AuPlace.
+EgmPlace :: struct { gain: f32 = 1; pan: f32; delay: f32; lowpass: f32; distance: f32; }
+
+// A source x metres right and z ahead of a listener on a flat field: space.coax's law (au_place).
+egm_flat :: (x: f32, z: f32) -> EgmPlace {
+  law:=au_distance(EGM_REFERENCE,EGM_CUTOFF,EGM_BRIGHT,sqrt(x*x+z*z));
+  if !law.ok {return EgmPlace.{gain=0};}
+  out:=EgmPlace.{gain=law.gain,distance=law.distance,delay=law.delay,lowpass=law.lowpass};
+  if law.gain>0 && law.distance>0.25 {out.pan=x/law.distance;}
+  return out;
+}
+EGM_QUIET :: 0.004;          // a voice below this gain isn't played
+EGM_NEAR :: 6.0;             // metres: a sound this near is yours (priority EGM_YOURS)
+EGM_YOURS :: 3.0;
+EGM_BED :: 0.5;              // the bed's gain at full volume (the bank's bed is -24 LUFS)
+
+// How many of each may play at once.
+EGM_LIMIT :: [SFX_COUNT] int.[
+  4, 3, 4, 3,   3, 3, 4,   3, 3, 4,   3, 3, 4,   3, 3, 2,
+  3, 3, 3, 3, 3,   3, 3, 3, 2,   4, 4, 4, 3,
+  4, 6, 4, 3, 3,   1, 3, 2, 1, 1,
+  4, 4, 4, 1, 3,   3, 3, 1];
+// The big events, which duck the bed: the Fireball, thunder, Thunderwave, the horn, a tower, the
+// raid's end and a building's fall.
+EGM_BIG :: [SFX_COUNT] bool.[
+  false, false, false, true,   false, false, false,   false, false, false,   false, false, false,   false, false, true,
+  false, false, false, false, false,   false, false, false, true,   false, false, false, false,
+  false, false, false, false, false,   true, false, true, true, true,
+  false, false, false, false, false,   false, false, true];
+// Each sound's level (thousandths) over the bank's loudness (every effect's loudest 400 ms at -16
+// LUFS): big events near full, impacts and casts under them, flights and footsteps well under.
+EGM_LEVEL :: [SFX_COUNT] int.[
+  450, 300, 550, 900,   420, 300, 500,   450, 300, 550,   420, 300, 550,   450, 400, 850,
+  600, 450, 450, 600, 550,   450, 450, 500, 800,   400, 400, 500, 500,
+  420, 650, 750, 550, 380,   850, 700, 850, 800, 800,
+  80, 80, 80, 1000, 420,   550, 550, 900];
+
+// ---- writing lines
+
+egm_put :: (out: [] u8, at: int, text: string) -> int {
+  if at < 0 || at + text.count > out.count { return -1; }
+  for i: 0..<text.count { out[at + i] = text[i]; }
+  return at + text.count;
+}
+// v to three places: "-0.250".
+egm_num :: (out: [] u8, at: int, v: f32) -> int {
+  k := at;
+  m := cast(int) floor(abs(v) * 1000 + 0.5);
+  if v < 0 && m > 0 { k = egm_put(out, k, "-"); }
+  if k < 0 || k + 8 > out.count { return -1; }
+  whole := m / 1000; part := m % 1000;
+  digits: [12] u8; dn := 0;
+  if whole == 0 { digits[0] = '0'; dn = 1; }
+  while whole > 0 && dn < 12 { digits[dn] = cast,trunc(u8) ('0' + whole % 10); whole /= 10; dn += 1; }
+  for i: 0..<dn { out[k] = digits[dn - 1 - i]; k += 1; }
+  out[k] = '.'; out[k + 1] = cast,trunc(u8) ('0' + part / 100); out[k + 2] = cast,trunc(u8) ('0' + part / 10 % 10); out[k + 3] = cast,trunc(u8) ('0' + part % 10);
+  return k + 4;
+}
+// A whole number: "8000".
+egm_int :: (out: [] u8, at: int, v: int) -> int {
+  if at < 0 || at + 12 > out.count { return -1; }
+  digits: [12] u8; dn := 0; m := ifx v < 0 then 0 else v;
+  if m == 0 { digits[0] = '0'; dn = 1; }
+  while m > 0 && dn < 12 { digits[dn] = cast,trunc(u8) ('0' + m % 10); m /= 10; dn += 1; }
+  for i: 0..<dn { out[at + i] = digits[dn - 1 - i]; }
+  return at + dn;
+}
+
+// ---- the variants
+
+// Sound id's variants (picks: SFX_COUNT * SFXB_VARIANTS indexes into SFXB, the bank's SFXB_PICK or
+// Audio Lab's own) as the mixer knows them.
+egm_sound :: (id: int, picks: [] int) -> MixSound {
+  m := MixSound.{limit = EGM_LIMIT[id]};
+  for v: 0..<SFXB_VARIANTS {
+    c := picks[id * SFXB_VARIANTS + v];
+    if c < 0 || c >= SFXB_N { continue; }
+    m.ms[m.variants] = SFXB[c].ms; m.variants += 1;
+  }
+  return m;
+}
+// Variant v of sound id, as its file is named: NAME-CAND.
+egm_variant :: (out: [] u8, at: int, id: int, v: int, picks: [] int) -> int {
+  k := 0;
+  for i: 0..<SFXB_VARIANTS {
+    c := picks[id * SFXB_VARIANTS + i];
+    if c < 0 || c >= SFXB_N { continue; }
+    if k == v { j := egm_put(out, at, SFX_NAMES[id]); j = egm_put(out, j, "-"); return egm_put(out, j, SFXB[c].cand); }
+    k += 1;
+  }
+  return -1;
+}
+
+// One voice's line: NAME GAIN PAN DELAY LOWPASS RATE WET ID.
+egm_voice :: (out: [] u8, at: int, id: int, picks: [] int, p: MixPlay, pan: f32, delay: f32, lowpass: f32, wet: f32) -> int {
+  k := egm_variant(out, at, id, p.variant, picks);
+  k = egm_put(out, k, " "); k = egm_num(out, k, ifx p.gain < 1 then p.gain else 1.0f32);
+  k = egm_put(out, k, " "); k = egm_num(out, k, pan);
+  k = egm_put(out, k, " "); k = egm_num(out, k, ifx delay < 0 then 0.0f32 else ifx delay > 2 then 2.0f32 else delay);
+  k = egm_put(out, k, " "); k = egm_int(out, k, cast(int) floor(lowpass + 0.5));
+  k = egm_put(out, k, " "); k = egm_num(out, k, p.rate);
+  k = egm_put(out, k, " "); k = egm_num(out, k, wet);
+  k = egm_put(out, k, " "); k = egm_int(out, k, p.id);
+  return egm_put(out, k, "\n");
+}
+
+// Cue: sound id placed at p (EgmPlace.{} for one at the listener), `wait` seconds on, gain times its
+// level and the volume (`master`), at `now`: its lines after out[0..<k] (a voice it replaces
+// stopped first). The length, or k when it isn't played.
+egm_cue :: (m: [] Mixer, out: [] u8, k: int, id: int, picks: [] int, p: EgmPlace, wait: f32, gain: f32, now: f64, master: f32) -> int {
+  if id < 0 || id >= SFX_COUNT { return k; }
+  ms := egm_sound(id, picks);
+  if ms.variants == 0 { return k; }
+  g := gain * f32(EGM_LEVEL[id]) / 1000 * master * p.gain;
+  pan := p.pan; delay := wait + p.delay; dull := p.lowpass; far := p.distance;
+  if g < f32(EGM_QUIET) { return k; }
+  priority := ifx far < EGM_NEAR then f32(EGM_YOURS) else 1.0f32;
+  play := mix_play(m, id, ms, g, priority, now, delay);
+  if !play.ok { return k; }
+  j := k;
+  if play.steal > 0 { s := egm_put(out, j, "-"); s = egm_int(out, s, play.steal); s = egm_put(out, s, "\n"); if s > 0 { j = s; } }
+  f := (far - 4) / 60; f = ifx f < 0 then 0.0f32 else ifx f > 1 then 1.0f32 else f;
+  e := egm_voice(out, j, id, picks, play, pan, delay, dull, 0.08 + 0.32 * f);
+  if e < 0 { return k; }
+  if EGM_BIG[id] { mix_duck(m, now + f64(delay)); }
+  return e;
+}
+
+// The frame's end: the bus's level when it moves, and the bed (ducked) when it changes or `bed_again`
+// (the host drops lines until audio starts). bed_was holds the last bed gain sent.
+egm_end :: (m: [] Mixer, out: [] u8, k: int, picks: [] int, now: f64, dt: f32, master: f32, bed_was: [] f32, bed_again: bool) -> int {
+  j := k;
+  bus := mix_bus(m, mix_level(m), dt);
+  if abs(bus - m[0].bus_sent) > 0.01 {
+    e := egm_put(out, j, "!bus "); e = egm_num(out, e, bus); e = egm_put(out, e, "\n");
+    if e > 0 { j = e; m[0].bus_sent = bus; }
+  }
+  duck := mix_bed(m, now, dt);
+  bed := f32(EGM_BED) * master * duck;
+  if egm_sound(SFX_AMBIENT, picks).variants > 0 && (abs(bed - bed_was[0]) > 0.002 || bed_again) {
+    e := egm_put(out, j, "~"); e = egm_variant(out, e, SFX_AMBIENT, 0, picks); e = egm_put(out, e, " "); e = egm_num(out, e, bed); e = egm_put(out, e, " 0.000\n");
+    if e > 0 { j = e; bed_was[0] = bed; }
+  }
+  return j;
+}
+
+// ---- Checks ----
+
+#test "footsteps remain below one tenth gain at the listener, including mixer variation" {
+  pk:=SFXB_PICK;out:[256]u8;
+  for sound:SFX_STEP_1..<SFX_STEP_3+1 {
+    m:[1]Mixer;
+    #assert egm_cue(m[..],out[..],0,sound,pk[..],EgmPlace.{},0,1,0,1)>0;
+    #assert m[0].played==1;
+    for v:m[0].voices {if v.on {#assert v.gain>0.05 && v.gain<0.1;}}
+  }
+}
+
+#test "every sound has variants in the bank, each a file the page can name" {
+  out: [64] u8; pk := SFXB_PICK;
+  for id: 0..<SFX_COUNT {
+    s := egm_sound(id, pk[..]);
+    #assert s.variants >= 1 && s.limit >= 1;
+    for v: 0..<s.variants { n := egm_variant(out[..], 0, id, v, pk[..]); #assert n > SFX_NAMES[id].count + 1 && s.ms[v] > 0; }
+    #assert egm_variant(out[..], 0, id, s.variants, pk[..]) == -1;
+  }
+}
+
+#test "a cue's line: the variant, its gain at the listener, its pan, delay, rate, send and id" {
+  m: [1] Mixer; pk := SFXB_PICK;
+  out: [256] u8;
+  // a hit 20 m ahead: a quarter of its level (reference 5 m), centred, 20/343 s late, sent to the room
+  n := egm_cue(m[..], out[..], 0, SFX_HIT, pk[..], egm_flat(0, 20), 0, 1, 0, 1);
+  t := cast(string) out[0..<n];
+  #assert n > 0 && t[n - 1] == '\n' && t[0..<4] == "hit-";
+  f: [8] string; fn := 0; a := 0;
+  for i: 0..<n { if t[i] == ' ' || t[i] == '\n' { if fn < 8 { f[fn] = t[a..<i]; fn += 1; } a = i + 1; } }
+  #assert fn == 8 && f[2] == "0.000" && f[3] == "0.058" && f[7] == "1";
+  // the horn at the listener: no delay, no lowpass, and it ducks the bed
+  n2 := egm_cue(m[..], out[..], 0, SFX_HORN, pk[..], EgmPlace.{}, 0, 1, 0, 1);
+  #assert n2 > 0 && m[0].duck_until > 1;
+}
+
+#test "the flat field's law: the reference distance at full gain, half at twice it, right pans right" {
+  #assert abs(egm_flat(0, 5).gain - 1) < 0.0001 && abs(egm_flat(0, 10).gain - 0.5) < 0.0001;
+  #assert abs(egm_flat(10, 0).pan - 1) < 0.0001 && abs(egm_flat(-10, 0).pan + 1) < 0.0001;
+  #assert egm_flat(0, 90).gain == 0 && abs(egm_flat(0, 34.3).delay - 0.1) < 0.0001;
+}

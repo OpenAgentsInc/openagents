@@ -4,7 +4,7 @@
   "title": "Character checkpoint v3",
   "profile": "character-checkpoint-v3",
   "version": 3,
-  "check": "coax/web/tool.sh aethyr/tools/character-checkpoint-profile.coax proto/verse/character-checkpoint-v3.schema.json",
+  "check": "coax/web/tool.sh metaverse-engine/tools/character-checkpoint-profile.coax proto/verse/character-checkpoint-v3.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": [

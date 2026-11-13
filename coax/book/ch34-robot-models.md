@@ -35,13 +35,13 @@ understand by name.
    its meshes.
 6. **Reproducibility.** The same input bytes give the same output.
 7. **Other formats.** MJCF and others are qualified separately; the OpenAgents Metaverse Engine
-   [chapter 35](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch035-bring-in-robots-and-meshes.md)
+   [chapter 35](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch035-bring-in-robots-and-meshes.md)
    plans that library work.
 
 ## The consumer and the gate
 
 - Import one pinned arm description used by the simulation (the Panda arm of
-  [Metaverse Engine chapter 19](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch019-joints-in-generalized-coordinates.md)),
+  [Metaverse Engine chapter 19](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch019-joints-in-generalized-coordinates.md)),
   and compare every value with an independent parser.
 - Malformed fixtures: a cycle in the joint tree, a missing frame, a
   non-positive or inconsistent inertia, an inverted limit and an unknown

@@ -152,7 +152,7 @@ The book comes from the path:
 bs_book :: (path: string) -> int {
   if bs_prefix(path, "coax/book/") { return 0; }
   if bs_prefix(path, "psionic/book/") { return 1; }
-  if bs_prefix(path, "aethyr/book/") { return 2; }
+  if bs_prefix(path, "metaverse-engine/book/") { return 2; }
   return -1;
 }
 bs_book_name :: (book: int) -> string {

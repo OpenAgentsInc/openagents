@@ -46,9 +46,9 @@ and **P2** adds capabilities required by a broader persistent-MMO product.
 ## Evidence and interpretation
 
 The comparison uses [the MMO research](../research/mmo.md), all 101 entries
-in the [Metaverse Engine chapter registry](../../aethyr/book/chapters.json), the
-[book plan](../../aethyr/book/PLAN.md), chapter status and scope statements,
-and the existing [book appendix](../../aethyr/book/appendix-mmo-gap-analysis.md).
+in the [Metaverse Engine chapter registry](../../metaverse-engine/book/chapters.json), the
+[book plan](../../metaverse-engine/book/PLAN.md), chapter status and scope statements,
+and the existing [book appendix](../../metaverse-engine/book/appendix-mmo-gap-analysis.md).
 The networking chapters 86–101 and the relevant core, world, Forge and
 shipping chapters supply the architectural detail. Their claims were checked
 against the implementation paths cited below, the multiplayer specification,
@@ -123,7 +123,7 @@ is [#12784](https://github.com/OpenAgentsInc/openagents/issues/12784).
 | 56–64: adoption | Grid session replay and cross-realm inventories; many realms share movement and camera modules. | Adoption is uneven. Made realms retain private movement (#12721); realm rebuild chapters remain drafts even where current gameplay works. |
 | 65–80: audio, world systems and AI | Offline deterministic synthesis; some spatial/live sound, effects, senses, followers, navigation and scatter modules. | Important player experience and NPC substrates. Navigation/senses adoption, crowd avoidance, remote decision budgeting and some shared world systems remain incomplete. |
 | 81–85: shipping | Versioned AESV saves, fallback slots, progress revisions, frame measurements, existing native/browser paths and some accessible controls. | Save containers detect corruption; they do not authenticate gameplay or prove economic durability. Shared lifecycle, hot-reload migration and broader accessibility remain work. |
-| 86–101: multiplayer | Everglade-specific authoritative server and client, with substantial current networking functionality. | A reusable `aethyr/net/` API is still planned. Porting another realm currently requires Everglade-specific integration rather than selecting a qualified shared profile. |
+| 86–101: multiplayer | Everglade-specific authoritative server and client, with substantial current networking functionality. | A reusable `metaverse-engine/net/` API is still planned. Porting another realm currently requires Everglade-specific integration rather than selecting a qualified shared profile. |
 
 The core contracts are documented in [INVARIANTS.md](../../INVARIANTS.md),
 especially fixed clocks, event admission, strict math, entity flushes, asset
@@ -203,7 +203,7 @@ code does not provide the MMO capability. It is not a certification score.
 **Priority: P0 for the multiplayer experience. Tracking: #12784, #12776,
 #12778; #12746 and #12721 for adoption beyond Everglade.**
 
-[Chapter 87](../../aethyr/book/ch087-server-and-client-share-one-step.md)
+[Chapter 87](../../metaverse-engine/book/ch087-server-and-client-share-one-step.md)
 correctly requires shared code and world data. The actual movement helpers
 are shared, but the page still owns offline gameplay and switches sources
 feature by feature. `eg_heard` refuses talk, door, boat and board interactions
@@ -218,7 +218,7 @@ networking while players saw camera snaps, walking-in-place NPCs, invisible
 effects and the wrong hotbar. Later fixes substantially improve those
 symptoms. They do not remove the structural risk of two simulations.
 
-Finish the local-worker host from [chapter 95](../../aethyr/book/ch095-offline-is-a-local-server.md):
+Finish the local-worker host from [chapter 95](../../metaverse-engine/book/ch095-offline-is-a-local-server.md):
 one room simulation and initialized state, compiled for both hosts; the page
 always sends intents and draws replicated state. Keep platform effects in
 hosts and rules/scheduling decisions in Coax. Delete replaced offline
@@ -288,7 +288,7 @@ There are still limits worth making explicit:
   budget.
 - The sender guarantees the receiving player's row. The current selection
   loop does not separately reserve every effect owned by that player, as
-  [chapter 92](../../aethyr/book/ch092-priority-under-a-budget.md) requires.
+  [chapter 92](../../metaverse-engine/book/ch092-priority-under-a-budget.md) requires.
   High priority must have a stated bound under the actual worst case.
 - WARP currently detects a move exceeding 3 m in a tick. Explicit simulation
   discontinuities would also cover short teleports and distinguish them
@@ -388,7 +388,7 @@ server report and refuse client writes to that field.
 
 The general save layer has useful independent guarantees: AESV versions,
 CRC, previous-good fallback, world identity and stale-revision refusal.
-[Chapter 81](../../aethyr/book/ch081-save-and-come-back.md) explicitly leaves
+[Chapter 81](../../metaverse-engine/book/ch081-save-and-come-back.md) explicitly leaves
 retry-once effects and conflict merging unfinished. A CRC or revision
 container does not make its payload authoritative gameplay.
 
@@ -577,7 +577,7 @@ than repeating whole gates.
 extensions. Tracking: #12746, #12610 and new shared-contract scope.**
 
 The core engine and product implementation have different maturity.
-`aethyr/net/` is absent at this snapshot; wire state and the room simulation
+`metaverse-engine/net/` is absent at this snapshot; wire state and the room simulation
 live under `apps/openagents-web/` and `coax/web/room/`. That placement is
 reasonable while proving one game, but a reusable engine needs explicit
 extension points for commands, world stepping, replicated fields,

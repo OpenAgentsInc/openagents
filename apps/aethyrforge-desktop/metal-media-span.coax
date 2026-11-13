@@ -4,7 +4,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/host/media-span-conformance.coax";
+#load "../../metaverse-engine/host/media-span-conformance.coax";
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3{tool_errln("usage: metal-media-span ROOT SDK NEW_OUTPUT [--existing]");return 2;}sdk:=args_at(a[..],1);dir:=args_at(a[..],2);paths:[4][4096]u8;if !fs_mkdir(dir){return 1;}plan:=fs_join(dir,"plan.json",paths[0][..]);receipt:=fs_join(dir,"receipt.json",paths[1][..]);bytes:[4096]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"operations");jo_arr(o[..]);
  for i:0..<8{jo_obj(o[..]);jo_key(o[..],"kind");jo_int(o[..],ifx i==2 then 933 else ifx i==3 then 931 else ifx i==4 then 934 else 930);jo_key(o[..],"length");jo_int(o[..],ifx i==1 then 5 else ifx i==2 then 1 else ifx i==6 then 0 else 4);jo_key(o[..],"capacity");jo_bool(o[..],i!=5);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(plan,jo_text(o[..])){return 1;}

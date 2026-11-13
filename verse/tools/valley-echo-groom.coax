@@ -3,7 +3,7 @@
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
-#load "../../aethyr/render/geometry/scan.coax";
+#load "../../metaverse-engine/render/geometry/scan.coax";
 eg_position :: (p:Point)->Point {return v3(p.x*0.01,p.z*0.01,p.y*0.01);}
 #test "Groom source axes use the same centimetre conversion as Unreal glTF" {p:=eg_position(v3(10,20,150));#assert abs(p.x-0.1)<0.0000001 && p.y==1.5 && abs(p.z-0.2)<0.0000001;}
 eg_array :: (data:[]u8,at:[]int,width:int)->int {#assert at[0]>=4 && at[0]<=data.count-4;n:=cast(int)scan_u32(data,at[0]);at[0]+=4;#assert n<= (data.count-at[0])/width;begin:=at[0];at[0]+=n*width;return begin;}

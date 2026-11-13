@@ -5,7 +5,7 @@
 // image is the image without it.
 //   coax/web/tool.sh coax/web/cull-check.coax http://127.0.0.1:PORT/worlds/valley-lab/cull [OUT.json]
 // Start the server first: coax/web/serve.sh apps/openagents-web --static --listen 127.0.0.1:PORT
-// (after aethyr/tools/cull-fixture.coax and the cullstream.wasm build). OUT.json keeps the report.
+// (after metaverse-engine/tools/cull-fixture.coax and the cullstream.wasm build). OUT.json keeps the report.
 #import "Basic";
 #load "../lib/net/cdp.coax";
 #load "../lib/sys/fs.coax";

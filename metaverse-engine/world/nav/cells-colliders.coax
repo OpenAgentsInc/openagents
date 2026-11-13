@@ -1,0 +1,138 @@
+// A navigation page built from the colliders the players' own step uses (GitHub #13281; cells.coax):
+// the realm hands over, block by block, where its ground lets a body stand and the capsules and
+// hulls round that block (metaverse-engine/physics/query.coax's shapes: a trunk is a capsule, a rock a hull),
+// and a sample opens where a creature of radius r stands clear of them all. Nothing here is a
+// realm's: the same test says whether a creature stands inside a collider (r = 0).
+//
+// A collider wholly under a step's height (QUERY_STEP_UP) is walked over, as a player's step does.
+// A capsule counts by its plan: the segment between its ends, its radius round it.
+//   coax/bin/coax test metaverse-engine/world/nav/cells-colliders.coax --library
+//   coax/bin/coax mutate metaverse-engine/world/nav/cells-colliders.coax --library --root-only
+#module "aethyr.nav.cells_colliders";
+#authority;
+#load "cells.coax";
+#load "../../physics/query.coax";
+
+// book:begin nav-clear
+NAV_BODY_LOW :: 0.6;    // m up: just over a step's height, where a body first meets a hull's side
+NAV_BODY_MID :: 1.0;    // m up: a body's middle
+
+// Whether a body of radius r at (x, z) is clear of every capsule (QUERY_CAPSULE numbers each)
+// and every hull.
+nav_body_clear :: (x: f32, z: f32, r: f32, capsules: [] f32, hulls: [] f32) -> bool #effects(all) {
+  for b: 0..<capsules.count / QUERY_CAPSULE {
+    o := b * QUERY_CAPSULE;
+    if stand_hi(capsules[o + 1], capsules[o + 4]) <= f32(QUERY_STEP_UP) { continue; }
+    ax := capsules[o]; az := capsules[o + 2]; dx := capsules[o + 3] - ax; dz := capsules[o + 5] - az;
+    l := dx * dx + dz * dz;
+    t := ifx l > 0 then stand_clamp(((x - ax) * dx + (z - az) * dz) / l, 0, 1) else 0.0f32;
+    qx := ax + dx * t - x; qz := az + dz * t - z; need := capsules[o + 6] + r;
+    if qx * qx + qz * qz < need * need { return false; }
+  }
+  k := query_hull(hulls, 0);
+  while k.ok {
+    if query_hull_gap(hulls, k, x, f32(NAV_BODY_LOW), z).gap < r || query_hull_gap(hulls, k, x, f32(NAV_BODY_MID), z).gap < r { return false; }
+    k = query_hull(hulls, k.next);
+  }
+  return true;
+}
+// book:end nav-clear
+
+// book:begin nav-build
+// Builds block (bi, bj) of page p: each of its NAV_BLOCK * NAV_BLOCK samples opens where the
+// realm's ground lets a body stand (`stand`, in row order) and it is clear of the colliders, and
+// closes otherwise. The samples opened, or -1 with nothing written for a page not in use, a
+// block off the page, or too few answers.
+nav_cells_build_block :: (n: [] NavCells, p: int, bi: int, bj: int, stand: [] bool, r: f32, capsules: [] f32, hulls: [] f32) -> int #effects(all) {
+  if p < 0 || p >= NAV_PAGES || !n[0].page[p].used || bi < 0 || bj < 0 || bi >= NAV_BLOCK_SIDE || bj >= NAV_BLOCK_SIDE || stand.count < NAV_BLOCK * NAV_BLOCK { return -1; }
+  open := 0;
+  for dj: 0..<NAV_BLOCK { for di: 0..<NAV_BLOCK {
+    i := bi * NAV_BLOCK + di; j := bj * NAV_BLOCK + dj;
+    ok := stand[dj * NAV_BLOCK + di] && nav_body_clear(nav_cells_x(n[0].page[p].cx, i), nav_cells_x(n[0].page[p].cz, j), r, capsules, hulls);
+    nav_cells_set(n, p, i, j, ok);
+    if ok { open += 1; }
+  } }
+  return open;
+}
+// book:end nav-build
+
+// ---- checks
+
+// A trunk: an upright capsule at (x, z) of radius r from y0 to y1.
+nvc_t_trunk :: (out: [] f32, at: int, x: f32, z: f32, r: f32, y0: f32, y1: f32) #effects(all) {
+  o := at * QUERY_CAPSULE; out[o] = x; out[o + 1] = y0; out[o + 2] = z; out[o + 3] = x; out[o + 4] = y1; out[o + 5] = z; out[o + 6] = r;
+}
+#test "nav colliders: a body stands clear of a trunk by both their radii, and walks over a low one" {
+  c: [14] f32; none: [1] f32;
+  nvc_t_trunk(c[..], 0, 10, 20, 0.5, 0.3, 1.6);
+  #assert nav_body_clear(10.91, 20, 0.4, c[0..<7], none[0..<0]) && !nav_body_clear(10.89, 20, 0.4, c[0..<7], none[0..<0]) && !nav_body_clear(10, 20.89, 0.4, c[0..<7], none[0..<0]) && nav_body_clear(10, 19.09, 0.4, c[0..<7], none[0..<0]);
+  #assert nav_body_clear(10.65, 20.65, 0.4, c[0..<7], none[0..<0]) && !nav_body_clear(10.6, 20.6, 0.4, c[0..<7], none[0..<0]);
+  // inside it or not, with no radius of its own
+  #assert !nav_body_clear(10.49, 20, 0, c[0..<7], none[0..<0]) && nav_body_clear(10.51, 20, 0, c[0..<7], none[0..<0]) && nav_body_clear(10.5, 20, 0, c[0..<7], none[0..<0]);
+  // a second capsule is tested too, and a partial one after it is not one
+  nvc_t_trunk(c[..], 1, 14, 20, 0.5, 0.3, 1.6);
+  #assert !nav_body_clear(14, 20, 0.4, c[..], none[0..<0]) && nav_body_clear(14, 20, 0.4, c[0..<13], none[0..<0]) && nav_body_clear(12, 20, 0.4, c[..], none[0..<0]);
+  // a capsule wholly under a step's height is walked over; one that just tops it is not, whichever end is up
+  nvc_t_trunk(c[..], 0, 10, 20, 0.5, 0.1, 0.55); #assert nav_body_clear(10, 20, 0.4, c[0..<7], none[0..<0]);
+  nvc_t_trunk(c[..], 0, 10, 20, 0.5, 0.1, 0.56); #assert !nav_body_clear(10, 20, 0.4, c[0..<7], none[0..<0]);
+  nvc_t_trunk(c[..], 0, 10, 20, 0.5, 0.56, 0.1); #assert !nav_body_clear(10, 20, 0.4, c[0..<7], none[0..<0]);
+  nvc_t_trunk(c[..], 0, 10, 20, 0.5, 0.55, 0.1); #assert nav_body_clear(10, 20, 0.4, c[0..<7], none[0..<0]);
+  // a fallen log: a capsule lying from (10, 20) to (14, 23), by its plan
+  c[0] = 10; c[1] = 0.8; c[2] = 20; c[3] = 14; c[4] = 0.8; c[5] = 23; c[6] = 0.5;
+  #assert !nav_body_clear(12, 21.5, 0.4, c[0..<7], none[0..<0]) && !nav_body_clear(12.5, 20.9, 0.4, c[0..<7], none[0..<0]) && nav_body_clear(12.7, 20.6, 0.4, c[0..<7], none[0..<0]);
+  #assert !nav_body_clear(9.2, 20, 0.4, c[0..<7], none[0..<0]) && nav_body_clear(9.0, 20, 0.4, c[0..<7], none[0..<0]) && !nav_body_clear(14.7, 23.5, 0.4, c[0..<7], none[0..<0]) && nav_body_clear(14.8, 23.6, 0.4, c[0..<7], none[0..<0]);
+  #assert nav_body_clear(9.4, 19.3, 0.4, c[0..<7], none[0..<0]) && !nav_body_clear(9.5, 19.5, 0.4, c[0..<7], none[0..<0]);
+  // beside its middle, 0.89 m and 0.91 m off its line: the nearest point is found along both axes
+  #assert !nav_body_clear(11.466, 22.212, 0.4, c[0..<7], none[0..<0]) && nav_body_clear(11.454, 22.228, 0.4, c[0..<7], none[0..<0]) && !nav_body_clear(12.534, 20.788, 0.4, c[0..<7], none[0..<0]) && nav_body_clear(12.546, 20.772, 0.4, c[0..<7], none[0..<0]);
+  // a third of the way along and two thirds, the same distances off
+  #assert !nav_body_clear(10.8, 21.71, 0.4, c[0..<7], none[0..<0]) && nav_body_clear(10.78, 21.74, 0.4, c[0..<7], none[0..<0]) && !nav_body_clear(13.2, 21.29, 0.4, c[0..<7], none[0..<0]) && nav_body_clear(13.22, 21.26, 0.4, c[0..<7], none[0..<0]);
+}
+#test "nav colliders: a body stands clear of a hull's side at its step and its middle, and over a low one" {
+  none: [1] f32; h: [54] f32;
+  // the checks' wedge: x in [-1, 1], z in [-1, 1], from y -0.25 up to 0.5 + 0.25 x: 0.25 high at x -1, 0.75 at x 1
+  end := query_test_wedge(h[..], 0, 0);
+  // at x 0.9 its top (0.725) is over a step: its sides stop a body there; past its east side by r, clear
+  #assert !nav_body_clear(0.9, 0, 0.4, none[0..<0], h[0..<end]) && !nav_body_clear(1.39, 0, 0.4, none[0..<0], h[0..<end]) && nav_body_clear(1.41, 0, 0.4, none[0..<0], h[0..<end]);
+  #assert !nav_body_clear(0.9, 1.39, 0.4, none[0..<0], h[0..<end]) && nav_body_clear(0.9, 1.41, 0.4, none[0..<0], h[0..<end]) && nav_body_clear(0.9, -1.41, 0.4, none[0..<0], h[0..<end]);
+  // a body exactly its radius from the side is clear: half a metre east of the side at x 1
+  #assert nav_body_clear(1.5, 0, 0.5, none[0..<0], h[0..<end]) && !nav_body_clear(1.4375, 0, 0.5, none[0..<0], h[0..<end]);
+  // inside or not, with no radius: the slice at 0.6 m starts where the top is 0.6 (x 0.4)
+  #assert !nav_body_clear(0.9, 0.99, 0, none[0..<0], h[0..<end]) && nav_body_clear(0.9, 1.01, 0, none[0..<0], h[0..<end]) && nav_body_clear(0.3, 0, 0, none[0..<0], h[0..<end]) && !nav_body_clear(0.5, 0, 0, none[0..<0], h[0..<end]);
+  // its low west half is walked over: the slice at a step's height is east of x 0.4
+  #assert nav_body_clear(-0.5, 0, 0.4, none[0..<0], h[0..<end]) && nav_body_clear(-0.1, 0, 0.4, none[0..<0], h[0..<end]);
+  // a second hull is tested too: a taller one (its heights to 1.2) only the middle's slice meets
+  for j: 0..<27 { h[27 + j] = h[j]; }
+  h[27 + 1] = 0.9; h[27 + 2] = 1.2;
+  for f: 0..<6 { o := 27 + 3 + f * 4; h[o + 3] += h[o] * 10; }   // moved 10 m east
+  h[27 + 3 + 5 * 4 + 3] += 0.97014250 * 0.6;   // and its sloped top 0.6 higher
+  #assert nav_body_clear(11.5, 0, 0.5, none[0..<0], h[27..<54]) && !nav_body_clear(11.4375, 0, 0.5, none[0..<0], h[27..<54]);
+  #assert nav_body_clear(5, 0, 0.4, none[0..<0], h[..]) && !nav_body_clear(10.9, 0, 0.4, none[0..<0], h[..]) && nav_body_clear(10.9, 0, 0.4, none[0..<0], h[0..<27]) && !nav_body_clear(0.9, 0, 0.4, none[0..<0], h[..]);
+}
+#test "nav colliders: a block's samples open where the ground holds a body clear of the colliders" {
+  n: [1] NavCells; p := nav_cells_add(n[..], -1, 2); none: [1] f32; c: [7] f32;
+  stand: [16] bool; for k: 0..<16 { stand[k] = k != 5; }
+  // block (3, 2) of cell (-1, 2): x -58..-56, z 132..134; a trunk at its south-west sample (-57.75, 132.25)
+  nvc_t_trunk(c[..], 0, -57.75, 132.25, 0.2, 0.3, 1.6);
+  #assert nav_cells_build_block(n[..], p, 3, 2, stand[..], 0.4, c[..], none[0..<0]) == 16 - 1 - 3;
+  for k: 0..<16 {
+    i := 12 + k % 4; j := 8 + k / 4;
+    near := (k % 4 == 0 && k / 4 <= 1) || (k % 4 == 1 && k / 4 == 0);   // within 0.6 m of the trunk
+    #assert nav_cells_bit(n[..], p, i, j) == (k != 5 && !near);
+  }
+  #assert nav_cells_count(n[..], p) == 12;
+  // built again with nowhere to stand, it closes: a build writes every sample of its block, and no other
+  nav_cells_set(n[..], p, 11, 8, true); nav_cells_set(n[..], p, 16, 8, true); nav_cells_set(n[..], p, 12, 7, true); nav_cells_set(n[..], p, 12, 12, true);
+  for k: 0..<16 { stand[k] = false; }
+  #assert nav_cells_build_block(n[..], p, 3, 2, stand[..], 0.4, c[..], none[0..<0]) == 0 && nav_cells_count(n[..], p) == 4;
+  // the page's corners build their own corners
+  for k: 0..<16 { stand[k] = true; }
+  #assert nav_cells_build_block(n[..], p, 0, 0, stand[..], 0.4, none[0..<0], none[0..<0]) == 16 && nav_cells_bit(n[..], p, 0, 0) && nav_cells_bit(n[..], p, 3, 3) && !nav_cells_bit(n[..], p, 4, 3) && !nav_cells_bit(n[..], p, 3, 4);
+  #assert nav_cells_build_block(n[..], p, 31, 31, stand[..], 0.4, none[0..<0], none[0..<0]) == 16 && nav_cells_bit(n[..], p, 127, 127) && nav_cells_bit(n[..], p, 124, 124) && !nav_cells_bit(n[..], p, 123, 124);
+  // refused, with nothing written
+  before := nav_cells_digest(n[..], p);
+  #assert nav_cells_build_block(n[..], -1, 0, 0, stand[..], 0.4, none[0..<0], none[0..<0]) == -1 && nav_cells_build_block(n[..], NAV_PAGES, 0, 0, stand[..], 0.4, none[0..<0], none[0..<0]) == -1;
+  #assert nav_cells_build_block(n[..], 1, 0, 0, stand[..], 0.4, none[0..<0], none[0..<0]) == -1 && nav_cells_count(n[..], 1) == 0;
+  #assert nav_cells_build_block(n[..], p, -1, 0, stand[..], 0.4, none[0..<0], none[0..<0]) == -1 && nav_cells_build_block(n[..], p, 0, -1, stand[..], 0.4, none[0..<0], none[0..<0]) == -1;
+  #assert nav_cells_build_block(n[..], p, 32, 0, stand[..], 0.4, none[0..<0], none[0..<0]) == -1 && nav_cells_build_block(n[..], p, 0, 32, stand[..], 0.4, none[0..<0], none[0..<0]) == -1;
+  #assert nav_cells_build_block(n[..], p, 1, 1, stand[0..<15], 0.4, none[0..<0], none[0..<0]) == -1 && nav_cells_digest(n[..], p) == before;
+}

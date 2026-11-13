@@ -1,5 +1,5 @@
 // Hecate’s authored arrival, shared by the realm and chapter 78’s camera checks.
-#load "../../aethyr/shot/flight.coax";
+#load "../../metaverse-engine/shot/flight.coax";
 
 PLANET_X :: -17.0; PLANET_Y :: -40.0; PLANET_Z :: 120.0;
 FLIGHT_CUT :: 3.4;

@@ -4,7 +4,7 @@
 Each look (Cultist, Fanatic, Warlock, Darian) is drawn the way the pack draws it: its robe, the
 male head and the hands, read through verse/tools/people.py (rebound onto the people rig's male
 skeleton as the pack has them) and posed in a clip of the Universal Animation Library as
-aethyr/anim/skin.coax poses them (linear blend). The robe's texture is dyed the way the realm's shader
+metaverse-engine/anim/skin.coax poses them (linear blend). The robe's texture is dyed the way the realm's shader
 dyes a person's pale cloth (apps/openagents-web/gpu/everglade-v1/gpu.coax eg_person_dye, rule 1). Front, three-quarter
 and back, then one frame of each clip; a PNG each into DIR.
 """

@@ -1,12 +1,12 @@
 // Hold the relay room's profile (proto/verse/room-relay-v1.json, #13245) to the codec the room and
-// every page in a relay room load: aethyr/net/relay-wire.coax. A frame's format ("you": "y SEAT N T
+// every page in a relay room load: metaverse-engine/net/relay-wire.coax. A frame's format ("you": "y SEAT N T
 // [G]") names its head and fields in the codec's order; each "frames" entry's values name those
 // fields in that order; the codec's writer gives exactly its text from them, and its reader gives
 // them back from the text; every "malformed" text is refused by the frame's reader; and max_seats
 // is the codec's.
 //   coax/web/tool.sh coax/web/room/relay-profile.coax proto/verse/room-relay-v1.json
 #import "Basic";
-#load "../../../aethyr/net/relay-wire.coax";
+#load "../../../metaverse-engine/net/relay-wire.coax";
 #load "../../lib/json/json.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/args.coax";
@@ -119,7 +119,7 @@ rp_check :: (d: Jv, path: string) -> bool {
   file := RP_PATH;
   if path.count < file.count || path[path.count - file.count..<path.count] != file { print("identity: not the file's name\n"); return false; }
   if rp_str(d, jv_get(d, 0, "check"), tb[1][..]) != "coax/web/tool.sh coax/web/room/relay-profile.coax proto/verse/room-relay-v1.json" { print("check: not this program\n"); return false; }
-  if rp_str(d, jv_get(d, 0, "codec"), tb[1][..]) != "aethyr/net/relay-wire.coax" { print("codec: not the relay's\n"); return false; }
+  if rp_str(d, jv_get(d, 0, "codec"), tb[1][..]) != "metaverse-engine/net/relay-wire.coax" { print("codec: not the relay's\n"); return false; }
   for i: 0..<RP_FRAMES.count {
     if rp_str(d, jv_get(d, 0, RP_FRAMES[i]), tb[1][..]) != RP_FORMATS[i] { print("format: %\n", RP_FRAMES[i]); return false; }
   }

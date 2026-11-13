@@ -13,9 +13,9 @@
 // The uniform block is floats: the picture's size 0, the clock 2, the mirror flag 3, the eye 4, its
 // right 8, up 12 and forward 16 with the focal length in pixels at 19, and where you stand 20.
 //   coax/bin/coax test --library everglade/workshop/gpu/temple.coax
-#load "../../../aethyr/gpu/shader.coax";
-#load "../../../aethyr/gpu/wgsl.coax";
-#load "../../../aethyr/render/noise.coax";
+#load "../../../metaverse-engine/gpu/shader.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
+#load "../../../metaverse-engine/render/noise.coax";
 #load "../layout.coax";
 
 TempleObj :: struct {a:V4; b:V4; c:V4; d:V4;}
@@ -27,7 +27,7 @@ temple_cyan :: ()->V3 {return v3(0.42f32,0.82f32,1.0f32);}
 temple_amber :: ()->V3 {return v3(1.0f32,0.58f32,0.24f32);}
 temple_core :: ()->V3 {return v3(0.0f32,WK_CORE_Y,WK_CORE_Z);}
 
-// Smooth noise on the Metaverse Engine's lattice hash (aethyr/render/noise.coax): the hash gives one value a
+// Smooth noise on the Metaverse Engine's lattice hash (metaverse-engine/render/noise.coax): the hash gives one value a
 // whole-number cell, and these blend the cells' corners.
 temple_cell :: (x:f32)->u32 {return cast,trunc(u32)(cast(s32)floor(fmin(fmax(x,0.0f32-33554432.0f32),33554430.0f32)));}
 temple_hash2 :: (x:f32,y:f32)->f32 {return render_noise_unit(render_noise_mix2(temple_cell(x),temple_cell(y)));}

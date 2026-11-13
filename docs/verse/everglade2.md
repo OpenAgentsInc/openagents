@@ -69,7 +69,7 @@ share:
 ### The admitted ground and its baked light (#12995, #13059)
 
 `everglade/world/ground.coax` holds Everglade II's land as a set of Metaverse Engine terrain tiles
-(`aethyr/world/terrain-tile.coax`) against Everglade II's ground material table (meadow, autumn meadow,
+(`metaverse-engine/world/terrain-tile.coax`) against Everglade II's ground material table (meadow, autumn meadow,
 forest litter, path dirt), with four weights a sample from `e2_gold`, `e2_forest` and `e2_path`.
 All tiles lie on one lattice, the glade's 0.65 m samples from (-32.5, -60), each worked out once
 in f64 and rounded once, so a sample two tiles share is the same point and height in both, bit
@@ -111,7 +111,7 @@ time, Wasm memory and the ground's facts. It passes only on the pack route with 
 memory growth.
 
 The woods' and the glade's tree crowns (sphere proxies per kit) are then baked onto the tile as
-ambient occlusion (`aethyr/render/bake.coax`, keyed by the tile's revision, the crowns' digest and one world-state
+ambient occlusion (`metaverse-engine/render/bake.coax`, keyed by the tile's revision, the crowns' digest and one world-state
 axis, the realm's variant: a bake for other land, crowns or state refuses and the live bake stays).
 A crown of radius r whose centre is D away along d hides (r / D)^2 max(0, n . d) of the
 cosine-weighted sky; AO = clamp(1 - sum, 0.6, 1), with no bounce, eased to open sky over the last 6 m inside the tile's edge so leaving it is no step in light. Your character
@@ -121,7 +121,7 @@ the canopy; the ground takes a quarter of it (below). `e2_probe` 9 is the bake's
 The ground draws from the table and the bake (#13052). The page uploads both as one store
 (`e2g_gpu`: the grid, the four materials, the live AO), and the ground shader
 (`everglade/client/gpu/everglade2.coax` `e2_ground_albedo`, `e2_ground_ao`) takes the same weights at each pixel
-(`forest.coax` `e2_ground_layer`) and evaluates `aethyr/render/terrain-shade.coax`'s equations.
+(`forest.coax` `e2_ground_layer`) and evaluates `metaverse-engine/render/terrain-shade.coax`'s equations.
 The pack's vertex colours are no longer read. The table holds the pack's colours re-encoded for
 its 2.2 power, so each decodes to the same linear colour. The litter's autumn tint is a layer share
 (a new material-table term: autumn's weight against the meadow's under it, `aethyr.terrain.materials`
@@ -210,10 +210,10 @@ coax/web/tool.sh verse/tools/humans/pack_material_layers.coax \
 mv /tmp/everglade2-data.pack apps/openagents-web/realms/everglade2/assets/everglade2.pack
 ```
 
-`aethyr/character/material.coax` holds each colour layer's material record: its kind (skin,
+`metaverse-engine/character/material.coax` holds each colour layer's material record: its kind (skin,
 cloth, hair, eye or metal), roughness, metalness, sheen and the data layers it reads. The page
 stores the table (store 3) and `cc_player_fs` in `everglade/client/gpu/everglade2.coax` samples the maps and
-shades with `aethyr/render/character-material.coax`. Roughness never goes below 0.55, or 0.7 on
+shades with `metaverse-engine/render/character-material.coax`. Roughness never goes below 0.55, or 0.7 on
 metal, so characters stay matte. `?maps=0` turns the maps off, and `?film` adds skin wrap, cloth
 sheen and hair highlights.
 
@@ -245,7 +245,7 @@ coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp
   the land, and keeps you in the glade's 26 m circle, on the path's corridor, or in the
   clearing. Thick woods stand wherever you may not go, so no edge of the world shows open ground.
 - Every tree trunk and rock stops you. A trunk is a capsule sized to its tree kind's trunk. A
-  rock is its own mesh's convex hull (the OpenAgents Metaverse Engine's hulls, `aethyr/physics/query.coax`): its top is ground you
+  rock is its own mesh's convex hull (the OpenAgents Metaverse Engine's hulls, `metaverse-engine/physics/query.coax`): its top is ground you
   stand on, its sides stop you where you see them. You step onto a rock lower than 0.55 m, jump
   onto a taller one and stand on its top, walk up a gentle face and slide off a steep one. The
   hulls are baked from the Stylized Nature meshes by
@@ -296,9 +296,9 @@ coax/web/tool.sh clip "http://127.0.0.1:8871/worlds/everglade2?stage=cat" cat.mp
   middle of the view and the sky fills the rest. The eye moves smoothly onto and off the land.
   Everglade II tilts from 1.2 radians below the horizon to 1.2 above.
 - A frame-rate counter in the bottom-right corner shows frames a second, averaged over 0.5 s.
-- The graphics governor (`aethyr/core/quality.coax`) sets how many pixels the page draws. It lowers
+- The graphics governor (`metaverse-engine/core/quality.coax`) sets how many pixels the page draws. It lowers
   the resolution when frames run slow and raises it again when there's room.
-- The key light's shadows are the Metaverse Engine's cascades (`aethyr/render/cascades.coax`): four tiles in
+- The key light's shadows are the Metaverse Engine's cascades (`metaverse-engine/render/cascades.coax`): four tiles in
   a 2048 atlas reaching 24, 60, 150 and 360 m round you (two, to 20 and 75 m, on a phone). Each tile's middle snaps to whole texels
   in the light's space and moves only in steps of 8 to 120 m, so shadows stay fixed to the land
   as you walk. The near tile casts every tree at its second level, the 60 m tile what the view
@@ -344,7 +344,7 @@ Everglade II builds in seconds:
 ```sh
 cd apps/openagents-web
 ../../coax/web/wasm.sh everglade/client/client.coax everglade2-face.c build/everglade2.wasm \
-  everglade-step.coax ../../aethyr/core/sticks.coax
+  everglade-step.coax ../../metaverse-engine/core/sticks.coax
 cd ../..
 coax/web/tool.sh coax/web/wgsl-module.coax everglade/client/gpu/everglade2.coax \
   apps/openagents-web/everglade2.wgsl everglade/client/gpu/everglade2.module
@@ -399,7 +399,7 @@ To open it, build a dev `everglade2.wasm` and run a local room and page server:
 ```sh
 cd apps/openagents-web
 COAXIAL_MODE=dev ../../coax/web/wasm.sh everglade/client/client.coax everglade2-face.c build/everglade2.wasm \
-  everglade-step.coax ../../aethyr/core/sticks.coax
+  everglade-step.coax ../../metaverse-engine/core/sticks.coax
 cd ../..
 coax/web/tool.sh coax/web/room/local.coax --room 8950 --page 8949 --static
 ```

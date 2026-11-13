@@ -6,8 +6,8 @@ demonstration compositions. This record explains the design and reuse
 boundary. The implementation's final check results belong in its separate
 verification record.
 
-The implementation is [aethyr/ui/hud.coax](../../aethyr/ui/hud.coax),
-[aethyr/ui/draw.coax](../../aethyr/ui/draw.coax), and the standalone
+The implementation is [metaverse-engine/ui/hud.coax](../../metaverse-engine/ui/hud.coax),
+[metaverse-engine/ui/draw.coax](../../metaverse-engine/ui/draw.coax), and the standalone
 [HUD demo](../../apps/openagents-web/demos/hud/README.md). All new application
 and build logic is Coax. The demo uses the existing browser host, C buffer
 adapter, font atlas and Coax-authored projects shader.
@@ -39,7 +39,7 @@ or cards. These are authored style constants, not measured contrast ratios.
 
 The books set a larger destination than this demo:
 
-- [the Metaverse Engine 15: UI and the HUD](../../aethyr/book/ch015-ui-and-the-hud.md)
+- [the Metaverse Engine 15: UI and the HUD](../../metaverse-engine/book/ch015-ui-and-the-hud.md)
   is partly implemented at the visual component foundation level. The new
   `HudBox`/`HudControl`, shared hit geometry, focus helper and typed display
   properties are that foundation. The full screen-space tree, safe areas,
@@ -47,12 +47,12 @@ The books set a larger destination than this demo:
   and complete keyboard/screen-reader acceptance journey remain a design
   draft. Eighteen drawing functions and a demo action array do not complete
   that larger contract.
-- [the Metaverse Engine 11: the renderer](../../aethyr/book/ch011-the-wgsl-renderer.md)
+- [the Metaverse Engine 11: the renderer](../../metaverse-engine/book/ch011-the-wgsl-renderer.md)
   plans shared frame, pass and binding admission over the existing shader
   and native renderer paths, plus a qualified CPU reference. This library
   submits to the existing projects path. It does not implement the common
   admitted pass graph, a new GPU backend or full CPU/GPU raster parity.
-- [the Metaverse Engine 85: Everyone can play](../../aethyr/book/ch085-everyone-can-play.md)
+- [the Metaverse Engine 85: Everyone can play](../../metaverse-engine/book/ch085-everyone-can-play.md)
   is a design draft for remapping, text scale, contrast, captions, stable
   text IDs, language support and reduced-motion behavior. The demo consumes
   the host's reduced-motion input and supplies keyboard controls and hidden
@@ -186,7 +186,7 @@ continuous flashing is unnecessary for this style.
 
 ## Eighteen callable visual components
 
-All functions live in [draw.coax](../../aethyr/ui/draw.coax), with
+All functions live in [draw.coax](../../metaverse-engine/ui/draw.coax), with
 `hd_component` dispatching the catalog's zero-based index. Each writes into a
 caller-owned vertex slice and returns the next vertex index. The `time` and
 `value` arguments are demonstration inputs; several functions keep fixture
@@ -295,7 +295,7 @@ layout engine.
 For a root-level Coax entry, the basic calling pattern is:
 
 ```jai
-#load "aethyr/ui/draw.coax";
+#load "metaverse-engine/ui/draw.coax";
 
 draw_example :: (out:[]f32,device_scale:f32,time:f32)->int {
   pen:=HdPen.{d=device_scale,cyan=false,top=0,bottom=900};

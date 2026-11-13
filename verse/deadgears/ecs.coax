@@ -1,4 +1,4 @@
-// Dead Gears' components on the Metaverse Engine's entities (aethyr/core/entity.coax), and its
+// Dead Gears' components on the Metaverse Engine's entities (metaverse-engine/core/entity.coax), and its
 // clock and per-system timing. It was a private entity store ported from
 // aethyr-demo's src/ecs; the store is now entity.coax's EntityStore, and
 // this file keeps only what Dead Gears adds to it.
@@ -20,7 +20,7 @@
 //
 // Systems run in the order the world calls them; ecs_clock_frame says how
 // many fixed 1/60 s steps a frame covers, on the Metaverse Engine's one clock
-// (aethyr/core/loop.coax: a frame clamped to 0.1 s, at most 8 steps), and
+// (metaverse-engine/core/loop.coax: a frame clamped to 0.1 s, at most 8 steps), and
 // Stats keeps each system's last and smoothed milliseconds, read off the
 // host's clock, for the stats overlay and the frame budget.
 //
@@ -28,14 +28,14 @@
 // so passing them copies only the views and every write reaches the store.
 //   coax/bin/coax test --library verse/deadgears/ecs.coax
 
-#load "../../aethyr/core/loop.coax";
-#load "../../aethyr/core/entity.coax";
+#load "../../metaverse-engine/core/loop.coax";
+#load "../../metaverse-engine/core/entity.coax";
 
 ECS_NONE :: ENTITY_NONE;   // no entity
 
 // The Metaverse Engine's store, and the component bits beside it.
 Entities :: struct {
-  s: EntityStore;     // who is alive (aethyr/core/entity.coax)
+  s: EntityStore;     // who is alive (metaverse-engine/core/entity.coax)
   mask: [] int;       // each slot's component bits
   dropping: [] int;   // component bits to clear at the next flush
 }
@@ -131,7 +131,7 @@ Clock :: struct {
   fixed_now: f64;          // seconds of fixed steps
   frame: int;              // frames so far
   steps: int;              // this frame's fixed steps
-  loop: FrameClock;        // the steps are this clock's (aethyr/core/loop.coax)
+  loop: FrameClock;        // the steps are this clock's (metaverse-engine/core/loop.coax)
 }
 
 // The seconds a frame of dt counts for, at most max_frame_dt: none for a time that isn't one. What a

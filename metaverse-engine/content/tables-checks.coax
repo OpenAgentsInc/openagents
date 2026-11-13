@@ -1,0 +1,18 @@
+// The fixture and helpers of metaverse-engine/content/tables.coax's checks (proto/aethyr/content-v1.json holds
+// the same document).
+
+CT_FIXTURE :: "aethyr.content.v1 demo 7\nreach 4000\ntable creature id name:text xp:int\n1|Wolf|50\n2|Goblin Warrior|50\ntable item id name:text slot:int\n1|Wolf pelt|0\n5|Short sword|8\ntable loot id creature:ref.creature item:opt.item weight:int\nsum weight by creature 100\n1|1|1|60\n2|1|0|40\n3|2|5|100\ntable point id name:text x:cm z:cm\n1|Old oak|-1200|350\ntable spawn id creature:ref.creature point:ref.point count:int\n1|1|1|3\n";
+
+// CT_FIXTURE with its first `was` replaced by `with`, into out ("" when `was` is not in it).
+ct_swap :: (was: string, with: string, out: [] u8) -> string #effects(all) {
+  s := CT_FIXTURE;
+  for a: 0..<s.count - was.count + 1 {
+    if s[a..<a + was.count] != was { continue; }
+    n := ct_put(out, 0, s[0..<a]); n = ct_put(out, n, with); n = ct_put(out, n, s[a + was.count..<s.count]);
+    return cast(string) out[0..<n];
+  }
+  return "";
+}
+// Whether text reads; the document says the same (ok).
+ct_reads :: (text: string) -> bool #effects(all) { d: [1] ContentDoc; r := ct_read(d[..], text); return r && d[0].ok == r; }
+

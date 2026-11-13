@@ -11,11 +11,11 @@
 // BASE_URL/worlds/SLUG?Q (SLUG everglade, Q weather=clear&clock=0.45: the same light every run),
 // at 1440x900, dpr 1. The path (default coax/web/flyover/SLUG.txt) is one key a line,
 //   SECONDS  EYE_X EYE_Y EYE_Z  AT_X AT_Y AT_Z
-// and either point may start with @NAME, a named point of the realm's map (aethyr/world/points.coax;
+// and either point may start with @NAME, a named point of the realm's map (metaverse-engine/world/points.coax;
 // everglade's are everglade/legacy/v1/points.coax): its three numbers are then metres from that point,
 //   12  @gate-south -6 6 4   @commons 10 3 20
 // so a gate or place the map moves takes the flight with it (#13078). A name the map lacks refuses
-// the path, naming it. '#' starts a comment. aethyr/cam/flyover.coax checks it (2 to 16 keys, the first at 0, times rising)
+// the path, naming it. '#' starts a comment. metaverse-engine/cam/flyover.coax checks it (2 to 16 keys, the first at 0, times rising)
 // and the page flies it from location.hash "fly=..." with the same module: the realm hands its
 // camera over and says how long it has flown (coaxial.fieldProbe(30)); a page that never takes the
 // camera is refused, so a build without the hook can't pass for a fast one.
@@ -34,7 +34,7 @@
 // FRAMES P50 P95 MAX OVER_20MS FPS_X10 OVER_33MS GPU_P50 GPU_P95 GPU_MAX SHADOW_P50 SHADOW_P95
 // SHADOW_MAX, times in microseconds; GPU 0 where the adapter has no timestamps) and DIR/summary.txt, and prints the average,
 // the 95th percentile, the worst frame and the frames over 33 ms. The 60 FPS rule is
-// aethyr/core/frame-report.coax's (more than 30 frames, p95 at most 17.5 ms, no frame over 33 ms).
+// metaverse-engine/core/frame-report.coax's (more than 30 frames, p95 at most 17.5 ms, no frame over 33 ms).
 // --previous FILE (an earlier summary.tsv) prints how this run moved. DIR defaults to
 // coax/web/build/flyover-SLUG (its parent must exist). Exit 0 when the flight held 60 FPS, 1 when
 // it missed, 2 on bad usage, a refused path, a page that never took the camera, or a headless
@@ -42,8 +42,8 @@
 // tool itself).
 #import "Basic";
 #load "../lib/media/media.coax";          // MEDIA_READY_JS, media_ready_step; it loads cdp.coax
-#load "../../aethyr/core/frame-report.coax";   // FrameStats, frame_stats, frame_holds, frame_fps10
-#load "../../aethyr/cam/flyover.coax";        // fly_parse: the path's rules, the page's own
+#load "../../metaverse-engine/core/frame-report.coax";   // FrameStats, frame_stats, frame_holds, frame_fps10
+#load "../../metaverse-engine/cam/flyover.coax";        // fly_parse: the path's rules, the page's own
 #load "map-points.coax";                   // a key's @NAME, read from the realm's map (#13078)
 #load "../../everglade/legacy/v1/points.coax";
 
@@ -74,7 +74,7 @@ fo_text :: (o: [] FoBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
 
 // The path file as the hash's text ("0,1,2,3,4,5,6~7,..."), written into out: ok, its length,
 // and the first line that is not a key of seven numbers (0 when the lines are keys but
-// aethyr/cam/flyover.coax refuses the path: too few or many keys, times not rising from 0). A point that
+// metaverse-engine/cam/flyover.coax refuses the path: too few or many keys, times not rising from 0). A point that
 // starts with @NAME is read from the map's table (zone, names, points); unnamed says a NAME the map
 // lacks stopped it, at file[name_at..<name_at + name_n] (its line in line).
 FoPathText :: struct { ok: bool; n: int; line: int; unnamed: bool; name_at: int; name_n: int; }

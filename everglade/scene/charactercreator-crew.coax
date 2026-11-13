@@ -1,15 +1,15 @@
 // The builders at the glade's build sites (#13108): one worker a site, who walks back to the
-// materials, picks up, carries and works the part going up now (aethyr/world/build-work.coax
+// materials, picks up, carries and works the part going up now (metaverse-engine/world/build-work.coax
 // bw_builder), drawn as the character you made, playing the Universal Animation Library's carry,
 // pick-up, kneel, reach and chop clips. A zone or a stage sets each site's tier, place and progress
 // every frame (cc_crew_set); the builder keeps its own trips on the page clock. Its piles and
 // sounds read the same sites (cc_crew_sounds).
 // Loaded into charactercreator.coax, so it shares its Creator, figs and meadow.
-#load "../../aethyr/world/build-work.coax" as bw;
-#load "../../aethyr/world/build-site.coax" as bsite;
-#load "../../aethyr/world/building.coax" as bframe;
+#load "../../metaverse-engine/world/build-work.coax" as bw;
+#load "../../metaverse-engine/world/build-site.coax" as bsite;
+#load "../../metaverse-engine/world/building.coax" as bframe;
 #load "../world/housewright.coax" as hwc;
-#load "../../aethyr/world/build-work-mesh.coax" as bwm;
+#load "../../metaverse-engine/world/build-work-mesh.coax" as bwm;
 
 CC_CREWS :: 32;            // as many as the glade's build sites
 CC_TRIP :: 1.2;            // seconds a builder's trip takes on the page clock

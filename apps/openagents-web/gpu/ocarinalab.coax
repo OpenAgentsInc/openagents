@@ -1,6 +1,6 @@
 // Original source Link with eight influences and semantic BNTX maps, in a shared-controller forest.
 #load "ocarina-surface.coax";
-#load "../../../aethyr/render/sampling.coax";
+#load "../../../metaverse-engine/render/sampling.coax";
 
 OgVertex :: struct {p:V3;n:V3;uv:V2;uv1:V2;t:V4;colour:V4;material:f32;character:f32;}
 OgShadow :: struct {pos:V4;world:V3;uv:V2;uv1:V2;material:f32;character:f32;}

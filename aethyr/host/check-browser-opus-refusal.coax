@@ -1,9 +1,0 @@
-// Real decoder ownership and exact refusal boundaries of the browser product adapter.
-#load "../../coax/web/wasm-chrome.coax";
-#load "audio-opus-refusal-conformance.coax";
-tool_main :: ()->int #export_c #effects(all) {
- a:[1]Args;if !args_load(a[..])||args_count(a[..])!=5 {tool_errln("usage: check-browser-opus-refusal LOCAL_URL SDK.ogg CANONICAL.ogg CANONICAL.apc OUTPUT.json");return 2;}
- c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-opus-refusal-") {return 1;}defer {cdp_close(c[..]);}params:[8192]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],args_at(a[..],0));jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);
- bytes:[1048576]u8;n:=fs_read(WC_HOST_FILE,bytes[..]);if n<0||wc_eval(c[..],cast(string)bytes[0..<n])!="ready" {return 1;}for i:0..<3 {n=fs_read(args_at(a[..],i+1),bytes[..]);if n<1||!wc_file(c[..],[3]string.["sdk.ogg","canonical.ogg","input.apc"][i],cast(string)bytes[0..<n]) {return 1;}}
- n=fs_read("aethyr/host/tests/audio-opus-refusal.js",bytes[..]);if n<0||wc_eval(c[..],cast(string)bytes[0..<n])!="ready" {return 1;}v:=cdp_evaluate(c[..],"Promise.race([hostOpusRefusal(),new Promise((_,reject)=>setTimeout(()=>reject(Error('refusal fixture timeout')),15000))]).catch(error=>({error:String(error.stack)}))");if v<0 {tool_errln(cdp_error(c[..]));return 1;}d:=cdp_doc(c[..]);q:[24]int;for i:0..<24 {q[i]=jv_int(d,jv_at(d,v,i),-999);}passed:=jv_len(d,v)==24&&haof_accept(q[..]);report:[8192]u8;jo_start(o[..],report[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.authored-refusal.v1");jo_key(o[..],"rows");jv_write(d,v,o[..]);jo_key(o[..],"passed");jo_bool(o[..],passed);jo_end(o[..]);if o[0].bad||!fs_write(args_at(a[..],4),jo_text(o[..])) {return 1;}print("Actual browser source/PCM refusal and pending SDK ownership: %.\n",passed);return ifx passed then 0 else 1;
-}

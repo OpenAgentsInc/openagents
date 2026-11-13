@@ -3,7 +3,7 @@
 // the same baked clips (everglade/scene/bodies.coax) by the same vertex math (Model.metal, from
 // everglade/scene/gpu/fivelab.coax fivelab_scene_vs). The host gives this the pack's catalog, uploads the bake and
 // draws the records; workshop.coax's ws_you says where you stand and what you are doing.
-// A unit of its own: charactercreator.coax and aethyr/move/walk.coax can't share one (each has an atan2).
+// A unit of its own: charactercreator.coax and metaverse-engine/move/walk.coax can't share one (each has an atan2).
 //   coax/bin/coax test --library apps/everglade-desktop/model.coax --only "your model"
 #load "../../everglade/scene/charactercreator.coax" as cc;
 #load "../../everglade/scene/bodies.coax" as figs;
@@ -36,7 +36,7 @@ ws_model_bake :: (m: []WsModel, out: []f32) -> bool #export_c #effects(all) {
   figs.bd_bake(m[0].people[..], out, false);
   return true;
 }
-// The clip your walking calls for (aethyr/move/walk.coax's Act): idle, the walk, the run, or the jump's loop.
+// The clip your walking calls for (metaverse-engine/move/walk.coax's Act): idle, the walk, the run, or the jump's loop.
 ws_model_clip :: (act: int) -> int {
   if act == 1 { return figs.BD_WALK; }
   if act == 2 { return figs.BD_RUN; }

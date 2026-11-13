@@ -1,6 +1,6 @@
 // The lab walks' world (verse/lab-walk.coax: Bitcoin Lab and Nostr Lab): the Grid's floor and sky,
 // the lessons' lit panels, lamps and glyphs. build.sh writes apps/openagents-web/bitcoin-lab-fx.wgsl from this with
 // coax/web/wgsl-module.coax (bitcoin-lab-fx.module and bitcoin-lab-fx.bindings beside it). The
-// shader is the engine's quad world (aethyr/fx/gpu-quads.coax): the host draws it after
+// shader is the engine's quad world (metaverse-engine/fx/gpu-quads.coax): the host draws it after
 // Character Create's scene (your figure), depth-tested against it.
-#load "../../../aethyr/fx/gpu-quads.coax";
+#load "../../../metaverse-engine/fx/gpu-quads.coax";

@@ -3,7 +3,7 @@
 #include <string.h>
 #define HF_EXTERNAL_TRANSPORT 1
 #define coaxial_message packet_base_message
-#include "../../../aethyr/host/tests/fixture-face.c"
+#include "../../../metaverse-engine/host/tests/fixture-face.c"
 #undef coaxial_message
 static uint8_t packet_bytes[4]={'o','k','\n','!'};
 static uintptr_t packet_address;

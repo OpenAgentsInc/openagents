@@ -1,0 +1,153 @@
+// A sprint: a burst of speed over your run for a moment, that spends a set distance (a ruleset's Dash:
+// the SRD 5.2.1 Dash, Cunning Action's, Step of the Wind's, each extra movement equal to your Speed).
+// Nothing here moves you: a realm scales its controller's pace by sprint_rate (Experimental:
+// everglade/zone.coax zone_move_scale into metaverse-engine/move/walk.coax's scaled entry, which takes as many collision steps a
+// tick as the speed needs, so a sprint stops at the walls a run stops at) and runs you along the
+// sprint's heading. This module owns
+//
+//   the pace (sprint_shape, sprint_rate): up to its peak in SPRINT_RISE, held, and eased back to the
+//   run by SPRINT_SECONDS; nothing jumps;
+//   the distance (sprint_gain): the peak that makes the sprint cover exactly `extra` metres more than
+//   the run in its time, at any run speed. The shape's area is SPRINT_AREA seconds, so a run of r m/s
+//   gains r * gain * SPRINT_AREA metres: gain = extra / (r * SPRINT_AREA). Speed 30 feet at a run of
+//   7.5 m/s: 9.14 m in 1.8 s over the run's 13.5, a peak of 1.91 times the run;
+//   the steering (sprint_push_face, sprint_steer): the heading turns toward where keys or a thumb
+//   push you, along the camera, at SPRINT_TURN radians a second;
+//   the trail (sprint_trail_due): when it kicks up its next puff of dust;
+//   a body's sprint (Sprint, sprint_start, sprint_pace, sprint_frame): the state a realm keeps.
+//   coax/bin/coax test metaverse-engine/action/sprint.coax --library
+#module "aethyr.action.sprint";
+
+SPRINT_SECONDS :: 1.8;   // seconds a sprint lasts
+SPRINT_RISE :: 0.12;     // seconds to its peak
+SPRINT_HOLD :: 1.0;      // it holds the peak until here, then eases out
+SPRINT_AREA :: 1.34;     // seconds: the shape's area, RISE/2 + (HOLD - RISE) + (SECONDS - HOLD)/2
+SPRINT_TURN :: 5.0;      // radians a second the heading turns toward where you steer
+SPRINT_PI :: 3.14159265;
+SPRINT_TRAIL_EVERY :: 0.06;   // seconds between the puffs of dust a sprint kicks up
+SPRINT_TRAIL_FROM :: 0.15;    // from this share of its peak on: a sprint, not a run
+
+// The sprint's share of its peak, t seconds in: 0 to 1 and back, 0 outside it.
+sprint_shape :: (t: f32) -> f32 {
+  if t < 0 || t >= f32(SPRINT_SECONDS) { return 0; }
+  if t < f32(SPRINT_RISE) { return t / f32(SPRINT_RISE); }
+  if t < f32(SPRINT_HOLD) { return 1; }
+  u := (t - f32(SPRINT_HOLD)) / (f32(SPRINT_SECONDS) - f32(SPRINT_HOLD));
+  return 0.5 * (1 + cos(f32(SPRINT_PI) * u));
+}
+// The peak over the run that adds `extra` metres to a run of `run` m/s.
+sprint_gain :: (extra: f32, run: f32) -> f32 {
+  if !(run > 0) || !(extra > 0) { return 0; }
+  return extra / (run * f32(SPRINT_AREA));
+}
+// The pace over the run, t seconds in: 1 outside the sprint.
+sprint_rate :: (t: f32, gain: f32) -> f32 { return 1 + gain * sprint_shape(t); }
+// The metres it has added over the run by t seconds in, for a run of `run` m/s (closed form).
+sprint_extra :: (t: f32, gain: f32, run: f32) -> f32 {
+  r := f32(SPRINT_RISE); hd := f32(SPRINT_HOLD); e := f32(SPRINT_SECONDS);
+  if t <= 0 { return 0; }
+  a: f32 = 0;
+  if t < r { a = t * t / (2 * r); }
+  else if t < hd { a = r / 2 + (t - r); }
+  else {
+    v := ifx t < e then t else e; L := e - hd; u := (v - hd) / L;
+    a = r / 2 + (hd - r) + 0.5 * (v - hd) + 0.5 * L / f32(SPRINT_PI) * sin(f32(SPRINT_PI) * u);
+  }
+  return a * gain * run;
+}
+// The facing that keys kx, ky (or a thumb, -1 to 1: x right, y ahead) push you, with the camera at
+// yaw (metaverse-engine/move/walk.coax wish; you face atan2(x, z)).
+sprint_push_face :: (yaw: f32, kx: f32, ky: f32) -> f32 {
+  size := sqrt(kx * kx + ky * ky);
+  if size == 0 { return 0; }
+  mx := kx / size; mz := -ky / size; c := cos(yaw); sn := sin(yaw);
+  return sprint_atan2(mx * c + mz * sn, -mx * sn + mz * c);
+}
+// The angle of (x, y) from +X, in [-PI, PI] (metaverse-engine/core/points.coax's, within 2e-5 rad).
+sprint_atan2 :: (y: f32, x: f32) -> f32 {
+  ax := abs(x); ay := abs(y);
+  if ax == 0 && ay == 0 { return 0; }
+  q := ifx ay > ax then ax / ay else ay / ax; s := q * q;
+  u := q * (0.99997726 + s * (-0.33262347 + s * (0.19354346 + s * (-0.11643287 + s * (0.05265332 + s * -0.01172120)))));
+  a := ifx ay > ax then f32(SPRINT_PI) / 2 - u else u;
+  if x < 0 { a = f32(SPRINT_PI) - a; }
+  if y < 0 { a = -a; }
+  return a;
+}
+// Whether a sprint at `share` of its peak (sprint_shape) kicks up its next puff of dust now, the
+// last at `last`: on the ground, every SPRINT_TRAIL_EVERY while it is more than a run. The realm
+// puts the puff behind the feet with its own effects (Experimental: metaverse-engine/fx/puff.coax FXR_DUST).
+sprint_trail_due :: (share: f32, now: f32, last: f32, grounded: bool) -> bool {
+  return grounded && share > f32(SPRINT_TRAIL_FROM) && now - last >= f32(SPRINT_TRAIL_EVERY);
+}
+// ---- a body's sprint, for a realm to keep (one per body that can sprint)
+// at: when it began; until: when it ends; face: where it heads; gain: its peak over the run
+// (sprint_gain); tick: the last frame it saw; dust: its last puff; stride: seconds the run's clip has
+// gained on the clock from the quicker pace (a realm plays the run that much ahead).
+Sprint :: struct { at: f32 = -100; until: f32 = -1; face: f32; gain: f32; tick: f32; dust: f32 = -100; stride: f32; }
+// A sprint begins now, heading `face`, at peak `gain`.
+sprint_start :: (s: [] Sprint, now: f32, face: f32, gain: f32) {
+  s[0].at = now; s[0].until = now + f32(SPRINT_SECONDS); s[0].face = face; s[0].gain = gain; s[0].tick = now;
+}
+sprint_stop :: (s: [] Sprint) { s[0].until = -1; }
+// Whether it carries the body now.
+sprint_on :: (s: Sprint, now: f32) -> bool { return now >= s.at && now < s.until; }
+// The pace over the run now: 1 when it doesn't carry the body.
+sprint_pace :: (s: Sprint, now: f32) -> f32 { return ifx sprint_on(s, now) then sprint_rate(now - s.at, s.gain) else 1.0f32; }
+// A frame of it, after the body's step: the heading turns toward where keys kx, ky (or a thumb)
+// push with the camera at yaw, the stride gains, and true when a puff of dust is due.
+sprint_frame :: (s: [] Sprint, now: f32, yaw: f32, kx: f32, ky: f32, grounded: bool) -> bool {
+  dt := now - s[0].tick; s[0].tick = now;
+  if dt < 0 || dt > 0.25 { dt = 0; }
+  if !sprint_on(s[0], now) { return false; }
+  s[0].stride += (sprint_pace(s[0], now) - 1) * dt;
+  if kx != 0 || ky != 0 { s[0].face = sprint_steer(s[0].face, sprint_push_face(yaw, kx, ky), dt); }
+  if !sprint_trail_due(sprint_shape(now - s[0].at), now, s[0].dust, grounded) { return false; }
+  s[0].dust = now; return true;
+}
+// The heading `face` turned toward `want` by at most SPRINT_TURN * dt, the short way round.
+sprint_steer :: (face: f32, want: f32, dt: f32) -> f32 {
+  d := want - face;
+  while d > f32(SPRINT_PI) { d -= 2 * f32(SPRINT_PI); }
+  while d < -f32(SPRINT_PI) { d += 2 * f32(SPRINT_PI); }
+  step := f32(SPRINT_TURN) * (ifx dt > 0 then dt else 0.0f32);
+  if d > step { d = step; } if d < -step { d = -step; }
+  return face + d;
+}
+
+#test "a sprint adds exactly its distance over the run, at about twice the run, and ends on time" {
+  g := sprint_gain(9.144, 7.5);
+  #assert g > 0.90 && g < 0.92 && sprint_rate(0.5, g) > 1.9 && sprint_rate(0.5, g) < 1.92;
+  #assert abs(sprint_extra(f32(SPRINT_SECONDS), g, 7.5) - 9.144) < 0.001 && sprint_extra(5, g, 7.5) == sprint_extra(f32(SPRINT_SECONDS), g, 7.5);
+  sum: f32 = 0; n := 10000; dt := f32(SPRINT_SECONDS) / f32(n);
+  for k: 0..<n { sum += 7.5 * (sprint_rate((f32(k) + 0.5) * dt, g) - 1) * dt; }
+  #assert abs(sum - 9.144) < 0.01;
+  #assert sprint_rate(f32(SPRINT_SECONDS), g) == 1 && sprint_rate(-0.1, g) == 1 && sprint_shape(0) == 0;
+  // any Speed: twice the run gains twice the distance at the same peak
+  #assert abs(sprint_gain(18.288, 15) - g) < 0.0001 && sprint_gain(9, 0) == 0;
+}
+#test "a sprint eases in and out with no jump in its pace" {
+  last: f32 = 0; worst: f32 = 0;
+  for k: 0..<1900 { s := sprint_shape(f32(k) * 0.001); d := abs(s - last); if d > worst { worst = d; } last = s; }
+  #assert worst < 0.01;
+}
+#test "steering turns the heading toward the push, a little a frame, the short way" {
+  #assert abs(sprint_push_face(0, 0, 1) - f32(SPRINT_PI)) < 0.001 || abs(sprint_push_face(0, 0, 1) + f32(SPRINT_PI)) < 0.001;
+  #assert abs(sprint_push_face(0, 1, 0) - f32(SPRINT_PI) / 2) < 0.001;
+  f := sprint_steer(0, 1.5, 0.1); #assert abs(f - 0.5) < 0.001;
+  f = sprint_steer(3.0, -3.0, 0.1); #assert f > 3.0 && f < 3.0 + 0.51;   // across the back, not the long way
+  #assert sprint_steer(1, 1.2, 1) == 1.2;
+}
+#test "a body's sprint: begun it carries, steers, quickens the stride and trails dust; then it ends" {
+  s: [1] Sprint; g := sprint_gain(9.144, 7.5);
+  #assert !sprint_on(s[0], 0) && sprint_pace(s[0], 0) == 1;
+  sprint_start(s[..], 10, 0, g); #assert sprint_on(s[0], 10) && sprint_pace(s[0], 10.5) > 1.9;
+  puffs := 0; dt := 1.0f32 / 60;
+  for k: 1..<121 { if sprint_frame(s[..], 10 + f32(k) * dt, 0, 1, 0, true) { puffs += 1; } }
+  #assert !sprint_on(s[0], 12) && puffs >= 20 && abs(s[0].stride - 1.2192) < 0.03 && s[0].face > 1.5;
+  sprint_start(s[..], 20, 0, g); sprint_stop(s[..]); #assert !sprint_on(s[0], 20.1);
+}
+#test "a sprint kicks up dust on the ground while it is more than a run, a puff at a time" {
+  #assert sprint_trail_due(1, 1, 0.9, true) && !sprint_trail_due(1, 1, 0.97, true) && !sprint_trail_due(1, 1, 0, false);
+  #assert !sprint_trail_due(0.1, 1, 0, true) && !sprint_trail_due(0, 5, 0, true);
+}

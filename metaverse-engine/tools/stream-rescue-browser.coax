@@ -1,0 +1,56 @@
+// Exact-build persistent rescue through real IndexedDB, Wasm and WebGPU.
+// tool.sh: stack-gib 1
+#load "../../coax/web/wasm-chrome.coax";
+#load "../core/assets.coax" as assets;
+srb_error :: (c: [] Cdp) { tool_errln(cdp_error(c)); raw := jv_raw(cdp_doc(c), 0); tool_errln(raw[0..<(ifx raw.count < 4096 then raw.count else 4096)]); }
+srb_eval :: (c: [] Cdp, code: string) -> bool { if wc_eval(c, code) == "true" { return true; } srb_error(c); return false; }
+srb_ready :: (c: [] Cdp) -> bool {
+  until := proc_now_ms() + 30000;
+  while proc_now_ms() < until { state := wc_eval(c, "window.streamError||window.streamReady||false"); if state == "true" { return true; } if state != "false" && state != "" { srb_error(c); tool_errln(state); return false; } proc_sleep(20); } return false;
+}
+srb_save :: (c: [] Cdp, expression: string, path: string) -> bool {
+  script: [32768] u8; parts := [3] string.["(async()=>JSON.stringify(await (", expression, ")))()"];
+  v := cdp_evaluate(c, wc_cat(script[..], parts[..])); bytes: [4194304] u8;
+  n := ifx v < 0 then -1 else jv_str(cdp_doc(c), v, bytes[..]); if n < 1 { srb_error(c); return false; }
+  return fs_write(path, cast(string) bytes[0..<n]);
+}
+srb_reload :: (c: [] Cdp) -> bool {
+  if !srb_eval(c, "(window.streamReady=false,true)") || cdp_call(c, "Page.reload", "{\"ignoreCache\":true}", CDP_CALL_MS) < 0 { return false; }
+  return srb_ready(c);
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 4 { tool_errln("usage: stream-rescue-browser BASE SCENE_JSON NEW_OUTPUT MODE"); return 2; }
+  mode := args_at(a[..], 3); if mode != "trap" && mode != "adapter-failure" && mode != "pending" && mode != "once" && mode != "loop" && mode != "engine" && mode != "corrupt" && mode != "extent" && mode != "tier" { return 2; }
+  output := args_at(a[..], 2); if fs_exists(output) || !fs_mkdir(output) { return 2; }
+  bytes: [65536] u8; nodes: [4096] JvNode; d: [1] Jv; n := fs_read(args_at(a[..], 1), bytes[..]);
+  if n < 1 || !jv_parse(d[..], cast(string) bytes[0..<n], nodes[..]) { return 1; }
+  root: [64] u8; identity: [64] u8; item := jv_at(d[0], jv_get(d[0], 0, "manifests"), 0);
+  if jv_str(d[0], jv_get(d[0], item, "sha256"), root[..]) != 64 || !assets.asset_hex(assets.asset_id(cast(string) bytes[0..<n]), identity[..]) { return 1; }
+  url: [4096] u8; digits: [32] u8; parts := [8] string.[args_at(a[..], 0), "/metaverse-engine/host/tests/stream-walk.html?root=", cast(string) root[..], "&scene_sha=", cast(string) identity[..], "&scene_bytes=", wc_dec(digits[..], n), "&width=320&height=180&tier=0"];
+  c: [1] Cdp; if !cdp_launch(c[..], 320, 180, "aethyr-stream-rescue-") { return 1; } defer { cdp_close(c[..]); }
+  params: [8192] u8; j: [1] Jo; jo_start(j[..], params[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], wc_cat(url[..], parts[..])); jo_end(j[..]);
+  if cdp_call(c[..], "Page.navigate", jo_text(j[..]), CDP_CALL_MS) < 0 || !srb_ready(c[..]) { return 1; }
+  if !srb_eval(c[..], "(()=>{window.rescueFrames=[];const app=streamWalk;window.rescueStep=async(ns,d)=>{const f=await app.step(ns,d);rescueFrames.push([f.frameNs,f.direction,f.tick,...f.position,f.active,f.drawn,f.updated,f.declared,f.cpu,f.gpuBytes,f.frameMs,f.records,f.stepDigests.join('')]);return f;};return true;})()") { return 1; }
+  if mode == "pending" { if !srb_eval(c[..], "(()=>{const original=fetch;window.fetch=(...a)=>/\\.(vpk|raw)$/.test(String(a[0]))?new Promise(()=>{}):original(...a);return true;})()") { return 1; } }
+  warm := ifx mode == "pending" then "(async()=>{await rescueStep(62500000,0);await rescueStep(62500000,0);return true;})()" else "(async()=>{for(let i=0;i<32;i++){await rescueStep(62500000,0);await streamWalk.settle();}for(let i=0;i<128;i++){await rescueStep(62500000,1);if(i%8===0)await streamWalk.settle();}await streamWalk.settle();return true;})()";
+  if !srb_eval(c[..], warm) { return 1; }
+  path: [4096] u8;
+  if !srb_save(c[..], "({digest:streamWalk.rescueDigest(),cells:streamWalk.cells(),stats:streamWalk.stats(),rescue:streamWalk.rescueStatus(),adapter:streamWalk.adapter,profile:streamWalk.profile,frames:rescueFrames})", fs_join(output, "before.json", path[..])) || !srb_save(c[..], "streamWalk.capture()", fs_join(output, "before-image.json", path[..])) { return 1; }
+  action := ifx mode == "adapter-failure" then "(async()=>{await rescueStep(0,0);navigator.gpu.requestAdapter=()=>Promise.resolve(null);streamWalk.loseDevice();const until=performance.now()+12000;while(streamWalk.deviceStatus().state!=='stopped'){if(performance.now()>until)throw Error('no stop');await new Promise(r=>setTimeout(r,5));}await streamWalk.rescueSaved();return true;})()" else "(async()=>{streamWalk.trapNextFrame();let trapped=false;try{await streamWalk.step(62500000,1);}catch(error){trapped=error instanceof WebAssembly.RuntimeError;}if(!trapped)throw Error('actual module did not trap');if(!await streamWalk.rescueSaved())throw Error('rescue not saved');return true;})()";
+  if !srb_eval(c[..], action) { return 1; }
+  if !srb_save(c[..], "({rescue:streamWalk.rescueStatus(),status:streamWalk.deviceStatus(),actions:[...document.querySelectorAll('button')].map(b=>b.textContent)})", fs_join(output, "stop.json", path[..])) { return 1; }
+  if !srb_save(c[..], "(async()=>{const db=await new Promise((r,j)=>{const q=indexedDB.open('coaxial-rescue',1);q.onsuccess=()=>r(q.result);q.onerror=j;});const record=await new Promise((r,j)=>{const q=db.transaction('saves').objectStore('saves').get('aethyr.stream-walk.stream-walk');q.onsuccess=()=>r(q.result);q.onerror=j;});db.close();let binary='';const bytes=new Uint8Array(record.bytes);for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));return {...record,bytes:btoa(binary)};})()", fs_join(output, "snapshot.json", path[..])) { return 1; }
+  if mode == "engine" || mode == "corrupt" || mode == "extent" || mode == "tier" {
+    field := ifx mode == "engine" then "record.engine='0'.repeat(64);" else ifx mode == "corrupt" then "new Uint8Array(record.bytes)[1024]^=1;" else ifx mode == "extent" then "record.size+=65536;" else "record.tier=1;";
+    code: [4096] u8; p := [3] string.["(async()=>{const db=await new Promise((r,j)=>{const q=indexedDB.open('coaxial-rescue',1);q.onsuccess=()=>r(q.result);q.onerror=j;});await new Promise((r,j)=>{const tx=db.transaction('saves','readwrite'),store=tx.objectStore('saves'),q=store.get('aethyr.stream-walk.stream-walk');q.onsuccess=()=>{const record=q.result;",field,"store.put(record,'aethyr.stream-walk.stream-walk');};tx.oncomplete=r;tx.onerror=j;});db.close();return true;})()"];
+    if !srb_eval(c[..], wc_cat(code[..], p[..])) { return 1; }
+  }
+  if !srb_reload(c[..]) { return 1; }
+  if !srb_save(c[..], "({digest:streamWalk.rescueDigest(),cells:streamWalk.cells(),stats:streamWalk.stats(),rescue:streamWalk.rescueStatus(),adapter:streamWalk.adapter})", fs_join(output, "restored.json", path[..])) || !srb_save(c[..], "streamWalk.capture()", fs_join(output, "restored-image.json", path[..])) { return 1; }
+  if mode == "loop" {
+    if !srb_eval(c[..], "(async()=>{streamWalk.trapNextFrame();try{await streamWalk.step(15625000,0);}catch{}if(await streamWalk.rescueSaved())throw Error('crash loop resaved');if(!streamWalk.rescueStatus().suppressed)throw Error('crash loop not suppressed');return true;})()") || !srb_save(c[..], "streamWalk.rescueStatus()", fs_join(output, "loop.json", path[..])) || !srb_reload(c[..]) { return 1; }
+  }
+  if !srb_save(c[..], "(async()=>{const frames=[];for(let i=0;i<32;i++){const f=await streamWalk.step(62500000,1);frames.push([f.frameNs,f.direction,f.tick,...f.position,f.active,f.drawn,f.updated,f.declared,f.cpu,f.gpuBytes,f.frameMs,f.records,f.stepDigests.join('')]);await streamWalk.settle();}return {frames,rescue:streamWalk.rescueStatus(),digest:streamWalk.rescueDigest(),cells:streamWalk.cells(),cleanup:await streamWalk.close()};})()", fs_join(output, "continued.json", path[..])) { return 1; }
+  if mode == "once" { if !srb_reload(c[..]) || !srb_save(c[..], "({rescue:streamWalk.rescueStatus(),tick:streamWalk.stats().info[0],cleanup:await streamWalk.close()})", fs_join(output, "once.json", path[..])) { return 1; } }
+  print("PASS actual persistent rescue mode %\n", mode); return 0;
+}

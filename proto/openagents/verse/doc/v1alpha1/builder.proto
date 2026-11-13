@@ -16,9 +16,9 @@ import "openagents/options/v1alpha1/options.proto";
 // (verse.builder_lines) and named line by line in
 // proto/verse/realm-board-v1.json, and the picker answers "field F" and
 // "value V". Every product reads the lines; the JSON answers are here so the
-// schema names what the server sends. aethyr/forge/board.coax writes the
+// schema names what the server sends. metaverse-engine/editor/board.coax writes the
 // requests and reads the lines; proto/verse/realm-board-v1.json pins the
-// bytes, checked through the codec (aethyr/forge/board-goldens.coax) and
+// bytes, checked through the codec (metaverse-engine/editor/board-goldens.coax) and
 // through the routes (coax/web/api/test_realm_builder.py).
 
 // The setup's fixed fields, each one of its question's words.

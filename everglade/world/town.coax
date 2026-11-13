@@ -1,6 +1,6 @@
 // Everglade's town (game): the city clearing's 16 plots (everglade/docs/housewright-profession-spec.md,
 // section 8) and a town built on them, house by house, for the town shot and as the first fixture of
-// many build sites at once. The plots and sites are the engine's (aethyr/world/plots.coax); the
+// many build sites at once. The plots and sites are the engine's (metaverse-engine/world/plots.coax); the
 // houses are Housewright's tiers (housewright.coax); where the grid stands is the zone's (Everglade
 // II's city clearing, or Everglade Experimental's stand-in meadow, verse/experimental-terrain.coax
 // exp_town).
@@ -10,8 +10,8 @@
 // own 3, 5 and 10 workdays, so houses rise one after another at their own pace. Rows 1 and 2 face
 // south and rows 3 and 4 north, onto the lane between them, a street.
 #module "everglade.town";
-#load "../../aethyr/world/plots.coax" as plots;
-#load "../../aethyr/world/building.coax" as building;
+#load "../../metaverse-engine/world/plots.coax" as plots;
+#load "../../metaverse-engine/world/building.coax" as building;
 #load "housewright.coax" as hw;
 
 TOWN_N :: 4;          // plots a side: 16 in all (spec section 8)

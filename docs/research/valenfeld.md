@@ -185,7 +185,7 @@ what that prompt is missing:
 
 ### Layer 3: his places in the Metaverse Engine (optional)
 
-The Metaverse Engine builds worlds with typed edit operations (`aethyr/forge/edit.coax`)
+The Metaverse Engine builds worlds with typed edit operations (`metaverse-engine/editor/edit.coax`)
 and lets you place things by chat (WorldBuilder). It has nothing like
 `<Fort>`: a component that expands one intent into a coherent, checked place.
 If he wants the Metaverse Engine's renderer, netcode or character pipeline, the path is:

@@ -1,8 +1,8 @@
 // A scripted check's named places, refused loudly when the map lacks one (GitHub #13078): the tool
-// side of aethyr/world/points.coax. A check asks for every point it stands at before it starts
+// side of metaverse-engine/world/points.coax. A check asks for every point it stands at before it starts
 // (map_need_all), so a renamed or dropped point stops the run at once with its name, its zone and the
 // file to name it in, instead of a run that walks to a stale spot and fails for some other reason.
-#load "../../aethyr/world/points.coax";
+#load "../../metaverse-engine/world/points.coax";
 #load "../lib/sys/tool.coax";
 
 // The line a missing point is refused with.

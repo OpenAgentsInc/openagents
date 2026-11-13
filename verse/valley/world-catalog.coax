@@ -1,5 +1,5 @@
 // Immutable scenery/collision trailer after Echo's original rig, covered by the whole pack identity.
-#load "../../aethyr/render/geometry/scan.coax";
+#load "../../metaverse-engine/render/geometry/scan.coax";
 #authority;
 VW_GRID :: 257;
 VW_POINTS :: VW_GRID*VW_GRID;
@@ -26,4 +26,4 @@ vw_catalog_valid :: (b:[]u8)->bool #effects(all) {
  for k:0..<n {at:=VW_HEADER+VW_POINTS*4+k*VW_DRAW_BYTES;if !vw_draw(b[at..<at+VW_DRAW_BYTES],k,ib/4) {return false;}}
  return true;
 }
-#load "../../aethyr/tests/valley-world-catalog.coax";
+#load "../../metaverse-engine/tests/valley-world-catalog.coax";

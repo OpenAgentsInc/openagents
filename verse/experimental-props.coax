@@ -2,7 +2,7 @@
 #module "verse.experimentalprops";
 #load "experimental-terrain.coax" as terrain;
 #load "../everglade/world/home.coax" as home;
-#load "../aethyr/world/building.coax" as building;
+#load "../metaverse-engine/world/building.coax" as building;
 ExpProp :: struct {name:string;x:f32;y:f32;z:f32;yaw:f32;}
 EXP_PROPS :: 12;
 #test "village furnishings include indoor furniture and outdoor supplies" {

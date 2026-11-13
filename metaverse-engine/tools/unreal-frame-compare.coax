@@ -1,0 +1,44 @@
+// Compares two pictures of the same moment, one from the Metaverse Engine page and one from the Unreal
+// build: the mean difference of their colour bytes, and the share of pixels within 24 of each
+// other on every channel (docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md, step 2).
+// Both are PNGs of the same size. With a third argument, the mean must be at most that number.
+//   coax/web/tool.sh metaverse-engine/tools/unreal-frame-compare.coax AETHYR.png UNREAL.png [MAX_MEAN]
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/image/png.coax";
+
+FC_BYTES :: 16777216;
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 || args_count(a[..]) > 3 { print("usage: unreal-frame-compare AETHYR.png UNREAL.png [MAX_MEAN]\n"); return 2; }
+  src: [FC_BYTES] u8; work: [FC_BYTES * 2] u8; one: [FC_BYTES] u8; two: [FC_BYTES] u8;
+  w := [2] int.[0, 0]; h := [2] int.[0, 0];
+  for k: 0..<2 {
+    n := fs_read(args_at(a[..], k), src[..]);
+    if n < 1 { print("unreal-frame-compare: cannot read %\n", args_at(a[..], k)); return 1; }
+    info := png_info(src[0..<n]);
+    if info.status != PNG_OK || info.w * info.h * 4 > FC_BYTES || info.work > work.count { print("unreal-frame-compare: % is not a PNG this tool reads\n", args_at(a[..], k)); return 1; }
+    if png_decode(src[0..<n], work[..], ifx k == 0 then one[..] else two[..]) != PNG_OK { print("unreal-frame-compare: % did not decode\n", args_at(a[..], k)); return 1; }
+    w[k] = info.w; h[k] = info.h;
+  }
+  if w[0] != w[1] || h[0] != h[1] { print("unreal-frame-compare: sizes differ: %x% and %x%\n", w[0], h[0], w[1], h[1]); return 1; }
+  total := 0; near := 0; pixels := w[0] * h[0];
+  for i: 0..<pixels {
+    ok := true;
+    for c: 0..<3 {
+      d := cast(int) one[i * 4 + c] - cast(int) two[i * 4 + c]; if d < 0 { d = -d; }
+      total += d; if d > 24 { ok = false; }
+    }
+    if ok { near += 1; }
+  }
+  mean100 := total * 100 / (pixels * 3); share10 := near * 1000 / pixels;
+  print("unreal-frame-compare: %x%, mean difference %.% of 255, % .% percent of pixels within 24\n", w[0], h[0], mean100 / 100, mean100 % 100, share10 / 10, share10 % 10);
+  if args_count(a[..]) == 3 {
+    limit := 0; for c: args_at(a[..], 2) { if c >= '0' && c <= '9' { limit = limit * 10 + cast(int) (c - '0'); } }
+    if mean100 > limit * 100 { print("unreal-frame-compare: FAIL, more than %\n", limit); return 1; }
+  }
+  return 0;
+}

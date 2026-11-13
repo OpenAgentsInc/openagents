@@ -1,0 +1,80 @@
+// Two-subject framing (book chapter 10, GitHub #12994): keep two subjects (you and a locked target)
+// inside a normalized screen rectangle. The eye looks across the pair from behind the first subject,
+// at a declared pitch; the distance is the nearest that puts both bounding spheres inside the
+// rectangle for the declared vertical field of view and aspect, found by bisection. When no distance
+// within [near, far] fits (the pair too far apart, a target too large) the defined fallback frames the
+// first subject alone at far and says so. The yaw turns toward the wanted bearing at most yaw_rate
+// radians a second.
+//
+//   coax/bin/coax test metaverse-engine/cam/frame.coax --library
+
+#load "../core/points.coax";
+
+FrameSubject :: struct { at: Point; radius: f32; }     // a bounding sphere's centre and radius
+FrameRect :: struct { x0: f32 = -0.8; x1: f32 = 0.8; y0: f32 = -0.75; y1: f32 = 0.75; }   // normalized device coordinates
+FrameLens :: struct { fov: f32 = 0.9; aspect: f32 = 1.6; }
+FrameResult :: struct { shot: Shot; distance: f32; yaw: f32; fits: bool; }
+
+// Whether a sphere lies inside rect seen from shot s through lens l.
+frame_inside :: (s: Shot, l: FrameLens, r: FrameRect, b: FrameSubject) -> bool {
+  f := sub(s.at, s.eye); fl := length(f); if fl < 0.0001 { return false; }
+  f = v3(f.x / fl, f.y / fl, f.z / fl);
+  right := v3(f.z, 0, -f.x); rl := length(right); if rl < 0.0001 { return false; }
+  right = v3(right.x / rl, 0, right.z / rl);
+  up := v3(right.y * f.z - right.z * f.y, right.z * f.x - right.x * f.z, right.x * f.y - right.y * f.x);
+  // the up as cross(right, forward) points down for this handedness: flip to keep +y up
+  if up.y < 0 { up = v3(-up.x, -up.y, -up.z); }
+  d := sub(b.at, s.eye);
+  z := dot(d, f);
+  if z <= b.radius + 0.05 { return false; }
+  ty := tan(l.fov * 0.5); tx := ty * l.aspect;
+  x := dot(d, right); y := dot(d, up);
+  // a sphere's extent on screen, conservatively by its radius at its depth
+  ex := b.radius / (z * tx); ey := b.radius / (z * ty);
+  nx := x / (z * tx); ny := y / (z * ty);
+  return nx - ex >= r.x0 && nx + ex <= r.x1 && ny - ey >= r.y0 && ny + ey <= r.y1;
+}
+frame_shot :: (a: FrameSubject, b: FrameSubject, yaw: f32, pitch: f32, dist: f32) -> Shot {
+  mid := v3((a.at.x + b.at.x) * 0.5, (a.at.y + b.at.y) * 0.5, (a.at.z + b.at.z) * 0.5);
+  fx := sin(yaw) * cos(pitch); fy := -sin(pitch); fz := cos(yaw) * cos(pitch);
+  eye := v3(mid.x - fx * dist, mid.y - fy * dist, mid.z - fz * dist);
+  return Shot.{eye = eye, at = mid};
+}
+// Frame a and b: the bearing from a to b, turned from yaw_now by at most yaw_rate * dt, the pitch, and
+// the nearest distance in [near, far] that fits both.
+frame_two :: (a: FrameSubject, b: FrameSubject, l: FrameLens, r: FrameRect, yaw_now: f32, yaw_rate: f32, dt: f32, pitch: f32, near: f32, far: f32) -> FrameResult {
+  out: FrameResult;
+  want := atan2(b.at.x - a.at.x, b.at.z - a.at.z);
+  turn := wrap_angle(want - yaw_now); lim := yaw_rate * hi(dt, 0);
+  out.yaw = wrap_angle(yaw_now + clamp(turn, -lim, lim));
+  if !frame_inside(frame_shot(a, b, out.yaw, pitch, far), l, r, a) || !frame_inside(frame_shot(a, b, out.yaw, pitch, far), l, r, b) {
+    // the fallback: the first subject alone, at far
+    out.shot = frame_shot(a, a, out.yaw, pitch, far); out.distance = far; out.fits = false;
+    return out;
+  }
+  lo := near; hi := far;
+  if frame_inside(frame_shot(a, b, out.yaw, pitch, near), l, r, a) && frame_inside(frame_shot(a, b, out.yaw, pitch, near), l, r, b) { hi = near; }
+  for i: 0..<24 { m := (lo + hi) * 0.5; s := frame_shot(a, b, out.yaw, pitch, m); if frame_inside(s, l, r, a) && frame_inside(s, l, r, b) { hi = m; } else { lo = m; } }
+  out.distance = hi; out.shot = frame_shot(a, b, out.yaw, pitch, hi); out.fits = true;
+  return out;
+}
+
+#test "two subjects stay inside the rectangle over distances, aspects and target sizes; too far falls back" {
+  r: FrameRect;
+  you := FrameSubject.{at = v3(0, 1, 0), radius = 0.9};
+  for k: 0..<36 {
+    gap := 2 + f32(k % 6) * 2.5;            // 2 to 14.5 m apart
+    big := ifx k % 2 == 0 then 0.4f32 else 2.5f32;   // a small imp, a tall giant
+    l := FrameLens.{fov = 0.9, aspect = ifx (k / 6) % 3 == 0 then 0.56f32 else ifx (k / 6) % 3 == 1 then 1.0f32 else 2.2f32};   // phone tall, square, wide
+    foe := FrameSubject.{at = v3(gap * 0.6, big, gap * 0.8), radius = big};
+    f := frame_two(you, foe, l, r, atan2(0.6, 0.8), 6, 1, 0.35, 1.5, 60);
+    #assert f.fits && frame_inside(f.shot, l, r, you) && frame_inside(f.shot, l, r, foe) && f.distance >= 1.5 && f.distance <= 60;
+  }
+  // unsatisfiable within far: the fallback frames you alone
+  far := FrameSubject.{at = v3(0, 1, 200), radius = 1};
+  f := frame_two(you, far, FrameLens.{}, r, 0, 6, 1, 0.35, 1.5, 20);
+  #assert !f.fits && f.distance == 20 && frame_inside(f.shot, FrameLens.{}, r, you);
+  // the yaw turns toward the pair at most yaw_rate a second
+  g := frame_two(you, FrameSubject.{at = v3(5, 1, 0), radius = 0.5}, FrameLens.{}, r, 0, 2, 0.1, 0.35, 1.5, 60);
+  #assert abs(g.yaw - 0.2) < 0.0001;
+}

@@ -1,10 +1,10 @@
 // /realms/audio-lab, drawn by Coax (#12832): every Everglade sound by name, each candidate for it
 // (the synthesized one the page used to play, S, and the generated and library ones, E and K:
-// aethyr/audio/SOURCES.md) with its waveform, loudness, peak and length. A candidate's chip plays it;
+// metaverse-engine/audio/SOURCES.md) with its waveform, loudness, peak and length. A candidate's chip plays it;
 // A/B plays the synthesized one and then the first pick; KEEP and DROP put the shown candidate in
-// or out of the sound's picks, which COPY PICKS copies as aethyr/audio/everglade-sfx.picks lines.
+// or out of the sound's picks, which COPY PICKS copies as metaverse-engine/audio/everglade-sfx.picks lines.
 // RAID MIX plays a scripted 20 s raid through the same mixer, levels and placement as the page
-// (aethyr/audio/everglade-mix.coax): thirty raiders casting, hits, a house falling, your footsteps,
+// (metaverse-engine/audio/everglade-mix.coax): thirty raiders casting, hits, a house falling, your footsteps,
 // the horn and the bed. STOP ends it and whatever else plays.
 //
 // The files are lazy: each plays from /realms/everglade/sfx/NAME-CAND.ogg (the page's sounds:
@@ -12,8 +12,8 @@
 // audio starts, as Everglade renders them.
 
 #load "projects.coax";
-#load "../../aethyr/audio/everglade-mix.coax";
-#load "../../aethyr/audio/everglade-bank-lab.coax";
+#load "../../metaverse-engine/audio/everglade-mix.coax";
+#load "../../metaverse-engine/audio/everglade-bank-lab.coax";
 
 LAB_MAX_VERTICES :: 200000;
 LAB_LINES :: 16384;

@@ -5,7 +5,7 @@ History: see everglade/ARCHITECTURE.md.
 Date: 2026-11-05. Status: evaluation, decided: keep WebSocket (no-go for now).
 Issue: #12858, under #12833. Background: the transport rows of the
 [MMO gap analysis](2026-11-04-aethyr-verse-mmo-gap-analysis.md) (G3, G10) and
-the [book appendix](../../aethyr/book/appendix-mmo-gap-analysis.md).
+the [book appendix](../../metaverse-engine/book/appendix-mmo-gap-analysis.md).
 
 This evaluation measures how much a lost TCP packet stalls an Everglade room's
 state stream, models what unreliable datagrams would change on the same

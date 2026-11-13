@@ -8,7 +8,7 @@
 // premultiplies white), verse/gpu/vk-spec.c's and pass.js's `atlas` directive. Offline tooling;
 // never run by a page.
 //   coax/web/tool.sh verse/tools/sans-atlas.coax OUT [--report] [--script]   (--script prints the script)
-// Its profile and raster commands come from aethyr/render/sans-profile.coax,
+// Its profile and raster commands come from metaverse-engine/render/sans-profile.coax,
 // the same source the page's Font layout and renderer effects consume.
 // The font is the system's (Helvetica on a Mac), as the browser on this machine draws it.
 #import "Basic";
@@ -17,7 +17,7 @@
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/image/png.coax";
-#load "../../aethyr/render/sans-profile.coax";
+#load "../../metaverse-engine/render/sans-profile.coax";
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;

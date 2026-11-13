@@ -3,7 +3,7 @@
 // At 0 Hit Points a creature is Unconscious (SRD 5.2.1 p.17 "Dropping to 0 Hit Points"; Unconscious,
 // p.191), rolls Death Saving Throws until three successes (Stable, still Unconscious) or three failures
 // (dead), and gets up only once it regains Hit Points. The body's pose and the locks on its input come
-// from its bearing (condition-bearing.coax rs_bearing, aethyr/action/deed.coax); this is only the saves.
+// from its bearing (condition-bearing.coax rs_bearing, metaverse-engine/action/deed.coax); this is only the saves.
 // Its loader has the rules (battle.coax): class-kit.coax loads it for Everglade's zones and room.
 //   coax/bin/coax test everglade/client/client.coax --only "death save line"
 

@@ -3,9 +3,9 @@
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
-#load "../../aethyr/render/geometry/scan.coax";
-#load "../../aethyr/render/echo-materials.coax";
-#load "../../aethyr/anim/face-pack.coax";
+#load "../../metaverse-engine/render/geometry/scan.coax";
+#load "../../metaverse-engine/render/echo-materials.coax";
+#load "../../metaverse-engine/anim/face-pack.coax";
 EB_MAPS :: [30]string.["T_echo_Costume1_D.png","T_echo_Costume2_D.png","T_echo_Costume3_D.png","T_echo_Costume4_D.png","T_echo_Costume5_D.png","T_echo_Head_D_noBrows.png","eyes_sclera_D_01_sharpen2_fixed_L.png","T_EyeIrisBaseColor.png","hair_alpha.png","T_echo_Costume1_ORM.png","T_echo_Costume2_ORM.png","T_echo_Costume3_ORM.png","T_echo_Costume3_Gold_ORM.png","T_echo_Costume4_ORM.png","T_echo_Costume5_ORM.png","T_echo_Head_ORM.png","T_echo_Costume1_N.png","T_echo_Costume2_N.png","T_echo_Costume3_N.png","T_echo_Costume4_N.png","T_echo_Costume5_N.png","T_echoGirl_Head_N.png","T_Eye_Wet_N.png","head_thickness_map_001_tweaked.png","toksvig_macro.png","additional_roughness2.png","T_echoGirl_Head_micro_N.png","T_echo_HeadBrows_N.png","T_echo_HeadTest_BrowMask.png","T_echo_Head_MatID.png"];
 SLAY_MAPS :: [30]string.["T_echo_Costume1_D.png","T_echo_Costume2_D.png","T_echo_Costume3_D.png","T_echo_Costume4_D.png","T_echo_Costume5_D.png","T_echo_Head_noBrows_D.png","T_eyes_sclera_D.png","T_EyeIrisBaseColor_D.png","T_Hair_M.png","T_echo_Costume1_ORM.png","T_echo_Costume2_ORM.png","T_echo_Costume3_ORM.png","T_echo_Costume3_Gold_ORM.png","T_echo_Costume4_ORM.png","T_echo_Costume5_ORM.png","T_echo_Head_ORM.png","T_echo_Costume1_N.png","T_echo_Costume2_N.png","T_echo_Costume3_N.png","T_echo_Costume4_N.png","T_echo_Costume5_N.png","T_echo_Head_N.png","T_Eye_Wet_N.png","T_Head_thickness_M.png","T_toksvig_macro.png","T_Head_additional_R.png","T_echo_Head_micro_N.png","T_echo_HeadBrows_N.png","T_echo_Head_Brows_M.png","T_Head_highpass_S.png"];
 EB_ALBEDO :: [26]int.[4,4,2,-1,6,3,2,10,4,8,-1,7,-1,3,-1,5,-1,8,-1,-1,-1,-1,-1,2,-1,6];

@@ -46,7 +46,7 @@
 
 #load "../../verse/rules/srd5.coax";
 #load "../../verse/demolish.coax";
-#load "../../aethyr/action/deed.coax";   // ask, act, present: a cast plays only once the room takes it (docs/verse/action-pipeline.md, #13072)
+#load "../../metaverse-engine/action/deed.coax";   // ask, act, present: a cast plays only once the room takes it (docs/verse/action-pipeline.md, #13072)
 #load "../../verse/water-spells.coax";
 #load "everglade-hotbar.coax";
 #load "everglade-arrange.coax";
@@ -189,7 +189,7 @@ Spells :: struct {
   aim: Point; aim_n: Point; aim_ok: bool; far: bool;   // aim_n: the face it points at (up on the ground or a roof)
   shot: Shot; fx: f32; fy: f32;
   casting: int; cast_t: f32; cast_at: Point; cast_n: Point; cast_from: Point;
-  deeds: [1] DeedBar;        // the bar's asks and the room's answers (aethyr/action/deed.coax, #13072)
+  deeds: [1] DeedBar;        // the bar's asks and the room's answers (metaverse-engine/action/deed.coax, #13072)
   ask_seq: int; ask_n: Point;   // your cast waiting for the room, and the face it was aimed at
   dmg: SrdDamage;
   meteors: [SP_METEORS * 2] SpMeteor;   // this page's, then the room server's (everglade-net.coax net_play)
@@ -1380,7 +1380,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   cl_frame(s);   // a class's aim (everglade-classes.coax)
   mend_frame(s, dt);   // a Repair on its bar (everglade-repair.coax)
   rest_frame(s, dt);   // fighting, for the Long Rest (everglade-rest.coax)
-  // a cast the room never answered is let go after 1.5 s (aethyr/action/deed.coax DEED_WAIT)
+  // a cast the room never answered is let go after 1.5 s (metaverse-engine/action/deed.coax DEED_WAIT)
   deed_expire(s[0].sp.deeds[..], deed_tick(f32(s[0].time)));
   // the cast bar
   if s[0].sp.casting >= 0 {
@@ -1445,7 +1445,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   s[0].sp.fx_by[3] += s[0].sp.stage_n - fx0;
   chimney_smoke(s, s[0].smoke_still);   // the town's wood smoke (everglade-dress.coax)
   fx0 = s[0].sp.stage_n;
-  wl_draw(s);   // the Warlock's spells' looks (everglade-warlock.coax, aethyr/fx/warlock.coax)
+  wl_draw(s);   // the Warlock's spells' looks (everglade-warlock.coax, metaverse-engine/fx/warlock.coax)
   cl_draw(s);   // a class's aim ring (everglade-classes.coax)
   s[0].sp.fx_by[3] += s[0].sp.stage_n - fx0;
   sp_fx_close(s);
@@ -2484,18 +2484,18 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   everglade_message(g, MSG_FACTS, "now=1\nruleset=srd5\nplayer=p-1");
 }
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
 // The complete original spell integration check runs through
-// aethyr/tests/check_native_gameplay.py (checked-AST native C).
+// metaverse-engine/tests/check_native_gameplay.py (checked-AST native C).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
 // The camera, before the frame is drawn: a blast shakes it (the old engine's shake: a jolt that settles
 // over a second). Eye and aim move together, so the view never turns or pans.
@@ -2513,14 +2513,14 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
 }
 
 // The complete original spell integration check runs through
-// aethyr/tests/check_native_gameplay.py (checked-AST native C).
+// metaverse-engine/tests/check_native_gameplay.py (checked-AST native C).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
 #test "phone: a slot's card shows only while a finger holds it; lifting it, or another finger down, closes the card" #steps 700000000 {
   g: [1] Everglade;

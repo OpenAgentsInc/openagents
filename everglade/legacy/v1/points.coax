@@ -1,12 +1,12 @@
 // Everglade's named points (GitHub #13078): where you arrive, its gates and the places the
-// scripted checks stand at or look from, by name (aethyr/world/points.coax). plan.coax loads this
+// scripted checks stand at or look from, by name (metaverse-engine/world/points.coax). plan.coax loads this
 // file: the spawn is defined here alone, and its check "the named points sit on the map's own
 // spawn, gates and places" holds every other point to the plan's numbers (EG_GATE, EG_PLACE,
 // EG_SPOT) and to the raid's front (apps/openagents-web/everglade-raid-front.coax checks RF_*).
 // A check reads them through eg_point; a tool refuses a name that isn't here (coax/web/map-points.coax).
 // Metres, the plan's axes: z north, +x west, the fountain at the origin; face 0 north, a quarter
 // turn +x (west).
-#load "../../../aethyr/world/points.coax";
+#load "../../../metaverse-engine/world/points.coax";
 
 // You arrive on the commons, inside the South Gate, facing toward it.
 EG_SPAWN_X :: 0.0; EG_SPAWN_Z :: -16.0;

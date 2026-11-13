@@ -37,11 +37,11 @@ bad() { echo "FAIL: $*"; fails=$((fails + 1)); }
 g() { git -C "$w/repo" -c user.name=t -c user.email=t@t "$@"; }
 
 git init -q --bare "$w/origin.git"
-mkdir -p "$w/repo/coax/remote" "$w/repo/coax/web" "$w/repo/everglade" "$w/repo/proto" "$w/repo/aethyr" "$w/repo/lib"
+mkdir -p "$w/repo/coax/remote" "$w/repo/coax/web" "$w/repo/everglade" "$w/repo/proto" "$w/repo/metaverse-engine" "$w/repo/lib"
 cp "$here/after.sh" "$here/pipeline-lib.sh" "$here/counts.sh" "$w/repo/coax/remote/"
 printf '# list\na\nb\nc\n' > "$w/repo/coax/tools-port.txt"
 printf '# list\nshape x\n' > "$w/repo/proto/wire-allowlist.txt"
-printf '# layers\naethyr-up a -> b\ntests c -> d\n' > "$w/repo/aethyr/layer-allowlist.txt"
+printf '# layers\naethyr-up a -> b\ntests c -> d\n' > "$w/repo/metaverse-engine/layer-allowlist.txt"
 printf 'EF_KNOWN :: [2] string.[\n  "a",\n  "b"\n];\nEF_GAPS :: [1] string.[\n  "g"\n];\n' > "$w/repo/everglade/features.coax"
 printf 'CC_TO_MOVE :: [1] CcMove.[\n  CcMove.{path = "x"}\n];\n' > "$w/repo/coax/web/components-check.coax"
 echo 'one :: 1;' > "$w/repo/lib/a.coax"

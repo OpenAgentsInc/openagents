@@ -181,9 +181,9 @@ timed host-sockets "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-so
 host_sockets=$!
 timed host-packs "$here/../../coax/web/tool.sh" "$here/../../coax/web/build-packs.coax" "$here/../.." "$here/build/host-packs.wasm" &
 host_packs=$!
-# Range-addressable packs (VPK3, aethyr/forge/page-pack.coax, #13001): each .vpk3 a realm names in
+# Range-addressable packs (VPK3, metaverse-engine/editor/page-pack.coax, #13001): each .vpk3 a realm names in
 # realms.json is written from its tracked .pack beside it (rewritten only when the pack changed),
-# and so is each block build (aethyr/tools/block-pack.coax) a realm's blocks: asset names.
+# and so is each block build (metaverse-engine/tools/block-pack.coax) a realm's blocks: asset names.
 # Everglade II's first takes this tree's planting into its catalog (verse/tools/assets/
 # everglade2_plant.coax, #13150), so the page reads the woods instead of planting them for 1.8 s.
 vpk3s() {
@@ -194,14 +194,14 @@ vpk3s() {
   for vpk3 in "$here"/realms/everglade2/assets/everglade2.vpk3; do
     planted="$here/build/$(basename "${vpk3%.vpk3}")-planted.pack"
     "$here/../../coax/web/tool.sh" "$here/../../verse/tools/assets/everglade2_plant.coax" "${vpk3%.vpk3}.pack" "$planted" > /dev/null
-    "$here/../../coax/web/tool.sh" "$here/../../aethyr/tools/page-pack.coax" "$planted" "$vpk3" > /dev/null
+    "$here/../../coax/web/tool.sh" "$here/../../metaverse-engine/tools/page-pack.coax" "$planted" "$vpk3" > /dev/null
     rm -f "$planted"
   done
   # Block builds (GitHub #13305): Everglade's layers as GPU blocks with their mip chains, NAME.TAG.vpk3
   # beside the pack, one a format its blocks: asset lists; host.js loads the one this device's GPU takes.
   local builds=()
   for tag in bc7 astc4; do
-    "$here/../../coax/web/tool.sh" "$here/../../aethyr/tools/block-pack.coax" "$here/realms/everglade/assets/everglade-zone.pack" \
+    "$here/../../coax/web/tool.sh" "$here/../../metaverse-engine/tools/block-pack.coax" "$here/realms/everglade/assets/everglade-zone.pack" \
       "$here/realms/everglade/assets/everglade-zone.$tag.vpk3" --format "$tag" > /dev/null &
     builds+=($!)
   done
@@ -219,7 +219,7 @@ splash=$!
 # The realms: the engine's house, player and thumbs, each its own library as on
 # iOS, under realm.coax's HUD; the house's light from the engine itself.
 # (realm.wgsl, the house, loads its light in its Coax: gpu/realm.coax.)
-# (particles.wgsl loads aethyr/render/particle-motion.coax and haunt-light.coax in its Coax: gpu/particles.coax.)
+# (particles.wgsl loads metaverse-engine/render/particle-motion.coax and haunt-light.coax in its Coax: gpu/particles.coax.)
 # The art styles' shading (verse/style.coax, docs/verse/art-styles.md) into the fixture and every
 # painterly realm's WGSL (realms.ts --check refuses a painterly realm without it).
 style_fns="verse_style_wrap verse_style_bands verse_style_bands2 verse_style_shade verse_style_cool verse_style_keep_value verse_style_banded verse_style_ambient verse_style_dab verse_style_rim verse_style_haze verse_style_haze_glow verse_style_haze_teal verse_style_haze_hue verse_style_fog verse_style_sky_t verse_style_sky_band verse_style_halo verse_style_hash verse_style_noise verse_style_cloud_field verse_style_cloud_cover verse_style_cloud_lit verse_style_cloud_fade verse_style_tone verse_style_saturation verse_style_lift verse_style_luma verse_style_bloom_share verse_style_bloom_mix verse_style_shadow_reach verse_style_shadow_snap verse_style_shadow_across verse_style_shadow_depth verse_style_shadow_taps verse_style_shadow_radius verse_style_shadow_tap verse_style_contact verse_style_shaft_source verse_style_shaft_fade verse_style_shaft_tap verse_style_shaft_total verse_style_shaft verse_style_gust verse_style_wind verse_style_bend verse_style_grass_tilt verse_style_blade_height verse_style_grass_fade verse_style_grass_blades verse_style_grass_clear verse_style_segment verse_style_part verse_style_tip verse_style_jitter"
@@ -247,11 +247,11 @@ cmp -s "$here/nip01.wgsl" "$here/pylon.wgsl" || cp "$here/nip01.wgsl" "$here/pyl
 # declarations. Unchanged packages reuse verified source and product hashes.
 # Each package is its own folder, so they build side by side; with COAXIAL_PREBUILT=1
 # (release.sh) a package a build host made from the same sources is taken as it is.
-profiles="$(cd "$here/../.." && coax/web/tool.sh aethyr/render/build.coax --profiles)"
+profiles="$(cd "$here/../.." && coax/web/tool.sh metaverse-engine/render/build.coax --profiles)"
 render_packages() {
   local profile made=()
   while IFS= read -r profile; do
-    in_repo coax/web/tool.sh aethyr/render/build.coax "$profile" "$here/build/render/$profile" & made+=($!)
+    in_repo coax/web/tool.sh metaverse-engine/render/build.coax "$profile" "$here/build/render/$profile" & made+=($!)
   done <<< "$profiles"
   for profile in "${made[@]}"; do wait "$profile"; done
 }
@@ -269,7 +269,7 @@ flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 ve
 # (Orbit League, orbitleague.wgsl, loads them in its Coax: gpu/orbitleague.coax.)
 # (waterlab.wgsl loads verse/style.coax in its Coax: gpu/waterlab.coax.)
 m="$here/../../verse"
-a="$here/../../aethyr"   # the engine modules (#12609)
+a="$here/../../metaverse-engine"   # the engine modules (#12609)
 # The voice engine for pages that talk (data-voice: the Haunted House), coax/web/voice.js.
 timed voice "$here/../../coax/web/voice/build.sh" "$here/build/voice.wasm" &
 voice=$!
@@ -364,14 +364,14 @@ deadgears=$!
 # /worlds/hold-the-stair: the popping tower defense on the SRD 5e rules (verse/rules/srd5-combat.coax).
 timed stair "$here/../../coax/web/wasm.sh" "$here/stair.coax" "$here/stair-face.c" "$here/build/stair.wasm" &
 stair=$!
-# /worlds/painted-village: the hand-painted look (aethyr/render/stylized.coax) on generated assets (aethyr/arch/village.coax, flora.coax).
+# /worlds/painted-village: the hand-painted look (metaverse-engine/render/stylized.coax) on generated assets (metaverse-engine/arch/village.coax, flora.coax).
 timed painted "$here/../../coax/web/wasm.sh" "$here/painted.coax" "$here/painted-face.c" "$here/build/painted.wasm" &
 painted=$!
 # /worlds/watchtower: a cyber defense range: find the intruder, isolate and reimage hosts (docs/research/cybersecurity).
 timed watchtower "$here/../../coax/web/wasm.sh" "$here/watchtower.coax" "$here/watchtower-face.c" "$here/build/watchtower.wasm" &
 watchtower=$!
 # /worlds/5e-lab (unlisted): druids play the SRD 5e rules on a bare grid (rules/srd, docs/dnd).
-# Player mode walks you on Everglade's controller (everglade-step.coax) and a phone's thumbs (aethyr/core/sticks.coax).
+# Player mode walks you on Everglade's controller (everglade-step.coax) and a phone's thumbs (metaverse-engine/core/sticks.coax).
 old timed fivelab "$here/../../coax/web/wasm.sh" "$here/fivelab.coax" "$here/fivelab-face.c" "$here/build/fivelab.wasm" \
   "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 fivelab=$!
@@ -381,7 +381,7 @@ timed archery-range "$here/../../coax/web/wasm.sh" "$here/archery-range.coax" "$
   "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 archery_range=$!
 # /worlds/bitcoin-lab (unlisted): Bitcoin Lab, the Bitcoin book's first chapter as a walk on the Grid: an Everglade
-# zone (everglade/zone.coax) with your character, its stations drawn as quads by bitcoin-lab-fx.wgsl (aethyr/fx/gpu-quads.coax).
+# zone (everglade/zone.coax) with your character, its stations drawn as quads by bitcoin-lab-fx.wgsl (metaverse-engine/fx/gpu-quads.coax).
 old timed bitcoin-lab-walk "$here/../../coax/web/wasm.sh" "$here/bitcoin-lab-walk.coax" "$here/bitcoin-lab-walk-face.c" "$here/build/bitcoin-lab-walk.wasm" \
   "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 bitcoin_lab_walk=$!
@@ -393,7 +393,7 @@ nostr_lab_walk=$!
 # /worlds/valley-lab/cull (unlisted): the GPU cull's lab (#13008), its residency and its fixture.
 timed cullstream "$here/../../coax/web/wasm.sh" "$here/cullstream.coax" "$here/cullstream-face.c" "$here/build/cullstream.wasm" &
 cullstream=$!
-timed cull-fixture in_repo coax/web/tool.sh aethyr/tools/cull-fixture.coax "$here/build" > /dev/null &
+timed cull-fixture in_repo coax/web/tool.sh metaverse-engine/tools/cull-fixture.coax "$here/build" > /dev/null &
 cullfixture=$!
 # /worlds/everglade2 (unlisted): Everglade v2, the glade, one path through the woods and a clearing (docs/verse/everglade2.md).
 timed everglade2 "$here/../../coax/web/wasm.sh" "$here/../../everglade/client/client.coax" "$here/everglade2-face.c" "$here/build/everglade2.wasm" \
@@ -417,13 +417,13 @@ gridcrowd=$!
 # (?stage=ident ... ?stage=end, docs/verse/clips.md), drawn at twice its pixels for clips.
 timed speedrunhud "$here/../../coax/web/wasm.sh" "$here/speedrunhud.coax" "$here/speedrunhud-face.c" "$here/build/speedrunhud.wasm" &
 speedrunhud=$!
-# /worlds/belt-2200: the solar-system strategy game over the engine's orbits (aethyr/physics/orbit.coax, aethyr/cam/spacecam.coax; verse/stars.coax in gpu/belt.coax).
+# /worlds/belt-2200: the solar-system strategy game over the engine's orbits (metaverse-engine/physics/orbit.coax, metaverse-engine/cam/spacecam.coax; verse/stars.coax in gpu/belt.coax).
 timed belt "$here/../../coax/web/wasm.sh" "$here/belt.coax" "$here/belt-face.c" "$here/build/belt.wasm" &
 belt=$!
 # /worlds/orbit-league: car ball in orbit, on the space primitives (docs/verse/space.md).
 timed orbitleague "$here/../../coax/web/wasm.sh" "$here/orbitleague.coax" "$here/orbitleague-face.c" "$here/build/orbitleague.wasm" &
 orbitleague=$!
-# /worlds/characters: the engine's figures (aethyr/anim/figure.coax).
+# /worlds/characters: the engine's figures (metaverse-engine/anim/figure.coax).
 timed characters "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
 # The public homepage and /new-land alias, and /worlds/the-grid: the same module walked (data-page 1, newland-walk.coax). Warm start is real Coax-verified
@@ -446,10 +446,10 @@ pylon=$!
 # Keep the public join command identical to the tested source, never a fork.
 cmp -s "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh" || cp "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh"
 # Engine-owned declared-state adoption and host-conformance fixture (#12991).
-COAXIAL_RUN_STEPS=250000000 timed state-lab "$here/../../coax/web/wasm.sh" "$here/../../aethyr/state/fixture.coax" "$here/state-lab-face.c" "$here/build/state-lab.wasm" &
+COAXIAL_RUN_STEPS=250000000 timed state-lab "$here/../../coax/web/wasm.sh" "$here/../../metaverse-engine/state/fixture.coax" "$here/state-lab-face.c" "$here/build/state-lab.wasm" &
 state_lab=$!
 # Engine-owned compiled actor adoption (#12992).
-COAXIAL_RUN_STEPS=250000000 timed actor-lab "$here/../../coax/web/wasm.sh" "$here/../../aethyr/actors/lab.coax" "$here/actor-lab-face.c" "$here/build/actor-lab.wasm" &
+COAXIAL_RUN_STEPS=250000000 timed actor-lab "$here/../../coax/web/wasm.sh" "$here/../../metaverse-engine/actors/lab.coax" "$here/actor-lab-face.c" "$here/build/actor-lab.wasm" &
 actor_lab=$!
 # /worlds: every listed realm as a list and a grid of towers (realms/list.coax, written by realms.ts).
 timed realmlist "$here/../../coax/web/wasm.sh" "$here/realmlist.coax" "$here/realmlist-face.c" "$here/build/realmlist.wasm" &

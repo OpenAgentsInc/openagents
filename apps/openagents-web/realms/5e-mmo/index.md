@@ -33,6 +33,6 @@ The engine decides where everyone stands, a square at a time. Your body walks sm
 - `rules/srd/` is the engine. `docs/dnd/README.md` is its specification.
 - `apps/openagents-web/fivemmo-battle.coax` runs the battle on the engine, with 5E Lab's routines for each class. It is its own C unit, so its names stay apart from Everglade's.
 - `apps/openagents-web/fivemmo.coax` is the page. It is Everglade's page (`everglade.coax`): the same ground, city, light, pack, people and shaders (`fivemmo.wgsl`, from `apps/openagents-web/gpu/everglade-v1/gpu.coax`). It poses the figures before Everglade's frame, then draws the weapons, names and HUD.
-- `apps/openagents-web/fivemmo-face.c` binds them for the browser, with `aethyr/move/player.coax` walking you.
+- `apps/openagents-web/fivemmo-face.c` binds them for the browser, with `metaverse-engine/move/player.coax` walking you.
 
 This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.

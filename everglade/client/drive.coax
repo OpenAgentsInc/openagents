@@ -1,4 +1,4 @@
-// Everglade II's wiring for the agent driver (aethyr/agent/drive.coax, GitHub #13095): what it lists
+// Everglade II's wiring for the agent driver (metaverse-engine/agent/drive.coax, GitHub #13095): what it lists
 // (you, the others in the room, the path's guard, the wolves and goblins, by the room's own slots, so
 // an id stays the same while that creature lives), and how its world operations turn into a player's
 // input: walking is the keys' forward along the way drv_steer says, and a use presses the bar's slot as

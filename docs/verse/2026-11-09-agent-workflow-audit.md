@@ -100,7 +100,7 @@ Two fixes in `tool.sh suites`, which already builds a `#load` graph:
 - A file that another file loads isn't a suite. Run it only through its
   loader.
 - A loader counts as a suite when any file it loads has tests, even if it has
-  none of its own. Today `aethyr/actors/checks.coax` is skipped, so
+  none of its own. Today `metaverse-engine/actors/checks.coax` is skipped, so
   `tests/journey.coax` runs only on its own, and fails.
 
 After both, whatever still fails alone is a real failure and belongs on the
@@ -299,7 +299,7 @@ answered by the coordinator with a 229,000-token reply.
 **Cost:** duplicated modules and waits on unpushed code.
 
 - Two agents built lead pursuit and circling at once, in
-  `aethyr/ai/pursuit.coax` and `aethyr/ai/steer.coax`. One was dropped.
+  `metaverse-engine/ai/pursuit.coax` and `metaverse-engine/ai/steer.coax`. One was dropped.
 - One agent couldn't run a check because it needed another agent's
   uncommitted edits to seven files.
 - One agent couldn't message another because it knew only its topic.

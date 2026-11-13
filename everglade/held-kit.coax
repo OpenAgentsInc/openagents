@@ -20,7 +20,7 @@ CC_KIT_TWO :: [5]bool.[true,true,false,false,false];  // held in both hands: the
 CC_KIT_HOLD :: [5]int.[0,3,0,0,0];               // a two-hander's first owned clip (everglade/scene/two-hand-rig.coax): the axe's, the sword's
 CC_KIT_BOW :: 4;
 CC_BOW_GRIP_X :: -0.127;   // source units from the bow's middle (as packed) to its grip, across the limbs
-// First person (aethyr/cam/firstperson.coax): zoomed all the way in (the wheel's nearest, 0.65 m) the
+// First person (metaverse-engine/cam/firstperson.coax): zoomed all the way in (the wheel's nearest, 0.65 m) the
 // camera is your eyes; camera blends into it and scene_reserved leaves your body out of the view.
 // The left fist's middle from its joint, in the bind pose (the mirror of CC_FIST).
 CC_FIST_L :: [3]f32.[0.075,-0.03,0.0];
@@ -411,7 +411,7 @@ cc_unit :: (v:[3]f32)->[3]f32 {
 }
 // The bow's aim pose over a0, for any body: `aim` how far the aim has come in (bow.bow_aim), `draw`
 // how far the string is back, `nocked` an arrow still on it, `loose_age` seconds since the last
-// loose. Its keyed draw (aethyr/action/bow-pose.coax, baked as figs.BD_BOW) lies over the upper
+// loose. Its keyed draw (metaverse-engine/action/bow-pose.coax, baked as figs.BD_BOW) lies over the upper
 // body through the shared layer (everglade/scene/bodies.coax bd_layer): standing the whole body draws; on
 // the move the walk keeps the legs.
 held_bow_layer :: (a0: figs.BdAnim, aim: f32, draw: f32, nocked: bool, loose_age: f32, clock: f32) -> figs.BdAnim {

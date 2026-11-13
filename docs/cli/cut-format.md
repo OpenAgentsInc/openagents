@@ -4,7 +4,7 @@
 list is a `.cut` file in the line format below, or Video Lab's `cut.v1`
 JSON (for example `~/work/film-out/cut/cut5.json`). `labs cut` reads both.
 New cuts are written as `.cut` lines. The shared parser and checks are in
-[cut-lines.coax](../../aethyr/anim/cut-lines.coax), used by the Labs CLI and
+[cut-lines.coax](../../metaverse-engine/anim/cut-lines.coax), used by the Labs CLI and
 Animation Lab's scene-camera adapters.
 
 ```text

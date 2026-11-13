@@ -4,7 +4,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/host/audio-packet-conformance.coax";
+#load "../../metaverse-engine/host/audio-packet-conformance.coax";
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: metal-audio-packet ROOT SDK NEW_OUTPUT [--existing] [--producer DYLIB]");return 2;}
  root:=args_at(a[..],0);sdk:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir){return 1;}paths:[5][4096]u8;

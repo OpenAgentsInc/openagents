@@ -1,0 +1,11 @@
+// One physical Coax closure owns shared render, codec and observation exports.
+#import "Basic";
+#load "../render/tests/qualification-files.coax";
+#load "../../coax/lib/sys/args.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: emit-linux-live-media ROOT COMPILER NEW_OUT");return 2;}
+ root:=args_at(a[..],0);compiler:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 1;}paths:[4][4096]u8;files:[1]FsList;if fs_list(out,files[..])!=0 {return 2;}
+ argv:=[8]string.[compiler,"c",fs_join(root,"metaverse-engine/host/check-linux-live-media.coax",paths[0][..]),"--library","--header",fs_join(out,"LiveMedia.h",paths[1][..]),"--profile-report",fs_join(out,"profile.json",paths[2][..])];env:[]string;code:[33554432]u8;error:[1048576]u8;
+ r:=rtq_command(argv[..],env,proc_now_ms()+180000,out,"emission",code[..],error[..]);if !rtq_ok(r)||!fs_write(fs_join(out,"LiveMedia.c",paths[3][..]),cast(string)code[0..<r.out_n]) {return 1;}
+ for name:[2]string.["RenderHost.h","RenderTexture.h"] {if !fs_write(fs_join(out,name,paths[3][..]),"#include \"LiveMedia.h\"\n") {return 1;}}return 0;
+}

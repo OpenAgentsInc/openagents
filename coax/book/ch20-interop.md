@@ -809,8 +809,8 @@ One Coax file is easy. The iOS app has several, each compiled to its own
 library and header, and Swift includes their headers through one
 bridging header. That's where the team hit the next problem.
 
-`aethyr/move/player.coax` has a 3D vector type called `Vec3`. When
-`aethyr/cam/camera.coax` was written, it needed a 3D vector too. Let's see
+`metaverse-engine/move/player.coax` has a 3D vector type called `Vec3`. When
+`metaverse-engine/cam/camera.coax` was written, it needed a 3D vector too. Let's see
 what happens when two files both define one. Here are two tiny files:
 
 Filename: walker.coax
@@ -849,7 +849,7 @@ a host includes both. The view typedefs for built-in element types, like
 `coax_v_f32`, are guarded so they can repeat, but struct types aren't.
 
 The fix in the app was to give the camera's struct a different name.
-That's why `aethyr/cam/camera.coax` says `Point` where you'd expect `Vec3`:
+That's why `metaverse-engine/cam/camera.coax` says `Point` where you'd expect `Vec3`:
 
 ```jai
 Point :: struct { x: f32; y: f32; z: f32; }

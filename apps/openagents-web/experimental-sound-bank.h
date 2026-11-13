@@ -1,4 +1,4 @@
-// Experimental's own synthesized effects (aethyr/audio/experimental-sfx.coax through
+// Experimental's own synthesized effects (metaverse-engine/audio/experimental-sfx.coax through
 // everglade/sound.coax), rendered once when the host starts audio and played by name: the host's
 // coaxial_sound_bank and coaxial_sound_bank_len (coax/web/host.js soundBank). A face whose app loads
 // everglade/sound.coax includes this once, after its own header and EXPORT: 5E Lab's and
@@ -37,7 +37,7 @@ EXPORT("coaxial_sound_bank_len") uint32_t coaxial_sound_bank_len(cx_face_addr st
   return n;
 }
 EXPORT("coaxial_sound_bank") cx_face_addr coaxial_sound_bank(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)xsound_list; }
-/* host contract v1 (aethyr/host/README.md, Audio): the list's allocation, and the one every sound's bytes are in */
+/* host contract v1 (metaverse-engine/host/README.md, Audio): the list's allocation, and the one every sound's bytes are in */
 EXPORT("coaxial_sound_bank_capacity") uint32_t coaxial_sound_bank_capacity(cx_face_addr state) { (void)state; return (uint32_t)sizeof xsound_list; }
 EXPORT("coaxial_sound_bank_storage") cx_face_addr coaxial_sound_bank_storage(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)xsound_bank; }
 EXPORT("coaxial_sound_bank_storage_bytes") uint32_t coaxial_sound_bank_storage_bytes(cx_face_addr state) { (void)state; return XSOUND_BANK; }

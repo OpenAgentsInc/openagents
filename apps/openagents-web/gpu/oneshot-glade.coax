@@ -5,7 +5,7 @@
 
 // 5E Lab's shaders (fivelab.coax): build.sh writes apps/openagents-web/fivelab.wgsl from this
 // with coax/web/wgsl-module.coax (fivelab.module and fivelab.bindings beside it).
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../verse/style.coax";
 
 // bg_fs draws one of two views of the battle, as the page picks (V):

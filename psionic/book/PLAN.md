@@ -626,7 +626,7 @@ different Gemma-4 architecture is an optional study in appendix B.
 
 ## XVIII. World models and embodied policies
 
-The worlds these policies act and learn in come from the [Metaverse Engine book](../../aethyr/book/README.md):
+The worlds these policies act and learn in come from the [Metaverse Engine book](../../metaverse-engine/book/README.md):
 batched environments (Metaverse Engine chapter 31), differentiable simulation (32),
 sensors (33), observation pictures (34), robot import (35) and replay (36).
 This part uses them and does not repeat them.

@@ -1,0 +1,733 @@
+// Block compression for texture layers, written in Coax (GitHub #13014, part of #12998): BC7
+// (mode 6), BC4 and BC5, and ASTC 4x4 and 6x6 (one partition, LDR). metaverse-engine/tools/texture-encode.coax
+// runs it offline over a realm's layers and checks every block file against the independent
+// decoders verse/tools/ocarina-texture-core.coax already uses: the pinned bcdec header
+// (verse/tools/ocarina-bc-reference.c) and ARM astcenc 5.7.1. Each encoder has its decoder here
+// too, for its own search and for these checks; the reference decoders decide the recorded quality.
+//
+// A block's texels are RGBA ints, row-major, 4 to a texel: 16 texels for BC and ASTC 4x4, 36 for
+// ASTC 6x6. Images are RGBA8; a block past an edge repeats the edge texels.
+//
+// What each format keeps:
+//  - BC7 mode 6: one RGBA line, 7-bit endpoints with a p-bit each, 16 weights a texel.
+//  - BC4: one channel, 8-bit endpoints, 8 levels. BC5 is two BC4 blocks (red, then green), for
+//    normals (X and Y; Z is rebuilt from them).
+//  - ASTC, one partition, LDR, weights and colours in the binary ranges only (no trits or quints),
+//    so the configurations are: colour RGB (CEM 8) with a 4x4 weight grid of 8 levels and 8-bit
+//    colours; for 6x6 also a 5x5 grid of 8 levels with 6-bit colours; with alpha (CEM 12) a 4x4
+//    grid of 4 levels and 8-bit colours; normals (CEM 4, X as luminance, Y as alpha, dual plane)
+//    on a 4x4 grid of 4 levels or a 3x3 grid of 8 levels. Each block takes the
+//    configuration with the least error. A normal map's ASTC texels read X from .r and Y from .a.
+//
+// Checks: coax/bin/coax test metaverse-engine/render/texture-encode.coax --library (no main of its own).
+
+TE_BC7 :: 1;            // bc7-rgba-unorm(-srgb): 4x4, 16 bytes
+TE_BC5 :: 2;            // bc5-rg-unorm: 4x4, 16 bytes
+TE_ASTC4 :: 3;          // astc-4x4-unorm(-srgb)
+TE_ASTC6 :: 4;          // astc-6x6-unorm(-srgb)
+TE_ASTC4_NORMAL :: 5;   // astc-4x4-unorm, X in .r, Y in .a
+TE_ASTC6_NORMAL :: 6;   // astc-6x6-unorm, X in .r, Y in .a
+
+// A format's block width and height in texels (every block is 16 bytes); 0 for no format.
+te_block_w :: (format: int) -> int { return ifx format == TE_ASTC6 || format == TE_ASTC6_NORMAL then 6 else ifx format >= TE_BC7 && format <= TE_ASTC6_NORMAL then 4 else 0; } // mutant: equivalent (TE_ASTC6_NORMAL takes the first branch)
+// The bytes a w by h image takes in format (one level).
+te_image_bytes :: (format: int, w: int, h: int) -> int {
+  b := te_block_w(format); if b == 0 || w < 1 || h < 1 { return 0; }
+  return ((w + b - 1) / b) * ((h + b - 1) / b) * 16;
+}
+#test "formats name their blocks and the bytes an image takes" {
+  #assert te_block_w(TE_BC7) == 4 && te_block_w(TE_BC5) == 4 && te_block_w(TE_ASTC4) == 4 && te_block_w(TE_ASTC4_NORMAL) == 4;
+  #assert te_block_w(TE_ASTC6) == 6 && te_block_w(TE_ASTC6_NORMAL) == 6 && te_block_w(0) == 0 && te_block_w(7) == 0;
+  #assert te_image_bytes(TE_BC7, 1, 1) == 16 && te_image_bytes(TE_ASTC6, 1, 7) == 32 && te_image_bytes(TE_BC5, 0, 4) == 0 && te_image_bytes(TE_BC5, 4, 0) == 0 && te_image_bytes(0, 4, 4) == 0;
+  #assert te_image_bytes(TE_BC7, 1024, 1024) == 1048576 && te_image_bytes(TE_ASTC6, 13, 7) == 3 * 2 * 16 && te_image_bytes(TE_BC5, 5, 4) == 32;
+  #assert te_image_bytes(0, 4, 4) == 0 && te_image_bytes(TE_BC7, 0, 4) == 0 && te_image_bytes(TE_BC7, 4, 0) == 0;
+}
+
+// ---- bits ------------------------------------------------------------------------------------
+
+// value's low `bits` bits into out at bit `at` (little-endian, bit 0 of byte 0 first).
+te_put :: (out: []u8, at: int, value: int, bits: int) {
+  for b: 0..<bits {
+    if ((value >> b) & 1) != 0 { p := at + b; out[p >> 3] = out[p >> 3] | cast(u8) (1 << (p & 7)); }
+  }
+}
+te_get :: (blk: []u8, at: int, bits: int) -> int {
+  v := 0;
+  for b: 0..<bits { p := at + b; v |= ((cast(int) blk[p >> 3] >> (p & 7)) & 1) << b; }
+  return v;
+}
+te_clear :: (out: []u8) { for i: 0..<16 { out[i] = 0; } }
+#test "bits go in and come out where they were put" {
+  b: [16] u8; te_put(b[..], 0, 5, 3); te_put(b[..], 6, 3, 2); te_put(b[..], 121, 127, 7);
+  #assert b[0] == 0xc5 && b[15] == 0xfe && te_get(b[..], 0, 3) == 5 && te_get(b[..], 6, 2) == 3 && te_get(b[..], 121, 7) == 127 && te_get(b[..], 3, 3) == 0;
+  te_clear(b[..]); #assert b[0] == 0 && b[15] == 0;
+}
+
+te_clamp :: (v: int, lo: int, hi: int) -> int { return ifx v < lo then lo else ifx v > hi then hi else v; }
+// round half up, for v >= -1e9
+te_round :: (v: f32) -> int { return cast(int) floor(cast(f64) v + 0.5); }
+#test "clamps and rounding" {
+  #assert te_clamp(-1, 0, 9) == 0 && te_clamp(10, 0, 9) == 9 && te_clamp(4, 0, 9) == 4 && te_clamp(0, 0, 9) == 0 && te_clamp(9, 0, 9) == 9;
+  #assert te_round(2.5f32) == 3 && te_round(2.49f32) == 2 && te_round(-0.6f32) == -1 && te_round(0.0f32) == 0;
+}
+
+// The block at (bx, by), bw by bh texels, from a w by h RGBA8 image, edges repeated.
+te_fetch :: (img: []u8, w: int, h: int, bx: int, by: int, bw: int, bh: int, px: []int) {
+  for y: 0..<bh { for x: 0..<bw {
+    sx := te_clamp(bx + x, 0, w - 1); sy := te_clamp(by + y, 0, h - 1);
+    for c: 0..<4 { px[(y * bw + x) * 4 + c] = cast(int) img[(sy * w + sx) * 4 + c]; }
+  } }
+}
+// Its decoded texels back into the image, the ones inside it.
+te_store :: (img: []u8, w: int, h: int, bx: int, by: int, bw: int, bh: int, px: []int) {
+  for y: 0..<bh { for x: 0..<bw {
+    if bx + x < w && by + y < h { for c: 0..<4 { img[((by + y) * w + bx + x) * 4 + c] = cast(u8) te_clamp(px[(y * bw + x) * 4 + c], 0, 255); } }
+  } }
+}
+#test "a block past the edge repeats the edge, and only the inside is stored" {
+  img: [3 * 2 * 4] u8; for i: 0..<24 { img[i] = cast(u8) i; }
+  px: [64] int; te_fetch(img[..], 3, 2, 0, 0, 4, 4, px[..]);
+  #assert px[0] == 0 && px[3 * 4] == 8 && px[4 * 4] == 12 && px[15 * 4 + 1] == 21 && px[(2 * 4 + 1) * 4] == 16;
+  out: [24] u8; px[0] = 300; px[4] = -5; te_store(out[..], 3, 2, 0, 0, 4, 4, px[..]);
+  #assert out[0] == 255 && out[4] == 0 && out[20] == 20 && out[23] == 23;
+}
+
+// The squared error of two blocks over the channels in mask (bit c for channel c).
+te_sse :: (a: []int, b: []int, n: int, mask: int) -> int {
+  e := 0;
+  for i: 0..<n { for c: 0..<4 { if ((mask >> c) & 1) != 0 { d := a[i * 4 + c] - b[i * 4 + c]; e += d * d; } } }
+  return e;
+}
+#test "block error counts only the masked channels" {
+  a := [8] int.[1, 2, 3, 4, 5, 6, 7, 8]; b := [8] int.[1, 4, 3, 1, 5, 6, 10, 8];
+  #assert te_sse(a[..], b[..], 2, 15) == 4 + 9 + 9 && te_sse(a[..], b[..], 2, 1) == 0 && te_sse(a[..], b[..], 2, 2) == 4 && te_sse(a[..], b[..], 2, 8) == 9 && te_sse(a[..], b[..], 2, 4) == 9;
+}
+
+// ---- lines through a block -------------------------------------------------------------------
+
+// The mean and principal axis of n texels over the channels in mask (power iteration on the
+// covariance), as the encoders' first guess at the line their endpoints span.
+TeLine :: struct { m: [4] f32; d: [4] f32; lo: f32; hi: f32; }
+te_line :: (px: []int, n: int, mask: int) -> TeLine {
+  l: TeLine;
+  for c: 0..<4 { if ((mask >> c) & 1) != 0 { s := 0; for i: 0..<n { s += px[i * 4 + c]; } l.m[c] = cast(f32) s / cast(f32) n; } }
+  cov: [16] f32;
+  for i: 0..<n { for a: 0..<4 { for b: 0..<4 {
+    if ((mask >> a) & 1) != 0 && ((mask >> b) & 1) != 0 { cov[a * 4 + b] += (cast(f32) px[i * 4 + a] - l.m[a]) * (cast(f32) px[i * 4 + b] - l.m[b]); }
+  } } }
+  // start from the channel of most spread, so a one-channel block has its axis at once
+  best := -1.0f32; for c: 0..<4 { if ((mask >> c) & 1) != 0 && cov[c * 5] > best { best = cov[c * 5]; for k: 0..<4 { l.d[k] = 0.0f32; } l.d[c] = 1.0f32; } }
+  for step: 0..<12 {
+    v: [4] f32; norm := 0.0f32;
+    for a: 0..<4 { for b: 0..<4 { v[a] += cov[a * 4 + b] * l.d[b]; } norm += v[a] * v[a]; }
+    if norm <= 1.0e-12f32 { break; }
+    norm = sqrt(norm); for a: 0..<4 { l.d[a] = v[a] / norm; }
+  }
+  l.lo = 1.0e30f32; l.hi = -1.0e30f32;
+  for i: 0..<n {
+    t := 0.0f32; for c: 0..<4 { t += (cast(f32) px[i * 4 + c] - l.m[c]) * l.d[c]; }
+    if t < l.lo { l.lo = t; } if t > l.hi { l.hi = t; }
+  }
+  return l;
+}
+// A point on the line, clamped to 0..255.
+te_at :: (l: TeLine, t: f32, c: int) -> f32 { v := l.m[c] + t * l.d[c]; return ifx v < 0.0f32 then 0.0f32 else ifx v > 255.0f32 then 255.0f32 else v; }
+#test "a block's line runs along its spread" {
+  px: [64] int; for i: 0..<16 { px[i * 4] = i * 10; px[i * 4 + 1] = 50; px[i * 4 + 2] = 255 - i * 10; px[i * 4 + 3] = 255; }
+  l := te_line(px[..], 16, 15);
+  #assert l.m[0] == 75.0f32 && l.m[1] == 50.0f32 && l.m[3] == 255.0f32;
+  #assert l.d[1] * l.d[1] < 1.0e-6f32 && l.d[3] * l.d[3] < 1.0e-6f32 && l.d[0] * l.d[2] < 0.0f32;
+  #assert te_round(te_at(l, l.lo, 0)) + te_round(te_at(l, l.hi, 0)) == 150 && te_round(te_at(l, l.lo, 2)) + te_round(te_at(l, l.hi, 2)) == 2 * 180;
+  #assert te_at(l, 1000.0f32, 0) == 255.0f32 || te_at(l, 1000.0f32, 0) == 0.0f32;
+  flat: [64] int; for i: 0..<16 { flat[i * 4] = 9; } f := te_line(flat[..], 16, 1); #assert f.lo == 0.0f32 && f.hi == 0.0f32 && f.d[0] == 1.0f32;
+}
+
+// Least squares for one channel: the endpoints a and b that best give x[i] = ((64 - w) a + w b) / 64.
+// ok is false when the weights don't span (all one weight).
+TeFit :: struct { ok: bool; a: f32; b: f32; }
+te_fit :: (px: []int, n: int, c: int, w: []int) -> TeFit {
+  aa := 0.0f32; ab := 0.0f32; bb := 0.0f32; ax := 0.0f32; bx := 0.0f32; f: TeFit;
+  for i: 0..<n {
+    t := cast(f32) w[i] / 64.0f32; s := 1.0f32 - t; x := cast(f32) px[i * 4 + c];
+    aa += s * s; ab += s * t; bb += t * t; ax += s * x; bx += t * x;
+  }
+  det := aa * bb - ab * ab;
+  if det < 1.0e-6f32 { return f; }
+  f.ok = true; f.a = (ax * bb - bx * ab) / det; f.b = (bx * aa - ax * ab) / det;
+  return f;
+}
+#test "the endpoint fit recovers a line exactly and refuses one weight" {
+  px: [64] int; w: [16] int; for i: 0..<16 { w[i] = (i % 5) * 16; px[i * 4] = (20 * (64 - w[i]) + 200 * w[i]) / 64; }
+  f := te_fit(px[..], 16, 0, w[..]); #assert f.ok && te_round(f.a) == 20 && te_round(f.b) == 200;
+  same: [16] int; for i: 0..<16 { same[i] = 32; } #assert !te_fit(px[..], 16, 0, same[..]).ok;
+}
+
+// ---- BC4 and BC5 -----------------------------------------------------------------------------
+
+// bcdec's palette for endpoints e0 and e1: eight levels when e0 > e1, else six and 0 and 255.
+te_bc4_palette :: (e0: int, e1: int, pal: []int) {
+  pal[0] = e0; pal[1] = e1;
+  if e0 > e1 { for i: 1..<7 { pal[i + 1] = ((7 - i) * e0 + i * e1) / 7; } }
+  else { for i: 1..<5 { pal[i + 1] = ((5 - i) * e0 + i * e1) / 5; } pal[6] = 0; pal[7] = 255; }
+}
+te_bc4_pick :: (pal: []int, v: int) -> int {
+  best := 0; be := 1 << 30;
+  for k: 0..<8 { d := pal[k] - v; if d * d < be { be = d * d; best = k; } }
+  return best;
+}
+// Channel c of 16 texels as one BC4 block into out[0..<8]: the error.
+te_bc4_encode :: (px: []int, c: int, out: []u8) -> int {
+  lo := 255; hi := 0;
+  for i: 0..<16 { v := px[i * 4 + c]; if v < lo { lo = v; } if v > hi { hi = v; } }
+  best := 1 << 40; b0 := hi; b1 := lo; pal: [8] int;
+  // endpoints tried a little inside the extremes, eight-level mode (e0 > e1); a flat block is e0 == e1
+  for d0: 0..<4 { for d1: 0..<4 {
+    e0 := hi - d0; e1 := lo + d1;
+    if e0 < e1 || (e0 == e1 && (d0 > 0 || d1 > 0)) { continue; }
+    te_bc4_palette(e0, e1, pal[..]); err := 0;
+    for i: 0..<16 { v := px[i * 4 + c]; d := pal[te_bc4_pick(pal[..], v)] - v; err += d * d; }
+    if err < best { best = err; b0 = e0; b1 = e1; }
+  } }
+  for i: 0..<8 { out[i] = 0; }
+  out[0] = cast(u8) b0; out[1] = cast(u8) b1; te_bc4_palette(b0, b1, pal[..]);
+  for i: 0..<16 { te_put(out, 16 + i * 3, te_bc4_pick(pal[..], px[i * 4 + c]), 3); }
+  return best;
+}
+te_bc4_decode :: (blk: []u8, px: []int, c: int) {
+  pal: [8] int; te_bc4_palette(cast(int) blk[0], cast(int) blk[1], pal[..]);
+  for i: 0..<16 { px[i * 4 + c] = pal[te_get(blk, 16 + i * 3, 3)]; }
+}
+#test "BC4 palettes are bcdec's, and a block round-trips within its levels" {
+  pal: [8] int; te_bc4_palette(210, 0, pal[..]); #assert pal[1] == 0 && pal[2] == 180 && pal[7] == 30;
+  te_bc4_palette(10, 60, pal[..]); #assert pal[2] == 20 && pal[5] == 50 && pal[6] == 0 && pal[7] == 255;
+  px: [64] int; for i: 0..<16 { px[i * 4 + 1] = 40 + i * 9; }
+  blk: [8] u8; err := te_bc4_encode(px[..], 1, blk[..]);
+  back: [64] int; te_bc4_decode(blk[..], back[..], 1);
+  #assert te_sse(px[..], back[..], 16, 2) == err && err < 16 * 49 && blk[0] > blk[1];
+  flat: [64] int; for i: 0..<16 { flat[i * 4] = 77; } e2 := te_bc4_encode(flat[..], 0, blk[..]); #assert e2 == 0 && blk[0] == 77 && blk[1] == 77;
+}
+// BC5: red then green, each a BC4 block.
+te_bc5_encode :: (px: []int, out: []u8) -> int { return te_bc4_encode(px, 0, out[0..<8]) + te_bc4_encode(px, 1, out[8..<16]); }
+te_bc5_decode :: (blk: []u8, px: []int) {
+  te_bc4_decode(blk[0..<8], px, 0); te_bc4_decode(blk[8..<16], px, 1);
+  for i: 0..<16 { px[i * 4 + 2] = 0; px[i * 4 + 3] = 255; }
+}
+#test "BC5 keeps red and green apart" {
+  px: [64] int; for i: 0..<16 { px[i * 4] = i * 16; px[i * 4 + 1] = 255 - i * 16; }
+  blk: [16] u8; err := te_bc5_encode(px[..], blk[..]); back: [64] int; te_bc5_decode(blk[..], back[..]);
+  #assert te_sse(px[..], back[..], 16, 3) == err && err < 16 * 2 * 150 && back[2] == 0 && back[3] == 255;
+}
+
+// ---- BC7 mode 6 ------------------------------------------------------------------------------
+
+TE_BC7_W :: [16] int.[0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64];
+te_bc7_mix :: (e0: int, e1: int, k: int) -> int { w := TE_BC7_W[k]; return ((64 - w) * e0 + w * e1 + 32) >> 6; }
+// Endpoint v (four channels) as seven bits and a shared p-bit: the codes and the p-bit with
+// the least error.
+TeBc7End :: struct { q: [4] int; p: int; }
+te_bc7_end :: (v: [4] f32) -> TeBc7End {
+  best: TeBc7End; be := 1.0e30f32;
+  for p: 0..<2 {
+    e: TeBc7End; e.p = p; err := 0.0f32;
+    for c: 0..<4 { q := te_clamp(te_round((v[c] - cast(f32) p) / 2.0f32), 0, 127); e.q[c] = q; d := cast(f32) (2 * q + p) - v[c]; err += d * d; }
+    if err < be { be = err; best = e; }
+  }
+  return best;
+}
+te_bc7_value :: (e: TeBc7End, c: int) -> int { return 2 * e.q[c] + e.p; }
+// The weights for endpoints a and b, each texel's nearest of the sixteen: the error.
+te_bc7_assign :: (px: []int, a: TeBc7End, b: TeBc7End, idx: []int) -> int {
+  pal: [64] int; for k: 0..<16 { for c: 0..<4 { pal[k * 4 + c] = te_bc7_mix(te_bc7_value(a, c), te_bc7_value(b, c), k); } }
+  total := 0;
+  for i: 0..<16 {
+    best := 0; be := 1 << 40;
+    for k: 0..<16 { e := 0; for c: 0..<4 { d := pal[k * 4 + c] - px[i * 4 + c]; e += d * d; } if e < be { be = e; best = k; } }
+    idx[i] = best; total += be;
+  }
+  return total;
+}
+// 16 texels as a mode 6 block into out[0..<16]: the error.
+te_bc7_encode :: (px: []int, out: []u8) -> int {
+  l := te_line(px, 16, 15);
+  v0: [4] f32; v1: [4] f32; for c: 0..<4 { v0[c] = te_at(l, l.lo, c); v1[c] = te_at(l, l.hi, c); }
+  best := 1 << 40; ba: TeBc7End; bb: TeBc7End; bi: [16] int; idx: [16] int; w: [16] int;
+  for step: 0..<4 {
+    a := te_bc7_end(v0); b := te_bc7_end(v1);
+    err := te_bc7_assign(px, a, b, idx[..]);
+    if err < best { best = err; ba = a; bb = b; for i: 0..<16 { bi[i] = idx[i]; } }
+    if err == 0 { break; }
+    for i: 0..<16 { w[i] = TE_BC7_W[idx[i]]; }
+    for c: 0..<4 { f := te_fit(px, 16, c, w[..]); if f.ok { v0[c] = ifx f.a < 0.0f32 then 0.0f32 else ifx f.a > 255.0f32 then 255.0f32 else f.a; v1[c] = ifx f.b < 0.0f32 then 0.0f32 else ifx f.b > 255.0f32 then 255.0f32 else f.b; } }
+  }
+  // the first texel's weight is stored in three bits: its top bit must be 0
+  if bi[0] >= 8 { t := ba; ba = bb; bb = t; for i: 0..<16 { bi[i] = 15 - bi[i]; } }
+  te_clear(out); te_put(out, 0, 64, 7);
+  for c: 0..<4 { te_put(out, 7 + c * 14, ba.q[c], 7); te_put(out, 14 + c * 14, bb.q[c], 7); }
+  te_put(out, 63, ba.p, 1); te_put(out, 64, bb.p, 1);
+  te_put(out, 65, bi[0], 3); for i: 1..<16 { te_put(out, 68 + (i - 1) * 4, bi[i], 4); }
+  return best;
+}
+// A mode 6 block's texels (false for any other mode).
+te_bc7_decode :: (blk: []u8, px: []int) -> bool {
+  if te_get(blk, 0, 7) != 64 { return false; }
+  p0 := te_get(blk, 63, 1); p1 := te_get(blk, 64, 1);
+  for i: 0..<16 {
+    k := ifx i == 0 then te_get(blk, 65, 3) else te_get(blk, 68 + (i - 1) * 4, 4);
+    for c: 0..<4 { e0 := te_get(blk, 7 + c * 14, 7) * 2 + p0; e1 := te_get(blk, 14 + c * 14, 7) * 2 + p1; px[i * 4 + c] = te_bc7_mix(e0, e1, k); }
+  }
+  return true;
+}
+#test "BC7 mode 6 round-trips a gradient closely, keeps the anchor rule, and refuses other modes" {
+  px: [64] int; for i: 0..<16 { px[i * 4] = 255 - i * 13; px[i * 4 + 1] = 30 + i * 5; px[i * 4 + 2] = 90; px[i * 4 + 3] = 255; }
+  blk: [16] u8; err := te_bc7_encode(px[..], blk[..]); back: [64] int;
+  #assert te_bc7_decode(blk[..], back[..]) && te_sse(px[..], back[..], 16, 15) == err && err < 16 * 4 * 9 && te_get(blk[..], 65, 3) < 8;
+  #assert (blk[0] & 127) == 64 && back[3] >= 254;
+  mix: [64] int; for i: 0..<16 { mix[i * 4] = ifx i % 2 == 0 then 0 else 255; mix[i * 4 + 3] = 255; }
+  e2 := te_bc7_encode(mix[..], blk[..]); #assert te_bc7_decode(blk[..], back[..]) && te_sse(mix[..], back[..], 16, 15) == e2 && e2 < 16 * 4;
+  rev: [64] int; for i: 0..<16 { rev[i * 4 + 2] = i * 16; rev[i * 4 + 3] = 128; }
+  e3 := te_bc7_encode(rev[..], blk[..]); #assert te_bc7_decode(blk[..], back[..]) && te_sse(rev[..], back[..], 16, 15) == e3 && te_get(blk[..], 65, 3) < 8;
+  other: [16] u8; other[0] = 32; #assert !te_bc7_decode(other[..], back[..]);
+  e := te_bc7_end([4] f32.[255.0f32, 1.0f32, 129.0f32, 255.0f32]); #assert e.p == 1 && te_bc7_value(e, 0) == 255 && te_bc7_value(e, 1) == 1;
+}
+
+// ---- ASTC ------------------------------------------------------------------------------------
+
+// One configuration: block bw by bh, weight grid gw by gh with wl levels (4 or 8), colour
+// endpoint mode cem (4: luminance-alpha, 8: RGB, 12: RGBA, all direct LDR) with cl levels
+// (64 or 256), and dual: a second weight plane for alpha (CEM 4's Y).
+TeAstc :: struct { bw: int; bh: int; gw: int; gh: int; wl: int; cem: int; cl: int; dual: bool; }
+te_wbits :: (levels: int) -> int { return ifx levels == 4 then 2 else 3; }
+te_cbits :: (levels: int) -> int { return ifx levels == 64 then 6 else 8; }
+te_values :: (cem: int) -> int { return ifx cem == 4 then 4 else ifx cem == 8 then 6 else 8; }
+te_planes :: (c: TeAstc) -> int { return ifx c.dual then 2 else 1; }
+te_weight_bits :: (c: TeAstc) -> int { return c.gw * c.gh * te_planes(c) * te_wbits(c.wl); }
+
+// The 11-bit block mode, as the specification lays it out (bits [1:0] nonzero): R (the weight
+// range: 7 for 8 levels, 4 for 4) in bits 4 and [1:0], the grid in A (bits 6:5) and B (8:7)
+// with the layout in bits 3:2, H (bit 9) 0, D (bit 10) the dual plane.
+te_mode :: (c: TeAstc) -> int {
+  r := ifx c.wl == 8 then 7 else 4;
+  m := ((r & 1) << 4) | ((r >> 1) & 3);
+  if c.gw >= 4 && c.gw <= 7 && c.gh >= 2 && c.gh <= 5 { m |= ((c.gw - 4) << 7) | ((c.gh - 2) << 5); }   // layout 0: W = B + 4, H = A + 2
+  else { m |= (3 << 2) | (1 << 8) | ((c.gw - 2) << 7) | ((c.gh - 2) << 5); }                       // layout 3, bit 8 set: W = B + 2 (B one bit), H = A + 2
+  if c.dual { m |= 1 << 10; }
+  return m;
+}
+// The block mode read back as astcenc's decode_block_mode_2d reads it, for the cases te_mode
+// writes: the grid, the levels and the dual plane (gw 0 for a mode outside them).
+TeModeRead :: struct { gw: int; gh: int; wl: int; dual: bool; }
+te_mode_read :: (m: int) -> TeModeRead {
+  r: TeModeRead;
+  if (m & 3) == 0 || ((m >> 9) & 1) != 0 { return r; }
+  q := ((m >> 4) & 1) | ((m & 3) << 1); a := (m >> 5) & 3; b := (m >> 7) & 3;
+  layout := (m >> 2) & 3;
+  if layout == 0 { r.gw = b + 4; r.gh = a + 2; }
+  else if layout == 3 && (m & 256) != 0 { r.gw = (b & 1) + 2; r.gh = a + 2; }
+  else { return r; }
+  levels := [6] int.[2, 3, 4, 5, 6, 8];   // q >= 2: bits [1:0] are nonzero
+  r.wl = levels[q - 2]; r.dual = ((m >> 10) & 1) != 0;
+  return r;
+}
+
+TE_RGB4 :: TeAstc.{bw = 4, bh = 4, gw = 4, gh = 4, wl = 8, cem = 8, cl = 256};
+TE_RGBA4 :: TeAstc.{bw = 4, bh = 4, gw = 4, gh = 4, wl = 4, cem = 12, cl = 256};
+TE_NORMAL4 :: TeAstc.{bw = 4, bh = 4, gw = 4, gh = 4, wl = 4, cem = 4, cl = 256, dual = true};
+TE_NORMAL4_FINE :: TeAstc.{bw = 4, bh = 4, gw = 3, gh = 3, wl = 8, cem = 4, cl = 256, dual = true};
+TE_RGB6 :: TeAstc.{bw = 6, bh = 6, gw = 4, gh = 4, wl = 8, cem = 8, cl = 256};
+TE_RGB6_FINE :: TeAstc.{bw = 6, bh = 6, gw = 5, gh = 5, wl = 8, cem = 8, cl = 64};
+TE_RGBA6 :: TeAstc.{bw = 6, bh = 6, gw = 4, gh = 4, wl = 4, cem = 12, cl = 256};
+TE_NORMAL6 :: TeAstc.{bw = 6, bh = 6, gw = 4, gh = 4, wl = 4, cem = 4, cl = 256, dual = true};
+TE_NORMAL6_FINE :: TeAstc.{bw = 6, bh = 6, gw = 3, gh = 3, wl = 8, cem = 4, cl = 256, dual = true};
+
+// The colour range a block's remaining bits hold, as the decoder works it out: the largest of
+// the binary ranges this encoder writes (it never writes a configuration that needs trits or
+// quints); 0 when even 64 levels don't fit or a larger trit or quint range would.
+te_colour_levels :: (c: TeAstc) -> int {
+  left := 128 - 17 - te_weight_bits(c) - (ifx c.dual then 2 else 0);
+  n := te_values(c.cem);
+  if 8 * n <= left { return 256; }
+  // 80 levels (a quint and four bits) take 4n + ceil(7n / 3) bits; between 64 and 256 the trit and quint ranges sit
+  if 4 * n + (7 * n + 2) / 3 <= left { return 0; }
+  if 6 * n <= left { return 64; }
+  return 0;
+}
+#test "every configuration's block mode reads back, and its colour range is the one written" {
+  cs := [9] TeAstc.[TE_RGB4, TE_RGBA4, TE_NORMAL4, TE_NORMAL4_FINE, TE_RGB6, TE_RGB6_FINE, TE_RGBA6, TE_NORMAL6, TE_NORMAL6_FINE];
+  for c: cs {
+    r := te_mode_read(te_mode(c));
+    #assert r.gw == c.gw && r.gh == c.gh && r.wl == c.wl && r.dual == c.dual && te_colour_levels(c) == c.cl;
+    wb := te_weight_bits(c); #assert wb >= 24 && wb <= 96 && c.gw * c.gh * te_planes(c) <= 64;
+  }
+  #assert te_mode(TE_RGB4) == 0x53 && te_mode(TE_NORMAL4) == (0x42 | 1024) && te_mode(TE_NORMAL6_FINE) == (0x13 | 12 | 256 | 128 | 32 | 1024);
+  #assert te_mode_read(0).gw == 0 && te_mode_read(0x53 | 512).gw == 0 && te_mode_read(0x53 | 4).gw == 0 && te_mode_read(0x53 | 12).gw == 0;
+  two := te_mode_read(0x40 | 1); #assert two.gw == 4 && two.wl == 2 && !two.dual;
+  dual := TeAstc.{bw = 4, bh = 4, gw = 4, gh = 4, wl = 4, cem = 8, cl = 0, dual = true};
+  #assert te_colour_levels(dual) == 0;     // 66 bits of weights and selector leave 45: 80 levels (quints) fit, so the decoder reads more than 64
+  tiny := TeAstc.{bw = 4, bh = 4, gw = 4, gh = 4, wl = 8, cem = 12, cl = 0};
+  #assert te_colour_levels(tiny) == 0;     // 48 bits of weights leave 63 for 8 values: 256 levels need 64, and 80 would fit
+  full := TeAstc.{bw = 6, bh = 6, gw = 5, gh = 5, wl = 8, cem = 12, cl = 0};
+  #assert te_colour_levels(full) == 0;     // 75 bits leave 36 for 8 values: not even 64 levels
+}
+
+// Unquantized weights (0..64) and colours (0..255), binary ranges by bit replication.
+te_wunq :: (q: int, levels: int) -> int {
+  v := ifx levels == 4 then (q << 4) | (q << 2) | q else (q << 3) | q;
+  return ifx v > 32 then v + 1 else v;
+}
+te_cunq :: (q: int, levels: int) -> int { return ifx levels == 64 then (q << 2) | (q >> 4) else q; }
+te_cquant :: (v: f32, levels: int) -> int {
+  if levels == 256 { return te_clamp(te_round(v), 0, 255); }
+  g := te_clamp(te_round(v * 63.0f32 / 255.0f32), 0, 63); best := g; be := 1.0e30f32;
+  for d: -1..<2 { q := te_clamp(g + d, 0, 63); e := cast(f32) te_cunq(q, 64) - v; if e * e < be { be = e * e; best = q; } }
+  return best;
+}
+te_wquant :: (t: f32, levels: int) -> int {
+  best := 0; be := 1.0e30f32;
+  for q: 0..<levels { e := cast(f32) te_wunq(q, levels) - t; if e * e < be { be = e * e; best = q; } }
+  return best;
+}
+#test "weights and colours unquantize as the specification replicates their bits" {
+  #assert te_wunq(0, 8) == 0 && te_wunq(1, 8) == 9 && te_wunq(6, 8) == 55 && te_wunq(7, 8) == 64 && te_wunq(3, 8) == 27 && te_wunq(4, 8) == 37;
+  #assert te_wunq(0, 4) == 0 && te_wunq(1, 4) == 21 && te_wunq(2, 4) == 43 && te_wunq(3, 4) == 64;
+  #assert te_cunq(63, 64) == 255 && te_cunq(1, 64) == 4 && te_cunq(32, 64) == 130 && te_cunq(200, 256) == 200;
+  #assert te_cquant(130.0f32, 64) == 32 && te_cquant(254.0f32, 64) == 63 && te_cquant(-3.0f32, 256) == 0 && te_cquant(300.0f32, 256) == 255 && te_cquant(2.0f32, 64) == 0 && te_cquant(3.0f32, 64) == 1;
+  #assert te_wquant(30.0f32, 8) == 3 && te_wquant(64.0f32, 4) == 3 && te_wquant(0.0f32, 8) == 0 && te_wquant(33.0f32, 4) == 2;
+}
+
+// The weight of each texel from a gw by gh grid of unquantized weights (one plane), by the
+// specification's bilinear infill (its Ds/Dt decimation, in sixteenths).
+te_infill :: (c: TeAstc, grid: []int, plane: int, planes: int, out: []int) {
+  ds := (1024 + c.bw / 2) / (c.bw - 1); dt := (1024 + c.bh / 2) / (c.bh - 1);
+  for t: 0..<c.bh { for s: 0..<c.bw {
+    gs := (ds * s * (c.gw - 1) + 32) >> 6; gt := (dt * t * (c.gh - 1) + 32) >> 6;
+    js := gs >> 4; fs := gs & 15; jt := gt >> 4; ft := gt & 15;
+    w11 := (fs * ft + 8) >> 4; w10 := ft - w11; w01 := fs - w11; w00 := 16 - fs - ft + w11;
+    v := grid[(jt * c.gw + js) * planes + plane] * w00;
+    if w01 != 0 { v += grid[(jt * c.gw + js + 1) * planes + plane] * w01; }
+    if w10 != 0 { v += grid[((jt + 1) * c.gw + js) * planes + plane] * w10; }
+    if w11 != 0 { v += grid[((jt + 1) * c.gw + js + 1) * planes + plane] * w11; }
+    out[t * c.bw + s] = (v + 8) >> 4;
+  } }
+}
+#test "a full grid is its own weights, and a smaller one blends between its points" {
+  g: [16] int; for i: 0..<16 { g[i] = i * 4; } w: [36] int;
+  te_infill(TE_RGB4, g[..], 0, 1, w[..]); for i: 0..<16 { #assert w[i] == i * 4; }
+  te_infill(TE_RGB6, g[..], 0, 1, w[..]);
+  #assert w[0] == 0 && w[5] == 12 && w[30] == 48 && w[35] == 60 && w[1] > 0 && w[1] < 4;
+  two: [32] int; for i: 0..<16 { two[i * 2] = 64; two[i * 2 + 1] = i; } te_infill(TE_NORMAL4, two[..], 1, 2, w[..]); #assert w[0] == 0 && w[15] == 15;
+}
+
+// A configuration's texels from its colour values (quantized) and grid weights (quantized,
+// planes interleaved). srgb: the sRGB decode profile (8-bit endpoints widened with 0x80, the
+// result's top byte); otherwise the linear one (widened by 257, rounded to 8 bits).
+te_astc_texels :: (c: TeAstc, values: []int, grid: []int, srgb: bool, px: []int) {
+  n := te_values(c.cem); v: [8] int; for i: 0..<n { v[i] = te_cunq(values[i], c.cl); }
+  e0: [4] int; e1: [4] int;
+  if c.cem == 4 { e0 = [4] int.[v[0], v[0], v[0], v[2]]; e1 = [4] int.[v[1], v[1], v[1], v[3]]; }
+  else {
+    a0 := ifx c.cem == 12 then v[6] else 255; a1 := ifx c.cem == 12 then v[7] else 255;
+    if v[1] + v[3] + v[5] >= v[0] + v[2] + v[4] { e0 = [4] int.[v[0], v[2], v[4], a0]; e1 = [4] int.[v[1], v[3], v[5], a1]; }
+    else { e0 = [4] int.[(v[1] + v[5]) >> 1, (v[3] + v[5]) >> 1, v[5], a1]; e1 = [4] int.[(v[0] + v[4]) >> 1, (v[2] + v[4]) >> 1, v[4], a0]; }
+  }
+  planes := te_planes(c); ug: [128] int;
+  for i: 0..<c.gw * c.gh * planes { ug[i] = te_wunq(grid[i], c.wl); }
+  w0: [36] int; w1: [36] int; te_infill(c, ug[..], 0, planes, w0[..]);
+  if c.dual { te_infill(c, ug[..], 1, planes, w1[..]); }
+  for i: 0..<c.bw * c.bh { for ch: 0..<4 {
+    w := ifx c.dual && ch == 3 then w1[i] else w0[i];
+    a := ifx srgb then (e0[ch] << 8) | 128 else e0[ch] * 257; b := ifx srgb then (e1[ch] << 8) | 128 else e1[ch] * 257;
+    x := (a * (64 - w) + b * w + 32) >> 6;
+    px[i * 4 + ch] = ifx srgb then x >> 8 else (x * 255 + 32767) / 65535;
+  } }
+}
+// Which channels a configuration's error counts: RGB for CEM 8, RGBA for 12, X and Y (red and alpha) for normals.
+te_mask :: (c: TeAstc) -> int { return ifx c.cem == 4 then 9 else ifx c.cem == 8 then 7 else 15; }
+
+// The block's 128 bits for colour values and grid weights.
+te_astc_pack :: (c: TeAstc, values: []int, grid: []int, out: []u8) {
+  te_clear(out); te_put(out, 0, te_mode(c), 11); te_put(out, 13, c.cem, 4);
+  cb := te_cbits(c.cl); for i: 0..<te_values(c.cem) { te_put(out, 17 + i * cb, values[i], cb); }
+  wb := te_wbits(c.wl); count := c.gw * c.gh * te_planes(c);
+  for k: 0..<count { for b: 0..<wb { if ((grid[k] >> b) & 1) != 0 { te_put(out, 127 - (k * wb + b), 1, 1); } } }
+  if c.dual { te_put(out, 128 - count * wb - 2, 3, 2); }
+}
+// A block written by te_astc_pack read back into its configuration's values and weights
+// (false when its block mode or colour mode is not this configuration's).
+te_astc_unpack :: (c: TeAstc, blk: []u8, values: []int, grid: []int) -> bool {
+  if te_get(blk, 0, 11) != te_mode(c) || te_get(blk, 11, 2) != 0 || te_get(blk, 13, 4) != c.cem { return false; }
+  cb := te_cbits(c.cl); for i: 0..<te_values(c.cem) { values[i] = te_get(blk, 17 + i * cb, cb); }
+  wb := te_wbits(c.wl); count := c.gw * c.gh * te_planes(c);
+  for k: 0..<count { v := 0; for b: 0..<wb { v |= te_get(blk, 127 - (k * wb + b), 1) << b; } grid[k] = v; }
+  return !c.dual || te_get(blk, 128 - count * wb - 2, 2) == 3;
+}
+#test "an ASTC block packs and unpacks, weights from the top bit down" {
+  vals := [8] int.[1, 2, 3, 4, 5, 6, 7, 8]; g: [32] int; for i: 0..<32 { g[i] = i % 4; }
+  blk: [16] u8; te_astc_pack(TE_NORMAL4, vals[..], g[..], blk[..]);
+  v2: [8] int; g2: [32] int; #assert te_astc_unpack(TE_NORMAL4, blk[..], v2[..], g2[..]);
+  for i: 0..<4 { #assert v2[i] == vals[i]; } for i: 0..<32 { #assert g2[i] == g[i]; }
+  #assert te_get(blk[..], 124, 2) == 2 && te_get(blk[..], 64, 2) == 3 && te_get(blk[..], 62, 2) == 3 && te_get(blk[..], 17, 8) == 1;
+  #assert !te_astc_unpack(TE_RGB4, blk[..], v2[..], g2[..]);
+  f: [25] int; for i: 0..<25 { f[i] = 7 - i % 8; } v6 := [6] int.[63, 0, 32, 1, 5, 9];
+  te_astc_pack(TE_RGB6_FINE, v6[..], f[..], blk[..]); #assert te_astc_unpack(TE_RGB6_FINE, blk[..], v2[..], g2[..]) && v2[0] == 63 && v2[5] == 9 && g2[24] == f[24] && g2[0] == 7;
+  blk[1] = blk[1] | 8; #assert !te_astc_unpack(TE_RGB6_FINE, blk[..], v2[..], g2[..]);
+}
+
+// The texels a configuration gives, from a block it packed (false when it isn't one).
+te_astc_decode :: (c: TeAstc, blk: []u8, srgb: bool, px: []int) -> bool {
+  v: [8] int; g: [128] int;
+  if !te_astc_unpack(c, blk, v[..], g[..]) { return false; }
+  te_astc_texels(c, v[..], g[..], srgb, px); return true;
+}
+
+// Ideal grid weights for per-texel targets (0..64): each grid point the infill-weighted mean of
+// the texels it reaches. The decoder blends the grid back; the search after this corrects it.
+te_grid_fit :: (c: TeAstc, target: []int, plane: int, planes: int, grid: []int) {
+  n := c.gw * c.gh; sum: [36] int; wt: [36] int;
+  for j: 0..<n {
+    one: [128] int; one[j * planes + plane] = 1024;
+    reach: [36] int; te_infill(c, one[..], plane, planes, reach[..]);
+    for i: 0..<c.bw * c.bh { sum[j] += reach[i] * target[i]; wt[j] += reach[i]; }
+  }
+  for j: 0..<n { grid[j * planes + plane] = te_wquant(ifx wt[j] > 0 then cast(f32) sum[j] / cast(f32) wt[j] else 32.0f32, c.wl); }
+}
+
+// One configuration's best block for texels px: its error, the block in out.
+te_astc_try :: (c: TeAstc, px: []int, srgb: bool, out: []u8) -> int {
+  n := c.bw * c.bh; mask := te_mask(c); planes := te_planes(c); nv := te_values(c.cem);
+  // endpoints: per channel for the dual plane's two lines, else the block's principal line
+  e0: [4] f32; e1: [4] f32;
+  if c.dual {
+    for ch: 0..<4 { lo := 255; hi := 0; src := ifx ch == 3 then 1 else 0; for i: 0..<n { x := px[i * 4 + src]; if x < lo { lo = x; } if x > hi { hi = x; } } e0[ch] = cast(f32) lo; e1[ch] = cast(f32) hi; }
+  } else {
+    l := te_line(px, n, mask); for ch: 0..<4 { e0[ch] = te_at(l, l.lo, ch); e1[ch] = te_at(l, l.hi, ch); }
+  }
+  // a normal block's values compare X and Y: the work copy has Y in alpha
+  work: [144] int; for i: 0..<n { for ch: 0..<4 { work[i * 4 + ch] = px[i * 4 + ch]; } if c.dual { work[i * 4 + 3] = px[i * 4 + 1]; } }
+  best := 1 << 40; values: [8] int; grid: [128] int; dec: [144] int; tw: [36] int;
+  for step: 0..<3 {
+    // colour values: X and Y as luminance and alpha; RGB(A) direct, ordered so the decoder never blue-contracts
+    if c.cem == 4 { values[0] = te_cquant(e0[0], c.cl); values[1] = te_cquant(e1[0], c.cl); values[2] = te_cquant(e0[3], c.cl); values[3] = te_cquant(e1[3], c.cl); }
+    else {
+      for ch: 0..<3 { values[ch * 2] = te_cquant(e0[ch], c.cl); values[ch * 2 + 1] = te_cquant(e1[ch], c.cl); }
+      if nv == 8 { values[6] = te_cquant(e0[3], c.cl); values[7] = te_cquant(e1[3], c.cl); }
+      s0 := 0; s1 := 0; for ch: 0..<3 { s0 += te_cunq(values[ch * 2], c.cl); s1 += te_cunq(values[ch * 2 + 1], c.cl); }
+      if s1 < s0 { for k: 0..<nv / 2 { t := values[k * 2]; values[k * 2] = values[k * 2 + 1]; values[k * 2 + 1] = t; } }
+    }
+    // the decoded endpoints, then each texel's ideal weight on each plane
+    ends: [16] int; dummy: [128] int; for k: 0..<128 { dummy[k] = 0; } te_astc_texels(c, values[..], dummy[..], srgb, dec[..]);
+    for ch: 0..<4 { ends[ch] = dec[ch]; }
+    for k: 0..<128 { dummy[k] = c.wl - 1; } te_astc_texels(c, values[..], dummy[..], srgb, dec[..]);
+    for ch: 0..<4 { ends[4 + ch] = dec[ch]; }
+    for p: 0..<planes {
+      for i: 0..<n {
+        num := 0; den := 0;
+        for ch: 0..<4 {
+          if ((mask >> ch) & 1) == 0 || (c.dual && ((p == 0) != (ch != 3))) { continue; }
+          d := ends[4 + ch] - ends[ch]; num += (work[i * 4 + ch] - ends[ch]) * d; den += d * d;
+        }
+        tw[i] = ifx den == 0 then 0 else te_clamp((num * 64 + den / 2) / den, 0, 64);
+      }
+      te_grid_fit(c, tw[..], p, planes, grid[..]);
+    }
+    // grid points nudged one level at a time while that lowers the error
+    te_astc_texels(c, values[..], grid[..], srgb, dec[..]); err := te_sse(work[..], dec[..], n, mask);
+    for pass: 0..<2 { for k: 0..<c.gw * c.gh * planes {
+      was := grid[k];
+      for d: -1..<2 {
+        q := was + d; if d == 0 || q < 0 || q >= c.wl { continue; }
+        grid[k] = q; te_astc_texels(c, values[..], grid[..], srgb, dec[..]); e := te_sse(work[..], dec[..], n, mask);
+        if e < err { err = e; was = q; }
+      }
+      grid[k] = was;
+    } }
+    if err < best { best = err; te_astc_pack(c, values[..], grid[..], out); }
+    if err == 0 { break; }
+    // endpoints refitted to the weights the decoder will use
+    ug: [128] int; for k: 0..<c.gw * c.gh * planes { ug[k] = te_wunq(grid[k], c.wl); }
+    w: [36] int;
+    // a fit's a is the weight-0 end (the even values), b the weight-64 end, as written
+    for ch: 0..<4 {
+      if ((mask >> ch) & 1) == 0 { continue; }
+      te_infill(c, ug[..], ifx c.dual && ch == 3 then 1 else 0, planes, w[..]);
+      f := te_fit(work[..], n, ch, w[..]);
+      if f.ok {
+        e0[ch] = ifx f.a < 0.0f32 then 0.0f32 else ifx f.a > 255.0f32 then 255.0f32 else f.a;
+        e1[ch] = ifx f.b < 0.0f32 then 0.0f32 else ifx f.b > 255.0f32 then 255.0f32 else f.b;
+      }
+    }
+  }
+  return best;
+}
+#test "each ASTC configuration round-trips a smooth block closely" #steps 60000000 {
+  px: [144] int;
+  for i: 0..<36 { t := (i % 6) * 6 + i / 6; px[i * 4] = 40 + t * 5; px[i * 4 + 1] = 200 - t * 4; px[i * 4 + 2] = 90 + t; px[i * 4 + 3] = 255; }
+  cs := [3] TeAstc.[TE_RGB6, TE_RGB6_FINE, TE_RGBA6];
+  for c: cs {
+    blk: [16] u8; e := te_astc_try(c, px[..], false, blk[..]); back: [144] int;
+    #assert te_astc_decode(c, blk[..], false, back[..]) && te_sse(px[..], back[..], 36, te_mask(c)) == e && e < 36 * 4 * 36;
+  }
+  q: [64] int; for i: 0..<16 { q[i * 4] = 255 - i * 12; q[i * 4 + 1] = 10 + i * 9; q[i * 4 + 2] = 128; q[i * 4 + 3] = 100 + i * 6; }
+  ds := [2] TeAstc.[TE_RGB4, TE_RGBA4];
+  for c: ds {
+    blk: [16] u8; e := te_astc_try(c, q[..], true, blk[..]); back: [64] int;
+    #assert te_astc_decode(c, blk[..], true, back[..]) && te_sse(q[..], back[..], 16, te_mask(c)) == e && e < 16 * 4 * 100;
+  }
+}
+#test "a normal block keeps X and Y on their own planes" #steps 40000000 {
+  px: [64] int; for i: 0..<16 { px[i * 4] = 20 + (i % 4) * 60; px[i * 4 + 1] = 230 - (i / 4) * 60; px[i * 4 + 2] = 255; px[i * 4 + 3] = 255; }
+  blk: [16] u8; e := te_astc_try(TE_NORMAL4, px[..], false, blk[..]); back: [64] int;
+  #assert te_astc_decode(TE_NORMAL4, blk[..], false, back[..]) && e < 16 * 2 * 9;
+  d := 0; for i: 0..<16 { dx := back[i * 4] - px[i * 4]; dy := back[i * 4 + 3] - px[i * 4 + 1]; d += dx * dx + dy * dy; } #assert d == e;
+}
+
+// ---- whole blocks, by format -----------------------------------------------------------------
+
+// The block for texels px (bw by bh as the format has them) into out[0..<16]: its error.
+te_encode_block :: (format: int, px: []int, srgb: bool, out: []u8) -> int {
+  if format == TE_BC7 { return te_bc7_encode(px, out); }
+  if format == TE_BC5 { return te_bc5_encode(px, out); }
+  n := ifx te_block_w(format) == 6 then 36 else 16;
+  cs: [2] TeAstc; k := 0;
+  if format == TE_ASTC4_NORMAL { cs[0] = TE_NORMAL4; cs[1] = TE_NORMAL4_FINE; k = 2; }
+  else if format == TE_ASTC6_NORMAL { cs[0] = TE_NORMAL6; cs[1] = TE_NORMAL6_FINE; k = 2; }
+  else {
+    opaque := true; for i: 0..<n { if px[i * 4 + 3] != 255 { opaque = false; } }
+    if format == TE_ASTC4 { cs[0] = ifx opaque then TE_RGB4 else TE_RGBA4; k = 1; }
+    else if opaque { cs[0] = TE_RGB6; cs[1] = TE_RGB6_FINE; k = 2; }
+    else { cs[0] = TE_RGBA6; k = 1; }
+  }
+  best := 1 << 40; tmp: [16] u8;
+  for j: 0..<k { e := te_astc_try(cs[j], px, srgb, tmp[..]); if e < best { best = e; for b: 0..<16 { out[b] = tmp[b]; } } }
+  return best;
+}
+// A block back into texels (false when it isn't one this encoder writes).
+te_decode_block :: (format: int, blk: []u8, srgb: bool, px: []int) -> bool {
+  if format == TE_BC7 { return te_bc7_decode(blk, px); }
+  if format == TE_BC5 { te_bc5_decode(blk, px); return true; }
+  cs := [9] TeAstc.[TE_RGB4, TE_RGBA4, TE_NORMAL4, TE_NORMAL4_FINE, TE_RGB6, TE_RGB6_FINE, TE_RGBA6, TE_NORMAL6, TE_NORMAL6_FINE];
+  b := te_block_w(format);
+  for c: cs {
+    if c.bw != b || (c.cem == 4) != (format == TE_ASTC4_NORMAL || format == TE_ASTC6_NORMAL) { continue; }
+    if te_astc_decode(c, blk, srgb, px) {
+      // a normal's texels as BC5 gives them: X red, Y green
+      if c.cem == 4 { for i: 0..<c.bw * c.bh { px[i * 4 + 1] = px[i * 4 + 3]; px[i * 4 + 2] = 0; px[i * 4 + 3] = 255; } }
+      return true;
+    }
+  }
+  return false;
+}
+#test "blocks by format choose their configuration and decode" #steps 200000000 {
+  px: [144] int; for i: 0..<36 { px[i * 4] = (i * 7) % 256; px[i * 4 + 1] = 100; px[i * 4 + 2] = 50 + i; px[i * 4 + 3] = 255; }
+  fs := [4] int.[TE_BC7, TE_BC5, TE_ASTC4, TE_ASTC6];
+  for f: fs {
+    blk: [16] u8; e := te_encode_block(f, px[..], false, blk[..]); back: [144] int;
+    #assert te_decode_block(f, blk[..], false, back[..]) && e >= 0;
+  }
+  a: [144] int; for i: 0..<144 { a[i] = px[i]; } for i: 0..<16 { a[i * 4 + 3] = 128; }
+  blk: [16] u8; _ := te_encode_block(TE_ASTC4, a[..], false, blk[..]); #assert te_get(blk[..], 13, 4) == 12;
+  _ = te_encode_block(TE_ASTC4, px[..], false, blk[..]); #assert te_get(blk[..], 13, 4) == 8;
+  for i: 0..<36 { a[i * 4 + 3] = 128; } _ = te_encode_block(TE_ASTC6, a[..], false, blk[..]); #assert te_get(blk[..], 13, 4) == 12;
+  n: [144] int; for i: 0..<36 { n[i * 4] = 128 + (i % 6) * 10; n[i * 4 + 1] = 128 - (i / 6) * 10; n[i * 4 + 3] = 255; }
+  nf := [2] int.[TE_ASTC4_NORMAL, TE_ASTC6_NORMAL];
+  for f: nf {
+    e := te_encode_block(f, n[..], false, blk[..]); back: [144] int;
+    #assert te_get(blk[..], 13, 4) == 4 && te_decode_block(f, blk[..], false, back[..]) && back[1] > 60 && back[3] == 255 && e < 36 * 2 * 25;
+  }
+  junk: [16] u8; back: [144] int; #assert !te_decode_block(TE_ASTC4, junk[..], false, back[..]) && !te_decode_block(TE_BC7, junk[..], false, back[..]);
+}
+
+// A w by h RGBA8 image into blocks, row by row (out at least te_image_bytes): the squared error.
+te_encode_image :: (format: int, img: []u8, w: int, h: int, srgb: bool, out: []u8) -> int {
+  b := te_block_w(format); bx := (w + b - 1) / b; by := (h + b - 1) / b; err := 0; px: [144] int;
+  for y: 0..<by { for x: 0..<bx {
+    te_fetch(img, w, h, x * b, y * b, b, b, px[..]);
+    at := (y * bx + x) * 16; err += te_encode_block(format, px[..], srgb, out[at..<at + 16]);
+  } }
+  return err;
+}
+// Blocks back into a w by h RGBA8 image with this file's decoders (false on a block it can't read).
+te_decode_image :: (format: int, blocks: []u8, w: int, h: int, srgb: bool, img: []u8) -> bool {
+  b := te_block_w(format); bx := (w + b - 1) / b; by := (h + b - 1) / b; px: [144] int;
+  for y: 0..<by { for x: 0..<bx {
+    at := (y * bx + x) * 16;
+    if !te_decode_block(format, blocks[at..<at + 16], srgb, px[..]) { return false; }
+    te_store(img, w, h, x * b, y * b, b, b, px[..]);
+  } }
+  return true;
+}
+#test "an image round-trips through every format, edges included" #steps 200000000 {
+  w := 9; h := 7; img: [9 * 7 * 4] u8;
+  for i: 0..<w * h { v := i % w + i / w; img[i * 4] = cast(u8) (20 + v * 10); img[i * 4 + 1] = cast(u8) (200 - v * 8); img[i * 4 + 2] = 77; img[i * 4 + 3] = 255; }
+  fs := [6] int.[TE_BC7, TE_BC5, TE_ASTC4, TE_ASTC6, TE_ASTC4_NORMAL, TE_ASTC6_NORMAL];
+  for f: fs {
+    blocks: [1024] u8; n := te_image_bytes(f, w, h); _ := te_encode_image(f, img[..], w, h, false, blocks[0..<n]);
+    back: [9 * 7 * 4] u8; #assert te_decode_image(f, blocks[0..<n], w, h, false, back[..]);
+    d := 0; for i: 0..<w * h { dg := cast(int) back[i * 4 + 1] - cast(int) img[i * 4 + 1]; d += dg * dg; }
+    #assert d < w * h * 64;
+  }
+  #assert te_image_bytes(TE_ASTC6, w, h) == 4 * 16 && te_image_bytes(TE_BC7, w, h) == 6 * 16;
+  bad: [64] u8; back: [9 * 7 * 4] u8; #assert !te_decode_image(TE_BC7, bad[..], 4, 4, false, back[..]);
+}
+
+// ---- pinned blocks ---------------------------------------------------------------------------
+
+// A test block: a line of colour along a direction the seed picks, plus a seeded wobble (LCG),
+// alpha opaque or, with alpha, a second ramp. Real layers look like this, not like the clean
+// ramps above; pinning what the encoders make of them holds every search step in place.
+te_fixture :: (seed: int, n: int, alpha: bool, px: []int) {
+  r := (seed * 2654435761 + 12345) % 2147483648;
+  next := (r >> 8) % 256; base := [4] int.[next, (next * 7 + 40) % 256, (next * 13 + 90) % 256, 255];
+  dir := [3] int.[seed % 5 - 2, (seed * 3) % 7 - 3, (seed * 5) % 9 - 4];
+  for i: 0..<n {
+    r = (r * 1103515245 + 12345) % 2147483648;
+    for c: 0..<3 { px[i * 4 + c] = te_clamp(base[c] + dir[c] * i * 4 + (r >> (8 + c * 5)) % 25 - 12, 0, 255); }
+    px[i * 4 + 3] = ifx alpha then te_clamp(30 + i * 6 + (r >> 20) % 9, 0, 255) else 255;
+  }
+}
+te_hash :: (blk: []u8) -> int { h := 7; for b: blk { h = (h * 31 + cast(int) b) % 1000000007; } return h; }
+#test "the encoders make the same blocks of seeded layer-like texels as when they were pinned" #steps 1200000000 {
+  // seed, alpha, format: the error and a hash of the block, as metaverse-engine/tools/texture-encode.coax
+  // check measured them through bcdec and astcenc (docs/verification/textures-2026-11-07/)
+  want := [216] int.[
+    2097, 476340896, 350, 694005871, 3055, 967382496, 3782, 782167796, 638, 32515745, 2372, 153248164,
+    2891, 458658080, 8468, 272950158, 49496, 150146852, 1203, 503343349, 164, 972188661, 1348, 846036664,
+    4540, 819621335, 705, 136979298, 3916, 908494535, 1982, 391217892, 3433, 665235311, 12164, 855843575,
+    1684, 839691806, 720, 119597815, 1977, 141565375, 4354, 399479091, 775, 11989876, 3133, 384777817,
+    1816, 730942032, 4508, 700423799, 25876, 839765436, 1684, 164259174, 128, 60739112, 2142, 403375088,
+    6521, 935035658, 392, 153522695, 3350, 810195236, 1996, 525178081, 5441, 53333695, 24062, 926561734,
+    3934, 616891216, 236, 203688859, 4428, 209036541, 21662, 351218014, 982, 733878641, 7060, 886099478,
+    4101, 960563376, 7883, 35181028, 39007, 877482836, 3848, 310785328, 312, 845015396, 4064, 951259735,
+    8018, 718308975, 459, 424131579, 1785, 207453319, 5057, 160143944, 6290, 778770500, 32494, 284832935,
+    999, 557064663, 76, 479697590, 1075, 980954673, 3476, 418892349, 233, 231274686, 1705, 460331928,
+    1475, 872680157, 2734, 492557746, 13798, 688818213, 2348, 739562547, 657, 240981731, 3881, 996778051,
+    7339, 859205052, 761, 25662545, 4200, 354412964, 2583, 362490565, 11203, 863674950, 43422, 662087635,
+    710, 127695027, 9, 972240579, 732, 340212073, 2011, 26578173, 57, 582356704, 666, 488202360,
+    1173, 305027532, 2009, 636660057, 6791, 98426689, 6294, 286809562, 703, 535764062, 6950, 725926610,
+    9941, 338000072, 1663, 793345426, 3847, 792067747, 6967, 813538459, 11087, 173263099, 48518, 151492558,
+    1207, 792488752, 369, 452422807, 1427, 881162915, 6552, 377020404, 650, 505217563, 5764, 764115791,
+    1540, 158398174, 4135, 359466185, 21041, 699516034, 1892, 704741576, 254, 735369227, 2991, 836924765,
+    29652, 809862689, 1133, 501147493, 5124, 976497726, 2086, 204312449, 7791, 650279522, 58825, 213517389];
+  fs := [6] int.[TE_BC7, TE_BC5, TE_ASTC4, TE_ASTC6, TE_ASTC4_NORMAL, TE_ASTC6_NORMAL]; k := 0;
+  for seed: 0..<12 { for al: 0..<2 { for f: fs {
+    if al == 1 && (f == TE_BC5 || f == TE_ASTC4_NORMAL || f == TE_ASTC6_NORMAL) { continue; }
+    px: [144] int; te_fixture(seed, ifx te_block_w(f) == 6 then 36 else 16, al == 1, px[..]);
+    blk: [16] u8; e := te_encode_block(f, px[..], f == TE_ASTC4 || f == TE_ASTC6, blk[..]);
+    #assert e == want[k] && te_hash(blk[..]) == want[k + 1];
+    back: [144] int; #assert te_decode_block(f, blk[..], f == TE_ASTC4 || f == TE_ASTC6, back[..]);
+    k += 2;
+  } } }
+  #assert k == want.count;
+}
+#test "ASTC blocks whose second endpoint sums lower decode blue-contracted, as the specification says" {
+  // The encoder never writes such blocks (it orders the endpoints), so this pins the decoder half
+  // astcenc reads them by: endpoints swapped, red and green averaged with blue (C.2.14).
+  v := [8] int.[200, 10, 180, 20, 160, 30, 250, 40]; lo: [16] int; hi: [16] int; for i: 0..<16 { hi[i] = 7; }
+  px: [64] int; te_astc_texels(TE_RGB4, v[..], lo[..], false, px[..]);
+  #assert px[0] == 20 && px[1] == 25 && px[2] == 30 && px[3] == 255;
+  te_astc_texels(TE_RGB4, v[..], hi[..], false, px[..]); #assert px[60] == 180 && px[61] == 170 && px[62] == 160 && px[63] == 255;
+  hi4: [16] int; for i: 0..<16 { hi4[i] = 3; }
+  te_astc_texels(TE_RGBA4, v[..], lo[..], false, px[..]); #assert px[0] == 20 && px[1] == 25 && px[2] == 30 && px[3] == 40;
+  te_astc_texels(TE_RGBA4, v[..], hi4[..], false, px[..]); #assert px[4] == 180 && px[5] == 170 && px[6] == 160 && px[7] == 250;
+  even := [8] int.[10, 200, 20, 180, 30, 160, 40, 250]; te_astc_texels(TE_RGBA4, even[..], lo[..], false, px[..]); #assert px[0] == 10 && px[1] == 20 && px[2] == 30 && px[3] == 40;
+  tie := [6] int.[100, 50, 100, 150, 100, 100]; te_astc_texels(TE_RGB4, tie[..], lo[..], false, px[..]); #assert px[0] == 100 && px[1] == 100 && px[2] == 100;
+}

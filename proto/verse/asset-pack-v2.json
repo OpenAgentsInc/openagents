@@ -1,6 +1,6 @@
 {
   "identity": "asset-pack-v2",
-  "check": "coax/web/tool.sh aethyr/tools/pack-profile.coax proto/verse/asset-pack-v2.json",
+  "check": "coax/web/tool.sh metaverse-engine/tools/pack-profile.coax proto/verse/asset-pack-v2.json",
   "magic": "VPK2",
   "byte_order": "little endian",
   "header_bytes": 32,
@@ -12,8 +12,8 @@
   "registry_max_assets": 64,
   "registry_oversize_behavior": "atomic refusal; no partial admission",
   "cell_lines": {
-    "about": "A pack paged by world cell (aethyr/host/pack-cells.coax, #13304 for #13280) says in its catalog which bytes of its image each cell's content is, a line a cell. A host turns a cell's key into these ranges and fetches the pages that cover them (aethyr/host/page-stream.coax hpg_cover). A pack with no such line is unchanged.",
-    "codec": "aethyr/host/pack-cells.coax",
+    "about": "A pack paged by world cell (metaverse-engine/host/pack-cells.coax, #13304 for #13280) says in its catalog which bytes of its image each cell's content is, a line a cell. A host turns a cell's key into these ranges and fetches the pages that cover them (metaverse-engine/host/page-stream.coax hpg_cover). A pack with no such line is unchanged.",
+    "codec": "metaverse-engine/host/pack-cells.coax",
     "line": "Z CX CZ DIGEST AT N [AT N ...]",
     "fields": "single spaces; numbers written plainly (no leading zero, no plus sign); CX and CZ may have a minus sign; DIGEST is the cell's content digest in the world's manifest, 1 to 4294967295; each AT N is a byte range of the image, ascending, not touching or overlapping, inside the image",
     "key": "(cx + 32768) * 65536 + (cz + 32768)",

@@ -481,7 +481,7 @@ static int dropdowns(NSView *v) {
   NSDictionary *state = forge_parse(realm) ?: @{};
   FORGE_REQUIRE([state[@"downs"] isEqual:@0] && [state[@"ups"] isEqual:@0] && [state[@"typing"] isEqual:@NO] && [state[@"scene"] isEqual:@YES], @"Native Enter reached the realm's region chat: %@", realm);
   write_json(@{@"ok" : @YES, @"realm" : state, @"nativeReturnAndKeypad" : @YES, @"heldEnter" : @YES, @"shiftEnter" : @YES, @"escapeKeepsDraftAndRun" : @YES, @"replyLingerSeconds" : @(lingered),
-               @"feedComponent" : @"aethyr/ui/feed-draw.coax", @"feedVertices" : @(feedVertices), @"realCoder" : chat.session ?: @"", @"ending" : chat.lastEnding ?: @""},
+               @"feedComponent" : @"metaverse-engine/ui/feed-draw.coax", @"feedVertices" : @(feedVertices), @"realCoder" : chat.session ?: @"", @"ending" : chat.lastEnding ?: @""},
              report);
   printf("Native Enter / Coder presentation smoke passed\n");
   [self finish];
@@ -557,7 +557,7 @@ static int dropdowns(NSView *v) {
     }
     __block NSString *route = nil; [self main:^{ route = chat.router.stringValue; }];
     write_json(@{@"ok" : @YES, @"engine" : engine, @"actualEngine" : chat.selectedEngine ?: @"", @"route" : route ?: @"", @"first" : first, @"followup" : followup, @"ending" : chat.lastEnding ?: @"",
-                 @"unattendedWrite" : @(approved), @"approvalRequests" : @(approvalRequests), @"stop" : @(stopped), @"hud" : @"aethyr/ui/feed-draw.coax", @"cli" : chat.cli.path},
+                 @"unattendedWrite" : @(approved), @"approvalRequests" : @(approvalRequests), @"stop" : @(stopped), @"hud" : @"metaverse-engine/ui/feed-draw.coax", @"cli" : chat.cli.path},
                report);
     printf("Coder HUD smoke passed: %s\n", engine.UTF8String);
   } @catch (NSException *x) {

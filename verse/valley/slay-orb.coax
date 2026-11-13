@@ -1,5 +1,5 @@
 // Arithmetic read from the source M_Simple_Orb graph; texture/mesh payloads stay private.
-#load "../../aethyr/render/raw-rgba.coax";
+#load "../../metaverse-engine/render/raw-rgba.coax";
 #test "Source orb base emission retains tint, desaturation and front-facing opacity" {
  c:=slay_orb_emission(1,1,0);#assert abs(c.x-1.736294)<0.00001 && abs(c.y-6.530684)<0.00001 && abs(c.z-16.548584)<0.00001 && c.w==1;
  c=slay_orb_emission(0,0,1);#assert c.x==0 && c.y==0 && c.z==0 && c.w==0;

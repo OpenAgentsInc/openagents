@@ -14,7 +14,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/proc.coax";
-#load "../../aethyr/render/catalog.coax" as live_catalog;
+#load "../../metaverse-engine/render/catalog.coax" as live_catalog;
 
 IH_FILE :: 8388608;
 
@@ -83,9 +83,9 @@ ih_module :: (out: string, dir: string, up: string, name: string, wgsl: string, 
   text := ih_replace(cast(string) src[0..<n], IH_COAX_SIN, r, dst[..], times);
   if text.count == 0 { tool_err("int-hash: the sin hashes are not where they were in "); tool_errln(name); return false; }
   cb: [1024] u8; lb: [2048] u8;
-  lib := ih_cat3("#load \"", fs_cwd(cb[..]), "/aethyr/gpu/wgsl.coax\";", lb[..]);
+  lib := ih_cat3("#load \"", fs_cwd(cb[..]), "/metaverse-engine/gpu/wgsl.coax\";", lb[..]);
   wl: [256] u8; sl: [256] u8;
-  text = ih_replace(text, ih_cat3("#load \"", up, "aethyr/gpu/wgsl.coax\";", wl[..]), lib, tmp[..], 1);
+  text = ih_replace(text, ih_cat3("#load \"", up, "metaverse-engine/gpu/wgsl.coax\";", wl[..]), lib, tmp[..], 1);
   if text.count > 0 { text = ih_replace(text, ih_cat3("#load \"", up, "verse/style.coax\";", sl[..]), "#load \"style.coax\";", dst[..], 1); }
   if text.count == 0 { tool_err("int-hash: the loads are not where they were in "); tool_errln(name); return false; }
   gpu := fs_join(out, name, p[..]);
@@ -166,10 +166,10 @@ ih_page :: (out: string, name: string) -> bool {
     // the particles' motion: its hash and its waves take sin of arguments in the hundreds (a
     // particle's index times a few), each GPU's own; the copy's sin is reduced to [-pi, pi] first
     ms: [IH_FILE] u8; md: [IH_FILE] u8; mb: [1024] u8; ml: [2048] u8; mx: [IH_FILE] u8;
-    mn := fs_read("aethyr/render/particle-motion.coax", ms[..]);
-    if mn < 0 { tool_errln("int-hash: no aethyr/render/particle-motion.coax"); return false; }
+    mn := fs_read("metaverse-engine/render/particle-motion.coax", ms[..]);
+    if mn < 0 { tool_errln("int-hash: no metaverse-engine/render/particle-motion.coax"); return false; }
     mo := ih_reduce_sin(cast(string) ms[0..<mn], md[..]);
-    if mo.count == 0 { tool_errln("int-hash: cannot rewrite aethyr/render/particle-motion.coax"); return false; }
+    if mo.count == 0 { tool_errln("int-hash: cannot rewrite metaverse-engine/render/particle-motion.coax"); return false; }
     mp := fs_join(out, "particle-motion.coax", mb[..]);
     if !fs_write(mp, mo) { tool_err("int-hash: cannot write "); tool_errln(mp); return false; }
     text = ih_replace(text, "#load \"../../../aethyr/render/particle-motion.coax\"", ih_cat3("#load \"", mp, "\"", ml[..]), mx[..], 1);

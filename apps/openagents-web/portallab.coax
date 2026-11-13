@@ -6,8 +6,8 @@
 // out as one vertex store with thirty firefly quads after them, and runs the orbit
 // camera: three.js OrbitControls with damping (drag rotates, the wheel or a pinch
 // zooms, a right drag or two fingers pan). gpu/portallab.coax draws it.
-#load "../../aethyr/anim/import-container.coax";
-#load "../../aethyr/anim/gltf-access.coax";
+#load "../../metaverse-engine/anim/import-container.coax";
+#load "../../metaverse-engine/anim/gltf-access.coax";
 
 PL_GLB :: 262144;            // the GLB's bytes at most (the scene's is 41 KB)
 PL_JSON_NODES :: 4096;

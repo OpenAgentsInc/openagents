@@ -206,7 +206,7 @@ AUTO targets that rate and has a 60 FPS minimum quality budget. It can reduce
 rendering quality under load without adopting the web/phone governor's 30 FPS
 budget. Actual throughput still depends on the scene and available GPU time.
 
-`aethyr/core/frame-pacing.coax` admits at most two unfinished GPU frames in Everglade's
+`metaverse-engine/core/frame-pacing.coax` admits at most two unfinished GPU frames in Everglade's
 legacy WebGPU host. When both are outstanding, the host waits for a queue fence
 before doing more simulation/encoding work; the next admitted frame receives the
 elapsed time. Device recovery owns a fresh pending count. The HUD retains its
@@ -229,8 +229,8 @@ it does not claim to measure display presentation timestamps. Measurements and
 checks are recorded in
 [the performance verification](../../docs/verification/aethyrforge-frame-pacing-2026-11-04.md).
 
-The Coder HUD uses `aethyr/ui/draw.coax` for a compact, lightly tinted 88-point
-composer and shared layout. Floating messages use `aethyr/ui/feed.coax` and
+The Coder HUD uses `metaverse-engine/ui/draw.coax` for a compact, lightly tinted 88-point
+composer and shared layout. Floating messages use `metaverse-engine/ui/feed.coax` and
 `feed-draw.coax`: Coax owns the bounded UTF-8 ring, wrapping, newest visible rows
 and five-second completion lifetime; the Metaverse Engine's font/stroke components emit their
 Metal vertices, drawn on the shared host's layer. The app supplies clock

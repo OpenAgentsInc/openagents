@@ -90,7 +90,7 @@ view. Station changes clear held input and freeze walking while inspecting.
 Only one rock identity remains retained after a detail replacement.
 
 The reusable admission primitive is
-[`aethyr/render/geometry/indexed.coax`](../../aethyr/render/geometry/indexed.coax):
+[`metaverse-engine/render/geometry/indexed.coax`](../../metaverse-engine/render/geometry/indexed.coax):
 finite positions, matching near-unit normals, nonempty triangle-aligned
 indices, valid index ranges, positive triangle area, provenance and byte
 limits. Its authority root mutation gate has zero survivors. The original
@@ -126,7 +126,7 @@ those declared capacities together after measuring its larger submission.
 ## Landed: bounded leaf clusters
 
 The next slice builds source-order leaves over the same admitted indexed rock.
-[`clusters.coax`](../../aethyr/render/geometry/clusters.coax) owns the reusable
+[`clusters.coax`](../../metaverse-engine/render/geometry/clusters.coax) owns the reusable
 atomic builder: at most 64 local vertices and 124 triangles per leaf, with a
 512-leaf physical ceiling. Each leaf carries its source-vertex remap, local
 u8 triangle indices, source triangle range and conservative position bounds.
@@ -167,7 +167,7 @@ Evidence is in the [cluster slice receipt](../verification/valley-lab-clusters-2
 
 ## Landed: ownership hierarchy and boundary-preserving fixtures
 
-[`hierarchy.coax`](../../aethyr/render/geometry/hierarchy.coax) builds a bounded
+[`hierarchy.coax`](../../metaverse-engine/render/geometry/hierarchy.coax) builds a bounded
 binary ownership tree above the existing leaves. Every parent owns consecutive
 children, sums their triangles and unions their bounds. An odd tail is promoted
 without duplicating it. Height-limited frontiers partition the leaves exactly
@@ -188,7 +188,7 @@ rock, or the patch's original bounds. The HUD reports level, groups, source
 and drawn triangles, and geometric error. Phone controls expose VIEW, LEVEL
 and NEXT SOURCE. `L` still changes the rock's source tessellation.
 
-[`fan.coax`](../../aethyr/render/geometry/fan.coax) supplies a deliberately
+[`fan.coax`](../../metaverse-engine/render/geometry/fan.coax) supplies a deliberately
 constrained square-pyramid patch family. Removing only the interior apex
 reduces four triangles to two and preserves all four boundary edges. A flat
 patch has zero error; the bent patch's 0.75 m apex produces exactly 0.75 m
@@ -217,7 +217,7 @@ and visible stations. Keys `4`/`5`/`6` and the second row of touch tabs open
 PARENT, LOD and PAGES; their direct links are `#parents`, `#lod`, `#pages`.
 The original walk, asset, full-detail, cluster and hierarchy views remain.
 
-**Parent meshes.** [`parent.coax`](../../aethyr/render/geometry/parent.coax)
+**Parent meshes.** [`parent.coax`](../../metaverse-engine/render/geometry/parent.coax)
 extracts directed external edges from source triangles, identifies a common
 interior apex and retains every boundary vertex and segment. The bounded
 supported class is a strictly convex fan with a horizontal boundary plane.
@@ -236,7 +236,7 @@ parent has 0.75 m error. The same reducer is attempted on the first two rock
 leaves; their topology is unsupported, so the unchanged rock reference is
 retained. This is explicit refusal, not a claim that the rock was simplified.
 
-**Screen-error cuts.** [`cut.coax`](../../aethyr/render/geometry/cut.coax)
+**Screen-error cuts.** [`cut.coax`](../../metaverse-engine/render/geometry/cut.coax)
 bounds perspective displacement with
 `focal * error * (1 + radial / near) / (near - error)`.
 The inspector derives near depth and radial extent from the source bounds
@@ -248,7 +248,7 @@ changes remain separate. A missing requested parent draws pinned full-detail
 children, never a hole. The two-patch frontier has full-source, mixed and
 coarse choices; the general rock hierarchy still has identity parents.
 
-**Page residency.** [`pages.coax`](../../aethyr/render/geometry/pages.coax)
+**Page residency.** [`pages.coax`](../../metaverse-engine/render/geometry/pages.coax)
 serializes VGP1 geometry pages, validates bounded decoding and admits only
 bytes matching the expected SHA-256 and current request epoch/ticket. The
 native Coax author writes the two committed `.vgp.hex` files; the existing
@@ -294,7 +294,7 @@ all three original profiles, `T` changes the pixel threshold, and `E` flushes
 pages. In the rock pager, `B` changes the exact 256-byte resident budget to
 255 bytes, demonstrating full-detail fallback when the parent cannot fit.
 
-The new Coax primitive [`star.coax`](../../aethyr/render/geometry/star.coax)
+The new Coax primitive [`star.coax`](../../metaverse-engine/render/geometry/star.coax)
 constructs a canonical nonplanar star from an ordered boundary and one interior
 apex. Projected strict convexity checks the supported disk. Collapsing the
 apex onto the first boundary vertex produces the boundary fan; its
@@ -386,7 +386,7 @@ No book draft is upgraded.
 
 ## Landed: a general cluster DAG (#13015)
 
-`aethyr/render/geometry/dag.coax` builds a cluster LOD DAG from any indexed
+`metaverse-engine/render/geometry/dag.coax` builds a cluster LOD DAG from any indexed
 mesh, the way Solstice does (see
 [the comparison](2026-11-07-solstice-comparison.md), item 5):
 
@@ -419,17 +419,17 @@ of them mix levels. Random residency sequences through `res_*` always draw a
 watertight cut. Foliage drawn far away has at most half the triangles and
 keeps its area within 15%.
 
-Run `coax/bin/coax test aethyr/render/geometry/dag.coax --library` to check
+Run `coax/bin/coax test metaverse-engine/render/geometry/dag.coax --library` to check
 it. It doesn't reuse `clusters.coax`: those leaves hold 124 triangles and 64
 vertices, sized for Valley Lab's narrow simplifiers.
 
 ## Landed: GPU cut, requests and two-phase Hi-Z (#13008)
 
-`aethyr/render/geometry/cull.coax` holds the GPU cull's procedures, with CPU
+`metaverse-engine/render/geometry/cull.coax` holds the GPU cull's procedures, with CPU
 tests. `coax wgsl --computes` emits them as compute entries in
 `apps/openagents-web/cull.wgsl`, and the cluster draw goes to `cull-draw.wgsl`.
 Atomics are Coax procedures (`gpu_atomic_add`, `gpu_atomic_max`,
-`gpu_atomic_min` in `aethyr/gpu/shader.coax`) over a binding marked `atomic`.
+`gpu_atomic_min` in `metaverse-engine/gpu/shader.coax`) over a binding marked `atomic`.
 No WGSL is written by hand.
 
 - One thread a cluster applies `dag_draw`'s rule: the cluster is fine enough
@@ -471,18 +471,18 @@ The receipt is [gpu-stream-13051](../verification/gpu-stream-13051/README.md).
 
 ## What the book gives us
 
-Read the [book construction plan](../../aethyr/book/PLAN.md) and the
+Read the [book construction plan](../../metaverse-engine/book/PLAN.md) and the
 individual chapters' qualified profiles before implementation. A chapter's
 existence does not mean its proposed system is ready to use.
 
 | Foundation | Current basis and work needed for this world |
 | --- | --- |
 | Time, replay, entities, movement, queries, camera | Chapters 1–10 provide the starting primitives. Use their fixed-step session, typed spaces, stable IDs, collision queries and camera; add valley fixtures, not another controller. |
-| Renderer | [Chapter 11](../../aethyr/book/ch011-the-wgsl-renderer.md) has shared frame/pass/resource admission and a qualified Grid teaching profile. Valley needs its own real renderer adoption and evidence. |
+| Renderer | [Chapter 11](../../metaverse-engine/book/ch011-the-wgsl-renderer.md) has shared frame/pass/resource admission and a qualified Grid teaching profile. Valley needs its own real renderer adoption and evidence. |
 | Surface, lighting, animation | Chapters 12–14 have shared pieces but incomplete realm adoption. Connect actual material records, lights and poses to the valley renderer. |
-| Budgets and assets | Chapter 16 and [chapter 53](../../aethyr/book/ch053-bring-in-assets.md) provide content hashes, admission and the VPK1 reader/writer. Source import, reported units and other import steps remain unfinished. |
-| Large worlds | [Chapter 38](../../aethyr/book/ch038-stream-a-large-world.md) is a design draft: cells, residency and asynchronous streaming must be built. Its existing distance LOD is not virtualized geometry. |
-| Terrain and placement | [Chapter 80](../../aethyr/book/ch080-terrain-and-scatter-from-a-seed.md) has terrain and checked keyed scatter; realm rendering, composition and streaming integration remain. |
+| Budgets and assets | Chapter 16 and [chapter 53](../../metaverse-engine/book/ch053-bring-in-assets.md) provide content hashes, admission and the VPK1 reader/writer. Source import, reported units and other import steps remain unfinished. |
+| Large worlds | [Chapter 38](../../metaverse-engine/book/ch038-stream-a-large-world.md) is a design draft: cells, residency and asynchronous streaming must be built. Its existing distance LOD is not virtualized geometry. |
+| Terrain and placement | [Chapter 80](../../metaverse-engine/book/ch080-terrain-and-scatter-from-a-seed.md) has terrain and checked keyed scatter; realm rendering, composition and streaming integration remain. |
 | Sky, effects, destruction, cinematics | Chapters 65–68 and 71–73, 78 identify the relevant branches. Several are drafts or realm-specific code awaiting shared modules. Qualify only what Valley actually adopts. |
 
 There is no identified shared Nanite-style virtualized geometry system in
@@ -613,7 +613,7 @@ hash. Coax owns import, simplification, packing and validation. Preserve the
 existing VPK1 contract; use small cell packs under its limits or introduce a
 new version for paged geometry rather than changing VPK1 in place.
 
-Use shared `aethyr/core/assets.coax`, `aethyr/forge/pack.coax` and renderer ledger
+Use shared `metaverse-engine/core/assets.coax`, `metaverse-engine/editor/pack.coax` and renderer ledger
 admission. A pack is admitted whole; progressive residency is composed from
 separately admitted packs/pages. Put reusable caches under `~/.openagents/`
 with explicit overrides, not an app-private location. Missing optional art
@@ -643,11 +643,11 @@ Planned locations, to refine against existing APIs before adding files:
 - `verse/valley/`: original scene data, route, session, stations and encounter.
 - `apps/openagents-web/valleylab.coax` and `gpu/valleylab.coax`: thin realm
   composition and Coax shader entry points using shared renderer contracts.
-- `aethyr/render/geometry/`: reusable cluster, hierarchy, error, cut,
-  visibility and page contracts; `aethyr/world/`: chapter 38's shared cells,
+- `metaverse-engine/render/geometry/`: reusable cluster, hierarchy, error, cut,
+  visibility and page contracts; `metaverse-engine/world/`: chapter 38's shared cells,
   streaming and origin; shared material/light/pose modules extended in place.
-- `aethyr/tools/`: Coax import/build/inspection tools, invoked with
-  `coax/web/tool.sh FILE.coax`; small `aethyr/examples/` teaching fixtures.
+- `metaverse-engine/tools/`: Coax import/build/inspection tools, invoked with
+  `coax/web/tool.sh FILE.coax`; small `metaverse-engine/examples/` teaching fixtures.
 - `docs/verification/valley-lab/`: source/build hashes, profile definitions,
   test and mutation receipts, routes, captures and performance tables.
 

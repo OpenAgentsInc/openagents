@@ -1,6 +1,6 @@
 // Desktop-only Coder presentation and ownership of Return's complete press.
 // 0 passes through, 1 consumes, 2 opens Coder, 3 delivers to native controls.
-#load "../../aethyr/ui/feed.coax";
+#load "../../metaverse-engine/ui/feed.coax";
 #test "desktop feed events own the buffer and expiry across new turns" {
   s:[1]HudFeed;fc_feed_event(s[..],1,"first",10);
   #assert fc_feed_text(s[..])=="first" && fc_chat_mode(false,true,s[..],10)==1;

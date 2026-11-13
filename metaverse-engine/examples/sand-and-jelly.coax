@@ -1,0 +1,47 @@
+// Book chapter 26: metaverse-engine/physics/sim/mpm.coax's MLS-MPM. An elastic block falls
+// and bounces off the floor; columns of sand of two aspect ratios collapse
+// and spread; the example prints the block's height and the sand's runout.
+#load "../physics/sim/mpm.coax";
+#import "Basic";
+
+r4 :: (x: f64) -> f64 { return floor(x * 10000.0 + 0.5) / 10000.0; }
+
+// book:begin example
+// The lowest particle's height and the mean height.
+Heights :: struct { low: f64; mean: f64; }
+heights :: (m: [] Mpm) -> Heights {
+  out: Heights; out.low = 1.0;
+  for p: 0..<m[0].count { out.low = fmin(out.low, m[0].x[p].y); out.mean += m[0].x[p].y; }
+  out.mean /= cast(f64) m[0].count;
+  return out;
+}
+
+main :: () {
+  // A 0.2 m jelly block, E = 20 kPa, nu = 0.3, dropped from 0.5 m.
+  m: [1] Mpm;
+  w := Mpm_World.{n = 64, dt = 0.0002, gravity = d2(0.0, -9.81), mu = mpm_mu(20000.0, 0.3), la = mpm_la(20000.0, 0.3)};
+  w.volume = (0.5 / 64.0) * (0.5 / 64.0);
+  print("jelly: % particles\n", mpm_block(m[..], w, d2(0.4, 0.5), d2(0.6, 0.7), d2(0.0, 0.0), Mpm_Material.corotated));
+  for k: 0..<5000 {
+    mpm_step(m[..], w);
+    if k % 500 == 499 {
+      h := heights(m[..]);
+      print("  % s: lowest % m, mean % m\n", r4(cast(f64) (k + 1) * w.dt), r4(h.low), r4(h.mean));
+    }
+  }
+
+  // Sand columns 0.1 m wide against the left wall, 0.1 m and 0.2 m tall.
+  for tall: [2] f64.[0.1, 0.2] {
+    s: [1] Mpm;
+    v := Mpm_World.{n = 64, dt = 0.0002, gravity = d2(0.0, -9.81), mu = mpm_mu(100000.0, 0.3), la = mpm_la(100000.0, 0.3)};
+    v.rho = 1600.0; v.volume = (0.5 / 64.0) * (0.5 / 64.0);
+    floor_y := 3.0 / 64.0; wall_x := 3.0 / 64.0;
+    n := mpm_block(s[..], v, d2(wall_x, floor_y), d2(wall_x + 0.1, floor_y + tall), d2(0.0, 0.0), Mpm_Material.sand);
+    for k: 0..<5000 { mpm_step(s[..], v); }
+    reach := 0.0; top := 0.0;
+    for p: 0..<s[0].count { reach = fmax(reach, s[0].x[p].x - wall_x); top = fmax(top, s[0].x[p].y - floor_y); }
+    print("sand column, aspect ratio %: % particles; after 1 s it reaches % m from the wall (runout %), % m tall\n",
+          r4(tall / 0.1), n, r4(reach), r4((reach - 0.1) / 0.1), r4(top));
+  }
+}
+// book:end example

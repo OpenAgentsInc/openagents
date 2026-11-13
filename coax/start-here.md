@@ -158,7 +158,7 @@ Each is symptom, cause and fix.
   `[] const T`. A temporary goes into a local first.
 - f32 and f64 don't mix: apply the cast the fix line names.
 
-- Build features engine-wide in `aethyr/` or game-wide in the game's shared
+- Build features engine-wide in `metaverse-engine/` or game-wide in the game's shared
   code, never for one zone.
 - Kill only the processes you started, by PID. Never `pkill` by name.
 - Dev servers use ports above 9000.

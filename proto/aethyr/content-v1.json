@@ -3,7 +3,7 @@
   "id": "aethyr.content.v1",
   "version": 1,
   "title": "Aethyr content tables v1",
-  "check": "coax/web/tool.sh aethyr/tools/content-profile.coax proto/aethyr/content-v1.json",
+  "check": "coax/web/tool.sh metaverse-engine/tools/content-profile.coax proto/aethyr/content-v1.json",
   "spec": "docs/protocol/aethyr-content-v1.md",
   "lines": {
     "1": "aethyr.content.v1 NAME REV",

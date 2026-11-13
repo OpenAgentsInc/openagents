@@ -1,5 +1,5 @@
 // Everglade II's staged shots (?stage=NAME, docs/verse/clips.md): the forest path and the city's
-// empty clearing, each its own camera on the Metaverse Engine's camera track (aethyr/cam/track.coax) with the HUD
+// empty clearing, each its own camera on the Metaverse Engine's camera track (metaverse-engine/cam/track.coax) with the HUD
 // off, in late afternoon light. The keys are laid on the land's own functions (everglade/world/
 // forest.coax: e2_road_x, e2_height, e2_city), so a shot keeps to the path and the clearing as the land
 // changes. A stage opens no room, and its clock is game time, so coax/web/clip.coax's fixed steps
@@ -17,7 +17,7 @@
 //
 //   coax/web/tool.sh clip "http://127.0.0.1:PORT/worlds/everglade2?stage=path-fly" path-fly.mp4 \
 //     --size 1920x1080 --seconds 25 --skip 2
-#load "../../aethyr/cam/track.coax" as trk;
+#load "../../metaverse-engine/cam/track.coax" as trk;
 
 E2ST_NONE :: 0; E2ST_PATH_FLY :: 1; E2ST_PATH_WALK :: 2; E2ST_CLEARING_EMPTY :: 3; E2ST_CLEARING_WALK_IN :: 4; E2ST_BOW_FIGHT :: 5;
 E2ST_LEAD :: 2.0;            // seconds the shot holds its first key: the recorder's --skip lead-up

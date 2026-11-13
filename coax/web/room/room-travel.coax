@@ -1,6 +1,6 @@
-#load "../../../aethyr/core/ids.coax";
+#load "../../../metaverse-engine/core/ids.coax";
 // A player's travel from one everglade room to another (#12850): the room server's side of
-// aethyr/session/travel.coax, for two rooms of one realm. The page asks with
+// metaverse-engine/session/travel.coax, for two rooms of one realm. The page asks with
 //   T SEQ CODE        go to the instance CODE (everglade-wire.coax)
 // and the room takes the protocol's steps:
 //   1. reserve: when CODE runs on this server, a seat there is set aside for the player for TRAVEL_MS
@@ -31,7 +31,7 @@
 // reconnect, and the note has its HP. A crash of this room after the route loses nothing the note
 // didn't post: the route waits for the post's receipt, and the destination's ticket brings the posted
 // HP. A crash before the receipt sends no route: the page rejoins this room as after any drop.
-TRAVEL_MS :: TRAVEL_HOLD_MS;   // a cutover and a reservation last this long without the page's arrival (aethyr/session/travel.coax)
+TRAVEL_MS :: TRAVEL_HOLD_MS;   // a cutover and a reservation last this long without the page's arrival (metaverse-engine/session/travel.coax)
 TRAVELS :: 16;            // journeys in flight on one server
 
 RmTravel :: struct {
@@ -113,7 +113,7 @@ eg_heard_travel :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { sea
   pid := cast(string) tk.pid[0..<tk.pid_n];
   // 1. reserve: a seat in the destination when it runs here
   d := trv_room(v, to);
-  // (the session contract's admission, aethyr/session/travel.coax travel_admits; a room running here is up and ready)
+  // (the session contract's admission, metaverse-engine/session/travel.coax travel_admits; a room running here is up and ready)
   if d >= 0 {
     seats := v[0].relays[d].seats;
     if travel_admits(true, true, seats - trv_free(v, d), trv_held_for_others(v, to, pid), seats) == TRAVEL_FULL { v[0].trv.full += 1; eg_refuse(v, k, seat_id, seq, "full"); return; }

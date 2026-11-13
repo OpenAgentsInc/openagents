@@ -1,0 +1,21 @@
+// Actual SDK entry points: incomplete/stale source and premature release.
+#load "../../coax/web/wasm-chrome.coax";
+#load "../core/assets.coax" as assets;
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || (args_count(a[..])!=4 && args_count(a[..])!=5) {tool_errln("usage: stream-transport-boundary BASE SCENE_JSON TRANSPORT_SHA OUTPUT_JSON [--observer|--capture]");return 2;}
+  observer:=args_count(a[..])==5 && args_at(a[..],4)=="--observer";capture:=args_count(a[..])==5 && args_at(a[..],4)=="--capture";if args_count(a[..])==5 && !observer && !capture {return 2;}
+  source:[32768]u8;n:=fs_read(args_at(a[..],1),source[..]);hex:[64]u8;if n<1 || !assets.asset_hex(assets.asset_id(cast(string)source[0..<n]),hex[..]) {return 1;}
+  c:[1]Cdp;if !cdp_launch(c[..],160,90,"aethyr-transport-boundary-") {return 1;}defer{cdp_close(c[..]);}
+  url:[4096]u8;parts:=[2]string.[args_at(a[..],0),"/transport/transport.json"];parameters:[8192]u8;j:[1]Jo;jo_start(j[..],parameters[..]);jo_obj(j[..]);jo_key(j[..],"url");jo_str(j[..],wc_cat(url[..],parts[..]));jo_end(j[..]);
+  if cdp_call(c[..],"Page.navigate",jo_text(j[..]),CDP_CALL_MS)<0 {return 1;}
+  deadline:=proc_now_ms()+10000;while proc_now_ms()<deadline && wc_eval(c[..],"document.readyState==='complete'&&location.pathname==='/transport/transport.json'")!="true" {proc_sleep(25);}
+  script:[4096]u8;segments:=[5]string.["(async()=>{try{const {transportFixture}=await import('/metaverse-engine/host/tests/stream-transport-fixture.js');return await transportFixture({sceneSHA:'",cast(string)hex[..],"',transportSHA:'",args_at(a[..],2),"'});}catch(e){return {error:String(e),stack:e.stack};}})()"];
+  capture_script:[4096]u8;capture_segments:=[5]string.["(async()=>{try{const {captureFixture}=await import('/metaverse-engine/host/tests/capture-fixture.js');return await captureFixture({sceneSHA:'",cast(string)hex[..],"',transportSHA:'",args_at(a[..],2),"'});}catch(e){return {error:String(e),stack:e.stack};}})()"];
+  expression:=ifx observer then "(async()=>{try{const {observerFixture}=await import('/metaverse-engine/host/tests/pack-observer-fixture.js');return await observerFixture();}catch(e){return {error:String(e),stack:e.stack};}})()" else ifx capture then wc_cat(capture_script[..],capture_segments[..]) else wc_cat(script[..],segments[..]);
+  at:=cdp_evaluate(c[..],expression);if at<0 {tool_errln(cdp_error(c[..]));return 1;}d:=cdp_doc(c[..]);report:[16384]u8;jo_start(j[..],report[..]);jv_write(d,at,j[..]);if j[0].bad || !fs_write(args_at(a[..],3),jo_text(j[..])) {return 1;}
+  if observer {observer_names:=[6]string.["planFailure","reactorFailure","externalFailure","releaseFailure","constructorFailure","clean"];if jv_len(d,at)!=observer_names.count {tool_errln(jo_text(j[..]));return 1;}for observer_name:observer_names {if !jv_bool(d,jv_get(d,at,observer_name)) {tool_errln(observer_name);return 1;}}print("PASS actual planned transport observer failures: % named observations\n",observer_names.count);return 0;}
+  if capture {capture_names:=[7]string.["compileInputsZeroed","joinRetainsOwners","encoderFailure","preAllocationPressure","retryPixels","sourceExtents","cleanup"];facts:=jv_get(d,at,"facts");if jv_len(d,facts)!=capture_names.count {tool_errln(jo_text(j[..]));return 1;}for capture_name:capture_names {if !jv_bool(d,jv_get(d,facts,capture_name)) {tool_errln(capture_name);return 1;}}print("PASS actual capture cost/encoding/pressure: % named observations\n",capture_names.count);return 0;}
+  names:=[32]string.["badScene","scene","sceneOnce","manifest","badCompanion","companion","companionOnce","unboundAllocation","wrongLocation","begin","beginOnce","allocate","earlyDecode","earlyFinish","earlyDestroy","earlyRecovery","earlyClose","badSource","staleSource","source","sourceOnce","decode","unjoined","staleEnd","end","endOnce","finish","finishOnce","otherAttempts","drained","closed","closedOnce"];
+  if jv_len(d,at)!=names.count {tool_errln(jo_text(j[..]));return 1;}for name:names {if !jv_bool(d,jv_get(d,at,name)) {tool_errln(name);return 1;}}
+  print("PASS actual HTP1 carrier: % named source/key/join/release observations\n",names.count);return 0;
+}

@@ -1,0 +1,150 @@
+// The Metaverse Engine's content tables editor (#13294, AAA P4.5): every table of a content document
+// (metaverse-engine/content/tables.coax, profile aethyr-content-v1) is edited through the realm edit log
+// (edit.coax), so a row set or dropped is one typed step with its inverse, undo and redo walk the
+// same log, and a save names the revision it was made from.
+//
+// The document is slots of kind "table":
+//   table:0          "NAME REACH"                    the document's name and reach
+//   table:T          "id COL:KIND ...;sum ..."       table T's columns, then its sum rules, each after a semicolon
+//   table:T-ID       "ID|CELL|..."                   a row of T
+// An edit changes one slot. The tables hold their rules when the document is written
+// (forge_content_text): what is written is what ct_read reads, or nothing is written.
+// One editor serves every table: creatures, spawns, abilities, items, loot, quests, dialogue and
+// points are rows like any other.
+//   coax/bin/coax test metaverse-engine/editor/content-edit.coax --library
+#load "edit.coax";
+#load "../content/tables.coax";
+
+// "table:T" or "table:T-ID" into out.
+forge_content_key :: (table: string, id: int, out: [] u8) -> string {
+  n := ct_put(out, 0, "table:"); n = ct_put(out, n, table);
+  if id > 0 { n = ct_put(out, n, "-"); n = ct_put_int(out, n, id); }
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// Open a content document: its tables as slots, at its revision, with no history. False when text
+// is not a document.
+forge_content_open :: (d: [] ForgeDoc, text: string) -> bool {
+  c: [1] ContentDoc;
+  if !ct_read(c[..], text) { return false; }
+  forge_reset(d, c[0].rev);
+  kb: [FORGE_SLOT_KEY] u8; vb: [FORGE_VAL] u8;
+  n := ct_put(vb[..], 0, ct_doc_name(c[..])); n = ct_put(vb[..], n, " "); n = ct_put_int(vb[..], n, c[0].reach);
+  if !forge_read_slot(d, "table:0", cast(string) vb[0..<n]) { return false; }
+  for t: 0..<c[0].t_n {
+    // the header after "table NAME ", then each sum rule
+    hb: [400] u8; h := ct_put_table(c[..], t, hb[..], 0); skip := 7 + ct_table_name(c[..], t).count;
+    n = ct_put(vb[..], 0, cast(string) hb[skip..<h]);
+    for s: 0..<c[0].t[t].sums {
+      n = ct_put(vb[..], n, ";sum "); n = ct_put(vb[..], n, ct_col_name(c[..], t, c[0].t[t].sum_col[s])); n = ct_put(vb[..], n, " by ");
+      n = ct_put(vb[..], n, ct_col_name(c[..], t, c[0].t[t].sum_by[s])); n = ct_put(vb[..], n, " "); n = ct_put_int(vb[..], n, c[0].t[t].sum_is[s]);
+    }
+    if n > vb.count || !forge_read_slot(d, forge_content_key(ct_table_name(c[..], t), 0, kb[..]), cast(string) vb[0..<n]) { return false; }
+    for r: 0..<c[0].t[t].rows {
+      n = 0;
+      for k: 0..<c[0].t[t].cols {
+        if k > 0 { n = ct_put(vb[..], n, "|"); }
+        if c[0].t[t].kind[k] == CT_STR { n = ct_put(vb[..], n, ct_str(c[..], t, r, k)); } else { n = ct_put_int(vb[..], n, ct_get(c[..], t, r, k)); }
+      }
+      if n > vb.count || !forge_read_slot(d, forge_content_key(ct_table_name(c[..], t), ct_get(c[..], t, r, 0), kb[..]), cast(string) vb[0..<n]) { return false; }
+    }
+  }
+  return true;
+}
+// A table's columns and sum rules ("id name:text slot:int;sum ..."): a new table, or its columns
+// changed. One step.
+forge_content_table :: (d: [] ForgeDoc, table: string, header: string) -> bool {
+  kb: [FORGE_SLOT_KEY] u8;
+  return ct_name_ok(table) && header.count > 0 && forge_reslot(d, forge_content_key(table, 0, kb[..]), true, header);
+}
+// A row of a table the document has, "ID|CELL|...": a new row, or that row changed. One step.
+forge_content_row :: (d: [] ForgeDoc, table: string, row: string) -> bool {
+  kb: [FORGE_SLOT_KEY] u8;
+  id := ct_num(ct_part(row, '|', 0));
+  if !ct_name_ok(table) || !id.ok || id.v < 1 || !forge_slot_at(d, forge_content_key(table, 0, kb[..])).found { return false; }
+  return forge_reslot(d, forge_content_key(table, id.v, kb[..]), true, row);
+}
+// A row taken away. One step.
+forge_content_drop :: (d: [] ForgeDoc, table: string, id: int) -> bool {
+  kb: [FORGE_SLOT_KEY] u8;
+  return ct_name_ok(table) && id >= 1 && forge_reslot(d, forge_content_key(table, id, kb[..]), false, "");
+}
+// The slot after `after` in the document's one order (tables by name, a table's rows by ID after
+// its header), or -1: the least key greater than `after` among the "table:" slots but "table:0".
+forge_content_next :: (d: [] ForgeDoc, after_table: string, after_id: int) -> int {
+  best := -1; best_table := ""; best_id := 0;
+  for i: 0..<d[0].slot_n {
+    key := forge_slot_key(d, i);
+    if key.count < 7 || key[0..<6] != "table:" || key == "table:0" { continue; }
+    name := ct_part(key[6..<key.count], '-', 0); id := ct_num(ct_part(key[6..<key.count], '-', 1)).v;
+    later := ct_before(after_table, name) || (after_table == name && id > after_id);
+    sooner := best < 0 || ct_before(name, best_table) || (name == best_table && id < best_id);
+    if later && sooner { best = i; best_table = name; best_id = id; }
+  }
+  return best;
+}
+// The document as its bytes at revision rev, into out; "" when the tables do not hold their rules
+// (a dangling ID, a place out of reach, a sum that is wrong, a row that is not its table's) or do
+// not fit.
+forge_content_text :: (d: [] ForgeDoc, rev: int, out: [] u8) -> string {
+  head := forge_slot_text(d, "table:0");
+  n := ct_put(out, 0, CT_MAGIC); n = ct_put(out, n, " "); n = ct_put(out, n, ct_part(head, ' ', 0)); n = ct_put(out, n, " "); n = ct_put_int(out, n, rev);
+  n = ct_put(out, n, "\nreach "); n = ct_put(out, n, ct_part(head, ' ', 1)); n = ct_put(out, n, "\n");
+  table := ""; id := 0;
+  while true {
+    i := forge_content_next(d, table, id);
+    if i < 0 { break; }
+    key := forge_slot_key(d, i); val := forge_span(d, d[0].slots[i].at, d[0].slots[i].n);
+    table = ct_part(key[6..<key.count], '-', 0); id = ct_num(ct_part(key[6..<key.count], '-', 1)).v;
+    if id == 0 {
+      n = ct_put(out, n, "table "); n = ct_put(out, n, table); n = ct_put(out, n, " ");
+      for p: 0..<ct_parts(val, ';') { n = ct_put(out, n, ct_part(val, ';', p)); n = ct_put(out, n, "\n"); }
+    } else {
+      n = ct_put(out, n, val); n = ct_put(out, n, "\n");
+    }
+  }
+  if n > out.count { return ""; }
+  c: [1] ContentDoc;
+  return ifx ct_read(c[..], cast(string) out[0..<n]) then cast(string) out[0..<n] else "";
+}
+
+#test "content editor: a document opens as slots and writes back its own bytes at the next revision" {
+  d: [1] ForgeDoc; o: [CT_BODY] u8; p: [CT_BODY] u8;
+  #assert forge_content_open(d[..], CT_FIXTURE) && d[0].rev == 7 && !forge_can_undo(d[..]) && !forge_dirty(d[..]);
+  #assert forge_content_text(d[..], 7, o[..]) == CT_FIXTURE;
+  #assert forge_content_text(d[..], 8, o[..]) == ct_swap("demo 7", "demo 8", p[..]);
+  #assert forge_slot_text(d[..], "table:0") == "demo 4000" && forge_slot_text(d[..], "table:item") == "id name:text slot:int" && forge_slot_text(d[..], "table:item-5") == "5|Short sword|8";
+  #assert forge_slot_text(d[..], "table:loot") == "id creature:ref.creature item:opt.item weight:int;sum weight by creature 100";
+  #assert !forge_content_open(d[..], "not a document") && !forge_content_open(d[..], "");
+}
+#test "content editor: a creature, its spawn, its loot and an item for it are rows; each is one step, undone and redone" {
+  d: [1] ForgeDoc; o: [CT_BODY] u8; c: [1] ContentDoc;
+  #assert forge_content_open(d[..], CT_FIXTURE);
+  #assert forge_content_row(d[..], "creature", "3|Bear|450") && forge_content_row(d[..], "item", "7|Bear claw|0");
+  // the Bear's loot does not add up yet: nothing is written
+  #assert forge_content_row(d[..], "loot", "4|3|7|30") && forge_content_text(d[..], 8, o[..]) == "";
+  #assert forge_content_row(d[..], "loot", "5|3|0|70") && forge_content_row(d[..], "spawn", "2|3|1|1");
+  text := forge_content_text(d[..], 8, o[..]);
+  #assert text.count > 0 && ct_read(c[..], text) && c[0].rev == 8 && ct_rows(c[..], ct_table(c[..], "creature")) == 3 && ct_rows(c[..], ct_table(c[..], "loot")) == 5;
+  #assert ct_str(c[..], ct_table(c[..], "creature"), 2, 1) == "Bear" && ct_get(c[..], ct_table(c[..], "spawn"), 1, 1) == 3 && forge_dirty(d[..]);
+  // a row changed in place; a row dropped; a dangling ID is never written
+  #assert forge_content_row(d[..], "creature", "3|Cave bear|450") && !forge_content_row(d[..], "creature", "3|Cave bear|450");
+  #assert forge_content_drop(d[..], "item", 7) && forge_content_text(d[..], 8, o[..]) == "" && forge_undo(d[..]) && forge_content_text(d[..], 8, o[..]).count > 0;
+  #assert forge_redo(d[..]) && forge_content_text(d[..], 8, o[..]) == "" && forge_undo(d[..]);
+  // undo walks every step back to the document as it opened; redo walks forward again
+  steps := 0; while forge_undo(d[..]) { steps += 1; }
+  #assert steps == 6 && forge_content_text(d[..], 7, o[..]) == CT_FIXTURE && !forge_dirty(d[..]);
+  for i: 0..<6 { if forge_redo(d[..]) { steps -= 1; } }   // the six; the drop stays undone
+  #assert steps == 0 && forge_can_redo(d[..]) && ct_read(c[..], forge_content_text(d[..], 8, o[..])) && ct_str(c[..], ct_table(c[..], "creature"), 2, 1) == "Cave bear";
+}
+#test "content editor: a new table, a place out of reach, and what is not a row or a table" {
+  d: [1] ForgeDoc; o: [CT_BODY] u8; c: [1] ContentDoc;
+  #assert forge_content_open(d[..], CT_FIXTURE);
+  #assert forge_content_table(d[..], "quest", "id name:text giver:ref.point") && forge_content_row(d[..], "quest", "1|First steps|1");
+  #assert ct_read(c[..], forge_content_text(d[..], 8, o[..])) && c[0].t_n == 6 && ct_table(c[..], "quest") == 4 && ct_get(c[..], 4, 0, 2) == 1;
+  #assert forge_content_row(d[..], "point", "2|Far shore|4001|0") && forge_content_text(d[..], 8, o[..]) == "" && forge_undo(d[..]);
+  #assert forge_content_row(d[..], "point", "2|Far shore|4000|0") && forge_content_text(d[..], 8, o[..]).count > 0;
+  #assert !forge_content_row(d[..], "zone", "1|x") && !forge_content_row(d[..], "item", "x|y") && !forge_content_row(d[..], "item", "0|y|1") && !forge_content_row(d[..], "Item", "1|y|1");
+  #assert !forge_content_drop(d[..], "item", 99) && !forge_content_drop(d[..], "item", 0) && !forge_content_table(d[..], "Bad", "id") && !forge_content_table(d[..], "empty", "");
+  // a row with a cell too many is not its table's: nothing is written
+  #assert forge_content_row(d[..], "item", "9|Rope|0|1") && forge_content_text(d[..], 8, o[..]) == "";
+}

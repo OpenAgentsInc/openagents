@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/render/tests/reference-frame-tool-policy.coax";
+#load "../../metaverse-engine/render/tests/reference-frame-tool-policy.coax";
 mhp_make :: (reference:string,dump:string,assets:string,dir:string)->bool {
  text:[1048576]u8;n:=fs_read(reference,text[..]);p:[1]RfrConfig;if n<1 || !rfr_parse(cast(string)text[0..<n],p[..]) || !fs_mkdir(dir) {return false;}
  capacity_text:[2048]u8;capacity_path:[4096]u8;capacity_n:=fs_read(fs_join(dump,"capacities.json",capacity_path[..]),capacity_text[..]);capacity_doc:[1]Jv;capacity_nodes:[64]JvNode;

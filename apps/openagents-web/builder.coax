@@ -29,13 +29,13 @@
 // the plates and the strokes; builder-face.c sends the page's requests and the analytics batches.
 //   coax/bin/coax test apps/openagents-web/builder.coax
 
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "ui.coax";
 #load "../../coax/web/analytics.coax";
 #load "access.coax";
-#load "../../aethyr/core/budget.coax";
-#load "../../aethyr/forge/made.coax";   // a made realm's answer (made.proto)
-#load "../../aethyr/forge/board.coax";   // the plan's, the pick's and the make's bodies and the board's lines
+#load "../../metaverse-engine/core/budget.coax";
+#load "../../metaverse-engine/editor/made.coax";   // a made realm's answer (made.proto)
+#load "../../metaverse-engine/editor/board.coax";   // the plan's, the pick's and the make's bodies and the board's lines
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 30000;
@@ -248,7 +248,7 @@ json_quote :: (buf: [] u8, at: int, text: string, limit: int) -> int {
 }
 // The answered setup as the server's fixed fields, in the order the page sends them (camera, then
 // the questions'): a field not answered has no value. 2D is the side camera; 3D with no camera
-// chosen is third person. aethyr/forge/board.coax writes them ("setup":{"camera":"first",...}).
+// chosen is third person. metaverse-engine/editor/board.coax writes them ("setup":{"camera":"first",...}).
 setup_fields :: (s: [] Builder, keys: [] string, values: [] string) {
   for f: 0..<4 {
     keys[f] = ifx f == 0 then "camera" else Q_FIELD[f + 1];
@@ -480,7 +480,7 @@ number_of :: (text: string) -> int {
 read_board :: (s: [] Builder, body: string) -> bool {
   plan := 0; n := 0; w := 0;
   s[0].palette_n = 0;
-  // each line and a row's parts come from aethyr/forge/board.coax, the board's one reader
+  // each line and a row's parts come from metaverse-engine/editor/board.coax, the board's one reader
   i := 0;
   while i < body.count {
     l := forge_board_line(body, i); i = l.next;
@@ -566,7 +566,7 @@ take_answer :: (s: [] Builder, t: [] Track, text: string) {
     return;
   }
   if what == REQ_MAKE {
-    // made.proto's lines, "slug S", "path P", "page 1|0" (aethyr/forge/made.coax): without a page
+    // made.proto's lines, "slug S", "path P", "page 1|0" (metaverse-engine/editor/made.coax): without a page
     // (a dev server, a private realm) the template opens it by its hash
     m: [1] ForgeMade; m[0] = forge_read_made(body);
     if !m[0].ok { fail(s, "The world wasn't made. Try again."); return; }
@@ -1868,7 +1868,7 @@ access_answer :: (s: [] Builder, t: [] Track, text: string) { builder_access_sen
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of the realm builder may use.
+// The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of the realm builder may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 BUILDER_BUDGET :: FrameBudget.{steps = 8, vertices = 3000, draws = 0, bytes = 2162688};
 

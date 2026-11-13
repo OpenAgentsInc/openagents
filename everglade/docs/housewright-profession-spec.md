@@ -104,8 +104,8 @@ good house:
 
 - Tool proficiency and checks: [`check-training.coax`](../../rules/srd/check-training.coax) (37 SRD tools as bits) and [`ability-checks.coax`](../../rules/srd/ability-checks.coax).
 - Help: [`help.coax`](../../rules/srd/help.coax).
-- A placed house with walls, a doorway and monster pathing: [`aethyr/world/building.coax`](../../aethyr/world/building.coax) and [`everglade/world/home.coax`](../world/home.coax) (`78d99e4c24`).
-- Spots you stand at to use something: [`aethyr/world/interact.coax`](../../aethyr/world/interact.coax).
+- A placed house with walls, a doorway and monster pathing: [`metaverse-engine/world/building.coax`](../../metaverse-engine/world/building.coax) and [`everglade/world/home.coax`](../world/home.coax) (`78d99e4c24`).
+- Spots you stand at to use something: [`metaverse-engine/world/interact.coax`](../../metaverse-engine/world/interact.coax).
 - Long rest: [docs/dnd/long-rest-implementation.md](../../docs/dnd/long-rest-implementation.md).
 
 Equipment crafting is **missing**. The compliance ledger lists
@@ -309,7 +309,7 @@ What the measures do, without adding warnings to the screen:
   corner. You claim one plot to start, and each plot holds one house at
   first. Only you and the people you invite can build on it. Monsters don't
   spawn inside claimed plots. The engine keeps the plots and their owners
-  (`aethyr/world/plots.coax`); the zone says where the grid is.
+  (`metaverse-engine/world/plots.coax`); the zone says where the grid is.
 - **Placing.** You choose a tier and see its outline on the ground, snapped
   to the plot and turned in quarter steps. The outline turns red over a
   stump, a rock, water or a slope too steep for the foundation.
@@ -395,7 +395,7 @@ Per the owner's rule against one-off zone code:
 
 | Layer | Pieces |
 | --- | --- |
-| Engine (`aethyr/`) | Gather sources with stable ids, yields, regrowth and per-player cooldowns (`aethyr/world/harvest.coax`). Staged construction with outlines, stages, timers, Help and wear (`aethyr/world/build-site.coax`). Plots and ownership (on [`owners.coax`](../../aethyr/world/owners.coax)). The materials bag. Procedural geometry for branches, wattle and thatch. The existing `building.coax` and `interact.coax`. |
+| Engine (`metaverse-engine/`) | Gather sources with stable ids, yields, regrowth and per-player cooldowns (`metaverse-engine/world/harvest.coax`). Staged construction with outlines, stages, timers, Help and wear (`metaverse-engine/world/build-site.coax`). Plots and ownership (on [`owners.coax`](../../metaverse-engine/world/owners.coax)). The materials bag. Procedural geometry for branches, wattle and thatch. The existing `building.coax` and `interact.coax`. |
 | Game (Everglade) | The materials, tools, tiers, stages, measures and talent tree (`everglade/world/housewright.coax`); the shared workday constant; SRD tool proficiencies and checks. |
 | Zone (Everglade II) | Where the plots are, which trees, thickets, reed beds and stones are sources, and where the clay beds are at the brook. Nothing else. |
 

@@ -1,5 +1,5 @@
 // Everglade II's environment deltas, probed before routing (lighting plan Phase 1 step 5, GitHub
-// #13065). The painterly default's evaluation (aethyr/render/painterly.coax) reads the glade's
+// #13065). The painterly default's evaluation (metaverse-engine/render/painterly.coax) reads the glade's
 // constants until #13066 routes it through the resolver; ld_* below are the same arithmetic reading
 // a ResolvedEnvironment, and the first check holds them to paint_* on the glade, so a table here is
 // what the shared functions give with each delta.
@@ -11,7 +11,7 @@
 // ambient, a lit and a shaded mid-grey ground, the haze over 20, 40 and 80 m, the sky and the
 // output; then a walk down the whole path every 10 m (each region's weight and the key).
 #import "Basic";
-#load "../../aethyr/render/painterly.coax";
+#load "../../metaverse-engine/render/painterly.coax";
 #load "../../verse/style-preset.coax";
 #load "environment.coax";
 

@@ -9,7 +9,7 @@
 //   - the row's fields ("row") are the codec's WS_* in order, and each row fixture (s) names its MASK's
 //     fields: written from its base (zeros, or "base") it is the frame, and read onto that base it is
 //     the row again ("expect": fields after the delta);
-//   - the relay's own frames (y, j, l, t) are written and read by their codec, aethyr/net/relay-wire.coax
+//   - the relay's own frames (y, j, l, t) are written and read by their codec, metaverse-engine/net/relay-wire.coax
 //     (their own profile is proto/verse/room-relay-v1.json);
 //   - the seat ticket (owner generation and the rest, room-ticket.coax tk_check) reads to "expect" under
 //     its key, and each of "refused" is refused;
@@ -18,10 +18,10 @@
 // The file is the independent expected result: its frames are written by hand, not by this codec.
 // Prints a line per message and "profile holds" (exit 0), or what differs and "profile fails" (exit 1).
 //   coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v6.json
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #import "Basic";
 #load "../../everglade/shared/everglade-wire.coax";
-#load "../../aethyr/net/relay-wire.coax";   // the relay's own frames (#13245)
+#load "../../metaverse-engine/net/relay-wire.coax";   // the relay's own frames (#13245)
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/args.coax";

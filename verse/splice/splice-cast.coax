@@ -1,6 +1,6 @@
 // Splice's cast: the five characters of the vertical slice (the Characters board in
 // ~/games/cakbag/docs/design/splice-gdd.md, section 9), each written from the cel kit's shapes
-// (aethyr/render/cel-mesh.coax). The designs are our own, in the comic-ink manner the board asks
+// (metaverse-engine/render/cel-mesh.coax). The designs are our own, in the comic-ink manner the board asks
 // for: flat fills, clean contours, a tall silhouette you can read from far off.
 //
 //   cast_smuggler   the player: a pointed hat, an orange coat, a film reel on the pack, a stun baton
@@ -11,7 +11,7 @@
 //
 // The game draws them (splice-game.coax g_live, g_world) and ?scene=17..22 stands them on a plinth
 // to review (splice.coax). Every one faces its frame's z.
-#load "../../aethyr/kit/machines.coax";
+#load "../../metaverse-engine/kit/machines.coax";
 
 // Short forms: a shape placed in the character's frame, all lengths times its scale.
 ca_box :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, x: f32, y: f32, z: f32, hx: f32, hy: f32, hz: f32) { box(buf, p, kit_at(f, x * s, y * s, z * s), hx * s, hy * s, hz * s); }

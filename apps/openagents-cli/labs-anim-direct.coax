@@ -1,4 +1,4 @@
-#load "../../aethyr/tools/anim-direction-store.coax";
+#load "../../metaverse-engine/tools/anim-direction-store.coax";
 labs_anim_direct :: (p:AnimArgs,r:[]Rep,profile:string)->int {
  canonical:[4096]u8;file:=fs_realpath(p.clip,canonical[..]);if file=="" {return fail(r,EXIT_USAGE,"animation source file is missing");}current:[67108864]u8;n:=ap_file(file,current[..]);project:[1]SceneProject;if n<1 || !project_load(current[0..<n],project[..]) {return fail(r,EXIT_FAIL,"animation project refused");}
  if p.verb!="edit" {return labs_anim_history(p,r,file,current[0..<n]);}

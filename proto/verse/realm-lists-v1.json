@@ -1,8 +1,8 @@
 {
  "profile": "realm-lists-v1",
- "about": "A realm's other text answers (GitHub #13250): the feature list and what adding to it answers, a revision's answer, the edit panes, the proposals, the listed realms, the made realms' rows for /og, and the card's want. \"lines\" names every line. \"steps\" are calls to a seeded public realm as its owner and as a visitor (the fixture's second key is a player's) with the status and body the server answers today: \"vary_line\" names a line's start whose number the run decides, and \"has_line\" says the answer lists every realm in the database and the fixture's line is one of them. \"model_steps\" need the planner's model: coax/web/api/test_realm_builder.py makes them as the owner of the realm proto/verse/realm-board-v1.json made (fixture-marsh), with the ask's and the plan's numbers written 41. aethyr/forge/lists.coax, spec.coax and listed.coax read the lines; aethyr/forge/lists-goldens.coax holds them through those files; coax/web/api/tests/realm_record_checks.coax makes the calls.",
- "check": "coax/web/tool.sh aethyr/forge/lists-goldens.coax proto/verse/realm-lists-v1.json",
- "codec": "aethyr/forge/lists.coax",
+ "about": "A realm's other text answers (GitHub #13250): the feature list and what adding to it answers, a revision's answer, the edit panes, the proposals, the listed realms, the made realms' rows for /og, and the card's want. \"lines\" names every line. \"steps\" are calls to a seeded public realm as its owner and as a visitor (the fixture's second key is a player's) with the status and body the server answers today: \"vary_line\" names a line's start whose number the run decides, and \"has_line\" says the answer lists every realm in the database and the fixture's line is one of them. \"model_steps\" need the planner's model: coax/web/api/test_realm_builder.py makes them as the owner of the realm proto/verse/realm-board-v1.json made (fixture-marsh), with the ask's and the plan's numbers written 41. metaverse-engine/editor/lists.coax, spec.coax and listed.coax read the lines; metaverse-engine/editor/lists-goldens.coax holds them through those files; coax/web/api/tests/realm_record_checks.coax makes the calls.",
+ "check": "coax/web/tool.sh metaverse-engine/editor/lists-goldens.coax proto/verse/realm-lists-v1.json",
+ "codec": "metaverse-engine/editor/lists.coax",
  "lines": [
   {
    "key": "ask",
@@ -31,7 +31,7 @@
   {
    "key": "row",
    "form": "row KEY 0|1 LABEL",
-   "says": "a row of the board, as in the spec (aethyr/forge/spec.coax)",
+   "says": "a row of the board, as in the spec (metaverse-engine/editor/spec.coax)",
    "example": "row trees 1 6 dead trees"
   },
   {
@@ -67,7 +67,7 @@
   {
    "key": "listed row",
    "form": "SLUG|TITLE|LINE|YYYY-MM-DDTHH:MM|STYLE",
-   "says": "a public realm on /worlds, newest first (aethyr/forge/listed.coax)",
+   "says": "a public realm on /worlds, newest first (metaverse-engine/editor/listed.coax)",
    "example": "farm|Farm|A meadow by day|2026-10-31T09:05|lowpoly"
   },
   {

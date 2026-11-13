@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/net/cdp.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/host/socket-context-conformance.coax";
+#load "../../metaverse-engine/host/socket-context-conformance.coax";
 msc_text :: (d:Jv,node:int,key:string,out:[]u8)->string {n:=jv_str(d,jv_get(d,node,key),out);return ifx n>=0 then cast(string)out[0..<n] else "";}
 msc_op :: (o:[]Jo,name:string,kind:int,text:string) {jo_obj(o);jo_key(o,"op");jo_str(o,name);if kind>=0{jo_key(o,"kind");jo_int(o,kind);}jo_key(o,"text");jo_str(o,text);jo_end(o);}
 tool_main :: ()->int #export_c #effects(all) {
@@ -17,7 +17,7 @@ tool_main :: ()->int #export_c #effects(all) {
  }jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],"observe");jo_key(o[..],"name");jo_str(o[..],"events");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(plan,jo_text(o[..])){return 1;}
  if !args_has(a[..],"--existing") {
   server:=proc_new();if server<0{return 1;}defer{killed:=proc_kill(server,PROC_SIGTERM);waited:=proc_wait(server,2000);released:=proc_release(server);}
-  for arg:[3]string.[fs_join(root,"coax/web/tool.sh",paths[3][..]),fs_join(root,"aethyr/host/tests/socket-context-peer.coax",paths[4][..]),peer]{if !proc_arg(server,arg){return 1;}}quiet:=proc_quiet(server);if !quiet||proc_start(server)!=0{return 1;}
+  for arg:[3]string.[fs_join(root,"coax/web/tool.sh",paths[3][..]),fs_join(root,"metaverse-engine/host/tests/socket-context-peer.coax",paths[4][..]),peer]{if !proc_arg(server,arg){return 1;}}quiet:=proc_quiet(server);if !quiet||proc_start(server)!=0{return 1;}
   probe:[1]Cdp;health:[4096]u8;deadline:=proc_now_ms()+15000;ready:=false;while proc_now_ms()<deadline{if cdp_get(probe[..],9172,"/health",health[..])>0{ready=true;break;}proc_sleep(50);}if !ready{tool_errln("Opening-context fixture did not start");return 1;}
   run:=[5]string.[fs_join(sdk,"HostEffects",paths[3][..]),fs_join(sdk,"resources",paths[4][..]),fs_join(sdk,"libfixture.dylib",paths[5][..]),plan,result];out:[65536]u8;err:[65536]u8;r:=proc_run(run[..],60000,out[..],err[..]);if !fs_write(fs_join(dir,"sdk.stderr",paths[6][..]),cast(string)err[0..<r.err_n])||r.started!=0||r.status!=0||r.cut||r.timed_out{tool_errln(cast(string)err[0..<r.err_n]);return 1;}
  }

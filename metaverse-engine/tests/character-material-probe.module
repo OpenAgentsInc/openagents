@@ -1,0 +1,3 @@
+--vertices cmp_vs
+--fragments cmp_fs
+--bindings metaverse-engine/tests/character-material-probe.bindings

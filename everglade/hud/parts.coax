@@ -1,4 +1,4 @@
-// Everglade's HUD parts, drawn in the realm's HUD style (EG_HUD, FANTASY: aethyr/ui/hud-style.coax,
+// Everglade's HUD parts, drawn in the realm's HUD style (EG_HUD, FANTASY: metaverse-engine/ui/hud-style.coax,
 // docs/verse/hud-styles.md): the unit frames (your portrait plate and your target's frame, their
 // health bars with a damage trail), the action bar's tray and a slot's cooldown sweep, the map ring
 // top right with the place and the time of day, the plates over creatures, damage numbers, a place's
@@ -16,7 +16,7 @@ EgPortrait :: struct {
   ac: int;
   slot_max: [10] int; slot_left: [10] int;     // by spell level; left -1 unknown
   conds: string;                               // the conditions and effects held, " · " between; "" none
-  // the health bar as it stands this frame (aethyr/ui/hud-style.coax hud_trail_step): where its fill
+  // the health bar as it stands this frame (metaverse-engine/ui/hud-style.coax hud_trail_step): where its fill
   // has eased to and where its damage trail is; -1 each: the bar at hp / max, no trail
   fill: f32 = -1; trail: f32 = -1;
   foe: bool;      // a monster's frame: red where yours is gold
@@ -52,7 +52,7 @@ EG_UNIT_BAR :: 16.0;    // the health bar's height
 // damage trail and its numbers; the AC shield at the plate's far end; spell slots as gems and the
 // conditions under it. Yours is gold with the medallion on the left; a target's (mirror, foe) is red
 // with it on the right, so the two face each other. (x, y) its top left, wide its width (CSS px).
-// Returns the end. With a layout trace attached (ui, aethyr/ui/trace.coax) it puts the plate there.
+// Returns the end. With a layout trace attached (ui, metaverse-engine/ui/trace.coax) it puts the plate there.
 eg_portrait :: (ui: [] UitTrace, out: [] f32, at: int, x: f32, y: f32, wide: f32, k: f32, p: EgPortrait, a: f32) -> int {
   if !(a > 0.01) { return at; }
   t := eg_tokens(); l: [1] HudList;
@@ -179,7 +179,7 @@ eg_slot_sweep :: (out: [] f32, at: int, b: [] f32, share: f32, k: f32) -> int {
   l: [1] HudList; hud_sweep(l[..], hud_box(b[0], b[1], b[2], b[3]), share, hud_rgba(0.02, 0.015, 0.01, 0.68));
   return hud_emit(out, at, l[..]);
 }
-// The screen's red edges, every Everglade zone's (GitHub #13147, aethyr/ui/hud-style.coax
+// The screen's red edges, every Everglade zone's (GitHub #13147, metaverse-engine/ui/hud-style.coax
 // hud_vignette): a flash when a blow lands on you and a pulse while you are under a quarter of your
 // Hit Points. A zone keeps one HudVignette, steps it with your share each frame, and draws this first.
 eg_vignette :: (out: [] f32, at: int, v: HudVignette, w: f32, h: f32) -> int {
@@ -286,7 +286,7 @@ eg_plate_trail :: (out: [] f32, at: int, name: string, sx: f32, sy: f32, k: f32,
   ink := ifx target then hud_mix(t.title, hud_rgba(1, 1, 1, 1), 0.25) else ifx foe then hud_rgba(0.94, 0.41, 0.35, 1) else hud_rgba(0.53, 0.86, 0.55, 1);
   return eg_say_ink(out, v, name, sx, sy - f32(EG_PLATE_UP) * k, 10.5 * k, HUD_TEXT_NAME, ink, alpha, k, true);
 }
-// The frame's plates over bodies, every zone's (aethyr/ui/hud-plates.coax places them): each name in
+// The frame's plates over bodies, every zone's (metaverse-engine/ui/hud-plates.coax places them): each name in
 // the title face over its bar, a covered one's count ("+3") beside the name over it. Measures the
 // names, places the plates from the camera, then draws them; most is the vertex count to stop short
 // of (0: none), and a plate left off for want of room is counted in skipped.
@@ -332,7 +332,7 @@ eg_fps :: (ui: [] UitTrace, f: FpsCounter, out: [] f32, at: int, w: f32, h: f32,
   return fps_draw(ui, f, out, p, w, h, k);
 }
 // The frame rate with the graphics control to its left on the one plaque ("GFX AUTO · MED  60 FPS",
-// aethyr/core/quality-page.coax qp_label); box gets where a tap or a click takes the control. With no
+// metaverse-engine/core/quality-page.coax qp_label); box gets where a tap or a click takes the control. With no
 // words it is the frame rate alone (eg_fps) and box is empty.
 eg_fps_gfx :: (ui: [] UitTrace, f: FpsCounter, gfx: string, out: [] f32, at: int, w: f32, h: f32, k: f32, box: [] Box) -> int {
   box[0] = Box.{};
@@ -391,7 +391,7 @@ eg_plaque :: (out: [] f32, at: int, x0: f32, y0: f32, x1: f32, y1: f32, k: f32) 
 EgWorld :: struct { you_x: f32; you_z: f32; fx: f32; fz: f32; reach: f32 = 60; place: string; clock: string; since: f32; cover: HudPrim; }
 // Whether boxes a and b share area (an empty box meets nothing).
 eg_meets :: (a: HudPrim, b: HudPrim) -> bool { return a.x1 > a.x0 && b.x1 > b.x0 && a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
-// ui: the layout trace (aethyr/ui/trace.coax), when the overlap check attaches one; empty for none.
+// ui: the layout trace (metaverse-engine/ui/trace.coax), when the overlap check attaches one; empty for none.
 eg_world :: (ui: [] UitTrace, out: [] f32, at: int, w: f32, h: f32, k: f32, wd: EgWorld, dots: [] EgDot, nd: int, p: EgPortrait) -> int {
   W := w / k; phone := W < 700 || h / k < 500;
   mr := ifx phone then 40.0f32 else 70.0f32; top := ifx phone then 14.0f32 else 16.0f32;

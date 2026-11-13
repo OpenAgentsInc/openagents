@@ -76,7 +76,7 @@ realm, a feature being shown off, or a moment a player really had.
   Lightning and Wavelength payment storm), `reed` and `fleet`. The
   `frame_meteor`, `frame_grid` and `frame_play` stages are overlays for
   `labs cut over=`: black, with the middle 60% left clear. Instruments come
-  from `aethyr/ui/draw.coax`. Frames draw in, labels decipher and settle, and
+  from `metaverse-engine/ui/draw.coax`. Frames draw in, labels decipher and settle, and
   packets travel the links. Everything stays above y=900 so captions fit
   underneath. Stepped on whole ticks, so the frames are the same every time.
 
@@ -100,7 +100,7 @@ realm, a feature being shown off, or a moment a player really had.
   builds on the open grass at (-60, -38), south of the glade's village, from its bare site to finished, drawn by the build sites
   at any progress (#13106), with no HUD. The game layer
   (`everglade/world/housewright-stage.coax`) holds each shot's progress keys, its camera track
-  (`aethyr/cam/track.coax`) and its sky clock. The sun moves over the build: the stone cottage
+  (`metaverse-engine/cam/track.coax`) and its sky clock. The sun moves over the build: the stone cottage
   passes a full day and night. The corner shows the speed (the tier's workdays over the clip) and
   the workday. Under the house, the text gives its starting materials and its work. `house-row`
   stands the five finished houses small to large, with the tool that unlocks each under it. The
@@ -122,7 +122,7 @@ range as it was drawn, at a film rate (#13003, phase F0 of
 ```sh
 ./vk-realm DRAWDIR GIVEN... --size 1920x1080 --headless 300 --fps 24 \
   --frames-dir OUT --film-start 48 --film-end 287 [--facts STAGE.facts] [--replay ROOM.log] [--keys F:KEY:DOWN,...]
-coax/web/tool.sh aethyr/tools/film-frames.coax OUT --out OUT/film.mp4 [--audio MIX.wav]
+coax/web/tool.sh metaverse-engine/tools/film-frames.coax OUT --out OUT/film.mp4 [--audio MIX.wav]
 ```
 
 `--fps N` advances each frame 1/N s through the realm's own fixed step and
@@ -140,7 +140,7 @@ vendors.
 ### The film profile
 
 Each written frame can instead be the average of N samples (#13004, phase
-F1; the record and its checks are `aethyr/render/film.coax`):
+F1; the record and its checks are `metaverse-engine/render/film.coax`):
 
 ```sh
 ./vk-realm DRAWDIR GIVEN... --size 1920x1080 --headless 300 --fps 24 \
@@ -173,13 +173,13 @@ shutter and f/2.8 took 1.6 to 2.0 s a frame (85cfc9d1b1's producer).
 ### EXR layers
 
 `film-frames.coax OUT --exr` also writes `OUT/exr/fNNNNN.exr` (#13005, phase
-F2): one OpenEXR file a frame, written by `aethyr/render/exr.coax`. Each file is
+F2): one OpenEXR file a frame, written by `metaverse-engine/render/exr.coax`. Each file is
 single-part scanline, ZIP compression (zlib over 16 lines, from
 `coax/lib/image/deflate.coax`), half channels, scene-linear and
 premultiplied. The screen target is `R`, `G`, `B`, `A`; any other target K is
 `targetK.R` and so on. ffmpeg's EXR decoder reads the files.
-`aethyr/render/exr.coax` also reads any channel back as f32, for `labs cut`.
-`aethyr/tests/exr_oracle.py` decodes the files on its own and checks every
+`metaverse-engine/render/exr.coax` also reads any channel back as f32, for `labs cut`.
+`metaverse-engine/tests/exr_oracle.py` decodes the files on its own and checks every
 value bit for bit: run it bare for the sample files, or with `--frame
 FRAME.rgba16f FILE.exr` for a film frame. A 1920x1080 Everglade frame
 writes in under a second and takes 4.4 MB; its raw halves take 16.6 MB.

@@ -1,4 +1,4 @@
-// Dead Gears' rules on the Metaverse Engine's entities (aethyr/core/entity.coax, with the
+// Dead Gears' rules on the Metaverse Engine's entities (metaverse-engine/core/entity.coax, with the
 // component bits in ecs.coax), ported from
 // aethyr-demo's src/dead_gears_rules.cpp: waves of mutants, the cutter and
 // its three modes (Sever, Head, Core), reloads, cover, telekinetic Lift and
@@ -142,7 +142,7 @@ Event :: struct { kind: int; who: Handle(Entity); n: int; amount: f32; at: Point
 // Everything a fight is, as storage. A host allocates one (zeros) and
 // binds it; a test declares one.
 DgStore :: struct {
-  // aethyr/core/entity.coax's EntityStore, then the component bits beside it
+  // metaverse-engine/core/entity.coax's EntityStore, then the component bits beside it
   gen: [DG_CAP] int; live: [DG_CAP] bool; born: [DG_CAP] bool; doomed: [DG_CAP] bool;
   ids: [DG_CAP] int; free: [DG_CAP] int; spawns: [DG_CAP] int; n: [ENTITY_COUNTERS] int;
   mask: [DG_CAP] int; dropping: [DG_CAP] int;
@@ -1012,7 +1012,7 @@ ROLE_REACTOR :: 3;  // a crawler: makes for the reactor while you are far from i
 ROLE_IDLE :: 4;     // it doesn't know where you are: it prowls round the reactor, which you defend
 
 // ---- what a mutant knows (#12854): it acts on where it last sensed you, not where you are. It
-// senses you on the fighting step through the Metaverse Engine's senses (aethyr/ai/stimulus.coax): sight across
+// senses you on the fighting step through the Metaverse Engine's senses (metaverse-engine/ai/stimulus.coax): sight across
 // the deck at chest height (low cover lets it peek, as you do), your shots within MIND_HEAR, and
 // touch. Out of sight it goes to the spot it last sensed you at, turns there looking for you, and
 // gives up when the memory is MIND_SENSES.forget steps old (4 s): then it prowls round the
@@ -1904,7 +1904,7 @@ shot_hits :: (g: Game) -> int {
   #assert dg_role(g, slot_of(h)) == ROLE_CHASE;
 }
 
-// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
+// Full native integration scenario: metaverse-engine/tests/check_native_gameplay.py.
 
 #test "the brute holds off where it sees you and shoots; behind cover it can't" #steps 167000000 {
   st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
@@ -2207,7 +2207,7 @@ spawn_crowd :: (g: Game) {
   #assert dg_mutants(g) == 205;
 }
 
-// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
+// Full native integration scenario: metaverse-engine/tests/check_native_gameplay.py.
 
 #test "events reach the HUD" {
   st: [1] DgStore; g := dg_bind(st[..]); dg_setup(g);
@@ -2415,7 +2415,7 @@ spawn_crowd :: (g: Game) {
 // ---- frame rate: the fixed steps don't depend on it
 //
 // The same input, a function of the fixed step (what a host hands each step,
-// aethyr/core/input.coax), driven through frames of 30, 60, 120 and 144 FPS and an
+// metaverse-engine/core/input.coax), driven through frames of 30, 60, 120 and 144 FPS and an
 // uneven run of frame times. A reference store takes one fixed step at a time
 // with no frames at all and keeps each step's digest (dg_digest: the entity
 // store's digest, the State and every live entity's fields, bit for bit).

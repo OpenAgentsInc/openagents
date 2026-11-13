@@ -13,8 +13,8 @@
 // The layout, the fade and the troubles are verse/fairy-forest/forest.coax;
 // the stream and the pond are verse/fairy-forest/stream.coax (verse/water.coax
 // physics, drawn in the painted water preset). You walk and run on the
-// engine's controller (aethyr/move/player.coax) and see the valley through the free
-// orbit (aethyr/cam/camera.coax); every Space press is one wing beat up, with no
+// engine's controller (metaverse-engine/move/player.coax) and see the valley through the free
+// orbit (metaverse-engine/cam/camera.coax); every Space press is one wing beat up, with no
 // limit, holding it beats on and climbs, and letting go glides down (the face does the flight).
 //
 // The look (fairy.wgsl, the flat style of docs/verse/art-styles.md): three
@@ -28,10 +28,10 @@
 // it for the browser and runs the player and the stream between its calls.
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
 
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
-#load "../../aethyr/cam/camera.coax";
-#load "../../aethyr/world/terrain.coax";
+#load "../../metaverse-engine/cam/camera.coax";
+#load "../../metaverse-engine/world/terrain.coax";
 #load "../../verse/fairy-forest/forest.coax";
 #load "../../verse/fairy-forest/park.coax";   // the park: Central Park at a quarter of its size
 #load "../../verse/fairy-forest/talk.coax";
@@ -55,7 +55,7 @@
 #load "fairypark.coax";    // the park drawn: lakes, trees, landmarks, signs
 #load "fairymap.coax";     // the map: the park from above with its names
 #load "fairyupgrade.coax"; // UPGRADE: fairies made by players, paid in sats straight to their maker (ev-asset-upgrades, #13210)
-#load "../../aethyr/core/budget.coax";
+#load "../../metaverse-engine/core/budget.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -842,7 +842,7 @@ fairy_answer :: (s: [] Fairy, reply: string) #export_c #effects(all) {
   ffk_note(s, FFK_SPEAK);   // answered for the first time
   ok := reply.count > 4 && reply[0..<4] == "200\n";
   text: [LINE_BYTES] u8;
-  n := ifx ok then npc_answer_text(reply[4..<reply.count], text[..]) else 0;   // the NPC ask's codec (aethyr/talk/wire.coax)
+  n := ifx ok then npc_answer_text(reply[4..<reply.count], text[..]) else 0;   // the NPC ask's codec (metaverse-engine/talk/wire.coax)
   if n > 0 { add_line(s, true, cast(string) text[0..<n]); return; }
   // no answer: what is on its mind, as a creature would say it again
   add_line(s, true, ff_talker_says(s[0].forest[..], s[0].talk - 1, s[0].life[0].skills.axe));
@@ -2250,7 +2250,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   body := ffl_part_worn(s[0].life[..], worn, FFL_BODY);
   ups := FFL_BODY_UP; acrosses := FFL_BODY_ACROSS;
   s[0].fig_on = true; s[0].fig_at = shown; s[0].fig_up = ups[body]; s[0].fig_across = acrosses[body];
-  // zoomed into your head (first person, aethyr/cam/camera.coax) you aren't drawn, unless the map lifts the eye out
+  // zoomed into your head (first person, metaverse-engine/cam/camera.coax) you aren't drawn, unless the map lifts the eye out
   if !verse_orbit_inside(s[0].orbit) || s[0].map[0].lift > 0.5 { fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap, worn); }
   s[0].fig_on = false;
   ffk_carried(s, shown, face);
@@ -2482,7 +2482,7 @@ fairy_store_cap :: (k: int) -> int #export_c #effects(all) {
   #assert g[0].button.x1 > g[0].button.x0;
 }
 
-// What the player library (aethyr/move/player.coax) stands on: a wall whose top is
+// What the player library (metaverse-engine/move/player.coax) stands on: a wall whose top is
 // within STEP_UP (0.55 m) of your feet and under you. Its own tests cover the
 // landing and the pushing out; these check the boxes are where the trees are.
 top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
@@ -2653,7 +2653,7 @@ dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return 
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of Fairy Forest may use.
+// The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of Fairy Forest may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 FAIRY_BUDGET :: FrameBudget.{steps = 8, vertices = 11000, draws = DRAWS, bytes = 2752512};
 

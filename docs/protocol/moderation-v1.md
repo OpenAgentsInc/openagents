@@ -4,7 +4,7 @@ Bans, mutes, kicks and a moderator's commands, with a log that no one can
 edit (GitHub #13302, AAA P5.8).
 
 The rules and the one codec are
-[`aethyr/session/moderation.coax`](../../aethyr/session/moderation.coax). A
+[`metaverse-engine/session/moderation.coax`](../../metaverse-engine/session/moderation.coax). A
 room runs them, and the API calls them through
 [`coax/web/api/moderation-policy.coax`](../../coax/web/api/moderation-policy.coax).
 The fixtures are [`proto/verse/moderation-v1.json`](../../proto/verse/moderation-v1.json),

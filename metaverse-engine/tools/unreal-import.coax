@@ -1,0 +1,136 @@
+// Imports an export bundle into an Unreal project and says whether the import's own checks
+// passed (docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md, step 1; GitHub #13400).
+// It stages what the project needs, builds it, and runs metaverse-engine/export/unreal/import.py in a
+// headless editor. The checks themselves are the script's; this tool only reads its verdict.
+//   coax/web/tool.sh metaverse-engine/tools/unreal-import.coax BUNDLE_DIR PROJECT.uproject ENGINE_DIR
+// Run from the repository root, on a Mac. PROJECT.uproject may not exist yet when it is named
+// AethyrHost.uproject: the bare host project (metaverse-engine/export/unreal/project) is copied there.
+// The AethyrBridge plugin's source is copied into the project's Plugins/ every time.
+// The report is PROJECT_DIR/Saved/aethyr-import-report.json, the rendered shots are beside it.
+// When the bundle has rules/, they are copied into the plugin before the build, and after the
+// import the game itself plays the bundle's scripted run; every expected line must be printed.
+// Exit 0: imported and every check passed. 1: a check failed or a step did not run. 2: usage.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+ui_cat :: (a: string, b: string, out: [] u8) -> string {
+  if a.count + b.count > out.count { return ""; }
+  for c, k: a { out[k] = c; }
+  for c, k: b { out[a.count + k] = c; }
+  return cast(string) out[0..<a.count + b.count];
+}
+// Runs a program with no pipes (Unreal's helpers outlive a pipe's reader); its exit status, or
+// -1 when it could not start or ran past the limit.
+ui_run :: (args: [] string, env: [] string, timeout_ms: int) -> int #effects(all) {
+  h := proc_new(); if h < 0 { return -1; }
+  defer { released := proc_release(h); }
+  ok := proc_quiet(h);
+  for a: args { ok = ok && proc_arg(h, a); }
+  for e: env { ok = ok && proc_env(h, e); }
+  if !ok || proc_start(h) != 0 { return -1; }
+  status := proc_wait(h, timeout_ms);
+  if status == PROC_RUNNING { killed := proc_kill(h, PROC_SIGKILL); status = proc_wait(h, 5000); return -1; }
+  return status;
+}
+ui_has :: (text: string, needle: string) -> bool {
+  if needle.count > text.count { return false; }
+  for i: 0..<text.count - needle.count + 1 {
+    same := true;
+    for c, k: needle { if text[i + k] != c { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+ui_fail :: (why: string) -> int #effects(all) { print("unreal-import: %\n", why); return 1; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 3 { print("usage: unreal-import BUNDLE_DIR PROJECT.uproject ENGINE_DIR   (run from the repository root)\n"); return 2; }
+  b0: [4096] u8; b1: [4096] u8; b2: [4096] u8; b3: [4096] u8; b4: [4096] u8; b5: [4096] u8; b6: [4096] u8; b7: [4096] u8; b8: [4096] u8; b9: [4096] u8;
+  bundle := fs_realpath(args_at(a[..], 0), b0[..]);
+  if bundle == "" || fs_kind(fs_join(bundle, "manifest.json", b1[..])) != FS_FILE { return ui_fail("the bundle has no manifest.json"); }
+  engine := fs_realpath(args_at(a[..], 2), b2[..]);
+  ubt := fs_join(engine, "Engine/Build/BatchFiles/RunUBT.sh", b3[..]);
+  if engine == "" || fs_kind(ubt) != FS_FILE { return ui_fail("ENGINE_DIR has no Engine/Build/BatchFiles/RunUBT.sh"); }
+  script := fs_realpath("metaverse-engine/export/unreal/import.py", b4[..]);
+  plugin := fs_realpath("metaverse-engine/export/unreal/AethyrBridge", b5[..]);
+  if script == "" || plugin == "" { return ui_fail("run from the repository root: metaverse-engine/export/unreal/ was not found"); }
+
+  wanted := args_at(a[..], 1); name := fs_base(wanted);
+  if name.count < 10 || !ui_has(name, ".uproject") { return ui_fail("the second argument is the project's .uproject file"); }
+  stem := name[0..<name.count - 9];
+  empty: [1] string; none := empty[0..<0];
+  if fs_kind(wanted) != FS_FILE {
+    if name != "AethyrHost.uproject" { return ui_fail("that project does not exist (only AethyrHost.uproject is made for you)"); }
+    made := fs_mkdir(fs_dir(wanted));
+    copy := [4] string.["/bin/cp", "-R", "metaverse-engine/export/unreal/project", fs_dir(wanted)];
+    if ui_run(copy[..], none, 60000) != 0 { return ui_fail("could not copy the host project"); }
+  }
+  project := fs_realpath(wanted, b6[..]); dir := fs_dir(project);
+  if project == "" { return ui_fail("the project file was not found"); }
+  plugins := fs_join(dir, "Plugins", b7[..]); made := fs_mkdir(plugins);
+  copy := [4] string.["/bin/cp", "-R", plugin, plugins];
+  if ui_run(copy[..], none, 60000) != 0 { return ui_fail("could not copy the AethyrBridge plugin"); }
+
+  // the world's rules, when the bundle has them: the plugin compiles what is in Private/Rules/
+  c0: [4200] u8; c1: [4200] u8; c2: [4200] u8; c3: [4200] u8;
+  bundle_rules := fs_join(bundle, "rules", c0[..]);
+  has_rules := fs_kind(fs_join(bundle_rules, "aethyr_host.h", c1[..])) == FS_FILE;
+  plugin_rules := fs_join(plugins, "AethyrBridge/Source/AethyrBridge/Private/Rules", c2[..]);
+  clear := [3] string.["/bin/rm", "-rf", plugin_rules];
+  if ui_run(clear[..], none, 60000) != 0 { return ui_fail("could not clear the plugin's rules"); }
+  if has_rules {
+    rules_made := fs_mkdir(plugin_rules);
+    rules_copy := [4] string.["/bin/cp", "-R", ui_cat(bundle_rules, "/.", c3[..]), plugin_rules];
+    if ui_run(rules_copy[..], none, 60000) != 0 { return ui_fail("could not copy the rules into the plugin"); }
+  }
+
+  print("unreal-import: building %Editor\n", stem);
+  t0: [256] u8; t1: [4200] u8;
+  build := [8] string.["/bin/bash", ubt, ui_cat(stem, "Editor", t0[..]), "Mac", "Development", ui_cat("-project=", project, t1[..]), "-NoHotReload", "-NoHotReloadFromIDE"];
+  if ui_run(build[..], none, 3600000) != 0 { return ui_fail("the project did not build (run RunUBT.sh by hand to see why)"); }
+
+  report := fs_join(fs_join(dir, "Saved", b8[..]), "aethyr-import-report.json", b9[..]);
+  removed := fs_remove(report);
+  e0: [4200] u8; e1: [4200] u8; e2: [4200] u8; e3: [4200] u8; e4: [4200] u8; e5: [4200] u8;
+  env := [3] string.[ui_cat("AETHYR_BUNDLE=", bundle, e0[..]), ui_cat("AETHYR_REPORT=", report, e1[..]), ui_cat("AETHYR_SHOTS=", fs_join(fs_join(dir, "Saved", e3[..]), "aethyr-import-shots", e4[..]), e2[..])];
+  editor := fs_join(engine, "Engine/Binaries/Mac/UnrealEditor-Cmd", e5[..]);
+  s0: [4200] u8;
+  run := [6] string.[editor, project, ui_cat("-ExecutePythonScript=", script, s0[..]), "-unattended", "-nosplash", "-RenderOffscreen"];
+  print("unreal-import: importing in a headless editor\n");
+  status := ui_run(run[..], env[..], 3600000);
+  text: [1048576] u8; n := fs_read(report, text[..]);
+  if n < 1 { print("unreal-import: the editor wrote no report (exit status %); see ~/Library/Logs/Unreal Engine/%Editor/\n", status, stem); return 1; }
+  body := cast(string) text[0..<n];
+  if !ui_has(body, "\"ok\": true") { print("%", body); return ui_fail("a check failed; the report is above"); }
+  print("unreal-import: imported, report %\n", report);
+  if !has_rules { print("unreal-import: ok (the bundle has no rules, so no run was played)\n"); return 0; }
+
+  // the scripted run, played by the game itself: every line the bundle expects must be printed
+  g0: [4200] u8; g1: [4200] u8; g2: [4200] u8; g3: [4200] u8; g4: [4200] u8;
+  run_log := fs_join(fs_join(dir, "Saved", g0[..]), "aethyr-run.log", g1[..]);
+  gone := fs_remove(run_log);
+  level := "/Game/Aethyr/Splice/Generated/L_Splice";
+  mtext: [1048576] u8; mn := fs_read(fs_join(bundle, "manifest.json", g2[..]), mtext[..]);
+  if mn > 0 && !ui_has(cast(string) mtext[0..<mn], "\"name\":\"Splice\"") { return ui_fail("only Splice's level name is known to the run step yet"); }
+  play := [10] string.[editor, project, level, "-game", "-RenderOffscreen", "-unattended", "-nosplash", "-AethyrScript", "-AethyrExit", ui_cat("-abslog=", run_log, g3[..])];
+  print("unreal-import: playing the scripted run in the game\n");
+  played := ui_run(play[..], none, 1800000);
+  ltext: [4194304] u8; ln := fs_read(run_log, ltext[..]);
+  etext: [65536] u8; en := fs_read(fs_join(bundle_rules, "run.expected", g4[..]), etext[..]);
+  if ln < 1 || en < 1 { return ui_fail("the game wrote no log, or the bundle has no run.expected"); }
+  logged := cast(string) ltext[0..<ln]; at := 0; lines := 0;
+  while at < en {
+    end := at; while end < en && etext[end] != '\n' { end += 1; }
+    want := cast(string) etext[at..<end];
+    if want.count > 0 {
+      if !ui_has(logged, want) { print("unreal-import: the game did not print: %\n", want); return ui_fail("the scripted run inside Unreal differs from the bundle's"); }
+      lines += 1;
+    }
+    at = end + 1;
+  }
+  print("unreal-import: ok, the game printed all % expected lines of the run\n", lines);
+  return 0;
+}

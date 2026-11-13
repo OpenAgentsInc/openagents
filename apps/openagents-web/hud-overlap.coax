@@ -1,6 +1,6 @@
 // The HUD overlap check's shared half (GitHub #13076): the four screens every HUD is laid out on,
 // and the report. A realm's harness (apps/openagents-web/hud-overlap-<realm>.coax)
-// draws each of its HUD's states on each screen with a layout trace attached (aethyr/ui/trace.coax,
+// draws each of its HUD's states on each screen with a layout trace attached (metaverse-engine/ui/trace.coax,
 // which its loader's charactercreator.coax loads, as cc), and hands the trace to hud_screen. Each
 // finding (a fault and the widgets in it, whatever the screen) is printed once, with the first screen
 // and state it shows on, marked NEW unless the harness's hud_known says it is already reported

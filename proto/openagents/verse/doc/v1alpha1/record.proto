@@ -7,9 +7,9 @@ import "openagents/options/v1alpha1/options.proto";
 // of the realm routes that say what a realm is to its owner, beside its
 // document (realm.proto). coax/web/api/realms.c serves them; the server builds
 // each in SQL and answers jsonb's text (keys by length, then by bytes; ", "
-// and ": " between items). aethyr/forge/record.coax is the one writer and
+// and ": " between items). metaverse-engine/editor/record.coax is the one writer and
 // reader; proto/verse/realm-record-v1.json pins the bytes, checked through the
-// codec (aethyr/forge/record-goldens.coax) and through the API's routes
+// codec (metaverse-engine/editor/record-goldens.coax) and through the API's routes
 // (coax/web/api/tests/realm_record_checks.coax).
 //
 //   GET  /api/playtest/realms/mine               MineReply, or with ?as=lines

@@ -8,7 +8,7 @@
     {
       "id": "items.item.granted.v1",
       "owner": "items",
-      "outbox": "verse.item_outbox (op grant); aethyr/session/ledger.coax LedgerEntry",
+      "outbox": "verse.item_outbox (op grant); metaverse-engine/session/ledger.coax LedgerEntry",
       "fields": [
         "seq",
         "who",

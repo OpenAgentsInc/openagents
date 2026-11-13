@@ -43,7 +43,7 @@ cm_hit :: (top: f32, open: bool, k: f32, px: f32, py: f32) -> CmHit {
   return CmHit.{};
 }
 // The column's words: CLASSES (yours marked), LEVEL (yours gold), the rest line and its requests.
-// With a layout trace attached (aethyr/ui/trace.coax) it also puts what cm_hit presses there, in
+// With a layout trace attached (metaverse-engine/ui/trace.coax) it also puts what cm_hit presses there, in
 // the column's panel `pane` (the caller's, as tall as its own rows: UIT_NONE for none), under the
 // part the caller names (cc.uit_part), so a developer's panel can mark it (cc.uit_debug).
 cm_draw :: (ui: [] cc.UitTrace, pane: int, out: [] f32, at: int, top: f32, open: bool, k: f32, klass: int, level: int, rest: string) -> int {

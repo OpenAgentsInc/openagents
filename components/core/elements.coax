@@ -5,7 +5,7 @@
 // it, so a check names what it presses and never a coordinate, and the same ids hold on every host.
 // An id is the part and its name ("composer.send", "session.5e55a0e1"), never an index that moves
 // when another row comes or goes. `tree` writes the rows in the layout trace's format
-// (aethyr/agent/drive.coax): `ID ROLE "LABEL" at X Y size WxH`, logical px, y down.
+// (metaverse-engine/agent/drive.coax): `ID ROLE "LABEL" at X Y size WxH`, logical px, y down.
 //   coax/bin/coax test components/core/elements.coax
 
 EL_MAX :: 192;       // rows in one frame's table

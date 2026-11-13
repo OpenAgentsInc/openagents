@@ -13,7 +13,7 @@ chapters to read first. Chapter numbers are each book's own.
 | Book | Core path | What you can do at the end |
 | --- | --- | --- |
 | [Coax](../../coax/book/README.md) | Parts I–II (chapters 1–12), then 16, 18, 20, 24 and 41 | Write checked Coax, cross a C boundary and keep a unit inside its compile limits. |
-| [the Metaverse Engine](../../aethyr/book/README.md) | Parts I–III (1–17), then 51–55, 86–101 and 102 | Build a playable realm, publish it and run it for many players. |
+| [the Metaverse Engine](../../metaverse-engine/book/README.md) | Parts I–III (1–17), then 51–55, 86–101 and 102 | Build a playable realm, publish it and run it for many players. |
 | [Everglade](../../everglade/book/README.md) | 1, 3, 4, 8, 12, 14 and 18 | Follow one game from a reference picture to a shared world with rules. |
 | [Psionic](../../psionic/book/README.md) | 1–7, 9, 12–20, 24, 28, 29, 103, 104, 112, 115 and 238 | Run a decision model from original weights, serve it, and train a tiny decoder. |
 | [Coder](../../coder/book/README.md) | 1, 2, 4, 5, 9–11, 14, 17, 20, 21 and 23 | Build a harness and drive a coding agent from the command line. |
@@ -35,7 +35,7 @@ Paths by what you want to do:
 Four books have routes you can run here:
 [The Coax Programming Language](../../coax/book/README.md),
 [Psionic: ML From Scratch](../../psionic/book/README.md),
-[Building the OpenAgents Metaverse Engine](../../aethyr/book/README.md) and
+[Building the OpenAgents Metaverse Engine](../../metaverse-engine/book/README.md) and
 [Nostr From Scratch](../../nostr/book/README.md). Chapter numbers below are
 each book's own. Three more books have no runnable route yet:
 [Coder: Coding Agents From Scratch](../../coder/book/README.md), whose harness
@@ -84,7 +84,7 @@ debug and release. The C workflow runs once and itself executes two C builds.
 A chapter marked *(design draft)* or *(planned)* describes work that does not
 run yet. The chapter registries for [Coax](../../coax/book/chapters.json),
 [Psionic](../../psionic/book/chapters.json),
-[the Metaverse Engine](../../aethyr/book/chapters.json) and
+[the Metaverse Engine](../../metaverse-engine/book/chapters.json) and
 [Nostr](../../nostr/book/chapters.json) retain each named teaching scope,
 qualified targets and reviewed component adoption. See
 [completion milestones](completion.md) for the remaining integration, quality,
@@ -138,9 +138,9 @@ python3 scripts/book_routes.py --route aethyr-core-replay \
 ```
 
 Exact expected outputs are
-[frame-rates](../../aethyr/fixtures/frame-rates.out),
-[one-press](../../aethyr/fixtures/one-press.out) and
-[replay-a-walk](../../aethyr/fixtures/replay-a-walk.out). The replay prints
+[frame-rates](../../metaverse-engine/fixtures/frame-rates.out),
+[one-press](../../metaverse-engine/fixtures/one-press.out) and
+[replay-a-walk](../../metaverse-engine/fixtures/replay-a-walk.out). The replay prints
 `662099296` for both recorded and replayed session digests, and reports the
 planted fault's first divergence at step 150. The clock fixture also shows
 an eight-step stall cap; the input fixture shows one press consumed over
@@ -155,7 +155,7 @@ these terminal examples do not migrate a whole realm.
 This route does not start the browser or qualify a rendered/playable Grid,
 general rigid-body solver, live audio or Forge artifact. Existing native/Wasm
 replay parity has a separate harness and retained evidence, including the
-[chapter 9 record](../../aethyr/tests/book-chapter9-qualification.json).
+[chapter 9 record](../../metaverse-engine/tests/book-chapter9-qualification.json).
 Follow the [playable-engine milestones](completion.md#the-metaverse-engine-a-complete-playable-engine-route)
 and the [web app guide](../../apps/openagents-web/README.md) for those distinct
 integrations; a CPU replay pass does not promote them.

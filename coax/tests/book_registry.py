@@ -46,7 +46,7 @@ class Adoption(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(prefix="book-adoption-")
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        for name in ["aethyr/move/player.coax", "psionic/lib/consumer.coax", "psionic/tests/proof.coax",
+        for name in ["metaverse-engine/move/player.coax", "psionic/lib/consumer.coax", "psionic/tests/proof.coax",
                      "psionic/examples/demo.coax", "psionic/fixtures/result.coax",
                      "psionic/book/ch001-example.md", "psionic/platform/model.c"]:
             p = self.root / name
@@ -54,7 +54,7 @@ class Adoption(unittest.TestCase):
             p.write_text("fixture\n")
 
     def test_real_consumer_paths_are_admitted(self):
-        for name in ["aethyr/move/player.coax", "psionic/lib/consumer.coax", "psionic/platform/model.c"]:
+        for name in ["metaverse-engine/move/player.coax", "psionic/lib/consumer.coax", "psionic/platform/model.c"]:
             self.assertEqual(structure.adoption_problems([name], self.root), [])
 
     def test_book_examples_tests_and_fixtures_are_not_product_adoption(self):
@@ -63,9 +63,9 @@ class Adoption(unittest.TestCase):
             self.assertTrue(structure.adoption_problems([name], self.root), name)
 
     def test_absolute_traversal_missing_and_duplicate_paths_refuse(self):
-        for names in [[str(self.root / "aethyr/move/player.coax")], ["../outside.coax"],
-                      ["verse/../aethyr/move/player.coax"], ["missing.coax"],
-                      ["aethyr/move/player.coax", "aethyr/move/player.coax"]]:
+        for names in [[str(self.root / "metaverse-engine/move/player.coax")], ["../outside.coax"],
+                      ["metaverse-engine/move/player.coax"], ["missing.coax"],
+                      ["metaverse-engine/move/player.coax", "metaverse-engine/move/player.coax"]]:
             self.assertTrue(structure.adoption_problems(names, self.root), names)
 
     def test_symlink_cannot_claim_adoption_outside_repository(self):

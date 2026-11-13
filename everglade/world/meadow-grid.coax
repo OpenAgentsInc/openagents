@@ -15,7 +15,7 @@ e2_meadow_side :: (kit: int, tier: int) -> int {
   return 0;
 }
 // A grid's cell (metres) and the ring round the eye its pieces are drawn in (metres), for a page
-// that culls the grid's cells before it draws them (aethyr/render/grid-cull.coax). meadow.coax
+// that culls the grid's cells before it draws them (metaverse-engine/render/grid-cull.coax). meadow.coax
 // checks each against the kit's own cell and reach and the grass tier's start and end.
 e2_meadow_grid_cell :: (kit: int, tier: int) -> f32 {
   if kit == E2_MEADOW_GRASS { return ifx tier == 0 then 0.5f32 else ifx tier == 1 then 1.0f32 else ifx tier == 2 then 2.0f32 else 4.0f32; }
@@ -30,7 +30,7 @@ e2_meadow_grid_outer :: (kit: int, tier: int) -> f32 {
 // The share of a field's tufts that stand d metres from the eye, field.coax's four tiers together:
 // all of them out to E2_FIELD_NEAR (16 m), a quarter left every E2_FIELD_STEP (12 m) past it, and
 // the last tier's 1/64 fading to none by E2_FIELD_FAR (140 m). g, the quality's grass reach
-// (aethyr/core/quality.coax `grass`), scales every distance, as e2_field_start_r and e2_field_out_r do.
+// (metaverse-engine/core/quality.coax `grass`), scales every distance, as e2_field_start_r and e2_field_out_r do.
 // A page whose grass isn't drawn in field.coax's tiers thins its own by it, so every grass in the
 // engine falls off with distance the same way (charactercreator.coax grass_cull, #13147).
 e2_meadow_density :: (d: f32, g: f32) -> f32 {

@@ -22,9 +22,9 @@
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/net/transport.coax";
-#load "../../aethyr/host/local-http-site.coax";
-#load "../../aethyr/host/http-target.coax";
-#load "../../aethyr/host/http-redirect.coax";
+#load "../../metaverse-engine/host/local-http-site.coax";
+#load "../../metaverse-engine/host/http-target.coax";
+#load "../../metaverse-engine/host/http-redirect.coax";
 
 NET_MAX :: 2162688;     // a reply's bytes: the largest inbox (2 MB) and its headers
 NET_REQ :: 1114112;     // a request's bytes: a body of up to 1 MB and its headers

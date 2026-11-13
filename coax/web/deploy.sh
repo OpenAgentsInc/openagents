@@ -113,7 +113,7 @@ for f in pages:
             if u.group(3).startswith("/private/"): return u.group(0)
             stem = u.group(3)[1:]
             # A sounds:/DIR/ asset: the page names its files at run time (DIR/NAME.ogg), so they
-            # keep their names, under the site at the same path (aethyr/audio/SOURCES.md).
+            # keep their names, under the site at the same path (metaverse-engine/audio/SOURCES.md).
             if stem.endswith("/"):
                 for f in sorted(os.listdir(os.path.join(app, stem))):
                     if f.endswith(".ogg"):

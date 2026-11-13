@@ -21,8 +21,8 @@ func faceAtlas(_ device: MTLDevice) -> MTLTexture? {
 }
 
 // Everglade II's pack: a catalog, the vertices, the indices and the texture layers. The host only
-// finds the entries, through the one pack reader (aethyr/host/pack-table.coax pack_table, by
-// aethyr/host/pack-table.h); model.coax reads the catalog.
+// finds the entries, through the one pack reader (metaverse-engine/host/pack-table.coax pack_table, by
+// metaverse-engine/host/pack-table.h); model.coax reads the catalog.
 struct Pack {
   var catalog = Data(), vertices = Data(), indices = Data(), layers: [Data] = []
   init?(_ url: URL) {

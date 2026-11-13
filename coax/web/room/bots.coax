@@ -37,7 +37,7 @@
 //     "seated" in the totals say how many it took).
 // The bots are tagged as tests: their realm is pair-* (left out of every rooms list and count), their
 // names "Bot R-K". From one address the API seats at most 120 a minute (its limit, kept on purpose).
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "../../lib/net/http.coax";
 #load "../../../everglade/server/creature-wire.coax";   // the monsters' frames, as the page reads them
@@ -394,7 +394,7 @@ bt_play :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: 
       }
       if now < b[0].dodge_until { t := wx; wx = -wz; wz = t; ahead = 100; }
     }
-    // the camera's yaw (aethyr/walk.coax): it sits at theta round you, so ahead is -(sin, cos) of it
+    // the camera's yaw (metaverse-engine/walk.coax): it sits at theta round you, so ahead is -(sin, cos) of it
     yaw := rs_atan2(wx, wz) + 3.14159265;
     if yaw > 3.14159265 { yaw -= 6.2831853; }
     b[0].seq += 1; cf_input(b[0].tm[..], b[0].seq, now);

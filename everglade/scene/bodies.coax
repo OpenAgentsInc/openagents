@@ -1,7 +1,7 @@
 // 5E Lab's figures (fivelab.coax): the Quaternius people Everglade's NPCs are made of (the
 // Universal Base Characters and the Modular Character Outfits - Fantasy parts in Everglade's pack,
 // rebound by verse/tools/people.py onto two skeletons, CC0), dressed by class, played by the
-// Universal Animation Library's clips (everglade/scene/people-rig.coax, aethyr/anim/skin.coax).
+// Universal Animation Library's clips (everglade/scene/people-rig.coax, metaverse-engine/anim/skin.coax).
 //
 // Two hundred and more figures at once, so nothing is posed per figure on the CPU: bd_bake samples
 // each clip once, 30 frames a second, into one store of skinning matrices (three rows of four a
@@ -22,17 +22,17 @@
 #module "openagents.fivelab.bodies";
 
 #load "people-rig.coax";
-// Player mode's camera (fivelab.coax lab_chase_step): Everglade's follow camera, aethyr/cam/camera.coax's free
+// Player mode's camera (fivelab.coax lab_chase_step): Everglade's follow camera, metaverse-engine/cam/camera.coax's free
 // orbit. It loads here, not in fivelab.coax, as it shares points.coax with the figures' skin.
-#load "../../aethyr/cam/camera.coax";
+#load "../../metaverse-engine/cam/camera.coax";
 // The Metaverse Engine's shared camera modes and cinematic hand-back (#12994), in the same module as the orbit.
-#load "../../aethyr/cam/modes.coax";
-#load "../../aethyr/cam/handback.coax";
+#load "../../metaverse-engine/cam/modes.coax";
+#load "../../metaverse-engine/cam/handback.coax";
 // The zones' follow, Character Create, over-the-shoulder and overhead cameras (#13087): every zone's.
-#load "../../aethyr/cam/chase.coax";
-#load "../../aethyr/cam/studio.coax";
-#load "../../aethyr/cam/boom.coax";
-#load "../../aethyr/cam/overhead.coax";
+#load "../../metaverse-engine/cam/chase.coax";
+#load "../../metaverse-engine/cam/studio.coax";
+#load "../../metaverse-engine/cam/boom.coax";
+#load "../../metaverse-engine/cam/overhead.coax";
 
 BD_SLOTS :: 17408;        // the battle's creatures (fivelab.coax LAB_MAX: 1024 heroes and 16384 of the dead)
 BD_CORPSES :: 128;        // bodies still lying after their square was taken
@@ -44,8 +44,8 @@ BD_FPS :: 30.0;
 #load "preview-rig.coax";
 #load "preview-clips.coax";
 #load "two-hand-rig.coax";   // the owned two-handed weapon clips (verse/tools/assets/two_hand_clips.py)
-#load "../../aethyr/action/bow-pose.coax";   // the archer's keyed draw (docs/verse/bow-combat.md), baked as clip BD_BOW
-#load "../../aethyr/action/ride-pose.coax";  // a rider's legs astride (everglade/docs/mounts-spec.md), baked as clip BD_RIDE
+#load "../../metaverse-engine/action/bow-pose.coax";   // the archer's keyed draw (docs/verse/bow-combat.md), baked as clip BD_BOW
+#load "../../metaverse-engine/action/ride-pose.coax";  // a rider's legs astride (everglade/docs/mounts-spec.md), baked as clip BD_RIDE
 BD_CLIPS :: 10;
 BD_IDLE :: 0; BD_WALK :: 1; BD_RUN :: 2; BD_SLASH :: 3; BD_SPELL :: 4; BD_KNOCK :: 5; BD_DIE :: 6; BD_JUMP_START :: 7; BD_JUMP_LOOP :: 8; BD_JUMP_LAND :: 9;
 BD_CLIP :: [10] int.[PEOPLE_IDLE, PEOPLE_WALK, PEOPLE_RUN, PEOPLE_SLASH, PEOPLE_SPELL, PEOPLE_KNOCK, PEOPLE_DIE, PEOPLE_JUMP_START, PEOPLE_JUMP_LOOP, PEOPLE_JUMP_LAND];
@@ -59,10 +59,10 @@ BD_OWN_IMPACT :: 0.46;    // the share of an owned cleave at its impact (two_han
 BD_OWN :: 96;             // BD_CLIPS + PREVIEW_BAKED
 BD_OWN_FRAMES :: [8] int.[75, 28, 36, 75, 28, 36, 13, 2];
 BD_OWN_FIRST :: [8] int.[3844, 3919, 3947, 3983, 4058, 4086, 4122, 4135];
-// After the two-handed clips, the bow's draw (aethyr/action/bow-pose.coax): BOW_POSE_FRAMES keyed
+// After the two-handed clips, the bow's draw (metaverse-engine/action/bow-pose.coax): BOW_POSE_FRAMES keyed
 // poses, not a clip in time: frame f is the draw at its strength, then the release (bow_pose_frame).
 BD_BOW :: BD_OWN + TWOHAND_CLIPS;
-// Then the rider's seat (aethyr/action/ride-pose.coax): keyed poses, the idle's stance with the legs
+// Then the rider's seat (metaverse-engine/action/ride-pose.coax): keyed poses, the idle's stance with the legs
 // astride, a frame a seat (BD_RIDE_FITS: a horse's barrel, then a dragon's neck).
 BD_RIDE :: BD_BOW + 1;
 BD_TOTAL :: 4137;         // frames a body: PREVIEW_TOTAL and the owned clips'
@@ -304,7 +304,7 @@ bd_bake_owned :: (out: [] f32) {
   }
 }
 
-// The people rig's joints the bow's pose moves (aethyr/action/bow-pose.coax), and the bow fist's
+// The people rig's joints the bow's pose moves (metaverse-engine/action/bow-pose.coax), and the bow fist's
 // offset from the left hand's joint (charactercreator.coax CC_FIST_L, in the hand's bind frame).
 BD_BOW_JOINTS :: BowJoints.{spine = [2] int.[3, 4], head = 6, arm_l = [4] int.[7, 8, 9, 10], arm_r = [4] int.[31, 32, 33, 34], fist = Point.{x = 0.075, y = -0.03, z = 0}};
 // Body `body`'s frame f of the bow's draw: its idle's first pose, drawn (bow_pose), as palette rows.
@@ -856,7 +856,7 @@ BD_CAM :: BdCam.{ex = 0, ey = 10, ez = -15, fx = 0, fy = -0.3162278, fz = 0.9486
   #assert bd_row(true, BD_RIDE, BD_SEATS - 1) * 4 + BD_ROWS * 4 == BD_BAKE_FLOATS && BD_OWN_FRAMES[TWOHAND_CLIPS + 1] == BD_SEATS;
 }
 
-#test "a baked frame is the clip's pose as aethyr/anim/skin.coax plays it" #steps 400000000 {
+#test "a baked frame is the clip's pose as metaverse-engine/anim/skin.coax plays it" #steps 400000000 {
   d: [1] People;
   people_load(d[..]);
   out: [BD_ROWS * 4 * 2] f32;

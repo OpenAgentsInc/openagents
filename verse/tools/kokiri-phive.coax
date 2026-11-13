@@ -1,6 +1,6 @@
 // Bounds-checked Phive containers, independent of the Havok geometry version.
 // Layout: https://epd.zeldamods.org/wiki/Common_Phive (2024-04-06).
-#load "../../aethyr/render/geometry/scan.coax";
+#load "../../metaverse-engine/render/geometry/scan.coax";
 KokiriPhive :: struct {ok:bool;kind:int;count:int;offset:[256]int;size:[256]int;}
 #test "Kokiri Phive header checks complete dynamic sections and terminal size" {
  b:[80]u8;name:="Phive";for c,k:name {b[k]=c;}b[8]=0xff;b[9]=0xfe;b[10]=2;b[11]=4;

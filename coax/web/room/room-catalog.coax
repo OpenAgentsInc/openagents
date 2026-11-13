@@ -6,7 +6,7 @@
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/sys/args.coax";
-#load "../../../aethyr/host/pack-table.coax";
+#load "../../../metaverse-engine/host/pack-table.coax";
 
 RC_CATALOG_MAX :: 4194304;   // the catalog's bytes
 RC_OUT_MAX :: 20971520;      // the C text (at most 4 bytes a catalog byte, plus lines)
@@ -66,7 +66,7 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) != 2 { tool_errln("usage: room-catalog PACK OUT.c"); return 2; }
   pack := args_at(a[..], 0); out_path := args_at(a[..], 1);
-  // The pack's entries, from the one pack reader (aethyr/host/pack-table.coax pack_table): its header and
+  // The pack's entries, from the one pack reader (metaverse-engine/host/pack-table.coax pack_table): its header and
   // table are read here, and its catalog by the extent the reader checked.
   b: [1] RcBuf;
   total := fs_size(pack);

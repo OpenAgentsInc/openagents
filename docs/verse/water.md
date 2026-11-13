@@ -42,7 +42,7 @@ and tests. It covers what the specification's "Coupling with
 - **Ledger terms.** Each force is a `Push` under `water.buoyancy` or
   `water.drag`; `water_record` enters them into a momentum `Ledger`.
 
-[`aethyr/physics/rigid.coax`](../../aethyr/physics/rigid.coax) holds the rigid bodies water
+[`metaverse-engine/physics/rigid.coax`](../../metaverse-engine/physics/rigid.coax) holds the rigid bodies water
 pushes on: the old `body.rs`, `World::step` without contacts, sleep with
 support, and `ledger.rs`.
 
@@ -52,7 +52,7 @@ them with:
 
 ```sh
 coax/bin/coax test --library verse/water.coax --steps 500000000
-coax/bin/coax test --library aethyr/physics/rigid.coax
+coax/bin/coax test --library metaverse-engine/physics/rigid.coax
 ```
 
 ### Differences from the Rust W1
@@ -138,7 +138,7 @@ bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
   breath): ground, wading past 0.4 m, swimming past 1.25 m or off the
   bed, diving with the eye under; a swimmer settles at the float line, an
   idle diver rises at 0.6 m/s. Half speed wading and swimming (SRD 5.2.1),
-  a sixth less each Exhaustion level; `aethyr/move/player.coax`'s walk and run
+  a sixth less each Exhaustion level; `metaverse-engine/move/player.coax`'s walk and run
   speeds are unchanged on land (its new `pace` is 1 there). Breath: a
   minute (the Ranger's Constitution is +0), then an Exhaustion level
   every 6 s; the sixth puts you on the nearer bank. No jumping afloat; the
@@ -504,7 +504,7 @@ coax/bin/coax test --library verse/water-under.coax --steps 2000000000
 
 ## W9: weather (done)
 
-[`aethyr/world/water-weather.coax`](../../aethyr/world/water-weather.coax) ports the old
+[`metaverse-engine/world/water-weather.coax`](../../metaverse-engine/world/water-weather.coax) ports the old
 `physics::water::weather` with its tests. The weather is a pure function of
 the zone's climate, its seed and the world tick (120 Hz from the page's
 clock), so every visitor, a late joiner and a replay see the same sky with
@@ -550,7 +550,7 @@ on the phone tier (3.60 ms clear), and 12.5 ms at 1440x900 at device pixel
 ratio 2 (8.7 ms clear).
 
 ```sh
-coax/bin/coax test --library aethyr/world/water-weather.coax --steps 2000000000
+coax/bin/coax test --library metaverse-engine/world/water-weather.coax --steps 2000000000
 ```
 
 ## W10: ocean and scale (done)

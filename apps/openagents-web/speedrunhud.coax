@@ -5,7 +5,7 @@
 //
 // The look is the homepage's: the Grid floor drawn in strokes under a slow
 // camera (a pan, a zoom and a turn over the stage), and the industrial vector
-// HUD on top in screen space: aethyr/ui/hud-frame.coax's frames (cut corners,
+// HUD on top in screen space: metaverse-engine/ui/hud-frame.coax's frames (cut corners,
 // bright L brackets), the four greys and the Arwes cyan accent, glass panel
 // fills (gpu/speedrunhud.coax) and Filament text (font.coax). Bitcoin orange
 // marks Bitcoin and the pipeline's unsolved stages, as the design asks.
@@ -18,7 +18,7 @@
 //
 // The drawing is small components (sr_frame, sr_header, sr_node, sr_label,
 // sr_link, sr_packets, sr_dots, sr_streaks, sr_bar, sr_ring, sr_curve) in the
-// shape of aethyr/ui/draw.coax's, so they can move onto that library.
+// shape of metaverse-engine/ui/draw.coax's, so they can move onto that library.
 //
 // The design space is 1344 x 1080 (the video's left panel), fitted to the
 // canvas; nothing of the HUD goes below y = 900, where the captions sit.
@@ -30,7 +30,7 @@
 //   &at=MS          start that many milliseconds into the stage (stills)
 //   coax/bin/coax test apps/openagents-web/speedrunhud.coax
 
-#load "../../aethyr/ui/draw.coax";   // the HUD library: hd_* instruments, lit, font.coax and aethyr/ui/hud-frame.coax
+#load "../../metaverse-engine/ui/draw.coax";   // the HUD library: hd_* instruments, lit, font.coax and metaverse-engine/ui/hud-frame.coax
 #load "speedrunhud-console.coax";   // the console round each stage, and the overlays for footage
 #load "speedrunhud-storm.coax";     // the payment storm (Lightning and Wavelength, simulated)
 #load "speedrunhud-ep200.coax";     // Episode 200: Reed's law and coalitions, the fleet
@@ -65,7 +65,7 @@ STAGE_SUBJECT :: [80] f32.[
   850, 470, 300, 250,  312, 394, 720, 240,  MAP_X - 92, MAP_Y - 34, 184, 68,  616, 250, 134, 480,
   0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0];
 
-// The tones: aethyr/ui/draw.coax's greys, a fainter fifth for grid rules, the cyan and Bitcoin orange.
+// The tones: metaverse-engine/ui/draw.coax's greys, a fainter fifth for grid rules, the cyan and Bitcoin orange.
 T_WHITE :: 0; T_LIGHT :: 1; T_MID :: 2; T_DIM :: 3; T_FAINT :: 4; T_CYAN :: 5; T_ORANGE :: 6;
 GREY_FAINT :: 0.3f32;
 
@@ -73,7 +73,7 @@ BITCOIN_R :: 1.0f32; BITCOIN_G :: 0.55f32; BITCOIN_B :: 0.12f32;
 
 A_LEFT :: 0; A_CENTRE :: 1; A_RIGHT :: 2;
 
-SrBox :: struct { x: f32; y: f32; width: f32; height: f32; }   // aethyr/ui/hud.coax HudBox's fields
+SrBox :: struct { x: f32; y: f32; width: f32; height: f32; }   // metaverse-engine/ui/hud.coax HudBox's fields
 Pt :: struct { x: f32; y: f32; }
 Rgb :: struct { r: f32; g: f32; b: f32; }
 PATH_MAX :: 72;
@@ -148,7 +148,7 @@ cover :: (s: [] SpeedrunHud, ax: f32, ay: f32, bx: f32, by: f32) {
   s[0].hud_top = lo(s[0].hud_top, lo(y0, y1)); s[0].hud_low = hi(s[0].hud_low, hi(y0, y1));
 }
 
-// ---- the components (design px; aethyr/ui/draw.coax's hd_line, hd_text, hd_panel... with time)
+// ---- the components (design px; metaverse-engine/ui/draw.coax's hd_line, hd_text, hd_panel... with time)
 
 // A line `width` px wide in tone k at light a.
 sr_line :: (s: [] SpeedrunHud, out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: int, a: f32, width: f32) -> int {
@@ -410,7 +410,7 @@ sr_text :: (s: [] SpeedrunHud, out: [] f32, at: int, text: string, x: f32, y: f3
 
 // ---- the HUD's parts
 
-// A frame (aethyr/ui/hud-frame.coax) that assembles at p: its outline draws in
+// A frame (metaverse-engine/ui/hud-frame.coax) that assembles at p: its outline draws in
 // along its length, its glass fades in, then its brackets flicker on.
 sr_frame :: (s: [] SpeedrunHud, out: [] f32, at: int, b: SrBox, p: f32, cut: f32, accent: int, fill: f32, arm: f32) -> int {
   if p <= 0 { return at; }

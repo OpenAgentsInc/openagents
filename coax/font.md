@@ -1,6 +1,6 @@
 # Filament: a stroke font for Coaxial
 
-Proposal, 2026-10-28. Status: stages 1, 2, 6 and the HUD's symbols are built (`aethyr/ui/font.coax`); lowercase draws as capitals until stage 3. Stage 6 covers Latin-1 Supplement and Latin Extended-A (U+00C0 to U+017F): a base letter plus one of 20 marks, or a glyph of its own for ß, Æ, Þ, Œ, Ĳ and Ŋ. Common emoji (about 70) draw as 8 × 8 pixel pictures in colour, and any other character draws as a tofu box, never `?` (#12786).
+Proposal, 2026-10-28. Status: stages 1, 2, 6 and the HUD's symbols are built (`metaverse-engine/ui/font.coax`); lowercase draws as capitals until stage 3. Stage 6 covers Latin-1 Supplement and Latin Extended-A (U+00C0 to U+017F): a base letter plus one of 20 marks, or a glyph of its own for ß, Æ, Þ, Œ, Ĳ and Ŋ. Common emoji (about 70) draw as 8 × 8 pixel pictures in colour, and any other character draws as a tofu box, never `?` (#12786).
 
 The openagents.com splash writes COMING SOON in seven hand-drawn glyphs
 (`apps/openagents-web/splash.coax`). Each one is a single line through points

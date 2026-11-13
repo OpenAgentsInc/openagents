@@ -1,0 +1,157 @@
+// The checks' side of metaverse-engine/ai/decide.coax: a small fleet of four creatures that a model steers
+// through decide_ask and decide_admit while a player walks past them, and a model that answers
+// promptly, slowly, never, maliciously, or for an owner it no longer has. Each creature senses the
+// player within DO_SIGHT, asks every 16 ticks it has no question open, and walks at DO_PACE to its
+// goal; a chase goes to where it last sensed its target. Only the checks call it.
+
+DO_ACTORS :: 4;
+DO_PLAYER :: 40;            // the player's entity number
+DO_STEPS :: 240;            // steps a run takes: the backing keeps 256 marks
+DO_WAIT :: 64;              // ticks a question waits
+DO_SIGHT :: 12.0;           // metres the creatures see
+DO_PACE :: 0.05;            // metres a tick they walk
+DO_PROMPT :: 0; DO_SLOW :: 1; DO_OUTAGE :: 2; DO_HOSTILE :: 3; DO_TRANSFER :: 4; DO_PROFILES :: 5;
+
+DoAnswer :: struct { event: ReplayEvent; due: int; twice: bool; }
+DoRun :: struct {
+  b: [1] ReplayBacking;
+  t: [1] DecideTable;
+  mem: [DO_ACTORS] Memory;
+  x: [DO_ACTORS] f32; z: [DO_ACTORS] f32; gx: [DO_ACTORS] f32; gz: [DO_ACTORS] f32; chase: [DO_ACTORS] int;
+  px: f32; pz: f32;
+  answers: [128] DoAnswer; answer_n: int;
+  profile: int;
+  steps: int; sent: int; intents: int; from_model: int; fallbacks: int; most_admitted: int;
+  refused: int; late: int; expired: int; stale: int; cancelled: int; unsensed: int; forbidden: int; duplicates: int;
+  digest: int; matched: bool;
+}
+
+do_init :: (r: [] DoRun, profile: int) {
+  r[0].profile = profile;
+  decide_table(r[0].t[..]);
+  for a: 0..<DO_ACTORS { r[0].x[a] = f32(a * 6 - 9); r[0].z[a] = 8; r[0].gx[a] = r[0].x[a]; r[0].gz[a] = 8; r[0].chase[a] = -1; r[0].mem[a] = Memory.{}; }
+}
+do_session :: (r: [] DoRun) -> ReplaySession { return replay_backing(r[0].b[..]); }
+do_bits :: (h: int, v: f32) -> int { return replay_mix(h, replay_bits(v)); }
+
+do_apply :: (r: [] DoRun, i: DecideIntent, now: int) {
+  a := i.actor;
+  r[0].chase[a] = -1;
+  if i.kind == DECIDE_GO { r[0].gx[a] = i.x; r[0].gz[a] = i.z; }
+  else if i.kind == DECIDE_CHASE { r[0].chase[a] = i.target; }
+  else if i.kind == DECIDE_FLEE { r[0].gx[a] = r[0].x[a] * 2 - r[0].px; r[0].gz[a] = r[0].z[a] * 2 - r[0].pz; }
+  else if i.kind == DECIDE_HOLD { r[0].gx[a] = r[0].x[a]; r[0].gz[a] = r[0].z[a]; }
+  r[0].intents += 1;
+}
+
+// What the model answers to a question, by profile, from what it was sent (the creature's memory).
+do_model :: (r: [] DoRun, ask: DecideAsk, actor: int, ctx: int, m: Memory, now: int) {
+  if r[0].profile == DO_OUTAGE || r[0].answer_n >= r[0].answers.count { return; }
+  s: Senses;
+  sees := memory_recall(m, s, DO_PLAYER, now).known;
+  kind := ifx sees then DECIDE_CHASE else DECIDE_GO;
+  target := ifx sees then DO_PLAYER else -1;
+  x := ifx sees then 0 else (ask.request * 37 % 21 - 10) * 100;
+  z := ifx sees then 0 else (ask.request * 53 % 17 - 8) * 100;
+  owner := r[0].t[0].owner[actor];
+  delay := 1 + ask.request % 3;
+  twice := false;
+  if r[0].profile == DO_SLOW { delay = ifx ask.request % 3 == 0 then 30 else (ifx ask.request % 3 == 1 then DO_WAIT + 1 else 110); }
+  if r[0].profile == DO_TRANSFER { owner = 0; }   // the adapter's owner, from before any transfer
+  if r[0].profile == DO_HOSTILE {
+    q := ask.request % 4;
+    if q == 0 { twice = true; }
+    if q == 1 { kind = DECIDE_CHASE; target = 77; x = 0; z = 0; }   // someone it never sensed
+    if q == 2 { kind = 9; }                                          // not an intent
+    if q == 3 { kind = DECIDE_GO; target = -1; x = DECIDE_REACH * 3; z = 0; }
+  }
+  r[0].answers[r[0].answer_n] = DoAnswer.{event = decide_answer(ask, actor, owner, ctx, kind, target, x, z), due = now + delay, twice = twice};
+  r[0].answer_n += 1;
+}
+
+do_step :: (r: [] DoRun, s: ReplaySession) {
+  now := replay_tick(s);
+  live := !replay_playing(s);
+  if live {
+    for k: 0..<r[0].answer_n {
+      if r[0].answers[k].due != now { continue; }
+      v := replay_offer(s, r[0].answers[k].event);
+      if r[0].answers[k].twice { v = replay_offer(s, r[0].answers[k].event); }
+    }
+  }
+  sn: Senses;
+  // the player walks along the row of creatures and back
+  leg := now % 160;
+  r[0].px = ifx leg < 80 then f32(leg) * 0.3 - 12 else f32(160 - leg) * 0.3 - 12;
+  r[0].pz = 2;
+  // the step's answers, then the questions past their deadline
+  admitted := 0;
+  while true {
+    take := replay_take(s);
+    if !take.ok { break; }
+    e := take.event;
+    who := e.words[DECIDE_W_ACTOR];
+    m := ifx who >= 0 && who < DO_ACTORS then r[0].mem[who] else Memory.{};
+    ad := decide_admit(r[0].t[..], e, now, m, sn);
+    if ad.status == DECIDE_OK { do_apply(r, ad.intent, now); admitted += 1; r[0].from_model += 1; }
+  }
+  if admitted > r[0].most_admitted { r[0].most_admitted = admitted; }
+  gone := decide_expire(r[0].t[..], now);
+  for a: 0..<DO_ACTORS { if ((gone >> a) & 1) == 1 { do_apply(r, decide_fallback(a, r[0].mem[a]), now); r[0].fallbacks += 1; } }
+  if r[0].profile == DO_TRANSFER && now % 60 == 30 { decide_transfer(r[0].t[..], 1); }
+  for a: 0..<DO_ACTORS {
+    // senses, on the step
+    p := world_point(r[0].px, 0, r[0].pz);
+    if sense_flat(world_point(r[0].x[a], 0, r[0].z[a]), p) <= DO_SIGHT {
+      r[0].mem[a] = memory_note(r[0].mem[a], sn, Stimulus.{kind = StimulusKind.sight, source = DO_PLAYER, at = p, tick = now}).memory;
+    }
+    r[0].mem[a] = memory_forget(r[0].mem[a], sn, now);
+    if now % 16 == a * 4 && !decide_waiting(r[0].t[..], a) {
+      ctx := decide_context(r[0].mem[a]);
+      ask := decide_ask(r[0].t[..], s, a, now, DO_WAIT, ctx);
+      if ask.status == DECIDE_OK && ask.live { r[0].sent += 1; do_model(r, ask, a, ctx, r[0].mem[a], now); }
+    }
+    // the rules: a chase goes to where it last sensed the target, not where the target is
+    if r[0].chase[a] >= 0 {
+      k := memory_recall(r[0].mem[a], sn, r[0].chase[a], now);
+      if k.known { r[0].gx[a] = k.at.x; r[0].gz[a] = k.at.z; }
+    }
+    dx := r[0].gx[a] - r[0].x[a]; dz := r[0].gz[a] - r[0].z[a];
+    r[0].x[a] += ifx dx > DO_PACE then DO_PACE else (ifx dx < -DO_PACE then -DO_PACE else dx);
+    r[0].z[a] += ifx dz > DO_PACE then DO_PACE else (ifx dz < -DO_PACE then -DO_PACE else dz);
+  }
+  h := decide_digest(do_bits(do_bits(2166136261, r[0].px), r[0].pz), r[0].t[..]);
+  for a: 0..<DO_ACTORS { h = replay_mix(do_bits(do_bits(do_bits(do_bits(h, r[0].x[a]), r[0].z[a]), r[0].gx[a]), r[0].gz[a]), r[0].chase[a]); }
+  replay_stepped(s, h);
+  r[0].steps += 1;
+}
+
+do_tally :: (r: [] DoRun, s: ReplaySession) {
+  t := r[0].t[..];
+  r[0].late = decide_count(t, DECIDE_LATE); r[0].expired = decide_count(t, DECIDE_EXPIRED); r[0].stale = decide_count(t, DECIDE_STALE);
+  r[0].cancelled = decide_count(t, DECIDE_CANCELLED); r[0].unsensed = decide_count(t, DECIDE_UNSENSED); r[0].forbidden = decide_count(t, DECIDE_FORBIDDEN);
+  r[0].refused = decide_count(t, DECIDE_UNASKED) + r[0].stale + r[0].late + r[0].forbidden + r[0].unsensed;
+  r[0].duplicates = replay_refused(s, REPLAY_DUPLICATE);
+  r[0].digest = replay_digest(s);
+  r[0].matched = replay_playing(s) && replay_matched(s);
+}
+
+// A live run under one model profile.
+do_run :: (r: [] DoRun, profile: int, unused: bool) {
+  do_init(r, profile);
+  s := do_session(r);
+  replay_record(s, 7, 1);
+  while replay_tick(s) < DO_STEPS { do_step(r, s); }
+  do_tally(r, s);
+}
+// The live run's record played on a fresh fleet: no model, nothing offered.
+do_replay :: (live: [] DoRun, r: [] DoRun) {
+  do_init(r, live[0].profile);
+  s := do_session(r);
+  ok := replay_copy(do_session(live), s) && replay_play(s, 7);
+  if !ok { return; }
+  while replay_tick(s) < s.n[REPLAY_MARKS] { do_step(r, s); }
+  do_tally(r, s);
+}
+// The checks' session: a new record, all zeros (the replay oracle's backing).
+dc_session :: (b: [] ReplayBacking) -> ReplaySession #effects(all) { return replay_backing(b); }

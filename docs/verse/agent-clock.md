@@ -4,8 +4,8 @@ Issue: [#13096](https://github.com/OpenAgentsInc/openagents/issues/13096)
 (phase 2 of the agent loop,
 [what to adapt](../research/exact/03-what-to-adapt.md)).
 Code: `coax/web/drive.coax` (the driver), `coax/web/host.js` (agent mode),
-`coax/web/room-worker.js` (the offline room), `aethyr/agent/pin.coax` (the
-pin), `aethyr/agent/drive.coax` (`quiet`).
+`coax/web/room-worker.js` (the offline room), `metaverse-engine/agent/pin.coax` (the
+pin), `metaverse-engine/agent/drive.coax` (`quiet`).
 
 `coax drive` opens every page in agent mode. In agent mode, simulation time
 moves only when you step it. Between two operations nothing moves: no
@@ -34,7 +34,7 @@ operation you just sent on its next frame.
 ## What "nothing scheduled" means
 
 - **The page.** The realm answers the driver's `quiet` command
-  (`aethyr/agent/drive.coax` `drv_quiet`). It is busy while a world operation
+  (`metaverse-engine/agent/drive.coax` `drv_quiet`). It is busy while a world operation
   is going, or while the realm said this frame that something is scheduled
   (`drv_busy`). Everglade II says so while a damage number is rising. A realm
   adds a `drv_busy` call for anything else it wants `settle` to wait for.
@@ -59,7 +59,7 @@ few milliseconds of zero when the driver takes it.
 
 ## The pin
 
-Every agent session runs with the values in `aethyr/agent/pin.coax`:
+Every agent session runs with the values in `metaverse-engine/agent/pin.coax`:
 
 | Value | Pin |
 | --- | --- |
@@ -74,7 +74,7 @@ the date moves with the agent clock. The offline room takes its dice and its
 date from the same pin. The driver also sets the browser's locale and time
 zone.
 
-To change a pinned value, change it in `aethyr/agent/pin.coax` and nowhere
+To change a pinned value, change it in `metaverse-engine/agent/pin.coax` and nowhere
 else.
 
 ## Limits

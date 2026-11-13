@@ -1,8 +1,8 @@
 {
  "profile": "realm-spec-v1",
- "about": "A realm's spec (GitHub #13250): what GET /api/playtest/realms/<slug> answers, text a line each, written in SQL (verse.realm_edit_spec). \"lines\" names every line: its key, its form, what it says and an example. \"steps\" are calls to a seeded realm with the status and body the server answers today (\"message\": Spec is the text; the others are record.proto's, realm.proto's and made.proto's bodies and the API's ErrorReply). aethyr/forge/spec.coax is the one reader; aethyr/forge/spec-goldens.coax reads every line of every spec through it, requires each to be a line named here and to come back the same from its fields; coax/web/api/tests/realm_record_checks.coax makes the calls.",
- "check": "coax/web/tool.sh aethyr/forge/spec-goldens.coax proto/verse/realm-spec-v1.json",
- "codec": "aethyr/forge/spec.coax",
+ "about": "A realm's spec (GitHub #13250): what GET /api/playtest/realms/<slug> answers, text a line each, written in SQL (verse.realm_edit_spec). \"lines\" names every line: its key, its form, what it says and an example. \"steps\" are calls to a seeded realm with the status and body the server answers today (\"message\": Spec is the text; the others are record.proto's, realm.proto's and made.proto's bodies and the API's ErrorReply). metaverse-engine/editor/spec.coax is the one reader; metaverse-engine/editor/spec-goldens.coax reads every line of every spec through it, requires each to be a line named here and to come back the same from its fields; coax/web/api/tests/realm_record_checks.coax makes the calls.",
+ "check": "coax/web/tool.sh metaverse-engine/editor/spec-goldens.coax proto/verse/realm-spec-v1.json",
+ "codec": "metaverse-engine/editor/spec.coax",
  "lines": [
   {
    "key": "realm",

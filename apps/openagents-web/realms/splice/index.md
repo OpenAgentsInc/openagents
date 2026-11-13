@@ -83,7 +83,7 @@ The code is in `verse/splice/`, and `verse/splice/README.md` describes it file b
   (ink on paper needs source-over blending) and the placed pieces' instances.
 - `verse/splice/content/splice.content`: the content tables: the pieces that can be placed, the
   landmarks, and the zones the run keeps clear.
-- `aethyr/kit/machines.coax`, `aethyr/kit/land.coax`, `aethyr/render/cel-mesh.coax`: the engine's
+- `metaverse-engine/kit/machines.coax`, `metaverse-engine/kit/land.coax`, `metaverse-engine/render/cel-mesh.coax`: the engine's
   cel kits and mesh writers.
 
 A page script can stand the game at one beat with `coaxial.send(610, "N")`, N from 0 (title) to

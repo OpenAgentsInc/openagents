@@ -8,12 +8,12 @@
 // channel at a time (the Metal scalar profile has no vectors).
 //
 //   coax/bin/coax test verse/style.coax
-#load "../aethyr/render/material.coax";   // surface shading: bands, cool shadows, rim (Metaverse Engine book chapter 12)
-#load "../aethyr/render/light.coax";      // ambient, the shadow map, contact and haze (Metaverse Engine book chapter 13)
-#load "../aethyr/render/shadow-filter.coax";
-#load "../aethyr/render/sky.coax";
-#load "../aethyr/render/vegetation.coax";
-#load "../aethyr/render/post.coax";
+#load "../metaverse-engine/render/material.coax";   // surface shading: bands, cool shadows, rim (Metaverse Engine book chapter 12)
+#load "../metaverse-engine/render/light.coax";      // ambient, the shadow map, contact and haze (Metaverse Engine book chapter 13)
+#load "../metaverse-engine/render/shadow-filter.coax";
+#load "../metaverse-engine/render/sky.coax";
+#load "../metaverse-engine/render/vegetation.coax";
+#load "../metaverse-engine/render/post.coax";
 
 // ---- Flat (art-styles.md, Flat): flat-shaded low poly in a strongly limited palette. Big solid
 // fills, two or three flat tones a form (lit, shade, dark), no specular, no rim, no outline; a flat

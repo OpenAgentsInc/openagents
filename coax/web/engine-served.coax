@@ -12,7 +12,7 @@
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 #load "../lib/crypto/sha256-memory.coax";
-#load "../../aethyr/forge/publish.coax";
+#load "../../metaverse-engine/editor/publish.coax";
 
 SERVED_PAGE :: "realms/built/index.html";
 SERVED_TWIN :: "realms/built.page";   // deploy.sh's copy of the page at the bare path

@@ -2,7 +2,7 @@
 
 An unlisted check page at `/worlds/valley-lab/cull` for Valley Lab step 6
 (GitHub #13008). It runs cluster culling on the GPU in WGSL that `coax wgsl`
-writes from `aethyr/render/geometry/cull.coax`:
+writes from `metaverse-engine/render/geometry/cull.coax`:
 
 - the cluster DAG's draw rule over installed pages (`dag.coax`),
 - frustum culling,

@@ -56,9 +56,9 @@ Everything the exporter must carry, read from the source on `main`:
 | Piece | Where | Size and shape |
 |---|---|---|
 | Static world | `g_world` | Triangles written once into a store of up to 150,000 words. No index buffer. |
-| Vertex | `aethyr/render/cel-mesh.coax` | Six 32-bit words: x, y, z; normal as three bytes plus an object number; sRGB colour as three bytes plus a material byte; one float parameter. |
+| Vertex | `metaverse-engine/render/cel-mesh.coax` | Six 32-bit words: x, y, z; normal as three bytes plus an object number; sRGB colour as three bytes plus a material byte; one float parameter. |
 | Materials | `MAT_*` in `cel-mesh.coax` | Eleven classes: world, skin, hair, glow, flat, floor, made, ink, smoke, window, cloth. |
-| Kits | `aethyr/kit/land.coax`, `aethyr/kit/machines.coax` | Functions that write triangles: mesas, canyon walls, rover, Digger, figure, mech. |
+| Kits | `metaverse-engine/kit/land.coax`, `metaverse-engine/kit/machines.coax` | Functions that write triangles: mesas, canyon walls, rover, Digger, figure, mech. |
 | Moving things | `g_live` | Rebuilt every frame from the game state and the clock. |
 | Collision | `g_layout`, `g_collide`, `ground_y` | Up to 44 axis-aligned boxes (x0, x1, z0, z1, height), a raised deck with two ramps, circle pushes. |
 | Placements | `pick_x`, `foe_ax`, constants | 10 pickups, 9 foes with two patrol points each, rover, post, crate, boss, three weak points, the rail curve, two hidden stages. |
@@ -114,7 +114,7 @@ y up. It contains:
 
 glTF 2.0 binary, because both sides already speak it. Unreal 5.9 imports it
 through Interchange (`Engine/Plugins/Interchange`), and the Metaverse Engine already reads
-it (`aethyr/anim/gltf-access.coax`, `aethyr/anim/import-container.coax`).
+it (`metaverse-engine/anim/gltf-access.coax`, `metaverse-engine/anim/import-container.coax`).
 
 - One node per group. A group is one material class inside one 64 m grid
   cell, so Unreal can cull by cell.
@@ -136,7 +136,7 @@ draws the same triangles without one.
   runs `coax c SOURCE --library --header` and compiles the result with
   clang for `wasm32-wasip1`. The exporter emits the same C for the game
   module and its loads.
-- `aethyr_host.h` (`aethyr/export/unreal/aethyr_host.h`) declares the host
+- `aethyr_host.h` (`metaverse-engine/export/unreal/aethyr_host.h`) declares the host
   interface with real pointers. The web face passes pointers as 32-bit
   integers, which is wrong for a 64-bit target, so the bundle carries its
   own face, `verse/splice/splice-ue-face.c`.
@@ -149,15 +149,15 @@ A native Coax tool, per the tools rule (`coax/tools-in-coax.md`).
 
 | File | Role |
 |---|---|
-| `aethyr/export/glb-write.coax` | Writes glTF binary from cel vertices. Generic. |
-| `aethyr/export/bundle.coax` | Writes the manifest and the folder. Generic. |
+| `metaverse-engine/export/glb-write.coax` | Writes glTF binary from cel vertices. Generic. |
+| `metaverse-engine/export/bundle.coax` | Writes the manifest and the folder. Generic. |
 | `verse/splice/splice-export.coax` | The command. Loads the game, calls `g_reset` and `g_world`, lists placements and tuning. Per game. |
-| `aethyr/export/raster.coax` | Draws the reference shots in software. Generic. |
-| `aethyr/tools/unreal-export-check.coax` | Reads a bundle back with the Metaverse Engine's own glTF reader. |
-| `aethyr/tools/unreal-import.coax` | Stages, builds and runs the Unreal import, and returns its verdict. |
+| `metaverse-engine/export/raster.coax` | Draws the reference shots in software. Generic. |
+| `metaverse-engine/tools/unreal-export-check.coax` | Reads a bundle back with the Metaverse Engine's own glTF reader. |
+| `metaverse-engine/tools/unreal-import.coax` | Stages, builds and runs the Unreal import, and returns its verdict. |
 
 The per-game file sits beside the game because the engine may not load from
-`apps/` (`aethyr/layer-allowlist.txt`).
+`apps/` (`metaverse-engine/layer-allowlist.txt`).
 
 ```
 coax/web/tool.sh verse/splice/splice-export.coax OUT_DIR
@@ -168,7 +168,7 @@ Rules for the tool:
 - It runs the game's own world code. It never re-describes the world.
 - Same source commit, same bytes out. The bundle hash is in the manifest.
 - It refuses to write into an existing folder, like the animation exporter
-  (`aethyr/anim/export-policy.coax`).
+  (`metaverse-engine/anim/export-policy.coax`).
 - It reads no Unreal file and needs no Unreal install.
 
 One change to the game is needed first. Tuning, placements and strings are
@@ -178,7 +178,7 @@ that change.
 
 ## 5. The Unreal side
 
-Two pieces, both kept in this repo under `aethyr/export/unreal/` and copied
+Two pieces, both kept in this repo under `metaverse-engine/export/unreal/` and copied
 into the target project by the importer.
 
 ### 5.1 Importer
@@ -291,7 +291,7 @@ If the Wasm compile fails, stop and fix the compiler's C output before any
 other work.
 
 **Step 0 result, 2026-11-12: both risks are cleared.** The probe is in
-`aethyr/export/unreal/probe/` with the commands to rerun it.
+`metaverse-engine/export/unreal/probe/` with the commands to rerun it.
 
 The probe runs a fixed 34-frame script (leave the title, walk forward) and
 hashes every chunk a host reads at frames 0, 1 and 33: the overlay stream,
@@ -309,7 +309,7 @@ Facts from the run:
 
 - The Coax C needed no change. The only new code is a face with real
   pointers (`verse/splice/splice-ue-face.c`) behind
-  `aethyr/export/unreal/aethyr_host.h`.
+  `metaverse-engine/export/unreal/aethyr_host.h`.
 - Unreal's build settings turn `-Wunreachable-code-aggressive` into an
   error, and the generated C trips it. The module that compiles the rules
   turns that one warning off.
@@ -336,12 +336,12 @@ Facts from the run:
   percent.
 
 **Step 1 result, 2026-11-12: done.** Commands are in
-`aethyr/export/unreal/README.md`.
+`metaverse-engine/export/unreal/README.md`.
 
 | Check | Result |
 |---|---|
 | Two exports | Byte-identical |
-| Read back with `aethyr/anim`'s glTF reader | 58 meshes, 22,798 triangles, 18,618 vertices (welded from 68,394), hash and bounds match |
+| Read back with `metaverse-engine/anim`'s glTF reader | 58 meshes, 22,798 triangles, 18,618 vertices (welded from 68,394), hash and bounds match |
 | Importer counts against the manifest | 58 meshes, 22,798 triangles, 30 collision boxes, 50 markers, 2 font faces, 49 tuning numbers |
 | Every vertex position and colour against `world.glb` | All match |
 | Material compile errors | None |
@@ -383,7 +383,7 @@ What changed from the plan:
 - Web build frame time is recorded with the live mesh updating every frame.
 
 **Step 2 result, 2026-11-12: done.** One command exports, and one imports,
-builds and proves the run (`aethyr/export/unreal/README.md`).
+builds and proves the run (`metaverse-engine/export/unreal/README.md`).
 
 | Check | Result |
 |---|---|
@@ -526,7 +526,7 @@ Choices here that the import direction will use:
 - **Stable names.** Every exported thing has a name that survives a round
   trip, which is what the override table already needs.
 - **Existing work.** The Metaverse Engine already reads animation from an Unreal project
-  (`aethyr/anim/unreal-source.coax`, `aethyr/tools/anim-unreal-export.coax`).
+  (`metaverse-engine/anim/unreal-source.coax`, `metaverse-engine/tools/anim-unreal-export.coax`).
   Level import should extend that tool and its file policy, not start
   again.
 

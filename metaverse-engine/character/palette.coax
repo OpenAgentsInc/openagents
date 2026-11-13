@@ -1,0 +1,30 @@
+// What a character hands the GPU each time it changes: one f32 array, `palette`, in three parts.
+//   [0, CHARACTER_PALETTE_MORPHS)       joint j's skinning matrix at j*12: three rows of four
+//                                       (metaverse-engine/anim/pose.coax pose_palette); joints past the rig's are left as they are
+//   [CHARACTER_PALETTE_MORPHS, +256)    morph weight per face target (the face clip's; idle.coax raises blinks)
+//   [CHARACTER_PALETTE_CAPSULES, +160)  capsule k at k*8: model-space ends (x,y,z at 0..2 and 4..6) and the radius at 3
+// `revision` goes up by one every time the palette is written; upload when it changes.
+CHARACTER_PALETTE_MORPHS :: CHARACTER_JOINTS*12;
+CHARACTER_PALETTE_CAPSULES :: CHARACTER_PALETTE_MORPHS+CHARACTER_MORPHS;
+CHARACTER_PALETTE_WORDS :: CHARACTER_PALETTE_CAPSULES+CHARACTER_CAPSULES*8;
+
+// A capsule from joint `joint` to joint `end`, radius in metres, so the shader can shadow light
+// with a hand or a limb. With no end (end below 0) it runs past the joint by 0.8 of the joint's own bone,
+// for a fingertip. A capsule whose joints the rig doesn't have stays empty (radius 0).
+CharacterCapsule :: struct {joint:int;end:int;radius:f32;}
+
+// Pose the body with the face clip's bones, chain it and write the palette.
+character_present :: (c:[]Character,packs:[]CharacterPack) {
+ for k:0..<c[0].joints {c[0].pose[k]=c[0].body[k];}
+ if character_has_face(c,packs) {face_layer(c[0].face[..],character_face_bytes(c,packs),c[0].pose[..]);}
+ for k:0..<c[0].joints {pose_chain(c[0].gq[..],c[0].gt[..],c[0].parent[k],k,c[0].pose[k]);pose_palette(c[0].gq[k],c[0].gt[k],c[0].bind[..],k,c[0].palette[..]);}
+ for k:0..<CHARACTER_MORPHS {c[0].palette[CHARACTER_PALETTE_MORPHS+k]=ifx c[0].face[0].enabled then c[0].face[0].weights[k] else 0.0f32;}
+ character_capsules(c);c[0].revision+=1;
+}
+character_capsules :: (c:[]Character) {
+ for k:0..<CHARACTER_CAPSULES {at:=CHARACTER_PALETTE_CAPSULES+k*8;for w:0..<8 {c[0].palette[at+w]=0;}
+  if k>=c[0].capsules {continue;}a:=c[0].capsule[k].joint;e:=c[0].capsule[k].end;if a<0 || a>=c[0].joints || e>=c[0].joints {continue;}parent:=c[0].parent[a];if parent<0 {continue;}
+  p:=c[0].gt[a];q:=ifx e>=0 then c[0].gt[e] else add(p,times(sub(p,c[0].gt[parent]),0.8));
+  c[0].palette[at]=p.x;c[0].palette[at+1]=p.y;c[0].palette[at+2]=p.z;c[0].palette[at+4]=q.x;c[0].palette[at+5]=q.y;c[0].palette[at+6]=q.z;c[0].palette[at+3]=c[0].capsule[k].radius;
+ }
+}

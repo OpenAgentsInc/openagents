@@ -13,7 +13,7 @@
 #include "RenderTexture.h"
 extern bool hap_span(uint64_t,uint64_t,uint64_t,uint64_t,bool);
 #include "../../verse/native/render-images.c"
-#include "../../aethyr/render/tests/frame-input.h"
+#include "../../metaverse-engine/render/tests/frame-input.h"
 
 typedef struct {int64_t slot,generation;} MFHandle;
 @interface MFBuffer:NSObject {
@@ -564,7 +564,7 @@ int64_t mf_network_poll(void *host){MFRealm *r=(__bridge MFRealm*)host;if(!r->so
 int64_t mf_network_info(void *host,int32_t field){MFRealm *r=(__bridge MFRealm*)host;return r->socketContext?networkAPI.info(r->socketContext,field):0;}
 const uint8_t *mf_sound_bank(void *host,size_t *n){MFRealm *r=(__bridge MFRealm*)host;*n=0;if(!r->face.sound_bank||!r->face.sound_bank_len||!r->face.sound_bank_capacity)return NULL;size_t count=r->face.sound_bank_len(r->state),capacity=r->face.sound_bank_capacity(r->state);uintptr_t p=r->face.sound_bank(r->state);if(!htb_copy_span(p,capacity,count,UINT64_MAX))return NULL;*n=count;return(void*)p;}
 const uint8_t *mf_sound_bank_storage(void *host,size_t *n){MFRealm *r=(__bridge MFRealm*)host;*n=0;if(!r->face.sound_bank_storage||!r->face.sound_bank_storage_bytes)return NULL;uintptr_t p=r->face.sound_bank_storage(r->state);size_t capacity=r->face.sound_bank_storage_bytes(r->state);if(!htb_copy_span(p,capacity,0,UINT64_MAX))return NULL;*n=capacity;return(void*)p;}
-#include "../../aethyr/host/apple/audio-host.c"
+#include "../../metaverse-engine/host/apple/audio-host.c"
 const uint8_t *mf_sound_commands(void *host,size_t *n){MFRealm *r=(__bridge MFRealm*)host;*n=0;if(!r->face.sounds||!r->face.sounds_len||!r->face.sounds_capacity)return NULL;size_t count=r->face.sounds_len(r->state),capacity=r->face.sounds_capacity(r->state);uintptr_t p=r->face.sounds(r->state);if(!htb_copy_span(p,capacity,count,UINT64_MAX))return NULL;*n=count;return(void*)p;}
 int32_t mf_sound_probe(void *host,int32_t slot,float right,float ahead,float up){MFRealm *r=(__bridge MFRealm*)host;return r->face.sound_probe?r->face.sound_probe(r->state,slot,right,ahead,up):0;}
 

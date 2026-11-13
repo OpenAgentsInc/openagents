@@ -2,8 +2,8 @@
 // inspection renderer. Geometry is retained; each model has its own palette.
 #load "project.coax";
 #load "scene.coax";
-#load "../../aethyr/anim/cut-playback.coax";
-#load "../../aethyr/anim/inspect-mesh.coax";
+#load "../../metaverse-engine/anim/cut-playback.coax";
+#load "../../metaverse-engine/anim/inspect-mesh.coax";
 #load "courtyard.coax" as court;
 #load "scene-draw-checks.coax";
 SCENE_BANK :: 6404;

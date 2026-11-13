@@ -13,7 +13,7 @@ function instance(module,onMemory){
  }catch(error){new Uint8Array(memory.buffer).fill(0);memory.grow(0);throw error;}
 }
 // The one table read, for a caller that already holds a pack's bytes (host.js unpack, the character
-// pass) or only its first ones (pack-fetch.js): aethyr/host/pack-table.coax's pack_table in the reactor.
+// pass) or only its first ones (pack-fetch.js): metaverse-engine/host/pack-table.coax's pack_table in the reactor.
 // table(bytes) gives the pack's entries or throws Coax's refusal; stated(first12) gives the size a
 // pack's first 12 bytes state, or -1 when they don't start a pack.
 let tableOpened;
@@ -103,18 +103,18 @@ export async function openPackHost(){
     op.published=true;const result=Object.freeze({entries:Object.freeze(entries),source:plain.target,bytes:plain.target.byteLength,owner,close:()=>op.abort(),async use(fn){op.check();op.borrowers++;try{const answer=await fn(result);op.check();return answer;}finally{op.borrowers--;op.dispose();}}});return result;
    }catch(error){op.retired=true;op.controller.abort();throw error;}finally{op.loading=false;op.dispose();}})();return op.finished;
   }
-  // A range-addressable VPK3 pack (aethyr/forge/page-pack.coax): the header and manifest in one
+  // A range-addressable VPK3 pack (metaverse-engine/editor/page-pack.coax): the header and manifest in one
   // range, then runs of pages, roots first, a few ranges at once, each retried with back-off. A
   // server that ignores Range sends the file once and the ranges are cut from it. Each page is
   // inflated here and written at its place in the image arena; Coax admits it by size and SHA-256
-  // (aethyr/host/page-stream.coax). The roots held, the image is admitted as a whole pack is, and
+  // (metaverse-engine/host/page-stream.coax). The roots held, the image is admitted as a whole pack is, and
   // the result is published; pages that are not roots follow, and result.complete waits for them.
   // With image:true the image is published once its roots are held, without the VPK1 reader: for
   // a caller that reads the image itself (host.js's whole-pack path, geometry pages).
   // With demand:true the pages that are not roots are not fetched at the start: result.more(ranges)
   // fetches and admits the pages that cover a list of [at, bytes] ranges of the image and resolves
   // when Coax holds them (hpg_cover), result.cell(key) gives a world cell's {digest, ranges} from
-  // the pack's catalog (aethyr/host/pack-cells.coax, null when the catalog has no good line for
+  // the pack's catalog (metaverse-engine/host/pack-cells.coax, null when the catalog has no good line for
   // it), and result.rest() fetches everything left. result.complete is then rest()'s promise once
   // it is called, and null before. This is how a page streams a zone by cell (#13304, #13280).
   function loadPaged(pack,{owner,current=()=>true,progress,observe,image=false,demand=false}={}){

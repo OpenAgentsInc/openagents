@@ -258,7 +258,7 @@ check("each character remembers only what was said to it", "talked with you befo
 npc_reset()
 
 # ---- the NPC ask's fixtures (E4, #13247): proto/verse/npc-ask-v1.json, the bytes the pages write through
-# aethyr/talk/wire.coax (aethyr/talk/wire-goldens.coax checks the codec writes and reads each). Each is
+# metaverse-engine/talk/wire.coax (metaverse-engine/talk/wire-goldens.coax checks the codec writes and reads each). Each is
 # posted as it is, byte for byte, by a new player, and gets the fixture's status; a 200's body is the answer
 # the fixture names, byte for byte.
 npc_fx = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "proto", "verse", "npc-ask-v1.json")))

@@ -56,7 +56,7 @@ foundations, and this book links to them and does not repeat them:
 | Events, relays and NIPs | [Nostr From Scratch](../../nostr/book/README.md) |
 | Keys, signatures, Lightning | [Bitcoin From Scratch](../../bitcoin/book/README.md) |
 | Models, decisions, serving, Pylons | [Psionic: ML From Scratch](../../psionic/book/README.md) |
-| The engine and realms | [Building the OpenAgents Metaverse Engine](../../aethyr/book/README.md) |
+| The engine and realms | [Building the OpenAgents Metaverse Engine](../../metaverse-engine/book/README.md) |
 | A whole game on the engine | [Building Everglade](../../everglade/book/README.md) |
 
 This book owns what none of them does: the composition (a front and its

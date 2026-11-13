@@ -152,7 +152,7 @@ fi
 # closure (coax/web/tool.sh wasm-size sources), so a unit whose closure didn't
 # change since an earlier build, in any checkout or release tree, isn't compiled
 # again (Everglade's C takes ten minutes or more: its closure has an #authority
-# unit, aethyr/physics/ground.coax, so its compile runs every check in it). A unit with
+# unit, metaverse-engine/physics/ground.coax, so its compile runs every check in it). A unit with
 # an #import_proto isn't cached. An object is kept under what its compile reads:
 # clang's version and flags and the bytes of every file the preprocessor opens
 # for it (clang -M: the C, its headers, the sysroot's), so the same C compiles
@@ -551,7 +551,7 @@ stack_bytes=1048576
 # Compiled Actor Lab owns bounded catalogue/instance drafts during initialization.
 [[ "$(basename "$out" .wasm)" != actor-lab ]] || stack_bytes=4194304
 [[ "$render" == 1 ]] && stack_bytes=4194304
-memory_pages="$(cd "$repo" && coax/web/tool.sh aethyr/render/page-render.coax --memory "$name")"
+memory_pages="$(cd "$repo" && coax/web/tool.sh metaverse-engine/render/page-render.coax --memory "$name")"
 max_memory=$((memory_pages * 65536))
 [[ "$memory_pages" == 1024 ]] || stack_bytes=4194304
 # Scene project admission nests a bounded JSON arena and an ALB1 reader.

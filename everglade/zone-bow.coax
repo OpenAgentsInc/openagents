@@ -1,5 +1,5 @@
 // The bow in an Everglade zone (docs/verse/bow-combat.md), game-wide: Everglade Experimental and the
-// Archery Range shoot through this one file. The archer is the engine's (aethyr/action/archery.coax:
+// Archery Range shoot through this one file. The archer is the engine's (metaverse-engine/action/archery.coax:
 // the draw's frame, the sight line, each arrow's flight, the reticle) and the Longbow is the game's
 // (longbow.coax: the hand, the mouse buttons, the sounds, the dust). Here is what only a zone knows:
 // where its ground and walls are (xc_bow_wall), which monsters stand (xc_bow_bodies), and the SRD
@@ -9,7 +9,7 @@
 // ---- the bow (docs/verse/bow-combat.md): hold to draw, let go to loose. A Ranger holds a Longbow
 // (class-kit.coax xc_kit). Hold the right mouse button (or the bow's slot, on a phone: drag to aim)
 // and the aim comes in: a crosshair, the camera over your shoulder, you turn to face where it looks
-// and walk (aethyr/action/bow.coax bow_aim, read by charactercreator.coax camera and fivelab.coax
+// and walk (metaverse-engine/action/bow.coax bow_aim, read by charactercreator.coax camera and fivelab.coax
 // zone_you and zone_move_world). Let go and the arrow leaves your bow hand along the camera's ray, at
 // a speed its draw gave it, and flies its arc. A full draw lands where the crosshair points. The
 // arrow that reaches a monster is the SRD Attack with your Longbow on it (FB_SHOOT, rs_shoot: 1d8
@@ -20,7 +20,7 @@
 // What is a zone's own here is only what the engine and the game can't know: where this
 // zone's ground and walls are (xc_bow_wall), which monsters stand (xc_bow_bodies), and the SRD
 // attack an arrow that reaches one makes (xc_bow_strike). The sight line, the flight, the reticle
-// and the finger's draw are the engine's (aethyr/action/archery.coax); the hand, the sounds and the
+// and the finger's draw are the engine's (metaverse-engine/action/archery.coax); the hand, the sounds and the
 // dust are Everglade's Longbow (everglade/longbow.coax).
 XC_BOW_HAND :: EG_BOW_HAND;
 xc_has_bow :: (s: [] EgZone) -> bool {
@@ -38,7 +38,7 @@ xc_bow_squares :: (s: [] EgZone, foe: int) -> int {
 }
 // Whether a point in the air (world metres) is inside a wall, a house or a prop: the boxes round
 // it (experimental-village.coax ev_hostile_near, heights from the ground there), the dungeon's, or
-// one of the zone's own standing things (aethyr/world/props.coax).
+// one of the zone's own standing things (metaverse-engine/world/props.coax).
 xc_bow_wall :: (s: [] EgZone, x: f32, y: f32, z: f32) -> bool {
   up := y - meadow_y(x, z);
   if up < 0 { return true; }
@@ -124,14 +124,14 @@ xc_bow_strike :: (s: [] EgZone, foe: int) -> bool {
   return hit;
 }
 // Every arrow this frame: yours meet monsters, the zone's targets and the world; everyone's stick
-// in the ground and walls. The flight is the engine's (aethyr/action/archery.coax): this zone says
+// in the ground and walls. The flight is the engine's (metaverse-engine/action/archery.coax): this zone says
 // where its ground and walls are, and what the rules make of an arrow that reaches a monster.
 xc_bow_step :: (s: [] EgZone, dt: f32) {
   x := s[0].xc[..]; cr := s[0].creator[..]; now := cr[0].clock; a := x[0].ar[..];
   if !xc_has_bow(s) { _ := xc_bow_cancel(s); }
   if arch.archer_draw_step(a[0].draw[..], true, dt, now) { _ := xc_bow_loose(s); }
   cr[0].aim = ifx xc_has_bow(s) || a[0].draw[0].aim > 0 then bow.bow_aim(a[0].draw[0]) else 0.0f32;
-  // what your body shows of the draw (aethyr/action/bow.coax BowShow), handed to the scene that draws you
+  // what your body shows of the draw (metaverse-engine/action/bow.coax BowShow), handed to the scene that draws you
   arch.archer_show_step(a[0].show[..], a[0].draw[0], now);
   cr[0].nocked = a[0].show[0].nocked; cr[0].draw = a[0].show[0].strength; cr[0].loose_at = a[0].show[0].loose_at;
   f: [1] arch.ArrowFlight; bodies: [XC_FOES] arch.ArcheryBody;
@@ -146,7 +146,7 @@ xc_bow_step :: (s: [] EgZone, dt: f32) {
   }
   arch.archery_tidy(a, now);
 }
-// The arrows in the air and stuck, as puffs (aethyr/fx/puff.coax fxp_arrow_at).
+// The arrows in the air and stuck, as puffs (metaverse-engine/fx/puff.coax fxp_arrow_at).
 xc_bow_puffs :: (s: [] EgZone, pf: [] FxPuffs) {
   x := s[0].xc[..]; now := s[0].creator[0].clock; u := x[0].u;
   for i: 0..<bow.ARROWS {
@@ -154,8 +154,8 @@ xc_bow_puffs :: (s: [] EgZone, pf: [] FxPuffs) {
     fxp_arrow_at(pf, fxp_v(a.at[0], a.at[1], a.at[2]), fxp_v(a.dir[0], a.dir[1], a.dir[2]), a.alpha, a.flying, a.seed);
   }
 }
-// The crosshair: the shared reticle (aethyr/cam/reticle.coax) on the camera's centre ray: a small
-// crosshair while the mouse looks (aethyr/cam/mouselook.coax), a little warmer over a monster, and the
+// The crosshair: the shared reticle (metaverse-engine/cam/reticle.coax) on the camera's centre ray: a small
+// crosshair while the mouse looks (metaverse-engine/cam/mouselook.coax), a little warmer over a monster, and the
 // bow's arms in with the aim, closing as the draw builds. One crosshair for both.
 xc_crosshair :: (s: [] EgZone, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
   x := s[0].xc[..]; n := at; ml := s[0].creator[0].ml[0];

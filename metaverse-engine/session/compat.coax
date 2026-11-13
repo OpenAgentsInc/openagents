@@ -1,0 +1,138 @@
+// Sessions pinned to engine, rules, content, wire and schema across overlapping releases (GitHub
+// #12839). A session is admitted against explicit identities and keeps them until it ends:
+// - engine, rules and content (the world revision) must match the server exactly: one encounter
+//   never mixes two rule sets or two worlds;
+// - wire: a server speaks a range of wire versions (wire_min..wire), so a page cached from the
+//   previous release still joins while its version is in range; below the range it is told to
+//   reload;
+// - schema: a server reads every persistence schema up to its own and writes its own. A server
+//   older than the data (a binary rolled back over newer durable data) refuses the session rather
+//   than read or overwrite what it doesn't understand.
+// New sessions go to the first ready, undrained server with room whose pins they match; a draining
+// server finishes the sessions it has. A reconnect goes back to the server and pins it was admitted
+// under; if that server is gone, the encounter ends and the page reloads into a compatible one, never
+// silently onto other rules. Every refusal names its reason, for diagnostics and recovery records.
+//   coax/bin/coax test metaverse-engine/session/compat.coax --library
+//   coax/bin/coax mutate metaverse-engine/session/compat.coax --library --root-only
+
+#module "aethyr.session.compat";
+#authority;
+
+// book:begin compat-profile
+COMPAT_SERVERS :: 8;
+
+CP_OK :: 0;
+CP_ENGINE :: 1; CP_RULES :: 2; CP_CONTENT :: 3;   // another engine, rule set or world revision
+CP_WIRE_OLD :: 4;      // the page's wire is below the server's range: reload
+CP_WIRE_NEW :: 5;      // the page's wire is newer than the server speaks
+CP_SCHEMA :: 6;        // the data is newer than the server: a rollback past its limit
+CP_NO_CAPACITY :: 7;   // no ready, undrained, compatible server has room
+CP_GONE :: 8;          // the server a reconnect names has stopped
+
+// What a client or session carries, and what a server is.
+CompatPins :: struct { engine: int; rules: int; content: int; wire: int; schema: int; }
+CompatServer :: struct { pins: CompatPins; wire_min: int; up: bool; ready: bool; draining: bool; room: int; }
+CompatRoute :: struct { status: int; server: int = -1; }
+// book:end compat-profile
+
+// Whether a client with pins `c` (its wire, and the schema of its durable data) may join server s.
+compat_admit :: (s: CompatServer, c: CompatPins) -> int #effects(all) {
+  if c.engine != s.pins.engine { return CP_ENGINE; }
+  if c.rules != s.pins.rules { return CP_RULES; }
+  if c.content != s.pins.content { return CP_CONTENT; }
+  if c.wire < s.wire_min { return CP_WIRE_OLD; }
+  if c.wire > s.pins.wire { return CP_WIRE_NEW; }
+  if c.schema > s.pins.schema { return CP_SCHEMA; }
+  return CP_OK;
+}
+// A new session: the first server that admits it and can take it. With none, the reason the
+// nearest one gave (or no capacity when every compatible one is full, drained or not ready).
+compat_route :: (servers: [] CompatServer, c: CompatPins) -> CompatRoute #effects(all) {
+  why := CP_NO_CAPACITY; seen := false;
+  for i: 0..<servers.count {
+    s := servers[i];
+    if !s.up { continue; }
+    v := compat_admit(s, c);
+    if v != CP_OK { if !seen { why = v; seen = true; } continue; }
+    why = CP_NO_CAPACITY; seen = true;
+    if !s.ready || s.draining || s.room < 1 { continue; }
+    servers[i].room -= 1;
+    return CompatRoute.{status = CP_OK, server = i};
+  }
+  return CompatRoute.{status = why};
+}
+// A session admitted to server i reconnects: the same server under the same pins, drained or not.
+compat_reconnect :: (servers: [] CompatServer, i: int, c: CompatPins) -> int #effects(all) {
+  if i < 0 || i >= servers.count || !servers[i].up { return CP_GONE; }
+  return compat_admit(servers[i], c);
+}
+
+// ---- checks
+
+COMPAT_OLD :: CompatPins.{engine = 7, rules = 3, content = 41, wire = 5, schema = 2};
+COMPAT_NEW :: CompatPins.{engine = 8, rules = 4, content = 42, wire = 6, schema = 3};
+compat_server :: (p: CompatPins, wire_min: int, room: int) -> CompatServer #effects(all) { return CompatServer.{pins = p, wire_min = wire_min, up = true, ready = true, room = room}; }
+
+#test "compat: admission names the identity that differs" {
+  s := compat_server(COMPAT_NEW, 5, 4);
+  #assert compat_admit(s, COMPAT_NEW) == CP_OK;
+  c := COMPAT_NEW; c.engine = 7; #assert compat_admit(s, c) == CP_ENGINE;
+  c = COMPAT_NEW; c.rules = 3; #assert compat_admit(s, c) == CP_RULES;
+  c = COMPAT_NEW; c.content = 41; #assert compat_admit(s, c) == CP_CONTENT;
+  // a page cached from the last release still joins; one from before that reloads
+  c = COMPAT_NEW; c.wire = 5; #assert compat_admit(s, c) == CP_OK;
+  c.wire = 4; #assert compat_admit(s, c) == CP_WIRE_OLD;
+  c.wire = 7; #assert compat_admit(s, c) == CP_WIRE_NEW;
+  // older data reads; newer data refuses
+  c = COMPAT_NEW; c.schema = 1; #assert compat_admit(s, c) == CP_OK;
+  c.schema = 4; #assert compat_admit(s, c) == CP_SCHEMA;
+}
+
+#test "compat: during a rollout, new pages go to new servers and old encounters finish on old ones" {
+  servers: [3] CompatServer;
+  servers[0] = compat_server(COMPAT_OLD, 4, 2);
+  servers[1] = compat_server(COMPAT_NEW, 5, 1);
+  servers[2] = compat_server(COMPAT_NEW, 5, 1);
+  servers[2].ready = false;   // still starting
+  a := compat_route(servers[..], COMPAT_NEW);
+  #assert a.status == CP_OK && a.server == 1 && servers[1].room == 0;
+  // the only other new server isn't ready: no capacity, not a mismatch
+  b := compat_route(servers[..], COMPAT_NEW);
+  #assert b.status == CP_NO_CAPACITY && b.server == -1;
+  servers[2].ready = true;
+  #assert compat_route(servers[..], COMPAT_NEW).server == 2;
+  // the old release drains: its encounter reconnects there; no new session goes to it
+  o := compat_route(servers[..], COMPAT_OLD);
+  #assert o.status == CP_OK && o.server == 0;
+  servers[0].draining = true;
+  #assert compat_reconnect(servers[..], 0, COMPAT_OLD) == CP_OK && compat_route(servers[..], COMPAT_OLD).status == CP_NO_CAPACITY;
+  // a reconnect never moves onto other rules: a stopped server ends the encounter
+  servers[0].up = false;
+  #assert compat_reconnect(servers[..], 0, COMPAT_OLD) == CP_GONE && compat_reconnect(servers[..], -1, COMPAT_OLD) == CP_GONE && compat_reconnect(servers[..], 3, COMPAT_OLD) == CP_GONE;
+  #assert compat_route(servers[..], COMPAT_OLD).status == CP_ENGINE;
+  #assert compat_reconnect(servers[..], 1, COMPAT_OLD) == CP_ENGINE;
+}
+
+#test "compat: a failed rollout and a rollback over newer data" {
+  // the new servers never become ready: new pages are told there is no capacity; old pages still play
+  servers: [2] CompatServer;
+  servers[0] = compat_server(COMPAT_OLD, 4, 4);
+  servers[1] = compat_server(COMPAT_NEW, 5, 4);
+  servers[1].ready = false;
+  #assert compat_route(servers[..], COMPAT_NEW).status == CP_NO_CAPACITY && compat_route(servers[..], COMPAT_OLD).server == 0;
+  // rolled back to the old binary after players saved under the new schema: refused, nothing read
+  saved := COMPAT_OLD; saved.schema = COMPAT_NEW.schema;
+  #assert compat_route(servers[..], saved).status == CP_SCHEMA && servers[0].room == 3;
+  // a full server sends the next session on, and the last full one says so
+  full: [2] CompatServer;
+  full[0] = compat_server(COMPAT_NEW, 5, 0); full[1] = compat_server(COMPAT_NEW, 5, 1);
+  #assert compat_route(full[..], COMPAT_NEW).server == 1 && compat_route(full[..], COMPAT_NEW).status == CP_NO_CAPACITY;
+  // the first reason seen is the one reported
+  mixed: [2] CompatServer;
+  mixed[0] = compat_server(COMPAT_OLD, 4, 1); mixed[1] = compat_server(COMPAT_NEW, 7, 1);
+  #assert compat_route(mixed[..], COMPAT_NEW).status == CP_ENGINE;
+  #assert compat_route(mixed[1..<2], COMPAT_NEW).status == CP_WIRE_OLD;
+  // nothing up: no capacity
+  mixed[0].up = false; mixed[1].up = false;
+  #assert compat_route(mixed[..], COMPAT_NEW).status == CP_NO_CAPACITY;
+}

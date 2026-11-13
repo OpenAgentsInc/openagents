@@ -227,4 +227,4 @@ rb_panel_struck :: (s: [] Everglade, q2: int, kg: f32, speed: f32, at: Point) {
   if dd.n == 0 { return; }
   crumbled := rb_panel_hurt(s, q2, srd_sum(s[0].sp.dice[..], dd.n, dd.sides), at);
 }
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).

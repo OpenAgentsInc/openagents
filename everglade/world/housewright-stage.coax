@@ -1,6 +1,6 @@
 // Housewright time-lapses (game; GitHub #13107, Episode 293's shots 1 to 6): the `?stage=house-*`
 // setups any zone can stage. Each names its house, how its build runs over the clip (progress keys:
-// seconds, progress from 0 to the tier's last stage), its camera track and sky clock (aethyr/cam/
+// seconds, progress from 0 to the tier's last stage), its camera track and sky clock (metaverse-engine/cam/
 // track.coax), and what the corner and the caption under the house say. Everything is in the site's
 // frame: the house's middle at (0, 0), its front facing +z, the ground at y 0, so a zone stands it
 // wherever it has clear ground and adds that place. The clock is the zone's game steps, so a recording
@@ -8,9 +8,9 @@
 //   coax/bin/coax test everglade/world/housewright-stage.coax --library
 #module "everglade.housewright_stage";
 #load "housewright.coax" as hw;
-#load "../../aethyr/cam/track.coax" as trk;
-#load "../../aethyr/world/building.coax" as building;
-#load "../../aethyr/world/build-site.coax" as bs;
+#load "../../metaverse-engine/cam/track.coax" as trk;
+#load "../../metaverse-engine/world/building.coax" as building;
+#load "../../metaverse-engine/world/build-site.coax" as bs;
 
 HWS_N :: 6;
 HWS_ROW :: 5;          // the five finished houses side by side
@@ -37,7 +37,7 @@ HWS_PROGRESS :: [5][HWS_KEYS * 2] f32.[
   [HWS_KEYS * 2] f32.[0, 0,  0.3, 0,  1.0, 1,  2.8, 2,  4.2, 2,  5.2, 3,  6.4, 4,  7.4, 5,  8, 5,  0, -1],
   [HWS_KEYS * 2] f32.[0, 0,  0.3, 0,  1.6, 1,  4.0, 2,  6.4, 3,  8.0, 4,  9.3, 5,  10, 5,  0, -1,  0, -1]];
 
-// The camera tracks, aethyr/cam/track.coax rows (seconds, eye, look, ease), in the site's frame.
+// The camera tracks, metaverse-engine/cam/track.coax rows (seconds, eye, look, ease), in the site's frame.
 HWS_TRACK_ROWS :: 4;
 HWS_TRACKS :: [HWS_N][HWS_TRACK_ROWS * trk.CAM_TRACK_ROW] f32.[
   // 1 the lean-to: a low three-quarter view, drifting in

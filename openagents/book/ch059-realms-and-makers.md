@@ -52,7 +52,7 @@ A plan for what this chapter ships once the draft is approved:
 It builds on what exists today:
 
 - [`verse`](../../verse)
-- [`aethyr/forge`](../../aethyr/forge)
+- [`metaverse-engine/editor`](../../metaverse-engine/editor)
 - [`apps/openagents-cli/realm.coax`](../../apps/openagents-cli/realm.coax)
 - [`apps/openagents-cli/project-publish.coax`](../../apps/openagents-cli/project-publish.coax)
 - [`coax/lib/nostr/ext`](../../coax/lib/nostr/ext)
@@ -64,7 +64,7 @@ On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
 | Record | Schema | Carriage | Today |
 | --- | --- | --- | --- |
 | A realm, character or asset release | `openagents.extension.v1` `Release`, `Listing` ([spec 20.2](../../docs/protocol/openagents-protocol-spec.md#202-openagentsextensionv1)) | Nostr kinds 3184 and 30184, public | Spec sketch; no `.proto` file |
-| A realm document and its edits | `openagents.verse.doc.v1alpha1` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step E6) | HTTP | Built in SQL; `aethyr/forge/doc.coax` and `edit.coax` are the client's one codec, and one fixture of stored bytes and SHA-256 checks both |
+| A realm document and its edits | `openagents.verse.doc.v1alpha1` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step E6) | HTTP | Built in SQL; `metaverse-engine/editor/doc.coax` and `edit.coax` are the client's one codec, and one fixture of stored bytes and SHA-256 checks both |
 
 Planned paths: `openagents/registry/realms.coax`.
 

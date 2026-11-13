@@ -1,8 +1,8 @@
 // stair's shaders, the source of apps/openagents-web/stair.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (stair.module,
 // stair.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/render/noise.coax";
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/render/noise.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 
 // Hold the Stair (stair.coax): bg_fs draws the tower's floor seen from above
 // with a slight tilt: the back wall and its torches, flagstones lit by them,

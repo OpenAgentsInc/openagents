@@ -1,0 +1,173 @@
+// The archer's pose: a bow drawn on a skinned rig (metaverse-engine/anim/skin.coax), as keyed poses a realm bakes
+// once and blends by draw strength (docs/verse/bow-combat.md). No library has bow clips for the
+// Universal Animation Library's rig, so the pose is made here, on top of whatever stance the rig
+// stands in:
+//   the chest turns the bow shoulder toward the aim (BOW_POSE_TWIST) and the head turns back to it;
+//   the bow arm reaches straight ahead at shoulder height, the fist upright (thumb up, so a bow on
+//     the hand's attach basis stands upright with its string square to the forearm);
+//   the draw hand comes to the string (strength 0, the nock) and pulls it back to the anchor at the
+//     jaw as strength builds, the elbow back and out at shoulder height;
+//   on the release the draw hand follows through back past the ear and the bow arm drops a little.
+// Each arm is reached with two-bone IK (law of cosines in the plane of a pole), then the bow hand is
+// turned to its grip. Frame f of BOW_POSE_FRAMES: f < BOW_POSE_DRAWS the draw at f / (BOW_POSE_DRAWS
+// - 1), then the release's two.
+//   coax/bin/coax test metaverse-engine/action/bow-pose.coax --library
+#load "../anim/skin.coax";
+
+BOW_POSE_DRAWS :: 11;
+BOW_POSE_FRAMES :: 13;
+BOW_POSE_TWIST :: 0.6;       // radians the chest turns, the bow shoulder toward the aim
+BOW_POSE_REACH :: 0.97;      // of the bow arm's length it reaches (a straight arm locks)
+BOW_POSE_STRING :: 0.288;    // metres from the bow fist back to the string at rest (the attach basis's grip to string)
+
+// A rig's joints for the pose: the two spine joints that turn, the head, and each arm's clavicle,
+// upper arm, lower arm and hand; `fist` is the bow fist's offset from the bow hand's joint in the
+// bind pose (the hand's bind frame: the arm +X, the thumb +Z, the palm -Y).
+BowJoints :: struct { spine: [2] int; head: int; arm_l: [4] int; arm_r: [4] int; fist: Point; }
+
+// A joint's rotation and place in the character's space, now.
+bp_global :: (r: SkinRig, s: [] Skin, j: int) -> SkinLocal {
+  chain: [SKIN_JOINTS_MAX] int;
+  n := 0; k := j;
+  while k >= 0 && n < SKIN_JOINTS_MAX { chain[n] = k; n += 1; p := r.parent[k]; k = ifx p < k then p else -1; }
+  q := Quat.{}; t := v3(0, 0, 0);
+  while n > 0 { n -= 1; l := s[0].now[chain[n]]; t = add(t, quat_rotate(q, l.t)); q = quat_unit(quat_mul(q, l.q)); }
+  return SkinLocal.{t = t, q = q};
+}
+// Sets joint j's rotation in the character's space to q (its local is q less its parent's).
+bp_set :: (r: SkinRig, s: [] Skin, j: int, q: Quat) {
+  p := r.parent[j];
+  gp := ifx p >= 0 && p < j then bp_global(r, s, p).q else Quat.{};
+  s[0].now[j].q = quat_unit(quat_mul(Quat.{x = -gp.x, y = -gp.y, z = -gp.z, w = gp.w}, q));
+}
+// The shortest turn from unit a to unit b.
+bp_arc :: (a: Point, b: Point) -> Quat {
+  d := dot(a, b);
+  if d < -0.9999 { ax := unit_or(cross(a, v3(0, 1, 0)), v3(1, 0, 0)); return Quat.{x = ax.x, y = ax.y, z = ax.z, w = 0}; }
+  c := cross(a, b);
+  return quat_unit(Quat.{x = c.x, y = c.y, z = c.z, w = 1 + d});
+}
+// Turns joint j so its child points at target.
+bp_point :: (r: SkinRig, s: [] Skin, j: int, child: int, target: Point) {
+  g := bp_global(r, s, j);
+  v0 := unit_or(quat_rotate(g.q, s[0].now[child].t), v3(1, 0, 0));
+  v1 := unit_or(sub(target, g.t), v0);
+  bp_set(r, s, j, quat_unit(quat_mul(bp_arc(v0, v1), g.q)));
+}
+// Two-bone IK: upper a, lower b, end c reach target, the elbow toward pole. Where c ends up.
+bp_reach :: (r: SkinRig, s: [] Skin, a: int, b: int, c: int, target: Point, pole: Point) -> Point {
+  sh := bp_global(r, s, a).t;
+  la := length(s[0].now[b].t); lb := length(s[0].now[c].t);
+  dv := sub(target, sh); d := clamp(length(dv), 0.05, (la + lb) * 0.999); dir := unit_or(dv, v3(0, 0, 1));
+  ca := clamp((la * la + d * d - lb * lb) / (2 * la * d), -1, 1); sa := sqrt(1 - ca * ca);
+  pp := unit_or(sub(pole, times(dir, dot(pole, dir))), v3(0, -1, 0));
+  e := add(sh, add(times(dir, la * ca), times(pp, la * sa)));
+  bp_point(r, s, a, b, e);
+  end := add(sh, times(dir, d));
+  bp_point(r, s, b, c, end);
+  return end;
+}
+// A rotation from its matrix's columns (unit, right-handed).
+bp_quat :: (x: Point, y: Point, z: Point) -> Quat {
+  t := x.x + y.y + z.z;
+  if t > 0 { k := sqrt(t + 1) * 2; return quat_unit(Quat.{w = k / 4, x = (y.z - z.y) / k, y = (z.x - x.z) / k, z = (x.y - y.x) / k}); }
+  if x.x > y.y && x.x > z.z { k := sqrt(1 + x.x - y.y - z.z) * 2; return quat_unit(Quat.{w = (y.z - z.y) / k, x = k / 4, y = (y.x + x.y) / k, z = (z.x + x.z) / k}); }
+  if y.y > z.z { k := sqrt(1 + y.y - x.x - z.z) * 2; return quat_unit(Quat.{w = (z.x - x.z) / k, x = (y.x + x.y) / k, y = k / 4, z = (z.y + y.z) / k}); }
+  k := sqrt(1 + z.z - x.x - y.y) * 2; return quat_unit(Quat.{w = (x.y - y.x) / k, x = (z.x + x.z) / k, y = (z.y + y.z) / k, z = k / 4});
+}
+// Turns hand j so its skinning rotation takes its bind +X to ex and bind +Z to ez: the skinning
+// rotation is the posed rotation times the inverse bind's, so the posed one is the wanted one times
+// the bind's (the inverse bind's transpose).
+bp_hand :: (r: SkinRig, s: [] Skin, j: int, ex0: Point, ez0: Point) {
+  ex := unit_or(ex0, v3(1, 0, 0));
+  ez := unit_or(sub(ez0, times(ex, dot(ez0, ex))), v3(0, 0, 1));
+  ey := cross(ez, ex);
+  b := j * 12;
+  col: [3] Point;
+  for k: 0..<3 {
+    // column k of wanted x inverse-bind transpose: sum over m of wanted column m times inverse bind [k][m]
+    col[k] = add(add(times(ex, r.bind[b + k * 4]), times(ey, r.bind[b + k * 4 + 1])), times(ez, r.bind[b + k * 4 + 2]));
+  }
+  bp_set(r, s, j, bp_quat(col[0], col[1], col[2]));
+}
+// What frame f of the pose is: the draw's strength (0 to 1) and how far into the release (0 none).
+BowPoseKey :: struct { strength: f32; release: f32; }
+bow_pose_key :: (f: int) -> BowPoseKey {
+  if f < BOW_POSE_DRAWS { return BowPoseKey.{strength = f32(f) / f32(BOW_POSE_DRAWS - 1)}; }
+  return BowPoseKey.{strength = 1, release = f32(f - BOW_POSE_DRAWS + 1) / f32(BOW_POSE_FRAMES - BOW_POSE_DRAWS)};
+}
+// The frame a draw at `strength` shows, or the release `release_age` seconds after a loose (-1 none).
+bow_pose_frame :: (strength: f32, release_age: f32) -> int {
+  if release_age >= 0 && release_age < 0.3 { return ifx release_age < 0.08 then BOW_POSE_DRAWS else BOW_POSE_DRAWS + 1; }
+  return clamp_pose(cast(int) floor(clamp01(strength) * f32(BOW_POSE_DRAWS - 1) + 0.5), 0, BOW_POSE_DRAWS - 1);
+}
+clamp_pose :: (v: int, a: int, b: int) -> int { if v < a { return a; } if v > b { return b; } return v; }
+
+// What the pose placed, in the character's space: the bow fist, the string's rest point, the draw
+// hand's nock (where the string is pulled to) and the bow arm's direction.
+BowPosed :: struct { fist: Point; rest: Point; nock: Point; aim: Point; }
+// Poses s (standing in any stance) as frame f of the draw.
+bow_pose :: (r: SkinRig, s: [] Skin, b: BowJoints, f: int) -> BowPosed {
+  k := bow_pose_key(f);
+  skin_turn(r, s, b.spine[0], -f32(BOW_POSE_TWIST) * 0.5);
+  skin_turn(r, s, b.spine[1], -f32(BOW_POSE_TWIST) * 0.5);
+  skin_turn(r, s, b.head, f32(BOW_POSE_TWIST) * 0.85);
+  // the bow arm: straight ahead at shoulder height, a touch in toward the line of the eyes
+  sl := bp_global(r, s, b.arm_l[1]).t;
+  la := length(s[0].now[b.arm_l[2]].t) + length(s[0].now[b.arm_l[3]].t);
+  aim := unit_or(v3(-0.08, 0.04, 1), v3(0, 0, 1));
+  bow := add(sl, times(aim, la * f32(BOW_POSE_REACH)));
+  if k.release > 0 { bow = add(bow, v3(0.02, -0.05 * k.release, -0.02 * k.release)); }
+  hand := bp_reach(r, s, b.arm_l[1], b.arm_l[2], b.arm_l[3], bow, v3(0.7, -1, 0));
+  arm := unit_or(sub(hand, sl), aim);
+  bp_hand(r, s, b.arm_l[3], arm, v3(0, 1, 0));
+  hg := bp_global(r, s, b.arm_l[3]);
+  // the fist: its bind offset turned as the hand is (arm +X, thumb +Z, so the palm -Y is arm x thumb's -)
+  up := unit_or(sub(v3(0, 1, 0), times(arm, arm.y)), v3(0, 1, 0)); side := cross(up, arm);
+  fist := add(hg.t, add(add(times(arm, b.fist.x), times(side, b.fist.y)), times(up, b.fist.z)));
+  rest := sub(fist, times(arm, f32(BOW_POSE_STRING)));
+  // the anchor: at the jaw, below and ahead of the head's joint on the draw side
+  hd := bp_global(r, s, b.head).t;
+  anchor := add(hd, v3(-0.05, -0.03, 0.09));
+  nock := add(rest, times(sub(anchor, rest), k.strength));
+  if k.release > 0 { nock = add(anchor, times(v3(-0.07, 0.05, -0.17), k.release)); }
+  _ := bp_reach(r, s, b.arm_r[1], b.arm_r[2], b.arm_r[3], nock, v3(-0.5, 0.35, -1));
+  return BowPosed.{fist = fist, rest = rest, nock = nock, aim = arm};
+}
+
+// ---- checks
+
+#test "two-bone IK reaches a point in range and keeps both bones' lengths" {
+  // a three-joint arm along +X: shoulder at 0, elbow at 0.3, hand at 0.58
+  par := [3] int.[-1, 0, 1];
+  rest := [21] f32.[0, 1.4, 0, 0, 0, 0, 1,   0.3, 0, 0, 0, 0, 0, 1,   0.28, 0, 0, 0, 0, 0, 1];
+  bind: [36] f32;
+  r := SkinRig.{joints = 3, parent = par[..], rest = rest[..], bind = bind[..]};
+  s: [1] Skin;
+  for j: 0..<3 { s[0].now[j] = SkinLocal.{t = v3(rest[j * 7], rest[j * 7 + 1], rest[j * 7 + 2])}; }
+  target := v3(0.1, 1.25, 0.45);
+  end := bp_reach(r, s[..], 0, 1, 2, target, v3(0, -1, 0));
+  h := bp_global(r, s[..], 2).t; e := bp_global(r, s[..], 1).t; sh := bp_global(r, s[..], 0).t;
+  #assert length(sub(h, target)) < 0.002 && length(sub(end, target)) < 0.002;
+  #assert abs(length(sub(e, sh)) - 0.3) < 0.001 && abs(length(sub(h, e)) - 0.28) < 0.001 && e.y < 1.4;
+  // out of reach: it points straight at it, as far as it goes
+  _ := bp_reach(r, s[..], 0, 1, 2, v3(0, 1.4, 3), v3(0, -1, 0));
+  h = bp_global(r, s[..], 2).t; #assert abs(h.z - 1.4 * 0 - 0.58 * 0.999) < 0.01 && abs(h.y - 1.4) < 0.01;
+}
+#test "the hand's turn: its skinning rotation takes bind +X and +Z where asked" {
+  par := [1] int.[-1]; rest := [7] f32.[0, 0, 0, 0, 0, 0, 1];
+  // an inverse bind of a quarter turn about Y
+  bind := [12] f32.[0, 0, -1, 0,  0, 1, 0, 0,  1, 0, 0, 0];
+  r := SkinRig.{joints = 1, parent = par[..], rest = rest[..], bind = bind[..]};
+  s: [1] Skin;
+  bp_hand(r, s[..], 0, v3(0, 0, 1), v3(0, 1, 0));
+  q := s[0].now[0].q; ib := [3] Point.[v3(0, 0, 1), v3(0, 1, 0), v3(-1, 0, 0)];   // the inverse bind's columns
+  // skinning rotation applied to bind +X: q (Rinv (1,0,0)) = q (first column of Rinv)
+  px := quat_rotate(q, ib[0]); pz := quat_rotate(q, ib[2]);
+  #assert length(sub(px, v3(0, 0, 1))) < 0.001 && length(sub(pz, v3(0, 1, 0))) < 0.001;
+}
+#test "frames: the draw's strengths, then the release" {
+  #assert bow_pose_key(0).strength == 0 && bow_pose_key(BOW_POSE_DRAWS - 1).strength == 1 && bow_pose_key(BOW_POSE_DRAWS).release > 0;
+  #assert bow_pose_frame(0, -1) == 0 && bow_pose_frame(1, -1) == BOW_POSE_DRAWS - 1 && bow_pose_frame(0.5, -1) == 5;
+  #assert bow_pose_frame(1, 0.02) == BOW_POSE_DRAWS && bow_pose_frame(1, 0.2) == BOW_POSE_DRAWS + 1 && bow_pose_frame(0.3, 0.5) == 3;
+}

@@ -12,7 +12,7 @@
 // Bots run 8 to a process (a child: fanout-check.coax group SITE N SECONDS REALM GROUP); each prints
 // "sat BOT ROOM SHARD PID" or "failed BOT WHY", then "seated" when its bots are in and "left" at the end.
 // Prints one JSON line, then "fans out" and exits 0, or "fails" and 1.
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "../../lib/net/http.coax";
 

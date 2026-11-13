@@ -32,7 +32,7 @@ openagents realm shot walled-garden garden.png
   account has linked. It never holds a password or a cookie.
 - **The page and the CLI edit the same thing.** A realm edit from the CLI
   goes through the same routes, the same SQL rules and the same Coax edit
-  operations (`aethyr/forge/edit.coax`) as the page. There is no second
+  operations (`metaverse-engine/editor/edit.coax`) as the page. There is no second
   editing path to keep in step.
 - **Coax only.** The binary is Coax on the C tool host
   (`coax/platform/tool-native.c`), per [tools in Coax](../../coax/tools-in-coax.md).

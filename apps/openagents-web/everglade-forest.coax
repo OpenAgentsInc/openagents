@@ -925,8 +925,8 @@ tf_test_tree :: (g: [] Everglade, x: f32, z: f32) -> int {
   }
   return best;
 }
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).

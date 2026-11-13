@@ -1,9 +1,9 @@
 // Everglade for desktop, its unit: the worlds (scenes.coax: the list and the Workshop) and
 // the Next issue panel (next.coax) compiled together. They are one unit because both
-// draw with aethyr/ui/draw.coax, whose exports can't be linked twice. The worlds alone are what
+// draw with metaverse-engine/ui/draw.coax, whose exports can't be linked twice. The worlds alone are what
 // the mobile app compiles: it has no agent.
 //   coax/bin/coax test --library apps/everglade-desktop/desktop.coax
 #load "scenes.coax";
 #load "next.coax";
-// A Mac wheel's travel in the host contract's units, for the realm the host runs (aethyr/host/README.md, Input).
-#load "../../aethyr/host/appkit-input.coax";
+// A Mac wheel's travel in the host contract's units, for the realm the host runs (metaverse-engine/host/README.md, Input).
+#load "../../metaverse-engine/host/appkit-input.coax";

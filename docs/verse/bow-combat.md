@@ -93,7 +93,7 @@ the arrow leaves at `42.4 m/s × (0.25 + 0.75 × strength)`. A full draw takes 0
 and lands where the crosshair points. A short draw drops short. The crosshair
 closes in as the draw builds and turns gold at full draw.
 
-The crosshair is the shared reticle (`aethyr/cam/reticle.coax`
+The crosshair is the shared reticle (`metaverse-engine/cam/reticle.coax`
 `reticle_strokes`), the same centred mark a mouselook camera shows while the
 pointer is locked. A drawn bow adds its four arms to that mark. Aim always uses
 the camera's centre ray, so the draw works the same with the pointer locked or
@@ -104,7 +104,7 @@ free: the right button's press and release arrive as button events either way.
 An arrow leaves your bow hand toward the point where the crosshair's camera ray
 first meets a monster or the ground, within 150 m. If the ray meets nothing, the
 arrow aims 60 m along it. It flies a closed-form arc under gravity
-(`aethyr/action/bow.coax` `arrow_pos`), so its position is the same at any frame
+(`metaverse-engine/action/bow.coax` `arrow_pos`), so its position is the same at any frame
 rate. Each frame, the segment it flew is tested against the ground, the walls and
 every monster's hurt capsule.
 
@@ -124,7 +124,7 @@ flies on until it sticks in the ground.
 ## Targets
 
 A realm can stand static targets: round faces an arrow strikes
-(`aethyr/action/target.coax`). A face has a middle, the way it looks and a
+(`metaverse-engine/action/target.coax`). A face has a middle, the way it looks and a
 radius. The engine answers two questions about a realm's set of faces:
 
 - **Where the crosshair rests.** The crosshair's ray stops on the first face it
@@ -140,7 +140,7 @@ applies its own rule. The [Archery Range](../../everglade/docs/archery-range-spe
 scores ten rings.
 
 What holds a face up is the realm's collider. A zone lists the boxes round its
-own standing things (`aethyr/world/props.coax`), and the walker, the mounts, the
+own standing things (`metaverse-engine/world/props.coax`), and the walker, the mounts, the
 crosshair's ray and the arrows all read that one list.
 
 ## Rules mapping (SRD 5.2.1)
@@ -167,7 +167,7 @@ launch.
 ## Animation
 
 No library has bow clips for the Universal Animation Library's rig, so the draw
-is keyed in Coax on the rig (`aethyr/action/bow-pose.coax`) and baked once with
+is keyed in Coax on the rig (`metaverse-engine/action/bow-pose.coax`) and baked once with
 the other clips, as clip `BD_BOW` (`everglade/scene/bodies.coax` `bd_bake_bow`). It has
 13 frames: 11 draws from strength 0 to 1, then two of the release. Each frame
 starts from the idle stance:
@@ -198,7 +198,7 @@ out and 0.38 m up, whatever the pitch, and the view still looks along the pitch
 
 ## Sound
 
-The bow's sounds are synthesized (`aethyr/audio/experimental-sfx.coax`, CC0, made
+The bow's sounds are synthesized (`metaverse-engine/audio/experimental-sfx.coax`, CC0, made
 by OpenAgents). Each plays at the position it comes from, with a small random
 pitch and level, like every other combat sound.
 
@@ -217,9 +217,9 @@ The bow is three layers. A realm writes none of the first two.
 
 | Layer | File | What it owns |
 | --- | --- | --- |
-| Engine | `aethyr/action/bow.coax` | The draw's curve, the arrows' arcs, the launch |
-| Engine | `aethyr/action/archery.coax` | One archer against a world: the frame of a draw, the sight line, each arrow's flight and what it meets, a finger's draw on a phone, the reticle on a draw |
-| Engine | `aethyr/action/target.coax` | Static targets |
+| Engine | `metaverse-engine/action/bow.coax` | The draw's curve, the arrows' arcs, the launch |
+| Engine | `metaverse-engine/action/archery.coax` | One archer against a world: the frame of a draw, the sight line, each arrow's flight and what it meets, a finger's draw on a phone, the reticle on a draw |
+| Engine | `metaverse-engine/action/target.coax` | Static targets |
 | Game | `everglade/longbow.coax` | Everglade's Longbow: where the arrow leaves, how far the reticle looks, a creature's body, the mouse buttons, the sounds and the dust |
 | Game | `everglade/held-kit.coax` | The bow in the hand, its string, the nocked arrow, the draw pose |
 | Game | `everglade/zone-bow.coax` | The bow in an Everglade zone (`everglade/zone.coax`): where the zone's ground and walls are, which monsters stand, and the SRD Longbow attack an arrow that reaches one makes. Experimental and the Archery Range share it |
@@ -228,7 +228,7 @@ The bow is three layers. A realm writes none of the first two.
 Coax has no callbacks, so the engine's two loops hand the realm a point and take
 its answer.
 
-1. Keep one `Archer` (`#load "aethyr/action/archery.coax" as arch`). It holds
+1. Keep one `Archer` (`#load "metaverse-engine/action/archery.coax" as arch`). It holds
    the draw, what the body shows, the arrows and the realm's targets.
 2. Input: `eg_bow_button(button, phase, archer)` says whether a mouse button
    draws, looses or lets down. To draw, call `bow_begin(draw, now, false)`; a key
@@ -236,7 +236,7 @@ its answer.
    bow's slot goes through `archer_touch_down` and `archer_touch`.
 3. Each frame, call `archer_draw_step(draw, can, dt, now)`. When it answers
    true, loose. Then call `archer_show_step`. Feed `bow_aim(draw)` to your camera
-   (`aethyr/cam/boom.coax`), the reticle (`archery_reticle`), your facing and the
+   (`metaverse-engine/cam/boom.coax`), the reticle (`archery_reticle`), your facing and the
    aim pose, and `bow_pace(draw)` to your walk speed.
 4. Aim: start a `SightMarch` with `sight_begin(archery_sight(eye, dir, x, z),
    EG_BOW_LOOK)`. While `sight_next` answers true, set `solid` to whether its
@@ -256,7 +256,7 @@ its answer.
 8. Hand the `BowShow` to the held kit (`held_pieces`, `held_bow_layer`): the
    string, the nocked arrow and the draw pose.
 9. Draw each arrow: `archery_show(arrows, i, eye_x, eye_z, now)` into
-   `fxp_arrow_at` (`aethyr/fx/puff.coax`), between `fxp_begin` and `fxp_close`.
+   `fxp_arrow_at` (`metaverse-engine/fx/puff.coax`), between `fxp_begin` and `fxp_close`.
 
 A ruleset that resolves a shot on arrival (Experimental's Goblins) launches
 with `arrow_timed_velocity(from, to, seconds)` into the same pool.
@@ -276,7 +276,7 @@ Three realms use these modules:
 Check them:
 
 ```sh
-coax/bin/coax test aethyr/action/archery.coax --library
+coax/bin/coax test metaverse-engine/action/archery.coax --library
 coax/bin/coax test everglade/longbow.coax --library
 COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/fivelab.coax --only "experimental combat"
 COAX_NATIVE_CHECKS=1 coax/bin/coax test apps/openagents-web/archery-range.coax --only "archery range"

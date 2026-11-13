@@ -53,7 +53,7 @@ frame; the importer does not silently trim it.
 
 ## Unreal SDK
 
-Build the trusted plugin in `aethyr/tools/unreal-echo-sdk/` with the installed
+Build the trusted plugin in `metaverse-engine/tools/unreal-echo-sdk/` with the installed
 Unreal SDK. Point `OPENAGENTS_UNREAL_SDK` at the compiled plugin directory.
 `OPENAGENTS_UNREAL_EDITOR` and `OPENAGENTS_BLENDER` override SDK executable
 paths. They are explicit local overrides, not fields supplied by a source.
@@ -77,7 +77,7 @@ and the trusted plugin, without loading source project modules or saving
 source assets. SDK logs and temporary exports stay private. It waits for its
 owned editor PID, not pipe EOF from Unreal's background helpers.
 
-The lower-level `aethyr/tools/anim-unreal-export.coax` takes this plan, a
+The lower-level `metaverse-engine/tools/anim-unreal-export.coax` takes this plan, a
 compiled plugin path and a new private directory. It can export up to eight
 meshes and 64 body or facial sequences by asset path, including raw sampled
 curves and bones. The ordinary import profile currently accepts one mesh

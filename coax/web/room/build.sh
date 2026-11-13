@@ -21,7 +21,7 @@ fi
 source_prefix=""
 [[ -z "${COAX_FAST_EDIT:-}" ]] || source_prefix="$source_root/"
 (cd "$source_root" && "$coax" c "${source_prefix}coax/web/room/room.coax" --library --header "$work/room.h") > "$work/room.c"
-# The controller's unit beside the room's (everglade-step.coax, with aethyr/move/player.coax): Everglade II's
+# The controller's unit beside the room's (everglade-step.coax, with metaverse-engine/move/player.coax): Everglade II's
 # rooms step every seat with it on their land (room-world.c world2_*), as the page does. v1's city and
 # its units are the frozen build's (everglade/server/legacy/v1.sh, docs/decisions/0005, #13267).
 units=(everglade/shared/everglade-step.coax)

@@ -31,41 +31,41 @@
 #load "../world/plant.coax";
 #load "../world/field.coax";
 #load "../world/ground.coax";   // the ground's admitted tiles, from the pack's record, and the canopy bake (#12995, #13059)
-#load "../../aethyr/core/quality.coax";
-#load "../../aethyr/render/cascades.coax";   // the key light's shadow tiles (#13016), as Everglade's
+#load "../../metaverse-engine/core/quality.coax";
+#load "../../metaverse-engine/render/cascades.coax";   // the key light's shadow tiles (#13016), as Everglade's
 #load "create.coax";   // Character Create, in this world: /worlds/character-creator
-#load "../../aethyr/character/material.coax" as cmat;   // the characters' material table (#13012)
+#load "../../metaverse-engine/character/material.coax" as cmat;   // the characters' material table (#13012)
 #load "cull.coax";   // what the host's instance cull reads each frame (#13050)
 #load "cell-view.coax";  // the world's cells as the frame reads them; the controller is everglade/client/cells.coax, in the step's unit (#13280)
-#load "../../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
+#load "../../metaverse-engine/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 #load "../world/environment.coax";   // the world's places and their light (#13065)
-#load "../../aethyr/render/environment-debug.coax" as envd;   // ?light=VIEW: the developer's light views (#13067)
-#load "../../aethyr/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held, as Neverwinter's
-#load "../../aethyr/cam/reticle.coax" as reticle;   // and its reticle, the one bow aim shares
-#load "../../aethyr/action/bow.coax" as bow;   // the Ranger's Longbow, drawn with the right button
-#load "../../aethyr/action/archery.coax" as arch;   // the archer's frame: the draw eases, comes due and shows on the body (engine)
+#load "../../metaverse-engine/render/environment-debug.coax" as envd;   // ?light=VIEW: the developer's light views (#13067)
+#load "../../metaverse-engine/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held, as Neverwinter's
+#load "../../metaverse-engine/cam/reticle.coax" as reticle;   // and its reticle, the one bow aim shares
+#load "../../metaverse-engine/action/bow.coax" as bow;   // the Ranger's Longbow, drawn with the right button
+#load "../../metaverse-engine/action/archery.coax" as arch;   // the archer's frame: the draw eases, comes due and shows on the body (engine)
 #load "../longbow.coax";   // Everglade's Longbow: its sounds (game)
 #load "class-feel.coax";        // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
 #load "cast-pose.coax";        // a cast's body clip and the bow's aim pose: Experimental's
 #load "mouse.coax";  // the mouse buttons: the left casts, a Ranger's right draws
 #load "../shared/archery.coax";   // this zone's ground and bodies for an arrow, the room's too (#13157)
-#load "../../aethyr/net/shots.coax";   // the room's word on each arrow (engine, #13157)
+#load "../../metaverse-engine/net/shots.coax";   // the room's word on each arrow (engine, #13157)
 #load "arrows.coax";    // the arrows: yours drawn at once, everyone's the room's
 #load "class-menu.coax";        // Experimental's CLASSES column, for admin mode
 #load "admin.coax";  // admin mode: dev builds on this machine only, every call below in #if BUILD_DEBUG
 #load "track.coax";  // what players do, as analytics.coax events (the face keeps the Track)
 #load "stage.coax";  // ?stage=: the path and the empty clearing for film, the HUD off
-#load "../../aethyr/action/floats.coax" as fl;   // the numbers over whoever a blow struck, as Experimental's
-#load "../../aethyr/action/area-aim.coax" as aa;   // ground targeting for a placed area (Entangle's square)
-#load "../../aethyr/agent/drive.coax";   // the agent driver: entities by id, the HUD's widgets, world operations (#13095)
+#load "../../metaverse-engine/action/floats.coax" as fl;   // the numbers over whoever a blow struck, as Experimental's
+#load "../../metaverse-engine/action/area-aim.coax" as aa;   // ground targeting for a placed area (Entangle's square)
+#load "../../metaverse-engine/agent/drive.coax";   // the agent driver: entities by id, the HUD's widgets, world operations (#13095)
 #load "drive.coax";   // ... wired to this world
 
 E2_VERTEX_FLOATS :: 16;
 E2_MAX_VERTICES :: 32768;     // strokes: the frame rate in the bottom right corner
 E2_UNIFORM_FLOATS :: 316;     // 79 vec4s (everglade/client/gpu/everglade2.bindings)
-E2_U_ENV :: 208;              // the camera's resolved environment, 27 vec4s (aethyr/render/painterly.coax PAINT_ENV_U, env_gpu_pack)
-E2_U_LIGHT_VIEW :: 51;        // the developer's light view (?light=, aethyr/render/environment-debug.coax env_view_word): 0 the ordinary frame
-E2_U_CASCADE :: 104;          // the key light's shadow tiles' rows (aethyr/render/cascades.coax cascade_rows)
+E2_U_ENV :: 208;              // the camera's resolved environment, 27 vec4s (metaverse-engine/render/painterly.coax PAINT_ENV_U, env_gpu_pack)
+E2_U_LIGHT_VIEW :: 51;        // the developer's light view (?light=, metaverse-engine/render/environment-debug.coax env_view_word): 0 the ordinary frame
+E2_U_CASCADE :: 104;          // the key light's shadow tiles' rows (metaverse-engine/render/cascades.coax cascade_rows)
 E2_RECORDS :: 256;            // the objects store: the glade, its grass, your character's parts and the others' (11 a body)
 E2_DRAWS :: 640;              // draws a pass at most (the woods' runs, the grass field's blocks, 11 a body)
 E2_REMOTES :: 16;             // other players drawn at most (a room seats 16)
@@ -81,7 +81,7 @@ KEY_SHIFT :: -13; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
 E2 :: struct {
   creator: [1] cc.Creator;
   vig: [1] cc.HudVignette; vig_at: f32; vig_max: int;   // the screen's red edges (everglade/hud/parts.coax eg_vignette), when last stepped, for which maximum
-  hp_trail: [1] cc.HudTrail; hp_trail_at: f32; hp_trail_max: int;   // your health bar's fill and damage trail (aethyr/ui/hud-style.coax), when it was last stepped, and for which maximum
+  hp_trail: [1] cc.HudTrail; hp_trail_at: f32; hp_trail_max: int;   // your health bar's fill and damage trail (metaverse-engine/ui/hud-style.coax), when it was last stepped, and for which maximum
   bodies: [1] figs.Bodies;
   items: [E2_ITEMS * E2_ITEM_FLOATS] f32; kinds: [E2_ITEMS] u8; first: [E2_CELLS_X * E2_CELLS_Z + 1] int; planted: int; plant_done: bool;
   plant_due: bool; plant_route: int;   // plant here on the next frame; 1 the pack's P lines, 2 planted here (e2_take_planting)
@@ -90,7 +90,7 @@ E2 :: struct {
   catalog_in: bool; ground_code: int = -1; ground_done: bool;   // the catalog came; its ground record's status (-1 none); the ground settled and baked
   kit_first: [E2_BUCKETS] int; kit_count: [E2_BUCKETS] int; kits: bool;
   records: [E2_RECORDS * 24] f32;
-  // the characters' materials, one record a colour layer (aethyr/character/material.coax), the
+  // the characters' materials, one record a colour layer (metaverse-engine/character/material.coax), the
   // fourth store; mats_n the records admitted, 0 when the pack's table was refused (no maps)
   mats: [cmat.CM_MAX * cmat.CM_FLOATS] f32; mat_table: [cmat.CM_MAX] cmat.CharMaterial; mats_n: int; mats_v: int;
   film: bool; maps_off: bool;   // ?film, ?maps=0 (e2_material_facts)
@@ -102,7 +102,7 @@ E2 :: struct {
   move_hulls: [E2_HULL_ROOM] f32;   // the rocks' hulls round you this step (everglade/shared/move.coax e2m_world)
   bake: [figs.BD_BAKE_FLOATS] f32;
   orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;
-  ml: [1] mlook.Mouselook;   // mouselook (aethyr/cam/mouselook.coax): in the world, not Character Create's studio
+  ml: [1] mlook.Mouselook;   // mouselook (metaverse-engine/cam/mouselook.coax): in the world, not Character Create's studio
   held: int; shift: bool; dragging: bool; drag_x: f32; drag_y: f32;
   you_x: f32; you_y: f32; you_z: f32; you_face: f32 = 3.14159265; jump: f32; placed: bool; start_z: f32; autowalk: bool; stage: int; stage_t0: f32 = -1; stage_fire: int = -1; stage_aim: [3] f32; stage_aim_at: f32 = -1;
   // everglade.world's /play (e2c_play_page): one address for Character Create and the world; where you
@@ -113,7 +113,7 @@ E2 :: struct {
   press: f32; eye_pitch: f32;                        // the eye's pitch, held on the land, and how far the look has gone past it (e2_chase_step)
   ground: [1] figs.CamGround;                         // the land round you for the camera (figs.cam_ground_next, filled from e2_height)
   view: figs.CamMode;                                 // Everglade II's follow mode (e2_mode)
-  q: [1] Quality; q_ready: bool;                     // the graphics governor (aethyr/core/quality.coax): the pixels drawn
+  q: [1] Quality; q_ready: bool;                     // the graphics governor (metaverse-engine/core/quality.coax): the pixels drawn
   q_dev: QualityDevice; q_facts: bool; q_mode: int = QUALITY_AUTO; q_tell: bool;   // the page's device and the player's pick (e2_quality_facts)
   q_settled: [QUALITY_CLASSES] int;                 // the rung each class settled at on an earlier visit (-1 none)
   gpu_vendor: [24] u8; gpu_vendor_n: int; gpu_arch: [24] u8; gpu_arch_n: int;   // the adapter's, as host.js said them (the graphics event)
@@ -138,13 +138,13 @@ E2 :: struct {
   fade_ins: int; pops: int; ghosts: int;   // e2_probe 18, 19, 87
   rtmp: [1] cc.Creator;                  // a remote's look: your creator's catalog with its record (e2_remote_look)
   heads: [E2_REMOTES] E2Head; head_n: int;     // the others' heads this frame (e2_remotes_draw): their plates, the map's dots, the reticle
-  plates: [1] cc.HudPlates;                      // the frame's plates over bodies (e2_heads: aethyr/ui/hud-plates.coax)
+  plates: [1] cc.HudPlates;                      // the frame's plates over bodies (e2_heads: metaverse-engine/ui/hud-plates.coax)
   // what floats over each body shows while the body does (everglade/client/sight.coax): each one's share, fading
   sight_rem: [E2_REMOTES] cc.HudSight; sight_mon: [12] cc.HudSight; sight_guard: cc.HudSight; sight_dt: f32 = 1; sight_at: f32 = -1;
   cy: f32;                                       // the picture's centre row (e2c_view_lens: the studio frames you off centre)
   env: [1] envf.EnvFrame;                        // the light: the world's environment set, its clock and the record each frame writes (e2_light)
   light_view: int; light_text: [1] envd.EnvDebugText;   // ?light=VIEW (developer-only, off by default) and its readout (e2_light_readout)
-  net_view: bool; net_text: [1] NetStatsText; link_text: [1] NetConnText;   // ?net: the netcode readout (e2_net_readout, aethyr/net/stats.coax)
+  net_view: bool; net_text: [1] NetStatsText; link_text: [1] NetConnText;   // ?net: the netcode readout (e2_net_readout, metaverse-engine/net/stats.coax)
   guard: [1] E2GuardLook;                        // the path's guard as drawn (everglade/client/guard.coax)
   mouse: [1] E2Mouse;                            // the mouse buttons' cast and bow (everglade/client/mouse.coax)
   bows: [1] E2Bow;                               // the arrows in the air and stuck (everglade/client/arrows.coax)
@@ -157,7 +157,7 @@ E2 :: struct {
   own_dev: int;                                  // ?own=N in a dev build: a stand-in for the room's word on your record (e2i_dev)
   hud_day: f32 = 0.5;                            // the time of day the light is at (e2_light), for the map's clock
   zone: int = -1; zone_at: f32 = -100;           // the place you are in (e2_zone) and when you came to it, for its banner
-  drive: [1] Drive;                              // the agent driver (aethyr/agent/drive.coax): off until a driver speaks
+  drive: [1] Drive;                              // the agent driver (metaverse-engine/agent/drive.coax): off until a driver speaks
   hero_class: int = -1; hero_level: int; hero_ac: int; hero_slots: [10] int;   // your class's AC and spell slots by level, as the rules build it (fb_cl_hero)
   floats: [1] fl.Floats;                         // the numbers over whoever a blow struck: the room's hit words (e2_float)
 }
@@ -393,7 +393,7 @@ e2_move_in :: (s: [] E2) -> EgMoveIn #export_c #effects(all) {
   if e2st_moves(s) { return e2st_move_in(s); }
   if s[0].autowalk && h == 0 {
     if s[0].you_z < E2_CLEAR_Z - 6 { return EgMoveIn.{theta = figs.wrap_angle(s[0].orbit.yaw + 3.14159265)}; }
-    // run is the keys' Shift: the keys run by default (aethyr/core/input.coax), so this walks
+    // run is the keys' Shift: the keys run by default (metaverse-engine/core/input.coax), so this walks
     return EgMoveIn.{key_y = 1, run = true, theta = e2_walk_theta(e2_auto_heading(s[0].you_x, s[0].you_z))};
   }
   if h != 0 { s[0].autowalk = false; }
@@ -594,7 +594,7 @@ e2_key_up :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
   s[0].held = s[0].held & (HOLD_ALL - h); return h != 0;
 }
 e2_blur :: (s: [] E2) #export_c #effects(all) { s[0].held = 0; s[0].shift = false; s[0].dragging = false; mlook.ml_blur(s[0].ml[..]); }
-// A mouse drag looks round (a finger is the face's: aethyr/core/sticks.coax).
+// A mouse drag looks round (a finger is the face's: metaverse-engine/core/sticks.coax).
 e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].ml[0].touch = kind != 0; }
   if e2_quality_pointer(s, x, y, phase, id) { return true; }   // the GFX control
@@ -632,7 +632,7 @@ e2_wheel :: (s: [] E2, dy: f32) -> bool #export_c #effects(all) {
   s[0].orbit = figs.cam_wheel(s[0].orbit, dy); return true;
 }
 // Mouselook, the host's face: whether the pointer is wanted, the mouse's travel while held, and what
-// the browser did (aethyr/cam/mouselook.coax). The turn goes the way a drag's does.
+// the browser did (metaverse-engine/cam/mouselook.coax). The turn goes the way a drag's does.
 // No OS cursor while the reticle is up (host.js cursor 4): the reticle is the pointer.
 e2_cursor :: (s: [] E2) -> int #export_c #effects(all) { return ifx s[0].ml[0].shown > 0.01 then 4 else 0; }
 e2_mouselook :: (s: [] E2) -> int #export_c #effects(all) { return mlook.ml_host(s[0].ml[0]); }
@@ -640,7 +640,7 @@ e2_look_delta :: (s: [] E2, dx: f32, dy: f32) #export_c #effects(all) {
   t := mlook.ml_turn(s[0].ml[0], dx, dy); s[0].look_yaw -= t[0]; s[0].look_pitch -= t[1];
 }
 e2_pointer_lock :: (s: [] E2, status: int) #export_c #effects(all) { mlook.ml_lock(s[0].ml[..], status); if status == 1 { s[0].dragging = false; } }
-// The reticle at the view's centre while the mouse looks (the shared one: aethyr/cam/reticle.coax),
+// The reticle at the view's centre while the mouse looks (the shared one: metaverse-engine/cam/reticle.coax),
 // warmer over one of the others.
 e2_reticle :: (s: [] E2, out: [] f32, at: int) -> int {
   m := s[0].ml[0]; if m.shown <= 0.01 { return at; }
@@ -682,7 +682,7 @@ e2_look :: (s: [] E2, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all)
 }
 
 // ---- the frame: the follow camera, the uniforms
-// ---- the look up: the Metaverse Engine's centred follow mode (aethyr/cam/modes.coax, #12994), first written here
+// ---- the look up: the Metaverse Engine's centred follow mode (metaverse-engine/cam/modes.coax, #12994), first written here
 // from Everglade Experimental's camera. The pitch goes 1.2 rad above the horizon (the shared orbit
 // stops at 0.55). The eye sits on a line straight back from your head, centred on you at every pitch.
 // Looking up swings the eye down behind you until it meets the land, 0.2 m over it; past that the eye
@@ -735,7 +735,7 @@ e2_familiar_shot :: (s:[]E2,shot:figs.Shot)->figs.Shot {
   hx := s[0].you_x - shot.eye.x; hy := s[0].you_y + 1.7 - shot.eye.y; hz := s[0].you_z - shot.eye.z; hl := sqrt(hx * hx + hy * hy + hz * hz);
   #assert hy / hl < vy / vl;
 }
-// The follow camera this frame (aethyr/cam/chase.coax): the look, the keys and the walk move the
+// The follow camera this frame (metaverse-engine/cam/chase.coax): the look, the keys and the walk move the
 // orbit, then its room before this zone's land (the camera's ground ring, from e2_height) and the
 // trunks round the pivot.
 e2_chase_step :: (s: [] E2, dt: f32) {
@@ -771,7 +771,7 @@ e2_chase_step :: (s: [] E2, dt: f32) {
   c := figs.cam_chase_settle(s[0].view, g, o, spheres[0..<sn * 12], dt);
   s[0].orbit = c.orbit; s[0].eye_pitch = c.eye_pitch; s[0].press = c.press;
 }
-// ---- the graphics governor (aethyr/core/quality.coax, as Everglade's everglade-quality.coax): in AUTO
+// ---- the graphics governor (metaverse-engine/core/quality.coax, as Everglade's everglade-quality.coax): in AUTO
 // it draws fewer pixels when frames run long and more again when they keep on time, so the page
 // holds 60 frames a second. It starts from the page's facts (the device, ?quality= and the tier this
 // browser kept, e2_quality_facts) on the first frame with a size; the face asks it for the host's
@@ -861,7 +861,7 @@ e2_quality_pointer :: (s: [] E2, x: f32, y: f32, phase: int, id: int) -> bool {
 e2_quality_pick :: (s: [] E2, mode: int) {
   quality_choose(s[0].q[..], mode); s[0].q_mode = s[0].q[0].mode; s[0].q_tell = true;
 }
-// ---- the rung's knobs, as the frame uses them (aethyr/core/quality.coax quality_rung_knobs)
+// ---- the rung's knobs, as the frame uses them (metaverse-engine/core/quality.coax quality_rung_knobs)
 // grass: the grass field's reach (e2_field, the shader's u[35]); fine: the finest grass tier's share
 // (u[36]); scenery: the kit pieces' reach (e2_pieces); shadow: 0 no tiles, under 0.5 the nearest tile
 // only, under 1 the full set with the nearest redrawn every other frame and six filter taps
@@ -1103,7 +1103,7 @@ e2_portrait :: (s: [] E2, conds: [] u8) -> cc.EgPortrait {
   return p;
 }
 // The screen's red edges: a blow on you flashes them, and they pulse while you are under a quarter of
-// your Hit Points (aethyr/ui/hud-style.coax hud_vignette). Drawn before the rest of the HUD, in the world only.
+// your Hit Points (metaverse-engine/ui/hud-style.coax hud_vignette). Drawn before the rest of the HUD, in the world only.
 e2_vignette :: (s: [] E2, out: [] f32, at: int) -> int {
   row := e2n_vitals(s[0].net[..]);
   if !e2k_on(s) || row.id < 0 || row.max <= 0 { s[0].vig[0].on = false; return at; }
@@ -1213,9 +1213,9 @@ e2_overlay :: (s: [] E2, out: [] f32, dt: f32) -> int {
 
 // ---- the light (lighting plan Phase 1, #13066): every lit input the passes read is the camera's
 // resolved environment, written each frame at E2_U_ENV (everglade/client/gpu/everglade2.coax through the cg_* names,
-// aethyr/render/painterly.coax paint_env_*). The world's set is e2_environment_set: the glade (the
+// metaverse-engine/render/painterly.coax paint_env_*). The world's set is e2_environment_set: the glade (the
 // painterly default) with the sunlit path's and the deep canopy's deltas; its day is the room's (W: the room's ms into its day at a tick,
-// aethyr/world/day.coax day_from_room), or the glade's fixed noon before a room is heard and in a
+// metaverse-engine/world/day.coax day_from_room), or the glade's fixed noon before a room is heard and in a
 // shot or Character Create, which open none. The key's shadow tiles look along the same direction.
 // The world's set (everglade/world/environment.coax), admitted whole once.
 e2_env_route :: (e: [] envf.EnvFrame) { next: [1] EnvironmentSet; next[0] = e2_environment_set(); _ := envf.env_frame_admit(e, next[..]); }
@@ -1246,7 +1246,7 @@ e2_net_query :: (t: string) -> bool {
   }
   return false;
 }
-// The netcode readout, top left (aethyr/net/stats.coax): round trip, the room's rate and its state
+// The netcode readout, top left (metaverse-engine/net/stats.coax): round trip, the room's rate and its state
 // frames' spacing, the others' delay, bytes each way, the last snapshot's size, your re-runs' corrections.
 e2_net_readout :: (s: [] E2, out: [] f32, at: int) -> int {
   if !s[0].net_view { return at; }
@@ -1256,7 +1256,7 @@ e2_net_readout :: (s: [] E2, out: [] f32, at: int) -> int {
   net_stats_text(n[0].stats[0], NetStatsView.{rtt_ms = rtt, hz = n[0].hz, delay_ms = n[0].delay}, s[0].net_text[..]);
   t := s[0].net_text[..]; lines: [NET_STATS_LINES + NET_CONN_LINES] string;
   for l: 0..<t[0].count { lines[l] = net_stats_line(t, l); }
-  // the transport, its loss, keyframes and stale drops (aethyr/net/transport.coax, #13176)
+  // the transport, its loss, keyframes and stale drops (metaverse-engine/net/transport.coax, #13176)
   net_conn_text(n[0].link[0], s[0].link_text[..]);
   for l: 0..<NET_CONN_LINES { lines[t[0].count + l] = net_conn_line(s[0].link_text[..], l); }
   return eg_readout(s[0].creator[0].ui, out, at, "net", "NET", ifx e2n_open(n) then "ROOM" else "OFFLINE", lines[0..<t[0].count + NET_CONN_LINES], s[0].k);
@@ -1266,7 +1266,7 @@ e2_net_readout :: (s: [] E2, out: [] f32, at: int) -> int {
   #assert !e2_net_query("url=/worlds/everglade2?at=60\n") && !e2_net_query("url=/x?net=0") && !e2_net_query("url=/x?network=1") && !e2_net_query("url=/x?cabinet");
 }
 // ?light=VIEW's readout, top left: the camera's region weights by profile id, its ambient, key and
-// grade (aethyr/render/environment-debug.coax). Nothing without the query.
+// grade (metaverse-engine/render/environment-debug.coax). Nothing without the query.
 e2_light_readout :: (s: [] E2, out: [] f32, at: int) -> int {
   if s[0].light_view == envd.ENV_VIEW_OFF { return at; }
   t := s[0].light_text[..]; lines: [envd.ENV_DEBUG_LINES] string;
@@ -1306,7 +1306,7 @@ e2_light_readout :: (s: [] E2, out: [] f32, at: int) -> int {
   for i: 4..<envf.ENV_FRAME_FLOATS { if u[E2_U_ENV + i] != g[i] { off += 1; } }
   #assert off > 0 && s[0].env[0].writes == 3 && s[0].env[0].refusals == 0 && u[32] == -0.45f32;
 }
-// ---- the key light's shadow tiles (aethyr/render/cascades.coax, #13016, as Everglade's)
+// ---- the key light's shadow tiles (metaverse-engine/render/cascades.coax, #13016, as Everglade's)
 // The host makes one depth atlas of up to four tiles (two on a phone), each a ring further out round
 // the eye. A tile's middle snaps to a whole number of its texels in the light's own space and it is
 // drawn again only once the eye has walked past that step, so every shadow stays fixed to the land:
@@ -1920,9 +1920,9 @@ e2_fall :: (a: [] figs.BdAnim, b: DeedBearing, now: f32) {
   if !lie && a[0].state != 0 { a[0].state = 0; }
 }
 // A blow's number over (x, y, z) from source (0 the guard struck, 1 his blows, 2 + M monster M's): the
-// room's own amount (aethyr/action/floats.coax: red when you took it, "miss" when it missed, a
+// room's own amount (metaverse-engine/action/floats.coax: red when you took it, "miss" when it missed, a
 // critical hit larger), so the number is the Hit Points you lost.
-// It is the present of an accepted action (aethyr/action/deed.coax deed_show, docs/verse/action-pipeline.md):
+// It is the present of an accepted action (metaverse-engine/action/deed.coax deed_show, docs/verse/action-pipeline.md):
 // feel is the action's (class-feel.coax), and only a result the show plays puts a number up.
 e2_float :: (s: [] E2, feel: DeedFeel, source: int, x: f32, y: f32, z: f32, kind: int, crit: bool, amount: int) -> DeedShow {
   show := deed_show(feel, ifx amount > 0 then DeedResult.hit else DeedResult.miss);
@@ -2096,7 +2096,7 @@ e2_plate_view :: (s: [] E2) -> cc.HudPlateView {
   return cc.HudPlateView.{eye = s[0].eye, fwd = s[0].fwd, right = s[0].right, up = s[0].up, focal = s[0].focal,
                           cx = s[0].width * 0.5, cy = ifx s[0].cy > 0 then s[0].cy else s[0].height * 0.5, w = s[0].width, h = s[0].height};
 }
-// The plates over bodies, Everglade's shared ones (aethyr/ui/hud-plates.coax places them,
+// The plates over bodies, Everglade's shared ones (metaverse-engine/ui/hud-plates.coax places them,
 // everglade/hud/parts.coax eg_plates draws them): the others' names, the familiars' names and health,
 // the monsters' and the guard's. Each shows while its body does (everglade/client/sight.coax), whole within
 // HUD_PLATE_NEAR m and gone past HUD_PLATE_FAR; a farther name over a nearer one lifts clear of it.
@@ -2167,7 +2167,7 @@ e2_heads :: (s: [] E2, out: [] f32, at: int) -> int {
   s[0].sight_rem[0] = cc.HudSight.{}; s[0].sight_dt = 0.05; _ := e2_heads(s[..], out[..], 0);
   #assert s[0].plates[0].placed == 1 && s[0].sight_rem[0].share > 0.3 && s[0].sight_rem[0].share < 0.4;
   // its health bar and name ride the same answer: behind the stall again, the plate holds one stray
-  // frame (aethyr/physics/visibility.coax vis_settle), then fades
+  // frame (metaverse-engine/physics/visibility.coax vis_settle), then fades
   s[0].heads[0].x = hx; s[0].heads[0].y = e2_height(hx, hz) + 2.05; s[0].heads[0].z = hz;
   dx := hx - ex; dz := hz - ez; l := sqrt(dx * dx + dz * dz);
   s[0].fwd = [3] f32.[dx / l, 0, dz / l]; s[0].right = [3] f32.[-dz / l, 0, dx / l];

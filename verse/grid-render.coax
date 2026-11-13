@@ -1,6 +1,6 @@
 // The Grid's native projection output is one 16-word uniform binding. This
 // component admission is shared with render plans; it is not GPU submission.
-#load "../aethyr/render/frame.coax";
+#load "../metaverse-engine/render/frame.coax";
 
 #test "Grid view admission requires the whole matrix and a finite positive viewport" {
     #assert grid_render_view_allowed(390,844,16) && grid_render_view_allowed(1,1,17);

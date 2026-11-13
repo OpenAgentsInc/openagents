@@ -607,7 +607,7 @@ servers.
 
 | App | How it runs worlds | Can it run a UE wasm game? |
 |---|---|---|
-| Everglade for iOS, Android and Mac (`apps/everglade-mobile`, `apps/everglade-desktop`) | The **Metaverse Engine PageHost** (`aethyr/host/apple/PageHost.m`): Coax realm libraries on Metal. There's no web view. | **No.** PageHost runs Coax realm modules, not emscripten pages. |
+| Everglade for iOS, Android and Mac (`apps/everglade-mobile`, `apps/everglade-desktop`) | The **Metaverse Engine PageHost** (`metaverse-engine/host/apple/PageHost.m`): Coax realm libraries on Metal. There's no web view. | **No.** PageHost runs Coax realm modules, not emscripten pages. |
 | OpenAgents for iOS 26 (`apps/openagents-ios`) | A **WKWebView** that opens the Grid (`WebGridViewController.swift`) | Possibly. The guest page loads in a web view like any other page. |
 | OpenAgents for Mac | Would need a WKWebView | Possibly, with the same work |
 
@@ -762,7 +762,7 @@ none are filed yet.
   - `docs/verse/realm-host.md`;
   - `apps/openagents-web/realms.json`;
   - `coax/web/serve.c`, `coax/web/cdn.sh` and `coax/web/api/lb.sh`;
-  - `aethyr/host/apple/PageHost.m` and `apps/everglade-mobile/README.md`;
+  - `metaverse-engine/host/apple/PageHost.m` and `apps/everglade-mobile/README.md`;
   - `apps/openagents-ios/OpenAgents/WebGridViewController.swift`;
   - `docs/auth/2026-10-31-realm-invites-and-auth.md`;
   - `docs/audits/2026-11-11-room-loss-matrix.md`;

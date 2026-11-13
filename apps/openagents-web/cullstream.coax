@@ -1,19 +1,19 @@
 // The GPU cull lab's streaming (GitHub #13008, #13051): the request array the cull pass writes each
-// frame (aethyr/render/geometry/cull.coax), read back by coax/web/cull-lab.js, plans fetches through
-// aethyr/render/geometry/residency.coax. Each fetch is one page of the scene's VPK3 file
-// (aethyr/forge/page-pack.coax), fetched by HTTP Range: it is inflated and admitted here by its
+// frame (metaverse-engine/render/geometry/cull.coax), read back by coax/web/cull-lab.js, plans fetches through
+// metaverse-engine/render/geometry/residency.coax. Each fetch is one page of the scene's VPK3 file
+// (metaverse-engine/editor/page-pack.coax), fetched by HTTP Range: it is inflated and admitted here by its
 // SHA-256, and only then has it arrived. A page that installs is placed in its GPU slot: its
 // triangles' vertex indices move by the slot's first vertex, and each of its clusters' first
 // triangle by the slot's first triangle, so the shaders never change. The host copies the placed
 // bytes to the slot and the clusters' new first triangles into their records, then the installed
 // flags go to the GPU, whose draw rule draws only installed pages.
 //
-// A page's bytes, little-endian 32-bit words (aethyr/tools/cull-fixture.coax writes them): the
+// A page's bytes, little-endian 32-bit words (metaverse-engine/tools/cull-fixture.coax writes them): the
 // page, its clusters C, triangles T and vertices V; C pairs (the cluster, its first triangle in the
 // page); V vertices (x, y, z, 1 as f32); T triangles (3 vertex indices in the page).
 //   coax/bin/coax test apps/openagents-web/cullstream.coax --library
-#load "../../aethyr/render/geometry/residency.coax";
-#load "../../aethyr/forge/page-pack.coax";
+#load "../../metaverse-engine/render/geometry/residency.coax";
+#load "../../metaverse-engine/editor/page-pack.coax";
 
 CS_SLOT_TRIS :: 640;      // triangles a GPU slot holds
 CS_SLOT_VERTS :: 768;     // vertices a GPU slot holds

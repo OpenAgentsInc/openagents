@@ -13,7 +13,7 @@ static coax_t_HostPrivatePack private_plan;
 static coax_t_PackRead pack;
 static coax_t_HptGrant transport_plan;
 static uint8_t prefix[12],metadata[4096];
-// A VPK3 pack's header and manifest, then its arrival state (aethyr/host/page-stream.coax).
+// A VPK3 pack's header and manifest, then its arrival state (metaverse-engine/host/page-stream.coax).
 static uint8_t paged_head[96+1024*64];
 static coax_t_PpkLoad paged;
 static coax_v_t_HostInboxQueue storage_view(void){return(coax_v_t_HostInboxQueue){&storage,1};}
@@ -53,7 +53,7 @@ PACK_EXPORT("pack_private_info") int64_t pack_private_info(int32_t field){switch
 PACK_EXPORT("pack_admit") uint32_t pack_admit(uint32_t required_private){uint64_t measured=(uint64_t)__builtin_wasm_memory_size(0)*65536;if(!htb_copy_span((uint64_t)allocation.address,(uint64_t)(allocation.memory_bytes-allocation.address),(uint64_t)stream.loaded,measured))return 0;return hpk_stream_pack((coax_string){(char*)(uintptr_t)allocation.address,stream.loaded},stream,private_plan,required_private!=0,(coax_v_t_PackRead){&pack,1});}
 PACK_EXPORT("pack_entry_count") uint32_t pack_entry_count(void){return(uint32_t)pack.count;}
 PACK_EXPORT("pack_entry") int64_t pack_entry(int32_t index,int32_t field){if(index<0||index>=pack.count)return -1;coax_t_PackEntry e=pack.entries.e[index];switch(field){case 0:return e.kind;case 1:return e.licence;case 2:return e.at;case 3:return e.n;case 4:return(uintptr_t)e.name.data;case 5:return e.name.count;default:return -1;}}
-// The one table read (aethyr/host/pack-table.coax pack_table): a pack's
+// The one table read (metaverse-engine/host/pack-table.coax pack_table): a pack's
 // header and table copied here, its whole size beside them. No JavaScript reads a pack's header.
 static uint8_t table_head[32+48*256];
 static coax_t_PackTable table;

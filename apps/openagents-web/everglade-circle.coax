@@ -1071,6 +1071,6 @@ ci_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int, pulse: 
 
 // ---- checks
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).

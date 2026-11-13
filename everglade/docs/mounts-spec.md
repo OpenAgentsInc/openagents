@@ -10,8 +10,8 @@ Mounts are built in three layers, and no zone has mount code of its own:
 
 - **Engine (the OpenAgents Metaverse Engine).** The mount, the rider's seat, the gaits, mounting and
   dismounting, steering and riding collision live in
-  `aethyr/action/mount.coax`; the rider's astride pose lives in
-  `aethyr/action/ride-pose.coax`. Any realm can use them.
+  `metaverse-engine/action/mount.coax`; the rider's astride pose lives in
+  `metaverse-engine/action/ride-pose.coax`. Any realm can use them.
 - **Game (Everglade).** Everglade's horses and the SRD's mount rules, shared
   by every Everglade zone, live in `everglade/mounts.coax`: the Riding Horse's
   tuning, the white horse's baked frames in the world pack (`glade/horse*`),
@@ -186,8 +186,8 @@ horse: you walk up, press E, ride, and get off where you want, and it stays
 there. Only how it moves is different.
 
 - **One flight module.** Flying mounts don't have flight code of their own.
-  The engine's mount (`aethyr/action/mount.coax`, `mount_step_wings`) steps
-  the Metaverse Engine's shared winged flight (`aethyr/action/flight.coax`, `wing_step`),
+  The engine's mount (`metaverse-engine/action/mount.coax`, `mount_step_wings`) steps
+  the Metaverse Engine's shared winged flight (`metaverse-engine/action/flight.coax`, `wing_step`),
   the same module the druid's dragon form uses. Takeoff, climbing, gliding,
   diving, banking and landing behave the same whether you are the dragon or
   ride one.
@@ -224,7 +224,7 @@ there. Only how it moves is different.
   `rs_in_cone3`, `rs_fire_breath_on`). The breath recharges on the SRD's
   Recharge 5-6, rolled at the start of the dragon's turn.
 - **One pipeline.** Mounting, getting off, the breath and shots from the
-  saddle are all deeds (`aethyr/action/deed.coax`): each declares its look
+  saddle are all deeds (`metaverse-engine/action/deed.coax`): each declares its look
   and sound, asks with your bearing (`rs_bearing`: you can't mount while
   unconscious, paralyzed or grappled), the rules act, and only a yes plays.
 
@@ -262,7 +262,7 @@ summoning lands.
 ## Combat from horseback
 
 - **Bows and crossbows: yes.** You draw, aim and shoot as you do on foot,
-  through the shared bow system (`aethyr/action/bow.coax`). Your upper body
+  through the shared bow system (`metaverse-engine/action/bow.coax`). Your upper body
   takes the bow pose and your legs stay in the saddle. Arrows leave your hand
   and fly toward the crosshair. The SRD attack roll resolves as usual.
 - **One-handed melee: yes.** You swing from the saddle with a reach of 5 feet
@@ -314,7 +314,7 @@ summoning lands.
   back (the back's top is 0.33 m above the bone). On the dragon it is the
   model's `saddle` bone, baked per frame, so the seat rears with the chest
   as it takes off and hovers.
-- **The rider's legs.** A keyed riding pose (`aethyr/action/ride-pose.coax`)
+- **The rider's legs.** A keyed riding pose (`metaverse-engine/action/ride-pose.coax`)
   turns the thighs out and forward around the horse's barrel, bends the knees
   and hangs the lower legs down the horse's sides, astride, with the feet at
   stirrup height by the lower ribs. The dragon has its own seat: the legs
@@ -348,7 +348,7 @@ summoning lands.
 ## Data model
 
 ```
-Mount (aethyr/action/mount.coax)
+Mount (metaverse-engine/action/mount.coax)
   x, z, face            position (metres) and heading (radians, 0 is +Z)
   speed                 metres per second along its heading, negative backing up
   phase                 gait clock (cycles of the current clip)
@@ -359,7 +359,7 @@ Mount (aethyr/action/mount.coax)
   kind                  riding horse, warhorse, phantom steed, otherworldly steed, dragon
   until                 when a summoned mount leaves; 0 for owned
   hp, max_hp            from its stat block
-  flies, wing           a flying mount: its WingState (aethyr/action/flight.coax)
+  flies, wing           a flying mount: its WingState (metaverse-engine/action/flight.coax)
                         holds its height, vertical speed, bank and flight phase
 MountTune
   walk, gallop          top speeds per gait (m/s)
@@ -379,7 +379,7 @@ multiplayer realm.
    dismounts within 2.5 metres, a phone button does the same, WASD steers,
    Shift gallops, the horse collides with walls, bows fire from the saddle,
    the horse stays where you leave it, and monsters attack the rider.
-   Space jumps the horse (`aethyr/action/mount.coax` `mount_step`): its feet
+   Space jumps the horse (`metaverse-engine/action/mount.coax` `mount_step`): its feet
    leave the ground at 6.2 m/s and come down under 17 m/s² of gravity, 1.13 m
    high and 0.73 s long, about 10 m at a gallop. In the air it keeps its
    speed, turns a little, and clears any box its feet are above (a low rock
@@ -418,7 +418,7 @@ multiplayer realm.
 Every phase lands its checks as `#test` blocks in the module that owns the
 behavior.
 
-- **Engine (`aethyr/action/mount.coax`).** You can mount only within reach. E
+- **Engine (`metaverse-engine/action/mount.coax`).** You can mount only within reach. E
   toggles mount and dismount. A dismounted horse stays where you left it. The
   gallop is faster than running on foot by a large margin. The horse's speed
   ramps with its acceleration, and its turn rate falls with speed. A wall in
@@ -427,7 +427,7 @@ behavior.
   off on the jump, flies faster than the horse's gallop, banks into turns,
   can't be left in the air, lands, and stays where you got off. Low, a wall
   stops it; high, it flies over the wall.
-- **Riding pose (`aethyr/action/ride-pose.coax`).** The thighs spread to
+- **Riding pose (`metaverse-engine/action/ride-pose.coax`).** The thighs spread to
   either side of the saddle, the knees bend, and the feet hang below the
   seat.
 - **Game and zone (`everglade/mounts.coax`, Experimental).** The horse is placed clear of the spawn's safe

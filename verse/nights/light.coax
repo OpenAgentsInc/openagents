@@ -1,7 +1,7 @@
 // Nights authors its own spring noon; the shared profile and resolver stay unchanged.
 #module "verse.nights.light";
-#load "../../aethyr/world/environment.coax" as world;
-#load "../../aethyr/render/environment-frame.coax" as frame;
+#load "../../metaverse-engine/world/environment.coax" as world;
+#load "../../metaverse-engine/render/environment-frame.coax" as frame;
 #test "Nights spring noon is admitted brighter softer and clearer without changing the shared glade" {
  p:=profile();g:=world.env_glade_profile();k:=p.track.knots[0];b:=g.track.knots[0];
  #assert world.env_profile_check(p).refusal==world.EnvRefusal.none && p.id==7001;

@@ -18,9 +18,9 @@ builds on it.
 **The repository already practises half of DDD without using the name, and
 the missing half is mostly vocabulary and boundaries, not code.**
 
-- Already good: `#authority` policy files are invariant owners. `aethyr/ids.coax`
+- Already good: `#authority` policy files are invariant owners. `metaverse-engine/ids.coax`
   gives nominal IDs. `proto/registry.json` is close to a published-language
-  catalogue. The item ledger (`aethyr/session/ledger.coax`) is a textbook
+  catalogue. The item ledger (`metaverse-engine/session/ledger.coax`) is a textbook
   aggregate with operation IDs, version guards, fencing and an outbox.
 - Missing: one meaning per word. "Room", "zone", "seat", "session", "event",
   "account", "profile" and "engine" each mean two to six things in the code
@@ -133,14 +133,14 @@ Derived from the folders, the SQL schemas (17 `CREATE SCHEMA` statements in
 
 | Context | Where it lives today | Class | Evidence and reasoning |
 | --- | --- | --- | --- |
-| **Combat rules (SRD)** | `aethyr/rules/srd/` (27,837 lines of top-level `.coax`, verified) | Core | Everglade's pitch is "the SRD's rules decide the outcome" (`everglade/README.md`). Several worlds share it (Everglade II, Experimental, 5E Lab). It has its own language tied to a source text |
-| **Characters and progression** | Scattered: room seat state, `aethyr/session/character-checkpoint.coax`, `coax/web/room/room-checkpoint.coax`, `room-events.coax`, SQL `verse.character_*` | Core | "A character worth keeping" is workstream P4. No single home today (section 3.4) |
-| **World and zones** | `verse/everglade2/`, `everglade/world/`, `aethyr/world/` | Core | The place the player is in; G7 (#13280) |
-| **Creatures and encounters** | `coax/web/room/room-e2-monsters.coax`, `room-e2-guard.coax`, `room-events.coax`, `aethyr/actors/` (unused) | Core | G10, #13293 |
-| **Items and economy** | `aethyr/session/ledger.coax`, SQL `verse.items`, `verse.item_*` | Core (dormant) | Built; nothing calls it (AAA G3; I found no caller of `item_outbox_since` or `ledger_consume` outside tests, verified) |
+| **Combat rules (SRD)** | `metaverse-engine/rules/srd/` (27,837 lines of top-level `.coax`, verified) | Core | Everglade's pitch is "the SRD's rules decide the outcome" (`everglade/README.md`). Several worlds share it (Everglade II, Experimental, 5E Lab). It has its own language tied to a source text |
+| **Characters and progression** | Scattered: room seat state, `metaverse-engine/session/character-checkpoint.coax`, `coax/web/room/room-checkpoint.coax`, `room-events.coax`, SQL `verse.character_*` | Core | "A character worth keeping" is workstream P4. No single home today (section 3.4) |
+| **World and zones** | `verse/everglade2/`, `everglade/world/`, `metaverse-engine/world/` | Core | The place the player is in; G7 (#13280) |
+| **Creatures and encounters** | `coax/web/room/room-e2-monsters.coax`, `room-e2-guard.coax`, `room-events.coax`, `metaverse-engine/actors/` (unused) | Core | G10, #13293 |
+| **Items and economy** | `metaverse-engine/session/ledger.coax`, SQL `verse.items`, `verse.item_*` | Core (dormant) | Built; nothing calls it (AAA G3; I found no caller of `item_outbox_since` or `ledger_consume` outside tests, verified) |
 | **Quests** | The page and the browser save (AAA G3) | Core (missing) | #13292 |
-| **Room session and replication** | `coax/web/room/`, `aethyr/net/`, `aethyr/session/` (control, travel, party, region, compat) | Supporting | Hard, ours, and specific to how we host. Players don't come for it |
-| **Realm authoring** | `aethyr/forge/`, `apps/aethyrforge-desktop/`, WorldBuilder (`apps/openagents-web/worldbuilder*.coax`, `coax/web/api/worldbuilder.c`), Realm Builder (`coax/web/api/realms.c`), SQL `verse.realm_*`, `worldbuilder.*` | Supporting | Three tools edit realms. WorldBuilder already goes through `aethyr/forge/edit.coax` (#13226, verified at `worldbuilder-plan.coax:10`); Realm Builder keeps its rules in SQL (`realms.c:1-4`) |
+| **Room session and replication** | `coax/web/room/`, `metaverse-engine/net/`, `metaverse-engine/session/` (control, travel, party, region, compat) | Supporting | Hard, ours, and specific to how we host. Players don't come for it |
+| **Realm authoring** | `metaverse-engine/editor/`, `apps/aethyrforge-desktop/`, WorldBuilder (`apps/openagents-web/worldbuilder*.coax`, `coax/web/api/worldbuilder.c`), Realm Builder (`coax/web/api/realms.c`), SQL `verse.realm_*`, `worldbuilder.*` | Supporting | Three tools edit realms. WorldBuilder already goes through `metaverse-engine/editor/edit.coax` (#13226, verified at `worldbuilder-plan.coax:10`); Realm Builder keeps its rules in SQL (`realms.c:1-4`) |
 | **Identity and auth** | `coax/web/api/auth*.c`, `auth-*-policy.coax`, SQL `auth.*` (29 tables), `docs/auth/` | Generic, built in-house | Accounts, authenticators, sessions. Built here by owner choice (no phone, no identity provider, `0142_auth_accounts.sql:1-2`), but the problem is a solved one |
 | **Payments and wallet** | `verse/wallet.coax`, `coax/web/api/lnaddr*.c`, `makerpay-policy.coax`, SQL `pay.*`, `makers.*`, `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/` | Supporting | Bitcoin-only rails are an owner rule. Money rules must be `#authority` (`AGENTS.md`, Rules) |
 | **Coder and agents** | `coder/`, `coax/lib/agent/`, `coax/lib/microcoder/`, `coax/lib/gateway/`, `apps/everglade-desktop/` (Golemancy) | Core | A product line with its own book and registry rows (C1 to C13) |
@@ -148,7 +148,7 @@ Derived from the folders, the SQL schemas (17 `CREATE SCHEMA` statements in
 | **Projects** | `coax/web/api/private.c`, `drops.c`, SQL `projects.*`, `drops.*` | Supporting | Private project pages and drops |
 | **Nostr** | `coax/lib/nostr/`, `nostr/` | Generic | An external protocol; we implement it faithfully |
 | **Psionic and inference** | `psionic/`, `coax/web/api/inference.c`, `coax/lib/systemone/`, SQL `inference.*`, `mesh.*` | Core (separate product) | Its own book, registry family `psionic.*` |
-| **Engine (Aethyr)** | `aethyr/` minus `rules/` | Supporting kernel | Shared by every realm. Generic in shape (any engine has a loop and a renderer), specific in its verification |
+| **Engine (Aethyr)** | `metaverse-engine/` minus `rules/` | Supporting kernel | Shared by every realm. Generic in shape (any engine has a loop and a renderer), specific in its verification |
 | **Coax toolchain** | `coax/` | Supporting | The language everything is written in |
 | **Analytics, email, jobs, access** | SQL `analytics.*`, `email.*`, `jobs.*`, `access.*` | Generic | Plumbing |
 
@@ -203,8 +203,8 @@ flowchart LR
 | Rules to characters | No character context exists; the room plays both parts | Customer/supplier | Characters need the rules' level, slot and feature tables |
 | Auth to game | `auth.accounts.verse_account` maps a login account to the game's `verse.accounts.id` (`0142_auth_accounts.sql:11-13`) | Keep: this is an ACL | It is the clearest translation layer in the repo |
 | Auth to room | The seat ticket carries identity; the room trusts the hello for class and level (AAA W2, checked) | ACL: the ticket carries what the character context says, signed (#13259) | An invariant crossed the boundary in the wrong direction |
-| Engine to game | 57 `aethyr-up` loads in `aethyr/layer-allowlist.txt` (verified) | Shared kernel, strictly downward | #13264, #13270 |
-| Authoring to world | Realm document v-N read by `aethyr/forge/doc.coax`; E6 (#13249) packages it | Published language | Already planned |
+| Engine to game | 57 `aethyr-up` loads in `metaverse-engine/layer-allowlist.txt` (verified) | Shared kernel, strictly downward | #13264, #13270 |
+| Authoring to world | Realm document v-N read by `metaverse-engine/editor/doc.coax`; E6 (#13249) packages it | Published language | Already planned |
 | Coder to third-party agents | `external` rows for Claude Code, Codex, Cursor, ACP, MCP (`proto/registry.json`, verified) | ACL (keep) | These rows are ACLs in all but name |
 | Payments to the rest | Wallet rules in `verse/wallet.coax`; maker pay in `coax/web/api/makerpay-policy.coax`; SQL `pay.*`, `makers.*` | Its own context folder with an open host API | Money rules sit in the realms folder today |
 | Golemancy to Coder | `apps/everglade-desktop/golems.coax` reads agent transcripts and shows them as golems (`golems.coax:1-3`) | ACL, named as one | Game words over agent records is a translation. Say so in both glossaries |
@@ -222,11 +222,11 @@ rough, they include comments).
 | **instance** (848) | The same thing as (a) above | SQL `verse.room_instances`, "which oa-room shard holds each instance" (`0115_room_directory.sql:1-2`) |
 | **zone** (845) | (a) a named place in a realm (books glossary); (b) a separately built Wasm page (`everglade/features.coax:66-81`, `EfZone` with `paths` and `entries`); (c) the AAA audit's server unit, "150 players in one zone process" (G4); (d) a GCP zone (G11) | Four meanings, two in the same audit |
 | **seat** (2,987) | (a) a player's place in a room (`SeatId`); (b) an agent's place in a made realm | `seats.c:1-2`, "an agent's place in a made realm", SQL `verse.seats` (`0110_realm_seats.sql`) |
-| **session** | Six SQL tables named `sessions` in six schemas (`analytics`, `projects`, `drops`, `signin`, `auth`, plus `verse.pack_sessions`); `aethyr/session/` (room lifecycle); `openagents.session.v1` (the transcript log) and the spec's NIP-SESS (compliance plan, row 3) | Verified by grep of `CREATE TABLE` |
-| **event** | Domain events (`RsEvent`, `aethyr/rules/srd/engine.coax:938`); world events, a raid (`room-events.coax:1-3`, SQL `verse.room_events`); analytics events; Nostr events; `chat.events`, `projects.events` | |
+| **session** | Six SQL tables named `sessions` in six schemas (`analytics`, `projects`, `drops`, `signin`, `auth`, plus `verse.pack_sessions`); `metaverse-engine/session/` (room lifecycle); `openagents.session.v1` (the transcript log) and the spec's NIP-SESS (compliance plan, row 3) | Verified by grep of `CREATE TABLE` |
+| **event** | Domain events (`RsEvent`, `metaverse-engine/rules/srd/engine.coax:938`); world events, a raid (`room-events.coax:1-3`, SQL `verse.room_events`); analytics events; Nostr events; `chat.events`, `projects.events` | |
 | **account** | `auth.accounts` (login identity) and `verse.accounts` (the game's account); `inference.account_day` | `0142_auth_accounts.sql:11` names the mapping |
 | **player** | A browser key ("A player key is a random secret minted for one browser", `0004_verse_players.sql:6-7`); a person; the engine's `Player` body-plus-camera struct (AAA G6) | |
-| **character** | A seat's rules creature; a checkpoint capture; an `aethyr/character/` rig runtime; a Character Create appearance; a talk persona (`aethyr/talk/character.coax`) | "A character is a player's `coalesce(account, id)`" (`0130_item_ledger.sql:9`) |
+| **character** | A seat's rules creature; a checkpoint capture; an `metaverse-engine/character/` rig runtime; a Character Create appearance; a talk persona (`metaverse-engine/talk/character.coax`) | "A character is a player's `coalesce(account, id)`" (`0130_item_ledger.sql:9`) |
 | **class** | Spelled `class`, `klass` and `kind` for the same thing in one function: `kind := cast(string)h.kind…`, `st[0].klass_n = eg_word(kind, …)` (`room-everglade.coax:789, 867`) | A string like `srd-fighter-5` also carries the level |
 | **profile** | Wire profile (`proto/verse/*.json`), world combat profile (`world-profile.coax`), timing profile, character checkpoint profile 2 and 3, execution profile, `coax.compat.v1` profile, a book chapter's profile | Seven meanings |
 | **engine** | Aethyr; the SRD rules' `engine.coax` ("The SRD 5.2.1 rules engine", line 1); a Coder engine (books glossary) | |
@@ -242,24 +242,24 @@ it: SQL calls a room an instance, and `features.coax` calls a page a zone.
 
 | Leak | Evidence | Note |
 | --- | --- | --- |
-| Engine loads app and realm code | 57 `aethyr-up` lines, 23 of them into `apps/openagents-web` and 20 into `verse/gpu` (`aethyr/layer-allowlist.txt`, verified) | #13264 stops new ones; #13270 removes them |
-| Game rules inside the engine directory | `aethyr/rules/srd/` | The AAA audit says move it to root `rules/srd/` or `everglade/rules/` (G6). The Everglade book says SRD rules "stay in Aethyr" (`everglade/book/README.md:291`). They disagree. DDD answer: the rules are their own context, used by several worlds, so root `rules/srd/`, not inside the engine and not inside one game |
+| Engine loads app and realm code | 57 `aethyr-up` lines, 23 of them into `apps/openagents-web` and 20 into `verse/gpu` (`metaverse-engine/layer-allowlist.txt`, verified) | #13264 stops new ones; #13270 removes them |
+| Game rules inside the engine directory | `metaverse-engine/rules/srd/` | The AAA audit says move it to root `rules/srd/` or `everglade/rules/` (G6). The Everglade book says SRD rules "stay in Aethyr" (`everglade/book/README.md:291`). They disagree. DDD answer: the rules are their own context, used by several worlds, so root `rules/srd/`, not inside the engine and not inside one game |
 | Rules emit display text | `RsEvent` has `text: [RS_EV_TEXT] u8` (`engine.coax:943`) | A domain event carries words for a log. Presentation belongs downstream |
 | Room is game logic plus host plus transport | `room-everglade.coax` holds seat admission, class choice, HP rescale, ticket pins and kick (`:780-873`) | #13267 extracts `everglade/server/` |
 | Payments rules in the realms folder | `verse/wallet.coax` ("The wallet's payment rules", line 1) | Wrong folder for a money context |
-| One aggregate, two implementations | The item ledger in Coax (`aethyr/session/ledger.coax`) and in plpgsql (`verse.item_apply`, `0130_item_ledger.sql:54`). The SQL header says it is "the Postgres form" of the Coax model (`:1-2`). Keep times differ: Coax counts ticks (`LEDGER_KEEP :: 1000`, `ledger.coax:40`), SQL a day in ms (`:24`). Character identity differs: `CharacterId` int in Coax, `coalesce(account, id)` text in SQL | I found no check that runs one against the other. The Coax one is mutation-tested; the SQL one is what production would call |
+| One aggregate, two implementations | The item ledger in Coax (`metaverse-engine/session/ledger.coax`) and in plpgsql (`verse.item_apply`, `0130_item_ledger.sql:54`). The SQL header says it is "the Postgres form" of the Coax model (`:1-2`). Keep times differ: Coax counts ticks (`LEDGER_KEEP :: 1000`, `ledger.coax:40`), SQL a day in ms (`:24`). Character identity differs: `CharacterId` int in Coax, `coalesce(account, id)` text in SQL | I found no check that runs one against the other. The Coax one is mutation-tested; the SQL one is what production would call |
 | API rules in two homes | Nine route files say their rules are in SQL (`access.c`, `chat.c`, `drops.c`, `makers.c`, `player.c`, `private.c`, `realms.c`, `rooms.c`, `villa.c`); 17 `*-policy.coax` files hold rules as `#authority` Coax (verified). 396 plpgsql functions in migrations | Two patterns for one job. The newer one (auth, lnaddr, seats) is Coax policy plus a thin C adapter |
-| Production code loads test fixtures | `coax/web/api/checkpoint-policy.coax:6` and `room-checkpoint.coax:5` load `tests/checkpoint-fixture.coax` (verified) | `layer-check`'s `tests` rule covers `aethyr/` and `everglade/` only |
+| Production code loads test fixtures | `coax/web/api/checkpoint-policy.coax:6` and `room-checkpoint.coax:5` load `tests/checkpoint-fixture.coax` (verified) | `layer-check`'s `tests` rule covers `metaverse-engine/` and `everglade/` only |
 
 ### 3.3 Invariants owned in several places, or none
 
 | Invariant | Where it is enforced | Problem |
 | --- | --- | --- |
-| Level follows XP | `EV_XP2 :: 300; EV_XP3 :: 900` and `ev_level_of` in `coax/web/room/room-events.coax:53, 207`; the same constants as `EGE_XP2`, `EGE_XP3` in `apps/openagents-web/everglade-events.coax:27` (verified) | Two copies. The owner is the world-events file, not a character or rules unit. No SRD XP table exists in `aethyr/rules/srd/` (grep for the SRD's 2700/6500 found none) |
+| Level follows XP | `EV_XP2 :: 300; EV_XP3 :: 900` and `ev_level_of` in `coax/web/room/room-events.coax:53, 207`; the same constants as `EGE_XP2`, `EGE_XP3` in `apps/openagents-web/everglade-events.coax:27` (verified) | Two copies. The owner is the world-events file, not a character or rules unit. No SRD XP table exists in `metaverse-engine/rules/srd/` (grep for the SRD's 2700/6500 found none) |
 | Class and level come from the server | The hello's class string seats the class and level (`room-everglade.coax:862-873`, `fb_cl_level_of_kind`); the checkpoint keeps one class bit, Warlock or not (`room-checkpoint.coax:144`) | Three sources: hello, capture bit, XP. #13259 and #13290 fix it |
 | Item cannot be spent twice | Coax ledger and SQL ledger, separately | See 3.2 |
 | Inventory, gold, equipment, quests | None on the server (AAA G3) | #13290 to #13292 |
-| Ticket fields | Written by `player.c` with `snprintf`, read by `room-ticket.coax` and `aethyr/session/resume-payload.coax` (compliance E5) | #13248 makes one writer |
+| Ticket fields | Written by `player.c` with `snprintf`, read by `room-ticket.coax` and `metaverse-engine/session/resume-payload.coax` (compliance E5) | #13248 makes one writer |
 | Monster kind | Position: `e2mo_kind :: (m) -> ifx m < 8 then E2M_WOLF else E2M_GOBLIN` (`room-e2-monsters.coax:73`, verified) | An index is the identity. #13286 and #13293 |
 | Ability on the wire | Bar position: slot `XK_SLOT0 + c * XK_PER + i` (`apps/openagents-web/class-kit.coax:8-9`, verified) | #13286 |
 
@@ -274,7 +274,7 @@ downs, ten slot counts, use counts). Profile 3 appends rest state.
 In DDD terms this is an anemic, positional data transfer shape, not an
 aggregate. There is no character ID in it as a typed field, no named fields,
 and no unit that owns "a valid character". `CharacterId` exists
-(`aethyr/ids.coax:7`) but the capture keys on `pid` text.
+(`metaverse-engine/ids.coax:7`) but the capture keys on `pid` text.
 
 Proposal (builds on #13290, doesn't replace it): the server character record
 **is** the Character aggregate. Root: `CharacterId`. Inside: class, level, XP,
@@ -285,7 +285,7 @@ table, class fixed after creation, slots within the class table.
 
 ### 3.5 Typed IDs: used and not used
 
-`aethyr/ids.coax` declares seven nominal IDs (`SeatId`, `SeatGeneration`,
+`metaverse-engine/ids.coax` declares seven nominal IDs (`SeatId`, `SeatGeneration`,
 `EntityId`, `EntityGeneration`, `CharacterId`, `ItemId`, `OwnerGeneration`,
 verified). They are the only product `@id` types; the others in the repo are
 in Coax tests and book examples. The room uses `SeatId`/`CharacterId` 465
@@ -306,8 +306,8 @@ Raw integers still stand for identities in:
 | --- | --- | --- |
 | Rules event log | `RsEvent`, `RsLog` ring (`engine.coax:938-946`) | Real domain events, but with display text and untyped participants |
 | Item outbox | `LedgerEntry` with `seq` (`ledger.coax:56`); SQL `verse.item_outbox` | A transactional outbox. Correct pattern |
-| Replay envelopes | `aethyr/replay.coax`: "one envelope for every accepted external event" (`aethyr/README.md`) | Input events, not domain events. Keep separate |
-| Checkpoint journal | `aethyr/checkpoint.coax` | State snapshots, not events |
+| Replay envelopes | `metaverse-engine/replay.coax`: "one envelope for every accepted external event" (`metaverse-engine/README.md`) | Input events, not domain events. Keep separate |
+| Checkpoint journal | `metaverse-engine/checkpoint.coax` | State snapshots, not events |
 
 Missing: character-level events (levelled up, learned ability, died,
 respawned), encounter events (creature defeated, loot dropped), and any
@@ -318,9 +318,9 @@ registry entry for an event. None of the 96 registry rows is a domain event
 
 | Practice | Evidence | DDD name |
 | --- | --- | --- |
-| `#authority` files: every procedure checked, zero surviving mutants | 533 in `aethyr/`, 536 in `coax/`, 477 in `psionic/` (verified file counts) | Invariant owner, one per rule |
-| `aethyr/session/*`: control fencing, travel in five repeatable steps, party, region epochs, ledger | All `#authority`, most sealed with `#module` (verified headers) | Aggregates and a saga (travel) with explicit invariants |
-| Nominal IDs with no arithmetic | `aethyr/ids.coax`; `coax/spec.md` "Nominal integer IDs" | Identity as a value type |
+| `#authority` files: every procedure checked, zero surviving mutants | 533 in `metaverse-engine/`, 536 in `coax/`, 477 in `psionic/` (verified file counts) | Invariant owner, one per rule |
+| `metaverse-engine/session/*`: control fencing, travel in five repeatable steps, party, region epochs, ledger | All `#authority`, most sealed with `#module` (verified headers) | Aggregates and a saga (travel) with explicit invariants |
+| Nominal IDs with no arithmetic | `metaverse-engine/ids.coax`; `coax/spec.md` "Nominal integer IDs" | Identity as a value type |
 | The wire registry and `wire-check` | `proto/registry.json`, 96 rows; `proto/README.md` | Published language catalogue |
 | `external` registry rows for third-party formats | 12 rows: Claude Code, Codex, Cursor, ACP, MCP, LNURL, Nostr NIPs | Anticorruption layers |
 | Shared rules compiled into page and room | AAA "Shared simulation" | Shared kernel |
@@ -343,7 +343,7 @@ A convention, not a framework. Each context folder holds:
 | **Application** | One procedure per use case: admit, call the model, return facts to persist and events to publish | `#transaction` around the model call; sealed `#module` with an `#export` list as the context's public surface |
 | **Adapters** | Wire codecs (the registry's one codec file), SQL, C host, HTTP | Registry `codec` rows; generated C units; `#foreign` |
 
-Today 0 of the procedures in `aethyr/session/`, `aethyr/rules/srd/`,
+Today 0 of the procedures in `metaverse-engine/session/`, `metaverse-engine/rules/srd/`,
 `coax/web/api/*.coax` and `verse/wallet.coax` declare a bound narrower than
 `#effects(all)` (115, 529, 325 and 28 `all` declarations, verified). Only
 `apps/openagents-web` has narrow bounds (59). Narrowing the model files is the
@@ -356,8 +356,8 @@ Proposed homes, reusing the AAA layout (#13270) where it exists:
 | --- | --- | --- |
 | Combat rules | `rules/srd/` at the root | Several worlds use it; not engine, not one game |
 | Everglade game (characters, world, creatures, items, quests) | `everglade/` with `server/`, `client/` (#13267, #13268) and `model/` for character, quest, encounter records | `everglade/model/` is new; it is where #13290's record lives |
-| Room session | `aethyr/net/` and `aethyr/session/` | Already there |
-| Realm authoring | `aethyr/forge/` | Already there |
+| Room session | `metaverse-engine/net/` and `metaverse-engine/session/` | Already there |
+| Realm authoring | `metaverse-engine/editor/` | Already there |
 | Payments | `pay/` or `coax/lib/pay/` | Move `verse/wallet.coax` and the pay policies |
 | Identity | `coax/web/api/auth*` for now | Leave until the API is split |
 | Coder | `coder/`, `coax/lib/agent/` | Already there |
@@ -376,7 +376,7 @@ field marked `#counter`. One application procedure:
    both in one database transaction, with the version guard (`WHERE version = $v`),
    and appends events to an outbox table.
 
-`aethyr/session/ledger.coax` already has steps 2 and 3 in memory. The gap is
+`metaverse-engine/session/ledger.coax` already has steps 2 and 3 in memory. The gap is
 that SQL re-implements step 2 in plpgsql. Pick one owner:
 
 - **Preferred (inference):** SQL keeps storage, the version guard, the
@@ -416,8 +416,8 @@ Don't model each entity as an aggregate. Use these instead:
 | --- | --- | --- |
 | Character | The checkpoint lane: room outbox, signed POST, `verse.room_vital_apply` with owner fence (`0135_character_checkpoints_v2.sql:25`) | Keep the lane. Change the payload from positional `n[17]` to the `#persisted` character record (#13290), checked by `coax compat` |
 | Items | `ledger_apply` in memory; `verse.item_apply` in SQL; route `POST /api/playtest/room-items` (`player.c:705-730`) | One model owner (4.2a); the room's outbox mirrors the checkpoint lane (#13291) |
-| Realm document | `aethyr/forge/doc.coax` reader; SQL `verse.realm_revisions` with revision check (409) | Already a repository with optimistic concurrency. E6 (#13249) packages it |
-| Party, travel, region | `aethyr/session/*` with SQL `verse.parties`, `verse.region` | Already shaped right |
+| Realm document | `metaverse-engine/editor/doc.coax` reader; SQL `verse.realm_revisions` with revision check (409) | Already a repository with optimistic concurrency. E6 (#13249) packages it |
+| Party, travel, region | `metaverse-engine/session/*` with SQL `verse.parties`, `verse.region` | Already shaped right |
 
 ### 4.4 Glossaries
 
@@ -425,7 +425,7 @@ Extend `docs/books/glossary.md` into the root glossary rather than adding a
 second root file (it exists and the books link it). Rename it to
 `docs/glossary.md` with a redirect line left behind, or keep the path; either
 works. Each context with more than a handful of terms gets `GLOSSARY.md` in
-its folder (`rules/srd/`, `everglade/`, `coder/`, `aethyr/session/`), and the
+its folder (`rules/srd/`, `everglade/`, `coder/`, `metaverse-engine/session/`), and the
 root glossary links them. Each row names its owning context.
 
 Initial root entries. "Conflict" names what the code does today.
@@ -451,8 +451,8 @@ Initial root entries. "Conflict" names what the code does today.
 | Body | The server-owned movable entity of a player (#13271) | Engine | Today part of `Player` |
 | Character | The persistent hero: class, level, XP, abilities, items by reference | Everglade | Rig runtime, appearance, persona, capture all use the word |
 | Appearance | A character's look from Character Create | Everglade | |
-| Rig | An animated skeleton and its parts (`aethyr/character/`) | Engine | Called "character" |
-| Persona | An NPC's identity for talk | Talk | `aethyr/talk/character.coax` |
+| Rig | An animated skeleton and its parts (`metaverse-engine/character/`) | Engine | Called "character" |
+| Persona | An NPC's identity for talk | Talk | `metaverse-engine/talk/character.coax` |
 | Class | An SRD class. Spelled `class` in code | Rules | `klass`, `kind`, and level folded into the string |
 | Level | Derived from XP by the rules' table | Rules | Two copies of the table; hello sets it |
 | Ability | One action a character can take: spell, class feature, attack | Rules | #13285 defines it |
@@ -488,7 +488,7 @@ that only shrinks, each new line needing a reason and an issue.
    ```text
    rules      rules/srd/                     -> engine-core
    everglade  everglade/                     -> rules engine session forge components
-   session    aethyr/session/ aethyr/net/    -> engine-core
+   session    metaverse-engine/session/ metaverse-engine/net/    -> engine-core
    pay        pay/ coax/lib/bitcoin/ ...     -> crypto net
    coder      coder/ coax/lib/agent/         -> gateway nostr proto
    ```
@@ -503,7 +503,7 @@ that only shrinks, each new line needing a reason and an issue.
    field today (verified).
 3. **Model files declare narrow effects.** A check (or `#authority` policy)
    that fails when a file listed as a context's model declares
-   `#effects(all)`. Start with `aethyr/session/ledger.coax` and
+   `#effects(all)`. Start with `metaverse-engine/session/ledger.coax` and
    `rules/srd/world-profile.coax`.
 
 ### 4.6 Domain events: naming and versioning
@@ -550,7 +550,7 @@ two checks and acceptance rules for issues already filed.
 | --- | --- | --- | --- | --- |
 | D1 | Root glossary: extend `docs/books/glossary.md` with section 4.4's table and a Conflicts column | Doc only | — | Every term in 4.4 has one row; `proto/README.md` and the glossary agree on Aethyr and the Verse |
 | D2 | Context map page: section 2's tables and diagram as `docs/architecture/contexts.md`, linked from #13273's `ARCHITECTURE.md` | Doc only | #13273 | The page exists and `ARCHITECTURE.md` links it |
-| D3 | Narrow `#effects` on model files: `aethyr/session/ledger.coax`, `party.coax`, `control.coax`, `travel.coax`, `world-profile.coax`, `timing-profile.coax` | New, small | — | Each declares `reads, writes, traps` or narrower and still has zero mutants |
+| D3 | Narrow `#effects` on model files: `metaverse-engine/session/ledger.coax`, `party.coax`, `control.coax`, `travel.coax`, `world-profile.coax`, `timing-profile.coax` | New, small | — | Each declares `reads, writes, traps` or narrower and still has zero mutants |
 | D4 | `tests` rule of `layer-check` extended to `coax/web/api/` and `coax/web/room/` | New, small | #13264 | The two fixture loads in 3.2 are allowlisted with an issue or removed |
 | D5 | Registry `owner` field and `wire-check` rule | New, small | Compliance S1 (#13236) tooling | All 96 rows have an owner; a row without one fails |
 | D6 | `contexts.txt` and the per-context load rule in `layer-check` | New | #13264, #13270 | The check runs in seconds and the allowlist is seeded |
@@ -590,7 +590,7 @@ For the coordinator to file under #13257 or a new tracker. Titles only.
 
 1. DDD.1: Root glossary: one meaning for each shared term, with today's conflicts listed (docs/books/glossary.md)
 2. DDD.2: Context map page linked from ARCHITECTURE.md (with #13273)
-3. DDD.3: Model files declare `#effects(reads, writes, traps)`: aethyr/session and the rules profiles
+3. DDD.3: Model files declare `#effects(reads, writes, traps)`: metaverse-engine/session and the rules profiles
 4. DDD.4: layer-check: production files in coax/web/api and coax/web/room load no tests/ file
 5. DDD.5: Every proto/registry.json row names its owning context; wire-check fails without one
 6. DDD.6: layer-check: per-context allowed dependencies from contexts.txt; the allowlist only shrinks
@@ -645,8 +645,8 @@ Acceptance notes to add to existing issues, not new issues:
 
 - No build, test, mutation run or deploy. Effect and file counts are from
   `git grep`; they include comments and may be off by a few.
-- The bodies of most `aethyr/rules/srd/` units, `room-events.coax` beyond its
-  header and level function, `aethyr/talk/`, and the Coder TUI internals.
+- The bodies of most `metaverse-engine/rules/srd/` units, `room-events.coax` beyond its
+  header and level function, `metaverse-engine/talk/`, and the Coder TUI internals.
 - Whether the Coax and SQL ledgers actually behave the same; I compared
   headers, constants and identity types only.
 - The 396 plpgsql functions individually, and which of them hold rules a

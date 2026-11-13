@@ -28,7 +28,7 @@ payment through the whole stack.
 
 | # | Step | Owner | Today |
 | --- | --- | --- | --- |
-| 1 | The room decides that Bram is calm and a player is near, and asks for a decision. Only one request is pending in the realm. | [Everglade](../../../everglade/book/README.md) Part VI; [the Metaverse Engine 77](../../../aethyr/book/ch077-people-who-talk-back.md) | The guard's ambient rule is deterministic. The request path is opt-in and shadows the rule. |
+| 1 | The room decides that Bram is calm and a player is near, and asks for a decision. Only one request is pending in the realm. | [Everglade](../../../everglade/book/README.md) Part VI; [the Metaverse Engine 77](../../../metaverse-engine/book/ch077-people-who-talk-back.md) | The guard's ambient rule is deterministic. The request path is opt-in and shadows the rule. |
 | 2 | The game holds a ticket for the request. A late, stale or replaced answer is dropped. | [Psionic 28](../../../psionic/book/ch028-a-decision-arrives-while-play-continues.md) | Chapter written, with a shared consumer in `psionic/lib/game/decision.coax`. |
 | 3 | The request becomes a typed decision: three options, the guard's context, one model identity. | [Psionic 12–14](../../../psionic/book/ch012-decisions-have-a-different-mask.md), [20](../../../psionic/book/ch020-serve-systemone.md) | Chapters written. |
 | 4 | The buyer finds a Pylon from its signed beacon and sends the job encrypted to the Pylon's key. | [Psionic 24–25](../../../psionic/book/ch024-a-pylon-answers-decisions.md); [Nostr 82](../../../nostr/book/ch082-pylons-environments-and-deploys.md) and [100](../../../nostr/book/ch100-pylons-and-the-mesh.md) | Chapters written. Beacons and service receipts are read and verified. |

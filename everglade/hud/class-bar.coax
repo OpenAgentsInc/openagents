@@ -3,7 +3,7 @@
 // REST, with what each menu offers and a tip for each. Nothing of them is a button over the action
 // bar (GitHub #13147): a press on your own portrait plate opens them, as a menu hung under it. Plain
 // facts in, words out: a zone fills EgBarFacts from what its room said, draws them with the engine's
-// widgets (aethyr/ui/hud-menu.coax hud_menu_draw, hud_tip) and sends what a press asks.
+// widgets (metaverse-engine/ui/hud-menu.coax hud_menu_draw, hud_tip) and sends what a press asks.
 // The room decides every request. docs/verse/hud-styles.md.
 
 // What the menus offer: only what the room has said. rest holds the rest requests (RS_REST_*,
@@ -130,7 +130,7 @@ EG_SIDE_PAD :: 14; EG_SIDE_GAP :: 8; EG_MENU_W :: 210; EG_MENU_HEAD :: 26; EG_ME
 EgSideState :: struct { menu: int = -1; side_hover: int = -1; menu_hover: int = -1; }
 // anchor: your portrait plate; mx0, mx1, foot: the room the menus and tips may take
 EgSideGeo :: struct { ids: [EG_SIDE_N] int; n: int; anchor: cc.HudPrim; h: f32; gap: f32; w: f32; k: f32; mx0: f32; mx1: f32; foot: f32; }
-// A finger's size on a phone or a tablet, smaller with a mouse on a desktop (aethyr/ui/hud-menu.coax
+// A finger's size on a phone or a tablet, smaller with a mouse on a desktop (metaverse-engine/ui/hud-menu.coax
 // hud_touch_size, hud_row_h).
 eg_side_h :: (w: f32, h: f32, k: f32) -> f32 { return cc.hud_row_h(cc.hud_touch_size(w, h, k, false), k); }
 eg_side_geo :: (f: EgBarFacts, w: f32, h: f32, k: f32, anchor: cc.HudPrim, foot: f32) -> EgSideGeo {
@@ -221,7 +221,7 @@ eg_side_press :: (f: EgBarFacts, g: EgSideGeo, st: EgSideState, x: f32, y: f32, 
 }
 // Draw the open menu and the tip for what the pointer is over, through the realm's renderer
 // (charactercreator.coax hud_draw). Shut, and the pointer elsewhere, it draws nothing.
-// ui: the layout trace (aethyr/ui/trace.coax), when the overlap check attaches one; empty for none.
+// ui: the layout trace (metaverse-engine/ui/trace.coax), when the overlap check attaches one; empty for none.
 eg_side_draw :: (ui: [] cc.UitTrace, f: EgBarFacts, g: EgSideGeo, st: EgSideState, out: [] f32, at: int) -> int {
   if g.n == 0 { return at; }
   k := g.k; t := cc.eg_tokens(); cap := EG_SIDE_CAP * k;

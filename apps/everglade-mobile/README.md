@@ -24,7 +24,7 @@ device has been checked by hand.
 ## The web's realms on iOS
 
 The four realms run through the OpenAgents Metaverse Engine's page host
-([`aethyr/host/apple/`](../../aethyr/host/apple/page-host.h)), the same host
+([`metaverse-engine/host/apple/`](../../metaverse-engine/host/apple/page-host.h)), the same host
 and the same table of rows
 ([`Realms.swift`](../everglade-desktop/Sources/Realms.swift)) as the Mac app
 ([how](../../everglade/docs/app-scenes-spec.md#4-bringing-the-webs-worlds-into-the-apps)).
@@ -48,12 +48,12 @@ What is the phone's own is in [`ios/Sources/Pages.swift`](ios/Sources/Pages.swif
 - **Code.** iOS loads code only from a framework, so each realm's library is
   `Frameworks/NAME.framework`.
 - **Memory.** A phone's layers are 512 texels a side, the tier
-  `aethyr/render/texture-format.coax` gives a phone, and the page host lets
+  `metaverse-engine/render/texture-format.coax` gives a phone, and the page host lets
   go of the pack's bytes once they are on the GPU. Measured in the simulator
   with `footprint`: Experimental and the range hold 466 MB (719 MB at the
   peak, while the 286 MB pack is inflated); Everglade holds 195 MB.
 - **Sound** is the Mac app's: the Metaverse Engine's Apple audio host
-  (`aethyr/host/apple/PageAudio.swift`). It mixes with what is playing and
+  (`metaverse-engine/host/apple/PageAudio.swift`). It mixes with what is playing and
   the ring switch silences it. In a shot it is rendered, never played: the
   range's run said the bow's draw and release, the arrow's flight and hit,
   and your steps. Nobody has heard it on a phone yet.
@@ -147,7 +147,7 @@ In the Workshop (a realm's touches are its own, above):
 | Turn the phone (iOS) | Look, while the Gyro switch under the title is on. Tap the switch to turn it off |
 
 In a realm (the Archery Range, Experimental, Bitcoin Lab) the phone's turn is
-the realm's own gyro (`aethyr/cam/gyro.coax`): its GYRO button over JUMP, on
+the realm's own gyro (`metaverse-engine/cam/gyro.coax`): its GYRO button over JUMP, on
 while the bow is drawn by default. The app reads CoreMotion only while the
 realm asks for it. The simulator has no gyro, so a shot turns it from its
 script: `--offer-gyro --do "...;tilt:YAW,PITCH:SECONDS"` (radians).
@@ -164,7 +164,7 @@ Nothing in the scene is written twice.
 | --- | --- |
 | The list of worlds, and which one gets each key and touch | [`apps/everglade-desktop/scenes.coax`](../everglade-desktop/scenes.coax) |
 | The Workshop: walking, camera, collision, the text | [`apps/everglade-desktop/workshop.coax`](../everglade-desktop/workshop.coax) |
-| The temple's parts and where they stand | [`everglade/workshop/temple.coax`](../../everglade/workshop/temple.coax), from [`aethyr/arch/`](../../aethyr/arch/README.md) |
+| The temple's parts and where they stand | [`everglade/workshop/temple.coax`](../../everglade/workshop/temple.coax), from [`metaverse-engine/arch/`](../../metaverse-engine/arch/README.md) |
 | The temple's shaders | [`everglade/workshop/gpu/temple.coax`](../../everglade/workshop/gpu/temple.coax), emitted by `coax metal` for iOS and `coax spirv` for Android |
 | Your character | [`apps/everglade-desktop/model.coax`](../everglade-desktop/model.coax) and Everglade II's pack |
 | The GPU side of the Apple hosts: the pack, the place, the model | [`apps/everglade-desktop/Sources/Engine.swift`](../everglade-desktop/Sources/Engine.swift) |

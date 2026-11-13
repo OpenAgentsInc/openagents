@@ -1,0 +1,270 @@
+// What a page draws of a room's world, engine-wide (GitHub #13277, the AAA audit's G5): the one
+// interpolation buffer, its clock, and the easing of corrections. It moved here from Everglade's
+// client (everglade/client/net-core.coax, #13054), so every realm whose room is the authority
+// draws the others, and its own corrected body, the same way.
+//   - A remote entity's last NET_RING states (NetState), drawn a jitter buffer's delay behind the
+//     server clock: between the two states round that time (yaw the short way), past the newest by
+//     its velocity for `ahead` ms at most, then held (net_ring_at). Where newer states put it
+//     differs from where it went on to by a little; that is eased out over NET_EASE s (NetLead).
+//   - The jitter buffer's delay from how late, how spread and how far apart the states come
+//     (net_jitter_heard, net_jitter_delay), the tick map that follows a drifting room
+//     (net_map_follow), and the drawn delay coming to the buffer's at NET_SLEW (net_lag_step).
+//   - The server clock from the ping with the lowest round trip of the last NET_PINGS (net_ping_best).
+//   - Your own body: the difference a re-run of your unacknowledged inputs made
+//     (metaverse-engine/net/predict.coax), drawn and eased to nothing over NET_SMOOTH s, or past NET_SNAP m
+//     taken at once (NetCorrect).
+// It holds no realm's world and no wire: the realm says what a state's flags mean, how far its
+// kinds go on (`ahead`), and where things are drawn. A realm's own scalars ride in a state
+// (ax, az, age: Everglade's trees) and are never blended here.
+//   coax/bin/coax test --library metaverse-engine/net/interp.coax
+#module "aethyr.net.interp";
+
+NET_RING :: 8;            // a state's last few: 8 at 15 Hz hold 470 ms, past NET_HIGH
+NET_BASE :: 0; NET_LOW :: 100; NET_HIGH :: 300;   // ms: the jitter buffer's delay (NET_BASE over the states' lateness, spread and interval, NET_LOW at least)
+// The drawn delay moves to the buffer's at most this much a second (s/s): its first NET_SETTLE ticks
+// at once, then the world's time runs 10% slow or fast while it comes. A burst of states after a
+// socket's hold raises the spread at once, and a delay taken at once drew everyone back (#12890).
+NET_SLEW :: 0.1; NET_SETTLE :: 30;
+NET_AHEAD :: 150;          // ms past its newest state an entity goes on by its velocity
+NET_EASE :: 0.2;           // s an entity's difference from where it went on to is eased out over
+NET_SNAP :: 1.5;           // m: a re-run's difference this big is taken at once (a teleport, a throw)
+NET_SMOOTH :: 0.12;        // s a smaller one is eased out over (a start or stop the page and server stepped apart)
+NET_PINGS :: 8;
+
+NC_PI :: 3.14159265; NC_TAU :: 6.2831853;   // metaverse-engine/core/points.coax PI and TAU
+nc_lerp :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
+nc_clamp01 :: (x: f32) -> f32 { if x < 0 { return 0; } if x > 1 { return 1; } return x; }
+nc_hi :: (a: int, b: int) -> int { if a > b { return a; } return b; }
+nc_lo :: (a: int, b: int) -> int { if a < b { return a; } return b; }
+nc_clamp :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
+
+// One state of an entity at server time t (ms): its pose and velocity, the realm's flags and act
+// (taken from the nearer state, never blended), and three scalars of the realm's own.
+NetState :: struct { t: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; f: int; a: int; ax: f32; az: f32; age: f32; }
+
+net_turn :: (a: f32, b: f32) -> f32 {
+  d := b - a;
+  while d > f32(NC_PI) { d -= f32(NC_TAU); }
+  while d < -f32(NC_PI) { d += f32(NC_TAU); }
+  return d;
+}
+
+// ---- the jitter buffer and the clock
+
+// One state's tick heard at server time `clock` when the server clock is `now`: how late states come
+// (late_mean), their spread (jitter) and their interval (ms), the first one taking its lateness whole.
+NetJitter :: struct { late_mean: f32; jitter: f32; interval: f32; }
+net_jitter_heard :: (j: NetJitter, ticks: int, now: int, clock: int, last_t: int) -> NetJitter {
+  o := j;
+  late := f32(now - clock);
+  if ticks == 0 { o.late_mean = late; }
+  o.jitter += (abs(late - o.late_mean) - o.jitter) * 0.1;
+  o.late_mean += (late - o.late_mean) * 0.1;
+  if ticks > 0 && clock > last_t { o.interval += (f32(clock - last_t) - o.interval) * 0.1; }
+  return o;
+}
+// The buffer's delay: behind the newest state by how late states come (the way here and the server's
+// send), one interval and their spread, so the time drawn has a state after it; NET_LOW at least, and
+// more as the spread grows.
+net_jitter_delay :: (j: NetJitter) -> int {
+  late := ifx j.late_mean > 0 then j.late_mean else 0.0f32;
+  return nc_clamp(NET_BASE + cast(int) (late + j.interval + 2 * j.jitter), NET_LOW, NET_HIGH);
+}
+// The tick map follows the states (#13157): a page maps the room's ticks to its own clock from the
+// moment it heard the world, so a room whose ticks run a little long or short of 1000/hz ms, or
+// that started them late, shows as lateness that only grows, and the buffer's delay climbs to
+// NET_HIGH over a steady stream (production: 300 ms behind over 32 ms round trips and 6 ms spread).
+// After each state the map takes NET_FOLLOW of the mean lateness up (ms, toward zero), so the buffer
+// holds the states' spread and interval, not the drift. Nothing moves while it settles.
+NET_FOLLOW :: 0.05;
+net_map_follow :: (late_mean: f32, ticks: int) -> int {
+  if ticks <= NET_SETTLE { return 0; }
+  return cast(int) (late_mean * f32(NET_FOLLOW));
+}
+// The delay drawn this frame (dt s): the buffer's at once for its first NET_SETTLE ticks, then coming
+// to it at NET_SLEW.
+net_lag_step :: (lag: f32, delay: int, ticks: int, dt: f32) -> f32 {
+  if ticks <= NET_SETTLE { return f32(delay); }
+  step := dt * 1000 * f32(NET_SLEW);
+  d := f32(delay) - lag;
+  return lag + (ifx d < -step then -step else ifx d > step then step else d);
+}
+// The ping with the lowest round trip of the last NET_PINGS (`pings` heard so far, at most NET_PINGS kept).
+net_ping_best :: (rtt: [] int, pings: int) -> int {
+  best := 0;
+  for i: 0..<nc_lo(pings, nc_lo(NET_PINGS, rtt.count)) { if rtt[i] < rtt[best] { best = i; } }
+  return best;
+}
+
+// ---- remote entities' states
+// book:begin interp-buffer
+// A state into a ring holding n states, oldest first: one no newer than the newest replaces it. The
+// ring is the realm's (NET_RING long at most); the new count comes back.
+net_ring_push :: (ring: [] NetState, n: int, p: NetState) -> int {
+  c := n;
+  if c > 0 && p.t <= ring[c - 1].t { ring[c - 1] = p; return c; }
+  if c == ring.count { for q: 0..<c - 1 { ring[q] = ring[q + 1]; } c -= 1; }
+  ring[c] = p;
+  return c + 1;
+}
+// State p gone on by its velocity to server time rt, `ahead` ms at most, then held.
+net_on_from :: (p: NetState, rt: int, ahead_ms: int) -> NetState {
+  ahead := f32(nc_lo(nc_hi(rt - p.t, 0), ahead_ms)) / 1000;
+  return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y + p.vy * ahead, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, f = p.f, a = p.a};
+}
+// Where the ring's entity (its states, oldest first) is at server time rt; it goes on past its
+// newest state for ahead_ms at most.
+net_ring_at :: (ring: [] NetState, rt: int, ahead_ms: int) -> NetState {
+  c := ring.count;
+  if c == 0 { return NetState.{}; }
+  if rt <= ring[0].t { return ring[0]; }
+  for q: 0..<c - 1 {
+    a := ring[q]; b := ring[q + 1];
+    if rt > b.t { continue; }
+    f := f32(rt - a.t) / f32(nc_hi(b.t - a.t, 1));
+    o := ifx f < 0.5 then a else b;
+    return NetState.{t = rt, x = nc_lerp(a.x, b.x, f), y = nc_lerp(a.y, b.y, f), z = nc_lerp(a.z, b.z, f), yaw = a.yaw + net_turn(a.yaw, b.yaw) * f,
+                     vx = nc_lerp(a.vx, b.vx, f), vy = nc_lerp(a.vy, b.vy, f), vz = nc_lerp(a.vz, b.vz, f), f = o.f, a = o.a};
+  }
+  // past the newest: on by its velocity for ahead_ms (a frame late or lost), then held
+  return net_on_from(ring[c - 1], rt, ahead_ms);
+}
+// Where an entity went on to past its newest state (lead: that state; on: drawn past it last
+// frame), and the difference from where the states after it put it (x, y, z), eased out.
+NetLead :: struct { lead: NetState; on: bool; x: f32; y: f32; z: f32; }
+// Drawn past its newest state last frame, and newer states came since: where they put it differs
+// from where it went on to (a turn or a stop it made meanwhile). That difference is drawn and eased
+// out over NET_EASE s, so it doesn't jump back; past NET_SNAP m (a new life, a jump), taken at once.
+// ring: its states (one at least); p: where the ring has it at rt now; dt: the frame's seconds.
+net_lead_ease :: (l: [] NetLead, ring: [] NetState, p: NetState, rt: int, dt: f32, ahead_ms: int) {
+  c := ring.count;
+  newest := ring[c - 1];
+  if c < 2 { l[0].x = 0; l[0].y = 0; l[0].z = 0; }
+  else if l[0].on && newest.t > l[0].lead.t {
+    q := net_on_from(l[0].lead, rt, ahead_ms);
+    ex := l[0].x + q.x - p.x; ey := l[0].y + q.y - p.y; ez := l[0].z + q.z - p.z;
+    if abs(ex) + abs(ey) + abs(ez) > f32(NET_SNAP) { ex = 0; ey = 0; ez = 0; }
+    l[0].x = ex; l[0].y = ey; l[0].z = ez;
+  }
+  l[0].lead = newest; l[0].on = rt > newest.t;
+  k := nc_clamp01(1 - dt / f32(NET_EASE));
+  l[0].x *= k; l[0].y *= k; l[0].z *= k;
+  if abs(l[0].x) + abs(l[0].y) + abs(l[0].z) < 0.001 { l[0].x = 0; l[0].y = 0; l[0].z = 0; }
+}
+// book:end interp-buffer
+// A row's state into the ring. After a gap of ticks with no row, an entity whose last row stood
+// still stood there those ticks (a server sends a row only when it changed, and a start changes its
+// velocity), so that state goes in again a tick before this one; one whose last row moved was held
+// back by the byte budget, and is drawn between the two. The new count comes back.
+net_ring_push_row :: (ring: [] NetState, n: int, p: NetState, hz: int) -> int {
+  c := n;
+  tick := 1000 / nc_hi(hz, 1);
+  if c > 0 && p.t - ring[c - 1].t > tick + tick / 2 {
+    last := ring[c - 1];
+    if last.vx * last.vx + last.vy * last.vy + last.vz * last.vz < 1.0e-4 { last.t = p.t - tick; c = net_ring_push(ring, c, last); }
+  }
+  return net_ring_push(ring, c, p);
+}
+
+// ---- your own body's corrections
+// book:begin correct
+// Where you are drawn less where your prediction has you: what the re-runs of your inputs moved
+// you by, not yet eased out.
+NetCorrect :: struct { x: f32; y: f32; z: f32; }
+// A re-run is done: (dx, dy, dz) is where it puts you less where you were. You stay drawn where you
+// were and the difference is eased out; past NET_SNAP m (a teleport, a throw) it is taken at once.
+net_correct_take :: (c: [] NetCorrect, dx: f32, dy: f32, dz: f32) {
+  ox := c[0].x - dx; oy := c[0].y - dy; oz := c[0].z - dz;
+  if abs(ox) + abs(oy) + abs(oz) > f32(NET_SNAP) { ox = 0; oy = 0; oz = 0; }
+  c[0].x = ox; c[0].y = oy; c[0].z = oz;
+}
+// This frame's (dt s) offset, eased to nothing over NET_SMOOTH s.
+net_correct_step :: (c: [] NetCorrect, dt: f32) -> [3] f32 {
+  k := nc_clamp01(1 - dt / f32(NET_SMOOTH));
+  c[0].x *= k; c[0].y *= k; c[0].z *= k;
+  if abs(c[0].x) + abs(c[0].y) + abs(c[0].z) < 0.001 { c[0].x = 0; c[0].y = 0; c[0].z = 0; }
+  return [3] f32.[c[0].x, c[0].y, c[0].z];
+}
+// book:end correct
+
+// ---- checks
+
+#test "interp: an entity is drawn between its states, the short way round, then on by its velocity and held" {
+  ring: [NET_RING] NetState; n := 0;
+  #assert net_ring_at(ring[0..<0], 50, NET_AHEAD).t == 0;
+  n = net_ring_push(ring[..], n, NetState.{t = 100, x = 0, z = 0, yaw = 3.0, vz = -4.25, f = 1, a = 7});
+  n = net_ring_push(ring[..], n, NetState.{t = 133, x = 0, z = -0.14, yaw = -3.0, vz = -4.25, f = 2, a = 8});
+  #assert n == 2 && net_ring_at(ring[0..<n], 50, NET_AHEAD).t == 100;
+  m := net_ring_at(ring[0..<n], 116, NET_AHEAD);
+  #assert abs(m.z + 0.0679) < 0.002 && abs(m.yaw - 3.0) < 0.2 && m.yaw > 3.0 && m.f == 1 && m.a == 7 && m.t == 116;   // through pi, not through 0
+  #assert net_ring_at(ring[0..<n], 120, NET_AHEAD).f == 2 && net_ring_at(ring[0..<n], 120, NET_AHEAD).a == 8;        // the nearer state's flags
+  on := net_ring_at(ring[0..<n], 133 + 100, NET_AHEAD); #assert abs(on.z - (-0.14 - 0.425)) < 0.001 && on.f == 2;
+  held := net_ring_at(ring[0..<n], 133 + 900, NET_AHEAD); #assert abs(held.z - (-0.14 - 4.25 * 0.15)) < 0.001;
+  far := net_ring_at(ring[0..<n], 133 + 900, 700); #assert abs(far.z - (-0.14 - 4.25 * 0.7)) < 0.001;                 // the realm's own reach
+  // a state no newer replaces the newest; the ring keeps its last few
+  n = net_ring_push(ring[..], n, NetState.{t = 133, z = -0.2}); #assert n == 2 && ring[1].z == -0.2;
+  for i: 0..<20 { n = net_ring_push(ring[..], n, NetState.{t = 200 + i * 33}); } #assert n == NET_RING && ring[NET_RING - 1].t == 200 + 19 * 33 && ring[0].t == 200 + 12 * 33;
+  #assert abs(net_turn(3.0, -3.0) - 0.2831853) < 0.0001 && abs(net_turn(-3.0, 3.0) + 0.2831853) < 0.0001 && net_turn(1, 2) == 1;
+}
+#test "interp: a stop seen late is eased out, never jumped; a big difference is taken at once" {
+  ring: [NET_RING] NetState; n := 0; l: [1] NetLead;
+  n = net_ring_push(ring[..], n, NetState.{t = 0, z = 0, vz = -4}); n = net_ring_push(ring[..], n, NetState.{t = 33, z = -0.132, vz = -4});
+  p := net_ring_at(ring[0..<n], 100, NET_AHEAD); net_lead_ease(l[..], ring[0..<n], p, 100, 0.016, NET_AHEAD); #assert l[0].on && l[0].lead.t == 33;
+  // it stopped at t 33: the next state says so; drawn where it went on to, coming back
+  n = net_ring_push(ring[..], n, NetState.{t = 66, z = -0.132});
+  q := net_ring_at(ring[0..<n], 116, NET_AHEAD); net_lead_ease(l[..], ring[0..<n], q, 116, 0.016, NET_AHEAD);
+  #assert l[0].z < 0 && l[0].z > -0.4;
+  for i: 0..<120 { r := net_ring_at(ring[0..<n], 116 + i * 16, NET_AHEAD); net_lead_ease(l[..], ring[0..<n], r, 116 + i * 16, 0.016, NET_AHEAD); }
+  #assert l[0].z == 0;
+  // a jump of metres: no ease
+  l[0].on = true; l[0].lead = NetState.{t = 0, z = 50}; n = net_ring_push(ring[..], n, NetState.{t = 2000, z = 0});
+  net_lead_ease(l[..], ring[0..<n], net_ring_at(ring[0..<n], 2000, NET_AHEAD), 2000, 0.016, NET_AHEAD); #assert l[0].z == 0 && !l[0].on;
+  // one state alone: nothing to differ from
+  one: [NET_RING] NetState; k := net_ring_push(one[..], 0, NetState.{t = 5, x = 1}); l[0].x = 0.3;
+  net_lead_ease(l[..], one[0..<k], one[0], 9, 0.016, NET_AHEAD); #assert l[0].x == 0 && l[0].on;
+}
+#test "interp: a row after a gap puts a standing entity's last state a tick before it, and draws a moving one between" {
+  ring: [NET_RING] NetState; n := 0;
+  n = net_ring_push_row(ring[..], n, NetState.{t = 0, x = 1}, 30); n = net_ring_push_row(ring[..], n, NetState.{t = 33, x = 1}, 30); #assert n == 2;
+  n = net_ring_push_row(ring[..], n, NetState.{t = 330, x = 2, vx = 3}, 30);     // it stood until it started
+  #assert n == 4 && ring[2].t == 297 && ring[2].x == 1 && ring[3].t == 330 && abs(net_ring_at(ring[0..<n], 200, NET_AHEAD).x - 1) < 0.0001;
+  n = net_ring_push_row(ring[..], n, NetState.{t = 660, x = 3, vx = 3}, 30);     // it moved all along: held back by the budget
+  #assert n == 5 && ring[4].t == 660 && abs(net_ring_at(ring[0..<n], 495, NET_AHEAD).x - 2.5) < 0.0001;
+  n = net_ring_push_row(ring[..], n, NetState.{t = 700, x = 3.1, vx = 3}, 0);    // no rate said: a tick is a second, never a divide by zero
+  #assert n == 6 && ring[5].t == 700;
+}
+#test "interp: the buffer's delay follows how late and how spread the states come, within its bounds" {
+  j := NetJitter.{interval = 33};
+  #assert net_jitter_delay(j) == NET_LOW;
+  for i: 0..<200 { j = net_jitter_heard(j, i, 1000 + i * 33 + 40 + (ifx i % 2 == 0 then 30 else -30), 1000 + i * 33, 1000 + (i - 1) * 33); }
+  d := net_jitter_delay(j); #assert d > 130 && d < 200;
+  for i: 0..<200 { j = net_jitter_heard(j, 200 + i, i * 33 + 2000, i * 33, (i - 1) * 33); }
+  #assert net_jitter_delay(j) == NET_HIGH;
+  // the tick map follows a drift: a room whose ticks run 1 ms long settles to the spread's delay, not NET_HIGH
+  jd: NetJitter; late_t := 0; ahead := 0;
+  for i: 0..<600 {
+    now := 1000 + i * 34 + 20 + (ifx i % 2 == 0 then 3 else -3); clock := 1000 + i * 33 + ahead;
+    jd = net_jitter_heard(jd, i, now, clock, 1000 + (i - 1) * 33 + ahead);
+    f := net_map_follow(jd.late_mean, i); ahead += f; jd.late_mean -= f32(f); late_t = i;
+  }
+  #assert net_jitter_delay(jd) == NET_LOW && abs(jd.late_mean) < 45 && late_t == 599;
+  #assert net_map_follow(500, NET_SETTLE) == 0 && net_map_follow(500, NET_SETTLE + 1) == 25 && net_map_follow(-500, NET_SETTLE + 1) == -25 && net_map_follow(19, 900) == 0;
+  // the drawn delay: at once while settling, then at NET_SLEW
+  #assert net_lag_step(100, 200, NET_SETTLE, 0.016) == 200;
+  l := net_lag_step(100, 200, NET_SETTLE + 1, 0.5); #assert abs(l - 150) < 0.01;
+  #assert net_lag_step(100, 101, NET_SETTLE + 1, 0.5) == 101;
+}
+#test "interp: the clock's ping is the one with the lowest round trip" {
+  rtt := [8] int.[90, 40, 70, 41, 0, 0, 0, 0];
+  #assert net_ping_best(rtt[..], 4) == 1 && net_ping_best(rtt[..], 1) == 0;
+}
+#test "interp: a re-run's difference is drawn and eased out; one past NET_SNAP is taken at once" {
+  c: [1] NetCorrect;
+  net_correct_take(c[..], 0.1, 0, 0); #assert abs(c[0].x + 0.1) < 0.0001 && c[0].y == 0 && c[0].z == 0;
+  o := net_correct_step(c[..], 0.06); #assert abs(o[0] + 0.05) < 0.0001 && o[1] == 0;      // half of NET_SMOOTH: half left
+  net_correct_take(c[..], 0, 0.2, -0.3); #assert abs(c[0].x + 0.05) < 0.0001 && abs(c[0].y + 0.2) < 0.0001 && abs(c[0].z - 0.3) < 0.0001;
+  o = net_correct_step(c[..], 1); #assert o[0] == 0 && o[1] == 0 && o[2] == 0 && c[0].z == 0;   // a long frame: all of it
+  net_correct_take(c[..], 0.0004, 0, 0); o = net_correct_step(c[..], 0.001); #assert o[0] == 0;  // under a millimetre: gone
+  net_correct_take(c[..], 1.0, 0.4, 0.2); #assert c[0].x == 0 && c[0].y == 0 && c[0].z == 0;      // a throw: taken at once
+  net_correct_take(c[..], 1.0, 0.3, 0.2); #assert abs(c[0].x + 1.0) < 0.0001;                    // just under: eased
+}

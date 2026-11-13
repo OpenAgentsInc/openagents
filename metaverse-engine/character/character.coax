@@ -1,0 +1,63 @@
+// The Metaverse Engine's character runtime (GitHub #12986, docs/verse/2026-11-06-native-hero-characters.md,
+// Design 1): one Character record a world spawns from an admitted pack, steps on its fixed step
+// and reads back as a skinning palette and morph weights for the GPU. Echo was its first user, in
+// Valley Lab; any world can host a character the same way:
+//
+//   packs:[1]CharacterPack;    // the world's pack table; a pack is admitted once, shared by many characters
+//   ...copy the ECH1 rig into packs[0].data, then character_pack_rig(packs[..],0,n) and character_pack_face(...)
+//   c:[1]Character;            // one per placed character (an entity's column)
+//   character_spawn(c[..],packs[..],0);character_place(c[..],at,heading);
+//   each fixed step: character_step(c[..],packs[..],dt), then, for idle life, character_idle_step(idle[..],c[..],packs[..],dt) (idle.coax)
+//   upload c[0].palette (CHARACTER_PALETTE_WORDS floats) when c[0].revision changes
+//
+// The record holds no pack bytes: it names its pack by index in the world's table, and every
+// call takes that table. Sizes come from the pack, under the maximums in rig.coax.
+//   coax/bin/coax test metaverse-engine/character/checks.coax
+#load "rig.coax";
+#load "pose.coax";
+#load "face.coax";
+#load "palette.coax";
+
+// How the body moves on each step: the ECH1 locomotion graph from the step's inputs, one clip
+// looped in place, or held (the caller writes `body`, as a staged shot does).
+CHARACTER_LOCOMOTION :: 0;
+CHARACTER_IDLE :: 1;
+CHARACTER_HELD :: 2;
+
+Character :: struct {
+ ready:bool;pack:int;joints:int;tracks:int;
+ parent:[CHARACTER_JOINTS]int;bind:[CHARACTER_JOINTS*12]f32;rest:[CHARACTER_JOINTS]SkinLocal;
+ body:[CHARACTER_JOINTS]SkinLocal;pose:[CHARACTER_JOINTS]SkinLocal;from:[CHARACTER_JOINTS]SkinLocal;gq:[CHARACTER_JOINTS]Quat;gt:[CHARACTER_JOINTS]Point;
+ // For the GPU: joint matrices, then morph weights, then capsules (palette.coax). `revision` counts every change.
+ palette:[CHARACTER_PALETTE_WORDS]f32;revision:int;
+ face:[1]FacePlayback;cycle:CharacterFaceCycle;
+ // Body: the mode and, for the locomotion graph, the step's inputs (speed in m/s, the turn from facing to wish in radians).
+ mode:int;idle_clip:int;speed:f32;turn:f32;falling:bool;drive_inputs:bool;input_on:bool;run_requested:bool;
+ blending:bool;clip:int= -1;time:f32;age:f32;moving:bool;grounded:bool=true;
+ // World transform: feet position in metres and heading in radians about +y. The world's pass reads it.
+ at:Point;heading:f32;
+ capsules:int;capsule:[CHARACTER_CAPSULES]CharacterCapsule;
+}
+
+// Spawn character c from admitted pack `pack` in the world's table: its rig's joints, bind and
+// rest pose, the first frame of its body mode, presented. Refuses an unknown or unadmitted pack.
+character_spawn :: (c:[]Character,packs:[]CharacterPack,pack:int)->bool {
+ if pack<0 || pack>=packs.count || !packs[pack].ready {c[0].ready=false;return false;}
+ c[0].ready=true;c[0].pack=pack;rig:=character_rig(c,packs);c[0].joints=cast(int)scan_u32(rig,8);c[0].tracks=cast(int)scan_u32(rig,24);
+ for k:0..<c[0].joints {at:=416+k*80;c[0].parent[k]=cast(int)scan_u32(rig,at)-1;for word:0..<12 {c[0].bind[k*12+word]=f32_from_bits(scan_u32(rig,at+4+word*4));}c[0].rest[k]=character_local_at(rig,at+52);c[0].body[k]=c[0].rest[k];}
+ character_reset(c);character_body(c,packs,0);return true;
+}
+// Despawn: the record stops stepping and its palette goes to zero, so a pass that still draws it draws nothing.
+character_despawn :: (c:[]Character) {c[0].ready=false;for k:0..<CHARACTER_PALETTE_WORDS {c[0].palette[k]=0;}c[0].revision+=1;}
+character_place :: (c:[]Character,at:Point,heading:f32) {c[0].at=at;c[0].heading=heading;}
+// Back to the start of the body graph with the face clip off. The idle face cycle keeps its clock.
+character_reset :: (c:[]Character) {c[0].clip= -1;c[0].time=0;c[0].age=0;c[0].moving=false;c[0].grounded=true;c[0].face[0].enabled=false;}
+// One fixed step: the idle face cycle, then the body by its mode, the face clock and the palette.
+character_step :: (c:[]Character,packs:[]CharacterPack,dt:f32) {
+ if !c[0].ready {return;}character_face_cycle(c,packs,dt);character_body(c,packs,dt);
+}
+character_body :: (c:[]Character,packs:[]CharacterPack,dt:f32) {
+ if c[0].mode==CHARACTER_IDLE {character_idle_body(c,packs,dt);}
+ else if c[0].mode==CHARACTER_HELD {character_face_clock(c,packs,dt);}
+ else {character_locomote(c,packs,dt,c[0].speed,!c[0].falling,c[0].turn);}
+}

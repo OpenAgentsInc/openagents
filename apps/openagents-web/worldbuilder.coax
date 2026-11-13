@@ -1,7 +1,7 @@
 // WorldBuilder (openagents.com/create-world): an empty Grid and one line to type in, bottom
 // centre. What you type goes to /api/worldbuilder/act (coax/web/api/worldbuilder.c), which asks
 // the model for typed edits; worldbuilder-plan.coax carries them out on Aethyrforge's scene edit
-// log (aethyr/forge/edit.coax), drawn here from the Quaternius pack (worldbuilder_pack.coax), each
+// log (metaverse-engine/editor/edit.coax), drawn here from the Quaternius pack (worldbuilder_pack.coax), each
 // mesh one instanced draw. The things stand on the world's ground, an Aethyr terrain tile
 // (worldbuilder-land.coax) painted and shaped by chat or with the brush bar over the chat box, and
 // drawn from its samples in one draw. A tap or click on the ground says where "here" is. The chat box edits
@@ -22,7 +22,7 @@
 #load "../../components/backend/gpu.coax";
 #load "textkeys.coax";
 #load "worldbuilder-plan.coax";
-#load "../../aethyr/physics/ground-query.coax";
+#load "../../metaverse-engine/physics/ground-query.coax";
 
 VERTEX_FLOATS :: GP_VERTEX_FLOATS;
 MAX_VERTICES :: 8192;
@@ -587,7 +587,7 @@ field_offset :: (s: [] WorldBuilder, lx: f32) -> int {
 }
 
 // Where a screen point's ray meets the ground: the terrain tile where it is shaped (Aethyr's exact
-// ground ray, aethyr/physics/ground-query.coax), else the level floor.
+// ground ray, metaverse-engine/physics/ground-query.coax), else the level floor.
 ground_at :: (s: [] WorldBuilder, x: f32, y: f32) -> WbSpot {
   nx := x / hi(s[0].width, 1) * 2 - 1; ny := 1 - y / hi(s[0].height, 1) * 2;
   rx := s[0].fwd[0] + nx * s[0].right[0] + ny * s[0].up[0];

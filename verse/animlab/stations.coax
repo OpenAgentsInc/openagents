@@ -1,13 +1,13 @@
 // Animation Lab's rig and clip stations. All visible controls are Coax.
 #load "mannequin.coax";
 #load "scene-draw.coax";
-#load "../../aethyr/anim/fixup.coax";
+#load "../../metaverse-engine/anim/fixup.coax";
 #load "layers-station-checks.coax";
-#load "../../aethyr/anim/retarget.coax";
-#load "../../aethyr/anim/inspect-mesh.coax";
-#load "../../aethyr/core/loop.coax" as clock;
-#load "../../aethyr/ui/draw.coax";
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/anim/retarget.coax";
+#load "../../metaverse-engine/anim/inspect-mesh.coax";
+#load "../../metaverse-engine/core/loop.coax" as clock;
+#load "../../metaverse-engine/ui/draw.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/lib/text/ph_num.coax";
 #load "direct.coax";
 AlState :: struct {

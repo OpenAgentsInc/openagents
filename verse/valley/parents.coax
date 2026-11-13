@@ -1,5 +1,5 @@
 // Original irregular convex fans, with matching x=+/-2 boundary edges.
-#load "../../aethyr/render/geometry/parent.coax";
+#load "../../metaverse-engine/render/geometry/parent.coax";
 parent_source :: (height:f32)->ParentMesh {
   m:=ParentMesh.{vertices=7,indices=18};
   p:=[7]Point.[v3(-2,0,-1),v3(-1,0,-2),v3(1,0,-2),v3(2,0,-1),v3(2,0,1),v3(-2,0,1),v3(0,height,0)];

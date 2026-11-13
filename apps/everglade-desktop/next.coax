@@ -44,7 +44,7 @@
 // The agent is polled from the frame without waiting (cl_poll), so the world keeps running.
 // Drawn over the scene; workshop.coax loads this file, so the two are one unit.
 //   coax/bin/coax test --library apps/everglade-desktop/next.coax --only "next issue"
-#load "../../aethyr/ui/draw.coax";
+#load "../../metaverse-engine/ui/draw.coax";
 #load "text.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
 #load "../../coax/lib/agent/engine/claude.coax";   // the shared Claude engine and the session record it writes

@@ -1,0 +1,224 @@
+// Cel land: ground, dunes, mesas, rocks, arches, canyons, terraces, towers, steps, sea, palms,
+// domed houses, banners and a moon, built with the cel mesh writers (metaverse-engine/render/cel-mesh.coax)
+// in the colours they are handed. Scattered pieces take a seed, so the same scene writes the same
+// triangles. Nothing here draws or decides; it only writes. Splice
+// (verse/splice/splice.coax) stages them.
+//   coax/bin/coax test --library metaverse-engine/kit/land.coax
+#load "machines.coax";
+
+// The ground: one wide quad at y 0. MAT_FLOOR draws flagstones; MAT_WORLD a plain cel plane.
+kit_ground :: (buf: [] u32, p: [] Pen, obj: int, c: KitTint, tiles: bool) {
+  kit_pen(p, obj, ifx tiles then MAT_FLOOR else MAT_WORLD, c);
+  quad(buf, p, v3(-150, 0, -150), v3(150, 0, -150), v3(150, 0, 150), v3(-150, 0, 150));
+}
+
+// Dune swells: flattened ellipsoids across x in [-span, span] and z in [z0, z1].
+kit_dunes :: (buf: [] u32, p: [] Pen, obj: int, c: KitTint, count: int, seed: f32, span: f32, z0: f32, z1: f32, rmin: f32, rmax: f32) {
+  kit_pen(p, obj, MAT_WORLD, c);
+  for i: 0..<count {
+    k := seed + cast(f32) i;
+    x := (kit_rand(k + 1) * 2 - 1) * span;
+    z := z0 + kit_rand(k + 40) * (z1 - z0);
+    r := rmin + kit_rand(k + 80) * (rmax - rmin);
+    ellipsoid(buf, p, frame_at(v3(x, -0.075 * r, z), kit_rand(k + 9) * 6), r, r * 0.3, r * 0.8, 12, 6, 0);
+  }
+}
+
+// Mesas: flat-topped cones in a row across the horizon, about z_far deep.
+kit_mesas :: (buf: [] u32, p: [] Pen, obj: int, c: KitTint, count: int, seed: f32, z_far: f32, spacing: f32, hmin: f32, hmax: f32) {
+  kit_pen(p, obj, MAT_WORLD, c);
+  for i: 0..<count {
+    k := seed + cast(f32) i;
+    x := (cast(f32) i - cast(f32) (count - 1) * 0.5) * spacing + (kit_rand(k + 120) - 0.5) * spacing * 0.4;
+    z := z_far - kit_rand(k + 130) * 40;
+    h := hmin + kit_rand(k + 140) * (hmax - hmin);
+    r0 := 12 + kit_rand(k + 150) * 10; r1 := 4 + kit_rand(k + 160) * 4;
+    tube(buf, p, frame_at(v3(x, -0.5, z), 0), h, r0, r0, r1, r1, 7, true);
+  }
+}
+
+// Rocks: lumps in a ring from d0 to d1 round (cx, cz), radius rmin to rmax.
+kit_rocks :: (buf: [] u32, p: [] Pen, obj: int, c: KitTint, count: int, seed: f32, cx: f32, cz: f32, d0: f32, d1: f32, rmin: f32, rmax: f32) {
+  kit_pen(p, obj, MAT_WORLD, c);
+  for i: 0..<count {
+    k := seed + cast(f32) i;
+    a := kit_rand(k + 200) * TAU;
+    d := d0 + kit_rand(k + 210) * (d1 - d0);
+    r := rmin + kit_rand(k + 220) * (rmax - rmin);
+    ellipsoid(buf, p, frame_at(v3(cx + cos(a) * d, r * 0.2, cz + sin(a) * d), kit_rand(k + 230) * 6), r, r * 0.7, r * 0.9, 8, 5, 0);
+  }
+}
+
+// A post-and-lintel arch: two piers and the lintel over a span, its middle at f.
+kit_arch_block :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, pier: KitTint, lintel: KitTint, span: f32, h: f32, thick: f32) {
+  kit_pen(p, obj, MAT_WORLD, pier);
+  box(buf, p, kit_at(f, -(span * 0.5 + thick * 0.5), h * 0.5, 0), thick * 0.5, h * 0.5, thick * 0.55);
+  box(buf, p, kit_at(f, span * 0.5 + thick * 0.5, h * 0.5, 0), thick * 0.5, h * 0.5, thick * 0.55);
+  kit_pen(p, obj + 1, MAT_WORLD, lintel);
+  box(buf, p, kit_at(f, 0, h + thick * 0.55, 0), span * 0.5 + thick, thick * 0.55, thick * 0.6);
+}
+
+// A natural rock arch: a band of blocks along a half ellipse in the frame's x-y plane, its feet at
+// x = -span/2 and span/2 on the ground, `rise` high, `thick` through the band and `depth` deep.
+kit_arch_round :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, c: KitTint, span: f32, rise: f32, thick: f32, depth: f32, segs: int) {
+  kit_pen(p, obj, MAT_WORLD, c);
+  for i: 0..<segs {
+    a0 := PI * cast(f32) i / cast(f32) segs; a1 := PI * cast(f32) (i + 1) / cast(f32) segs;
+    pa := fp(f, cos(a0) * span * 0.5, sin(a0) * rise, 0);
+    pb := fp(f, cos(a1) * span * 0.5, sin(a1) * rise, 0);
+    g := frame_along(pa, pb, f.z);
+    w := 1.0f32 + 0.25 * (1 - sin((a0 + a1) * 0.5));   // the band is heavier toward its feet
+    box(buf, p, frame_move(g, times(add(pa, pb), 0.5)), depth * 0.5, length(sub(pb, pa)) * 0.56, thick * 0.5 * w);
+  }
+}
+
+// Canyon walls: two rows of tall blocks either side of a floor `gap` wide, from z0 to z1, their tops
+// ragged, alternating two tints.
+kit_canyon :: (buf: [] u32, p: [] Pen, obj: int, a: KitTint, b: KitTint, seed: f32, gap: f32, z0: f32, z1: f32, height: f32) {
+  n := 14;
+  run := (z1 - z0) / cast(f32) n;
+  for side: 0..<2 {
+    sx := ifx side == 0 then -1.0f32 else 1.0f32;
+    for i: 0..<n {
+      k := seed + cast(f32) (i + side * 31);
+      w := 3 + kit_rand(k + 300) * 4;
+      h := height * (0.6 + kit_rand(k + 310) * 0.7);
+      x := sx * (gap * 0.5 + w * 0.5 + kit_rand(k + 320) * 1.5);
+      z := z0 + (cast(f32) i + 0.5) * run;
+      kit_pen(p, obj + side, MAT_WORLD, ifx i % 2 == 0 then a else b);
+      block(buf, p, x, 0, z, w * 0.5, h, run * 0.55);
+      if kit_rand(k + 330) > 0.5 { ellipsoid(buf, p, frame_at(v3(x, h, z), kit_rand(k + 340) * 6), w * 0.45, w * 0.3, run * 0.5, 8, 5, 0); }
+    }
+  }
+}
+
+// Stepped terraces: `levels` stacked blocks, each narrower, alternating tints, windows across each face.
+kit_terraces :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, a: KitTint, b: KitTint, win: KitTint, levels: int, w0: f32, d0: f32, h: f32) {
+  for lvl: 0..<levels {
+    k := cast(f32) lvl;
+    hw := w0 * 0.5 - k * w0 * 0.09; hd := d0 * 0.5 - k * d0 * 0.075;
+    kit_pen(p, obj, MAT_WORLD, ifx lvl % 2 == 0 then a else b);
+    box(buf, p, kit_at(f, 0, k * h + h * 0.5, 0), hw, h * 0.5, hd);
+    kit_pen(p, obj + 1, MAT_WINDOW, win);
+    for w: 0..<4 {
+      wx := (cast(f32) w - 1.5) * hw * 0.42;
+      box(buf, p, kit_at(f, wx, k * h + h * 0.55, hd + 0.02), 0.5, 0.45, 0.02);
+    }
+  }
+}
+
+// Towers: tall round towers with domed caps and a ring band, scattered round (cx, cz).
+kit_towers :: (buf: [] u32, p: [] Pen, obj: int, wall: KitTint, cap: KitTint, seed: f32, count: int, cx: f32, cz: f32, spread: f32, hmin: f32, hmax: f32) {
+  for i: 0..<count {
+    k := seed + cast(f32) i;
+    x := cx + (kit_rand(k + 400) * 2 - 1) * spread;
+    z := cz + (kit_rand(k + 410) * 2 - 1) * spread;
+    h := hmin + kit_rand(k + 420) * (hmax - hmin);
+    r := 2 + kit_rand(k + 430) * 3;
+    kit_pen(p, obj, MAT_WORLD, wall);
+    tube(buf, p, frame_at(v3(x, 0, z), 0), h, r, r, r * 0.85, r * 0.85, 12, true);
+    kit_pen(p, obj + 1, MAT_WORLD, cap);
+    tube(buf, p, frame_at(v3(x, h * 0.62, z), 0), h * 0.05, r * 1.08, r * 1.08, r * 1.04, r * 1.04, 12, true);
+    ellipsoid(buf, p, frame_at(v3(x, h, z), 0), r * 0.9, r * 0.6, r * 0.9, 12, 6, 0);
+  }
+}
+
+// A stair rising away along the frame's -z: `count` steps, each `rise` up and `run` deep, `width` wide.
+kit_steps :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, a: KitTint, b: KitTint, count: int, rise: f32, run: f32, width: f32) {
+  for i: 0..<count {
+    k := cast(f32) i;
+    kit_pen(p, obj, MAT_WORLD, ifx i % 2 == 0 then a else b);
+    box(buf, p, kit_at(f, 0, (k + 1) * rise * 0.5, -k * run), width * 0.5, (k + 1) * rise * 0.5, run * 0.5);
+  }
+}
+
+// The sea: a flat plane at y from z = z_shore out, with foam lumps along the shore.
+kit_sea :: (buf: [] u32, p: [] Pen, obj: int, water: KitTint, foam: KitTint, y: f32, z_shore: f32, seed: f32) {
+  kit_pen(p, obj, MAT_FLAT, water);
+  quad(buf, p, v3(-150, y, -150), v3(150, y, -150), v3(150, y, z_shore), v3(-150, y, z_shore));
+  kit_pen(p, obj + 1, MAT_FLAT, foam);
+  for i: 0..<18 {
+    k := seed + cast(f32) i;
+    x := (kit_rand(k + 500) * 2 - 1) * 40;
+    z := z_shore - kit_rand(k + 510) * 30;
+    r := 0.8 + kit_rand(k + 520) * 2.2;
+    ellipsoid(buf, p, frame_at(v3(x, y, z), kit_rand(k + 530) * 6), r * 1.8, r * 0.35, r * 0.5, 10, 5, 0);
+  }
+}
+
+// A palm: a leaning two-part trunk and seven drooping fronds.
+kit_palm :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, trunk: KitTint, leaf: KitTint) {
+  kit_pen(p, obj, MAT_SKIN, trunk);
+  mid := fp(f, 0.3 * s, 3.0 * s, 0);
+  top := fp(f, 0.9 * s, 6.0 * s, 0);
+  limb(buf, p, f.o, mid, 0.3 * s, 0.24 * s, fd(f, 0, 0, 1), 8);
+  limb(buf, p, mid, top, 0.24 * s, 0.18 * s, fd(f, 0, 0, 1), 8);
+  kit_pen(p, obj + 1, MAT_WORLD, leaf);
+  for i: 0..<7 {
+    g := frame_turn(frame_at(top, cast(f32) i * TAU / 7), 0, 0.55);
+    ellipsoid(buf, p, kit_at(g, 0, 0, 1.6 * s), 0.38 * s, 0.07 * s, 1.6 * s, 8, 4, 0);
+  }
+}
+
+// A domed house: walls, a dome and a little lantern on top; `w` across.
+kit_dome_house :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, wall: KitTint, dome: KitTint, w: f32, h: f32) {
+  kit_pen(p, obj, MAT_WORLD, wall);
+  box(buf, p, kit_at(f, 0, h * 0.5, 0), w * 0.5, h * 0.5, w * 0.5);
+  kit_pen(p, obj + 1, MAT_SKIN, dome);
+  ellipsoid(buf, p, kit_at(f, 0, h, 0), w * 0.46, w * 0.5, w * 0.46, 14, 7, 0);
+  tube(buf, p, kit_at(f, 0, h + w * 0.45, 0), w * 0.18, w * 0.06, w * 0.06, 0.01, 0.01, 8, true);
+}
+
+// A banner on a wall: a cloth panel with a sun disc on it, facing the frame's z.
+kit_banner :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, cloth: KitTint, sun: KitTint, w: f32, h: f32) {
+  kit_pen(p, obj, MAT_CLOTH, cloth);
+  box(buf, p, f, w * 0.5, h * 0.5, 0.08);
+  kit_pen(p, obj + 1, MAT_GLOW, sun);
+  oval(buf, p, kit_at(f, 0, 0, 0.1), w * 0.28, w * 0.28, 24);
+}
+
+// A moon (or a far planet) hanging in the sky at `at`.
+kit_moon :: (buf: [] u32, p: [] Pen, obj: int, c: KitTint, at: Point, r: f32) {
+  kit_pen(p, obj, MAT_GLOW, c);
+  ellipsoid(buf, p, frame_at(at, 0), r, r, r, 24, 12, 0);
+}
+
+// A rock wall: a block from (x0, z0) to (x1, z1), h tall, with a darker strata band standing a
+// little proud of it part way up and a ragged cap of lumps along its top.
+kit_wall :: (buf: [] u32, p: [] Pen, obj: int, face: KitTint, band: KitTint, x0: f32, x1: f32, z0: f32, z1: f32, h: f32, seed: f32) {
+  cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5; hx := (x1 - x0) * 0.5; hz := (z1 - z0) * 0.5;
+  kit_pen(p, obj, MAT_WORLD, face);
+  block(buf, p, cx, 0, cz, hx, h, hz);
+  kit_pen(p, obj + 1, MAT_WORLD, band);
+  block(buf, p, cx, h * 0.36, cz, hx + 0.12, h * 0.1, hz + 0.12);
+  block(buf, p, cx, h * 0.72, cz, hx + 0.08, h * 0.05, hz + 0.08);
+  kit_pen(p, obj, MAT_WORLD, face);
+  n := cast(int) ((hx + hz) / 5) + 2;
+  for i: 0..<n {
+    k := seed + cast(f32) i;
+    x := x0 + kit_rand(k + 600) * (x1 - x0); z := z0 + kit_rand(k + 610) * (z1 - z0);
+    r := 1.5 + kit_rand(k + 620) * 2.5;
+    ellipsoid(buf, p, frame_at(v3(x, h, z), kit_rand(k + 630) * 6), r, r * 0.5, r, 8, 5, 0);
+  }
+}
+
+// A crate: a box with two bands and a lid light.
+kit_crate :: (buf: [] u32, p: [] Pen, f: Frame, obj: int, wood: KitTint, band: KitTint, light: KitTint, w: f32) {
+  kit_pen(p, obj, MAT_WORLD, wood);
+  box(buf, p, kit_at(f, 0, w * 0.4, 0), w * 0.6, w * 0.4, w * 0.45);
+  kit_pen(p, obj + 1, MAT_CLOTH, band);
+  box(buf, p, kit_at(f, -w * 0.35, w * 0.4, 0), w * 0.06, w * 0.42, w * 0.47);
+  box(buf, p, kit_at(f, w * 0.35, w * 0.4, 0), w * 0.06, w * 0.42, w * 0.47);
+  kit_pen(p, obj + 2, MAT_GLOW, light);
+  box(buf, p, kit_at(f, 0, w * 0.82, 0), w * 0.12, w * 0.03, w * 0.12);
+}
+
+#test "land pieces are deterministic: the same seed writes the same triangles" {
+  a: [60000] u32; b: [60000] u32;
+  pa := [1] Pen.[Pen.{}]; pb := [1] Pen.[Pen.{}];
+  c := kit_tint(0.8, 0.5, 0.3);
+  kit_rocks(a[..], pa[..], 4, c, 10, 7, 0, 0, 3, 9, 0.3, 1);
+  kit_rocks(b[..], pb[..], 4, c, 10, 7, 0, 0, 3, 9, 0.3, 1);
+  #assert pa[0].n == pb[0].n && pa[0].n > 0;
+  for i: 0..<pa[0].n * VERTEX_WORDS { #assert a[i] == b[i]; }
+}

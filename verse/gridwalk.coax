@@ -4,9 +4,9 @@
 // and the frame's time; touches go to gridwalk_touch as they happen. The face only reads where
 // to draw you and the camera.
 //
-// Each frame's controls become one Intent (aethyr/core/input.coax: the keyboard's and the touch
+// Each frame's controls become one Intent (metaverse-engine/core/input.coax: the keyboard's and the touch
 // stick's say the same thing the same way) and one event in the session's record
-// (aethyr/core/replay.coax). The fixed steps (aethyr/core/loop.coax, the player's clock) take the events
+// (metaverse-engine/core/replay.coax). The fixed steps (metaverse-engine/core/loop.coax, the player's clock) take the events
 // from the record, so a live session and its replay step the same way, and every step leaves its
 // state's digest. Look and zoom are amounts: a frame's steps split them, so you turn by the same
 // total at any frame rate. Drawing mixes the last two steps, the camera's turn included.
@@ -19,12 +19,12 @@
 //   coax/bin/coax mutate verse/gridwalk.coax --root-only
 
 #module "verse.gridwalk";
-#load "../aethyr/move/walk.coax" as pc; // the engine walking controller; C exports stay in the facade
-#load "../aethyr/physics/collision-profiles.coax" as walk_profiles;
-#load "../aethyr/physics/collide.coax" as walk_capsule;
-#load "../aethyr/physics/query.coax" as grid_queries;
-#load "../aethyr/core/sticks.coax";         // the phone's thumbs
-#load "../aethyr/core/replay.coax";
+#load "../metaverse-engine/move/walk.coax" as pc; // the engine walking controller; C exports stay in the facade
+#load "../metaverse-engine/physics/collision-profiles.coax" as walk_profiles;
+#load "../metaverse-engine/physics/collide.coax" as walk_capsule;
+#load "../metaverse-engine/physics/query.coax" as grid_queries;
+#load "../metaverse-engine/core/sticks.coax";         // the phone's thumbs
+#load "../metaverse-engine/core/replay.coax";
 #load "tests/gridwalk-checks.coax";   // the checks' sessions
 #authority;
 
@@ -38,11 +38,11 @@ GW_PROFILE1_INITIAL :: 3864885271; // historical profile-1 pin; those recordings
 GridWalk :: struct {
   profile: int = GW_PROFILE;
   you: pc.Player;
-  input: InputBuffer;        // what the steps read (aethyr/core/input.coax)
-  thumbs: Sticks;            // the phone's fingers (aethyr/core/sticks.coax)
+  input: InputBuffer;        // what the steps read (metaverse-engine/core/input.coax)
+  thumbs: Sticks;            // the phone's fingers (metaverse-engine/core/sticks.coax)
   prev_theta: f32;           // the camera's turn when the last step began, for drawing
   prev_phi: f32;
-  // the record (aethyr/core/replay.coax) and the state it starts from
+  // the record (metaverse-engine/core/replay.coax) and the state it starts from
   start: pc.Player;
   start_input: InputBuffer;
   events: [GW_EVENTS] ReplayEvent;
@@ -178,7 +178,7 @@ gridwalk_frame :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: b
 
 // A finger (its slot), as the page's pointer reports it: 0 began, 1 moved, 2 ended, 3 cancelled.
 // A finger on the walking side is the move stick; on the other side it looks, and a quick tap
-// there jumps (aethyr/core/sticks.coax).
+// there jumps (metaverse-engine/core/sticks.coax).
 gridwalk_touch :: (g: [] GridWalk, slot: int, phase: int, x: f32, y: f32) #export_c #effects(all) {
   if g.count < 1 { return; }
   g[0].thumbs = verse_sticks_world_touch(g[0].thumbs, slot, phase, x, y, g[0].width, g[0].height, g[0].dpr, g[0].now);
@@ -626,7 +626,7 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
 }
 
 // book:begin smooth
-// The camera follows without a jump (the Metaverse Engine's follow, aethyr/cam/follow.coax, book chapter 10): at
+// The camera follows without a jump (the Metaverse Engine's follow, metaverse-engine/cam/follow.coax, book chapter 10): at
 // 60 FPS the 64 Hz steps don't land one to a frame, yet as you walk, run and jump the eye drawn
 // each frame moves no further than you can in a frame, its move changes by at most 0.016 m from
 // one frame to the next (measured 0.013 m), and on a jump's rising arc it rises every frame.

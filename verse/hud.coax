@@ -6,8 +6,8 @@
 #module "verse.hud";
 #export HudRect, HudPoint, verse_hud_slot;
 #export verse_hud_frame_point, verse_hud_frame_arm, verse_hud_tone, verse_hud_cut, verse_hud_outline, verse_hud_arm_down;
-#load "../aethyr/ui/hud-types.coax";
-#load "../aethyr/ui/hud-frame.coax";
+#load "../metaverse-engine/ui/hud-types.coax";
+#load "../metaverse-engine/ui/hud-frame.coax";
 #test "hotbar fits a narrow phone and stays above the home indicator" {
  b:=verse_hud_slot(320,700,34,0,6);z:=verse_hud_slot(320,700,34,5,6);
  #assert b.x>=8 && z.x+z.width<=312 && b.y+b.height<=654;

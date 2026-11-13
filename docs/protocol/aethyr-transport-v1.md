@@ -3,7 +3,7 @@
 The bytes a page and its room carry for each frame, on a WebSocket or on
 WebTransport. Profile:
 [`aethyr-transport-v1.json`](../../proto/verse/aethyr-transport-v1.json).
-Codec: `aethyr/net/transport.coax`; the page's link and the room's
+Codec: `metaverse-engine/net/transport.coax`; the page's link and the room's
 `coax/web/room/room-wt.coax` both load it.
 
 On a WebSocket every frame is its own bytes, unchanged, on the socket's

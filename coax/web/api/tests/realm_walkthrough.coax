@@ -1,7 +1,7 @@
 // Aethyrforge's whole route, checked (GitHub #12629, book chapter 54): edit -> publish -> reload from
 // the pinned record -> a later release -> fork -> edits on each side stay apart -> refusals keep the
 // last valid document. Against PostgreSQL with every migration applied (no API, bucket, identity or
-// model); the edits go through aethyr/forge/edit.coax, and every digest the server states is worked
+// model); the edits go through metaverse-engine/editor/edit.coax, and every digest the server states is worked
 // out again here from the bytes: the document's SHA-256, the engine manifest's, and each served
 // file's (engine-served check against a site this check stages). It cleans up what it makes.
 //   PGURL=... PSQL=psql WORK=DIR coax/web/tool.sh coax/web/api/tests/realm_walkthrough.coax
@@ -9,8 +9,8 @@
 #load "../../../lib/sys/tool.coax";
 #load "../../../lib/sys/proc.coax";
 #load "../../../lib/sys/fs.coax";
-#load "../../../../aethyr/forge/publish.coax";
-#load "../../../../aethyr/forge/doc.coax";
+#load "../../../../metaverse-engine/editor/publish.coax";
+#load "../../../../metaverse-engine/editor/doc.coax";
 
 WK_OUT :: 131072;
 Wk :: struct { db: string; psql: string; work: string; fails: int; checks: int; }

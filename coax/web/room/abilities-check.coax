@@ -5,7 +5,7 @@
 // each. A casts again: both hear A's go (x) and B's stay; B's E ends B's, and A comes down.
 //   coax/web/tool.sh coax/web/room/abilities-check.coax [ws://localhost:8830]
 // Prints one JSON line, then "lifts" and exits 0, or "fails" and 1.
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 
 AC_SEATS :: 2;

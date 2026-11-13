@@ -1,6 +1,6 @@
 // The actual physical walker paying a strict turn's movement (walk-budget.coax).
 #load "world-timing-checks.coax";
-#load "../../aethyr/move/walk.coax" as walk;
+#load "../../metaverse-engine/move/walk.coax" as walk;
 
 #test "the physical walker driven at its real run speed cannot overspend a strict turn" {
   for dash: 0..<2 {

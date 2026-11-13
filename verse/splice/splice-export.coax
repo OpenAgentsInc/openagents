@@ -10,7 +10,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "splice-game.coax";
-#load "../../aethyr/export/bundle.coax";
+#load "../../metaverse-engine/export/bundle.coax";
 
 ceil :: (x: f64) -> f64 #foreign #effects(all);   // libm's, for the PNG writer (coax/lib/image/pillow.coax)
 
@@ -280,8 +280,8 @@ tool_main :: () -> int #export_c #effects(all) {
   if !sx_emit("verse/splice/splice.coax", dir, "splice.c", "splice.h", work[..]) || !sx_emit("apps/openagents-web/animelab-style.coax", dir, "animelab-style.c", "Animelab-style.h", work[..]) {
     print("splice-export: the Coax compiler did not emit the rules' C (run from the repository root)\n"); return 1;
   }
-  if !sx_copy("verse/splice/splice-ue-face.c", dir, "splice-ue-face.c", work[..]) || !sx_copy("aethyr/export/unreal/aethyr_host.h", dir, "aethyr_host.h", work[..]) ||
-     !sx_copy("aethyr/export/unreal/aethyr_script.c", dir, "aethyr_script.c", work[..]) || !sx_copy("verse/splice/splice-run.aescript", dir, "run.aescript", work[..]) {
+  if !sx_copy("verse/splice/splice-ue-face.c", dir, "splice-ue-face.c", work[..]) || !sx_copy("metaverse-engine/export/unreal/aethyr_host.h", dir, "aethyr_host.h", work[..]) ||
+     !sx_copy("metaverse-engine/export/unreal/aethyr_script.c", dir, "aethyr_script.c", work[..]) || !sx_copy("verse/splice/splice-run.aescript", dir, "run.aescript", work[..]) {
     print("splice-export: could not copy the host interface into rules/\n"); return 1;
   }
   {

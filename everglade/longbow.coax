@@ -1,5 +1,5 @@
 // Everglade's Longbow, for every zone (Experimental, Everglade II, the Archery Range): how the
-// Ranger's bow feels on the engine's archery (aethyr/action/archery.coax, docs/verse/bow-combat.md).
+// Ranger's bow feels on the engine's archery (metaverse-engine/action/archery.coax, docs/verse/bow-combat.md).
 // The engine owns the draw, the sight line, the arrows' flight and what they meet. This file is the
 // game's own numbers and sounds:
 //
@@ -14,7 +14,7 @@
 // A zone keeps an Archer, answers the engine's two questions (is this point in my ground or walls,
 // did the arrow that reached this body hit), and plays these cues through its own sound and effects.
 //   coax/bin/coax test everglade/longbow.coax --library
-#load "../aethyr/action/archery.coax" as arch;
+#load "../metaverse-engine/action/archery.coax" as arch;
 
 EG_BOW_HAND :: 1.45;     // m up from your feet the arrow leaves
 EG_BOW_AHEAD :: 0.45;    // m ahead of you, and

@@ -117,7 +117,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   st := v[0].eg[k].seat[seat..<seat + 1];
   seq := w.seq;
   n := st[0].q_n;
-  if !life_room_takes(seq, st[0].ack, ifx n > 0 then st[0].q[n - 1].seq else st[0].ack) { return; }   // old or repeated (aethyr/session/lifecycle.coax)
+  if !life_room_takes(seq, st[0].ack, ifx n > 0 then st[0].q[n - 1].seq else st[0].ack) { return; }   // old or repeated (metaverse-engine/session/lifecycle.coax)
   if n >= EG_INPUTS {
     for i: 1..<EG_INPUTS { st[0].q[i - 1] = st[0].q[i]; }
     n = EG_INPUTS - 1;
@@ -197,7 +197,7 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
     st[0].name_n = tk.name_n;
   }
 }
-// Sessions pinned to a build (#12839, aethyr/session/compat.coax). The room is one server of the
+// Sessions pinned to a build (#12839, metaverse-engine/session/compat.coax). The room is one server of the
 // profile: its engine, rules and world (WIRE_PINS), the wires WIRE_MIN..WIRE_VERSION, and the newest
 // saved-data schema it reads (RV_SCHEMA). A seat's pins are its page's P (a page from before P is
 // WIRE_PINS_FIRST's build), its hello's wire, and the schema of the data its ticket brings back.
@@ -222,7 +222,7 @@ eg_ticket :: (v: [] RmServer, k: int, seat_id: SeatId) -> Ticket { seat := seat_
   if c < 0 || c >= CONNS || !v[0].conns[c].live { return v[0].eg[k].tk[seat]; }   // held, or its socket closing (eg_left): the one it sat with
   return v[0].conns[c].ticket;
 }
-// Whether seat seat_id's page decides its class and level (#13259, aethyr/session/seat-class.coax): it
+// Whether seat seat_id's page decides its class and level (#13259, metaverse-engine/session/seat-class.coax): it
 // is the only party there. A seat with a ticket: the API signed it for one of the realm's admins (ACCT 2:
 // the admin CLASSES and LEVEL menus), or the local API stand-in's admin seats it (room-dev.coax: --dev,
 // on unless OA_ROOM_DEV_ADMIN=0). A seat without: the room holds no ticket key (its checks, and the

@@ -1,0 +1,11 @@
+#module "aethyr.actors.checks";
+// Its checks, with the checks files it loads: coax/bin/coax test --library metaverse-engine/actors/checks.coax
+#run_steps 250000000;
+#load "lab.coax";
+#load "tests/runtime-adapters.coax";
+#load "tests/journey.coax";
+#load "tests/runtime-failures.coax";
+#load "tests/runtime-sight.coax";
+#load "tests/runtime-editor.coax";
+#load "tests/runtime-route.coax";
+#load "tests/runtime-boundaries.coax";

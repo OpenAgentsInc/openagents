@@ -1,6 +1,6 @@
 // The Verse skin: the instrument look, grey-white type on dark glass, thin
 // lines and a cyan accent, square corners with corner ticks. Its colours are
-// the SCIFI tokens of aethyr/ui/hud-style.coax (hud_tokens(HUD_SCIFI)),
+// the SCIFI tokens of metaverse-engine/ui/hud-style.coax (hud_tokens(HUD_SCIFI)),
 // copied here so the component system does not load the engine;
 // components/gallery/skin-parity.coax holds the two equal until the HUD
 // draws from this file (components/spec.md Phase 5, GitHub #13153).

@@ -3,26 +3,26 @@
 // character asks for her pack by name (coaxial_character_pack_v1); the host loads this module and
 // the pack only then, so a world's own wasm and memory carry none of it (Everglade's wasm has about
 // 150 KB of its budget left, and Echo's rig, face and catalog take about 46 MB of memory). Each
-// frame the host copies the world's SceneLights block (aethyr/render/scene-lights.coax) in here;
+// frame the host copies the world's SceneLights block (metaverse-engine/render/scene-lights.coax) in here;
 // this places her where the world's stage put her (the block's feet and heading), steps her on a
 // 1/64 s clock, fills the block's character slots (the hair's share, the morph switch, the head
 // profile) and her palette, and names her draws. Her body and face run on Aethyr's character
-// runtime (aethyr/character/), with Echo's declarations (verse/valley/echo.coax): her rig's idle
+// runtime (metaverse-engine/character/), with Echo's declarations (verse/valley/echo.coax): her rig's idle
 // clip looped (clip 0), her idle face segments on their cycle, and her idle life over them (blinks,
-// glances and breath, aethyr/character/idle.coax) on the joints and targets ECHO_IDLE_RIG names.
+// glances and breath, metaverse-engine/character/idle.coax) on the joints and targets ECHO_IDLE_RIG names.
 // When the world moves her (the block's motion slots, #12996: the Cultist Raid's room runs her) her
 // body runs her own locomotion graph at the world's pace; a cast plays her TF0290 wind-up (the
 // shot's source frames ECHO_WINDUP_FIRST..ECHO_WINDUP_LAST) to its bar's end; and the fix layers
-// (aethyr/character/fix.coax) plant her feet on the world's ground, turn her head to the spell's
+// (metaverse-engine/character/fix.coax) plant her feet on the world's ground, turn her head to the spell's
 // point and reach her orb hand toward it.
 //   coax/bin/coax test apps/openagents-web/character-host.coax
 #load "../../verse/valley/echo.coax";
 #load "../../verse/valley/canyon-pack-policy.coax";
 #load "../../verse/valley/slay-gpu-policy.coax";
-#load "../../aethyr/render/scene-lights.coax";
-#load "../../aethyr/character/idle.coax";
-#load "../../aethyr/character/detail.coax" as detail;
-#load "../../aethyr/character/fix.coax";
+#load "../../metaverse-engine/render/scene-lights.coax";
+#load "../../metaverse-engine/character/idle.coax";
+#load "../../metaverse-engine/character/detail.coax" as detail;
+#load "../../metaverse-engine/character/fix.coax";
 #load "../../verse/valley/slay-shot-play.coax";
 
 // The valley-slay pack's parts and Echo's draws in its index buffer (Valley Lab's canyon_frame): her
@@ -47,7 +47,7 @@ CHARACTER_HAIR_MAX :: 0.5f32;
 // The shadow map takes at most CHARACTER_GROOM_SHADOW of them, a prefix of the same order.
 CHARACTER_GROOM_GROUPS :: 251;
 CHARACTER_GROOM_STRIDE :: 97;      // the order's step through the groups (251 is prime: every group once)
-CHARACTER_GROOM_SEED :: 13573820 + 8 + 10;   // a segment's seed word (aethyr/render/character.coax's ECHO_GROOM_WORD + 8, then 10)
+CHARACTER_GROOM_SEED :: 13573820 + 8 + 10;   // a segment's seed word (metaverse-engine/render/character.coax's ECHO_GROOM_WORD + 8, then 10)
 CHARACTER_GROOM_SEGMENT_WORDS :: 12;          // words a segment
 CHARACTER_GROOM_SHADOW :: 0.25f32;            // the shadow map's share at most (character.coax's CV_SHADOW_HAIR_SHARE)
 // Echo's idle life: her ARKit blink targets, her face rig's eye joints and her mid spine for the breath.

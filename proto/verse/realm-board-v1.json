@@ -1,8 +1,8 @@
 {
  "profile": "realm-board-v1",
- "about": "The realm builder (GitHub #13250): the bodies sent to POST /api/playtest/realms/plan, /pick and /realms (MAKE IT), and the board and the pick as ?as=lines answers them (SQL's verse.builder_lines). \"lines\" names every line. \"steps\" are calls as one player with the status and body the server answers today: \"model\" is what the planner's model answers from that step on (the API suite's fake), \"wait\" says the call comes at least two seconds after the last, and the plan's number, which each run decides, is written 41 here in bodies and answers. \"message\" names the answer: BoardLines and PickLines are the text; PlanReply, PickReply (builder.proto), MadeReply and MadeLines (made.proto), RouteError (record.proto) and ErrorWords (a refusal's words alone). aethyr/forge/board.coax writes every body and reads every line; aethyr/forge/board-goldens.coax holds them through it; coax/web/api/test_realm_builder.py makes the calls.",
- "check": "coax/web/tool.sh aethyr/forge/board-goldens.coax proto/verse/realm-board-v1.json",
- "codec": "aethyr/forge/board.coax",
+ "about": "The realm builder (GitHub #13250): the bodies sent to POST /api/playtest/realms/plan, /pick and /realms (MAKE IT), and the board and the pick as ?as=lines answers them (SQL's verse.builder_lines). \"lines\" names every line. \"steps\" are calls as one player with the status and body the server answers today: \"model\" is what the planner's model answers from that step on (the API suite's fake), \"wait\" says the call comes at least two seconds after the last, and the plan's number, which each run decides, is written 41 here in bodies and answers. \"message\" names the answer: BoardLines and PickLines are the text; PlanReply, PickReply (builder.proto), MadeReply and MadeLines (made.proto), RouteError (record.proto) and ErrorWords (a refusal's words alone). metaverse-engine/editor/board.coax writes every body and reads every line; metaverse-engine/editor/board-goldens.coax holds them through it; coax/web/api/test_realm_builder.py makes the calls.",
+ "check": "coax/web/tool.sh metaverse-engine/editor/board-goldens.coax proto/verse/realm-board-v1.json",
+ "codec": "metaverse-engine/editor/board.coax",
  "plan": 41,
  "lines": [
   {

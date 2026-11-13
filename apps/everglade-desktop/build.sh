@@ -35,12 +35,12 @@ for pair in sky scene light; do
 done
 # The realms: the Everglade row is the web's everglade2 realm (Character Create, then the glade),
 # and the Experimental row is the web's fivelab realm on its Experimental page, both natively,
-# drawn by the Metaverse Engine's page host for Metal (aethyr/host/apple/). A realm's Coax as C and its face are
+# drawn by the Metaverse Engine's page host for Metal (metaverse-engine/host/apple/). A realm's Coax as C and its face are
 # built as verse/native/build.sh builds any realm, into a library the host loads; its shaders are
 # the web's own Coax (apps/openagents-web/gpu/), emitted for Metal a pair at a time, each with the
 # list of what it reads (.bind). The C takes over a minute to emit, so it is kept until its sources
 # change.
-key="$( (shasum -a 256 "$coax" | cut -d ' ' -f 1; git -C "$repo" rev-parse HEAD:apps/openagents-web HEAD:aethyr HEAD:verse HEAD:everglade HEAD:coax/lib; git -C "$repo" status --porcelain -- apps/openagents-web aethyr verse everglade coax/lib ':(exclude)aethyr/host/apple'; git -C "$repo" diff HEAD -- apps/openagents-web aethyr verse everglade coax/lib ':(exclude)aethyr/host/apple') | shasum -a 256 | cut -d ' ' -f 1)"
+key="$( (shasum -a 256 "$coax" | cut -d ' ' -f 1; git -C "$repo" rev-parse HEAD:apps/openagents-web HEAD:aethyr HEAD:verse HEAD:everglade HEAD:coax/lib; git -C "$repo" status --porcelain -- apps/openagents-web aethyr verse everglade coax/lib ':(exclude)metaverse-engine/host/apple'; git -C "$repo" diff HEAD -- apps/openagents-web aethyr verse everglade coax/lib ':(exclude)metaverse-engine/host/apple') | shasum -a 256 | cut -d ' ' -f 1)"
 build_realm() {   # NAME: build/realm/NAME/libNAME.dylib, and a copy in the app's NAME folder
   local name="$1" realm="$work/realm/$1" pages="$app/Contents/Resources/$1"
   mkdir -p "$realm" "$pages"
@@ -84,7 +84,7 @@ emit_page() {   # REALM SOURCE PREFIX FX FXPREFIX
   cp "${passes%.coax}.bindings" "$app/Contents/Resources/$1/page.bindings"
   cp "$work/c/page-host.metallib" "$app/Contents/Resources/$1/page-host.metallib"
 }
-xcrun -sdk macosx metal -w "$repo/aethyr/host/apple/PageHost.metal" -o "$work/c/page-host.metallib"
+xcrun -sdk macosx metal -w "$repo/metaverse-engine/host/apple/PageHost.metal" -o "$work/c/page-host.metallib"
 build_realm everglade2
 emit_page everglade2 everglade2 everglade2 everglade2-fx e2fx
 # Experimental: the fivelab module on its page draws with Character Create's passes
@@ -103,16 +103,16 @@ emit_page archery-range charactercreator charactercreator fivelab-fx fxg
 # Grid and stations in the particle pass (bitcoin-lab-fx), Experimental's pack.
 build_realm bitcoin-lab-walk
 emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
-# The one pack reader (aethyr/host/pack-table.coax's pack_table, #13304) as C: PageHost.m and Engine.swift find a pack's entries through it.
-"$coax" c "$repo/aethyr/host/pack-table-face.coax" --library --header "$work/c/aethyr-pack-table.h" > "$work/c/aethyr-pack-table.c"
+# The one pack reader (metaverse-engine/host/pack-table.coax's pack_table, #13304) as C: PageHost.m and Engine.swift find a pack's entries through it.
+"$coax" c "$repo/metaverse-engine/host/pack-table-face.coax" --library --header "$work/c/aethyr-pack-table.h" > "$work/c/aethyr-pack-table.c"
 /usr/bin/clang "${cflags[@]}" -w -c "$work/c/aethyr-pack-table.c" -o "$work/c/aethyr-pack-table.o"
-/usr/bin/clang -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -I"$work/c" -c "$repo/aethyr/host/apple/PageHost.m" -o "$work/c/page-host.o"
-# The realms' sound: the Metaverse Engine's Apple audio host (aethyr/host/apple/audio-host.h, PageAudio.swift and
+/usr/bin/clang -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -I"$work/c" -c "$repo/metaverse-engine/host/apple/PageHost.m" -o "$work/c/page-host.o"
+# The realms' sound: the Metaverse Engine's Apple audio host (metaverse-engine/host/apple/audio-host.h, PageAudio.swift and
 # the desktop app's MetalAudio.swift) over the shared Coax audio authorities, native-audio.coax as C,
 # and the site's sound files a page names (/realms/everglade/sfx/ and their PCM companions).
-"$coax" c "$repo/aethyr/host/native-audio.coax" --library --header "$work/c/native-audio.h" > "$work/c/native-audio.c"
+"$coax" c "$repo/metaverse-engine/host/native-audio.coax" --library --header "$work/c/native-audio.h" > "$work/c/native-audio.c"
 /usr/bin/clang "${cflags[@]}" -w -c "$work/c/native-audio.c" -o "$work/c/native-audio.o"
-printf '#include "native-audio.h"\n#include "%s"\n#include "%s"\n' "$repo/aethyr/host/apple/audio-host.h" "$repo/aethyr/host/apple/audio-host.c" > "$work/c/audio-host-unit.c"
+printf '#include "native-audio.h"\n#include "%s"\n#include "%s"\n' "$repo/metaverse-engine/host/apple/audio-host.h" "$repo/metaverse-engine/host/apple/audio-host.c" > "$work/c/audio-host-unit.c"
 /usr/bin/clang "${cflags[@]}" -w -c "$work/c/audio-host-unit.c" -o "$work/c/audio-host.o"
 # The pictures the realm names (the classes' and spells' icons), where the site has them.
 mkdir -p "$app/Contents/Resources/web/realms/everglade" "$app/Contents/Resources/web/realms/5e-mmo"
@@ -146,8 +146,8 @@ done
 /usr/bin/clang -fobjc-arc -O2 -w -I"$work/c/chat" -I"$oa" -I"$repo/apps/shared/host/linux" -I"$repo/apps/shared/host/apple" -c "$repo/apps/shared/host/apple/ct-atlas.m" -o "$work/c/chat/ct-atlas.o"
 rm -rf "$app/Contents/Resources/chat"; mkdir -p "$app/Contents/Resources/chat"
 cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$repo/components/zeron/NOTICE" "$app/Contents/Resources/chat/"
-printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n' "$here/face.h" "$repo/aethyr/host/apple/page-host.h" "$repo/aethyr/host/apple/audio-host.h" "$repo/apps/shared/host/apple/ui-host-apple.h" "$oa/linux/chat.h" "$repo/aethyr/host/pack-table.h" > "$work/c/bridge.h"
-xcrun -sdk macosx swiftc -O -Xcc -I"$work/c" -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$repo/aethyr/host/apple/PageAudio.swift" "$repo/apps/aethyrforge-desktop/Sources/MetalAudio.swift" "$work/c/ui-host.o" "$work/c/page-host.o" "$work/c/aethyr-pack-table.o" "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" "$work/c/chat"/{zeron,lab-sign,chat,dictation-none,zeron-face,store-file-native,ct-atlas}.o \
+printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n' "$here/face.h" "$repo/metaverse-engine/host/apple/page-host.h" "$repo/metaverse-engine/host/apple/audio-host.h" "$repo/apps/shared/host/apple/ui-host-apple.h" "$oa/linux/chat.h" "$repo/metaverse-engine/host/pack-table.h" > "$work/c/bridge.h"
+xcrun -sdk macosx swiftc -O -Xcc -I"$work/c" -import-objc-header "$work/c/bridge.h" "$here"/Sources/*.swift "$repo/metaverse-engine/host/apple/PageAudio.swift" "$repo/apps/aethyrforge-desktop/Sources/MetalAudio.swift" "$work/c/ui-host.o" "$work/c/page-host.o" "$work/c/aethyr-pack-table.o" "$work/c/audio-host.o" "$work/c/native-audio.o" "$work/c/workshop.o" "$work/c/face.o" "$work/c/model.o" "$work/c/model-face.o" "$work/c/next-face.o" "$work/c/temple.o" "$work/c/place-face.o" "$work/c/process.o" "$work/c/chat"/{zeron,lab-sign,chat,dictation-none,zeron-face,store-file-native,ct-atlas}.o \
   -framework AppKit -framework Metal -framework MetalKit -framework QuartzCore -framework ImageIO -framework CoreGraphics -framework CoreText -framework AVFoundation -framework UniformTypeIdentifiers -lm -lz \
   -Xlinker -export_dynamic -Xlinker -stack_size -Xlinker 0x20000000 -o "$app/Contents/MacOS/Everglade"
 # The context program: built as any Coax tool is (tool.sh keeps the executable by the compiler's

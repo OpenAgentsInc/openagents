@@ -1,0 +1,140 @@
+// A ResolvedEnvironment (metaverse-engine/world/environment.coax) packed for the GPU: one fixed, versioned
+// block of ENV_GPU_FLOATS floats (27 vec4f rows) that a shader reads as a uniform array, and the
+// exact inverse, so a readback can be checked against the CPU's record (lighting plan Phase 1,
+// GitHub #13062). Layout 1, float offsets:
+//
+//   0..3     ENV_GPU_LAYOUT, the record version (ENV_VERSION), the profile id, the time of day
+//   4..7     the key body (0 sun, 1 moon), the film (0 none, 1 source), the flags, the segment weight
+//   8..10    toward the key light (unit); 11 is 0
+//   12..14   the key's linear colour times its strength; 15 is 0
+//   16..19   the sky slot's blend count, the grade slot's, the segment's first knot and its next
+//   20..91   the channels, in metaverse-engine/world/environment.coax's ENV_C_* order (offset 20 + ENV_C_*)
+//   92..107  per resource slot s (ENV_RES_SKY, ENV_RES_GRADE): 92 + 8s ids, 96 + 8s weights
+//
+// Identifiers, counts and enums are whole numbers below 2^24, exact in f32. Unused blend entries
+// are 0. A block with another layout or version, a nonfinite word, or a word that is not a whole
+// number in range where one is required is refused whole by env_gpu_unpack.
+//   coax/bin/coax test metaverse-engine/render/environment.coax
+//   coax/bin/coax mutate metaverse-engine/render/environment.coax --root-only
+#module "aethyr.render.environment";
+#authority;
+#load "../world/environment.coax";
+
+ENV_GPU_LAYOUT :: 1;
+ENV_GPU_FLOATS :: 108;
+ENV_GPU_HEADER :: 0;
+ENV_GPU_DISCRETE :: 4;
+ENV_GPU_DIR :: 8;
+ENV_GPU_DIRECT :: 12;
+ENV_GPU_COUNTS :: 16;
+ENV_GPU_CHANNELS :: 20;
+ENV_GPU_RESOURCES :: 92;
+
+EnvGpuUnpack :: struct { refusal: EnvRefusal; env: ResolvedEnvironment; }
+
+#test "a resolved environment packs into the fixed layout and unpacks to itself" {
+  for t: 0..<4 {
+    r := ifx t == 0 then env_profile_sample(env_glade_profile(), 0.5) else env_profile_sample(env_test_profile3(), [4] f64.[0, 0.2, 0.9, 0.6][t]);
+    w := env_gpu_pack(r); u := env_gpu_unpack(w);
+    #assert u.refusal == EnvRefusal.none && env_resolved_same(u.env, r, true);
+    again := env_gpu_pack(u.env); for i: 0..<ENV_GPU_FLOATS { #assert again[i] == w[i]; }
+  }
+}
+#test "the layout's words sit at their published offsets" {
+  r := env_profile_sample(env_test_profile3(), 0.9); w := env_gpu_pack(r);
+  #assert w[0] == 1 && w[1] == 1 && w[2] == 7 && w[3] == r.time && w[3] == 0.9f32;
+  #assert w[4] == 1 && w[5] == 1 && w[6] == 3 && w[7] == r.weight && r.weight > 0;
+  #assert w[8] == r.dir.x && w[9] == r.dir.y && w[10] == r.dir.z && w[11] == 0;
+  #assert w[12] == r.direct.r && w[13] == r.direct.g && w[14] == r.direct.b && w[15] == 0;
+  #assert w[16] == 2 && w[17] == 1 && w[18] == 2 && w[19] == 0;
+  v := env_channels_flat(r.channels); for i: 0..<ENV_CHANNELS { #assert w[20 + i] == v[i]; }
+  #assert w[20 + ENV_C_FOG_NEAR] == r.channels.fog.near && w[20 + ENV_C_EXPOSURE] == 1.18f32 && w[20 + ENV_C_SATURATION] == 1.16f32;
+  #assert w[92] == 9 && w[93] == 5 && w[94] == 0 && w[95] == 0 && w[96] == 1 - r.weight && w[97] == r.weight && w[98] == 0 && w[99] == 0;
+  #assert w[100] == 0 && w[104] == 1 && w[105] == 0 && w[106] == 0 && w[107] == 0;
+  g := env_gpu_pack(env_profile_sample(env_glade_profile(), 0.5));
+  #assert g[4] == 0 && g[5] == 1 && g[6] == 1 && g[7] == 0 && g[2] == 1 && g[3] == 0.5f32 && g[20 + ENV_C_FOG_PHASE_G] == 0.62f32;
+  #assert g[20 + ENV_C_CLOUD_SHADE] == 0.45f32 && g[20] == 0.49f32 && g[28] == 0.32f32;
+}
+#forall "a block with any malformed word is refused whole" i: 0..<108, kind: 0..<3 {
+  w := env_gpu_pack(env_profile_sample(env_test_profile3(), 0.9));
+  w[i] = [3] f32.[0.0f32 / 0.0f32, 1.0f32 / 0.0f32, -1.0f32 / 0.0f32][kind];
+  u := env_gpu_unpack(w);
+  #assert u.refusal == EnvRefusal.nonfinite && u.env.version == 0 && u.env.profile == 0;
+}
+#test "layout, version, identifiers, enums, counts and segment words refuse when out of range" {
+  base := env_gpu_pack(env_profile_sample(env_test_profile3(), 0.9));
+  // word, bad value, expected refusal
+
+  words := [26] int.[0, 1, 2, 2, 2, 4, 4, 5, 5, 6, 6, 16, 16, 16, 17, 18, 18, 19, 92, 92, 96, 96, 7, 7, 3, 3];
+  values := [26] f32.[2, 0, 0, 16777216, 7.5, 2, 0.5, 2, -1, 4, 1.5, 0, 5, 1.5, 0, -1, 12, 2.5, -1, 0.5, -0.5, 1.5, -0.5, 1, -0.5, 1];
+  expect := [26] EnvRefusal.[EnvRefusal.version, EnvRefusal.version, EnvRefusal.identity, EnvRefusal.identity, EnvRefusal.identity,
+    EnvRefusal.range, EnvRefusal.range, EnvRefusal.range, EnvRefusal.range, EnvRefusal.flags, EnvRefusal.flags,
+    EnvRefusal.capacity, EnvRefusal.capacity, EnvRefusal.capacity, EnvRefusal.capacity, EnvRefusal.range, EnvRefusal.range, EnvRefusal.range,
+    EnvRefusal.identity, EnvRefusal.identity, EnvRefusal.range, EnvRefusal.range, EnvRefusal.range, EnvRefusal.range, EnvRefusal.range, EnvRefusal.range];
+  for c: 0..<26 {
+    w := base; w[words[c]] = values[c]; u := env_gpu_unpack(w);
+    #assert u.refusal == expect[c] && u.env.version == 0;
+  }
+  // Their bounds are admitted.
+  goods := [12] int.[2, 4, 5, 6, 16, 16, 17, 18, 19, 92, 96, 3];
+  good_values := [12] f32.[16777215, 0, 0, 0, 1, 4, 4, 11, 11, 16777215, 0, 0];
+  for c: 0..<12 { w := base; w[goods[c]] = good_values[c]; #assert env_gpu_unpack(w).refusal == EnvRefusal.none; }
+  w := base; w[7] = 0; #assert env_gpu_unpack(w).refusal == EnvRefusal.none;
+  w[3] = 0.99999994f32; #assert env_gpu_unpack(w).refusal == EnvRefusal.none;
+}
+
+env_gpu_whole :: (x: f32, hi: f32) -> bool #effects(all) { return x >= 0 && x <= hi && x == cast(f32) cast(int) x; }
+env_gpu_pack :: (r: ResolvedEnvironment) -> [ENV_GPU_FLOATS] f32 #effects(all) {
+  w: [ENV_GPU_FLOATS] f32;
+  w[ENV_GPU_HEADER] = ENV_GPU_LAYOUT; w[ENV_GPU_HEADER + 1] = cast(f32) r.version; w[ENV_GPU_HEADER + 2] = cast(f32) r.profile; w[ENV_GPU_HEADER + 3] = r.time;
+  w[ENV_GPU_DISCRETE] = cast(f32) cast(int) r.body; w[ENV_GPU_DISCRETE + 1] = cast(f32) cast(int) r.film;
+  w[ENV_GPU_DISCRETE + 2] = cast(f32) r.flags; w[ENV_GPU_DISCRETE + 3] = r.weight;
+  w[ENV_GPU_DIR] = r.dir.x; w[ENV_GPU_DIR + 1] = r.dir.y; w[ENV_GPU_DIR + 2] = r.dir.z;
+  w[ENV_GPU_DIRECT] = r.direct.r; w[ENV_GPU_DIRECT + 1] = r.direct.g; w[ENV_GPU_DIRECT + 2] = r.direct.b;
+  w[ENV_GPU_COUNTS + 2] = cast(f32) r.from; w[ENV_GPU_COUNTS + 3] = cast(f32) r.to;
+  v := env_channels_flat(r.channels);
+  for i: 0..<ENV_CHANNELS { w[ENV_GPU_CHANNELS + i] = v[i]; }
+  for s: 0..<ENV_RESOURCES {
+    w[ENV_GPU_COUNTS + s] = cast(f32) r.resources[s].count;
+    for k: 0..<ENV_MAX_BLEND {
+      w[ENV_GPU_RESOURCES + 8 * s + k] = cast(f32) r.resources[s].ids[k];
+      w[ENV_GPU_RESOURCES + 8 * s + 4 + k] = r.resources[s].weights[k];
+    }
+  }
+  return w;
+}
+env_gpu_refuse :: (r: EnvRefusal) -> EnvGpuUnpack #effects(all) { out: EnvGpuUnpack; out.refusal = r; return out; }
+env_gpu_unpack :: (w: [ENV_GPU_FLOATS] f32) -> EnvGpuUnpack #effects(all) {
+  for i: 0..<ENV_GPU_FLOATS { if !(w[i] - w[i] == 0) { return env_gpu_refuse(EnvRefusal.nonfinite); } }
+  if w[ENV_GPU_HEADER] != ENV_GPU_LAYOUT || w[ENV_GPU_HEADER + 1] != ENV_VERSION { return env_gpu_refuse(EnvRefusal.version); }
+  if !env_gpu_whole(w[ENV_GPU_HEADER + 2], ENV_ID_MAX) || w[ENV_GPU_HEADER + 2] == 0 { return env_gpu_refuse(EnvRefusal.identity); }
+  if !env_gpu_whole(w[ENV_GPU_DISCRETE], 1) || !env_gpu_whole(w[ENV_GPU_DISCRETE + 1], 1) { return env_gpu_refuse(EnvRefusal.range); }
+  if !env_gpu_whole(w[ENV_GPU_DISCRETE + 2], ENV_FLAGS_KNOWN) { return env_gpu_refuse(EnvRefusal.flags); }
+  time := w[ENV_GPU_HEADER + 3]; weight := w[ENV_GPU_DISCRETE + 3];
+  if time < 0 || time >= 1 || weight < 0 || weight >= 1 { return env_gpu_refuse(EnvRefusal.range); }
+  if !env_gpu_whole(w[ENV_GPU_COUNTS + 2], ENV_MAX_KNOTS - 1) || !env_gpu_whole(w[ENV_GPU_COUNTS + 3], ENV_MAX_KNOTS - 1) { return env_gpu_refuse(EnvRefusal.range); }
+  out: EnvGpuUnpack; r: ResolvedEnvironment;
+  r.version = ENV_VERSION; r.profile = cast(u32) w[ENV_GPU_HEADER + 2]; r.time = time; r.weight = weight;
+  r.body = ifx w[ENV_GPU_DISCRETE] == 1 then EnvBody.moon else EnvBody.sun;
+  r.film = ifx w[ENV_GPU_DISCRETE + 1] == 1 then EnvFilm.source else EnvFilm.none;
+  r.flags = cast(u32) w[ENV_GPU_DISCRETE + 2];
+  r.from = cast(int) w[ENV_GPU_COUNTS + 2]; r.to = cast(int) w[ENV_GPU_COUNTS + 3];
+  r.dir = EnvDir.{x = w[ENV_GPU_DIR], y = w[ENV_GPU_DIR + 1], z = w[ENV_GPU_DIR + 2]};
+  r.direct = EnvRgb.{r = w[ENV_GPU_DIRECT], g = w[ENV_GPU_DIRECT + 1], b = w[ENV_GPU_DIRECT + 2]};
+  v: [ENV_CHANNELS] f32;
+  for i: 0..<ENV_CHANNELS { v[i] = w[ENV_GPU_CHANNELS + i]; }
+  r.channels = env_channels_from(v);
+  for s: 0..<ENV_RESOURCES {
+    count := w[ENV_GPU_COUNTS + s];
+    if !env_gpu_whole(count, ENV_MAX_BLEND) || count == 0 { return env_gpu_refuse(EnvRefusal.capacity); }
+    r.resources[s].count = cast(int) count;
+    for k: 0..<ENV_MAX_BLEND {
+      id := w[ENV_GPU_RESOURCES + 8 * s + k]; weight_k := w[ENV_GPU_RESOURCES + 8 * s + 4 + k];
+      if !env_gpu_whole(id, ENV_ID_MAX) { return env_gpu_refuse(EnvRefusal.identity); }
+      if weight_k < 0 || weight_k > 1 { return env_gpu_refuse(EnvRefusal.range); }
+      r.resources[s].ids[k] = cast(u32) id; r.resources[s].weights[k] = weight_k;
+    }
+  }
+  out.env = r;
+  return out;
+}

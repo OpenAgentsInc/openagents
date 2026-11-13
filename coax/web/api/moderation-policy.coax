@@ -1,12 +1,12 @@
 // Moderation's routes in Coax (#13302; docs/protocol/moderation-v1.md): what player.c (the seat ticket,
 // room-control, /room-kick, /room-mod, /room-mod-log) and room.c (chat, the inbox) ask the rules. The
-// rules and the codec are aethyr/session/moderation.coax's, the same ones a room runs; this file names
+// rules and the codec are metaverse-engine/session/moderation.coax's, the same ones a room runs; this file names
 // them for C. The C reads the facts (migrations/0170_moderation.sql) and writes what these answers say;
 // the database decides nothing.
 //   coax/bin/coax test coax/web/api/moderation-policy.coax --library
 //   coax/bin/coax mutate coax/web/api/moderation-policy.coax --library --root-only
 #authority;
-#load "../../../aethyr/session/moderation.coax";
+#load "../../../metaverse-engine/session/moderation.coax";
 
 // A verb's number (0: none) and its word; what it sets or lifts (MOD_KIND_*), and whether it lifts.
 mod_verb :: (word: string) -> int #export_c #effects(all) { return moderation_verb(word); }

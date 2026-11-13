@@ -135,14 +135,14 @@ final class WorkshopView: MTKView, MTKViewDelegate, UIKeyInput {
     // the corners and the home bar. Its keyboard comes up while it takes text.
     pages.box = bounds.inset(by: safe)
     let realm = pages.frame(scale: CGFloat(scale), dt: dt)
-    // A realm's governor holds 60 (aethyr/core/quality.coax): drawn at a ProMotion screen's 120 it does
+    // A realm's governor holds 60 (metaverse-engine/core/quality.coax): drawn at a ProMotion screen's 120 it does
     // twice the GPU's work for nothing, the phone heats and slows (#13190).
     let fps = realm != nil ? min(60, UIScreen.main.maximumFramesPerSecond) : UIScreen.main.maximumFramesPerSecond
     if preferredFramesPerSecond != fps { preferredFramesPerSecond = fps }
     let typing = realm != nil && pages.wantsText
     if typing != isFirstResponder { if typing { _ = becomeFirstResponder() } else { _ = resignFirstResponder() } }
     // The phone's turn: the Workshop's while its Gyro switch is on, a realm's while it wants it
-    // (aethyr/cam/gyro.coax: its GYRO button, the bow drawn).
+    // (metaverse-engine/cam/gyro.coax: its GYRO button, the bow drawn).
     let realmTurns = realm != nil && pages.wantsMotion
     if eg_turns(state) == 1 || realmTurns {
       if !turn.running { turn.start() }

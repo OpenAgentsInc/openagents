@@ -1,11 +1,11 @@
 // A lab walk's C face (verse/lab-walk.coax) for the browser (coax/web/host.js) and the Mac and iPhone
-// apps' page host (aethyr/host/apple): scalar exports over the world's module. It decides nothing. The
+// apps' page host (metaverse-engine/host/apple): scalar exports over the world's module. It decides nothing. The
 // module is an Everglade zone (everglade/zone.coax), as the Archery Range's is (archery-range-face.c,
 // whose shape this follows): nearly every export hands the host's call to the zone, and the frame, the
 // pointer and the page's message go through the world (LAB_FRAME, LAB_POINTER, LAB_MESSAGE). The scene
 // draws your figure with Character Create's passes (everglade/scene/gpu/charactercreator.coax); the Grid, its sky and
 // the stations are the walk's quads, drawn after it as the page's particles by bitcoin-lab-fx.wgsl
-// (aethyr/fx/gpu-quads.coax), 16 floats a quad.
+// (metaverse-engine/fx/gpu-quads.coax), 16 floats a quad.
 //
 // A world's face (bitcoin-lab-walk-face.c, nostr-lab-walk-face.c) includes its module's header, names
 // these and includes this file once:
@@ -33,10 +33,10 @@ static float bake[6453720];        // everglade/scene/bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
 static uint32_t frames;
 static int64_t draw_n;
-static coax_t_Player player;   // your body (aethyr/move/walk.coax)
+static coax_t_Player player;   // your body (metaverse-engine/move/walk.coax)
 static coax_t_Sticks sticks;   // a phone's thumb: the stick of the finger the zone says is its (everglade/zone-touch.coax)
 static double now;
-static coax_t_Drive drive;   // the agent driver's (aethyr/agent/drive.coax): the zone holds a view of it
+static coax_t_Drive drive;   // the agent driver's (metaverse-engine/agent/drive.coax): the zone holds a view of it
 
 static LAB_STATE *world_at(cx_face_addr state) { return (LAB_STATE *)(uintptr_t)state; }
 static coax_t_LabWalk *walk_at(cx_face_addr state) { return &world_at(state)->w.e[0]; }
@@ -54,7 +54,7 @@ EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (u
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_lab_uniform_floats(); }
 // The glade's ground, trees and sky are traced per pixel: drawn at most 6.4 million pixels (3200 by
 // 2000; the host scales the canvas up past that), as Experimental's are.
-// The graphics governor's (everglade/zone.coax zone_pixel_budget, aethyr/core/quality-page.coax): fewer while frames run long.
+// The graphics governor's (everglade/zone.coax zone_pixel_budget, metaverse-engine/core/quality-page.coax): fewer while frames run long.
 static cx_face_addr quality_state;
 static float width, height, dpr;
 static bool golden;
@@ -147,7 +147,7 @@ static coax_v_t_LabWalk walk(cx_face_addr state) { return (coax_v_t_LabWalk){wal
 EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) { (void)mods; return lab_key(walk(state), key) ? 1u : 0u; }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) { return zone_key_up(zone(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { zone_blur(zone(state)); sticks = verse_sticks_reset(); }
-/* Aethyr host contract v1 (aethyr/host/README.md), as fivelab-face.c has it: a native build says so;
+/* Aethyr host contract v1 (metaverse-engine/host/README.md), as fivelab-face.c has it: a native build says so;
    the browser's module does not yet. */
 #if defined(COAXIAL_NATIVE_ADDRESS)
 EXPORT("coaxial_host_contract_version") uint32_t coaxial_host_contract_version(void) { return 1; }
@@ -156,7 +156,7 @@ EXPORT("coaxial_host_contract_version") uint32_t coaxial_host_contract_version(v
 EXPORT("coaxial_focus") void coaxial_focus(cx_face_addr state) { (void)state; }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   bool took = LAB_POINTER(at(state), x, y, phase, kind, id);
-  // the finger the zone says is the thumb's moves the stick (aethyr/core/sticks.coax)
+  // the finger the zone says is the thumb's moves the stick (metaverse-engine/core/sticks.coax)
   if (zone_thumb(zone(state))) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return took ? 1u : 0u;
 }
@@ -168,11 +168,11 @@ EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(cx_face
 }
 EXPORT("coaxial_wheel") uint32_t coaxial_wheel(cx_face_addr state, float dy) { return zone_wheel(zone(state), dy) ? 1u : 0u; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(cx_face_addr state) { return (int32_t)zone_cursor(zone(state)); }
-/* The mouselook (aethyr/cam/mouselook.coax): host.js holds the pointer when this says 2 and forwards the mouse's travel. */
+/* The mouselook (metaverse-engine/cam/mouselook.coax): host.js holds the pointer when this says 2 and forwards the mouse's travel. */
 EXPORT("coaxial_mouselook") int32_t coaxial_mouselook(cx_face_addr state) { return (int32_t)zone_mouselook(zone(state)); }
 EXPORT("coaxial_look_delta") void coaxial_look_delta(cx_face_addr state, float dx, float dy) { zone_look_delta(zone(state), dx, dy); }
 EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(cx_face_addr state, int32_t status) { zone_pointer_lock(zone(state), status); }
-/* A phone's turn as look and aim (aethyr/cam/gyro.coax, #13189): host.js from devicemotion, the page host from CoreMotion. */
+/* A phone's turn as look and aim (metaverse-engine/cam/gyro.coax, #13189): host.js from devicemotion, the page host from CoreMotion. */
 EXPORT("coaxial_tilt") void coaxial_tilt(cx_face_addr state, float dyaw, float dpitch) { zone_tilt(zone(state), dyaw, dpitch); }
 EXPORT("coaxial_gyro") int32_t coaxial_gyro(cx_face_addr state) { return (int32_t)zone_gyro(zone(state)); }
 EXPORT("coaxial_gyro_status") void coaxial_gyro_status(cx_face_addr state, int32_t status) { zone_gyro_status(zone(state), status); }
@@ -185,7 +185,7 @@ EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(cx_face
 
 EXPORT("coaxial_inbox") cx_face_addr coaxial_inbox(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
-// The HUD is the FANTASY style (aethyr/ui/hud-style.coax): its strokes blend straight alpha, sealed with their coverage.
+// The HUD is the FANTASY style (metaverse-engine/ui/hud-style.coax): its strokes blend straight alpha, sealed with their coverage.
 static cx_face_addr page_state;
 EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return page_state && zone_straight_alpha(zone(page_state)) ? 1u : 0u; }
 EXPORT("coaxial_message") void coaxial_message(cx_face_addr state, int32_t kind, uint32_t length) {
@@ -206,7 +206,7 @@ EXPORT("coaxial_media") cx_face_addr coaxial_media(cx_face_addr state) { return 
 EXPORT("coaxial_media_len") uint32_t coaxial_media_len(cx_face_addr state) { coax_t_EgZone *l = zone_at(state); return l->creator.e[0].experimental && !l->creator.e[0].walk.on ? (uint32_t)l->xc.e[0].media_n : 0u; }
 EXPORT("coaxial_media_capacity") uint32_t coaxial_media_capacity(cx_face_addr state) { return (uint32_t)sizeof zone_at(state)->xc.e[0].media.e; }
 
-/* The agent driver (aethyr/agent/drive.coax, coax/web/host.js coaxial.drive): the answer to the last command (message 700). */
+/* The agent driver (metaverse-engine/agent/drive.coax, coax/web/host.js coaxial.drive): the answer to the last command (message 700). */
 EXPORT("coaxial_drive_out") cx_face_addr coaxial_drive_out(cx_face_addr state) { return (cx_face_addr)(uintptr_t)zone_drive_out(zone(state)).data; }
 EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(cx_face_addr state) { return (uint32_t)zone_drive_out(zone(state)).count; }
 // Read-only observations for headless checks.

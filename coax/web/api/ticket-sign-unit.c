@@ -1,4 +1,4 @@
-// ticket-sign.coax's C (ticket-sign.generated.c: aethyr/session/seat-ticket.coax, the one seat ticket
+// ticket-sign.coax's C (ticket-sign.generated.c: metaverse-engine/session/seat-ticket.coax, the one seat ticket
 // writer: v5, #13260, and v2 to v4, #13248) as one unit of the API. It loads Coax libraries that nip98.generated.c,
 // progress-policy.generated.c and others load too (bytes, SHA-256, secp256k1, the resume payload),
 // and those export their procedures: the same names twice in one binary. Here every export of this

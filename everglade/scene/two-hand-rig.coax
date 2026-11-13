@@ -6,9 +6,9 @@
 // (three rows of four); per clip its seconds and the metres a loop travels (0 on the clock), per
 // joint its rotation keys (first, count) into PEOPLE_KEYS_R (time, x, y, z, w) and its
 // translation keys into the body's PEOPLE_KEYS_T_* (time, x, y, z: the pelvis's only, the
-// library's move from its rest added to the body's rest). aethyr/anim/skin.coax plays it.
+// library's move from its rest added to the body's rest). metaverse-engine/anim/skin.coax plays it.
 
-#load "../../aethyr/anim/skin.coax";
+#load "../../metaverse-engine/anim/skin.coax";
 
 TWOHAND_JOINTS :: 65;
 TWOHAND_CLIPS :: 6;
@@ -42,7 +42,7 @@ TWOHAND_PARENT :: [65] int.[
 // TWOHAND_KEYS_T_M: 344 f32, assigned by twohand_load (no constant: #12904)
 // TWOHAND_KEYS_T_F: 344 f32, assigned by twohand_load (no constant: #12904)
 // TWOHAND_KEYS_R: 14960 f32, assigned by twohand_load (no constant: #12904)
-// Checks, sampled in f64 as aethyr/anim/skin.coax samples (posed in people.py): part way into each
+// Checks, sampled in f64 as metaverse-engine/anim/skin.coax samples (posed in people.py): part way into each
 // clip, where a joint stands: body (0 male, 1 female), clip, seconds, joint, x, y, z.
 TWOHAND_CHECK_N :: 1008;
 twohand_check :: (out: [] f32) {

@@ -4,7 +4,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/render/geometry/scan.coax";
+#load "../../metaverse-engine/render/geometry/scan.coax";
 #load "../valley/detail-codec.coax";
 dp_at :: (j:Jv,id:int)->int {return jv_at(j,jv_get(j,0,"accessors"),id);}
 dp_offset :: (j:Jv,id:int)->int {a:=dp_at(j,id);v:=jv_at(j,jv_get(j,0,"bufferViews"),jv_int(j,jv_get(j,a,"bufferView"),-1));#assert jv_get(j,v,"byteStride")<0;return jv_int(j,jv_get(j,v,"byteOffset"),0)+jv_int(j,jv_get(j,a,"byteOffset"),0);}

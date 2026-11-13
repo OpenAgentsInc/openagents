@@ -43,7 +43,7 @@
 #load "routines.coax";
 #load "../../scene/people-rig.coax";
 #load "../../../verse/rules/srd5-combat.coax";
-#load "../../../aethyr/physics/stand.coax";
+#load "../../../metaverse-engine/physics/stand.coax";
 #load "../../shared/everglade-handles.coax";
 
 WATCH_NEW :: 6;                        // the watch past the two gate guards
@@ -353,7 +353,7 @@ Watch :: struct {
   missiles: [MISSILES] Missile;
   aa_cool: f32;                   // till the company's next Magic Missile or Earthbind (AA_GAP)
   call_cool: f32;                 // till a guard may call for help again (ROLE_CALL)
-  // what a thrown body comes down onto besides the ground (aethyr/physics/stand.coax: the roofs and rubble round
+  // what a thrown body comes down onto besides the ground (metaverse-engine/physics/stand.coax: the roofs and rubble round
   // the bodies in flight, the realm's to set each frame), in the world
   floors: [WATCH_FLOORS * STAND_FLOATS] f32; floor_n: int;
 }

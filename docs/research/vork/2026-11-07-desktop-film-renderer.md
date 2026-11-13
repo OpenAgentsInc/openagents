@@ -19,7 +19,7 @@ Every movie we make is a screenshot of the real-time frame.
 | Path | How it works | Ceiling |
 | --- | --- | --- |
 | Gameplay clips (`coax/web/clip.coax`, `docs/verse/clips.md`) | Headless Chrome with WebGPU; `host.js` clip mode steps one fixed game step a frame; PNGs; ffmpeg | The live WebGPU shaders at the live quality rung, 8-bit PNG |
-| Animation Lab films (`aethyr/tools/anim-scene-play.coax`, `docs/verse/anim-scenes-v1.md`) | Headless muted Chrome over CDP at 960×540; `animFrame(frame,fps)` then a screenshot; per-frame RGBA hashes; ffmpeg H.264 and AAC; at most 60 s a call | Neutral inspection shading (Lambert plus ambient, no shadows); 1.62 s per film second (A5) |
+| Animation Lab films (`metaverse-engine/tools/anim-scene-play.coax`, `docs/verse/anim-scenes-v1.md`) | Headless muted Chrome over CDP at 960×540; `animFrame(frame,fps)` then a screenshot; per-frame RGBA hashes; ffmpeg H.264 and AAC; at most 60 s a call | Neutral inspection shading (Lambert plus ambient, no shadows); 1.62 s per film second (A5) |
 | Echo in Everglade (`coax/web/everglade-echo-frames.coax`) | 1920×1080 at 24 fps from the live page | Live pass; the 60 FPS gate is currently missed (#12984) |
 | Raid promo (`?raid=preview&cine=1`, `apps/openagents-web/everglade-raid-preview.coax`) | Keyed camera flight, captured as a clip | Same as gameplay clips |
 
@@ -56,13 +56,13 @@ engine.
   graph target is `R16G16B16A16_SFLOAT`. `verse/gpu/realm.sh HOST check`
   already times frames at 320×180, 2560×1440 and 3840×2160. Headless key
   input (`F:KEY:DOWN,...`) is there too.
-- **The worlds replay exactly.** `aethyr/core/loop.coax` has one clock with a
-  fixed step. `aethyr/core/replay.coax` records every accepted external event
-  and a digest every step. `aethyr/core/rand.coax` draws are a pure function of
+- **The worlds replay exactly.** `metaverse-engine/core/loop.coax` has one clock with a
+  fixed step. `metaverse-engine/core/replay.coax` records every accepted external event
+  and a digest every step. `metaverse-engine/core/rand.coax` draws are a pure function of
   seed, stream and counter. Puff effects are a pure function of seed, index
-  and age (`aethyr/fx/puff.coax`). Animation Lab takes and cuts are typed
+  and age (`metaverse-engine/fx/puff.coax`). Animation Lab takes and cuts are typed
   documents (`anim.project.v1`, ALP1).
-- **A CPU reference renderer exists** (`aethyr/render/reference-*.coax`),
+- **A CPU reference renderer exists** (`metaverse-engine/render/reference-*.coax`),
   with bounded offline work profiles (`reference-work.coax`) and an image
   comparison rule from chapter 11.
 
@@ -146,20 +146,20 @@ realm Coax (unchanged)  ──▶  state at film time t (replay / stage / take /
 
 ### The `film` profile
 
-This is a Coax record next to `aethyr/core/quality.coax`. It is not a new rung
+This is a Coax record next to `metaverse-engine/core/quality.coax`. It is not a new rung
 on the ladder, because the ladder exists to hold 60 FPS and a film frame
 has no frame budget. A film budget still refuses, per chapter 16, in
 memory, draw records and seconds per frame, so a batch fails early instead
 of running out of GPU memory at frame 3,000. It sets:
 
 - **Samples**: pixel jitter, N per pixel, as a stratified pattern from
-  `aethyr/core/rand.coax` streams keyed by frame and sample.
+  `metaverse-engine/core/rand.coax` streams keyed by frame and sample.
 - **Shutter**: frames and position, as in vork. A sample's time is a
   fraction of the fixed step. The renderer interpolates drawn state with
   `loop.coax`'s existing interpolation, and simulation is never stepped
   differently for a render.
 - **Lens**: aperture, focus distance or a focus entity. The camera record
-  in `aethyr/cam/shot.coax`, `aethyr/cam/cinematic.coax` and Animation Lab's scene
+  in `metaverse-engine/cam/shot.coax`, `metaverse-engine/cam/cinematic.coax` and Animation Lab's scene
   cameras gains physical fields (lens, sensor, focus, f-stop). Today
   Animation Lab stores `focus` but nothing reads it.
 - **Detail**: LOD distances to infinity (or a stated far plane), real kit
@@ -179,8 +179,8 @@ Each phase has an exit check that runs headless on our own machines, as
 | --- | --- | --- |
 | **F0. Native film frames** | `vk-realm` (and the Metal host) render a frame sequence from a stage, a replay record or an ALP1 cut. They write per-frame f32 or EXR plus `meta.json`, and the film path replaces Chrome capture for native realms. Audio comes from the same edit clock, as now. | At one sample with the film profile set to live settings, the frames match the current headless-Chrome goldens within chapter 11's colour rule. Two runs give identical frame hashes. |
 | **F1. Accumulation** | Pixel jitter, shutter sub-steps and aperture samples are averaged in f32. The film profile lifts LOD, quality and budgets. | Motion blur against an analytic moving quad. Depth of field against the thin-lens circle of confusion. Variance falls as 1/N on a fixed scene. The film profile changes no simulation digest. |
-| **F2. Film-only passes** | Sorted or weighted-blended transparency instead of screen-door. Cascaded shadows. Higher-sample water reflections and light shafts. AOVs: depth, normal, object id, motion. `camera.json`. | Each new pass has a CPU reference case in `aethyr/render/reference-*`. Every channel round-trips through the EXR writer, which is written in Coax. |
-| **F3. Hardware ray queries** | `coax spirv` learns `SPV_KHR_ray_query`. The C host builds bottom- and top-level acceleration structures (`VK_KHR_acceleration_structure`), which is a platform effect like any other buffer; Metal uses `MTLAccelerationStructure`. Use them for area-light and sun shadows, AO, water and window reflections, and optionally one diffuse bounce, all feeding the existing shading terms. | Ray visibility equals a CPU ray cast over the same triangles (`aethyr/physics/query.coax`, `ground-query.coax`) on fixtures. A furnace-style energy check on a closed box. Validation layers report 0/0. |
+| **F2. Film-only passes** | Sorted or weighted-blended transparency instead of screen-door. Cascaded shadows. Higher-sample water reflections and light shafts. AOVs: depth, normal, object id, motion. `camera.json`. | Each new pass has a CPU reference case in `metaverse-engine/render/reference-*`. Every channel round-trips through the EXR writer, which is written in Coax. |
+| **F3. Hardware ray queries** | `coax spirv` learns `SPV_KHR_ray_query`. The C host builds bottom- and top-level acceleration structures (`VK_KHR_acceleration_structure`), which is a platform effect like any other buffer; Metal uses `MTLAccelerationStructure`. Use them for area-light and sun shadows, AO, water and window reflections, and optionally one diffuse bounce, all feeding the existing shading terms. | Ray visibility equals a CPU ray cast over the same triangles (`metaverse-engine/physics/query.coax`, `ground-query.coax`) on fixtures. A furnace-style energy check on a closed box. Validation layers report 0/0. |
 | **F4. Denoising** (optional) | Only needed when traced samples are few. Our own denoiser in Coax, run by Psionic (owner, 2026-11-07). OIDN and others serve only as comparison references in opt-in harnesses. | Measured against a high-sample reference on fixed scenes, with the error reported, not asserted, and compared with OIDN on the same inputs. |
 | **F5. GPU simulation for crowds** (separate) | Seedable, seekable compute for flocks, crowds and particles at film scale, in Coax compute. | A seek to frame k equals stepping from S0 (the existing replay digest rule). |
 
@@ -204,14 +204,14 @@ the scale of G1 or G2. F4 and F5 should wait until a film needs them.
 
 | Engine piece | Film use |
 | --- | --- |
-| `aethyr/core/loop.coax`, `replay.coax`, `rand.coax` | Exact replay at film time; sample streams |
+| `metaverse-engine/core/loop.coax`, `replay.coax`, `rand.coax` | Exact replay at film time; sample streams |
 | Realm Coax and its stages (`?stage=`, `?raid=preview&cine=1`) | Unchanged scene content |
-| `apps/openagents-web/gpu/everglade-v1/gpu.coax`, `gpu-fx.coax`, `aethyr/render/character.coax`, `apps/openagents-web/gpu/*.coax` | The same shading functions, with film visibility inputs |
+| `apps/openagents-web/gpu/everglade-v1/gpu.coax`, `gpu-fx.coax`, `metaverse-engine/render/character.coax`, `apps/openagents-web/gpu/*.coax` | The same shading functions, with film visibility inputs |
 | `coax spirv`, `coax metal`, `verse/gpu/vk-*.c` | The native pipeline and host, extended |
-| `aethyr/render/passes.coax`, `catalog.coax` | The pass graph as data; the film profile selects extra passes |
-| `aethyr/render/reference-*.coax` | CPU oracles for each new pass |
+| `metaverse-engine/render/passes.coax`, `catalog.coax` | The pass graph as data; the film profile selects extra passes |
+| `metaverse-engine/render/reference-*.coax` | CPU oracles for each new pass |
 | Animation Lab ALP1, `anim.cut.v1`, `labs anim play` | The edit, cameras and audio clock for films |
-| `aethyr/audio`, `aethyr/audio/speak.coax` | Score, voices and the mix, already offline and deterministic |
+| `metaverse-engine/audio`, `metaverse-engine/audio/speak.coax` | Score, voices and the mix, already offline and deterministic |
 
 ## Risks
 
@@ -221,7 +221,7 @@ the scale of G1 or G2. F4 and F5 should wait until a film needs them.
   limited to visibility and sampling.
 - **Ray-query work in the compiler.** It adds new SPIR-V types, a
   capability, and acceleration-structure bindings in the resource ledger
-  (`aethyr/render/registry.coax`). It is bounded, but it touches the
+  (`metaverse-engine/render/registry.coax`). It is bounded, but it touches the
   compiler's mutation gate.
 - **Asset quality becomes the limit.** At film quality, Quaternius
   low-poly kits, 512px wardrobe textures and baked AO grids will show.

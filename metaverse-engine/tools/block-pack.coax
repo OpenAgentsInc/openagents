@@ -1,0 +1,282 @@
+// A pack's block build (GitHub #13305, part of #13257 P6): the same pack with every texture layer
+// as GPU blocks with its whole mip chain (metaverse-engine/render/block-layer.coax), written as a
+// range-addressable VPK3 file (metaverse-engine/editor/page-pack.coax) beside the pack, NAME.TAG.vpk3, TAG
+// the format's (metaverse-engine/render/texture-format.coax tf_tag). A device whose GPU takes the format
+// loads that file instead of NAME.pack (host.js picks it, from a realm's blocks: asset), and
+// uploads the levels as they are: no image decode, no resize, and a quarter of RGBA8's memory.
+//
+// Each layer is decoded and given its mip chain as the canonical layer path does
+// (metaverse-engine/render/host-layers.coax htx_decode: coax/lib/image's decoder, img_double, the
+// alpha-weighted box chain img_mips and one premultiply round trip), at SIDE (the realm's layer
+// side, else the first layer's): a layer half that side is doubled, one twice it drops its first
+// level. It composes the same calls here because a 1024 PNG needs more decode work than the
+// browser reactor's bound (HOST_LAYER_WORK_BYTES). Every level is encoded by metaverse-engine/render/texture-encode.coax. The catalog,
+// geometry, data layers and sounds are the pack's, byte for byte; only the catalog's size lines
+// change. The output is the same for the same pack, so a build rewrites it only when the pack
+// changed. It prints each format's GPU bytes against RGBA8 and the PSNR of every level 0 over RGB
+// (decoded by the encoder's own decoder, which reads every block as the reference decoders do:
+// metaverse-engine/tools/texture-encode.coax check).
+//
+//   coax/web/tool.sh metaverse-engine/tools/block-pack.coax IN.pack OUT.vpk3 --format bc7|astc4 [--side N]
+//   coax/web/tool.sh metaverse-engine/tools/block-pack.coax profile proto/verse/texture-block-layer-v1.json
+//   coax/web/tool.sh metaverse-engine/tools/block-pack.coax ramp bc7|astc4     (a fixture's bytes, as hex)
+//   coax/bin/coax test metaverse-engine/tools/block-pack.coax
+// Exit 1 when the pack is refused, a layer can't be built, or the file doesn't read back.
+// tool.sh: release
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../editor/page-pack.coax";
+#load "../../coax/lib/image/image.coax";
+#load "../render/texture-encode.coax";
+#load "../render/block-layer.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+BP_MAX :: 67108864;
+BP_SIDE :: 2048;       // the largest layer read
+BP_CHAIN :: 22369624;  // a 2048 square's RGBA8 chain
+BP_WORK :: 33554432;   // decode work for a layer up to BP_SIDE
+
+// The encoder's code for a layer format, the sRGB flag its search takes, and the format by name.
+bp_te :: (format: int) -> int { return ifx format == TF_BC7_SRGB then TE_BC7 else ifx format == TF_ASTC4_SRGB then TE_ASTC4 else ifx format == TF_ASTC6_SRGB then TE_ASTC6 else 0; }
+bp_format :: (tag: string) -> int {
+  for f: 1..<8 { if tf_tag(f) != "" && tf_tag(f) == tag { return f; } }
+  return 0;
+}
+#test "formats by tag, and the encoder's code for each" {
+  #assert bp_format("bc7") == TF_BC7_SRGB && bp_format("astc4") == TF_ASTC4_SRGB && bp_format("astc6") == TF_ASTC6_SRGB && bp_format("") == 0 && bp_format("bc5") == 0;
+  #assert bp_te(TF_BC7_SRGB) == TE_BC7 && bp_te(TF_ASTC4_SRGB) == TE_ASTC4 && bp_te(TF_ASTC6_SRGB) == TE_ASTC6 && bp_te(TF_RGBA8_SRGB) == 0;
+}
+
+// A whole RGBA8 chain (level 0 first, each level tightly packed, as host-layers writes it) of a
+// side-by-side square into a block layer in out, skipping the chain's first `skip` levels: the
+// layer's bytes, or -1. err[0] gets level 0's squared error over RGB (decoded by the encoder's own
+// decoder into back, at least level 0's RGBA8), err[1] its samples.
+bp_layer :: (format: int, chain: []u8, side: int, skip: int, out: []u8, err: []int, back: []u8) -> int {
+  s := side >> skip; levels := bl_chain(s, s);
+  n := bl_head(format, s, s, levels, out);
+  if n < 0 || n > out.count || skip < 0 || skip + levels != bl_chain(side, side) { return -1; }
+  f := bp_te(format); srgb := format != TF_BC7_SRGB; from := 0; at := BL_HEADER;
+  for l: 0..<skip + levels {
+    w := img_side(side, l); bytes := w * w * 4;
+    if l >= skip {
+      m := te_image_bytes(f, w, w);
+      _ := te_encode_image(f, chain[from..<from + bytes], w, w, srgb, out[at..<at + m]);
+      if l == skip {
+        if bytes > back.count || !te_decode_image(f, out[at..<at + m], w, w, srgb, back[0..<bytes]) { return -1; }
+        e := 0; for i: 0..<w * w { for c: 0..<3 { d := cast(int) back[i * 4 + c] - cast(int) chain[from + i * 4 + c]; e += d * d; } }
+        err[0] = e; err[1] = w * w * 3;
+      }
+      at += m;
+    }
+    from += bytes;
+  }
+  return ifx at == n then n else -1;
+}
+// The 8 by 8 test image the profile's fixtures hold: a diagonal ramp in each channel, alpha opaque.
+bp_ramp :: (img: []u8) {
+  for y: 0..<8 { for x: 0..<8 { i := (y * 8 + x) * 4; img[i] = cast(u8) (x * 32); img[i + 1] = cast(u8) (y * 32); img[i + 2] = cast(u8) ((x + y) * 16); img[i + 3] = 255; } }
+}
+// The ramp's block layer in a format: its whole chain (img_mips) encoded.
+bp_ramp_layer :: (format: int, out: []u8) -> int {
+  img: [256] u8; chain: [340] u8; bp_ramp(img[..]);
+  if img_mips(img[..], 8, 8, chain[..]) != 340 { return -1; }
+  err: [2] int; back: [256] u8; return bp_layer(format, chain[..], 8, 0, out, err[..], back[..]);
+}
+#test "the ramp's layers are whole chains in each format, and read back as block layers" #steps 400000000 {
+  for f: [3] int.[TF_BC7_SRGB, TF_ASTC4_SRGB, TF_ASTC6_SRGB] {
+    out: [1024] u8; n := bp_ramp_layer(f, out[..]);
+    if f == TF_ASTC6_SRGB { #assert n == -1; continue; }   // 8 isn't whole 6x6 blocks
+    b := bl_read(cast(string) out[0..<n], n);
+    #assert n == 16 + (4 + 1 + 1 + 1) * 16 && b.ok && b.format == f && b.levels == 4 && b.width == 8;
+  }
+  // skipping the first level of a 16 square gives the 8 square's layer
+  big: [16 * 16 * 4] u8; for k: 0..<big.count { big[k] = cast(u8) (k % 251); } chain: [1364] u8; #assert img_mips(big[..], 16, 16, chain[..]) == 1364;
+  out: [1024] u8; err: [2] int; back: [256] u8; n := bp_layer(TF_BC7_SRGB, chain[..], 16, 1, out[..], err[..], back[..]);
+  #assert n == 16 + 7 * 16 && bl_read(cast(string) out[0..<n], n).width == 8 && err[1] == 8 * 8 * 3 && err[0] > 0;
+  #assert bp_layer(TF_BC7_SRGB, chain[..], 16, 5, out[..], err[..], back[..]) == -1 && bp_layer(0, chain[..], 16, 0, out[..], err[..], back[..]) == -1;
+  #assert bp_layer(TF_BC7_SRGB, chain[..], 16, 0, out[..], err[..], back[..]) == -1;   // level 0 doesn't fit back
+}
+
+// ---- a pack's block build
+
+BpState :: struct {
+  input: [BP_MAX] u8; image: [BP_MAX] u8; payload: [BP_MAX] u8; file: [BP_MAX] u8; back: [BP_MAX] u8;
+  work: [BP_WORK] u8; chain: [BP_CHAIN] u8; base: [BP_SIDE * BP_SIDE * 4] u8; catalog: [1048576] u8; scratch: [PPK_PAGE_MAX + 65536] u8;
+}
+bp_put :: (s: string, out: []u8, n: int) -> int { if n < 0 || n + s.count > out.count { return -1; } for c, k: s { out[n + k] = c; } return n + s.count; }
+// The catalog with its budget and bytes lines saying budget and size (each line kept in place).
+bp_catalog :: (old: string, budget: int, size: int, out: []u8) -> int {
+  n := 0; at := 0;
+  for i: 0..<old.count {
+    if old[i] != '\n' { continue; }
+    line := old[at..<i + 1]; what := pack_field(old[at..<i], 0); at = i + 1;
+    if what == "budget" || what == "bytes" {
+      digits: [24] u8; v := ifx what == "budget" then budget else size; d := 0;
+      while true { digits[23 - d] = cast(u8) ('0' + v % 10); v /= 10; d += 1; if v == 0 { break; } }
+      n = bp_put(what, out, n); if n < 0 { return -1; }
+      n = bp_put(" ", out, n); if n < 0 { return -1; }
+      n = bp_put(cast(string) digits[24 - d..<24], out, n); if n < 0 { return -1; }
+      n = bp_put("\n", out, n);
+    } else { n = bp_put(line, out, n); }
+    if n < 0 { return -1; }
+  }
+  return n;
+}
+#test "a catalog's size lines are rewritten in place, the rest kept" {
+  out: [256] u8; t := "pack x\nbudget 600\nbytes 512\nL 0 a\n";
+  n := bp_catalog(t, 9000, 70004, out[..]);
+  #assert cast(string) out[0..<n] == "pack x\nbudget 9000\nbytes 70004\nL 0 a\n";
+  #assert bp_catalog(t, 0, 7, out[..]) == 30 && cast(string) out[0..<30] == "pack x\nbudget 0\nbytes 7\nL 0 a\n";
+  #assert bp_catalog(t, 1, 1, out[0..<10]) == -1;
+}
+
+// A layer's whole chain at side `at` (its own side, or twice it) into st.chain, as htx_decode makes
+// it: the chain's bytes, or -1.
+bp_decode :: (st: []BpState, raw: []u8, info: ImgInfo, at: int) -> int {
+  w := info.w;
+  if info.status != IMG_OK || w < 1 || info.h != w || w > BP_SIDE || at > BP_SIDE || info.work > BP_WORK || (at != w && at != 2 * w) { return -1; }
+  if img_decode(raw, st[0].work[..], st[0].base[0..<w * w * 4]) != IMG_OK { return -1; }
+  level0 := st[0].base[0..<w * w * 4];
+  if at == 2 * w { img_double(level0, w, w, st[0].work[0..<at * at * 4]); level0 = st[0].work[0..<at * at * 4]; }
+  n := img_mips(level0, at, at, st[0].chain[..]);
+  img_premul_trip(st[0].chain[0..<n]);
+  return n;
+}
+bp_build :: (st: []BpState, in_path: string, out_path: string, format: int, want_side: int) -> int {
+  size := fs_read(in_path, st[0].input[..]);
+  if size < 0 { print("FAIL %: can't read it (missing, or over % bytes)\n", in_path, BP_MAX); return 1; }
+  p := cast(string) st[0].input[0..<size];
+  r: [1] PackRead;
+  if !pack_read(p, r[..]) { print("FAIL %: refused (%)\n", in_path, r[0].why); return 1; }
+  side := want_side;
+  src: [PACK_READ_MAX] PackSource; used := 0; layers := 0; sse := 0; samples := 0; gpu := 0; rgba := 0;
+  for k: 0..<r[0].count {
+    e := r[0].entries[k]; bytes := pack_bytes(p, r[..], k); raw := st[0].input[e.at..<e.at + e.n];
+    src[k] = PackSource.{kind = e.kind, licence = e.licence, name = e.name, data = bytes};
+    if e.kind != PACK_LAYER { continue; }
+    info := img_info(raw);
+    if side <= 0 { side = info.w; }
+    // the side to decode at, and the levels of it to skip: a layer is drawn at `side`
+    at := ifx info.w * 2 >= side then side else 0; skip := 0;
+    if info.w == side * 2 { at = info.w; skip = 1; }
+    chain := bp_decode(st, raw, info, at);
+    if at == 0 || chain < 0 {
+      print("FAIL %: layer % (%x%) can't be drawn at %\n", in_path, e.name, info.w, info.h, side); return 1;
+    }
+    err: [2] int;
+    n := bp_layer(format, st[0].chain[0..<chain], at, skip, st[0].payload[used..<BP_MAX], err[..], st[0].back[..]);
+    if n < 0 { print("FAIL %: layer % doesn't encode as %\n", in_path, e.name, tf_name(format)); return 1; }
+    src[k].data = cast(string) st[0].payload[used..<used + n]; used += n;
+    layers += 1; sse += err[0]; samples += err[1]; gpu += n - BL_HEADER;
+    for l: 0..<bl_chain(side, side) { w := img_side(side, l); rgba += w * w * 4; }
+  }
+  if layers == 0 { print("FAIL %: no texture layers\n", in_path); return 1; }
+  // The catalog's size lines name the new size, which counts the catalog: two passes settle it.
+  old := src[0].data; total := pack_size(src[0..<r[0].count]);
+  for pass: 0..<3 {
+    budget := ifx r[0].budget > total then r[0].budget else total;
+    cn := bp_catalog(old, budget, total, st[0].catalog[..]);
+    if cn < 0 { print("FAIL %: its catalog doesn't fit\n", in_path); return 1; }
+    src[0].data = cast(string) st[0].catalog[0..<cn];
+    total = pack_size(src[0..<r[0].count]);
+  }
+  budget := ifx r[0].budget > total then r[0].budget else total;
+  wide := p[3] == '2' || r[0].count > PACK_MAX;
+  wrote := ifx wide then pack_write_v2(src[0..<r[0].count], budget, st[0].image[..]) else pack_write(src[0..<r[0].count], budget, st[0].image[..]);
+  image := cast(string) st[0].image[0..<ifx wrote > 0 then wrote else 0];
+  back: [1] PackRead;
+  if wrote <= 0 || !pack_read(image, back[..]) { print("FAIL %: the block build doesn't read back (%)\n", out_path, back[0].why); return 1; }
+  for k: 0..<back[0].count {
+    if back[0].entries[k].kind != PACK_LAYER { continue; }
+    b := pack_bytes(image, back[..], k);
+    if !bl_read(b, b.count).ok { print("FAIL %: layer % isn't a block layer\n", out_path, k); return 1; }
+  }
+  starts: [PPK_PAGES] int; roots: [PPK_PAGES] bool; entries: [PPK_PAGES] int; w: [1] DeflateWork;
+  pages := ppk_plan(image, PPK_PAGE, 1 << PACK_SOUND, starts[..], roots[..], entries[..]);
+  fn := ifx pages > 0 then ppk_write(image, starts[0..<pages], roots[0..<pages], entries[0..<pages], st[0].file[..], st[0].scratch[..], w[..]) else -1;
+  l: [1] PpkLoad;
+  if fn < 0 || ppk_read_all(st[0].file[0..<fn], st[0].back[..], l[..]) != wrote || cast(string) st[0].back[0..<wrote] != image { print("FAIL %: can't page it\n", out_path); return 1; }
+  same := fs_size(out_path) == fn;
+  if same { same = fs_read(out_path, st[0].back[..]) == fn && cast(string) st[0].back[0..<fn] == cast(string) st[0].file[0..<fn]; }
+  if !same && !fs_write(out_path, cast(string) st[0].file[0..<fn]) { print("FAIL %: can't write it\n", out_path); return 1; }
+  mse := cast(f64) sse / cast(f64) samples;
+  db := ifx sse > 0 then 10.0 * log(65025.0 / mse) / 2.302585092994046 else 99.0;
+  print("%: % layers at % as % (% levels): GPU % bytes against % as RGBA8 (% per mille); level 0 PSNR % dB over RGB\n",
+    out_path, layers, side, tf_name(format), bl_chain(side, side), gpu, rgba, gpu * 1000 / rgba, cast(f64) floor(db * 100.0 + 0.5) / 100.0);
+  print("%: pack % bytes, block build % bytes, paged % bytes (% pages)\n", out_path, size, wrote, fn, pages);
+  return 0;
+}
+
+// ---- the profile
+
+bp_unhex :: (s: string, out: []u8) -> int {
+  if (s.count & 1) != 0 || s.count / 2 > out.count { return -1; }
+  for i: 0..<s.count / 2 {
+    hi := asset_digit(s[2 * i]); lo := asset_digit(s[2 * i + 1]);
+    if hi < 0 || lo < 0 { return -1; }
+    out[i] = cast,trunc(u8) ((hi << 4) | lo);
+  }
+  return s.count / 2;
+}
+bp_str :: (d: Jv, at: int, out: []u8) -> string { n := jv_str(d, at, out); return ifx n >= 0 then cast(string) out[0..<n] else ""; }
+// proto/verse/texture-block-layer-v1.json against this codec: the layout's constants, each
+// fixture's bytes written here byte for byte (the ramp through bp_layer) and read back with its
+// header's fields, and every refused fixture refused.
+bp_profile :: (d: Jv) -> bool {
+  t: [4096] u8; h: [4096] u8; raw: [2048] u8; mine: [2048] u8;
+  if bp_str(d, jv_get(d, 0, "identity"), t[..]) != "texture-block-layer-v1" || bp_str(d, jv_get(d, 0, "magic"), t[..]) != BL_MAGIC { return false; }
+  if jv_int(d, jv_get(d, 0, "header_bytes"), -1) != BL_HEADER || jv_int(d, jv_get(d, 0, "side_max"), -1) != BL_SIDE_MAX || jv_int(d, jv_get(d, 0, "block_bytes"), -1) != 16 { return false; }
+  fs := jv_get(d, 0, "formats");
+  if jv_len(d, fs) != 5 { return false; }
+  for i: 0..<5 {
+    row := jv_at(d, fs, i); code := jv_int(d, jv_get(d, row, "code"), -1);
+    if code != TF_BC7_SRGB + i || bp_str(d, jv_get(d, row, "webgpu"), t[..]) != tf_name(code) || jv_int(d, jv_get(d, row, "block"), -1) != tf_block(code) { return false; }
+  }
+  fx := jv_get(d, 0, "fixtures");
+  if jv_len(d, fx) < 2 { return false; }
+  for i: 0..<jv_len(d, fx) {
+    row := jv_at(d, fx, i); format := bp_format(bp_str(d, jv_get(d, row, "tag"), t[..]));
+    n := bp_unhex(bp_str(d, jv_get(d, row, "hex"), h[..]), raw[..]);
+    b := bl_read(cast(string) raw[0..<ifx n > 0 then n else 0], n);
+    if n <= 0 || !b.ok || b.format != format || b.width != jv_int(d, jv_get(d, row, "width"), -1) || b.height != jv_int(d, jv_get(d, row, "height"), -1) || b.levels != jv_int(d, jv_get(d, row, "levels"), -1) { return false; }
+    m := bp_ramp_layer(format, mine[..]);
+    if m != n || cast(string) mine[0..<m] != cast(string) raw[0..<n] { return false; }
+  }
+  refused := jv_get(d, 0, "refused_hex");
+  if jv_len(d, refused) < 3 { return false; }
+  for i: 0..<jv_len(d, refused) {
+    n := bp_unhex(bp_str(d, jv_at(d, refused, i), h[..]), raw[..]);
+    if n < 0 || bl_read(cast(string) raw[0..<n], n).ok { return false; }
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  if args_count(a[..]) == 2 && args_at(a[..], 0) == "profile" {
+    text: [65536] u8; n := fs_read(args_at(a[..], 1), text[..]);
+    nodes: [2048] JvNode; d: [1] Jv;
+    if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("block-pack: cannot parse the profile"); return 2; }
+    if !bp_profile(d[0]) { print("texture-block-layer-v1: profile fails\n"); return 1; }
+    print("texture-block-layer-v1: profile holds\n"); return 0;
+  }
+  // the profile's fixture bytes for a format, as hex (to write a new fixture)
+  if args_count(a[..]) == 2 && args_at(a[..], 0) == "ramp" {
+    out: [1024] u8; n := bp_ramp_layer(bp_format(args_at(a[..], 1)), out[..]);
+    if n < 0 { tool_errln("block-pack: no ramp layer in that format"); return 2; }
+    digits := "0123456789abcdef"; hex: [2048] u8;
+    for k: 0..<n { hex[2 * k] = digits[cast(int) out[k] >> 4]; hex[2 * k + 1] = digits[cast(int) out[k] & 15]; }
+    print("%\n", cast(string) hex[0..<2 * n]); return 0;
+  }
+  format := bp_format(args_value(a[..], "--format", ""));
+  side := args_whole(args_value(a[..], "--side", "0"));
+  if args_count(a[..]) < 4 || format == 0 || side < 0 {
+    tool_errln("usage: block-pack IN.pack OUT.vpk3 --format bc7|astc4|astc6 [--side N]\n       block-pack profile FILE.json"); return 2;
+  }
+  st: [1] BpState;
+  return bp_build(st[..], args_at(a[..], 0), args_at(a[..], 1), format, side);
+}

@@ -2,12 +2,12 @@
 // Everglade's shaders, the source of everglade.wgsl (G6): build.sh writes that module from this
 // with coax/web/wgsl-module.coax (gpu.module, gpu.bindings), and coax spirv lowers it for the
 // GPU. It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../../aethyr/render/sampling.coax";
-#load "../../../../aethyr/render/noise.coax";
-#load "../../../../aethyr/gpu/wgsl.coax";
+#load "../../../../metaverse-engine/render/sampling.coax";
+#load "../../../../metaverse-engine/render/noise.coax";
+#load "../../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../../verse/style.coax";
 #load "gpu-glade.coax";   // the glade south of the South Gate (#13018)
-#load "../../../../aethyr/render/filmic.coax";
+#load "../../../../metaverse-engine/render/filmic.coax";
 
 // Everglade's three passes: the sky, the scene (with the river's water in
 // two blended halves after it) and the HUD. Every number
@@ -915,7 +915,7 @@ eg_light_space :: (u:[]f32)->EgLight {
   c:V3=v3(u[24],0.0f32,u[26]);
   return EgLight.{ax=ax,ay=ay,l=l,mx=verse_style_shadow_snap(wg_dot3(c,ax),reach,size),my=verse_style_shadow_snap(wg_dot3(c,ay),reach,size),reach=reach};
 }
-// ---- the shadow tiles (aethyr/render/cascades.coax cascade_rows; everglade.coax U_CASCADE, #13016):
+// ---- the shadow tiles (metaverse-engine/render/cascades.coax cascade_rows; everglade.coax U_CASCADE, #13016):
 // once the host opens the atlas, the key light's map is up to four tiles of one depth texture, each
 // a ring further out and each drawn again only when its snapped view changes. The header says how
 // many and which is drawn this frame; each tile has its rect in the atlas, its rows across, up and in
@@ -1818,7 +1818,7 @@ eg_fx_vs :: (_vid4:u32,_iid5:u32,in_:eg_fx_vs_in,u:[]f32)->EgV {
 }
 eg_fx_fs :: (v:EgV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
   if (v.tint.w>3.5f32) {
-    // A glyph from the host's atlas (aethyr/ui/font.coax draw_sans), Character Create's
+    // A glyph from the host's atlas (metaverse-engine/ui/font.coax draw_sans), Character Create's
     // labels (everglade-create.coax): place is the atlas coordinate, shape.x the em in pixels.
     lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
     a:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
@@ -2086,7 +2086,7 @@ eg_water_under_view :: (c:V3,world:V3,d:V3,u:[]f32)->V3 {
   col=wg_add_f3f3(col,wg_mul_f3f(wg_mul_f3f3(v3(1.0f32,0.97f32,0.85f32),key),((eg_water_motes(o,d,fmin(path,6.0f32),u)*0.6f32)+eg_water_shafts(o,d,path,level,u))));
   return col;
 }
-// ---- the weather (W9: aethyr/world/water-weather.coax samples Everglade's schedule; everglade.coax
+// ---- the weather (W9: metaverse-engine/world/water-weather.coax samples Everglade's schedule; everglade.coax
 // weather_frame writes u.weather). The light and the haze under cloud are set on the CPU; here the
 // sky greys under cloud and flashes with lightning, rain falls as wind-tilted streaks in layers
 // round the eye (2 on a phone, 4 on a desktop), rings on the water where drops land, and the
@@ -3510,7 +3510,7 @@ eg_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
   c=wg_add_f3f3(c,wg_mul_f3f(wg_add_f3f3(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32)),wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_sub_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32))),0.070f32));
   return v4(c.x,c.y,c.z,1.0f32);
 }
-// The glade's film curve (aethyr/render/filmic.coax film_rec709, as Character Create's cg_film) in
+// The glade's film curve (metaverse-engine/render/filmic.coax film_rec709, as Character Create's cg_film) in
 // place of the per-channel exponential: highlights roll off with their hue kept, midtones keep
 // contrast; then the preset's saturation and black lift.
 EG_FILM :: 0.9f32;

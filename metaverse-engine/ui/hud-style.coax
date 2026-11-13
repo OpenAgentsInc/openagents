@@ -1,0 +1,646 @@
+// HUD styles: how a realm's HUD looks, apart from what it shows. A realm picks one style
+// (hud_style_named, from its config) and draws every HUD part through it. Two styles exist:
+//  - SCIFI: the Metaverse's instrument look (metaverse-engine/ui/hud-frame.coax, metaverse-engine/ui/draw.coax and the Arwes
+//    frames in metaverse-engine/ui/arwes-frames.coax): grey and cyan glow lines, cut corners, thin bars.
+//    The realms that use it keep their own drawing code; these tokens name its values.
+//  - FANTASY: dark iron and bronze frames, warm gold type, parchment, rounded corners with
+//    diamond studs, framed segmented bars, recessed slots and a gold banner (docs/verse/hud-styles.md).
+// A style is tokens (HudTokens: palette, faces, line weights, corner and ornament treatment, bar,
+// slot, banner and damage-number styles) plus drawers that turn a HUD part into primitives
+// (HudPrim: filled rounded boxes, rings, lines, pie sweeps and soft shadows) in screen points,
+// y down. A realm's renderer turns the primitives into its own vertices (Everglade:
+// everglade/scene/charactercreator.coax hud_emit). Text is the realm's: a style says which face,
+// colour and size each text role takes (hud_text), never how glyphs are drawn.
+// coax/bin/coax test metaverse-engine/ui/hud-style.coax --library
+#load "hud.coax";
+// The HUD's rules (a bar's trail, a banner's fade, the map's projection) are the components'
+// (components/spec.md Phase 5): one implementation for the realms and the HUD components.
+#load "../../components/core/hud.coax";
+
+HUD_SCIFI :: 0; HUD_FANTASY :: 1; HUD_STYLES :: 2;
+
+// The faces a style asks for. BODY is a realm's reading face (numbers, lines); TITLE its display
+// face (names, places, banners). SCIFI uses one face for both.
+HUD_FACE_BODY :: 0; HUD_FACE_TITLE :: 1;
+HUD_CORNER_CUT :: 0; HUD_CORNER_ROUND :: 1;
+HUD_ORN_NONE :: 0; HUD_ORN_STUDS :: 1;          // a diamond stud at each corner of a panel
+HUD_BAR_LINE :: 0; HUD_BAR_FRAMED :: 1;         // a glow line, or a framed bar with segments and a gloss
+HUD_SLOT_OUTLINE :: 0; HUD_SLOT_RECESSED :: 1;  // an outline, or a sunk bevel with a gold trim when ready
+HUD_BANNER_RULES :: 0; HUD_BANNER_RIBBON :: 1;  // two rules, or a dark ribbon fading out with gold rules and diamonds
+HUD_DAMAGE_PLAIN :: 0; HUD_DAMAGE_OUTLINED :: 1;
+
+HudRgba :: struct { r: f32; g: f32; b: f32; a: f32 = 1; }
+HudTokens :: struct {
+  style: int; name: string;
+  frame_dark: HudRgba;    // a panel's body
+  frame_mid: HudRgba;     // its frame's metal
+  frame_light: HudRgba;   // the frame's lit edge
+  trim: HudRgba;          // gold trim, studs, the ready slot's edge
+  text: HudRgba; text_dim: HudRgba; title: HudRgba;
+  parchment: HudRgba;     // a map's or a scroll's ground
+  hp: HudRgba; hp_back: HudRgba; hp_low: HudRgba;
+  magic: HudRgba;         // spell slots
+  good: HudRgba; bad: HudRgba; damage: HudRgba; heal: HudRgba;
+  title_face: int; label_face: int;
+  line: f32;              // the base stroke, points
+  radius: f32;            // a panel's corner rounding (FANTASY) or cut (SCIFI), points
+  corner: int; ornament: int; stud: f32;
+  bar: int; bar_segments: int;
+  slot: int; banner: int; damage_style: int; damage_scale: f32;
+  shadow: f32;            // a panel's soft drop shadow reach, points; 0 none
+}
+
+#test "two styles, picked by name; anything else is SCIFI, as every realm was" {
+  #assert hud_style_named("fantasy") == HUD_FANTASY && hud_style_named("FANTASY") == HUD_FANTASY;
+  #assert hud_style_named("scifi") == HUD_SCIFI && hud_style_named("") == HUD_SCIFI && hud_style_named("steampunk") == HUD_SCIFI;
+  for s: 0..<HUD_STYLES { #assert hud_tokens(s).style == s && hud_tokens(s).name.count > 0; }
+  #assert hud_tokens(-1).style == HUD_SCIFI && hud_tokens(9).style == HUD_SCIFI;
+}
+
+#test "the styles differ in every treatment a realm can see" {
+  a := hud_tokens(HUD_SCIFI); b := hud_tokens(HUD_FANTASY);
+  #assert a.corner == HUD_CORNER_CUT && b.corner == HUD_CORNER_ROUND;
+  #assert a.ornament == HUD_ORN_NONE && b.ornament == HUD_ORN_STUDS;
+  #assert a.bar == HUD_BAR_LINE && b.bar == HUD_BAR_FRAMED && b.bar_segments > 1;
+  #assert a.slot == HUD_SLOT_OUTLINE && b.slot == HUD_SLOT_RECESSED;
+  #assert a.banner == HUD_BANNER_RULES && b.banner == HUD_BANNER_RIBBON;
+  #assert a.damage_style == HUD_DAMAGE_PLAIN && b.damage_style == HUD_DAMAGE_OUTLINED && b.damage_scale > a.damage_scale;
+  #assert a.title_face == HUD_FACE_BODY && b.title_face == HUD_FACE_TITLE;
+  // SCIFI's palette is the Metaverse HUD's: grey-white text and the Arwes cyan accent
+  #assert a.text.r == 0.94 && a.trim.r == 0.216 && a.trim.g == 0.851;
+  // FANTASY's text is warm: more red than blue, everywhere it is read
+  for c: [4] HudRgba.[b.text, b.title, b.trim, b.parchment] { #assert c.r > c.b + 0.15; }
+}
+
+hud_style_named :: (name: string) -> int {
+  if name.count != 7 { return HUD_SCIFI; }
+  want := "fantasy";
+  for i: 0..<7 { c := name[i]; if c >= 'A' && c <= 'Z' { c += 32; } if c != want[i] { return HUD_SCIFI; } }
+  return HUD_FANTASY;
+}
+
+hud_rgba :: (r: f32, g: f32, b: f32, a: f32) -> HudRgba { return HudRgba.{r = r, g = g, b = b, a = a}; }
+hud_fade :: (c: HudRgba, a: f32) -> HudRgba { return HudRgba.{r = c.r, g = c.g, b = c.b, a = c.a * a}; }
+hud_mix :: (p: HudRgba, q: HudRgba, t: f32) -> HudRgba {
+  return HudRgba.{r = p.r + (q.r - p.r) * t, g = p.g + (q.g - p.g) * t, b = p.b + (q.b - p.b) * t, a = p.a + (q.a - p.a) * t};
+}
+
+hud_tokens :: (style: int) -> HudTokens {
+  if style == HUD_FANTASY {
+    return HudTokens.{style = HUD_FANTASY, name = "fantasy",
+      frame_dark = hud_rgba(0.075, 0.062, 0.050, 0.86), frame_mid = hud_rgba(0.32, 0.24, 0.15, 1),
+      frame_light = hud_rgba(0.62, 0.48, 0.30, 1), trim = hud_rgba(0.86, 0.68, 0.36, 1),
+      text = hud_rgba(0.95, 0.89, 0.76, 1), text_dim = hud_rgba(0.72, 0.64, 0.52, 1), title = hud_rgba(0.98, 0.84, 0.52, 1),
+      parchment = hud_rgba(0.70, 0.60, 0.43, 0.94),
+      hp = hud_rgba(0.72, 0.12, 0.09, 1), hp_back = hud_rgba(0.13, 0.05, 0.04, 0.92), hp_low = hud_rgba(0.95, 0.30, 0.16, 1),
+      magic = hud_rgba(0.42, 0.62, 0.98, 1),
+      good = hud_rgba(0.42, 0.80, 0.36, 1), bad = hud_rgba(0.92, 0.32, 0.22, 1),
+      damage = hud_rgba(1.0, 0.62, 0.26, 1), heal = hud_rgba(0.55, 0.95, 0.45, 1),
+      title_face = HUD_FACE_TITLE, label_face = HUD_FACE_TITLE,
+      line = 1.5, radius = 6, corner = HUD_CORNER_ROUND, ornament = HUD_ORN_STUDS, stud = 4,
+      bar = HUD_BAR_FRAMED, bar_segments = 10, slot = HUD_SLOT_RECESSED, banner = HUD_BANNER_RIBBON,
+      damage_style = HUD_DAMAGE_OUTLINED, damage_scale = 1.6, shadow = 10};
+  }
+  g := 0.94f32;
+  return HudTokens.{style = HUD_SCIFI, name = "scifi",
+    frame_dark = hud_rgba(0, 0, 0, 0.55), frame_mid = hud_rgba(0.42, 0.42, 0.42, 1), frame_light = hud_rgba(0.78, 0.78, 0.78, 1),
+    trim = hud_rgba(0.216, 0.851, 0.851, 1),
+    text = hud_rgba(g, g, g, 1), text_dim = hud_rgba(0.6, 0.6, 0.6, 1), title = hud_rgba(g, g, g, 1),
+    parchment = hud_rgba(0, 0, 0, 0.55),
+    hp = hud_rgba(0.85, 0.13, 0.10, 1), hp_back = hud_rgba(0.35, 0.22, 0.20, 1), hp_low = hud_rgba(1, 0.3, 0.25, 1),
+    magic = hud_rgba(0.216, 0.851, 0.851, 1),
+    good = hud_rgba(0.3, 0.9, 0.2, 1), bad = hud_rgba(0.95, 0.2, 0.15, 1),
+    damage = hud_rgba(1, 0.55, 0.35, 1), heal = hud_rgba(0.5, 0.95, 0.55, 1),
+    title_face = HUD_FACE_BODY, label_face = HUD_FACE_BODY,
+    line = 1, radius = 10, corner = HUD_CORNER_CUT, ornament = HUD_ORN_NONE, stud = 0,
+    bar = HUD_BAR_LINE, bar_segments = 1, slot = HUD_SLOT_OUTLINE, banner = HUD_BANNER_RULES,
+    damage_style = HUD_DAMAGE_PLAIN, damage_scale = 1, shadow = 0};
+}
+
+// ---- text roles: which face, colour and size (a share of the caller's cap) each role takes
+HUD_TEXT_NAME :: 0;     // a character's name: the portrait's, a plate's
+HUD_TEXT_TITLE :: 1;    // a panel's heading, a class
+HUD_TEXT_NUMBER :: 2;   // HP, AC, counts
+HUD_TEXT_LABEL :: 3;    // a small caption
+HUD_TEXT_KEY :: 4;      // a slot's key
+HUD_TEXT_BANNER :: 5;   // a place reached, a level gained
+HUD_TEXT_DAMAGE :: 6; HUD_TEXT_HEAL :: 7; HUD_TEXT_WARN :: 8;
+HudText :: struct { face: int; ink: HudRgba; scale: f32 = 1; shadow: bool; outline: bool; }
+
+#test "text roles: FANTASY names and banners in the title face, numbers in the body; damage outlined and larger" {
+  f := hud_tokens(HUD_FANTASY); s := hud_tokens(HUD_SCIFI);
+  #assert hud_text(f, HUD_TEXT_NAME).face == HUD_FACE_TITLE && hud_text(f, HUD_TEXT_BANNER).face == HUD_FACE_TITLE;
+  #assert hud_text(f, HUD_TEXT_NUMBER).face == HUD_FACE_BODY && hud_text(f, HUD_TEXT_DAMAGE).face == HUD_FACE_BODY;
+  #assert hud_text(f, HUD_TEXT_DAMAGE).outline && !hud_text(s, HUD_TEXT_DAMAGE).outline;
+  #assert hud_text(f, HUD_TEXT_DAMAGE).scale > hud_text(s, HUD_TEXT_DAMAGE).scale;
+  #assert hud_text(f, HUD_TEXT_LABEL).shadow && !hud_text(s, HUD_TEXT_LABEL).shadow;
+  for r: 0..<9 { #assert hud_text(s, r).face == HUD_FACE_BODY && hud_text(f, r).scale > 0; }
+}
+hud_text :: (t: HudTokens, role: int) -> HudText {
+  fan := t.style == HUD_FANTASY;
+  if role == HUD_TEXT_NAME { return HudText.{face = t.title_face, ink = t.title, shadow = fan}; }
+  if role == HUD_TEXT_TITLE { return HudText.{face = t.title_face, ink = t.title, shadow = fan}; }
+  if role == HUD_TEXT_NUMBER { return HudText.{face = HUD_FACE_BODY, ink = t.text, shadow = fan}; }
+  if role == HUD_TEXT_LABEL { return HudText.{face = t.label_face, ink = t.text_dim, scale = 0.9, shadow = fan}; }
+  if role == HUD_TEXT_KEY { return HudText.{face = t.label_face, ink = t.text, scale = 0.85, shadow = fan}; }
+  if role == HUD_TEXT_BANNER { return HudText.{face = t.title_face, ink = t.title, scale = 1.5, shadow = fan, outline = fan}; }
+  if role == HUD_TEXT_DAMAGE { return HudText.{face = HUD_FACE_BODY, ink = t.damage, scale = t.damage_scale, outline = fan}; }
+  if role == HUD_TEXT_HEAL { return HudText.{face = HUD_FACE_BODY, ink = t.heal, scale = t.damage_scale, outline = fan}; }
+  return HudText.{face = HUD_FACE_BODY, ink = t.bad, shadow = fan};
+}
+
+// ---- primitives
+HUD_PRIM_FILL :: 1;     // a rounded box (radius; width = its edge's softness), top colour to bottom
+HUD_PRIM_RING :: 2;     // a rounded box's edge, width thick, inside the box
+HUD_PRIM_SHADOW :: 3;   // a rounded box's soft shadow, width its reach
+HUD_PRIM_SWEEP :: 4;    // a box's pie: share of a turn dark from twelve o'clock, clockwise
+HUD_PRIMS :: 512;
+HudPrim :: struct {
+  kind: int; x0: f32; y0: f32; x1: f32; y1: f32;
+  radius: f32; width: f32; top: HudRgba; bottom: HudRgba;
+  turn: f32;    // radians about the box's centre: a diamond is a square at a quarter turn
+  share: f32;   // a sweep's share
+}
+HudList :: struct { p: [HUD_PRIMS] HudPrim; n: int; dropped: int; }
+
+#test "a list keeps what fits and counts what it dropped, never writing past its end" {
+  l: [1] HudList;
+  for i: 0..<HUD_PRIMS + 5 { hud_fill(l[..], hud_box(0, 0, 10, 10), 2, hud_rgba(1, 1, 1, 1), hud_rgba(1, 1, 1, 1)); }
+  #assert l[0].n == HUD_PRIMS && l[0].dropped == 5;
+  hud_clear(l[..]); #assert l[0].n == 0 && l[0].dropped == 0;
+  // nothing empty or invisible is kept
+  hud_fill(l[..], hud_box(5, 5, 5, 20), 0, hud_rgba(1, 1, 1, 1), hud_rgba(1, 1, 1, 1));
+  hud_fill(l[..], hud_box(0, 0, 10, 10), 0, hud_rgba(1, 1, 1, 0), hud_rgba(1, 1, 1, 0));
+  hud_ring(l[..], hud_box(0, 0, 10, 10), 0, 0, hud_rgba(1, 1, 1, 1), hud_rgba(1, 1, 1, 1));
+  #assert l[0].n == 0;
+}
+
+hud_box :: (x0: f32, y0: f32, x1: f32, y1: f32) -> HudPrim { return HudPrim.{x0 = x0, y0 = y0, x1 = x1, y1 = y1}; }
+hud_clear :: (l: [] HudList) { l[0].n = 0; l[0].dropped = 0; }
+hud_put :: (l: [] HudList, p: HudPrim) {
+  if !(p.x1 > p.x0) || !(p.y1 > p.y0) || (p.top.a <= 0 && p.bottom.a <= 0) { return; }
+  if p.kind == HUD_PRIM_RING && !(p.width > 0) { return; }
+  if l[0].n >= HUD_PRIMS { l[0].dropped += 1; return; }
+  l[0].p[l[0].n] = p; l[0].n += 1;
+}
+hud_fill :: (l: [] HudList, b: HudPrim, radius: f32, top: HudRgba, bottom: HudRgba) {
+  p := b; p.kind = HUD_PRIM_FILL; p.radius = radius; p.width = 0.75; p.top = top; p.bottom = bottom; hud_put(l[..], p);
+}
+hud_ring :: (l: [] HudList, b: HudPrim, radius: f32, width: f32, top: HudRgba, bottom: HudRgba) {
+  p := b; p.kind = HUD_PRIM_RING; p.radius = radius; p.width = width; p.top = top; p.bottom = bottom; hud_put(l[..], p);
+}
+hud_shadow :: (l: [] HudList, b: HudPrim, radius: f32, reach: f32, c: HudRgba) {
+  if !(reach > 0) { return; }
+  p := b; p.kind = HUD_PRIM_SHADOW; p.radius = radius; p.width = reach; p.top = c; p.bottom = c;
+  p.x0 -= reach; p.y0 -= reach * 0.6; p.x1 += reach; p.y1 += reach * 1.4; hud_put(l[..], p);
+}
+hud_line :: (l: [] HudList, x0: f32, y0: f32, x1: f32, y1: f32, wide: f32, c: HudRgba) {
+  // an axis-aligned rule as a thin box with round ends (the HUD's rules are level or plumb)
+  h := wide * 0.5;
+  hud_fill(l, hud_box((ifx x0 < x1 then x0 else x1) - h, (ifx y0 < y1 then y0 else y1) - h,
+                      (ifx x0 < x1 then x1 else x0) + h, (ifx y0 < y1 then y1 else y0) + h), h, c, c);
+}
+hud_diamond :: (l: [] HudList, cx: f32, cy: f32, r: f32, top: HudRgba, bottom: HudRgba) {
+  // a square of half-diagonal r turned an eighth: its corners up, down, left and right
+  h := r * 0.7071068;
+  p := hud_box(cx - h, cy - h, cx + h, cy + h); p.turn = 0.7853982; hud_fill(l[..], p, r * 0.08, top, bottom);
+}
+hud_disc :: (l: [] HudList, cx: f32, cy: f32, r: f32, top: HudRgba, bottom: HudRgba) { hud_fill(l[..], hud_box(cx - r, cy - r, cx + r, cy + r), r, top, bottom); }
+hud_circle :: (l: [] HudList, cx: f32, cy: f32, r: f32, wide: f32, top: HudRgba, bottom: HudRgba) { hud_ring(l[..], hud_box(cx - r, cy - r, cx + r, cy + r), r, wide, top, bottom); }
+hud_sweep :: (l: [] HudList, b: HudPrim, share: f32, c: HudRgba) {
+  if !(share > 0) { return; }
+  p := b; p.kind = HUD_PRIM_SWEEP; p.share = ifx share > 1 then 1.0f32 else share; p.top = c; p.bottom = c; hud_put(l[..], p);
+}
+
+// ---- the parts. k is the caller's scale (device pixels a point).
+#test "a FANTASY panel: shadow, body, metal frame, gold inner line and four studs; SCIFI: a body and its cut outline" {
+  l: [1] HudList; b := hud_box(10, 10, 210, 90);
+  hud_panel(l[..], hud_tokens(HUD_FANTASY), b, 1);
+  #assert l[0].n == 8 && l[0].p[0].kind == HUD_PRIM_SHADOW && l[0].p[1].kind == HUD_PRIM_FILL && l[0].p[2].kind == HUD_PRIM_RING;
+  for i: 4..<8 { #assert abs(l[0].p[i].turn - 0.7853982) < 0.0001; }
+  // the studs sit on the frame's corners
+  #assert l[0].p[4].x0 < 10 + 6 && l[0].p[4].y0 < 10 + 6;
+  hud_clear(l[..]); hud_panel(l[..], hud_tokens(HUD_SCIFI), b, 1);
+  #assert l[0].n == 9 && l[0].p[0].kind == HUD_PRIM_FILL;
+  for i: 1..<9 { #assert l[0].p[i].kind == HUD_PRIM_FILL && l[0].p[i].turn == 0; }
+}
+hud_panel :: (l: [] HudList, t: HudTokens, b: HudPrim, k: f32) {
+  if t.style == HUD_FANTASY {
+    r := t.radius * k; w := t.line * k;
+    hud_shadow(l[..], b, r, t.shadow * k, hud_rgba(0, 0, 0, 0.45));
+    hud_fill(l[..], b, r, hud_mix(t.frame_dark, hud_rgba(0.16, 0.13, 0.10, t.frame_dark.a), 0.6), t.frame_dark);
+    hud_ring(l[..], b, r, 2.5 * w, t.frame_light, t.frame_mid);
+    i := b; inset := 4 * w; i.x0 += inset; i.y0 += inset; i.x1 -= inset; i.y1 -= inset;
+    hud_ring(l[..], i, r * 0.6, 0.75 * k, hud_fade(t.trim, 0.55), hud_fade(t.trim, 0.25));
+    s := t.stud * k;
+    for c: 0..<4 {
+      cx := ifx c % 2 == 0 then b.x0 + 2 * w else b.x1 - 2 * w; cy := ifx c < 2 then b.y0 + 2 * w else b.y1 - 2 * w;
+      hud_diamond(l[..], cx, cy, s, t.trim, hud_mix(t.trim, t.frame_mid, 0.5));
+    }
+    return;
+  }
+  // SCIFI: dim glass and an outline whose two opposite corners are cut (metaverse-engine/ui/hud-frame.coax's panel)
+  hud_fill(l[..], b, 0, t.frame_dark, t.frame_dark);
+  c := t.radius * k; w := t.line * k; e := t.frame_light;
+  hud_line(l[..], b.x0 + c, b.y0, b.x1, b.y0, w, e); hud_line(l[..], b.x1, b.y0, b.x1, b.y1 - c, w, e);
+  hud_line(l[..], b.x0, b.y1, b.x1 - c, b.y1, w, e); hud_line(l[..], b.x0, b.y0 + c, b.x0, b.y1, w, e);
+  // the cuts, as short steps (a rule is level or plumb)
+  for q: 0..<2 {
+    f := f32(q + 1) / 3;
+    hud_line(l[..], b.x0 + c * f, b.y0 + c * (1 - f), b.x0 + c * f + w, b.y0 + c * (1 - f), w, e);
+    hud_line(l[..], b.x1 - c * f - w, b.y1 - c * (1 - f), b.x1 - c * f, b.y1 - c * (1 - f), w, e);
+  }
+}
+
+#test "a bar: FANTASY frames its back, its fill and its segments; the fill is the share, clamped" {
+  l: [1] HudList; t := hud_tokens(HUD_FANTASY); b := hud_box(0, 0, 200, 12);
+  hud_bar(l[..], t, b, 0.5, t.hp, 1);
+  fills := 0; fill_w: f32 = 0;
+  want := hud_mix(t.hp, hud_rgba(0, 0, 0, 1), 0.35);
+  for i: 0..<l[0].n { p := l[0].p[i]; if p.kind == HUD_PRIM_FILL && p.bottom.r == want.r && p.bottom.g == want.g { fills += 1; fill_w = p.x1 - p.x0; } }
+  #assert fills == 1 && abs(fill_w - 100) < 0.01;
+  hud_clear(l[..]); hud_bar(l[..], t, b, 3, t.hp, 1);
+  for i: 0..<l[0].n { p := l[0].p[i]; #assert p.x1 <= 203.01 && p.x0 >= -3.01; }
+  hud_clear(l[..]); hud_bar(l[..], t, b, -1, t.hp, 1); n0 := l[0].n;
+  hud_clear(l[..]); hud_bar(l[..], t, b, 0.0f32 / 0.0f32, t.hp, 1); #assert l[0].n == n0;
+  hud_clear(l[..]); hud_bar(l[..], hud_tokens(HUD_SCIFI), b, 0.5, t.hp, 1); #assert l[0].n == 2;
+}
+hud_bar :: (l: [] HudList, t: HudTokens, b: HudPrim, share: f32, c: HudRgba, k: f32) {
+  v := ifx !(share > 0) then 0.0f32 else ifx share > 1 then 1.0f32 else share;
+  h := b.y1 - b.y0;
+  if t.bar == HUD_BAR_LINE {
+    y := (b.y0 + b.y1) * 0.5;
+    hud_line(l[..], b.x0, y, b.x1, y, h, t.hp_back);
+    if v > 0 { hud_line(l[..], b.x0, y, b.x0 + (b.x1 - b.x0) * v, y, h, c); }
+    return;
+  }
+  r := h * 0.5; w := t.line * k;
+  o := b; o.x0 -= 2 * w; o.y0 -= 2 * w; o.x1 += 2 * w; o.y1 += 2 * w;
+  hud_fill(l[..], o, r + 2 * w, t.frame_mid, hud_mix(t.frame_mid, hud_rgba(0, 0, 0, 1), 0.5));
+  hud_fill(l[..], b, r, t.hp_back, hud_mix(t.hp_back, hud_rgba(0, 0, 0, 1), 0.4));
+  if v > 0 {
+    f := b; f.x1 = b.x0 + (b.x1 - b.x0) * v;
+    if f.x1 - f.x0 < h { f.x1 = f.x0 + h; }   // a sliver still reads as a rounded end
+    hud_fill(l[..], f, r, hud_mix(c, hud_rgba(1, 0.9, 0.7, 1), 0.28), hud_mix(c, hud_rgba(0, 0, 0, 1), 0.35));
+    g := f; g.y1 = f.y0 + h * 0.42; g.x0 += r * 0.5; g.x1 -= r * 0.5;
+    hud_fill(l[..], g, r * 0.5, hud_rgba(1, 0.95, 0.85, 0.30), hud_rgba(1, 0.95, 0.85, 0.06));
+  }
+  for s: 1..<t.bar_segments {
+    x := b.x0 + (b.x1 - b.x0) * f32(s) / f32(t.bar_segments);
+    hud_line(l[..], x, b.y0 + 1 * k, x, b.y1 - 1 * k, 1 * k, hud_rgba(0, 0, 0, 0.42));
+  }
+  hud_ring(l[..], o, r + 2 * w, 1 * k, hud_fade(t.frame_light, 0.9), hud_fade(t.frame_mid, 0.9));
+}
+
+// ---- vitals (GitHub #13147): a health bar that eases to its value and, where a blow took it down,
+// leaves a pale trail from where it stood, which waits a moment and then catches up. Healing takes
+// the trail with it at once. A realm keeps one HudTrail a bar (yours, your target's, each plate's),
+// steps it each frame with the true share, and draws its fill and trail (hud_vital).
+// The trail's rules (HudTrail, hud_trail_step, hud_trail_snap, hud_trail_busy, hud_share) and their
+// checks are components/core/hud.coax's.
+// A box whose colour runs from `left` to `right` across it: a fill turned a quarter, since a fill's
+// own colours run top to bottom.
+hud_fill_across :: (l: [] HudList, b: HudPrim, left: HudRgba, right: HudRgba) {
+  cx := (b.x0 + b.x1) * 0.5; cy := (b.y0 + b.y1) * 0.5; hw := (b.x1 - b.x0) * 0.5; hh := (b.y1 - b.y0) * 0.5;
+  p := hud_box(cx - hh, cy - hw, cx + hh, cy + hw); p.turn = 1.5707964;
+  hud_fill(l[..], p, 0, right, left);
+}
+// The health bar itself: a dark groove with a hairline of gold round it, the trail in pale gold from
+// the fill's end to where the bar stood, the fill, and a gloss over the top half. across: the fill
+// runs dark at its root to bright at its end (a unit frame's); else one colour, light over dark (a
+// plate's). fill and trail in 0..1. SCIFI keeps its line, the trail a paler line behind it.
+hud_vital :: (l: [] HudList, t: HudTokens, b: HudPrim, fill: f32, trail: f32, c: HudRgba, across: bool, alpha: f32, k: f32) {
+  if !(alpha > 0) { return; }
+  fv := hud_share(fill); tv := hud_share(trail); h := b.y1 - b.y0; w := b.x1 - b.x0;
+  if t.bar == HUD_BAR_LINE {
+    y := (b.y0 + b.y1) * 0.5; hud_line(l[..], b.x0, y, b.x1, y, h, hud_fade(t.hp_back, alpha));
+    if tv > fv { hud_line(l[..], b.x0, y, b.x0 + w * tv, y, h, hud_fade(hud_mix(c, hud_rgba(1, 1, 1, 1), 0.6), alpha)); }
+    if fv > 0 { hud_line(l[..], b.x0, y, b.x0 + w * fv, y, h, hud_fade(c, alpha)); }
+    return;
+  }
+  r := 2 * k; if r > h * 0.5 { r = h * 0.5; }
+  line := hud_box(b.x0 - 1.8 * k, b.y0 - 1.8 * k, b.x1 + 1.8 * k, b.y1 + 1.8 * k);
+  edge := hud_box(b.x0 - 1 * k, b.y0 - 1 * k, b.x1 + 1 * k, b.y1 + 1 * k);
+  hud_fill(l[..], line, r + 1.8 * k, hud_fade(t.trim, 0.36 * alpha), hud_fade(t.trim, 0.22 * alpha));
+  hud_fill(l[..], edge, r + 1 * k, hud_rgba(0, 0, 0, 0.9 * alpha), hud_rgba(0, 0, 0, 0.9 * alpha));
+  hud_fill(l[..], b, r, hud_rgba(0.02, 0.016, 0.016, 0.94 * alpha), hud_rgba(0.085, 0.066, 0.055, 0.94 * alpha));
+  if tv > fv {
+    tb := b; tb.x0 = b.x0 + w * fv; tb.x1 = b.x0 + w * tv; if tb.x0 > b.x0 + r { tb.x0 -= r; }
+    hud_fill(l[..], tb, r, hud_rgba(1, 0.914, 0.72, 0.9 * alpha), hud_rgba(0.906, 0.663, 0.36, 0.9 * alpha));
+  }
+  if fv > 0 {
+    x1 := b.x0 + w * fv; if x1 - b.x0 < 2 * r { x1 = b.x0 + 2 * r; }
+    f := b; f.x1 = x1;
+    if !across { hud_fill(l[..], f, r, hud_fade(hud_mix(c, hud_rgba(1, 1, 1, 1), 0.2), alpha), hud_fade(hud_mix(c, hud_rgba(0.19, 0, 0, 1), 0.3), alpha)); }
+    else {
+      // dark at its root, the colour itself past a third, bright at its end
+      warm := hud_rgba(1, 0.74, 0.42, 1); dark := hud_rgba(0, 0, 0, 1); fw := x1 - b.x0;
+      s0 := hud_fade(hud_mix(c, dark, 0.5), alpha); s1 := hud_fade(hud_mix(c, dark, 0.14), alpha);
+      s2 := hud_fade(hud_mix(c, warm, 0.2), alpha); s3 := hud_fade(hud_mix(c, warm, 0.58), alpha);
+      hud_fill(l[..], f, r, s1, s1);   // its rounded ends, under the run of colour
+      hud_fill_across(l[..], hud_box(b.x0 + r * 0.5, b.y0, b.x0 + fw * 0.38, b.y1), s0, s1);
+      hud_fill_across(l[..], hud_box(b.x0 + fw * 0.38, b.y0, b.x0 + fw * 0.78, b.y1), s1, s2);
+      hud_fill_across(l[..], hud_box(b.x0 + fw * 0.78, b.y0, x1 - r * 0.5, b.y1), s2, s3);
+    }
+  }
+  // the gloss: light over the top half, strongest at the top, and a shade toward the foot (a prim has
+  // one strength, so each is two strips)
+  hud_fill(l[..], hud_box(b.x0, b.y0, b.x1, b.y0 + h * 0.46), r, hud_rgba(1, 1, 1, 0.07 * alpha), hud_rgba(1, 1, 1, 0.07 * alpha));
+  hud_fill(l[..], hud_box(b.x0, b.y0, b.x1, b.y0 + h * 0.22), r, hud_rgba(1, 1, 1, 0.1 * alpha), hud_rgba(1, 1, 1, 0.1 * alpha));
+  hud_fill(l[..], hud_box(b.x0, b.y0 + h * 0.56, b.x1, b.y1), r, hud_rgba(0, 0, 0, 0.1 * alpha), hud_rgba(0, 0, 0, 0.1 * alpha));
+  hud_fill(l[..], hud_box(b.x0, b.y0 + h * 0.8, b.x1, b.y1), r, hud_rgba(0, 0, 0, 0.14 * alpha), hud_rgba(0, 0, 0, 0.14 * alpha));
+}
+#test "a vital bar: its groove, the trail only where the bar stood past the fill, the fill within the groove, a gloss; nothing past its hairline" {
+  l: [1] HudList; t := hud_tokens(HUD_FANTASY); b := hud_box(100, 50, 300, 66);
+  hud_vital(l[..], t, b, 0.5, 0.5, t.hp, true, 1, 1); plain := l[0].n; #assert plain == 3 + 4 + 4;
+  hud_clear(l[..]); hud_vital(l[..], t, b, 0.5, 0.8, t.hp, true, 1, 1); #assert l[0].n == plain + 1;
+  tr := l[0].p[3]; #assert tr.x0 >= 198 && tr.x0 <= 200 && abs(tr.x1 - 260) < 0.01 && tr.top.r > 0.9 && tr.top.b > 0.6;   // pale, from the fill's end to 0.8
+  // the run of colour is three boxes turned a quarter, end to end from the root to the fill's end, brighter toward it
+  a0 := l[0].p[5]; a2 := l[0].p[7]; #assert a0.turn > 1.5 && a2.turn > 1.5 && a2.top.r > a0.bottom.r && a2.top.g > a0.top.g;
+  cx := (a2.x0 + a2.x1) * 0.5; half := (a2.y1 - a2.y0) * 0.5; #assert cx + half <= 200.01 && cx + half > 198 && abs((a2.x1 - a2.x0) - 16) < 0.01;
+  for i: 0..<l[0].n { p := l[0].p[i]; if p.turn != 0 { continue; } #assert p.x0 >= 98 && p.x1 <= 302 && p.y0 >= 48 && p.y1 <= 68; }
+  hud_clear(l[..]); hud_vital(l[..], t, b, 0, 0, t.hp, true, 1, 1); #assert l[0].n == 7;              // empty: the groove and the gloss
+  hud_clear(l[..]); hud_vital(l[..], t, b, 0.5, 0.2, t.hp, false, 1, 1); #assert l[0].n == 3 + 1 + 4;  // a trail under the fill is never drawn
+  hud_clear(l[..]); hud_vital(l[..], t, b, 0.5, 0.8, t.hp, true, 0, 1); #assert l[0].n == 0;
+  hud_clear(l[..]); hud_vital(l[..], hud_tokens(HUD_SCIFI), b, 0.5, 0.8, t.hp, true, 1, 1); #assert l[0].n == 3;
+}
+
+// ---- the edges of the screen in red (GitHub #13147): a flash when a blow lands on you, stronger
+// and longer for a bigger blow, and a slow pulse while your Hit Points are under a quarter. A realm
+// keeps one HudVignette, steps it each frame with your share of Hit Points, and draws it first, under
+// the rest of its HUD (hud_vignette).
+HUD_VIG_LOW :: 0.25;        // under this share of Hit Points (and over 0) the edges pulse
+HUD_VIG_PULSE :: 1.25;      // seconds a pulse
+HudVignette :: struct { hurt: f32; life: f32; age: f32; pulse: f32; last: f32; low: bool; on: bool; }
+// A blow's flash: strength 0.25 + 0.75 x how hard (a quarter of your Hit Points or more: all of it),
+// gone in 0.42 s plus 0.5 s for the hardest.
+hud_vignette_hurt :: (v: [] HudVignette, hard: f32) {
+  i := hud_share(hard); v[0].hurt = 0.25 + 0.75 * i; v[0].life = 0.42 + 0.5 * i; v[0].age = 0;
+}
+hud_vignette_step :: (v: [] HudVignette, share: f32, dt: f32) {
+  hp := hud_share(share); d := ifx !(dt > 0) then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  if v[0].on && hp < v[0].last - 0.0005 { hud_vignette_hurt(v, (v[0].last - hp) * 4); }
+  v[0].last = hp; v[0].on = true;
+  v[0].age += d;
+  v[0].low = hp > 0 && hp < f32(HUD_VIG_LOW);
+  v[0].pulse = ifx v[0].low then v[0].pulse + d else 0.0f32;
+  if v[0].pulse >= f32(HUD_VIG_PULSE) { v[0].pulse -= f32(HUD_VIG_PULSE); }
+}
+// How strong each is now, 0 to 1: the flash eases out; the pulse runs 0.35 to 0.95 and back.
+hud_vignette_flash :: (v: HudVignette) -> f32 {
+  if !(v.life > 0) || v.age >= v.life { return 0; }
+  u := 1 - v.age / v.life; return v.hurt * (1 - (1 - u) * (1 - u));
+}
+hud_vignette_glow :: (v: HudVignette) -> f32 {
+  if !v.low { return 0; }
+  return 0.65 - 0.3 * cos(v.pulse / f32(HUD_VIG_PULSE) * 6.2831853);
+}
+// Whether it still moves (a realm that draws only on change asks).
+hud_vignette_busy :: (v: HudVignette) -> bool { return v.low || hud_vignette_flash(v) > 0; }
+// The edges of a w by h screen: one soft band an edge, red at the edge and clear a fifth of the way
+// in (a shadow prim: full at its depth into the box, nothing at the box's edge; each band's box runs
+// past the screen, so only its inner edge fades on screen). A prim has one strength, so a band is a
+// shadow, not a fill. Nothing when both are spent.
+hud_vignette :: (l: [] HudList, v: HudVignette, w: f32, h: f32) {
+  flash := hud_vignette_flash(v); glow := hud_vignette_glow(v);
+  if !(flash > 0) && !(glow > 0) { return; }
+  // the flash's red or the pulse's darker red, whichever is stronger now
+  edge := hud_rgba(0.6, 0.02, 0.01, 0.82 * flash); low := hud_rgba(0.5, 0.01, 0.01, 0.62 * glow);
+  c := ifx edge.a >= low.a then edge else low;
+  bh := h * 0.2; bw := w * 0.16; far := bh + bw;
+  for e: 0..<4 {
+    p: HudPrim;
+    if e == 0 { p = hud_box(-far, -bh, w + far, bh); p.width = bh; }
+    else if e == 1 { p = hud_box(-far, h - bh, w + far, h + bh); p.width = bh; }
+    else if e == 2 { p = hud_box(-bw, -far, bw, h + far); p.width = bw; }
+    else { p = hud_box(w - bw, -far, w + bw, h + far); p.width = bw; }
+    p.kind = HUD_PRIM_SHADOW; p.top = c; p.bottom = c; hud_put(l[..], p);
+  }
+}
+#test "the red edges: a blow flashes them, harder for a bigger blow, gone within a second; under a quarter of your Hit Points they pulse every 1.25 s; at 0 or healed, nothing" {
+  v: [1] HudVignette; l: [1] HudList;
+  hud_vignette_step(v[..], 1, 0.016); #assert !hud_vignette_busy(v[0]);
+  hud_vignette(l[..], v[0], 800, 600); #assert l[0].n == 0;
+  hud_vignette_step(v[..], 0.9, 0.016); small := hud_vignette_flash(v[0]); #assert small > 0.5 && small <= 0.65;
+  hud_vignette(l[..], v[0], 800, 600); #assert l[0].n == 4;
+  // four soft bands, each fading out a fifth of the way in (120 px of 600 down, 128 of 800 across)
+  for i: 0..<4 { p := l[0].p[i]; #assert p.kind == HUD_PRIM_SHADOW && p.top.r > 0.5 && p.top.g < 0.1 && p.top.a > 0.4; }
+  #assert l[0].p[0].y1 == 120 && l[0].p[0].width == 120 && l[0].p[1].y0 == 480 && l[0].p[2].x1 == 128 && l[0].p[3].x0 == 672;
+  for i: 0..<40 { hud_vignette_step(v[..], 0.9, 1.0f32 / 60); } #assert hud_vignette_flash(v[0]) == 0 && !hud_vignette_busy(v[0]);   // 0.67 s: over
+  hud_vignette_step(v[..], 0.5, 0.016); #assert hud_vignette_flash(v[0]) > 0.99 && v[0].life > 0.9;   // a hard blow: all of it, longer
+  hud_vignette_step(v[..], 0.2, 0.016); #assert v[0].low && hud_vignette_glow(v[0]) >= 0.35 && hud_vignette_glow(v[0]) < 0.4;
+  top := 0.0f32; for i: 0..<75 { hud_vignette_step(v[..], 0.2, 1.0f32 / 60); g := hud_vignette_glow(v[0]); #assert g >= 0.349 && g <= 0.951; if g > top { top = g; } }
+  #assert top > 0.94;   // one whole pulse in 1.25 s
+  hud_vignette_step(v[..], 0, 0.016); #assert !v[0].low && hud_vignette_glow(v[0]) == 0;   // at 0: down, no pulse
+  a0 := v[0].age; hud_vignette_step(v[..], 0.6, 0.016); #assert !v[0].low && v[0].age > a0;   // healed: no new flash
+}
+
+#test "a slot: FANTASY sinks it and trims it gold when ready; SCIFI draws its outline" {
+  l: [1] HudList; t := hud_tokens(HUD_FANTASY); b := hud_box(100, 100, 152, 152);
+  hud_slot(l[..], t, b, 1, false); n0 := l[0].n;
+  hud_clear(l[..]); hud_slot(l[..], t, b, 1, true); #assert l[0].n == n0 + 1;
+  // the frame stays outside the picture, the picture's box itself is left clear
+  for i: 0..<l[0].n { p := l[0].p[i]; #assert p.kind != HUD_PRIM_FILL || p.x0 < 100 || p.y0 < 100 || p.x1 > 152 || p.y1 > 152; }
+  hud_clear(l[..]); hud_slot(l[..], hud_tokens(HUD_SCIFI), b, 1, true); #assert l[0].n == 4;
+}
+hud_slot :: (l: [] HudList, t: HudTokens, b: HudPrim, k: f32, ready: bool) {
+  w := t.line * k;
+  if t.slot == HUD_SLOT_OUTLINE {
+    e := ifx ready then t.trim else t.frame_light;
+    hud_line(l[..], b.x0, b.y0, b.x1, b.y0, w, e); hud_line(l[..], b.x0, b.y1, b.x1, b.y1, w, e);
+    hud_line(l[..], b.x0, b.y0, b.x0, b.y1, w, e); hud_line(l[..], b.x1, b.y0, b.x1, b.y1, w, e);
+    return;
+  }
+  o := b; o.x0 -= 4 * w; o.y0 -= 4 * w; o.x1 += 4 * w; o.y1 += 4 * w;
+  // a sunk well: dark above where the light can't reach, the metal lit below
+  hud_ring(l[..], o, 4 * k, 4 * w, hud_mix(t.frame_mid, hud_rgba(0, 0, 0, 1), 0.55), t.frame_light);
+  hud_ring(l[..], b, 2 * k, 1 * k, hud_rgba(0, 0, 0, 0.75), hud_rgba(0, 0, 0, 0.35));
+  if ready { hud_ring(l[..], o, 4 * k, 1 * k, hud_fade(t.trim, 0.95), hud_fade(t.trim, 0.55)); }
+}
+
+// A tray under a row of slots: the action bar's iron and its end caps.
+hud_tray :: (l: [] HudList, t: HudTokens, b: HudPrim, k: f32) {
+  if t.style != HUD_FANTASY { hud_fill(l[..], b, 0, t.frame_dark, t.frame_dark); return; }
+  r := 10 * k; w := t.line * k;
+  hud_shadow(l[..], b, r, t.shadow * k, hud_rgba(0, 0, 0, 0.5));
+  hud_fill(l[..], b, r, hud_rgba(0.20, 0.16, 0.12, 0.92), hud_rgba(0.06, 0.05, 0.04, 0.95));
+  hud_ring(l[..], b, r, 3 * w, t.frame_light, hud_mix(t.frame_mid, hud_rgba(0, 0, 0, 1), 0.3));
+  top := b.y0 + 1.5 * w;
+  hud_line(l[..], b.x0 + r, top, b.x1 - r, top, 1 * k, hud_fade(t.trim, 0.7));
+  for e: 0..<2 {
+    cx := ifx e == 0 then b.x0 else b.x1; cy := (b.y0 + b.y1) * 0.5; s := (b.y1 - b.y0) * 0.36;
+    hud_diamond(l[..], cx, cy, s, t.frame_light, t.frame_mid);
+    hud_diamond(l[..], cx, cy, s * 0.55, t.trim, hud_mix(t.trim, t.frame_mid, 0.6));
+  }
+}
+
+// A button: a raised plate of metal (FANTASY) or an outline (SCIFI). lit marks the one chosen (a
+// tab, a toggle that is on): a gold trim and a warmer face. The caller writes its label over it.
+#test "a button: FANTASY raises a plate and trims the chosen one gold; SCIFI outlines it" {
+  l: [1] HudList; t := hud_tokens(HUD_FANTASY); b := hud_box(10, 10, 110, 54);
+  hud_button(l[..], t, b, 1, false); n0 := l[0].n;
+  hud_clear(l[..]); hud_button(l[..], t, b, 1, true); #assert l[0].n == n0 + 1 && n0 >= 3;
+  for i: 0..<l[0].n { p := l[0].p[i]; #assert p.x0 >= 10 - 0.01 && p.x1 <= 110.01 && p.y0 >= 10 - 0.01 && p.y1 <= 56.01; }
+  hud_clear(l[..]); hud_button(l[..], hud_tokens(HUD_SCIFI), b, 1, true); #assert l[0].n == 4;
+}
+hud_button :: (l: [] HudList, t: HudTokens, b: HudPrim, k: f32, lit: bool) {
+  if t.style != HUD_FANTASY {
+    e := ifx lit then t.trim else t.frame_light; w := t.line * k;
+    hud_line(l[..], b.x0, b.y0, b.x1, b.y0, w, e); hud_line(l[..], b.x0, b.y1, b.x1, b.y1, w, e);
+    hud_line(l[..], b.x0, b.y0, b.x0, b.y1, w, e); hud_line(l[..], b.x1, b.y0, b.x1, b.y1, w, e);
+    return;
+  }
+  r := 5 * k; w := t.line * k;
+  // a lip of shadow under it, so it stands off the panel
+  s := b; s.y0 += 2 * k; s.y1 += 2 * k; hud_fill(l[..], s, r, hud_rgba(0, 0, 0, 0.5), hud_rgba(0, 0, 0, 0.5));
+  face_top := ifx lit then hud_rgba(0.42, 0.31, 0.17, 0.97) else hud_rgba(0.27, 0.21, 0.15, 0.95);
+  face_bottom := ifx lit then hud_rgba(0.20, 0.14, 0.08, 0.97) else hud_rgba(0.11, 0.09, 0.07, 0.95);
+  hud_fill(l[..], b, r, face_top, face_bottom);
+  hud_ring(l[..], b, r, 1.5 * w, t.frame_light, hud_mix(t.frame_mid, hud_rgba(0, 0, 0, 1), 0.35));
+  if lit { i := b; i.x0 += 3 * k; i.y0 += 3 * k; i.x1 -= 3 * k; i.y1 -= 3 * k; hud_ring(l[..], i, r * 0.6, 1 * k, t.trim, hud_fade(t.trim, 0.6)); }
+}
+// A sunk well: a row of a form, a field's ground. Darker than the panel, a hairline round it.
+hud_well :: (l: [] HudList, t: HudTokens, b: HudPrim, k: f32, lit: bool) {
+  if t.style != HUD_FANTASY { hud_fill(l[..], b, 0, t.frame_dark, t.frame_dark); return; }
+  r := 6 * k;
+  hud_fill(l[..], b, r, hud_rgba(0.03, 0.025, 0.02, 0.62), hud_rgba(0.08, 0.065, 0.05, 0.55));
+  hud_ring(l[..], b, r, 1 * k, ifx lit then hud_fade(t.trim, 0.85) else hud_rgba(0, 0, 0, 0.6), ifx lit then hud_fade(t.trim, 0.5) else hud_fade(t.frame_light, 0.35));
+}
+// A tray under a row of slots, leaving each slot's own box clear (the realm draws the slots'
+// pictures under its strokes, so the tray's iron must not cover them): strips above, below and
+// between. sx holds each slot's left and right edge, n slots, all between y0 and y1.
+hud_tray_round :: (l: [] HudList, t: HudTokens, b: HudPrim, y0: f32, y1: f32, sx: [] f32, n: int, k: f32) {
+  if t.style != HUD_FANTASY { return; }
+  r := 8 * k; w := t.line * k;
+  top := hud_rgba(0.20, 0.16, 0.12, 0.92); bottom := hud_rgba(0.06, 0.05, 0.04, 0.95);
+  mid := hud_mix(top, bottom, 0.5);
+  hud_fill(l[..], hud_box(b.x0, b.y0, b.x1, y0), 0, top, hud_mix(top, bottom, 0.25));
+  hud_fill(l[..], hud_box(b.x0, y1, b.x1, b.y1), 0, hud_mix(top, bottom, 0.75), bottom);
+  x := b.x0;
+  for i: 0..<n { hud_fill(l[..], hud_box(x, y0, sx[2 * i], y1), 0, mid, mid); x = sx[2 * i + 1]; }
+  hud_fill(l[..], hud_box(x, y0, b.x1, y1), 0, mid, mid);
+  hud_ring(l[..], b, 2 * k, 3 * w, t.frame_light, hud_mix(t.frame_mid, hud_rgba(0, 0, 0, 1), 0.3));
+  hud_line(l[..], b.x0 + r, b.y0 + 1.5 * w, b.x1 - r, b.y0 + 1.5 * w, 1 * k, hud_fade(t.trim, 0.7));
+  for e: 0..<2 {
+    cx := ifx e == 0 then b.x0 else b.x1; cy := (b.y0 + b.y1) * 0.5; s := (b.y1 - b.y0) * 0.36;
+    hud_diamond(l[..], cx, cy, s, t.frame_light, t.frame_mid);
+    hud_diamond(l[..], cx, cy, s * 0.55, t.trim, hud_mix(t.trim, t.frame_mid, 0.6));
+  }
+}
+#test "a tray round slots leaves every slot's box clear" {
+  l: [1] HudList; t := hud_tokens(HUD_FANTASY);
+  sx := [6] f32.[20, 72, 80, 132, 140, 192];
+  hud_tray_round(l[..], t, hud_box(10, 90, 202, 160), 100, 152, sx[..], 3, 1);
+  for i: 0..<l[0].n { p := l[0].p[i]; if p.kind != HUD_PRIM_FILL || p.turn != 0 || p.y1 - p.y0 < 3 { continue; }
+    for s: 0..<3 { #assert p.x1 <= sx[2 * s] + 0.01 || p.x0 >= sx[2 * s + 1] - 0.01 || p.y1 <= 100.01 || p.y0 >= 151.99; } }
+}
+
+// A round medallion: a portrait's, a map's, a button's. Its face is the caller's colour.
+hud_medallion :: (l: [] HudList, t: HudTokens, cx: f32, cy: f32, r: f32, face_top: HudRgba, face_bottom: HudRgba, k: f32) {
+  w := t.line * k;
+  if t.style != HUD_FANTASY { hud_disc(l[..], cx, cy, r, face_top, face_bottom); hud_circle(l[..], cx, cy, r, w, t.trim, t.trim); return; }
+  hud_disc(l[..], cx, cy + 2 * k, r + 3 * w, hud_rgba(0, 0, 0, 0.45), hud_rgba(0, 0, 0, 0.45));
+  hud_disc(l[..], cx, cy, r, face_top, face_bottom);
+  hud_circle(l[..], cx, cy, r + 2.5 * w, 3.5 * w, t.frame_light, t.frame_mid);
+  hud_circle(l[..], cx, cy, r - 0.5 * w, 1 * k, hud_fade(t.trim, 0.8), hud_fade(t.trim, 0.4));
+}
+
+// A small round badge (a level, an AC): its metal, its rim; the caller writes its number.
+hud_badge :: (l: [] HudList, t: HudTokens, cx: f32, cy: f32, r: f32, k: f32) {
+  if t.style != HUD_FANTASY { hud_circle(l[..], cx, cy, r, t.line * k, t.trim, t.trim); return; }
+  hud_disc(l[..], cx, cy, r, hud_rgba(0.30, 0.22, 0.13, 1), hud_rgba(0.12, 0.09, 0.06, 1));
+  hud_circle(l[..], cx, cy, r, 1.5 * k, t.trim, hud_mix(t.trim, t.frame_mid, 0.6));
+}
+
+// A shield (an AC): a box rounded at the top and coming to a point below, in two prims.
+hud_shield :: (l: [] HudList, t: HudTokens, cx: f32, cy: f32, r: f32, k: f32) {
+  if t.style != HUD_FANTASY { hud_badge(l[..], t, cx, cy, r, k); return; }
+  hud_diamond(l[..], cx, cy + r * 0.35, r * 0.95, t.trim, hud_mix(t.trim, t.frame_mid, 0.6));
+  hud_fill(l[..], hud_box(cx - r * 0.82, cy - r, cx + r * 0.82, cy + r * 0.45), r * 0.3, t.trim, hud_mix(t.trim, t.frame_mid, 0.4));
+  hud_diamond(l[..], cx, cy + r * 0.3, r * 0.78, hud_rgba(0.30, 0.22, 0.13, 1), hud_rgba(0.12, 0.09, 0.06, 1));
+  hud_fill(l[..], hud_box(cx - r * 0.66, cy - r * 0.84, cx + r * 0.66, cy + r * 0.38), r * 0.22, hud_rgba(0.30, 0.22, 0.13, 1), hud_rgba(0.16, 0.12, 0.08, 1));
+}
+
+// A gem: a spell slot, filled when it is left, hollow when spent.
+hud_gem :: (l: [] HudList, t: HudTokens, cx: f32, cy: f32, r: f32, full: bool, k: f32) {
+  if full { hud_diamond(l[..], cx, cy, r, hud_mix(t.magic, hud_rgba(1, 1, 1, 1), 0.45), hud_mix(t.magic, hud_rgba(0, 0, 0, 1), 0.3)); }
+  else { hud_diamond(l[..], cx, cy, r, hud_rgba(0.05, 0.05, 0.08, 0.85), hud_rgba(0.10, 0.10, 0.14, 0.85)); }
+  if t.style == HUD_FANTASY {
+    h := r * 0.7071068; p := hud_box(cx - h, cy - h, cx + h, cy + h); p.turn = 0.7853982;
+    hud_ring(l[..], p, r * 0.08, 1 * k, t.trim, hud_mix(t.trim, t.frame_mid, 0.5));
+  }
+}
+
+#test "a banner: FANTASY gives it a ribbon and diamonds, SCIFI two rules (its fade is components/core/hud.coax's)" {
+  l: [1] HudList; hud_banner(l[..], hud_tokens(HUD_FANTASY), 960, 300, 300, 40, 1, 1);
+  d := 0; for i: 0..<l[0].n { if l[0].p[i].turn != 0 { d += 1; } } #assert d == 2 && l[0].n >= 6;
+  hud_clear(l[..]); hud_banner(l[..], hud_tokens(HUD_SCIFI), 960, 300, 300, 40, 1, 1); #assert l[0].n == 2;
+}
+// hud_banner_alpha is components/core/hud.coax's.
+// A banner centred at cx, cy, half as wide as half_w, h tall.
+hud_banner :: (l: [] HudList, t: HudTokens, cx: f32, cy: f32, half_w: f32, h: f32, alpha: f32, k: f32) {
+  if !(alpha > 0) { return; }
+  if t.banner == HUD_BANNER_RULES {
+    hud_line(l[..], cx - half_w, cy - h * 0.5, cx + half_w, cy - h * 0.5, t.line * k, hud_fade(t.trim, alpha));
+    hud_line(l[..], cx - half_w, cy + h * 0.5, cx + half_w, cy + h * 0.5, t.line * k, hud_fade(t.trim, alpha));
+    return;
+  }
+  // the ribbon: dark in the middle, gone at its ends, in eight steps each side
+  for q: 0..<8 {
+    f0 := f32(q) / 8; f1 := f32(q + 1) / 8; a := alpha * 0.62 * (1 - f0 * f0);
+    c := hud_rgba(0.06, 0.04, 0.03, a);
+    hud_fill(l[..], hud_box(cx + half_w * f0, cy - h * 0.5, cx + half_w * f1 + 0.5, cy + h * 0.5), 0, c, c);
+    hud_fill(l[..], hud_box(cx - half_w * f1 - 0.5, cy - h * 0.5, cx - half_w * f0, cy + h * 0.5), 0, c, c);
+  }
+  rule := hud_fade(t.trim, alpha * 0.9); w := 1.2 * k;
+  hud_line(l[..], cx - half_w * 0.8, cy - h * 0.5, cx + half_w * 0.8, cy - h * 0.5, w, rule);
+  hud_line(l[..], cx - half_w * 0.8, cy + h * 0.5, cx + half_w * 0.8, cy + h * 0.5, w, rule);
+  hud_diamond(l[..], cx - half_w * 0.8 - 5 * k, cy - h * 0.5, 4 * k, rule, rule);
+  hud_diamond(l[..], cx + half_w * 0.8 + 5 * k, cy - h * 0.5, 4 * k, rule, rule);
+}
+
+// A name plate over a creature: its bar under the name, red for a foe, green for a friend; your
+// target's is ringed in bright gold with a glow and a diamond at each end.
+hud_plate :: (l: [] HudList, t: HudTokens, cx: f32, y: f32, half_w: f32, share: f32, foe: bool, target: bool, alpha: f32, k: f32) {
+  hud_plate_trail(l, t, cx, y, half_w, share, share, foe, target, alpha, k);
+}
+// The same with its damage trail (hud_trail_step): fill and trail in 0..1.
+hud_plate_trail :: (l: [] HudList, t: HudTokens, cx: f32, y: f32, half_w: f32, fill: f32, trail: f32, foe: bool, target: bool, alpha: f32, k: f32) {
+  if !(alpha > 0) { return; }
+  h := ifx t.style == HUD_FANTASY then 6.5 * k else 2.5 * k;
+  c := ifx foe then hud_mix(t.bad, t.hp, 0.35) else t.good;
+  b := hud_box(cx - half_w, y - h * 0.5, cx + half_w, y + h * 0.5);
+  if target && t.style == HUD_FANTASY {
+    hi := hud_mix(t.trim, hud_rgba(1, 1, 1, 1), 0.35);
+    hud_shadow(l[..], b, 2 * k, 7 * k, hud_fade(hi, 0.5 * alpha));
+    hud_fill(l[..], hud_box(b.x0 - 2.6 * k, b.y0 - 2.6 * k, b.x1 + 2.6 * k, b.y1 + 2.6 * k), 4.6 * k, hud_fade(hi, alpha), hud_fade(t.trim, alpha));
+  }
+  hud_vital(l[..], t, b, fill, trail, c, false, alpha, k);
+  if target && t.style == HUD_FANTASY {
+    hud_diamond(l[..], cx - half_w - 7 * k, y, 3.5 * k, hud_fade(t.trim, alpha), hud_fade(t.trim, alpha));
+    hud_diamond(l[..], cx + half_w + 7 * k, y, 3.5 * k, hud_fade(t.trim, alpha), hud_fade(t.trim, alpha));
+  }
+}
+
+#test "a map ring: its parchment inside, the frame round it, four studs at the compass points" {
+  l: [1] HudList; hud_map_ring(l[..], hud_tokens(HUD_FANTASY), 100, 100, 60, 1);
+  studs := 0; for i: 0..<l[0].n { if l[0].p[i].turn != 0 { studs += 1; } }
+  #assert studs == 4 && l[0].p[1].kind == HUD_PRIM_FILL && l[0].p[1].x0 == 40;
+}
+hud_map_ring :: (l: [] HudList, t: HudTokens, cx: f32, cy: f32, r: f32, k: f32) {
+  hud_medallion(l[..], t, cx, cy, r, t.parchment, hud_mix(t.parchment, hud_rgba(0.3, 0.24, 0.16, 0.94), 0.6), k);
+  if t.style != HUD_FANTASY { return; }
+  for q: 0..<4 {
+    a := f32(q) * 1.5707963; rr := r + 3 * t.line * k;
+    hud_diamond(l[..], cx + sin(a) * rr, cy - cos(a) * rr, (ifx q == 0 then 6.5f32 else 4.5f32) * k, t.trim, hud_mix(t.trim, t.frame_mid, 0.5));
+  }
+}
+
+// The point on a map ring of radius r for a thing dx, dz metres off: the map turns with your view,
+// fx, fz its forward and rx, rz its right on the ground, so ahead is up; reach metres fill the ring.
+// A thing beyond the ring waits on its edge.
+hud_map_point :: (cx: f32, cy: f32, r: f32, dx: f32, dz: f32, fx: f32, fz: f32, rx: f32, rz: f32, reach: f32) -> HudCoord {
+  p := hud_map_project(cx, cy, r, dx, dz, fx, fz, rx, rz, reach);
+  return HudCoord.{x = p.x, y = p.y};
+}
+// (its checks are components/core/hud.coax's; this is the realm's spelling of the same point)

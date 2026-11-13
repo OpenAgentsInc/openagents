@@ -845,8 +845,8 @@ wd_test_put :: (g: [] Everglade, i: int, x: f32, z: f32) {
   a := g[0].wt[0].actors[i..<i + 1]; a[0].x = x; a[0].z = z;
 }
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).

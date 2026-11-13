@@ -27,22 +27,22 @@ Draconia, The Guardian").
 
 | Piece | Where | What it does today |
 | --- | --- | --- |
-| Animation documents (A0) | [Formats](anim-documents-v1.md), `aethyr/anim/*-document.coax` | Six bounded document readers, compiled-DNA admission, lossless private Echo/Slay conversion and shared source adapters; [verification](../verification/animation-lab-a0-2026-11-06/README.md) |
+| Animation documents (A0) | [Formats](anim-documents-v1.md), `metaverse-engine/anim/*-document.coax` | Six bounded document readers, compiled-DNA admission, lossless private Echo/Slay conversion and shared source adapters; [verification](../verification/animation-lab-a0-2026-11-06/README.md) |
 | Rig and clip stations (A1) | `verse/animlab/`, `/worlds/animation-lab` | Neutral inspection, weights, shapes, scrub/play/step, skeleton ghosts and cached plots; [verification](../verification/animation-lab-a1-2026-11-06/README.md) |
-| Retargeting (A2) | `aethyr/anim/retarget*.coax`, `#retarget`, `labs anim retarget` | Rest-corrected anchor rotations, leg-scaled root motion, private exports and paired views; [verification](../verification/animation-lab-a2-2026-11-06/README.md) |
-| Layers and fix-ups (A3) | `aethyr/anim/layers.coax`, `fixup.coax`, `#layers` | Base, masked override, additive and facial layers; planted feet, head/eye aims and hand targets; [verification](../verification/animation-lab-a3-2026-11-06/README.md) |
-| Imports (A4) | `aethyr/anim/import-*.coax`, `gltf-*.coax`, `labs anim import` | glTF/FBX, BVH, ARKit CSV and bounded Unreal body imports; [limits](anim-imports-v1.md) and [verification](../verification/animation-lab-a4-2026-11-06/README.md) |
+| Retargeting (A2) | `metaverse-engine/anim/retarget*.coax`, `#retarget`, `labs anim retarget` | Rest-corrected anchor rotations, leg-scaled root motion, private exports and paired views; [verification](../verification/animation-lab-a2-2026-11-06/README.md) |
+| Layers and fix-ups (A3) | `metaverse-engine/anim/layers.coax`, `fixup.coax`, `#layers` | Base, masked override, additive and facial layers; planted feet, head/eye aims and hand targets; [verification](../verification/animation-lab-a3-2026-11-06/README.md) |
+| Imports (A4) | `metaverse-engine/anim/import-*.coax`, `gltf-*.coax`, `labs anim import` | glTF/FBX, BVH, ARKit CSV and bounded Unreal body imports; [limits](anim-imports-v1.md) and [verification](../verification/animation-lab-a4-2026-11-06/README.md) |
 | Scenes and cuts (A5) | `verse/animlab/scene.coax`, `cut.coax`, `#scene`, `#cut`, `labs anim play/check` | Staged projects, authored cameras, light/effect keys, speech-driven stand-in faces, headless films and JSON checks; [profile](anim-scenes-v1.md) and [verification](../verification/animation-lab-a5-2026-11-06/README.md) |
-| Pose math | `aethyr/anim/pose.coax` | Quaternions, local poses, blending, the joint chain and the skinning palette |
-| Blend shapes | `aethyr/anim/morph.coax`, `morph-gpu.coax` | Sampled curves; sparse morph deltas applied on the GPU before skinning |
-| Face playback | `aethyr/anim/face.coax`, `face-pack.coax` | Plays face clips as morph weights plus face-bone overlays on a body pose; the EFC1 face pack format and its checks |
-| Face rig | `aethyr/anim/facerig.coax` | A Coax port of OpenRigLogic: controls, correctives, joint groups and blend shapes from a MetaHuman DNA file |
-| Clip playback | `aethyr/anim/skin.coax` | Skinned clips chosen by speed (stand, walk, run, jump) |
-| Retargeting by name | `aethyr/anim/mannequin.coax` | The 65 UE-mannequin joint names; maps other skeletons onto them by name |
-| Cameras | `aethyr/cam/cinematic.coax`, `aethyr/cam/shot.coax` | Authored camera flights with keys, easing and cuts; orbit and dive shots |
-| Determinism | `aethyr/core/replay.coax` | Record and replay of inputs, so the same inputs give the same frames |
-| Speaking | `aethyr/audio/speak.coax`, `coax/web/tool.sh speak` | Text to speech, word timing, visemes and moods on a MetaHuman face, rendered to video |
-| Echo port | `verse/valley/echo*.coax`, `verse/tools/valley-echo-*`, `aethyr/tools/unreal-echo-sdk/` | Echo's mesh, 334 joints, 24 clips and source walking profile, in a private pack |
+| Pose math | `metaverse-engine/anim/pose.coax` | Quaternions, local poses, blending, the joint chain and the skinning palette |
+| Blend shapes | `metaverse-engine/anim/morph.coax`, `morph-gpu.coax` | Sampled curves; sparse morph deltas applied on the GPU before skinning |
+| Face playback | `metaverse-engine/anim/face.coax`, `face-pack.coax` | Plays face clips as morph weights plus face-bone overlays on a body pose; the EFC1 face pack format and its checks |
+| Face rig | `metaverse-engine/anim/facerig.coax` | A Coax port of OpenRigLogic: controls, correctives, joint groups and blend shapes from a MetaHuman DNA file |
+| Clip playback | `metaverse-engine/anim/skin.coax` | Skinned clips chosen by speed (stand, walk, run, jump) |
+| Retargeting by name | `metaverse-engine/anim/mannequin.coax` | The 65 UE-mannequin joint names; maps other skeletons onto them by name |
+| Cameras | `metaverse-engine/cam/cinematic.coax`, `metaverse-engine/cam/shot.coax` | Authored camera flights with keys, easing and cuts; orbit and dive shots |
+| Determinism | `metaverse-engine/core/replay.coax` | Record and replay of inputs, so the same inputs give the same frames |
+| Speaking | `metaverse-engine/audio/speak.coax`, `coax/web/tool.sh speak` | Text to speech, word timing, visemes and moods on a MetaHuman face, rendered to video |
+| Echo port | `verse/valley/echo*.coax`, `verse/tools/valley-echo-*`, `metaverse-engine/tools/unreal-echo-sdk/` | Echo's mesh, 334 joints, 24 clips and source walking profile, in a private pack |
 | Slay face | `verse/valley/slay-shot.coax`, `slay-shot-play.coax` (#12962) | Slay's facial clips on Echo, with a fixed source-shot view |
 | Anime director | `verse/anime/director.coax`, `take.coax`, `stage.coax`, `coax/web/api/anime-director-policy.coax` | Words to typed directions with confidence; `.take` files (`anime.v1`); timeline grammar |
 | Labs CLI | `apps/openagents-cli/labs.coax`, `docs/cli/2026-11-01-openagents-labs.md` | `labs shot`, `clip`, `frames`, `cut`, `compare`, `anime` |
@@ -95,7 +95,7 @@ What a character is made of:
 - **Skeleton:** joint names, parents, rest pose, bind matrices.
 - **Mesh:** skinned sections, up to 8 influences per vertex, material slots.
 - **Face:** blend shapes by name, face bones, and optionally a DNA face rig
-  (`aethyr/anim/facerig.coax`) with its controls.
+  (`metaverse-engine/anim/facerig.coax`) with its controls.
 - **Retarget map:** each joint's match on the 65-joint mannequin
   (`mannequin_fold`), plus per-joint rest-pose offsets.
 - **Face map:** how ARKit's 52 shape names map onto this face: direct shapes,
@@ -137,8 +137,8 @@ A stage and what happens on it:
 - Cast: characters (rig plus look), each with a performance and a path.
 - Props and effects with their own timed events.
 - Lights with keys.
-- Cameras: named flights (`aethyr/cam/cinematic.coax` keys), lens and focus.
-- Sound cues: voice lines (through `aethyr/audio/speak.coax`), music and effects.
+- Cameras: named flights (`metaverse-engine/cam/cinematic.coax` keys), lens and focus.
+- Sound cues: voice lines (through `metaverse-engine/audio/speak.coax`), music and effects.
 - Style: the render profile (realistic, anime cel), so one scene renders in
   either look.
 
@@ -159,11 +159,11 @@ the mannequin, plus face curves.
 
 | Source | How |
 | --- | --- |
-| Unreal projects (Valley, Slay, Epic samples) | The editor-only SDK plugin and Python exporters, generalized from `aethyr/tools/unreal-echo-sdk/` and `valley-echo-*` |
+| Unreal projects (Valley, Slay, Epic samples) | The editor-only SDK plugin and Python exporters, generalized from `metaverse-engine/tools/unreal-echo-sdk/` and `valley-echo-*` |
 | glTF and FBX | glTF reads directly; FBX uses headless Blender, then the same reader |
 | BVH mocap | Read directly; retarget by name |
 | Phone face capture | ARKit curves (Live Link Face CSV) straight into face curves |
-| MetaHuman | The existing pipeline (`docs/verse/metahuman-support.md`), DNA through `aethyr/anim/facerig.coax` |
+| MetaHuman | The existing pipeline (`docs/verse/metahuman-support.md`), DNA through `metaverse-engine/anim/facerig.coax` |
 | Hand keys | Poses from the pose library, set at times |
 
 Every import writes a receipt (source, export settings, counts, hashes) and
@@ -183,7 +183,7 @@ a private pack.
 - **Transitions:** blend lengths and curves between clips, chosen per
   transition.
 - **Face:** edit curves, add blinks, and drive visemes and moods from a
-  voice line (`aethyr/audio/speak.coax`).
+  voice line (`metaverse-engine/audio/speak.coax`).
 
 ### Check
 
@@ -271,7 +271,7 @@ in it copies the fan film's shots.
 | Walk, stop, turn | Valley Echo's locomotion clips, retargeted, for study renders only |
 | Wand raise and cast | Hand-keyed from the pose library, then a recorded mocap take when one exists |
 | Face | The owner's phone face capture of the lines (ARKit curves through the face map); Slay's face clips only for internal parity tests |
-| Voice | `aethyr/audio/speak.coax` with a chosen voice |
+| Voice | `metaverse-engine/audio/speak.coax` with a chosen voice |
 | Guardian | An effect rig keyed by hand |
 
 Valley's and Slay's clips are Epic sample content. They're fine for the lab's
@@ -316,10 +316,10 @@ Each ends on a check run on our own machines.
 | --- | --- | --- |
 | A0 | #12965 | Converts the Echo port (599558ee03) and the Slay face data (e7e0b0e71c) into the documents |
 | A1 | #12966 | New realm; Valley Lab's J and F views stay as they are |
-| A2 | #12967 | Extends `aethyr/anim/mannequin.coax` |
+| A2 | #12967 | Extends `metaverse-engine/anim/mannequin.coax` |
 | A3 | #12968 | Moves #12962's face layering and ambient segments onto shared layers, same frames |
 | A4 | #12969 | Generalizes the Echo and Slay exporters and the `EchoSourceSDK` plugin |
-| A5 | #12970 | Uses `aethyr/cam/cinematic.coax` and the speaking pipeline (#12798) |
+| A5 | #12970 | Uses `metaverse-engine/cam/cinematic.coax` and the speaking pipeline (#12798) |
 | A6 | #12971 | Uses Anime Lab's render profile and cast |
 | A7 | #12972 | Extends Anime Lab's director |
 | A8 | #12973 | Replaces Epic sample content with our own capture |

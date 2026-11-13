@@ -1,7 +1,7 @@
 // Everglade II's admitted ground (GitHub #12995, #13052, #13059; book chapters 8, 12 and 13): the
-// land as a set of Metaverse Engine terrain tiles (aethyr/world/terrain-tile.coax, `aethyr.terrain.tile.v1`) against
+// land as a set of Metaverse Engine terrain tiles (metaverse-engine/world/terrain-tile.coax, `aethyr.terrain.tile.v1`) against
 // Everglade II's ground material table, and the canopy's ambient occlusion baked on the glade's tile
-// (aethyr/render/bake.coax, `aethyr.bake.grid.v1`). The realm supplies content and this adapter; the
+// (metaverse-engine/render/bake.coax, `aethyr.bake.grid.v1`). The realm supplies content and this adapter; the
 // engine admits, samples and publishes.
 //
 // The tiles. All lie on one lattice: the glade's 0.65 m samples from (-32.5, -60), sample (I, J) at
@@ -47,7 +47,7 @@
 //
 // The ground shader (everglade/client/gpu/everglade2.coax e2_ground_albedo) draws from this table and the bake: the
 // page uploads both as one store (e2g_gpu, E2G_GPU_FLOATS) and the shader takes the same weights at
-// each pixel, evaluates aethyr/render/terrain-shade.coax's equations, and shades the ground's
+// each pixel, evaluates metaverse-engine/render/terrain-shade.coax's equations, and shades the ground's
 // indirect light by E2G_GROUND_AO_SHARE of the bake's AO, eased out over E2G_EDGE inside the tile's edge.
 //
 // Baked light: AO on the glade tile's samples from the woods' and the glade's tree crowns as sphere
@@ -66,8 +66,8 @@
 //
 //   coax/bin/coax test everglade/world/ground.coax --library
 #load "plant.coax";
-#load "../../aethyr/world/terrain-tile.coax" as e2tt;
-#load "../../aethyr/render/bake.coax" as e2bk;
+#load "../../metaverse-engine/world/terrain-tile.coax" as e2tt;
+#load "../../metaverse-engine/render/bake.coax" as e2bk;
 #load "../../coax/lib/text/base64.coax";
 
 E2G_CELLS :: 100;
@@ -162,7 +162,7 @@ e2g_table :: (t: [] e2tt.TerrainMaterial) {
   t[2].gain = [2] f32.[0.96, 0.08]; t[2].gain_scale = E2G_GRAIN; t[2].gain_offset = 7;
   t[3] = e2g_material(E2G_PATH, [3] f32.[0.67, 0.60, 0.35], [3] f32.[0.685, 0.615, 0.35]);
 }
-// The linear albedo at (x, z) with weights w (the table's IDs in order): aethyr/render/terrain-shade.coax's
+// The linear albedo at (x, z) with weights w (the table's IDs in order): metaverse-engine/render/terrain-shade.coax's
 // equations, as the ground shader evaluates them (everglade/client/gpu/everglade2.coax e2_ground_albedo).
 e2g_albedo :: (t: [] e2tt.TerrainMaterial, w: [4] f32, x: f32, z: f32) -> [3] f32 {
   out := [3] f32.[0, 0, 0];

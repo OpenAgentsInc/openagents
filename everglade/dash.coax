@@ -2,16 +2,16 @@
 // Dash and Step of the Wind each spend what the ruleset says (the bar's press: fivebar.coax
 // fb_seat_use, rules/srd rs_dash) and give extra movement equal to your Speed this turn. Their
 // feel moves `dash` (class-feel.coax xf_moves); a zone starts the sprint from the pipeline's yes.
-// Everglade spends that movement at once, as the engine's sprint (aethyr/action/sprint.coax): the
+// Everglade spends that movement at once, as the engine's sprint (metaverse-engine/action/sprint.coax): the
 // extra is your Speed in feet as metres (0.3048 m a foot), over Everglade's run, 7.5 m/s at Speed
-// 30 (aethyr/move/locomotion.coax run_speed, scaled by Speed/30: rs_walk_scale), so 0.25 m/s a foot.
+// 30 (metaverse-engine/move/locomotion.coax run_speed, scaled by Speed/30: rs_walk_scale), so 0.25 m/s a foot.
 // Speed 30: 9.14 m more than the run's 13.5 m in the sprint's 1.8 s, at up to 1.91 times the run.
 // A creature the world moves (Everglade II's path guard) runs at its run times eg_dash_rate from the
 // moment it takes the Dash action, so it gains the same distance a player does.
 // A zone keeps a Sprint, starts it with eg_dash_gain, and each frame hands eg_dash_frame its keys or
 // thumb; eg_dash_dust says where the puff of dust a frame asks for goes.
 //   coax/bin/coax test everglade/dash.coax --library
-#load "../aethyr/action/sprint.coax" as sprint;
+#load "../metaverse-engine/action/sprint.coax" as sprint;
 
 EG_DASH_RUN_PER_FOOT :: 0.25;     // m/s of Everglade's run a foot of Speed
 EG_DASH_METRES_PER_FOOT :: 0.3048;

@@ -6,10 +6,10 @@
 //
 // This file is the game: its tuning, its world, its rules and its interface (the Game UI board:
 // ink on cream paper, orange for danger, blue for banned tech, Michroma and IBM Plex Mono). The
-// engine draws it: the cel kits (aethyr/kit/), the cel mesh writers and Anime Lab's uniform
+// engine draws it: the cel kits (metaverse-engine/kit/), the cel mesh writers and Anime Lab's uniform
 // layout, style and shader.
 #load "../../apps/openagents-web/animelab.coax";
-#load "../../aethyr/kit/land.coax";
+#load "../../metaverse-engine/kit/land.coax";
 #load "content.coax";
 #load "layer.coax";
 #load "walk.coax";

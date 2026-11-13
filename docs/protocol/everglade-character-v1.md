@@ -49,7 +49,7 @@ write that changes a class already set. Otherwise it keeps the room's record
 with the kept `floor`, the kept `bag` and `inv` (a room never writes items),
 and takes off any worn item no longer in the kept bag.
 
-Items change only through the item ledger (`aethyr/session/ledger.coax`,
+Items change only through the item ledger (`metaverse-engine/session/ledger.coax`,
 #13291). The store fills `bag` and `inv` from the ledger when it loads a
 record.
 

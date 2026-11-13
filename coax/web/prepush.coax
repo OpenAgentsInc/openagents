@@ -145,8 +145,8 @@ pp_agent :: (msg: string) -> string {
 }
 // Whether c can be part of a path.
 pp_path_char :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '/'; }
-// Whether msg has p as a whole word of a path: not inside a longer path ("aethyr/net/" does not
-// name itself inside "aethyr/net/transport.coax"). A trailing '.' or ',' ends a sentence.
+// Whether msg has p as a whole word of a path: not inside a longer path ("metaverse-engine/net/" does not
+// name itself inside "metaverse-engine/net/transport.coax"). A trailing '.' or ',' ends a sentence.
 pp_has_word :: (msg: string, p: string) -> bool {
   if p.count == 0 || p.count > msg.count { return false; }
   for k: 0..<msg.count - p.count + 1 {
@@ -767,7 +767,7 @@ PP_T_C :: "3333333333333333333333333333333333333333";
   #assert pp_agent("x\n  Agent: in-body \n") == "in-body" && pp_agent("Agentic: no\n") == "";
   #assert pp_names("Deletes docs/old/a.md, superseded", "docs/old/a.md") && pp_names("Drop coax/web/room/ wholesale", "coax/web/room/x.coax");
   #assert !pp_names("Drop docs/ wholesale", "docs/old/a.md") && pp_names("a.md is gone", "docs/old/a.md") && !pp_names("data.md", "docs/old/a.md") && !pp_names("", "a");
-  #assert !pp_names("adds aethyr/net/transport.coax", "aethyr/net/budget.coax") && pp_names("aethyr/net/: gone", "aethyr/net/budget.coax");
+  #assert !pp_names("adds metaverse-engine/net/transport.coax", "metaverse-engine/net/budget.coax") && pp_names("metaverse-engine/net/: gone", "metaverse-engine/net/budget.coax");
   #assert pp_names("Removes docs/old/a.md.", "docs/old/a.md") && !pp_names("docs/old/a.md.bak", "docs/old/a.md") && !pp_names("x/docs/old/a.md", "docs/old/a.md");
 }
 #test "raw lines from git diff-tree and git log" {

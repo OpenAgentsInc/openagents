@@ -101,11 +101,11 @@ Clips (A shoots toward B; B faces A and sees the arrow fly and stick):
 
 ## What changed
 
-- **Arrows the room flies** (engine: `aethyr/net/projectile.coax`,
-  `aethyr/net/rewind.coax`, `aethyr/net/shots.coax`; room:
+- **Arrows the room flies** (engine: `metaverse-engine/net/projectile.coax`,
+  `metaverse-engine/net/rewind.coax`, `metaverse-engine/net/shots.coax`; room:
   `coax/web/room/room-e2-arrows.coax`).
   - Your page draws your arrow the frame you let go, on the shared archer
-    (`aethyr/action/archery.coax`, `bow.coax`, `everglade/longbow.coax`),
+    (`metaverse-engine/action/archery.coax`, `bow.coax`, `everglade/longbow.coax`),
     and sends `F SEQ FROM TO STRENGTH VIEW`.
   - The room flies the same arrow from the moment your page was drawing,
     against the bodies as they stood then: lag compensation, bounded to
@@ -130,7 +130,7 @@ Clips (A shoots toward B; B faces A and sees the arrow fly and stick):
     buffer holds the spread and not the drift.
   - Under 120 ms and 2% loss, others are drawn 100 ms behind instead of
     300.
-- **A netcode overlay** (`aethyr/net/stats.coax`; Everglade II `?net`).
+- **A netcode overlay** (`metaverse-engine/net/stats.coax`; Everglade II `?net`).
   - It shows RTT, tick rate and state-frame gap, interpolation delay,
     bytes and frames each way, snapshot size, and prediction error.
 - **One room-side bug fixed on the way.**

@@ -1,0 +1,8 @@
+# Context model files that do no I/O by construction (#13314).
+# layer-check refuses #effects(all) in any file listed here.
+metaverse-engine/session/ledger.coax
+metaverse-engine/session/party.coax
+metaverse-engine/session/control.coax
+metaverse-engine/session/travel.coax
+rules/srd/world-profile.coax
+rules/srd/timing-profile.coax

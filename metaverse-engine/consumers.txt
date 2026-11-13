@@ -1,0 +1,55 @@
+# Why each engine module with no product consumer is kept (GitHub #13272; metaverse-engine/README.md, "Layers").
+# coax/web/tool.sh layer-check reads this file; coax/web/tool.sh layer-check --consumers lists the modules.
+# A module has a product consumer when a file outside metaverse-engine/ that is not a test, tool, example, book
+# or document loads it, directly or through another module. A module with none needs a line here:
+#   adopt PREFIX #ISSUE     an open issue of the AAA program (#13257) takes it into the product
+#   book PREFIX CHAPTER     it is the Metaverse Engine book's own implementation; CHAPTER names it
+#   built PREFIX SCRIPT     no file loads it: SCRIPT compiles it by name
+#   pipeline PREFIX TOOL    an offline tool that makes a shipped thing loads it
+# The longest prefix covers a module. A line that covers nothing now fails: take it out when its
+# issue lands the adoption or the module is deleted. A module nobody adopts by the end of the
+# program is deleted; git keeps it.
+
+# P2: one world
+adopt metaverse-engine/world/ #13280  # cells, owners, resource manifests and the streaming walk become the one world's cells and paged packs
+adopt metaverse-engine/physics/sim/ #13279  # the scene, broad and narrow phase and batched rigid bodies go behind query_*; the legacy rigid and contact modules retire onto them
+adopt metaverse-engine/physics/query-fluid.coax #13279  # fluid and trigger volumes are answered by the same broadphase
+adopt metaverse-engine/core/checkpoint.coax #13282  # travel between zone owners carries a versioned checkpoint of the character's state
+adopt metaverse-engine/state/ #13282  # declared facts and lifetimes are what a hand-off carries: auras, cooldowns, resources
+adopt metaverse-engine/session/ #13275  # the room core takes outcome slots and region ownership when it loses its seat count
+adopt metaverse-engine/net/ #13277  # the latency client and its clock feed prediction and reconciliation in metaverse-engine/net
+adopt metaverse-engine/cam/ #13271  # the camera the client owns: attention filters, the eye's clearance, two-subject framing, frame-rate parity
+
+# P4: creatures and content
+adopt metaverse-engine/actors/ #13293  # compiled archetypes, bounded behaviour and the actor pool become the one server creature runtime
+adopt metaverse-engine/ai/ #13293  # model decisions, steering from colliders and the pilot vocabulary drive the creature runtime
+adopt metaverse-engine/action/break.coax #13293  # breakables and attachments are creature-runtime props
+adopt metaverse-engine/editor/ #13294  # the realm editor edits the content tables: NPC and raid documents, the publish record, published vertices
+adopt metaverse-engine/talk/ #13293  # the bounded conversation profile is how a server creature answers a player
+
+# P6: one renderer, one host
+adopt metaverse-engine/render/ #13303  # frame, pass and binding admission, the reference renderer and the cluster DAG are the one frame graph
+adopt metaverse-engine/render/texture- #13304  # texture formats, codecs and the encoder belong to the one pack reader
+adopt metaverse-engine/render/native- #13304  # native texture staging is the reference host core's
+adopt metaverse-engine/render/host- #13304  # host images and layers are the reference host core's
+adopt metaverse-engine/host/ #13304  # the host contract's carriers and conformance programs fold into one C reference host core
+adopt metaverse-engine/anim/ #13306  # importers, retargeting and pose documents feed the one animation runtime; rig data becomes an asset
+adopt metaverse-engine/core/frame-report.coax #13303  # the frame statistics and the 60 FPS rule read the frame graph's stages
+adopt metaverse-engine/agent/pin.coax #13296  # the protocol bots pin their sessions with the agent clock's seed and epoch
+
+# Built by name, or loaded by a pipeline tool
+built metaverse-engine/render/film.coax verse/gpu/realm.sh  # the film profile, compiled to C beside the native realm host
+pipeline metaverse-engine/render/exr.coax metaverse-engine/tools/film-frames.coax  # the film encoder writes its layers as OpenEXR
+pipeline metaverse-engine/audio/measure.coax metaverse-engine/audio/sfx-tool.coax  # the sound-effect bank is judged by loudness when it is built
+
+# The Metaverse Engine book's own implementations: a chapter builds each and its example runs it
+book metaverse-engine/physics/sim/particles.coax metaverse-engine/book/ch023-particles-and-their-neighbors.md
+book metaverse-engine/physics/sim/sph.coax metaverse-engine/book/ch024-liquids-from-particles.md
+book metaverse-engine/physics/sim/pbd.coax metaverse-engine/book/ch025-cloth-and-rope-from-constraints.md
+book metaverse-engine/physics/sim/mpm.coax metaverse-engine/book/ch026-sand-snow-and-clay-on-a-grid.md
+book metaverse-engine/physics/sim/grid-fluid.coax metaverse-engine/book/ch028-smoke-on-a-grid.md
+book metaverse-engine/space/ metaverse-engine/book/ch039-ephemerides-time-scales-and-frames.md
+book metaverse-engine/audio/score.coax metaverse-engine/book/ch067-scores-mixing-and-a-soundtrack.md
+book metaverse-engine/audio/epic.coax metaverse-engine/book/ch067-scores-mixing-and-a-soundtrack.md
+book metaverse-engine/audio/voice.coax metaverse-engine/book/ch069-voices-in-a-realm.md
+pipeline metaverse-engine/export/ metaverse-engine/tools/unreal-axes-fixture.coax  # the Unreal exporter writes worlds as glTF (#13399; the world exporter is #13400)

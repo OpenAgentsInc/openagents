@@ -83,7 +83,7 @@ module_of_realm() {
 }
 read -r -a realms <<< "${REALM:-everglade}"
 if [[ "$renderer" == shared ]]; then
-  (cd "$root" && coax/web/tool.sh aethyr/render/build.coax --app-table) > "$work/profiles"
+  (cd "$root" && coax/web/tool.sh metaverse-engine/render/build.coax --app-table) > "$work/profiles"
 fi
 profile_of() {
   # Identity comes from the compiled Coax catalog. A caller's explicit slug
@@ -123,7 +123,7 @@ for realm in "${realms[@]}"; do
   if [[ ${#emit[@]} -gt 0 ]]; then (cd "$root" && coax/web/tool.sh "${emit[@]}") >&2; fi
   if [[ "$renderer" == shared ]]; then
     texture_source="$work/$realm/spec"; [[ -d "$texture_source" ]] || texture_source="-"
-    (cd "$root" && coax/web/tool.sh aethyr/render/tools/native-textures.coax "$profile" "$texture_source" "$work/$realm/c/render-assets") > "$work/$realm/c/render-assets/textures.config.pending"
+    (cd "$root" && coax/web/tool.sh metaverse-engine/render/tools/native-textures.coax "$profile" "$texture_source" "$work/$realm/c/render-assets") > "$work/$realm/c/render-assets/textures.config.pending"
     mv "$work/$realm/c/render-assets/textures.config.pending" "$work/$realm/c/render-assets/textures.config"
   fi
   ship="$work/ship/$realm"
@@ -138,17 +138,17 @@ for realm in "${realms[@]}"; do
   cp "$here"/vk-realm.c "$here"/vk-spec.c "$here"/vk-spec.h "$here"/vks.c "$here"/vks.h "$here"/vkc.c "$here"/vkc.h \
      "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$here"/vkw.h "$here"/wayland-input-sdk.h "$here"/wayland-text-sdk.h "$here"/vkdesk.h "$ship/"
   # XKB remains an SDK effect; the stable key/modifier/scroll ABI is Coax.
-  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c aethyr/host/wayland-input.coax --library --header "$ship/wayland-input.h") > "$ship/wayland-input.c"
-  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c aethyr/host/wayland-text.coax --library --header "$ship/wayland-text.h") > "$ship/wayland-text.c"
+  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c metaverse-engine/host/wayland-input.coax --library --header "$ship/wayland-input.h") > "$ship/wayland-input.c"
+  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c metaverse-engine/host/wayland-text.coax --library --header "$ship/wayland-text.h") > "$ship/wayland-text.c"
   # the desk panel's policy (os/verse-panel.coax), linked into vk-realm
   (cd "$root" && "${COAX:-$root/coax/bin/coax}" c os/verse-panel.coax --library --header "$ship/verse-panel.h") > "$ship/verse-panel.c"
   # your hand as the pointer (os/verse-hands.coax), linked into vk-realm too
   (cd "$root" && "${COAX:-$root/coax/bin/coax}" c os/verse-hands.coax --library --header "$ship/verse-hands.h") > "$ship/verse-hands.c"
   cp "$here"/vkhands.h "$ship/"
-  # the typed renderer's window session, as aethyr/host/emit-linux-world-shell.coax emits it
-  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c aethyr/host/linux-window-session.coax --library --header "$ship/linux-window-session.h") > "$ship/linux-window-session.c"
-  # the film profile (aethyr/render/film.coax, #13004): vk-realm's samples, jitter and lens
-  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c aethyr/render/film.coax --library --header "$ship/film.h") > "$ship/film.c"
+  # the typed renderer's window session, as metaverse-engine/host/emit-linux-world-shell.coax emits it
+  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c metaverse-engine/host/linux-window-session.coax --library --header "$ship/linux-window-session.h") > "$ship/linux-window-session.c"
+  # the film profile (metaverse-engine/render/film.coax, #13004): vk-realm's samples, jitter and lens
+  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c metaverse-engine/render/film.coax --library --header "$ship/film.h") > "$ship/film.c"
   # the kms headers apart: a module has a realm.h of its own (the realm module's), and keys.h finds its sibling first
   mkdir -p "$ship/kms" && cp "$root"/verse/kms/evdev.h "$root"/verse/kms/mice.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$ship/kms/"
   [[ "$realm" == everglade ]] && cp "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$root/verse/native/everglade.facts" "$ship/"

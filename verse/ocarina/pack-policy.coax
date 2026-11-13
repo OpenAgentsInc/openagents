@@ -1,5 +1,5 @@
 // Exact optional private source identity; no Nintendo payload is in the repository.
-#load "../../aethyr/core/assets.coax";
+#load "../../metaverse-engine/core/assets.coax";
 #authority;
 OCARINA_PACK_BYTES :: 598882100;
 OCARINA_PACK_SHA256 :: "56f795206044619cc9abf614f3bf1193117ed27251f4d4caa7c523ab0ccc43ba";

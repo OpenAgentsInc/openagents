@@ -47,7 +47,7 @@ BEGIN
   ops := verse.realm_ops((SELECT r FROM verse.made_realms r WHERE r.slug = 'elog'), verse.realm_slot_put(verse.realm_slot_put((SELECT r FROM verse.made_realms r WHERE r.slug = 'elog'), 'set:time', '"night"'), 'lore:mara', '"Keeps the lamp."'));
   IF ops IS DISTINCT FROM '[{"slot":"set:time","before":"day","after":"night"},{"slot":"lore:mara","before":null,"after":"Keeps the lamp."}]'::jsonb THEN RAISE EXCEPTION 'ops: %', ops; END IF;
 END $$;
-SELECT 'ok a slot is read and written as aethyr/forge/edit.coax names it; an edit''s ops are the slots that differ';
+SELECT 'ok a slot is read and written as metaverse-engine/editor/edit.coax names it; an edit''s ops are the slots that differ';
 
 -- A run of edits through every revision path, each a step; each state kept to compare.
 DO $$

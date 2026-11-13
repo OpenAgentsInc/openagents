@@ -1,0 +1,81 @@
+// The Metaverse Engine's architecture kit, its stylized materials: what a surface is made of, as the number a
+// vertex carries (metaverse-engine/arch/mesh.coax, float 6). The village and flora generators
+// (metaverse-engine/arch/village.coax, flora.coax) write these, and the Metaverse Engine's stylized shading
+// (metaverse-engine/render/stylized.coax) paints each one: its colour, its pattern and how it takes light.
+// A vertex's tint (the pen's, arch_tint) replaces the colour of a material that takes one.
+//
+//   material          pattern, from the surface's metres (u along, v up)        takes a tint
+//   ARCH_M_GROUND     grass, a dirt path's soft edge, cobbles (u cover, v paved) no
+//   ARCH_M_PLASTER    lime plaster, softly mottled                               yes
+//   ARCH_M_TIMBER     dark sawn beams                                            yes
+//   ARCH_M_ROOF       clay tiles in scalloped courses, moss in patches           yes
+//   ARCH_M_ASHLAR     dressed stone blocks in courses                            yes
+//   ARCH_M_FIELDSTONE one rough stone (a dry-stone wall is many)                 yes
+//   ARCH_M_PLANK      upright boards                                             yes
+//   ARCH_M_DOOR       a boarded door with iron straps                            yes
+//   ARCH_M_WINDOW     a lit window: leaded diamonds over warm light              yes (the light)
+//   ARCH_M_BARK       a trunk or a branch                                        yes
+//   ARCH_M_LEAF       a canopy clump: painterly, banded light (u its height in the crown) yes
+//   ARCH_M_METAL      wrought iron                                               no
+//   ARCH_M_GLOW       a lamp's flame: its own light                              yes
+//   ARCH_M_CLOTH      a banner, bunting, an awning                               yes
+//   ARCH_M_ROCK       a far hill or a mountain: pale rock over green slopes      yes
+//   ARCH_M_SMOOTH     smooth cut stone: a coping, a pier, a sill                 yes
+//   ARCH_M_SHUTTER    a slatted shutter                                          yes
+//   ARCH_M_STAINED    a stained-glass light: a gold border, a bell and a lozenge  yes (red: saints instead)
+//                     on blue (u across it 0 to 1, v down from its top in widths)
+//   ARCH_M_BANNER     a heraldic banner: a gold bell in a ring and stars on a field yes (the field)
+//                     (u across it 0 to 1, v down from its top in widths)
+//   ARCH_M_SLAB       large smooth paving slabs with fine joints (steps, a terrace) yes
+//   ARCH_M_SETT       small squared setts in courses (u along a course, v across) yes
+//   ARCH_M_ROSE       a rose window: petals of glass round a boss (u, v from -1 to 1) yes (the petals)
+//   ARCH_M_WATER      still or falling water: pale, with moving glints           yes
+//   ARCH_M_CLIFF      a cliff's rock: beds of grey stone with dark creases        yes
+//                     between them, moss on what faces up (v its height, metres)
+//   ARCH_M_PETAL      a flower's petals: their colour in full, barely shaded      yes
+//
+// Wet materials. A world draws these in the stylized water pass, after everything else and
+// blended over it (metaverse-engine/render/stylized.coax, stylized_water_*); in the plain pass they are
+// drawn solid.
+//   ARCH_M_RIVER      a river, a pool or a pond: blue, deeper where the ground    yes (the deep colour)
+//                     lies deeper under it, ripples that run downstream, foam
+//                     at the shore and where the ground table says it churns
+//                     (u metres downstream, v metres across)
+//   ARCH_M_FALLS      a waterfall's sheet: white streaks that fall (u across it   yes
+//                     0 to 1, v metres down from its lip)
+//   ARCH_M_MIST       spray: a soft white puff with no edge                       yes
+//   ARCH_M_RAINBOW    a rainbow's band (u across the band 0 to 1, v along it      no
+//                     0 to 1)
+
+ARCH_M_GROUND :: 1;
+ARCH_M_PLASTER :: 2;
+ARCH_M_TIMBER :: 3;
+ARCH_M_ROOF :: 4;
+ARCH_M_ASHLAR :: 5;
+ARCH_M_FIELDSTONE :: 6;
+ARCH_M_PLANK :: 7;
+ARCH_M_DOOR :: 8;
+ARCH_M_WINDOW :: 9;
+ARCH_M_BARK :: 10;
+ARCH_M_LEAF :: 11;
+ARCH_M_METAL :: 12;
+ARCH_M_GLOW :: 13;
+ARCH_M_CLOTH :: 14;
+ARCH_M_ROCK :: 15;
+ARCH_M_SMOOTH :: 16;
+ARCH_M_SHUTTER :: 17;
+ARCH_M_STAINED :: 18;
+ARCH_M_BANNER :: 19;
+ARCH_M_SLAB :: 20;
+ARCH_M_SETT :: 21;
+ARCH_M_ROSE :: 22;
+ARCH_M_WATER :: 23;
+ARCH_M_CLIFF :: 24;
+ARCH_M_PETAL :: 25;
+ARCH_M_RIVER :: 26;
+ARCH_M_FALLS :: 27;
+ARCH_M_MIST :: 28;
+ARCH_M_RAINBOW :: 29;
+ARCH_M_COUNT :: 30;
+// The first wet material: this one and those after it belong in the water pass.
+ARCH_M_WET :: 26;

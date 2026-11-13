@@ -7,15 +7,15 @@
   "published_at": "2026-11-06T14:13:35Z",
   "source": {
     "commit": "a11100ccef8b7ba889811639ba46a01243771858",
-    "directory": "aethyr/book",
+    "directory": "metaverse-engine/book",
     "summary": {
-      "path": "aethyr/book/SUMMARY.md",
+      "path": "metaverse-engine/book/SUMMARY.md",
       "bytes": 9057,
       "sha256": "fb78e52565b6a9418a2145d450ce820b6df25f463291f9820f91c23ea7d73566"
     },
     "pages": [
       {
-        "path": "aethyr/book/README.md",
+        "path": "metaverse-engine/book/README.md",
         "bytes": 44078,
         "sha256": "421c2b86b1fd7ef5ca3fd4760b089eba377220a9fdded2f92efd6ee7ce52ec3d",
         "file": "README.md",
@@ -23,7 +23,7 @@
         "group": null
       },
       {
-        "path": "aethyr/book/PLAN.md",
+        "path": "metaverse-engine/book/PLAN.md",
         "bytes": 23097,
         "sha256": "c6d590c7ba332202bd30df4935d4887263bc8e655ad6afc40eec4e173be540a4",
         "file": "PLAN.md",
@@ -31,7 +31,7 @@
         "group": null
       },
       {
-        "path": "aethyr/book/ch001-a-frame-has-a-fixed-step.md",
+        "path": "metaverse-engine/book/ch001-a-frame-has-a-fixed-step.md",
         "bytes": 22745,
         "sha256": "82b53894a0dafa6a89073c22b02549f40138a427318ff5995e3ab87c77a97b48",
         "file": "ch001-a-frame-has-a-fixed-step.md",
@@ -39,7 +39,7 @@
         "group": "I. Foundations"
       },
       {
-        "path": "aethyr/book/ch002-spaces-and-units.md",
+        "path": "metaverse-engine/book/ch002-spaces-and-units.md",
         "bytes": 17433,
         "sha256": "e8baeebc21c481acbb59b39fe33fd4d6023ef4d747c1ac8e424b779229a66b4b",
         "file": "ch002-spaces-and-units.md",
@@ -47,7 +47,7 @@
         "group": "I. Foundations"
       },
       {
-        "path": "aethyr/book/ch003-state-starts-from-its-defaults.md",
+        "path": "metaverse-engine/book/ch003-state-starts-from-its-defaults.md",
         "bytes": 10252,
         "sha256": "9519c44cf47ffb0a88f5c7842f8ab6b1a928e813860add48d7379225c383709c",
         "file": "ch003-state-starts-from-its-defaults.md",
@@ -55,7 +55,7 @@
         "group": "I. Foundations"
       },
       {
-        "path": "aethyr/book/ch004-input-becomes-typed-actions.md",
+        "path": "metaverse-engine/book/ch004-input-becomes-typed-actions.md",
         "bytes": 25491,
         "sha256": "1675bc1b74bb29880b9a4f9eb7e898cd2da721a904798e3bf215fa5eaf0d2a18",
         "file": "ch004-input-becomes-typed-actions.md",
@@ -63,7 +63,7 @@
         "group": "I. Foundations"
       },
       {
-        "path": "aethyr/book/ch005-replay-a-session-exactly.md",
+        "path": "metaverse-engine/book/ch005-replay-a-session-exactly.md",
         "bytes": 38318,
         "sha256": "bc279d867a98b9d11a25a0f14b3efbb678c4d69dc4d6381047ec7e7535245689",
         "file": "ch005-replay-a-session-exactly.md",
@@ -71,7 +71,7 @@
         "group": "I. Foundations"
       },
       {
-        "path": "aethyr/book/ch006-entities-are-born-and-die.md",
+        "path": "metaverse-engine/book/ch006-entities-are-born-and-die.md",
         "bytes": 21691,
         "sha256": "22d43839d30c7999e294f2d32ea8b562a740fc7df6b65bca7ffde6c84535f6e5",
         "file": "ch006-entities-are-born-and-die.md",
@@ -79,7 +79,7 @@
         "group": "II. A world"
       },
       {
-        "path": "aethyr/book/ch007-ask-the-world-where-things-are.md",
+        "path": "metaverse-engine/book/ch007-ask-the-world-where-things-are.md",
         "bytes": 32573,
         "sha256": "1a1de52811f5556a39c5f7f6ad10fa773b4e831f57d19596fcf0ad738d3c5312",
         "file": "ch007-ask-the-world-where-things-are.md",
@@ -87,7 +87,7 @@
         "group": "II. A world"
       },
       {
-        "path": "aethyr/book/ch008-ground-and-collision.md",
+        "path": "metaverse-engine/book/ch008-ground-and-collision.md",
         "bytes": 17273,
         "sha256": "8bc2af68978c42bf9fba4d608c22bf19fc011eb052014a0e4aecc7b5e6383513",
         "file": "ch008-ground-and-collision.md",
@@ -95,7 +95,7 @@
         "group": "II. A world"
       },
       {
-        "path": "aethyr/book/ch009-a-character-moves.md",
+        "path": "metaverse-engine/book/ch009-a-character-moves.md",
         "bytes": 21565,
         "sha256": "7909255f8da3570517a13b6e0366a854c13ca203734299b103ac3fc2bf415818",
         "file": "ch009-a-character-moves.md",
@@ -103,7 +103,7 @@
         "group": "II. A world"
       },
       {
-        "path": "aethyr/book/ch010-the-camera-follows.md",
+        "path": "metaverse-engine/book/ch010-the-camera-follows.md",
         "bytes": 41361,
         "sha256": "0fb254e6c8205b087cdf2bdf48f109b0f1f36450a0a339484a2e09e9db0dd954",
         "file": "ch010-the-camera-follows.md",
@@ -111,7 +111,7 @@
         "group": "II. A world"
       },
       {
-        "path": "aethyr/book/ch011-the-wgsl-renderer.md",
+        "path": "metaverse-engine/book/ch011-the-wgsl-renderer.md",
         "bytes": 40195,
         "sha256": "493ad7f4333839772ef342fa586d5c13d130b41620622eeb0aba2a829d2b51df",
         "file": "ch011-the-wgsl-renderer.md",
@@ -119,7 +119,7 @@
         "group": "III. Seeing it"
       },
       {
-        "path": "aethyr/book/ch012-materials.md",
+        "path": "metaverse-engine/book/ch012-materials.md",
         "bytes": 17517,
         "sha256": "d0518c56ba76d5ca180922b25097dc4942f6f9fc449e988e05e81bc3d8a38a11",
         "file": "ch012-materials.md",
@@ -127,7 +127,7 @@
         "group": "III. Seeing it"
       },
       {
-        "path": "aethyr/book/ch013-light-and-shadow.md",
+        "path": "metaverse-engine/book/ch013-light-and-shadow.md",
         "bytes": 15110,
         "sha256": "ca61b396669aada13b3c080424528cbe3acee3b2cee4e01227c7fd4f870ab5f5",
         "file": "ch013-light-and-shadow.md",
@@ -135,7 +135,7 @@
         "group": "III. Seeing it"
       },
       {
-        "path": "aethyr/book/ch014-figures-and-animation.md",
+        "path": "metaverse-engine/book/ch014-figures-and-animation.md",
         "bytes": 13046,
         "sha256": "7aa4a319c52c5c715556da13138b589a6b0425ea0382cb972e874d83934e764e",
         "file": "ch014-figures-and-animation.md",
@@ -143,7 +143,7 @@
         "group": "III. Seeing it"
       },
       {
-        "path": "aethyr/book/ch015-ui-and-the-hud.md",
+        "path": "metaverse-engine/book/ch015-ui-and-the-hud.md",
         "bytes": 20563,
         "sha256": "9eb89125b3a9151b6a20a07320b277066cf61425baa173500d74bc205c70bbb5",
         "file": "ch015-ui-and-the-hud.md",
@@ -151,7 +151,7 @@
         "group": "III. Seeing it"
       },
       {
-        "path": "aethyr/book/ch016-budgets-that-refuse.md",
+        "path": "metaverse-engine/book/ch016-budgets-that-refuse.md",
         "bytes": 20974,
         "sha256": "d4006b96caf409a0a983cf054db2cdb09bdef345715e93667989004ae21f7fdc",
         "file": "ch016-budgets-that-refuse.md",
@@ -159,7 +159,7 @@
         "group": "III. Seeing it"
       },
       {
-        "path": "aethyr/book/ch017-a-scene-owns-the-state.md",
+        "path": "metaverse-engine/book/ch017-a-scene-owns-the-state.md",
         "bytes": 12396,
         "sha256": "0711c36060a002c2a3f33eaecf4908de5a07a39c0f9c28394688a274a36caa2b",
         "file": "ch017-a-scene-owns-the-state.md",
@@ -167,7 +167,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch018-rigid-bodies-and-time-steps.md",
+        "path": "metaverse-engine/book/ch018-rigid-bodies-and-time-steps.md",
         "bytes": 12036,
         "sha256": "3af1c0bac3d6d562defe976f03c80b4cf4d10111c6f1c2bbb0daa02e81aa00f9",
         "file": "ch018-rigid-bodies-and-time-steps.md",
@@ -175,7 +175,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch019-joints-in-generalized-coordinates.md",
+        "path": "metaverse-engine/book/ch019-joints-in-generalized-coordinates.md",
         "bytes": 5539,
         "sha256": "366d2121fd783e59320d63c7b05983dec2400b11a84f23e0c0f9e2809df88182",
         "file": "ch019-joints-in-generalized-coordinates.md",
@@ -183,7 +183,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch020-find-the-pairs-that-might-touch.md",
+        "path": "metaverse-engine/book/ch020-find-the-pairs-that-might-touch.md",
         "bytes": 11442,
         "sha256": "078909a24a2ab85e5798b323001688178ca00a0d666ef36387341f1bdb87ee20",
         "file": "ch020-find-the-pairs-that-might-touch.md",
@@ -191,7 +191,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch021-find-where-they-touch.md",
+        "path": "metaverse-engine/book/ch021-find-where-they-touch.md",
         "bytes": 14998,
         "sha256": "7045b81cf4e92b222100522622d075d2e72c685e62a3f44825e8fe859fdb0b87",
         "file": "ch021-find-where-they-touch.md",
@@ -199,7 +199,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch022-contact-as-an-optimization.md",
+        "path": "metaverse-engine/book/ch022-contact-as-an-optimization.md",
         "bytes": 5566,
         "sha256": "7bcf95a9be151898b95bf4188395877cc1e1c59b9ef44c87ea99dca9dacf7baa",
         "file": "ch022-contact-as-an-optimization.md",
@@ -207,7 +207,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch023-particles-and-their-neighbors.md",
+        "path": "metaverse-engine/book/ch023-particles-and-their-neighbors.md",
         "bytes": 9224,
         "sha256": "d6f27846829bdd806b0dc1b8a8a06b8e6403332762eeda73e46fd1645fffc830",
         "file": "ch023-particles-and-their-neighbors.md",
@@ -215,7 +215,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch024-liquids-from-particles.md",
+        "path": "metaverse-engine/book/ch024-liquids-from-particles.md",
         "bytes": 11399,
         "sha256": "8905f04f00fe59dcb1f381f8e18ebdc59708ba31df53a536e14ce22d75928859",
         "file": "ch024-liquids-from-particles.md",
@@ -223,7 +223,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch025-cloth-and-rope-from-constraints.md",
+        "path": "metaverse-engine/book/ch025-cloth-and-rope-from-constraints.md",
         "bytes": 12313,
         "sha256": "eb1bf6709f1ccef20721ce45274c6af67646a6604609f7e0f8b4770463738fed",
         "file": "ch025-cloth-and-rope-from-constraints.md",
@@ -231,7 +231,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch026-sand-snow-and-clay-on-a-grid.md",
+        "path": "metaverse-engine/book/ch026-sand-snow-and-clay-on-a-grid.md",
         "bytes": 10601,
         "sha256": "81c923c041b97981145e8c91c5805f06148d119ffe7d17faf8b493cd9d0328c5",
         "file": "ch026-sand-snow-and-clay-on-a-grid.md",
@@ -239,7 +239,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch027-elastic-solids-on-a-mesh.md",
+        "path": "metaverse-engine/book/ch027-elastic-solids-on-a-mesh.md",
         "bytes": 4255,
         "sha256": "eb270ccde58f9c3898b824fe306c57fb1adbcc13dd319ca7738d13b5f2ac65a1",
         "file": "ch027-elastic-solids-on-a-mesh.md",
@@ -247,7 +247,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch028-smoke-on-a-grid.md",
+        "path": "metaverse-engine/book/ch028-smoke-on-a-grid.md",
         "bytes": 9163,
         "sha256": "225f357cd29925c7196c219de2e8af5b683bcca2eaa0e094becd4e8c5d64979e",
         "file": "ch028-smoke-on-a-grid.md",
@@ -255,7 +255,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch029-materials-meet.md",
+        "path": "metaverse-engine/book/ch029-materials-meet.md",
         "bytes": 3262,
         "sha256": "a4625db8be22d54f7589764106d4385b529f92f4d9fb321dab9b0f84734c8c6c",
         "file": "ch029-materials-meet.md",
@@ -263,7 +263,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch030-contact-that-holds.md",
+        "path": "metaverse-engine/book/ch030-contact-that-holds.md",
         "bytes": 3548,
         "sha256": "53c2a2ba9f0b5e95ba3ac453cb0fcd20c35c4e72335502b873555451ca73a063",
         "file": "ch030-contact-that-holds.md",
@@ -271,7 +271,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch031-many-worlds-in-one-step.md",
+        "path": "metaverse-engine/book/ch031-many-worlds-in-one-step.md",
         "bytes": 3834,
         "sha256": "82e6af0b03afe071eaf681ecb4fc5af213d5411ec92c02dda82b9e05a9620e5f",
         "file": "ch031-many-worlds-in-one-step.md",
@@ -279,7 +279,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch032-differentiate-a-simulation.md",
+        "path": "metaverse-engine/book/ch032-differentiate-a-simulation.md",
         "bytes": 4272,
         "sha256": "219cf0f7109a60d83847625215d23cf9aa844f965a3d21d40c91077b89731493",
         "file": "ch032-differentiate-a-simulation.md",
@@ -287,7 +287,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch033-sensors-read-the-simulation.md",
+        "path": "metaverse-engine/book/ch033-sensors-read-the-simulation.md",
         "bytes": 3213,
         "sha256": "03089eac30d47a423d7415937d638e43e80545ad1d2902544f54df6a6d125528",
         "file": "ch033-sensors-read-the-simulation.md",
@@ -295,7 +295,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch034-pictures-for-policies.md",
+        "path": "metaverse-engine/book/ch034-pictures-for-policies.md",
         "bytes": 3567,
         "sha256": "b7b1cc744ea5b8198202befaf18ca0e67a044492857fed237f3cc1d5587ecb44",
         "file": "ch034-pictures-for-policies.md",
@@ -303,7 +303,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch035-bring-in-robots-and-meshes.md",
+        "path": "metaverse-engine/book/ch035-bring-in-robots-and-meshes.md",
         "bytes": 3943,
         "sha256": "42c88af6281c70127b1dbe6e34ecf09a10a517f0ab69cc4974f6bdfcbf019980",
         "file": "ch035-bring-in-robots-and-meshes.md",
@@ -311,7 +311,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch036-record-and-replay-a-world.md",
+        "path": "metaverse-engine/book/ch036-record-and-replay-a-world.md",
         "bytes": 3016,
         "sha256": "6364b23a810bd846bfba5cd2c39e905330d03a42cc67bb46516a19e4bdb0ef68",
         "file": "ch036-record-and-replay-a-world.md",
@@ -319,7 +319,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch037-measure-the-engine-honestly.md",
+        "path": "metaverse-engine/book/ch037-measure-the-engine-honestly.md",
         "bytes": 3728,
         "sha256": "230c61ec16449f388f6b8cbf594b70f000d9199a50e9340acbf2f293483870d3",
         "file": "ch037-measure-the-engine-honestly.md",
@@ -327,7 +327,7 @@
         "group": "IV. Physics"
       },
       {
-        "path": "aethyr/book/ch038-stream-a-large-world.md",
+        "path": "metaverse-engine/book/ch038-stream-a-large-world.md",
         "bytes": 4726,
         "sha256": "7e98af0b2b996daafb98493d3ca082874b1b0ae1275d7e38ff7487ea908c0e5b",
         "file": "ch038-stream-a-large-world.md",
@@ -335,7 +335,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch039-ephemerides-time-scales-and-frames.md",
+        "path": "metaverse-engine/book/ch039-ephemerides-time-scales-and-frames.md",
         "bytes": 12567,
         "sha256": "1354fa048012458b9e8d4326426ce6bf2f4cf685093ee7ce5dc96614d78ad55c",
         "file": "ch039-ephemerides-time-scales-and-frames.md",
@@ -343,7 +343,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch040-propagate-with-a-stated-error.md",
+        "path": "metaverse-engine/book/ch040-propagate-with-a-stated-error.md",
         "bytes": 4262,
         "sha256": "a35e642b961de057fad1e2bdb61269b894888c1da5730d0bab8560d25b4341af",
         "file": "ch040-propagate-with-a-stated-error.md",
@@ -351,7 +351,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch041-burns-consume-mass.md",
+        "path": "metaverse-engine/book/ch041-burns-consume-mass.md",
         "bytes": 4355,
         "sha256": "defd1ee14d3dc6570619977cd2bd061ee7f1c0defa459a5449b591baac5e7808",
         "file": "ch041-burns-consume-mass.md",
@@ -359,7 +359,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch042-reach-a-moving-target.md",
+        "path": "metaverse-engine/book/ch042-reach-a-moving-target.md",
         "bytes": 4441,
         "sha256": "82491521802cb47a52e9c206f252811a862f638ca44f85c789af6932e56dd03e",
         "file": "ch042-reach-a-moving-target.md",
@@ -367,7 +367,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch043-heat-has-to-go-somewhere.md",
+        "path": "metaverse-engine/book/ch043-heat-has-to-go-somewhere.md",
         "bytes": 3977,
         "sha256": "3a4a3198f4501fb2ab83f01a10221ffe12d5c94e75eb4156e805de104f41538d",
         "file": "ch043-heat-has-to-go-somewhere.md",
@@ -375,7 +375,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch044-inside-a-turning-accelerating-ship.md",
+        "path": "metaverse-engine/book/ch044-inside-a-turning-accelerating-ship.md",
         "bytes": 4312,
         "sha256": "a7ec3651fd22574aa1e14cc7b3a31af905e4d89c14c870fdd77a5f5c0f72d726",
         "file": "ch044-inside-a-turning-accelerating-ship.md",
@@ -383,7 +383,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch045-sensors-that-see-the-past.md",
+        "path": "metaverse-engine/book/ch045-sensors-that-see-the-past.md",
         "bytes": 3988,
         "sha256": "a2cea60079981e7ce8449c056c93ec98d0860843cde789f8e3632db5bd0eca8f",
         "file": "ch045-sensors-that-see-the-past.md",
@@ -391,7 +391,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch046-time-warp-that-stops-for-every-event.md",
+        "path": "metaverse-engine/book/ch046-time-warp-that-stops-for-every-event.md",
         "bytes": 3989,
         "sha256": "bd35535088590ce18b5e40321fd87f2131d7730b31005d6452d1a136a21744be",
         "file": "ch046-time-warp-that-stops-for-every-event.md",
@@ -399,7 +399,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch047-hits-through-layers.md",
+        "path": "metaverse-engine/book/ch047-hits-through-layers.md",
         "bytes": 3914,
         "sha256": "312ef30b65d85f323f8d5e9d2c2b3d807fa388de8e8675b1859d1e2153640766",
         "file": "ch047-hits-through-layers.md",
@@ -407,7 +407,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch048-one-world-at-three-fidelities.md",
+        "path": "metaverse-engine/book/ch048-one-world-at-three-fidelities.md",
         "bytes": 4583,
         "sha256": "e86b7ba1c2fc15e6d639beac6d3184cf11a8b7f602a91f0b3dea1ca69654cb00",
         "file": "ch048-one-world-at-three-fidelities.md",
@@ -415,7 +415,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch049-rooms-and-presence.md",
+        "path": "metaverse-engine/book/ch049-rooms-and-presence.md",
         "bytes": 2526,
         "sha256": "f469be24f54a981dbc57e4d4afc02f05403e032f294b2e1129d34e5810217fa2",
         "file": "ch049-rooms-and-presence.md",
@@ -423,7 +423,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch050-shared-state-over-the-network.md",
+        "path": "metaverse-engine/book/ch050-shared-state-over-the-network.md",
         "bytes": 2330,
         "sha256": "631248fe7e9245516fdc21d10573487e2e8b2ea928155c130fb5004519cb583a",
         "file": "ch050-shared-state-over-the-network.md",
@@ -431,7 +431,7 @@
         "group": "V. Big worlds"
       },
       {
-        "path": "aethyr/book/ch051-a-realm-is-a-document.md",
+        "path": "metaverse-engine/book/ch051-a-realm-is-a-document.md",
         "bytes": 15995,
         "sha256": "1d557db33a599e77f21af98238d14b908838311f4fb864ccc681d6dab6de573c",
         "file": "ch051-a-realm-is-a-document.md",
@@ -439,7 +439,7 @@
         "group": "VI. Making worlds: Aethyrforge"
       },
       {
-        "path": "aethyr/book/ch052-edit-a-realm-in-place.md",
+        "path": "metaverse-engine/book/ch052-edit-a-realm-in-place.md",
         "bytes": 26868,
         "sha256": "f67f79e2f99105756fed0985b9328430f858eae92a3363187b5bf570d3fa05be",
         "file": "ch052-edit-a-realm-in-place.md",
@@ -447,7 +447,7 @@
         "group": "VI. Making worlds: Aethyrforge"
       },
       {
-        "path": "aethyr/book/ch053-bring-in-assets.md",
+        "path": "metaverse-engine/book/ch053-bring-in-assets.md",
         "bytes": 23555,
         "sha256": "c6fa1bea1f5ca8f51461b669545d906a32addbbdcec86a6aefaae8aabbdd8f5d",
         "file": "ch053-bring-in-assets.md",
@@ -455,7 +455,7 @@
         "group": "VI. Making worlds: Aethyrforge"
       },
       {
-        "path": "aethyr/book/ch054-publish-a-realm.md",
+        "path": "metaverse-engine/book/ch054-publish-a-realm.md",
         "bytes": 24479,
         "sha256": "4d9ba67aec80896f7dc118b8f0e76959a1e0e479472a4923a5ce2a4b5b29d59c",
         "file": "ch054-publish-a-realm.md",
@@ -463,7 +463,7 @@
         "group": "VI. Making worlds: Aethyrforge"
       },
       {
-        "path": "aethyr/book/ch055-fork-a-realm.md",
+        "path": "metaverse-engine/book/ch055-fork-a-realm.md",
         "bytes": 13418,
         "sha256": "e7deb78731d7a1b795b04e5a28467c41ff1b3469ff09cb51e9e0ecf0e2ec3745",
         "file": "ch055-fork-a-realm.md",
@@ -471,7 +471,7 @@
         "group": "VI. Making worlds: Aethyrforge"
       },
       {
-        "path": "aethyr/book/ch056-the-grid.md",
+        "path": "metaverse-engine/book/ch056-the-grid.md",
         "bytes": 15877,
         "sha256": "7c7bace31f08ac5017f6565c1be70078f8fa00f5e55a80bc715d90808d148dae",
         "file": "ch056-the-grid.md",
@@ -479,7 +479,7 @@
         "group": "VII. Realms"
       },
       {
-        "path": "aethyr/book/ch057-made-realms.md",
+        "path": "metaverse-engine/book/ch057-made-realms.md",
         "bytes": 4514,
         "sha256": "01adb214bcb0393f59a5dd888d4b60a9d1a7dfd1b55a3e85c1939840df2b3b45",
         "file": "ch057-made-realms.md",
@@ -487,7 +487,7 @@
         "group": "VII. Realms"
       },
       {
-        "path": "aethyr/book/ch058-everglade.md",
+        "path": "metaverse-engine/book/ch058-everglade.md",
         "bytes": 2372,
         "sha256": "1a4d2ba11368e92731f04fc5e9c6475982f2c2863d6da95f7c746f7457d2b542",
         "file": "ch058-everglade.md",
@@ -495,7 +495,7 @@
         "group": "VII. Realms"
       },
       {
-        "path": "aethyr/book/ch059-dead-gears.md",
+        "path": "metaverse-engine/book/ch059-dead-gears.md",
         "bytes": 4569,
         "sha256": "4b52cc4a7fd8248ab9737667fe8d30204f4d8a70da778c3d85d715d6d5d15bf7",
         "file": "ch059-dead-gears.md",
@@ -503,7 +503,7 @@
         "group": "VII. Realms"
       },
       {
-        "path": "aethyr/book/ch060-ice-cream-man.md",
+        "path": "metaverse-engine/book/ch060-ice-cream-man.md",
         "bytes": 4502,
         "sha256": "a820a0a95ccd7fea2e525367367578c6eeca92ffe9d382e0702d44ca51d85387",
         "file": "ch060-ice-cream-man.md",
@@ -511,7 +511,7 @@
         "group": "VII. Realms"
       },
       {
-        "path": "aethyr/book/ch061-hecates-cemetery.md",
+        "path": "metaverse-engine/book/ch061-hecates-cemetery.md",
         "bytes": 4294,
         "sha256": "82eaa6739cc68c40dd2b7108afcd5abce81f1ec59deca8178ca7d6cca197f047",
         "file": "ch061-hecates-cemetery.md",
@@ -519,7 +519,7 @@
         "group": "VII. Realms"
       },
       {
-        "path": "aethyr/book/ch062-fairy-forest.md",
+        "path": "metaverse-engine/book/ch062-fairy-forest.md",
         "bytes": 4465,
         "sha256": "0e211fd007c577452ee94f52804a86df615083eccbce85c1b8c2e036ce8f3ea8",
         "file": "ch062-fairy-forest.md",
@@ -527,7 +527,7 @@
         "group": "VII. Realms"
       },
       {
-        "path": "aethyr/book/ch063-the-space-games.md",
+        "path": "metaverse-engine/book/ch063-the-space-games.md",
         "bytes": 5019,
         "sha256": "df8bbcf87be6de859f3fe9ce1d3ffd42e3a6f582d69c0506a5783d96b96e2794",
         "file": "ch063-the-space-games.md",
@@ -535,7 +535,7 @@
         "group": "VII. Realms"
       },
       {
-        "path": "aethyr/book/ch064-every-realm-runs-on-aethyr.md",
+        "path": "metaverse-engine/book/ch064-every-realm-runs-on-aethyr.md",
         "bytes": 19189,
         "sha256": "fdefb8b6da3fa30167cd672abe0b0f49d915142251c5619d36ea23f3fffc7798",
         "file": "ch064-every-realm-runs-on-aethyr.md",
@@ -543,7 +543,7 @@
         "group": "VII. Realms"
       },
       {
-        "path": "aethyr/book/ch065-sound-from-numbers.md",
+        "path": "metaverse-engine/book/ch065-sound-from-numbers.md",
         "bytes": 11787,
         "sha256": "2bd4a5aeec7546cc70eee3b6567d4036398bc0b989c8c4d081c9ded50b6e4ee4",
         "file": "ch065-sound-from-numbers.md",
@@ -551,7 +551,7 @@
         "group": "VIII. Hearing it"
       },
       {
-        "path": "aethyr/book/ch066-a-sequencer-on-the-beat-grid.md",
+        "path": "metaverse-engine/book/ch066-a-sequencer-on-the-beat-grid.md",
         "bytes": 8757,
         "sha256": "d4de219719db339a8feed404052512ea8914418d39bfebd103ef185623a27ee9",
         "file": "ch066-a-sequencer-on-the-beat-grid.md",
@@ -559,7 +559,7 @@
         "group": "VIII. Hearing it"
       },
       {
-        "path": "aethyr/book/ch067-scores-mixing-and-a-soundtrack.md",
+        "path": "metaverse-engine/book/ch067-scores-mixing-and-a-soundtrack.md",
         "bytes": 15522,
         "sha256": "cb275305a6d3f7dadfb9b846e12647e247f3516509a923d7c8f85fa0bbb2ebbb",
         "file": "ch067-scores-mixing-and-a-soundtrack.md",
@@ -567,7 +567,7 @@
         "group": "VIII. Hearing it"
       },
       {
-        "path": "aethyr/book/ch068-sound-in-the-world.md",
+        "path": "metaverse-engine/book/ch068-sound-in-the-world.md",
         "bytes": 12335,
         "sha256": "a023d9170dc321ba75f8456bac6a9c2e0ef664df954dab83727f185650655315",
         "file": "ch068-sound-in-the-world.md",
@@ -575,7 +575,7 @@
         "group": "VIII. Hearing it"
       },
       {
-        "path": "aethyr/book/ch069-voices-in-a-realm.md",
+        "path": "metaverse-engine/book/ch069-voices-in-a-realm.md",
         "bytes": 11709,
         "sha256": "2d9d7488bd9a73fc7763da0b42445f16f74dd474d36f94b36bbbcf3d6ca3d8a6",
         "file": "ch069-voices-in-a-realm.md",
@@ -583,7 +583,7 @@
         "group": "VIII. Hearing it"
       },
       {
-        "path": "aethyr/book/ch070-rivers-ponds-and-the-sea.md",
+        "path": "metaverse-engine/book/ch070-rivers-ponds-and-the-sea.md",
         "bytes": 6143,
         "sha256": "acb15afb77f91f3a1079f940f66c84dae1c1c4fb5a3d66c7d3ec7db0b6521e5f",
         "file": "ch070-rivers-ponds-and-the-sea.md",
@@ -591,7 +591,7 @@
         "group": "IX. A living world"
       },
       {
-        "path": "aethyr/book/ch071-sky-weather-and-the-time-of-day.md",
+        "path": "metaverse-engine/book/ch071-sky-weather-and-the-time-of-day.md",
         "bytes": 5746,
         "sha256": "f21d92b5aaf69b28ab74eb0a64270a25f1422bb2eb1a488555bf58bb73a46213",
         "file": "ch071-sky-weather-and-the-time-of-day.md",
@@ -599,7 +599,7 @@
         "group": "IX. A living world"
       },
       {
-        "path": "aethyr/book/ch072-effects-made-of-particles.md",
+        "path": "metaverse-engine/book/ch072-effects-made-of-particles.md",
         "bytes": 7153,
         "sha256": "25c14d7ea7c9ac4a33189d28167579607c5b0e8ecc7ecd6b18d1510ed276078e",
         "file": "ch072-effects-made-of-particles.md",
@@ -607,7 +607,7 @@
         "group": "IX. A living world"
       },
       {
-        "path": "aethyr/book/ch073-things-that-break.md",
+        "path": "metaverse-engine/book/ch073-things-that-break.md",
         "bytes": 5630,
         "sha256": "2b647ef254a15d37bd8461e3fa818d77f7bfa2773ebe44fb3059417260e6b2a0",
         "file": "ch073-things-that-break.md",
@@ -615,7 +615,7 @@
         "group": "IX. A living world"
       },
       {
-        "path": "aethyr/book/ch074-wheels-on-the-ground.md",
+        "path": "metaverse-engine/book/ch074-wheels-on-the-ground.md",
         "bytes": 5105,
         "sha256": "97228c1507a60f92aec3eb180d736440df2807719fc11084dcbecdcd077b2118",
         "file": "ch074-wheels-on-the-ground.md",
@@ -623,7 +623,7 @@
         "group": "IX. A living world"
       },
       {
-        "path": "aethyr/book/ch075-creatures-that-follow-and-watch.md",
+        "path": "metaverse-engine/book/ch075-creatures-that-follow-and-watch.md",
         "bytes": 24850,
         "sha256": "c0ae3403fb6985c3751522f041187961b6bdce0389bcc844d1c468031c9e0a19",
         "file": "ch075-creatures-that-follow-and-watch.md",
@@ -631,7 +631,7 @@
         "group": "IX. A living world"
       },
       {
-        "path": "aethyr/book/ch076-find-a-way-through.md",
+        "path": "metaverse-engine/book/ch076-find-a-way-through.md",
         "bytes": 20891,
         "sha256": "360d23c155676dd6800b7155d968cffcd261f20a5afb42a2f24d9f9096e20f5f",
         "file": "ch076-find-a-way-through.md",
@@ -639,7 +639,7 @@
         "group": "IX. A living world"
       },
       {
-        "path": "aethyr/book/ch077-people-who-talk-back.md",
+        "path": "metaverse-engine/book/ch077-people-who-talk-back.md",
         "bytes": 18115,
         "sha256": "81867bcbdd8c0a5dc8401ebcf03dbdd2c525e1c3e7aa954c0c550bd85483af92",
         "file": "ch077-people-who-talk-back.md",
@@ -647,7 +647,7 @@
         "group": "IX. A living world"
       },
       {
-        "path": "aethyr/book/ch078-cinematics-and-close-ups.md",
+        "path": "metaverse-engine/book/ch078-cinematics-and-close-ups.md",
         "bytes": 13400,
         "sha256": "30bc23e575cabfde867582e5d7c64d5f8016a1ba3603d0419b780895e2386932",
         "file": "ch078-cinematics-and-close-ups.md",
@@ -655,7 +655,7 @@
         "group": "IX. A living world"
       },
       {
-        "path": "aethyr/book/ch079-a-piece-from-a-sentence.md",
+        "path": "metaverse-engine/book/ch079-a-piece-from-a-sentence.md",
         "bytes": 5809,
         "sha256": "ab2de70b3b2070eb194a854b16b7a866de58c597d4079d36819023137be036d0",
         "file": "ch079-a-piece-from-a-sentence.md",
@@ -663,7 +663,7 @@
         "group": "X. Aethyrforge: generating worlds"
       },
       {
-        "path": "aethyr/book/ch080-terrain-and-scatter-from-a-seed.md",
+        "path": "metaverse-engine/book/ch080-terrain-and-scatter-from-a-seed.md",
         "bytes": 22487,
         "sha256": "7f99f33994db849184e3c760f561cc28eda02cf4c6dbb20b4c85ba8cec6b8ca4",
         "file": "ch080-terrain-and-scatter-from-a-seed.md",
@@ -671,7 +671,7 @@
         "group": "X. Aethyrforge: generating worlds"
       },
       {
-        "path": "aethyr/book/ch081-save-and-come-back.md",
+        "path": "metaverse-engine/book/ch081-save-and-come-back.md",
         "bytes": 18331,
         "sha256": "e43060bcaacb3191da794d8fc0acef4252cceacee0e213a982857b06acd212ab",
         "file": "ch081-save-and-come-back.md",
@@ -679,7 +679,7 @@
         "group": "XI. Shipping realms"
       },
       {
-        "path": "aethyr/book/ch082-change-code-while-it-runs.md",
+        "path": "metaverse-engine/book/ch082-change-code-while-it-runs.md",
         "bytes": 4567,
         "sha256": "d6a0a4f39c364117e797a532ab0ff1b3c3a96dfacaf800a9e50b993c7c9b81a0",
         "file": "ch082-change-code-while-it-runs.md",
@@ -687,7 +687,7 @@
         "group": "XI. Shipping realms"
       },
       {
-        "path": "aethyr/book/ch083-inspect-and-profile-a-running-realm.md",
+        "path": "metaverse-engine/book/ch083-inspect-and-profile-a-running-realm.md",
         "bytes": 22181,
         "sha256": "3b0802116ce728e294b8561e51524a3a1959b43b5a1c806d357a0b5e983ffc95",
         "file": "ch083-inspect-and-profile-a-running-realm.md",
@@ -695,7 +695,7 @@
         "group": "XI. Shipping realms"
       },
       {
-        "path": "aethyr/book/ch084-one-realm-on-every-host.md",
+        "path": "metaverse-engine/book/ch084-one-realm-on-every-host.md",
         "bytes": 2453,
         "sha256": "b057ceeb24984c69d46a2053f326d451dd60cc357fa723955f8da3f11b11242d",
         "file": "ch084-one-realm-on-every-host.md",
@@ -703,7 +703,7 @@
         "group": "XI. Shipping realms"
       },
       {
-        "path": "aethyr/book/ch085-everyone-can-play.md",
+        "path": "metaverse-engine/book/ch085-everyone-can-play.md",
         "bytes": 2651,
         "sha256": "74ebbc88d445ac1b4717eac5362bdf2df57c6a6880402386791f885e78d6a43f",
         "file": "ch085-everyone-can-play.md",
@@ -711,7 +711,7 @@
         "group": "XI. Shipping realms"
       },
       {
-        "path": "aethyr/book/ch086-one-server-owns-the-scene.md",
+        "path": "metaverse-engine/book/ch086-one-server-owns-the-scene.md",
         "bytes": 5771,
         "sha256": "d75bd66a2bd32f45ffe7c539e581da053cdf5ab5c8a45537cbf1ed63ca98090d",
         "file": "ch086-one-server-owns-the-scene.md",
@@ -719,7 +719,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch087-server-and-client-share-one-step.md",
+        "path": "metaverse-engine/book/ch087-server-and-client-share-one-step.md",
         "bytes": 4627,
         "sha256": "9a2f38125a37bae64f37d5fc9d4243076fbc19fb2625d653f61cda0b52310aa1",
         "file": "ch087-server-and-client-share-one-step.md",
@@ -727,7 +727,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch088-a-seat-joins-with-a-signed-ticket.md",
+        "path": "metaverse-engine/book/ch088-a-seat-joins-with-a-signed-ticket.md",
         "bytes": 4345,
         "sha256": "11832bf9571e6051f950ebf1bc27d77dfea6fa8b6ae85b4d2dd4e41e94b70f8a",
         "file": "ch088-a-seat-joins-with-a-signed-ticket.md",
@@ -735,7 +735,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch089-intents-in-acknowledgements-out.md",
+        "path": "metaverse-engine/book/ch089-intents-in-acknowledgements-out.md",
         "bytes": 5423,
         "sha256": "f5d072495d2d23fd268284df930a9391389289153ca76f6c1d5074796db0e7f8",
         "file": "ch089-intents-in-acknowledgements-out.md",
@@ -743,7 +743,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch090-predict-your-own-movement.md",
+        "path": "metaverse-engine/book/ch090-predict-your-own-movement.md",
         "bytes": 5952,
         "sha256": "c07f85a4ee4eef828c975a4bf7d2e34fc5fa46e92104ec1c8e86ab0893accca3",
         "file": "ch090-predict-your-own-movement.md",
@@ -751,7 +751,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch091-one-record-for-every-replicated-entity.md",
+        "path": "metaverse-engine/book/ch091-one-record-for-every-replicated-entity.md",
         "bytes": 4697,
         "sha256": "ef5860c60219efb0a29e5cbc3d3e930267a7b524c971f603bc3b6a7236dc1730",
         "file": "ch091-one-record-for-every-replicated-entity.md",
@@ -759,7 +759,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch092-priority-under-a-budget.md",
+        "path": "metaverse-engine/book/ch092-priority-under-a-budget.md",
         "bytes": 3865,
         "sha256": "8b6a459982d075c4e9fcb47cfe2ae710b8ee55a20733275e6cd666d44323c1ce",
         "file": "ch092-priority-under-a-budget.md",
@@ -767,7 +767,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch093-one-interpolation-buffer.md",
+        "path": "metaverse-engine/book/ch093-one-interpolation-buffer.md",
         "bytes": 6287,
         "sha256": "4a155236f48f6efabfdb415c1f86191f2a9c6cff5cd3bd42ad71a98f32fe05cf",
         "file": "ch093-one-interpolation-buffer.md",
@@ -775,7 +775,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch094-effects-are-state-events-are-cues.md",
+        "path": "metaverse-engine/book/ch094-effects-are-state-events-are-cues.md",
         "bytes": 4226,
         "sha256": "24137092e949e339d72ac04c6a3de58b30d232253d4e4e9e88d3f8fdbc3c514c",
         "file": "ch094-effects-are-state-events-are-cues.md",
@@ -783,7 +783,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch095-offline-is-a-local-server.md",
+        "path": "metaverse-engine/book/ch095-offline-is-a-local-server.md",
         "bytes": 4868,
         "sha256": "a4afce5de0cfe9297a966a66480b3824d3f39392ad339858b6a907b296bdfb08",
         "file": "ch095-offline-is-a-local-server.md",
@@ -791,7 +791,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch096-casts-and-combat-under-latency.md",
+        "path": "metaverse-engine/book/ch096-casts-and-combat-under-latency.md",
         "bytes": 7040,
         "sha256": "0780bc79ef084c3fb9a050db29fa26b786de959f03df85714fae3875b7272770",
         "file": "ch096-casts-and-combat-under-latency.md",
@@ -799,7 +799,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch097-interest-without-leaks.md",
+        "path": "metaverse-engine/book/ch097-interest-without-leaks.md",
         "bytes": 3498,
         "sha256": "f5331914e5cc42c84d99f8bd060da58b2cf56e4877965c8af0fcbd3d0ab19c47",
         "file": "ch097-interest-without-leaks.md",
@@ -807,7 +807,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch098-versions-deploys-and-reconnect.md",
+        "path": "metaverse-engine/book/ch098-versions-deploys-and-reconnect.md",
         "bytes": 6681,
         "sha256": "1b4dd2e3a1803b2d810f7af36ad186b5df324122cb68cb586d0673e17c358daf",
         "file": "ch098-versions-deploys-and-reconnect.md",
@@ -815,7 +815,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch099-watch-the-whole-action-path.md",
+        "path": "metaverse-engine/book/ch099-watch-the-whole-action-path.md",
         "bytes": 2982,
         "sha256": "a14fac407c5a6507a7f2981b406750b3c9ae08099ccde2d86b262bf63fe37cb2",
         "file": "ch099-watch-the-whole-action-path.md",
@@ -823,7 +823,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch100-prove-the-room-plays-like-the-game.md",
+        "path": "metaverse-engine/book/ch100-prove-the-room-plays-like-the-game.md",
         "bytes": 6136,
         "sha256": "fd98592514a36c547a668f86a70516fdbd5331f12b5561ab915009536b8d320d",
         "file": "ch100-prove-the-room-plays-like-the-game.md",
@@ -831,7 +831,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/ch101-the-everglade-room.md",
+        "path": "metaverse-engine/book/ch101-the-everglade-room.md",
         "bytes": 4932,
         "sha256": "1671872f31888212435f801fb4eb0e603b3ca08c73b1640a5f05931e075d908d",
         "file": "ch101-the-everglade-room.md",
@@ -839,7 +839,7 @@
         "group": "XII. Many players: a multiplayer engine"
       },
       {
-        "path": "aethyr/book/appendix-mmo-gap-analysis.md",
+        "path": "metaverse-engine/book/appendix-mmo-gap-analysis.md",
         "bytes": 14148,
         "sha256": "00def959a7fc40dd81012d27cf49349f87ade60435e95e7b343c059cfd4c4cec",
         "file": "appendix-mmo-gap-analysis.md",

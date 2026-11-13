@@ -1,7 +1,7 @@
 // The level 17 Warlock in the 5E Lab's Player mode (fivelab.coax loads this file): the same SRD 5.2.1
 // Warlock that Everglade plays (rules/srd/engine.coax rs_warlock at level 17, the Fiend
-// Patron), its spells on the hotbar, their looks from aethyr/fx/warlock.coax (started by
-// aethyr/fx/battle.coax fxe_warlock, the same causes Everglade starts), and Finger of Death's dead
+// Patron), its spells on the hotbar, their looks from metaverse-engine/fx/warlock.coax (started by
+// metaverse-engine/fx/battle.coax fxe_warlock, the same causes Everglade starts), and Finger of Death's dead
 // rising as Zombies. The rolls are the engine's and go to the log like every other cast.
 //
 // The bar: Eldritch Blast (four beams, Agonizing Blast), Hex, Fireball, Blight and Dimension Door

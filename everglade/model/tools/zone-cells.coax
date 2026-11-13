@@ -5,12 +5,12 @@
 //     point and every spawn's point (everglade/content/everglade.content) can be walked to from
 //     the spawn: a named point at its own place, a content point somewhere within its radius;
 //   - walks a creature on the pages, by the steering service the room's creatures use
-//     (aethyr/ai/steer-cells.coax), from the spawn to each named point in turn and back to the
+//     (metaverse-engine/ai/steer-cells.coax), from the spawn to each named point in turn and back to the
 //     spawn, and refuses the zone when a walk doesn't arrive or leaves open ground: the route walk
 //     test's rule, for creatures. It prints each walk and what a tick of it cost;
 //   - writes (--write) or compares (--check) everglade/world/zone-cells.coax: each cell with ground
 //     a creature can reach, its page's digest and its open samples. A room that builds a cell
-//     admits it only at this digest (aethyr/world/cells.coax cell_complete).
+//     admits it only at this digest (metaverse-engine/world/cells.coax cell_complete).
 // Run it after any change to the land, the planting, a rock's hull, the camp or where one may stand:
 //   coax/web/tool.sh everglade/model/tools/zone-cells.coax --write everglade/world/zone-cells.coax everglade/content/everglade.content
 //   coax/web/tool.sh everglade/model/tools/zone-cells.coax --check everglade/world/zone-cells.coax everglade/content/everglade.content
@@ -19,7 +19,7 @@
 #import "Basic";
 #load "../content.coax";
 #load "../../shared/nav.coax";
-#load "../../../aethyr/ai/steer-cells.coax";
+#load "../../../metaverse-engine/ai/steer-cells.coax";
 #load "../../../coax/lib/sys/proc.coax";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";

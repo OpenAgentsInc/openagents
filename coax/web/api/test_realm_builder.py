@@ -423,7 +423,7 @@ def realm_builder_checks():
     check("0092: an older answer with no missing still keeps its place whole", wanted([{"thing": "pirate cove", "feature": "place", "same": False}]) == '["pirate cove"]')
     items = sql("select verse.builder_schema()->'properties'->'asked'->'items'->'required'")
     check("0092: each asked thing says what of it is missing", '"missing"' in items and "mist" in sql("select verse.builder_order()::text"), items)
-    # Protocol E11 (#13250): the builder's bodies and boards are aethyr/forge/board.coax's. The fixture
+    # Protocol E11 (#13250): the builder's bodies and boards are metaverse-engine/editor/board.coax's. The fixture
     # holds each request as the page and the CLI send it and each answer as the server gives it; the
     # plan's number is the run's, so it is 41 in the fixture and swapped both ways here.
     import re

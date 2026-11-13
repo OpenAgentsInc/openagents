@@ -13,13 +13,13 @@
 // exposure and shaft weight, the clouds' lit top away from noon) are
 // between its day and night numbers and marked "between" below.
 //
-// verse_style_compat_profile gives the four keys as an aethyr/world/environment.coax profile
+// verse_style_compat_profile gives the four keys as an metaverse-engine/world/environment.coax profile
 // (lighting plan Phase 1 step 5, #13065): painterly's noon is the glade, its other keys deltas on it.
 //
 //   coax/bin/coax test verse/style-preset.coax
 #load "style.coax";
-#load "../aethyr/world/style-clock.coax";   // the page clock the engine's day adapter reads too (#13303)
-#load "../aethyr/world/environment.coax";   // the painterly default: the glade profile (#13060)
+#load "../metaverse-engine/world/style-clock.coax";   // the page clock the engine's day adapter reads too (#13303)
+#load "../metaverse-engine/world/environment.coax";   // the painterly default: the glade profile (#13060)
 
 STYLE_LOWPOLY :: 0;
 STYLE_PAINTERLY :: 1;
@@ -131,7 +131,7 @@ StylePreset :: struct {
   // anime: its variant (ANIME_*, -1 for the other styles), the ink line's width near (px), the ink's share of
   // its albedo, the distance (m) it thins to a quarter by, and the vignette's strength
   variant: int; ink_width: f32; ink_dark: f32; ink_far: f32; vignette: f32;
-  // the environment a realm in this style gets when it authors none (aethyr/world/environment.coax):
+  // the environment a realm in this style gets when it authors none (metaverse-engine/world/environment.coax):
   // painterly's is the Character Create glade (ENV_GLADE_ID), and the bands, rim, dab and shadow_cool
   // above are its material response on top; 0 for the styles that keep their own keys
   environment: u32;
@@ -657,7 +657,7 @@ style_env_luma :: (c: EnvRgb) -> f32 { return c.r * 0.2126 + c.g * 0.7152 + c.b 
 }
 
 // ---- the compatibility profiles (lighting plan Phase 1 step 5, GitHub #13065)
-// A preset's four clock keys as an aethyr/world/environment.coax profile: four knots at midnight
+// A preset's four clock keys as an metaverse-engine/world/environment.coax profile: four knots at midnight
 // (0), dawn (0.25), noon (0.5) and dusk (0.75), so a realm on a day clock resolves its light through
 // the environment records. Only the light is here (the key, ambient, sky, haze, cloud shadow and
 // presentation); the material response (bands, rim, dab, shadow_cool, outlines) stays the preset's,
@@ -679,7 +679,7 @@ STYLE_ENV_TIMES :: [STYLE_KEYS] f32.[0, 0.25, 0.5, 0.75];
 // Toward a body at `elevation` (rad) whose bearing is the glade sun's turned by `turn` (rad about +y).
 style_env_dir :: (turn: f32, elevation: f32) -> EnvDir { return env_glade_body_dir(turn, elevation); }
 // Painterly's knot at key i: the glade's knot, with the deltas below.
-painterly_env_knot :: (i: int) -> EnvironmentKnot { return env_glade_day_knot(i); }   // aethyr/world/environment.coax
+painterly_env_knot :: (i: int) -> EnvironmentKnot { return env_glade_day_knot(i); }   // metaverse-engine/world/environment.coax
 // The key light's direction at `clock` as verse_style_at puts it (SU_KEY_DIR), and whether it is the moon.
 style_key_dir :: (p: StylePreset, clock: f32) -> EnvDir {
   e := verse_style_sun_elevation(p, clock);
@@ -722,7 +722,7 @@ verse_style_compat_profile :: (p: StylePreset) -> StyleEnvironment {
 /** `p` lit as Character Create's glade (docs/verse/character-glade-lighting.md, the owner,
  *  November 7: "rebuild everglade itself to use that lighting and foliage from character create").
  *  Ocarina's smooth light in place of hard cel bands; Ore's noon sun, 4500 K under a 6500 K white
- *  balance (aethyr/render/light.coax verse_style_balanced: 1, .856, .750); thin clear air near the
+ *  balance (metaverse-engine/render/light.coax verse_style_balanced: 1, .856, .750); thin clear air near the
  *  town with a warm forward glow far off; olive, not blue, shadows; the glade's soft-knee bloom and
  *  saturation. Night, dawn and dusk keep their own keys. */
 verse_style_glade_light :: (p: StylePreset) -> StylePreset {
@@ -889,7 +889,7 @@ verse_style_at :: (p: StylePreset, clock: f32, out: [] f32) -> bool {
   return true;
 }
 
-// ---- the clock: aethyr/world/style-clock.coax (StyleClock, verse_style_clock, verse_style_clock_at)
+// ---- the clock: metaverse-engine/world/style-clock.coax (StyleClock, verse_style_clock, verse_style_clock_at)
 /** A realm with a moon of its own (Hecate's, in its real phase) puts its
  *  direction in while the moon is the key; the preset's colours stay. */
 verse_style_own_moon :: (out: [] f32, x: f32, y: f32, z: f32) {

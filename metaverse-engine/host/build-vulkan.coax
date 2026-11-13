@@ -1,0 +1,57 @@
+// Build the Coax probe against the actual Linux realm SDK, without a GPU
+// window or speaker. COAX is supplied explicitly, never republished.
+// tool.sh: tls
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "native-network-build.coax";
+hvb_run :: (argv:[]string,output:string)->bool {
+  out:[16777216]u8;err:[8192]u8;r:=proc_run(argv,90000,out[..],err[..]);
+  if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return false;}
+  return output=="" || fs_write(output,cast(string)out[0..<r.out_n]);
+}
+hvb_flags :: (text:string,argv:[]string,at:int)->int {
+  n:=at;i:=0;while i<text.count {while i<text.count && (text[i]==' ' || text[i]=='\n' || text[i]==9) {i+=1;}start:=i;while i<text.count && text[i]!=' ' && text[i]!='\n' && text[i]!=9 {i+=1;}if i>start {if n>=argv.count {return -1;}argv[n]=text[start..<i];n+=1;}}
+  return n;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 || args_count(a[..])>5 {tool_errln("usage: build-vulkan OUT COAX [--sanitize] [--native-address] [--transport|--lifecycle|--present]");return 2;}
+  for i:2..<args_count(a[..]) {if args_at(a[..],i)!="--sanitize" && args_at(a[..],i)!="--native-address" && args_at(a[..],i)!="--transport" && args_at(a[..],i)!="--lifecycle" && args_at(a[..],i)!="--present" {return 2;}}
+  sanitize:=args_has(a[..],"--sanitize");transport:=args_has(a[..],"--transport");lifecycle:=args_has(a[..],"--lifecycle");present:=args_has(a[..],"--present");if (transport&&lifecycle)||(present&&(transport||lifecycle)) {return 2;}
+  if cxtool_os()!=2 {tool_errln("build-vulkan: the low-4G realm ABI runs on Linux");return 2;}
+  paths:[12][4096]u8;dir:=args_at(a[..],0);coax:=args_at(a[..],1);if !fs_mkdir(dir) {return 1;}dir=fs_realpath(dir,paths[0][..]);
+  fixture_c:=fs_join(dir,"fixture.c",paths[1][..]);fixture_h:=fs_join(dir,"fixture.h",paths[2][..]);
+  check_c:=fs_join(dir,"HostCheck.c",paths[3][..]);check_h:=fs_join(dir,"HostCheck.h",paths[4][..]);bin:=fs_join(dir,"check-vulkan",paths[5][..]);
+  emit_fixture:=[7]string.[coax,"c","metaverse-engine/host/fixture.coax","--library","--header",fixture_h,"--release"];
+  emit_check:=[7]string.[coax,"c",ifx present then "metaverse-engine/host/check-vulkan-present.coax" else ifx lifecycle then "metaverse-engine/host/check-vulkan-lifecycle.coax" else ifx transport then "metaverse-engine/host/check-vulkan-transport.coax" else "metaverse-engine/host/check-vulkan.coax","--library","--header",check_h,"--release"];
+  if !hvb_run(emit_fixture[..],fixture_c) || !hvb_run(emit_check[..],check_c) {return 1;}
+  if !hnp_copy(fixture_h,fs_join(dir,"RenderHost.h",paths[6][..])) || !hnp_prepare(coax,dir) {return 1;}
+  base:=[29]string.["gcc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-Wno-attributes","-DHF_EXTERNAL_TRANSPORT","-I",dir,"-I","verse/native","-I","coax/platform",fixture_c,check_c,"metaverse-engine/host/tests/fixture-face.c","metaverse-engine/host/tests/vulkan-effects.c","verse/native/realm-host.c","coax/platform/tool-native.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c","-lpthread","-lm","-o",bin,"-Wno-unused-function","-Wno-unused-variable"];
+  cc:[96]string;for i:0..<29 {cc[i]=base[i];}cn:=29;
+  if args_has(a[..],"--native-address") {cc[4]="-DCOAXIAL_NATIVE_ADDRESS";cc[cn]="-fPIE";cc[cn+1]="-pie";cn+=2;}
+  sdk_paths:[9][4096]u8;for file,i:[9]string.["HostNetwork.c","host-sockets.c","socket-native.c","tls-native.c","entropy-native.c","entropy-foreign.c","HostEntropy.c","host-transport.c","MetalSockets.c"] {cc[cn]=fs_join(dir,file,sdk_paths[i][..]);cn+=1;}
+  cf:[4096]u8;lf:[4096]u8;tls:[8192]u8;tls_err:[4096]u8;cflags:=proc_getenv("CXTLS_CFLAGS",cf[..]);libs:=proc_getenv("CXTLS_LIBS",lf[..]);
+  if cflags!="" && libs!="" {cn=hvb_flags(cflags,cc[..],cn);if cn<0 {return 1;}cn=hvb_flags(libs,cc[..],cn);}else {
+    // Reuse the repository's approved platform TLS selection even when
+    // tool.sh executes a cached builder and does not relink that builder.
+    query:=[3]string.["bash","-c",". coax/platform/tls-env.sh && printf '%s %s' \"$CXTLS_CFLAGS\" \"$CXTLS_LIBS\""];
+    tr:=proc_run(query[..],30000,tls[..],tls_err[..]);if tr.status!=0 || tr.cut {tool_errln(cast(string)tls_err[0..<tr.err_n]);return 1;}cn=hvb_flags(cast(string)tls[0..<tr.out_n],cc[..],cn);
+  }
+  if cn<0 {return 1;}
+  protocols:[6][4096]u8;
+  window_flags:[8192]u8;protocol_data:[8192]u8;
+  if present {
+    query_all:=[4]string.["pkg-config","--cflags","--libs","wayland-client"];r:=proc_run(query_all[..],30000,window_flags[..],tls_err[..]);if r.status!=0||r.cut {return 1;}cn=hvb_flags(cast(string)window_flags[0..<r.out_n],cc[..],cn);if cn<0 {return 1;}
+    wp:=[3]string.["pkg-config","--variable=pkgdatadir","wayland-protocols"];r=proc_run(wp[..],30000,protocol_data[..],tls_err[..]);if r.status!=0||r.cut {return 1;}wn:=r.out_n;while wn>0&&(protocol_data[wn-1]==10||protocol_data[wn-1]==13) {wn-=1;}data:=cast(string)protocol_data[0..<wn];
+    for protocol,i:[2]string.["stable/xdg-shell/xdg-shell.xml","unstable/xdg-decoration/xdg-decoration-unstable-v1.xml"] {
+      xml:=fs_join(data,protocol,protocols[0][..]);target:=fs_join(dir,[2]string.["xdg-shell-client-protocol.h","xdg-decoration-unstable-v1-client-protocol.h"][i],protocols[1][..]);scan:=[4]string.["wayland-scanner","client-header",xml,target];if !hvb_run(scan[..],"") {return 1;}
+      source:=fs_join(dir,[2]string.["xdg-shell-protocol.c","xdg-decoration-unstable-v1-protocol.c"][i],protocols[2+i][..]);scan=[4]string.["wayland-scanner","private-code",xml,source];if !hvb_run(scan[..],"") {return 1;}cc[cn]=source;cn+=1;
+    }
+    for flag:[8]string.["-I","verse/gpu","-I","verse/kms","metaverse-engine/host/tests/vulkan-present-effects.c","verse/gpu/vkc.c","verse/gpu/vkp.c","-lvulkan"] {cc[cn]=flag;cn+=1;}
+  }
+  if sanitize {cc[cn]="-fsanitize=address,undefined";cc[cn+1]="-fno-omit-frame-pointer";cc[cn+2]="-fno-sanitize-recover=all";cn+=3;}
+  if !hvb_run(cc[0..<cn],"") {return 1;}
+  print("Built native core observer: %\n",bin);return 0;
+}

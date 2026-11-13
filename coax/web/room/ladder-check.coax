@@ -13,7 +13,7 @@
 //   coax/web/tool.sh coax/web/room/ladder-check.coax ws://127.0.0.1:PORT [SECONDS] [earn | arrive L [PID] | rejoin L PID]
 // Run it against a local room (local.coax, or room --dev with its stand-in key as OA_ROOM_TICKET_KEY).
 // Prints one JSON line, then "comes" and exits 0, or "fails" and 1.
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 
 LC_IDS :: 64;

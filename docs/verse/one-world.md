@@ -8,7 +8,7 @@ is built for each cell, is on [its own page](navigation.md).
 ## The model
 
 - **A cell** is 64 m a side, keyed by whole numbers `(cx, cz)`. The engine's controller is
-  `aethyr/world/cells.coax`. Each step it gives every cell a level from its distance to the
+  `metaverse-engine/world/cells.coax`. Each step it gives every cell a level from its distance to the
   nearest player: absent, loading, resident (within 256 m), simulate (160 m) or draw (96 m), with
   8 m of hysteresis. It asks for loads nearest first, inside a budget of resident cells and loads
   in flight.
@@ -19,7 +19,7 @@ is built for each cell, is on [its own page](navigation.md).
 - **A cell's content** has a digest. A load is admitted only when its digest is the manifest's
   (`cell_complete`). Today the digest is the navigation page's, and a room keeps a page only at
   that digest.
-- **Ground** is already terrain tiles (`aethyr/world/terrain-tile.coax`,
+- **Ground** is already terrain tiles (`metaverse-engine/world/terrain-tile.coax`,
   `everglade/world/ground.coax`): the glade's tile and the path's 65 m tiles share a lattice and
   their edges, with a stitched seam where a fine row meets a coarse one.
 
@@ -69,8 +69,8 @@ set of terrain tiles, and no hand-over between them.
 
 ## Cells and the spatial index
 
-The engine's `World` (`aethyr/core/world.coax`, #13274) has one spatial index
-(`aethyr/core/spatial.coax`): a uniform grid over one zone, in the zone's own frame, queried by
+The engine's `World` (`metaverse-engine/core/world.coax`, #13274) has one spatial index
+(`metaverse-engine/core/spatial.coax`): a uniform grid over one zone, in the zone's own frame, queried by
 radius. Cells sit above it:
 
 - A cell is the paging unit. The index is the query structure. World-cell coordinates never go
@@ -88,7 +88,7 @@ radius. Cells sit above it:
 
 ## Checks
 
-- `aethyr/world/cells.coax`: the controller, with a step for many players. `coax mutate
+- `metaverse-engine/world/cells.coax`: the controller, with a step for many players. `coax mutate
   --root-only` leaves no survivor.
 - `everglade/world/zone.coax`: the manifest is one the controller takes; the glade and the path
   are neighbours; a player in the glade holds both with no load between them.
@@ -120,7 +120,7 @@ These are not built. Each is tracked on #13280.
   whole it never happens. When cells load over the network, the hold has to be one the room agrees
   with, or prediction and the room part.
 - **Far terrain level of detail** beyond the stitched 1.3 m rows.
-- **The legacy heightfield** (`aethyr/world/terrain.coax`) still has 12 users.
+- **The legacy heightfield** (`metaverse-engine/world/terrain.coax`) still has 12 users.
 - **`everglade-parity` and `everglade/features.coax`** stay until every zone is data.
 - **Proof on a phone and in a visible Chrome.** A headless pass is not a claim that the walk is
   seamless.

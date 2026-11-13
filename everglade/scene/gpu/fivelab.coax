@@ -1,9 +1,9 @@
 // 5E Lab's shaders (fivelab.coax): build.sh writes apps/openagents-web/fivelab.wgsl from this
 // with coax/web/wgsl-module.coax (fivelab.module and fivelab.bindings beside it).
-#load "../../../aethyr/gpu/wgsl.coax";
-#load "../../../aethyr/gpu/wg-make.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wg-make.coax";
 #load "../../../verse/style.coax";
-#load "../../../aethyr/render/sampling.coax";
+#load "../../../metaverse-engine/render/sampling.coax";
 
 // bg_fs draws one of two views of the battle, as the page picks (V):
 //  - flat: the bare grid of 5-foot squares, every fourth line brighter;
@@ -916,7 +916,7 @@ fivelab_fx_fs :: (v:FivelabV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 
   return wg_make_f4_f3f(scale3(scale3(scale3(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
 }
 
-// A HUD style's strokes (aethyr/ui/hud-style.coax, docs/verse/hud-styles.md): a realm whose fx
+// A HUD style's strokes (metaverse-engine/ui/hud-style.coax, docs/verse/hud-styles.md): a realm whose fx
 // pipeline blends straight alpha marks every vertex (bar.w 1, charactercreator.coax hud_seal) and
 // this writes each one's coverage as its alpha, so a HUD can lay dark iron over the world as well as
 // light. Unmarked vertices (every other realm, under max blending) never come here.

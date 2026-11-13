@@ -1,4 +1,4 @@
-// SRD 5.2.1 conditions as a body's bearing (aethyr/action/deed.coax, docs/verse/action-pipeline.md,
+// SRD 5.2.1 conditions as a body's bearing (metaverse-engine/action/deed.coax, docs/verse/action-pipeline.md,
 // GitHub #13072): one pose for the body, one set of locks for the input and the bar, so a creature at
 // 0 Hit Points lies down, moves nothing and casts nothing, all at once, in every realm. Its loader
 // loads the SRD engine (engine.coax or battle.coax) first. The checks are
@@ -7,7 +7,7 @@
 //   SRD 5.2.1 pp.177-191 (the conditions), p.182 Grappled, p.183 Incapacitated, p.185 Prone,
 //   p.186 Restrained, p.187 Stunned, p.188 Unconscious; Command's Halt (p.130) and Hypnotic
 //   Pattern's stupor (p.135) as the rules hold them (command-halt.coax, engine.coax EF_DAZED).
-#load "../../aethyr/action/deed.coax";
+#load "../../metaverse-engine/action/deed.coax";
 
 // A body with hp Hit Points, dead or not, conditions `cond` (RS_* bits), under Command's Halt
 // (halted) or Hypnotic Pattern's stupor (dazed). This is what a page that sees only a room's row

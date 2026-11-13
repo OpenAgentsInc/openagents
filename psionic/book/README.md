@@ -18,7 +18,7 @@ its code. Its first line under the title is a quoted
 the design, what it will build and its acceptance checks, and has no
 source-linked listings or examples. Sketches in it are illustrative only.
 The physics engine and the spacecraft chapters, first drafted here this way,
-are now Parts IV and V of [the Metaverse Engine book](../../aethyr/book/README.md).
+are now Parts IV and V of [the Metaverse Engine book](../../metaverse-engine/book/README.md).
 
 ## Start here
 
@@ -388,7 +388,7 @@ The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful
 retrieval, gpt-oss, Mistral and DeepSeek, then training/nanochat, vision,
 motion, speech, physics, world models and robot policies (in worlds
-simulated by [the Metaverse Engine](../../aethyr/book/README.md)), production hosting,
+simulated by [the Metaverse Engine](../../metaverse-engine/book/README.md)), production hosting,
 inference across a mesh and measurement.
 Its prerequisite map lets independent branches start earlier than their
 position in the contents. The [roadmap](../docs/roadmap.md) lists

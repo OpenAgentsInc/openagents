@@ -17,12 +17,12 @@
 #load "../shared/player-name.coax";
 #load "../shared/class-kit.coax";   // the class kits: the hello's class (srd-*), a cast's slot (#13058)
 #load "../../coax/web/analytics.coax";   // fact_of; and the page's Track (everglade/client/track.coax)
-#load "../../aethyr/net/projectile.coax";   // arrows over the room: the launch, the room's flight and its end (#13157)
-#load "../../aethyr/net/stats.coax";   // the netcode readout's counts (?net, #13157)
-#load "../../aethyr/net/transport.coax";   // WebSocket or WebTransport under one interface (#13176)
+#load "../../metaverse-engine/net/projectile.coax";   // arrows over the room: the launch, the room's flight and its end (#13157)
+#load "../../metaverse-engine/net/stats.coax";   // the netcode readout's counts (?net, #13157)
+#load "../../metaverse-engine/net/transport.coax";   // WebSocket or WebTransport under one interface (#13176)
 #load "../server/creature-wire.coax";   // what the guard and the monsters did (e guard, e mon), the room's codec (#13246, #13276)
 #load "../server/kit-wire.coax";   // the Healer's Kit's frames, the room's codec (#13245)
-#load "../../aethyr/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
+#load "../../metaverse-engine/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
 E2N_ENTS :: 48;                 // the room's players (a room seats 16), monsters, guard and familiars this page holds: every entity it draws (#13276, #13277)
@@ -35,7 +35,7 @@ E2N_SAY :: 48;
 E2N_BAR_NONE :: 0; E2N_BAR_KICKED :: 1; E2N_BAR_BANNED :: 2;
 E2N_BAR_TEXT :: 96;
 E2N_BAR_ASK_MS :: 600000;       // with no end said, the page asks for a seat again this often, not on the lost socket's short waits
-E2N_ACT_CAST :: 1; E2N_ACT_REST :: 2;   // your actions' kinds in the ledger (aethyr/net/predict.coax)
+E2N_ACT_CAST :: 1; E2N_ACT_REST :: 2;   // your actions' kinds in the ledger (metaverse-engine/net/predict.coax)
 E2N_ACT_WAIT_MS :: 5000;        // a request the room has not answered in this long has timed out
 E2N_CASTS :: 16;                // the others' casts heard and not yet played (e2n_cast_due)
 E2N_SHOTS :: 16;                // the room's words on arrows heard and not yet drawn (everglade/client/arrows.coax e2bw_step)
@@ -51,7 +51,7 @@ E2nCast :: struct { live: bool; ss: int; slot: int; ax: f32; ay: f32; az: f32; s
 
 // The path's guard and the monsters as the room's rows say them (everglade-wire.coax WK_GUARD,
 // WK_MONSTER, #13276): each is an entity of the page's one list (ents), drawn from the engine's
-// interpolation buffer as the other players are (aethyr/net/interp.coax). These are what the page's
+// interpolation buffer as the other players are (metaverse-engine/net/interp.coax). These are what the page's
 // readers ask for (e2n_guard_at, e2n_mon_at). Their blows, arrows and falls are e entries (e guard,
 // e mon: everglade/server/creature-wire.coax), kept until the picture reaches their moment.
 E2N_GUARD_HITS :: 8;
@@ -63,7 +63,7 @@ E2nMonHit :: struct { live: bool; t: int; kind: int; m: int; seat: int; amount: 
 E2N_MON_STATE :: 255;   // a monster's state in its ring's flags; its act under way is above it (E2N_MON_ACT)
 E2N_MON_ACT :: 8;
 // A familiar is an entity of the page's one list too (#13277): its owner's seat in owner, its form in
-// p1, drawn from the engine's interpolation buffer (aethyr/net/interp.coax) as every other entity is.
+// p1, drawn from the engine's interpolation buffer (metaverse-engine/net/interp.coax) as every other entity is.
 // The room tells them in m2 (everglade/server/familiar.coax) until they are rows (#13276), so their
 // ids and their kind are the page's own for now: no row has them.
 E2N_FAMILIARS :: 16;
@@ -93,9 +93,9 @@ E2Net :: struct {
   late_mean: f32; jitter: f32; interval: f32 = 33; delay: int = NET_LOW; ticks: int;
   lag: f32 = NET_LOW; rt: int; drawn_at: int;
   mir: [1] WireMirror;
-  pred: [1] NetPredict;   // your inputs, the newest the room stepped and the re-run due (aethyr/net/predict.coax)
+  pred: [1] NetPredict;   // your inputs, the newest the room stepped and the re-run due (metaverse-engine/net/predict.coax)
   fix: NetFix;            // the room's word on you: your row's fields after input pred.acked
-  off: [1] NetCorrect;    // where you are drawn less where the re-runs put you, eased out (aethyr/net/interp.coax)
+  off: [1] NetCorrect;    // where you are drawn less where the re-runs put you, eased out (metaverse-engine/net/interp.coax)
   hello_due: bool;
   change_due: bool;             // your class or look changed while seated: the room is told (V), for it holds a ticket's later hellos
   // the room sat your seat at another class or level than yours (its n row: the ticket's, or a level its
@@ -110,8 +110,8 @@ E2Net :: struct {
   pipe: [1] Pipe;
   out: [WIRE_FRAME] u8;
   frames_in: int; frames_out: int; bytes_in: int; fix_sq: f32;
-  stats: [1] NetStats;           // the netcode readout's counts (aethyr/net/stats.coax): bytes, frames, state gaps, corrections
-  link: [1] NetConn;             // the transport the socket runs on, its owed inputs and counts (aethyr/net/transport.coax)
+  stats: [1] NetStats;           // the netcode readout's counts (metaverse-engine/net/stats.coax): bytes, frames, state gaps, corrections
+  link: [1] NetConn;             // the transport the socket runs on, its owed inputs and counts (metaverse-engine/net/transport.coax)
   wt_ask: int = -1;              // ?transport=: 1 wt, 0 ws, -1 neither (e2n_wt)
   direct: bool;                  // the URL is a shard's own endpoint, from the seat ticket (#13179)
   direct_blocked: bool;          // a shard's own endpoint never opened (a network that blocks its port): the load balancer's path from then on
@@ -125,7 +125,7 @@ E2Net :: struct {
   level: int = 1;               // and its level (the hello's srd-CLASS-LEVEL past 1, #13046)
   ent_class: [E2N_ENTS] int;    // each other player's class (FB_CL_*, -1 none) from its n row's CLASS: the kit their body carries
   casts: [E2N_CASTS] E2nCast;   // the others' casts, waiting for their tick to be drawn
-  // the room's arrows (aethyr/net/projectile.coax a and d), each with the moment it names on this
+  // the room's arrows (metaverse-engine/net/projectile.coax a and d), each with the moment it names on this
   // page's clock of the room (ms): when it left, when it ended; and how many were heard
   shots: [E2N_SHOTS] NetShot; shot_t: [E2N_SHOTS] int; ends: [E2N_SHOTS] NetShotEnd; end_t: [E2N_SHOTS] int; shots_heard: int; ends_heard: int;
   // the arrows' ids heard, loosed and ended: on WebTransport each word comes as a datagram and on the
@@ -135,7 +135,7 @@ E2Net :: struct {
   cast_sent: int; cast_mine: int; cast_heard: int; cast_refused: int;   // yours sent, yours heard back, others' heard, yours refused
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
-  acts: [1] NetLedger;          // your casts and rests that wait for the room: pressed, then confirmed, refused or timed out (aethyr/net/predict.coax)
+  acts: [1] NetLedger;          // your casts and rests that wait for the room: pressed, then confirmed, refused or timed out (metaverse-engine/net/predict.coax)
   familiar_tick:int=-1;
   guard_hits: [E2N_GUARD_HITS] E2nGuardHit;
   mon_hits: [E2N_MON_HITS] E2nMonHit;
@@ -169,7 +169,7 @@ e2n_wt :: (n: [] E2Net) -> bool { return ifx n[0].wt_ask >= 0 then n[0].wt_ask =
 e2n_open :: (n: [] E2Net) -> bool { return n[0].state == E2N_OPEN && n[0].seat >= 0; }
 e2n_now :: (n: [] E2Net) -> int { return n[0].mono + n[0].offset; }
 // A frame to the room on its channel: a cast, its launch and an interaction on the combat stream, the
-// rest on the session's (aethyr/net/transport.coax). On a WebSocket the bytes are the frame's own.
+// rest on the session's (metaverse-engine/net/transport.coax). On a WebSocket the bytes are the frame's own.
 // On WebTransport a cast and its launch also ride the input datagrams, owed with the next input's
 // number until the room acknowledges it, so a lost packet costs them no resend's wait; the room hears
 // each once, whichever way comes first (room-wt.coax rm_wt_once, #13187).
@@ -769,7 +769,7 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     r[0] = wire_rd(t, 6);
     ce := wire_read_cast_e(t, r[..]);
     if !r[0].ok || ce.ss < 0 || !xk_entry(xk_slot_class(ce.slot), ce.slot).ok { return; }
-    if ce.ss == n[0].seat {   // yours, taken: it plays now (aethyr/action/deed.coax: nothing plays before the room says yes)
+    if ce.ss == n[0].seat {   // yours, taken: it plays now (metaverse-engine/action/deed.coax: nothing plays before the room says yes)
       n[0].mine_cast = E2nCast.{live = true, ss = ce.ss, slot = ce.slot, ax = ce.ax, ay = ce.ay, az = ce.az, seed = ce.seed, t = n[0].tick_t};
       _ := net_action_confirm(n[0].acts[..], net_action_oldest(n[0].acts[..], E2N_ACT_CAST).seq, n[0].mono);   // the room takes your casts in order
       n[0].cast_mine += 1; return;
@@ -796,7 +796,7 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
   }
 }
 // A row the mirror took: a player, a monster or the guard into the page's one list of entities, its
-// state into the engine's ring (aethyr/net/interp.coax). A new LIFE or a WARP starts its ring again,
+// state into the engine's ring (metaverse-engine/net/interp.coax). A new LIFE or a WARP starts its ring again,
 // so nothing is drawn between the last life and this one.
 e2n_row :: (n: [] E2Net, w: WireS, d: WireD) {
   creature := w.kind == WK_MONSTER || w.kind == WK_GUARD;
@@ -839,7 +839,7 @@ e2n_as_sent :: (m: EgMoveIn) -> EgMoveIn {
   return EgMoveIn.{key_x = f32(wire_axis(m.key_x)) / 100, key_y = f32(wire_axis(m.key_y)) / 100, pad_x = f32(wire_axis(m.pad_x)) / 100,
                    pad_y = f32(wire_axis(m.pad_y)) / 100, run = m.run, jump = m.jump, theta = theta};
 }
-// One step's input: kept for the re-run (aethyr/net/predict.coax) and sent (I). Its sequence number, 0 with no room.
+// One step's input: kept for the re-run (metaverse-engine/net/predict.coax) and sent (I). Its sequence number, 0 with no room.
 e2n_input :: (n: [] E2Net, input: EgMoveIn) -> int {
   if !e2n_open(n) { return 0; }
   words: [NET_MOVE_WORDS] int; net_move_words(input, words[..]);
@@ -1443,7 +1443,7 @@ e2n_drift_probe :: (n: [] E2Net, f: int) -> int {
   #assert e2n_drift_probe(n[..], b) == -1 && e2n_drift_probe(n[..], b + E2N_DRIFT_SHOWN) == E2N_DRIFT_NONE;
   e2n_test_row(n[..], 630, WireS.{id = 3, kind = WK_PLAYER, x = 1.5, z = -20.25, g = WG_GROUND, hp = 5, max = 5, life = 1});
   e2n_test_row(n[..], 632, WireS.{id = 3, kind = WK_PLAYER, x = 1.75, z = -20, g = WG_GROUND, hp = 5, max = 5, life = 1});
-  // a row after a tick with none: the last state again a tick before it (aethyr/net/interp.coax net_ring_push_row)
+  // a row after a tick with none: the last state again a tick before it (metaverse-engine/net/interp.coax net_ring_push_row)
   #assert e2n_drift_probe(n[..], b) == 630 && e2n_drift_probe(n[..], b + 1) == 1500 && e2n_drift_probe(n[..], b + 2) == -20250;
   #assert e2n_drift_probe(n[..], b + 4) == 631 && e2n_drift_probe(n[..], b + 5) == 1500 && e2n_drift_probe(n[..], b + 8) == 632 && e2n_drift_probe(n[..], b + 9) == 1750 && e2n_drift_probe(n[..], b + 10) == -20000;
   #assert e2n_drift_probe(n[..], b + 12) == -1 && e2n_drift_probe(n[..], b + 3) == -1;

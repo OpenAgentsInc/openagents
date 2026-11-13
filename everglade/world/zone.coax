@@ -1,5 +1,5 @@
 // Everglade as one world of cells (GitHub #13280, AAA P2.7; docs/verse/one-world.md): the zone's
-// manifest for the engine's cell controller (aethyr/world/cells.coax). The glade, the forest path,
+// manifest for the engine's cell controller (metaverse-engine/world/cells.coax). The glade, the forest path,
 // the city's clearing and the far clearing are cells of one manifest, 64 m a side, each listed with
 // the digest of its navigation page (zone-cells.coax, written by
 // everglade/model/tools/zone-cells.coax from the land's own colliders). The room pages a cell's
@@ -7,7 +7,7 @@
 // hold the same one (docs/verse/one-world.md, "What is left"). Nothing here is a place's own: a new
 // stretch of the world is more rows of the manifest.
 //   coax/bin/coax test --library everglade/world/zone.coax
-#load "../../aethyr/world/cells.coax";
+#load "../../metaverse-engine/world/cells.coax";
 #load "zone-cells.coax";
 
 // A room's rings: a cell's creatures step while a player is within E2Z_SIMULATE of it, and the room

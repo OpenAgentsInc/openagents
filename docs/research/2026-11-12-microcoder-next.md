@@ -457,7 +457,7 @@ shared that load.
   output tokens than their logged usage. The store's raw numbers are used,
   which can only understate Antigravity's cost.
 - **Both N3 runs failed the same way.** Each changed only
-  `aethyr/forge/doc.coax`, and the hidden check failed to build on a file
+  `metaverse-engine/editor/doc.coax`, and the hidden check failed to build on a file
   neither touched (`realm_seat.coax`: `seat_num` is not declared). Whether
   the task asks for that or the check has a fault like H8's is looked at
   only after the last verdict run. It counts against both alike.

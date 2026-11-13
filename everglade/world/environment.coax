@@ -1,6 +1,6 @@
 // Everglade II's environment set (lighting plan Phase 1 step 5, GitHub #13065;
-// docs/verse/lighting/README.md). The realm's light, as aethyr/world/environment.coax records that
-// aethyr/world/environment-region.coax admits whole (env_region_index_replace) and resolves by
+// docs/verse/lighting/README.md). The realm's light, as metaverse-engine/world/environment.coax records that
+// metaverse-engine/world/environment-region.coax admits whole (env_region_index_replace) and resolves by
 // place. Every profile here is the glade's (env_glade_profile, the painterly default) or a small
 // delta on it: the film, exposure, saturation, sky, clouds and the haze's shape stay the glade's.
 //
@@ -29,7 +29,7 @@
 // Town, interior and river deltas wait until Everglade II has those places.
 //   coax/bin/coax test everglade/world/environment.coax
 #load "forest.coax";
-#load "../../aethyr/world/environment-region.coax";
+#load "../../metaverse-engine/world/environment-region.coax";
 
 E2_ENV_GENERATION :: 0;
 E2_ENV_SUNLIT :: 11;          // profile ids

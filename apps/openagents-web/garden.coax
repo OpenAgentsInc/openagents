@@ -1,16 +1,16 @@
 // The Garden, openagents.com/worlds/garden: a small open-air Verse realm that
 // shows the engine's world pieces at work. You walk it with the engine's
-// controller (aethyr/move/player.coax, linked as its own library, as the realm
-// links it) and see it through the free orbit (aethyr/cam/camera.coax Orbit),
+// controller (metaverse-engine/move/player.coax, linked as its own library, as the realm
+// links it) and see it through the free orbit (metaverse-engine/cam/camera.coax Orbit),
 // which turns with a mouse drag, the arrow keys or your right thumb, zooms
 // with the wheel, swings in behind you as you walk, and pulls in where a
-// tree, a hedge or a hill is in the way. The ground is aethyr/world/terrain.coax's:
+// tree, a hedge or a hill is in the way. The ground is metaverse-engine/world/terrain.coax's:
 // rolling hills in a shallow bowl, levelled where the garden's paths run,
 // and a dog that follows you by those paths. There is a ball
-// (aethyr/physics/throw.coax): E picks it up, E or a click throws it the way the
+// (metaverse-engine/physics/throw.coax): E picks it up, E or a click throws it the way the
 // camera looks (an arc shows where it will land), it bounces and rolls, and
 // the dog fetches it back to you. On the pedestal in the plaza stands a
-// vase: E beside it (aethyr/cam/arrange.coax) brings the camera in close, where a
+// vase: E beside it (metaverse-engine/cam/arrange.coax) brings the camera in close, where a
 // click on the vase puts a flower in it and a click on a flower takes it
 // out, then E, Escape or DONE hands the view back. The vase's flowers are
 // kept in this browser (save.coax, the realm save slot "garden", as the
@@ -28,18 +28,18 @@
 // binds it for the browser and runs the player between its calls.
 //   coax/bin/coax test apps/openagents-web/garden.coax
 
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "save.coax";
-#load "../../aethyr/cam/camera.coax";
-#load "../../aethyr/physics/throw.coax";
-#load "../../aethyr/move/follower.coax" as follow;
-#load "../../aethyr/move/locomotion.coax" as route_tuning;
-#load "../../aethyr/move/walk-frame.coax" as walk_frame;
-#load "../../aethyr/core/loop.coax" as realm_loop;
-#load "../../aethyr/shot/closeup.coax";
+#load "../../metaverse-engine/cam/camera.coax";
+#load "../../metaverse-engine/physics/throw.coax";
+#load "../../metaverse-engine/move/follower.coax" as follow;
+#load "../../metaverse-engine/move/locomotion.coax" as route_tuning;
+#load "../../metaverse-engine/move/walk-frame.coax" as walk_frame;
+#load "../../metaverse-engine/core/loop.coax" as realm_loop;
+#load "../../metaverse-engine/shot/closeup.coax";
 #load "place-orbit.coax";
-#load "../../aethyr/core/budget.coax";
+#load "../../metaverse-engine/core/budget.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 12000;
@@ -1121,7 +1121,7 @@ garden_frame_in :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f3
     }
   } else { play(s, shown, face, vx, vz, t); }
   vase(s);
-  // nor zoomed into your head (first person, aethyr/cam/camera.coax)
+  // nor zoomed into your head (first person, metaverse-engine/cam/camera.coax)
   if !(s[0].vase.blend > 0.6 && flat_length(v3(shown.x, 0, shown.z)) < 1.3) && !(verse_orbit_inside(s[0].orbit) && s[0].vase.blend < 0.5) {
     figure(s, u, shown, face, s[0].stride, act, s[0].fetch.ball.held == 0);
   }
@@ -1432,7 +1432,7 @@ garden_store_cap :: (k: int) -> int #export_c #effects(all) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of the Garden may use.
+// The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of the Garden may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 // book:begin budget
 GARDEN_BUDGET :: FrameBudget.{steps = 8, vertices = 4000, draws = DRAWS, bytes = 917504};

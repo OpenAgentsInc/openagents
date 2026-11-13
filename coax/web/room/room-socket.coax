@@ -5,7 +5,7 @@
 // (ws:// and wss://, TLS through tls-native.c), so tool.sh links TLS for
 // these tools (the "tool.sh: tls" line below).
 // tool.sh: tls
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #import "Basic";
 #load "../../lib/net/relay_conn.coax";
 #load "../../lib/json/json.coax";

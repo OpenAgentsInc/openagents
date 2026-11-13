@@ -215,8 +215,8 @@ added only a Mars landscape and a robot. `docs/reuse.md` told it to do
 this, and the layer rules made the reuse path obvious.
 
 On the second request the owner said to move shared pieces into the engine.
-The agent moved the mesh writers to `aethyr/render/cel-mesh.coax` and wrote
-`aethyr/kit/machines.coax` and `aethyr/kit/land.coax`: robots, walkers,
+The agent moved the mesh writers to `metaverse-engine/render/cel-mesh.coax` and wrote
+`metaverse-engine/kit/machines.coax` and `metaverse-engine/kit/land.coax`: robots, walkers,
 mesas, arches, canyon walls, domed houses. Seventeen still scenes then came
 from those kits in 10 minutes. When the game arrived twelve hours later, its
 characters, canyon and village were kit calls.

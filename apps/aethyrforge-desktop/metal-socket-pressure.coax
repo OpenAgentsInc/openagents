@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/net/cdp.coax";
-#load "../../aethyr/host/tests/socket-pressure-conformance.coax";
+#load "../../metaverse-engine/host/tests/socket-pressure-conformance.coax";
 msp_s :: (o:[]Jo,key:string,value:string){jo_key(o,key);jo_str(o,value);}
 msp_i :: (o:[]Jo,key:string,value:int){jo_key(o,key);jo_int(o,value);}
 msp_op :: (o:[]Jo,kind:string,name:string,label:string){jo_obj(o);msp_s(o,"op",kind);msp_s(o,"name",name);msp_s(o,"label",label);}
@@ -41,7 +41,7 @@ tool_main :: ()->int #export_c #effects(all) {
   msp_op(o[..],"replace","main","replacement");msp_i(o[..],"count",1000);msp_i(o[..],"capacity",128);msp_owner(o[..],0);msp_s(o[..],"url","ws://127.0.0.1:9170/echo");jo_end(o[..]);msp_op(o[..],"new","final","");msp_i(o[..],"capacity",128);jo_end(o[..]);
   for i:0..<4 {msp_op(o[..],"start","final","");msp_owner(o[..],i);msp_s(o[..],"url","ws://127.0.0.1:9170/echo");jo_end(o[..]);}msp_stall(o[..],1000);msp_op(o[..],"info","final","active");jo_end(o[..]);msp_op(o[..],"drain","final","replacement-open");msp_i(o[..],"count",16);jo_end(o[..]);
   msp_op(o[..],"send","final","");msp_owner(o[..],0);msp_s(o[..],"text","replacement");jo_end(o[..]);msp_stall(o[..],200);msp_op(o[..],"drain","final","replacement-echo");msp_i(o[..],"count",16);jo_end(o[..]);msp_op(o[..],"release","final","");jo_end(o[..]);msp_op(o[..],"info","final","released");jo_end(o[..]);msp_op(o[..],"close","final","");jo_end(o[..]);msp_op(o[..],"shutdown","final","closed");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(plan,jo_text(o[..])) {return 1;}
-  tool:=fs_join(root,"coax/web/tool.sh",paths[4][..]);peer_source:=fs_join(root,"aethyr/host/tests/socket-pressure-peer.coax",paths[5][..]);echo_source:=fs_join(root,"aethyr/host/tests/network.coax",paths[6][..]);peer:=-1;echo:=-1;
+  tool:=fs_join(root,"coax/web/tool.sh",paths[4][..]);peer_source:=fs_join(root,"metaverse-engine/host/tests/socket-pressure-peer.coax",paths[5][..]);echo_source:=fs_join(root,"metaverse-engine/host/tests/network.coax",paths[6][..]);peer:=-1;echo:=-1;
   defer {for handle:[2]int.[peer,echo] {if handle>=0 {killed:=proc_kill(handle,PROC_SIGTERM);waited:=proc_wait(handle,2000);released:=proc_release(handle);}}}
   peer_exe:=args_value(a[..],"--peer","");echo_exe:=args_value(a[..],"--echo","");
   peer_cmd:=[5]string.[tool,peer_source,"9171",peer_report,ready];echo_cmd:=[3]string.[tool,echo_source,"9170"];direct_peer:=[4]string.[peer_exe,"9171",peer_report,ready];direct_echo:=[2]string.[echo_exe,"9170"];

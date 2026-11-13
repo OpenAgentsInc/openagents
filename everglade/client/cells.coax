@@ -1,6 +1,6 @@
 // The page's half of the world in cells (GitHub #13280, AAA P2.7; docs/verse/one-world.md): the
 // page holds the zone's manifest (everglade/world/zone.coax, the room's own) and steps the engine's
-// cell controller (aethyr/world/cells.coax) on where you stand and where the eye is, once a frame.
+// cell controller (metaverse-engine/world/cells.coax) on where you stand and where the eye is, once a frame.
 // The glade and the forest path are neighbouring cells of that one world: nothing is handed over
 // between them.
 //

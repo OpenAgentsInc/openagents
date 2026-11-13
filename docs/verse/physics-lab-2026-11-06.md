@@ -12,8 +12,8 @@ On coderos-4080, November 6, **04:54:25–04:55:31 Chicago time (CST)**:
 
 ```sh
 nice -n 15 env COAX_CHECK_JOBS=6 \
-  coax/web/tool.sh aethyr/lab/physics-lab.coax \
-  --skip-build --out aethyr/lab/.cache/all-results
+  coax/web/tool.sh metaverse-engine/lab/physics-lab.coax \
+  --skip-build --out metaverse-engine/lab/.cache/all-results
 ```
 
 The reference cache was built by the same runner's default preparation
@@ -26,7 +26,7 @@ one simulation thread and inherits nice 15. This is a shared host without
 CPU isolation; timings include its scheduling conditions. GPU models were
 left alone; captures used muted headless Chromium with SwiftShader.
 
-The [lab README](../../aethyr/lab/README.md) defines the scenes, profiles,
+The [lab README](../../metaverse-engine/lab/README.md) defines the scenes, profiles,
 precision, fixed step, timing interval, rest threshold and sampled overlap
 metric. The Metaverse Engine uses Coax 0.51.2; the Linux compiler SHA-256 is
 `088782b2838c3119eeb5b352f9ef36144d08171da8b910e1a0a79d93e401ee4e`.

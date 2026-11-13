@@ -6,7 +6,7 @@
 //     (SIMULATED where the numbers are made up);
 //   - slim rails: an orbit plot, telemetry traces and segmented meters on the
 //     left, a spectrum, an arc gauge (the stage's progress), bars and a pitch
-//     ladder on the right, all from aethyr/ui/draw.coax with a quiet pen;
+//     ladder on the right, all from metaverse-engine/ui/draw.coax with a quiet pen;
 //   - the log strip: the stage's own words streaming into a terminal, the
 //     voice's waveform, and the stage's progress on a timeline;
 //   - a faint coordinate lattice under the view, and target brackets that

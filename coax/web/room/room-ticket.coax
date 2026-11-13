@@ -19,14 +19,14 @@
 // account bit, so a page cannot claim another player's id. SHARD (1 to 99) is the oa-room service that
 // holds the room (room-relay.coax: a shard seats only its own tickets); a v2 ticket is shard 1's.
 //
-// v5 (#13260, aethyr/session/seat-ticket.coax; docs/protocol/seat-ticket-v5.md): the API signs with its
+// v5 (#13260, metaverse-engine/session/seat-ticket.coax; docs/protocol/seat-ticket-v5.md): the API signs with its
 // private key and the room checks with public keys only (OA_ROOM_TICKET_PUBKEYS, one or two during a
 // rotation), so nothing a room holds can mint a ticket. tk_check_keys reads v5 with the public keys and
 // v2, v3 and v4 with the HMAC key while a room still has one; with no HMAC key they are refused.
 #run_steps 250000000;   // secp256k1's tables (seat-ticket.coax); an entry that loads this file declares its own
 #load "../../lib/crypto/hmac.coax";
-#load "../../../aethyr/session/resume-envelope.coax";
-#load "../../../aethyr/session/seat-ticket.coax";
+#load "../../../metaverse-engine/session/resume-envelope.coax";
+#load "../../../metaverse-engine/session/seat-ticket.coax";
 
 TICKET_KEY :: 128;        // the key's most bytes
 TICKET_TEXT :: 256;       // a ticket's most bytes

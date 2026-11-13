@@ -8,7 +8,7 @@ export class LayerBridge {
     this.x=new WebAssembly.Instance(module,{env:{memory},wasi_snapshot_preview1:wasi}).exports;this.x._initialize?.();
   }
   side(profile){return Number(this.x.layers_profile_side(BigInt(profile)));}
-  // Coax's pick of a layer array's GPU format and side tier (aethyr/render/texture-format.coax).
+  // Coax's pick of a layer array's GPU format and side tier (metaverse-engine/render/texture-format.coax).
   format(features,carried,phone,role){
     const x=this.x,code=x.layers_texture_format(BigInt(features),BigInt(carried),phone?1:0,BigInt(role));
     const name=new TextDecoder().decode(new Uint8Array(this.memory.buffer,x.layers_format_text(code),x.layers_format_text_bytes(code)));
@@ -19,7 +19,7 @@ export class LayerBridge {
   // A pack's block builds (GitHub #13305): a format's tag in a build's file name, and the carried bit it stands for.
   tag(code){const x=this.x;return new TextDecoder().decode(new Uint8Array(this.memory.buffer,x.layers_format_tag(BigInt(code)),x.layers_format_tag_bytes(BigInt(code))));}
   carries(code){return Number(this.x.layers_format_carries(BigInt(code)));}
-  // A block layer's layout as Coax reads it from its header and size (aethyr/render/block-layer.coax), or null.
+  // A block layer's layout as Coax reads it from its header and size (metaverse-engine/render/block-layer.coax), or null.
   block(bytes){
     const x=this.x,head=Math.min(bytes.length,16);new Uint8Array(this.memory.buffer,x.layers_source_ptr(),head).set(bytes.subarray(0,head));
     if(!x.layers_block_read(head,BigInt(bytes.length)))return null;

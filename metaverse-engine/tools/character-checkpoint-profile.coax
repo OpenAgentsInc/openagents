@@ -1,0 +1,212 @@
+// Checks proto/verse/character-checkpoint-v2.schema.json and
+// proto/verse/character-checkpoint-v3.schema.json against
+// metaverse-engine/session/character-checkpoint.coax.
+// Usage: coax/web/tool.sh metaverse-engine/tools/character-checkpoint-profile.coax FILE.schema.json
+#import "Basic";
+#load "../session/character-checkpoint.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+CCP_FILE :: 131072;
+CCP_NODES :: 4096;
+CCP_SENTINEL :: -9007199254740991;
+
+ccp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+
+ccp_copy :: (s: string, out: [] u8) -> int {
+  if s.count > out.count { return -1; }
+  for i: 0..<s.count { out[i] = s[i]; }
+  return s.count;
+}
+
+ccp_fixture :: (d: Jv, fx: int, ver: int) -> bool #effects(all) {
+  wbuf: [CC_BODY + 64] u8; pbuf: [64] u8; rbuf: [64] u8; tbuf: [CC_BODY + 64] u8;
+  wire := ccp_str(d, jv_get(d, fx, "wire"), wbuf[..]);
+  if wire.count == 0 { return false; }
+  ingress := jv_bool(d, jv_get(d, fx, "ingress"));
+  v := jv_get(d, fx, "values");
+  if v < 0 { v = fx; }
+  if jv_kind(d, v) != JV_OBJECT { return false; }
+
+  want := CharacterCapture.{ok = true};
+  for i: 0..<17 {
+    if i == 5 && !ingress { continue; }
+    n := jv_int(d, jv_get(d, v, CC_KEYS[i]), CCP_SENTINEL);
+    if n == CCP_SENTINEL { return false; }
+    want.n[i] = n;
+  }
+  if want.n[0] != ver { return false; }
+  if !ingress { want.n[5] = want.n[4]; }
+  pid := ccp_str(d, jv_get(d, v, "pid"), pbuf[..]);
+  room := ccp_str(d, jv_get(d, v, "room"), rbuf[..]);
+  want.pid_n = ccp_copy(pid, want.pid[..]);
+  want.room_n = ccp_copy(room, want.room[..]);
+  if want.pid_n <= 0 || want.room_n <= 0 { return false; }
+  dk := jv_kind(d, jv_get(d, v, "dead"));
+  if dk != JV_TRUE && dk != JV_FALSE { return false; }
+  want.dead = dk == JV_TRUE;
+  st := jv_get(d, v, "state");
+  if jv_kind(d, st) != JV_ARRAY || jv_len(d, st) != CC_STATE { return false; }
+  for i: 0..<CC_STATE {
+    n := jv_int(d, jv_at(d, st, i), CCP_SENTINEL);
+    if n == CCP_SENTINEL { return false; }
+    want.state[i] = n;
+  }
+
+  want_rest := CharacterRest.{};
+  if ver == 3 {
+    ra := jv_get(d, v, "rest");
+    if jv_kind(d, ra) != JV_ARRAY || jv_len(d, ra) != CC_REST { return false; }
+    for i: 0..<CC_REST {
+      n := jv_int(d, jv_at(d, ra, i), CCP_SENTINEL);
+      if n == CCP_SENTINEL { return false; }
+      want_rest.n[i] = n;
+    }
+    want_rest.on = true;
+    ua := jv_get(d, v, "uses");
+    if ua >= 0 {
+      if jv_kind(d, ua) != JV_ARRAY || jv_len(d, ua) != CC_MORE { return false; }
+      for i: 0..<CC_MORE {
+        n := jv_int(d, jv_at(d, ua, i), CCP_SENTINEL);
+        if n == CCP_SENTINEL { return false; }
+        want_rest.uses[i] = n;
+      }
+      want_rest.more = true;
+    }
+  } else if jv_get(d, v, "rest") >= 0 || jv_get(d, v, "uses") >= 0 {
+    return false;
+  }
+
+  out: [CC_BODY] u8;
+  made := "";
+  if ver == 2 {
+    made = ifx ingress then cc_write(want, out[..]) else cc_stored(want, out[..]);
+  } else {
+    made = ifx ingress then cc_write_rest(want, want_rest, out[..]) else cc_stored_rest(want, want_rest, out[..]);
+  }
+  if made == "" || made != wire { return false; }
+
+  got := cc_read(wire, ingress);
+  if !got.ok || cc_read(wire, !ingress).ok { return false; }
+  if got.dead != want.dead || got.pid_n != want.pid_n || got.room_n != want.room_n { return false; }
+  if cast(string) got.pid[0..<got.pid_n] != pid || cast(string) got.room[0..<got.room_n] != room { return false; }
+  for i: 0..<17 { if got.n[i] != want.n[i] { return false; } }
+  for i: 0..<CC_STATE { if got.state[i] != want.state[i] { return false; } }
+
+  got_rest := cc_rest(wire, ingress);
+  if ver == 2 {
+    if got_rest.on { return false; }
+  } else {
+    if !got_rest.on || got_rest.more != want_rest.more { return false; }
+    for i: 0..<CC_REST { if got_rest.n[i] != want_rest.n[i] { return false; } }
+    if want_rest.more {
+      for i: 0..<CC_MORE { if got_rest.uses[i] != want_rest.uses[i] { return false; } }
+    }
+    as2_node := jv_get(d, fx, "stored_v2");
+    if as2_node >= 0 {
+      as2_want := ccp_str(d, as2_node, tbuf[..]);
+      as2_buf: [CC_BODY] u8;
+      as2_got := cc_stored_as(want, want_rest, 2, as2_buf[..]);
+      as2_read := cc_read(as2_got, false);
+      if as2_want.count == 0 || as2_got != as2_want || !as2_read.ok || as2_read.n[0] != 2 || cc_rest(as2_got, false).on { return false; }
+    }
+  }
+
+  if ingress {
+    now := jv_int(d, jv_get(d, fx, "now"), want.n[5]);
+    if !checkpoint2_input(wire, now) { return false; }
+    if checkpoint2_input(wire, want.n[5] + 120001) || checkpoint2_input(wire, want.n[5] - 120001) { return false; }
+  } else if checkpoint2_input(wire, want.n[4]) {
+    return false;
+  }
+  return true;
+}
+
+ccp_bounds :: (ver: int) -> bool #effects(all) {
+  if CC_BODY != 2048 || CC_STATE != 27 || CC_REST != 19 || CC_MORE != 3 { return false; }
+  if !cc_number(0, ver) || cc_number(0, 1) || cc_number(0, 4) { return false; }
+  for i: 0..<17 {
+    if !cc_number(i, CC_LOW[i]) || !cc_number(i, CC_HIGH[i]) || cc_number(i, CC_LOW[i] - 1) || cc_number(i, CC_HIGH[i] + 1) { return false; }
+  }
+  for i: 0..<CC_STATE {
+    hi := cc_resource_max(i);
+    if !cc_resource(i, 0) || !cc_resource(i, hi) || cc_resource(i, -1) || cc_resource(i, hi + 1) { return false; }
+  }
+  if ver == 3 {
+    for i: 0..<CC_REST {
+      if !cc_rest_field(i, 0) || !cc_rest_field(i, CC_REST_HIGH[i]) || cc_rest_field(i, -1) || cc_rest_field(i, CC_REST_HIGH[i] + 1) { return false; }
+    }
+    if !cc_more_field(0) || !cc_more_field(CC_MORE_HIGH) || cc_more_field(-1) || cc_more_field(CC_MORE_HIGH + 1) { return false; }
+  }
+  return cc_id("p-0a") && !cc_id("") && !cc_id("UP") && !cc_id("p_a");
+}
+
+ccp_check :: (profile_json: string) -> int #effects(all) {
+  nodes: [CCP_NODES] JvNode; d_arr: [1] Jv;
+  if !jv_parse(d_arr[..], profile_json, nodes[..]) { return 0; }
+  d := d_arr[0];
+  nbuf: [128] u8; cbuf: [256] u8; rbuf: [CC_BODY + 64] u8;
+  prof := ccp_str(d, jv_get(d, 0, "profile"), nbuf[..]);
+  ver := jv_int(d, jv_get(d, 0, "version"), 0);
+  chk := ccp_str(d, jv_get(d, 0, "check"), cbuf[..]);
+  if ver == 2 {
+    if prof != "character-checkpoint-v2" { return 0; }
+    if chk != "coax/web/tool.sh metaverse-engine/tools/character-checkpoint-profile.coax proto/verse/character-checkpoint-v2.schema.json" { return 0; }
+  } else if ver == 3 {
+    if prof != "character-checkpoint-v3" { return 0; }
+    if chk != "coax/web/tool.sh metaverse-engine/tools/character-checkpoint-profile.coax proto/verse/character-checkpoint-v3.schema.json" { return 0; }
+  } else {
+    return 0;
+  }
+  fxs := jv_get(d, 0, "fixtures");
+  if jv_kind(d, fxs) != JV_ARRAY || jv_len(d, fxs) < 2 { return 0; }
+  saw_ingress := false; saw_stored := false;
+  for i: 0..<jv_len(d, fxs) {
+    fx := jv_at(d, fxs, i);
+    if jv_bool(d, jv_get(d, fx, "ingress")) { saw_ingress = true; } else { saw_stored = true; }
+    if !ccp_fixture(d, fx, ver) { return 0; }
+  }
+  if !saw_ingress || !saw_stored { return 0; }
+  rej := jv_get(d, 0, "rejected");
+  if jv_kind(d, rej) != JV_ARRAY || jv_len(d, rej) < 4 { return 0; }
+  for i: 0..<jv_len(d, rej) {
+    row := jv_at(d, rej, i);
+    bad := "";
+    if jv_kind(d, row) == JV_OBJECT {
+      bad = ccp_str(d, jv_get(d, row, "wire"), rbuf[..]);
+      if bad.count == 0 { return 0; }
+      now := jv_int(d, jv_get(d, row, "now"), CCP_SENTINEL);
+      if now != CCP_SENTINEL {
+        if checkpoint2_input(bad, now) { return 0; }
+        continue;
+      }
+    } else {
+      bad = ccp_str(d, row, rbuf[..]);
+      if bad.count == 0 { return 0; }
+    }
+    in_cap := cc_read(bad, true);
+    st_cap := cc_read(bad, false);
+    if (in_cap.ok && in_cap.n[0] == ver) || (st_cap.ok && st_cap.n[0] == ver) { return 0; }
+  }
+  if !ccp_bounds(ver) { return 0; }
+  return ver;
+}
+
+#test "character checkpoint profile tool verifies v2 and v3 codecs and rejects drift" {
+  #assert ccp_check("{}") == 0;
+  #assert ccp_bounds(2) && ccp_bounds(3);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: character-checkpoint-profile FILE.schema.json"); return 2; }
+  raw: [CCP_FILE] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  if n <= 0 { tool_errln("character-checkpoint-profile: cannot read JSON"); return 2; }
+  ver := ccp_check(cast(string) raw[0..<n]);
+  if ver == 0 { print("character-checkpoint: profile fails\n"); return 1; }
+  print("character-checkpoint-v%: profile holds\n", ver);
+  return 0;
+}

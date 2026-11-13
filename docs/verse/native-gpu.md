@@ -77,7 +77,7 @@ sampler, explicit-level sampling, `textureLoad`, `discard` and
 `everglade-fx.wgsl`. The plan keeps the language as it is (no new types in
 the checker) and grows the lowering:
 
-- **Vectors are a checked library**, `aethyr/gpu/shader.coax`: `V2 V3 V4 M4`
+- **Vectors are a checked library**, `metaverse-engine/gpu/shader.coax`: `V2 V3 V4 M4`
   as structs of f32, and procedures (`add3`, `dot3`, `mix3`, `m4_mul`...).
   They run on the CPU like any Coax, so every shader procedure keeps `#test`
   checks. Built-in `v2 v3 v4 m4` with operators (spec section 6.2) can
@@ -115,7 +115,7 @@ the checker) and grows the lowering:
   frame of the web build: the same pack, page facts, clock and golden mode,
   and the same frame through `verse/native` (realm-host), so both draw the
   same scene. `coax/web/wgsl-coax.coax` translates the WGSL to Coax
-  (`apps/openagents-web/gpu/everglade-v1/gpu.coax`, `gpu-fx.coax`; `aethyr/gpu/wgsl.coax` is
+  (`apps/openagents-web/gpu/everglade-v1/gpu.coax`, `gpu-fx.coax`; `metaverse-engine/gpu/wgsl.coax` is
   WGSL's vocabulary). Since G6 both are the source, and the web build's
   `everglade.wgsl` and `everglade-fx.wgsl` are written from them. `verse/gpu/everglade-pass.coax
   HOST PASS` checks a pass. The live shaders hash with
@@ -251,7 +251,7 @@ tasks (native-gpu.json) come after the port.
   and the zero-survivor mutation gate. Every module the checks pin passes
   `spirv-val --target-env vulkan1.1`. It covers the interfaces, views of
   structs and arrays, conversions, loops, calls with per-binding copies, and
-  each GPU procedure. `aethyr/gpu/shader.coax` is the vector, matrix and
+  each GPU procedure. `metaverse-engine/gpu/shader.coax` is the vector, matrix and
   texture library, with CPU bodies and `#test` checks.
   `verse/gpu/shaders/quad.coax` uses every operator, conversion, GPU procedure
   and binding kind. `verse/gpu/vks.c` draws it: pipelines, textures,
@@ -422,12 +422,12 @@ tasks (native-gpu.json) come after the port.
     writes as `@builtin(frag_depth)` between targets that keep their
     locations; `coax spirv` writes it as FragDepth, with DepthReplacing. The translator reads
     `@builtin(frag_depth)` as that, knows mat3x3f (M3, m3_apply in
-    aethyr/gpu/wgsl.coax), and writes a store to a vector's element by a
+    metaverse-engine/gpu/wgsl.coax), and writes a store to a vector's element by a
     dynamic index as the vector with it set.
   - realm (the haunted house) and waterlab follow, 0 blocks changed. realm
     loads verse/light.coax, whose bare lo, hi and smooth are procedures, and
-    Coax refuses a local of a procedure's name, so aethyr/gpu/shader.coax and
-    aethyr/gpu/wgsl.coax name theirs low, high and blend.
+    Coax refuses a local of a procedure's name, so metaverse-engine/gpu/shader.coax and
+    metaverse-engine/gpu/wgsl.coax name theirs low, high and blend.
   - Every other page's module follows: admin, changelog, characters, chat,
     memorial, og, particles, private, project, projects, realmlist and
     splash, and the NIP pages' and /pylon's (gpu/nip.coax: splash's with the
@@ -535,7 +535,7 @@ tasks (native-gpu.json) come after the port.
     realms.json. --upto ENTRY compares the frame after that entry's pass.
     int-hash --page now also swaps verse/style.coax's hash (the villa's
     leaves jitter by it) and reduces sin's argument in a copy of
-    aethyr/render/particle-motion.coax (sin of a particle's index times a few is
+    metaverse-engine/render/particle-motion.coax (sin of a particle's index times a few is
     each GPU's own). Dead Gears matches with 0 values past the tolerance,
     the villa with 19, Ice Cream with 51 (17 pixels one 8-bit step apart
     on one face: give it --allow 60). realm.sh check: each one's 90th
@@ -608,7 +608,7 @@ tasks (native-gpu.json) come after the port.
   this.
 - 2026-10-31: derivatives, and two more realms. Coax shaders have a
   fragment's `gpu_dpdx`, `gpu_dpdy` and `gpu_fwidth` of an f32 (GPU
-  procedures 12-14 of aethyr/gpu/shader.coax: OpDPdx, OpDPdy and OpFwidth in
+  procedures 12-14 of metaverse-engine/gpu/shader.coax: OpDPdx, OpDPdy and OpFwidth in
   SPIR-V, spirv-val clean; WGSL's dpdx, dpdy and fwidth; refused in a
   vertex; 0 on the CPU, which has one fragment and no neighbours), and the
   translator writes a vector's componentwise. droprealm (drop) and villa
@@ -629,7 +629,7 @@ tasks (native-gpu.json) come after the port.
   parameter is a view of one T and a local whose address is taken is one
   (`NAME_store:[1]T`, read as `NAME[0]`); lib/compiler/wgsl.coax writes a
   call with no result as a statement even when its arguments call (it was
-  `_ = paint(...)`); and aethyr/gpu/shader.coax's dot2, dot3 and dot4 are
+  `_ = paint(...)`); and metaverse-engine/gpu/shader.coax's dot2, dot3 and dot4 are
   written as WGSL's `dot`. That last is the sin-hash fix: stair's stones
   hash `fract(sin(dot(p, k)) * 43758)`, and a dot written out as a sum of
   products rounds otherwise on the GPU, which the hash turns into other

@@ -1,4 +1,4 @@
-// The room's side of WebTransport (#13176, aethyr/net/transport.coax): which channel each frame of
+// The room's side of WebTransport (#13176, metaverse-engine/net/transport.coax): which channel each frame of
 // Everglade's wire goes on, a datagram's repeated inputs let through once, and the seats whose state
 // goes as one datagram a tick (room-everglade.coax eg_send). The host (room-host.c, room-wt.c) carries
 // the bytes: a datagram for NET_DATAGRAM, else the reliable stream of the frame's domain.
@@ -37,7 +37,7 @@ rm_wt_conn :: (v: [] RmServer, conn: int, on: bool) #export_c #effects(all) {
   v[0].wt[conn] = RmWt.{on = on};
 }
 rm_wt_on :: (v: [] RmServer, conn: int) -> bool { return conn >= 0 && conn < CONNS && v[0].wt[conn].on; }
-// The channel a frame goes on to a WebTransport session (aethyr/net/transport.coax NET_*).
+// The channel a frame goes on to a WebTransport session (metaverse-engine/net/transport.coax NET_*).
 rm_wt_channel :: (v: [] RmServer, text: string) -> int #export_c #effects(all) { return rm_wt_channel_of(text); }
 rm_wt_channel_of :: (text: string) -> int {
   if text.count > 1 && text[0] == 'D' && text[1] == ' ' {

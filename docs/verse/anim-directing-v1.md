@@ -2,8 +2,8 @@
 
 A7 (#12972) extends the Decisions director to admitted Animation Lab projects.
 The editor, request/reply admission, checks and session history live in
-`aethyr/anim/direction*.coax`. Scene loading, sampling and checking also live
-under `aethyr/anim/`; the former realm paths are compatibility loaders.
+`metaverse-engine/anim/direction*.coax`. Scene loading, sampling and checking also live
+under `metaverse-engine/anim/`; the former realm paths are compatibility loaders.
 
 `openagents labs anim edit FILE "direction" [--origin URL]` sends a bounded
 inventory and the current bundle SHA-256 to `/api/playtest/labs/anim/direct`.

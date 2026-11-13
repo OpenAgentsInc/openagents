@@ -9,7 +9,7 @@
 // check, coax/web/everglade-combat.coax, #12862); HOLD stays that many seconds once downed.
 // Run it against a local room (local.coax, or room --dev with its stand-in key as OA_ROOM_TICKET_KEY).
 // Prints one JSON line, then "hurts" and exits 0, or "fails" and 1.
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 
 GcHeard :: struct {

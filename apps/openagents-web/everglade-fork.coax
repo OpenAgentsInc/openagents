@@ -15,7 +15,7 @@
 //       lowgrav    a third of the gravity (the face lifts you by everglade_gravity_lift while you're up)
 // Only typed choices: rule ids from the server, checked against the four this code implements.
 
-#load "../../aethyr/forge/made.coax";   // a fork's body, its answer, fork info and its publish (made.proto): one codec
+#load "../../metaverse-engine/editor/made.coax";   // a fork's body, its answer, fork info and its publish (made.proto): one codec
 FK_RULES :: 4;
 FK_NIGHT :: 0; FK_WAVES :: 1; FK_NODESTROY :: 2; FK_LOWGRAV :: 3;
 FK_RULE_ID :: [FK_RULES] string.["night", "waves", "nodestroy", "lowgrav"];
@@ -23,7 +23,7 @@ FK_SLUG :: 48; FK_NAME :: 40; FK_URL :: 160; FK_BODY :: 200; FK_NOTE :: 60;
 FK_MIDNIGHT :: 0.0;          // the clock night holds it at (0 midnight, 0.5 noon)
 FK_WAVE_FIRST :: 20.0;       // seconds before the first wave
 FK_WAVE_EVERY :: 45.0;       // and between waves
-FK_GRAVITY :: 24.0;          // aethyr/move/player.coax GRAVITY
+FK_GRAVITY :: 24.0;          // metaverse-engine/move/player.coax GRAVITY
 FK_LOW :: 0.3333;            // low gravity's share of it
 FK_ACT_NAVIGATE :: 1;        // host.js: go to the outbox's path
 FK_ASK_NONE :: 0; FK_ASK_INFO :: 1; FK_ASK_FORK :: 2; FK_ASK_PUBLISH :: 3;
@@ -206,7 +206,7 @@ fk_body :: (text: string) -> string { i := 0; while i < text.count && text[i] !=
 // What the pane shows: base, title, fork, from SLUG|NAME, maker, name, owner, published, rule ID 0|1 LABEL.
 fk_info :: (s: [] Everglade, body: string) {
   fi: [1] ForgeForkInfo;
-  if !forge_read_fork_info(fi[..], body) { return; }   // made.proto's fork info (aethyr/forge/made.coax)
+  if !forge_read_fork_info(fi[..], body) { return; }   // made.proto's fork info (metaverse-engine/editor/made.coax)
   f := s[0].fk[0];
   for r: 0..<FK_RULES { f.has[r] = false; f.on[r] = false; }
   f.name_n = fk_word(f.name[..], forge_fork_name(fi[..]));
@@ -244,7 +244,7 @@ fork_message :: (s: [] Everglade, kind: int, text: string) -> bool {
               else ifx st == 403 then "MAKING WORLDS IS INVITE ONLY FOR NOW" else "NOT FORKED: TRY AGAIN");
     return true;
   }
-  made: [1] ForgeMade; made[0] = forge_read_made(body);   // made.proto's lines (aethyr/forge/made.coax)
+  made: [1] ForgeMade; made[0] = forge_read_made(body);   // made.proto's lines (metaverse-engine/editor/made.coax)
   if !made[0].ok || made[0].path_n == 0 || !fk_slug_ok(forge_made_slug(made[..])) { fk_say(s, "NOT FORKED: TRY AGAIN"); return true; }
   to: [FK_URL] u8;   // an API from before worlds says /realms/
   m := fk_put(to[..], 0, "/worlds/"); m = fk_put(to[..], m, forge_made_slug(made[..]));

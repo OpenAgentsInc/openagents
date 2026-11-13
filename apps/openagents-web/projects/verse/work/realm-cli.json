@@ -72,7 +72,7 @@
     "realms",
     "aethyrforge"
    ],
-   "body": "Every edit names a revision (read first, or --rev N); 409 exits 5 with `rev N`. `realm move` merges the move with aethyr/forge/edit.coax's operations. `realm apply SLUG FILE` runs JSON-lines ops, consecutive moves as one save. A cli-journey check like forge-journey: make, move, stale save (exit 5), undo, publish, fork.",
+   "body": "Every edit names a revision (read first, or --rev N); 409 exits 5 with `rev N`. `realm move` merges the move with metaverse-engine/editor/edit.coax's operations. `realm apply SLUG FILE` runs JSON-lines ops, consecutive moves as one save. A cli-journey check like forge-journey: make, move, stale save (exit 5), undo, publish, fork.",
    "files": [
     "apps/openagents-cli/realm.coax",
     "coax/web/tool.sh"

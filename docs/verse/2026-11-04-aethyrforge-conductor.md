@@ -208,7 +208,7 @@ because they are different:
 
 | Kind | Example | Path | Undo |
 |---|---|---|---|
-| World data | Move the well, resize a crate, switch a feature off | The world document, through the room's typed edits (`aethyr/forge/edit.coax`), saved locally at once | The edit log, durable across launches |
+| World data | Move the well, resize a crate, switch a feature off | The world document, through the room's typed edits (`metaverse-engine/editor/edit.coax`), saved locally at once | The edit log, durable across launches |
 | Tuning | Guards' HP, WANTED thresholds, spell radii | A tuning table in the world document where the rules allow it, otherwise a code change | The edit log, or a revert |
 | Code | Entangle catches everyone in its area, a new door rule | A task for an agent, in its own workspace, landed through the lane | Revert in the lane |
 

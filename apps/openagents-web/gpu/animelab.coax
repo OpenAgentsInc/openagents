@@ -19,7 +19,7 @@
 //   with distance; bloom; the tone; the vignette; speed lines, impact frames
 //   and flashes; the overlay's panels under the text.
 // - fx_vs/fx_fs: the overlay's strokes and sans text (font.coax).
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../verse/style.coax";
 
 // AnimelabU, the uniform block (animelab.coax U_*), floats:
@@ -467,7 +467,7 @@ animelab_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eig
   return v4(al_panels(v2(pos.x,pos.y),g,u).x,al_panels(v2(pos.x,pos.y),g,u).y,al_panels(v2(pos.x,pos.y),g,u).z,1.0f32);
 }
 
-// ---- the overlay: strokes and sans text, one quad each (aethyr/ui/draw.coax lit, font.coax draw_sans)
+// ---- the overlay: strokes and sans text, one quad each (metaverse-engine/ui/draw.coax lit, font.coax draw_sans)
 AnimelabV :: struct {pos:V4; place:V2; shape:V4; tint:V4; }
 // along, across, pixels; length, core, light, glow; red, green, blue, mode
 animelab_fx_vs_in :: struct {a:V4; b:V4; c:V4; }

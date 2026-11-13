@@ -2,7 +2,7 @@
 // publishes when its state changes, for other contexts to read. This file is the one codec of both.
 //
 //   items.item.granted.v1             an item was granted to a character (the item ledger's outbox:
-//                                     aethyr/session/ledger.coax LedgerEntry, SQL verse.item_outbox)
+//                                     metaverse-engine/session/ledger.coax LedgerEntry, SQL verse.item_outbox)
 //   characters.character.levelled.v1  a character's level rose (SQL verse.character_outbox, written
 //                                     with the record: coax/web/api/character-policy.coax)
 //

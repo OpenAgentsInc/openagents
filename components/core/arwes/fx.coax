@@ -1,7 +1,7 @@
 // Coax value ports of ARWES theme/styles/tools/bgs/effects/bleeps.
 // Copyright (c) 2014 - 2024 Romel Perez (romelperez.dev), MIT.
 // Source: arwes/arwes bdbaa0324900ee978d42036d1304a053c1fe54b5.
-// Exact paths and intentional host/numeric adaptations: aethyr/ui/arwes/SOURCES.md.
+// Exact paths and intentional host/numeric adaptations: metaverse-engine/ui/arwes/SOURCES.md.
 // No browser effects, random global, wall clock, allocation or audio playback.
 // coax/bin/coax test components/core/arwes/fx.coax
 #load "box.coax";

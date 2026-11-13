@@ -2,8 +2,8 @@
 // coax/web/tool.sh verse/tools/valley-hierarchy.coax
 #import "Basic";
 #load "../valley/rock.coax";
-#load "../../aethyr/render/geometry/hierarchy.coax";
-#load "../../aethyr/render/geometry/fan.coax";
+#load "../../metaverse-engine/render/geometry/hierarchy.coax";
+#load "../../metaverse-engine/render/geometry/fan.coax";
 tool_main :: ()->int #export_c #effects(all) {
   r:[1]Rock;c:[1]Clusters;h:[1]GeometryHierarchy;
   for detail:[3]int.[8,16,32] {

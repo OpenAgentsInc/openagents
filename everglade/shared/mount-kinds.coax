@@ -1,11 +1,11 @@
 // Everglade's kinds of mount, as the room and every page know them (everglade/docs/mounts-spec.md,
-// #13268): the SRD's Riding Horse and Adult Red Dragon as Metaverse Engine mounts (aethyr/action/mount.coax), the
+// #13268): the SRD's Riding Horse and Adult Red Dragon as Metaverse Engine mounts (metaverse-engine/action/mount.coax), the
 // dragon's wings, and a rider's keys as a mount's steering. The room steps a ridden mount with these
 // (everglade/server/mounts.coax) and a page predicts its own with the same, so they are written once.
 // What a page draws and says (frames, saddles, prompts, deeds) is everglade/mounts.coax's.
 //   coax/bin/coax test everglade/shared/mount-kinds.coax --library
 #module "everglade.shared.mount_kinds";
-#load "../../aethyr/action/mount.coax";
+#load "../../metaverse-engine/action/mount.coax";
 
 MK_HORSE :: 0; MK_DRAGON :: 1; MK_KINDS :: 2;
 // SRD 5.2.1 p. 360, Riding Horse: Large Beast, Speed 60 feet, twice a walker's 30. On foot you run
@@ -13,7 +13,7 @@ MK_HORSE :: 0; MK_DRAGON :: 1; MK_KINDS :: 2;
 MK_RIDING_HORSE :: MountTune.{walk = 4.0, gallop = 14.0};
 // SRD 5.2.1, Adult Red Dragon: Huge, Speed 40 ft, Fly 80 ft. The model is 14 m from snout to tail; its
 // body's capsule, the reach to mount from its flank, and the step off clear of a folded wing. Nothing
-// on the ground trips it (aethyr/action/mount.coax mount_counts): it steps over what is under 1.5 m
+// on the ground trips it (metaverse-engine/action/mount.coax mount_counts): it steps over what is under 1.5 m
 // and walks through anything no taller than 2 m and no wider than its own radius; a house, a wall
 // or a tree still stops it.
 MK_RED_DRAGON :: MountTune.{walk = 10.0, gallop = 10.0, back = 2.0, accel = 8.0, turn_walk = 1.6, turn_gallop = 1.6, turn_still = 1.2,

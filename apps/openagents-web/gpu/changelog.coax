@@ -1,7 +1,7 @@
 // changelog's shaders, the source of apps/openagents-web/changelog.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (changelog.module,
 // changelog.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 
 // A project page's two passes (project.coax decides every number): a dark
 // nebula, dimmer than the splash's so the HUD reads over it, with the glass

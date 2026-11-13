@@ -1,9 +1,9 @@
 // newland's shaders, the source of apps/openagents-web/newland.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (newland.module,
 // newland.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/render/noise.coax";
-#load "../../../aethyr/gpu/wgsl.coax";
-#load "../../../aethyr/render/sans-filter.coax";
+#load "../../../metaverse-engine/render/noise.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
+#load "../../../metaverse-engine/render/sans-filter.coax";
 #load "../../../everglade/scene/gpu/portal.coax";   // Everglade's portal: the light on its face, shared with Character Create's arrival
 
 // The live homepage's two passes (newland.coax decides every number): the

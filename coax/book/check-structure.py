@@ -62,7 +62,7 @@ def problems(root):
 # target with no recorded run is not listed) and `adopted_by` (files outside
 # the book that use the chapter's code today). `psionic/tests/book.py` runs
 # the same checks for Psionic, the Metaverse Engine, Nostr, Coder and Bitcoin.
-BOOKS = {"coax": "coax/book", "psionic": "psionic/book", "aethyr": "aethyr/book", "nostr": "nostr/book",
+BOOKS = {"coax": "coax/book", "psionic": "psionic/book", "aethyr": "metaverse-engine/book", "nostr": "nostr/book",
          "coder": "coder/book", "bitcoin": "bitcoin/book"}
 # A moved chapter keeps its number so the numbering stays 1..N; its title names
 # where it went and it has no file here.

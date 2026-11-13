@@ -42,7 +42,7 @@ e2_field_cover :: (x:f32,z:f32)->f32 {
  bare:=e2_smooth(0.10,0.42,e2_path(x,z));
  return (1-bare)*(1-0.55*e2_forest(x,z));
 }
-// The same at the graphics quality's grass reach (aethyr/core/quality.coax `grass`, as the page eases it):
+// The same at the graphics quality's grass reach (metaverse-engine/core/quality.coax `grass`, as the page eases it):
 // g scales every distance (E2_FIELD_NEAR, E2_FIELD_STEP, E2_FIELD_FAR), and c caps the finest
 // tier's share. At c = 0.25 the finest tier keeps only the tufts the 1 m tier keeps too; then it is
 // left out (e2_field_fine_off) and the 1 m tier draws from the eye: the same tufts in the same places,

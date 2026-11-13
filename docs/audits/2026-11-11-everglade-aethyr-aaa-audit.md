@@ -63,7 +63,7 @@ works, but the design won't scale. **D** missing or structurally wrong.
 | Area | Grade | One line |
 | --- | --- | --- |
 | Determinism, clocks, replay | A | Integer clock, strict math, seeded streams, per-step digests |
-| Verification of kernels | A | About 5,000 checks in `aethyr/`, mutation-tested policy files |
+| Verification of kernels | A | About 5,000 checks in `metaverse-engine/`, mutation-tested policy files |
 | Movement authority and prediction | A | Same step on page and room; input credit from the server's clock |
 | Row replication | A− | Acked delta baselines, priority, per-link budget, hysteresis |
 | Checkpoints, drain, version handshake | A− | Fenced owners, exact receipts, build pins that refuse a mismatch |
@@ -77,7 +77,7 @@ works, but the design won't scale. **D** missing or structurally wrong.
 | Combat profile shipped | D | One target per cast, unlimited presses, no player harm |
 | Server AI | C | Two hand-written state machines; engine AI unused |
 | Content pipeline | D | Content is compiled-in Coax under the web app |
-| Engine layering | D | 88 loads from `aethyr/` up into `verse/` and `apps/` (checked) |
+| Engine layering | D | 88 loads from `metaverse-engine/` up into `verse/` and `apps/` (checked) |
 | Scene and entity model | C | A good entity store nobody in Everglade uses |
 | Renderer | C | Three hand-written hosts restate the pass order; the frame graph runs nowhere |
 | World model | C | Zones are separate pages; the streaming world is unadopted |
@@ -95,10 +95,10 @@ works, but the design won't scale. **D** missing or structurally wrong.
 
 Keep these and build on them. Don't rewrite them.
 
-- **Determinism.** `aethyr/loop.coax` (integer-nanosecond clock, fixed step,
+- **Determinism.** `metaverse-engine/loop.coax` (integer-nanosecond clock, fixed step,
   bounded catch-up), `math.coax` (same bits natively and in the browser),
   `rand.coax`, and `replay.coax` with a digest for each step.
-- **Verification.** About 5,000 `#test` and 469 `#forall` checks in `aethyr/`;
+- **Verification.** About 5,000 `#test` and 469 `#forall` checks in `metaverse-engine/`;
   533 `#authority` files with mutation testing; a CPU reference rasterizer
   that checks the GPU path.
 - **Shared simulation.** The page and the room compile the same movement step
@@ -243,7 +243,7 @@ the build.
 **Evidence.**
 
 - Spells are data with about 33 effect-step kinds. But executable records stop
-  at 90 of the 339 imported spells (`aethyr/rules/srd/more.coax:47`), and
+  at 90 of the 339 imported spells (`metaverse-engine/rules/srd/more.coax:47`), and
   about 150 `== SP_X` special cases sit outside the records.
 - Class features are 36 hand-written kinds, each with its own procedure and
   its own fields on the creature (`engine.coax:212-300`: rage, focus,
@@ -367,7 +367,7 @@ hit test, with a bound.
 1. Put monsters, the guard, familiars and arrows on rows. Delete their frames.
    This also completes compliance steps E2 and E3 by removal instead of by
    pinning frames we are about to delete. **Change E2 and E3 accordingly.**
-2. Move prediction and reconciliation into `aethyr/net/`, once.
+2. Move prediction and reconciliation into `metaverse-engine/net/`, once.
 3. Make the binary packed encoding the only one. Generate encoder, decoder and
    profile from one field table. Write straight into the connection's buffer.
 4. Put players in the rewind history. Judge melee and spells with the same
@@ -378,20 +378,20 @@ hit test, with a bound.
 
 **Evidence.**
 
-- 88 `#load` lines in `aethyr/`, outside tests, tools and examples, point up
+- 88 `#load` lines in `metaverse-engine/`, outside tests, tools and examples, point up
   into `verse/`, `apps/` or `coax/web/` (checked by grep: 40 in `render/`, 30
-  in `host/`). Examples: `aethyr/net/latency.coax:5` loads the web app's
-  Everglade wire; `aethyr/ui/draw.coax:6-7` loads a Verse HUD frame and the
-  web app's font; `aethyr/character-appearance.coax:3` loads Character
+  in `host/`). Examples: `metaverse-engine/net/latency.coax:5` loads the web app's
+  Everglade wire; `metaverse-engine/ui/draw.coax:6-7` loads a Verse HUD frame and the
+  web app's font; `metaverse-engine/character-appearance.coax:3` loads Character
   Create's parts.
 - The shader library lives above the engine, in `verse/gpu/`.
-- `aethyr/walk.coax` loads the camera (`follow.coax`, line 23, checked), and
+- `metaverse-engine/walk.coax` loads the camera (`follow.coax`, line 23, checked), and
   `Player` carries camera fields. The server's player state includes orbit
   angles. It also loads three test files in production (lines 26, 31, 34).
-- The game's rules (`aethyr/rules/srd`, 39,256 lines) are the engine's largest
-  directory. Realm tools (`valley-*`, `kokiri-*`) live in `aethyr/tools`.
+- The game's rules (`metaverse-engine/rules/srd`, 39,256 lines) are the engine's largest
+  directory. Realm tools (`valley-*`, `kokiri-*`) live in `metaverse-engine/tools`.
 - 77 files sit flat at the engine's root. Eight of them are walking.
-- `aethyr/entity.coax` is a good store (generation-checked handles, deferred
+- `metaverse-engine/entity.coax` is a good store (generation-checked handles, deferred
   spawn). Everglade's files load none of it. Its world is a struct of page
   structs.
 - No system scheduler. Each page calls its systems by hand. One thread.
@@ -411,18 +411,18 @@ index. Everything in the game lives in it, on client and server.
 
    | Target | Holds |
    | --- | --- |
-   | `aethyr/core/` | loop, ids, entity, math, rand, input, budget, replay, checkpoint, assets |
-   | `aethyr/gpu/` | the shader library from `verse/gpu/` |
-   | `aethyr/physics/` | query, ground, collide, `sim/` |
-   | `aethyr/move/` | one walker, one tuning record, one C face |
-   | `aethyr/world/` | cells, terrain tiles, streaming, navigation |
-   | `aethyr/net/` | transport, replication, prediction, rewind |
-   | `aethyr/render/`, `anim/`, `cam/`, `audio/`, `ui/`, `host/` | as now, with no upward loads |
-   | `rules/srd/` at the root, or `everglade/rules/` | the SRD engine, out of `aethyr/` |
+   | `metaverse-engine/core/` | loop, ids, entity, math, rand, input, budget, replay, checkpoint, assets |
+   | `metaverse-engine/gpu/` | the shader library from `verse/gpu/` |
+   | `metaverse-engine/physics/` | query, ground, collide, `sim/` |
+   | `metaverse-engine/move/` | one walker, one tuning record, one C face |
+   | `metaverse-engine/world/` | cells, terrain tiles, streaming, navigation |
+   | `metaverse-engine/net/` | transport, replication, prediction, rewind |
+   | `metaverse-engine/render/`, `anim/`, `cam/`, `audio/`, `ui/`, `host/` | as now, with no upward loads |
+   | `rules/srd/` at the root, or `everglade/rules/` | the SRD engine, out of `metaverse-engine/` |
    | `verse/tools/` | realm-specific tools |
 
 3. Split `Player` into a body the server owns and a camera the client owns.
-4. Define one `World` in `aethyr/core/`: the entity store, fixed
+4. Define one `World` in `metaverse-engine/core/`: the entity store, fixed
    structure-of-arrays columns keyed by slot, an ordered system list with
    declared reads and writes, and a spatial index. Archetypes in the style of
    Flecs or Bevy are more than this game needs.
@@ -454,9 +454,9 @@ owner's rule from 2026-11-07 already says to build one world; this is how.
 
 ### G8. Three renderers
 
-**Evidence.** `aethyr/render/passes.coax` defines a bounded frame program that
+**Evidence.** `metaverse-engine/render/passes.coax` defines a bounded frame program that
 only a test loads. The shipping pass order is hard-coded in `coax/web/host.js`
-(4,050 lines), restated in `aethyr/host/apple/PageHost.m` ("the native twin")
+(4,050 lines), restated in `metaverse-engine/host/apple/PageHost.m` ("the native twin")
 and again in the Vulkan host. The draw model is immediate: up to 250,000
 vertices rebuilt on the CPU each frame. Uniforms are raw float offsets. The
 cluster and Hi-Z culling exists and the web host has no indirect draws.
@@ -500,7 +500,7 @@ server loads them at start.
 **Do.** One server creature runtime: template, spawn table, threat list,
 leash, navigation. Wolves, goblins and the guard become rows. Define versioned
 content tables with validators, and have the room load them. Then give
-Aethyrforge editors for them. Adopt `aethyr/actors` for the runtime or delete
+Aethyrforge editors for them. Adopt `metaverse-engine/actors` for the runtime or delete
 it.
 
 ### G11. Hosting, capacity and operations
@@ -584,7 +584,7 @@ is a flag inside another server.
 | # | Workstream | Gaps | Depends on | Done when |
 | --- | --- | --- | --- | --- |
 | P0 | **Stop the bleeding.** W1 to W6, the layer check, the pre-push check, the ratchets | W1–W6, G12 | — | No public seed, no client-chosen level, split keys, `main-green` under 30 minutes behind for a week |
-| P1 | **One game.** Extract `everglade/server/` and `everglade/client/`; cut the v1 room; move v1, Experimental and labs out of the default build; reorganize `aethyr/` | G1, G6 | P0 | One Everglade client module and one server binary with no v1 file loaded; zero upward loads |
+| P1 | **One game.** Extract `everglade/server/` and `everglade/client/`; cut the v1 room; move v1, Experimental and labs out of the default build; reorganize `metaverse-engine/` | G1, G6 | P0 | One Everglade client module and one server binary with no v1 file loaded; zero upward loads |
 | P2 | **One world.** The engine `World`; room core without a seat count; all entities on rows; broadphase; cells and tiles; navigation | G4, G5, G6, G7 | P1 | 150 protocol bots in one zone at tick p99 under 10 ms; the glade and forest path are cells in one process; the E2 and E3 frames are deleted |
 | P3 | **Real combat.** Ability and aura records; the target combat profile; content IDs; the encounter simulator; full lag compensation | G2, G5 | P1 | A level-5 party clears a pack with area spells, paid slots and line of sight; time-to-kill prints for every class |
 | P4 | **A character worth keeping.** The server character record; the item ledger wired; server quests; creature runtime and content tables | G3, G10 | P2, P3 | Kill, loot, equip, log out, crash the shard, log in: nothing lost, nothing doubled |
@@ -649,7 +649,7 @@ server-authoritative combat and no persistent possessions.
 - How hard counting dice draws is in practice (W1). The seed is public either
   way.
 - Whether re-seating at a new level also refills HP and slots (W2).
-- `aethyr/audio`, `ui`, `fx` and `forge`, beyond their sizes.
+- `metaverse-engine/audio`, `ui`, `fx` and `forge`, beyond their sizes.
 - The iOS app's internals, and Android beyond its host file.
 - Line and commit counts are from `grep` and `git log` and are approximate.
   The reviewers' count of upward loads was 61; mine, with host conformance

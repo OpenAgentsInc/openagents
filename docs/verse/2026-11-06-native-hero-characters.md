@@ -39,14 +39,14 @@ describe the delivered implementation and its measured limits.
 
 | Piece | Where it lives | State |
 | --- | --- | --- |
-| Rig, body pose, face playback | `aethyr/character/` (on `aethyr/anim/pose.coax` and `face.coax`); Echo's declarations in `verse/valley/echo.coax` | Moved out of Valley Lab in R2 (#12986): a `Character` record over a world's pack table, sizes under declared maximums, an idle face. Valley Lab runs on it with its TF0290 frames unchanged |
-| Skinning, morphs, groom, materials (GPU) | `apps/openagents-web/gpu/valleycanyon.coax` with `aethyr/render/hair-fiber.coax`, `aethyr/anim/morph-gpu.coax`, `aethyr/render/pbr-env.coax` | Works in the Valley page only. Character shading is branches inside that page's `scene_fs` |
-| Lights | `aethyr/render/slay-lights.coax` | The TF0290 studio rig, in the Valley page's own uniform slots |
+| Rig, body pose, face playback | `metaverse-engine/character/` (on `metaverse-engine/anim/pose.coax` and `face.coax`); Echo's declarations in `verse/valley/echo.coax` | Moved out of Valley Lab in R2 (#12986): a `Character` record over a world's pack table, sizes under declared maximums, an idle face. Valley Lab runs on it with its TF0290 frames unchanged |
+| Skinning, morphs, groom, materials (GPU) | `apps/openagents-web/gpu/valleycanyon.coax` with `metaverse-engine/render/hair-fiber.coax`, `metaverse-engine/anim/morph-gpu.coax`, `metaverse-engine/render/pbr-env.coax` | Works in the Valley page only. Character shading is branches inside that page's `scene_fs` |
+| Lights | `metaverse-engine/render/slay-lights.coax` | The TF0290 studio rig, in the Valley page's own uniform slots |
 | Post pass (depth of field, skin blur) | `vc_post_fs`, run by `coax/web/host.js` | Generic host feature; any page with a `post_fs` gets it |
 | Pack | `~/.openagents/verse/private-build/web/valley-slay.pack`, pinned by `verse/valley/canyon-pack-policy.coax` | 1,023,634,576 bytes, owner-local. Its 35 mipmapped 4K RGBA8 layers reserve about 3.13 GB of GPU memory |
 | Groom | Valley pack | 118,339 curves, drawn as strands at a share set by the head's size on screen |
-| Everglade's characters | `apps/openagents-web/gpu/everglade-v1/gpu.coax` (3,597 lines), `aethyr/anim/skin.coax` | CC0 Quaternius people, skinned from a storage buffer with four joints each, painterly shading |
-| Everglade's budgets | `apps/openagents-web/wasm-budgets.txt` | 2,000,446 of 2,150,000 wasm bytes used; 60 FPS rule from `aethyr/core/frame-report.coax` |
+| Everglade's characters | `apps/openagents-web/gpu/everglade-v1/gpu.coax` (3,597 lines), `metaverse-engine/anim/skin.coax` | CC0 Quaternius people, skinned from a storage buffer with four joints each, painterly shading |
+| Everglade's budgets | `apps/openagents-web/wasm-budgets.txt` | 2,000,446 of 2,150,000 wasm bytes used; 60 FPS rule from `metaverse-engine/core/frame-report.coax` |
 
 Three constraints shaped the original plan:
 
@@ -69,13 +69,13 @@ Three constraints shaped the original plan:
 
 ### 1. One character runtime in the Metaverse Engine
 
-Move the CPU side out of `verse/valley/` into `aethyr/character/` and make
+Move the CPU side out of `verse/valley/` into `metaverse-engine/character/` and make
 it work for any asset source:
 
 - `rig.coax`: joints, bind matrices, rest pose and capsules, sized from the
   pack (with declared maximums), not from Echo's constants.
 - `pose.coax`: body clips, cross-fades and the root track, on the world's
-  fixed step (`aethyr/core/loop.coax`).
+  fixed step (`metaverse-engine/core/loop.coax`).
 - `face.coax`: face clips, curves to morph weights and face bones. This
   absorbs `face-ambient.coax` (idle blinks and saccades), so a character
   standing in a world is never frozen.
@@ -83,7 +83,7 @@ it work for any asset source:
   frame.
 - `character.coax`: one `Character` record (pack, rig, pose, face, tier,
   world transform) with spawn, despawn and step functions. An entity owns
-  it (`aethyr/core/entity.coax`).
+  it (`metaverse-engine/core/entity.coax`).
 
 The public tests run on the CC0 Quaternius people that Everglade already
 uses, as [MetaHuman support](metahuman-support.md) recommends. Echo is then
@@ -120,7 +120,7 @@ carries tiers, and the runtime streams the tier the camera needs:
 Add a character pass to `coax/web/host.js` (and later its native hosts)
 instead of merging character shading into each world's shader:
 
-- **Its own shader module**, `aethyr/render/character.coax`, compiled by
+- **Its own shader module**, `metaverse-engine/render/character.coax`, compiled by
   `coax wgsl` like other GPU modules: `character_vs` and `character_fs`
   (skin, eyes, teeth, cloth, metal), `strand_vs` and `strand_fs` (hair),
   and `character_caster_vs` for shadows. It is built from the Valley
@@ -165,7 +165,7 @@ supports both.
 ### 6. Placement, collision and the network
 
 - A world places a character as an entity with a position, a heading and a
-  capsule from the pack, through `aethyr/physics/query.coax`, so walking and the
+  capsule from the pack, through `metaverse-engine/physics/query.coax`, so walking and the
   follow camera treat her like any body.
 - The room protocol gets a character look id (a pack reference) and
   animation state (body clip, face clip, time). Clients without the pack,
@@ -190,12 +190,12 @@ the frames.
 
 | Phase | Work | Exit check |
 | --- | --- | --- |
-| **H0** | `SceneLights` block and the character pass in `host.js`, drawing one CC0 Quaternius person through `aethyr/render/character.coax` in Everglade | That person stands in Everglade with depth, lamp light, fog, rain and two-way shadows; Everglade holds 60 FPS on the 4080 and this Mac; Everglade's golden frames are unchanged when no character is placed |
-| **H1** | Move Echo's CPU runtime into `aethyr/character/`; the Valley page uses it | The Valley page's TF0290 frames (1125, 1132, 1137, 1142, 1147) are byte-identical before and after; all Valley checks pass |
+| **H0** | `SceneLights` block and the character pass in `host.js`, drawing one CC0 Quaternius person through `metaverse-engine/render/character.coax` in Everglade | That person stands in Everglade with depth, lamp light, fog, rain and two-way shadows; Everglade holds 60 FPS on the 4080 and this Mac; Everglade's golden frames are unchanged when no character is placed |
+| **H1** | Move Echo's CPU runtime into `metaverse-engine/character/`; the Valley page uses it | The Valley page's TF0290 frames (1125, 1132, 1137, 1142, 1147) are byte-identical before and after; all Valley checks pass |
 | **H2** | Move Echo's shading into the character module; the Valley page draws her through the character pass | The same five frames are within a stated tolerance of H1's (mean and 99th-percentile channel difference recorded) |
 | **H3** | Character pack v1 with tiers and compressed textures; repack Echo | Echo's hero tier at or under 300 MB of GPU memory on this Mac; the far tier under 10 MB; the hero tier's frame 1125 within tolerance of the 4K render |
 | **H4** | Echo in Everglade on local dev hosts: `?stage=echo` spawns her beside the player with an idle face and runs the orbit natively | The orbit clip recorded straight from Everglade with no composite; she passes behind posts and in front of grass; lamps light her; Everglade holds 60 FPS on this Mac with her on screen |
-| **H5** | A second world places a character through the same API (Fairy Forest or Valley World) | Same checks as H4 in that world, with no changes to `aethyr/character/` |
+| **H5** | A second world places a character through the same API (Fairy Forest or Valley World) | Same checks as H4 in that world, with no changes to `metaverse-engine/character/` |
 | **H6** | Room replication of character look and animation state | Two headless room pages see her in the same pose on the same tick |
 | **H7** | Production delivery through the broker, plus the phone tier | Only after the owner settles the Slay licence question below. On staging, a phone-size page holds the frame budget with her in view |
 | **H8** | Metal and Vulkan hosts | The H4 clip on the Mac host matches the web build within the native GPU tolerances |
@@ -221,7 +221,7 @@ her current pack through the local `/private/` route:
 | Step | From | Work |
 | --- | --- | --- |
 | **R1** | H0, H2 | The character pass and the `SceneLights` block, drawing Echo with the Valley shading straight away (no Quaternius stand-in first) |
-| **R2** | H1 | Echo's CPU runtime in `aethyr/character/`, with the idle face, used by both pages |
+| **R2** | H1 | Echo's CPU runtime in `metaverse-engine/character/`, with the idle face, used by both pages |
 | **R3** | H4 | `?stage=echo` spawns her beside the player with a capsule and runs the orbit natively; the clip records straight from Everglade |
 | **R4** | H3 (part) | Groom levels and a frame-rate check while she is in a wide shot of the raid |
 
@@ -233,13 +233,13 @@ and H8 (native hosts) come after the recording works.
 `?stage=echo` in Everglade draws Echo through the host's character pass, in
 the town's own depth buffer, light and aux targets and shadow map. The parts:
 
-- **Shading.** `aethyr/render/character.coax` holds Echo's shading (her
+- **Shading.** `metaverse-engine/render/character.coax` holds Echo's shading (her
   materials, skinning, morphs, strands and the skin and fibre light), moved
   out of `apps/openagents-web/gpu/valleycanyon.coax`, which now loads it.
   Its pass entries are `ch_character_vs/fs` (body and strands) and
   `ch_caster_vs/fs`. `apps/openagents-web/character.wgsl` is written from it
   (`gpu/character.module`, `gpu/character.bindings`).
-- **SceneLights.** `aethyr/render/scene-lights.coax` lays out the block: the
+- **SceneLights.** `metaverse-engine/render/scene-lights.coax` lays out the block: the
   world's clip rows and camera, the shadow map's rows, the key light, sky and
   ground ambient, the haze, up to 8 point lights (the 8 nearest her that
   reach her), wetness and the aux distance scale. Everglade fills it each
@@ -247,7 +247,7 @@ the town's own depth buffer, light and aux targets and shadow map. The parts:
   uniforms its own shaders read. The pass writes linear light, and the
   town's post pass tones it as it tones the town.
 - **Runtime.** `apps/openagents-web/character-host.coax` (`build/character-host.wasm`,
-  41,715 bytes) runs Echo on `aethyr/character/` beside the world: pack
+  41,715 bytes) runs Echo on `metaverse-engine/character/` beside the world: pack
   admission (SHA-256, catalog, part sizes), standing on the locomotion graph,
   her idle face cycle, the hair's share by her head's size on screen, her
   palette. Everglade's wasm grows by 10 KB (the block and four exports), and
@@ -286,12 +286,12 @@ orbit with no second page:
   and the runtime places her with `character_place` each frame.
 - **Idle life.** Her body loops her rig's idle clip (`CHARACTER_IDLE`,
   clip 0), her face plays its idle segments, and
-  `aethyr/character/idle.coax` adds blinks, glances and breath on the
+  `metaverse-engine/character/idle.coax` adds blinks, glances and breath on the
   joints and targets `ECHO_IDLE_RIG` names (all five found in her pack).
   The morphs switch on while a blink shows.
 - **A body.** Once the host draws her (`coaxial_character_ready_v1`), she
   is one capsule: among the bodies you walk into (`everglade_bodies_near`,
-  which `aethyr/move/walk.coax` resolves through `aethyr/physics/query.coax`), and in the
+  which `metaverse-engine/move/walk.coax` resolves through `metaverse-engine/physics/query.coax`), and in the
   follow camera's way (`camera_frame`, by `query_ray`). A page that never
   gets her pack has nothing unseen in its way.
 - **The orbit.** N runs `verse/valley/echo-orbit.coax` as a staged camera
@@ -321,7 +321,7 @@ actual raster size as well as the viewport: these results render every requested
 pixel. The existing graphics-quality ladder, gameplay and two-frame submission
 limit are unchanged.
 
-**Groom and face detail.** `aethyr/character/detail.coax` is the shared CPU/GPU
+**Groom and face detail.** `metaverse-engine/character/detail.coax` is the shared CPU/GPU
 rule. The original projected-head quadratic share remains above 96 pixels, with
 a cheaper tier below 64 pixels and a smooth join between them. The minimum
 effective share is 0.004; the close-up maximum remains 0.5. The source curves,
@@ -472,14 +472,14 @@ does:
   `raid=preview`. The room's Echo is drawn by the character pass, not the
   town rig: `rp_echo_room` places her from the creature, and
   `everglade_character_motion` writes the block's motion slots (116 to 125
-  in `aethyr/render/scene-lights.coax`): her pace, her cast, its time, bar
+  in `metaverse-engine/render/scene-lights.coax`): her pace, her cast, its time, bar
   and point, and the ground's rise under her.
 - **Her motion.** `character-host.coax` runs her own ECH1 locomotion graph
   (idle, walk, jog, starts and stops) at the room's pace. The town rig's
   clips aren't retargeted onto her: her own clips are better, and loading
   the 65-joint town rig would not fit the runtime's budget. A cast plays
   TF0290's source frames 1126 to 1152 from her pack's shot as the wind-up,
-  ending as the bar ends. Then `aethyr/character/fix.coax` (A3's solvers on
+  ending as the bar ends. Then `metaverse-engine/character/fix.coax` (A3's solvers on
   the character runtime) plants her feet on the town's ground while they
   touch it, lowers her hips for a hold out of reach, turns her head toward
   the spell's point and reaches her orb hand toward it.

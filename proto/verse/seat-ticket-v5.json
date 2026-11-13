@@ -2,7 +2,7 @@
   "profile": "openagents.seat-ticket",
   "version": 5,
   "spec": "docs/protocol/seat-ticket-v5.md",
-  "codec": "aethyr/session/seat-ticket.coax",
+  "codec": "metaverse-engine/session/seat-ticket.coax",
   "check": "coax/web/tool.sh coax/web/room/seat-ticket-profile.coax proto/verse/seat-ticket-v5.json",
   "format": "v5.KID.PID.ACCT.NAME64.ROOM.SHARD.EXPIRES.HP.EXT.SAVED.SIG; SIG the lowercase hex BIP-340 signature of every byte before .SIG under the API's private key; KID the first 8 hex digits of its x-only public key",
   "about_keys": "Throwaway test keys, published on purpose: never use them anywhere but these fixtures. aux is BIP-340's auxiliary randomness; the fixtures use zeros so the signatures are fixed, the API passes fresh random bytes.",

@@ -8,17 +8,17 @@ Two styles exist:
 
 - **SCIFI**: the OpenAgents Metaverse's instrument look. Grey and cyan glow lines, cut corners
   and thin bars. Most realms use it, and its drawing code stays where it is:
-  `verse/hud/frame.coax`, `aethyr/ui/draw.coax` and the Arwes frames in
-  `aethyr/ui/arwes-*.coax`.
+  `verse/hud/frame.coax`, `metaverse-engine/ui/draw.coax` and the Arwes frames in
+  `metaverse-engine/ui/arwes-*.coax`.
 - **FANTASY**: dark iron and bronze frames, warm gold type, parchment, rounded
   corners with diamond studs, framed segmented bars, recessed slots and a gold
   ribbon banner. Everglade uses it.
 
-The code is in [`aethyr/ui/hud-style.coax`](../../aethyr/ui/hud-style.coax).
+The code is in [`metaverse-engine/ui/hud-style.coax`](../../metaverse-engine/ui/hud-style.coax).
 Run its checks with:
 
 ```sh
-coax/bin/coax test aethyr/ui/hud-style.coax --library
+coax/bin/coax test metaverse-engine/ui/hud-style.coax --library
 ```
 
 ## The style API
@@ -110,18 +110,18 @@ which were measured from the same font files.
 
 ## Engine widgets
 
-[`aethyr/ui/hud-menu.coax`](../../aethyr/ui/hud-menu.coax) holds widgets any
+[`metaverse-engine/ui/hud-menu.coax`](../../metaverse-engine/ui/hud-menu.coax) holds widgets any
 realm uses with its own data:
 
 - `hud_trail_step`, `hud_vital` and `hud_plate_trail` (in
-  [`hud-style.coax`](../../aethyr/ui/hud-style.coax), GitHub #13147): a health
+  [`hud-style.coax`](../../metaverse-engine/ui/hud-style.coax), GitHub #13147): a health
   bar that eases to its value and, after a blow, leaves a pale trail where it
   stood, which waits 0.3 s and then catches up; healing takes the trail along.
   A realm keeps one `HudTrail` a bar and steps it each frame with the true
   share. `hud_vital` draws the bar: a dark groove with a gold hairline, the
   trail, the fill running dark to bright toward its end, a gloss.
 - `hud_vignette_step` and `hud_vignette` (in
-  [`hud-style.coax`](../../aethyr/ui/hud-style.coax), GitHub #13147): the
+  [`hud-style.coax`](../../metaverse-engine/ui/hud-style.coax), GitHub #13147): the
   screen's edges in red. A blow on you flashes them, harder and longer for a
   bigger blow (gone within a second), and they pulse every 1.25 s while you are
   under a quarter of your Hit Points. A realm keeps one `HudVignette`, steps it
@@ -145,8 +145,8 @@ while their body shows from the camera. One engine path decides it:
 1. The zone gives the eye, the body (its feet, its height) and its own
    colliders and land: boxes, capsules and convex hulls in world heights,
    and the heights of its land under the line.
-2. `hud_sight_look` in `aethyr/ui/hud-sight.coax` asks the visibility
-   service, `vis_line` in `aethyr/physics/visibility.coax`, about three points on
+2. `hud_sight_look` in `metaverse-engine/ui/hud-sight.coax` asks the visibility
+   service, `vis_line` in `metaverse-engine/physics/visibility.coax`, about three points on
    the body: its knees, chest and head. The body shows when any of them
    does. The service doesn't cross hulls yet, so `hud_sight_hull_cut` tests
    them on the same lines.
@@ -165,16 +165,16 @@ Each part is engine (any realm), game (every Everglade zone) or zone wiring
 
 | Layer | Part | Where |
 | --- | --- | --- |
-| Engine | Style tokens, text roles and part drawers, SCIFI and FANTASY | `aethyr/ui/hud-style.coax` |
-| Engine | Side bar, menu, tip and words | `aethyr/ui/hud-menu.coax` |
-| Engine | Sight for plates, health bars, names and damage numbers: a body as the visibility service's target, the settled answer faded over 0.15 s | `aethyr/ui/hud-sight.coax` on `aethyr/physics/visibility.coax` |
-| Engine | Where plates over bodies go: reach, order, lift or fold | `aethyr/ui/hud-plates.coax` |
+| Engine | Style tokens, text roles and part drawers, SCIFI and FANTASY | `metaverse-engine/ui/hud-style.coax` |
+| Engine | Side bar, menu, tip and words | `metaverse-engine/ui/hud-menu.coax` |
+| Engine | Sight for plates, health bars, names and damage numbers: a body as the visibility service's target, the settled answer faded over 0.15 s | `metaverse-engine/ui/hud-sight.coax` on `metaverse-engine/physics/visibility.coax` |
+| Engine | Where plates over bodies go: reach, order, lift or fold | `metaverse-engine/ui/hud-plates.coax` |
 | Engine | The straight-alpha HUD blend and the two-face glyph atlas | `coax/web/host.js` (`coaxial_fx_alpha_v1`, `sansAtlas`) |
 | Game | Everglade picks FANTASY and draws primitives and words as vertices | `EG_HUD`, `hud_emit`, `hud_draw`, `hud_say` in `everglade/scene/charactercreator.coax` |
 | Game | Unit frames (`eg_portrait`: your portrait plate, and your target's frame as its red mirror: a gold-rimmed medallion, a glass plate, the health bar with its damage trail), bar tray, a slot's cooldown sweep (`eg_slot_sweep`), map ring, name plates with their trails (`eg_plates`), the screen's red edges (`eg_vignette`), place banner, plaque; the world's layout (`eg_world`) | `everglade/hud/parts.coax` |
 | Game | The class menus: the class features (Healer's Kit, Wild Companion, Find Familiar) and the rest menu with how the rest stands. Nothing of them is a button over the action bar (GitHub #13147): a press on your portrait plate opens them, hung under it (`eg_side_geo`, `eg_side_press`, `eg_side_draw`). Knocking out has no control on screen; in Experimental K turns it on and off | `everglade/hud/class-bar.coax` |
 | Game | The CLASSES and LEVEL picker shared by Everglade's test pages: buttons a finger tall on phones and tablets, the classes as a grid that keeps over the action bar, the wild-shape swap (`cm_pick`, `cm_pick_hit`, `cm_pick_draw`) | `everglade/client/class-menu.coax` |
-| Game | The upright phone (#13189): `zone_compact` says when a zone's HUD is compact (a touch screen, portrait, under 700 points wide). The bar is one row with MORE opening the rest (`xc_slot`, `xc_more_box`), with no class plate over it (`eg_bar_frame` with no initial); the GFX, FPS and coordinate lines show only with `?net` (`xc_corner`); GYRO over JUMP opens the gyro's menu (`zt_gyro`, `zt_gyro_menu` on `hud_menu`) | `everglade/zone-touch.coax`, `everglade/zone-combat.coax`; the gyro in `aethyr/cam/gyro.coax` |
+| Game | The upright phone (#13189): `zone_compact` says when a zone's HUD is compact (a touch screen, portrait, under 700 points wide). The bar is one row with MORE opening the rest (`xc_slot`, `xc_more_box`), with no class plate over it (`eg_bar_frame` with no initial); the GFX, FPS and coordinate lines show only with `?net` (`xc_corner`); GYRO over JUMP opens the gyro's menu (`zt_gyro`, `zt_gyro_menu` on `hud_menu`) | `everglade/zone-touch.coax`, `everglade/zone-combat.coax`; the gyro in `metaverse-engine/cam/gyro.coax` |
 | Game | The faces' widths | `everglade/hud/fonts.coax`; the faces in `realms.json` |
 | Zone wiring | Everglade II: its facts and its room's requests | `e2_world_view` in `everglade/client/client.coax`; `e2k_facts`, `e2k_menu_do`, `e2k_side_bar` in `everglade/client/cast.coax`; its colliders and land for sight in `everglade/client/sight.coax`; plates in `e2_heads` (`everglade/client/client.coax`), which adds the monsters' and the guard's from `everglade/client/creatures.coax` and `everglade/client/guard.coax` |
 | Zone wiring | Character Create's wardrobe | `everglade/client/create.coax` |

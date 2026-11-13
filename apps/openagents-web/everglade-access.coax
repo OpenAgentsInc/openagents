@@ -1,5 +1,5 @@
 // Everglade's input and reading settings, its captions and its controls for a keyboard and a screen
-// reader (GitHub #12857; Aethyr book chapter 85). One record decides them all: aethyr/ui/settings.coax.
+// reader (GitHub #12857; Aethyr book chapter 85). One record decides them all: metaverse-engine/ui/settings.coax.
 //
 // - Keys. Every key Everglade reads for play goes through the record (eg_key_play): a key bound to an
 //   action does what that action's default key did, and a default key moved to no action does
@@ -25,7 +25,7 @@
 //   brackets, to find text that a longer language would push out of its plate. The page is in
 //   English only; nothing is translated.
 //   coax/bin/coax test apps/openagents-web/everglade.coax --only "access:"
-#load "../../aethyr/ui/settings.coax";
+#load "../../metaverse-engine/ui/settings.coax";
 
 ACT_SETTINGS :: 14;        // host.js: keep the record in verse.settings
 EGA_CAPS :: 3;             // captions shown at once
@@ -58,7 +58,7 @@ EGT_WORDS :: [EGT_N] string.["SETTINGS", "TEXT SIZE", "REDUCED MOTION", "CAPTION
   "SLOT 1", "SLOT 2", "SLOT 3", "SLOT 4", "SLOT 5", "SLOT 6", "SLOT 7", "SLOT 8", "SLOT 9", "SLOT 10"];
 EGT_W :: 64;               // a word's room, pseudolocalized
 
-// A sound's caption, by SFX_* (aethyr/audio/sfx.coax); "" for one not captioned (flights, footsteps, the bed).
+// A sound's caption, by SFX_* (metaverse-engine/audio/sfx.coax); "" for one not captioned (flights, footsteps, the bed).
 EGA_HEARD :: [SFX_COUNT] string.[
   "FIRE", "", "FIRE HITS", "FIREBALL",
   "FROST", "", "FROST HITS",

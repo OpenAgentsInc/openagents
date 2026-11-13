@@ -5,7 +5,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "kokiri-phive.coax";
-#load "../../aethyr/anim/pose.coax";
+#load "../../metaverse-engine/anim/pose.coax";
 KcTransform :: struct {q:Quat;t:Point;s:Point;}
 KcStats :: struct {triangles:int;instances:int;unsupported:[256]int;low:Point=Point.{x=1000000,y=1000000,z=1000000};high:Point=Point.{x= -1000000,y= -1000000,z= -1000000};}
 kc_apply :: (p:Point,chain:[]KcTransform)->Point {v:=p;for k:0..<chain.count {t:=chain[chain.count-1-k];v=add(quat_rotate(t.q,v3(v.x*t.s.x,v.y*t.s.y,v.z*t.s.z)),t.t);}return v;}

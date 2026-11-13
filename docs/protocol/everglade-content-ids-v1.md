@@ -22,7 +22,7 @@ the number means and is how code finds it.
 | `item` | `item/ID` | The item ledger's `kind`. No rows yet: #13291 adds the first |
 | `spawn` | `everglade2/GROUP/NAME` | `M` in the `h2` and `h3` creature frames |
 
-Typed numbers are in `aethyr/core/ids.coax`: `AbilityId`, `SpellId`, `TemplateId`,
+Typed numbers are in `metaverse-engine/core/ids.coax`: `AbilityId`, `SpellId`, `TemplateId`,
 `ItemKindId` and `SpawnId`.
 
 ## The rules

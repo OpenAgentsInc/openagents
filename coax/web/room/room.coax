@@ -1,5 +1,5 @@
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
-#load "../../../aethyr/core/ids.coax";
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
+#load "../../../metaverse-engine/core/ids.coax";
 #load "../../../everglade/shared/everglade-handles.coax";
 #load "room-handles.coax";
 // The room server's decisions: which room a WebSocket's path names, who sits where, each realm's
@@ -20,16 +20,16 @@
 #load "room-games.coax";   // the games on their own paths, behind one registration (#13347)
 #load "../../../everglade/server/battle.coax";   // Everglade II's battle: its layout and step over the SRD engine (#13346)
 #load "../../../everglade/shared/everglade-wire.coax";
-#load "../../../aethyr/session/compat.coax";   // sessions pinned to a build (#12839)
-#load "../../../aethyr/session/lifecycle.coax";   // the room's side of the session lifecycle: what it takes, how long it holds a seat (#12856)
-#load "../../../aethyr/session/travel.coax";   // one owner per character (its fence, control.coax) and travel's admission (#12834, #12850, #12845)
-#load "../../../aethyr/net/profile.coax";   // each realm's timing, trust, durability and fairness (#12845)
-#load "../../../aethyr/net/realm.coax";
-#load "../../../aethyr/net/command.coax";
-#load "../../../aethyr/net/session.coax";
-#load "../../../aethyr/net/diagnostics.coax";
-#load "../../../aethyr/net/transport.coax";   // WebSocket or WebTransport: the channel each frame goes on (#13176)
-#load "../../../aethyr/session/party.coax";   // a party's rules: who shows to whom (#12852, #12845)
+#load "../../../metaverse-engine/session/compat.coax";   // sessions pinned to a build (#12839)
+#load "../../../metaverse-engine/session/lifecycle.coax";   // the room's side of the session lifecycle: what it takes, how long it holds a seat (#12856)
+#load "../../../metaverse-engine/session/travel.coax";   // one owner per character (its fence, control.coax) and travel's admission (#12834, #12850, #12845)
+#load "../../../metaverse-engine/net/profile.coax";   // each realm's timing, trust, durability and fairness (#12845)
+#load "../../../metaverse-engine/net/realm.coax";
+#load "../../../metaverse-engine/net/command.coax";
+#load "../../../metaverse-engine/net/session.coax";
+#load "../../../metaverse-engine/net/diagnostics.coax";
+#load "../../../metaverse-engine/net/transport.coax";   // WebSocket or WebTransport: the channel each frame goes on (#13176)
+#load "../../../metaverse-engine/session/party.coax";   // a party's rules: who shows to whom (#12852, #12845)
 #load "room-interest.coax";   // who may receive what, each tick (#12789)
 #load "room-input-policy.coax";
 #load "room-blocks.coax";     // and who each seat blocks
@@ -45,17 +45,17 @@
 #load "room-checkpoint.coax";
 #load "../../../everglade/server/aid.coax";
 #load "../../../everglade/server/familiar.coax";
-#load "../../../aethyr/ai/steer.coax";   // the engine's NPC navigation and steering (#13074)
+#load "../../../metaverse-engine/ai/steer.coax";   // the engine's NPC navigation and steering (#13074)
 #load "../../../everglade/server/guard.coax";   // Everglade II's path guard
 #load "../../../everglade/server/admin.coax";   // Everglade II's admin mode: a local room's only (--dev on 127.0.0.1)
 #load "../../../everglade/server/creatures.coax";   // Everglade II's wolves and goblins
 #load "../../../everglade/shared/archery.coax";   // Everglade II's ground and bodies for an arrow, the page's too (#13157)
-#load "../../../aethyr/net/projectile.coax";   // projectiles over a room: the launch, the flight, the end, the bodies' past
+#load "../../../metaverse-engine/net/projectile.coax";   // projectiles over a room: the launch, the flight, the end, the bodies' past
 #load "../../../everglade/server/arrows.coax";   // Everglade II's arrows: the room flies each one
 
 #load "../../../everglade/server/rest.coax";   // Everglade II rests, room-authoritative on the shared rules (#13046)
 #load "room-control.coax";
-#load "../../../aethyr/session/moderation.coax";   // moderation's rules and its one codec (#13302)
+#load "../../../metaverse-engine/session/moderation.coax";   // moderation's rules and its one codec (#13302)
 #load "room-mod.coax";   // a moderator's commands, logged before they are done
 #load "room-items.coax";   // loot, quests and what is worn: the room's ledger operations (#13291, #13292)
 #load "background-budget.coax";
@@ -67,7 +67,7 @@
 #load "room-dev.coax";
 #load "room-stats.coax";   // what the server counts of its own work, for the admins' room view (#12791)
 #load "room-work.coax";
-#load "../../../aethyr/net/latency.coax";
+#load "../../../metaverse-engine/net/latency.coax";
 #load "room-latency.coax";
 
 CONNS :: 512;
@@ -315,7 +315,7 @@ rm_left :: (v: [] RmServer, conn: int) #export_c #effects(all) {
   if v[0].conns[conn].live && v[0].conns[conn].relay >= 0 { rl_left(v, conn); }
   v[0].conns[conn] = RmConn.{};
 }
-// The realms this server runs, each by its own profile (aethyr/net/profile.coax) on the host's one beat:
+// The realms this server runs, each by its own profile (metaverse-engine/net/profile.coax) on the host's one beat:
 // the games on their own paths step on realm 0's (room-games.coax rm_games_beat: every beat, two
 // physics steps each, 120 Hz). Everglade steps every other beat, its seats earning
 // their steps by the clock (rm_eg_begin), and its progression waits for the API's receipts

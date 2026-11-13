@@ -16,7 +16,7 @@ on screen and no sound plays. `docs/decks/demo.deck` uses every kind of slide.
 - Pages are 16:9 (960 × 540 points) on the near-black ground and faint iso grid
   of the homepage.
 - Titles, kickers and labels are set in Filament, the site's stroke font
-  (`aethyr/ui/font.coax`), drawn as vector strokes.
+  (`metaverse-engine/ui/font.coax`), drawn as vector strokes.
 - Body text is Helvetica, with the widths the site uses for small text.
 - A slide with cells has a header panel (kicker, title and subtitle) and a grid
   of panels under it. Each panel has a label bar: the label in the accent on the

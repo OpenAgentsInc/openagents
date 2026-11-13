@@ -3,7 +3,7 @@
 // #12706: each seat's state a jitter buffer behind the server's clock, its velocity and flags, the
 // look, class and FLAGS of its hello), read into a RemoteBody each (remote_bodies), as what they are:
 //   - the skinned Ranger you play (everglade/legacy/v1/ranger.coax), on the same skinning and clip
-//     blending as yours (aethyr/anim/skin.coax skin_advance: a change of clip blends over SKIN_FADE), the
+//     blending as yours (metaverse-engine/anim/skin.coax skin_advance: a change of clip blends over SKIN_FADE), the
 //     clip picked as yours is (figure: idle, walk, run or jump by speed and air), the gait from their
 //     interpolated speed so a walk never skates; the swing as their spell goes off, as yours does as
 //     you cast (rangers_you_cast);

@@ -111,7 +111,7 @@ pieces:
 - `?clock=T`, which pins time of day, and golden mode, which holds effects
   still;
 - replay of the same input stream across hosts, matching bit for bit
-  (`aethyr/core/replay.coax`, `coax/web/replay-hosts.coax`).
+  (`metaverse-engine/core/replay.coax`, `coax/web/replay-hosts.coax`).
 
 **Gap.** There is no interactive "freeze, then advance on command" mode
 that a driver controls. There is no `settle` (run until nothing is
@@ -154,10 +154,10 @@ things:
 
 The pieces of a retained layer exist:
 
-- `aethyr/ui/tree.coax`: a fixed table of 128 nodes with roles, the same
+- `metaverse-engine/ui/tree.coax`: a fixed table of 128 nodes with roles, the same
   rectangles for drawing, hit-testing and focus, labels required, and
   focus trapped in dialogs.
-- `aethyr/ui/hud.coax`: a component-library foundation.
+- `metaverse-engine/ui/hud.coax`: a component-library foundation.
 - `apps/shared/zeron/`: about 5.7K lines of GPUI-style components shared
   by the Mac app and openagents.com/chat.
 
@@ -233,7 +233,7 @@ be put inside a GPU surface.
 
 **Coax: stronger.** Coax emits shaders from checked source: `coax wgsl`,
 `coax spirv`, `coax metal`, `coax metal-compute` and `coax cuda`, with
-reflection records. Render plans admitted in `aethyr/render/` run in
+reflection records. Render plans admitted in `metaverse-engine/render/` run in
 `render.js` with a ledger of GPU handles. The GPU is the whole screen,
 not an add-on.
 

@@ -13,14 +13,14 @@ which exist only in this book.
 The registry's `adopted_by` entry names `SparkHost.swift`, which directly
 calls the existing wallet rules. It records adoption of that component,
 not adoption of the offline NIP-MV, zap or Wallet Connect exchange. Live
-integration depends on [the Metaverse Engine's rooms and presence](../../aethyr/book/ch049-rooms-and-presence.md)
+integration depends on [the Metaverse Engine's rooms and presence](../../metaverse-engine/book/ch049-rooms-and-presence.md)
 and the [application exits](COMPLETION.md#4-connect-the-offline-integrations-to-applications).
 
 ## What this chapter teaches
 
 - Presence: NIP-MV pose frames published to a Coax relay, sent to every
   subscription that asks for the world, and drawn a fixed delay behind, as
-  [Metaverse Engine chapter 49](../../aethyr/book/ch049-rooms-and-presence.md) plans.
+  [Metaverse Engine chapter 49](../../metaverse-engine/book/ch049-rooms-and-presence.md) plans.
 - The latency budget: when a move made on one screen is drawn on another,
   worked out on a fixed clock.
 - An in-world zap from the zap request to the counted receipt, with the
@@ -739,8 +739,8 @@ equivalent:
 
 ## What is not built yet
 
-- The OpenAgents Metaverse Engine's rooms and presence (`aethyr/net/room.coax` and
-  `aethyr/net/presence.coax`, Metaverse Engine chapter 49), and any realm that
+- The OpenAgents Metaverse Engine's rooms and presence (`metaverse-engine/net/room.coax` and
+  `metaverse-engine/net/presence.coax`, Metaverse Engine chapter 49), and any realm that
   publishes or reads NIP-MV frames.
 - Presence measured over real sockets: the example's 40 ms hops are an
   assumption. `presence-pair.coax` measures the HTTP path today; it was
@@ -775,7 +775,7 @@ equivalent:
 - [71. Lightning zaps and goals](ch071-lightning-zaps-and-goals.md)
 - [72. Wallet Connect](ch072-wallet-connect.md)
 - [Metaverse Engine chapter 49, Rooms and
-  presence](../../aethyr/book/ch049-rooms-and-presence.md) is required for the
+  presence](../../metaverse-engine/book/ch049-rooms-and-presence.md) is required for the
   later live room integration, not this chapter's qualified offline example.
 
 ## Sources

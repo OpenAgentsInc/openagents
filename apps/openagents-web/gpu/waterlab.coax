@@ -1,8 +1,8 @@
 // waterlab's shaders, the source of apps/openagents-web/waterlab.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (waterlab.module,
 // waterlab.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/render/noise.coax";
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/render/noise.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../verse/style.coax";
 
 // The water lab (waterlab.coax): one traced pass. A sea to the horizon on

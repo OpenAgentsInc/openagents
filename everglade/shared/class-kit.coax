@@ -14,7 +14,7 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #load "../../rules/srd/battle.coax";
-#load "../../aethyr/action/area-aim.coax" as aa;   // the areas abilities open, placed, outlined and resolved (#13081)
+#load "../../metaverse-engine/action/area-aim.coax" as aa;   // the areas abilities open, placed, outlined and resolved (#13081)
 #load "fivebar.coax";
 #load "../model/content-ids.coax";   // the numbers a cast's wire slot and a save carry (#13286)
 #load "../../rules/srd/death-save-line.coax";   // at 0 Hit Points: the Death Saving Throws on a row and the plain line, every realm
@@ -205,7 +205,7 @@ xc_aim_point :: (a: FbAb, m: XcAim, px: f32, pz: f32, fx: f32, fz: f32) -> [2] f
   return [2] f32.[px + fx * d, pz + fz * d];
 }
 // The area spell sp opens, in metres on the ground at (0, 0) facing +z, from its SRD area of effect
-// (aethyr/action/area-aim.coax; not on when it has none): a Sphere is a circle of its radius, a Square
+// (metaverse-engine/action/area-aim.coax; not on when it has none): a Sphere is a circle of its radius, a Square
 // or a Cube on a point a square of its side, a Line from you a line of its length and width, and a Cube
 // from you the box of the squares rs_area gives it ahead of you, half a square past each edge for the
 // world's nearest-square mapping (Thunderwave's 15-foot cube: 3 squares across, from your own square on).
@@ -230,7 +230,7 @@ xk_area :: (a: FbAb) -> aa.AreaAim {
 // Whether ability a's area is placed on the ground (armed, then cast where it lies) rather than opened
 // from you the way you face.
 xk_area_placed :: (a: FbAb) -> bool { r := xk_area(a); return r.on && !aa.area_from_caster(r); }
-// Ability a's placed area armed for `slot`, held to `range` metres (aethyr/action/area-aim.coax).
+// Ability a's placed area armed for `slot`, held to `range` metres (metaverse-engine/action/area-aim.coax).
 xk_area_arm :: (a: FbAb, slot: int, range: f32, t: f32) -> aa.AreaAim {
   r := xk_area(a); r.slot = slot; r.range = range; r.armed_at = t;
   return r;
@@ -268,7 +268,7 @@ xc_kit :: (c: int) -> int {
 // ---- sound: every ability its own (everglade/sound.coax plays them, varied each time)
 // start: as you use it (a blow's whoosh as the swing starts); layer: under the cast; hit: where it
 // lands on a monster; miss: where a spell meets no one or a monster dodges it. Names are Everglade's
-// bank (aethyr/audio/everglade-sfx.txt) or Experimental's own (aethyr/audio/experimental-sfx.coax).
+// bank (metaverse-engine/audio/everglade-sfx.txt) or Experimental's own (metaverse-engine/audio/experimental-sfx.coax).
 XcSnd :: struct { start: string; layer: string; hit: string; miss: string; rate: f32 = 1; }
 xs :: (start: string, layer: string, hit: string, miss: string, rate: f32) -> XcSnd {
   return XcSnd.{start = start, layer = layer, hit = hit, miss = miss, rate = rate};

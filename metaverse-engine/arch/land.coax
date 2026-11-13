@@ -1,0 +1,417 @@
+// The Metaverse Engine's architecture kit, wild land: cliffs, boulders, water and what crosses it, as
+// generators. Each writes one part at the origin (metaverse-engine/arch/mesh.coax ArchPart) with the solids
+// that block a walker; a realm stands it with a record.
+//
+//   arch_cliff         a wall of rock: great rounded buttresses of bedded stone before a mass of it
+//   arch_boulder       a rounded stone, mossy on top
+//   arch_river         a river's surface along a line of points, each with its own half width
+//   arch_pool          a round pool's surface
+//   arch_falls         a waterfall's sheet from its lip down to its foot
+//   arch_mist          spray: soft puffs about a point
+//   arch_rainbow       a rainbow's band: an arc that faces +z
+//   arch_plank_bridge  a bridge of planks on stringers and piles, with posts, rails and braces
+//   arch_reeds         a clump of reeds with cattails
+//   arch_flowers       a drift of flower spikes in a colour
+//   arch_vine          a curtain of leaves that hangs down a rock face
+//
+// Water, spray and the rainbow are wet materials (metaverse-engine/arch/palette.coax, ARCH_M_WET and up): a
+// world draws them last, in the stylized water pass (metaverse-engine/render/stylized.coax).
+//   coax/bin/coax test --library metaverse-engine/arch/land.coax
+#module "aethyr.arch.land";
+#load "flora.coax";
+
+ArchCliff :: struct {
+  run: f32 = 40.0;                   // its length along x, about the origin
+  h: f32 = 22.0;                     // the tallest buttress
+  depth: f32 = 12.0;                 // how far back (-z) the mass behind the buttresses goes
+  bulge: f32 = 4.5;                  // a buttress's radius
+  beds: f32 = 2.4;                   // a bed of rock's thickness
+  hollow: f32 = 0.0;                 // how far its middle is set back from its ends: a cove
+  gap: f32 = 0.0;                    // half the width of a cleft left open for a waterfall (0 none),
+  gap_at: f32 = 0.0;                 // and where along x its middle is
+  r: f32 = 0.0; g: f32 = 0.0; b: f32 = 0.0;   // the rock's colour (0: its own blue-grey)
+  vines: f32 = 0.5;                  // the share of its buttresses that carry a curtain of vines
+  seed: int = 1;
+}
+// Where the cliff's face stands at `x` along it: how far back its hollow sets it.
+arch_cliff_face :: (c: ArchCliff, x: f32) -> f32 {
+  t := x / arch_highf(c.run * 0.5, 0.001);
+  return -c.hollow * (1 - t * t);
+}
+// One buttress about (cx, cz): `sides` round, in beds from the ground to `h`, each bed a little
+// in or out of the one below with a ledge between, narrowing upward, under a low dome.
+arch_buttress :: (p: [] ArchPen, cx: f32, cz: f32, r: f32, h: f32, beds: f32, seed: int) {
+  sides := 12;
+  out: [12] f32;
+  for i: 0..<sides { out[i] = arch_vary(seed, 40 + i, 0.86, 1.14); }
+  y0: f32 = -0.6; k0: f32 = 1.06; bed := 0;
+  while y0 < h - 0.05 && bed < 40 {
+    y1 := y0 + beds * arch_vary(seed, 100 + bed, 0.7, 1.3);
+    if y1 > h - beds * 0.35 { y1 = h; }
+    k1 := (1 - 0.3 * arch_highf(y1, 0) / h) * arch_vary(seed, 200 + bed, 0.93, 1.05);
+    last := y1 >= h;
+    for i: 0..<sides {
+      a0 := f32(ARCH_TAU) * cast(f32) i / cast(f32) sides; a1 := f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) sides;
+      r0 := r * out[i]; r1 := r * out[(i + 1) % sides];
+      n0 := arch_v(cos(a0), 0.12, sin(a0)); n1 := arch_v(cos(a1), 0.12, sin(a1));
+      u0 := a0 * r; u1 := a1 * r;
+      // the bed's face
+      arch_quad(p, arch_at(cx + cos(a0) * r0 * k0, y0, cz + sin(a0) * r0 * k0, n0[0], n0[1], n0[2], u0, y0),
+                   arch_at(cx + cos(a0) * r0 * k0, y1, cz + sin(a0) * r0 * k0, n0[0], n0[1], n0[2], u0, y1),
+                   arch_at(cx + cos(a1) * r1 * k0, y1, cz + sin(a1) * r1 * k0, n1[0], n1[1], n1[2], u1, y1),
+                   arch_at(cx + cos(a1) * r1 * k0, y0, cz + sin(a1) * r1 * k0, n1[0], n1[1], n1[2], u1, y0));
+      // the ledge onto the next bed, or the dome on the last
+      if last {
+        arch_tri(p, arch_at(cx + cos(a0) * r0 * k0, y1, cz + sin(a0) * r0 * k0, n0[0] * 0.5, 0.86, n0[2] * 0.5, u0, y1),
+                    arch_at(cx, y1 + r * 0.16, cz, 0, 1, 0, u0, y1 + 1),
+                    arch_at(cx + cos(a1) * r1 * k0, y1, cz + sin(a1) * r1 * k0, n1[0] * 0.5, 0.86, n1[2] * 0.5, u1, y1));
+      } else {
+        arch_quad(p, arch_at(cx + cos(a0) * r0 * k0, y1, cz + sin(a0) * r0 * k0, 0, 1, 0, u0, y1),
+                     arch_at(cx + cos(a0) * r0 * k1, y1, cz + sin(a0) * r0 * k1, 0, 1, 0, u0, y1),
+                     arch_at(cx + cos(a1) * r1 * k1, y1, cz + sin(a1) * r1 * k1, 0, 1, 0, u1, y1),
+                     arch_at(cx + cos(a1) * r1 * k0, y1, cz + sin(a1) * r1 * k0, 0, 1, 0, u1, y1));
+      }
+    }
+    y0 = y1; k0 = k1; bed += 1;
+  }
+}
+// A cliff along x, its face toward +z: buttresses side by side, each its own height and girth,
+// before a mass of rock `depth` deep whose top is the land above. A walker can't climb it.
+arch_cliff :: (p: [] ArchPen, c: ArchCliff) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, ARCH_M_CLIFF, c.r, c.g, c.b);
+  half := c.run * 0.5;
+  // The mass behind: its face stands a little behind the buttresses' middles.
+  back := c.h * 0.8; front: f32 = -c.bulge * 0.35 - c.hollow * 0.5;
+  arch_slab(p, -half, -0.6, front - c.depth, half, back, front);
+  arch_solid_box(p, -half, 0, front - c.depth, half, back, front);
+  count := cast(int) (c.run / (c.bulge * 1.02)) + 1;
+  if count < 2 { count = 2; }
+  for k: 0..<count {
+    x := -half + c.run * (cast(f32) k + 0.5) / cast(f32) count + arch_vary(c.seed, k, -0.2, 0.2) * c.bulge;
+    r := c.bulge * arch_vary(c.seed, 50 + k, 0.82, 1.22);
+    // A buttress that would stand in the cleft is left out.
+    if c.gap > 0 && abs(x - c.gap_at) - r * 1.22 < c.gap { continue; }
+    h := c.h * arch_vary(c.seed, 100 + k, 0.66, 1.0);
+    z := arch_cliff_face(c, x) + arch_vary(c.seed, 150 + k, -0.25, 0.3) * c.bulge;
+    arch_buttress(p, x, z, r, h, c.beds, c.seed * 97 + k * 13);
+    arch_solid_round(p, x, z, r * 0.84, 0, h);
+    // A curtain of vines over its face, hung from part way up it.
+    if arch_hash(c.seed, 400 + k) < c.vines {
+      vy := h * arch_vary(c.seed, 450 + k, 0.42, 0.86); vr := r * (1 - 0.3 * vy / h) * 1.17;
+      a0 := f32(ARCH_TAU) * arch_vary(c.seed, 500 + k, 0.1, 0.28); span := f32(ARCH_TAU) * arch_vary(c.seed, 550 + k, 0.08, 0.15);
+      strands := cast(int) (span * vr / 0.36) + 2;
+      for i: 0..<strands {
+        a := a0 + span * cast(f32) i / cast(f32) (strands - 1);
+        long := h * arch_vary(c.seed, 600 + k * 29 + i, 0.06, 0.22); leaves := cast(int) (long / 0.34) + 1;
+        shade := arch_vary(c.seed, 700 + k * 29 + i, 0.8, 1.15);
+        arch_material(p, ARCH_M_LEAF, 0.1 * shade, 0.3 * shade, 0.13 * shade);
+        for j: 0..<leaves {
+          y := vy - 0.32 * cast(f32) j; b := a + arch_vary(c.seed, 800 + k * 53 + i * 7 + j, -0.05, 0.05);
+          cx := x + cos(b) * vr; cz := z + sin(b) * vr; tx := -sin(b) * 0.24; tz := cos(b) * 0.24;
+          v := arch_hash(c.seed, 900 + k * 53 + i * 7 + j);
+          arch_tri(p, arch_at(cx - tx, y, cz - tz, cos(b) * 0.8, 0.6, sin(b) * 0.8, 0.3, v), arch_at(cx + tx, y, cz + tz, cos(b) * 0.8, 0.6, sin(b) * 0.8, 0.3, v),
+                      arch_at(cx + cos(b) * 0.06, y - 0.52, cz + sin(b) * 0.06, cos(b) * 0.8, 0.6, sin(b) * 0.8, 0.1, v));
+        }
+      }
+      arch_material(p, ARCH_M_CLIFF, c.r, c.g, c.b);
+    }
+    // A lower shoulder before every third: the face steps down to the ground.
+    if k % 3 == 1 {
+      sr := r * 0.62; sh := h * arch_vary(c.seed, 250 + k, 0.2, 0.42);
+      sx := x + arch_vary(c.seed, 300 + k, -0.5, 0.5) * r; sz := z + r * 0.78;
+      if c.gap > 0 && abs(sx - c.gap_at) - sr * 1.22 < c.gap { continue; }
+      arch_buttress(p, sx, sz, sr, sh, c.beds * 0.8, c.seed * 131 + k * 7);
+      arch_solid_round(p, sx, sz, sr * 0.84, 0, sh);
+    }
+  }
+  return arch_part(p, from);
+}
+
+// A boulder: a rounded stone `rx`, `ry`, `rz` in its radii, sunk a third into the ground, its
+// outline pushed in and out; moss grows on what faces up (the cliff's rock).
+arch_boulder :: (p: [] ArchPen, rx: f32, ry: f32, rz: f32, seed: int) -> ArchPart {
+  from := p[0].n; segments := 9; rings := 5;
+  arch_material(p, ARCH_M_CLIFF, 0, 0, 0);
+  pts: [60] [3] f32; nrm: [60] [3] f32;   // (segments + 1) * (rings + 1)
+  for j: 0..<rings + 1 {
+    for i: 0..<segments + 1 {
+      a := f32(ARCH_TAU) * cast(f32) (i % segments) / cast(f32) segments; b := f32(ARCH_TAU) * 0.5 * cast(f32) j / cast(f32) rings;
+      f: f32 = 1;
+      if j > 0 && j < rings { f = arch_vary(seed, (i % segments) * 11 + j * 53, 0.84, 1.14); }
+      d := arch_v(cos(a) * sin(b), -cos(b), sin(a) * sin(b));
+      pts[j * (segments + 1) + i] = arch_v(d[0] * rx * f, ry * 0.35 + d[1] * ry * f, d[2] * rz * f);
+      nrm[j * (segments + 1) + i] = arch_vnorm(arch_v(d[0] / rx, d[1] / ry, d[2] / rz));
+    }
+  }
+  for j: 0..<rings {
+    for i: 0..<segments {
+      o := j * (segments + 1) + i; q := [4] int.[o, o + segments + 1, o + segments + 2, o + 1];
+      c: [4] ArchPoint;
+      for k: 0..<4 { c[k] = arch_at(pts[q[k]][0], pts[q[k]][1], pts[q[k]][2], nrm[q[k]][0], nrm[q[k]][1], nrm[q[k]][2], cast(f32) i, pts[q[k]][1]); }
+      if j == 0 { arch_tri(p, c[0], c[1], c[2]); } else if j == rings - 1 { arch_tri(p, c[0], c[1], c[3]); } else { arch_quad(p, c[0], c[1], c[2], c[3]); }
+    }
+  }
+  arch_solid_round(p, 0, 0, arch_lowf(rx, rz) * 0.8, 0, ry * 1.2);
+  return arch_part(p, from);
+}
+
+// A river's surface along a line of points, three floats each: x, z and half its width there. It
+// lies level at `y`. u runs downstream in metres (from the first point) and v across, so its
+// ripples run the way it flows. Water blocks nobody.
+arch_river :: (p: [] ArchPen, line: [] f32, y: f32) -> ArchPart {
+  from := p[0].n; n := line.count / 3;
+  arch_material(p, ARCH_M_RIVER, 0, 0, 0);
+  if n < 2 { return arch_part(p, from); }
+  along: f32 = 0;
+  l0: [3] f32; r0: [3] f32;
+  for i: 0..<n {
+    a := ifx i == 0 then 0 else i - 1; b := ifx i == n - 1 then n - 1 else i + 1;
+    dx := line[b * 3] - line[a * 3]; dz := line[b * 3 + 1] - line[a * 3 + 1]; dl := arch_highf(sqrt(dx * dx + dz * dz), 0.0001);
+    // Square to the way it flows: its left bank and its right.
+    sx := dz / dl; sz := -dx / dl; half := line[i * 3 + 2];
+    l1 := arch_v(line[i * 3] + sx * half, along, line[i * 3 + 1] + sz * half); r1 := arch_v(line[i * 3] - sx * half, along, line[i * 3 + 1] - sz * half);
+    if i > 0 {
+      step := sqrt((line[i * 3] - line[i * 3 - 3]) * (line[i * 3] - line[i * 3 - 3]) + (line[i * 3 + 1] - line[i * 3 - 2]) * (line[i * 3 + 1] - line[i * 3 - 2]));
+      l1[1] = l0[1] + step; r1[1] = l1[1];
+      prev := line[i * 3 - 1];
+      arch_quad(p, arch_at(l0[0], y, l0[2], 0, 1, 0, l0[1], prev), arch_at(r0[0], y, r0[2], 0, 1, 0, r0[1], -prev),
+                   arch_at(r1[0], y, r1[2], 0, 1, 0, r1[1], -half), arch_at(l1[0], y, l1[2], 0, 1, 0, l1[1], half));
+    }
+    l0 = l1; r0 = r1;
+  }
+  return arch_part(p, from);
+}
+// A round pool's surface, `r` across at height 0: u and v are its own metres.
+arch_pool :: (p: [] ArchPen, r: f32) -> ArchPart {
+  from := p[0].n; sides := 20;
+  arch_material(p, ARCH_M_RIVER, 0, 0, 0);
+  for i: 0..<sides {
+    a0 := f32(ARCH_TAU) * cast(f32) i / cast(f32) sides; a1 := f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) sides;
+    arch_tri(p, arch_at(0, 0, 0, 0, 1, 0, 0, 0), arch_at(cos(a1) * r, 0, sin(a1) * r, 0, 1, 0, cos(a1) * r, sin(a1) * r), arch_at(cos(a0) * r, 0, sin(a0) * r, 0, 1, 0, cos(a0) * r, sin(a0) * r));
+  }
+  return arch_part(p, from);
+}
+// A waterfall's sheet, its face toward +z: `w` wide at its lip at height `h`, a little wider at its
+// foot at 0, thrown `out` metres forward as it falls and bowed across. u runs across it from 0 to
+// 1 and v down from the lip in metres.
+arch_falls :: (p: [] ArchPen, w: f32, h: f32, out: f32) -> ArchPart {
+  from := p[0].n; cols := 4; rows := 8;
+  arch_material(p, ARCH_M_FALLS, 0, 0, 0);
+  for j: 0..<rows {
+    for i: 0..<cols {
+      c: [4] ArchPoint;
+      for k: 0..<4 {
+        ii := i + (ifx k == 1 || k == 2 then 1 else 0); jj := j + (ifx k >= 2 then 1 else 0);
+        s := cast(f32) ii / cast(f32) cols; t := cast(f32) jj / cast(f32) rows;      // across, and down
+        wide := w * (1 + 0.28 * t);
+        z := out * sqrt(t) + w * 0.14 * (1 - (2 * s - 1) * (2 * s - 1));
+        c[k] = arch_at((s - 0.5) * wide, h * (1 - t), z, 0, 0.25, 0.97, s, t * h);
+      }
+      arch_quad(p, c[0], c[3], c[2], c[1]);
+    }
+  }
+  return arch_part(p, from);
+}
+// Spray: `puffs` soft round puffs within `r` of the origin, larger near the ground.
+arch_mist :: (p: [] ArchPen, r: f32, h: f32, puffs: int, seed: int) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, ARCH_M_MIST, 0, 0, 0);
+  for k: 0..<puffs {
+    a := arch_hash(seed, k) * f32(ARCH_TAU); d := r * sqrt(arch_hash(seed, 50 + k)) * 0.7; up := arch_hash(seed, 100 + k);
+    size := r * arch_vary(seed, 150 + k, 0.3, 0.52) * (1 - 0.45 * up);
+    arch_ellipsoid(p, cos(a) * d * 1.3, h * up * up + size * 0.45, sin(a) * d * 0.5, size * 1.25, size * 0.8, size * 0.7, 12, 7);
+  }
+  return arch_part(p, from);
+}
+// A rainbow's band: an arc of radius `r` about the origin, `wide` across, from angle `from_a` to
+// `to_a` (radians from +x, turning up), standing in the plane that faces +z. u runs across the
+// band (0 inside, 1 outside) and v along it.
+arch_rainbow :: (p: [] ArchPen, r: f32, wide: f32, from_a: f32, to_a: f32) -> ArchPart {
+  from := p[0].n; steps := 18;
+  arch_material(p, ARCH_M_RAINBOW, 0, 0, 0);
+  for i: 0..<steps {
+    t0 := cast(f32) i / cast(f32) steps; t1 := cast(f32) (i + 1) / cast(f32) steps;
+    a0 := from_a + (to_a - from_a) * t0; a1 := from_a + (to_a - from_a) * t1;
+    r0 := r - wide * 0.5; r1 := r + wide * 0.5;
+    arch_quad(p, arch_at(cos(a0) * r0, sin(a0) * r0, 0, 0, 0, 1, 0, t0), arch_at(cos(a0) * r1, sin(a0) * r1, 0, 0, 0, 1, 1, t0),
+                 arch_at(cos(a1) * r1, sin(a1) * r1, 0, 0, 0, 1, 1, t1), arch_at(cos(a1) * r0, sin(a1) * r0, 0, 0, 0, 1, 0, t1));
+  }
+  return arch_part(p, from);
+}
+
+ArchBridge :: struct {
+  run: f32 = 14.0;                   // its length along z, about the origin
+  w: f32 = 3.2;                      // the deck's width
+  bays: int = 4;                     // posts stand at the ends of this many bays each side
+  rail: f32 = 1.05;                  // the rail's height above the deck
+  drop: f32 = 2.2;                   // how far its piles go down below the deck
+  r: f32 = 0.34; g: f32 = 0.2; b: f32 = 0.12;          // the planks
+  rail_r: f32 = 0.56; rail_g: f32 = 0.33; rail_b: f32 = 0.16;   // the rails and braces
+  seed: int = 1;
+}
+// A plank bridge along z, its deck's top at height 0: planks laid across two stringers on piles,
+// and on each side posts under dark caps, a top rail, a lower rail and a crossed brace in every
+// bay. The deck is ground a walker steps onto from land at its level; the rails stop them.
+arch_plank_bridge :: (p: [] ArchPen, c: ArchBridge) -> ArchPart {
+  from := p[0].n; half := c.run * 0.5; hw := c.w * 0.5;
+  bays := ifx c.bays < 1 then 1 else c.bays;
+  // The planks: each its own width, shade and a little out of line.
+  z := -half; k := 0;
+  while z < half - 0.02 && k < 400 {
+    wide := arch_lowf(arch_vary(c.seed, k, 0.26, 0.4), half - z);
+    shade := arch_vary(c.seed, 500 + k, 0.82, 1.12);
+    arch_material(p, ARCH_M_TIMBER, c.r * shade, c.g * shade, c.b * shade);
+    over := arch_vary(c.seed, 900 + k, 0.0, 0.07);
+    arch_slab(p, -hw - over, -0.09 - arch_vary(c.seed, 1300 + k, 0, 0.012), z + 0.012, hw + over, -arch_vary(c.seed, 1700 + k, 0, 0.012), z + wide - 0.012);
+    z += wide; k += 1;
+  }
+  // Two stringers under them, and a pair of piles at every post.
+  arch_material(p, ARCH_M_TIMBER, c.r * 0.7, c.g * 0.7, c.b * 0.7);
+  for side: 0..<2 {
+    x := (ifx side == 0 then -1.0f32 else 1.0f32) * (hw - 0.35);
+    arch_slab(p, x - 0.12, -0.36, -half, x + 0.12, -0.09, half);
+  }
+  dark := [3] f32.[c.r * 0.72, c.g * 0.7, c.b * 0.72];
+  for side: 0..<2 {
+    sx: f32 = ifx side == 0 then -1 else 1; x := sx * (hw - 0.13);
+    for b: 0..<bays + 1 {
+      pz := -half + 0.16 + (c.run - 0.32) * cast(f32) b / cast(f32) bays;
+      // the post, down to its pile's foot, under a dark cap
+      arch_material(p, ARCH_M_TIMBER, dark[0], dark[1], dark[2]);
+      arch_slab(p, x - 0.13, -c.drop, pz - 0.13, x + 0.13, c.rail + 0.12, pz + 0.13);
+      arch_material(p, ARCH_M_SMOOTH, 0.17, 0.2, 0.24);
+      arch_slab(p, x - 0.2, c.rail + 0.12, pz - 0.2, x + 0.2, c.rail + 0.24, pz + 0.2);
+      if b == bays { continue; }
+      nz := -half + 0.16 + (c.run - 0.32) * cast(f32) (b + 1) / cast(f32) bays;
+      arch_material(p, ARCH_M_TIMBER, c.rail_r, c.rail_g, c.rail_b);
+      arch_beam2(p, arch_v(x, c.rail - 0.06, pz), arch_v(x, c.rail - 0.06, nz), 0.05, 0.075);       // the top rail
+      arch_beam2(p, arch_v(x, 0.2, pz), arch_v(x, 0.2, nz), 0.04, 0.06);                            // the lower rail
+      arch_material(p, ARCH_M_TIMBER, c.rail_r * 0.86, c.rail_g * 0.86, c.rail_b * 0.86);
+      arch_beam2(p, arch_v(x + sx * 0.03, 0.24, pz + 0.1), arch_v(x + sx * 0.03, c.rail - 0.14, nz - 0.1), 0.03, 0.05);   // the brace,
+      arch_beam2(p, arch_v(x - sx * 0.03, c.rail - 0.14, pz + 0.1), arch_v(x - sx * 0.03, 0.24, nz - 0.1), 0.03, 0.05);   // crossed
+    }
+  }
+  // The deck is ground; each side's rail is a wall from end to end.
+  arch_solid_box(p, -hw, -0.36, -half, hw, 0, half);
+  arch_solid_box(p, -hw, 0, -half, -hw + 0.26, c.rail + 0.1, half);
+  arch_solid_box(p, hw - 0.26, 0, -half, hw, c.rail + 0.1, half);
+  return arch_part(p, from);
+}
+
+// A clump of reeds `r` across: `blades` tall narrow leaves that lean outward, and a cattail on
+// every fourth. A leaf's u is how far up it you are, and its v its own number.
+arch_reeds :: (p: [] ArchPen, r: f32, h: f32, blades: int, seed: int) -> ArchPart {
+  from := p[0].n;
+  for k: 0..<blades {
+    a := arch_hash(seed, k) * f32(ARCH_TAU); d := r * sqrt(arch_hash(seed, 40 + k));
+    x := cos(a) * d; z := sin(a) * d; tall := h * arch_vary(seed, 80 + k, 0.55, 1.0);
+    lean := tall * arch_vary(seed, 120 + k, 0.08, 0.34); wide := arch_vary(seed, 160 + k, 0.035, 0.06);
+    tx := x + cos(a) * lean; tz := z + sin(a) * lean; v := arch_hash(seed, 200 + k);
+    shade := arch_vary(seed, 240 + k, 0.8, 1.15);
+    arch_material(p, ARCH_M_LEAF, 0.26 * shade, 0.42 * shade, 0.16 * shade);
+    // two crossed blades, so it shows from every side
+    for turn: 0..<2 {
+      sx := (ifx turn == 0 then -sin(a) else cos(a)) * wide; sz := (ifx turn == 0 then cos(a) else sin(a)) * wide;
+      arch_tri(p, arch_at(x - sx, 0, z - sz, 0, 1, 0, 0.35, v), arch_at(x + sx, 0, z + sz, 0, 1, 0, 0.35, v), arch_at(tx, tall, tz, 0, 1, 0, 1, v));
+    }
+    if k % 4 == 0 {
+      arch_material(p, ARCH_M_BARK, 0.3, 0.19, 0.11);
+      arch_limb(p, tx * 0.9 + x * 0.1, tall * 0.88, tz * 0.9 + z * 0.1, tx, tall * 1.1, tz, 0.035, 0.035, 5);
+    }
+  }
+  return arch_part(p, from);
+}
+// A drift of flowers `r` across: `stems` spikes about `tall` high, each a green stem under a
+// spire of petals in a colour (every fifth is white).
+arch_flowers :: (p: [] ArchPen, r: f32, tall: f32, stems: int, cr: f32, cg: f32, cb: f32, seed: int) -> ArchPart {
+  from := p[0].n;
+  for k: 0..<stems {
+    a := arch_hash(seed, k) * f32(ARCH_TAU); d := r * sqrt(arch_hash(seed, 30 + k));
+    x := cos(a) * d; z := sin(a) * d * 0.7; h := tall * arch_vary(seed, 60 + k, 0.6, 1.1);
+    arch_material(p, ARCH_M_LEAF, 0.24, 0.42, 0.17);
+    v := arch_hash(seed, 90 + k);
+    arch_tri(p, arch_at(x - 0.025, 0, z, 0, 1, 0, 0.5, v), arch_at(x + 0.025, 0, z, 0, 1, 0, 0.5, v), arch_at(x, h * 0.55, z, 0, 1, 0, 0.9, v));
+    arch_tri(p, arch_at(x, 0, z - 0.025, 0, 1, 0, 0.5, v), arch_at(x, 0, z + 0.025, 0, 1, 0, 0.5, v), arch_at(x, h * 0.55, z, 0, 1, 0, 0.9, v));
+    shade := arch_vary(seed, 120 + k, 0.85, 1.12);
+    if k % 5 == 4 { arch_material(p, ARCH_M_PETAL, 0.96, 0.96, 0.93); } else { arch_material(p, ARCH_M_PETAL, cr * shade, cg * shade, cb * shade); }
+    arch_gem(p, x, h * 0.72, z, 0.06, h * 0.3);
+  }
+  return arch_part(p, from);
+}
+// A curtain of leaves that hangs down a rock face toward +z: `w` wide along x at height 0,
+// hanging as far as `drop`, in `strands` strands of pointed leaves.
+arch_vine :: (p: [] ArchPen, w: f32, drop: f32, strands: int, seed: int) -> ArchPart {
+  from := p[0].n;
+  for k: 0..<strands {
+    x := w * (cast(f32) k + arch_hash(seed, k)) / cast(f32) strands - w * 0.5;
+    long := drop * arch_vary(seed, 40 + k, 0.35, 1.0); leaves := cast(int) (long / 0.32) + 1;
+    shade := arch_vary(seed, 80 + k, 0.8, 1.15);
+    arch_material(p, ARCH_M_LEAF, 0.13 * shade, 0.34 * shade, 0.14 * shade);
+    for i: 0..<leaves {
+      y := -0.3 * cast(f32) i; side: f32 = ifx (i + k) % 2 == 0 then 1 else -1;
+      lx := x + side * 0.1 + arch_vary(seed, k * 37 + i, -0.08, 0.08); z := 0.08 + arch_hash(seed, k * 41 + i) * 0.14;
+      v := arch_hash(seed, 500 + k * 13 + i);
+      arch_tri(p, arch_at(lx - 0.17, y, z, 0, 0.5, 0.86, 0.3, v), arch_at(lx + 0.17, y, z, 0, 0.5, 0.86, 0.3, v), arch_at(lx + side * 0.06, y - 0.46, z + 0.05, 0, 0.5, 0.86, 0.1, v));
+    }
+  }
+  return arch_part(p, from);
+}
+
+LAND_TEST_VERTICES :: 60000;
+#test "a cliff is as long and as tall as asked, faces +z, leaves its cleft open, and blocks from end to end" #steps 400000000 {
+  buf: [LAND_TEST_VERTICES * ARCH_VERTEX_FLOATS] f32; solids: [128 * ARCH_SOLID_FLOATS] f32;
+  p: [1] ArchPen; arch_pen(p[..], buf[..]); arch_pen_solids(p[..], solids[..]);
+  c: ArchCliff; c.run = 60; c.h = 24; c.gap = 3; c.gap_at = 8; c.hollow = 4;
+  cliff := arch_cliff(p[..], c);
+  #assert !p[0].full && cliff.count % 3 == 0 && cliff.count > 3000 && cliff.solids > 6;
+  r := arch_reach(buf[..], cliff); #assert r.high > 20 && r.high < 26.5 && r.low < 0;
+  x0: f32 = 0; x1: f32 = 0; z1: f32 = -100; in_gap := 0;
+  for i: 0..<cliff.count {
+    o := (cliff.first + i) * ARCH_VERTEX_FLOATS;
+    #assert buf[o + 6] == ARCH_M_CLIFF || buf[o + 6] == ARCH_M_LEAF;
+    x0 = arch_lowf(x0, buf[o]); x1 = arch_highf(x1, buf[o]); z1 = arch_highf(z1, buf[o + 2]);
+    // Nothing of a buttress stands in the cleft before the mass.
+    if abs(buf[o] - 8) < 2.9 && buf[o + 2] > -c.bulge * 0.35 - c.hollow * 0.5 + 0.01 { in_gap += 1; }
+  }
+  #assert x0 < -29 && x0 > -37 && x1 > 29 && x1 < 37 && z1 > 2 && z1 < 12 && in_gap == 0;
+  // The mass is its first solid: a box the cliff's length, too tall to step onto.
+  #assert solids[0] == ARCH_SOLID_BOX && abs(solids[3] - 30) < 0.001 && solids[7] > 15;
+  #assert arch_cliff_face(c, 0) == -4 && arch_cliff_face(c, 30) == 0;
+  rock := arch_boulder(p[..], 1.2, 0.8, 1.0, 3); rr := arch_reach(buf[..], rock);
+  #assert !p[0].full && rock.solids == 1 && rr.high > 0.8 && rr.high < 1.3 && rr.out > 0.9 && rr.out < 1.5;
+}
+#test "a river follows its line at its level, a pool is round, and falls drop from their lip to their foot" {
+  buf: [4000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  line := [9] f32.[0, 0, 3,   10, 0, 4,   20, 5, 5];
+  river := arch_river(p[..], line[..], -0.4);
+  #assert !p[0].full && river.count == 12;
+  far: f32 = 0;
+  for i: 0..<river.count {
+    o := (river.first + i) * ARCH_VERTEX_FLOATS;
+    #assert buf[o + 1] == -0.4 && buf[o + 4] == 1 && buf[o + 6] == ARCH_M_RIVER && buf[o + 6] >= ARCH_M_WET && buf[o + 7] >= 0 && abs(buf[o + 8]) <= 5;
+    far = arch_highf(far, buf[o + 7]);
+  }
+  #assert abs(far - 21.18034) < 0.01;
+  // Its first edge is square to its flow: 3 m each side of its first point.
+  #assert abs(buf[river.first * ARCH_VERTEX_FLOATS + 2] + 3) < 0.001 && abs(buf[(river.first + 1) * ARCH_VERTEX_FLOATS + 2] - 3) < 0.001;
+  pool := arch_pool(p[..], 6); pr := arch_reach(buf[..], pool); #assert pool.count == 60 && abs(pr.out - 6) < 0.001 && pr.high == 0;
+  falls := arch_falls(p[..], 4, 20, 1.5); fr := arch_reach(buf[..], falls);
+  #assert falls.count == 4 * 8 * 6 && abs(fr.high - 20) < 0.001 && abs(fr.low) < 0.001;
+  for i: 0..<falls.count { o := (falls.first + i) * ARCH_VERTEX_FLOATS; #assert buf[o + 7] >= 0 && buf[o + 7] <= 1 && abs(buf[o + 8] - (20 - buf[o + 1])) < 0.001 && buf[o + 2] >= 0; }
+  mist := arch_mist(p[..], 4, 5, 6, 2); bow := arch_rainbow(p[..], 5, 0.6, 0.3, 2.0);
+  #assert !p[0].full && mist.count > 600 && bow.count == 18 * 6 && buf[bow.first * ARCH_VERTEX_FLOATS + 6] == ARCH_M_RAINBOW;
+}
+#test "a plank bridge is a deck you stand on between rails that stop you, and reeds, flowers and vines grow to their size" #steps 400000000 {
+  buf: [LAND_TEST_VERTICES * ARCH_VERTEX_FLOATS] f32; solids: [16 * ARCH_SOLID_FLOATS] f32;
+  p: [1] ArchPen; arch_pen(p[..], buf[..]); arch_pen_solids(p[..], solids[..]);
+  c: ArchBridge;
+  bridge := arch_plank_bridge(p[..], c); r := arch_reach(buf[..], bridge);
+  #assert !p[0].full && bridge.solids == 3 && bridge.count > 2000 && r.high > c.rail + 0.2 && r.high < c.rail + 0.3 && abs(r.low + c.drop) < 0.001;
+  // The deck: a box whose top is the deck's, the bridge's length and width. The rails: taller than a step.
+  #assert solids[7] == 0 && abs(solids[3] - c.w * 0.5) < 0.001 && abs(solids[4] - c.run * 0.5) < 0.001 && solids[ARCH_SOLID_FLOATS + 7] > 0.55 && solids[2 * ARCH_SOLID_FLOATS + 7] > 0.55;
+  for i: 0..<bridge.count { o := (bridge.first + i) * ARCH_VERTEX_FLOATS; #assert abs(buf[o + 2]) <= c.run * 0.5 + 0.05 && abs(buf[o]) < c.w * 0.5 + 0.1; }
+  reeds := arch_reeds(p[..], 0.5, 1.4, 16, 3); rr := arch_reach(buf[..], reeds); #assert reeds.count >= 16 * 6 && rr.high > 1.0 && rr.high < 1.7 && reeds.solids == 0;
+  flowers := arch_flowers(p[..], 1.2, 0.7, 12, 0.45, 0.4, 0.9, 5); fr := arch_reach(buf[..], flowers); #assert flowers.count == 12 * (6 + 24) && fr.high > 0.5 && fr.high < 1.1;
+  vine := arch_vine(p[..], 6, 4, 14, 7); vr := arch_reach(buf[..], vine); #assert !p[0].full && vine.count > 100 && vr.high <= 0.001 && vr.low < -2 && vr.low > -5;
+}

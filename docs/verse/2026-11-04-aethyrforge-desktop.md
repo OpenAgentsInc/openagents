@@ -198,7 +198,7 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
   only reply text floats on the left while a run is active, without a background,
   heading, controls or mouse interception. Completed replies stay for five
   seconds, then hide; Enter restores the full conversation. The floating feed
-  is a Metaverse Engine component (`aethyr/ui/feed.coax`, `feed-draw.coax`): Coax owns
+  is a Metaverse Engine component (`metaverse-engine/ui/feed.coax`, `feed-draw.coax`): Coax owns
   its buffer, UTF-8 retention, text wrapping and lifetime, and emits shared
   font/stroke vertices for Metal. Swift observes time and submits buffers;
   floating text has no AppKit text view or Swift deadline state. Input/IME
@@ -412,7 +412,7 @@ panes, PUBLISH and REVERT. No mode switches.
 | Local page server | It serves the built page and passes `/api/` to the room. | `coax/web/serve.sh --static --api PORT` |
 | Recognition | Resident Parakeet TDT v3, hold to talk, final transcripts only. | The voice host's `--recognizer parakeet` and `openagents dictate` path |
 | Edit model | Turns a transcript and the world's context into one typed edit. | gpt-oss-20b on Psionic Metal |
-| Edits | Typed, invertible edits with undo and redo. | `aethyr/forge/edit.coax` |
+| Edits | Typed, invertible edits with undo and redo. | `metaverse-engine/editor/edit.coax` |
 | World document | Your local copy of Everglade's world. | `~/.openagents/aethyrforge/everglade/world-everglade.json` |
 
 ### Why the world view is a web view
@@ -428,7 +428,7 @@ native Coax and C.
 - The app records 16 kHz mono while Space or the mic button is held, and sends the
   hold's audio to one resident Parakeet model when you let go. The model loads once
   on first explicit voice use and stays loaded until quit.
-- `aethyr/audio/voice.coax` admits each hold's final transcript once, in its turn,
+- `metaverse-engine/audio/voice.coax` admits each hold's final transcript once, in its turn,
   through the replay gate, as the voice host does.
 - The transcript shows in the bar. You can click it to fix a word, then press
   Return to resend it.

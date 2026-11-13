@@ -1,5 +1,5 @@
 // Version 1 optional pack digest gate. Browser hashes received bytes; Coax owns admission.
-#load "../../aethyr/core/assets.coax";
+#load "../../metaverse-engine/core/assets.coax";
 #authority;
 CANYON_PACK_BYTES :: 1023642576;
 // Full Slay groom (118,339 curves), the TF0290 source camera template and SHS1 v3 with the orb Rect Light;

@@ -9,7 +9,7 @@
 //
 // The Workshop runs here. Everglade is the web's everglade2 realm, and the Archery Range and
 // Experimental are the web's fivelab realm on their own pages: a host that can run a realm's page
-// (aethyr/host/apple/, the Mac app) says so with sc_host_runs, draws the realm itself and sends it
+// (metaverse-engine/host/apple/, the Mac app) says so with sc_host_runs, draws the realm itself and sends it
 // the keys; this file then draws only the Worlds button over it. On a host that can't yet,
 // choosing the world says where it runs today. Nothing pretends: there is no web view standing in,
 // and no scene written for the app alone stands in for a realm.

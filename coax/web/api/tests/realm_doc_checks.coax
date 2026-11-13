@@ -5,7 +5,7 @@
 // byte: GET .../doc's document and hash, the reply, and the newest step of its undo log; and an
 // undo or redo gives back the revision it restores (`restores`) byte for byte but for `rev`, as the
 // server keeps it (verse.realm_revisions), so its SHA-256 is that text's (#13354). The same
-// file is replayed through aethyr/forge/edit.coax and doc.coax by aethyr/forge/doc-goldens.coax, so
+// file is replayed through metaverse-engine/editor/edit.coax and doc.coax by metaverse-engine/editor/doc-goldens.coax, so
 // the two languages give the same bytes. Local isolated API and database only.
 //   API=http://127.0.0.1:PORT PGURL=... PSQL=... coax/web/tool.sh coax/web/api/tests/realm_doc_checks.coax
 // tool.sh: tls

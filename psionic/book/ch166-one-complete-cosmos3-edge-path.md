@@ -770,7 +770,7 @@ arithmetic. The last line is the unsnapped schedule from above.
   [chapter 144](ch144-see-with-c-radio.md): the vision paths the vision
   encoder will follow.
 - Metaverse Engine worlds for test scenarios
-  ([Metaverse Engine chapter 31](../../aethyr/book/ch031-many-worlds-in-one-step.md)).
+  ([Metaverse Engine chapter 31](../../metaverse-engine/book/ch031-many-worlds-in-one-step.md)).
 
 ## Sources
 

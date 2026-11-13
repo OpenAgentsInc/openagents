@@ -1,0 +1,72 @@
+// Hold actual SDK completion promises while validation can finish. Coax
+// owns the workload, observed verdict and owned loopback/browser lifetime.
+#load "../tests/render-host-files.coax";
+#load "../../coax/web/wasm-chrome.coax";
+#load "frame-ownership-conformance.coax";
+#load "media-notice-json.coax";
+#load "render-mode.coax";
+#load "presentation-conformance.coax";
+hfo_presentation :: (c:[]Cdp,dir:string)->bool {
+ versions:=[5]int.[-1,0,1,2,9223372036854775807];version_words:=[5]string.["-1","0","1","2","9223372036854775807"];profiles:=[4]int.[-1,2,13,18];script:[16384]u8;o:[1]Jo;jo_start(o[..],script[..]);
+ jo_put(o[..],"(async(cases)=>{const {openHostServices}=await import('/coaxial/services-host.js'),s=await openHostServices();return {facts:coaxial.renderPresentation(),cases:cases.map(([v,p])=>[v,p,Number(s.presentation(v,p))]),audio:await coaxial.audio.contract()}})(");jo_arr(o[..]);
+ for version:version_words {for profile:profiles {jo_arr(o[..]);jo_str(o[..],version);jo_int(o[..],profile);jo_end(o[..]);}}jo_end(o[..]);jo_put(o[..],")");
+ v:=cdp_evaluate(c,jo_text(o[..]));if v<0 {tool_errln(cdp_error(c));return false;}d:=cdp_doc(c);facts:=jv_get(d,v,"facts");rows:=jv_get(d,v,"cases");q:[7]int;
+ q[0]=jv_int(d,jv_get(d,facts,"version"),-1);q[1]=ifx jv_raw(d,jv_get(d,facts,"mode"))=="unorm8-v1" then 1 else -1;
+ q[2]=ifx jv_raw(d,jv_get(d,facts,"drawFormat"))=="rgba16float" then 2 else -1;format:=jv_raw(d,jv_get(d,facts,"displayFormat"));q[3]=ifx format=="rgba8unorm" then 0 else ifx format=="bgra8unorm" then 1 else -1;
+ q[4]=ifx jv_bool(d,jv_get(d,facts,"canonicalLayers")) then 1 else 0;q[5]=ifx jv_bool(d,jv_get(d,facts,"canonicalMedia")) then 1 else 0;q[6]=ifx jv_kind(d,jv_get(d,facts,"override"))==JV_NULL then 0 else 1;
+ passed:=hps_host(q[..])&&jv_len(d,rows)==20;
+ for i:0..<20 {row:=jv_at(d,rows,i);passed=passed&&jv_len(d,row)==3&&jv_raw(d,jv_at(d,row,0))==version_words[i/4]&&jv_int(d,jv_at(d,row,1),-99)==profiles[i%4]&&jv_int(d,jv_at(d,row,2),-99)==(ifx hrm_presentation(versions[i/4],profiles[i%4]) then 1 else 0);}
+ record:[131072]u8;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.ordinary-presentation.v1");jo_key(o[..],"observations");jv_write(d,v,o[..]);jo_key(o[..],"fields");jo_arr(o[..]);for value:q {jo_int(o[..],value);}jo_end(o[..]);jo_key(o[..],"passed");jo_bool(o[..],passed);jo_end(o[..]);path:[4096]u8;return !o[0].bad&&fs_write(fs_join(dir,"ordinary-presentation.json",path[..]),jo_text(o[..]))&&passed;
+}
+hfo_media :: (c:[]Cdp,dir:string,name:string,bad:bool)->bool {
+ if !hfo_wait(c,"(async()=>{for(let i=0;i<100;i++){await coaxialClipStep(1,60);await coaxial.renderSettled();const rows=coaxial.renderMediaState();if(rows.length===7&&rows.every(r=>r.ready||r.failed))return true;await new Promise(r=>setTimeout(r,20))}return false})()") {return false;}
+ if !hfo_eval(c,"(async()=>{globalThis.mediaBefore=coaxial.worldLoop().submissions;for(let i=0;i<6;i++){await coaxialClipStep(1,60);await coaxial.renderSettled()}return true})()") {return false;}
+ v:=cdp_evaluate(c,"({rows:coaxial.renderMediaState(),trace:coaxial.takeMediaNotices(),error:coaxial.renderMediaNoticeError(),advanced:coaxial.worldLoop().submissions-mediaBefore})");if v<0 {return false;}
+ bytes:[262144]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jv_write(cdp_doc(c),v,o[..]);paths:[1][4096]u8;
+ if o[0].bad||!fs_write(fs_join(dir,name,paths[0][..]),jo_text(o[..])) {return false;}
+ nodes:[32768]JvNode;d:[1]Jv;return jv_parse(d[..],jo_text(o[..]),nodes[..])&&hmnj_capture(d[0],bad);
+}
+hfo_wait :: (c:[]Cdp,text:string)->bool {until:=proc_now_ms()+60000;while proc_now_ms()<until {if wc_eval(c,text)=="true" {return true;}proc_sleep(50);}tool_errln(text);tool_errln(cdp_error(c));tool_errln(wc_eval(c,"JSON.stringify({ready:coaxial?.ready,status:coaxial?.renderStatus,phase:coaxial?.renderLifecyclePhase,note:document.querySelector('pre[role=status]')?.textContent,errors:globalThis.ownershipErrors})"));return false;}
+hfo_eval :: (c:[]Cdp,text:string)->bool {if wc_eval(c,text)=="true" {return true;}tool_errln(text);tool_errln(cdp_error(c));return false;}
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) {return 2;}child:=rto_child(a[..]);if child>=0 {return child;}services:=args_value(a[..],"--services","");ordinary:=args_has(a[..],"--ordinary-v1");argc:=args_count(a[..])-(ifx services=="" then 0 else 2)-(ifx ordinary then 1 else 0);media:=argc==5;bad_media:=media&&args_at(a[..],3)=="bad-media";
+  if (argc!=2&&argc!=3&&argc!=5)||(argc>=3&&args_at(a[..],2)!="bgra8unorm")||(media&&args_at(a[..],3)!="media"&&!bad_media) {tool_errln("usage: check-browser-frame-ownership PREVIOUS_CAPTURE NEW_OUT [bgra8unorm [media|bad-media REACTOR.wasm]] [--services REACTOR.wasm] [--ordinary-v1]");return 2;}
+  paths:[8][4096]u8;previous:=args_at(a[..],0);dir:=args_at(a[..],1);if !fs_mkdir(dir) {return 1;}dir=fs_realpath(dir,paths[0][..]);config:=fs_join(dir,"origin-config.json",paths[1][..]);portfile:=fs_join(dir,"port",paths[2][..]);ledger:=fs_join(dir,"origin",paths[3][..]);
+  bytes:[131072]u8;nodes:[32768]JvNode;d:[1]Jv;n:=fs_read(fs_join(previous,"origin-config.json",paths[4][..]),bytes[..]);if n<1||!jv_parse(d[..],cast(string)bytes[0..<n],nodes[..]) {return 1;}
+  root:=fs_cwd(paths[4][..]);host:=fs_join(root,"coax/web",paths[5][..]);out:[131072]u8;o:[1]Jo;jo_start(o[..],out[..]);jo_obj(o[..]);at:=d[0].nodes[0].first;
+  while at>=0 {key:=jv_key(d[0],at);jo_key(o[..],key);if key!="routes" {jv_write(d[0],at,o[..]);}else {jo_arr(o[..]);
+   if services!="" {jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],"/build/host-services.wasm");jo_key(o[..],"file");jo_str(o[..],services);jo_end(o[..]);}
+   if media {jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],"/build/host-media.wasm");jo_key(o[..],"file");jo_str(o[..],args_at(a[..],4));jo_end(o[..]);}
+   if bad_media {jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],"/worlds/everglade/hotbar/meteor-swarm-48.jpg");jo_key(o[..],"text");jo_str(o[..],"not an image");jo_key(o[..],"mime");jo_str(o[..],"image/jpeg");jo_end(o[..]);}
+   for i:0..<jv_len(d[0],at) {row:=jv_at(d[0],at,i);if jv_raw(d[0],jv_get(d[0],row,"prefix"))=="/coaxial/" {jo_obj(o[..]);jo_key(o[..],"prefix");jo_str(o[..],"/coaxial/");jo_key(o[..],"directory");jo_str(o[..],host);jo_end(o[..]);}else {jv_write(d[0],row,o[..]);}}jo_end(o[..]);}at=d[0].nodes[at].next;}jo_end(o[..]);if o[0].bad||!fs_write(config,jo_text(o[..])) {return 1;}
+  inputs:[1]RtqInputs;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);self:[4096]u8;image:=gp_self(self[..]);image_hash:[64]u8;
+  if services!=""&&!rtq_input_add(inputs[..],services) {return 1;}
+  if !rtq_input_add(inputs[..],compiler)||!rtq_deps(inputs[..],compiler,"metaverse-engine/host/check-browser-frame-ownership.coax",proc_now_ms()+30000,dir,"tool-dependencies")||!rtq_input_add(inputs[..],image)||!rtq_hash_file(image,image_hash[..])||!rtq_input_add(inputs[..],"coax/web/tool.sh") {return 1;}
+  server:=rto_start(portfile,config,ledger);if server<0 {return 1;}defer {if server>=0 {killed:=proc_kill(server,PROC_SIGTERM);waited:=proc_wait(server,2000);released:=proc_release(server);}}
+  port:=-1;for i:0..<100 {pn:=fs_read(portfile,bytes[0..<32]);if pn>0 {port=args_whole(cast(string)bytes[0..<pn]);break;}proc_sleep(20);}if port<1 {return 1;}
+  c:[1]Cdp;if !cdp_launch(c[..],320,180,"coax-frame-ownership-") {return 1;}defer {cdp_close(c[..]);}
+  for method:[2]string.["Page.enable","Runtime.enable"] {if cdp_call(c[..],method,"{}",30000)<0 {return 1;}}
+  if cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":320,\"height\":180,\"deviceScaleFactor\":1,\"mobile\":false}",30000)<0 {return 1;}
+  preload:="globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba16float';globalThis.ownershipErrors=[];{const original=console.error;console.error=(...args)=>{ownershipErrors.push(args.map(x=>String(x?.stack??x)).join(' '));original(...args)}}globalThis.fenceHold=false;globalThis.fenceRelease=[];{const original=GPUQueue.prototype.onSubmittedWorkDone;GPUQueue.prototype.onSubmittedWorkDone=function(){const done=original.call(this);if(!fenceHold)return done;const gate=new Promise(resolve=>fenceRelease.push(resolve));return done.then(()=>gate)}}";
+  jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"source");jo_str(o[..],preload);jo_end(o[..]);if cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(o[..]),30000)<0 {return 1;}
+  // Preserve the old half-float workload by default. A presentation capture
+  // requires the actual UNORM canvas; install its explicit fixture override
+  // after the common preload, before any realm or host code executes.
+  if argc>=3 && cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument","{\"source\":\"globalThis.coaxialRenderCaptureFormat='bgra8unorm'\"}",30000)<0 {return 1;}
+  url:[512]u8;u:[1]Jo;jo_start(u[..],url[..]);jo_put(u[..],"http://127.0.0.1:");jo_int(u[..],port);jo_put(u[..],"/?golden&probe-manual");jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],jo_text(u[..]));jo_end(o[..]);if cdp_call(c[..],"Page.navigate",jo_text(o[..]),30000)<0 {return 1;}
+  if !hfo_wait(c[..],"!!coaxial?.ready&&typeof coaxial.renderSettled==='function'") {return 1;}
+  for kind:[2]string.["keyDown","keyUp"] {jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],kind);jo_key(o[..],"key");jo_str(o[..],"Enter");jo_key(o[..],"code");jo_str(o[..],"Enter");jo_key(o[..],"windowsVirtualKeyCode");jo_int(o[..],13);jo_end(o[..]);if cdp_call(c[..],"Input.dispatchKeyEvent",jo_text(o[..]),30000)<0 {return 1;}}
+  if !hfo_wait(c[..],"(async()=>{try{await coaxialClipStep(1,60);await coaxial.renderSettled();return !!coaxial.renderLedger()&&coaxial.renderStatus?.submitted===true&&coaxial.renderStatus?.readiness===2}catch(e){console.error(e);return false}})()") {return 1;}
+  if ordinary&&!hfo_presentation(c[..],dir) {return 1;}
+  if media&&!hfo_media(c[..],dir,"media-before.json",bad_media) {return 1;}
+  if !hfo_eval(c[..],"(async()=>{await coaxial.renderSettled();fenceHold=true;globalThis.firstStep=coaxialClipStep(1,60);return true})()")||!hfo_wait(c[..],"coaxial.frameQueue().pending===1") {return 1;}
+  if !hfo_eval(c[..],"(async()=>{globalThis.before={digest:await coaxial.stateDigest(),epoch:coaxial.renderLedger().epoch,submissions:coaxial.worldLoop().submissions};globalThis.refusedSteps=coaxialClipStep(8,60);return true})()") {return 1;}proc_sleep(100);
+  if !hfo_eval(c[..],"(async()=>{globalThis.ownership=[coaxial.frameQueue().pending,Number((await coaxial.stateDigest())===before.digest),Number(coaxial.renderLedger().epoch===before.epoch),Number(coaxial.worldLoop().submissions===before.submissions)];fenceHold=false;fenceRelease.splice(0).forEach(f=>f());await firstStep;await refusedSteps;await coaxial.renderSettled();ownership.push(coaxial.frameQueue().pending);return true})()") {return 1;}
+  if !hfo_eval(c[..],"(async()=>{globalThis.oldLedger=coaxial.renderLedger();fenceHold=true;globalThis.oldStep=coaxialClipStep(1,60);globalThis.oldRelease=fenceRelease.splice(0);fenceHold=false;return coaxial.loseDevice()})()")||!hfo_wait(c[..],"coaxial.gpuRecovery?.state==='recovered'&&!!coaxial.renderLedger()") {return 1;}
+  if !hfo_eval(c[..],"(async()=>{await coaxialClipStep(1,60);await coaxial.renderSettled();ownership.push(Number(coaxial.renderStatus?.submitted===true));ownership.push(-1,-1,-1);globalThis.afterRecovery=await coaxial.stateDigest();fenceHold=true;globalThis.newStep=coaxialClipStep(1,60);globalThis.newRelease=fenceRelease.splice(0);globalThis.newUploads=JSON.stringify(coaxial.renderUploadState());ownership[6]=coaxial.frameQueue().pending;oldRelease.forEach(f=>f());await oldStep;await new Promise(r=>setTimeout(r,50));ownership[7]=coaxial.frameQueue().pending;ownership[8]=Number(JSON.stringify(coaxial.renderUploadState())===newUploads);fenceHold=false;newRelease.forEach(f=>f());await newStep;await coaxial.renderSettled();ownership.push(coaxial.frameQueue().pending,Number((await coaxial.stateDigest())!==afterRecovery),Number(oldLedger.handles.every(h=>coaxial.renderLedgerLive(h.slot,h.generation)===0)));return true})()") {return 1;}
+  if !hfo_eval(c[..],"(ownership.push(Number(JSON.parse(newUploads).some(r=>r.pending>0))),true)") {return 1;}
+  if media&&!hfo_media(c[..],dir,"media-recovered.json",bad_media) {return 1;}
+  v:=cdp_evaluate(c[..],"({schema:'aethyr.host.frame-ownership.v1',host:'web',observations:ownership,before,uploads:JSON.parse(newUploads),after:{epoch:coaxial.renderLedger().epoch,submissions:coaxial.worldLoop().submissions},recovery:coaxial.gpuRecovery})");if v<0 {return 1;}jo_start(o[..],out[..]);jv_write(cdp_doc(c[..]),v,o[..]);if o[0].bad||!fs_write(fs_join(dir,"receipt.json",paths[6][..]),jo_text(o[..])) {return 1;}
+  if !jv_parse(d[..],jo_text(o[..]),nodes[..]) {return 1;}row:=jv_get(d[0],0,"observations");values:[13]int;for i:0..<13 {values[i]=jv_int(d[0],jv_at(d[0],row,i),-1);}passed:=jv_len(d[0],row)==13&&hfo_pass(values[..]);cdp_close(c[..]);
+  if !rto_finalize(port)||proc_wait(server,5000)!=0||!rto_add_inputs(ledger,inputs[..]) {return 1;}released:=proc_release(server);server= -1;same:=rtq_inputs_match(inputs[..]);record:[4194304]u8;r:[1]Jo;jo_start(r[..],record[..]);jo_obj(r[..]);jo_key(r[..],"schema");jo_str(r[..],"aethyr.host.frame-ownership-qualification.v1");jo_key(r[..],"passed");jo_bool(r[..],passed&&same);jo_key(r[..],"observer_image_sha256");jo_str(r[..],cast(string)image_hash[..]);jo_key(r[..],"source_fence_unchanged");jo_bool(r[..],same);jo_key(r[..],"inputs");rtq_inputs_json(r[..],inputs[..],"");jo_end(r[..]);if r[0].bad||!fs_write(fs_join(dir,"qualification.json",paths[7][..]),jo_text(r[..])) {return 1;}print("Actual shared WebGPU frame ownership: %\n",passed&&same);return ifx passed&&same then 0 else 1;
+}

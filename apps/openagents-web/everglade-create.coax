@@ -2,7 +2,7 @@
 // at the glade's clearing south of the South Gate (everglade/legacy/v1/glade-zone.coax), in this mode:
 // a studio camera on your character, the wardrobe down the left, and your keys and pointer on the
 // wardrobe rather than on the walk. What you pick is your character in the world as you pick it
-// (s[0].avatar, aethyr/character/character-appearance.coax), drawn by Everglade's renderer in Everglade's
+// (s[0].avatar, metaverse-engine/character/character-appearance.coax), drawn by Everglade's renderer in Everglade's
 // light. USE IN EVERGLADE saves the character (action 16, the browser's shared record), hands you
 // the walk, glides the camera round behind you and puts /worlds/everglade in the address bar
 // (action 19): the town at the top of the road is the same world, already loaded.
@@ -26,7 +26,7 @@ CZ_EASE :: 1.5;          // s: the camera eases into the follow camera, then the
 CZ_FADE :: 0.8;          // s: the controls fade out
 CZ_TURN :: 1.6;          // rad/s: how fast the run turns to keep to the road
 CZ_AHEAD :: 7.0;         // m: the road's point the run heads for
-CZ_RECORD :: 57;         // the longest record (aethyr/character/character-appearance.coax CC3)
+CZ_RECORD :: 57;         // the longest record (metaverse-engine/character/character-appearance.coax CC3)
 CZ_CLOCK :: "fixed:0.58";   // the studio's light: late morning, the sun high over the glade
 CZ_FIELD_NAMES :: [13] string.["BODY", "CLOTHES", "HOOD", "COLORWAY", "CLOTH DYE", "SKIN TONE", "HAIR STYLE", "HAIR COLOR", "BEARD", "ANIMATION", "MODULAR PART", "WEAR SELECTED PART", "EYE COLOR"];
 

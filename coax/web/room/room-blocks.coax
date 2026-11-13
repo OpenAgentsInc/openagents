@@ -1,4 +1,4 @@
-#load "../../../aethyr/core/ids.coax";
+#load "../../../metaverse-engine/core/ids.coax";
 // The Everglade rooms' side of interest management (room-interest.coax, #12789): each tick's table
 // of entities put into the grid, each seat's pick handed to the send path, and who each seat blocks
 // (#12714: the page's K frame, kept by player id, as the masks the picks withhold those players by).
@@ -64,7 +64,7 @@ eg_im_blocks :: (v: [] RmServer, k: int, s_id: SeatId, q_id: SeatId) -> bool { q
   return im_blocked(v[0].eg[k].im[..], s, q);
 }
 
-// The seats that seat s doesn't hear of this tick, into `out` (a set of seats, aethyr/core/slot-set.coax):
+// The seats that seat s doesn't hear of this tick, into `out` (a set of seats, metaverse-engine/core/slot-set.coax):
 // those it blocks, and those outside its interest (eg_im_pick's -1). Never s itself, nor a seat that
 // has left or isn't placed: there is nothing of it to hide, and the word that it went (e stop SS SLOT
 // left) must reach everyone.

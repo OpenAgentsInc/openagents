@@ -1,0 +1,361 @@
+// Liquids from particles (book chapter 24): weakly compressible SPH
+// (WCSPH, Becker and Teschner, SCA 2007) on chapter 23's particle store and
+// neighbor search, one named profile, wcsph-f64-v1.
+//
+//   sph_w(r, h), sph_grad(d, h)   the cubic spline kernel with support h,
+//                            normalized so it integrates to 1 in 3D, and its
+//                            gradient
+//   sph_step(p, s, g, n, dt) one step: neighbors, density, Tait pressure,
+//                            symmetric pressure and viscosity forces, then
+//                            semi-implicit Euler for the fluid
+//
+// A particle of material SPH_FLUID moves; one of SPH_WALL is a fixed
+// boundary sample: a frozen fluid particle on the fluid's lattice, with the
+// same mass, that mirrors the pressure of the particle it pushes (Adami et
+// al.'s dummy particles, JCP 2012, with the pressure mirrored rather than
+// extrapolated). One layer is enough while the
+// kernel's support is at most two spacings. A step longer than the CFL bound 0.4 h / c is refused,
+// not taken. CPU only, f64. DFSPH, surface tension, moving boundaries and
+// device kernels are not built yet.
+//   coax/bin/coax test --library metaverse-engine/physics/sim/sph.coax
+#load "particles.coax";
+
+SPH_FLUID :: 1;
+SPH_WALL :: 2;
+
+Sph :: struct {
+  rest: f64 = 1000.0;      // kg/m^3
+  h: f64;                  // kernel support, m
+  sound: f64;              // c, m/s: stiffness B = rest c^2 / 7
+  viscosity: f64;          // kinematic, m^2/s
+  gravity: D3;
+  lo: D3; hi: D3;          // the neighbor grid's extent
+  density: [PSTORE] f64;
+  pressure: [PSTORE] f64;
+  accel: [PSTORE] D3;
+}
+
+// Cubic spline with support h (Monaghan's, as in Koschier et al.'s SPH
+// tutorial, Eurographics 2019): sigma = 8 / (pi h^3), q = r / h.
+sph_w :: (r: f64, h: f64) -> f64 {
+  q := r / h; s := 8.0 / (PI_D * h * h * h);
+  if q <= 0.5 { return s * (6.0 * (q * q * q - q * q) + 1.0); }   // mutant: equivalent (the two pieces meet exactly at q = 1/2: both give s / 4)
+  if q <= 1.0 { u := 1.0 - q; return s * 2.0 * u * u * u; }   // mutant: equivalent (at q = 1 the second piece is 0)
+  return 0.0;
+}
+// The gradient at offset d = x_i - x_j: dW/dr along d. Odd in d, so
+// grad(-d) is exactly -grad(d).
+sph_grad :: (d: D3, h: f64) -> D3 {
+  r := d3_len(d); q := r / h; s := 48.0 / (PI_D * h * h * h * h);
+  if r == 0.0 || q > 1.0 { return D3_ZERO; }   // mutant: equivalent (at q = 1 the gradient is 0 either way)
+  g := ifx q <= 0.5 then s * q * (3.0 * q - 2.0) else -s * (1.0 - q) * (1.0 - q);   // mutant: equivalent (at q = 1/2 both pieces give -s / 4)
+  return d3_scale(d, g / r);
+}
+
+Sph_Refusal :: enum u8 { none; step_too_long; grid; }
+
+
+// Tait's equation p = B ((rho / rest)^7 - 1) with B = rest c^2 / 7, clamped
+// at zero so the free surface does not pull.
+sph_pressure :: (s: [] Sph, rho: f64) -> f64 {
+  b := s[0].rest * s[0].sound * s[0].sound / 7.0;
+  x := rho / s[0].rest; x2 := x * x; x4 := x2 * x2;
+  return fmax(0.0, b * (x4 * x2 * x - 1.0));
+}
+
+// Neighbors within h for every particle, into g and n. A full neighbor
+// list is a refusal: a sum over a cut list would be wrong.
+sph_near :: (p: [] Pstore, s: [] Sph, g: [] Pgrid, n: [] Pneighbors) -> Sph_Refusal {
+  if pgrid_new(g, s[0].lo, s[0].hi, s[0].h) != Pgrid_Refusal.none { return Sph_Refusal.grid; }
+  if pgrid_build(p, g) != Pgrid_Refusal.none { return Sph_Refusal.grid; }
+  pgrid_neighbors(p, g, n);
+  if n[0].overflow > 0 { return Sph_Refusal.grid; }
+  return Sph_Refusal.none;
+}
+
+// Density and pressure of every fluid particle: its own mass and its
+// neighbors', fluid or wall, through the kernel.
+sph_density :: (p: [] Pstore, s: [] Sph, n: [] Pneighbors) {
+  h := s[0].h;
+  for i: 0..<p[0].count {
+    if p[0].material[i] != SPH_FLUID { s[0].density[i] = s[0].rest; s[0].pressure[i] = 0.0; continue; }
+    rho := p[0].mass[i] * sph_w(0.0, h);
+    for k: 0..<n[0].count[i] {
+      j := n[0].list[i * PLIST + k]; w := sph_w(d3_dist(p[0].pos[i], p[0].pos[j]), h);
+      rho += p[0].mass[j] * w;
+    }
+    s[0].density[i] = rho; s[0].pressure[i] = sph_pressure(s, rho);
+  }
+}
+
+// The force on fluid particle i from fluid particle j, pressure and
+// viscosity. Every factor is symmetric in i and j and the gradient is odd,
+// so pair(j, i) is exactly -pair(i, j).
+sph_pair :: (p: [] Pstore, s: [] Sph, i: int, j: int) -> D3 {
+  d := d3_sub(p[0].pos[i], p[0].pos[j]); gw := sph_grad(d, s[0].h); h := s[0].h;
+  ri := s[0].density[i]; rj := s[0].density[j];
+  press := -(s[0].pressure[i] / (ri * ri) + s[0].pressure[j] / (rj * rj));
+  // Viscosity (Monaghan 1992), 2 (d + 2) nu with d = 3, on the mean density.
+  v := d3_sub(p[0].vel[i], p[0].vel[j]);
+  visc := 10.0 * s[0].viscosity * 2.0 / (ri + rj) * d3_dot(v, d) / (d3_dot(d, d) + 0.01 * h * h);
+  return d3_scale(gw, p[0].mass[i] * p[0].mass[j] * (press + visc));
+}
+
+// Accelerations of every fluid particle, after sph_density. A wall sample
+// mirrors the particle's own pressure and density.
+sph_forces :: (p: [] Pstore, s: [] Sph, n: [] Pneighbors) {
+  for i: 0..<p[0].count {
+    s[0].accel[i] = D3_ZERO;
+    if p[0].material[i] != SPH_FLUID { continue; }
+    f := D3_ZERO; ri := s[0].density[i];
+    for k: 0..<n[0].count[i] {
+      j := n[0].list[i * PLIST + k];
+      if p[0].material[j] == SPH_FLUID { f = d3_add(f, sph_pair(p, s, i, j)); continue; }
+      gw := sph_grad(d3_sub(p[0].pos[i], p[0].pos[j]), s[0].h);
+      f = d3_add(f, d3_scale(gw, -p[0].mass[i] * p[0].mass[j] * 2.0 * s[0].pressure[i] / (ri * ri)));
+    }
+    s[0].accel[i] = d3_add(d3_scale(f, 1.0 / p[0].mass[i]), s[0].gravity);
+  }
+}
+
+// The longest step the profile admits: 0.4 h / c.
+sph_cfl :: (s: [] Sph) -> f64 { return 0.4 * s[0].h / s[0].sound; }
+
+// One step of dt: semi-implicit Euler for the fluid; walls stay.
+sph_step :: (p: [] Pstore, s: [] Sph, g: [] Pgrid, n: [] Pneighbors, dt: f64) -> Sph_Refusal {
+  if dt > sph_cfl(s) { return Sph_Refusal.step_too_long; }
+  r := sph_near(p, s, g, n);
+  if r != Sph_Refusal.none { return r; }
+  sph_density(p, s, n);
+  sph_forces(p, s, n);
+  for i: 0..<p[0].count {
+    if p[0].material[i] != SPH_FLUID { continue; }
+    p[0].vel[i] = d3_add(p[0].vel[i], d3_scale(s[0].accel[i], dt));
+    p[0].pos[i] = d3_add(p[0].pos[i], d3_scale(p[0].vel[i], dt));
+  }
+  return Sph_Refusal.none;
+}
+
+// An open tank of wall samples of the given mass at spacing a: a floor
+// over lo..hi on x and z at lo.y, and four walls up to hi.y, one layer thick.
+sph_tank :: (p: [] Pstore, lo: D3, hi: D3, a: f64, mass: f64) -> bool {
+  nx := cast(int) floor((hi.x - lo.x) / a + 0.5); ny := cast(int) floor((hi.y - lo.y) / a + 0.5); nz := cast(int) floor((hi.z - lo.z) / a + 0.5);
+  for y: 0..<ny + 1 {
+    for z: 0..<nz + 1 {
+      for x: 0..<nx + 1 {
+        if y > 0 && x > 0 && x < nx && z > 0 && z < nz { continue; }
+        if pstore_add(p, d3(lo.x + cast(f64) x * a, lo.y + cast(f64) y * a, lo.z + cast(f64) z * a), D3_ZERO, mass, SPH_WALL, 0) < 0 { return false; }   // mutant: equivalent (entity is a label the solver never reads)
+      }
+    }
+  }
+  return true;
+}
+// The particle mass that makes an interior particle of a lattice of spacing
+// a sit at rest density under support h: rest / (the sum of W over the
+// lattice). Mass rest a^3 would start the liquid squeezed or stretched by
+// the kernel's discretization error, and Tait's equation turns 1% of that
+// into a burst.
+sph_lattice_mass :: (a: f64, h: f64, rest: f64) -> f64 {
+  k := cast(int) floor(h / a) + 1; sum := 0.0;   // mutant: equivalent (points past k lie outside the support and add 0)
+  for z: -k..<k + 1 {   // mutant: equivalent (points past k lie outside the support and add 0)
+    for y: -k..<k + 1 {   // mutant: equivalent (points past k lie outside the support and add 0)
+      for x: -k..<k + 1 { sum += sph_w(a * sqrt(cast(f64) (x * x + y * y + z * z)), h); }   // mutant: equivalent (points past k lie outside the support and add 0)
+    }
+  }
+  return rest / sum;
+}
+// A block of nx x ny x nz fluid particles at spacing a from lo, each of
+// the given mass.
+sph_block :: (p: [] Pstore, lo: D3, nx: int, ny: int, nz: int, a: f64, mass: f64) -> bool {
+  for y: 0..<ny {
+    for z: 0..<nz {
+      for x: 0..<nx {
+        q := d3(lo.x + cast(f64) x * a, lo.y + cast(f64) y * a, lo.z + cast(f64) z * a);
+        if pstore_add(p, q, D3_ZERO, mass, SPH_FLUID, 1) < 0 { return false; }   // mutant: equivalent (entity is a label the solver never reads)
+      }
+    }
+  }
+  return true;
+}
+
+// ---- checks
+
+#test "the kernel integrates to 1, ends at h, and its gradient is its odd derivative" #steps 200000000 {
+  for h: [3] f64.[0.1, 0.5, 2.0] {
+    // A midpoint sum over a 40^3 lattice covering the support.
+    m := 40; step := 2.0 * h / cast(f64) m; sum := 0.0;
+    for z: 0..<m {
+      for y: 0..<m {
+        for x: 0..<m {
+          d := d3((cast(f64) x + 0.5) * step - h, (cast(f64) y + 0.5) * step - h, (cast(f64) z + 0.5) * step - h);
+          sum += sph_w(d3_len(d), h) * step * step * step;
+        }
+      }
+    }
+    #assert abs(sum - 1.0) < 0.002;
+    #assert sph_w(h, h) == 0.0 && sph_w(1.0001 * h, h) == 0.0 && sph_w(0.0, h) == 8.0 / (PI_D * h * h * h);
+    // The two pieces meet at q = 1/2.
+    #assert abs(sph_w(0.5 * h * 0.9999999, h) - sph_w(0.5 * h * 1.0000001, h)) < 1e-5 * sph_w(0.0, h);
+    for k: 1..<10 {
+      r := cast(f64) k * 0.1 * h; e := 0.0000001 * h;
+      g := sph_grad(d3(r, 0.0, 0.0), h);
+      #assert abs(g.x - (sph_w(r + e, h) - sph_w(r - e, h)) / (2.0 * e)) < 0.00001 * sph_w(0.0, h) / h;
+      #assert g.x < 0.0 && g.y == 0.0;
+      d := d3(r * 0.6, -r * 0.8, 0.0); a := sph_grad(d, h); b := sph_grad(d3_neg(d), h);
+      #assert a.x == -b.x && a.y == -b.y && a.z == -b.z;
+    }
+    #assert d3_eq(sph_grad(D3_ZERO, h), D3_ZERO) && d3_eq(sph_grad(d3(1.01 * h, 0.0, 0.0), h), D3_ZERO);
+  }
+}
+
+#test "Tait pressure: zero at rest density and below, about 7 B times the excess just above" {
+  s: [1] Sph; s[0].sound = 20.0;
+  #assert sph_pressure(s[..], 1000.0) == 0.0 && sph_pressure(s[..], 990.0) == 0.0;
+  b := 1000.0 * 400.0 / 7.0;
+  #assert abs(sph_pressure(s[..], 1001.0) - b * (pow(1.001, 7.0) - 1.0)) < 1e-9 * b;
+  #assert abs(sph_pressure(s[..], 1001.0) / (b * 7.0 * 0.001) - 1.0) < 0.022;
+}
+
+#test "fluid forces are antisymmetric pair by pair, so they keep momentum" #steps 600000000 {
+  p: [1] Pstore; s: [1] Sph; g: [1] Pgrid; n: [1] Pneighbors;
+  s[0].h = 0.1; s[0].sound = 20.0; s[0].viscosity = 0.001; s[0].lo = D3_ZERO; s[0].hi = d3(1.0, 1.0, 1.0);
+  // A jittered, moving, squeezed block: pressures and velocities differ.
+  #assert psample_box(p[..], d3(0.3, 0.3, 0.3), d3(0.588, 0.588, 0.588), 0.048, 1000.0, 0.6, 3, SPH_FLUID, 1) == 216;
+  for i: 0..<p[0].count { p[0].vel[i] = d3(cast(f64) rand_unit(4, 1, i) - 0.5, cast(f64) rand_unit(4, 2, i) - 0.5, 0.0); }
+  #assert sph_near(p[..], s[..], g[..], n[..]) == Sph_Refusal.none;
+  sph_density(p[..], s[..], n[..]); sph_forces(p[..], s[..], n[..]);
+  total := D3_ZERO; scale := 0.0; squeezed := 0;
+  for i: 0..<p[0].count {
+    if s[0].pressure[i] > 0.0 { squeezed += 1; }
+    for k: 0..<n[0].count[i] {
+      j := n[0].list[i * PLIST + k]; a := sph_pair(p[..], s[..], i, j); b := sph_pair(p[..], s[..], j, i);
+      #assert a.x == -b.x && a.y == -b.y && a.z == -b.z;
+    }
+    f := d3_scale(s[0].accel[i], p[0].mass[i]);
+    total = d3_add(total, f); scale += d3_len(f);
+  }
+  #assert squeezed > 10 && d3_len(total) < 1e-12 * scale && scale > 1.0;
+}
+
+#test "refusals: a step past the CFL bound, a particle outside the grid, a crowded neighborhood" {
+  p: [1] Pstore; s: [1] Sph; g: [1] Pgrid; n: [1] Pneighbors;
+  s[0].h = 0.1; s[0].sound = 20.0; s[0].lo = D3_ZERO; s[0].hi = d3(1.0, 1.0, 1.0);
+  cfl := sph_cfl(s[..]);
+  #assert abs(cfl - 0.002) < 1e-18;
+  #assert pstore_add(p[..], d3(0.5, 0.5, 0.5), d3(1.0, 0.0, 0.0), 1.0, SPH_FLUID, 1) == 0;
+  #assert sph_step(p[..], s[..], g[..], n[..], 0.0021) == Sph_Refusal.step_too_long && p[0].pos[0].x == 0.5;
+  #assert sph_step(p[..], s[..], g[..], n[..], cfl) == Sph_Refusal.none && p[0].pos[0].x == 0.5 + cfl;
+  p[0].pos[0] = d3(1.5, 0.5, 0.5);
+  #assert sph_step(p[..], s[..], g[..], n[..], 0.001) == Sph_Refusal.grid;
+  p[0].count = 0;
+  for k: 0..<60 { #assert pstore_add(p[..], d3(0.5, 0.5, 0.5 + 0.0001 * cast(f64) k), D3_ZERO, 1.0, SPH_FLUID, 1) == k; }
+  #assert sph_step(p[..], s[..], g[..], n[..], 0.001) == Sph_Refusal.grid;
+  s[0].hi = d3(10.0, 10.0, 10.0);
+  #assert sph_near(p[..], s[..], g[..], n[..]) == Sph_Refusal.grid;
+}
+
+#test "a wall pushes a fluid particle straight out, and the lattice mass sets rest density" #steps 100000000 {
+  p: [1] Pstore; s: [1] Sph; g: [1] Pgrid; n: [1] Pneighbors;
+  a := 0.05; s[0].h = 0.1; s[0].sound = 20.0; s[0].lo = D3_ZERO; s[0].hi = d3(1.0, 1.0, 1.0);
+  m := sph_lattice_mass(a, s[0].h, s[0].rest);
+  for z: 0..<12 { for x: 0..<12 { #assert pstore_add(p[..], d3(0.2 + cast(f64) x * a, 0.1, 0.2 + cast(f64) z * a), D3_ZERO, m, SPH_WALL, 0) >= 0; } }
+  #assert pstore_add(p[..], d3(0.45, 0.15, 0.45), D3_ZERO, m, SPH_FLUID, 1) == 144;
+  #assert sph_near(p[..], s[..], g[..], n[..]) == Sph_Refusal.none;
+  sph_density(p[..], s[..], n[..]);
+  #assert s[0].density[144] > 0.0 && s[0].density[0] == s[0].rest && s[0].pressure[0] == 0.0;
+  s[0].pressure[144] = 1000.0;
+  sph_forces(p[..], s[..], n[..]);
+  #assert s[0].accel[144].y > 0.0 && abs(s[0].accel[144].x) < 1e-9 && abs(s[0].accel[144].z) < 1e-9 && d3_eq(s[0].accel[0], D3_ZERO);
+  // A particle inside a full lattice of spacing a has exactly rest density.
+  p[0].count = 0;
+  #assert sph_block(p[..], d3(0.3, 0.3, 0.3), 7, 7, 7, a, m);
+  #assert sph_near(p[..], s[..], g[..], n[..]) == Sph_Refusal.none;
+  sph_density(p[..], s[..], n[..]);
+  #assert abs(s[0].density[3 * 49 + 3 * 7 + 3] / s[0].rest - 1.0) < 1e-12 && s[0].pressure[3 * 49 + 3 * 7 + 3] < 1e-6;
+  #assert s[0].density[0] < 0.9 * s[0].rest && s[0].pressure[0] == 0.0;   // a corner: few neighbors
+}
+
+#test "one pair's force: Tait pressure and Monaghan viscosity, term by term" {
+  p: [1] Pstore; s: [1] Sph;
+  s[0].h = 0.1; s[0].viscosity = 0.001;
+  #assert pstore_add(p[..], D3_ZERO, d3(1.0, 0.0, 0.0), 0.2, SPH_FLUID, 1) == 0;
+  #assert pstore_add(p[..], d3(0.05, 0.0, 0.0), D3_ZERO, 0.3, SPH_FLUID, 1) == 1;
+  s[0].density[0] = 1000.0; s[0].density[1] = 1250.0;
+  s[0].pressure[0] = 1000.0; s[0].pressure[1] = 500.0;
+  // At r = h / 2 the gradient is -sigma' / 4 along d = x_i - x_j = (-0.05, 0, 0),
+  // sigma' = 48 / (pi h^4): pointing from i away from j, so +x.
+  sg := 48.0 / (PI_D * 0.0001);
+  gx := 0.25 * sg;
+  press := -(1000.0 / 1000000.0 + 500.0 / 1562500.0);
+  // v . d = -0.05: the pair approaches, and viscosity pushes it apart.
+  visc := 10.0 * 0.001 * 2.0 / 2250.0 * -0.05 / (0.0025 + 0.0001);
+  f := sph_pair(p[..], s[..], 0, 1);
+  want := gx * 0.2 * 0.3 * (press + visc);
+  #assert abs(f.x - want) < 1e-12 * abs(want) && f.y == 0.0 && f.z == 0.0;
+  // Each term alone, so neither hides the other.
+  s[0].viscosity = 0.0; f = sph_pair(p[..], s[..], 0, 1);
+  #assert abs(f.x - gx * 0.06 * press) < 1e-12 * abs(gx * 0.06 * press);
+  s[0].viscosity = 0.001; s[0].pressure[0] = 0.0; s[0].pressure[1] = 0.0; f = sph_pair(p[..], s[..], 0, 1);
+  #assert abs(f.x - gx * 0.06 * visc) < 1e-12 * abs(gx * 0.06 * visc);
+  // A wall sample in j's place mirrors i's pressure: the acceleration is
+  // the force over i's mass, plus gravity.
+  p[0].material[1] = SPH_WALL; s[0].pressure[0] = 1000.0; s[0].gravity = d3(0.0, -9.81, 0.0);
+  s[0].accel[1] = d3(1.0, 1.0, 1.0);
+  n: [1] Pneighbors; n[0].count[0] = 1; n[0].list[0] = 1;
+  sph_forces(p[..], s[..], n[..]);
+  wx := gx * -0.2 * 0.3 * 2.0 * 1000.0 / 1000000.0 / 0.2;
+  #assert abs(s[0].accel[0].x - wx) < 1e-12 * abs(wx) && s[0].accel[0].y == -9.81 && d3_eq(s[0].accel[1], D3_ZERO);
+}
+
+#test "a step: density, forces, then the velocity before the position" {
+  p: [1] Pstore; s: [1] Sph; g: [1] Pgrid; n: [1] Pneighbors;
+  s[0].h = 0.1; s[0].sound = 20.0; s[0].lo = D3_ZERO; s[0].hi = d3(1.0, 1.0, 1.0); s[0].gravity = d3(0.0, -10.0, 0.0);
+  // A wall sample with a stale pressure; two heavy fluid particles close
+  // together, pushed apart.
+  #assert pstore_add(p[..], d3(0.1, 0.1, 0.1), D3_ZERO, 1.0, SPH_WALL, 0) == 0;
+  #assert pstore_add(p[..], d3(0.5, 0.5, 0.5), D3_ZERO, 2.0, SPH_FLUID, 1) == 1;
+  #assert pstore_add(p[..], d3(0.53, 0.5, 0.5), D3_ZERO, 2.0, SPH_FLUID, 1) == 2;
+  s[0].pressure[0] = 5.0;
+  #assert sph_step(p[..], s[..], g[..], n[..], 0.001) == Sph_Refusal.none;
+  #assert s[0].density[1] > s[0].rest && s[0].pressure[1] > 0.0 && s[0].pressure[0] == 0.0 && s[0].density[0] == s[0].rest;
+  #assert p[0].vel[1].x < 0.0 && p[0].vel[2].x == -p[0].vel[1].x && abs(p[0].vel[1].y + 0.01) < 1e-15;
+  #assert p[0].pos[1].x == 0.5 + p[0].vel[1].x * 0.001 && d3_eq(p[0].pos[0], d3(0.1, 0.1, 0.1));
+}
+
+#test "one crowded particle is enough to refuse" {
+  p: [1] Pstore; s: [1] Sph; g: [1] Pgrid; n: [1] Pneighbors;
+  s[0].h = 0.1; s[0].sound = 20.0; s[0].lo = D3_ZERO; s[0].hi = d3(1.0, 1.0, 1.0);
+  // 49 points on a sphere of radius 0.09 about one center: the center has
+  // 49 neighbors, each point far fewer.
+  #assert pstore_add(p[..], d3(0.5, 0.5, 0.5), D3_ZERO, 1.0, SPH_FLUID, 1) == 0;
+  for k: 0..<49 {
+    y := 1.0 - 2.0 * (cast(f64) k + 0.5) / 49.0; r := sqrt(1.0 - y * y); t := 2.399963229728653 * cast(f64) k;
+    _ := pstore_add(p[..], d3_add(d3(0.5, 0.5, 0.5), d3_scale(d3(r * cos(t), y, r * sin(t)), 0.09)), D3_ZERO, 1.0, SPH_FLUID, 1);
+  }
+  #assert sph_near(p[..], s[..], g[..], n[..]) == Sph_Refusal.grid && n[0].overflow == 1;
+}
+
+#test "the lattice mass sums every lattice point inside the support, and the builders fill or refuse" {
+  // Brute force over a range wide enough for any h / a below 5.
+  for c: [3] f64.[0.04, 0.05, 0.03] {
+    sum := 0.0;
+    for z: -6..<7 { for y: -6..<7 { for x: -6..<7 { sum += sph_w(c * sqrt(cast(f64) (x * x + y * y + z * z)), 0.1); } } }
+    #assert abs(sph_lattice_mass(c, 0.1, 1000.0) * sum / 1000.0 - 1.0) < 1e-12;
+  }
+  p: [1] Pstore;
+  #assert sph_block(p[..], D3_ZERO, 3, 4, 5, 0.1, 1.0) && p[0].count == 60 && p[0].pos[59].y == 0.30000000000000004;
+  // An open tank of 0.2 m at 0.05: a 5 x 5 floor and four rings of 16.
+  p[0].count = 0;
+  #assert sph_tank(p[..], D3_ZERO, d3(0.2, 0.2, 0.2), 0.05, 1.0) && p[0].count == 25 + 4 * 16;
+  for i: 0..<p[0].count { #assert p[0].material[i] == SPH_WALL; }
+  // Away from the origin: the corners sit at lo and hi, rows run along x.
+  p[0].count = 0;
+  #assert sph_tank(p[..], d3(1.0, 2.0, 3.0), d3(1.2, 2.2, 3.2), 0.05, 1.0) && p[0].count == 89;
+  #assert d3_eq(p[0].pos[0], d3(1.0, 2.0, 3.0)) && d3_dist(p[0].pos[88], d3(1.2, 2.2, 3.2)) < 1e-12;
+  #assert d3_dist(p[0].pos[1], d3(1.05, 2.0, 3.0)) < 1e-12 && d3_dist(p[0].pos[5], d3(1.0, 2.0, 3.05)) < 1e-12 && d3_dist(p[0].pos[25], d3(1.0, 2.05, 3.0)) < 1e-12;
+  // A store too small for either refuses.
+  p[0].count = PSTORE - 10;
+  #assert !sph_block(p[..], D3_ZERO, 3, 4, 5, 0.1, 1.0) && p[0].count == PSTORE;
+  p[0].count = PSTORE - 10;
+  #assert !sph_tank(p[..], D3_ZERO, d3(0.2, 0.2, 0.2), 0.05, 1.0) && p[0].count == PSTORE;
+}

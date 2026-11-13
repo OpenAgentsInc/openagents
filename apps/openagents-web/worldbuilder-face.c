@@ -34,14 +34,14 @@ static float bake[6453720];
 static float zone_strokes[250000 * 16];   // the zone's own strokes (everglade/zone.coax MAX_VERTICES, VERTEX_FLOATS): made, never drawn
 static uint32_t baked, frames;
 static int64_t figure_draws;
-static coax_t_Player player;   // your body (aethyr/move/walk.coax)
-static coax_t_Sticks sticks;   // a phone's thumb (aethyr/core/sticks.coax)
+static coax_t_Player player;   // your body (metaverse-engine/move/walk.coax)
+static coax_t_Sticks sticks;   // a phone's thumb (metaverse-engine/core/sticks.coax)
 static double now;
 static float width, height, dpr;
-static coax_t_Drive drive;     // the agent driver's (aethyr/agent/drive.coax): the zone holds a view of it
+static coax_t_Drive drive;     // the agent driver's (metaverse-engine/agent/drive.coax): the zone holds a view of it
 #define PEOPLE_CATALOG 10      /* the page's assets, in order: WorldBuilder's pack (0..3), the HUD's fonts, icons and licence (4..9), the people's pack (10..13) */
 #define PEOPLE_INDEX 12
-/* The page asks for 4096 pages of memory (aethyr/render/adoption.coax render_memory_pages): the zone, the bake and the ground. */
+/* The page asks for 4096 pages of memory (metaverse-engine/render/adoption.coax render_memory_pages): the zone, the bake and the ground. */
 static uint8_t inbox[1310720];   // a kept world comes back through it (worldbuilder.coax SAVE_CAP)
 static uint8_t catalog[262144];
 
@@ -123,7 +123,7 @@ EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { wbw_blur(walk(state))
 EXPORT("coaxial_focus") void coaxial_focus(uint32_t state) { (void)state; }
 static uint32_t pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
   bool used = wbw_pointer(walk(state), x, y, phase, kind, id, button);
-  // the finger the zone says is the thumb's moves the stick (aethyr/core/sticks.coax)
+  // the finger the zone says is the thumb's moves the stick (metaverse-engine/core/sticks.coax)
   if (zone_thumb(zone(state))) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   drain(state);
   return used ? 1u : 0u;
@@ -131,7 +131,7 @@ static uint32_t pointer(uint32_t state, float x, float y, int32_t phase, int32_t
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) { return pointer(state, x, y, phase, kind, id, phase == 1 ? -1 : 0); }
 EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) { return pointer(state, x, y, phase, kind, id, button); }
 EXPORT("coaxial_wheel") uint32_t coaxial_wheel(uint32_t state, float dy) { return wbw_wheel(walk(state), dy) ? 1u : 0u; }
-/* The mouselook (aethyr/cam/mouselook.coax): host.js holds the pointer when this says 2 and forwards the mouse's travel. */
+/* The mouselook (metaverse-engine/cam/mouselook.coax): host.js holds the pointer when this says 2 and forwards the mouse's travel. */
 EXPORT("coaxial_mouselook") int32_t coaxial_mouselook(uint32_t state) { return (int32_t)wbw_mouselook(walk(state)); }
 EXPORT("coaxial_look_delta") void coaxial_look_delta(uint32_t state, float dx, float dy) { zone_look_delta(zone(state), dx, dy); }
 EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(uint32_t state, int32_t status) { zone_pointer_lock(zone(state), status); }

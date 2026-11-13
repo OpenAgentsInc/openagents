@@ -2,7 +2,7 @@
 // what each sends the computer next, and the pane drawn on a desktop and a phone.
 //   coax/bin/coax test verse/edit/computer_test.coax
 
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "edit.coax";
 

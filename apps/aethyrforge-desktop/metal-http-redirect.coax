@@ -1,8 +1,8 @@
 // Coax-authored physical peer workload through the actual Metal HTTP adapter.
 #import "Basic";
-#load "../../aethyr/host/tests/http-redirect-peer.coax";
-#load "../../aethyr/host/http-redirect-conformance.coax";
-#load "../../aethyr/host/fixture.coax";
+#load "../../metaverse-engine/host/tests/http-redirect-peer.coax";
+#load "../../metaverse-engine/host/http-redirect-conformance.coax";
+#load "../../metaverse-engine/host/fixture.coax";
 #test "physical Metal redirect paths and header values are literal" {
  b:[128]u8;#assert mhd_path(308,2,1,b[..])=="/r/308/2/1"&&mhd_label(45,b[..])=="reply-45";
  #assert mhd_header("POST / HTTP/1.1\r\naUtHoRiZaTiOn: Test fixture\r\nX-Verse-Player: fixture-player\r\n\r\n","authorization")=="Test fixture";
@@ -26,7 +26,7 @@ tool_main :: ()->int #export_c #effects(all) {
  if args_at(a[..],0)=="--peer" {if args_count(a[..])!=5{return 2;}return hdr_peer(args_at(a[..],1),args_at(a[..],2),args_at(a[..],3),args_at(a[..],4));}
  if args_count(a[..])<4 {tool_errln("usage: metal-http-redirect ROOT RESOURCES SDK NEW_OUT [--existing]");return 2;}
  root:=args_at(a[..],0);resources:=args_at(a[..],1);sdk:=args_at(a[..],2);dir:=args_at(a[..],3);if !fs_mkdir(dir){return 1;}paths:[10][4096]u8;self:[4096]u8;image:=gp_self(self[..]);peerfile:=fs_join(dir,"peer.json",paths[0][..]);portfile:=fs_join(dir,"port.json",paths[1][..]);plan:=fs_join(dir,"plan.json",paths[2][..]);result:=fs_join(dir,"sdk.json",paths[3][..]);driver:=fs_join(sdk,"HostEffects",paths[4][..]);fixture:=fs_join(sdk,"libfixture.dylib",paths[5][..]);
- inputs:[1]RtqInputs;for file:[8]string.[image,driver,fixture,"apps/aethyrforge-desktop/Sources/MetalNetwork.swift","apps/aethyrforge-desktop/MetalRealm.m","apps/aethyrforge-desktop/tests/MetalConformance.swift","aethyr/host/http-redirect.coax","aethyr/host/http-redirect-conformance.coax"]{if !rtq_input_add(inputs[..],file){return 1;}}
+ inputs:[1]RtqInputs;for file:[8]string.[image,driver,fixture,"apps/aethyrforge-desktop/Sources/MetalNetwork.swift","apps/aethyrforge-desktop/MetalRealm.m","apps/aethyrforge-desktop/tests/MetalConformance.swift","metaverse-engine/host/http-redirect.coax","metaverse-engine/host/http-redirect-conformance.coax"]{if !rtq_input_add(inputs[..],file){return 1;}}
  existing:=args_has(a[..],"--existing");p:=-1;defer{if p>=0{k:=proc_kill(p,PROC_SIGTERM);w:=proc_wait(p,1000);freed:=proc_release(p);}}
  if !existing {
   p=proc_new();if p<0{return 1;}for arg:[6]string.[image,"--peer",root,dir,portfile,peerfile]{if !proc_arg(p,arg){return 1;}}if proc_start(p)!=0{return 1;}

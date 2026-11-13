@@ -1,8 +1,8 @@
 {
   "identity": "texture-block-layer-v1",
-  "check": "coax/web/tool.sh aethyr/tools/block-pack.coax profile proto/verse/texture-block-layer-v1.json",
-  "codec": "aethyr/render/block-layer.coax",
-  "carried_by": "a texture layer entry (kind 4) of a pack's block build, NAME.TAG.vpk3 beside NAME.pack (asset-pack-v2 image, paged as VPK3); written by aethyr/tools/block-pack.coax, uploaded by coax/web/host.js with writeTexture",
+  "check": "coax/web/tool.sh metaverse-engine/tools/block-pack.coax profile proto/verse/texture-block-layer-v1.json",
+  "codec": "metaverse-engine/render/block-layer.coax",
+  "carried_by": "a texture layer entry (kind 4) of a pack's block build, NAME.TAG.vpk3 beside NAME.pack (asset-pack-v2 image, paged as VPK3); written by metaverse-engine/tools/block-pack.coax, uploaded by coax/web/host.js with writeTexture",
   "magic": "VBL1",
   "byte_order": "little endian",
   "header_bytes": 16,

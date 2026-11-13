@@ -1,8 +1,8 @@
 // realm's shaders, the source of apps/openagents-web/realm.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (realm.module,
 // realm.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/render/sampling.coax";
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/render/sampling.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../verse/light.coax";
 #load "../../../verse/haunt-light.coax";
 #load "../../../verse/look.coax";

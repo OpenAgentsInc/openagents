@@ -1,7 +1,7 @@
 // Every realm's frame rate in headless Chrome (GitHub #12649; Aethyr book
 // chapter 83): the 60 FPS report for each realm in realms.json, not only
 // Everglade (perf.ts keeps Everglade's four scenes and the homepage). The
-// frame statistics and the 60 FPS rule are aethyr/core/frame-report.coax's.
+// frame statistics and the 60 FPS rule are metaverse-engine/core/frame-report.coax's.
 //   coax/web/tool.sh realm-perf [BASE_URL] [--realms FILE] [--shard I/N] [--rounds R]
 //                               [--only SLUG] [--against URL] [--previous FILE] [--out FILE] [--list] [--software-ok]
 //   coax test coax/web/realm-perf.coax          # its own checks
@@ -35,7 +35,7 @@
 // adapter it measured on ("realm-perf: WebGPU adapter: hardware nvidia lovelace").
 #import "Basic";
 #load "../lib/media/media.coax";   // its ready test (MEDIA_READY_JS, media_ready_step); it loads cdp.coax
-#load "../../aethyr/core/frame-report.coax";   // FrameStats, frame_stats, frame_holds, frame_fps10: the 60 FPS rule
+#load "../../metaverse-engine/core/frame-report.coax";   // FrameStats, frame_stats, frame_holds, frame_fps10: the 60 FPS rule
 
 RP_CASES :: 256;            // cases from one table (85 realms)
 RP_FRAMES :: 8192;          // frames timed in one case
@@ -113,7 +113,7 @@ rp_whole :: (s: string) -> int {
 // ---- frames (microseconds) -----------------------------------------------
 
 // A run's statistics and the 60 FPS rule (frame_stats, frame_holds, frame_fps10) are
-// aethyr/core/frame-report.coax's (Aethyr book chapter 83).
+// metaverse-engine/core/frame-report.coax's (Aethyr book chapter 83).
 
 // How a case compares with an earlier measurement of it.
 rp_versus :: (now_ok: bool, now: FrameStats, before: RpLine) -> string {

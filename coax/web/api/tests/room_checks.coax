@@ -1,4 +1,4 @@
-#load "../../../../aethyr/core/ids.coax";
+#load "../../../../metaverse-engine/core/ids.coax";
 // The rooms' API checks, run by test.sh after test.py against the same API and database:
 //   admission  when the rooms are full (#12796; migrations/0126_room_admission.sql, player.c room_ticket)
 //   chat       Everglade room chat's moderation (migrations/0121_room_chat_moderation.sql)
@@ -25,7 +25,7 @@
 #load "api_harness.coax";
 #load "../../room/raid-identity.coax";
 #load "../../room/room-write.coax";   // a shard's own write key (#13260)
-#load "../../../../aethyr/session/moderation.coax";   // moderation's codec (#13302)
+#load "../../../../metaverse-engine/session/moderation.coax";   // moderation's codec (#13302)
 #load "../../../../everglade/model/events.coax";   // the domain events' codec (#13319)
 
 cxproc_wall_us :: () -> int #foreign #effects(all);
@@ -2200,7 +2200,7 @@ rg_keep :: (t: [] Ap, text: string) -> string {
   return cast(string) t[0].env[a..<t[0].env_n];
 }
 // Region failover rehearsed on this machine (#12853; spec docs/verse/region-recovery.md; contract
-// aethyr/session/region.coax). The harness's database is region A's primary. Then:
+// metaverse-engine/session/region.coax). The harness's database is region A's primary. Then:
 //   1. region B's replica: a streaming copy of A (pg_basebackup), behind by the replication lag;
 //   2. a partition: B loses A's stream, while A's API keeps taking a room's writes (the loss window);
 //   3. after the lease (5 s on the arbiter's clock), the arbiter promotes B, gives it epoch 2

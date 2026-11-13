@@ -10,7 +10,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
-#load "../../aethyr/render/host-layers.coax";
+#load "../../metaverse-engine/render/host-layers.coax";
 
 LY_FILE :: 8388608;     // the largest image file
 LY_WORK :: 4194304;     // the largest decode work (a 1024 by 1024 RGBA PNG's rows)

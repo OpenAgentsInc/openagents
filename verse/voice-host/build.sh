@@ -4,7 +4,7 @@
 # The Coax engine (verse/voice*.coax) becomes one C library per file with
 # coax/bin/coax, exactly as apps/openagents-ios/generate.sh does for the app;
 # verse/platform/voice.c is the C face over it. The client also links
-# the Metaverse Engine's spoken-request gate (aethyr/audio/voice.coax). Every host links Psionic's
+# the Metaverse Engine's spoken-request gate (metaverse-engine/audio/voice.coax). Every host links Psionic's
 # resident Parakeet (libpsionic-parakeet.a from psionic/platform/parakeet-build.sh;
 # Metal on macOS; on Linux CUDA, opened at run time, or the CPU). On macOS libcurl comes from the SDK and
 # the psionic provider links Psionic's Whisper (whisper-build.sh) and Metal;
@@ -63,7 +63,7 @@ if [[ ${#engine[@]} -eq 0 || ! -f verse/platform/voice.c ]]; then
   echo "build.sh: the voice engine (verse/voice*.coax, verse/platform/voice.c) is not there yet" >&2
   exit 1
 fi
-"$compiler" c aethyr/audio/voice.coax --library --header "$gen/AethyrVoice.h" > "$gen/AethyrVoice.c.tmp.$$"
+"$compiler" c metaverse-engine/audio/voice.coax --library --header "$gen/AethyrVoice.h" > "$gen/AethyrVoice.c.tmp.$$"
 mv "$gen/AethyrVoice.c.tmp.$$" "$gen/AethyrVoice.c"
 flags=(-std=c11 -O2 -g "${sysflags[@]}" -Wall -Wextra -Wno-unused-parameter
        -Wno-unused-function -Wno-unused-variable -Wno-missing-field-initializers -Wno-sign-compare)

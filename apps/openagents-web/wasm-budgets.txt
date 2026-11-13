@@ -16,9 +16,9 @@ audiolab 140000
 animelab 190000
 belt 320000
 builder 100000
-# WorldBuilder on Aethyrforge's edit log (aethyr/forge/edit.coax), EditBuf (components/core/edit.coax) and the control kit (components/kit/controls.coax, verse_skin, gpu_draw, #13226): 122,449 bytes measured on Linux; about 6% room.
-# ... and with the ground (#13225): an Aethyr terrain tile (aethyr/world/terrain-tile.coax), the engine's brushes (aethyr/world/terrain-edit.coax),
-# the forge log's land steps, the exact ground ray (aethyr/physics/ground-query.coax), the brush bar and the view's framing (#13224): 166,099 bytes measured on Linux; about 5% room.
+# WorldBuilder on Aethyrforge's edit log (metaverse-engine/editor/edit.coax), EditBuf (components/core/edit.coax) and the control kit (components/kit/controls.coax, verse_skin, gpu_draw, #13226): 122,449 bytes measured on Linux; about 6% room.
+# ... and with the ground (#13225): an Aethyr terrain tile (metaverse-engine/world/terrain-tile.coax), the engine's brushes (metaverse-engine/world/terrain-edit.coax),
+# the forge log's land steps, the exact ground ray (metaverse-engine/physics/ground-query.coax), the brush bar and the view's framing (#13224): 166,099 bytes measured on Linux; about 5% room.
 # ... and it is an Everglade zone too (worldbuilder-walk.coax, everglade/zone.coax, #13225): your character on the shared controller, as the
 # Archery Range (2,819,466) and Bitcoin Lab are: 2,918,884 bytes measured on Linux; about 4% room.
 worldbuilder 3050000
@@ -89,18 +89,18 @@ fairy 695000
 # Devotion Protection adds persistent effect and component handling, measured at 2,674,265 bytes (#13030).
 # Zone of Truth world anchoring and shared saves, measured at 2,679,040 bytes (#13030).
 # Revivify: recorded combat deaths, corpse targeting and the diamond supply, measured at 2,685,797 bytes (#13030).
-# Experimental's mouselook (aethyr/cam/mouselook.coax) and the shared reticle drawn while it looks, on main with bow combat (b9ef099b71, about 2,694,800): 2,701,385 bytes measured.
+# Experimental's mouselook (metaverse-engine/cam/mouselook.coax) and the shared reticle drawn while it looks, on main with bow combat (b9ef099b71, about 2,694,800): 2,701,385 bytes measured.
 # Monsters leave the dungeon after you by its doorways and walk home on a leash; drawn nearest first, never folded flat: 2,720,155 bytes measured on main with the keyed Longbow draw (8faf847c27).
-# The fantasy HUD in Everglade Experimental (aethyr/ui/hud-style.coax, hud-menu.coax, hud-sight.coax and
+# The fantasy HUD in Everglade Experimental (metaverse-engine/ui/hud-style.coax, hud-menu.coax, hud-sight.coax and
 # everglade/hud/): the portrait, bar tray, plates that show only while their body does, and the 5E Lab's
 # straight-alpha switch: 2,751,223 bytes measured before sight. Plates on the engine's visibility service
-# (aethyr/physics/visibility.coax through hud-sight.coax) and captions fitted to their slots: 2,781,170 bytes
+# (metaverse-engine/physics/visibility.coax through hud-sight.coax) and captions fitted to their slots: 2,781,170 bytes
 # measured on the remote hosts. Experimental on Everglade's side bar and the touch-sized CLASSES picker
 # (#13092): 2,834,070 bytes; about 3% headroom. The riders' straddle checked against the horse's and dragon's
 # bodies and the horse-archer stage (#13113): 2,923,469 bytes; about 1% headroom. The red dragon's Fire
 # Breath (#13121): 2,933,577 bytes with main's latest.
 # The Archery Range realm (then range-scene.coax, everglade/range/: its place, targets, tally and panel) with the engine's
-# static targets and zone colliders (aethyr/action/target.coax, aethyr/world/props.coax): 2,970,145 bytes measured
+# static targets and zone colliders (metaverse-engine/action/target.coax, metaverse-engine/world/props.coax): 2,970,145 bytes measured
 # on the remote hosts; about 1% headroom.
 # The testui HUD harvest (#13147: unit and target frames, health trails, slot sweeps, the red edges):
 # 3,013,263 bytes measured on the remote hosts; about 1% headroom.
@@ -119,13 +119,13 @@ bitcoin-lab-walk 2950000
 # word list), scrypt and NFKC for key backup, Negentropy and the rest: 3,520,351 bytes measured;
 # about 3% headroom.
 nostr-lab-walk 3630000
-# Everglade II's graphics governor (aethyr/core/quality.coax), frame-rate counter and ground-pressed look-up
+# Everglade II's graphics governor (metaverse-engine/core/quality.coax), frame-rate counter and ground-pressed look-up
 # brought it to 300,331 bytes; Character Create's studio and run in its world (everglade/client/create.coax,
 # #13023) to 319,706; about 6% headroom.
 # main reached 342,695 bytes; the two-handed blend rules add 8: 342,703 measured; about 2% headroom.
-# The glade's admitted terrain tile, material table and canopy bake (aethyr/world/terrain-tile.coax with its
-# SHA-256 identity, aethyr/render/bake.coax, #12995): 359,019 measured; about 4% headroom.
-# Texel-snapped shadow tiles (aethyr/render/cascades.coax) and rank-faded pieces (#13023): 365,055 measured;
+# The glade's admitted terrain tile, material table and canopy bake (metaverse-engine/world/terrain-tile.coax with its
+# SHA-256 identity, metaverse-engine/render/bake.coax, #12995): 359,019 measured; about 4% headroom.
+# Texel-snapped shadow tiles (metaverse-engine/render/cascades.coax) and rank-faded pieces (#13023): 365,055 measured;
 # about 5% headroom.
 # The room (everglade/client/net.coax: its socket, the jitter buffer, the re-run, the others' bodies and their
 # names, #13054): 399,063; Character Create's NAME and the names kept clear of each other (#13056): 407,698 measured; about 3% headroom.
@@ -133,20 +133,20 @@ nostr-lab-walk 3630000
 # catalog record reader): 425,803 measured; about 5% headroom.
 # The class bar and everyone's casts through the room (everglade/client/cast.coax, #13058): the twelve classes'
 # kits at level 1 on the SRD engine's spell and feature tables (class-kit.coax, fivebar.coax), their
-# effects (aethyr/fx/puff.coax and its looks) and Experimental's sounds (everglade/sound.coax: the
+# effects (metaverse-engine/fx/puff.coax and its looks) and Experimental's sounds (everglade/sound.coax: the
 # Everglade bank's names and the synthesized effects' recipes): 632,261 measured; about 4% headroom.
 # Levels 1 to 6 (#13046): each class's level 1 to 6 bars and catalog (class-kit.coax xk_bar_at), the
 # LEVEL row, the room's word on the bar (b frames: on-icon counts and held frames) and a refused
 # cast's fades, on top of the shared world profile (#13045): 660,903 measured; about 3% headroom.
-# The light through the resolved environment (aethyr/render/environment-frame.coax, #13066: the region
+# The light through the resolved environment (metaverse-engine/render/environment-frame.coax, #13066: the region
 # set and its index admitted whole, the day from the room's clock, the camera's resolution and the GPU
 # record each frame, and Everglade II's places from everglade/world/environment.coax): 687,298
 # measured; about 4% headroom.
 # Devotion Protection adds the hotbar and effect handling, measured at 720,314 bytes (#13030).
 # Zone of Truth hotbar and shared saves, measured at 721,014 bytes (#13030).
 # Rock hulls in aethyr walk/collide/query (7afe501d33) and Revivify's room target (#13030): 755,675 bytes measured.
-# Mouselook (aethyr/cam/mouselook.coax: the mouse turns the camera with no button held, Tab and Alt
-# free the cursor) and its shared reticle (aethyr/cam/reticle.coax), on main with its rock colliders at 755,675: 758,899 bytes measured.
+# Mouselook (metaverse-engine/cam/mouselook.coax: the mouse turns the camera with no button held, Tab and Alt
+# free the cursor) and its shared reticle (metaverse-engine/cam/reticle.coax), on main with its rock colliders at 755,675: 758,899 bytes measured.
 # The path's guard (everglade/client/guard.coax: his armoured body, his walk and fall between the room's words,
 # the plate, the hit marks and his cues; everglade/client/net.coax's g2/g3 words), on main at 758,899:
 # 765,129 bytes measured; about 2.6% headroom.
@@ -155,16 +155,16 @@ nostr-lab-walk 3630000
 # 793,466 bytes measured; about 2.7% headroom.
 # Analytics (everglade/client/track.coax and the Track, docs/analytics/2026-11-09-everglade-analytics-audit.md) on main with
 # #13071's GFX control: 818,675 bytes measured on macOS.
-# The fantasy HUD (aethyr/ui/hud-style.coax, hud-menu.coax, hud-sight.coax; everglade/hud/): the portrait plate,
+# The fantasy HUD (metaverse-engine/ui/hud-style.coax, hud-menu.coax, hud-sight.coax; everglade/hud/): the portrait plate,
 # map ring, bar tray, side bar and menus, the phone studio, and plates that show only while their body
 # does: 903,139 bytes measured on top of that (with the GFX plaque kept clear of the bar); about 3% headroom.
-# The E2 fixes (the shared numbers aethyr/action/floats.coax and area aim aethyr/action/area-aim.coax with its
+# The E2 fixes (the shared numbers metaverse-engine/action/floats.coax and area aim metaverse-engine/action/area-aim.coax with its
 # ground outline, the death-save line, the Esc menu's Change character and its V line, the Ranger's held bow
 # through charactercreator held_pieces, the guard's arrows; the guard's and monsters' own hit marks went to
 # floats): 916,653 bytes measured with the fantasy HUD, inside the same budget.
-# Plates on the engine's visibility service (aethyr/physics/visibility.coax through hud-sight.coax) and the side bar
+# Plates on the engine's visibility service (metaverse-engine/physics/visibility.coax through hud-sight.coax) and the side bar
 # and world layout in the game layer: 926,788 bytes measured on the remote hosts; about 3% headroom.
-# Main at 4ca2379f0e already measured 956,592 bytes, over 955,000. The shared plates (aethyr/ui/hud-plates.coax:
+# Main at 4ca2379f0e already measured 956,592 bytes, over 955,000. The shared plates (metaverse-engine/ui/hud-plates.coax:
 # reach, order, lift or fold, and everglade/hud/parts.coax eg_plates, #13088) take Everglade II to 958,822;
 # about 0.6% headroom.
 # The staged shots for film (everglade/client/stage.coax, #13093: ?stage= path-fly, path-walk, clearing-empty,
@@ -176,7 +176,7 @@ nostr-lab-walk 3630000
 # modules (everglade/hud/windows.coax and create.coax, #13083) take it to 1,018,400; about 2.6% headroom.
 # Everglade II online: packed rows and their reader, trunk and rock arrows, the next step drawn (#13165, #13166, #13167): 1,064,446 measured; about 3% room
 # Your record on the page (#13381): the content tables' reader and Everglade's rules for them
-# (aethyr/content/tables.coax, everglade/model/content.coax), the bag's window, the column under the
+# (metaverse-engine/content/tables.coax, everglade/model/content.coax), the bag's window, the column under the
 # map and a quest's talk: 1,108,025 bytes measured on a build host (1,071,777 on main before it); about 2.8% headroom.
 everglade2 1140000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
@@ -263,9 +263,9 @@ valleylab 160000
 # Rock hulls in aethyr walk/collide/query (7afe501d33): 104,986 bytes; about 5% room
 valleycanyon 110000
 # The character pass's runtime beside a world (Echo's idle body and face, pack admission, the SceneLights block): 41,715 bytes.
-# Her idle life (aethyr/character/idle.coax: blinks, glances, breath) and her placement from the world's stage (#12987): 47,788 bytes.
+# Her idle life (metaverse-engine/character/idle.coax: blinks, glances, breath) and her placement from the world's stage (#12987): 47,788 bytes.
 # Her motion when a world moves her (#12996): the locomotion graph at the world's pace, TF0290's shot
-# admitted and checked for her cast's wind-up, and the fix layers (aethyr/character/fix.coax: planted
+# admitted and checked for her cast's wind-up, and the fix layers (metaverse-engine/character/fix.coax: planted
 # feet, the head's look, the orb hand's reach): 61,013 bytes.
 character-host 64000
 # Valley's bounded source-page admission, source LOD selection and index-bank ABI add ~4 KiB.
@@ -293,10 +293,10 @@ nights 180000
 portallab 80000
 
 # Painted Village: the page, the village (road and plaza) and Aethyr's village, plaza and flora generators, with their solids
-# and Aethyr's walking capsule (aethyr/physics/collide.coax); 161,781 bytes as the dev build writes it; about 25% room for the next scenes.
+# and Aethyr's walking capsule (metaverse-engine/physics/collide.coax); 161,781 bytes as the dev build writes it; about 25% room for the next scenes.
 painted 200000
-# Splice with its content tables (aethyr/content/tables.coax), its colliders as a World (aethyr/core/world.coax, spatial.coax, the
-# walking rules of aethyr/physics/collide.coax) and its edit layer on the engine's edit log (aethyr/forge/edit.coax, #13404):
-# 239,218 bytes measured on a Linux build host; with the walk replay on the steering service (aethyr/ai/steer.coax), the fixture
+# Splice with its content tables (metaverse-engine/content/tables.coax), its colliders as a World (metaverse-engine/core/world.coax, spatial.coax, the
+# walking rules of metaverse-engine/physics/collide.coax) and its edit layer on the engine's edit log (metaverse-engine/editor/edit.coax, #13404):
+# 239,218 bytes measured on a Linux build host; with the walk replay on the steering service (metaverse-engine/ai/steer.coax), the fixture
 # layer and the retained draw of placed pieces: 254,250 bytes; about 5% room.
 splice 268000

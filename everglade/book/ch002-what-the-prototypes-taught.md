@@ -29,7 +29,7 @@ What v1 settled, and Everglade II keeps:
   [`everglade/shared/everglade-step.coax`](../../everglade/shared/everglade-step.coax)
   holds `eg_step_begin` and `eg_step_advance_among`. The page and the room
   server both call them, so your movement on your screen and on the server
-  agree. [Metaverse Engine chapter 87](../../aethyr/book/ch087-server-and-client-share-one-step.md)
+  agree. [Metaverse Engine chapter 87](../../metaverse-engine/book/ch087-server-and-client-share-one-step.md)
   builds this step.
 - **Casting under latency.** v1's room checks range and line of sight when a
   cast starts and when it releases, with some slack for the time in between
@@ -100,7 +100,7 @@ can only react to an attack that you can see and hear coming. An attack with no
 arrow is a hidden die roll.
 
 The fix (`verse/experimental-hostiles.coax`,
-`everglade/zone-combat.coax`, `aethyr/fx/puff.coax`) makes
+`everglade/zone-combat.coax`, `metaverse-engine/fx/puff.coax`) makes
 every shot a thing in the world:
 
 - A Shortbow looses an arrow (`FXR_SHAFT`). An Ogre's Javelin and a Hill

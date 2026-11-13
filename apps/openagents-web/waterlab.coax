@@ -32,7 +32,7 @@
 // the camera, the wheel or W/S zooms, Q dives and E rises.
 
 #load "../../verse/water-ocean.coax";
-#load "../../aethyr/core/budget.coax";
+#load "../../metaverse-engine/core/budget.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 6;
@@ -426,7 +426,7 @@ coaxial_waterlab_vertex_floats :: () -> int #export_c #effects(all) { return VER
 coaxial_waterlab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of the water lab may use.
+// The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of the water lab may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 WATERLAB_BUDGET :: FrameBudget.{steps = 8, vertices = 0, draws = 0, bytes = 2228224};
 

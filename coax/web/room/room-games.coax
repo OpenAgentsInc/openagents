@@ -7,7 +7,7 @@
 #load "../../../orbit/server/room.coax";
 
 RM_GAME_NONE :: -1; RM_GAME_ORBIT :: 0;
-// The realms rm_net_observation names (aethyr/net/README.md): 1 is Everglade (room.coax), 2 the
+// The realms rm_net_observation names (metaverse-engine/net/README.md): 1 is Everglade (room.coax), 2 the
 // authoritative Orbit League. The hosted games step on realm 0's beat (rm_profile, room-host.c).
 RM_REALM_ORBIT_AUTH :: 2;
 

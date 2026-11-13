@@ -1,0 +1,604 @@
+// Smoke on a grid (book chapter 28): Stam's stable fluids on a 2D MAC grid,
+// profile stable-fluids-2d-f64-v1. Velocity lives on cell faces (u on the
+// vertical faces, v on the horizontal ones), pressure and smoke at cell
+// centers. One step is: advect semi-Lagrangian (trace back by the midpoint
+// rule, interpolate bilinearly), add forces, diffuse implicitly, project.
+// Both solves are conjugate gradients with a Jacobi preconditioner on the
+// matrix-free 5-point Laplacian, and each records its iterations and its
+// final residual.
+//
+// The grid is periodic or a closed box. In a box the normal velocity on the
+// walls is zero and the tangential velocity slips. CPU only, f64, 2D.
+// Multigrid, vorticity confinement, solid cells from distance fields, 3D
+// and device kernels are not built yet.
+//   coax/bin/coax test --library metaverse-engine/physics/sim/grid-fluid.coax
+#load "../rigid.coax";
+
+GF_SIDE :: 64;
+GF_FACES :: 4160;            // (64 + 1) x 64: the largest field
+
+Gf :: struct {
+  nx: int; ny: int;
+  dx: f64;
+  periodic: bool;
+  nu: f64;                   // kinematic viscosity, m^2/s
+  tolerance: f64 = 0.0000000001;   // relative residual each solve stops at
+  u: [GF_FACES] f64;         // (nx + 1) x ny, at (i dx, (j + 1/2) dx)
+  v: [GF_FACES] f64;         // nx x (ny + 1), at ((i + 1/2) dx, j dx)
+  p: [GF_FACES] f64;         // nx x ny
+  smoke: [GF_FACES] f64;     // nx x ny
+  // The last step's solves.
+  project_iterations: int; project_residual: f64;
+  diffuse_iterations: int; diffuse_residual: f64;
+}
+
+// Scratch for a solve and for advection.
+Gf_Work :: struct {
+  b: [GF_FACES] f64; r: [GF_FACES] f64; z: [GF_FACES] f64; d: [GF_FACES] f64; q: [GF_FACES] f64;
+  copy: [GF_FACES] f64; copy2: [GF_FACES] f64;
+}
+
+// A field of w x h values with wrap (periodic) or not. Fixed entries (the
+// wall-normal faces) keep their values and act as known neighbors.
+Gf_Field :: struct { w: int; h: int; wrap: bool; fixed_x: bool; fixed_y: bool; }
+
+gf_new :: (g: [] Gf, nx: int, ny: int, dx: f64, periodic: bool) -> bool {
+  if nx < 2 || ny < 2 || nx > GF_SIDE || ny > GF_SIDE { return false; }
+  g[0].nx = nx; g[0].ny = ny; g[0].dx = dx; g[0].periodic = periodic; g[0].nu = 0.0;
+  g[0].project_iterations = 0; g[0].project_residual = 0.0; g[0].diffuse_iterations = 0; g[0].diffuse_residual = 0.0;
+  for k: 0..<GF_FACES { g[0].u[k] = 0.0; g[0].v[k] = 0.0; g[0].p[k] = 0.0; g[0].smoke[k] = 0.0; }
+  return true;
+}
+
+gf_ufield :: (g: [] Gf) -> Gf_Field { return Gf_Field.{w = g[0].nx + 1, h = g[0].ny, wrap = g[0].periodic, fixed_x = !g[0].periodic}; }
+gf_vfield :: (g: [] Gf) -> Gf_Field { return Gf_Field.{w = g[0].nx, h = g[0].ny + 1, wrap = g[0].periodic, fixed_y = !g[0].periodic}; }
+gf_cfield :: (g: [] Gf) -> Gf_Field { return Gf_Field.{w = g[0].nx, h = g[0].ny, wrap = g[0].periodic}; }
+
+// Whether entry (i, j) of f is fixed (a wall-normal face).
+gf_fixed :: (f: Gf_Field, i: int, j: int) -> bool {
+  return (f.fixed_x && (i == 0 || i == f.w - 1)) || (f.fixed_y && (j == 0 || j == f.h - 1));
+}
+
+// The width and height of f's unknowns: a periodic face field drops its
+// repeated last column or row.
+gf_span :: (f: Gf_Field, g: [] Gf) -> D2 {
+  w := f.w; h := f.h;
+  if f.wrap && f.w == g[0].nx + 1 { w = g[0].nx; }
+  if f.wrap && f.h == g[0].ny + 1 { h = g[0].ny; }
+  return d2(cast(f64) w, cast(f64) h);
+}
+
+// y = (alpha I + beta L) x over the unknowns, L the 5-point negative
+// Laplacian times dx^2 with missing neighbors dropped (Neumann).
+gf_apply :: (f: Gf_Field, w: int, h: int, alpha: f64, beta: f64, x: [] f64, y: [] f64) {
+  for j: 0..<h {
+    for i: 0..<w {
+      k := j * f.w + i;
+      if gf_fixed(f, i, j) { y[k] = x[k]; continue; }
+      sum := 0.0; n := 0;
+      for e: 0..<4 {  // mutant: equivalent (a fifth offset of 0 adds x[k] to both n x[k] and the sum; swapping a side's sign visits the same four neighbors)
+        a := i + ifx e == 0 then -1 else ifx e == 1 then 1 else 0;  // mutant: equivalent (left and right swap; the four neighbors are the same set)
+        b := j + ifx e == 2 then -1 else ifx e == 3 then 1 else 0;  // mutant: equivalent (up and down swap; the four neighbors are the same set)
+        if f.wrap { a = (a + w) % w; b = (b + h) % h; }
+        if a < 0 || b < 0 || a >= w || b >= h { continue; }
+        n += 1; sum += x[b * f.w + a];
+      }
+      y[k] = alpha * x[k] + beta * (cast(f64) n * x[k] - sum);
+    }
+  }
+}
+gf_diag :: (f: Gf_Field, w: int, h: int, alpha: f64, beta: f64, i: int, j: int) -> f64 {
+  if gf_fixed(f, i, j) { return 1.0; }
+  n := 0;
+  for e: 0..<4 {
+    a := i + ifx e == 0 then -1 else ifx e == 1 then 1 else 0;  // mutant: equivalent (left and right swap; the four neighbors are the same set)
+    b := j + ifx e == 2 then -1 else ifx e == 3 then 1 else 0;  // mutant: equivalent (up and down swap; the four neighbors are the same set)
+    if f.wrap || (a >= 0 && b >= 0 && a < w && b < h) { n += 1; }
+  }
+  return alpha + beta * cast(f64) n;
+}
+
+// Solves (alpha I + beta L) x = b by Jacobi-preconditioned CG from x's
+// current values. A singular system (alpha 0, no fixed entry) has the
+// constants as its null space: b's mean is removed and so is x's. Returns
+// the iterations; *residual gets |r| / |b|.
+Gf_Solve :: struct { iterations: int; residual: f64; }
+gf_cg :: (f: Gf_Field, w: int, h: int, alpha: f64, beta: f64, x: [] f64, b: [] f64, work: [] Gf_Work, tolerance: f64) -> Gf_Solve {
+  out: Gf_Solve; n := w * h;
+  singular := alpha == 0.0 && !f.fixed_x && !f.fixed_y;
+  if singular {
+    mb := 0.0; mx := 0.0;
+    for j: 0..<h { for i: 0..<w { mb += b[j * f.w + i]; mx += x[j * f.w + i]; } }
+    for j: 0..<h { for i: 0..<w { b[j * f.w + i] -= mb / cast(f64) n; x[j * f.w + i] -= mx / cast(f64) n; } }
+  }
+  gf_apply(f, w, h, alpha, beta, x, work[0].q[..]);
+  rz := 0.0; bb := 0.0;
+  for j: 0..<h {
+    for i: 0..<w {
+      k := j * f.w + i;
+      work[0].r[k] = b[k] - work[0].q[k];
+      work[0].z[k] = work[0].r[k] / gf_diag(f, w, h, alpha, beta, i, j);
+      work[0].d[k] = work[0].z[k];
+      rz += work[0].r[k] * work[0].z[k]; bb += b[k] * b[k];
+    }
+  }
+  if bb == 0.0 { bb = 1.0; }
+  for step: 0..<4 * n {  // mutant: equivalent (4 n iterations is a cap no solve here reaches; a solve converges in far fewer)
+    rr := 0.0;
+    for j: 0..<h { for i: 0..<w { k := j * f.w + i; rr += work[0].r[k] * work[0].r[k]; } }
+    out.residual = sqrt(rr / bb);
+    if out.residual <= tolerance { return out; }  // mutant: equivalent (a relative residual exactly equal to the tolerance does not occur)
+    gf_apply(f, w, h, alpha, beta, work[0].d[..], work[0].q[..]);
+    dq := 0.0;
+    for j: 0..<h { for i: 0..<w { k := j * f.w + i; dq += work[0].d[k] * work[0].q[k]; } }
+    a := rz / dq; next := 0.0;
+    for j: 0..<h {
+      for i: 0..<w {
+        k := j * f.w + i;
+        x[k] += a * work[0].d[k]; work[0].r[k] -= a * work[0].q[k];
+        work[0].z[k] = work[0].r[k] / gf_diag(f, w, h, alpha, beta, i, j);
+        next += work[0].r[k] * work[0].z[k];
+      }
+    }
+    for j: 0..<h { for i: 0..<w { k := j * f.w + i; work[0].d[k] = work[0].z[k] + next / rz * work[0].d[k]; } }
+    rz = next; out.iterations = step + 1;
+  }
+  return out;
+}
+
+// A periodic face field's repeated column or row copies the first.
+gf_wrap_faces :: (g: [] Gf) {
+  if !g[0].periodic { return; }
+  nx := g[0].nx; ny := g[0].ny;
+  for j: 0..<ny { g[0].u[j * (nx + 1) + nx] = g[0].u[j * (nx + 1)]; }
+  for i: 0..<nx { g[0].v[ny * nx + i] = g[0].v[i]; }
+}
+
+// Bilinear sample of a field stored w per row with origin (ox, oy) in
+// cells, at point (x, y) in cells. Periodic grids wrap; boxes clamp.
+gf_sample :: (g: [] Gf, a: [] f64, w: int, h: int, ox: f64, oy: f64, x: f64, y: f64) -> f64 {
+  fx := x - ox; fy := y - oy;
+  if g[0].periodic {
+    pw := cast(f64) g[0].nx; ph := cast(f64) g[0].ny;
+    fx = fx - pw * floor(fx / pw); fy = fy - ph * floor(fy / ph);
+  } else {
+    fx = fclamp(fx, 0.0, cast(f64) (w - 1)); fy = fclamp(fy, 0.0, cast(f64) (h - 1));
+  }
+  i := cast(int) floor(fx); j := cast(int) floor(fy); s := fx - cast(f64) i; t := fy - cast(f64) j;
+  pw := ifx g[0].periodic then g[0].nx else w - 1; ph := ifx g[0].periodic then g[0].ny else h - 1;  // mutant: equivalent (pw and ph are read only on a periodic grid)
+  i1 := ifx g[0].periodic then (i + 1) % pw else imin(i + 1, w - 1);  // mutant: equivalent (at the clamped last column s is 0, so the second column's weight is 0)
+  j1 := ifx g[0].periodic then (j + 1) % ph else imin(j + 1, h - 1);  // mutant: equivalent (at the clamped last row t is 0, so the second row's weight is 0)
+  i = ifx g[0].periodic then i % pw else i; j = ifx g[0].periodic then j % ph else j;  // mutant: equivalent (fx and fy are already wrapped into [0, pw) and [0, ph))
+  return (1.0 - s) * ((1.0 - t) * a[j * w + i] + t * a[j1 * w + i]) + s * ((1.0 - t) * a[j * w + i1] + t * a[j1 * w + i1]);
+}
+imin :: (a: int, b: int) -> int { return ifx a < b then a else b; }  // mutant: equivalent (equal arguments give the same minimum)
+
+// The velocity at a point in cells, from the faces.
+gf_velocity :: (g: [] Gf, x: f64, y: f64) -> D2 {
+  return d2(gf_sample(g, g[0].u[..], g[0].nx + 1, g[0].ny, 0.0, 0.5, x, y), gf_sample(g, g[0].v[..], g[0].nx, g[0].ny + 1, 0.5, 0.0, x, y));  // mutant: equivalent (in a box, a sample past the last row clamps there; the rows past the field hold 0, as the wall row does)
+}
+// Where the point (x, y), in cells, came from dt ago: the midpoint rule.
+gf_back :: (g: [] Gf, x: f64, y: f64, dt: f64) -> D2 {
+  k := dt / g[0].dx;
+  a := gf_velocity(g, x, y);
+  m := gf_velocity(g, x - 0.5 * k * a.x, y - 0.5 * k * a.y);
+  return d2(x - k * m.x, y - k * m.y);
+}
+
+gf_advect :: (g: [] Gf, work: [] Gf_Work, dt: f64) {
+  nx := g[0].nx; ny := g[0].ny;
+  for k: 0..<GF_FACES { work[0].copy[k] = g[0].u[k]; work[0].copy2[k] = g[0].v[k]; }
+  // Trace from each face through a frozen copy of the old velocity.
+  old: [1] Gf; old[0].nx = nx; old[0].ny = ny; old[0].dx = g[0].dx; old[0].periodic = g[0].periodic;
+  for k: 0..<GF_FACES { old[0].u[k] = work[0].copy[k]; old[0].v[k] = work[0].copy2[k]; }
+  for j: 0..<ny {
+    for i: 0..<nx + 1 {
+      if !g[0].periodic && (i == 0 || i == nx) { continue; }
+      q := gf_back(old[..], cast(f64) i, cast(f64) j + 0.5, dt);
+      g[0].u[j * (nx + 1) + i] = gf_sample(old[..], old[0].u[..], nx + 1, ny, 0.0, 0.5, q.x, q.y);
+    }
+  }
+  for j: 0..<ny + 1 {
+    for i: 0..<nx {
+      if !g[0].periodic && (j == 0 || j == ny) { continue; }
+      q := gf_back(old[..], cast(f64) i + 0.5, cast(f64) j, dt);
+      g[0].v[j * nx + i] = gf_sample(old[..], old[0].v[..], nx, ny + 1, 0.5, 0.0, q.x, q.y);  // mutant: equivalent (in a box, a sample past the last row clamps there; the rows past the field hold 0, as the wall row does)
+    }
+  }
+  for k: 0..<nx * ny { work[0].copy[k] = g[0].smoke[k]; }
+  for j: 0..<ny {
+    for i: 0..<nx {
+      q := gf_back(old[..], cast(f64) i + 0.5, cast(f64) j + 0.5, dt);
+      g[0].smoke[j * nx + i] = gf_sample(old[..], work[0].copy[..], nx, ny, 0.5, 0.5, q.x, q.y);
+    }
+  }
+  gf_wrap_faces(g);  // mutant: equivalent (on a periodic grid advection fills the repeated faces itself, sampling the same wrapped point)
+}
+
+// Divergence of cell (i, j), 1/s.
+gf_div :: (g: [] Gf, i: int, j: int) -> f64 {
+  nx := g[0].nx;
+  return (g[0].u[j * (nx + 1) + i + 1] - g[0].u[j * (nx + 1) + i] + g[0].v[(j + 1) * nx + i] - g[0].v[j * nx + i]) / g[0].dx;
+}
+gf_max_div :: (g: [] Gf) -> f64 {
+  worst := 0.0;
+  for j: 0..<g[0].ny { for i: 0..<g[0].nx { worst = fmax(worst, abs(gf_div(g, i, j))); } }
+  return worst;
+}
+
+// Makes the velocity divergence-free: L p = -dx^2 div / dt, then each
+// interior face loses dt times the pressure difference over dx.
+gf_project :: (g: [] Gf, work: [] Gf_Work, dt: f64) {
+  nx := g[0].nx; ny := g[0].ny; c := gf_cfield(g);
+  for j: 0..<ny { for i: 0..<nx { work[0].b[j * nx + i] = -g[0].dx * g[0].dx * gf_div(g, i, j) / dt; } }
+  s := gf_cg(c, nx, ny, 0.0, 1.0, g[0].p[..], work[0].b[..], work, g[0].tolerance);
+  g[0].project_iterations = s.iterations; g[0].project_residual = s.residual;
+  k := dt / g[0].dx;
+  for j: 0..<ny {
+    for i: 0..<nx + 1 {
+      if i == nx || (!g[0].periodic && i == 0) { continue; }
+      left := ifx i == 0 then nx - 1 else i - 1;
+      g[0].u[j * (nx + 1) + i] -= k * (g[0].p[j * nx + i] - g[0].p[j * nx + left]);
+    }
+  }
+  for j: 0..<ny + 1 {
+    for i: 0..<nx {
+      if j == ny || (!g[0].periodic && j == 0) { continue; }
+      below := ifx j == 0 then ny - 1 else j - 1;
+      g[0].v[j * nx + i] -= k * (g[0].p[j * nx + i] - g[0].p[below * nx + i]);
+    }
+  }
+  gf_wrap_faces(g);
+}
+
+// Implicit viscosity: (I + nu dt / dx^2 L) u' = u for each component.
+gf_diffuse :: (g: [] Gf, work: [] Gf_Work, dt: f64) {
+  if g[0].nu == 0.0 { g[0].diffuse_iterations = 0; g[0].diffuse_residual = 0.0; return; }
+  beta := g[0].nu * dt / (g[0].dx * g[0].dx);
+  fu := gf_ufield(g); su := gf_span(fu, g);
+  for k: 0..<GF_FACES { work[0].b[k] = g[0].u[k]; }
+  a := gf_cg(fu, cast(int) su.x, cast(int) su.y, 1.0, beta, g[0].u[..], work[0].b[..], work, g[0].tolerance);
+  fv := gf_vfield(g); sv := gf_span(fv, g);
+  for k: 0..<GF_FACES { work[0].b[k] = g[0].v[k]; }
+  b := gf_cg(fv, cast(int) sv.x, cast(int) sv.y, 1.0, beta, g[0].v[..], work[0].b[..], work, g[0].tolerance);
+  g[0].diffuse_iterations = a.iterations + b.iterations; g[0].diffuse_residual = fmax(a.residual, b.residual);
+  gf_wrap_faces(g);
+}
+
+// One step of dt with uniform acceleration `gravity` and buoyancy
+// `lift` m/s^2 per unit smoke upward. Advection comes first, on a velocity
+// that was divergence-free (Bridson's order): forces added before it would
+// be carried by an unprojected field, and still air would not stay still.
+gf_step :: (g: [] Gf, work: [] Gf_Work, dt: f64, gravity: D2, lift: f64) {
+  nx := g[0].nx; ny := g[0].ny;
+  gf_advect(g, work, dt);
+  for j: 0..<ny { for i: 0..<nx + 1 { if g[0].periodic || (i > 0 && i < nx) { g[0].u[j * (nx + 1) + i] += dt * gravity.x; } } }
+  for j: 0..<ny + 1 {
+    for i: 0..<nx {
+      if !g[0].periodic && (j == 0 || j == ny) { continue; }
+      below := ifx j == 0 then ny - 1 else j - 1; here := ifx j == ny then 0 else j;  // mutant: equivalent (the wrap that follows copies row 0 over row ny)
+      smoke := 0.5 * (g[0].smoke[below * nx + i] + g[0].smoke[here * nx + i]);
+      g[0].v[j * nx + i] += dt * (gravity.y + lift * smoke);
+    }
+  }
+  gf_wrap_faces(g);  // mutant: equivalent (the forces add the same to a repeated face as to the first: its smoke row wraps to row 0)
+  gf_diffuse(g, work, dt);
+  gf_project(g, work, dt);
+}
+
+// Kinetic energy per unit density, m^4/s^2, from cell-centered velocity.
+gf_energy :: (g: [] Gf) -> f64 {
+  e := 0.0; nx := g[0].nx;
+  for j: 0..<g[0].ny {
+    for i: 0..<nx {
+      u := 0.5 * (g[0].u[j * (nx + 1) + i] + g[0].u[j * (nx + 1) + i + 1]);
+      v := 0.5 * (g[0].v[j * nx + i] + g[0].v[(j + 1) * nx + i]);
+      e += 0.5 * (u * u + v * v) * g[0].dx * g[0].dx;
+    }
+  }
+  return e;
+}
+
+// The smoke's mean height, m.
+gf_smoke_height :: (g: [] Gf) -> f64 {
+  m := 0.0; y := 0.0;
+  for j: 0..<g[0].ny { for i: 0..<g[0].nx { m += g[0].smoke[j * g[0].nx + i]; y += g[0].smoke[j * g[0].nx + i] * (cast(f64) j + 0.5); } }
+  return y / m * g[0].dx;
+}
+
+// The Taylor-Green vortex on a periodic square of side 2 pi:
+// u = sin x cos y, v = -cos x sin y, which decays as exp(-2 nu t).
+gf_taylor_green :: (g: [] Gf, n: int, nu: f64) -> bool {
+  if !gf_new(g, n, n, 2.0 * PI_D / cast(f64) n, true) { return false; }
+  g[0].nu = nu; h := g[0].dx;
+  for j: 0..<n { for i: 0..<n + 1 { g[0].u[j * (n + 1) + i] = sin(cast(f64) i * h) * cos((cast(f64) j + 0.5) * h); } }  // mutant: equivalent (the column i = 0 is sin 0 = 0, already 0; a column n + 1 lands on the next row's i = 0, which that row then writes)
+  for j: 0..<n + 1 { for i: 0..<n { g[0].v[j * n + i] = -cos((cast(f64) i + 0.5) * h) * sin(cast(f64) j * h); } }  // mutant: equivalent (the row j = 0 is sin 0 = 0, already 0; a row n + 1 lies past the field)
+  return true;
+}
+
+// ---- checks
+
+#test "projection leaves every cell divergence-free to the solver tolerance" #steps 400000000 {
+  g: [1] Gf; work: [1] Gf_Work;
+  for periodic: 0..<2 {
+    #assert gf_new(g[..], 24, 16, 0.1, periodic == 1);
+    // A rough field: every face its own value.
+    for k: 0..<GF_FACES { g[0].u[k] = sin(cast(f64) k * 0.7) + 0.3; g[0].v[k] = cos(cast(f64) k * 1.3); }
+    if periodic == 0 { for j: 0..<16 { g[0].u[j * 25] = 0.0; g[0].u[j * 25 + 24] = 0.0; } for i: 0..<24 { g[0].v[i] = 0.0; g[0].v[16 * 24 + i] = 0.0; } }
+    gf_wrap_faces(g[..]);
+    before := gf_max_div(g[..]);
+    gf_project(g[..], work[..], 0.01);
+    #assert before > 1.0 && gf_max_div(g[..]) < 1e-7 && g[0].project_residual <= 1e-10 && g[0].project_iterations > 5;
+  }
+}
+
+#test "a box of still air under gravity stays still: pressure holds it up" #steps 400000000 {
+  g: [1] Gf; work: [1] Gf_Work;
+  #assert gf_new(g[..], 16, 16, 0.1, false);
+  for k: 0..<20 { gf_step(g[..], work[..], 0.05, d2(0.0, -9.81), 0.0); }
+  worst := 0.0;
+  for k: 0..<GF_FACES { worst = fmax(worst, fmax(abs(g[0].u[k]), abs(g[0].v[k]))); }
+  #assert worst < 1e-9;
+  // The pressure rises downward by g per metre (unit density): cell rows a
+  // metre apart differ by 9.81.
+  #assert abs(g[0].p[0] - g[0].p[10 * 16] - 9.81) < 1e-6 && abs(g[0].p[3] - g[0].p[0]) < 1e-9;
+}
+
+#test "the Taylor-Green vortex decays at least as fast as exp(-2 nu t), and finer grids add less" #steps 900000000 {
+  g: [1] Gf; work: [1] Gf_Work;
+  // 16 and 32 cells per side, 0.5 s at dt 0.05, nu 0.01.
+  extra: [2] f64;
+  for r: 0..<2 {
+    n := 16 * (r + 1);
+    #assert gf_taylor_green(g[..], n, 0.01);
+    #assert gf_max_div(g[..]) < 0.01;
+    e0 := gf_energy(g[..]);
+    for k: 0..<10 { gf_step(g[..], work[..], 0.05, d2(0.0, 0.0), 0.0); }
+    // Energy decays as exp(-4 nu t): solve for the viscosity that fits.
+    fit := -log(gf_energy(g[..]) / e0) / (4.0 * 0.5);
+    #assert fit > 0.01;
+    extra[r] = fit - 0.01;
+    #assert g[0].diffuse_residual <= 1e-10 && g[0].project_residual <= 1e-10;
+  }
+  #assert extra[1] < extra[0] && extra[1] > 0.0;
+}
+
+#test "smoke rises with buoyancy, straight up in a symmetric box" #steps 900000000 {
+  g: [1] Gf; work: [1] Gf_Work;
+  #assert gf_new(g[..], 16, 32, 0.05, false);
+  for j: 2..<5 { for i: 6..<10 { g[0].smoke[j * 16 + i] = 1.0; } }
+  y0 := gf_smoke_height(g[..]);
+  for k: 0..<20 { gf_step(g[..], work[..], 0.02, d2(0.0, 0.0), 4.0); }
+  #assert gf_smoke_height(g[..]) > y0 + 0.02 && gf_max_div(g[..]) < 1e-6;
+  // Symmetric smoke in a symmetric box rises straight: left equals right.
+  #assert abs(g[0].smoke[6 * 16 + 5] - g[0].smoke[6 * 16 + 10]) < 1e-9;
+  #assert !gf_new(g[..], 65, 8, 0.1, true) && !gf_new(g[..], 1, 8, 0.1, true);
+}
+
+// The operator written out separately: each unknown's four neighbors by
+// coordinates, wrapped or dropped, fixed entries kept.
+test_apply :: (f: Gf_Field, w: int, h: int, alpha: f64, beta: f64, x: [] f64, i: int, j: int) -> f64 {
+  k := j * f.w + i;
+  if f.fixed_x && (i == 0 || i == f.w - 1) { return x[k]; }
+  if f.fixed_y && (j == 0 || j == f.h - 1) { return x[k]; }
+  nb := [8] int.[i - 1, j, i + 1, j, i, j - 1, i, j + 1];
+  out := alpha * x[k];
+  for e: 0..<4 {
+    a := nb[2 * e]; b := nb[2 * e + 1];
+    if f.wrap { if a < 0 { a = w - 1; } if a == w { a = 0; } if b < 0 { b = h - 1; } if b == h { b = 0; } }
+    if a >= 0 && a < w && b >= 0 && b < h { out += beta * (x[k] - x[b * f.w + a]); }
+  }
+  return out;
+}
+test_fields :: (g: [] Gf, which: int) -> Gf_Field { return ifx which == 0 then gf_cfield(g) else ifx which == 1 then gf_ufield(g) else gf_vfield(g); }  // mutant: equivalent (the checks loop over all three fields, so the order they come in does not matter)
+
+#test "gf_new refuses sizes outside 2..64 and clears a used grid" {
+  g: [1] Gf;
+  #assert !gf_new(g[..], 1, 8, 0.1, false) && !gf_new(g[..], 8, 1, 0.1, false) && !gf_new(g[..], 65, 8, 0.1, false) && !gf_new(g[..], 8, 65, 0.1, false);
+  #assert gf_new(g[..], 2, 2, 0.1, false) && gf_new(g[..], 64, 64, 0.1, true);
+  g[0].u[0] = 1.0; g[0].v[0] = 1.0; g[0].p[0] = 1.0; g[0].smoke[0] = 1.0; g[0].u[GF_FACES - 1] = 1.0;
+  g[0].nu = 1.0; g[0].project_iterations = 3; g[0].project_residual = 1.0; g[0].diffuse_iterations = 3; g[0].diffuse_residual = 1.0;
+  #assert gf_new(g[..], 4, 3, 0.25, false);
+  #assert g[0].u[0] == 0.0 && g[0].v[0] == 0.0 && g[0].p[0] == 0.0 && g[0].smoke[0] == 0.0 && g[0].u[GF_FACES - 1] == 0.0 && g[0].nu == 0.0;
+  #assert g[0].project_iterations == 0 && g[0].project_residual == 0.0 && g[0].diffuse_iterations == 0 && g[0].diffuse_residual == 0.0;
+  #assert g[0].nx == 4 && g[0].ny == 3 && g[0].dx == 0.25 && !g[0].periodic;
+  // Field shapes, fixed entries and spans.
+  u := gf_ufield(g[..]); v := gf_vfield(g[..]); c := gf_cfield(g[..]);
+  #assert u.w == 5 && u.h == 3 && u.fixed_x && !u.fixed_y && v.w == 4 && v.h == 4 && v.fixed_y && !v.fixed_x && c.w == 4 && c.h == 3;
+  #assert gf_fixed(u, 0, 1) && gf_fixed(u, 4, 1) && !gf_fixed(u, 1, 0) && !gf_fixed(u, 3, 2) && gf_fixed(v, 1, 0) && gf_fixed(v, 1, 3) && !gf_fixed(v, 0, 1) && !gf_fixed(v, 3, 2) && !gf_fixed(c, 0, 0);
+  su := gf_span(u, g[..]); sv := gf_span(v, g[..]);
+  #assert su.x == 5.0 && su.y == 3.0 && sv.x == 4.0 && sv.y == 4.0;
+  #assert gf_new(g[..], 4, 3, 0.25, true);
+  u = gf_ufield(g[..]); v = gf_vfield(g[..]);
+  su = gf_span(u, g[..]); sv = gf_span(v, g[..]); sc := gf_span(gf_cfield(g[..]), g[..]);
+  #assert u.wrap && !u.fixed_x && su.x == 4.0 && su.y == 3.0 && sv.x == 4.0 && sv.y == 3.0 && sc.x == 4.0 && sc.y == 3.0;
+}
+
+#test "the operator and its diagonal equal a separately written stencil on every field" #steps 200000000 {
+  g: [1] Gf; x: [GF_FACES] f64; y: [GF_FACES] f64; e: [GF_FACES] f64; d: [GF_FACES] f64;
+  for periodic: 0..<2 {
+    #assert gf_new(g[..], 5, 4, 0.1, periodic == 1);
+    for which: 0..<3 {
+      f := test_fields(g[..], which); s := gf_span(f, g[..]); w := cast(int) s.x; h := cast(int) s.y;
+      for k: 0..<GF_FACES { x[k] = sin(cast(f64) k * 1.3) + 0.2 * cast(f64) (k % 3); }
+      gf_apply(f, w, h, 0.3, 1.7, x[..], y[..]);
+      for j: 0..<h { for i: 0..<w {
+        #assert abs(y[j * f.w + i] - test_apply(f, w, h, 0.3, 1.7, x[..], i, j)) < 1e-12;
+        // The diagonal is the operator on a unit vector, at that entry.
+        for k: 0..<GF_FACES { e[k] = 0.0; }
+        e[j * f.w + i] = 1.0;
+        gf_apply(f, w, h, 0.3, 1.7, e[..], d[..]);
+        #assert abs(d[j * f.w + i] - gf_diag(f, w, h, 0.3, 1.7, i, j)) < 1e-15;
+      } }
+    }
+  }
+}
+
+#test "CG solves every field to its tolerance; a singular system loses its mean" #steps 600000000 {
+  g: [1] Gf; work: [1] Gf_Work; x: [GF_FACES] f64; b: [GF_FACES] f64; y: [GF_FACES] f64;
+  for periodic: 0..<2 {
+    #assert gf_new(g[..], 6, 5, 0.1, periodic == 1);
+    for which: 0..<3 {
+      for alpha: [2] f64.[0.0, 1.0] {
+        f := test_fields(g[..], which); s := gf_span(f, g[..]); w := cast(int) s.x; h := cast(int) s.y;
+        // Fixed entries start at their known values, as the step's solves do.
+        for k: 0..<GF_FACES { x[k] = 5.0 + 0.1 * cast(f64) (k % 7); b[k] = cos(cast(f64) k * 0.9) + 0.5; }
+        for j: 0..<h { for i: 0..<w { if gf_fixed(f, i, j) { x[j * f.w + i] = b[j * f.w + i]; } } }
+        r := gf_cg(f, w, h, alpha, 0.8, x[..], b[..], work[..], 1e-12);
+        #assert r.residual <= 1e-12 && r.iterations >= 1 && r.iterations <= 4 * w * h;
+        gf_apply(f, w, h, alpha, 0.8, x[..], y[..]);
+        worst := 0.0; mean := 0.0; bm := 0.0;
+        for j: 0..<h { for i: 0..<w { k := j * f.w + i; worst = fmax(worst, abs(y[k] - b[k])); mean += x[k]; bm += b[k]; } }
+        #assert worst < 1e-10;
+        singular := alpha == 0.0 && which == 0;
+        // b loses its mean; x's starting mean is removed, and on a periodic
+        // grid, where every diagonal is the same, CG adds none back.
+        if singular { #assert abs(bm) < 1e-10; if periodic == 1 { #assert abs(mean) < 1e-9; } }
+        // From the answer, no iterations.
+        again := gf_cg(f, w, h, alpha, 0.8, x[..], b[..], work[..], 1e-9);
+        #assert again.iterations == 0;
+      }
+    }
+  }
+  // A zero right-hand side is solved by zero.
+  for k: 0..<GF_FACES { x[k] = 0.0; b[k] = 0.0; }
+  z := gf_cg(gf_cfield(g[..]), 6, 5, 1.0, 1.0, x[..], b[..], work[..], 1e-12);
+  #assert z.iterations == 0 && z.residual == 0.0;
+}
+
+#test "sampling is bilinear: exact on a linear field, clamped in a box, wrapped when periodic" {
+  g: [1] Gf; a: [GF_FACES] f64;
+  #assert gf_new(g[..], 6, 5, 0.1, false);
+  for j: 0..<5 { for i: 0..<6 { a[j * 6 + i] = 2.0 * cast(f64) i - 3.0 * cast(f64) j + 1.0; } }
+  for k: 0..<20 {
+    x := 0.5 + 0.23 * cast(f64) k; y := 0.5 + 0.17 * cast(f64) k;   // stays inside 0.5..5.5 x 0.5..4.5
+    if x > 5.5 || y > 4.5 { continue; }
+    #assert abs(gf_sample(g[..], a[..], 6, 5, 0.5, 0.5, x, y) - (2.0 * (x - 0.5) - 3.0 * (y - 0.5) + 1.0)) < 1e-12;
+  }
+  #assert gf_sample(g[..], a[..], 6, 5, 0.5, 0.5, -3.0, -3.0) == a[0] && gf_sample(g[..], a[..], 6, 5, 0.5, 0.5, 40.0, 40.0) == a[4 * 6 + 5];
+  #assert gf_sample(g[..], a[..], 6, 5, 0.0, 0.0, 5.0, 0.0) == a[5] && gf_sample(g[..], a[..], 6, 5, 0.0, 0.0, 0.0, 4.0) == a[24];
+  #assert gf_new(g[..], 6, 5, 0.1, true);
+  for k: 0..<30 { a[k] = sin(cast(f64) k); }
+  for k: 0..<10 {
+    x := 0.37 * cast(f64) k; y := 0.29 * cast(f64) k;
+    s := gf_sample(g[..], a[..], 6, 5, 0.5, 0.5, x, y);
+    #assert abs(s - gf_sample(g[..], a[..], 6, 5, 0.5, 0.5, x + 6.0, y - 5.0)) < 1e-12;
+  }
+  // Between the last cell and the first, a periodic grid blends them.
+  #assert abs(gf_sample(g[..], a[..], 6, 5, 0.0, 0.0, 5.5, 4.0) - 0.5 * (a[4 * 6 + 5] + a[4 * 6])) < 1e-15;
+  #assert abs(gf_sample(g[..], a[..], 6, 5, 0.0, 0.0, 2.0, 4.5) - 0.5 * (a[4 * 6 + 2] + a[2])) < 1e-15;
+}
+
+#test "a uniform flow carries smoke exactly one cell per cell-crossing time" #steps 200000000 {
+  g: [1] Gf; work: [1] Gf_Work;
+  #assert gf_new(g[..], 8, 6, 0.5, true);
+  for k: 0..<GF_FACES { g[0].u[k] = 2.0; g[0].v[k] = -1.0; }
+  for k: 0..<48 { g[0].smoke[k] = cast(f64) (k * 7 % 11); }
+  old: [48] f64;
+  for k: 0..<48 { old[k] = g[0].smoke[k]; }
+  // dt 0.25: 1 cell right, half a cell down.
+  gf_advect(g[..], work[..], 0.25);
+  for j: 0..<6 { for i: 0..<8 {
+    up := (j + 1) % 6; left := (i + 7) % 8;
+    want := 0.5 * (old[j * 8 + left] + old[up * 8 + left]);
+    #assert abs(g[0].smoke[j * 8 + i] - want) < 1e-12;
+  } }
+  // The velocity carries itself unchanged, and the repeated faces match.
+  for j: 0..<6 { #assert abs(g[0].u[j * 9 + 3] - 2.0) < 1e-15 && g[0].u[j * 9 + 8] == g[0].u[j * 9]; }
+  for i: 0..<8 { #assert abs(g[0].v[3 * 8 + i] + 1.0) < 1e-15 && g[0].v[6 * 8 + i] == g[0].v[i]; }
+  // In a box the wall faces keep their values, even when the flow runs
+  // along the wall and the values vary along it.
+  #assert gf_new(g[..], 8, 6, 0.5, false);
+  for k: 0..<GF_FACES { g[0].u[k] = 1.0; g[0].v[k] = 1.0; }
+  for j: 0..<6 { g[0].u[j * 9] = cast(f64) j; g[0].u[j * 9 + 8] = cast(f64) (2 * j); }
+  for i: 0..<8 { g[0].v[i] = cast(f64) i; g[0].v[6 * 8 + i] = cast(f64) (3 * i); }
+  gf_advect(g[..], work[..], 0.25);
+  for j: 0..<6 { #assert g[0].u[j * 9] == cast(f64) j && g[0].u[j * 9 + 8] == cast(f64) (2 * j); }
+  for i: 0..<8 { #assert g[0].v[i] == cast(f64) i && g[0].v[6 * 8 + i] == cast(f64) (3 * i); }
+  // The largest divergence counts row 0 and column 0.
+  #assert gf_new(g[..], 8, 6, 0.5, false);
+  g[0].u[0] = 1.0;
+  #assert gf_max_div(g[..]) == 2.0;
+}
+
+#test "a step adds gravity and buoyancy everywhere a face is free, and projection keeps a uniform flow" #steps 200000000 {
+  g: [1] Gf; work: [1] Gf_Work;
+  #assert gf_new(g[..], 6, 4, 0.5, true);
+  for k: 0..<24 { g[0].smoke[k] = 1.0; }
+  gf_step(g[..], work[..], 0.1, d2(3.0, -2.0), 5.0);
+  for j: 0..<4 { for i: 0..<7 { #assert abs(g[0].u[j * 7 + i] - 0.3) < 1e-12; } }
+  for j: 0..<5 { for i: 0..<6 { #assert abs(g[0].v[j * 6 + i] - 0.3) < 1e-12; } }
+  // In a box, sideways gravity is held by the walls, and the walls' faces stay 0.
+  #assert gf_new(g[..], 6, 4, 0.5, false);
+  gf_step(g[..], work[..], 0.1, d2(3.0, 0.0), 0.0);
+  worst := 0.0;
+  for k: 0..<GF_FACES { worst = fmax(worst, fmax(abs(g[0].u[k]), abs(g[0].v[k]))); }
+  #assert worst < 1e-9 && g[0].project_iterations > 0;
+  // Viscosity with nu 0 is skipped and reports nothing; with nu it reports its solves.
+  #assert g[0].diffuse_iterations == 0 && g[0].diffuse_residual == 0.0;
+  g[0].diffuse_iterations = 5; g[0].diffuse_residual = 1.0;
+  gf_diffuse(g[..], work[..], 0.1);
+  #assert g[0].diffuse_iterations == 0 && g[0].diffuse_residual == 0.0;
+  g[0].nu = 0.01;
+  for k: 0..<GF_FACES { g[0].u[k] = sin(cast(f64) k); }
+  for j: 0..<4 { g[0].u[j * 7] = 0.0; g[0].u[j * 7 + 6] = 0.0; }
+  gf_diffuse(g[..], work[..], 0.1);
+  #assert g[0].diffuse_iterations > 0 && g[0].diffuse_residual <= g[0].tolerance && g[0].u[0] == 0.0;
+}
+
+#test "energy, smoke height and the Taylor-Green start, by hand" {
+  g: [1] Gf;
+  #assert gf_new(g[..], 4, 3, 0.5, false);
+  for k: 0..<GF_FACES { g[0].u[k] = 2.0; }
+  #assert abs(gf_energy(g[..]) - 0.5 * 4.0 * 12.0 * 0.25) < 1e-12;
+  for k: 0..<GF_FACES { g[0].u[k] = 0.0; g[0].v[k] = 1.0; }
+  g[0].v[0] = 3.0;   // cell (0, 0) averages 2: energy 0.5 * 4 * 0.25 more
+  #assert abs(gf_energy(g[..]) - (0.5 * 12.0 * 0.25 + 0.5 * 3.0 * 0.25)) < 1e-12;
+  g[0].smoke[2 * 4 + 1] = 2.0; g[0].smoke[0] = 2.0;
+  #assert abs(gf_smoke_height(g[..]) - 0.5 * (0.5 + 2.5) * 0.5) < 1e-15;
+  #assert !gf_taylor_green(g[..], 65, 0.1) && gf_taylor_green(g[..], 8, 0.1) && g[0].nu == 0.1 && g[0].periodic;
+  h := 2.0 * PI_D / 8.0;
+  #assert abs(g[0].u[0 * 9 + 1] - sin(h) * cos(0.5 * h)) < 1e-15 && abs(g[0].u[2 * 9 + 3] - sin(3.0 * h) * cos(2.5 * h)) < 1e-15;
+  #assert abs(g[0].v[1 * 8 + 0] + cos(0.5 * h) * sin(h)) < 1e-15 && abs(g[0].v[3 * 8 + 2] + cos(2.5 * h) * sin(3.0 * h)) < 1e-15;
+}
+
+// ---- regression pins
+// Exact sums over fixed runs, rounded, so that a change in any field, cost
+// or report shows. The starting fields use no sin or cos, so every host
+// computes the same bits.
+test_r :: (x: f64, scale: f64) -> f64 { return floor(x * scale + 0.5); }
+test_sum :: (g: [] Gf, h: [] f64) {
+  for k: 0..<GF_FACES {
+    w := cast(f64) (k % 97 + 1);
+    h[0] += w * test_r(g[0].u[k], 1e6); h[1] += w * test_r(g[0].v[k], 1e6); h[2] += w * test_r(g[0].p[k], 1e6); h[3] += w * test_r(g[0].smoke[k], 1e6);
+  }
+  h[4] += test_r(gf_energy(g), 1e9) + test_r(gf_smoke_height(g), 1e9) + test_r(gf_max_div(g), 1e6);  // mutant: equivalent (the largest divergence after a projection rounds to 0)
+  h[5] += cast(f64) (g[0].project_iterations + 1000 * g[0].diffuse_iterations);
+  h[6] += test_r(g[0].project_residual, 1e16) + test_r(g[0].diffuse_residual, 1e16);
+}
+test_run :: (g: [] Gf, work: [] Gf_Work, h: [] f64, periodic: bool, nu: f64) {
+  #assert gf_new(g, 12, 10, 0.2, periodic);
+  g[0].nu = nu;
+  for k: 0..<GF_FACES { g[0].u[k] = cast(f64) ((k * 37) % 17) / 17.0 - 0.5; g[0].v[k] = cast(f64) ((k * 53) % 13) / 13.0 - 0.4; }
+  if !periodic { for j: 0..<10 { g[0].u[j * 13] = 0.0; g[0].u[j * 13 + 12] = 0.0; } for i: 0..<12 { g[0].v[i] = 0.0; g[0].v[10 * 12 + i] = 0.0; } }
+  gf_wrap_faces(g);  // mutant: equivalent (a periodic step never reads the repeated faces before it rewrites them)
+  for j: 0..<10 { for i: 0..<12 { g[0].smoke[j * 12 + i] = ifx i > 3 && i < 8 && j < 4 then 1.0 + 0.1 * cast(f64) j else 0.0; } }  // mutant: equivalent (row 10 lies past the field, column 0 is 0 anyway, and column 12 is the next row's column 0, also 0)
+  for step: 0..<3 { gf_step(g, work, 0.04, d2(0.5, -2.0), 3.0); test_sum(g, h); }
+}
+
+#test "regression pins: fields, costs and reports over fixed runs" #steps 900000000 {
+  g: [1] Gf; work: [1] Gf_Work; h: [7] f64;
+  test_run(g[..], work[..], h[..], false, 0.0);
+  test_run(g[..], work[..], h[..], false, 0.05);
+  test_run(g[..], work[..], h[..], true, 0.0);
+  test_run(g[..], work[..], h[..], true, 0.05);
+  #assert h[0] == -69469996000.0 && h[1] == 144899142070.0 && h[2] == -1072994110.0 && h[3] == 5520279698.0 && h[4] == 6204915323.0 && h[5] == 107530.0 && h[6] == 7287791.0;
+}
+
+#test "the largest grid projects without leaving its arrays" #steps 900000000 {
+  g: [1] Gf; work: [1] Gf_Work;
+  #assert gf_new(g[..], 64, 64, 0.1, false);
+  for j: 1..<63 { for i: 1..<64 { g[0].u[j * 65 + i] = cast(f64) ((i * 7 + j * 3) % 5) - 2.0; } }
+  gf_project(g[..], work[..], 0.01);
+  #assert gf_max_div(g[..]) < 1e-6;
+}

@@ -1,6 +1,6 @@
 // Splice's placeable pieces (GitHub #13404; docs/audits/2026-11-12-chat-and-world-building.md,
 // slice 0): which engine kit piece a row of the `pieces` content table draws, and how big it is on
-// the ground. The kit pieces stay engine code (aethyr/kit/); a row names one, its size and its
+// the ground. The kit pieces stay engine code (metaverse-engine/kit/); a row names one, its size and its
 // look, and this file writes that kind's cel mesh once, standing at the origin and facing +z. The
 // page keeps the mesh on the GPU and draws each placed piece as an instance with its own
 // transform (layer.coax, gpu/splice.coax).
@@ -9,7 +9,7 @@
 // body reaches to each side and ahead, up to a walker's height. The table's footprint must be
 // that measurement, so a collider is never wider than what you see (the checks in layer-checks.coax).
 //   coax/bin/coax test verse/splice/pieces.coax --library
-#load "../../aethyr/kit/land.coax";
+#load "../../metaverse-engine/kit/land.coax";
 
 // The kit pieces a row may name, by the `kit` column's word.
 PK_ROVER :: 0; PK_CRAB :: 1; PK_WALKER :: 2; PK_SPIDER :: 3; PK_BEAST :: 4; PK_TANK :: 5; PK_MECH :: 6; PK_ROBOT :: 7;

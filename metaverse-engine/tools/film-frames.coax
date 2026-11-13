@@ -1,0 +1,386 @@
+// Film frames (#13003, docs/research/vork/2026-11-07-desktop-film-renderer.md, F0): what
+// vk-realm --headless --frames-dir wrote (film.txt, timing.txt, frame-NNNNNN.rgba16f) made
+// into review PNGs, a per-frame hash, a meta.json and, with --out, an H.264 encode.
+//   coax/web/tool.sh metaverse-engine/tools/film-frames.coax DIR [--out OUT.mp4] [--audio WAV] [--target K] [--no-png] [--exr]
+// --exr also writes DIR/exr/fNNNNN.exr (#13005): ZIP half layers, the last target as R, G, B, A
+// and each other target K as targetK.R, targetK.G, targetK.B, targetK.A.
+// Each frame's hash is the SHA-256 of its raw bytes exactly as the GPU wrote them (every
+// target, half floats), so two renders of the same input compare bit for bit. The review
+// PNG is target K (default the last: the realm's screen) read as display-encoded values,
+// clamped to 0..1 and rounded to 8 bits, opaque. Timing is kept as the host measured it:
+// the device open, and each frame's step, GPU and read-back seconds, in microseconds.
+#import "Basic";
+#load "../../coax/lib/media/media.coax";
+#load "../../coax/lib/crypto/sha256-memory.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../render/exr.coax";
+
+FILM_MAX_PIXELS :: 3840 * 2160;
+FILM_MAX_TARGETS :: 4;
+FILM_HASH_CHUNK :: 1048576;
+
+FilmManifest :: struct {
+  ok: bool; w: int; h: int; targets: int; start: int; end: int;
+  fps_at: int; fps_n: int; device_at: int; device_n: int;
+}
+
+// One IEEE 754 half (binary16) as the bits of the same f32 value: signed zero,
+// subnormals, normals, infinities and NaN (its payload kept in the top bits).
+film_half_bits :: (h: u16) -> u32 {
+  sign := (cast(u32) h >> 15) & 1;
+  e := (cast(u32) h >> 10) & 31;
+  m := cast(u32) h & 1023;
+  bits: u32 = 0;
+  if e == 0 {
+    if m == 0 { bits = sign << 31; }
+    else {
+      // subnormal: m * 2^-24, renormalized
+      k: u32 = 0;
+      while (m & 1024) == 0 { m = m << 1; k += 1; }
+      m = m & 1023;
+      bits = (sign << 31) | ((113 - k) << 23) | (m << 13);
+    }
+  } else if e == 31 { bits = (sign << 31) | (255 << 23) | (m << 13); }
+  else { bits = (sign << 31) | ((e + 112) << 23) | (m << 13); }
+  return bits;
+}
+film_half :: (h: u16) -> f32 { return f32_from_bits(film_half_bits(h)); }
+
+// A display-encoded value as an 8-bit channel: clamped to 0..1 (NaN is 0), rounded half up.
+film_byte :: (v: f32) -> u8 {
+  if !(v > 0.0) { return 0; }
+  if v >= 1.0 { return 255; }
+  return cast(u8) int(floor(v * 255.0 + 0.5));
+}
+
+// Lowercase hex of bytes into out.
+film_hex :: (b: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  n := 0;
+  for x: b { out[n] = cast(u8) byte_at(digits, cast(int) (x >> 4)); out[n + 1] = cast(u8) byte_at(digits, cast(int) (x & 15)); n += 2; }
+  return cast(string) out[0..<n];
+}
+
+// DIR/frame-NNNNNN.EXT (six digits, as vk-realm writes them).
+film_frame_path :: (dir: string, i: int, ext: string, out: [] u8) -> string {
+  name: [64] u8;
+  n := ws_put(name[..], 0, "frame-");
+  d := 100000;
+  while d > 0 { name[n] = cast,trunc(u8) ('0' + (i / d) % 10); n += 1; d = d / 10; }
+  n = ws_put(name[..], n, ext);
+  return fs_join(dir, cast(string) name[0..<n], out);
+}
+
+film_is_space :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\r'; }
+// The whole decimal integer in s, or -1.
+film_int :: (s: string) -> int {
+  if s.count == 0 || s.count > 9 { return -1; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+// Word k (0-based, space-separated) of line, as a span of text starting at from.
+FilmSpan :: struct { at: int; n: int; }
+film_word :: (text: string, from: int, to: int, k: int) -> FilmSpan {
+  i := from; w := 0;
+  while i < to {
+    while i < to && film_is_space(text[i]) { i += 1; }
+    if i >= to { break; }
+    j := i;
+    while j < to && !film_is_space(text[j]) { j += 1; }
+    if w == k { return FilmSpan.{at = i, n = j - i}; }
+    w += 1; i = j;
+  }
+  return FilmSpan.{at = to, n = 0};
+}
+film_sp :: (text: string, s: FilmSpan) -> string { return cast(string) text[s.at..<s.at + s.n]; }
+
+// film.txt: "film-frames-v1", then size W H, targets N, fps F, range A B, device NAME...
+film_manifest :: (text: string) -> FilmManifest {
+  m: FilmManifest;
+  i := 0; line := 0; seen := 0;
+  while i < text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    key := film_sp(text, film_word(text, i, j, 0));
+    a := film_word(text, i, j, 1); b := film_word(text, i, j, 2);
+    if line == 0 { if key != "film-frames-v1" { return m; } }
+    else if key == "size" { m.w = film_int(film_sp(text, a)); m.h = film_int(film_sp(text, b)); seen |= 1; }
+    else if key == "targets" { m.targets = film_int(film_sp(text, a)); seen |= 2; }
+    else if key == "fps" { m.fps_at = a.at; m.fps_n = a.n; seen |= 4; }
+    else if key == "range" { m.start = film_int(film_sp(text, a)); m.end = film_int(film_sp(text, b)); seen |= 8; }
+    else if key == "device" { m.device_at = a.at; m.device_n = j - a.at; seen |= 16; }
+    line += 1; i = j + 1;
+  }
+  m.ok = seen == 31 && m.w > 0 && m.h > 0 && m.w * m.h <= FILM_MAX_PIXELS && m.targets >= 1 && m.targets <= FILM_MAX_TARGETS
+         && m.fps_n > 0 && m.start >= 0 && m.end >= m.start;
+  return m;
+}
+
+// "S.SSSSSS" seconds as whole microseconds (rounded), or -1.
+film_micros :: (s: string) -> int {
+  v := args_number(s);
+  if !v.ok || v.value < 0.0 { return -1; }
+  return int(floor(v.value * 1000000.0 + 0.5));
+}
+
+// target k of a frame's raw bytes as opaque 8-bit RGBA
+film_review :: (raw: [] u8, w: int, h: int, k: int, out: [] u8) {
+  base := k * w * h * 8;
+  for p: 0..<w * h {
+    for c: 0..<3 {
+      at := base + p * 8 + c * 2;
+      out[p * 4 + c] = film_byte(film_half(cast(u16) raw[at] | (cast(u16) raw[at + 1] << 8)));
+    }
+    out[p * 4 + 3] = 255;
+  }
+}
+
+// The SHA-256 of b, fed in chunks of at most chunk bytes (the hash takes at most
+// CB_MAX_BYTES at once); the digest does not depend on the chunking.
+film_hash :: (b: [] u8, out: [] u8) -> bool { return film_hash_chunked(b, FILM_HASH_CHUNK, out); }
+film_hash_chunked :: (b: [] u8, chunk: int, out: [] u8) -> bool {
+  if chunk < 1 { return false; }
+  state: [SHA_STATE_BYTES] u8;
+  if sha256_init(state[..]) != SHA_OK { return false; }
+  at := 0;
+  while at < b.count {
+    n := ifx b.count - at > chunk then chunk else b.count - at;
+    if sha256_update_checked(state[..], b[at..<at + n], false) != SHA_OK { return false; }
+    at += n;
+  }
+  return sha256_final_checked(state[..], out, false) == SHA_OK;
+}
+
+#test "half floats decode exactly" {
+  #assert film_half(0x0000) == 0.0;
+  #assert f32_bits(film_half(0x8000)) == 0x80000000;
+  #assert film_half(0x3C00) == 1.0;
+  #assert film_half(0x3800) == 0.5;
+  #assert film_half(0xC000) == -2.0;
+  #assert film_half(0x7BFF) == 65504.0;
+  #assert film_half(0x0400) == 0.00006103515625;
+  #assert film_half(0x0001) == 0.000000059604644775390625;
+  #assert film_half(0x03FF) == 0.000060975551605224609375;
+  // non-finite values as bits (compile-time checks make only finite floats)
+  #assert film_half_bits(0x7C00) == 0x7F800000;
+  #assert film_half_bits(0xFC00) == 0xFF800000;
+  #assert film_half_bits(0x7E00) == 0x7FC00000;
+  #assert film_half_bits(0x7C01) == 0x7F802000;
+}
+#forall "every finite half round-trips its value through f32" h: 0..<31744 {
+  // positive finite halves are monotonic in their bits
+  if h > 0 { #assert film_half(cast(u16) h) > film_half(cast(u16) (h - 1)); }
+}
+#test "display bytes clamp and round" {
+  #assert film_byte(0.0) == 0;
+  #assert film_byte(-0.5) == 0;
+  #assert film_byte(1.0) == 255;
+  #assert film_byte(7.0) == 255;
+  #assert film_byte(0.5) == 128;
+  #assert film_byte(0.501 / 255.0) == 1;
+  #assert film_byte(0.499 / 255.0) == 0;
+  #assert film_byte(254.5 / 255.0) == 255;
+  #assert film_byte(254.49 / 255.0) == 254;
+}
+#test "frame paths are six digits" {
+  b: [256] u8;
+  #assert film_frame_path("d", 0, ".rgba16f", b[..]) == "d/frame-000000.rgba16f";
+  #assert film_frame_path("out/x", 123456, ".png", b[..]) == "out/x/frame-123456.png";
+  #assert film_frame_path("d", 42, ".rgba", b[..]) == "d/frame-000042.rgba";
+}
+#test "hex and hash" {
+  b: [64] u8; d: [32] u8;
+  abc := [3] u8.['a', 'b', 'c'];
+  #assert film_hash(abc[..], d[..]);
+  #assert film_hex(d[..], b[..]) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  // chunked feeding gives the one-shot digest, and every byte counts
+  data: [200] u8;
+  for i: 0..<data.count { data[i] = cast,trunc(u8) (i * 7); }
+  one: [32] u8; two: [32] u8; three: [32] u8;
+  #assert film_hash_chunked(data[..], 200, one[..]);
+  #assert film_hash_chunked(data[..], 7, two[..]);
+  #assert !film_hash_chunked(data[..], 0, three[..]);
+  same := true;
+  for i: 0..<32 { if one[i] != two[i] { same = false; } }
+  #assert same;
+  data[199] = data[199] ^ 1;
+  #assert film_hash_chunked(data[..], 7, three[..]);
+  differ := false;
+  for i: 0..<32 { if one[i] != three[i] { differ = true; } }
+  #assert differ;
+}
+#test "the manifest vk-realm writes" {
+  t := "film-frames-v1\nsize 1920 1080\ntargets 1\nfps 24\nrange 10 249\ndevice llvmpipe (LLVM 20.1.2, 256 bits)\n";
+  m := film_manifest(t);
+  #assert m.ok;
+  #assert m.w == 1920 && m.h == 1080 && m.targets == 1 && m.start == 10 && m.end == 249;
+  #assert cast(string) t[m.fps_at..<m.fps_at + m.fps_n] == "24";
+  #assert cast(string) t[m.device_at..<m.device_at + m.device_n] == "llvmpipe (LLVM 20.1.2, 256 bits)";
+  #assert !film_manifest("film-frames-v2\nsize 1 1\ntargets 1\nfps 24\nrange 0 0\ndevice x\n").ok;
+  #assert !film_manifest("film-frames-v1\nsize 1 1\ntargets 1\nfps 24\nrange 5 4\ndevice x\n").ok;
+  #assert !film_manifest("film-frames-v1\nsize 7680 4320\ntargets 1\nfps 24\nrange 0 0\ndevice x\n").ok;
+  #assert !film_manifest("film-frames-v1\nsize 1 1\ntargets 9\nfps 24\nrange 0 0\ndevice x\n").ok;
+  #assert !film_manifest("film-frames-v1\nsize 1 1\ntargets 1\nrange 0 0\ndevice x\n").ok;
+  #assert !film_manifest("film-frames-v1\nsize 1 x\ntargets 1\nfps 24\nrange 0 0\ndevice x\n").ok;
+}
+#test "timing microseconds" {
+  #assert film_micros("0.000000") == 0;
+  #assert film_micros("1.500000") == 1500000;
+  #assert film_micros("0.0000005") == 1;
+  #assert film_micros("-1") == -1;
+  #assert film_micros("x") == -1;
+}
+#test "the review frame is target k, opaque" {
+  raw: [32] u8;   // 2x1 pixels, 2 targets
+  // target 0: black, white; target 1: half gray, over-white
+  for i: 0..<32 { raw[i] = 0; }
+  for c: 0..<3 { raw[8 + c * 2] = 0x00; raw[8 + c * 2 + 1] = 0x3C; }
+  for c: 0..<3 { raw[16 + c * 2] = 0x00; raw[16 + c * 2 + 1] = 0x38; raw[24 + c * 2] = 0x00; raw[24 + c * 2 + 1] = 0x40; }
+  out: [8] u8;
+  film_review(raw[..], 2, 1, 0, out[..]);
+  #assert out[0] == 0 && out[3] == 255 && out[4] == 255 && out[6] == 255 && out[7] == 255;
+  film_review(raw[..], 2, 1, 1, out[..]);
+  #assert out[0] == 128 && out[2] == 128 && out[4] == 255 && out[7] == 255;
+}
+
+FILM_MAX_FRAME_BYTES :: FILM_MAX_PIXELS * 8 * 2;
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  dir := args_at(a[..], 0);
+  if !ok || dir.count == 0 || (dir.count >= 2 && dir[0] == '-' && dir[1] == '-') {
+    tool_errln("usage: coax/web/tool.sh metaverse-engine/tools/film-frames.coax DIR [--out OUT.mp4] [--audio WAV] [--target K] [--no-png] [--exr]");
+    return 2;
+  }
+  pb: [4200] u8; pb2: [4200] u8;
+  mtext: [8192] u8;
+  mn := fs_read(fs_join(dir, "film.txt", pb[..]), mtext[..]);
+  if mn < 0 { tool_errln("film-frames: no film.txt (run vk-realm --headless N --frames-dir DIR first)"); return 1; }
+  mt := cast(string) mtext[0..<mn];
+  m := film_manifest(mt);
+  if !m.ok { tool_errln("film-frames: film.txt is not a film-frames-v1 manifest this tool takes"); return 1; }
+  fps_text := cast(string) mt[m.fps_at..<m.fps_at + m.fps_n];
+  target := film_int(args_value(a[..], "--target", "-"));
+  if target < 0 { target = m.targets - 1; }
+  if target >= m.targets { tool_errln("film-frames: --target is past the frame's targets"); return 2; }
+  film_raw: [FILM_MAX_FRAME_BYTES] u8;
+  film_rgba: [FILM_MAX_PIXELS * 4] u8;
+  film_exr: [FILM_MAX_FRAME_BYTES + 1048576] u8;
+  film_exr_work: [3840 * 8 * FILM_MAX_TARGETS * 16 * 3 + 64] u8;
+  frame_bytes := m.w * m.h * 8 * m.targets;
+  if frame_bytes > film_raw.count { tool_errln("film-frames: frames this large need a larger buffer"); return 1; }
+  png := !args_has(a[..], "--no-png");
+  exr := args_has(a[..], "--exr");
+  eb: [4200] u8; exr_dir := "";
+  if exr { exr_dir = fs_join(dir, "exr", eb[..]); if !fs_exists(exr_dir) && !fs_mkdir(exr_dir) { tool_errln("film-frames: cannot make DIR/exr"); return 1; } }
+  exr_names: [FILM_MAX_TARGETS * 4] [16] u8;
+  out := args_value(a[..], "--out", "");
+  if out.count > 0 && !png { tool_errln("film-frames: --out encodes the review PNGs; drop --no-png"); return 2; }
+
+  // timing.txt: open S, then frame I STEP GPU READ
+  ttext: [4194304] u8;
+  tn := fs_read(fs_join(dir, "timing.txt", pb[..]), ttext[..]);
+  tt := ifx tn > 0 then cast(string) ttext[0..<tn] else "";
+
+  review := "";
+  rb: [4200] u8;
+  if png { review = fs_join(dir, "review", rb[..]); if !fs_exists(review) && !fs_mkdir(review) { tool_errln("film-frames: cannot make DIR/review"); return 1; } }
+
+  jb: [8388608] u8;
+  j: [1] Jo;
+  jo_start(j[..], jb[..]);
+  jo_obj(j[..]);
+  jo_key(j[..], "schema"); jo_str(j[..], "film.frames.v1");
+  jo_key(j[..], "width"); jo_int(j[..], m.w);
+  jo_key(j[..], "height"); jo_int(j[..], m.h);
+  jo_key(j[..], "targets"); jo_int(j[..], m.targets);
+  jo_key(j[..], "review_target"); jo_int(j[..], target);
+  jo_key(j[..], "fps"); jo_raw(j[..], fps_text);
+  jo_key(j[..], "first"); jo_int(j[..], m.start);
+  jo_key(j[..], "last"); jo_int(j[..], m.end);
+  jo_key(j[..], "device"); jo_str(j[..], cast(string) mt[m.device_at..<m.device_at + m.device_n]);
+  jo_key(j[..], "hash"); jo_str(j[..], "sha256 of each frame's raw half-float bytes, every target");
+  open_us := -1;
+  if tt.count > 0 {
+    i := 0;
+    while i < tt.count {
+      e := i; while e < tt.count && tt[e] != '\n' { e += 1; }
+      if film_sp(tt, film_word(tt, i, e, 0)) == "open" { open_us = film_micros(film_sp(tt, film_word(tt, i, e, 1))); }
+      i = e + 1;
+    }
+  }
+  jo_key(j[..], "open_us"); jo_int(j[..], open_us);
+  jo_key(j[..], "frames"); jo_arr(j[..]);
+  digest: [32] u8; hex: [64] u8;
+  sb: [256] u8; se: [65536] u8; so: [4096] u8;
+  written := 0;
+  for f: m.start..<m.end + 1 {
+    path := film_frame_path(dir, f, ".rgba16f", pb[..]);
+    n := fs_read(path, film_raw[0..<frame_bytes + 1]);
+    if n != frame_bytes { tool_err("film-frames: missing or wrong-sized "); tool_errln(path); return 1; }
+    if !film_hash(film_raw[0..<n], digest[..]) { tool_errln("film-frames: hash failed"); return 1; }
+    jo_obj(j[..]);
+    jo_key(j[..], "index"); jo_int(j[..], f);
+    jo_key(j[..], "sha256"); jo_str(j[..], film_hex(digest[..], hex[..]));
+    // this frame's timing line, if the host wrote one
+    if tt.count > 0 {
+      i := 0;
+      while i < tt.count {
+        e := i; while e < tt.count && tt[e] != '\n' { e += 1; }
+        if film_sp(tt, film_word(tt, i, e, 0)) == "frame" && film_int(film_sp(tt, film_word(tt, i, e, 1))) == f {
+          jo_key(j[..], "step_us"); jo_int(j[..], film_micros(film_sp(tt, film_word(tt, i, e, 2))));
+          jo_key(j[..], "gpu_us"); jo_int(j[..], film_micros(film_sp(tt, film_word(tt, i, e, 3))));
+          jo_key(j[..], "read_us"); jo_int(j[..], film_micros(film_sp(tt, film_word(tt, i, e, 4))));
+          break;
+        }
+        i = e + 1;
+      }
+    }
+    jo_end(j[..]);
+    if png {
+      film_review(film_raw[0..<n], m.w, m.h, target, film_rgba[..]);
+      rgba := film_frame_path(dir, f, ".rgba", pb2[..]);
+      if !fs_write(rgba, cast(string) film_rgba[0..<m.w * m.h * 4]) { tool_errln("film-frames: cannot write the review pixels"); return 1; }
+      // review/f00000.png..., numbered from 0 for the encoder
+      name := clip_frame_name(written, sb[..]);
+      pngpath := fs_join(review, name, rb[..]);
+      wh: [32] u8;
+      k := ws_digits(wh[..], 0, m.w); k = ws_put(wh[..], k, "x"); k = ws_digits(wh[..], k, m.h);
+      av := [14] string.["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", cast(string) wh[0..<k], "-i", rgba, "-frames:v", "1"];
+      full: [15] string;
+      for x, xi: av { full[xi] = x; }
+      full[14] = pngpath;
+      r := proc_run(full[..], -1, so[..], se[..]);
+      gone := fs_remove(rgba);
+      if r.started != 0 { tool_errln("film-frames: ffmpeg was not found"); return 1; }
+      if r.status != 0 { tool_err("film-frames: ffmpeg failed: "); tool_errln(cast(string) se[0..<r.err_n]); return 1; }
+    }
+    if exr {
+      ch: [FILM_MAX_TARGETS * 4] ExrChannel;
+      for t: 0..<m.targets { for c: 0..<4 {
+        k := t * 4 + c; nb := exr_names[k][..]; nn := 0;
+        if t != m.targets - 1 { nn = ws_put(nb, 0, "target"); nn = ws_digits(nb, nn, t); nn = ws_put(nb, nn, "."); }
+        nb[nn] = "RGBA"[c]; nn += 1;
+        ch[k] = ExrChannel.{name = cast(string) nb[0..<nn], type = EXR_HALF, src = film_raw[0..<n], src_type = EXR_HALF, offset = t * m.w * m.h * 8 + c * 2, stride = 8};
+      } }
+      e := exr_write(m.w, m.h, ch[0..<m.targets * 4], EXR_ZIP, film_exr[..], film_exr_work[..]);
+      if e <= 0 { tool_errln("film-frames: the EXR did not fit its buffer"); return 1; }
+      name := clip_frame_name(written, sb[..]);
+      ep: [4200] u8; en: [64] u8;
+      stem := ws_put(en[..], 0, cast(string) name[0..<name.count - 4]); stem = ws_put(en[..], stem, ".exr");
+      if !fs_write(fs_join(exr_dir, cast(string) en[0..<stem], ep[..]), cast(string) film_exr[0..<e]) { tool_errln("film-frames: cannot write the EXR"); return 1; }
+    }
+    written += 1;
+  }
+  jo_end(j[..]);
+  jo_end(j[..]);
+  if !fs_write(fs_join(dir, "meta.json", pb[..]), jo_text(j[..])) { tool_errln("film-frames: cannot write meta.json"); return 1; }
+  if out.count > 0 {
+    bad := media_encode_sound("ffmpeg", review, fps_text, args_value(a[..], "--audio", ""), out, se[..]);
+    if bad.count > 0 { tool_err("film-frames: ffmpeg failed: "); tool_errln(bad); return 1; }
+  }
+  print("film-frames: % frames, meta.json%\n", written, ifx out.count > 0 then ", encoded" else "");
+  return 0;
+}

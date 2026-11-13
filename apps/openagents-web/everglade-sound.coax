@@ -1,8 +1,8 @@
-// Everglade's sound (GitHub #12751; aethyr/book/ch068-sound-in-the-world.md): a cast, a flight and
+// Everglade's sound (GitHub #12751; metaverse-engine/book/ch068-sound-in-the-world.md): a cast, a flight and
 // an impact for every spell the bars and the Cultist Raid cast, the blows and swings of a fight, who
 // falls and who stands back up, the raid's horn, its wall and tower hits and its end, your footsteps
 // and the others', and the town's quiet bed. Every sound is rendered on the page by Aethyr's
-// synthesizer (aethyr/audio/sfx.coax), so none is downloaded and all are CC0 (aethyr/audio/SOURCES.md).
+// synthesizer (metaverse-engine/audio/sfx.coax), so none is downloaded and all are CC0 (metaverse-engine/audio/SOURCES.md).
 //
 // The sounds come from the events every page already plays: the server's casts (e cast, e rc) and
 // your own offline land in the Warlock's and the druid's looks (everglade-warlock.coax wl_shoot and
@@ -10,7 +10,7 @@
 // breaks in e break, the raid's phases in g (everglade-events.coax). So another player's cast or a
 // raider's plays where it happens, on every page alike. Each is a cue (a sound, a world point and a
 // wait); once a frame the cues become the host's lines (coax/web/host.js playSoundText) placed from the
-// camera (aethyr/audio/space.coax): gain by distance, pan by bearing, a delay at the speed of sound,
+// camera (metaverse-engine/audio/space.coax): gain by distance, pan by bearing, a delay at the speed of sound,
 // and a lowpass whose corner falls with distance, so a far sound is dull.
 //
 // Offline, nothing says "e break": the page's own spells and the preview's raid break the town
@@ -24,9 +24,9 @@
 // keeps them (host.js verse.sound, back in the facts as sound=). Audio starts on the first click,
 // tap or key, which the host waits for; nothing is shown about it.
 //   coax/bin/coax test apps/openagents-web/everglade.coax --only "sound:"
-#load "../../aethyr/audio/sfx.coax";
-#load "../../aethyr/audio/space.coax";
-#load "../../aethyr/audio/everglade-mix.coax";
+#load "../../metaverse-engine/audio/sfx.coax";
+#load "../../metaverse-engine/audio/space.coax";
+#load "../../metaverse-engine/audio/everglade-mix.coax";
 
 ACT_SOUND :: 13;            // host.js: keep "VOLUME MUTED" in verse.sound
 EGS_CUES :: 64;
@@ -36,7 +36,7 @@ EGS_ROOM :: AuRoom.{reference = 5, cutoff = 85};
 EGS_QUIET :: 0.004;         // a line below this gain isn't sent
 EGS_BED :: 0.16;            // the town's bed at full volume, under your footsteps
 EGS_STRIDE :: 0.8;          // metres a footfall walking
-EGS_STRIDE_RUN :: 1.25;     // and running (aethyr/anim/skin.coax: a run starts at 5 m/s)
+EGS_STRIDE_RUN :: 1.25;     // and running (metaverse-engine/anim/skin.coax: a run starts at 5 m/s)
 EGS_VOLUME :: 70;           // percent, until this browser keeps another
 EGS_STONES :: 3;            // stone sounds a frame plays at most (a collapse brings down many pieces at once)
 // a weapon's damage on the wire (e hit KIND: the SRD engine's, rules/srd/engine.coax RS_*)
@@ -132,7 +132,7 @@ EgSound :: struct {
   lines: [EGS_LINES] u8; line_n: int;
   volume: int = EGS_VOLUME; muted: bool; tell: bool;
   synth: bool;                    // play the synthesized effects (?sfx=synth) instead of the bank's (#12832)
-  mix: [1] Mixer;                 // the bank's voices (aethyr/audio/mix.coax)
+  mix: [1] Mixer;                 // the bank's voices (metaverse-engine/audio/mix.coax)
   mix_at: f64 = -1;               // the time of the last mixed frame
   roomed: bool; fetched: int;     // !room sent; how many variants asked for ahead (!fetch)
   bed: f32 = -1; bed_at: f64;     // the bed's gain last sent, and when (sent again every 2 s: the host
@@ -375,7 +375,7 @@ everglade_sound_lines :: (s: [] Everglade) -> int #export_c #effects(all) {
   return k;
 }
 
-// ---- the bank's sounds through the mixer (#12832, aethyr/audio/everglade-mix.coax)
+// ---- the bank's sounds through the mixer (#12832, metaverse-engine/audio/everglade-mix.coax)
 
 EGS_FETCH :: 12;             // variants asked for ahead a frame
 
@@ -414,7 +414,7 @@ egs_mixed :: (s: [] Everglade, out: [] u8, master: f32) -> int {
 
 // ---- the sounds themselves, rendered once when the host starts audio (the face's coaxial_sound_bank)
 
-// The last is the room's impulse (aethyr/audio/mix.coax mix_room), "room", for the bank's voices.
+// The last is the room's impulse (metaverse-engine/audio/mix.coax mix_room), "room", for the bank's voices.
 everglade_sound_count :: () -> int #export_c #effects(all) { return SFX_COUNT + 1; }
 everglade_sound_name :: (i: int, out: [] u8) -> int #export_c #effects(all) {
   if i == SFX_COUNT { return egs_put(out, 0, "room"); }

@@ -45,7 +45,7 @@ Bw :: struct { buf: [] u8; n: int; full: bool; }
 Br :: struct { buf: [] u8; at: int; n: int; bad: bool; }
 Labels :: struct { relevant: int; }
 
-BOOK_DIRS :: [3] string.["coax/book", "psionic/book", "aethyr/book"];
+BOOK_DIRS :: [3] string.["coax/book", "psionic/book", "metaverse-engine/book"];
 PROFILE :: "bs-attnpool-d64-v1";
 CONFIG :: BeConfig.{steps = 1500, batch = 64, tau = 0.05, lr = 0.01, seed = 54};
 
@@ -140,7 +140,7 @@ revisions :: (s: [] Bs, root: string) -> bool {
   r := proc_run(argv[..], 30000, out[..], err[..]);
   if r.started != 0 || r.status != 0 || r.out_n < 40 { tool_errln("book-search: git rev-parse HEAD failed"); return false; }
   for i: 0..<40 { s[0].revision[i] = out[i]; }
-  logv := [10] string.["git", "-C", root, "log", "--format=%H", "--name-only", "--", "coax/book", "psionic/book", "aethyr/book"];
+  logv := [10] string.["git", "-C", root, "log", "--format=%H", "--name-only", "--", "coax/book", "psionic/book", "metaverse-engine/book"];
   r = proc_run(logv[..], 60000, out[..], err[..]);
   if r.started != 0 || r.status != 0 || r.cut { tool_errln("book-search: git log failed"); return false; }
   commit := 0; at := 0;
@@ -154,7 +154,7 @@ revisions :: (s: [] Bs, root: string) -> bool {
     }
     at = end + 1;
   }
-  st := [9] string.["git", "-C", root, "status", "--porcelain", "--", "coax/book", "psionic/book", "aethyr/book"];
+  st := [9] string.["git", "-C", root, "status", "--porcelain", "--", "coax/book", "psionic/book", "metaverse-engine/book"];
   r = proc_run(st[..], 30000, out[..], err[..]);
   if r.started != 0 || r.status != 0 { tool_errln("book-search: git status failed"); return false; }
   at = 0;

@@ -40,7 +40,7 @@ recording.
 - Removing a supervisor check makes at least one scenario fail.
 - The spacecraft freighter scenario (load cargo, transfer, ride out a fault,
   dock) uses the same format; see the OpenAgents Metaverse Engine
-  [chapter 48](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch048-one-world-at-three-fidelities.md).
+  [chapter 48](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch048-one-world-at-three-fidelities.md).
 
 ## Done when
 

@@ -5,7 +5,7 @@
 #load "ocarina-texture-core.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/text/base64.coax";
-#load "../../aethyr/forge/pack.coax";
+#load "../../metaverse-engine/editor/pack.coax";
 #load "../ocarina/motion.coax";
 #test "Link raid pack keeps each source influence without narrowing joint indices" {
  b:[128]u8;scan_put(b[..],36,308|(17<<16));b[52]=190;b[53]=65;

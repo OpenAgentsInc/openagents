@@ -24,7 +24,7 @@ BS_HEADS_MAX :: 6;
 bs_book :: (path: string) -> int {
   if bs_prefix(path, "coax/book/") { return 0; }
   if bs_prefix(path, "psionic/book/") { return 1; }
-  if bs_prefix(path, "aethyr/book/") { return 2; }
+  if bs_prefix(path, "metaverse-engine/book/") { return 2; }
   return -1;
 }
 bs_book_name :: (book: int) -> string {
@@ -37,7 +37,7 @@ bs_book_name :: (book: int) -> string {
 bs_prefix :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
 
 #test "book identity comes from the path" {
-  #assert bs_book("coax/book/ch01-getting-started.md") == 0 && bs_book("psionic/book/PLAN.md") == 1 && bs_book("aethyr/book/ch001-a.md") == 2;
+  #assert bs_book("coax/book/ch01-getting-started.md") == 0 && bs_book("psionic/book/PLAN.md") == 1 && bs_book("metaverse-engine/book/ch001-a.md") == 2;
   #assert bs_book("coax/books/x.md") == -1 && bs_book("psionic/") == -1 && bs_book("") == -1;
   #assert bs_book_name(0) == "Coax" && bs_book_name(1) == "Psionic" && bs_book_name(2) == "Aethyr" && bs_book_name(3) == "" && bs_book_name(-1) == "";
 }

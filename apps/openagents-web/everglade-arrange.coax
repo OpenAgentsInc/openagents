@@ -372,6 +372,6 @@ ar_carried :: (s: [] Everglade, icon: f32) {
   sp_media(s, "over", HB_NAME[b], cast(string) tail[0..<n], Box.{x0 = x, y0 = y, x1 = x + side, y1 = y + side});
 }
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).

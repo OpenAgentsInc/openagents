@@ -1,6 +1,6 @@
 // Character Create's classes in Everglade (#13024): the twelve classes of the SRD 5.2.1, each a level 1
 // character with one slot of its own on the bar, picked on Character Create's CLASS row and kept in
-// the character record (aethyr/character/character-appearance.coax CC3). The SRD 5e engine rolls each use
+// the character record (metaverse-engine/character/character-appearance.coax CC3). The SRD 5e engine rolls each use
 // (fivebar.coax fb_cl_ability, the room's everglade5e-room-rules.coax, the local host's offline);
 // this file is the page's side of it:
 //   - the bar: the class's slot 1 and Repair on R. A caster's slot 1 is a cantrip (Vicious Mockery,
@@ -8,7 +8,7 @@
 //     action (Rage, Second Wind, Martial Arts, Lay On Hands, Hunter's Mark, Sneak Attack). One that
 //     acts on you goes at once; an aimed one is picked with 1, and a click, a tap or 1 again casts it
 //     where you aim. A finger held on a slot (a mouse resting on it) shows its card;
-//   - the looks: the shared recipes (aethyr/fx/puff.coax), drawn with the Warlock's puffs
+//   - the looks: the shared recipes (metaverse-engine/fx/puff.coax), drawn with the Warlock's puffs
 //     (everglade-warlock.coax wl_draw), and their sounds (everglade-sound.coax).
 // The page rolls nothing: every use goes to the room (net_cast), and every page plays its look when
 // the room's cast event comes back (everglade-net.coax).

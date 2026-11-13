@@ -6,13 +6,13 @@
 #load "../lib/sys/args.coax";
 tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 || args_count(a[..])>3 {tool_errln("usage: build-audio ROOT [OUT.wasm [TIMELINE.wasm]]");return 2;}
-  root:=args_at(a[..],0);paths:[4][4096]u8;script:=fs_join(root,"coax/web/wasm.sh",paths[0][..]);source:=fs_join(root,"aethyr/host/audio-carrier.coax",paths[1][..]);face:=fs_join(root,"coax/web/audio-face.c",paths[2][..]);
+  root:=args_at(a[..],0);paths:[4][4096]u8;script:=fs_join(root,"coax/web/wasm.sh",paths[0][..]);source:=fs_join(root,"metaverse-engine/host/audio-carrier.coax",paths[1][..]);face:=fs_join(root,"coax/web/audio-face.c",paths[2][..]);
   output:=ifx args_count(a[..])>=2 then args_at(a[..],1) else fs_join(root,"apps/openagents-web/build/host-audio.wasm",paths[3][..]);
   argv:=[5]string.["bash",script,source,face,output];out:[1048576]u8;err:[1048576]u8;r:=proc_run(argv[..],180000,out[..],err[..]);
   if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return 1;}print("Shared audio reactor: %\n",output);
   timeline_source:[4096]u8;timeline_face:[4096]u8;timeline_out:[4096]u8;
   timeline:=ifx args_count(a[..])==3 then args_at(a[..],2) else fs_join(fs_dir(output),"host-audio-timeline.wasm",timeline_out[..]);
-  next:=[5]string.["bash",script,fs_join(root,"aethyr/host/audio-timeline.coax",timeline_source[..]),fs_join(root,"coax/web/audio-timeline-face.c",timeline_face[..]),timeline];
+  next:=[5]string.["bash",script,fs_join(root,"metaverse-engine/host/audio-timeline.coax",timeline_source[..]),fs_join(root,"coax/web/audio-timeline-face.c",timeline_face[..]),timeline];
   r=proc_run(next[..],180000,out[..],err[..]);if r.started!=0||r.status!=0||r.timed_out||r.cut{tool_errln(cast(string)err[0..<r.err_n]);return 1;}
   print("Shared clip timeline reactor: %\n",next[4]);
   mode:[16]u8;if proc_getenv("COAXIAL_MODE",mode[..])!="dev"{

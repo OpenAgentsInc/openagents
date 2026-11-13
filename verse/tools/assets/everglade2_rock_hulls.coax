@@ -1,6 +1,6 @@
 // Everglade II's rock colliders from the rocks' own meshes (docs/verse/everglade2.md): for each Stylized
 // Nature rock the page plants or the glade composes, its convex hull, as the vertices and outward face
-// planes aethyr/physics/query.coax's hulls take. The hull's vertices are the mesh's own: the mesh's farthest
+// planes metaverse-engine/physics/query.coax's hulls take. The hull's vertices are the mesh's own: the mesh's farthest
 // vertex along each of a fixed set of directions round it (every 22.5 degrees round, from under it to
 // over it), so the hull sits inside the drawn rock and touches it all round. Glade Rock_Medium_4s west
 // of x -10 are drawn with their tops capped (verse/character-glade.coax cg_cliff_cap_y), so that one
@@ -20,7 +20,7 @@ RH_CAPPED :: 6;            // the glade's capped cliff
 RH_AROUND :: 16;           // directions round
 RH_ELEVATIONS :: [6] f64.[-45, 0, 20, 40, 60, 78];
 RH_POINTS :: 160;
-RH_FACES :: 128;           // aethyr/physics/query.coax QUERY_HULL_FACES_MAX
+RH_FACES :: 128;           // metaverse-engine/physics/query.coax QUERY_HULL_FACES_MAX
 RH_MESH :: 200000;
 
 rh_dot :: (a: [3] f64, b: [3] f64) -> f64 { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }

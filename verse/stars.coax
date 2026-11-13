@@ -1,4 +1,4 @@
-#load "../aethyr/render/noise.coax";
+#load "../metaverse-engine/render/noise.coax";
 // The sky behind space (docs/verse/space.md): a starfield and the Sun, as
 // light per pixel, for any space realm's background pass. Scalar f32 only,
 // so coax wgsl turns these into WGSL and Metal (as verse/light.coax):

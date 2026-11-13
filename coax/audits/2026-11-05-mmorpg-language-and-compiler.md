@@ -91,10 +91,10 @@ contracts into compiler and engine source. Important evidence anchors:
 | [Compiler tour](../book/ch27-inside-coax0.md), [checker](../lib/compiler/checker.coax), [native bridge](../src/check.cpp), [C emitter](../src/emit_c.cpp) | Coax lexer/parser/checker, C++ evaluator/emitter and graph transport; explicit capacity reporting and native lowering. |
 | [Memory chapter](../book/ch06-memory.md), [returned-borrow contract](../verification-return-borrows.md), [retained-store contract](../verification-retained-stores.md) | Useful synchronous borrow analysis exists, with incomplete relations and bounded refusal; it is not a general ownership system. |
 | [Tagged-value contract](../results.md), [generic checker](../lib/compiler/checker/generics.coax), [bounded container](../lib/bounded.coax) | Results and fixed-storage generic values ship; important containment and borrow-containing template restrictions remain. |
-| [Entity store](../../aethyr/entity.coax), [clock](../../aethyr/loop.coax), [replay](../../aethyr/replay.coax) | Generations, stable session IDs, deferred structural changes, fixed steps and external-event recording already exist. |
-| [Interest implementation](../web/room/room-interest.coax), [replication chapter](../../aethyr/book/ch091-one-record-for-every-replicated-entity.md) | Spatial interest and acknowledged-baseline replication are delivered facilities, not missing language features. |
+| [Entity store](../../metaverse-engine/entity.coax), [clock](../../metaverse-engine/loop.coax), [replay](../../metaverse-engine/replay.coax) | Generations, stable session IDs, deferred structural changes, fixed steps and external-event recording already exist. |
+| [Interest implementation](../web/room/room-interest.coax), [replication chapter](../../metaverse-engine/book/ch091-one-record-for-every-replicated-entity.md) | Spatial interest and acknowledged-baseline replication are delivered facilities, not missing language features. |
 | [Current invariants](../../INVARIANTS.md), [travel](../web/room/room-travel.coax), [checkpoint contract](../../docs/protocol/character-checkpoint-v2.md) | Current ownership fencing, travel and durable character recovery are more advanced than some older chapter summaries. |
-| [Earlier MMO analysis](../../aethyr/book/appendix-mmo-gap-analysis.md) | Useful game-level context, explicitly containing a historical snapshot and subsequent updates; not a current inventory by itself. |
+| [Earlier MMO analysis](../../metaverse-engine/book/appendix-mmo-gap-analysis.md) | Useful game-level context, explicitly containing a historical snapshot and subsequent updates; not a current inventory by itself. |
 
 The conclusions below are source-grounded design judgments. “Missing” means a
 general language/compiler facility is absent from the documented supported
@@ -150,7 +150,7 @@ component stores, simulation jobs, resource graphs, world cells, replay,
 network replication, session ownership and recovery integration. It is a Coax
 consumer. Its modules may implement these contracts today using explicit views,
 handles and checks; a missing compiler convenience is not automatically an engine
-blocker. [Aethyr's own scope](../../aethyr/README.md) is the reference boundary.
+blocker. [Aethyr's own scope](../../metaverse-engine/README.md) is the reference boundary.
 
 **Aethyrforge and realm/services code** own authoring and product policy.
 Aethyrforge builds editors and content workflows over Aethyr. Realms supply
@@ -407,7 +407,7 @@ clear contract; do not force rendering and all physics into one representation.
 The proposed replay artifact should bind simulation profile, compiler/build,
 rules/content versions, initial snapshot, PRNG streams and admitted external
 events. Report the first divergent component/field, not just a final hash.
-`aethyr/replay.coax` uses a compact 32-bit mix for diagnostics; do not treat it
+`metaverse-engine/replay.coax` uses a compact 32-bit mix for diagnostics; do not treat it
 as collision-resistant evidence of save authenticity. Cryptographic identities
 and debug fingerprints serve different purposes.
 
@@ -498,7 +498,7 @@ what happens to physical work, its output and its reservation. At minimum a late
 completion cannot publish into a replacement owner. A syntax transformation is
 useful only when the generated state machine obeys this contract.
 
-The [shared host transport](../../aethyr/host/transport.coax) already models
+The [shared host transport](../../metaverse-engine/host/transport.coax) already models
 concrete asynchronous owners and bounded slots. Generalize measured patterns
 from it instead of inventing a second platform-wide task runtime. Define
 overflow behavior per queue: coalescing is appropriate for superseded transforms,

@@ -16,11 +16,11 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-// The one pack reader (aethyr/host/pack-table.coax pack_table, GitHub #13304), as the C the
-// compiler writes for its face (aethyr/host/pack-table-face.coax). It is committed beside this
+// The one pack reader (metaverse-engine/host/pack-table.coax pack_table, GitHub #13304), as the C the
+// compiler writes for its face (metaverse-engine/host/pack-table-face.coax). It is committed beside this
 // file because nine builds compile realm-host.c and most take no Coax step;
 // `coax/remote/check.sh reports` fails when it isn't what
-//   coax/bin/coax c aethyr/host/pack-table-face.coax --library > verse/native/pack-table-gen.h
+//   coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library > verse/native/pack-table-gen.h
 // writes. Its three exports are renamed here, so a binary that also links the face's own unit links.
 #define aethyr_pack_stated rh_aethyr_pack_stated
 #define aethyr_pack_table rh_aethyr_pack_table

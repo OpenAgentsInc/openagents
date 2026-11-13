@@ -1,7 +1,7 @@
 // KCG1 conservative X/Z bins over original source collision triangles.
 // Encoded stream identity belongs to the enclosing private pack gate.
 #load "kokiri-collision.coax";
-#load "../../aethyr/render/geometry/scan.coax";
+#load "../../metaverse-engine/render/geometry/scan.coax";
 KokiriGrid :: struct {west:f32;south:f32;cell:f32;nx:int;nz:int;}
 KokiriCell :: struct {first:int;count:int;}
 #test "Kokiri spatial cells refuse outside coordinates instead of clamping" {

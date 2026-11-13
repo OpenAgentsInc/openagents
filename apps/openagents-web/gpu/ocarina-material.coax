@@ -1,6 +1,6 @@
 // Shared Ocarina Lab material evaluation: original FMAT maps, UV1 masks, eye layers and GGX.
-#load "../../../aethyr/gpu/wgsl.coax";
-#load "../../../aethyr/render/sampling.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
+#load "../../../metaverse-engine/render/sampling.coax";
 OgSurface :: struct {pos:V4;world:V3;normal:V3;uv:V2;uv1:V2;tangent:V4;colour:V4;material:f32;character:f32;}
 OgFoot :: struct {dx:V2;dy:V2;}
 og_grad :: (uv:V2)->OgFoot {return OgFoot.{dx=v2(gpu_dpdx_fine(uv.x),gpu_dpdx_fine(uv.y)),dy=v2(gpu_dpdy_fine(uv.x),gpu_dpdy_fine(uv.y))};}

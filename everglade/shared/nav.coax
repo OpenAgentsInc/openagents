@@ -1,5 +1,5 @@
 // Everglade's navigation, built from the colliders the players' own step uses (GitHub #13281, AAA
-// P2.8; docs/verse/navigation.md): one page a world cell (aethyr/world/nav/cells.coax), each block
+// P2.8; docs/verse/navigation.md): one page a world cell (metaverse-engine/world/nav/cells.coax), each block
 // of it from what everglade/shared/move.coax hands a player's step at that block's middle: where
 // one may stand (e2_may_stand), and the trunks, the rocks' hulls and the camp's props round it
 // (e2m_world). So a creature's ground is the players' ground less a creature's own radius, and a
@@ -8,7 +8,7 @@
 // builds every one, pins its digest and checks that every spawn and named point can be reached.
 //   COAX_NATIVE_CHECKS=1 coax/bin/coax test --library everglade/shared/nav.coax
 #load "move.coax";
-#load "../../aethyr/world/nav/cells-colliders.coax";
+#load "../../metaverse-engine/world/nav/cells-colliders.coax";
 
 E2N_BODY :: 0.4;          // m: a creature's radius, a wolf's shoulders and a goblin's alike
 E2N_BLOCKS :: 1024;       // blocks a page: NAV_BLOCK_SIDE squared

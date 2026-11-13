@@ -656,7 +656,7 @@ checks name a variable `turn`.
 - [Chapter 148](ch148-motion-tokens-become-poses.md): the continuity check.
 - [Chapter 149](ch149-execute-motionbricks.md): MotionBricks execution.
 - The OpenAgents Metaverse Engine's figures and animation
-  ([Metaverse Engine chapter 14](../../aethyr/book/ch014-figures-and-animation.md)).
+  ([Metaverse Engine chapter 14](../../metaverse-engine/book/ch014-figures-and-animation.md)).
 - [`verse/cast.coax`](../../verse/cast.coax) and
   [`verse/tools/pack_cast.py`](../../verse/tools/pack_cast.py): the Cast
   format and how the Metaverse plays it.

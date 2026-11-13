@@ -1,10 +1,10 @@
 // Everglade II's arrows (#13157), the zone's wiring of the shared ones: the Ranger's Longbow looses a real arrow here, as in Everglade
 // Experimental and the Archery Range (everglade/zone-bow.coax), and the room owns it. The flight
-// is the engine's (aethyr/action/archery.coax, bow.coax), the Longbow the game's (everglade/longbow.coax),
+// is the engine's (metaverse-engine/action/archery.coax, bow.coax), the Longbow the game's (everglade/longbow.coax),
 // and this zone's ground, trunks, rocks and bodies are everglade/shared/archery.coax's, which the room flies with too.
 //
 // Yours is drawn the frame you let go, from your bow hand toward where the crosshair rests: the page
-// doesn't wait for the room. It tells the room (aethyr/net/projectile.coax F, then the Attack's own
+// doesn't wait for the room. It tells the room (metaverse-engine/net/projectile.coax F, then the Attack's own
 // request), and the room flies the same arrow from the moment your page was drawing, against the
 // monsters as they stood then, and names it (a). Your page matches that word to its own arrow by the
 // request's number and takes the room's flight for it; how far the two were apart is kept (e2_probe
@@ -14,7 +14,7 @@
 // room's word then puts it right. A refused loose fades its arrow out. Nothing here harms anyone: the
 // room's flight and the room's rules decide every hit.
 // The room's words on each arrow (which is yours, the room's flight, its end, a refused one's fade)
-// are the engine's (aethyr/net/shots.coax); this file gives them this zone's bodies, aim, sounds and puffs.
+// are the engine's (metaverse-engine/net/shots.coax); this file gives them this zone's bodies, aim, sounds and puffs.
 // A room from before arrows says no a and no d: your arrow then flies and lands as this page reckons
 // it, and the Attack is the room's old one, at once.
 //   coax/bin/coax test --library everglade/client/client.coax --only "e2 bow"
@@ -22,7 +22,7 @@
 // Everglade II's arrows: every arrow this page draws, and the room's word on each.
 E2Bow :: struct {
   ar: [1] arch.Archer;                 // yours and the others' (its draw is everglade/client/mouse.coax's)
-  net: [1] NetShots;                   // the room's word on each (aethyr/net/shots.coax)
+  net: [1] NetShots;                   // the room's word on each (metaverse-engine/net/shots.coax)
   strength: f32 = 1;                   // the draw your next loose had (everglade/client/mouse.coax e2m_loose)
   near: [1] E2ArNear;                  // the trunks and rocks round where an arrow or the crosshair last asked (#13166)
 }
@@ -114,7 +114,7 @@ e2bw_step :: (s: [] E2) {
   arch.archery_tidy(a, now);
   net_shots_tidy(sh, p, now);
 }
-// The arrows in the air and stuck, as puffs (aethyr/fx/puff.coax fxp_arrow_at), yours eased from
+// The arrows in the air and stuck, as puffs (metaverse-engine/fx/puff.coax fxp_arrow_at), yours eased from
 // where this page had it to where the room flies it.
 e2bw_puffs :: (s: [] E2, pf: [] FxPuffs) {
   b := s[0].bows[..]; now := s[0].clock;

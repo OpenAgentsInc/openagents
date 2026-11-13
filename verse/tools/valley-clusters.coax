@@ -2,7 +2,7 @@
 // coax/web/tool.sh verse/tools/valley-clusters.coax
 #import "Basic";
 #load "../valley/rock.coax";
-#load "../../aethyr/render/geometry/clusters.coax";
+#load "../../metaverse-engine/render/geometry/clusters.coax";
 tool_main :: ()->int #export_c #effects(all) {
   r:[1]Rock;c:[1]Clusters;
   for detail:[3]int.[8,16,32] {

@@ -119,7 +119,7 @@ GitBook space and site under openagents.gitbook.io:
 |---|---|---|---|---|
 | `coax` (default) | `coax/book/` | `sZhQ0yptSOKMneBDWMti` | <https://openagents.gitbook.io/the-coax-programming-language> | `scripts/coax-release.sh --check` and `coax/book/check-structure.py` |
 | `psionic` | `psionic/book/` | `Sha9csfX5lAIHvjiIheN` | <https://openagents.gitbook.io/psionic-ml-from-scratch> | `psionic/tests/book.py` |
-| `aethyr` | `aethyr/book/` | `QxVdkZGgQYnLsXWZlkTh` | <https://openagents.gitbook.io/building-aethyr-world-engine> | `psionic/tests/book.py --book aethyr` |
+| `aethyr` | `metaverse-engine/book/` | `QxVdkZGgQYnLsXWZlkTh` | <https://openagents.gitbook.io/building-aethyr-world-engine> | `psionic/tests/book.py --book aethyr` |
 | `nostr` | `nostr/book/` | `FJJZf8YunJx2R1toVsuv` | <https://openagents.gitbook.io/nostr-from-scratch> | `psionic/tests/book.py --book nostr` |
 | `coder` | `coder/book/` | `lS8V6TGnz1ifNhKVV3hN` | <https://openagents.gitbook.io/coder-coding-agents-from-scratch> | `psionic/tests/book.py --book coder` |
 | `bitcoin` | `bitcoin/book/` | `wmf6C6tD4ovtQQqoeMmP` | <https://openagents.gitbook.io/bitcoin-from-scratch> | `psionic/tests/book.py --book bitcoin` |

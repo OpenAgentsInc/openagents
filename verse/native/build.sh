@@ -23,14 +23,14 @@ here="$(cd "$(dirname "$0")" && pwd -P)"
 root="$(cd "$here/../.." && pwd -P)"
 web="$root/apps/openagents-web"
 # The libraries the site's build links REALM's module with: the paths after its wasm.sh line's
-# output, continued over backslashed lines, with $m (verse/), $a (aethyr/) and $here (apps/openagents-web) put in.
+# output, continued over backslashed lines, with $m (verse/), $a (metaverse-engine/) and $here (apps/openagents-web) put in.
 site_libraries() {
   awk -v want="\"\$here/$1.coax\"" '
     !on && index($0, "coax/web/wasm.sh\" " want " ") { on = 1; line = $0 }
     on && line != $0 { line = line " " $0 }
     on { if ($0 !~ /\\[ \t]*$/) { print line; exit } }' "$web/build.sh" |
     tr ' \t\\&' '\n\n\n\n' | tr -d '"' | grep '\.coax$' | sed 1d |
-    sed -e "s#^\$m/#$root/verse/#" -e "s#^\$a/#$root/aethyr/#" -e "s#^\$here/#$web/#"
+    sed -e "s#^\$m/#$root/verse/#" -e "s#^\$a/#$root/metaverse-engine/#" -e "s#^\$here/#$web/#"
 }
 if [[ "${1:-}" == --libraries ]]; then site_libraries "${2:?usage: build.sh --libraries REALM}"; exit; fi
 # The site's line that builds build/REALM.wasm, whatever its module is called and wherever it lives:
@@ -41,7 +41,7 @@ site_line() {
     on && line != $0 { line = line " " $0 }
     on { if ($0 !~ /\\[ \t]*$/) { print line; exit } }' "$web/build.sh" |
     tr ' \t\\&' '\n\n\n\n' | tr -d '"' | grep -e '\.coax$' -e '-face\.c$' |
-    sed -e "s#^\$m/#$root/verse/#" -e "s#^\$a/#$root/aethyr/#" -e "s#^\$here/#$web/#" |
+    sed -e "s#^\$m/#$root/verse/#" -e "s#^\$a/#$root/metaverse-engine/#" -e "s#^\$here/#$web/#" |
     while IFS= read -r l; do [[ -f "$l" ]] || { echo "build.sh: the site's line for $1 names $l, which is not a file" >&2; exit 2; }
       echo "$(cd "$(dirname "$l")" && pwd -P)/$(basename "$l")"; done
 }
@@ -67,7 +67,7 @@ fi
 units_too=(); faces_too=()   # Coax units kept by their own names, and C faces of their own
 case "$realm" in
   everglade) app="$web/everglade.coax"; face="$web/everglade-face.c"
-    libraries=("$root/aethyr/move/player.coax" "$root/verse/grid.coax" "$root/everglade/legacy/v1/river.coax" "$root/everglade/npc/guard-guide-policy.coax") ;;
+    libraries=("$root/metaverse-engine/move/player.coax" "$root/verse/grid.coax" "$root/everglade/legacy/v1/river.coax" "$root/everglade/npc/guard-guide-policy.coax") ;;
   stair) app="$web/stair.coax"; face="$web/stair-face.c"; libraries=() ;;
   # a flat realm (belt, waterlab, orbitleague): its module and face, its libraries #loaded
   # the Grid (/realms/the-grid, the homepage's module): its session (verse/gridwalk.coax, which
@@ -133,13 +133,13 @@ if [[ -x "$coax" ]]; then
     owner_header="$out/$unit.h"
     [[ "$realm" == newland ]] && owner_header="$out/landing-browser.h"
     cp "$owner_header" "$out/RenderHost.h"
-    (cd "$root" && COAX="$coax" coax/web/tool.sh aethyr/host/prepare-native-network.coax "$out" "$coax")
+    (cd "$root" && COAX="$coax" coax/web/tool.sh metaverse-engine/host/prepare-native-network.coax "$out" "$coax")
     mkdir -p "$out/render-native"
-    (cd "$root" && "$coax" c aethyr/render/native-images.coax --library --header "$out/render-native/RenderTexture.h") > "$out/render-native/RenderTexture.c"
-    cp "$here/render-host.c" "$here/render-host.h" "$here/render-realm.c" "$here/render-realm.h" "$here/render-textures.c" "$here/render-textures.h" "$here/render-media.c" "$here/render-media.h" "$here/render-images.c" "$here/render-images.h" "$here/render-live-media.c" "$here/render-live-media.h" "$root/aethyr/render/tests/frame-input.h" "$out/render-native/"
-    (cd "$root" && COAX="$coax" coax/web/tool.sh aethyr/render/build.coax "$render_profile" "$out/render" --coax "$coax")
+    (cd "$root" && "$coax" c metaverse-engine/render/native-images.coax --library --header "$out/render-native/RenderTexture.h") > "$out/render-native/RenderTexture.c"
+    cp "$here/render-host.c" "$here/render-host.h" "$here/render-realm.c" "$here/render-realm.h" "$here/render-textures.c" "$here/render-textures.h" "$here/render-media.c" "$here/render-media.h" "$here/render-images.c" "$here/render-images.h" "$here/render-live-media.c" "$here/render-live-media.h" "$root/metaverse-engine/render/tests/frame-input.h" "$out/render-native/"
+    (cd "$root" && COAX="$coax" coax/web/tool.sh metaverse-engine/render/build.coax "$render_profile" "$out/render" --coax "$coax")
     (cd "$root" && COAX="$coax" coax/web/tool.sh verse/native/render-package.coax --package "$out/render/render.json" --app "$realm" --profile "$render_profile" --output "$out/RenderIdentity.h")
-    (cd "$root" && COAX="$coax" coax/web/tool.sh aethyr/render/build.coax --asset-table "$render_profile") > "$out/render-assets.pending.json"
+    (cd "$root" && COAX="$coax" coax/web/tool.sh metaverse-engine/render/build.coax --asset-table "$render_profile") > "$out/render-assets.pending.json"
     (cd "$root" && COAX="$coax" coax/web/tool.sh verse/native/render-assets.coax --table "$out/render-assets.pending.json" --package "$out/render/render.json" --web-root "$web" --output "$out/render-assets")
     rm "$out/render-assets.pending.json"
   fi

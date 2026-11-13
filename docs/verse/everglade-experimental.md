@@ -59,8 +59,8 @@ nearest labels are drawn first, and a label that would overlap a nearer one is
 left out.
 
 The parts are data in `everglade/world/housewright.coax`; the staged-build
-piece is `aethyr/world/build-site.coax`, and the packer meshes the parts
-with `aethyr/world/build-site-mesh.coax`. The layout and the signs are in
+piece is `metaverse-engine/world/build-site.coax`, and the packer meshes the parts
+with `metaverse-engine/world/build-site-mesh.coax`. The layout and the signs are in
 `verse/experimental-terrain.coax`. The timber house uses the Medieval Village
 kit's wall, door, window and roof modules. Colliders match what each stage
 shows: you can walk between bare frame posts, and finished walls block you
@@ -77,7 +77,7 @@ scene draws one instanced record per part. The record carries the part's pose
 and how far it has arrived, so a post swings up from the ground, a beam is
 raised into place, wattle is woven row by row, daub spreads in patches and
 thatch goes on course by course. `bs_fractions`, `bs_arrival` and `bs_used`
-in `aethyr/world/build-site.coax` give each part's progress, the part that
+in `metaverse-engine/world/build-site.coax` give each part's progress, the part that
 is arriving and where, and the materials used so far. A whole-number progress
 draws exactly that stage. Open `?stage=build-cottage` to watch one
 wattle-and-daub cottage go up on the meadow at (62, 66), two seconds a stage.
@@ -86,7 +86,7 @@ wattle-and-daub cottage go up on the meadow at (62, 66), two seconds a stage.
 
 `?stage=house-leanto`, `house-hut`, `house-cottage`, `house-timber`, `house-stone` and
 `house-row` film one house building on the open grass at (-60, -38), south of the glade's village, or the five finished side by
-side. Each one owns the camera (a keyed track, `aethyr/cam/track.coax`) and the sun (the
+side. Each one owns the camera (a keyed track, `metaverse-engine/cam/track.coax`) and the sun (the
 glade's day, `env_glade_day_profile`), and draws no HUD. On a local page, `&sx=` and `&sz=` (metres
 plus 1000) and `&turn=` stand it somewhere else. See [Gameplay clips](clips.md).
 
@@ -215,10 +215,10 @@ table and the place you command golems from
 ([Golemancy](../../everglade/docs/golemancy-profession-spec.md)); crafting is not
 built yet. The parts live where they belong:
 
-- Engine: `aethyr/world/building.coax` places a building at a frame turned in
+- Engine: `metaverse-engine/world/building.coax` places a building at a frame turned in
   quarters and holds the 4 m one-room house's wall boxes, its doorway and the
   way a monster walks round to the doorway. The neighbourhood's houses use the
-  same boxes. `aethyr/world/interact.coax` holds interactable spots: a stable
+  same boxes. `metaverse-engine/world/interact.coax` holds interactable spots: a stable
   id, a place to stand, a facing and a reach.
 - Game: `everglade/world/home.coax` is the home itself: its kit pieces, its
   furniture and the workbench's spot. Any Everglade zone can place it.
@@ -355,13 +355,13 @@ horse is Quaternius's CC0 Horse_White, lightened to white and baked by
 `verse/tools/assets/horse_bake.py` (Idle, Walk and Gallop, appended to the pack
 as `glade/horse0` to `glade/horse35`). See the
 [mounts spec](../../everglade/docs/mounts-spec.md) for the engine
-(`aethyr/action/mount.coax`, `aethyr/action/ride-pose.coax`), game
+(`metaverse-engine/action/mount.coax`, `metaverse-engine/action/ride-pose.coax`), game
 (`everglade/mounts.coax`: the horse, the dragon and the rider's keys;
 `everglade/zone-mounts.coax`: mounts standing in a zone, E, the saddle and the
 prompt; `everglade/zone-ride.coax`: a zone's keys handed to them and the
 dragon's Fire Breath) and zone (`apps/openagents-web/experimental-stages.coax`:
 the film stages) layers. Mounting and getting off go through the action
-pipeline (`aethyr/action/deed.coax`): a press asks with your conditions, so you
+pipeline (`metaverse-engine/action/deed.coax`): a press asks with your conditions, so you
 can't mount while unconscious, paralyzed or grappled. To look at riding without
 playing, add `?ride=1` (in the saddle), `?ride=2` (galloping) or `?ride=3&class=7`
 (a Ranger drawing the bow in the saddle) to a local page.
@@ -381,7 +381,7 @@ for over a second, the grass under the cone catches and is left black, and each 
 it reaches flinches and cries out or falls. The mount's keys show as one small line
 under the bar, never over the horse or the dragon. It walks at 10 m/s and flies at 20 m/s
 (the SRD Adult Red Dragon's Speed 40 ft and Fly 80 ft), on the shared winged flight
-(`aethyr/action/flight.coax`). Four staged shots ride on their own and hide the HUD:
+(`metaverse-engine/action/flight.coax`). Four staged shots ride on their own and hide the HUD:
 `?stage=dragonback` (up off the meadow and over the village and castle),
 `?stage=horseback` (a gallop down the meadow past the autumn trees),
 `?stage=dragon-fire` (a swoop down low over a band of gremlins in the meadow west of
@@ -394,7 +394,7 @@ hits flashes at the monster's chest.
 
 Experimental uses Everglade’s shared sound bank for ambience, footsteps and combat cues. The browser starts audio on the first click, tap or key; the ambient bed is offered again for visitors who interact after the scene loads.
 
-Every ability has its own sounds (`xc_sound` in `everglade/zone-combat.coax`): a cast or launch sound as you use it (a blow's whoosh as its swing starts), often with a second layer under it, an impact where it lands on a monster, and a fizzle where a spell meets no one or misses. A spell without its own entry sounds like its damage type, or else its school. No two abilities a class has at once, at any level from 1 to 6, share a cast sound. The greataxe and greatsword swing slower and lower than the one-handed swords and land a heavier hit. Imps and gremlins have their own hurt and death sounds. Most sounds are the Everglade bank's picks; the ones it has no file for (Vicious Mockery's warble, Sacred Flame's choir, Rage's roar, the heavy swing, the fizzle, the monsters' voices and a few more) are synthesized from recipes in `aethyr/audio/experimental-sfx.coax` (see `aethyr/audio/SOURCES.md`). Each play takes one of the sound's picks at random and varies its pitch by up to 7% and its level by up to 15%, so a repeat never sounds identical.
+Every ability has its own sounds (`xc_sound` in `everglade/zone-combat.coax`): a cast or launch sound as you use it (a blow's whoosh as its swing starts), often with a second layer under it, an impact where it lands on a monster, and a fizzle where a spell meets no one or misses. A spell without its own entry sounds like its damage type, or else its school. No two abilities a class has at once, at any level from 1 to 6, share a cast sound. The greataxe and greatsword swing slower and lower than the one-handed swords and land a heavier hit. Imps and gremlins have their own hurt and death sounds. Most sounds are the Everglade bank's picks; the ones it has no file for (Vicious Mockery's warble, Sacred Flame's choir, Rage's roar, the heavy swing, the fizzle, the monsters' voices and a few more) are synthesized from recipes in `metaverse-engine/audio/experimental-sfx.coax` (see `metaverse-engine/audio/SOURCES.md`). Each play takes one of the sound's picks at random and varies its pitch by up to 7% and its level by up to 15%, so a repeat never sounds identical.
 
 The castle spans 56 by 54 metres, with nine towers surrounding four connected courtyards and a central keep. Its main arched entrance is at (34, -20). The walls and towers share a level foundation, with a smooth transition to the surrounding meadow. The walls and towers supply colliders to the player and camera.
 

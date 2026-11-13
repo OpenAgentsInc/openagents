@@ -135,7 +135,7 @@ eg_table :: (v: [] RmServer, k: int) {
   eg_im_table(v, k);   // and the table into the interest grid (room-blocks.coax, #12789)
 }
 
-// Each table slot's combat with seat s this tick (aethyr/net/budget.coax NET_COMBAT_*, #13178): a
+// Each table slot's combat with seat s this tick (metaverse-engine/net/budget.coax NET_COMBAT_*, #13178): a
 // townsperson casting at it targets it; a player in its party, and a creature or zone it made, are its
 // party's; anything whose Hit Points moved in the last EG_FIGHT_TICKS within EG_FIGHT_NEAR m is
 // fighting near it.

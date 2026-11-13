@@ -1,11 +1,11 @@
 // Firm reason: 1 (browser glue: fetch, WebCrypto, image decode and WebGPU for the character pass; admission, playback and lighting are Coax).
 // The character pass (docs/verse/2026-11-06-native-hero-characters.md, Design 3; R1, #12985): a
 // world that places a detailed character exports coaxial_character_v1(state), the address of its
-// SceneLights block (aethyr/render/scene-lights.coax) or 0, and the name of the character's pack.
+// SceneLights block (metaverse-engine/render/scene-lights.coax) or 0, and the name of the character's pack.
 // Only then does the host load the character runtime (build/character-host.wasm, from
 // apps/openagents-web/character-host.coax) and the pack, admitted by the runtime's Coax (its SHA-256,
 // catalog and parts). Each frame the world's block goes through the runtime, which steps her idle
-// body and face and fills her slots; her pipelines (character.wgsl, from aethyr/render/character.coax)
+// body and face and fills her slots; her pipelines (character.wgsl, from metaverse-engine/render/character.coax)
 // then draw her into the world's own light, aux and depth targets after its opaque geometry, and her
 // caster into the world's shadow map, so she and the world shadow and hide each other both ways.
 // A world with no character placed never calls into this beyond coaxial_character_v1.

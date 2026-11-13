@@ -12,7 +12,7 @@ These four issues are one change to how a room holds and tells its entities, so 
 
 ## Decision
 
-**The World (#13274, built).** `aethyr/core/world.coax` holds a realm's entities on the client, in the room and in the offline worker: the entity store, fixed columns keyed by slot (transform, body, health, kind, replication row), an ordered system list whose declared reads and writes are checked, and a spatial grid (`aethyr/core/spatial.coax`). Caps are the realm's storage, taken whole or refused. Archetypes are not used.
+**The World (#13274, built).** `metaverse-engine/core/world.coax` holds a realm's entities on the client, in the room and in the offline worker: the entity store, fixed columns keyed by slot (transform, body, health, kind, replication row), an ordered system list whose declared reads and writes are checked, and a spatial grid (`metaverse-engine/core/spatial.coax`). Caps are the realm's storage, taken whole or refused. Archetypes are not used.
 
 **The room core (#13275).** A zone is one `World` sized by the zone's declared cap, stepped by one thread.
 
@@ -20,7 +20,7 @@ These four issues are one change to how a room holds and tells its entities, so 
 - The shapes that carry the count today go: one-integer seat masks (an event's `ev_who`, a creature's `hurt_by`, interest's block words) become lists of entity slots or one bit a slot in a column of words; arrays `[EG_SEATS]` inside a seat (`heard_n`, `heard_w`, `n_t`, `w_t`) become rows of a per-recipient table sized by what interest lets the seat see; ids packed by 1,000 (`EG_TGT_SEAT`, `room-tick.c`) become `EntityId`s.
 - The tick is the World's system list, in this order: input, movement, creatures, battle, effects, rows, interest, send. Each declares its components, so two zones never share a step and a later scheduler can run systems that do not meet.
 - One zone to a process (settled 2026-11-12, #13275; this replaces "one zone to a thread"). A zone of 150 seats gets a room process to itself: a shard. A slow zone delays nobody else, because the kernel schedules each process on its own. See "Why a process, not a thread" below.
-- The seats' number is one constant (`WIRE_SEATS`, with `EG_SEATS`, `RELAY_SEATS`, `IM_SEATS` and `EGB_SEATS` held equal to it by a check in `room.coax`; both hosts refuse to start when `room-world.h` says another). No integer holds a bit a seat any more: a set of seats is `aethyr/core/slot-set.coax`, an event names the seat it is aimed at, and the table's slots after the players' are counted from the seats' number.
+- The seats' number is one constant (`WIRE_SEATS`, with `EG_SEATS`, `RELAY_SEATS`, `IM_SEATS` and `EGB_SEATS` held equal to it by a check in `room.coax`; both hosts refuse to start when `room-world.h` says another). No integer holds a bit a seat any more: a set of seats is `metaverse-engine/core/slot-set.coax`, an event names the seat it is aimed at, and the table's slots after the players' are counted from the seats' number.
 - A process runs 4 rooms (`EG_ROOMS`, 16 before): the directory gives a shard 2 (`verse.room_shards.rooms_cap`), and a 150-seat zone gets a shard with a cap of 1.
 - The design number is 150 players a zone ([0003](0003-150-a-zone.md)); `WorldStore` holds 4,096 slots.
 
@@ -49,7 +49,7 @@ What it costs: each process holds a whole server record, and travel between zone
 - **`e guard` and `e mon` are not in `WIRE_OUTCOMES`.** That list is the town's: a page that counts fewer of them asks for the town again (`O`). A creature's entry is kept another way (`egc_kept`): it has the outcomes' room in a tick's events, is outside the cue budget, and goes to the seats near and to the seat it names.
 - **A player's arrow keeps `F a d`.** A launch with a deterministic flight is one frame at each end; a row a tick would cost more and be less exact. A monster's arrow is the `e mon` loosed entry.
 
-**Prediction (#13277, engine half built).** `aethyr/net/predict.coax` keeps a page's inputs by number, the room's ACK and the re-run, and a ledger of actions that wait for the room. `aethyr/net/interp.coax` is the interpolation buffer, its clock and the easing of corrections. A realm supplies its step and its row's fields.
+**Prediction (#13277, engine half built).** `metaverse-engine/net/predict.coax` keeps a page's inputs by number, the room's ACK and the re-run, and a ledger of actions that wait for the room. `metaverse-engine/net/interp.coax` is the interpolation buffer, its clock and the easing of corrections. A realm supplies its step and its row's fields.
 
 ## Consequences
 

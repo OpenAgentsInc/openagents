@@ -11,9 +11,9 @@
 // page draws what it hands back: each plot's house at its progress, the camera and the day, the
 // outlines, the name and the label.
 #module "everglade.townstage";
-#load "../../aethyr/world/plots.coax" as plots;
-#load "../../aethyr/world/building.coax" as building;
-#load "../../aethyr/cam/track.coax" as trk;
+#load "../../metaverse-engine/world/plots.coax" as plots;
+#load "../../metaverse-engine/world/building.coax" as building;
+#load "../../metaverse-engine/cam/track.coax" as trk;
 #load "housewright.coax" as hw;
 #load "town.coax" as town;
 

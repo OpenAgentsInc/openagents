@@ -1,7 +1,7 @@
 // Everglade's horse and red dragon standing in a zone (everglade/docs/mounts-spec.md), game-wide:
 // Everglade Experimental and the Archery Range ride through this one file. It places one white horse
 // and one red dragon where the zone says, hands Everglade's mounts (everglade/mounts.coax, on
-// the Metaverse Engine's aethyr/action/mount.coax) the zone's ground and the boxes its walker collides with, takes
+// the Metaverse Engine's metaverse-engine/action/mount.coax) the zone's ground and the boxes its walker collides with, takes
 // E and the rider's keys (xh_key, xh_ride_keys), and draws the prompt (xh_prompt_draw). A zone only
 // passes its keys in and plays the yes it is handed (the footfall, the dust).
 //
@@ -42,7 +42,7 @@ xh_stand :: (s: []Creator, hx: f32, hz: f32, hface: f32, dx: f32, dz: f32, dface
 xh_dragon :: (s: []Creator) -> int { for k: 0..<s[0].mounts[0].n { if s[0].mounts[0].kind[k] == egm.EG_DRAGON { return k; } } return -1; }
 // The boxes the walker collides with within `reach` of (x, z), for a mount (verse/experimental-village.coax
 // ev_near_radius: the castle, the village, the props, the dungeon); the count. The open field has none
-// of those: only the zone's own standing things (aethyr/world/props.coax), as every zone has. The
+// of those: only the zone's own standing things (metaverse-engine/world/props.coax), as every zone has. The
 // reach is the mount's own (xh_reach), so a dragon's nose meets a wall its middle is 6 m from.
 xh_walls :: (s: []Creator, x: f32, z: f32, reach: f32, near: []village.EvNear) -> int {
   if s[0].field { near[0].wall_n = 0; near[0].floor_n = 0; } else { village.ev_near_radius(near, x, z, reach, true); }

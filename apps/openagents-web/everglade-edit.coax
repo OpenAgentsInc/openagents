@@ -568,4 +568,4 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   #assert s[0].ev.boxes[EB_DONE].x1 > 0 && s[0].ev.boxes[EB_UNDO].x1 == 0 && s[0].ev.boxes[EB_ORIGINAL].x1 == 0;   // no UNDO or ORIGINAL for a visitor
 }
 // (its own check: two Everglades and a frame's vertices are over the compile-time storage cap)
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).

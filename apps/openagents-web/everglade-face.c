@@ -1,5 +1,5 @@
 // Everglade's C face for the browser (coax/web/host.js): everglade.coax is
-// the page, aethyr/move/player.coax walks you (its own library, as the realm
+// the page, metaverse-engine/move/player.coax walks you (its own library, as the realm
 // links it) and verse/grid.coax reads a phone's thumbs. Once a frame it
 // passes values between them in order: the page's controls, the player's
 // step among the city's walls, then the page's frame with where you
@@ -207,7 +207,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   frames += 1;
   coax_t_Everglade *g = city(state);
   width = w; height = h; dpr = scale;
-  float frame = dt;   /* the player's clock (aethyr/core/loop.coax) steps it; the rest moves by what it counts */
+  float frame = dt;   /* the player's clock (metaverse-engine/core/loop.coax) steps it; the rest moves by what it counts */
   quality_state = state;
   everglade_quality_frame(at(state), frame, golden);   /* the graphics quality's governor (everglade-quality.coax) */
   dt = verse_player_counts(player, frame);
@@ -250,7 +250,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   player.body = eg_step_put(player.body, moved);
   float show_vx = moved.show_vx, show_vz = moved.show_vz;
   // the river: what water you are in, on the bridge's deck none
-  // the rain's rise on it and its current's gain (aethyr/world/water-weather.coax, W9)
+  // the rain's rise on it and its current's gain (metaverse-engine/world/water-weather.coax, W9)
   everglade_river_weather(rv(), everglade_rise(at(state)), everglade_flow_gain(at(state)));
   coax_v_f32 heights = {g->heights.e, 177 * 177};
   // Water Breathing (everglade-tide.coax): your breath never runs short under water
@@ -465,7 +465,7 @@ static bool has_line(uint32_t length, const char *prefix) {
 }
 
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->draws.e; }
-/* The key light's shadow tiles (aethyr/render/cascades.coax, everglade.coax everglade_shadows; coax/web/host.js
+/* The key light's shadow tiles (metaverse-engine/render/cascades.coax, everglade.coax everglade_shadows; coax/web/host.js
    shadowLayout): the atlas the host makes, what this frame draws into it, and what happened to it. */
 EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(uint32_t state, int32_t coarse, int32_t which) { return (uint32_t)everglade_shadow_atlas(at(state), coarse, which); }
 EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(uint32_t state, int32_t field) { return city(state)->started ? (int32_t)everglade_shadow_field(at(state), field) : -1; }

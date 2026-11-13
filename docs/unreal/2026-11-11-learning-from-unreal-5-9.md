@@ -19,9 +19,9 @@ and no issues are filed; the owner decides which proposals become issues.
 Sources read for this note (all on `origin/main` unless named):
 
 - `docs/unreal/` (README, build-from-source, mcp-tools, ue6).
-- The Metaverse Engine book (`aethyr/book/`, especially chapters 11, 13, 14, 38, 53,
-  72, 80, 83, 84, 86–102 and Appendix A), `aethyr/README.md`,
-  `aethyr/render/README.md` and the module tree.
+- The Metaverse Engine book (`metaverse-engine/book/`, especially chapters 11, 13, 14, 38, 53,
+  72, 80, 83, 84, 86–102 and Appendix A), `metaverse-engine/README.md`,
+  `metaverse-engine/render/README.md` and the module tree.
 - The Verse (`docs/verse/`, especially the Solstice comparison, the lighting
   plan, the action pipeline and texture formats), Everglade (`everglade/`,
   `everglade/book/`), the netcode audits
@@ -65,7 +65,7 @@ Verse now:
 | 2 | **Quantized, bit-packed replication rows with accumulated priority** and owner/field-of-view boosts | Iris (`Source/Runtime/Net/Iris`), ReplicationGraph | Rows are decimal text and every entity goes every tick (#13165); chapter 92's accumulated priority isn't built | Adapt the idea |
 | 3 | **One predicted simulation model** (input, sync and aux state, one tick function) shared by walking, mounts, boats and dash | Network Prediction plugin, Mover | Walk, arrows and casts each have their own prediction path; #12845 plans the shared module | Adapt a simplified version |
 | 4 | **Trace channels and a timeline viewer** with stage timers, net events and gameplay state, bound to replay | Unreal Insights, TraceLog, Rewind Debugger, ChaosVD | Chapter 83's stage timers aren't built; the 60 FPS rule and netcode bugs need "where did the time go" per frame | Adapt a simplified version |
-| 5 | **Lag compensation for melee and spells**, reusing `aethyr/net/rewind.coax` | Chaos `RewindData.h`, NPP resimulation | Arrows have it (24 ticks, 250 ms); melee and spells still judge in the present (audit table) | Adapt the idea (we're already most of the way) |
+| 5 | **Lag compensation for melee and spells**, reusing `metaverse-engine/net/rewind.coax` | Chaos `RewindData.h`, NPP resimulation | Arrows have it (24 ticks, 250 ms); melee and spells still judge in the present (audit table) | Adapt the idea (we're already most of the way) |
 | 6 | **HLOD for far cells and data layers for world state** (events, seasons, raids) | World Partition HLOD and data layers | Everglade v2 plants about 100,000 pieces; world events toggle whole sets of content | Adapt a simplified version |
 | 7 | **Crowds as structure-of-arrays with LOD and representation tiers**, on the server and the page | Mass Entity, MassLOD, MassRepresentation, MassReplication | Raids put up to 64 raiders, 38 townsfolk and creatures in one square | Adapt a simplified version |
 | 8 | **WebGPU delivery lessons:** pipeline prewarm lists, render bundles, no indirect dispatch in hot loops, CPU-ahead pacing, per-GPU texture sets | UE Wasm platform docs and `WebGPURHI` | First visits compile every shader; Chrome's shader cache is 6 MiB for all sites | Adapt the idea |
@@ -74,7 +74,7 @@ Verse now:
 
 Nanite, Lumen, MegaLights and virtual shadow maps are not in the top ten.
 Their web-feasible cores are already on our roadmap (the cluster DAG in
-`aethyr/render/geometry/`, cached cascades in `aethyr/render/cascades.coax`,
+`metaverse-engine/render/geometry/`, cached cascades in `metaverse-engine/render/cascades.coax`,
 lighting phases 3–5). Section 2 says what to take from each.
 
 ---
@@ -98,7 +98,7 @@ comes from `Platforms/Wasm/Config/DataDrivenPlatformInfo.ini` and
 | 64-bit atomics (buffer or image) | No | `bSupportsUInt64ImageAtomics=false` | No Nanite-style software raster with packed 64-bit depth and ID. A 32-bit `atomicMax` on a storage buffer can pack about 24 bits of depth with 8 bits of ID, enough only for small clusters in one tile |
 | Storage-texture atomics | No | `bSupportsTextureAtomics=false` | Visibility buffers and page tables live in storage buffers |
 | Mesh or amplification shaders | No | `bSupportsPrimitiveShaders=false` | Cluster culling runs in compute and feeds indirect draws |
-| Multi-draw indirect | Not in core | n/a | One `drawIndirect` per bucket, or one instanced draw over a cluster list (what `aethyr/render/geometry/cull.coax` does) |
+| Multi-draw indirect | Not in core | n/a | One `drawIndirect` per bucket, or one instanced draw over a cluster list (what `metaverse-engine/render/geometry/cull.coax` does) |
 | Indirect dispatch | Yes, but each call is validated with extra work | `LumenWebDirectDispatch.h`: Lumen issues an upper-bound direct dispatch with early-out instead | Avoid many small indirect dispatches per frame |
 | Subgroups | Optional feature | Required for the experimental desktop tier | Write every kernel with a subgroup-free path; subgroups only speed it up |
 | Hardware ray tracing | No | `bSupportsRayTracing=false` | Any GI or shadow tracing is software: screen space, distance fields, voxels or heightfields |
@@ -125,7 +125,7 @@ Pages stream on demand (`NaniteStreaming.usf`). The C++ side is
 `Source/Runtime/Renderer/Private/Nanite/`.
 
 **What the Metaverse Engine has.** A general cluster DAG builder learned from Solstice
-(`aethyr/render/geometry/dag.coax`: 128-triangle clusters, groups of up to
+(`metaverse-engine/render/geometry/dag.coax`: 128-triangle clusters, groups of up to
 four, borders locked, half-edge collapses). Watertight page residency
 (`residency.coax`: a page installs only after its parents and leaves only
 after its dependents). Projected-error cut selection (`cut.coax`). GPU
@@ -228,7 +228,7 @@ casters move (`VirtualShadowMapCacheManager.cpp`). Rendering many small
 pages cheaply depends on Nanite.
 
 **What the Metaverse Engine has.** Cached cascades in one depth atlas
-(`aethyr/render/cascades.coax`, #13016). A tile redraws only when its
+(`metaverse-engine/render/cascades.coax`, #13016). A tile redraws only when its
 snapped view changes. There's one 2048 map reaching 60 m, with PCF
 (`render/light.coax`, `render/shadow-filter.coax`).
 
@@ -288,10 +288,10 @@ per-sublevel path.
 
 **What the Metaverse Engine has.** Cells with residency rings, hysteresis, fixed-tick
 completion, sleeping bodies, stable IDs and floating origin
-(`aethyr/world/cells.coax`). Resource-cost manifests and admission
+(`metaverse-engine/world/cells.coax`). Resource-cost manifests and admission
 (`world/resource-*.coax`). A bounded streaming corridor on browser and
 native hosts. Environment regions (`world/environment-region.coax`). Realms
-as documents with typed edits (`aethyr/forge/doc.coax`, `forge/edit.coax`).
+as documents with typed edits (`metaverse-engine/editor/doc.coax`, `forge/edit.coax`).
 Chapter 38 is still a design draft for a whole large-world realm.
 
 **The gap.** No far-cell proxies (HLOD), and no named runtime layers for
@@ -327,8 +327,8 @@ meshes and nothing (`MassRepresentation`), and replication by client
 
 **What the Metaverse Engine has.** Entities with slot-and-generation handles, `EntityId`s
 for saves and the network, and spawns and despawns applied at the step's
-flush (`aethyr/core/entity.coax`). Structure-of-arrays physics
-(`aethyr/physics/sim/rigid.coax`). Bounded actor profiles (`aethyr/actors/`).
+flush (`metaverse-engine/core/entity.coax`). Structure-of-arrays physics
+(`metaverse-engine/physics/sim/rigid.coax`). Bounded actor profiles (`metaverse-engine/actors/`).
 
 **The gap.** No shared archetype storage or query layer for crowds, and no
 simulation or representation LOD.
@@ -370,7 +370,7 @@ and per-connection lists, so most decisions are shared. **Iris**
 - One row schema for every replicated entity, sent as deltas against the
   last acknowledged tick, with `LIFE` and `WARP` (chapter 91,
   `apps/openagents-web/everglade-wire.coax`).
-- Integer field rows with an admitted delta mask (`aethyr/net/row.coax`).
+- Integer field rows with an admitted delta mask (`metaverse-engine/net/row.coax`).
 - A replication lifecycle per entity and recipient
   (`net/replication.coax`).
 - Per-client byte budgets and backpressure (`net/budget.coax`, #13178).
@@ -418,7 +418,7 @@ physics bodies and resimulates from a corrected frame.
 - Server and client share one step (chapter 87).
 - The page predicts its own movement, keeps 64 inputs, replays unacknowledged
   ones and eases corrections over 0.12 s (chapter 90).
-- Command ordering and earned simulation time (`aethyr/net/command.coax`).
+- Command ordering and earned simulation time (`metaverse-engine/net/command.coax`).
 - Server-flown projectiles with lag compensation (`net/projectile.coax`,
   `net/rewind.coax`, `net/shots.coax`).
 
@@ -429,7 +429,7 @@ physics bodies and resimulates from a corrected frame.
 - Mounts, boats and dash have no shared predicted model.
 - The drift check still finds too many corrections (#12778).
 
-**Verdict: adapt a simplified version.** Add `aethyr/net/predict.coax` with
+**Verdict: adapt a simplified version.** Add `metaverse-engine/net/predict.coax` with
 the plugin's shape: typed input, sync and aux records per model; a pure
 fixed-step tick; a history ring; reconcile, replay and smooth. Walking moves
 onto it first, then mounts and dash. Take Mover's layered moves (a dash, a
@@ -438,7 +438,7 @@ way abilities push bodies. Skip predicted rigid-body physics for now.
 
 **Why.** It's the "no one-off zone code" rule applied to netcode, and it is
 what #12845 asks for. Coax's `#authority` checks and our deterministic math
-(`aethyr/core/math.coax`, the same bits natively and in the browser) make
+(`metaverse-engine/core/math.coax`, the same bits natively and in the browser) make
 resimulation safer for us than for Unreal. Predicted rigid bodies are
 expensive and Everglade doesn't need them yet.
 
@@ -463,7 +463,7 @@ cues. The header calls these the "Undo", "Redo" and "Completeness"
 problems.
 
 **What the Metaverse Engine has.**
-- The action pipeline, ask, act, present (`aethyr/action/deed.coax`,
+- The action pipeline, ask, act, present (`metaverse-engine/action/deed.coax`,
   `docs/verse/action-pipeline.md`).
 - Predicted casts with rollback by request number, a 1.5 s timeout and a
   late yes (audit #13157).
@@ -498,11 +498,11 @@ resim caches (`EvolutionResimCache.h`) and the Chaos Visual Debugger
 (`Plugins/ChaosVD`), which records solver frames for playback.
 
 **What the Metaverse Engine has.**
-- Rigid bodies in f64 under three named integrators (`aethyr/physics/sim/rigid.coax`).
-- PBD, SPH, MPM and grid fluids (`aethyr/physics/sim/`).
+- Rigid bodies in f64 under three named integrators (`metaverse-engine/physics/sim/rigid.coax`).
+- PBD, SPH, MPM and grid fluids (`metaverse-engine/physics/sim/`).
 - Kinematic capsule collision (`collide.coax`).
 - A Physics Lab that measures our kernels against pinned Rapier and Jolt
-  references (`aethyr/lab/`).
+  references (`metaverse-engine/lab/`).
 - Book chapters on contact as optimization and differentiable simulation.
 
 **The gap.** Breadth (cloth on characters, fracture at scale) and speed on
@@ -535,14 +535,14 @@ a Physics Lab and space-game concern, not a launch one.
 - **MetaHuman** (`Plugins/MetaHuman/*`): character, animator and crowd.
 
 **What the Metaverse Engine has.**
-- A shared pose with per-joint blends and the palette (`aethyr/anim/pose.coax`).
-- Layers, masks, retargeting, faces, morphs and glTF/BVH import (`aethyr/anim/`).
+- A shared pose with per-joint blends and the palette (`metaverse-engine/anim/pose.coax`).
+- Layers, masks, retargeting, faces, morphs and glTF/BVH import (`metaverse-engine/anim/`).
 - A character runtime with the ECH1 locomotion graph of 24 fixed clips
-  (`aethyr/character/pose.coax`).
+  (`metaverse-engine/character/pose.coax`).
 - Fix layers: planted feet, head look and arm reach
-  (`aethyr/character/fix.coax`).
-- An Unreal export plugin of our own (`aethyr/tools/unreal-echo-sdk/`) and
-  an Unreal source plan reader (`aethyr/anim/unreal-source.coax`).
+  (`metaverse-engine/character/fix.coax`).
+- An Unreal export plugin of our own (`metaverse-engine/tools/unreal-echo-sdk/`) and
+  an Unreal source plan reader (`metaverse-engine/anim/unreal-source.coax`).
 - MetaHuman support (`docs/verse/metahuman-support.md`).
 
 **The gap.** Locomotion picks clips by state, so starts, stops and
@@ -556,7 +556,7 @@ pivots blend generically. There's no trajectory-aware selection.
 - *Control Rig and RigVM:* skip the graph VM. Our solvers are Coax
   procedures (`fix.coax`) and agents write code more reliably than graphs.
 - *UAF:* already aligned. Its data-oriented, crowd-friendly direction is
-  what `aethyr/anim/` already is.
+  what `metaverse-engine/anim/` already is.
 - *ML Deformer:* skip.
 - *MetaHuman:* keep the private pipeline; nothing to adapt.
 
@@ -576,9 +576,9 @@ Runtime generation is scheduled around streaming sources
 
 **What the Metaverse Engine has.** Seeded scatter on a jittered grid. Each cell's draws
 are keyed by realm seed, layer ID, generator version and grid coordinates,
-with keep-outs as data, placed whole or refused (`aethyr/world/scatter.coax`,
+with keep-outs as data, placed whole or refused (`metaverse-engine/world/scatter.coax`,
 chapter 80). The architecture kit generates buildings and flora from
-parameters (`aethyr/arch/`). Staged build sites (`world/build-site.coax`).
+parameters (`metaverse-engine/arch/`). Staged build sites (`world/build-site.coax`).
 
 **The gap.** Generation runs ahead of time, not around the player at run
 time, and there's no hierarchical grid (big things on a coarse grid, small
@@ -604,7 +604,7 @@ state carried between frames.
 
 **What the Metaverse Engine has.** Exactly that model. The puff record, budgets and 42
 recipes whose motion is a pure function of seed, index and age
-(`aethyr/fx/puff.coax`, `fx/abilities.coax`, chapter 72). GPU drawing
+(`metaverse-engine/fx/puff.coax`, `fx/abilities.coax`, chapter 72). GPU drawing
 (`fx/gpu-puff.coax`, `fx/gpu-quads.coax`).
 
 **The gap.** Effects that need state (smoke that collides, embers that
@@ -638,10 +638,10 @@ confirms the choice.
 
 **What the Metaverse Engine has.**
 - Assets identified by the SHA-256 of their bytes, admitted whole or refused
-  (`aethyr/core/assets.coax`).
+  (`metaverse-engine/core/assets.coax`).
 - Content-addressed shader packages (`render/build.coax`,
   `render/package.coax`).
-- VPK1 packs with licence checks (`aethyr/forge/pack.coax`, chapter 53).
+- VPK1 packs with licence checks (`metaverse-engine/editor/pack.coax`, chapter 53).
 - Resource-cost manifests (`world/resource-manifest.coax`).
 - `coax/remote/pages.sh` to fetch main's built pages.
 
@@ -675,12 +675,12 @@ scrub through. Network Prediction has its own trace (`-trace=np`), and
 ChaosVD records physics.
 
 **What the Metaverse Engine has.**
-- Frame statistics and the 60 FPS rule (`aethyr/core/frame-report.coax`).
+- Frame statistics and the 60 FPS rule (`metaverse-engine/core/frame-report.coax`).
 - Every realm measured in headless Chrome (`coax/web/realm-perf.coax`) and
   frame-time tooling (`coax/web/frametime.ts`, using `timestamp-query`).
-- A netcode overlay (`aethyr/net/stats.coax`, Everglade II `?net`).
-- Diagnostic trace capacity (`aethyr/host/diagnostic-trace.coax`).
-- Exact replay (`aethyr/core/replay.coax`).
+- A netcode overlay (`metaverse-engine/net/stats.coax`, Everglade II `?net`).
+- Diagnostic trace capacity (`metaverse-engine/host/diagnostic-trace.coax`).
+- Exact replay (`metaverse-engine/core/replay.coax`).
 
 Chapter 83 lists the gaps: "stage timers in the page's frame, the HUD
 overlay that draws them, and the overlay's cost."
@@ -736,7 +736,7 @@ subsystems and toolkits. In 5.9, an MCP server
 tool search (`docs/unreal/mcp-tools.md`).
 
 **What the Metaverse Engine has.**
-- The Metaverse Engine (`aethyr/forge/`) with typed, invertible edits and undo, redo
+- The Metaverse Engine (`metaverse-engine/editor/`) with typed, invertible edits and undo, redo
   and replay.
 - `coax/web/tool.sh drive`, which answers from the engine and names targets
   by stable IDs (`tree`, `walk-to`, `use`, `state`).
@@ -789,7 +789,7 @@ agent context the way MCP tool search does.
 - Rooms reached directly over WebSocket or WebTransport, with no relay
   (`net/transport.coax`).
 - An offline room in a Worker (chapter 95).
-- Phones as first-class targets (`aethyr/core/quality.coax`).
+- Phones as first-class targets (`metaverse-engine/core/quality.coax`).
 - Compressed-texture detection (`coax/web/host.js`) and texture tiers
   (`docs/verse/2026-11-07-texture-formats.md`).
 - Native Metal and Vulkan hosts (`render/metal-host.coax`,
@@ -827,7 +827,7 @@ or fail. `Plugins/NetcodeUnitTest` tests netcode at the packet level.
 - Room proofs (`coax/web/room/room-proof.coax`).
 - The latency harness and loss matrix (`everglade2-latency`,
   `coax/web/room/net-matrix.coax`, `net-proxy.coax`).
-- Cross-realm checks (`aethyr/tests/cross-realm*.coax`).
+- Cross-realm checks (`metaverse-engine/tests/cross-realm*.coax`).
 
 **The gap.** Session tests are separate tools with separate reports. Real
 phones aren't in the matrix.
@@ -849,8 +849,8 @@ sessions, and we have them. What we lack is the one command that proves
 |---|---|---|---|
 | Language | C++ engine, Blueprints and Verse for gameplay, HLSL shaders, Python and MCP for tools; UE6 removes Blueprints and Actors to get to fewer | Coax for gameplay, shaders (WGSL and SPIR-V), tools and tests | One language agents learn once, with one checker |
 | Web | A native engine ported late: wasm64, 1–4 GB heap, a UDP relay, the mobile renderer, iOS not working | Web-first; small modules; native hosts share the same Coax | Players click a link; phones are a design target |
-| Correctness | Unit and functional tests; rules are code reviewed by people | `#authority` files with zero surviving mutants, `#forall`, refusal fixtures (`aethyr/core/refusals.coax`) | Agent-written code is checked by machine, not by trust |
-| Determinism | Not a goal; network prediction resimulates within tolerance | Same bits natively and in the browser (`aethyr/core/math.coax`), counter-based random streams (`rand.coax`), exact replay with digests (`replay.coax`) | Replay is the debugger, the test oracle and the proof |
+| Correctness | Unit and functional tests; rules are code reviewed by people | `#authority` files with zero surviving mutants, `#forall`, refusal fixtures (`metaverse-engine/core/refusals.coax`) | Agent-written code is checked by machine, not by trust |
+| Determinism | Not a goal; network prediction resimulates within tolerance | Same bits natively and in the browser (`metaverse-engine/core/math.coax`), counter-based random streams (`rand.coax`), exact replay with digests (`replay.coax`) | Replay is the debugger, the test oracle and the proof |
 | Refusal | Clamp and warn, best effort | Budgets that refuse whole (`budget.coax`, `assets.coax`, every admission) | No hidden limits, as the owner requires |
 | Binary size | A Development build's code is about 913 MiB (Wasm docs) | Per-realm wasm modules | First image in seconds on a phone |
 | Asset identity | Paths and GUIDs, with derived-data keys beside them | SHA-256 of bytes is the identity | Caching, dedupe and integrity come free |
@@ -912,9 +912,9 @@ code.**
 - **Third-party code inside the UE tree** (Dawn, Tint, Emscripten) has its
   own permissive licences. If we want any of it, we take it from its
   upstream project under that licence, never from UE's copy.
-- **Our own Unreal plugin** (`aethyr/tools/unreal-echo-sdk/`) runs inside
+- **Our own Unreal plugin** (`metaverse-engine/tools/unreal-echo-sdk/`) runs inside
   Unreal to export our own data. That's ordinary EULA use. Its outputs
-  must still pass the licence check in `aethyr/forge/pack.coax`.
+  must still pass the licence check in `metaverse-engine/editor/pack.coax`.
 
 Each recommendation, checked:
 
@@ -941,7 +941,7 @@ zone. Not filed; the owner decides.
 
 ### P1. Prediction keys in the action pipeline
 
-Extend `aethyr/action/deed.coax` so every predicted press carries a key.
+Extend `metaverse-engine/action/deed.coax` so every predicted press carries a key.
 Every predicted side effect records it: spell slot, resource, cooldown,
 global cooldown, a condition on yourself, a cue.
 
@@ -957,7 +957,7 @@ Acceptance:
 
 ### P2. Binary quantized replication rows (closes #13165)
 
-Fields in `aethyr/net/row.coax` declare a range and a precision. The codec
+Fields in `metaverse-engine/net/row.coax` declare a range and a precision. The codec
 quantizes and bit-packs from the schema, and the decimal text form is
 removed.
 
@@ -971,7 +971,7 @@ Acceptance:
 
 ### P3. Accumulated priority and prioritizers
 
-In `aethyr/net/budget.coax`, a row left out gains priority each tick until
+In `metaverse-engine/net/budget.coax`, a row left out gains priority each tick until
 sent. Typed prioritizers cover distance, field of view, owner and party
 boost, and current target.
 
@@ -984,20 +984,20 @@ Acceptance:
 
 ### P4. A shared predicted-simulation module
 
-Add `aethyr/net/predict.coax`: typed input, sync and aux records; a pure
+Add `metaverse-engine/net/predict.coax`: typed input, sync and aux records; a pure
 fixed-step tick; a history ring; reconcile, replay and smooth. Walking
 moves onto it, then dash and mounts. Ability pushes use layered moves.
 
 Acceptance:
 - Walking's page-side prediction code in Everglade is replaced, with
-  identical replay digests on `aethyr/tests/cross-realm.coax`.
+  identical replay digests on `metaverse-engine/tests/cross-realm.coax`.
 - Dash and one mount predict through it under 120 ms with 2% loss.
 - The drift check (#12778) meets its bound.
 
 ### P5. Lag compensation for melee and spells
 
 Judge melee hits and targeted spells against bodies as the attacker saw
-them, reusing `aethyr/net/rewind.coax`, with the arrows' bounds (250 ms of
+them, reusing `metaverse-engine/net/rewind.coax`, with the arrows' bounds (250 ms of
 age, 400 ms of view).
 
 Acceptance:
@@ -1039,7 +1039,7 @@ Acceptance:
 
 For each world cell, bake a proxy from the DAG's coarse levels: one draw,
 with materials kept. Show it past the load ring of
-`aethyr/world/cells.coax`.
+`metaverse-engine/world/cells.coax`.
 
 Acceptance:
 - Proxy and source agree within a declared screen error at the swap

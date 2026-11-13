@@ -2,8 +2,8 @@
 // Druid whose bar has Wild Shape and Shapechange (Dragon). Only the zone lives here: where the
 // druid stands, what its bar holds, and which inputs reach the shared layers. The rules are the
 // engine's (rules/srd/shapechange.coax, dragon-actions.coax), the body's change, flight and
-// breath are Everglade's (everglade/shapeshift.coax over aethyr/action/flight.coax), the looks are
-// aethyr/fx/dragon.coax and the bar is fivebar's.
+// breath are Everglade's (everglade/shapeshift.coax over metaverse-engine/action/flight.coax), the looks are
+// metaverse-engine/fx/dragon.coax and the bar is fivebar's.
 //   W A S D or the stick: walk, and fly once aloft
 //   Space or the jump button: take off, then each press or hold beats the wings up
 //   Shift in the air: dive
@@ -125,7 +125,7 @@ xd_frame :: (s: [] EgZone, dt: f32) {
   cr[0].body_spin = ifx bd.kind == SH_DRAGON then 0.0f32 else bd.spin;
   cr[0].cam_k = sh_cam_scale(sh[0], now);
 }
-// Your keys or stick along the camera (aethyr/move/walk.coax wish), and the wings' buttons.
+// Your keys or stick along the camera (metaverse-engine/move/walk.coax wish), and the wings' buttons.
 xd_input :: (s: [] EgZone, now: f32) -> WingInput {
   x := s[0].xc[..]; cr := s[0].creator[0]; held := s[0].held;
   ax := axis(held, HOLD_D, HOLD_A); ay := axis(held, HOLD_W, HOLD_S);

@@ -3,7 +3,7 @@
 //   coax spirv coax/tests/shader/sample.coax --vertex a_vs --fragment a_fs --tree
 //   coax spirv coax/tests/shader/sample.coax --vertex b_vs --fragment b_fs --tree
 // and the modules pass spirv-val --target-env vulkan1.1.
-#load "../../../aethyr/gpu/shader.coax";
+#load "../../../metaverse-engine/gpu/shader.coax";
 
 Attr :: struct {p:V3; tint:V4; id:u32; k:s32;}
 Point :: struct {at:V3; size:f32; tags:[2]u32;}

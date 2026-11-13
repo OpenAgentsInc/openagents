@@ -5,11 +5,11 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/host/audio-prefetch-conformance.coax";
-#load "../../aethyr/host/audio-prefetch-room-conformance.coax";
-#load "../../aethyr/host/audio-assets-conformance.coax";
-#load "../../aethyr/audio/sfx.coax";
-#load "../../aethyr/audio/everglade-bank.coax";
+#load "../../metaverse-engine/host/audio-prefetch-conformance.coax";
+#load "../../metaverse-engine/host/audio-prefetch-room-conformance.coax";
+#load "../../metaverse-engine/host/audio-assets-conformance.coax";
+#load "../../metaverse-engine/audio/sfx.coax";
+#load "../../metaverse-engine/audio/everglade-bank.coax";
 map_run :: (cmd:[]string,log_path:string)->bool {out:[1048576]u8;err:[65536]u8;r:=proc_run(cmd,180000,out[..],err[..]);if !fs_write(log_path,cast(string)err[0..<r.err_n])||r.started!=0||r.status!=0||r.cut||r.timed_out{tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;}
 map_asset :: (j:[]Jo,c:SfxbCand) {label:[128]u8;name:[1]Jo;jo_start(name[..],label[..]);jo_put(name[..],SFX_NAMES[c.sound]);jo_put(name[..],"-");jo_put(name[..],c.cand);jo_str(j,jo_text(name[..]));}
 tool_main :: ()->int #export_c #effects(all) {

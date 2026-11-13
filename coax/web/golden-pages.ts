@@ -89,7 +89,7 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
 
 /** What every page is built or walked with: files, and directories (ending in /). */
 export const SHARED = ["coax/web/host.js", "coax/web/http-requests.js", "coax/web/loader.js", "coax/web/voice.js", "coax/web/entropy.js", "coax/web/entropy-import.js", "coax/web/drop.js", "coax/web/docs.js",
-  "aethyr/render/", "coax/web/render.js", "coax/web/render-face.c", "coax/web/render-stage.coax",
+  "metaverse-engine/render/", "coax/web/render.js", "coax/web/render-face.c", "coax/web/render-stage.coax",
   "coax/web/uploads.js", "coax/web/deploy.sh", "coax/web/strip.ts", "coax/web/wasm.sh", "coax/web/wgsl-block.coax", "coax/web/wgsl-module.coax", "coax/web/realms.ts",
   "coax/web/goldens.ts", "coax/web/golden-pages.ts", "coax/web/golden-policy.ts", "coax/web/unlock/", "coax/web/voice/",
   `${APP}/build.sh`, `${APP}/realms.json`, `${APP}/realms.coax`, "coax/"]
@@ -133,7 +133,7 @@ export function pageInputs(name: string, p: Pages = goldenPages()): string[] {
   out.add(`${APP}/${m}.wgsl`)
   // a module written from Coax: its source, bindings and options (build.sh), and WGSL's vocabulary
   if (existsSync(join(ROOT, `${APP}/gpu/${m}.coax`))) for (const x of ["coax", "bindings", "module"]) out.add(`${APP}/gpu/${m}.${x}`)
-  if (existsSync(join(ROOT, `${APP}/gpu/${m}.coax`))) out.add("aethyr/gpu/wgsl.coax")
+  if (existsSync(join(ROOT, `${APP}/gpu/${m}.coax`))) out.add("metaverse-engine/gpu/wgsl.coax")
   out.add(`coax/web/goldens/${name}.png`)   // a wrong golden fails the page as surely as a changed page
   out.add(`coax/web/goldens/linux/${name}.png`)
   const dir = page.path.split("?")[0].replace(/^\//, "")

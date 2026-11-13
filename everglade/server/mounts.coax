@@ -2,7 +2,7 @@
 // Riding in a room (#13268, everglade/docs/mounts-spec.md): a zone's mounts as the room's state. The
 // room, not a page, decides who is on which mount and where it is. A page asks to mount or to get
 // down; the room judges the ask here (e2r_mount, e2r_dismount, e2r_land) and steps every mount once a
-// tick (e2r_step) with the Metaverse Engine's mount engine (aethyr/action/mount.coax: the same mount_step and
+// tick (e2r_step) with the Metaverse Engine's mount engine (metaverse-engine/action/mount.coax: the same mount_step and
 // mount_step_wings a page predicts with) from its rider's input. A rider's body is where its mount
 // seats it (e2r_body): the room's walker does not step a seat that e2r_of names.
 //
@@ -15,7 +15,7 @@
 //   coax/bin/coax test everglade/server/mounts.coax --library
 //   coax/bin/coax mutate everglade/server/mounts.coax --library --root-only   (175 of 175 killed, 2026-11-12)
 #module "everglade.server.mounts";
-#load "../../aethyr/action/mount.coax";
+#load "../../metaverse-engine/action/mount.coax";
 #load "../shared/mount-kinds.coax";
 #load "tests/mounts-fixture.coax" #test;   // its checks' helpers, kept out of its mutants
 

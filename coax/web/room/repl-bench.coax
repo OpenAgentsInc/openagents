@@ -1,6 +1,6 @@
 // The replication layer's benchmark (#13178): the room's relevance and replication work per tick at
 // 50, 200 and 1,000 entities, each a client too (the worst case: everyone a player), before and after
-// the engine-wide grid, priority and link budget (aethyr/net/grid.coax, budget.coax); and the bytes a
+// the engine-wide grid, priority and link budget (metaverse-engine/net/grid.coax, budget.coax); and the bytes a
 // player in a crowded glade is sent a second, from the real wire (everglade-wire.coax), before and after.
 //   coax/web/tool.sh coax/web/room/repl-bench.coax
 // It fails when the glade's player is sent more than RB_GLADE_MOST bytes a second, or a row waits past
@@ -17,7 +17,7 @@
 #import "Basic";
 #load "../../lib/sys/proc.coax";
 #load "../../../everglade/shared/everglade-wire.coax";
-#load "../../../aethyr/net/grid.coax";
+#load "../../../metaverse-engine/net/grid.coax";
 
 RB_MAX :: 1000;               // entities at most
 RB_RADIUS :: 130.0;           // m: the room's interest radius (room-interest.coax IM_EXIT)

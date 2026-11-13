@@ -1,0 +1,776 @@
+// A general cluster DAG (GitHub #13015, learned from Solstice's builder:
+// docs/verse/2026-11-07-solstice-comparison.md). Any indexed triangle mesh becomes clusters of at
+// most 128 triangles, then, round by round: neighbouring clusters are grouped (at most four), each
+// group is simplified to about half with its border locked, and the result is split into new
+// clusters. Grouping changes every round, so a border locked in one round is simplified in a
+// later one. A group that can't get below 85% stays as it is and is tried again in the next round,
+// in whatever group it falls into. It ends when one cluster is left or no group shrinks.
+//
+// Every vertex is welded by exact position into one table, and simplification only collapses a
+// vertex onto a neighbour (half-edge collapses), so a border is the same vertices on both sides and
+// cuts that mix levels can't crack. A group of loose islands that can't be simplified (foliage
+// cards) is thinned instead: every other island is dropped and the rest are scaled up about their
+// centres to keep the area.
+//
+// A cluster knows its own error and sphere (the group that made it; zero and its own bounds at
+// the finest level) and its parent's (the group it went into; none for a root). Errors and spheres
+// only grow toward the roots, so a cut is a threshold:
+//   draw C when error(C) <= t < error(parent of C)
+// Pages are the sibling sets (the members of one group, which swap for the same parents) in build
+// rounds from the last: roots on page 0, and a page's parents are always on lower pages, the rule
+// metaverse-engine/render/geometry/residency.coax keeps. dag_draw is the draw rule over installed pages.
+//   coax/bin/coax test metaverse-engine/render/geometry/dag.coax
+#load "../../core/points.coax";
+#load "residency.coax";
+
+DAG_SOURCE :: 16384;   // source triangles at most
+DAG_VERTS :: 32768;    // welded vertices, with any a thinning adds
+DAG_TRIS :: 65536;     // triangles stored at most: the source, every cluster's, and working room
+DAG_CT :: 128;         // triangles a cluster holds at most
+DAG_CLUSTERS :: 2048;
+DAG_GROUPS :: 1024;
+DAG_GROUP :: 4;        // clusters a group holds at most
+DAG_GT :: DAG_CT * DAG_GROUP;
+DAG_ROUNDS :: 32;
+DAG_NONE :: 1000000000;  // the parent error of a root: no threshold reaches it
+
+DagCluster :: struct {
+  first: int; count: int;          // its triangles: tri[first * 3 ..< (first + count) * 3]
+  made_by: int = -1;               // the group that made it, -1 at the finest level
+  group: int = -1;                 // the group it went into, -1 for a root
+  error: f32; c: Point; r: f32;    // its own error and sphere
+  parent_error: f32 = DAG_NONE; pc: Point; pr: f32;
+}
+DagGroup :: struct {
+  member: [DAG_GROUP] int; members: int;
+  first: int; made: int;           // the clusters it made: cluster[first ..< first + made]
+  round: int; error: f32; c: Point; r: f32; thinned: bool;
+  page: int; deps: [DAG_GROUP * 2] int; ndeps: int;
+}
+Dag :: struct {
+  vertices: int; welded: int; p: [DAG_VERTS] Point;
+  source: int; tris: int; tri: [DAG_TRIS * 3] int;      // the source's welded triangles first
+  clusters: int; cluster: [DAG_CLUSTERS] DagCluster; finest: int;
+  groups: int; group: [DAG_GROUPS] DagGroup;
+  rounds: int; roots: int;
+  pages: int; page_group: [DAG_GROUPS + 1] int;          // -1: the root page
+  refused: string;
+}
+// Scratch for the builder: an incidence table and per-vertex marks.
+DagWork :: struct {
+  stamp: [DAG_VERTS] int; mark: int; local: [DAG_VERTS] int; uses: [DAG_VERTS] int;
+  start: [DAG_VERTS + 1] int; inc: [DAG_SOURCE * 3] int;
+  key: [DAG_SOURCE] int; order: [DAG_SOURCE] int; tmp: [DAG_SOURCE] int; taken: [DAG_SOURCE] bool; queue: [DAG_SOURCE] int;
+}
+
+dag_refuse :: (d: [] Dag, why: string) -> bool #effects(all) { d[0].refused = why; return false; }
+dag_min3 :: (a: Point, b: Point) -> Point #effects(all) { return v3(lo(a.x, b.x), lo(a.y, b.y), lo(a.z, b.z)); }
+dag_max3 :: (a: Point, b: Point) -> Point #effects(all) { return v3(hi(a.x, b.x), hi(a.y, b.y), hi(a.z, b.z)); }
+dag_dist :: (a: Point, b: Point) -> f32 #effects(all) { e := sub(a, b); return sqrt(dot(e, e)); }
+// The distance from x to triangle abc (the closest point by its region: a vertex, an edge or the face).
+dag_point_tri :: (x: Point, a: Point, b: Point, c: Point) -> f32 #effects(all) {
+  ab := sub(b, a); ac := sub(c, a); ap := sub(x, a);
+  d1 := dot(ab, ap); d2 := dot(ac, ap);
+  if d1 <= 0 && d2 <= 0 { return dag_dist(x, a); }
+  bp := sub(x, b); d3 := dot(ab, bp); d4 := dot(ac, bp);
+  if d3 >= 0 && d4 <= d3 { return dag_dist(x, b); }
+  vc := d1 * d4 - d3 * d2;
+  if vc <= 0 && d1 >= 0 && d3 <= 0 { return dag_dist(x, add(a, times(ab, d1 / (d1 - d3)))); }
+  cp := sub(x, c); d5 := dot(ab, cp); d6 := dot(ac, cp);
+  if d6 >= 0 && d5 <= d6 { return dag_dist(x, c); }
+  vb := d5 * d2 - d1 * d6;
+  if vb <= 0 && d2 >= 0 && d6 <= 0 { return dag_dist(x, add(a, times(ac, d2 / (d2 - d6)))); }
+  va := d3 * d6 - d5 * d4;
+  if va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0 { return dag_dist(x, add(b, times(sub(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6))))); }
+  den := va + vb + vc;
+  if den <= 0 { return lo(lo(dag_dist(x, a), dag_dist(x, b)), dag_dist(x, c)); }
+  return dag_dist(x, add(a, add(times(ab, vb / den), times(ac, vc / den))));
+}
+
+// Sort keys[0..<n] ascending, carrying order[] along (merge sort, stable).
+dag_sort :: (keys: [] int, order: [] int, tk: [] int, to: [] int) #effects(all) {
+  n := keys.count; width := 1;
+  while width < n {
+    i := 0;
+    while i < n {
+      m := ifx i + width < n then i + width else n; e := ifx i + 2 * width < n then i + 2 * width else n;
+      a := i; b := m; k := i;
+      while k < e {
+        if a < m && (b >= e || keys[a] <= keys[b]) { tk[k] = keys[a]; to[k] = order[a]; a += 1; } else { tk[k] = keys[b]; to[k] = order[b]; b += 1; }
+        k += 1;
+      }
+      i = e;
+    }
+    for j: 0..<n { keys[j] = tk[j]; order[j] = to[j]; }
+    width *= 2;
+  }
+}
+// A 30-bit Morton code for p inside [low, high].
+dag_morton :: (p: Point, low: Point, high: Point) -> int #effects(all) {
+  q: [3] int; v := [3] f32.[p.x, p.y, p.z]; l := [3] f32.[low.x, low.y, low.z]; h := [3] f32.[high.x, high.y, high.z];
+  for a: 0..<3 { s := h[a] - l[a]; t := ifx s > 0 then (v[a] - l[a]) / s else 0; q[a] = cast(int) clamp(t * 1023, 0, 1023); }
+  code := 0;
+  for bit: 0..<10 { for a: 0..<3 { code = code | (((q[a] >> bit) & 1) << (bit * 3 + a)); } }
+  return code;
+}
+
+// ---- welding
+
+dag_weld :: (d: [] Dag, p: [] Point, indices: [] u32) -> bool #effects(all) {
+  if p.count < 3 || p.count > DAG_VERTS || indices.count < 3 || indices.count % 3 != 0 || indices.count / 3 > DAG_SOURCE { return dag_refuse(d, "a mesh this builder can't hold"); }
+  for v: p { if !finite(v.x) || !finite(v.y) || !finite(v.z) { return dag_refuse(d, "a position that isn't finite"); } }
+  for v: indices { if cast(int) v >= p.count { return dag_refuse(d, "an index past the positions"); } }
+  table: [65536] int; map: [DAG_VERTS] int; n := 0;
+  for v, k: p {
+    w := v3(v.x + 0, v.y + 0, v.z + 0);
+    h := (((cast(int) f32_bits(w.x)) * 73856093) ^ ((cast(int) f32_bits(w.y)) * 19349663) ^ ((cast(int) f32_bits(w.z)) * 83492791)) & 65535;
+    found := -1;
+    while table[h] != 0 { q := d[0].p[table[h] - 1]; if q.x == w.x && q.y == w.y && q.z == w.z { found = table[h] - 1; break; } h = (h + 1) & 65535; }
+    if found < 0 { d[0].p[n] = w; n += 1; table[h] = n; found = n - 1; }
+    map[k] = found;
+  }
+  d[0].vertices = n; d[0].welded = n; d[0].source = indices.count / 3;
+  for t: 0..<d[0].source {
+    a := map[cast(int) indices[t * 3]]; b := map[cast(int) indices[t * 3 + 1]]; c := map[cast(int) indices[t * 3 + 2]];
+    if a == b || b == c || a == c { return dag_refuse(d, "a triangle with two corners at one position"); }
+    d[0].tri[t * 3] = a; d[0].tri[t * 3 + 1] = b; d[0].tri[t * 3 + 2] = c;
+  }
+  d[0].tris = d[0].source; return true;
+}
+
+// ---- incidence over a list of triangles
+
+// The triangles of list (ids into tri) that use each vertex, as an incidence table in w.
+dag_incidence :: (d: [] Dag, w: [] DagWork, list: [] int) #effects(all) {
+  w[0].mark += 1; m := w[0].mark; n := 0;
+  for t: list { for k: 0..<3 { v := d[0].tri[t * 3 + k]; if w[0].stamp[v] != m { w[0].stamp[v] = m; w[0].local[v] = n; w[0].uses[n] = 0; n += 1; } w[0].uses[w[0].local[v]] += 1; } }
+  w[0].start[0] = 0; for k: 0..<n { w[0].start[k + 1] = w[0].start[k] + w[0].uses[k]; w[0].uses[k] = 0; }
+  for t, i: list { for k: 0..<3 { l := w[0].local[d[0].tri[t * 3 + k]]; w[0].inc[w[0].start[l] + w[0].uses[l]] = i; w[0].uses[l] += 1; } }
+}
+dag_has :: (d: [] Dag, t: int, v: int) -> bool #effects(all) { return d[0].tri[t * 3] == v || d[0].tri[t * 3 + 1] == v || d[0].tri[t * 3 + 2] == v; }
+
+// Split list into clusters of at most DAG_CT triangles: grown across shared edges from seeds in
+// Morton order, a cluster that runs out of neighbours taking the next seed. Each cluster's
+// triangles are copied to the end of tri. The first new cluster, or -1 when there's no room.
+dag_split :: (d: [] Dag, w: [] DagWork, list: [] int, made_by: int) -> int #effects(all) {
+  n := list.count;
+  if n == 0 || d[0].tris + n > DAG_TRIS || d[0].clusters + (n + DAG_CT - 1) / DAG_CT + n / 8 + 1 > DAG_CLUSTERS { return -1; }
+  low := d[0].p[d[0].tri[list[0] * 3]]; high := low;
+  for t: list { for k: 0..<3 { q := d[0].p[d[0].tri[t * 3 + k]]; low = dag_min3(low, q); high = dag_max3(high, q); } }
+  for t, i: list {
+    a := d[0].p[d[0].tri[t * 3]]; b := d[0].p[d[0].tri[t * 3 + 1]]; c := d[0].p[d[0].tri[t * 3 + 2]];
+    w[0].key[i] = dag_morton(times(add(add(a, b), c), 1.0 / 3.0), low, high); w[0].order[i] = i; w[0].taken[i] = false;
+  }
+  dag_sort(w[0].key[0..<n], w[0].order[0..<n], w[0].tmp[0..<n], w[0].queue[0..<n]);
+  dag_incidence(d, w, list);
+  first := d[0].clusters; seed := 0; placed := 0;
+  members: [DAG_CT] int;
+  while placed < n {
+    got := 0;
+    while got < DAG_CT && placed < n {
+      while w[0].taken[w[0].order[seed]] { seed += 1; }
+      head := 0; tail := 0; w[0].queue[tail] = w[0].order[seed]; tail += 1;
+      while head < tail && got < DAG_CT {
+        i := w[0].queue[head]; head += 1;
+        if w[0].taken[i] { continue; }
+        w[0].taken[i] = true; members[got] = i; got += 1; placed += 1;
+        t := list[i];
+        for e: 0..<3 {
+          a := d[0].tri[t * 3 + e]; b := d[0].tri[t * 3 + (e + 1) % 3]; la := w[0].local[a];
+          for s: w[0].start[la]..<w[0].start[la + 1] {
+            j := w[0].inc[s];
+            if !w[0].taken[j] && dag_has(d, list[j], b) && tail < n { w[0].queue[tail] = j; tail += 1; }
+          }
+        }
+      }
+    }
+    c := DagCluster.{first = d[0].tris, count = got, made_by = made_by};
+    lo3 := d[0].p[d[0].tri[list[members[0]] * 3]]; hi3 := lo3;
+    for k: 0..<got {
+      t := list[members[k]];
+      for j: 0..<3 { v := d[0].tri[t * 3 + j]; d[0].tri[(d[0].tris + k) * 3 + j] = v; lo3 = dag_min3(lo3, d[0].p[v]); hi3 = dag_max3(hi3, d[0].p[v]); }
+    }
+    d[0].tris += got;
+    c.c = times(add(lo3, hi3), 0.5); c.r = 0;
+    for k: 0..<got { for j: 0..<3 { c.r = hi(c.r, dag_dist(c.c, d[0].p[d[0].tri[(c.first + k) * 3 + j]])); } }
+    c.r = c.r * 1.0001 + 0.000001;
+    if d[0].clusters == DAG_CLUSTERS { return -1; }
+    d[0].cluster[d[0].clusters] = c; d[0].clusters += 1;
+  }
+  return first;
+}
+
+// ---- grouping
+
+// Group the active clusters: each seed (in Morton order of centres) takes the ungrouped neighbours
+// it shares the most edges with, then the nearest ungrouped clusters, up to DAG_GROUP.
+dag_groups :: (d: [] Dag, w: [] DagWork, active: [] int, out: [] int, sizes: [] int) -> int #effects(all) {
+  n := active.count; tl: [DAG_SOURCE] int; m := 0; owner: [DAG_SOURCE] int;
+  for c, i: active { cl := d[0].cluster[c]; for k: 0..<cl.count { tl[m] = cl.first + k; owner[m] = i; m += 1; } }
+  dag_incidence(d, w, tl[0..<m]);
+  shared: [DAG_CLUSTERS * 8] int; nb: [DAG_CLUSTERS * 8] int; nbs: [DAG_CLUSTERS] int;
+  for i: 0..<m {
+    t := tl[i];
+    for e: 0..<3 {
+      a := d[0].tri[t * 3 + e]; b := d[0].tri[t * 3 + (e + 1) % 3]; la := w[0].local[a];
+      for s: w[0].start[la]..<w[0].start[la + 1] {
+        j := w[0].inc[s]; o := owner[j]; me := owner[i];
+        if o != me && dag_has(d, tl[j], b) {
+          at := -1; for q: 0..<nbs[me] { if nb[me * 8 + q] == o { at = q; } }
+          if at < 0 && nbs[me] < 8 { at = nbs[me]; nb[me * 8 + at] = o; shared[me * 8 + at] = 0; nbs[me] += 1; }
+          if at >= 0 { shared[me * 8 + at] += 1; }
+        }
+      }
+    }
+  }
+  low := d[0].cluster[active[0]].c; high := low;
+  for c: active { low = dag_min3(low, d[0].cluster[c].c); high = dag_max3(high, d[0].cluster[c].c); }
+  keys: [DAG_CLUSTERS] int; order: [DAG_CLUSTERS] int; tk: [DAG_CLUSTERS] int; to: [DAG_CLUSTERS] int; grouped: [DAG_CLUSTERS] bool;
+  for c, i: active { keys[i] = dag_morton(d[0].cluster[c].c, low, high); order[i] = i; }
+  dag_sort(keys[0..<n], order[0..<n], tk[0..<n], to[0..<n]);
+  groups := 0; at := 0;
+  for s: 0..<n {
+    seed := order[s]; if grouped[seed] { continue; }
+    g: [DAG_GROUP] int; size := 1; g[0] = seed; grouped[seed] = true;
+    while size < DAG_GROUP {
+      best := -1; score := 0;
+      for k: 0..<size { me := g[k]; for q: 0..<nbs[me] { o := nb[me * 8 + q]; if !grouped[o] && shared[me * 8 + q] > score { best = o; score = shared[me * 8 + q]; } } }
+      if best < 0 {
+        far: f32 = 0; c0 := d[0].cluster[active[seed]].c;
+        for o: 0..<n { if !grouped[o] { e := dag_dist(c0, d[0].cluster[active[o]].c); if best < 0 || e < far { best = o; far = e; } } }
+      }
+      if best < 0 { break; }
+      g[size] = best; size += 1; grouped[best] = true;
+    }
+    for k: 0..<size { out[at] = active[g[k]]; at += 1; }
+    sizes[groups] = size; groups += 1;
+  }
+  return groups;
+}
+
+// ---- simplification
+
+DAG_LV :: DAG_GT * 3;  // local vertices a group can have
+
+// Add triangle (a, b, c)'s plane quadric, weighted by its area, to vertex v's (q[v * 10 ..]).
+dag_quadric_add :: (q: [] f64, v: int, a: Point, b: Point, c: Point) #effects(all) {
+  n := cross(sub(b, a), sub(c, a)); area := sqrt(cast(f64) n.x * cast(f64) n.x + cast(f64) n.y * cast(f64) n.y + cast(f64) n.z * cast(f64) n.z);
+  if area <= 0 { return; }
+  x := cast(f64) n.x / area; y := cast(f64) n.y / area; z := cast(f64) n.z / area;
+  e := -(x * cast(f64) a.x + y * cast(f64) a.y + z * cast(f64) a.z); s := area * 0.5; o := v * 10;
+  q[o] += x * x * s; q[o + 1] += x * y * s; q[o + 2] += x * z * s; q[o + 3] += x * e * s; q[o + 4] += y * y * s;
+  q[o + 5] += y * z * s; q[o + 6] += y * e * s; q[o + 7] += z * z * s; q[o + 8] += z * e * s; q[o + 9] += e * e * s;
+}
+// The error of moving u onto v: the sum of their quadrics at v.
+dag_qcost :: (q: [] f64, u: int, v: int, x: f64, y: f64, z: f64) -> f64 #effects(all) {
+  a := u * 10; b := v * 10;
+  return (q[a] + q[b]) * x * x + 2 * (q[a + 1] + q[b + 1]) * x * y + 2 * (q[a + 2] + q[b + 2]) * x * z + 2 * (q[a + 3] + q[b + 3]) * x
+       + (q[a + 4] + q[b + 4]) * y * y + 2 * (q[a + 5] + q[b + 5]) * y * z + 2 * (q[a + 6] + q[b + 6]) * y
+       + (q[a + 7] + q[b + 7]) * z * z + 2 * (q[a + 8] + q[b + 8]) * z + (q[a + 9] + q[b + 9]);
+}
+// The live triangles of lt around each local vertex, as st/inc.
+dag_local_inc :: (lt: [] int, nt: int, nv: int, dead: [] bool, st: [] int, inc: [] int) #effects(all) {
+  for k: 0..<nv + 1 { st[k] = 0; }
+  for t: 0..<nt { if !dead[t] { for j: 0..<3 { st[lt[t * 3 + j] + 1] += 1; } } }
+  for k: 0..<nv { st[k + 1] += st[k]; }
+  fill: [DAG_LV] int; for k: 0..<nv { fill[k] = st[k]; }
+  for t: 0..<nt { if !dead[t] { for j: 0..<3 { v := lt[t * 3 + j]; inc[fill[v]] = t; fill[v] += 1; } } }
+}
+dag_lhas :: (lt: [] int, t: int, v: int) -> bool #effects(all) { return lt[t * 3] == v || lt[t * 3 + 1] == v || lt[t * 3 + 2] == v; }
+
+// Simplify group g (its members' triangles) with every vertex on its border, or shared with a
+// triangle outside it, locked. Collapses run in passes: each pass ranks every free vertex's
+// cheapest collapse and takes them in order, skipping any that touch a star already changed, so
+// the incidence a pass reads stays true. Success: the group's clusters are made and recorded.
+// Failure (it would keep more than 85%, and isn't loose islands to thin): nothing is kept.
+dag_simplify :: (d: [] Dag, w: [] DagWork, g: int, round: int, outside: [] int) -> bool #effects(all) {
+  gr := d[0].group[g];
+  lt: [DAG_GT * 3] int; nt := 0; dead: [DAG_GT] bool;
+  for k: 0..<gr.members { cl := d[0].cluster[gr.member[k]]; for t: 0..<cl.count { for j: 0..<3 { lt[nt * 3 + j] = d[0].tri[(cl.first + t) * 3 + j]; } nt += 1; } }
+  lv: [DAG_LV] int; nv := 0; w[0].mark += 1; m := w[0].mark;
+  for k: 0..<nt * 3 { v := lt[k]; if w[0].stamp[v] != m { w[0].stamp[v] = m; w[0].local[v] = nv; lv[nv] = v; nv += 1; } lt[k] = w[0].local[v]; }
+  pos: [DAG_LV] Point; for k: 0..<nv { pos[k] = d[0].p[lv[k]]; }
+  uses: [DAG_LV] int; for k: 0..<nt * 3 { uses[lt[k]] += 1; }
+  lt0: [DAG_GT * 3] int; for k: 0..<nt * 3 { lt0[k] = lt[k]; }
+  dest: [DAG_LV] int; for k: 0..<nv { dest[k] = -1; }
+  locked: [DAG_LV] bool;
+  for k: 0..<nv { if uses[k] != outside[lv[k]] { locked[k] = true; } }
+  st: [DAG_LV + 1] int; inc: [DAG_GT * 3] int;
+  dag_local_inc(lt[..], nt, nv, dead[..], st[..], inc[..]);
+  for t: 0..<nt { for e: 0..<3 {
+    a := lt[t * 3 + e]; b := lt[t * 3 + (e + 1) % 3]; c := 0;
+    for s: st[a]..<st[a + 1] { if dag_lhas(lt[..], inc[s], b) { c += 1; } }
+    if c != 2 { locked[a] = true; locked[b] = true; }
+  } }
+  q: [DAG_LV * 10] f64;
+  for t: 0..<nt { a := pos[lt[t * 3]]; b := pos[lt[t * 3 + 1]]; c := pos[lt[t * 3 + 2]]; for j: 0..<3 { dag_quadric_add(q[..], lt[t * 3 + j], a, b, c); } }
+  live := nt; target := (nt + 1) / 2;
+  touched: [DAG_LV] int; seen: [DAG_LV] int; pass := 0; tick := 0;
+  cu: [DAG_LV] int; cv: [DAG_LV] int; key: [DAG_LV] int; order: [DAG_LV] int; tk: [DAG_LV] int; to: [DAG_LV] int;
+  while live > target {
+    pass += 1;
+    if pass > 1 { dag_local_inc(lt[..], nt, nv, dead[..], st[..], inc[..]); }
+    nc := 0;
+    for u: 0..<nv {
+      if locked[u] || st[u] == st[u + 1] { continue; }
+      bv := -1; bc: f64 = 0;
+      for s: st[u]..<st[u + 1] { t := inc[s]; for j: 0..<3 {
+        v := lt[t * 3 + j];
+        if v != u {
+          cost := dag_qcost(q[..], u, v, cast(f64) pos[v].x, cast(f64) pos[v].y, cast(f64) pos[v].z) + cast(f64) dag_dist(pos[u], pos[v]) * 0.000001;
+          if bv < 0 || cost < bc { bv = v; bc = cost; }
+        }
+      } }
+      if bv >= 0 { cu[nc] = u; cv[nc] = bv; key[nc] = cast(int) f32_bits(cast(f32) (ifx bc > 0 then bc else 0)); order[nc] = nc; nc += 1; }
+    }
+    if nc == 0 { break; }
+    dag_sort(key[0..<nc], order[0..<nc], tk[0..<nc], to[0..<nc]);
+    did := 0;
+    for k: 0..<nc {
+      if live <= target { break; }
+      u := cu[order[k]]; v := cv[order[k]];
+      if touched[u] == pass || touched[v] == pass { continue; }
+      // link condition: the vertices next to both are exactly the two opposite the edge
+      tick += 1; both := 0; common := 0;
+      for s: st[u]..<st[u + 1] { t := inc[s]; if dag_lhas(lt[..], t, v) { both += 1; } for j: 0..<3 { seen[lt[t * 3 + j]] = tick; } }
+      for s: st[v]..<st[v + 1] { t := inc[s]; for j: 0..<3 { x := lt[t * 3 + j]; if x != u && x != v && seen[x] == tick { seen[x] = 0; common += 1; } } }
+      ok := both == 2 && common == 2;
+      // no triangle around u may flip or fold when u moves to v
+      if ok { for s: st[u]..<st[u + 1] {
+        t := inc[s]; a := lt[t * 3]; b := lt[t * 3 + 1]; c := lt[t * 3 + 2];
+        if a != v && b != v && c != v {
+          old := cross(sub(pos[b], pos[a]), sub(pos[c], pos[a]));
+          na := ifx a == u then v else a; nb := ifx b == u then v else b; nc2 := ifx c == u then v else c;
+          nw := cross(sub(pos[nb], pos[na]), sub(pos[nc2], pos[na]));
+          if dot(old, nw) <= dot(old, old) * 0.05 { ok = false; }
+        }
+      } }
+      if !ok { continue; }
+      for s: st[u]..<st[u + 1] {
+        t := inc[s];
+        for j: 0..<3 { touched[lt[t * 3 + j]] = pass; }
+        if dag_lhas(lt[..], t, v) { dead[t] = true; live -= 1; }
+        else { for j: 0..<3 { if lt[t * 3 + j] == u { lt[t * 3 + j] = v; } } }
+      }
+      for i: 0..<10 { q[v * 10 + i] += q[u * 10 + i]; }
+      dest[u] = v;
+      did += 1;
+    }
+    if did == 0 { break; }
+  }
+  // the error: how far the members' surface lies from the simplified one, measured at each of
+  // their vertices and triangle centres against the simplified triangles round the vertices they
+  // collapsed into (a nearest among some is never nearer than the nearest, so it bounds the error)
+  dag_local_inc(lt[..], nt, nv, dead[..], st[..], inc[..]);
+  own: f32 = 0;
+  for k: 0..<nv + nt {
+    x: Point; near: f32 = -1;
+    if k < nv { x = pos[k]; } else { t0 := (k - nv) * 3; x = times(add(add(pos[lt0[t0]], pos[lt0[t0 + 1]]), pos[lt0[t0 + 2]]), 0.33333334); }
+    for j: 0..<(ifx k < nv then 1 else 3) {
+      r := ifx k < nv then k else lt0[(k - nv) * 3 + j];
+      while dest[r] >= 0 { r = dest[r]; }
+      for s2: st[r]..<st[r + 1] { t := inc[s2]; e := dag_point_tri(x, pos[lt[t * 3]], pos[lt[t * 3 + 1]], pos[lt[t * 3 + 2]]); if near < 0 || e < near { near = e; } }
+    }
+    if near > own { own = near; }
+  }
+  thinned := false; extra := 0; base := d[0].vertices;
+  if live * 100 > nt * 85 {
+    // loose islands: thin them instead
+    for t: 0..<nt { dead[t] = false; }
+    lt2: [DAG_GT * 3] int; nt2 := 0;
+    for k: 0..<gr.members { cl := d[0].cluster[gr.member[k]]; for t: 0..<cl.count { for j: 0..<3 { lt2[nt2 * 3 + j] = w[0].local[d[0].tri[(cl.first + t) * 3 + j]]; } nt2 += 1; } }
+    for k: 0..<nt * 3 { lt[k] = lt2[k]; }
+    island: [DAG_LV] int; for k: 0..<nv { island[k] = k; }
+    for t: 0..<nt { r0 := dag_find(island[..], lt[t * 3]); for j: 1..<3 { r1 := dag_find(island[..], lt[t * 3 + j]); if r1 != r0 { island[r1] = r0; } } }
+    free: [DAG_GT * 3] bool; for k: 0..<nv { free[k] = true; }
+    for k: 0..<nv { if locked[k] && uses[k] != outside[lv[k]] { free[dag_find(island[..], k)] = false; } }
+    roots: [DAG_GT * 3] int; nr := 0; isl_area: [DAG_GT * 3] f32; isl_c: [DAG_GT * 3] Point; isl_n: [DAG_GT * 3] int; isl_rad: [DAG_GT * 3] f32;
+    for t: 0..<nt {
+      r0 := dag_find(island[..], lt[t * 3]); a := pos[lt[t * 3]]; b := pos[lt[t * 3 + 1]]; c := pos[lt[t * 3 + 2]];
+      ar := length(cross(sub(b, a), sub(c, a))) * 0.5;
+      if isl_n[r0] == 0 { roots[nr] = r0; nr += 1; }
+      isl_area[r0] += ar; isl_c[r0] = add(isl_c[r0], times(add(add(a, b), c), 1.0 / 3.0)); isl_n[r0] += 1;
+    }
+    nf := 0; for k: 0..<nr { if free[roots[k]] { nf += 1; } }
+    if nf < 2 || d[0].vertices + nv > DAG_VERTS { return false; }
+    for k: 0..<nr { r0 := roots[k]; isl_c[r0] = times(isl_c[r0], 1.0 / cast(f32) isl_n[r0]); }
+    for k: 0..<nv { r0 := dag_find(island[..], k); isl_rad[r0] = hi(isl_rad[r0], dag_dist(pos[k], isl_c[r0])); }
+    keep: [DAG_GT * 3] bool; seenf := 0; total: f32 = 0; kept: f32 = 0;
+    for k: 0..<nr { r0 := roots[k]; if free[r0] { total += isl_area[r0]; if seenf % 2 == 0 { keep[r0] = true; kept += isl_area[r0]; } seenf += 1; } else { keep[r0] = true; } }
+    if kept <= 0 { return false; }
+    scale := clamp(sqrt(total / kept), 1, 2);
+    for k: 0..<nr { r0 := roots[k]; if free[r0] && !keep[r0] {
+      nearest: f32 = -1; for j: 0..<nr { r1 := roots[j]; if keep[r1] && free[r1] { e := dag_dist(isl_c[r0], isl_c[r1]); if nearest < 0 || e < nearest { nearest = e; } } }
+      own = hi(own, nearest + isl_rad[r0]);
+    } }
+    for k: 0..<nr { r0 := roots[k]; if free[r0] && keep[r0] { own = hi(own, isl_rad[r0] * (scale - 1)); } }
+    live = 0;
+    for t: 0..<nt { r0 := dag_find(island[..], lt[t * 3]); if !keep[r0] { dead[t] = true; } else { live += 1; } }
+    if live * 100 > nt * 85 { return false; }
+    // kept free islands get new, scaled vertices
+    for k: 0..<nv {
+      r0 := dag_find(island[..], k);
+      if free[r0] && keep[r0] { d[0].p[base + extra] = add(isl_c[r0], times(sub(pos[k], isl_c[r0]), scale)); lv[k] = base + extra; extra += 1; }
+    }
+    thinned = true;
+  }
+  if d[0].tris + live * 2 > DAG_TRIS { return false; }
+  d[0].vertices += extra;
+  // the new triangles, as a list, then split
+  list: [DAG_GT] int; n := 0; tmp := d[0].tris;
+  for t: 0..<nt { if !dead[t] { for j: 0..<3 { d[0].tri[(tmp + n) * 3 + j] = lv[lt[t * 3 + j]]; } list[n] = tmp + n; n += 1; } }
+  d[0].tris += n;
+  first := dag_split(d, w, list[0..<n], g);
+  if first < 0 { d[0].tris = tmp; d[0].vertices -= extra; return false; }
+  // move the clusters' triangles down over the working list
+  for k: 0..<n * 3 { d[0].tri[tmp * 3 + k] = d[0].tri[(tmp + n) * 3 + k]; }
+  d[0].tris -= n; for c: first..<d[0].clusters { d[0].cluster[c].first -= n; }
+  // the group's error and sphere: over its members' and its own triangles
+  e: f32 = 0; low := d[0].cluster[gr.member[0]].c; high := low;
+  for k: 0..<gr.members {
+    cl := d[0].cluster[gr.member[k]]; e = hi(e, cl.error);
+    rr := v3(cl.r, cl.r, cl.r); low = dag_min3(low, sub(cl.c, rr)); high = dag_max3(high, add(cl.c, rr));
+  }
+  for c: first..<d[0].clusters { cl := d[0].cluster[c]; for t: 0..<cl.count { for j: 0..<3 { x := d[0].p[d[0].tri[(cl.first + t) * 3 + j]]; low = dag_min3(low, x); high = dag_max3(high, x); } } }
+  center := times(add(low, high), 0.5); radius: f32 = 0;
+  for k: 0..<gr.members { cl := d[0].cluster[gr.member[k]]; radius = hi(radius, dag_dist(center, cl.c) + cl.r); }
+  for c: first..<d[0].clusters { cl := d[0].cluster[c]; for t: 0..<cl.count { for j: 0..<3 { radius = hi(radius, dag_dist(center, d[0].p[d[0].tri[(cl.first + t) * 3 + j]])); } } }
+  radius = radius * 1.0001 + 0.000001;
+  own = hi(own, 0.000001);
+  gr.first = first; gr.made = d[0].clusters - first; gr.round = round; gr.error = e + own; gr.c = center; gr.r = radius; gr.thinned = thinned;
+  d[0].group[g] = gr;
+  for c: first..<d[0].clusters { d[0].cluster[c].error = gr.error; d[0].cluster[c].c = center; d[0].cluster[c].r = radius; }
+  for k: 0..<gr.members { c := gr.member[k]; d[0].cluster[c].group = g; d[0].cluster[c].parent_error = gr.error; d[0].cluster[c].pc = center; d[0].cluster[c].pr = radius; }
+  return true;
+}
+dag_find :: (parent: [] int, k: int) -> int #effects(all) { r := k; while parent[r] != r { r = parent[r]; } return r; }
+
+// ---- the builder
+
+// Build the DAG of an indexed mesh. False, with why, when it can't: nothing in d is meaningful then.
+dag_build :: (d: [] Dag, w: [] DagWork, p: [] Point, indices: [] u32) -> bool #effects(all) {
+  d[0] = Dag.{};
+  if !dag_weld(d, p, indices) { return false; }
+  list: [DAG_SOURCE] int; for t: 0..<d[0].source { list[t] = t; }
+  if dag_split(d, w, list[0..<d[0].source], -1) < 0 { return dag_refuse(d, "no room for the finest clusters"); }
+  d[0].finest = d[0].clusters;
+  active: [DAG_CLUSTERS] int; na := 0; for c: 0..<d[0].clusters { active[na] = c; na += 1; }
+  round := 0;
+  while na > 1 && round < DAG_ROUNDS {
+    round += 1;
+    // how many active triangles use each vertex
+    outside: [DAG_VERTS] int;
+    for i: 0..<na { cl := d[0].cluster[active[i]]; for t: 0..<cl.count { for j: 0..<3 { outside[d[0].tri[(cl.first + t) * 3 + j]] += 1; } } }
+    order: [DAG_CLUSTERS] int; sizes: [DAG_CLUSTERS] int;
+    ng := dag_groups(d, w, active[0..<na], order[..], sizes[..]);
+    next: [DAG_CLUSTERS] int; nn := 0; at := 0; any := false;
+    for k: 0..<ng {
+      if d[0].groups == DAG_GROUPS { return dag_refuse(d, "too many groups"); }
+      g := d[0].groups; gr := DagGroup.{members = sizes[k]};
+      for j: 0..<sizes[k] { gr.member[j] = order[at + j]; }
+      d[0].group[g] = gr; d[0].groups += 1;
+      ok := sizes[k] > 1 || na <= DAG_GROUP;
+      if ok && dag_simplify(d, w, g, round, outside[..]) { any = true; for c: d[0].group[g].first..<d[0].group[g].first + d[0].group[g].made { next[nn] = c; nn += 1; } }
+      else { d[0].groups -= 1; for j: 0..<sizes[k] { next[nn] = order[at + j]; nn += 1; } }
+      at += sizes[k];
+    }
+    if !any { break; }
+    for k: 0..<nn { active[k] = next[k]; } na = nn;
+  }
+  d[0].rounds = round; d[0].roots = na;
+  // pages: the roots, then each group's members, from the last round to the first
+  d[0].page_group[0] = -1; d[0].pages = 1;
+  for r: 0..<round { rr := round - r; for g: 0..<d[0].groups { if d[0].group[g].round == rr { d[0].group[g].page = d[0].pages; d[0].page_group[d[0].pages] = g; d[0].pages += 1; } } }
+  for g: 0..<d[0].groups {
+    gr := d[0].group[g]; gr.ndeps = 0;
+    for c: gr.first..<gr.first + gr.made {
+      parent := d[0].cluster[c].group; pg := ifx parent < 0 then 0 else d[0].group[parent].page;
+      dup := false; for j: 0..<gr.ndeps { if gr.deps[j] == pg { dup = true; } }
+      if !dup && gr.ndeps < gr.deps.count { gr.deps[gr.ndeps] = pg; gr.ndeps += 1; }
+    }
+    d[0].group[g] = gr;
+  }
+  return true;
+}
+
+// The page a cluster is on: its group's, or the root page.
+dag_page :: (d: [] Dag, c: int) -> int #effects(all) { g := d[0].cluster[c].group; return ifx g < 0 then 0 else d[0].group[g].page; }
+// Links for res_open: (page, the page of its parents), each once.
+dag_links :: (d: [] Dag, out: [] int) -> int #effects(all) {
+  n := 0;
+  for g: 0..<d[0].groups { gr := d[0].group[g]; for j: 0..<gr.ndeps { if n + 2 > out.count { return -1; } out[n] = gr.page; out[n + 1] = gr.deps[j]; n += 2; } }
+  return n;
+}
+
+// ---- cuts
+
+// A threshold's error seen from eye: error over the distance to the sphere; inside it, unbounded.
+dag_seen :: (error: f32, c: Point, r: f32, eye: Point) -> f64 #effects(all) {
+  if error >= DAG_NONE { return 1e300; }
+  e := sub(eye, c); dist := sqrt(cast(f64) e.x * cast(f64) e.x + cast(f64) e.y * cast(f64) e.y + cast(f64) e.z * cast(f64) e.z) - cast(f64) r;
+  if dist <= 0.000001 { return 1e300; }
+  return cast(f64) error / dist;
+}
+// The uniform cut at error t: every cluster with error <= t < its parent's.
+dag_cut :: (d: [] Dag, t: f32, drawn: [] bool) -> int #effects(all) {
+  n := 0; for c: 0..<d[0].clusters { cl := d[0].cluster[c]; drawn[c] = cl.error <= t && t < cl.parent_error; if drawn[c] { n += 1; } }
+  return n;
+}
+// The draw rule over installed pages, seen from eye with tolerance t:
+//   draw C when its page is in, its parent is too coarse (or it is a root) and it is fine enough,
+//   or the page of the clusters it replaces is not in.
+dag_draw :: (d: [] Dag, eye: Point, t: f64, installed: [] bool, drawn: [] bool) -> int #effects(all) {
+  n := 0;
+  for c: 0..<d[0].clusters {
+    cl := d[0].cluster[c]; drawn[c] = false;
+    if !installed[dag_page(d, c)] { continue; }
+    coarse := cl.group < 0 || dag_seen(cl.parent_error, cl.pc, cl.pr, eye) > t;
+    fine := cl.made_by < 0 || dag_seen(cl.error, cl.c, cl.r, eye) <= t;
+    below := cl.made_by >= 0 && !installed[dag_page(d, d[0].group[cl.made_by].member[0])];
+    drawn[c] = coarse && (fine || below);
+    if drawn[c] { n += 1; }
+  }
+  return n;
+}
+
+// ---- checks of a cut
+
+// The drawn triangles' edges against the source's: every edge the source has twice is drawn twice
+// and every one it has once (its open border) is drawn once, with no others. Thinned groups (and
+// any cut through them) are not watertight by design; skip such a DAG.
+dag_edge_keys :: (d: [] Dag, tris: [] int, keys: [] int) -> int #effects(all) {
+  n := 0;
+  for t: tris { for e: 0..<3 { a := d[0].tri[t * 3 + e]; b := d[0].tri[t * 3 + (e + 1) % 3]; keys[n] = ifx a < b then a * DAG_VERTS + b else b * DAG_VERTS + a; n += 1; } }
+  return n;
+}
+dag_watertight :: (d: [] Dag, drawn: [] bool) -> bool #effects(all) {
+  src: [DAG_SOURCE] int; for t: 0..<d[0].source { src[t] = t; }
+  dt: [DAG_SOURCE] int; nd := 0;
+  for c: 0..<d[0].clusters { if drawn[c] { cl := d[0].cluster[c]; for t: 0..<cl.count { if nd == DAG_SOURCE { return false; } dt[nd] = cl.first + t; nd += 1; } } }
+  ka: [DAG_SOURCE * 3] int; kb: [DAG_SOURCE * 3] int; o: [DAG_SOURCE * 3] int; tk: [DAG_SOURCE * 3] int; to: [DAG_SOURCE * 3] int;
+  na := dag_edge_keys(d, src[0..<d[0].source], ka[..]); nb := dag_edge_keys(d, dt[0..<nd], kb[..]);
+  dag_sort(ka[0..<na], o[0..<na], tk[0..<na], to[0..<na]); dag_sort(kb[0..<nb], o[0..<nb], tk[0..<nb], to[0..<nb]);
+  // the source's border edges (once), against the cut's edges that are not in pairs
+  i := 0; j := 0;
+  while i < na || j < nb {
+    sa := -1; ca := 0; if i < na { sa = ka[i]; while i + ca < na && ka[i + ca] == sa { ca += 1; } }
+    sb := -1; cb := 0; if j < nb { sb = kb[j]; while j + cb < nb && kb[j + cb] == sb { cb += 1; } }
+    if sa >= 0 && (sb < 0 || sa < sb) { if ca == 1 { return false; } i += ca; continue; }   // a border edge not drawn
+    if sb >= 0 && (sa < 0 || sb < sa) { if cb != 2 { return false; } j += cb; continue; }   // a new edge must close
+    if (ca == 1) != (cb == 1) || cb > 2 { return false; }
+    i += ca; j += cb;
+  }
+  return true;
+}
+// Whether the cut is the source's triangles exactly, as a multiset with their winding.
+dag_is_source :: (d: [] Dag, drawn: [] bool) -> bool #effects(all) {
+  ka: [DAG_SOURCE] int; kb: [DAG_SOURCE] int; o: [DAG_SOURCE] int; tk: [DAG_SOURCE] int; to: [DAG_SOURCE] int; nb := 0;
+  for t: 0..<d[0].source { ka[t] = dag_tri_key(d, t); }
+  for c: 0..<d[0].clusters { if drawn[c] { cl := d[0].cluster[c]; for t: 0..<cl.count { if nb == DAG_SOURCE { return false; } kb[nb] = dag_tri_key(d, cl.first + t); nb += 1; } } }
+  if nb != d[0].source { return false; }
+  dag_sort(ka[0..<nb], o[0..<nb], tk[0..<nb], to[0..<nb]); dag_sort(kb[0..<nb], o[0..<nb], tk[0..<nb], to[0..<nb]);
+  for k: 0..<nb { if ka[k] != kb[k] { return false; } }
+  return true;
+}
+dag_tri_key :: (d: [] Dag, t: int) -> int #effects(all) {
+  a := d[0].tri[t * 3]; b := d[0].tri[t * 3 + 1]; c := d[0].tri[t * 3 + 2];
+  while a > b || a > c { x := a; a = b; b = c; c = x; }
+  return (a * DAG_VERTS + b) * DAG_VERTS + c;
+}
+// Errors and spheres grow toward the roots: each cluster's parent error is at least its own and its
+// parent's sphere holds its own.
+dag_monotonic :: (d: [] Dag) -> bool #effects(all) {
+  for c: 0..<d[0].clusters {
+    cl := d[0].cluster[c];
+    if cl.group < 0 { if cl.parent_error != DAG_NONE { return false; } continue; }
+    if cl.parent_error < cl.error || dag_dist(cl.pc, cl.c) + cl.r > cl.pr { return false; }
+  }
+  return true;
+}
+dag_drawn_tris :: (d: [] Dag, drawn: [] bool) -> int #effects(all) { n := 0; for c: 0..<d[0].clusters { if drawn[c] { n += d[0].cluster[c].count; } } return n; }
+dag_drawn_area :: (d: [] Dag, drawn: [] bool) -> f32 #effects(all) {
+  s: f32 = 0;
+  for c: 0..<d[0].clusters { if drawn[c] { cl := d[0].cluster[c]; for t: 0..<cl.count {
+    a := d[0].p[d[0].tri[(cl.first + t) * 3]]; b := d[0].p[d[0].tri[(cl.first + t) * 3 + 1]]; e := d[0].p[d[0].tri[(cl.first + t) * 3 + 2]];
+    s += length(cross(sub(b, a), sub(e, a))) * 0.5;
+  } } }
+  return s;
+}
+
+// ---- test meshes
+
+// A sphere from a cube: six faces of n x n quads, each face with its own vertices, so the cube's
+// edges are seams of duplicated positions that welding joins.
+dag_cube_sphere :: (n: int, p: [] Point, indices: [] u32) -> int #effects(all) {
+  nv := 0; ni := 0;
+  for f: 0..<6 {
+    base := nv;
+    for j: 0..<n + 1 { for i: 0..<n + 1 {
+      u := cast(f32) (2 * i - n) / cast(f32) n; v := cast(f32) (2 * j - n) / cast(f32) n; q := v3(0, 0, 0);  // -u is exactly u mirrored
+      if f == 0 { q = v3(1, v, -u); } if f == 1 { q = v3(-1, v, u); } if f == 2 { q = v3(u, 1, -v); }
+      if f == 3 { q = v3(u, -1, v); } if f == 4 { q = v3(u, v, 1); } if f == 5 { q = v3(-u, v, -1); }
+      // the length summed in one order whatever the face, so a seam's two copies are the same bits
+      s0 := q.x * q.x; s1 := q.y * q.y; s2 := q.z * q.z;
+      if s0 > s1 { x := s0; s0 = s1; s1 = x; } if s1 > s2 { x := s1; s1 = s2; s2 = x; } if s0 > s1 { x := s0; s0 = s1; s1 = x; }
+      l := sqrt(s0 + s1 + s2); bump := 1 + 0.05 * sin(q.x * 7 / l) * sin(q.y * 5 / l);
+      p[nv] = times(q, 3 * bump / l); nv += 1;
+    } }
+    for j: 0..<n { for i: 0..<n {
+      a := cast(u32) (base + j * (n + 1) + i); b := a + 1; c := a + cast(u32) (n + 1); e := c + 1;
+      indices[ni] = a; indices[ni + 1] = b; indices[ni + 2] = e; indices[ni + 3] = a; indices[ni + 4] = e; indices[ni + 5] = c; ni += 6;
+    } }
+  }
+  return ni;
+}
+// An open height field: n x n quads over [-s, s]^2 with gentle hills; its outer edge is a border.
+dag_terrain :: (n: int, p: [] Point, indices: [] u32) -> int #effects(all) {
+  for j: 0..<n + 1 { for i: 0..<n + 1 {
+    x := (cast(f32) i / cast(f32) n * 2 - 1) * 10; z := (cast(f32) j / cast(f32) n * 2 - 1) * 10;
+    p[j * (n + 1) + i] = v3(x, sin(x * 0.4) * cos(z * 0.3) * 2 + sin(x * 1.3 + z) * 0.3, z);
+  } }
+  ni := 0;
+  for j: 0..<n { for i: 0..<n {
+    a := cast(u32) (j * (n + 1) + i); b := a + 1; c := a + cast(u32) (n + 1); e := c + 1;
+    indices[ni] = a; indices[ni + 1] = c; indices[ni + 2] = e; indices[ni + 3] = a; indices[ni + 4] = e; indices[ni + 5] = b; ni += 6;
+  } }
+  return ni;
+}
+// Foliage: n loose cards, two triangles each, scattered over a field.
+dag_cards :: (n: int, p: [] Point, indices: [] u32) -> int #effects(all) {
+  x := 12345;
+  for k: 0..<n {
+    x = (x * 1103515245 + 12345) % 2147483648; cx := cast(f32) (x % 2000) / 100 - 10;
+    x = (x * 1103515245 + 12345) % 2147483648; cz := cast(f32) (x % 2000) / 100 - 10;
+    x = (x * 1103515245 + 12345) % 2147483648; a := cast(f32) (x % 628) / 100;
+    dx := cos(a) * 0.3; dz := sin(a) * 0.3;
+    p[k * 4] = v3(cx - dx, 0, cz - dz); p[k * 4 + 1] = v3(cx + dx, 0, cz + dz); p[k * 4 + 2] = v3(cx + dx, 0.6, cz + dz); p[k * 4 + 3] = v3(cx - dx, 0.6, cz - dz);
+    b := cast(u32) (k * 4);
+    indices[k * 6] = b; indices[k * 6 + 1] = b + 1; indices[k * 6 + 2] = b + 2; indices[k * 6 + 3] = b; indices[k * 6 + 4] = b + 2; indices[k * 6 + 5] = b + 3;
+  }
+  return n * 6;
+}
+
+// Every uniform cut (at each distinct cluster error) is watertight. The count of cuts.
+dag_uniform_cuts :: (d: [] Dag) -> int #effects(all) {
+  drawn: [DAG_CLUSTERS] bool; cuts := 0;
+  for c: 0..<d[0].clusters {
+    t := d[0].cluster[c].error; dup := false;
+    for b: 0..<c { if d[0].cluster[b].error == t { dup = true; break; } }
+    if dup { continue; }
+    if dag_cut(d, t, drawn[..]) == 0 || !dag_watertight(d, drawn[..]) { return -1; }
+    cuts += 1;
+  }
+  return cuts;
+}
+
+#test "a sphere with seams builds, its finest cut is the source and every uniform cut is watertight" #steps 4000000000 {
+  p: [6 * 13 * 13] Point; idx: [6 * 12 * 12 * 6] u32; n := dag_cube_sphere(12, p[..], idx[..]);
+  d: [1] Dag; w: [1] DagWork;
+  #assert dag_build(d[..], w[..], p[..], idx[0..<n]);
+  #assert d[0].welded == 6 * 12 * 12 + 2;
+  #assert d[0].source == 1728;
+  #assert d[0].finest >= 14;
+  #assert d[0].roots >= 1;
+  #assert d[0].rounds >= 3;
+  #assert d[0].rounds >= 1;
+  #assert d[0].roots <= 4;
+  #assert d[0].groups >= 4;
+  drawn: [DAG_CLUSTERS] bool;
+  #assert dag_cut(d[..], 0, drawn[..]) == d[0].finest && dag_is_source(d[..], drawn[..]) && dag_watertight(d[..], drawn[..]);
+  #assert dag_monotonic(d[..]);
+  #assert dag_uniform_cuts(d[..]) >= 4;
+  root := dag_cut(d[..], 100000000, drawn[..]); #assert root == d[0].roots;
+  #assert dag_drawn_tris(d[..], drawn[..]) < 1728 / 4;
+  #assert dag_watertight(d[..], drawn[..]);
+  for c: 0..<d[0].clusters { #assert d[0].cluster[c].count >= 1 && d[0].cluster[c].count <= DAG_CT; }
+}
+#test "an open terrain keeps its border at every uniform cut" #steps 4000000000 {
+  p: [33 * 33] Point; idx: [32 * 32 * 6] u32; n := dag_terrain(32, p[..], idx[..]);
+  d: [1] Dag; w: [1] DagWork;
+  #assert dag_build(d[..], w[..], p[..], idx[0..<n]) && dag_monotonic(d[..]);
+  drawn: [DAG_CLUSTERS] bool; #assert dag_cut(d[..], 0, drawn[..]) == d[0].finest && dag_is_source(d[..], drawn[..]);
+  #assert dag_uniform_cuts(d[..]) >= 4;
+}
+#forall "perspective cuts that mix levels are watertight from any viewpoint" seed: 0..<6 #steps 4000000000 {
+  p: [6 * 13 * 13] Point; idx: [6 * 12 * 12 * 6] u32; n := dag_cube_sphere(12, p[..], idx[..]);
+  d: [1] Dag; w: [1] DagWork; #assert dag_build(d[..], w[..], p[..], idx[0..<n]);
+  installed: [DAG_GROUPS + 1] bool; for k: 0..<d[0].pages { installed[k] = true; }
+  drawn: [DAG_CLUSTERS] bool; x := seed * 7919 + 3;
+  for view: 0..<6 {
+    x = (x * 1103515245 + 12345) % 2147483648; a := cast(f32) (x % 628) / 100;
+    x = (x * 1103515245 + 12345) % 2147483648; b := cast(f32) (x % 300) / 100 - 1.5;
+    x = (x * 1103515245 + 12345) % 2147483648; r := 3.5 + cast(f32) (x % 4000) / 100;
+    eye := v3(cos(a) * cos(b) * r, sin(b) * r, sin(a) * cos(b) * r);
+    x = (x * 1103515245 + 12345) % 2147483648; t := cast(f64) (x % 1000 + 1) * 0.0005;
+    #assert dag_draw(d[..], eye, t, installed[..], drawn[..]) > 0 && dag_watertight(d[..], drawn[..]);
+  }
+}
+#test "some perspective cut mixes levels" #steps 4000000000 {
+  p: [6 * 13 * 13] Point; idx: [6 * 12 * 12 * 6] u32; n := dag_cube_sphere(12, p[..], idx[..]);
+  d: [1] Dag; w: [1] DagWork; #assert dag_build(d[..], w[..], p[..], idx[0..<n]);
+  installed: [DAG_GROUPS + 1] bool; for k: 0..<d[0].pages { installed[k] = true; }
+  drawn: [DAG_CLUSTERS] bool; found := false;
+  for k: 0..<48 {
+    eye := v3(4 + cast(f32) (k / 6) * 2, 0.3, 0.1); t := 0.02 * cast(f64) (1 << (k % 6));
+    #assert dag_draw(d[..], eye, t, installed[..], drawn[..]) > 0 && dag_watertight(d[..], drawn[..]);
+    least := 99; most := 0; for c: 0..<d[0].clusters { if drawn[c] { lv := ifx d[0].cluster[c].made_by < 0 then 0 else d[0].group[d[0].cluster[c].made_by].round; least = ifx lv < least then lv else least; most = ifx lv > most then lv else most; } }
+    if most > least { found = true; }
+  }
+  #assert found;
+}
+#forall "pages keep the residency rule and any installed set draws watertight" seed: 0..<4 #steps 4000000000 #traversal 600000000 {
+  p: [6 * 13 * 13] Point; idx: [6 * 12 * 12 * 6] u32; n := dag_cube_sphere(12, p[..], idx[..]);
+  d: [1] Dag; w: [1] DagWork; #assert dag_build(d[..], w[..], p[..], idx[0..<n]);
+  links: [256] int; nl := dag_links(d[..], links[..]); #assert nl >= 0 && d[0].pages <= RES_PAGES;
+  for g: 0..<d[0].groups { #assert d[0].group[g].ndeps >= 1 && d[0].group[g].ndeps <= RES_DEPS; for j: 0..<d[0].group[g].ndeps { #assert d[0].group[g].deps[j] < d[0].group[g].page; } }
+  c: [1] PageResidency; #assert res_open(c[..], d[0].pages, 4 + seed % 2, 1, 2, 8, 3, links[0..<nl]);
+  out: [8] int; x := seed * 31 + 5; drawn: [DAG_CLUSTERS] bool; installed: [DAG_GROUPS + 1] bool; partial := 0;
+  for frame: 1..<60 {
+    wants: [RES_PAGES] int;
+    for q: 0..<d[0].pages { x = (x * 1103515245 + 12345) % 2147483648; wants[q] = ifx x % 3 == 0 then 2 + x % 7 else ifx x % 5 == 0 then RES_KEEP else 0; }
+    #assert res_plan(c[..], frame, wants[0..<d[0].pages], out[..]) >= 0;
+    for q: 0..<d[0].pages { if c[0].state[q] == PageState.fetching { x = (x * 1103515245 + 12345) % 2147483648; if x % 4 != 0 { #assert res_arrived(c[..], q); } } }
+    while res_install(c[..], frame).page != -1 {}
+    for q: 0..<d[0].pages { installed[q] = c[0].state[q] == PageState.installed; }
+    if !installed[0] { continue; }
+    some := false; for q: 0..<d[0].pages { if !installed[q] { some = true; } } if some { partial += 1; }
+    x = (x * 1103515245 + 12345) % 2147483648; a := cast(f32) (x % 628) / 100; r := 4 + cast(f32) (x % 3000) / 100;
+    eye := v3(cos(a) * r, 0.5, sin(a) * r);
+    #assert dag_draw(d[..], eye, 0.05, installed[..], drawn[..]) > 0 && dag_watertight(d[..], drawn[..]);
+  }
+  #assert partial >= 10;
+}
+#test "foliage thins with distance and keeps its coverage" #steps 4000000000 #traversal 600000000 {
+  p: [400 * 4] Point; idx: [400 * 6] u32; n := dag_cards(400, p[..], idx[..]);
+  d: [1] Dag; w: [1] DagWork; #assert dag_build(d[..], w[..], p[..], idx[0..<n]) && dag_monotonic(d[..]);
+  thinned := 0; for g: 0..<d[0].groups { if d[0].group[g].thinned { thinned += 1; } } #assert thinned > 0;
+  installed: [DAG_GROUPS + 1] bool; for k: 0..<d[0].pages { installed[k] = true; }
+  drawn: [DAG_CLUSTERS] bool;
+  #assert dag_draw(d[..], v3(0, 2, -11), 0.001, installed[..], drawn[..]) > 0 && dag_is_source(d[..], drawn[..]);
+  source := dag_drawn_area(d[..], drawn[..]); close := dag_drawn_tris(d[..], drawn[..]);
+  #assert dag_draw(d[..], v3(0, 20, -400), 0.01, installed[..], drawn[..]) > 0;
+  far := dag_drawn_tris(d[..], drawn[..]); area := dag_drawn_area(d[..], drawn[..]);
+  #assert far * 2 <= close && area > source * 0.85 && area < source * 1.15;
+}
+#test "a point's distance to a triangle: over the face, past an edge and past a corner" {
+  a := v3(0, 0, 0); b := v3(2, 0, 0); c := v3(0, 2, 0);
+  #assert abs(dag_point_tri(v3(0.5, 0.5, 3), a, b, c) - 3) < 0.0001;
+  #assert abs(dag_point_tri(v3(1, -2, 0), a, b, c) - 2) < 0.0001;
+  #assert abs(dag_point_tri(v3(-3, -4, 0), a, b, c) - 5) < 0.0001;
+  #assert abs(dag_point_tri(v3(2, 2, 0), a, b, c) - sqrt(2.0f32)) < 0.0001;
+  #assert dag_point_tri(v3(0.3, 0.3, 0), a, b, c) < 0.0001;
+}
+#test "a sphere's error is its sag, far under the edge length" #steps 4000000000 #traversal 600000000 {
+  p: [6 * 13 * 13] Point; idx: [6 * 12 * 12 * 6] u32; n := dag_cube_sphere(12, p[..], idx[..]);
+  d: [1] Dag; w: [1] DagWork; #assert dag_build(d[..], w[..], p[..], idx[0..<n]);
+  // radius 3, about 0.5 m edges: the first round's error is centimetres, not the edge
+  for c: 0..<d[0].clusters { cl := d[0].cluster[c]; if cl.made_by >= 0 && d[0].group[cl.made_by].round == 1 { #assert cl.error > 0 && cl.error < 0.15; } }
+}
+#test "the builder refuses what it can't hold, and a lone triangle is its own root" {
+  p := [3] Point.[v3(0, 0, 0), v3(1, 0, 0), v3(0, 1, 0)]; i := [3] u32.[0, 1, 2]; d: [1] Dag; w: [1] DagWork;
+  #assert dag_build(d[..], w[..], p[..], i[..]) && d[0].clusters == 1 && d[0].roots == 1 && d[0].groups == 0 && d[0].pages == 1;
+  bad := i; bad[2] = 3; #assert !dag_build(d[..], w[..], p[..], bad[..]);
+  #assert !dag_build(d[..], w[..], p[..], i[0..<2]);
+  same := p; same[2] = same[1]; #assert !dag_build(d[..], w[..], same[..], i[..]);
+  far := p; far[0].x = 1000000000; #assert !dag_build(d[..], w[..], far[..], i[..]);
+}

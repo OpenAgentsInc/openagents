@@ -16,7 +16,7 @@
 // Everglade's face, as it says of itself:
 //
 // Everglade's C face for the browser (coax/web/host.js): everglade.coax is
-// the page, aethyr/move/player.coax walks you (its own library, as the realm
+// the page, metaverse-engine/move/player.coax walks you (its own library, as the realm
 // links it) and verse/grid.coax reads a phone's thumbs. Once a frame it
 // passes values between them in order: the page's controls, the player's
 // step among the city's walls, then the page's frame with where you
@@ -349,7 +349,7 @@ EXPORT("coaxial_probe") int32_t coaxial_probe(cx_face_addr state) {
 }
 
 // Your body as this frame drew it, for a headless walk (globalThis.coaxial.fieldProbe(field)):
-// 0, 1, 2 the drawn feet in mm; 3 the controller's act (3 airborne); 4 the clip playing (aethyr/anim/skin.coax
+// 0, 1, 2 the drawn feet in mm; 3 the controller's act (3 airborne); 4 the clip playing (metaverse-engine/anim/skin.coax
 // SKIN_*, 3 the jump); 5 the gait's speed squared in cm^2/s^2 / 100; 6 the room's re-runs so far;
 // 7 the last re-run's move, squared, in mm^2.
 static float probe_feet[3], probe_speed, probe_fix;
@@ -406,7 +406,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   frames += 1;
   coax_t_Everglade *g = city(state);
   width = w; height = h; dpr = scale;
-  float frame = dt;   /* the player's clock (aethyr/core/loop.coax) steps it; the rest moves by what it counts */
+  float frame = dt;   /* the player's clock (metaverse-engine/core/loop.coax) steps it; the rest moves by what it counts */
   quality_state = state;
   everglade_quality_frame(at(state), frame, golden);   /* the graphics quality's governor (everglade-quality.coax) */
   e5_tick(e5v(), frame);   /* the frame rate in the corner (everglade5e.coax e5_fps_draw) */
@@ -466,7 +466,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
       probe_fix = dx * dx + dy * dy + dz * dz;
     }
     /* the time the player's clock counted this frame (dt: a frame over 0.25 s counts as 0.25 s,
-       aethyr/core/loop.coax), as offline's step takes: a hitch costs a room the walk it costs offline. Its own
+       metaverse-engine/core/loop.coax), as offline's step takes: a hitch costs a room the walk it costs offline. Its own
        0.13 s cap here dropped up to 0.12 s more of every long frame, so a room walked short of offline
        by the frames the page hitched on (#12718). */
     step_acc += dt;
@@ -485,7 +485,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     step_from = eg_step_feet(player.body);
   }
   // the river: what water you are in, on the bridge's deck none
-  // the rain's rise on it and its current's gain (aethyr/world/water-weather.coax, W9)
+  // the rain's rise on it and its current's gain (metaverse-engine/world/water-weather.coax, W9)
   everglade_river_weather(rv(), everglade_rise(at(state)), everglade_flow_gain(at(state)));
   coax_v_f32 heights = {g->heights.e, 177 * 177};
   // Water Breathing (everglade-tide.coax): your breath never runs short under water
@@ -780,7 +780,7 @@ EXPORT("coaxial_character_pack_len_v1") uint32_t coaxial_character_pack_len_v1(c
 EXPORT("coaxial_character_ready_v1") void coaxial_character_ready_v1(cx_face_addr state, int32_t ready) { if (city(state)->started) everglade_character_ready(at(state), ready != 0); }
 EXPORT("coaxial_character_storage_v1") uint32_t coaxial_character_storage_v1(void) { return (uint32_t)everglade_character_storage(); }
 EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return (cx_face_addr)(uintptr_t)city(state)->draws.e; }
-/* The key light's shadow tiles (aethyr/render/cascades.coax, everglade.coax everglade_shadows; coax/web/host.js
+/* The key light's shadow tiles (metaverse-engine/render/cascades.coax, everglade.coax everglade_shadows; coax/web/host.js
    shadowLayout): the atlas the host makes, what this frame draws into it, and what happened to it. */
 EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(cx_face_addr state, int32_t coarse, int32_t which) { return (uint32_t)everglade_shadow_atlas(at(state), coarse, which); }
 EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(cx_face_addr state, int32_t field) { return city(state)->started ? (int32_t)everglade_shadow_field(at(state), field) : -1; }
@@ -802,7 +802,7 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr stat
 }
 // The last draw is the river's (everglade.coax WATER_DRAW): the host draws it after the rest, in two halves.
 // ---- sound (everglade-sound.coax): this frame's lines for the host (NAME GAIN PAN [DELAY], ~ the bed),
-// and the effects themselves, rendered by Aethyr's synthesizer once the host starts audio (aethyr/audio/sfx.coax)
+// and the effects themselves, rendered by Aethyr's synthesizer once the host starts audio (metaverse-engine/audio/sfx.coax)
 EXPORT("coaxial_sounds") cx_face_addr coaxial_sounds(cx_face_addr state) { return (cx_face_addr)(uintptr_t)city(state)->snd.e[0].lines.e; }
 EXPORT("coaxial_sounds_capacity") uint32_t coaxial_sounds_capacity(cx_face_addr state) { return sizeof city(state)->snd.e[0].lines.e; }
 EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(cx_face_addr state) { (void)state; uint32_t n = sound_n; sound_n = 0; return n; }
@@ -840,7 +840,7 @@ EXPORT("coaxial_sound_bank_capacity") uint32_t coaxial_sound_bank_capacity(cx_fa
 // this measured allocation before copying or decoding its WAV bytes.
 EXPORT("coaxial_sound_bank_storage") cx_face_addr coaxial_sound_bank_storage(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)sound_bank; }
 EXPORT("coaxial_sound_bank_storage_bytes") uint32_t coaxial_sound_bank_storage_bytes(cx_face_addr state) { (void)state; return sizeof sound_bank; }
-// A check's cue (aethyr/tests/everglade-sound.coax, through host.js coaxial.audio.probe on this machine).
+// A check's cue (metaverse-engine/tests/everglade-sound.coax, through host.js coaxial.audio.probe on this machine).
 EXPORT("coaxial_sound_probe") int32_t coaxial_sound_probe(cx_face_addr state, int32_t slot, float right, float ahead, float up) {
   return (int32_t)everglade_sound_probe(at(state), slot, right, ahead, up);
 }

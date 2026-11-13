@@ -34,7 +34,7 @@
 //        shaped: turns, sizes and removals, 0109; absent keeps them)
 //   POST /api/playtest/realms/<slug>/publish {rev, listed?}   -> 200 {published, rev, sha256, listed}; 400, 403, 404, 409
 //   POST /api/playtest/realms/<slug>/undo {rev}        -> 200 {rev, undo, redo}; 400, 403, 404, 409 {error, rev} (0094: every edit is a step;
-//        0111: a step is its per-slot inverses, aethyr/forge/edit.coax's log, and lore and quests are in the document)
+//        0111: a step is its per-slot inverses, metaverse-engine/editor/edit.coax's log, and lore and quests are in the document)
 //   POST /api/playtest/realms/<slug>/redo {rev}        -> 200 {rev, undo, redo}; 400, 403, 404, 409 {error, rev} (0111: the step last undone, again)
 //   GET  /api/playtest/realms/<slug>/published         -> 200 {slug, n, rev, sha256, engine, engine_sha256, why, ms}; 404 not pinned
 //   (0107: a publish pins the engine, /realms/built's app script, with the revision; 503 when the bucket

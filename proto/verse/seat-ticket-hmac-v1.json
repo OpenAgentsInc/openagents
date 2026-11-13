@@ -1,6 +1,6 @@
 {"profile": "openagents.seat-ticket-hmac",
   "version": 1,
-  "codec": "aethyr/session/seat-ticket.coax",
+  "codec": "metaverse-engine/session/seat-ticket.coax",
   "check": "coax/web/tool.sh coax/web/room/seat-ticket-hmac-profile.coax proto/verse/seat-ticket-hmac-v1.json",
   "format": "v2.PID.ACCT.NAME64.ROOM.EXPIRES.HP.MAC, v3.PID.ACCT.NAME64.ROOM.SHARD.EXPIRES.HP.MAC, and v4.CORE64.SAVED64.MAC; MAC the lowercase hex HMAC-SHA256 of every byte before .MAC under the throwaway fixture key",
   "about_keys": "Throwaway test key, published on purpose: never use it anywhere but these fixtures.",

@@ -101,7 +101,7 @@ it.
   wings for each skill (ff-skills).
 - **Moving:** walk, run, and fly in short hops that get longer as your wings
   grow; glide down from heights. The same controller as every realm
-  (`aethyr/move/player.coax`), with flight added.
+  (`metaverse-engine/move/player.coax`), with flight added.
 
 ## What you learn: skills
 
@@ -312,13 +312,13 @@ its steps (apps/openagents-web/fairyquest.coax).
 | Need | From |
 | --- | --- |
 | Painterly look | The art-style presets (art-styles.md) |
-| Walking, flight, camera | `aethyr/move/player.coax`, `aethyr/cam/camera.coax` |
+| Walking, flight, camera | `metaverse-engine/move/player.coax`, `metaverse-engine/cam/camera.coax` |
 | People who remember you | The character chat and memory Everglade's people use |
 | Quests and the story's steps | Everglade's quest board and quest state |
 | Building, editing, one-sentence pieces | The Haunted House and Sandbox edit tools, `verse/setpiece.coax` |
 | Voice | The voice engine and push-to-talk (voice edits in Everglade) |
 | Stream, pond, waterfall | `verse/water.coax`, `verse/water-look.coax` |
-| Wind-swept grass, glowing fruit, particles | The painterly grass and wind tasks, `aethyr/render/particles.coax`, the glow material |
+| Wind-swept grass, glowing fruit, particles | The painterly grass and wind tasks, `metaverse-engine/render/particles.coax`, the glow material |
 | Saving where you are and what you made | Player progress and published worlds |
 
 ## What it needs that isn't built yet

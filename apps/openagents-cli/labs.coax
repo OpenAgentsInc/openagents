@@ -627,7 +627,7 @@ labs_compare :: (a: [] Args, r: [] Rep) -> int {
 // first and makes nothing when one fails.
 //   1. Shots whose src is a URL are recorded with labs clip first, into
 //      FILE.clips/ beside the cut, and kept by their label.
-//   2. Titles and captions are drawn in Filament (aethyr/ui/font.coax)
+//   2. Titles and captions are drawn in Filament (metaverse-engine/ui/font.coax)
 //      as SVG strokes and taken as transparent PNGs by headless Chrome.
 //   3. ffmpeg cuts each shot to its slot (and the next crossfade), puts the
 //      title over it, joins the shots with crossfades, lays the captions over,

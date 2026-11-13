@@ -20,9 +20,9 @@
 // each as its projected 2D Gaussian, blended over the meshes (gpu/splatlab.coax) and their depth.
 //   coax/bin/coax test apps/openagents-web/splatlab.coax
 
-#load "../../aethyr/ui/font.coax";
-#load "../../aethyr/core/loop.coax";
-#load "../../aethyr/core/points.coax";
+#load "../../metaverse-engine/ui/font.coax";
+#load "../../metaverse-engine/core/loop.coax";
+#load "../../metaverse-engine/core/points.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 30000;

@@ -5,7 +5,7 @@
 > [`verse/tools/assets/dragon_bake.py`](../../verse/tools/assets/dragon_bake.py)
 > into the glade's pack. Its clips are
 > [`everglade/dragon-clips.coax`](../../everglade/dragon-clips.coax). Flight is
-> [`aethyr/action/flight.coax`](../../aethyr/action/flight.coax). The rules are
+> [`metaverse-engine/action/flight.coax`](../../metaverse-engine/action/flight.coax). The rules are
 > [`rules/srd/shapechange.coax`](../../rules/srd/shapechange.coax)
 > and [`rules/srd/dragon-actions.coax`](../../rules/srd/dragon-actions.coax).
 > The body's change, flight and breath are
@@ -28,10 +28,10 @@ Each piece of that lives in one place, and every Everglade zone reuses it:
 | --- | --- | --- |
 | The dragon's mesh, bones and clips | Asset script | `scripts/blender/dragon.py` |
 | Its baked frames in the pack | Asset pipeline | `verse/tools/assets/dragon_bake.py`, `dragon_pack.coax` |
-| Walking, takeoff, flight, banking and landing | Engine | `aethyr/action/flight.coax` |
+| Walking, takeoff, flight, banking and landing | Engine | `metaverse-engine/action/flight.coax` |
 | Shapechange and the dragon's actions | Engine (SRD rules) | `shapechange.coax`, `dragon-actions.coax` |
 | The change on screen, the breath's aim, the clip to play | Everglade | `everglade/shapeshift.coax` |
-| The change, breath, burning, sweep, buffet and roar effects | Engine | `aethyr/fx/dragon.coax` |
+| The change, breath, burning, sweep, buffet and roar effects | Engine | `metaverse-engine/fx/dragon.coax` |
 | The druid, the field and the bar | Zone | `everglade/zone-shapechange.coax` |
 
 The zone holds no rules. It places the druid and passes your keys to the
@@ -116,7 +116,7 @@ its own pace: how many metres a second a 30-foot Speed walks. The flight
 profile converts both speeds against that pace, so the dragon flies twice as
 fast as it walks in every realm:
 
-<!-- source: aethyr/action/flight.coax wing-profile-srd -->
+<!-- source: metaverse-engine/action/flight.coax wing-profile-srd -->
 ```jai
 // A profile from SRD speeds in feet: walk_ft on the ground, fly_ft in the air, against the realm's
 // pace (pace_mps metres a second for a 30-ft Speed).
@@ -250,7 +250,7 @@ has the SRD's mounted-combat rules that the mounts follow.
 
 ## The checks
 
-- `aethyr/action/flight.coax`, `#test "SRD speeds: an Adult Red Dragon walks 40
+- `metaverse-engine/action/flight.coax`, `#test "SRD speeds: an Adult Red Dragon walks 40
   ft and flies 80 ft against a 30-ft pace"`, `#test "flight is faster than
   walking: the dragon covers much more ground in the air"`, `#test "climb,
   glide and dive: a held jump climbs, letting go glides down, a dive drops
@@ -273,11 +273,11 @@ has the SRD's mounted-combat rules that the mounts follow.
   Fire Breath held and let go burns the monsters in its cone and none behind"`
   and `#test "druid: the dragon takes off with Jump, flies faster than it walks,
   and glides down to land"`.
-- `aethyr/fx/puff.coax` runs `dragon.coax`'s `#test "dragon: the breath's fire
+- `metaverse-engine/fx/puff.coax` runs `dragon.coax`'s `#test "dragon: the breath's fire
   stays inside its cone, half as wide as it is far"`.
 
 ```sh
-coax/bin/coax test --library aethyr/action/flight.coax
+coax/bin/coax test --library metaverse-engine/action/flight.coax
 coax/bin/coax test --library rules/srd/battle.coax --only "Shapechange"
 coax/bin/coax test --library everglade/shapeshift.coax
 coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "druid"

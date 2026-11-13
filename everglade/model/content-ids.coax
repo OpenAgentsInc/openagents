@@ -9,7 +9,7 @@
 // when a row of origin/main's copy is gone or changed. To add content: add its row at the end of its
 // kind here and in the profile, with the next unused number, and set CONTENT_HASH to what the check prints.
 //   coax/bin/coax test everglade/model/content-ids.coax
-#load "../../aethyr/core/ids.coax";
+#load "../../metaverse-engine/core/ids.coax";
 
 CT_ABILITY :: 1; CT_SPELL :: 2; CT_CREATURE :: 3; CT_ITEM :: 4; CT_SPAWN :: 5;
 CT_KINDS :: 5;

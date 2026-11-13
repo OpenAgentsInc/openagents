@@ -75,9 +75,9 @@ held through GPU completion observation. Mutable compiler input bytes are
 zeroed and their extents reported separately from resource ownership; no
 physical SDK/GC/driver or RSS claim follows. See
 `docs/verification/aethyr-streaming-12990/walk-diagnostic-capture.md` and
-`aethyr/host/stream-adoption.md` for exact measured and remaining adapter scope.
+`metaverse-engine/host/stream-adoption.md` for exact measured and remaining adapter scope.
 
-`aethyr/host/transport.coax` owns the four socket and eight response-bearing
+`metaverse-engine/host/transport.coax` owns the four socket and eight response-bearing
 HTTP slots for host contract v1. A callback carries its reserved slot,
 generation and engine epoch; a reused slot cannot inherit an older callback.
 Local close invalidates before returning and its deferred close is delivered
@@ -108,7 +108,7 @@ measured allocation before copying. The shared renderer carrier loads these
 authorities; C/JavaScript project scalars and execute platform effects. Their
 root gates at `3f1396f5a2` kill 292, 59 and 9 mutants, with zero survivors and
 no equivalents. The written boundary and initial browser observations are
-in `aethyr/host/README.md` and
+in `metaverse-engine/host/README.md` and
 `docs/verification/host-contract-2026-11-05/`. Native adapters, production
 GPU/lifecycle and rendered audio retain their separate conformance exits;
 the desktop default stays web until the complete Metal/three-host gates pass.
@@ -346,7 +346,7 @@ errors/warnings; all 18 receipt mutants are killed. Full production window
 and room-continuity qualification remains separate.
 
 Version 1 Everglade layer decode and mip arithmetic belong to the shared
-`aethyr/render/host-layers.coax` authority. Browser/native compare all 38
+`metaverse-engine/render/host-layers.coax` authority. Browser/native compare all 38
 complete chains bit-identically; actual WebGPU readback matches every one
 of 53,127,800 logical bytes across ten mip levels. SDK transfer padding is
 separate from logical texels. Hosts upload canonical raw bytes without
@@ -357,7 +357,7 @@ and 38 mutants, with no survivors or equivalents. This asset receipt does
 not qualify the remaining display/default decision.
 
 Version 1 still-image media consumes the original compressed bytes
-through `aethyr/render/host-image.coax`, retaining natural rectangular extent
+through `metaverse-engine/render/host-image.coax`, retaining natural rectangular extent
 and exactly one shared premultiplied byte round trip. Metadata bounds source,
 workspace and output before the SDK allocates them; a failed decode never
 publishes a successful prefix or falls back to a platform decoder. The SDK
@@ -370,7 +370,7 @@ failure is retained. Pre-contract faces retain their earlier SDK path. The
 render media composition authority remains `host-media.coax`; this decoder
 does not replace its readiness, URL, extent or physical texture admission.
 The browser observer root gate kills 87 mutants, with no equivalents.
-The checked `aethyr/host/media-notice.coax` formatter atomically creates the
+The checked `metaverse-engine/host/media-notice.coax` formatter atomically creates the
 existing607 ready/failed message and kills all 131 root mutants. Native
 dispatch follows the producer/encoder return. A missing or refused image
 becomes not-ready with zero notification dimensions, publishes no partial
@@ -1015,7 +1015,7 @@ also when a guest's row follows them into an account (0119 `vitals_follow`).
 
 Once the room keys are rolled out (`docs/deployment/room-keys.md`, #13260),
 a room shard holds the API's ticket public keys and its own write key, and
-nothing else. A seat ticket (v5, `aethyr/session/seat-ticket.coax`) seats only
+nothing else. A seat ticket (v5, `metaverse-engine/session/seat-ticket.coax`) seats only
 when the key its ID names verifies its BIP-340 signature over every byte
 before the signature, so a room can't mint a seat, the admin bit included. A
 room write (`coax/web/room/room-write.coax`) checks only under the key the API
@@ -1053,7 +1053,7 @@ fork by anyone but the owner are of that revision, and nothing but PUBLISH
 changes it. Every revision the owner's edits make is kept, and `POST
 .../<slug>/undo` restores an earlier one as a new revision, never rewriting
 history. Each undo step is the edit's per-slot inverses, the slots
-`aethyr/forge/edit.coax` names (`0111_realm_edit_log.sql`): undo puts each
+`metaverse-engine/editor/edit.coax` names (`0111_realm_edit_log.sql`): undo puts each
 slot it changed back, newest first, and is refused (409, nothing changed) when
 a slot is no longer what the step left; `.../<slug>/redo` applies it again
 under the same rule, and a new edit drops what was undone. A document's moves
@@ -1061,7 +1061,7 @@ and shapes stand in entity order (by feature, then index:
 `0166_realm_entity_order.sql`, and `edit.coax` keeps its overrides the same
 way), so an undo or redo gives back the restored revision's bytes with only
 `rev` changed; `proto/verse/realm-document-v1.json` pins it (`restores`),
-checked by `aethyr/forge/doc-goldens.coax` and
+checked by `metaverse-engine/editor/doc-goldens.coax` and
 `coax/web/api/tests/realm_doc_checks.coax`. A made realm's lore
 and quests are in its document (present only when it has some, so a document
 without them keeps its bytes and hash), so publish, undo and fork carry them;
@@ -1070,7 +1070,7 @@ revision kept its bytes and hash. A realm made or forked
 by a tool (`verse-automation` cookie, `X-Verse-Automation` header) is
 unlisted. Checks: `coax/web/api/test_realm_fork.py` (stale save and publish
 refused, the original byte-identical after the fork is saved, tool-made realms
-unlisted, visitors on the revision published, each edit undone as one step); `aethyr/forge/edit.coax` (an edit is refused when its entity moved
+unlisted, visitors on the revision published, each edit undone as one step); `metaverse-engine/editor/edit.coax` (an edit is refused when its entity moved
 since, or a slot changed since; apply then inverse is the identity, for every revision path; a replayed log gives the same document); `coax/web/api/tests/realm_shapes.sql` (turns, sizes and removals, 0109: a save without them keeps them; visitors, forks and undo carry them); `coax/web/api/tests/realm_edit_log.sql` (every revision path is one step of ops; undo and redo walk them to each earlier state; a stale step refused; older steps undo whole; lore and quests published, undone, forked and moved in without changing older hashes); `coax/web/api/tests/realm_cli_api.coax` (the built CLI against a local API: rotate, resize, remove, lore, quest, a stale refusal, undo per edit, a pinned publish, a fork); `apps/openagents-web/myrealm.coax`
 (a 409 keeps the changes); `coax/web/tool.sh forge-journey` end to end.
 
@@ -1095,7 +1095,7 @@ Publishing a made realm pins its engine with its revision
 is `/realms/built`'s app script; the manifest keeps each attribute as one
 line in the page's order. Every path in it must be named by its content and
 is never deleted from the bucket. The rule is SQL's (`verse.engine_manifest`)
-and Coax's (`aethyr/forge/publish.coax`, `#authority`, mutation-checked).
+and Coax's (`metaverse-engine/editor/publish.coax`, `#authority`, mutation-checked).
 They must give the same manifest and hash for the shared fixture. With a
 site bucket, a publish whose engine page can't be read or named by content
 is refused (503) in the same transaction, and nothing is published. The
@@ -1104,7 +1104,7 @@ today's template, unless the URL asks `?engine=current`. A fork starts on
 its parent's pin; nothing done to it changes its parent's record. A realm
 with a published revision but no pin is pinned to the engine served when
 its page is next written. Every pin is a row of `verse.realm_publications`,
-never rewritten. Checks: `aethyr/forge/publish.coax` and
+never rewritten. Checks: `metaverse-engine/editor/publish.coax` and
 `coax/web/api/tests/realm_engine_pin.coax` (SQL, rolled back). After the
 strip, `coax/web/engine-served.coax` adds each served file's own SHA-256 to
 the engine's script (`data-served`), so a pin carries them; `engine-served
@@ -1171,7 +1171,7 @@ Its bounded kernel observes only a newly queued, exactly stepped input and a
 complete D accepted by the socket queue. Clock synchronization retains an
 offset interval with explicit quantization, drift and freshness assumptions;
 unknown time is never zero. The codec/kernel, clock and socket-owned client
-are checked and mutation-checked (`aethyr/net/latency*.coax`). With `roomtrace=1`,
+are checked and mutation-checked (`metaverse-engine/net/latency*.coax`). With `roomtrace=1`,
 native and browser SDK hooks record input receipt, exact successful movement,
 simulation and serialization, final D queue acceptance, WebSocket receipt,
 application delivery, render submission and GPU completion. Application needs
@@ -1242,7 +1242,7 @@ an already admitted room keeps its current world during dependency outages.
 
 Retired with v1's room (#13346; it builds frozen from `everglade/server/legacy/v1.sh`'s
 pin, and no production room runs a raid): raid deaths reserved one authoritative outcome
-for each physical creature slot (`aethyr/session/outcome-slot.coax`, #12841). A pending death prevents raid
+for each physical creature slot (`metaverse-engine/session/outcome-slot.coax`, #12841). A pending death prevents raid
 reuse of that slot until its XP/contribution result is consumed. All 96
 creatures may die in one step without a dropped result. If recording cannot
 reserve space, the dead source remains for retry instead of disappearing.
@@ -1259,7 +1259,7 @@ her natural first Meteor Swarm, hostile siege and watch combat; the policy's
 mutation gate has zero survivors.
 
 Accepted town impacts keep physical reservations independent of visual pools
-(`aethyr/session/effect-reservation.coax`, #12841): four per admitted player,
+(`metaverse-engine/session/effect-reservation.coax`, #12841): four per admitted player,
 two per physical raid slot and eight for the house. Admission subtracts already
 accepted waiting/staged work before cast order, cooldown or resources. The
 shared native/worker adapter acknowledges only a consumed prefix; a refused
@@ -1300,7 +1300,7 @@ back is a format the room reads (`Ticket.schema` up to `RV_SCHEMA`). Any
 other hello gets `r 0 version`, its socket is closed, and the refusal is
 counted by its reason. One encounter never mixes two rule sets or worlds, and a room
 rolled back below newer saved data reads none of it. The rule is
-`aethyr/session/compat.coax` (`#authority`, mutation-checked) applied by
+`metaverse-engine/session/compat.coax` (`#authority`, mutation-checked) applied by
 `coax/web/room/room-everglade.coax` `eg_admit`. Checks: compat.coax and
 room-everglade.coax "a hello is admitted against its page's build" (#12839).
 
@@ -1330,24 +1330,24 @@ baselines remain shared with other entities. Suite, wire and two-page observatio
 ## A room host runs each realm by its declared profile
 
 The room server serves Orbit League and Everglade on one 60 Hz beat, each by
-a profile from `aethyr/net/profile.coax` (`#authority`, mutation-checked):
+a profile from `metaverse-engine/net/profile.coax` (`#authority`, mutation-checked):
 its rate (a divisor of the beat), physics steps per world step, trust,
 durability and fairness. Only an authoritative profile may be durable or earn
 steps by the clock; self-asserted presence and small-game lockstep are
 separate profiles and never qualify as authoritative play. The host steps a
 realm only on the beats `net_due` names (`room-host.c`, `room.coax`
-`rm_realm_due`). Checks: `aethyr/net/profile.coax`, `room.coax` "profiles:".
+`rm_realm_due`). Checks: `metaverse-engine/net/profile.coax`, `room.coax` "profiles:".
 
 ## The room keeps the client's session lifecycle
 
 The room server takes an intent only when it is newer than the last it
-accepted and the last it queued (`aethyr/session/lifecycle.coax`
+accepted and the last it queued (`metaverse-engine/session/lifecycle.coax`
 `life_room_takes`), so a resend after a socket change applies once. A closed
 socket's seat is held `LIFECYCLE_HOLD_MS` (`life_room_holds`, Everglade's
 `EG_GRACE_MS`): longer than the client's resend window and shorter than a
 long suspension. Each host's room tick has a 95th-percentile budget
 (`LIFECYCLE_TICK_US`, native and browser worker) that the drift check reports
-(`everglade-drift`). Checks: `aethyr/session/lifecycle.coax`, `room.coax`
+(`everglade-drift`). Checks: `metaverse-engine/session/lifecycle.coax`, `room.coax`
 "relay:".
 
 ## A character travels between rooms as one body
@@ -1362,7 +1362,7 @@ seat's state at the cutover, so a crash after the route loses nothing. A
 travelling seat's close ends it at once (no seat is held). The destination's
 ticket takes the next owner generation, so the source can't save over it.
 Each step before the destination's join is undone by time: after
-`TRAVEL_MS` (`aethyr/session/travel.coax` `TRAVEL_HOLD_MS`) without the page
+`TRAVEL_MS` (`metaverse-engine/session/travel.coax` `TRAVEL_HOLD_MS`) without the page
 leaving, the seat takes commands again and the set-aside seat lapses. The
 room asks the travel contract each of these questions over its own state
 (`travel_admits`, `travel_cut`, `travel_holds`, `travel_saved`). HP, XP and WANTED travel through the saved note. To a
@@ -1436,7 +1436,7 @@ next generation, never wrapped, and the signed ticket carries it, so no
 client names one. A room sends the generation on each vitals line, and
 `verse.room_vital_apply` refuses (`f`) a line below the character's newest,
 writing nothing. A line without a generation applies as before 0127. This is
-the store-side fence of `aethyr/session/control.coax` (`control_fence`).
+the store-side fence of `metaverse-engine/session/control.coax` (`control_fence`).
 Checks: `coax/web/api/tests/room_checks.coax` vitals (older owner refused, newest kept),
 `coax/web/room/room-ticket.coax` and `room-vitals.coax` (#12834 checks).
 
@@ -1446,7 +1446,7 @@ A store promoted to a newer region epoch (`verse.region_promote`, migration
 issues below that floor, so a ticket or room write from a region the store
 replaced is older at every fence. An epoch not newer than the store's, or
 2048 and up, is refused. A store never promoted is at epoch 1 and issues
-generations as before. Model: `aethyr/session/region.coax`. Check:
+generations as before. Model: `metaverse-engine/session/region.coax`. Check:
 `room_checks.coax region` (a replica promoted after a partition refuses the
 old region's line, and its tickets start past the floor).
 
@@ -1471,7 +1471,7 @@ room process.
 
 Every item, each character's inventory version and every applied operation
 ID live in one store (`verse.items`, `verse.inventories`, `verse.item_ops`,
-migration 0130, #12849). The rules have one owner, `aethyr/session/ledger.coax`
+migration 0130, #12849). The rules have one owner, `metaverse-engine/session/ledger.coax`
 (`#authority`; decision [0006](docs/decisions/0006-item-ledger-rules-in-coax.md),
 #13318): its in-memory store and the API's route (`player.c` `room_items`
 through `coax/web/api/item-policy.coax`) both ask `ledger_gate` and
@@ -1493,7 +1493,7 @@ write an item, coin, a quest's stage or a reward. Each
 change appends its `verse.item_outbox` entry in the same transaction, and
 replaying the outbox gives the same items, owners and versions
 (`verse.item_reconcile`). Only a room-key-signed post reaches it. The ledger
-holds game items only, never money. Checks: `aethyr/session/ledger.coax` and
+holds game items only, never money. Checks: `metaverse-engine/session/ledger.coax` and
 `coax/web/api/item-policy.coax` tests with `coax mutate` at zero survivors,
 `coax/web/api/tests/room_checks.coax` items and item ops, and
 `coax/web/room/room-items.coax` (1,000 fault-injected plays).
@@ -1501,7 +1501,7 @@ holds game items only, never money. Checks: `aethyr/session/ledger.coax` and
 ## Every moderator action is logged before it is done, and the log is never edited
 
 A ban, a mute, a kick and a moderator's look or move have one set of rules
-and one codec, `aethyr/session/moderation.coax` (`#authority`; #13302,
+and one codec, `metaverse-engine/session/moderation.coax` (`#authority`; #13302,
 [moderation v1](docs/protocol/moderation-v1.md)). A room asks them, and the
 API asks them through `coax/web/api/moderation-policy.coax`; SQL decides
 nothing (migration 0170). Only a moderator acts: a seat whose signed ticket
@@ -1514,7 +1514,7 @@ refuses the command when the outbox is full. The API writes the log row in
 the same statement as the sanction it sets or lifts, once for each
 operation ID (shard, generation, sequence). `verse.mod_log` is append-only:
 `UPDATE`, `DELETE` and `TRUNCATE` raise for every role. Checks:
-`aethyr/session/moderation.coax` and `coax/web/api/moderation-policy.coax`
+`metaverse-engine/session/moderation.coax` and `coax/web/api/moderation-policy.coax`
 tests with `coax mutate` at zero survivors, `room.coax` "moderation",
 `coax/web/api/tests/room_checks.coax` moderation, and the profile check
 `coax/web/room/moderation-profile.coax`.
@@ -1531,7 +1531,7 @@ that would advance a version past the largest int is refused
 (`LEDGER_EXHAUSTED`) before anything changes; a control generation at its
 last is `CONTROL_EXHAUSTED`; a seat or owner generation saturates, never
 wraps to an older one. Checks: `coax/tests/integer_ops.py`,
-`aethyr/session/ledger.coax` "a version at the largest int".
+`metaverse-engine/session/ledger.coax` "a version at the largest int".
 
 ## A party roster carries health only, to its members, never across a block
 
@@ -1556,13 +1556,13 @@ realm naming that member (`?party=`, `verse.party_member_room`, migration
 are in the same party, neither blocks the other and the member isn't hidden;
 otherwise it says `party_away` and places as usual. The ticket names the one
 room it seats; the roster still never names a room. The rules are one
-contract, `aethyr/session/party.coax` (`#authority`, mutation-checked): the
+contract, `metaverse-engine/session/party.coax` (`#authority`, mutation-checked): the
 API's SQL keeps its durable form, the page takes its member limit from it, and
 the room server's health-only channel for an out-of-range party member asks
 `party_sees`, so a member who blocks the seat, or whom it blocks, gets
 nothing. Checks: `coax/web/api/tests/room_checks.coax` parties
 (with `ROOM_BIN`, a real room's crash, restart and the service down),
-`everglade5e.coax` "party:", `aethyr/session/party.coax` and `room.coax`
+`everglade5e.coax` "party:", `metaverse-engine/session/party.coax` and `room.coax`
 "interest".
 
 ## Inverse physics differentiates the owned solver and exposes ambiguity
@@ -1585,7 +1585,7 @@ coverage and all 5,040 serialized state words are qualified separately in
 
 ## Metaverse Engine realms step on one fixed clock whatever the frame rate
 
-A realm's simulation advances only in whole fixed steps from `aethyr/core/loop.coax`'s
+A realm's simulation advances only in whole fixed steps from `metaverse-engine/core/loop.coax`'s
 `FrameClock`, which keeps time in integer nanoseconds. A frame's time is refused
 when it is not a time, clamped to `max_frame_ns`, and at most `max_steps` run;
 the backlog past that is dropped and counted, never carried into later frames.
@@ -1593,13 +1593,13 @@ A step, clamp or cap that is zero or negative, as in a clock read from zeroed
 memory, takes its declared default, so a clock never freezes.
 Drawing mixes the last two steps by `loop_alpha` and never steps physics. So
 the same per-step inputs give the same states, bit for bit, at any frame rate.
-Checks: `aethyr/core/loop.coax` (step count follows the time fed at 30, 60, 120 and
-144 FPS; mutation 0 survivors) and `aethyr/move/walk.coax` ("a run and jump has the
+Checks: `metaverse-engine/core/loop.coax` (step count follows the time fed at 30, 60, 120 and
+144 FPS; mutation 0 survivors) and `metaverse-engine/move/walk.coax` ("a run and jump has the
 same states at 30, 60, 120 and 144 FPS", "a jump drawn at 60 FPS has no stutter").
-A realm's flight is the walker's per-step hook (`aethyr/move/flight.coax`), never
+A realm's flight is the walker's per-step hook (`metaverse-engine/move/flight.coax`), never
 a face's per-frame change to the player's speed, and a realm camera that
 eases (Hecate's Cemetery's free orbit, Ice Cream Man's follow) eases once per
-fixed step; Hecate's is drawn between the last two. Checks: `aethyr/move/walk.coax` ("a flight of beats,
+fixed step; Hecate's is drawn between the last two. Checks: `metaverse-engine/move/walk.coax` ("a flight of beats,
 climbs, glides and a dive has the same states at 30, 60, 120 and 144 FPS and
 on uneven frames"), `apps/openagents-web/villa.coax` ("Hecate's camera eases
 on the fixed step ..."), `verse/icecream/play.coax` ("the camera steps with the
@@ -1609,18 +1609,18 @@ the same camera every step").
 ## A realm's frame time is what its clock counts, and no frame runs past 8 steps
 
 No realm keeps its own frame clamp or step accumulator. Every fixed step runs
-on an `aethyr/core/loop.coax` `FrameClock`, and everything a realm moves outside
+on an `metaverse-engine/core/loop.coax` `FrameClock`, and everything a realm moves outside
 its steps (animation, its room's timing) moves by `loop_counted` or
 `loop_counts`: the frame's time after that clock's refusal, clamp and drop.
 The page faces of the haunted house, Fairy Forest, the Garden, Everglade and
 the villa move their realm by `verse_player_counts` and hand the player the
 frame itself. No clock in a realm runs more steps in one frame than the
-realm's declared budget (`steps = 8`, `aethyr/core/budget.coax`); time past the
-cap is dropped and counted on the clock, never run later. `aethyr/core/loop.coax`
+realm's declared budget (`steps = 8`, `metaverse-engine/core/budget.coax`); time past the
+cap is dropped and counted on the clock, never run later. `metaverse-engine/core/loop.coax`
 declares no `#export_c` procedure, because realms' libraries load it more
 than once (Everglade's player, debris and river).
-Checks: `aethyr/core/loop.coax` ("a frame counts for its time, refused, clamped
-and dropped as the steps are"), `aethyr/move/walk.coax` ("a face's frame time is
+Checks: `metaverse-engine/core/loop.coax` ("a frame counts for its time, refused, clamped
+and dropped as the steps are"), `metaverse-engine/move/walk.coax` ("a face's frame time is
 what the player's clock counts, and runs at most 8 steps"),
 `verse/deadgears/ecs.coax`, `verse/demolish.coax` ("the steps are the Metaverse Engine's
 clock's ..."), Hold the Stair ("frames run at most its budget's steps,
@@ -1657,14 +1657,14 @@ end-to-end migration of every world coordinate.
 
 The current avatar renderers consume the interpolated feet for a frame, not
 the last fixed step alone. Realms whose controller steps on a flat floor use
-`feet_in_world` (`aethyr/core/points.coax`) to apply the terrain or bridge origin
+`feet_in_world` (`metaverse-engine/core/points.coax`) to apply the terrain or bridge origin
 once; that world point is shared by the figure and camera. Everglade's wading
 origin is relative, while its swimming height is already absolute.
 
-The Grid converts feet, eye and aim through `aethyr/core/space.coax`'s
+The Grid converts feet, eye and aim through `metaverse-engine/core/space.coax`'s
 `world_to_grid` on all three axes. Remote visitors retain and ease their
 admitted height with their horizontal position; drawing never replaces it
-with the floor. Checks: `aethyr/tests/check_drawn_feet.py` observes the nine
+with the floor. Checks: `metaverse-engine/tests/check_drawn_feet.py` observes the nine
 current avatar renderer paths' native figure, object or instance records
 against independent coordinates and four broken producer controls each;
 `newland-walkers.coax` checks height updates and identity-preserving reorder.
@@ -1673,15 +1673,15 @@ replace every legacy vector ABI or establish f64 world coordinates.
 
 ## Each input press is taken by exactly one fixed step
 
-Realm input reaches the simulation through `aethyr/core/input.coax`. Keys and the
+Realm input reaches the simulation through `metaverse-engine/core/input.coax`. Keys and the
 touch stick map to one `Intent` with one run rule and one dead zone. A press
 (jump, act) is counted when it happens and taken by the first fixed step that
 samples after it: a frame that runs no step keeps it, and a frame that runs
 several gives it to one. At most `INPUT_MAX_WAITING` presses wait; more are
 counted as lost, never kept. Values that aren't numbers, and axes past full
-travel, are refused or clamped and counted. Checks: `aethyr/core/input.coax`
+travel, are refused or clamped and counted. Checks: `metaverse-engine/core/input.coax`
 ("every press is taken by exactly one step, the one the model names";
-mutation 0 survivors) and `aethyr/move/walk.coax` ("a press in a frame with no
+mutation 0 survivors) and `metaverse-engine/move/walk.coax` ("a press in a frame with no
 step jumps on the next one, and a frame of two jumps once", "the keyboard
 and the touch stick drive the same session to the same states").
 
@@ -1700,18 +1700,18 @@ Generated C uses distinct records with the integer's size and alignment;
 its new `coax-c-id-lp64-v1` header schema includes the ordering opt-in.
 Existing header schemas retain their identity. Device output refuses E0962.
 
-`aethyr/core/ids.coax` defines the shared seat, entity, character, item and
+`metaverse-engine/core/ids.coax` defines the shared seat, entity, character, item and
 owner-generation domains. Codec adapters construct/extract them; a decoded
 wrapper grants no liveness or permission. Entity liveness requires a
 canonical `Handle(Entity)` word and the live slot's generation. Handle construction
 refuses out-of-range components. Stable entity ID exhaustion refuses before
 reserving a slot. Checks: `coax/tests/nominal-ids.py`, compiler parser/checker
-checks and zero-survivor mutation gates, and `aethyr/core/entity.coax`'s decoded
+checks and zero-survivor mutation gates, and `metaverse-engine/core/entity.coax`'s decoded
 handle and exhaustion checks. Store IDs remain session-local.
 
 ## Entities change only at the step's flush
 
-An entity in `aethyr/core/entity.coax` has a handle (slot and generation) for use
+An entity in `metaverse-engine/core/entity.coax` has a handle (slot and generation) for use
 inside a step and an `EntityId` from the store's counter for saves, the
 network and edits; nothing durable stores a handle. `entity_spawn` and
 `entity_despawn` are commands: `entity_flush` applies the despawns in slot
@@ -1720,14 +1720,14 @@ a step sees the same entities and a spawned entity takes part from the next
 step; despawning a spawn that is still waiting cancels it. A despawn raises
 the slot's generation, so a stale handle never reaches the slot's next
 owner; a slot whose generation would wrap is retired, not reused. Checks:
-`aethyr/core/entity.coax` ("a store matches a plain list of IDs and values after
+`metaverse-engine/core/entity.coax` ("a store matches a plain list of IDs and values after
 every flush", "despawning while walking: every live entity is visited once,
 and none after its flush", "IDs survive save, load and replay", "despawning
 a waiting spawn cancels it"; mutation 0 survivors).
 
 ## External events enter a step only from the session's record
 
-Every external event a session on `aethyr/core/replay.coax` accepts (a frame's
+Every external event a session on `metaverse-engine/core/replay.coax` accepts (a frame's
 controls, a model's answer, a network update) is one `ReplayEvent` with its
 apply tick, source, request number, epoch and payload. Only the gate,
 `replay_offer`, accepts one: it refuses a duplicate (a model request already
@@ -1739,7 +1739,7 @@ never the sender's tick. A step applies only what `replay_take` hands it, in
 live play and in replay alike, so a replay consumes the recorded decisions
 and makes no remote call (`replay_ask` says when to send). A record starts
 with the constructed state's digest; `replay_play` refuses a replay from any
-other state. Checks: `aethyr/core/replay.coax` ("delayed, duplicate and stale
+other state. Checks: `metaverse-engine/core/replay.coax` ("delayed, duplicate and stale
 events: a live session and its replay agree at every step", "a planted fault
 is found at the step it starts"; mutation 0 survivors).
 
@@ -1765,12 +1765,12 @@ without inspecting host-libm bits. See `coax/strict-math.md`.
 
 A step's state must have the same bits natively and in the browser, so a
 step keeps its qualified `math_sin`, `math_cos` and `math_pow` profile from
-`aethyr/core/math.coax`. Coax's CPU `sin`, `cos`, `exp` and `log` now have their own
+`metaverse-engine/core/math.coax`. Coax's CPU `sin`, `cos`, `exp` and `log` now have their own
 fixed profile (#12917); `tan` and `pow` still use host libm, and GPU math is
 target-specific. A new deterministic implementation does not silently replace
 the engine's recorded arithmetic. Drawing may use either. Random draws
-in a step come from `aethyr/core/rand.coax` (seed, stream, counter). Checks:
-`aethyr/core/math.coax` (sampled comparisons use a scaled tolerance with a near-zero
+in a step come from `metaverse-engine/core/rand.coax` (seed, stream, counter). Checks:
+`metaverse-engine/core/math.coax` (sampled comparisons use a scaled tolerance with a near-zero
 floor, not a universal ULP theorem; f64 kernels against pinned Python values;
 mutation 0 survivors) and `coax/web/replay-hosts.coax`
 (the recorded walk's session digests, and the recorded Grid session's digest
@@ -1833,8 +1833,8 @@ input step, avoiding asynchronous frame origins at collisions. Evidence:
 
 ## Every walking realm asks one ground question
 
-The walking controller's floor comes from `aethyr/physics/query.coax`:
-`floor_under` in `aethyr/move/walk.coax` is one `query_stand` call over the
+The walking controller's floor comes from `metaverse-engine/physics/query.coax`:
+`floor_under` in `metaverse-engine/move/walk.coax` is one `query_stand` call over the
 realm's colliders (flat or heightfield ground, walls as boxes, bodies as
 capsules, and floors). The actual fixed step consumes `query_ground_checked`;
 the trusted `floor_under` adapter retains the permissive query. The step height
@@ -1843,10 +1843,10 @@ can stand on (`QUERY_STEEP`, 55 degrees) and the floor pad
 (`QUERY_FLOOR_PAD`, 0.15 m) are defined there once; the walker reads them
 from it. Every shape is solid, so a ray or sweep that starts inside one hits
 it at t = 0, and ties go to the earlier collider (the ground, then boxes,
-then capsules, by index). Checks: `aethyr/physics/query.coax` (rays, sweeps and
-overlaps against the containment oracle in `aethyr/tests/query-oracle.coax`;
+then capsules, by index). Checks: `metaverse-engine/physics/query.coax` (rays, sweeps and
+overlaps against the containment oracle in `metaverse-engine/tests/query-oracle.coax`;
 root-only mutation 388/388 killed, with separate ground/ray/contact receipts)
-and `aethyr/move/walk.coax` ("jumping onto, landing on
+and `metaverse-engine/move/walk.coax` ("jumping onto, landing on
 and walking off a ledge is the same in every realm").
 
 ## Terrain and capsule publication carry checked receipts
@@ -1864,12 +1864,12 @@ engine-owned native/Wasm journey and explicit legacy-adapter inventory are in
 `docs/verification/aethyr-query-12989/README.md`; whole-realm migration and
 chapter 70's full wave/force/render implementation are separate scopes.
 
-`aethyr/physics/ground.coax` samples the actual rounded f32 mesh vertices, split on
+`metaverse-engine/physics/ground.coax` samples the actual rounded f32 mesh vertices, split on
 the south-west/north-east diagonal. Exact stored vertices retain their bits.
 Its metre-quantity boundary refuses invalid dimensions, spacing, coordinates,
 sampled heights and gradients. Beyond the mesh, consumers zero the gradient
 on each clamped axis before forming the constant continuation's normal.
-`aethyr/world/terrain.coax` retains its Ground C layout and delegates sampling to it.
+`metaverse-engine/world/terrain.coax` retains its Ground C layout and delegates sampling to it.
 
 `query.coax` admits at most 16 heightfields. The exact ray and sphere-contact
 helpers have explicit cell budgets; exhaustion is a refusal, never a miss.
@@ -1883,7 +1883,7 @@ Player step publishes only an accepted collision and ground result. Refusal
 preserves its incoming physical/control state and queued jump; its scheduler
 still consumes the assigned time. Diagnostics report the refusal and a
 saturating count. Realm identity admission comes from
-`aethyr/physics/collision-profiles.coax`; unknown identities preserve the Player before
+`metaverse-engine/physics/collision-profiles.coax`; unknown identities preserve the Player before
 advancing its clock. Trusted direct large-move helpers retain their separate
 contract. These endpoint contacts do not imply general CCD or two-way rigid
 impulses. Evidence and independent native scopes are recorded in
@@ -1895,11 +1895,11 @@ Replay rejects any other full profile value before writing its destination;
 the `ReplayEvent` envelope is unchanged. The historical profile-1 initial pin
 is 3864885271; profile 2's independently calculated pin is 1068547055. The
 current recorded session agrees at every step natively and in Wasm. Evidence:
-`aethyr/tests/grid-profile2-qualification.json`.
+`metaverse-engine/tests/grid-profile2-qualification.json`.
 
 ## Walking profiles and route followers share the realm's paid steps
 
-`aethyr/move/walk.coax` owns the walking controller; `aethyr/move/player.coax` retains
+`metaverse-engine/move/walk.coax` owns the walking controller; `metaverse-engine/move/player.coax` retains
 its published C signatures as thin adapters. Input's legacy `input_runs` C
 export remains; production pages reach one copy. The coupled Dead Gears and
 Player boundary probe explicitly prefixes one duplicate helper copy in a
@@ -1912,7 +1912,7 @@ the paid step interval refuses before accepting new frame time. Nonpositive cloc
 
 `advance_traced` returns temporary chronological post-step targets, including
 unchanged poses on refused physical steps. It adds no persistent Player field
-or Grid digest word. `aethyr/move/follower.coax` consumes the paid clock and those
+or Grid digest word. `metaverse-engine/move/follower.coax` consumes the paid clock and those
 targets once, checking cursor continuity before integer arithmetic. It owns
 no timer. The Garden and villa's actual faces use this path; restoring a
 Player resets the realm's cursor. These floor-relative adapters apply the
@@ -1926,8 +1926,8 @@ queued. Drawing reads previous/current dog and ball poses at the same clock's
 alpha without stepping either; counted frame time still drives room and
 visual animation. The legacy variable-time APIs remain explicit compatibility
 surfaces. Chapter 64 owns the remaining special realm adapters, including
-flight and boat/warp paths. Evidence: `aethyr/tests/walk-qualification.json`,
-`aethyr/tests/follower-qualification.json` and the chapter 9 verification data.
+flight and boat/warp paths. Evidence: `metaverse-engine/tests/walk-qualification.json`,
+`metaverse-engine/tests/follower-qualification.json` and the chapter 9 verification data.
 
 ## Source facial animation layers over an independently retained body pose
 
@@ -1951,38 +1951,38 @@ Evidence and outstanding exits: `docs/verification/valley-lab-slay-2026-11-06/`.
 
 ## One follow camera eases the walker's view
 
-Valley Lab explicitly opts into `aethyr/move/walk.coax`'s `source_velocity` flat-ground
+Valley Lab explicitly opts into `metaverse-engine/move/walk.coax`'s `source_velocity` flat-ground
 CalcVelocity/braking profile, decoded from the source Echo defaults. Other
 walking realms keep their existing profile. Source tuning never bypasses
 paid 1/64 s steps, capsule collision or queued input. Source numbers qualify
 this scalar port, not the complete Unreal camera, ability or AnimBP runtime.
 
-The walking controller's camera (`aethyr/move/walk.coax`, every walking realm and
-Dead Gears' `camera_room`) moves only through `aethyr/cam/follow.coax`: the look
+The walking controller's camera (`metaverse-engine/move/walk.coax`, every walking realm and
+Dead Gears' `camera_room`) moves only through `metaverse-engine/cam/follow.coax`: the look
 and zoom (`follow_look`, `follow_zoom`), one step of the spring and the room
 (`follow_track`), and the eye drawn between the last two steps (`follow_at`,
 `follow_eye`). No other code eases that camera. `follow_room` reads a realm's
 `Colliders` and never changes them, the camera pulls in at once and backs out
 by a closed form in the step's time, and its direction uses strict math.
-Checks: `aethyr/cam/follow.coax` (mutation 0 survivors) and `verse/gridwalk.coax`
+Checks: `metaverse-engine/cam/follow.coax` (mutation 0 survivors) and `verse/gridwalk.coax`
 ("the Grid's camera follows a walk, a run and a jump at 60 FPS without a
 jump").
 
 ## The camera only reads the player, and every camera makes one shot
 
-The player's step (`step` in `aethyr/move/walk.coax`) never moves the camera.
+The player's step (`step` in `metaverse-engine/move/walk.coax`) never moves the camera.
 The camera steps after it (`camera_step`, run by `step_once` in
 `steps_in`) and changes only the camera's fields (`target`, `spring_vel`,
 `dist`), so the player is the same, bit for bit, whether the camera steps
 every step, never, or twice a step. Every camera answers with one
-`CameraShot` (`aethyr/cam/shot.coax`) built from state already drawn between
+`CameraShot` (`metaverse-engine/cam/shot.coax`) built from state already drawn between
 steps: third and first person (`follow_shot`, `follow_first_shot`), top down
-(`shot_top`), the free orbit (`shot_orbit`, which `aethyr/cam/camera.coax` draws
+(`shot_top`), the free orbit (`shot_orbit`, which `metaverse-engine/cam/camera.coax` draws
 through) and the dive (`shot_dive`, where a time that isn't a number is a
-cut). No camera steps physics. Checks: `aethyr/move/walk.coax` ("the player is
+cut). No camera steps physics. Checks: `metaverse-engine/move/walk.coax` ("the player is
 the same whether its camera steps every step, never, or twice a step", "each
-view mode is its own shot of the frame drawn"), `aethyr/cam/shot.coax` and
-`aethyr/cam/follow.coax` (mutation 0 survivors).
+view mode is its own shot of the frame drawn"), `metaverse-engine/cam/shot.coax` and
+`metaverse-engine/cam/follow.coax` (mutation 0 survivors).
 
 The checked `cam/` query companion reads separate semantic body/sight views.
 Attention rechecks the retained selection's epoch and entities; a query refusal
@@ -1997,7 +1997,7 @@ numerical fixture and remaining playable adoption are recorded in
 realm already uses these adapters.
 
 An engine module that two libraries a page links both load
-(`aethyr/core/space.coax` and `aethyr/cam/shot.coax`, which a realm's engine and the
+(`metaverse-engine/core/space.coax` and `metaverse-engine/cam/shot.coax`, which a realm's engine and the
 player both reach) declares no `#export_c` procedure: each library would
 define the symbol, and the page fails to link. Check: the site build
 (`apps/openagents-web/build.sh`) links every realm.
@@ -2005,19 +2005,19 @@ define the symbol, and the page fails to link. Check: the site build
 ## A realm's frame stays within its declared budget
 
 Every realm's engine file in `apps/openagents-web/` declares a
-`FrameBudget` (`aethyr/core/budget.coax`): the steps, vertices, draw records and
+`FrameBudget` (`metaverse-engine/core/budget.coax`): the steps, vertices, draw records and
 host bytes one frame may use. Its vertex limit is below the realm's vertex
 buffer, so a frame the quad writers clip at a full buffer is over budget. A
 `BudgetMeter` takes a request whole or refuses it; a frame that passes any
 limit fails the realm's check. A realm that outgrows its budget raises the
 declaration, or its buffer, in the same change; it never clips silently.
 Checks: each realm's "... frames fit its declared budget" (three frames at
-each of three screens), and `aethyr/core/budget.coax`'s planted overflow
+each of three screens), and `metaverse-engine/core/budget.coax`'s planted overflow
 (mutation 0 survivors).
 
 ## A device's texture layers take Coax's format and size tier
 
-`aethyr/render/texture-format.coax` picks the GPU format of a realm's layer
+`metaverse-engine/render/texture-format.coax` picks the GPU format of a realm's layer
 array from the adapter's block-compression features and the encodings its pack
 carries, and the side the array takes. A block format is picked only when the
 device has the feature and the pack carries layers encoded in it; otherwise
@@ -2026,23 +2026,23 @@ a side and block-compressed ones at most 1024; a desktop keeps the side its
 realm declares. The browser host (`coax/web/host.js` `layerTexture`) asks the
 shared image reactor (`host-layers.wasm`) for both and, when the reactor
 cannot load, uploads as it did before. The block encoder
-(`aethyr/render/texture-encode.coax`) ships only bitstreams the independent
+(`metaverse-engine/render/texture-encode.coax`) ships only bitstreams the independent
 decoders (bcdec, ARM astcenc 5.7.1) read as its own decoder does:
-`aethyr/tools/texture-encode.coax check` fails on any texel that differs by
+`metaverse-engine/tools/texture-encode.coax check` fails on any texel that differs by
 more than one level. Checks: `coax/bin/coax test
-aethyr/render/texture-format.coax --library` (root-only mutation: zero
+metaverse-engine/render/texture-format.coax --library` (root-only mutation: zero
 survivors, one equivalent at the cap's boundary) and the encoder's
 `--library` checks. GitHub #13014.
 
 ## An asset is its content hash, and a pack is admitted whole or not at all
 
-A Metaverse Engine asset's identity is the SHA-256 of its bytes (`aethyr/core/assets.coax`,
+A Metaverse Engine asset's identity is the SHA-256 of its bytes (`metaverse-engine/core/assets.coax`,
 `#authority`), never its name or path. `asset_admit` hashes every entry of a
 pack before taking anything: an entry that doesn't hash to its table's id,
 new bytes past the registry's declared limit, or more new assets than free
 slots refuses the whole pack and changes nothing held. Bytes already held are
 shared and counted once; the last `asset_release` frees them. Checks:
-`aethyr/core/assets.coax` (a planted edited texture, the limit to the byte, a
+`metaverse-engine/core/assets.coax` (a planted edited texture, the limit to the byte, a
 seeded model of uses; mutation 0 survivors with `--root-only`).
 
 A realm opting into browser pack digest gate v1 admits the complete received
@@ -2053,19 +2053,19 @@ part of that pack to the GPU. Checks: `verse/valley/canyon-pack-policy.coax`
 (mutation zero survivors) and `coax/web/valley-canyon-check.coax`'s same-length
 vertex edit. The versioned optional ABI is `coax/web/PACK-GATE.md`.
 
-A range-addressable VPK3 pack (`aethyr/forge/page-pack.coax`, `#authority`,
+A range-addressable VPK3 pack (`metaverse-engine/editor/page-pack.coax`, `#authority`,
 #13001) is admitted a page at a time, and only by content. Its manifest's
 SHA-256 is in its header. Every record must cover the image in order and the
 file without gaps, and a deflated page must be smaller than its bytes. A page
 is held only when its decoded bytes are its record's size and SHA-256
-(`ppk_admit`, run in the browser's pack reactor by `aethyr/host/page-stream.coax`
+(`ppk_admit`, run in the browser's pack reactor by `metaverse-engine/host/page-stream.coax`
 over the bytes already in its arena). A page refused is fetched again, never
 used. The image is published to the complete-pack reader only once every root
 page is held. An entry that is not a root is used only when `ppk_ready` says
 every page under it is held. The assembled image is the VPK1 pack byte for
 byte, so a realm's pack pin still names it. Checks:
-`aethyr/forge/page-pack.coax` (edited, short, repeated and out-of-range pages;
-every fixed header and manifest byte) and `aethyr/host/page-stream.coax`.
+`metaverse-engine/editor/page-pack.coax` (edited, short, repeated and out-of-range pages;
+every fixed header and manifest byte) and `metaverse-engine/host/page-stream.coax`.
 
 ## A lost GPU device or an engine trap keeps the realm's session
 
@@ -2104,7 +2104,7 @@ is unchanged. See `docs/verification/slay-gpu-recovery-12975-2026-11-07/`.
 
 
 The bounded streamed WebGPU carrier additionally uses
-`aethyr/render/loss-policy.coax` for the same absolute ten-second deadline
+`metaverse-engine/render/loss-policy.coax` for the same absolute ten-second deadline
 and fourth-loss stop. Its checked face refuses paid frames during
 replacement and permits stopped cleanup only from the actual closing
 state. The live RAF driver resets its timestamp on the recovery serial,
@@ -2172,7 +2172,7 @@ See `docs/verification/aethyr-streaming-12990/walk-callback-retirement.md`.
 
 The web Grid's simulation (`verse/gridwalk.coax`) is one `GridWalk`: you,
 the phone's thumbs, the input buffer and the session's record
-(`aethyr/core/replay.coax`). The page's C face hands it the devices' input and
+(`metaverse-engine/core/replay.coax`). The page's C face hands it the devices' input and
 the frame's time once a frame and draws what it reads back; the face does
 not clamp time, step the player or keep the player. Each frame's controls
 are one `REPLAY_ACTIONS` event, and a fixed step applies only the events
@@ -4331,13 +4331,13 @@ varints, and emits existing HudInvocation bytes. Native adapters only transfer
 bytes; the resource and invocation have no second hand-written wire codec.
 The home is the Grid seen from high above, slowly orbiting, with only the Start
 bar over it (`verse_home_hud_frame`). Start dollies the camera down to land
-behind you; `aethyr/cam/camera.coax` owns the overview orbit and the dolly path
+behind you; `metaverse-engine/cam/camera.coax` owns the overview orbit and the dolly path
 (eased, from behind and above, never below where it lands, a cut under
 reduced motion; a tap hurries it). Controls, the hotbar and the balance appear
 only once it lands. The balance sits top right as whole sats with no grouping
 (`₿1234`, or `₿–` with the reason spoken while there is none) and opens the wallet.
 `verse/grid.coax` owns its projection and line art,
-`aethyr/core/sticks.coax` the move/look/jump touch policy; `aethyr/move/walk.coax` owns walking and camera state behind the `aethyr/move/player.coax` C facade; `verse/cast.coax` admits the bundled `Cast.bin`, blends your
+`metaverse-engine/core/sticks.coax` the move/look/jump touch policy; `metaverse-engine/move/walk.coax` owns walking and camera state behind the `metaverse-engine/move/player.coax` C facade; `verse/cast.coax` admits the bundled `Cast.bin`, blends your
 character's clips and poses you and the robots. The native adapter only routes
 the Start invocation there, passes numbers between the libraries each frame
 and binds the buffers Coax admitted. A cast whose offsets, indices, joints or
@@ -4354,8 +4354,8 @@ jumping, and keeps the camera out of it. The hotbar is aethyr's HUD slot:
 Dance_Loop while you stand); walking or jumping ends it. The Grid has no
 buildings, peers or network use yet.
 
-Check: `coax/build.sh test`, `coax test verse/grid.coax`, `aethyr/cam/camera.coax`,
-`aethyr/move/player.coax` and `verse/cast.coax`, `verse/test_cast.sh` (the
+Check: `coax/build.sh test`, `coax test verse/grid.coax`, `metaverse-engine/cam/camera.coax`,
+`metaverse-engine/move/player.coax` and `verse/cast.coax`, `verse/test_cast.sh` (the
 real Cast.bin under ASan/UBSan, with corrupted copies refused, and you
 walking into the Foreman's leg and stopping),
 `PROTOC=... python3 verse/test_home.py`, the sanitizer harness and the iOS
@@ -6144,13 +6144,13 @@ switching the desktop default before #12868/#12869 pass their own checks.
 
 `coax/web/render.js`, and the native Vulkan host (`verse/native/render-host.c`,
 `render-realm.c`, `render-textures.c`), create a buffer or texture only after the Coax ledger
-(`aethyr/render/registry.coax`, `#authority`) admits its kind and size within
+(`metaverse-engine/render/registry.coax`, `#authority`) admits its kind and size within
 512 slots and a 1 GiB word budget, and releases the handle when it destroys
 the object. A frame advances the ledger's epoch and refuses, before any GPU
 write, if any object it draws with is not live. A lost device releases every
 handle and keeps the generations, so no handle from before the loss is live
 again. Checks: the ledger's own checks and its mutation gate;
-`aethyr/tests/render-ledger.coax` on the served Grid (exact count, a released
+`metaverse-engine/tests/render-ledger.coax` on the served Grid (exact count, a released
 handle refused at use, recovery after a lost device); natively,
 `verse/gpu/realm.sh local check` prints the ledger at the last frame and
 none live after close.
@@ -6201,7 +6201,7 @@ POSIX process CPU clock before any numbers are recorded.
 
 ## Everglade's legacy GPU host bounds unfinished frames
 
-`aethyr/core/frame-pacing.coax` admits a frame only with a nonnegative count below
+`metaverse-engine/core/frame-pacing.coax` admits a frame only with a nonnegative count below
 two. Everglade exports that Coax decision to `coax/web/host.js`, which checks
 before simulation or GPU writes and completes submissions at queue fences.
 Skipped callbacks retain elapsed simulation time. Pending counts belong to
@@ -6284,7 +6284,7 @@ captures, recovery and timing are recorded in
 
 ## Retargeting declares its representable joints and preserves target rest
 
-`aethyr/anim/retarget-policy.coax` admits one rotational anchor per mannequin
+`metaverse-engine/anim/retarget-policy.coax` admits one rotational anchor per mannequin
 slot. Canonical names disambiguate folded helpers; ambiguous aliases, unknown
 slots and cyclic or forward parent edges are refused before plan publication.
 The mapping authority killed 81 mutants in A2; its rig-view implementation
@@ -6371,7 +6371,7 @@ and the selected clip. Analog input retains magnitude above the Metaverse Engine
 
 ## Animation performance sampling is bounded and starts from source each frame
 
-`aethyr/anim/layers.coax` evaluates an admitted performance from immutable
+`metaverse-engine/anim/layers.coax` evaluates an admitted performance from immutable
 clips. Each frame starts from rest, then applies base, masked override,
 additive and face layers. Source body tracks cannot leak through a face-only
 layer. Fix-ups follow in foot, look-at and hand order. Foot locks use authored
@@ -6499,7 +6499,7 @@ Everglade's Commons was removed.)
 Everglade II's class and level are the server's (#13259). The API keeps a
 character's class once (`verse.room_class_once`, migration 0160, from the room's
 ` c=CLASS` vitals token) and signs it with the level its stored XP gives into
-the v5 ticket's EXT (`c=srd-fighter,l=5`; `aethyr/session/seat-class.coax`).
+the v5 ticket's EXT (`c=srd-fighter,l=5`; `metaverse-engine/session/seat-class.coax`).
 The room never takes a hello's level for a ticketed seat. It takes the hello's
 class only when the ticket names none. A re-hello, and Change character for a
 non-admin, never changes class or level and never refills Hit Points or slots.
@@ -6570,7 +6570,7 @@ See `docs/verse/2026-11-06-everglade-link-experiment.md` and
 
 ## Native character detail keeps CPU draws and GPU coverage coherent
 
-The character pass shares projected-detail rules in `aethyr/character/detail.coax`.
+The character pass shares projected-detail rules in `metaverse-engine/character/detail.coax`.
 Its groom draws a prefix of 251 ordered curve groups, reuses identical ribbon
 corners, and fades the fractional last group. Width compensation uses the same
 effective share; shadows apply their own capped share and matching boundary
@@ -6614,7 +6614,7 @@ See `docs/verification/everglade-echo-12984-2026-11-07/performance.md`.
 
 ## Declared facts publish with their world variant (#12991)
 
-`aethyr/state/` profile 1 admits full field identities, typed defaults and explicit
+`metaverse-engine/state/` profile 1 admits full field identities, typed defaults and explicit
 lifetimes. A paid fixed step prepares resets and changes privately. Persisted
 epoch/revision/operation fences reject stale owners and duplicate effects.
 Predicates select one complete six-resource variant; publication validates every
@@ -6627,11 +6627,11 @@ never coerce owners or reference identities. Retry contains only declared local
 fields and cannot roll back an external committed domain. Day changes use the
 existing paid clock; visual time cannot drive authoritative routines. AESV, ACK1,
 HH_Save v1 and server revision/CAS retain their existing contracts. The supported
-bounds and residual adapters are in `aethyr/state/README.md`.
+bounds and residual adapters are in `metaverse-engine/state/README.md`.
 
 ## Actor definitions compile before any instance may publish (#12992)
 
-`aethyr/actors/` compiles typed authored inheritance and declared service inputs
+`metaverse-engine/actors/` compiles typed authored inheritance and declared service inputs
 into owned flat records. Unknown keys, mismatched fact/resource identities,
 cycles and unordered read/write conflicts refuse a complete result. Fixed
 parameter slots and phase order require no runtime name or parent lookup.
@@ -6666,11 +6666,11 @@ current schedule row without replaying skipped transitions. A caller must
 complete a refused step with admitted input before publishing that tick.
 Current qualification covers typed intent selection from supplied observations,
 not physical actor execution or playable adoption. Limits and remaining
-integrations are in `aethyr/actors/README.md`.
+integrations are in `metaverse-engine/actors/README.md`.
 
 ## Compiled actors share lifecycle, knowledge and body authority (#12992)
 
-`aethyr/actors/` profile 1 compiles versioned stable archetype IDs, inheritance,
+`metaverse-engine/actors/` profile 1 compiles versioned stable archetype IDs, inheritance,
 typed field/anchor references and phase dependencies before spawn. Pin its full
 content identity and world schema. Admit complete ready resource closures and
 all instance/work reservations before publishing deferred entity components;
@@ -6688,7 +6688,7 @@ new verbs or bypass knowledge. Notices/attributes are observations, not permissi
 
 Actor Lab qualifies the procedural walking profile; it does not migrate
 Everglade's private logic, add seats/attachments, grant combat/dialogue authority
-or define a complete actor save archive. See `aethyr/actors/README.md` and
+or define a complete actor save archive. See `metaverse-engine/actors/README.md` and
 `docs/verification/actors-12992/README.md` for the measured scope and residuals.
 
 ## Everglade II's pieces and tufts hold still and only fade (#13023)
@@ -6703,7 +6703,7 @@ kit thins out past part of its reach by a per-instance rank hashed from where it
 stands, never by a hard radius or by one piece standing in for its neighbours.
 The frame depends only on where the eye is, so walking away and back gives the
 same instances. The key light's shadow tiles snap to whole light-space texels
-(`aethyr/render/cascades.coax`), so shadows stay fixed to the land.
+(`metaverse-engine/render/cascades.coax`), so shadows stay fixed to the land.
 Checks: `everglade/client/client.coax` "a piece keeps its place and size
 at every distance and only fades", "the woods' pieces never move, grow or swap
 as you walk, and come back the same", "Everglade II's shadow tiles: ...";
@@ -6730,7 +6730,7 @@ glade, the woods and the clearing, the same pixels with the cull on and off).
 
 The drawn ground's albedo in `/worlds/everglade2` is the admitted material
 table's (`everglade/world/ground.coax` `e2g_table`), evaluated per pixel by
-`aethyr/render/terrain-shade.coax`'s equations with the weights the tile's
+`metaverse-engine/render/terrain-shade.coax`'s equations with the weights the tile's
 converter uses (`everglade/world/forest.coax` `e2_ground_layer`). The ground's
 indirect light takes `E2G_GROUND_AO_SHARE` of the published canopy bake, and
 AO 1 before the bake publishes and off the tile. The pack's ground vertices
@@ -6739,8 +6739,8 @@ layer share, one named material's weight against another's at the point. Such
 a share names two other known materials, the shares add to one, and any share
 makes the table's identity "ATM2". A table without shares keeps its "ATM1"
 identity unchanged.
-Checks: `aethyr/world/terrain-tile.coax` "a layer share names two other known
-materials ...", `aethyr/render/terrain-shade.coax` "a layer share is one weight
+Checks: `metaverse-engine/world/terrain-tile.coax` "a layer share names two other known
+materials ...", `metaverse-engine/render/terrain-shade.coax` "a layer share is one weight
 against the other ...", `everglade/world/ground.coax` "the table draws the
 pack's ground colours ...", `everglade/client/gpu/everglade2.coax` "the
 ground reads its table's material, the litter's share of the layers under it,
@@ -7613,15 +7613,15 @@ the `e2 rest` room checks and the `resume3` API checks.
 
 ## Lighting reads the simulation's day and the shared weather, and changes neither
 
-The environment resolver's day comes only from `aethyr/world/day.coax`: a
+The environment resolver's day comes only from `metaverse-engine/world/day.coax`: a
 versioned `DayClock` with an explicit mode (fixed, cycle or real), source,
 rate and epoch tick, evaluated at the simulation tick. A shared (multiplayer)
 world refuses a cycle or real clock whose source is the visitor's own page
 (`DayRefusal.local_clock`); the room's clock is anchored at a midnight tick
 from its W header, so seats that joined at different ticks hold the same clock
 and resolve the same day. Its weather comes only from
-`aethyr/world/weather.coax`: a versioned `WeatherCondition` read from a copy
-of `aethyr/world/water-weather.coax`'s schedule and ground, with spell overlays a
+`metaverse-engine/world/weather.coax`: a versioned `WeatherCondition` read from a copy
+of `metaverse-engine/world/water-weather.coax`'s schedule and ground, with spell overlays a
 separate local condition that never enters the global one. Applying it is
 Everglade's existing weather light; nothing here pins the schedule or changes
 gameplay weather, room authority, combat or simulation. A resolved value is
@@ -7633,7 +7633,7 @@ visitor's local wall clock"), with zero `coax mutate --root-only` survivors.
 
 ## Environment regions blend continuously, from a bounded candidate list
 
-`aethyr/world/environment-region.coax` decides where a profile applies. The
+`metaverse-engine/world/environment-region.coax` decides where a profile applies. The
 state's profile (0: the set's default) is the map default, and outside every
 region's band the result is `env_resolve`'s exactly. A region's weight is a
 smoothstep over its inner/outer band, and admission refuses a band narrower
@@ -7648,7 +7648,7 @@ candidate list holds at most 8 and is refused rather than truncated, so a query
 costs at most 64 × 8 index entries whatever the world's size. Camera grading and
 sky read `env_resolve_camera` at the eye; surfaces and fog read `env_resolve_at`
 inside their stored tile, which refuses a point outside the tile or a stale set
-generation. Checks: `coax test aethyr/world/environment-region.coax` ("band
+generation. Checks: `coax test metaverse-engine/world/environment-region.coax` ("band
 weights are continuous and monotone across every shape's edge, sampled
 densely", "overlapping regions normalize by priority", "a pinned route walk
 changes continuously"), with zero `coax mutate --root-only` survivors.
@@ -7656,14 +7656,14 @@ changes continuously"), with zero `coax mutate --root-only` survivors.
 ## The painterly default is the glade profile, and its numbers exist once
 
 Character Create's glade lighting numbers are held once, as `ENV_GLADE_*` in
-`aethyr/world/environment.coax`; `env_glade_profile` is built from them, and the
-painterly default's GPU evaluation (`aethyr/render/painterly.coax`, with
+`metaverse-engine/world/environment.coax`; `env_glade_profile` is built from them, and the
+painterly default's GPU evaluation (`metaverse-engine/render/painterly.coax`, with
 `transfer.coax`, `contact-shade.coax` and `filmic.coax` `film_exposed`) reads the
 same constants. The app's `cg_*` lighting names are delegates and hold no numbers.
 `verse_style_preset(STYLE_PAINTERLY, ...)` names the glade profile as its default
 environment (`environment = ENV_GLADE_ID`); lowpoly, flat, anime and photoreal
 name none. Character Create's glade stays identical to the P1.1 baseline within
-its declared bounds (GitHub #13060). Checks: `coax test aethyr/render/painterly.coax`
+its declared bounds (GitHub #13060). Checks: `coax test metaverse-engine/render/painterly.coax`
 ("the default's evaluation reads the glade profile's resolved values"),
 `coax test verse/style-preset.coax` ("the painterly preset's default environment
 resolves to the glade profile"), the delegate checks in
@@ -7673,10 +7673,10 @@ and `docs/verification/aethyr-lighting-p1-0-2026-11-08/`.
 ## Lit passes read the camera's resolved environment, written once a frame
 
 Character Create, Everglade II, Experimental and 5E Lab write one `ResolvedEnvironment` a frame
-(`aethyr/render/environment-frame.coax` `env_frame_write`: the realm's set admitted whole, the day
-from `aethyr/world/day.coax`, `env_resolve_camera` at the eye, `env_gpu_pack`) into words
+(`metaverse-engine/render/environment-frame.coax` `env_frame_write`: the realm's set admitted whole, the day
+from `metaverse-engine/world/day.coax`, `env_resolve_camera` at the eye, `env_gpu_pack`) into words
 208..315 of the frame's uniform block, and their passes read the key, direct colour, ambient,
-haze, sky, cloud-shadow flag, exposure and saturation only from it (`aethyr/render/painterly.coax`
+haze, sky, cloud-shadow flag, exposure and saturation only from it (`metaverse-engine/render/painterly.coax`
 `paint_env_*`, through the `cg_*` delegates, which take the block). No lit path in those pages
 holds its own key direction, ambient or fog numbers; Everglade II's shadow tiles look along the
 record's key. A refused resolution writes the last record held, or the glade's noon, never a
@@ -7684,8 +7684,8 @@ partial one. Everglade II's set is `everglade/world/environment.coax` `e2_enviro
 day the room's (`day_from_room`); a page with no room is the glade's fixed noon. A painterly made
 realm (`myrealm`) that authors no time of day and no mist writes its style block under the glade
 (`verse/style-preset.coax` `verse_style_glade_env`). Character Create stays inside the P1.1
-baseline's bounds (GitHub #13066). Checks: `coax test aethyr/render/environment-frame.coax`
-(`#authority`, zero mutants), `coax test aethyr/render/painterly.coax` ("the glade record draws
+baseline's bounds (GitHub #13066). Checks: `coax test metaverse-engine/render/environment-frame.coax`
+(`#authority`, zero mutants), `coax test metaverse-engine/render/painterly.coax` ("the glade record draws
 exactly the constants"), the `every frame writes the camera's environment` checks in
 `everglade/client/client.coax` and `fivelab.coax`, `coax test verse/style-preset.coax`
 ("a made painterly realm with nothing authored is the glade's resolved light"), and
@@ -7696,10 +7696,10 @@ painted sky plate follows the record too: the plate's colour is scaled by the re
 over the glade's at the same height (`paint_env_sky_tint`, through `cg_sky_tint`), so the glade's
 record leaves the plate as painted and a night or dusk record darkens it with the land. The
 developer's light views (`?light=ambient|direct|pregrade|postgrade|regions`,
-`aethyr/render/environment-debug.coax`) are off without the query; they write uniform word 51 (0 is
+`metaverse-engine/render/environment-debug.coax`) are off without the query; they write uniform word 51 (0 is
 the ordinary frame) and a readout of the camera's region weights, ambient, key and grade, and they
-never change the record the passes read. Checks: `coax test aethyr/render/painterly.coax` ("the sky
-plate's tint is 1 under the glade"), `coax test aethyr/render/environment-debug.coax`, the `?light=`
+never change the record the passes read. Checks: `coax test metaverse-engine/render/painterly.coax` ("the sky
+plate's tint is 1 under the glade"), `coax test metaverse-engine/render/environment-debug.coax`, the `?light=`
 check in `everglade/client/client.coax`, and the Phase 1 receipt
 `docs/verification/aethyr-lighting-p1-2026-11-08/`.
 

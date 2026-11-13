@@ -51,7 +51,7 @@ cd_held_text :: (out: [] u8, at: int, cond: int, skip: int, caps: bool) -> int {
 
 // ---- icons over a creature
 
-// The marks over a creature (aethyr/fx/abilities.coax fxp_status: these are its FXS_* bits) that its
+// The marks over a creature (metaverse-engine/fx/abilities.coax fxp_status: these are its FXS_* bits) that its
 // conditions show: Poisoned's bubbles, Stunned's and Paralyzed's stars, Frightened's and Charmed's.
 CD_ICON_POISONED :: 1; CD_ICON_STUNNED :: 2; CD_ICON_FRIGHTENED :: 4; CD_ICON_CHARMED :: 8;
 cd_icons :: (cond: int) -> int {

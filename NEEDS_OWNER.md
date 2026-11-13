@@ -294,7 +294,7 @@ coderos-4080 can't run it.
 
 ## Ice Cream Man's camera on the Metaverse Engine's follow: approve the look (#12609, 2026-11-02)
 
-Ice Cream Man's boom camera now runs on `aethyr/cam/follow.coax`, one step per
+Ice Cream Man's boom camera now runs on `metaverse-engine/cam/follow.coax`, one step per
 rules step. The same bot round (`#seed=4&bot`) was drawn before and after,
 frame for frame:
 `docs/verification/data/icecream-boom-2026-11-02/side-by-side/` (before on
@@ -309,7 +309,7 @@ staging. If not, say what to tune: distance, spring or ease.
 ## iOS Metal host onto the render admission ledger (#12628, 2026-11-02)
 
 Move the iOS Metal host (`apps/openagents-ios` `HomeRenderer.swift`) onto
-the shared render admission ledger (`aethyr/render/registry.coax`). This
+the shared render admission ledger (`metaverse-engine/render/registry.coax`). This
 needs an agent on the Mac with Xcode; coderos-4080 can't build the app
 (no `xcodegen`, `xcodebuild` or iOS simulator SDK). It is the last open item
 of #12628; everything else in it is done on Linux.
@@ -317,7 +317,7 @@ of #12628; everything else in it is done on Linux.
 What the Mac agent does, following the native Vulkan host
 (`verse/native/render-host.c`, 491fbeb7e4), which uses the same exports:
 
-1. Add the ledger's C exports (`aethyr/render/host.coax`, over
+1. Add the ledger's C exports (`metaverse-engine/render/host.coax`, over
    `registry.coax`) to `apps/openagents-ios/generate.sh`; they aren't
    compiled into the app today. Swift then calls
    `aethyr_render_registry_storage`, `_open`, `_acquire`, `_release`,
@@ -514,7 +514,7 @@ the silent cue model. M retains the monochrome/cyan comparison.
 Review the new primitives alongside the existing Grid scenes before choosing
 which ones should become production defaults. Source, license and exact port
 boundaries: `docs/verse/2026-11-01-arwes-coax.md` and
-`aethyr/ui/arwes/SOURCES.md`. The full upstream MIT notice is retained.
+`metaverse-engine/ui/arwes/SOURCES.md`. The full upstream MIT notice is retained.
 
 ## Metaverse Engine HUD component library: visual review (2026-11-01)
 

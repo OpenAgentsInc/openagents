@@ -10,9 +10,9 @@
 // index; a thing in the BUILD pane is A11Y_CELL + its index; the picked thing's own actions (turn,
 // bigger, smaller, take away, let go) are A11Y_PICK + 0..4; A11Y_STATUS is the note.
 //
-// Also here: a controller (a gamepad's left stick and its first button) through aethyr/core/input.coax,
+// Also here: a controller (a gamepad's left stick and its first button) through metaverse-engine/core/input.coax,
 // the engine's one input path (realm_pad), for owners and guests alike; and the picked thing's turn,
-// size and removal (aethyr/forge/edit.coax), which the keyboard reaches too (R turns, + and - size,
+// size and removal (metaverse-engine/editor/edit.coax), which the keyboard reaches too (R turns, + and - size,
 // Delete takes it away) and which SAVE keeps (migration 0109).
 //   coax/bin/coax test apps/openagents-web/myrealm.coax --only a11y
 
@@ -107,7 +107,7 @@ realm_pick_key :: (s: [] MyRealm, key: int) -> bool {
 }
 
 // A controller, once a frame: its left stick (x right, y forward, as a pad reads them) and whether
-// its first button is down. aethyr/core/input.coax decides: the dead zone, a junk number mended to none,
+// its first button is down. metaverse-engine/core/input.coax decides: the dead zone, a junk number mended to none,
 // a press counted once however long it is held.
 realm_pad :: (s: [] MyRealm, x: f32, y: f32, jump_down: bool) #export_c #effects(all) {
   i := input_stick(x, y, false, false, false, 0, 0, 0);
@@ -185,7 +185,7 @@ a11y_has :: (s: [] MyRealm, line: string) -> bool {
   #assert realm_key(s[..], t[..], KEY_DELETE, true) && forge_shape_of(s[0].fd[..], key).gone;
 }
 
-#test "a11y: a controller walks and jumps through aethyr/core/input.coax, for a guest too" #steps 60000000 {
+#test "a11y: a controller walks and jumps through metaverse-engine/core/input.coax, for a guest too" #steps 60000000 {
   v: [1] MyRealm; u: [1] Track;
   opened(v[..], u[..], "forge-court", "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 0\ntool jump 1\nfeature trees round 6\nrev 3\npublished 3\n");
   n := frame_of(v[..], u[..], 2560, 1600);

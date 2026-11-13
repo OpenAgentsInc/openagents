@@ -255,7 +255,7 @@ that the compiler tracks and refuses in pure code is R11 work.
 - Clock reads as compiler-checked effects (R11).
 - Adoption: the simulated robot's physics and control steps and the Metaverse's
   fixed-step update driven from declared schedules
-  ([Metaverse Engine chapter 1](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch001-a-frame-has-a-fixed-step.md)),
+  ([Metaverse Engine chapter 1](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch001-a-frame-has-a-fixed-step.md)),
   and recorded clock boundaries for replay
   ([chapter 33](ch33-replay-and-snapshots.md)).
 
@@ -265,6 +265,6 @@ that the compiler tracks and refuses in pure code is R11 work.
 - Typed errors ([chapter 7](ch07-errors.md)).
 - Generic structs with type parameters ([chapter 8](ch08-generics.md)).
 - Used by Metaverse Engine chapters
-  [1](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch001-a-frame-has-a-fixed-step.md),
-  [39](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch039-ephemerides-time-scales-and-frames.md)
-  and [46](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch046-time-warp-that-stops-for-every-event.md).
+  [1](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch001-a-frame-has-a-fixed-step.md),
+  [39](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch039-ephemerides-time-scales-and-frames.md)
+  and [46](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch046-time-warp-that-stops-for-every-event.md).

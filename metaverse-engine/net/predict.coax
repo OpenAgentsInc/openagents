@@ -1,0 +1,329 @@
+// Prediction and reconciliation, once, engine-wide (GitHub #13277, the AAA audit's G5). A page
+// whose room is the authority still moves you the frame you press: it steps your input itself,
+// keeps the input until the room says it stepped it, and when the room's word on you comes it
+// starts again from that word and steps the inputs the room has not stepped yet. This module is
+// that bookkeeping and the ledger of your actions; it moved here from Everglade's two clients
+// (net_replay_* and e2n_replay_*), which each had a copy.
+//
+//   NetPredict   your inputs by number, the newest the room stepped, and whether a re-run is due.
+//                The realm packs an input into whole numbers (NET_PREDICT_WORDS at most) and keeps
+//                the room's word on you itself: those are its row's fields.
+//   NetLedger    your actions that wait for the room (a cast, a rest, a command): pressed,
+//                then confirmed or refused by the room's word, or timed out with no word.
+//
+// The realm supplies its step and its row fields, nothing else. A re-run is a loop the realm runs:
+//   if net_predict_due(p) {
+//     place your body where the room's word has it
+//     for k: 0..<net_predict_pending(p) { net_predict_take(p, k, words); step your body with them }
+//     net_predict_done(p)
+//     net_correct_take(...)   // metaverse-engine/net/interp.coax: the difference, eased out of the drawing
+//   }
+// Nothing here decides an outcome: the room does.
+//   coax/bin/coax test metaverse-engine/net/predict.coax
+//   coax/bin/coax mutate metaverse-engine/net/predict.coax
+#module "aethyr.net.predict";
+#authority;
+
+// book:begin predict
+NET_PREDICT_HIST :: 64;     // your inputs kept for the room's word on you
+NET_PREDICT_WORDS :: 8;     // an input's whole numbers at most
+
+NetPredict :: struct {
+  seq: int;                                              // your newest input's number (0: none yet)
+  acked: int;                                            // the newest input the room said it stepped
+  due: bool;                                             // the room's newer word waits for the re-run
+  replays: int;                                          // re-runs done
+  at: [NET_PREDICT_HIST] int;                            // each kept input's number (0 none), at number % NET_PREDICT_HIST
+  n: [NET_PREDICT_HIST] int;                             // how many words it has
+  words: [NET_PREDICT_HIST * NET_PREDICT_WORDS] int;     // its words
+}
+
+// One step's input, kept for the re-run: its number (from 1, one more each), or 0 and nothing kept
+// for an input of more than NET_PREDICT_WORDS words.
+net_predict_input :: (p: [] NetPredict, words: [] int) -> int #effects(all) {
+  if words.count > NET_PREDICT_WORDS { return 0; }
+  p[0].seq += 1;
+  slot := p[0].seq % NET_PREDICT_HIST;
+  p[0].at[slot] = p[0].seq; p[0].n[slot] = words.count;
+  for w: 0..<words.count { p[0].words[slot * NET_PREDICT_WORDS + w] = words[w]; }
+  return p[0].seq;
+}
+// A number taken by a command that is no input (a cast or a use, in a realm that numbers them with
+// its inputs): the room steps nothing for it, so nothing is kept under it and no re-run steps it.
+net_predict_number :: (p: [] NetPredict) -> int #effects(all) {
+  p[0].seq += 1;
+  p[0].at[p[0].seq % NET_PREDICT_HIST] = 0;
+  return p[0].seq;
+}
+// The input numbered `seq` into out, when it is still kept: how many words it has, or -1.
+net_predict_held :: (p: [] NetPredict, seq: int, out: [] int) -> int #effects(all) {
+  if seq < 1 { return -1; }
+  slot := seq % NET_PREDICT_HIST;
+  if p[0].at[slot] != seq || out.count < p[0].n[slot] { return -1; }
+  for w: 0..<p[0].n[slot] { out[w] = p[0].words[slot * NET_PREDICT_WORDS + w]; }
+  return p[0].n[slot];
+}
+// The room's word on you names the last input of yours it stepped. True when that is newer than
+// any word before: the realm keeps the word's fields, and a re-run is due.
+net_predict_heard :: (p: [] NetPredict, ack: int) -> bool #effects(all) {
+  if ack <= p[0].acked { return false; }
+  p[0].acked = ack; p[0].due = true;
+  return true;
+}
+net_predict_due :: (p: [] NetPredict) -> bool #effects(all) { return p[0].due; }
+// The inputs the room has not stepped yet that are still kept: how many.
+net_predict_pending :: (p: [] NetPredict) -> int #effects(all) {
+  c := 0;
+  for d: 0..<NET_PREDICT_HIST {
+    q := p[0].seq - NET_PREDICT_HIST + 1 + d;
+    if q > p[0].acked && p[0].at[q % NET_PREDICT_HIST] == q { c += 1; }
+  }
+  return c;
+}
+// The number of the k-th of them, oldest first, or 0 when there is no k-th.
+net_predict_nth :: (p: [] NetPredict, k: int) -> int #effects(all) {
+  c := 0;
+  for d: 0..<NET_PREDICT_HIST {
+    q := p[0].seq - NET_PREDICT_HIST + 1 + d;
+    if q <= p[0].acked || p[0].at[q % NET_PREDICT_HIST] != q { continue; }
+    if c == k { return q; }
+    c += 1;
+  }
+  return 0;
+}
+// The k-th of them into out: how many words it has, or -1 when there is no k-th.
+net_predict_take :: (p: [] NetPredict, k: int, out: [] int) -> int #effects(all) { return net_predict_held(p, net_predict_nth(p, k), out); }
+// The re-run is done.
+net_predict_done :: (p: [] NetPredict) #effects(all) {
+  p[0].due = false;
+  p[0].replays = add_sat(p[0].replays, 1);
+}
+// A new socket to the room: every input sent so far counts as stepped (the room starts you from
+// its own word), and no re-run waits. The numbers go on from where they were.
+net_predict_rejoin :: (p: [] NetPredict) #effects(all) { p[0].acked = p[0].seq; p[0].due = false; }
+// book:end predict
+
+// book:begin ledger
+NET_ACTIONS :: 16;          // actions a ledger holds: the pending ones and the newest finished
+NET_ACT_NONE :: 0;          // an empty line
+NET_ACT_PENDING :: 1;       // pressed; the room has not said
+NET_ACT_CONFIRMED :: 2;     // the room took it
+NET_ACT_REFUSED :: 3;       // the room refused it, with a reason
+NET_ACT_TIMED_OUT :: 4;     // no word within the realm's wait
+
+// One action: the realm's kind and request number, when it was pressed and when it ended (the
+// realm's clock, ms), and the room's reason for a refusal (the realm's code).
+NetAction :: struct { state: int; kind: int; seq: int; at: int; done_at: int; why: int; }
+NetLedger :: struct {
+  a: [NET_ACTIONS] NetAction;
+  pressed: int; confirmed: int; refused: int; timed_out: int;   // how many of each, since the ledger was made
+  dropped: int;                                                 // presses with no line free: every line was pending
+}
+
+// The line holding request `seq`, or -1.
+net_action_find :: (l: [] NetLedger, seq: int) -> int #effects(all) {
+  for i: 0..<NET_ACTIONS { if l[0].a[i].state != NET_ACT_NONE && l[0].a[i].seq == seq { return i; } }
+  return -1;
+}
+// You pressed: request `seq` (1 or more, the realm's number) of the realm's `kind` waits for the
+// room from `now`. It takes an empty line, else the line of the action that ended longest ago.
+// False, and nothing changed, for a number below 1 or already in the ledger, or when every line is
+// still pending (counted in `dropped`).
+net_action_press :: (l: [] NetLedger, kind: int, seq: int, now: int) -> bool #effects(all) {
+  if seq < 1 || net_action_find(l, seq) >= 0 { return false; }
+  slot := -1;
+  for i: 0..<NET_ACTIONS {
+    s := l[0].a[i].state;
+    if s == NET_ACT_PENDING { continue; }
+    if s == NET_ACT_NONE { slot = i; break; }
+    if slot < 0 || l[0].a[i].done_at < l[0].a[slot].done_at { slot = i; }
+  }
+  if slot < 0 { l[0].dropped = add_sat(l[0].dropped, 1); return false; }
+  l[0].a[slot] = NetAction.{state = NET_ACT_PENDING, kind = kind, seq = seq, at = now};
+  l[0].pressed = add_sat(l[0].pressed, 1);
+  return true;
+}
+// The room took request `seq`: its kind, or -1 when no pending action has that number (the room's
+// word came twice, or after the wait ran out).
+net_action_confirm :: (l: [] NetLedger, seq: int, now: int) -> int #effects(all) {
+  i := net_action_find(l, seq);
+  if i < 0 || l[0].a[i].state != NET_ACT_PENDING { return -1; }
+  l[0].a[i].state = NET_ACT_CONFIRMED; l[0].a[i].done_at = now;
+  l[0].confirmed = add_sat(l[0].confirmed, 1);
+  return l[0].a[i].kind;
+}
+// The room refused request `seq` for `why` (the realm's code): its kind, or -1 as above.
+net_action_refuse :: (l: [] NetLedger, seq: int, why: int, now: int) -> int #effects(all) {
+  i := net_action_find(l, seq);
+  if i < 0 || l[0].a[i].state != NET_ACT_PENDING { return -1; }
+  l[0].a[i].state = NET_ACT_REFUSED; l[0].a[i].done_at = now; l[0].a[i].why = why;
+  l[0].refused = add_sat(l[0].refused, 1);
+  return l[0].a[i].kind;
+}
+// Pending actions pressed `wait` ms ago or more time out at `now`: how many did.
+net_action_expire :: (l: [] NetLedger, now: int, wait: int) -> int #effects(all) {
+  c := 0;
+  for i: 0..<NET_ACTIONS {
+    if l[0].a[i].state != NET_ACT_PENDING || now - l[0].a[i].at < wait { continue; }
+    l[0].a[i].state = NET_ACT_TIMED_OUT; l[0].a[i].done_at = now;
+    l[0].timed_out = add_sat(l[0].timed_out, 1);
+    c += 1;
+  }
+  return c;
+}
+// The newest action of a kind (the largest request number; the first line, should two hold one
+// number): what a bar or a message shows. An empty action (NET_ACT_NONE) when the ledger holds
+// none of that kind.
+net_action_last :: (l: [] NetLedger, kind: int) -> NetAction #effects(all) {
+  best := NetAction.{};
+  for i: 0..<NET_ACTIONS {
+    a := l[0].a[i];
+    if a.state != NET_ACT_NONE && a.kind == kind && a.seq > best.seq { best = a; }
+  }
+  return best;
+}
+// The oldest action of a kind still pending (the smallest request number; the first line, should
+// two hold one number): the one a word that names no request answers, when the room answers a
+// kind's requests in the order they were pressed. An empty action when none of that kind waits.
+net_action_oldest :: (l: [] NetLedger, kind: int) -> NetAction #effects(all) {
+  best := NetAction.{};
+  for i: 0..<NET_ACTIONS {
+    a := l[0].a[i];
+    if a.state == NET_ACT_PENDING && a.kind == kind && (best.state == NET_ACT_NONE || a.seq < best.seq) { best = a; }
+  }
+  return best;
+}
+// A new socket to the room: what was pending will never be answered. Each pending action (pressed
+// at `now` or before) times out at `now`; how many did.
+net_action_rejoin :: (l: [] NetLedger, now: int) -> int #effects(all) { return net_action_expire(l, now, 0); }
+// book:end ledger
+
+// ---- checks
+
+#test "predict: inputs are numbered from 1 and kept; the room's word starts a re-run of those after it" {
+  p: [1] NetPredict; out: [NET_PREDICT_WORDS] int; big: [NET_PREDICT_WORDS + 1] int;
+  #assert !net_predict_due(p[..]) && net_predict_pending(p[..]) == 0 && net_predict_take(p[..], 0, out[..]) == -1;
+  #assert net_predict_held(p[..], 0, out[..]) == -1 && net_predict_held(p[..], 1, out[..]) == -1 && net_predict_held(p[..], -64, out[..]) == -1;
+  #assert net_predict_input(p[..], big[..]) == 0 && p[0].seq == 0;
+  for i: 1..<6 { w := [3] int.[i * 10, -i, 7]; #assert net_predict_input(p[..], w[..]) == i; }
+  #assert net_predict_input(p[..], out[0..<0]) == 6 && net_predict_input(p[..], big[0..<NET_PREDICT_WORDS]) == 7;   // none, and the most
+  #assert p[0].seq == 7 && net_predict_pending(p[..]) == 7;
+  #assert net_predict_held(p[..], 2, out[..]) == 3 && out[0] == 20 && out[1] == -2 && out[2] == 7 && net_predict_held(p[..], 1, out[..]) == 3 && out[0] == 10;
+  #assert net_predict_held(p[..], 6, out[..]) == 0 && net_predict_held(p[..], 7, out[..]) == NET_PREDICT_WORDS && net_predict_held(p[..], 8, out[..]) == -1;
+  #assert net_predict_held(p[..], 2, out[0..<2]) == -1 && net_predict_held(p[..], 2, out[0..<3]) == 3;                 // out too short: refused whole
+  // the room stepped input 3: the re-run steps 4 to 7, oldest first
+  #assert net_predict_heard(p[..], 3) && net_predict_due(p[..]) && p[0].acked == 3 && net_predict_pending(p[..]) == 4;
+  #assert net_predict_take(p[..], 0, out[..]) == 3 && out[0] == 40 && net_predict_take(p[..], 1, out[..]) == 3 && out[0] == 50 && out[1] == -5;
+  #assert net_predict_take(p[..], 2, out[..]) == 0 && net_predict_take(p[..], 3, out[..]) == NET_PREDICT_WORDS && net_predict_take(p[..], 4, out[..]) == -1 && net_predict_take(p[..], -1, out[..]) == -1;
+  net_predict_done(p[..]); #assert !net_predict_due(p[..]) && p[0].replays == 1 && p[0].acked == 3;
+  // an older or the same word changes nothing; a newer one is due again
+  #assert !net_predict_heard(p[..], 3) && !net_predict_heard(p[..], 2) && !net_predict_due(p[..]) && p[0].acked == 3;
+  #assert net_predict_heard(p[..], 7) && net_predict_pending(p[..]) == 0 && net_predict_take(p[..], 0, out[..]) == -1;
+  net_predict_done(p[..]); #assert p[0].replays == 2;
+  p[0].replays = 9223372036854775807; net_predict_done(p[..]); #assert p[0].replays == 9223372036854775807;
+}
+#test "predict: only the last NET_PREDICT_HIST inputs are kept; a re-run starts at the oldest kept" {
+  p: [1] NetPredict; out: [NET_PREDICT_WORDS] int;
+  for i: 1..<NET_PREDICT_HIST + 11 { w := [1] int.[i]; #assert net_predict_input(p[..], w[..]) == i; }
+  last := NET_PREDICT_HIST + 10;
+  #assert p[0].seq == last && net_predict_pending(p[..]) == NET_PREDICT_HIST;
+  #assert net_predict_held(p[..], 10, out[..]) == -1 && net_predict_held(p[..], 11, out[..]) == 1 && out[0] == 11 && net_predict_held(p[..], last, out[..]) == 1 && out[0] == last;
+  #assert net_predict_take(p[..], 0, out[..]) == 1 && out[0] == 11 && net_predict_take(p[..], NET_PREDICT_HIST - 1, out[..]) == 1 && out[0] == last && net_predict_take(p[..], NET_PREDICT_HIST, out[..]) == -1;
+  // the room's word inside the kept ones, and one past your newest (nothing left to step)
+  #assert net_predict_heard(p[..], 11) && net_predict_pending(p[..]) == NET_PREDICT_HIST - 1 && net_predict_take(p[..], 0, out[..]) == 1 && out[0] == 12;   // the oldest kept is the room's: one fewer
+  #assert net_predict_heard(p[..], 20) && net_predict_pending(p[..]) == last - 20 && net_predict_take(p[..], 0, out[..]) == 1 && out[0] == 21;
+  #assert net_predict_heard(p[..], last + 5) && net_predict_pending(p[..]) == 0 && net_predict_take(p[..], 0, out[..]) == -1;
+  // a number whose line another input took since is not the one kept
+  q: [1] NetPredict; w := [1] int.[5]; #assert net_predict_input(q[..], w[..]) == 1; q[0].at[1] = NET_PREDICT_HIST + 1;
+  #assert net_predict_held(q[..], 1, out[..]) == -1 && net_predict_pending(q[..]) == 0 && net_predict_take(q[..], 0, out[..]) == -1;
+  // a line numbered past your newest input is no input of yours
+  r: [1] NetPredict; #assert net_predict_input(r[..], w[..]) == 1; r[0].at[2] = 2; r[0].n[2] = 1;
+  #assert net_predict_pending(r[..]) == 1 && net_predict_take(r[..], 0, out[..]) == 1 && out[0] == 5 && net_predict_take(r[..], 1, out[..]) == -1;
+}
+#test "predict: a command's number is no input: the re-run steps round it, and the line it took holds nothing" {
+  p: [1] NetPredict; out: [NET_PREDICT_WORDS] int; w := [1] int.[0];
+  w[0] = 11; #assert net_predict_input(p[..], w[..]) == 1;
+  #assert net_predict_number(p[..]) == 2 && p[0].seq == 2;
+  w[0] = 33; #assert net_predict_input(p[..], w[..]) == 3;
+  #assert net_predict_pending(p[..]) == 2 && net_predict_nth(p[..], 0) == 1 && net_predict_nth(p[..], 1) == 3 && net_predict_nth(p[..], 2) == 0 && net_predict_nth(p[..], -1) == 0;
+  #assert net_predict_take(p[..], 1, out[..]) == 1 && out[0] == 33 && net_predict_held(p[..], 2, out[..]) == -1;
+  #assert net_predict_heard(p[..], 2) && net_predict_pending(p[..]) == 1 && net_predict_nth(p[..], 0) == 3;
+  // a number that takes an old input's line empties it
+  for i: 4..<NET_PREDICT_HIST + 3 { w[0] = i; #assert net_predict_input(p[..], w[..]) == i; }
+  #assert p[0].at[3] == 3 && net_predict_number(p[..]) == NET_PREDICT_HIST + 3 && p[0].at[3] == 0 && net_predict_held(p[..], 3, out[..]) == -1;
+  #assert net_predict_held(p[..], NET_PREDICT_HIST + 1, out[..]) == 1 && out[0] == NET_PREDICT_HIST + 1;
+}
+#test "predict: a new socket counts every input as stepped and waits for no re-run" {
+  p: [1] NetPredict; out: [NET_PREDICT_WORDS] int;
+  for i: 1..<5 { w := [1] int.[i]; _ := net_predict_input(p[..], w[..]); }
+  #assert net_predict_heard(p[..], 1) && net_predict_due(p[..]);
+  net_predict_rejoin(p[..]); #assert !net_predict_due(p[..]) && p[0].acked == 4 && net_predict_pending(p[..]) == 0 && p[0].seq == 4;
+  w := [1] int.[9]; #assert net_predict_input(p[..], w[..]) == 5 && net_predict_pending(p[..]) == 1 && net_predict_take(p[..], 0, out[..]) == 1 && out[0] == 9;
+  #assert !net_predict_heard(p[..], 4) && net_predict_heard(p[..], 5);
+}
+#test "ledger: a press waits, then the room confirms or refuses it once, by its number" {
+  l: [1] NetLedger;
+  #assert net_action_find(l[..], 0) == -1 && net_action_find(l[..], 7) == -1 && net_action_last(l[..], 2).state == NET_ACT_NONE;
+  #assert !net_action_press(l[..], 2, 0, 100) && !net_action_press(l[..], 2, -4, 100) && l[0].pressed == 0;
+  #assert net_action_press(l[..], 2, 7, 100) && net_action_press(l[..], 3, 8, 110) && l[0].pressed == 2 && net_action_find(l[..], 7) == 0 && net_action_find(l[..], 8) == 1;
+  #assert !net_action_press(l[..], 2, 7, 120) && !net_action_press(l[..], 5, 8, 120) && l[0].pressed == 2;        // a number is one action
+  a := net_action_last(l[..], 2); #assert a.state == NET_ACT_PENDING && a.seq == 7 && a.at == 100 && a.kind == 2 && a.done_at == 0 && a.why == 0;
+  #assert net_action_confirm(l[..], 9, 130) == -1 && net_action_refuse(l[..], 9, 4, 130) == -1 && l[0].confirmed == 0 && l[0].refused == 0;
+  #assert net_action_confirm(l[..], 7, 130) == 2 && l[0].confirmed == 1;
+  a = net_action_last(l[..], 2); #assert a.state == NET_ACT_CONFIRMED && a.done_at == 130 && a.at == 100;
+  #assert net_action_confirm(l[..], 7, 140) == -1 && net_action_refuse(l[..], 7, 4, 140) == -1 && l[0].confirmed == 1 && l[0].refused == 0 && net_action_last(l[..], 2).done_at == 130;
+  #assert net_action_refuse(l[..], 8, 4, 150) == 3 && l[0].refused == 1;
+  a = net_action_last(l[..], 3); #assert a.state == NET_ACT_REFUSED && a.why == 4 && a.done_at == 150 && a.seq == 8;
+  #assert net_action_refuse(l[..], 8, 5, 160) == -1 && net_action_confirm(l[..], 8, 160) == -1 && net_action_last(l[..], 3).why == 4 && l[0].refused == 1 && l[0].confirmed == 1;
+  // the room's word on the first line's action, too
+  f: [1] NetLedger; #assert net_action_press(f[..], 4, 5, 0) && net_action_refuse(f[..], 5, 2, 1) == 4 && f[0].a[0].state == NET_ACT_REFUSED && f[0].a[0].why == 2;
+  // two lines never hold one number; should they, the first is the one shown
+  f[0].a[1] = NetAction.{state = NET_ACT_CONFIRMED, kind = 4, seq = 5}; #assert net_action_last(f[..], 4).state == NET_ACT_REFUSED;
+  // the newest of a kind is the largest number, whatever line it took
+  #assert net_action_press(l[..], 2, 30, 200) && net_action_press(l[..], 2, 20, 210) && net_action_last(l[..], 2).seq == 30 && net_action_last(l[..], 3).seq == 8 && net_action_last(l[..], 9).state == NET_ACT_NONE;
+  l[0].confirmed = 9223372036854775807; #assert net_action_confirm(l[..], 30, 220) == 2 && l[0].confirmed == 9223372036854775807;
+  l[0].refused = 9223372036854775807; #assert net_action_refuse(l[..], 20, 1, 220) == 2 && l[0].refused == 9223372036854775807;
+  l[0].pressed = 9223372036854775807; #assert net_action_press(l[..], 2, 40, 230) && l[0].pressed == 9223372036854775807;
+}
+#test "ledger: the oldest pending action of a kind is the one an unnumbered word answers" {
+  l: [1] NetLedger;
+  #assert net_action_oldest(l[..], 1).state == NET_ACT_NONE && net_action_oldest(l[..], 1).seq == 0;
+  #assert net_action_press(l[..], 1, 30, 0) && net_action_press(l[..], 2, 5, 1) && net_action_press(l[..], 1, 20, 2) && net_action_press(l[..], 1, 40, 3);
+  #assert net_action_oldest(l[..], 1).seq == 20 && net_action_oldest(l[..], 2).seq == 5 && net_action_oldest(l[..], 3).state == NET_ACT_NONE;
+  #assert net_action_confirm(l[..], 20, 4) == 1 && net_action_oldest(l[..], 1).seq == 30 && net_action_oldest(l[..], 1).state == NET_ACT_PENDING && net_action_oldest(l[..], 1).at == 0;
+  #assert net_action_refuse(l[..], 30, 1, 5) == 1 && net_action_oldest(l[..], 1).seq == 40 && net_action_expire(l[..], 100, 10) == 2 && net_action_oldest(l[..], 1).state == NET_ACT_NONE && net_action_oldest(l[..], 2).state == NET_ACT_NONE;
+  // two lines never hold one number; should they, the first is the one
+  k: [1] NetLedger; k[0].a[0] = NetAction.{state = NET_ACT_PENDING, kind = 1, seq = 7, at = 1}; k[0].a[1] = NetAction.{state = NET_ACT_PENDING, kind = 1, seq = 7, at = 2};
+  #assert net_action_oldest(k[..], 1).at == 1;
+}
+#test "ledger: a press with no word times out; a late word does nothing; a new socket times out what waits" {
+  l: [1] NetLedger;
+  #assert net_action_press(l[..], 1, 5, 1000) && net_action_press(l[..], 1, 6, 2000) && net_action_expire(l[..], 3999, 3000) == 0 && l[0].timed_out == 0;
+  #assert net_action_expire(l[..], 4000, 3000) == 1 && l[0].timed_out == 1 && l[0].a[0].state == NET_ACT_TIMED_OUT && l[0].a[0].done_at == 4000 && l[0].a[1].state == NET_ACT_PENDING;
+  #assert net_action_expire(l[..], 4500, 3000) == 0 && net_action_confirm(l[..], 5, 4600) == -1 && net_action_refuse(l[..], 5, 2, 4600) == -1 && l[0].a[0].state == NET_ACT_TIMED_OUT && l[0].a[0].done_at == 4000;
+  #assert net_action_confirm(l[..], 6, 4700) == 1 && net_action_expire(l[..], 9000, 3000) == 0 && l[0].timed_out == 1 && l[0].a[1].state == NET_ACT_CONFIRMED && l[0].a[1].done_at == 4700;
+  // a new socket: every pending one, however young, and nothing else
+  #assert net_action_press(l[..], 1, 7, 9000) && net_action_press(l[..], 2, 8, 9001) && net_action_rejoin(l[..], 9001) == 2 && l[0].timed_out == 3;
+  #assert net_action_last(l[..], 1).state == NET_ACT_TIMED_OUT && net_action_last(l[..], 1).done_at == 9001 && net_action_last(l[..], 2).state == NET_ACT_TIMED_OUT && l[0].a[1].state == NET_ACT_CONFIRMED;
+  #assert net_action_rejoin(l[..], 9003) == 0;
+  l[0].timed_out = 9223372036854775807; #assert net_action_press(l[..], 1, 9, 9100) && net_action_expire(l[..], 9200, 100) == 1 && l[0].timed_out == 9223372036854775807;
+}
+#test "ledger: a full ledger gives the line of the action that ended longest ago; all pending, the press is dropped" {
+  l: [1] NetLedger;
+  for i: 0..<NET_ACTIONS { #assert net_action_press(l[..], 1, 100 + i, i); }
+  #assert !net_action_press(l[..], 1, 500, 50) && l[0].dropped == 1 && l[0].pressed == NET_ACTIONS && net_action_find(l[..], 500) == -1;
+  // lines 3, 5 and 9 end, 5 first
+  #assert net_action_confirm(l[..], 105, 60) == 1 && net_action_refuse(l[..], 103, 1, 70) == 1 && net_action_confirm(l[..], 109, 80) == 1;
+  #assert net_action_press(l[..], 2, 501, 90) && net_action_find(l[..], 501) == 5 && net_action_find(l[..], 105) == -1 && l[0].a[5].state == NET_ACT_PENDING && l[0].a[5].done_at == 0 && l[0].a[5].why == 0 && l[0].a[5].kind == 2 && l[0].a[5].at == 90;
+  #assert net_action_press(l[..], 2, 502, 91) && net_action_find(l[..], 502) == 3 && l[0].a[3].why == 0;
+  #assert net_action_press(l[..], 2, 503, 92) && net_action_find(l[..], 503) == 9;
+  #assert !net_action_press(l[..], 2, 504, 93) && l[0].dropped == 2;
+  l[0].dropped = 9223372036854775807; #assert !net_action_press(l[..], 2, 505, 94) && l[0].dropped == 9223372036854775807;
+  // an empty line is taken before any ended one, and the first empty one
+  m: [1] NetLedger; #assert net_action_press(m[..], 1, 1, 0) && net_action_confirm(m[..], 1, 5) == 1 && net_action_press(m[..], 1, 2, 6) && net_action_find(m[..], 2) == 1 && net_action_find(m[..], 1) == 0;
+  // an ended one from before the clock's zero is still no empty line
+  z: [1] NetLedger; #assert net_action_press(z[..], 1, 1, -10) && net_action_confirm(z[..], 1, -5) == 1 && net_action_press(z[..], 1, 2, -4) && net_action_find(z[..], 2) == 1 && net_action_find(z[..], 1) == 0;
+  // two ended at the same time: the first line
+  k: [1] NetLedger; for i: 0..<NET_ACTIONS { #assert net_action_press(k[..], 1, 1 + i, 0); }
+  #assert net_action_expire(k[..], 10, 5) == NET_ACTIONS && net_action_press(k[..], 1, 99, 11) && net_action_find(k[..], 99) == 0;
+}

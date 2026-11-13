@@ -136,7 +136,7 @@ with the message `affine operation is not admitted`.
 - `.x`, `.y` and `.z` are raw scalars. Assigning them asserts the unit and
   frame. The compiler doesn't check where the number came from.
 - Metal, CUDA, SPIR-V and WGSL output refuse spatial values (`E0836`).
-- The first consumer is the Metaverse space camera, `aethyr/cam/spacecam.coax`. Its
+- The first consumer is the Metaverse space camera, `metaverse-engine/cam/spacecam.coax`. Its
   world point and floating origin are `f64` points, and the published camera
   signatures keep their raw layouts.
 
@@ -206,7 +206,7 @@ bad := apply_position(drum_to_ship, state_local.velocity); // refused
 The roadmap names three consumers. Their adoption today:
 
 - One Metaverse camera and world transform path. The space camera,
-  `aethyr/cam/spacecam.coax`, uses `f64` points for its world point and floating
+  `metaverse-engine/cam/spacecam.coax`, uses `f64` points for its world point and floating
   origin. The rest of the camera transform is untyped.
 - The joint and pose values of the simulated robot in
   [Psionic chapters 168–170](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/book/ch168-imitation-before-robotics-scale.md).
@@ -214,7 +214,7 @@ The roadmap names three consumers. Their adoption today:
   and `panda-fk-math.coax`) return typed world positions. Joints and poses
   are untyped.
 - The spacecraft scenario's heliocentric, body-fixed, ship and drum-interior
-  states (`aethyr/physics/orbit.coax`, `aethyr/physics/gravity.coax`). Not adopted; these need
+  states (`metaverse-engine/physics/orbit.coax`, `metaverse-engine/physics/gravity.coax`). Not adopted; these need
   the planned state transforms.
 
 Fixtures cover point and vector algebra, refused frame and unit mixing,
@@ -242,6 +242,6 @@ for byte where no conversion is written.
   (annotations and layout reflection, [chapter 13](ch13-data-layout.md)).
 - R11 effect summaries, for user operator overloads.
 - Used by Metaverse Engine chapters
-  [2](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch002-spaces-and-units.md),
-  [39](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch039-ephemerides-time-scales-and-frames.md)
-  and [44](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch044-inside-a-turning-accelerating-ship.md).
+  [2](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch002-spaces-and-units.md),
+  [39](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch039-ephemerides-time-scales-and-frames.md)
+  and [44](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch044-inside-a-turning-accelerating-ship.md).

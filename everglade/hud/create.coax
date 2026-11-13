@@ -4,7 +4,7 @@
 // hint, in Everglade's HUD style (everglade/hud/parts.coax eg_tokens), and the little menu that
 // offers it in the world. The zone lays the boxes out and says what each holds (EgCreateBox); this
 // draws them: the frames into a HudList (eg_create_frames, so the zone may add its own before it
-// emits), then the words (eg_create_words). With a layout trace attached (aethyr/ui/trace.coax)
+// emits), then the words (eg_create_words). With a layout trace attached (metaverse-engine/ui/trace.coax)
 // eg_create_trace puts the panels, each box in the panel that holds it and its arrows first.
 // A zone loads this beside charactercreator.coax as cc (class-bar.coax's way).
 //   coax/bin/coax test --library everglade/client/client.coax --only "eg create"

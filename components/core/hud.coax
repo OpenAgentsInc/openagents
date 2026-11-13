@@ -2,7 +2,7 @@
 // second set: game HUD"; GitHub #13153): a health bar's fill and its damage
 // trail over time, how a banner fades in and out, and where a thing lands on
 // a map ring that turns with your view. Plain numbers in and out, no colours
-// and no pixels. The realm HUDs (aethyr/ui/hud-style.coax, everglade/hud/)
+// and no pixels. The realm HUDs (metaverse-engine/ui/hud-style.coax, everglade/hud/)
 // and the HUD components (components/kit/hud.coax) both use these, so the
 // two cannot drift apart.
 //   coax/bin/coax test components/core/hud.coax

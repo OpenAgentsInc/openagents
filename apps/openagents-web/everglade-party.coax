@@ -22,7 +22,7 @@
 //   coax/bin/coax test apps/openagents-web/everglade5e.coax --only "party:"
 
 NET_PIPE_PARTY :: 8;       // the pipe's GET with the player key: its bytes the API path (the face carries it)
-PT_MEMBERS :: PARTY_MOST;  // a party's members at most (aethyr/session/party.coax, the API's verse.party_most)
+PT_MEMBERS :: PARTY_MOST;  // a party's members at most (metaverse-engine/session/party.coax, the API's verse.party_most)
 PT_CODE :: 40;             // an invite code's bytes at most (the API's are 32 hex)
 PT_POLL_MS :: 5000;        // ms between roster asks while the pane is open
 PT_LATE_MS :: 15000;       // ms an ask may take before the pane says it couldn't reach the party

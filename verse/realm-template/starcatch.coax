@@ -13,7 +13,7 @@
 //   coax/bin/coax test apps/openagents-web/starcatch.coax --steps 2000000000
 
 #load "font.coax";
-#load "../../aethyr/core/loop.coax";   // the fixed steps: the Metaverse Engine's one clock (aethyr/book ch001)
+#load "../../metaverse-engine/core/loop.coax";   // the fixed steps: the Metaverse Engine's one clock (metaverse-engine/book ch001)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 12000;
@@ -25,7 +25,7 @@ STARS :: 24;
 GOAL :: 15;
 MISSES :: 3;
 STEP :: 0.0166666667;
-CATCH_STEP_NS :: 16666667;    // the same step on the clock (aethyr/core/loop.coax)
+CATCH_STEP_NS :: 16666667;    // the same step on the clock (metaverse-engine/core/loop.coax)
 CATCH_FRAME_NS :: 100000000;  // the longest frame that counts: 0.1 s
 BASKET_Y :: 0.86;       // the basket's rim, as a share of the height
 BASKET_HALF :: 0.085;   // its half width, as a share of the width
@@ -55,7 +55,7 @@ Catch :: struct {
   finger: int;           // a finger's hold, bits (and which finger)
   finger_id: int;
   clock: f32; flash: f32;
-  steps: FrameClock;     // the fixed steps (aethyr/core/loop.coax): 1/60 s, at most 8 a frame
+  steps: FrameClock;     // the fixed steps (metaverse-engine/core/loop.coax): 1/60 s, at most 8 a frame
   width: f32; height: f32; dpr: f32;
   golden: bool;
   galaxy: Rect;          // the REALMS button
@@ -298,7 +298,7 @@ draw_hud :: (s: [] Catch, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
   return n;
 }
 
-// A frame's fixed steps, on the Metaverse Engine's one clock (aethyr/core/loop.coax): the frame counts for at most
+// A frame's fixed steps, on the Metaverse Engine's one clock (metaverse-engine/core/loop.coax): the frame counts for at most
 // 0.1 s, its steps are 1/60 s, at most 8 run, and a backlog past that is dropped, never run later.
 // The drawn clock moves by what the frame counted for.
 catch_run :: (s: [] Catch, dt: f32) {

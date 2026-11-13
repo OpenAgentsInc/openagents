@@ -3,7 +3,7 @@
 // steps per room tick, and never grant more simulation time than the server's clock earned.
 #module "room.input.policy";
 #authority;
-#load "../../../aethyr/net/command.coax";
+#load "../../../metaverse-engine/net/command.coax";
 EGI_QUEUE :: 32; EGI_CREDIT :: 30; EGI_STEPS :: 4; EGI_KEEP :: 4;
 eg_credit_profile :: ()->NetCreditProfile #effects(all) { return NetCreditProfile.{hz=30,most=EGI_CREDIT,per_tick=EGI_STEPS,excess=EGI_KEEP}; }
 #test "input policy: the qualified resend fits within bounded earned clock credit" {

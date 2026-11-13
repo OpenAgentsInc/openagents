@@ -2,7 +2,7 @@
 // The existing projects C face and WebGPU host only transport buffers/input.
 // All contacts, capacity, traces and events below are synthetic demo fixtures.
 // coax/bin/coax test apps/openagents-web/demos/hud/projects.coax --library
-#load "../../../../aethyr/ui/draw.coax";
+#load "../../../../metaverse-engine/ui/draw.coax";
 #load "../../../../coax/web/analytics.coax";
 #load "arwes-demo.coax";
 
@@ -19,7 +19,7 @@ ProjectsState :: struct {
   aw_motion:[1]ArMotion;aw_bleep:[1]AxBleep;aw_timers:[8]AxTimer;
   aw_active:bool;aw_loop:bool;still:bool;aw_started:f32;aw_gain:f32;aw_last_cue:f32;
   aw_cues:int;aw_timer_done:int;pointer_x:f32;pointer_y:f32;
-  // where a specimen paints before its records are written (aethyr/ui/arwes-paint.coax)
+  // where a specimen paints before its records are written (metaverse-engine/ui/arwes-paint.coax)
   aw_prims:[16384]Prim;aw_pts:[16384]f32;aw_text:[4096]u8;
   aw_family:bool;
 }

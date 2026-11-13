@@ -1,11 +1,11 @@
 // The Nature reference's bright cyan sky, wind and warm/cool outdoor light.
-// Loaded after aethyr/gpu/wgsl.coax and verse/style.coax by fivelab.coax.
+// Loaded after metaverse-engine/gpu/wgsl.coax and verse/style.coax by fivelab.coax.
 #load "../../../verse/character-glade.coax";
 #load "character-glade-light.coax";
 #load "../../world/meadow.coax";      // the open meadow scattered to the horizon (cg_meadow_vs)
 #load "../../../verse/experimental-ground.coax";   // the ground it stands on (exp_height_gpu); not experimental-terrain.coax, whose dungeon and visibility WGSL does not take (#13132)
 // The sky, the soil seams and the cloud shadows are the shared painterly default's
-// (aethyr/render/painterly.coax, #13060), with their checks; these names delegate to it. The cloud
+// (metaverse-engine/render/painterly.coax, #13060), with their checks; these names delegate to it. The cloud
 // shadows and the sky read the frame's resolved environment (u at PAINT_ENV_U, #13066).
 cg_soil :: (p:V2)->f32 {return paint_soil(p);}
 cg_noise :: (p:V2)->f32 {return paint_noise(p);}
@@ -46,7 +46,7 @@ cg_environment_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->
  else if (m.d.w>17.5f32) {local:=sub3(p,v3(m.b.x,m.b.y,m.b.z));if (m.c.z>0.0f32) {local=scale3(local,m.c.z);}cs:=m.c.y;sn:=m.c.x;p=add3(v3(m.a.x,m.a.y,m.a.z),v3(local.x*cs+local.z*sn,local.y,-local.x*sn+local.z*cs));normal3=v3(normal3.x*cs+normal3.z*sn,normal3.y,-normal3.x*sn+normal3.z*cs);}
  o:FivelabS;o.pos=ifx kind==0 then sky_clip else fivelab_project(p,u);o.world=p;o.normal=normal3;o.uv=uv;o.slice=vertices[cast(int)add_wrap(b,6)];o.tint=v3(tint.x,tint.y,tint.z);o.dye=v4(ifx m.d.w<16.5f32 && m.c.x>0.5f32 then 1.0f32 else 0.0f32,0.0f32,0.0f32,12.0f32);   // dye.x 1: the open meadow's ground (record c.x)
  o.local=v3(cast(f32)kind,f32_from_bits(vertices[cast(int)add_wrap(b,7)]),0.0f32); o.who=instance;
- // a build-site part growing (aethyr/world/build-site.coax): a.w is 1 less its fraction, the tint's
+ // a build-site part growing (metaverse-engine/world/build-site.coax): a.w is 1 less its fraction, the tint's
  // alpha the vertex's reveal key; the pixels past the fraction are dropped (charactercreator_scene_fs)
  if (m.d.w>18.5f32 && m.a.w>0.0f32) {o.local.z=tint.w-(1.0f32-m.a.w);o.dye.w=13.0f32;}
  return o;
@@ -91,7 +91,7 @@ cg_meadow_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fivel
  i:=instance&65535;kit:=cast(int)m.a.x;side:=cast(u32)m.a.z;iz:=i/side;ix:=i-iz*side;half:=side/2;
  origin:=f32(E2_MEADOW_ORIGIN);ex:=u[16];ez:=u[18];
  // the graphics quality's reach (b.y) and the finest grass tier's share (b.z), 1 where the record gives none
- // (charactercreator.coax scene, aethyr/core/quality.coax): at 1 these are the full meadow, number for number
+ // (charactercreator.coax scene, metaverse-engine/core/quality.coax): at 1 these are the full meadow, number for number
  reach:=ifx m.b.y>0.0f32 then m.b.y else 1.0f32;fine:=ifx m.b.z>0.0f32 then m.b.z else 1.0f32;
  if (kit==33) {
   t:=cast(int)m.a.y;c:=e2_field_cell(t);
@@ -386,7 +386,7 @@ cg_fxaa :: (uv:V2,step:V2,image:Tex2D,lin:Sampler)->V3 {
  b:=add3(scale3(a,0.5f32),scale3(add3(cg_post_sample(image,lin,v2(uv.x-dir.x*0.5f32,uv.y-dir.y*0.5f32)),cg_post_sample(image,lin,v2(uv.x+dir.x*0.5f32,uv.y+dir.y*0.5f32))),0.25f32));
  lum:=cg_luma(b);return ifx lum<low || lum>high then a else b;
 }
-// The view point and the contact taps are the shared contact shading's (aethyr/render/contact-shade.coax),
+// The view point and the contact taps are the shared contact shading's (metaverse-engine/render/contact-shade.coax),
 // read from this pass's uniforms: u[16..18] the eye, u[20], u[24], u[28] the forward, right and up
 // axes, u[19] the focal length and u[23], u[27] the frame's middle (pixels).
 cg_viewpoint :: (pixel:V2,z:f32,u:[]f32)->V3 {

@@ -1,15 +1,15 @@
 // Splice's colliders and its edit layer (GitHub #13404; docs/audits/2026-11-12-chat-and-world-building.md,
 // slice 0).
 //
-// Everything that blocks is an entity in a Metaverse Engine World (aethyr/core/world.coax): the
+// Everything that blocks is an entity in a Metaverse Engine World (metaverse-engine/core/world.coax): the
 // mine's walls, the rubble and the boss wall, the banned bot, the rover at the rail stop and every
 // placed piece. An entity carries a transform, a body, a kind and a row; this file adds a shape
-// beside those columns. A walker's step asks the World's spatial index (aethyr/core/spatial.coax)
-// for what stands near, then the shared walking rules (aethyr/physics/collide.coax) push it out.
+// beside those columns. A walker's step asks the World's spatial index (metaverse-engine/core/spatial.coax)
+// for what stands near, then the shared walking rules (metaverse-engine/physics/collide.coax) push it out.
 // No list is scanned: a wall longer than a cell is several entities, a cell each, that all carry
 // the whole wall's box, so the wall pushes as one box whichever part the index found.
 //
-// The edit layer is a scene of placed things in the engine's edit log (aethyr/forge/edit.coax
+// The edit layer is a scene of placed things in the engine's edit log (metaverse-engine/editor/edit.coax
 // ForgeScene): each edit is one typed step with its inverse, undo and redo walk the log, and the
 // World's placed pieces are built from the scene's items in ID order each time the layer's
 // revision changes. A placed piece is scenery: it has no AI and no hit points. It names its row
@@ -19,9 +19,9 @@
 // every kept-clear zone, of you and of what already stands there. A refusal names what it hit.
 // The walk replay (walk.coax) is the second check, made when a layer is saved.
 //   coax/bin/coax test verse/splice/splice-game.coax
-#load "../../aethyr/core/world.coax";
-#load "../../aethyr/physics/collide.coax";
-#load "../../aethyr/forge/edit.coax";
+#load "../../metaverse-engine/core/world.coax";
+#load "../../metaverse-engine/physics/collide.coax";
+#load "../../metaverse-engine/editor/edit.coax";
 
 SL_CAP :: 256;            // entities: about 105 for the designed world, the rest for placed pieces
 SL_LISTS :: 256;          // the spatial index's lists
@@ -167,7 +167,7 @@ sl_solid :: (g: [] SpGame, s: int, tall: bool) -> bool {
   return !tall || sl_f(g, WF_HEIGHT, s) > SL_TALL;
 }
 // The entities that may be within r of (x, z), by slot ascending, into ids: how many. The World's
-// index answers (aethyr/core/spatial.coax): only the cells the radius overlaps are looked at.
+// index answers (metaverse-engine/core/spatial.coax): only the cells the radius overlaps are looked at.
 sl_near :: (g: [] SpGame, x: f32, z: f32, r: f32, ids: [] int) -> int {
   n := spatial_query(sl_grid(g), x, z, r + g[0].ws[0].reach + SL_SLACK, ids);
   if n > ids.count { n = ids.count; g[0].ws[0].crowded += 1; }

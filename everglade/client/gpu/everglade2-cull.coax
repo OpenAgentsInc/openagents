@@ -1,7 +1,7 @@
 // Everglade II's GPU instance cull (GitHub #13050): the kit pieces the page picked (its LOD,
 // thinning and fades stay the page's, everglade/client/client.coax e2_pieces) tested on the GPU against the
 // frustum and the depth pyramid in two phases, learned from Solstice's shaders/vg/cull.wgsl
-// (docs/verse/2026-11-07-solstice-comparison.md) and built on aethyr/render/geometry/cull.coax.
+// (docs/verse/2026-11-07-solstice-comparison.md) and built on metaverse-engine/render/geometry/cull.coax.
 // `coax wgsl` writes these entries as apps/openagents-web/everglade2-cull.wgsl; coax/web/host.js
 // runs them for a page that names a `cull:` asset (its header's "Instance culling"):
 //   1. e2q_bounds, once: each kit piece's box in its own space, from the pack's own vertices.
@@ -16,7 +16,7 @@
 // A piece is hidden only when this frame's own depth (what was drawn before it) is nearer than
 // all of its box, so a piece in view is always drawn: culling never makes one pop.
 //   coax/bin/coax test everglade/client/gpu/everglade2-cull.coax --library
-#load "../../../aethyr/render/geometry/cull.coax";
+#load "../../../metaverse-engine/render/geometry/cull.coax";
 
 // The uniform block: cull.coax's 92 floats, then these (25 vec4s in all).
 E2Q_RUNS :: 92;       // runs the page drew

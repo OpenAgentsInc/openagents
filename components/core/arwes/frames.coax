@@ -1,6 +1,6 @@
 // Port of @arwes/frames, arwes/arwes bdbaa0324900ee978d42036d1304a053c1fe54b5.
 // Copyright (c) 2014 - 2024 Romel Perez (romelperez.dev), MIT.
-// Full license: aethyr/ui/arwes/LICENSE. Source paths: packages/frames/src/createFrame*Settings,
+// Full license: metaverse-engine/ui/arwes/LICENSE. Source paths: packages/frames/src/createFrame*Settings,
 // styleFrameClip{Octagon,Kranox}, animateFrameAssembler; animateDraw length semantics.
 // All dimensions are resolved screen points. No SVG/DOM, CSS parser or effects.
 // Ellipses are tessellated into 64 segments; layer=0 background,1 line,2 deco.

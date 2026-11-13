@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 4 (vendored C: ngtcp2, nghttp3 and picotls, the stated exception to "tools in Coax"
-# for transport and crypto maturity, #13175; everything above aethyr/net's transport stays Coax)
+# for transport and crypto maturity, #13175; everything above metaverse-engine/net's transport stays Coax)
 # Builds the room's QUIC stack from the vendored sources in this directory into OUT/libquic.a, with
 # the host's C compiler and nothing installed: ngtcp2 (QUIC, RFC 9000/9001/9002/9221), nghttp3
 # (HTTP/3 and QPACK) and picotls with its minicrypto binding (TLS 1.3, P-256 and X25519, AES-GCM and

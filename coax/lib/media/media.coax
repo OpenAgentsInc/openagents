@@ -18,7 +18,7 @@
 // (prefers-color-scheme: dark). The page's build (the hashed Wasm name of a
 // Coaxial page, or "") goes in build.
 #load "../net/cdp.coax";
-#load "../../../aethyr/ui/font.coax";
+#load "../../../metaverse-engine/ui/font.coax";
 
 MEDIA_PNG :: 25165824;   // the largest screenshot, 24 MiB
 
@@ -368,7 +368,7 @@ DK_CORNER :: DkRgb.{r = 0.5, g = 0.53, b = 0.58};
 DK_TEXT :: DkRgb.{r = 0.84, g = 0.84, b = 0.86};
 DK_DIM :: DkRgb.{r = 0.45, g = 0.46, b = 0.5};
 DK_FAINT :: DkRgb.{r = 0.26, g = 0.27, b = 0.3};
-// The site's one accent, Arwes cyan hsl(180, 68.07%, 53.33%) (aethyr/ui/hud-frame.coax).
+// The site's one accent, Arwes cyan hsl(180, 68.07%, 53.33%) (metaverse-engine/ui/hud-frame.coax).
 DK_ACCENT :: DkRgb.{r = 0.216, g = 0.851, b = 0.851};
 
 // ---------------------------------------------------------------- the deck file

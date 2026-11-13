@@ -1,2 +1,2 @@
 // Shared scene sampling and admission diagnostics.
-#load "../../aethyr/anim/scene-check.coax";
+#load "../../metaverse-engine/anim/scene-check.coax";

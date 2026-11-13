@@ -1,8 +1,8 @@
 // Everglade II's mouse buttons, as Everglade Experimental's (fivelab.coax lab_pointer_buttons,
-// everglade/zone-combat.coax xc_bow_*): while the mouse looks (aethyr/cam/mouselook.coax), the left
-// button casts, and a Ranger's right button held draws the Longbow (aethyr/action/bow.coax) and its
+// everglade/zone-combat.coax xc_bow_*): while the mouse looks (metaverse-engine/cam/mouselook.coax), the left
+// button casts, and a Ranger's right button held draws the Longbow (metaverse-engine/action/bow.coax) and its
 // release looses it at the reticle (docs/verse/bow-combat.md). The draw's frame is the engine's
-// archer (aethyr/action/archery.coax) and its sounds Everglade's Longbow (everglade/longbow.coax),
+// archer (metaverse-engine/action/archery.coax) and its sounds Everglade's Longbow (everglade/longbow.coax),
 // as in every zone; only the buttons and the room's Attack are this zone's. The left button while drawing lets it
 // down. Any other press is the world's (everglade/client/client.coax e2_pointer): a click looks again, a drag turns.
 // The arrow is the Ranger's Attack through the room, as the bar's (everglade/client/cast.coax e2k_press), and

@@ -2,7 +2,7 @@
 #include <string.h>
 #define HF_EXTERNAL_TRANSPORT 1
 #define coaxial_message media_base_message
-#include "../../../aethyr/host/tests/fixture-face.c"
+#include "../../../metaverse-engine/host/tests/fixture-face.c"
 #undef coaxial_message
 static uint8_t media_packet_bytes[4]={65,66,67,63};
 static uintptr_t media_packet_address;

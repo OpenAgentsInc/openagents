@@ -48,14 +48,14 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
-- [`aethyr/host/README.md`](../../aethyr/host/README.md)
-- [`aethyr/host/conformance.coax`](../../aethyr/host/conformance.coax)
-- [`aethyr/host/build-vulkan.coax`](../../aethyr/host/build-vulkan.coax)
+- [`metaverse-engine/host/README.md`](../../metaverse-engine/host/README.md)
+- [`metaverse-engine/host/conformance.coax`](../../metaverse-engine/host/conformance.coax)
+- [`metaverse-engine/host/build-vulkan.coax`](../../metaverse-engine/host/build-vulkan.coax)
 - [`coax/platform`](../../coax/platform)
 - [`apps/openagents-cli`](../../apps/openagents-cli)
 - [`psionic/lib/pylon`](../../psionic/lib/pylon)
 
-Planned paths: `aethyr/host/windows/`.
+Planned paths: `metaverse-engine/host/windows/`.
 
 ## Sources
 

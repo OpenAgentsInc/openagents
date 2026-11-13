@@ -596,6 +596,6 @@ st_say_at :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, p: Point, line: 
 
 // ---- checks
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).

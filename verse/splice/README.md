@@ -43,7 +43,7 @@ content table, an entity in the engine's World, and a typed edit you can undo.
 editor:
 
 ```sh
-coax/web/tool.sh aethyr/tools/content-edit.coax verse/splice/content/splice.content row landmarks '16|Dance floor|-160|-5120|800'
+coax/web/tool.sh metaverse-engine/tools/content-edit.coax verse/splice/content/splice.content row landmarks '16|Dance floor|-160|-5120|800'
 coax/web/tool.sh verse/splice/tools/content-check.coax verse/splice/content/splice.content --carry
 ```
 
@@ -66,7 +66,7 @@ you see. The collider is the stadium inside that footprint, so it turns with the
 
 ### Edits
 
-`layer.coax` holds the layer as a scene in the engine's edit log (`aethyr/forge/edit.coax`). Places
+`layer.coax` holds the layer as a scene in the engine's edit log (`metaverse-engine/editor/edit.coax`). Places
 are whole centimetres and turns are whole degrees.
 
 | Call | What it does |
@@ -90,7 +90,7 @@ no hit points.
 
 ### How it is built
 
-- **Colliders.** Everything that blocks is an entity in an engine World (`aethyr/core/world.coax`):
+- **Colliders.** Everything that blocks is an entity in an engine World (`metaverse-engine/core/world.coax`):
   the 30 walls, the rubble and the boss wall, the banned bot and every placed piece. A step asks
   the World's spatial index for what stands near, and the engine's walking rules push the walker
   out. No list is scanned.

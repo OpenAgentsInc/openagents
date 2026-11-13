@@ -1,7 +1,7 @@
-#load "../../../aethyr/core/ids.coax";
+#load "../../../metaverse-engine/core/ids.coax";
 // Character checkpoint profile 2. All effects here consume the shared checked
 // capture/flow policies. A schema 1 seat keeps the legacy path unchanged.
-#load "../../../aethyr/session/checkpoint-flow.coax";
+#load "../../../metaverse-engine/session/checkpoint-flow.coax";
 #load "tests/checkpoint-fixture.coax" #test;
 // The limited-use counts profile 2 carries: the first 11 (state 16..26). Profile 3 carries the rest
 // of the rules' RS_USES in its optional `uses` (CC_MORE); a profile 2 restore leaves those full.

@@ -31,10 +31,10 @@ that already touches the file (#13267 to #13269, #13280).
 | Player key | A browser's random secret for a guest (`verse.players`) | Identity | "Player" also means a person and the engine's `Player` body-plus-camera struct |
 | Player | A person playing. Not a key, not a struct | Everglade | SQL `verse.players` is a player key; engine `Player` holds body and camera |
 | Body | The server-owned movable entity of a player (#13271) | Engine | Today part of `Player` |
-| Character | The persistent hero: class, level, XP, abilities, items by reference | Everglade | Rig runtime (`aethyr/character/`), appearance, talk persona (`aethyr/talk/character.coax`), checkpoint capture, and `0130_item_ledger.sql` all use the word |
+| Character | The persistent hero: class, level, XP, abilities, items by reference | Everglade | Rig runtime (`metaverse-engine/character/`), appearance, talk persona (`metaverse-engine/talk/character.coax`), checkpoint capture, and `0130_item_ledger.sql` all use the word |
 | Appearance | A character's look from Character Create | Everglade | Sometimes called character |
-| Rig | An animated skeleton and its parts (`aethyr/character/`) | Engine | Folder and types called "character" |
-| Persona | An NPC's identity for talk | Talk | `aethyr/talk/character.coax` calls it character |
+| Rig | An animated skeleton and its parts (`metaverse-engine/character/`) | Engine | Folder and types called "character" |
+| Persona | An NPC's identity for talk | Talk | `metaverse-engine/talk/character.coax` calls it character |
 | Class | An SRD class. Spelled `class` in code | Rules | Spelled `class`, `klass` and `kind` in one function (`room-everglade.coax:789,867`, extracted in #13267), with level folded into strings like `srd-fighter-5` |
 | Level | Derived from XP by the rules' table | Rules | Two copies of the XP table; client hello can set it |
 | Ability | One action a character can take: spell, class feature, attack | Rules | #13285 defines it |
@@ -46,10 +46,10 @@ that already touches the file (#13267 to #13269, #13280).
 | Wire profile | A JSON file pinning a hand-packed frame's bytes (`proto/verse/*.json`) | Protocol | Shares "profile" with six other uses |
 | Checkpoint | A durable save of a character or a realm's simulation | Room session | Two different things today (character checkpoint vs simulation checkpoint); always qualify it |
 | Item | A game object in the ledger. Never money | Items | |
-| Operation ID | A caller-chosen key that makes a write idempotent | Items, Room session | `OperationId` (`aethyr/core/ids.coax`) in Coax; `text`, 1 to 80 bytes, on the wire and in SQL ([0006](../decisions/0006-item-ledger-rules-in-coax.md)) |
+| Operation ID | A caller-chosen key that makes a write idempotent | Items, Room session | `OperationId` (`metaverse-engine/core/ids.coax`) in Coax; `text`, 1 to 80 bytes, on the wire and in SQL ([0006](../decisions/0006-item-ledger-rules-in-coax.md)) |
 | Domain event | A past-tense fact a context publishes (`RsEvent`) | All | Shares "event" with world, analytics, Nostr, `chat.events` and `projects.events` |
 | World event | A scheduled in-world happening, such as a raid | Everglade | `verse.room_events` and `room-events.coax` |
-| Session (login) | An authenticated browser or app session (`auth.sessions`) | Identity | Six SQL tables named `sessions` (`analytics`, `projects`, `drops`, `signin`, `auth`, plus `verse.pack_sessions`), plus `aethyr/session/` and `openagents.session.v1` |
+| Session (login) | An authenticated browser or app session (`auth.sessions`) | Identity | Six SQL tables named `sessions` (`analytics`, `projects`, `drops`, `signin`, `auth`, plus `verse.pack_sessions`), plus `metaverse-engine/session/` and `openagents.session.v1` |
 | Transcript log | Coder's JSONL log, id `openagents.session.v1` | Coder | Clashes with NIP-SESS (compliance plan C1) and login/room sessions |
 | Engine (Coder) | What runs a Coder task | Coder | Shares "engine" with the Metaverse Engine and SRD `rules/srd/engine.coax` |
 | Golem | A Coder agent session, shown in the Everglade desktop | Golemancy (ACL over Coder) | |

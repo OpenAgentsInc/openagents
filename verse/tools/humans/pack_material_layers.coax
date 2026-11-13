@@ -2,8 +2,8 @@
 // and the base bodies' normal and roughness maps, to a people pack as linear data layers (entry
 // kind 6, "dataN"), with one catalog row each, "D <index> <name> <licence>". Hosts upload them to
 // their own rgba8unorm array, never sRGB-decoded (coax/web/host.js, the data layers); the table
-// that names them per colour layer is aethyr/character/material.coax. They go between the colour
-// layers and the sounds, the order aethyr/forge/pack.coax admits.
+// that names them per colour layer is metaverse-engine/character/material.coax. They go between the colour
+// layers and the sounds, the order metaverse-engine/editor/pack.coax admits.
 // Each map is resized to 512 (Lanczos) and stored as PNG, lossless. The normal maps are the ones the
 // source's glTF exports name (normalTexture), so they are glTF's OpenGL convention, green up the
 // image; they are stored as they are. (The Normals-UnrealEngine copies are the same maps with green

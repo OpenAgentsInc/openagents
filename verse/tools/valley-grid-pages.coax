@@ -1,7 +1,7 @@
 // Author adjacent original-rock grid parent pages and optional independent-oracle inputs.
 #import "Basic";
 #load "../valley/rock-grid.coax";
-#load "../../aethyr/render/geometry/pages.coax";
+#load "../../metaverse-engine/render/geometry/pages.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 tool_main :: ()->int #export_c #effects(all) {

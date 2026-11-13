@@ -6,10 +6,10 @@
 // Workshop) through face.h. Escape is the list; --scene N opens on world N (1 Everglade, 2 the
 // Workshop, 3 the Archery Range, 4 Experimental). Everglade itself is the web's everglade2 realm
 // (Character Create, then the glade), and the Archery Range and Experimental are the web's
-// archery-range and fivelab realms, each run natively by the Metaverse Engine's page host (aethyr/host/apple/
+// archery-range and fivelab realms, each run natively by the Metaverse Engine's page host (metaverse-engine/host/apple/
 // page-host.h; the rows are Realms.swift's, shared with the iOS host): while one is open this app
 // hands it the frames, keys and presses, draws its picture under the Worlds button, and plays its
-// sound through the Apple audio host (aethyr/host/apple/PageAudio.swift).
+// sound through the Apple audio host (metaverse-engine/host/apple/PageAudio.swift).
 //   Everglade [--chat]             opens the window (--chat: with the chat open in the Workshop)
 // The chat (Chat in the Everglade menu, Command-J) is the OpenAgents chat (apps/openagents-desktop/linux/
 // chat.h), a panel on the Workshop's left drawn with the shared components; its sessions are kept in

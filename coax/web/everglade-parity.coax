@@ -1,5 +1,5 @@
 // Everglade's feature parity across its zones (#13075, docs/verse/everglade-feature-parity.md).
-// The owner's rule (2026-11-09): a feature is engine-wide (aethyr/) or game-wide (the Everglade
+// The owner's rule (2026-11-09): a feature is engine-wide (metaverse-engine/) or game-wide (the Everglade
 // layer), and a zone only wires it in. everglade/features.coax is the manifest: each feature, the
 // shared modules that own it, the definitions and file names that mark an implementation of it, and
 // each zone's files, entry units and the features it declares. This tool fails when
@@ -137,7 +137,7 @@ ep_load :: (line: string) -> string {
   return ifx e < line.count then line[p.count..<e] else "";
 }
 #test "a load line's path" {
-  #assert ep_load("#load \"../../aethyr/action/bow.coax\" as bow;") == "../../aethyr/action/bow.coax" && ep_load("#load \"x.coax\";") == "x.coax";
+  #assert ep_load("#load \"../../metaverse-engine/action/bow.coax\" as bow;") == "../../metaverse-engine/action/bow.coax" && ep_load("#load \"x.coax\";") == "x.coax";
   #assert ep_load("// #load \"x.coax\";") == "" && ep_load("#load \"x.coax") == "" && ep_load("#import \"Basic\";") == "";
 }
 
@@ -168,7 +168,7 @@ ep_resolve :: (dir: string, rel: string, out: [] u8) -> string {
 }
 #test "load paths resolve against the loading file's directory" {
   o: [256] u8;
-  #assert ep_resolve("apps/openagents-web", "../../aethyr/action/bow.coax", o[..]) == "aethyr/action/bow.coax";
+  #assert ep_resolve("apps/openagents-web", "../../metaverse-engine/action/bow.coax", o[..]) == "metaverse-engine/action/bow.coax";
   #assert ep_resolve("apps/openagents-web", "fivebar.coax", o[..]) == "apps/openagents-web/fivebar.coax";
   #assert ep_resolve("verse", "./a/../b.coax", o[..]) == "verse/b.coax" && ep_resolve("", "a.coax", o[..]) == "a.coax";
   #assert ep_resolve("a", "../../b.coax", o[..]) == "" && ep_resolve("a/b", "../c/../d.coax", o[..]) == "a/d.coax";
@@ -253,8 +253,8 @@ EP_KNOWN_MAX :: 1024;   // burn-down rows the run keeps track of
   z := EfZone.{name = "t", paths = "everglade/client/ everglade/server/", entries = "everglade/client/client.coax", uses = ""};
   #assert ep_in_zone(z, "everglade/client/cast.coax") && ep_in_zone(z, "everglade/server/aid.coax");
   #assert !ep_in_zone(z, "apps/openagents-web/everglade2.wgsl") && !ep_in_zone(z, "apps/openagents-web/everglade-hotbar.coax");
-  f := EfFeature.{name = "bow", title = "Bow", required = true, issue = 1, owners = "aethyr/action/bow.coax everglade/hud/", marks = "", files = ""};
-  #assert ep_owner(f, "aethyr/action/bow.coax") && ep_owner(f, "everglade/hud/bar.coax") && !ep_owner(f, "aethyr/action/bow-pose.coax") && !ep_owner(f, "everglade/hudx.coax");
+  f := EfFeature.{name = "bow", title = "Bow", required = true, issue = 1, owners = "metaverse-engine/action/bow.coax everglade/hud/", marks = "", files = ""};
+  #assert ep_owner(f, "metaverse-engine/action/bow.coax") && ep_owner(f, "everglade/hud/bar.coax") && !ep_owner(f, "metaverse-engine/action/bow-pose.coax") && !ep_owner(f, "everglade/hudx.coax");
 }
 
 // ---- running it

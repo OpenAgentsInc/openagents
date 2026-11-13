@@ -3,7 +3,7 @@
 // (ecs.coax, arena.coax, rules.coax: every system and check of the demo);
 // this file is the page over them: the ship's hull as the demo built it, the
 // cover, the reactor, the cargo, the bolts and the cutter's beams, the
-// engineers as aethyr/anim/figure.coax figures and the creatures as bone-box
+// engineers as metaverse-engine/anim/figure.coax figures and the creatures as bone-box
 // figures, the camera at your
 // shoulder, the controls (keyboard and two thumbs), the HUD, the deck's hour
 // (each wave later in the day), its lamps and alarms, and the save kept in
@@ -17,15 +17,15 @@
 // deadgears-face.c binds it for the browser.
 //   coax/bin/coax test apps/openagents-web/deadgears.coax --steps 4000000000
 
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../verse/deadgears/rules.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
-#load "../../aethyr/core/budget.coax";
-#load "../../aethyr/move/walk.coax" as pc;   // the controller every walkable realm shares (#6d99)
-#load "../../aethyr/physics/collision-profiles.coax" as walk_profiles;
-#load "../../aethyr/physics/collide.coax" as walk_capsule;
-#load "../../aethyr/anim/figure.coax" as fig;  // the creatures' bodies and gaits (#ea44)
+#load "../../metaverse-engine/core/budget.coax";
+#load "../../metaverse-engine/move/walk.coax" as pc;   // the controller every walkable realm shares (#6d99)
+#load "../../metaverse-engine/physics/collision-profiles.coax" as walk_profiles;
+#load "../../metaverse-engine/physics/collide.coax" as walk_capsule;
+#load "../../metaverse-engine/anim/figure.coax" as fig;  // the creatures' bodies and gaits (#ea44)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -72,7 +72,7 @@ SAVE_MIND_ITEMS :: 3;  // what one creature remembers of you: a sight, a sound a
 SAVE_MAX :: SAVES + 2 + SAVE_MINDS * (3 + SAVE_MIND_ITEMS * 5);
 
 KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7; KEY_SHIFT :: -13;
-DG_RUN_BY_DEFAULT :: true;   // aethyr/move/player.coax RUN_BY_DEFAULT: moving runs, Shift (HOLD_RUN) walks
+DG_RUN_BY_DEFAULT :: true;   // metaverse-engine/move/player.coax RUN_BY_DEFAULT: moving runs, Shift (HOLD_RUN) walks
 HOLD_FORWARD :: 1; HOLD_BACK :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_RUN :: 16;
 HOLD_TURN_LEFT :: 32; HOLD_TURN_RIGHT :: 64; HOLD_TILT_UP :: 128; HOLD_TILT_DOWN :: 256; HOLD_FIRE :: 512; HOLD_REPAIR :: 1024; HOLD_JUMP :: 2048;
 
@@ -119,7 +119,7 @@ DeadGears :: struct {
   card: bool;   // ?card=1: the hold without the HUD, for a link's card (coax/web/og-render.ts)
   feet: Point; yaw: f32; pitch: f32; walking: f32;
   control:[1]pc.WalkControlV2;
-  pl: pc.Player;            // you, walked by aethyr/move/player.coax
+  pl: pc.Player;            // you, walked by metaverse-engine/move/player.coax
   face: f32;                // the way you face: the crosshair with the cutter up, else the way you walk
   raised: f32;              // seconds the cutter stays up after a shot
   jump_tap: bool;           // JUMP tapped on a phone: one jump on the next step
@@ -792,7 +792,7 @@ the_world :: (s: [] DeadGears) -> pc.World {
   return w;
 }
 
-// You walk with aethyr/move/player.coax (#6d99), as the Grid, Everglade and the
+// You walk with metaverse-engine/move/player.coax (#6d99), as the Grid, Everglade and the
 // garden do: you speed up and slow down, run, jump (Space, or JUMP on a
 // phone), step onto what is low enough and stand on what you jump onto,
 // among the hull, the cover, the reactor, the crates and every other
@@ -1040,7 +1040,7 @@ build_hull :: (s: [] DeadGears) {
   s[0].hull_n = s[0].obj_n;
 }
 
-// ---- the engineers (#4d39): each a aethyr/anim/figure.coax person in a hard
+// ---- the engineers (#4d39): each a metaverse-engine/anim/figure.coax person in a hard
 // suit, drawn bone by bone as round cones (as Hecate's Cemetery draws you).
 // The legs walk and run by the metres walked, a stride for a stride's
 // length, so the feet don't slide; over them the arms carry the cutter: at
@@ -1282,12 +1282,12 @@ creature :: (s: [] DeadGears, kind: int, x: f32, z: f32, yaw: f32, hp: f32, m: M
     limb(s, origin, yaw, v3(0, 0.26, 0.19), v3(0.16, 0.035, 0.025), v3(0.8, 0.45, 0.3), 1, 0, 0);
     return;
   }
-  // The rest are soft-bone figures (#ea44, aethyr/anim/figure.coax): each kind its
+  // The rest are soft-bone figures (#ea44, metaverse-engine/anim/figure.coax): each kind its
   // own build and gait, drawn bone by bone.
   bones(s, kind, origin, yaw, m, flesh, bone, dark);
 }
 
-// ---- the creatures' bodies (#ea44): aethyr/anim/figure.coax rigs and gaits,
+// ---- the creatures' bodies (#ea44): metaverse-engine/anim/figure.coax rigs and gaits,
 // each kind its own silhouette. The crawler is a long low four-legged
 // thing, the hound a deep-chested runner with a tail, the reaver a lean
 // stalker reaching with bone blades, the brute a hunched giant with spines
@@ -1712,7 +1712,7 @@ camera :: (s: [] DeadGears, w: f32, h: f32) {
   f := view_dir(s);
   at := shoulder_at(s);
   // Pulled in by the hull, cover, reactor, crates and bodies as every
-  // realm's camera is (aethyr/move/player.coax camera_room), and kept over the deck.
+  // realm's camera is (metaverse-engine/move/player.coax camera_room), and kept over the deck.
   dist := f32(CAMERA_DIST);
   if s[0].wall_n == 0 { gather_world(s); }
   room := pc.camera_room(the_world(s), pc.v3(at.x, at.y, at.z), pc.v3(-f.x, -f.y, -f.z), dist);
@@ -2299,7 +2299,7 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   }
 }
 
-// ---- the controller (#6d99): aethyr/move/player.coax walks you
+// ---- the controller (#6d99): metaverse-engine/move/player.coax walks you
 
 feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.body.vel.x * s[0].pl.body.vel.x + s[0].pl.body.vel.z * s[0].pl.body.vel.z); }
 
@@ -2534,7 +2534,7 @@ tag_end :: () -> int { return SAVE_TAG.count + 1; }
   #assert deadgears_key(s[..], KEY_ENTER, 0) && g.st[0].phase == FIGHT && g.st[0].wave == 1;
 }
 
-// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
+// Full native integration scenario: metaverse-engine/tests/check_native_gameplay.py.
 
 // A player that aims at the nearest creature and holds fire, and between
 // waves walks to the reactor and holds repair: through the keys on a laptop
@@ -2786,8 +2786,8 @@ won_through_the_controls :: (phone_size: bool) -> bool {
   g := game(s[..]);
   return g.st[0].phase == WON && g.st[0].repairs == 3 && s[0].shown[BTN_AGAIN];
 }
-// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
-// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
+// Full native integration scenario: metaverse-engine/tests/check_native_gameplay.py.
+// Full native integration scenario: metaverse-engine/tests/check_native_gameplay.py.
 #test "a full game is lost by standing still" #steps 588000000 {
   s: [1] DeadGears;
   started(s[..]);
@@ -2818,7 +2818,7 @@ won_through_the_controls :: (phone_size: bool) -> bool {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of Dead Gears may use.
+// The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of Dead Gears may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 // The bytes grew by 24 KB for the mutants' second flow field (#12854).
 DEADGEARS_BUDGET :: FrameBudget.{steps = 8, vertices = 7000, draws = 0, bytes = 2514944};

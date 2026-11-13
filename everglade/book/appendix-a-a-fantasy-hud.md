@@ -1,7 +1,7 @@
 # Appendix A. A fantasy HUD
 
 > **Status: partly implemented.** The style is in
-> [`aethyr/ui/hud-style.coax`](../../aethyr/ui/hud-style.coax). Everglade's HUD
+> [`metaverse-engine/ui/hud-style.coax`](../../metaverse-engine/ui/hud-style.coax). Everglade's HUD
 > parts are in
 > [`everglade/hud/parts.coax`](../../everglade/hud/parts.coax),
 > and its renderer is in
@@ -66,7 +66,7 @@ exactly as before.
 
 ## The checks
 
-In `aethyr/ui/hud-style.coax`:
+In `metaverse-engine/ui/hud-style.coax`:
 
 - The style named `"fantasy"` is FANTASY, and anything else is SCIFI.
 - A tray leaves each slot's picture clear.

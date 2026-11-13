@@ -24,15 +24,15 @@
 #load "../../verse/anime/stage.coax";
 #load "../../verse/anime/take.coax";
 #load "../../coax/lib/nostr/block/fi-base64url.coax";
-#load "../../aethyr/ui/font.coax";
-#load "../../aethyr/core/budget.coax";
-#load "../../aethyr/render/cel-mesh.coax";
+#load "../../metaverse-engine/ui/font.coax";
+#load "../../metaverse-engine/core/budget.coax";
+#load "../../metaverse-engine/render/cel-mesh.coax";
 #load "animelab-cast.coax";
 #load "animelab-world.coax";
 #load "animelab-take-checks.coax";
 
 MAX_VERTICES :: 36000;     // the overlay's quads
-VERTEX_FLOATS :: 12;       // a stroke's or a sans glyph's corner, as aethyr/ui/draw.coax and font.coax lay them out
+VERTEX_FLOATS :: 12;       // a stroke's or a sans glyph's corner, as metaverse-engine/ui/draw.coax and font.coax lay them out
 HOST_FACTS :: 600;
 START_AT :: 702;            // coaxial.send(702, "SECONDS"): play on from that moment (a clip recorded in parts)
 PIN_MOMENT :: 700;          // a page script's coaxial.send(700, "SECONDS"): hold that moment (shots; "-1" lets it run)
@@ -336,7 +336,7 @@ ink_of :: (r: f32, g: f32, b: f32, light: f32) -> Ink { return Ink.{core = 1, li
 label :: (out: [] f32, at: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int { return draw_sans(out, at, t, x, base, cap, k); }
 text_w :: (t: string, cap: f32) -> f32 { return sans_width(t, sans_em(cap)); }
 // A stroke on the overlay, w device pixels wide: one quad round the segment, its corners carrying
-// where they are along and across it (the stroke vertex aethyr/ui/draw.coax lit writes).
+// where they are along and across it (the stroke vertex metaverse-engine/ui/draw.coax lit writes).
 stroke :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, w: f32, r: f32, g: f32, b: f32, light: f32) -> int {
   if lit(out, at, ax, ay, bx, by, w * 0.5, light, w * 0.8, r, g, b, 0) { return at + 6; }
   return at;
@@ -717,7 +717,7 @@ animelab_live_n :: (s: [] Animelab) -> int #export_c #effects(all) { return s[0]
 animelab_draw_count :: (s: [] Animelab) -> int #export_c #effects(all) { return ifx s[0].world_built then DRAWS else 0; }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/core/budget.coax): what one frame of Anime Lab may use.
+// The frame budget (metaverse-engine/core/budget.coax): what one frame of Anime Lab may use.
 ANIMELAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 6, draws = DRAWS, bytes = 16777216};
 
 #test "Anime Lab's frames fit its declared budget" {

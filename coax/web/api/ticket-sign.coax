@@ -1,4 +1,4 @@
-// The API's seat-ticket writer (#13260): aethyr/session/seat-ticket.coax, the one v5 writer, compiled
+// The API's seat-ticket writer (#13260): metaverse-engine/session/seat-ticket.coax, the one v5 writer, compiled
 // to C as one unit of the API (ticket-sign-unit.c; deploy.sh, test.sh). player.c room_ticket calls it
 // when OA_ROOM_TICKET_SIGNING_KEY is set. It also checks room shards' writes (coax/web/room/room-write.coax,
 // room_write_signed in rooms.c) when OA_ROOM_WRITE_MASTER is set. The format, its reader and the checks are in that file.
@@ -8,8 +8,8 @@
 // (capacity_record_*_c).
 //   coax c coax/web/api/ticket-sign.coax --run-steps 250000000 --library --header ticket-sign.generated.h
 #run_steps 250000000;
-#load "../../../aethyr/session/seat-ticket.coax";
+#load "../../../metaverse-engine/session/seat-ticket.coax";
 #load "../room/room-write.coax";
 #load "../room/room-crash.coax";   // crash report v1: the one codec, for rooms.c and service.c (#13298)
 #load "soak-record.coax";   // capacity record v1: the one codec, for rooms.c (#13296)
-#load "../../../aethyr/session/seat-class.coax";   // the EXT's class and level (#13259)
+#load "../../../metaverse-engine/session/seat-class.coax";   // the EXT's class and level (#13259)

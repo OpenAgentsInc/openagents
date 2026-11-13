@@ -1,6 +1,6 @@
-#load "../../../aethyr/core/ids.coax";
-#load "../../../aethyr/net/grid.coax";   // the engine's spatial grid (#13178)
-#load "../../../aethyr/core/slot-set.coax";   // who a seat blocks: one bit a seat in a column of words (#13275)
+#load "../../../metaverse-engine/core/ids.coax";
+#load "../../../metaverse-engine/net/grid.coax";   // the engine's spatial grid (#13178)
+#load "../../../metaverse-engine/core/slot-set.coax";   // who a seat blocks: one bit a seat in a column of words (#13275)
 // Interest management for the Everglade rooms (#12789; docs/research/mmo.md section 7): which of a
 // room's entities each seat may receive this tick, and how much each matters. The send path
 // (room-everglade.coax eg_send, the v3 replication of #12783) asks im_pick once per seat per tick and
@@ -8,7 +8,7 @@
 //
 // Each tick the room puts every entity it has (im_put: its wire ID, where it is, the seat it is or
 // rides on, its flags), then im_sweep drops the ones it didn't put. The entities sit in the engine's
-// spatial grid (aethyr/net/grid.coax, #13178), made for IM_EXIT: im_pick asks it for those within
+// spatial grid (metaverse-engine/net/grid.coax, #13178), made for IM_EXIT: im_pick asks it for those within
 // IM_EXIT of the seat, then looks at the room-wide list and the seat's own list. It never scans
 // every entity for every seat.
 //
@@ -25,7 +25,7 @@
 //     its own seat, and to another seat only while im_reveal has revealed it to that seat, for example
 //     after it strikes near them.
 //   - A party member out of range gets the health-only channel (IM_HEALTH), under the party roster's
-//     visibility (aethyr/session/party.coax party_sees: neither blocks the other). Everglade's seats
+//     visibility (metaverse-engine/session/party.coax party_sees: neither blocks the other). Everglade's seats
 //     aren't told their party yet: im_party is the hook, and every seat starts in no party. A party member in another room is
 //     that room's (each map is its own room), so this module can't send it.
 //
@@ -33,7 +33,7 @@
 // as blocked and withheld as hidden, per seat, from the last pick.
 
 IM_SEATS :: 16;                 // EG_SEATS
-IM_SEAT_WORDS :: (IM_SEATS + SLOT_SET_BITS - 1) / SLOT_SET_BITS;   // a set of seats' words (aethyr/core/slot-set.coax)
+IM_SEAT_WORDS :: (IM_SEATS + SLOT_SET_BITS - 1) / SLOT_SET_BITS;   // a set of seats' words (metaverse-engine/core/slot-set.coax)
 IM_ENTS :: 512;                 // original entities plus the separate forest records (#12940)
 IM_PICKS :: IM_ENTS;
 IM_KEYS :: 1024;                // the ID table's lists (a power of two)
@@ -58,7 +58,7 @@ Interest :: struct {
   used: int;                              // slots 0 to used - 1 have been handed out; the free ones are on free
   free: [IM_ENTS] int; free_n: int;
   key: [IM_KEYS] int;                     // each ID list's first slot, plus 1 (0 empty)
-  grid: [1] NetGrid;                      // where each slot stands (aethyr/net/grid.coax), made for IM_EXIT
+  grid: [1] NetGrid;                      // where each slot stands (metaverse-engine/net/grid.coax), made for IM_EXIT
   own: [IM_SEATS] int;                    // each seat's list's first slot, plus 1
   room: [IM_ENTS] int; room_n: int;       // the room-wide slots
   // per seat
@@ -73,7 +73,7 @@ Interest :: struct {
   visits: int;                            // entities im_pick has looked at, all seats, since im_clear (the cost)
 }
 
-// The seats seat s blocks, as a set (aethyr/core/slot-set.coax); the empty set for a seat that is none.
+// The seats seat s blocks, as a set (metaverse-engine/core/slot-set.coax); the empty set for a seat that is none.
 im_blocks_of :: (im: [] Interest, s: int) -> [] int {
   if s < 0 || s >= IM_SEATS { return im[0].blocks[0..<0]; }
   return im[0].blocks[s * IM_SEAT_WORDS..<(s + 1) * IM_SEAT_WORDS];
@@ -254,7 +254,7 @@ im_pick :: (im: [] Interest, s_id: SeatId, x: f32, z: f32, tick: int, out: [] Im
   // party members out of range: their health only
   if im[0].party[s] != 0 {
     for q: 0..<IM_SEATS {
-      // the roster's visibility (aethyr/session/party.coax): the same party, neither blocking the other
+      // the roster's visibility (metaverse-engine/session/party.coax): the same party, neither blocking the other
       blocked := im_blocked(im, s, q) || im_blocked(im, q, s);
       if q == s || !party_sees(im[0].party[q] == im[0].party[s], false, false, blocked) { continue; }
       i = im_find(im, EntityId.{value = q});   // a player's wire ID is its seat

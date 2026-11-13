@@ -36,7 +36,7 @@ CC_CHAT :: "components/zeron/";   // the chat set: no layer of its own yet, but 
 CC_OUTSIDE :: -1;
 CC_LAYERS :: [6] string.["components/core/", "components/layout/", "components/paint/", "components/skin/", "components/backend/", "components/kit/"];
 // What a layer may load from outside components/.
-CC_ALLOWED_OUTSIDE :: [2] string.["aethyr/gpu/wgsl.coax", "aethyr/gpu/wg-make.coax"];   // the shader dialect, and the one helper it shares with Character Create (#13225)
+CC_ALLOWED_OUTSIDE :: [2] string.["metaverse-engine/gpu/wgsl.coax", "metaverse-engine/gpu/wg-make.coax"];   // the shader dialect, and the one helper it shares with Character Create (#13225)
 
 // What a file outside components/ does that components/ should do for it.
 CC_MARKDOWN :: 1; CC_WRAP :: 2; CC_EDIT :: 4;
@@ -45,13 +45,13 @@ CcMove :: struct { path: string; does: int; }
 // text itself or keeps its own edit buffer. Take a line out when its file
 // uses components/ instead.
 CC_TO_MOVE :: [22] CcMove.[
-  CcMove.{path = "aethyr/ui/hud-menu.coax", does = CC_WRAP},
+  CcMove.{path = "metaverse-engine/ui/hud-menu.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-desktop/zeron/desk.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/builder.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/everglade-events.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/everglade-room.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/everglade-voice.coax", does = CC_WRAP},
-  CcMove.{path = "aethyr/ui/font.coax", does = CC_WRAP},
+  CcMove.{path = "metaverse-engine/ui/font.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/memorial.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/myrealm.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/newland.coax", does = CC_WRAP},
@@ -343,7 +343,7 @@ tool_main :: () -> int #export_c #effects(all) {
   b: [256] u8;
   #assert cc_resolve("components/layout/text.coax", "../core/markdown.coax", b[..]) == "components/core/markdown.coax";
   #assert cc_resolve("components/layout/text.coax", "measure.coax", b[..]) == "components/layout/measure.coax";
-  #assert cc_resolve("components/backend/gpu-shader.coax", "../../aethyr/gpu/wgsl.coax", b[..]) == "aethyr/gpu/wgsl.coax";
+  #assert cc_resolve("components/backend/gpu-shader.coax", "../../metaverse-engine/gpu/wgsl.coax", b[..]) == "metaverse-engine/gpu/wgsl.coax";
   #assert cc_resolve("a.coax", "../x.coax", b[..]) == "" && cc_resolve("a/b.coax", "./c.coax", b[..]) == "a/c.coax";
   #assert cc_load_target("#load \"../core/text.coax\";   // why") == "../core/text.coax" && cc_load_target("// #load \"x\"") == "" && cc_load_target("x := 1;") == "";
 }
@@ -352,8 +352,8 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert !cc_may_load(CC_CORE, "components/layout/round.coax") && !cc_may_load(CC_LAYOUT, "components/paint/list.coax") && !cc_may_load(CC_LAYOUT, "components/skin/skin.coax") && !cc_may_load(CC_PAINT, "components/backend/gpu.coax");
   #assert cc_may_load(CC_PAINT, "components/layout/measure.coax") && cc_may_load(CC_SKIN, "components/paint/list.coax") && cc_may_load(CC_BACKEND, "components/skin/terminal.coax");
   #assert cc_may_load(CC_KIT, "components/skin/skin.coax") && cc_may_load(CC_KIT, "components/kit/button.coax") && !cc_may_load(CC_KIT, "components/backend/gpu.coax");
-  #assert !cc_may_load(CC_KIT, "components/zeron/composer.coax") && !cc_may_load(CC_CORE, "aethyr/ui/tree.coax") && !cc_may_load(CC_KIT, "coax/lib/json/json.coax");
-  #assert cc_may_load(CC_BACKEND, "aethyr/gpu/wgsl.coax") && cc_may_load(CC_OTHER, "aethyr/ui/hud-style.coax");
+  #assert !cc_may_load(CC_KIT, "components/zeron/composer.coax") && !cc_may_load(CC_CORE, "metaverse-engine/ui/tree.coax") && !cc_may_load(CC_KIT, "coax/lib/json/json.coax");
+  #assert cc_may_load(CC_BACKEND, "metaverse-engine/gpu/wgsl.coax") && cc_may_load(CC_OTHER, "metaverse-engine/ui/hud-style.coax");
 }
 #test "a look in a component: colours made or written out and a skin's faces; a comment or a role is none" {
   #assert cc_names_a_look("  fill := hex(0x27272a, 1);") && cc_names_a_look("c := rgba(1, 1, 1, 0.1);") && cc_names_a_look("x := 0xe8e8ea;") && cc_names_a_look("f := FONT_BOLD;");

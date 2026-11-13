@@ -7,7 +7,7 @@
 // Everglade's HUD style (eg_tokens, everglade/hud/parts.coax). A zone loads this beside
 // charactercreator.coax as cc (the class bar's way, class-bar.coax), fills what it knows and calls.
 //   coax/bin/coax test --library everglade/client/client.coax --only "eg win"
-#load "../../aethyr/talk/tree.coax";
+#load "../../metaverse-engine/talk/tree.coax";
 #load "../world/golem-bench.coax";
 
 eg_win_put :: (b: [] u8, at: int, t: string) -> int { n := at; for ch: t { if n < b.count { b[n] = ch; n += 1; } } return n; }

@@ -5,11 +5,11 @@
 #load "experimental-ground.coax" as ground;   // the GPU passes' copy of the sites and exp_height_gpu (#13132)
 #load "experimental-dungeon.coax" as dungeon;
 #load "experimental-meadow-baked.coax" as baked;   // the packed meadow ground at sampled points (#13129)
-#load "../aethyr/world/building.coax" as building;
+#load "../metaverse-engine/world/building.coax" as building;
 #load "../everglade/world/housewright.coax" as hw;
 #load "../everglade/world/town.coax" as town;
-#load "../aethyr/world/plots.coax" as plots;
-#load "../aethyr/world/build-site.coax" as bs;
+#load "../metaverse-engine/world/plots.coax" as plots;
+#load "../metaverse-engine/world/build-site.coax" as bs;
 
 ExpSite :: struct {x:f32;z:f32;left:f32;right:f32;back:f32;front:f32;}
 EXP_SITES :: 32;

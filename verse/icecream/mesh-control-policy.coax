@@ -4,8 +4,8 @@
 #import "Basic";
 #authority;
 #load "../../coax/lib/sys/proc.coax";
-#load "../../aethyr/render/tests/tooling-policy.coax";
-#load "../../aethyr/tests/render-wire-policy.coax";
+#load "../../metaverse-engine/render/tests/tooling-policy.coax";
+#load "../../metaverse-engine/tests/render-wire-policy.coax";
 #load "mesh-control-checks.coax";
 mbc_caught :: (kind:int,bounds:bool,emission:ProcRun,compile:ProcRun,run:ProcRun,text:string)->bool #effects(all) {
   if !rw_outcome(emission.started,emission.status,emission.timed_out,emission.cut,false) ||

@@ -11,10 +11,10 @@
 #load "../world/points.coax";   // the spawn (#13078)
 
 E2_NEAR_BODIES :: 48;         // trunks the controller walks round
-// Everglade II's own pace: a jog and a stroll. The shared controller's speeds (aethyr/move/locomotion.coax:
+// Everglade II's own pace: a jog and a stroll. The shared controller's speeds (metaverse-engine/move/locomotion.coax:
 // run 7.5, walk 3.5 m/s, Everglade's) are scaled by the step's pace, so v1 keeps its own.
 E2_RUN_SPEED :: 4.25; E2_WALK_SPEED :: 1.5;   // m/s
-E2_BASE_RUN :: 7.5; E2_BASE_WALK :: 3.5;      // aethyr/move/locomotion.coax LocomotionProfile's defaults
+E2_BASE_RUN :: 7.5; E2_BASE_WALK :: 3.5;      // metaverse-engine/move/locomotion.coax LocomotionProfile's defaults
 e2_pace :: (running: bool) -> f32 #export_c #effects(all) { return ifx running then f32(E2_RUN_SPEED) / f32(E2_BASE_RUN) else f32(E2_WALK_SPEED) / f32(E2_BASE_WALK); }
 
 // Where a new seat stands: the glade's middle, facing the studio's camera (everglade/client/client.coax e2_start):
@@ -39,14 +39,14 @@ e2m_keep :: (x: f32, z: f32, fx: f32, fz: f32) -> E2Spot #export_c #effects(all)
 }
 
 // ---- the rocks round you, each its own mesh's convex hull (everglade/world/rock-hulls.coax, baked by
-// verse/tools/assets/everglade2_rock_hulls.coax): aethyr/physics/query.coax's hulls, so you stand on a rock's
+// verse/tools/assets/everglade2_rock_hulls.coax): metaverse-engine/physics/query.coax's hulls, so you stand on a rock's
 // real top, step onto a low one, slide off a steep face and stop at its side where you see it. The
 // controller walks a level plane over the land (the land lifts you onto the ground), so a placed rock's
 // hull is put on that plane: scaled and turned with the rock, and lowered by the land's own slope under
 // it (the land's height at its middle and the slope there). Pebbles stay walk-through: they are a few
 // centimetres high.
 E2_NEAR_HULLS :: 16;          // rocks the controller walks among
-E2_HULL_HEAD :: 3; E2_HULL_FACE :: 4; E2_HULL_FACES :: 128;   // aethyr/physics/query.coax QUERY_HULL_HEAD, _FACE, _FACES_MAX
+E2_HULL_HEAD :: 3; E2_HULL_FACE :: 4; E2_HULL_FACES :: 128;   // metaverse-engine/physics/query.coax QUERY_HULL_HEAD, _FACE, _FACES_MAX
 E2_HULL_ROOM :: E2_NEAR_HULLS * (E2_HULL_HEAD + E2_HULL_FACES * E2_HULL_FACE);
 E2_HULL_CAPPED :: 6;          // the glade's Rock_Medium_4s west of x -10, drawn with their tops capped
 E2_HULL_REACH :: 1.5;         // m: a rock this far past where you stand is out of a step's reach

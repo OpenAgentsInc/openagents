@@ -27,7 +27,7 @@ Golemancers' Workshop), the OpenAgents Metaverse Engine, Coder's terminal and th
 ## Where it lives
 
 - **`components/`** at the repository root: the library. It sits beside
-  `coax/`, `aethyr/` and `psionic/` because apps, realms and tools all use it,
+  `coax/`, `metaverse-engine/` and `psionic/` because apps, realms and tools all use it,
   and `apps/shared/` reads as belonging to the apps.
 - **openagents.com/components**: the component library's page. It shows
   every component in every skin, live, drawn by the library itself. It is
@@ -53,7 +53,7 @@ components/
                    page as a Linux program, for pictures); md-term.coax (Markdown
                    in a terminal through the whole stack); skin-parity.coax; arwes.coax
                    (the page's ARWES section: every ARWES port, from
-                   aethyr/ui/arwes-paint.coax, in the Verse skin)
+                   metaverse-engine/ui/arwes-paint.coax, in the Verse skin)
   fonts/, icons/   with their licences and NOTICE
   zeron/           the chat components as moved from apps/shared/zeron/ (Phase 1, done),
                    emptied as Phase 2 splits each file into the layers above
@@ -67,7 +67,7 @@ implementations beside the chat's (there is one now: see Phase 5):
 | Code | Draws | Problem |
 | --- | --- | --- |
 | `components/zeron/` (gpui, composer, markdown, tools, transcript, picker, attachments; about 5,700 lines) | Chat on the web and the Mac app | Parsing, layout, Zeron's colours and vertex output are in the same functions. `markdown.coax` loads `composer.coax` to get the atlas |
-| `aethyr/ui/` (hud, draw, tree, feed, hud-style, arwes; 4,130 lines) | Realm HUDs | A second vertex format (12 floats, strokes) and its own text. It has the right ideas: `hud-style.coax` separates tokens from drawers, and `tree.coax` is one table for drawing, hit tests, focus and accessibility |
+| `metaverse-engine/ui/` (hud, draw, tree, feed, hud-style, arwes; 4,130 lines) | Realm HUDs | A second vertex format (12 floats, strokes) and its own text. It has the right ideas: `hud-style.coax` separates tokens from drawers, and `tree.coax` is one table for drawing, hit tests, focus and accessibility |
 | `everglade/hud/`, `apps/everglade-desktop/text.coax`, `golem-board.coax` | Everglade's HUD and the Workshop's boards | A third text path with its own atlas layout |
 | `coax/lib/tui/tui.coax` | Coder's terminal | Its own composer. Its Markdown reading is `core/markdown.coax`'s since 2026-11-10; it still writes the style sequences itself |
 | `apps/openagents-web/chat-hud.coax` | The old HUD chat (the Mac app still builds it) | Its Markdown reading is `core/markdown.coax`'s since 2026-11-10. `apps/openagents-cli/project-page.coax`, listed here at first, writes Markdown and never parsed it |
@@ -100,7 +100,7 @@ which colour a component wears is its skin's to say.
   engines write it, components show it. A component never talks to an engine.
 - **The tree**: every element on screen in one table, with its role, label,
   state and action. Drawing, hit tests, focus order and accessibility read
-  the same rows. This is `aethyr/ui/tree.coax`, moved.
+  the same rows. This is `metaverse-engine/ui/tree.coax`, moved.
 - **The element table** (`core/elements.coax`, GitHub #13156): the first
   part of the tree. Every row a component draws that a person presses,
   types into or reads has a stable id made of its part and its name
@@ -207,7 +207,7 @@ A skin is tokens plus frames.
 
 First skins: `zeron` (Zeron Dark, from the constants in today's code),
 `verse` (SCIFI) and `everglade` (FANTASY), the last two from
-`aethyr/ui/hud-style.coax`, and `terminal`.
+`metaverse-engine/ui/hud-style.coax`, and `terminal`.
 
 A component reads only roles. A colour or size written into a component is a
 defect, and a check finds it.
@@ -295,10 +295,10 @@ strike the wolf, answer Mira.
 The rules both HUDs follow are one file, `core/hud.coax`: a bar's fill and
 damage trail over time (`HudTrail`, `hud_trail_step`), a banner's fade
 (`hud_banner_alpha`) and the map ring's projection (`hud_map_project`).
-`aethyr/ui/hud-style.coax` loads it, so every realm's HUD uses the same code.
+`metaverse-engine/ui/hud-style.coax` loads it, so every realm's HUD uses the same code.
 
 The realms' drawing has not moved. Everglade's and the Metaverse's HUDs write the
-realm pass's 12-float vertices (`hud_emit`, `aethyr/ui/draw.coax`'s strokes),
+realm pass's 12-float vertices (`hud_emit`, `metaverse-engine/ui/draw.coax`'s strokes),
 set their words in the realm's own faces (Spectral and Cinzel, the Metaverse's
 Filament strokes), and draw pie sweeps, turned diamonds and soft rings that
 the component shader has no path for yet (an arc, a slanted line). Drawing a
@@ -325,7 +325,7 @@ realm's faces.
   - a layer file that loads a layer after it in the order core, layout,
     paint, skin, backend fails; so does a component (`kit/`) that loads a
     backend, and any of them loading a file outside `components/` (the
-    shader's library, `aethyr/gpu/wgsl.coax`, is the one exception);
+    shader's library, `metaverse-engine/gpu/wgsl.coax`, is the one exception);
   - a colour literal or a named face in `kit/` or in the chat set
     (`components/zeron/`) fails, outside checks (since 2026-11-11 for the
     chat set: its colours and faces are its skin's roles); so does a size,
@@ -421,7 +421,7 @@ phase with no implementer by its date is cut from this list, not left open.
    `zeron.coax` (from the constants that were in the components, which now
    live there), `everglade.coax` and `verse.coax` (the HUD's FANTASY and
    SCIFI colours; `gallery/skin-parity.coax` holds them equal to
-   `aethyr/ui/hud-style.coax`) and `terminal.coax` (cells). The pixel skins
+   `metaverse-engine/ui/hud-style.coax`) and `terminal.coax` (cells). The pixel skins
    share the atlas's faces (Geist): a skin's own typefaces need its fonts in
    the atlas, which no host loads yet. The page is
    `components/gallery/page.coax` (served as `/components` by
@@ -460,7 +460,7 @@ phase with no implementer by its date is cut from this list, not left open.
    `Workshop.metal` and `Model.metal` (`Sources/Workshop.swift`, a layer on the
    shared Mac host since 2026-11-11), its words are
    12-float HUD strokes over `text.coax`'s Spectral and Cinzel atlas drawn by
-   a third Metal pipeline, its input is `aethyr/host/appkit-input.coax`, and
+   a third Metal pipeline, its input is `metaverse-engine/host/appkit-input.coax`, and
    the shared Linux host (`apps/shared/host/linux/ui-host.h`) has one
    pipeline, the component shader over 28-float vertices, and no scene or
    depth pass. The Workshop has no chat yet either: where it opens and
@@ -507,12 +507,12 @@ phase with no implementer by its date is cut from this list, not left open.
      and `verse` skins, with their cards on `/components`. The realms
      still draw their HUD as before; what moved into them is the rules
      (`core/hud.coax`: the bar's fill and trail, the banner's fade, the
-     map's projection), loaded by `aethyr/ui/hud-style.coax`. The drawing
+     map's projection), loaded by `metaverse-engine/ui/hud-style.coax`. The drawing
      did not move: the realm pass writes 12-float strokes in the realms'
      own fonts (Spectral, Cinzel, the Metaverse's Filament), which the
      component atlas does not hold, so their pictures would change.
    - ARWES on `/components` (the owner's request): the 25 ported specimens
-     are painted once, as display lists (`aethyr/ui/arwes-paint.coax`),
+     are painted once, as display lists (`metaverse-engine/ui/arwes-paint.coax`),
      drawn on the page by the component shader (`gallery/arwes.coax`) and
      written as the HUD laboratory's 12-float records by `arwes-draw.coax`
      (`aw_hud`; its records are unchanged over 225 frames). The paint

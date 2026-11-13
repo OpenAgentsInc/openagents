@@ -6,14 +6,14 @@
 // with the place it could not reach.
 //
 // Nothing here is a second walker. The way round things is the engine's steering service
-// (aethyr/ai/steer.coax: a window of cells filled by where a body may stand, searched and pulled
+// (metaverse-engine/ai/steer.coax: a window of cells filled by where a body may stand, searched and pulled
 // taut), the step is the game's own (g_walk: the smuggler's speed, turned by its yaw, pushed out
 // by the World's colliders), and "may a body stand here" is the game's own collision. The room's
 // protocol bots speak a room's wire, and Splice has no room; the agent driver's walk-to
-// (aethyr/agent/drive.coax) goes straight at its target, so it would refuse a layer for a crate
+// (metaverse-engine/agent/drive.coax) goes straight at its target, so it would refuse a layer for a crate
 // a player walks round.
 //   coax/bin/coax test verse/splice/splice-game.coax
-#load "../../aethyr/ai/steer.coax";
+#load "../../metaverse-engine/ai/steer.coax";
 
 SW_OK :: 0;
 SW_START :: 1;     // a place the run starts you in is taken

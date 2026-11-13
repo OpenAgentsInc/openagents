@@ -1,0 +1,27 @@
+// Actual ordinary-host outbox reads, acknowledgments, failure messages and effects.
+#load "../../coax/web/wasm-chrome.coax";
+#load "action-packet-conformance.coax";
+#load "../render/tests/qualification-files.coax";
+hapc_wait::(c:[]Cdp,expression:string)->bool{until:=proc_now_ms()+15000;while proc_now_ms()<until{if wc_eval(c,expression)=="true"{return true;}proc_sleep(50);}tool_errln(expression);tool_errln(cdp_error(c));return false;}
+tool_main::()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3{return 2;}
+ inputs:[1]RtqInputs;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);directory:=fs_dir(args_at(a[..],2));
+ if !rtq_input_add(inputs[..],compiler)||!rtq_deps(inputs[..],compiler,"metaverse-engine/host/services-carrier.coax",proc_now_ms()+30000,directory,"services-deps")||!rtq_deps(inputs[..],compiler,"metaverse-engine/host/action-fixture.coax",proc_now_ms()+30000,directory,"fixture-deps"){return 1;}
+ for file:[9]string.["coax/web/host.js","coax/web/action-source.js","coax/web/services-host.js","coax/web/services-face.c","metaverse-engine/host/tests/fixture-face.c","metaverse-engine/host/tests/action-fixture-face.c","metaverse-engine/host/tests/action-missing-face.c","metaverse-engine/host/check-browser-action-packet.coax","metaverse-engine/host/action-packet-conformance.coax"]{if !rtq_input_add(inputs[..],file){return 1;}}
+ artifacts:[8192]u8;artifact_n:=0;
+ c:[1]Cdp;if !cdp_launch(c[..],160,90,"aethyr-action-packets-"){return 1;}defer{cdp_close(c[..]);}
+ bytes:[32768]u8;params:[4096]u8;js:[8192]u8;o:[1]Jo;rows:[110]int;modes:=[10]int.[0,1,2,3,4,5,6,7,8,99];
+ for mode,index:modes{
+  if index==0||mode==99{jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],args_at(a[..],ifx mode==99 then 1 else 0));jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);if !hapc_wait(c[..],"!!coaxial?.ready&&coaxial.actionFixtureProbe(0)===0"){return 1;}}
+  if index==0{
+   value:=cdp_evaluate(c[..],"(async()=>await Promise.all(['/build/host-services.wasm','/fixture.wasm','/missing/fixture.wasm','/fixture.wgsl'].map(async url=>{const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(url);const bytes=await response.arrayBuffer();return {url,bytes:bytes.byteLength,sha256:[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('')}})))()");
+   if value<0{return 1;}jo_start(o[..],artifacts[..]);jv_write(cdp_doc(c[..]),value,o[..]);if o[0].bad{return 1;}artifact_n=jo_text(o[..]).count;
+  }
+  jo_start(o[..],js[..]);jo_put(o[..],"(async()=>{coaxial.hostReset();coaxial.actionFixtureMode(");jo_int(o[..],mode);jo_put(o[..],");history.replaceState(null,'','#unchanged');let threw=false;const before=Number(coaxial.hostProbe(-1,4));try{coaxial.send(900,'hash')}catch{threw=true}const deadline=performance.now()+3000;while(Number(coaxial.hostProbe(-1,4))<=before&&performance.now()<deadline){await coaxial.hostFrameAt(performance.now()*1000);await new Promise(r=>setTimeout(r,20));}const events=Array.from({length:Number(coaxial.hostProbe(-1,2))},(_,i)=>Array.from({length:8},(_,f)=>Number(coaxial.hostProbe(i,f)))),acks=events.filter(x=>x[0]===8),errors=events.filter(x=>x[0]===4&&x[1]===604),ack=events.findIndex(x=>x[0]===8),error=events.findIndex(x=>x[0]===4&&x[1]===604);return [");jo_int(o[..],mode);jo_put(o[..],",+threw,...[0,1,2].map(i=>coaxial.actionFixtureProbe(i)),acks.length,acks[0]?.[1]??-99,errors.length,+(error<0||ack>=0&&ack<error),+(location.hash!=='#unchanged'),+(Number(coaxial.hostProbe(-1,4))>before)]})()");
+  value:=cdp_evaluate(c[..],jo_text(o[..]));d:=cdp_doc(c[..]);if value<0||jv_len(d,value)!=11{tool_errln(cdp_error(c[..]));return 1;}for i:0..<11{rows[index*11+i]=jv_int(d,jv_at(d,value,i),-999);}
+ }
+ artifact_nodes:[256]JvNode;artifact_doc:[1]Jv;if !jv_parse(artifact_doc[..],cast(string)artifacts[0..<artifact_n],artifact_nodes[..]){return 1;}
+ same:=rtq_inputs_match(inputs[..]);
+ jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.browser-action-packet.v1");jo_key(o[..],"rows");jo_arr(o[..]);for v:rows{jo_int(o[..],v);}jo_end(o[..]);jo_key(o[..],"passed");jo_bool(o[..],hapc_accept(rows[..])&&same);jo_key(o[..],"source_fence_unchanged");jo_bool(o[..],same);jo_key(o[..],"artifacts");jv_write(artifact_doc[0],0,o[..]);jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],"");jo_end(o[..]);if o[0].bad||!fs_write(args_at(a[..],2),jo_text(o[..])){return 1;}
+ print("Actual ordinary action packets: all110 fields %.\n",hapc_accept(rows[..]));return ifx hapc_accept(rows[..])&&same then 0 else 1;
+}

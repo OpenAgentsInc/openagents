@@ -178,7 +178,7 @@ class ResultProfiles(unittest.TestCase):
                     self.assertEqual(json.loads(result.stderr.splitlines()[0])['code'],code)
 
     def test_shader_profiles_refuse_sums_and_exhaustive_switch(self):
-        shader_types='#load "'+str(ROOT.parent/'aethyr/gpu/shader.coax')+'";\n'
+        shader_types='#load "'+str(ROOT.parent/'metaverse-engine/gpu/shader.coax')+'";\n'
         vertex=' r2_profile_vertex :: (vid:u32,iid:u32)->V4 { return v4(choose(),0,0,1); }'
         control=self.source(shader_types+'choose :: ()->f32 { return 7; }'+vertex)
         result=self.run_coax('spirv',control,'--vertex','r2_profile_vertex','-o',self.directory/'control.spv')

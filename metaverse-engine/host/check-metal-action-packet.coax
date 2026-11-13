@@ -1,0 +1,15 @@
+// Run the actual native SDK receiver and reuse the common110-word authority.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../render/tests/qualification-files.coax";
+#load "action-packet-conformance.coax";
+// Preserve SDK diagnostics as bytes using the existing qualification runner.
+proc_run_bytes :: (argv:[]string,env:[]string,timeout:int,out:[]u8,err:[]u8)->ProcRun{return rtq_run_raw(argv,env,timeout,out,err);}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=4{return 2;}root:=args_at(a[..],0);exe:=args_at(a[..],1);resources:=args_at(a[..],2);report:=args_at(a[..],3);dir:=fs_dir(exe);paths:[2][4096]u8;inputs:[1]RtqInputs;
+ for file:[16]string.["MetalActionPacket","MetalRealm.o","MetalRender.o","MetalRender.c","MetalRender.h","RenderTexture.o","RenderTexture.c","RenderTexture.h","action-fixture.o","action-fixture.c","action-fixture.h","action-face.o","action-face-no-cap.o","libactionfixture.dylib","libactionfixture-no-cap.dylib","build-inputs.sha256"]{if !rtq_input_add(inputs[..],fs_join(dir,file,paths[0][..])){return 1;}}
+ for file:[10]string.["apps/aethyrforge-desktop/MetalRealm.m","apps/aethyrforge-desktop/metal-host.h","apps/aethyrforge-desktop/metal-producer.h","apps/aethyrforge-desktop/metal-sockets.h","apps/aethyrforge-desktop/tests/MetalActionPacket.swift","metaverse-engine/host/tests/fixture-face.c","metaverse-engine/host/tests/action-fixture-face.c","metaverse-engine/host/tests/action-missing-face.c","verse/native/render-images.c","verse/native/render-images.h"]{if !rtq_input_add(inputs[..],fs_join(root,file,paths[0][..])){return 1;}}
+ raw_path_buf:[4096]u8;raw_path:=fs_join(dir,"action-raw.json",raw_path_buf[..]);cmd:=[4]string.[exe,resources,dir,raw_path];out:[65536]u8;err:[65536]u8;env:[]string;r:=proc_run_bytes(cmd[..],env,30000,out[..],err[..]);if r.started!=0||r.status!=0||r.timed_out||r.cut{tool_errln(cast(string)err[0..<r.err_n]);return 1;}bytes:[131072]u8;n:=fs_read(raw_path,bytes[..]);d:[1]Jv;nodes:[4096]JvNode;if n<1||!jv_parse(d[..],cast(string)bytes[0..<n],nodes[..]){return 1;}rows:=jv_get(d[0],0,"rows");v:[110]int;ok:=jv_len(d[0],rows)==110;if ok{for i:0..<110{v[i]=jv_int(d[0],jv_at(d[0],rows,i),-999);}ok=hapc_accept(v[..]);}same:=rtq_inputs_match(inputs[..]);saved:[131072]u8;o:[1]Jo;jo_start(o[..],saved[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.metal-action-packet.v1");jo_key(o[..],"rows");jv_write(d[0],rows,o[..]);jo_key(o[..],"passed");jo_bool(o[..],ok&&same);jo_key(o[..],"source_fence_unchanged");jo_bool(o[..],same);jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],root);jo_end(o[..]);if o[0].bad||!fs_write(report,jo_text(o[..])){return 1;}print("Actual Metal action packet110 words:%;sourcefence:%\n",ok,same);return ifx ok&&same then 0 else 1;
+}

@@ -4,15 +4,15 @@
 #load "experimental-terrain.coax" as terrain;
 #load "experimental-dungeon.coax" as dungeon;
 #load "../everglade/world/home.coax" as home;
-#load "../aethyr/world/building.coax" as building;
+#load "../metaverse-engine/world/building.coax" as building;
 #load "rules/srd5-combat.coax";
 #load "hostile-contact.coax";
-#load "../aethyr/ai/steer.coax";   // the engine's NPC navigation and steering (#13074, docs/verse/navigation.md)
-#load "../aethyr/action/floats.coax" as hfl;   // the numbers over you as a blow lands (everglade/hud/numbers.coax draws them)
+#load "../metaverse-engine/ai/steer.coax";   // the engine's NPC navigation and steering (#13074, docs/verse/navigation.md)
+#load "../metaverse-engine/action/floats.coax" as hfl;   // the numbers over you as a blow lands (everglade/hud/numbers.coax draws them)
 
 // dead: felled (everglade/zone-combat.coax, #13025), at `died` on the creator's clock; held: restrained, it strikes but can't move;
 // inactive: cannot begin or continue an attack, independently of movement
-// stopped: a scoped hit stop holds this one for the frame (its owner's react_held, aethyr/action/react.coax); the rest of the world goes on
+// stopped: a scoped hit stop holds this one for the frame (its owner's react_held, metaverse-engine/action/react.coax); the rest of the world goes on
 // kind: experimental-dungeon.coax's DG_KIND_*, scale its size; a sleeper waits where it stands until it sees you near
 // (every monster is one since #13066: the village's six wait at home too, so none hunts you from your spawn)
 Enemy :: struct {walk_scale:f32=1;x:f32;z:f32;home_x:f32;home_z:f32;face_x:f32;face_z:f32=1;cool:f32;swing:f32;struck:bool;moving:bool;awake:bool;dead:bool;died:f32;held:bool;inactive:bool;stopped:bool;kind:int;scale:f32 = 1;sleeper:bool;shot:bool;returning:bool;provoked:bool;nav:[1]NavAgent;}   // shot: its swing is a ranged attack; returning: leashed, it walks home; provoked: you attacked it, so your spawn's safe radius no longer turns it back
@@ -203,7 +203,7 @@ HS_LEASH :: 35.0;
 // Hit, shot at or spelled by you from wherever you stand (everglade/zone-combat.coax xc_use_ab): it
 // wakes and comes after you, out through the doorways if it must.
 hostile_provoke :: (s:[]Hostiles,i:int) {if i<0 || i>=HS_N || s[0].enemies[i].dead {return;}s[0].enemies[i].awake=true;s[0].enemies[i].returning=false;s[0].enemies[i].provoked=true;nav_engage(s[0].enemies[i].nav[..]);}
-// How a monster goes after you on the engine's steering service (aethyr/ai/steer.coax): its walk's
+// How a monster goes after you on the engine's steering service (metaverse-engine/ai/steer.coax): its walk's
 // pace, its body and its reach by its size, round you in melee, and HS_LEASH from home.
 hostile_tune :: (e:Enemy)->NavTune {
  reach:=1.45+0.45*(e.scale-1);
@@ -344,7 +344,7 @@ hostile_tick :: (s:[]Hostiles,px:f32,py:f32,pz:f32,dt:f32) {
   if e[0].inactive {e[0].swing= -1;e[0].struck=false;}
   if e[0].stopped {continue;}
   if e[0].sleeper && !e[0].awake {if safe || gap>dungeon.dg_kind_wake(e[0].kind) || !hostile_sees(e[0],px,pz) {continue;}e[0].awake=true;}e[0].cool-=dt;
-  // the leash, the steering service's (aethyr/ai/steer.coax nav_think): too far from home and not in
+  // the leash, the steering service's (metaverse-engine/ai/steer.coax nav_think): too far from home and not in
   // the middle of a fight with someone still within it, or you safe, and it turns back (never mid-swing)
   // Every monster past here tells its steering where it and you are, each tick, before anything else.
   if !e[0].returning {hostile_nav_sync(e);_:=nav_think(e[0].nav[..],hostile_tune(e[0]),px,pz,dt);}

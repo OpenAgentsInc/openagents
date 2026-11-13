@@ -1,0 +1,39 @@
+// First person: a follow camera zoomed all the way in becomes your eyes. From FP_FAR metres of zoom in
+// to FP_NEAR it slides from behind you (over your shoulder, if the realm frames you so) into your
+// head: fp_share eases 0 to 1, and a realm's camera scales its boom and its shoulder and mouselook
+// offsets by fp_far, lifts its pivot to your eyes by fp_lift and moves it ahead to them by fp_ahead.
+// Past FP_HIDE the eye is in your head, so the realm leaves your own body out of the view (fp_hidden;
+// it may still cast its shadow), keeping in view only what your hands hold up in front of you. The view's centre stays the
+// reticle's (metaverse-engine/cam/reticle.coax), so what aims off the camera's centre ray still aims there.
+// Experimental: boom.coax (charactercreator.coax cc_view) and scene_reserved, everglade/zone.coax zone_scene.
+//   coax/bin/coax test metaverse-engine/cam/firstperson.coax --library
+#module "aethyr.cam.firstperson";
+
+FP_FAR :: 1.5;      // m of zoom where first person begins
+FP_NEAR :: 0.85;    // and where it is whole
+FP_HIDE :: 0.9;     // how far in your own body is no longer drawn
+FP_EYE :: 1.62;     // m up from the feet the eyes are (a figure some 1.8 m tall)
+FP_AHEAD :: 0.1;    // m ahead of the head's middle the eyes are, along the view
+
+// How far into first person a zoom of `dist` metres is: 0 behind you, 1 your eyes, eased.
+fp_share :: (dist: f32) -> f32 {
+  t := (f32(FP_FAR) - dist) / (f32(FP_FAR) - f32(FP_NEAR));
+  t = ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t;
+  return t * t * (3 - 2 * t);
+}
+// What is left of the third-person boom and offsets.
+fp_far :: (share: f32) -> f32 { return 1 - share; }
+// Metres to lift a pivot that sits `pivot` m over the feet up to the eyes.
+fp_lift :: (share: f32, pivot: f32) -> f32 { return (f32(FP_EYE) - pivot) * share; }
+// Metres ahead, along the view's flat forward, the pivot moves to the eyes.
+fp_ahead :: (share: f32) -> f32 { return f32(FP_AHEAD) * share; }
+// Whether your own body is left out of the view.
+fp_hidden :: (share: f32) -> bool { return share >= f32(FP_HIDE); }
+
+#test "zoomed in it is the eye; out it is the follow camera; between it blends" {
+  #assert fp_share(0.65) == 1 && fp_share(f32(FP_NEAR)) == 1 && fp_share(f32(FP_FAR)) == 0 && fp_share(6) == 0;
+  #assert fp_far(1) == 0 && abs(fp_lift(1, 1.2) - 0.42) < 0.0001 && fp_ahead(1) == f32(FP_AHEAD);
+  #assert fp_hidden(1) && !fp_hidden(0.5) && !fp_hidden(0);
+  last: f32 = 0;
+  for k: 0..<21 { s := fp_share(f32(FP_FAR) - f32(k) * (f32(FP_FAR) - f32(FP_NEAR)) / 20); #assert s >= last; last = s; }
+}

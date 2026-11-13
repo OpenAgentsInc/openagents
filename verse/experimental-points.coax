@@ -1,11 +1,11 @@
-// Everglade Experimental's named points (GitHub #13078), by name (aethyr/world/points.coax): where you
+// Everglade Experimental's named points (GitHub #13078), by name (metaverse-engine/world/points.coax): where you
 // arrive (the spawn at the village's middle, inside the monsters' safe radius: experimental-hostiles.coax)
 // and the dungeon's door (experimental-dungeon.coax: the middle of the north wall's open cell, DG_ENTRY,
 // facing in). Its check holds the door to the dungeon's own numbers. A check reads them through
 // exp_point; a tool refuses a name that isn't here (coax/web/map-points.coax).
 // Metres, z north, face 0 north.
 //   coax/bin/coax test --library verse/experimental-points.coax
-#load "../aethyr/world/points.coax";
+#load "../metaverse-engine/world/points.coax";
 #load "experimental-dungeon.coax" as dungeon;
 
 EXP_POINTS :: 2;

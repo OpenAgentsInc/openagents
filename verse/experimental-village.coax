@@ -6,16 +6,16 @@
 #load "experimental-dungeon.coax" as dungeon;
 #load "experimental-props.coax" as props;
 #load "../everglade/world/home.coax" as home;
-#load "../aethyr/world/interact.coax" as interact;
-#load "../aethyr/world/building.coax" as building;
+#load "../metaverse-engine/world/interact.coax" as interact;
+#load "../metaverse-engine/world/building.coax" as building;
 #load "../everglade/world/housewright.coax" as hw;
 #load "experimental-village-data.coax";
 #load "experimental-scene-colliders.coax";
-#load "../aethyr/physics/stand.coax" as stand;
-#load "../aethyr/physics/collide.coax" as collision;
-#load "../aethyr/physics/query.coax" as query;
-#load "../aethyr/core/space.coax" as space;
-#load "../aethyr/physics/visibility.coax" as vis;   // what an eye sees through the village (#13073)
+#load "../metaverse-engine/physics/stand.coax" as stand;
+#load "../metaverse-engine/physics/collide.coax" as collision;
+#load "../metaverse-engine/physics/query.coax" as query;
+#load "../metaverse-engine/core/space.coax" as space;
+#load "../metaverse-engine/physics/visibility.coax" as vis;   // what an eye sees through the village (#13073)
 
 EV_WALLS :: 1024;
 EV_FLOORS :: 16;
@@ -297,14 +297,14 @@ ev_near_radius :: (out:[]EvNear,x:f32,z:f32,reach:f32,scene:bool) {
   }
   if kind== -4 {
    // the housewright showcase (everglade/world/housewright.coax): every house's walls, posts, low
-   // roofs and sign at its stage (aethyr/world/build-site.coax), on this yard
+   // roofs and sign at its stage (metaverse-engine/world/build-site.coax), on this yard
    b:[1200]f32;
    for t:0..<hw.HW_TIERS {for st:1..<hw.hw_stages(t)+1 {f:=terrain.exp_showcase(t,st);if terrain.exp_showcase_site(t,st)!=si || abs(f.x-x)>reach+4 || abs(f.z-z)>reach+4 {continue;}
      n:=terrain.exp_showcase_boxes(t,st,b[..],0);for k:0..<n {o:=k*6;ev_house_box(out,terrain.ExpSite.{x=0,z=0},dy,[6]f32.[b[o],b[o+1],b[o+2],b[o+3],b[o+4],b[o+5]]);}}}
    continue;
   }
   if si==terrain.EXP_HOME_SITE || (si>=9 && si<18) {
-   // the engine's 4 m room (aethyr/world/building.coax): the neighbourhood's houses face +z, the
+   // the engine's 4 m room (metaverse-engine/world/building.coax): the neighbourhood's houses face +z, the
    // player's home (everglade/world/home.coax) faces spawn; the doorway is open
    f:=ifx si==terrain.EXP_HOME_SITE then terrain.exp_home() else building.BuildingFrame.{x=site.x,z=site.z};
    for i:0..<building.ROOM4_BOXES {ev_house_box(out,terrain.ExpSite.{x=0,z=0},dy,building.room4_box(f,i));}

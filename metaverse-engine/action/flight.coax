@@ -1,0 +1,253 @@
+// Winged flight for a body you steer (a druid's dragon form, a dragon mount): takeoff, flying,
+// climbing and diving, gliding, banking into turns, hovering and landing. It is shared by
+// everything that flies on wings: Everglade's shapeshifting (everglade/shapeshift.coax) and its
+// mounts both step one WingState with wing_step.
+//
+// The vertical rule is the Metaverse Engine's flight rule (metaverse-engine/move/flight.coax, flight_vertical): a beat is a
+// jump press in the air, a held jump climbs, between beats you glide and a held dive folds the
+// wings. This module adds what a big flier needs round it:
+//   - the ground: you walk at the walk pace; a jump press takes off
+//   - takeoff: takeoff_s seconds of lift at takeoff_vy before free flight
+//   - flight: forward speed eases toward the fly pace while you steer, and down to a hover when you
+//     let go; a dive adds dive_boost to the pace
+//   - turns: the heading turns toward the steer at turn rad/s at most, and the body banks into the
+//     turn, up to max_bank
+//   - landing: reaching the ground (or pressing land, which sinks you at land_vy) settles you for
+//     land_s seconds, then you walk again
+// Speeds come from SRD feet (wing_profile_srd): a Fly Speed of 80 ft against a 40-ft walk flies
+// twice the walk's pace, and both scale against the realm's own pace for 30 ft.
+//
+// The mount system and the shapeshift both read wing_clip to pick the body's clip.
+//
+// Units are metres, seconds and radians, +Y up, yaw 0 facing +Z; call it once a fixed step.
+//   coax/bin/coax test metaverse-engine/action/flight.coax --library
+
+#module "aethyr.action.flight";
+#authority;
+#load "../move/flight.coax";
+
+WING_GROUND :: 0; WING_TAKEOFF :: 1; WING_AIR :: 2; WING_LANDING :: 3;
+// the clip a body shows (wing_clip)
+WING_CLIP_IDLE :: 0; WING_CLIP_WALK :: 1; WING_CLIP_TAKEOFF :: 2; WING_CLIP_FLY :: 3; WING_CLIP_GLIDE :: 4;
+WING_CLIP_HOVER :: 5; WING_CLIP_BANK_LEFT :: 6; WING_CLIP_BANK_RIGHT :: 7; WING_CLIP_DIVE :: 8; WING_CLIP_LAND :: 9;
+
+// book:begin wing-profile
+WingProfile :: struct {
+  walk: f32 = 4.0;          // m/s on the ground
+  fly: f32 = 8.0;           // m/s at full flight
+  accel: f32 = 6.0;         // m/s² toward the wanted forward speed in the air
+  turn: f32 = 1.8;          // rad/s: the most the heading turns in the air
+  ground_turn: f32 = 4.0;   // rad/s on the ground
+  max_bank: f32 = 0.6;      // rad: the furthest the body leans into a turn
+  bank_ease: f32 = 4.0;     // 1/s: how quickly the lean follows the turn
+  takeoff_s: f32 = 0.8;     // s of lift before free flight
+  takeoff_vy: f32 = 6.0;    // m/s up during takeoff
+  land_s: f32 = 0.6;        // s settling after touching down
+  land_vy: f32 = -5.0;      // m/s: the sink when you press land
+  dive_boost: f32 = 0.5;    // the dive's extra pace, a share of fly
+  hover_speed: f32 = 0.6;   // m/s: below this an airborne body hovers rather than flies
+  gravity: f32 = 9.8;       // m/s² pulling down before the wings act each step
+  vertical: FlightProfile;  // the beat, climb, glide, dive and ceiling (metaverse-engine/move/flight.coax)
+}
+// book:end wing-profile
+
+WingState :: struct {
+  phase: int;               // WING_GROUND...
+  t: f32;                   // seconds in the phase
+  x: f32; y: f32; z: f32;   // the body's feet
+  vy: f32;                  // vertical speed
+  speed: f32;               // forward speed along yaw
+  yaw: f32;                 // heading: 0 faces +Z, turning toward +X
+  bank: f32;                // lean into the turn: + as the heading grows (toward +X, the body's left), - to its right
+  turning: f32;             // this step's turn, rad/s
+  beat: bool; diving: bool; // this step's wing beat and dive (metaverse-engine/move/flight.coax)
+}
+// One step's steering: (mx, mz) the wanted direction in the world, its length the share of full
+// pace (0 none, at most 1); the jump pressed this step, held, the dive held, land pressed.
+WingInput :: struct { mx: f32; mz: f32; jump: bool; climb: bool; dive: bool; land: bool; }
+
+WF_PI :: 3.14159265358979;
+WF_TAU :: 6.28318530717959;
+wf_lo :: (a: f32, b: f32) -> f32 #effects(all) { return ifx a < b then a else b; }
+wf_hi :: (a: f32, b: f32) -> f32 #effects(all) { return ifx a > b then a else b; }
+wf_clamp :: (a: f32, l: f32, h: f32) -> f32 #effects(all) { return wf_lo(h, wf_hi(l, a)); }
+wf_wrap :: (a: f32) -> f32 #effects(all) { return a - f32(WF_TAU) * floor((a + f32(WF_PI)) / f32(WF_TAU)); }
+wf_atan_unit :: (t: f32) -> f32 #effects(all) {
+  s := t * t;
+  return t * (0.99997726 + s * (-0.33262347 + s * (0.19354346 + s * (-0.11643287 + s * (0.05265332 + s * -0.01172120)))));
+}
+wf_atan2 :: (y: f32, x: f32) -> f32 #effects(all) {
+  ax := abs(x); ay := abs(y);
+  if ax == 0 && ay == 0 { return 0; }
+  a := ifx ay > ax then f32(WF_PI / 2) - wf_atan_unit(ax / ay) else wf_atan_unit(ay / ax);
+  if x < 0 { a = f32(WF_PI) - a; }
+  if y < 0 { a = -a; }
+  return a;
+}
+wf_toward :: (a: f32, b: f32, step: f32) -> f32 #effects(all) {
+  if a < b { return wf_lo(b, a + step); }
+  return wf_hi(b, a - step);
+}
+
+// book:begin wing-profile-srd
+// A profile from SRD speeds in feet: walk_ft on the ground, fly_ft in the air, against the realm's
+// pace (pace_mps metres a second for a 30-ft Speed).
+wing_profile_srd :: (walk_ft: int, fly_ft: int, pace_mps: f32) -> WingProfile #effects(all) {
+  p: WingProfile;
+  p.walk = pace_mps * f32(walk_ft) / 30.0;
+  p.fly = pace_mps * f32(fly_ft) / 30.0;
+  p.accel = p.fly * 0.75;
+  p.vertical.on = true; p.vertical.ceiling = 60.0;
+  p.vertical.flap_up = 6.0; p.vertical.climb = 4.0; p.vertical.glide = -1.2; p.vertical.dive = -12.0;
+  return p;
+}
+// book:end wing-profile-srd
+// A body on the ground at (x, y, z) facing yaw.
+wing_at :: (x: f32, y: f32, z: f32, yaw: f32) -> WingState #effects(all) {
+  return WingState.{phase = WING_GROUND, x = x, y = y, z = z, yaw = yaw};
+}
+wing_flying :: (s: WingState) -> bool #effects(all) { return s.phase == WING_TAKEOFF || s.phase == WING_AIR; }
+
+// One step of dt seconds; ground is the floor's height under the body now.
+wing_step :: (p: WingProfile, s: WingState, in: WingInput, ground: f32, dt: f32) -> WingState #effects(all) {
+  o := s; o.t = s.t + dt; o.beat = false; o.diving = false;
+  if !(dt > 0) || dt > 1 { return s; }
+  want := wf_clamp(sqrt(in.mx * in.mx + in.mz * in.mz), 0, 1);
+  goal := ifx want > 0.001 then wf_atan2(in.mx, in.mz) else s.yaw;
+  rate := ifx o.phase == WING_GROUND || o.phase == WING_LANDING then p.ground_turn else p.turn;
+  d := wf_wrap(goal - s.yaw);
+  step := wf_clamp(d, -rate * dt, rate * dt);
+  o.yaw = wf_wrap(s.yaw + step);
+  o.turning = step / dt;
+  // the lean follows the turn in the air and levels on the ground
+  lean := ifx wing_flying(o) && p.turn > 0 then wf_clamp(o.turning / p.turn, -1, 1) * p.max_bank else 0.0f32;
+  o.bank = s.bank + (lean - s.bank) * wf_clamp(p.bank_ease * dt, 0, 1);
+
+  if o.phase == WING_GROUND {
+    o.speed = p.walk * want; o.vy = 0; o.y = ground;
+    if in.jump { o.phase = WING_TAKEOFF; o.t = 0; o.vy = p.takeoff_vy; }
+  } else if o.phase == WING_TAKEOFF {
+    o.vy = p.takeoff_vy;
+    o.speed = wf_toward(s.speed, p.fly * want * 0.5, p.accel * dt);
+    if o.t >= p.takeoff_s { o.phase = WING_AIR; o.t = 0; }
+  } else if o.phase == WING_AIR {
+    turn := flight_vertical(p.vertical, s.vy - p.gravity * dt, s.y, in.jump, in.climb, in.dive, true);
+    o.vy = turn.vy; o.beat = turn.beat; o.diving = turn.diving;
+    if in.land && !turn.beat && !in.climb { o.vy = wf_lo(o.vy, p.land_vy); }
+    pace := p.fly * want + (ifx o.diving then p.fly * p.dive_boost else 0.0f32);
+    o.speed = wf_toward(s.speed, pace, p.accel * dt);
+  } else {
+    o.speed = wf_toward(s.speed, 0, p.accel * dt); o.vy = 0; o.y = ground;
+    if o.t >= p.land_s { o.phase = WING_GROUND; o.t = 0; }
+  }
+  o.x = s.x + sin(o.yaw) * o.speed * dt;
+  o.z = s.z + cos(o.yaw) * o.speed * dt;
+  if o.phase != WING_GROUND && o.phase != WING_LANDING { o.y = s.y + o.vy * dt; }
+  if o.phase == WING_AIR && o.y <= ground && o.vy <= 0 { o.phase = WING_LANDING; o.t = 0; o.y = ground; o.vy = 0; }
+  if o.phase == WING_GROUND || o.phase == WING_LANDING { o.y = ground; }
+  else if o.y < ground { o.y = ground; }
+  return o;
+}
+
+// The clip the body shows now.
+wing_clip :: (p: WingProfile, s: WingState) -> int #effects(all) {
+  if s.phase == WING_GROUND { return ifx s.speed > 0.05 then WING_CLIP_WALK else WING_CLIP_IDLE; }
+  if s.phase == WING_TAKEOFF { return WING_CLIP_TAKEOFF; }
+  if s.phase == WING_LANDING { return WING_CLIP_LAND; }
+  if s.diving { return WING_CLIP_DIVE; }
+  if s.speed < p.hover_speed { return WING_CLIP_HOVER; }
+  // facing +Z the body's left is +X: a growing heading turns, and leans, left
+  if s.bank > p.max_bank * 0.5 { return WING_CLIP_BANK_LEFT; }
+  if s.bank < -p.max_bank * 0.5 { return WING_CLIP_BANK_RIGHT; }
+  if s.beat || s.vy > 0.5 { return WING_CLIP_FLY; }
+  return WING_CLIP_GLIDE;
+}
+
+// ---- checks
+
+WF_DT :: 1.0 / 64.0;
+wf_run :: (p: WingProfile, s: WingState, in: WingInput, steps: int) -> WingState #effects(all) {
+  o := s;
+  for k: 0..<steps { o = wing_step(p, o, in, 0, f32(WF_DT)); }
+  return o;
+}
+wf_take_off :: (p: WingProfile) -> WingState #effects(all) {
+  s := wing_at(0, 0, 0, 0);
+  s = wing_step(p, s, WingInput.{jump = true}, 0, f32(WF_DT));
+  return wf_run(p, s, WingInput.{climb = true}, 64 * 2);
+}
+
+#test "SRD speeds: an Adult Red Dragon walks 40 ft and flies 80 ft against a 30-ft pace" {
+  p := wing_profile_srd(40, 80, 3.0);
+  #assert abs(p.walk - 4.0) < 0.001 && abs(p.fly - 8.0) < 0.001 && p.fly == 2 * p.walk && p.vertical.on;
+  #assert flight_profile_ok(p.vertical);
+}
+#test "on the ground you walk at the walk pace and stay on the floor" {
+  p := wing_profile_srd(40, 80, 3.0);
+  s := wf_run(p, wing_at(0, 0, 0, 0), WingInput.{mz = 1}, 64);
+  #assert s.phase == WING_GROUND && s.y == 0 && abs(s.z - 4.0) < 0.05 && abs(s.x) < 0.001;
+  #assert wing_clip(p, s) == WING_CLIP_WALK;
+  idle := wf_run(p, wing_at(0, 0, 0, 0), WingInput.{}, 8);
+  #assert wing_clip(p, idle) == WING_CLIP_IDLE && idle.z == 0;
+}
+#test "a jump takes off: lift for takeoff_s, then free flight above the ground" {
+  p := wing_profile_srd(40, 80, 3.0);
+  s := wing_step(p, wing_at(0, 0, 0, 0), WingInput.{jump = true}, 0, f32(WF_DT));
+  #assert s.phase == WING_TAKEOFF && s.y > 0 && wing_clip(p, s) == WING_CLIP_TAKEOFF;
+  s = wf_run(p, s, WingInput.{}, 64);
+  #assert s.phase == WING_AIR && s.y > 3.0;
+}
+#test "flight is faster than walking: the dragon covers much more ground in the air" {
+  p := wing_profile_srd(40, 80, 3.0);
+  walk := wf_run(p, wing_at(0, 0, 0, 0), WingInput.{mz = 1}, 64 * 6);
+  air := wf_take_off(p); z0 := air.z;
+  air = wf_run(p, air, WingInput.{mz = 1, climb = true}, 64 * 6);
+  #assert air.phase == WING_AIR && air.z - z0 > 1.6 * walk.z && abs(air.speed - p.fly) < 0.01;
+}
+#test "climb, glide and dive: a held jump climbs, letting go glides down, a dive drops faster and speeds up" {
+  p := wing_profile_srd(40, 80, 3.0);
+  a := wf_take_off(p); y0 := a.y;
+  c := wf_run(p, a, WingInput.{mz = 1, climb = true}, 64);
+  #assert c.y > y0 + 3.0 && c.vy == p.vertical.climb;
+  g := wf_run(p, c, WingInput.{mz = 1}, 64 * 3);
+  #assert g.y < c.y && g.vy == p.vertical.glide && wing_clip(p, g) == WING_CLIP_GLIDE;
+  d := wf_run(p, c, WingInput.{mz = 1, dive = true}, 32);
+  #assert d.vy == p.vertical.dive && d.speed > p.fly && wing_clip(p, d) == WING_CLIP_DIVE;
+  b := wing_step(p, c, WingInput.{mz = 1, jump = true}, 0, f32(WF_DT));
+  #assert b.beat && wing_clip(p, b) == WING_CLIP_FLY;
+}
+#test "turns bank: right leans right, left leans left, and the lean levels again flying straight" {
+  p := wing_profile_srd(40, 80, 3.0);
+  a := wf_take_off(p);
+  // facing +Z the body's right is -X: steering there turns and banks right
+  r := wf_run(p, a, WingInput.{mx = -1, climb = true}, 32);
+  #assert r.bank < -p.max_bank * 0.5 && r.yaw < 0 && r.x < 0 && wing_clip(p, r) == WING_CLIP_BANK_RIGHT;
+  l := wf_run(p, a, WingInput.{mx = 1, climb = true}, 32);
+  #assert l.bank > p.max_bank * 0.5 && l.yaw > 0 && l.x > 0 && wing_clip(p, l) == WING_CLIP_BANK_LEFT;
+  #assert abs(r.yaw) <= p.turn * 32 * f32(WF_DT) + 0.001;
+  s := wf_run(p, r, WingInput.{mx = sin(r.yaw), mz = cos(r.yaw), climb = true}, 64 * 2);
+  #assert abs(s.bank) < 0.05;
+  // letting go slows to a hover
+  h := wf_run(p, a, WingInput.{climb = true}, 64 * 3);
+  #assert h.speed < p.hover_speed && wing_clip(p, h) == WING_CLIP_HOVER;
+}
+#test "it lands: gliding or pressing land reaches the ground, settles, then walks" {
+  p := wing_profile_srd(40, 80, 3.0);
+  a := wf_take_off(p);
+  s := a; n := 0;
+  while s.phase == WING_AIR && n < 64 * 30 { s = wing_step(p, s, WingInput.{land = true}, 0, f32(WF_DT)); n += 1; }
+  #assert s.phase == WING_LANDING && s.y == 0 && wing_clip(p, s) == WING_CLIP_LAND;
+  pressed := n;
+  g := a; n = 0;
+  while g.phase == WING_AIR && n < 64 * 60 { g = wing_step(p, g, WingInput.{}, 0, f32(WF_DT)); n += 1; }
+  #assert g.phase == WING_LANDING && n > pressed;   // pressing land comes down sooner than a glide
+  s = wf_run(p, s, WingInput.{}, 64);
+  #assert s.phase == WING_GROUND && s.y == 0 && s.speed < 0.01;
+  // a raised floor stops the fall at its height
+  f := wing_step(p, a, WingInput.{land = true}, a.y + 1, f32(WF_DT));
+  #assert f.phase == WING_LANDING && f.y == a.y + 1;
+}
+#test "bad steps change nothing" {
+  p := wing_profile_srd(40, 80, 3.0); s := wing_at(1, 2, 3, 0.5);
+  #assert wing_step(p, s, WingInput.{mz = 1}, 0, 0).x == 1 && wing_step(p, s, WingInput.{mz = 1}, 0, -1).z == 3 && wing_step(p, s, WingInput.{mz = 1}, 0, 2).yaw == 0.5;
+}

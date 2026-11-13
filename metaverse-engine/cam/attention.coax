@@ -1,0 +1,135 @@
+// Attention (book chapters 10, 15 and 77, GitHub #12994): one shared answer to "what am I attending
+// to?" for lock-on, talk, look-at and action prompts, so no consumer rescans the world.
+//
+// Each target publishes typed capabilities (lock-on, talk, look-only, action), its entity generation,
+// an anchor and radius, a validity flag and a priority class. Capabilities are client hints: an action
+// a consumer takes still passes its ruleset's authority, and a conversation its own lifecycle gate.
+//
+// A receiver evaluates at most ATTN_CANDIDATES targets: range and horizontal cone, a vertical band,
+// a filtered line of sight (query_clear over the colliders it is given) and, optionally, an on-screen
+// check the caller supplies per target. Ranking is deterministic: priority class, then the
+// angle-weighted distance, then target id. A held target is kept within the larger retention bands for
+// at least `hold` ticks and through `grace` ticks of being lost; switching and release state why.
+// Self, invalid, unloaded and stale-generation targets are excluded. Time is the shared fixed step.
+//
+//   coax/bin/coax test metaverse-engine/cam/attention.coax --library
+
+#module "aethyr.cam.attention";
+#load "../core/space.coax";
+#load "../physics/query.coax";
+#load "../physics/query-scene.coax" as scene;
+#authority;
+#load "tests/attention-world.coax" #test;
+#load "tests/attention.coax" #test;
+#load "tests/attention-matrix.coax" #test;
+
+ATTN_CANDIDATES :: 32;
+ATTN_LOCK :: 1; ATTN_TALK :: 2; ATTN_LOOK :: 4; ATTN_ACTION :: 8;
+
+AttnTarget :: struct { id: int; gen: int; caps: int; at: WorldPoint; radius: f32 = 0.4; priority: int; valid: bool = true; on_screen: bool = true; }
+AttnQuery :: struct {
+  self: int = -1;
+  origin: WorldPoint; forward: WorldPoint;        // the receiver's eyes and its flat facing (unit)
+  need: int = ATTN_LOCK;                          // the capability asked for
+  acquire: f32 = 12; retain: f32 = 16;            // metres
+  acquire_cos: f32 = 0.7071; retain_cos: f32 = 0.0;   // horizontal half-cones
+  rise: f32 = 4;                                  // metres above or below the eyes
+  screen: bool;                                   // require the caller's on-screen flag
+  hold: int = 16; grace: int = 32;                // ticks
+}
+AttnReason :: enum u8 { none; acquired; kept; switched; out_of_range; hidden; invalid; stale; released; }
+AttnState :: struct {
+  target: int = -1; gen: int; since: int; seen: int;   // the held target, since when, last tick it qualified
+  runner: int = -1;                                    // the next best
+  reason: AttnReason;
+  rejected: int; exhausted: bool;                      // targets refused this step; more than the candidate budget
+  query_status: QueryStatus;                          // refusal is distinct from ordinary loss of sight
+}
+
+attn_flat :: (a: WorldPoint, b: WorldPoint) -> f32 #effects(all) { dx := a.x - b.x; dz := a.z - b.z; return sqrt(dx * dx + dz * dz); }
+// Whether target t qualifies for q within (range, cos), and its rank key (lower is better).
+AttnFit :: struct { ok: bool; key: f32; why: AttnReason; status: QueryStatus; }
+attn_fit :: (q: AttnQuery, t: AttnTarget, c: Colliders, range: f32, cosine: f32) -> AttnFit #effects(all) {
+  out: AttnFit;
+  if t.id == q.self || !t.valid || (t.caps & q.need) == 0 { out.why = AttnReason.invalid; return out; }
+  if q.screen && !t.on_screen { out.why = AttnReason.hidden; return out; }
+  d := attn_flat(t.at, q.origin);
+  if d - t.radius > range || abs(t.at.y - q.origin.y) > q.rise { out.why = AttnReason.out_of_range; return out; }
+  if d > 0.0001 {
+    a := ((t.at.x - q.origin.x) * q.forward.x + (t.at.z - q.origin.z) * q.forward.z) / d;
+    if a < cosine { out.why = AttnReason.out_of_range; return out; }
+    line := query_clear(c, q.origin, world_sub(t.at, q.origin), 0.99999994);
+    if line.status != QueryStatus.ok { out.status = line.status; out.why = AttnReason.invalid; return out; }
+    if !line.clear { out.why = AttnReason.hidden; return out; }
+    out.key = d * (2 - a);
+  }
+  out.ok = true;
+  return out;
+}
+attn_better :: (a: AttnTarget, ka: f32, b: AttnTarget, kb: f32) -> bool #effects(all) {
+  if a.priority > b.priority { return true; }
+  if a.priority < b.priority { return false; }
+  if ka < kb { return true; }
+  if ka > kb { return false; }
+  return a.id < b.id;
+}
+// One fixed step at tick now. switch_to asks to switch to the best other target (a key press); release
+// drops the held one.
+attn_step :: (s: AttnState, q: AttnQuery, targets: [] AttnTarget, c: Colliders, now: int, switch_to: bool, release: bool) -> AttnState #effects(all) {
+  out := s; out.query_status = QueryStatus.ok; out.rejected = 0; out.exhausted = targets.count > ATTN_CANDIDATES; out.runner = -1;
+  if release && s.target >= 0 { out.target = -1; out.reason = AttnReason.released; return out; }
+  best := -1; bk := 0.0f32; second := -1; sk := 0.0f32; held := -1; held_ok := false; held_why := AttnReason.out_of_range;
+  for i: 0..<ATTN_CANDIDATES {
+    if i==targets.count {break;}
+    t := targets[i];
+    if t.id == s.target {
+      held = i;
+      if t.gen != s.gen { held_why = AttnReason.stale; }
+      else {
+        f := attn_fit(q, t, c, q.retain, q.retain_cos);
+        if f.status != QueryStatus.ok { return attn_query_refusal(f.status, out.rejected, out.exhausted); }
+        held_ok = f.ok; if !f.ok { held_why = f.why; }
+      }
+    }
+    f := attn_fit(q, t, c, q.acquire, q.acquire_cos);
+    if f.status != QueryStatus.ok { return attn_query_refusal(f.status, out.rejected, out.exhausted); }
+    if !f.ok { out.rejected += 1; continue; }
+    if best < 0 || attn_better(t, f.key, targets[best], bk) { second = best; sk = bk; best = i; bk = f.key; }
+    else if second < 0 || attn_better(t, f.key, targets[second], sk) { second = i; sk = f.key; }
+  }
+  if s.target >= 0 && held < 0 { held_why = AttnReason.invalid; }   // unloaded
+  if s.target >= 0 && held_ok && held >= 0 {
+    out.seen = now; out.reason = AttnReason.kept;
+    other := ifx best >= 0 && targets[best].id != s.target then best else second;
+    if other >= 0 { out.runner = targets[other].id; }
+    if switch_to && other >= 0 && now - s.since >= q.hold { out.target = targets[other].id; out.gen = targets[other].gen; out.since = now; out.reason = AttnReason.switched; out.runner = s.target; }
+    return out;
+  }
+  if s.target >= 0 && held_why != AttnReason.stale && held_why != AttnReason.invalid && now - s.seen < q.grace {
+    out.reason = held_why;   // lost a moment: held through the grace
+    if best >= 0 && targets[best].id != s.target { out.runner = targets[best].id; }
+    return out;
+  }
+  if best >= 0 {
+    out.target = targets[best].id; out.gen = targets[best].gen; out.since = now; out.seen = now;
+    out.reason = ifx s.target >= 0 then AttnReason.switched else AttnReason.acquired;
+    if second >= 0 { out.runner = targets[second].id; }
+    return out;
+  }
+  out.target = -1; out.reason = ifx s.target >= 0 then held_why else AttnReason.none;
+  return out;
+}
+
+// No stale target, runner or partial ranking may survive a failed query. A
+// consumer must distinguish this explicit refusal from hidden-target grace.
+attn_query_refusal :: (status: QueryStatus, rejected: int, exhausted: bool) -> AttnState #effects(all) {
+  return AttnState.{reason=AttnReason.invalid,query_status=status,rejected=rejected,exhausted=exhausted};
+}
+// The owner selects sight categories/roles and ignored self identities once
+// from its shared world. Recheck the selection's epoch and entity generations
+// on every step; scratch storage is borrowed and must remain immutable here.
+attn_step_selected :: (s: AttnState, q: AttnQuery, targets: [] AttnTarget, w: scene.SelectedWorld, now: int, switch_to: bool, release: bool) -> AttnState #effects(all) {
+  status := scene.query_selected_status(w);
+  if status != QueryStatus.ok { return attn_query_refusal(status, 0, targets.count > ATTN_CANDIDATES); }
+  return attn_step(s,q,targets,w.geometry,now,switch_to,release);
+}

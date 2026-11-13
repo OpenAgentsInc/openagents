@@ -1,0 +1,340 @@
+// Per-client byte budgets, priority and backpressure for replication (#13178), engine-wide. A realm
+// keeps one NetLink per client and asks it each tick how many bytes of state rows that client may
+// be sent; it orders the rows waiting by net_order and writes them until the bytes are spent. What
+// doesn't fit is never queued: the next tick's rows are cut from the newest state again.
+//
+// The link (net_link_step):
+//   - starts at the realm's target rate (bytes a second) and sends rows every tick;
+//   - is congested when bytes wait on its socket past NET_QUEUE_TICKS ticks of its budget, or when
+//     the tick its client says it heard trails the room's by NET_LAG_GROW ticks more than the
+//     link's own least lag (the bytes then wait in the network or the kernel, not the host);
+//   - congested, halves its rate (to NET_LINK_FLOOR at least) and sends rows one tick in more,
+//     to one in NET_EVERY_MAX, at most once every NET_CUT_TICKS ticks;
+//   - calm, adds target / NET_RAMP_TICKS a tick back up to the target, and after NET_CALM calm
+//     ticks sends rows one tick in fewer, back to every tick.
+// A tick whose rows don't go (net_link_step's limit 0) sends the client's own row and the reliable
+// lifecycle only; the rest wait with their priority and age.
+//
+// Priority (net_priority) grows each tick a row waits, so a starved row ages upward: it weighs the
+// entity's kind (the realm's weight) by nearness, whether it is in the camera's view (the client
+// reports its camera), combat (it targets you, it is in your party, it is fighting near you), its
+// speed, and the ticks since its last row. net_order puts the rows that have waited max_age ticks
+// first, the oldest first, for their own allowance, so no row waits past max_age plus the rows
+// ahead of it over that allowance (the fairness check below).
+//   coax/bin/coax test metaverse-engine/net/budget.coax
+#module "aethyr.net.budget";
+#authority;
+
+NET_LINK_FLOOR :: 2000;       // bytes a second at least while congested
+NET_RAMP_TICKS :: 90;         // ticks from nothing to the target, adding back (3 s at 30 Hz)
+NET_EVERY_MAX :: 6;           // rows one tick in this many at most (5 Hz at 30 Hz)
+NET_CUT_TICKS :: 10;          // ticks between two cuts at least (about a round trip)
+NET_CALM :: 15;               // calm ticks before rows go one tick in fewer
+NET_QUEUE_TICKS :: 2;         // ticks of the budget waiting on the socket: congested
+NET_LAG_GROW :: 6;            // ticks of HEARD lag past the link's least: congested (200 ms at 30 Hz)
+NET_LAG_WINDOW :: 300;        // ticks a least lag holds before it may rise a tick (10 s at 30 Hz)
+
+NetLink :: struct {
+  target: int;                // bytes a second the realm aims at
+  rate: int;                  // bytes a second now (0: not started)
+  every: int;                 // rows go one tick in this many (0: not started)
+  calm: int;                  // ticks since the last congestion
+  cut_at: int;                // the tick of the last cut, plus one (0 none yet)
+  base_lag: int;              // the least HEARD lag seen (ticks), plus one (0 none yet)
+  lag_at: int;                // the tick that least was last allowed to rise
+  limit: int;                 // this tick's bytes of rows (0 on a tick rows don't go)
+  congested: bool;            // this tick's word
+  used: int; dropped: int;    // this tick's bytes of rows sent, and rows dropped for want of bytes
+}
+
+// Whether the link is congested: `waiting` bytes on its socket, its client's HEARD `lag` ticks behind
+// the room's tick (-1 not known).
+net_link_congested :: (l: NetLink, hz: int, waiting: int, lag: int) -> bool #effects(all) {
+  per := ifx hz > 0 then l.rate / hz else l.rate;   // mutant: equivalent (a rate over 1 is itself)
+  if waiting > NET_QUEUE_TICKS * per { return true; }
+  return l.base_lag > 0 && lag - (l.base_lag - 1) > NET_LAG_GROW;   // (a lag not known, -1, is below any least)
+}
+// The link at tick `tick` of a room running at `hz`, its target `target` bytes a second.
+net_link_step :: (s: NetLink, tick: int, hz: int, target: int, waiting: int, lag: int) -> NetLink #effects(all) {
+  l := s;
+  l.target = ifx target > NET_LINK_FLOOR then target else NET_LINK_FLOOR;   // mutant: equivalent (at the floor, either is the floor)
+  if l.rate <= 0 || l.every <= 0 { l.rate = l.target; l.every = 1; l.calm = 0; l.cut_at = 0; }
+  if l.rate > l.target { l.rate = l.target; }   // mutant: equivalent (at the target, either is the target)
+  if lag >= 0 {
+    if l.base_lag == 0 || lag + 1 < l.base_lag { l.base_lag = lag + 1; l.lag_at = tick; }
+    else if tick - l.lag_at >= NET_LAG_WINDOW { l.base_lag += 1; l.lag_at = tick; }   // a path that got slower: the least rises
+  }
+  l.congested = net_link_congested(l, hz, waiting, lag);
+  if l.congested {
+    l.calm = 0;
+    if l.cut_at == 0 || tick - (l.cut_at - 1) >= NET_CUT_TICKS {
+      l.rate = l.rate / 2;
+      if l.rate < NET_LINK_FLOOR { l.rate = NET_LINK_FLOOR; }   // mutant: equivalent (at the floor, either is the floor)
+      if l.every < NET_EVERY_MAX { l.every += 1; }
+      l.cut_at = tick + 1;
+    }
+  } else {
+    l.calm += 1;
+    l.rate += l.target / NET_RAMP_TICKS;   // a byte a tick at least: the target is NET_LINK_FLOOR or more
+    if l.rate > l.target { l.rate = l.target; }   // mutant: equivalent (at the target, either is the target)
+    if l.every > 1 && l.calm >= NET_CALM { l.every -= 1; l.calm = 0; }
+  }
+  per := ifx hz > 0 then l.rate * l.every / hz else l.rate;   // mutant: equivalent (over 1, itself)
+  l.limit = ifx tick % l.every == 0 then per else 0;
+  l.used = 0; l.dropped = 0;
+  return l;
+}
+// This tick's rows went: `used` bytes of them, and `dropped` rows didn't fit (they wait, never queued).
+net_link_spent :: (s: NetLink, used: int, dropped: int) -> NetLink #effects(all) {
+  l := s;
+  l.used = ifx used > 0 then used else 0;   // mutant: equivalent (0 either way)
+  l.dropped = ifx dropped > 0 then dropped else 0;   // mutant: equivalent (0 either way)
+  return l;
+}
+
+// ---- priority
+
+NET_NEAR :: 10.0;             // m: an entity this far off weighs half what it would at your feet
+NET_VIEW_NEAR :: 8.0;         // m: this near, an entity is in view whichever way the camera faces
+NET_VIEW_COS :: 0.5;          // the view's half angle's cosine (60 degrees each side)
+NET_VIEW_OUT :: 0.35;         // an entity outside the view weighs this much of what it would in it
+NET_SPEED_REF :: 6.0;         // m/s: an entity this fast weighs twice what it would standing
+NET_SPEED_MOST :: 30.0;       // m/s: faster counts as this
+NET_AGE_REF :: 30.0;          // ticks since its last row that double its weight
+NET_COMBAT_YOU :: 1;          // combat bits: it targets you,
+NET_COMBAT_PARTY :: 2;        //   it is in your party,
+NET_COMBAT_NEAR :: 4;         //   it is fighting near you
+
+NetPrio :: struct {
+  weight: f32;                // the realm's weight for its kind
+  d2: f32;                    // its distance squared (m^2)
+  view: bool;                 // in the camera's view (net_in_view)
+  combat: int;                // NET_COMBAT_* bits
+  speed: f32;                 // m/s
+  age: int;                   // ticks since its last row (0 never sent, or just sent)
+}
+
+// Whether something (dx, dz) off is in the view of a camera facing (fx, fz) (not normalized; 0, 0 a
+// camera not reported: everything is in view).
+net_in_view :: (fx: f32, fz: f32, dx: f32, dz: f32) -> bool #effects(all) {
+  f2 := fx * fx + fz * fz; d2 := dx * dx + dz * dz;
+  if !(f2 > 0) || d2 <= NET_VIEW_NEAR * NET_VIEW_NEAR { return true; }
+  dot := fx * dx + fz * dz;
+  return dot > 0 && dot * dot >= NET_VIEW_COS * NET_VIEW_COS * f2 * d2;   // mutant: equivalent (dot 0 fails the cone; the cone's edge is irrational)
+}
+// How much a combat's bits multiply an entity's weight.
+net_combat_gain :: (combat: int) -> f32 #effects(all) {
+  g := 1.0f32;
+  if (combat & NET_COMBAT_YOU) != 0 { g += 3; }
+  if (combat & NET_COMBAT_PARTY) != 0 { g += 1; }
+  if (combat & NET_COMBAT_NEAR) != 0 { g += 0.5; }
+  return g;
+}
+// The priority a waiting row gains this tick.
+net_priority :: (p: NetPrio) -> f32 #effects(all) {
+  d := ifx p.d2 > 0 then sqrt(p.d2) else 0.0f32;   // mutant: equivalent (sqrt(0) is 0)
+  near := p.weight / (1 + d / NET_NEAR);
+  view := ifx p.view then 1.0f32 else NET_VIEW_OUT;
+  s := ifx p.speed > NET_SPEED_MOST then NET_SPEED_MOST else ifx p.speed > 0 then p.speed else 0.0f32;   // mutant: equivalent (each bound is itself)
+  a := ifx p.age > 0 then f32(p.age) else 0.0f32;   // mutant: equivalent (0 either way)
+  return near * view * net_combat_gain(p.combat) * (1 + s / NET_SPEED_REF) * (1 + a / NET_AGE_REF);
+}
+// A priority's order class: its power of two (0 below 1/32, 31 at most); higher goes first.
+// (floor of log2 of 64 a, by halves of its bits: five comparisons, every candidate twice a tick)
+net_prio_class :: (a: f32) -> int #effects(all) {
+  b := 0; v := a * 64;
+  if v >= 65536 { v = v / 65536; b += 16; }
+  if v >= 256 { v = v / 256; b += 8; }
+  if v >= 16 { v = v / 16; b += 4; }
+  if v >= 4 { v = v / 4; b += 2; }
+  if v >= 2 { b += 1; }
+  return b;
+}
+// The order rows go in: those of cand[0..<n] that have waited max_age ticks (now - since, since > 0)
+// first, the oldest first; then the rest by priority class, highest first, each class in cand's
+// order. out holds the slots; the count of aged ones back.
+net_order :: (prio: [] f32, since: [] int, cand: [] int, n: int, now: int, max_age: int, out: [] int) -> int #effects(all) {
+  m := ifx n < cand.count then n else cand.count;   // mutant: equivalent (equal, either)
+  if m > out.count { m = out.count; }   // mutant: equivalent (equal, either)
+  aged := 0;
+  for c: 0..<m {
+    q := cand[c];
+    if since[q] <= 0 || now - since[q] < max_age { continue; }
+    j := aged;
+    while j > 0 && since[out[j - 1]] > since[q] { out[j] = out[j - 1]; j -= 1; }
+    out[j] = q; aged += 1;
+  }
+  count: [32] int; start: [32] int;
+  for c: 0..<m { q := cand[c]; if since[q] > 0 && now - since[q] >= max_age { continue; } count[net_prio_class(prio[q])] += 1; }
+  at := aged;
+  for b: 0..<32 { k := 31 - b; start[k] = at; at += count[k]; }
+  for c: 0..<m {
+    q := cand[c];
+    if since[q] > 0 && now - since[q] >= max_age { continue; }
+    k := net_prio_class(prio[q]); out[start[k]] = q; start[k] += 1;
+  }
+  return aged;
+}
+
+// ---- checks
+
+#test "link: starts at its target every tick; a floor under a tiny target; the limit is a tick's share" {
+  l := net_link_step(NetLink.{}, 30, 30, 15000, 0, -1);
+  #assert l.rate == 15000 && l.every == 1 && l.limit == 500 && !l.congested && l.target == 15000;
+  l = net_link_step(NetLink.{}, 30, 30, 100, 0, -1);
+  #assert l.target == NET_LINK_FLOOR && l.rate == NET_LINK_FLOOR && l.limit == NET_LINK_FLOOR / 30;
+  l = net_link_step(NetLink.{}, 7, 0, 3000, 0, -1);
+  #assert l.limit == 3000;   // no rate given: a tick is a second
+  // a lower target takes effect at once; a higher one is ramped to
+  l = net_link_step(NetLink.{}, 1, 30, 30000, 0, -1);
+  l = net_link_step(l, 2, 30, 9000, 0, -1); #assert l.rate == 9000 && l.limit == 300;
+  l = net_link_step(l, 3, 30, 18000, 0, -1); #assert l.rate == 9000 + 200 && l.target == 18000;
+  // a link not started (rate or spacing 0) starts again at its target
+  u := net_link_step(NetLink.{rate = 0, every = 4, target = 9000}, 8, 30, 9000, 0, -1); #assert u.every == 1 && u.rate == 9000;
+  u = net_link_step(NetLink.{rate = 4000, every = 0, target = 9000}, 8, 30, 9000, 0, -1); #assert u.every == 1 && u.rate == 9000;
+  u = net_link_step(NetLink.{rate = 1, every = 1, target = 9000, calm = 3}, 8, 30, 9000, 0, -1); #assert u.rate == 101 && u.calm == 4;
+  u = net_link_step(NetLink.{rate = 0, every = 0, target = 9000, calm = 14, cut_at = 9}, 8, 30, 9000, 0, -1); #assert u.calm == 1 && u.cut_at == 0;
+  s := net_link_spent(l, 280, 3); #assert s.used == 280 && s.dropped == 3;
+  s = net_link_step(s, 4, 30, 18000, 0, -1); #assert s.used == 0 && s.dropped == 0;
+  s = net_link_spent(l, -5, -1); #assert s.used == 0 && s.dropped == 0;
+  #assert net_link_step(NetLink.{}, 1, 30, 9000 * 90 + 89, 0, -1).target == 810089;
+  r := net_link_step(NetLink.{rate = 810000, every = 1, target = 810089, cut_at = -100}, 2, 30, 810089, 0, -1);
+  #assert r.rate == 810089;   // the last step stops at the target
+}
+#test "link: a queue on the socket halves the rate and spaces the rows, once a cut interval; calm brings both back" {
+  l := net_link_step(NetLink.{}, 0, 30, 30000, 0, -1);   // 1,000 bytes a tick
+  #assert !net_link_congested(l, 30, 2000, -1) && net_link_congested(l, 30, 2001, -1);
+  #assert net_link_congested(l, 0, 60001, -1) && !net_link_congested(l, 0, 60000, -1);
+  l = net_link_step(l, 1, 30, 30000, 2001, -1);
+  #assert l.congested && l.rate == 15000 && l.every == 2 && l.limit == 0 && l.calm == 0 && l.cut_at == 2;   // an odd tick: no rows
+  l = net_link_step(l, 2, 30, 30000, 5000, -1);
+  #assert l.congested && l.rate == 15000 && l.every == 2 && l.limit == 1000;   // within the cut interval: no second cut
+  for t: 3..<1 + NET_CUT_TICKS { l = net_link_step(l, t, 30, 30000, 5000, -1); }
+  #assert l.rate == 15000;
+  l = net_link_step(l, 1 + NET_CUT_TICKS, 30, 30000, 5000, -1); #assert l.rate == 7500 && l.every == 3;
+  for c: 0..<20 { l = net_link_step(l, 100 + c * NET_CUT_TICKS, 30, 30000, 100000, -1); }
+  #assert l.rate == NET_LINK_FLOOR && l.every == NET_EVERY_MAX;
+  // calm: the rate climbs by a ramp step a tick, and the spacing falls a tick each NET_CALM calm ticks
+  t0 := 1000;
+  l = net_link_step(l, t0, 30, 30000, 0, -1);
+  #assert !l.congested && l.rate == NET_LINK_FLOOR + 30000 / NET_RAMP_TICKS && l.every == NET_EVERY_MAX && l.calm == 1;
+  for t: 1..<NET_CALM { l = net_link_step(l, t0 + t, 30, 30000, 0, -1); }
+  #assert l.every == NET_EVERY_MAX - 1 && l.calm == 0;
+  for t: NET_CALM..<NET_CALM * NET_EVERY_MAX + NET_RAMP_TICKS { l = net_link_step(l, t0 + t, 30, 30000, 0, -1); }
+  #assert l.every == 1 && l.rate == 30000 && l.limit == 1000;
+  // a limit on the ticks rows go carries the ticks between: the rate holds over a second
+  m := net_link_step(NetLink.{rate = 6000, every = 3, target = 30000, cut_at = 0, calm = 0}, 30, 30, 30000, 0, -1);
+  #assert m.every == 3 && m.limit == (6000 + 30000 / NET_RAMP_TICKS) * 3 / 30;
+  m = net_link_step(m, 31, 30, 30000, 0, -1); #assert m.limit == 0;
+}
+#test "link: HEARD lag past the link's own least is congestion; the least holds a window, then may rise a tick" {
+  l := net_link_step(NetLink.{}, 0, 30, 30000, 0, 5);
+  #assert l.base_lag == 6 && !l.congested;
+  l = net_link_step(l, 1, 30, 30000, 0, 4); #assert l.base_lag == 5 && l.lag_at == 1;
+  l = net_link_step(l, 2, 30, 30000, 0, 4 + NET_LAG_GROW); #assert !l.congested;
+  l = net_link_step(l, 3, 30, 30000, 0, 5 + NET_LAG_GROW); #assert l.congested && l.rate == 15000;
+  l = net_link_step(l, 4, 30, 30000, 0, -1); #assert !l.congested && l.base_lag == 5;   // not known: no word
+  #assert !net_link_congested(NetLink.{rate = 30000}, 30, 0, 100);   // no least yet
+  z := net_link_step(NetLink.{}, 0, 30, 30000, 0, 0); #assert z.base_lag == 1;
+  z = net_link_step(z, 1, 30, 30000, 0, NET_LAG_GROW + 1); #assert z.congested;
+  #assert !net_link_congested(z, 30, 0, -1);
+  // a window on, the least rises a tick (a slower path), and again a window later
+  l = net_link_step(l, 1 + NET_LAG_WINDOW - 1, 30, 30000, 0, 9); #assert l.base_lag == 5;
+  l = net_link_step(l, 1 + NET_LAG_WINDOW, 30, 30000, 0, 9); #assert l.base_lag == 6 && l.lag_at == 1 + NET_LAG_WINDOW;
+  l = net_link_step(l, 2 + NET_LAG_WINDOW, 30, 30000, 0, 9); #assert l.base_lag == 6;
+  l = net_link_step(l, 3 + NET_LAG_WINDOW, 30, 30000, 0, 5); #assert l.base_lag == 6 && l.lag_at == 1 + NET_LAG_WINDOW;   // equal to the least: kept, its window too
+  l = net_link_step(l, 4 + NET_LAG_WINDOW, 30, 30000, 0, 4); #assert l.base_lag == 5;
+}
+#test "priority: near over far, in view over out, combat, speed and waiting each raise it" {
+  base := NetPrio.{weight = 2, d2 = 100, view = true};
+  p := net_priority(base); #assert p == 1;
+  near := base; near.d2 = 0; #assert net_priority(near) == 2;
+  near.d2 = -4; #assert net_priority(near) == 2;
+  out := base; out.view = false; #assert net_priority(out) == f32(NET_VIEW_OUT);
+  you := base; you.combat = NET_COMBAT_YOU; #assert net_priority(you) == 4;
+  party := base; party.combat = NET_COMBAT_PARTY; #assert net_priority(party) == 2;
+  fight := base; fight.combat = NET_COMBAT_NEAR; #assert net_priority(fight) == 1.5;
+  all := base; all.combat = 7; #assert net_priority(all) == 5.5;
+  run := base; run.speed = 6; #assert net_priority(run) == 2;
+  run.speed = 100; #assert net_priority(run) == 6;
+  run.speed = -3; #assert net_priority(run) == 1;
+  run.speed = 30; #assert net_priority(run) == 6;
+  wait := base; wait.age = 30; #assert net_priority(wait) == 2;
+  wait.age = -9; #assert net_priority(wait) == 1;
+  heavy := base; heavy.weight = 4; #assert net_priority(heavy) == 2;
+}
+#test "view: the camera's cone, everything near, and everything when no camera is reported" {
+  // facing +z: ahead in, behind out, 60 degrees each side the edge
+  #assert net_in_view(0, 1, 0, 50) && !net_in_view(0, 1, 0, -50) && !net_in_view(0, 1, 50, 0);
+  #assert net_in_view(0, 1, 51, 30) && !net_in_view(0, 1, 52, 30);   // 60 degrees each side: 51 m across 30 m ahead is in, 52 not
+  #assert net_in_view(0, 2, 3, 4) && net_in_view(0, 1, -6, -5.29);   // within NET_VIEW_NEAR, whichever way
+  #assert !net_in_view(0, 1, -6, -5.3) && net_in_view(0, 1, -8, 0) && !net_in_view(0, 1, -8.01, 0);
+  #assert net_in_view(0, 0, 0, -50);   // no camera: in
+  zero := 0.0f32; nan := zero / zero;
+  #assert net_in_view(nan, 1, 0, -50);
+  #assert net_in_view(0, 1, 40, 70);
+  #assert !net_in_view(1, 0, 0, 9) && net_in_view(1, 0, 9, 0) && net_in_view(-1, 0, -9, 1);
+  #assert net_in_view(1, 0, 10, 12) && net_in_view(0, 1, 12, 10) && !net_in_view(1, 0, 10, 18);   // 50 degrees off: in; 61: out
+}
+#test "order: the aged first, oldest first; then by priority class, highest first, ties in their order" {
+  prio: [8] f32; since: [8] int; cand: [8] int; out: [8] int;
+  prio[0] = 0.1; prio[1] = 5; prio[2] = 0.5; prio[3] = 5.1; prio[4] = 1; prio[5] = 40; prio[6] = 2;
+  since[0] = 10; since[1] = 95; since[2] = 5; since[3] = 99; since[4] = 70; since[5] = 0; since[6] = 71;
+  for q: 0..<7 { cand[q] = q; }
+  aged := net_order(prio[..], since[..], cand[..], 7, 100, 30, out[..]);
+  // aged (waited 30 ticks or more): 2 (95), 0 (90), 4 (30); the rest: 5 (40), 1 and 3 (5 and 5.1, one class), 6
+  #assert aged == 3 && out[0] == 2 && out[1] == 0 && out[2] == 4 && out[3] == 5 && out[4] == 1 && out[5] == 3 && out[6] == 6;
+  aged = net_order(prio[..], since[..], cand[..], 7, 100, 31, out[..]);
+  #assert aged == 2 && out[2] == 5 && out[6] == 4;
+  #assert net_order(prio[..], since[..], cand[..], 3, 100, 30, out[..]) == 2 && out[2] == 1;
+  short: [2] int; #assert net_order(prio[..], since[..], cand[..], 7, 100, 30, short[..]) == 1 && short[0] == 0 && short[1] == 1;   // the first that fit
+  #assert net_order(prio[..], since[..], cand[0..<2], 7, 100, 1000, out[..]) == 0 && out[0] == 1 && out[1] == 0;
+  // the aged with the same wait keep their order
+  since[1] = 10; since[3] = 10;
+  aged = net_order(prio[..], since[..], cand[..], 7, 100, 30, out[..]);
+  #assert aged == 5 && out[0] == 2 && out[1] == 0 && out[2] == 1 && out[3] == 3 && out[4] == 4;
+  // a first candidate that waits by priority, and the top class
+  cand[0] = 7; cand[1] = 6; prio[7] = 1.0e30; since[7] = 99;
+  aged = net_order(prio[..], since[..], cand[..], 2, 100, 30, out[..]);
+  #assert aged == 0 && out[0] == 7 && out[1] == 6;
+  #assert net_prio_class(0) == 0 && net_prio_class(1.0 / 32) == 1 && net_prio_class(0.99 / 32) == 0 && net_prio_class(1) == 6 && net_prio_class(1.0e30) == 31;
+  // each power of two its own class, and just below it the one under; NaN and less than nothing 0
+  for k: 1..<32 {
+    p := 1.0f32; for i: 0..<k { p = p * 2; }
+    #assert net_prio_class(p / 64) == k && net_prio_class(p * 0.999 / 64) == k - 1 && net_prio_class(p * 1.999 / 64) == k;
+  }
+  zero := 0.0f32;
+  #assert net_prio_class(zero / zero) == 0 && net_prio_class(-5) == 0 && net_prio_class(1.0f32 / zero) == 31;
+}
+
+NET_FAIR_N :: 240;
+#test "budget fairness: under a budget that fits a tenth of the rows a tick, no row waits past its bound" #steps 400000000 {
+  // 240 entities, every one changing every tick, priorities spread a thousandfold; a row is 20 bytes;
+  // the budget fits 20 rows a tick and the aged allowance 6. The bound: max_age, then the rows that
+  // can be ahead of one in the aged queue over the aged allowance's rows a tick.
+  prio: [NET_FAIR_N] f32; since: [NET_FAIR_N] int; cand: [NET_FAIR_N] int; order: [NET_FAIR_N] int; last: [NET_FAIR_N] int;
+  seed := 7;
+  w: [NET_FAIR_N] f32;
+  for q: 0..<NET_FAIR_N { seed = (seed * 1103515245 + 12345) & 0x7fffffff; w[q] = f32(1 + (seed >> 8) % 1000) / 1000.0; cand[q] = q; }
+  max_age := 30; budget := 20 * 20; aged_budget := 6 * 20;
+  most := 0; sent_all := 0;
+  for now: 1..<900 {
+    for q: 0..<NET_FAIR_N {
+      prio[q] += net_priority(NetPrio.{weight = w[q] * 4, d2 = f32((q * 37) % 200) * f32((q * 37) % 200), view = q % 3 != 0, age = ifx last[q] > 0 then now - last[q] else now});
+      if since[q] == 0 { since[q] = now; }
+    }
+    aged := net_order(prio[..], since[..], cand[..], NET_FAIR_N, now, max_age, order[..]);
+    room := aged_budget; spent := 0;
+    for c: 0..<NET_FAIR_N {
+      q := order[c];
+      if c < aged { if room < 20 { continue; } room -= 20; }
+      else { if spent + 20 > budget { continue; } spent += 20; }
+      if now - since[q] > most { most = now - since[q]; }
+      prio[q] = 0; since[q] = 0; last[q] = now; sent_all += 1;
+    }
+  }
+  bound := max_age + (NET_FAIR_N + 5) / 6;
+  #assert most <= bound && most >= max_age;   // the low ones do age into the aged queue, and none past the bound
+  for q: 0..<NET_FAIR_N { #assert last[q] >= 900 - bound - 1; }   // every one went lately
+  #assert sent_all >= 899 * 20;
+}

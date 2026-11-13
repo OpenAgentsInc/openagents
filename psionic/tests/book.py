@@ -44,7 +44,7 @@ NEAR_LIMIT = re.compile(r"coax: note\[E0603\]: [a-z -]+: [0-9]+ of [0-9]+ used \
 BOOKS = {
     # book directory, example programs, project README, least source listings
     "psionic": ("psionic/book", "psionic/examples", "psionic/README.md", 3),
-    "aethyr": ("aethyr/book", "aethyr/examples", "aethyr/README.md", 0),
+    "aethyr": ("metaverse-engine/book", "metaverse-engine/examples", "metaverse-engine/README.md", 0),
     "nostr": ("nostr/book", "nostr/examples", "nostr/README.md", 0),
     "coder": ("coder/book", None, None, 1),
     "bitcoin": ("bitcoin/book", "bitcoin/examples", "bitcoin/README.md", 0),

@@ -9,8 +9,8 @@
 // byte; a step with "sql" runs that statement instead (the publish that pins an engine: this run's
 // API has a bucket with no engine page) and requires its one value. A key named in a step's "vary"
 // holds a number the run decides (a time): its digits are the fixture's before the bodies are
-// compared. The same file is written and read through aethyr/forge/record.coax by
-// aethyr/forge/record-goldens.coax, so the codec and the server give the same bytes. Local
+// compared. The same file is written and read through metaverse-engine/editor/record.coax by
+// metaverse-engine/editor/record-goldens.coax, so the codec and the server give the same bytes. Local
 // isolated API and database only.
 //   API=http://127.0.0.1:PORT PGURL=... PSQL=... coax/web/tool.sh coax/web/api/tests/realm_record_checks.coax
 // tool.sh: tls

@@ -7,7 +7,7 @@
 // of the terrain tile's cells straight from its samples (worldbuilder-land.coax, #13225), and the
 // pack's meshes, instanced, a draw a mesh; and the shared component shader over all
 // (components/backend/gpu-shader.coax: panels, buttons, bars and chat box).
-// The ground's materials are Aethyr's (aethyr/render/terrain-shade.coax): each layer's procedural
+// The ground's materials are Aethyr's (metaverse-engine/render/terrain-shade.coax): each layer's procedural
 // albedo from the page's material table, weighted by the sample's painted shares; the bare Grid is
 // the floor's own look, so the tile's edge meets the endless floor without a seam.
 // The uniform block, read from a []f32 at these offsets (floats):
@@ -18,9 +18,9 @@
 //   the brush 44: x, its radius, z, how strongly its ring is shown
 //   the layers from 48, twelve floats each: colour a and its noise's frequency; colour b and the
 //   second noise's; the two noises' shares, the gain and its noise's share
-#load "../../../aethyr/render/sampling.coax";
-#load "../../../aethyr/render/terrain-shade.coax";
-#load "../../../aethyr/render/ghost.coax";   // your character as a ghost
+#load "../../../metaverse-engine/render/sampling.coax";
+#load "../../../metaverse-engine/render/terrain-shade.coax";
+#load "../../../metaverse-engine/render/ghost.coax";   // your character as a ghost
 #load "../../../components/backend/gpu-shader.coax";
 #load "../../../everglade/scene/gpu/fivelab.coax";   // the people's vertices and their skinning from the baked clips (fivelab_scene_vs)
 
@@ -82,7 +82,7 @@ worldbuilder_rim :: (xz:V2,w1:V2)->f32 {
   return fmin(line+glow,1.0f32);
 }
 worldbuilder_beyond :: (xz:V2)->f32 { return ifx fmax(abs(xz.x),abs(xz.y))>WB_GROUND_HALF then 1.0f32 else 0.0f32; }
-// One layer's albedo at xz, linear (aethyr/render/terrain-shade.coax's equations from the page's table).
+// One layer's albedo at xz, linear (metaverse-engine/render/terrain-shade.coax's equations from the page's table).
 worldbuilder_layer :: (k:int,xz:V2,u:[]f32)->V3 {
   at:int=WB_U_LAYERS+(k*12);
   t:f32=clampf(aethyr_terrain_blend_t(xz.x,xz.y,u[at+3],u[at+8],0.0f32,u[at+7],u[at+9],0.0f32),0.0f32,1.0f32);
@@ -131,7 +131,7 @@ worldbuilder_shares :: (packed:f32)->V3 {
   return v3(c/255.0f32,b/255.0f32,a/255.0f32);
 }
 // The ground's vertex: six a cell, two triangles split from its south-west corner to its
-// north-east one (aethyr/world/terrain-tile.coax), its normal from the samples either side.
+// north-east one (metaverse-engine/world/terrain-tile.coax), its normal from the samples either side.
 worldbuilder_ground_vs :: (id:u32,u:[]f32,ground:[]V4)->WorldbuilderS {
   ox:[6]int=[6]int.[0,1,1,0,0,1];
   oz:[6]int=[6]int.[0,1,0,0,1,1];
@@ -279,7 +279,7 @@ worldbuilder_scene_fs :: (s:WorldbuilderS,u:[]f32,sheets:Tex2DArray,sheet:Sample
     return wg_make_f4_f3f(worldbuilder_out(wg_mul_f3f(worldbuilder_ground_fs(s,u,w1),u[3])),1.0f32);
   }
   if (s.ground==2) {
-    // your character, a ghost (aethyr/render/ghost.coax): see-through, its rim soft and bright,
+    // your character, a ghost (metaverse-engine/render/ghost.coax): see-through, its rim soft and bright,
     // blended over the world behind it (worldbuilder-walk.coax wbw_draw_blend), and no shadow
     gn:V3=wg_normalize3(s.normal);
     gv:V3=wg_normalize3(wg_sub_f3f3(v3(u[28],u[29],u[30]),s.world));

@@ -86,6 +86,6 @@ coax/web/tool.sh shot https://openagents.com/worlds/splice /tmp/s.png 1280x800 6
   --eval 'JSON.stringify(performance.getEntriesByType("navigation").concat(performance.getEntriesByType("resource")).map(e=>[e.name,e.transferSize,e.decodedBodySize]))'
 ```
 
-Unreal: run any fixture in `aethyr/export/unreal/web-fixtures.json` with the
-engine's `webrun.py` (see `aethyr/export/unreal/README.md`) and read `bytes`
+Unreal: run any fixture in `metaverse-engine/export/unreal/web-fixtures.json` with the
+engine's `webrun.py` (see `metaverse-engine/export/unreal/README.md`) and read `bytes`
 and `requests` in the run's `load.json`.

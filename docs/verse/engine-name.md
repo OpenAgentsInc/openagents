@@ -130,11 +130,11 @@ Aethyr."
 Applied 2026-10-31:
 
 - #12609 and the Verse "Engine core" milestone titles;
-- `docs/verse/engine-core.md`, and the module folder, root `aethyr/`;
-- the [Aethyr book](../../aethyr/book/README.md) (`aethyr/book/`), which
+- `docs/verse/engine-core.md`, and the module folder, root `metaverse-engine/`;
+- the [Aethyr book](../../metaverse-engine/book/README.md) (`metaverse-engine/book/`), which
   builds the engine from scratch and took the Psionic book's physics-engine
   and spacecraft parts;
-- AGENTS.md's `aethyr/` and `verse/` rows and the Coax and Psionic book
+- AGENTS.md's `metaverse-engine/` and `verse/` rows and the Coax and Psionic book
   chapters that describe the engine;
 - the changelog and about copy.
 

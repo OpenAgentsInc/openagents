@@ -95,13 +95,13 @@ other defenders, a life cleric heals the tower).
 | Walls that break into rubble | Wall of Stone with AC and hit points; rubble damage | `verse/demolish.coax`, Everglade |
 | Red damage numbers | Rising red numbers over whoever takes damage | Everglade |
 | Waves of enemies on a rules engine | Dead Gears' waves, entities and event log | `verse/deadgears/rules.coax`, `verse/deadgears/ecs.coax` |
-| Walking a path | Characters following garden paths | `aethyr/world/terrain.coax` |
-| Placing things on a grid | Minecraft-style placing from the playtest redesign | `verse/edit/`, `aethyr/cam/arrange.coax` |
+| Walking a path | Characters following garden paths | `metaverse-engine/world/terrain.coax` |
+| Placing things on a grid | Minecraft-style placing from the playtest redesign | `verse/edit/`, `metaverse-engine/cam/arrange.coax` |
 | Tap, long-press, drag to swap | Everglade's hotbar | `apps/openagents-web/everglade-hotbar.coax` |
 
 ## What the engine needs
 
-1. **Paths as lanes** (`aethyr/world/terrain.coax`): a path with a distance along
+1. **Paths as lanes** (`metaverse-engine/world/terrain.coax`): a path with a distance along
    it, so "first", "last", "strongest" and "closest" targeting are cheap,
    and enemies that move along it at their speed.
 2. **Splitting enemies**: an entity that, at 0 hit points, spawns its inner
@@ -115,13 +115,13 @@ other defenders, a life cleric heals the tower).
    grid in the entity system.
 5. **Hundreds of enemies on a phone**: instanced bubbles (one mesh,
    per-instance colour and size), and particles for pops.
-6. **A top-down tactical camera** (`aethyr/cam/camera.coax`): pinch zoom, pan,
+6. **A top-down tactical camera** (`metaverse-engine/cam/camera.coax`): pinch zoom, pan,
    and a slight tilt.
 7. **Seeded dice for replays and co-op**: one seed per map so a replay or a
    shared match rolls the same dice (Ice Cream Man is already seeded).
 8. **Content as data**: layers, defenders, levels and maps as text tables
    that an agent can write and the engine checks, like motions
-   (`aethyr/anim/motion.coax`) and set pieces (`verse/setpiece.coax`).
+   (`metaverse-engine/anim/motion.coax`) and set pieces (`verse/setpiece.coax`).
 
 ## Milestones
 

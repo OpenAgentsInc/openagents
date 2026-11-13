@@ -1,0 +1,154 @@
+// The frame plan as words: what a page's engine hands its host through
+//   uint32_t coaxial_frame_plan_v1(state, uint32_t features, uint32_t *out, uint32_t cap)
+// (GitHub #13303; agreed with the host core on #13304). passes.coax decides the order of a frame;
+// this file writes that RenderPlan as fixed records of FRAME_PLAN_WORDS words, and reads them back.
+// A host walks the records and maps a pass id to its pipeline and bindings. It decides no order.
+//
+// Record 0 is the version record: FRAME_PLAN_MAGIC, FRAME_PLAN_VERSION, FRAME_PLAN_WORDS, the number
+// of operations, and four zero words. A host built against another version or record size refuses
+// the plan (frame_plan_count gives -1) instead of walking it wrong. Operation k is record k + 1:
+//   word 0  kind | pass << 8 | draw source << 16 | depth test << 24
+//   word 1  colour 0 | colour 1 << 8 | depth target << 16 | copy or bloom source << 24
+//   word 2  copy target | colour blend << 8 | alpha blend << 16 | colour outputs << 24
+//   word 3  flags (1 keep, 2 store depth, 4 state valid, 8 depth write, 16 aux write) | bias << 8 | slope << 16
+//   word 4  first    word 5  count    word 6  instances
+//   word 7  a bloom draw's step, four whole numbers of 0 to 255, one a byte, the first lowest
+// Every number is an enum's member in passes.coax. Members are only added at the end, so a number
+// never changes its meaning; a host reads them from metaverse-engine/host/frame-plan.h, which
+// frame_plan_header writes (metaverse-engine/tools/frame-plan-header.coax) and check.sh reports compares.
+// When you add a member, add its name to the table below: the header's check then fails until
+// the committed header is written again.
+//   coax/bin/coax test metaverse-engine/render/frame-plan.coax
+//   coax/bin/coax mutate metaverse-engine/render/frame-plan.coax --root-only
+#module "aethyr.render.frame_plan";
+#authority;
+#load "passes.coax";
+#load "tests/frame-plan-checks.coax" #test;
+
+FRAME_PLAN_MAGIC :: 0x31504641;   // "AFP1", little-endian
+FRAME_PLAN_VERSION :: 1;
+FRAME_PLAN_WORDS :: 8;
+FP_KEEP :: 1; FP_STORE_DEPTH :: 2; FP_VALID :: 4; FP_DEPTH_WRITE :: 8; FP_AUX_WRITE :: 16;
+
+FP_KINDS :: [8] string.["BEGIN", "END", "DRAW", "COPY", "EACH_BEGIN", "EACH_END", "MEDIA_BEFORE", "MEDIA_AFTER"];
+FP_PASSES :: [13] string.["BACKGROUND", "SHADOW", "CASTER", "GRASS", "SURFACE", "SCENE", "WATER_TRANSMIT", "WATER_EMIT", "PARTICLE_OVER", "PARTICLE", "BLOOM", "POST", "HUD"];
+FP_TARGETS :: [12] string.["NONE", "SCREEN", "LIGHT", "AUX", "SCENE_DEPTH", "SHADOW_MAP", "WATER_LIGHT", "WATER_DEPTH", "Q0", "Q1", "E0", "E1"];
+FP_DEPTHS :: [3] string.["NONE", "ALWAYS", "LESS"];
+FP_BLENDS :: [7] string.["REPLACE", "MAXIMUM", "MULTIPLY", "ADD", "KEEP", "OVER", "UNDER"];
+FP_SOURCES :: [3] string.["VERTICES", "RECORDS", "CURRENT"];
+
+fp_byte_ok :: (v: int) -> bool #effects(all) { return v >= 0 && v <= 255; }
+fp_count_ok :: (v: int) -> bool #effects(all) { return v >= 0 && v <= 0x7fffffff; }
+// A bloom step is four whole numbers of 0 to 255.
+fp_step_ok :: (v: f32) -> bool #effects(all) { return v >= 0 && v <= 255 && cast(f32) cast(int) v == v; }
+
+// Can this operation be written? Every field must fit its place in the record.
+frame_plan_op_ok :: (o: RenderOp) -> bool #effects(all) {
+  if !fp_count_ok(o.first) || !fp_count_ok(o.count) || !fp_count_ok(o.instances) { return false; }
+  if !fp_byte_ok(o.state.bias) || !fp_byte_ok(o.state.slope) || !fp_byte_ok(o.state.outputs) { return false; }
+  if o.pass == RenderPassId.invalid && o.kind == RenderOpKind.draw { return false; }
+  if o.colour0 == RenderTarget.invalid || o.colour1 == RenderTarget.invalid || o.depth == RenderTarget.invalid { return false; }
+  if o.source == RenderTarget.invalid || o.target == RenderTarget.invalid { return false; }
+  for k: 0..<4 { if !fp_step_ok(o.bloom_step[k]) { return false; } }
+  return true;
+}
+
+// How many words a plan of n operations takes, the version record with it.
+frame_plan_size :: (n: int) -> int #effects(all) { return (n + 1) * FRAME_PLAN_WORDS; }
+
+// Write q to out. The result is the words written; 0 when the plan is not ok, an operation does
+// not fit its record, or out is too small. Nothing of a refused plan is left in out's first word.
+frame_plan_write :: (q: [] RenderPlan, out: [] u32) -> int #effects(all) {
+  if out.count > 0 { out[0] = 0; }
+  if q[0].status != RenderPlanStatus.ok || q[0].count < 0 || q[0].count > RENDER_OPS { return 0; }
+  size := frame_plan_size(q[0].count);
+  if out.count < size { return 0; }
+  for i: 0..<q[0].count { if !frame_plan_op_ok(q[0].ops[i]) { return 0; } }
+  for i: 4..<FRAME_PLAN_WORDS { out[i] = 0; }
+  out[1] = FRAME_PLAN_VERSION; out[2] = FRAME_PLAN_WORDS; out[3] = cast(u32) q[0].count;
+  for i: 0..<q[0].count {
+    o := q[0].ops[i]; at := (i + 1) * FRAME_PLAN_WORDS;
+    out[at] = cast(u32) o.kind | (cast(u32) o.pass << 8) | (cast(u32) o.draw_source << 16) | (cast(u32) o.state.depth << 24);
+    out[at + 1] = cast(u32) o.colour0 | (cast(u32) o.colour1 << 8) | (cast(u32) o.depth << 16) | (cast(u32) o.source << 24);
+    out[at + 2] = cast(u32) o.target | (cast(u32) o.state.colour << 8) | (cast(u32) o.state.alpha << 16) | (cast(u32) o.state.outputs << 24);
+    flags: u32 = 0;
+    if o.keep { flags |= FP_KEEP; } if o.store_depth { flags |= FP_STORE_DEPTH; } if o.state.valid { flags |= FP_VALID; }
+    if o.state.depth_write { flags |= FP_DEPTH_WRITE; } if o.state.aux_write { flags |= FP_AUX_WRITE; }
+    out[at + 3] = flags | (cast(u32) o.state.bias << 8) | (cast(u32) o.state.slope << 16);
+    out[at + 4] = cast(u32) o.first; out[at + 5] = cast(u32) o.count; out[at + 6] = cast(u32) o.instances;
+    step: u32 = 0;
+    for k: 0..<4 { step |= cast(u32) cast(int) o.bloom_step[k] << cast(u32) (k * 8); }
+    out[at + 7] = step;
+  }
+  out[0] = FRAME_PLAN_MAGIC;
+  return size;
+}
+
+// The operations in a written plan, or -1: the version record is not this version's, or the words
+// do not hold every record it counts. A host that gets -1 keeps its built-in order.
+frame_plan_count :: (words: [] u32) -> int #effects(all) {
+  if words.count < FRAME_PLAN_WORDS { return -1; }
+  if words[0] != FRAME_PLAN_MAGIC || words[1] != FRAME_PLAN_VERSION || words[2] != FRAME_PLAN_WORDS { return -1; }
+  n := cast(int) words[3];
+  if n > RENDER_OPS || words.count < frame_plan_size(n) { return -1; }
+  return n;
+}
+
+fp_field :: (w: u32, shift: u32) -> int #effects(all) { return cast(int) ((w >> shift) & 255); }
+
+// Operation i of a written plan. Ask only for i below frame_plan_count; anything else is the
+// empty operation (an `end` of no pass).
+frame_plan_op :: (words: [] u32, i: int) -> RenderOp #effects(all) {
+  o := RenderOp.{kind = RenderOpKind.end, pass = RenderPassId.invalid};
+  if i < 0 || i >= frame_plan_count(words) { return o; }
+  at := (i + 1) * FRAME_PLAN_WORDS;
+  o.kind = cast(RenderOpKind) fp_field(words[at], 0); o.pass = cast(RenderPassId) fp_field(words[at], 8);
+  o.draw_source = cast(RenderDrawSource) fp_field(words[at], 16); o.state.depth = cast(RenderDepth) fp_field(words[at], 24);
+  o.colour0 = cast(RenderTarget) fp_field(words[at + 1], 0); o.colour1 = cast(RenderTarget) fp_field(words[at + 1], 8);
+  o.depth = cast(RenderTarget) fp_field(words[at + 1], 16); o.source = cast(RenderTarget) fp_field(words[at + 1], 24);
+  o.target = cast(RenderTarget) fp_field(words[at + 2], 0); o.state.colour = cast(RenderBlend) fp_field(words[at + 2], 8);
+  o.state.alpha = cast(RenderBlend) fp_field(words[at + 2], 16); o.state.outputs = fp_field(words[at + 2], 24);
+  flags := words[at + 3];
+  o.keep = (flags & FP_KEEP) != 0; o.store_depth = (flags & FP_STORE_DEPTH) != 0; o.state.valid = (flags & FP_VALID) != 0;
+  o.state.depth_write = (flags & FP_DEPTH_WRITE) != 0; o.state.aux_write = (flags & FP_AUX_WRITE) != 0;
+  o.state.bias = fp_field(flags, 8); o.state.slope = fp_field(flags, 16);
+  o.first = cast(int) words[at + 4]; o.count = cast(int) words[at + 5]; o.instances = cast(int) words[at + 6];
+  for k: 0..<4 { o.bloom_step[k] = cast(f32) fp_field(words[at + 7], cast(u32) (k * 8)); }
+  return o;
+}
+
+// ---- the header a host reads the numbers from
+
+FpText :: struct { b: [8192] u8; n: int; }
+fp_put :: (o: [] FpText, t: string) #effects(all) {
+  for k: 0..<t.count { o[0].b[o[0].n + k] = t[k]; }
+  o[0].n += t.count;
+}
+fp_num :: (o: [] FpText, v: int) #effects(all) {
+  d: [12] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); n += 1; x /= 10; }
+  for k: 0..<n { o[0].b[o[0].n] = d[n - 1 - k]; o[0].n += 1; }
+}
+fp_define :: (o: [] FpText, group: string, name: string, v: int) #effects(all) {
+  fp_put(o, "#define AETHYR_FP_"); fp_put(o, group); fp_put(o, name); fp_put(o, " "); fp_num(o, v); fp_put(o, "u\n");
+}
+fp_group :: (o: [] FpText, group: string, names: [] const string) #effects(all) {
+  for k: 0..<names.count { fp_define(o, group, names[k], k); }
+}
+// metaverse-engine/host/frame-plan.h, whole. The result is its length.
+frame_plan_header :: (o: [] FpText) -> int #effects(all) {
+  o[0].n = 0;
+  fp_put(o, "/* The frame plan's numbers (GitHub #13303). Written by metaverse-engine/render/frame-plan.coax:\n");
+  fp_put(o, " *   coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h\n");
+  fp_put(o, " * Never edit it by hand. The record layout is stated at the top of frame-plan.coax. */\n");
+  fp_put(o, "#ifndef AETHYR_FRAME_PLAN_H\n#define AETHYR_FRAME_PLAN_H\n");
+  fp_define(o, "", "MAGIC", FRAME_PLAN_MAGIC); fp_define(o, "", "VERSION", FRAME_PLAN_VERSION); fp_define(o, "", "WORDS", FRAME_PLAN_WORDS);
+  fp_define(o, "", "MOST_OPS", RENDER_OPS);
+  fp_define(o, "FLAG_", "KEEP", FP_KEEP); fp_define(o, "FLAG_", "STORE_DEPTH", FP_STORE_DEPTH); fp_define(o, "FLAG_", "VALID", FP_VALID);
+  fp_define(o, "FLAG_", "DEPTH_WRITE", FP_DEPTH_WRITE); fp_define(o, "FLAG_", "AUX_WRITE", FP_AUX_WRITE);
+  fp_group(o, "OP_", FP_KINDS[..]); fp_group(o, "PASS_", FP_PASSES[..]); fp_group(o, "TARGET_", FP_TARGETS[..]);
+  fp_group(o, "DEPTH_", FP_DEPTHS[..]); fp_group(o, "BLEND_", FP_BLENDS[..]); fp_group(o, "SOURCE_", FP_SOURCES[..]);
+  fp_put(o, "#endif\n");
+  return o[0].n;
+}

@@ -1,6 +1,6 @@
 // Hold Everglade II's combat profile (proto/verse/everglade2-combat-v2.json, #13246, #13276) to the
 // codecs both the room and the page load: everglade/server/creature-wire.coax for what the path guard
-// and the monsters did (the D frame's e guard and e mon entries), and aethyr/net/projectile.coax for
+// and the monsters did (the D frame's e guard and e mon entries), and metaverse-engine/net/projectile.coax for
 // the arrows (F, a, d). Where the guard and the monsters stand is their rows' (everglade-session-v6).
 // A frame's format ("guard_hit": "e guard TICK KIND ...") names its fields in the codec's order; each
 // "frames" entry's values name those fields in that order; the codec's writer gives exactly its text
@@ -9,7 +9,7 @@
 //   coax/web/tool.sh coax/web/room/combat-profile.coax proto/verse/everglade2-combat-v2.json
 #import "Basic";
 #load "../../../everglade/server/creature-wire.coax";
-#load "../../../aethyr/net/projectile.coax";
+#load "../../../metaverse-engine/net/projectile.coax";
 #load "../../lib/json/json.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";

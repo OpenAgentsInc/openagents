@@ -20,7 +20,7 @@ cloud with a far city's lamps in its gaps.
   [Archery Range](archery-range-spec.md) and Experimental all run in it.
 - **Everglade itself.** The Everglade row opens the web's realm natively:
   Character Create, then the run into the glade, in the site's room. The OpenAgents Metaverse Engine's
-  page host for Metal ([`aethyr/host/apple/`](../../aethyr/host/apple/page-host.h))
+  page host for Metal ([`metaverse-engine/host/apple/`](../../metaverse-engine/host/apple/page-host.h))
   runs the realm's own Coax and shaders; there is no web view. Its sound
   plays through the Apple audio host the Metaverse Engine uses. [What is built and what is left](app-scenes-spec.md#4-bringing-the-webs-worlds-into-the-apps).
 - **Experimental and the Archery Range too.** Their rows open the web's
@@ -32,7 +32,7 @@ cloud with a far city's lamps in its gaps.
   controls and no Next issue panel, and as an Android app on a Vulkan host.
   Both run in their emulators; no real phone has run either.
 - **Built from parts.** Every piece is a reusable part from the Metaverse Engine's
-  architecture kit ([`aethyr/arch/`](../../aethyr/arch/README.md)), written in
+  architecture kit ([`metaverse-engine/arch/`](../../metaverse-engine/arch/README.md)), written in
   Coax: a fluted Doric column, a plinth, a turned baluster, rails, an
   entablature, a brazier and its flame, a band of light, and the shapes under
   them (boxes, lathes, rings, rounded solids). A part is built once and stood
@@ -55,7 +55,7 @@ cloud with a far city's lamps in its gaps.
   balustrade's line, so it never looks in from outside.
 
 You walk the chamber with the controller every web realm uses
-(`aethyr/move/walk.coax`: its fixed step, run, jump and follow camera) and the
+(`metaverse-engine/move/walk.coax`: its fixed step, run, jump and follow camera) and the
 web's keys:
 
 | Input | What it does |
@@ -129,7 +129,7 @@ What it isn't yet:
 - **The `aethyr-host-v1` realm host** of section 3. The temple's parts and
   shaders are the Metaverse Engine's and portable, but a small AppKit and Metal host still
   binds and draws them by hand. The temple is not yet a profile in the Metaverse Engine's
-  render catalog (`aethyr/render/catalog.coax`), so the web and the Vulkan
+  render catalog (`metaverse-engine/render/catalog.coax`), so the web and the Vulkan
   host can't draw it until it is one.
 - **Your model in the Metaverse Engine's own shader.** The model is still drawn by
   `Model.metal`, a hand copy of the web's vertex math. It casts no shadow and
@@ -138,7 +138,7 @@ What it isn't yet:
 
 Two things to know when you change it:
 
-- `charactercreator.coax` and `aethyr/move/walk.coax` can't be loaded into one
+- `charactercreator.coax` and `metaverse-engine/move/walk.coax` can't be loaded into one
   unit (each declares an `atan2`), so the scene and the model are two units.
 - The web's character code passes large structures by value, so the app
   links with a 512 MB main-thread stack.
@@ -194,7 +194,7 @@ The rest of this section is proposed, and follows from repository rules:
 | Every system runs the same Coax realm through `aethyr-host-v1` | The host contract already says a host transports bytes and decides no gameplay |
 | Mac draws with Metal; Linux and Windows draw with Vulkan | Coax emits Metal and SPIR-V today, and no HLSL. One Vulkan pass host serves two systems |
 | The Workshop is a zone like any other, in `everglade/workshop/` | No one-off zone code: it wires shared features and adds none of its own |
-| The bridge from an agent to the world is engine-wide, in `aethyr/agent/`, beside the driver | Any realm can then hold agents, not only the Workshop |
+| The bridge from an agent to the world is engine-wide, in `metaverse-engine/agent/`, beside the driver | Any realm can then hold agents, not only the Workshop |
 | A golem's tools are deeds | The room stays the authority. A golem's call is exactly a player's input |
 | Golems stay in the Workshop. They never enter a shared room | The Golemancy spec's rule: nothing bots a shared world |
 | The app stores no Anthropic credential | It runs your `claude` as you, as OpenAgents for Mac does |
@@ -207,19 +207,19 @@ The rest of this section is proposed, and follows from repository rules:
 | Child processes | `coax/platform/process-native.c` | POSIX only: `fork`/`execve`, process groups |
 | A chat on your own Claude Code login | `apps/openagents-desktop/zeron/claude.coax` | Mac. Install and login notices, model list from the CLI, access levels, Allow/Deny |
 | Agents that talk to each other | `apps/openagents-desktop/zeron/room.coax` | `agents_list`, `ask_agent`, `tell_agent`, `room_read`; loops refused |
-| Host contract | [`aethyr/host/README.md`](../../aethyr/host/README.md) | `aethyr-host-v1`: WebGPU, Vulkan and Metal run the same realm |
+| Host contract | [`metaverse-engine/host/README.md`](../../metaverse-engine/host/README.md) | `aethyr-host-v1`: WebGPU, Vulkan and Metal run the same realm |
 | Mac native realm host | `apps/aethyrforge-desktop/` (`MetalRealm.m`, `metal-*.coax`) | Everglade at 120 Hz on Metal, with the native room |
 | Linux native host | `apps/aethyrforge-desktop/linux-native*.coax`, `coax/platform/wayland-native.c` | Wayland and Vulkan, **Bitcoin Lab only**. US keyboard only; no clipboard, IME or microphone |
 | Windows host | none | **Missing** |
 | Local room | `coax/web/room/` (`--native-local`, one seat `everglade/local-1`) | Runs offline on Mac |
-| `coax drive` | `aethyr/agent/drive.coax`, `coax/web/drive.coax` (#13095) | An agent sees a realm by id and asks for world operations (`walk-to`, `face`, `use`, `mount`) |
-| The deed pipeline | `aethyr/action/deed.coax` | Every player action: ask, act, present |
+| `coax drive` | `metaverse-engine/agent/drive.coax`, `coax/web/drive.coax` (#13095) | An agent sees a realm by id and asks for world operations (`walk-to`, `face`, `use`, `mount`) |
+| The deed pipeline | `metaverse-engine/action/deed.coax` | Every player action: ask, act, present |
 | Golemancy in the game | [`golem-bench.coax`](../world/golem-bench.coax), [`pansopher.coax`](../world/pansopher.coax) | The bench's window and the trainer's talk. The craft isn't built |
 | Golemancy design | [golemancy-profession-spec.md](golemancy-profession-spec.md) | Name decided; the rest is a proposal |
 
 `apps/aethyrforge-desktop/` is the developer's editing tool. This app is the
 player's. The two share the native hosts and nothing else. The shared host
-code moves out of `apps/aethyrforge-desktop/` into `aethyr/host/` as this app
+code moves out of `apps/aethyrforge-desktop/` into `metaverse-engine/host/` as this app
 takes it up, so neither app copies the other.
 
 ## 3. The app
@@ -230,7 +230,7 @@ takes it up, so neither app copies the other.
 platform window + GPU  ──  Coax realm (compiled to C)  ──  Coax room (local or remote)
   AppKit + Metal             Everglade zones                 the room server's own code
   Wayland + Vulkan           the Workshop zone
-  Win32 + Vulkan             aethyr/agent  ──  claude (stream-json, stdio), one per golem
+  Win32 + Vulkan             metaverse-engine/agent  ──  claude (stream-json, stdio), one per golem
 ```
 
 - **Host.** A thin shell per system. It owns the window, the GPU surface,
@@ -343,7 +343,7 @@ anyone can read.
 ### 5.2 Talking to a golem
 
 Walk to a golem and talk. The talk window is the shared one
-(`aethyr/talk/`). What you type is the next message in its session. Its
+(`metaverse-engine/talk/`). What you type is the next message in its session. Its
 answer streams into the window as it arrives, and its tool calls show as what
 they are: the golem walks, picks up, speaks.
 
@@ -377,7 +377,7 @@ OpenAgents for Mac gives its agents: `agents_list`, `ask_agent`,
   reason.
 - Stop on a golem cancels every ask it is waiting on.
 
-`room.coax` moves from `apps/openagents-desktop/zeron/` into `aethyr/agent/`
+`room.coax` moves from `apps/openagents-desktop/zeron/` into `metaverse-engine/agent/`
 so both apps load one copy.
 
 ### 5.5 How many golems
@@ -395,7 +395,7 @@ A golem acts through an in-process SDK MCP server named `workshop`
 (`coax/lib/agent/claude/mcp.coax` already speaks that protocol). Each tool is
 a deed, exposed with its schema. This is phase 5 of the agent loop
 ([#13099](https://github.com/OpenAgentsInc/openagents/issues/13099)), built
-engine-wide in `aethyr/agent/`.
+engine-wide in `metaverse-engine/agent/`.
 
 | Tool | What it does | Consequence |
 | --- | --- | --- |
@@ -420,7 +420,7 @@ engine-wide in `aethyr/agent/`.
   that replay records, so a Workshop session is a replay file.
 
 `look` answers from the same entity list `coax drive tree` prints
-(`aethyr/agent/drive.coax`), and `walk_to` and `face` steer through the same
+(`metaverse-engine/agent/drive.coax`), and `walk_to` and `face` steer through the same
 `drv_steer`. What a golem sees inside the world and what an agent driving it
 from outside sees are one list.
 
@@ -481,7 +481,7 @@ isn't part of this app's first version.
 | System | Version | CPU | Window | GPU | Audio |
 | --- | --- | --- | --- | --- | --- |
 | Mac | macOS 26 or later | Apple Silicon | AppKit | Metal | The existing Coax mixer on the Mac host |
-| Linux | A current Wayland desktop | x86-64 | Wayland | Vulkan | [`audio-linux.md`](../../aethyr/host/audio-linux.md) |
+| Linux | A current Wayland desktop | x86-64 | Wayland | Vulkan | [`audio-linux.md`](../../metaverse-engine/host/audio-linux.md) |
 | Windows | Windows 11 | x86-64 | Win32 | Vulkan | WASAPI |
 
 Why Vulkan on Windows, not Direct3D 12: `coax spirv` exists and the Vulkan
@@ -634,9 +634,9 @@ versions: every row is the real architecture.
 
 | # | Work | Depends on | Size |
 | --- | --- | --- | --- |
-| 1 | `apps/everglade-desktop/` on Mac: the shared hosts move to `aethyr/host/`, the title screen, Play on Metal | none | Medium |
+| 1 | `apps/everglade-desktop/` on Mac: the shared hosts move to `metaverse-engine/host/`, the title screen, Play on Metal | none | Medium |
 | 2 | The Workshop zone: chamber, pylons, dais, door, local room, save | 1 | Medium |
-| 3 | `aethyr/agent/`: deeds as tools on the in-process MCP server, with the effects check (#13099) | none | Medium |
+| 3 | `metaverse-engine/agent/`: deeds as tools on the in-process MCP server, with the effects check (#13099) | none | Medium |
 | 4 | Golems: the Bond pylon, shaping, the command, Awaken, talk, Stop, sleep and resume | 2, 3 | Large |
 | 5 | Golems that talk to each other; standing commands | 4 | Small |
 | 6 | The seventh pylon: a folder, access levels, asks in the world | 4 | Medium |
@@ -702,7 +702,7 @@ Everglade II fixes (#13104, #13117, #13129, #13130). State carry on reload
   that the room server resolves, with no model. That design stands. How a
   Workshop golem relates to a profession golem is open question 2.
 - **Other agents.** Codex and local models can be golems later, through the
-  same `aethyr/agent/` bridge and one event model. The first version is Claude
+  same `metaverse-engine/agent/` bridge and one event model. The first version is Claude
   only.
 - **Voice.** No dictation and no spoken golems.
 - **The envoy bridge** to an OpenAgents account, payments and Nostr.

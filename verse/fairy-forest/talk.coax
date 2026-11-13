@@ -9,7 +9,7 @@
 // the talk; its face (fairy-face.c) sends the body and hands back the answer.
 //   coax/bin/coax test apps/openagents-web/fairy.coax   (these checks run with the page's)
 #load "talk-words.coax";   // who they are, as words (the server reads the same)
-#load "../../aethyr/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
+#load "../../metaverse-engine/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
 
 FF_REMARK_NEAR :: 12.0;    // metres: near enough to hear a creature's passing remark
 
@@ -47,7 +47,7 @@ ff_remark :: (f: [] Forest, c: int, turn: int) -> string {
   return FF_REMARKS[c * FF_REMARKS_EACH + t % FF_GREY_REMARKS];
 }
 
-// ---- the question's scene, as words (the NPC ask's codec, aethyr/talk/wire.coax, writes the body)
+// ---- the question's scene, as words (the NPC ask's codec, metaverse-engine/talk/wire.coax, writes the body)
 
 // A JSON string's inside (" and \ escaped, a control byte as a space), for fairyroom.coax's own
 // messages; the NPC ask is the codec's.
@@ -102,7 +102,7 @@ FfLine :: struct { npc: bool; text: string; }
 
 // The body for /api/playtest/npc/ask (#13261): talker c's id, the world, this visit's stamp, a
 // creature's scene (ff_scene; Rowan has none), the talk so far (oldest first) and the question,
-// written by the NPC ask's one codec (aethyr/talk/wire.coax). Who it is, its trouble, the park and
+// written by the NPC ask's one codec (metaverse-engine/talk/wire.coax). Who it is, its trouble, the park and
 // its keeper's lore (edit mode's panes) are the server's. The bytes written, or 0 when it didn't fit.
 ff_ask_body :: (out: [] u8, f: [] Forest, c: int, lines: [] FfLine, question: string, visit: string) -> int {
   if c < 0 || c >= FF_TALKERS || lines.count > NPC_HISTORY { return 0; }

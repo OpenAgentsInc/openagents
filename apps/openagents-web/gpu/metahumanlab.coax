@@ -1,8 +1,8 @@
 // MetaHuman Lab's shaders (metahumanlab.coax): build.sh writes apps/openagents-web/metahumanlab.wgsl
 // from this with coax/web/wgsl-module.coax (metahumanlab.module and metahumanlab.bindings beside it).
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../verse/style.coax";
-#load "../../../aethyr/render/sampling.coax";
+#load "../../../metaverse-engine/render/sampling.coax";
 
 // bg_fs traces each pixel against the scene: a studio floor (a soft grey with a metre grid, fading
 // into the backdrop) and the figure, a capsule per bone posed from the skeleton (the ray tests the

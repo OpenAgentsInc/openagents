@@ -1,4 +1,4 @@
-// An Everglade zone's wiring for the agent driver (aethyr/agent/drive.coax, GitHub #13095):
+// An Everglade zone's wiring for the agent driver (metaverse-engine/agent/drive.coax, GitHub #13095):
 // what it lists (you, the imps, gremlins and puglins by their slot in the hostiles' list, so an id
 // stays the same while that creature lives, and the horses and dragons by their mount slot), and
 // how its world operations turn into a player's input: walking is the keys' forward along the way drv_steer says, a use presses the bar's slot

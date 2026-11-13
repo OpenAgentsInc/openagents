@@ -23,7 +23,7 @@
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/tui/vt.coax";
-#load "../../aethyr/audio/wav.coax";
+#load "../../metaverse-engine/audio/wav.coax";
 
 cxproc_pty :: (h: int, cols: int, rows: int) -> int #foreign #effects(all);
 cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign #effects(all);

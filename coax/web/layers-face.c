@@ -25,7 +25,7 @@ LAYERS_EXPORT("layers_decode") int64_t layers_decode(void){
 }
 LAYERS_EXPORT("layers_output_ptr") uint32_t layers_output_ptr(void){return(uint32_t)(uintptr_t)layer_output;}
 LAYERS_EXPORT("layers_close") void layers_close(void){free(layer_work);free(layer_output);layer_work=NULL;layer_output=NULL;layer_work_bytes=0;layer_output_bytes=0;layer_input_bytes=0;coax_default_t_HostLayerPlan(&layer_plan);}
-/* Which GPU format a device's layers take and at which side (aethyr/render/texture-format.coax, GitHub #13014). */
+/* Which GPU format a device's layers take and at which side (metaverse-engine/render/texture-format.coax, GitHub #13014). */
 LAYERS_EXPORT("layers_texture_format") int64_t layers_texture_format(int64_t features,int64_t carried,int32_t phone,int64_t role){return tf_pick(features,carried,phone!=0,role);}
 LAYERS_EXPORT("layers_format_text") uint32_t layers_format_text(int64_t format){return(uint32_t)(uintptr_t)tf_name(format).data;}
 LAYERS_EXPORT("layers_format_text_bytes") int32_t layers_format_text_bytes(int64_t format){return(int32_t)tf_name(format).count;}
@@ -35,7 +35,7 @@ LAYERS_EXPORT("layers_tier_side") int64_t layers_tier_side(int64_t declared,int3
 LAYERS_EXPORT("layers_format_tag") uint32_t layers_format_tag(int64_t format){return(uint32_t)(uintptr_t)tf_tag(format).data;}
 LAYERS_EXPORT("layers_format_tag_bytes") int32_t layers_format_tag_bytes(int64_t format){return(int32_t)tf_tag(format).count;}
 LAYERS_EXPORT("layers_format_carries") int64_t layers_format_carries(int64_t format){return tf_carries(format);}
-/* A block layer (aethyr/render/block-layer.coax): its header, copied to the source storage, and its whole size; then
+/* A block layer (metaverse-engine/render/block-layer.coax): its header, copied to the source storage, and its whole size; then
    its fields (0 format, 1 width, 2 height, 3 levels, 4 block) and each level's (0 offset, 1 bytes, 2 bytes a row of
    blocks, 3 rows of blocks, 4 physical width, 5 physical height). */
 static coax_t_BlockLayer layer_block;

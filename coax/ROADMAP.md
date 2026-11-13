@@ -97,7 +97,7 @@ destination, rides out a fault and docks, used by the Metaverse space games and 
 Metaverse Engine Part V (chapters 39–48). Each of R12–R20 must improve one of them,
 and a facility both the robot and the spacecraft need (frames, clocks,
 integrators, replay, stamps) is built once for both. R21–R24 have one more
-consumer, the Metaverse Engine physics engine ([Metaverse Engine book](../aethyr/book/README.md) Part IV, chapters 17–37,
+consumer, the Metaverse Engine physics engine ([Metaverse Engine book](../metaverse-engine/book/README.md) Part IV, chapters 17–37,
 planned in psionic/docs/genesis-parity.md: rigid and articulated bodies, contact,
 particle and mesh materials, coupling and batched worlds), whose solvers are
 the first kernels to need layouts, budgets, device graphs and derivatives. These phases produce language, library and checking work for
@@ -749,7 +749,7 @@ floating-origin camera already does by hand.
 **Consumer/gate:** move one Metaverse camera/world transform path and the joint
 and pose values of the simulated robot (Psionic chapters 168–170) onto these
 types, then the spacecraft scenario's heliocentric, body-fixed, ship and
-drum-interior states (`aethyr/physics/orbit.coax`, `aethyr/physics/gravity.coax`). Fixtures cover point/vector algebra, refused frame and unit mixing,
+drum-interior states (`metaverse-engine/physics/orbit.coax`, `metaverse-engine/physics/gravity.coax`). Fixtures cover point/vector algebra, refused frame and unit mixing,
 composition through a frame chain, exact and rounded conversions, a jumping
 frame, a refused position-only transform of a velocity, a rotating-frame state
 round trip against the inertial result, an f32 astronomical position refused

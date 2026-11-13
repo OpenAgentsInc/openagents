@@ -4,8 +4,8 @@
 > [`everglade/shared/move.coax`](../shared/move.coax)
 > from the same item list as the drawn pieces. Rock hulls are baked into
 > [`everglade/world/rock-hulls.coax`](../../everglade/world/rock-hulls.coax),
-> and the OpenAgents Metaverse Engine's [`aethyr/physics/query.coax`](../../aethyr/physics/query.coax) and
-> [`aethyr/physics/collide.coax`](../../aethyr/physics/collide.coax) resolve them. The page
+> and the OpenAgents Metaverse Engine's [`metaverse-engine/physics/query.coax`](../../metaverse-engine/physics/query.coax) and
+> [`metaverse-engine/physics/collide.coax`](../../metaverse-engine/physics/collide.coax) resolve them. The page
 > and the room server step you on the same code. This chapter names functions
 > and has no source listings yet.
 

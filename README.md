@@ -97,7 +97,7 @@ small model or sign and verify a Nostr event), see
   [engine notes](docs/verse/engine.md)). It is web-first, so a realm is a
   link you can drop anywhere, and it is moving onto native GPUs too
   ([native GPU plan](docs/verse/native-gpu.md)). The engine is the **OpenAgents Metaverse Engine**
-  ([`aethyr/`](aethyr/)); its [book](aethyr/book/README.md) builds it from
+  ([`metaverse-engine/`](metaverse-engine/)); its [book](metaverse-engine/book/README.md) builds it from
   its smallest primitives, one checked piece per chapter.
 - **The OpenAgents Protocol**
   ([spec](docs/protocol/openagents-protocol-spec.md), schemas in

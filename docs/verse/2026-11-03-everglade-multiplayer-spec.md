@@ -20,8 +20,8 @@ module is deprecated (section 12).
 Related reading:
 
 - [docs/verse/everglade.md](everglade.md), the realm's design.
-- [Metaverse Engine book chapter 49, rooms and presence](../../aethyr/book/ch049-rooms-and-presence.md)
-  and [chapter 50, shared state over the network](../../aethyr/book/ch050-shared-state-over-the-network.md).
+- [Metaverse Engine book chapter 49, rooms and presence](../../metaverse-engine/book/ch049-rooms-and-presence.md)
+  and [chapter 50, shared state over the network](../../metaverse-engine/book/ch050-shared-state-over-the-network.md).
 - [The Metaverse protocol](openagents-verse-protocol.md), sections 6.3, 10.6
   (`presence.v1`), 10.8 (`realm.v1`) and 10.9 (`sim.v1`).
 - [The D&D campaign creator spec](../dnd/2026-11-03-dnd-campaign-creator-spec.md),
@@ -179,7 +179,7 @@ see different results.
 
 | State | Where | Shared today? |
 | --- | --- | --- |
-| Your position, yaw, gait | `aethyr/move/player.coax`, `everglade-face.c` | Yes, 1 Hz, as a cone figure |
+| Your position, yaw, gait | `metaverse-engine/move/player.coax`, `everglade-face.c` | Yes, 1 Hz, as a cone figure |
 | Your animation clip (idle, walk, run, jump, swing) | `figure`, `everglade.coax:2954`; clips in `everglade/legacy/v1/ranger.coax:14` | No |
 | Townsfolk positions and routines | `everglade/legacy/v1/folk.coax`, `routines.coax`; `folk_clock`, `everglade.coax:2707` | Same only by construction: a pure function of the seed and the page's `now`. Clock skew between machines shows as different spots |
 | Townsfolk HP, knock-downs, deaths, frogs | `everglade-watch.coax`, `everglade-abilities.coax`, `everglade-circle.coax` | No |
@@ -192,7 +192,7 @@ see different results.
 | Broken buildings, debris, rubble, burning | `everglade-spells.coax`, `everglade-rubble.coax:24`, `everglade-fire.coax`; [everglade.md](everglade.md) line 661: "nothing broken is saved or shared" | No |
 | R (REBUILD) | `sp_rebuild`, `everglade-spells.coax:478` | No |
 | The trees outside the city | `everglade-forest.coax` | No |
-| The flock that follows you | `aethyr/anim/flock.coax` | No |
+| The flock that follows you | `metaverse-engine/anim/flock.coax` | No |
 | Weather | `weather_facts`, `everglade.coax:3074`: seeded with `EG_WEATHER_SEED` and the page's `now` | Same only by construction, as the folk |
 | Time of day | `folk_clock`; the realm's `clock: cycle` | Same only by construction |
 | Admin edits (the OpenAgents Metaverse Engine, voice edits, placed things) | `everglade-forge.coax`, `everglade-edit.coax`, `verse/edit/edit.coax` | Published to `/api/playtest/world/<id>`. Other pages see them on reload; only an owner's page rereads the spec every second (`verse/edit/edit.coax:589`) |
@@ -225,7 +225,7 @@ host election or host migration.
     the city's plan, walls, bodies and ground heights, and every step that
     today takes one `you: Point` takes the room's players;
   - **one shared movement module** (`everglade-move.coax`, new): the
-    character controller (`aethyr/move/player.coax`) plus what
+    character controller (`metaverse-engine/move/player.coax`) plus what
     `everglade-face.c` does around it today (footing and pace, the river's
     swim, flow and breath, Ray of Frost's slow, the spell lifts, the
     bridge deck, the city's edge, `everglade_hold`), moved from the C face
@@ -268,7 +268,7 @@ In `coax/web/room/room-relay.coax`, `room.coax` and `room-host.c`:
    and counts are written as decimal numbers (`0` to `15`), not one
    character, and the first frame is `y SEAT N T`: `T` is the server's wall
    clock in ms (Unix epoch), for clock sync. The room and every page read
-   and write the relay's frames with one codec, `aethyr/net/relay-wire.coax`
+   and write the relay's frames with one codec, `metaverse-engine/net/relay-wire.coax`
    (profile `proto/verse/room-relay-v1.json`,
    [room-relay-v1.md](../protocol/room-relay-v1.md)); `relay-check.coax`
    checks the running relay. The Healer's Kit's `U1` and `u1` have one

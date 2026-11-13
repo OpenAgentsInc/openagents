@@ -1,7 +1,7 @@
 // Firm reason: 6 (UIKit and Metal have no C API; this host holds no product logic).
 // The web's realms in the iPhone app (everglade/docs/app-scenes-spec.md, section 4): Everglade
 // itself, the Archery Range and Experimental run natively through the Metaverse Engine's page host
-// (aethyr/host/apple/page-host.h), the one the Mac app opens them with, from the same table of
+// (metaverse-engine/host/apple/page-host.h), the one the Mac app opens them with, from the same table of
 // rows (apps/everglade-desktop/Sources/Realms.swift). This file opens a row's page from the app's
 // own files, steps it, and hands it fingers as a browser hands a page touches: each with its own
 // number, so the realm's own touch controls (the thumb's stick, a slot held to draw the bow, a drag
@@ -16,7 +16,7 @@ import Metal
   let device: MTLDevice, queue: MTLCommandQueue
   // The realms, each once its row is first opened, by its world's number.
   private(set) var pages: [Int32: AEPageHost] = [:]
-  private var sounds: [Int32: AEPageAudio] = [:]   // each open realm's sound (aethyr/host/apple/PageAudio.swift)
+  private var sounds: [Int32: AEPageAudio] = [:]   // each open realm's sound (metaverse-engine/host/apple/PageAudio.swift)
   private var tried: Set<Int32> = []
   // The realm being opened, off the frame (#13152): its world, and where the deep thread leaves the
   // page. Until it ends nothing else is asked of the deep thread, so the screen never waits on it,
@@ -32,7 +32,7 @@ import Metal
   var box = CGRect.zero
   // "--offline": no socket and no request leaves the phone (a shot).
   let offline = CommandLine.arguments.contains("--offline")
-  // The phone's motion sensor for the realms' gyro (aethyr/cam/gyro.coax): 1 there, 3 none. main.swift sets it.
+  // The phone's motion sensor for the realms' gyro (metaverse-engine/cam/gyro.coax): 1 there, 3 none. main.swift sets it.
   var motion: Int32 = 3
 
   init(state: UnsafeMutableRawPointer, deep: Deep, device: MTLDevice, queue: MTLCommandQueue) {
@@ -81,10 +81,10 @@ import Metal
     // are, as the Mac app's are, and never count as visitors.
     c.automated = true
     // A touch screen: the realm draws its touch controls, and the pack's layers take a phone's
-    // tier, which is Coax's to say (aethyr/render/texture-format.coax).
+    // tier, which is Coax's to say (metaverse-engine/render/texture-format.coax).
     c.touch = true
     // The screen in points, as a browser's screen.width says it: the governor reads its short side to
-    // tell a phone from a tablet (aethyr/core/quality.coax), and a phone in pixels read as a tablet (#13190).
+    // tell a phone from a tablet (metaverse-engine/core/quality.coax), and a phone in pixels read as a tablet (#13190).
     c.screen = UIScreen.main.bounds.size
     c.layerSide = { declared in Int32(tf_side(Int64(declared), true, tf_pick(0, 0, true, 0))) }
     // The page opens on the deep thread while the frames go on: reading a pack and drawing its
@@ -176,7 +176,7 @@ import Metal
     sounds[shown]?.show(on)
   }
   // The realm's text field (a character's name): what the phone's keyboard typed, Return and Delete
-  // in the host contract's codes (aethyr/host/README.md: Enter -2, Backspace -3).
+  // in the host contract's codes (metaverse-engine/host/README.md: Enter -2, Backspace -3).
   var wantsText: Bool { var w = false; if !opening, let p = pages[shown] { deep.run { w = p.wantsText() } }; return w }
   func typed(_ text: String) {
     guard !opening, let p = pages[shown] else { return }
@@ -191,7 +191,7 @@ import Metal
     guard !opening, let p = pages[shown] else { return }
     deep.run { _ = p.key(code, mods: 0, down: down) }
   }
-  // The phone's turn for the realm on screen (aethyr/cam/gyro.coax): whether it wants it now, and the turn.
+  // The phone's turn for the realm on screen (metaverse-engine/cam/gyro.coax): whether it wants it now, and the turn.
   var wantsMotion: Bool { var w = false; if !opening, let p = pages[shown] { deep.run { w = p.wantsMotion() } }; return w }
   func tilt(_ yaw: Float, _ pitch: Float) {
     guard !opening, let p = pages[shown] else { return }
@@ -199,7 +199,7 @@ import Metal
   }
   // What the realm on screen has played, for a shot's script (a shot renders its sound offline).
   var heard: String { sounds[shown]?.summary() ?? "no sound" }
-  // The realm's agent driver (aethyr/agent/drive.coax), for a shot's script.
+  // The realm's agent driver (metaverse-engine/agent/drive.coax), for a shot's script.
   func drive(_ command: String) -> String {
     var said: String?
     if !opening, let p = pages[shown] { deep.run { said = p.drive(command) } }

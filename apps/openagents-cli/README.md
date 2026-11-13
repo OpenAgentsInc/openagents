@@ -40,14 +40,14 @@ openagents help field appearance.eye_color
 No identity or connection is required. Film help describes the current offline
 WebGPU capture profile; the advanced film renderer is separate work.
 
-The reader key lists in `aethyr/anim/field-catalog.coax`, reflected capture/edit/
+The reader key lists in `metaverse-engine/anim/field-catalog.coax`, reflected capture/edit/
 appearance records, and frozen wardrobe tables generate `help-generated.coax`.
 Do not edit that output. After a catalogue change, regenerate and check:
 
 ```sh
-coax/web/tool.sh aethyr/tools/agent-help-build.coax
-coax/web/tool.sh aethyr/tools/agent-help-build.coax --check
-coax/web/tool.sh aethyr/tools/agent-help-count.coax
+coax/web/tool.sh metaverse-engine/tools/agent-help-build.coax
+coax/web/tool.sh metaverse-engine/tools/agent-help-build.coax --check
+coax/web/tool.sh metaverse-engine/tools/agent-help-count.coax
 ```
 
 The CLI build refuses stale generated help. The generator admits its examples

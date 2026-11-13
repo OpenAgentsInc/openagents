@@ -2,7 +2,7 @@
 # Firm reason: 5 (a thin wrapper around the apps' own build scripts, xcodegen and xcodebuild; holds no logic)
 # The Apple apps still build and their unit tests pass, on this Mac (GitHub #13389): development
 # builds only, nothing installed, nothing signed for release, no Keychain. Run it after a change to
-# a client's Coax, a realm's face, the page host (aethyr/host/apple/) or a struct the Swift reads.
+# a client's Coax, a realm's face, the page host (metaverse-engine/host/apple/) or a struct the Swift reads.
 # The part any build host can do (every realm and pass the apps name resolves, emits and compiles)
 # runs first, and alone in the pipeline's reports check: verse/native/app-realms.coax.
 #   apps/shared/host/apple/check.sh SCRATCH     SCRATCH holds Xcode's DerivedData and the logs; delete it after

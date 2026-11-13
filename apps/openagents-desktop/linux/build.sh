@@ -21,9 +21,9 @@ work="$app/build/linux"
 mkdir -p "$work/c" "$work/wl"
 "$coax" c "$app/zeron/linux.coax" --library --header "$work/c/zeron.h" > "$work/c/zeron.c"
 "$coax" c "$app/lab-sign.coax" --run-steps 250000000 --library --header "$work/c/lab-sign.h" > "$work/c/lab-sign.c"
-# The seat's keys and text (aethyr/host/): what verse/gpu/vkw.h's XKB and text-input glue calls.
-"$coax" c "$repo/aethyr/host/wayland-input.coax" --library --header "$work/c/wayland-input.h" > "$work/c/wayland-input.c"
-"$coax" c "$repo/aethyr/host/wayland-text.coax" --library --header "$work/c/wayland-text.h" > "$work/c/wayland-text.c"
+# The seat's keys and text (metaverse-engine/host/): what verse/gpu/vkw.h's XKB and text-input glue calls.
+"$coax" c "$repo/metaverse-engine/host/wayland-input.coax" --library --header "$work/c/wayland-input.h" > "$work/c/wayland-input.c"
+"$coax" c "$repo/metaverse-engine/host/wayland-text.coax" --library --header "$work/c/wayland-text.h" > "$work/c/wayland-text.c"
 # Dictation: the shared controller with the Linux host's rules (zeron/dictation-linux.coax), a unit of its
 # own as on the Mac, and Psionic's resident Parakeet (CUDA, whose driver and NVRTC it opens at run time).
 "$coax" c "$app/zeron/dictation-linux.coax" --release --library --header "$work/c/dictation.h" --run-steps 250000000 > "$work/c/dictation.c"

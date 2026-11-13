@@ -8,7 +8,7 @@
 //
 // Values are bool, f32, s32, u32 and int (s64), structs and fixed arrays of
 // them. A struct of two to four f32 fields is a vector (V2, V3 and V4 of
-// aethyr/gpu/shader.coax), so its fields are its components. A view is a
+// metaverse-engine/gpu/shader.coax), so its fields are its components. A view is a
 // storage buffer: only a parameter can be one, and only reading it (an
 // element, a field of one, its count) is lowered. Textures and samplers
 // are the structs Tex2D, Tex2DArray, TexDepth, Sampler and SamplerCompare,
@@ -27,7 +27,7 @@
 // position, the others the varyings), then optionally a bool (whether the
 // triangle faces the viewer), then resources. It returns nothing, a V4
 // (color target 0) or a struct of V4s (targets in order). The GPU
-// procedures (gpu_discard, gpu_sample...) of aethyr/gpu/shader.coax become
+// procedures (gpu_discard, gpu_sample...) of metaverse-engine/gpu/shader.coax become
 // their instructions.
 //
 // Tree code v2 retains GPU ids1..14 and 2D/depth image queries. Version3

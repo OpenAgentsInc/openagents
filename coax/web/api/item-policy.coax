@@ -1,5 +1,5 @@
 // The item ledger's route in Coax (#13318; docs/decisions/0006-item-ledger-rules-in-coax.md): what
-// player.c room_items asks the rules. The rules are aethyr/session/ledger.coax's, the same ones its
+// player.c room_items asks the rules. The rules are metaverse-engine/session/ledger.coax's, the same ones its
 // in-memory store runs; this file names them for C and holds the route's words. player.c reads the
 // facts under the database's locks (migrations/0130_item_ledger.sql, 0165) and writes what these
 // answers say; the database decides nothing.

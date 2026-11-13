@@ -1,6 +1,6 @@
 // A moderator's commands in a room (#13302, AAA P5.8; docs/protocol/moderation-v1.md). A seat whose
 // signed ticket has the moderator bit (ACCT 2: one of the realm's admins, seat-ticket.coax) sends
-// "X " and a record, "VERB PID MINUTES REASON" (aethyr/session/moderation.coax, the one codec and the
+// "X " and a record, "VERB PID MINUTES REASON" (metaverse-engine/session/moderation.coax, the one codec and the
 // rules):
 //   X look PID 0 -          the player's seat, Hit Points and place in this room, told to the moderator only
 //   X move PID 0 -          the player in this room is put where the moderator stands

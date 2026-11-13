@@ -1,0 +1,142 @@
+// The relay room's own frames (coax/web/room/room-relay.coax): the one codec both sides load. The
+// room writes y, j, l, m and the pong and reads the ping; every page that sits in a relay room reads
+// them and writes the ping with this file (everglade/client/net.coax, apps/openagents-web/
+// everglade-net.coax, lockroom.coax, oneshot.coax). Profile proto/verse/room-relay-v1.json, doc
+// docs/protocol/room-relay-v1.md (#13245); its check runs these functions:
+//   coax/web/tool.sh coax/web/room/relay-profile.coax proto/verse/room-relay-v1.json
+// Text frames, fields one space apart, whole numbers in decimal.
+//   y SEAT N T      you are in, at SEAT, with N others; T is the server's wall clock in ms
+//   y SEAT N T G    in an everglade room: G is the seat's generation
+//   j SEAT          a player sat at SEAT
+//   l SEAT          the player at SEAT left
+//   m SEAT TEXT     the player at SEAT sent TEXT (any text frame, as it was sent)
+//   t MS            a page's clock ping: MS as the page chose it (up to 15 digits, an optional minus)
+//   t MS T          the pong: the ping as it was sent, then the server's wall clock in ms
+// A reader takes a frame whole or not at all (ok false): a field missing or extra, or a SEAT that
+// is none. N, T and G are the room's to say: a page uses what it needs of them.
+//   coax/bin/coax test metaverse-engine/net/relay-wire.coax
+
+RLW_SEATS :: 16;     // a SEAT is below this (room-relay.coax RELAY_SEATS)
+RLW_HEAD :: 24;      // "m SEAT " and each frame but m fit in this and RLW_FRAME
+RLW_FRAME :: 96;
+RLW_YOU :: 'y'; RLW_JOIN :: 'j'; RLW_LEFT :: 'l'; RLW_SAID :: 'm'; RLW_PONG :: 't';
+
+// A frame as it was read: kind is its letter. y: seat, others, clock and, when gen_said, gen.
+// j, l: seat. m: seat and body (the sender's text). t: sent and clock.
+RlwFrame :: struct { ok: bool; kind: u8; seat: int; others: int; clock: int; gen_said: bool; gen: int; sent: int; body: string; }
+
+rlw_text :: (out: [] u8, at: int, t: string) -> int {
+  n := at;
+  for ch: t { if n >= out.count { break; } out[n] = ch; n += 1; }
+  return n;
+}
+// A space and v in decimal.
+rlw_int :: (out: [] u8, at: int, v: int) -> int {
+  n := at;
+  if n < out.count { out[n] = ' '; n += 1; }
+  x := v;
+  if x < 0 { if n < out.count { out[n] = '-'; n += 1; } x = -x; }
+  digits: [20] u8; c := 0;
+  while true { digits[c] = cast(u8) (48 + x % 10); c += 1; x /= 10; if x == 0 || c >= 20 { break; } }
+  while c > 0 && n < out.count { c -= 1; out[n] = digits[c]; n += 1; }
+  return n;
+}
+// The number after one space at at[0] (an optional minus, 1 to 18 digits), at[0] moved past it;
+// ok[0] unset when there is none, or it does not end at a space or the end.
+rlw_num :: (t: string, at: [] int, ok: [] bool) -> int {
+  i := at[0];
+  if i >= t.count || t[i] != ' ' { ok[0] = false; return 0; }
+  i += 1;
+  neg := i < t.count && t[i] == '-';
+  if neg { i += 1; }
+  start := i; v := 0;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' && i - start < 18 { v = v * 10 + cast(int) (t[i] - '0'); i += 1; }
+  if i == start || (i < t.count && t[i] != ' ') { ok[0] = false; }
+  at[0] = i;
+  return ifx neg then -v else v;
+}
+
+// ---- the room's writers
+rlw_put_you :: (out: [] u8, seat: int, others: int, clock: int) -> int {
+  out[0] = RLW_YOU;
+  return rlw_int(out, rlw_int(out, rlw_int(out, 1, seat), others), clock);
+}
+rlw_put_you_gen :: (out: [] u8, seat: int, others: int, clock: int, gen: int) -> int { return rlw_int(out, rlw_put_you(out, seat, others, clock), gen); }
+rlw_put_join :: (out: [] u8, seat: int) -> int { out[0] = RLW_JOIN; return rlw_int(out, 1, seat); }
+rlw_put_left :: (out: [] u8, seat: int) -> int { out[0] = RLW_LEFT; return rlw_int(out, 1, seat); }
+// "m SEAT ": the head of a relayed frame; the sender's text goes after it as it was sent.
+rlw_put_said :: (out: [] u8, seat: int) -> int { out[0] = RLW_SAID; return rlw_text(out, rlw_int(out, 1, seat), " "); }
+// The pong to ping (a frame rlw_ping takes): the ping, then the server's clock.
+rlw_put_pong :: (out: [] u8, ping: string, clock: int) -> int { return rlw_int(out, rlw_text(out, 0, ping), clock); }
+
+// ---- the room's reader
+// "t MS": a clock ping (MS: up to 15 digits, an optional minus).
+rlw_ping :: (text: string) -> bool {
+  if text.count < 3 || text.count > 18 || text[0] != 't' || text[1] != ' ' { return false; }
+  i := 2;
+  if text[i] == '-' { i += 1; }
+  if i >= text.count { return false; }
+  while i < text.count { if text[i] < '0' || text[i] > '9' { return false; } i += 1; }
+  return true;
+}
+
+// ---- a page's writer and reader
+rlw_put_ping :: (out: [] u8, ms: int) -> int { out[0] = 't'; return rlw_int(out, 1, ms); }
+// One frame from the relay. A frame that is none of the relay's (a game's own, an everglade room's)
+// reads as ok false with kind 0.
+rlw_read :: (t: string) -> RlwFrame {
+  f: RlwFrame;
+  if t.count < 3 || t[1] != ' ' { return f; }
+  c := t[0];
+  if c != RLW_YOU && c != RLW_JOIN && c != RLW_LEFT && c != RLW_SAID && c != RLW_PONG { return f; }
+  f.kind = c;
+  at := [1] int.[1]; ok := [1] bool.[true];
+  if c == RLW_PONG {
+    f.sent = rlw_num(t, at[..], ok[..]); f.clock = rlw_num(t, at[..], ok[..]);
+    f.ok = ok[0] && at[0] == t.count;
+    return f;
+  }
+  f.seat = rlw_num(t, at[..], ok[..]);
+  if !ok[0] || f.seat < 0 || f.seat >= RLW_SEATS { return f; }
+  if c == RLW_SAID {
+    // the text after "m SEAT ": any bytes, as they were sent (none: an empty frame was relayed)
+    if at[0] >= t.count || t[at[0]] != ' ' { return f; }
+    f.body = t[at[0] + 1..<t.count];
+    f.ok = true;
+    return f;
+  }
+  if c == RLW_YOU {
+    f.others = rlw_num(t, at[..], ok[..]); f.clock = rlw_num(t, at[..], ok[..]);
+    if ok[0] && at[0] < t.count { f.gen = rlw_num(t, at[..], ok[..]); f.gen_said = ok[0]; }
+    f.ok = ok[0] && at[0] == t.count;
+    return f;
+  }
+  f.ok = at[0] == t.count;
+  return f;
+}
+
+#test "relay wire: each frame written reads back, and a bad one is refused whole" {
+  b: [RLW_FRAME] u8;
+  n := rlw_put_you(b[..], 1, 1, 7);
+  #assert cast(string) b[0..<n] == "y 1 1 7";
+  y := rlw_read("y 1 1 7"); #assert y.ok && y.kind == RLW_YOU && y.seat == 1 && y.others == 1 && y.clock == 7 && !y.gen_said;
+  n = rlw_put_you_gen(b[..], 12, 15, 1762190000123, 2);
+  #assert cast(string) b[0..<n] == "y 12 15 1762190000123 2";
+  y = rlw_read(cast(string) b[0..<n]); #assert y.ok && y.seat == 12 && y.others == 15 && y.clock == 1762190000123 && y.gen_said && y.gen == 2;
+  for bad: [9] string.["y", "y 1", "y 1 1", "y 16 0 7", "y -1 0 7", "y 1 1 7 2 3", "y 1 x 7", "y 1 1 7 ", "y  1 1 7"] { #assert !rlw_read(bad).ok; }
+  n = rlw_put_join(b[..], 13); #assert cast(string) b[0..<n] == "j 13" && rlw_read("j 13").ok && rlw_read("j 13").kind == RLW_JOIN && rlw_read("j 13").seat == 13;
+  n = rlw_put_left(b[..], 3); #assert cast(string) b[0..<n] == "l 3" && rlw_read("l 3").ok && rlw_read("l 3").kind == RLW_LEFT && rlw_read("l 3").seat == 3;
+  for bad: [6] string.["j", "j x", "j 16", "j 1 2", "l -1", "l 3 "] { #assert !rlw_read(bad).ok; }
+  n = rlw_put_said(b[..], 0); #assert cast(string) b[0..<n] == "m 0 ";
+  m := rlw_read("m 0 o 12 place 40 1"); #assert m.ok && m.kind == RLW_SAID && m.seat == 0 && m.body == "o 12 place 40 1";
+  m = rlw_read("m 15  two"); #assert m.ok && m.seat == 15 && m.body == " two";
+  m = rlw_read("m 2 "); #assert m.ok && m.body == "";
+  for bad: [4] string.["m 2", "m 16 x", "m x y", "m"] { #assert !rlw_read(bad).ok; }
+  n = rlw_put_ping(b[..], 5000); #assert cast(string) b[0..<n] == "t 5000" && rlw_ping("t 5000") && rlw_ping("t -5") && rlw_ping("t 123456789012345");
+  for bad: [7] string.["t", "t ", "t -", "t 5 6", "t 5x", "t 1234567890123456789", "u 5"] { #assert !rlw_ping(bad); }
+  n = rlw_put_pong(b[..], "t 5000", 1762190000123); #assert cast(string) b[0..<n] == "t 5000 1762190000123";
+  p := rlw_read("t 5000 1762190000123"); #assert p.ok && p.kind == RLW_PONG && p.sent == 5000 && p.clock == 1762190000123;
+  for bad: [4] string.["t 5000", "t 5000 7 1", "t x 7", "t 5000 7 "] { #assert !rlw_read(bad).ok; }
+  // a game's own frame, or an everglade room's, is none of the relay's
+  #assert rlw_read("D 3 0 0").kind == 0 && !rlw_read("W 30 1 0").ok && !rlw_read("").ok && rlw_read("yy 1 1 7").kind == 0;
+}

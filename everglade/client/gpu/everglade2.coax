@@ -5,8 +5,8 @@
 #load "../../scene/gpu/fivelab.coax";
 #load "../../world/field.coax";
 #load "../../scene/gpu/portal.coax";   // Everglade's portal's light: Character Create's arrival from the homepage
-#load "../../../aethyr/render/terrain-shade.coax";   // the ground's material table and baked AO (#13052)
-#load "../../../aethyr/render/character-material.coax";   // the characters' material record's shading (#13012)
+#load "../../../metaverse-engine/render/terrain-shade.coax";   // the ground's material table and baked AO (#13052)
+#load "../../../metaverse-engine/render/character-material.coax";   // the characters' material record's shading (#13012)
 Everglade2Bg :: struct {c:V4;aux:V4;depth:f32 #depth;}
 Everglade2Lit :: struct {c:V4;aux:V4;}
 E2_KIT_BASE :: 1048576;   // a base instance at or past this draws kit pieces: inst[2 (instance - base)]
@@ -156,7 +156,7 @@ everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]Fiv
  }}
  #assert seen>100 && faded>0;
 }
-// ---- the key light's shadow tiles (aethyr/render/cascades.coax cascade_rows; the page's
+// ---- the key light's shadow tiles (metaverse-engine/render/cascades.coax cascade_rows; the page's
 // E2_U_CASCADE, everglade/client/client.coax e2_shadows): up to four tiles of one depth atlas round the eye, each
 // a ring further out, each snapped to its own texels in the light's space and drawn again only once
 // the eye walks past its step. The header says how many and which is drawn this frame; each tile has
@@ -242,7 +242,7 @@ e2_shadow_visibility :: (p:V3,n:V3,u:[]f32,map:TexDepth,cmp:SamplerCompare)->f32
 // in the table's order, then the AO four to a vec4 from E2_GROUND_AO.
 E2_GROUND_HEAD :: 2; E2_GROUND_MATERIAL :: 5; E2_GROUND_AO :: 22;   // ground.coax E2G_GPU_HEAD, E2G_GPU_MATERIAL, E2G_GPU_AO / 4
 e2_ground_pick :: (w:V4,k:f32)->f32 {return ifx k<0.5f32 then w.x else ifx k<1.5f32 then w.y else ifx k<2.5f32 then w.z else w.w;}
-// One material's linear albedo at (x, z) with the point's weights w (aethyr/render/terrain-shade.coax).
+// One material's linear albedo at (x, z) with the point's weights w (metaverse-engine/render/terrain-shade.coax).
 e2_ground_material :: (x:f32,z:f32,ground:[]V4,m:int,w:V4)->V3 {
  b:=E2_GROUND_HEAD+m*E2_GROUND_MATERIAL;a:=ground[b];c:=ground[b+1];f:=ground[b+2];g:=ground[b+3];h:=ground[b+4];
  t:=aethyr_terrain_blend_t(x,z,f.x,f.y,f.z,f.w,g.x,g.y);
@@ -268,7 +268,7 @@ e2_ground_albedo :: (x:f32,z:f32,ground:[]V4)->V3 {
  return out;
 }
 e2_ground_at :: (ground:[]V4,k:int)->f32 {v:=ground[E2_GROUND_AO+k/4];r:=k%4;return ifx r==0 then v.x else ifx r==1 then v.y else ifx r==2 then v.z else v.w;}
-// The canopy's AO on the ground at (x, z) (aethyr/render/bake.coax bake_sample at no height), eased to 1
+// The canopy's AO on the ground at (x, z) (metaverse-engine/render/bake.coax bake_sample at no height), eased to 1
 // over the last metres inside the tile's edge as ground.coax e2g_ao; 1 off the tile or before the bake.
 e2_ground_ao :: (x:f32,z:f32,ground:[]V4)->f32 {
  grid:=ground[0];head:=ground[1];
@@ -382,7 +382,7 @@ cc_player_light :: (u:[]f32,albedo:V3,n:V3,view:V3,visibility:f32)->V3 {
  return mul3(albedo,irradiance);
 }
 // A character's albedo: the colour layer's texel (the array sampler already decoded it from sRGB),
-// dyed in display space (CA_DYES in aethyr/character/character-appearance.coax: the dye masks and colours are
+// dyed in display space (CA_DYES in metaverse-engine/character/character-appearance.coax: the dye masks and colours are
 // authored on display values), decoded, then times the part's tint and its record's multiplier.
 // Live and film both call this, so they agree.
 cc_albedo :: (tex:V3,dye:V4,tint:V3,base:V3,dyed:bool)->V3 {
@@ -392,7 +392,7 @@ cc_albedo :: (tex:V3,dye:V4,tint:V3,base:V3,dyed:bool)->V3 {
 // The screen derivatives the material's normal map and data samples need, taken where every pixel
 // still runs (WGSL's derivatives need uniform control flow).
 CcDeriv :: struct {px:V3;py:V3;ux:V2;uy:V2;}
-// The character surface: the part's material (mats: three vec4s a colour layer, aethyr/character/
+// The character surface: the part's material (mats: three vec4s a colour layer, metaverse-engine/character/
 // material.coax cm_pack), its normal and ORM maps from the pack's linear data layers, lit by the
 // glade's sun, sky and the camera-side fill. u[60] 1 is the film quality (portraits and
 // turntables, everglade/client/create.coax); u[61] 1 turns the maps off (before/after captures).

@@ -54,7 +54,7 @@ Build the compiler once, then the page and its shader module:
 coax/build.sh
 cd apps/openagents-web
 ../../coax/web/wasm.sh everglade/client/client.coax everglade2-face.c build/everglade2.wasm \
-  everglade-step.coax ../../aethyr/core/sticks.coax
+  everglade-step.coax ../../metaverse-engine/core/sticks.coax
 cd ../..
 coax/web/tool.sh coax/web/wgsl-module.coax everglade/client/gpu/everglade2.coax \
   apps/openagents-web/everglade2.wgsl everglade/client/gpu/everglade2.module

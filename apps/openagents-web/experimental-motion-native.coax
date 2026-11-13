@@ -1,7 +1,7 @@
 #load "../../everglade/zone.coax";
 #load "../../everglade/shared/everglade-step.coax" as controller;
-#load "../../aethyr/move/walk.coax" as walker;
-#load "../../aethyr/physics/collide.coax" as collision;
+#load "../../metaverse-engine/move/walk.coax" as walker;
+#load "../../metaverse-engine/physics/collide.coax" as collision;
 #load "../../coax/lib/sys/tool.coax";
 tool_main :: ()->int #export_c #effects(all) {
   distance:[3]f32; rates:=[3]f32.[0.5,1,2]; empty:[1]f32; w:=EgMoveWorld.{deck=true};

@@ -16,7 +16,7 @@
 // splatlab.coax packs them, three vec4s each) or made here from its index and the time by one of
 // the uniforms' emitters: fire, smoke, embers, a fireball, an eldritch blast, ritual flame and
 // motes, or the bench's field. Nothing animates on the CPU; it only says where the emitters are.
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "splatlab-view.coax";
 
 // A static splat (splatlab.coax sl_pack): (centre xyz, opacity), (covariance xx, xy, xz, yy),

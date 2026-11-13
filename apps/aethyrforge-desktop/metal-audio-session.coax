@@ -4,7 +4,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/host/audio-product-conformance.coax";
+#load "../../metaverse-engine/host/audio-product-conformance.coax";
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])<2{tool_errln("usage: metal-audio-session SDK OUTPUT [--product]");return 2;}sdk:=args_at(a[..],0);dir:=args_at(a[..],1);if !fs_mkdir(dir){return 1;}paths:[4][4096]u8;report:=fs_join(dir,"receipt.json",paths[0][..]);run:=[4]string.[fs_join(sdk,"MetalAudioSession",paths[1][..]),report,dir,fs_join(sdk,"libaudiofixture.dylib",paths[3][..])];count:=ifx args_has(a[..],"--product") then 4 else 2;out:[65536]u8;err:[65536]u8;r:=proc_run(run[0..<count],60000,out[..],err[..]);if !fs_write(fs_join(dir,"sdk.stderr",paths[2][..]),cast(string)err[0..<r.err_n])||r.started!=0||r.status!=0||r.cut||r.timed_out{tool_errln(cast(string)err[0..<r.err_n]);return 1;}
  raw:[4096]u8;n:=fs_read(report,raw[..]);doc:[1]Jv;nodes:[128]JvNode;if n<1||!jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]){return 1;}ok:=true;for key:[4]string.["preFrames","preDeviceFrames","nonzero","status"]{ok=ok&&jv_int(doc[0],jv_get(doc[0],0,key),-1)==0;}

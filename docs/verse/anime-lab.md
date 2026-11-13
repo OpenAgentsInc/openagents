@@ -178,8 +178,8 @@ version:
   cut lands inside an action's anticipation, a close-up holds at least
   0.6 s, a flash cut is three white frames.
 - **The engine plays it** with the pieces that exist: camera flights
-  (`aethyr/cam/cinematic.coax`), the cast and its clips (`verse/cast.coax`),
-  particles (`aethyr/render/particles.coax`) and the anime style's lines, flats,
+  (`metaverse-engine/cam/cinematic.coax`), the cast and its clips (`verse/cast.coax`),
+  particles (`metaverse-engine/render/particles.coax`) and the anime style's lines, flats,
   speed lines and impact frames.
 - **The same document renders offline** at any size: `openagents labs anime
   render take.anime take.mp4 --size 1920x1080` drives the page's
@@ -248,12 +248,12 @@ Built (A2), November 2:
   (poses blended, the cast's wind-up and release, feelings, who has
   entered, spells in flight and their bursts, smoke, rubble, the breach,
   the draw-in's phases, the frame's flash, impact frame, speed lines and
-  shake), and the camera, each shot's move flown with `aethyr/cam/cinematic.coax`.
+  shake), and the camera, each shot's move flown with `metaverse-engine/cam/cinematic.coax`.
   The engine's own reactions are named there: the heroes turn to face what
   appears behind them, everyone recoils from a huge impact, whoever walks
   on from behind comes out of smoke.
 - **The realm** is `apps/openagents-web/animelab.coax` (with
-  `animelab-cast.coax`, `animelab-world.coax`, `aethyr/render/cel-mesh.coax`,
+  `animelab-cast.coax`, `animelab-world.coax`, `metaverse-engine/render/cel-mesh.coax`,
   `animelab-style.coax`, `gpu/animelab.coax`): Skyreach Academy's
   courtyard at dusk in the action variant, the cast built from primitives
   with anime faces whose marks change with the feeling, the effects, the

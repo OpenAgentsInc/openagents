@@ -134,7 +134,7 @@ time. So handles fail instead of trapping.
   a `u64`. Two handle types don't mix (`Handle(Ship)` isn't a
   `Handle(Planet)`), and a handle isn't an integer.
 - **`Store(T)`** owns a fixed-capacity slot array, each slot's generation and
-  a free list, as `aethyr/core/entity.coax`'s `EntityStore` does by hand.
+  a free list, as `metaverse-engine/core/entity.coax`'s `EntityStore` does by hand.
 - **Lookup returns an optional.**
 
   ```jai
@@ -157,8 +157,8 @@ time. So handles fail instead of trapping.
   safe (it traps, it never reads the wrong slot) and shows in the effects
   inventory as a trap site.
 
-**Migration.** `aethyr/core/entity.coax` and its users move from packed `int`
-handles to `Handle(Entity)`. The entity oracle (`aethyr/tests/entity-oracle.coax`)
+**Migration.** `metaverse-engine/core/entity.coax` and its users move from packed `int`
+handles to `Handle(Entity)`. The entity oracle (`metaverse-engine/tests/entity-oracle.coax`)
 checks both versions agree over the same spawn and despawn sequences before
 the old one is removed.
 
@@ -423,7 +423,7 @@ Not yet filed, in order of value to Everglade:
 | Issue | Title | Scope | Done when | R |
 | --- | --- | --- | --- | --- |
 | V6 | `Handle(T)` and `Store(T)` | Nominal handles, slot stores with generations and retirement, `store_get` returning an optional view, `store_get_live` trapping | Library with `#authority` checks for wrap and reuse; 0 surviving mutants | R3, R4 |
-| V7 | Move Aethyr entities to `Handle(Entity)` | Port `aethyr/core/entity.coax` and its callers | The entity oracle agrees between old and new over its sequences; the realm frame's 99th percentile is within 2% of before | R3 |
+| V7 | Move Aethyr entities to `Handle(Entity)` | Port `metaverse-engine/core/entity.coax` and its callers | The entity oracle agrees between old and new over its sequences; the realm frame's 99th percentile is within 2% of before | R3 |
 | S1 | Regions for views | Every view carries a region; refuse returning or storing a view in a longer region, or keeping it across reset, growth or frame return | The existing E0383 cases pass under the new rule; new cases for arena reset and growth refuse | R3 |
 | S2 | Regions for records that hold views | A record takes the shortest region of its views; refuse its escape | `EntityStore`-style records compile; a test that stores one in static storage refuses | R3 |
 | S3a | Scoped `#lease` blocks | Compiler support for `#lease NAME read\|write { }` over a boundary's acquire and release; the view, its slices and records holding it can't leave the block; release, requeue and conflicting device submission inside the block refuse | Escapes and in-block release refuse with clear errors; a test boundary with a stand-in adapter passes; no lease value exists in the language | R3, R11 |
@@ -452,7 +452,7 @@ Not yet filed, in order of value to Everglade:
 
 | Issue | Title | Scope | Done when | R |
 | --- | --- | --- | --- | --- |
-| S7 | Safe profile on by default | New units are safe unless they declare otherwise; `#unsafe` needs a reason | All of `coax/lib`, `aethyr/` and `verse/` build; unsafe counts published | R3 |
+| S7 | Safe profile on by default | New units are safe unless they declare otherwise; `#unsafe` needs a reason | All of `coax/lib`, `metaverse-engine/` and `verse/` build; unsafe counts published | R3 |
 | S8 | Change spec §3 | Replace "Do not promise general memory safety" with the guarantee in [memory-safety.md](memory-safety.md) and its "doesn't cover" list; update `INVARIANTS.md` | Merged in the same change as S7 | — |
 | S9 | Measure the cost | Realm frame time, Aethyr step time and compile time before and after Stages 3–5 | A record in `coax/perf/` with the numbers | R0, R22 |
 

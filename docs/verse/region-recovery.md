@@ -60,8 +60,8 @@ party whose room was lost is placed together in the next room with seats.
 ## Checks
 
 ```sh
-coax/bin/coax test aethyr/session/region.coax --library
-coax/bin/coax mutate aethyr/session/region.coax --library --root-only
+coax/bin/coax test metaverse-engine/session/region.coax --library
+coax/bin/coax mutate metaverse-engine/session/region.coax --library --root-only
 ```
 
 The model's checks cover a partition and promotion after the lease, a forced

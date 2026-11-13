@@ -7,12 +7,12 @@ import "openagents/options/v1alpha1/json.proto";
 // A made realm's document and its edits (compliance plan step E6, GitHub
 // #13249; Aethyr book chapters 51, 52 and 81). The server builds and keeps the
 // document in SQL (coax/web/api/migrations/0093, 0109 and 0111), one revision
-// at a time, with the SHA-256 of its text. aethyr/forge/doc.coax is the one
-// reader and writer of the document; aethyr/forge/edit.coax holds the edits and
+// at a time, with the SHA-256 of its text. metaverse-engine/editor/doc.coax is the one
+// reader and writer of the document; metaverse-engine/editor/edit.coax holds the edits and
 // writes the bodies of /save, /undo and /redo. proto/verse/realm-document-v1.json
 // pins the bytes: a starting document, a run of edits, and after each one the
 // document as stored and its hash, checked through doc.coax and edit.coax
-// (aethyr/forge/doc-goldens.coax) and through the API's routes
+// (metaverse-engine/editor/doc-goldens.coax) and through the API's routes
 // (coax/web/api/tests/realm_doc_checks.coax).
 //
 // The document travels as JSON: Postgres's jsonb text (keys by length, then
@@ -134,11 +134,11 @@ message ForkedFrom {
   optional uint64 rev = 2 [json_name = "rev"];
 }
 
-// One named value of the document the edit model keeps (aethyr/forge/edit.coax):
+// One named value of the document the edit model keeps (metaverse-engine/editor/edit.coax):
 // "tool:NAME" (1 or 0), "set:FIELD" (style, ground, time, camera, palette;
 // the server's log also names set:name), "lore:WHO", "quest:GIVER" and
 // "place:N" (THING X Z YAW), "feature:N" and "row:N" (the N-th entry of
-// features and off: the row's object as written; aethyr/forge/doc.coax's
+// features and off: the row's object as written; metaverse-engine/editor/doc.coax's
 // forge_switch moves a row between them as the server does). A slot absent is
 // the realm without it.
 message Slot {

@@ -1,8 +1,8 @@
 // BFRES 10.4 decoding for private Ocarina assets. Primary layouts:
 // BfresLibrary e2c5debc; Watertoon/Awn c3c090bb extended curves.
-#load "../../aethyr/render/geometry/scan.coax";
-#load "../../aethyr/anim/pose.coax";
-#load "../../aethyr/render/reference-half.coax";
+#load "../../metaverse-engine/render/geometry/scan.coax";
+#load "../../metaverse-engine/anim/pose.coax";
+#load "../../metaverse-engine/render/reference-half.coax";
 
 #test "Ocarina source spans reject negative truncated and overflowing requests" {
  #assert ob_span(16,0,16) && ob_span(16,16,0);

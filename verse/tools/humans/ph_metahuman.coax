@@ -10,7 +10,7 @@
 // (name, parent, translation in cm, Euler XYZ rotation in degrees).
 //
 // Then, for each mesh:
-//   - every joint folds onto the rig's 65 by name (aethyr/anim/mannequin.coax mannequin_fold, ported
+//   - every joint folds onto the rig's 65 by name (metaverse-engine/anim/mannequin.coax mannequin_fold, ported
 //     here as mh_fold()); a joint that folds to nothing gives its weight to its nearest ancestor
 //     that does (a face joint to the head, a finger helper to its finger);
 //   - the body is bound where the clothes were fitted (the DNA body with its arms lowered,

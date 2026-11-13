@@ -1,6 +1,6 @@
 // A phone in an Everglade zone (game-wide; GitHub #13151): Everglade Experimental and the Archery
 // Range take a touch screen through this one file. The thumb's stick itself is the engine's
-// (aethyr/core/sticks.coax), the one Everglade II and the 5E Lab walk on: a zone's face holds it, and
+// (metaverse-engine/core/sticks.coax), the one Everglade II and the 5E Lab walk on: a zone's face holds it, and
 // this file says which finger is its thumb. A finger that goes down on the world's left side, under
 // the top panels and over the bar, is the thumb's: its stick walks you (a full push runs), steers
 // the horse and the dragon (a full push ahead gallops: everglade/mounts.coax eg_mount_input). Every
@@ -15,13 +15,13 @@ ZT_NONE :: -100;
 ZT_SIDE :: 0.45;      // the stick's side of the page: this share of its width, from the left
 ZT_TOP :: 0.3;        // and under this share of its height (the name plate, the tally, the picker)
 ZT_FOOT :: 8.0;       // CSS px kept clear over the bar
-ZT_RING :: 56.0;      // the ring's radius, CSS px (aethyr/core/sticks.coax STICKS_RADIUS)
+ZT_RING :: 56.0;      // the ring's radius, CSS px (metaverse-engine/core/sticks.coax STICKS_RADIUS)
 // The zone's fields for these (EgZone: zt_stick, the finger that is the thumb's; zt_up, the finger
 // holding JUMP; zt_thumb, whether the pointer event just taken was the thumb's; zt_top, the foot of
 // a realm's own panel on the stick's side, in px, 0 none) are plain fields of the zone, not a struct
 // of their own: the 5E Lab's checks hold three zones at once, a few values under the compile-time limit.
 
-// A touch screen's page fact (coax/web/host.js, aethyr/host/apple/PageHost.m): coarse=1.
+// A touch screen's page fact (coax/web/host.js, metaverse-engine/host/apple/PageHost.m): coarse=1.
 zt_coarse :: (facts: string) -> bool {
   at := 0;
   while at < facts.count {
@@ -73,7 +73,7 @@ zone_compact :: (s: [] EgZone) -> bool {
   x := s[0].xc[..];
   return s[0].touch && zone_world(s) && !x[0].dr.on && x[0].h > x[0].w && x[0].w < f32(ZT_COMPACT_W) * x[0].k;
 }
-// GYRO: over JUMP, the phone's turn as look and aim (aethyr/cam/gyro.coax); a press opens its menu.
+// GYRO: over JUMP, the phone's turn as look and aim (metaverse-engine/cam/gyro.coax); a press opens its menu.
 // Not there when the host has no sensor (a desktop's touch screen).
 zt_gyro_shown :: (s: [] EgZone) -> bool { return zt_on(s) && s[0].gyro[0].status != gy.GYRO_NONE; }
 zt_gyro :: (s: [] EgZone) -> cc.Box { u := zt_up(s); k := s[0].creator[0].scale; return cc.Box.{x0 = u.x0, y0 = u.y0 - 54 * k, x1 = u.x1, y1 = u.y0 - 10 * k}; }
@@ -125,7 +125,7 @@ zt_stick :: (s: [] EgZone, x: f32, y: f32, phase: int, id: int) -> bool {
   return true;
 }
 // Whether the pointer event the zone just took (zone_pointer) was the thumb's: the face then hands
-// it to its stick (aethyr/core/sticks.coax verse_sticks_world_touch).
+// it to its stick (metaverse-engine/core/sticks.coax verse_sticks_world_touch).
 zone_thumb :: (s: [] EgZone) -> bool #export_c #effects(all) { return s[0].zt_thumb; }
 zt_blur :: (s: [] EgZone) { s[0].zt_stick = ZT_NONE; s[0].zt_up = ZT_NONE; s[0].zt_thumb = false; s[0].gyro_finger = ZT_NONE; }
 
@@ -151,7 +151,7 @@ zt_draw :: (s: [] EgZone, out: [] f32, at: int) -> int {
   ws[0].parent = cc.UIT_NONE;
   return cc.hud_draw(out, n, l[..], ws[..], 1, k);
 }
-// One of the buttons: the game's raised button (aethyr/ui/hud-style.coax hud_button), its word centred.
+// One of the buttons: the game's raised button (metaverse-engine/ui/hud-style.coax hud_button), its word centred.
 zt_button :: (l: [] cc.HudList, ws: [] cc.HudWords, t: cc.HudTokens, q: cc.Box, name: string, lit: bool, k: f32) {
   b := cc.hud_box(q.x0, q.y0, q.x1, q.y1);
   cc.hud_button(l, t, b, k, lit);

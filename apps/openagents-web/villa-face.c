@@ -1,5 +1,5 @@
 // Hecate's Cemetery's C face for the browser (coax/web/host.js): villa.coax
-// is the page, aethyr/move/player.coax walks you, verse/grid.coax reads a phone's
+// is the page, metaverse-engine/move/player.coax walks you, verse/grid.coax reads a phone's
 // thumbs and villafig.coax poses the figures (each its own library). Once
 // a frame it passes values between them in order: the page's controls, the
 // player's step among the garden's walls, the page's step (the flight, the
@@ -237,7 +237,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   start(state);
   coax_t_Villa *v = villa(state);
   width = w; height = h; dpr = scale;
-  float frame = dt;   /* the player's clock (aethyr/core/loop.coax) steps it; the rest moves by what it counts */
+  float frame = dt;   /* the player's clock (metaverse-engine/core/loop.coax) steps it; the rest moves by what it counts */
   dt = verse_player_counts(player, frame);
   now += dt;
   v->golden = golden;

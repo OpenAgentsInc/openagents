@@ -1,7 +1,7 @@
 # Animation documents v1
 
 Animation Lab uses six JSON document types. The readers in
-[`aethyr/anim/`](../../aethyr/anim/) admit documents into bounded, owned Coax
+[`metaverse-engine/anim/`](../../metaverse-engine/anim/) admit documents into bounded, owned Coax
 records. Admission returns a named error and leaves the output unchanged
 on failure. A document never supplies an executable path, shader or script.
 
@@ -264,13 +264,13 @@ fields produce a named refusal rather than disappearing. The general
 ## Echo and Slay conversion
 
 The existing ECH1 and EFC1 readers remain source adapters. Valley Lab uses
-the shared ECH1 reader in `aethyr/anim/echo-pack.coax`; A3 moves its layering
+the shared ECH1 reader in `metaverse-engine/anim/echo-pack.coax`; A3 moves its layering
 onto performances. The source formats and their pose arithmetic are unchanged.
 
 Convert the existing private exports with:
 
 ```sh
-coax/web/tool.sh aethyr/tools/anim-echo-documents.coax ECHO_DIR FACE_DIR OUTPUT_DIR
+coax/web/tool.sh metaverse-engine/tools/anim-echo-documents.coax ECHO_DIR FACE_DIR OUTPUT_DIR
 ```
 
 The output contains an admitted rig, 24 body clips, 20 face clips, an export
@@ -290,7 +290,7 @@ overridden during playback without changing the source samples.
 Compile the admitted documents for Valley's existing GPU consumer with:
 
 ```sh
-coax/web/tool.sh aethyr/tools/anim-echo-documents.coax --compile DOCUMENT_DIR TEMPLATE_VPK OUTPUT_VPK
+coax/web/tool.sh metaverse-engine/tools/anim-echo-documents.coax --compile DOCUMENT_DIR TEMPLATE_VPK OUTPUT_VPK
 ```
 
 This reads and admits the rig and all 44 clips again, then emits ECH1 and

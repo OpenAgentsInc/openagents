@@ -1,6 +1,6 @@
 // Watchtower's shaders (watchtower.coax): build.sh writes apps/openagents-web/watchtower.wgsl
 // from this with coax/web/wgsl-module.coax (watchtower.module and watchtower.bindings beside it).
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 
 // bg_fs draws the floor the network stands on: the homepage's black field and
 // its isometric grid, darkened behind the HUD's panels, a red vignette while

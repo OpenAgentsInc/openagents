@@ -2,7 +2,7 @@
 
 This page describes how a non-player character (NPC) moves after a target in the OpenAgents Metaverse Engine: a guard, a
 monster or a companion. The service lives in the engine, in
-[`aethyr/ai/steer.coax`](../../aethyr/ai/steer.coax). Zones wire it in; they don't write their own
+[`metaverse-engine/ai/steer.coax`](../../metaverse-engine/ai/steer.coax). Zones wire it in; they don't write their own
 chase code. Issue: [#13074](https://github.com/OpenAgentsInc/openagents/issues/13074).
 
 ## What the service does
@@ -11,7 +11,7 @@ The service gives each NPC five behaviours:
 
 - **Path.** It walks round what stands in the way. When a step is held back, it lays a walking grid
   (a window of up to 40 by 40 cells, 0.5 m each) over the NPC and its goal, searches it with the
-  flow field from [`aethyr/world/nav/grid.coax`](../../aethyr/world/nav/grid.coax), and pulls the way taut to
+  flow field from [`metaverse-engine/world/nav/grid.coax`](../../metaverse-engine/world/nav/grid.coax), and pulls the way taut to
   the furthest corner it can see. That corner is its aim until the next plan.
 - **Pursue.** It aims at where the target will be, not where it is: the target's velocity, smoothed
   over the last ticks, times the time to get there (at most `lead` seconds).
@@ -25,8 +25,8 @@ The service gives each NPC five behaviours:
 
 | Layer | What it owns | Where |
 | --- | --- | --- |
-| Engine | The agent, its tuning, the window, planning, pursuit, circling, body avoidance and the leash | `aethyr/ai/steer.coax` |
-| Engine | A window filled from a realm's colliders and terrain (boxes, capsules, hulls, heightfields, steep ground) | `aethyr/ai/steer-colliders.coax` |
+| Engine | The agent, its tuning, the window, planning, pursuit, circling, body avoidance and the leash | `metaverse-engine/ai/steer.coax` |
+| Engine | A window filled from a realm's colliders and terrain (boxes, capsules, hulls, heightfields, steep ground) | `metaverse-engine/ai/steer-colliders.coax` |
 | Game | Each kind's tuning: its speed, body, reach, ring and leash | `E2G_NAV` in `everglade/server/guard.coax`; `hostile_tune` in `verse/experimental-hostiles.coax` |
 | Zone | Where a body may stand, the bodies near it, and the final slide of a step | `e2_may_stand` and `e2m_keep` (Everglade II); `hostile_blocked_pad`, `hostile_walk` and the dungeon's doorway graph (Experimental) |
 
@@ -75,9 +75,9 @@ data is built from the colliders the players' step uses, one page for each 64 m 
 
 | Layer | What it owns | Where |
 | --- | --- | --- |
-| Engine | A page: 128 by 128 samples, 0.5 m apart, one bit each. Open and closed, a straight walk, the step's last word (`nav_cells_keep`), obstacles (a shut door, a placed piece), what can be reached from a place, a page's digest | `aethyr/world/nav/cells.coax` |
-| Engine | A block of a page built from capsules and hulls: a sample opens where a body of the creature's radius stands clear of them all | `aethyr/world/nav/cells-colliders.coax` |
-| Engine | A creature's tick on the cells: the long way, the window, the step and the last word | `aethyr/ai/steer-cells.coax` (`nav_cells_go`) |
+| Engine | A page: 128 by 128 samples, 0.5 m apart, one bit each. Open and closed, a straight walk, the step's last word (`nav_cells_keep`), obstacles (a shut door, a placed piece), what can be reached from a place, a page's digest | `metaverse-engine/world/nav/cells.coax` |
+| Engine | A block of a page built from capsules and hulls: a sample opens where a body of the creature's radius stands clear of them all | `metaverse-engine/world/nav/cells-colliders.coax` |
+| Engine | A creature's tick on the cells: the long way, the window, the step and the last word | `metaverse-engine/ai/steer-cells.coax` (`nav_cells_go`) |
 | Game | Everglade's pages, from `e2_may_stand` and `e2m_world`, the same calls a player's step makes | `everglade/shared/nav.coax` |
 | Game | The zone's manifest: each cell, its page's digest and its open samples | `everglade/world/zone-cells.coax`, written by `everglade/model/tools/zone-cells.coax` |
 | Room | Which cells a room holds, the page builder, the monsters' steps, a room's own obstacles, the counts | `everglade/server/nav.coax` |
@@ -161,7 +161,7 @@ reached from the spawn. The manifest tool walks a creature at 9 m/s from the spa
 
 | Design | Result |
 | --- | --- |
-| The 20 m window alone | Fails. It presses on a wall whose gap is out of the window's sight (`aethyr/ai/steer-cells-checks.coax`) |
+| The 20 m window alone | Fails. It presses on a wall whose gap is out of the window's sight (`metaverse-engine/ai/steer-cells-checks.coax`) |
 | The window, plus a long way planned on 2 m blocks (a block open when any of its 16 samples is) | Fails 2 of 9 walks. Two blocks that both hold open samples aren't always joined, so a waypoint could be out of reach. A creature walked back and forth by z -72 on the path for 482 m without arriving |
 | The window, plus a long way searched on the samples within 32 m | Passes 9 of 9: 1,376 m walked for 1,306 m straight. The walk back from the far clearing is 470 m. A tick costs 40 µs on average. The slowest, one with a long-way search, costs 1.4 ms |
 
@@ -182,7 +182,7 @@ When to revisit:
 
 ## Checks
 
-`coax/bin/coax test aethyr/ai/steer.coax --library` checks the following:
+`coax/bin/coax test metaverse-engine/ai/steer.coax --library` checks the following:
 
 - A pursuer at the target's own run speed closes on a target crossing at full run. Plain seeking at
   the same speed never does.
@@ -191,11 +191,11 @@ When to revisit:
 - Two pursuers after one target never overlap.
 - The leash takes it home, where it waits until the target comes back within the leash.
 
-`aethyr/ai/steer-colliders.coax` checks the same doorway with the window filled from colliders.
+`metaverse-engine/ai/steer-colliders.coax` checks the same doorway with the window filled from colliders.
 
 The navigation cells' checks:
 
-- `aethyr/world/nav/cells.coax`, `cells-colliders.coax` and `aethyr/ai/steer-cells.coax`: pages,
+- `metaverse-engine/world/nav/cells.coax`, `cells-colliders.coax` and `metaverse-engine/ai/steer-cells.coax`: pages,
   obstacles, reach, the build from colliders, a walk round a trunk, a gap out of the window's
   sight, and a door that shuts and opens. `coax mutate --root-only` leaves no survivor in any of
   the three.

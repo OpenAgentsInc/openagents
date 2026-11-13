@@ -979,7 +979,7 @@ check that a later stage would repeat still shows when it is skipped.
   would plug into.
 - **No Metaverse Engine renderer.** The training views are rendered by this chapter's
   own volume renderer from analytic shapes, not by the Metaverse Engine renderer
-  ([Metaverse Engine chapter 11](../../aethyr/book/ch011-the-wgsl-renderer.md)) from a
+  ([Metaverse Engine chapter 11](../../metaverse-engine/book/ch011-the-wgsl-renderer.md)) from a
   Metaverse scene, so they have no lighting, textures or hard surfaces.
 - **No view dependence.** Colour depends on position only, not on the
   direction a ray arrives from, so shiny surfaces cannot be represented.
@@ -1003,7 +1003,7 @@ check that a later stage would repeat still shows when it is skipped.
 - [Chapter 106](ch106-differentiate-any-tensor-program.md): reverse-mode
   differentiation, which this chapter writes by hand for now.
 - The Metaverse Engine renderer
-  ([Metaverse Engine chapter 11](../../aethyr/book/ch011-the-wgsl-renderer.md)) for
+  ([Metaverse Engine chapter 11](../../metaverse-engine/book/ch011-the-wgsl-renderer.md)) for
   future training views.
 
 ## Sources

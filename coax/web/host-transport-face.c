@@ -1,4 +1,4 @@
-// Scalar ABI projections for aethyr/host/transport.coax. The including face
+// Scalar ABI projections for metaverse-engine/host/transport.coax. The including face
 // supplies its generated header. C stores typed results; Coax decides every
 // slot, phase, owner, byte limit and terminal outcome.
 #ifndef HOST_TRANSPORT_HEADER

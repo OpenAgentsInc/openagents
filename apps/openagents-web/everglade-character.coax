@@ -1,15 +1,15 @@
 // A detailed character in Everglade through the host's character pass (coax/web/host.js, the
 // "character pass" section; docs/verse/2026-11-06-native-hero-characters.md, R1 and R3): ?stage=echo
 // places Echo a metre to your right on the commons (everglade-raid-preview.coax rp_facts), and
-// each frame this fills her SceneLights block (aethyr/render/scene-lights.coax) from the town's own
+// each frame this fills her SceneLights block (metaverse-engine/render/scene-lights.coax) from the town's own
 // camera, key light, sky, haze, lamps, weather and shadow map, as the town's shaders read them
 // (apps/openagents-web/gpu/everglade-v1/gpu.coax eg_paint, eg_lamp_light, eg_haze_colour, eg_light_space). The host
 // asks for her pack by name only when the block is on, so no other page loads anything. Once the
-// host draws her (coaxial_character_ready_v1), she is a body: one capsule (aethyr/physics/query.coax) in the
+// host draws her (coaxial_character_ready_v1), she is a body: one capsule (metaverse-engine/physics/query.coax) in the
 // bodies you walk among (everglade_bodies_near) and in the follow camera's way (camera_frame).
 //   coax/bin/coax test apps/openagents-web/everglade.coax
-#load "../../aethyr/render/scene-lights.coax";
-#load "../../aethyr/physics/query.coax";
+#load "../../metaverse-engine/render/scene-lights.coax";
+#load "../../metaverse-engine/physics/query.coax";
 
 EG_CHARACTER_PACK :: "valley-slay";
 // Echo's vertex words (verse/valley/slay-gpu-policy.coax slay_gpu_storage): the storage binding the
@@ -50,7 +50,7 @@ everglade_character_bodies :: (s: [] Everglade, out: [] f32, n: int) -> int {
   return 1;
 }
 // How far the follow camera may back out along r before her capsule (grown by the clearance), by
-// aethyr/physics/query.coax's ray; r.far when she is not solid or not in the way.
+// metaverse-engine/physics/query.coax's ray; r.far when she is not solid or not in the way.
 everglade_character_room :: (s: [] Everglade, r: OrbitRay) -> f32 {
   if !everglade_character_solid(s) { return r.far; }
   a := s[0].rp.echo_at;

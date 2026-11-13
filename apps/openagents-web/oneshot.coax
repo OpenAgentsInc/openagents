@@ -22,12 +22,12 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/socket.coax";
-#load "../../aethyr/net/relay-wire.coax";   // the relay's frames y, j, l and m: the one codec (#13245)
+#load "../../metaverse-engine/net/relay-wire.coax";   // the relay's frames y, j, l and m: the one codec (#13245)
 #load "oneshot-table.coax";
-#load "../../aethyr/cam/shot.coax" as ash;
-#load "../../aethyr/core/space.coax" as asp;
+#load "../../metaverse-engine/cam/shot.coax" as ash;
+#load "../../metaverse-engine/core/space.coax" as asp;
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 160000;
@@ -341,7 +341,7 @@ room_tell :: (s: [] Os, force: bool) {
   buf: [OS_FRAME] u8; n := os_encode(v[..], buf[..]);
   room_send(s, cast(string) buf[0..<n]);
 }
-// What the relay says (aethyr/net/relay-wire.coax): y SEAT N T (you are in), j SEAT, l SEAT, m SEAT TEXT.
+// What the relay says (metaverse-engine/net/relay-wire.coax): y SEAT N T (you are in), j SEAT, l SEAT, m SEAT TEXT.
 // True when it was a socket's.
 room_heard :: (s: [] Os, kind: int, t: string) -> bool {
   ev := socket_event(kind);
@@ -1534,7 +1534,7 @@ pass_frames :: (from: [] Os, to: [] Os) {
   p := from[0].pipe[..];
   for c: 0..<p[0].n {
     if p[0].op[c] != PIPE_SEND { continue; }
-    buf: [OS_FRAME + 16] u8; n := rlw_put_said(buf[..], from[0].my_seat);   // as the relay heads it (aethyr/net/relay-wire.coax)
+    buf: [OS_FRAME + 16] u8; n := rlw_put_said(buf[..], from[0].my_seat);   // as the relay heads it (metaverse-engine/net/relay-wire.coax)
     n = put(buf[..], n, pipe_bytes(p, c));
     os_message(to, SOCKET_KIND + 4 * to[0].sock + SOCKET_FRAME, cast(string) buf[0..<n]);
   }

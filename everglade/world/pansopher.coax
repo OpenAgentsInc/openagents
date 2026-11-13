@@ -1,11 +1,11 @@
 // Pansopher (game): the Golemancy trainer, an old wizard who stands in the glade where you start
 // (everglade/docs/golemancy-profession-spec.md). This file is who he is and what he says: his name,
-// his robes, where he stands and his talk as a tree (aethyr/talk/tree.coax). A zone places and draws
+// his robes, where he stands and his talk as a tree (metaverse-engine/talk/tree.coax). A zone places and draws
 // him: Everglade II at everglade/client/npc.coax. The craft itself isn't built yet, and
 // he says so.
 //   coax/bin/coax test --library everglade/world/pansopher.coax
 #module "everglade.pansopher";
-#load "../../aethyr/talk/tree.coax";
+#load "../../metaverse-engine/talk/tree.coax";
 
 PANSOPHER_NAME :: "Pansopher";
 PANSOPHER_TITLE :: "Golemancy Trainer";

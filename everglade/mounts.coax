@@ -1,6 +1,6 @@
 // Everglade's mounts (everglade/docs/mounts-spec.md): the game layer every Everglade zone shares, on
-// the Metaverse Engine's mounts (aethyr/action/mount.coax, the mount, its gaits, steering, mounting and riding
-// collision; aethyr/action/ride-pose.coax, the rider's seat). This module owns what makes them
+// the Metaverse Engine's mounts (metaverse-engine/action/mount.coax, the mount, its gaits, steering, mounting and riding
+// collision; metaverse-engine/action/ride-pose.coax, the rider's seat). This module owns what makes them
 // Everglade's: the SRD's Riding Horse handling, the white horse's baked frames in a zone's pack
 // (glade/horse0..35: Idle, Walk, Gallop, twelve frames each; verse/tools/assets/horse_pack.coax) and
 // its saddle points, E to mount and dismount, the prompts, the phone's button, the stick's steering,
@@ -9,19 +9,19 @@
 //
 // The red dragon is the same kind of mount with wings (eg_dragon_add): its frames are the pack's
 // glade/dragon0..74 (everglade/dragon-clips.coax), its saddle the model's `saddle` bone at the base of
-// the neck, and it flies on the Metaverse Engine's shared winged flight (aethyr/action/flight.coax) at the SRD Adult
+// the neck, and it flies on the Metaverse Engine's shared winged flight (metaverse-engine/action/flight.coax) at the SRD Adult
 // Red Dragon's speeds: Speed 40 ft, Fly 80 ft. Space takes off, beats and climbs, Shift dives, X lands;
 // nobody gets off in the air ("Land first").
 //
-// Mounting and getting off are deeds (aethyr/action/deed.coax, docs/verse/action-pipeline.md): each
+// Mounting and getting off are deeds (metaverse-engine/action/deed.coax, docs/verse/action-pipeline.md): each
 // declares its feel (eg_mount_feel), a press asks with your bearing (your SRD conditions: nobody
 // mounts unconscious, paralyzed or grappled), the mount rules act, and only a yes presents (show).
 //   coax/bin/coax test everglade/mounts.coax --library
 #module "everglade.mounts";
-#load "../aethyr/action/mount.coax";
+#load "../metaverse-engine/action/mount.coax";
 #load "shared/mount-kinds.coax";   // the kinds' handling and a rider's keys, the room's too (#13268)
-#load "../aethyr/action/deed.coax";
-#load "../aethyr/fx/puff.coax";
+#load "../metaverse-engine/action/deed.coax";
+#load "../metaverse-engine/fx/puff.coax";
 #load "dragon-clips.coax";
 
 EG_MOUNTS :: 4;            // horses a zone places at most
@@ -41,7 +41,7 @@ EG_SADDLE :: [108] f32.[
   0.0031, 1.3639, -0.2562, 0.0026, 1.3807, -0.2314, 0.0213, 1.4293, -0.1685, 0.0284, 1.4557, -0.1481, 0.0284, 1.4729, -0.1887, 0.0284, 1.4869, -0.2551];
 EG_HORSE_SEAT_UP :: 0.47;
 EG_DRAGON_SEAT_UP :: 0.17;   // above the dragon's saddle bone, on the ridge of its neck
-// The horse's barrel round the saddle a frame, as aethyr/action/ride-pose.coax reads a hull: at
+// The horse's barrel round the saddle a frame, as metaverse-engine/action/ride-pose.coax reads a hull: at
 // RIDE_HULL_ROWS heights from 0.5 m above the saddle bone down in 0.1 m steps, how far its surface
 // is out to its left, then to its right (0: no body there), from the baked frames' triangles 0.2 m
 // behind to 0.3 m ahead of the bone, in the packed model's metres. The rider's legs are checked
@@ -234,9 +234,9 @@ eg_ride_input :: (m: [] EgMounts, k: EgRideKeys) -> MountIn {
   dragon := eg_on_dragon(m[0]); aloft := eg_aloft(m[0]);
   i := eg_mount_input(k.forward, k.turn, k.shift && !dragon, k.stick_on, k.stick_x, k.stick_y);
   if dragon { m[0].land = mk_land_holds(m[0].land, k.space, aloft); }
-  return mk_keys(ifx dragon then EG_DRAGON else EG_HORSE, i, k.space, k.shift, aloft, m[0].land);   // the horse jumps (aethyr/action/mount.coax mount_step)
+  return mk_keys(ifx dragon then EG_DRAGON else EG_HORSE, i, k.space, k.shift, aloft, m[0].land);   // the horse jumps (metaverse-engine/action/mount.coax mount_step)
 }
-// The mount you ride is in the air on a jump (aethyr/action/mount.coax mount_jumping).
+// The mount you ride is in the air on a jump (metaverse-engine/action/mount.coax mount_jumping).
 eg_jumping :: (m: EgMounts) -> bool { return m.riding >= 0 && mount_jumping(m.mounts[m.riding]); }
 // X on the dragon in the air: it comes down to land. False otherwise (the key goes on).
 eg_ride_land :: (m: [] EgMounts) -> bool {

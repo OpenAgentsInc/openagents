@@ -1,5 +1,5 @@
 // Original block mannequin on the existing CC0 65-joint character skeleton.
-#load "../../aethyr/anim/bundle.coax";
+#load "../../metaverse-engine/anim/bundle.coax";
 #load "../../everglade/scene/people-rig.coax";
 al_mannequin :: (lib:[]AnimLibrary,bytes:[]u8) {
  data:[1]People;people_load(data[..]);source:=people_rig(data[..],false);r:AnimRig;r.ready=true;r.name=anim_named("mannequin");r.joints=65;r.sections=1;r.material_count=1;r.materials[0]=anim_named("studio");

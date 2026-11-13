@@ -2,7 +2,7 @@
 // Instance culling (GitHub #13050), for a page whose data-assets name a `cull:` module and whose
 // face exports coaxial_cull_v1. The page still picks its pieces into runs of a store (one
 // instanced draw a run); this pass leaves out the ones the frustum or the frame's own depth hide,
-// in two phases (aethyr/render/geometry/cull.coax, learned from Solstice's shaders/vg/cull.wgsl):
+// in two phases (metaverse-engine/render/geometry/cull.coax, learned from Solstice's shaders/vg/cull.wgsl):
 //   frame()   the runs' pieces against the frustum and last frame's depth pyramid; what passes is
 //             copied to the run's first region and counted into its first indirect draw
 //   draw()    a run's first indirect draw, in place of its instanced draw

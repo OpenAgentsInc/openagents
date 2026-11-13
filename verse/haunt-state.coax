@@ -1,6 +1,6 @@
 // Existing HH_Save v1 choices admitted by the shared fact declarations.
 #module "verse.haunt.state";
-#load "../aethyr/state/declarations.coax" as facts;
+#load "../metaverse-engine/state/declarations.coax" as facts;
 #authority;
 #test "Haunted House v1 quest and once-zone facts retain their exact old wire ranges" {
  for zones:0..<33 {

@@ -42,9 +42,9 @@
 //   coax/bin/coax test verse/edit/computer_test.coax
 //   coax/bin/coax test verse/edit/agent_test.coax
 
-#load "../../aethyr/forge/spec.coax";   // the spec's lines (GET /api/playtest/realms/<slug>): one reader
-#load "../../aethyr/forge/change.coax";   // the edits' bodies (edits.proto): one writer
-#load "../../aethyr/forge/lists.coax";   // the feature list's, the panes' and the proposals' lines: one reader
+#load "../../metaverse-engine/editor/spec.coax";   // the spec's lines (GET /api/playtest/realms/<slug>): one reader
+#load "../../metaverse-engine/editor/change.coax";   // the edits' bodies (edits.proto): one writer
+#load "../../metaverse-engine/editor/lists.coax";   // the feature list's, the panes' and the proposals' lines: one reader
 #load "computer.coax";
 #load "../../coax/lib/media/realm_seat_wire.coax";   // a seat's bodies (seat.proto): one writer and reader
 #load "agent.coax";
@@ -275,7 +275,7 @@ redit_read_asks :: (e: [] RealmEdit, text: string) {
   i := 0;
   while i < text.count && e[0].ask_n < REDIT_ASKS {
     end := redit_line_end(text, i); line := text[i..<end]; i = end + 1;
-    ak := forge_read_ask(line);   // aethyr/forge/lists.coax, the feature list's one reader
+    ak := forge_read_ask(line);   // metaverse-engine/editor/lists.coax, the feature list's one reader
     if !ak.ok { continue; }
     a := e[0].ask_n;
     e[0].ask_id[a] = ak.id;
@@ -312,7 +312,7 @@ redit_read_panes :: (e: [] RealmEdit, text: string) {
   i := 0;
   while i < text.count {
     end := redit_line_end(text, i); line := text[i..<end]; i = end + 1;
-    pn := forge_read_pane(line);   // aethyr/forge/lists.coax, the panes' one reader
+    pn := forge_read_pane(line);   // metaverse-engine/editor/lists.coax, the panes' one reader
     if pn.kind == FORGE_PANE_LORE && pn.fields >= 2 && e[0].lore_n < REDIT_LORES {
       l := e[0].lore_n;
       e[0].lore_who_n[l] = redit_copy(e[0].lore_who[l * REDIT_KEY..<(l + 1) * REDIT_KEY], pn.who);
@@ -378,7 +378,7 @@ redit_read :: (e: [] RealmEdit, text: string) -> bool {
   e[0].role = REDIT_VISITOR; e[0].waiting = 0; e[0].row_n = 0; e[0].placed_n = 0;
   for i: 0..<REDIT_TOOLS { e[0].tool_has[i] = false; e[0].tool_on[i] = false; }
   owner := false;
-  // each line and its fields come from aethyr/forge/spec.coax, the spec's one reader
+  // each line and its fields come from metaverse-engine/editor/spec.coax, the spec's one reader
   i := 0;
   while i < text.count {
     l := forge_spec_line(text, i); i = l.next;
@@ -442,7 +442,7 @@ redit_read_cards :: (e: [] RealmEdit, p_body: string) {
   i := 0;
   while i < p_body.count && e[0].card_n < REDIT_CARDS {
     end := redit_line_end(p_body, i); line := p_body[i..<end]; i = end + 1;
-    pr := forge_read_proposal(line);   // aethyr/forge/lists.coax, the proposals' one reader
+    pr := forge_read_proposal(line);   // metaverse-engine/editor/lists.coax, the proposals' one reader
     if !pr.ok { continue; }
     c := e[0].card_n;
     e[0].card_id[c] = redit_int(pr.id);
@@ -474,7 +474,7 @@ redit_ask :: (e: [] RealmEdit, what: int, tail: string, body_n: int, p_post: boo
   e[0].req_flags = (ifx p_post then HTTP_POST else 0) | HTTP_ANSWER | TRACK_KEY;
   e[0].req_what = what; e[0].req_ready = true; e[0].req_at = e[0].time;
 }
-// An edit's body from aethyr/forge/change.coax (edits.proto) goes out; one too long for the page's
+// An edit's body from metaverse-engine/editor/change.coax (edits.proto) goes out; one too long for the page's
 // buffer is not sent.
 redit_send :: (e: [] RealmEdit, what: int, tail: string, body_n: int) {
   if body_n < 0 { redit_note(e, "That's too long. Say it shorter."); return; }

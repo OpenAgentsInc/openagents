@@ -14,7 +14,7 @@
 //   coax/bin/coax test apps/openagents-web/stair.coax --only lockroom
 
 #load "../../coax/web/socket.coax";
-#load "../../aethyr/net/relay-wire.coax";   // the relay's frames y, j, l and m: the one codec (#13245)
+#load "../../metaverse-engine/net/relay-wire.coax";   // the relay's frames y, j, l and m: the one codec (#13245)
 
 LR_OFF :: 0; LR_JOINING :: 1; LR_ALONE :: 2; LR_SYNC :: 3; LR_PLAY :: 4; LR_LOST :: 5; LR_FULL :: 6;
 LR_ORDER :: 80;          // an order's text, at most
@@ -421,7 +421,7 @@ lr_pump :: (a: [] LrToy, b: [] LrToy) {
   for k: 0..<p[0].n {
     if p[0].op[k] != PIPE_SEND { continue; }
     buf: [LR_CHUNK * 2 + 16] u8;
-    n := rlw_put_said(buf[..], a[0].L[0].seat);   // as the relay heads it (aethyr/net/relay-wire.coax)
+    n := rlw_put_said(buf[..], a[0].L[0].seat);   // as the relay heads it (metaverse-engine/net/relay-wire.coax)
     n = lr_put(buf[..], n, pipe_bytes(p, k));
     ok := lr_socket(b[0].L[..], SOCKET_KIND + 4 * b[0].L[0].sock + SOCKET_FRAME, cast(string) buf[0..<n], b[0].snap[..]);
   }

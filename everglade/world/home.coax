@@ -3,12 +3,12 @@
 // golems from (Golemancy, everglade/docs/golemancy-profession-spec.md);
 // crafting is not built yet. Any Everglade zone places the same home at a building frame of its
 // own: Everglade Experimental at verse/experimental-terrain.coax exp_home, and Everglade II can
-// do the same. The house is the engine's 4 m room (aethyr/world/building.coax), so its walls,
+// do the same. The house is the engine's 4 m room (metaverse-engine/world/building.coax), so its walls,
 // doorway and the way monsters come in are the engine's; this file says what it is built of and
 // how it is furnished. Both kits are CC0 (assets/registry/packages/village.json, fantasy-props.json).
 #module "everglade.home";
-#load "../../aethyr/world/building.coax" as building;
-#load "../../aethyr/world/interact.coax" as interact;
+#load "../../metaverse-engine/world/building.coax" as building;
+#load "../../metaverse-engine/world/interact.coax" as interact;
 
 HOME_BENCH_ID :: "home/workbench";   // the workbench's stable id: the future Golemancy bench
 
@@ -63,7 +63,7 @@ home_prop_placed :: (turn:int,i:int)->HomeProp {
  return HomeProp.{name=p.name,x=w[0],y=p.y,z=w[1],yaw=p.yaw+f32(((turn%4)+4)%4)*1.5707963};
 }
 // The workbench's spot: in front of it, facing it. "Use the workbench" (the future Golemancy bench)
-// is the interact key at this spot (aethyr/world/interact.coax interact_pick); crafting opens there.
+// is the interact key at this spot (metaverse-engine/world/interact.coax interact_pick); crafting opens there.
 home_bench_spot :: (f:building.BuildingFrame)->interact.InteractSpot {
  p:=building.building_point(f,0.6,-0.25);return interact.InteractSpot.{id=HOME_BENCH_ID,x=p[0],z=p[1],face=f32(((f.turn%4)+4)%4)*1.5707963+3.1415927};
 }

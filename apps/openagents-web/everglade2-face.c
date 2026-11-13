@@ -1,8 +1,8 @@
 // Everglade v2's C face for the browser (coax/web/host.js): scalar Wasm exports over everglade/client/client.coax,
 // which says what is round you, where you may stand and what is drawn. It decides nothing.
 // The controller steps your body as fivelab-face.c's Player mode does: everglade-step.coax
-// (aethyr/move/walk.coax, with player.coax's verse_player_*) on the keys and a phone's thumbs
-// (aethyr/core/sticks.coax). The scene is three stores: the records (the glade, its grass, your
+// (metaverse-engine/move/walk.coax, with player.coax's verse_player_*) on the keys and a phone's thumbs
+// (metaverse-engine/core/sticks.coax). The scene is three stores: the records (the glade, its grass, your
 // character's parts), the clips baked once (into the state, sized by everglade/scene/bodies.coax), and the
 // kit pieces in view this frame.
 // In a room (everglade/client/net.coax, #13054) the controller steps at the room's rate, 1/30 s, each step's
@@ -274,7 +274,7 @@ EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return 
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }
 EXPORT("coaxial_shadow_draws_v1") cx_face_addr coaxial_shadow_draws_v1(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2_at(state)->shadow.e; }
 EXPORT("coaxial_shadow_draw_count_v1") uint32_t coaxial_shadow_draw_count_v1(cx_face_addr state) { return draw_n > 0 ? (uint32_t)e2_at(state)->shadow_n : 0u; }
-/* The key light's shadow tiles (aethyr/render/cascades.coax, everglade/client/client.coax e2_shadows; coax/web/host.js shadowLayout). */
+/* The key light's shadow tiles (metaverse-engine/render/cascades.coax, everglade/client/client.coax e2_shadows; coax/web/host.js shadowLayout). */
 EXPORT("coaxial_shadow_atlas_v1") uint32_t coaxial_shadow_atlas_v1(cx_face_addr state, int32_t coarse, int32_t which) { return (uint32_t)e2_shadow_atlas(at(state), coarse, which); }
 EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(cx_face_addr state, int32_t field) { return (int32_t)e2_shadow_field(at(state), field); }
 EXPORT("coaxial_shadow_event_v1") void coaxial_shadow_event_v1(cx_face_addr state, int32_t kind, int32_t arg) { e2_shadow_event(at(state), kind, arg); }
@@ -340,7 +340,7 @@ EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int3
 }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) { track_key_up(tr(), key); return e2_key_up(at(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { e2_blur(at(state)); sticks = verse_sticks_reset(); track_blur(tr()); }
-/* Aethyr host contract v1 (aethyr/host/README.md). The face has what v1 asks of a face: addresses
+/* Aethyr host contract v1 (metaverse-engine/host/README.md). The face has what v1 asks of a face: addresses
    of the host's width (face-address.h), focus as a call of its own, and the whole allocations its
    action, media and sound-bank bytes are in. A native build says so. The browser's module does not
    yet: there v1 also means the shared transport and lifecycle adapter (coax/web/render-face.c,
@@ -364,7 +364,7 @@ EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(cx_face
   return 0u;
 }
 EXPORT("coaxial_wheel") uint32_t coaxial_wheel(cx_face_addr state, float dy) { return e2_wheel(at(state), dy) ? 1u : 0u; }
-/* Mouselook (aethyr/cam/mouselook.coax): host.js holds the pointer when this says 2 and forwards the mouse's travel. */
+/* Mouselook (metaverse-engine/cam/mouselook.coax): host.js holds the pointer when this says 2 and forwards the mouse's travel. */
 EXPORT("coaxial_mouselook") int32_t coaxial_mouselook(cx_face_addr state) { return (int32_t)e2_mouselook(at(state)); }
 EXPORT("coaxial_look_delta") void coaxial_look_delta(cx_face_addr state, float dx, float dy) { e2_look_delta(at(state), dx, dy); }
 EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(cx_face_addr state, int32_t status) { e2_pointer_lock(at(state), status); }
@@ -372,7 +372,7 @@ EXPORT("coaxial_cursor") int32_t coaxial_cursor(cx_face_addr state) { return (in
 
 EXPORT("coaxial_inbox") cx_face_addr coaxial_inbox(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
-// Everglade's HUD is the FANTASY style (aethyr/ui/hud-style.coax): its strokes blend straight alpha, each
+// Everglade's HUD is the FANTASY style (metaverse-engine/ui/hud-style.coax): its strokes blend straight alpha, each
 // sealed with its coverage (charactercreator.coax hud_seal, everglade/scene/gpu/fivelab.coax fivelab_hud_fs), so dark
 // iron can sit over the world.
 EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return 1; }
@@ -408,7 +408,7 @@ EXPORT("coaxial_action_done") void coaxial_action_done(cx_face_addr state) { e2_
 
 // Your saved character arrives as message 16 (the browser's own copy, from Character Create).
 EXPORT("coaxial_player_appearance_v1") uint32_t coaxial_player_appearance_v1(void) { return 1u; }
-/* The agent driver (aethyr/agent/drive.coax, coax/web/host.js coaxial.drive): the answer to the last command (message 700). */
+/* The agent driver (metaverse-engine/agent/drive.coax, coax/web/host.js coaxial.drive): the answer to the last command (message 700). */
 EXPORT("coaxial_drive_out") cx_face_addr coaxial_drive_out(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2_drive_out(at(state)).data; }
 EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(cx_face_addr state) { return (uint32_t)e2_drive_out(at(state)).count; }
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(cx_face_addr state, int32_t field) { return (int32_t)e2_probe(at(state), field); }

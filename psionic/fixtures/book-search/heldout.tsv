@@ -25,15 +25,15 @@ floating point results identical on every run and machine	coax/book/ch16-determi
 generate a C header for exported procedures	coax/book/ch20-interop.md#Generating a header
 physical units such as meters and seconds in types	coax/book/ch29-units-and-frames.md#29. Units and coordinate frames
 GPU shaders written in Coax	coax/book/ch17-gpu.md#17. GPU programs
-the values a new game state begins with	aethyr/book/ch003-state-starts-from-its-defaults.md#3. State starts from its defaults
-converting between world space and screen space	aethyr/book/ch002-spaces-and-units.md#2. Spaces and units
-record the inputs and play a session back identically	aethyr/book/ch005-replay-a-session-exactly.md#5. Replay a session exactly
-spawning and despawning entities	aethyr/book/ch006-entities-are-born-and-die.md#6. Entities are born and die
-raycast queries against the world	aethyr/book/ch007-ask-the-world-where-things-are.md#7. Ask the world where things are
-the character stands on the terrain and does not fall through	aethyr/book/ch008-ground-and-collision.md#8. Ground and collision
-third person camera that orbits behind the player	aethyr/book/ch010-the-camera-follows.md#10. The camera follows
-skinned figures and blending animation clips	aethyr/book/ch014-figures-and-animation.md#14. Figures and animation
-hotbar and on-screen display	aethyr/book/ch015-ui-and-the-hud.md#15. UI and the HUD
-refuse to load a scene that exceeds the memory budget	aethyr/book/ch016-budgets-that-refuse.md#16. Budgets that refuse
-cloth and rope simulated with constraints	aethyr/book/ch025-cloth-and-rope-from-constraints.md#25. Cloth and rope from constraints
-planet positions and astronomical time scales	aethyr/book/ch039-ephemerides-time-scales-and-frames.md#39. Ephemerides, time scales and frames
+the values a new game state begins with	metaverse-engine/book/ch003-state-starts-from-its-defaults.md#3. State starts from its defaults
+converting between world space and screen space	metaverse-engine/book/ch002-spaces-and-units.md#2. Spaces and units
+record the inputs and play a session back identically	metaverse-engine/book/ch005-replay-a-session-exactly.md#5. Replay a session exactly
+spawning and despawning entities	metaverse-engine/book/ch006-entities-are-born-and-die.md#6. Entities are born and die
+raycast queries against the world	metaverse-engine/book/ch007-ask-the-world-where-things-are.md#7. Ask the world where things are
+the character stands on the terrain and does not fall through	metaverse-engine/book/ch008-ground-and-collision.md#8. Ground and collision
+third person camera that orbits behind the player	metaverse-engine/book/ch010-the-camera-follows.md#10. The camera follows
+skinned figures and blending animation clips	metaverse-engine/book/ch014-figures-and-animation.md#14. Figures and animation
+hotbar and on-screen display	metaverse-engine/book/ch015-ui-and-the-hud.md#15. UI and the HUD
+refuse to load a scene that exceeds the memory budget	metaverse-engine/book/ch016-budgets-that-refuse.md#16. Budgets that refuse
+cloth and rope simulated with constraints	metaverse-engine/book/ch025-cloth-and-rope-from-constraints.md#25. Cloth and rope from constraints
+planet positions and astronomical time scales	metaverse-engine/book/ch039-ephemerides-time-scales-and-frames.md#39. Ephemerides, time scales and frames

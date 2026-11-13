@@ -1,7 +1,7 @@
 {
   "kind": 1111,
   "created_at": 1793488435,
-  "content": "All 19 removed #asserts in aethyr/space.coax reappear verbatim after the world()->world_point() rename (plus local renames raised->lifted_mid, edge->at_near); no other checks removed or loosened; player.coax only adds a #test",
+  "content": "All 19 removed #asserts in metaverse-engine/space.coax reappear verbatim after the world()->world_point() rename (plus local renames raised->lifted_mid, edge->at_near); no other checks removed or loosened; player.coax only adds a #test",
   "tags": [
     [
       "commit",

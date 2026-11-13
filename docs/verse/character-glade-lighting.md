@@ -77,7 +77,7 @@ The target was the Quaternius Stylized Nature MegaKit `Preview_1.jpg`: a warm go
 golden hazy hill, grey mossy rocks, saturated foliage, soft bloom and an olive dirt path. The
 pass also used `docs/research/lighting/research.md` and the Metaverse Engine book.
 
-Engine changes (`aethyr/render/`, so every scene can use them):
+Engine changes (`metaverse-engine/render/`, so every scene can use them):
 
 - `light.coax` 4b adds `verse_style_haze_phase`, a Henyey-Greenstein forward-Mie lobe
   normalised so isotropic haze is 1, and `verse_style_haze_window`, Ore's near/far fade window.
@@ -163,10 +163,10 @@ numbers moved out of the app into the OpenAgents Metaverse Engine:
 
 | What | Now in |
 | --- | --- |
-| Every number: the key (4500 K under 6500 K, x2.15, direction), hemisphere colours, sky and cloud colours, air, haze window, cloud shade, exposure and saturation | `aethyr/world/environment.coax` `ENV_GLADE_*`, which `env_glade_profile` is built from |
-| `cg_linear`, `cg_srgb`, `cg_decode`, `cg_encode`, `cg_shoulder` | `aethyr/render/transfer.coax` (`transfer_*`) |
-| `cg_sun_dir`, `cg_sun_colour`, `cg_hemisphere`, `cg_irradiance`, `cg_air_depth`, `cg_phase`, `cg_haze_window`, `cg_atmosphere`, `cg_film`, `cg_output`, `cg_sky`, `cg_cloud`, `cg_cloud_fbm`, `cg_soil`, `cg_noise` | `aethyr/render/painterly.coax` (`paint_*`); the film after exposure is `aethyr/render/filmic.coax` `film_exposed` |
-| `cg_sign`, `cg_normal_pack`, `cg_normal_unpack`, the view-point reconstruction and contact taps | `aethyr/render/contact-shade.coax` (`shade_*`) |
+| Every number: the key (4500 K under 6500 K, x2.15, direction), hemisphere colours, sky and cloud colours, air, haze window, cloud shade, exposure and saturation | `metaverse-engine/world/environment.coax` `ENV_GLADE_*`, which `env_glade_profile` is built from |
+| `cg_linear`, `cg_srgb`, `cg_decode`, `cg_encode`, `cg_shoulder` | `metaverse-engine/render/transfer.coax` (`transfer_*`) |
+| `cg_sun_dir`, `cg_sun_colour`, `cg_hemisphere`, `cg_irradiance`, `cg_air_depth`, `cg_phase`, `cg_haze_window`, `cg_atmosphere`, `cg_film`, `cg_output`, `cg_sky`, `cg_cloud`, `cg_cloud_fbm`, `cg_soil`, `cg_noise` | `metaverse-engine/render/painterly.coax` (`paint_*`); the film after exposure is `metaverse-engine/render/filmic.coax` `film_exposed` |
+| `cg_sign`, `cg_normal_pack`, `cg_normal_unpack`, the view-point reconstruction and contact taps | `metaverse-engine/render/contact-shade.coax` (`shade_*`) |
 
 The `cg_*` names stay as thin delegates, so Everglade II, Experimental and the lighting probes
 compile unchanged until their consumers read the resolver (#13066). `verse/character-glade.coax`

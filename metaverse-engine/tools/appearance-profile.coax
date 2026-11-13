@@ -1,0 +1,170 @@
+// Holds the player appearance profile (proto/aethyr/player-appearance-v1.json, #13250 step E9) to
+// the one codec every page loads, metaverse-engine/character/character-appearance.coax (ca_save, ca_restore):
+//   - each "records" entry: ca_save writes exactly its text from its values, ca_restore gives the
+//     values back from the text, and the text's bytes sit where "layout" says;
+//   - each "read_only" entry (CC1, and records the reader corrects): ca_restore gives its values,
+//     and ca_save of what was read is its "rewritten" text, which reads back the same;
+//   - each "malformed" text is refused, and a refused record leaves the kept character as it was;
+//   - the sizes, the class count and the level count are the codec's.
+// Usage: coax/web/tool.sh metaverse-engine/tools/appearance-profile.coax proto/aethyr/player-appearance-v1.json
+#import "Basic";
+#load "../character/character-appearance.coax" as appearance;
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+APP_FILE :: 65536;
+APP_NODES :: 4096;
+APP_NONE :: -999999999;
+APP_ID :: "aethyr.player.appearance.v1";
+// The one-byte fields in the record's order, from byte 3.
+APP_DIGITS :: [10] string.["female", "outfit", "hood", "hair", "beard", "dye", "skin", "hair_color", "variant", "pose"];
+
+app_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+app_fail :: (what: string, text: string) -> bool #effects(all) { print("appearance-profile: %: \"%\"\n", what, text); return false; }
+
+// An entry's "values" as the codec's record. False when a field is missing or the worn marks are not 40.
+app_values :: (d: Jv, vals: int, out: [] appearance.CharacterAppearance) -> bool {
+  if jv_kind(d, vals) != JV_OBJECT || jv_len(d, vals) != 15 { return false; }
+  v: [10] int;
+  for name, i: APP_DIGITS { v[i] = jv_int(d, jv_get(d, vals, name), APP_NONE); if v[i] == APP_NONE { return false; } }
+  piece := jv_int(d, jv_get(d, vals, "piece"), APP_NONE); eye := jv_int(d, jv_get(d, vals, "eye_color"), APP_NONE);
+  klass := jv_int(d, jv_get(d, vals, "klass"), APP_NONE); level := jv_int(d, jv_get(d, vals, "level"), APP_NONE);
+  wb: [64] u8; worn := app_str(d, jv_get(d, vals, "worn"), wb[..]);
+  if piece == APP_NONE || eye == APP_NONE || klass == APP_NONE || level == APP_NONE || worn.count != 40 { return false; }
+  a: appearance.CharacterAppearance;
+  a.configured = true;
+  a.female = v[0] == 1; a.outfit = v[1]; a.hood = v[2] == 1; a.hair = v[3]; a.beard = v[4] == 1; a.dye = v[5]; a.skin = v[6];
+  a.hair_color = v[7]; a.variant = v[8]; a.pose = v[9]; a.piece = piece; a.eye_color = eye; a.klass = klass; a.level = level;
+  for i: 0..<40 { if worn[i] != '0' && worn[i] != '1' { return false; } a.worn[i] = worn[i] == '1'; }
+  out[0] = a;
+  return true;
+}
+app_same :: (a: appearance.CharacterAppearance, b: appearance.CharacterAppearance) -> bool {
+  for i: 0..<40 { if a.worn[i] != b.worn[i] { return false; } }
+  return a.configured == b.configured && a.female == b.female && a.outfit == b.outfit && a.hood == b.hood && a.hair == b.hair && a.beard == b.beard &&
+    a.dye == b.dye && a.skin == b.skin && a.hair_color == b.hair_color && a.variant == b.variant && a.pose == b.pose && a.piece == b.piece &&
+    a.eye_color == b.eye_color && a.klass == b.klass && a.level == b.level;
+}
+// A record the reader has not touched: what a refusal must leave.
+app_kept :: () -> appearance.CharacterAppearance {
+  k: appearance.CharacterAppearance;
+  k.outfit = 1; k.eye_color = 3; k.klass = 5; k.level = 4; k.piece = 22; k.worn[22] = true;
+  return k;
+}
+// The layout row for a field: its first byte and its width; at is -1 when the profile has no such row.
+AppAt :: struct { at: int; bytes: int; max: int; }
+app_layout :: (d: Jv, field: string) -> AppAt {
+  rows := jv_get(d, 0, "layout");
+  tb: [32] u8;
+  for i: 0..<jv_len(d, rows) {
+    r := jv_at(d, rows, i);
+    if app_str(d, jv_get(d, r, "field"), tb[..]) == field {
+      return AppAt.{at = jv_int(d, jv_get(d, r, "at"), -1), bytes = jv_int(d, jv_get(d, r, "bytes"), -1), max = jv_int(d, jv_get(d, r, "max"), -1)};
+    }
+  }
+  return AppAt.{at = -1};
+}
+// The text's bytes are where the layout says its fields are.
+app_laid :: (d: Jv, a: appearance.CharacterAppearance, text: string) -> bool {
+  v := [10] int.[ifx a.female then 1 else 0, a.outfit, ifx a.hood then 1 else 0, a.hair, ifx a.beard then 1 else 0, a.dye, a.skin, a.hair_color, a.variant, a.pose];
+  for name, i: APP_DIGITS {
+    l := app_layout(d, name);
+    if l.at != 3 + i || l.bytes != 1 || l.max < v[i] || int(text[l.at]) != 48 + v[i] { return false; }
+  }
+  p := app_layout(d, "piece"); w := app_layout(d, "worn"); e := app_layout(d, "eye_color"); k := app_layout(d, "klass"); lv := app_layout(d, "level");
+  ver := app_layout(d, "version");
+  if ver.at != 0 || ver.bytes != 3 || p.at != 13 || p.bytes != 2 || p.max != 39 || w.at != 15 || w.bytes != 40 || e.at != 55 || e.bytes != 1 || e.max != 5 { return false; }
+  if k.at != 56 || k.bytes != 1 || lv.at != 57 || lv.bytes != 1 { return false; }
+  if (int(text[p.at]) - 48) * 10 + int(text[p.at + 1]) - 48 != a.piece { return false; }
+  for i: 0..<40 { if (text[w.at + i] == '1') != a.worn[i] { return false; } }
+  if int(text[e.at]) != 48 + a.eye_color { return false; }
+  if text.count > k.at && int(text[k.at]) != 97 + a.klass { return false; }
+  if text.count > lv.at && int(text[lv.at]) != 48 + a.level { return false; }
+  return true;
+}
+// The profile's size for a version name.
+app_size :: (d: Jv, version: string) -> int { return jv_int(d, jv_get(d, jv_get(d, 0, "sizes"), version), -1); }
+
+app_check :: (raw: string) -> bool #effects(all) {
+  nodes: [APP_NODES] JvNode; doc: [1] Jv;
+  if !jv_parse(doc[..], raw, nodes[..]) { return app_fail("not JSON", ""); }
+  d := doc[0];
+  tb: [3][256] u8;
+  if app_str(d, jv_get(d, 0, "identity"), tb[0][..]) != APP_ID { return app_fail("identity", APP_ID); }
+  if app_str(d, jv_get(d, 0, "codec"), tb[0][..]) != "metaverse-engine/character/character-appearance.coax" { return app_fail("codec", ""); }
+  if jv_int(d, jv_get(d, 0, "classes"), -1) != appearance.CA_CLASSES || jv_int(d, jv_get(d, 0, "levels"), -1) != appearance.CA_LEVELS { return app_fail("classes or levels", ""); }
+  if app_size(d, "CC1") != 54 || app_size(d, "CC2") != 56 || app_size(d, "CC3") != 57 || app_size(d, "CC4") != 58 || jv_len(d, jv_get(d, 0, "sizes")) != 4 { return app_fail("sizes", ""); }
+  if jv_len(d, jv_get(d, 0, "layout")) != 16 { return app_fail("layout", ""); }
+
+  // records: written and read back, byte for byte
+  recs := jv_get(d, 0, "records");
+  seen: [5] int;
+  if jv_kind(d, recs) != JV_ARRAY || jv_len(d, recs) < 3 { return app_fail("records", ""); }
+  for i: 0..<jv_len(d, recs) {
+    r := jv_at(d, recs, i);
+    version := app_str(d, jv_get(d, r, "version"), tb[0][..]);
+    text := app_str(d, jv_get(d, r, "text"), tb[1][..]);
+    want: [1] appearance.CharacterAppearance;
+    if !app_values(d, jv_get(d, r, "values"), want[..]) { return app_fail("a record's values", text); }
+    if text.count != app_size(d, version) || text.count < 3 || text[0..<3] != version || version == "CC1" { return app_fail("a record's version or size", text); }
+    if appearance.ca_size(want[0]) != text.count { return app_fail("ca_size", text); }
+    out: [64] u8; n := appearance.ca_save(want[0], out[..]);
+    if n != text.count || cast(string) out[0..<n] != text { return app_fail("ca_save writes other bytes", cast(string) out[0..<(ifx n > 0 then n else 0)]); }
+    short: [55] u8;
+    if appearance.ca_save(want[0], short[..]) != 0 { return app_fail("ca_save wrote into too small a buffer", text); }
+    got: [1] appearance.CharacterAppearance; got[0] = app_kept();
+    if !appearance.ca_restore(got[..], text) || !app_same(got[0], want[0]) { return app_fail("ca_restore reads other values", text); }
+    if !app_laid(d, want[0], text) { return app_fail("the layout does not place the bytes", text); }
+    seen[int(version[2]) - 48] += 1;
+  }
+  if seen[2] == 0 || seen[3] == 0 || seen[4] == 0 { return app_fail("a golden for each of CC2, CC3 and CC4", ""); }
+
+  // read_only: read, then written as the current version
+  olds := jv_get(d, 0, "read_only");
+  legacy := 0;
+  if jv_kind(d, olds) != JV_ARRAY { return app_fail("read_only", ""); }
+  for i: 0..<jv_len(d, olds) {
+    r := jv_at(d, olds, i);
+    version := app_str(d, jv_get(d, r, "version"), tb[0][..]);
+    text := app_str(d, jv_get(d, r, "text"), tb[1][..]);
+    again := app_str(d, jv_get(d, r, "rewritten"), tb[2][..]);
+    want: [1] appearance.CharacterAppearance;
+    if !app_values(d, jv_get(d, r, "values"), want[..]) { return app_fail("a read-only record's values", text); }
+    if text.count != app_size(d, version) || text[0..<3] != version { return app_fail("a read-only record's version or size", text); }
+    got: [1] appearance.CharacterAppearance; got[0] = app_kept();
+    if !appearance.ca_restore(got[..], text) || !app_same(got[0], want[0]) { return app_fail("ca_restore reads other values", text); }
+    out: [64] u8; n := appearance.ca_save(got[0], out[..]);
+    if n <= 0 || cast(string) out[0..<n] != again || again == text { return app_fail("ca_save rewrites it as other bytes", cast(string) out[0..<(ifx n > 0 then n else 0)]); }
+    back: [1] appearance.CharacterAppearance; back[0] = app_kept();
+    if !appearance.ca_restore(back[..], again) || !app_same(back[0], want[0]) { return app_fail("the rewritten record reads differently", again); }
+    if version == "CC1" { legacy += 1; }
+  }
+  if legacy == 0 { return app_fail("a CC1 record to read", ""); }
+
+  // malformed: refused, the kept character untouched
+  bad := jv_get(d, 0, "malformed");
+  if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 20 { return app_fail("malformed", ""); }
+  for i: 0..<jv_len(d, bad) {
+    r := jv_at(d, bad, i);
+    if jv_kind(d, jv_get(d, r, "text")) == 0 { return app_fail("a malformed entry with no text", ""); }
+    text := app_str(d, jv_get(d, r, "text"), tb[1][..]);
+    got: [1] appearance.CharacterAppearance; got[0] = app_kept();
+    if appearance.ca_restore(got[..], text) { return app_fail("ca_restore took a malformed record", text); }
+    if !app_same(got[0], app_kept()) { return app_fail("a refused record changed the kept character", text); }
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: appearance-profile FILE.json"); return 2; }
+  raw: [APP_FILE] u8; n := fs_read(args_at(a[..], 0), raw[..]);
+  if n <= 0 { tool_errln("appearance-profile: cannot read JSON"); return 2; }
+  if !app_check(cast(string) raw[0..<n]) { print("player-appearance-v1: profile fails\n"); return 1; }
+  print("player-appearance-v1: profile holds\n");
+  return 0;
+}

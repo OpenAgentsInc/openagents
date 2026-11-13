@@ -1,7 +1,7 @@
 // memorial's shaders, the source of apps/openagents-web/memorial.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (memorial.module,
 // memorial.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 
 // A memorial's page (memorial.coax): two passes. The background is the
 // garden's night in its flat style: a dusty blue sky paler toward the

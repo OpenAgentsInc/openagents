@@ -5,10 +5,10 @@ the document at start, and the OpenAgents Metaverse Engine edits it. Tracked in 
 (AAA P4.5).
 
 - Schema and fixtures: [`proto/aethyr/content-v1.json`](../../proto/aethyr/content-v1.json)
-- Codec and validator: `aethyr/content/tables.coax` (`#authority`)
+- Codec and validator: `metaverse-engine/content/tables.coax` (`#authority`)
 - Everglade's tables: `everglade/content/everglade.content`, bound by
   `everglade/model/content.coax` (`#authority`)
-- Editor: `aethyr/forge/content-edit.coax`, on the Metaverse Engine's edit log
+- Editor: `metaverse-engine/editor/content-edit.coax`, on the Metaverse Engine's edit log
 
 ## The document
 
@@ -101,7 +101,7 @@ Each edit is one step on the Metaverse Engine's edit log, with undo and redo. Th
 written at its next revision only when every table still holds its rules.
 
 ```sh
-coax/web/tool.sh aethyr/tools/content-edit.coax everglade/content/everglade.content \
+coax/web/tool.sh metaverse-engine/tools/content-edit.coax everglade/content/everglade.content \
   row creature '3|Bear|0|450' \
   row loot '5|3|0|100' \
   row spawn '3|3|2|2'

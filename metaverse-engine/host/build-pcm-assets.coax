@@ -1,0 +1,44 @@
+// Regenerate versioned assets from frozen, unshifted browser decoder observations.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../audio/host-pcm-asset.coax";
+pcm_quote :: (o:[]Jo,text:string) #effects(all) {buf:[4096]u8;q:[1]Jo;jo_start(q[..],buf[..]);jo_str(q[..],text);jo_put(o,jo_text(q[..]));}
+pcm_int :: (o:[]Jo,value:int) #effects(all) {buf:[32]u8;q:[1]Jo;jo_start(q[..],buf[..]);jo_int(q[..],value);jo_put(o,jo_text(q[..]));}
+pcm_sha :: (o:[]Jo,h:[32]u8) #effects(all) {jo_put(o,"[32]u8.[");for byte,i:h {if i>0 {jo_put(o,",");}pcm_int(o,int(byte));}jo_put(o,"]");}
+pcm_manifest :: (a:[]HostAudioAsset,o:[]Jo) #effects(all) {
+ jo_arr(o);for row:a {jo_arr(o);jo_bool(o,row.valid);jo_str(o,row.name);jo_str(o,row.source_url);jo_int(o,row.source_bytes);for hash:[2][32]u8.[row.source_sha,row.pcm_sha] {jo_arr(o);for byte:hash {jo_int(o,int(byte));}jo_end(o);}jo_int(o,row.frames);jo_int(o,row.channels);jo_bool(o,row.canonical);jo_str(o,row.companion_url);jo_int(o,row.companion_bytes);jo_end(o);}jo_end(o);
+}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=7 {tool_errln("usage: build-pcm-assets AUTHORED.json PICKED_COMPARISON PICKED_BROWSER EXTRA_COMPARISON EXTRA_BROWSER ROOT RECEIPT.json");return 2;}
+ text:[3][131072]u8;nodes:[3][16384]JvNode;d:[3]Jv;argids:=[3]int.[0,1,3];for i:0..<3 {n:=fs_read(args_at(a[..],argids[i]),text[i][..]);if n<1||!jv_parse(d[i..<i+1],cast(string)text[i][0..<n],nodes[i][..]) {return 1;}}
+ rows:[153]HostAudioAsset;names:[153][64]u8;urls:[153][256]u8;companions:[153][256]u8;path:[4][4096]u8;file:[512]u8;f:[1]Jo;tmpname:[128]u8;src:[8388608]u8;pcm:[8388608]u8;packed:[1048576]u8;decoded:[262116]f32;
+ code:[262144]u8;o:[1]Jo;jo_start(o[..],code[..]);jo_put(o[..],"// Frozen content identities; regenerate with metaverse-engine/host/build-pcm-assets.coax.\n#load \"host-pcm-asset.coax\";\n#load \"../../coax/lib/json/json.coax\";\n#authority;\nHPC_EVERGLADE_ASSETS :: [153]HostAudioAsset.[\n");
+ authored:=jv_get(d[0],0,"rows");if jv_len(d[0],authored)!=153 {return 1;}canonical:=0;source_bytes:=0;pcm_bytes:=0;
+ for i:0..<153 {
+  ar:=jv_at(d[0],authored,i);nn:=jv_str(d[0],jv_get(d[0],ar,"name"),names[i][..]);if nn<1 {return 1;}name:=cast(string)names[i][0..<nn];found:= -1;di:=1;
+  while di<3&&found<0 {assets:=jv_get(d[di],0,"assets");for j:0..<jv_len(d[di],assets) {q:=jv_at(d[di],assets,j);qn:=jv_str(d[di],jv_get(d[di],q,"name"),tmpname[..]);if qn==nn&&cast(string)tmpname[0..<qn]==name {found=q;break;}}if found<0 {di+=1;}}
+  if found<0||jv_int(d[di],jv_get(d[di],found,"nonfinite"),-1)!=0 {return 1;}
+  asset:HostAudioAsset;asset.valid=true;asset.name=name;asset.channels=jv_int(d[0],jv_get(d[0],ar,"channels"),0);samples:=jv_int(d[0],jv_get(d[0],ar,"samples"),0);if (asset.channels!=1&&asset.channels!=2)||samples<1||samples%asset.channels!=0 {return 1;}asset.frames=samples/asset.channels;
+  sn:=jv_str(d[0],jv_get(d[0],ar,"source"),path[0][..]);if sn<1 {return 1;}n:=fs_read(cast(string)path[0][0..<sn],src[..]);if n<1 {return 1;}asset.source_bytes=n;asset.source_sha=hpc_hash(src[0..<n]);source_bytes+=n;
+  jo_start(f[..],file[..]);jo_put(f[..],name);jo_put(f[..],".ogg");prior:=fs_read(fs_join(args_at(a[..],ifx di==1 then 2 else 4),jo_text(f[..]),path[1][..]),pcm[..]);if prior!=n||cast(string)pcm[0..<prior]!=cast(string)src[0..<n] {return 1;}
+  jo_start(f[..],urls[i][..]);jo_put(f[..],"/realms/everglade/sfx/");jo_put(f[..],name);jo_put(f[..],".ogg");asset.source_url=jo_text(f[..]);
+  if !hpc_source_plan(asset,src[0..<n]).valid {return 1;}
+  jo_start(f[..],file[..]);jo_put(f[..],name);jo_put(f[..],".f32");pn:=fs_read(fs_join(args_at(a[..],ifx di==1 then 2 else 4),jo_text(f[..]),path[1][..]),pcm[..]);if pn!=samples*4||!hpc_finite(pcm[0..<pn]) {return 1;}asset.pcm_sha=hpc_hash(pcm[0..<pn]);
+  asset.canonical=jv_kind(d[di],jv_get(d[di],found,"passed"))==JV_FALSE;
+  if asset.canonical {
+   count:=hpc_pack(src[0..<n],pcm[0..<pn],packed[..]);if count<1 {return 1;}asset.companion_bytes=count;canonical+=1;pcm_bytes+=count;
+   jo_start(f[..],companions[i][..]);jo_put(f[..],"/realms/everglade/pcm-v1/");jo_put(f[..],name);jo_put(f[..],".apc");asset.companion_url=jo_text(f[..]);
+   if !hpc_decode(asset,src[0..<n],packed[0..<count],decoded[0..<samples]) {return 1;}for word,j:decoded[0..<samples] {if f32_bits(word)!=u32(hpo_u32(pcm[..],j*4)) {return 1;}}
+   jo_start(f[..],file[..]);jo_put(f[..],"apps/openagents-web");jo_put(f[..],asset.companion_url);if !fs_write(fs_join(args_at(a[..],5),jo_text(f[..]),path[2][..]),cast(string)packed[0..<count]) {return 1;}
+  }
+  rows[i]=asset;jo_put(o[..]," HostAudioAsset.{valid=true,name=");pcm_quote(o[..],asset.name);jo_put(o[..],",source_url=");pcm_quote(o[..],asset.source_url);jo_put(o[..],",source_bytes=");pcm_int(o[..],asset.source_bytes);jo_put(o[..],",source_sha=");pcm_sha(o[..],asset.source_sha);jo_put(o[..],",frames=");pcm_int(o[..],asset.frames);jo_put(o[..],",channels=");pcm_int(o[..],asset.channels);jo_put(o[..],",canonical=");jo_put(o[..],ifx asset.canonical then "true" else "false");jo_put(o[..],",companion_url=");pcm_quote(o[..],asset.companion_url);jo_put(o[..],",companion_bytes=");pcm_int(o[..],asset.companion_bytes);jo_put(o[..],",pcm_sha=");pcm_sha(o[..],asset.pcm_sha);jo_put(o[..],ifx i==152 then "}\n];\n" else "},\n");
+ }
+ manifest:[131072]u8;m:[1]Jo;jo_start(m[..],manifest[..]);pcm_manifest(rows[..],m[..]);if m[0].bad {return 1;}hash:=hpc_hash(manifest[0..<m[0].n]);
+ jo_put(o[..],"#test \"complete authored audio catalogue keeps its frozen content identity and exact lookup\" #steps 40000000 {\n expected:=");pcm_sha(o[..],hash);jo_put(o[..],";#assert hpc_equal(hpc_everglade_fingerprint(),expected);\n for row:HPC_EVERGLADE_ASSETS {#assert hpc_everglade(row.name).name==row.name;}\n #assert !hpc_everglade(\"\").valid&&!hpc_everglade(\"fire-hit-e2/\").valid;\n #assert hpc_everglade(\"fire-hit-e2\").canonical&&!hpc_everglade(\"fire-cast-e1\").canonical;\n #assert !hpc_everglade_at(-1).valid&&!hpc_everglade_at(153).valid&&hpc_everglade_at(0).name==\"fire-cast-e1\"&&hpc_everglade_at(152).valid;\n}\n");
+ jo_put(o[..],"hpc_everglade :: (name:string)->HostAudioAsset #export_c #effects(all) {for row:HPC_EVERGLADE_ASSETS {if row.name==name {return row;}}return HostAudioAsset.{};}\nhpc_everglade_at :: (id:int)->HostAudioAsset #export_c #effects(all) {if id<0||id>=153 {return HostAudioAsset.{};}return HPC_EVERGLADE_ASSETS[id];}\nhpc_everglade_fingerprint :: ()->[32]u8 #effects(all) {buf:[131072]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_arr(o[..]);for row:HPC_EVERGLADE_ASSETS {jo_arr(o[..]);jo_bool(o[..],row.valid);jo_str(o[..],row.name);jo_str(o[..],row.source_url);jo_int(o[..],row.source_bytes);for hash:[2][32]u8.[row.source_sha,row.pcm_sha] {jo_arr(o[..]);for byte:hash {jo_int(o[..],int(byte));}jo_end(o[..]);}jo_int(o[..],row.frames);jo_int(o[..],row.channels);jo_bool(o[..],row.canonical);jo_str(o[..],row.companion_url);jo_int(o[..],row.companion_bytes);jo_end(o[..]);}jo_end(o[..]);return hpc_hash(buf[0..<o[0].n]);}\n");
+ if o[0].bad||!fs_write(fs_join(args_at(a[..],5),"metaverse-engine/audio/everglade-pcm-assets.coax",path[2][..]),jo_text(o[..])) {return 1;}
+ jo_start(o[..],code[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.audio.pcm-assets.v1");jo_key(o[..],"count");jo_int(o[..],153);jo_key(o[..],"canonical_count");jo_int(o[..],canonical);jo_key(o[..],"source_bytes");jo_int(o[..],source_bytes);jo_key(o[..],"companion_bytes");jo_int(o[..],pcm_bytes);jo_key(o[..],"rows");pcm_manifest(rows[..],o[..]);jo_end(o[..]);if o[0].bad||!fs_write(args_at(a[..],6),jo_text(o[..])) {return 1;}
+ print("Complete authored catalogue:153 assets, % exact PCM companions, % bytes.\n",canonical,pcm_bytes);return 0;
+}

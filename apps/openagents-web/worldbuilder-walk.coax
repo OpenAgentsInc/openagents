@@ -15,7 +15,7 @@
 //   instances are numbered from WBW_FIGURES so the shader tells them apart, and they index the
 //   people's own index buffer (the host's coaxial_draw_index_v1);
 //   keys and pointers go to WorldBuilder first and to the zone when it leaves them.
-// The figure is drawn as a ghost (EgZone.ghost, aethyr/render/ghost.coax, gpu/worldbuilder.coax): it
+// The figure is drawn as a ghost (EgZone.ghost, metaverse-engine/render/ghost.coax, gpu/worldbuilder.coax): it
 // walks through what you place.
 //   coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/worldbuilder-walk.coax --only "worldbuilder walk"
 #load "../../everglade/zone.coax";
@@ -40,7 +40,7 @@ wbw_enter :: (w: [] WalkBuilder, facts: string) {
   s := w[0].z[..]; cr := s[0].creator[..];
   cr[0].field = true; cr[0].flat = true; s[0].bare = true;
   s[0].bound = wb.WB_LAND_HALF - 0.5;
-  s[0].ghost = true;   // your figure walks through what you place: a ghost (aethyr/render/ghost.coax)   // the whole ground, to its drawn edge (gpu/worldbuilder.coax worldbuilder_rim)
+  s[0].ghost = true;   // your figure walks through what you place: a ghost (metaverse-engine/render/ghost.coax)   // the whole ground, to its drawn edge (gpu/worldbuilder.coax worldbuilder_rim)
   if !w[0].entered {
     w[0].entered = true; s[0].xc[0].open = false;
     s[0].put_on = true; s[0].put_x = 0; s[0].put_y = 0; s[0].put_z = 4; s[0].put_face = 3.1415927;

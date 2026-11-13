@@ -1,5 +1,5 @@
 // Source-local collision triangles. This does not reconstruct Havok body behavior.
-#load "../../aethyr/anim/pose.coax";
+#load "../../metaverse-engine/anim/pose.coax";
 KokiriTriangle :: struct {a:Point;b:Point;c:Point;}
 KokiriFloorHit :: struct {hit:bool;y:f32;gx:f32;gz:f32;triangle:int= -1;}
 

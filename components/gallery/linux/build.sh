@@ -19,9 +19,9 @@ coax="${COAX:-$repo/coax/bin/coax}"
 work="$here/../build/linux"
 mkdir -p "$work/c" "$work/wl"
 "$coax" c "$here/../linux.coax" --library --header "$work/c/gallery.h" > "$work/c/gallery.c"
-# The seat's keys and text (aethyr/host/): what verse/gpu/vkw.h's XKB and text-input glue calls.
-"$coax" c "$repo/aethyr/host/wayland-input.coax" --library --header "$work/c/wayland-input.h" > "$work/c/wayland-input.c"
-"$coax" c "$repo/aethyr/host/wayland-text.coax" --library --header "$work/c/wayland-text.h" > "$work/c/wayland-text.c"
+# The seat's keys and text (metaverse-engine/host/): what verse/gpu/vkw.h's XKB and text-input glue calls.
+"$coax" c "$repo/metaverse-engine/host/wayland-input.coax" --library --header "$work/c/wayland-input.h" > "$work/c/wayland-input.c"
+"$coax" c "$repo/metaverse-engine/host/wayland-text.coax" --library --header "$work/c/wayland-text.h" > "$work/c/wayland-text.c"
 "$coax" spirv "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$work/components.spv" 2> "$work/components.spv.bindings"
 protocols="$(pkg-config --variable=pkgdatadir wayland-protocols)"
 for spec in stable/xdg-shell/xdg-shell unstable/xdg-decoration/xdg-decoration-unstable-v1 unstable/text-input/text-input-unstable-v3; do

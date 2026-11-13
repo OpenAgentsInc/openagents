@@ -3,7 +3,7 @@
 // (POST /api/playtest/room-items, signed with its shard's write key, purpose "items") and reads the
 // answer; the room's stand-in store (coax/web/room/room-items.coax) answers with the same bytes.
 //
-// The operation: an ID the room chose (the ledger applies it once: aethyr/session/ledger.coax), the
+// The operation: an ID the room chose (the ledger applies it once: metaverse-engine/session/ledger.coax), the
 // ledger's operation, the player, the room's owner generation, the inventory version it read, the
 // item or the kind of item to make, when it was first sent, and a claim on the character's record
 // applied with it, once (everglade/model/character.coax char_claim): a quest's stage from one value
@@ -23,7 +23,7 @@
 //   coax/bin/coax mutate everglade/model/item-op.coax --library --root-only
 #authority;
 #load "character.coax";
-#load "../../aethyr/session/ledger.coax";
+#load "../../metaverse-engine/session/ledger.coax";
 #load "item-op-checks.coax" #test;   // the checks' fixtures
 
 IO_ID :: 80;          // bytes in an operation ID (the route's limit, item-policy.coax ITEM_ID_MAX)

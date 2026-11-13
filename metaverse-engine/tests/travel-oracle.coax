@@ -1,0 +1,67 @@
+// The checks' side of metaverse-engine/session/travel.coax: one journey of character 0 from room index 0 to
+// 1, stopped by a crash of either room at each point, with the last step's answer lost (and the
+// step repeated) when asked, then the crashed room restarts. Only the checks call it.
+TO_RESERVED :: 0; TO_PREPARED :: 1; TO_COMMITTED :: 2; TO_ACTIVATED :: 3; TO_ROUTED :: 4;
+TRAVEL_POINTS :: 5;
+TO_BODY :: TravelBody.{hp = 70, effect = 2, effect_until = 900, cooldown = 40, xp = 5, group = 8};
+
+TravelOutcome :: struct {
+  owners: int; bodies: int; pre_bodies: int; step_ok: int; step_err: int;
+  routed: bool; profile_kept: bool; recovery_steps: int; moved: bool;
+  settled: bool; next_ok: bool; other_refused: bool; places_free: bool; down_refused: bool;
+}
+
+travel_owners :: (w: [] TravelWorld, c: int) -> int {
+  n := 0;
+  for r: 0..<2 { b := w[0].rooms[r].bodies[c]; if b.here && control_holds(w[0].dir[..], CharacterId.{value = c}, w[0].rooms[r].id, b.gen) == CONTROL_OK { n += 1; } }
+  return n;
+}
+travel_bodies :: (w: [] TravelWorld, c: int) -> int { n := 0; for r: 0..<2 { if w[0].rooms[r].bodies[c].here { n += 1; } } return n; }
+travel_one_owner :: (w: [] TravelWorld, c: int) -> bool { return travel_owners(w, c) == 1 && travel_bodies(w, c) == 1; }
+// The steps a restart takes to settle a journey stopped at `point`.
+to_steps :: (point: int) -> int { return ifx point == TO_ROUTED then 0 else 1; }
+to_profile_kept :: (b: TravelBody) -> bool {
+  return b.hp == 70 && b.effect == 2 && b.effect_until == 900 && b.cooldown == 40 && b.xp == 15 && b.group == 8 && b.last_cmd == 1;
+}
+to_places_free :: (w: [] TravelWorld, r: int) -> bool {
+  return w[0].rooms[0].reserved == 0 && w[0].rooms[1].reserved == 0 && w[0].rooms[r].used == 1 && w[0].rooms[1 - r].used == 0;
+}
+
+to_tally :: (out: [] TravelOutcome, st: int) {
+  if st == TRAVEL_OK { out[0].step_ok += 1; } else { out[0].step_err += 1; }
+}
+
+to_sim :: (w: [] TravelWorld, point: int, who: int, lost: bool, first_seq: int, ready_to: bool, do_crash: bool, steal_other: bool, next_xp: int) -> TravelOutcome {
+  travel_world(w);
+  w[0].rooms[1].ready = ready_to;
+  out: [1] TravelOutcome;
+  if travel_join(w, 0, 0, TO_BODY) && travel_command(w, 0, 0, first_seq, 10) { to_tally(out[..], travel_reserve(w, 0, 0, 1)); }
+  else { out[0].step_err += 1; }
+  if point >= TO_PREPARED { to_tally(out[..], travel_prepare(w)); }
+  if point >= TO_COMMITTED { to_tally(out[..], travel_commit(w)); if lost { to_tally(out[..], travel_commit(w)); } }
+  if point >= TO_ACTIVATED { to_tally(out[..], travel_activate(w)); if lost { to_tally(out[..], travel_activate(w)); } }
+  if point >= TO_ROUTED { to_tally(out[..], travel_route(w)); }
+  out[0].pre_bodies = travel_bodies(w, 0);
+  if do_crash { travel_crash(w, who); }
+  out[0].down_refused = !travel_command(w, who, 0, 50, 1) && w[0].rooms[who].reserved == 0;
+  if do_crash { out[0].recovery_steps = travel_recover(w, who); }
+  out[0].owners = ifx out[0].step_err == 0 then travel_owners(w, 0) else -1;
+  out[0].bodies = travel_bodies(w, 0);
+  r := ifx w[0].rooms[1].bodies[0].here then 1 else 0;
+  out[0].routed = w[0].route[0] == r;
+  out[0].moved = r == 1;
+  out[0].profile_kept = to_profile_kept(w[0].rooms[r].bodies[0]);
+  out[0].settled = travel_settled(w);
+  out[0].places_free = to_places_free(w, r);
+  if steal_other {
+    b := w[0].rooms[r].bodies[0];
+    _ := control_release(w[0].dir[..], CharacterId.{value = 0}, w[0].rooms[r].id, b.gen);
+    _ = travel_join(w, 1 - r, 0, b);
+  }
+  out[0].other_refused = !travel_command(w, 1 - r, 0, 2, 1);
+  out[0].next_ok = travel_command(w, r, 0, 2, next_xp) && w[0].rooms[r].bodies[0].xp == 16;
+  return out[0];
+}
+to_journey :: (w: [] TravelWorld, point: int, who: int, lost: bool) -> TravelOutcome {
+  return to_sim(w, point, who, lost, 1, true, true, false, 1);
+}

@@ -13,7 +13,7 @@
 // simulated people stay away; with nobody, they come back.
 
 #load "room.coax";
-#load "../../aethyr/core/space.coax" as spaces;
+#load "../../metaverse-engine/core/space.coax" as spaces;
 
 WALK_ROOM :: "/api/playtest/presence/the-grid";
 WALK_ASK_EVERY :: 1.0;     // s between asks

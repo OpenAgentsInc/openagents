@@ -2,7 +2,7 @@ import UIKit
 
 // The new landing's HUD (apps/openagents-web/newland.coax) in UIKit: its
 // chamfered frames, buttons and section headings, from the same geometry and
-// greys (aethyr/ui/hud-frame.coax, compiled into Hud.c). Strokes are about a
+// greys (metaverse-engine/ui/hud-frame.coax, compiled into Hud.c). Strokes are about a
 // point wide with a soft glow, as the lander's lines are; text that is
 // chrome (buttons, headings, the wordmark) is Michroma in capitals, spaced.
 enum Hud {

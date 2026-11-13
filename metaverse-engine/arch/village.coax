@@ -1,0 +1,983 @@
+// The Metaverse Engine's architecture kit, a village: buildings, walls and street furniture as generators. Each
+// takes a record of its sizes and colours and writes one part (metaverse-engine/arch/mesh.coax ArchPart) at
+// the origin, its front facing +z and the ground at y 0; a realm stands it with a record
+// (metaverse-engine/arch/place.coax). A new variant is a change of parameters, never a new mesh.
+//
+//   arch_cottage      a timber-frame cottage: a stone base, plaster panels between dark beams, a
+//                     steep tiled gable roof, a chimney, dormers, a lean-to porch, lit windows
+//   arch_stone_house  a house of dressed stone under a hipped (or gabled) tiled roof: an arched
+//                     door, shuttered windows, a boarded lean-to
+//   arch_round_tower  a round stone tower under a cone of tiles
+//   arch_church       a stone church: a nave with a rose window, a tower and a spire
+//   arch_drystone     a dry-stone wall: rough stones in courses, its ends tumbled
+//   arch_coped_wall   a wall of cut stone under a coping;  arch_pier  a gate pier with a ball
+//   arch_lamp_post, arch_banner_pole, arch_signpost, arch_bunting, arch_stall, arch_crate
+//
+// Colours are parameters (roof, plaster, stone, cloth); the materials are metaverse-engine/arch/palette.coax's.
+// The library and every parameter: metaverse-engine/arch/README.md.
+//   coax/bin/coax test --library metaverse-engine/arch/village.coax
+#module "aethyr.arch.village";
+#load "solid.coax";
+
+
+// A drum: an upright round wall of radius r from y0 to y1, u in metres round it and v its height.
+arch_drum :: (p: [] ArchPen, r: f32, y0: f32, y1: f32, segments: int) {
+  if segments < 3 { return; }
+  for i: 0..<segments {
+    a := f32(ARCH_TAU) * cast(f32) i / cast(f32) segments; b := f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) segments;
+    ca := cos(a); sa := sin(a); cb := cos(b); sb := sin(b);
+    // counter-clockwise from outside: the angle falls left to right
+    q0 := arch_at(cb * r, y0, sb * r, cb, 0, sb, -b * r, y0); q1 := arch_at(ca * r, y0, sa * r, ca, 0, sa, -a * r, y0);
+    q2 := arch_at(ca * r, y1, sa * r, ca, 0, sa, -a * r, y1); q3 := arch_at(cb * r, y1, sb * r, cb, 0, sb, -b * r, y1);
+    arch_quad(p, q0, q1, q2, q3);
+  }
+}
+// A cone of flat faces: radius r at y0 up to a point at y1.
+arch_cone :: (p: [] ArchPen, r: f32, y0: f32, y1: f32, segments: int) {
+  if segments < 3 { return; }
+  for i: 0..<segments {
+    a := f32(ARCH_TAU) * cast(f32) i / cast(f32) segments; b := f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) segments;
+    tip := arch_v(0, y1, 0);
+    arch_face(p, arch_v(cos(b) * r, y0, sin(b) * r), arch_v(cos(a) * r, y0, sin(a) * r), tip, tip);
+  }
+}
+// A flat disc of `segments` wedges on a wall, facing the way the wall does: a rose window, the
+// head of an arched door (a half: from angle a0 to a1, 0 level to the right, a quarter turn up).
+arch_wall_fan :: (p: [] ArchPen, f: ArchWall, u: f32, y: f32, r: f32, a0: f32, a1: f32, segments: int, out: f32) {
+  mid := arch_wall_at(f, u, y, out);
+  for i: 0..<segments {
+    a := a0 + (a1 - a0) * cast(f32) i / cast(f32) segments; b := a0 + (a1 - a0) * cast(f32) (i + 1) / cast(f32) segments;
+    qa := arch_wall_at(f, u + cos(a) * r, y + sin(a) * r, out); qb := arch_wall_at(f, u + cos(b) * r, y + sin(b) * r, out);
+    arch_face_uv(p, mid, qa, qb, qb, u, y);
+  }
+}
+// An arch of cut stones on a wall: round the same half circle, each stone a short beam.
+arch_wall_arch :: (p: [] ArchPen, f: ArchWall, u: f32, y: f32, r: f32, segments: int, half: f32) {
+  for i: 0..<segments {
+    a := f32(ARCH_TAU) * 0.5 * cast(f32) i / cast(f32) segments; b := f32(ARCH_TAU) * 0.5 * cast(f32) (i + 1) / cast(f32) segments;
+    arch_beam(p, arch_wall_at(f, u + cos(a) * r, y + sin(a) * r, 0), arch_wall_at(f, u + cos(b) * r, y + sin(b) * r, 0), half);
+  }
+}
+
+// A flat piece of a wall given as points round it (along, up), counter-clockwise as you face it,
+// `out` proud of it. u runs 0 to 1 from `left` across `wide` metres, and v down from `top` in the
+// same widths (0 at the top, negative below): what a stained light and a banner are painted by.
+arch_wall_shape :: (p: [] ArchPen, f: ArchWall, pts: [] [2] f32, n: int, left: f32, wide: f32, top: f32, out: f32) {
+  if n < 3 { return; }
+  mu: f32 = 0; my: f32 = 0;
+  for i: 0..<n { mu += pts[i][0]; my += pts[i][1]; }
+  mu /= cast(f32) n; my /= cast(f32) n;
+  m := arch_wall_at(f, mu, my, out);
+  qm := arch_at(m[0], m[1], m[2], f.nx, 0, f.nz, (mu - left) / wide, (my - top) / wide);
+  for i: 0..<n {
+    a := pts[i]; b := pts[(i + 1) % n];
+    wa := arch_wall_at(f, a[0], a[1], out); wb := arch_wall_at(f, b[0], b[1], out);
+    arch_tri(p, qm, arch_at(wa[0], wa[1], wa[2], f.nx, 0, f.nz, (a[0] - left) / wide, (a[1] - top) / wide),
+             arch_at(wb[0], wb[1], wb[2], f.nx, 0, f.nz, (b[0] - left) / wide, (b[1] - top) / wide));
+  }
+}
+// A disc on a wall whose u and v run from -1 to 1 across it: a rose window.
+arch_wall_disc :: (p: [] ArchPen, f: ArchWall, u: f32, y: f32, r: f32, segments: int, out: f32) {
+  m := arch_wall_at(f, u, y, out);
+  for i: 0..<segments {
+    a := f32(ARCH_TAU) * cast(f32) i / cast(f32) segments; b := f32(ARCH_TAU) * cast(f32) (i + 1) / cast(f32) segments;
+    qa := arch_wall_at(f, u + cos(a) * r, y + sin(a) * r, out); qb := arch_wall_at(f, u + cos(b) * r, y + sin(b) * r, out);
+    arch_tri(p, arch_at(m[0], m[1], m[2], f.nx, 0, f.nz, 0, 0), arch_at(qa[0], qa[1], qa[2], f.nx, 0, f.nz, cos(a), sin(a)), arch_at(qb[0], qb[1], qb[2], f.nx, 0, f.nz, cos(b), sin(b)));
+  }
+}
+// A lancet: a pointed light of stained glass in a surround of cut stone, `w` wide and `h` high to
+// its point, its sill at y0 and its middle `u` along the wall. The pen's tint picks its glass.
+arch_lancet :: (p: [] ArchPen, f: ArchWall, u: f32, y0: f32, w: f32, h: f32) {
+  material := p[0].material; tint := p[0].tint;
+  hw := w * 0.5; spring := y0 + h - w * 0.866;
+  pts: [12] [2] f32;
+  pts[0] = [2] f32.[u - hw, y0]; pts[1] = [2] f32.[u + hw, y0]; n := 2;
+  // The right side of the point is an arc about the left springing, and the left about the right.
+  for i: 0..<4 { a := f32(ARCH_TAU) / 6.0 * cast(f32) i / 4.0; pts[n] = [2] f32.[u - hw + cos(a) * w, spring + sin(a) * w]; n += 1; }
+  for i: 0..<5 { a := f32(ARCH_TAU) / 6.0 * (1.0 + cast(f32) i / 4.0) + f32(ARCH_TAU) / 6.0; pts[n] = [2] f32.[u + hw + cos(a) * w, spring + sin(a) * w]; n += 1; }
+  arch_material(p, ARCH_M_STAINED, tint[0], tint[1], tint[2]);
+  arch_wall_shape(p, f, pts[..], n, u - hw, w, y0 + h, 0.03);
+  arch_material(p, ARCH_M_SMOOTH, 0, 0, 0);
+  for i: 0..<n { a := pts[i]; b := pts[(i + 1) % n]; arch_beam(p, arch_wall_at(f, a[0], a[1], 0), arch_wall_at(f, b[0], b[1], 0), 0.07); }
+  p[0].material = material; p[0].tint = tint;
+}
+// A banner hung flat on a wall: `w` wide and `h` long from its top at `top` to its point, a gold
+// rod above it. The pen's tint is its field (0, 0, 0: deep blue).
+arch_banner :: (p: [] ArchPen, f: ArchWall, u: f32, top: f32, w: f32, h: f32, out: f32) {
+  material := p[0].material; tint := p[0].tint;
+  hw := w * 0.5; pts: [5] [2] f32;
+  pts[0] = [2] f32.[u - hw, top]; pts[1] = [2] f32.[u - hw, top - h + w * 0.42]; pts[2] = [2] f32.[u, top - h];
+  pts[3] = [2] f32.[u + hw, top - h + w * 0.42]; pts[4] = [2] f32.[u + hw, top];
+  arch_material(p, ARCH_M_BANNER, tint[0], tint[1], tint[2]);
+  arch_wall_shape(p, f, pts[..], 5, u - hw, w, top, out);
+  // Its gold hem along the point, and the rod it hangs from.
+  arch_material(p, ARCH_M_CLOTH, 0.93, 0.72, 0.2);
+  for k: 0..<2 {
+    a := pts[1 + k]; b := pts[2 + k]; lift := w * 0.16;
+    wa := arch_wall_at(f, a[0], a[1], out + 0.012); wb := arch_wall_at(f, b[0], b[1], out + 0.012);
+    arch_face(p, wa, wb, arch_v(wb[0], wb[1] + lift, wb[2]), arch_v(wa[0], wa[1] + lift, wa[2]));
+    arch_face(p, wb, wa, arch_v(wa[0], wa[1] + lift, wa[2]), arch_v(wb[0], wb[1] + lift, wb[2]));
+  }
+  arch_material(p, ARCH_M_METAL, 0, 0, 0);
+  arch_beam(p, arch_wall_at(f, u - hw - 0.12, top + 0.03, out), arch_wall_at(f, u + hw + 0.12, top + 0.03, out), 0.035);
+  p[0].material = material; p[0].tint = tint;
+}
+// A lantern `s` across, its foot at (x, y, z): an iron frame round four lit panes, each crossed
+// by a bar, under a pointed cap with a ring.
+arch_lantern :: (p: [] ArchPen, x: f32, y: f32, z: f32, s: f32) {
+  material := p[0].material; tint := p[0].tint;
+  h := s * 0.5; tall := s * 1.25; y1 := y + 0.04 + tall;
+  arch_material(p, ARCH_M_METAL, 0, 0, 0);
+  arch_slab(p, x - h * 1.25, y, z - h * 1.25, x + h * 1.25, y + 0.04, z + h * 1.25);
+  arch_material(p, ARCH_M_GLOW, 0, 0, 0);
+  arch_slab(p, x - h, y + 0.04, z - h, x + h, y1, z + h);
+  arch_material(p, ARCH_M_METAL, 0, 0, 0);
+  bar := s * 0.06;
+  for k: 0..<4 {
+    sx: f32 = ifx k % 2 == 0 then 1 else -1; sz: f32 = ifx k < 2 then 1 else -1;
+    arch_beam(p, arch_v(x + sx * h, y + 0.04, z + sz * h), arch_v(x + sx * h, y1, z + sz * h), bar);
+  }
+  ym := y + 0.04 + tall * 0.5;
+  arch_beam(p, arch_v(x - h, ym, z + h), arch_v(x + h, ym, z + h), bar * 0.7); arch_beam(p, arch_v(x - h, ym, z - h), arch_v(x + h, ym, z - h), bar * 0.7);
+  arch_beam(p, arch_v(x + h, ym, z - h), arch_v(x + h, ym, z + h), bar * 0.7); arch_beam(p, arch_v(x - h, ym, z - h), arch_v(x - h, ym, z + h), bar * 0.7);
+  arch_beam(p, arch_v(x, y + 0.04, z + h), arch_v(x, y1, z + h), bar * 0.7); arch_beam(p, arch_v(x, y + 0.04, z - h), arch_v(x, y1, z - h), bar * 0.7);
+  arch_beam(p, arch_v(x + h, y + 0.04, z), arch_v(x + h, y1, z), bar * 0.7); arch_beam(p, arch_v(x - h, y + 0.04, z), arch_v(x - h, y1, z), bar * 0.7);
+  // The cap: four slopes that overhang, and a ring on its point.
+  e := h * 1.75; tip := arch_v(x, y1 + s * 0.62, z);
+  arch_face(p, arch_v(x - e, y1, z + e), arch_v(x + e, y1, z + e), tip, tip); arch_face(p, arch_v(x + e, y1, z + e), arch_v(x + e, y1, z - e), tip, tip);
+  arch_face(p, arch_v(x + e, y1, z - e), arch_v(x - e, y1, z - e), tip, tip); arch_face(p, arch_v(x - e, y1, z - e), arch_v(x - e, y1, z + e), tip, tip);
+  arch_face(p, arch_v(x - e, y1, z - e), arch_v(x + e, y1, z - e), arch_v(x + e, y1, z + e), arch_v(x - e, y1, z + e));
+  arch_ellipsoid(p, x, y1 + s * 0.68, z, s * 0.1, s * 0.1, s * 0.1, 6, 4);
+  p[0].material = material; p[0].tint = tint;
+}
+
+// ---- the timber-frame cottage
+
+ArchCottage :: struct {
+  w: f32 = 8.0; d: f32 = 6.0;        // its plan: wide (x) and deep (z)
+  wall: f32 = 2.7;                   // the eaves' height
+  base: f32 = 0.5;                   // the stone base's height
+  rise: f32 = 2.6;                   // the ridge above the eaves: the roof's steepness
+  over: f32 = 0.55;                  // how far the roof overhangs
+  storeys: int = 1;                  // 1 or 2 (a second storey adds a rail and a row of windows; raise `wall` with it)
+  bay: f32 = 1.7;                    // metres between posts: the timber pattern's rhythm
+  braces: bool = true;               // slanting braces in the end bays
+  rails: bool = true;                // a rail across every bay and struts in the gables (false: a calm frame of posts alone)
+  stack: f32 = 0.96;                 // the chimney stack's width
+  stack_at: f32 = 0;                 // where it stands along its end: -1 the back corner, 0 the middle, 1 the front
+  dormer_w: f32 = 0.62;              // half a dormer's width
+  chimney: int = 1;                  // -1 on the left end, 1 on the right, 0 none
+  dormers: int = 1;                  // dormer windows on the front slope
+  porch: f32 = 0;                    // a lean-to porch this deep on the front (0: none), from
+  porch_from: f32 = 0; porch_to: f32 = 0.6;   // these shares along the front
+  door: f32 = 0.5;                   // where the door stands along the front, a share (below 0: none)
+  roof_r: f32 = 0.54; roof_g: f32 = 0.20; roof_b: f32 = 0.11;
+  plaster_r: f32 = 0.93; plaster_g: f32 = 0.88; plaster_b: f32 = 0.74;
+}
+
+// A window on a wall: lit glass with a timber frame and one bar across and one down.
+arch_window :: (p: [] ArchPen, f: ArchWall, u0: f32, y0: f32, u1: f32, y1: f32) {
+  material := p[0].material; tint := p[0].tint;
+  arch_material(p, ARCH_M_WINDOW, 0, 0, 0);
+  arch_wall_face(p, f, u0, y0, u1, y1, 0.03);
+  arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+  arch_wall_frame(p, f, u0, y0, u1, y1, 0.06);
+  p[0].material = material; p[0].tint = tint;
+}
+// A boarded door in a timber frame.
+arch_door :: (p: [] ArchPen, f: ArchWall, u0: f32, y0: f32, u1: f32, y1: f32) {
+  material := p[0].material; tint := p[0].tint;
+  arch_material(p, ARCH_M_DOOR, 0, 0, 0);
+  arch_wall_face(p, f, u0, y0, u1, y1, 0.1);
+  arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+  arch_wall_beam(p, f, u0, y0, u0, y1, 0.09); arch_wall_beam(p, f, u1, y0, u1, y1, 0.09); arch_wall_beam(p, f, u0 - 0.09, y1, u1 + 0.09, y1, 0.09);
+  p[0].material = material; p[0].tint = tint;
+}
+
+arch_cottage :: (p: [] ArchPen, c: ArchCottage) -> ArchPart {
+  from := p[0].n;
+  hw := c.w * 0.5; hd := c.d * 0.5; top := c.wall; ridge := c.wall + c.rise;
+  slope := c.rise / hd;
+  // The stone base, a little proud of the walls, and the plaster box on it.
+  arch_material(p, ARCH_M_ASHLAR, 0, 0, 0);
+  arch_slab(p, -hw - 0.07, 0, -hd - 0.07, hw + 0.07, c.base, hd + 0.07);
+  arch_material(p, ARCH_M_PLASTER, c.plaster_r, c.plaster_g, c.plaster_b);
+  arch_slab(p, -hw, c.base, -hd, hw, top, hd);
+  // The gables, on the two ends.
+  arch_face_uv(p, arch_v(hw, top, hd), arch_v(hw, top, -hd), arch_v(hw, ridge, 0), arch_v(hw, ridge, 0), 0, top);
+  arch_face_uv(p, arch_v(-hw, top, -hd), arch_v(-hw, top, hd), arch_v(-hw, ridge, 0), arch_v(-hw, ridge, 0), 0, top);
+
+  // The frame: sill, plate, posts, a rail, braces, and the openings between them.
+  rail := c.base + (top - c.base) * (ifx c.storeys > 1 then 0.5f32 else 0.42f32);
+  for side: 0..<4 {
+    f := arch_wall_of(side, c.w, c.d);
+    span := ifx side % 2 == 0 then c.w else c.d;
+    bays := cast(int) floor(span / c.bay + 0.5); if bays < 1 { bays = 1; }
+    step := span / cast(f32) bays;
+    door_bay := -1;
+    if side == 0 && c.door >= 0 { door_bay = cast(int) floor(c.door * cast(f32) bays); if door_bay >= bays { door_bay = bays - 1; } }
+    arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+    arch_wall_beam(p, f, 0, c.base + 0.09, span, c.base + 0.09, 0.1);
+    arch_wall_beam(p, f, 0, top - 0.09, span, top - 0.09, 0.1);
+    for i: 0..<bays + 1 { u := step * cast(f32) i; arch_wall_beam(p, f, u, c.base, u, top, 0.1); }
+    for i: 0..<bays {
+      u0 := step * cast(f32) i; u1 := u0 + step;
+      arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+      if c.rails && i != door_bay { arch_wall_beam(p, f, u0, rail, u1, rail, 0.08); }
+      if c.braces && (i == 0 || i == bays - 1) && i != door_bay && bays > 1 {
+        if i == 0 { arch_wall_beam(p, f, u0 + 0.05, rail, u1 - 0.1, c.base + 0.1, 0.07); }
+        else { arch_wall_beam(p, f, u1 - 0.05, rail, u0 + 0.1, c.base + 0.1, 0.07); }
+      }
+      if i == door_bay {
+        m := (u0 + u1) * 0.5;
+        arch_door(p, f, m - 0.5, 0.12, m + 0.5, 2.05);
+        continue;
+      }
+      // A window in every other bay of the long walls, and in the middle bay of the ends.
+      wide := arch_lowf(step - 0.5, 1.1);
+      wanted := ifx side % 2 == 0 then (i + side / 2) % 2 == 1 || bays < 5 else i == bays / 2;
+      if wanted && wide > 0.4 {
+        m := (u0 + u1) * 0.5;
+        arch_window(p, f, m - wide * 0.5, rail + 0.12, m + wide * 0.5, arch_lowf(rail + 1.15, top - 0.3));
+        if c.storeys > 1 { arch_window(p, f, m - wide * 0.5, c.base + 0.45, m + wide * 0.5, rail - 0.2); }
+      }
+    }
+    // The gable's own timbers: a king post and two struts under the roof.
+    if side % 2 == 1 {
+      arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+      if c.rails {
+        arch_wall_beam(p, f, hd, top, hd, ridge - 0.15, 0.09);
+        arch_wall_beam(p, f, hd * 0.45, top, hd, top + c.rise * 0.55, 0.07);
+        arch_wall_beam(p, f, hd * 1.55, top, hd, top + c.rise * 0.55, 0.07);
+      } else {
+        // A calm gable: a collar across it and a small window under the ridge.
+        arch_wall_beam(p, f, hd * 0.42, top + c.rise * 0.58, hd * 1.58, top + c.rise * 0.58, 0.07);
+      }
+      arch_wall_beam(p, f, 0.05, top, hd, ridge - 0.08, 0.08); arch_wall_beam(p, f, c.d - 0.05, top, hd, ridge - 0.08, 0.08);
+    }
+  }
+
+  // The roof: two slopes, a ridge of darker tiles.
+  ox: f32 = 0.45; ze := hd + c.over; ye := top - c.over * slope; x0 := -hw - ox; x1 := hw + ox;
+  arch_material(p, ARCH_M_ROOF, c.roof_r, c.roof_g, c.roof_b);
+  arch_roof_plane(p, arch_v(x0, ye, ze), arch_v(x1, ye, ze), arch_v(x1, ridge, 0), arch_v(x0, ridge, 0), 0.14);
+  arch_roof_plane(p, arch_v(x1, ye, -ze), arch_v(x0, ye, -ze), arch_v(x0, ridge, 0), arch_v(x1, ridge, 0), 0.14);
+  arch_material(p, ARCH_M_ROOF, c.roof_r * 0.72, c.roof_g * 0.72, c.roof_b * 0.72);
+  arch_beam2(p, arch_v(x0 - 0.04, ridge + 0.02, 0), arch_v(x1 + 0.04, ridge + 0.02, 0), 0.16, 0.08);
+
+  // The chimney, outside one end: a broad foot, a stack, a cap and two pots.
+  if c.chimney != 0 {
+    s: f32 = ifx c.chimney > 0 then 1 else -1; cx := s * (hw + 0.42);
+    arch_material(p, ARCH_M_ASHLAR, 0, 0, 0);
+    sk := c.stack * 0.5; cz := c.stack_at * (hd - sk * 1.5);
+    arch_slab(p, cx - 0.62, 0, cz - sk * 1.5, cx + 0.62, top * 0.72, cz + sk * 1.5);
+    arch_slab(p, cx - 0.48, top * 0.72, cz - sk, cx + 0.48, ridge + 0.85, cz + sk);
+    arch_material(p, ARCH_M_SMOOTH, 0, 0, 0);
+    arch_slab(p, cx - 0.58, ridge + 0.85, cz - sk - 0.1, cx + 0.58, ridge + 1.0, cz + sk + 0.1);
+    arch_material(p, ARCH_M_ROOF, c.roof_r * 0.9, c.roof_g * 0.9, c.roof_b * 0.9);
+    for k: 0..<2 {
+      pot := p[0].n;
+      profile := [3] ArchTurn.[ArchTurn.{r = 0.15, y = 0, flute = 0}, ArchTurn.{r = 0.12, y = 0.3, flute = 0}, ArchTurn.{r = 0.14, y = 0.36, flute = 0}];
+      arch_lathe(p, profile[..], 8, 0, 0);
+      arch_move(p[0].out, arch_part(p, pot), cx, ridge + 1.0, cz + (ifx k == 0 then -0.6f32 else 0.6f32) * c.stack * 0.5);
+    }
+  }
+
+  // Dormers on the front slope: a little plaster front with a window, cheeks, and a gable of its own.
+  for i: 0..<c.dormers {
+    x := -hw + c.w * cast(f32) (i + 1) / cast(f32) (c.dormers + 1);
+    if c.porch > 0 && c.dormers == 1 { x = -hw + c.w * (c.porch_from + c.porch_to) * 0.5; }
+    dw := c.dormer_w; dh: f32 = 0.85; zf := hd * 0.6;
+    y0 := top + c.rise * (1 - zf / hd); y1 := y0 + dh; yd := y1 + dw * 0.85;
+    zc := hd * (1 - (y1 - top) / c.rise); zb := arch_highf(hd * (1 - (yd - top) / c.rise), 0);
+    front := ArchWall.{ox = x - dw, oz = zf, rx = 1, rz = 0, nx = 0, nz = 1};
+    arch_material(p, ARCH_M_PLASTER, c.plaster_r, c.plaster_g, c.plaster_b);
+    arch_wall_face(p, front, 0, y0, dw * 2, y1, 0);
+    arch_face_uv(p, arch_v(x - dw, y1, zf), arch_v(x + dw, y1, zf), arch_v(x, yd, zf), arch_v(x, yd, zf), 0, y1);
+    arch_face(p, arch_v(x + dw, y0, zf), arch_v(x + dw, y1, zc), arch_v(x + dw, y1, zf), arch_v(x + dw, y1, zf));
+    arch_face(p, arch_v(x - dw, y0, zf), arch_v(x - dw, y1, zf), arch_v(x - dw, y1, zc), arch_v(x - dw, y1, zc));
+    arch_window(p, front, 0.16, y0 + 0.14, dw * 2 - 0.16, y1 - 0.08);
+    // A window box of flowers under it.
+    arch_material(p, ARCH_M_CLOTH, 0.16, 0.42, 0.62);
+    arch_slab(p, x - dw + 0.12, y0 - 0.02, zf + 0.02, x + dw - 0.12, y0 + 0.14, zf + 0.2);
+    arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+    arch_wall_beam(p, front, 0, y0, 0, y1, 0.07); arch_wall_beam(p, front, dw * 2, y0, dw * 2, y1, 0.07);
+    arch_wall_beam(p, front, -0.1, y1, dw, yd, 0.06); arch_wall_beam(p, front, dw * 2 + 0.1, y1, dw, yd, 0.06);
+    arch_material(p, ARCH_M_ROOF, c.roof_r, c.roof_g, c.roof_b);
+    e: f32 = 0.22; yl := y1 - 0.12; zl := hd * (1 - (yl - top) / c.rise); zo := zf + 0.28;
+    arch_roof_plane(p, arch_v(x + dw + e, yl, zo), arch_v(x + dw + e, yl, zl), arch_v(x, yd, zb), arch_v(x, yd, zo), 0.08);
+    arch_roof_plane(p, arch_v(x - dw - e, yl, zl), arch_v(x - dw - e, yl, zo), arch_v(x, yd, zo), arch_v(x, yd, zb), 0.08);
+  }
+
+  // The porch: a lean-to of tiles on posts across part of the front.
+  if c.porch > 0 {
+    px0 := -hw + c.w * c.porch_from; px1 := -hw + c.w * c.porch_to; zf := hd + c.porch;
+    yh := top - 0.3; yl: f32 = 2.2; fall := (yh - yl) / c.porch; lip: f32 = 0.35;
+    arch_material(p, ARCH_M_ROOF, c.roof_r, c.roof_g, c.roof_b);
+    arch_roof_plane(p, arch_v(px0 - 0.25, yl - fall * lip, zf + lip), arch_v(px1 + 0.25, yl - fall * lip, zf + lip), arch_v(px1 + 0.25, yh, hd), arch_v(px0 - 0.25, yh, hd), 0.1);
+    arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+    posts := cast(int) floor((px1 - px0) / 2.2 + 0.5) + 1; if posts < 2 { posts = 2; }
+    for i: 0..<posts {
+      x := px0 + (px1 - px0) * cast(f32) i / cast(f32) (posts - 1);
+      arch_beam(p, arch_v(x, 0, zf), arch_v(x, yl - 0.1, zf), 0.09);
+      arch_solid_box(p, x - 0.09, 0, zf - 0.09, x + 0.09, yl - 0.1, zf + 0.09);
+      arch_beam(p, arch_v(x, yl - 0.2, zf), arch_v(x, yh - 0.25, hd), 0.06);
+      if i > 0 { arch_beam(p, arch_v(x - 0.55, yl - 0.2, zf), arch_v(x, yl - 0.75, zf), 0.05); }
+      if i < posts - 1 { arch_beam(p, arch_v(x + 0.55, yl - 0.2, zf), arch_v(x, yl - 0.75, zf), 0.05); }
+    }
+    arch_beam(p, arch_v(px0 - 0.15, yl - 0.2, zf), arch_v(px1 + 0.15, yl - 0.2, zf), 0.09);
+  }
+  // What blocks a walker: the house on its base up to its eaves, and its chimney.
+  arch_solid_box(p, -hw - 0.07, 0, -hd - 0.07, hw + 0.07, top, hd + 0.07);
+  if c.chimney != 0 {
+    s: f32 = ifx c.chimney > 0 then 1 else -1; cx := s * (hw + 0.42);
+    cz := c.stack_at * (hd - c.stack * 0.75);
+    arch_solid_box(p, cx - 0.62, 0, cz - c.stack * 0.75, cx + 0.62, ridge + 1.0, cz + c.stack * 0.75);
+  }
+  return arch_part(p, from);
+}
+
+// ---- the stone house
+
+ArchStoneHouse :: struct {
+  w: f32 = 10.0; d: f32 = 6.5;       // its plan
+  wall: f32 = 2.9;                   // the eaves' height
+  rise: f32 = 2.3;                   // the ridge above the eaves
+  over: f32 = 0.5;                   // the roof's overhang
+  hip: bool = true;                  // a hipped roof; false: gables on the two ends
+  door: f32 = 0.42;                  // where the arched door stands along the front, a share (below 0: none)
+  windows: int = 2;                  // shuttered windows on the front
+  annex: f32 = 0;                    // a lean-to this wide on the left end (0: none)
+  annex_plaster: bool = false;       // its walls plastered in the board colour between posts (false: upright boards)
+  roof_r: f32 = 0.55; roof_g: f32 = 0.19; roof_b: f32 = 0.10;
+  stone_r: f32 = 0; stone_g: f32 = 0; stone_b: f32 = 0;      // 0: the stone's own grey
+  board_r: f32 = 0.78; board_g: f32 = 0.56; board_b: f32 = 0.30;
+}
+
+// A shuttered window on a stone wall: slats, a sill and a lintel of cut stone.
+arch_shutter :: (p: [] ArchPen, f: ArchWall, u0: f32, y0: f32, u1: f32, y1: f32) {
+  material := p[0].material; tint := p[0].tint;
+  arch_material(p, ARCH_M_SHUTTER, 0, 0, 0);
+  arch_wall_face(p, f, u0, y0, u1, y1, 0.05);
+  arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+  arch_wall_frame(p, f, u0, y0, u1, y1, 0.05);
+  arch_material(p, ARCH_M_SMOOTH, 0, 0, 0);
+  arch_wall_beam(p, f, u0 - 0.16, y1 + 0.13, u1 + 0.16, y1 + 0.13, 0.08);
+  arch_wall_beam(p, f, u0 - 0.12, y0 - 0.1, u1 + 0.12, y0 - 0.1, 0.06);
+  p[0].material = material; p[0].tint = tint;
+}
+
+arch_stone_house :: (p: [] ArchPen, c: ArchStoneHouse) -> ArchPart {
+  from := p[0].n;
+  hw := c.w * 0.5; hd := c.d * 0.5; top := c.wall; ridge := c.wall + c.rise; slope := c.rise / hd;
+  arch_material(p, ARCH_M_ASHLAR, c.stone_r, c.stone_g, c.stone_b);
+  arch_slab(p, -hw, 0, -hd, hw, top, hd);
+  // A plinth course, proud of the wall.
+  arch_slab(p, -hw - 0.06, 0, -hd - 0.06, hw + 0.06, 0.32, hd + 0.06);
+  o := c.over; ye := top - o * slope;
+  half := hw - hd; if half < 0.3 { half = 0.3; }
+  if c.hip {
+    arch_material(p, ARCH_M_ROOF, c.roof_r, c.roof_g, c.roof_b);
+    arch_roof_plane(p, arch_v(-hw - o, ye, hd + o), arch_v(hw + o, ye, hd + o), arch_v(half, ridge, 0), arch_v(-half, ridge, 0), 0.14);
+    arch_roof_plane(p, arch_v(hw + o, ye, -hd - o), arch_v(-hw - o, ye, -hd - o), arch_v(-half, ridge, 0), arch_v(half, ridge, 0), 0.14);
+    arch_roof_plane(p, arch_v(hw + o, ye, hd + o), arch_v(hw + o, ye, -hd - o), arch_v(half, ridge, 0), arch_v(half, ridge, 0), 0.14);
+    arch_roof_plane(p, arch_v(-hw - o, ye, -hd - o), arch_v(-hw - o, ye, hd + o), arch_v(-half, ridge, 0), arch_v(-half, ridge, 0), 0.14);
+    // The ridge and the four hips, capped in darker tiles.
+    arch_material(p, ARCH_M_ROOF, c.roof_r * 0.72, c.roof_g * 0.72, c.roof_b * 0.72);
+    arch_beam2(p, arch_v(-half - 0.1, ridge + 0.03, 0), arch_v(half + 0.1, ridge + 0.03, 0), 0.16, 0.08);
+    for k: 0..<4 {
+      sx: f32 = ifx k % 2 == 0 then 1 else -1; sz: f32 = ifx k < 2 then 1 else -1;
+      arch_beam2(p, arch_v(sx * half, ridge + 0.03, 0), arch_v(sx * (hw + o), ye + 0.05, sz * (hd + o)), 0.13, 0.07);
+    }
+  } else {
+    arch_material(p, ARCH_M_ASHLAR, c.stone_r, c.stone_g, c.stone_b);
+    arch_face_uv(p, arch_v(hw, top, hd), arch_v(hw, top, -hd), arch_v(hw, ridge, 0), arch_v(hw, ridge, 0), 0, top);
+    arch_face_uv(p, arch_v(-hw, top, -hd), arch_v(-hw, top, hd), arch_v(-hw, ridge, 0), arch_v(-hw, ridge, 0), 0, top);
+    arch_material(p, ARCH_M_ROOF, c.roof_r, c.roof_g, c.roof_b);
+    arch_roof_plane(p, arch_v(-hw - 0.4, ye, hd + o), arch_v(hw + 0.4, ye, hd + o), arch_v(hw + 0.4, ridge, 0), arch_v(-hw - 0.4, ridge, 0), 0.14);
+    arch_roof_plane(p, arch_v(hw + 0.4, ye, -hd - o), arch_v(-hw - 0.4, ye, -hd - o), arch_v(-hw - 0.4, ridge, 0), arch_v(hw + 0.4, ridge, 0), 0.14);
+    arch_material(p, ARCH_M_ROOF, c.roof_r * 0.72, c.roof_g * 0.72, c.roof_b * 0.72);
+    arch_beam2(p, arch_v(-hw - 0.44, ridge + 0.02, 0), arch_v(hw + 0.44, ridge + 0.02, 0), 0.16, 0.08);
+  }
+  // The front: the arched door, and shuttered windows shared out over the rest of the wall.
+  f := arch_wall_of(0, c.w, c.d);
+  du := c.door * c.w;
+  if c.door >= 0 {
+    r: f32 = 0.62; spring: f32 = 1.55;
+    arch_material(p, ARCH_M_DOOR, 0, 0, 0);
+    arch_wall_face(p, f, du - r, 0.02, du + r, spring, 0.06);
+    arch_wall_fan(p, f, du, spring, r, 0, f32(ARCH_TAU) * 0.5, 10, 0.06);
+    arch_material(p, ARCH_M_SMOOTH, 0, 0, 0);
+    arch_wall_beam(p, f, du - r - 0.1, 0, du - r - 0.1, spring, 0.12); arch_wall_beam(p, f, du + r + 0.1, 0, du + r + 0.1, spring, 0.12);
+    arch_wall_arch(p, f, du, spring, r + 0.1, 9, 0.12);
+  }
+  for i: 0..<c.windows {
+    u := c.w * (cast(f32) i + 0.5) / cast(f32) c.windows;
+    if c.door >= 0 && abs(u - du) < 1.5 { u = ifx u < du then du - 1.9 else du + 1.9; }
+    if u < 0.9 || u > c.w - 0.9 { continue; }
+    arch_shutter(p, f, u - 0.42, top * 0.5, u + 0.42, top * 0.5 + 0.78);
+  }
+  // A shuttered window on the right end and two on the back.
+  right := arch_wall_of(1, c.w, c.d);
+  arch_shutter(p, right, hd - 0.42, top * 0.5, hd + 0.42, top * 0.5 + 0.78);
+  back := arch_wall_of(2, c.w, c.d);
+  arch_shutter(p, back, c.w * 0.3 - 0.42, top * 0.5, c.w * 0.3 + 0.42, top * 0.5 + 0.78);
+  arch_shutter(p, back, c.w * 0.7 - 0.42, top * 0.5, c.w * 0.7 + 0.42, top * 0.5 + 0.78);
+  // The lean-to on the left end: boards, two small windows, a low slope of tiles.
+  if c.annex > 0 {
+    xo := -hw - c.annex; zh := hd - 0.35; yh := top - 0.25; yl := top - 0.25 - c.annex * 0.45;
+    arch_material(p, ifx c.annex_plaster then ARCH_M_PLASTER else ARCH_M_PLANK, c.board_r, c.board_g, c.board_b);
+    arch_slab(p, xo, 0, -zh, -hw, yl, zh);
+    arch_face_uv(p, arch_v(xo, yl, zh), arch_v(-hw, yl, zh), arch_v(-hw, yh, zh), arch_v(-hw, yh, zh), 0, yl);
+    arch_face_uv(p, arch_v(-hw, yl, -zh), arch_v(xo, yl, -zh), arch_v(-hw, yh, -zh), arch_v(-hw, yh, -zh), 0, yl);
+    arch_material(p, ARCH_M_ROOF, c.roof_r, c.roof_g, c.roof_b);
+    lip: f32 = 0.3; drop := (yh - yl) / c.annex * lip;
+    arch_roof_plane(p, arch_v(xo - lip, yl - drop, -zh - 0.25), arch_v(xo - lip, yl - drop, zh + 0.25), arch_v(-hw, yh, zh + 0.25), arch_v(-hw, yh, -zh - 0.25), 0.1);
+    side := ArchWall.{ox = xo, oz = -zh, rx = 0, rz = 1, nx = -1, nz = 0};
+    arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+    arch_wall_beam(p, side, 0, 0, 0, yl, 0.08); arch_wall_beam(p, side, zh * 2, 0, zh * 2, yl, 0.08); arch_wall_beam(p, side, zh, 0, zh, yl, 0.07);
+    arch_shutter(p, side, zh * 0.5 - 0.3, yl * 0.5, zh * 0.5 + 0.3, yl * 0.5 + 0.55);
+    arch_shutter(p, side, zh * 1.5 - 0.3, yl * 0.5, zh * 1.5 + 0.3, yl * 0.5 + 0.55);
+    if c.annex_plaster {
+      face := ArchWall.{ox = xo, oz = zh, rx = 1, rz = 0, nx = 0, nz = 1};
+      arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+      arch_wall_beam(p, face, 0, 0, 0, yl, 0.08); arch_wall_beam(p, face, c.annex, 0, c.annex, yl + (yh - yl), 0.08); arch_wall_beam(p, face, 0, yl * 0.5, c.annex, yl * 0.5, 0.06);
+    }
+    arch_solid_box(p, xo, 0, -zh, -hw, yl, zh);
+  }
+  arch_solid_box(p, -hw - 0.06, 0, -hd - 0.06, hw + 0.06, top, hd + 0.06);
+  return arch_part(p, from);
+}
+
+// ---- towers and the church
+
+ArchTower :: struct {
+  r: f32 = 2.2; h: f32 = 6.0;        // the drum's radius and height
+  roof: f32 = 3.2;                   // the cone's height
+  roof_r: f32 = 0.52; roof_g: f32 = 0.19; roof_b: f32 = 0.12;
+}
+arch_round_tower :: (p: [] ArchPen, c: ArchTower) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, ARCH_M_ASHLAR, 0, 0, 0);
+  arch_drum(p, c.r, 0, c.h, 18);
+  arch_drum(p, c.r + 0.12, c.h - 0.5, c.h, 18);
+  arch_material(p, ARCH_M_ROOF, c.roof_r, c.roof_g, c.roof_b);
+  arch_cone(p, c.r + 0.5, c.h - 0.1, c.h + c.roof, 14);
+  arch_material(p, ARCH_M_METAL, 0, 0, 0);
+  arch_limb(p, 0, c.h + c.roof - 0.1, 0, 0, c.h + c.roof + 0.7, 0, 0.04, 0.02, 6);
+  arch_ellipsoid(p, 0, c.h + c.roof + 0.75, 0, 0.1, 0.1, 0.1, 8, 6);
+  // Two slit windows.
+  for k: 0..<2 {
+    a := 0.5 + cast(f32) k * 1.3;
+    slit := ArchWall.{ox = sin(a) * c.r - cos(a) * 0.12, oz = cos(a) * c.r + sin(a) * 0.12, rx = cos(a), rz = -sin(a), nx = sin(a), nz = cos(a)};
+    arch_wall_face(p, slit, 0, c.h * 0.5, 0.24, c.h * 0.5 + 0.8, 0.03);
+  }
+  arch_solid_round(p, 0, 0, c.r, 0, c.h);
+  return arch_part(p, from);
+}
+
+ArchChurch :: struct {
+  w: f32 = 10.0; d: f32 = 18.0;      // the nave's plan; its gable front faces +z
+  wall: f32 = 8.0; rise: f32 = 5.5;
+  tower: f32 = 4.4;                  // the tower's side; it stands at the front's right corner
+  tower_h: f32 = 14.0; spire: f32 = 6.5;
+  lancets: int = 4;                  // pointed lights across the front, under the rose
+  banners: bool = true;              // banners on the front and the tower, and lanterns by the door
+  roof_r: f32 = 0.42; roof_g: f32 = 0.46; roof_b: f32 = 0.56;      // the nave's slates
+  spire_r: f32 = 0.56; spire_g: f32 = 0.25; spire_b: f32 = 0.20;
+  stone_r: f32 = 0.67; stone_g: f32 = 0.66; stone_b: f32 = 0.61;
+  glass_r: f32 = 0.50; glass_g: f32 = 0.38; glass_b: f32 = 0.95;   // the rose's petals
+}
+// A stone church. Its front: a coped gable with a cross and a pinnacle at each corner, a rose
+// window over a row of lancets, an arched door between two niches, banners and lanterns. Its
+// tower: lancets, a banner, an open belfry with its bell, and a spire.
+arch_church :: (p: [] ArchPen, c: ArchChurch) -> ArchPart {
+  from := p[0].n;
+  hw := c.w * 0.5; hd := c.d * 0.5; top := c.wall; ridge := c.wall + c.rise; slope := c.rise / hw;
+  arch_material(p, ARCH_M_ASHLAR, c.stone_r, c.stone_g, c.stone_b);
+  arch_slab(p, -hw, 0, -hd, hw, top, hd);
+  arch_slab(p, -hw - 0.1, 0, -hd - 0.1, hw + 0.1, 0.55, hd + 0.1);
+  arch_face_uv(p, arch_v(-hw, top, hd), arch_v(hw, top, hd), arch_v(0, ridge, hd), arch_v(0, ridge, hd), 0, top);
+  arch_face_uv(p, arch_v(hw, top, -hd), arch_v(-hw, top, -hd), arch_v(0, ridge, -hd), arch_v(0, ridge, -hd), 0, top);
+  // Buttresses at the front corners, in two stages.
+  for k: 0..<2 {
+    sx: f32 = ifx k == 0 then -1 else 1; x0 := sx * (hw + 0.1) - 0.45; x1 := sx * (hw + 0.1) + 0.45;
+    arch_slab(p, x0, 0, hd - 0.3, x1, top * 0.5, hd + 0.75);
+    arch_slab(p, x0 + 0.08, top * 0.5, hd - 0.3, x1 - 0.08, top * 0.86, hd + 0.45);
+    arch_solid_box(p, x0, 0, hd - 0.3, x1, top * 0.5, hd + 0.75);
+  }
+  o: f32 = 0.5; ye := top - o * slope;
+  arch_material(p, ARCH_M_ROOF, c.roof_r, c.roof_g, c.roof_b);
+  arch_roof_plane(p, arch_v(hw + o, ye, hd - 0.05), arch_v(hw + o, ye, -hd - 0.35), arch_v(0, ridge, -hd - 0.35), arch_v(0, ridge, hd - 0.05), 0.16);
+  arch_roof_plane(p, arch_v(-hw - o, ye, -hd - 0.35), arch_v(-hw - o, ye, hd - 0.05), arch_v(0, ridge, hd - 0.05), arch_v(0, ridge, -hd - 0.35), 0.16);
+  // The gable's coping, its cross, and a pinnacle on each corner.
+  arch_material(p, ARCH_M_SMOOTH, 0, 0, 0);
+  arch_beam2(p, arch_v(-hw - 0.35, top - 0.25, hd + 0.05), arch_v(0, ridge + 0.2, hd + 0.05), 0.22, 0.14);
+  arch_beam2(p, arch_v(hw + 0.35, top - 0.25, hd + 0.05), arch_v(0, ridge + 0.2, hd + 0.05), 0.22, 0.14);
+  arch_slab(p, -0.22, ridge + 0.1, hd - 0.17, 0.22, ridge + 0.55, hd + 0.27);
+  arch_beam(p, arch_v(0, ridge + 0.5, hd + 0.05), arch_v(0, ridge + 1.5, hd + 0.05), 0.07); arch_beam(p, arch_v(-0.32, ridge + 1.15, hd + 0.05), arch_v(0.32, ridge + 1.15, hd + 0.05), 0.07);
+  for k: 0..<2 {
+    sx: f32 = ifx k == 0 then -1 else 1; x := sx * (hw + 0.1);
+    arch_slab(p, x - 0.32, top * 0.86, hd - 0.1, x + 0.32, top + 0.5, hd + 0.5);
+    pin := p[0].n; arch_cone(p, 0.42, 0, 1.3, 4); arch_move(p[0].out, arch_part(p, pin), x, top + 0.5, hd + 0.2);
+  }
+  f := arch_wall_of(0, c.w, c.d);
+  // The rose and a little round light over it.
+  ry := top + c.rise * 0.16; rr := c.w * 0.105;
+  arch_material(p, ARCH_M_ROSE, c.glass_r, c.glass_g, c.glass_b);
+  arch_wall_disc(p, f, hw, ry, rr, 20, 0.04);
+  arch_wall_disc(p, f, hw, top + c.rise * 0.6, rr * 0.26, 10, 0.04);
+  arch_material(p, ARCH_M_SMOOTH, 0, 0, 0);
+  for k: 0..<20 {
+    a := f32(ARCH_TAU) * cast(f32) k / 20.0; b := f32(ARCH_TAU) * cast(f32) (k + 1) / 20.0;
+    arch_beam(p, arch_wall_at(f, hw + cos(a) * (rr + 0.1), ry + sin(a) * (rr + 0.1), 0), arch_wall_at(f, hw + cos(b) * (rr + 0.1), ry + sin(b) * (rr + 0.1), 0), 0.12);
+  }
+  // The lancets under it.
+  arch_tint(p, 0, 0, 0);
+  for i: 0..<c.lancets {
+    u := hw + (cast(f32) i - cast(f32) (c.lancets - 1) * 0.5) * 0.92;
+    arch_lancet(p, f, u, top * 0.56, 0.64, top * 0.36);
+  }
+  // The door, and a niche on each side of it.
+  arch_material(p, ARCH_M_DOOR, 0, 0, 0);
+  arch_wall_face(p, f, hw - 0.95, 0, hw + 0.95, 2.2, 0.06);
+  arch_wall_fan(p, f, hw, 2.2, 0.95, 0, f32(ARCH_TAU) * 0.5, 10, 0.06);
+  arch_material(p, ARCH_M_SMOOTH, 0, 0, 0);
+  arch_wall_arch(p, f, hw, 2.2, 1.08, 9, 0.14);
+  arch_wall_beam(p, f, hw - 1.08, 0, hw - 1.08, 2.2, 0.14); arch_wall_beam(p, f, hw + 1.08, 0, hw + 1.08, 2.2, 0.14);
+  for k: 0..<2 {
+    u := hw + (ifx k == 0 then -1.0f32 else 1.0f32) * c.w * 0.29;
+    arch_material(p, ARCH_M_DOOR, 0.2, 0.23, 0.29);
+    arch_wall_face(p, f, u - 0.5, 0.55, u + 0.5, 2.0, 0.04); arch_wall_fan(p, f, u, 2.0, 0.5, 0, f32(ARCH_TAU) * 0.5, 8, 0.04);
+    arch_material(p, ARCH_M_SMOOTH, 0, 0, 0);
+    arch_wall_arch(p, f, u, 2.0, 0.58, 7, 0.09);
+    if c.banners {
+      ub := hw + (ifx k == 0 then -1.0f32 else 1.0f32) * c.w * 0.165;
+      arch_tint(p, 0, 0, 0); arch_banner(p, f, ub, 4.0, 0.62, 1.75, 0.08);
+      // A lantern on a bracket.
+      arch_material(p, ARCH_M_METAL, 0, 0, 0);
+      at := arch_wall_at(f, ub, 2.05, 0.42);
+      arch_beam(p, arch_wall_at(f, ub, 2.6, 0), arch_v(at[0], 2.6, at[2]), 0.03);
+      arch_lantern(p, at[0], 2.02, at[2], 0.26);
+    }
+  }
+  // Lancets down each side.
+  for side: 0..<2 {
+    wall := arch_wall_of(ifx side == 0 then 1 else 3, c.w, c.d);
+    arch_tint(p, 0, 0, 0);
+    for k: 0..<4 { u := c.d * (cast(f32) k + 0.8) / 4.6; arch_lancet(p, wall, u, top * 0.3, 0.8, top * 0.5); }
+  }
+  // The tower: a shaft, an open belfry on four piers, a cornice and a spire.
+  t := c.tower * 0.5; tx := hw + t - 1.9; tz := hd - t + 0.55;
+  b0 := c.tower_h * 0.8; b1 := c.tower_h - 0.7;
+  arch_material(p, ARCH_M_ASHLAR, c.stone_r, c.stone_g, c.stone_b);
+  arch_slab(p, tx - t, 0, tz - t, tx + t, b0, tz + t);
+  arch_slab(p, tx - t - 0.1, 0, tz - t - 0.1, tx + t + 0.1, 0.55, tz + t + 0.1);
+  for k: 0..<4 {
+    sx: f32 = ifx k % 2 == 0 then 1 else -1; sz: f32 = ifx k < 2 then 1 else -1; pw := t * 0.34;
+    arch_slab(p, tx + sx * t - (ifx sx > 0 then pw * 2 else 0.0f32), b0, tz + sz * t - (ifx sz > 0 then pw * 2 else 0.0f32),
+              tx + sx * t + (ifx sx > 0 then 0.0f32 else pw * 2), b1, tz + sz * t + (ifx sz > 0 then 0.0f32 else pw * 2));
+  }
+  arch_slab(p, tx - t, b1, tz - t, tx + t, c.tower_h, tz + t);
+  arch_material(p, ARCH_M_SMOOTH, 0, 0, 0);
+  arch_slab(p, tx - t - 0.14, b0 - 0.25, tz - t - 0.14, tx + t + 0.14, b0, tz + t + 0.14);
+  arch_slab(p, tx - t - 0.18, c.tower_h - 0.28, tz - t - 0.18, tx + t + 0.18, c.tower_h, tz + t + 0.18);
+  arch_slab(p, tx - t - 0.12, c.tower_h * 0.5, tz - t - 0.12, tx + t + 0.12, c.tower_h * 0.5 + 0.22, tz + t + 0.12);
+  // The bell, hung in the belfry.
+  arch_material(p, ARCH_M_CLOTH, 0.5, 0.4, 0.2);
+  bell := p[0].n;
+  shape := [5] ArchTurn.[ArchTurn.{r = 0.62, y = 0, flute = 0}, ArchTurn.{r = 0.5, y = 0.12, flute = 0}, ArchTurn.{r = 0.36, y = 0.55, flute = 0}, ArchTurn.{r = 0.3, y = 0.85, flute = 0}, ArchTurn.{r = 0.1, y = 1.0, flute = 0}];
+  arch_lathe(p, shape[..], 10, 0, 0);
+  arch_move(p[0].out, arch_part(p, bell), tx, b0 + (b1 - b0) * 0.22, tz);
+  arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+  arch_beam(p, arch_v(tx - t + 0.2, b1 - 0.15, tz), arch_v(tx + t - 0.2, b1 - 0.15, tz), 0.1);
+  for side: 0..<4 {
+    wall := arch_wall_of(side, c.tower, c.tower); wall.ox += tx; wall.oz += tz;
+    if side == 0 || side == 1 {
+      arch_tint(p, 0.9, 0.2, 0.1);
+      arch_lancet(p, wall, t - 0.42, c.tower_h * 0.31, 0.6, c.tower_h * 0.15); arch_lancet(p, wall, t + 0.42, c.tower_h * 0.31, 0.6, c.tower_h * 0.15);
+      if c.banners { arch_tint(p, 0, 0, 0); arch_banner(p, wall, t, c.tower_h * 0.775, 1.15, c.tower_h * 0.21, 0.08); }
+    } else {
+      arch_tint(p, 0, 0, 0); arch_lancet(p, wall, t, c.tower_h * 0.31, 0.7, c.tower_h * 0.16);
+    }
+  }
+  arch_material(p, ARCH_M_ROOF, c.spire_r, c.spire_g, c.spire_b);
+  e := t + 0.5; y0 := c.tower_h; y1 := c.tower_h + c.spire; tip := arch_v(tx, y1, tz);
+  // A spire that flares at its foot: a low skirt, then the steep faces.
+  ym := y0 + c.spire * 0.12; em := t * 0.86;
+  for k: 0..<4 {
+    ax := ifx k == 0 || k == 3 then -1.0f32 else 1.0f32; az := ifx k < 2 then 1.0f32 else -1.0f32;
+    bx := ifx k < 2 then 1.0f32 else -1.0f32; bz := ifx k == 0 || k == 3 then 1.0f32 else -1.0f32;
+    if k == 1 { ax = 1; az = 1; bx = 1; bz = -1; } if k == 2 { ax = 1; az = -1; bx = -1; bz = -1; } if k == 3 { ax = -1; az = -1; bx = -1; bz = 1; } if k == 0 { ax = -1; az = 1; bx = 1; bz = 1; }
+    arch_roof_plane(p, arch_v(tx + ax * e, y0, tz + az * e), arch_v(tx + bx * e, y0, tz + bz * e), arch_v(tx + bx * em, ym, tz + bz * em), arch_v(tx + ax * em, ym, tz + az * em), 0.1);
+    arch_face(p, arch_v(tx + ax * em, ym, tz + az * em), arch_v(tx + bx * em, ym, tz + bz * em), tip, tip);
+  }
+  arch_material(p, ARCH_M_METAL, 0, 0, 0);
+  arch_limb(p, tx, y1 - 0.2, tz, tx, y1 + 1.3, tz, 0.05, 0.03, 6);
+  arch_ellipsoid(p, tx, y1 + 0.35, tz, 0.16, 0.16, 0.16, 8, 6);
+  arch_beam(p, arch_v(tx - 0.3, y1 + 0.95, tz), arch_v(tx + 0.3, y1 + 0.95, tz), 0.03);
+  arch_solid_box(p, -hw - 0.1, 0, -hd - 0.1, hw + 0.1, top, hd + 0.1);
+  arch_solid_box(p, tx - t - 0.1, 0, tz - t - 0.1, tx + t + 0.1, c.tower_h, tz + t + 0.1);
+  return arch_part(p, from);
+}
+
+// ---- walls
+
+// A box turned every way: its middle, its half sizes, and its turn about y, then its lean forward
+// (about its own x) and its roll (about its own z). A tumbled stone.
+arch_rock :: (p: [] ArchPen, cx: f32, cy: f32, cz: f32, hx: f32, hy: f32, hz: f32, yaw: f32, lean: f32, roll: f32) {
+  cy_ := cos(yaw); sy := sin(yaw); cl := cos(lean); sl := sin(lean); cr := cos(roll); sr := sin(roll);
+  // The three axes after roll, then lean, then yaw.
+  ex := arch_v(cr, sr, 0); ey := arch_v(-sr, cr, 0); ez := arch_v(0, 0, 1);
+  ex = arch_v(ex[0], ex[1] * cl - ex[2] * sl, ex[1] * sl + ex[2] * cl); ey = arch_v(ey[0], ey[1] * cl - ey[2] * sl, ey[1] * sl + ey[2] * cl); ez = arch_v(ez[0], ez[1] * cl - ez[2] * sl, ez[1] * sl + ez[2] * cl);
+  ex = arch_v(ex[0] * cy_ + ex[2] * sy, ex[1], -ex[0] * sy + ex[2] * cy_); ey = arch_v(ey[0] * cy_ + ey[2] * sy, ey[1], -ey[0] * sy + ey[2] * cy_); ez = arch_v(ez[0] * cy_ + ez[2] * sy, ez[1], -ez[0] * sy + ez[2] * cy_);
+  arch_obox(p, arch_v(cx, cy, cz), arch_vmul(ex, hx), arch_vmul(ey, hy), arch_vmul(ez, hz));
+}
+
+ArchDryWall :: struct {
+  run: f32 = 6.0;                    // its length along +x
+  h: f32 = 1.1;                      // about how high
+  thick: f32 = 0.7;                  // how deep
+  tumble: int = 0;                   // which ends fall away: 0 neither, 1 its start, 2 its far end, 3 both
+  stone: f32 = 0.52;                 // a stone's length: larger is a chunkier wall
+  tilt: f32 = 0.07;                  // how far its stones lean and roll, radians: 0 laid true
+  fallen: int = 2;                   // stones lying at its foot by each tumbled end
+  r: f32 = 0.7; g: f32 = 0.68; b: f32 = 0.62;
+  seed: int = 1;                     // picks the stones
+}
+ARCH_DRY_SPANS :: 48;                // the most lengths of wall its solids are cut into
+// A dry-stone wall along +x from the origin. Each stone is its own block, turned, leaning and
+// coloured a little differently; the top is ragged, and a tumbled end steps down to the ground
+// with stones lying by it. Its solids follow its top: where it has fallen low you can step over it.
+arch_drystone :: (p: [] ArchPen, w: ArchDryWall) -> ArchPart {
+  from := p[0].n; k := 0; y: f32 = 0; course := 0; seed := w.seed;
+  tops: [ARCH_DRY_SPANS] f32;
+  spans := cast(int) floor(w.run / (w.stone * 1.3)) + 1; if spans > ARCH_DRY_SPANS { spans = ARCH_DRY_SPANS; }
+  span := w.run / cast(f32) spans;
+  high := w.stone * 0.58;            // a course's height
+  while y < w.h && course < 12 {
+    ch := high * arch_vary(seed, 9000 + course, 0.86, 1.12);
+    x := -arch_vary(seed, 9100 + course, 0, w.stone * 0.5);
+    while x < w.run {
+      bl := w.stone * arch_vary(seed, k * 9 + 1, 0.8, 1.25); k += 1;
+      mid := x + bl * 0.5;
+      edge: f32 = 1;
+      if w.tumble & 1 != 0 { edge = arch_lowf(edge, (mid + 0.2) / 2.2); }
+      if w.tumble & 2 != 0 { edge = arch_lowf(edge, (w.run - mid + 0.2) / 2.2); }
+      limit := w.h * arch_highf(edge, 0.1) * (1 - 0.34 * arch_hash(seed, 500 + cast(int) floor(mid / (w.stone * 1.6))));
+      if y + ch * 0.55 <= limit && mid > bl * 0.3 && mid < w.run - bl * 0.3 {
+        shade := arch_vary(seed, k * 9 + 2, 0.78, 1.12); warm := arch_vary(seed, k * 9 + 3, -0.03, 0.03);
+        arch_material(p, ARCH_M_FIELDSTONE, (w.r + warm) * shade, w.g * shade, (w.b - warm) * shade);
+        // The top course's stones sit looser than those under them.
+        loose: f32 = ifx y + ch * 1.6 > limit then 1.8 else 1.0;
+        arch_rock(p, mid, y + ch * 0.5, arch_vary(seed, k * 9 + 4, -0.1, 0.1) * w.thick, bl * 0.5 - 0.02, ch * 0.5 - 0.015,
+                  w.thick * 0.5 * arch_vary(seed, k * 9 + 5, 0.8, 1.08), arch_vary(seed, k * 9 + 6, -0.14, 0.14) * loose,
+                  arch_vary(seed, k * 9 + 7, -1, 1) * w.tilt * loose, arch_vary(seed, k * 9 + 8, -1, 1) * w.tilt * loose);
+        i := cast(int) floor(mid / span); if i < 0 { i = 0; } if i >= spans { i = spans - 1; }
+        tops[i] = arch_highf(tops[i], y + ch);
+      }
+      x += bl;
+    }
+    y += ch; course += 1;
+  }
+  // Stones that have fallen from a tumbled end, lying in the grass before it.
+  for end: 0..<2 {
+    if w.tumble & (end + 1) == 0 { continue; }
+    for f: 0..<w.fallen {
+      n := 7000 + end * 100 + f * 10;
+      fx := ifx end == 0 then arch_vary(seed, n, -0.2, 1.4) else w.run - arch_vary(seed, n, -0.2, 1.4);
+      fz := w.thick * 0.5 + arch_vary(seed, n + 1, 0.25, 0.8); sx := w.stone * arch_vary(seed, n + 2, 0.36, 0.55); sy := high * 0.42;
+      shade := arch_vary(seed, n + 3, 0.86, 1.08);
+      arch_material(p, ARCH_M_FIELDSTONE, w.r * shade, w.g * shade, w.b * shade);
+      turn := arch_vary(seed, n + 4, -1.2, 1.2);
+      arch_rock(p, fx, sy * 0.9, fz, sx, sy, w.thick * 0.3, turn, arch_vary(seed, n + 5, -0.25, 0.25), arch_vary(seed, n + 6, -0.2, 0.2));
+      arch_solid_turned(p, fx, fz, sx, w.thick * 0.3, turn, 0, sy * 1.9);
+    }
+  }
+  for i: 0..<spans {
+    if tops[i] > 0.05 { arch_solid_box(p, span * cast(f32) i, 0, -w.thick * 0.5, span * cast(f32) (i + 1), tops[i], w.thick * 0.5); }
+  }
+  return arch_part(p, from);
+}
+
+// A wall of cut stone under a coping, along +x from the origin.
+arch_coped_wall :: (p: [] ArchPen, run: f32, h: f32, thick: f32, r: f32, g: f32, b: f32) -> ArchPart {
+  from := p[0].n; t := thick * 0.5;
+  arch_material(p, ARCH_M_ASHLAR, r, g, b);
+  arch_slab(p, 0, 0, -t, run, h - 0.12, t);
+  arch_material(p, ARCH_M_SMOOTH, r * 1.2, g * 1.2, b * 1.2);
+  arch_slab(p, -0.03, h - 0.12, -t - 0.06, run + 0.03, h, t + 0.06);
+  arch_solid_box(p, 0, 0, -t, run, h, t);
+  return arch_part(p, from);
+}
+// A square gate pier, `side` across and `h` high, with a cap and (if `ball`) a stone ball on it.
+arch_pier :: (p: [] ArchPen, side: f32, h: f32, ball: bool) -> ArchPart {
+  from := p[0].n; t := side * 0.5;
+  arch_material(p, ARCH_M_ASHLAR, 0, 0, 0);
+  arch_slab(p, -t, 0, -t, t, h, t);
+  arch_material(p, ARCH_M_SMOOTH, 0, 0, 0);
+  arch_slab(p, -t - 0.07, h, -t - 0.07, t + 0.07, h + 0.12, t + 0.07);
+  if ball { arch_ellipsoid(p, 0, h + 0.12 + side * 0.4, 0, side * 0.42, side * 0.42, side * 0.42, 12, 8); }
+  arch_solid_box(p, -t, 0, -t, t, h + 0.12, t);
+  return arch_part(p, from);
+}
+
+// ---- street furniture
+
+// A lamp post `h` high to the foot of its lantern's cap: an iron post on a flared foot, a collar,
+// and a lantern that glows (arch_lantern), 0.34 m across.
+arch_lamp_post :: (p: [] ArchPen, h: f32) -> ArchPart { return arch_lamp(p, h, 0.34); }
+// The same with a lantern `s` across.
+arch_lamp :: (p: [] ArchPen, h: f32, s: f32) -> ArchPart {
+  from := p[0].n; foot := h - s * 1.25 - 0.04;
+  arch_material(p, ARCH_M_METAL, 0, 0, 0);
+  arch_limb(p, 0, 0, 0, 0, 0.3, 0, 0.15, 0.08, 8);
+  arch_limb(p, 0, 0.3, 0, 0, foot - 0.12, 0, 0.055, 0.045, 8);
+  arch_limb(p, 0, foot - 0.3, 0, 0, foot, 0, 0.05, 0.13, 8);
+  arch_ellipsoid(p, 0, foot * 0.5, 0, 0.085, 0.05, 0.085, 8, 4);
+  arch_lantern(p, 0, foot, 0, s);
+  arch_solid_round(p, 0, 0, 0.09, 0, foot);
+  arch_solid_box(p, -s * 0.5, foot, -s * 0.5, s * 0.5, h, s * 0.5);
+  return arch_part(p, from);
+}
+// A pole `h` high flying a swallow-tailed pennant toward +x.
+arch_banner_pole :: (p: [] ArchPen, h: f32, r: f32, g: f32, b: f32) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, ARCH_M_METAL, 0, 0, 0);
+  arch_limb(p, 0, 0, 0, 0, h, 0, 0.055, 0.04, 8);
+  arch_ellipsoid(p, 0, h + 0.05, 0, 0.07, 0.07, 0.07, 8, 6);
+  arch_material(p, ARCH_M_CLOTH, r, g, b);
+  y1 := h - 0.08; y0 := h - 0.5; ym := (y0 + y1) * 0.5;
+  arch_face(p, arch_v(0.04, y0, 0), arch_v(0.75, y0 + 0.04, 0.02), arch_v(0.75, y1 - 0.04, 0.02), arch_v(0.04, y1, 0));
+  arch_face(p, arch_v(0.75, y0 + 0.04, 0.02), arch_v(1.15, y0 + 0.02, 0.05), arch_v(0.75, ym, 0.02), arch_v(0.75, ym, 0.02));
+  arch_face(p, arch_v(0.75, ym, 0.02), arch_v(1.15, y1 - 0.02, 0.05), arch_v(0.75, y1 - 0.04, 0.02), arch_v(0.75, y1 - 0.04, 0.02));
+  arch_solid_round(p, 0, 0, 0.055, 0, h);
+  return arch_part(p, from);
+}
+// A signpost `h` high with `boards` pointed boards, turned different ways.
+arch_signpost :: (p: [] ArchPen, h: f32, boards: int) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+  arch_beam(p, arch_v(0, 0, 0), arch_v(0, h, 0), 0.07);
+  for k: 0..<boards {
+    y := h - 0.25 - cast(f32) k * 0.34; s: f32 = ifx k % 2 == 0 then 1 else -1; yaw := s * 0.25 + cast(f32) k * 0.4;
+    c := cos(yaw); sn := sin(yaw);
+    arch_material(p, ARCH_M_PLANK, 0.45, 0.30, 0.18);
+    arch_obox(p, arch_v(s * c * 0.38, y, -s * sn * 0.38), arch_v(c * 0.5, 0, -sn * 0.5), arch_v(0, 0.12, 0), arch_v(sn * 0.03, 0, c * 0.03));
+    tip := arch_v(s * c * 1.08, y, -s * sn * 1.08);
+    arch_face(p, arch_v(s * c * 0.88 + sn * 0.03, y - 0.12, -s * sn * 0.88 + c * 0.03), tip, arch_v(s * c * 0.88 + sn * 0.03, y + 0.12, -s * sn * 0.88 + c * 0.03), arch_v(s * c * 0.88 + sn * 0.03, y + 0.12, -s * sn * 0.88 + c * 0.03));
+    arch_face(p, arch_v(s * c * 0.88 - sn * 0.03, y + 0.12, -s * sn * 0.88 - c * 0.03), tip, arch_v(s * c * 0.88 - sn * 0.03, y - 0.12, -s * sn * 0.88 - c * 0.03), arch_v(s * c * 0.88 - sn * 0.03, y - 0.12, -s * sn * 0.88 - c * 0.03));
+  }
+  arch_solid_box(p, -0.07, 0, -0.07, 0.07, h, 0.07);
+  return arch_part(p, from);
+}
+// A line of bunting from a to b, sagging `sag` in the middle: `flags` little flags in turn red,
+// blue, cream and gold, and a hanging lantern after every third when `lanterns`. It is built
+// where it hangs: stand it with a record at the origin.
+arch_bunting :: (p: [] ArchPen, a: [3] f32, b: [3] f32, sag: f32, flags: int, lanterns: bool) -> ArchPart {
+  from := p[0].n;
+  if flags < 1 { return arch_part(p, from); }
+  run := arch_vnorm(arch_v(b[0] - a[0], 0, b[2] - a[2]));
+  last := a;
+  for i: 1..<flags + 2 {
+    t := cast(f32) i / cast(f32) (flags + 1);
+    q := arch_vmix(a, b, t); q[1] -= sag * 4 * t * (1 - t);
+    arch_material(p, ARCH_M_METAL, 0, 0, 0);
+    arch_beam(p, last, q, 0.012);
+    if i <= flags {
+      m := arch_vmix(last, q, 0.5); k := i % 4;
+      if k == 0 { arch_material(p, ARCH_M_CLOTH, 0.78, 0.2, 0.16); } else if k == 1 { arch_material(p, ARCH_M_CLOTH, 0.24, 0.36, 0.72); }
+      else if k == 2 { arch_material(p, ARCH_M_CLOTH, 0.92, 0.88, 0.74); } else { arch_material(p, ARCH_M_CLOTH, 0.9, 0.68, 0.22); }
+      arch_face(p, arch_vsub(m, arch_vmul(run, 0.13)), arch_vadd(m, arch_vmul(run, 0.13)), arch_v(m[0], m[1] - 0.3, m[2]), arch_v(m[0], m[1] - 0.3, m[2]));
+      if lanterns && i % 3 == 0 {
+        arch_material(p, ARCH_M_METAL, 0, 0, 0);
+        arch_beam(p, q, arch_v(q[0], q[1] - 0.22, q[2]), 0.01);
+        arch_slab(p, q[0] - 0.1, q[1] - 0.26, q[2] - 0.1, q[0] + 0.1, q[1] - 0.22, q[2] + 0.1);
+        arch_material(p, ARCH_M_GLOW, 0, 0, 0);
+        arch_slab(p, q[0] - 0.075, q[1] - 0.5, q[2] - 0.075, q[0] + 0.075, q[1] - 0.26, q[2] + 0.075);
+      }
+    }
+    last = q;
+  }
+  return arch_part(p, from);
+}
+ARCH_GOODS_NONE :: 0; ARCH_GOODS_PRODUCE :: 1; ARCH_GOODS_POTTERY :: 2; ARCH_GOODS_FLOWERS :: 3;
+ArchStall :: struct {
+  w: f32 = 2.6; d: f32 = 1.7;        // wide and deep
+  r: f32 = 0.78; g: f32 = 0.2; b: f32 = 0.15;          // the awning's stripes, in turn this colour
+  r2: f32 = 0.94; g2: f32 = 0.9; b2: f32 = 0.8;        // and this one
+  goods: int = ARCH_GOODS_NONE;      // what is laid out on it: produce in crates, pots, flowers
+  seed: int = 1;
+}
+// Goods laid out from (x0, z0) to (x1, z1) at height y: `kind` picks them.
+arch_goods :: (p: [] ArchPen, kind: int, x0: f32, z0: f32, x1: f32, z1: f32, y: f32, seed: int) {
+  if kind == ARCH_GOODS_NONE { return; }
+  n := cast(int) floor((x1 - x0) / 0.62); if n < 1 { n = 1; }
+  step := (x1 - x0) / cast(f32) n; zm := (z0 + z1) * 0.5;
+  for i: 0..<n {
+    xm := x0 + step * (cast(f32) i + 0.5);
+    if kind == ARCH_GOODS_POTTERY {
+      // Pots and jugs of fired clay, tall and squat.
+      for j: 0..<2 {
+        pot := p[0].n; tall := arch_vary(seed, i * 5 + j, 0.3, 0.55); wide := arch_vary(seed, i * 5 + j + 40, 0.11, 0.18);
+        glaze := arch_hash(seed, i * 5 + j + 80);
+        if glaze < 0.6 { arch_material(p, ARCH_M_CLOTH, 0.74, 0.36, 0.2); } else if glaze < 0.85 { arch_material(p, ARCH_M_CLOTH, 0.9, 0.84, 0.7); } else { arch_material(p, ARCH_M_CLOTH, 0.3, 0.42, 0.62); }
+        shape := [5] ArchTurn.[ArchTurn.{r = wide * 0.6, y = 0, flute = 0}, ArchTurn.{r = wide, y = tall * 0.35, flute = 0}, ArchTurn.{r = wide * 0.85, y = tall * 0.7, flute = 0}, ArchTurn.{r = wide * 0.42, y = tall * 0.88, flute = 0}, ArchTurn.{r = wide * 0.55, y = tall, flute = 0}];
+        arch_lathe(p, shape[..], 8, 0, 0);
+        arch_move(p[0].out, arch_part(p, pot), xm + (cast(f32) j - 0.5) * step * 0.5, y, zm + (arch_hash(seed, i * 5 + j + 120) - 0.5) * (z1 - z0) * 0.6);
+      }
+      continue;
+    }
+    // A shallow crate, tipped toward the buyer, heaped with one kind of thing.
+    arch_material(p, ARCH_M_PLANK, 0.6, 0.42, 0.24);
+    arch_slab(p, xm - step * 0.44, y, z0 + 0.04, xm + step * 0.44, y + 0.12, z1 - 0.04);
+    pick := cast(int) floor(arch_hash(seed, i * 7 + 3) * 5.0);
+    for j: 0..<6 {
+      fx := xm + (cast(f32) (j % 3) - 1.0) * step * 0.26; fz := zm + (cast(f32) (j / 3) - 0.5) * (z1 - z0) * 0.42; size := step * 0.15;
+      if kind == ARCH_GOODS_FLOWERS {
+        arch_material(p, ARCH_M_LEAF, 0.2, 0.42, 0.16);
+        arch_ellipsoid(p, fx, y + 0.2, fz, size * 1.1, size * 0.9, size * 1.1, 6, 4);
+        hue := (pick + j) % 4;
+        if hue == 0 { arch_material(p, ARCH_M_CLOTH, 0.95, 0.9, 0.86); } else if hue == 1 { arch_material(p, ARCH_M_CLOTH, 0.93, 0.5, 0.62); } else if hue == 2 { arch_material(p, ARCH_M_CLOTH, 0.96, 0.8, 0.24); } else { arch_material(p, ARCH_M_CLOTH, 0.62, 0.42, 0.82); }
+        arch_ellipsoid(p, fx, y + 0.2 + size * 0.85, fz, size * 0.7, size * 0.45, size * 0.7, 6, 3);
+        continue;
+      }
+      if pick == 0 { arch_material(p, ARCH_M_CLOTH, 0.9, 0.48, 0.1); size *= 1.3; } else if pick == 1 { arch_material(p, ARCH_M_CLOTH, 0.76, 0.14, 0.12); }
+      else if pick == 2 { arch_material(p, ARCH_M_CLOTH, 0.38, 0.6, 0.2); size *= 1.15; } else if pick == 3 { arch_material(p, ARCH_M_CLOTH, 0.93, 0.8, 0.22); } else { arch_material(p, ARCH_M_CLOTH, 0.52, 0.22, 0.5); }
+      arch_ellipsoid(p, fx, y + 0.12 + size * 0.7, fz, size, size * 0.82, size, 6, 4);
+    }
+  }
+}
+// A market stall: four posts, a counter with its goods, and a sloping awning in two colours with
+// a scalloped edge.
+arch_stall :: (p: [] ArchPen, c: ArchStall) -> ArchPart {
+  from := p[0].n; hw := c.w * 0.5; hd := c.d * 0.5;
+  arch_material(p, ARCH_M_TIMBER, 0, 0, 0);
+  for k: 0..<4 {
+    x: f32 = ifx k % 2 == 0 then hw else -hw; z: f32 = ifx k < 2 then hd else -hd;
+    arch_beam(p, arch_v(x, 0, z), arch_v(x, ifx k < 2 then 2.1f32 else 2.5f32, z), 0.05);
+    arch_solid_box(p, x - 0.05, 0, z - 0.05, x + 0.05, 2.1, z + 0.05);
+  }
+  arch_beam(p, arch_v(-hw, 2.08, hd), arch_v(hw, 2.08, hd), 0.04); arch_beam(p, arch_v(-hw, 2.48, -hd), arch_v(hw, 2.48, -hd), 0.04);
+  arch_material(p, ARCH_M_PLANK, 0.62, 0.44, 0.26);
+  arch_slab(p, -hw, 0.8, -hd * 0.3, hw, 0.9, hd);
+  arch_slab(p, -hw + 0.05, 0, hd - 0.1, hw - 0.05, 0.8, hd - 0.04);
+  arch_slab(p, -hw + 0.05, 0, -hd * 0.3, -hw + 0.11, 0.8, hd - 0.1); arch_slab(p, hw - 0.11, 0, -hd * 0.3, hw - 0.05, 0.8, hd - 0.1);
+  arch_goods(p, c.goods, -hw + 0.1, -hd * 0.2, hw - 0.1, hd - 0.1, 0.9, c.seed);
+  stripes := cast(int) floor(c.w / 0.4 + 0.5); if stripes < 2 { stripes = 2; }
+  for i: 0..<stripes {
+    x0 := -hw - 0.15 + (c.w + 0.3) * cast(f32) i / cast(f32) stripes; x1 := -hw - 0.15 + (c.w + 0.3) * cast(f32) (i + 1) / cast(f32) stripes;
+    if i % 2 == 0 { arch_material(p, ARCH_M_CLOTH, c.r, c.g, c.b); } else { arch_material(p, ARCH_M_CLOTH, c.r2, c.g2, c.b2); }
+    arch_face(p, arch_v(x0, 2.05, hd + 0.3), arch_v(x1, 2.05, hd + 0.3), arch_v(x1, 2.55, -hd - 0.1), arch_v(x0, 2.55, -hd - 0.1));
+    // The edge that hangs down, cut to a scallop.
+    arch_face(p, arch_v(x0, 1.9, hd + 0.3), arch_v(x1, 1.9, hd + 0.3), arch_v(x1, 2.05, hd + 0.3), arch_v(x0, 2.05, hd + 0.3));
+    arch_face(p, arch_v(x0, 1.9, hd + 0.3), arch_v((x0 + x1) * 0.5, 1.78, hd + 0.3), arch_v(x1, 1.9, hd + 0.3), arch_v(x1, 1.9, hd + 0.3));
+  }
+  arch_solid_box(p, -hw, 0, -hd * 0.3, hw, 0.9, hd);
+  return arch_part(p, from);
+}
+// A crate `s` across.
+arch_crate :: (p: [] ArchPen, s: f32) -> ArchPart {
+  from := p[0].n; h := s * 0.5;
+  arch_material(p, ARCH_M_PLANK, 0.66, 0.46, 0.26);
+  arch_slab(p, -h, 0, -h, h, s, h);
+  arch_material(p, ARCH_M_TIMBER, 0.36, 0.22, 0.13);
+  for k: 0..<4 {
+    x: f32 = ifx k % 2 == 0 then h else -h; z: f32 = ifx k < 2 then h else -h;
+    arch_beam(p, arch_v(x, 0, z), arch_v(x, s, z), 0.035);
+  }
+  arch_beam(p, arch_v(-h, s, h), arch_v(h, s, h), 0.035); arch_beam(p, arch_v(-h, s, -h), arch_v(h, s, -h), 0.035);
+  arch_beam(p, arch_v(-h, 0.03, h), arch_v(h, 0.03, h), 0.035); arch_beam(p, arch_v(-h, 0.03, h), arch_v(h, s, h), 0.03);
+  arch_solid_box(p, -h, 0, -h, h, s, h);
+  return arch_part(p, from);
+}
+
+// The lowest and highest of each coordinate over a part.
+ArchBox :: struct { x0: f32; y0: f32; z0: f32; x1: f32; y1: f32; z1: f32; }
+arch_bounds :: (out: [] f32, part: ArchPart) -> ArchBox {
+  b := ArchBox.{x0 = 1000000, y0 = 1000000, z0 = 1000000, x1 = -1000000, y1 = -1000000, z1 = -1000000};
+  for i: 0..<part.count {
+    o := (part.first + i) * ARCH_VERTEX_FLOATS;
+    b.x0 = arch_lowf(b.x0, out[o]); b.x1 = arch_highf(b.x1, out[o]);
+    b.y0 = arch_lowf(b.y0, out[o + 1]); b.y1 = arch_highf(b.y1, out[o + 1]);
+    b.z0 = arch_lowf(b.z0, out[o + 2]); b.z1 = arch_highf(b.z1, out[o + 2]);
+  }
+  return b;
+}
+// How many of a part's vertices are of a material.
+arch_count_of :: (out: [] f32, part: ArchPart, material: int) -> int {
+  n := 0;
+  for i: 0..<part.count { if out[(part.first + i) * ARCH_VERTEX_FLOATS + 6] == cast(f32) material { n += 1; } }
+  return n;
+}
+// Whether every normal in a part is a unit vector.
+arch_normals_unit :: (out: [] f32, part: ArchPart) -> bool {
+  for i: 0..<part.count {
+    o := (part.first + i) * ARCH_VERTEX_FLOATS;
+    l := out[o + 3] * out[o + 3] + out[o + 4] * out[o + 4] + out[o + 5] * out[o + 5];
+    if abs(l - 1) > 0.01 { return false; }
+  }
+  return true;
+}
+
+VILLAGE_TEST_VERTICES :: 120000;
+#test "a cottage keeps to its plan and height, has every material it is made of, and its parameters change it" {
+  buf: [VILLAGE_TEST_VERTICES * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  c: ArchCottage;
+  part := arch_cottage(p[..], c); b := arch_bounds(buf[..], part);
+  #assert !p[0].full && part.count > 1000 && part.count % 3 == 0 && arch_normals_unit(buf[..], part);
+  #assert b.y0 >= -0.001 && b.y1 > c.wall + c.rise + 1 && b.y1 < c.wall + c.rise + 1.7;
+  #assert b.x0 > -c.w * 0.5 - 0.6 && b.x1 < c.w * 0.5 + 1.2 && b.z1 < c.d * 0.5 + c.over + 0.01 && b.z0 > -c.d * 0.5 - c.over - 0.01;
+  #assert arch_count_of(buf[..], part, ARCH_M_PLASTER) > 0 && arch_count_of(buf[..], part, ARCH_M_TIMBER) > 0 && arch_count_of(buf[..], part, ARCH_M_ROOF) > 0;
+  #assert arch_count_of(buf[..], part, ARCH_M_ASHLAR) > 0 && arch_count_of(buf[..], part, ARCH_M_WINDOW) > 0 && arch_count_of(buf[..], part, ARCH_M_DOOR) == 6;
+  // No chimney, no dormer, no door: fewer vertices, and none of a door's.
+  from := p[0].n; plain := c; plain.chimney = 0; plain.dormers = 0; plain.door = -1;
+  bare := arch_cottage(p[..], plain);
+  #assert bare.count < part.count && arch_count_of(buf[..], bare, ARCH_M_DOOR) == 0 && arch_bounds(buf[..], bare).y1 < c.wall + c.rise + 0.2;
+  // A porch reaches out in front; two storeys add windows; the roof takes its colour.
+  porch := c; porch.porch = 1.8; porch.storeys = 2; porch.wall = 4.6; porch.roof_r = 0.2; porch.roof_g = 0.3; porch.roof_b = 0.5;
+  tall := arch_cottage(p[..], porch); tb := arch_bounds(buf[..], tall);
+  #assert !p[0].full && tb.z1 > c.d * 0.5 + 1.8 && arch_count_of(buf[..], tall, ARCH_M_WINDOW) > arch_count_of(buf[..], part, ARCH_M_WINDOW);
+  blue := false;
+  for i: 0..<tall.count { o := (tall.first + i) * ARCH_VERTEX_FLOATS; if buf[o + 6] == ARCH_M_ROOF && buf[o + 9] == 0.2 && buf[o + 11] == 0.5 { blue = true; } }
+  #assert blue;
+}
+#test "a stone house is hipped or gabled, with its door, shutters and lean-to" {
+  buf: [VILLAGE_TEST_VERTICES * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  c: ArchStoneHouse; c.annex = 1.4;
+  part := arch_stone_house(p[..], c); b := arch_bounds(buf[..], part);
+  #assert !p[0].full && part.count % 3 == 0 && arch_normals_unit(buf[..], part) && b.y0 >= -0.001 && abs(b.y1 - (c.wall + c.rise + 0.11)) < 0.1;
+  #assert b.x0 < -c.w * 0.5 - 1.4 && arch_count_of(buf[..], part, ARCH_M_PLANK) > 0 && arch_count_of(buf[..], part, ARCH_M_SHUTTER) >= 6 * 7 && arch_count_of(buf[..], part, ARCH_M_DOOR) > 6;
+  gabled := c; gabled.hip = false; gabled.annex = 0; gabled.door = -1;
+  g := arch_stone_house(p[..], gabled);
+  #assert !p[0].full && arch_count_of(buf[..], g, ARCH_M_PLANK) == 0 && arch_count_of(buf[..], g, ARCH_M_DOOR) == 0 && arch_bounds(buf[..], g).x0 > -c.w * 0.5 - 0.5;
+}
+#test "a tower, a church, walls and street furniture keep to their sizes" #steps 200000000 {
+  buf: [VILLAGE_TEST_VERTICES * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  t: ArchTower; tower := arch_round_tower(p[..], t); tb := arch_bounds(buf[..], tower);
+  #assert tb.y0 == 0 && tb.y1 > t.h + t.roof && abs(tb.x1 - (t.r + 0.5)) < 0.05 && arch_normals_unit(buf[..], tower);
+  ch: ArchChurch; church := arch_church(p[..], ch); cb := arch_bounds(buf[..], church);
+  #assert cb.y1 > ch.tower_h + ch.spire && cb.y1 < ch.tower_h + ch.spire + 1.5 && cb.z1 < ch.d * 0.5 + 1.2 && arch_normals_unit(buf[..], church);
+  #assert arch_count_of(buf[..], church, ARCH_M_STAINED) > 0 && arch_count_of(buf[..], church, ARCH_M_ROSE) == (20 + 10) * 3 && arch_count_of(buf[..], church, ARCH_M_BANNER) == 4 * 15;
+  ch.banners = false; ch.lancets = 2; plain := arch_church(p[..], ch); #assert arch_count_of(buf[..], plain, ARCH_M_BANNER) == 0 && plain.count < church.count;
+  dry := ArchDryWall.{run = 9, h = 1.0, thick = 0.6, tumble = 3, fallen = 0, seed = 7};
+  wall := arch_drystone(p[..], dry); wb := arch_bounds(buf[..], wall);
+  #assert wall.count > 36 * 20 && wb.x0 > -0.3 && wb.x1 < 9.3 && wb.y1 <= 1.45 && wb.y1 > 0.6 && abs(wb.z1) < 0.55;
+  again := arch_drystone(p[..], dry); dry.seed = 8; other := arch_drystone(p[..], dry);
+  dry.seed = 7; dry.tumble = 0; whole := arch_drystone(p[..], dry); #assert whole.count > wall.count;
+  dry.stone = 0.3; fine := arch_drystone(p[..], dry); #assert fine.count > whole.count * 2;
+  #assert again.count == wall.count && buf[again.first * ARCH_VERTEX_FLOATS] == buf[wall.first * ARCH_VERTEX_FLOATS];
+  #assert other.count != wall.count || buf[other.first * ARCH_VERTEX_FLOATS] != buf[wall.first * ARCH_VERTEX_FLOATS];
+  coped := arch_coped_wall(p[..], 5, 1.1, 0.4, 0.5, 0.55, 0.6); #assert arch_bounds(buf[..], coped).y1 == 1.1 && coped.count == 72;
+  pier := arch_pier(p[..], 0.6, 1.4, true); #assert arch_bounds(buf[..], pier).y1 > 1.9 && arch_bounds(buf[..], arch_pier(p[..], 0.6, 1.4, false)).y1 < 1.6;
+  lamp := arch_lamp_post(p[..], 3.2); #assert arch_count_of(buf[..], lamp, ARCH_M_GLOW) == 36 && abs(arch_bounds(buf[..], lamp).y1 - 3.465) < 0.01;
+  pole := arch_banner_pole(p[..], 5, 0.8, 0.2, 0.2); #assert arch_count_of(buf[..], pole, ARCH_M_CLOTH) == 12 && arch_bounds(buf[..], pole).x1 > 1.1;
+  sign := arch_signpost(p[..], 2.4, 3); #assert arch_count_of(buf[..], sign, ARCH_M_PLANK) == 3 * 42;
+  line := arch_bunting(p[..], arch_v(0, 4, 0), arch_v(8, 4, 0), 0.6, 12, true); lb := arch_bounds(buf[..], line);
+  #assert arch_count_of(buf[..], line, ARCH_M_CLOTH) == 12 * 3 && arch_count_of(buf[..], line, ARCH_M_GLOW) == 4 * 36 && lb.y0 < 3.4 && lb.y1 <= 4.02 && lb.x1 <= 8.2;
+  st: ArchStall; st.w = 2.4; st.d = 1.6;
+  stall := arch_stall(p[..], st); #assert arch_count_of(buf[..], stall, ARCH_M_CLOTH) == 6 * 15 && arch_bounds(buf[..], stall).y1 <= 2.56;
+  st.goods = ARCH_GOODS_PRODUCE; full := arch_stall(p[..], st); st.goods = ARCH_GOODS_POTTERY; pots := arch_stall(p[..], st);
+  #assert full.count > stall.count && pots.count > stall.count && arch_bounds(buf[..], full).y1 <= 2.56 && arch_normals_unit(buf[..], pots);
+  crate := arch_crate(p[..], 0.8); #assert arch_bounds(buf[..], crate).y1 < 0.85 && !p[0].full;
+}

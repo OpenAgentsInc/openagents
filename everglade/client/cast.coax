@@ -7,7 +7,7 @@
 // shared rules; this page predicts presentation. A bolt flies to its range and fizzles, a blow swings at the air,
 // an area opens ahead.
 //
-// A press asks first (aethyr/action/deed.coax, docs/verse/action-pipeline.md, #13072): your bearing
+// A press asks first (metaverse-engine/action/deed.coax, docs/verse/action-pipeline.md, #13072): your bearing
 // (the SRD conditions on the room's row of you) must let you act, the slot must not be cooling down,
 // what the room's rules hold of it must not be spent (b, everglade/client/net.coax e2n_slot), and every
 // ability declares its feel (class-feel.coax). When this page's own answer is yes it plays at once
@@ -39,7 +39,7 @@ E2Cast :: struct {
   cool_at: f32 = -100; used: int = -1; hover: int = -1;
   pace: XpPace; pace_was: XpPace;          // your turn as the room paces it (everglade/shared/cast-pace.coax), and before your last press, for a refusal
   menu: int = -1; side_hover: int = -1; menu_hover: int = -1;   // the class menus' open one (EG_SIDE_*, everglade/hud/class-bar.coax) and what the pointer is over
-  puffs: [1] FxPuffs;                      // the casts' effects (aethyr/fx/puff.coax), drawn by everglade/client/gpu/everglade2-fx.coax
+  puffs: [1] FxPuffs;                      // the casts' effects (metaverse-engine/fx/puff.coax), drawn by everglade/client/gpu/everglade2-fx.coax
   audio: [1] exsound.ExperimentalSound;    // their sounds, for the host (everglade2-face.c coaxial_sounds)
   later: [E2K_LATER] E2kLater;
   me: [1] E2kAct; them: [E2N_ENTS] E2kAct;     // yours, and each other's by its slot in the room's list
@@ -48,11 +48,11 @@ E2Cast :: struct {
   // your last press's look and sound: its effects' slots (and their starts) and its voices
   mine: [E2K_MINE] int; mine_t0: [E2K_MINE] f32; mine_n: int; voice0: int; voice1: int;
   fades: [E2K_FADES] E2kFade; undone: int;
-  deeds: [1] DeedBar;                      // the bar's asks and the room's answers (aethyr/action/deed.coax, #13072)
+  deeds: [1] DeedBar;                      // the bar's asks and the room's answers (metaverse-engine/action/deed.coax, #13072)
   ask: E2kAsk;                             // your press the room hasn't answered
   mine_heard: int;                         // your casts the room took that this page has played
   locked: bool; stopped: int;              // your bearing stops your actions: what you had going was stopped (e2k_lock_step)
-  area: [1] aa.AreaAim;                    // a placed area armed: its square or circle on the ground at the crosshair (aethyr/action/area-aim.coax)
+  area: [1] aa.AreaAim;                    // a placed area armed: its square or circle on the ground at the crosshair (metaverse-engine/action/area-aim.coax)
   opened: aa.AreaAim; opened_sp: int = -1; // your last area where it opened (Thunderwave's cube, Entangle's square), shown until its until
   aimed_x: f32; aimed_z: f32;              // where your last cast was aimed
   loosing: bool;                           // the bow's loose is pressing its Attack now (everglade/client/mouse.coax e2m_loose)
@@ -227,7 +227,7 @@ e2k_area_seen :: (s: [] E2) -> aa.AreaAim {
 e2k_area_holds :: (s: [] E2, x: f32, z: f32) -> bool {
   return aa.area_aim_contains(s[0].casts[0].area[0], x, z) || aa.area_aim_contains(e2k_area_seen(s), x, z);
 }
-// One area on the ground through this camera (aethyr/action/area-aim.coax area_aim_point), its guides finer.
+// One area on the ground through this camera (metaverse-engine/action/area-aim.coax area_aim_point), its guides finer.
 e2k_area_draw :: (s: [] E2, a: aa.AreaAim, out: [] f32, at: int, cr: f32, cg: f32, cb: f32) -> int {
   v := at; k := s[0].k;
   view := aa.AreaView.{eye = s[0].eye, fwd = s[0].fwd, right = s[0].right, up = s[0].up, focal = s[0].focal,
@@ -299,7 +299,7 @@ e2k_predict :: (s: [] E2, i: int, face: f32, ax: f32, ay: f32, az: f32) {
     k[0].mine[k[0].mine_n] = q; k[0].mine_t0[k[0].mine_n] = now; k[0].mine_n += 1;
   }
 }
-// Slot i cast at (px, pz) on the ground: asked (aethyr/action/deed.coax), and when this page's own
+// Slot i cast at (px, pz) on the ground: asked (metaverse-engine/action/deed.coax), and when this page's own
 // answer is yes, played now and sent in the same frame; the room's word confirms it (e2k_taken) or
 // takes it back (e2k_undo). False when the ask is refused or nothing could be sent.
 e2k_cast :: (s: [] E2, i: int, face: f32, px: f32, pz: f32) -> bool {
@@ -617,7 +617,7 @@ e2k_familiar_heal_target :: (s:[]E2)->int {
 }
 
 // ---- the class menus under your portrait (zone wiring): Everglade's class features and rest (the
-// game's everglade/hud/class-bar.coax) drawn with the engine's widgets (aethyr/ui/hud-menu.coax), from
+// game's everglade/hud/class-bar.coax) drawn with the engine's widgets (metaverse-engine/ui/hud-menu.coax), from
 // what this zone's room said; a press sends the room its request. Nothing of them is over the bar.
 e2k_facts :: (s: [] E2) -> EgBarFacts {
   f: EgBarFacts; net := s[0].net[..];

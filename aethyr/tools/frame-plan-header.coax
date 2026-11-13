@@ -1,6 +1,0 @@
-// Prints aethyr/host/frame-plan.h (GitHub #13303): the frame plan's numbers, from aethyr/render/frame-plan.coax.
-//   coax/web/tool.sh aethyr/tools/frame-plan-header.coax > aethyr/host/frame-plan.h
-#import "Basic";
-#load "../../coax/lib/sys/tool.coax";
-#load "../render/frame-plan.coax";
-tool_main :: ()->int #export_c #effects(all) {o:[1]FpText;n:=frame_plan_header(o[..]);print("%",cast(string)o[0].b[0..<n]);return 0;}

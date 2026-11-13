@@ -32,13 +32,13 @@ frame of 8.5 ms.
 
 | Axis | Solstice | The Metaverse Engine today |
 | --- | --- | --- |
-| Geometry LOD | A general DAG: 128-triangle clusters, group, simplify with the boundary locked, regroup every level | Valley Lab only (`aethyr/render/geometry/`): leaf clusters, ownership hierarchy and simplifiers for narrow shape classes (`parent`, `fan`, `star`, `grid-parent`). Shipped realms use a distance cutoff (`apps/openagents-web/everglade-lod.coax`) |
+| Geometry LOD | A general DAG: 128-triangle clusters, group, simplify with the boundary locked, regroup every level | Valley Lab only (`metaverse-engine/render/geometry/`): leaf clusters, ownership hierarchy and simplifiers for narrow shape classes (`parent`, `fan`, `star`, `grid-parent`). Shipped realms use a distance cutoff (`apps/openagents-web/everglade-lod.coax`) |
 | Cut selection | GPU compute traversal, under 1 px of projected error | CPU cuts (`cut.coax`), Valley Lab only |
 | Culling | Frustum, plus two-phase occlusion against a depth pyramid; a compute rasterizer for small clusters | No general frustum culling, no Hi-Z, no indirect draws (Valley Lab steps 4 and 6 are open) |
-| Streaming | One file, HTTP Range, 128 KiB pages, parents installed first, LRU over a fixed pool | Whole packs, fetched entire (`coax/web/host.js`). `pages.coax` has 2 slots for one Valley Lab rock. `aethyr/world/cells.coax` exists but no realm uses it |
+| Streaming | One file, HTTP Range, 128 KiB pages, parents installed first, LRU over a fixed pool | Whole packs, fetched entire (`coax/web/host.js`). `pages.coax` has 2 slots for one Valley Lab rock. `metaverse-engine/world/cells.coax` exists but no realm uses it |
 | GPU memory | Fixed pools allocated at startup, so the budget can't be exceeded | `budget.coax` and `render/frame.coax` refuse a frame that goes over. Registry ceiling of 1 GiB |
 | Textures | BC7/BC5 with sRGB; three tiers of arrays, streamed by mip; unpacked on GPUs without BC | JPEG/PNG through `createImageBitmap`, so full RGBA8 on the GPU. No compressed formats |
-| Shadows | 4 cascades; a cascade redraws only when its view changes; contact shadows | One 2048 map (1024 on a phone) reaching 60 m, with PCF (`aethyr/render/light.coax`) |
+| Shadows | 4 cascades; a cascade redraws only when its view changes; contact shadows | One 2048 map (1024 on a phone) reaching 60 m, with PCF (`metaverse-engine/render/light.coax`) |
 | GI, sky, post | Voxel clipmap GI, Hillaire atmosphere, TAA, histogram exposure | Hemisphere ambient, height haze, authored sky. Bloom and exposure in `render/post.coax`. No GI and no TAA |
 | Measurement | Scripted flyover: a frame-time CSV and one image a second; a throttled server for time to first image | `realm-perf.coax` (17 realms × 3 forms, a scripted walk, the 60 FPS rule). No network throttling, no time-to-first-image figure |
 | Checks | Watertight-cut tests, a randomized residency test, WGSL validated without a GPU, GPU tests that skip when there is no GPU | `#test`/`#forall`, `#authority` with zero mutants, goldens. This is stronger than theirs, and their ideas should land under our rules |
@@ -75,7 +75,7 @@ logic, which suits `#authority` and `coax mutate` well.
     nothing qualifies, the load waits and a `starved` counter rises.
   - Their randomized test checks the cut stays valid after every step.
 
-**For us:** generalize `aethyr/render/geometry/pages.coax` from 2 slots to N
+**For us:** generalize `metaverse-engine/render/geometry/pages.coax` from 2 slots to N
 slots with this dependency invariant, and turn their randomized test into a
 `#forall` over request sequences. `pages.coax` already has content identity,
 tickets that fence stale arrivals, and byte accounting, which Solstice lacks.
@@ -124,14 +124,14 @@ existing `assets.coax` admission. That is stronger than an ETag. The steps:
   `coax/web/http-range.coax`, per-connection shaping, and first-image baselines in
   `docs/verification/network-first-image-13000.md`.
 - Teach `coax/web/host.js` to fetch ranges, falling back to the whole file. Done
-  (#13001): VPK3 (`aethyr/forge/page-pack.coax`), a SHA-256 per page admitted in
+  (#13001): VPK3 (`metaverse-engine/editor/page-pack.coax`), a SHA-256 per page admitted in
   Coax, and `coax/web/pack-host.js` range loading. Everglade II's first image at
   50 Mbit/s fell from 22.3 s to 14.0 s with one range at a time
   ([receipt](../verification/range-packs-13001/README.md)).
 - Make *time to first image at 50 Mbit/s and 30 ms* a number every realm
   reports beside the 60 FPS rule.
 
-Book chapter 38 (stream a large world) and `aethyr/world/cells.coax` cover
+Book chapter 38 (stream a large world) and `metaverse-engine/world/cells.coax` cover
 the world-cell half of this. The page format covers the asset half.
 
 ### 4. Compressed, tiered textures (phones first)
@@ -193,7 +193,7 @@ This is the largest item and the one that unlocks arbitrary imported assets
 (Quaternius, glTF). Do it after items 1 to 3, so streaming and selection have
 a real consumer.
 
-**Landed (#13015):** `aethyr/render/geometry/dag.coax` builds this DAG from
+**Landed (#13015):** `metaverse-engine/render/geometry/dag.coax` builds this DAG from
 any indexed mesh, with each of the six properties above as a check. See the
 Valley Lab note "Landed: a general cluster DAG".
 
@@ -253,7 +253,7 @@ before/after table for each change, and states what was *not* measured.
 
 ## Proposed sequence
 
-1. **Watertight CPU residency** landed in `aethyr/render/geometry/residency.coax`
+1. **Watertight CPU residency** landed in `metaverse-engine/render/geometry/residency.coax`
    (#12999): N slots, dependency-safe installation/eviction, `#forall` over random
    request sequences and zero mutation survivors. The delayed-child install fix
    and 464-mutant gate are recorded in
@@ -265,10 +265,10 @@ before/after table for each change, and states what was *not* measured.
    `host.js` and the whole-file fallback (landed, #13001).
 4. **Valley Lab step 6:** the request array, frustum culling and two-phase
    Hi-Z in Coax-emitted WGSL, and the draw rule in the cull pass (landed,
-   #13008: `aethyr/render/geometry/cull.coax`, `/worlds/valley-lab/cull`).
+   #13008: `metaverse-engine/render/geometry/cull.coax`, `/worlds/valley-lab/cull`).
 5. **Texture memory audit, then ASTC/BC** with tiers.
 6. **The general DAG builder,** with Solstice's watertight properties as
-   `#forall` checks (landed, #13015: `aethyr/render/geometry/dag.coax`).
+   `#forall` checks (landed, #13015: `metaverse-engine/render/geometry/dag.coax`).
 7. **Cached cascades** and the **flyover benchmark,** as worlds grow.
 
 Items 1, 2 and 7's flyover are small and independent, and can start now.

@@ -1,7 +1,7 @@
 // Native ledger rollback through the real owner and outbox.
 // tool.sh: stack-gib 1
 #import "Basic";
-#load "../../aethyr/session/ledger.coax";
+#load "../../metaverse-engine/session/ledger.coax";
 native_ledger_rollback :: () #effects(all) {
   l:[1]ItemLedger;l[0].out_n=LEDGER_OUTBOX;l[0].out[0]=LedgerEntry.{seq=7,kind=99};
   ask:=LedgerAsk.{id=1,op=LOP_GRANT,c=CharacterId.{value=0},gen=OwnerGeneration.{value=1},kind=3};

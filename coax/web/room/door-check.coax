@@ -4,7 +4,7 @@
 //   coax/web/tool.sh coax/web/room/door-check.coax ws://127.0.0.1:PORT
 // Run it against a local room (room --dev DIR). Prints one JSON line, then "opens" and exits 0, or
 // "fails" and 1.
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "../../../everglade/legacy/v1/points.coax";   // the inn's door and the South Gate, by name (#13078)
 #load "../map-points.coax";

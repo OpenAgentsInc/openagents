@@ -1,0 +1,192 @@
+// Hold proto/verse/asset-pack-v2.json to metaverse-engine/editor/pack.coax, metaverse-engine/host/pack-stream.coax and
+// metaverse-engine/host/pack-cells.coax (the catalog's cell lines, written and read back, #13304):
+// header/entry bounds, VPK2 layout written byte for byte and read back whole, wide 61..128 entry
+// tables refused by VPK1 and admitted by VPK2, and atomic registry refusal with no partial state.
+//   coax/web/tool.sh metaverse-engine/tools/pack-profile.coax proto/verse/asset-pack-v2.json
+#import "Basic";
+#load "../host/pack-stream.coax";
+#load "../host/pack-cells.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+PP_FILE :: 65536;
+
+pp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+pp_unhex :: (s: string, out: [] u8) -> int {
+  if (s.count & 1) != 0 || s.count / 2 > out.count { return -1; }
+  for i: 0..<s.count / 2 {
+    hi := asset_digit(s[2 * i]);
+    lo := asset_digit(s[2 * i + 1]);
+    if hi < 0 || lo < 0 { return -1; }
+    out[i] = cast,trunc(u8) ((hi << 4) | lo);
+  }
+  return s.count / 2;
+}
+pp_check_fixture :: (d: Jv, fx: int) -> bool {
+  budget := jv_int(d, jv_get(d, fx, "budget"), -1);
+  entries := jv_get(d, fx, "entries");
+  ec := jv_len(d, entries);
+  if budget <= 0 || ec <= 0 || ec > PACK_READ_MAX { return false; }
+  nbuf: [PACK_READ_MAX][32] u8;
+  dbuf: [PACK_READ_MAX][512] u8;
+  src: [PACK_READ_MAX] PackSource;
+  for i: 0..<ec {
+    row := jv_at(d, entries, i);
+    src[i] = PackSource.{
+      kind = jv_int(d, jv_get(d, row, "kind"), -1),
+      licence = jv_int(d, jv_get(d, row, "licence"), -1),
+      name = pp_str(d, jv_get(d, row, "name"), nbuf[i][..]),
+      data = pp_str(d, jv_get(d, row, "data"), dbuf[i][..]),
+    };
+  }
+  hex_buf: [16384] u8;
+  expected: [8192] u8;
+  en := pp_unhex(pp_str(d, jv_get(d, fx, "hex"), hex_buf[..]), expected[..]);
+  if en <= 0 { return false; }
+  written: [8192] u8;
+  wn := pack_write_v2(src[0..<ec], budget, written[..]);
+  if wn != en || cast(string) written[0..<wn] != cast(string) expected[0..<en] { return false; }
+  r: [1] PackRead;
+  raw := cast(string) expected[0..<en];
+  if !pack_read(raw, r[..]) || !r[0].ok || r[0].count != ec || r[0].bytes != en || r[0].budget != budget { return false; }
+  for i: 0..<ec {
+    if r[0].entries[i].kind != src[i].kind || r[0].entries[i].licence != src[i].licence || r[0].entries[i].name != src[i].name { return false; }
+    if pack_bytes(raw, r[..], i) != src[i].data { return false; }
+  }
+  reg := [1] AssetRegistry.[asset_registry(budget)];
+  if pack_admit(reg[..], raw, r[..]) != ASSET_OK || reg[0].held != ec { return false; }
+  return true;
+}
+pp_check_bounds :: () -> bool {
+  cat1: [512] u8; n1 := 0;
+  for ch: "budget 9999\nbytes 3340\nL 0 a\n" { cat1[n1] = ch; n1 += 1; }
+  for k: 0..<58 { for ch: "S s 0\n" { cat1[n1] = ch; n1 += 1; } }
+  s: [129] PackSource;
+  s[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = cast(string) cat1[0..<n1]};
+  s[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices"};
+  s[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices"};
+  for k: 3..<129 { s[k] = PackSource.{kind = PACK_SOUND, licence = 0, name = "s"}; }
+  b: [8192] u8; r: [1] PackRead;
+  if pack_write(s[0..<61], 9999, b[..]) != -1 { return false; }
+  wn := pack_write_v2(s[0..<61], 9999, b[..]);
+  if wn != 3340 || !pack_read(cast(string) b[0..<wn], r[..]) || r[0].count != 61 { return false; }
+  if pack_write_v2(s[..], 9999, b[..]) != -1 { return false; }
+
+  // Oversize admission refuses atomically: >64 entries fails table bound, and 64 unique entries
+  // when 1 slot is already held fails ASSET_FULL with no partial admission.
+  cat2: [1024] u8; n2 := 0;
+  for ch: "budget 9999\nbytes 3936\nL 0 a\n" { cat2[n2] = ch; n2 += 1; }
+  cat3: [1024] u8; n3 := 0;
+  for ch: "budget 9999\nbytes 3876\nL 0 a\n" { cat3[n3] = ch; n3 += 1; }
+  names: [65][3] u8;
+  payloads: [65][4] u8;
+  for k: 3..<65 {
+    names[k][0] = 's'; names[k][1] = cast,trunc(u8) ('0' + k / 10); names[k][2] = cast,trunc(u8) ('0' + (k % 10));
+    for ch: "S " { cat2[n2] = ch; n2 += 1; }
+    cat2[n2] = names[k][0]; cat2[n2 + 1] = names[k][1]; cat2[n2 + 2] = names[k][2]; n2 += 3;
+    for ch: " 0\n" { cat2[n2] = ch; n2 += 1; }
+    if k < 64 {
+      for ch: "S " { cat3[n3] = ch; n3 += 1; }
+      cat3[n3] = names[k][0]; cat3[n3 + 1] = names[k][1]; cat3[n3 + 2] = names[k][2]; n3 += 3;
+      for ch: " 0\n" { cat3[n3] = ch; n3 += 1; }
+    }
+    payloads[k][0] = 's'; payloads[k][1] = names[k][1]; payloads[k][2] = names[k][2]; payloads[k][3] = '!';
+  }
+  u: [65] PackSource;
+  u[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = cast(string) cat2[0..<n2]};
+  u[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = "vvvv"};
+  u[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = "iiii"};
+  for k: 3..<65 {
+    u[k] = PackSource.{kind = PACK_SOUND, licence = 0, name = cast(string) names[k][..], data = cast(string) payloads[k][..]};
+  }
+  un := pack_write_v2(u[..], 9999, b[..]);
+  if un != 3936 || !pack_read(cast(string) b[0..<un], r[..]) || r[0].count != 65 { return false; }
+  reg := [1] AssetRegistry.[asset_registry(9999)];
+  if pack_admit(reg[..], cast(string) b[0..<un], r[..]) != ASSET_MALFORMED || reg[0].held != 0 || reg[0].used != 0 { return false; }
+  u[0].data = cast(string) cat3[0..<n3];
+  un64 := pack_write_v2(u[0..<64], 9999, b[..]);
+  if un64 != 3876 || !pack_read(cast(string) b[0..<un64], r[..]) || r[0].count != 64 { return false; }
+  seed_c := [1] string.["seed"]; seed_t := [1] AssetId.[asset_id("seed")];
+  if asset_admit(reg[..], seed_c[..], seed_t[..]) != ASSET_OK || reg[0].held != 1 { return false; }
+  if pack_admit(reg[..], cast(string) b[0..<un64], r[..]) != ASSET_FULL || reg[0].held != 1 || reg[0].used != 4 { return false; }
+  return true;
+}
+// The catalog's cell lines (metaverse-engine/host/pack-cells.coax, #13304): each fixture's cell is written as
+// its line byte for byte and read back whole; each refused line is no cell's.
+pp_check_cells :: (d: Jv) -> bool {
+  cells := jv_get(d, 0, "cell_lines");
+  if jv_int(d, jv_get(d, cells, "max_ranges"), -1) != PACK_CELL_RANGES || jv_int(d, jv_get(d, cells, "coordinate_min"), 0) != -PACK_CELL_SPAN || jv_int(d, jv_get(d, cells, "coordinate_max"), 0) != PACK_CELL_SPAN - 1 { return false; }
+  fxs := jv_get(d, cells, "fixtures");
+  if jv_len(d, fxs) < 3 { return false; }
+  lb: [PACK_CELL_LINE] u8; wb: [PACK_CELL_LINE] u8;
+  for i: 0..<jv_len(d, fxs) {
+    fx := jv_at(d, fxs, i);
+    cx := jv_int(d, jv_get(d, fx, "cx"), 99999); cz := jv_int(d, jv_get(d, fx, "cz"), 99999);
+    digest := jv_int(d, jv_get(d, fx, "digest"), -1); image := jv_int(d, jv_get(d, fx, "image_bytes"), -1);
+    ranges := jv_get(d, fx, "ranges"); rn := jv_len(d, ranges);
+    if rn < 1 || rn > PACK_CELL_RANGES { return false; }
+    at: [PACK_CELL_RANGES] int; n: [PACK_CELL_RANGES] int;
+    for k: 0..<rn { pair := jv_at(d, ranges, k); at[k] = jv_int(d, jv_at(d, pair, 0), -1); n[k] = jv_int(d, jv_at(d, pair, 1), -1); }
+    line := pp_str(d, jv_get(d, fx, "line"), lb[..]);
+    w := pack_cell_line(cx, cz, digest, at[0..<rn], n[0..<rn], image, wb[..]);
+    if w != line.count + 1 || cast(string) wb[0..<w - 1] != line || wb[w - 1] != '\n' { return false; }
+    c := pack_cell_read(line, image);
+    if !c.ok || c.cx != cx || c.cz != cz || c.digest != digest || c.ranges != rn { return false; }
+    for k: 0..<rn { if c.at[k] != at[k] || c.n[k] != n[k] { return false; } }
+    if jv_int(d, jv_get(d, fx, "key"), -1) != pack_cell_key(cx, cz) || !pack_cell_find(line, pack_cell_key(cx, cz), image).ok { return false; }
+  }
+  refused := jv_get(d, cells, "refused");
+  if jv_len(d, refused) < 6 { return false; }
+  for i: 0..<jv_len(d, refused) {
+    if pack_cell_read(pp_str(d, jv_at(d, refused, i), lb[..]), 4294967295).ok { return false; }
+  }
+  return true;
+}
+pp_check :: (d: Jv) -> bool {
+  tb: [2][256] u8;
+  if pp_str(d, jv_get(d, 0, "identity"), tb[0][..]) != "asset-pack-v2" { return false; }
+  magic := pp_str(d, jv_get(d, 0, "magic"), tb[1][..]);
+  if magic != "VPK2" || !pack_magic_ok(magic) || pack_magic_ok("VPK3") { return false; }
+  if pp_str(d, jv_get(d, 0, "byte_order"), tb[0][..]) != "little endian" { return false; }
+  if jv_int(d, jv_get(d, 0, "header_bytes"), -1) != PACK_HEADER { return false; }
+  if jv_int(d, jv_get(d, 0, "entry_bytes"), -1) != PACK_ENTRY { return false; }
+  if jv_int(d, jv_get(d, 0, "max_entries"), -1) != PACK_READ_MAX { return false; }
+  if jv_int(d, jv_get(d, 0, "vpk1_max_entries"), -1) != PACK_MAX { return false; }
+  if jv_int(d, jv_get(d, 0, "stream_max_bytes"), -1) != HOST_PACK_BYTES { return false; }
+  if jv_int(d, jv_get(d, 0, "registry_max_assets"), -1) != ASSET_SLOTS { return false; }
+  fxs := jv_get(d, 0, "fixtures");
+  if jv_len(d, fxs) < 1 { return false; }
+  for i: 0..<jv_len(d, fxs) {
+    if !pp_check_fixture(d, jv_at(d, fxs, i)) { return false; }
+  }
+  refused := jv_get(d, 0, "refused_hex");
+  if jv_len(d, refused) < 2 { return false; }
+  hbuf: [16384] u8;
+  raw: [8192] u8;
+  for i: 0..<jv_len(d, refused) {
+    bn := pp_unhex(pp_str(d, jv_at(d, refused, i), hbuf[..]), raw[..]);
+    r: [1] PackRead;
+    if bn < 0 || pack_read(cast(string) raw[0..<bn], r[..]) { return false; }
+  }
+  return pp_check_cells(d) && pp_check_bounds();
+}
+#test "Asset pack v2 profile tool checks bounds and rejects malformed profiles" {
+  #assert pp_check_bounds();
+  nodes: [256] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], "{\"identity\":\"asset-pack-v2\",\"magic\":\"VPK1\"}", nodes[..]);
+  #assert !pp_check(d[0]);
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: pack-profile FILE.json"); return 2; }
+  text: [PP_FILE] u8; n := fs_read(args_at(a[..], 0), text[..]);
+  nodes: [2048] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("pack-profile: cannot parse JSON"); return 2; }
+  if !pp_check(d[0]) { print("asset-pack-v2: profile fails\n"); return 1; }
+  print("asset-pack-v2: profile holds\n");
+  return 0;
+}

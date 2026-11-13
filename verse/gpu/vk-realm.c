@@ -20,8 +20,8 @@
 // differently). --frames-dir writes frames A..B (frame indices, default all) to DIR as
 // frame-NNNNNN.rgba16f (the --raw-out layout: half RGBA of each last target in turn), with
 // DIR/film.txt (size, targets, fps, range) and DIR/timing.txt (open, then each written
-// frame's step, GPU and read-back seconds); aethyr/tools/film-frames.coax makes them
-// review PNGs, hashes, meta.json and the encode. The film profile (aethyr/render/film.coax) makes each
+// frame's step, GPU and read-back seconds); metaverse-engine/tools/film-frames.coax makes them
+// review PNGs, hashes, meta.json and the encode. The film profile (metaverse-engine/render/film.coax) makes each
 // written frame the average of N samples: the realm advanced to each sample's time (stratified in
 // the shutter, whole nanoseconds, so it runs the steps one sample would), its view-projection
 // (the 16 floats at uniform U, --film-view) moved by the sample's pixel jitter and, with --fstop
@@ -54,7 +54,7 @@
 #include "vk-spec.h"
 #endif
 #include "vkd.h"
-// The film profile (aethyr/render/film.coax as C, built beside this file by realm.sh and
+// The film profile (metaverse-engine/render/film.coax as C, built beside this file by realm.sh and
 // build-linux-world.coax); a build without it refuses the film flags.
 #if defined(__has_include)
 #if __has_include("film.h")
@@ -606,7 +606,7 @@ int main(int argc, char **argv) {
   }
   if (!sample_capacity) { fprintf(stderr, "vk-realm: --stats-frames must be 64..100000\n"); return 2; }
   int film_multi = film_n != 1 || film_shutter != 0 || film_fstop > 0;
-  if ((film_multi || film_audio) && !VK_FILM) { fprintf(stderr, "vk-realm: this build has no film profile (aethyr/render/film.coax)\n"); return 2; }
+  if ((film_multi || film_audio) && !VK_FILM) { fprintf(stderr, "vk-realm: this build has no film profile (metaverse-engine/render/film.coax)\n"); return 2; }
   if ((film_multi || film_audio) && (!frames_dir || fps != (double)(int)fps)) { fprintf(stderr, "vk-realm: the film profile needs --frames-dir and a whole --fps\n"); return 2; }
   if (film_fstop > 0 && !(film_focus > 0)) { fprintf(stderr, "vk-realm: --fstop needs --focus METRES\n"); return 2; }
   if (film_multi && film_view < 0) { fprintf(stderr, "vk-realm: the film profile needs --film-view U, where the realm's view-projection starts in its uniforms\n"); return 2; }
@@ -756,7 +756,7 @@ int main(int argc, char **argv) {
       if (!film_timing || !film_raw) { fprintf(stderr, "vk-realm: cannot write %s\n", path); return 1; }
       fprintf(film_timing, "open %.6f\n", now_s() - benchmark_begin);
       int refused = film_host_admit(film_n, (float)film_shutter, film_position, (int32_t)w, (int32_t)h, nlast);
-      if (refused) { fprintf(stderr, "vk-realm: the film profile is refused (aethyr/render/film.coax FilmRefusal %d)\n", refused); return 2; }
+      if (refused) { fprintf(stderr, "vk-realm: the film profile is refused (metaverse-engine/render/film.coax FilmRefusal %d)\n", refused); return 2; }
       if (film_multi) {
         film_acc = calloc((size_t)w * h * 4 * nlast, sizeof(float));
         if (!film_acc) { fprintf(stderr, "vk-realm: no memory for the film's accumulation\n"); return 1; }
@@ -788,7 +788,7 @@ int main(int argc, char **argv) {
 #endif
       hud_vertices = produce_frame((float)w,(float)h,scale,dt);
       if (samples_now > 1 || (film_multi && film_in)) {
-        // the sample's place in the pixel and on the aperture, on the realm's own matrix (aethyr/render/film.coax)
+        // the sample's place in the pixel and on the aperture, on the realm's own matrix (metaverse-engine/render/film.coax)
         float jx = film_jitter ? film_host_jitter(film_n, (float)film_shutter, film_position, film_seed, frames + 1, sample, 0) : 0;
         float jy = film_jitter ? film_host_jitter(film_n, (float)film_shutter, film_position, film_seed, frames + 1, sample, 1) : 0;
         float lu = film_host_lens(film_n, (float)film_shutter, film_position, film_seed, frames + 1, sample, 0);

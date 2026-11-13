@@ -3,8 +3,8 @@
 Arrows over a room: the page tells the room it loosed one, and the room
 flies it and tells every page. Profile:
 [`everglade2-combat-v2.json`](../../proto/verse/everglade2-combat-v2.json).
-Codec: `aethyr/net/projectile.coax`, which the page and the room both load.
-Whole numbers a space apart (`aethyr/net/record.coax`): positions in mm,
+Codec: `metaverse-engine/net/projectile.coax`, which the page and the room both load.
+Whole numbers a space apart (`metaverse-engine/net/record.coax`): positions in mm,
 velocities in mm/s, strength in thousandths.
 
 | Frame | Fields |
@@ -14,7 +14,7 @@ velocities in mm/s, strength in thousandths.
 | `d` | `TICK ID KIND X Y Z DX DY DZ BODY`, room to pages: it ended. KIND 1 stuck at (X, Y, Z) pointing (DX, DY, DZ) in thousandths, 2 in body BODY, 3 gone. BODY is -1 when none |
 
 The room flies a launch from VIEW against the bodies as they stood then,
-within the past it keeps (`aethyr/net/rewind.coax`: 24 ticks), so what the
+within the past it keeps (`metaverse-engine/net/rewind.coax`: 24 ticks), so what the
 archer's page showed is what the room judges. An `a`'s AGE is at most 250 ms. A frame with a
 field missing, extra, farther than 2 km from the origin, or faster than
 200 m/s is refused whole. The page takes each `a` and `d` once by its ID.

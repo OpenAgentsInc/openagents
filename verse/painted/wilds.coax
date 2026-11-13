@@ -10,14 +10,14 @@
 // (The numbers are the reference frames'.)
 //
 // Like the village, nothing is modelled here: every part is a generator of the Metaverse Engine's architecture
-// kit (aethyr/arch/land.coax: the cliff, boulders, the river, the falls, spray, the rainbow, the
-// bridge, reeds, flowers; aethyr/arch/flora.coax: trees, bushes, hills, the ground). The river,
+// kit (metaverse-engine/arch/land.coax: the cliff, boulders, the river, the falls, spray, the rainbow, the
+// bridge, reeds, flowers; metaverse-engine/arch/flora.coax: trees, bushes, hills, the ground). The river,
 // the falls, the spray and the rainbow are drawn last, in the Metaverse Engine's stylized water pass. It is one
 // world with the village (verse/painted/village-road.coax, which loads this file and builds it):
 // the same ground table, the same solids, the same walker.
 // This file is a part of that one and stands on its names: check it through it.
 //   coax/bin/coax test --library verse/painted/village-road.coax
-#load "../../aethyr/arch/land.coax";
+#load "../../metaverse-engine/arch/land.coax";
 
 VW_START :: 30.0;                  // the village's land gives way to this country from here (z)
 VW_BLEND :: 16.0;                  // over this many metres

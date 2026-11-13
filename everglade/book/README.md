@@ -11,7 +11,7 @@ planned.
 - **What you build.** An MMORPG you play in a browser: a forest glade, a
   path, other players, SRD rules and action combat.
 - **What you need.** The [Coax book](../../coax/book/README.md)'s Parts
-  I–III. The [Metaverse Engine book](../../aethyr/book/README.md)'s Parts I–III help,
+  I–III. The [Metaverse Engine book](../../metaverse-engine/book/README.md)'s Parts I–III help,
   and each chapter links to the engine chapter it uses.
 - **A short path.** Chapters 1, 3, 4, 8, 12, 14 and 18 take you from one
   reference picture to a shared world with rules, in about two hours of
@@ -34,7 +34,7 @@ time, with these tools:
 
 - [Coax](../../coax/book/README.md), the language. You write everything in it:
   the land, the rules, the network code and the shaders it generates.
-- [the Metaverse Engine](../../aethyr/book/README.md), the world engine. Everglade uses its
+- [the Metaverse Engine](../../metaverse-engine/book/README.md), the world engine. Everglade uses its
   frame loop, terrain, renderer, lighting, physics, animation and room server.
 - The OpenAgents Metaverse, where Everglade is one realm among many.
 
@@ -217,9 +217,9 @@ builds what it uses.
 
 | Everglade | Uses | From |
 | --- | --- | --- |
-| Parts I–III: the land, the light, movement | The frame loop, terrain, collision, the renderer and budgets | [the Metaverse Engine](../../aethyr/book/README.md) Parts I–III |
-| Part IV: other players | The room server, the shared step, signed seats, prediction and interest | Metaverse Engine Part XII, chapters [86](../../aethyr/book/ch086-one-server-owns-the-scene.md) to [98](../../aethyr/book/ch098-versions-deploys-and-reconnect.md) |
-| Parts V and VII: rules and action combat | One pipeline for every action, and one bearing from a body's conditions | [Metaverse Engine chapter 102](../../aethyr/book/ch102-ask-act-present.md) |
+| Parts I–III: the land, the light, movement | The frame loop, terrain, collision, the renderer and budgets | [the Metaverse Engine](../../metaverse-engine/book/README.md) Parts I–III |
+| Part IV: other players | The room server, the shared step, signed seats, prediction and interest | Metaverse Engine Part XII, chapters [86](../../metaverse-engine/book/ch086-one-server-owns-the-scene.md) to [98](../../metaverse-engine/book/ch098-versions-deploys-and-reconnect.md) |
+| Parts V and VII: rules and action combat | One pipeline for every action, and one bearing from a body's conditions | [Metaverse Engine chapter 102](../../metaverse-engine/book/ch102-ask-act-present.md) |
 | Part VI: the guard | A decision that arrives while play continues, and a guard that asks a Pylon | [Psionic chapters 28](../../psionic/book/ch028-a-decision-arrives-while-play-continues.md) to [32](../../psionic/book/ch032-a-guard-gives-directions.md) |
 | Signing in and your player key | Keys, signed events and HTTP auth | [Nostr chapters 21](../../nostr/book/ch021-events-ids-and-signatures.md) and [49](../../nostr/book/ch049-http-auth.md) |
 | Tips to a realm's maker | Lightning zaps and invoices | [Nostr chapter 71](../../nostr/book/ch071-lightning-zaps-and-goals.md), [Bitcoin chapter 114](../../bitcoin/book/ch114-invoices.md) |

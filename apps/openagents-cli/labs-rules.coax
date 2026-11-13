@@ -7,8 +7,8 @@
 //   coax/bin/coax test apps/openagents-cli/labs-rules.coax --library
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/anim/cut-lines.coax";
-#load "../../aethyr/render/capture-profile.coax";
+#load "../../metaverse-engine/anim/cut-lines.coax";
+#load "../../metaverse-engine/render/capture-profile.coax";
 
 EXIT_MISSING :: 8;   // a program Labs needs is missing (Chrome, ffmpeg, the transcribe backend)
 

@@ -32,8 +32,8 @@ cc=("$llvm/bin/aarch64-linux-android30-clang" -std=c11 -O2 -fPIC -ffp-contract=o
 objects=()
 for unit in workshop model temple; do "${cc[@]}" -c "$work/c/$unit.c" -o "$work/c/$unit.o"; objects+=("$work/c/$unit.o"); done
 for face in face model-face place-face; do "${cc[@]}" -c "$desk/$face.c" -o "$work/c/$face.o"; objects+=("$work/c/$face.o"); done
-# The one pack reader (aethyr/host/pack-table.coax's pack_table, #13304) as C: host.c finds the pack's entries through it.
-"$coax" c "$repo/aethyr/host/pack-table-face.coax" --library --header "$work/c/aethyr-pack-table.h" > "$work/c/aethyr-pack-table.c"
+# The one pack reader (metaverse-engine/host/pack-table.coax's pack_table, #13304) as C: host.c finds the pack's entries through it.
+"$coax" c "$repo/metaverse-engine/host/pack-table-face.coax" --library --header "$work/c/aethyr-pack-table.h" > "$work/c/aethyr-pack-table.c"
 "${cc[@]}" -c "$work/c/aethyr-pack-table.c" -o "$work/c/aethyr-pack-table.o"; objects+=("$work/c/aethyr-pack-table.o")
 "${cc[@]}" -c "$here/host.c" -o "$work/c/host.o"
 # Your account (#13229): the login's flow and NIP-98 signing (app-login-unit.coax, its own unit:

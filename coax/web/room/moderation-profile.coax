@@ -1,9 +1,9 @@
-// Moderation v1's profile check (#13302, aethyr/session/moderation.coax, docs/protocol/moderation-v1.md):
+// Moderation v1's profile check (#13302, metaverse-engine/session/moderation.coax, docs/protocol/moderation-v1.md):
 // every fixture of proto/verse/moderation-v1.json is written and read through the one codec, the rules
 // answer as the file says, and every malformed text is refused.
 //   coax/web/tool.sh coax/web/room/moderation-profile.coax proto/verse/moderation-v1.json
 #import "Basic";
-#load "../../../aethyr/session/moderation.coax";
+#load "../../../metaverse-engine/session/moderation.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/json/json.coax";

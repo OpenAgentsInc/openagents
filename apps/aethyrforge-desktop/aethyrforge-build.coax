@@ -104,7 +104,7 @@ af_native_stamp :: (root:string,source:string,deadline:int)->int {
 af_native :: (root:string,here:string,work:string,coax:string,out:[]u8,deadline:int)->bool {
  paths:[8][4096]u8;metal:=fs_join(work,"metal",paths[0][..]);if !fs_mkdir(metal) {return false;}
  names:=[11]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","AppKitInput","HostNetwork","entropy-policy"];
- sources:=[11]string.["apps/aethyrforge-desktop/metal-world.coax","everglade/shared/everglade-step.coax","verse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-images.coax","aethyr/host/appkit-input.coax","aethyr/host/native-socket.coax","coax/lib/crypto/entropy.coax"];
+ sources:=[11]string.["apps/aethyrforge-desktop/metal-world.coax","everglade/shared/everglade-step.coax","verse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","metaverse-engine/render/native-images.coax","metaverse-engine/host/appkit-input.coax","metaverse-engine/host/native-socket.coax","coax/lib/crypto/entropy.coax"];
  compiler_stamp:=fs_mtime_ns(coax);producer_stamp:=0;
  for name,i:names {stamp:=af_native_stamp(root,sources[i],deadline);if stamp<0 {return false;}if compiler_stamp>stamp {stamp=compiler_stamp;}
   text:[128]u8;j:[1]Jo;jo_start(j[..],text[..]);jo_put(j[..],name);jo_put(j[..],".o");object:=fs_join(metal,jo_text(j[..]),paths[1][..]);
@@ -113,12 +113,12 @@ af_native :: (root:string,here:string,work:string,coax:string,out:[]u8,deadline:
  }
  for name:[5]string.["apps/openagents-web/everglade5e-face.c","apps/openagents-web/face-address.h","apps/openagents-web/edit-face.h","apps/openagents-web/place-face.h","apps/openagents-web/analytics-face.h"] {stamp:=fs_mtime_ns(fs_join(root,name,paths[1][..]));if stamp>producer_stamp {producer_stamp=stamp;}}
  if fs_mtime_ns(fs_join(metal,"libeverglade.dylib",paths[1][..]))<producer_stamp {cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"producer"];if af_run(cmd[..],out,deadline)<0 {return false;}}
- sdk_stamp:=fs_mtime_ns(fs_join(here,"MetalRealm.m",paths[1][..]));for name:[7]string.["metal-host.h","metal-producer.h","metal-sockets.h","build/metal/MetalRender.h","build/metal/RenderTexture.h","../../aethyr/host/apple/audio-host.h","../../aethyr/host/apple/audio-host.c"] {stamp:=fs_mtime_ns(fs_join(here,name,paths[1][..]));if stamp>sdk_stamp {sdk_stamp=stamp;}}
+ sdk_stamp:=fs_mtime_ns(fs_join(here,"MetalRealm.m",paths[1][..]));for name:[7]string.["metal-host.h","metal-producer.h","metal-sockets.h","build/metal/MetalRender.h","build/metal/RenderTexture.h","../../metaverse-engine/host/apple/audio-host.h","../../metaverse-engine/host/apple/audio-host.c"] {stamp:=fs_mtime_ns(fs_join(here,name,paths[1][..]));if stamp>sdk_stamp {sdk_stamp=stamp;}}
  for name:[2]string.["verse/native/render-images.c","verse/native/render-images.h"] {stamp:=fs_mtime_ns(fs_join(root,name,paths[1][..]));if stamp>sdk_stamp {sdk_stamp=stamp;}}
  if fs_mtime_ns(fs_join(metal,"MetalRealm.o",paths[1][..]))<sdk_stamp {cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"sdk"];if af_run(cmd[..],out,deadline)<0 {return false;}}
  network_stamp:=af_newest(fs_join(root,"coax/platform",paths[1][..]));for name:[5]string.["MetalSockets.c","metal-sockets.h","metal-build.coax","build/metal/HostNetwork.o","build/metal/entropy-policy.o"] {stamp:=fs_mtime_ns(fs_join(here,name,paths[1][..]));if stamp>network_stamp {network_stamp=stamp;}}
  if fs_mtime_ns(fs_join(metal,"libnetwork.dylib",paths[1][..]))<network_stamp {cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"socket-library"];if af_run(cmd[..],out,deadline)<0 {return false;}}
- shader_stamp:=af_newest(fs_join(root,"verse/gpu",paths[1][..]));for dir:[2]string.["aethyr/render","apps/openagents-web"] {stamp:=af_newest(fs_join(root,dir,paths[1][..]));if stamp>shader_stamp {shader_stamp=stamp;}}
+ shader_stamp:=af_newest(fs_join(root,"verse/gpu",paths[1][..]));for dir:[2]string.["metaverse-engine/render","apps/openagents-web"] {stamp:=af_newest(fs_join(root,dir,paths[1][..]));if stamp>shader_stamp {shader_stamp=stamp;}}
  if fs_mtime_ns(fs_join(metal,"render/metal.json",paths[1][..]))<shader_stamp {env:[4096]u8;graphics:=proc_getenv("COAX_GRAPHICS",env[..]);if graphics=="" {tool_errln("Metal shader products need a graphics-qualified compiler: set COAX_GRAPHICS to its executable, then resume build.sh. The cached tool compiler is never replaced.");return false;}cmd:=[6]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"shaders","--coax",graphics];if af_run(cmd[..],out,deadline)<0 {return false;}}
  pack:=fs_join(root,"apps/openagents-web/realms/everglade/assets/everglade.pack",paths[1][..]);asset_stamp:=af_native_stamp(root,"apps/aethyrforge-desktop/metal-assets.coax",deadline);if fs_mtime_ns(pack)>asset_stamp {asset_stamp=fs_mtime_ns(pack);}
  if fs_mtime_ns(fs_join(metal,"assets/textures.config",paths[2][..]))<asset_stamp {cmd:=[5]string.[fs_join(root,"coax/web/tool.sh",paths[3][..]),fs_join(here,"metal-assets.coax",paths[4][..]),root,pack,fs_join(metal,"assets",paths[5][..])];if af_run(cmd[..],out,deadline)<0 {return false;}}
@@ -164,34 +164,34 @@ tool_main :: () -> int #export_c #effects(all) {
   if !af_finish(room_job, deadline) { if page_job >= 0 { released := proc_release(page_job); }if worker_job>=0 {released:=proc_release(worker_job);} return 1; }
   if !af_finish(page_job, deadline) { return 1; }
   if !af_finish(worker_job,deadline) {return 1;}
-  audio_stamp:=af_native_stamp(root,"aethyr/host/audio-carrier.coax",deadline);if audio_stamp<0 {return 1;}
-  for name:[6]string.["coax/web/audio-face.c","coax/web/build-audio.coax","coax/web/wasm.sh","coax/bin/coax","aethyr/host/audio-timeline.coax","coax/web/audio-timeline-face.c"] {stamp:=fs_mtime_ns(af_path(p[..],root,name));if stamp>audio_stamp {audio_stamp=stamp;}}
+  audio_stamp:=af_native_stamp(root,"metaverse-engine/host/audio-carrier.coax",deadline);if audio_stamp<0 {return 1;}
+  for name:[6]string.["coax/web/audio-face.c","coax/web/build-audio.coax","coax/web/wasm.sh","coax/bin/coax","metaverse-engine/host/audio-timeline.coax","coax/web/audio-timeline-face.c"] {stamp:=fs_mtime_ns(af_path(p[..],root,name));if stamp>audio_stamp {audio_stamp=stamp;}}
   if fs_mtime_ns(af_path(p[..],root,"apps/openagents-web/build/host-audio.wasm"))<audio_stamp||fs_mtime_ns(af_path(p[..],root,"apps/openagents-web/build/host-audio-timeline.wasm"))<audio_stamp {
     print("Building the shared browser audio carrier…\n");audio_cmd:=[3]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coax/web/build-audio.coax"),root];if af_run(audio_cmd[..],out[..],deadline)<0 {return 1;}
   }
-  layer_stamp:=af_native_stamp(root,"aethyr/host/layers-carrier.coax",deadline);if layer_stamp<0 {return 1;}
+  layer_stamp:=af_native_stamp(root,"metaverse-engine/host/layers-carrier.coax",deadline);if layer_stamp<0 {return 1;}
   for name:[4]string.["coax/web/layers-face.c","coax/web/build-layers.coax","coax/web/wasm.sh","coax/bin/coax"] {stamp:=fs_mtime_ns(af_path(p[..],root,name));if stamp>layer_stamp {layer_stamp=stamp;}}
   layers_wasm:=af_path(p[..],root,"apps/openagents-web/build/host-layers.wasm");
   if fs_mtime_ns(layers_wasm)<layer_stamp {
     print("Building the shared browser image carrier…\n");layer_cmd:=[4]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coax/web/build-layers.coax"),root,layers_wasm];if af_run(layer_cmd[..],out[..],deadline)<0 {return 1;}
   }
-  media_stamp:=af_native_stamp(root,"aethyr/host/media-carrier.coax",deadline);if media_stamp<0 {return 1;}
+  media_stamp:=af_native_stamp(root,"metaverse-engine/host/media-carrier.coax",deadline);if media_stamp<0 {return 1;}
   for name:[4]string.["coax/web/media-face.c","coax/web/build-media.coax","coax/web/wasm.sh","coax/bin/coax"] {stamp:=fs_mtime_ns(af_path(p[..],root,name));if stamp>media_stamp {media_stamp=stamp;}}
   media_wasm:=af_path(p[..],root,"apps/openagents-web/build/host-media.wasm");
   if fs_mtime_ns(media_wasm)<media_stamp {
     print("Building the shared browser still-media carrier…\n");media_cmd:=[4]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coax/web/build-media.coax"),root,media_wasm];if af_run(media_cmd[..],out[..],deadline)<0 {return 1;}
   }
-  services_stamp:=af_native_stamp(root,"aethyr/host/services-carrier.coax",deadline);if services_stamp<0 {return 1;}
+  services_stamp:=af_native_stamp(root,"metaverse-engine/host/services-carrier.coax",deadline);if services_stamp<0 {return 1;}
   for name:[4]string.["coax/web/services-face.c","coax/web/build-services.coax","coax/web/wasm.sh","coax/bin/coax"] {stamp:=fs_mtime_ns(af_path(p[..],root,name));if stamp>services_stamp {services_stamp=stamp;}}
   services_wasm:=af_path(p[..],root,"apps/openagents-web/build/host-services.wasm");
   if fs_mtime_ns(services_wasm)<services_stamp {
     print("Building the shared browser service carrier…\n");services_cmd:=[4]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coax/web/build-services.coax"),root,services_wasm];if af_run(services_cmd[..],out[..],deadline)<0 {return 1;}
   }
-  sockets_stamp:=af_native_stamp(root,"aethyr/host/socket-carrier.coax",deadline);if sockets_stamp<0{return 1;}
+  sockets_stamp:=af_native_stamp(root,"metaverse-engine/host/socket-carrier.coax",deadline);if sockets_stamp<0{return 1;}
   for name:[4]string.["coax/web/socket-face.c","coax/web/build-sockets.coax","coax/web/wasm.sh","coax/bin/coax"]{stamp:=fs_mtime_ns(af_path(p[..],root,name));if stamp>sockets_stamp{sockets_stamp=stamp;}}
   sockets_wasm:=af_path(p[..],root,"apps/openagents-web/build/host-sockets.wasm");
   if fs_mtime_ns(sockets_wasm)<sockets_stamp{print("Building shared browser socket retention…\n");cmd:=[4]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coax/web/build-sockets.coax"),root,sockets_wasm];if af_run(cmd[..],out[..],deadline)<0{return 1;}}
-  packs_stamp:=af_native_stamp(root,"aethyr/host/pack-carrier.coax",deadline);if packs_stamp<0{return 1;}
+  packs_stamp:=af_native_stamp(root,"metaverse-engine/host/pack-carrier.coax",deadline);if packs_stamp<0{return 1;}
   for name:[4]string.["coax/web/pack-face.c","coax/web/build-packs.coax","coax/web/wasm.sh","coax/bin/coax"]{stamp:=fs_mtime_ns(af_path(p[..],root,name));if stamp>packs_stamp{packs_stamp=stamp;}}
   packs_wasm:=af_path(p[..],root,"apps/openagents-web/build/host-packs.wasm");
   if fs_mtime_ns(packs_wasm)<packs_stamp{print("Building shared browser pack reader…\n");cmd:=[4]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coax/web/build-packs.coax"),root,packs_wasm];if af_run(cmd[..],out[..],deadline)<0{return 1;}}

@@ -1,3 +1,3 @@
-#load "../../../aethyr/session/character-checkpoint.coax";
+#load "../../../metaverse-engine/session/character-checkpoint.coax";
 // The saved value; mailbox, receipt and serializer scratch stay in the service.
 contract_character :: (value:CharacterCapture)->CharacterCapture #effects(computes) {return value;}

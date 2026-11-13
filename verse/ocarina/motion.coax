@@ -1,6 +1,6 @@
 // Source planar carrier translation is consumed by walking, never added a second time to its pose.
 #load "rig-policy.coax";
-#load "../../aethyr/anim/pose.coax";
+#load "../../metaverse-engine/anim/pose.coax";
 #test "Ocarina gait rate follows resolved travel and leaves one shots on source time" {
  #assert ocl_motion_rate(2,2.25,2.25)==1 && ocl_motion_rate(2,1.125,2.25)==0.5;
  #assert ocl_motion_rate(1,0,0.64)==0 && ocl_motion_rate(3,2,4)==0.5;

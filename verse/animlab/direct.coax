@@ -1,7 +1,7 @@
 // Text and voice share the same typed Decisions request and checked edit path.
-#load "../../aethyr/anim/direction-select.coax";
-#load "../../aethyr/anim/direction-history.coax";
-#load "../../aethyr/anim/direction-screen.coax";
+#load "../../metaverse-engine/anim/direction-select.coax";
+#load "../../metaverse-engine/anim/direction-history.coax";
+#load "../../metaverse-engine/anim/direction-screen.coax";
 #load "direct-checks.coax";
 AlDirector :: struct {history:[1]AdHistory;request:[16384]u8;request_n:int;http:int= -1;cancel:int= -1;pending:bool;proposal:AnimDirection;mode:int;part:int;old:int;score:int;voice:bool;voice_next:bool;voice_heard:bool;status:[256]u8;status_n:int;}
 al_direct_status :: (s:[]AlState,text:string) {n:=ifx text.count<256 then text.count else 256;s[0].director.status_n=n;for k:0..<n {s[0].director.status[k]=text[k];}}

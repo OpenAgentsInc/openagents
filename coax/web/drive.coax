@@ -5,7 +5,7 @@
 //     "use 1 on goblin-5" "clock +2000" "state you_x" "screenshot out.png"
 // It serves APP_DIR as it is built (coax/web/serve.sh --static, on a free port above 9000), opens
 // PATH, waits for the first scene, then runs each operation in order and prints its answer:
-//   tree | layout                 the world's entities by id, then the HUD's widgets (aethyr/agent/drive.coax)
+//   tree | layout                 the world's entities by id, then the HUD's widgets (metaverse-engine/agent/drive.coax)
 //   state [PATH]                  a field of the realm's state, read through the build's layout
 //                                 (build/.drive/APP.layout): `state you_x`, `state net.mon_hits[3].amount`;
 //                                 alone, the state's top-level fields
@@ -30,7 +30,7 @@
 // The agent clock (GitHub #13096, docs/verse/agent-clock.md): the page opens in agent mode (?agent,
 // coax/web/host.js), where simulation time moves only when `clock` or a world operation steps it; the
 // page and its offline room (coax/web/room-worker.js) step together, and the session is pinned to the
-// seed, epoch, locale and time zone of aethyr/agent/pin.coax. --real-time opens the page as a player's
+// seed, epoch, locale and time zone of metaverse-engine/agent/pin.coax. --real-time opens the page as a player's
 // (no agent clock: `clock +MS` waits, settle and until refuse).
 // The native hosts (apps/shared/host/drive.c, GitHub #13156) answer the same way on a Unix socket: an
 // app started with --drive SOCKET (OpenAgents, Everglade's Workshop chat) takes
@@ -42,7 +42,7 @@
 #import "Basic";
 #load "resident.coax";
 #load "../lib/crypto/sha256_workspace.coax";
-#load "../../aethyr/agent/pin.coax";
+#load "../../metaverse-engine/agent/pin.coax";
 
 cxtool_out_flush :: () -> int #foreign #effects(all);
 cxsock_connect_unix :: (timeout_ms: int) -> int #foreign #effects(all);
@@ -333,13 +333,13 @@ dv_word_path :: (t: [] Dv, word: string, app_dir: string) {
   w := word; if w.count >= 2 && w[0] == '"' && w[w.count - 1] == '"' { w = w[1..<w.count - 1]; }
   if dv_starts(w, "$here/../../") { dv_s(t, w[12..<w.count]); return; }
   if dv_starts(w, "$here/") { dv_s(t, app_dir); dv_s(t, w[5..<w.count]); return; }
-  if dv_starts(w, "$a/") { dv_s(t, "aethyr"); dv_s(t, w[2..<w.count]); return; }
+  if dv_starts(w, "$a/") { dv_s(t, "metaverse-engine"); dv_s(t, w[2..<w.count]); return; }
   dv_s(t, w);
 }
 #test "the rebuild command comes from build.sh's line for the module" {
   sh := "# a comment build/x.wasm\" wasm.sh\n\"$here/../../coax/web/wasm.sh\" \"$here/../../everglade/client/client.coax\" \"$here/everglade2-face.c\" \"$here/build/everglade2.wasm\" \\\n  \"$here/../../everglade/shared/everglade-step.coax\" \"$a/core/sticks.coax\" &\nnext\n";
   t: [1] Dv;
-  #assert dv_rebuild(sh, "apps/openagents-web", "everglade2", t[..]) == "coax/remote/remote.sh run -- coax/web/wasm.sh everglade/client/client.coax apps/openagents-web/everglade2-face.c apps/openagents-web/build/everglade2.wasm everglade/shared/everglade-step.coax aethyr/core/sticks.coax";
+  #assert dv_rebuild(sh, "apps/openagents-web", "everglade2", t[..]) == "coax/remote/remote.sh run -- coax/web/wasm.sh everglade/client/client.coax apps/openagents-web/everglade2-face.c apps/openagents-web/build/everglade2.wasm everglade/shared/everglade-step.coax metaverse-engine/core/sticks.coax";
   #assert dv_rebuild(sh, "apps/openagents-web", "fivelab", t[..]) == "coax/remote/remote.sh run -- apps/openagents-web/build.sh";
   #assert dv_rebuild("\"$here/../../coax/web/wasm.sh\" x \"$here/build/a.wasm\" &\n", "d", "a", t[..]) == "coax/remote/remote.sh run -- coax/web/wasm.sh x d/build/a.wasm";
 }
@@ -450,7 +450,7 @@ dv_advance :: (s: [] DvS, ms: int) -> int {
 }
 // Lets ms pass: of the agent's clock, or of real time without one.
 dv_pass :: (s: [] DvS, ms: int) { if s[0].agent { now := dv_advance(s, ms); } else { proc_sleep(ms); } }
-// Whether nothing is scheduled: the realm's word (aethyr/agent/drive.coax `quiet`) and the offline
+// Whether nothing is scheduled: the realm's word (metaverse-engine/agent/drive.coax `quiet`) and the offline
 // room's count (room-casts.coax rm_scheduled; -1 when there is no local room). why: what still is.
 dv_quiet :: (s: [] DvS, why: [] Dv) -> bool {
   why[0].n = 0;
@@ -824,7 +824,7 @@ dv_open :: (s: [] DvS, path: string, query: string, wh: ArgsSize) -> int {
   u: [1] Dv; dv_s(u[..], "http://127.0.0.1:"); dv_i(u[..], s[0].port); dv_s(u[..], path);
   if query.count > 0 { dv_s(u[..], ifx query[0] == '?' then "" else "?"); dv_s(u[..], query); }
   if s[0].agent {
-    // the agent's session: the page in agent mode, pinned (aethyr/agent/pin.coax) before it loads
+    // the agent's session: the page in agent mode, pinned (metaverse-engine/agent/pin.coax) before it loads
     dv_s(u[..], ifx query.count > 0 then "&agent" else "?agent");
     pin: [1] Dv; dv_s(pin[..], "globalThis.coaxialAgent = { seed: "); dv_i(pin[..], AGENT_SEED); dv_s(pin[..], ", epoch: "); dv_i(pin[..], AGENT_EPOCH_MS);
     dv_s(pin[..], ", locale: '"); dv_s(pin[..], AGENT_LOCALE); dv_s(pin[..], "', timeZone: '"); dv_s(pin[..], AGENT_TIME_ZONE); dv_s(pin[..], "' };");

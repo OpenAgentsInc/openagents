@@ -29,7 +29,7 @@
 #   coax/remote/check.sh module NAME      one module of the web build (a bisect)
 #   coax/remote/check.sh reports          tools-check, test-remote.sh, test-after.sh, test-vm-deploy.sh, everglade-parity, wire-check, layer-check,
 #                                         the native apps' realms (verse/native/app-realms.coax, #13389),
-#                                         packs paged by cell (aethyr/host/check-pack-cells.coax, #13304),
+#                                         packs paged by cell (metaverse-engine/host/check-pack-cells.coax, #13304),
 #                                         the API's migration numbers, hashes and schema.sql, the pre-push replay, the committed
 #                                         shaders, realm pages and changelog page against
 #                                         their sources, and every realm's link-preview card
@@ -130,7 +130,7 @@ sizes() {
   awk '$4 >= 98 { print "size " $1 ": " $2 " bytes of " $3 " (" $4 "%)" }' "$out/sizes.txt" >> "$out/warnings.txt"
 }
 # What the web build builds: a branch that changes none of it skips the build.
-web_inputs='^(apps/openagents-web/|aethyr/|verse/|coax/web/|coax/lib/|coax/src/|coax/platform/|coax/bootstrap/|psionic/|protocol/|everglade/)'
+web_inputs='^(apps/openagents-web/|metaverse-engine/|verse/|coax/web/|coax/lib/|coax/src/|coax/platform/|coax/bootstrap/|psionic/|protocol/|everglade/)'
 # A change to these rebuilds every module (the compiler, the Wasm toolchain, the build itself).
 web_whole='^(coax/src/|coax/bootstrap/|coax/lib/compiler/|coax/platform/|coax/web/wasm\.sh|coax/web/toolchain\.sh|coax/web/wasm-size\.coax|apps/openagents-web/build\.sh)'
 # The modules a branch touched, from build.sh's wasm.sh lines: a module is
@@ -200,7 +200,7 @@ room_touched() {   # whether the change since $arg reaches the room build (yes w
 }
 web_touched() {
   local here="$root/apps/openagents-web" m a cmd words w hit
-  m="$here/../../verse"; a="$here/../../aethyr"
+  m="$here/../../verse"; a="$here/../../metaverse-engine"
   : > "$out/modules"
   # The graph (suites --affected) names the touched files; when it can't tell,
   # every module is built.
@@ -224,7 +224,7 @@ web_touched() {
 }
 build_modules() {   # each command in $out/modules, as build.sh runs it
   local here="$root/apps/openagents-web" m a cmd
-  m="$here/../../verse"; a="$here/../../aethyr"
+  m="$here/../../verse"; a="$here/../../metaverse-engine"
   # build.sh builds wasm.sh's size tool once before the modules start side by side.
   (cd "$root" && coax/web/tool.sh wasm-size sources apps/openagents-web/fixture.coax > /dev/null 2>&1)
   echo "$(wc -l < "$out/modules" | tr -d ' ') module(s):" >> "$log"
@@ -287,20 +287,20 @@ generated() {
 # (#13304): the native realm host includes it, since most of the builds that compile
 # verse/native/realm-host.c take no Coax step. Committed, so it is compared with its source here.
 pack_reader_c() {
-  step pack-reader-c bash -c 'coax/bin/coax c aethyr/host/pack-table-face.coax --library | cmp -s - verse/native/pack-table-gen.h || { echo "verse/native/pack-table-gen.h is not what the compiler writes for aethyr/host/pack-table-face.coax. From the repository root: coax/bin/coax c aethyr/host/pack-table-face.coax --library > verse/native/pack-table-gen.h, then commit it."; exit 1; }' || status=1
+  step pack-reader-c bash -c 'coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library | cmp -s - verse/native/pack-table-gen.h || { echo "verse/native/pack-table-gen.h is not what the compiler writes for metaverse-engine/host/pack-table-face.coax. From the repository root: coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library > verse/native/pack-table-gen.h, then commit it."; exit 1; }' || status=1
 }
-# The frame plan's numbers for C hosts (#13303): aethyr/host/frame-plan.h is what aethyr/render/frame-plan.coax
+# The frame plan's numbers for C hosts (#13303): metaverse-engine/host/frame-plan.h is what metaverse-engine/render/frame-plan.coax
 # writes. Committed, because a host's build takes no Coax step for it; compared with its source here.
 frame_plan_h() {
-  step frame-plan-h bash -c 'coax/web/tool.sh aethyr/tools/frame-plan-header.coax | cmp -s - aethyr/host/frame-plan.h || { echo "aethyr/host/frame-plan.h is not what aethyr/render/frame-plan.coax writes; run: coax/web/tool.sh aethyr/tools/frame-plan-header.coax > aethyr/host/frame-plan.h"; exit 1; }' || status=1
+  step frame-plan-h bash -c 'coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax | cmp -s - metaverse-engine/host/frame-plan.h || { echo "metaverse-engine/host/frame-plan.h is not what metaverse-engine/render/frame-plan.coax writes; run: coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h"; exit 1; }' || status=1
 }
 # The Mac and iPhone apps' realms and passes still resolve, emit and compile (#13389): a client's
 # Coax moved (#13268) and both apps stopped building with no check saying so. Their Swift and
 # Objective-C need a Mac (apps/shared/host/apple/check.sh); this is the part any host can do.
 # A pack paged by world cell (#13304, for #13280): the browser's pack module fetches a cell's pages
-# on demand exactly as the one reader says (aethyr/host/check-pack-cells.coax; it builds the pack
+# on demand exactly as the one reader says (metaverse-engine/host/check-pack-cells.coax; it builds the pack
 # reactor and runs coax/web/pack-host.js in bun over a fixture it writes).
-pack_cells() { step pack-cells coax/web/tool.sh aethyr/host/check-pack-cells.coax "$PWD" coax/web/build/pack-cells || status=1; }
+pack_cells() { step pack-cells coax/web/tool.sh metaverse-engine/host/check-pack-cells.coax "$PWD" coax/web/build/pack-cells || status=1; }
 app_realms() { step app-realms coax/web/tool.sh verse/native/app-realms.coax "$PWD" coax/web/build/app-realms || status=1; }
 # Every realm in realms.json has its link-preview card (#13144): a release refuses a realm without
 # one, so it shows at landing, not at release.
@@ -478,7 +478,7 @@ reports_since() {
     step splice-content coax/web/tool.sh verse/splice/tools/content-check.coax verse/splice/content/splice.content --check || status=1
     # every wire shape registered (proto/registry.json, #13236); the allowlist against the base's copy
     step wire-check coax/web/tool.sh wire-check --base "$arg" || status=1
-    # no load up the layers (aethyr/README.md "Layers", #13264); the allowlist against the base's copy
+    # no load up the layers (metaverse-engine/README.md "Layers", #13264); the allowlist against the base's copy
     step layer-check coax/web/tool.sh layer-check --base "$arg" || status=1
   fi
   if grep -Eq '^coax/web/(api/(migrations/|migrations\.sha256|schema\.sql|migration-check\.coax)|tool\.sh)' "$out/changed"; then migrations "$arg"; fi
@@ -493,8 +493,8 @@ reports_since() {
     generated
   fi
   # Its sources: the reader, its face and the compiler that writes the C.
-  if grep -Eq '^(aethyr/host/pack-table|verse/native/pack-table-gen\.h|coax/(src|lib/compiler|bootstrap)/|coax/VERSION)' "$out/changed"; then pack_reader_c; fi
-  if grep -Eq '^(aethyr/render/(frame-plan|passes|types)\.coax|aethyr/host/frame-plan\.h|aethyr/tools/frame-plan-header\.coax)' "$out/changed"; then frame_plan_h; fi
+  if grep -Eq '^(metaverse-engine/host/pack-table|verse/native/pack-table-gen\.h|coax/(src|lib/compiler|bootstrap)/|coax/VERSION)' "$out/changed"; then pack_reader_c; fi
+  if grep -Eq '^(metaverse-engine/render/(frame-plan|passes|types)\.coax|metaverse-engine/host/frame-plan\.h|metaverse-engine/tools/frame-plan-header\.coax)' "$out/changed"; then frame_plan_h; fi
   if grep -Eq '^(apps/openagents-web/(realms|og/)|coax/web/og\.ts)' "$out/changed"; then
     cards
   fi

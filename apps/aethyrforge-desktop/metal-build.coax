@@ -4,7 +4,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc-raw.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/render/metal-package.coax";
+#load "../../metaverse-engine/render/metal-package.coax";
 
 mb_join :: (dir:string,name:string,out:[]u8)->string {return fs_join(dir,name,out);}
 mb_run :: (argv:[]string,stdout:[]u8)->int {
@@ -21,7 +21,7 @@ mb_check_runner :: ()->bool {
 }
 mb_unit :: (root:string,work:string,compiler:string,name:string)->bool {
  names:=[13]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","fixture","AppKitInput","HostNetwork","entropy-policy","AudioFixture"];
- sources:=[13]string.["apps/aethyrforge-desktop/metal-world.coax","everglade/shared/everglade-step.coax","verse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-images.coax","aethyr/host/fixture.coax","aethyr/host/appkit-input.coax","aethyr/host/native-socket.coax","coax/lib/crypto/entropy.coax","aethyr/host/audio-fixture.coax"];
+ sources:=[13]string.["apps/aethyrforge-desktop/metal-world.coax","everglade/shared/everglade-step.coax","verse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","metaverse-engine/render/native-images.coax","metaverse-engine/host/fixture.coax","metaverse-engine/host/appkit-input.coax","metaverse-engine/host/native-socket.coax","coax/lib/crypto/entropy.coax","metaverse-engine/host/audio-fixture.coax"];
  found:=-1;for n,i:names {if n==name {found=i;}}if found<0 {return false;}
  text:[256]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".h");paths:[5][4096]u8;header:=fs_join(work,jo_text(o[..]),paths[0][..]);
  o[0]=Jo.{};jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".c");code:=fs_join(work,jo_text(o[..]),paths[1][..]);
@@ -99,7 +99,7 @@ mb_instrument_render :: (work:string)->bool {
 }
 mb_fixture :: (root:string,work:string,sanitize:bool)->bool {
  paths:[5][4096]u8;out:[1048576]u8;face:=fs_join(work,"fixture-face.o",paths[0][..]);
- cc:=[12]string.["/usr/bin/clang","-std=c11","-O2","-DCOAXIAL_NATIVE_ADDRESS","-I",work,"-c",fs_join(root,"aethyr/host/tests/fixture-face.c",paths[1][..]),"-o",face,"-Wno-unused-function",ifx sanitize then "-fsanitize=address" else "-g0"];
+ cc:=[12]string.["/usr/bin/clang","-std=c11","-O2","-DCOAXIAL_NATIVE_ADDRESS","-I",work,"-c",fs_join(root,"metaverse-engine/host/tests/fixture-face.c",paths[1][..]),"-o",face,"-Wno-unused-function",ifx sanitize then "-fsanitize=address" else "-g0"];
  if mb_run(cc[..],out[..])<0 {return false;}
  if sanitize {instrument:=[11]string.["/usr/bin/clang","-std=c11","-O1","-fsanitize=address","-fno-omit-frame-pointer","-ffp-contract=off","-fno-fast-math","-c",fs_join(work,"fixture.c",paths[4][..]),"-o",fs_join(work,"fixture.o",paths[2][..])];if mb_run(instrument[..],out[..])<0{return false;}}
  link:=[9]string.["/usr/bin/clang","-dynamiclib","-Wl,-undefined,dynamic_lookup",fs_join(work,"fixture.o",paths[2][..]),face,"-o",fs_join(work,"libfixture.dylib",paths[3][..]),"-lm",ifx sanitize then "-fsanitize=address" else "-g0"];
@@ -156,7 +156,7 @@ mb_action_packet :: (root:string,work:string,sanitize:bool)->bool {
  paths:[6][4096]u8;out:[1048576]u8;mode:=ifx sanitize then "-fsanitize=address,undefined" else "-g0";
  for missing:0..<2{
   face:=fs_join(work,ifx missing==0 then "action-face.o" else "action-face-no-cap.o",paths[0][..]);
-  cc:=[14]string.["/usr/bin/clang","-std=c11","-O1","-DCOAXIAL_NATIVE_ADDRESS",mode,"-fno-omit-frame-pointer","-I",work,"-c",fs_join(root,ifx missing==0 then "aethyr/host/tests/action-fixture-face.c" else "aethyr/host/tests/action-missing-face.c",paths[1][..]),"-o",face,"-Wno-unused-function","-Wno-unknown-attributes"];
+  cc:=[14]string.["/usr/bin/clang","-std=c11","-O1","-DCOAXIAL_NATIVE_ADDRESS",mode,"-fno-omit-frame-pointer","-I",work,"-c",fs_join(root,ifx missing==0 then "metaverse-engine/host/tests/action-fixture-face.c" else "metaverse-engine/host/tests/action-missing-face.c",paths[1][..]),"-o",face,"-Wno-unused-function","-Wno-unknown-attributes"];
   if mb_run(cc[..],out[..])<0{return false;}
   link:=[9]string.["/usr/bin/clang","-dynamiclib","-Wl,-undefined,dynamic_lookup",mode,fs_join(work,"action-fixture.o",paths[2][..]),face,"-o",fs_join(work,ifx missing==0 then "libactionfixture.dylib" else "libactionfixture-no-cap.dylib",paths[3][..]),"-lm"];if mb_run(link[..],out[..])<0{return false;}
  }
@@ -182,7 +182,7 @@ mb_audio_fixture :: (root:string,work:string,sanitize:bool)->bool {
  paths:[5][4096]u8;out:[1048576]u8;
  copy:=[3]string.["/bin/cp",fs_join(work,"AudioFixture.h",paths[0][..]),fs_join(work,"fixture.h",paths[1][..])];if mb_run(copy[..],out[..])<0{return false;}
  if sanitize {cc:=[11]string.["/usr/bin/clang","-std=c11","-O1","-g","-fsanitize=address","-fno-omit-frame-pointer","-ffp-contract=off","-c",fs_join(work,"AudioFixture.c",paths[0][..]),"-o",fs_join(work,"AudioFixture.o",paths[1][..])];if mb_run(cc[..],out[..])<0{return false;}}
- cc:=[12]string.["/usr/bin/clang","-std=c11","-O2","-DCOAXIAL_NATIVE_ADDRESS",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-c",fs_join(root,"aethyr/host/tests/audio-fixture-face.c",paths[0][..]),"-o",fs_join(work,"audio-fixture-face.o",paths[1][..]),"-Wno-unused-function"];
+ cc:=[12]string.["/usr/bin/clang","-std=c11","-O2","-DCOAXIAL_NATIVE_ADDRESS",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-c",fs_join(root,"metaverse-engine/host/tests/audio-fixture-face.c",paths[0][..]),"-o",fs_join(work,"audio-fixture-face.o",paths[1][..]),"-Wno-unused-function"];
  if mb_run(cc[..],out[..])<0{return false;}
  link:=[8]string.["/usr/bin/clang","-dynamiclib","-Wl,-undefined,dynamic_lookup",fs_join(work,"AudioFixture.o",paths[0][..]),fs_join(work,"audio-fixture-face.o",paths[1][..]),"-o",fs_join(work,"libaudiofixture.dylib",paths[2][..]),ifx sanitize then "-fsanitize=address" else "-g0"];
  return mb_run(link[..],out[..])>=0;
@@ -211,7 +211,7 @@ mb_product_fields :: (o:[]Jo,name:string,bytes:[]u8,hash_key:string) {
 }
 mb_shaders :: (root:string,work:string,compiler:string)->bool {
  paths:[7][4096]u8;render:=fs_join(work,"render",paths[0][..]);if !fs_mkdir(render) {return false;}
- out:[4194304]u8;cmd:=[6]string.[fs_join(root,"coax/web/tool.sh",paths[1][..]),fs_join(root,"aethyr/render/build.coax",paths[2][..]),"everglade",render,"--coax",compiler];
+ out:[4194304]u8;cmd:=[6]string.[fs_join(root,"coax/web/tool.sh",paths[1][..]),fs_join(root,"metaverse-engine/render/build.coax",paths[2][..]),"everglade",render,"--coax",compiler];
  if mb_run(cmd[..],out[..])<0 {return false;}
  base:[262144]u8;n:=fs_read(fs_join(render,"render.json",paths[1][..]),base[..]);entries:[14]RenderPackageEntry;
  if n<1 {return false;}p:=render_package_parse(cast(string)base[0..<n],entries[..]);

@@ -1,8 +1,8 @@
 // Firm reason: 1 (WebGPU driver for Coax-written WGSL: buffers, passes, indirect draws, Range fetches and readback; Coax owns the draw rule, culling, the DAG, page admission and residency).
 // The GPU cull lab (GitHub #13008, #13051, Valley Lab step 6). It loads the fixture that
-// aethyr/tools/cull-fixture.coax writes (cluster DAGs from aethyr/render/geometry/dag.coax, each
+// metaverse-engine/tools/cull-fixture.coax writes (cluster DAGs from metaverse-engine/render/geometry/dag.coax, each
 // scene's geometry a VPK3 file of one page a DAG page), runs the cull of
-// aethyr/render/geometry/cull.coax as /cull.wgsl and draws with /cull-draw.wgsl (both written by
+// metaverse-engine/render/geometry/cull.coax as /cull.wgsl and draws with /cull-draw.wgsl (both written by
 // coax wgsl), and checks, headless:
 //   lod        the GPU's draw-rule choice is dag.coax's, cluster for cluster, on every view;
 //   textures   each texture's wanted mip after the page entries is the finest its drawn clusters need;

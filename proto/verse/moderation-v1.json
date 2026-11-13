@@ -2,7 +2,7 @@
   "profile": "openagents.moderation",
   "version": 1,
   "spec": "docs/protocol/moderation-v1.md",
-  "codec": "aethyr/session/moderation.coax",
+  "codec": "metaverse-engine/session/moderation.coax",
   "check": "coax/web/tool.sh coax/web/room/moderation-profile.coax proto/verse/moderation-v1.json",
   "note": "A moderator's record, a room's report of its moderators' actions, the API's receipt, and the room's answer to the moderator's seat. Text, one space between fields; whole numbers with no leading zero.",
   "verbs": [

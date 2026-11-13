@@ -52,12 +52,12 @@
 // beat, and room.log oa-room's ("a stall of"): a town a stall set back is not the two simulations parting.
 #import "Basic";
 #load "../lib/net/cdp.coax";
-#load "../../aethyr/session/lifecycle.coax";   // each host's room tick budget (#12856)
-#load "../../aethyr/net/record.coax";
+#load "../../metaverse-engine/session/lifecycle.coax";   // each host's room tick budget (#12856)
+#load "../../metaverse-engine/net/record.coax";
 #load "drift-hold.coax";
 #load "drift-placement.coax";   // with Everglade's named points (everglade/legacy/v1/points.coax, #13078)
 #load "map-points.coax";
-#load "../../aethyr/render/tests/qualification-files.coax";
+#load "../../metaverse-engine/render/tests/qualification-files.coax";
 getpriority :: (which:s32,who:u32)->s32 #foreign #effects(all);
 
 DR_JS_COLS :: 32;         // everglade-drift.js D.cols
@@ -68,7 +68,7 @@ DR_PART :: 300;           // rows read back at once
 DR_RUN :: 6;              // frames failing in a row that make a drift
 DR_YAW_JUMP :: 300;       // mrad the camera may turn in one frame
 DR_TURN :: 175;           // mrad (10 degrees) the camera may turn in DR_TURN_MS with no look (a pointer move): only
-DR_TURN_MS :: 1000;       // your look turns it (aethyr/cam/camera.coax verse_orbit_follow), so this is rounding room
+DR_TURN_MS :: 1000;       // your look turns it (metaverse-engine/cam/camera.coax verse_orbit_follow), so this is rounding room
 DR_FIX_RATE :: 1;         // corrections over 5 cm a second, at most
 DR_STALL :: 15;           // percent more frames of the town's people walking in place than offline
 // book:end drift-bounds
@@ -1182,7 +1182,7 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
         }
         if run.worker {
           print("  (offline room host: % stalls, % ms of its beat dropped)\n", dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.stalls | 0 : -1", -1), dr_int(ca[..], "coaxial.roomHost ? coaxial.roomHost.lost | 0 : -1", -1));
-          // its tick against the host's budget (aethyr/session/lifecycle.coax LIFECYCLE_TICK_US)
+          // its tick against the host's budget (metaverse-engine/session/lifecycle.coax LIFECYCLE_TICK_US)
           host := ifx run.native then LIFECYCLE_HOST_NATIVE else LIFECYCLE_HOST_WORKER;
           p95 := dr_int(ca[..], "coaxial.roomHost && coaxial.roomHost.tickP95Us >= 0 ? Math.round(coaxial.roomHost.tickP95Us) : -1", -1);
           p99 := dr_int(ca[..], "coaxial.roomHost && coaxial.roomHost.tickP99Us >= 0 ? Math.round(coaxial.roomHost.tickP99Us) : -1", -1);
@@ -1640,7 +1640,7 @@ tool_main :: () -> int #export_c #effects(all) {
   dir := args_value(a[..], "--out", btext(db[..]));
   _ := fs_mkdir("coax/web/build/everglade-drift"); _ = fs_mkdir(dir);
   inputs:[1]RtqInputs;
-  for file:[16]string.["coax/web/drift-placement.coax","everglade/legacy/v1/points.coax","aethyr/world/points.coax","coax/web/map-points.coax","coax/web/room/worker.coax","coax/web/drift-snapshot.coax","coax/web/room/drift-bots.coax","coax/web/room/net-proxy.coax","coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
+  for file:[16]string.["coax/web/drift-placement.coax","everglade/legacy/v1/points.coax","metaverse-engine/world/points.coax","coax/web/map-points.coax","coax/web/room/worker.coax","coax/web/drift-snapshot.coax","coax/web/room/drift-bots.coax","coax/web/room/net-proxy.coax","coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
     if !rtq_input_add(inputs[..],file) {tool_errln("Cannot fence the actual drift inputs.");return 1;}
   }
   self:[4096]u8;self_n:=cxproc_self_path(self[..]);

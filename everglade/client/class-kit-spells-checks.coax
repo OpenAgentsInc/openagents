@@ -13,8 +13,8 @@
 #load "../shared/class-kit.coax";
 #load "class-look.coax";
 #load "../../rules/srd/catalog.coax";
-#load "../../aethyr/audio/experimental-sfx.coax";
-#load "../../aethyr/audio/everglade-bank.coax";
+#load "../../metaverse-engine/audio/experimental-sfx.coax";
+#load "../../metaverse-engine/audio/everglade-bank.coax";
 
 // Spell, and the check that resolves it (rules/srd/):
 //   C kit-cantrips-checks.coax, 1 kit-spells-checks.coax, H kit-spells-high-checks.coax

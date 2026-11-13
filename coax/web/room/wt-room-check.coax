@@ -6,7 +6,7 @@
 //   OA_ROOM_TICKET_KEY=... coax/web/tool.sh coax/web/room/wt-room-check.coax ORIGIN URL HASH|- [--seconds N] [--player p-ID]
 // URL: https://room-staging.openagents.com/api/room/relay/everglade/pair-e2-wtnet-STAMP (the room VM's
 // staging unit on UDP 443, a CA certificate: HASH -).
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "../../lib/net/cdp.coax";
 #load "room-socket.coax";
 Rb :: struct { b: [65536] u8; n: int; bad: bool; }

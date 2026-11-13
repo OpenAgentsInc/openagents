@@ -1,5 +1,5 @@
 // Fairy Forest's C face for the browser (coax/web/host.js): fairy.coax is
-// the page, aethyr/move/player.coax walks you (its own library), verse/grid.coax
+// the page, metaverse-engine/move/player.coax walks you (its own library), verse/grid.coax
 // reads a phone's thumbs and verse/fairy-forest/stream.coax is the stream
 // and the pond (Stream.h). Once a frame it passes values between them in
 // order: the page's controls, the player's step among the forest's walls
@@ -76,7 +76,7 @@ static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static coax_v_t_Stream sv(void) { return (coax_v_t_Stream){&stream, 1}; }
 
 /* The flight itself (beats, the climb, the glide, the ceiling and the dive) is the walker's
-   per-step hook, aethyr/move/flight.coax, which Fairy Forest's profile turns on; this face hands it
+   per-step hook, metaverse-engine/move/flight.coax, which Fairy Forest's profile turns on; this face hands it
    the presses and holds and draws the wings. */
 
 #define NPC_URL "/api/playtest/npc/ask"
@@ -256,7 +256,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   start(state);
   coax_t_Fairy *g = fairy(state);
   width = w; height = h; dpr = scale;
-  float frame = dt;   /* the player's clock (aethyr/core/loop.coax) steps it; the rest moves by what it counts */
+  float frame = dt;   /* the player's clock (metaverse-engine/core/loop.coax) steps it; the rest moves by what it counts */
   dt = verse_player_counts(player, frame);
   now += dt;
   fairy_golden(at(state), golden);
@@ -272,7 +272,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   bool jump = g->jump || sticks.jump || thumb_held;
   int64_t taps = fairy_taps(at(state)) + (sticks.jump ? 1 : 0);
   bool afloat = swim.medium >= 2;
-  // flight (aethyr/move/flight.coax, a step at a time): every press in the air is one wing beat
+  // flight (metaverse-engine/move/flight.coax, a step at a time): every press in the air is one wing beat
   // up, as many as you like (on the ground the player's jump lifts you); between beats you
   // glide down; held, she keeps beating and climbs; Shift in the air dives. In the water, or
   // with flight off for visitors (SETTINGS), there are no wings.

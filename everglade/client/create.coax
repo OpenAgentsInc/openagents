@@ -2,7 +2,7 @@
 // at its glade, where the path begins, in this mode: a studio camera on your character, the wardrobe
 // and the CLASS row down the left (on a phone, at the bottom), and your keys and pointer on the
 // wardrobe. What you pick is your character in the world as you pick it (s[0].creator, the record
-// aethyr/character/character-appearance.coax reads), drawn by Everglade II's renderer in its own light.
+// metaverse-engine/character/character-appearance.coax reads), drawn by Everglade II's renderer in its own light.
 // USE IN EVERGLADE keeps the record (action 16, the browser's shared copy, message 17 says it was
 // kept), puts /worlds/everglade2 in the address bar (action 19) and plays the run: the controls fade,
 // the camera swings round behind you, you run out of the glade and down the path on your own while
@@ -29,7 +29,7 @@ E2C_SAVE :: 16;          // host.js: keep the outbox as the shared character rec
 E2C_KEPT :: 17;
 E2C_ADDRESS :: 19;       // host.js: this same-origin path in the address bar (history.replaceState), nothing loaded
 E2C_DRUID :: 3;          // the CLASS row starts at the druid, as Everglade's did
-E2C_CLASSES :: 12;       // the SRD 5.2.1's, in fivebar.coax's order (aethyr/character/character-appearance.coax CA_CLASSES)
+E2C_CLASSES :: 12;       // the SRD 5.2.1's, in fivebar.coax's order (metaverse-engine/character/character-appearance.coax CA_CLASSES)
 E2C_CLASS_NAMES :: [12] string.["BARBARIAN", "BARD", "CLERIC", "DRUID", "FIGHTER", "MONK", "PALADIN", "RANGER", "ROGUE", "SORCERER", "WARLOCK", "WIZARD"];
 E2C_PANEL_BOTTOM :: 730.0;   // the glass panel's foot on a desktop (everglade/scene/gpu/character-glade.coax cg_ui_cover)
 // The arrival through Everglade's portal from the homepage (newland-portal.coax: its button,
@@ -56,7 +56,7 @@ E2Create :: struct {
   walking: bool;   // USE IN EVERGLADE taken: the run plays, the wardrobe gone
   run_t: f32;      // seconds since the record was kept
   handed: bool;    // the run is over: the follow camera and the keys are yours
-  cut: [1] figs.CamCut;   // the run as a Metaverse Engine cinematic (aethyr/cam/handback.coax): its hand-back retains the run's look
+  cut: [1] figs.CamCut;   // the run as a Metaverse Engine cinematic (metaverse-engine/cam/handback.coax): its hand-back retains the run's look
   address: bool;   // the address bar still to say /worlds/everglade2
   boxes: [E2C_BOXES] cc.Box; mobile: bool;
   wide: bool; tab: int; card: cc.Box; sheet: cc.Box;   // a phone held sideways; its chosen tab; the panels (e2c_layout)
@@ -444,7 +444,7 @@ e2c_action :: (s: [] E2) {
 // ME; held sideways, the card at the left and the sheet at the right. Every control a finger takes
 // is E2C_BUTTON CSS px tall at least, and the edges an iPhone keeps (the status bar, the home
 // indicator, the notch held sideways) stay clear. The panels are the realm's HUD style
-// (charactercreator.coax eg_tokens, aethyr/ui/hud-style.coax).
+// (charactercreator.coax eg_tokens, metaverse-engine/ui/hud-style.coax).
 E2C_TABS :: 5;
 E2C_TAB_BOX :: 21;            // a phone's tabs' boxes, 21 to 25
 E2C_TAB_NAMES :: [5] string.["BODY", "FACE", "GEAR", "PARTS", "CLASS"];
@@ -852,7 +852,7 @@ e2c_wheel :: (s: [] E2, dy: f32) -> bool {
 }
 
 // ---- the camera, your pose
-// Character Create's cameras are the Metaverse Engine's (aethyr/cam/studio.coax): the studio, Experimental's too,
+// Character Create's cameras are the Metaverse Engine's (metaverse-engine/cam/studio.coax): the studio, Experimental's too,
 // from your feet, held 0.28 m over this land; then after USE IN EVERGLADE the run (from the studio's
 // shot it swings round behind you over E2C_SWING s, keeps its own track through the run, held 0.5 m
 // over the land, then eases into the follow camera `chase` over E2C_EASE s, the orbit turned first

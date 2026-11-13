@@ -20,7 +20,7 @@ And conditions are numbers that the body, the input and the bar don't read.
 ## The three stages
 
 1. **Ask.** A press asks whether the actor can act now:
-   `deed_ask` (`aethyr/action/deed.coax`). The answer comes from the actor's
+   `deed_ask` (`metaverse-engine/action/deed.coax`). The answer comes from the actor's
    bearing (below), whether the slot is cooling down and whether an earlier
    press still waits for its answer. A slot that can't act turns grey. No text
    banner appears.
@@ -84,7 +84,7 @@ every level from 1 to 6, and every monster action Everglade fields.
 
 | Layer | Path | What |
 | --- | --- | --- |
-| Engine | `aethyr/action/deed.coax` | The bar, the ask and answer, the bearing type, the feel contract, the show |
+| Engine | `metaverse-engine/action/deed.coax` | The bar, the ask and answer, the bearing type, the feel contract, the show |
 | Engine (SRD rules) | `rules/srd/condition-bearing.coax` | SRD conditions to a bearing |
 | Game | `everglade/client/class-feel.coax` | Everglade's feel for every class ability and monster action |
 | Zone | `everglade/client/cast.coax`, `everglade/zone-combat.coax`, `everglade-spells.coax` | Each realm wires its press, its authority's answer and its bar to the pipeline |
@@ -111,7 +111,7 @@ icon.
 ## Checks
 
 ```sh
-coax/bin/coax test aethyr/action/deed.coax --library
+coax/bin/coax test metaverse-engine/action/deed.coax --library
 coax/bin/coax test rules/srd/condition-bearing-checks.coax --library
 coax/bin/coax test everglade/client/class-feel.coax --library
 ```

@@ -54,7 +54,7 @@ rustc 1.95.0 (59807616e 2026-04-14)
 cargo 1.95.0 (f2d3ce0bd 2026-03-21)
 coax0 0.51.2
 088782b2838c3119eeb5b352f9ef36144d08171da8b910e1a0a79d93e401ee4e  coax/bin/coax
-8695a3044212dd80c2764ac0c4a848163db65ef45b04fe0bb3fc7d0ad994d637  aethyr/lab/.cache/rapier-target/release/lab-rapier
-8818ef11e38e42989e3f07e0ffa09d3e19e509eeeb9d759b18408ae9901e27e0  aethyr/lab/.cache/jolt-sdk-build/lab-jolt
+8695a3044212dd80c2764ac0c4a848163db65ef45b04fe0bb3fc7d0ad994d637  metaverse-engine/lab/.cache/rapier-target/release/lab-rapier
+8818ef11e38e42989e3f07e0ffa09d3e19e509eeeb9d759b18408ae9901e27e0  metaverse-engine/lab/.cache/jolt-sdk-build/lab-jolt
 a0abc7d94b09f6c4b8c2cd99cdec9bf40bac328bff1b73a7432aefcc04b5dede  coax/web/build/tools/physics-aethyr-088782b2838c3119eeb5b352f9ef36144d08171da8b910e1a0a79d93e401ee4e
 2026-11-06 04:54:25.833016364 -0600/tmp/oa12959-all-first.log2026-11-06 04:55:31.287912645 -0600

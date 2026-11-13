@@ -1,6 +1,6 @@
 // The Everglade skin: dark iron and bronze frames, warm gold type and
 // parchment tones, rounded corners with studs (docs/verse/hud-styles.md).
-// Its colours are the FANTASY tokens of aethyr/ui/hud-style.coax
+// Its colours are the FANTASY tokens of metaverse-engine/ui/hud-style.coax
 // (hud_tokens(HUD_FANTASY)), copied here so the component system does not
 // load the engine; components/gallery/skin-parity.coax holds the two equal
 // until the HUD draws from this file (components/spec.md Phase 5, GitHub

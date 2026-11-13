@@ -8,18 +8,18 @@
 // meshes are packed with their base at 0 and their footprint centred) at x, z, turned by yaw and
 // scaled. Each has an id that never changes. "Last" is what the newest edit placed or changed,
 // so "make it bigger" and "delete them" find it. Every edit goes through Aethyrforge's typed scene
-// edit log (aethyr/forge/edit.coax) with undo and redo (#13226).
+// edit log (metaverse-engine/editor/edit.coax) with undo and redo (#13226).
 //
 // Where things go is worked out from an anchor (the tapped spot, the middle of the view, the last
 // edit's things, the newest thing of a name, the grid's middle) and a side as the camera sees it
 // (left, right, toward you, away from you, around): a thing placed beside another stands clear of
 // it, its footprint and the other's apart plus the distance asked. Several are spread over a disc,
-// each kept off the others and off what stands there already, from a seeded draw (aethyr/core/rand.coax),
+// each kept off the others and off what stands there already, from a seeded draw (metaverse-engine/core/rand.coax),
 // so the same edits on the same world give the same world.
 //   coax/bin/coax test apps/openagents-web/worldbuilder-plan.coax
 
-#load "../../aethyr/core/rand.coax";
-#load "../../aethyr/forge/edit.coax";
+#load "../../metaverse-engine/core/rand.coax";
+#load "../../metaverse-engine/editor/edit.coax";
 #load "worldbuilder-land.coax";
 
 WB_OBJECTS :: FORGE_SCENE_ITEMS;   // things a world holds (the page shows the count and this)
@@ -265,7 +265,7 @@ wb_read :: (c: [] WbCat, line: string) -> WbRead {
   return r;
 }
 
-// ---- the world, backed by Aethyrforge's scene edit log (aethyr/forge/edit.coax)
+// ---- the world, backed by Aethyrforge's scene edit log (metaverse-engine/editor/edit.coax)
 
 wb_scene :: (w: [] WbWorld) -> ForgeScene {
   return ForgeScene.{st = w[0].fg[..], items = w[0].objs[..], ops = w[0].ops[..], steps = w[0].steps[..],

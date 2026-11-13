@@ -4,9 +4,9 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/forge/pack.coax";
-#load "../../aethyr/render/native-texture-profile.coax";
-#load "../../aethyr/render/host-layers.coax";
+#load "../../metaverse-engine/editor/pack.coax";
+#load "../../metaverse-engine/render/native-texture-profile.coax";
+#load "../../metaverse-engine/render/host-layers.coax";
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("usage: metal-assets ROOT PACK OUTPUT");return 2;}
  root:=args_at(a[..],0);file:=args_at(a[..],1);out:=args_at(a[..],2);

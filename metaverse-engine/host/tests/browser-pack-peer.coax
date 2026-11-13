@@ -1,0 +1,26 @@
+// Finite loopback HTTP fixture: physical split/cut/held pack reads.
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/net/socket_foreign.coax";
+#load "../../../coax/lib/net/ws_server.coax";
+#load "../../editor/pack.coax";
+HppConnection :: struct {h:int=-1;phase:int;used:int;input:[4096]u8;mode:int;due:int;}
+#test "physical pack paths are exact" {#assert hpp_mode("GET /split HTTP/1.1\r\n")==1&&hpp_mode("GET /cut HTTP/1.1\r\n")==2&&hpp_mode("GET /hold HTTP/1.1\r\n")==3&&hpp_mode("GET /close-count HTTP/1.1\r\n")==4&&hpp_mode("GET /splitx HTTP/1.1\r\n")==0;}
+hpp_mode :: (raw:string)->int {for text,i:[4]string.["GET /split HTTP/1.1\r\n","GET /cut HTTP/1.1\r\n","GET /hold HTTP/1.1\r\n","GET /close-count HTTP/1.1\r\n"]{if raw.count>=text.count&&raw[0..<text.count]==text{return i+1;}}return 0;}
+hpp_write :: (h:int,bytes:string)->bool {for b:bytes{if cxsock_write(h,int(b))!=0{return false;}}return cxsock_flush(h,100)==0;}
+hpp_close :: (c:[]HppConnection){if c[0].h>=0{done:=cxsock_close(c[0].h);}c[0]=HppConnection.{};}
+hpp_step :: (c:[]HppConnection,pack:string,closed:[]int){
+ if c[0].h<0{return;}n:=cxsock_read(c[0].h,0);if n== -1||n< -2{if c[0].mode==3{closed[0]+=1;}hpp_close(c);return;}
+ if c[0].phase==0{if n>0{if n>c[0].input.count-c[0].used{hpp_close(c);return;}for i:0..<n{c[0].input[c[0].used+i]=u8(cxsock_byte(c[0].h,i));}c[0].used+=n;}raw:=cast(string)c[0].input[0..<c[0].used];if ws_find_end(raw)==0{return;}c[0].mode=hpp_mode(raw);
+  if c[0].mode==4{header:=hpp_write(c[0].h,"HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\nContent-Length: 1\r\n\r\n");body:=hpp_write(c[0].h,ifx closed[0]>0 then "1" else "0");hpp_close(c);return;}
+  if c[0].mode==0{hpp_close(c);return;}if !hpp_write(c[0].h,"HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: application/octet-stream\r\nContent-Length: 512\r\nConnection: close\r\n\r\n")||!hpp_write(c[0].h,pack[0..<3]){hpp_close(c);return;}c[0].phase=1;c[0].due=cxsock_now_ms()+70;return;
+ }
+ if c[0].mode==3||cxsock_now_ms()<c[0].due{return;}from:=ifx c[0].phase==1 then 3 else ifx c[0].phase==2 then 11 else 12;to:=ifx c[0].phase==1 then 11 else ifx c[0].phase==2 then 12 else ifx c[0].mode==2 then 511 else 512;
+ if !hpp_write(c[0].h,pack[from..<to])||c[0].phase==3{hpp_close(c);return;}c[0].phase+=1;c[0].due=cxsock_now_ms()+70;
+}
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1{return 2;}listener:=cxsock_listen(9187);if listener<0{return 1;}defer{done:=cxsock_close(listener);}if !fs_write(args_at(a[..],0),"ready"){return 1;}raw:[512]u8;pack:=pack_test(600,raw[..]);conns:[8]HppConnection;closed:[1]int;deadline:=cxsock_now_ms()+60000;
+ while cxsock_now_ms()<deadline{h:=cxsock_accept(listener,0);if h>=0{taken:=false;for i:0..<conns.count{if conns[i].h<0{conns[i]=HppConnection.{h=h};taken=true;break;}}if !taken{done:=cxsock_close(h);}}for i:0..<conns.count{hpp_step(conns[i..<i+1],pack,closed[..]);}proc_sleep(1);}for i:0..<conns.count{hpp_close(conns[i..<i+1]);}return 0;
+}

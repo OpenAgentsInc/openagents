@@ -1,0 +1,258 @@
+// An SRD 5e battle's events as effects (book chapter 72, #13086): which recipe each event in a
+// battle's log starts (puff.coax, abilities.coax, warlock.coax), from where to where, and in which
+// light (spell-light.coax). A zone that plays rules/srd/battle.coax on a grid hands each event
+// here with where its grid lies in the world; the 5E Lab's glade, its Siege and its Warlock start
+// every effect this way, and the flat view draws the same causes from above (flat.coax).
+//   coax/bin/coax test --library metaverse-engine/fx/battle.coax
+#load "../../rules/srd/battle.coax";
+#load "puff.coax";
+#load "spell-light.coax";
+
+// Where a battle's grid lies in the world: square (x, y) spans x0 + x * sq to x0 + (x + 1) * sq
+// (and the same down z from z0), sq metres a side (a 5-foot square by default).
+FxeGrid :: struct { x0: f32; z0: f32; sq: f32 = 1.524; }
+// What the zone knows that the battle doesn't: the foe a feature acts against (Cunning Action's Dash
+// runs from the nearest, Flurry of Blows strikes the one at hand; -1 none), and where the one acting
+// stood a moment ago on screen (Dimension Door opens there).
+FxeSeen :: struct { foe: int = -1; was: FxV; }
+
+FXE_PSYCHIC :: FxV.{x = 0.8, y = 0.35, z = 1.0};   // a psychic burst's purple
+FXE_HEAL :: FxV.{x = 0.4, y = 1.0, z = 0.45};
+
+// The middle of square (x, y) (fractions between squares), `lift` metres up.
+fxe_point :: (g: FxeGrid, x: f32, y: f32, lift: f32) -> FxV { return fxp_v(g.x0 + (x + 0.5) * g.sq, lift, g.z0 + (y + 0.5) * g.sq); }
+// Where creature i stands (its square's middle), `lift` metres up.
+fxe_spot :: (b: [] RsBattle, g: FxeGrid, i: int, lift: f32) -> FxV { return fxe_point(g, f32(b[0].c[i].x), f32(b[0].c[i].y), lift); }
+// Creature i's casting hand.
+fxe_hand :: (b: [] RsBattle, g: FxeGrid, i: int) -> FxV { h := fxe_spot(b, g, i, 1.5); h.x += 0.3; return h; }
+// The middle of a ZONE event's area of `amount` squares a side from (x, y), `lift` metres up, and
+// its reach (half its side, metres).
+fxe_area :: (g: FxeGrid, e: RsEvent, lift: f32) -> FxV { mid := f32(e.amount - 1) / 2; return fxe_point(g, f32(e.x) + mid, f32(e.y) + mid, lift); }
+fxe_reach :: (g: FxeGrid, e: RsEvent) -> f32 { return f32(e.amount) * g.sq / 2; }
+// Starts a cause on the battle's clock.
+fxe_cause :: (p: [] FxPuffs, b: [] RsBattle, recipe: int, seed: f32, t0: f32, from: FxV, to: FxV, col: FxV, big: f32, reach: f32) {
+  slot := fxp_start(p, FxCause.{recipe = recipe, seed = seed, t0 = t0, from = from, to = to, col = col, big = big, reach = reach}, rs_clock_s(b));
+}
+// True for a spell that makes an attack roll: its effect flies with each attack, not with the cast.
+fxe_attacks :: (sp: int) -> bool {
+  if sp < 0 { return false; }
+  sd := rs_spell(sp);
+  for q: 0..<sd.step_n { if sd.steps[q].kind == RS_S_ATTACK { return true; } }
+  return false;
+}
+// A miss lands beside its target, low.
+fxe_missed :: (at: FxV, seed: f32) -> FxV { m := at; m.x += fxp_sym(seed, 0, 0) * 0.9; m.z += fxp_sym(seed, 0, 1) * 0.9; m.y = 0.6; return m; }
+
+// One battle event as its effect, started at t0 from `seed`.
+fxe_event :: (p: [] FxPuffs, b: [] RsBattle, g: FxeGrid, e: RsEvent, seed: f32, t0: f32, seen: FxeSeen) {
+  if e.by < 0 || e.by >= b[0].n { return; }
+  hand := fxe_hand(b, g, e.by);
+  aimed := e.to >= 0 && e.to < b[0].n && e.to != e.by;
+  if e.feat != RS_FT_NONE && fxe_feat(p, b, g, e, seed, t0, seen) { return; }
+  if fxe_warlock(p, b, g, e, seed, t0, seen) { return; }
+  if fxe_npc(p, b, g, e, seed, t0) { return; }
+  if (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && aimed {
+    at := fxe_spot(b, g, e.to, 1.1);
+    if e.kind == RS_EV_MISS { at = fxe_missed(at, seed); }
+    if e.spell >= 0 {
+      sp := e.spell; col := fxl_spell_rgb(sp);
+      fiery := sp == SP_FIRE_BOLT || sp == SP_PRODUCE_FLAME || sp == SP_FLAME_HURL || sp == SP_SCORCHING_RAY;
+      if fiery { fxe_cause(p, b, FXR_FIREBOLT, seed, t0, hand, at, col, ifx e.damage == 1 then 1.5 else 1, 1); }
+      else if sp == SP_STARRY_WISP { fxe_cause(p, b, FXR_STAR, seed, t0, hand, at, col, 1, 1); }
+      else { fxe_cause(p, b, FXR_STREAK, seed, t0, hand, at, col, ifx sp == SP_ELDRITCH_BLAST || sp == SP_GUIDING_BOLT then 1.25 else 0.9, 1); }
+      return;
+    }
+    if rs_feet_to(b, e.by, e.to) > 5 { fxe_cause(p, b, FXR_ARROW, seed, t0, hand, at, fxp_v(0.9, 0.8, 0.6), 1, 1); return; }
+    if e.kind == RS_EV_ATTACK {
+      crit := e.damage == 1;
+      fxe_cause(p, b, FXR_HIT, seed, t0, fxe_spot(b, g, e.by, 1.1), at, ifx crit then fxp_v(1.0, 0.75, 0.35) else fxp_v(1.0, 0.85, 0.6), ifx crit then 1.8 else 1, 1);
+    }
+    return;
+  }
+  if e.kind == RS_EV_CAST && e.spell >= 0 && !fxe_attacks(e.spell) {
+    sp := e.spell; col := fxl_spell_rgb(sp);
+    if e.to >= 0 && e.to < b[0].n {
+      at := fxe_spot(b, g, e.to, 1.1);
+      if sp == SP_SACRED_FLAME || sp == SP_HELLISH_REBUKE { fxe_cause(p, b, FXR_COLUMN, seed, t0, hand, at, col, 1, 1); return; }
+      feet := fxe_spot(b, g, e.to, 0);
+      if sp == SP_HEX || sp == SP_HUNTERS_MARK { fxe_cause(p, b, FXR_MARK, seed, t0, hand, at, col, 1, 1); return; }
+      if sp == SP_SHIELD { fxe_cause(p, b, FXR_BARRIER, seed, t0, hand, feet, col, 1, 1); return; }
+      // Divine Smite: bigger for each slot level over the first
+      if sp == SP_DIVINE_SMITE { fxe_cause(p, b, FXR_SMITE, seed, t0, fxe_spot(b, g, e.by, 1.1), at, col, 1 + 0.3 * f32(rs_max(e.amount, 1) - 1), 1); return; }
+      if sp == SP_HOLD_PERSON { fxe_cause(p, b, FXR_BIND, seed, t0, hand, feet, col, 1, 1); return; }
+      if sp == SP_BLINDNESS { fxe_cause(p, b, FXR_VEIL, seed, t0, hand, feet, col, 1, 1); return; }
+      if sp == SP_VICIOUS_MOCKERY { fxe_cause(p, b, FXR_MOCKERY, seed, t0, hand, fxe_spot(b, g, e.to, 1.7), FXE_PSYCHIC, 1, 1); return; }
+      if sp == SP_FALSE_LIFE && e.to == e.by { fxe_cause(p, b, FXR_DRAIN, seed, t0, hand, feet, col, 1, 1); return; }
+      if sp == SP_PRODUCE_FLAME && e.to == e.by { fxe_cause(p, b, FXR_KINDLE, seed, t0, hand, hand, col, 1, 1); return; }
+      if sp == SP_CURE_WOUNDS || sp == SP_HEALING_WORD || sp == SP_MASS_HEALING_WORD || e.to == e.by { return; }   // the healing shows on its HEAL
+      fxe_cause(p, b, FXR_STREAK, seed, t0, hand, at, col, 0.8, 1);
+    }
+    return;
+  }
+  if e.kind == RS_EV_CAST && e.spell < 0 && e.to < 0 {
+    // a Channel Divinity (Turn Undead, Preserve Life) or Land's Aid: a ring out over the ground
+    k := b[0].c[e.by].klass;
+    if k == RS_CLERIC { fxe_cause(p, b, FXR_HALO, seed, t0, hand, fxe_spot(b, g, e.by, 0), fxp_v(1.0, 0.9, 0.55), 1, 9.1); }
+    if k == RS_DRUID { fxe_cause(p, b, FXR_BLOOM, seed, t0, hand, fxe_spot(b, g, e.by, 0), fxp_v(0.45, 0.95, 0.4), 1, 4.6); }
+    return;
+  }
+  if e.kind == RS_EV_ZONE {
+    sp := e.spell; col := fxl_spell_rgb(sp);
+    centre := fxe_area(g, e, 0.9);
+    reach := fxe_reach(g, e);
+    if sp == SP_FIREBALL { fxe_cause(p, b, FXR_FIREBALL, seed, t0, hand, centre, col, 1, reach); return; }
+    if sp == SP_THUNDERWAVE { fxe_cause(p, b, FXR_SHOCK, seed, t0, hand, centre, col, 1, reach); return; }
+    if sp == SP_HYPNOTIC_PATTERN { fxe_cause(p, b, FXR_SHIMMER, seed, t0, hand, centre, col, 1, reach); return; }
+    if sp == SP_ENTANGLE || sp == SP_FAERIE_FIRE { fxe_cause(p, b, FXR_BLOOM, seed, t0, hand, centre, col, 1, reach); return; }
+    if sp == SP_CALL_LIGHTNING || sp == SP_CALL_BOLT { fxe_cause(p, b, FXR_LIGHTNING, seed, t0, hand, centre, col, 1.2, reach); return; }
+    if sp == SP_SPIRIT_GUARDIANS { fxe_cause(p, b, FXR_ORBIT, seed, t0, hand, fxe_spot(b, g, e.by, 0), col, 1, reach); return; }
+    fxe_cause(p, b, FXR_SHOCK, seed, t0, hand, centre, col, 1, reach);
+    return;
+  }
+  if !(e.to >= 0 && e.to < b[0].n) { return; }
+  if e.kind == RS_EV_HEAL { fxe_cause(p, b, FXR_HEAL, seed, t0, hand, fxe_spot(b, g, e.to, 0), FXE_HEAL, 1, 1); return; }
+  // Guiding Bolt's light left on its target: the next attack roll against it has Advantage
+  if e.kind == RS_EV_CONDITION && e.spell == SP_GUIDING_BOLT { fxe_cause(p, b, FXR_GLIMMER, seed, t0, hand, fxe_spot(b, g, e.to, 0), fxl_spell_rgb(SP_GUIDING_BOLT), 1, 1); return; }
+  if e.kind == RS_EV_DAMAGE && e.spell == SP_SPIRIT_GUARDIANS { fxe_cause(p, b, FXR_COLUMN, seed, t0, hand, fxe_spot(b, g, e.to, 1.1), fxl_spell_rgb(SP_SPIRIT_GUARDIANS), 0.6, 1); return; }
+  if e.kind == RS_EV_DEATH && b[0].c[e.to].klass == RS_MONSTER { fxe_cause(p, b, FXR_BONES, seed, t0, hand, fxe_spot(b, g, e.to, 0), fxp_v(0.86, 0.83, 0.74), 1, 1); return; }
+  if e.kind == RS_EV_DOWN || e.kind == RS_EV_DEATH { fxe_cause(p, b, FXR_DUST, seed, t0, hand, fxe_spot(b, g, e.to, 0), fxp_v(0.5, 0.45, 0.36), 1, 1); return; }
+  if e.kind == RS_EV_CONDITION && e.to == e.by && b[0].c[e.by].klass == RS_BARBARIAN && b[0].c[e.by].raging {
+    fxe_cause(p, b, FXR_EMBERS, seed, t0, hand, fxe_spot(b, g, e.by, 0), fxp_v(1.0, 0.18, 0.08), 1, 1);
+  }
+}
+
+// A class feature's event as its effect (abilities.coax), from the feature the engine says it is
+// (RsEvent.feat). True when it drew one, or the feature's look is drawn by another of its events
+// (the healing a feature's own cast already shows).
+fxe_feat :: (p: [] FxPuffs, b: [] RsBattle, g: FxeGrid, e: RsEvent, seed: f32, t0: f32, seen: FxeSeen) -> bool {
+  f := e.feat; i := e.by;
+  hand := fxe_hand(b, g, i);
+  feet := fxe_spot(b, g, i, 0);
+  on := e.to >= 0 && e.to < b[0].n;
+  foe := ifx seen.foe >= 0 && seen.foe < b[0].n then seen.foe else -1;
+  if f == RS_FT_ACTION_SURGE { fxe_cause(p, b, FXR_SURGE, seed, t0, hand, feet, fxp_v(1.0, 0.78, 0.3), 1, 1); return true; }
+  if f == RS_FT_SECOND_WIND || f == RS_FT_WHOLENESS || f == RS_FT_LAY_ON_HANDS {
+    if e.kind == RS_EV_HEAL { return true; }   // its cast shows it
+    if f == RS_FT_SECOND_WIND { fxe_cause(p, b, FXR_BREATH, seed, t0, hand, feet, fxp_v(0.7, 1.0, 0.78), 1, 1); }
+    if f == RS_FT_WHOLENESS { fxe_cause(p, b, FXR_WHOLENESS, seed, t0, hand, feet, fxp_v(1.0, 0.9, 0.65), 1, 1); }
+    if f == RS_FT_LAY_ON_HANDS && on { fxe_cause(p, b, FXR_LAY, seed, t0, hand, fxe_spot(b, g, e.to, 1.1), fxp_v(1.0, 0.85, 0.45), 1, 1); }
+    return true;
+  }
+  if f == RS_FT_SNEAK_ATTACK && on { fxe_cause(p, b, FXR_SHADOW_SLASH, seed, t0, fxe_spot(b, g, i, 1.1), fxe_spot(b, g, e.to, 1.1), fxp_v(0.7, 0.3, 1.0), 1, 1); return true; }
+  if f == RS_FT_STEADY_AIM { fxe_cause(p, b, FXR_RETICLE, seed, t0, hand, feet, fxp_v(1.0, 0.55, 0.3), 1, 1); return true; }
+  if f == RS_FT_CUNNING_DASH {
+    // the shadows trail away from the foe it runs for
+    fxe_cause(p, b, FXR_AFTERIMAGE, seed, t0, ifx foe >= 0 then fxe_spot(b, g, foe, 0) else feet, feet, fxp_v(0.1, 0.1, 0.14), 1, 1);
+    return true;
+  }
+  if f == RS_FT_FLURRY {
+    if foe >= 0 { fxe_cause(p, b, FXR_FLURRY, seed, t0, fxe_spot(b, g, i, 1.2), fxe_spot(b, g, foe, 1.15), fxp_v(0.8, 0.9, 1.0), 1, 1); }
+    return true;
+  }
+  if f == RS_FT_STUNNING_STRIKE && on {
+    fxe_cause(p, b, FXR_STUN, seed, t0, hand, fxe_spot(b, g, e.to, 0), fxp_v(1.0, 0.82, 0.35), ifx e.kind == RS_EV_CONDITION then 1.0f32 else 0.6f32, 1);
+    return true;
+  }
+  if f == RS_FT_PATIENT_DEFENSE { fxe_cause(p, b, FXR_WIND, seed, t0, hand, feet, fxp_v(0.72, 0.88, 1.0), 1, 0.8); return true; }
+  if f == RS_FT_STEP_OF_THE_WIND { fxe_cause(p, b, FXR_WIND, seed, t0, hand, feet, fxp_v(0.72, 0.88, 1.0), 1, 2); return true; }
+  if f == RS_FT_SACRED_WEAPON { fxe_cause(p, b, FXR_SACRED, seed, t0, hand, feet, fxp_v(1.0, 0.9, 0.6), 1, 1); return true; }
+  if f == RS_FT_TURN_UNDEAD {
+    if e.kind == RS_EV_CAST { fxe_cause(p, b, FXR_HALO, seed, t0, hand, feet, fxp_v(1.0, 0.9, 0.55), 1, 9.1); return true; }
+    return false;
+  }
+  if f == RS_FT_PRESERVE_LIFE {
+    if e.kind == RS_EV_CAST { fxe_cause(p, b, FXR_WAVE, seed, t0, hand, feet, fxp_v(0.85, 1.0, 0.6), 1, 9.1); return true; }
+    return false;   // each one it heals: the healing motes
+  }
+  if f == RS_FT_LANDS_AID {
+    if e.kind == RS_EV_ZONE { fxe_cause(p, b, FXR_THORNS, seed, t0, hand, fxe_area(g, e, 0), fxp_v(0.35, 0.9, 0.4), 1, fxe_reach(g, e)); return true; }
+    return e.kind == RS_EV_CAST;   // the sphere shows it; its healing shows on its HEAL
+  }
+  if f == RS_FT_INSPIRATION && on { fxe_cause(p, b, FXR_NOTES, seed, t0, hand, fxe_spot(b, g, e.to, 1.9), fxp_v(1.0, 0.8, 0.35), 1, 1); return true; }
+  if f == RS_FT_FONT { fxe_cause(p, b, FXR_NOTES, seed, t0, feet, feet, fxp_v(1.0, 0.8, 0.35), 1, 1); return true; }
+  if f == RS_FT_CUTTING_WORDS && on { fxe_cause(p, b, FXR_MOCKERY, seed, t0, hand, fxe_spot(b, g, e.to, 1.7), FXE_PSYCHIC, 0.6, 1); return true; }
+  if f == RS_FT_INNATE_SORCERY { fxe_cause(p, b, FXR_ARCANE, seed, t0, hand, feet, fxp_v(0.75, 0.4, 1.0), 1, 1); return true; }
+  if f == RS_FT_DARK_BLESSING { fxe_cause(p, b, FXR_FIEND, seed, t0, hand, feet, fxp_v(1.0, 0.25, 0.1), 1, 1); return true; }
+  if f == RS_FT_WILD_RESURGENCE { fxe_cause(p, b, FXR_BLOOM, seed, t0, hand, feet, fxp_v(0.45, 0.95, 0.4), 0.6, 1); return true; }
+  return false;
+}
+
+// The level 17 Warlock's spells (warlock.coax): Eldritch Blast a beam a roll, Blight, Finger of
+// Death, Circle of Death and Dimension Door. True when it drew one.
+fxe_warlock :: (p: [] FxPuffs, b: [] RsBattle, g: FxeGrid, e: RsEvent, seed: f32, t0: f32, seen: FxeSeen) -> bool {
+  sp := e.spell;
+  if sp != SP_ELDRITCH_BLAST && sp != SP_BLIGHT && sp != SP_CIRCLE_OF_DEATH && sp != SP_FINGER_OF_DEATH && sp != SP_DIMENSION_DOOR { return false; }
+  hand := fxe_hand(b, g, e.by);
+  aimed := e.to >= 0 && e.to < b[0].n && e.to != e.by;
+  // a beam a roll: each of the four leaves its own way, so they don't run together
+  if sp == SP_ELDRITCH_BLAST && (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && aimed {
+    at := fxe_spot(b, g, e.to, 1.1);
+    if e.kind == RS_EV_MISS { at = fxe_missed(at, seed); }
+    fxe_cause(p, b, FXR_ELDRITCH, seed, t0, hand, at, FXW_VIOLET, ifx e.damage == 1 then 1.6 else 1.2, 1);
+    return true;
+  }
+  if e.kind == RS_EV_CAST && aimed && sp == SP_BLIGHT { fxe_cause(p, b, FXR_BLIGHT, seed, t0, hand, fxe_spot(b, g, e.to, 1.1), FXW_NECRO, 1, 1); return true; }
+  if e.kind == RS_EV_CAST && aimed && sp == SP_FINGER_OF_DEATH { fxe_cause(p, b, FXR_SOULFIRE, seed, t0, hand, fxe_spot(b, g, e.to, 1.1), FXW_NECRO, 1, 1); return true; }
+  if e.kind == RS_EV_ZONE && sp == SP_CIRCLE_OF_DEATH {
+    centre := fxe_area(g, e, 0.2);
+    fxe_cause(p, b, FXR_NECRO_RING, seed, t0, centre, centre, FXW_NECRO, 1, fxe_reach(g, e));
+    return true;
+  }
+  // Dimension Door: the tear where you stood (seen.was) to where you land
+  if e.kind == RS_EV_PUSH && sp == SP_DIMENSION_DOOR && e.to == e.by {
+    fxe_cause(p, b, FXR_PORTAL, seed, t0, seen.was, fxe_spot(b, g, e.by, 0), FXW_VIOLET, 1, 1);
+    return true;
+  }
+  return false;
+}
+
+// The SRD's townsfolk's own looks (the 5E Lab's Siege): a Mage's Arcane Burst and a Priest's Radiant
+// Flame as bolts of their light. True when it drew one.
+fxe_npc :: (p: [] FxPuffs, b: [] RsBattle, g: FxeGrid, e: RsEvent, seed: f32, t0: f32) -> bool {
+  if e.to < 0 || e.to >= b[0].n || e.to == e.by || e.spell >= 0 { return false; }
+  if !(e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) || rs_feet_to(b, e.by, e.to) <= 5 { return false; }
+  npc := b[0].c[e.by].npc;
+  if npc != RS_NPC_MAGE && npc != RS_NPC_PRIEST { return false; }
+  at := fxe_spot(b, g, e.to, 1.1);
+  if e.kind == RS_EV_MISS { at = fxe_missed(at, seed); }
+  if npc == RS_NPC_MAGE { fxe_cause(p, b, FXR_STREAK, seed, t0, fxe_hand(b, g, e.by), at, fxp_v(0.55, 0.7, 1.0), 1.1, 1); }
+  else { fxe_cause(p, b, FXR_STREAK, seed, t0, fxe_hand(b, g, e.by), at, fxp_v(1.0, 0.9, 0.55), 1, 1); }
+  return true;
+}
+
+// The battle's lasting areas (Entangle, Spirit Guardians, a Cloud): motes over each, at `now`.
+fxe_zones :: (p: [] FxPuffs, b: [] RsBattle, g: FxeGrid, now: f32) {
+  for z: 0..<RS_ZONES {
+    zo := b[0].zone[z..<z + 1];   // in place, not a copy
+    if !zo[0].on { continue; }
+    fxp_zone(p, g.x0 + f32(zo[0].x0) * g.sq, g.z0 + f32(zo[0].y0) * g.sq, g.x0 + f32(zo[0].x1 + 1) * g.sq, g.z0 + f32(zo[0].y1 + 1) * g.sq,
+             fxl_spell_rgb(zo[0].spell), now, f32(z) * 3.1 + 0.7);
+  }
+}
+
+fxe_test_recipe :: (p: [] FxPuffs) -> int {
+  found := -1;
+  for k: 0..<FX_LIVE { if p[0].on[k] { found = p[0].live[k].recipe; } }
+  return found;
+}
+#test "battle effects: a bolt flies from the hand, a Fireball bursts over its area, a Warlock's beam is violet" #steps 400000000 {
+  b: [1] RsBattle; p: [1] FxPuffs;
+  rs_room(b[..]); b[0].n = 2; b[0].c[0].x = 1; b[0].c[0].y = 4; b[0].c[1].x = 6; b[0].c[1].y = 4;
+  g := FxeGrid.{x0 = -10, z0 = -10};
+  #assert abs(fxe_point(g, 0, 0, 0).x - (-10 + 0.762)) < 0.001;
+  e: RsEvent; e.by = 0; e.to = 1; e.kind = RS_EV_ATTACK; e.spell = SP_FIRE_BOLT;
+  fxe_event(p[..], b[..], g, e, 1.5, 0, FxeSeen.{});
+  #assert fxe_test_recipe(p[..]) == FXR_FIREBOLT && abs(p[0].live[0].to.x - fxe_spot(b[..], g, 1, 0).x) < 0.001;
+  fxp_clear(p[..]);
+  e.kind = RS_EV_ZONE; e.spell = SP_FIREBALL; e.x = 3; e.y = 3; e.amount = 9;
+  fxe_event(p[..], b[..], g, e, 2.5, 0, FxeSeen.{});
+  #assert fxe_test_recipe(p[..]) == FXR_FIREBALL && abs(p[0].live[0].reach - 9 * 1.524 / 2) < 0.001;
+  fxp_clear(p[..]);
+  e.kind = RS_EV_ATTACK; e.spell = SP_ELDRITCH_BLAST;
+  fxe_event(p[..], b[..], g, e, 3.5, 0, FxeSeen.{});
+  #assert fxe_test_recipe(p[..]) == FXR_ELDRITCH && p[0].live[0].col.x == FXW_VIOLET.x;
+  fxp_clear(p[..]);
+  e.kind = RS_EV_CAST; e.spell = SP_HOLD_PERSON;
+  fxe_event(p[..], b[..], g, e, 4.5, 0, FxeSeen.{});
+  #assert fxe_test_recipe(p[..]) == FXR_BIND;
+}

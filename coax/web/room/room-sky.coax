@@ -1,13 +1,13 @@
 // Everglade's time of day and weather on the room server (GitHub #12709; spec
 // docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.10 and 6.7). The server owns the
 // room's sky: its day is WIRE_DAY_MS long and turns on the server's wall clock, and its weather is
-// aethyr/world/water-weather.coax's temperate schedule on WIRE_WEATHER_SEED at the server's world tick. A
+// metaverse-engine/world/water-weather.coax's temperate schedule on WIRE_WEATHER_SEED at the server's world tick. A
 // seat hears both in W when it sits (room-everglade.coax eg_join), and every seat hears W again when
 // the weather turns; the page draws the day and the rain on the server's clock (everglade-net.coax
 // net_sky_*), so every page in the room has the same sky whatever its own clock says.
 //   coax/bin/coax test coax/web/room/room.coax --only "sky:"
 
-#load "../../../aethyr/world/water-weather.coax";
+#load "../../../metaverse-engine/world/water-weather.coax";
 
 // The weather state the server runs at wall ms (the block's, a pin's when the server has one).
 eg_sky_weather :: (wall_ms: int) -> int {

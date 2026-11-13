@@ -18,7 +18,7 @@ that an npm install was tested.
 
 All 23 package entry indexes were inspected. The ten vanilla/core source
 families were inventoried, including internal routines needed to understand
-their public functions. The [source ledger](../../aethyr/ui/arwes/SOURCES.md)
+their public functions. The [source ledger](../../metaverse-engine/ui/arwes/SOURCES.md)
 records exact upstream paths and SHA-256 hashes for 72 non-test, non-index
 core source files, all 23 entry indexes, and the license/README/standalone
 metadata: 98 files. A pinned file in that ledger may contain host-only code
@@ -27,7 +27,7 @@ that is deliberately excluded; pinning it is not a feature-parity claim.
 The upstream checkout was read as untrusted source. Its installation,
 build, test and demo scripts were not executed. No upstream framework app,
 JavaScript bundle, CSS overlay, image or sound file is shipped. The exact
-[MIT license](../../aethyr/ui/arwes/LICENSE), including the original Romel
+[MIT license](../../metaverse-engine/ui/arwes/LICENSE), including the original Romel
 Perez copyright notice, is retained with the translated/adapted code.
 
 ## What counts as relevant code
@@ -173,7 +173,7 @@ resolves Motion One 10.18.0. Read-only inspection of its published
 and `@motionone/dom` style animation code establishes the CSS default
 `cubic-bezier(0.25, 0.1, 0.25, 1)` for these tracks. Coax evaluates that
 curve with scalar bisection. No Motion runtime is installed or shipped;
-the [source ledger](../../aethyr/ui/arwes/SOURCES.md) links the locked
+the [source ledger](../../metaverse-engine/ui/arwes/SOURCES.md) links the locked
 archives used to resolve that inherited default.
 
 Family progress means 0 to 1 through one requested entering or exiting
@@ -291,12 +291,12 @@ It neither asks for microphone access nor downloads upstream sound assets.
 ## Reuse within OpenAgents
 
 The three value/geometry units are
-[arwes-frames.coax](../../aethyr/ui/arwes-frames.coax),
-[arwes-motion.coax](../../aethyr/ui/arwes-motion.coax), and
-[arwes-fx.coax](../../aethyr/ui/arwes-fx.coax).
-[arwes-paint.coax](../../aethyr/ui/arwes-paint.coax) places them: each of the
+[arwes-frames.coax](../../metaverse-engine/ui/arwes-frames.coax),
+[arwes-motion.coax](../../metaverse-engine/ui/arwes-motion.coax), and
+[arwes-fx.coax](../../metaverse-engine/ui/arwes-fx.coax).
+[arwes-paint.coax](../../metaverse-engine/ui/arwes-paint.coax) places them: each of the
 25 specimens is painted once, as the component system's display list
-(`components/paint/list.coax`). [arwes-draw.coax](../../aethyr/ui/arwes-draw.coax)
+(`components/paint/list.coax`). [arwes-draw.coax](../../metaverse-engine/ui/arwes-draw.coax)
 writes that list as the HUD's twelve-float records over the existing
 `hud.coax`/`draw.coax` layout, hit, font and rendering foundation, and
 openagents.com/components draws the same list with the component shader
@@ -364,8 +364,8 @@ selection, buffers and lifetimes. Source-provided arithmetic is drawing and
 UI state, not a new simulation clock, money rule or admission decision.
 New components do not overwrite the homepage's verified live observations.
 
-The retained [source ledger](../../aethyr/ui/arwes/SOURCES.md) and
-[license](../../aethyr/ui/arwes/LICENSE) travel with the Coax adaptation.
+The retained [source ledger](../../metaverse-engine/ui/arwes/SOURCES.md) and
+[license](../../metaverse-engine/ui/arwes/LICENSE) travel with the Coax adaptation.
 Final verification counts, screenshots and the pushed commit are recorded
 separately from this source-analysis record.
 
@@ -415,9 +415,9 @@ A root-level entry can prepare geometry and display text without a host
 callback or allocation:
 
 ```coax
-#load "aethyr/ui/arwes-frames.coax";
-#load "aethyr/ui/arwes-motion.coax";
-#load "aethyr/ui/arwes-fx.coax";
+#load "metaverse-engine/ui/arwes-frames.coax";
+#load "metaverse-engine/ui/arwes-motion.coax";
+#load "metaverse-engine/ui/arwes-fx.coax";
 
 example_frame :: (points:[]AfPoint,elapsed:f32)->int {
   settings:=af_settings(3); // Octagon.
@@ -476,7 +476,7 @@ A consumer using the GPU adapter can load its combined unit instead of the
 three value units separately:
 
 ```coax
-#load "aethyr/ui/arwes-draw.coax";
+#load "metaverse-engine/ui/arwes-draw.coax";
 
 example_vertices :: (w:[]AwPaint,vertices:[]f32,pen:HdPen,elapsed:f32)->int {
   share:=ar_animation_sample(elapsed,0.6,AM_OUT_SINE,false,0).progress;

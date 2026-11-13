@@ -29,7 +29,7 @@
 // tick) and the frames the server refused (r). The bots are tagged as tests: their rooms are
 // pair-* (left out of the rooms list), their seat tickets' player ids p-load-ROOM-K, their names
 // "Load K", so a usage count can leave them out.
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "script-player.coax";   // SP_HARM: what a bar's entry is for
 #load "bot-bars.coax";        // each class's bar as the scripted player sees it (the cast a bot makes)

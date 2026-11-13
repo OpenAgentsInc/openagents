@@ -204,7 +204,7 @@ one.
 ## Checks
 
 ```sh
-coax/bin/coax test aethyr/session/seat-ticket.coax
+coax/bin/coax test metaverse-engine/session/seat-ticket.coax
 coax/web/tool.sh coax/web/room/seat-ticket-profile.coax proto/verse/seat-ticket-v5.json
 coax/bin/coax test coax/web/room/room-write.coax
 coax/web/tool.sh coax/web/room/room-write-tool.coax profile proto/verse/room-write-v1.json

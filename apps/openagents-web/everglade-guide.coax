@@ -224,7 +224,7 @@ eg_first_hud :: (s:[]Everglade,out:[]f32,u:[]f32,at:int,top:f32,you:Point)->int 
   return n;
 }
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
 // First raid arrival: a small opt-in preview of the opening. It never claims
 // a hit or completion; a later slice must use confirmed room outcomes.

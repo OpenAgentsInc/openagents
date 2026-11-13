@@ -1,9 +1,9 @@
 // deadgears's shaders, the source of apps/openagents-web/deadgears.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (deadgears.module,
 // deadgears.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/render/noise.coax";
-#load "../../../aethyr/gpu/wgsl.coax";
-#load "../../../aethyr/render/ring8.coax";
+#load "../../../metaverse-engine/render/noise.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
+#load "../../../metaverse-engine/render/ring8.coax";
 
 // DeadgearsU, a uniform block, is read from a []f32 at these offsets (floats):
 //   size 0
@@ -110,7 +110,7 @@ deadgears_quad :: (v:u32)->V2 {
   return q[cast(int)v];
 }
 // The figures (deadgears.coax ROUNDS, the first objects): each a bone of a
-// aethyr/anim/figure.coax rig, a round cone from end a (r0: its place, its radius)
+// metaverse-engine/anim/figure.coax rig, a round cone from end a (r0: its place, its radius)
 // to end b (r1), as Hecate's Cemetery draws its figures' bones: two half
 // balls and the side between, eight round, two rings to a half
 // (ROUND_VERTICES, 240).

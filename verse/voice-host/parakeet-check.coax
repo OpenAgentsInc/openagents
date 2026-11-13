@@ -21,7 +21,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
-#load "../../aethyr/audio/wav.coax";
+#load "../../metaverse-engine/audio/wav.coax";
 
 HELLO :: "Hello Foreman. What are we building today?";
 RED :: "Build a small red house next to a tall tree.";

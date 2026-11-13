@@ -27,7 +27,7 @@ Owner decision, 2026-11-07: film mode is approved (see the film note's
   `docs/verse/native-gpu.md`), the Mac Metal host runs Everglade at 120 Hz,
   and `verse/gpu/vk-realm.c --headless` already writes float frames. Every
   movie today is a screenshot of the real-time WebGPU frame in headless
-  Chrome (`coax/web/clip.coax`, `aethyr/tools/anim-scene-play.coax`). The
+  Chrome (`coax/web/clip.coax`, `metaverse-engine/tools/anim-scene-play.coax`). The
   biggest quality jump is from removing that ceiling, not from ray tracing.
 - **The idea worth copying most is vork's split between scene content and
   render quality.** One scene, several named profiles (`std/previs`,

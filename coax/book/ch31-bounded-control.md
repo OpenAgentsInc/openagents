@@ -98,4 +98,4 @@ different clock speed or a different build profile. Without that record, a
 - R3 scratch regions and allocators ([chapter 6](ch06-memory.md)).
 - R4 generics ([chapter 8](ch08-generics.md)) and R11 effect summaries.
 - Used by [chapter 35](ch35-sensors-and-actuators.md)'s supervisor and by
-  the OpenAgents Metaverse Engine [chapter 9](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch009-a-character-moves.md).
+  the OpenAgents Metaverse Engine [chapter 9](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch009-a-character-moves.md).

@@ -1,14 +1,14 @@
 // Housewright (game): Everglade's five house tiers and the stages each is built in
 // (everglade/docs/housewright-profession-spec.md, section 6), as staged-build parts of the engine
-// (aethyr/world/build-site.coax). Each tier is authored in its own frame: the front, where you go in,
+// (metaverse-engine/world/build-site.coax). Each tier is authored in its own frame: the front, where you go in,
 // faces +z, the ground is y 0 and the house's middle is (0, 0). A zone places a tier at a
 // BuildingFrame; Everglade Experimental's showcase (verse/experimental-terrain.coax exp_showcase)
 // stands every tier at every stage in a row. The timber house is the player's home's Medieval
 // Village MegaKit house (everglade/world/home.coax) on a stone sill.
 #module "everglade.housewright";
-#load "../../aethyr/world/build-site.coax" as bs;
-#load "../../aethyr/world/building.coax" as building;
-#load "../../aethyr/world/build-work.coax" as bw;
+#load "../../metaverse-engine/world/build-site.coax" as bs;
+#load "../../metaverse-engine/world/building.coax" as building;
+#load "../../metaverse-engine/world/build-work.coax" as bw;
 
 HW_TIERS :: 5;
 HW_LEANTO :: 0;
@@ -175,7 +175,7 @@ hw_inside :: (tier:int,x:f32,z:f32)->bool {
  n:=hw_boxes(HW_TIMBER,2,f,b[..],0);
  for k:0..<21 {x:= -3+f32(k)*0.15;z:=0.95f32;for j:0..<n {q:=j*6;#assert b[q+4]<0.56 || !(x>b[q]-0.3 && x<b[q+3]+0.3 && z>b[q+2]-0.3 && z<b[q+5]+0.3);}}
 }
-// A tier's parts in build order, for the engine's build progress (aethyr/world/build-site.coax
+// A tier's parts in build order, for the engine's build progress (metaverse-engine/world/build-site.coax
 // bs_fractions, bs_arrival, bs_used): written into out, the count returned. Each stage's rows are
 // listed in the order they go up.
 HW_MOST_PARTS :: 64;
@@ -188,7 +188,7 @@ hw_tier_parts :: (tier:int,out:[]bs.BuildPart)->int {n:=0;for i:HW_FIRST[tier]..
 }
 
 // What each tier is built from, as the piles beside its site (the engine's stocks,
-// aethyr/world/build-work.coax): the spec's material counts (section 6; starting values for
+// metaverse-engine/world/build-work.coax): the spec's material counts (section 6; starting values for
 // playtests), what one looks like, and which parts take it. A row is: tier, pile shape (bw.BW_*),
 // the material it is drawn in (bs.BS_*), count, one item's size and length in metres, the material
 // of the parts it feeds (or bw.BW_KIT for kit pieces), and the stage it feeds (0 every stage).

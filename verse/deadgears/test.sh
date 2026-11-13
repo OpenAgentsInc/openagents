@@ -10,4 +10,4 @@ cd "$(dirname "$0")/../.."
 coax/bin/coax test verse/deadgears/rules.coax --library --steps 4000000000
 coax/bin/coax test apps/openagents-web/deadgears.coax --steps 4000000000
 # the mutants against the Metaverse Engine's navigation and sight oracles, and crowds in a passage (#12854)
-coax/bin/coax test aethyr/tests/crowd-deadgears.coax --library --steps 4000000000
+coax/bin/coax test metaverse-engine/tests/crowd-deadgears.coax --library --steps 4000000000

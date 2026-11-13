@@ -1,0 +1,46 @@
+// Book chapter 28: metaverse-engine/physics/sim/grid-fluid.coax's stable fluids. The
+// Taylor-Green vortex decays on three grids, and the viscosity that fits its
+// energy is the set viscosity plus the grid's numerical viscosity; still air
+// in a box under gravity stays still; a puff of warm smoke rises.
+#load "../physics/sim/grid-fluid.coax";
+#import "Basic";
+
+r4 :: (x: f64) -> f64 { return floor(x * 10000.0 + 0.5) / 10000.0; }
+r6 :: (x: f64) -> f64 { return floor(x * 1000000.0 + 0.5) / 1000000.0; }
+
+// book:begin example
+main :: () {
+  g: [1] Gf; work: [1] Gf_Work;
+  print("Taylor-Green vortex, side 2 pi, nu = 0.01, 1 s at dt 0.05:\n");
+  for n: [3] int.[16, 32, 64] {
+    if !gf_taylor_green(g[..], n, 0.01) { return; }
+    e0 := gf_energy(g[..]); most := 0;
+    for k: 0..<20 {
+      gf_step(g[..], work[..], 0.05, d2(0.0, 0.0), 0.0);
+      if g[0].project_iterations > most { most = g[0].project_iterations; }
+    }
+    fit := -log(gf_energy(g[..]) / e0) / 4.0;
+    print("  % x %: energy ratio % (exact exp(-4 nu t) = %), fitted nu %, numerical %; divergence %; up to % CG iterations\n",
+          n, n, r6(gf_energy(g[..]) / e0), r6(exp(-0.04)), r6(fit), r6(fit - 0.01), r6(gf_max_div(g[..])), most);
+  }
+
+  // A closed 1.6 m box of still air, 20 steps under gravity.
+  if !gf_new(g[..], 16, 16, 0.1, false) { return; }
+  for k: 0..<20 { gf_step(g[..], work[..], 0.05, d2(0.0, -9.81), 0.0); }
+  fastest := 0.0;
+  for k: 0..<GF_FACES { fastest = fmax(fastest, fmax(abs(g[0].u[k]), abs(g[0].v[k]))); }
+  print("still air under gravity: fastest face % m/s; pressure difference over 1 m % Pa per unit density\n",
+        r6(fastest), r6(g[0].p[0] - g[0].p[10 * 16]));
+
+  // Warm smoke in a 0.8 x 1.6 m box, lifted 4 m/s^2 per unit of smoke.
+  if !gf_new(g[..], 16, 32, 0.05, false) { return; }
+  for j: 2..<5 { for i: 6..<10 { g[0].smoke[j * 16 + i] = 1.0; } }
+  print("smoke: mean height % m\n", r4(gf_smoke_height(g[..])));
+  for k: 0..<60 {
+    gf_step(g[..], work[..], 0.02, d2(0.0, 0.0), 4.0);
+    if k % 20 == 19 {
+      print("  % s: mean height % m, divergence %\n", r4(cast(f64) (k + 1) * 0.02), r4(gf_smoke_height(g[..])), r6(gf_max_div(g[..])));
+    }
+  }
+}
+// book:end example

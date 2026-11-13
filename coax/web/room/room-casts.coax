@@ -1,4 +1,4 @@
-#load "../../../aethyr/core/ids.coax";
+#load "../../../metaverse-engine/core/ids.coax";
 // What is left of v1's cast queue in the room (GitHub #12790; its rules, docs/verse/2026-11-04-everglade-cast-rules.md):
 // Everglade II casts go through everglade/server/casts.coax eg_e2_cast, so the queue's phases left with
 // v1 (#13267). Kept: the world's harm each tick, the line-of-sight questions the host's world answers

@@ -1,8 +1,8 @@
 // Splice's content tables (GitHub #13404; docs/audits/2026-11-12-chat-and-world-building.md, slice
 // 0): what may be placed in Splice, where its named places are and where nothing may be built,
-// as data. The document is aethyr/content/tables.coax's (profile aethyr-content-v1); the tables
+// as data. The document is metaverse-engine/content/tables.coax's (profile aethyr-content-v1); the tables
 // are verse/splice/content/splice.content, which the Metaverse Engine's table editor
-// (aethyr/forge/content-edit.coax) edits, and a page is built with the copy in content/shipped.coax.
+// (metaverse-engine/editor/content-edit.coax) edits, and a page is built with the copy in content/shipped.coax.
 //
 //   areas       id name x z hx hz r         where a piece may stand at all: a circle (r) or a box (hx, hz)
 //   kept_clear  id name x z hx hz r         where the run needs room: a box (hx, hz) grown by r, so a
@@ -16,7 +16,7 @@
 // Places and lengths are centimetres. `looks` is a table of its own because a table has eight
 // columns at most. An edit or a save names a piece by its ID; names are for people and agents.
 //   coax/bin/coax test verse/splice/content.coax --library
-#load "../../aethyr/content/tables.coax";
+#load "../../metaverse-engine/content/tables.coax";
 #load "pieces.coax";
 #load "content/shipped.coax";
 

@@ -5,8 +5,8 @@
 #load "client.coax";
 #load "../shared/everglade-step.coax" as step;
 #load "cells.coax";   // the world's cell controller, stepped in the route walks as the page steps it
-#load "../../aethyr/move/walk.coax" as walk;
-#load "../../aethyr/physics/query.coax" as scaled;
+#load "../../metaverse-engine/move/walk.coax" as walk;
+#load "../../metaverse-engine/physics/query.coax" as scaled;
 
 // Walks you from (x, z) toward (tx, tz) for `seconds` among `bodies` and `hulls`, running or walking;
 // where you end, and how you stand.

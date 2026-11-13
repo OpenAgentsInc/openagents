@@ -1,7 +1,7 @@
 // Independent protocol fixtures are read, decoded and canonically written by
 // the shared Coax codec. This does not start a room or change the session wire.
 #import "Basic";
-#load "../../../aethyr/net/latency.coax";
+#load "../../../metaverse-engine/net/latency.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/json/json.coax";

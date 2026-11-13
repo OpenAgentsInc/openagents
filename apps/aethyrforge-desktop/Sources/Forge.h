@@ -31,7 +31,7 @@ NSData *forge_cli(NSURL *executable, NSArray<NSString *> *arguments, double time
 
 // The Coder chat: transcript and composer text views, buttons and labels as native children of
 // the host's view (under its layer), and its two HUDs (the composer's frame and the message feed)
-// drawn on the host's layer from Coax's twelve-float strokes (aethyr/ui/feed-draw.coax).
+// drawn on the host's layer from Coax's twelve-float strokes (metaverse-engine/ui/feed-draw.coax).
 @interface ForgeChat : NSView
 @property(nonatomic, strong) NSTextView *transcript, *input;
 @property(nonatomic, strong) NSScrollView *transcriptScroll, *inputScroll;

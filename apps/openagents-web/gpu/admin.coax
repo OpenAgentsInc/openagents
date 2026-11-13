@@ -1,7 +1,7 @@
 // admin's shaders, the source of apps/openagents-web/admin.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (admin.module,
 // admin.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 
 // /admin/analytics's passes: the same as /projects (projects.wgsl), whose HUD it draws.
 // The projects list's two passes (projects.coax decides every number): a dark

@@ -215,7 +215,7 @@ compiler_inputs=(coax/src coax/bootstrap coax/lib/compiler coax/lib/proto coax/b
   coax/bootstrap-mutation-shards.sh coax/mutation-gate.sh coax/check-proto-cap.sh coax/provenance.sh coax/provenance-bridge.c
   coax/release.coax coax/release-model.coax coax/changelog.coax coax/changelog-model.coax coax/changelog-bridge.c
   coax/lib/crypto/sha256-kernel.coax scripts/coax-release.sh
-  coax/web/wasm.sh coax/web/project/build-home.sh coax/web/room aethyr/render/build.coax)
+  coax/web/wasm.sh coax/web/project/build-home.sh coax/web/room metaverse-engine/render/build.coax)
 t=$(now)
 from="$(cd "$tree" && "$repo/coax/remote/pages.sh" nearest "$full" 2> /dev/null)" || from=""
 part=()

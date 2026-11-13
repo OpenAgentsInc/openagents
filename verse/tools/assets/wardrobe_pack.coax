@@ -6,8 +6,8 @@
 #load "../../../coax/lib/sys/tool.coax";
 #load "../humans/ph_gltf.coax";
 
-#load "../../../aethyr/character/charactercreator-parts.coax";
-#load "../../../aethyr/forge/pack.coax" as admission;
+#load "../../../metaverse-engine/character/charactercreator-parts.coax";
+#load "../../../metaverse-engine/editor/pack.coax" as admission;
 WpEntry :: struct {kind:int;license:int;name:string;body:string;}
 Wp :: struct {base:[33554432]u8;source:[33554432]u8;out:[33554432]u8;v:[8388608]u8;inds:[4194304]u8;vn:int;ni:int;entries:[256]WpEntry;ne:int;names:[16384]u8;nn:int;cat:[262144]u8;}
 wp_read :: (b:[]u8,e:[]WpEntry)->int {

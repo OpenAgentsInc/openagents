@@ -1,0 +1,116 @@
+// An independent raster oracle for metaverse-engine/world/terrain-tile.coax (#12995): it builds every drawn
+// triangle of a small random tile from the f32 vertex positions a vertex shader would see, finds
+// the triangle that contains a random point by brute force in f64 (no cell arithmetic), and
+// interpolates heights and material weights with its own barycentric weights. Points within a
+// small margin of any triangle edge are skipped: they belong to either neighbour.
+
+// Park and Miller's minimal standard generator: no wrapping arithmetic.
+tto_state :: (seed: u64) -> u64 #effects(all) { return (seed * 48271) % 2147483647; }
+tto_unit :: (s: u64) -> f64 #effects(all) { return f64(s) / 2147483647.0; }
+
+// The edge function of p against a -> b (twice the signed area).
+tto_edge :: (ax: f64, az: f64, bx: f64, bz: f64, px: f64, pz: f64) -> f64 #effects(all) {
+  return (bx - ax) * (pz - az) - (bz - az) * (px - ax);
+}
+
+terrain_tile_oracle_case :: (k: int) #effects(all) {
+  seed := tto_state(cast(u64) (k + 1) * 7919);
+  n := 1 + k % 5;
+  spacing := 0.5 + f32(k % 3) * 0.75;
+  west := -7.25 + f32(k % 4) * 3.5; south := 2.0 + f32(k % 7) * -1.5;
+  p := (n + 1) * (n + 1);
+  h: [36] f32; holes: [25] u8; ids: [144] u8; w: [144] u8;
+  for q: 0..<p {
+    seed = tto_state(seed); h[q] = f32(tto_unit(seed) * 20 - 10);
+    // two materials a sample from a pool of four, so any triangle names at most four
+    seed = tto_state(seed); first := cast(int) (tto_unit(seed) * 4);
+    seed = tto_state(seed); second := (first + 1 + cast(int) (tto_unit(seed) * 3)) % 4;
+    seed = tto_state(seed); wa := 1 + cast(int) (tto_unit(seed) * 254);
+    seed = tto_state(seed); wb := cast(int) (tto_unit(seed) * 255);
+    ids[q * 4] = cast(u8) (first * 2 + 1); ids[q * 4 + 1] = cast(u8) (second * 2 + 1); ids[q * 4 + 2] = 255; ids[q * 4 + 3] = 255;
+    w[q * 4] = cast(u8) wa; w[q * 4 + 1] = cast(u8) wb; w[q * 4 + 2] = 0; w[q * 4 + 3] = 0;
+  }
+  for c: 0..<n * n { seed = tto_state(seed); holes[c] = ifx tto_unit(seed) < 0.2 then 1 else 0; }
+  g := Ground.{n = n, cell = spacing, west = west, south = south};
+  checked := 0;
+  for trial: 0..<40 {
+    seed = tto_state(seed); px32 := west + f32(tto_unit(seed)) * f32(n) * spacing;
+    seed = tto_state(seed); pz32 := south + f32(tto_unit(seed)) * f32(n) * spacing;
+    px := f64(px32); pz := f64(pz32);
+    found := false; near := false;
+    bw: [3] f64; bc: [3] int; cell := -1;
+    for j: 0..<n { for i: 0..<n {
+      x0 := f64(west + f32(i) * spacing); x1 := f64(west + f32(i + 1) * spacing);
+      z0 := f64(south + f32(j) * spacing); z1 := f64(south + f32(j + 1) * spacing);
+      a := j * (n + 1) + i;
+      for tri: 0..<2 {
+        // south-east (00, 10, 11) and north-west (00, 11, 01), both counter-clockwise in x/z
+        vx: [3] f64; vz: [3] f64; vc: [3] int;
+        if tri == 0 { vx = [3] f64.[x0, x1, x1]; vz = [3] f64.[z0, z0, z1]; vc = [3] int.[a, a + 1, a + n + 2]; }
+        else { vx = [3] f64.[x0, x1, x0]; vz = [3] f64.[z0, z1, z1]; vc = [3] int.[a, a + n + 2, a + n + 1]; }
+        area := tto_edge(vx[0], vz[0], vx[1], vz[1], vx[2], vz[2]);
+        e0 := tto_edge(vx[1], vz[1], vx[2], vz[2], px, pz) / area;
+        e1 := tto_edge(vx[2], vz[2], vx[0], vz[0], px, pz) / area;
+        e2 := tto_edge(vx[0], vz[0], vx[1], vz[1], px, pz) / area;
+        if e0 >= 0 && e1 >= 0 && e2 >= 0 {
+          if e0 < 0.001 || e1 < 0.001 || e2 < 0.001 { near = true; }
+          found = true; bw = [3] f64.[e0, e1, e2]; bc = vc; cell = j * n + i;
+        }
+      }
+    } }
+    if !found || near { continue; }
+    checked += 1;
+    s := terrain_tile_sample(g, h[0..<p], holes[0..<n * n], px32, pz32);
+    if holes[cell] != 0 { #assert !s.ok && s.hole; continue; }
+    want := bw[0] * f64(h[bc[0]]) + bw[1] * f64(h[bc[1]]) + bw[2] * f64(h[bc[2]]);
+    #assert s.ok && abs(f64(s.height) - want) < 0.0002;
+    b := terrain_tile_blend(g, ids[0..<p * 4], w[0..<p * 4], px32, pz32);
+    #assert b.ok;
+    total := 0.0;
+    for m: 0..<4 {
+      id := m * 2 + 1;
+      expect := 0.0;
+      for v: 0..<3 {
+        sum := f64(w[bc[v] * 4]) + f64(w[bc[v] * 4 + 1]);
+        for slot: 0..<2 { if cast(int) ids[bc[v] * 4 + slot] == id { expect += bw[v] * f64(w[bc[v] * 4 + slot]) / sum; } }
+      }
+      got := 0.0;
+      for q: 0..<b.count { if b.ids[q] == id { got = f64(b.weights[q]); } }
+      #assert abs(got - expect) < 0.00001;
+      total += got;
+    }
+    #assert abs(total - 1) < 0.00001;
+  }
+  #assert checked > 20;
+}
+
+// Big-endian words into a byte buffer, for the written encodings.
+tto_put32 :: (b: [] u8, at: int, v: u32) -> int #effects(all) {
+  b[at] = cast,trunc(u8) (v >> 24); b[at + 1] = cast,trunc(u8) (v >> 16); b[at + 2] = cast,trunc(u8) (v >> 8); b[at + 3] = cast,trunc(u8) v;
+  return at + 4;
+}
+tto_put64 :: (b: [] u8, at: int, v: u64) -> int #effects(all) {
+  return tto_put32(b, tto_put32(b, at, cast,trunc(u32) (v >> 32)), cast,trunc(u32) v);
+}
+
+// Fixtures the tile checks share.
+tt_test_table :: (out: [] TerrainMaterial) #effects(all) {
+  for tt_k: 0..<out.count {
+    out[tt_k] = TerrainMaterial.{id = tt_k * 3 + 1, albedo_a = [3] f32.[0.2, 0.3, 0.1], albedo_b = [3] f32.[0.4, 0.5, 0.2],
+      blend_scale = [2] f32.[0.1, 0], blend_weight = [2] f32.[1, 0], gain = [2] f32.[1, 0]};
+  }
+}
+tt_test_tile :: (table: [] TerrainMaterial, n: int) -> TerrainTile #effects(all) {
+  tt_t := TerrainTile.{cells = n, spacing = 2, origin_x = -4, origin_z = 6};
+  tt_t.table = terrain_materials_revision(table);
+  return tt_t;
+}
+// Every sample names materials 1 and 4 with weights 3:1, every cell solid.
+tt_test_fill :: (n: int, h: [] f32, holes: [] u8, ids: [] u8, w: [] u8) #effects(all) {
+  for tt_k: 0..<(n + 1) * (n + 1) {
+    h[tt_k] = f32(tt_k % 7) * 0.5 - 1;
+    ids[tt_k * 4] = 1; ids[tt_k * 4 + 1] = 4; ids[tt_k * 4 + 2] = 255; ids[tt_k * 4 + 3] = 255;
+    w[tt_k * 4] = 3; w[tt_k * 4 + 1] = 1; w[tt_k * 4 + 2] = 0; w[tt_k * 4 + 3] = 0;
+  }
+  for tt_k: 0..<n * n { holes[tt_k] = 0; }
+}

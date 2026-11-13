@@ -1,0 +1,13 @@
+// Frozen binary16 source and exact byte oracle for actual display SDK probes.
+#import "Basic";
+#load "display-probe.coax";
+#load "../presentation.coax";
+#load "qualification-files.coax";
+#load "../../../coax/lib/sys/args.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=1 {tool_errln("usage: make-display-probe NEW_OUT");return 2;}out:=args_at(a[..],0);if !fs_mkdir(out) {return 1;}listing:[1]FsList;if fs_list(out,listing[..])!=0 {return 2;}
+ source:[524288]u8;expected:[262144]u8;for i:0..<source.count {source[i]=dpq_source(i);}for pixel:0..<DISPLAY_PROBE_PIXELS {for channel:0..<4 {expected[pixel*4+channel]=cast(u8)dpq_expected(pixel,channel);}}
+ p:=render_presentation_quantized_v1(2,DISPLAY_PROBE_SIDE,DISPLAY_PROBE_SIDE,1,16384);paths:[4][4096]u8;input:=fs_join(out,"source.rgba16f",paths[0][..]);oracle:=fs_join(out,"expected.rgba8",paths[1][..]);if !fs_write(input,cast(string)source[..])||!fs_write(oracle,cast(string)expected[..]) {return 1;}
+ held:[1]RtqInputs;for file:[5]string.[input,oracle,"metaverse-engine/render/tests/display-probe.coax","metaverse-engine/render/tests/make-display-probe.coax","metaverse-engine/render/presentation.coax"] {if !rtq_input_add(held[..],file) {return 1;}}
+ text:[32768]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render.display-probe.v1");jo_key(o[..],"private_iteration_only");jo_bool(o[..],true);jo_key(o[..],"width");jo_int(o[..],p.draw.width);jo_key(o[..],"height");jo_int(o[..],p.draw.height);jo_key(o[..],"profile");jo_int(o[..],2);jo_key(o[..],"source");jo_str(o[..],input);jo_key(o[..],"expected");jo_str(o[..],oracle);jo_key(o[..],"source_format");jo_str(o[..],"rgba16float");jo_key(o[..],"display_format");jo_str(o[..],"bgra8unorm");jo_key(o[..],"vertices");jo_int(o[..],p.vertices);jo_key(o[..],"uniforms");jo_arr(o[..]);for value:p.uniforms {jo_int(o[..],cast(int)value);}jo_end(o[..]);jo_key(o[..],"inputs");rtq_inputs_json(o[..],held[..],"");jo_end(o[..]);if o[0].bad||!rtq_inputs_match(held[..])||!fs_write(fs_join(out,"plan.json",paths[2][..]),jo_text(o[..])) {return 1;}print("Frozen display probe: % source bytes, % exact oracle bytes.\n",source.count,expected.count);return 0;
+}

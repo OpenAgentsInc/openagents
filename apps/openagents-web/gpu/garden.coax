@@ -1,8 +1,8 @@
 // garden's shaders, the source of apps/openagents-web/garden.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (garden.module,
 // garden.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/render/noise.coax";
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/render/noise.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 
 // The Garden's three passes: the sky, the scene and the HUD. Every number
 // comes from garden.coax: the view, the eye, the sun, the ground's heights

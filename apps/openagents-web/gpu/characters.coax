@@ -1,10 +1,10 @@
 // characters's shaders, the source of apps/openagents-web/characters.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (characters.module,
 // characters.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 
 // The characters realm (characters.coax): a night garden and the figures
-// standing in it, each a few dozen round cones (aethyr/anim/figure.coax) melted
+// standing in it, each a few dozen round cones (metaverse-engine/anim/figure.coax) melted
 // into one body and found by marching each pixel's ray through it, then the
 // HUD's strokes and plates. A figure is lit (its coat under the moon) or a
 // soft silhouette: black, its edge a fuzzy fringe that thins into the night,

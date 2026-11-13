@@ -1,6 +1,6 @@
 // Everglade II's named points (GitHub #13078): where a new seat stands, and the places down the path
 // the scripted checks stand at or shoot from (the walk test, the cull check's views, the lighting
-// baseline's), by name (aethyr/world/points.coax). forest.coax loads this file: the clearing's z is
+// baseline's), by name (metaverse-engine/world/points.coax). forest.coax loads this file: the clearing's z is
 // defined here alone (E2_CLEAR_Z), and everglade/shared/move.coax's spawn (E2_SPAWN_*)
 // too. A check reads them through e2_point; a tool refuses a name that isn't here
 // (coax/web/map-points.coax).
@@ -8,7 +8,7 @@
 // glade's middle). Every other point stands on the path: its x is metres across from the path's
 // middle at its z (0 on it; forest.coax e2_road_x(z) is where the middle is), and its z is the path's
 // own: a page's ?at=METRES starts you METRES down it, at z -METRES (everglade/client/client.coax e2_query_at).
-#load "../../aethyr/world/points.coax";
+#load "../../metaverse-engine/world/points.coax";
 
 // Where a new seat stands: the glade's middle, facing the studio's camera (everglade/client/client.coax e2_start).
 E2_SPAWN_X :: 0.0; E2_SPAWN_Z :: 0.0; E2_SPAWN_FACE :: 3.14159265;

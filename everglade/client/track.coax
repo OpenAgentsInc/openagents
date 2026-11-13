@@ -19,7 +19,7 @@
 //   death         you fell (id: what last hurt you: wolf, goblin, guard, or other)
 //   level-up      the room raised your level (n)
 //   fail create-save   Character Create's record wasn't kept
-//   graphics      the graphics quality 20 s in, once (aethyr/core/quality.coax quality_report_due): the device's
+//   graphics      the graphics quality 20 s in, once (metaverse-engine/core/quality.coax quality_report_due): the device's
 //                 class, its GPU (gpu, and the adapter's vendor and arch), the mode, the start rung, the rung
 //                 now, the rung kept for the next visit (-1 none), and the median FPS from 10 s to 20 s
 // counted in the 30 s tally: cast_<spell> (your casts the room took), refused (casts it turned down),

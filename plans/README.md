@@ -92,7 +92,7 @@ a candidate for the next run.
 
 Options for the owner, not problems.
 
-1. **Draw a house between build stages.** `aethyr/world/build-site.coax`
+1. **Draw a house between build stages.** `metaverse-engine/world/build-site.coax`
    draws whole stages only. The Housewright spec says a house shows each
    stage as it is built, and the Episode 293 video needs time-lapses
    (`docs/transcripts/293-show-notes.md`). A design plan would define part

@@ -26,7 +26,7 @@ QUICK_WAIT :: 10.0;      // a quick match waits this long for players, then bots
 
 // The v2 profile's per-room state: each seat's generation, admission, latest control and receipts.
 // Admission, command, field and receipt decisions are the checked contracts in orbit-session.coax
-// and aethyr/net. Physics is the game's shared step.
+// and metaverse-engine/net. Physics is the game's shared step.
 OrbAuthority :: struct {
   enabled:bool;initialized:bool;
   generation:[ROOM_PLAYERS]SeatGeneration;

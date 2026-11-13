@@ -1,17 +1,17 @@
 // The ARWES section of openagents.com/components (components/spec.md, GitHub
 // #13153): every ported ARWES visual, labelled and animated by the ported
-// motion, in the Verse skin. The specimens are aethyr/ui/arwes-paint.coax's,
+// motion, in the Verse skin. The specimens are metaverse-engine/ui/arwes-paint.coax's,
 // the same calls the HUD laboratory's ARWES atlas draws: they paint the
 // display list, and the page draws it with the component shader (no second
 // pass). The controls replay the entrance, exit and enter again, and step the
 // easing, the animator's manager, the seed, the dots, the frames' assembly
 // and the cue model. BLEEPS shows the cue model's state and never plays a
 // sound; the keyed timers show what is pending and how long is left.
-// ARWES is arwes/arwes by Romel Perez, MIT (aethyr/ui/arwes/LICENSE and
+// ARWES is arwes/arwes by Romel Perez, MIT (metaverse-engine/ui/arwes/LICENSE and
 // SOURCES.md); the section credits it with a link to that licence.
 //   coax/bin/coax test components/gallery/page.coax --only arwes
 
-#load "../../aethyr/ui/arwes-paint.coax";
+#load "../../metaverse-engine/ui/arwes-paint.coax";
 
 GL_AW_PRIMS :: 8192; GL_AW_PTS :: 16384; GL_AW_TEXT :: 8192; GL_AW_FIT :: 8192;
 GL_AW_CELL_MIN :: 250.0;    // a specimen's cell is at least this wide
@@ -23,7 +23,7 @@ GL_HIT_AW :: 30; GL_HIT_AW_LICENSE :: 31;
 GL_AW_REPLAY :: 0; GL_AW_TOGGLE :: 1; GL_AW_EASING :: 2; GL_AW_MANAGER :: 3; GL_AW_RESEED :: 4;
 GL_AW_DOTS :: 5; GL_AW_FAMILY :: 6; GL_AW_CUE :: 7; GL_AW_CATEGORY :: 8; GL_AW_LOOP :: 9; GL_AW_STOP :: 10;
 GL_AW_CONTROLS :: 11;
-// ARWES's licence at the commit the ports are pinned to (aethyr/ui/arwes/SOURCES.md).
+// ARWES's licence at the commit the ports are pinned to (metaverse-engine/ui/arwes/SOURCES.md).
 GL_AW_LICENSE_URL :: "https://github.com/arwes/arwes/blob/bdbaa0324900ee978d42036d1304a053c1fe54b5/LICENSE";
 GL_AW_CREDIT :: "ARWES by Romel Perez, MIT license: the ports keep its notice. Read the license";
 GL_AW_DOT_TYPES :: [3]string.["DISCS","SQUARES","CROSSES"];

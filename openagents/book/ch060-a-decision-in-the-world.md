@@ -47,8 +47,8 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
-- [`aethyr/ai/decide.coax`](../../aethyr/ai/decide.coax)
-- [`aethyr/core/decision-trace.coax`](../../aethyr/core/decision-trace.coax)
+- [`metaverse-engine/ai/decide.coax`](../../metaverse-engine/ai/decide.coax)
+- [`metaverse-engine/core/decision-trace.coax`](../../metaverse-engine/core/decision-trace.coax)
 - [`everglade`](../../everglade)
 - [`psionic/lib/pylon`](../../psionic/lib/pylon)
 - [`coax/lib/gateway/pylon.coax`](../../coax/lib/gateway/pylon.coax)

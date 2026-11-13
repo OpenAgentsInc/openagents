@@ -1,0 +1,118 @@
+// The rider's pose (everglade/docs/mounts-spec.md): astride a mount's back, keyed on a skinned rig
+// (metaverse-engine/anim/skin.coax) as the bow's draw is (bow-pose.coax), so any realm can bake it once. No
+// library has a riding clip for the Universal Animation Library's rig. From whatever stance the rig
+// stands in, each leg's hip stays put while two-bone IK swings the thigh out and forward round the
+// mount's barrel, bends the knee forward and hangs the lower leg down its side, the foot level in
+// the stirrup. The upper body is untouched: a realm layers its idle or an action (the bow, a cast)
+// over it through its upper-body layer, the legs staying in the saddle.
+//   coax/bin/coax test metaverse-engine/action/ride-pose.coax --library
+#load "bow-pose.coax";   // the IK it reaches with (bp_global, bp_reach, bp_point)
+
+// How a seat sits on a mount's back: each ankle's place from its hip (out to the leg's own side, down
+// and ahead, metres) and the knee's pull (out, up and ahead), so the thigh goes out round the body
+// and the knee bends. A horse's barrel and a dragon's neck want different ones (a realm's table).
+RideFit :: struct {
+  spread: f32 = 0.27;     // metres each ankle sits out from its hip
+  drop: f32 = 0.60;       // metres the ankle hangs below the hip
+  ahead: f32 = 0.16;      // metres the ankle sits ahead of the hip (the stirrup under the knee)
+  knee_out: f32 = 0.4; knee_up: f32 = 0; knee_ahead: f32 = 1;
+}
+
+// A rig's leg joints: each leg's thigh, calf, foot and ball.
+RideJoints :: struct { leg_a: [4] int; leg_b: [4] int; }
+// What the pose placed, in the character's space: the pelvis (where the saddle meets the rider) and
+// each leg's hip, knee, ankle and ball.
+RidePosed :: struct { pelvis: Point; ankle_a: Point; ankle_b: Point; leg_a: [4] Point; leg_b: [4] Point; }
+
+ride_leg :: (r: SkinRig, s: [] Skin, leg: [4] int, fit: RideFit) -> [4] Point {
+  hip := bp_global(r, s, leg[0]).t;
+  side := ifx hip.x >= 0 then 1.0f32 else -1.0f32;   // facing +Z, a leg on +X is the left
+  ankle := add(hip, v3(side * fit.spread, -fit.drop, fit.ahead));
+  at := bp_reach(r, s, leg[0], leg[1], leg[2], ankle, v3(side * fit.knee_out, fit.knee_up, fit.knee_ahead));
+  // the foot ahead and level, its ball forward of the ankle
+  bp_point(r, s, leg[2], leg[3], add(at, v3(side * 0.03, -0.06, 0.14)));
+  return [4] Point.[hip, bp_global(r, s, leg[1]).t, bp_global(r, s, leg[2]).t, bp_global(r, s, leg[3]).t];
+}
+// Poses s's legs astride, as `fit` says. Joint 1 is taken for the pelvis (the people rig's and most
+// humanoid rigs').
+ride_pose :: (r: SkinRig, s: [] Skin, j: RideJoints, fit: RideFit) -> RidePosed {
+  a := ride_leg(r, s, j.leg_a, fit); b := ride_leg(r, s, j.leg_b, fit);
+  return RidePosed.{pelvis = bp_global(r, s, 1).t, ankle_a = a[2], ankle_b = b[2], leg_a = a, leg_b = b};
+}
+
+// ---- clear of the mount's body
+
+// A mount's body round its seat in one frame, as a realm measures it from its mesh: at heights
+// RIDE_HULL_TOP, RIDE_HULL_TOP - RIDE_HULL_STEP, ... above the seat's bone (RIDE_HULL_ROWS of them),
+// how far its surface is out to its left (+X) and to its right from the bone, metres (0: no body
+// at that height). Every slice a little behind to a little ahead of the seat counts, the widest.
+RIDE_HULL_ROWS :: 14;
+RIDE_HULL_TOP :: 0.5;
+RIDE_HULL_STEP :: 0.1;
+// Its half-width at height y above the bone on one side (lerped between rows).
+ride_hull_width :: (side: [] f32, y: f32) -> f32 {
+  u := (f32(RIDE_HULL_TOP) - y) / f32(RIDE_HULL_STEP);
+  if u <= 0 { return side[0]; }
+  if u >= f32(RIDE_HULL_ROWS - 1) { return side[RIDE_HULL_ROWS - 1]; }
+  i := cast(int) floor(u); t := u - f32(i);
+  return side[i] * (1 - t) + side[i + 1] * t;
+}
+// How far the posed legs' bones keep out of the body (metres; below 0, a bone is inside it). p is
+// the pose, seated with its pelvis `up` metres above the bone; left and right are one frame's
+// RIDE_HULL_ROWS widths a side; the mount is pitched nose up by `pitch` under the upright rider. The
+// thigh is checked from half way down (its top rests on the back), the knee, calf and foot with the
+// leg's own thickness (`flesh`) besides.
+ride_clearance :: (p: RidePosed, up: f32, left: [] f32, right: [] f32, pitch: f32, flesh: f32) -> f32 {
+  worst := 100.0f32;
+  for l: 0..<2 {
+    g := ifx l == 0 then p.leg_a else p.leg_b;
+    for k: 0..<10 {
+      // five points down the thigh's lower half, the knee, two down the calf, the ankle and the ball
+      a := ifx k < 5 then g[0] else ifx k < 8 then g[1] else g[2];
+      b := ifx k < 5 then g[1] else ifx k < 8 then g[2] else g[3];
+      t := ifx k < 5 then 0.5 + f32(k) * 0.125 else ifx k < 8 then f32(k - 5) / 3 else f32(k - 8);
+      q := add(a, times(sub(b, a), t));
+      x := q.x - p.pelvis.x; y := q.y - p.pelvis.y + up; z := q.z - p.pelvis.z;
+      h := y * cos(pitch) + z * sin(pitch);   // its height above the bone in the pitched body's frame
+      w := ride_hull_width(ifx x >= 0 then left else right, h);
+      c := abs(x) - w - (ifx k < 5 then 0.0f32 else flesh);
+      if c < worst { worst = c; }
+    }
+  }
+  return worst;
+}
+
+#test "astride: both ankles go out to their own sides, below and ahead of the hips, legs unstretched" {
+  // a pelvis and two three-joint legs (thigh 0.45, calf 0.43, foot 0.12 to the ball) hanging straight
+  par := [10] int.[-1, 0, 1, 2, 3, 4, 1, 6, 7, 8];
+  rest := [70] f32.[0, 0, 0, 0, 0, 0, 1,   0, 0.95, 0, 0, 0, 0, 1,
+    0.1, 0, 0, 0, 0, 0, 1,   0, -0.45, 0, 0, 0, 0, 1,   0, -0.43, 0, 0, 0, 0, 1,   0, -0.05, 0.12, 0, 0, 0, 1,
+    -0.1, 0, 0, 0, 0, 0, 1,  0, -0.45, 0, 0, 0, 0, 1,   0, -0.43, 0, 0, 0, 0, 1,   0, -0.05, 0.12, 0, 0, 0, 1];
+  bind: [120] f32;
+  r := SkinRig.{joints = 10, parent = par[..], rest = rest[..], bind = bind[..]};
+  s: [1] Skin;
+  for k: 0..<10 { s[0].now[k] = SkinLocal.{t = v3(rest[k * 7], rest[k * 7 + 1], rest[k * 7 + 2])}; }
+  p := ride_pose(r, s[..], RideJoints.{leg_a = [4] int.[2, 3, 4, 5], leg_b = [4] int.[6, 7, 8, 9]}, RideFit.{});
+  #assert p.ankle_a.x > 0.3 && p.ankle_b.x < -0.3;
+  #assert p.ankle_a.y < 0.95 - 0.5 && p.ankle_a.z > 0.1 && abs(p.ankle_a.y - p.ankle_b.y) < 0.001;
+  knee := bp_global(r, s[..], 3).t; hip := bp_global(r, s[..], 2).t; ankle := bp_global(r, s[..], 4).t;
+  #assert abs(length(sub(knee, hip)) - 0.45) < 0.001 && abs(length(sub(ankle, knee)) - 0.43) < 0.001;
+  // the knee bends forward, out past the hip: astride, not knock-kneed
+  #assert knee.z > hip.z + 0.05 && knee.x > hip.x;
+  #assert abs(p.pelvis.y - 0.95) < 0.001;
+  // a wider fit for a broader back puts the ankles further out, and the legs report their joints
+  w := ride_pose(r, s[..], RideJoints.{leg_a = [4] int.[2, 3, 4, 5], leg_b = [4] int.[6, 7, 8, 9]}, RideFit.{spread = 0.6, drop = 0.45, ahead = 0.1, knee_out = 1, knee_ahead = 0.2});
+  #assert w.ankle_a.x > p.ankle_a.x + 0.2 && w.leg_a[2].x == w.ankle_a.x && abs(w.leg_a[0].x - 0.1) < 0.001;
+}
+#test "clearance: a leg out round a barrel is clear of it, one hanging straight down is inside it" {
+  // a barrel 0.3 m out a side from 0.3 above the bone down to 0.5 below it
+  side: [RIDE_HULL_ROWS] f32;
+  for i: 0..<RIDE_HULL_ROWS { h := f32(RIDE_HULL_TOP) - f32(i) * f32(RIDE_HULL_STEP); side[i] = ifx h <= 0.3 && h >= -0.5 then 0.3f32 else 0; }
+  #assert abs(ride_hull_width(side[..], 0.35) - 0.15) < 0.001 && ride_hull_width(side[..], -2) == 0;
+  out: RidePosed; out.pelvis = v3(0, 1, 0);
+  out.leg_a = [4] Point.[v3(0.1, 1, 0), v3(0.55, 0.75, 0.1), v3(0.42, 0.3, 0.1), v3(0.45, 0.25, 0.25)];
+  out.leg_b = [4] Point.[v3(-0.1, 1, 0), v3(-0.55, 0.75, 0.1), v3(-0.42, 0.3, 0.1), v3(-0.45, 0.25, 0.25)];
+  #assert ride_clearance(out, 0.4, side[..], side[..], 0, 0.04) > 0;
+  out.leg_b = [4] Point.[v3(-0.1, 1, 0), v3(-0.12, 0.57, 0.1), v3(-0.12, 0.12, 0.1), v3(-0.12, 0.06, 0.25)];
+  #assert ride_clearance(out, 0.4, side[..], side[..], 0, 0.04) < -0.1;
+}

@@ -4,14 +4,14 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/render/geometry/scan.coax";
-#load "../../aethyr/anim/pose.coax";
+#load "../../metaverse-engine/render/geometry/scan.coax";
+#load "../../metaverse-engine/anim/pose.coax";
 #load "../../coax/lib/text/ph_num.coax";
 EP_JOINTS :: 334;
 EP_VERTICES :: 400000;
 EP_RECORD :: 96;
-#load "../../aethyr/anim/echo-source-names.coax";
-#load "../../aethyr/tools/echo-gltf.coax";
+#load "../../metaverse-engine/anim/echo-source-names.coax";
+#load "../../metaverse-engine/tools/echo-gltf.coax";
 EpBone :: struct {name:[96]u8;n:int;parent:int= -1;rest:SkinLocal;bind:[12]f32;}
 EpRig :: struct {bone:[EP_JOINTS]EpBone;count:int;}
 #test "Echo accessors retain all eight exact joint and weight bytes" {b:=[8]u8.[0,1,127,133,3,7,66,200];out:[8]u8;for k:0..<2 {scan_put(out[..],k*4,scan_u32(b[..],k*4));}for k:0..<8 {#assert out[k]==b[k];}}

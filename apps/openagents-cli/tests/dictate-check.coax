@@ -14,7 +14,7 @@
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/sys/proc.coax";
-#load "../../../aethyr/audio/wav.coax";
+#load "../../../metaverse-engine/audio/wav.coax";
 
 Run :: struct { out: [131072] u8; out_n: int; err: [16384] u8; err_n: int; status: int; ms: int; }
 

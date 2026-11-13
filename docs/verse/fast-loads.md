@@ -169,7 +169,7 @@ rewrite.
   is unzipped. Everglade Experimental spends 0.5 s on its layers after
   `pack-buffers` (1.5 to 1.7 s in all, measured 2026-11-10 21:07); written
   first, they would be decoded while the 290 MB of vertices unzip. Two things
-  stand in the way. The format (`aethyr/forge/pack.coax`, `#authority`) says
+  stand in the way. The format (`metaverse-engine/editor/pack.coax`, `#authority`) says
   the entries lie in table order, and its table puts the catalog, vertices and
   indices first, so a layers-first file is refused by `pack_read` (the page's
   legacy `unpack` and the Mac app read by offset and would take it). And the

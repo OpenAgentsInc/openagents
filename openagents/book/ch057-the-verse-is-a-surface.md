@@ -50,14 +50,14 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
-- [`aethyr/README.md`](../../aethyr/README.md)
-- [`aethyr/talk`](../../aethyr/talk)
-- [`aethyr/ui`](../../aethyr/ui)
-- [`aethyr/net`](../../aethyr/net)
+- [`metaverse-engine/README.md`](../../metaverse-engine/README.md)
+- [`metaverse-engine/talk`](../../metaverse-engine/talk)
+- [`metaverse-engine/ui`](../../metaverse-engine/ui)
+- [`metaverse-engine/net`](../../metaverse-engine/net)
 - [`verse`](../../verse)
 - [`apps/openagents-web`](../../apps/openagents-web)
 - [`coax/lib/nostr/nipmv.coax`](../../coax/lib/nostr/nipmv.coax)
-- [`aethyr/book/README.md`](../../aethyr/book/README.md)
+- [`metaverse-engine/book/README.md`](../../metaverse-engine/book/README.md)
 
 On the protocol ([chapter 49](ch049-one-schema-three-carriages.md)):
 
@@ -82,6 +82,6 @@ Planned paths: `openagents/agent/surfaces/verse.coax`.
 - **Old code at `coder-v1.0.0`, crates:** `verse`, `verse-core`, `verse-engine`, `verse-host`, `verse-net`, `verse-world`, `openagents-web`
 - **NIPs:** [NIP-MV](../../nostr/nips/openagents/NIP-MV.md), [NIP-AGENT](../../nostr/nips/openagents/NIP-AGENT.md)
 - **Also:**
-  - [Building the OpenAgents Metaverse Engine](../../aethyr/book/README.md)
+  - [Building the OpenAgents Metaverse Engine](../../metaverse-engine/book/README.md)
   - [Building Everglade](../../everglade/book/README.md)
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P1, P13

@@ -324,4 +324,4 @@ hosting and inference across a mesh.
 Chapters 1–53, 55–82, 83, 84, 85, 86, 87, 88–102, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–197, 198, 199, 215–250, 253–255 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Every
 chapter has runnable code, in full or in part. The physics engine and spacecraft chapters
-are in the [Metaverse Engine book](../../aethyr/book/README.md).
+are in the [Metaverse Engine book](../../metaverse-engine/book/README.md).

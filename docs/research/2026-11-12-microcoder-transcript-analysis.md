@@ -531,12 +531,12 @@ files) and was cut at 900 s. Its v2 passed in 654 s, also running mutate.
 ### N3: both failed round 1, both passed round 2
 
 The task changes six JSON readers in six files (seven with the CLI test
-file). Every failing run edited only `aethyr/forge/doc.coax`, the first
+file). Every failing run edited only `metaverse-engine/editor/doc.coax`, the first
 item, so the hidden check could not build (`seat_num` not declared).
 
 - **Microcoder v1** (`next-n3-mc-argon-v1.txt`): 33 calls of reading before
   the first edit (75 reads, 62 re-reads, 7 shrinks); rationales like "Let's
-  read lines 75-165 of aethyr/forge/doc.coax completely (using smaller sed
+  read lines 75-165 of metaverse-engine/editor/doc.coax completely (using smaller sed
   ranges so nothing is cut)" and "read lines 1-165 ... in smaller slices so
   we see every single line": cut outputs drove re-reads in narrower slices.
   Three calls were silent for 90 s and retried (270 s). Then it worked item

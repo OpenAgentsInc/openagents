@@ -872,11 +872,11 @@ and release:
 
 - It does not take observations from the OpenAgents Metaverse Engine. The plan draws worlds from the
   Metaverse Engine book: many worlds stepped together (the Metaverse Engine
-  [chapter 31](../../aethyr/book/ch031-many-worlds-in-one-step.md)),
-  sensors ([33](../../aethyr/book/ch033-sensors-read-the-simulation.md)),
+  [chapter 31](../../metaverse-engine/book/ch031-many-worlds-in-one-step.md)),
+  sensors ([33](../../metaverse-engine/book/ch033-sensors-read-the-simulation.md)),
   pictures rendered for policies
-  ([34](../../aethyr/book/ch034-pictures-for-policies.md)) and recorded
-  replays ([36](../../aethyr/book/ch036-record-and-replay-a-world.md)).
+  ([34](../../metaverse-engine/book/ch034-pictures-for-policies.md)) and recorded
+  replays ([36](../../metaverse-engine/book/ch036-record-and-replay-a-world.md)).
   Those chapters are design drafts. The scene here is generated in Psionic.
 - The model reads only the last frame and the action. The record carries a
   state vector and a text condition, but the model uses neither. The scene
@@ -899,4 +899,4 @@ and release:
 ## Sources
 
 - [Chapter plan](PLAN.md), Part XVIII.
-- [Metaverse Engine book](../../aethyr/book/README.md).
+- [Metaverse Engine book](../../metaverse-engine/book/README.md).

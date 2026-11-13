@@ -13,7 +13,7 @@ Animated HUD consoles over the Grid at https://openagents.com/demos/speedrun-hud
   - `frame_meteor`, `frame_grid` and `frame_play`: overlays to lay over gameplay footage. They are black with no floor, with dim rails and brackets round the edges, and the middle 60% is left clear.
 - Round each stage's main view:
   - a heading tape that reads the camera's own heading;
-  - rails of instruments from the HUD library (`aethyr/ui/draw.coax`): an orbit plot, telemetry traces, segmented meters, a spectrum, an arc gauge and a pitch ladder;
+  - rails of instruments from the HUD library (`metaverse-engine/ui/draw.coax`): an orbit plot, telemetry traces, segmented meters, a spectrum, an arc gauge and a pitch ladder;
   - a terminal strip that streams the stage's own words, a voice waveform and a progress timeline;
   - a faint coordinate lattice and target brackets on the stage's subject.
 - Frames draw their outlines in and their glass fades up. Labels decipher left to right and settle. Packets and payments travel the links.

@@ -6,7 +6,7 @@ describes the feature manifest and the parity check that keep zones from
 growing new copies (GitHub #13075).
 
 The owner's rule (2026-11-09): no one-off zone code. A feature is engine-wide
-(`aethyr/`) or game-wide (the Everglade layer, `everglade/`), and a zone only
+(`metaverse-engine/`) or game-wide (the Everglade layer, `everglade/`), and a zone only
 wires it in.
 
 ## The zones
@@ -39,14 +39,14 @@ Each row says where a zone gets the feature. **Shared** means the zone wires a
 module outside its own paths. **Local** means the zone carries its own code;
 the burn-down section below lists every such definition. **Absent** means the
 zone doesn't have the feature. Paths are under `apps/openagents-web/` unless
-they start with `aethyr/`, `verse/`, `coax/` or `everglade/`.
+they start with `metaverse-engine/`, `verse/`, `coax/` or `everglade/`.
 
 ### Bow carry and draw
 
-The shared modules are `aethyr/action/bow.coax` (the draw, the arrows and the
-aim), `aethyr/action/archery.coax` (the archer's frame, the sight line, the
+The shared modules are `metaverse-engine/action/bow.coax` (the draw, the arrows and the
+aim), `metaverse-engine/action/archery.coax` (the archer's frame, the sight line, the
 flight and what an arrow meets), `everglade/longbow.coax` (the Longbow's hand,
-sounds and dust), `aethyr/action/bow-pose.coax` (the keyed draw pose) and
+sounds and dust), `metaverse-engine/action/bow-pose.coax` (the keyed draw pose) and
 `everglade/held-kit.coax` (the bow in the hand, its string and arrow, and
 `held_bow_layer`, the pose over the upper body; moved out of
 `charactercreator.coax` for #13079). The Archery Range realm wires the same
@@ -55,15 +55,15 @@ three, as Experimental does.
 | Zone | Draw and arrows | Carry (the bow in hand or on the back) |
 | --- | --- | --- |
 | Everglade II | Shared: `E2Mouse` holds a `bow.BowDraw` (everglade/client/mouse.coax); `e2m_draw` and `e2m_loose` wire it; `everglade/held-kit.coax` `held_bow_layer` lays the pose (`e2m_figure`). | Shared: `e2_held` places the kit through `held_pieces` (everglade/held-kit.coax). |
-| Experimental | Shared: `xc_bow_begin`, `xc_bow_loose` and `xc_bow_step` (everglade/zone-bow.coax) call `bow.coax`; arrows draw through `aethyr/fx/puff.coax` `fxp_arrow_at`. | Shared: `held_weapon`, `bow_string`, `bow_basis` and `bow_matrix` are `everglade/held-kit.coax`'s; `experimental_figure` calls its `held_bow_layer`. No bow on the back. |
+| Experimental | Shared: `xc_bow_begin`, `xc_bow_loose` and `xc_bow_step` (everglade/zone-bow.coax) call `bow.coax`; arrows draw through `metaverse-engine/fx/puff.coax` `fxp_arrow_at`. | Shared: `held_weapon`, `bow_string`, `bow_basis` and `bow_matrix` are `everglade/held-kit.coax`'s; `experimental_figure` calls its `held_bow_layer`. No bow on the back. |
 | Everglade v1 | Absent for players. NPC bows are local sticks (`rp_person_at` everglade-raid-preview.coax:325, `watch_missiles_draw` everglade-watch.coax:451). | Absent. |
 
 ### Damage numbers
 
 The shared module is `everglade/hud/numbers.coax` (`eg_numbers_word`,
 `eg_numbers_amount`, `eg_numbers_draw`, the fold of a spell's damage to many,
-`eg_struck_from`), on the engine's numbers (`aethyr/action/floats.coax`), which
-the shared presentation queue feeds (`aethyr/action/react.coax`, #13072).
+`eg_struck_from`), on the engine's numbers (`metaverse-engine/action/floats.coax`), which
+the shared presentation queue feeds (`metaverse-engine/action/react.coax`, #13072).
 
 | Zone | Where |
 | --- | --- |
@@ -73,7 +73,7 @@ the shared presentation queue feeds (`aethyr/action/react.coax`, #13072).
 
 ### Area targeting
 
-The shared modules are `aethyr/action/area-aim.coax` (the SRD's areas as
+The shared modules are `metaverse-engine/action/area-aim.coax` (the SRD's areas as
 shapes on the ground: a Sphere's circle, a Cube's square or box, a Cone and a
 Line; placing one within range; its outline and guides; which creatures it
 holds), `class-kit.coax` (`XC_AIM_AREA`, `xc_aim_for`, `xc_aim_point`, and
@@ -102,7 +102,7 @@ clock of an effect a page counts down (`CdClock`).
 
 ### HUD parts
 
-The shared modules are `aethyr/ui/` (HUD atlas boxes, settings, feed),
+The shared modules are `metaverse-engine/ui/` (HUD atlas boxes, settings, feed),
 `verse/hud.coax` and `verse/hud/` (slot geometry and frames), `class-look.coax`
 (`xc_slot_at`, the bar's boxes), `class-menu.coax` (the CLASSES column) and
 `everglade/hud/`: `parts.coax` (the portrait plate, the bar's tray, the map,
@@ -151,7 +151,7 @@ through `battle.coax` (`rs_dash`, `rs_cunning_dash`) and `fivebar.coax`
 
 Mounts are arriving from another agent. The spec
 ([mounts-spec.md](../../everglade/docs/mounts-spec.md)) puts the engine in
-`aethyr/action/mount.coax` and `aethyr/action/ride-pose.coax`, and the game
+`metaverse-engine/action/mount.coax` and `metaverse-engine/action/ride-pose.coax`, and the game
 layer in `everglade/mounts.coax` (with the rider's keys) and
 `everglade/zone-mounts.coax` (mounts standing in a zone: E, the saddle, the
 prompt) and `everglade/zone-ride.coax` (a zone's keys handed to them, the
@@ -164,9 +164,9 @@ wrapper of the shared `ride_pose` and a wiring file named for its horse pass
 
 ### Name plates
 
-The engine places plates in `aethyr/ui/hud-plates.coax`: a realm adds each
+The engine places plates in `metaverse-engine/ui/hud-plates.coax`: a realm adds each
 plate it wants a frame (a point over a head, a name, a health share and its own
-fade, such as the body's sight share from `aethyr/ui/hud-sight.coax`), and the
+fade, such as the body's sight share from `metaverse-engine/ui/hud-sight.coax`), and the
 module places them from the camera. It fades them with distance, keeps them out
 of boxes the realm keeps clear, puts the ones always shown first and the rest
 nearest first, and lifts a covered name clear or folds it into a count on the
@@ -182,7 +182,7 @@ placed plates in FANTASY with `eg_plates` in `everglade/hud/parts.coax`.
 
 ### Spell effects
 
-The shared modules are `aethyr/fx/` (`puff.coax` recipes, `abilities.coax`;
+The shared modules are `metaverse-engine/fx/` (`puff.coax` recipes, `abilities.coax`;
 `spell-light.coax`, each spell's colour; `battle.coax`, which effect each SRD
 battle event starts; `flat.coax`, a cause drawn from above),
 `class-look.coax` (`xc_look_of`, `xc_look_start`: which recipe a kit cast
@@ -191,21 +191,21 @@ starts) and `everglade/client/gpu/gpu-fx.coax`.
 | Zone | Where |
 | --- | --- |
 | Everglade II | Shared: `e2k_play` everglade/client/cast.coax:84 and `e2k_step` :154 start and emit puffs through `class-look.coax` and `puff.coax`. |
-| Experimental | Shared: the combat (`xc_look` everglade/zone-combat.coax) through `class-look.coax`; the 5E Lab, its Siege and its Warlock hand each battle event to `fxe_event` (aethyr/fx/battle.coax) through `lab_effect` fivelab.coax, and the flat view draws the same causes with `fxf_of` (aethyr/fx/flat.coax). |
+| Experimental | Shared: the combat (`xc_look` everglade/zone-combat.coax) through `class-look.coax`; the 5E Lab, its Siege and its Warlock hand each battle event to `fxe_event` (metaverse-engine/fx/battle.coax) through `lab_effect` fivelab.coax, and the flat view draws the same causes with `fxf_of` (metaverse-engine/fx/flat.coax). |
 | Everglade v1 | Local: its own puff system in everglade-spells.coax (`SpPuff` :156, `sp_fx` :1097, `sp_glow` :1199) and net-drawn effects (`net_draw_*` everglade-net.coax:1766-1863). The Warlock uses `puff.coax` (everglade-warlock.coax:27). |
 
 ### Camera
 
-The shared modules are `aethyr/cam/camera.coax` (the orbit), `aethyr/cam/` (modes,
+The shared modules are `metaverse-engine/cam/camera.coax` (the orbit), `metaverse-engine/cam/` (modes,
 mouselook, attention, the reticle, first person, and the zones' follow layer:
-`chase.coax`, `studio.coax`, `boom.coax` and `overhead.coax`), `aethyr/cam/shot.coax`
-and `aethyr/cam/follow.coax`.
+`chase.coax`, `studio.coax`, `boom.coax` and `overhead.coax`), `metaverse-engine/cam/shot.coax`
+and `metaverse-engine/cam/follow.coax`.
 
 | Zone | Where |
 | --- | --- |
-| Everglade II | Shared: the follow step, ground ring, trunks and mouselook framing (`aethyr/cam/chase.coax`, wired in `e2_chase_step` everglade/client/client.coax), and Character Create's studio, run and lens (`aethyr/cam/studio.coax`, wired in `e2c_view` and `e2c_view_lens` everglade/client/create.coax). |
-| Experimental | Shared: the 5E Lab's follow step (`chase.coax`, `lab_chase_step` fivelab.coax) and spectator camera (`aethyr/cam/overhead.coax`, `lab_view_zoom`, `lab_view_home`, `lab_view_pan`); the world's over-the-shoulder boom (`aethyr/cam/boom.coax`, `cc_view` charactercreator.coax), studio and walk (`studio.coax`, `cc_view` and `walk_view` charactercreator-walk.coax). |
-| Everglade v1 | Shared orbit (`aethyr/cam/camera.coax`, everglade.coax:62); local framing in `camera_frame` everglade.coax:3547, `cz_frame_shot` everglade-create.coax:500 and `everglade_place_camera` everglade-place.coax:63. |
+| Everglade II | Shared: the follow step, ground ring, trunks and mouselook framing (`metaverse-engine/cam/chase.coax`, wired in `e2_chase_step` everglade/client/client.coax), and Character Create's studio, run and lens (`metaverse-engine/cam/studio.coax`, wired in `e2c_view` and `e2c_view_lens` everglade/client/create.coax). |
+| Experimental | Shared: the 5E Lab's follow step (`chase.coax`, `lab_chase_step` fivelab.coax) and spectator camera (`metaverse-engine/cam/overhead.coax`, `lab_view_zoom`, `lab_view_home`, `lab_view_pan`); the world's over-the-shoulder boom (`metaverse-engine/cam/boom.coax`, `cc_view` charactercreator.coax), studio and walk (`studio.coax`, `cc_view` and `walk_view` charactercreator-walk.coax). |
+| Everglade v1 | Shared orbit (`metaverse-engine/cam/camera.coax`, everglade.coax:62); local framing in `camera_frame` everglade.coax:3547, `cz_frame_shot` everglade-create.coax:500 and `everglade_place_camera` everglade-place.coax:63. |
 
 ## The manifest
 
@@ -257,7 +257,7 @@ add an `EF_KNOWN` row for new code: wire the shared module instead.
 
 ### Add a feature
 
-1. Put the implementation in `aethyr/` or `everglade/`.
+1. Put the implementation in `metaverse-engine/` or `everglade/`.
 2. Add its row to `EF_FEATURES` with its owners and the marks a copy would
    carry.
 3. Wire it in each zone and add its name to each zone's `uses`. If a zone

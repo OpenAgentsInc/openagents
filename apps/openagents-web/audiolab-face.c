@@ -1,6 +1,6 @@
 // /realms/audio-lab's C face for the browser (#12832): scalar Wasm exports over audiolab.coax, the
 // frame's sound lines for the host (coax/web/host.js playSoundText), and the bank it renders once
-// audio starts: Everglade's synthesized set and the room's impulse (aethyr/audio/sfx.coax, mix.coax).
+// audio starts: Everglade's synthesized set and the room's impulse (metaverse-engine/audio/sfx.coax, mix.coax).
 // This page records no analytics of its own.
 #include "audiolab.h"
 #include <stddef.h>

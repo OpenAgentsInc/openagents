@@ -3,7 +3,7 @@
 // explicit caller effect; this example never opens a microphone.
 #import "Basic";
 #load "../lib/incremental/voice.coax";
-#load "../../aethyr/audio/voice.coax";
+#load "../../metaverse-engine/audio/voice.coax";
 iasi_open :: (directory:[]u8)->int #foreign #effects(all);
 iasi_close :: (handle:int) #foreign #effects(all);
 iasi_reset :: (handle:int,epoch:u64)->bool #foreign #effects(all);

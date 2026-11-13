@@ -1,4 +1,4 @@
-/* The room host's WebTransport (#13176), included by room-host.c: the transport under aethyr/net's
+/* The room host's WebTransport (#13176), included by room-host.c: the transport under metaverse-engine/net's
    interface for pages that open a session (host.js, "wt+" URLs). One UDP socket on the same port
    number as the WebSocket's TCP one (wt.c, the session layer over the vendored QUIC stack). Each
    session is one of conns[], marked wt, with the WebSocket's join, seat and frames:
@@ -13,7 +13,7 @@
    Off unless the host is given a certificate: --wt CERT KEY (ECDSA P-256, PKCS#8), or OA_ROOM_WT_CERT
    and OA_ROOM_WT_KEY; OA_ROOM_WT_PORT a UDP port of its own (default the TCP port). */
 #include "wt.h"
-#define WT_CHANNELS 5           /* aethyr/net/transport.coax NET_CHANNELS: 0 the datagram, 1-4 the streams */
+#define WT_CHANNELS 5           /* metaverse-engine/net/transport.coax NET_CHANNELS: 0 the datagram, 1-4 the streams */
 #define WT_SESSION_STREAM 4     /* NET_SESSION */
 static wt_server *wts;
 static int wt_conn_of[WT_SESSIONS];   /* session -> conn + 1 (0 none) */

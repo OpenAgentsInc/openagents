@@ -7,7 +7,7 @@ needs, from scratch, in one language, with every claim checked.
 | Book | What you build | Read it when you want to |
 | --- | --- | --- |
 | [The Coax Programming Language](../../coax/book/README.md) | Programs in Coax, the language every other book uses | write or review any code here |
-| [Building the OpenAgents Metaverse Engine](../../aethyr/book/README.md) | A real-time engine: the frame loop, a world, a renderer, physics, realms and a multiplayer server | make a realm or work on the engine |
+| [Building the OpenAgents Metaverse Engine](../../metaverse-engine/book/README.md) | A real-time engine: the frame loop, a world, a renderer, physics, realms and a multiplayer server | make a realm or work on the engine |
 | [Building Everglade](../../everglade/book/README.md) | An MMORPG on the D&D 5E SRD, on OpenAgents Metaverse Engine | see a whole game built on the stack |
 | [Psionic: ML From Scratch](../../psionic/book/README.md) | A machine-learning library that runs, serves and trains models | run a model, serve a decision or train one |
 | [Coder: Coding Agents From Scratch](../../coder/book/README.md) | A coding agent and its harness | build or drive an agent |

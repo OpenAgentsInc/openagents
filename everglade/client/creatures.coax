@@ -4,7 +4,7 @@
 // glade/gremlin0..39 the goblin's Idle, Jog, Sword, Shoot and Death), each a flag-18 record turned and set
 // where the room had it a jitter buffer behind, on the land. A blow plays its attack over its tell, a
 // shot its draw; a felled one plays its death, lies, and thins out; a new one thins in. An arrow flies
-// from the archer to where it was aimed (aethyr/fx/puff.coax FXR_SHAFT). Hits show their Hit Points
+// from the archer to where it was aimed (metaverse-engine/fx/puff.coax FXR_SHAFT). Hits show their Hit Points
 // over the one struck and sound where they land; a hit on you from off the screen shows a red wedge
 // toward the monster. A name and Hit Points plate stands over each one near you.
 //   coax/bin/coax test --library everglade/client/client.coax --only monster
@@ -186,7 +186,7 @@ e2mn_plate_add :: (s: [] E2, p: [] cc.HudPlates, view: cc.HudPlateView) {
     y := g.y + E2MN_TALL[g.kind] + 0.15;
     rw := e2n_mon_at(s[0].net[..], m, s[0].net[0].rt);
     if !cc.hud_plate_in_reach(view, g.x, y, g.z, cc.HUD_PLATE_FAR) || rw.max <= 0 { s[0].sight_mon[m] = cc.hud_sight_gone(); continue; }
-    // the plate and its health bar ride one settled answer (aethyr/physics/visibility.coax), fading over 0.15 s
+    // the plate and its health bar ride one settled answer (metaverse-engine/physics/visibility.coax), fading over 0.15 s
     s[0].sight_mon[m] = e2_sight_step(s, s[0].sight_mon[m], g.x, g.y, g.z, E2MN_TALL[g.kind]);
     cc.hud_plates_push(p, g.x, y, g.z, E2MN_NAME[g.kind], f32(rw.hp) / f32(rw.max), true, e2k_area_holds(s, g.x, g.z), s[0].sight_mon[m].share * g.fade);   // lit inside the area you aim
   }

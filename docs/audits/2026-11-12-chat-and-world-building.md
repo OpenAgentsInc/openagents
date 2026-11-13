@@ -11,7 +11,7 @@ Microcoder through your Coder, plus the hosted chat) can build worlds.
 
 - Four surfaces edit a world today. Each has its own document, its own edit
   shape and its own way in. They share one engine edit log
-  (`aethyr/forge/edit.coax`), but no document or wire shape.
+  (`metaverse-engine/editor/edit.coax`), but no document or wire shape.
 - The pattern we want already runs on the desktop. In Aethyrforge desktop, the
   chat interprets your words and calls a typed tool (`aethyrforge-scene apply
   JSON`). The tool checks the edit, saves it fenced by version, and the world
@@ -57,7 +57,7 @@ Microcoder through your Coder, plus the hosted chat) can build worlds.
   20 features: land, water, trees, village and so on.
 - **The realm:** `myrealm.coax` (4,185 lines) shows it. For its owner it
   re-reads its spec once a second, so an outside edit shows within a second.
-- **Edits:** `aethyr/forge/edit.coax` makes every revision path an invertible
+- **Edits:** `metaverse-engine/editor/edit.coax` makes every revision path an invertible
   typed edit, with undo and redo. The server keeps the same log
   (`migrations/0111_realm_edit_log.sql`), and saves are fenced by revision
   (409 on a stale one). `doc.coax`, `publish.coax` and `pack.coax` cover the
@@ -120,7 +120,7 @@ deterministic placement. Missing: a document anyone besides the page can reach.
     admin's write.
 - **Voice:** `everglade-voice.coax` adds voice edits onto the same list.
 - **Content tables:** P4.5 (#13294) gives every content table its own
-  Aethyrforge editor (`aethyr/forge/content-edit.coax`).
+  Aethyrforge editor (`metaverse-engine/editor/content-edit.coax`).
 - **Protocol work:** E11 is moving the edit and fork wire shapes onto shared
   codecs (#13250).
 
@@ -156,7 +156,7 @@ through its normal path.
 | | Made realm | WorldBuilder | Everglade edit | Desktop scene |
 |---|---|---|---|---|
 | Document | Server, per slug, revisions | Browser slot only (`WB1`) | Server, one city | Local world API |
-| Engine edit log | `aethyr/forge/edit.coax` | `ForgeScene` (same file) | Own list (`edits.coax`) | Everglade's rules |
+| Engine edit log | `metaverse-engine/editor/edit.coax` | `ForgeScene` (same file) | Own list (`edits.coax`) | Everglade's rules |
 | Words become edits by | Gemini planner, server | Gemini planner, server | Voice route, server | **Your agent** |
 | Typed wire shape | JSONL ops (`realm apply`) | `A op\|asset\|...` lines, no schema file | Being moved to a codec (E11) | JSON Schema in `proto/` |
 | Agent access | CLI + MCP, 35 verbs | None | None | `aethyrforge-scene` CLI |
@@ -176,7 +176,7 @@ through its normal path.
     ink overlay.
 - **How its world is made:**
   - `g_world` draws the whole world in code from the engine's cel kits
-    (`aethyr/kit/machines.coax`, `aethyr/kit/land.coax`): mesas, dunes,
+    (`metaverse-engine/kit/machines.coax`, `metaverse-engine/kit/land.coax`): mesas, dunes,
     rocks, walls, the rover, crates, the party hall, the dome village and the
     rail line. The page writes the world once a scene, so a change means
     writing the world buffer again, which it already knows how to do.
@@ -254,7 +254,7 @@ What was built differently from the text below, and why:
   says where a piece may stand at all, which is how "past the map's edge" is refused.
 - **30 walls, not 44.** `WALLS` is the list's size. The layout has 30 boxes; all of them, the
   rubble, the boss wall, the banned bot and the rover at the rail stop are World entities.
-- **The walk replay uses the engine's steering service** (`aethyr/ai/steer.coax`) with the
+- **The walk replay uses the engine's steering service** (`metaverse-engine/ai/steer.coax`) with the
   game's own step and collision. The protocol bots speak a room's wire, and Splice has no room.
   The agent driver's `walk-to` goes straight at its target, so it would refuse a crate a player
   walks round. `coax drive` isn't wired to Splice's page yet.
@@ -277,8 +277,8 @@ program (#13257) has already built most of what this needs. The section
   `layer-check` (P0.7, DDD.6) judges it. The page stays at `/worlds/splice`.
 - **The catalogue and the landmarks are content, not code** (P4.5, #13294).
   Splice gets an `aethyr.content.v1` document, read and validated by
-  `aethyr/content/tables.coax` and edited in Aethyrforge's table editor
-  (`aethyr/forge/content-edit.coax`). It has three tables:
+  `metaverse-engine/content/tables.coax` and edited in Aethyrforge's table editor
+  (`metaverse-engine/editor/content-edit.coax`). It has three tables:
   - `pieces`: one row a placeable piece (rover, crab-bot, turbine, palm, dome
     house, crate, arch…). Each row holds a stable content ID (P3.3, #13286),
     its display name, the kit piece it draws, its tints from Splice's palette,
@@ -292,14 +292,14 @@ program (#13257) has already built most of what this needs. The section
     checkpoint post.
   Edits and saves name pieces by content ID; names are for people and agents
   to read.
-- **The kit pieces stay engine code** in `aethyr/kit/`. A row names which kit
+- **The kit pieces stay engine code** in `metaverse-engine/kit/`. A row names which kit
   piece to draw. A `#test` measures every piece's triangles and checks its
   row's footprint against them, so colliders match what you see ("no
   invisible blockers").
 - **Placed pieces are entities in Aethyr's World** (P2.1, #13274,
-  `aethyr/core/world.coax`): a transform, a kind (the content ID) and a
+  `metaverse-engine/core/world.coax`): a transform, a kind (the content ID) and a
   collider. Collision goes through the World's spatial index
-  (`aethyr/core/spatial.coax`) and the shared physics queries, not through a
+  (`metaverse-engine/core/spatial.coax`) and the shared physics queries, not through a
   longer wall list.
   - Splice's 44 hand-written walls (`g_layout`, scanned linearly by
     `g_push`) move into the same collider set as part of this slice. That
@@ -313,7 +313,7 @@ program (#13257) has already built most of what this needs. The section
   is built here, as Splice's part of P6.1, and not worked around ("no
   shortcut phases").
 - **Deterministic and replayable.** The layer is applied in revision order
-  from the edit log (`aethyr/forge/edit.coax`). `world_digest` covers it, so a
+  from the edit log (`metaverse-engine/editor/edit.coax`). `world_digest` covers it, so a
   replay with the same edits gives the same digest a step at a time (book
   chapter 5).
 - **The run still plays.**
@@ -331,7 +331,7 @@ program (#13257) has already built most of what this needs. The section
 - WorldBuilder's planner already works out where things go: an anchor, a side
   as the camera sees it, footprints kept apart, and a seeded spread. Today it
   assumes WorldBuilder's pack catalogue (`WbCat`).
-- Move the placement part to `aethyr/forge/place.coax`, in the
+- Move the placement part to `metaverse-engine/editor/place.coax`, in the
   realm-authoring context, with a catalogue interface that the Quaternius pack
   and Splice's `pieces` table both fill. It loads nothing from `apps/` (P1.4,
   #13270). It has two consumers from the day it lands (P1.6, #13272), and
@@ -473,7 +473,7 @@ applies to the plan, and what changed because of it.
 |---|---|---|---|
 | P0.7 layer-check, DDD.6 contexts | Closed | No upward loads; each context loads only what `contexts.txt` allows | **Changed.** The chat never loads a world module; the pane is the world's own page, and the card is a proto shape. Splice gets a context. `place.coax` loads nothing from `apps/` |
 | P1.2 game code leaves `apps/openagents-web` | Open | One game module in its own folder | **Changed.** Splice moves to `verse/splice/` before its edit layer lands |
-| P1.4 Aethyr layers | Open | Engine code sits in its layer folders | `place.coax` is realm-authoring (`aethyr/forge/`); kit pieces stay in `aethyr/kit/` |
+| P1.4 Aethyr layers | Open | Engine code sits in its layer folders | `place.coax` is realm-authoring (`metaverse-engine/editor/`); kit pieces stay in `metaverse-engine/kit/` |
 | P1.6 every engine module has a consumer | Closed | No unused modules | `place.coax` has two consumers on the day it lands; WorldBuilder's copy is deleted |
 | P2.1 Aethyr World | Closed | Every entity lives in one World with columns, systems and a spatial index | **Changed.** Placed pieces are World entities, not draw calls added to `g_world` |
 | P2.6 a broadphase behind the queries | Open | No linear collision scans | **Changed.** Pieces and Splice's 44 walls collide through the spatial index; `WALLS` doesn't grow |
@@ -503,7 +503,7 @@ real thing directly, no stopgap" makes that the right trade.
 | Slice | Delivers | Size |
 |---|---|---|
 | 0 | Splice's folder and context; its content tables (pieces, landmarks, kept-clear); layer entities in the World with colliders in the spatial index; its 44 walls moved there too; retained instanced drawing; the run test and walk replay | Large, all in Coax with `#test`s, no deploy |
-| 0b | One placement planner in `aethyr/forge/place.coax` | Small to medium |
+| 0b | One placement planner in `metaverse-engine/editor/place.coax` | Small to medium |
 | 1 | World id and document, fenced edits; `splice` first, admin writes | API + migration: medium |
 | 2 | `proto/world/edit-v1` and the codec | Small |
 | 3 | `openagents world` + `world_*` MCP | Medium, mirrors `realm_*` |

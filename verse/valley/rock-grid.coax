@@ -1,6 +1,6 @@
 // Two adjacent 4x4-cell parent groups from the admitted original rock's +X face.
 #load "rock.coax";
-#load "../../aethyr/render/geometry/grid-parent.coax";
+#load "../../metaverse-engine/render/geometry/grid-parent.coax";
 RockGrid :: struct {source:ParentMesh;coarse:ParentMesh;triangles:[32]int;supported:bool;}
 #test "adjacent real groups preserve the shared five-vertex chain and exact source triangles" #steps 1000000000 {
   r:[1]Rock;for detail:[3]int.[8,16,32] {#assert rock_build(r[..],detail,12609);before:=r[0].id;

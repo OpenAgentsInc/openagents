@@ -438,7 +438,7 @@ td_draw :: (s: [] Everglade) {
   #assert !everglade_water_breathing(g[..]) && spells_key(g[..], ')', 1) && everglade_water_breathing(g[..]);
 }
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
 #test "tide: Create Water's rain puts out a fire; Destroy Water lifts the smoke from its cube" #steps 700000000 {
   g: [1] Everglade;

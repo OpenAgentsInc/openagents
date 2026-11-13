@@ -1,5 +1,5 @@
 // Firm reason: 1 (drives the browser SDK module coax/web/pack-host.js: fetch with Range, DecompressionStream and the pack reactor's Wasm)
-// The driver of aethyr/host/check-pack-cells.coax (GitHub #13304): it opens a VPK3 file through
+// The driver of metaverse-engine/host/check-pack-cells.coax (GitHub #13304): it opens a VPK3 file through
 // pack-host.js's loadPaged with demand:true, over a fetch that answers Range requests from the
 // file, runs the steps it is given and prints what Coax holds after each. It judges nothing: the
 // Coax tool wrote the file, knows its pages and compares these lines with what the reader says.

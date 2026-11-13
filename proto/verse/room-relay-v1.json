@@ -4,7 +4,7 @@
   "scope": "The relay room's own frames, for every game that sits in a relay room (coax/web/room/room-relay.coax): Everglade's rooms, and the games whose frames the relay passes on unread",
   "transport": "WebSocket text frames on /api/room/relay/GAME/CODE; fields one space apart; whole numbers in decimal",
   "doc": "docs/protocol/room-relay-v1.md",
-  "codec": "aethyr/net/relay-wire.coax",
+  "codec": "metaverse-engine/net/relay-wire.coax",
   "you": "y SEAT N T [G]",
   "join": "j SEAT",
   "left": "l SEAT",

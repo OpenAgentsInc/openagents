@@ -1,7 +1,7 @@
 // SHS1 v3: source body locals, camera/light samples, unit world orb rotation and the
 // orb Rect Light (meta 44..53: position, colour x candelas, attenuation radius, unit aim).
-#load "../../aethyr/anim/pose.coax";
-#load "../../aethyr/anim/face-pack.coax";
+#load "../../metaverse-engine/anim/pose.coax";
+#load "../../metaverse-engine/anim/face-pack.coax";
 #authority;
 SLAY_SHOT_CAP :: 1048576;
 SLAY_SHOT_META :: 54;
@@ -29,4 +29,4 @@ shot_admit :: (s:[]SlayShot,b:[]u8,face:[]u8)->bool #effects(all) {
  f:=face_info(face);if !shot_valid(b,face[f.rig_names..<f.rig_names+f.joints*64],f.joints,f.clips) {s[0].ready=false;return false;}
  for k:0..<b.count {s[0].data[k]=b[k];}s[0].bytes=b.count;s[0].ready=true;return true;
 }
-#load "../../aethyr/tests/slay-shot-checks.coax";
+#load "../../metaverse-engine/tests/slay-shot-checks.coax";

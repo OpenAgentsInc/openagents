@@ -1,0 +1,120 @@
+// A pack paged by cell, end to end through the browser's pack module (GitHub #13304, for #13280).
+// It writes a small pack whose catalog has cell lines (pack-cells.coax pack_cell_line), pages it as
+// a VPK3 file with its sound deferred (page-pack.coax), and has coax/web/pack-host.js load it with
+// demand:true in bun, over a fetch that answers Range requests from the file
+// (coax/web/tests/pack-demand.mjs). The page's calls must then do what the reader says:
+//   - after the open only the root pages are held;
+//   - a cell's key gives its digest and ranges from the catalog, and fetching them brings exactly
+//     the pages hpg_cover names, one request a run of pages, none twice;
+//   - a cell the catalog doesn't list is not found, and a range outside the image is refused;
+//   - the rest arrives when asked for.
+//   coax/web/tool.sh metaverse-engine/host/check-pack-cells.coax ROOT OUT_DIR
+// It builds the pack reactor (coax/web/build-packs.coax) into OUT_DIR first.
+#import "Basic";
+#load "pack-cells.coax";
+#load "../editor/page-pack.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+CPC_CATALOG :: 256;   // the catalog's bytes, padded with newlines so its cell lines don't move the entries they name
+CPC_SOUND :: 300;
+CPC_PAGE :: 64;
+
+CpcText :: struct { bytes: [65536] u8; used: int; }
+cpc_add :: (t: [] CpcText, s: string) { for c: s { t[0].bytes[t[0].used] = c; t[0].used += 1; } }
+cpc_num :: (t: [] CpcText, v: int) { d: [20] u8; k := 0; n := v; while k == 0 || n > 0 { d[k] = cast,trunc(u8) ('0' + n % 10); n /= 10; k += 1; } for i: 0..<k { t[0].bytes[t[0].used] = d[k - 1 - i]; t[0].used += 1; } }
+cpc_join :: (t: [] CpcText, a: string, b: string) -> string { start := t[0].used; cpc_add(t, a); cpc_add(t, b); return cast(string) t[0].bytes[start..<t[0].used]; }
+cpc_fail :: (why: string) -> int { tool_err("check-pack-cells: "); tool_errln(why); return 1; }
+
+cpc_held :: (l: [] PpkLoad, m: PpkManifest, row: [] u8) { row[0] = ifx l[0].arrived[0] then cast(u8) '1' else cast(u8) '0'; for k: 0..<5 { row[1 + k] = ifx l[0].arrived[12 + k] then cast(u8) '1' else cast(u8) '0'; } }
+cpc_take :: (l: [] PpkLoad, m: PpkManifest, image: string, at: int, bytes: int, cover: [] int) -> int {
+  got := ppk_cover(l[0], at, bytes, cover);
+  for i: 0..<got { g := m.page[cover[i]]; ok := ppk_admit(l, cover[i], image[g.image_at..<g.image_at + g.decoded]); }
+  return got;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) != 2 { tool_errln("usage: check-pack-cells ROOT OUT_DIR"); return 2; }
+  root := args_at(args[..], 0); dir := args_at(args[..], 1);
+  t: [1] CpcText; out: [1048576] u8; err: [65536] u8;
+  mk := [3] string.["mkdir", "-p", dir]; r := proc_run(mk[..], 10000, out[..], err[..]); if r.status != 0 { return cpc_fail("cannot make the output folder"); }
+  // The pack: 32 + 5 * 48 bytes of header and table, the catalog at 272, 6 bytes of vertices at 528,
+  // 12 of indices at 536, a layer of 5 at 548 and the sound at 556: 856 bytes.
+  sound_at := 556; total := sound_at + CPC_SOUND;
+  ka := pack_cell_key(0, -8); kb := pack_cell_key(-1, 2); kc := pack_cell_key(3, 3);
+  catalog: [CPC_CATALOG] u8; c := 0;
+  head := "budget 4096\nbytes 856\nL 0 Kit|CC0|u\nL 1 Sounds|CC0|u\nT 0 layer0 0\nS door 1\n";
+  for ch: head { catalog[c] = ch; c += 1; }
+  a_at := [1] int.[sound_at + 4]; a_n := [1] int.[10];
+  b_at := [2] int.[sound_at + 54, sound_at + 264]; b_n := [2] int.[30, 10];
+  // the writer wants a whole line's room: each line is written into a buffer of its own
+  line: [PACK_CELL_LINE] u8;
+  w := pack_cell_line(0, -8, 77, a_at[..], a_n[..], total, line[..]); if w < 0 { return cpc_fail("the first cell's line was refused"); }
+  for i: 0..<w { catalog[c] = line[i]; c += 1; }
+  w = pack_cell_line(-1, 2, 5, b_at[..], b_n[..], total, line[..]); if w < 0 { return cpc_fail("the second cell's line was refused"); }
+  for i: 0..<w { catalog[c] = line[i]; c += 1; }
+  for i: c..<CPC_CATALOG { catalog[i] = '\n'; }
+  sound: [CPC_SOUND] u8; for i: 0..<CPC_SOUND { sound[i] = cast,trunc(u8) ((i * 37 + i / 7) & 255); }
+  s: [5] PackSource; pack_test_sources(cast(string) catalog[..], s[..]); s[4].data = cast(string) sound[..];
+  image_bytes: [1024] u8; size := pack_write(s[..], 4096, image_bytes[..]);
+  if size != total { return cpc_fail("the fixture pack is not the 856 bytes its catalog states"); }
+  image := cast(string) image_bytes[0..<size];
+  read: [1] PackRead; if !pack_read(image, read[..]) || read[0].entries[4].at != sound_at { tool_errln(read[0].why); return cpc_fail("the fixture pack doesn't read, or its sound is not at 556"); }
+  starts: [64] int; roots: [64] bool; entries: [64] int;
+  n := ppk_plan(image, CPC_PAGE, 1 << PACK_SOUND, starts[..], roots[..], entries[..]);
+  dw: [1] DeflateWork; file: [8192] u8; scratch: [4096] u8;
+  fsize := ppk_write(image, starts[0..<n], roots[0..<n], entries[0..<n], file[..], scratch[..], dw[..]);
+  m: [1] PpkManifest;
+  if n != 17 || fsize <= 0 || !ppk_manifest(cast(string) file[0..<fsize], m[..]) || m[0].roots != 12 || m[0].page[12].image_at != sound_at { return cpc_fail("the fixture's pages are not 12 roots and the sound's 5"); }
+  vpk3 := cpc_join(t[..], dir, "/cells.vpk3"); wasm := cpc_join(t[..], dir, "/host-packs.wasm");
+  if !fs_write(vpk3, cast(string) file[0..<fsize]) { return cpc_fail("cannot write the fixture"); }
+  // What the reader says each step holds, of the first root page and the sound's five pages.
+  l: [1] PpkLoad; ok := ppk_open(l[..], m[0]); cover: [8] int;
+  for k: 0..<12 { g := m[0].page[k]; if !ppk_admit(l[..], k, image[g.image_at..<g.image_at + g.decoded]) { return cpc_fail("a root page of the fixture is not admitted"); } }
+  expect: [5][6] u8;   // after the open, cell a, cell b, the one byte, the rest
+  cpc_held(l[..], m[0], expect[0][..]);
+  if cpc_take(l[..], m[0], image, a_at[0], a_n[0], cover[..]) != 1 { return cpc_fail("the first cell should need one page"); }
+  cpc_held(l[..], m[0], expect[1][..]);
+  if cpc_take(l[..], m[0], image, b_at[0], b_n[0], cover[..]) != 1 || cpc_take(l[..], m[0], image, b_at[1], b_n[1], cover[..]) != 1 { return cpc_fail("the second cell should need two more pages, one a range"); }
+  cpc_held(l[..], m[0], expect[2][..]);
+  if cpc_take(l[..], m[0], image, sound_at + 144, 1, cover[..]) != 1 { return cpc_fail("the one byte should need one page"); }
+  cpc_held(l[..], m[0], expect[3][..]);
+  if cpc_take(l[..], m[0], image, 0, total, cover[..]) != 1 || !ppk_complete(l[0]) { return cpc_fail("one page should be left"); }
+  cpc_held(l[..], m[0], expect[4][..]);
+  if cast(string) expect[0][..] != "100000" || cast(string) expect[1][..] != "110000" || cast(string) expect[2][..] != "111001" || cast(string) expect[3][..] != "111101" || cast(string) expect[4][..] != "111111" { return cpc_fail("the reader's own account of the steps is not the one this check was written for"); }
+  build := [5] string.["bash", cpc_join(t[..], root, "/coax/web/tool.sh"), cpc_join(t[..], root, "/coax/web/build-packs.coax"), root, wasm];
+  r = proc_run(build[..], 300000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 { tool_errln(cast(string) err[0..<r.err_n]); return cpc_fail("the pack reactor did not build"); }
+  // The steps, and the lines they must print.
+  st: [1] CpcText;
+  probe_from := st[0].used; cpc_add(st[..], "probe:0,64");
+  for k: 0..<5 { g := m[0].page[12 + k]; cpc_add(st[..], ";"); cpc_num(st[..], g.image_at); cpc_add(st[..], ","); cpc_num(st[..], g.decoded); }
+  probe := cast(string) st[0].bytes[probe_from..<st[0].used];
+  from := st[0].used; cpc_add(st[..], "cell:"); cpc_num(st[..], ka); cell_a := cast(string) st[0].bytes[from..<st[0].used];
+  from = st[0].used; cpc_add(st[..], "cell:"); cpc_num(st[..], kb); cell_b := cast(string) st[0].bytes[from..<st[0].used];
+  from = st[0].used; cpc_add(st[..], "cell:"); cpc_num(st[..], kc); cell_c := cast(string) st[0].bytes[from..<st[0].used];
+  from = st[0].used; cpc_add(st[..], "more:"); cpc_num(st[..], sound_at + 144); cpc_add(st[..], ",1"); one := cast(string) st[0].bytes[from..<st[0].used];
+  from = st[0].used; cpc_add(st[..], "more:0,"); cpc_num(st[..], total + 1); outside := cast(string) st[0].bytes[from..<st[0].used];
+  run := [12] string.["bun", cpc_join(t[..], root, "/coax/web/tests/pack-demand.mjs"), vpk3, wasm, probe, cell_a, cell_b, cell_c, one, outside, "rest", "probe:0,64"];
+  r = proc_run(run[..], 120000, out[..], err[..]);
+  got := cast(string) out[0..<r.out_n];
+  if r.started != 0 || r.status != 0 { tool_errln(cast(string) err[0..<r.err_n]); tool_errln(got); return cpc_fail("the browser module's run failed (is bun installed?)"); }
+  want: [1] CpcText;
+  cpc_add(want[..], "open pages 17 image 856 entries 5\n");
+  cpc_add(want[..], "probe held 100000 requests 2 complete none\n");
+  cpc_add(want[..], "cell "); cpc_num(want[..], ka); cpc_add(want[..], " digest 77 ranges 560,10\n");
+  cpc_add(want[..], "cell "); cpc_num(want[..], ka); cpc_add(want[..], " held 110000 requests 3 complete none\n");
+  cpc_add(want[..], "cell "); cpc_num(want[..], kb); cpc_add(want[..], " digest 5 ranges 610,30;820,10\n");
+  cpc_add(want[..], "cell "); cpc_num(want[..], kb); cpc_add(want[..], " held 111001 requests 5 complete none\n");
+  cpc_add(want[..], "cell "); cpc_num(want[..], kc); cpc_add(want[..], " none\n");
+  cpc_add(want[..], "more held 111101 requests 6 complete none\n");
+  cpc_add(want[..], "more refused pack range outside the image\n");
+  cpc_add(want[..], "rest held 111111 requests 7 complete set\n");
+  cpc_add(want[..], "probe held 1 requests 7 complete set");
+  wanted := cast(string) want[0].bytes[0..<want[0].used];
+  if got != wanted { tool_errln("check-pack-cells: the browser module printed"); tool_errln(got); tool_errln("and the reader says it should print"); tool_errln(wanted); return 1; }
+  print("check-pack-cells: a pack's cells page through the browser module as the reader says (17 pages, 12 roots, 5 fetched on demand in 5 requests)\n");
+  return 0;
+}

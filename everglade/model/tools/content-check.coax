@@ -9,7 +9,7 @@
 #load "../content.coax";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
-#load "../../../aethyr/tools/content-carry.coax";
+#load "../../../metaverse-engine/tools/content-carry.coax";
 
 CARRY_PATH :: "everglade/content/shipped.coax";
 CARRY_HEAD :: "// Everglade's content tables as a page is built with them (#13381): the bytes of\n// everglade/content/everglade.content, written by\n//   coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content --carry\n// Never edit it by hand: edit the tables (docs/protocol/aethyr-content-v1.md) and write it again.\n// coax/web/tool.sh everglade-parity fails when the two differ. A room reads the file itself at start.\nEC_SHIPPED :: \"";
@@ -23,7 +23,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if !ec_ok(d[..]) { print("everglade content: a content document, but not Everglade's tables or rules\n"); return 1; }
   print("everglade content: revision % holds (% creatures, % items, % loot rows, % quests, % steps)\n", d[0].rev, ct_rows(d[..], EC_CREATURE), ct_rows(d[..], EC_ITEM), ct_rows(d[..], EC_LOOT), ct_rows(d[..], EC_QUEST), ct_rows(d[..], EC_STEP));
   if args_count(a[..]) == 2 {
-    // the same bytes as a Coax string (aethyr/tools/content-carry.coax)
+    // the same bytes as a Coax string (metaverse-engine/tools/content-carry.coax)
     o: [2 * CT_BODY + 2048] u8;
     carried := content_carry(CARRY_HEAD, cast(string) raw[0..<n], o[..]);
     if carried.count == 0 || !fs_write(CARRY_PATH, carried) { print("everglade content: could not write %\n", CARRY_PATH); return 1; }

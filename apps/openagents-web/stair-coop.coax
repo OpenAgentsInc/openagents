@@ -204,7 +204,7 @@ coop_pump :: (a: [] Stair, b: [] Stair) {
   for k: 0..<p[0].n {
     if p[0].op[k] != PIPE_SEND { continue; }
     buf: [LR_CHUNK * 2 + 16] u8;
-    n := rlw_put_said(buf[..], a[0].lock[0].seat);   // as the relay heads it (aethyr/net/relay-wire.coax)
+    n := rlw_put_said(buf[..], a[0].lock[0].seat);   // as the relay heads it (metaverse-engine/net/relay-wire.coax)
     n = lr_put(buf[..], n, pipe_bytes(p, k));
     stair_message(b, SOCKET_KIND + 4 * b[0].lock[0].sock + SOCKET_FRAME, cast(string) buf[0..<n]);
   }

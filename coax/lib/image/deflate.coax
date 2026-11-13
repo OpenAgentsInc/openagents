@@ -2,7 +2,7 @@
 // chains, then each block as dynamic Huffman codes or stored, whichever is smaller. Codes are
 // length-limited (15 bits, 7 for the code-length code) by halving counts until they fit. Nothing
 // is allocated: the caller gives the output and one DeflateWork, and an output too small is -1,
-// never a cut stream. Range-addressable packs (aethyr/forge/page-pack.coax) deflate each page
+// never a cut stream. Range-addressable packs (metaverse-engine/editor/page-pack.coax) deflate each page
 // with this, and the browser inflates it with DecompressionStream("deflate-raw").
 //   coax/bin/coax test coax/lib/image/deflate.coax
 #load "inflate.coax";

@@ -7,17 +7,17 @@
 //   the zone walks you, draws the meadow and your Ranger, holds the Longbow's rules and takes the
 //   keys, the pointer and the host's messages (archery-range-face.c hands them to it);
 //   the bow, its reticle, camera, pose, arrows and sounds are bow combat's (docs/verse/bow-combat.md:
-//   the engine's aethyr/action/bow.coax and archery.coax, Everglade's longbow.coax, zone-bow.coax and
+//   the engine's metaverse-engine/action/bow.coax and archery.coax, Everglade's longbow.coax, zone-bow.coax and
 //   held-kit.coax), with the controls every realm has;
-//   a face is the engine's static target (aethyr/action/target.coax): the reticle rests on it and the
+//   a face is the engine's static target (metaverse-engine/action/target.coax): the reticle rests on it and the
 //   arrow that crosses it sticks in it;
-//   the butts, poles and posts are the zone's standing things (aethyr/world/props.coax): you walk
+//   the butts, poles and posts are the zone's standing things (metaverse-engine/world/props.coax): you walk
 //   into them, a mount goes round them, an arrow sticks in them;
 //   the horse and the red dragon are Everglade's mounts (everglade/mounts.coax, zone-ride.coax),
 //   standing where the range puts them (everglade/zone-mounts.coax xh_stand);
 //   the layout, the faces, the points and the tally are the range's (everglade/range/);
 //   the tally is drawn with the game's HUD parts, and an arrow's points rise off its face as a hit's
-//   number does (aethyr/action/floats.coax).
+//   number does (metaverse-engine/action/floats.coax).
 //   coax/remote/remote.sh run -- coax/bin/coax test --library apps/openagents-web/archery-range.coax --only "archery range"
 #load "../../everglade/zone.coax";
 #load "../../everglade/range/score.coax";

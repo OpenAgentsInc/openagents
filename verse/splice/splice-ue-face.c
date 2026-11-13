@@ -1,4 +1,4 @@
-// Splice's C face for a native host (aethyr/export/unreal/aethyr_host.h): the same decisions as
+// Splice's C face for a native host (metaverse-engine/export/unreal/aethyr_host.h): the same decisions as
 // splice-face.c makes for the browser, which is none. It keeps the two stores and asks
 // animelab-style.coax for the anime block each frame. Pointers are pointers here.
 #include "splice.h"

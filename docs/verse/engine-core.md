@@ -1,12 +1,12 @@
 # The Metaverse Engine core
 
-The primitives every realm shares, in [`aethyr/`](../../aethyr/README.md)
+The primitives every realm shares, in [`metaverse-engine/`](../../metaverse-engine/README.md)
 (GitHub #12609, the verse project's milestone "Engine core"). Each has its own
 checks; where it decides behaviour, `coax mutate` leaves no survivors. The
 plan they follow is [docs/research/game-engine-systems.md](../research/game-engine-systems.md),
 sections A and D, and coax/ROADMAP.md R12, R13 and R16.
 
-## Loop (`aethyr/core/loop.coax`)
+## Loop (`metaverse-engine/core/loop.coax`)
 
 One clock owns time. A realm hands it each frame's time once; it says how
 many fixed steps to run and how far the frame lies between the last two.
@@ -23,7 +23,7 @@ many fixed steps to run and how far the frame lies between the last two.
   moves everything outside its steps (animation, its room's timing) by it, so
   one clock clamps the whole frame. `ran` is the steps the last frame ran.
 
-The player controller (`aethyr/move/player.coax`, every walking realm) steps on it
+The player controller (`metaverse-engine/move/player.coax`, every walking realm) steps on it
 at 1/64 s, Orbit League at 1/120 s, and Dead Gears' rules
 (`verse/deadgears/ecs.coax`), Everglade's debris (`verse/demolish.coax`) and
 Hold the Stair at 1/60 s. The page faces of the haunted house, Fairy Forest,
@@ -31,7 +31,7 @@ the Garden, Everglade and the villa no longer clamp the frame to 0.1 s; they
 move their realm by `verse_player_counts`, what the player's clock counts the
 frame for.
 
-No frame runs more steps than a realm's budget (8, `aethyr/core/budget.coax`):
+No frame runs more steps than a realm's budget (8, `metaverse-engine/core/budget.coax`):
 
 | Realm | Step | Clamp | Most steps a frame |
 | --- | --- | --- | --- |
@@ -59,7 +59,7 @@ check stalls a frame for 3 s (it counts as 0.1 s and runs at most 6 ticks)
 and lets the partner fall silent (ticks wait, owed, never past the cap).
 Mutation: `loop.coax` 97 of 97.
 
-## Space (`aethyr/core/space.coax`)
+## Space (`metaverse-engine/core/space.coax`)
 
 A position's type is its space: `WorldPoint` (metres, where physics puts
 things), `LocalPoint` (metres in a `Placement`: an origin and a yaw),
@@ -73,8 +73,8 @@ distances are R12 quantities, so metres and grid units don't mix
 not drawn. `world_to_grid` scales heights as it scales the ground, so feet
 are drawn at their physics height.
 
-Mixing spaces is a compile error: `coax/web/tool.sh aethyr/core/refusals.coax`
-compiles each fixture in `aethyr/tests/spaces/` and checks the code it is
+Mixing spaces is a compile error: `coax/web/tool.sh metaverse-engine/core/refusals.coax`
+compiles each fixture in `metaverse-engine/tests/spaces/` and checks the code it is
 refused with (E0317 a world point given for a view point or a grid point for
 a world one, E0325 a local point stored as a world one, E0822 metres plus
 grid units), against a control that must compile. Mutation: 78 of 78 killed
@@ -95,10 +95,10 @@ same state left zeroed must differ, or the realm fails. 17 realm states pass
 Orbit League, Hold the Stair, the villa, Water Lab and the pages with state
 defaults), and so do 20 face globals, compared natively after the face's
 constructors run;
-a realm with no defaults has nothing to apply. `aethyr/core/loop.coax`'s clock
+a realm with no defaults has nothing to apply. `metaverse-engine/core/loop.coax`'s clock
 also takes its default step, frame clamp and step cap on its first frame if it was zeroed, so it never freezes.
 
-## Input (`aethyr/core/input.coax`)
+## Input (`metaverse-engine/core/input.coax`)
 
 Keys, touch and pads become one `Intent` a frame (`input_keys`,
 `input_stick`), with one run rule (`INPUT_RUN_BY_DEFAULT`: moving runs,
@@ -115,7 +115,7 @@ zone (0.2). The steps read it through an `InputBuffer`:
 - Values that aren't numbers, and axes past full travel, are refused or
   clamped and counted (`mended`). `input_blur` releases every level at once.
 
-The walking controller (`aethyr/move/player.coax`) takes its jump from the first
+The walking controller (`metaverse-engine/move/player.coax`) takes its jump from the first
 step after the press. In the realms that call `verse_player_input` once a
 frame, its look still turns the camera at once; the Grid's session splits
 the look over the steps, and the other realms follow with ec-migrate. Checks: every press goes to the step a
@@ -124,10 +124,10 @@ to eight steps; a keyboard session and the same touch session give the same
 `Intent` and the same player states; a press in a frame with no step jumps
 on the next. Mutation: 126 of 126 killed (`input.coax`).
 
-## Query (`aethyr/physics/query.coax`)
+## Query (`metaverse-engine/physics/query.coax`)
 
 A realm's colliders are one `Colliders` value in world space: a flat ground,
-boxes, capsules and floors (`aethyr/physics/stand.coax`). Four queries read it:
+boxes, capsules and floors (`metaverse-engine/physics/stand.coax`). Four queries read it:
 
 - `query_ground` (and `query_stand` for feet): the highest surface at or
   below a height, its slope, whether it is too steep (`QUERY_STEEP`, 55
@@ -143,7 +143,7 @@ Every shape is solid, so a ray or sweep that starts inside one hits it at
 t = 0, and ties go to the earlier collider. The walking controller's
 `floor_under` is one `query_stand` call, so every walking realm asks the same
 ground question. Checks: rays and sweeps agree with an oracle that marches by
-containment (`aethyr/tests/query-oracle.coax`) over 48 random scenes each, to
+containment (`metaverse-engine/tests/query-oracle.coax`) over 48 random scenes each, to
 1 mm and on the collider; overlaps agree with separate distance code; the
 walker's run, jump onto a 0.5 m ledge, walk across and walk off give the same
 states whether a realm passes walls alone or walls among far bodies and
@@ -153,7 +153,7 @@ and a face-edge tie). Heightfields, rays against floors and the
 realms' own `ground_at` copies move with ec-migrate; the camera's
 `camera_room` is one `follow_room` call (Camera, below).
 
-## Entities (`aethyr/core/entity.coax`)
+## Entities (`metaverse-engine/core/entity.coax`)
 
 An entity has a `Handle(Entity)` with a 20-bit slot and 12-bit generation
 limit in its 64-bit word, for use
@@ -166,7 +166,7 @@ order they were asked for, so every system in a step sees the same
 entities; despawning a spawn still waiting cancels it. The realm owns the storage (an `EntityStore` is views), and
 `entity_digest` and `entity_copy` give replay and saves one number and one
 copy. Checks: after every flush of 24 seeded sessions, the store matches a
-plain list of IDs and values (`aethyr/tests/entity-oracle.coax`);
+plain list of IDs and values (`metaverse-engine/tests/entity-oracle.coax`);
 despawning while walking visits each live entity once; a session saved
 mid-way and loaded, and the same session replayed from nothing, end with the
 same digest and IDs. Mutation (`--root-only`): 211 of 211 killed. Dead
@@ -174,7 +174,7 @@ Gears runs on it: `verse/deadgears/ecs.coax` keeps only the component bits
 beside an `EntityStore`, and a check drives the same input at 30, 60, 120 and
 144 FPS and uneven frames to the same fight at every fixed step.
 
-## Replay (`aethyr/core/replay.coax`, `rand.coax`, `math.coax`)
+## Replay (`metaverse-engine/core/replay.coax`, `rand.coax`, `math.coax`)
 
 Every external event a session accepts is one `ReplayEvent`: its apply tick,
 source (controls, a model's answer, a network update), request or sequence
@@ -187,10 +187,10 @@ event with the next step. Live and replay apply events the same way:
 `replay_take` before each step. `replay_ask` numbers requests in both modes
 and says to send them only live. A record starts with the constructed
 state's digest (`replay_play` refuses another), keeps a state digest every
-step, and reports the first step that differs. `aethyr/core/rand.coax` draws by
-seed, stream and counter. `aethyr/core/math.coax` computes sine, cosine and
+step, and reports the first step that differs. `metaverse-engine/core/rand.coax` draws by
+seed, stream and counter. `metaverse-engine/core/math.coax` computes sine, cosine and
 powers from exact IEEE operations: with the C library's, a recorded walk
-parted natively and in wasm after 105 steps; `aethyr/move/player.coax`'s step uses
+parted natively and in wasm after 105 steps; `metaverse-engine/move/player.coax`'s step uses
 them now. Checks: live sessions with late, repeated and out-of-order
 answers and updates replay to the same digest at every step with no request
 sent; a planted fault is found at its step; `coax/web/replay-hosts.coax`
@@ -198,7 +198,7 @@ gives the same session digests for a recorded walk natively and in wasm.
 Mutation: 321 of 321 (`replay.coax`), 50 of 50 (`rand.coax`), 154 of 154
 (`math.coax`).
 
-## Camera (`aethyr/cam/follow.coax`)
+## Camera (`metaverse-engine/cam/follow.coax`)
 
 The follow camera behind a walker is one module. A `Follow` holds the turn
 and tilt the look input sets (`follow_look`), the distance the zoom asks for
@@ -216,11 +216,11 @@ velocity, and how far out it is shown.
   changes the colliders.
 - `follow_at` and `follow_eye` give what to draw between the last two
   steps; the eye is never shown further out than the last step.
-- `follow_offset` uses `aethyr/core/math.coax`, so a step that reads the camera's
+- `follow_offset` uses `metaverse-engine/core/math.coax`, so a step that reads the camera's
   direction (the walker steers by it) has the same bits on every host.
 
 Every camera answers with one `CameraShot`, an eye and the point it looks
-at (`aethyr/cam/shot.coax`, which loads only `aethyr/core/space.coax`): the follow
+at (`metaverse-engine/cam/shot.coax`, which loads only `metaverse-engine/core/space.coax`): the follow
 camera in third person (`follow_shot`) and first person
 (`follow_first_shot`), top down (`shot_top`), the free orbit
 (`shot_orbit_ray`, `shot_orbit`) and the dive (`shot_dive`: from a far shot
@@ -228,19 +228,19 @@ down to a live one in 0.75 s by default, eased at both ends, the look-at
 arriving 1.3 times sooner; a time that isn't a number is a cut). Each reads
 state already drawn between steps; none steps physics.
 
-The walking controller (`aethyr/move/player.coax`) keeps its camera fields, which
+The walking controller (`metaverse-engine/move/player.coax`) keeps its camera fields, which
 the realms' C faces read. Its step no longer moves them: `camera_step` runs
 `follow_track` after each player step (`step_once`), and its view modes are
-the three shots. `aethyr/cam/camera.coax`'s free orbit draws its shot through
-`aethyr/cam/shot.coax`. The arithmetic is the same as before (200,000 random
+the three shots. `metaverse-engine/cam/camera.coax`'s free orbit draws its shot through
+`metaverse-engine/cam/shot.coax`. The arithmetic is the same as before (200,000 random
 orbits and 100,000 random walkers gave the same bits), so the Grid's pinned
 session digest and its recorded host session are unchanged. Checks:
-`aethyr/cam/follow.coax` (the spring against its closed form, room against hand
+`metaverse-engine/cam/follow.coax` (the spring against its closed form, room against hand
 calculations for boxes, capsules, slants and the wall band, pull-in and
 back-out at any step size, tracking leaves the colliders as they were, the
-third- and first-person shots), `aethyr/cam/shot.coax` (top down, the orbit's
+third- and first-person shots), `metaverse-engine/cam/shot.coax` (top down, the orbit's
 line outside, halfway and inside, a dive that lands exactly and moves at most
-3.43 m a frame over 87.78 m in 48 frames, cuts), `aethyr/move/player.coax` ("the
+3.43 m a frame over 87.78 m in 48 frames, cuts), `metaverse-engine/move/player.coax` ("the
 player is the same whether its camera steps every step, never, or twice a
 step": a walk into a wall, round it and past a body with two jumps and a
 turn at 60 FPS, comparing 21 fields every frame) and `verse/gridwalk.coax`
@@ -250,7 +250,7 @@ most 0.016 m between frames (measured 0.013 m), it rises every frame of a
 jump's rising arc, and drawing the last step instead changes its move by more
 than three times the bound). Mutation: 189 of 189 (`follow.coax`), 54 of 54
 (`shot.coax`), none surviving on the changed lines of `player.coax` and
-`camera.coax`. `aethyr/core/points.coax`'s `Shot`, the homepage's dive into the
+`camera.coax`. `metaverse-engine/core/points.coax`'s `Shot`, the homepage's dive into the
 Grid and `SpaceCam` move onto `CameraShot` with ec-migrate. Ice Cream Man's
 boom is gone: its camera is a `Follow` stepped once per 1/30 s rules step
 (`verse/icecream/camera.coax` `cam_track`), bumping the house's walls,
@@ -258,7 +258,7 @@ lintels, floor and ceiling through `follow_room`; the same input gives the
 same camera every step at 30, 60, 120 and 144 FPS and on uneven frames
 (`verse/icecream/play.coax`).
 
-## Budgets (`aethyr/core/budget.coax`)
+## Budgets (`metaverse-engine/core/budget.coax`)
 
 A realm declares what one frame may use, a `FrameBudget`: fixed steps (8,
 the clock's cap), vertices, draw records and the bytes the page host holds
@@ -286,10 +286,10 @@ reported), takes, peaks and ties, measured frames over budget in each kind,
 counts below zero, unknown kinds and a sum past the largest `int`.
 Mutation: 139 of 139 killed. Steps are measured per realm (Loop, above):
 Hold the Stair's, Orbit League's and Dead Gears' budget checks take each
-frame's steps, a 3 s stall's included, and `aethyr/move/player.coax` checks the
+frame's steps, a 3 s stall's included, and `metaverse-engine/move/player.coax` checks the
 walkers'. Refusal inside the writers is still to do.
 
-## Assets (`aethyr/core/assets.coax`)
+## Assets (`metaverse-engine/core/assets.coax`)
 
 An asset is known by its content: its `AssetId` is the SHA-256 of its bytes,
 written as the 64 lowercase hex digits `sha256sum` prints. Two realms that use
@@ -316,11 +316,11 @@ matches a plain count of uses and every pack is all or nothing. Mutation:
 162 of 162 killed (`--root-only`; SHA-256 has its own gate). The file is
 `#authority`. Realm packs (`verse/tools/pack_realm.py`, `VPK1`) don't load
 through it yet: that is the asset path of
-[book chapter 53](../../aethyr/book/ch053-bring-in-assets.md). A page that
+[book chapter 53](../../metaverse-engine/book/ch053-bring-in-assets.md). A page that
 links it beside another library that loads `sha256-kernel.coax` gets
 `S_hash` and `S_hex` twice (see 691c76ee7f).
 
-## Flight on the fixed step (`aethyr/move/flight.coax`)
+## Flight on the fixed step (`metaverse-engine/move/flight.coax`)
 
 A realm that flies declares a `FlightProfile`, looked up by the same realm
 name as its collision profile; Fairy Forest's is on and every other realm's
@@ -332,8 +332,8 @@ you glide at 1.5 m/s, a rise stops past 40 m, and the dive held falls at
 (the realm's settings, not in water) and the dive held
 (`verse_player_input_flying`), and only draws the wings. It replaced
 `fairy-face.c`'s once-a-frame flight, which flew higher or lower at
-different frame rates. Checks: `aethyr/move/flight.coax` (mutation 0 survivors)
-and `aethyr/move/walk.coax` ("a flight of beats, climbs, glides and a dive has
+different frame rates. Checks: `metaverse-engine/move/flight.coax` (mutation 0 survivors)
+and `metaverse-engine/move/walk.coax` ("a flight of beats, climbs, glides and a dive has
 the same states at 30, 60, 120 and 144 FPS and on uneven frames").
 
 Hecate's Cemetery's free orbit, the camera its flight in hands back to,
@@ -342,7 +342,7 @@ eases a fixed step at a time from each step's feet
 last two steps; a look turns it at once. Check: "Hecate's camera eases on
 the fixed step ...".
 
-## Characters (`aethyr/character/`)
+## Characters (`metaverse-engine/character/`)
 
 A world that hosts a detailed character keeps a table of `CharacterPack`s
 and one `Character` record per placed character (an entity's column). A
@@ -375,17 +375,17 @@ table.
   declared eye joints in small saccades and rocks a declared breath joint,
   chains the skeleton again from the first joint it turned and writes the
   palette. Names are bound once by exact match against the pack's face
-  (`character_idle_bind`); draws come from `aethyr/core/rand.coax` under the
+  (`character_idle_bind`); draws come from `metaverse-engine/core/rand.coax` under the
   declared seed. While a face clip is on screen, it owns the eyes and lids.
 
 Echo's own declarations (catalog admission, the orb hand's capsules, her
 idle face segments) are in `verse/valley/echo.coax`. Valley Lab and Valley
 World run her on this module, with the TF0290 frames byte-identical to the
-runtime they replaced. Checks: `aethyr/character/checks.coax`, on authored
+runtime they replaced. Checks: `metaverse-engine/character/checks.coax`, on authored
 rig and face fixtures with no private data.
 
-Mutation (`coax/bin/coax mutate aethyr/character/checks.coax --unit
-aethyr/character/UNIT.coax`) kills every mutant in `face.coax` and
+Mutation (`coax/bin/coax mutate metaverse-engine/character/checks.coax --unit
+metaverse-engine/character/UNIT.coax`) kills every mutant in `face.coax` and
 `palette.coax`. The survivors elsewhere change nothing a world can see:
 
 - `rig.coax`: `n<0` as `n<=0` or `n<1` (a rig of 0 or 1 bytes already fails
@@ -400,9 +400,9 @@ aethyr/character/UNIT.coax`) kills every mutant in `face.coax` and
 - `idle.coax`: `t<0` as `t<=0` in the blink weight (the sine is 0 at 0), and
   `j<first` as `j<=first` (equal joints set the same value).
 
-## Cross-realm checks (`aethyr/tests/cross-realm.coax`, `cross-realm-floor.coax`)
+## Cross-realm checks (`metaverse-engine/tests/cross-realm.coax`, `cross-realm-floor.coax`)
 
-Every walking realm steps one controller (`aethyr/move/walk.coax`) with its own
+Every walking realm steps one controller (`metaverse-engine/move/walk.coax`) with its own
 declared collision profile. `cross-realm.coax` runs one session in each of
 the seven walking renderers (the Grid, the Haunted House, the Garden, Fairy
 Forest, Everglade, Hecate's Cemetery, Dead Gears): a walk, a run, two jumps
@@ -418,7 +418,7 @@ and a 0.4 m step up and off, at 60 FPS against the 64 Hz steps.
   the ground's height (0, or the step's top within the capsule's radius of
   it); stepping down they ease from above the ground, never below it. The
   native probes through each realm's real render path are
-  `aethyr/tests/check_drawn_feet.py`.
+  `metaverse-engine/tests/check_drawn_feet.py`.
 - **Replay:** the session's recorded frames (controls, a turn, the frame
   time, a 0.25 s stall every 97 frames) played into a fresh walker give the
   same walker and eye, bit for bit, every frame; a frame changed at 150 is
@@ -433,7 +433,7 @@ and a 0.4 m step up and off, at 60 FPS against the 64 Hz steps.
 - **Made realms** (`cross-realm-made.coax`, its own file because
   `apps/openagents-web/myrealm.coax` declares names the walker's modules also
   use; #12721): a made realm keeps its own controls but steps on
-  `aethyr/core/loop.coax` and is pushed out of what stands by the walker's
+  `metaverse-engine/core/loop.coax` and is pushed out of what stands by the walker's
   `move_across`. A walk, a turn and two jumps at 60 FPS draw you between the
   last two steps, on the ground at 0; the session replays bit for bit with a
   0.25 s stall every 97 frames, and a frame changed at 150 is found at 150.
@@ -442,8 +442,8 @@ and a 0.4 m step up and off, at 60 FPS against the 64 Hz steps.
 ## The Grid on the engine core (`verse/gridwalk.coax`)
 
 The Grid (`/realms/the-grid`) is the first realm whose simulation is one Coax
-session on the engine core. `GridWalk` holds you (`aethyr/move/player.coax`), the
-phone's thumbs (`aethyr/core/sticks.coax`, moved out of `verse/grid.coax`), the
+session on the engine core. `GridWalk` holds you (`metaverse-engine/move/player.coax`), the
+phone's thumbs (`metaverse-engine/core/sticks.coax`, moved out of `verse/grid.coax`), the
 input buffer and the session's record. The page's C face calls
 `gridwalk_frame` once a frame with the keys held, the drag, arrow, tilt and
 wheel amounts and the frame's time, passes touches to `gridwalk_touch`, and

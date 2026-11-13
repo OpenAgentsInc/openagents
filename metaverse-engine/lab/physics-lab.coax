@@ -1,0 +1,105 @@
+// tool.sh: release
+// One command on coderos-4080: coax/web/tool.sh metaverse-engine/lab/physics-lab.coax [--out DIR] [--seed N]
+#import "Basic";
+#load "physics-metrics.coax";
+#load "physics-text.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+LAB_RAPIER :: "3406750a38286a0d3c7d0f4be2f9d53153e81d90";
+LAB_JOLT :: "e77f175595e64cb44218cc9d9d56fc365ad0e36a";
+LabObserved :: struct {ok:bool;checksum:u64;p50:int;p95:int;p99:int;final:LabMetrics;peak:f64;}
+lab_run :: (argv:[]string,deadline:int)->bool {
+  out:[65536]u8;err:[65536]u8;left:=proc_left(deadline,cxproc_now_ms());if left<=0 {tool_errln("physics lab: 14-minute command budget exhausted; run a scene slice");return false;}
+  r:=proc_run(argv,left,out[..],err[..]);if r.started!=0 || r.status!=0 || r.timed_out {print("physics lab: % failed: start %, status %, timeout %\n",argv[0],r.started,r.status,r.timed_out);tool_errln(cast(string)out[0..<r.out_n]);tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;
+}
+lab_refs :: (deadline:int)->bool {
+  cache:="metaverse-engine/lab/.cache";if !fs_mkdir(cache) {return false;}
+  if !fs_exists("metaverse-engine/lab/.cache/jolt/.git") {
+    argv:=[4]string.["git","clone","https://github.com/jrouwe/JoltPhysics.git","metaverse-engine/lab/.cache/jolt"];if !lab_run(argv[..],deadline) {return false;}
+  }
+  checkout:=[6]string.["git","-C","metaverse-engine/lab/.cache/jolt","checkout","--detach",LAB_JOLT];if !lab_run(checkout[..],deadline) {return false;}
+  clean:=[6]string.["git","-C","metaverse-engine/lab/.cache/jolt","diff","--quiet","HEAD"];if !lab_run(clean[..],deadline) {return false;}
+  cargo:=[11]string.["cargo","build","--locked","--release","--manifest-path","metaverse-engine/lab/reference/Cargo.toml","--target-dir","metaverse-engine/lab/.cache/rapier-target","-j","6","--offline"];
+  // A first run may fetch the pinned SDK and locked crates; later builds work without the network.
+  if !lab_run(cargo[0..<10],deadline) {return false;}
+  pathbuf:[4096]u8;jolt:=fs_realpath("metaverse-engine/lab/.cache/jolt",pathbuf[..]);configbuf:[4096]u8;o:=[1]LabText.[LabText.{data=configbuf[..]}];lt_put(o[..],"-DJOLT_SOURCE=");lt_put(o[..],jolt);
+  configure:=[14]string.["nix","shell","nixpkgs#cmake","nixpkgs#ninja","--command","cmake","-S","metaverse-engine/lab/reference","-B","metaverse-engine/lab/.cache/jolt-sdk-build","-G","Ninja","-DCMAKE_BUILD_TYPE=Release",lt_text(o[..])];
+  if !lab_run(configure[..],deadline) {return false;}
+  build:=[12]string.["nix","shell","nixpkgs#cmake","nixpkgs#ninja","--command","cmake","--build","metaverse-engine/lab/.cache/jolt-sdk-build","--target","lab-jolt","-j","6"];
+  return lab_run(build[..],deadline);
+}
+lab_observe :: (raw:[]u8,p:LabSpec,input:[]u8,json:[]LabText)->LabObserved {
+  r:LabObserved;if raw.count!=lab_output_bytes(p.count,p.steps,p.sample_every) || cast(string)raw[0..<8]!="LABOUT01" || lab_uget(raw,8)!=cast(u64)p.count || lab_uget(raw,16)!=180 || lab_uget(raw,24)!=30 {return r;}
+  // Every SDK must echo the exact initial body table. A matching seed is insufficient.
+  base:=32+p.steps*8;for i:0..<104*p.count {if raw[base+8+i]!=input[160+i] {tool_errln("physics lab: initial state differs");return r;}}
+  times:[180]int;for i:0..<180 {times[i]=cast(int)lab_uget(raw,32+i*8);if times[i]<0 {return r;}}
+  lab_time_sort(times[..]);r.p50=lab_percentile(times[..],50);r.p95=lab_percentile(times[..],95);r.p99=lab_percentile(times[..],99);
+  lt_put(json,"\"step_ns\":{\"p50\":");lt_int(json,r.p50);lt_put(json,",\"p95\":");lt_int(json,r.p95);lt_put(json,",\"p99\":");lt_int(json,r.p99);lt_put(json,"},\"samples\":[");
+  b:[30000]RigidBody;order:[30000]int;tmp:[30000]int;a:[1000000]int;z:[1000000]int;h:u64=14695981039346656037;
+  for sample:0..<7 {
+    at:=base+sample*(8+104*p.count);step:=cast(int)lab_uget(raw,at);if step!=sample*30 {return r;}
+    for byte:raw[at..<at+8+104*p.count] {h=mul_wrap(h^cast(u64)byte,1099511628211);}
+    for i:0..<p.count {v:=lab_body_get(raw,at+8+104*i);b[i]=rigid_body(p.mass,rigid_box_inertia(p.mass,d3(p.half.x*2,p.half.y*2,p.half.z*2)),d3(v.pos.x,v.pos.y,v.pos.z),dq(v.rot.x,v.rot.y,v.rot.z,v.rot.w));b[i].vel=d3(v.vel.x,v.vel.y,v.vel.z);b[i].omega=dq_rotate(dq_conj(b[i].orientation),d3(v.omega.x,v.omega.y,v.omega.z));}
+    m:=lab_metrics(b[0..<p.count],p,order[..],tmp[..],a[..],z[..]);if m.invalid>0 {tool_errln("physics lab: nonfinite state or metric capacity exhausted");return r;}r.final=m;r.peak=fmax(r.peak,m.penetration);
+    if sample>0 {lt_put(json,",");}lt_put(json,"{\"step\":");lt_int(json,step);lt_put(json,",\"time_s\":");lt_float(json,f64(step)*p.dt);lt_put(json,",\"energy_j\":");lt_float(json,m.energy);lt_put(json,",\"max_penetration_m\":");lt_float(json,m.penetration);lt_put(json,",\"at_rest\":");lt_int(json,m.at_rest);lt_put(json,"}");
+  }
+  r.checksum=h;lt_put(json,"],\"state_checksum\":\"");lt_hex(json,h);lt_put(json,"\"");r.ok= !json[0].full;return r;
+}
+lab_project :: (p:D3)->LabVec {return LabVec.{x=(p.x-p.z)*0.7071067811865476,y=(p.x+p.z)*0.35-p.y};}
+lab_capture :: (p:LabSpec,states:[][]u8,path:string)->bool {
+  final:=32+180*8+6*(8+104*p.count)+8;shown:=p.count;if shown>2000 {shown=2000;}
+  lo:=LabVec.{x=1e30,y=1e30};hi:=LabVec.{x= -1e30,y= -1e30};
+  for engine:0..<3 {for i:0..<shown {id:=i*p.count/shown;b:=lab_body_get(states[engine],final+104*id);v:=lab_project(d3(b.pos.x,b.pos.y,b.pos.z));lo.x=fmin(lo.x,v.x-1);lo.y=fmin(lo.y,v.y-1);hi.x=fmax(hi.x,v.x+1);hi.y=fmax(hi.y,v.y+1);}}
+  scale:=fmin(440/fmax(hi.x-lo.x,1),550/fmax(hi.y-lo.y,1));data:[8388608]u8;o:=[1]LabText.[LabText.{data=data[..]}];
+  lt_put(o[..],"<!doctype html><meta charset=utf-8><title>Physics Lab</title><style>body{margin:0;background:#10161e;color:#dce9f6;font:16px system-ui}svg{display:block}text{fill:#dce9f6;font-family:system-ui}</style><svg xmlns='http://www.w3.org/2000/svg' width='1500' height='800' viewBox='0 0 1500 800'><text x='24' y='34' font-size='24'>");lt_put(o[..],lab_name(p.kind));lt_put(o[..]," · 3 seconds · ");lt_int(o[..],shown);lt_put(o[..]," of ");lt_int(o[..],p.count);lt_put(o[..]," bodies shown</text><text x='24' y='62'>Same body IDs, camera and scale · every body contributes to JSON metrics</text>");
+  names:=[3]string.["Aethyr","Rapier 0.36.1","Jolt 5.6.0"];colors:=[3]string.["#64c7ff","#8ce6a6","#ffcc80"];
+  for engine:0..<3 {
+    left:=engine*500;lt_put(o[..],"<text x='");lt_int(o[..],left+24);lt_put(o[..],"' y='108' font-size='22'>");lt_put(o[..],names[engine]);lt_put(o[..],"</text><path fill='none' stroke='");lt_put(o[..],colors[engine]);lt_put(o[..],"' stroke-width='0.7' d='");
+    for i:0..<shown {id:=i*p.count/shown;b:=lab_body_get(states[engine],final+104*id);q:=dq(b.rot.x,b.rot.y,b.rot.z,b.rot.w);points:[8]LabVec;
+      for k:0..<8 {corner:=d3(ifx (k&1)==0 then -p.half.x else p.half.x,ifx (k&2)==0 then -p.half.y else p.half.y,ifx (k&4)==0 then -p.half.z else p.half.z);points[k]=lab_project(d3_add(d3(b.pos.x,b.pos.y,b.pos.z),dq_rotate(q,corner)));}
+      for k:0..<8 {for axis:0..<3 {other:=k^(1<<axis);if other>k {lt_put(o[..],"M");lt_float(o[..],f64(left)+30+(points[k].x-lo.x)*scale);lt_put(o[..],",");lt_float(o[..],150+(points[k].y-lo.y)*scale);lt_put(o[..],"L");lt_float(o[..],f64(left)+30+(points[other].x-lo.x)*scale);lt_put(o[..],",");lt_float(o[..],150+(points[other].y-lo.y)*scale);}}}
+    }lt_put(o[..],"'/>");
+  }
+  lt_put(o[..],"<text x='24' y='760'>Final recorded poses, including rotation. Wireframe diagnostic; no product renderer or physics runs here.</text></svg>");
+  return !o[0].full && fs_write(path,lt_text(o[..]));
+}
+tool_main :: ()->int #export_c #effects(all) {
+  deadline:=cxproc_now_ms()+840000;args:[1]Args;if !args_load(args[..]) {return 2;}
+  if tool_os()!=TOOL_LINUX {tool_errln("physics lab: run on coderos-4080 (reference SDK builds are lab-only Linux tools)");return 2;}
+  seedarg:=args_number(args_value(args[..],"--seed","20261106"));if !seedarg.ok || seedarg.value<0 || seedarg.value>4294967295 || floor(seedarg.value)!=seedarg.value {return 2;}seed:=cast(int)seedarg.value;
+  out:=args_value(args[..],"--out","metaverse-engine/lab/.cache/results");if !fs_mkdir("metaverse-engine/lab/.cache") || !fs_mkdir(out) {return 3;}
+  if !args_has(args[..],"--skip-build") && !lab_refs(deadline) {return 4;}
+  only:=args_value(args[..],"--scene","");matched:=false;
+  raw0:[21841528]u8;raw1:[21841528]u8;raw2:[21841528]u8;repeat:[21841528]u8;input:[3120160]u8;
+  jsondata:[262144]u8;json:=[1]LabText.[LabText.{data=jsondata[..]}];lt_put(json[..],"{\"format\":\"aethyr-physics-lab-v1\",\"seed\":");lt_int(json[..],seed);
+  lt_put(json[..],",\"rapier_commit\":\"");lt_put(json[..],LAB_RAPIER);lt_put(json[..],"\",\"jolt_commit\":\"");lt_put(json[..],LAB_JOLT);lt_put(json[..],"\",\"profile\":\"single-thread, no sleep, no damping, no CCD; Aethyr/Rapier f64, Jolt f64 positions and f32 velocity/rotation; eight engine solver passes, not numerically equivalent solvers\",\"penetration\":\"maximum ground or SAT box-pair overlap sampled every 30 steps, including initial overlap\",\"at_rest\":\"linear speed <0.05 m/s and angular speed <0.05 rad/s; not SDK sleep flags\",\"rows\":[");
+  rows:=0;print("scene engine p50_ms p95_ms p99_ms final_energy_J penetration_m rest/count checksum\n");
+  for kind:0..<6 {
+    if only.count>0 && only!=lab_name(kind) {continue;}matched=true;p:=lab_spec(kind);lab_input_put(input[..],p,seed);
+    pbuf:[4096]u8;dir:=fs_join(out,lab_name(kind),pbuf[..]);if !fs_mkdir(dir) {return 5;}
+    ibuf:[4096]u8;inpath:=fs_join(dir,"input.bin",ibuf[..]);if !fs_write(inpath,cast(string)input[0..<lab_input_bytes(p.count)]) {return 6;}
+    sizes:[3]int;observed:[3]LabObserved;names:=[3]string.["aethyr","rapier","jolt"];
+    states:=[3][]u8.[raw0[..],raw1[..],raw2[..]];
+    for engine:0..<3 {
+      obuf:[4096]u8;filenamebuf:[128]u8;fn:=[1]LabText.[LabText.{data=filenamebuf[..]}];lt_put(fn[..],names[engine]);lt_put(fn[..],".bin");path:=fs_join(dir,lt_text(fn[..]),obuf[..]);
+      if engine==0 {argv:=[4]string.["coax/web/tool.sh","metaverse-engine/lab/physics-aethyr.coax",inpath,path];if !lab_run(argv[..],deadline) {return 7;}}
+      if engine==1 {argv:=[3]string.["metaverse-engine/lab/.cache/rapier-target/release/lab-rapier",inpath,path];if !lab_run(argv[..],deadline) {return 7;}}
+      if engine==2 {argv:=[3]string.["metaverse-engine/lab/.cache/jolt-sdk-build/lab-jolt",inpath,path];if !lab_run(argv[..],deadline) {return 7;}}
+      sizes[engine]=fs_read(path,states[engine]);if sizes[engine]!=lab_output_bytes(p.count,180,30) {return 8;}
+      if rows>0 {lt_put(json[..],",");}rows+=1;lt_put(json[..],"{\"scene\":\"");lt_put(json[..],lab_name(kind));lt_put(json[..],"\",\"engine\":\"");lt_put(json[..],names[engine]);lt_put(json[..],"\",\"count\":");lt_int(json[..],p.count);lt_put(json[..],",");
+      observed[engine]=lab_observe(states[engine][0..<sizes[engine]],p,input[..],json[..]);if !observed[engine].ok {return 9;}lt_put(json[..],"}");
+      v:=observed[engine];print("% % % % % % % %/% %\n",lab_name(kind),names[engine],f64(v.p50)/1e6,f64(v.p95)/1e6,f64(v.p99)/1e6,v.final.energy,v.final.penetration,v.final.at_rest,p.count,v.checksum);
+    }
+    rbuf:[4096]u8;rpath:=fs_join(dir,"aethyr-repeat.bin",rbuf[..]);again:=[4]string.["coax/web/tool.sh","metaverse-engine/lab/physics-aethyr.coax",inpath,rpath];if !lab_run(again[..],deadline) {return 10;}
+    n:=fs_read(rpath,repeat[..]);if n!=sizes[0] {return 10;}
+    // Timing is allowed to change; every byte of every recorded physical sample must match.
+    for i:32+180*8..<n {if repeat[i]!=raw0[i] {tool_errln("physics lab: Aethyr repeat differs");return 11;}}
+    hbuf:[4096]u8;html:=fs_join(dir,"compare.html",hbuf[..]);if !lab_capture(p,states[..],html) {return 12;}
+    absolute:[4096]u8;htmlabs:=fs_realpath(html,absolute[..]);urlbuf:[4096]u8;u:=[1]LabText.[LabText.{data=urlbuf[..]}];lt_put(u[..],"file://");lt_put(u[..],htmlabs);
+    pngbuf:[4096]u8;png:=fs_join(dir,"compare.png",pngbuf[..]);shot:=[8]string.["env","CDP_WEBGPU=swiftshader","coax/web/tool.sh","shot",lt_text(u[..]),png,"1500x800","300"];if !lab_run(shot[..],deadline) {return 13;}
+  }
+  if !matched {tool_errln("physics lab: unknown --scene");return 2;}
+  lt_put(json[..],"],\"aethyr_repeat_all_sample_bytes_equal\":true}\n");jbuf:[4096]u8;path:=fs_join(out,"results.json",jbuf[..]);if json[0].full || !fs_write(path,lt_text(json[..])) {return 14;}print("%\n",path);return 0;
+}

@@ -1,9 +1,9 @@
 // droprealm's shaders, the source of apps/openagents-web/droprealm.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (droprealm.module,
 // droprealm.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/render/sampling.coax";
-#load "../../../aethyr/render/noise.coax";
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/render/sampling.coax";
+#load "../../../metaverse-engine/render/noise.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 
 // A first realm's three passes (droprealm.coax): the night and the floor
 // behind (stars, then the floor where each pixel's ray meets it, lit by the

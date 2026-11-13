@@ -1,0 +1,193 @@
+// Plates over bodies: the one place a realm's names and health bars over creatures (and over the
+// things it labels in the world) are placed. A realm adds each plate it wants this frame (where over
+// the head it stands, its name, its health share, its own fade: the body's sight share from
+// hud-sight.coax and its fade in), then places them from the camera: each goes where its point is on
+// the screen, whole within near m and gone past far m, and not where the realm keeps the screen clear
+// (a log, a column). The ones always shown go first, then the rest nearest first; a name over one
+// already placed lifts up a line at a time (up to lifts), or with fold on gives way and adds to the
+// count on the one over it ("WARLOCK +3") while its bar stays. The realm then draws each placed plate
+// in its HUD style (Everglade: everglade/hud/parts.coax eg_plates). docs/verse/hud-styles.md.
+//   coax/bin/coax test metaverse-engine/ui/hud-plates.coax --library
+
+HUD_PLATES :: 256;        // plates a frame (one past the last is counted, not placed)
+HUD_PLATE_TEXT :: 32;     // bytes of a name
+HUD_PLATE_NEAR :: 20.0;   // m: a plate is whole within this
+HUD_PLATE_FAR :: 32.0;    // m: and gone past this
+HUD_PLATE_KEEP :: 4;      // boxes a realm keeps clear
+
+// Where the camera is: its eye, its axes (forward, right, up), its focal length in px, the screen's
+// centre and its size in px.
+HudPlateView :: struct { eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32; focal: f32; cx: f32; cy: f32; w: f32; h: f32; }
+// One plate. (x, y, z) the point over the head its bar's middle stands on; a name of 0 bytes is a
+// bar alone. share in 0..1, -1 for no bar. first: placed before the rest (you, your target, a leader).
+// alpha the realm's own fade. inked: the name in (r, g, b) (a side's colour) in place of the style's.
+// wide: the name's width in px, which the drawer measures before it places; tall: the height in px
+// its name takes over (sx, sy), 0 for a line of the list's cap (a label of two lines sets its own).
+HudPlate :: struct {
+  x: f32; y: f32; z: f32;
+  text: [HUD_PLATE_TEXT] u8; n: int;
+  share: f32 = -1; foe: bool; target: bool; first: bool;
+  fill: f32 = -1; trail: f32 = -1;   // the bar as it stands this frame (hud-style.coax hud_trail_step): its eased fill and its damage trail; -1 each: at share, no trail
+  alpha: f32 = 1;
+  inked: bool; r: f32; g: f32; b: f32;
+  wide: f32; tall: f32;
+  // where it went: (sx, sy) the bar's middle on the screen, shown its strength (0: not drawn), named
+  // whether its name is drawn, more how many names gave way under it
+  sx: f32; sy: f32; shown: f32; named: bool; more: int; dist: f32;
+}
+HudPlates :: struct {
+  items: [HUD_PLATES] HudPlate; n: int; full: int;   // full: plates refused this frame
+  near: f32 = HUD_PLATE_NEAR; far: f32 = HUD_PLATE_FAR;   // far 0: no reach (the realm culls)
+  fold: bool; lifts: int = 4;
+  drop: bool;        // a name still covered after its lifts is left out (else it is drawn over)
+  cap: f32 = 12;     // px: a name's height (the drawer sets it)
+  margin: f32;       // px: how far past the screen's edge a bar's point may stand
+  keep: [HUD_PLATE_KEEP * 4] f32; keep_n: int;
+  placed: int;       // plates the last place left shown
+  skipped: int;      // plates the drawer left off for want of room
+}
+
+// A new frame's list: empty, its keep-out boxes gone; its reach, fold and size stay.
+hud_plates_begin :: (p: [] HudPlates) { p[0].n = 0; p[0].full = 0; p[0].keep_n = 0; p[0].placed = 0; p[0].skipped = 0; }
+// A plate over (x, y, z); its index, or -1 when the list is full (counted).
+hud_plates_add :: (p: [] HudPlates, x: f32, y: f32, z: f32, name: string, share: f32, foe: bool, target: bool, alpha: f32) -> int {
+  if p[0].n >= HUD_PLATES { p[0].full += 1; return -1; }
+  i := p[0].n; p[0].n += 1;
+  one := HudPlate.{x = x, y = y, z = z, share = share, foe = foe, target = target, alpha = alpha};
+  for ch: name { if one.n < HUD_PLATE_TEXT { one.text[one.n] = ch; one.n += 1; } }
+  p[0].items[i] = one;
+  return i;
+}
+// A plate over (x, y, z), its index not needed.
+hud_plates_push :: (p: [] HudPlates, x: f32, y: f32, z: f32, name: string, share: f32, foe: bool, target: bool, alpha: f32) { i := hud_plates_add(p, x, y, z, name, share, foe, target, alpha); }
+// The plate's bar as its trail has it now (a realm keeps a HudTrail a creature, hud-style.coax
+// hud_trail_step, and passes its fill and trail, each 0 to 1).
+hud_plates_trail :: (p: [] HudPlates, i: int, fill: f32, trail: f32) { if i >= 0 { p[0].items[i].fill = fill; p[0].items[i].trail = trail; } }
+// The name in its own colour.
+hud_plates_ink :: (p: [] HudPlates, i: int, r: f32, g: f32, b: f32) { if i >= 0 { p[0].items[i].inked = true; p[0].items[i].r = r; p[0].items[i].g = g; p[0].items[i].b = b; } }
+// A box (px) no plate stands in.
+hud_plates_keep_out :: (p: [] HudPlates, x0: f32, y0: f32, x1: f32, y1: f32) {
+  if p[0].keep_n >= HUD_PLATE_KEEP { return; }
+  o := p[0].keep_n * 4; p[0].keep[o] = x0; p[0].keep[o + 1] = y0; p[0].keep[o + 2] = x1; p[0].keep[o + 3] = y1; p[0].keep_n += 1;
+}
+// (x, y, z) on the screen: [sx, sy, depth], depth 0 behind the eye.
+hud_plate_project :: (v: HudPlateView, x: f32, y: f32, z: f32) -> [3] f32 {
+  dx := x - v.eye[0]; dy := y - v.eye[1]; dz := z - v.eye[2];
+  ahead := dx * v.fwd[0] + dy * v.fwd[1] + dz * v.fwd[2];
+  if ahead < 0.5 { return [3] f32.[0, 0, 0]; }
+  return [3] f32.[v.cx + v.focal * (dx * v.right[0] + dy * v.right[1] + dz * v.right[2]) / ahead,
+                  v.cy - v.focal * (dx * v.up[0] + dy * v.up[1] + dz * v.up[2]) / ahead, ahead];
+}
+// Whether (x, y, z) is ahead of the eye and within far m: a realm asks before it pays for a sight test.
+hud_plate_in_reach :: (v: HudPlateView, x: f32, y: f32, z: f32, far: f32) -> bool {
+  dx := x - v.eye[0]; dy := y - v.eye[1]; dz := z - v.eye[2];
+  return dx * v.fwd[0] + dy * v.fwd[1] + dz * v.fwd[2] >= 0.5 && (far <= 0 || dx * dx + dy * dy + dz * dz <= far * far);
+}
+// A plate's strength at dist m: whole within near, falling to nothing at far (far 0: always whole).
+hud_plate_reach :: (dist: f32, near: f32, far: f32) -> f32 {
+  if far <= 0 || dist <= near { return 1; }
+  if dist >= far { return 0; }
+  return 1 - (dist - near) / (far - near);
+}
+hud_plate_kept :: (p: [] HudPlates, x: f32, y: f32) -> bool {
+  for q: 0..<p[0].keep_n { o := q * 4; if x >= p[0].keep[o] && x <= p[0].keep[o + 2] && y >= p[0].keep[o + 1] && y <= p[0].keep[o + 3] { return true; } }
+  return false;
+}
+// Places the frame's plates from the camera (see the top of the file).
+hud_plates_place :: (p: [] HudPlates, v: HudPlateView) {
+  n := p[0].n; p[0].placed = 0;
+  order: [HUD_PLATES] int; m := 0;
+  for i: 0..<n {
+    plate := p[0].items[i..<i + 1];
+    plate[0].shown = 0; plate[0].named = false; plate[0].more = 0;
+    dx := plate[0].x - v.eye[0]; dy := plate[0].y - v.eye[1]; dz := plate[0].z - v.eye[2];
+    plate[0].dist = sqrt(dx * dx + dy * dy + dz * dz);
+    s := hud_plate_project(v, plate[0].x, plate[0].y, plate[0].z);
+    if s[2] <= 0 { continue; }
+    a := plate[0].alpha * hud_plate_reach(plate[0].dist, p[0].near, p[0].far);
+    if !(a > 0.01) { continue; }
+    mg := p[0].margin;
+    if s[0] < -mg || s[0] > v.w + mg || s[1] < -mg || s[1] > v.h + mg || hud_plate_kept(p, s[0], s[1]) { continue; }
+    plate[0].sx = s[0]; plate[0].sy = s[1]; plate[0].shown = a;
+    // the ones always shown first, then nearest first
+    order[m] = i; j := m; m += 1;
+    while j > 0 {
+      pa := p[0].items[order[j - 1]]; pb := p[0].items[order[j]];
+      later := (!pa.first && pb.first) || (pa.first == pb.first && pa.dist > pb.dist);
+      if !later { break; }
+      t := order[j]; order[j] = order[j - 1]; order[j - 1] = t; j -= 1;
+    }
+  }
+  taken: [HUD_PLATES * 4] f32; owner: [HUD_PLATES] int; tn := 0;
+  cap := p[0].cap;
+  for oi: 0..<m {
+    i := order[oi]; plate := p[0].items[i..<i + 1];
+    if plate[0].n > 0 {
+      half := plate[0].wide * 0.5; x0 := plate[0].sx - half; x1 := plate[0].sx + half;
+      tall := ifx plate[0].tall > 0 then plate[0].tall else cap * 1.3;
+      over := -1;
+      for lift: 0..<p[0].lifts + 1 {
+        over = -1;
+        for q: 0..<tn { if over < 0 && x0 < taken[q * 4 + 2] && x1 > taken[q * 4] && plate[0].sy - tall < taken[q * 4 + 3] && plate[0].sy > taken[q * 4 + 1] { over = q; } }
+        if over < 0 || p[0].fold || lift == p[0].lifts { break; }
+        plate[0].sy -= cap * 1.4;
+      }
+      onscreen := x1 >= 0 && x0 <= v.w && plate[0].sy >= 0 && plate[0].sy <= v.h;
+      if p[0].fold && over >= 0 && !plate[0].first { p[0].items[owner[over]].more += 1; }
+      else if onscreen && !(p[0].drop && over >= 0) {
+        plate[0].named = true;
+        taken[tn * 4] = x0; taken[tn * 4 + 1] = plate[0].sy - tall; taken[tn * 4 + 2] = x1; taken[tn * 4 + 3] = plate[0].sy; owner[tn] = i; tn += 1;
+      }
+    }
+    // a name with no bar that has nowhere to go is not drawn
+    if !plate[0].named && plate[0].share < 0 { plate[0].shown = 0; continue; }
+    p[0].placed += 1;
+  }
+}
+
+hud_plates_test_view :: () -> HudPlateView {
+  return HudPlateView.{eye = [3] f32.[0, 2, 0], fwd = [3] f32.[0, 0, -1], right = [3] f32.[1, 0, 0], up = [3] f32.[0, 1, 0], focal = 900, cx = 640, cy = 360, w = 1280, h = 720};
+}
+#test "hud plates: one ahead within reach shows, one behind or past far doesn't, one between fades" {
+  p: [1] HudPlates; v := hud_plates_test_view();
+  hud_plates_begin(p[..]);
+  a := hud_plates_add(p[..], 0, 2, -10, "Ana", -1, false, false, 1);
+  b := hud_plates_add(p[..], 0, 2, 10, "Bo", -1, false, false, 1);
+  c := hud_plates_add(p[..], 3, 2, -40, "Cy", -1, false, false, 1);
+  d := hud_plates_add(p[..], -3, 2, -26, "Di", -1, false, false, 1);
+  for i: 0..<p[0].n { p[0].items[i].wide = 30; }
+  hud_plates_place(p[..], v);
+  #assert p[0].items[a].shown == 1 && p[0].items[a].named && abs(p[0].items[a].sx - 640) < 0.01;
+  #assert p[0].items[b].shown == 0 && p[0].items[c].shown == 0;
+  #assert p[0].items[d].shown > 0.4 && p[0].items[d].shown < 0.6 && p[0].placed == 2;
+  #assert hud_plate_in_reach(v, 0, 2, -10, 32) && !hud_plate_in_reach(v, 0, 2, -40, 32) && !hud_plate_in_reach(v, 0, 2, 10, 32);
+  // the realm's own fade carries through, and a full list counts what it refused
+  hud_plates_begin(p[..]); e := hud_plates_add(p[..], 0, 2, -10, "Ana", -1, false, false, 0.5); p[0].items[e].wide = 30; hud_plates_place(p[..], v);
+  #assert p[0].items[e].shown == 0.5;
+  for i: 0..<HUD_PLATES + 3 { hud_plates_push(p[..], 0, 2, -10, "x", -1, false, false, 1); }
+  #assert p[0].n == HUD_PLATES && p[0].full == 4;
+}
+#test "hud plates: a farther name in the same place lifts clear of the nearer; with fold it gives way and counts" {
+  p: [1] HudPlates; v := hud_plates_test_view();
+  hud_plates_begin(p[..]);
+  far := hud_plates_add(p[..], 0, 2.4, -12, "Badger", 0.5, false, false, 1);
+  near := hud_plates_add(p[..], 0, 2.3, -8, "Badger", 0.5, false, false, 1);
+  p[0].items[far].wide = 50; p[0].items[near].wide = 50;
+  hud_plates_place(p[..], v);
+  #assert p[0].items[far].named && p[0].items[near].named && p[0].items[far].sy < p[0].items[near].sy - 13;
+  p[0].fold = true; hud_plates_place(p[..], v);
+  #assert !p[0].items[far].named && p[0].items[far].shown == 1 && p[0].items[near].more == 1;
+  // one always shown keeps its name though it is farther
+  p[0].items[far].first = true; hud_plates_place(p[..], v);
+  #assert p[0].items[far].named && !p[0].items[near].named && p[0].items[far].more == 1;
+  // a kept box hides what stands in it
+  hud_plates_keep_out(p[..], 0, 0, 1280, 720); hud_plates_place(p[..], v);
+  #assert p[0].placed == 0;
+  // a label of its own height: with no lifts, one under a taller nearer label is left out
+  hud_plates_begin(p[..]); p[0].fold = false; p[0].lifts = 0; p[0].drop = true;
+  a := hud_plates_add(p[..], 0, 2.0, -8, "Hut", -1, false, false, 1);
+  b := hud_plates_add(p[..], 0, 2.6, -9, "Hall", -1, false, false, 1);
+  p[0].items[a].wide = 50; p[0].items[b].wide = 50; p[0].items[a].tall = 120;
+  hud_plates_place(p[..], v);
+  #assert p[0].items[a].named && !p[0].items[b].named && p[0].items[b].shown == 0;
+}

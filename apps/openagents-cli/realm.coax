@@ -2,11 +2,11 @@
 // policies; SQL owns the atomic revision comparison. Every edit reads its
 // base, sends that revision, and refuses a server without the fence capability.
 #load "commands.coax";
-#load "../../aethyr/forge/doc.coax";   // the realm document and its bodies (realm.proto): one codec
-#load "../../aethyr/forge/change.coax";   // the edits' bodies (edits.proto): one codec
-#load "../../aethyr/forge/board.coax";   // the plan's and the make's bodies and the board's lines: one codec
-#load "../../aethyr/forge/made.coax";   // a made or forked realm's answer and a fork's body (made.proto): one codec
-#load "../../aethyr/forge/record.coax";   // mine, visibility, publish and the publish record (record.proto): one codec
+#load "../../metaverse-engine/editor/doc.coax";   // the realm document and its bodies (realm.proto): one codec
+#load "../../metaverse-engine/editor/change.coax";   // the edits' bodies (edits.proto): one codec
+#load "../../metaverse-engine/editor/board.coax";   // the plan's and the make's bodies and the board's lines: one codec
+#load "../../metaverse-engine/editor/made.coax";   // a made or forked realm's answer and a fork's body (made.proto): one codec
+#load "../../metaverse-engine/editor/record.coax";   // mine, visibility, publish and the publish record (record.proto): one codec
 #load "../../coax/lib/text/base64.coax";
 
 REALM_DOC_MAX :: 368640;
@@ -73,7 +73,7 @@ realm_edit_doc :: (a: [] Args, profile: string, slug: string, rev: int, out: [] 
   encoded: [491520] u8; en := b64_encode(cast(string) bytes[0..<n],encoded[..]);
   if en < 0 { return realm_edit_refuse(400,"the document did not encode",-1,out); }
   buf: [REALM_DOC_BODY] u8;
-  bn := forge_ask_doc_body(rev,fs_base(file),cast(string) encoded[0..<en],buf[..]);   // edits.proto's AskDocRequest (aethyr/forge/change.coax)
+  bn := forge_ask_doc_body(rev,fs_base(file),cast(string) encoded[0..<en],buf[..]);   // edits.proto's AskDocRequest (metaverse-engine/editor/change.coax)
   if bn < 0 { return realm_edit_refuse(400,"the document is too large",-1,out); }
   path: [256] u8;
   return api_call(a,profile,"POST",realm_path(slug,"/edit-v1/asks/doc",path[..]),cast(string) buf[0..<bn],out);
@@ -139,7 +139,7 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
     if n < 0 { return realm_edit_refuse(400,"the visibility is private, unlisted or public",rev,out); }
     return api_call(a,profile,"POST",realm_path(slug,ifx verb == "visibility" then "/edit-v1/visibility" else "/publish",path[..]),cast(string) buf[0..<n],out);
   }
-  // edits.proto's bodies, the revision first (aethyr/forge/change.coax writes each)
+  // edits.proto's bodies, the revision first (metaverse-engine/editor/change.coax writes each)
   v := rc_pos(a,verb,3);
   bn := -1;
   if verb == "switch" { bn = forge_switch_body(rev,v,cli_onoff(rc_pos(a,verb,4)) == 1,false,buf[..]); }
@@ -187,7 +187,7 @@ realm_edit :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
 // The edits a /save carries: a move, and (0109) a turn, a size or a removal.
 realm_shape_verb :: (verb: string) -> bool { return verb == "rotate" || verb == "resize" || verb == "remove"; }
 realm_save_verb :: (verb: string) -> bool { return verb == "move" || realm_shape_verb(verb); }
-// One such edit onto the document read (aethyr/forge/edit.coax's typed operations); one already so is no change.
+// One such edit onto the document read (metaverse-engine/editor/edit.coax's typed operations); one already so is no change.
 realm_save_edit :: (a: [] Args, verb: string, doc: [] ForgeDoc) -> bool {
   key := rc_pos(a,verb,3); was := forge_shape_of(doc,key);
   if verb == "move" {
@@ -343,7 +343,7 @@ realm_cell :: (out: [] u8, at: int, text: string, width: int) -> int #effects(al
 // server's "realm SLUG|REV|PUBLISHED|LISTED|NAME|VISIBILITY" lines
 // (published 0: never); "realms 0" when there are none. A line of another
 // shape is kept as it came. Its length, or -1 when out is short. The lines are read through
-// aethyr/forge/record.coax (record.proto's MineRealm).
+// metaverse-engine/editor/record.coax (record.proto's MineRealm).
 #test "realm list reads as aligned columns, not pipe rows" {
   out: [1024] u8;
   t := "realm night-garden|1|1|0|Night Garden|private\nrealm walled-garden|12|0|1|Walled Garden|public\n";

@@ -1,0 +1,317 @@
+// Hit sensors (book chapter 21, GitHub #12993): a blade, fist or hoof bound to an admitted bone or
+// anchor, sensing hurt capsules only while its action's window is open, and each contact deduplicated by
+// the authoritative attack-instance ID and the target's identity and generation.
+//
+// Within one tick the order is fixed (metaverse-engine/action/README.md): the action advances, the realm evaluates
+// the pose and attachments and writes the sensor's sampled poses, the sensor queries, and only then are
+// the accepted contacts applied by the ruleset. Interpolated drawing never senses.
+//
+// Motion profile 1 (a rotating blade): the realm samples the sensor's actual pose from its clip at
+// fractions of the tick (never a straight line between the endpoints' tick poses) so that neither end
+// moves more than the sensor's radius between consecutive samples (sensor_samples_needed). Each interval
+// is tested with the sensor inflated by half that interval's largest endpoint step, which covers the
+// straight-line motion between samples and the arc's sagitta within it. More than SENSOR_SAMPLES samples
+// is declared work exhaustion: the sensor refuses that tick and applies nothing.
+//
+//   coax/bin/coax test metaverse-engine/action/sensor.coax --library
+
+#module "aethyr.action.sensor";
+#load "action.coax";
+#load "../core/space.coax";
+#load "../physics/query.coax";
+
+SENSOR_SAMPLES :: 32;        // sampled poses one tick may test
+SENSOR_TARGETS :: 32;        // hurt capsules one query may consider
+SENSOR_CONTACTS :: 16;       // contacts one tick may accept
+SENSOR_LEDGER :: 64;         // distinct (instance, target) keys remembered
+
+// The sensor's segment at one sampled instant: its base and its tip, world metres.
+SensorPose :: struct { a: WorldPoint; b: WorldPoint; }
+SensorSweep :: struct { poses: [SENSOR_SAMPLES] SensorPose; n: int; }
+// A hurt capsule: who it is (entity number and generation), its team, its feet and height, its radius.
+// alive false is a retired or unloaded target: stale.
+HurtCapsule :: struct { id: int; gen: int; team: int; feet: WorldPoint; height: f32; radius: f32; alive: bool = true; }
+
+ContactStatus :: enum u8 { hit; repeat; own; team; stale; blocked; full; }
+SensorStatus :: enum u8 { ok; inactive; stale_source; exhausted; invalid; }
+Contact :: struct { target: int; gen: int; tick: int; sample: int; at: WorldPoint; status: ContactStatus; }
+HitKey :: struct { instance: int; target: int; gen: int; tick: int; }
+HitLedger :: struct { keys: [SENSOR_LEDGER] HitKey; n: int; refused: int; }
+SensorResult :: struct {
+  status: SensorStatus;
+  contacts: [SENSOR_CONTACTS] Contact; n: int;   // accepted hits first by sample then target, then the refused
+  hits: int;
+  ledger: HitLedger;
+}
+
+// book:begin geometry
+sensor_finite :: (p: WorldPoint) -> bool { return query_point_finite(p); }
+sensor_len :: (a: WorldPoint, b: WorldPoint) -> f32 { d := world_sub(a, b); return sqrt(world_dot(d, d)); }
+// The square of the shortest distance between segments p0-p1 and q0-q1 (Ericson, Real-Time Collision
+// Detection 5.1.9), and the point on the first.
+SegNear :: struct { d2: f32; on_p: WorldPoint; }
+sensor_seg_seg :: (p0: WorldPoint, p1: WorldPoint, q0: WorldPoint, q1: WorldPoint) -> SegNear {
+  d1 := world_sub(p1, p0); d2 := world_sub(q1, q0); r := world_sub(p0, q0);
+  a := world_dot(d1, d1); e := world_dot(d2, d2); f := world_dot(d2, r);
+  s := 0.0f32; t := 0.0f32;
+  eps := 0.0000001f32;
+  if a <= eps && e <= eps { s = 0; t = 0; }
+  else if a <= eps { s = 0; t = clamp01f(f / e); }
+  else {
+    c := world_dot(d1, r);
+    if e <= eps { t = 0; s = clamp01f(-c / a); }
+    else {
+      b := world_dot(d1, d2); den := a * e - b * b;
+      s = ifx den > eps then clamp01f((b * f - c * e) / den) else 0;
+      t = (b * s + f) / e;
+      if t < 0 { t = 0; s = clamp01f(-c / a); }
+      else if t > 1 { t = 1; s = clamp01f((b - c) / a); }
+    }
+  }
+  cp := world_add(p0, world_scale(d1, s)); cq := world_add(q0, world_scale(d2, t));
+  dd := world_sub(cp, cq);
+  return SegNear.{d2 = world_dot(dd, dd), on_p = cp};
+}
+clamp01f :: (v: f32) -> f32 { if v < 0 { return 0; } if v > 1 { return 1; } return v; }
+// A hurt capsule's core: from a radius above its feet to a radius under its top.
+sensor_core :: (h: HurtCapsule) -> SensorPose {
+  lo := h.feet.y + h.radius; hi := h.feet.y + h.height - h.radius;
+  if hi < lo { hi = lo; }
+  return SensorPose.{a = world_point(h.feet.x, lo, h.feet.z), b = world_point(h.feet.x, hi, h.feet.z)};
+}
+// How many sampled poses, counting both ends, the move from pose p to pose q needs so that neither end
+// moves more than radius r between samples (motion profile 1); SENSOR_SAMPLES + 1 is over the budget.
+sensor_samples_needed :: (p: SensorPose, q: SensorPose, r: f32) -> int {
+  if !(r > 0) || !sensor_finite(p.a) || !sensor_finite(p.b) || !sensor_finite(q.a) || !sensor_finite(q.b) { return SENSOR_SAMPLES + 1; }
+  step := sensor_len(p.a, q.a); tip := sensor_len(p.b, q.b);
+  if tip > step { step = tip; }
+  n := cast(int) floor(step / r); if f32(n) * r < step { n += 1; }
+  if n < 1 { n = 1; }
+  if n + 1 > SENSOR_SAMPLES { return SENSOR_SAMPLES + 1; }
+  return n + 1;
+}
+// The first sample index at which sweep s, radius r, touches capsule h, or -1, and where.
+SweepTouch :: struct { sample: int = -1; at: WorldPoint; }
+sensor_sweep_touch :: (s: SensorSweep, r: f32, h: HurtCapsule) -> SweepTouch {
+  out: SweepTouch;
+  core := sensor_core(h);
+  for i: 0..<s.n {
+    pad := 0.0f32;
+    if i > 0 { pad = sensor_len(s.poses[i - 1].a, s.poses[i].a); tb := sensor_len(s.poses[i - 1].b, s.poses[i].b); if tb > pad { pad = tb; } pad = pad * 0.5; }
+    reach := r + pad + h.radius;
+    near := sensor_seg_seg(s.poses[i].a, s.poses[i].b, core.a, core.b);
+    if near.d2 <= reach * reach { out.sample = i; out.at = near.on_p; return out; }
+  }
+  return out;
+}
+// book:end geometry
+
+// book:begin resolve
+sensor_ledger_find :: (l: HitLedger, instance: int, target: int, gen: int) -> int {
+  for i: 0..<l.n { k := l.keys[i]; if k.instance == instance && k.target == target && k.gen == gen { return i; } }
+  return -1;
+}
+// Drop every key of an instance (call when it finishes or is cancelled), keeping the rest in order.
+sensor_ledger_retire :: (l: HitLedger, instance: int) -> HitLedger {
+  out: HitLedger; out.refused = l.refused;
+  for i: 0..<l.n { if l.keys[i].instance != instance { out.keys[out.n] = l.keys[i]; out.n += 1; } }
+  return out;
+}
+
+// Sense on world tick now for instance a (playing admitted definition d) whose owner currently has
+// generation owner_gen_now and team team, with the tick's sampled sweep s of radius r against hurt
+// capsules targets. A contact is applied only if the window is open, the owner is not stale, it is not
+// the owner or a teammate, the target is alive, nothing in colliders c blocks the line from origin to
+// it, and its (instance, target, generation) key was not struck before (or, for multi-hit, at least
+// rehit ticks ago). Same-tick contacts are ordered by earliest sample, then target id.
+sensor_resolve :: (d: ActionDef, a: ActionInstance, now: int, owner_gen_now: int, team: int, origin: WorldPoint,
+                   s: SensorSweep, r: f32, targets: [] HurtCapsule, c: Colliders, ledger: HitLedger) -> SensorResult {
+  out: SensorResult; out.ledger = ledger;
+  if a.phase != ActionPhase.running || !(r > 0) || s.n < 1 || !sensor_finite(origin) { out.status = SensorStatus.invalid; return out; }
+  if a.owner_gen != owner_gen_now { out.status = SensorStatus.stale_source; return out; }
+  t := action_local(a, now);
+  if t < 0 || t > d.length || !action_window_open(d, t) { out.status = SensorStatus.inactive; return out; }
+  if s.n > SENSOR_SAMPLES || targets.count > SENSOR_TARGETS { out.status = SensorStatus.exhausted; return out; }
+  for i: 1..<s.n {
+    if sensor_len(s.poses[i - 1].a, s.poses[i].a) > r * 1.0001 || sensor_len(s.poses[i - 1].b, s.poses[i].b) > r * 1.0001 { out.status = SensorStatus.exhausted; return out; }
+  }
+  for i: 0..<s.n { if !sensor_finite(s.poses[i].a) || !sensor_finite(s.poses[i].b) { out.status = SensorStatus.invalid; return out; } }
+  // every touch this tick, then sorted by (sample, target id): the merge is deterministic
+  found: [SENSOR_TARGETS] Contact; fn := 0;
+  for j: 0..<targets.count {
+    h := targets[j];
+    w := sensor_sweep_touch(s, r, h);
+    if w.sample < 0 { continue; }
+    cst := ContactStatus.hit;
+    if h.id == a.owner { cst = ContactStatus.own; }
+    else if h.team == team && team != 0 { cst = ContactStatus.team; }
+    else if !h.alive { cst = ContactStatus.stale; }
+    else {
+      mid := world_point(h.feet.x, h.feet.y + h.height * 0.5, h.feet.z);
+      line := query_clear(c, origin, world_sub(mid, origin), 0.99999994);
+      if line.status != QueryStatus.ok || !line.clear { cst = ContactStatus.blocked; }
+    }
+    found[fn] = Contact.{target = h.id, gen = h.gen, tick = now, sample = w.sample, at = w.at, status = cst}; fn += 1;
+  }
+  for i: 1..<fn {
+    k := i;
+    while k > 0 && (found[k].sample < found[k - 1].sample || (found[k].sample == found[k - 1].sample && found[k].target < found[k - 1].target)) {
+      tmp := found[k]; found[k] = found[k - 1]; found[k - 1] = tmp; k -= 1;
+    }
+  }
+  for i: 0..<fn {
+    ct := found[i];
+    if ct.status == ContactStatus.hit {
+      at := sensor_ledger_find(out.ledger, a.id, ct.target, ct.gen);
+      if at >= 0 {
+        if !d.multi_hit || now - out.ledger.keys[at].tick < d.rehit { ct.status = ContactStatus.repeat; }
+        else { out.ledger.keys[at].tick = now; }
+      } else if out.ledger.n >= SENSOR_LEDGER { ct.status = ContactStatus.full; out.ledger.refused += 1; }
+      else { out.ledger.keys[out.ledger.n] = HitKey.{instance = a.id, target = ct.target, gen = ct.gen, tick = now}; out.ledger.n += 1; }
+    }
+    if out.n < SENSOR_CONTACTS { out.contacts[out.n] = ct; out.n += 1; if ct.status == ContactStatus.hit { out.hits += 1; } }
+    else if ct.status == ContactStatus.hit { out.ledger.refused += 1; }
+  }
+  out.status = SensorStatus.ok;
+  return out;
+}
+// book:end resolve
+
+// ---- checks
+// The independent reference: a blade of length blade pivoting about the pivot in the horizontal plane
+// (yaw a0 to a1 over the tick) at height y, sampled 2000 times, and the target's flat distance; touching
+// when any sample's nearest approach is within r + the target's radius.
+sensor_ref_touch :: (pivot: WorldPoint, blade: f32, a0: f32, a1: f32, r: f32, h: HurtCapsule) -> bool {
+  core := sensor_core(h);
+  for i: 0..<2001 {
+    ang := a0 + (a1 - a0) * f32(i) / 2000;
+    tip := world_point(pivot.x + sin(ang) * blade, pivot.y, pivot.z + cos(ang) * blade);
+    near := sensor_seg_seg(pivot, tip, core.a, core.b);
+    reach := r + h.radius;
+    if near.d2 <= reach * reach { return true; }
+  }
+  return false;
+}
+sensor_test_pose :: (pivot: WorldPoint, blade: f32, ang: f32) -> SensorPose {
+  return SensorPose.{a = pivot, b = world_point(pivot.x + sin(ang) * blade, pivot.y, pivot.z + cos(ang) * blade)};
+}
+// The same blade, sampled by the profile: as many actual rotated poses as sensor_samples_needed asks.
+sensor_test_sweep :: (pivot: WorldPoint, blade: f32, a0: f32, a1: f32, r: f32) -> SensorSweep {
+  s: SensorSweep;
+  n := sensor_samples_needed(sensor_test_pose(pivot, blade, a0), sensor_test_pose(pivot, blade, a1), r);
+  if n > SENSOR_SAMPLES { s.n = n; return s; }
+  // the chord understates the arc: add samples until every step is within r
+  for guard: 0..<SENSOR_SAMPLES {
+    ok := true;
+    for i: 0..<n { s.poses[i] = sensor_test_pose(pivot, blade, a0 + (a1 - a0) * f32(i) / f32(ifx n > 1 then n - 1 else 1)); }
+    for i: 1..<n { if sensor_len(s.poses[i - 1].b, s.poses[i].b) > r { ok = false; } }
+    if ok || n >= SENSOR_SAMPLES { break; }
+    n += 1;
+  }
+  s.n = n;
+  return s;
+}
+sensor_test_swing :: () -> ActionDef {
+  d: ActionDef; d.id = 3; d.version = 1; d.length = 40;
+  d.events[0] = ActionEvent.{kind = ActionEventKind.window_open, tick = 10};
+  d.events[1] = ActionEvent.{kind = ActionEventKind.impact, tick = 14};
+  d.events[2] = ActionEvent.{kind = ActionEventKind.window_close, tick = 20};
+  d.event_n = 3;
+  return d;
+}
+
+#test "segment distances: crossing, parallel, end to end and a point" {
+  o := world_point(0, 0, 0);
+  #assert sensor_seg_seg(o, world_point(2, 0, 0), world_point(1, -1, 1), world_point(1, 1, 1)).d2 == 1;
+  #assert sensor_seg_seg(o, world_point(2, 0, 0), world_point(0, 3, 0), world_point(2, 3, 0)).d2 == 9;
+  #assert sensor_seg_seg(o, world_point(1, 0, 0), world_point(3, 0, 0), world_point(4, 0, 0)).d2 == 4;
+  #assert sensor_seg_seg(o, o, world_point(0, 0, 2), world_point(0, 0, 2)).d2 == 4;
+  #assert sensor_seg_seg(o, o, world_point(-1, 1, 0), world_point(1, 1, 0)).d2 == 1;
+  #assert sensor_seg_seg(world_point(-1, 1, 0), world_point(1, 1, 0), o, o).d2 == 1;
+  #assert sensor_samples_needed(sensor_test_pose(o, 1, 0), sensor_test_pose(o, 1, 0), 0.1) == 2;
+  #assert sensor_samples_needed(sensor_test_pose(o, 1, 0), sensor_test_pose(o, 1, 0), 0) == SENSOR_SAMPLES + 1;
+  #assert sensor_samples_needed(SensorPose.{a = o, b = world_point(0, 0, 1)}, SensorPose.{a = o, b = world_point(0, 0, 5)}, 0.1) == SENSOR_SAMPLES + 1;
+}
+
+#forall "a rotating blade's swept contacts agree with a finely sampled reference" k: 0..<240 #steps 400000000 {
+  // a 1.2 m blade swinging 0.2 to 1.4 radians in one tick about a pivot, against a capsule placed on a
+  // ring of radii and angles; the profile may report a touch the reference misses only within its pad
+  pivot := world_point(0, 1.2, 0);
+  ring := 0.3 + f32(k % 12) * 0.12;
+  ang := -0.6 + f32(k / 12) * 0.16;
+  h := HurtCapsule.{id = 2, gen = 1, team = 2, feet = world_point(sin(ang) * ring, 0, cos(ang) * ring), height = 1.8, radius = 0.3};
+  a0 := 0.2f32; a1 := 0.2 + 0.06 * f32(k % 21);
+  s := sensor_test_sweep(pivot, 1.2, a0, a1, 0.05);
+  ref := sensor_ref_touch(pivot, 1.2, a0, a1, 0.05, h);
+  got := sensor_sweep_touch(s, 0.05, h).sample >= 0;
+  if ref { #assert got; }   // never a miss the reference sees
+  if got && !ref { #assert sensor_ref_touch(pivot, 1.2, a0, a1, 0.05 + 0.05, h); }   // a false touch only within half a step's pad
+}
+
+#test "a rotating blade isn't covered by one endpoint sweep: the end poses alone miss what it passes" {
+  pivot := world_point(0, 1.2, 0);
+  h := HurtCapsule.{id = 2, gen = 1, team = 2, feet = world_point(1.0, 0, 0.1), height = 1.8, radius = 0.15};
+  // swinging from straight ahead (+Z) round to the far side (-Z) through +X: the target at +X
+  ends: SensorSweep; ends.poses[0] = sensor_test_pose(pivot, 1.2, 0); ends.poses[1] = sensor_test_pose(pivot, 1.2, 3.1); ends.n = 2;
+  full := sensor_test_sweep(pivot, 1.2, 0, 3.1, 0.12);
+  #assert full.n <= SENSOR_SAMPLES && sensor_sweep_touch(full, 0.05, h).sample >= 0 && sensor_ref_touch(pivot, 1.2, 0, 3.1, 0.05, h);
+  // the two ends with the inflation of one huge step would be refused by the resolver (step > radius)
+  d := sensor_test_swing(); a := action_begin(d, 0, 9, 1, 0, 0, 1, 1);
+  c: Colliders; c.ground = -10;
+  ts := [1] HurtCapsule.[h];
+  #assert sensor_resolve(d, a, 12, 0, 1, pivot, ends, 0.05, ts[..], c, HitLedger.{}).status == SensorStatus.exhausted;
+  #assert sensor_resolve(d, a, 12, 0, 1, pivot, full, 0.12, ts[..], c, HitLedger.{}).hits == 1;
+}
+
+#test "one swing strikes each target once; self, team, stale, blocked and late contacts never apply" {
+  d := sensor_test_swing();
+  a := action_begin(d, 0, 41, 1, 4, 100, 1, 1);
+  pivot := world_point(0, 1.2, 0);
+  c: Colliders; c.ground = -10;
+  ts := [5] HurtCapsule.[
+    HurtCapsule.{id = 1, gen = 4, team = 1, feet = world_point(0, 0, 0.2), height = 1.8, radius = 0.3},      // the owner
+    HurtCapsule.{id = 7, gen = 2, team = 2, feet = world_point(0.3, 0, 1.0), height = 1.8, radius = 0.3},
+    HurtCapsule.{id = 5, gen = 1, team = 2, feet = world_point(-0.3, 0, 1.0), height = 1.8, radius = 0.3},
+    HurtCapsule.{id = 6, gen = 1, team = 1, feet = world_point(0.0, 0, 1.1), height = 1.8, radius = 0.3},    // a teammate
+    HurtCapsule.{id = 8, gen = 3, team = 2, feet = world_point(0.1, 0, 0.9), height = 1.8, radius = 0.3, alive = false}];
+  s := sensor_test_sweep(pivot, 1.2, -0.4, 0.4, 0.1);
+  l: HitLedger;
+  // before the window: nothing
+  #assert sensor_resolve(d, a, 109, 4, 1, pivot, s, 0.1, ts[..], c, l).status == SensorStatus.inactive;
+  hits := 0;
+  for tick: 110..<125 {
+    r := sensor_resolve(d, a, tick, 4, 1, pivot, s, 0.1, ts[..], c, l);
+    if tick < 120 { #assert r.status == SensorStatus.ok; } else { #assert r.status == SensorStatus.inactive; }
+    if tick == 110 {
+      #assert r.n == 5 && r.hits == 2 && r.contacts[0].status == ContactStatus.own;
+      // the hits in sample then id order: id 5 (left, first sample) before id 7
+      hs := 0; for q: 0..<r.n { if r.contacts[q].status == ContactStatus.hit { hs += 1; } }
+      #assert hs == 2;
+    }
+    hits += r.hits; l = r.ledger;
+  }
+  #assert hits == 2 && l.n == 2;
+  // a target respawned with a new generation is another target
+  ts[1].gen = 3;
+  #assert sensor_resolve(d, a, 112, 4, 1, pivot, s, 0.1, ts[..], c, l).hits == 1;
+  // the owner was replaced (stale source): nothing
+  #assert sensor_resolve(d, a, 112, 5, 1, pivot, s, 0.1, ts[..], c, HitLedger.{}).status == SensorStatus.stale_source;
+  // a wall between the owner and the targets blocks the line of action
+  wall := [6] f32.[-2, 0, 0.45, 2, 3, 0.5]; c.boxes = wall[..];
+  w := sensor_resolve(d, a, 112, 4, 1, pivot, s, 0.1, ts[..], c, HitLedger.{});
+  #assert w.hits == 0 && w.status == SensorStatus.ok;
+  // a cancelled instance senses nothing; the ledger retires its keys
+  #assert sensor_resolve(d, action_cancel(d, a, 105), 112, 4, 1, pivot, s, 0.1, ts[..], c, HitLedger.{}).status == SensorStatus.invalid;
+  #assert sensor_ledger_retire(l, 41).n == 0 && sensor_ledger_retire(l, 40).n == 2;
+}
+
+#test "multi-hit actions strike again only after their rehit ticks" {
+  d := sensor_test_swing(); d.multi_hit = true; d.rehit = 4;
+  a := action_begin(d, 0, 2, 1, 0, 0, 1, 1);
+  pivot := world_point(0, 1.2, 0); c: Colliders; c.ground = -10;
+  ts := [1] HurtCapsule.[HurtCapsule.{id = 7, gen = 1, team = 2, feet = world_point(0, 0, 1.0), height = 1.8, radius = 0.3}];
+  s := sensor_test_sweep(pivot, 1.2, -0.2, 0.2, 0.1);
+  l: HitLedger; hits := 0;
+  for tick: 10..<20 { r := sensor_resolve(d, a, tick, 0, 1, pivot, s, 0.1, ts[..], c, l); hits += r.hits; l = r.ledger; }
+  #assert hits == 3 && l.n == 1;   // ticks 10, 14 and 18
+}

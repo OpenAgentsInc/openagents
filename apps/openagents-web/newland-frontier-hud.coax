@@ -1,4 +1,4 @@
-// Penultimate Frontier's HUD: the OpenAgents HUD look (Arwes: aethyr/ui/arwes-frames.coax and
+// Penultimate Frontier's HUD: the OpenAgents HUD look (Arwes: metaverse-engine/ui/arwes-frames.coax and
 // the Speedrun HUD's instruments) over the story, with no words in it. It assembles at
 // FR_FRONTIER as an Arwes frame does, its lines drawing in from the corners with a flicker:
 //

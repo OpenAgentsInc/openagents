@@ -1,23 +1,23 @@
 // A recorded session replays bit for bit natively and in the browser
-// (aethyr/core/replay.coax, Aethyr book chapter 5). aethyr/tests/replay-walk.coax
+// (metaverse-engine/core/replay.coax, Aethyr book chapter 5). metaverse-engine/tests/replay-walk.coax
 // records a walk, replays it and plants a fault; this builds it to wasm the
 // way pages are built (coax/web/wasm.sh: -O2, no fast math, no
 // contraction), runs it in headless Chrome (coax/web/wasm-chrome.coax), and
 // compares every number with the native run of
-// aethyr/examples/replay-a-walk.coax. The second check does the same for a
+// metaverse-engine/examples/replay-a-walk.coax. The second check does the same for a
 // recorded Grid session (verse/tests/grid-session.coax: the Grid's own
 // session code, verse/gridwalk.coax, with keys, a drag, the wheel, the touch
 // stick, a pinch and taps) and compares the digest of every step. Both
 // sessions turn while they walk through angles where the hosts' sinf and
 // cosf round differently, so either check fails if a step calls the C
 // library's sin or cos. The third check (Aethyr book chapter 80) builds
-// aethyr/tests/scatter-hosts.coax the same way and compares its seven
+// metaverse-engine/tests/scatter-hosts.coax the same way and compares its seven
 // digests (a forest scattered from a seed over a built ground, its trees'
 // heights, a second layer, a split window, another version, another seed)
-// with the native run of aethyr/examples/scatter-from-a-seed.coax. The fourth (#12854) builds
-// aethyr/tests/crowd-deadgears.coax the same way and compares its three digests (Dead Gears'
+// with the native run of metaverse-engine/examples/scatter-from-a-seed.coax. The fourth (#12854) builds
+// metaverse-engine/tests/crowd-deadgears.coax the same way and compares its three digests (Dead Gears'
 // mutants sensing, remembering and finding their way as two crowds meet in a passage) with the
-// native run of aethyr/tests/crowd-deadgears-native.coax.
+// native run of metaverse-engine/tests/crowd-deadgears-native.coax.
 //   coax/web/tool.sh replay-hosts [walk|grid|scatter|deadgears|exchange|crypto]     (from the repo root; all by default)
 // Prints "pass"/"FAIL" per check and exits 0 only when every check passes.
 #load "wasm-chrome.coax";
@@ -101,13 +101,13 @@ rh_wasm :: (c: [] Cdp, coax_file: string, face: string, pages: int) -> bool {
 // A recorded walk gives the same digests natively and in wasm.
 rh_walk :: (c: [] Cdp) -> bool {
   out: [RH_OUT] u8;
-  argv := [3] string.["coax/bin/coax", "run", "aethyr/examples/replay-a-walk.coax"];
+  argv := [3] string.["coax/bin/coax", "run", "metaverse-engine/examples/replay-a-walk.coax"];
   n := rh_run(argv[..], out[..]);
   if n < 0 { return false; }
   native: [16] int;
   k := rh_numbers(cast(string) out[0..<n], native[..]);
   if !rh_check(k == 7, "replay-a-walk printed other than 7 numbers") { return false; }
-  if !rh_wasm(c, "aethyr/tests/replay-walk.coax", "aethyr/tests/replay-walk-face.c", 256) { return false; }
+  if !rh_wasm(c, "metaverse-engine/tests/replay-walk.coax", "metaverse-engine/tests/replay-walk-face.c", 256) { return false; }
   refused := wc_int(c, "replay_walk", "3n");
   browser := [7] int.[refused / 1000000, refused / 1000 % 1000, refused % 1000, wc_int(c, "replay_walk", "0n"), wc_int(c, "replay_walk", "1n"), 150, wc_int(c, "replay_walk", "2n")];
   same := true;
@@ -123,13 +123,13 @@ rh_exchange :: (c:[]Cdp)->bool {
   tmp:[1024]u8;dir:=fs_temp("replay-exchange-",tmp[..]);if dir.count==0 {return false;}
   defer {removed:=fs_remove(dir);}
   pb:[1200]u8;path:=fs_join(dir,"native.arc",pb[..]);out:[RH_OUT]u8;
-  make:=[6]string.["coax/web/tool.sh","aethyr/tests/replay-wire-native.coax","make",path,"2026",""];
+  make:=[6]string.["coax/web/tool.sh","metaverse-engine/tests/replay-wire-native.coax","make",path,"2026",""];
   n:=rh_run(make[0..<5],out[..]);if n<0 {return false;}
   native:[RH_NUMS]int;nn:=rh_numbers(cast(string)out[0..<n],native[..]);
   if !rh_check(nn>3 && native[0]>0 && native[1]==nn-3,"native exchange trace has invalid extents") {return false;}
   bytes:[131072]u8;nb:=fs_read(path,bytes[..]);
   if !rh_check(nb==native[0],"native record size differs") {return false;}
-  if !rh_wasm(c,"aethyr/tests/replay-wire-walk.coax","aethyr/tests/replay-wire-face.c",512) {return false;}
+  if !rh_wasm(c,"metaverse-engine/tests/replay-wire-walk.coax","metaverse-engine/tests/replay-wire-face.c",512) {return false;}
   pointer:=wc_int(c,"rw_pointer","");
   if !wc_write(c,pointer,cast(string)bytes[0..<nb]) {return false;}
   arg:[128]u8;d:[24]u8;parts:=[2]string.[wc_dec(d[..],nb),"n,-1n"];
@@ -145,7 +145,7 @@ rh_exchange :: (c:[]Cdp)->bool {
   if !rh_check(browser_bytes>0 && steps>0,"browser produced no record") {return false;}
   if wc_read(c,pointer,browser_bytes,bytes[..])!=browser_bytes {return false;}
   bp:[1200]u8;browser:=fs_join(dir,"browser.arc",bp[..]);if !fs_write(browser,cast(string)bytes[0..<browser_bytes]) {return false;}
-  play:=[5]string.["coax/web/tool.sh","aethyr/tests/replay-wire-native.coax","play",browser,"2027"];
+  play:=[5]string.["coax/web/tool.sh","metaverse-engine/tests/replay-wire-native.coax","play",browser,"2027"];
   n=rh_run(play[..],out[..]);if n<0 {return false;}
   nn=rh_numbers(cast(string)out[0..<n],native[..]);
   if !rh_check(nn==steps+3 && native[0]==browser_bytes && native[1]==steps && native[2]==digest,"browser-to-native record differs") {return false;}
@@ -219,7 +219,7 @@ rh_grid :: (c: [] Cdp) -> bool {
 RH_SCATTER_CASES :: 7;
 rh_scatter :: (c: [] Cdp) -> bool {
   out: [RH_OUT] u8;
-  argv := [3] string.["coax/bin/coax", "run", "aethyr/examples/scatter-from-a-seed.coax"];
+  argv := [3] string.["coax/bin/coax", "run", "metaverse-engine/examples/scatter-from-a-seed.coax"];
   n := rh_run(argv[..], out[..]);
   if n < 0 { return false; }
   text := cast(string) out[0..<n];
@@ -230,7 +230,7 @@ rh_scatter :: (c: [] Cdp) -> bool {
   }
   native: [16] int;
   if !rh_check(rh_numbers(line, native[..]) == RH_SCATTER_CASES, "scatter-from-a-seed printed no line of 7 digests") { return false; }
-  if !rh_wasm(c, "aethyr/tests/scatter-hosts.coax", "aethyr/tests/scatter-hosts-face.c", 256) { return false; }
+  if !rh_wasm(c, "metaverse-engine/tests/scatter-hosts.coax", "metaverse-engine/tests/scatter-hosts-face.c", 256) { return false; }
   same := true;
   d: [24] u8; arg: [32] u8;
   for i: 0..<RH_SCATTER_CASES {
@@ -246,7 +246,7 @@ rh_scatter :: (c: [] Cdp) -> bool {
 RH_DEADGEARS_CASES :: 3;
 rh_deadgears :: (c: [] Cdp) -> bool {
   out: [RH_OUT] u8;
-  argv := [3] string.["coax/bin/coax", "run", "aethyr/tests/crowd-deadgears-native.coax"];
+  argv := [3] string.["coax/bin/coax", "run", "metaverse-engine/tests/crowd-deadgears-native.coax"];
   n := rh_run(argv[..], out[..]);
   if n < 0 { return false; }
   text := cast(string) out[0..<n];
@@ -259,7 +259,7 @@ rh_deadgears :: (c: [] Cdp) -> bool {
   if !rh_check(stated, "a passage run in crowd-deadgears-native is not as stated") { return false; }
   native: [8] int;
   if !rh_check(rh_numbers(line, native[..]) == RH_DEADGEARS_CASES, "crowd-deadgears-native printed no line of 3 digests") { return false; }
-  if !rh_wasm(c, "aethyr/tests/crowd-deadgears.coax", "aethyr/tests/crowd-deadgears-face.c", 256) { return false; }
+  if !rh_wasm(c, "metaverse-engine/tests/crowd-deadgears.coax", "metaverse-engine/tests/crowd-deadgears-face.c", 256) { return false; }
   same := true;
   d: [24] u8; arg: [32] u8;
   for i: 0..<RH_DEADGEARS_CASES {

@@ -94,10 +94,10 @@
 // and draws every remote entity from one interpolation buffer (everglade-net.coax).
 
 #load "everglade-forest-profile.coax";
-#load "../../aethyr/net/replication.coax";
-#load "../../aethyr/net/row.coax";
-#load "../../aethyr/net/spawn.coax";    // reliable spawn and despawn (#13178)
-#load "../../aethyr/net/budget.coax";   // priority and the order rows go in (#13178)
+#load "../../metaverse-engine/net/replication.coax";
+#load "../../metaverse-engine/net/row.coax";
+#load "../../metaverse-engine/net/spawn.coax";    // reliable spawn and despawn (#13178)
+#load "../../metaverse-engine/net/budget.coax";   // priority and the order rows go in (#13178)
 
 WIRE_F_OOB :: 4;      // a D's F bit: out of band, a WebTransport seat's outcomes on a reliable stream (coax/web/room/room-wt.coax)
 WIRE_VERSION :: 6;   // 6: Everglade II's monsters and guard are rows, their blows e entries (#13276); 5: authoritative forest rows; 4: I's THETA in 0.1 mrad (WIRE_FINE)
@@ -110,7 +110,7 @@ WIRE_REFUSE_RESTARTING :: "restarting";   // r 0 restarting: the room drains bef
 // writers, for exactly one release (the room's checks fail when it is not written for this version).
 // A page speaks WIRE_VERSION alone.
 WIRE_MIN :: WIRE_VERSION - 1;
-// The build a page and a room are, beside the wire (#12839, aethyr/session/compat.coax): one encounter
+// The build a page and a room are, beside the wire (#12839, metaverse-engine/session/compat.coax): one encounter
 // never mixes two engines, two rule sets or two worlds. Raise WIRE_ENGINE when the shared movement or
 // world step changes what a page predicts, WIRE_RULES when the room's rules (everglade5e-room-rules.coax,
 // everglade-cast-rules.coax) change what a cast or a hit does, and WIRE_CONTENT when the world the page
@@ -1143,7 +1143,7 @@ WireHist :: struct {
 // past what a row's field holds (wire_s32), so they never stick at its clamp. A page only asks whether
 // a row's LIFE or WARP is the one it holds, and a slot counts at most one a tick, so a number comes
 // back in one slot only after WIRE_LIFE_MAX - 1 of them: over two years of a new life every tick. As
-// aethyr/core/entity.coax retires a slot before its generation would wrap, nothing here repeats while a
+// metaverse-engine/core/entity.coax retires a slot before its generation would wrap, nothing here repeats while a
 // page could still hold the number it repeats. The step is the named add_sat, so a debug and a release
 // room count the same (#12927).
 WIRE_LIFE_MAX :: 2000000000;
@@ -1290,7 +1290,7 @@ WireSeat :: struct {
   spaced: int;                // rows held back for their tier (wire_every), all so far
   packed: bool;               // its page reads packed rows (WIRE_HELLO_PACKED): its rows go as S (kept through wire_seat_reset)
   // its updates are datagrams that can pass the reliable stream (a WebTransport seat, #13176): an
-  // unacknowledged spawn's updates wait (aethyr/net/spawn.coax); false, one ordered stream (kept through wire_seat_reset)
+  // unacknowledged spawn's updates wait (metaverse-engine/net/spawn.coax); false, one ordered stream (kept through wire_seat_reset)
   datagrams: bool;
   rel: int;                   // this tick's frame's reliable lane: its first bytes (the x's and the spawns)
   spawn_wait: int;            // spawns this tick left for a later one (the budget spent), not dropped
@@ -1377,12 +1377,12 @@ wire_seat_frame_fields :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:
   return wire_seat_frame_look(st, h, me, px, pz, pick, fields, WireLook.{}, none[0..<0], budget, out);
 }
 // What a seat's client says it looks at (#13178): its camera's forward on the ground (0, 0 not said:
-// everything counts as in view). Each slot's combat with the seat (aethyr/net/budget.coax
+// everything counts as in view). Each slot's combat with the seat (metaverse-engine/net/budget.coax
 // NET_COMBAT_*) comes beside it, -1 or missing none.
 WireLook :: struct { fx: f32; fz: f32; }
-// The same, with the seat's view and each slot's combat weighing what waits (aethyr/net/budget.coax
+// The same, with the seat's view and each slot's combat weighing what waits (metaverse-engine/net/budget.coax
 // net_priority). The frame is two lanes, the reliable first: the x's the seat owes and the spawns
-// (aethyr/net/spawn.coax: a row of an entity whose spawn the page hasn't acknowledged, absolute,
+// (metaverse-engine/net/spawn.coax: a row of an entity whose spawn the page hasn't acknowledged, absolute,
 // carrying its identity); st's rel holds that lane's bytes, the start of out. Then the updates: its
 // own player's row, what is on it, those that waited WIRE_MAX_AGE ticks, and the rest by priority.
 // On a seat whose updates are datagrams (st's datagrams), nothing of an unacknowledged spawn goes but

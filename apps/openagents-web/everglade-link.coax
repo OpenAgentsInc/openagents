@@ -1,6 +1,6 @@
 // Original Link pose adapter; Everglade remains the movement/combat authority.
 #load "../../verse/ocarina/motion.coax";
-#load "../../aethyr/anim/scaled-pose.coax";
+#load "../../metaverse-engine/anim/scaled-pose.coax";
 #load "../../coax/lib/text/base64.coax";
 EgLink :: struct {
  data:[]u8;bytes:int;ready:bool;failed:bool;parents:[309]int;bind:[309*12]f32;rest:[309]SkinLocal;pose:[309]SkinLocal;from:[309]SkinLocal;scales:[309]Point;from_scales:[309]Point;basis:[309*12]f32;world:[309*12]f32;palette:[309*12]f32;revision:int;

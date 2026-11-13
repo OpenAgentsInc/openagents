@@ -1,7 +1,7 @@
 // og's shaders, the source of apps/openagents-web/og.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (og.module,
 // og.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 
 // /og's two passes (og.coax decides every number): projects.wgsl's dark nebula
 // and glass, kept neutral (no warm horizon, no orange edge: orange is Bitcoin's),

@@ -1,0 +1,193 @@
+// The Metaverse Engine's stylized shading, a frame's numbers: the look (the sun, the sky, the haze, the clouds,
+// the grass), the camera, the sun's shadow box, the ground table and the dirt paths, written into a
+// page's uniform floats where metaverse-engine/render/stylized.coax's shaders read them
+// (metaverse-engine/render/stylized-layout.coax has the offsets). Any world that draws with the stylized
+// shaders fills its frame with these; the look's defaults are warm daylight.
+//
+//   sty_frame        the picture, the clock, the camera and the look
+//   sty_shadow_box   the box of the world the sun's shadow map covers
+//   sty_grass_field  the patch of ground that grows blades
+//   sty_ground_table where the ground's table lies (metaverse-engine/arch/flora.coax ArchGround)
+//   sty_path_clear, sty_path_add   the dirt paths
+//   sty_project      a world point on the screen, as the shaders place it (for checks and picking)
+//   coax/bin/coax test --library metaverse-engine/render/stylized-frame.coax
+#module "aethyr.render.stylized_frame";
+#load "stylized-layout.coax";
+
+StyLook :: struct {
+  // The way to the sun (it need not be a unit vector) and how dark its shadows are.
+  sun_x: f32 = -0.40; sun_y: f32 = 0.55; sun_z: f32 = -0.73;
+  shadow: f32 = 1.0;
+  sun_r: f32 = 0.68; sun_g: f32 = 0.61; sun_b: f32 = 0.48;
+  band: f32 = 0.3;                   // how soft the bands of light are: 0.05 hard cel edges, 1 smooth
+  sky_r: f32 = 0.27; sky_g: f32 = 0.34; sky_b: f32 = 0.37;            // light from above
+  ground_r: f32 = 0.21; ground_g: f32 = 0.21; ground_b: f32 = 0.17;   // light from below
+  haze_r: f32 = 0.72; haze_g: f32 = 0.82; haze_b: f32 = 0.92;
+  haze: f32 = 0.011;                 // how much of the haze a metre adds
+  haze_start: f32 = 18.0;            // metres of clear air before it
+  haze_most: f32 = 0.93;             // the most it hides
+  zenith_r: f32 = 0.40; zenith_g: f32 = 0.62; zenith_b: f32 = 0.86;
+  horizon_r: f32 = 0.72; horizon_g: f32 = 0.83; horizon_b: f32 = 0.93;
+  cloud: f32 = 0.5;                  // cloud cover: 0 clear, 1 overcast
+  cloud_scale: f32 = 1.0;            // the clouds' size
+  cloud_turn: f32 = 0.0;             // the clouds turned round the horizon, radians: which way the big ones lie
+  // Heaped clouds placed by hand, STY_CUMULI of them, four numbers each: where it stands round
+  // the horizon (radians: 0 along -z, turning toward +x), how high its flat base is above the
+  // horizon, half its width and its height (radians). A height of 0 is no cloud.
+  cumulus: [STY_CUMULI * 4] f32;
+  blade: f32 = 0.34;                 // a blade of grass: its height
+  blade_wide: f32 = 0.028;           // and its width at the root
+  grass_cell: f32 = 0.15;            // metres between blades
+  grass_reach: f32 = 46.0;           // how far from the eye blades are drawn
+  path_soft: f32 = 0.35;             // how soft a dirt path's edge is, metres
+  meadow_dry: f32 = 0.5;             // the grass: 0 lush deep green, 1 dry olive yellow
+  meadow_shift: f32 = 0.0;           // its patches of greener and drier grass, moved this many metres
+}
+
+// A camera: where it is, the way it looks (yaw 0 looks along -z and turns toward +x; pitch up) and
+// its upright field of view, in radians.
+StyCamera :: struct {
+  x: f32; y: f32; z: f32;
+  yaw: f32; pitch: f32;
+  fov: f32 = 1.0472;
+  near: f32 = 0.1; far: f32 = 3000.0;
+}
+
+sty_put3 :: (u: [] f32, at: int, x: f32, y: f32, z: f32, w: f32) { u[at] = x; u[at + 1] = y; u[at + 2] = z; u[at + 3] = w; }
+sty_forward :: (c: StyCamera) -> [3] f32 { return [3] f32.[sin(c.yaw) * cos(c.pitch), sin(c.pitch), -cos(c.yaw) * cos(c.pitch)]; }
+sty_right :: (c: StyCamera) -> [3] f32 { return [3] f32.[cos(c.yaw), 0, sin(c.yaw)]; }
+sty_up :: (c: StyCamera) -> [3] f32 {
+  f := sty_forward(c); r := sty_right(c);
+  return [3] f32.[r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+}
+
+// The picture, the clock, the camera and the look. False when the block is too short or the
+// picture has no size; nothing is written then.
+sty_frame :: (u: [] f32, width: f32, height: f32, time: f32, c: StyCamera, look: StyLook) -> bool {
+  if u.count < STY_UNIFORM_FLOATS || width < 1 || height < 1 || c.far <= c.near || c.fov <= 0.01 { return false; }
+  u[STY_U_SIZE] = width; u[STY_U_SIZE + 1] = height; u[STY_U_SIZE + 2] = time; u[STY_U_SIZE + 3] = 1;
+  focal := height * 0.5 / tan(c.fov * 0.5);
+  sty_put3(u, STY_U_EYE, c.x, c.y, c.z, focal);
+  f := sty_forward(c); r := sty_right(c); up := sty_up(c);
+  sx := 2 * focal / width; sy := 2 * focal / height; k := c.far / (c.far - c.near);
+  er := r[0] * c.x + r[1] * c.y + r[2] * c.z; eu := up[0] * c.x + up[1] * c.y + up[2] * c.z; ef := f[0] * c.x + f[1] * c.y + f[2] * c.z;
+  sty_put3(u, STY_U_VIEW, r[0] * sx, r[1] * sx, r[2] * sx, -er * sx);
+  sty_put3(u, STY_U_VIEW + 4, up[0] * sy, up[1] * sy, up[2] * sy, -eu * sy);
+  sty_put3(u, STY_U_VIEW + 8, f[0] * k, f[1] * k, f[2] * k, (-ef - c.near) * k);
+  sty_put3(u, STY_U_VIEW + 12, f[0], f[1], f[2], -ef);
+  sl := sqrt(look.sun_x * look.sun_x + look.sun_y * look.sun_y + look.sun_z * look.sun_z);
+  if sl < 0.0001 { sl = 1; }
+  sty_put3(u, STY_U_SUN, look.sun_x / sl, look.sun_y / sl, look.sun_z / sl, look.shadow);
+  sty_put3(u, STY_U_SUN_COLOUR, look.sun_r, look.sun_g, look.sun_b, look.band);
+  sty_put3(u, STY_U_SKY_LIGHT, look.sky_r, look.sky_g, look.sky_b, 0);
+  sty_put3(u, STY_U_GROUND_LIGHT, look.ground_r, look.ground_g, look.ground_b, 0);
+  sty_put3(u, STY_U_HAZE, look.haze_r, look.haze_g, look.haze_b, look.haze);
+  sty_put3(u, STY_U_HAZE_INFO, look.haze_start, look.haze_most, look.cloud_turn, 0);
+  sty_put3(u, STY_U_ZENITH, look.zenith_r, look.zenith_g, look.zenith_b, look.cloud);
+  sty_put3(u, STY_U_HORIZON, look.horizon_r, look.horizon_g, look.horizon_b, look.cloud_scale);
+  sty_put3(u, STY_U_RIGHT, r[0], r[1], r[2], 0);
+  sty_put3(u, STY_U_UP, up[0], up[1], up[2], 0);
+  sty_put3(u, STY_U_FORWARD, f[0], f[1], f[2], 0);
+  u[STY_U_PATH_INFO + 1] = look.path_soft; u[STY_U_PATH_INFO + 2] = look.meadow_dry; u[STY_U_PATH_INFO + 3] = look.meadow_shift;
+  for i: 0..<STY_CUMULI * 4 { u[STY_U_CUMULUS + i] = look.cumulus[i]; }
+  return true;
+}
+
+// The box the sun's shadow map covers: about (cx, cy, cz), `radius` across each way and `depth`
+// toward and away from the sun. Call after sty_frame (it reads the sun).
+sty_shadow_box :: (u: [] f32, cx: f32, cy: f32, cz: f32, radius: f32, depth: f32) -> bool {
+  if u.count < STY_UNIFORM_FLOATS || radius <= 0 || depth <= 0 { return false; }
+  // The way the light travels, and two axes square to it.
+  fx := -u[STY_U_SUN]; fy := -u[STY_U_SUN + 1]; fz := -u[STY_U_SUN + 2];
+  rx := fz; ry: f32 = 0; rz := -fx;      // up cross forward
+  rl := sqrt(rx * rx + rz * rz);
+  if rl < 0.0001 { rx = 1; rz = 0; rl = 1; }
+  rx /= rl; rz /= rl;
+  ux := fy * rz - fz * ry; uy := fz * rx - fx * rz; uz := fx * ry - fy * rx;
+  sty_put3(u, STY_U_LIGHT, rx / radius, ry / radius, rz / radius, -(rx * cx + ry * cy + rz * cz) / radius);
+  sty_put3(u, STY_U_LIGHT + 4, ux / radius, uy / radius, uz / radius, -(ux * cx + uy * cy + uz * cz) / radius);
+  sty_put3(u, STY_U_LIGHT + 8, fx / (2 * depth), fy / (2 * depth), fz / (2 * depth), (depth - (fx * cx + fy * cy + fz * cz)) / (2 * depth));
+  sty_put3(u, STY_U_LIGHT + 12, 0, 0, 0, 1);
+  return true;
+}
+
+// The patch of ground that grows blades: `cols` cells across from x0 and `rows` deep from z0, a
+// blade a cell. Returns how many blades that is (0: none).
+sty_grass_field :: (u: [] f32, look: StyLook, x0: f32, z0: f32, cols: int, rows: int) -> int {
+  if u.count < STY_UNIFORM_FLOATS || cols < 1 || rows < 1 || look.grass_cell <= 0 { return 0; }
+  sty_put3(u, STY_U_GRASS, x0, z0, look.grass_cell, cast(f32) cols);
+  sty_put3(u, STY_U_GRASS_INFO, cast(f32) rows, look.blade, look.blade_wide, look.grass_reach);
+  return cols * rows;
+}
+sty_ground_table :: (u: [] f32, x0: f32, z0: f32, cell: f32, n: int) { sty_put3(u, STY_U_GROUND, x0, z0, cell, cast(f32) n); }
+
+sty_path_clear :: (u: [] f32) { u[STY_U_PATH_INFO] = 0; }
+// A dirt path from (ax, az) to (bx, bz), `half` its half width. False when STY_PATHS are in.
+sty_path_add :: (u: [] f32, ax: f32, az: f32, bx: f32, bz: f32, half: f32) -> bool {
+  n := cast(int) u[STY_U_PATH_INFO];
+  if n < 0 || n >= STY_PATHS { return false; }
+  o := STY_U_PATH + n * STY_PATH_FLOATS;
+  u[o] = ax; u[o + 1] = az; u[o + 2] = bx; u[o + 3] = bz; u[o + 4] = half; u[o + 5] = 0; u[o + 6] = 0; u[o + 7] = 0;
+  u[STY_U_PATH_INFO] = cast(f32) (n + 1);
+  return true;
+}
+
+// A world point through four rows at `rows`: clip x, y, z, w.
+sty_rows :: (u: [] f32, rows: int, x: f32, y: f32, z: f32) -> [4] f32 {
+  o: [4] f32;
+  for k: 0..<4 { o[k] = u[rows + k * 4] * x + u[rows + k * 4 + 1] * y + u[rows + k * 4 + 2] * z + u[rows + k * 4 + 3]; }
+  return o;
+}
+// A world point on the screen: pixels from the top left, its depth (0 near, 1 far) and whether it
+// is in front of the eye.
+StyOnScreen :: struct { x: f32; y: f32; depth: f32; ahead: bool; }
+sty_project :: (u: [] f32, x: f32, y: f32, z: f32) -> StyOnScreen {
+  c := sty_rows(u, STY_U_VIEW, x, y, z);
+  if c[3] <= 0.0001 { return StyOnScreen.{ahead = false}; }
+  return StyOnScreen.{x = (c[0] / c[3] * 0.5 + 0.5) * u[STY_U_SIZE], y = (0.5 - c[1] / c[3] * 0.5) * u[STY_U_SIZE + 1], depth = c[2] / c[3], ahead = true};
+}
+
+#test "the camera looks along -z, a point ahead lands mid-screen, and right is right and up is up" {
+  u: [STY_UNIFORM_FLOATS] f32; c: StyCamera; look: StyLook;
+  c.y = 1.7;
+  #assert sty_frame(u[..], 1920, 1080, 3, c, look) && u[STY_U_SIZE + 2] == 3;
+  mid := sty_project(u[..], 0, 1.7, -10);
+  #assert mid.ahead && abs(mid.x - 960) < 0.01 && abs(mid.y - 540) < 0.01 && mid.depth > 0.9 && mid.depth < 1;
+  right := sty_project(u[..], 2, 1.7, -10); high := sty_project(u[..], 0, 3.7, -10);
+  #assert right.x > 960 && abs(right.y - 540) < 0.01 && high.y < 540 && abs(high.x - 960) < 0.01;
+  // 60 degrees upright: the top of the picture is tan(30 degrees) of the distance above the eye.
+  top := sty_project(u[..], 0, 1.7 + 10 * 0.57735, -10); #assert abs(top.y) < 0.05;
+  #assert !sty_project(u[..], 0, 1.7, 5).ahead && sty_project(u[..], 0, 1.7, -0.1).depth < 0.001;
+  // Turned a quarter to the right, +x is ahead.
+  c.yaw = 1.5707963; #assert sty_frame(u[..], 1920, 1080, 0, c, look);
+  ahead := sty_project(u[..], 10, 1.7, 0); #assert ahead.ahead && abs(ahead.x - 960) < 0.01;
+  short: [8] f32; #assert !sty_frame(short[..], 1920, 1080, 0, c, look) && !sty_frame(u[..], 0, 1080, 0, c, look);
+}
+#test "the sun's box holds its middle at the map's centre, nearer the sun is nearer, and its edge is its edge" {
+  u: [STY_UNIFORM_FLOATS] f32; c: StyCamera; look: StyLook;
+  #assert sty_frame(u[..], 800, 600, 0, c, look) && sty_shadow_box(u[..], 5, 2, -20, 40, 60);
+  l := sqrt(u[STY_U_SUN] * u[STY_U_SUN] + u[STY_U_SUN + 1] * u[STY_U_SUN + 1] + u[STY_U_SUN + 2] * u[STY_U_SUN + 2]); #assert abs(l - 1) < 0.0001;
+  m := sty_rows(u[..], STY_U_LIGHT, 5, 2, -20);
+  #assert abs(m[0]) < 0.0001 && abs(m[1]) < 0.0001 && abs(m[2] - 0.5) < 0.0001 && m[3] == 1;
+  near := sty_rows(u[..], STY_U_LIGHT, 5 + u[STY_U_SUN] * 30, 2 + u[STY_U_SUN + 1] * 30, -20 + u[STY_U_SUN + 2] * 30);
+  #assert abs(near[0]) < 0.0001 && abs(near[1]) < 0.0001 && abs(near[2] - 0.25) < 0.0001;
+  // 40 m square to the light is the map's edge.
+  rx := u[STY_U_LIGHT] * 40; rz := u[STY_U_LIGHT + 2] * 40;
+  edge := sty_rows(u[..], STY_U_LIGHT, 5 + rx * 40, 2, -20 + rz * 40); #assert abs(edge[0] - 1) < 0.001 && abs(edge[1]) < 0.001;
+  #assert !sty_shadow_box(u[..], 0, 0, 0, 0, 60);
+}
+#test "grass, the ground table and paths go where the shaders read them, and a thirteenth path is refused" {
+  u: [STY_UNIFORM_FLOATS] f32; c: StyCamera; look: StyLook;
+  #assert sty_frame(u[..], 800, 600, 0, c, look);
+  #assert sty_grass_field(u[..], look, -20, -40, 400, 300) == 120000 && u[STY_U_GRASS + 3] == 400 && u[STY_U_GRASS_INFO] == 300 && u[STY_U_GRASS + 2] == look.grass_cell;
+  #assert sty_grass_field(u[..], look, 0, 0, 0, 10) == 0;
+  sty_ground_table(u[..], -96, -150, 1.5, 128); #assert u[STY_U_GROUND + 2] == 1.5 && u[STY_U_GROUND + 3] == 128;
+  sty_path_clear(u[..]);
+  for i: 0..<STY_PATHS { #assert sty_path_add(u[..], cast(f32) i, 0, cast(f32) i, 10, 2); }
+  #assert !sty_path_add(u[..], 0, 0, 1, 1, 1) && u[STY_U_PATH_INFO] == STY_PATHS && u[STY_U_PATH + 8] == 1 && u[STY_U_PATH + 12] == 2;
+  #assert STY_U_PATH + STY_PATHS * STY_PATH_FLOATS == STY_U_CUMULUS && STY_U_CUMULUS + STY_CUMULI * 4 == STY_UNIFORM_FLOATS && STY_UNIFORM_FLOATS % 4 == 0;
+  // A heaped cloud goes where the sky's shader reads it; with none placed, none is drawn.
+  #assert u[STY_U_CUMULUS + 3] == 0;
+  look.cumulus[4] = -0.4; look.cumulus[5] = 0.3; look.cumulus[6] = 0.5; look.cumulus[7] = 0.28;
+  #assert sty_frame(u[..], 800, 600, 0, c, look) && u[STY_U_CUMULUS + 4] == -0.4 && u[STY_U_CUMULUS + 7] == 0.28 && u[STY_U_CUMULUS + 3] == 0;
+}

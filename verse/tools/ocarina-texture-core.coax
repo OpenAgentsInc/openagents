@@ -6,7 +6,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/image/pillow.coax";
-#load "../../aethyr/render/geometry/scan.coax";
+#load "../../metaverse-engine/render/geometry/scan.coax";
 ceil :: (x:f64)->f64 #foreign #effects(all);
 ot_u64 :: (b:[]u8,p:int)->int {#assert p>=0 && p<=b.count-8 && scan_u32(b,p+4)==0;return cast(int)scan_u32(b,p);}
 ot_u16 :: (b:[]u8,p:int)->int {return cast(int)b[p]|(cast(int)b[p+1]<<8);}

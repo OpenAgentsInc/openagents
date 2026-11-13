@@ -1,8 +1,8 @@
 // The room client's Everglade half (GitHub #13054; docs/verse/2026-11-07-everglade-multiplayer-audit.md):
 // what Everglade's page (everglade-net.coax) and Everglade II's (everglade/client/net.coax) both keep of the
 // room's world. How it is drawn is the engine's (#13277): the interpolation buffer, its clock and the
-// easing of corrections are aethyr/net/interp.coax, and your inputs' re-run and your actions' ledger are
-// aethyr/net/predict.coax. This file is the game's row beside them:
+// easing of corrections are metaverse-engine/net/interp.coax, and your inputs' re-run and your actions' ledger are
+// metaverse-engine/net/predict.coax. This file is the game's row beside them:
 //   - an entity as Everglade's rows describe it (NetEnt: its states' ring, who a player is, its row's
 //     fields), with the engine's calls on it by name (net_push, net_state_at, net_ease);
 //   - how far each kind goes on past its newest state (net_ahead: a townsperson further);
@@ -13,8 +13,8 @@
 //   coax/bin/coax test --library everglade/client/net-core.coax
 #load "../shared/everglade-wire.coax";
 #load "../shared/everglade-move-types.coax";
-#load "../../aethyr/net/interp.coax";
-#load "../../aethyr/net/predict.coax";
+#load "../../metaverse-engine/net/interp.coax";
+#load "../../metaverse-engine/net/predict.coax";
 
 NET_ID :: 24; NET_NAME :: 40; NET_CODE :: 24; NET_URL :: 200;
 NET_TICKET :: 4096;  // profile 2's v4 envelope (legacy core remains 256 bytes)
@@ -51,7 +51,7 @@ NetEnt :: struct {
   ease: [1] NetLead;
   cast_slot: int = -1; cast_at: int;   // its last cast (e cast), server ms
 }
-// An input as the engine keeps it for the re-run (aethyr/net/predict.coax): its eight fields as whole
+// An input as the engine keeps it for the re-run (metaverse-engine/net/predict.coax): its eight fields as whole
 // numbers, the f32s by their bits.
 NET_MOVE_WORDS :: 8;
 net_move_words :: (m: EgMoveIn, w: [] int) {
@@ -65,7 +65,7 @@ net_move_of :: (w: [] int) -> EgMoveIn {
 // You as the server has you after input `ack` (D's p entry for your seat).
 NetFix :: struct { ok: bool; ack: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; ground: bool; carry: f32; jump: bool; }
 
-// ---- the engine's buffer on an Everglade entity (aethyr/net/interp.coax)
+// ---- the engine's buffer on an Everglade entity (metaverse-engine/net/interp.coax)
 // A state into an entity's ring, oldest first: one no newer than the newest replaces it.
 net_push :: (en: [] NetEnt, p: NetState) { en[0].ring_n = net_ring_push(en[0].ring[..], en[0].ring_n, p); }
 // How long entity en goes on past its newest state (ms).

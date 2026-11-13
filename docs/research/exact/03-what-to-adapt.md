@@ -140,15 +140,15 @@ accessibility and baking possible.
 
 **Build on:**
 
-- `aethyr/ui/tree.coax` (roles, hit-testing, focus, labels required);
-- `aethyr/ui/hud.coax`;
+- `metaverse-engine/ui/tree.coax` (roles, hit-testing, focus, labels required);
+- `metaverse-engine/ui/hud.coax`;
 - `apps/shared/zeron/` (GPUI components);
 - `font.coax`, for measuring and wrapping;
 - the accessibility mirror.
 
 **Shape:**
 
-- **Library.** Grow `aethyr/ui/tree.coax` into an engine-wide library:
+- **Library.** Grow `metaverse-engine/ui/tree.coax` into an engine-wide library:
   - nodes in a fixed-capacity arena owned by the caller;
   - a stable `id` string per node, which replaces Exact's `testId`;
   - a role and a label;
@@ -297,7 +297,7 @@ plan to build already landed on 2026-11-09. This review changes the plan
 in six places. Where it disagrees with an item above, the review wins.
 
 **1. `tree` and `layout` come from the layout trace first.**
-`aethyr/ui/trace.coax` (#13076) records every HUD widget's rectangle as it
+`metaverse-engine/ui/trace.coax` (#13076) records every HUD widget's rectangle as it
 is drawn, with nesting, and `apps/openagents-web/hud-overlap.coax` lays out
 every realm's screens with it. `coaxial_tree` and `layout` read that trace,
 not the `coaxial_a11y` text lines. That gives agents most of what item 4
@@ -308,11 +308,11 @@ promises without a retained tree, so item 4 and item 6 move to the end.
 monsters, non-player characters, mounts and placed objects (for example
 `goblin-3`, `guard`, `horse-white`, `door-north`). The driver gains world
 operations: `walk-to <id>`, `face <id>`, `use <ability> on <id>`,
-`mount <id>`. These are engine-wide in `aethyr/`, so every realm gets them.
+`mount <id>`. These are engine-wide in `metaverse-engine/`, so every realm gets them.
 
 **3. Agent-callable tools are deeds.**
 Every player action already goes through the deed pipeline
-(`aethyr/action/deed.coax`: ask, act, present), and the room applies the
+(`metaverse-engine/action/deed.coax`: ask, act, present), and the room applies the
 same deeds. Item 7's tools are deeds exposed with their schemas:
 
 - a deed's ask step is the tool's `available when`;
@@ -332,7 +332,7 @@ both report nothing scheduled.
 
 **5. Drive scripts are replay streams.**
 Driver input goes through the same input stream that replay records
-(`aethyr/core/replay.coax`). A drive script and a replay recording are then the
+(`metaverse-engine/core/replay.coax`). A drive script and a replay recording are then the
 same file, `replay-hosts.coax` checks drive scripts across hosts for free,
 and a playtest recording can become a test.
 

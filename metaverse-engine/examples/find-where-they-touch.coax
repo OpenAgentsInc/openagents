@@ -1,0 +1,56 @@
+// Book chapter 21: the narrow phase of metaverse-engine/physics/sim/narrow.coax. It prints
+// one contact for each kind of pair and the path that answered it, checks
+// GJK and EPA against the closed forms on boxes given as hulls, shows a
+// resting box's four contact points, and catches a fast ball before it
+// passes through a thin plate.
+#load "../physics/sim/narrow.coax";
+#import "Basic";
+
+// book:begin example
+r6 :: (x: f64) -> f64 { return floor(x * 1000000.0 + 0.5) / 1000000.0; }
+show :: (name: string, m: Manifold) {
+  print("%: % point(s), distance %, normal (%, %, %)\n", name, m.count, r6(m.distance[0]),
+        r6(m.normal.x), r6(m.normal.y), r6(m.normal.z));
+}
+corners :: (s: Shape) -> Shape {
+  pts: [8] D3;
+  for k: 0..<8 { pts[k] = d3(ifx (k & 1) != 0 then s.half.x else -s.half.x, ifx (k & 2) != 0 then s.half.y else -s.half.y, ifx (k & 4) != 0 then s.half.z else -s.half.z); }
+  return narrow_hull(s.pos, s.rot, pts[..], 8);
+}
+
+main :: () {
+  turn := dq_unit(dq(0.1, 0.3, -0.2, 0.9));
+  show("sphere / sphere, apart", narrow_pair(narrow_sphere(D3_ZERO, 0.5), narrow_sphere(d3(1.5, 0.0, 0.0), 0.5)));
+  show("capsule / capsule, crossed", narrow_pair(narrow_capsule(D3_ZERO, DQ.{}, 1.0, 0.25), narrow_capsule(d3(0.3, 0.0, 0.0), dq_unit(dq(1.0, 0.0, 0.0, 1.0)), 1.0, 0.25)));
+  show("sphere / box, by GJK", narrow_pair(narrow_sphere(d3(0.0, 1.2, 0.0), 0.5), narrow_box(D3_ZERO, turn, d3(1.0, 0.5, 0.5))));
+  show("sphere in a box, by EPA", narrow_pair(narrow_sphere(d3(0.1, 0.2, 0.0), 0.5), narrow_box(D3_ZERO, DQ.{}, d3(1.0, 0.5, 0.5))));
+  a := narrow_box(D3_ZERO, DQ.{}, d3(0.5, 0.5, 0.5)); b := narrow_box(d3(0.6, 0.7, 0.1), turn, d3(0.5, 0.4, 0.3));
+  sat := narrow_pair(a, b); epa := narrow_pair(corners(a), corners(b));
+  show("box / box, by SAT", sat);
+  show("the same boxes as hulls, by EPA", epa);
+  print("  SAT's deepest point % m, EPA's depth % m\n", r6(sat.distance[0]), r6(epa.distance[0]));
+
+  // GJK on random pairs of boxes given as hulls, against the closed form.
+  worst := 0.0; steps := 0; pairs := 0;
+  for k: 0..<200 {
+    p := test_box(11, 20 * k, 6.0); q := test_box(12, 20 * k, 6.0);
+    if test_box_depth(p, q) >= 0.0 { continue; }
+    g := narrow_gjk(corners(p), corners(q));
+    worst = fmax(worst, abs(g.distance - test_box_distance(p, q))); steps += g.iterations; pairs += 1;
+  }
+  print("GJK on % separated box pairs: within 1e-9 m of the closed form: %, % iterations on average\n", pairs, ifx worst < 0.000000001 then "yes" else "no", r6(cast(f64) steps / cast(f64) pairs));
+
+  // A box resting on the ground, then tipped onto an edge.
+  ground := narrow_box(d3(0.0, -1.0, 0.0), DQ.{}, d3(5.0, 1.0, 5.0));
+  rest := narrow_pair(narrow_box(d3(0.0, 0.499, 0.0), DQ.{}, d3(0.5, 0.5, 0.5)), ground);
+  print("resting box: % points\n", rest.count);
+  for k: 0..<rest.count { print("  (%, %, %) distance %, feature %\n", r6(rest.point[k].x), r6(rest.point[k].y), r6(rest.point[k].z), r6(rest.distance[k]), rest.feature[k]); }
+  tip := narrow_pair(narrow_box(d3(0.0, 0.7, 0.0), dq_z(PI_D * 0.25), d3(0.5, 0.5, 0.5)), ground);
+  print("tipped onto an edge: % points, distance %\n", tip.count, r6(tip.distance[0]));
+
+  // A 5 cm ball at 200 m/s toward a 1 cm plate 1 m away, over one 1/60 s step.
+  plate := narrow_box(D3_ZERO, DQ.{}, d3(0.005, 1.0, 1.0));
+  t := narrow_time_of_impact(narrow_sphere(d3(-1.0, 0.0, 0.0), 0.05), plate, d3(200.0 / 60.0, 0.0, 0.0), D3_ZERO, 0.000001);
+  print("fast ball: first touches at % of the step, % m along\n", r6(t), r6(t * 200.0 / 60.0));
+}
+// book:end example

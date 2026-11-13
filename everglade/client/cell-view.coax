@@ -7,7 +7,7 @@
 //   coax/bin/coax test --library everglade/client/cells.coax
 #load "../world/plant.coax";
 
-E2CV_CELLS :: 256;      // aethyr/world/cells.coax CELL_MAX (cells.coax checks it)
+E2CV_CELLS :: 256;      // metaverse-engine/world/cells.coax CELL_MAX (cells.coax checks it)
 E2CV_DRAW :: 4;         // CELL_DRAW_LEVEL
 E2CV_SIMULATE :: 3;     // CELL_SIMULATE_LEVEL
 E2CV_SIZE :: 64.0;      // CELL_SIZE

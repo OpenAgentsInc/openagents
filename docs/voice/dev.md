@@ -46,7 +46,7 @@ Whisper and Psionic's Parakeet. On Linux it uses an existing `coax/bin/coax`,
 takes libcurl and OpenSSL from the system or from Nix, and builds without
 Whisper (which does not build there yet); Parakeet runs on CUDA (an NVIDIA
 GPU) or, when named, the CPU. The client
-also links the OpenAgents Metaverse Engine's spoken-request gate (`aethyr/audio/voice.coax`). `#authority`
+also links the OpenAgents Metaverse Engine's spoken-request gate (`metaverse-engine/audio/voice.coax`). `#authority`
 files run their checks inside `coax c`, so a failing check stops the build.
 Outputs go to `verse/voice-host/build/` (ignored by git).
 
@@ -303,9 +303,9 @@ bytes, run threads and call the engine:
   engine's audio, features and text; the weights stay.
 
 To a realm, a final transcript is the answer to the hold that asked for it:
-[`aethyr/audio/voice.coax`](../../aethyr/audio/voice.coax) passes it through the Metaverse Engine's event
+[`metaverse-engine/audio/voice.coax`](../../metaverse-engine/audio/voice.coax) passes it through the Metaverse Engine's event
 gate (once, only in its epoch, and replayable). `voice-client --hold --aethyr`
-does what a realm does, and `aethyr/examples/hold-to-talk.coax` shows the gate
+does what a realm does, and `metaverse-engine/examples/hold-to-talk.coax` shows the gate
 alone. Measured on coderos-4080 with CUDA (RTX 4080): the transcript arrives
 76 to 121 ms after the end of a 2.4 to 6.5 s turn, and 297 ms after a 21.5 s
 turn; the host opens the model in about 9 s

@@ -1,0 +1,222 @@
+// The checks of metaverse-engine/world/nav/cells.coax (written first), and the worlds they stand in.
+
+// Opens the samples i0..i1, j0..j1 (inclusive) of page p.
+nc_t_rect :: (n: [] NavCells, p: int, i0: int, j0: int, i1: int, j1: int) #effects(all) {
+  for j: j0..<j1 + 1 { for i: i0..<i1 + 1 { nav_cells_set(n, p, i, j, true); } }
+}
+// How many of page p's samples are open.
+nav_cells_count :: (n: [] NavCells, p: int) -> int #effects(all) {
+  c := 0;
+  for j: 0..<NAV_CELL_SIDE { for i: 0..<NAV_CELL_SIDE { if nav_cells_bit(n, p, i, j) { c += 1; } } }
+  return c;
+}
+// Two pages side by side, cells (0, 0) and (1, 0), all open but a wall along x = 60..62 m
+// (samples 120..123 of page 0) with a doorway at z = 30..32 m (rows 60..63).
+nc_t_world :: (n: [] NavCells) #effects(all) {
+  n[0] = NavCells.{};
+  a := nav_cells_add(n, 0, 0); b := nav_cells_add(n, 1, 0);
+  nc_t_rect(n, a, 0, 0, 119, 127); nc_t_rect(n, a, 124, 0, 127, 127); nc_t_rect(n, a, 120, 60, 123, 63);
+  nc_t_rect(n, b, 0, 0, 127, 127);
+}
+
+#test "nav cells: a page is a world cell, a bit a sample" #steps 4000000000 {
+  #assert f64(NAV_CELL_SIDE) * NAV_CELL_STEP == CELL_SIZE && NAV_CELL_WORDS * 32 == NAV_CELL_SIDE * NAV_CELL_SIDE;
+  #assert NAV_BLOCK * NAV_BLOCK_SIDE == NAV_CELL_SIDE && NAV_PAGES == CELL_RESIDENT && NAV_PAGE_SAMPLES == NAV_CELL_SIDE * NAV_CELL_SIDE;
+  #assert NAV_LINE_STEP * 4 == NAV_CELL_STEP && NAV_BLOCK == 4 && NAV_OBSTACLES == 64;
+}
+#test "nav cells: pages are added once a cell, found by their cell, dropped, and never more than fit" #steps 4000000000 {
+  n: [1] NavCells;
+  #assert nav_cells_page(n[..], 0, 0) == -1 && nav_cells_pages(n[..]) == 0 && !nav_cells_drop(n[..], 0, 0) && n[0].revision == 0;
+  #assert nav_cells_add(n[..], 0, 0) == 0 && n[0].revision == 1 && nav_cells_add(n[..], 0, 0) == -1 && n[0].revision == 1;
+  #assert nav_cells_add(n[..], -3, 7) == 1 && nav_cells_add(n[..], 7, -3) == 2 && nav_cells_add(n[..], -3, -3) == 3 && n[0].revision == 4;
+  #assert nav_cells_page(n[..], -3, 7) == 1 && nav_cells_page(n[..], 7, -3) == 2 && nav_cells_page(n[..], -3, -3) == 3 && nav_cells_page(n[..], 7, 7) == -1 && nav_cells_pages(n[..]) == 4;
+  // a dropped page is forgotten whole, and its place is the next one given
+  nav_cells_set(n[..], 1, 5, 6, true); #assert nav_cells_bit(n[..], 1, 5, 6);
+  #assert nav_cells_drop(n[..], -3, 7) && n[0].revision == 5 && nav_cells_page(n[..], -3, 7) == -1 && nav_cells_pages(n[..]) == 3 && !nav_cells_drop(n[..], -3, 7) && n[0].revision == 5;
+  #assert !nav_cells_bit(n[..], 1, 5, 6);
+  #assert nav_cells_add(n[..], 9, 9) == 1 && !nav_cells_bit(n[..], 1, 5, 6);
+  // the first page drops as any other
+  #assert nav_cells_drop(n[..], 0, 0) && nav_cells_page(n[..], 0, 0) == -1 && nav_cells_pages(n[..]) == 3 && nav_cells_add(n[..], 0, 0) == 0;
+  // the store fills at NAV_PAGES and refuses the next, changing nothing
+  for k: 0..<NAV_PAGES - 4 { #assert nav_cells_add(n[..], 100 + k, 0) == 4 + k; }
+  r := n[0].revision;
+  #assert nav_cells_pages(n[..]) == NAV_PAGES && nav_cells_add(n[..], 500, 0) == -1 && n[0].revision == r && nav_cells_page(n[..], 100 + NAV_PAGES - 5, 0) == NAV_PAGES - 1;
+}
+#test "nav cells: a sample's bit is its own" #steps 4000000000 {
+  n: [1] NavCells; p := nav_cells_add(n[..], 0, 0); q := nav_cells_add(n[..], 1, 0);
+  spots := [6][2] int.[[2] int.[0, 0], [2] int.[31, 0], [2] int.[32, 0], [2] int.[127, 127], [2] int.[64, 1], [2] int.[95, 126]];
+  for k: 0..<6 {
+    i := spots[k][0]; j := spots[k][1];
+    nav_cells_set(n[..], p, i, j, true);
+    #assert nav_cells_bit(n[..], p, i, j) && nav_cells_count(n[..], p) == 1 && nav_cells_count(n[..], q) == 0;
+    #assert n[0].page[p].open[j * 4 + i / 32] == cast(u32) 1 << cast(u32) (i % 32);
+    nav_cells_set(n[..], p, i, j, false);
+    #assert !nav_cells_bit(n[..], p, i, j) && nav_cells_count(n[..], p) == 0;
+  }
+  // closing one sample leaves its word's others
+  nav_cells_set(n[..], p, 40, 2, true); nav_cells_set(n[..], p, 41, 2, true); nav_cells_set(n[..], p, 40, 2, false);
+  #assert nav_cells_bit(n[..], p, 41, 2) && !nav_cells_bit(n[..], p, 40, 2) && nav_cells_count(n[..], p) == 1;
+  nav_cells_set(n[..], p, 41, 2, false);
+  // off the page, or a page not in use: nothing is written and nothing read
+  nav_cells_set(n[..], p, -1, 0, true); nav_cells_set(n[..], p, 0, -1, true); nav_cells_set(n[..], p, 128, 0, true); nav_cells_set(n[..], p, 0, 128, true);
+  nav_cells_set(n[..], -1, 0, 0, true); nav_cells_set(n[..], NAV_PAGES, 0, 0, true); nav_cells_set(n[..], 5, 0, 0, true);
+  for k: 0..<NAV_PAGES { #assert nav_cells_count(n[..], k) == 0; }
+  nav_cells_set(n[..], p, 0, 0, true); nav_cells_set(n[..], p, 127, 127, true);
+  #assert !nav_cells_bit(n[..], p, -1, 0) && !nav_cells_bit(n[..], p, 0, -1) && !nav_cells_bit(n[..], p, 128, 127) && !nav_cells_bit(n[..], p, 127, 128) && !nav_cells_bit(n[..], -1, 0, 0) && !nav_cells_bit(n[..], NAV_PAGES, 0, 0);
+}
+#test "nav cells: a point's sample is its cell's page, column and row, on both sides of zero" #steps 4000000000 {
+  n: [1] NavCells; a := nav_cells_add(n[..], 0, 0); b := nav_cells_add(n[..], -1, -2); c := nav_cells_add(n[..], 2, 0);
+  s := nav_cells_at(n[..], 0.1, 0.6); #assert s.page == a && s.i == 0 && s.j == 1;
+  s = nav_cells_at(n[..], 63.9, 63.4); #assert s.page == a && s.i == 127 && s.j == 126;
+  s = nav_cells_at(n[..], -0.1, -64.2); #assert s.page == b && s.i == 127 && s.j == 127;
+  s = nav_cells_at(n[..], -64, -128); #assert s.page == b && s.i == 0 && s.j == 0;
+  s = nav_cells_at(n[..], 128.75, 0.25); #assert s.page == c && s.i == 1 && s.j == 0;
+  s = nav_cells_at(n[..], 64.5, 0.25); #assert s.page == -1 && s.i == 1 && s.j == 0;
+  s = nav_cells_at(n[..], 0.0f32 / 0.0f32, 1); #assert s.page == -1; s = nav_cells_at(n[..], 1, 0.0f32 / 0.0f32); #assert s.page == -1;
+  s = nav_cells_at(n[..], 1000000, 1); #assert s.page == -1; s = nav_cells_at(n[..], 1, -1000000); #assert s.page == -1;
+  #assert nav_cells_real(999999) && nav_cells_real(-999999) && !nav_cells_real(1000000) && !nav_cells_real(-1000000) && !nav_cells_real(0.0f32 / 0.0f32);
+  // a sample's middle is in its own sample
+  #assert nav_cells_x(0, 0) == 0.25 && nav_cells_x(0, 127) == 63.75 && nav_cells_x(-1, 127) == -0.25 && nav_cells_x(2, 1) == 128.75 && nav_cells_x(-2, 0) == -127.75;
+  for i: [4] int.[0, 1, 64, 127] { t := nav_cells_at(n[..], nav_cells_x(-1, i), nav_cells_x(-2, 127 - i)); #assert t.page == b && t.i == i && t.j == 127 - i; }
+}
+#test "nav cells: an obstacle is a circle or a turned box, by its id" #steps 4000000000 {
+  n: [1] NavCells;
+  round := NavObstacle.{round = true, x = 10, z = 20, hx = 1.5};
+  #assert nav_cells_shape_ok(round) && nav_cells_under(round, 11.4, 20, 0) && !nav_cells_under(round, 11.5, 20, 0) && nav_cells_under(round, 10, 18.6, 0) && !nav_cells_under(round, 10, 18.5, 0);
+  #assert nav_cells_under(round, 11.9, 20, 0.5) && !nav_cells_under(round, 12, 20, 0.5) && !nav_cells_under(round, 11.2, 21.2, 0) && nav_cells_under(round, 11, 21, 0);
+  box := NavObstacle.{x = 10, z = 20, hx = 2, hz = 0.5};
+  #assert nav_cells_shape_ok(box) && nav_cells_under(box, 11.9, 20.4, 0) && !nav_cells_under(box, 12, 20, 0) && !nav_cells_under(box, 10, 20.5, 0) && nav_cells_under(box, 8.1, 19.6, 0) && !nav_cells_under(box, 8, 20, 0) && !nav_cells_under(box, 10, 19.5, 0);
+  #assert nav_cells_under(box, 12.4, 20.9, 0.5) && !nav_cells_under(box, 12.5, 20, 0.5) && !nav_cells_under(box, 10, 21, 0.5);
+  // a quarter turn: across becomes deep (c 0, s 1: across is (0, -1), deep is (1, 0))
+  turned := NavObstacle.{x = 10, z = 20, hx = 2, hz = 0.5, c = 0, s = 1};
+  #assert nav_cells_shape_ok(turned) && nav_cells_under(turned, 10.4, 21.9, 0) && nav_cells_under(turned, 9.6, 18.1, 0) && !nav_cells_under(turned, 10.5, 20, 0) && !nav_cells_under(turned, 10, 22, 0) && !nav_cells_under(turned, 11.9, 20, 0);
+  // an eighth turn keeps both signs of the turn apart
+  eighth := NavObstacle.{x = 0, z = 0, hx = 2, hz = 0.5, c = 0.70710678, s = 0.70710678};
+  #assert nav_cells_shape_ok(eighth) && nav_cells_under(eighth, 1.2, -1.2, 0) && !nav_cells_under(eighth, 1.2, 1.2, 0) && nav_cells_under(eighth, -1.2, 1.2, 0) && !nav_cells_under(eighth, 1.77, -1.77, 0) && !nav_cells_under(eighth, -1.77, 1.77, 0);
+  // a shape that can't be used
+  bad := round; bad.hx = 0; #assert !nav_cells_shape_ok(bad); bad.hx = 64; #assert nav_cells_shape_ok(bad); bad.hx = 64.5; #assert !nav_cells_shape_ok(bad);
+  bad = round; bad.x = 1000000; #assert !nav_cells_shape_ok(bad); bad = round; bad.z = -1000000; #assert !nav_cells_shape_ok(bad);
+  bad = round; bad.hz = -1; bad.c = 9; #assert nav_cells_shape_ok(bad);   // a circle has no depth or turn
+  bad = box; bad.hz = 0; #assert !nav_cells_shape_ok(bad); bad.hz = 64; #assert nav_cells_shape_ok(bad); bad.hz = 64.5; #assert !nav_cells_shape_ok(bad);
+  bad = box; bad.c = 1.001; #assert !nav_cells_shape_ok(bad); bad.c = 0.999; #assert !nav_cells_shape_ok(bad); bad.c = 0.9996; #assert nav_cells_shape_ok(bad); bad.c = 1.0004; #assert nav_cells_shape_ok(bad);
+  // the slack is 2^-10, and a turn exactly that far off is refused: c 1 and s 2^-5 sum to 1 + 2^-10
+  bad = box; bad.s = 0.03125; #assert !nav_cells_shape_ok(bad) && NAV_TURN_SLACK == 0.0009765625; bad.s = 0.03; #assert nav_cells_shape_ok(bad);
+  bad = box; bad.c = 0; bad.s = 0; #assert !nav_cells_shape_ok(bad); bad.s = -1; #assert nav_cells_shape_ok(bad);
+  // laid down, moved, taken up; each change raises the revision, a refusal doesn't
+  #assert nav_cells_obstacles(n[..]) == 0 && nav_cells_obstacle(n[..], 7) == -1 && nav_cells_obstacle(n[..], 0) == -1 && !nav_cells_unblock(n[..], 7) && !nav_cells_blocked(n[..], 10, 20) && n[0].revision == 0;
+  #assert nav_cells_block(n[..], 7, round) && n[0].revision == 1 && nav_cells_obstacles(n[..]) == 1 && nav_cells_obstacle(n[..], 7) == 0 && nav_cells_blocked(n[..], 10, 20) && !nav_cells_blocked(n[..], 13, 20);
+  #assert n[0].obstacle[0].on && n[0].obstacle[0].id == 7 && n[0].obstacle[0].round && n[0].obstacle[0].hx == 1.5;
+  #assert nav_cells_block(n[..], 9, box) && n[0].revision == 2 && nav_cells_obstacle(n[..], 9) == 1 && nav_cells_obstacles(n[..]) == 2 && n[0].obstacle[1].on && n[0].obstacle[1].id == 9;
+  bad = round; bad.hx = -1; #assert !nav_cells_block(n[..], 7, bad) && n[0].revision == 2 && n[0].obstacle[0].hx == 1.5 && !nav_cells_block(n[..], 33, bad) && nav_cells_obstacles(n[..]) == 2;
+  moved := round; moved.x = 30;
+  #assert nav_cells_block(n[..], 7, moved) && n[0].revision == 3 && nav_cells_obstacles(n[..]) == 2 && nav_cells_obstacle(n[..], 7) == 0 && nav_cells_blocked(n[..], 30, 20) && !nav_cells_blocked(n[..], 7.9, 20.6) && nav_cells_blocked(n[..], 8.5, 20);
+  // taken up: the last in use takes its place, and the place it left is cleared
+  #assert nav_cells_unblock(n[..], 7) && n[0].revision == 4 && !nav_cells_blocked(n[..], 30, 20) && nav_cells_blocked(n[..], 8.5, 20) && nav_cells_obstacles(n[..]) == 1 && nav_cells_obstacle(n[..], 7) == -1 && nav_cells_obstacle(n[..], 9) == 0;
+  #assert n[0].obstacle[0].id == 9 && !n[0].obstacle[1].on && n[0].obstacle[1].id == 0 && n[0].obstacle[1].hx == 0;
+  #assert nav_cells_obstacle(n[..], 0) == -1;   // a free place's id is no one's
+  // the last one taken up leaves none; an id 0 is an id like any other
+  #assert nav_cells_unblock(n[..], 9) && nav_cells_obstacles(n[..]) == 0 && !nav_cells_blocked(n[..], 8.5, 20) && !n[0].obstacle[0].on && nav_cells_block(n[..], 0, round) && nav_cells_obstacle(n[..], 0) == 0 && nav_cells_unblock(n[..], 0);
+  // all in use refuses a new id, changing nothing, and still moves an old one
+  for k: 0..<NAV_OBSTACLES { #assert nav_cells_block(n[..], 100 + k, round) && nav_cells_obstacle(n[..], 100 + k) == k; }
+  r := n[0].revision;
+  #assert nav_cells_obstacles(n[..]) == NAV_OBSTACLES && !nav_cells_block(n[..], 999, round) && n[0].revision == r && nav_cells_obstacles(n[..]) == NAV_OBSTACLES && nav_cells_block(n[..], 100 + NAV_OBSTACLES - 1, moved) && n[0].revision == r + 1;
+  #assert n[0].obstacle[NAV_OBSTACLES - 1].x == 30 && nav_cells_blocked(n[..], 30, 20);
+  // the first taken up from a full store: the last moves into its place and is still found
+  #assert nav_cells_unblock(n[..], 100) && nav_cells_obstacles(n[..]) == NAV_OBSTACLES - 1 && nav_cells_obstacle(n[..], 100 + NAV_OBSTACLES - 1) == 0 && n[0].obstacle[0].x == 30 && nav_cells_blocked(n[..], 30, 20) && nav_cells_obstacle(n[..], 101) == 1;
+}
+#test "nav cells: a creature may stand on an open sample of a resident page, under no obstacle" #steps 4000000000 {
+  n: [1] NavCells; nc_t_world(n[..]);
+  #assert nav_cells_open(n[..], 10, 10) && nav_cells_open(n[..], 59.9, 10) && !nav_cells_open(n[..], 60.1, 10) && !nav_cells_open(n[..], 61.9, 10) && nav_cells_open(n[..], 62.1, 10);
+  #assert nav_cells_open(n[..], 61, 30.1) && nav_cells_open(n[..], 61, 31.9) && !nav_cells_open(n[..], 61, 29.9) && !nav_cells_open(n[..], 61, 32.1);
+  #assert nav_cells_open(n[..], 100, 10) && !nav_cells_open(n[..], 130, 10) && !nav_cells_open(n[..], -1, 10) && !nav_cells_open(n[..], 10, -1) && !nav_cells_open(n[..], 10, 64.1);
+  // a straight walk: through the doorway, not through the wall, not off the pages, and both ends count
+  #assert nav_cells_line(n[..], 50, 31, 70, 31) && nav_cells_line(n[..], 70, 31, 50, 31) && !nav_cells_line(n[..], 50, 20, 70, 20) && !nav_cells_line(n[..], 50, 31, 70, 40);
+  #assert nav_cells_line(n[..], 5, 5, 5, 5) && !nav_cells_line(n[..], 61, 5, 61, 5) && !nav_cells_line(n[..], 5, 5, 61, 5) && !nav_cells_line(n[..], 61, 5, 5, 5) && !nav_cells_line(n[..], 120, 5, 130, 5);
+  // a wall one sample thick is not stepped over: the line's samples are a quarter of a sample apart
+  m: [1] NavCells; p := nav_cells_add(m[..], 0, 0); nc_t_rect(m[..], p, 0, 0, 127, 127); nav_cells_set(m[..], p, 40, 40, false);
+  #assert !nav_cells_line(m[..], 19.9, 20.25, 20.6, 20.25) && !nav_cells_line(m[..], 19.6, 19.6, 20.9, 20.9) && nav_cells_line(m[..], 19.9, 20.75, 20.6, 20.75);
+  // both ends are sampled and nothing past them: a start on the closed sample's edge, an end just short of it
+  #assert !nav_cells_line(m[..], 20.01, 20.25, 19.5, 20.25) && nav_cells_line(m[..], 19.5, 20.25, 19.99, 20.25) && !nav_cells_line(m[..], 19.5, 20.25, 20.01, 20.25);
+  #assert nav_cells_line_steps(0) == 1 && nav_cells_line_steps(0.124) == 1 && nav_cells_line_steps(0.125) == 2 && nav_cells_line_steps(1) == 9 && nav_cells_line_steps(10.3) == 83;
+  // a line's length is both its axes': 3 east and 4 south is 5 m, 41 steps, and its 40th ends on the far sample
+  #assert !nav_cells_line(m[..], 17.25, 16.25, 20.25, 20.25) && nav_cells_line(m[..], 17.25, 16.25, 19.95, 19.85);
+  // a line due north is as long as it is: every step of it is sampled, the closed sample in its middle too
+  #assert !nav_cells_line(m[..], 20.25, 21.25, 20.25, 19.25) && !nav_cells_line(m[..], 21.25, 20.25, 19.25, 20.25) && nav_cells_line(m[..], 20.75, 21.25, 20.75, 19.25);
+  // a shut door closes the doorway to a step and a line, and opens again
+  door := NavObstacle.{x = 61, z = 31, hx = 1.2, hz = 1.2};
+  #assert nav_cells_block(n[..], 1, door) && !nav_cells_open(n[..], 61, 31) && !nav_cells_line(n[..], 50, 31, 70, 31) && nav_cells_open(n[..], 59, 31);
+  // the step's last word: there, or slid along the open axis, or where it stood
+  k := nav_cells_keep(n[..], 59.5, 31.5, 59, 31); #assert k[0] == 59.5 && k[1] == 31.5;
+  k = nav_cells_keep(n[..], 60.1, 31.5, 59.5, 31); #assert k[0] == 59.5 && k[1] == 31.5;
+  k = nav_cells_keep(n[..], 59.5, 64.5, 59.5, 63.9); #assert k[0] == 59.5 && k[1] == 63.9;
+  k = nav_cells_keep(n[..], 60.2, 20, 59.9, 19.8); #assert k[0] == 59.9 && k[1] == 20;
+  k = nav_cells_keep(n[..], 60.2, 64.2, 59.9, 63.9); #assert k[0] == 59.9 && k[1] == 63.9;
+  k = nav_cells_keep(n[..], 60.2, 63.5, 59.9, 64.2); #assert k[0] == 59.9 && k[1] == 63.5;
+  k = nav_cells_keep(n[..], 59, 64.2, 60.2, 63.9); #assert k[0] == 59 && k[1] == 63.9;
+  #assert nav_cells_unblock(n[..], 1) && nav_cells_open(n[..], 61, 31) && nav_cells_line(n[..], 50, 31, 70, 31);
+}
+#test "nav cells: a search grid is filled from the samples" #steps 4000000000 {
+  n: [1] NavCells; nc_t_world(n[..]);
+  walk: [64] bool;
+  // an 8 by 8 window of half-metre cells over the doorway's north jamb: x 58..62, z 28..32
+  g := NavGrid.{nx = 8, nz = 8, cell = 0.5, x0 = 58, z0 = 28};
+  #assert nav_cells_fill(n[..], g, walk[..]) == 32 + 16;
+  for c: 0..<64 { #assert walk[c] == (c % 8 < 4 || c / 8 >= 4); }
+  #assert nav_cells_fill(n[..], g, walk[0..<64]) == 48 && nav_cells_fill(n[..], g, walk[0..<63]) == -1 && nav_cells_fill(n[..], NavGrid.{nx = 0, nz = 8, cell = 0.5}, walk[..]) == -1;
+  // an obstacle closes the window's cells under it
+  #assert nav_cells_block(n[..], 1, NavObstacle.{x = 59, z = 29, hx = 0.6, hz = 0.6}) && nav_cells_fill(n[..], g, walk[..]) == 48 - 4 && !walk[9] && !walk[10] && !walk[17] && !walk[18] && walk[8] && walk[11];
+}
+#test "nav cells: what a creature can reach from one place, across pages and through a doorway only" #steps 4000000000 {
+  n: [1] NavCells; nc_t_world(n[..]);
+  mark: [NAV_PAGES * NAV_CELL_WORDS] u32; queue: [NAV_PAGES * NAV_PAGE_SAMPLES] s32;
+  all := 2 * 16384 - 4 * 128 + 16;
+  #assert nav_cells_reach(n[..], 5, 5, mark[..], queue[..]) == all && nav_cells_count(n[..], 0) + nav_cells_count(n[..], 1) == all;
+  #assert nav_cells_reached(n[..], mark[..], 5, 5) && nav_cells_reached(n[..], mark[..], 100, 60) && nav_cells_reached(n[..], mark[..], 61, 31) && !nav_cells_reached(n[..], mark[..], 61, 5) && !nav_cells_reached(n[..], mark[..], 200, 5);
+  #assert nav_cells_reached(n[..], mark[..], 0.1, 0.1) && nav_cells_reached(n[..], mark[..], 127.9, 63.9) && nav_cells_reached(n[..], mark[..], 63.9, 0.1) && nav_cells_reached(n[..], mark[..], 64.1, 63.9);
+  // the door shut: the far side is out of reach, and the count is the near side's
+  #assert nav_cells_block(n[..], 1, NavObstacle.{x = 61, z = 31, hx = 1.2, hz = 1.2});
+  #assert nav_cells_reach(n[..], 5, 5, mark[..], queue[..]) == 120 * 128 && nav_cells_reached(n[..], mark[..], 59.9, 31) && !nav_cells_reached(n[..], mark[..], 100, 60) && !nav_cells_reached(n[..], mark[..], 62.1, 31);
+  #assert nav_cells_reach(n[..], 100, 5, mark[..], queue[..]) == 132 * 128 && !nav_cells_reached(n[..], mark[..], 5, 5) && nav_cells_reached(n[..], mark[..], 62.1, 31);
+  // from a closed sample, off the pages, or with storage too short
+  #assert nav_cells_reach(n[..], 61, 5, mark[..], queue[..]) == 0 && !nav_cells_reached(n[..], mark[..], 5, 5) && nav_cells_reach(n[..], 300, 5, mark[..], queue[..]) == 0;
+  #assert nav_cells_reach(n[..], 5, 5, mark[0..<NAV_PAGES * NAV_CELL_WORDS - 1], queue[..]) == -1 && nav_cells_reach(n[..], 5, 5, mark[..], queue[0..<NAV_PAGES * NAV_PAGE_SAMPLES - 1]) == -1;
+  #assert nav_cells_reach(n[..], 5, 5, mark[..], queue[..]) == 120 * 128 && !nav_cells_reached(n[..], mark[0..<NAV_PAGES * NAV_CELL_WORDS - 1], 5, 5);
+  // the search's order: east, west, north, south of where it starts, and the start's own word marked
+  o: [1] NavCells; op := nav_cells_add(o[..], 0, 0); nc_t_rect(o[..], op, 31, 4, 33, 6);
+  #assert nav_cells_reach(o[..], nav_cells_x(0, 32), nav_cells_x(0, 5), mark[..], queue[..]) == 9;
+  #assert queue[0] == 5 * 128 + 32 && queue[1] == 5 * 128 + 33 && queue[2] == 5 * 128 + 31 && queue[3] == 6 * 128 + 32 && queue[4] == 4 * 128 + 32;
+  #assert nav_cells_reached(o[..], mark[..], nav_cells_x(0, 32), nav_cells_x(0, 5)) && !nav_cells_reached(o[..], mark[..], nav_cells_x(0, 0), nav_cells_x(0, 5)) && mark[5 * 4 + 1] == 3 && mark[5 * 4] == cast(u32) 1 << cast(u32) 31;
+  pair: [1] NavCells; pp := nav_cells_add(pair[..], 0, 0); nav_cells_set(pair[..], pp, 32, 5, true); nav_cells_set(pair[..], pp, 33, 5, true); nav_cells_set(pair[..], pp, 0, 5, true);
+  #assert nav_cells_reach(pair[..], nav_cells_x(0, 32), nav_cells_x(0, 5), mark[..], queue[..]) == 2 && nav_cells_reached(pair[..], mark[..], nav_cells_x(0, 32), nav_cells_x(0, 5)) && !nav_cells_reached(pair[..], mark[..], nav_cells_x(0, 0), nav_cells_x(0, 5));
+  // a diagonal is not a step: two open samples that touch at a corner are apart
+  m: [1] NavCells; p := nav_cells_add(m[..], 0, 0); nav_cells_set(m[..], p, 10, 10, true); nav_cells_set(m[..], p, 11, 11, true); nav_cells_set(m[..], p, 11, 12, true);
+  #assert nav_cells_reach(m[..], 5.25, 5.25, mark[..], queue[..]) == 1 && nav_cells_reach(m[..], 5.75, 5.75, mark[..], queue[..]) == 2 && nav_cells_reached(m[..], mark[..], 5.75, 6.25) && !nav_cells_reached(m[..], mark[..], 5.25, 5.25);
+  // a page in the store's last place is marked in the last words
+  last: [1] NavCells; for k: 0..<NAV_PAGES { v := nav_cells_add(last[..], k * 3, 0); } nav_cells_set(last[..], NAV_PAGES - 1, 127, 127, true); nav_cells_set(last[..], NAV_PAGES - 1, 126, 127, true);
+  lx := nav_cells_x((NAV_PAGES - 1) * 3, 127); lz := nav_cells_x(0, 127);
+  #assert nav_cells_reach(last[..], lx, lz, mark[..], queue[..]) == 2 && nav_cells_reached(last[..], mark[..], lx, lz) && nav_cells_reached(last[..], mark[..], lx - 0.5, lz) && mark[NAV_PAGES * NAV_CELL_WORDS - 1] == cast(u32) 3 << cast(u32) 30;
+  #assert !nav_cells_reached(last[..], mark[..], lx - 1, lz) && !nav_cells_reached(last[..], mark[..], lx + 0.5, lz) && !nav_cells_reached(last[..], mark[..], lx, lz + 0.5);
+}
+#test "nav cells: a page's digest is its cell's and every sample's, and never 0" #steps 4000000000 {
+  n: [1] NavCells; p := nav_cells_add(n[..], 0, 0); q := nav_cells_add(n[..], 0, 1); r := nav_cells_add(n[..], 1, 0);
+  d := nav_cells_digest(n[..], p);
+  #assert d != 0 && d == replay_mix_many_zero(0, 0) && nav_cells_digest(n[..], q) != d && nav_cells_digest(n[..], r) != d && nav_cells_digest(n[..], q) != nav_cells_digest(n[..], r);
+  #assert nav_cells_digest(n[..], -1) == 0 && nav_cells_digest(n[..], NAV_PAGES) == 0 && nav_cells_digest(n[..], 5) == 0;
+  seen: [4] int; seen[0] = d;
+  spots := [3][2] int.[[2] int.[0, 0], [2] int.[127, 127], [2] int.[33, 64]];
+  for k: 0..<3 {
+    nav_cells_set(n[..], p, spots[k][0], spots[k][1], true); seen[k + 1] = nav_cells_digest(n[..], p);
+    for o: 0..<k + 1 { #assert seen[o] != seen[k + 1]; }
+    nav_cells_set(n[..], p, spots[k][0], spots[k][1], false); #assert nav_cells_digest(n[..], p) == d;
+  }
+  // the same samples in another store are the same digest: the obstacles and the revision aren't content
+  m: [1] NavCells; v := nav_cells_add(m[..], 5, 5); u := nav_cells_add(m[..], 0, 0); #assert nav_cells_block(m[..], 1, NavObstacle.{round = true, x = 1, z = 1, hx = 1});
+  nav_cells_set(n[..], p, 9, 9, true); nav_cells_set(m[..], u, 9, 9, true);
+  #assert nav_cells_digest(m[..], u) == nav_cells_digest(n[..], p) && nav_cells_count(m[..], u) == 1 && nav_cells_count(m[..], v) == 0 && nav_cells_count(m[..], -1) == 0;
+}
+// An empty page's digest, worked out here from the mix alone.
+replay_mix_many_zero :: (cx: int, cz: int) -> int #effects(all) {
+  h := replay_mix(replay_mix(2166136261, cx), cz);
+  for w: 0..<NAV_CELL_WORDS { h = replay_mix(h, 0); }
+  return h + 1;
+}

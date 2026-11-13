@@ -1,0 +1,63 @@
+// A 5 by 7 pixel face (engine): the signs a world draws in its own space, lamp by lamp, as a
+// matrix display does. Each glyph is 35 bits, row 0 the top, column 0 the left: bit row * 5 +
+// column. A shader that lights one lamp a bit (metaverse-engine/fx/gpu-quads.coax) is handed a glyph as two
+// floats, each exactly a whole number: the top four rows (20 bits) and the bottom three (15).
+//   coax/bin/coax test metaverse-engine/fx/pixel-font.coax --library
+#module "aethyr.fx.pixelfont";
+
+PF_COLS :: 5; PF_ROWS :: 7;
+PF_FIRST :: 32; PF_GLYPHS :: 95;   // ASCII 32 to 126
+PF_BITS :: [PF_GLYPHS] u64.[
+  0x000000000, 0x100421084, 0x00000294a, 0x295f57d4a, 0x11f4717c4,
+  0x632222263, 0x593511526, 0x000001084, 0x208210888, 0x088842082,
+  0x009575480, 0x0084f9080, 0x088600000, 0x0000f8000, 0x18c000000,
+  0x002222200, 0x3a33ae62e, 0x3884210c4, 0x7c444422e, 0x3a304111f,
+  0x211f4a988, 0x3a3083c3f, 0x3a317844c, 0x08422221f, 0x3a317462e,
+  0x1910f462e, 0x00c6018c0, 0x0886018c0, 0x208208888, 0x001f07c00,
+  0x088882082, 0x10044422e, 0x3ab5b422e, 0x463f8c62e, 0x3e317c62f,
+  0x3a210862e, 0x1d318c527, 0x7c217843f, 0x04217843f, 0x7a31e862e,
+  0x4631fc631, 0x38842108e, 0x19284211c, 0x452519531, 0x7c2108421,
+  0x4631ad771, 0x4639ace31, 0x3a318c62e, 0x04217c62f, 0x59358c62e,
+  0x45257c62f, 0x3e107043e, 0x10842109f, 0x3a318c631, 0x11518c631,
+  0x2ab5ac631, 0x462a22a31, 0x108454631, 0x7c222221f, 0x38421084e,
+  0x020820820, 0x39084210e, 0x000004544, 0x7c0000000, 0x000002082,
+  0x7a3e83800, 0x3e319b421, 0x3a210b800, 0x7a31cda10, 0x383f8b800,
+  0x084238a4c, 0x3a1e8c7c0, 0x46319b421, 0x388421804, 0x192843008,
+  0x24a32a421, 0x388421086, 0x4635aac00, 0x46319b400, 0x3a318b800,
+  0x042f8c5e0, 0x421e8c7c0, 0x04219b400, 0x3e0e0b800, 0x324211c42,
+  0x5b318c400, 0x11518c400, 0x2ab58c400, 0x454454400, 0x3a1e8c620,
+  0x7c4447c00, 0x208411088, 0x108421084, 0x088441082, 0x0008a8800,
+];
+
+// A character's lamps; one outside the face is blank.
+pf_glyph :: (c: u8) -> u64 {
+  i := cast(int) c - PF_FIRST;
+  if i < 0 || i >= PF_GLYPHS { return 0; }
+  return PF_BITS[i];
+}
+pf_lit :: (g: u64, row: int, col: int) -> bool { return (g >> cast(u64) (row * PF_COLS + col)) & 1 == 1; }
+// The glyph's top four rows and its bottom three, as the two whole numbers a shader reads.
+pf_top :: (g: u64) -> f32 { return cast(f32) cast(int) (g & 0xfffff); }
+pf_foot :: (g: u64) -> f32 { return cast(f32) cast(int) (g >> 20); }
+// A line's width in glyph cells: five columns a glyph and one between.
+pf_cells :: (count: int) -> int { if count <= 0 { return 0; } return count * (PF_COLS + 1) - 1; }
+
+#test "pixel face: every glyph fits 35 bits, a space is blank and every other one has lamps" {
+  for i: 0..<PF_GLYPHS { #assert PF_BITS[i] < (1 << 35); if i > 0 { #assert PF_BITS[i] != 0; } }
+  #assert pf_glyph(' ') == 0 && pf_glyph(7) == 0 && pf_glyph(200) == 0;
+}
+#test "pixel face: a 1 and an F read as drawn, and the two floats carry every lamp" {
+  one := pf_glyph('1');
+  #assert !pf_lit(one, 0, 0) && pf_lit(one, 0, 2) && pf_lit(one, 1, 1) && pf_lit(one, 6, 1) && pf_lit(one, 6, 3) && !pf_lit(one, 6, 4);
+  f := pf_glyph('F');
+  for c: 0..<5 { #assert pf_lit(f, 0, c); } #assert pf_lit(f, 3, 3) && !pf_lit(f, 3, 4) && pf_lit(f, 6, 0) && !pf_lit(f, 6, 1);
+  for i: 0..<PF_GLYPHS {
+    g := PF_BITS[i]; back := cast(u64) cast(int) pf_top(g) | (cast(u64) cast(int) pf_foot(g) << 20);
+    #assert back == g;
+  }
+}
+#test "pixel face: the hex digits and the base64 alphabet are all different glyphs" {
+  a := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  for i: 0..<a.count { for j: 0..<i { #assert pf_glyph(a[i]) != pf_glyph(a[j]); } }
+  #assert pf_cells(0) == 0 && pf_cells(1) == 5 && pf_cells(2) == 11;
+}

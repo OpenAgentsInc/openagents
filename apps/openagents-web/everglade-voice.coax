@@ -1135,7 +1135,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   #assert ev_text(s[..]) == "PLACED A CRATE" && everglade_edit_ask(s[..]) == 0 && s[0].ev.edits.n == 3;
 }
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
 #test "voice edits: one of a thing is A THING, more are THINGS" #steps 530000000 {
   s: [1] Everglade;

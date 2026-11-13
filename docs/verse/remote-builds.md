@@ -11,7 +11,7 @@ fallback.
 ```sh
 coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/fivelab.coax \
   apps/openagents-web/fivelab-face.c apps/openagents-web/build/fivelab.wasm \
-  apps/openagents-web/everglade-step.coax aethyr/core/sticks.coax
+  apps/openagents-web/everglade-step.coax metaverse-engine/core/sticks.coax
 coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-web/fivelab.coax
 coax/remote/remote.sh status        # hosts, free slots, spend
 ```
@@ -264,7 +264,7 @@ To drive pages headless, fetch main's pages and rebuild only what you changed:
 coax/remote/pages.sh origin/main
 coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/fivelab.coax \
   apps/openagents-web/fivelab-face.c apps/openagents-web/build/fivelab.wasm \
-  apps/openagents-web/everglade-step.coax aethyr/core/sticks.coax
+  apps/openagents-web/everglade-step.coax metaverse-engine/core/sticks.coax
 ```
 
 Don't run a full `apps/openagents-web/build.sh` for this.
@@ -335,7 +335,7 @@ What changed:
   turn before the modules start: `wgsl-module --site` and the NIP module (each
   `coax wgsl` has 120 s, and beside sixty module builds two ran out of it).
 - **Render packages are taken prebuilt.** With `COAXIAL_PREBUILT=1`,
-  `aethyr/render/build.coax` takes a package a host made when every source it
+  `metaverse-engine/render/build.coax` takes a package a host made when every source it
   names and every product has the SHA-256 its manifest names, whatever compiler
   made it.
 - **The CLI is kept.** `apps/openagents-cli/build.sh --cli` keeps the built CLI
@@ -350,7 +350,7 @@ What changed:
 - **Ancestor pages.** A commit without stored pages takes its nearest stored
   ancestor's `build/` folder (`pages.sh nearest`, `pages.sh fetch COMMIT DIR
   built`) when the compiler's sources and the build's recipes (`wasm.sh`,
-  `build-home.sh`, `coax/web/room`, `aethyr/render/build.coax`) are the same in
+  `build-home.sh`, `coax/web/room`, `metaverse-engine/render/build.coax`) are the same in
   both. Each module is still taken only when its record names this tree's
   inputs.
 - **A stopped release stops its build.** `bounded` runs `deploy.sh` under a

@@ -1,0 +1,269 @@
+// Gameplay reactions and their presentation (book chapters 68, 72 and 96, GitHub #12993). Four independent typed
+// tables: what an attack carries (AttackAttrs), how a target answers it (TargetResponse), the gameplay
+// reaction that follows (react_decide's Reaction, with named hit-stop and knockback profiles) and what is
+// shown and heard (PresentQueue). The ruleset still owns hit points: a Reaction carries a damage scale
+// (num/den) for the ruleset's adapter to apply, never a number of hit points.
+//
+// Hit stop pauses only the actors its profile scopes (the attacker, the target or both) on the shared
+// fixed step; the world clock, the network clock and every other actor keep going.
+//
+// Presentation is downstream of accepted results: a full queue drops the lowest-priority event and
+// counts it, and nothing here can change an accepted Reaction.
+//
+// A reflected projectile is a new owned instance with its own attribution and lifetime; once the old
+// one is retired its events are refused.
+//
+//   coax/bin/coax test metaverse-engine/action/react.coax --library
+
+#module "aethyr.action.react";
+#load "../core/space.coax";
+
+REACT_STOPS :: 16;            // hit stops in force at once
+REACT_PRESENT :: 16;          // presentation events queued a step
+REACT_PROJECTILES :: 32;      // live projectiles
+
+// Damage kinds, as bits of a mask.
+DMG_SLASH :: cast(u32) 1; DMG_PIERCE :: cast(u32) 2; DMG_BLUNT :: cast(u32) 4; DMG_FIRE :: cast(u32) 8;
+DMG_COLD :: cast(u32) 16; DMG_LIGHTNING :: cast(u32) 32; DMG_RADIANT :: cast(u32) 64; DMG_NECROTIC :: cast(u32) 128;
+
+ReactionKind :: enum u8 { struck; guarded; immune; weak; resisted; flinch; reflected; ignored; }
+StopScope :: enum u8 { none; target; source; both; }
+
+// Named bounded profiles: a hit stop in ticks and whom it holds; a knockback's metres and its recovery.
+HitStop :: struct { ticks: int; scope: StopScope; }
+Knock :: struct { metres: f32; up: f32; recover: int; invulnerable: int; }
+
+// What an attack carries.
+AttackAttrs :: struct {
+  kinds: u32;
+  environmental: bool;          // a falling rock, a fire on the ground: not from a combatant
+  guardable: bool = true;
+  reflectable: bool;            // a projectile a reflecting target may send back
+  stop: HitStop; knock: Knock;
+}
+// How a target answers. guard_cos is the cosine of the half-arc a guard covers ahead of it.
+TargetResponse :: struct {
+  immune: u32; weak: u32; resist: u32;
+  guarding: bool; guard_cos: f32 = 0.5;
+  environmental_only: bool;     // only environmental attacks harm it (a boulder, a gate)
+  flinch_at_zero: bool = true;  // a zero-damage hit still plays its reaction
+  reflects: bool;
+}
+// The gameplay reaction: its kind, the scale the ruleset applies to the damage, and the profiles.
+Reaction :: struct { kind: ReactionKind; num: int = 1; den: int = 1; stop: HitStop; knock: Knock; }
+
+// book:begin decide
+// The reaction of a target answering attack a, with facing its forward and toward the unit direction
+// from it to the attacker (flat), and damage the ruleset's unscaled roll (0 is a zero-damage hit).
+react_decide :: (a: AttackAttrs, t: TargetResponse, facing: WorldPoint, toward: WorldPoint, damage: int) -> Reaction {
+  r: Reaction; r.stop = a.stop; r.knock = a.knock;
+  none := HitStop.{}; still := Knock.{};
+  if t.environmental_only && !a.environmental { r.kind = ReactionKind.ignored; r.num = 0; r.stop = none; r.knock = still; return r; }
+  if a.reflectable && t.reflects { r.kind = ReactionKind.reflected; r.num = 0; r.knock = still; return r; }
+  ahead := facing.x * toward.x + facing.z * toward.z;
+  if t.guarding && a.guardable && ahead >= t.guard_cos { r.kind = ReactionKind.guarded; r.num = 0; r.knock = Knock.{metres = a.knock.metres * 0.25, recover = a.knock.recover / 2}; return r; }
+  if a.kinds != 0 && (a.kinds & t.immune) == a.kinds { r.kind = ReactionKind.immune; r.num = 0; r.stop = none; r.knock = still; return r; }
+  if damage <= 0 { r.kind = ifx t.flinch_at_zero then ReactionKind.flinch else ReactionKind.ignored; r.num = 0; r.knock = still; if !t.flinch_at_zero { r.stop = none; } return r; }
+  if (a.kinds & t.weak) != 0 { r.kind = ReactionKind.weak; r.num = 2; return r; }
+  if (a.kinds & t.resist) != 0 { r.kind = ReactionKind.resisted; r.den = 2; return r; }
+  r.kind = ReactionKind.struck;
+  return r;
+}
+// The damage the ruleset applies: its roll scaled, rounded down.
+react_scaled :: (r: Reaction, damage: int) -> int { if r.den < 1 || damage <= 0 { return 0; } return (damage * r.num) / r.den; }
+// book:end decide
+
+// book:begin stop
+// Hit stops in force: each holds its scoped actors until its end tick.
+StopEntry :: struct { source: int; target: int; scope: StopScope; until: int; }
+Stops :: struct { items: [REACT_STOPS] StopEntry; n: int; refused: int; }
+// Add the stop of reaction r between source and target from tick now. A full table refuses the stop and
+// counts it: the hit itself still stands.
+react_stop_add :: (s: Stops, r: Reaction, source: int, target: int, now: int) -> Stops {
+  if r.stop.ticks <= 0 || r.stop.scope == StopScope.none { return s; }
+  out := react_stop_expire(s, now);
+  if out.n >= REACT_STOPS { out.refused += 1; return out; }
+  out.items[out.n] = StopEntry.{source = source, target = target, scope = r.stop.scope, until = now + r.stop.ticks}; out.n += 1;
+  return out;
+}
+react_stop_expire :: (s: Stops, now: int) -> Stops {
+  out: Stops; out.refused = s.refused;
+  for i: 0..<s.n { if s.items[i].until > now { out.items[out.n] = s.items[i]; out.n += 1; } }
+  return out;
+}
+// Whether actor is held on tick now. Only the actors a stop scopes are held.
+react_held :: (s: Stops, actor: int, now: int) -> bool {
+  for i: 0..<s.n {
+    e := s.items[i];
+    if e.until <= now { continue; }
+    if (e.scope == StopScope.target || e.scope == StopScope.both) && e.target == actor { return true; }
+    if (e.scope == StopScope.source || e.scope == StopScope.both) && e.source == actor { return true; }
+  }
+  return false;
+}
+// book:end stop
+
+// book:begin present
+// One thing to show or play for an accepted reaction: a sound, a particle burst, a number.
+PresentKind :: enum u8 { sound; particles; number; }
+PresentEvent :: struct { kind: PresentKind; reaction: ReactionKind; source: int; target: int; at: WorldPoint; priority: int; cue: int; }
+PresentQueue :: struct { items: [REACT_PRESENT] PresentEvent; n: int; per_source: int = 4; suppressed: int; }
+// Queue e. A source over its concurrency cap, or a full queue with nothing of lower priority to drop,
+// suppresses e; a full queue otherwise drops its lowest-priority, oldest event. Each is counted.
+react_present :: (q: PresentQueue, e: PresentEvent) -> PresentQueue {
+  out := q;
+  mine := 0;
+  for i: 0..<q.n { if q.items[i].source == e.source { mine += 1; } }
+  if mine >= q.per_source { out.suppressed += 1; return out; }
+  if q.n < REACT_PRESENT { out.items[out.n] = e; out.n += 1; return out; }
+  low := -1;
+  for i: 0..<q.n { if q.items[i].priority < e.priority && (low < 0 || q.items[i].priority < q.items[low].priority) { low = i; } }
+  out.suppressed += 1;
+  if low < 0 { return out; }
+  for i: low..<q.n - 1 { out.items[i] = out.items[i + 1]; }
+  out.items[q.n - 1] = e;
+  return out;
+}
+// Hand the queue to its consumers and empty it; the suppression count stays.
+react_present_drain :: (q: PresentQueue) -> PresentQueue { out: PresentQueue; out.per_source = q.per_source; out.suppressed = q.suppressed; return out; }
+// book:end present
+
+// book:begin reflect
+// A projectile: an owned instance with attribution and a lifetime in ticks.
+Projectile :: struct { id: int; owner: int; owner_gen: int; born: int; life: int; alive: bool; reflected_from: int; }
+Projectiles :: struct { items: [REACT_PROJECTILES] Projectile; n: int; next: int = 1; refused: int; }
+react_launch :: (p: Projectiles, owner: int, owner_gen: int, now: int, life: int) -> Projectiles {
+  out := p;
+  if life < 1 || p.n >= REACT_PROJECTILES { out.refused += 1; return out; }
+  out.items[out.n] = Projectile.{id = p.next, owner = owner, owner_gen = owner_gen, born = now, life = life, alive = true};
+  out.n += 1; out.next += 1;
+  return out;
+}
+react_find :: (p: Projectiles, id: int) -> int { for i: 0..<p.n { if p.items[i].id == id { return i; } } return -1; }
+// Whether an event of projectile id on tick now may apply: it is alive and within its lifetime.
+react_projectile_live :: (p: Projectiles, id: int, now: int) -> bool {
+  i := react_find(p, id);
+  if i < 0 { return false; }
+  q := p.items[i];
+  return q.alive && now >= q.born && now < q.born + q.life;
+}
+// Retire projectile id (it hit, expired or was reflected).
+react_retire :: (p: Projectiles, id: int) -> Projectiles {
+  out := p; i := react_find(p, id);
+  if i >= 0 { out.items[i].alive = false; }
+  return out;
+}
+// Reflect live projectile id from the target reflector (with its generation) on tick now: the old one is
+// retired and a new one, owned and attributed to the reflector, flies for the rest of the old lifetime.
+react_reflect :: (p: Projectiles, id: int, reflector: int, reflector_gen: int, now: int) -> Projectiles {
+  if !react_projectile_live(p, id, now) { out := p; out.refused += 1; return out; }
+  q := p.items[react_find(p, id)];
+  rest := q.born + q.life - now;
+  out := react_launch(react_retire(p, id), reflector, reflector_gen, now, rest);
+  if out.n > p.n { out.items[out.n - 1].reflected_from = id; }
+  return out;
+}
+// Drop retired and expired projectiles from the table.
+react_sweep :: (p: Projectiles, now: int) -> Projectiles {
+  out: Projectiles; out.next = p.next; out.refused = p.refused;
+  for i: 0..<p.n { q := p.items[i]; if q.alive && now < q.born + q.life { out.items[out.n] = q; out.n += 1; } }
+  return out;
+}
+// book:end reflect
+
+// ---- checks
+react_fwd :: () -> WorldPoint { return world_point(0, 0, 1); }
+
+#test "guard, immunity, weakness, resistance, zero damage, environmental-only and reflection have exact reactions" {
+  sword := AttackAttrs.{kinds = DMG_SLASH, stop = HitStop.{ticks = 4, scope = StopScope.both}, knock = Knock.{metres = 1.2, recover = 12}};
+  fire := AttackAttrs.{kinds = DMG_FIRE, reflectable = true};
+  rock := AttackAttrs.{kinds = DMG_BLUNT, environmental = true};
+  open: TargetResponse;
+  // struck, at full damage, with the attack's profiles
+  r := react_decide(sword, open, react_fwd(), world_point(0, 0, 1), 7);
+  #assert r.kind == ReactionKind.struck && react_scaled(r, 7) == 7 && r.stop.ticks == 4 && r.knock.metres == 1.2;
+  // guarded from ahead, struck from behind
+  g := open; g.guarding = true;
+  #assert react_decide(sword, g, react_fwd(), world_point(0, 0, 1), 7).kind == ReactionKind.guarded;
+  #assert react_scaled(react_decide(sword, g, react_fwd(), world_point(0, 0, 1), 7), 7) == 0;
+  #assert react_decide(sword, g, react_fwd(), world_point(0, 0, -1), 7).kind == ReactionKind.struck;
+  #assert react_decide(sword, g, react_fwd(), world_point(0.866, 0, 0.5), 7).kind == ReactionKind.guarded;   // the arc's edge
+  #assert react_decide(sword, g, react_fwd(), world_point(0.9, 0, 0.43), 7).kind == ReactionKind.struck;
+  unguardable := sword; unguardable.guardable = false;
+  #assert react_decide(unguardable, g, react_fwd(), world_point(0, 0, 1), 7).kind == ReactionKind.struck;
+  // immune (the imp to fire), weak (double), resisted (half, rounded down)
+  imp := open; imp.immune = DMG_FIRE; imp.weak = DMG_RADIANT; imp.resist = DMG_COLD;
+  #assert react_decide(fire, imp, react_fwd(), react_fwd(), 9).kind == ReactionKind.immune;
+  #assert react_decide(fire, imp, react_fwd(), react_fwd(), 9).stop.ticks == 0;
+  rad := AttackAttrs.{kinds = DMG_RADIANT};
+  #assert react_scaled(react_decide(rad, imp, react_fwd(), react_fwd(), 5), 5) == 10;
+  cold := AttackAttrs.{kinds = DMG_COLD};
+  #assert react_decide(cold, imp, react_fwd(), react_fwd(), 5).kind == ReactionKind.resisted && react_scaled(react_decide(cold, imp, react_fwd(), react_fwd(), 5), 5) == 2;
+  // a mixed attack is not wholly blocked by one immunity
+  mixed := AttackAttrs.{kinds = DMG_FIRE | DMG_SLASH};
+  #assert react_decide(mixed, imp, react_fwd(), react_fwd(), 4).kind == ReactionKind.struck;
+  // zero damage flinches (or not)
+  z := react_decide(sword, open, react_fwd(), react_fwd(), 0);
+  #assert z.kind == ReactionKind.flinch && z.knock.metres == 0 && z.stop.ticks == 4;
+  nf := open; nf.flinch_at_zero = false;
+  #assert react_decide(sword, nf, react_fwd(), react_fwd(), 0).kind == ReactionKind.ignored && react_decide(sword, nf, react_fwd(), react_fwd(), 0).stop.ticks == 0;
+  // a gate answers only environmental attacks
+  gate := open; gate.environmental_only = true;
+  #assert react_decide(sword, gate, react_fwd(), react_fwd(), 9).kind == ReactionKind.ignored;
+  #assert react_decide(rock, gate, react_fwd(), react_fwd(), 9).kind == ReactionKind.struck;
+  // a reflecting target sends a reflectable bolt back; a sword it doesn't
+  mirror := open; mirror.reflects = true;
+  #assert react_decide(fire, mirror, react_fwd(), react_fwd(), 9).kind == ReactionKind.reflected;
+  #assert react_decide(sword, mirror, react_fwd(), react_fwd(), 9).kind == ReactionKind.struck;
+}
+
+#test "hit stop holds only the actors it scopes, for its ticks" {
+  r: Reaction; r.stop = HitStop.{ticks = 5, scope = StopScope.target};
+  s := react_stop_add(Stops.{}, r, 1, 2, 100);
+  #assert react_held(s, 2, 100) && react_held(s, 2, 104) && !react_held(s, 2, 105);
+  #assert !react_held(s, 1, 100) && !react_held(s, 3, 100);
+  r.stop.scope = StopScope.both;
+  b := react_stop_add(Stops.{}, r, 1, 2, 100);
+  #assert react_held(b, 1, 102) && react_held(b, 2, 102) && !react_held(b, 3, 102);
+  r.stop.scope = StopScope.source;
+  #assert react_held(react_stop_add(Stops.{}, r, 1, 2, 100), 1, 101) && !react_held(react_stop_add(Stops.{}, r, 1, 2, 100), 2, 101);
+  r.stop.scope = StopScope.none;
+  #assert react_stop_add(Stops.{}, r, 1, 2, 100).n == 0;
+  r.stop = HitStop.{ticks = 50, scope = StopScope.target};
+  full: Stops;
+  for i: 0..<REACT_STOPS { full = react_stop_add(full, r, 1, 10 + i, 0); }
+  over := react_stop_add(full, r, 1, 99, 1);
+  #assert over.n == REACT_STOPS && over.refused == 1 && !react_held(over, 99, 2);
+  // expired stops make room
+  #assert react_stop_add(full, r, 1, 99, 60).n == 1;
+}
+
+#test "presentation caps suppress and count; they never change the accepted reactions" {
+  q: PresentQueue;
+  e := PresentEvent.{kind = PresentKind.sound, source = 1, target = 2, priority = 1};
+  for i: 0..<6 { q = react_present(q, e); }
+  #assert q.n == 4 && q.suppressed == 2;   // one source's cap
+  q2: PresentQueue; q2.per_source = 100;
+  for i: 0..<REACT_PRESENT { e.priority = i % 3; q2 = react_present(q2, e); }
+  hi := e; hi.priority = 9; hi.cue = 77;
+  q2 = react_present(q2, hi);
+  #assert q2.n == REACT_PRESENT && q2.suppressed == 1 && q2.items[REACT_PRESENT - 1].cue == 77 && q2.items[0].priority == 1;
+  lo := e; lo.priority = -1;
+  q3 := react_present(q2, lo);
+  #assert q3.n == REACT_PRESENT && q3.suppressed == 2 && q3.items[REACT_PRESENT - 1].cue == 77;
+  d := react_present_drain(q3);
+  #assert d.n == 0 && d.suppressed == 2 && d.per_source == 100;
+}
+
+#test "a reflected projectile is a new owned instance; the old one's events are refused" {
+  p := react_launch(Projectiles.{}, 3, 1, 10, 64);
+  #assert p.n == 1 && react_projectile_live(p, 1, 10) && react_projectile_live(p, 1, 73) && !react_projectile_live(p, 1, 74) && !react_projectile_live(p, 1, 9);
+  r := react_reflect(p, 1, 8, 2, 30);
+  #assert r.n == 2 && !react_projectile_live(r, 1, 31) && react_projectile_live(r, 2, 31);
+  q := r.items[1];
+  #assert q.owner == 8 && q.owner_gen == 2 && q.reflected_from == 1 && q.born == 30 && q.life == 44 && !react_projectile_live(r, 2, 74);
+  // reflecting a retired or expired one is refused
+  #assert react_reflect(r, 1, 8, 2, 31).refused == 1 && react_reflect(p, 1, 8, 2, 80).refused == 1;
+  #assert react_sweep(r, 31).n == 1 && react_sweep(r, 80).n == 0 && react_sweep(r, 80).next == 3;
+  #assert react_launch(p, 1, 1, 0, 0).refused == 1;
+}

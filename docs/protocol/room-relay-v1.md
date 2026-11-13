@@ -4,7 +4,7 @@ A relay room (`/api/room/relay/GAME/CODE`, `coax/web/room/room-relay.coax`)
 seats the players of any game and passes each one's text frames to the
 others. These are the relay's own frames. Profile:
 [`room-relay-v1.json`](../../proto/verse/room-relay-v1.json). Codec:
-`aethyr/net/relay-wire.coax`. The room writes the frames with it, and every
+`metaverse-engine/net/relay-wire.coax`. The room writes the frames with it, and every
 page that sits in a relay room reads them with it: Everglade II
 (`everglade/client/net.coax`), Everglade (`apps/openagents-web/everglade-net.coax`),
 the lockstep games (`apps/openagents-web/lockroom.coax`: Belt 2200 and Hold

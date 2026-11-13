@@ -1,0 +1,121 @@
+// The steering service on the world's navigation cells (GitHub #13281; docs/verse/navigation.md):
+// a creature goes to a point by the way the cells allow. Its window (metaverse-engine/ai/steer.coax) is filled
+// from the samples (metaverse-engine/world/nav/cells.coax), so it walks round a trunk and through a gap; when
+// the straight walk is shut and the point is more than NAV_LONG_NEAR metres off, the long way is
+// planned first: every sample within 32 m that the creature can walk to, searched once, and a
+// waypoint 8 m down the way to the one nearest its goal. The last word on every step is the cells'
+// (nav_cells_keep): it never ends on a closed sample. Where no way is open it comes as near as it
+// can and stands there.
+//
+// The realm keeps what is its own: which point the creature wants (its quarry's flank, its home),
+// how fast, and its leash. One NavWindow and one NavLong serve every creature of a room, one plan
+// at a time; a creature keeps a NavAgent and a NavGuide.
+//   coax/bin/coax test metaverse-engine/ai/steer-cells.coax --library
+//   coax/bin/coax mutate metaverse-engine/ai/steer-cells.coax --library --root-only
+#module "aethyr.ai.steer_cells";
+#authority;
+#load "steer.coax";
+#load "../world/nav/cells.coax";
+
+// book:begin long
+NAV_LONG_SIDE :: 128;        // samples along the long way's grid: 64 m, a world cell's side
+NAV_LONG_CELLS :: 16384;     // NAV_LONG_SIDE squared: grid.coax's NAV_GRID_MOST
+NAV_LONG_AHEAD :: 16;        // samples down the way its waypoint lies: 8 m
+NAV_LONG_NEAR :: 8.0;        // metres: a goal nearer than this is the window's alone
+
+// The long way's search grid and its storage, shared by a room's creatures.
+NavLong :: struct {
+  grid: NavGrid;
+  walk: [NAV_LONG_CELLS] bool;
+  cost: [NAV_LONG_CELLS] f32;
+  heap: [NAV_LONG_CELLS] s32;
+  slot: [NAV_LONG_CELLS] s32;
+  plans: int;                // long ways planned, for the room's numbers
+  head: int = -1;            // the grid cell the last plan headed for (-1: none)
+}
+// A creature's waypoint on the long way (on: it has one; way: the samples join it to its goal's own),
+// and the cells' revision it was planned on.
+NavGuide :: struct { on: bool; way: bool; x: f32; z: f32; revision: int; }
+// book:end long
+
+// book:begin long-plan
+// The long way from (ax, az) to (gx, gz), on the samples themselves: a grid NAV_LONG_SIDE samples a
+// side laid about the creature, every sample it can walk to from where it stands (the flow field
+// from its own sample), and the one of them nearest the goal (the goal's own when it is reached:
+// `way`; of equals, the nearer to the creature). Its waypoint is NAV_LONG_AHEAD samples along the
+// way to that one, back down the field; none when it is that near already, or when the creature
+// stands on a closed sample or isn't at a place.
+nav_long_plan :: (n: [] NavCells, l: [] NavLong, ax: f32, az: f32, gx: f32, gz: f32) -> NavGuide #effects(all) {
+  out := NavGuide.{revision = n[0].revision};
+  if !nav_cells_real(ax) || !nav_cells_real(az) { return out; }
+  c := f32(NAV_CELL_STEP); half := f32(NAV_LONG_SIDE) * c / 2;
+  g := NavGrid.{nx = NAV_LONG_SIDE, nz = NAV_LONG_SIDE, cell = c, x0 = floor((ax - half) / c + 0.5) * c, z0 = floor((az - half) / c + 0.5) * c};
+  open := nav_cells_fill(n, g, l[0].walk[..]);
+  l[0].grid = g; l[0].plans += 1;
+  ac := nav_grid_cell_at(g, ax, az); gc := nav_grid_cell_at(g, gx, gz);
+  f := nav_grid_flow(g, l[0].walk[..], l[0].cost[..], l[0].heap[..], l[0].slot[..], l[0].heap[0..<0], ac, f32(NAV_GRID_FAR), nav_grid_cells(g));
+  l[0].head = -1;
+  if f.status != NavFlowStatus.ok { return out; }
+  // where it heads: the goal's own sample when the field reached it, else the reached sample nearest the goal
+  // (the first in row order of equals)
+  best := -1; bd: f32 = 0;
+  if gc >= 0 && l[0].cost[gc] < f32(NAV_GRID_FAR) { best = gc; out.way = true; }
+  else {
+    for k: 0..<nav_grid_cells(g) {
+      if !(l[0].cost[k] < f32(NAV_GRID_FAR)) { continue; }
+      d := nav_len2(nav_grid_centre_x(g, k) - gx, nav_grid_centre_z(g, k) - gz);
+      if best < 0 || d < bd { best = k; bd = d; }
+    }
+  }
+  l[0].head = best;
+  // the way, from that sample back down to the creature's: chain[k - 1] is next to it (the heap is free now)
+  k := 0; at := best;
+  while at != ac && at >= 0 { l[0].heap[k] = s32(at); k += 1; at = nav_grid_downhill(g, l[0].walk[..], l[0].cost[..], at); }
+  if k <= NAV_LONG_AHEAD { return out; }
+  via := int(l[0].heap[k - NAV_LONG_AHEAD]);
+  out.on = true; out.x = nav_grid_centre_x(g, via); out.z = nav_grid_centre_z(g, via);
+  return out;
+}
+// book:end long-plan
+
+// The window, laid on the samples' own lattice (each of its cells one sample, so two plans a step
+// apart read the same ground) and filled from the cells: the count of its open cells.
+nav_cells_window :: (n: [] NavCells, w: [] NavWindow) -> int #effects(all) {
+  c := w[0].grid.cell;
+  w[0].grid.x0 = floor(w[0].grid.x0 / c + 0.5) * c; w[0].grid.z0 = floor(w[0].grid.z0 / c + 0.5) * c;
+  return nav_cells_fill(n, w[0].grid, w[0].walk[0..<nav_window_cells(w)]);
+}
+
+// book:begin go
+// One tick of a creature going to (gx, gz) at t.speed, among `bodies` (x, z, radius each; `skip`
+// its own, -1 none): it stands where the step returned says, and faces as it says.
+nav_cells_go :: (a: [] NavAgent, gd: [] NavGuide, t: NavTune, n: [] NavCells, w: [] NavWindow, l: [] NavLong,
+                 gx: f32, gz: f32, dt: f32, bodies: [] f32, skip: int) -> NavStep #effects(all) {
+  a[0].home_x = a[0].x; a[0].home_z = a[0].z;   // home is where it stands: the realm keeps its own leash
+  due := nav_think(a, t, gx, gz, dt);
+  if gd[0].revision != n[0].revision { due = true; }   // a door moved: what it planned on is gone
+  if due {
+    gd[0] = NavGuide.{revision = n[0].revision};
+    if nav_len(gx - a[0].x, gz - a[0].z) > f32(NAV_LONG_NEAR) && !nav_cells_line(n, a[0].x, a[0].z, gx, gz) { gd[0] = nav_long_plan(n, l, a[0].x, a[0].z, gx, gz); }
+  }
+  if gd[0].on { nav_via(a, gd[0].x, gd[0].z); } else { nav_via(a, gx, gz); }
+  if due {
+    nav_window_place(w, t, a[0]);
+    filled := nav_cells_window(n, w);
+    nav_plan(a, t, w);
+  }
+  if a[0].route == NavRoute.stuck {
+    // as near as the cells let it come: it stands and faces where it would go, until the next plan
+    stand := NavStep.{x = a[0].x, z = a[0].z, mode = NavMode.stand};
+    return nav_face(stand, a[0], gx - a[0].x, gz - a[0].z);
+  }
+  // its goal is the realm's point, so it never circles a target here: it stands to no swing
+  step := nav_move(a, t, a[0].circling, dt, bodies, skip);
+  spot := nav_cells_keep(n, step.x, step.z, a[0].x, a[0].z);
+  nav_moved(a, step, spot[0], spot[1]);
+  step.x = spot[0]; step.z = spot[1];
+  return step;
+}
+// book:end go
+
+#load "steer-cells-checks.coax" #test;

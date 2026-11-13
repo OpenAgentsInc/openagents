@@ -1,0 +1,605 @@
+// Everglade's sound effects, made and kept (#12832, metaverse-engine/audio/SOURCES.md). From the repository's root:
+//   coax/web/tool.sh metaverse-engine/audio/sfx-tool.coax gen [NAME] [--part I/N]
+//                                                              ask ElevenLabs Sound Effects v2 for each G
+//                                                              line's candidates not yet made; each one's
+//                                                              request goes in everglade-sfx.manifest, its
+//                                                              file in the cache
+//   coax/web/tool.sh metaverse-engine/audio/sfx-tool.coax build --kenney DIR
+//                                                              every candidate trimmed, normalised and
+//                                                              encoded (48 kHz Opus) into the page's sfx
+//                                                              directory, and everglade-bank.coax written
+//   coax/web/tool.sh metaverse-engine/audio/sfx-tool.coax judge [NAME]    Gemini on Vertex listens to each candidate
+//                                                              and scores it (everglade-sfx.scores); build
+//                                                              then picks each sound's variants from them
+//
+// The inputs are everglade-sfx.txt (the prompts and the CC0 files) and, when the owner has chosen,
+// everglade-sfx.picks (NAME CAND CAND ...). DIR holds the Kenney packs unpacked: DIR/impact-sounds and
+// DIR/rpg-audio (https://kenney.nl/assets/impact-sounds, https://kenney.nl/assets/rpg-audio, CC0).
+// The generated files come back from the cache (~/.cache/openagents-sfx) or, for Scenario's, by their
+// asset id: nothing in the manifest is asked for twice. ElevenLabs has no seed, so a lost direct file is
+// made again only by deleting its manifest line.
+//
+// It reads ~/work/.secrets/elevenlabs.env (ELEVENLABS_API_KEY) and, for the two candidates first made
+// through Scenario, ~/work/.secrets/scenario.env (SCENARIO_API_KEY, SCENARIO_API_SECRET); it never prints them;
+// judge takes a token from gcloud with the automation account's CLOUDSDK_CONFIG. ffmpeg decodes and
+// encodes; every measure, cut and gain is Coax (measure.coax).
+// tool.sh: tls
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/net/http.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/text/base64.coax";
+#load "measure.coax";
+#load "sfx.coax";
+
+ST_SCENARIO :: "https://api.cloud.scenario.com/v1";
+ST_MODEL :: "model_elevenlabs-sound-effects-v2";   // Scenario's name for it
+ST_ELEVEN_MODEL :: "eleven_text_to_sound_v2";
+ST_ELEVEN_URL :: "https://api.elevenlabs.io/v1/sound-generation?output_format=mp3_44100_192";       // ElevenLabs'
+ST_GEMINI :: "https://us-central1-aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent";
+ST_INFLUENCE :: [3] string.["0.35", "0.55", "0.75"];
+ST_TEXT :: "metaverse-engine/audio/everglade-sfx.txt";
+ST_MANIFEST :: "metaverse-engine/audio/everglade-sfx.manifest";
+ST_SCORES :: "metaverse-engine/audio/everglade-sfx.scores";
+ST_PICKS :: "metaverse-engine/audio/everglade-sfx.picks";
+ST_BANK :: "metaverse-engine/audio/everglade-bank.coax";
+ST_BANK_LAB :: "metaverse-engine/audio/everglade-bank-lab.coax";
+ST_OUT :: "apps/openagents-web/realms/everglade/sfx";
+ST_TARGET :: -16.0;          // LUFS: each effect's loudest 400 ms (the game's levels set them against each other)
+ST_TARGET_BED :: -24.0;      // the town's bed, integrated
+ST_CEILING :: -1.0;          // dBFS
+ST_TRIM :: -48.0;            // dBFS: below this at either end is cut
+ST_FRAMES :: 48000 * 32;     // the longest candidate, 32 s, in frames
+ST_OUTLINE :: 48;            // the waveform's bins in Audio Lab
+ST_JOBS :: 160;
+
+// ---- a growing text
+
+Sb :: struct { b: [] u8; n: int; bad: bool; }
+sb :: (s: [] Sb, t: string) { for c: t { if s[0].n < s[0].b.count { s[0].b[s[0].n] = c; s[0].n += 1; } else { s[0].bad = true; } } }
+sb_int :: (s: [] Sb, v: int) {
+  if v < 0 { sb(s, "-"); }
+  m := ifx v < 0 then -v else v;
+  d: [20] u8; k := 0;
+  if m == 0 { d[0] = '0'; k = 1; }
+  while m > 0 { d[k] = cast,trunc(u8) ('0' + m % 10); m /= 10; k += 1; }
+  for i: 0..<k { sb(s, cast(string) d[k - 1 - i..<k - i]); }
+}
+sb_text :: (s: [] Sb) -> string { return cast(string) s[0].b[0..<s[0].n]; }
+// JSON's string escapes for t.
+sb_json :: (s: [] Sb, t: string) {
+  for c: t {
+    if c == '"' { sb(s, "\\\""); } else if c == '\\' { sb(s, "\\\\"); } else if c == '\n' { sb(s, "\\n"); }
+    else if c < 32 { sb(s, " "); } else if s[0].n < s[0].b.count { s[0].b[s[0].n] = c; s[0].n += 1; } else { s[0].bad = true; }
+  }
+}
+
+// ---- the lines of a text: line i's from and to
+
+st_lines :: (t: string, from: [] int, to: [] int) -> int {
+  n := 0; a := 0;
+  for i: 0..<t.count + 1 {
+    if i < t.count && t[i] != '\n' { continue; }
+    if i > a && t[a] != '#' && n < from.count { from[n] = a; to[n] = i; n += 1; }
+    a = i + 1;
+  }
+  return n;
+}
+// The k-th space-separated word of a line (the rest from it on when rest).
+st_word :: (l: string, k: int, rest: bool) -> string {
+  w := 0; i := 0;
+  while i < l.count && w < k { if l[i] == ' ' { w += 1; } i += 1; }
+  j := i;
+  if rest { j = l.count; } else { while j < l.count && l[j] != ' ' && l[j] != '|' { j += 1; } }
+  return l[i..<j];
+}
+st_after_bar :: (l: string) -> string { for i: 0..<l.count { if l[i] == '|' { return l[i + 1..<l.count]; } } return ""; }
+
+// ---- one generated candidate: G NAME SECONDS LOOP CANDIDATES|PROMPT
+StGen :: struct { name: string; seconds: string; loop: bool; cands: int; prompt: string; }
+st_gen :: (l: string) -> StGen {
+  g: StGen;
+  if l.count < 2 || l[0] != 'G' { return g; }
+  g.name = st_word(l, 1, false); g.seconds = st_word(l, 2, false); g.loop = st_word(l, 3, false) == "1";
+  c := st_word(l, 4, false); g.cands = ifx c.count == 1 && c[0] >= '1' && c[0] <= '5' then cast(int) (c[0] - '0') else 0;
+  g.prompt = st_after_bar(l);
+  return g;
+}
+#test "a G line's fields; a K line is not one" {
+  g := st_gen("G fire-cast 0.7 0 3|a whoosh, close");
+  #assert g.name == "fire-cast" && g.seconds == "0.7" && !g.loop && g.cands == 3 && g.prompt == "a whoosh, close";
+  #assert st_gen("K hit impact-sounds Audio/x.ogg").name.count == 0;
+  #assert st_word("K hit impact-sounds Audio/x.ogg", 3, false) == "Audio/x.ogg";
+}
+
+// ---- the secrets and the requests
+
+st_env :: (path: string, key: string, out: [] u8) -> string {
+  buf: [4096] u8;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { return ""; }
+  t := cast(string) buf[0..<n];
+  from: [64] int; to: [64] int;
+  m := st_lines(t, from[..], to[..]);
+  for i: 0..<m {
+    l := t[from[i]..<to[i]];
+    if l.count > key.count && l[0..<key.count] == key && l[key.count] == '=' {
+      v := l[key.count + 1..<l.count];
+      if v.count > out.count { return ""; }
+      for j: 0..<v.count { out[j] = v[j]; }
+      return cast(string) out[0..<v.count];
+    }
+  }
+  return "";
+}
+// "Authorization: Basic base64(key:secret)" into out.
+st_auth :: (out: [] u8) -> string {
+  home: [512] u8; p: [1024] u8;
+  h := proc_getenv("HOME", home[..]);
+  path := fs_join(h, "work/.secrets/scenario.env", p[..]);
+  k: [256] u8; s: [256] u8; both: [600] u8;
+  key := st_env(path, "SCENARIO_API_KEY", k[..]); secret := st_env(path, "SCENARIO_API_SECRET", s[..]);
+  if key.count == 0 || secret.count == 0 { return ""; }
+  b: [1] Sb; b[0].b = both[..];
+  sb(b[..], key); sb(b[..], ":"); sb(b[..], secret);
+  o: [1] Sb; o[0].b = out;
+  sb(o[..], "Authorization: Basic ");
+  enc: [1024] u8;
+  e := b64_encode(sb_text(b[..]), enc[..]);
+  sb(o[..], cast(string) enc[0..<e]);
+  return sb_text(o[..]);
+}
+
+StCall :: struct { ok: bool; code: int; n: int; }
+// A request to Scenario: the JSON answer's bytes in out.
+st_scenario :: (w: [] HttpWork, auth: string, method: string, path: string, body: string, out: [] u8) -> StCall {
+  u: [2048] u8; ub: [1] Sb; ub[0].b = u[..];
+  sb(ub[..], ST_SCENARIO); sb(ub[..], path);
+  hdr := [3] string.[auth, "Content-Type: application/json", "Accept: application/json"];
+  r := http_do(w, method, sb_text(ub[..]), hdr[..], body, 60000, 2, out);
+  return StCall.{ok = r.error == HTTP_OK && r.code >= 200 && r.code < 300, code = r.code, n = r.n};
+}
+// The string at a JSON path of a body, into out ("" when there is none).
+st_json_str :: (body: string, path: string, index: int, out: [] u8) -> string {
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) { return ""; }
+  at := jv_path(d[0], 0, path);
+  if index >= 0 { at = jv_at(d[0], at, index); }
+  n := jv_str(d[0], at, out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+
+// ---- the manifest: NAME CAND SOURCE ... a line each
+
+st_read :: (path: string, out: [] u8) -> string { n := fs_read(path, out); return ifx n > 0 then cast(string) out[0..<n] else ""; }
+// The manifest's line for NAME CAND, or "".
+st_find :: (t: string, name: string, cand: string) -> string {
+  from: [1024] int; to: [1024] int;
+  n := st_lines(t, from[..], to[..]);
+  for i: 0..<n { l := t[from[i]..<to[i]]; if st_word(l, 0, false) == name && st_word(l, 1, false) == cand { return l; } }
+  return "";
+}
+
+st_cache :: (out: [] u8) -> string {
+  home: [512] u8;
+  h := proc_getenv("HOME", home[..]);
+  return fs_join(h, ".cache/openagents-sfx", out);
+}
+
+// Downloads asset `asset`'s file to path.
+st_fetch_asset :: (w: [] HttpWork, auth: string, asset: string, path: string, body: [] u8) -> bool {
+  p: [256] u8; pb: [1] Sb; pb[0].b = p[..];
+  sb(pb[..], "/assets/"); sb(pb[..], asset);
+  c := st_scenario(w, auth, "GET", sb_text(pb[..]), "", body);
+  if !c.ok { tool_errln("an asset's record did not come"); return false; }
+  u: [4096] u8;
+  url := st_json_str(cast(string) body[0..<c.n], "asset.url", -1, u[..]);
+  if url.count == 0 { return false; }
+  hdr := [1] string.["Accept: */*"];
+  r := http_do(w, "GET", url, hdr[..], "", 120000, 3, body);
+  if r.error != HTTP_OK || r.code != 200 { tool_errln("an asset's file did not come"); return false; }
+  return fs_write(path, cast(string) body[0..<r.n]);
+}
+
+// The ElevenLabs key: ~/work/.secrets/elevenlabs.env's ELEVENLABS_API_KEY, as its header.
+st_eleven :: (out: [] u8) -> string {
+  home: [512] u8; p: [1024] u8;
+  h := proc_getenv("HOME", home[..]);
+  path := fs_join(h, "work/.secrets/elevenlabs.env", p[..]);
+  k: [256] u8;
+  key := st_env(path, "ELEVENLABS_API_KEY", k[..]);
+  if key.count == 0 { return ""; }
+  o: [1] Sb; o[0].b = out;
+  sb(o[..], "xi-api-key: "); sb(o[..], key);
+  return sb_text(o[..]);
+}
+
+// Each G line's candidates not yet in the manifest, from ElevenLabs Sound Effects v2 (its own API:
+// the Scenario plan ran out of creative units on 2026-11-04). part I/N makes every Nth line only, so
+// N runs share the work; each keeps its lines in everglade-sfx.manifest.I until a run of all of them
+// (part 0/1) adds them to the manifest.
+st_gen_all :: (only: string, part: int, parts: int) -> int {
+  sb_auth: [1024] u8; auth := st_auth(sb_auth[..]);
+  eb: [400] u8; eleven := st_eleven(eb[..]);
+  if eleven.count == 0 { tool_errln("sfx-tool: no ELEVENLABS_API_KEY in ~/work/.secrets/elevenlabs.env"); return 1; }
+  cb: [1024] u8; cache := st_cache(cb[..]);
+  if !fs_mkdir(cache) { tool_errln("sfx-tool: cannot make the cache"); return 1; }
+  tb: [65536] u8; text := st_read(ST_TEXT, tb[..]);
+  // a part's lines go to its own file (parts appending to one file lose lines), merged by the next run
+  pf: [256] u8; pfb: [1] Sb; pfb[0].b = pf[..];
+  sb(pfb[..], ST_MANIFEST); sb(pfb[..], "."); sb_int(pfb[..], part);
+  mine := ifx parts > 1 then sb_text(pfb[..]) else ST_MANIFEST;
+  if parts == 1 {
+    for j: 0..<16 {
+      ob: [256] u8; o: [1] Sb; o[0].b = ob[..]; sb(o[..], ST_MANIFEST); sb(o[..], "."); sb_int(o[..], j);
+      xb: [65536] u8; got := st_read(sb_text(o[..]), xb[..]);
+      if got.count > 0 && fs_append(ST_MANIFEST, got) { r := fs_remove(sb_text(o[..])); }
+    }
+  }
+  mb: [262144] u8; manifest := st_read(ST_MANIFEST, mb[..]);
+  w: [1] HttpWork; body: [1048576] u8;
+  from: [512] int; to: [512] int;
+  n := st_lines(text, from[..], to[..]);
+  bad := 0; gi := -1;
+  for i: 0..<n {
+    g := st_gen(text[from[i]..<to[i]]);
+    if g.name.count == 0 { continue; }
+    gi += 1;
+    if (only.count > 0 && g.name != only) || gi % parts != part { continue; }
+    for k: 1..<g.cands + 1 {
+      cn: [4] u8; cn[0] = 'e'; cn[1] = cast,trunc(u8) ('0' + k);
+      cand := cast(string) cn[0..<2];
+      fp: [1024] u8; fb: [1] Sb; fb[0].b = fp[..];
+      sb(fb[..], cache); sb(fb[..], "/"); sb(fb[..], g.name); sb(fb[..], "-"); sb(fb[..], cand); sb(fb[..], ".mp3");
+      had := st_find(manifest, g.name, cand);
+      if had.count > 0 {
+        // made before: from the cache, or Scenario's copy by its asset id
+        if !fs_exists(sb_text(fb[..])) && st_word(had, 7, false) == "scenario" && (auth.count == 0 || !st_fetch_asset(w[..], auth, st_word(had, 9, false), sb_text(fb[..]), body[..])) { bad += 1; }
+        continue;
+      }
+      q: [2048] u8; qb: [1] Sb; qb[0].b = q[..];
+      sb(qb[..], "{\"text\":\""); sb_json(qb[..], g.prompt); sb(qb[..], "\",\"duration_seconds\":"); sb(qb[..], g.seconds);
+      sb(qb[..], ",\"prompt_influence\":"); sb(qb[..], ST_INFLUENCE[(k - 1) % 3]);
+      sb(qb[..], ",\"loop\":"); sb(qb[..], ifx g.loop then "true" else "false"); sb(qb[..], ",\"model_id\":\""); sb(qb[..], ST_ELEVEN_MODEL); sb(qb[..], "\"}");
+      hdr := [3] string.[eleven, "Content-Type: application/json", "Accept: audio/mpeg"];
+      // ElevenLabs makes a few at once for a plan and answers 429 past them: wait for a place
+      r := http_do(w[..], "POST", ST_ELEVEN_URL, hdr[..], sb_text(qb[..]), 120000, 0, body[..]);
+      for tries: 0..<40 { if r.code != 429 { break; } proc_sleep(3000); r = http_do(w[..], "POST", ST_ELEVEN_URL, hdr[..], sb_text(qb[..]), 120000, 0, body[..]); }
+      if r.error != HTTP_OK || r.code != 200 || r.n < 1000 { print("sfx-tool: % %: not made (HTTP % %)\n", g.name, cand, r.code, r.error); bad += 1; continue; }
+      if !fs_write(sb_text(fb[..]), cast(string) body[0..<r.n]) { bad += 1; continue; }
+      trace := http_header(cast(string) w[0].head[0..<w[0].head_n], "x-trace-id");
+      // NAME CAND elevenlabs MODEL SECONDS LOOP INFLUENCE direct TRACE -
+      l: [512] u8; lb: [1] Sb; lb[0].b = l[..];
+      sb(lb[..], g.name); sb(lb[..], " "); sb(lb[..], cand); sb(lb[..], " elevenlabs "); sb(lb[..], ST_ELEVEN_MODEL); sb(lb[..], " ");
+      sb(lb[..], g.seconds); sb(lb[..], ifx g.loop then " 1 " else " 0 "); sb(lb[..], ST_INFLUENCE[(k - 1) % 3]);
+      sb(lb[..], " direct "); sb(lb[..], ifx trace.count > 0 && trace.count < 64 then trace else "-"); sb(lb[..], " -\n");
+      if !fs_append(mine, sb_text(lb[..])) { bad += 1; }
+      print("sfx-tool: % % made\n", g.name, cand);
+    }
+  }
+  return ifx bad > 0 then 1 else 0;
+}
+lo_i :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+
+
+// ---- build: every candidate cut, gained and encoded; the bank written
+
+StCand :: struct {
+  sound: int; cand: [8] u8; cand_n: int; source: int; channels: int; ms: int;
+  peak: int; lufs: int; loudest: int; score: int = -1; outline: [ST_OUTLINE] u8;
+}
+ST_CANDS :: 320;
+ST_SYNTH :: 0; ST_ELEVEN :: 1; ST_KENNEY :: 2;
+ST_SOURCES :: [3] string.["SFXB_SYNTH", "SFXB_ELEVENLABS", "SFXB_KENNEY"];
+
+// PCM 16-bit little-endian bytes as samples.
+st_s16_in :: (b: [] u8, n: int, x: [] f32) -> int {
+  m := lo_i(n / 2, x.count);
+  for i: 0..<m { v := cast(int) b[2 * i] | (cast(int) b[2 * i + 1] << 8); if v >= 32768 { v -= 65536; } x[i] = cast(f32) (f64(v) / 32768.0); }
+  return m;
+}
+st_s16_out :: (x: [] f32, n: int, b: [] u8) -> int {
+  for i: 0..<n {
+    v := cast(int) floor(meas_min(meas_max(cast(f64) x[i], -1), 32767.0 / 32768.0) * 32768.0 + 0.5);
+    if v < 0 { v += 65536; }
+    b[2 * i] = cast,trunc(u8) (v & 255); b[2 * i + 1] = cast,trunc(u8) (v >> 8);
+  }
+  return 2 * n;
+}
+// ffmpeg's argv run; false (and its last words) when it fails.
+st_run :: (argv: [] string) -> bool {
+  out: [4096] u8; err: [4096] u8;
+  r := proc_run(argv, 120000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 { tool_errln(cast(string) err[0..<r.err_n]); return false; }
+  return true;
+}
+
+// One candidate from src (any file ffmpeg reads) into the page's directory as NAME-CAND.ogg:
+// decoded to 48 kHz, trimmed, gained to the target and encoded; its measures into c.
+st_make :: (src: string, name: string, cand: string, loop: bool, tmp: string, c: [] StCand, x: [] f32, y: [] f32, sq: [] f64, raw: [] u8) -> bool {
+  ch := ifx loop then "2" else "1";
+  pa: [1024] u8; pr := fs_join(tmp, "in.raw", pa[..]);
+  dec := [13] string.["ffmpeg", "-v", "error", "-y", "-i", src, "-f", "s16le", "-ac", ch, "-ar", "48000", pr];
+  if !st_run(dec[..]) { return false; }
+  n := fs_read(pr, raw);
+  if n <= 0 { return false; }
+  channels := ifx loop then 2 else 1;
+  frames := st_s16_in(raw, n, x) / channels;
+  m := meas_measure(x, frames, channels, ST_TRIM, sq);
+  if m.last <= m.first { tool_errln("silent"); return false; }
+  first := 0; last := frames;
+  if !loop { first = lo_i(m.first, hi_i(0, m.first - 96)); last = lo_i(frames, m.last + 1440); }
+  g := ifx loop then meas_gain(Measure.{peak_db = m.peak_db, loudest = m.lufs}, ST_TARGET_BED, ST_CEILING) else meas_gain(m, ST_TARGET, ST_CEILING);
+  k := meas_cut(x, channels, first, last, g, ifx loop then 0 else 96, ifx loop then 0 else 480, y);
+  f := meas_measure(y, k, channels, ST_TRIM, sq);
+  c[0].channels = channels; c[0].ms = k * 1000 / MEAS_RATE;
+  c[0].peak = cast(int) floor(f.peak_db * 100 + 0.5); c[0].lufs = cast(int) floor(f.lufs * 100 + 0.5); c[0].loudest = cast(int) floor(f.loudest * 100 + 0.5);
+  meas_outline(y, k, channels, c[0].outline[..]);
+  bytes := st_s16_out(y, k * channels, raw);
+  pb: [1024] u8; pc := fs_join(tmp, "out.raw", pb[..]);
+  if !fs_write(pc, cast(string) raw[0..<bytes]) { return false; }
+  o: [1024] u8; ob: [1] Sb; ob[0].b = o[..];
+  sb(ob[..], ST_OUT); sb(ob[..], "/"); sb(ob[..], name); sb(ob[..], "-"); sb(ob[..], cand); sb(ob[..], ".ogg");
+  enc := [19] string.["ffmpeg", "-v", "error", "-y", "-f", "s16le", "-ar", "48000", "-ac", ch, "-i", pc, "-c:a", "libopus", "-b:a", ifx loop then "80k" else "48k", "-vbr", "on", sb_text(ob[..])];
+  return st_run(enc[..]);
+}
+hi_i :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+
+// The synthesized effect's measures at 48 kHz (Audio Lab's A side; the page renders it itself).
+st_synth :: (id: int, c: [] StCand, mix: [] int, wav: [] u8, x: [] f32, sq: [] f64) -> bool {
+  r := sfx_render(id, MEAS_RATE, mix, wav);
+  if !r.ok { return false; }
+  frames := st_s16_in(wav[WAV_HEADER..<r.bytes], r.bytes - WAV_HEADER, x);
+  m := meas_measure(x, frames, 1, ST_TRIM, sq);
+  c[0].channels = 1; c[0].ms = frames * 1000 / MEAS_RATE;
+  c[0].peak = cast(int) floor(m.peak_db * 100 + 0.5); c[0].lufs = cast(int) floor(m.lufs * 100 + 0.5); c[0].loudest = cast(int) floor(m.loudest * 100 + 0.5);
+  meas_outline(x, frames, 1, c[0].outline[..]);
+  return true;
+}
+
+// A score line's score for NAME CAND (-1 none): NAME CAND SCORE WORDS...
+st_score :: (t: string, name: string, cand: string) -> int {
+  l := st_find(t, name, cand);
+  s := st_word(l, 2, false);
+  if s.count == 0 || s.count > 2 { return -1; }
+  v := 0; for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+
+// The variants of sound id: the owner's picks when there are any, else the best score and those
+// within two of it (6 and up), at most SFXB_VARIANTS; with no scores, the first generated one.
+st_choose :: (id: int, cs: [] StCand, n: int, picks: string, out: [] int) -> int {
+  for i: 0..<out.count { out[i] = -1; }
+  k := 0;
+  from: [256] int; to: [256] int;
+  pn := st_lines(picks, from[..], to[..]);
+  for i: 0..<pn {
+    l := picks[from[i]..<to[i]];
+    if st_word(l, 0, false) != SFX_NAMES[id] { continue; }
+    for w: 1..<8 {
+      c := st_word(l, w, false);
+      if c.count == 0 { break; }
+      for j: 0..<n { if cs[j].sound == id && cast(string) cs[j].cand[0..<cs[j].cand_n] == c && k < out.count { out[k] = j; k += 1; } }
+    }
+    return k;
+  }
+  best := -1;
+  for j: 0..<n { if cs[j].sound == id && cs[j].source != ST_SYNTH && cs[j].score > best { best = cs[j].score; } }
+  if best < 0 {
+    for j: 0..<n { if cs[j].sound == id && cs[j].source != ST_SYNTH { out[0] = j; return 1; } }
+    return 0;
+  }
+  for s: 0..<11 {
+    want := best - s;
+    if want < 0 || (s > 0 && (want < best - 2 || want < 6)) { break; }
+    for j: 0..<n { if cs[j].sound == id && cs[j].source != ST_SYNTH && cs[j].score == want && k < out.count { out[k] = j; k += 1; } }
+  }
+  return k;
+}
+
+st_hex :: (s: [] Sb, b: [] u8) { h := "0123456789abcdef"; for v: b { sb(s, h[cast(int) (v >> 4)..<cast(int) (v >> 4) + 1]); sb(s, h[cast(int) (v & 15)..<cast(int) (v & 15) + 1]); } }
+
+st_build_all :: (kenney: string) -> int {
+  if kenney.count == 0 || !fs_exists(kenney) { tool_errln("sfx-tool: build needs --kenney DIR (the packs unpacked)"); return 2; }
+  cb: [1024] u8; cache := st_cache(cb[..]);
+  tb: [65536] u8; text := st_read(ST_TEXT, tb[..]);
+  mb: [262144] u8; manifest := st_read(ST_MANIFEST, mb[..]);
+  sc: [262144] u8; scores := st_read(ST_SCORES, sc[..]);
+  pk: [65536] u8; picks := st_read(ST_PICKS, pk[..]);
+  tmpb: [1024] u8; tmp := fs_temp("sfx-tool-", tmpb[..]);
+  if tmp.count == 0 || !fs_mkdir(ST_OUT) { return 1; }
+  cs: [ST_CANDS] StCand; n := 0;
+  x: [ST_FRAMES * 2] f32; y: [ST_FRAMES * 2] f32; sq: [ST_FRAMES] f64; raw: [ST_FRAMES * 4] u8;
+  mix: [ST_FRAMES] int; wav: [ST_FRAMES * 2] u8;
+  bad := 0;
+  // the synthesized set, measured
+  for id: 0..<SFX_COUNT {
+    c := cs[n..<n + 1]; c[0].sound = id; c[0].source = ST_SYNTH; c[0].cand[0] = 's'; c[0].cand_n = 1;
+    if st_synth(id, c, mix[..], wav[..], x[..], sq[..]) { n += 1; }
+  }
+  from: [512] int; to: [512] int;
+  ln := st_lines(text, from[..], to[..]);
+  kn: [SFX_COUNT] int;
+  for i: 0..<ln {
+    l := text[from[i]..<to[i]];
+    if l[0] == 'G' {
+      g := st_gen(l);
+      id := sfx_id(g.name);
+      if id < 0 { print("sfx-tool: % is no Everglade sound\n", g.name); bad += 1; continue; }
+      for k: 1..<g.cands + 1 {
+        cn: [4] u8; cn[0] = 'e'; cn[1] = cast,trunc(u8) ('0' + k); cand := cast(string) cn[0..<2];
+        if st_find(manifest, g.name, cand).count == 0 { continue; }
+        fp: [1024] u8; fb: [1] Sb; fb[0].b = fp[..];
+        sb(fb[..], cache); sb(fb[..], "/"); sb(fb[..], g.name); sb(fb[..], "-"); sb(fb[..], cand); sb(fb[..], ".mp3");
+        if n >= ST_CANDS { break; }
+        c := cs[n..<n + 1]; c[0] = StCand.{sound = id, source = ST_ELEVEN, cand_n = 2}; c[0].cand[0] = 'e'; c[0].cand[1] = cn[1];
+        c[0].score = st_score(scores, g.name, cand);
+        if st_make(sb_text(fb[..]), g.name, cand, g.loop, tmp, c, x[..], y[..], sq[..], raw[..]) { n += 1; print("sfx-tool: % % built\n", g.name, cand); }
+        else { print("sfx-tool: % %: not built\n", g.name, cand); bad += 1; }
+      }
+    } else if l[0] == 'K' {
+      name := st_word(l, 1, false); id := sfx_id(name);
+      if id < 0 || n >= ST_CANDS { bad += 1; continue; }
+      kn[id] += 1;
+      cn: [4] u8; cn[0] = 'k'; cn[1] = cast,trunc(u8) ('0' + kn[id]); cand := cast(string) cn[0..<2];
+      fp: [1024] u8; fb: [1] Sb; fb[0].b = fp[..];
+      sb(fb[..], kenney); sb(fb[..], "/"); sb(fb[..], st_word(l, 2, false)); sb(fb[..], "/"); sb(fb[..], st_word(l, 3, false));
+      c := cs[n..<n + 1]; c[0] = StCand.{sound = id, source = ST_KENNEY, cand_n = 2}; c[0].cand[0] = 'k'; c[0].cand[1] = cn[1];
+      c[0].score = st_score(scores, name, cand);
+      if st_make(sb_text(fb[..]), name, cand, false, tmp, c, x[..], y[..], sq[..], raw[..]) { n += 1; print("sfx-tool: % % built\n", name, cand); }
+      else { print("sfx-tool: % %: not built\n", name, cand); bad += 1; }
+    }
+  }
+  r := fs_remove(tmp);
+  // the bank: every candidate and each sound's variants (the page's), and their measures (Audio Lab's)
+  ob: [1048576] u8; o: [1] Sb; o[0].b = ob[..];
+  lb: [1048576] u8; l: [1] Sb; l[0].b = lb[..];
+  sb(o[..], "// Written by metaverse-engine/audio/sfx-tool.coax build (#12832): do not edit. Each candidate of each Everglade\n");
+  sb(o[..], "// sound (metaverse-engine/audio/SOURCES.md): its source and length; and each sound's variants. Their measures,\n");
+  sb(o[..], "// for Audio Lab, are in everglade-bank-lab.coax. The page plays NAME-CAND from /realms/everglade/sfx/\n");
+  sb(o[..], "// (the synthesized s it renders itself).\n");
+  sb(o[..], "SFXB_SYNTH :: 0; SFXB_ELEVENLABS :: 1; SFXB_KENNEY :: 2;\n");
+  sb(o[..], "SfxbCand :: struct { sound: int; cand: string; source: int; ms: int; }\n");
+  sb(o[..], "SFXB_N :: "); sb_int(o[..], n); sb(o[..], ";\nSFXB :: [SFXB_N] SfxbCand.[\n");
+  sb(l[..], "// Written by metaverse-engine/audio/sfx-tool.coax build (#12832): do not edit. Each candidate's measures, as\n");
+  sb(l[..], "// everglade-bank.coax's SFXB lists them: channels, peak and loudness (hundredths of a dB and LUFS), the\n");
+  sb(l[..], "// judge's score (-1 none) and its outline (48 bins, hex). Audio Lab shows them.\n");
+  sb(l[..], "#load \"everglade-bank.coax\";\n");
+  sb(l[..], "SfxbMeasure :: struct { channels: int; peak: int; lufs: int; loudest: int; score: int; outline: string; }\n");
+  sb(l[..], "SFXB_MEASURE :: [SFXB_N] SfxbMeasure.[\n");
+  for j: 0..<n {
+    c := cs[j];
+    sb(o[..], "  SfxbCand.{sound = "); sb_int(o[..], c.sound); sb(o[..], ", cand = \""); sb(o[..], cast(string) c.cand[0..<c.cand_n]);
+    sb(o[..], "\", source = "); sb(o[..], ST_SOURCES[c.source]); sb(o[..], ", ms = "); sb_int(o[..], c.ms); sb(o[..], "}");
+    sb(o[..], ifx j + 1 < n then ",\n" else "];\n");
+    sb(l[..], "  SfxbMeasure.{channels = "); sb_int(l[..], c.channels);
+    sb(l[..], ", peak = "); sb_int(l[..], c.peak); sb(l[..], ", lufs = "); sb_int(l[..], c.lufs); sb(l[..], ", loudest = "); sb_int(l[..], c.loudest);
+    sb(l[..], ", score = "); sb_int(l[..], c.score); sb(l[..], ", outline = \""); st_hex(l[..], c.outline[..]); sb(l[..], "\"}");
+    sb(l[..], ifx j + 1 < n then ",\n" else "];\n");
+  }
+  sb(o[..], "SFXB_VARIANTS :: 4;\n// Each sound's variants, played in turn (mix.coax): indexes into SFXB, -1 none.\nSFXB_PICK :: [SFX_COUNT * SFXB_VARIANTS] int.[\n");
+  for id: 0..<SFX_COUNT {
+    v: [4] int;
+    k := st_choose(id, cs[..], n, picks, v[..]);
+    if k == 0 { print("sfx-tool: % has no variant\n", SFX_NAMES[id]); }
+    sb(o[..], "  "); for i: 0..<4 { sb_int(o[..], v[i]); sb(o[..], ifx id + 1 == SFX_COUNT && i == 3 then "" else ", "); }
+    sb(o[..], "  // "); sb(o[..], SFX_NAMES[id]); sb(o[..], "\n");
+  }
+  sb(o[..], "];\n");
+  if o[0].bad || !fs_write(ST_BANK, sb_text(o[..])) || l[0].bad || !fs_write(ST_BANK_LAB, sb_text(l[..])) { tool_errln("sfx-tool: the bank did not fit"); return 1; }
+  print("sfx-tool: % candidates, % with no file\n", n, bad);
+  return ifx bad > 0 then 1 else 0;
+}
+
+// ---- judge: Gemini on Vertex listens to each candidate the page has
+
+st_token :: (out: [] u8) -> string {
+  home: [512] u8; p: [1024] u8;
+  h := proc_getenv("HOME", home[..]);
+  cfg := fs_join(h, "work/.secrets/gcloud-sa-config", p[..]);
+  e: [1200] u8; eb: [1] Sb; eb[0].b = e[..]; sb(eb[..], "CLOUDSDK_CONFIG="); sb(eb[..], cfg);
+  argv := [5] string.["env", sb_text(eb[..]), "gcloud", "auth", "print-access-token"];
+  err: [4096] u8;
+  r := proc_run(argv[..], 60000, out, err[..]);
+  if r.started != 0 || r.status != 0 || r.out_n < 20 { return ""; }
+  return cast(string) out[0..<r.out_n];
+}
+
+st_judge_one :: (w: [] HttpWork, auth: string, name: string, cand: string, prompt: string, body: [] u8) -> bool {
+  f: [1024] u8; fb: [1] Sb; fb[0].b = f[..];
+  sb(fb[..], ST_OUT); sb(fb[..], "/"); sb(fb[..], name); sb(fb[..], "-"); sb(fb[..], cand); sb(fb[..], ".ogg");
+  audio: [524288] u8;
+  an := fs_read(sb_text(fb[..]), audio[..]);
+  if an <= 0 { return false; }
+  q: [800000] u8; qb: [1] Sb; qb[0].b = q[..];
+  sb(qb[..], "{\"contents\":[{\"role\":\"user\",\"parts\":[{\"inlineData\":{\"mimeType\":\"audio/ogg\",\"data\":\"");
+  enc: [700000] u8; en := b64_encode(cast(string) audio[0..<an], enc[..]); sb(qb[..], cast(string) enc[0..<en]);
+  sb(qb[..], "\"}},{\"text\":\"You are a game audio director choosing sound effects for a fantasy town under a raid. This clip is a candidate for the sound '");
+  sb_json(qb[..], name); sb(qb[..], "', meant to be: ");
+  sb_json(qb[..], prompt);
+  sb(qb[..], ". Listen and score it from 0 to 10: how well it is that sound, and how clean and professional it is (no unwanted music, voices, hiss, clicks or cut-off tails). A 10 ships in a commercial game. Reply as JSON: {\\\"score\\\": N, \\\"heard\\\": \\\"what you hear, in under 12 words\\\"}.\"}]}],\"generationConfig\":{\"responseMimeType\":\"application/json\",\"temperature\":0}}");
+  if qb[0].bad { return false; }
+  hdr := [2] string.[auth, "Content-Type: application/json"];
+  r := http_do(w, "POST", ST_GEMINI, hdr[..], sb_text(qb[..]), 120000, 0, body);
+  if r.error != HTTP_OK || r.code != 200 { print("sfx-tool: % %: judge HTTP %\n", name, cand, r.code); return false; }
+  // candidates[0].content.parts[0].text
+  t: [8192] u8;
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) body[0..<r.n], nodes[..]) { return false; }
+  at := jv_get(d[0], jv_at(d[0], jv_get(d[0], jv_get(d[0], jv_at(d[0], jv_get(d[0], 0, "candidates"), 0), "content"), "parts"), 0), "text");
+  tn := jv_str(d[0], at, t[..]);
+  if tn <= 0 { return false; }
+  n2: [64] JvNode; e: [1] Jv;
+  if !jv_parse(e[..], cast(string) t[0..<tn], n2[..]) { return false; }
+  score := jv_int(e[0], jv_get(e[0], 0, "score"), -1);
+  hb: [512] u8; hn := jv_str(e[0], jv_get(e[0], 0, "heard"), hb[..]);
+  if score < 0 || score > 10 { return false; }
+  l: [700] u8; lb: [1] Sb; lb[0].b = l[..];
+  sb(lb[..], name); sb(lb[..], " "); sb(lb[..], cand); sb(lb[..], " "); sb_int(lb[..], score); sb(lb[..], " ");
+  for z: 0..<hn { if hb[z] == '\n' { hb[z] = ' '; } }
+  if hn > 0 { sb(lb[..], cast(string) hb[0..<hn]); }
+  sb(lb[..], "\n");
+  print("sfx-tool: % % scored %\n", name, cand, score);
+  return fs_append(ST_SCORES, sb_text(lb[..]));
+}
+
+st_judge_all :: (only: string) -> int {
+  tk: [4096] u8; token := st_token(tk[..]);
+  if token.count == 0 { tool_errln("sfx-tool: no token from gcloud (the automation account's CLOUDSDK_CONFIG)"); return 1; }
+  ab: [4200] u8; a: [1] Sb; a[0].b = ab[..]; sb(a[..], "Authorization: Bearer "); sb(a[..], token);
+  tb: [65536] u8; text := st_read(ST_TEXT, tb[..]);
+  sc: [262144] u8; scores := st_read(ST_SCORES, sc[..]);
+  w: [1] HttpWork; body: [1048576] u8;
+  from: [512] int; to: [512] int;
+  ln := st_lines(text, from[..], to[..]);
+  kn: [SFX_COUNT] int;
+  bad := 0;
+  for i: 0..<ln {
+    l := text[from[i]..<to[i]];
+    if l[0] == 'G' {
+      g := st_gen(l);
+      if only.count > 0 && g.name != only { continue; }
+      for k: 1..<g.cands + 1 {
+        cn: [4] u8; cn[0] = 'e'; cn[1] = cast,trunc(u8) ('0' + k); cand := cast(string) cn[0..<2];
+        if st_score(scores, g.name, cand) >= 0 { continue; }
+        if !st_judge_one(w[..], sb_text(a[..]), g.name, cand, g.prompt, body[..]) { bad += 1; }
+      }
+    } else if l[0] == 'K' {
+      name := st_word(l, 1, false); id := sfx_id(name);
+      if id < 0 { continue; }
+      kn[id] += 1;
+      if only.count > 0 && name != only { continue; }
+      cn: [4] u8; cn[0] = 'k'; cn[1] = cast,trunc(u8) ('0' + kn[id]); cand := cast(string) cn[0..<2];
+      if st_score(scores, name, cand) >= 0 { continue; }
+      // the same words the generated ones were judged by
+      prompt := "";
+      for j: 0..<ln { g := st_gen(text[from[j]..<to[j]]); if g.name == name { prompt = g.prompt; break; } }
+      if !st_judge_one(w[..], sb_text(a[..]), name, cand, prompt, body[..]) { bad += 1; }
+    }
+  }
+  return ifx bad > 0 then 1 else 0;
+}
+
+main_usage :: () -> int {
+  tool_errln("usage: coax/web/tool.sh metaverse-engine/audio/sfx-tool.coax gen [NAME] [--part I/N] | build --kenney DIR | judge [NAME]");
+  return 2;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { return main_usage(); }
+  what := args_at(a[..], 0);
+  only := ifx args_count(a[..]) > 1 && args_at(a[..], 1)[0] != '-' then args_at(a[..], 1) else "";
+  if what == "gen" {
+    pt := args_value(a[..], "--part", "0/1");
+    i := 0; nn := 0; slash := false;
+    for c: pt { if c == '/' { slash = true; } else if c >= '0' && c <= '9' { if slash { nn = nn * 10 + cast(int) (c - '0'); } else { i = i * 10 + cast(int) (c - '0'); } } }
+    if !slash || nn < 1 || i >= nn { return main_usage(); }
+    return st_gen_all(only, i, nn);
+  }
+  if what == "build" { return st_build_all(args_value(a[..], "--kenney", "")); }
+  if what == "judge" { return st_judge_all(only); }
+  return main_usage();
+}

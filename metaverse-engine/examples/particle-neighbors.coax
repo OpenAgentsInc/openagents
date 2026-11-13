@@ -1,0 +1,45 @@
+// Book chapter 23: metaverse-engine/physics/sim/particles.coax samples a block of water and a
+// ball into particles, sorts them into cells and finds every particle's
+// neighbors within h. It prints each cloud's mass, its neighbor counts, the
+// distance tests the cells needed against all n (n - 1) pairs, and the
+// particles whose neighbor lists overflowed.
+#load "../physics/sim/particles.coax";
+#import "Basic";
+
+// book:begin example
+report :: (name: string, p: [] Pstore, h: f64) {
+  g: [1] Pgrid; n: [1] Pneighbors;
+  if pgrid_new(g[..], D3_ZERO, d3(1.0, 1.0, 1.0), h) != Pgrid_Refusal.none { print("%: too many cells\n", name); return; }
+  if pgrid_build(p, g[..]) != Pgrid_Refusal.none { print("%: a particle is outside the grid\n", name); return; }
+  pgrid_neighbors(p, g[..], n[..]);
+  low := PSTORE; high := 0; sum := 0; mass := 0.0;
+  for i: 0..<p[0].count {
+    c := n[0].count[i]; sum += c; mass += p[0].mass[i];
+    if c < low { low = c; }
+    if c > high { high = c; }
+  }
+  print("%: % particles, % kg, h = % m\n", name, p[0].count, mass, h);
+  print("  neighbors: min %, max %, mean %\n", low, high, floor(cast(f64) sum / cast(f64) p[0].count * 100.0 + 0.5) / 100.0);
+  print("  distance tests: % (all pairs: %), overflowed lists: %\n", n[0].tests, p[0].count * (p[0].count - 1), n[0].overflow);
+}
+
+main :: () {
+  p: [1] Pstore;
+  // 0.4 x 0.2 x 0.2 m of water at 1000 kg/m^3, one particle per 0.05 m.
+  print("block: % added\n", psample_box(p[..], d3(0.1, 0.1, 0.1), d3(0.5, 0.3, 0.3), 0.05, 1000.0, 0.0, 1, 1, 1));
+  // A grid of 0.06 m cells over the unit cube needs 17^3 cells: refused.
+  report("block, lattice", p[..], 0.06);
+  report("block, lattice", p[..], 0.075);
+
+  // The same block jittered by up to a quarter spacing per axis.
+  p[0].count = 0;
+  print("block: % added\n", psample_box(p[..], d3(0.1, 0.1, 0.1), d3(0.5, 0.3, 0.3), 0.05, 1000.0, 0.5, 7, 1, 1));
+  report("block, jittered", p[..], 0.075);
+
+  // A ball of radius 0.3 m at spacing 0.075 m: 4/3 pi r^3 / a^3 = 268.08.
+  p[0].count = 0;
+  print("ball: % added\n", psample_sphere(p[..], d3(0.5, 0.5, 0.5), 0.3, 0.075, 1000.0, 0.0, 1, 2, 2));
+  report("ball", p[..], 0.11);
+  report("ball", p[..], 0.2);
+}
+// book:end example

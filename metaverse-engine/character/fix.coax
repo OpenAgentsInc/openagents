@@ -1,0 +1,166 @@
+// Fix layers on a placed character (GitHub #12996; Animation Lab A3's solvers, metaverse-engine/anim/fixup.coax,
+// on the character runtime's own pose): feet planted on the world's ground while they touch it, the
+// head turned toward a point, and an arm reaching toward one. They run once a presented frame, after
+// the body, its face and its idle life, on c.pose, then chain the pose again and write the palette.
+// Nothing here reads a document or a clip's events: a foot touches the ground when it is within
+// CHARACTER_FIX_TOUCH of the lowest it has been, which is the clip's own contact, and the world says
+// where the ground is (its height under her feet and its rise along x and z).
+//   coax/bin/coax test metaverse-engine/character/fix.coax
+#load "idle.coax";
+
+CHARACTER_FIX_TOUCH :: 0.02f32;     // m over its lowest: the foot is on the ground
+CHARACTER_FIX_LET_GO :: 0.08f32;    // m from its lock: a foot the clip carries on past lets go (its hold out of the legs' reach)
+CHARACTER_FIX_FADE :: 0.12f32;      // s a plant takes to let go
+CHARACTER_FIX_DROP :: 0.15f32;      // m the hips may lower for a plant out of reach
+CHARACTER_FIX_LOOK :: 0.7853982f32; // the head turns at most 45 degrees toward its point
+CHARACTER_FIX_NECK :: 0.4f32;       // of a look, the neck's share; the head takes the rest
+
+// One leg: its three joints, whether its foot is planted, where (the world's frame) and how much.
+// `travel` is how far the fixed foot has moved since it was planted (m), `most` the most any plant did.
+CharacterLeg :: struct {hip:int= -1;knee:int= -1;foot:int= -1;low:f32=1000;planted:bool;lock:Point;weight:f32;travel:f32;last:Point;most:f32;plants:int;}
+// The world's ground under a character: its height at her feet and its rise along x and z (m per m).
+CharacterGround :: struct {y:f32;rise_x:f32;rise_z:f32;}
+CharacterFix :: struct {
+ legs:[2]CharacterLeg;pelvis:int= -1;neck:int= -1;head:int= -1;arm:[3]int;
+ rest:[CHARACTER_JOINTS]Quat;bound:int;
+ // what the last frame did: the farthest a fixed foot was from its lock (m), the hips' drop
+ error:f32;drop:f32;
+}
+// The joints' names a world declares for a character's fixes.
+CharacterFixRig :: struct {pelvis:string;neck:string;head:string;legs:[6]string;arm:[3]string;}
+
+// Bind the names to character c (the face's copy of the rig's joint names) and chain its rest pose
+// for the head's look. Returns how many joints it found.
+character_fix_bind :: (f:[]CharacterFix,c:[]Character,packs:[]CharacterPack,rig:CharacterFixRig)->int {
+ f[0]=CharacterFix.{};f[0].arm=[3]int.[-1,-1,-1];if !c[0].ready || !character_has_face(c,packs) {return 0;}b:=character_face_bytes(c,packs);n:=0;
+ f[0].pelvis=character_face_joint(b,rig.pelvis);f[0].neck=character_face_joint(b,rig.neck);f[0].head=character_face_joint(b,rig.head);
+ for j:[3]int.[f[0].pelvis,f[0].neck,f[0].head] {if j>=0 {n+=1;}}
+ for l:0..<2 {f[0].legs[l]=CharacterLeg.{hip=character_face_joint(b,rig.legs[l*3]),knee=character_face_joint(b,rig.legs[l*3+1]),foot=character_face_joint(b,rig.legs[l*3+2])};for j:[3]int.[f[0].legs[l].hip,f[0].legs[l].knee,f[0].legs[l].foot] {if j>=0 {n+=1;}}}
+ for k:0..<3 {f[0].arm[k]=character_face_joint(b,rig.arm[k]);if f[0].arm[k]>=0 {n+=1;}}
+ for k:0..<c[0].joints {p:=c[0].parent[k];f[0].rest[k]=ifx p<0 || p>=k then c[0].rest[k].q else quat_unit(quat_mul(f[0].rest[p],c[0].rest[k].q));}
+ f[0].bound=n;return n;
+}
+
+// A point between the world's frame and the character's: her feet at `at`, her front +z turned by heading about +y.
+character_to_world :: (c:[]Character,m:Point)->Point {ch:=math_cos(c[0].heading);sh:=math_sin(c[0].heading);return v3(c[0].at.x+m.x*ch+m.z*sh,c[0].at.y+m.y,c[0].at.z-m.x*sh+m.z*ch);}
+character_to_model :: (c:[]Character,w:Point)->Point {ch:=math_cos(c[0].heading);sh:=math_sin(c[0].heading);x:=w.x-c[0].at.x;z:=w.z-c[0].at.z;return v3(x*ch-z*sh,w.y-c[0].at.y,x*sh+z*ch);}
+character_ground_at :: (c:[]Character,g:CharacterGround,x:f32,z:f32)->f32 {return g.y+g.rise_x*(x-c[0].at.x)+g.rise_z*(z-c[0].at.z);}
+
+character_fix_conj :: (q:Quat)->Quat {return Quat.{x= -q.x,y= -q.y,z= -q.z,w=q.w};}
+// The shortest rotation taking direction `from` to direction `to`.
+character_from_to :: (from:Point,to:Point)->Quat {
+ if length(from)<0.000001 || length(to)<0.000001 {return Quat.{};}a:=unit_or(from,v3(0,1,0));b:=unit_or(to,v3(0,1,0));d:=dot(a,b);
+ if d< -0.999999 {axis:=unit_or(cross(a,ifx abs(a.x)<0.8 then v3(1,0,0) else v3(0,1,0)),v3(0,0,1));return Quat.{x=axis.x,y=axis.y,z=axis.z,w=0};}
+ x:=cross(a,b);q:=Quat.{x=x.x,y=x.y,z=x.z,w=1+d};return quat_scaled(q,1/sqrt(quat_dot(q,q)));
+}
+// Joints from `first` on, chained again from their locals.
+character_rechain :: (c:[]Character,first:int) {for k:hi_i(first,0)..<c[0].joints {pose_chain(c[0].gq[..],c[0].gt[..],c[0].parent[k],k,c[0].pose[k]);}}
+hi_i :: (a:int,b:int)->int {return ifx a>b then a else b;}
+// Turn joint j so its rotation in the character's space becomes `world`, `weight` of the way, and chain on.
+character_turn_to :: (c:[]Character,j:int,world:Quat,weight:f32) {
+ p:=c[0].parent[j];local:=ifx p>=0 && p<j then quat_mul(character_fix_conj(c[0].gq[p]),world) else world;c[0].pose[j].q=slerp(c[0].pose[j].q,quat_unit(local),weight);character_rechain(c,j);
+}
+// Two bones, root to mid to end, bent so the end reaches `target` (the character's space), keeping
+// the knee or elbow on the side it bends to. Returns how far the end is from its target after (m).
+character_two_bone :: (c:[]Character,root:int,mid:int,end:int,target:Point,weight:f32)->f32 {
+ if root<0 || mid<=root || end<=mid || end>=c[0].joints {return -1;}
+ a:=c[0].gt[root];b:=c[0].gt[mid];e:=c[0].gt[end];upper:=length(sub(b,a));lower:=length(sub(e,b));if upper<0.000001 || lower<0.000001 {return -1;}
+ toward:=sub(target,a);direction:=unit_or(toward,v3(0,1,0));distance:=lo(hi(length(toward),abs(upper-lower)+0.000001),upper+lower-0.000001);
+ pole:=sub(sub(b,a),times(direction,dot(sub(b,a),direction)));if length(pole)<0.000001 {pole=cross(direction,ifx abs(direction.x)<0.8 then v3(1,0,0) else v3(0,1,0));}pole=unit_or(pole,v3(0,0,1));
+ along:=(upper*upper-lower*lower+distance*distance)/(2*distance);height:=sqrt(hi(0,upper*upper-along*along));knee:=add(a,add(times(direction,along),times(pole,height)));
+ character_turn_to(c,root,quat_mul(character_from_to(sub(b,a),sub(knee,a)),c[0].gq[root]),weight);
+ character_turn_to(c,mid,quat_mul(character_from_to(sub(c[0].gt[end],c[0].gt[mid]),sub(target,c[0].gt[mid])),c[0].gq[mid]),weight);
+ return length(sub(c[0].gt[end],target));
+}
+// Joint j turned toward `target` (the character's space) by `weight`, at most `limit` radians: its
+// front is the character's +z as its rest pose had it.
+character_look :: (c:[]Character,f:[]CharacterFix,j:int,target:Point,limit:f32,weight:f32) {
+ if j<0 || weight<=0 {return;}toward:=sub(target,c[0].gt[j]);if length(toward)<0.000001 {return;}
+ forward:=quat_rotate(quat_mul(c[0].gq[j],character_fix_conj(f[0].rest[j])),v3(0,0,1));delta:=character_from_to(forward,toward);
+ angle:=2*atan2(sqrt(delta.x*delta.x+delta.y*delta.y+delta.z*delta.z),delta.w);share:=ifx angle>limit then weight*limit/angle else weight;
+ character_turn_to(c,j,quat_mul(delta,c[0].gq[j]),share);
+}
+
+// The feet: each foot on the ground is held where it touched it (the world's frame) until the body
+// lifts it or runs past it, then lets go over CHARACTER_FIX_FADE; the hips lower for a hold out of reach.
+character_fix_feet :: (c:[]Character,f:[]CharacterFix,g:CharacterGround,dt:f32) {
+ f[0].error=0;f[0].drop=0;targets:[2]Point;weights:[2]f32;
+ for l:0..<2 {
+  leg:=f[0].legs[l];if leg.foot<0 || leg.knee<0 || leg.hip<0 {continue;}
+  m:=c[0].gt[leg.foot];leg.low=lo(leg.low,m.y);w:=character_to_world(c,m);touch:=m.y<leg.low+CHARACTER_FIX_TOUCH;
+  if touch && !leg.planted && leg.weight<=0 {leg.planted=true;leg.lock=v3(w.x,character_ground_at(c,g,w.x,w.z)+leg.low,w.z);leg.travel=0;leg.last=leg.lock;leg.plants+=1;}
+  if leg.planted {
+   off:=sub(character_to_model(c,leg.lock),m);
+   if !touch || length(v3(off.x,0,off.z))>CHARACTER_FIX_LET_GO {leg.planted=false;}
+  }
+  leg.weight=ifx leg.planted then 1.0f32 else hi(0,leg.weight-dt/CHARACTER_FIX_FADE);
+  targets[l]=character_to_model(c,leg.lock);weights[l]=leg.weight;f[0].legs[l]=leg;
+ }
+ // the hips: down as far as the lowest out-of-reach hold needs
+ if f[0].pelvis>=0 {
+  for l:0..<2 {leg:=f[0].legs[l];if weights[l]<=0 {continue;}a:=c[0].gt[leg.hip];reach:=length(sub(c[0].gt[leg.knee],a))+length(sub(c[0].gt[leg.foot],c[0].gt[leg.knee]))-0.002;
+   dx:=a.x-targets[l].x;dz:=a.z-targets[l].z;flat:=dx*dx+dz*dz;if reach<=0 || flat>=reach*reach {continue;}need:=targets[l].y+sqrt(reach*reach-flat)-a.y;if need<0 {f[0].drop=lo(f[0].drop,need*weights[l]);}}
+  f[0].drop=hi(f[0].drop,-CHARACTER_FIX_DROP);
+  if f[0].drop<0 {p:=c[0].parent[f[0].pelvis];world:=v3(0,f[0].drop,0);local:=ifx p>=0 then quat_rotate(character_fix_conj(c[0].gq[p]),world) else world;c[0].pose[f[0].pelvis].t=add(c[0].pose[f[0].pelvis].t,local);character_rechain(c,f[0].pelvis);}
+ }
+ for l:0..<2 {
+  leg:=f[0].legs[l];if weights[l]<=0 {continue;}
+  target:=ifx weights[l]>=1 then targets[l] else mix(c[0].gt[leg.foot],targets[l],weights[l]);
+  error:=character_two_bone(c,leg.hip,leg.knee,leg.foot,target,1);
+  if leg.planted {now:=character_to_world(c,c[0].gt[leg.foot]);leg.travel+=length(sub(now,leg.last));leg.last=now;leg.most=hi(leg.most,leg.travel);f[0].error=hi(f[0].error,error);}
+  f[0].legs[l]=leg;
+ }
+}
+// The head and neck toward `at` (the world's frame), `weight` of the way.
+character_fix_look :: (c:[]Character,f:[]CharacterFix,at:Point,weight:f32) {
+ if weight<=0 {return;}t:=character_to_model(c,at);
+ character_look(c,f,f[0].neck,t,CHARACTER_FIX_LOOK*CHARACTER_FIX_NECK,weight*CHARACTER_FIX_NECK);
+ character_look(c,f,f[0].head,t,CHARACTER_FIX_LOOK,weight);
+}
+// The arm toward `at` (the world's frame), reaching most of its length that way, `weight` of the way.
+character_fix_reach :: (c:[]Character,f:[]CharacterFix,at:Point,weight:f32)->f32 {
+ a:=f[0].arm[0];m:=f[0].arm[1];e:=f[0].arm[2];if weight<=0 || a<0 || m<0 || e<0 {return 0;}
+ s:=c[0].gt[a];reach:=length(sub(c[0].gt[m],s))+length(sub(c[0].gt[e],c[0].gt[m]));
+ target:=add(s,times(unit_or(sub(character_to_model(c,at),s),v3(0,0,1)),0.9*reach));
+ return character_two_bone(c,a,m,e,target,weight);
+}
+// The pose's palette again (after the fixes): the joints' matrices and the capsules.
+character_fix_present :: (c:[]Character) {
+ for k:0..<c[0].joints {pose_palette(c[0].gq[k],c[0].gt[k],c[0].bind[..],k,c[0].palette[..]);}character_capsules(c);c[0].revision+=1;
+}
+
+// ---- checks
+
+// A two-joint-legged figure: pelvis 0 at 1 m, hip 1, knee 2 (0.45 m down), foot 3 (0.45 m further), head 4 above the pelvis.
+character_fix_figure :: (c:[]Character,f:[]CharacterFix) {
+ c[0].ready=true;c[0].joints=5;parents:=[5]int.[-1,0,1,2,0];ts:=[5]Point.[v3(0,1,0),v3(0.1,0,0),v3(0,-0.45,0.02),v3(0,-0.45,-0.02),v3(0,0.6,0)];
+ for k:0..<5 {c[0].parent[k]=parents[k];c[0].rest[k]=SkinLocal.{t=ts[k],q=Quat.{}};c[0].pose[k]=c[0].rest[k];f[0].rest[k]=Quat.{};}
+ character_rechain(c,0);f[0].pelvis=0;f[0].head=4;f[0].legs[0]=CharacterLeg.{hip=1,knee=2,foot=3};f[0].legs[1]=CharacterLeg.{};f[0].arm=[3]int.[-1,-1,-1];
+}
+#test "A planted foot stays where it touched the ground as the body moves on, within a centimetre; lifted, it lets go" #steps 1000000000 {
+ c:[1]Character;f:[1]CharacterFix;character_fix_figure(c[..],f[..]);g:=CharacterGround.{};
+ character_place(c[..],v3(5,0,2),3.14159265);
+ character_fix_feet(c[..],f[..],g,0.02);
+ #assert f[0].legs[0].planted && f[0].legs[0].plants==1;lock:=f[0].legs[0].lock;
+ // the body moves 10 cm a frame along its heading; the foot holds
+ for k:1..<4 {
+  for j:0..<5 {c[0].pose[j]=c[0].rest[j];}character_rechain(c[..],0);character_place(c[..],v3(5,0,2-0.02*cast(f32)k),3.14159265);
+  character_fix_feet(c[..],f[..],g,0.02);
+  #assert f[0].legs[0].planted && length(sub(character_to_world(c[..],c[0].gt[3]),lock))<0.01;
+ }
+ #assert f[0].legs[0].most<0.01;
+ // lifted 10 cm: it lets go and fades out
+ for j:0..<5 {c[0].pose[j]=c[0].rest[j];}c[0].pose[0].t.y=1.1;character_rechain(c[..],0);character_fix_feet(c[..],f[..],g,0.06);
+ #assert !f[0].legs[0].planted && f[0].legs[0].weight>0 && f[0].legs[0].weight<1;
+ character_fix_feet(c[..],f[..],g,0.1);#assert f[0].legs[0].weight==0;
+}
+#test "On rising ground a planted foot stands on it, the hips lowering for a hold out of reach; the head turns toward its point, at most 45 degrees" #steps 1000000000 {
+ c:[1]Character;f:[1]CharacterFix;character_fix_figure(c[..],f[..]);character_place(c[..],v3(0,0,0),0);
+ // the ground falls 10 cm over her foot's 0.1 m to her right: her foot goes down to it, the hips with it
+ g:=CharacterGround.{y=0,rise_x= -1,rise_z=0};character_fix_feet(c[..],f[..],g,0.02);
+ #assert f[0].legs[0].planted && f[0].drop<0 && f[0].drop>= -CHARACTER_FIX_DROP && abs(c[0].gt[3].y-(f[0].legs[0].low-0.1))<0.01;
+ // straight to her left, 90 degrees off her front: the head turns 45
+ character_fix_look(c[..],f[..],v3(10,1.6,0),1);
+ front:=quat_rotate(c[0].gq[4],v3(0,0,1));#assert abs(atan2(front.x,front.z)-0.7853982)<0.01;
+ #assert character_to_model(c[..],character_to_world(c[..],v3(1,2,3))).z>2.999;
+}

@@ -13,10 +13,10 @@
 // are fx strokes (font.coax).
 //   coax/bin/coax test apps/openagents-web/watchtower.coax --steps 2000000000
 
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
-#load "../../aethyr/core/loop.coax";   // the fixed steps: Aethyr's one clock (aethyr/book ch001)
+#load "../../metaverse-engine/core/loop.coax";   // the fixed steps: Aethyr's one clock (metaverse-engine/book ch001)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 60000;
@@ -27,7 +27,7 @@ PANELS :: 12;   // the HUD's four, then the edit layer's plates
 UNIFORM_FLOATS :: 60;
 
 STEP :: 0.0166666667;
-WATCH_STEP_NS :: 16666667;    // the same step on the clock (aethyr/core/loop.coax)
+WATCH_STEP_NS :: 16666667;    // the same step on the clock (metaverse-engine/core/loop.coax)
 WATCH_FRAME_NS :: 100000000;  // the longest frame that counts: 0.1 s
 READY :: 0; PLAY :: 1; WON :: 2; LOST :: 3;
 
@@ -115,7 +115,7 @@ Watch :: struct {
   banner: [32] u8; banner_n: int; sub: [LINE_CAP] u8; sub_n: int; banner_t: f32;
   hit: f32;
   clock: f32; play_t: f32;
-  pace: FrameClock;      // the fixed steps (aethyr/core/loop.coax): 1/60 s, at most 8 a frame
+  pace: FrameClock;      // the fixed steps (metaverse-engine/core/loop.coax): 1/60 s, at most 8 a frame
   seed: u32;
   width: f32; height: f32; dpr: f32;
   golden: bool;
@@ -1305,7 +1305,7 @@ draw_card :: (s: [] Watch, out: [] f32, at: int, w: f32, h: f32, k: f32, t: f32)
   return n;
 }
 
-// A frame's fixed steps, on Aethyr's one clock (aethyr/core/loop.coax): the frame counts for at most
+// A frame's fixed steps, on Aethyr's one clock (metaverse-engine/core/loop.coax): the frame counts for at most
 // 0.1 s, its steps are 1/60 s, at most 8 run, and a backlog past that is dropped, never run later.
 // The drawn clock moves by what the frame counted for.
 watch_run :: (s: [] Watch, dt: f32) {

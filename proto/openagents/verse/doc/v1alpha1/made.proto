@@ -19,10 +19,10 @@ import "openagents/options/v1alpha1/options.proto";
 //   path /worlds/SLUG
 //   page 0|1
 //
-// aethyr/forge/made.coax is the one reader of both and the one writer of
+// metaverse-engine/editor/made.coax is the one reader of both and the one writer of
 // ForkRequest; the builder, My Realm and the CLI call it.
 // proto/verse/realm-made-v1.json pins the bytes, checked through the codec
-// (aethyr/forge/made-goldens.coax) and through the routes
+// (metaverse-engine/editor/made-goldens.coax) and through the routes
 // (coax/web/api/tests/realm_record_checks.coax).
 
 // POST .../<slug>/fork: a made realm takes an optional name; a built-in

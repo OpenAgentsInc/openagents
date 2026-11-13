@@ -1,6 +1,6 @@
 // Interactive consumer of the source-derived ARWES Coax ports. State and
 // pointer/actions belong to projects.coax; this file draws the same controls.
-#load "../../../../aethyr/ui/arwes-draw.coax";
+#load "../../../../metaverse-engine/ui/arwes-draw.coax";
 
 #test "the Arwes gallery covers every specimen once across its four groups" {
   seen:[25]int;
@@ -91,7 +91,7 @@ demo_arwes_state :: (s:[]ProjectsState)->AwSpec {
   for i:0..<3 {a.pending[i]=ax_pending(s[0].aw_timers[..],i);}
   return a;
 }
-// One specimen, painted once (aethyr/ui/arwes-paint.coax), as the HUD's records.
+// One specimen, painted once (metaverse-engine/ui/arwes-paint.coax), as the HUD's records.
 demo_arwes_spec :: (s:[]ProjectsState,out:[]f32,at:int,kind:int,b:HudBox,p:HdPen)->int {
   w:[1]AwPaint;w[0]=AwPaint.{list=s[0].aw_prims[..],pts=s[0].aw_pts[..],text=s[0].aw_text[..]};aw_hud_inks(w[..],p);
   aw_specimen(w[..],kind,b,demo_arwes_state(s));

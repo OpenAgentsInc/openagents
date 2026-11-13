@@ -79,10 +79,10 @@ What every realm module exports:
 | `coaxial_draw_blend_v1(state, draw_index)` | optional, legacy browser scene | Coax selects 0 for opaque colour/depth write, 1 for straight-alpha additive colour with preserved destination alpha, or 2 for straight-alpha source-over colour/alpha. Modes 1/2 depth-test without writing depth. Unknown modes refuse. Shadow draws retain the shader's own coverage rules. Without this export, the indexed path remains opaque. |
 | `coaxial_shadow_draws_v1(state)`, `coaxial_shadow_draw_count_v1(state)` | optional pair, legacy browser scene | A separate shadow list of the same four-u32 indexed/in-order draw records, over the same admitted storage/index assets. Coax selects and bounds the complete list, including off-camera casters. The host executes it only in the shadow pass. Both exports must be present; without the pair, the existing scene list excluding water draws is used. An empty shadow list still clears the map when the colour scene draws. This does not qualify a producer for the shared renderer. |
 | `coaxial_gpu_recover_ms_v1()` | optional, browser | A positive `u32` recovery deadline in milliseconds, selected by the Coax realm for rebuilding its complete GPU residency after device loss. Without it the existing 10,000 ms default applies. Valley World declares 60,000 ms in its checked host policy. The host applies the deadline and retains the saved state. |
-| `coaxial_frame_admit(pending)` | optional, browser | Coax admits or refuses a new submission from the number of unfinished GPU frames. Valley World uses the shared `aethyr/core/frame-pacing.coax` rule: at most two pending frames. Refused callbacks retain elapsed simulation time. |
+| `coaxial_frame_admit(pending)` | optional, browser | Coax admits or refuses a new submission from the number of unfinished GPU frames. Valley World uses the shared `metaverse-engine/core/frame-pacing.coax` rule: at most two pending frames. Refused callbacks retain elapsed simulation time. |
 | `coaxial_storage_limit_v1()` | optional, legacy browser device | Coax requests the exact required storage-binding byte limit. The host passes it to WebGPU when opening or replacing a device; unsupported adapters refuse through the SDK. Absent/zero preserves default limits. This does not raise the buffer-size limit or qualify mobile hardware. |
 | `coaxial_scene_ready(state)` | with a world drawn as strokes | Coax returns 1 only after drawing nonempty world geometry. The host marks the scene ready after that frame's GPU submission completes. It does not infer a world from HUD text. Bitcoin Lab uses this path. |
-| `coaxial_particle_cap`, `coaxial_particles`, `coaxial_particle_bytes`, `coaxial_particle_instances` | with particles | Emitters from `aethyr/render/particles.coax`, drawn by `particles.wgsl` when the page names `particles:/particles.wgsl`; Everglade's are its spells' fire and smoke puffs (`everglade-fx.wgsl`, whose `particle_over_vs`/`particle_over_fs` draw the smoke first, premultiplied over). |
+| `coaxial_particle_cap`, `coaxial_particles`, `coaxial_particle_bytes`, `coaxial_particle_instances` | with particles | Emitters from `metaverse-engine/render/particles.coax`, drawn by `particles.wgsl` when the page names `particles:/particles.wgsl`; Everglade's are its spells' fire and smoke puffs (`everglade-fx.wgsl`, whose `particle_over_vs`/`particle_over_fs` draw the smoke first, premultiplied over). |
 
 Shared engine pieces stay in `verse/` and are linked as the Haunted House
 links them (`build.sh` lists them after the face): `player.coax` walks,
@@ -122,8 +122,8 @@ separate files; Ice Cream Man, Dead Gears and Everglade use packs.
 - **By ranges**: name `pack:/realms/<slug>/assets/<realm>.vpk3` instead, and
   add the file to the `.vpk3` loop in `apps/openagents-web/build.sh`, which
   writes it from the tracked `.pack` (`coax/web/tool.sh
-  aethyr/tools/page-pack.coax IN.pack OUT.vpk3`). VPK3
-  (`aethyr/forge/page-pack.coax`, #13001) holds the same pack as pages, each
+  metaverse-engine/tools/page-pack.coax IN.pack OUT.vpk3`). VPK3
+  (`metaverse-engine/editor/page-pack.coax`, #13001) holds the same pack as pages, each
   deflated on its own and named by its SHA-256. The page fetches the
   manifest and then the pages with HTTP Range, a few at once, and Coax admits
   each page by content. The realm sees the same four assets and the same

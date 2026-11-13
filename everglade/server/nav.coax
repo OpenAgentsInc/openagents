@@ -1,8 +1,8 @@
 // An Everglade room's cells and its creatures' navigation (GitHub #13280, #13281; docs/verse/one-world.md,
 // docs/verse/navigation.md). The room is the authority: it keeps each cell's level in the engine's
-// cell controller (aethyr/world/cells.coax, the zone's manifest from everglade/world/zone.coax),
+// cell controller (metaverse-engine/world/cells.coax, the zone's manifest from everglade/world/zone.coax),
 // stepped each tick on every placed seat. A creature steps only while its cell simulates, and moves
-// only by the cells' navigation pages (aethyr/world/nav/cells.coax through aethyr/ai/steer-cells.coax):
+// only by the cells' navigation pages (metaverse-engine/world/nav/cells.coax through metaverse-engine/ai/steer-cells.coax):
 // round a trunk, through a gap, never onto a closed sample.
 //
 // A cell has nothing to fetch in a room: the controller's load is answered at once, and a cell's
@@ -37,7 +37,7 @@
 //   coax test --library coax/web/room/room.coax --steps 4000000000 --only "e2 nav"
 #load "../shared/nav.coax";
 #load "../world/zone.coax";
-#load "../../aethyr/ai/steer-cells.coax";
+#load "../../metaverse-engine/ai/steer-cells.coax";
 
 E2NV_OBSTACLES :: 16;      // doors and placed pieces a room lays at once
 E2NV_OUT :: 3.0;           // m: how far a creature on closed ground looks for open ground to step out to

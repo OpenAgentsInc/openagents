@@ -1,5 +1,5 @@
 // Hold the WebTransport framing's profile (proto/verse/aethyr-transport-v1.json, #13246) to its codec,
-// aethyr/net/transport.coax, which the page's link and the room's WebTransport side both load:
+// metaverse-engine/net/transport.coax, which the page's link and the room's WebTransport side both load:
 // the URL prefix, the mark byte, each channel's number and the datagram's limits are the codec's
 // constants; each "frames" entry is the exact bytes net_conn_frame gives for that frame on that
 // channel and transport; and each "inputs" step is the exact datagram net_conn_input gives after
@@ -7,7 +7,7 @@
 // (net_bundle_expand making each NET_SAME whole, net_gate_fresh letting each number through once).
 //   coax/web/tool.sh coax/web/room/transport-profile.coax proto/verse/aethyr-transport-v1.json
 #import "Basic";
-#load "../../../aethyr/net/transport.coax";
+#load "../../../metaverse-engine/net/transport.coax";
 #load "../../lib/json/json.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";

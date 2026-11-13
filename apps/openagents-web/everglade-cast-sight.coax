@@ -82,7 +82,7 @@ everglade_room_sight :: (s: [] Everglade, fx: f32, fy: f32, fz: f32, ax: f32, ay
 // four), the Warlock slot's sweep.
 cr_refused :: (s: [] Everglade, slot: int, why: int) {
   if eg_ra_copying(s) || why == CR_OK { return; }   // (a seat's copy in a room says nothing on your page)
-  // the room's no to the cast waiting on it: its slot greys and nothing starts (aethyr/action/deed.coax, #13072)
+  // the room's no to the cast waiting on it: its slot greys and nothing starts (metaverse-engine/action/deed.coax, #13072)
   if slot >= 0 && slot < SP_SLOTS && deed_waiting(s[0].sp.deeds[0], s[0].sp.ask_seq) { _ := deed_answer(s[0].sp.deeds[..], s[0].sp.ask_seq, false, deed_tick(f32(s[0].time)), 0); }
   if s[0].sp.casting == slot && slot >= 0 {
     s[0].sp.casting = -1;

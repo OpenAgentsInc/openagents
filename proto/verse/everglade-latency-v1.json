@@ -1,7 +1,7 @@
 {
   "profile": "openagents.everglade.latency",
   "version": 1,
-  "codec": "aethyr/net/latency.coax",
+  "codec": "metaverse-engine/net/latency.coax",
   "check": "coax/web/tool.sh coax/web/room/latency-profile.coax proto/verse/everglade-latency-v1.json",
   "transport": "optional WebSocket text frames beside an unchanged Everglade session",
   "prefix": "@1",

@@ -1,6 +1,6 @@
 // A checked resource/entry layout observed by the compiler, not inferred
 // from WGSL text. This fixture has shared and stage-specific bindings.
-#load "../../../aethyr/gpu/shader.coax";
+#load "../../../metaverse-engine/gpu/shader.coax";
 
 ReflectionAttributes :: struct {position:V4;uv:V2;}
 ReflectionTargets :: struct {light:V4;aux:V4;}

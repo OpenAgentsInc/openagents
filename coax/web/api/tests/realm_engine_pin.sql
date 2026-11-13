@@ -4,7 +4,7 @@
 --   PGURL=... PSQL=psql coax/web/tool.sh coax/web/api/tests/realm_engine_pin.coax
 \set ON_ERROR_STOP 1
 BEGIN;
--- The template as the live site served it on 2026-11-02; aethyr/forge/publish.coax keeps the same
+-- The template as the live site served it on 2026-11-02; metaverse-engine/editor/publish.coax keeps the same
 -- fixture (ENGINE_FIXTURE) and its manifest's SHA-256 (ENGINE_FIXTURE_SHA), checked there with
 -- the Coax rule and sha256sum: the two rules agree on it.
 CREATE TEMP TABLE pin_fixture (k text PRIMARY KEY, t text) ON COMMIT DROP;
@@ -17,7 +17,7 @@ CREATE FUNCTION pg_temp.sha(t text) RETURNS text LANGUAGE sql AS $$ SELECT encod
 
 DO $$ BEGIN
   IF pg_temp.sha(verse.engine_manifest(pg_temp.fx('a'))) <> '1592e30f8f480ae5f99954d1733f6f57cb1b139b6d0d449ad6098e5e2336b006' THEN
-    RAISE EXCEPTION 'the fixture''s manifest is not the one aethyr/forge/publish.coax derives: %', verse.engine_manifest(pg_temp.fx('a'));
+    RAISE EXCEPTION 'the fixture''s manifest is not the one metaverse-engine/editor/publish.coax derives: %', verse.engine_manifest(pg_temp.fx('a'));
   END IF;
   IF verse.engine_manifest(replace(pg_temp.fx('a'), E'data-assets="\n  pack:', 'data-assets="pack:')) <> verse.engine_manifest(pg_temp.fx('a')) THEN
     RAISE EXCEPTION 'white space in a value changed the manifest';

@@ -7,8 +7,8 @@
 // and the clips baked once (bd_bake); fx_fs the strokes lab_frame writes, and fivelab-fx.wgsl the
 // glade's effects (puffs), drawn after the figures, depth-tested.
 // Player mode walks your hero on Everglade's controller, as everglade-face.c does: everglade-step.coax
-// (aethyr/move/walk.coax, with player.coax's verse_player_*) steps your body on the keys and a phone's
-// thumbs (aethyr/core/sticks.coax) among the figures round you (lab_move_world), and the Lab says where
+// (metaverse-engine/move/walk.coax, with player.coax's verse_player_*) steps your body on the keys and a phone's
+// thumbs (metaverse-engine/core/sticks.coax) among the figures round you (lab_move_world), and the Lab says where
 // it may stand (lab_keep) and draws it (lab_you).
 #include "fivelab.h"
 #include "Everglade-step.h"
@@ -30,12 +30,12 @@ static float bake[6453720];        // everglade/scene/bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
 static uint32_t frames;
 static int64_t draw_n;
-static coax_t_Player player;   // your body in Player mode (aethyr/move/walk.coax)
+static coax_t_Player player;   // your body in Player mode (metaverse-engine/move/walk.coax)
 static coax_t_Sticks sticks;   // a phone's thumbs
 static float width, height, dpr;
 static double now;
 static bool touched;
-static coax_t_Drive drive;   // the agent driver's (aethyr/agent/drive.coax): the Lab holds a view of it
+static coax_t_Drive drive;   // the agent driver's (metaverse-engine/agent/drive.coax): the Lab holds a view of it
 
 static coax_t_Lab *lab_at(cx_face_addr state) { return (coax_t_Lab *)(uintptr_t)state; }
 static coax_v_t_Lab at(cx_face_addr state) { return (coax_v_t_Lab){lab_at(state), 1}; }
@@ -53,7 +53,7 @@ EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (u
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_lab_uniform_floats(); }
 // bg_fs traces the glade's ground, trees and sky per pixel (the figures are drawn, not traced):
 // drawn at most 6.4 million pixels (3200 by 2000; the host scales the canvas up past that).
-// The graphics governor's (everglade/zone.coax zone_pixel_budget, aethyr/core/quality-page.coax): fewer while frames run long.
+// The graphics governor's (everglade/zone.coax zone_pixel_budget, metaverse-engine/core/quality-page.coax): fewer while frames run long.
 static cx_face_addr quality_state;
 EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
   if (!quality_state) return 6400000u;
@@ -122,7 +122,7 @@ EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr st
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) lab_catalog(at(state), (coax_string){(const char *)catalog, bytes});
 }
-// The glade's environment mesh's ask for its runs' boxes (aethyr/render/mesh-cull.coax, #13168): the host writes them once the pack is in.
+// The glade's environment mesh's ask for its runs' boxes (metaverse-engine/render/mesh-cull.coax, #13168): the host writes them once the pack is in.
 EXPORT("coaxial_mesh_bounds_v1") cx_face_addr coaxial_mesh_bounds_v1(cx_face_addr state) { return zone_at(state)->glade_cull.e[0].ask.e[0] ? (cx_face_addr)(uintptr_t)&zone_at(state)->glade_cull.e[0] : 0u; }
 EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return (cx_face_addr)(uintptr_t)zone_at(state)->bodies.e[0].draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }
@@ -151,7 +151,7 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr stat
 EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) { return lab_key(at(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) { return lab_key_up(at(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { lab_blur(at(state)); sticks = verse_sticks_reset(); }
-/* Aethyr host contract v1 (aethyr/host/README.md), as everglade2-face.c has it: addresses of the
+/* Aethyr host contract v1 (metaverse-engine/host/README.md), as everglade2-face.c has it: addresses of the
    host's width (face-address.h), focus as a call of its own, and the whole allocations the action,
    media and sound-bank bytes are in. A native build says so; the browser's module does not yet
    (there v1 also means the shared transport adapter a page gets with its render carrier). */
@@ -181,11 +181,11 @@ EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(cx_face
 }
 EXPORT("coaxial_wheel") uint32_t coaxial_wheel(cx_face_addr state, float dy) { return lab_wheel(at(state), dy) ? 1u : 0u; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(cx_face_addr state) { return (int32_t)zone_cursor(zone(state)); }
-/* Experimental's mouselook (aethyr/cam/mouselook.coax): host.js holds the pointer when this says 2 and forwards the mouse's travel. */
+/* Experimental's mouselook (metaverse-engine/cam/mouselook.coax): host.js holds the pointer when this says 2 and forwards the mouse's travel. */
 EXPORT("coaxial_mouselook") int32_t coaxial_mouselook(cx_face_addr state) { return (int32_t)zone_mouselook(zone(state)); }
 EXPORT("coaxial_look_delta") void coaxial_look_delta(cx_face_addr state, float dx, float dy) { zone_look_delta(zone(state), dx, dy); }
 EXPORT("coaxial_pointer_lock") void coaxial_pointer_lock(cx_face_addr state, int32_t status) { zone_pointer_lock(zone(state), status); }
-/* A phone's turn as look and aim (aethyr/cam/gyro.coax, #13189): host.js from devicemotion, the page host from CoreMotion. */
+/* A phone's turn as look and aim (metaverse-engine/cam/gyro.coax, #13189): host.js from devicemotion, the page host from CoreMotion. */
 EXPORT("coaxial_tilt") void coaxial_tilt(cx_face_addr state, float dyaw, float dpitch) { zone_tilt(zone(state), dyaw, dpitch); }
 EXPORT("coaxial_gyro") int32_t coaxial_gyro(cx_face_addr state) { return (int32_t)zone_gyro(zone(state)); }
 EXPORT("coaxial_gyro_status") void coaxial_gyro_status(cx_face_addr state, int32_t status) { zone_gyro_status(zone(state), status); }
@@ -198,7 +198,7 @@ EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(cx_face
 
 EXPORT("coaxial_inbox") cx_face_addr coaxial_inbox(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
-// Everglade Experimental draws its HUD in the FANTASY style (aethyr/ui/hud-style.coax): its strokes then
+// Everglade Experimental draws its HUD in the FANTASY style (metaverse-engine/ui/hud-style.coax): its strokes then
 // blend straight alpha, sealed with their coverage (lab_straight_alpha). The 5E Lab keeps max blending.
 static cx_face_addr page_state;
 EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return page_state && zone_straight_alpha(zone(page_state)) ? 1u : 0u; }
@@ -221,7 +221,7 @@ EXPORT("coaxial_media_len") uint32_t coaxial_media_len(cx_face_addr state) { coa
 EXPORT("coaxial_media_capacity") uint32_t coaxial_media_capacity(cx_face_addr state) { return (uint32_t)sizeof zone_at(state)->xc.e[0].media.e; }
 
 // Read-only observations for headless wardrobe checks.
-/* The agent driver (aethyr/agent/drive.coax, coax/web/host.js coaxial.drive): the answer to the last command (message 700). */
+/* The agent driver (metaverse-engine/agent/drive.coax, coax/web/host.js coaxial.drive): the answer to the last command (message 700). */
 EXPORT("coaxial_drive_out") cx_face_addr coaxial_drive_out(cx_face_addr state) { return (cx_face_addr)(uintptr_t)zone_drive_out(zone(state)).data; }
 EXPORT("coaxial_drive_out_len") uint32_t coaxial_drive_out_len(cx_face_addr state) { return (uint32_t)zone_drive_out(zone(state)).count; }
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(cx_face_addr state,int32_t field) {return (int32_t)zone_probe(zone(state),field);}

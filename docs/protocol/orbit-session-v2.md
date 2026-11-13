@@ -53,6 +53,6 @@ A body absent from the next complete snapshot is removed. This profile has
 no separate removal queue or delta history. New connections advance car
 life; the match's `KICKS` counter identifies kickoff discontinuities.
 
-Both this profile and Everglade use the Coax contracts in `aethyr/net/`.
+Both this profile and Everglade use the Coax contracts in `metaverse-engine/net/`.
 Each realm keeps its rules and codec; hosts retain sockets, clocks and
 other platform effects.

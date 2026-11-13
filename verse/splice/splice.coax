@@ -1,14 +1,14 @@
 // Splice, openagents.com/worlds/splice (unlisted): robots and machines on Mars and stranger worlds,
 // drawn in the anime style (docs/verse/art-styles.md, Anime: cel bands, coloured ink, a vivid sky).
 //
-// Everything that draws is the Metaverse Engine's: the cel mesh writers (aethyr/render/cel-mesh.coax), the
-// machine and land kits (aethyr/kit/machines.coax, aethyr/kit/land.coax), Anime Lab's uniform
+// Everything that draws is the Metaverse Engine's: the cel mesh writers (metaverse-engine/render/cel-mesh.coax), the
+// machine and land kits (metaverse-engine/kit/machines.coax, metaverse-engine/kit/land.coax), Anime Lab's uniform
 // layout and camera rows (animelab.coax), its style block (animelab-style.coax) and its shader
 // (gpu/splice.coax loads gpu/animelab.coax). This page only stages scenes: each picks pieces from
 // the kits, their colours, a camera, a key light and an anime variant and clock (its look).
 //   coax/bin/coax test verse/splice/splice.coax
 #load "../../apps/openagents-web/animelab.coax";
-#load "../../aethyr/kit/land.coax";
+#load "../../metaverse-engine/kit/land.coax";
 #load "splice-game.coax";
 
 SP_WORLD_WORDS :: 150000;
@@ -332,7 +332,7 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
     s[0].started = true; g_stage(s[0].game[..], n);
     return;
   }
-  // A scripted host places the smuggler (aethyr/export/unreal/aethyr_script.c, the Unreal bridge's
+  // A scripted host places the smuggler (metaverse-engine/export/unreal/aethyr_script.c, the Unreal bridge's
   // run): 611 "x z" in centimetres, 612 "i" beside foe i, 613 "i" at the boss's weak point i.
   if kind >= 611 && kind <= 613 && s.count > 0 && s[0].started && !s[0].gallery {
     g := s[0].game[..];

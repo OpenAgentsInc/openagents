@@ -62,7 +62,7 @@ velocity for a while, then holds. A stop seen late is eased out, never jumped ba
   spaces, apostrophes and hyphens, no URLs, a blocked-words list), else two words made from the
   player id.
 - Character Create keeps your appearance as a CC3 record: 57 printable bytes
-  (`aethyr/character/character-appearance.coax`).
+  (`metaverse-engine/character/character-appearance.coax`).
 
 ### Production hosting and capacity
 

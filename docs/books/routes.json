@@ -122,22 +122,22 @@
       "chapters": [
         "coax/book/ch11-writing-checks.md",
         "coax/book/ch16-determinism.md",
-        "aethyr/book/ch001-a-frame-has-a-fixed-step.md",
-        "aethyr/book/ch003-state-starts-from-its-defaults.md",
-        "aethyr/book/ch004-input-becomes-typed-actions.md",
-        "aethyr/book/ch005-replay-a-session-exactly.md"
+        "metaverse-engine/book/ch001-a-frame-has-a-fixed-step.md",
+        "metaverse-engine/book/ch003-state-starts-from-its-defaults.md",
+        "metaverse-engine/book/ch004-input-becomes-typed-actions.md",
+        "metaverse-engine/book/ch005-replay-a-session-exactly.md"
       ],
       "evidence": [
-        "aethyr/book/examples.json",
-        "aethyr/tests/book-chapter9-qualification.json",
+        "metaverse-engine/book/examples.json",
+        "metaverse-engine/tests/book-chapter9-qualification.json",
         "verse/gridwalk.coax"
       ],
       "steps": [
         {
           "id": "fixed-step",
           "kind": "coax-run",
-          "source": "aethyr/examples/frame-rates.coax",
-          "stdout": "aethyr/fixtures/frame-rates.out",
+          "source": "metaverse-engine/examples/frame-rates.coax",
+          "stdout": "metaverse-engine/fixtures/frame-rates.out",
           "exit_status": 0,
           "modes": [
             "debug",
@@ -148,8 +148,8 @@
         {
           "id": "one-press",
           "kind": "coax-run",
-          "source": "aethyr/examples/one-press.coax",
-          "stdout": "aethyr/fixtures/one-press.out",
+          "source": "metaverse-engine/examples/one-press.coax",
+          "stdout": "metaverse-engine/fixtures/one-press.out",
           "exit_status": 0,
           "modes": [
             "debug",
@@ -160,8 +160,8 @@
         {
           "id": "replay-walk",
           "kind": "coax-run",
-          "source": "aethyr/examples/replay-a-walk.coax",
-          "stdout": "aethyr/fixtures/replay-a-walk.out",
+          "source": "metaverse-engine/examples/replay-a-walk.coax",
+          "stdout": "metaverse-engine/fixtures/replay-a-walk.out",
           "exit_status": 0,
           "modes": [
             "debug",

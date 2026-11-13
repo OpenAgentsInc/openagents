@@ -17,7 +17,7 @@
 // checkpoint store (v4 tickets, the API's OA_ROOM_CHECKPOINTS=1, on since #13184,
 // docs/protocol/character-checkpoint-v2.md). --position also holds them to within 1 m with A and 25 m
 // without: one 5 s checkpoint interval of running (4.25 m/s), with slack.
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "../../lib/net/http.coax";
 

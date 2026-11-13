@@ -30,7 +30,7 @@ typedef struct {
   // The left button and the pointer: phase 0 down, 1 moved (held or not), 2 up; clicks 1, 2, 3; mods as key's.
   void (*pointer)(void *user, float x, float y, int phase, int clicks, int mods);
   void (*wheel)(void *user, float dy);   // pixels, down positive
-  // A key: a Unicode scalar, or a named key below zero (aethyr/host/wayland-input.coax: -1 Escape, -2 Enter,
+  // A key: a Unicode scalar, or a named key below zero (metaverse-engine/host/wayland-input.coax: -1 Escape, -2 Enter,
   // -3 Backspace, -4..-7 Left Right Up Down, -8 Home, -9 End, -10 Page Up, -11 Page Down, -12 Delete, -15 Tab).
   // mods: 1 shift, 2 control, 4 alt, 8 logo. Return 1 when taken.
   int (*key)(void *user, int key, int mods, int down);

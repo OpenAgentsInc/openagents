@@ -2,7 +2,7 @@
 // coax/web/tool.sh verse/tools/valley-pages.coax OUTPUT_DIRECTORY
 #import "Basic";
 #load "../valley/parents.coax";
-#load "../../aethyr/render/geometry/pages.coax";
+#load "../../metaverse-engine/render/geometry/pages.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 tool_main :: ()->int #export_c #effects(all) {

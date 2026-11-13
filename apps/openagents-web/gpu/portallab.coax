@@ -5,7 +5,7 @@
 // texture, unlit), 1 a pole lamp (flat #ffffe5), 2 the portal (3D Perlin noise) and
 // 3 a firefly's quad corner (u, v the corner, -1 or 1), drawn added with no depth write.
 // The canvas is not sRGB, so linear colour is encoded here as three.js's output is.
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 
 // Uniforms (portallab.coax PL_U_*): 0 width, 1 height (device px), 2 seconds, 3 device px
 // per CSS px; 4-6 the portal's start colour, 7 the fireflies' size; 8-10 its end colour;

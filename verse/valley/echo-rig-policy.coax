@@ -1,9 +1,9 @@
 // Structural admission for the private Echo local-pose stream, after the whole-pack SHA gate.
-#load "../../aethyr/render/geometry/scan.coax";
-#load "../../aethyr/anim/face-pack.coax";
+#load "../../metaverse-engine/render/geometry/scan.coax";
+#load "../../metaverse-engine/anim/face-pack.coax";
 #load "slay-shot.coax";
 #authority;
-#load "../../aethyr/anim/echo-pack.coax";
+#load "../../metaverse-engine/anim/echo-pack.coax";
 ECHO_CATALOG_CAP :: 31457280;
 echo_catalog_size_ok :: (n:int)->bool #effects(all) {return n>=16 && n<=ECHO_CATALOG_CAP;}
 echo_catalog_parts_ok :: (n:int,rig:int,face:int)->bool #effects(all) {return rig>=416 && rig<=ECHO_RIG_CAP && face>=80 && face<=FACE_PACK_CAP && rig+face==n-16;}

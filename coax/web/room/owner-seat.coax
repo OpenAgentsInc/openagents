@@ -6,7 +6,7 @@
 // frames heard, whether the room said "r 0 elsewhere" or "r 0 restarting" (a drain, #12797), and whether the socket closed. With TO, 3 s in
 // it asks to travel there (T, #12850) and stops as soon as the room sends it on (g TO: "go").
 //   coax/web/tool.sh coax/web/room/owner-seat.coax ws://localhost:PORT/api/room/relay/everglade/CODE?t=TICKET SECONDS [TO]
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 
 tool_main :: () -> int #export_c #effects(all) {

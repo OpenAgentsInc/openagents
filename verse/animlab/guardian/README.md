@@ -10,7 +10,7 @@ weighted to the canonical right hand. Original upper-arm and forearm keys
 raise it; a hand reach holds the upper pose. The two hooded stand-ins use
 original recoil keys. The static gate post is a separate original prop rig.
 The guardian bird is procedural geometry, with deterministic wing keys.
-The scene's voice cue drives its stand-in face through `aethyr/audio/speak.coax`.
+The scene's voice cue drives its stand-in face through `metaverse-engine/audio/speak.coax`.
 
 ## Prepare private files
 
@@ -24,7 +24,7 @@ study="$HOME/.openagents/aethyrforge/animation-lab/guardian-study"
 mkdir -p "$study"
 openagents labs anim retarget "$HOME/.openagents/aethyrforge/animation-lab/a0-documents/clip-1.json" --to mannequin --out "$study/walk"
 cp verse/animlab/guardian/*.json "$study/"
-coax/web/tool.sh aethyr/tools/anim-guardian-study.coax "$study/walk" "$study"
+coax/web/tool.sh metaverse-engine/tools/anim-guardian-study.coax "$study/walk" "$study"
 ```
 
 This writes `guardian.bundle`, `wand.bundle`, `guardian.performance.json`
@@ -40,7 +40,7 @@ command does not play through the speakers or invoke a paid service.
 ```sh
 /usr/bin/say -v Samantha -o "$study/leave-now.aiff" 'Leave. Now.'
 ffmpeg -v error -y -i "$study/leave-now.aiff" -ar 48000 -ac 1 -c:a pcm_s16le -fflags +bitexact -flags:a +bitexact -map_metadata -1 "$study/leave-now.wav"
-coax/web/tool.sh aethyr/tools/anim-voice-pack.coax "$study/leave-now.wav" 'Leave. Now.' "$study/leave-now.sat"
+coax/web/tool.sh metaverse-engine/tools/anim-voice-pack.coax "$study/leave-now.wav" 'Leave. Now.' "$study/leave-now.sat"
 ```
 
 This voice is for the private study. The publishable version needs an

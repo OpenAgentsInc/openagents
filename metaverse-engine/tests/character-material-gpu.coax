@@ -1,0 +1,77 @@
+// CPU and GPU agreement for the character material shading (#13012, metaverse-engine/render/character-
+// material.coax): 64 deterministic cases through each of its functions, on the CPU here and on
+// the GPU in headless Chrome's WebGPU (the probe's WGSL, written by coax wgsl from
+// character-material-probe.coax), compared channel by channel. It fails when any channel differs by
+// more than CMG_ABS plus CMG_REL of its size, and says which function.
+//   coax/web/tool.sh coax/web/wgsl-module.coax metaverse-engine/tests/character-material-probe.coax PROBE.wgsl \
+//     metaverse-engine/tests/character-material-probe.module
+//   coax/web/tool.sh metaverse-engine/tests/character-material-gpu.coax http://127.0.0.1:PORT/ PROBE.wgsl
+// URL is any page of a local Coaxial server (WebGPU needs a secure origin; 127.0.0.1 is one).
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/net/cdp.coax";
+#load "../../coax/lib/media/media.coax";
+#load "character-material-probe.coax";
+
+CMG_N :: 64;
+CMG_ABS :: 0.00002;
+CMG_REL :: 0.0005;
+CMG_NAMES :: [CMP_ROWS] string.["cm_normal","cm_ggx","cm_sheen","cm_skin","cm_hair","cm_metal_sky","cm_strand","cm_rough+cm_f0"];
+cmg_h :: (i:int,k:int)->f32 {x:=sin(cast(f32)(i*131+k*17+1)*12.9898f32)*43758.5453f32;return x-floor(x);}
+cmg_unit :: (i:int,k:int,up:bool)->V3 {
+ a:=cmg_h(i,k)*6.2831853f32;z:=ifx up then 0.15f32+0.85f32*cmg_h(i,k+1) else cmg_h(i,k+1)*2-1;r:=sqrt(fmax(0.0f32,1-z*z));return v3(r*cos(a),r*sin(a),z);
+}
+cmg_cases :: (cases:[]V4) {
+ for i:0..<CMG_N {
+  n:=cmg_unit(i,1,true);l:=cmg_unit(i,3,true);v:=cmg_unit(i,5,true);g:=normalize3(add3(n,scale3(cmg_unit(i,7,true),0.3f32)));
+  cases[i*CMP_CASE]=v4(n.x,n.y,n.z,cmg_h(i,9));
+  cases[i*CMP_CASE+1]=v4(l.x,l.y,l.z,ifx i%4==0 then 1.0f32 else ifx i%4==1 then 0.0f32 else cmg_h(i,10));
+  cases[i*CMP_CASE+2]=v4(v.x,v.y,v.z,cmg_h(i,11)*2);
+  cases[i*CMP_CASE+3]=v4(0.05f32+0.9f32*cmg_h(i,12),0.05f32+0.9f32*cmg_h(i,13),0.05f32+0.9f32*cmg_h(i,14),(cmg_h(i,15)-0.5f32)*0.004f32);
+  cases[i*CMP_CASE+4]=v4(cmg_h(i,16),cmg_h(i,17),0.5f32+0.5f32*cmg_h(i,18),1);
+  cases[i*CMP_CASE+5]=v4((cmg_h(i,19)-0.5f32)*0.02f32,(cmg_h(i,20)-0.5f32)*0.02f32,(cmg_h(i,21)-0.5f32)*0.02f32,(cmg_h(i,22)-0.5f32)*0.004f32);
+  cases[i*CMP_CASE+6]=v4((cmg_h(i,23)-0.5f32)*0.02f32,(cmg_h(i,24)-0.5f32)*0.02f32,(cmg_h(i,25)-0.5f32)*0.02f32,(cmg_h(i,26)-0.5f32)*0.004f32);
+  cases[i*CMP_CASE+7]=v4(g.x,g.y,g.z,(cmg_h(i,27)-0.5f32)*0.004f32);
+ }
+}
+cmg_put :: (b:[]u8,n:int,s:string)->int {k:=n;for c:s {if k<b.count {b[k]=c;k+=1;}}return k;}
+cmg_int :: (b:[]u8,n:int,v:int)->int {d:[24]u8;m:=0;x:=v;if x==0 {d[0]='0';m=1;}while x>0 {d[m]=cast(u8)('0'+x%10);x/=10;m+=1;}k:=n;for j:0..<m {if k<b.count {b[k]=d[m-1-j];k+=1;}}return k;}
+CMG_JS_A :: "(async()=>{const W=";
+CMG_JS_B :: ";const C=new Float32Array(new Uint32Array([";
+CMG_JS_C :: "]).buffer);const N=64,R=8;const a=await navigator.gpu.requestAdapter();if(!a)return 'none|';const d=await a.requestDevice();const m=d.createShaderModule({code:W});const info=await m.getCompilationInfo();const errs=info.messages.filter(x=>x.type==='error');if(errs.length)return 'compile|'+errs.map(e=>e.lineNum+': '+e.message).join('; ');const buf=d.createBuffer({size:C.byteLength,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_DST});d.queue.writeBuffer(buf,0,C);const p=d.createRenderPipeline({layout:'auto',vertex:{module:m,entryPoint:'cmp_vs'},fragment:{module:m,entryPoint:'cmp_fs',targets:[{format:'rgba32float'}]},primitive:{topology:'triangle-list'}});const t=d.createTexture({size:[N,R],format:'rgba32float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.COPY_SRC});const bpr=N*16;const out=d.createBuffer({size:bpr*R,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});const e=d.createCommandEncoder();const pass=e.beginRenderPass({colorAttachments:[{view:t.createView(),loadOp:'clear',storeOp:'store',clearValue:[0,0,0,0]}]});pass.setPipeline(p);pass.setBindGroup(0,d.createBindGroup({layout:p.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:buf}}]}));pass.draw(3);pass.end();e.copyTextureToBuffer({texture:t},{buffer:out,bytesPerRow:bpr},[N,R]);d.queue.submit([e.finish()]);await out.mapAsync(GPUMapMode.READ);const u=new Uint32Array(out.getMappedRange());const info2=a.info||{};return (info2.vendor||'')+' '+(info2.architecture||'')+' '+(info2.description||'')+'|'+Array.from(u).join(' ');})()";
+
+tool_main :: () -> int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {tool_errln("character-material-gpu: URL PROBE.wgsl");return 2;}
+ url:=args_at(a[..],0);wb:[4194304]u8;wn:=fs_read(args_at(a[..],1),wb[..]);if wn<=0 {tool_errln("character-material-gpu: can't read the probe's WGSL");return 2;}
+ cases:[CMG_N*CMP_CASE]V4;cmg_cases(cases[..]);
+ // the CPU's answers
+ want:[CMP_ROWS*CMG_N]V4;for r:0..<CMP_ROWS {for i:0..<CMG_N {want[r*CMG_N+i]=cmp_eval(r,cases[..],i);}}
+ // the script: the WGSL as a JSON string, the cases as f32 bits
+ js:[CDP_REQ]u8;n:=cmg_put(js[..],0,CMG_JS_A);
+ jb:[4194304]u8;o:[1]Jo;jo_start(o[..],jb[..]);jo_str(o[..],cast(string)wb[0..<wn]);if o[0].bad {tool_errln("character-material-gpu: the WGSL doesn't fit");return 2;}n=cmg_put(js[..],n,jo_text(o[..]));
+ n=cmg_put(js[..],n,CMG_JS_B);
+ for i:0..<CMG_N*CMP_CASE {c:=cases[i];for q:[4]f32.[c.x,c.y,c.z,c.w] {if n>0 && js[n-1]!='[' {n=cmg_put(js[..],n,",");}n=cmg_int(js[..],n,cast(int)f32_bits(q));}}
+ n=cmg_put(js[..],n,CMG_JS_C);if n>=js.count {tool_errln("character-material-gpu: the script doesn't fit");return 2;}
+ c:[1]Cdp;if !cdp_launch(c[..],320,200,"coax-cmg-") {tool_err("character-material-gpu: ");tool_errln(cdp_error(c[..]));return 1;}
+ nav:[4096]u8;j:[1]Jo;jo_start(j[..],nav[..]);jo_obj(j[..]);jo_key(j[..],"url");jo_str(j[..],url);jo_end(j[..]);
+ if cdp_call(c[..],"Page.navigate",jo_text(j[..]),CDP_CALL_MS)<0 {tool_err("character-material-gpu: ");tool_errln(cdp_error(c[..]));cdp_close(c[..]);return 1;}
+ ready:[64]u8;start:=proc_now_ms();
+ while proc_now_ms()-start<20000 {k:=media_value(c[..],"document.readyState==='complete'&&!!navigator.gpu?'yes':'no'",ready[..]);if k==3 && cast(string)ready[0..<3]=="yes" {break;}}
+ got:[1048576]u8;g:=media_value(c[..],cast(string)js[0..<n],got[..]);cdp_close(c[..]);
+ if g<0 {tool_errln("character-material-gpu: the page returned nothing");return 1;}
+ text:=cast(string)got[0..<g];bar:=0;while bar<text.count && text[bar]!='|' {bar+=1;}
+ if bar>=text.count {tool_err("character-material-gpu: ");tool_errln(text);return 1;}
+ print("adapter: %\n",text[0..<bar]);if text[0..<bar]=="none" || text[0..<bar]=="compile" {tool_errln(text);return 1;}
+ // the GPU's answers, row by row, four channels a pixel
+ vals:[CMP_ROWS*CMG_N*4]f32;m:=0;p:=bar+1;
+ while p<text.count && m<vals.count {while p<text.count && text[p]==' ' {p+=1;}v:=0;any:=false;while p<text.count && text[p]>='0' && text[p]<='9' {v=v*10+cast(int)(text[p]-'0');p+=1;any=true;}if !any {break;}vals[m]=f32_from_bits(cast(u32)v);m+=1;}
+ if m!=vals.count {print("character-material-gpu: % of % values came back\n",m,vals.count);return 1;}
+ bad:=0;
+ for r:0..<CMP_ROWS {
+  worst:f32=0;
+  for i:0..<CMG_N {w:=want[r*CMG_N+i];for k:0..<4 {e:=ifx k==0 then w.x else ifx k==1 then w.y else ifx k==2 then w.z else w.w;q:=vals[(r*CMG_N+i)*4+k];d:=abs(q-e);lim:=CMG_ABS+CMG_REL*abs(e);if !(d<=lim) {if bad<8 {print("  % case % channel %: cpu % gpu %\n",CMG_NAMES[r],i,k,e,q);}bad+=1;}if d>worst {worst=d;}}}
+  print("% : max |gpu - cpu| % over % cases\n",CMG_NAMES[r],worst,CMG_N);
+ }
+ if bad>0 {print("character-material-gpu: % channels disagree\n",bad);return 1;}
+ print("character-material-gpu: CPU and GPU agree on all % functions, % cases\n",CMP_ROWS,CMG_N);return 0;
+}

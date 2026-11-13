@@ -9,7 +9,7 @@
 // "q ok" and the player's was not answered; 1 otherwise. Use test accounts only.
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (room-socket.coax loads room-ticket.coax)
 #load "room-socket.coax";
-#load "../../../aethyr/session/moderation.coax";
+#load "../../../metaverse-engine/session/moderation.coax";
 
 MC_ANSWERS :: 32;
 

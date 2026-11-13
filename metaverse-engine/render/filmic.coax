@@ -1,0 +1,48 @@
+// ACES working primaries and the five-parameter film response used by the source reference.
+// UE5.8 default profile: slope .88, toe .55, shoulder .26, black clip 0, white clip .04.
+// Input/output are linear Rec709. Display encoding belongs to the caller.
+#module "aethyr.render.filmic";
+// Self-contained (no shader-library load), so any realm can use it beside aethyr.render.noise.
+FilmRGB :: struct {r:f32;g:f32;b:f32;}
+#test "Source film profile preserves middle grey and black before display encoding" {c:=film_rec709(film_rgb(0.18,0.18,0.18));#assert abs(c.r-0.18)<0.00001 && abs(c.g-0.18)<0.00001 && abs(c.b-0.18)<0.00001;c=film_rec709(film_rgb(0,0,0));#assert c.r<0.000001 && c.g<0.000001 && c.b<0.000001;}
+#test "film atan2 matches the quadrant angles" {#assert abs(film_atan2(1,1)-0.7853982)<0.000001 && abs(film_atan2(1,-1)-2.3561945)<0.000001 && abs(film_atan2(-1,-1)+2.3561945)<0.000001 && film_atan2(0,0)==0;}
+// atan2 by Abramowitz and Stegun 4.4.49 on [0, 1], the same polynomial as metaverse-engine/gpu/wgsl.coax.
+film_atan2 :: (y:f32,x:f32)->f32 {
+ ax:=abs(x);ay:=abs(y);high:=film_max(ax,ay);if high==0 {return 0.0f32;}
+ t:=film_min(ax,ay)/high;z:=t*t;p:=-0.0040540580f32;
+ p=p*z+0.0218612288f32;p=p*z-0.0559098861f32;p=p*z+0.0964200441f32;p=p*z-0.1390853351f32;
+ p=p*z+0.1994653599f32;p=p*z-0.3332985605f32;p=p*z+0.9999993329f32;r:=t*p;
+ if ay>ax {r=1.57079632679f32-r;} if x<0 {r=3.14159265359f32-r;} if y<0 {r=-r;} return r;
+}
+film_rgb :: (r:f32,g:f32,b:f32)->FilmRGB {return FilmRGB.{r=r,g=g,b=b};}
+film_min :: (a:f32,b:f32)->f32 {return ifx a<b then a else b;}
+film_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
+film_sat :: (x:f32)->f32 {return film_min(1,film_max(0,x));}
+film_scale :: (c:FilmRGB,s:f32)->FilmRGB {return film_rgb(c.r*s,c.g*s,c.b*s);}
+film_mix_grey :: (c:FilmRGB,keep:f32)->FilmRGB {y:=c.r*0.2722287168+c.g*0.6740817658+c.b*0.0536895174;return film_rgb(y+(c.r-y)*keep,y+(c.g-y)*keep,y+(c.b-y)*keep);}
+film_in :: (c:FilmRGB)->FilmRGB {return film_rgb(c.r*0.6130974024+c.g*0.3395231461+c.b*0.0473794514,c.r*0.0701937225+c.g*0.9163538791+c.b*0.0134523986,c.r*0.0206155929+c.g*0.1095697729+c.b*0.8698146341);}
+film_out :: (c:FilmRGB)->FilmRGB {return film_rgb(c.r*1.7050509926-c.g*0.6217921205-c.b*0.0832588722,-c.r*0.1302564175+c.g*1.1408047365-c.b*0.0105483190,-c.r*0.0240033568-c.g*0.1289689761+c.b*1.1529723328);}
+film_ap0 :: (c:FilmRGB)->FilmRGB {return film_rgb(c.r*0.6954522414+c.g*0.1406786965+c.b*0.1638690622,c.r*0.0447945634+c.g*0.8596711185+c.b*0.0955343182,-c.r*0.0055258826+c.g*0.0040252103+c.b*1.0015006723);}
+film_ap1 :: (c:FilmRGB)->FilmRGB {return film_rgb(c.r*1.4514393161-c.g*0.2365107469-c.b*0.2149285693,-c.r*0.0765537734+c.g*1.1762296998-c.b*0.0996759264,c.r*0.0083161484-c.g*0.0060324498+c.b*0.9977163014);}
+film_curve :: (x:f32)->f32 {
+ slope:f32=0.88;toe:f32=0.45;shoulder:f32=0.78;
+ balance:f32=0.18/toe-1;low:=log(0.18f32)/log(10.0f32)-0.5*log((1+balance)/(1-balance))*toe/slope;
+ straight:=0.45/slope-low;high:=0.26/slope-straight;value:=log(film_max(x,0.0000000001))/log(10.0f32);
+ line:=slope*(value+straight);dark:=ifx value<low then 2*toe/(1+exp(-2*slope/toe*(value-low))) else line;bright:=ifx value>high then 1.04-2*shoulder/(1+exp(2*slope/shoulder*(value-high))) else line;
+ blend:=film_sat((value-low)/(high-low));if high<low {blend=1-blend;}blend=blend*blend*(3-2*blend);return dark+(bright-dark)*blend;
+}
+#test "an exposed film response is the response of the scaled light" {
+ c:=film_exposed(film_rgb(0.18f32/1.18f32,0.5,2),1.18);d:=film_rec709(film_rgb(0.18f32/1.18f32*1.18f32,0.5f32*1.18f32,2.0f32*1.18f32));
+ #assert c.r==d.r && c.g==d.g && c.b==d.b && abs(c.r-film_rec709(film_rgb(0.18,0.18,0.18)).r)<0.3;
+ e:=film_exposed(film_rgb(0.18,0.18,0.18),1);f:=film_rec709(film_rgb(0.18,0.18,0.18));#assert e.r==f.r && e.g==f.g && e.b==f.b;
+}
+// The film response after one exposure gain (the painterly default's presentation, metaverse-engine/render/painterly.coax).
+film_exposed :: (linear:FilmRGB,exposure:f32)->FilmRGB {return film_rec709(film_scale(linear,exposure));}
+film_rec709 :: (linear:FilmRGB)->FilmRGB {
+ c:=film_ap0(film_in(linear));lo:=film_min(c.r,film_min(c.g,c.b));hi:=film_max(c.r,film_max(c.g,c.b));saturation:=(film_max(hi,0.0000000001)-film_max(lo,0.0000000001))/film_max(hi,0.01);
+ chroma:=sqrt(film_max(0,c.b*(c.b-c.g)+c.g*(c.g-c.r)+c.r*(c.r-c.b)));brightness:=(c.r+c.g+c.b+1.75*chroma)/3;
+ shape:=(saturation-0.4)/0.2;triangle:=film_max(1-abs(shape*0.5),0);sign:=ifx shape>0 then 1.0f32 else ifx shape<0 then -1.0f32 else 0.0f32;gain:=0.05*0.5*(1+sign*(1-triangle*triangle));
+ glow:=ifx brightness<=0.08*2/3 then gain else ifx brightness>=0.16 then 0.0f32 else gain*(0.08/brightness-0.5);c=film_scale(c,1+glow);
+ hue:=film_atan2(sqrt(3.0f32)*(c.g-c.b),2*c.r-c.g-c.b)*180/3.14159265359;red:=film_sat(1-abs(2*hue/135));red=red*red*(3-2*red);c.r+=red*red*saturation*(0.03-c.r)*0.18;
+ c=film_ap1(c);c=film_rgb(film_max(c.r,0),film_max(c.g,0),film_max(c.b,0));c=film_mix_grey(c,0.96);c=film_rgb(film_curve(c.r),film_curve(c.g),film_curve(c.b));c=film_mix_grey(c,0.93);c=film_out(c);return film_rgb(film_max(c.r,0),film_max(c.g,0),film_max(c.b,0));
+}

@@ -75,5 +75,5 @@ snapshot holds, and how a replay reports the first place it diverges.
   clocks ([chapter 30](ch30-clocks-and-ticks.md)) and R15 strict profiles
   ([chapter 32](ch32-strict-math-and-integrators.md)).
 - Used by Metaverse Engine chapters
-  [5](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch005-replay-a-session-exactly.md)
-  and [36](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch036-record-and-replay-a-world.md).
+  [5](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch005-replay-a-session-exactly.md)
+  and [36](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch036-record-and-replay-a-world.md).

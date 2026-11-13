@@ -18,7 +18,7 @@
 // grid and the tokens and areas are strokes. Either way the labels, effects and text are fx
 // strokes (font.coax) and bg_fs puts the log's glass under them.
 // Player mode (P) plays one hero on Everglade's controller and follow camera (fivelab-face.c,
-// everglade-step.coax, aethyr/cam/camera.coax): W A S D, Shift, Space, a drag or a phone's thumbs; the
+// everglade-step.coax, metaverse-engine/cam/camera.coax): W A S D, Shift, Space, a drag or a phone's thumbs; the
 // token walks the squares to your body on your turns (player_turn, lab_keep). Escape pauses.
 //   coax/bin/coax test apps/openagents-web/fivelab.coax
 //
@@ -27,19 +27,19 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "../../everglade/scene/charactercreator.coax" as cc;
 #load "../../verse/experimental-village.coax" as village;
 #load "../../verse/experimental-hostiles.coax" as hostile;
 #load "../../verse/experimental-dungeon.coax" as xdungeon;
-#load "../../aethyr/core/loop.coax";
+#load "../../metaverse-engine/core/loop.coax";
 #load "../../rules/srd/battle.coax";
 #load "../../rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
-#load "../../aethyr/cam/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
-#load "../../aethyr/core/space.coax" as asp;
-#load "../../aethyr/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
-#load "../../aethyr/fx/battle.coax";   // which effect each battle event starts (#13086)
-#load "../../aethyr/fx/flat.coax";     // the flat view draws the same effects from above
+#load "../../metaverse-engine/cam/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
+#load "../../metaverse-engine/core/space.coax" as asp;
+#load "../../metaverse-engine/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
+#load "../../metaverse-engine/fx/battle.coax";   // which effect each battle event starts (#13086)
+#load "../../metaverse-engine/fx/flat.coax";     // the flat view draws the same effects from above
 #load "../../everglade/scene/bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
 #load "../../everglade/shared/everglade-move-types.coax";   // what fivelab-face.c hands Everglade's movement step (everglade-step.coax)
 #load "fivelab-warlock.coax";   // Player mode's level 17 Warlock: its spells, their looks, its Zombies
@@ -50,17 +50,17 @@
 #load "../../verse/experimental-biomes.coax" as biomes;
 #load "../../verse/experimental-aribeth.coax" as nwna;
 #load "../../verse/experimental-terrain.coax" as xterrain;
-#load "../../aethyr/world/building.coax" as building;
+#load "../../metaverse-engine/world/building.coax" as building;
 #load "../../everglade/world/housewright.coax" as hw;   // the housewright showcase's labels (lab_showcase_titles)
-#load "../../aethyr/cam/mouselook.coax" as mlook;   // Experimental's mouse looks round with no button held
-#load "../../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (everglade/dash.coax, wired in everglade/zone-combat.coax xc_sprint_frame)
+#load "../../metaverse-engine/cam/mouselook.coax" as mlook;   // Experimental's mouse looks round with no button held
+#load "../../metaverse-engine/action/sprint.coax" as sprint;   // a Dash's sprint (everglade/dash.coax, wired in everglade/zone-combat.coax xc_sprint_frame)
 #load "../../everglade/hud/class-bar.coax";   // Everglade's class menus: rest, in the menu your portrait opens (#13092, #13147)
 #load "../../everglade/hud/lines.coax";   // Everglade's line HUD: the lab's lines, words, buttons, slots, sliders, log and corner (#13083)
 #load "../../everglade/zone.coax";   // an Everglade zone: Experimental's and the Druid's world (the scene, the class bar and its rules, the bow, riding, the agent driver)
 #load "../../everglade/mounts.coax" as egm;   // Everglade's horses (everglade/docs/mounts-spec.md)
 #load "experimental-stages.coax";   // Experimental's film stages on a mount
-#load "../../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
-#load "../../aethyr/cam/track.coax" as trk;   // ?stage= setups' camera tracks (lab_stage)
+#load "../../metaverse-engine/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
+#load "../../metaverse-engine/cam/track.coax" as trk;   // ?stage= setups' camera tracks (lab_stage)
 #load "../../everglade/world/housewright-stage.coax" as hws;   // ?stage=house-*: the housewright time-lapses (#13107)
 
 // The strokes' budget: the scene's labels and effects' text stop short of HUD_VERTS from the end, so
@@ -189,7 +189,7 @@ Lab :: struct {
   cam_siege: bool;   // the Siege's camera is the home one (lab_view_home)
   scene_top: f32;    // floating numbers stay below this (the sliders)
   plates: [NP_MAX] Rect; plates_n: int;   // this frame's names over the figures (lab_heads3), which floating numbers keep off
-  heads: [1] cc.HudPlates;                 // the frame's plates over the figures (lab_heads3: aethyr/ui/hud-plates.coax)
+  heads: [1] cc.HudPlates;                 // the frame's plates over the figures (lab_heads3: metaverse-engine/ui/hud-plates.coax)
   signs: [1] cc.HudPlates;                 // the housewright showcase's labels on their boards (lab_showcase_titles)
   blk_up: [BLK_MAX * TEAMS] int; blk_w: int; blk_h: int;   // the standing by block and side (blk_count)
   due_t: [DUE_MAX] int; due_i: [DUE_MAX] int; due_n: int;   // whose turn comes next (lab_due's heap)
@@ -207,8 +207,8 @@ Lab :: struct {
   eye: P3; fwd: P3; right: P3; up: P3; focal: f32; cx: f32; cy: f32;
   // the figures (everglade/scene/bodies.coax): their playback, and the squares the Horde filled afresh
   fresh: [LAB_MAX] bool;
-  // Player mode's camera and your body: Everglade's free orbit (aethyr/cam/camera.coax) behind the body
-  // Everglade's controller walks (fivelab-face.c: aethyr/move/walk.coax through everglade-step.coax)
+  // Player mode's camera and your body: Everglade's free orbit (metaverse-engine/cam/camera.coax) behind the body
+  // Everglade's controller walks (fivelab-face.c: metaverse-engine/move/walk.coax through everglade-step.coax)
   orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;   // a drag's look, spent each frame
   blend: f32;                       // 0 the spectator's camera, 1 the follow camera; it swings between
   you_me: int = -1;   // the hero your body is (the body itself is the zone's: you_on, you_x, put_x)
@@ -244,7 +244,7 @@ look_of :: (klass: int) -> int {
   return 0;
 }
 rgb_col :: (c: FxV) -> Col { return Col.{r = c.x, g = c.y, b = c.z}; }
-// A spell's light (aethyr/fx/spell-light.coax), which Everglade II's casts share.
+// A spell's light (metaverse-engine/fx/spell-light.coax), which Everglade II's casts share.
 spell_rgb :: (sp: int) -> Col { return rgb_col(fxl_spell_rgb(sp)); }
 
 // ---- the log
@@ -394,9 +394,9 @@ lab_scene :: (s: [] Lab, out: [] f32) -> int #export_c #effects(all) {
   zone_shadow_select(s[0].w[..]);
   return s[0].w[0].bodies[0].draw_n;
 }
-// Where the battle's grid lies in the glade (wx, wz), for the shared effects (aethyr/fx/battle.coax).
+// Where the battle's grid lies in the glade (wx, wz), for the shared effects (metaverse-engine/fx/battle.coax).
 lab_grid :: (s: [] Lab) -> FxeGrid { return FxeGrid.{x0 = -f32(s[0].cols) * f32(SQ) / 2, z0 = -f32(s[0].rows) * f32(SQ) / 2, sq = f32(SQ)}; }
-// One battle event as the glade's effect (aethyr/fx/battle.coax), with what only the Lab knows: the
+// One battle event as the glade's effect (metaverse-engine/fx/battle.coax), with what only the Lab knows: the
 // foe a Cunning Action's Dash runs from or a Flurry of Blows strikes, and where the figure is drawn.
 lab_effect :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
   b := bt(s);
@@ -405,7 +405,7 @@ lab_effect :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
   g := lab_grid(s);
   fxe_event(s[0].w[0].puffs[..], b, g, e, seed, t0, FxeSeen.{foe = foe, was = fxe_point(g, s[0].dx[e.by], s[0].dy[e.by], 0)});
 }
-// What lasts on a creature, as the glade draws it (aethyr/fx/abilities.coax fxp_status): its
+// What lasts on a creature, as the glade draws it (metaverse-engine/fx/abilities.coax fxp_status): its
 // conditions, concentration, Rage, Sacred Weapon, Innate Sorcery, a flame in hand and a Fiend's
 // Temporary Hit Points from Dark One's Blessing.
 // Its conditions' marks are the shared condition display's (rules/srd/condition-display.coax).
@@ -1689,7 +1689,7 @@ set_player :: (s: [] Lab, on: bool) {
 }
 
 // ---- Player mode's body and camera: Everglade's. fivelab-face.c steps Everglade's controller
-// (aethyr/move/walk.coax through everglade-step.coax's eg_step_begin and eg_step_advance, the steps
+// (metaverse-engine/move/walk.coax through everglade-step.coax's eg_step_begin and eg_step_advance, the steps
 // Everglade's page and room server run) on the keys and the thumb's stick each frame; this is the
 // world's half: the figures round you, your Speed and what holds you, and where your body is
 // held. Your body moves freely; the rules still decide: your token walks the squares to your body
@@ -1823,12 +1823,12 @@ lab_you :: (s: [] Lab, x: f32, y: f32, z: f32, face: f32, airborne: bool, touch:
   if touch { s[0].w[0].touch = true; }
   s[0].w[0].stick_on = stick_on; s[0].w[0].stick_ox = ox; s[0].w[0].stick_oy = oy; s[0].w[0].stick_px = px; s[0].w[0].stick_py = py;
 }
-// A thumb's look and pinch (aethyr/core/sticks.coax), as a drag and the wheel.
+// A thumb's look and pinch (metaverse-engine/core/sticks.coax), as a drag and the wheel.
 lab_look :: (s: [] Lab, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all) {
   s[0].look_yaw += dyaw; s[0].look_pitch += dpitch;
   s[0].orbit = figs.cam_pinch(s[0].orbit, zoom);
 }
-// The follow camera this frame (aethyr/cam/chase.coax): the look asked for, the arrow keys, after
+// The follow camera this frame (metaverse-engine/cam/chase.coax): the look asked for, the arrow keys, after
 // your body, kept above the glade's ground.
 lab_chase_step :: (s: [] Lab, dt: f32) {
   h := s[0].w[0].held; me := s[0].me;
@@ -2063,7 +2063,7 @@ lab_layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   }
 }
 
-// The battle's lasting areas on the board: each one's outline (aethyr/action/area-aim.coax, class-kit.coax
+// The battle's lasting areas on the board: each one's outline (metaverse-engine/action/area-aim.coax, class-kit.coax
 // xk_zone_area: a Line, a circle or its squares), held to the board, and what grows in its squares.
 board_areas :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
   n := at; c := s[0].cell;
@@ -2168,7 +2168,7 @@ draw_tokens :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
   return n;
 }
 
-// The flat view's effects: the glade's own causes seen from above (aethyr/fx/flat.coax), as strokes.
+// The flat view's effects: the glade's own causes seen from above (metaverse-engine/fx/flat.coax), as strokes.
 draw_casts :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   n := at; c := s[0].cell;
   pf := s[0].w[0].puffs[..];
@@ -2203,7 +2203,7 @@ draw_nums :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
   return n;
 }
 
-// The glade's plates over its creatures, placed by the shared plates (aethyr/ui/hud-plates.coax) and
+// The glade's plates over its creatures, placed by the shared plates (metaverse-engine/ui/hud-plates.coax) and
 // drawn in the 5E Lab's strokes: every living figure's hit points (past LABELS_ALL creatures only the
 // near ones', within 24 m), and the names where they don't pile up: first the ones always shown (a
 // siege's leader, the hero you play, your target), then the rest nearest first; a covered name adds
@@ -2276,8 +2276,8 @@ lab_heads3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
   return n;
 }
 abs_f :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }
-// The glade's effects: the frame's puffs (aethyr/fx/puff.coax) for the host to draw over bg_fs
-// (fivelab-fx.wgsl, host.js particles), the lasting zones' motes with them (aethyr/fx/battle.coax).
+// The glade's effects: the frame's puffs (metaverse-engine/fx/puff.coax) for the host to draw over bg_fs
+// (fivelab-fx.wgsl, host.js particles), the lasting zones' motes with them (metaverse-engine/fx/battle.coax).
 glade_puffs :: (s: [] Lab) {
   now := rs_clock_s(s[0].battle[..]);
   pf := s[0].w[0].puffs[..];
@@ -2562,7 +2562,7 @@ lab_player_bar :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
           else "W A S D MOVE  SHIFT WALK  DRAG LOOK  SPACE JUMP  WHEEL ZOOM  1 TO 9 ACT  CLICK OR TAB TARGET  [ ] CLASS";
   room := ifx s[0].portrait then s[0].width - 32 * k else s[0].panel.x0 - 300 * k;
   n = say_at(out, n, keys, 16 * k, ifx nab > 0 then r0.y1 + 14 * k else s[0].cy, ln_fit(keys, 8.5 * k, room), ink(k, 0.9, GOLD));
-  // the thumb's stick: where it is held, or where to put your thumb (aethyr/core/sticks.coax's ring)
+  // the thumb's stick: where it is held, or where to put your thumb (metaverse-engine/core/sticks.coax's ring)
   if s[0].w[0].touch {
     sr := 56 * k;
     ox := ifx s[0].w[0].stick_on then s[0].w[0].stick_ox else s[0].width * 0.22;
@@ -2678,7 +2678,7 @@ lab_showcase_titles :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
   if s[0].w[0].creator[0].build_review || s[0].w[0].creator[0].field {return n;}
   near:=false;for i:0..<xterrain.EXP_SHOWCASE_SITES {site:=xterrain.exp_site(xterrain.EXP_SHOWCASE_SITE+i);if xterrain.exp_distance(site,px,pz)<16 {near=true;}}
   if !near {return n;}
-  // Placed on the shared plates (aethyr/ui/hud-plates.coax): nearest first, and with no lifts a label
+  // Placed on the shared plates (metaverse-engine/ui/hud-plates.coax): nearest first, and with no lifts a label
   // that would overlap a nearer one is left out, so a row across the walk doesn't print over the row
   // in front (drop). Each stands on its board 0.8 down, where its two lines end. Face 0 is the body face
   // cc.text sets labels in.
@@ -2707,7 +2707,7 @@ lab_showcase_titles :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
   return n;
 }
 // The loaded private packs' titles over their stations (each pair's, NWN's and Quaternius's side; each
-// biome's), on the shared plates (aethyr/ui/hud-plates.coax, everglade/hud/parts.coax eg_plates).
+// biome's), on the shared plates (metaverse-engine/ui/hud-plates.coax, everglade/hud/parts.coax eg_plates).
 lab_pack_titles :: (s:[]Lab,out:[]f32,at:int,w:f32,h:f32,k:f32)->int {
  bp:=s[0].w[0].creator[0].biomes_present;cp:=s[0].w[0].creator[0].comparison_present;if (!bp && !cp) || s[0].w[0].creator[0].field {return at;}
  pl:=s[0].heads[..];view:=xc_plate_view(s[0].w[0].xc[..],w,h);
@@ -2755,7 +2755,7 @@ lab_stage_step :: (s: [] Lab, dt: f32, still: bool) {
   t := lab_stage_t(s);
   s[0].w[0].creator[0].clock = t;   // the page clock is the stage's too, so the builders' trips (cc_crew_set) land on the same frames every run
   site := lab_stage_site(s); g := xterrain.exp_height(site.x, site.z);
-  // the houses: each a build site at its progress (aethyr/world/build-site.coax, #13106)
+  // the houses: each a build site at its progress (metaverse-engine/world/build-site.coax, #13106)
   h: [LAB_STAGE_SLOTS] hws.HwsHouse; n := hws.hws_houses(s[0].stage, t, 0, 0, h[..]);
   for i: 0..<LAB_STAGE_SLOTS {
     if i >= n { cc.build_site_clear(s[0].w[0].creator[..], i); continue; }
@@ -3300,7 +3300,7 @@ fly :: (s: [] Lab, dt: f32) {
   s[0].pitch = lo(1.35, hi(0.12, s[0].pitch + s[0].vpitch * t));
   lab_view_zoom(s, 1 + s[0].vzoom * t);
 }
-// The spectator's camera is Aethyr's overhead camera (aethyr/cam/overhead.coax) over the grid.
+// The spectator's camera is Aethyr's overhead camera (metaverse-engine/cam/overhead.coax) over the grid.
 // Its zoom: its distance times `by`, held between near and far.
 lab_view_zoom :: (s: [] Lab, by: f32) { s[0].dist = figs.cam_overhead_zoom(s[0].dist, by, ZOOM_NEAR, ZOOM_FAR * grid_scale(s)); }
 // How much bigger the grid is than the lab's 40 by 20: the camera's orbit backs off by as much.

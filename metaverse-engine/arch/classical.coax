@@ -1,0 +1,132 @@
+// The Metaverse Engine's architecture kit, its classical parts: what a Greek or Roman building is made of, each
+// built once into a pen (metaverse-engine/arch/mesh.coax) and placed as often as a realm likes
+// (metaverse-engine/arch/place.coax). Every part stands on y = 0 at the origin and takes the pen's material.
+// Sizes are in metres. The Golemancers' Workshop (everglade/workshop/temple.coax) is their first user.
+//   coax/bin/coax test --library metaverse-engine/arch/classical.coax
+#module "aethyr.arch.classical";
+#load "mesh.coax";
+
+ARCH_FLUTES :: 20;            // a Doric column's grooves
+ARCH_COLUMN_SEGMENTS :: 80;   // steps round a fluted shaft: four a groove
+
+// A Doric column: a moulded base, a shaft that narrows as it rises with a slight swell (entasis)
+// and `flutes` grooves down it, a flared capital and its square slab. `radius` is the shaft's at
+// its foot; the slab on top reaches 1.42 radii each way. 0 flutes is a plain shaft.
+arch_column :: (p: [] ArchPen, radius: f32, height: f32, flutes: int) -> ArchPart {
+  from := p[0].n; r := radius; h := height;
+  profile: [20] ArchTurn; n := 0;
+  // The base: two rounds with a hollow between.
+  for q: [7] ArchTurn.[ArchTurn.{r = 1.42, y = 0}, ArchTurn.{r = 1.45, y = 0.06}, ArchTurn.{r = 1.38, y = 0.11}, ArchTurn.{r = 1.22, y = 0.13},
+                       ArchTurn.{r = 1.26, y = 0.17}, ArchTurn.{r = 1.2, y = 0.22}, ArchTurn.{r = 1.02, y = 0.25}] {
+    profile[n] = ArchTurn.{r = q.r * r, y = q.y, flute = 0}; n += 1;
+  }
+  // The shaft: narrower by a seventh at the top, swelling a little a third of the way up.
+  low: f32 = 0.27; high := h - 0.42;
+  for k: 0..<7 {
+    t := cast(f32) k / 6;
+    swell := 0.02 * sin(t * 3.14159265);
+    profile[n] = ArchTurn.{r = r * (1.0 - 0.14 * t + swell), y = low + (high - low) * t, flute = ifx k == 0 || k == 6 then 0.0f32 else 1.0f32}; n += 1;
+  }
+  // The neck and the flare under the slab.
+  for q: [4] ArchTurn.[ArchTurn.{r = 0.88, y = 0.38}, ArchTurn.{r = 0.95, y = 0.34}, ArchTurn.{r = 1.2, y = 0.2}, ArchTurn.{r = 1.3, y = 0.14}] {
+    profile[n] = ArchTurn.{r = q.r * r, y = h - q.y, flute = 0}; n += 1;
+  }
+  arch_lathe(p, profile[0..<n], ifx flutes > 0 then ARCH_COLUMN_SEGMENTS else 28, flutes, r * 0.07);
+  arch_box(p, 0, h - 0.07, 0, r * 1.42, 0.07, r * 1.42);
+  return arch_part(p, from);
+}
+
+// A square block for a column to stand on: `half` each way, `height` tall.
+arch_plinth :: (p: [] ArchPen, half: f32, height: f32) -> ArchPart {
+  from := p[0].n;
+  arch_box(p, 0, height * 0.5, 0, half, height * 0.5, half);
+  return arch_part(p, from);
+}
+
+// A baluster: the turned post of a balustrade, a vase on a foot.
+arch_baluster :: (p: [] ArchPen, height: f32, radius: f32) -> ArchPart {
+  from := p[0].n; h := height; r := radius;
+  profile: [9] ArchTurn; n := 0;
+  for q: [9] ArchTurn.[ArchTurn.{r = 0.9, y = 0}, ArchTurn.{r = 0.9, y = 0.05}, ArchTurn.{r = 0.5, y = 0.11}, ArchTurn.{r = 1.0, y = 0.3}, ArchTurn.{r = 0.82, y = 0.46},
+                       ArchTurn.{r = 0.42, y = 0.7}, ArchTurn.{r = 0.6, y = 0.86}, ArchTurn.{r = 0.9, y = 0.94}, ArchTurn.{r = 0.9, y = 1.0}] {
+    profile[n] = ArchTurn.{r = q.r * r, y = q.y * h, flute = 0}; n += 1;
+  }
+  arch_lathe(p, profile[..], 10, 0, 0);
+  return arch_part(p, from);
+}
+
+// A balustrade's two rails round the y axis at `radius`: a low one for the balusters to stand on
+// and a broad one on top, `height` to its top. The balusters between them are placed, not built.
+arch_rails :: (p: [] ArchPen, radius: f32, height: f32, segments: int) -> ArchPart {
+  from := p[0].n;
+  arch_ring(p, radius - 0.02, radius + 0.18, 0, 0.1, 0, ARCH_TAU, segments);
+  arch_ring(p, radius - 0.04, radius + 0.2, height - 0.1, height, 0, ARCH_TAU, segments);
+  return arch_part(p, from);
+}
+
+// An entablature carried round the y axis on a ring of columns: the beam (architrave and frieze)
+// from `y` up `beam`, and a cornice over it that stands out further. `half` is half the beam's width.
+arch_entablature :: (p: [] ArchPen, radius: f32, half: f32, y: f32, beam: f32, segments: int) -> ArchPart {
+  from := p[0].n;
+  arch_ring(p, radius - half, radius + half, y, y + beam * 0.55, 0, ARCH_TAU, segments);
+  arch_ring(p, radius - half * 0.92, radius + half * 0.92, y + beam * 0.55, y + beam, 0, ARCH_TAU, segments);
+  arch_ring(p, radius - half * 1.3, radius + half * 1.3, y + beam, y + beam + 0.2, 0, ARCH_TAU, segments);
+  return arch_part(p, from);
+}
+
+// A brazier: a bowl on a stem, `height` to its rim. Its fire is the realm's to add.
+arch_brazier :: (p: [] ArchPen, height: f32) -> ArchPart {
+  from := p[0].n; h := height;
+  profile: [9] ArchTurn; n := 0;
+  for q: [9] ArchTurn.[ArchTurn.{r = 0.2, y = 0}, ArchTurn.{r = 0.2, y = 0.05}, ArchTurn.{r = 0.07, y = 0.12}, ArchTurn.{r = 0.055, y = 0.62}, ArchTurn.{r = 0.11, y = 0.7},
+                       ArchTurn.{r = 0.3, y = 0.88}, ArchTurn.{r = 0.34, y = 1.0}, ArchTurn.{r = 0.3, y = 1.0}, ArchTurn.{r = 0.04, y = 0.86}] {
+    profile[n] = ArchTurn.{r = q.r, y = q.y * h, flute = 0}; n += 1;
+  }
+  arch_lathe(p, profile[..], 16, 0, 0);
+  return arch_part(p, from);
+}
+
+// A flame: a teardrop standing on y = 0, `height` tall and `radius` at its widest. v runs up it,
+// so a shader can make its foot hot and its tip thin.
+arch_flame :: (p: [] ArchPen, height: f32, radius: f32) -> ArchPart {
+  from := p[0].n;
+  profile: [6] ArchTurn; n := 0;
+  for q: [6] ArchTurn.[ArchTurn.{r = 0.55, y = 0}, ArchTurn.{r = 1.0, y = 0.2}, ArchTurn.{r = 0.85, y = 0.45}, ArchTurn.{r = 0.5, y = 0.7}, ArchTurn.{r = 0.2, y = 0.9}, ArchTurn.{r = 0.0, y = 1.0}] {
+    profile[n] = ArchTurn.{r = q.r * radius, y = q.y * height, flute = 0}; n += 1;
+  }
+  arch_lathe(p, profile[..], 12, 0, 0);
+  return arch_part(p, from);
+}
+
+// A band round a shaft, standing out from it by `proud`: a ring of light on a column, or a collar.
+arch_band :: (p: [] ArchPen, radius: f32, y: f32, tall: f32, proud: f32) -> ArchPart {
+  from := p[0].n;
+  arch_ring(p, radius - 0.01, radius + proud, y - tall * 0.5, y + tall * 0.5, 0, ARCH_TAU, 40);
+  return arch_part(p, from);
+}
+
+#test "a column stands on the ground to its height, faces out, and its slab is its widest part" {
+  buf: [12000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  c := arch_column(p[..], 0.4, 6.0, ARCH_FLUTES); reach := arch_reach(buf[..], c);
+  #assert !p[0].full && reach.low == 0 && abs(reach.high - 6.0) < 0.0001;
+  #assert reach.out > 0.4 * 1.42 && reach.out < 0.4 * 1.42 * 1.4143 + 0.001;
+  #assert arch_facing(buf[..], c) > cast(f32) (c.count / 3) * 0.85;
+  plain := arch_column(p[..], 0.3, 3.1, 0);
+  #assert plain.count < c.count && arch_reach(buf[..], plain).high < 3.1001 && !p[0].full;
+}
+#test "the smaller parts stand on the ground to their heights and face out" {
+  buf: [11000 * ARCH_VERTEX_FLOATS] f32; p: [1] ArchPen; arch_pen(p[..], buf[..]);
+  b := arch_baluster(p[..], 0.74, 0.07); rb := arch_reach(buf[..], b);
+  #assert rb.low == 0 && abs(rb.high - 0.74) < 0.0001 && rb.out < 0.0701 && arch_facing(buf[..], b) > cast(f32) (b.count / 3) * 0.8;
+  z := arch_brazier(p[..], 0.9); rz := arch_reach(buf[..], z);
+  #assert rz.low == 0 && abs(rz.high - 0.9) < 0.0001 && rz.out < 0.3401;
+  pl := arch_plinth(p[..], 0.52, 0.3); rp := arch_reach(buf[..], pl);
+  #assert pl.count == 36 && rp.low == 0 && abs(rp.high - 0.3) < 0.0001;
+  r := arch_rails(p[..], 7.2, 0.94, 48); rr := arch_reach(buf[..], r);
+  #assert rr.low == 0 && abs(rr.high - 0.94) < 0.0001 && rr.out < 7.41 && arch_facing(buf[..], r) > cast(f32) (r.count / 3) * 0.99;
+  e := arch_entablature(p[..], 7.75, 0.62, 6.0, 0.9, 48); re := arch_reach(buf[..], e);
+  #assert abs(re.low - 6.0) < 0.0001 && abs(re.high - 7.1) < 0.0001 && !p[0].full;
+  band := arch_band(p[..], 0.3, 0.78, 0.03, 0.012); #assert arch_reach(buf[..], band).out < 0.313 && !p[0].full;
+  f := arch_flame(p[..], 0.5, 0.16); rf := arch_reach(buf[..], f);
+  #assert rf.low == 0 && abs(rf.high - 0.5) < 0.0001 && rf.out < 0.1601 && !p[0].full;
+}

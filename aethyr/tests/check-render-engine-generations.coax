@@ -1,3 +1,0 @@
-#import "Basic";
-#load "render-lifecycle-tools.coax";
-tool_main :: ()->int #export_c #effects(all) {return rl_main(false,"aethyr/tests/check-render-engine-generations.coax");}

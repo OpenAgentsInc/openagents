@@ -2,7 +2,7 @@
 // Source layouts: BfresLibrary e2c5debc; verified Ocarina FVTX/FSHP/FMАТ records.
 #load "ocarina-bfres.coax";
 #load "kokiri-meshlet.coax";
-#load "../../aethyr/anim/scaled-pose.coax";
+#load "../../metaverse-engine/anim/scaled-pose.coax";
 KmAttribute :: struct {exists:bool;format:int;offset:int;buffer:int;}
 KmBuffer :: struct {offset:int;size:int;stride:int;}
 KmCounts :: struct {vertices:int;indices:int;shapes:int;materials:int;unsupported:int;}

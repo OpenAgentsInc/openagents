@@ -1,0 +1,386 @@
+// Moderation (#13302, AAA P5.8; docs/protocol/moderation-v1.md): what a moderator may do to a player,
+// how long it lasts, whom it stops, and the one codec for its record. The API asks these rules at the
+// seat ticket, the chat and the inbox (coax/web/api/moderation-policy.coax, player.c, room.c); a room
+// asks them when a seat whose ticket has the moderator bit sends a command (coax/web/room/room-mod.coax).
+// SQL keeps the rows and decides nothing (migrations/0170_moderation.sql).
+//
+// A moderator is one of the realm's admins: ACCT 2 in a signed seat ticket (seat-ticket.coax), or the
+// API's own check of the caller. A moderator can be sanctioned like any player, and may not act on
+// themselves, so no moderator lifts their own ban, mute or kick.
+//
+// The record, one line:        VERB PID MINUTES REASON
+//   VERB     look move kick mute ban unkick unmute unban
+//   PID      the player it is about: 1 to 40 of [a-z0-9-]
+//   MINUTES  how long a mute or ban lasts, 1 to 525600; 0 for no end, and for every other verb
+//   REASON   1 to 120 printable ASCII bytes, no space first or last; "-" for none. A kick, mute or ban needs one.
+// A room's command is "X " and the record. A room's report to the API, POST /api/playtest/room-mod-log:
+//   t MS                   when it was signed
+//   o SHARD GEN BATCH      who reports: the shard, its process's generation, the post's number
+//   SEQ BY ROOM RECORD     one action: its number in this process, the moderator, the room's code
+// The operation ID of a line is (SHARD, GEN, SEQ): the API logs it once. The answer is "receipt GEN BATCH".
+// The room's answer to the moderator, to that seat only:  q ok|no VERB PID DETAIL
+//   coax/bin/coax test metaverse-engine/session/moderation.coax --library
+//   coax/bin/coax mutate metaverse-engine/session/moderation.coax --library
+#authority;
+
+MOD_LOOK :: 1; MOD_MOVE :: 2; MOD_KICK :: 3; MOD_MUTE :: 4; MOD_BAN :: 5; MOD_UNKICK :: 6; MOD_UNMUTE :: 7; MOD_UNBAN :: 8;
+MOD_PID :: 40;            // bytes in a player id
+MOD_ROOM :: 24;           // bytes in a room's code
+MOD_REASON :: 120;        // bytes in a reason
+MOD_MINUTES :: 525600;    // the longest mute or ban with an end: a year
+MOD_KICK_MS :: 86400000;  // a kick lasts 24 hours
+MOD_LINE :: 272;          // a report line always fits: 15 + 1 + 40 + 1 + 24 + 1 + (6 + 1 + 40 + 1 + 6 + 1 + 120)
+
+// What the judge answers.
+MOD_OK :: 0;
+MOD_NOT_MODERATOR :: 1;   // the one asking is not a moderator
+MOD_SELF :: 2;            // a moderator acting on themselves
+MOD_BAD :: 3;             // not a record: an unknown verb, a length where none belongs, no reason for a sanction
+
+// What a verb sets or lifts.
+MOD_KIND_NONE :: 0; MOD_KIND_KICK :: 1; MOD_KIND_MUTE :: 2; MOD_KIND_BAN :: 3;
+
+ModRecord :: struct { ok: bool; verb: int; minutes: int; pid_at: int; pid_n: int; reason_at: int; reason_n: int; }
+ModEntry :: struct { ok: bool; seq: int; by_at: int; by_n: int; room_at: int; room_n: int; rec_at: int; }
+ModHead :: struct { ok: bool; at: int; shard: int; gen: int; batch: int; lines: int; }
+
+// A verb's word ("" for none), and a word's verb (0 for none).
+moderation_word :: (verb: int) -> string #effects(all) {
+  words := [8] string.["look", "move", "kick", "mute", "ban", "unkick", "unmute", "unban"];
+  return ifx verb >= MOD_LOOK && verb <= MOD_UNBAN then words[verb - 1] else "";
+}
+moderation_verb :: (word: string) -> int #effects(all) {
+  for v: MOD_LOOK..<MOD_UNBAN + 1 { if word == moderation_word(v) { return v; } }
+  return 0;
+}
+moderation_kind :: (verb: int) -> int #effects(all) {
+  if verb == MOD_KICK || verb == MOD_UNKICK { return MOD_KIND_KICK; }
+  if verb == MOD_MUTE || verb == MOD_UNMUTE { return MOD_KIND_MUTE; }
+  if verb == MOD_BAN || verb == MOD_UNBAN { return MOD_KIND_BAN; }
+  return MOD_KIND_NONE;
+}
+// What a refused player is told: "kicked", "muted" or "banned" ("" for none).
+moderation_kind_word :: (kind: int) -> string #effects(all) {
+  words := [3] string.["kicked", "muted", "banned"];
+  return ifx kind >= MOD_KIND_KICK && kind <= MOD_KIND_BAN then words[kind - 1] else "";
+}
+moderation_lifts :: (verb: int) -> bool #effects(all) { return verb >= MOD_UNKICK && verb <= MOD_UNBAN; }
+
+mod_code_ok :: (s: string, most: int) -> bool #effects(all) {
+  if s.count < 1 || s.count > most { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+moderation_pid_ok :: (pid: string) -> bool #effects(all) { return mod_code_ok(pid, MOD_PID); }
+moderation_reason_ok :: (reason: string) -> bool #effects(all) {
+  if reason.count < 1 || reason.count > MOD_REASON || reason[0] == ' ' || reason[reason.count - 1] == ' ' { return false; }
+  for c: reason { if c < ' ' || c > '~' { return false; } }
+  return true;
+}
+
+// May this be done? moderator: the one asking is one; self: it is about themselves.
+moderation_judge :: (verb: int, moderator: bool, self: bool, minutes: int, reason: string) -> int #effects(all) {
+  if !moderator { return MOD_NOT_MODERATOR; }
+  if verb < MOD_LOOK || verb > MOD_UNBAN || minutes < 0 || minutes > MOD_MINUTES || !moderation_reason_ok(reason) { return MOD_BAD; }
+  if minutes != 0 && verb != MOD_MUTE && verb != MOD_BAN { return MOD_BAD; }
+  if verb >= MOD_KICK && verb <= MOD_BAN && reason == "-" { return MOD_BAD; }
+  if self && verb != MOD_LOOK { return MOD_SELF; }
+  return MOD_OK;
+}
+// When a sanction set at `now` (wall ms) ends: a kick after 24 hours, a mute or ban after its minutes;
+// 0 for no end (a mute or ban of 0 minutes) and for a verb that sets none.
+moderation_until :: (verb: int, minutes: int, now: int) -> int #effects(all) {
+  if verb == MOD_KICK { return now + MOD_KICK_MS; }
+  if (verb == MOD_MUTE || verb == MOD_BAN) && minutes > 0 { return now + minutes * 60000; }
+  return 0;
+}
+// Whether a kept sanction holds at `now`: there is one, and it has no end (0) or its end is ahead.
+moderation_in_force :: (present: bool, until: int, now: int) -> bool #effects(all) { return present && (until == 0 || until > now); }
+// The seat ticket: no ticket for a banned or kicked player. Which stops it (MOD_KIND_NONE: a ticket).
+moderation_ticket :: (banned: bool, kicked: bool) -> int #effects(all) {
+  if banned { return MOD_KIND_BAN; }
+  return ifx kicked then MOD_KIND_KICK else MOD_KIND_NONE;
+}
+// Chat and the inbox: no line from a banned or muted player. Which stops it (MOD_KIND_NONE: it is kept).
+moderation_speak :: (banned: bool, muted: bool) -> int #effects(all) {
+  if banned { return MOD_KIND_BAN; }
+  return ifx muted then MOD_KIND_MUTE else MOD_KIND_NONE;
+}
+
+// ---- the codec
+
+mod_put :: (out: [] u8, n: int, s: string) -> int #effects(all) {
+  if n < 0 || n + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[n + i] = s[i]; }
+  return n + s.count;
+}
+mod_int :: (out: [] u8, n: int, x: int) -> int #effects(all) {
+  if x < 0 { return -1; }
+  d: [20] u8; m := 0; e := x;
+  while true { d[m] = cast(u8) ('0' + e % 10); m += 1; e = e / 10; if e == 0 { break; } }
+  if n < 0 || n + m > out.count { return -1; }
+  for i: 0..<m { out[n + i] = d[m - 1 - i]; }
+  return n + m;
+}
+// A whole number as written: digits only, no leading zero, 15 at most; -1 for anything else.
+mod_num :: (t: string) -> int #effects(all) {
+  if t.count < 1 || t.count > 15 || (t.count > 1 && t[0] == '0') { return -1; }
+  x := 0;
+  for c: t { if c < '0' || c > '9' { return -1; } x = x * 10 + cast(int) (c - '0'); }
+  return x;
+}
+// A line's fields, one space apart (and one newline apart when `lines`), read from `from`: where each
+// starts (at) and ends (end). The last of at.count fields takes the rest of the line, spaces and all.
+// The fields found: at.count when the line has them all.
+mod_split :: (line: string, from: int, lines: bool, at: [] int, end: [] int) -> int #effects(all) {
+  n := 0; i := from;
+  while i >= 0 && i <= line.count {
+    at[n] = i;
+    if n + 1 == at.count { end[n] = line.count; return n + 1; }
+    while i < line.count && line[i] != ' ' && !(lines && line[i] == '\n') { i += 1; }
+    end[n] = i; n += 1; i += 1;
+  }
+  return n;
+}
+
+// The record's line onto out at `at`: the new length, or -1 when it is not one or does not fit.
+moderation_write :: (out: [] u8, at: int, verb: int, pid: string, minutes: int, reason: string) -> int #effects(all) {
+  word := moderation_word(verb);
+  if word.count == 0 || !moderation_pid_ok(pid) || minutes < 0 || minutes > MOD_MINUTES || !moderation_reason_ok(reason) { return -1; }
+  n := mod_put(out, at, word); n = mod_put(out, n, " "); n = mod_put(out, n, pid); n = mod_put(out, n, " ");
+  n = mod_int(out, n, minutes); n = mod_put(out, n, " ");
+  return mod_put(out, n, reason);
+}
+// A seat's command to its room, "X " and the record, into out: its length, or -1. The room reads it
+// with moderation_read(text, 2).
+moderation_command_write :: (out: [] u8, verb: int, pid: string, minutes: int, reason: string) -> int #effects(all) {
+  return moderation_write(out, mod_put(out, 0, "X "), verb, pid, minutes, reason);
+}
+// A record's line, read from `from` to the line's end. ok only when it is exactly what moderation_write
+// writes. pid and reason are line[AT..<AT + N].
+moderation_read :: (line: string, from: int) -> ModRecord #effects(all) {
+  r: ModRecord; at: [4] int; end: [4] int; out: [MOD_LINE] u8;
+  if mod_split(line, from, false, at[..], end[..]) != 4 { return r; }
+  r.verb = moderation_verb(line[at[0]..<end[0]]); r.minutes = mod_num(line[at[2]..<end[2]]);
+  r.pid_at = at[1]; r.pid_n = end[1] - at[1]; r.reason_at = at[3]; r.reason_n = end[3] - at[3];
+  r.ok = moderation_write(out[..], 0, r.verb, line[at[1]..<end[1]], r.minutes, line[at[3]..<end[3]]) == line.count - from;
+  return r;
+}
+// A report's head, "t MS\no SHARD GEN BATCH\n", into out: its length, or -1.
+moderation_head_write :: (out: [] u8, ms: int, shard: int, gen: int, batch: int) -> int #effects(all) {
+  if ms < 1 || shard < 1 || shard > 99 || gen < 1 || batch < 1 { return -1; }
+  n := mod_put(out, 0, "t "); n = mod_int(out, n, ms); n = mod_put(out, n, "\no "); n = mod_int(out, n, shard);
+  n = mod_put(out, n, " "); n = mod_int(out, n, gen); n = mod_put(out, n, " "); n = mod_int(out, n, batch);
+  return mod_put(out, n, "\n");
+}
+// A report's head, read: lines is where its first line starts. ok only when it is exactly what
+// moderation_head_write writes.
+moderation_head_read :: (body: string) -> ModHead #effects(all) {
+  h: ModHead; at: [6] int; end: [6] int; out: [64] u8;
+  if mod_split(body, 2, true, at[..], end[..]) != 6 { return h; }   // past "t ": MS, "o", SHARD, GEN, BATCH and the lines
+  h.at = mod_num(body[at[0]..<end[0]]); h.shard = mod_num(body[at[2]..<end[2]]);
+  h.gen = mod_num(body[at[3]..<end[3]]); h.batch = mod_num(body[at[4]..<end[4]]);
+  h.lines = at[5];
+  n := moderation_head_write(out[..], h.at, h.shard, h.gen, h.batch);
+  h.ok = n == h.lines && cast(string) out[0..<n] == body[0..<n];
+  return h;
+}
+// A report's line, "SEQ BY ROOM RECORD" and its newline, onto out at `at`: the new length, or -1.
+moderation_entry_write :: (out: [] u8, at: int, seq: int, by: string, room: string, verb: int, pid: string, minutes: int, reason: string) -> int #effects(all) {
+  if seq < 1 || !moderation_pid_ok(by) || !mod_code_ok(room, MOD_ROOM) { return -1; }
+  n := mod_int(out, at, seq); n = mod_put(out, n, " "); n = mod_put(out, n, by); n = mod_put(out, n, " ");
+  n = mod_put(out, n, room); n = mod_put(out, n, " ");
+  n = moderation_write(out, n, verb, pid, minutes, reason);
+  return mod_put(out, n, "\n");
+}
+// A report's line (without its newline), read. Its record starts at rec_at: moderation_read(line, rec_at).
+// ok only when it is exactly what moderation_entry_write writes.
+moderation_entry_read :: (line: string) -> ModEntry #effects(all) {
+  e: ModEntry; at: [4] int; end: [4] int; out: [MOD_LINE] u8;
+  if mod_split(line, 0, false, at[..], end[..]) != 4 { return e; }
+  e.seq = mod_num(line[at[0]..<end[0]]);
+  e.by_at = at[1]; e.by_n = end[1] - at[1]; e.room_at = at[2]; e.room_n = end[2] - at[2]; e.rec_at = at[3];
+  r := moderation_read(line, e.rec_at);
+  e.ok = moderation_entry_write(out[..], 0, e.seq, line[at[1]..<end[1]], line[at[2]..<end[2]], r.verb, line[r.pid_at..<r.pid_at + r.pid_n], r.minutes,
+                                line[r.reason_at..<r.reason_at + r.reason_n]) == line.count + 1;
+  return e;
+}
+// The API's answer to a report, "receipt GEN BATCH\n", into out: its length, or -1.
+moderation_receipt_write :: (out: [] u8, gen: int, batch: int) -> int #effects(all) {
+  if gen < 1 || batch < 1 { return -1; }
+  n := mod_put(out, 0, "receipt "); n = mod_int(out, n, gen); n = mod_put(out, n, " "); n = mod_int(out, n, batch);
+  return mod_put(out, n, "\n");
+}
+// Whether body is the receipt of this process's (gen) post number batch.
+moderation_receipt_ok :: (body: string, gen: int, batch: int) -> bool #effects(all) {
+  b: [48] u8;
+  return body.count == moderation_receipt_write(b[..], gen, batch) && body == cast(string) b[0..<body.count];
+}
+// The room's answer to the moderator's seat, "q ok|no VERB PID DETAIL", into out: its length, or -1.
+// DETAIL is a reason's bytes: what was seen, or why not.
+moderation_reply_write :: (out: [] u8, done: bool, verb: int, pid: string, detail: string) -> int #effects(all) {
+  n := mod_put(out, 0, ifx done then "q ok " else "q no ");
+  return moderation_write(out, n, verb, pid, 0, detail);
+}
+
+#test "moderation: the verbs' words, kinds and lifts" {
+  words := [8] string.["look", "move", "kick", "mute", "ban", "unkick", "unmute", "unban"];
+  for v: 1..<9 { #assert moderation_word(v) == words[v - 1] && moderation_verb(words[v - 1]) == v; }
+  #assert moderation_word(0) == "" && moderation_word(9) == "" && moderation_word(-1) == "";
+  #assert moderation_verb("") == 0 && moderation_verb("Ban") == 0 && moderation_verb("bans") == 0 && moderation_verb("ba") == 0;
+  #assert MOD_LOOK == 1 && MOD_MOVE == 2 && MOD_KICK == 3 && MOD_MUTE == 4 && MOD_BAN == 5 && MOD_UNKICK == 6 && MOD_UNMUTE == 7 && MOD_UNBAN == 8;
+  kinds := [10] int.[0, 0, 0, MOD_KIND_KICK, MOD_KIND_MUTE, MOD_KIND_BAN, MOD_KIND_KICK, MOD_KIND_MUTE, MOD_KIND_BAN, 0];
+  for v: 0..<10 { #assert moderation_kind(v) == kinds[v] && moderation_lifts(v) == (v >= 6 && v <= 8); }
+  #assert MOD_KIND_NONE == 0 && MOD_KIND_KICK == 1 && MOD_KIND_MUTE == 2 && MOD_KIND_BAN == 3;
+  #assert moderation_kind_word(MOD_KIND_KICK) == "kicked" && moderation_kind_word(MOD_KIND_MUTE) == "muted" && moderation_kind_word(MOD_KIND_BAN) == "banned";
+  #assert moderation_kind_word(0) == "" && moderation_kind_word(4) == "" && moderation_kind_word(-1) == "";
+}
+#test "moderation: a player id and a reason" {
+  long: [41] u8; for i: 0..<41 { long[i] = 'a'; }
+  #assert moderation_pid_ok("p-0123456789abcdef") && moderation_pid_ok("a") && moderation_pid_ok("z9-") && moderation_pid_ok(cast(string) long[0..<40]);
+  #assert !moderation_pid_ok(cast(string) long[..]) && !moderation_pid_ok("");
+  for b: [8] string.["P-01", "p_01", "p 01", "p.01", "p/01", "p:01", "p`1", "p{1"] { #assert !moderation_pid_ok(b); }
+  #assert mod_code_ok("everglade-2", MOD_ROOM) && !mod_code_ok("everglade-2", 10) && mod_code_ok("everglade-2", 11);
+  r: [121] u8; for i: 0..<121 { r[i] = 'x'; }
+  #assert moderation_reason_ok("-") && moderation_reason_ok("spam in chat, twice") && moderation_reason_ok("~") && moderation_reason_ok("!") && moderation_reason_ok(cast(string) r[0..<120]);
+  #assert !moderation_reason_ok(cast(string) r[..]) && !moderation_reason_ok("") && !moderation_reason_ok(" spam") && !moderation_reason_ok("spam ") && !moderation_reason_ok(" ");
+  r[3] = 10; #assert !moderation_reason_ok(cast(string) r[0..<8]);
+  r[3] = 31; #assert !moderation_reason_ok(cast(string) r[0..<8]);
+  r[3] = 127; #assert !moderation_reason_ok(cast(string) r[0..<8]);
+  r[3] = 32; #assert moderation_reason_ok(cast(string) r[0..<8]);
+  r[3] = 126; #assert moderation_reason_ok(cast(string) r[0..<8]);
+}
+#test "moderation: only a moderator acts, never on themselves, and a sanction has a reason" {
+  for v: 1..<9 {
+    #assert moderation_judge(v, false, false, 0, "why") == MOD_NOT_MODERATOR && moderation_judge(v, false, true, 0, "why") == MOD_NOT_MODERATOR;
+    #assert moderation_judge(v, true, false, 0, "why") == MOD_OK;
+    #assert moderation_judge(v, true, true, 0, "why") == (ifx v == MOD_LOOK then MOD_OK else MOD_SELF);
+    // a length only on a mute or ban
+    #assert moderation_judge(v, true, false, 1, "why") == (ifx v == MOD_MUTE || v == MOD_BAN then MOD_OK else MOD_BAD);
+    // no reason: fine to look, move or lift
+    #assert moderation_judge(v, true, false, 0, "-") == (ifx v >= MOD_KICK && v <= MOD_BAN then MOD_BAD else MOD_OK);
+    #assert moderation_judge(v, true, false, 0, "") == MOD_BAD && moderation_judge(v, true, false, -1, "why") == MOD_BAD;
+  }
+  #assert moderation_judge(0, true, false, 0, "why") == MOD_BAD && moderation_judge(9, true, false, 0, "why") == MOD_BAD;
+  #assert moderation_judge(0, false, false, 0, "why") == MOD_NOT_MODERATOR && moderation_judge(MOD_BAN, false, false, -1, "") == MOD_NOT_MODERATOR;
+  #assert moderation_judge(MOD_BAN, true, false, MOD_MINUTES, "why") == MOD_OK && moderation_judge(MOD_BAN, true, false, MOD_MINUTES + 1, "why") == MOD_BAD;
+  #assert moderation_judge(MOD_MUTE, true, false, 525600, "why") == MOD_OK && moderation_judge(MOD_MUTE, true, false, 525601, "why") == MOD_BAD;
+  // a moderator can't lift their own sanction, whatever else is wrong with the ask comes first
+  #assert moderation_judge(MOD_UNBAN, true, true, 0, "-") == MOD_SELF && moderation_judge(MOD_UNMUTE, true, true, 0, "-") == MOD_SELF && moderation_judge(MOD_UNKICK, true, true, 0, "-") == MOD_SELF;
+  #assert moderation_judge(MOD_BAN, true, true, 0, "-") == MOD_BAD && moderation_judge(MOD_UNBAN, true, true, 5, "-") == MOD_BAD;
+  #assert MOD_OK == 0 && MOD_NOT_MODERATOR == 1 && MOD_SELF == 2 && MOD_BAD == 3;
+}
+#test "moderation: a kick lasts a day, a mute or ban its minutes or for good" {
+  now := 1762190000000;
+  #assert moderation_until(MOD_KICK, 0, now) == now + 86400000 && moderation_until(MOD_KICK, 5, now) == now + 86400000;
+  #assert moderation_until(MOD_MUTE, 10, now) == now + 600000 && moderation_until(MOD_BAN, 1, now) == now + 60000 && moderation_until(MOD_BAN, 525600, now) == now + 31536000000;
+  #assert moderation_until(MOD_MUTE, 0, now) == 0 && moderation_until(MOD_BAN, 0, now) == 0 && moderation_until(MOD_BAN, -1, now) == 0;
+  for v: [5] int.[MOD_LOOK, MOD_MOVE, MOD_UNKICK, MOD_UNMUTE, MOD_UNBAN] { #assert moderation_until(v, 10, now) == 0; }
+  #assert moderation_until(0, 10, now) == 0 && moderation_until(9, 10, now) == 0;
+  #assert moderation_in_force(true, 0, now) && moderation_in_force(true, now + 1, now) && !moderation_in_force(true, now, now) && !moderation_in_force(true, now - 1, now);
+  #assert !moderation_in_force(false, 0, now) && !moderation_in_force(false, now + 1, now) && !moderation_in_force(true, 1, now);
+}
+#test "moderation: a banned or kicked player gets no ticket; a banned or muted one says no line" {
+  #assert moderation_ticket(false, false) == MOD_KIND_NONE && moderation_ticket(true, false) == MOD_KIND_BAN;
+  #assert moderation_ticket(false, true) == MOD_KIND_KICK && moderation_ticket(true, true) == MOD_KIND_BAN;
+  #assert moderation_speak(false, false) == MOD_KIND_NONE && moderation_speak(true, false) == MOD_KIND_BAN;
+  #assert moderation_speak(false, true) == MOD_KIND_MUTE && moderation_speak(true, true) == MOD_KIND_BAN;
+}
+#test "moderation: numbers and words on the wire" {
+  b: [24] u8;
+  #assert cast(string) b[0..<mod_int(b[..], 0, 0)] == "0" && cast(string) b[0..<mod_int(b[..], 0, 907)] == "907" && cast(string) b[0..<mod_int(b[..], 0, 1762190000000)] == "1762190000000";
+  #assert mod_int(b[..], 0, -1) == -1 && mod_int(b[..], -1, 5) == -1 && mod_int(b[0..<2], 0, 100) == -1 && mod_int(b[0..<3], 0, 100) == 3 && mod_int(b[0..<3], 1, 10) == 3 && mod_int(b[0..<3], 2, 10) == -1;
+  #assert mod_put(b[..], 0, "ab") == 2 && cast(string) b[0..<2] == "ab" && mod_put(b[..], 22, "ab") == 24 && mod_put(b[..], 23, "ab") == -1 && mod_put(b[..], -1, "a") == -1 && mod_put(b[..], 5, "") == 5;
+  #assert mod_num("0") == 0 && mod_num("7") == 7 && mod_num("907") == 907 && mod_num("999999999999999") == 999999999999999;
+  #assert mod_num("") == -1 && mod_num("07") == -1 && mod_num("00") == -1 && mod_num("1000000000000000") == -1 && mod_num("-1") == -1;
+  #assert mod_num("1a") == -1 && mod_num("/") == -1 && mod_num(":") == -1 && mod_num("1 ") == -1 && mod_num("10") == 10 && mod_num("90") == 90;
+  at: [3] int; end: [3] int;
+  #assert mod_split("ab cd e f", 0, false, at[..], end[..]) == 3 && at[0] == 0 && end[0] == 2 && at[1] == 3 && end[1] == 5 && at[2] == 6 && end[2] == 9;
+  #assert mod_split("ab cd", 0, false, at[..], end[..]) == 2 && mod_split("ab cd ", 0, false, at[..], end[..]) == 3 && at[2] == 6 && end[2] == 6;
+  #assert mod_split("ab", 0, false, at[..], end[..]) == 1 && mod_split("", 0, false, at[..], end[..]) == 1 && end[0] == 0 && mod_split("ab", 3, false, at[..], end[..]) == 0;
+  #assert mod_split("ab", -1, false, at[..], end[..]) == 0 && mod_split("X ab cd e", 2, false, at[..], end[..]) == 3 && at[0] == 2 && end[0] == 4;
+  #assert mod_split("a\nb c", 0, false, at[..], end[..]) == 2 && end[0] == 3 && mod_split("a\nb c", 0, true, at[..], end[..]) == 3 && end[0] == 1 && at[1] == 2 && end[1] == 3;
+  one: [1] int; uno: [1] int;
+  #assert mod_split("ab cd", 0, false, one[..], uno[..]) == 1 && one[0] == 0 && uno[0] == 5;
+}
+#test "moderation: the record line is written and read through one codec" {
+  b: [200] u8;
+  n := moderation_write(b[..], 0, MOD_BAN, "p-0123456789abcdef", 0, "spam in chat, twice");
+  line := cast(string) b[0..<n];
+  #assert line == "ban p-0123456789abcdef 0 spam in chat, twice";
+  r := moderation_read(line, 0);
+  #assert r.ok && r.verb == MOD_BAN && r.minutes == 0 && line[r.pid_at..<r.pid_at + r.pid_n] == "p-0123456789abcdef" && line[r.reason_at..<r.reason_at + r.reason_n] == "spam in chat, twice";
+  n = moderation_write(b[..], 2, MOD_MUTE, "p-01", 525600, "-");
+  #assert n == 20 && cast(string) b[2..<n] == "mute p-01 525600 -";
+  b[0] = 'X'; b[1] = ' ';
+  r = moderation_read(cast(string) b[0..<n], 2);
+  #assert r.ok && r.verb == MOD_MUTE && r.minutes == 525600 && r.pid_at == 7 && r.pid_n == 4 && r.reason_at == 19 && r.reason_n == 1;
+  #assert moderation_write(b[..], 0, 0, "p-01", 0, "-") == -1 && moderation_write(b[..], 0, 9, "p-01", 0, "-") == -1 && moderation_write(b[..], 0, MOD_LOOK, "P", 0, "-") == -1;
+  #assert moderation_write(b[..], 0, MOD_LOOK, "p-01", -1, "-") == -1 && moderation_write(b[..], 0, MOD_LOOK, "p-01", 525601, "-") == -1 && moderation_write(b[..], 0, MOD_LOOK, "p-01", 0, "") == -1;
+  #assert moderation_write(b[0..<13], 0, MOD_LOOK, "p-01", 0, "-") == 13 && moderation_write(b[0..<12], 0, MOD_LOOK, "p-01", 0, "-") == -1;
+  for bad: [14] string.["", "ban", "ban ", "ban p-01", "ban p-01 ", "ban p-01 0", "ban p-01 0 ", "bam p-01 0 why", "ban P-01 0 why", "ban p-01 x why", "ban p-01 525601 why",
+                        "ban p-01 0  why", "ban  p-01 0 why", "ban p-01 00 why"] {
+    #assert !moderation_read(bad, 0).ok;
+  }
+  #assert moderation_read("ban p-01 0 why", 0).ok && moderation_read("ban p-01 525600 why", 0).ok && !moderation_read("ban p-01 0 why", -1).ok && !moderation_read("ban p-01 0 why", 15).ok;
+  #assert !moderation_read("ban p-01 0 why", 14).ok && !moderation_read("ban p-01 0 why", 1).ok;
+  #assert !moderation_read("ban\np-01 0 why", 0).ok && !moderation_read("ban p-01\n0 why", 0).ok;   // one space apart, never a newline
+  #assert MOD_PID == 40 && MOD_ROOM == 24 && MOD_REASON == 120 && MOD_MINUTES == 525600 && MOD_KICK_MS == 86400000 && MOD_LINE == 272;
+}
+#test "moderation: a room's report and its receipt (the fixtures of proto/verse/moderation-v1.json)" {
+  b: [600] u8;
+  n := moderation_head_write(b[..], 1762190000000, 3, 1762180000000, 7);
+  #assert cast(string) b[0..<n] == "t 1762190000000\no 3 1762180000000 7\n";
+  n = moderation_entry_write(b[..], n, 12, "p-00aa", "everglade-2", MOD_MUTE, "p-0123456789abcdef", 30, "spam in chat");
+  n = moderation_entry_write(b[..], n, 13, "p-00aa", "everglade-2", MOD_LOOK, "p-0123456789abcdef", 0, "-");
+  body := cast(string) b[0..<n];
+  #assert body == "t 1762190000000\no 3 1762180000000 7\n12 p-00aa everglade-2 mute p-0123456789abcdef 30 spam in chat\n13 p-00aa everglade-2 look p-0123456789abcdef 0 -\n";
+  h := moderation_head_read(body);
+  #assert h.ok && h.at == 1762190000000 && h.shard == 3 && h.gen == 1762180000000 && h.batch == 7 && h.lines == 36;
+  line := body[h.lines..<h.lines + 61];
+  #assert line == "12 p-00aa everglade-2 mute p-0123456789abcdef 30 spam in chat";
+  e := moderation_entry_read(line);
+  #assert e.ok && e.seq == 12 && line[e.by_at..<e.by_at + e.by_n] == "p-00aa" && line[e.room_at..<e.room_at + e.room_n] == "everglade-2" && e.rec_at == 22;
+  r := moderation_read(line, e.rec_at);
+  #assert r.ok && r.verb == MOD_MUTE && r.minutes == 30 && line[r.pid_at..<r.pid_at + r.pid_n] == "p-0123456789abcdef";
+  for bad: [10] string.["", "12", "12 p-00aa", "12 p-00aa everglade-2", "0 p-00aa everglade-2 look p-01 0 -", "x p-00aa everglade-2 look p-01 0 -", "12 P everglade-2 look p-01 0 -",
+                        "12 p-00aa Everglade look p-01 0 -", "12 p-00aa everglade-2 lock p-01 0 -", "12 p-00aa everglade-2-0123456789abc look p-01 0 -"] {
+    #assert !moderation_entry_read(bad).ok;
+  }
+  #assert moderation_entry_read("1 p-00aa everglade-2-0123456789ab look p-01 0 -").ok && !moderation_entry_read("12 p-00aa everglade-2 look p-01 0 -\n").ok;
+  #assert !moderation_entry_read("12\np-00aa everglade-2 look p-01 0 -").ok && !moderation_entry_read("12 p-00aa\neverglade-2 look p-01 0 -").ok;
+  #assert moderation_entry_write(b[..], 0, 0, "p-00aa", "everglade-2", MOD_LOOK, "p-01", 0, "-") == -1 && moderation_entry_write(b[..], 0, 1, "P", "everglade-2", MOD_LOOK, "p-01", 0, "-") == -1;
+  #assert moderation_entry_write(b[..], 0, 1, "p-00aa", "", MOD_LOOK, "p-01", 0, "-") == -1 && moderation_entry_write(b[..], 0, 1, "p-00aa", "everglade-2", 0, "p-01", 0, "-") == -1;
+  #assert moderation_entry_write(b[0..<35], 0, 1, "p-00aa", "everglade-2", MOD_LOOK, "p-01", 0, "-") == 35 && moderation_entry_write(b[0..<34], 0, 1, "p-00aa", "everglade-2", MOD_LOOK, "p-01", 0, "-") == -1;
+  #assert moderation_entry_write(b[0..<20], 0, 1, "p-00aa", "everglade-2", MOD_LOOK, "p-01", 0, "-") == -1 && moderation_entry_write(b[0..<21], 0, 1, "p-00aa", "everglade-2", MOD_LOOK, "p-01", 0, "-") == -1;
+  // the head
+  #assert moderation_head_write(b[..], 0, 3, 5, 7) == -1 && moderation_head_write(b[..], 9, 0, 5, 7) == -1 && moderation_head_write(b[..], 9, 100, 5, 7) == -1;
+  #assert moderation_head_write(b[..], 9, 3, 0, 7) == -1 && moderation_head_write(b[..], 9, 3, 5, 0) == -1 && moderation_head_write(b[..], 1, 1, 1, 1) == 12 && moderation_head_write(b[..], 1, 99, 1, 1) == 13;
+  #assert moderation_head_write(b[0..<11], 1, 1, 1, 1) == -1;
+  for bad: [14] string.["", "t", "t 9", "t 9\n", "t 9\no", "t 9\no 3", "t 9\no 3 5", "t 9\no 3 5 7", "x 9\no 3 5 7\n", "t 0\no 3 5 7\n", "t 9\nx 3 5 7\n", "t 9\no 0 5 7\n", "t 9\no 100 5 7\n", "t 9\no 3 0 7\n"] {
+    #assert !moderation_head_read(bad).ok;
+  }
+  #assert !moderation_head_read("t 9\no 3 5 0\n").ok && !moderation_head_read("t 9 \no 3 5 7\n").ok && !moderation_head_read("t 9\no 3 5 7 \n").ok && !moderation_head_read("t 9\no 3 5\n").ok;
+  g := moderation_head_read("t 9\no 99 5 7\n");
+  #assert g.ok && g.at == 9 && g.shard == 99 && g.gen == 5 && g.batch == 7 && g.lines == 13 && moderation_head_read("t 1\no 1 1 1\n").ok;
+  // the receipt
+  n = moderation_receipt_write(b[..], 1762180000000, 7);
+  #assert cast(string) b[0..<n] == "receipt 1762180000000 7\n";
+  #assert moderation_receipt_ok("receipt 1762180000000 7\n", 1762180000000, 7) && !moderation_receipt_ok("receipt 1762180000000 7", 1762180000000, 7);
+  #assert !moderation_receipt_ok("receipt 1762180000000 8\n", 1762180000000, 7) && !moderation_receipt_ok("receipt 1762180000001 7\n", 1762180000000, 7) && !moderation_receipt_ok("", 1, 1);
+  #assert moderation_receipt_write(b[..], 0, 7) == -1 && moderation_receipt_write(b[..], 7, 0) == -1 && moderation_receipt_write(b[..], 1, 1) == 12 && moderation_receipt_write(b[0..<11], 1, 1) == -1;
+  #assert !moderation_receipt_ok("", 0, 7) && !moderation_receipt_ok("", 7, 0);
+  big := 999999999999999;
+  #assert moderation_receipt_write(b[..], big, big) == 40 && moderation_receipt_ok(cast(string) b[0..<40], big, big);
+}
+#test "moderation: the room's answer to the moderator" {
+  b: [200] u8;
+  x := moderation_command_write(b[..], MOD_BAN, "p-01", 0, "spam in chat");
+  #assert cast(string) b[0..<x] == "X ban p-01 0 spam in chat" && moderation_read(cast(string) b[0..<x], 2).ok;
+  #assert moderation_command_write(b[..], 0, "p-01", 0, "-") == -1 && moderation_command_write(b[0..<1], MOD_LOOK, "p-01", 0, "-") == -1 && moderation_command_write(b[0..<15], MOD_LOOK, "p-01", 0, "-") == 15;
+  n := moderation_reply_write(b[..], true, MOD_LOOK, "p-01", "seat 3 hp 14/20 at 5000 -40000");
+  #assert cast(string) b[0..<n] == "q ok look p-01 0 seat 3 hp 14/20 at 5000 -40000";
+  n = moderation_reply_write(b[..], false, MOD_BAN, "p-01", "not on yourself");
+  #assert cast(string) b[0..<n] == "q no ban p-01 0 not on yourself";
+  #assert moderation_reply_write(b[..], true, 0, "p-01", "-") == -1 && moderation_reply_write(b[0..<4], true, MOD_LOOK, "p-01", "-") == -1 && moderation_reply_write(b[0..<18], true, MOD_LOOK, "p-01", "-") == 18;
+}

@@ -6,7 +6,7 @@
 // (everglade/model/item-op.coax, everglade.item-op.v1): a grant, a consume or a claim, with a claim on the
 // character's record that the API applies with it, once. Operations leave in order, one at a time, each
 // posted to POST /api/playtest/room-items (room-host.c items_post, room-write purpose "items") and posted
-// again, the same bytes, until the API answers. The API keeps each ID once (aethyr/session/ledger.coax), so
+// again, the same bytes, until the API answers. The API keeps each ID once (metaverse-engine/session/ledger.coax), so
 // an operation it took whose answer was lost is not applied twice. A quest's stage is a compare-and-set in
 // the claim, so a reward can't be paid twice even under a new ID.
 //
@@ -14,7 +14,7 @@
 // of each item in its bag and its inventory version, and the room takes its copy from there. A seat's first
 // operation is a read. A player is told an item dropped only when the API has granted it.
 //
-// The content. Loot tables, quests, dialogue and points are the content tables' (aethyr/content/tables.coax,
+// The content. Loot tables, quests, dialogue and points are the content tables' (metaverse-engine/content/tables.coax,
 // everglade/model/content.coax), loaded at start (rm_content_load); a room with no content grants nothing.
 //
 // The stand-in. A --dev room with no API answers each operation itself (rm_items_local), with the same

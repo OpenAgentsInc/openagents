@@ -1,5 +1,5 @@
 // The Valley Lab GPU cull's compute shaders (GitHub #13008): build.sh writes
 // apps/openagents-web/cull.wgsl from this with coax/web/wgsl-module.coax (cull.module and
 // cull.bindings beside it). The procedures and their CPU tests are in
-// aethyr/render/geometry/cull.coax. No WGSL is written by hand.
-#load "../../../aethyr/render/geometry/cull.coax";
+// metaverse-engine/render/geometry/cull.coax. No WGSL is written by hand.
+#load "../../../metaverse-engine/render/geometry/cull.coax";

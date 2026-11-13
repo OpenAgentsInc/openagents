@@ -1,5 +1,5 @@
 // Firm reason: 6 (Swift-only host code: the Mac and iOS hosts share this table; it holds no product logic).
-// The worlds a host runs as the web's realms, through the Metaverse Engine's page host (aethyr/host/apple/
+// The worlds a host runs as the web's realms, through the Metaverse Engine's page host (metaverse-engine/host/apple/
 // page-host.h), by their world's number in scenes.coax (1 Everglade, 3 the Archery Range,
 // 4 Experimental, 5 the Bitcoin Lab). Each row is what the web's page for that world says of itself, its script tag
 // in apps/openagents-web/realms/: the module, the page's path on the site, its realm and slot, and

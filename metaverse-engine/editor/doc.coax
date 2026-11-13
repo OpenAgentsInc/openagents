@@ -1,0 +1,1057 @@
+// A made realm's document read into the realm editor's edit model (book chapters 51 and 81, GitHub
+// #12629): GET .../<slug>/doc's {"doc": ..., "sha256": ...}, or a kept revision. The reader knows
+// every version of the document this engine has written and moves an older one forward; it refuses
+// anything else whole, so a client keeps the last document it could read instead of a part of a
+// new one.
+//
+//   version 1 (migration 0093): doc "aethyr.realm", rev, setup, tools, placed, moved
+//   version 1 with "shaped" (migration 0109): turns, sizes and removals. A version 1 document
+//   without it (written before 0109) has none: it is read as the same realm.
+//   version 1 with "lore" and "quests" (migration 0111): a character's lore ("lore:WHO") and a
+//   giver's quest ("quest:GIVER", ASK|STEP|STEP|STEP|REWARD); one without them has none.
+//
+// The server is the authority on what a document is (migrations 0093, 0109); this reader only
+// refuses what it can't hold. What it reads becomes the model's own: moves and shapes as entity overrides, the setup fields as
+// "set:" slots, the tools as "tool:" slots and each placed thing as a "place:N" slot (THING X Z YAW
+// with the document's numbers as written), lore and quests as "lore:" and "quest:" slots, and the
+// board's rows as "feature:N" (on, the N-th of `features`) and "row:N" (off, the N-th of `off`)
+// slots holding each row's object as the server wrote it: the names the server's undo log uses too
+// (0111), so every step it logs applies to this model (forge_apply_step) and a row switched on or
+// off is forge_switch, the server's switch.
+//   coax/bin/coax test metaverse-engine/editor/doc.coax --library
+
+#module "aethyr.forge.doc";
+#load "edit.coax";
+#load "../../coax/lib/json/json.coax";
+
+// book:begin read
+FORGE_DOC_KIND :: "aethyr.realm";
+FORGE_DOC_NEWEST :: 1;   // the newest version this reader knows
+FORGE_DOC_BYTES :: 262144;
+FORGE_SLUG :: 64;        // a realm's slug: [a-z0-9][a-z0-9-]{0,63}, the server's rule
+// What a read found: its version, and for a fork the realm and revision it was copied from
+// (from_n 0 and from_rev 0 when it isn't one).
+ForgeRead :: struct { ok: bool; why: string; version: int; from: [FORGE_SLUG] u8; from_n: int; from_rev: int; }
+// book:end read
+
+forge_slug_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > FORGE_SLUG || !(forge_lower(s[0]) || forge_digit(s[0])) { return false; }
+  for c: s { if !(forge_lower(c) || forge_digit(c) || c == '-') { return false; } }
+  return true;
+}
+
+// book:begin metres
+// Metres with at most two decimals, as the server writes them, to whole centimetres; 4001 when not.
+forge_cm_of :: (raw: string) -> int {
+  neg := raw != "" && raw[0] == '-';
+  s := ifx neg then raw[1..<raw.count] else raw;
+  dot := 0; while dot < s.count && s[dot] != '.' { dot += 1; }
+  if dot == 0 || dot > 2 || (dot < s.count && (s.count - dot - 1 < 1 || s.count - dot - 1 > 2)) { return 4001; }
+  v := 0;
+  for i: 0..<dot { if !forge_digit(s[i]) { return 4001; } v = v * 10 + cast(int) (s[i] - '0'); }
+  frac := 0; places := 0;
+  for i: dot + 1..<s.count { if !forge_digit(s[i]) { return 4001; } frac = frac * 10 + cast(int) (s[i] - '0'); places += 1; }
+  if places == 1 { frac *= 10; }
+  cm := v * 100 + frac;
+  return ifx neg then -cm else cm;
+}
+// book:end metres
+// A whole number in JSON (no fraction, no exponent) in [lo, hi], or lo - 1. Its digits stop
+// counting past hi, so it never overflows (lo is never below -hi here).
+forge_whole :: (raw: string, lo: int, hi: int) -> int {
+  neg := raw != "" && raw[0] == '-';
+  s := ifx neg then raw[1..<raw.count] else raw;
+  if s == "" { return lo - 1; }
+  v := 0;
+  for c: s {
+    if !forge_digit(c) { return lo - 1; }
+    v = v * 10 + cast(int) (c - '0');
+    if v > hi { return lo - 1; }
+  }
+  v = ifx neg then -v else v;
+  return ifx v < lo then lo - 1 else v;
+}
+FORGE_REV_MOST :: 999999999;   // a document's version and revision, and a fork's, at most
+
+// A string's text unescaped into buf, or "" when the node isn't a string or doesn't fit.
+forge_str :: (j: Jv, at: int, buf: [] u8) -> string {
+  n := jv_str(j, at, buf);
+  return ifx n == -1 then "" else cast(string) buf[0..<n];
+}
+// prefix and name as one slot key in buf, or "" when it doesn't fit.
+forge_key_of :: (prefix: string, name: string, buf: [] u8) -> string {
+  n := forge_put(buf, forge_put(buf, 0, prefix), name);
+  return ifx n == -1 then "" else cast(string) buf[0..<n];
+}
+
+forge_why :: (why: string) -> ForgeRead { return ForgeRead.{ok = false, why = why}; }
+// A number's text, or "" when the node is anything else: jv_raw gives a string's contents, so a
+// quoted "4" would read as 4 without this (#12720). Every numeric field is read through it.
+forge_num :: (j: Jv, at: int) -> string { return ifx jv_kind(j, at) == JV_NUMBER then jv_raw(j, at) else ""; }
+
+// book:begin doc
+// Read a document (or /doc's answer around it) into d. Refused whole, d as it was, when it isn't an
+// aethyr.realm this reader knows or anything in it is out of bounds.
+forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
+  if text.count > FORGE_DOC_BYTES { return forge_why("too large"); }
+  nodes: [4096] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], text, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return forge_why("not a JSON object"); }
+  at := 0;
+  if jv_kind(j[0], jv_get(j[0], 0, "doc")) == JV_OBJECT { at = jv_get(j[0], 0, "doc"); }   // /doc's answer
+  kind: [32] u8;
+  if forge_str(j[0], jv_get(j[0], at, "doc"), kind[..]) != FORGE_DOC_KIND { return forge_why("not a realm document"); }
+  version := forge_whole(forge_num(j[0], jv_get(j[0], at, "version")), 1, FORGE_REV_MOST);
+  if version < 1 { return forge_why("no version"); }
+  if version > FORGE_DOC_NEWEST { return forge_why("a newer document than this reader knows"); }
+  rev := forge_whole(forge_num(j[0], jv_get(j[0], at, "rev")), 1, FORGE_REV_MOST);
+  if rev < 1 { return forge_why("no revision"); }
+  got := ForgeRead.{ok = true, version = version};
+  // book:begin fork
+  // A fork names the realm it was copied from and that realm's revision: {"slug": S, "rev": N}.
+  parent := jv_get(j[0], at, "forked_from");   // null, or absent, when it isn't a fork
+  if jv_kind(j[0], parent) > JV_NULL {
+    buf: [FORGE_SLUG + 1] u8; slug := forge_str(j[0], jv_get(j[0], parent, "slug"), buf[..]);
+    got.from_rev = forge_whole(forge_num(j[0], jv_get(j[0], parent, "rev")), 1, FORGE_REV_MOST);
+    if jv_kind(j[0], parent) != JV_OBJECT || !forge_slug_ok(slug) || got.from_rev < 1 {
+      return forge_why("a fork's parent out of bounds");
+    }
+    for i: 0..<slug.count { got.from[i] = slug[i]; }
+    got.from_n = slug.count;
+  }
+// book:end fork
+  next: [1] ForgeDoc; forge_reset(next[..], rev);
+  moved := jv_get(j[0], at, "moved");
+  if jv_kind(j[0], moved) != JV_ARRAY { return forge_why("no moves"); }
+  for i: 0..<jv_len(j[0], moved) {
+    e := jv_at(j[0], moved, i); kb: [FORGE_KEY + 1] u8; key := forge_str(j[0], jv_get(j[0], e, "entity"), kb[..]);
+    x := forge_cm_of(forge_num(j[0], jv_get(j[0], e, "x"))); z := forge_cm_of(forge_num(j[0], jv_get(j[0], e, "z")));
+    if forge_where(next[..], key).found || !forge_read_move(next[..], key, x, z) { return forge_why("a move out of bounds"); }
+  }
+  shaped := jv_get(j[0], at, "shaped");   // absent before migration 0109: no shapes
+  if shaped != -1 && jv_kind(j[0], shaped) != JV_ARRAY { return forge_why("shapes not a list"); }
+  for i: 0..<jv_len(j[0], shaped) {
+    e := jv_at(j[0], shaped, i); kb: [FORGE_KEY + 1] u8; key := forge_str(j[0], jv_get(j[0], e, "entity"), kb[..]);
+    yaw := forge_whole(forge_num(j[0], jv_get(j[0], e, "yaw")), 1 - FORGE_TURN, FORGE_TURN);
+    scale := forge_whole(forge_num(j[0], jv_get(j[0], e, "scale")), FORGE_SCALE_MIN, FORGE_SCALE_MAX);
+    gone := jv_kind(j[0], jv_get(j[0], e, "gone"));
+    if yaw < 1 - FORGE_TURN || scale < FORGE_SCALE_MIN || (gone != JV_TRUE && gone != JV_FALSE) { return forge_why("a turn, size or gone out of bounds"); }
+    s := forge_shape_of(next[..], key);
+    if s.yaw != 0 || s.scale != 100 || s.gone || (yaw == 0 && scale == 100 && gone == JV_FALSE) { return forge_why("a shape twice, or no shape"); }
+    if !forge_read_shape(next[..], key, yaw, scale, gone == JV_TRUE) { return forge_why("a shape out of bounds"); }
+  }
+  setup := jv_get(j[0], at, "setup");
+  for what: [5] string.["style", "ground", "time", "camera", "palette"] {
+    vb: [64] u8; v := forge_str(j[0], jv_get(j[0], setup, what), vb[..]);
+    kb: [16] u8;
+    if v != "" && !forge_read_slot(next[..], forge_key_of("set:", what, kb[..]), v) { return forge_why("a setup field out of bounds"); }
+  }
+  tools := jv_get(j[0], at, "tools");
+  for i: 0..<jv_len(j[0], tools) {
+    if jv_kind(j[0], tools) != JV_OBJECT { return forge_why("tools not an object"); }
+    t := jv_at(j[0], tools, i);
+    kb: [48] u8; key := forge_key_of("tool:", jv_key(j[0], t), kb[..]);
+    on := jv_kind(j[0], t);
+    if (on != JV_TRUE && on != JV_FALSE) || !forge_read_slot(next[..], key, ifx on == JV_TRUE then "1" else "0") { return forge_why("a tool out of bounds"); }
+  }
+  placed := jv_get(j[0], at, "placed");
+  for i: 0..<jv_len(j[0], placed) {
+    if jv_kind(j[0], placed) != JV_ARRAY { return forge_why("placed not a list"); }
+    e := jv_at(j[0], placed, i); tb: [32] u8; thing := forge_str(j[0], jv_get(j[0], e, "thing"), tb[..]);
+    v: [96] u8; m := forge_put(v[..], 0, thing);
+    for f: [3] string.["x", "z", "yaw"] {
+      num := forge_num(j[0], jv_get(j[0], e, f));
+      if num.count == 0 { return forge_why("a placed thing out of bounds"); }
+      m = forge_put(v[..], m, " "); m = forge_put(v[..], m, num);
+    }
+    kb: [24] u8;
+    if thing == "" || m == -1 || !forge_read_slot(next[..], forge_place_key(i, kb[..]), cast(string) v[0..<m]) { return forge_why("a placed thing out of bounds"); }
+  }
+  for list: [2] string.["features", "off"] {   // a row's object as written; a null is a hole
+    rows := jv_get(j[0], at, list);
+    if rows != -1 && jv_kind(j[0], rows) != JV_ARRAY { return forge_why("rows not a list"); }
+    for i: 0..<jv_len(j[0], rows) {
+      e := jv_at(j[0], rows, i);
+      if jv_kind(j[0], e) == JV_NULL { continue; }
+      kb: [24] u8;
+      if jv_kind(j[0], e) != JV_OBJECT || !forge_read_slot(next[..], forge_row_slot(list == "off", i, kb[..]), jv_raw(j[0], e)) { return forge_why("a row out of bounds"); }
+    }
+  }
+  lore := jv_get(j[0], at, "lore");   // absent before migration 0111: none
+  if lore != -1 && jv_kind(j[0], lore) != JV_OBJECT { return forge_why("lore not an object"); }
+  for i: 0..<jv_len(j[0], lore) {
+    e := jv_at(j[0], lore, i);
+    kb: [FORGE_SLOT_KEY] u8; vb: [FORGE_VAL] u8; v := forge_str(j[0], e, vb[..]);
+    if v == "" || !forge_read_slot(next[..], forge_key_of("lore:", jv_key(j[0], e), kb[..]), v) { return forge_why("lore out of bounds"); }
+  }
+  quests := jv_get(j[0], at, "quests");
+  if quests != -1 && jv_kind(j[0], quests) != JV_OBJECT { return forge_why("quests not an object"); }
+  for i: 0..<jv_len(j[0], quests) {
+    e := jv_at(j[0], quests, i);
+    kb: [FORGE_SLOT_KEY] u8; key := forge_key_of("quest:", jv_key(j[0], e), kb[..]);
+    v: [FORGE_VAL] u8; m := forge_quest_text(j[0], e, v[..]);
+    if m < 0 || !forge_read_slot(next[..], key, cast(string) v[0..<m]) { return forge_why("a quest out of bounds"); }
+  }
+  d[0] = next[0];
+  return got;
+}
+// book:end doc
+
+// A quest's object, {ask, steps, reward}, as its slot's value ASK|STEP|STEP|STEP|REWARD (fewer than
+// three steps: blank ones) into v: its length, or -1 when it isn't one (no ask, more than three
+// steps, a part that isn't a string or has a bar in it).
+forge_quest_text :: (j: Jv, e: int, v: [] u8) -> int {
+  if jv_kind(j, e) != JV_OBJECT { return -1; }
+  steps := jv_get(j, e, "steps");
+  if jv_kind(j, steps) != JV_ARRAY || jv_len(j, steps) > 3 { return -1; }
+  m := 0;
+  for p: 0..<5 {
+    at2 := ifx p == 0 then jv_get(j, e, "ask") else ifx p == 4 then jv_get(j, e, "reward") else jv_at(j, steps, p - 1);
+    if p > 0 { m = forge_put(v, m, "|"); }
+    if p <= 3 && p > jv_len(j, steps) { continue; }   // fewer than three steps: blank ones
+    pb: [FORGE_VAL] u8; part := forge_str(j, at2, pb[..]);
+    if jv_kind(j, at2) != JV_STRING || (p == 0 && part == "") { return -1; }
+    for c: part { if c == '|' { return -1; } }
+    m = forge_put(v, m, part);
+  }
+  return m;
+}
+
+// book:begin store
+// ---- the document as the server stores it (proto/openagents/verse/doc/v1alpha1/realm.proto,
+// RealmDocument; GitHub #13249). Postgres keeps it as jsonb and hashes jsonb's text of it
+// (verse.realm_doc_sha): an object's keys by length, then by bytes; ", " between items and ": "
+// after a key; strings escaped as jo_quoted does (a quote, a backslash, control bytes). Every
+// revision's SHA-256 (coax/lib/crypto/sha256-kernel.coax's S_hash) is of exactly these bytes, so
+// this writer and the server's give the same.
+// What the edit model doesn't hold (the slug, the features, the rows switched off, the base, a
+// fork's parent) is copied from the document it was read from, `start`, which is the server's text.
+FORGE_DOC_KEYS :: [16] string.["doc", "off", "rev", "base", "lore", "name", "slug", "moved", "setup", "tools", "placed", "quests", "shaped", "version", "features", "forked_from"];
+FORGE_SETUP_KEYS :: [5] string.["time", "style", "camera", "ground", "palette"];
+// book:end store
+
+// a sorts after b as jsonb orders an object's keys: a longer key after a shorter one, else bytewise.
+forge_key_after :: (a: string, b: string) -> bool {
+  if a.count != b.count { return a.count > b.count; }
+  return forge_after(a, b);
+}
+// The slot after `last` (a name; "" for the first) among those whose key starts with prefix, in
+// jsonb's order of their names; -1 when none is left.
+forge_next_slot :: (d: [] ForgeDoc, prefix: string, last: string) -> int {
+  best := -1; best_name := "";
+  for i: 0..<d[0].slot_n {
+    k := forge_slot_key(d, i);
+    if k.count <= prefix.count || k[0..<prefix.count] != prefix { continue; }
+    name := k[prefix.count..<k.count];
+    if forge_key_after(name, last) && (best < 0 || forge_key_after(best_name, name)) { best = i; best_name = name; }
+  }
+  return best;
+}
+forge_any_slot :: (d: [] ForgeDoc, prefix: string) -> bool { return forge_next_slot(d, prefix, "") >= 0; }
+// A node of the server's text, copied as it is.
+forge_copy_node :: (o: [] Jo, j: Jv, at: int) {
+  if jv_kind(j, at) == JV_STRING { jo_byte(o, '"'); jo_put(o, jv_raw(j, at)); jo_byte(o, '"'); }
+  else { jo_put(o, jv_raw(j, at)); }
+}
+forge_jo_int :: (o: [] Jo, v: int) { b: [24] u8; n := forge_put_int(b[..], 0, v); jo_put(o, cast(string) b[0..<n]); }
+forge_jo_key :: (o: [] Jo, first: bool, key: string) {
+  if !first { jo_put(o, ", "); }
+  jo_quoted(o, key); jo_put(o, ": ");
+}
+// The n-th of a slot value's words, split at `sep`, or "" past the last.
+forge_part :: (v: string, sep: u8, n: int) -> string {
+  at := 0; k := 0;
+  for i: 0..<v.count + 1 {
+    if i < v.count && v[i] != sep { continue; }
+    if k == n { return v[at..<i]; }
+    k += 1; at = i + 1;
+  }
+  return "";
+}
+forge_parts :: (v: string, sep: u8) -> int { n := 1; for c: v { if c == sep { n += 1; } } return n; }
+// A number as the server writes one: an optional minus, digits, an optional fraction.
+forge_number_ok :: (s: string) -> bool {
+  t := ifx s != "" && s[0] == '-' then s[1..<s.count] else s;
+  if t == "" || !forge_digit(t[0]) { return false; }
+  dot := false;
+  for i: 0..<t.count {
+    if t[i] == '.' { if dot || i == 0 || i == t.count - 1 { return false; } dot = true; continue; }
+    if !forge_digit(t[i]) { return false; }
+  }
+  return true;
+}
+// A place slot's THING X Z YAW as its object, {"x": X, "z": Z, "yaw": YAW, "thing": "THING"}.
+forge_put_place :: (o: [] Jo, v: string) -> bool {
+  if forge_parts(v, ' ') != 4 { return false; }
+  for k: 1..<4 { if !forge_number_ok(forge_part(v, ' ', k)) { return false; } }
+  jo_put(o, "{\"x\": "); jo_put(o, forge_part(v, ' ', 1)); jo_put(o, ", \"z\": "); jo_put(o, forge_part(v, ' ', 2));
+  jo_put(o, ", \"yaw\": "); jo_put(o, forge_part(v, ' ', 3)); jo_put(o, ", \"thing\": "); jo_quoted(o, forge_part(v, ' ', 0)); jo_byte(o, '}');
+  return true;
+}
+// A quest slot's ASK|STEP|STEP|STEP|REWARD as its object; the blank steps at the end are none.
+forge_put_quest :: (o: [] Jo, v: string) -> bool {
+  if forge_parts(v, '|') != 5 { return false; }
+  steps := 3; while steps > 0 && forge_part(v, '|', steps) == "" { steps -= 1; }
+  jo_put(o, "{\"ask\": "); jo_quoted(o, forge_part(v, '|', 0)); jo_put(o, ", \"steps\": [");
+  for k: 1..<steps + 1 { if k > 1 { jo_put(o, ", "); } jo_quoted(o, forge_part(v, '|', k)); }
+  jo_put(o, "], \"reward\": "); jo_quoted(o, forge_part(v, '|', 4)); jo_byte(o, '}');
+  return true;
+}
+// The slots under prefix as one object, by name in jsonb's order: a tool's 1 or 0 as true or false,
+// lore's text, a quest's object.
+forge_put_named :: (o: [] Jo, d: [] ForgeDoc, prefix: string) -> bool {
+  jo_byte(o, '{');
+  last := ""; first := true;
+  i := forge_next_slot(d, prefix, last);
+  while i >= 0 {
+    k := forge_slot_key(d, i); last = k[prefix.count..<k.count]; v := forge_slot_text(d, k);
+    forge_jo_key(o, first, last); first = false;
+    if prefix == "tool:" {
+      if v != "1" && v != "0" { return false; }
+      jo_put(o, ifx v == "1" then "true" else "false");
+    } else if prefix == "quest:" {
+      if !forge_put_quest(o, v) { return false; }
+    } else { jo_quoted(o, v); }
+    i = forge_next_slot(d, prefix, last);
+  }
+  jo_byte(o, '}');
+  return true;
+}
+// The placed things, place:0 up: a hole (an index with no slot below the last) is null, as the server keeps one.
+forge_put_placed :: (o: [] Jo, d: [] ForgeDoc) -> bool {
+  top := -1;
+  for i: 0..<d[0].slot_n {
+    k := forge_slot_key(d, i);
+    if k.count > 6 && k[0..<6] == "place:" { n := forge_whole(k[6..<k.count], 0, FORGE_SLOTS); if n < 0 { return false; } if n > top { top = n; } }
+  }
+  jo_byte(o, '[');
+  for n: 0..<top + 1 {
+    if n > 0 { jo_put(o, ", "); }
+    kb: [24] u8; v := forge_slot_at(d, forge_place_key(n, kb[..]));
+    if !v.found { jo_put(o, "null"); continue; }
+    if !forge_put_place(o, forge_slot_text(d, forge_place_key(n, kb[..]))) { return false; }
+  }
+  jo_byte(o, ']');
+  return true;
+}
+
+// A board row's slot: "row:N" when off, "feature:N" when on.
+forge_row_slot :: (off: bool, n: int, buf: [] u8) -> string {
+  m := forge_put(buf, 0, ifx off then "row:" else "feature:"); m = forge_put_int(buf, m, n);
+  return ifx m < 0 then "" else cast(string) buf[0..<m];
+}
+// The highest N of a "feature:N" or "row:N" slot, or -1 when none.
+forge_rows_top :: (d: [] ForgeDoc, off: bool) -> int {
+  prefix := ifx off then "row:" else "feature:"; top := -1;
+  for i: 0..<d[0].slot_n {
+    k := forge_slot_key(d, i);
+    if k.count > prefix.count && k[0..<prefix.count] == prefix { n := forge_whole(k[prefix.count..<k.count], 0, FORGE_SLOTS); if n > top { top = n; } }
+  }
+  return top;
+}
+// The rows on (`features`) or off (`off`), N = 0 up, each its object as kept; a hole is null.
+forge_put_rows :: (o: [] Jo, d: [] ForgeDoc, off: bool) -> bool {
+  jo_byte(o, '[');
+  for n: 0..<forge_rows_top(d, off) + 1 {
+    if n > 0 { jo_put(o, ", "); }
+    kb: [24] u8; k := forge_row_slot(off, n, kb[..]);
+    if forge_slot_at(d, k).found { jo_put(o, forge_slot_text(d, k)); } else { jo_put(o, "null"); }
+  }
+  jo_byte(o, ']');
+  return true;
+}
+
+// book:begin write
+// d as the server stores it, into buf: its length, or -1 when it doesn't fit or `start` isn't a
+// document this writer knows. Moves are metres with two decimals, as the server rounds them.
+forge_doc_json :: (d: [] ForgeDoc, start: string, buf: [] u8) -> int {
+  if start.count > FORGE_DOC_BYTES { return -1; }
+  nodes: [4096] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], start, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return -1; }
+  at := 0;
+  if jv_kind(j[0], jv_get(j[0], 0, "doc")) == JV_OBJECT { at = jv_get(j[0], 0, "doc"); }   // /doc's answer
+  for i: 0..<jv_len(j[0], at) {
+    k := jv_key(j[0], jv_at(j[0], at, i)); known := false;
+    for w: FORGE_DOC_KEYS { if w == k { known = true; } }
+    if !known { return -1; }
+  }
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_byte(o[..], '{'); first := true;
+  for key: FORGE_DOC_KEYS {
+    v := jv_get(j[0], at, key);
+    has := v >= 0;
+    if key == "lore" { has = forge_any_slot(d, "lore:"); }
+    if key == "quests" { has = forge_any_slot(d, "quest:"); }
+    if key == "shaped" { has = forge_any_shaped(d); }
+    if key == "tools" { has = has || forge_any_slot(d, "tool:"); }
+    if key == "placed" { has = has || forge_any_slot(d, "place:"); }
+    if key == "features" { has = has || forge_any_slot(d, "feature:"); }
+    if key == "off" { has = has || forge_any_slot(d, "row:"); }
+    if key == "name" { has = has || forge_slot_at(d, "set:name").found; }
+    if !has { continue; }
+    forge_jo_key(o[..], first, key); first = false;
+    ok := true;
+    if key == "rev" { forge_jo_int(o[..], d[0].rev); }
+    else if key == "name" && forge_slot_at(d, "set:name").found { jo_quoted(o[..], forge_slot_text(d, "set:name")); }
+    else if key == "moved" || key == "shaped" {
+      jo_byte(o[..], '['); n := 0;
+      for i: 0..<d[0].move_n {
+        m := d[0].moves[i];
+        if key == "moved" && !m.at { continue; }
+        if key == "shaped" && m.yaw == 0 && m.scale == 100 && !m.gone { continue; }
+        if n > 0 { jo_put(o[..], ", "); }
+        n += 1;
+        b: [24] u8;
+        if key == "moved" {
+          jo_put(o[..], "{\"x\": "); jo_put(o[..], cast(string) b[0..<forge_put_cm(b[..], 0, m.x)]);
+          jo_put(o[..], ", \"z\": "); jo_put(o[..], cast(string) b[0..<forge_put_cm(b[..], 0, m.z)]);
+        } else {
+          jo_put(o[..], "{\"yaw\": "); forge_jo_int(o[..], m.yaw); jo_put(o[..], ", \"gone\": "); jo_put(o[..], ifx m.gone then "true" else "false");
+          jo_put(o[..], ", \"scale\": "); forge_jo_int(o[..], m.scale);
+        }
+        jo_put(o[..], ", \"entity\": "); jo_quoted(o[..], forge_move_key(d, i)); jo_byte(o[..], '}');
+      }
+      jo_byte(o[..], ']');
+    }
+    else if key == "setup" {
+      if jv_kind(j[0], v) != JV_OBJECT { return -1; }
+      jo_byte(o[..], '{'); f := true;
+      for what: FORGE_SETUP_KEYS {
+        kb: [16] u8; slot := forge_key_of("set:", what, kb[..]); sv := jv_get(j[0], v, what);
+        if !forge_slot_at(d, slot).found && sv < 0 { continue; }
+        forge_jo_key(o[..], f, what); f = false;
+        if forge_slot_at(d, slot).found { jo_quoted(o[..], forge_slot_text(d, slot)); } else { forge_copy_node(o[..], j[0], sv); }
+      }
+      jo_byte(o[..], '}');
+    }
+    else if key == "tools" { ok = forge_put_named(o[..], d, "tool:"); }
+    else if key == "lore" { ok = forge_put_named(o[..], d, "lore:"); }
+    else if key == "quests" { ok = forge_put_named(o[..], d, "quest:"); }
+    else if key == "placed" { ok = forge_put_placed(o[..], d); }
+    else if key == "features" || key == "off" { ok = forge_put_rows(o[..], d, key == "off"); }
+    else { forge_copy_node(o[..], j[0], v); }
+    if !ok { return -1; }
+  }
+  jo_byte(o[..], '}');
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// book:end write
+
+// ---- the replies (realm.proto: SaveReply, UndoReply, Conflict), as the server writes them
+// (jsonb's text, as the document) and as a client reads them.
+// book:begin reply
+// What a reply says: its revision (0 when it has none), the steps left each way (-1 when not
+// said), the document's hash and an error.
+ForgeReply :: struct { ok: bool; rev: int; undo: int = -1; redo: int = -1; sha: [64] u8; sha_n: int; error: [64] u8; error_n: int; }
+forge_read_reply :: (body: string) -> ForgeReply {
+  r: ForgeReply;
+  nodes: [64] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], body, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return r; }
+  r.rev = forge_whole(forge_num(j[0], jv_get(j[0], 0, "rev")), 1, FORGE_REV_MOST);
+  r.undo = forge_whole(forge_num(j[0], jv_get(j[0], 0, "undo")), 0, FORGE_REV_MOST);
+  r.redo = forge_whole(forge_num(j[0], jv_get(j[0], 0, "redo")), 0, FORGE_REV_MOST);
+  sha := jv_get(j[0], 0, "sha256");
+  if jv_kind(j[0], sha) == JV_STRING && jv_len(j[0], sha) == 0 && jv_raw(j[0], sha).count == 64 {
+    for c: jv_raw(j[0], sha) { if !forge_digit(c) && (c < 'a' || c > 'f') { return r; } }
+    for i: 0..<64 { r.sha[i] = jv_raw(j[0], sha)[i]; }
+    r.sha_n = 64;
+  }
+  r.error_n = jv_str(j[0], jv_get(j[0], 0, "error"), r.error[..]);
+  if r.error_n < 0 { r.error_n = 0; }
+  r.ok = r.rev >= 1;
+  return r;
+}
+forge_reply_sha :: (r: [] ForgeReply) -> string { return cast(string) r[0].sha[0..<r[0].sha_n]; }
+forge_reply_error :: (r: [] ForgeReply) -> string { return cast(string) r[0].error[0..<r[0].error_n]; }
+// 200 from /save: {"rev": R, "sha256": "HASH"}.
+forge_save_reply :: (rev: int, sha: string, buf: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_put(o[..], "{\"rev\": "); forge_jo_int(o[..], rev); jo_put(o[..], ", \"sha256\": "); jo_quoted(o[..], sha); jo_byte(o[..], '}');
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// 200 from /undo and /redo: {"rev": R, "redo": N, "undo": N}.
+forge_undo_reply :: (rev: int, undo: int, redo: int, buf: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_put(o[..], "{\"rev\": "); forge_jo_int(o[..], rev); jo_put(o[..], ", \"redo\": "); forge_jo_int(o[..], redo);
+  jo_put(o[..], ", \"undo\": "); forge_jo_int(o[..], undo); jo_byte(o[..], '}');
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// 409: {"rev": R, "error": "changed since"} (or "nothing to undo", "nothing to redo").
+forge_conflict :: (rev: int, error: string, buf: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], buf);
+  jo_put(o[..], "{\"rev\": "); forge_jo_int(o[..], rev); jo_put(o[..], ", \"error\": "); jo_quoted(o[..], error); jo_byte(o[..], '}');
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// book:end reply
+
+// A save's body (SaveRequest) read into d as the server takes it: its revision, every move and
+// every shape. The revision, or 0 (d as it was) when it isn't a save this model can hold.
+forge_read_save :: (d: [] ForgeDoc, body: string) -> int {
+  nodes: [1024] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], body, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return 0; }
+  rev := forge_whole(forge_num(j[0], jv_get(j[0], 0, "rev")), 1, FORGE_REV_MOST);
+  moved := jv_get(j[0], 0, "moved"); shaped := jv_get(j[0], 0, "shaped");
+  if rev < 1 || jv_kind(j[0], moved) != JV_ARRAY || (shaped >= 0 && jv_kind(j[0], shaped) != JV_ARRAY) { return 0; }
+  next: [1] ForgeDoc; forge_reset(next[..], rev);
+  for i: 0..<jv_len(j[0], moved) {
+    e := jv_at(j[0], moved, i); kb: [FORGE_KEY + 1] u8; key := forge_str(j[0], jv_get(j[0], e, "entity"), kb[..]);
+    if !forge_read_move(next[..], key, forge_cm_of(forge_num(j[0], jv_get(j[0], e, "x"))), forge_cm_of(forge_num(j[0], jv_get(j[0], e, "z")))) { return 0; }
+  }
+  for i: 0..<jv_len(j[0], shaped) {
+    e := jv_at(j[0], shaped, i); kb: [FORGE_KEY + 1] u8; key := forge_str(j[0], jv_get(j[0], e, "entity"), kb[..]);
+    yaw := forge_whole(forge_num(j[0], jv_get(j[0], e, "yaw")), 1 - FORGE_TURN, FORGE_TURN);
+    scale := forge_whole(forge_num(j[0], jv_get(j[0], e, "scale")), FORGE_SCALE_MIN, FORGE_SCALE_MAX);
+    gone := jv_kind(j[0], jv_get(j[0], e, "gone"));
+    if yaw < 1 - FORGE_TURN || scale < FORGE_SCALE_MIN || (gone != JV_TRUE && gone != JV_FALSE) { return 0; }
+    if !forge_read_shape(next[..], key, yaw, scale, gone == JV_TRUE) { return 0; }
+  }
+  d[0] = next[0];
+  return rev;
+}
+
+// book:begin step
+// ---- the server's undo log (realm.proto: UndoStep; migration 0111): {to, card, ops}, each op
+// {slot, before, after} with the slot's JSON value (null: absent). An entity's value is {x, z}
+// when moved and {yaw, scale, gone} when shaped; a setup field's is its text, a tool's true or
+// false, a placed thing's its object, lore's its text, a quest's its object.
+ForgeValue :: struct { ok: bool; on: bool; text: string; }
+// A logged value as this model's slot value (its text in buf), for the slot named key.
+forge_slot_value :: (j: Jv, at: int, key: string, buf: [] u8) -> ForgeValue {
+  k := jv_kind(j, at);
+  if k == JV_NULL { return ForgeValue.{ok = true}; }
+  kind := forge_part(key, ':', 0);
+  if kind == "set" || kind == "lore" {
+    t := forge_str(j, at, buf);
+    if k != JV_STRING { return ForgeValue.{}; }
+    return ForgeValue.{ok = true, on = t != "", text = t};   // a setup field that is "" is one the document has none of
+  }
+  if kind == "tool" {
+    if k != JV_TRUE && k != JV_FALSE { return ForgeValue.{}; }
+    return ForgeValue.{ok = true, on = true, text = ifx k == JV_TRUE then "1" else "0"};
+  }
+  if kind == "quest" {
+    n := forge_quest_text(j, at, buf);
+    return ifx n < 0 then ForgeValue.{} else ForgeValue.{ok = true, on = true, text = cast(string) buf[0..<n]};
+  }
+  if kind == "place" {
+    tb: [32] u8; thing := forge_str(j, jv_get(j, at, "thing"), tb[..]);
+    m := forge_put(buf, 0, thing);
+    for f: [3] string.["x", "z", "yaw"] {
+      num := forge_num(j, jv_get(j, at, f));
+      if num.count == 0 { return ForgeValue.{}; }
+      m = forge_put(buf, m, " "); m = forge_put(buf, m, num);
+    }
+    if k != JV_OBJECT || thing == "" || m < 0 { return ForgeValue.{}; }
+    return ForgeValue.{ok = true, on = true, text = cast(string) buf[0..<m]};
+  }
+  if kind == "row" || kind == "feature" {   // a board row's object, as the server wrote it
+    if k != JV_OBJECT { return ForgeValue.{}; }
+    return ForgeValue.{ok = true, on = true, text = jv_raw(j, at)};
+  }
+  return ForgeValue.{};
+}
+ForgeShapeValue :: struct { ok: bool; shape: ForgeShape; }
+// A logged entity value as its shape: null is the plain shape.
+forge_shape_value :: (j: Jv, at: int) -> ForgeShapeValue {
+  k := jv_kind(j, at);
+  if k == JV_NULL { return ForgeShapeValue.{ok = true}; }
+  if k != JV_OBJECT { return ForgeShapeValue.{}; }
+  s: ForgeShape;
+  if jv_get(j, at, "x") >= 0 || jv_get(j, at, "z") >= 0 {
+    s.at = true; s.x = forge_cm_of(forge_num(j, jv_get(j, at, "x"))); s.z = forge_cm_of(forge_num(j, jv_get(j, at, "z")));
+  }
+  if jv_get(j, at, "yaw") >= 0 || jv_get(j, at, "scale") >= 0 || jv_get(j, at, "gone") >= 0 {
+    s.yaw = forge_whole(forge_num(j, jv_get(j, at, "yaw")), 1 - FORGE_TURN, FORGE_TURN);
+    s.scale = forge_whole(forge_num(j, jv_get(j, at, "scale")), FORGE_SCALE_MIN, FORGE_SCALE_MAX);
+    gone := jv_kind(j, jv_get(j, at, "gone"));
+    if gone != JV_TRUE && gone != JV_FALSE { return ForgeShapeValue.{}; }
+    s.gone = gone == JV_TRUE;
+  }
+  return ForgeShapeValue.{ok = forge_shape_ok(s) && !forge_plain(s), shape = s};
+}
+// Apply one logged step to d: back (an undo) takes each op from after to before, newest first;
+// forward (a redo) from before to after, oldest first; what the server's UNDO and REDO do. Refused
+// whole, d as it was, when a slot is not what the step says, or is one this model doesn't hold.
+forge_apply_step :: (d: [] ForgeDoc, step: string, back: bool) -> bool {
+  nodes: [4096] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], step, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return false; }
+  ops := jv_get(j[0], 0, "ops");
+  if jv_kind(j[0], ops) != JV_ARRAY { return false; }
+  next: [1] ForgeDoc; next[0] = d[0];
+  n := jv_len(j[0], ops);
+  for i: 0..<n {
+    e := jv_at(j[0], ops, ifx back then n - 1 - i else i);
+    kb: [FORGE_SLOT_KEY + 1] u8; key := forge_str(j[0], jv_get(j[0], e, "slot"), kb[..]);
+    want := jv_get(j[0], e, ifx back then "after" else "before");
+    put := jv_get(j[0], e, ifx back then "before" else "after");
+    if want < 0 || put < 0 { return false; }
+    if !forge_slot_key_ok(key) {   // an entity ("trees:3", "placed:0"); "place:0" is a slot
+      if !forge_key_ok(key) { return false; }
+      w := forge_shape_value(j[0], want); p := forge_shape_value(j[0], put);
+      if !w.ok || !p.ok || !forge_same_shape(forge_shape_of(next[..], key), w.shape) || !forge_set_shape(next[..], key, p.shape) { return false; }
+      continue;
+    }
+    wb: [FORGE_VAL] u8; pb: [FORGE_VAL] u8;
+    w := forge_slot_value(j[0], want, key, wb[..]); p := forge_slot_value(j[0], put, key, pb[..]);
+    if !w.ok || !p.ok { return false; }
+    now := forge_slot_at(next[..], key);
+    if now.found != w.on || (now.found && forge_slot_text(next[..], key) != w.text) { return false; }
+    if !forge_set_slot(next[..], key, p.on, p.text) { return false; }
+  }
+  d[0] = next[0];
+  return true;
+}
+// book:end step
+
+// book:begin switch
+// A board row's key, as the server names one (verse.edit_key): a "row" row's variant; else its
+// feature, then ":" and a character's name (lowercase, each run of other bytes one "-") or a props,
+// building or herd row's variant. "" when it has none (the server's null).
+forge_row_key :: (row: string, buf: [] u8) -> string {
+  nodes: [64] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], row, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT || jv_kind(j[0], jv_get(j[0], 0, "feature")) != JV_STRING { return ""; }
+  fb: [64] u8; feature := forge_str(j[0], jv_get(j[0], 0, "feature"), fb[..]);
+  vb: [128] u8; variant := forge_str(j[0], jv_get(j[0], 0, "variant"), vb[..]);
+  has_variant := jv_kind(j[0], jv_get(j[0], 0, "variant")) == JV_STRING;
+  if feature == "row" { return ifx has_variant then forge_key_of("", variant, buf) else ""; }
+  n := forge_put(buf, 0, feature);
+  if feature == "props" || feature == "building" || feature == "herd" {
+    if has_variant { n = forge_put(buf, forge_put(buf, n, ":"), variant); }
+  } else if feature == "character" && jv_kind(j[0], jv_get(j[0], 0, "name")) == JV_STRING {
+    nb: [128] u8; name := forge_str(j[0], jv_get(j[0], 0, "name"), nb[..]);
+    n = forge_put(buf, n, ":"); run := false;
+    for c: name {
+      l := ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+      if forge_lower(l) || forge_digit(l) { e: [1] u8; e[0] = l; n = forge_put(buf, n, cast(string) e[..]); run = false; }
+      else if !run { n = forge_put(buf, n, "-"); run = true; }
+    }
+  }
+  return ifx n < 0 then "" else cast(string) buf[0..<n];
+}
+// A board row on or off, as the server's switch does it (verse.edit_switch_0110): the row named
+// key (the first on, else the first off) leaves the rows on ("feature:N") and off ("row:N"), every
+// one with its key and every hole with them, and goes at the end of the rows on, or off. One step
+// of an op for each slot that changes. False when no row has that key or nothing changes.
+FORGE_ROWS :: 64;   // board rows on, and off, this switch keeps
+forge_switch :: (d: [] ForgeDoc, key: string, on: bool) -> bool {
+  if key == "" { return false; }
+  // each list as it is (l 0: on, 1: off), its slots by N, a hole not found; then as it will be
+  was: [2 * FORGE_ROWS] ForgeVal; now: [2 * FORGE_ROWS] ForgeVal; top: [2] int; n: [2] int;
+  pick := ForgeVal.{};
+  for l: 0..<2 {
+    top[l] = forge_rows_top(d, l == 1) + 1;
+    if top[l] > FORGE_ROWS { return false; }
+    for i: 0..<top[l] {
+      kb: [24] u8; v := forge_slot_at(d, forge_row_slot(l == 1, i, kb[..]));
+      was[l * FORGE_ROWS + i] = v;
+      rb: [64] u8;
+      if v.found && !pick.found && forge_row_key(forge_val_text(d, v), rb[..]) == key { pick = v; }
+    }
+  }
+  if !pick.found { return false; }
+  for l: 0..<2 {
+    for i: 0..<top[l] {
+      v := was[l * FORGE_ROWS + i]; rb: [64] u8;
+      if !v.found { continue; }
+      k := forge_row_key(forge_val_text(d, v), rb[..]);
+      if k == "" || k == key { continue; }
+      now[l * FORGE_ROWS + n[l]] = v; n[l] += 1;
+    }
+    if (l == 0) == on { if n[l] >= FORGE_ROWS { return false; } now[l * FORGE_ROWS + n[l]] = pick; n[l] += 1; }
+  }
+  o: [2 * FORGE_ROWS] ForgeOp; ops := 0;
+  for l: 0..<2 {
+    for i: 0..<ifx top[l] > n[l] then top[l] else n[l] {
+      b := ifx i < top[l] then was[l * FORGE_ROWS + i] else ForgeVal.{};
+      a := ifx i < n[l] then now[l * FORGE_ROWS + i] else ForgeVal.{};
+      if b.found == a.found && (!b.found || forge_val_text(d, b) == forge_val_text(d, a)) { continue; }
+      if ops >= FORGE_OPS { return false; }
+      kb: [24] u8; forge_key_into(o[ops..<ops + 1], forge_row_slot(l == 1, i, kb[..]));
+      o[ops].kind = FORGE_SLOT;
+      o[ops].had = b.found; if b.found { o[ops].bv = d[0].slots[b.at].at; o[ops].bv_n = d[0].slots[b.at].n; }
+      o[ops].has = a.found; if a.found { o[ops].av = d[0].slots[a.at].at; o[ops].av_n = d[0].slots[a.at].n; }
+      ops += 1;
+    }
+  }
+  return ops > 0 && forge_push(d, o[0..<ops]);
+}
+// A found slot's value.
+forge_val_text :: (d: [] ForgeDoc, v: ForgeVal) -> string { return forge_span(d, d[0].slots[v.at].at, d[0].slots[v.at].n); }
+// book:end switch
+
+// A document's base: null (a made realm), or the slug of the built-in realm a fork was made from.
+ForgeBase :: struct { ok: bool; fork: bool; slug: [FORGE_SLUG] u8; slug_n: int; }
+forge_read_base :: (text: string) -> ForgeBase {
+  b: ForgeBase;
+  if text.count > FORGE_DOC_BYTES { return b; }
+  nodes: [4096] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], text, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return b; }
+  at := 0;
+  if jv_kind(j[0], jv_get(j[0], 0, "doc")) == JV_OBJECT { at = jv_get(j[0], 0, "doc"); }
+  base := jv_get(j[0], at, "base");
+  if jv_kind(j[0], base) == JV_NULL { b.ok = true; return b; }
+  buf: [FORGE_SLUG + 1] u8; slug := forge_str(j[0], base, buf[..]);
+  if jv_kind(j[0], base) != JV_STRING || !forge_slug_ok(slug) { return b; }
+  for i: 0..<slug.count { b.slug[i] = slug[i]; }
+  b.slug_n = slug.count; b.fork = true; b.ok = true;
+  return b;
+}
+
+// The document /doc answered for a realm at revision 4 before migration 0109, and the same realm
+// turned and sized after it.
+FORGE_DOC_V1 :: "{\"doc\": {\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 4, \"base\": null, \"name\": \"Lamp Cove\", \"slug\": \"lamp-cove\", \"moved\": [{\"x\": 1.25, \"z\": -2.5, \"entity\": \"trees:3\"}, {\"x\": -40, \"z\": 0.07, \"entity\": \"rocks:0\"}], \"setup\": {\"time\": \"night\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"meadow\", \"palette\": \"warm\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [{\"x\": 2, \"z\": -3.5, \"yaw\": 90, \"thing\": \"barrel\"}], \"version\": 1, \"features\": [], \"forked_from\": null}, \"sha256\": \"x\"}";
+
+#test "a version 1 document from before shapes is the same realm with none" {
+  d: [1] ForgeDoc; forge_reset(d[..], 9);
+  r := forge_read_doc(d[..], FORGE_DOC_V1);
+  #assert r.ok && r.version == 1 && d[0].rev == 4 && d[0].move_n == 2 && !forge_any_shaped(d[..]);
+  w := forge_where(d[..], "trees:3");
+  #assert w.found && w.x == 125 && w.z == -250 && forge_where(d[..], "rocks:0").x == -4000 && forge_where(d[..], "rocks:0").z == 7;
+  #assert forge_slot_text(d[..], "set:time") == "night" && forge_slot_text(d[..], "set:palette") == "warm";
+  #assert forge_slot_text(d[..], "tool:fly") == "0" && forge_slot_text(d[..], "tool:jump") == "1";
+  #assert forge_slot_text(d[..], "place:0") == "barrel 2 -3.5 90" && d[0].op_n == 0;
+}
+
+// The fixture with one piece replaced.
+forge_doc_with :: (from: string, to: string, buf: [] u8) -> string {
+  for i: 0..<FORGE_DOC_V1.count {
+    if i + from.count <= FORGE_DOC_V1.count && FORGE_DOC_V1[i..<i + from.count] == from {
+      n := forge_put(buf, 0, FORGE_DOC_V1[0..<i]); n = forge_put(buf, n, to); n = forge_put(buf, n, FORGE_DOC_V1[i + from.count..<FORGE_DOC_V1.count]);
+      return ifx n == -1 then "" else cast(string) buf[0..<n];
+    }
+  }
+  return "";
+}
+
+#test "shapes from migration 0109 are read; the bare document reads as /doc's answer does" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  b: [4096] u8;
+  t := forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": -90, \"gone\": false, \"scale\": 150, \"entity\": \"trees:3\"}, {\"yaw\": 0, \"gone\": true, \"scale\": 100, \"entity\": \"placed:0\"}],", b[..]);
+  #assert forge_read_doc(d[..], t).ok;
+  s := forge_shape_of(d[..], "trees:3");
+  #assert s.at && s.x == 125 && s.yaw == -90 && s.scale == 150 && !s.gone && forge_shape_of(d[..], "placed:0").gone;
+  bare: [4096] u8; bn := forge_put(bare[..], 0, FORGE_DOC_V1[8..<FORGE_DOC_V1.count - 16]);
+  e: [1] ForgeDoc; forge_reset(e[..], 1);
+  #assert bn > 0 && forge_read_doc(e[..], cast(string) bare[0..<bn]).ok && e[0].rev == 4 && e[0].move_n == 2;
+}
+
+#test "lore and quests from migration 0111 are read as the slots the server's log names" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  b: [4096] u8;
+  t := forge_doc_with("\"version\": 1,", "\"version\": 1, \"lore\": {\"mara\": \"She keeps the lighthouse.\", \"old-bram\": \"Bakes at dawn.\"}, \"quests\": {\"mara\": {\"ask\": \"Light the lamp\", \"steps\": [\"Find oil\", \"\", \"Climb\"], \"reward\": \"A map\"}, \"bram\": {\"ask\": \"Fetch flour\", \"steps\": [\"Mill\"], \"reward\": \"\"}},", b[..]);
+  #assert forge_read_doc(d[..], t).ok;
+  #assert forge_slot_text(d[..], "lore:mara") == "She keeps the lighthouse." && forge_slot_text(d[..], "lore:old-bram") == "Bakes at dawn.";
+  #assert forge_slot_text(d[..], "quest:mara") == "Light the lamp|Find oil||Climb|A map" && forge_slot_text(d[..], "quest:bram") == "Fetch flour|Mill|||";
+  // the same quest as forge_quest writes it: an edit and its inverse from here are the model's own
+  steps := [3] string.["Find oil", "", "Climb"];
+  #assert !forge_quest(d[..], "mara", "Light the lamp", steps, "A map") && forge_lore(d[..], "mara", "") && !forge_slot_at(d[..], "lore:mara").found;
+  #assert forge_undo(d[..]) && forge_slot_text(d[..], "lore:mara") == "She keeps the lighthouse.";
+  // a document without them has none
+  e: [1] ForgeDoc; forge_reset(e[..], 1);
+  #assert forge_read_doc(e[..], FORGE_DOC_V1).ok && !forge_slot_at(e[..], "lore:mara").found;
+  // broken ones are refused whole
+  bad := [6] string.[
+    "\"lore\": [\"x\"],", "\"lore\": {\"mara\": 3},", "\"lore\": {\"Mara\": \"x\"},",
+    "\"quests\": {\"mara\": {\"ask\": \"a|b\", \"steps\": [], \"reward\": \"\"}},",
+    "\"quests\": {\"mara\": {\"ask\": \"a\", \"steps\": [\"1\", \"2\", \"3\", \"4\"], \"reward\": \"\"}},",
+    "\"quests\": {\"mara\": {\"ask\": \"\", \"steps\": [], \"reward\": \"\"}},"];
+  for i: 0..<bad.count {
+    w: [256] u8; wn := forge_put(w[..], 0, "\"version\": 1, "); wn = forge_put(w[..], wn, bad[i]);
+    c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with("\"version\": 1,", cast(string) w[0..<wn], b[..]));
+    #assert cn > 0 && !forge_read_doc(e[..], cast(string) c[0..<cn]).ok && !forge_slot_at(e[..], "lore:mara").found;
+  }
+}
+
+#test "a fork names the realm and revision it was copied from; a broken parent is refused whole" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  r := forge_read_doc(d[..], FORGE_DOC_V1);
+  #assert r.ok && r.from_n == 0 && r.from_rev == 0;
+  b: [4096] u8;
+  r = forge_read_doc(d[..], forge_doc_with("\"forked_from\": null", "\"forked_from\": {\"rev\": 4, \"slug\": \"9-lamp-cove\"}", b[..]));
+  #assert r.ok && cast(string) r.from[0..<r.from_n] == "9-lamp-cove" && r.from_rev == 4 && d[0].rev == 4 && d[0].move_n == 2;
+  long: [80] u8; ln := 0;
+  for i: 0..<FORGE_SLUG { long[i] = 'a'; ln += 1; }
+  #assert forge_slug_ok(cast(string) long[0..<ln]) && !forge_slug_ok(cast(string) long[0..<ln + 1]) && forge_slug_ok("a") && forge_slug_ok("0");
+  #assert !forge_slug_ok("") && !forge_slug_ok("-a") && !forge_slug_ok("a_b") && !forge_slug_ok("aB") && forge_slug_ok("a-9");
+  e: [1] ForgeDoc; forge_reset(e[..], 1);
+  #assert forge_read_doc(e[..], FORGE_DOC_V1).ok;
+  bad := [7] string.["{\"rev\": 0, \"slug\": \"lamp-cove\"}", "{\"rev\": \"4\", \"slug\": \"lamp-cove\"}", "{\"rev\": 4, \"slug\": \"Lamp\"}",
+    "{\"rev\": 4, \"slug\": \"\"}", "{\"rev\": 4}", "\"lamp-cove\"", "[\"lamp-cove\", 4]"];
+  for i: 0..<bad.count {
+    w: [128] u8; wn := forge_put(w[..], 0, "\"forked_from\": "); wn = forge_put(w[..], wn, bad[i]);
+    c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with("\"forked_from\": null", cast(string) w[0..<wn], b[..]));
+    r = forge_read_doc(e[..], cast(string) c[0..<cn]);
+    #assert cn > 0;
+    #assert !r.ok;
+    #assert r.why == "a fork's parent out of bounds";
+    #assert e[0].rev == 4;
+  }
+}
+
+#test "an unknown, newer or broken document is refused whole and the last one stays" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  #assert forge_read_doc(d[..], FORGE_DOC_V1).ok;
+  last: [8192] u8; ln := forge_doc_text(d[..], last[..]);
+  b: [4096] u8;
+  // Each case is a piece of the fixture replaced (from, to), built in its own buffer as it is read.
+  V := "\"version\": 1,";
+  cases := [54] string.[
+    "\"version\": 1", "\"version\": 2", "\"version\": 1", "\"version\": 0", V, "", "\"version\": 1", "\"version\": 1.5",
+    "aethyr.realm", "aethyr.world", "\"rev\": 4", "\"rev\": 0", "\"rev\": 4,", "",
+    "\"x\": 1.25", "\"x\": 40.01", "\"x\": 1.25", "\"x\": 1.255",
+    "\"entity\": \"rocks:0\"", "\"entity\": \"trees:3\"", "\"entity\": \"rocks:0\"", "\"entity\": \"Rocks\"", "\"moved\": [", "\"moved\": {\"a\": [",
+    V, "\"version\": 1, \"shaped\": [{\"yaw\": 181, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],",
+    V, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 24, \"entity\": \"trees:1\"}],",
+    V, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": 0, \"scale\": 50, \"entity\": \"trees:1\"}],",
+    V, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],",
+    V, "\"version\": 1, \"shaped\": [{\"yaw\": 5, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}, {\"yaw\": 6, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],",
+    V, "\"version\": 1, \"shaped\": {},",
+    "\"fly\": false", "\"fly\": 0", "\"time\": \"night\"", "\"time\": \"two\\nlines\"",
+    "\"thing\": \"barrel\"", "\"thing\": \"\"", "\"yaw\": 90, \"thing\"", "\"thing\"", "\"z\": -3.5, \"yaw\"", "\"yaw\"",
+    "\"x\": 2, \"z\"", "\"x\": null, \"z\"", "\"x\": 2, \"z\"", "\"x\": [2], \"z\"", "\"x\": 2, \"z\"", "\"x\": true, \"z\"",
+    "{\"doc\": {", "[1, {"];
+  for i: 0..<cases.count / 2 {
+    c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with(cases[2 * i], cases[2 * i + 1], b[..]));
+    r := forge_read_doc(d[..], cast(string) c[0..<cn]);
+    #assert cn > 2;
+    #assert !r.ok && r.why != "";
+    now: [8192] u8; nn := forge_doc_text(d[..], now[..]);
+    #assert cast(string) now[0..<nn] == cast(string) last[0..<ln];
+  }
+  #assert !forge_read_doc(d[..], "[1]").ok;
+  #assert forge_read_doc(d[..], forge_doc_with("\"version\": 1", "\"version\": 2", b[..])).why == "a newer document than this reader knows";
+  #assert forge_cm_of("40") == 4000 && forge_cm_of("-0.5") == -50 && forge_cm_of("0.07") == 7 && forge_cm_of("1.") == 4001 && forge_cm_of(".5") == 4001 && forge_cm_of("100") == 4001 && forge_cm_of("") == 4001;
+  #assert forge_whole("-179", -179, 180) == -179 && forge_whole("181", -179, 180) == -180 && forge_whole("1e2", 0, 999) == -1 && forge_whole("", 0, 9) == -1;
+}
+
+// #12720: every numeric field refuses its number quoted ("4" is a string), keeps the last document,
+// and says which part was out of bounds; the same field as a number reads.
+#test "a quoted number is refused in every numeric field, and the last document stays" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  #assert forge_read_doc(d[..], FORGE_DOC_V1).ok;
+  last: [8192] u8; ln := forge_doc_text(d[..], last[..]);
+  b: [4096] u8;
+  // field, the fixture's piece, it quoted, it as a number (read), the reason refused
+  cases := [50] string.[
+    "version", "\"version\": 1,", "\"version\": \"1\",", "\"version\": 1,", "no version",
+    "rev", "\"rev\": 4,", "\"rev\": \"4\",", "\"rev\": 4,", "no revision",
+    "moved x", "\"x\": 1.25", "\"x\": \"1.25\"", "\"x\": 1.25", "a move out of bounds",
+    "moved z", "\"z\": -2.5", "\"z\": \"-2.5\"", "\"z\": -2.5", "a move out of bounds",
+    "shaped yaw", "\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": \"-90\", \"gone\": false, \"scale\": 150, \"entity\": \"trees:3\"}],",
+      "\"version\": 1, \"shaped\": [{\"yaw\": -90, \"gone\": false, \"scale\": 150, \"entity\": \"trees:3\"}],", "a turn, size or gone out of bounds",
+    "shaped scale", "\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": -90, \"gone\": false, \"scale\": \"150\", \"entity\": \"trees:3\"}],",
+      "\"version\": 1, \"shaped\": [{\"yaw\": -90, \"gone\": false, \"scale\": 150, \"entity\": \"trees:3\"}],", "a turn, size or gone out of bounds",
+    "placed x", "\"x\": 2,", "\"x\": \"2\",", "\"x\": 2,", "a placed thing out of bounds",
+    "placed z", "\"z\": -3.5,", "\"z\": \"-3.5\",", "\"z\": -3.5,", "a placed thing out of bounds",
+    "placed yaw", "\"yaw\": 90,", "\"yaw\": \"90\",", "\"yaw\": 90,", "a placed thing out of bounds",
+    "fork rev", "\"forked_from\": null", "\"forked_from\": {\"rev\": \"4\", \"slug\": \"lamp-cove\"}", "\"forked_from\": {\"rev\": 4, \"slug\": \"lamp-cove\"}", "a fork's parent out of bounds"];
+  for i: 0..<cases.count / 5 {
+    q := 5 * i;
+    c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with(cases[q + 1], cases[q + 2], b[..]));
+    r := forge_read_doc(d[..], cast(string) c[0..<cn]);
+    #assert cn > 2;
+    #assert !r.ok;
+    #assert r.why == cases[q + 4];
+    now: [8192] u8; nn := forge_doc_text(d[..], now[..]);
+    #assert cast(string) now[0..<nn] == cast(string) last[0..<ln];
+    e: [1] ForgeDoc; forge_reset(e[..], 1);
+    g: [4096] u8; gn := forge_put(g[..], 0, forge_doc_with(cases[q + 1], cases[q + 3], b[..]));
+    #assert gn > 2;
+    #assert forge_read_doc(e[..], cast(string) g[0..<gn]).ok;
+  }
+  #assert forge_slot_text(d[..], "place:0") == "barrel 2 -3.5 90";
+  #assert forge_num(Jv.{}, 0) == "";
+}
+
+// Whether the fixture with one piece replaced reads (each in its own buffers).
+forge_doc_reads :: (from: string, to: string) -> bool {
+  b: [4096] u8; c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with(from, to, b[..]));
+  d: [1] ForgeDoc;
+  return forge_read_doc(d[..], cast(string) c[0..<cn]).ok;
+}
+FORGE_SH :: "\"version\": 1,";
+
+// Each bound the reader keeps, at its edge and one past it.
+// Measured 16,293,710 steps; keep headroom below near-limit reporting (#12950).
+#test "every bound holds at its edge and refuses one past it" #steps 24000000 {
+  #assert forge_doc_reads("\"rev\": 4,", "\"rev\": 1,") && forge_doc_reads("\"rev\": 4,", "\"rev\": 999999999,") && !forge_doc_reads("\"rev\": 4,", "\"rev\": 1000000000,");
+  #assert !forge_doc_reads("\"version\": 1", "\"version\": 1000000000") && !forge_doc_reads("\"rev\": 4,", "\"rev\": -4,");
+  #assert forge_doc_reads("\"forked_from\": null", "\"forked_from\": {\"rev\": 1, \"slug\": \"a\"}");
+  #assert forge_doc_reads("\"forked_from\": null", "\"forked_from\": {\"rev\": 999999999, \"slug\": \"a\"}");
+  #assert !forge_doc_reads("\"forked_from\": null", "\"forked_from\": {\"rev\": 1000000000, \"slug\": \"a\"}");
+  #assert forge_doc_reads(", \"forked_from\": null", "") && !forge_doc_reads("\"forked_from\": null", "\"forked_from\": false");
+  // shapes: turns -179..180, sizes 25..400, a turn alone or a size alone is a shape
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": -179, \"gone\": false, \"scale\": 25, \"entity\": \"trees:1\"}],");
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 180, \"gone\": false, \"scale\": 400, \"entity\": \"trees:1\"}],");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": -180, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 401, \"entity\": \"trees:1\"}],");
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"trees:1\"}],");
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 5, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],");
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": true, \"scale\": 100, \"entity\": \"trees:1\"}],");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 5, \"gone\": false, \"scale\": 100, \"entity\": 3}],");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"shaped\": null,") && !forge_doc_reads(FORGE_SH, "\"version\": 1, \"lore\": null,") && !forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": null,");
+  // names that don't fit their slot key, and a placed thing whose value doesn't fit
+  #assert !forge_doc_reads("\"fly\": false", "\"flyflyflyflyflyflyflyflyflyflyflyflyflyflyflyflyfly\": false");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"lore\": {\"maramaramaramaramaramaramaramaramaramaramaramara\": \"x\"},");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"maramaramaramaramaramaramaramaramaramaramaramara\": {\"ask\": \"a\", \"steps\": [], \"reward\": \"\"}},");
+  #assert forge_doc_reads("\"x\": 2,", "\"x\": 2.5,") && !forge_doc_reads("\"x\": 2,", "\"x\": 12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890,");
+  #assert !forge_doc_reads("\"thing\": \"barrel\"", "\"thing\": \"barrelbarrelbarrelbarrelbarrelbarrel\"") && !forge_doc_reads("\"thing\": \"barrel\"", "\"thing\": 7");
+  // quests: no steps, two; a | anywhere in a part; a part not a string
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"a\", \"steps\": [], \"reward\": \"\"}},");
+  #assert forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"a\", \"steps\": [\"s\", \"t\"], \"reward\": \"r\"}},");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"|a\", \"steps\": [], \"reward\": \"\"}},");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"a\", \"steps\": [3], \"reward\": \"\"}},");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"a\", \"steps\": [], \"reward\": null}},");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"a\", \"steps\": {}, \"reward\": \"\"}},");
+  #assert !forge_doc_reads(FORGE_SH, "\"version\": 1, \"lore\": {\"mara\": \"\"},");
+  // the document's kind, and a JSON value that isn't an object
+  #assert !forge_doc_reads("\"doc\": \"aethyr.realm\"", "\"doc\": 7") && !forge_doc_reads("\"doc\": \"aethyr.realm\"", "\"doc\": \"aethyr.realm.x\"");
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  #assert forge_read_doc(d[..], "[1]").why == "not a JSON object" && forge_read_doc(d[..], "{").why == "not a JSON object";
+  // the size: 262144 bytes read (the fixture padded with spaces), one more doesn't
+  big: [262145] u8; n := forge_put(big[..], 0, FORGE_DOC_V1[0..<FORGE_DOC_V1.count - 1]);
+  while n < 262143 { big[n] = ' '; n += 1; }
+  big[n] = '}'; n += 1;
+  #assert n == 262144 && forge_read_doc(d[..], cast(string) big[0..<n]).ok;
+  big[n - 1] = ' '; big[n] = '}';
+  #assert forge_read_doc(d[..], cast(string) big[0..<n + 1]).why == "too large";
+  // the helpers at their edges
+  long: [80] u8;
+  for i: 0..<80 { long[i] = 'a'; }
+  #assert forge_slug_ok(cast(string) long[0..<64]) && !forge_slug_ok(cast(string) long[0..<65]);
+  #assert forge_cm_of("1x") == 4001 && forge_cm_of("1.x") == 4001 && forge_cm_of("-") == 4001 && forge_cm_of("-1") == -100;
+  #assert forge_whole("180", -179, 180) == 180 && forge_whole("181", 0, 180) == -1 && forge_whole("-", 0, 9) == -1 && forge_whole("-0", 0, 9) == 0;
+  #assert forge_whole("9999999999", 0, 99999999999) == 9999999999 && forge_whole("0x", 0, 9) == -1;
+  b: [4096] u8; small: [4] u8;
+  #assert forge_doc_with("\"rev\": 4", "\"rev\": 5", small[..]) == "" && forge_doc_with("nowhere", "x", b[..]) == "";
+  #assert forge_doc_with("\"sha256\": \"x\"}", "\"sha256\": \"y\"}", b[..]).count == FORGE_DOC_V1.count;
+  #assert forge_key_of("set:", "time", small[..]) == "" && forge_key_of("ab", "cd", small[..]) == "abcd";
+  #assert forge_str(Jv.{}, 0, small[..]) == "" && forge_whole("-5", 0, 9) == -1;
+  // which check refused: the reader's own bounds, before the model's
+  #assert forge_read_doc(d[..], forge_doc_with("\"version\": 1", "\"version\": 1000000000", b[..])).why == "no version";
+  turn := forge_read_doc(d[..], forge_doc_with(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 181, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],", b[..]));
+  #assert turn.why == "a turn, size or gone out of bounds";
+  size := forge_read_doc(d[..], forge_doc_with(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 401, \"entity\": \"trees:1\"}],", b[..]));
+  #assert size.why == "a turn, size or gone out of bounds";
+  low := forge_read_doc(d[..], forge_doc_with(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": -180, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],", b[..]));
+  #assert low.why == "a turn, size or gone out of bounds";
+  #assert forge_read_doc(d[..], forge_doc_with(FORGE_SH, "\"version\": 1, \"shaped\": [{\"yaw\": 5, \"gone\": false, \"scale\": 100, \"entity\": \"Trees\"}],", b[..])).why == "a shape out of bounds";
+  // a quest whose parts fit one by one but not together
+  q: [3000] u8; qn := forge_put(q[..], 0, "\"version\": 1, \"quests\": {\"mara\": {\"ask\": \"");
+  for i: 0..<2000 { q[qn] = 'a'; qn += 1; }
+  qn = forge_put(q[..], qn, "\", \"steps\": [], \"reward\": \"");
+  for i: 0..<500 { q[qn] = 'r'; qn += 1; }
+  qn = forge_put(q[..], qn, "\"}},");
+  long_quest := forge_doc_with(FORGE_SH, cast(string) q[0..<qn], b[..]);
+  #assert long_quest.count > 3000 && forge_read_doc(d[..], long_quest).why == "a quest out of bounds";
+}
+
+// proto/verse/realm-document-v1.json's start and first steps (the server's bytes); doc-goldens.coax replays the whole file.
+FORGE_STORED_V1 :: "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 1, \"base\": null, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}";
+#test "the stored document is written back byte for byte, and an edit as the server stores it" {
+  d: [1] ForgeDoc; out: [4096] u8;
+  #assert forge_read_doc(d[..], FORGE_STORED_V1).ok;
+  n := forge_doc_json(d[..], FORGE_STORED_V1, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == FORGE_STORED_V1;
+  #assert forge_move(d[..], "trees:1", 125, -250) && forge_rotate(d[..], "trees:1", 90) && forge_resize(d[..], "rocks:0", 150);
+  #assert forge_lore(d[..], "mara", "She \"keeps\" it.") && forge_quest(d[..], "mara", "Light", [3] string.["Oil", "", ""], "A map") && forge_tool(d[..], "fly", true);
+  forge_commit(d[..], 2);
+  n = forge_doc_json(d[..], FORGE_STORED_V1, out[..]);
+  #assert cast(string) out[0..<n] == "{\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 2, \"base\": null, \"lore\": {\"mara\": \"She \\\"keeps\\\" it.\"}, \"name\": \"Doc Fixture\", \"slug\": \"doc-fixture\", \"moved\": [{\"x\": 1.25, \"z\": -2.50, \"entity\": \"trees:1\"}], \"setup\": {\"time\": \"day\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"grass\", \"palette\": \"natural\"}, \"tools\": {\"fly\": true, \"jump\": true}, \"placed\": [], \"quests\": {\"mara\": {\"ask\": \"Light\", \"steps\": [\"Oil\"], \"reward\": \"A map\"}}, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 150, \"entity\": \"rocks:0\"}, {\"yaw\": 90, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}], \"version\": 1, \"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}], \"forked_from\": null}";
+  // a place slot and a key it doesn't know; a buffer too small
+  #assert forge_place(d[..], "barrel", 150, -20, 45);
+  n = forge_doc_json(d[..], FORGE_STORED_V1, out[..]);
+  #assert n > 0 && forge_find_text(cast(string) out[0..<n], "\"placed\": [{\"x\": 150, \"z\": -20, \"yaw\": 45, \"thing\": \"barrel\"}]");
+  #assert forge_doc_json(d[..], "{\"doc\": \"aethyr.realm\", \"rev\": 1, \"what\": 1}", out[..]) < 0 && forge_doc_json(d[..], "[]", out[..]) < 0;
+  small: [64] u8; #assert forge_doc_json(d[..], FORGE_STORED_V1, small[..]) < 0;
+}
+#test "a board row switched off and on is the server's switch: rows move between features and off, one step" {
+  d: [1] ForgeDoc; out: [4096] u8; b: [4096] u8;
+  t := forge_doc_with_rows("[{\"count\": 4, \"feature\": \"trees\"}, {\"name\": \"Old Mara!\", \"feature\": \"character\"}, null, {\"count\": 2, \"feature\": \"rocks\"}]", b[..]);
+  #assert forge_read_doc(d[..], t).ok && forge_slot_text(d[..], "feature:1") == "{\"name\": \"Old Mara!\", \"feature\": \"character\"}" && !forge_slot_at(d[..], "feature:2").found;
+  n := forge_doc_json(d[..], t, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == t;   // a hole stays a null
+  kb: [64] u8;
+  #assert forge_row_key("{\"name\": \"Old Mara!\", \"feature\": \"character\"}", kb[..]) == "character:old-mara-";
+  #assert forge_row_key("{\"variant\": \"well\", \"feature\": \"row\"}", kb[..]) == "well" && forge_row_key("{\"variant\": \"oak\", \"feature\": \"props\"}", kb[..]) == "props:oak";
+  #assert forge_row_key("{\"variant\": \"oak\", \"feature\": \"trees\"}", kb[..]) == "trees" && forge_row_key("{\"feature\": \"row\"}", kb[..]) == "" && forge_row_key("[]", kb[..]) == "";
+  #assert forge_switch(d[..], "trees", false) && d[0].done == 4;   // four slots, one step
+  n = forge_doc_json(d[..], t, out[..]);
+  #assert forge_find_text(cast(string) out[0..<n], "\"off\": [{\"count\": 4, \"feature\": \"trees\"}]");
+  #assert forge_find_text(cast(string) out[0..<n], "\"features\": [{\"name\": \"Old Mara!\", \"feature\": \"character\"}, {\"count\": 2, \"feature\": \"rocks\"}]");
+  #assert !forge_switch(d[..], "trees", false) && !forge_switch(d[..], "water", true) && !forge_switch(d[..], "", true);
+  #assert forge_switch(d[..], "trees", true);
+  n = forge_doc_json(d[..], t, out[..]);
+  #assert forge_find_text(cast(string) out[0..<n], "\"off\": []") && forge_find_text(cast(string) out[0..<n], "\"count\": 2, \"feature\": \"rocks\"}, {\"count\": 4, \"feature\": \"trees\"}]");
+  #assert forge_undo(d[..]) && forge_undo(d[..]) && !forge_undo(d[..]);
+  n = forge_doc_json(d[..], t, out[..]);
+  #assert cast(string) out[0..<n] == t;   // every op of both steps taken back: the bytes read
+  #assert forge_redo(d[..]) && forge_slot_text(d[..], "row:0") == "{\"count\": 4, \"feature\": \"trees\"}";
+}
+// FORGE_STORED_V1 with other rows on.
+forge_doc_with_rows :: (rows: string, buf: [] u8) -> string {
+  from := "\"features\": [{\"count\": 4, \"feature\": \"trees\"}, {\"count\": 2, \"feature\": \"rocks\"}]";
+  for i: 0..<FORGE_STORED_V1.count - from.count {
+    if FORGE_STORED_V1[i..<i + from.count] == from {
+      n := forge_put(buf, 0, FORGE_STORED_V1[0..<i]); n = forge_put(buf, n, "\"features\": "); n = forge_put(buf, n, rows);
+      n = forge_put(buf, n, FORGE_STORED_V1[i + from.count..<FORGE_STORED_V1.count]);
+      return ifx n < 0 then "" else cast(string) buf[0..<n];
+    }
+  }
+  return "";
+}
+forge_find_text :: (s: string, part: string) -> bool {
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+#test "replies as the server writes them, read back; a save's body read as the server takes it" {
+  b: [256] u8;
+  n := forge_save_reply(2, "fda8f43daffdc69a43ee5c5340b3ce1879031ed41c13b894305cde89d443e474", b[..]);
+  #assert cast(string) b[0..<n] == "{\"rev\": 2, \"sha256\": \"fda8f43daffdc69a43ee5c5340b3ce1879031ed41c13b894305cde89d443e474\"}";
+  r: [1] ForgeReply; r[0] = forge_read_reply(cast(string) b[0..<n]);
+  #assert r[0].ok && r[0].rev == 2 && forge_reply_sha(r[..]) == "fda8f43daffdc69a43ee5c5340b3ce1879031ed41c13b894305cde89d443e474" && r[0].undo == -1;
+  n = forge_undo_reply(8, 5, 1, b[..]);
+  #assert cast(string) b[0..<n] == "{\"rev\": 8, \"redo\": 1, \"undo\": 5}";
+  r[0] = forge_read_reply(cast(string) b[0..<n]); #assert r[0].rev == 8 && r[0].undo == 5 && r[0].redo == 1 && r[0].sha_n == 0;
+  n = forge_conflict(10, "changed since", b[..]);
+  #assert cast(string) b[0..<n] == "{\"rev\": 10, \"error\": \"changed since\"}";
+  r[0] = forge_read_reply(cast(string) b[0..<n]); #assert r[0].ok && r[0].rev == 10 && forge_reply_error(r[..]) == "changed since";
+  #assert !forge_read_reply("{\"rev\": \"7\"}").ok && !forge_read_reply("{\"rev\": 0}").ok && !forge_read_reply("nope").ok && forge_read_reply("{\"rev\": 3, \"sha256\": \"XYZ\"}").sha_n == 0;
+  small: [8] u8; #assert forge_save_reply(2, "ab", small[..]) < 0 && forge_undo_reply(2, 1, 1, small[..]) < 0 && forge_conflict(2, "changed since", small[..]) < 0;
+  d: [1] ForgeDoc;
+  #assert forge_read_save(d[..], "{\"rev\":3,\"moved\":[{\"entity\":\"trees:1\",\"x\":1.25,\"z\":-2.50}],\"shaped\":[{\"entity\":\"rocks:1\",\"yaw\":0,\"scale\":100,\"gone\":true}]}") == 3;
+  #assert forge_where(d[..], "trees:1").x == 125 && forge_shape_of(d[..], "rocks:1").gone && d[0].rev == 3;
+  #assert forge_read_save(d[..], "{\"rev\":4,\"moved\":[]}") == 4 && d[0].move_n == 0;   // no shaped: none read
+  #assert forge_read_save(d[..], "{\"rev\":0,\"moved\":[]}") == 0 && forge_read_save(d[..], "{\"rev\":5,\"moved\":{}}") == 0 && d[0].rev == 4;
+  #assert forge_read_save(d[..], "{\"rev\":5,\"moved\":[],\"shaped\":[{\"entity\":\"rocks:1\",\"yaw\":0,\"scale\":100,\"gone\":1}]}") == 0;
+  #assert forge_read_save(d[..], "{\"rev\":5,\"moved\":[],\"shaped\":[{\"entity\":\"rocks:1\",\"yaw\":0,\"scale\":10,\"gone\":true}]}") == 0;
+  #assert forge_read_save(d[..], "{\"rev\":5,\"moved\":[{\"entity\":\"trees\",\"x\":0,\"z\":0}]}") == 0;
+}
+#test "the server's logged steps undo and redo the model, and are refused whole when it doesn't match" {
+  d: [1] ForgeDoc; forge_reset(d[..], 6);
+  #assert forge_read_move(d[..], "trees:1", 125, -250) && forge_read_slot(d[..], "lore:mara", "She keeps it.");
+  step := "{\"to\": 6, \"ops\": [{\"slot\": \"rocks:0\", \"after\": null, \"before\": {\"yaw\": 0, \"gone\": false, \"scale\": 150}}, {\"slot\": \"rocks:1\", \"after\": null, \"before\": {\"yaw\": 0, \"gone\": true, \"scale\": 100}}, {\"slot\": \"trees:1\", \"after\": {\"x\": 1.25, \"z\": -2.50}, \"before\": {\"x\": 1.25, \"z\": -2.50, \"yaw\": 90, \"gone\": false, \"scale\": 100}}], \"card\": null}";
+  #assert forge_apply_step(d[..], step, true);
+  #assert forge_shape_of(d[..], "trees:1").yaw == 90 && forge_shape_of(d[..], "rocks:1").gone && forge_shape_of(d[..], "rocks:0").scale == 150;
+  #assert forge_move_key(d[..], 0) == "rocks:0" && forge_move_key(d[..], 1) == "rocks:1" && forge_move_key(d[..], 2) == "trees:1";   // in entity order, as the server keeps them
+  #assert !forge_apply_step(d[..], step, true) && forge_shape_of(d[..], "rocks:0").scale == 150;   // already undone: refused, unchanged
+  #assert forge_apply_step(d[..], step, false) && d[0].move_n == 1 && forge_shape_of(d[..], "trees:1").yaw == 0;
+  quest := "{\"to\": 5, \"ops\": [{\"slot\": \"quest:mara\", \"after\": {\"ask\": \"Light\", \"steps\": [\"Oil\", \"\", \"Climb\"], \"reward\": \"A map\"}, \"before\": null}], \"card\": null}";
+  #assert forge_apply_step(d[..], quest, false) && forge_slot_text(d[..], "quest:mara") == "Light|Oil||Climb|A map";
+  #assert forge_apply_step(d[..], quest, true) && !forge_slot_at(d[..], "quest:mara").found;
+  lore := "{\"to\": 4, \"ops\": [{\"slot\": \"lore:mara\", \"after\": \"She keeps it.\", \"before\": null}]}";
+  #assert forge_apply_step(d[..], lore, true) && !forge_slot_at(d[..], "lore:mara").found && !forge_apply_step(d[..], lore, true);
+  tools := "{\"to\": 1, \"ops\": [{\"slot\": \"tool:fly\", \"after\": true, \"before\": false}, {\"slot\": \"set:time\", \"after\": \"night\", \"before\": \"day\"}, {\"slot\": \"place:0\", \"after\": {\"x\": 1.5, \"z\": -2, \"yaw\": 45, \"thing\": \"barrel\"}, \"before\": null}]}";
+  #assert forge_read_slot(d[..], "tool:fly", "0") && forge_read_slot(d[..], "set:time", "day");
+  #assert forge_apply_step(d[..], tools, false) && forge_slot_text(d[..], "tool:fly") == "1" && forge_slot_text(d[..], "set:time") == "night" && forge_slot_text(d[..], "place:0") == "barrel 1.5 -2 45";
+  #assert forge_apply_step(d[..], tools, true) && forge_slot_text(d[..], "tool:fly") == "0" && !forge_slot_at(d[..], "place:0").found;
+  // a row that isn't an object, and steps that aren't one, are refused whole
+  #assert !forge_apply_step(d[..], "{\"to\": 1, \"ops\": [{\"slot\": \"tool:fly\", \"after\": true, \"before\": false}, {\"slot\": \"row:0\", \"after\": \"off\", \"before\": null}]}", false) && forge_slot_text(d[..], "tool:fly") == "0";
+  #assert !forge_apply_step(d[..], "{\"to\": 1}", false) && !forge_apply_step(d[..], "[]", false) && !forge_apply_step(d[..], "{\"ops\": [{\"slot\": \"tool:fly\", \"after\": 1, \"before\": false}]}", false);
+  #assert !forge_apply_step(d[..], "{\"ops\": [{\"slot\": \"trees:1\", \"after\": {\"yaw\": 0, \"gone\": false, \"scale\": 100}, \"before\": {\"x\": 1.25, \"z\": -2.50}}]}", false);
+}
+#test "a document's base: null, or the built-in realm a fork came from" {
+  #assert forge_read_base(FORGE_STORED_V1).ok && !forge_read_base(FORGE_STORED_V1).fork;
+  b := forge_read_base("{\"doc\": {\"doc\": \"aethyr.realm\", \"base\": \"harbor\"}, \"sha256\": \"ab\"}");
+  #assert b.ok && b.fork && cast(string) b.slug[0..<b.slug_n] == "harbor";
+  #assert !forge_read_base("{\"base\": \"Harbor!\"}").ok && !forge_read_base("{\"base\": 7}").ok && !forge_read_base("nope").ok;
+}

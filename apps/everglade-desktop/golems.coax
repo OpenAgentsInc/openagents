@@ -1089,7 +1089,7 @@ gs_test_result :: (at: string, text: string, out: []u8) -> string {
 #test "golems: a command reads without its cd, which says where the agent works" {
   c := gs_cd("cd /w/oa-range && sed -n 1,5p a.coax"); #assert c.folder == "/w/oa-range" && c.rest == "sed -n 1,5p a.coax";
   d := gs_cd("git status"); #assert d.folder == "" && d.rest == "git status";
-  #assert gs_short("/w/oa/aethyr/action/target.coax") == "action/target.coax" && gs_short("a.coax") == "a.coax";
+  #assert gs_short("/w/oa/metaverse-engine/action/target.coax") == "action/target.coax" && gs_short("a.coax") == "a.coax";
 }
 #test "golems: lists drop their oldest, and a push's commits are read from its output" {
   l: [16] u8; n := gs_list_add(l[..], 0, "aaaaaaa"); n = gs_list_add(l[..], n, "aaaaaaa"); #assert n == 7;

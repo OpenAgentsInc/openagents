@@ -1,0 +1,38 @@
+// Its checks, with the checks files it loads: coax/bin/coax test --library metaverse-engine/anim/gltf-animation.coax
+// glTF interpolation is evaluated at a recorded uniform rate. CUBICSPLINE
+// tangents are scaled by the source key interval; quaternions are normalized.
+#load "gltf-scene.coax";
+#load "gltf-animation-checks.coax" #test;
+#authority;
+AgChannel :: struct {node:int;kind:int;mode:int;width:int;time:AgAccess;data:AgAccess;}
+AgSpan :: struct {a:int;b:int;share:f32;dt:f32;}
+ag_flat :: (g:[]AgFile,a:AgAccess,index:int)->f32 #effects(all) {return ag_value(g,a,index/a.components,index%a.components);}
+ag_span :: (g:[]AgFile,c:AgChannel,time:f32)->AgSpan #effects(all) {
+ s:AgSpan;n:=c.time.count;if time<=ag_value(g,c.time,0,0) || n==1 {return s;}if time>=ag_value(g,c.time,n-1,0) {s.a=n-1;s.b=n-1;return s;}first:=0;last:=n;while last-first>1 {mid:=(first+last)/2;if ag_value(g,c.time,mid,0)<=time {first=mid;}else {last=mid;}}s.a=first;s.b=last;s.dt=ag_value(g,c.time,last,0)-ag_value(g,c.time,first,0);s.share=(time-ag_value(g,c.time,first,0))/s.dt;return s;
+}
+ag_curve :: (g:[]AgFile,c:AgChannel,s:AgSpan,component:int)->f32 #effects(all) {
+ if c.mode!=2 {a:=ag_flat(g,c.data,s.a*c.width+component);if c.mode==1 || s.a==s.b {return a;}b:=ag_flat(g,c.data,s.b*c.width+component);return a+(b-a)*s.share;}
+ a:=ag_flat(g,c.data,(s.a*3+1)*c.width+component);if s.a==s.b {return a;}b:=ag_flat(g,c.data,(s.b*3+1)*c.width+component);outgoing:=ag_flat(g,c.data,(s.a*3+2)*c.width+component);incoming:=ag_flat(g,c.data,s.b*3*c.width+component);t:=s.share;t2:=t*t;t3:=t2*t;return (2*t3-3*t2+1)*a+(t3-2*t2+t)*s.dt*outgoing+(-2*t3+3*t2)*b+(t3-t2)*s.dt*incoming;
+}
+ag_rotation :: (g:[]AgFile,c:AgChannel,s:AgSpan)->Quat #effects(all) {
+ if c.mode==0 && s.a!=s.b {a:=Quat.{x=ag_flat(g,c.data,s.a*4),y=ag_flat(g,c.data,s.a*4+1),z=ag_flat(g,c.data,s.a*4+2),w=ag_flat(g,c.data,s.a*4+3)};b:=Quat.{x=ag_flat(g,c.data,s.b*4),y=ag_flat(g,c.data,s.b*4+1),z=ag_flat(g,c.data,s.b*4+2),w=ag_flat(g,c.data,s.b*4+3)};return slerp(a,b,s.share);}
+ q:=Quat.{x=ag_curve(g,c,s,0),y=ag_curve(g,c,s,1),z=ag_curve(g,c,s,2),w=ag_curve(g,c,s,3)};if quat_dot(q,q)<0.0000152587890625 {g[0].bad=true;return Quat.{};}return quat_unit(q);
+}
+ag_animations :: (g:[]AgFile,sc:[]AgScene,rate:f32,b:[]u8,w:[]AiBuild)->string #effects(all) {
+ if !(rate>=1 && rate<=240) {return "gltf-sample-rate";}r:=w[0].library[0].rig[..];count:=jv_len(g[0].d,ag_get(g,0,"animations"));if count>64 {return "gltf-clip-limit";}total:=ifx count==0 then 1 else count;w[0].library[0].count=0;
+ for clip_index:0..<total {animation:=ag_top(g,"animations",clip_index);channels:[2048]AgChannel;channel_count:=jv_len(g[0].d,ag_get(g,animation,"channels"));if channel_count>2048 || (count>0 && channel_count<1) {return "gltf-channel-limit";}duration:f32=0;
+  for k:0..<channel_count {row:=jv_at(g[0].d,ag_get(g,animation,"channels"),k);target:=ag_get(g,row,"target");node:=ag_int(g,target,"node",-1);if node<0 || node>=sc[0].nodes {return "gltf-channel-node";}kind:= -1;for path,i:[4]string.["translation","rotation","scale","weights"] {if jv_raw_eq(jv_raw(g[0].d,ag_get(g,target,"path")),path) {kind=i;}}if kind<0 {return "gltf-channel-path";}for prev:0..<k {if channels[prev].node==node && channels[prev].kind==kind {return "gltf-duplicate-channel";}}
+   sampler:=jv_at(g[0].d,ag_get(g,animation,"samplers"),ag_int(g,row,"sampler",-1));c:=AgChannel.{node=node,kind=kind,width=ifx kind==3 then sc[0].shape_count[node] else ifx kind==1 then 4 else 3};if c.width<1 {return "gltf-weight-target";}c.time=ag_accessor(g,ag_int(g,sampler,"input",-1));c.data=ag_accessor(g,ag_int(g,sampler,"output",-1));if !c.time.ok || c.time.components!=1 || c.time.component!=5126 || !c.data.ok || c.data.component!=5126 {return "gltf-animation-accessor";}mode:=ag_get(g,sampler,"interpolation");if mode!= -1 {c.mode= -1;for name,i:[3]string.["LINEAR","STEP","CUBICSPLINE"] {if jv_raw_eq(jv_raw(g[0].d,mode),name) {c.mode=i;}}if c.mode<0 {return "gltf-interpolation";}}
+   multiplier:=ifx c.mode==2 then 3 else 1;if c.data.count*c.data.components!=c.time.count*c.width*multiplier || (kind!=3 && c.data.components!=c.width) || (kind==3 && c.data.components!=1) {return "gltf-animation-shape";}previous:f32= -1;for key:0..<c.time.count {t:=ag_value(g,c.time,key,0);if t<0 || t<=previous || t>600 {return "gltf-key-times";}previous=t;duration=hi(duration,t);
+    for component:0..<c.width {index:=(key*multiplier+(ifx c.mode==2 then 1 else 0))*c.width+component;value:=ag_flat(g,c.data,index);if kind==2 && abs(value-1)>0.0000152587890625 {return "gltf-animated-scale";}if c.mode==2 {incoming:=ag_flat(g,c.data,key*3*c.width+component);outgoing:=ag_flat(g,c.data,(key*3+2)*c.width+component);if kind==2 && (abs(incoming)>0.0000152587890625 || abs(outgoing)>0.0000152587890625) {return "gltf-animated-scale";}}}
+    if kind==1 {base:=(key*multiplier+(ifx c.mode==2 then 1 else 0))*4;q:=Quat.{x=ag_flat(g,c.data,base),y=ag_flat(g,c.data,base+1),z=ag_flat(g,c.data,base+2),w=ag_flat(g,c.data,base+3)};if !anim_unit(q) {return "gltf-key-rotation";}}
+   }channels[k]=c;
+  }
+  c:AnimClip;c.ready=true;c.name=ag_name(g,animation,"name","clip-",clip_index);if c.name.n==0 {return "gltf-clip-name";}for prev:0..<clip_index {if anim_equal(c.name,w[0].library[0].clips[prev].name) {return "gltf-clip-name";}}c.rig=r[0].name;duration=hi(duration,1/rate);c.frames=cast(int)floor(duration*rate)+1;if cast(f32)(c.frames-1)/rate+0.00001<duration {c.frames+=1;}if c.frames>2000 {return "gltf-frame-limit";}c.rate=cast(f32)(c.frames-1)/duration;c.length=duration;c.joint_count=r[0].joints;for j:1..<c.joint_count {c.joints[j]=j;}c.curve_count=r[0].shape_count;for k:1..<c.curve_count {c.curves[k]=k;}
+  c.body=AnimPart.{pack=0,offset=w[0].at,count=c.frames*c.joint_count,stride=28,width=28};bytes:=c.body.count*28+c.frames*c.curve_count*4;if bytes>b.count-w[0].at {return "output-capacity";}w[0].at+=c.body.count*28;if c.curve_count!=0 {c.face=AnimPart.{pack=0,offset=w[0].at,count=c.frames*c.curve_count,stride=4,width=4};w[0].at+=c.face.count*4;}
+  defaults:[256]f32;for node:0..<sc[0].nodes {n:=sc[0].shape_count[node];if n<1 {continue;}record:=ag_top(g,"nodes",node);values:=ag_get(g,record,"weights");if values== -1 {values=ag_get(g,ag_top(g,"meshes",ag_required(g,record,"mesh")),"weights");}if values!= -1 {if !anim_vector(g[0].d,values,n,1000000) {return "gltf-default-weights";}for k:0..<n {defaults[sc[0].shape_first[node]+k]=cast(f32)anim_number(g[0].d,jv_at(g[0].d,values,k),-1000000,1000000).value;}}}
+  for frame:0..<c.frames {poses:=r[0].rest;weights:=defaults;time:=cast(f32)frame/c.rate;for k:0..<channel_count {channel:=channels[k];span:=ag_span(g,channel,time);joint:=sc[0].node_joint[channel.node];if channel.kind==0 {poses[joint].t=v3(ag_curve(g,channel,span,0),ag_curve(g,channel,span,1),ag_curve(g,channel,span,2));}if channel.kind==1 {poses[joint].q=ag_rotation(g,channel,span);}if channel.kind==3 {for curve:0..<channel.width {weights[sc[0].shape_first[channel.node]+curve]=ag_curve(g,channel,span,curve);}}}
+   for j:0..<c.joint_count {ai_pose(b,c.body.offset+(frame*c.joint_count+j)*28,poses[j]);}for k:0..<c.curve_count {aw_put(b,c.face.offset+(frame*c.curve_count+k)*4,f32_bits(weights[k]));}
+  }if g[0].bad {return "gltf-nonfinite-animation";}w[0].library[0].clips[clip_index]=c;w[0].library[0].count+=1;
+ }w[0].layout.bytes=w[0].at;return "";
+}

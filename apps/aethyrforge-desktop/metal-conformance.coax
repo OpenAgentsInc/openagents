@@ -7,8 +7,8 @@
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/net/cdp.coax";
-#load "../../aethyr/host/http-conformance.coax";
-#load "../../aethyr/host/local-reconnect-conformance.coax";
+#load "../../metaverse-engine/host/http-conformance.coax";
+#load "../../metaverse-engine/host/local-reconnect-conformance.coax";
 mc_op :: (o:[]Jo,name:string) {jo_obj(o);jo_key(o,"op");jo_str(o,name);}
 mc_int :: (o:[]Jo,key:string,v:int) {jo_key(o,key);jo_int(o,v);}
 mc_str :: (o:[]Jo,key:string,v:string) {jo_key(o,key);jo_str(o,v);}
@@ -63,7 +63,7 @@ tool_main :: ()->int #export_c #effects(all) {
  server:=-1;
  defer {if server>=0 {killed:=proc_kill(server,PROC_SIGTERM);waited:=proc_wait(server,2000);released:=proc_release(server);}}
  if transport || http || reconnect {
-  server=proc_new();if server<0 {return 1;}for arg:[3]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(root,"aethyr/host/tests/network.coax",paths[5][..]),"9170"] {if !proc_arg(server,arg) {return 1;}}
+  server=proc_new();if server<0 {return 1;}for arg:[3]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(root,"metaverse-engine/host/tests/network.coax",paths[5][..]),"9170"] {if !proc_arg(server,arg) {return 1;}}
   if proc_start(server)!=0 {return 1;}
   probe:[1]Cdp;health:[4096]u8;deadline:=proc_now_ms()+10000;ready:=false;
   while proc_now_ms()<deadline {if cdp_get(probe[..],9170,"/health",health[..])>0 {ready=true;break;}proc_sleep(50);}
@@ -73,6 +73,6 @@ tool_main :: ()->int #export_c #effects(all) {
  run:=[5]string.[fs_join(sdk,"HostEffects",paths[2][..]),res,fs_join(sdk,"libfixture.dylib",paths[3][..]),plan,result];out:[1048576]u8;err:[65536]u8;r:=proc_run(run[..],60000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
  if lifecycle {if !mc_lifecycle_check(result) {tool_errln("Actual native lifecycle/clock observations differ; raw receipt retained.");return 1;}print("Actual Metal lifecycle: six exact admitted frame clocks; negative/backward/hidden offers refused, focus/shown composed, first/resume dt zero.\n");return 0;}
  if reconnect {raw:[65536]u8;nodes:[4096]JvNode;d:[1]Jv;rows:[9][8]int;n:=fs_read(result,raw[..]);if n<1||!jv_parse(d[..],cast(string)raw[0..<n],nodes[..])||hcr_rows(d[0],jv_get(d[0],0,"events"),rows[..])!=9||!hlr_reconnect_rows(rows[..],jv_int(d[0],jv_get(d[0],0,"dropped"),-1)){return 1;}print("Actual Metal local reconnect: exact physical ?re=1 peer route and all nine callback rows pass.\n");return 0;}
- check:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(root,"aethyr/host/check-observations.coax",paths[4][..]),result,""];
+ check:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(root,"metaverse-engine/host/check-observations.coax",paths[4][..]),result,""];
  q:=proc_run(check[0..<3],60000,out[..],err[..]);if q.started!=0 || q.status!=0 || q.cut || q.timed_out {tool_errln(cast(string)out[0..<q.out_n]);tool_errln(cast(string)err[0..<q.err_n]);return 1;}print("%",cast(string)out[0..<q.out_n]);return 0;
 }

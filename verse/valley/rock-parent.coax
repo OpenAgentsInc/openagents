@@ -1,7 +1,7 @@
 // First real-rock parent: one interior six-triangle star on cube face +X.
 // The remaining source triangles and the six shared boundary segments stay exact.
 #load "rock.coax";
-#load "../../aethyr/render/geometry/star.coax";
+#load "../../metaverse-engine/render/geometry/star.coax";
 RockParent :: struct {source:ParentMesh;coarse:ParentMesh;triangles:[6]int;supported:bool;}
 #test "original rock star reduces without changing any shared boundary or unrelated triangle" #steps 1000000000 {
   r:[1]Rock;

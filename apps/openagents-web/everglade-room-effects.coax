@@ -1,5 +1,5 @@
 // Authoritative impacts own physical slots; visual shot pools cannot evict them.
-#load "../../aethyr/session/effect-reservation.coax";
+#load "../../metaverse-engine/session/effect-reservation.coax";
 EgWorldEffect::struct{
   on:bool;by:int;owner:Handle(EvergladeSeat);source:int;slot:int;from:Point;at:Point;seed:int;
   dmg:SrdDamage;parts:[SP_METEORS]SpMeteor;part_n:int;shot:WlShot;

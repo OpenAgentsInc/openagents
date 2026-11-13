@@ -1,2 +1,2 @@
 // Compatibility import: project admission is shared by playback and directing.
-#load "../../aethyr/anim/project.coax";
+#load "../../metaverse-engine/anim/project.coax";

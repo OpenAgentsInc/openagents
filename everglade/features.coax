@@ -1,5 +1,5 @@
 // Everglade's feature manifest (#13075, docs/verse/everglade-feature-parity.md). The owner's rule
-// (2026-11-09): no one-off zone code. A feature is engine-wide (aethyr/) or game-wide (the Everglade
+// (2026-11-09): no one-off zone code. A feature is engine-wide (metaverse-engine/) or game-wide (the Everglade
 // layer), and a zone only wires it in. coax/web/everglade-parity.coax reads this file and fails when
 // a zone defines its own copy of a feature listed here, declares a feature it doesn't load, or lacks
 // a required one. Data only: no procedures.
@@ -18,15 +18,15 @@
 EfFeature :: struct { name: string; title: string; required: bool; issue: int; owners: string; marks: string; files: string; }
 EF_FEATURES :: [11] EfFeature.[
   EfFeature.{name = "bow", title = "bow carry and draw", required = true, issue = 13079,
-    owners = "aethyr/action/bow.coax aethyr/action/archery.coax aethyr/action/bow-pose.coax everglade/longbow.coax everglade/held-kit.coax",
+    owners = "metaverse-engine/action/bow.coax metaverse-engine/action/archery.coax metaverse-engine/action/bow-pose.coax everglade/longbow.coax everglade/held-kit.coax",
     marks = "BowDraw =Arrows arrow_pos arrow_aim_velocity arrow_timed_velocity bow_strength _bow_layer bow_basis bow_matrix bow_string held_weapon",
     files = "bow"},
   EfFeature.{name = "damage-numbers", title = "damage numbers", required = true, issue = 13080,
-    owners = "aethyr/action/floats.coax everglade/hud/",
+    owners = "metaverse-engine/action/floats.coax everglade/hud/",
     marks = "WatchPop watch_pop pops_ POP_ DamagePop E2mnMark E2gdMark E2MN_MARK E2GD_MARK e2mn_mark xc_hit_mark XcFloat xc_float XC_FLOAT HitGroup hit_group HIT_GROUP HIT_FOLD HIT_SHOW hit_shown damage_number float_text",
     files = ""},
   EfFeature.{name = "area-targeting", title = "area targeting", required = true, issue = 13081,
-    owners = "aethyr/action/area-aim.coax everglade/shared/class-kit.coax rules/srd/area-origin.coax",
+    owners = "metaverse-engine/action/area-aim.coax everglade/shared/class-kit.coax rules/srd/area-origin.coax",
     marks = "aim_ring sp_ring =sp_aim ab_aimed XcWave xc_wave draw_zones area_ring target_ring aim_circle ground_target",
     files = ""},
   EfFeature.{name = "conditions", title = "conditions", required = true, issue = 13082,
@@ -34,7 +34,7 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "StEffect =st_add st_cond st_word st_tags_draw st_bodies_draw st_draw_on _cond E2K_CONDITION E2K_EFFECT e2k_health_text WC_SLOWED WC_BOUND WC_HALTED fx_lasting condition_icon",
     files = ""},
   EfFeature.{name = "hud", title = "HUD parts", required = true, issue = 13083,
-    owners = "everglade/hud/ aethyr/ui/ verse/hud.coax verse/hud/ everglade/client/class-look.coax everglade/client/class-menu.coax",
+    owners = "everglade/hud/ metaverse-engine/ui/ verse/hud.coax verse/hud/ everglade/client/class-look.coax everglade/client/class-menu.coax",
     marks = "_hud =hud =layout draw_panel draw_player draw_top draw_sliders xc_frame_box xc_slot_box _bar_desk _bar_card =sp_bar pt_draw",
     files = "hotbar"},
   EfFeature.{name = "class-bars", title = "class bars", required = true, issue = 13084,
@@ -42,23 +42,23 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "EgClass =cl_bar =cl_cast CL_ABILITY =abilities E2nKit e2n_kit class_bar resource_bar",
     files = "classes"},
   EfFeature.{name = "dash", title = "Dash", required = true, issue = 13085,
-    owners = "rules/srd/ aethyr/action/sprint.coax everglade/dash.coax",
+    owners = "rules/srd/ metaverse-engine/action/sprint.coax everglade/dash.coax",
     marks = "_dash dash_ =dash _DASH DASH_ CDASH =Dash",
     files = "dash"},
   EfFeature.{name = "mounts", title = "mounts", required = false, issue = 0,
-    owners = "aethyr/action/mount.coax aethyr/action/ride-pose.coax everglade/mounts.coax everglade/zone-mounts.coax everglade/shared/mount-kinds.coax everglade/server/mounts.coax everglade/server/tests/mounts-fixture.coax",
+    owners = "metaverse-engine/action/mount.coax metaverse-engine/action/ride-pose.coax everglade/mounts.coax everglade/zone-mounts.coax everglade/shared/mount-kinds.coax everglade/server/mounts.coax everglade/server/tests/mounts-fixture.coax",
     marks = "=Mount =mount Mounted mounted_ mount_up dismount =ride_pose rider_ Steed steed_ Horse horse_",
     files = "mount"},
   EfFeature.{name = "name-plates", title = "name plates", required = true, issue = 13088,
-    owners = "aethyr/ui/hud-plates.coax everglade/hud/",
+    owners = "metaverse-engine/ui/hud-plates.coax everglade/hud/",
     marks = "E2Plate _plates remote_plate REMOTE_PLATE PLATE_NEAR _plate_seen =Label _labels =labels draw_names np_named name_point name_hidden md_plate nameplate name_plate",
     files = "nameplate"},
   EfFeature.{name = "spell-effects", title = "spell effects", required = true, issue = 13086,
-    owners = "aethyr/fx/ everglade/client/class-look.coax everglade/client/gpu/gpu-fx.coax",
+    owners = "metaverse-engine/fx/ everglade/client/class-look.coax everglade/client/gpu/gpu-fx.coax",
     marks = "sp_fx SpPuff SpMeteor FX_FIRE =FX_BOLT sp_glow sp_shards sp_bolt_jag =spell_col fx_spot fx_col fx_attacks fx_cause fx_event MOCK_FX fx_feat lw_fx lw_spell_col =Fx =add_fx draw_fx net_draw_ wl_draw",
     files = ""},
   EfFeature.{name = "camera", title = "camera", required = true, issue = 13087,
-    owners = "aethyr/cam/camera.coax aethyr/cam/ aethyr/cam/shot.coax aethyr/cam/follow.coax",
+    owners = "metaverse-engine/cam/camera.coax metaverse-engine/cam/ metaverse-engine/cam/shot.coax metaverse-engine/cam/follow.coax",
     marks = "=camera camera_frame cc_camera walk_camera =e2_follow follow_cam =e2_shot e2_ml_shot e2_cam_ cam_zoom cam_home cam_pan LOOK_DRAG CAM_TRUNK _place_camera cz_frame_shot e2c_shot e2c_lens orbit_cam",
     files = "camera"}
 ];

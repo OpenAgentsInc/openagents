@@ -5,7 +5,7 @@
 //   coax/web/tool.sh shadow-pair BASE_URL OUT.json [FRAMES=3240] [map|receiver|receiver-one|load|shader [SHADER_URL]]
 #import "Basic";
 #load "../lib/media/media.coax";
-#load "../../aethyr/cam/flyover.coax";
+#load "../../metaverse-engine/cam/flyover.coax";
 #load "shadow-pair-policy.coax";
 
 SP_PATH :: "0,0,40,-160,0,2,-60~6,0,12,-100,0,3,-40~12,-6,6,-52,10,3,20~18,10,5,-10,40,3,10~24,40,6,-15,95,2,-10~30,90,10,-30,40,2,40~36,40,25,60,-40,2,0~42,-60,12,20,-150,4,25~48,-120,8,30,-170,3,40~54,-60,60,-60,0,0,0";

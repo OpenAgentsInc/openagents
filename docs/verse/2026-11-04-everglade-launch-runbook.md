@@ -332,7 +332,7 @@ page says its version in its hello (`H 3 ...`) and the room checks it (#12788):
 
 A page also says which build it is, in a `P ENGINE RULES CONTENT` frame just
 before its hello. The room admits the hello only when all of these hold
-(`aethyr/session/compat.coax`, `coax/web/room/room-everglade.coax`
+(`metaverse-engine/session/compat.coax`, `coax/web/room/room-everglade.coax`
 `eg_admit`):
 
 - The engine, rules and world numbers equal the room's (`WIRE_ENGINE`,

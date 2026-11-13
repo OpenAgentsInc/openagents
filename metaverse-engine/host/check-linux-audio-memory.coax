@@ -1,0 +1,44 @@
+// The same actual SDK allocator and bank wrapper used by Linux playback.
+#import "Basic";
+#load "audio-memory-conformance.coax";
+#load "audio-retention-conformance.coax";
+#load "../render/tests/qualification-files.coax";
+#load "../../coax/lib/sys/args.coax";
+hma_open :: (source:[]u8)->int #foreign #effects(all);
+hma_allocate :: (frames:int,channels:int)->int #foreign #effects(all);
+hma_count :: (id:int)->int #foreign #effects(all);
+hma_total :: ()->int #foreign #effects(all);
+hma_release :: (id:int) #foreign #effects(all);
+hma_copy :: (source:[]u8)->int #foreign #effects(all);
+hma_last :: (id:int)->int #foreign #effects(all);
+hma_address :: ()->int #foreign #effects(all);
+hma_insert :: (line:[]u8)->int #foreign #effects(all);
+hma_bank :: (field:int)->int #foreign #effects(all);
+hma_owner_drop :: () #foreign #effects(all);
+hma_keep :: (id:int) #foreign #effects(all);
+hma_close :: () #foreign #effects(all);
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: check-linux-audio-memory NEW_OUT REPO");return 2;}
+ dir:=args_at(a[..],0);root:=args_at(a[..],1);if !fs_mkdir(dir) {return 1;}
+ paths:[2][4096]u8;inputs:[1]RtqInputs;for name:[3]string.["verse/native/audio-host.c","verse/native/audio-host.h","metaverse-engine/host/tests/linux-audio-memory-effects.c"] {if !rtq_input_add(inputs[..],fs_join(root,name,paths[0][..])) {return 1;}}
+ self:[4096]u8;n:=cxproc_self_path(self[..]);if n<1||!rtq_input_add(inputs[..],cast(string)self[0..<n]) {return 1;}
+ source:[44]u8;for i:0..<44 {source[i]=u8(37+i);}if hma_open(source[..])!=1 {return 1;}defer {hma_close();}
+ memory:[20]int;bad_frames:=[6]int.[-1,0,9223372036854775807,1,1,4194305];bad_channels:=[6]int.[1,1,1,0,3,2];
+ for frames,i:bad_frames {memory[i]=ifx hma_allocate(frames,bad_channels[i])<0 then 1 else 0;}memory[6]=hma_total();
+ full:=hma_allocate(4194304,2);memory[7]=hma_count(full);memory[8]=hma_total();memory[9]=ifx hma_allocate(1,1)<0 then 1 else 0;hma_release(full);memory[10]=hma_total();
+ tiny:[128]int;count:=0;for i:0..<128 {tiny[i]=hma_allocate(1,1);if tiny[i]>=0 {count+=1;}}memory[11]=count;memory[12]=hma_total();memory[13]=ifx hma_allocate(1,1)<0 then 1 else 0;
+ hma_release(tiny[127]);tiny[127]=hma_allocate(1,2);memory[14]=hma_total();for id:tiny {hma_release(id);}memory[15]=hma_total();
+ bytes:[24]u8;for i:0..<6 {word:=f32_bits(f32(i)/8);for j:0..<4 {bytes[i*4+j]=u8((word>>u32(j*8))&255);}}
+ copied:=hma_copy(bytes[..]);memory[16]=hma_count(copied);memory[17]=hma_total();memory[18]=hma_last(copied);hma_release(copied);memory[19]=hma_total();
+ bank:[50]int;base:=hma_address();if base<1 {return 1;}
+ for i:0..<10 {
+  address:=base;length:=1;name:="y";if i<2 {name="x";length=44;}if i==2 {address-=1;}if i==3 {address+=44;}if i==4 {length=45;}if i==5 {length=-1;}if i==6 {length=0;}if i==7 {name="../y";}if i==9 {address+=43;}
+  text:[256]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..]," ");jo_int(o[..],address);jo_put(o[..]," ");jo_int(o[..],length);if i==8 {jo_put(o[..]," extra");}if o[0].bad {return 1;}
+  bank[i*5]=hma_insert(text[0..<o[0].n]);for field:0..<4 {bank[i*5+field+1]=hma_bank(field);}
+ }
+ retained:=hma_copy(bytes[..]);hma_keep(retained);q:HostAudioRetention;q.created=hma_total();hma_owner_drop();q.retired=hma_total();hma_release(retained);q.held=hma_total();hma_release(retained);q.released=hma_total();
+ same:=rtq_inputs_match(inputs[..]);passed:=mamm_accept(memory[..],bank[..])&&harr_accept(q)&&same;
+ report:[65536]u8;o:[1]Jo;jo_start(o[..],report[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.linux-audio-memory.v1");jo_key(o[..],"memory");jo_arr(o[..]);for value:memory {jo_int(o[..],value);}jo_end(o[..]);jo_key(o[..],"bank");jo_arr(o[..]);for row:0..<10 {jo_arr(o[..]);for field:0..<5 {jo_int(o[..],bank[row*5+field]);}jo_end(o[..]);}jo_end(o[..]);
+ jo_key(o[..],"retention");jo_arr(o[..]);for value:[4]int.[q.created,q.retired,q.held,q.released] {jo_int(o[..],value);}jo_end(o[..]);jo_key(o[..],"source_fence_unchanged");jo_bool(o[..],same);jo_key(o[..],"passed");jo_bool(o[..],passed);jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],"");jo_end(o[..]);
+ if o[0].bad||!fs_write(fs_join(dir,"audio-memory.json",paths[0][..]),jo_text(o[..])) {return 1;}print("Actual Linux PCM allocation/span/retention passed %.\n",passed);return ifx passed then 0 else 1;
+}

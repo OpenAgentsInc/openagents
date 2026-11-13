@@ -26,7 +26,7 @@ VC_SUGGEST :: 5;          // nearest names printed for an unknown one
 VC_ERRORS :: "coax/src/errors.cpp";
 VC_KEYWORDS :: "coax/book/appendix-a-keywords.md";
 VC_LIBRARIES :: "coax/LIBRARIES.md";
-VC_ROOTS :: [3] string.["coax/lib/*.coax", "aethyr/*.coax", "psionic/lib/*.coax"];
+VC_ROOTS :: [3] string.["coax/lib/*.coax", "metaverse-engine/*.coax", "psionic/lib/*.coax"];
 
 // ---- names and lines ----------------------------------------------------
 

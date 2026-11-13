@@ -1,0 +1,82 @@
+{
+  "schema": "aethyr.native-gameplay-programs.v2",
+  "parent_manifest": "metaverse-engine/tests/native-gameplay-checks.json",
+  "adaptation": "Exact [1] Store; to [1] DgStore; substitution; every original assertion and other body byte retained. Frozen v1 entries and hashes remain unchanged.",
+  "records": [
+    {
+      "realm": "deadgears",
+      "kind": "test",
+      "original_name": "?hour= holds the hour; otherwise each wave is later in the day",
+      "original_file": "apps/openagents-web/deadgears.coax",
+      "original_line": 2386,
+      "baseline_commit": "3c3b4c3a39189e6b61e92307e2501e7a26c007bc",
+      "entry": "metaverse-engine/tests/deadgears-integration-v2.coax",
+      "body_sha256": "ec7f387d4afcb206ab8dced4fb623e65d6a45b7194357e474bcd11438f1292b4",
+      "original_check_sha256": "4af872b613b9065ab11a9870a8d2113b05d25bb8f02e7c4a27d18242c297f506",
+      "cases": 1,
+      "procedure": "aethyr_native_deadgears_0",
+      "original_bindings": " ",
+      "parent_body_sha256": "ec7f387d4afcb206ab8dced4fb623e65d6a45b7194357e474bcd11438f1292b4"
+    },
+    {
+      "realm": "deadgears",
+      "kind": "test",
+      "original_name": "a full game is won on a laptop",
+      "original_file": "apps/openagents-web/deadgears.coax",
+      "original_line": 2655,
+      "baseline_commit": "3c3b4c3a39189e6b61e92307e2501e7a26c007bc",
+      "entry": "metaverse-engine/tests/deadgears-integration-v2.coax",
+      "body_sha256": "bf3c6f873b3364ac3625dccc2dfe758cf8c072ff95b4212f84df0cbe8c644c14",
+      "original_check_sha256": "936b3182ad9f6d31e497be826d6e2e81e60cd602e7391f57c60333bafd2ca2d4",
+      "cases": 1,
+      "procedure": "aethyr_native_deadgears_1",
+      "original_bindings": " ",
+      "parent_body_sha256": "bf3c6f873b3364ac3625dccc2dfe758cf8c072ff95b4212f84df0cbe8c644c14"
+    },
+    {
+      "realm": "deadgears",
+      "kind": "test",
+      "original_name": "a full game is won on a phone",
+      "original_file": "apps/openagents-web/deadgears.coax",
+      "original_line": 2656,
+      "baseline_commit": "3c3b4c3a39189e6b61e92307e2501e7a26c007bc",
+      "entry": "metaverse-engine/tests/deadgears-integration-v2.coax",
+      "body_sha256": "7b3b77305a71a1a83b8d877002cee88af9f2a68ef2934a6488263161a06d41cd",
+      "original_check_sha256": "6f1e974f3ea1d1514c1c470e9d32ca06003c18ba734772a924f77f2cec2afff0",
+      "cases": 1,
+      "procedure": "aethyr_native_deadgears_2",
+      "original_bindings": " ",
+      "parent_body_sha256": "7b3b77305a71a1a83b8d877002cee88af9f2a68ef2934a6488263161a06d41cd"
+    },
+    {
+      "realm": "deadgears",
+      "kind": "test",
+      "original_name": "200 mutants closing in while you fire: the same start plays the same",
+      "original_file": "verse/deadgears/rules.coax",
+      "original_line": 1863,
+      "baseline_commit": "3c3b4c3a39189e6b61e92307e2501e7a26c007bc",
+      "entry": "metaverse-engine/tests/deadgears-integration-v2.coax",
+      "body_sha256": "26ce593caef67beb70dfd9977c5c2333e030a22d6a830660b74331d3259135f6",
+      "original_check_sha256": "dee5a0dbe69488e8ada9ad79772dc424e579a80c125435c8322d7e4e2b835c5d",
+      "cases": 1,
+      "procedure": "aethyr_native_deadgears_3",
+      "original_bindings": " ",
+      "parent_body_sha256": "78a4e4e3c6376e44d71864dc2f83bbe178077c093f7ca5311e0f9972a8c64326"
+    },
+    {
+      "realm": "deadgears",
+      "kind": "forall",
+      "original_name": "no creature walks through cover",
+      "original_file": "verse/deadgears/rules.coax",
+      "original_line": 1701,
+      "baseline_commit": "3c3b4c3a39189e6b61e92307e2501e7a26c007bc",
+      "entry": "metaverse-engine/tests/deadgears-integration-v2.coax",
+      "body_sha256": "b20fe4f0348ce63997d142c03711e625820668d726a75807e37a524a9bc51541",
+      "original_check_sha256": "0d321abc05fff744793e28c9162d3bd6e9a383c75d1de62b1fe0a8fe0476cd6a",
+      "cases": 10,
+      "procedure": "aethyr_native_deadgears_4",
+      "original_bindings": " k: 0..<10 ",
+      "parent_body_sha256": "b912b953448358bded84792b83bf87927536ede18d135fba52d4a121b75edf1c"
+    }
+  ]
+}

@@ -46,7 +46,7 @@ all stages and references pass. Failure preserves the active project.
 To package an admitted transport explicitly:
 
 ```sh
-coax/web/tool.sh aethyr/tools/anim-project-pack.coax PRIVATE_DIR/project.json PRIVATE_DIR/project.bundle
+coax/web/tool.sh metaverse-engine/tools/anim-project-pack.coax PRIVATE_DIR/project.json PRIVATE_DIR/project.bundle
 ```
 
 ## Render and check
@@ -93,7 +93,7 @@ These profiles are included in the JSON so a missing model is visible.
 
 ## Voice and sound
 
-A SAT1 entry binds an `aethyr/audio/speak.coax` track to audio. Its header is `SAT1`,
+A SAT1 entry binds an `metaverse-engine/audio/speak.coax` track to audio. Its header is `SAT1`,
 track bytes and WAV bytes, each a 32-bit word; track text and WAV follow.
 Admission checks the complete envelope, track ranges and canonical PCM16
 WAV format: mono/stereo, 22,050 or 48,000 Hz, up to 1,000,000 sample frames.
@@ -103,10 +103,10 @@ silent stand-in for realm inspection; video rendering refuses a missing WAV.
 An existing canonical WAV and its words become a SAT1 entry with:
 
 ```sh
-coax/web/tool.sh aethyr/tools/anim-voice-pack.coax PRIVATE_DIR/line.wav "Leave. Now." PRIVATE_DIR/line.sat
+coax/web/tool.sh metaverse-engine/tools/anim-voice-pack.coax PRIVATE_DIR/line.wav "Leave. Now." PRIVATE_DIR/line.sat
 ```
 
-The packer aligns phonemes to the audio envelope through `aethyr/audio/speak.coax`.
+The packer aligns phonemes to the audio envelope through `metaverse-engine/audio/speak.coax`.
 It invokes no paid or network voice service. The realm applies those visemes
 to a `jawOpen` stand-in and starts sound cues as playback crosses their start.
 Live seeking is silent; it does not resume a partially played cue. Offline

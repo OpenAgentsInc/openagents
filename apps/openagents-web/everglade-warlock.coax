@@ -11,7 +11,7 @@
 //     rooftop too; the necrotic spells harm creatures only, as the SRD has them. In a room the
 //     server's world runs these (everglade-watch.coax everglade_room_strike) and the pages play
 //     the looks (everglade-net.coax);
-//   - the looks: the shared Warlock recipes (aethyr/fx/warlock.coax, through aethyr/fx/puff.coax),
+//   - the looks: the shared Warlock recipes (metaverse-engine/fx/warlock.coax, through metaverse-engine/fx/puff.coax),
 //     which the 5E Lab plays too, drawn as Everglade's own puffs (everglade-spells.coax sp_fx) and
 //     thinned by the graphics quality as they are;
 //   - its Zombies: Finger of Death's dead, risen, the room's creatures (form WL_FORM_ZOMBIE), drawn
@@ -24,7 +24,7 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 
-#load "../../aethyr/fx/puff.coax";
+#load "../../metaverse-engine/fx/puff.coax";
 
 WL_SLOT0 :: 64;            // fivebar.coax FB_WL0: slot k of the Warlock's bar is WL_SLOT0 + k on the wire
 WL_SLOTS :: 9;
@@ -71,7 +71,7 @@ Warlock :: struct {
   cast_t: [WL_SLOTS] f32;       // the clock when each was last cast (its sweep)
   shots: [WL_SHOTS] WlShot;
   clock: f32;
-  fx: [1] FxPuffs;              // the looks (aethyr/fx/puff.coax)
+  fx: [1] FxPuffs;              // the looks (metaverse-engine/fx/puff.coax)
   finger: int = -1; held: int = -1; held_t: f64;
   down: bool; down_x: f32; down_y: f32; down_id: int; down_touch: bool;
   risen: [8] int; risen_n: int;  // the Zombies whose rising was played

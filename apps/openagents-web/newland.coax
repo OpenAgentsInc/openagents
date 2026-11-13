@@ -7,13 +7,13 @@
 // pointer, touch and keyboard selection open each listed realm.
 // Checks: coax test apps/openagents-web/newland.coax --steps 400000000.
 
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "newland-data.coax";
 #load "newland-golden-data.coax";
 #load "realms.coax";
 #load "galaxy.coax";
-#load "../../aethyr/anim/figure.coax";
-#load "../../aethyr/ui/hud-frame.coax";
+#load "../../metaverse-engine/anim/figure.coax";
+#load "../../metaverse-engine/ui/hud-frame.coax";
 #load "newland-network.coax";
 #load "newland-xp.coax";
 #load "../../coax/web/analytics.coax";
@@ -21,7 +21,7 @@
 #load "newland-walkers.coax";
 #load "newland-portal.coax";   // Everglade's portal and "Create your character": the way into Character Create
 #load "newland-walk.coax";   // the Grid, /worlds/the-grid: this scene, walked (data-page 1)
-#load "../../aethyr/physics/orbit.coax";   // Belt 2200's space, for Penultimate Frontier's sky
+#load "../../metaverse-engine/physics/orbit.coax";   // Belt 2200's space, for Penultimate Frontier's sky
 #load "newland-frontier.coax";   // Penultimate Frontier: this scene, flown, with its story (data-page 2)
 #load "newland-frontier-sky.coax";
 #load "newland-frontier-ruins.coax";
@@ -31,7 +31,7 @@
 #load "newland-frontier-hud.coax";
 #load "newland-boot.coax";   // Verse OS's boot sequence over it, when the machine's session asks
 #load "newland-local.coax";  // and the agents on that machine, standing by the spawn
-#load "../../aethyr/core/budget.coax";
+#load "../../metaverse-engine/core/budget.coax";
 
 VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
 MAX_VERTICES :: 400000;
@@ -320,7 +320,7 @@ Pen :: struct { d: f32; fade: f32; time: f32; still: bool; phone: bool; }
 // PROJECT's hover and the live and online dots. BITCOIN orange is for Bitcoin
 // payments only, and nothing here pays yet. newland.wgsl and
 // new-land/index.html name the same tokens.
-// The greys, the blue and the frame are aethyr/ui/hud-frame.coax's, which the
+// The greys, the blue and the frame are metaverse-engine/ui/hud-frame.coax's, which the
 // iOS app draws its screens from too.
 GREY_WHITE :: HUD_GREY_WHITE; GREY_LIGHT :: HUD_GREY_LIGHT; GREY_MID :: HUD_GREY_MID; GREY_DIM :: HUD_GREY_DIM;
 ACCENT_R :: HUD_ACCENT_R; ACCENT_G :: HUD_ACCENT_G; ACCENT_B :: HUD_ACCENT_B;
@@ -2496,7 +2496,7 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of the Grid may use.
+// The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of the Grid may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 LAND_BUDGET :: FrameBudget.{steps = 8, vertices = 62000, draws = 0, bytes = 21889024};
 

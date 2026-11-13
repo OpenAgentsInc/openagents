@@ -11,7 +11,7 @@
 // Everglade's controller with the follow camera and draws your figure with Character Create's passes.
 // The zone is level (Creator.flat: no meadow, the ground at 0) and bare (EgZone.bare: no class bar,
 // no monsters). The Grid, its sky and every station are lit quads listed each frame, far to near, for
-// the engine's quad world (aethyr/fx/gpu-quads.coax, drawn as the page's particles by
+// the engine's quad world (metaverse-engine/fx/gpu-quads.coax, drawn as the page's particles by
 // bitcoin-lab-fx.wgsl after your figure and depth-tested against it). The HUD is the world's name,
 // the station you are at with one line, and WORLDS.
 //
@@ -23,9 +23,9 @@
 // address bar follows you, so a link opens where you were.
 //   coax/remote/remote.sh run -- coax/bin/coax test verse/lab-walk.coax --library
 #load "../everglade/zone.coax";
-#load "../aethyr/fx/pixel-font.coax";
+#load "../metaverse-engine/fx/pixel-font.coax";
 
-// The quads: 16 floats each (aethyr/fx/gpu-quads.coax QuadRow), in groups sorted far to near.
+// The quads: 16 floats each (metaverse-engine/fx/gpu-quads.coax QuadRow), in groups sorted far to near.
 LAB_QUADS :: 6144; LAB_GROUPS :: 160; LAB_QF :: 16;
 QK_SKY :: 0.0f32; QK_FLOOR :: 1.0f32; QK_PANEL :: 2.0f32; QK_GLYPH :: 3.0f32; QK_GLOW :: 4.0f32; QK_BEAM :: 5.0f32;
 LAB_MAX :: 48;                // the most stations a walk has
@@ -269,7 +269,7 @@ lab_station :: (w: [] LabWalk, i: int) -> f32 {
 
 // The skyline: towers of stacked blocks far off on both sides, dim in the haze, for a sense of place
 // and scale. Where each stands and how tall it is comes from its number alone, so it never moves.
-LAB_TOWERS :: 16;   // each a box you walk round too (lab_stand): with the slabs and the world's boxes, within aethyr/world/props.coax PROPS
+LAB_TOWERS :: 16;   // each a box you walk round too (lab_stand): with the slabs and the world's boxes, within metaverse-engine/world/props.coax PROPS
 lab_hash :: (k: int, salt: int) -> f32 { h := (k * 374761393 + salt * 668265263) & 0x7fffffff; h = ((h ^ (h >> 13)) * 1274126177) & 0x7fffffff; return f32(h & 0xffff) / 65535.0; }
 // A tower: its x and z, a storey's size and how many storeys.
 lab_tower :: (k: int) -> [4] f32 { return lab_tower_along(k, 300); }
@@ -404,7 +404,7 @@ lab_turn :: (w: [] LabWalk, upright: bool, dt: f32) {
 }
 
 // ---- standing the world: the towers, the slabs and the world's own boxes (x0 y0 z0 x1 y1 z1 each)
-// are things you walk round (aethyr/world/props.coax)
+// are things you walk round (metaverse-engine/world/props.coax)
 lab_stand :: (w: [] LabWalk, extra: [] const f32, extra_n: int) {
   w[0].extra_n = 0;
   for k: 0..<extra_n { if k >= LAB_EXTRA { break; } for c: 0..<6 { w[0].extra[k * 6 + c] = extra[k * 6 + c]; } w[0].extra_n += 1; }

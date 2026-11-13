@@ -1,7 +1,7 @@
 // Profile selection is explicit. Existing durable characters cannot downgrade
 // when the operator disables issuance during a rollback.
 #authority;
-#load "../../../aethyr/session/resume-payload.coax";
+#load "../../../metaverse-engine/session/resume-payload.coax";
 #test "resume profile: opt in only when enabled, and never downgrade an existing capture" {
   #assert checkpoint2_profile(false,false,false)==0;
   #assert checkpoint2_profile(false,true,false)==0;

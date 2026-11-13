@@ -179,12 +179,12 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
 - **The bow.** Hold the right button to draw, release to loose. A crosshair
   closes as the draw builds; a full draw takes 0.8 s, and you slow to a walk
   while drawn (`experimental-combat.coax:907-1060`,
-  `aethyr/action/bow.coax:24`, `aethyr/action/bow.coax:65`,
+  `metaverse-engine/action/bow.coax:24`, `metaverse-engine/action/bow.coax:65`,
   `docs/verse/bow-combat.md`). The arrow is a real projectile, and the SRD
   Longbow Attack decides the hit, with Disadvantage past 150 feet
   (`rules/srd/battle.coax:1589`).
 - **The pose.** An IK draw pose blended by draw strength
-  (`aethyr/action/bow-pose.coax`).
+  (`metaverse-engine/action/bow-pose.coax`).
 - **The Ranger's bar.** Hunter's Mark in slot 1
   (`apps/openagents-web/fivebar.coax:295`), then Attack and Entangle
   (`class-kit.coax:42`), then Dash from the level kit (`fivebar.coax:113`).
@@ -269,14 +269,14 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
    `apps/openagents-web/fivebar.coax`.
 4. **Reticle that reads range and allegiance (small).** Red over a hostile in
    range of the active weapon, grey when out of range, blue over a friend. Grey
-   out-of-range slots on the bar. Files: `aethyr/cam/reticle.coax`,
-   `aethyr/cam/mouselook.coax` (`ml_tint`),
+   out-of-range slots on the bar. Files: `metaverse-engine/cam/reticle.coax`,
+   `metaverse-engine/cam/mouselook.coax` (`ml_tint`),
    `apps/openagents-web/experimental-combat.coax` (`xc_crosshair` at line 1093,
    the bar overlay at line 1845).
 5. **Hit marks for hit, critical and Advantage (small).** Read the event book
    for the roll's edge and natural 20, and draw a distinct mark with each
    number. Files: `apps/openagents-web/experimental-combat.coax`
-   (`xc_float_from`, `xc_hostile_result`), `aethyr/action/react.coax`.
+   (`xc_float_from`, `xc_hostile_result`), `metaverse-engine/action/react.coax`.
 6. **Per-tier recharge on the bar (medium).** Replace the single 1 s cooldown
    with at-will (Attack, cantrips: the 1.5 s turn) and recharging slots (leveled
    spells and features: 9 s under `RS_DEV_RECHARGE`), each with its own sweep.
@@ -288,7 +288,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
 7. **Extra Attack as a two-shot volley (small).** At level 5, one Attack press
    looses two arrows in quick succession, each its own SRD attack. A melee press
    makes a two-hit combo. Files: `apps/openagents-web/experimental-combat.coax`
-   (`xc_bow_loose`, `xc_bow_strike`), `aethyr/action/bow.coax`.
+   (`xc_bow_loose`, `xc_bow_strike`), `metaverse-engine/action/bow.coax`.
 8. **Hunter's Mark you can see and move (small).** A mark over the marked foe;
    when it dies, the next press of Hunter's Mark moves the mark as a Bonus
    Action without spending a slot. Files:
@@ -297,7 +297,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
 9. **Aim assist on a full draw (small).** A full-draw arrow bends onto the
    foe under the reticle within about 3 degrees. Quick shots stay on the ray.
    Files: `apps/openagents-web/experimental-combat.coax` (`xc_bow_point` at line
-   961), `aethyr/action/bow.coax`.
+   961), `metaverse-engine/action/bow.coax`.
 10. **Health bars on targeted and recently damaged foes, and a combat-start
     sting (small).** Files: `apps/openagents-web/experimental-combat.coax`,
     `verse/experimental-hostiles.coax`.

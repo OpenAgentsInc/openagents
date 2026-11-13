@@ -1,8 +1,8 @@
 // orbitleague's shaders, the source of apps/openagents-web/orbitleague.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (orbitleague.module,
 // orbitleague.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/render/noise.coax";
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/render/noise.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../verse/style.coax";
 
 // Orbit League's two passes (orbitleague.coax): bg_fs traces the whole

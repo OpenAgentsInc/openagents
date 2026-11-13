@@ -32,7 +32,7 @@ advertises seven monsters; those extra models are not in the Standard download.
 
 An authoring ID such as `quaternius/nature/birch-1` is a stable lookup key, not
 the OpenAgents Metaverse Engine's `AssetId`. Runtime asset identity remains SHA-256 of actual bytes,
-with the existing bounded, whole-pack admission in `aethyr/core/assets.coax`.
+with the existing bounded, whole-pack admission in `metaverse-engine/core/assets.coax`.
 
 * `packages/NAME.json` pins the exact source snapshot.
 * `packages/NAME.files.json` inventories every source file by relative path,
@@ -142,7 +142,7 @@ multi-parent assemblies. Do not change parent history to point at "latest".
 `collections/character-create.json` is the authored wardrobe definition: stable
 asset IDs, labels, availability and preset membership. `registry.coax wardrobe`
 resolves it against the imported catalog, writes the collection lock and
-regenerates `aethyr/character/charactercreator-parts.coax`.
+regenerates `metaverse-engine/character/charactercreator-parts.coax`.
 
 Its `legacy_slot` values are frozen CC2 compatibility keys, never source-array
 positions. Do not reorder or reuse them. Retired slots stay reserved; a future

@@ -1,5 +1,5 @@
 // Everglade for desktop: what is drawn over the place (Temple.metal) and your model (Model.metal):
-// the Metaverse Engine's twelve-float strokes (aethyr/ui/draw.coax `lit`), a core and a halo, as
+// the Metaverse Engine's twelve-float strokes (metaverse-engine/ui/draw.coax `lit`), a core and a halo, as
 // apps/openagents-desktop/Shaders.metal lights them, and text from the faces' atlas (text.coax).
 #include <metal_stdlib>
 using namespace metal;

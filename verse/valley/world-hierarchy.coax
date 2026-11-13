@@ -48,4 +48,4 @@ wh_valid :: (b:[]u8,instances:int,words:int)->bool #effects(all) {
  return true;
 }
 
-#load "../../aethyr/tests/valley-world-hierarchy.coax";
+#load "../../metaverse-engine/tests/valley-world-hierarchy.coax";

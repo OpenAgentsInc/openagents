@@ -78,7 +78,7 @@ void mf_network_reset(void *host);
 // Nonblocking raw SDK delivery, independent of world render offers.
 int64_t mf_network_poll(void *host);
 int64_t mf_network_info(void *host,int32_t field);
-#include "../../aethyr/host/apple/audio-host.h"
+#include "../../metaverse-engine/host/apple/audio-host.h"
 void mf_close(void *host);
 int64_t mf_closed_info(int32_t field);
 #endif

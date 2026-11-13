@@ -59,7 +59,7 @@ scenarios and parameter provenance. Every device in it is simulated.
    which values were measured and which were chosen.
 10. **Moving to the OpenAgents Metaverse Engine's engine.** Swap MuJoCo for the Metaverse Engine's rigid and joint
     solvers
-    ([Metaverse Engine chapters 17–22](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch017-a-scene-owns-the-state.md))
+    ([Metaverse Engine chapters 17–22](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch017-a-scene-owns-the-state.md))
     and compare the two backends on frozen recordings, as the
     [Genesis parity plan](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/docs/genesis-parity.md)
     describes.

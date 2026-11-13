@@ -1,0 +1,32 @@
+// Exact actual native bank WAVs through the shipped Wasm decoder, every word.
+#load "../../coax/web/wasm-chrome.coax";
+#load "pcm-compare.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("usage: check-browser-audio-bank LOCAL_URL NATIVE_AUDIO.json OUT_DIR");return 2;}
+  url:=args_at(a[..],0);dir:=args_at(a[..],2);if url.count<17 || url[0..<17]!="http://127.0.0.1:" || !fs_mkdir(dir) {return 2;}
+  metadata:[131072]u8;nodes:[8192]JvNode;m:[1]Jv;n:=fs_read(args_at(a[..],1),metadata[..]);if n<0 || !jv_parse(m[..],cast(string)metadata[0..<n],nodes[..]) {return 1;}
+  c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-host-audio-bank-") {return 1;}defer {cdp_close(c[..]);}
+  js:[8192]u8;o:[1]Jo;jo_start(o[..],js[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);
+  deadline:=proc_now_ms()+30000;ready:=false;while proc_now_ms()<deadline {if wc_eval(c[..],"document.readyState==='complete'&&location.hostname==='127.0.0.1'")=="true" {ready=true;break;}proc_sleep(50);}if !ready {return 1;}
+  glue:[65536]u8;gn:=fs_read(WC_HOST_FILE,glue[..]);if gn<0 || wc_eval(c[..],cast(string)glue[0..<gn])!="ready" {return 1;}
+  gn=fs_read("metaverse-engine/host/tests/audio-effects.js",glue[..]);if gn<0 || wc_eval(c[..],cast(string)glue[0..<gn])!="ready" {return 1;}
+  report:[65536]u8;r:[1]Jo;jo_start(r[..],report[..]);jo_obj(r[..]);jo_key(r[..],"schema");jo_str(r[..],"aethyr.host.audio-bank.v1");jo_key(r[..],"host");jo_str(r[..],"web");jo_key(r[..],"rate");jo_int(r[..],48000);jo_key(r[..],"assets");jo_arr(r[..]);passed:=true;count:=0;
+  raw:[8388608]u8;native:[8388608]u8;wave:[8388608]u8;text:[65536]u8;paths:[4][4096]u8;namebuf:[128]u8;filename:[256]u8;
+  events:=jv_get(m[0],0,"events");for i:0..<jv_len(m[0],events) {
+    event:=jv_at(m[0],events,i);if jv_raw(m[0],jv_get(m[0],event,"op"))!="export" {continue;}assets:=jv_get(m[0],event,"assets");
+    for j:0..<jv_len(m[0],assets) {
+      row:=jv_at(m[0],assets,j);wavnode:=jv_get(m[0],row,"wav");if jv_kind(m[0],wavnode)!=JV_STRING {continue;}
+      wn:=jv_str(m[0],wavnode,paths[0][..]);fn:=jv_str(m[0],jv_get(m[0],row,"file"),paths[1][..]);name_n:=jv_str(m[0],jv_get(m[0],row,"name"),namebuf[..]);samples:=jv_int(m[0],jv_get(m[0],row,"samples"),0);channels:=jv_int(m[0],jv_get(m[0],row,"channels"),0);
+      if wn<0 || fn<0 || name_n<1 || samples<1 || samples>2097152 {return 1;}name:=cast(string)namebuf[0..<name_n];
+      wav_n:=fs_read(cast(string)paths[0][0..<wn],wave[..]);native_n:=fs_read(cast(string)paths[1][0..<fn],native[..]);
+      if wav_n<1 || native_n!=samples*4 || !wc_file(c[..],"input.wav",cast(string)wave[0..<wav_n]) {return 1;}
+      v:=cdp_evaluate(c[..],"hostAudioEffects.canonical('input.wav')");d:=cdp_doc(c[..]);if v<0 || jv_int(d,jv_get(d,v,"samples"),0)!=samples || jv_int(d,jv_get(d,v,"channels"),0)!=channels {tool_errln(cdp_error(c[..]));return 1;}
+      at:=0;while at<samples {words:=ifx samples-at>8192 then 8192 else samples-at;jo_start(o[..],js[..]);jo_put(o[..],"hostAudioEffects.readCanonical(");jo_int(o[..],at);jo_put(o[..],",");jo_int(o[..],words);jo_put(o[..],")");v=cdp_evaluate(c[..],jo_text(o[..]));if v<0 {return 1;}bn:=jv_str(cdp_doc(c[..]),v,text[..]);if bn<0 || b64_decode(cast(string)text[0..<bn],raw[at*4..<(at+words)*4])!=words*4 {return 1;}at+=words;}
+      q:=hpcm_compare_words(raw[0..<samples*4],native[0..<native_n]);ok:=q.shape&&q.nonfinite==0&&q.over==0;passed=passed&&ok;count+=1;
+      jo_start(o[..],filename[..]);jo_put(o[..],name);jo_put(o[..],".f32");if !fs_write(fs_join(dir,jo_text(o[..]),paths[2][..]),cast(string)raw[0..<samples*4]) {return 1;}
+      jo_start(o[..],filename[..]);jo_put(o[..],name);jo_put(o[..],".wav");if !fs_write(fs_join(dir,jo_text(o[..]),paths[2][..]),cast(string)wave[0..<wav_n]) {return 1;}
+      jo_obj(r[..]);jo_key(r[..],"name");jo_str(r[..],name);jo_key(r[..],"wav_bytes");jo_int(r[..],wav_n);jo_key(r[..],"channels");jo_int(r[..],channels);jo_key(r[..],"samples");jo_int(r[..],samples);jo_key(r[..],"nonfinite");jo_int(r[..],q.nonfinite);jo_key(r[..],"over_2pow_minus20");jo_int(r[..],q.over);jo_key(r[..],"max_abs_f64_bits");jo_int(r[..],cast(int)f64_bits(q.max_abs));jo_key(r[..],"passed");jo_bool(r[..],ok);jo_end(r[..]);print("Canonical %: % samples, maxabs %, % past2^-20.\n",name,samples,q.max_abs,q.over);
+    }
+  }
+  jo_end(r[..]);jo_key(r[..],"count");jo_int(r[..],count);passed=passed&&count==48;jo_key(r[..],"passed");jo_bool(r[..],passed);jo_end(r[..]);if r[0].bad || !fs_write(fs_join(dir,"comparison.json",paths[2][..]),jo_text(r[..])) {return 1;}return ifx passed then 0 else 1;
+}

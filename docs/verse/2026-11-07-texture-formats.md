@@ -41,7 +41,7 @@ The same materials as block formats, at the same sizes (the audit's projection):
 
 ## What changed
 
-- **Phone size tier.** `aethyr/render/texture-format.coax` caps a phone's RGBA8 layer
+- **Phone size tier.** `metaverse-engine/render/texture-format.coax` caps a phone's RGBA8 layer
   array at 512 a side (Solstice's phone rule) and a block-compressed one at 1024. The
   browser host asks the shared image reactor (`host-layers.wasm`) for the side before it
   makes the array. Link's materials on a phone drop from 636 MiB to 70.7 MiB. A desktop
@@ -55,9 +55,9 @@ The same materials as block formats, at the same sizes (the audit's projection):
   4x4 for normals), a desktop BC (BC7 colour, BC5 normals). Everglade's pack has block
   builds since #13305 (below); a pack without them, or a device without the feature, gets
   RGBA8, and so does a page whose reactor can't load.
-- **The encoder.** `aethyr/render/texture-encode.coax` writes BC7 (mode 6), BC4/BC5 and
+- **The encoder.** `metaverse-engine/render/texture-encode.coax` writes BC7 (mode 6), BC4/BC5 and
   ASTC 4x4 and 6x6 (one partition, LDR, binary ranges; colour, colour with alpha, and
-  dual-plane normals with X in `.r` and Y in `.a`). `aethyr/tools/texture-encode.coax`
+  dual-plane normals with X in `.r` and Y in `.a`). `metaverse-engine/tools/texture-encode.coax`
   runs it offline (`encode`) and checks it (`check`) against the independent decoders
   `verse/tools/ocarina-texture-core.coax` already uses: the pinned bcdec runner and ARM
   astcenc 5.7.1.
@@ -129,21 +129,21 @@ shared the machine, so the gap in the Link run is load, not this change.
   (`makeLayersEffect`, canonical layers) do not take the phone tier yet; Everglade and
   Character Create use `host.js`'s path, which does.
 - **The encoder's search under mutation.** Root-only mutation of
-  `aethyr/render/texture-encode.coax` kills 1513 of 1681 mutants; 167 survive. Most sit in
+  `metaverse-engine/render/texture-encode.coax` kills 1513 of 1681 mutants; 167 survive. Most sit in
   the search (the principal axis, the least-squares refit, which grid and range to try),
   where a changed search still finds blocks of the same error on the pinned fixtures. The
   bitstream half (packing, decoding, the blue-contract decode) is pinned by the golden
-  blocks and the reference decoders. The tool (`aethyr/tools/texture-encode.coax`) and the
+  blocks and the reference decoders. The tool (`metaverse-engine/tools/texture-encode.coax`) and the
   format pick have no survivors.
 
 ## Block builds (GitHub #13305)
 
-`aethyr/tools/block-pack.coax` writes a pack's block build: the same pack with every texture
-layer as a block layer (`aethyr/render/block-layer.coax`, profile
+`metaverse-engine/tools/block-pack.coax` writes a pack's block build: the same pack with every texture
+layer as a block layer (`metaverse-engine/render/block-layer.coax`, profile
 `proto/verse/texture-block-layer-v1.json`): a 16-byte header (`VBL1`, format, levels, width,
 height), then every mip level's blocks, largest first. Each layer's chain is made as the
 canonical layer path makes it (decode, double a half-size layer, alpha-weighted box mips, one
-premultiply round trip) and each level is encoded by `aethyr/render/texture-encode.coax`. The
+premultiply round trip) and each level is encoded by `metaverse-engine/render/texture-encode.coax`. The
 catalog, geometry and sounds are the pack's; only the catalog's size lines change. The build is
 written as a VPK3 file, `NAME.TAG.vpk3`, beside `NAME.pack`, so its pages are deflated and
 admitted by SHA-256 as they arrive. `apps/openagents-web/build.sh` writes Everglade's two

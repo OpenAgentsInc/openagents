@@ -74,7 +74,7 @@ The Everglade row opens the realm itself: Character Create, then the run
 into the glade and the path beyond, with the web's HUD, class bar and
 pictures. It is the same Coax and the same shaders as the web, not a copy.
 
-- **The page host.** [`aethyr/host/apple/`](../../aethyr/host/apple/page-host.h)
+- **The page host.** [`metaverse-engine/host/apple/`](../../metaverse-engine/host/apple/page-host.h)
   is the native twin of the browser host's own passes (`coax/web/host.js`):
   it loads a realm's face, hands it the pack, the messages, the keys and the
   frames, uploads what the face hands back, and draws the shadow tiles, the
@@ -157,17 +157,17 @@ butts, the Longbow, the tally at the top left, the horse and the dragon.
 The realms' sound plays through the Apple audio host the Metaverse Engine already
 plays with, not a second one:
 
-- **The Coax.** `aethyr/host/native-audio.coax` (the PCM interpreter
-  `aethyr/audio/host-pcm.coax`, the session, the bank, the memory tickets,
+- **The Coax.** `metaverse-engine/host/native-audio.coax` (the PCM interpreter
+  `metaverse-engine/audio/host-pcm.coax`, the session, the bank, the memory tickets,
   the WAV and Opus plans and the Everglade PCM assets), compiled to C into
   the app.
-- **The C wrappers.** `aethyr/host/apple/audio-host.h` and `audio-host.c`,
+- **The C wrappers.** `metaverse-engine/host/apple/audio-host.h` and `audio-host.c`,
   moved out of the Metaverse Engine's `MetalRealm.m`, which now includes them. The
   page host answers the four calls a realm host owes the audio host: the
   sound bank, its storage, the sound packets (`mf_sound_commands`: each
   packet read once after every handoff, refused whole when it is outside the
   face's allocation) and the spatial probe (none).
-- **The Swift.** `aethyr/host/apple/PageAudio.swift` hands a page to
+- **The Swift.** `metaverse-engine/host/apple/PageAudio.swift` hands a page to
   the Metaverse Engine's `ForgeMetalAudio` (`Sources/MetalAudio.swift`): the bank the
   realm renders (Experimental's synthesized sounds, the bow's among them),
   the site's sound files and PCM companions (`/realms/everglade/sfx/`,
@@ -182,8 +182,8 @@ What the realms don't do yet:
   kept character, not the one your browser has.
 - **The catalog renderer.** The host draws with the page's own passes, as
   the web's Everglade II does today. It is not a profile in the Metaverse Engine's render
-  catalog (`aethyr/render/catalog.coax`), and the shared transport and
-  lifecycle authorities (`aethyr/host/transport.coax`, `lifecycle.coax`)
+  catalog (`metaverse-engine/render/catalog.coax`), and the shared transport and
+  lifecycle authorities (`metaverse-engine/host/transport.coax`, `lifecycle.coax`)
   are not in its path. In the browser, declaring contract v1 also needs the
   shared adapter a page gets with its render carrier, so the web module
   declares no version until Everglade II has a carrier.

@@ -9,6 +9,8 @@
 # (tools-check), so a tool written since is Coax or says its Firm reason:.
 # A folder that has moved since says so in a line "# moved: OLD/ -> NEW/", and a
 # listed path under NEW/ must have been tracked there under OLD/.
+# moved: aethyr/forge/ -> metaverse-engine/editor/
+# moved: aethyr/ -> metaverse-engine/
 # base: 0c2f9f4cdaff0e9f392a334a288537c452921185
 apps/openagents-desktop/build.sh
 apps/openagents-desktop/zeron/fixtures/fixture.py
@@ -764,23 +766,23 @@ verse/voice-host/test.sh
 # 2026-11-02: found by tools-check's first enforced run (release.sh) with neither a
 # Firm reason: line nor a place on this list; written after the 2026-10-30 rule or
 # missed by the first sweep. Each is ported, or gets a Firm reason: header and leaves.
-aethyr/book/tools/move-from-psionic.py
-aethyr/tests/check_collide.py
-aethyr/tests/check_drawn_feet.py
-aethyr/tests/check_follower_hosts.py
-aethyr/tests/check_ground.sh
-aethyr/tests/check_ground_contact.sh
-aethyr/tests/check_ground_ray.sh
-aethyr/tests/check_native_gameplay.py
-aethyr/tests/check_render_native.py
-aethyr/tests/check_terrain.sh
-aethyr/tests/check_walk.py
-aethyr/tests/follower-host.js
-aethyr/tests/qualify_book.py
-aethyr/tests/rand_oracle.py
-aethyr/tests/test_follower_hosts_tooling.py
-aethyr/tests/test_native_gameplay_runner.py
-aethyr/tests/test_qualify_book.py
+metaverse-engine/book/tools/move-from-psionic.py
+metaverse-engine/tests/check_collide.py
+metaverse-engine/tests/check_drawn_feet.py
+metaverse-engine/tests/check_follower_hosts.py
+metaverse-engine/tests/check_ground.sh
+metaverse-engine/tests/check_ground_contact.sh
+metaverse-engine/tests/check_ground_ray.sh
+metaverse-engine/tests/check_native_gameplay.py
+metaverse-engine/tests/check_render_native.py
+metaverse-engine/tests/check_terrain.sh
+metaverse-engine/tests/check_walk.py
+metaverse-engine/tests/follower-host.js
+metaverse-engine/tests/qualify_book.py
+metaverse-engine/tests/rand_oracle.py
+metaverse-engine/tests/test_follower_hosts_tooling.py
+metaverse-engine/tests/test_native_gameplay_runner.py
+metaverse-engine/tests/test_qualify_book.py
 apps/openagents-desktop/check.sh
 apps/openagents-desktop/tests/check_zeron_defaults.py
 apps/openagents-desktop/tests/lab-owner.py

@@ -53,13 +53,13 @@ BVH, ARKit CSV or supported Unreal body source. See the
 No licensed data ships with this page. Export the A0 documents, then run:
 
 ```sh
-coax/web/tool.sh aethyr/tools/anim-lab-bundle.coax DOCUMENT_DIR PRIVATE_OUTPUT.bundle
+coax/web/tool.sh metaverse-engine/tools/anim-lab-bundle.coax DOCUMENT_DIR PRIVATE_OUTPUT.bundle
 ```
 
 To author the private walk/face study and its measured contact annotations:
 
 ```sh
-coax/web/tool.sh aethyr/tools/anim-layer-demo.coax PRIVATE_INPUT.bundle NEW_PRIVATE_DIR
+coax/web/tool.sh metaverse-engine/tools/anim-layer-demo.coax PRIVATE_INPUT.bundle NEW_PRIVATE_DIR
 ```
 
 The command writes `performance.json`, `contact.clip.json`, `report.json` and

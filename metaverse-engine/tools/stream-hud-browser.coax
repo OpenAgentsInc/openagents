@@ -1,0 +1,45 @@
+// Actual persistent-HUD route/replacement observer in muted headless Chrome.
+// Product layout/shaders are Coax; CDP strings execute browser SDK effects.
+// tool.sh: stack-gib 1
+#load "../../coax/web/wasm-chrome.coax";
+#load "../core/assets.coax" as assets;
+shb_save :: (c: [] Cdp, expression: string, path: string) -> bool {
+  // A full route has more than CDP's 65,536 tree nodes. Carry bounded JSON
+  // bytes as one returned string; the independent oracle parses the record.
+  script: [16384] u8; pieces := [3] string.["(async()=>JSON.stringify(await (", expression, ")))()"];
+  result := cdp_evaluate(c, wc_cat(script[..], pieces[..])); if result < 0 { tool_errln(cdp_error(c)); return false; }
+  bytes: [8388608] u8; n := jv_str(cdp_doc(c), result, bytes[..]);
+  return n > 0 && fs_write(path, cast(string) bytes[0..<n]);
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 6 { tool_errln("usage: stream-hud-browser BASE SCENE_JSON NEW_OUTPUT WIDTH HEIGHT TIER"); return 2; }
+  width := args_whole(args_at(a[..], 3)); height := args_whole(args_at(a[..], 4)); tier := args_whole(args_at(a[..], 5));
+  if (width != 320 && width != 640) || height != width * 9 / 16 || tier < 0 || tier > 1 { return 2; }
+  output := args_at(a[..], 2); if fs_exists(output) || !fs_mkdir(output) { return 2; }
+  bytes: [65536] u8; nodes: [4096] JvNode; scene: [1] Jv; n := fs_read(args_at(a[..], 1), bytes[..]);
+  if n < 1 || !jv_parse(scene[..], cast(string) bytes[0..<n], nodes[..]) { return 1; }
+  root: [64] u8; identity: [64] u8; descriptor := jv_at(scene[0], jv_get(scene[0], 0, "manifests"), tier);
+  if jv_str(scene[0], jv_get(scene[0], descriptor, "sha256"), root[..]) != 64 || !assets.asset_hex(assets.asset_id(cast(string) bytes[0..<n]), identity[..]) { return 1; }
+  url: [4096] u8; digits: [4] [32] u8; pieces := [14] string.[args_at(a[..], 0), "/metaverse-engine/host/tests/stream-walk.html?root=", cast(string) root[..], "&scene_sha=", cast(string) identity[..], "&scene_bytes=", wc_dec(digits[0][..], n), "&width=", wc_dec(digits[1][..], width), "&height=", wc_dec(digits[2][..], height), "&tier=", wc_dec(digits[3][..], tier), ""];
+  c: [1] Cdp; if !cdp_launch(c[..], width, height, "aethyr-stream-hud-") { return 1; } defer { cdp_close(c[..]); }
+  params: [8192] u8; j: [1] Jo; jo_start(j[..], params[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], wc_cat(url[..], pieces[..])); jo_end(j[..]);
+  if cdp_call(c[..], "Page.navigate", jo_text(j[..]), CDP_CALL_MS) < 0 { return 1; }
+  deadline := proc_now_ms() + 30000; ready := false;
+  while proc_now_ms() < deadline { status := wc_eval(c[..], "window.streamError||window.streamReady||false"); if status == "true" { ready = true; break; } if status != "false" && status != "" { tool_errln(status); return 1; } proc_sleep(50); }
+  if !ready { return 1; }
+  setup := "(async()=>{const app=streamWalk;window.shFrames=[];window.shAllocations=[];window.shStages=[];const original=app.step;window.shStep=async(ns,d)=>{const f=await original(ns,d);shFrames.push([f.frameNs,f.direction,f.tick,...f.position,f.active,f.drawn,f.updated,f.declared,f.cpu,f.gpuBytes,f.frameMs,f.records,f.stepDigests.join('')]);if(f.allocations.length)shAllocations.push({observedAfterTick:f.tick,events:f.allocations});shStages.push(...f.stages);return f;};await shStep(0,0);window.shInitial={hud:app.hud(),stats:app.stats()};if(shInitial.stats.drawnCommands!==0||shInitial.hud.vertices<=0||shInitial.hud.info[3]!==1||shInitial.hud.info[4]!==1)throw Error('HUD requires area resources');return true;})()";
+  if wc_eval(c[..], setup) != "true" { tool_errln(cdp_error(c[..])); return 1; }
+  path: [4096] u8;
+  if !shb_save(c[..], "streamWalk.capture()", fs_join(output, "initial.json", path[..])) { return 1; }
+  if wc_eval(c[..], "(async()=>{for(let i=0;i<32;i++){await shStep(62500000,0);await streamWalk.settle();}window.shBeforeHud=streamWalk.hud();window.shBeforeCells=streamWalk.cells();return true;})()") != "true" { return 1; }
+  if !shb_save(c[..], "streamWalk.capture()", fs_join(output, "before.json", path[..])) { return 1; }
+  recovery := "(async()=>{const app=streamWalk,original=fetch;let requests=0;window.fetch=()=>{requests++;return Promise.reject(Error('sources unavailable during HUD replacement'));};try{window.shRecovery=await app.recover();}finally{window.fetch=original;}window.shAfterHud=app.hud();if(requests!==0||shAfterHud.draws!==shBeforeHud.draws+1||shAfterHud.vertices!==shBeforeHud.vertices||JSON.stringify(app.cells())!==JSON.stringify(shBeforeCells))throw Error('persistent HUD replacement changed logical state or fetched source');shRecovery.requests=requests;return true;})()";
+  if wc_eval(c[..], recovery) != "true" { tool_errln(cdp_error(c[..])); return 1; }
+  if !shb_save(c[..], "streamWalk.capture()", fs_join(output, "after.json", path[..])) { return 1; }
+  route := "(async()=>{window.shLegs=[];for(const direction of [1,-1]){for(let i=0;i<1600;i++){await shStep(62500000,direction);if(i%20===0)await streamWalk.settle();}const hud=streamWalk.hud();if(hud.info[3]!==1||hud.info[4]!==1)throw Error('cell retirement destroyed a persistent HUD owner');shLegs.push({cells:streamWalk.cells(),hud,last:shFrames.at(-1)});}window.shEndHud=streamWalk.hud();if(!(shLegs[0].last[5]>704&&shLegs[1].last[5]<64&&shEndHud.draws===shFrames.length+1))throw Error('HUD out-and-back route incomplete');return true;})()";
+  if wc_eval(c[..], route) != "true" { tool_errln(cdp_error(c[..])); return 1; }
+  if !shb_save(c[..], "streamWalk.capture()", fs_join(output, "end.json", path[..])) { return 1; }
+  final := "(async()=>{const cleanup=await streamWalk.close();if(cleanup.info[12]!==0||cleanup.info[13]!==0||cleanup.hud.info[3]!==0||cleanup.hud.info[4]!==0||cleanup.gpuErrors.length)throw Error('persistent HUD did not close');return {schema:'aethyr.stream-walk-hud.v1',profile:streamWalk.profile,adapter:streamWalk.adapter,initial:shInitial,beforeHUD:shBeforeHud,afterHUD:shAfterHud,endHUD:shEndHud,recovery:shRecovery,frames:shFrames,allocations:shAllocations,stages:shStages,legs:shLegs,cleanup};})()";
+  if !shb_save(c[..], final, fs_join(output, "receipt.json", path[..])) { return 1; }
+  print("PASS persistent HUD before resources, across both route legs, physical replacement and final drain\n"); return 0;
+}

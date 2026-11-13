@@ -1,0 +1,256 @@
+// Actions (book chapters 9 and 14, GitHub #12993): one authoritative lifecycle for a swing, a cast, a
+// landing or a block. An action definition is versioned and admitted whole: a stable action ID, the
+// realm's clip reference, its movement owner, its length and its timed events in integer simulation
+// ticks (metaverse-engine/core/loop.coax's 1/64 s), its sensor window and its cancel window. An instance carries an
+// authoritative instance ID and the tick it started; advancing it to a tick hands back every event
+// crossed since the last advance exactly once, in tick order, however the frames fall (stalls,
+// catch-up, one tick at a time). Time scaling is a rational num/den on the elapsed ticks, never a float.
+// Sampling (scrubbing an editor, drawing between steps) reads the phase and emits nothing.
+//
+//   coax/bin/coax test metaverse-engine/action/action.coax --library
+
+#module "aethyr.action";
+
+ACTION_EVENTS :: 16;          // timed events one definition may declare
+ACTION_TICKS_MAX :: 3840;     // one minute at 64 ticks a second: a longer action is not one
+ACTION_TICK_HZ :: 64;         // metaverse-engine/core/loop.coax LOOP_STEP_NS: the walking realms' step
+ACTION_SCALE_MAX :: 64;       // a time scale's numerator and denominator stay within 1..64
+
+ActionEventKind :: enum u8 { none; window_open; window_close; impact; cancel_open; cancel_close; cue; }
+ActionMove :: enum u8 { controller; root; }    // who owns the body's translation while it plays
+ActionStatus :: enum u8 { ok; bad_id; bad_length; bad_event; unordered; unpaired; too_many; bad_scale; }
+ActionPhase :: enum u8 { idle; running; done; cancelled; }
+
+ActionEvent :: struct { kind: ActionEventKind; tick: int; tag: int; }
+
+// A definition: what the realm authors once, admitted by action_admit before any instance plays it.
+ActionDef :: struct {
+  id: int; version: int;                 // stable verb/action identity: (id, version) never changes meaning
+  clip: int = -1;                        // the realm's clip or performance reference (its own table)
+  move: ActionMove;
+  length: int;                           // ticks, at time scale 1
+  events: [ACTION_EVENTS] ActionEvent; event_n: int;
+  multi_hit: bool;                       // one target may be struck again in one instance
+  rehit: int;                            // ticks between repeated hits on one target when multi_hit
+}
+
+// One playing of a definition.
+ActionInstance :: struct {
+  id: int;                               // the authoritative attack/action instance ID (never reused by its owner)
+  owner: int; owner_gen: int;            // who plays it: entity number and generation
+  def: int = -1;                         // the realm's index of the admitted definition
+  start: int;                            // the tick it began
+  cursor: int;                           // the last local tick whose events were handed out (start - 1 before any)
+  scale_num: int = 1; scale_den: int = 1;
+  phase: ActionPhase;
+  cancelled_at: int = -1;
+}
+
+// What one advance handed out: the events crossed, in order, and whether the sensor window is open at
+// the advanced tick.
+ActionStep :: struct { inst: ActionInstance; events: [ACTION_EVENTS] ActionEvent; n: int; sensing: bool; finished: bool; }
+
+// book:begin admit
+action_event_window :: (k: ActionEventKind) -> int { if k == ActionEventKind.window_open || k == ActionEventKind.cancel_open { return 1; } if k == ActionEventKind.window_close || k == ActionEventKind.cancel_close { return -1; } return 0; }
+
+// Whether d is a definition: positive ID and version, a length in 1..ACTION_TICKS_MAX, events in tick
+// order within [0, length], and every window opened before it closes, never nested, closed by the end.
+action_admit :: (d: ActionDef) -> ActionStatus {
+  if d.id <= 0 || d.version <= 0 { return ActionStatus.bad_id; }
+  if d.length < 1 || d.length > ACTION_TICKS_MAX { return ActionStatus.bad_length; }
+  if d.event_n < 0 || d.event_n > ACTION_EVENTS { return ActionStatus.too_many; }
+  if d.multi_hit && d.rehit < 1 { return ActionStatus.bad_event; }
+  sensor := 0; cancel := 0; last := 0;
+  for i: 0..<d.event_n {
+    e := d.events[i];
+    if e.kind == ActionEventKind.none || e.tick < 0 || e.tick > d.length { return ActionStatus.bad_event; }
+    if e.tick < last { return ActionStatus.unordered; }
+    last = e.tick;
+    w := action_event_window(e.kind);
+    if e.kind == ActionEventKind.window_open || e.kind == ActionEventKind.window_close { sensor += w; if sensor < 0 || sensor > 1 { return ActionStatus.unpaired; } }
+    if e.kind == ActionEventKind.cancel_open || e.kind == ActionEventKind.cancel_close { cancel += w; if cancel < 0 || cancel > 1 { return ActionStatus.unpaired; } }
+  }
+  if sensor != 0 || cancel != 0 { return ActionStatus.unpaired; }
+  return ActionStatus.ok;
+}
+
+// A tick within a clip authored as a fraction num/den of its length: the floor of length * num / den,
+// in integers, so it is the same on every host.
+action_tick_of :: (length: int, num: int, den: int) -> int {
+  if den <= 0 || num < 0 || num > den || length < 0 { return -1; }
+  return (length * num) / den;
+}
+// A clip's length in ticks from its seconds, rounded once at authoring time (never on the hot path).
+action_ticks_of_seconds :: (seconds: f64) -> int {
+  if !(seconds > 0) || seconds > f64(ACTION_TICKS_MAX) / f64(ACTION_TICK_HZ) { return -1; }
+  return cast(int) floor(seconds * f64(ACTION_TICK_HZ) + 0.5);
+}
+// book:end admit
+
+// book:begin play
+// A new instance of admitted definition d (the realm's index def), begun on tick now. A time scale is a
+// rational num/den: 1/2 plays at half speed, 2/1 at double.
+action_begin :: (d: ActionDef, def: int, id: int, owner: int, owner_gen: int, now: int, num: int, den: int) -> ActionInstance {
+  a: ActionInstance;
+  if action_admit(d) != ActionStatus.ok || id <= 0 || now < 0 || num < 1 || den < 1 || num > ACTION_SCALE_MAX || den > ACTION_SCALE_MAX { return a; }
+  a.id = id; a.owner = owner; a.owner_gen = owner_gen; a.def = def; a.start = now; a.cursor = -1;
+  a.scale_num = num; a.scale_den = den; a.phase = ActionPhase.running;
+  return a;
+}
+// The action's local tick at world tick now: the elapsed ticks times its scale, floored.
+action_local :: (a: ActionInstance, now: int) -> int {
+  if now < a.start || a.scale_den < 1 { return -1; }
+  return ((now - a.start) * a.scale_num) / a.scale_den;
+}
+// Whether the sensor window is open at local tick t (opened at or before t, closed after t).
+action_window_open :: (d: ActionDef, t: int) -> bool {
+  open := false;
+  for i: 0..<d.event_n {
+    e := d.events[i];
+    if e.tick > t { break; }
+    if e.kind == ActionEventKind.window_open { open = true; }
+    if e.kind == ActionEventKind.window_close { open = false; }
+  }
+  return open;
+}
+action_cancel_open :: (d: ActionDef, t: int) -> bool {
+  open := false;
+  for i: 0..<d.event_n {
+    e := d.events[i];
+    if e.tick > t { break; }
+    if e.kind == ActionEventKind.cancel_open { open = true; }
+    if e.kind == ActionEventKind.cancel_close { open = false; }
+  }
+  return open;
+}
+
+// Advance a to world tick now: every event whose local tick is in (cursor, local(now)] is handed out
+// once, in order. An advance to an earlier tick, or of an instance that isn't running, hands out
+// nothing. The instance is done once its local tick reaches its length.
+action_advance :: (d: ActionDef, a: ActionInstance, now: int) -> ActionStep {
+  out: ActionStep; out.inst = a;
+  if a.phase != ActionPhase.running { return out; }
+  t := action_local(a, now);
+  if t < 0 { return out; }
+  top := ifx t > d.length then d.length else t;
+  if top > a.cursor {
+    for i: 0..<d.event_n {
+      e := d.events[i];
+      if e.tick > a.cursor && e.tick <= top { out.events[out.n] = e; out.n += 1; }
+    }
+    out.inst.cursor = top;
+  }
+  out.sensing = t <= d.length && action_window_open(d, top);
+  if t >= d.length { out.inst.phase = ActionPhase.done; out.finished = true; out.sensing = false; }
+  return out;
+}
+// Cancel a on tick now: allowed inside its cancel window, or before its first event, always refused
+// once the action finished. A cancelled action hands out no later events and senses nothing.
+action_cancel :: (d: ActionDef, a: ActionInstance, now: int) -> ActionInstance {
+  if a.phase != ActionPhase.running { return a; }
+  t := action_local(a, now);
+  if t < 0 { return a; }
+  first := ifx d.event_n > 0 then d.events[0].tick else d.length;
+  if t < first || action_cancel_open(d, t) { r := a; r.phase = ActionPhase.cancelled; r.cancelled_at = now; return r; }
+  return a;
+}
+// Sampling for drawing or scrubbing: the phase (0..1) at a fractional world tick, with no events and no
+// change to the instance.
+action_sample :: (d: ActionDef, a: ActionInstance, now: f64) -> f64 {
+  if d.length < 1 || a.scale_den < 1 || now < f64(a.start) { return 0; }
+  t := (now - f64(a.start)) * f64(a.scale_num) / f64(a.scale_den) / f64(d.length);
+  return ifx t > 1 then 1 else t;
+}
+// book:end play
+
+// ---- checks
+
+act_test_swing :: () -> ActionDef {
+  d: ActionDef; d.id = 7; d.version = 1; d.clip = 3; d.length = 48;
+  d.events[0] = ActionEvent.{kind = ActionEventKind.cancel_open, tick = 0};
+  d.events[1] = ActionEvent.{kind = ActionEventKind.cancel_close, tick = 10};
+  d.events[2] = ActionEvent.{kind = ActionEventKind.window_open, tick = 18};
+  d.events[3] = ActionEvent.{kind = ActionEventKind.impact, tick = 22};
+  d.events[4] = ActionEvent.{kind = ActionEventKind.window_close, tick = 26};
+  d.events[5] = ActionEvent.{kind = ActionEventKind.cue, tick = 40, tag = 9};
+  d.event_n = 6;
+  return d;
+}
+// Run instance a from its start to the end with the given frame gaps (ticks between advances),
+// counting impacts and sensing ticks.
+act_test_run :: (d: ActionDef, gaps: [4] int) -> [3] int {
+  a := action_begin(d, 0, 5, 1, 0, 100, 1, 1);
+  now := 100; impacts := 0; events := 0; idx := 0;
+  for guard: 0..<1000 {
+    s := action_advance(d, a, now);
+    a = s.inst;
+    for k: 0..<s.n { events += 1; if s.events[k].kind == ActionEventKind.impact { impacts += 1; } }
+    if s.finished || a.phase != ActionPhase.running { break; }
+    now += gaps[idx % 4]; idx += 1;
+  }
+  return [3] int.[impacts, events, a.cursor];
+}
+
+#test "a definition is admitted whole: ids, length, order and paired windows" {
+  d := act_test_swing();
+  #assert action_admit(d) == ActionStatus.ok;
+  b := d; b.id = 0; #assert action_admit(b) == ActionStatus.bad_id;
+  b = d; b.version = 0; #assert action_admit(b) == ActionStatus.bad_id;
+  b = d; b.length = 0; #assert action_admit(b) == ActionStatus.bad_length;
+  b = d; b.length = ACTION_TICKS_MAX + 1; #assert action_admit(b) == ActionStatus.bad_length;
+  b = d; b.length = 30; #assert action_admit(b) == ActionStatus.bad_event;   // the cue at 40 is past the end
+  b = d; b.events[3].tick = 17; #assert action_admit(b) == ActionStatus.unordered;
+  b = d; b.events[4].kind = ActionEventKind.window_open; #assert action_admit(b) == ActionStatus.unpaired;
+  b = d; b.event_n = 4; #assert action_admit(b) == ActionStatus.unpaired;     // the window never closes
+  b = d; b.event_n = 17; #assert action_admit(b) == ActionStatus.too_many;
+  b = d; b.events[5].kind = ActionEventKind.none; #assert action_admit(b) == ActionStatus.bad_event;
+  b = d; b.multi_hit = true; #assert action_admit(b) == ActionStatus.bad_event;
+  b.rehit = 4; #assert action_admit(b) == ActionStatus.ok;
+  #assert action_tick_of(48, 11, 24) == 22 && action_tick_of(48, 25, 24) == -1 && action_tick_of(48, 1, 0) == -1;
+  #assert action_ticks_of_seconds(0.75) == 48 && action_ticks_of_seconds(0) == -1 && action_ticks_of_seconds(61) == -1;
+}
+
+#test "every crossed event is handed out exactly once at 30, 60 and 144 FPS, uneven frames and catch-up" {
+  d := act_test_swing();
+  // ticks between advances: 144 FPS steps 0 or 1 tick, 60 FPS about 1, 30 FPS 2, a stall 40
+  #assert act_test_run(d, [4] int.[1, 1, 1, 1])[0] == 1 && act_test_run(d, [4] int.[1, 1, 1, 1])[1] == 6;
+  #assert act_test_run(d, [4] int.[0, 0, 1, 0])[1] == 6;
+  #assert act_test_run(d, [4] int.[2, 2, 2, 2])[1] == 6;
+  #assert act_test_run(d, [4] int.[1, 3, 0, 7])[1] == 6 && act_test_run(d, [4] int.[1, 3, 0, 7])[0] == 1;
+  #assert act_test_run(d, [4] int.[40, 40, 40, 40])[1] == 6 && act_test_run(d, [4] int.[40, 40, 40, 40])[2] == 48;
+  #assert act_test_run(d, [4] int.[1000, 1000, 1000, 1000])[1] == 6;
+  // an advance to an earlier tick hands out nothing again
+  a := action_begin(d, 0, 5, 1, 0, 100, 1, 1);
+  s := action_advance(d, a, 125);
+  #assert s.n == 4 && s.sensing;   // local 25: cancel open/close, window open, impact; the close at 26 is ahead
+  #assert action_advance(d, s.inst, 120).n == 0 && action_advance(d, s.inst, 126).n == 1;
+}
+
+#test "the sensor window, cancels, scaling and sampling" {
+  d := act_test_swing();
+  a := action_begin(d, 0, 5, 1, 0, 100, 1, 1);
+  #assert a.phase == ActionPhase.running && a.cursor == -1;
+  #assert action_advance(d, a, 117).sensing == false;
+  #assert action_advance(d, a, 118).sensing && action_advance(d, a, 125).sensing;
+  #assert !action_advance(d, a, 126).sensing;
+  // cancel inside the cancel window, refused after it
+  c := action_cancel(d, a, 105);
+  #assert c.phase == ActionPhase.cancelled && c.cancelled_at == 105 && action_advance(d, c, 120).n == 0 && !action_advance(d, c, 120).sensing;
+  #assert action_cancel(d, a, 115).phase == ActionPhase.running;
+  // half speed: the impact (local 22) at world tick 144
+  h := action_begin(d, 0, 6, 1, 0, 100, 1, 2);
+  #assert action_local(h, 143) == 21 && action_local(h, 144) == 22;
+  s := action_advance(d, h, 143); #assert s.n == 3;   // cancel open, close, window open
+  s = action_advance(d, s.inst, 144); #assert s.n == 1 && s.events[0].kind == ActionEventKind.impact;
+  // a bad scale or id begins nothing
+  #assert action_begin(d, 0, 6, 1, 0, 100, 0, 1).phase == ActionPhase.idle;
+  #assert action_begin(d, 0, 0, 1, 0, 100, 1, 1).phase == ActionPhase.idle;
+  #assert action_begin(d, 0, 6, 1, 0, 100, 65, 1).phase == ActionPhase.idle;
+  // sampling scrubs without events or changes
+  #assert action_sample(d, a, 124.0) == 0.5 && action_sample(d, a, 99.0) == 0 && action_sample(d, a, 1000.0) == 1;
+  #assert a.cursor == -1;
+  // a finished action is done, senses nothing and hands out nothing more
+  f := action_advance(d, a, 148);
+  #assert f.finished && f.inst.phase == ActionPhase.done && action_advance(d, f.inst, 200).n == 0;
+  #assert action_cancel(d, f.inst, 149).phase == ActionPhase.done;
+}

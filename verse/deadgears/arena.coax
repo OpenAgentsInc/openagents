@@ -16,13 +16,13 @@
 // restored fight moves exactly as the original.
 //   coax/bin/coax test --library verse/deadgears/arena.coax --steps 40000000   (the flow-field check walks ~25M)
 
-#load "../../aethyr/core/points.coax";
-#load "../../aethyr/world/nav/grid.coax";   // the walking grid's fields and steps (Metaverse Engine book chapter 76)
-#load "../../aethyr/ai/stimulus.coax";   // sight through the shared ray query (Metaverse Engine book chapter 75)
+#load "../../metaverse-engine/core/points.coax";
+#load "../../metaverse-engine/world/nav/grid.coax";   // the walking grid's fields and steps (Metaverse Engine book chapter 76)
+#load "../../metaverse-engine/ai/stimulus.coax";   // sight through the shared ray query (Metaverse Engine book chapter 75)
 
 BOXES :: 16;
 Block :: struct { lo: Point; hi: Point; }
-// `solid` holds the same boxes as the Metaverse Engine's colliders (aethyr/physics/query.coax: min x, y, z, max x, y, z).
+// `solid` holds the same boxes as the Metaverse Engine's colliders (metaverse-engine/physics/query.coax: min x, y, z, max x, y, z).
 Arena :: struct { boxes: [BOXES] Block; n: int; solid: [96] f32; }
 
 arena_add :: (a: Arena, low: Point, high: Point) -> Arena {
@@ -233,7 +233,7 @@ Nav :: struct {
 }
 NAV_STEP_BAKES :: 2;   // flows the mutants may bake in one step: each is a search of the whole deck
 
-// The cell holding a point is aethyr/world/nav/grid.coax's. A cell's centre is the module's formula
+// The cell holding a point is metaverse-engine/world/nav/grid.coax's. A cell's centre is the module's formula
 // written out: nav_bake asks it for every cell of the deck, and a NavGrid a call costs too much there.
 nav_cell_x :: (c: int) -> int { return c % NAV_NX; }
 nav_cell_z :: (c: int) -> int { return c / NAV_NX; }
@@ -297,9 +297,9 @@ nav_nearest :: (n: [] Nav, p: Point, r: f32) -> int {
   return best;
 }
 
-// The deck as aethyr/world/nav/grid.coax's grid: the fields, the steps and the next cell are the
+// The deck as metaverse-engine/world/nav/grid.coax's grid: the fields, the steps and the next cell are the
 // module's (Metaverse Engine book chapter 76), the same bit for bit as the private search they replaced
-// (aethyr/tests/nav-deadgears.coax keeps that trace).
+// (metaverse-engine/tests/nav-deadgears.coax keeps that trace).
 nav_grid :: () -> NavGrid { return NavGrid.{nx = NAV_NX, nz = NAV_NZ, cell = f32(NAV_CELL), x0 = f32(NAV_X0), z0 = f32(NAV_Z0)}; }
 nav_step :: (n: [] Nav, c: int, k: int) -> int { return nav_grid_step(nav_grid(), n[0].walk[..], c, k); }
 

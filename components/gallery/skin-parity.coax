@@ -1,5 +1,5 @@
 // The Everglade and Verse skins' colours are the realm HUD's FANTASY and
-// SCIFI tokens (aethyr/ui/hud-style.coax), copied into components/skin/ so
+// SCIFI tokens (metaverse-engine/ui/hud-style.coax), copied into components/skin/ so
 // the component system does not load the engine. This holds the two equal
 // until the HUD draws from the skins (components/spec.md Phase 5, GitHub
 // #13153): change a colour in one place and this fails until the other
@@ -7,7 +7,7 @@
 //   coax/bin/coax test components/gallery/skin-parity.coax --only parity
 
 #load "../skin/all.coax";
-#load "../../aethyr/ui/hud-style.coax";
+#load "../../metaverse-engine/ui/hud-style.coax";
 
 parity_same :: (c: Rgba, h: HudRgba) -> bool { return c.r == h.r && c.g == h.g && c.b == h.b && c.a == h.a; }
 

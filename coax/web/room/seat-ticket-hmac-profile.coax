@@ -1,12 +1,12 @@
 // Seat ticket HMAC fixtures (proto/verse/seat-ticket-hmac-v1.json; #13248): each entry's values written
-// by the one writer (aethyr/session/seat-ticket.coax seat_ticket_hmac_write) give the fixture's exact bytes, and the
+// by the one writer (metaverse-engine/session/seat-ticket.coax seat_ticket_hmac_write) give the fixture's exact bytes, and the
 // room's real reader (coax/web/room/room-ticket.coax tk_check) takes accepted entries with matching fields
 // and refuses refused entries.
 //   coax/web/tool.sh coax/web/room/seat-ticket-hmac-profile.coax proto/verse/seat-ticket-hmac-v1.json
 #import "Basic";
 #run_steps 250000000;
 #load "room-ticket.coax";
-#load "../../../aethyr/session/seat-ticket.coax";
+#load "../../../metaverse-engine/session/seat-ticket.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/json/json.coax";

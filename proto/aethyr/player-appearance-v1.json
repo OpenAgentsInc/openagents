@@ -1,7 +1,7 @@
 {
  "identity": "aethyr.player.appearance.v1",
- "check": "coax/web/tool.sh aethyr/tools/appearance-profile.coax proto/aethyr/player-appearance-v1.json",
- "codec": "aethyr/character/character-appearance.coax",
+ "check": "coax/web/tool.sh metaverse-engine/tools/appearance-profile.coax proto/aethyr/player-appearance-v1.json",
+ "codec": "metaverse-engine/character/character-appearance.coax",
  "doc": "docs/protocol/player-appearance-v1.md",
  "scope": "A player's chosen look, class and level as ASCII text. Kept on the player's device under the key aethyr.player.appearance.v1 (localStorage on the web, the page host's store on iOS) and sent as the profile of a room's hello.",
  "layout": [

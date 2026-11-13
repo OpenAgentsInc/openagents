@@ -78,7 +78,7 @@ E2Mon :: struct {
   orbit: f32; spin: f32 = 1; // where round its quarry a wolf circles, and which way
   escape_t: int;             // the tick its Nimble Escape ends
   down_t: int = -100000;     // the tick it fell
-  hurt_by: [EG_SEAT_WORDS] int;   // the seats that hurt it (a set of seats, aethyr/core/slot-set.coax): its XP's share
+  hurt_by: [EG_SEAT_WORDS] int;   // the seats that hurt it (a set of seats, metaverse-engine/core/slot-set.coax): its XP's share
   hit_t: int = -100000; hit_seat: int = -1;   // when it last struck at a player, and whom (the guard's word)
   ray: int = -1; ray_seat: int = -1; seen: bool;   // this tick's line-of-sight question (rm_eg_sights)
   way_x: f32; way_z: f32;    // the way its last step went (0, 0: it stood): what it faces as it walks

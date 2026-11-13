@@ -11,7 +11,7 @@ and docks. It runs on the `verse/` space modules, which Orbit League and
 Belt 2200 use today
 ([space primitives](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/space.md)),
 and it is the scenario behind
-[Metaverse Engine chapters 39–48](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch039-ephemerides-time-scales-and-frames.md).
+[Metaverse Engine chapters 39–48](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch039-ephemerides-time-scales-and-frames.md).
 This chapter follows one run through each language facility it needs. It is
 a study profile, not flight qualification.
 
@@ -30,7 +30,7 @@ a study profile, not flight qualification.
 1. **The scenario as data.** Cargo mass, tanks, drive, radiator and
    destination, each parameter with an R20 provenance record
    ([chapter 37](ch37-provenance-and-rule-modules.md)).
-2. **Frames.** The states in `aethyr/physics/orbit.coax` and `aethyr/physics/gravity.coax`
+2. **Frames.** The states in `metaverse-engine/physics/orbit.coax` and `metaverse-engine/physics/gravity.coax`
    move onto R12 types ([chapter 29](ch29-units-and-frames.md)). A full state
    transform includes the `ω × r` term, and a position-only transform applied
    to a velocity is refused. Heliocentric positions are f64; an f32 position

@@ -806,13 +806,13 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   #assert shout_baseline(far, 8) == 200;   // apart from the rest: where it was
 }
 
-// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
+// Full native integration scenario: metaverse-engine/tests/check_native_gameplay.py.
 
-// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
+// Full native integration scenario: metaverse-engine/tests/check_native_gameplay.py.
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
 #test "watch: the Priest's Spiritual Weapon is one lit mace by you, its head on its haft's end, nothing drawn as flat glow" #steps 530000000 {
   g: [1] Everglade;

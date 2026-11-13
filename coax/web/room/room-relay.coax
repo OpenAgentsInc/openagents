@@ -1,12 +1,12 @@
-#load "../../../aethyr/core/ids.coax";
-#load "../../../aethyr/net/relay-wire.coax";   // the relay's own frames, the one codec the pages read them with (#13245)
+#load "../../../metaverse-engine/core/ids.coax";
+#load "../../../metaverse-engine/net/relay-wire.coax";   // the relay's own frames, the one codec the pages read them with (#13245)
 // The room server's relay (room-relay): rooms for any game, keyed by the game and a room code,
 // that carry each player's text frames to the others unread. The games on their own paths
 // (room-games.coax) are untouched; a relay room's WebSocket opens at
 //   /api/room/relay/GAME/CODE        GAME and CODE: 1 to RELAY_NAME of [a-z0-9-]
 // and up to rl_game_seats(GAME) players sit in it (16 for everglade, 4 for every other game),
 // the first in seat 0. Seats and counts are decimal numbers. What each hears (the frames' codec is
-// aethyr/net/relay-wire.coax, their profile proto/verse/room-relay-v1.json):
+// metaverse-engine/net/relay-wire.coax, their profile proto/verse/room-relay-v1.json):
 //   y SEAT N T      you are in, at SEAT, with N others; T is the server's wall clock in ms (the first frame)
 //   y SEAT N T G    in an everglade room: G is the seat's generation, one more each time a socket takes it
 //                   (#12792). A closed socket's seat, when its ticket names the player, is held
@@ -242,7 +242,7 @@ rl_take_back :: (v: [] RmServer, r: int, pid: string, owner: int) -> int {
   }
   return seat;
 }
-// ---- one owner per character (#12834; aethyr/session/control.coax)
+// ---- one owner per character (#12834; metaverse-engine/session/control.coax)
 // A seat ticket carries its character's owner generation (room-ticket.coax g; 0 none), which the API
 // issues one higher with each ticket. On this server the newest owns the character: an older ticket
 // is refused (ST_ELSEWHERE), and a newer one ends the older seats, in this room (rl_take_back) and
@@ -271,7 +271,7 @@ rl_owner_newest :: (v: [] RmServer, pid: string) -> int {
   }
   return best;
 }
-// The session contract's fence (aethyr/session/control.coax control_fence) on one character: a
+// The session contract's fence (metaverse-engine/session/control.coax control_fence) on one character: a
 // ticket of owner generation `owner` against the newest this server holds for it. CONTROL_STALE
 // refuses; CONTROL_OK takes it, and its seats of older owners go (rl_owner_drop).
 rl_owner_fence :: (newest: int, owner: int) -> int {

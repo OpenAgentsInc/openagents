@@ -1,0 +1,61 @@
+// Run the real browser scalar adapter against the real Coax/Wasm authority.
+// This is transport-policy ABI evidence, not full host/GPU/audio conformance.
+//   coax/web/tool.sh metaverse-engine/host/check-transport.coax FIXTURE.wasm
+#load "../../coax/web/wasm-chrome.coax";
+
+hc_expect :: (c:[]Cdp,expr:string,want:string)->bool {
+  got:=wc_eval(c,expr);
+  if got!=want {tool_err("host transport differs for ");tool_errln(expr);tool_err("received ");tool_errln(got);tool_errln(cdp_error(c));return false;}
+  return true;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {tool_errln("usage: check-transport FIXTURE.wasm");return 2;}
+  wasm:[16777216]u8;js:[65536]u8;http:[65536]u8;
+  wn:=fs_read(args_at(a[..],0),wasm[..]);jn:=fs_read("coax/web/host-transport.js",js[..]);
+  hn:=fs_read("coax/web/http-requests.js",http[..]);
+  c:[1]Cdp;if wn<0 || jn<0 || hn<0 || !wc_open(c[..]) {tool_errln(cdp_error(c[..]));return 1;}defer {cdp_close(c[..]);}
+  if !wc_file(c[..],"fixture",cast(string)wasm[0..<wn]) || !wc_file(c[..],"adapter",cast(string)js[0..<jn]) || !wc_file(c[..],"http",cast(string)http[0..<hn]) || wc_load(c[..],"fixture",512,"{}",WC_THROW)!="ok" {tool_errln(cdp_error(c[..]));return 1;}
+  if !hc_expect(c[..],"(async()=>{globalThis.H=(await import(URL.createObjectURL(new Blob([W.files.adapter],{type:'text/javascript'})))).makeHostTransport(W.x,W.mem);return !!H})()","true") {return 1;}
+  exprs:=[24]string.[
+    "globalThis.S=Array.from({length:4},()=>H.socketReserve());S.map(o=>o.id).join(',')==='0,1,2,3' && H.socketReserve()===null",
+    "!H.socketSend(S[0]) && S.every((o,i)=>H.socketEvent(o,0,0,128).kind===256+4*i) && S.every(o=>H.socketSend(o))",
+    "H.socketEvent(S[3],1,128,128).bytes===128 && H.socketEvent(S[3],1,129,128).kind===271",
+    "H.socketClose(S[2]) && !H.socketSend(S[2]) && (globalThis.R=H.socketReserve()).id===2 && R.generation===2n && H.socketEvent(S[2],2,0,128)===null",
+    "H.socketEvent(R,0,0,128).kind===264 && H.socketClose(R) && H.socketEvent(R,2,0,128).kind===266 && H.socketEvent(R,2,0,128)===null",
+    "globalThis.Q=Array.from({length:8},()=>H.httpReserve(4,true,20,100,8));Q.every((o,i)=>o.id===i) && H.httpReserve(4,false,0,0,0)===null",
+    "H.httpChunk(Q[3],4) && H.httpChunk(Q[3],4) && !H.httpChunk(Q[3],1)",
+    "globalThis.D=H.httpFinish(Q[3],110,true,true);D.kind===515 && D.failure && D.bytes===2 && H.httpFinish(Q[3],110,true,true)===null",
+    "H.httpCancel(0) && !H.httpCancel(0) && (globalThis.P=H.httpReserve(4,true,20,100,8)).id===0 && P.generation===2n && !H.httpChunk(Q[0],1)",
+    "H.httpChunk(P,8) && (globalThis.D=H.httpFinish(P,119,true,true)).bytes===8 && !D.failure",
+    "(globalThis.P=H.httpReserve(4,true,20,100,8)).id===0 && H.httpChunk(P,8) && H.httpFinish(P,120,true,true).failure",
+    "(globalThis.P=H.httpReserve(4,true,20,100,8)).id===0 && H.httpTimeout(P,119)===null && H.httpTimeout(P,120).failure && H.httpTimeout(P,120)===null",
+    "H.reset() && H.socketEvent(S[0],1,1,128)===null && H.httpFinish(Q[1],110,true,true)===null",
+    "(globalThis.P=H.httpReserve(4,true,1,0,2)).id===0 && P.engine===2n && H.httpChunk(P,2) && !H.httpFinish(P,0,true,true).failure",
+    "H.httpReserve(4,true,0,0,2)===null && H.httpReserve(4,true,2147483648,0,2)===null && H.httpReserve(4,true,1,0,1)===null",
+    "H.httpReserve(6,true,1,0,2)===null && H.httpReserve(0,true,1,0,2)===null",
+    "(globalThis.P=H.httpReserve(4,true,1,0,8)).id===0 && H.httpChunk(P,4) && H.httpFinish(P,0,true,false).failure",
+    "!H.httpCancel(-1) && !H.httpCancel(8) && H.socketReserve().engine===2n",
+    "H.httpPath('/api/x') && !H.httpPath('//foreign/x') && !H.httpPath('/'+String.fromCharCode(92)+'foreign/x') && !H.httpPath('/'+String.fromCharCode(10)+'/foreign/x')",
+    "H.httpPath('/'+'a'.repeat(4095)) && !H.httpPath('/'+'a'.repeat(4096))",
+    "H.localUri('local:/api/room/relay/everglade/local-1') && !H.localUri('local:/api/room/relay/everglade/local-2') && H.localOrigin('ws://127.0.0.1:65535') && !H.localOrigin('ws://localhost:65535')",
+    "H.httpTarget('/.//b?x=é#gone')==='//b?x=%C3%A9' && H.httpTarget('/a?')==='/a?' && H.httpTarget('/a?#x')==='/a?'",
+    "['/ ','/a b','/a#x','/a/../b','/a/%2E/b','/.//b','/a//../b','/a/.','/.','/a%2fb','/a?x=é🙂','/a?','/a?#z','/a?x=  #f','/a?x=  ','/a%','/file:c'].every(s=>{let u=new URL(s,'https://contract.invalid');u.hash='';return H.httpTarget(s)===u.href.slice(u.origin.length)})",
+    "Array.from({length:95},(_,i)=>String.fromCharCode(i+32)).filter(c=>!'/#?'.includes(c)&&c.charCodeAt(0)!==92).every(c=>['/'+c+'x','/?'+c+'x'].every(s=>{let u=new URL(s,'https://contract.invalid');return H.httpTarget(s)===u.href.slice(u.origin.length)}))"
+  ];
+  for expr:exprs {if !hc_expect(c[..],expr,"true") {return 1;}}
+  if !hc_expect(c[..],"(async()=>{H.reset();globalThis.pending=[];globalThis.events=[];globalThis.N=100;globalThis.F=(await import(URL.createObjectURL(new Blob([W.files.http],{type:'text/javascript'})))).makeHttpRequests({policy:()=>H,now:()=>N,setTimer:()=>0,clearTimer:()=>{},origin:'https://contract.invalid',capacity:()=>8,fetch:(url,init)=>new Promise(resolve=>pending.push({url,init,resolve})),emit:(id,text)=>events.push({id,text})});return !!F})()","true") {return 1;}
+  effects:=[10]string.[
+    "F.request('/'+String.fromCharCode(92)+'foreign',null,4,20)===-1 && F.request('/fits',null,4,20)===0",
+    "(async()=>{await new Promise(r=>setTimeout(r,0));pending[0].resolve(new Response('éé'));await new Promise(r=>setTimeout(r,0));return events.length===1 && events[0].text==='200\\néé'})()",
+    "(async()=>{F.request('/overflow',null,4,20);await new Promise(r=>setTimeout(r,0));pending[1].resolve(new Response('ééx'));await new Promise(r=>setTimeout(r,0));return events.length===2 && events[1].text==='0\\n' && pending[1].init.signal.aborted})()",
+    "(async()=>{F.request('/old',null,4,20);await new Promise(r=>setTimeout(r,0));return F.cancel(0)===1 && F.cancel(0)===0 && F.request('/new',null,4,20)===0})()",
+    "(async()=>{await new Promise(r=>setTimeout(r,0));pending[2].resolve(new Response('OLD'));await new Promise(r=>setTimeout(r,0));return events.length===2})()",
+    "(async()=>{pending[3].resolve(new Response('new'));await new Promise(r=>setTimeout(r,0));return events.length===3 && events[2].text==='200\\nnew'})()",
+    "(async()=>{F.request('/deadline',null,4,20);await new Promise(r=>setTimeout(r,0));N=120;pending[4].resolve(new Response('ok'));await new Promise(r=>setTimeout(r,0));return events.length===4 && events[3].text==='0\\n'})()",
+    "(async()=>{F.request('/retire',null,4,20);await new Promise(r=>setTimeout(r,0));F.reset();pending[5].resolve(new Response('OLD'));await new Promise(r=>setTimeout(r,0));return events.length===4 && pending[5].init.signal.aborted})()",
+    "F.request('/x',null,6,20)===-1 && F.request('/x',null,4,0)===-1 && F.cancel(8)===0",
+    "(async()=>{if(F.request('/.//b?x=é#gone',null,4,20)!==0)return false;await new Promise(r=>setTimeout(r,0));return pending[6].url==='https://contract.invalid//b?x=%C3%A9' && F.cancel(0)===1})()"
+  ];
+  for expr:effects {if !hc_expect(c[..],expr,"true") {return 1;}}
+  print("Host transport:24 browser/Wasm ABI and10 HTTP-effect probes passed (headless, muted).\n");return 0;
+}

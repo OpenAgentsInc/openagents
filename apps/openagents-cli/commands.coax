@@ -1,9 +1,9 @@
 #load "../../coax/lib/json/json.coax";
 // Realm policies and catalogue share one source unit: the CLI stays within
 // the existing 128-unit compiler profile. The Forge arithmetic stays shared.
-#load "../../aethyr/forge/edit.coax";
-#load "../../aethyr/forge/spec.coax";   // a realm's spec lines: one reader
-#load "../../aethyr/forge/board.coax";   // the builder's board lines: one reader
+#load "../../metaverse-engine/editor/edit.coax";
+#load "../../metaverse-engine/editor/spec.coax";   // a realm's spec lines: one reader
+#load "../../metaverse-engine/editor/board.coax";   // the builder's board lines: one reader
 #authority;
 
 #test "CLI reply revisions require a complete JSON object or a bounded revision line" {
@@ -215,7 +215,7 @@ cli_plan_board :: (text: string, on: [] bool) -> PlanBoard #effects(all) {
   b: PlanBoard;
   at := 0;
   while true {
-    l := forge_board_line(text, at); at = l.next;   // aethyr/forge/board.coax, the board's one reader
+    l := forge_board_line(text, at); at = l.next;   // metaverse-engine/editor/board.coax, the board's one reader
     if l.kind == BOARD_END { break; }
     if l.kind == BOARD_PLAN && l.line.count > 5 { b.plan = cli_count(forge_board_text(l), 1, 999999999); }
     if b.rows < 0 { continue; }
@@ -363,7 +363,7 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
   next: [1] ForgeDoc; forge_reset(next[..], d[0].rev);
   at := 0;
   while true {
-    l := forge_spec_line(spec, at); at = l.next;   // aethyr/forge/spec.coax, the spec's one reader
+    l := forge_spec_line(spec, at); at = l.next;   // metaverse-engine/editor/spec.coax, the spec's one reader
     if l.kind == SPEC_END { break; }
     if !l.flush { continue; }
     if l.kind == SPEC_SHAPED {

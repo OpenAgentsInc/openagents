@@ -1056,7 +1056,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   (void)state; (void)still;
   if (!realm.dpr) realm_reset(realm_of());
   width = w; height = h; dpr = scale;
-  float frame = dt;   /* the player's clock (aethyr/core/loop.coax) steps it; the rest moves by what it counts */
+  float frame = dt;   /* the player's clock (metaverse-engine/core/loop.coax) steps it; the rest moves by what it counts */
   dt = verse_player_counts(player, frame);
   now += dt;
   if (!opened && !failed && (ready & 15) == 15) open_house();

@@ -1,4 +1,4 @@
-#load "../../../aethyr/core/ids.coax";
+#load "../../../metaverse-engine/core/ids.coax";
 // The room server's part of the instance directory (#12717, spec sections 3.4 and 9). Everglade's
 // instances run on several oa-room services, the shards (oa-room is shard 1, oa-room-2 shard 2, ...),
 // each at most one Cloud Run container, so an instance's world lives in one process. The API keeps

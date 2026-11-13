@@ -1,0 +1,180 @@
+// A sound's measures (#12832): its peak, its loudness as ITU-R BS.1770-4 and EBU R128 define it
+// (K-weighted, in LUFS), its loudest 400 ms, where it really starts and ends, and a waveform's
+// outline; and the gain that brings it to a target loudness under a peak ceiling. Samples are
+// f32 at 48 kHz, interleaved when there are two channels. Audio Lab shows these, and
+// sfx-tool.coax trims and normalises every Everglade sound with them.
+//   coax/bin/coax test metaverse-engine/audio/measure.coax --library
+
+MEAS_RATE :: 48000;
+MEAS_BLOCK :: 19200;        // 400 ms: the momentary window
+MEAS_HOP :: 4800;           // 100 ms: blocks overlap by 75%
+MEAS_ABS_GATE :: -70.0;     // LUFS
+MEAS_REL_GATE :: -10.0;     // LU under the absolute-gated loudness
+MEAS_QUIET :: -200.0;       // what silence measures
+
+Measure :: struct {
+  frames: int; channels: int;
+  peak: f64;                // the largest |sample|, linear
+  peak_db: f64;             // dBFS
+  lufs: f64;                // integrated loudness
+  loudest: f64;             // the loudest 400 ms (momentary max); a sound shorter than that: all of it
+  first: int; last: int;    // frames above the trim threshold: [first, last)
+}
+
+meas_min :: (a: f64, b: f64) -> f64 { return ifx a < b then a else b; }
+meas_max :: (a: f64, b: f64) -> f64 { return ifx a > b then a else b; }
+meas_db :: (linear: f64) -> f64 { return ifx linear <= 0.0000000001 then MEAS_QUIET else 20.0 * log(linear) / log(10.0); }
+meas_linear :: (db: f64) -> f64 { return exp(db / 20.0 * log(10.0)); }
+meas_lufs_of :: (mean_square: f64) -> f64 { return ifx mean_square <= 0.0000000000001 then MEAS_QUIET else -0.691 + 10.0 * log(mean_square) / log(10.0); }
+
+// One biquad, direct form I.
+MeasBq :: struct { b0: f64; b1: f64; b2: f64; a1: f64; a2: f64; x1: f64; x2: f64; y1: f64; y2: f64; }
+meas_bq :: (q: [] MeasBq, x: f64) -> f64 {
+  y := q[0].b0 * x + q[0].b1 * q[0].x1 + q[0].b2 * q[0].x2 - q[0].a1 * q[0].y1 - q[0].a2 * q[0].y2;
+  q[0].x2 = q[0].x1; q[0].x1 = x; q[0].y2 = q[0].y1; q[0].y1 = y;
+  return y;
+}
+// BS.1770's K-weighting at 48 kHz: a high shelf (the head) and then a high-pass (RLB).
+meas_shelf :: () -> MeasBq { return MeasBq.{b0 = 1.53512485958697, b1 = -2.69169618940638, b2 = 1.19839281085285, a1 = -1.69065929318241, a2 = 0.73248077421585}; }
+meas_rlb :: () -> MeasBq { return MeasBq.{b0 = 1.0, b1 = -2.0, b2 = 1.0, a1 = -1.99004745483398, a2 = 0.99007225036621}; }
+
+// The K-weighted squares, summed over the channels, a frame each into sq (frames long).
+meas_weighted :: (x: [] f32, frames: int, channels: int, sq: [] f64) {
+  for c: 0..<channels {
+    s: [1] MeasBq; r: [1] MeasBq;
+    s[0] = meas_shelf(); r[0] = meas_rlb();
+    for i: 0..<frames {
+      y := meas_bq(r[..], meas_bq(s[..], cast(f64) x[i * channels + c]));
+      if c == 0 { sq[i] = y * y; } else { sq[i] += y * y; }
+    }
+  }
+}
+
+// Every measure of x (frames * channels samples). sq is scratch, frames long. Frames whose
+// level is above trim_db (dBFS) bound [first, last).
+meas_measure :: (x: [] f32, frames: int, channels: int, trim_db: f64, sq: [] f64) -> Measure {
+  m := Measure.{frames = frames, channels = channels, lufs = MEAS_QUIET, loudest = MEAS_QUIET, peak_db = MEAS_QUIET};
+  if frames <= 0 || channels < 1 || channels > 2 || x.count < frames * channels || sq.count < frames { return m; }
+  t := meas_linear(trim_db);
+  m.first = frames; m.last = 0;
+  for i: 0..<frames {
+    for c: 0..<channels {
+      v := abs(cast(f64) x[i * channels + c]);
+      if v > m.peak { m.peak = v; }
+      if v > t { if i < m.first { m.first = i; } if i + 1 > m.last { m.last = i + 1; } }
+    }
+  }
+  if m.last <= m.first { m.first = 0; m.last = 0; }
+  m.peak_db = meas_db(m.peak);
+  meas_weighted(x, frames, channels, sq);
+  if frames < MEAS_BLOCK {
+    sum := 0.0; for i: 0..<frames { sum += sq[i]; }
+    m.lufs = meas_lufs_of(sum / f64(frames)); m.loudest = m.lufs;
+    return m;
+  }
+  // the 400 ms blocks, 100 ms apart: their mean squares, then the two gates
+  blocks := (frames - MEAS_BLOCK) / MEAS_HOP + 1;
+  run := 0.0; for i: 0..<MEAS_BLOCK { run += sq[i]; }
+  pass1 := 0.0; n1 := 0;
+  for b: 0..<blocks {
+    if b > 0 { for i: 0..<MEAS_HOP { run += sq[(b - 1) * MEAS_HOP + MEAS_BLOCK + i] - sq[(b - 1) * MEAS_HOP + i]; } }
+    ms := meas_max(run, 0) / f64(MEAS_BLOCK);
+    l := meas_lufs_of(ms);
+    if l > m.loudest { m.loudest = l; }
+    if l > MEAS_ABS_GATE { pass1 += ms; n1 += 1; }
+  }
+  if n1 == 0 { return m; }
+  gate := meas_lufs_of(pass1 / f64(n1)) + MEAS_REL_GATE;
+  run = 0.0; for i: 0..<MEAS_BLOCK { run += sq[i]; }
+  pass2 := 0.0; n2 := 0;
+  for b: 0..<blocks {
+    if b > 0 { for i: 0..<MEAS_HOP { run += sq[(b - 1) * MEAS_HOP + MEAS_BLOCK + i] - sq[(b - 1) * MEAS_HOP + i]; } }
+    ms := meas_max(run, 0) / f64(MEAS_BLOCK);
+    l := meas_lufs_of(ms);
+    if l > MEAS_ABS_GATE && l > gate { pass2 += ms; n2 += 1; }
+  }
+  m.lufs = ifx n2 > 0 then meas_lufs_of(pass2 / f64(n2)) else MEAS_QUIET;
+  return m;
+}
+
+// The gain (dB) that brings the loudest 400 ms to target_lufs without the peak passing ceiling_db.
+meas_gain :: (m: Measure, target_lufs: f64, ceiling_db: f64) -> f64 {
+  if m.loudest <= MEAS_QUIET + 1 { return 0; }
+  g := target_lufs - m.loudest;
+  if m.peak_db + g > ceiling_db { g = ceiling_db - m.peak_db; }
+  return g;
+}
+
+// The waveform's outline: bins of the largest |sample| over the channels, each 0..255.
+meas_outline :: (x: [] f32, frames: int, channels: int, out: [] u8) {
+  n := out.count;
+  if n == 0 { return; }
+  for b: 0..<n {
+    a := frames * b / n; z := frames * (b + 1) / n; if z <= a { z = a + 1; }
+    p := 0.0;
+    for i: a..<z { if i < frames { for c: 0..<channels { v := abs(cast(f64) x[i * channels + c]); if v > p { p = v; } } } }
+    k := cast(int) floor(meas_min(p, 1) * 255 + 0.5);
+    out[b] = cast,trunc(u8) k;
+  }
+}
+
+// x from first to last, gained by gain_db, with a fade of fade_in frames in and fade_out out
+// (no click where the cut is): into out, the frames written.
+meas_cut :: (x: [] f32, channels: int, first: int, last: int, gain_db: f64, fade_in: int, fade_out: int, out: [] f32) -> int {
+  n := last - first;
+  if n <= 0 || out.count < n * channels { return 0; }
+  g := meas_linear(gain_db);
+  for i: 0..<n {
+    f := 1.0;
+    if fade_in > 0 && i < fade_in { f = f64(i) / f64(fade_in); }
+    if fade_out > 0 && n - 1 - i < fade_out { f = meas_min(f, f64(n - 1 - i) / f64(fade_out)); }
+    for c: 0..<channels { out[i * channels + c] = cast(f32) (cast(f64) x[(first + i) * channels + c] * g * f); }
+  }
+  return n;
+}
+
+// ---- Checks ----
+
+// A sine of amp at hz, seconds long, at 48 kHz, into x.
+meas_test_sine :: (x: [] f32, hz: f64, amp: f64, frames: int, channels: int) {
+  for i: 0..<frames { v := amp * sin(2 * 3.14159265358979 * hz * f64(i) / f64(MEAS_RATE)); for c: 0..<channels { x[i * channels + c] = cast(f32) v; } }
+}
+
+#test "a full-scale 1 kHz sine measures -3.01 LUFS and 0 dBFS; two channels of it, +3 LU" #steps 200000000 {
+  // BS.1770's own check: a 0 dBFS 997 Hz sine in one channel reads -3.01 LKFS
+  x: [96000] f32; sq: [96000] f64;
+  meas_test_sine(x[..], 997, 1, 96000, 1);
+  m := meas_measure(x[..], 96000, 1, -60, sq[..]);
+  #assert abs(m.lufs + 3.01) < 0.05 && abs(m.loudest + 3.01) < 0.05 && abs(m.peak_db) < 0.01;
+  y: [96000] f32;
+  meas_test_sine(y[..], 997, 0.5, 48000, 2);
+  s := meas_measure(y[..], 48000, 2, -60, sq[..]);
+  #assert abs(s.lufs - (-3.01 - 6.02 + 3.01)) < 0.05;
+}
+
+#test "the gates: the silence around a tone is gated out (the blocks half on it stay), its loudest 400 ms are its own" #steps 200000000 {
+  x: [144000] f32; sq: [144000] f64;
+  meas_test_sine(x[48000..<96000], 997, 0.1, 48000, 1);   // one second of tone between two of silence
+  m := meas_measure(x[..], 144000, 1, -60, sq[..]);
+  #assert m.lufs < -23.01 && m.lufs > -24.5 && abs(m.loudest - (-3.01 - 20)) < 0.1;
+  #assert m.first > 47990 && m.first < 48010 && m.last > 95990 && m.last < 96010;
+}
+
+#test "the normalising gain meets the target, or the ceiling when the peak would pass it" #steps 200000000 {
+  x: [48000] f32; sq: [48000] f64;
+  meas_test_sine(x[..], 997, 0.1, 48000, 1);
+  m := meas_measure(x[..], 48000, 1, -60, sq[..]);
+  #assert abs(meas_gain(m, -16, -1) - (-16 - m.loudest)) < 0.001;     // 7 dB up, under the ceiling
+  #assert abs(meas_gain(m, 0, -1) - (-1 - m.peak_db)) < 0.001;        // the ceiling holds
+  // a cut is gained and faded: no click at either end
+  out: [48000] f32;
+  n := meas_cut(x[..], 1, 1000, 11000, 6.0206, 480, 480, out[..]);
+  #assert n == 10000 && out[0] == 0 && out[n - 1] == 0 && abs(abs(cast(f64) out[5000]) - abs(cast(f64) x[6000]) * 2) < 0.0001;
+}
+
+#test "the outline is each bin's peak" {
+  x := [8] f32.[0, 0.5, -1, 0.25, 0, 0, 0.1, -0.2];
+  o: [4] u8;
+  meas_outline(x[..], 8, 1, o[..]);
+  #assert o[0] == 128 && o[1] == 255 && o[2] == 0 && o[3] == 51;
+}

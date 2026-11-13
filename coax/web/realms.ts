@@ -27,7 +27,7 @@ let renderProfiles: Map<string, number> | undefined
 export function renderProfile(slug: string): number {
   if (!renderProfiles) {
     const root = join(import.meta.dir, "../..")
-    const rows = execFileSync(join(root, "coax/web/tool.sh"), ["aethyr/render/build.coax", "--profile-table"], { cwd: root, encoding: "utf8" }).trim().split("\n")
+    const rows = execFileSync(join(root, "coax/web/tool.sh"), ["metaverse-engine/render/build.coax", "--profile-table"], { cwd: root, encoding: "utf8" }).trim().split("\n")
     renderProfiles = new Map(rows.map((row) => {
       const match = /^(\d+) ([a-z0-9-]+)$/.exec(row)
       if (!match) throw new Error("invalid compiled renderer profile row")
@@ -46,7 +46,7 @@ export function renderAttributes(slug: string, module: string): string {
   const cached = renderAttributeRows.get(key)
   if (cached !== undefined) return cached
   const root = join(import.meta.dir, "../..")
-  const row = execFileSync(join(root, "coax/web/tool.sh"), ["aethyr/render/page-render.coax", slug, module], { cwd: root, encoding: "utf8" })
+  const row = execFileSync(join(root, "coax/web/tool.sh"), ["metaverse-engine/render/page-render.coax", slug, module], { cwd: root, encoding: "utf8" })
   renderAttributeRows.set(key, row)
   return row
 }
@@ -135,7 +135,7 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
     }
     if (typeof r.clock !== "string" || !CLOCK.test(r.clock)) throw new Error(`realms.json: ${r.slug}: clock is cycle, real or fixed:T (T 0 to 1), not ${JSON.stringify(r.clock)}`)
     if (styleBlock && [r.style, ...(r.zones ?? []).map((z) => z.style)].some((st) => st === "painterly" || st === "photoreal" || st === "flat" || st === "anime")) {
-      // the shader the page loads: the one its row names (aethyr/render/page-render.coax data-wgsl), else its module's
+      // the shader the page loads: the one its row names (metaverse-engine/render/page-render.coax data-wgsl), else its module's
       const named = /data-wgsl="\/([^"]+)"/.exec(renderAttributes(r.slug, r.module))?.[1]
       const wgsl = join(site, named ?? `${r.module}.wgsl`)
       if (!existsSync(wgsl) || !styled(readFileSync(wgsl, "utf8"))) throw new Error(`realms.json: ${r.slug} is drawn ${r.style === "lowpoly" ? "partly painterly or photoreal" : r.style} but ${r.module}.wgsl has no style block (coax/web/wgsl-block.coax verse/style.coax ... --into it)`)

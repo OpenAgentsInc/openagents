@@ -1,0 +1,235 @@
+// The Metaverse Engine's mesh cull (GitHub #13168): one big static mesh (a glade's whole environment, a zone's
+// world) drawn as the runs of its triangles a view can see, not as one draw the GPU runs every
+// vertex of. The mesh is cut into runs of MESH_CULL_TRIS triangles in its own index order, and
+// each run gets a box. A pack's builder writes its meshes' triangles object by object, so a run is
+// a few neighbouring pieces and its box is small.
+//
+// The boxes are made at load time by the host, which holds the pack's vertex and index bytes (a
+// module never sees them), so no pack changes. The module asks through its optional face export
+// coaxial_mesh_bounds_v1(state): the address of a MeshCull (0: nothing asked). Its `ask` words:
+//   MC_STATE   1 asked; the host writes 2 when the boxes are in, 3 when it refuses (the range is
+//              outside the pack, or more runs than MC_CAP). A host's switch (host.js
+//              coaxial.meshCull(false), the Mac's AETHYR_MESH_CULL=0) sets 4: answered, drawn whole.
+//   MC_FIRST, MC_COUNT   the mesh's first index and index count in the pack's indices
+//   MC_WORD, MC_STRIDE   its vertices' first word in the pack's vertices, and words a vertex (the
+//                        position is the vertex's first three words, f32)
+//   MC_TRIS, MC_CAP      triangles a run, and the most runs `box` holds
+//   MC_KEEP_AT, MC_KEEP_MASK, MC_KEEP_VALUE   a run with a vertex whose word KEEP_AT, masked, is
+//                        KEEP_VALUE is always drawn (a sky drawn in screen space); KEEP_AT
+//                        0xffffffff: none
+//   MC_RUNS    the runs the host wrote
+// Then `box`: MC_BOX_FLOATS a run, its lowest x y z, 1 when it is always drawn, its highest x y z.
+// Every frame, mesh_cull_spans gives the index spans of the runs the view may see, joined into at
+// most a set number of draws, nearest first (what stands in front is drawn before what it hides,
+// so the depth test drops the hidden pixels before they are shaded). It only ever keeps too much:
+// a run is dropped when its whole box, widened by `pad` metres, is behind the eye or outside one
+// of the picture's four sides. The picture is the same as drawing the whole mesh.
+//   coax/bin/coax test metaverse-engine/render/mesh-cull.coax
+
+#module "aethyr.render.meshcull";
+
+MESH_CULL_TRIS :: 1024;     // triangles a run
+MESH_CULL_RUNS :: 4096;     // the most runs a MeshCull holds: 4.2 million triangles
+MC_BOX_FLOATS :: 8;
+MC_STATE :: 0; MC_FIRST :: 1; MC_COUNT :: 2; MC_WORD :: 3; MC_STRIDE :: 4; MC_TRIS :: 5; MC_CAP :: 6;
+MC_KEEP_AT :: 7; MC_KEEP_MASK :: 8; MC_KEEP_VALUE :: 9; MC_RUNS :: 10; MC_ASK_WORDS :: 12;
+MC_NONE :: 0; MC_ASKED :: 1; MC_ANSWERED :: 2; MC_REFUSED :: 3; MC_WHOLE :: 4;
+MC_NO_KEEP :: 0xffffffff;
+
+MeshCull :: struct { ask: [MC_ASK_WORDS] u32; box: [MESH_CULL_RUNS * MC_BOX_FLOATS] f32; }
+
+// The view: the eye, its forward, right and up unit vectors, and the picture's half width and half
+// height over its focal length (the larger side of the centre, for an off-centre one).
+MeshView :: struct { ex: f32; ey: f32; ez: f32; fx: f32; fy: f32; fz: f32; rx: f32; ry: f32; rz: f32; ux: f32; uy: f32; uz: f32; hx: f32; hy: f32; }
+
+// A view from a camera block of 16 floats as the Metaverse Engine's realms write it (u[16..<32]: the eye and the
+// focal length, forward and the centre's x, right and the centre's y, up), and the picture's size.
+// ok false for a block with no focal length or picture.
+MeshViewOk :: struct { ok: bool; v: MeshView; }
+mesh_cull_view :: (c: [] f32, w: f32, h: f32) -> MeshViewOk {
+  if c.count < 16 || !(c[3] > 1) || !(w > 1) || !(h > 1) { return MeshViewOk.{}; }
+  cx := c[7]; cy := c[11];
+  ax := ifx cx > w - cx then cx else w - cx; ay := ifx cy > h - cy then cy else h - cy;
+  v := MeshView.{ex = c[0], ey = c[1], ez = c[2], fx = c[4], fy = c[5], fz = c[6], rx = c[8], ry = c[9], rz = c[10], ux = c[12], uy = c[13], uz = c[14], hx = ax / c[3], hy = ay / c[3]};
+  return MeshViewOk.{ok = true, v = v};
+}
+
+// Asks the host for a mesh's boxes (a new pack's catalog asks again).
+mesh_cull_want :: (m: [] MeshCull, first: int, count: int, word: int, stride: int, keep_at: u32, keep_mask: u32, keep_value: u32) {
+  for i: 0..<MC_ASK_WORDS { m[0].ask[i] = 0; }
+  if count < 3 || first < 0 || word < 0 || stride < 3 { return; }
+  m[0].ask[MC_FIRST] = cast(u32) first; m[0].ask[MC_COUNT] = cast(u32) count; m[0].ask[MC_WORD] = cast(u32) word; m[0].ask[MC_STRIDE] = cast(u32) stride;
+  m[0].ask[MC_TRIS] = cast(u32) MESH_CULL_TRIS; m[0].ask[MC_CAP] = cast(u32) MESH_CULL_RUNS;
+  m[0].ask[MC_KEEP_AT] = keep_at; m[0].ask[MC_KEEP_MASK] = keep_mask; m[0].ask[MC_KEEP_VALUE] = keep_value;
+  m[0].ask[MC_STATE] = cast(u32) MC_ASKED;
+}
+// Whether the host's boxes are in and the mesh's runs are what was asked: every run of the mesh has one.
+// (Every procedure takes a MeshCull by its view: a copy is 128 KB.)
+mesh_cull_ready :: (m: [] MeshCull) -> bool {
+  if m[0].ask[MC_STATE] != cast(u32) MC_ANSWERED { return false; }
+  tri := cast(int) m[0].ask[MC_TRIS]; count := cast(int) m[0].ask[MC_COUNT]; runs := cast(int) m[0].ask[MC_RUNS];
+  if tri <= 0 || runs <= 0 || runs > MESH_CULL_RUNS { return false; }
+  return runs == (count + tri * 3 - 1) / (tri * 3);
+}
+mesh_cull_abs :: (v: f32) -> f32 { if v < 0 { return -v; } return v; }
+// Whether the view may see anything in the box low..high widened by pad.
+mesh_cull_seen :: (v: MeshView, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, pad: f32) -> bool {
+  if !(x1 >= x0) || !(y1 >= y0) || !(z1 >= z0) { return true; }   // no box: drawn
+  cx := (x0 + x1) * 0.5 - v.ex; cy := (y0 + y1) * 0.5 - v.ey; cz := (z0 + z1) * 0.5 - v.ez;
+  hx := (x1 - x0) * 0.5 + pad; hy := (y1 - y0) * 0.5 + pad; hz := (z1 - z0) * 0.5 + pad;
+  // each side's plane through the eye, its inside positive: the most the box reaches past it
+  ahead := cx * v.fx + cy * v.fy + cz * v.fz;
+  if ahead + hx * mesh_cull_abs(v.fx) + hy * mesh_cull_abs(v.fy) + hz * mesh_cull_abs(v.fz) < 0 { return false; }
+  for k: 0..<4 {
+    s := ifx k % 2 == 0 then 1.0f32 else -1.0f32;
+    nx := 0.0f32; ny := 0.0f32; nz := 0.0f32;
+    if k < 2 { nx = v.fx * v.hx - s * v.rx; ny = v.fy * v.hx - s * v.ry; nz = v.fz * v.hx - s * v.rz; }
+    else { nx = v.fx * v.hy - s * v.ux; ny = v.fy * v.hy - s * v.uy; nz = v.fz * v.hy - s * v.uz; }
+    if cx * nx + cy * ny + cz * nz + hx * mesh_cull_abs(nx) + hy * mesh_cull_abs(ny) + hz * mesh_cull_abs(nz) < 0 { return false; }
+  }
+  return true;
+}
+// Whether run r may be seen: an always-drawn run is.
+mesh_cull_run_seen :: (m: [] MeshCull, v: MeshView, r: int, pad: f32) -> bool {
+  b := r * MC_BOX_FLOATS;
+  if m[0].box[b + 3] > 0.5 { return true; }
+  return mesh_cull_seen(v, m[0].box[b], m[0].box[b + 1], m[0].box[b + 2], m[0].box[b + 4], m[0].box[b + 5], m[0].box[b + 6], pad);
+}
+// The spans to draw: each two numbers in `spans`, its first index and index count. Seen runs next to
+// each other make one span; past `most` spans the shortest gaps between them are drawn too, so there
+// are at most `most`. Nearest first. Returns the spans, 0 when nothing is in view, and -1 when the
+// boxes aren't in (the caller draws the whole mesh).
+mesh_cull_spans :: (m: [] MeshCull, v: MeshView, pad: f32, spans: [] u32, most: int) -> int {
+  if !mesh_cull_ready(m) || most < 1 || spans.count < 2 { return -1; }
+  cap := ifx most * 2 > spans.count then spans.count / 2 else most;
+  runs := cast(int) m[0].ask[MC_RUNS]; tri3 := cast(int) m[0].ask[MC_TRIS] * 3;
+  first := cast(int) m[0].ask[MC_FIRST]; count := cast(int) m[0].ask[MC_COUNT];
+  seen: [MESH_CULL_RUNS] bool; any := 0;
+  for r: 0..<runs { seen[r] = mesh_cull_run_seen(m, v, r, pad); if seen[r] { any += 1; } }
+  if any == 0 { return 0; }
+  // the shortest gap that still leaves at most cap spans: a gap of g runs or fewer is drawn
+  g := 0; lo := 0; hi := runs;
+  while lo < hi { mid := (lo + hi) / 2; if mesh_cull_count(seen[0..<runs], mid) <= cap { hi = mid; } else { lo = mid + 1; } }
+  g = lo;
+  n := 0; open := -1; last := -1;
+  for r: 0..<runs + 1 {
+    if r < runs && seen[r] {
+      if open >= 0 && r - last - 1 > g { n = mesh_cull_put(spans, n, open, last, first, count, tri3); open = -1; }
+      if open < 0 { open = r; }
+      last = r;
+    }
+  }
+  if open >= 0 { n = mesh_cull_put(spans, n, open, last, first, count, tri3); }
+  // nearest first, by the nearest box centre in each span
+  far: [256] f32;
+  if n <= 256 {
+    for k: 0..<n {
+      a := (cast(int) spans[k * 2] - first) / tri3; e := a + (cast(int) spans[k * 2 + 1] + tri3 - 1) / tri3; best := 1.0e30f32;
+      for r: a..<e { if r >= runs || !seen[r] { continue; } b := r * MC_BOX_FLOATS;
+        dx := (m[0].box[b] + m[0].box[b + 4]) * 0.5 - v.ex; dy := (m[0].box[b + 1] + m[0].box[b + 5]) * 0.5 - v.ey; dz := (m[0].box[b + 2] + m[0].box[b + 6]) * 0.5 - v.ez;
+        d := dx * dx + dy * dy + dz * dz; if m[0].box[b + 3] > 0.5 { d = 1.0e29f32; } if d < best { best = d; } }
+      far[k] = best;
+    }
+    for k: 1..<n { d := far[k]; s0 := spans[k * 2]; s1 := spans[k * 2 + 1]; j := k;
+      while j > 0 && far[j - 1] > d { far[j] = far[j - 1]; spans[j * 2] = spans[j * 2 - 2]; spans[j * 2 + 1] = spans[j * 2 - 1]; j -= 1; }
+      far[j] = d; spans[j * 2] = s0; spans[j * 2 + 1] = s1; }
+  }
+  return n;
+}
+// The spans the seen runs make when gaps of g runs or fewer are joined.
+mesh_cull_count :: (seen: [] bool, g: int) -> int {
+  n := 0; last := -1;
+  for r: 0..<seen.count { if seen[r] { if last < 0 || r - last - 1 > g { n += 1; } last = r; } }
+  return n;
+}
+mesh_cull_put :: (spans: [] u32, n: int, a: int, e: int, first: int, count: int, tri3: int) -> int {
+  s := a * tri3; t := (e + 1) * tri3; if t > count { t = count; }
+  spans[n * 2] = cast(u32) (first + s); spans[n * 2 + 1] = cast(u32) (t - s);
+  return n + 1;
+}
+
+// ---- checks
+
+// What a host does (host.js meshBounds, PageHost.m meshBounds): the boxes of a mesh's runs.
+mesh_cull_answer :: (m: [] MeshCull, vertices: [] f32, indices: [] u32) {
+  a := m[0].ask; tri3 := cast(int) a[MC_TRIS] * 3; count := cast(int) a[MC_COUNT]; runs := (count + tri3 - 1) / tri3;
+  if runs > cast(int) a[MC_CAP] { m[0].ask[MC_STATE] = cast(u32) MC_REFUSED; return; }
+  for r: 0..<runs {
+    b := r * MC_BOX_FLOATS; m[0].box[b] = 1.0e30; m[0].box[b + 1] = 1.0e30; m[0].box[b + 2] = 1.0e30; m[0].box[b + 3] = 0;
+    m[0].box[b + 4] = -1.0e30; m[0].box[b + 5] = -1.0e30; m[0].box[b + 6] = -1.0e30;
+    e := (r + 1) * tri3; if e > count { e = count; }
+    for i: r * tri3..<e {
+      w := cast(int) a[MC_WORD] + cast(int) indices[cast(int) a[MC_FIRST] + i] * cast(int) a[MC_STRIDE];
+      for k: 0..<3 { p := vertices[w + k]; if p < m[0].box[b + k] { m[0].box[b + k] = p; } if p > m[0].box[b + 4 + k] { m[0].box[b + 4 + k] = p; } }
+      if a[MC_KEEP_AT] != MC_NO_KEEP && (cast(u32) vertices[w + cast(int) a[MC_KEEP_AT]] & a[MC_KEEP_MASK]) == a[MC_KEEP_VALUE] { m[0].box[b + 3] = 1; }
+    }
+  }
+  m[0].ask[MC_RUNS] = cast(u32) runs; m[0].ask[MC_STATE] = cast(u32) MC_ANSWERED;
+}
+// A camera block looking along yaw (0: -z) and pitch from (ex, ey, ez), the picture w by h with
+// its centre's y at cy, focal length f.
+mesh_cull_camera :: (c: [] f32, ex: f32, ey: f32, ez: f32, yaw: f32, pitch: f32, w: f32, h: f32, cy: f32, f: f32) {
+  cp := cos(pitch); sp := sin(pitch); sx := sin(yaw); cz := cos(yaw);
+  c[0] = ex; c[1] = ey; c[2] = ez; c[3] = f; c[4] = -sx * cp; c[5] = -sp; c[6] = -cz * cp; c[7] = w * 0.5;
+  c[8] = cz; c[9] = 0; c[10] = -sx; c[11] = cy; c[12] = -sx * sp; c[13] = cp; c[14] = -cz * sp; c[15] = 0;
+}
+// Whether the point is in the picture: ahead of the eye and inside its four sides.
+mesh_cull_in_view :: (v: MeshView, x: f32, y: f32, z: f32) -> bool {
+  dx := x - v.ex; dy := y - v.ey; dz := z - v.ez;
+  ahead := dx * v.fx + dy * v.fy + dz * v.fz;
+  if ahead <= 0.01 { return false; }
+  return mesh_cull_abs(dx * v.rx + dy * v.ry + dz * v.rz) <= ahead * v.hx && mesh_cull_abs(dx * v.ux + dy * v.uy + dz * v.uz) <= ahead * v.hy;
+}
+MC_TEST_TRIS :: 6000;
+// A field of small triangles in clumps over 200 m, a clump's triangles one after another, as a
+// pack's builder writes them; the last clump a sky's, its vertices marked (word 3 = 0).
+mesh_cull_field :: (vertices: [] f32, indices: [] u32) {
+  for t: 0..<MC_TEST_TRIS {
+    clump := t / 300; cx := f32((clump * 37) % 20) * 10 - 100; cz := f32((clump * 13) % 20) * 10 - 100;
+    for k: 0..<3 {
+      i := t * 3 + k; w := i * 4;
+      vertices[w] = cx + f32((t * 7 + k * 3) % 9) * 0.5; vertices[w + 1] = f32((t + k) % 5) * 0.8; vertices[w + 2] = cz + f32((t * 5 + k) % 9) * 0.5;
+      vertices[w + 3] = ifx clump == MC_TEST_TRIS / 300 - 1 then 0.0f32 else 1.0f32;
+      indices[i] = cast(u32) i;
+    }
+  }
+}
+#test "mesh cull: every triangle with a corner in view is in a span, and most of a field out of view is left out" #steps 900000000 {
+  vertices: [MC_TEST_TRIS * 3 * 4] f32; indices: [MC_TEST_TRIS * 3] u32; mesh_cull_field(vertices[..], indices[..]);
+  m: [1] MeshCull; mesh_cull_want(m[..], 0, MC_TEST_TRIS * 3, 0, 4, 3, 0xffffffff, 0);
+  // no answer yet: draw it whole
+  c: [16] f32; mesh_cull_camera(c[..], 0, 2, 0, 0, 0, 1280, 720, 345, 640); spans: [64] u32;
+  vo := mesh_cull_view(c[..], 1280, 720); #assert vo.ok && mesh_cull_spans(m[..], vo.v, 0.1, spans[..], 32) == -1;
+  mesh_cull_answer(m[..], vertices[..], indices[..]); #assert mesh_cull_ready(m[..]) && m[0].ask[MC_RUNS] == 6;
+  for k: 0..<16 {
+    yaw := f32(k) * 0.79 - 3; pitch := f32(k % 5) * 0.25 - 0.5; ex := f32(k) * 9 - 70; ez := 40 - f32(k) * 6;
+    mesh_cull_camera(c[..], ex, 3, ez, yaw, pitch, 1280, 720, 345, 640); v := mesh_cull_view(c[..], 1280, 720).v;
+    for most: 1..<5 {
+      n := mesh_cull_spans(m[..], v, 0.1, spans[..], most); #assert n >= 1 && n <= most;
+      drawn: [MC_TEST_TRIS] bool;
+      for i: 0..<n { s := cast(int) spans[i * 2]; e := s + cast(int) spans[i * 2 + 1]; #assert s % 3 == 0 && e <= MC_TEST_TRIS * 3; for j: s / 3..<e / 3 { drawn[j] = true; } }
+      for t: 0..<MC_TEST_TRIS { for q: 0..<3 { w := (t * 3 + q) * 4; if mesh_cull_in_view(v, vertices[w], vertices[w + 1], vertices[w + 2]) { #assert drawn[t]; } } }
+      // the sky's run is always drawn
+      #assert drawn[MC_TEST_TRIS - 1];
+    }
+  }
+  // looking away from the field, only the sky's run is left
+  mesh_cull_camera(c[..], 0, 3, 300, 3.14159, 0, 1280, 720, 345, 640); v := mesh_cull_view(c[..], 1280, 720).v;
+  n := mesh_cull_spans(m[..], v, 0.1, spans[..], 8); #assert n == 1 && spans[0] == cast(u32) (5 * MESH_CULL_TRIS * 3) && cast(int) spans[1] == MC_TEST_TRIS * 3 - 5 * MESH_CULL_TRIS * 3;
+  // a host that switched it off, or refused, draws it whole
+  m[0].ask[MC_STATE] = cast(u32) MC_WHOLE; #assert mesh_cull_spans(m[..], v, 0.1, spans[..], 8) == -1;
+  m[0].ask[MC_STATE] = cast(u32) MC_REFUSED; #assert mesh_cull_spans(m[..], v, 0.1, spans[..], 8) == -1;
+}
+#test "mesh cull: a box is seen when any of it is in the picture, and not when it is wholly behind or beside it" {
+  c: [16] f32; mesh_cull_camera(c[..], 0, 0, 0, 0, 0, 1000, 600, 300, 500); v := mesh_cull_view(c[..], 1000, 600).v;
+  #assert v.hx == 1 && v.hy > 0.59 && v.hy < 0.61;
+  #assert mesh_cull_seen(v, -1, -1, -11, 1, 1, -9, 0);          // ahead
+  #assert !mesh_cull_seen(v, -1, -1, 9, 1, 1, 11, 0);           // behind
+  #assert mesh_cull_seen(v, -1, -1, -1, 1, 1, 1, 0);            // round the eye
+  #assert !mesh_cull_seen(v, 12, -1, -11, 14, 1, -9, 0);        // right of the picture (x/z past 1)
+  #assert mesh_cull_seen(v, 10.5, -1, -11, 14, 1, -9, 0);       // its edge in it
+  #assert !mesh_cull_seen(v, -1, 8, -11, 1, 9, -9, 0) && mesh_cull_seen(v, -1, 5, -11, 1, 9, -9, 0);   // above, and reaching in
+  #assert mesh_cull_seen(v, 12, -1, -11, 14, 1, -9, 2.5);       // a pad brings it in
+  #assert mesh_cull_seen(v, 1, 1, 1, 0, 0, 0, 0);               // no box: drawn
+  #assert !mesh_cull_view(c[0..<8], 1000, 600).ok && !mesh_cull_view(c[..], 0, 600).ok;
+}

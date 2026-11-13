@@ -85,6 +85,6 @@ location as library code on those profiles.
 - R12 state types ([chapter 29](ch29-units-and-frames.md)) and R14 solver
   results ([chapter 31](ch31-bounded-control.md)).
 - Used by Metaverse Engine chapters
-  [18](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch018-rigid-bodies-and-time-steps.md),
-  [40](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch040-propagate-with-a-stated-error.md)
-  and [46](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch046-time-warp-that-stops-for-every-event.md).
+  [18](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch018-rigid-bodies-and-time-steps.md),
+  [40](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch040-propagate-with-a-stated-error.md)
+  and [46](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch046-time-warp-that-stops-for-every-event.md).

@@ -14,8 +14,8 @@
 //   coax/bin/coax test verse/icecream/play.coax --library --steps 4000000000
 #load "camera.coax";
 #load "trace-text.coax";
-#load "../../aethyr/core/loop.coax";   // the fixed steps: the Metaverse Engine's one clock (aethyr/book ch001)
-#load "../../aethyr/core/input.coax";  // keys and the thumb to one Intent (aethyr/book ch004)
+#load "../../metaverse-engine/core/loop.coax";   // the fixed steps: the Metaverse Engine's one clock (metaverse-engine/book ch001)
+#load "../../metaverse-engine/core/input.coax";  // keys and the thumb to one Intent (metaverse-engine/book ch004)
 
 // The keys the host sends (coax/web/host.js KEYS): a code point, or a named key.
 PK_ESCAPE :: -1; PK_ENTER :: -2; PK_LEFT :: -4; PK_RIGHT :: -5; PK_UP :: -6; PK_DOWN :: -7; PK_SHIFT :: -13; PK_CONTROL :: -14;
@@ -32,7 +32,7 @@ MAX_PARTICLES :: 120;
 TRACE_CAP :: 3000000;   // the page's trace buffer (icecream-face.c), attached as Play.trace
 TEST_TRACE :: 65536;    // a check's: a Play the checks build stays under the compile-time storage cap
 STEP :: 0.0333333333f32;
-ICE_STEP_NS :: 33333333;      // the same step on the clock (aethyr/core/loop.coax)
+ICE_STEP_NS :: 33333333;      // the same step on the clock (metaverse-engine/core/loop.coax)
 ICE_FRAME_NS :: 100000000;    // the longest frame that counts: 0.1 s
 ICE_MAX_STEPS :: 4;           // the rules steps one frame may run
 
@@ -78,7 +78,7 @@ Play :: struct {
   touch: bool;
   camera: Camera;
   walls: [1] HouseBoxes;   // what the camera bumps (camera.coax)
-  follow: Follow;          // the camera, stepped with the rules (aethyr/cam/follow.coax)
+  follow: Follow;          // the camera, stepped with the rules (metaverse-engine/cam/follow.coax)
   held: u32; taps: u32; click: bool; fire: bool;
   select: s8 = -1;
   sprint_toggle: bool; sprint_held: bool; touch_jump: bool; touch_fire: bool; touch_use: bool;
@@ -96,7 +96,7 @@ Play :: struct {
   best: [3] f32; new_best: bool;
   toast: Toast; toast_n: u32; toast_count: u32;
   particles: [MAX_PARTICLES] Particle; particle_n: int;
-  steps: FrameClock;    // the rules steps (aethyr/core/loop.coax): 1/30 s, at most 4 a frame
+  steps: FrameClock;    // the rules steps (metaverse-engine/core/loop.coax): 1/30 s, at most 4 a frame
   stepped: u64;
   bots: [1] Bot;
   // the round's trace: attached by the face (TRACE_CAP bytes) or a check (TEST_TRACE)
@@ -507,7 +507,7 @@ ice_play_pointer :: (p: [] Play, g: [] Game, x: f32, y: f32, phase: int, kind: i
 axis_of_keys :: (plus: bool, minus: bool) -> f32 { return (ifx plus then 1.0f32 else 0.0f32) - (ifx minus then 1.0f32 else 0.0f32); }
 play_input :: (p: [] Play, g: [] Game) -> Input {
   if p[0].options.bot { return bot_input(g, p[0].bots[..]); }
-  // The keys and the thumb become one Intent by the Metaverse Engine's rules (aethyr/core/input.coax): a stick
+  // The keys and the thumb become one Intent by the Metaverse Engine's rules (metaverse-engine/core/input.coax): a stick
   // past the dead zone decides, else the keys; a number that isn't one is no move. Sprint,
   // jump, fire and use stay this realm's own controls, taken once a step (taps).
   mv := input_keys(axis_of_keys(holding(p, H_D | H_RIGHT), holding(p, H_A | H_LEFT)),
@@ -797,7 +797,7 @@ shown_camera :: (p: [] Play, g: [] Game) -> Camera {
   if p[0].phase == Phase.title { camera.yaw = p[0].time * 0.15; camera.zoom = 6; }
   return camera;
 }
-// The camera's step, after the rules' (aethyr/cam/follow.coax through camera.coax cam_track).
+// The camera's step, after the rules' (metaverse-engine/cam/follow.coax through camera.coax cam_track).
 camera_step :: (p: [] Play, g: [] Game, dt: f32) {
   pl := g[0].player;
   p[0].follow = cam_track(p[0].follow, shown_camera(p, g), pl.pos, pl.height, house_colliders(p[0].walls[..]), dt);
@@ -824,7 +824,7 @@ view_now :: (p: [] Play, g: [] Game) -> View {
   return view;
 }
 
-// The seconds a frame's time counts for on the Metaverse Engine's clock (aethyr/core/loop.coax): refused below zero or
+// The seconds a frame's time counts for on the Metaverse Engine's clock (metaverse-engine/core/loop.coax): refused below zero or
 // past a number, at most 0.1 s.
 ice_pace :: () -> FrameClock {
   c: FrameClock;

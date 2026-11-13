@@ -1,0 +1,851 @@
+// A large world in cells, streamed by interest within stated budgets (GitHub #12847, book
+// chapter 38). The first supported profile is a flat walking realm: square cells CELL_SIZE metres
+// on a side keyed by integer (cx, cz), each with a content digest in the world's manifest. The
+// stream controller runs once per fixed step on the player's position and gives each cell a level
+// by ring: absent, resident (loaded, asleep), simulate (its entities step) and draw (simulated and
+// drawn), with CELL_HYSTERESIS metres before a cell drops a level, so walking a ring's edge does not
+// thrash. It asks for loads nearest first, at most CELL_LOADS at once and CELL_RESIDENT resident,
+// and refuses (and counts) what the budget can't take; a refused cell is asked again next step.
+//
+// A load finishes outside the step and comes back as an external event (metaverse-engine/core/replay.coax's
+// envelope, REPLAY_NETWORK from the loader): cell_complete admits it at the next step boundary
+// only when it is the cell's current request (a cell unloaded and asked again refuses the old
+// answer), the digest is the manifest's, and the cell is still wanted. A failed load returns the
+// cell to absent, to be asked again. A cell's level rises to simulate only once its content is
+// resident: content that is late keeps the cell asleep, and its entities hold their saved state
+// rather than step without their ground. Authoritative state is not content: it lives in the
+// cell's store, not in the pack.
+//
+// Entities keep their persistent ids (metaverse-engine/core/entity.coax) and state across unload and reload:
+// cell_sleep saves a cell's entities into its store when it leaves simulate, and cell_wake gives
+// them back, bit for bit. An entity belongs to the cell its position is in.
+//
+// Positions are f64 world metres. One floating origin (CellOrigin) converts them to f32 for
+// rendering, physics and queries alike, rebased to a cell corner when the player moves more
+// than a cell from it, so far positions keep millimetre precision.
+//
+// Deterministic scope: a replay with the same recorded completions steps bit for bit. Different
+// live load timings make different worlds (a cell wakes later); each is replayable.
+//
+// At a cell edge: a walker may step into a point only where the ground's cell simulates
+// (cell_may_enter), so nobody walks onto content that isn't there; it waits at the edge until the
+// cell's load is admitted. An awake entity whose step takes it into another cell belongs to that
+// cell from then on (cell_carry): it stays awake when that cell simulates and sleeps in its store
+// when it doesn't. A world's stores are saved and restored as words (cell_save, cell_restore):
+// the levels are not saved, so a restored world asks for its cells again. Native/browser frame
+// budgets under real loads are not part of this file.
+//   coax/bin/coax test metaverse-engine/world/cells.coax --library
+//   coax/bin/coax mutate metaverse-engine/world/cells.coax --library
+
+#module "aethyr.world.cells";
+#authority;
+#load "../core/replay.coax";
+
+// book:begin cells-profile
+CELL_SIZE :: 64.0;           // metres on a side
+CELL_MAX :: 256;             // cells a manifest lists
+CELL_DRAW :: 96.0;           // metres from the player to a cell's nearest point: drawn
+CELL_SIMULATE :: 160.0;      // simulated
+CELL_LOAD :: 256.0;          // resident
+CELL_HYSTERESIS :: 8.0;      // metres past a ring before a cell drops below it
+CELL_RESIDENT :: 48;         // cells resident at once: the memory budget
+CELL_LOADS :: 4;             // loads in flight at once: the load-work budget
+CELL_ENTITIES :: 32;         // entities one cell's store keeps
+CELL_WORDS :: 4;             // state words an entity keeps besides its position
+
+CELL_ABSENT :: 0; CELL_LOADING :: 1; CELL_RESIDENT_LEVEL :: 2; CELL_SIMULATE_LEVEL :: 3; CELL_DRAW_LEVEL :: 4;
+
+// What admitting a load's answer says, and the world's counters.
+CELL_OK :: 0;
+CELL_UNKNOWN :: 1;           // no such cell
+CELL_NOT_ASKED :: 2;         // not this cell's current request: an old one, or none
+CELL_WRONG_CONTENT :: 3;     // the digest isn't the manifest's
+CELL_FAILED :: 4;            // the loader failed: the cell is asked again
+CELL_REFUSED :: 5;           // a load the budget didn't take this step
+CELL_DROPPED :: 6;           // an answer for a cell no longer wanted
+CELL_COUNTERS :: 7;
+
+CellEntry :: struct { cx: int; cz: int; digest: int; }
+// One entity a cell keeps while it sleeps: its persistent id, f64 position and state words.
+CellBody :: struct { id: int; x: f64; y: f64; z: f64; words: [CELL_WORDS] int; }
+CellState :: struct {
+  level: int; request: int;         // its level, and its current load request (0: none)
+  bodies: [CELL_ENTITIES] CellBody; body_n: int;
+}
+CellWorld :: struct {
+  manifest: [CELL_MAX] CellEntry; n: int;
+  cells: [CELL_MAX] CellState;
+  requests: int;                    // load requests made, each a number
+  counts: [CELL_COUNTERS] int;
+}
+// book:end cells-profile
+
+// Additive named-profile boundary. Existing callers retain CellWorld,
+// CellStep, cell_target and cell_step with their historical defaults.
+CellRings :: struct {
+  draw: f64 = CELL_DRAW;
+  simulate: f64 = CELL_SIMULATE;
+  load: f64 = CELL_LOAD;
+  hysteresis: f64 = CELL_HYSTERESIS;
+  resident: int = CELL_RESIDENT;
+  loads: int = CELL_LOADS;
+}
+CellAdvanceStatus :: enum u8 { ok; profile; manifest; position; capacity; }
+CellAdvance :: struct { status: CellAdvanceStatus = CellAdvanceStatus.profile; step: CellStep; }
+
+cell_rings_ok :: (p: CellRings) -> bool #effects(all) {
+  return p.draw >= 0 && p.draw <= p.simulate && p.simulate <= p.load && p.load <= 4096 && p.hysteresis >= 0 && p.hysteresis <= CELL_SIZE &&
+    p.resident >= 1 && p.resident <= CELL_RESIDENT && p.loads >= 1 && p.loads <= CELL_LOADS;
+}
+
+cell_key :: (x: f64) -> int #effects(all) { return cast(int) floor(x / CELL_SIZE); }
+// The part of d above 0 (0 when d is negative).
+cell_above :: (d: f64) -> f64 #effects(all) { return (d + abs(d)) / 2; }
+// Metres from p to the span [lo, lo + CELL_SIZE] along one axis.
+cell_gap :: (p: f64, lo: f64) -> f64 #effects(all) { return cell_above(abs(p - lo - CELL_SIZE / 2) - CELL_SIZE / 2); }
+// Metres from (x, z) to cell i's nearest point, flat.
+cell_distance :: (w: [] CellWorld, i: int, x: f64, z: f64) -> f64 #effects(all) {
+  dx := cell_gap(x, f64(w[0].manifest[i].cx) * CELL_SIZE); dz := cell_gap(z, f64(w[0].manifest[i].cz) * CELL_SIZE);
+  return sqrt(dx * dx + dz * dz);
+}
+// The nearer of two distances, without a comparison.
+cell_nearer :: (a: f64, b: f64) -> f64 #effects(all) { return (a + b - abs(a - b)) / 2; }
+// Metres from cell i's nearest point to the nearest of the observers in `at` (x, z each; a last
+// number without its pair is no one). CELL_NOWHERE with no observer: past every ring.
+CELL_NOWHERE :: 1000000000000000000.0;
+cell_distance_from :: (w: [] CellWorld, i: int, at: [] f64) -> f64 #effects(all) {
+  best := CELL_NOWHERE;
+  for k: 0..<at.count / 2 {
+    d := cell_distance(w, i, at[k * 2], at[k * 2 + 1]);
+    best = ifx k == 0 then d else cell_nearer(best, d);
+  }
+  return best;
+}
+cell_find :: (w: [] CellWorld, cx: int, cz: int) -> int #effects(all) {
+  for i: 0..<w[0].n { if w[0].manifest[i].cx == cx && w[0].manifest[i].cz == cz { return i; } }
+  return -1;
+}
+// A manifest is usable when every key is listed once and no digest is 0.
+cell_manifest_ok :: (w: [] CellWorld) -> bool #effects(all) {
+  if w[0].n < 0 || w[0].n > CELL_MAX { return false; }
+  for i: 0..<w[0].n {
+    if w[0].manifest[i].digest == 0 { return false; }
+    for j: 0..<i { if w[0].manifest[j].cx == w[0].manifest[i].cx && w[0].manifest[j].cz == w[0].manifest[i].cz { return false; } }
+  }
+  return true;
+}
+// The cells next to cell i (sharing an edge or a corner) that the manifest lists.
+cell_neighbours :: (w: [] CellWorld, i: int, out: [] int) -> int #effects(all) {
+  n := 0;
+  for dz: -1..<2 { for dx: -1..<2 {
+    if dx == 0 && dz == 0 { continue; }
+    j := cell_find(w, w[0].manifest[i].cx + dx, w[0].manifest[i].cz + dz);
+    if j >= 0 && n < out.count { out[n] = j; n += 1; }
+  } }
+  return n;
+}
+
+// book:begin cells-target
+// The level a ring gives cell i at distance d, from level `now`: up at the ring, down only past
+// it by CELL_HYSTERESIS. LOADING counts as resident for the rings.
+cell_target :: (now: int, d: f64) -> int #effects(all) {
+  return cell_target_rings(now, d, CellRings.{});
+}
+// The default wrapper and checked profile step supply admitted rings.
+cell_target_rings :: (now: int, d: f64, p: CellRings) -> int #effects(all) {
+  have := ifx now == CELL_LOADING then CELL_RESIDENT_LEVEL else now;
+  t := CELL_ABSENT;
+  if d <= p.load || (have >= CELL_RESIDENT_LEVEL && d <= p.load + p.hysteresis) { t = CELL_RESIDENT_LEVEL; }
+  if d <= p.simulate || (have >= CELL_SIMULATE_LEVEL && d <= p.simulate + p.hysteresis) { t = CELL_SIMULATE_LEVEL; }
+  if d <= p.draw || (have >= CELL_DRAW_LEVEL && d <= p.draw + p.hysteresis) { t = CELL_DRAW_LEVEL; }
+  return t;
+}
+// book:end cells-target
+
+cell_resident_count :: (w: [] CellWorld) -> int #effects(all) { n := 0; for i: 0..<w[0].n { if w[0].cells[i].level >= CELL_LOADING { n += 1; } } return n; }
+cell_loading_count :: (w: [] CellWorld) -> int #effects(all) { n := 0; for i: 0..<w[0].n { if w[0].cells[i].level == CELL_LOADING { n += 1; } } return n; }
+
+// A cell asleep keeps its bodies; one dropped to absent forgets nothing either: its store is the
+// world's, not the pack's.
+CellStep :: struct { asked: [CELL_LOADS] int; asked_n: int; woke: int; slept: int; }
+
+// book:begin cells-step
+// 1 when a level moves from below simulate (a) to simulate or above (b): a cell wakes; with the
+// levels the other way round, it sleeps.
+cell_crossed :: (a: int, b: int) -> int #effects(all) { return ifx a < CELL_SIMULATE_LEVEL && b >= CELL_SIMULATE_LEVEL then 1 else 0; }
+
+// One step of the controller at the player's (x, z): every cell's level moves to its ring's (a
+// loading cell stays loading, or is dropped), loads are asked nearest first within the budgets,
+// and the cells that wake or sleep this step are counted (the realm calls cell_wake and cell_sleep
+// for them). Returns the loads asked.
+cell_step :: (w: [] CellWorld, x: f64, z: f64) -> CellStep #effects(all) {
+  return cell_step_rings(w, x, z, CellRings.{});
+}
+cell_step_rings :: (w: [] CellWorld, x: f64, z: f64, p: CellRings) -> CellStep #effects(all) {
+  at := [2] f64.[x, z];
+  return cell_step_from(w, at[..], p);
+}
+// The same step for a room of many players: `at` holds each one's (x, z), and a cell's distance is
+// to the nearest of them (cell_distance_from). With no one there, every cell falls to absent.
+cell_step_from :: (w: [] CellWorld, at: [] f64, p: CellRings) -> CellStep #effects(all) {
+  out: CellStep;
+  // levels first, so a budget freed this step is free for the asks below
+  for i: 0..<w[0].n {
+    c := w[0].cells[i].level;
+    if c == CELL_ABSENT { continue; }   // asked below
+    t := cell_target_rings(c, cell_distance_from(w, i, at), p);
+    if c == CELL_LOADING { t = ifx t == CELL_ABSENT then CELL_ABSENT else CELL_LOADING; }
+    out.woke += cell_crossed(c, t); out.slept += cell_crossed(t, c);
+    w[0].cells[i].level = t;
+    if t == CELL_ABSENT { w[0].cells[i].request = 0; }
+  }
+  // asks: the absent cells a ring wants, nearest first (the first listed of equals)
+  while true {
+    best := -1; bd := 0.0; wanted := 0;
+    for i: 0..<w[0].n {
+      if w[0].cells[i].level != CELL_ABSENT { continue; }
+      d := cell_distance_from(w, i, at);
+      if cell_target_rings(CELL_ABSENT, d, p) == CELL_ABSENT { continue; }
+      wanted += 1;
+      if best < 0 || d < bd { best = i; bd = d; }
+    }
+    if best < 0 { break; }
+    if cell_loading_count(w) >= p.loads || cell_resident_count(w) >= p.resident || w[0].requests == 9223372036854775807 {
+      w[0].counts[CELL_REFUSED] += wanted;   // the rest wait: each refused cell counts once a step
+      break;
+    }
+    w[0].requests += 1;
+    w[0].cells[best].level = CELL_LOADING; w[0].cells[best].request = w[0].requests;
+    out.asked[out.asked_n] = best; out.asked_n += 1;
+  }
+  return out;
+}
+// book:end cells-step
+
+// Switching to smaller caps requires the prior owner to drain first. Refusal
+// preserves every cell and sleeping body instead of silently overfilling a
+// new profile or discarding another controller's accepted work.
+cell_step_profile :: (w: [] CellWorld, x: f64, z: f64, p: CellRings) -> CellAdvance #effects(all) {
+  if !cell_rings_ok(p) { return CellAdvance.{}; }
+  if !cell_manifest_ok(w) || w[0].requests < 0 { return CellAdvance.{status = CellAdvanceStatus.manifest}; }
+  if !(abs(x) <= 1000000000000 && abs(z) <= 1000000000000) { return CellAdvance.{status = CellAdvanceStatus.position}; }
+  if cell_resident_count(w) > p.resident || cell_loading_count(w) > p.loads { return CellAdvance.{status = CellAdvanceStatus.capacity}; }
+  return CellAdvance.{status = CellAdvanceStatus.ok, step = cell_step_rings(w, x, z, p)};
+}
+
+// book:begin cells-complete
+// The loader's answer as an event: which cell, which request, the digest it loaded, and whether it
+// failed. The realm offers it to its replay gate and takes it at a step boundary.
+cell_answer :: (request: int, sender: int, cell: int, digest: int, failed: bool) -> ReplayEvent #effects(all) {
+  e := ReplayEvent.{source = REPLAY_NETWORK, request = sender};
+  e.words[0] = cell; e.words[1] = request; e.words[2] = digest; e.words[3] = replay_flag(failed);
+  return e;
+}
+// Admits a load's answer at the step boundary. A resident cell rises to its ring's level on the
+// next cell_step.
+cell_complete :: (w: [] CellWorld, e: ReplayEvent) -> int #effects(all) {
+  i := e.words[0];
+  v := CELL_OK;
+  if i < 0 || i >= w[0].n { v = CELL_UNKNOWN; }
+  else if w[0].cells[i].level != CELL_LOADING {
+    v = ifx w[0].cells[i].request == 0 && e.words[1] > 0 && e.words[1] <= w[0].requests then CELL_DROPPED else CELL_NOT_ASKED;
+  }
+  else if e.words[1] != w[0].cells[i].request { v = CELL_NOT_ASKED; }
+  else if e.words[3] != 0 { v = CELL_FAILED; w[0].cells[i].level = CELL_ABSENT; w[0].cells[i].request = 0; }
+  else if e.words[2] != w[0].manifest[i].digest { v = CELL_WRONG_CONTENT; w[0].cells[i].level = CELL_ABSENT; w[0].cells[i].request = 0; }
+  else { w[0].cells[i].level = CELL_RESIDENT_LEVEL; }
+  w[0].counts[v] += 1;
+  return v;
+}
+// book:end cells-complete
+
+// book:begin cells-store
+// Whether cell i's entities step this step.
+cell_simulates :: (w: [] CellWorld, i: int) -> bool #effects(all) { return i >= 0 && i < w[0].n && w[0].cells[i].level >= CELL_SIMULATE_LEVEL; }
+cell_draws :: (w: [] CellWorld, i: int) -> bool #effects(all) { return i >= 0 && i < w[0].n && w[0].cells[i].level == CELL_DRAW_LEVEL; }
+// The cell an f64 position belongs to, or -1 outside the manifest.
+cell_of :: (w: [] CellWorld, x: f64, z: f64) -> int #effects(all) { return cell_find(w, cell_key(x), cell_key(z)); }
+// Puts one entity to sleep in cell i's store; false when the store is full (the realm keeps it awake).
+cell_sleep :: (w: [] CellWorld, i: int, b: CellBody) -> bool #effects(all) {
+  if i < 0 || i >= w[0].n || w[0].cells[i].body_n >= CELL_ENTITIES { return false; }
+  w[0].cells[i].bodies[w[0].cells[i].body_n] = b; w[0].cells[i].body_n += 1;
+  return true;
+}
+// Takes cell i's sleeping entities back, in the order they slept; the store is empty after.
+cell_wake :: (w: [] CellWorld, i: int, out: [] CellBody) -> int #effects(all) {
+  if i < 0 || i >= w[0].n { return 0; }
+  n := w[0].cells[i].body_n - cast(int) cell_above(f64(w[0].cells[i].body_n - out.count));
+  for k: 0..<n { out[k] = w[0].cells[i].bodies[k]; }
+  rest := w[0].cells[i].body_n - n;
+  for k: 0..<rest { w[0].cells[i].bodies[k] = w[0].cells[i].bodies[n + k]; }
+  w[0].cells[i].body_n = rest;
+  return n;
+}
+// book:end cells-store
+
+// book:begin cells-edges
+// Whether a walker may step to (x, z): the point is in a listed cell whose entities step.
+cell_may_enter :: (w: [] CellWorld, x: f64, z: f64) -> bool #effects(all) { return cell_simulates(w, cell_of(w, x, z)); }
+
+CELL_STAYS :: 0;     // still in its cell
+CELL_MOVED :: 1;     // in a neighbour that simulates: awake there
+CELL_SLEPT :: 2;     // in a cell that doesn't simulate: asleep in its store
+CELL_HELD :: 3;      // off the manifest, or that cell's store is full: the realm keeps it where it was
+CellCarry :: struct { outcome: int; cell: int = -1; }
+// An awake entity b, which belonged to cell `from`, after its step: the cell it belongs to now,
+// and whether it is still awake.
+cell_carry :: (w: [] CellWorld, from: int, b: CellBody) -> CellCarry #effects(all) {
+  to := cell_of(w, b.x, b.z);
+  if to < 0 { return CellCarry.{outcome = CELL_HELD, cell = from}; }
+  if to == from { return CellCarry.{outcome = CELL_STAYS, cell = to}; }
+  if cell_simulates(w, to) { return CellCarry.{outcome = CELL_MOVED, cell = to}; }
+  if !cell_sleep(w, to, b) { return CellCarry.{outcome = CELL_HELD, cell = from}; }
+  return CellCarry.{outcome = CELL_SLEPT, cell = to};
+}
+// book:end cells-edges
+
+// book:begin cells-save
+// A world's stores as words: the version, the manifest's size, and per cell its key, digest and
+// bodies (id, the f64 bits of x, y and z as high and low halves, and the words). -1 when out is
+// too small.
+CELL_SAVE_VERSION :: 1;
+CELL_BODY_WORDS :: 11;   // 7 + CELL_WORDS
+cell_high :: (x: f64) -> int #effects(all) { return cast(int) (f64_bits(x) >> 32); }
+cell_low :: (x: f64) -> int #effects(all) { return cast(int) (f64_bits(x) & 4294967295); }
+cell_join :: (high: int, low: int) -> f64 #effects(all) { return f64_from_bits((cast(u64) high << 32) | cast(u64) low); }
+cell_save :: (w: [] CellWorld, out: [] int) -> int #effects(all) {
+  n := 2;
+  for i: 0..<w[0].n { n += 4 + w[0].cells[i].body_n * CELL_BODY_WORDS; }
+  if n > out.count { return -1; }
+  out[0] = CELL_SAVE_VERSION; out[1] = w[0].n;
+  k := 2;
+  for i: 0..<w[0].n {
+    out[k] = w[0].manifest[i].cx; out[k + 1] = w[0].manifest[i].cz; out[k + 2] = w[0].manifest[i].digest; out[k + 3] = w[0].cells[i].body_n;
+    k += 4;
+    for j: 0..<w[0].cells[i].body_n {
+      b := w[0].cells[i].bodies[j];
+      out[k] = b.id;
+      out[k + 1] = cell_high(b.x); out[k + 2] = cell_low(b.x); out[k + 3] = cell_high(b.y); out[k + 4] = cell_low(b.y);
+      out[k + 5] = cell_high(b.z); out[k + 6] = cell_low(b.z);
+      for q: 0..<CELL_WORDS { out[k + 7 + q] = b.words[q]; }
+      k += CELL_BODY_WORDS;
+    }
+  }
+  return n;
+}
+// Restores saved stores into w, whose manifest must be the saved one, key for key and digest for
+// digest. Every level starts absent. False, with w unchanged, for another version, another
+// manifest, a store over CELL_ENTITIES or words that run short or long.
+cell_restore :: (w: [] CellWorld, words: [] int) -> bool #effects(all) {
+  if words.count < 2 || words[0] != CELL_SAVE_VERSION || words[1] != w[0].n { return false; }
+  k := 2;
+  for i: 0..<w[0].n {
+    if k + 4 > words.count { return false; }
+    if words[k] != w[0].manifest[i].cx || words[k + 1] != w[0].manifest[i].cz || words[k + 2] != w[0].manifest[i].digest { return false; }
+    m := words[k + 3];
+    if m < 0 || m > CELL_ENTITIES { return false; }
+    k += 4 + m * CELL_BODY_WORDS;
+  }
+  if k != words.count { return false; }
+  k = 2;
+  for i: 0..<w[0].n {
+    m := words[k + 3]; k += 4;
+    w[0].cells[i] = CellState.{};
+    for j: 0..<m {
+      b := CellBody.{id = words[k], x = cell_join(words[k + 1], words[k + 2]), y = cell_join(words[k + 3], words[k + 4]), z = cell_join(words[k + 5], words[k + 6])};
+      for q: 0..<CELL_WORDS { b.words[q] = words[k + 7 + q]; }
+      w[0].cells[i].bodies[j] = b;
+      k += CELL_BODY_WORDS;
+    }
+    w[0].cells[i].body_n = m;
+  }
+  return true;
+}
+// book:end cells-save
+
+// book:begin cells-origin
+// The one floating origin: a cell corner in f64. Rendering, physics and queries all convert with
+// cell_local, so a point is the same f32 in each.
+CellOrigin :: struct { x: f64; z: f64; }
+cell_local :: (o: CellOrigin, x: f64, y: f64, z: f64) -> [3] f32 #effects(all) { return [3] f32.[cast(f32) (x - o.x), cast(f32) y, cast(f32) (z - o.z)]; }
+// The origin for a player at (x, z): moved to the corner of the player's cell once that cell is
+// more than one cell from the origin's, else unchanged, so crossing one edge back and forth does
+// not move it.
+cell_rebase :: (o: CellOrigin, x: f64, z: f64) -> CellOrigin #effects(all) {
+  kx := cell_key(x); kz := cell_key(z);
+  ox := cell_key(o.x + CELL_SIZE / 2); oz := cell_key(o.z + CELL_SIZE / 2);
+  if kx - ox <= 1 && ox - kx <= 1 && kz - oz <= 1 && oz - kz <= 1 { return o; }
+  return CellOrigin.{x = f64(kx) * CELL_SIZE, z = f64(kz) * CELL_SIZE};
+}
+// book:end cells-origin
+
+cell_digest :: (w: [] CellWorld) -> int #effects(all) {
+  h := replay_mix(2166136261, w[0].requests);
+  for i: 0..<w[0].n {
+    h = replay_mix(replay_mix(replay_mix(h, w[0].cells[i].level), w[0].cells[i].request), w[0].cells[i].body_n);
+    for k: 0..<w[0].cells[i].body_n {
+      b := w[0].cells[i].bodies[k];
+      // each coordinate's bits as two halves: a negative one's top bit doesn't fit an int
+      h = replay_mix(replay_mix(replay_mix(h, b.id), cell_high(b.x)), cell_low(b.x));
+      h = replay_mix(replay_mix(replay_mix(replay_mix(h, cell_high(b.y)), cell_low(b.y)), cell_high(b.z)), cell_low(b.z));
+      for q: 0..<CELL_WORDS { h = replay_mix(h, b.words[q]); }
+    }
+  }
+  return h;
+}
+
+// ---- checks
+#load "../tests/cells-oracle.coax" #test;
+
+#test "cell profile default preserves the historical policy and exact admitted declaration bounds" {
+  p := CellRings.{};
+  #assert cell_rings_ok(p) && p.draw == 96 && p.simulate == 160 && p.load == 256 && p.hysteresis == 8 && p.resident == 48 && p.loads == 4;
+  #assert cell_rings_ok(CellRings.{draw = 0, simulate = 0, load = 0, hysteresis = 0, resident = 1, loads = 1});
+  #assert cell_rings_ok(CellRings.{draw = 4096, simulate = 4096, load = 4096, hysteresis = 64, resident = 48, loads = 4});
+  for field: 0..<10 {
+    bad := p;
+    if field == 0 { bad.draw = -1; } if field == 1 { bad.simulate = 95; } if field == 2 { bad.load = 159; } if field == 3 { bad.load = 4097; }
+    if field == 4 { bad.hysteresis = -1; } if field == 5 { bad.hysteresis = 65; } if field == 6 { bad.resident = 0; }
+    if field == 7 { bad.resident = 49; } if field == 8 { bad.loads = 0; } if field == 9 { bad.loads = 5; }
+    #assert !cell_rings_ok(bad);
+  }
+  old: [1] CellWorld; cw_grid(old[..], 0, 3, 0, 0); checked := old;
+  for x: [4] f64.[32, 100, 1000, -64] {
+    legacy := cell_step(old[..], x, 32); next := cell_step_profile(checked[..], x, 32, p);
+    #assert next.status == CellAdvanceStatus.ok && next.step.asked_n == legacy.asked_n && next.step.woke == legacy.woke && next.step.slept == legacy.slept;
+    for i: 0..<legacy.asked_n { #assert legacy.asked[i] == next.step.asked[i]; }
+    #assert cell_digest(old[..]) == cell_digest(checked[..]);
+    cw_load_all(old[..], legacy); cw_load_all(checked[..], next.step);
+  }
+}
+#test "a bounded walk profile stays within four resident cells and holds its hysteresis before retiring an edge" {
+  w: [1] CellWorld; cw_grid(w[..], 0, 15, 0, 0);
+  p := CellRings.{draw = 32, simulate = 64, load = 96, hysteresis = 8, resident = 4, loads = 1};
+  for i: 0..<5 {
+    step := cell_step_profile(w[..], 224, 32, p);
+    #assert step.status == CellAdvanceStatus.ok && step.step.asked_n <= 1 && cell_resident_count(w[..]) <= 4 && cell_loading_count(w[..]) <= 1;
+    cw_load_all(w[..], step.step);
+  }
+  #assert cell_resident_count(w[..]) == 4 && w[0].cells[1].level == CELL_RESIDENT_LEVEL && w[0].cells[5].level == CELL_ABSENT;
+  held := cell_step_profile(w[..], 232, 32, p); #assert held.status == CellAdvanceStatus.ok && held.step.asked_n == 0 && w[0].cells[1].level == CELL_RESIDENT_LEVEL;
+  move := cell_step_profile(w[..], 233, 32, p);
+  #assert move.status == CellAdvanceStatus.ok && move.step.asked_n == 1 && move.step.asked[0] == 5 && w[0].cells[1].level == CELL_ABSENT;
+  #assert w[0].cells[5].level == CELL_LOADING && !cell_simulates(w[..], 5);
+  pending := cell_step_profile(w[..], 233, 32, p);
+  #assert pending.status == CellAdvanceStatus.ok && pending.step.asked_n == 0 && cell_loading_count(w[..]) == 1;
+  for before: [3] int.[CELL_DRAW_LEVEL, CELL_SIMULATE_LEVEL, CELL_RESIDENT_LEVEL] {
+    radius := ifx before == CELL_DRAW_LEVEL then p.draw else ifx before == CELL_SIMULATE_LEVEL then p.simulate else p.load;
+    #assert cell_target_rings(before, radius + 8, p) == before;
+    #assert cell_target_rings(before, radius + 8.1, p) < before;
+  }
+}
+#test "invalid profile world position or cap reduction preserves all cell state" {
+  w: [1] CellWorld; cw_grid(w[..], 0, 7, 0, 0); before := cell_digest(w[..]);
+  bad := CellRings.{}; bad.loads = 0;
+  #assert cell_step_profile(w[..], 32, 32, bad).status == CellAdvanceStatus.profile && cell_digest(w[..]) == before;
+  for axis: 0..<2 {
+    #assert cell_step_profile(w[..], ifx axis == 0 then 1000000000001 else 32, ifx axis == 1 then -1000000000001 else 32, CellRings.{}).status == CellAdvanceStatus.position && cell_digest(w[..]) == before;
+  }
+  #assert cell_step_profile(w[..], 1000000000000, -1000000000000, CellRings.{}).status == CellAdvanceStatus.ok;
+  w[0].manifest[0].digest = 0; #assert cell_step_profile(w[..], 32, 32, CellRings.{}).status == CellAdvanceStatus.manifest;
+  w[0].manifest[0].digest = 1; w[0].requests = -1; #assert cell_step_profile(w[..], 32, 32, CellRings.{}).status == CellAdvanceStatus.manifest;
+  w[0].requests = 0; step := cell_step(w[..], 32, 32); before = cell_digest(w[..]);
+  p := CellRings.{}; p.resident = 1;
+  #assert cell_step_profile(w[..], 32, 32, p).status == CellAdvanceStatus.capacity && cell_digest(w[..]) == before;
+  p = CellRings.{}; p.loads = 1;
+  #assert cell_step_profile(w[..], 32, 32, p).status == CellAdvanceStatus.capacity && cell_digest(w[..]) == before;
+}
+#test "cell request exhaustion admits the final generation and never wraps for either entry point" {
+  for checked: 0..<2 {
+    w: [1] CellWorld; cw_grid(w[..], 0, 1, 0, 0); w[0].requests = 9223372036854775806;
+    result: CellStep;
+    if checked == 0 { result = cell_step(w[..], 32, 32); } else { result = cell_step_profile(w[..], 32, 32, CellRings.{}).step; }
+    #assert result.asked_n == 1 && w[0].requests == 9223372036854775807 && w[0].cells[0].request == 9223372036854775807 && w[0].cells[1].level == CELL_ABSENT;
+    again := cell_step(w[..], 32, 32); #assert again.asked_n == 0 && w[0].requests == 9223372036854775807 && w[0].counts[CELL_REFUSED] == 2;
+  }
+}
+
+#test "cells: a room of many players keeps the cells near any of them, and none with no one there" {
+  w: [1] CellWorld; cw_grid(w[..], 0, 15, 0, 0);
+  p := CellRings.{draw = 32, simulate = 64, load = 96, hysteresis = 8, resident = 48, loads = 4};
+  // the distance is the nearest observer's, whichever comes first; a lone last number is no one
+  two := [5] f64.[32, 32, 932, 32, 480];
+  #assert cell_distance_from(w[..], 0, two[..]) == 0 && cell_distance_from(w[..], 14, two[..]) == 0 && cell_distance_from(w[..], 7, two[..]) == 416;
+  #assert cell_distance_from(w[..], 3, two[..]) == 160 && cell_distance_from(w[..], 11, two[..]) == 164;
+  swapped := [4] f64.[932, 32, 32, 32];
+  for i: 0..<16 { #assert cell_distance_from(w[..], i, swapped[..]) == cell_distance_from(w[..], i, two[0..<4]); }
+  #assert cell_distance_from(w[..], 0, two[0..<1]) == CELL_NOWHERE && cell_distance_from(w[..], 0, two[0..<0]) == CELL_NOWHERE;
+  #assert cell_distance_from(w[..], 3, two[0..<2]) == 160 && cell_distance_from(w[..], 3, two[0..<3]) == 160;
+  #assert cell_nearer(3, 5) == 3 && cell_nearer(5, 3) == 3 && cell_nearer(-2, -2) == -2;
+  // one observer is the player's own step, bit for bit
+  solo: [1] CellWorld; cw_grid(solo[..], 0, 15, 0, 0);
+  for x: [3] f64.[32, 500, 932] {
+    one := [2] f64.[x, 32];
+    a := cell_step_from(w[..], one[..], p); b := cell_step_rings(solo[..], x, 32, p);
+    #assert a.asked_n == b.asked_n && a.woke == b.woke && a.slept == b.slept && cell_digest(w[..]) == cell_digest(solo[..]);
+    cw_load_all(w[..], a); cw_load_all(solo[..], b);
+  }
+  // two players far apart: the cells round each load and simulate, the ones between stay absent
+  for round: 0..<4 { step := cell_step_from(w[..], two[0..<4], p); cw_load_all(w[..], step); }
+  #assert cell_simulates(w[..], 0) && cell_simulates(w[..], 1) && cell_simulates(w[..], 14) && cell_simulates(w[..], 13);
+  #assert w[0].cells[2].level == CELL_RESIDENT_LEVEL && w[0].cells[7].level == CELL_ABSENT && w[0].cells[12].level == CELL_ABSENT && cell_simulates(w[..], 15);
+  #assert cell_resident_count(w[..]) == 6;
+  // one leaves: its cells sleep and go; the other's stay
+  left := cell_step_from(w[..], two[0..<2], p);
+  #assert left.slept == 3 && left.woke == 0 && cell_simulates(w[..], 0) && w[0].cells[14].level == CELL_ABSENT && w[0].cells[14].request == 0;
+  // no one: everything goes, and nothing is asked
+  none := cell_step_from(w[..], two[0..<0], p);
+  #assert none.slept == 2 && none.asked_n == 0 && cell_resident_count(w[..]) == 0 && w[0].counts[CELL_REFUSED] == 0;
+}
+#test "cells: keys, manifest and neighbours" {
+  #assert cell_key(0) == 0 && cell_key(63.9) == 0 && cell_key(64) == 1 && cell_key(-0.1) == -1 && cell_key(-64) == -1 && cell_key(-64.1) == -2;
+  w: [1] CellWorld; cw_grid(w[..], -2, 2, -2, 2);
+  #assert w[0].n == 25 && cell_manifest_ok(w[..]) && cell_find(w[..], 2, -2) >= 0 && cell_find(w[..], 3, 0) == -1;
+  nb: [8] int;
+  #assert cell_neighbours(w[..], cell_find(w[..], 0, 0), nb[..]) == 8 && cell_neighbours(w[..], cell_find(w[..], 2, 2), nb[..]) == 3;
+  #assert cell_neighbours(w[..], cell_find(w[..], 0, 2), nb[..]) == 5;
+  small: [2] int; #assert cell_neighbours(w[..], cell_find(w[..], 0, 0), small[..]) == 2;
+  #assert cell_of(w[..], 10, -70) == cell_find(w[..], 0, -2) && cell_of(w[..], 400, 0) == -1;
+  #assert cell_distance(w[..], cell_find(w[..], 0, 0), 32, 32) == 0 && cell_distance(w[..], cell_find(w[..], 1, 0), 32, 32) == 32;
+  #assert cell_distance(w[..], cell_find(w[..], -1, -1), 3, 4) == 5 && cell_distance(w[..], cell_find(w[..], 0, 1), 32, 140) == 12;
+  w[0].manifest[3].digest = 0;
+  #assert !cell_manifest_ok(w[..]);
+  w[0].manifest[3].digest = 5; w[0].manifest[4].cx = w[0].manifest[3].cx; w[0].manifest[4].cz = w[0].manifest[3].cz;
+  #assert !cell_manifest_ok(w[..]);
+  w[0].n = CELL_MAX + 1; #assert !cell_manifest_ok(w[..]);
+  w[0].n = -1; #assert !cell_manifest_ok(w[..]);
+}
+
+#test "cells: rings rise at the ring and fall only past it by the hysteresis" {
+  #assert cell_target(CELL_ABSENT, CELL_DRAW) == CELL_DRAW_LEVEL && cell_target(CELL_ABSENT, CELL_DRAW + 0.5) == CELL_SIMULATE_LEVEL;
+  #assert cell_target(CELL_ABSENT, CELL_SIMULATE) == CELL_SIMULATE_LEVEL && cell_target(CELL_ABSENT, CELL_LOAD) == CELL_RESIDENT_LEVEL && cell_target(CELL_ABSENT, CELL_LOAD + 0.5) == CELL_ABSENT;
+  #assert cell_target(CELL_DRAW_LEVEL, CELL_DRAW + CELL_HYSTERESIS) == CELL_DRAW_LEVEL && cell_target(CELL_DRAW_LEVEL, CELL_DRAW + CELL_HYSTERESIS + 0.5) == CELL_SIMULATE_LEVEL;
+  #assert cell_target(CELL_SIMULATE_LEVEL, CELL_SIMULATE + CELL_HYSTERESIS) == CELL_SIMULATE_LEVEL && cell_target(CELL_SIMULATE_LEVEL, CELL_SIMULATE + CELL_HYSTERESIS + 0.5) == CELL_RESIDENT_LEVEL;
+  #assert cell_target(CELL_RESIDENT_LEVEL, CELL_LOAD + CELL_HYSTERESIS) == CELL_RESIDENT_LEVEL && cell_target(CELL_RESIDENT_LEVEL, CELL_LOAD + CELL_HYSTERESIS + 0.5) == CELL_ABSENT;
+  #assert cell_target(CELL_LOADING, CELL_LOAD + CELL_HYSTERESIS) == CELL_RESIDENT_LEVEL && cell_target(CELL_SIMULATE_LEVEL, CELL_DRAW + 1) == CELL_SIMULATE_LEVEL;
+  // walking back and forth across the draw ring's edge, within the hysteresis, changes nothing
+  w: [1] CellWorld; cw_grid(w[..], -6, 6, -1, 1);
+  before: [CELL_MAX] int;
+  for t: 0..<40 { cw_load_all(w[..], cell_step(w[..], 32, 32)); }
+  _ := cw_changes(before[..], w[..]);
+  changes := 0;
+  for t: 0..<200 {
+    x := 32.0 + 2.0 * f64(t % 3) - 2.0;   // 30, 32, 34 m: the ring edges move by 2 m
+    cw_load_all(w[..], cell_step(w[..], x, 32));
+    changes += cw_changes(before[..], w[..]);
+  }
+  #assert changes == 0;
+  // a real move does change levels, and wakes and sleeps cells
+  st := cell_step(w[..], 32 + 3 * CELL_SIZE, 32);
+  #assert st.slept > 0 && cw_changes(before[..], w[..]) > 0;
+  cw_load_all(w[..], st);
+  for t: 0..<10 { cw_load_all(w[..], cell_step(w[..], 32 + 3 * CELL_SIZE, 32)); }
+  #assert cell_draws(w[..], cell_find(w[..], 3, 0)) && !cell_draws(w[..], cell_find(w[..], 0, 0)) && cell_simulates(w[..], cell_find(w[..], 1, 0));
+  #assert !cell_simulates(w[..], cell_find(w[..], -2, 0)) && w[0].cells[cell_find(w[..], -1, 0)].level == CELL_RESIDENT_LEVEL;
+  #assert !cell_simulates(w[..], -1) && !cell_draws(w[..], CELL_MAX);
+}
+
+#test "cells: loads go nearest first, within the in-flight and resident budgets" {
+  w: [1] CellWorld; cw_grid(w[..], -6, 6, -6, 6);
+  st := cell_step(w[..], 32, 32);
+  #assert st.asked_n == CELL_LOADS && st.asked[0] == cell_find(w[..], 0, 0) && w[0].requests == CELL_LOADS;
+  #assert w[0].counts[CELL_REFUSED] > 0 && cell_loading_count(w[..]) == CELL_LOADS;
+  // nothing answered: nothing more is asked
+  st2 := cell_step(w[..], 32, 32);
+  #assert st2.asked_n == 0 && cell_loading_count(w[..]) == CELL_LOADS;
+  cw_load_all(w[..], st);
+  most := 0;
+  for t: 0..<60 {
+    cw_load_all(w[..], cell_step(w[..], 32, 32));
+    if cell_resident_count(w[..]) > most { most = cell_resident_count(w[..]); }
+  }
+  #assert most == CELL_RESIDENT && cell_resident_count(w[..]) == CELL_RESIDENT;
+  // the nearest are all resident; refusals keep being counted
+  #assert cell_simulates(w[..], cell_find(w[..], 0, 0)) && cell_simulates(w[..], cell_find(w[..], 1, 1)) && w[0].cells[cell_find(w[..], 4, 4)].level == CELL_ABSENT;
+}
+
+#test "cells: a load's answer is admitted only for the current request, the right content and a wanted cell" {
+  w: [1] CellWorld; cw_grid(w[..], -6, 6, -1, 1);
+  st := cell_step(w[..], 32, 32);
+  a := st.asked[0]; r1 := w[0].cells[a].request;
+  #assert cell_complete(w[..], cell_answer(r1, 1, a, 5, false)) == CELL_WRONG_CONTENT && w[0].cells[a].level == CELL_ABSENT && w[0].cells[a].request == 0;
+  b := st.asked[1];
+  #assert cell_complete(w[..], cell_answer(w[0].cells[b].request, 1, b, w[0].manifest[b].digest, true)) == CELL_FAILED && w[0].cells[b].level == CELL_ABSENT;
+  #assert cell_complete(w[..], cell_answer(1, 1, -1, 0, false)) == CELL_UNKNOWN && cell_complete(w[..], cell_answer(1, 1, w[0].n, 0, false)) == CELL_UNKNOWN;
+  // asked again next step, with new numbers
+  st2 := cell_step(w[..], 32, 32);
+  #assert st2.asked_n == 2 && w[0].cells[a].request > r1;
+  #assert cell_complete(w[..], cell_answer(r1, 1, a, w[0].manifest[a].digest, false)) == CELL_NOT_ASKED;   // the old request, out of order
+  #assert cell_complete(w[..], cell_answer(w[0].cells[a].request, 1, a, w[0].manifest[a].digest, false)) == CELL_OK && w[0].cells[a].level == CELL_RESIDENT_LEVEL;
+  #assert cell_complete(w[..], cell_answer(w[0].cells[a].request, 1, a, w[0].manifest[a].digest, false)) == CELL_NOT_ASKED;   // twice
+  // the player leaves before a load finishes: the cell is dropped, and its answer refused
+  far := st2.asked[1];
+  r := w[0].cells[far].request;
+  for t: 0..<3 { _ := cell_step(w[..], 32 + 20 * CELL_SIZE, 32); }
+  #assert w[0].cells[far].level == CELL_ABSENT && w[0].cells[far].request == 0;
+  #assert cell_complete(w[..], cell_answer(r, 1, far, w[0].manifest[far].digest, false)) == CELL_DROPPED;
+  #assert cell_complete(w[..], cell_answer(w[0].requests + 1, 1, far, w[0].manifest[far].digest, false)) == CELL_NOT_ASKED;
+  #assert w[0].counts[CELL_WRONG_CONTENT] == 1 && w[0].counts[CELL_FAILED] == 1 && w[0].counts[CELL_UNKNOWN] == 2 && w[0].counts[CELL_DROPPED] == 1 && w[0].counts[CELL_OK] == 1;
+}
+
+#test "cells: late content keeps a cell asleep until its load is admitted" {
+  w: [1] CellWorld; cw_grid(w[..], -1, 1, -1, 1);
+  st := cell_step(w[..], 32, 32);
+  home := cell_find(w[..], 0, 0);
+  for t: 0..<20 { s2 := cell_step(w[..], 32, 32); }
+  #assert w[0].cells[home].level == CELL_LOADING && !cell_simulates(w[..], home) && !cell_draws(w[..], home);
+  #assert cell_complete(w[..], cell_answer(w[0].cells[home].request, 1, home, w[0].manifest[home].digest, false)) == CELL_OK && !cell_simulates(w[..], home);
+  s3 := cell_step(w[..], 32, 32);
+  #assert s3.woke == 1 && cell_draws(w[..], home) && cell_simulates(w[..], home);
+}
+
+#test "cells: entities sleep in their cell's store and wake bit for bit, with their ids" {
+  w: [1] CellWorld; cw_grid(w[..], -1, 1, -1, 1);
+  i := cell_find(w[..], 1, 0);
+  b := CellBody.{id = 77, x = 100.123456789012, y = 3.5, z = 10.000000000001};
+  b.words[0] = 5; b.words[3] = -9;
+  #assert cell_sleep(w[..], i, b) && cell_sleep(w[..], i, CellBody.{id = 78, x = 70}) && w[0].cells[i].body_n == 2;
+  #assert !cell_sleep(w[..], -1, b) && !cell_sleep(w[..], w[0].n, b);
+  d0 := cell_digest(w[..]);
+  one: [1] CellBody;
+  #assert cell_wake(w[..], i, one[..]) == 1 && one[0].id == 77 && one[0].x == b.x && one[0].z == b.z && one[0].words[0] == 5 && one[0].words[3] == -9;
+  #assert w[0].cells[i].body_n == 1 && w[0].cells[i].bodies[0].id == 78 && cell_digest(w[..]) != d0;
+  rest: [4] CellBody;
+  #assert cell_wake(w[..], i, rest[..]) == 1 && rest[0].id == 78 && cell_wake(w[..], i, rest[..]) == 0 && cell_wake(w[..], -1, rest[..]) == 0;
+  for k: 0..<CELL_ENTITIES { #assert cell_sleep(w[..], i, CellBody.{id = k}); }
+  #assert !cell_sleep(w[..], i, b);
+}
+
+#test "cells: one floating origin keeps far positions to the millimetre and doesn't move on an edge" {
+  o: CellOrigin;
+  far := 1000000000.0 + 10.0;
+  o = cell_rebase(o, far, 5);
+  #assert o.x == f64(cell_key(far)) * CELL_SIZE && o.z == 0;
+  p := cell_local(o, far + 20.123456, 1.25, 30.5);
+  #assert abs(p[0] - cast(f32) (far + 20.123456 - o.x)) < 0.001 && p[1] == 1.25 && p[2] == 30.5;
+  #assert cast(f32) (far + 20.123456 - o.x) > 30.12 && cast(f32) (far + 20.123456 - o.x) < 30.13;
+  // across one edge and back: the origin stays
+  o2 := cell_rebase(o, o.x + CELL_SIZE + 1, 5);
+  #assert o2.x == o.x && cell_rebase(o2, o.x - 1, 5).x == o.x && cell_rebase(o, o.x - CELL_SIZE + 1, 5).x == o.x;
+  #assert cell_rebase(o, o.x - CELL_SIZE - 1, 5).x == o.x - 2 * CELL_SIZE && cell_rebase(o, o.x + 2 * CELL_SIZE + 1, 5).x == o.x + 2 * CELL_SIZE;
+  #assert cell_rebase(o, o.x, 2 * CELL_SIZE + 1).z == 2 * CELL_SIZE && cell_rebase(o, o.x, 2 * CELL_SIZE - 1).z == o.z;
+  #assert cell_rebase(o, o.x, -CELL_SIZE + 1).z == o.z && cell_rebase(o, o.x, -CELL_SIZE - 1).z == -2 * CELL_SIZE;
+}
+
+#test "cells: edges of the manifest, the first entry and the budgets' exact counts" #steps 100000000 {
+  // distances along each side of a cell
+  w: [1] CellWorld; cw_grid(w[..], -2, 2, -2, 2);
+  #assert cell_distance(w[..], cell_find(w[..], 0, 1), 32, 10) == 54 && cell_distance(w[..], cell_find(w[..], 1, 0), 10, 32) == 54;
+  #assert cell_distance(w[..], cell_find(w[..], -1, 0), 10, 32) == 10 && cell_distance(w[..], cell_find(w[..], 0, 0), 64, 64) == 0;
+  // the first entry is found, checked and a neighbour like any other
+  #assert cell_find(w[..], -2, -2) == 0;
+  nb: [16] int;
+  #assert cell_neighbours(w[..], cell_find(w[..], 0, 0), nb[..]) == 8 && nb[0] == cell_find(w[..], -1, -1) && nb[7] == cell_find(w[..], 1, 1);
+  #assert cell_neighbours(w[..], cell_find(w[..], -1, -1), nb[..]) == 8 && nb[0] == 0;
+  #assert cell_neighbours(w[..], cell_find(w[..], 2, 2), nb[..]) == 3 && nb[0] == cell_find(w[..], 1, 1) && nb[2] == cell_find(w[..], 1, 2);
+  w[0].manifest[0].digest = 0; #assert !cell_manifest_ok(w[..]);
+  w[0].manifest[0].digest = 9; w[0].manifest[1].cx = w[0].manifest[0].cx; #assert !cell_manifest_ok(w[..]);
+  w[0].n = 0; #assert cell_manifest_ok(w[..]);
+  full: [1] CellWorld; cw_grid(full[..], -8, 7, -8, 7);
+  #assert full[0].n == CELL_MAX && cell_manifest_ok(full[..]);
+  full[0].n = CELL_MAX + 1; #assert !cell_manifest_ok(full[..]);
+  // a loading cell is resident for the rings, no more
+  #assert cell_target(CELL_LOADING, CELL_SIMULATE + 4) == CELL_RESIDENT_LEVEL;
+  // the first cell at every level and through every answer
+  one: [1] CellWorld;
+  one[0].manifest[0] = CellEntry.{cx = 0, cz = 0, digest = 7}; one[0].manifest[1] = CellEntry.{cx = 1, cz = 0, digest = 8}; one[0].n = 2;
+  one[0].cells[2].level = CELL_DRAW_LEVEL;   // past the manifest: never read
+  one[0].cells[2].body_n = 1;
+  #assert !cell_simulates(one[..], 2) && !cell_draws(one[..], 2) && !cell_sleep(one[..], 2, CellBody.{id = 1});
+  out: [4] CellBody;
+  #assert cell_wake(one[..], 2, out[..]) == 0;
+  st := cell_step(one[..], 32, 32);
+  #assert st.asked_n == 2 && st.asked[0] == 0 && cell_loading_count(one[..]) == 2 && cell_resident_count(one[..]) == 2;
+  #assert cell_complete(one[..], cell_answer(one[0].cells[0].request, 1, 0, 7, false)) == CELL_OK && one[0].cells[0].level == CELL_RESIDENT_LEVEL;
+  #assert cell_loading_count(one[..]) == 1 && cell_resident_count(one[..]) == 2;
+  st = cell_step(one[..], 32, 32);
+  #assert st.woke == 1 && st.slept == 0 && cell_simulates(one[..], 0) && cell_draws(one[..], 0) && cell_sleep(one[..], 0, CellBody.{id = 5});
+  #assert cell_wake(one[..], 0, out[..]) == 1 && out[0].id == 5;
+  // simulate, not drawn: it simulates; drawn to simulate does not wake again
+  st = cell_step(one[..], CELL_SIZE + CELL_DRAW + CELL_HYSTERESIS + 1, 32);
+  #assert one[0].cells[0].level == CELL_SIMULATE_LEVEL && cell_simulates(one[..], 0) && !cell_draws(one[..], 0) && st.woke == 0 && st.slept == 0;
+  st = cell_step(one[..], 32, 32);
+  #assert st.woke == 0 && cell_draws(one[..], 0);
+  // resident to absent: the request is forgotten; an answer numbered 0 or never made isn't a drop
+  st = cell_step(one[..], CELL_SIZE + CELL_LOAD + CELL_HYSTERESIS + 1, 32);
+  #assert st.slept == 1 && one[0].cells[0].level == CELL_ABSENT && one[0].cells[0].request == 0;
+  #assert cell_complete(one[..], cell_answer(0, 1, 0, 7, false)) == CELL_NOT_ASKED && cell_complete(one[..], cell_answer(1, 1, 0, 7, false)) == CELL_DROPPED;
+  // a failure forgets its request
+  st = cell_step(one[..], 32, 32);
+  r := one[0].cells[0].request;
+  #assert r > 0 && cell_complete(one[..], cell_answer(r, 1, 0, 7, true)) == CELL_FAILED && one[0].cells[0].request == 0;
+  // a cell just past the load ring isn't asked, though the hysteresis would keep a resident one
+  far: [1] CellWorld;
+  far[0].manifest[0] = CellEntry.{cx = 0, cz = 0, digest = 7}; far[0].n = 1;
+  st = cell_step(far[..], -CELL_LOAD - 4, 32);
+  #assert st.asked_n == 0 && far[0].cells[0].level == CELL_ABSENT;
+  // resident to simulate wakes it; simulate to resident puts it to sleep
+  st = cell_step(far[..], -120, 32);
+  #assert st.asked_n == 1 && cell_complete(far[..], cell_answer(far[0].cells[0].request, 1, 0, 7, false)) == CELL_OK;
+  st = cell_step(far[..], -120, 32);
+  #assert st.woke == 1 && far[0].cells[0].level == CELL_SIMULATE_LEVEL;
+  st = cell_step(far[..], -CELL_SIMULATE - CELL_HYSTERESIS - 1, 32);
+  #assert st.slept == 1 && far[0].cells[0].level == CELL_RESIDENT_LEVEL;
+  // of equals the first listed goes first, and the refusals are the cells left wanting
+  g: [1] CellWorld; cw_grid(g[..], -6, 6, -6, 6);
+  st = cell_step(g[..], 32, 32);
+  #assert st.asked[0] == cell_find(g[..], 0, 0) && st.asked[1] == cell_find(g[..], 0, -1) && st.asked[2] == cell_find(g[..], -1, 0) && st.asked[3] == cell_find(g[..], 1, 0);
+  wanting := 0;
+  for i: 0..<g[0].n { if g[0].cells[i].level == CELL_ABSENT && cell_target(CELL_ABSENT, cell_distance(g[..], i, 32, 32)) != CELL_ABSENT { wanting += 1; } }
+  #assert g[0].counts[CELL_REFUSED] == wanting && wanting > 0;
+  cw_load_all(g[..], st);
+  for t: 0..<60 { cw_load_all(g[..], cell_step(g[..], 32, 32)); }
+  levels := 0;
+  for i: 0..<g[0].n { if g[0].cells[i].level != CELL_ABSENT { levels += 1; } }
+  #assert levels == CELL_RESIDENT && cell_resident_count(g[..]) == levels;
+}
+
+#test "cells: a store wakes its first bodies and keeps the rest in order" {
+  w: [1] CellWorld; cw_grid(w[..], 0, 0, 0, 0);
+  for k: 0..<3 { #assert cell_sleep(w[..], 0, CellBody.{id = 10 + k}); }
+  one: [1] CellBody;
+  #assert cell_wake(w[..], 0, one[..]) == 1 && one[0].id == 10 && w[0].cells[0].bodies[0].id == 11 && w[0].cells[0].bodies[1].id == 12;
+  two: [2] CellBody;
+  #assert cell_wake(w[..], 0, two[..]) == 2 && two[1].id == 12 && w[0].cells[0].body_n == 0;
+}
+
+#test "cells: the origin works on both axes and both sides of zero" {
+  o := CellOrigin.{x = 0, z = 128};
+  p := cell_local(o, 10, 2, 140);
+  #assert p[0] == 10 && p[2] == 12;
+  #assert cell_rebase(CellOrigin.{}, -3 * CELL_SIZE, 5).x == -3 * CELL_SIZE && cell_rebase(CellOrigin.{}, 5, -3 * CELL_SIZE).z == -3 * CELL_SIZE;
+  // an origin off a corner stays while you stand in its cell
+  near := cell_rebase(CellOrigin.{x = 130, z = 130}, 130, 130);
+  #assert near.x == 130 && near.z == 130;
+}
+
+#test "cells: the digest covers every level, request, body and word" {
+  w: [1] CellWorld; cw_grid(w[..], 0, 1, 0, 0);
+  #assert cell_digest(w[..]) == replay_mix(replay_mix(replay_mix(replay_mix(replay_mix(replay_mix(replay_mix(2166136261, 0), 0), 0), 0), 0), 0), 0);
+  d0 := cell_digest(w[..]);
+  w[0].cells[0].level = 1; d1 := cell_digest(w[..]); #assert d1 != d0;
+  w[0].cells[0].request = 4; d2 := cell_digest(w[..]); #assert d2 != d1;
+  #assert cell_sleep(w[..], 0, CellBody.{id = 3}); d3 := cell_digest(w[..]); #assert d3 != d2;
+  w[0].cells[0].bodies[0].id = 4; d4 := cell_digest(w[..]); #assert d4 != d3;
+  w[0].cells[0].bodies[0].words[0] = 1; d5 := cell_digest(w[..]); #assert d5 != d4;
+  w[0].cells[0].bodies[0].words[CELL_WORDS - 1] = 1; d6 := cell_digest(w[..]); #assert d6 != d5;
+  w[0].cells[0].bodies[0].z = 1; d7 := cell_digest(w[..]); #assert d7 != d6;
+}
+
+#test "cells: a walk with late, failed, wrong and reordered loads replays to the same world" #steps 200000000 {
+  live: [1] CwRun; cw_grid(live[0].w[..], -4, 8, -4, 4);
+  s := replay_backing(live[0].b[..]); replay_record(s, 3, 1);
+  while replay_tick(s) < 200 { cw_step(live[..], s); }
+  #assert live[0].ok > 20 && live[0].w[0].counts[CELL_FAILED] > 0 && live[0].w[0].counts[CELL_WRONG_CONTENT] > 0 && live[0].woke > 5;
+  #assert live[0].most_resident <= CELL_RESIDENT && live[0].most_loading <= CELL_LOADS;
+  again: [1] CwRun; cw_grid(again[0].w[..], -4, 8, -4, 4);
+  s2 := replay_backing(again[0].b[..]);
+  #assert replay_copy(s, s2) && replay_play(s2, 3);
+  while replay_tick(s2) < 200 { cw_step(again[..], s2); }
+  #assert replay_matched(s2) && again[0].q_n == 0 && cell_digest(again[0].w[..]) == cell_digest(live[0].w[..]) && again[0].ok == live[0].ok;
+}
+
+// A walker crosses three cells east to a goal, one step a tick: it waits at each edge whose cell
+// isn't loaded yet, and walks on once it is.
+#test "cells: a walker waits at the edge of a cell that isn't loaded, then walks on" #steps 200000000 {
+  w: [1] CellWorld; cw_grid(w[..], -1, 8, 0, 0);
+  x := 32.0; z := 32.0; waited := 0; crossed := 0;
+  last := cell_of(w[..], x, z);
+  for t: 0..<400 {
+    st := cell_step(w[..], x, z);
+    if t % 6 == 0 { cw_answer_loading(w[..]); } else { cw_late(w[..], st); }
+    if x >= 32 + 3 * CELL_SIZE { break; }
+    nx := x + 1.5;
+    if !cell_may_enter(w[..], nx, z) { waited += 1; continue; }
+    #assert cell_simulates(w[..], cell_of(w[..], nx, z));
+    x = nx;
+    if cell_of(w[..], x, z) != last { crossed += 1; last = cell_of(w[..], x, z); }
+  }
+  #assert x >= 32 + 3 * CELL_SIZE && crossed == 3 && waited > 0;
+  #assert !cell_may_enter(w[..], -1000, z) && !cell_may_enter(w[..], x, 100);   // off the manifest
+}
+
+#test "cells: an entity that walks into a sleeping cell sleeps there, and wakes with its id and state" {
+  w: [1] CellWorld; cw_grid(w[..], -1, 8, 0, 0);
+  for t: 0..<8 { cw_load_all(w[..], cell_step(w[..], 32, 32)); }
+  home := cell_of(w[..], 32, 32); next := cell_of(w[..], 96, 32);
+  #assert cell_simulates(w[..], home) && cell_simulates(w[..], next);
+  b := CellBody.{id = 41, x = 63.75, z = 10};
+  b.words[1] = 12;
+  #assert cell_carry(w[..], home, b).outcome == CELL_STAYS;
+  b.x = 64.25;
+  c := cell_carry(w[..], home, b);
+  #assert c.outcome == CELL_MOVED && c.cell == next && w[0].cells[next].body_n == 0;
+  far := cell_find(w[..], 8, 0);
+  #assert !cell_simulates(w[..], far);
+  b.x = 8 * CELL_SIZE + 1;
+  c = cell_carry(w[..], next, b);
+  #assert c.outcome == CELL_SLEPT && c.cell == far && w[0].cells[far].body_n == 1;
+  out: [2] CellBody;
+  #assert cell_wake(w[..], far, out[..]) == 1 && out[0].id == 41 && out[0].x == b.x && out[0].words[1] == 12;
+  // off the manifest, or into a full store: held where it was
+  b.x = 20 * CELL_SIZE;
+  #assert cell_carry(w[..], next, b).outcome == CELL_HELD && cell_carry(w[..], next, b).cell == next;
+  for k: 0..<CELL_ENTITIES { #assert cell_sleep(w[..], far, CellBody.{id = k}); }
+  b.x = 8 * CELL_SIZE + 1;
+  c = cell_carry(w[..], next, b);
+  #assert c.outcome == CELL_HELD && c.cell == next && w[0].cells[far].body_n == CELL_ENTITIES;
+  // the first cell listed, like any other
+  first := cell_find(w[..], -1, 0);
+  #assert first == 0 && cell_simulates(w[..], 0);
+  b.x = -10;
+  #assert cell_carry(w[..], home, b).outcome == CELL_MOVED && cell_carry(w[..], home, b).cell == 0;
+  #assert cell_carry(w[..], 0, b).outcome == CELL_STAYS && cell_carry(w[..], 0, b).cell == 0;
+}
+
+#test "cells: saved stores come back bit for bit in a new world, which asks for its cells again" {
+  w: [1] CellWorld; cw_grid(w[..], -1, 2, -1, 0);
+  b := CellBody.{id = 9, x = 100.123456789012, y = -3.1, z = 1000000000.000001};
+  b.words[0] = -3; b.words[CELL_WORDS - 1] = 7;
+  #assert cell_sleep(w[..], 2, b) && cell_sleep(w[..], 2, CellBody.{id = 10}) && cell_sleep(w[..], 5, CellBody.{id = 11, x = -64});
+  w[0].cells[2].level = CELL_DRAW_LEVEL; w[0].cells[2].request = 3;
+  words: [128] int;
+  n := cell_save(w[..], words[..]);
+  #assert n == 2 + 8 * 4 + 3 * CELL_BODY_WORDS && words[0] == CELL_SAVE_VERSION;
+  small: [10] int;
+  #assert cell_save(w[..], small[..]) == -1;
+  r: [1] CellWorld; cw_grid(r[..], -1, 2, -1, 0);
+  r[0].cells[2].level = CELL_SIMULATE_LEVEL; r[0].cells[2].request = 8; r[0].cells[0].body_n = 1;
+  #assert cell_restore(r[..], words[0..<n]);
+  #assert r[0].cells[0].body_n == 0;
+  #assert r[0].cells[2].body_n == 2 && r[0].cells[2].level == CELL_ABSENT && r[0].cells[2].request == 0 && r[0].cells[5].bodies[0].id == 11;
+  got := r[0].cells[2].bodies[0];
+  #assert got.id == 9 && f64_bits(got.x) == f64_bits(b.x) && f64_bits(got.y) == f64_bits(b.y) && f64_bits(got.z) == f64_bits(b.z) && got.words[0] == -3 && got.words[CELL_WORDS - 1] == 7;
+  w[0].cells[2].level = CELL_ABSENT; w[0].cells[2].request = 0;
+  #assert cell_digest(r[..]) == cell_digest(w[..]);
+  // refusals leave the world as it was
+  d := cell_digest(r[..]);
+  bad: [128] int;
+  for k: 0..<n { bad[k] = words[k]; }
+  bad[0] = 2; #assert !cell_restore(r[..], bad[0..<n]); bad[0] = words[0];
+  bad[1] = 7; #assert !cell_restore(r[..], bad[0..<n]); bad[1] = words[1];
+  bad[2] = 5; #assert !cell_restore(r[..], bad[0..<n]); bad[2] = words[2];
+  bad[3] = 5; #assert !cell_restore(r[..], bad[0..<n]); bad[3] = words[3];
+  bad[4] = 5; #assert !cell_restore(r[..], bad[0..<n]); bad[4] = words[4];
+  bad[5] = CELL_ENTITIES + 1; #assert !cell_restore(r[..], bad[0..<n]); bad[5] = -1; #assert !cell_restore(r[..], bad[0..<n]); bad[5] = words[5];
+  #assert !cell_restore(r[..], bad[0..<n - 1]) && !cell_restore(r[..], bad[0..<n + 1]) && !cell_restore(r[..], bad[0..<1]) && !cell_restore(r[..], bad[0..<5]);
+  #assert cell_digest(r[..]) == d;
+  other: [1] CellWorld; cw_grid(other[..], 0, 3, -1, 0);
+  #assert !cell_restore(other[..], words[0..<n]);
+  // a full store saves and restores; one over CELL_ENTITIES is refused
+  full: [1] CellWorld; cw_grid(full[..], 0, 0, 0, 0);
+  for k: 0..<CELL_ENTITIES { #assert cell_sleep(full[..], 0, CellBody.{id = k, x = 1}); }
+  fw: [2 + 4 + CELL_ENTITIES * CELL_BODY_WORDS + CELL_BODY_WORDS] int;
+  fn := cell_save(full[..], fw[..]);
+  #assert fn == 6 + CELL_ENTITIES * CELL_BODY_WORDS && cell_restore(full[..], fw[0..<fn]) && full[0].cells[0].body_n == CELL_ENTITIES;
+  fw[5] = CELL_ENTITIES + 1;
+  #assert !cell_restore(full[..], fw[0..<fn + CELL_BODY_WORDS]);
+  // an empty world saves and restores
+  e: [1] CellWorld; ew: [2] int;
+  #assert cell_save(e[..], ew[..]) == 2 && cell_restore(e[..], ew[..]);
+}

@@ -8,7 +8,7 @@
 #load "../content.coax";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
-#load "../../../aethyr/tools/content-carry.coax";
+#load "../../../metaverse-engine/tools/content-carry.coax";
 
 CARRY_PATH :: "verse/splice/content/shipped.coax";
 CARRY_HEAD :: "// Splice's content tables as a page is built with them (#13404): the bytes of\n// verse/splice/content/splice.content, written by\n//   coax/web/tool.sh verse/splice/tools/content-check.coax verse/splice/content/splice.content --carry\n// Never edit it by hand: edit the tables (docs/protocol/aethyr-content-v1.md) and write it again.\n// The same tool with --check fails when the two differ.\nSC_SHIPPED :: \"";

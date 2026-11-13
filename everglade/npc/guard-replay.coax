@@ -3,7 +3,7 @@
 // before the result, counters or transport capability can be published.
 #load "guard-decision.coax";
 #load "guard-guide-session.coax";
-#load "../../aethyr/core/decision-trace.coax" as receipt;
+#load "../../metaverse-engine/core/decision-trace.coax" as receipt;
 #authority;
 
 guard_trace_v1_reset :: ()->receipt.DecisionTraceV1 #export_c #effects(all) {fresh:receipt.DecisionTraceV1;return fresh;}

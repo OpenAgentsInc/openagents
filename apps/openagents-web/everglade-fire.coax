@@ -666,9 +666,9 @@ fi_test_piece :: (g: [] Everglade, m: int, x: f32, z: f32) -> int {
   return best;
 }
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
 // ---- the gates' leaves (owner playtest, #12932: "this door is not flammable but needs to be")
 // Shut (everglade-doors.coax gates_draw: WANTED GATES_AT), a gate's gap holds a timber leaf banded in

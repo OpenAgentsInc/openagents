@@ -2,7 +2,7 @@
 
 > **Status: partly implemented.** The numbers this chapter takes from the
 > reference image are in the OpenAgents Metaverse Engine's shared glade profile
-> ([`aethyr/world/environment.coax`](../../aethyr/world/environment.coax),
+> ([`metaverse-engine/world/environment.coax`](../../metaverse-engine/world/environment.coax),
 > `env_glade_profile`) and Everglade II's land
 > ([`everglade/world/forest.coax`](../../everglade/world/forest.coax)). The
 > code still lives outside `everglade/`, so this chapter names functions and
@@ -34,7 +34,7 @@ The numbers taken from the picture live in three places:
 
 | What | Where | Names |
 | --- | --- | --- |
-| Light and air | `aethyr/world/environment.coax` | `ENV_GLADE_*`, `env_glade_profile` |
+| Light and air | `metaverse-engine/world/environment.coax` | `ENV_GLADE_*`, `env_glade_profile` |
 | Ground colour and autumn | `everglade/world/forest.coax` | `e2_autumn`, `e2_gold` |
 | Density and scale | `everglade/world/plant.coax`, `everglade/world/forest.coax` | `E2_TREE_STEP`, `e2_forest`, `E2_CLEAR_R` |
 
@@ -135,7 +135,7 @@ coax/bin/coax test everglade/world/environment.coax
 - **Copies of the numbers.** The glade's light first lived as constants in an
   app file (`everglade/scene/gpu/character-glade-light.coax`). Another
   realm that wanted the look had to copy them, and the copies could drift
-  apart. Since #13060 the numbers live once in `aethyr/world/environment.coax`,
+  apart. Since #13060 the numbers live once in `metaverse-engine/world/environment.coax`,
   and the app's `cg_*` functions only delegate to them.
 - **A number with no source.** If you can't point to where a number came from
   in the picture, you can't tell later whether a change made the world better

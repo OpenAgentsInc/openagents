@@ -1,12 +1,12 @@
 // How a class kit's ability looks and where its bar's slots sit (#13025, #13058): the effect a cast
-// starts (aethyr/fx/puff.coax recipes, Everglade's looks: everglade-classes.coax cl_look) in its
-// spell's colour (aethyr/fx/spell-light.coax), and the bar's boxes along the bottom of the screen.
+// starts (metaverse-engine/fx/puff.coax recipes, Everglade's looks: everglade-classes.coax cl_look) in its
+// spell's colour (metaverse-engine/fx/spell-light.coax), and the bar's boxes along the bottom of the screen.
 // Everglade Experimental (everglade/zone-combat.coax) and Everglade II (everglade/client/cast.coax) draw the
 // same; what each ability is, how it aims and sounds is class-kit.coax's.
 //   coax/bin/coax test everglade/client/class-look.coax
 #load "../shared/class-kit.coax";
-#load "../../aethyr/fx/puff.coax";
-#load "../../aethyr/fx/spell-light.coax";   // each spell's colour
+#load "../../metaverse-engine/fx/puff.coax";
+#load "../../metaverse-engine/fx/spell-light.coax";   // each spell's colour
 
 // A cast's look: the recipe, from the hand to where it lands (or round you), its colour and its reach;
 // glimmer, a second cause on it (Guiding Bolt's glow).

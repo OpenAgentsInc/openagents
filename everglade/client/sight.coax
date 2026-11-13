@@ -1,5 +1,5 @@
 // Whether a body shows from Everglade II's camera, for what floats over it (zone wiring for the
-// engine's visibility service, aethyr/physics/visibility.coax, through aethyr/ui/hud-sight.coax): this zone's
+// engine's visibility service, metaverse-engine/physics/visibility.coax, through metaverse-engine/ui/hud-sight.coax): this zone's
 // colliders across the line from the eye to the body (its trunks as upright capsules, its rocks' and
 // the camp's hulls) and its land's heights under the line (e2_height). A plate, its health bar, a name
 // or a damage number over a body shows only while the service sees the body, and fades over 0.15 s.
@@ -92,7 +92,7 @@ e2_sight_shows :: (s: [] E2, x: f32, foot: f32, z: f32, tall: f32) -> bool {
   g: [1] E2Sight; e2_sight_gather(s, x, z, g[..]); land: [cc.HUD_SIGHT_LAND] f32; n := e2_sight_land(s, x, foot, z, tall, land[..]);
   return cc.hud_sight_shows(s[0].eye, x, foot, z, tall, land[..], n, g[0].caps[0..<0], g[0].caps[0..<g[0].nc * 7], g[0].hulls[0..<g[0].nh]);
 }
-// A plate's sight after this frame: the answer, settled and faded (aethyr/ui/hud-sight.coax).
+// A plate's sight after this frame: the answer, settled and faded (metaverse-engine/ui/hud-sight.coax).
 e2_sight_step :: (s: [] E2, h: cc.HudSight, x: f32, foot: f32, z: f32, tall: f32) -> cc.HudSight {
   g: [1] E2Sight; e2_sight_gather(s, x, z, g[..]); land: [cc.HUD_SIGHT_LAND] f32; n := e2_sight_land(s, x, foot, z, tall, land[..]);
   return cc.hud_sight_after(h, s[0].eye, x, foot, z, tall, land[..], n, g[0].caps[0..<0], g[0].caps[0..<g[0].nc * 7], g[0].hulls[0..<g[0].nh], s[0].sight_dt);

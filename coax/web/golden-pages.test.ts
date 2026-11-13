@@ -12,7 +12,7 @@ test("a shared file (host.js, the compiler) may change every page", () => {
   expect(affected(["coax/web/http-requests.js"], p)).toEqual(all)
   expect(affected(["coax/src/c.coax"], p)).toEqual(all)
   expect(affected(["apps/openagents-web/realms.json"], p)).toEqual(all)
-  expect(affected(["aethyr/render/runtime.coax"], p)).toEqual(all)
+  expect(affected(["metaverse-engine/render/runtime.coax"], p)).toEqual(all)
   expect(affected(["coax/web/render.js"], p)).toEqual(all)
   expect(affected(["coax/web/render-stage.coax"], p)).toEqual(all)
 })

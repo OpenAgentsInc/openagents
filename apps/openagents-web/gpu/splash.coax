@@ -1,7 +1,7 @@
 // splash's shaders, the source of apps/openagents-web/splash.wgsl (docs/verse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (splash.module,
 // splash.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
-#load "../../../aethyr/gpu/wgsl.coax";
+#load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../verse/light.coax";
 
 // The splash's two passes. Every number they draw from comes from

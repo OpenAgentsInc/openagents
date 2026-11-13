@@ -9,7 +9,7 @@
 
 Reconciled against `main` on 2026-11-01, starting at `6f4c722640`. This is the
 shared delivery sequence for [Coax](../../coax/book/README.md),
-[Psionic](../../psionic/book/README.md), [the Metaverse Engine](../../aethyr/book/README.md) and
+[Psionic](../../psionic/book/README.md), [the Metaverse Engine](../../metaverse-engine/book/README.md) and
 [Nostr](../../nostr/book/README.md). The [reader paths](paths.md) give smaller
 routes through capabilities that already run. Each book's chapter registry
 remains authoritative for its current teaching profiles.
@@ -173,7 +173,7 @@ branches with their written prerequisites and acceptance criteria.
 The [native GPU record](../verse/native-gpu.md) already documents generated Coax
 shaders. The remaining rendering milestone is shared frame/pass/binding
 admission and independent references, not repeating that port. The
-[migration chapter](../../aethyr/book/ch064-every-realm-runs-on-aethyr.md) records
+[migration chapter](../../metaverse-engine/book/ch064-every-realm-runs-on-aethyr.md) records
 both adopted components and remaining private paths; a migrated clock is not a
 whole migrated realm.
 

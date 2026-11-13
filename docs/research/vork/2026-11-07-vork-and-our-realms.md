@@ -47,11 +47,11 @@ to A8. A6 (finished styles) and A8 (the publishable scene) are pending.
 - **Documents.** `anim.rig/clip/performance/pose/scene/cut.v1`, with packs
   named by hash (`docs/verse/anim-documents-v1.md`).
 - **Rigs.** Up to 512 joints, 8 influences per vertex, 256 sparse morphs,
-  the ARKit face map, and the FRG1 DNA face block (`aethyr/anim/facerig.coax`).
+  the ARKit face map, and the FRG1 DNA face block (`metaverse-engine/anim/facerig.coax`).
 - **Layers.** base, override, additive, face and fix-up, with masks
-  (`aethyr/anim/layers.coax`).
+  (`metaverse-engine/anim/layers.coax`).
 - **IK.** Foot-lock, look-at, hand-to-prop and reach
-  (`aethyr/anim/fixup.coax`).
+  (`metaverse-engine/anim/fixup.coax`).
 - **Retargeting.** Anchor-based (`canonical-anchor.v1`).
 - **Imports.** glTF, BVH, ARKit CSV, FBX through Blender, Unreal through a
   commandlet.
@@ -78,7 +78,7 @@ value is in how vork renders and delivers.
    with the style as a third axis: the scene document, then a style
    (realistic or cel), then a quality profile (live or film). Build A6 on
    the film profile's F0 and F1 and reuse the existing renderers:
-   - **Realistic:** Valley's character pass (`aethyr/render/character.coax`:
+   - **Realistic:** Valley's character pass (`metaverse-engine/render/character.coax`:
      dual-lobe skin, strand hair with dual scattering, depth of field in
      `vc_post_fs`).
    - **Cel:** Anime Lab's (`gpu/animelab.coax`: two-tone cel, rim, shadow
@@ -148,15 +148,15 @@ From `docs/verse/everglade.md`, `apps/openagents-web/gpu/everglade-v1/gpu.coax` 
 - **Vegetation.** About 1,000 trees, with kit meshes within 55 m and cones
   beyond. Instanced grass out to 32 m.
 - **Effects.** Two passes (premultiplied smoke, then additive fire),
-  written by `everglade-spells.coax` rather than `aethyr/fx`.
+  written by `everglade-spells.coax` rather than `metaverse-engine/fx`.
 - **Post.** rgba16f, bloom at ¼ and ⅛ resolution, light shafts, then the
   tone curve.
-- **Quality ladder.** Seven rungs in `aethyr/core/quality.coax` and
-  `everglade-quality.coax`. The 60 FPS rule is in `aethyr/core/frame-report.coax`.
+- **Quality ladder.** Seven rungs in `metaverse-engine/core/quality.coax` and
+  `everglade-quality.coax`. The 60 FPS rule is in `metaverse-engine/core/frame-report.coax`.
 - **Transparency.** The scene pass has no blending, so the Water Orb and
   similar effects use screen-door dithering.
 - **Cast.** At most 10 NPCs drawn (6 on a phone). 63 raid bodies on the
-  people rig. A 7-bird flock companion (`aethyr/anim/flock.coax`).
+  people rig. A 7-bird flock companion (`metaverse-engine/anim/flock.coax`).
 - **Cinematics.** `?raid=preview&cine=1` is a keyed flight "for a film".
   Movies are clip-recorder captures.
 
@@ -195,8 +195,8 @@ shading.
    writes scratch, steps at a fixed 60 Hz independent of render fps, seeks
    by replay, and uses mesh birds near the camera and silhouettes far
    away. Our pieces already fit:
-   - `aethyr/anim/flock.coax` steps at a fixed 120 Hz;
-   - `aethyr/core/rand.coax` streams are counter-based;
+   - `metaverse-engine/anim/flock.coax` steps at a fixed 120 Hz;
+   - `metaverse-engine/core/rand.coax` streams are counter-based;
    - `coax cuda` and `coax spirv` kernels can do the compute;
    - chapters 23 (particles and neighbours) and 31 (many worlds in one
      step) plan the batch dimension.
@@ -207,9 +207,9 @@ shading.
    clip across thousands of instances, is a cheap trick worth copying for
    raid crowds now. Each raid body already has its own gait phase.
 4. **Effects as a stateless function of time: already ours, low.** Our
-   puffs are a pure function of seed, index and age (`aethyr/fx/puff.coax`),
+   puffs are a pure function of seed, index and age (`metaverse-engine/fx/puff.coax`),
    which is exactly what motion-blurred film effects need: sub-frame
-   samples are free. Moving Everglade's own `sp_fx` onto `aethyr/fx`
+   samples are free. Moving Everglade's own `sp_fx` onto `metaverse-engine/fx`
    (chapter 72's remaining work) is a prerequisite for film effects, not
    something vork gives us.
 5. **A bloom and glare pyramid with a stated reference: low.** vork's
@@ -217,7 +217,7 @@ shading.
    pyramid (prepare, downsample with Karis weighting, upsample, combine).
    Everglade's two-level bloom is fine at 60 FPS. For film, a deeper
    pyramid with an explicit reference is a small, checkable upgrade in
-   `aethyr/render/post.coax`.
+   `metaverse-engine/render/post.coax`.
 6. **Compositing over real footage: low.** vork's VFX examples insert CG
    into real plates with shadow catchers, holdouts and camera solves. Not
    an Everglade need, though a shadow-catcher channel would let promo
@@ -235,7 +235,7 @@ shafts are areas where Everglade is ahead of vork.
 
 From `docs/verse/character-creator.md`,
 `apps/openagents-web/gpu/charactercreator.coax`, `gpu/character-glade*.coax`
-and `aethyr/character/character-appearance.coax`.
+and `metaverse-engine/character/character-appearance.coax`.
 
 - **Controls.** Discrete cyclers: body, clothes preset, hood, colourway,
   dye, skin, hair style and colour, beard, eye colour, animation, and
@@ -252,8 +252,8 @@ and `aethyr/character/character-appearance.coax`.
   peak-channel shoulder tonemap. The sky is an ImageGen plate.
 - **No portrait or turntable renderer.** The page's og:image,
   `/og/realms/character-creator.jpg`, does not exist.
-- **WebGPU only**, and a legacy consumer in `aethyr/render/adoption.coax`.
-- **The hero character pass** for Echo (`aethyr/render/character.coax`) is
+- **WebGPU only**, and a legacy consumer in `metaverse-engine/render/adoption.coax`.
+- **The hero character pass** for Echo (`metaverse-engine/render/character.coax`) is
   a separate UE-derived PBR path: skin, strand hair and eyes.
 
 ### What vork adds
@@ -287,7 +287,7 @@ and `aethyr/character/character-appearance.coax`.
    - the live shader samples normal and roughness;
    - the film profile adds real specular, sheen for cloth and wrap or
      subsurface for skin, borrowing the forms already written in
-     `aethyr/render/character.coax`;
+     `metaverse-engine/render/character.coax`;
    - dyes stay a parameter of the record.
    
    This lifts Create, Everglade's player and NPCs (the same Quaternius

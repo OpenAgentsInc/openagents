@@ -11,7 +11,7 @@ holds that key.
 The machine-readable contract and its fixtures are
 [`seat-ticket-v5.json`](../../proto/verse/seat-ticket-v5.json). The one
 writer and the one reader are
-[`aethyr/session/seat-ticket.coax`](../../aethyr/session/seat-ticket.coax):
+[`metaverse-engine/session/seat-ticket.coax`](../../metaverse-engine/session/seat-ticket.coax):
 the API calls `seat_ticket_v5_write` through `coax/web/api/ticket-sign-unit.c`,
 and the room calls `tk5_read` through `tk_check_keys` in
 `coax/web/room/room-ticket.coax`. No C builds or parses a v5 ticket.
@@ -79,7 +79,7 @@ optional or required.
 | `l` | The character's level, one digit 1 to 6: the level its stored XP gives through the one table (`rules/srd/advancement.coax`), at least the realm's starting level (`OA_ROOM_START_LEVEL`, 1 to 6, default 1). |
 
 The API writes them with `seat_ticket_v5_class_ext`
-(`aethyr/session/seat-class.coax`, through `stk_class_ext_c`). An Everglade II
+(`metaverse-engine/session/seat-class.coax`, through `stk_class_ext_c`). An Everglade II
 room seats a ticketed player as the ticket says:
 
 - The hello's level is never taken.
@@ -107,7 +107,7 @@ JSON profile.
 ## Check
 
 ```sh
-coax/bin/coax test aethyr/session/seat-ticket.coax
+coax/bin/coax test metaverse-engine/session/seat-ticket.coax
 coax/web/tool.sh coax/web/room/seat-ticket-profile.coax proto/verse/seat-ticket-v5.json
 ```
 

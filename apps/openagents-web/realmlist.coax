@@ -12,18 +12,18 @@
 // they come, POPULAR and PLAYED keep the table's order and show "-".
 // The sort is the location's hash: #popular, #recent, #played or #az.
 // After them come the public realms people made: the face asks GET /api/playtest/realms/listed
-// once (aethyr/forge/listed.coax decides the rows), and they join the list and the grid in the
+// once (metaverse-engine/editor/listed.coax decides the rows), and they join the list and the grid in the
 // server's order, newest first, as many as fit in MAX_REALMS; the list's note says "+N MORE"
 // for the rest. Until the answer, and on any failure, the page is the table alone.
 // MAKE A REALM, at the header's top right, opens /worlds/new; it hides while realm making is invite
 // only and this visitor isn't an approved creator (access.coax: GET /api/playtest/access once).
 
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "textkeys.coax";
 #load "realms/list.coax";
 #load "../../coax/web/analytics.coax";
 #load "access.coax";
-#load "../../aethyr/forge/listed.coax";   // the listed realms' answer: one reader
+#load "../../metaverse-engine/editor/listed.coax";   // the listed realms' answer: one reader
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 60000;
@@ -34,7 +34,7 @@ GAP :: 0.34;
 SPACE :: 0.95;
 MAX_REALMS :: 64;
 INBOX :: 16384;
-TABLE :: 16384;      // the table's rows and the made realms' (aethyr/forge/listed.coax)
+TABLE :: 16384;      // the table's rows and the made realms' (metaverse-engine/editor/listed.coax)
 OUTBOX :: 256;
 
 // the rows' columns
@@ -941,7 +941,7 @@ coaxial_realms_hash :: (s: [] RealmsState, length: int) #export_c #effects(all) 
 // The face asks GET /api/playtest/access once (access.coax) and says the id its answer comes under.
 coaxial_realms_access_wants :: (s: [] RealmsState) -> bool #export_c #effects(all) { return s.count > 0 && access_wants(s[0].acc[..]); }
 coaxial_realms_access_sent :: (s: [] RealmsState, id: int) #export_c #effects(all) { if s.count > 0 { access_sent(s[0].acc[..], id); } }
-// And GET /api/playtest/realms/listed once (aethyr/forge/listed.coax).
+// And GET /api/playtest/realms/listed once (metaverse-engine/editor/listed.coax).
 coaxial_realms_listed_wants :: (s: [] RealmsState) -> bool #export_c #effects(all) { return s.count > 0 && listed_wants(s[0].listed[..]); }
 coaxial_realms_listed_sent :: (s: [] RealmsState, id: int) #export_c #effects(all) { if s.count > 0 { listed_sent(s[0].listed[..], id); } }
 coaxial_realms_cursor :: (s: [] RealmsState) -> int #export_c #effects(all) {

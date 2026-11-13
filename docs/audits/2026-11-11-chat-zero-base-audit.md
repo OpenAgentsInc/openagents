@@ -766,9 +766,9 @@ and they come first.
 
 Added 2026-11-11 on the owner's direction: don't carry the previous chat
 components over, and give the chat a black-and-white ARWES look with a few
-components. For this I read our port (`aethyr/ui/arwes-*.coax`, its
+components. For this I read our port (`metaverse-engine/ui/arwes-*.coax`, its
 [porting report](../verse/2026-11-01-arwes-coax.md) and
-`aethyr/ui/arwes/SOURCES.md`) and the upstream source in
+`metaverse-engine/ui/arwes/SOURCES.md`) and the upstream source in
 `projects/repos/arwes` at the same commit our port pins (`bdbaa03`).
 
 ### What ARWES is, and how it draws
@@ -807,13 +807,13 @@ with checks):
 
 | File | What it holds |
 | --- | --- |
-| `aethyr/ui/arwes-frames.coax` | The nine frames (Underline, Lines, Corners, Octagon, Nero, Nefrex, Kranox, Header, Circle) as points with a layer, a fill flag, an alpha and a stroke; the shared assembly; each family's own transitions; the octagon and Kranox clips |
-| `aethyr/ui/arwes-motion.coax` | The 31 easings, steps, draw progress, flicker, the animator's states and its five child schedules, the text sequence and decipher effects, text duration |
-| `aethyr/ui/arwes-fx.coax` | Theme multipliers and colour math, the step, strip and separator patterns, the four backgrounds, the illuminator, keyed timers, the sound-cue model (no sound is played) |
-| `aethyr/ui/arwes-paint.coax` | 25 specimens painted as the component system's display list; `/components` shows them on the GPU |
+| `metaverse-engine/ui/arwes-frames.coax` | The nine frames (Underline, Lines, Corners, Octagon, Nero, Nefrex, Kranox, Header, Circle) as points with a layer, a fill flag, an alpha and a stroke; the shared assembly; each family's own transitions; the octagon and Kranox clips |
+| `metaverse-engine/ui/arwes-motion.coax` | The 31 easings, steps, draw progress, flicker, the animator's states and its five child schedules, the text sequence and decipher effects, text duration |
+| `metaverse-engine/ui/arwes-fx.coax` | Theme multipliers and colour math, the step, strip and separator patterns, the four backgrounds, the illuminator, keyed timers, the sound-cue model (no sound is played) |
+| `metaverse-engine/ui/arwes-paint.coax` | 25 specimens painted as the component system's display list; `/components` shows them on the GPU |
 
 Time is supplied by the caller, randomness is seeded, and nothing allocates.
-The MIT notice is kept in `aethyr/ui/arwes/LICENSE`.
+The MIT notice is kept in `metaverse-engine/ui/arwes/LICENSE`.
 
 So the frame geometry and the motion exist, are checked, and already draw on
 the GPU. What we never built is the thing ARWES itself does on the web: the
@@ -955,7 +955,7 @@ realms.
 ### What is built (2026-11-11, later the same day)
 
 - **The port is under `components/core/arwes/`** (`frames`, `motion`, `fx`,
-  and `box` for the two shared types). The old paths in `aethyr/ui/` load
+  and `box` for the two shared types). The old paths in `metaverse-engine/ui/` load
   the new ones.
 - **The node tree** (`components/core/tree.coax`) and **the browser
   backend** (`components/backend/dom.coax`): the tree compared by id with
@@ -1005,7 +1005,7 @@ Chrome only, not in Safari or Firefox, and not on a phone.
 ### Work this needs that isn't UI
 
 - **Move the port under `components/`.** A component may not load a file
-  outside `components/`, and the port lives in `aethyr/ui/` and loads
+  outside `components/`, and the port lives in `metaverse-engine/ui/` and loads
   `hud.coax` for two small types (`HudBox`, `HudCoord`). Move
   `arwes-frames`, `arwes-motion` and `arwes-fx` to `components/core/arwes/`
   with their own box and point types, and have Aethyr load them from there.
@@ -1021,7 +1021,7 @@ Chrome only, not in Safari or Firefox, and not on a phone.
 
 - The shared base: `components/core` (Markdown, the element table, the edit
   buffer for the GPU and terminal), `layout` (flex) and `paint`.
-- The ARWES port (`aethyr/ui/arwes-*.coax`): frames, motion, patterns.
+- The ARWES port (`metaverse-engine/ui/arwes-*.coax`): frames, motion, patterns.
 - The session log as the thing a transcript is built from.
 - The credential path: checked before it is kept, sealed in the runner, never
   shown, one store for `/chat` and projects.

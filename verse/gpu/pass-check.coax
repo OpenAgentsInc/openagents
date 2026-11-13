@@ -19,7 +19,7 @@
 // --golden reuses an explicitly saved reference; it never changes the comparator
 // or tolerance. Use it only when the fixture and reference inputs are unchanged.
 #import "Basic";
-#load "../../aethyr/render/emit.coax" as render_emit;
+#load "../../metaverse-engine/render/emit.coax" as render_emit;
 #load "../../coax/lib/net/cdp.coax";
 
 PC_FILE :: 4194304;

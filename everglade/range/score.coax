@@ -1,6 +1,6 @@
 // The Archery Range's rules (everglade/docs/archery-range-spec.md): what an arrow scores and how
 // good your shooting is. Nothing here moves, aims, flies or draws: the bow, the arrow and the
-// strike are the engine's (aethyr/action/bow.coax, aethyr/action/target.coax).
+// strike are the engine's (metaverse-engine/action/bow.coax, metaverse-engine/action/target.coax).
 //
 //   the faces (rg_targets): the range's seven faces as the engine's static targets, standing on
 //   the ground they are given;
@@ -11,7 +11,7 @@
 //   coax/bin/coax test --library everglade/range/score.coax
 #module "everglade.range.score";
 #load "layout.coax";
-#load "../../aethyr/action/target.coax" as tg;
+#load "../../metaverse-engine/action/target.coax" as tg;
 
 RG_FOOT :: 0; RG_HORSE :: 1; RG_DRAGON :: 2; RG_MODES :: 3;
 // The bands of distance a shot is counted in, by how far you stood from the face: up to 15 m,

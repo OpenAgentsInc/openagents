@@ -1,5 +1,5 @@
 // Everglade's graphics quality (docs/verse/2026-11-03-adaptive-graphics-quality.md): the realm's
-// side of aethyr/core/quality.coax. The page's facts start it (the device, ?quality= in the URL, and
+// side of metaverse-engine/core/quality.coax. The page's facts start it (the device, ?quality= in the URL, and
 // the tier this browser kept, host.js verse.quality); each frame's length runs its governor
 // (everglade_quality_frame, from the face); and the knobs it is at set the spells' debris and
 // puffs (everglade-spells.coax), the far trees (everglade.coax forest) and the pixels the host
@@ -7,7 +7,7 @@
 // right, as "GFX AUTO · MED"; a click or a tap on it picks the next: AUTO, HIGH, MED, LOW.
 //   coax/bin/coax test apps/openagents-web/everglade.coax --only "graphics quality"
 
-#load "../../aethyr/core/quality.coax";
+#load "../../metaverse-engine/core/quality.coax";
 
 ACT_QUALITY :: 6;   // host.js: the tier to keep in verse.quality (and draw at)
 

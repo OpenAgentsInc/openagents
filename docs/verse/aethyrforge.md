@@ -17,7 +17,7 @@ spec, recorded headless at 1080p.
 The realm editor has no name of its own. Creating and editing realms are
 features of the Metaverse Engine. Until 2026-11-12 it was called Aethyrforge
 ([the rename](../naming/2026-11-12-metaverse-rename.md)); the code folder
-(`aethyr/forge/`) and the on-screen wordmark still carry that name until
+(`metaverse-engine/editor/`) and the on-screen wordmark still carry that name until
 their stage of the rename lands.
 
 ## What exists today (survey)
@@ -29,11 +29,11 @@ their stage of the rename lands.
 | The catalogue | `verse.builder_catalogue()` | 20 features: land, buildings, water, trees, plants, lanterns, flocks, props, characters, houses, herds, mist, dwellings, village, enclosure, centre, layout, path, tools; 4 cameras, 3 styles, 6 grounds, 4 times, 4 palettes. |
 | The made realm | `/realms/<slug>`, `myrealm.coax` (3,858 lines + shapes, site, things) | Live. Reads its spec once a second for its owner, so any edit shows within a second (4a0ba95164). |
 | Editing in the realm | `verse/edit/edit.coax`: EDIT, FEATURES, SETTINGS, cards, lore, quests | Live for owners and admins. |
-| Typed edits | `aethyr/forge/edit.coax`; the server's log, `coax/web/api/migrations/0111_realm_edit_log.sql` | Every revision path as one invertible edit, undo/redo, saves fenced by revision (409 on a stale one). The server keeps the same per-slot log: undo and redo apply one step's inverses, and lore and quests are in the document. |
+| Typed edits | `metaverse-engine/editor/edit.coax`; the server's log, `coax/web/api/migrations/0111_realm_edit_log.sql` | Every revision path as one invertible edit, undo/redo, saves fenced by revision (409 on a stale one). The server keeps the same per-slot log: undo and redo apply one step's inverses, and lore and quests are in the document. |
 | The voice | migrations 0104-0106 | Switch a feature, open a panel, ask for a thing, ask about the screen (the frame goes to Gemini). |
 | The CLI and MCP | `openagents realm ...` (35 verbs), `openagents mcp` | `new`, `revise`, `switch`, `move`, `place`, `ask`, `undo`, `publish`, `fork`, `shot`, `play`/`look`/`go`/`say`, `apply FILE.jsonl`. Each verb is an MCP tool. |
 | Your own Coder | "Your computer" panel, #12640-#12642 | In progress: the browser pairs with the owner's Coder over NIP-HOST, sends a job for the realm, streams its steps. |
-| Publish and fork | `realm publish`, `realm fork`, migrations 0075, 0101-0102, 0107 | Revisions, visibility (private, unlisted, public), forks. A publish pins the engine build and assets with the revision (0107, `aethyr/forge/publish.coax`, #12629). |
+| Publish and fork | `realm publish`, `realm fork`, migrations 0075, 0101-0102, 0107 | Revisions, visibility (private, unlisted, public), forks. A publish pins the engine build and assets with the revision (0107, `metaverse-engine/editor/publish.coax`, #12629). |
 | Asked for, not built yet | the feature list's waiting asks | Every thing the catalogue can't draw stays on the list for an agent to build. |
 
 What is missing is not a capability. It is **one screen**: today the builder and the
@@ -86,7 +86,7 @@ in the OpenAgents Metaverse's look (thin lines, plates, capitals; `verse.coax`).
   Locally, HOLD TO TALK is recognized by Psionic's resident Parakeet through the voice
   host (`verse/voice-host --recognizer parakeet`; [setup and measurements](../voice/dev.md#parakeet-local-recognition)),
   and each final transcript reaches the realm through the Metaverse Engine's event gate
-  ([`aethyr/audio/voice.coax`](../../aethyr/audio/voice.coax)): one answer per hold, none after a cancel.
+  ([`metaverse-engine/audio/voice.coax`](../../metaverse-engine/audio/voice.coax)): one answer per hold, none after a cancel.
 - **The feature rail (left).** The board, always visible: each feature a row with its
   check and its few words; a tap switches it and the realm changes at once. Under it,
   ASKED FOR: what the catalogue can't draw yet, each with BUILD IT (sends it to your
@@ -196,7 +196,7 @@ like anyone's. Coder gets the realm tools (`openagents mcp`) by default.
 2. **Arrivals.** The per-entity arrival in the shared renderer, and the table above for
    every catalogue feature; the forge camera that frames the latest change.
 3. **Edits by hand in the canvas.** Select, drag, rotate, size, remove, each a typed
-   op in `aethyr/forge/edit.coax` with its inverse; `realm apply` gains rotate, resize,
+   op in `metaverse-engine/editor/edit.coax` with its inverse; `realm apply` gains rotate, resize,
    remove.
    The model, the document (migration 0109), the page's drawing and the CLI
    (`realm rotate|resize|remove`, `realm apply`) are done (#12629); the canvas gestures
@@ -211,7 +211,7 @@ like anyone's. Coder gets the realm tools (`openagents mcp`) by default.
    which this tab reuses.
 8. **Pin the published build** (#12629): a published realm plays the engine build and
    assets it was published with. Done for made realms (migration 0107,
-   `aethyr/forge/publish.coax`, `coax/web/engine-served.coax` for the served bytes'
+   `metaverse-engine/editor/publish.coax`, `coax/web/engine-served.coax` for the served bytes'
    hashes, book chapter 54, checked end to end by `realm_walkthrough.coax`); open:
    built-in realms' forks and the release gates per version.
 

@@ -14,7 +14,7 @@
 //            one table (rules/srd/advancement.coax), for every level the game has.
 //   known    abilities learned past the class kit, by content ID (P3.3, #13286), ascending, no repeats.
 //            The kit's own abilities come from class and level and are not stored.
-//   bag, inv the item IDs the character holds and the ledger's inventory version (aethyr/session/ledger.coax,
+//   bag, inv the item IDs the character holds and the ledger's inventory version (metaverse-engine/session/ledger.coax,
 //            SQL verse.items). The ledger is its own aggregate: the store fills these from it on load,
 //            and a room's write never changes them (char_accept). Items change only by ledger operations (#13291).
 //   worn     an item ID or 0 for each equipment slot (CHAR_WORN); every worn item is in the bag, once.
@@ -31,7 +31,7 @@
 //   coax/bin/coax mutate everglade/model/character.coax --library --root-only
 #authority;
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/core/ids.coax";
+#load "../../metaverse-engine/core/ids.coax";
 #load "../../rules/srd/advancement.coax";
 #load "character-checks.coax" #test;   // the checks' fixture and helpers
 

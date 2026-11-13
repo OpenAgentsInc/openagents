@@ -14,7 +14,7 @@
 // animation carries on from where it was.
 
 #load "graph.coax";
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "ui.coax";
 #load "../../coax/web/analytics.coax";
 

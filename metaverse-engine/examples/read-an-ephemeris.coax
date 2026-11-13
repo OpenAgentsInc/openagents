@@ -1,0 +1,63 @@
+// Book chapter 39: JPL Horizons tables read with their labels, a UTC time
+// carried to TDB, Mars seen from the Earth with light time and aberration
+// against Horizons' own corrected states, a turning frame, and the error of
+// metaverse-engine/physics/orbit.coax's mean-element ephemeris measured against DE441.
+#load "../space/frames.coax";
+#import "Basic";
+
+km :: (x: f64) -> int { return cast(int) floor(x / 1000.0 + 0.5); }
+arcsec :: (a: f64) -> f64 { return floor(a * 206264.806 * 1000.0 + 0.5) / 1000.0; }
+
+// book:begin example
+// The largest distance between orbit.coax's body k and a table's rows, and the year it happens.
+worst :: (t: EphTable, k: int) -> [2] int {
+  most := 0.0; at := 0;
+  for i: 0..<t.rows {
+    gap := d3_len(d3_sub(orbit_body_state(k, eph_seconds(t.at[i])).r, t.r[i]));
+    if gap > most { most = gap; at = i; }
+  }
+  return [2] int.[km(most), 2000 + cast(int) floor(eph_seconds(t.at[at]) / YEAR + 0.5)];
+}
+
+main :: () {
+  mars := eph_load(HZ_MARS, EphCentre.sun, GM_SUN);
+  print("Mars about the Sun: % rows of %, TDB, ecliptic J2000, from day % to day % after J2000\n",
+    mars.rows, mars.dataset.name, eph_seconds(mars.at[0]) / DAY, eph_seconds(mars.at[mars.rows - 1]) / DAY);
+  print("a day before the first row: %; a day after the last: %\n",
+    eph_at(mars, tdb_at(mars.at[0] - 86400000000000)).status, eph_at(mars, tdb_at(mars.at[mars.rows - 1] + 86400000000000)).status);
+
+  // 2025-01-01T23:58:50.816 UTC is 2025-01-02T00:00:00 TDB to the millisecond:
+  // 37 leap seconds, 32.184 s to TT, and TDB - TT from the USNO series.
+  utc := utc_at(days_from_civil(2025, 1, 1) * 86400000000000 + 86330816000000);
+  tai := utc_to_tai(utc); tdb := tt_to_tdb(tai_to_tt(tai.at));
+  print("UTC 2025-01-01 23:58:50.816 is TDB % ms after 2025-01-02 00:00\n", (tdb.ns - days_from_civil(2025, 1, 2) * 86400000000000) / 1000000);
+  print("a UTC time after the leap-second table: %\n", utc_to_tai(utc_at(days_from_civil(2027, 1, 1) * 86400000000000)).error);
+
+  ssb_mars := eph_load(HZ_MARS_SSB, EphCentre.barycentre, GM_SUN);
+  earth := eph_load(HZ_EARTH_SSB, EphCentre.barycentre, GM_SUN);
+  geo := eph_load(HZ_MARS_GEO, EphCentre.earth, EPH_MU_EARTH);
+  lt := eph_load(HZ_MARS_GEO_LT, EphCentre.earth, EPH_MU_EARTH);
+  lts := eph_load(HZ_MARS_GEO_LTS, EphCentre.earth, EPH_MU_EARTH);
+  obs := eph_at(earth, tdb_at(earth.at[1])).state;
+  seen := eph_light_time(ssb_mars, obs);
+  apparent := eph_aberrate(seen.state, obs.v);
+  print("Mars from the Earth on 2025-01-02 00:00 TDB: % km away, light time % s\n",
+    km(d3_len(seen.state.r)), floor(d3_len(seen.state.r) / EPH_C * 1000.0 + 0.5) / 1000.0);
+  print("  geometric vs light-time: % km apart; ours vs Horizons' LT: % m\n",
+    km(d3_len(d3_sub(geo.r[1], lt.r[1]))), cast(int) floor(d3_len(d3_sub(seen.state.r, lt.r[1])) + 0.5));
+  print("  aberration turns it % arcsec; ours vs Horizons' LT+S: % arcsec\n",
+    arcsec(eph_angle(lt.r[1], lts.r[1])), arcsec(eph_angle(apparent.state.r, lts.r[1])));
+
+  ground := frame_to_inertial(FRAME_EARTH, 0.0, d3(6378137, 0, 0), d3(0, 0, 0));
+  flat := frame_to_inertial_position_only(FRAME_EARTH, 0.0, d3(6378137, 0, 0), d3(0, 0, 0));
+  print("a point on the equator: % m/s inertial with w x r, % m/s without\n", floor(d3_len(ground.v) * 10.0 + 0.5) / 10.0, d3_len(flat.v));
+
+  emb := eph_load(HZ_EMB, EphCentre.sun, GM_SUN);
+  jupiter := eph_load(HZ_JUPITER, EphCentre.sun, GM_SUN);
+  e := worst(emb, BODY_EARTH); m := worst(mars, BODY_MARS); j := worst(jupiter, BODY_JUPITER);
+  print("orbit.coax's mean elements against DE441, 2000-2200, every 5 years:\n");
+  print("  Earth-Moon barycentre: at most % km (%)\n", e[0], e[1]);
+  print("  Mars: at most % km (%)\n", m[0], m[1]);
+  print("  Jupiter: at most % km (%)\n", j[0], j[1]);
+}
+// book:end example

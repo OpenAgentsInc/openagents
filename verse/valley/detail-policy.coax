@@ -1,5 +1,5 @@
 // Two complete immutable VDP1 artifacts, independently checked against the original source mesh.
-#load "../../aethyr/core/assets.coax";
+#load "../../metaverse-engine/core/assets.coax";
 #authority;
 DETAIL_CAP :: 67108864;
 DETAIL_TAG :: 1073741824;

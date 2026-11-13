@@ -27,7 +27,7 @@
 //     differs from where it went on to by a little, eased out over NET_EASE s. A row the server
 //     didn't send was the same as the last (it sends what changed), so the entity stood there until
 //     the tick before its next;
-//   - your inputs, NET_PREDICT_HIST of them (aethyr/net/predict.coax), until the server has stepped them; where the re-run puts you
+//   - your inputs, NET_PREDICT_HIST of them (metaverse-engine/net/predict.coax), until the server has stepped them; where the re-run puts you
 //     differs from where you were drawn by a little: that is eased out over NET_SMOOTH s (past
 //     NET_SNAP m at once);
 //   - casts the server took (e cast): played from its seed, so they fall where they fall for everyone,
@@ -41,11 +41,11 @@
 #load "../../coax/web/socket.coax";
 #load "../../everglade/shared/everglade-wire.coax";
 #load "../../everglade/client/net-core.coax";   // the states' ring, the jitter buffer, the clock: Everglade II's page keeps them too (#13054)
-#load "../../aethyr/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
-#load "../../aethyr/session/lifecycle.coax";   // focus, hiding and the socket, as every host does them (#12856)
+#load "../../metaverse-engine/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
+#load "../../metaverse-engine/session/lifecycle.coax";   // focus, hiding and the socket, as every host does them (#12856)
 #load "everglade-join.coax";   // which instance, who you are in it, INVITE (#12716)
 #load "everglade-moderate.coax";   // BLOCK, REPORT and KICK from a nameplate (#12714)
-#load "../../aethyr/session/party.coax";   // a party's rules, as the API and the room keep them (#12845)
+#load "../../metaverse-engine/session/party.coax";   // a party's rules, as the API and the room keep them (#12845)
 #load "everglade-party.coax";      // PARTY: your party's roster, its link, joining by one (#12852)
 #load "everglade-events.coax";     // the raid's banner, your level and kit, the admin's EVENTS (#12737)
 
@@ -116,7 +116,7 @@ EgNet :: struct {
   budget: int = WIRE_BUDGET; // the bytes of rows a tick the server sends this page at most (W)
   rate_t: int; rate_b: int; rate: int;   // the bytes a second heard, over the last second (vitals)
   // your inputs, and the server's word on you
-  pred: [1] NetPredict;      // your inputs and commands by number, the newest the server stepped and the re-run due (aethyr/net/predict.coax)
+  pred: [1] NetPredict;      // your inputs and commands by number, the newest the server stepped and the re-run due (metaverse-engine/net/predict.coax)
   fix: NetFix;               // the server's word on you: your row's fields after input pred.acked
   stepping: int;             // the input the face is stepping now (net_input, net_replay_input)
   // your Reverse Gravity, predicted (net_own_rg): the cast's sequence number and its end's (0 none),
@@ -127,7 +127,7 @@ EgNet :: struct {
   // until the room's entity for it comes (0 none), the entity up at the press (a new one is this
   // cast's), and one you ended before its entity came (its entity is not raised again here)
   own_pend: [AB_N] int; own_was: [AB_N] int; own_gone: [AB_N] bool;
-  off: [1] NetCorrect;       // where you are drawn less where you are, eased out (aethyr/net/interp.coax)
+  off: [1] NetCorrect;       // where you are drawn less where you are, eased out (metaverse-engine/net/interp.coax)
   wanted: int = -1;          // your WANTED level (w; -1 none heard: the server runs no town)
   breaks_heard: int; burns_heard: int;   // the town's pieces the server broke and lit (e break, e burn)
   mends_heard: int;                      // and stood up (e mend: everglade-repair.coax)
@@ -144,7 +144,7 @@ EgNet :: struct {
   lost: bool;                // the room's socket closed under you: said again when you're back
   sat: bool;                 // you sat in a room this load: the page plays in rooms from then (net_live)
   quiet_frames: int; quiet_since: int; quiet_fresh: bool = true; stepped_at: int;   // the quiet socket's watch (NET_SILENT_MS)
-  life: [1] LifeState;       // the page's lifecycle (aethyr/session/lifecycle.coax, #12856)
+  life: [1] LifeState;       // the page's lifecycle (metaverse-engine/session/lifecycle.coax, #12856)
   drawn_at: int;             // the last frame's monotonic ms (the world's ease)
   hello_due: bool;
   pipe: [1] Pipe;
@@ -517,7 +517,7 @@ net_quiet :: (s: [] Everglade, n: [] EgNet, mono: int) {
 }
 // book:end quiet-socket
 // The page's lifecycle (#12856): the host's hidden and shown go through the shared profile
-// (aethyr/session/lifecycle.coax), which says what to do. Hidden stops the clock (the host's blur
+// (metaverse-engine/session/lifecycle.coax), which says what to do. Hidden stops the clock (the host's blur
 // on hiding releases held inputs: everglade_blur). Shown after LIFECYCLE_RESYNC ticks away replaces the
 // socket at once, so the room sends the whole state on the rejoin, rather than waiting NET_SILENT_MS to
 // find a socket the long suspension broke. Nothing the page sent before is sent again.
@@ -2053,8 +2053,8 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c #effects(all) {
   if field == 28 { k := 0; for i: 0..<sp_dm(s)[0].n { if sp_dm(s)[0].pieces[i].state != DP_STANDING { k += 1; } } return ifx sp_on(s) then k else -1; }
   if field == 25 { k := 0; for i: 0..<WATCH_ACTORS { if s[0].wt[0].actors[i].ready && s[0].wt[0].actors[i].mode != WM_CALM { k += 1; } } return k; }   // off their day as drawn
   if field == 19 { return n[0].creature_deaths; }
-  // you as this frame drew you: the controller's act (aethyr/move/walk.coax Act: 3 airborne) and the clip
-  // your body plays (aethyr/anim/skin.coax SKIN_*: 3 the jump), for a check that the jump's pose ends
+  // you as this frame drew you: the controller's act (metaverse-engine/move/walk.coax Act: 3 airborne) and the clip
+  // your body plays (metaverse-engine/anim/skin.coax SKIN_*: 3 the jump), for a check that the jump's pose ends
   if field >= 31 && field <= 38 || field >= 300 && field < 300 + EG_RA_SEATS || field >= 320 && field < 320 + EG_RA_SEATS { return md_probe(s, field); }   // the others, as you deal with them (everglade-moderate.coax)
   // 340 + SEAT: that caster's authoritative Reverse Gravity cylinders. Doors
   // and boats use larger entity IDs too, so an ID cutoff is not a spell count.

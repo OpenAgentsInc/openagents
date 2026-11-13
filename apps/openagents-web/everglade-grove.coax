@@ -510,7 +510,7 @@ gv_el_at :: (s: [] Everglade, mode: int, at: Point) {
 
 // ---- Entangle
 
-// Its square on the ground where the pointer points, held to 90 feet (aethyr/action/area-aim.coax, as
+// Its square on the ground where the pointer points, held to 90 feet (metaverse-engine/action/area-aim.coax, as
 // Everglade II's): past that it stops at the range's edge, and casts there.
 gv_en_aim :: (s: [] Everglade) -> aa.AreaAim {
   you := ab_you(s);
@@ -833,8 +833,8 @@ gv_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int, pulse: 
 
 // ---- checks
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).
 
-// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
+// Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).

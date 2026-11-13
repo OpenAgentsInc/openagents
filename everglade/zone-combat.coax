@@ -21,7 +21,7 @@
 // through the same shared Hit Points and Temporary Hit Points as hostile attacks.
 //
 // Weapons: a melee class holds its weapon in the right hand (xc_kit; charactercreator.coax
-// held_weapon). A blow with it is a Metaverse Engine action (aethyr/action/, #12993): the swing's clip is its
+// held_weapon). A blow with it is a Metaverse Engine action (metaverse-engine/action/, #12993): the swing's clip is its
 // definition, timed in fixed 1/64 s ticks, with a sensor window round the swing's impact. Each tick
 // of that window the blade's actual pose (the swing clip's baked hands through the same weapon matrix
 // that draws it, sampled within the tick) sweeps the monsters' hurt capsules; the first accepted
@@ -45,7 +45,7 @@
 // Creative Commons Attribution 4.0 International License, available at
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #load "shared/fivebar.coax";
-#load "../aethyr/move/walk-substep-policy.coax" as xtravel;
+#load "../metaverse-engine/move/walk-substep-policy.coax" as xtravel;
 #load "../rules/srd/press-budget.coax";
 #load "shared/class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
 #load "client/class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
@@ -53,22 +53,22 @@
 #load "client/cast-pose.coax";   // a cast's body clip and the bow's aim pose, shared with Everglade II
 #load "client/class-menu.coax";  // the CLASSES column, shared with Everglade II's local admin mode
 #load "dash.coax";   // Everglade's Dash (game): the SRD Dash spent as the engine's sprint
-#load "../aethyr/action/sprint.coax" as sprint;   // the sprint (engine): its pace and steering
+#load "../metaverse-engine/action/sprint.coax" as sprint;   // the sprint (engine): its pace and steering
 #load "../verse/experimental-terrain.coax" as xmeadow;
 #load "../verse/experimental-village.coax" as xvillage;   // its walls, for what a plate's sight crosses
-#load "../aethyr/action/action.coax" as act;
-#load "../aethyr/action/sensor.coax" as sense;
-#load "../aethyr/physics/query.coax" as aq;
-#load "../aethyr/cam/attention.coax" as attn;   // the cone spell's monster is the shared attention answer (#12994)
-#load "../aethyr/cam/mouselook.coax" as xlook;   // the mouselook camera, whose reticle is the bow's
-#load "../aethyr/action/floats.coax" as fl;   // the numbers over whoever a blow struck, shared with Everglade II (#13104)
-#load "../aethyr/action/react.coax" as react;   // hit stops and the presentation queue (#13027)
-#load "../aethyr/action/target.coax" as tg;   // static targets an arrow strikes: any zone may stand some (the Archery Range does)
-#load "../aethyr/world/props.coax" as wprops;   // a zone's own standing things' boxes (the Creator keeps them)
-#load "../aethyr/action/bow.coax" as bow;
-#load "../aethyr/action/archery.coax" as arch;   // the archer: the sight line, the flight, what an arrow meets (engine)
+#load "../metaverse-engine/action/action.coax" as act;
+#load "../metaverse-engine/action/sensor.coax" as sense;
+#load "../metaverse-engine/physics/query.coax" as aq;
+#load "../metaverse-engine/cam/attention.coax" as attn;   // the cone spell's monster is the shared attention answer (#12994)
+#load "../metaverse-engine/cam/mouselook.coax" as xlook;   // the mouselook camera, whose reticle is the bow's
+#load "../metaverse-engine/action/floats.coax" as fl;   // the numbers over whoever a blow struck, shared with Everglade II (#13104)
+#load "../metaverse-engine/action/react.coax" as react;   // hit stops and the presentation queue (#13027)
+#load "../metaverse-engine/action/target.coax" as tg;   // static targets an arrow strikes: any zone may stand some (the Archery Range does)
+#load "../metaverse-engine/world/props.coax" as wprops;   // a zone's own standing things' boxes (the Creator keeps them)
+#load "../metaverse-engine/action/bow.coax" as bow;
+#load "../metaverse-engine/action/archery.coax" as arch;   // the archer: the sight line, the flight, what an arrow meets (engine)
 #load "longbow.coax";   // Everglade's Longbow: where the arrow leaves, its sounds and dust (game)
-#load "../aethyr/cam/reticle.coax" as reticle;   // the one centred reticle, shared with the mouselook camera       // the draw and the arrows, yours and the Goblins' (docs/verse/bow-combat.md)
+#load "../metaverse-engine/cam/reticle.coax" as reticle;   // the one centred reticle, shared with the mouselook camera       // the draw and the arrows, yours and the Goblins' (docs/verse/bow-combat.md)
 
 XC_FOES :: hostile.HS_N;      // the village's six and the dungeon's (verse/experimental-hostiles.coax)
 XC_SIDE :: 48; XC_MID :: 24;   // the engine's grid round you, squares (73 m a side)
@@ -84,7 +84,7 @@ XC_BREATH :: 31;   // the dragon's Fire Breath while you ride it (everglade/zone
 XC_FAMILIAR_CAST :: 0; XC_FAMILIAR_POCKET :: 1; XC_FAMILIAR_RELEASE :: 2; XC_FAMILIAR_STEP :: 3; XC_FAMILIAR_SENSE :: 4;
 XcCombat :: struct {
   sight: [XC_FOES] cc.HudSight; sight_at: f32 = -1;   // each foe's plate's share shown while its body shows (xc_sight_shows), fading
-  plates: [1] cc.HudPlates;                   // the frame's plates over bodies (xc_frame: aethyr/ui/hud-plates.coax)
+  plates: [1] cc.HudPlates;                   // the frame's plates over bodies (xc_frame: metaverse-engine/ui/hud-plates.coax)
   familiar_order:int; familiar_touch:bool;
   familiar_x:f32; familiar_z:f32; familiar_seat:[1]FbSeat;
   dragon_seat:[1]FbSeat;   // the red dragon you ride, once it has joined the battle (everglade/zone-ride.coax zone_dragon_join)
@@ -98,8 +98,8 @@ XcCombat :: struct {
   rest_seen:bool; rest_settled:bool; rest_refused:bool;
   jump:EgJump; jump_run:f32; jump_x:f32; jump_z:f32;
   wild_old:int; wild_new:int;
-  dash: [1] sprint.Sprint;   // a Dash's sprint (aethyr/action/sprint.coax), begun from the pipeline's yes (xc_use_ab)
-  wave: aa.AreaAim; wave_y: f32; wave_until: f32 = -1;   // Thunderwave's cube where it opened (aethyr/action/area-aim.coax), at your height then
+  dash: [1] sprint.Sprint;   // a Dash's sprint (metaverse-engine/action/sprint.coax), begun from the pipeline's yes (xc_use_ab)
+  wave: aa.AreaAim; wave_y: f32; wave_until: f32 = -1;   // Thunderwave's cube where it opened (metaverse-engine/action/area-aim.coax), at your height then
   bar: [XC_SLOTS] FbAb; bar_n: int;
   order: [12] [XC_SLOTS] int; order_n: [12] int;
   arranging: bool; order_dirty: bool; drag_x: f32; drag_y: f32;
@@ -114,19 +114,19 @@ XcCombat :: struct {
   top: f32;                         // its top, device px
   pick_hover: CmHit;                // the picker's button under the pointer (class-menu.coax cm_pick_hit)
   side: EgSideState;                // the class menus' open one and hover (everglade/hud/class-bar.coax)
-  me_trail: [1] cc.HudTrail; me_max: int;      // your health bar's fill and damage trail (aethyr/ui/hud-style.coax), and the maximum it was stepped for
+  me_trail: [1] cc.HudTrail; me_max: int;      // your health bar's fill and damage trail (metaverse-engine/ui/hud-style.coax), and the maximum it was stepped for
   foe_trail: [XC_FOES] cc.HudTrail;            // each monster's: its plate's, and your target's frame's
   vig: [1] cc.HudVignette;                     // the screen's red edges: a blow's flash, the pulse when you are low (everglade/hud/parts.coax eg_vignette)
   target_shown: f32;                           // 0 to 1: how far your target's frame has faded in
   hover: int = -1;                  // the bar's slot under the pointer
   down: int = -100; down_x: f32; down_y: f32; down_id: int;
   media: [16384] u8; media_n: int;   // the bar's pictures for the host (coaxial_media)
-  floats: [1] fl.Floats;   // the shared numbers (aethyr/action/floats.coax): the queue and the count shown and suppressed live inside
+  floats: [1] fl.Floats;   // the shared numbers (metaverse-engine/action/floats.coax): the queue and the count shown and suppressed live inside
   casts: int; landed: int; kills: int; refused: int; last_dmg: int;   // for the checks (zone_probe 900+)
   whiffs: int;                      // bolts that flew to their range and blows that met no one
   releasing: bool;                  // an arrow or a swung blow landing: it resolves though you fell first (#13120)
   fizzle: int = -1; fizzle_at: f32 = -100;   // the slot whose spell found no one ahead, and when (its icon flashes)
-  deeds: [1] DeedBar;   // the bar's asks and the rules' answers (aethyr/action/deed.coax, docs/verse/action-pipeline.md, #13072)
+  deeds: [1] DeedBar;   // the bar's asks and the rules' answers (metaverse-engine/action/deed.coax, docs/verse/action-pipeline.md, #13072)
   seeded: bool;                     // the dice mixed with the clock at the first press, so each visit rolls its own
   knockout: bool;                   // KNOCK OUT: your melee blows leave a monster at 1 HP and Unconscious (SRD p.17)
   pend: int = -1;                   // a blow swinging: its slot (xc_swing_step), -1 none
@@ -145,7 +145,7 @@ XcCombat :: struct {
   studied: [XC_FOES] bool;          // Study recalled it: its AC shows on the target line
   calm: [XC_FOES] bool;             // Influence: it complied and stands down until you harm it
   glide_x: f32; glide_z: f32; glide_until: f32 = -1;   // a readied move carrying you to (glide_x, glide_z)
-  // the bow (docs/verse/bow-combat.md): the engine's archer (aethyr/action/archery.coax): your draw,
+  // the bow (docs/verse/bow-combat.md): the engine's archer (metaverse-engine/action/archery.coax): your draw,
   // every arrow in the air or stuck (yours and the monsters'), the zone's static targets, a finger
   // drawing on the bow's slot and the counts of your own arrows; then each monster shot's arrow (its
   // pool slot + 1, 0 none) and what the rules said of yours
@@ -155,7 +155,7 @@ XcCombat :: struct {
   own_kit: bool;                    // the page has one class of its own and no CLASSES picker (the Archery Range)
   bow_hits: int; bow_misses: int; bow_far: int;
 }
-XC_TICK :: 64.0;           // aethyr/core/loop.coax: ticks a second
+XC_TICK :: 64.0;           // metaverse-engine/core/loop.coax: ticks a second
 XC_BLADE_R :: 0.12;        // m: a blade's sensor radius
 XC_BLADE_TIP :: [5]f32.[1.0,1.25,0.9,0.6,0.6];   // m from the weapon's origin to its tip (CC_KITS order; the bow never swings)
 XC_WINDOW :: 6;            // ticks the sensor is open either side of the swing's impact
@@ -307,7 +307,7 @@ xc_square :: (d: f32) -> int {
 }
 // What kind of aim ability a takes, and its reach in metres (class-kit.coax xc_aim_for), for the weapon you hold.
 xc_aim_kind :: (s: [] EgZone, a: FbAb) -> XcAim { return xc_aim_for(a, s[0].xc[0].b[0].c[0].weapon); }
-// A single-target spell's monster: the Metaverse Engine's attention query (aethyr/cam/attention.coax) for an action
+// A single-target spell's monster: the Metaverse Engine's attention query (metaverse-engine/cam/attention.coax) for an action
 // target within reach in a 30 degree cone ahead, the nearest first (angle-weighted), ties by id. The
 // SRD still decides what the spell does; this only says at whom. -1 when none.
 xc_attend :: (s: [] EgZone, fx: f32, fz: f32, reach: f32) -> int {
@@ -365,7 +365,7 @@ xc_lock_step :: (s: [] EgZone) {
   x[0].lock = attn.attn_step(x[0].lock, xc_lock_query(s), ts[0..<tn], c, xc_tick(s[0].creator[0].clock), false, false);
   x[0].target = x[0].lock.target;
 }
-// Hit stops (aethyr/action/react.coax): a blow that lands pauses the struck monster for its profile's
+// Hit stops (metaverse-engine/action/react.coax): a blow that lands pauses the struck monster for its profile's
 // ticks, and a monster whose blow lands on you pauses itself. Only those actors are held; the world, the
 // other monsters and you go on. Actor 0 is you, 1 to 6 the monsters.
 XC_STOP_STRUCK :: 5; XC_STOP_STRIKER :: 4;
@@ -396,7 +396,7 @@ xc_stops_step :: (s: [] EgZone) {
 xc_aim :: (s: [] EgZone, a: FbAb) -> XcAim {
   cr := s[0].creator[..]; h := cr[0].hostiles[..];
   m := xd_reach(s, a, xc_aim_kind(s, a));
-  m.fx = sin(cr[0].player_face); m.fz = cos(cr[0].player_face);   // aethyr/move/walk.coax: you face atan2(x, z)
+  m.fx = sin(cr[0].player_face); m.fz = cos(cr[0].player_face);   // metaverse-engine/move/walk.coax: you face atan2(x, z)
   if m.kind == XC_AIM_SELF { return m; }
   best := 1e9f32;
   for i: 0..<XC_FOES {
@@ -663,7 +663,7 @@ xc_shots_step :: (s: [] EgZone) {
     if !q[0].shown {
       q[0].shown = true;
       left := q[0].fly - (h[0].time - q[0].t0); if left < 0.05 { left = 0.05; }
-      // an arrow is the shared bow's (aethyr/action/bow.coax): it arcs to where you stood, arriving
+      // an arrow is the shared bow's (metaverse-engine/action/bow.coax): it arcs to where you stood, arriving
       // as hostile_fly resolves it; a rock is the effect
       if arrow {
         f3 := [3] f32.[q[0].fx, q[0].fy, q[0].fz]; t3 := [3] f32.[q[0].tx, q[0].ty, q[0].tz];
@@ -865,9 +865,9 @@ xc_touch_spell :: (a:FbAb)->bool {
 // Press slot k: the engine resolves it at what it aims at (xc_aim). True when it was used. Sets what the
 // world shows: the look (xc_look), the numbers and the fallen.
 // The bow in a zone (xc_has_bow, xc_bow_begin, xc_bow_loose, xc_bow_step, xc_crosshair): everglade/zone-bow.coax.
-// ---- Dash as a sprint: the engine's (aethyr/action/sprint.coax) at Everglade's distance
+// ---- Dash as a sprint: the engine's (metaverse-engine/action/sprint.coax) at Everglade's distance
 // (everglade/dash.coax), begun when the pipeline accepts an action whose feel moves `dash`
-// (class-feel.coax xf_feel, aethyr/action/deed.coax deed_show). Here it is only wired in: a frame
+// (class-feel.coax xf_feel, metaverse-engine/action/deed.coax deed_show). Here it is only wired in: a frame
 // after your step (fivelab.coax zone_you) hands it your keys or thumb, your stride follows it
 // (charactercreator.coax experimental_figure), and its dust is the glade's puff.
 xc_sprint_frame :: (s: [] EgZone) {
@@ -1309,7 +1309,7 @@ xc_use_ab :: (s: [] EgZone, k: int, a0: FbAb, on: int) -> bool {
   if a.kind == FB_SPELL && a.sp == SP_THUNDERWAVE {
     x[0].wave = aa.area_face(xk_spell_area(SP_THUNDERWAVE), px, pz, cr[0].player_face); x[0].wave_y = cr[0].player_y; x[0].wave_until = now + 1.4;
   }
-  // presented from the yes (aethyr/action/deed.coax deed_show): an action whose feel moves `dash` sprints
+  // presented from the yes (metaverse-engine/action/deed.coax deed_show): an action whose feel moves `dash` sprints
   if deed_show(xf_feel(x[0].klass, a), DeedResult.effect).move == DeedMove.dash {
     sprint.sprint_start(x[0].dash[..], now, cr[0].player_face, eg_dash_gain(f32(b[0].c[0].speed)));
   }
@@ -1384,7 +1384,7 @@ xc_harmed :: (s: [] EgZone, i: int, before: int, kinds: u32, hit: string, rate: 
   }
   return lost > 0;
 }
-// One of the glade's effects (aethyr/fx/puff.coax), on the creator's clock.
+// One of the glade's effects (metaverse-engine/fx/puff.coax), on the creator's clock.
 fx_start_at :: (s: [] EgZone, recipe: int, now: f32, from: FxV, to: FxV, col: FxV, big: f32, reach: f32) {
   c := FxCause.{recipe = recipe, seed = now * 13.7 + f32(recipe), t0 = now, from = from, to = to, col = col, big = big, reach = reach};
   _ := fxp_start(s[0].puffs[..], c, now);
@@ -1402,7 +1402,7 @@ xc_look :: (s: [] EgZone, a: FbAb, foe: int, ax: f32, az: f32) {
 // ---- the screen: where a point in the world falls (charactercreator.coax camera's uniforms)
 XcAt :: struct { x: f32; y: f32; ok: bool; }
 // Whether a body standing at (bx, foot, bz), tall m, shows from the camera: the engine's visibility
-// service (aethyr/physics/visibility.coax, through aethyr/ui/hud-sight.coax) with the meadow's heights under the
+// service (metaverse-engine/physics/visibility.coax, through metaverse-engine/ui/hud-sight.coax) with the meadow's heights under the
 // line and the village's, castle's and dungeon's walls near it as boxes.
 // The walls near the line from the eye to (bx, bz), lifted to world heights, and the meadow under it.
 XcSightIn :: struct { eye: [3] f32; near: [1] xvillage.EvNear; land: [cc.HUD_SIGHT_LAND] f32; nl: int; }
@@ -1453,7 +1453,7 @@ xc_proj :: (x: [] XcCombat, wx: f32, wy: f32, wz: f32) -> XcAt {
   up := dx * u[28] + dy * u[29] + dz * u[30];
   return XcAt.{x = u[23] + u[19] * r / z, y = u[27] - u[19] * up / z, ok = true};
 }
-// The camera xc_proj projects through, as the shared plates take it (aethyr/ui/hud-plates.coax).
+// The camera xc_proj projects through, as the shared plates take it (metaverse-engine/ui/hud-plates.coax).
 xc_plate_view :: (x: [] XcCombat, w: f32, h: f32) -> cc.HudPlateView {
   u := x[0].u[..];
   return cc.HudPlateView.{eye = [3] f32.[u[16], u[17], u[18]], fwd = [3] f32.[u[20], u[21], u[22]], right = [3] f32.[u[24], u[25], u[26]],
@@ -1654,7 +1654,7 @@ xc_caption :: (ui: [] cc.UitTrace, parent: int, out: [] f32, at: int, t: string,
   return cc.ttext(ui, parent, out, at, t, (r.x0 + r.x1 - w) * 0.5, ifx top then r.y0 + 4 * k + c else r.y1 - 4 * k, c, ink, "");
 }
 
-// An area's outline and guides on the meadow (aethyr/action/area-aim.coax area_aim_point), lifted by
+// An area's outline and guides on the meadow (metaverse-engine/action/area-aim.coax area_aim_point), lifted by
 // y, each piece drawn while both its ends are before the camera.
 xc_area_draw :: (x: [] XcCombat, a: aa.AreaAim, y: f32, out: [] f32, at: int, k: f32, glow: f32) -> int {
   n := at; last: XcAt;
@@ -1683,7 +1683,7 @@ xc_familiar_view :: (s:[] EgZone,u:[]f32)->bool {
   return true;
 }
 // ---- the frame: after Character Create's (cc.frame), in Experimental
-// The health bars' trails, a frame (aethyr/ui/hud-style.coax hud_trail_step): yours, and each
+// The health bars' trails, a frame (metaverse-engine/ui/hud-style.coax hud_trail_step): yours, and each
 // monster's (its plate's and, when it is your target, its frame's). Your bar is set anew, not eased,
 // when your maximum changes (another class, another level).
 xc_trails_step :: (s: [] EgZone, dt: f32) {
@@ -1808,7 +1808,7 @@ xc_frame :: (s: [] EgZone, out: [] f32, at: int, u: [] f32, w: f32, h: f32, k: f
   wave := x[0].wave; wave_y := x[0].wave_y;
   if wave_preview { wave=aa.area_face(xk_spell_area(SP_THUNDERWAVE),cr[0].player_x,cr[0].player_z,cr[0].player_face); wave_y=cr[0].player_y; }
   if wave_on { n=xc_area_draw(x,wave,wave_y,out,n,k,ifx wave_preview then 0.8 else 1.0); }
-  // the plates over bodies, Everglade's shared ones (aethyr/ui/hud-plates.coax places them,
+  // the plates over bodies, Everglade's shared ones (metaverse-engine/ui/hud-plates.coax places them,
   // everglade/hud/parts.coax eg_plates draws them): the crates', the monsters' (your target's in gold)
   // and your familiar's; a monster's while its body shows (xc_sight_shows), fading in and out
   sight_dt := ifx x[0].sight_at < 0 then 1.0f32 else ifx now - x[0].sight_at > 0.1 then 0.1f32 else ifx now < x[0].sight_at then 0.0f32 else now - x[0].sight_at;
@@ -2066,7 +2066,7 @@ xc_pointer :: (s: [] EgZone, px: f32, py: f32, phase: int, id: int) -> bool {
     if phase != 0 && x[0].down == -4 && id == x[0].down_id { if phase >= 2 { x[0].down = -100; } return true; }
   }
   // a finger (or a click) held on the bow's slot draws; dragging aims (the camera turns), lifting
-  // looses, and a tap draws on to full and looses itself (aethyr/action/archery.coax archer_touch)
+  // looses, and a tap draws on to full and looses itself (metaverse-engine/action/archery.coax archer_touch)
   bt := arch.archer_touch(x[0].ar[..], id, phase, px, py, k, cr[0].clock);
   if bt.kind == arch.TOUCH_AIM { cr[0].yaw += bt.yaw; cr[0].pitch = cc.cc_clamp(cr[0].pitch + bt.pitch, -1.2, 1.2); return true; }
   if bt.kind == arch.TOUCH_CANCEL { _ := xc_bow_cancel(s); return true; }
@@ -2856,7 +2856,7 @@ xc_test_fly :: (s: [] EgZone, seconds: f32) {
   // its draw is its tell: the arrow leaves the bow at HS_DRAW and flies 30 m/s, so the hit waits for it
   for k: 0..<12 { hostile.hostile_tick(h,0,0,0,0.05); }
   #assert h[0].contacts[0].count==0 && h[0].shots[0].state==hostile.HS_FLYING;
-  // the arrow is the shared bow's (aethyr/action/bow.coax), arcing to where you stood
+  // the arrow is the shared bow's (metaverse-engine/action/bow.coax), arcing to where you stood
   xc_shots_step(s[..]); #assert h[0].shots[0].shown && fxp_live(s[0].puffs[..])==0 && s[0].xc[0].shot_arrow[0]>0 && s[0].xc[0].ar[0].arrows[0].a[s[0].xc[0].shot_arrow[0]-1].state==bow.ARROW_FLYING;
   for k: 0..<8 { hostile.hostile_tick(h,0,0,0,0.05); }
   #assert h[0].contacts[0].count==1 && h[0].shots[0].state==hostile.HS_LANDING;

@@ -13,7 +13,7 @@
 // Seat tickets are signed with OA_ROOM_TICKET_KEY (room-ticket.coax), as raid-check.coax's are; the
 // bots are tagged as tests: room pair-drift-ROOM, player ids p-drift-K, names "Drift K".
 // Prints one line at the end: the casts sent, those refused and the D frames heard.
-#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
+#run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (metaverse-engine/session/seat-ticket.coax, #13260)
 #load "room-socket.coax";
 #load "../drift-snapshot.coax";
 #load "../../lib/sys/fs.coax";
@@ -199,7 +199,7 @@ tool_main :: () -> int #export_c #effects(all) {
       wx := goal.x - b[i].x; wz := goal.z - b[i].z;
       ahead := ifx wx * wx + wz * wz > 1 then 100 else 0;
       run := ifx wx * wx + wz * wz > 16 then 1 else 0;   // running to keep up
-      // the camera's yaw (aethyr/move/walk.coax): it sits at theta round you, so ahead is -(sin, cos) of it
+      // the camera's yaw (metaverse-engine/move/walk.coax): it sits at theta round you, so ahead is -(sin, cos) of it
       yaw := rs_atan2(wx, wz) + 3.14159265;
       if yaw > 3.14159265 { yaw -= 6.2831853; }
       seq[i] += 1;

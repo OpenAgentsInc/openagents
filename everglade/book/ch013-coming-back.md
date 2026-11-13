@@ -32,7 +32,7 @@ disagree.
 | Whether you have a character | The browser. A new player goes to Character Create and a returning player goes to `/play`. | [Chapter 11](ch011-one-address.md) |
 | Your character's look and name | The browser, sent in the hello | [Chapter 12](ch012-the-room.md) |
 | Where you stood | The room's checkpoint, saved every 5 seconds, and the page's last drawn position | `room-checkpoint.coax`, `everglade/client/net.coax` |
-| Who you are | Your player key and the seat ticket the API signs | [Metaverse Engine chapter 88](../../aethyr/book/ch088-a-seat-joins-with-a-signed-ticket.md) |
+| Who you are | Your player key and the seat ticket the API signs | [Metaverse Engine chapter 88](../../metaverse-engine/book/ch088-a-seat-joins-with-a-signed-ticket.md) |
 
 ## The method
 
@@ -73,7 +73,7 @@ store, so the new room knows where you stood.
 
 The page's wait doubles after each failed try and has a random part, so a
 thousand pages don't all return in the same instant
-([Metaverse Engine chapter 98](../../aethyr/book/ch098-versions-deploys-and-reconnect.md)).
+([Metaverse Engine chapter 98](../../metaverse-engine/book/ch098-versions-deploys-and-reconnect.md)).
 
 ## A worked example: the room is killed mid-run
 

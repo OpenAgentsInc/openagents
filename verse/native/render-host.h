@@ -1,5 +1,5 @@
 // Vulkan effects for a package and frame admitted by the shared Coax renderer.
-// RenderHost.h is generated from aethyr/render/native-host.coax by the build.
+// RenderHost.h is generated from metaverse-engine/render/native-host.coax by the build.
 #ifndef AETHYR_NATIVE_RENDER_HOST_H
 #define AETHYR_NATIVE_RENDER_HOST_H
 #include "RenderHost.h"
@@ -42,7 +42,7 @@ VksImage *rhg_present_quantized_v1(RhgRenderer *renderer,int display_format,char
 VksImage *rhg_probe_presentation(RhgRenderer *renderer,int64_t width,int64_t height,const void *source,size_t bytes,int display_format,int quantized,char *error,size_t error_bytes);
 VksImage *rhg_target_image(RhgRenderer *renderer,coax_t_RenderTarget target);
 uint64_t rhg_draw_commands(const RhgRenderer *renderer);
-// The GPU resource ledger (aethyr/render/registry.coax), one per process as in
+// The GPU resource ledger (metaverse-engine/render/registry.coax), one per process as in
 // the browser's face. Ask before creating a buffer or image, release when it is
 // freed; a zero handle is none. Words come from Coax (aethyr_render_*_words).
 enum {RHG_UNIFORM,RHG_STORAGE,RHG_COLOR,RHG_VERTEX,RHG_INDEX,RHG_TEXTURE};

@@ -97,7 +97,7 @@ already have a Coax base:
 | Area | Today | Where |
 | --- | --- | --- |
 | The language and tools | Coax, compiling to C and Wasm, with a book | `coax/`, `coax/book/` |
-| Engine and world | Aethyr, the Verse, Everglade, Experimental, with a book | `aethyr/`, `verse/`, `everglade/` |
+| Engine and world | Aethyr, the Verse, Everglade, Experimental, with a book | `metaverse-engine/`, `verse/`, `everglade/` |
 | Protocol | Nostr core and about 80 NIPs, every OpenAgents NIP (now 37, adding AGENT, DEPLOY, KEYS and SKILL), a relay, and a book | `coax/lib/nostr/`, `nostr/nips/openagents/`, `nostr/book/` |
 | Bitcoin and Lightning | Lightning primitives (BOLT 1, channels, onion, offers, pay, invoices), an explorer lab, and a book | `coax/lib/lightning/`, `bitcoin/` |
 | x402 | settle and verify | `coax/lib/x402/` |
@@ -131,7 +131,7 @@ it.
 | P13 | Partner apps and an API | Partial | **The OpenAgents API** (HTTP and WebSocket), the same one our apps use, with keys, rate limits and an OpenAPI description; a self-host image | `openagents/api/` |
 | P14 | Reputation and identity | Partial: keys, NIP-05, XP ledger | Author and plugin reputation from reproduced claims, not stars; one identity across web, apps and the Verse | `openagents/registry/` with `coax/lib/nostr` |
 | P15 | Test-time capabilities | Missing in code; the essay is the spec | The claim lifecycle: candidate, admission, controlled delta, reproduction, external validation, adoption, credit, revalidation, with claims as NIP-EVAL and NIP-CAP records | `openagents/eval/` |
-| P16 | 1.0 on every platform | Partial: Mac, iOS, Android (Everglade), web, Linux tooling; **no Windows host** | Hosts per platform under Aethyr's host contract, including a **Windows host** (Win32, D3D12 or Vulkan); one release pipeline that builds, signs and publishes all of them to openagents.com/download | `aethyr/host/`, `coax/platform/`, release scripts |
+| P16 | 1.0 on every platform | Partial: Mac, iOS, Android (Everglade), web, Linux tooling; **no Windows host** | Hosts per platform under Aethyr's host contract, including a **Windows host** (Win32, D3D12 or Vulkan); one release pipeline that builds, signs and publishes all of them to openagents.com/download | `metaverse-engine/host/`, `coax/platform/`, release scripts |
 
 ## 5. The proposed shape
 

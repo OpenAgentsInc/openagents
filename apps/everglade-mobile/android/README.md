@@ -9,13 +9,13 @@ second. No real phone has run it.
 **The Android app isn't a game client yet.** It draws the Golemancers'
 Workshop and your character. It doesn't run Everglade, the Archery Range,
 Everglade Experimental or the Bitcoin Lab, which iOS and the Mac run through
-the OpenAgents Metaverse Engine's page host ([`aethyr/host/apple/`](../../../aethyr/host/apple/page-host.h)).
+the OpenAgents Metaverse Engine's page host ([`metaverse-engine/host/apple/`](../../../metaverse-engine/host/apple/page-host.h)).
 `host.c` isn't on that page-host contract: it has its own Vulkan passes for two
 scenes. To play Everglade on Android, use the web app. Bringing Android onto
 the contract is part of GitHub #13304. What it shares with the other hosts
 today is the pack reader: `host.c` finds the pack's entries through
-[`aethyr/host/pack-table.h`](../../../aethyr/host/pack-table.h), the same
-Coax reader (`aethyr/forge/pack.coax`) the browser, iOS and the Mac use.
+[`metaverse-engine/host/pack-table.h`](../../../metaverse-engine/host/pack-table.h), the same
+Coax reader (`metaverse-engine/editor/pack.coax`) the browser, iOS and the Mac use.
 
 ## Run it
 

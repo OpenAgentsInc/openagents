@@ -1,0 +1,264 @@
+// Deeds (docs/verse/action-pipeline.md, GitHub #13072): one pipeline for every action of every class
+// and monster. Ask, act, present: a press asks whether its actor can act now (deed_ask), the
+// authority resolves it (a room, or a realm's local rules) and the realm hands its answer back
+// (deed_answer), and only an accepted answer presents (deed_show). Nothing animates, sounds or emits
+// an effect before acceptance; a refused deed greys its slot and plays nothing.
+//
+// A bearing (DeedBearing) is what a body's conditions let it do and how it holds itself: one pose for
+// the body, one set of locks for the input and the bar. A ruleset maps its conditions onto it once
+// (the SRD's: rules/srd/condition-bearing.coax rs_bearing).
+//
+// A feel (DeedFeel) is the presentation contract: every usable action declares its animation, its
+// effect, its sound and how the body moves. deed_feel_missing names what one lacks; a game's check
+// walks its every action with it.
+//
+// Time is in ticks of 1/64 s (metaverse-engine/core/loop.coax), as metaverse-engine/action/action.coax's.
+//
+//   coax/bin/coax test metaverse-engine/action/deed.coax --library
+
+#module "aethyr.action.deed";
+
+DEED_SLOTS :: 32;      // slots one bar holds
+DEED_HZ :: 64;         // ticks a second
+DEED_WAIT :: 96;       // ticks an asked deed waits for its answer (1.5 s); unanswered, it is refused
+DEED_GREY :: 40;       // ticks a refused slot stays grey (0.625 s), fading over its last half
+
+// ---- bearing
+
+// How a body holds itself, in rising strength: when several conditions apply, the strongest pose wins.
+DeedPose :: enum u8 { stand; cower; prone; held; reel; still; down; }
+DEED_LOCK_MOVE :: 1;    // it can't move itself
+DEED_LOCK_ACT :: 2;     // it takes no action, Bonus Action or cast
+DEED_LOCK_REACT :: 4;   // it takes no reaction
+DEED_LOCK_SPEAK :: 8;   // it can't speak (a spell's Verbal component)
+DEED_LOCK_ALL :: 15;
+DeedBearing :: struct { pose: DeedPose; lock: int; crawl: bool; }
+
+deed_pose_rank :: (p: DeedPose) -> int {
+  if p == DeedPose.down { return 6; }
+  if p == DeedPose.still { return 5; }
+  if p == DeedPose.reel { return 4; }
+  if p == DeedPose.held { return 3; }
+  if p == DeedPose.prone { return 2; }
+  if p == DeedPose.cower { return 1; }
+  return 0;
+}
+// b with pose p and locks added: the stronger pose stays, the locks join.
+deed_bear :: (b: DeedBearing, p: DeedPose, lock: int) -> DeedBearing {
+  out := b;
+  if deed_pose_rank(p) > deed_pose_rank(b.pose) { out.pose = p; }
+  out.lock = b.lock | lock;
+  return out;
+}
+deed_can_act :: (b: DeedBearing) -> bool { return (b.lock & DEED_LOCK_ACT) == 0; }
+deed_can_move :: (b: DeedBearing) -> bool { return (b.lock & DEED_LOCK_MOVE) == 0; }
+deed_can_react :: (b: DeedBearing) -> bool { return (b.lock & DEED_LOCK_REACT) == 0; }
+// Whether the body lies on the ground (down or prone): its clip is a fall or a crawl, never a stand.
+deed_lying :: (b: DeedBearing) -> bool { return b.pose == DeedPose.down || b.pose == DeedPose.prone; }
+
+// ---- feel: the presentation contract
+
+// How the body moves while an action plays.
+DeedMove :: enum u8 { undeclared; still; plant; step; lunge; dash; leap; }
+// anim: the game's animation ID (-1 none); fx: its effect recipe (0 none, as metaverse-engine/fx/puff.coax
+// FXR_NONE); sound: its starting sound's name; move: how the body moves.
+DeedFeel :: struct { anim: int = -1; fx: int; sound: string; move: DeedMove; }
+DEED_NO_ANIM :: 1; DEED_NO_FX :: 2; DEED_NO_SOUND :: 4; DEED_NO_MOVE :: 8;
+// What feel f lacks, as DEED_NO_* bits: 0 when it declares all four.
+deed_feel_missing :: (f: DeedFeel) -> int {
+  m := 0;
+  if f.anim < 0 { m |= DEED_NO_ANIM; }
+  if f.fx <= 0 { m |= DEED_NO_FX; }
+  if f.sound.count == 0 { m |= DEED_NO_SOUND; }
+  if f.move == DeedMove.undeclared { m |= DEED_NO_MOVE; }
+  return m;
+}
+deed_feel_ok :: (f: DeedFeel) -> bool { return deed_feel_missing(f) == 0; }
+
+// ---- the bar: ask and answer
+
+// Why a press can't go ahead now. A refusal by the bearing, a missing feel or the authority greys its
+// slot; a press while another waits, or one cooling down, is not a refusal and greys nothing.
+DeedVerdict :: enum u8 { ok; locked; waiting; cooling; no_slot; no_feel; refused; }
+DeedSlot :: struct { grey_at: int = -1000000; cool_until: int; }
+DeedBar :: struct {
+  slots: [DEED_SLOTS] DeedSlot;
+  asked: int = -1;          // the slot whose deed waits for its answer, -1 none
+  asked_seq: int; asked_at: int;
+  seq: int;                 // the last request's number (never reused)
+  last: DeedVerdict;        // the last press's verdict
+  asks: int; accepted: int; refused: int; expired: int; stale: int;
+}
+
+// Whether slot `slot` can be pressed on tick now with bearing b and feel f. Reads only.
+deed_can :: (d: DeedBar, slot: int, now: int, b: DeedBearing, f: DeedFeel) -> DeedVerdict {
+  if slot < 0 || slot >= DEED_SLOTS { return DeedVerdict.no_slot; }
+  if !deed_can_act(b) { return DeedVerdict.locked; }
+  if deed_feel_missing(f) != 0 { return DeedVerdict.no_feel; }
+  if d.asked >= 0 && now - d.asked_at < DEED_WAIT { return DeedVerdict.waiting; }
+  if now < d.slots[slot].cool_until { return DeedVerdict.cooling; }
+  return DeedVerdict.ok;
+}
+deed_grey :: (d: [] DeedBar, slot: int, now: int) {
+  if slot >= 0 && slot < DEED_SLOTS { d[0].slots[slot].grey_at = now; }
+}
+// Ask for slot `slot`: on a yes, the request's number for the authority (it waits for deed_answer);
+// on a no, 0, the slot greyed when the no is a refusal. Nothing is presented either way.
+deed_ask :: (d: [] DeedBar, slot: int, now: int, b: DeedBearing, f: DeedFeel) -> int {
+  deed_expire(d, now);
+  v := deed_can(d[0], slot, now, b, f);
+  d[0].last = v;
+  if v != DeedVerdict.ok {
+    if v == DeedVerdict.locked || v == DeedVerdict.no_feel { d[0].refused += 1; deed_grey(d, slot, now); }
+    return 0;
+  }
+  d[0].seq += 1; d[0].asks += 1;
+  d[0].asked = slot; d[0].asked_seq = d[0].seq; d[0].asked_at = now;
+  return d[0].seq;
+}
+// The authority's answer to request seq on tick now: accepted, the slot cools for `cool` ticks;
+// refused, it greys. The slot answered, or -1 when seq isn't the one waiting (stale: an expired
+// ask's late answer, or another's), which presents nothing.
+deed_answer :: (d: [] DeedBar, seq: int, accepted: bool, now: int, cool: int) -> int {
+  if d[0].asked < 0 || seq <= 0 || seq != d[0].asked_seq { d[0].stale += 1; return -1; }
+  slot := d[0].asked;
+  d[0].asked = -1;
+  if accepted {
+    d[0].accepted += 1; d[0].last = DeedVerdict.ok;
+    d[0].slots[slot].cool_until = now + (ifx cool > 0 then cool else 0);
+    d[0].slots[slot].grey_at = -1000000;
+  } else {
+    d[0].refused += 1; d[0].last = DeedVerdict.refused;
+    deed_grey(d, slot, now);
+  }
+  return slot;
+}
+// An ask unanswered for DEED_WAIT ticks is refused: its slot greys, and its answer, if it ever
+// comes, is stale.
+deed_expire :: (d: [] DeedBar, now: int) {
+  if d[0].asked < 0 || now - d[0].asked_at < DEED_WAIT { return; }
+  slot := d[0].asked;
+  d[0].asked = -1; d[0].expired += 1; d[0].last = DeedVerdict.refused;
+  deed_grey(d, slot, now);
+}
+// Whether the bar's waiting deed is the request seq.
+deed_waiting :: (d: DeedBar, seq: int) -> bool { return d.asked >= 0 && seq > 0 && d.asked_seq == seq; }
+
+// How slot `slot` looks on tick now: grey 1 just refused, fading to 0 over the second half of
+// DEED_GREY; waiting while its deed waits for its answer; cool the share of a cooldown left.
+DeedLook :: struct { grey: f32; waiting: bool; cool: f32; }
+deed_look :: (d: DeedBar, slot: int, now: int, cool: int) -> DeedLook {
+  l: DeedLook;
+  if slot < 0 || slot >= DEED_SLOTS { return l; }
+  s := d.slots[slot];
+  age := now - s.grey_at;
+  if age >= 0 && age < DEED_GREY {
+    half := DEED_GREY / 2;
+    l.grey = ifx age < half then 1.0f32 else f32(DEED_GREY - age) / f32(DEED_GREY - half);
+  }
+  l.waiting = d.asked == slot;
+  if cool > 0 && now < s.cool_until { l.cool = f32(s.cool_until - now) / f32(cool); if l.cool > 1 { l.cool = 1; } }
+  return l;
+}
+// The whole bar dims while the bearing locks acting: every slot reads as refused.
+deed_bar_dim :: (b: DeedBearing) -> f32 { return ifx deed_can_act(b) then 0.0f32 else 1.0f32; }
+
+// ---- present
+
+// What an accepted deed did: an effect (on the actor, an ally or an area), a hit, a miss, or a whiff
+// (it met no one: a bolt to its range, a blow at the air).
+DeedResult :: enum u8 { refused; effect; hit; miss; whiff; }
+// What to play: nothing unless play. outcome tells the realm which follow-up sound and number to use.
+DeedShow :: struct { play: bool; anim: int = -1; fx: int; sound: string; move: DeedMove; outcome: DeedResult; }
+deed_show :: (f: DeedFeel, r: DeedResult) -> DeedShow {
+  s: DeedShow; s.outcome = r;
+  if r == DeedResult.refused || deed_feel_missing(f) != 0 { return s; }
+  s.play = true; s.anim = f.anim; s.fx = f.fx; s.sound = f.sound; s.move = f.move;
+  return s;
+}
+// A clock in seconds as ticks (a realm's f32 clock).
+deed_tick :: (seconds: f32) -> int { return cast(int) floor(f64(seconds) * f64(DEED_HZ)); }
+
+// ---- checks
+deed_test_feel :: () -> DeedFeel { return DeedFeel.{anim = 4, fx = 1, sound = "fire", move = DeedMove.plant}; }
+
+#test "deed: a bearing's pose is the strongest, its locks join, and it says what the body may do" {
+  free: DeedBearing;
+  #assert deed_can_act(free) && deed_can_move(free) && deed_can_react(free) && !deed_lying(free) && free.pose == DeedPose.stand;
+  b := deed_bear(free, DeedPose.prone, 0);
+  #assert b.pose == DeedPose.prone && deed_lying(b) && deed_can_act(b) && deed_can_move(b);
+  b = deed_bear(b, DeedPose.held, DEED_LOCK_MOVE);
+  #assert b.pose == DeedPose.held && !deed_can_move(b) && deed_can_act(b);
+  b = deed_bear(b, DeedPose.cower, 0);
+  #assert b.pose == DeedPose.held;   // a weaker pose never replaces a stronger one
+  d := deed_bear(b, DeedPose.down, DEED_LOCK_ALL);
+  #assert d.pose == DeedPose.down && deed_lying(d) && !deed_can_act(d) && !deed_can_react(d) && !deed_can_move(d);
+  #assert deed_bar_dim(d) == 1 && deed_bar_dim(free) == 0;
+  #assert deed_pose_rank(DeedPose.down) > deed_pose_rank(DeedPose.still) && deed_pose_rank(DeedPose.still) > deed_pose_rank(DeedPose.reel);
+}
+
+#test "deed: the feel contract names each part an action lacks" {
+  f := deed_test_feel();
+  #assert deed_feel_missing(f) == 0 && deed_feel_ok(f);
+  g := f; g.anim = -1; #assert deed_feel_missing(g) == DEED_NO_ANIM;
+  g = f; g.fx = 0; #assert deed_feel_missing(g) == DEED_NO_FX;
+  g = f; g.sound = ""; #assert deed_feel_missing(g) == DEED_NO_SOUND;
+  g = f; g.move = DeedMove.undeclared; #assert deed_feel_missing(g) == DEED_NO_MOVE;
+  none: DeedFeel; #assert deed_feel_missing(none) == DEED_NO_ANIM | DEED_NO_FX | DEED_NO_SOUND | DEED_NO_MOVE;
+}
+
+#test "deed: nothing presents before the answer; an accepted answer presents its feel" {
+  d: [1] DeedBar; free: DeedBearing; f := deed_test_feel();
+  seq := deed_ask(d[..], 3, 100, free, f);
+  #assert seq == 1 && d[0].asked == 3 && deed_waiting(d[0], seq) && deed_look(d[0], 3, 101, 0).waiting;
+  // a second press while it waits is not sent and greys nothing
+  #assert deed_ask(d[..], 4, 102, free, f) == 0 && d[0].last == DeedVerdict.waiting && deed_look(d[0], 4, 102, 0).grey == 0;
+  #assert deed_answer(d[..], seq, true, 110, 64) == 3 && d[0].asked < 0 && d[0].accepted == 1;
+  s := deed_show(f, DeedResult.hit);
+  #assert s.play && s.anim == 4 && s.fx == 1 && s.sound == "fire" && s.move == DeedMove.plant && s.outcome == DeedResult.hit;
+  // it cools down: pressed again too soon is cooling, not refused
+  #assert deed_ask(d[..], 3, 120, free, f) == 0 && d[0].last == DeedVerdict.cooling && deed_look(d[0], 3, 120, 64).grey == 0;
+  #assert deed_look(d[0], 3, 142, 64).cool == 0.5;
+  #assert deed_ask(d[..], 3, 174, free, f) == 2;
+}
+
+#test "deed: a refusal greys the slot and plays nothing; the grey fades out" {
+  d: [1] DeedBar; free: DeedBearing; f := deed_test_feel();
+  seq := deed_ask(d[..], 2, 100, free, f);
+  #assert deed_answer(d[..], seq, false, 105, 64) == 2 && d[0].refused == 1 && d[0].last == DeedVerdict.refused;
+  #assert !deed_show(f, DeedResult.refused).play;
+  #assert deed_look(d[0], 2, 105, 64).grey == 1 && deed_look(d[0], 2, 105 + DEED_GREY / 2 - 1, 64).grey == 1;
+  mid := deed_look(d[0], 2, 105 + DEED_GREY * 3 / 4, 64).grey;
+  #assert mid > 0.4 && mid < 0.6 && deed_look(d[0], 2, 105 + DEED_GREY, 64).grey == 0;
+  // a refusal doesn't cool: it may be pressed again at once
+  #assert deed_ask(d[..], 2, 106, free, f) == 2;
+}
+
+#test "deed: a locked bearing or a missing feel refuses at the ask, before anything is sent" {
+  d: [1] DeedBar; f := deed_test_feel();
+  down := deed_bear(DeedBearing.{}, DeedPose.down, DEED_LOCK_ALL);
+  #assert deed_ask(d[..], 1, 100, down, f) == 0 && d[0].last == DeedVerdict.locked && d[0].asks == 0 && deed_look(d[0], 1, 100, 0).grey == 1;
+  held := deed_bear(DeedBearing.{}, DeedPose.held, DEED_LOCK_MOVE);
+  #assert deed_ask(d[..], 1, 101, held, f) == 1;   // held fast, it still acts
+  e: [1] DeedBar; bare := f; bare.sound = "";
+  #assert deed_ask(e[..], 0, 100, DeedBearing.{}, bare) == 0 && e[0].last == DeedVerdict.no_feel && deed_look(e[0], 0, 100, 0).grey == 1;
+  #assert deed_ask(e[..], -1, 100, DeedBearing.{}, f) == 0 && e[0].last == DeedVerdict.no_slot;
+  #assert deed_ask(e[..], DEED_SLOTS, 100, DeedBearing.{}, f) == 0;
+  #assert !deed_show(bare, DeedResult.hit).play;
+}
+
+#test "deed: an unanswered ask expires as a refusal, and its late answer is stale" {
+  d: [1] DeedBar; free: DeedBearing; f := deed_test_feel();
+  seq := deed_ask(d[..], 5, 100, free, f);
+  deed_expire(d[..], 100 + DEED_WAIT - 1); #assert d[0].asked == 5;
+  deed_expire(d[..], 100 + DEED_WAIT); #assert d[0].asked < 0 && d[0].expired == 1 && deed_look(d[0], 5, 100 + DEED_WAIT, 0).grey == 1;
+  #assert deed_answer(d[..], seq, true, 100 + DEED_WAIT + 3, 64) == -1 && d[0].stale == 1 && d[0].accepted == 0;
+  // a new ask after the wait goes; an answer to an older request is stale
+  seq2 := deed_ask(d[..], 5, 300, free, f);
+  #assert seq2 == 2 && deed_answer(d[..], seq, true, 301, 64) == -1 && deed_waiting(d[0], seq2);
+  #assert deed_answer(d[..], seq2, true, 302, 64) == 5;
+  // an ask past the wait expires the old one itself
+  e: [1] DeedBar; _ := deed_ask(e[..], 1, 0, free, f);
+  #assert deed_ask(e[..], 2, DEED_WAIT, free, f) == 2 && e[0].expired == 1 && e[0].asked == 2;
+  #assert deed_tick(1.5) == DEED_WAIT && deed_tick(0) == 0;
+}

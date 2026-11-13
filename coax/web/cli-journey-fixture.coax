@@ -3,12 +3,12 @@
 // API implementation code and does not qualify production authentication.
 // Its bytes are the server's (#13354): the save, undo and conflict replies and
 // the document are the shapes in proto/verse/realm-document-v1.json, the
-// fixture the API's routes and aethyr/forge/ are checked against
-// (coax/web/api/tests/realm_doc_checks.coax, aethyr/forge/doc-goldens.coax).
+// fixture the API's routes and metaverse-engine/editor/ are checked against
+// (coax/web/api/tests/realm_doc_checks.coax, metaverse-engine/editor/doc-goldens.coax).
 // cjf_load reads that file's text and keeps each shape; a reply is the shape
 // with this model's numbers in place of the file's, every other byte as the
 // file has it. It reads the file as data: this toolchain file loads nothing
-// from aethyr/forge/ (contexts.txt).
+// from metaverse-engine/editor/ (contexts.txt).
 #load "../lib/json/json.coax";
 #load "../lib/net/socket_foreign.coax";
 #load "../lib/sys/args.coax";

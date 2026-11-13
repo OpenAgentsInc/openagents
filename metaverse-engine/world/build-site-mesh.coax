@@ -1,0 +1,356 @@
+// Staged construction's meshes (engine): the geometry of a build-site part (metaverse-engine/world/
+// build-site.coax), made in Coax, not taken from a kit. A woven wall is its upright stakes and the
+// withies woven in and out between them; daub is a rough clay skin over both faces; a fieldstone
+// base is stacked stone with loose stones along its top; thatch is reed laid in overlapping courses
+// with a cut, bristly edge and a ridge roll; boughs are leafy sprays laid on the poles. Each vertex
+// carries its part's material and a shade; whoever draws it (the scene packer, character_glade_
+// pack.coax) gives each material its texture and colour. The uv is metres along a long thing
+// (a pole, a withy, a reed course: u along it, v 0 to 1 round or across it), metres across a
+// surface (a wall face, a slab), or 0 to 1 over a leaf card.
+#module "aethyr.buildsitemesh";
+#load "build-site.coax" as bs;
+#load "building.coax" as building;
+
+BsVert :: struct {p:[3]f32;n:[3]f32;uv:[2]f32;c:[3]f32;mat:int;key:f32;}
+BS_MESH_VERTS :: 160000;
+// The mesh being made, in the world: the frame it is placed at and its ground height.
+// Each vertex carries a reveal key, 0 to 1: the fraction of its part's growth at which it shows
+// (build progress, metaverse-engine/world/build-site.coax). The mesher sets `key` before each piece; a strand
+// runs its key from `key` at its first point to `key_end` along it (key_end below 0: all `key`);
+// with `key_x` on, the key is how far the vertex lies from x `kx0` across 1/`kxs` metres.
+BsMesh :: struct {v:[BS_MESH_VERTS]BsVert;nv:int;i:[BS_MESH_VERTS*2]int;ni:int;f:building.BuildingFrame;y:f32;over:bool;key:f32;key_end:f32 = -1;key_x:bool;kx0:f32;kxs:f32;}
+bm_key :: (m:[]BsMesh,k:f32,e:f32) {m[0].key=k;m[0].key_end=e;}
+
+bm_v3 :: (x:f32,y:f32,z:f32)->[3]f32 {return [3]f32.[x,y,z];}
+bm_add :: (a:[3]f32,b:[3]f32)->[3]f32 {return [3]f32.[a[0]+b[0],a[1]+b[1],a[2]+b[2]];}
+bm_sub :: (a:[3]f32,b:[3]f32)->[3]f32 {return [3]f32.[a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+bm_mul :: (a:[3]f32,k:f32)->[3]f32 {return [3]f32.[a[0]*k,a[1]*k,a[2]*k];}
+bm_dot :: (a:[3]f32,b:[3]f32)->f32 {return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+bm_cross :: (a:[3]f32,b:[3]f32)->[3]f32 {return [3]f32.[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+bm_len :: (a:[3]f32)->f32 {return sqrt(bm_dot(a,a));}
+bm_norm :: (a:[3]f32)->[3]f32 {l:=bm_len(a);return ifx l<0.000001 then [3]f32.[0,1,0] else bm_mul(a,1/l);}
+bm_hash :: (a:f32,b:f32)->f32 {v:=sin(a*127.1+b*311.7)*43758.5453;return v-floor(v);}
+bm_clamp :: (x:f32)->f32 {return ifx x<0 then 0.0f32 else ifx x>1 then 1.0f32 else x;}
+// A shade near white, varied by a seed: k of brightness, and a little warmth.
+bm_shade :: (seed:f32,k:f32)->[3]f32 {h:=bm_hash(seed,3.7);w:=bm_hash(seed,9.1)*0.06;b:=1-k*h;return [3]f32.[bm_clamp(b),bm_clamp(b-w*0.5),bm_clamp(b-w)];}
+
+// A vertex in the building's frame, placed in the world.
+bm_vert :: (m:[]BsMesh,p:[3]f32,n:[3]f32,u:f32,v:f32,c:[3]f32,mat:int)->int {
+ if m[0].nv>=BS_MESH_VERTS {m[0].over=true;return 0;}
+ w:=building.building_point(m[0].f,p[0],p[2]);r:=building.building_point(building.BuildingFrame.{turn=m[0].f.turn},n[0],n[2]);
+ key:=ifx m[0].key_x then bm_clamp((p[0]-m[0].kx0)*m[0].kxs) else m[0].key;
+ m[0].v[m[0].nv]=BsVert.{p=[3]f32.[w[0],m[0].y+p[1],w[1]],n=[3]f32.[r[0],n[1],r[1]],uv=[2]f32.[u,v],c=c,mat=mat,key=key};m[0].nv+=1;return m[0].nv-1;
+}
+bm_tri :: (m:[]BsMesh,a:int,b:int,c:int) {if m[0].over || m[0].ni+3>m[0].i.count {m[0].over=true;return;}m[0].i[m[0].ni]=a;m[0].i[m[0].ni+1]=b;m[0].i[m[0].ni+2]=c;m[0].ni+=3;}
+bm_quad :: (m:[]BsMesh,a:[3]f32,b:[3]f32,c:[3]f32,d:[3]f32,uv:[4][2]f32,col:[3]f32,mat:int) {
+ n:=bm_norm(bm_cross(bm_sub(b,a),bm_sub(d,a)));
+ i0:=bm_vert(m,a,n,uv[0][0],uv[0][1],col,mat);i1:=bm_vert(m,b,n,uv[1][0],uv[1][1],col,mat);i2:=bm_vert(m,c,n,uv[2][0],uv[2][1],col,mat);i3:=bm_vert(m,d,n,uv[3][0],uv[3][1],col,mat);
+ bm_tri(m,i0,i1,i2);bm_tri(m,i0,i2,i3);
+}
+// Two directions square to `d`.
+bm_frame :: (d:[3]f32)->[2][3]f32 {up:=ifx abs(d[1])>0.9 then [3]f32.[1,0,0] else [3]f32.[0,1,0];e1:=bm_norm(bm_cross(d,up));return [2][3]f32.[e1,bm_cross(e1,d)];}
+// A round tube along points (a pole, a withy): radius r0 at its first point to r1 at its last.
+bm_strand :: (m:[]BsMesh,pts:[][3]f32,n:int,r0:f32,r1:f32,sides:int,col:[3]f32,mat:int,cap:bool) {
+ if n<2 {return;}base:=m[0].nv;along:f32=0;k0:=m[0].key;k1:=ifx m[0].key_end<0 then k0 else m[0].key_end;
+ for i:0..<n {d:=ifx i==0 then bm_sub(pts[1],pts[0]) else ifx i==n-1 then bm_sub(pts[n-1],pts[n-2]) else bm_sub(pts[i+1],pts[i-1]);
+  if i>0 {along+=bm_len(bm_sub(pts[i],pts[i-1]));}
+  e:=bm_frame(bm_norm(d));r:=r0+(r1-r0)*f32(i)/f32(n-1);m[0].key=k0+(k1-k0)*f32(i)/f32(n-1);
+  for j:0..<sides+1 {a:=f32(j)*6.2831853/f32(sides);o:=bm_add(bm_mul(e[0],cos(a)),bm_mul(e[1],sin(a)));
+   k:=bm_vert(m,bm_add(pts[i],bm_mul(o,r)),o,along,f32(j)/f32(sides),col,mat);}}
+ for i:0..<n-1 {for j:0..<sides {a:=base+i*(sides+1)+j;b:=a+sides+1;bm_tri(m,a,a+1,b+1);bm_tri(m,a,b+1,b);}}
+ m[0].key=k1;
+ if cap {d:=bm_norm(bm_sub(pts[n-1],pts[n-2]));e:=bm_frame(d);c:=bm_vert(m,pts[n-1],d,0.02,0.5,col,mat);
+  for j:0..<sides {a:=f32(j)*6.2831853/f32(sides);b:=f32(j+1)*6.2831853/f32(sides);
+   p0:=bm_add(pts[n-1],bm_mul(bm_add(bm_mul(e[0],cos(a)),bm_mul(e[1],sin(a))),r1));p1:=bm_add(pts[n-1],bm_mul(bm_add(bm_mul(e[0],cos(b)),bm_mul(e[1],sin(b))),r1));
+   q0:=bm_vert(m,p0,d,0.02,0.3,col,mat);q1:=bm_vert(m,p1,d,0.02,0.6,col,mat);bm_tri(m,c,q0,q1);}}
+ m[0].key=k0;
+}
+bm_pole :: (m:[]BsMesh,a:[3]f32,b:[3]f32,r0:f32,r1:f32,sides:int,col:[3]f32,mat:int) {p:=[2][3]f32.[a,b];bm_strand(m,p[..],2,r0,r1,sides,col,mat,true);}
+// A box about `o` with half-axes ax, ay, az. A long box (a beam, a board) has u along ax in
+// metres and v 0 to 1 across each face; otherwise u and v are metres across each face.
+bm_box :: (m:[]BsMesh,o:[3]f32,ax:[3]f32,ay:[3]f32,az:[3]f32,col:[3]f32,mat:int,long:bool) {
+ axes:=[3][3]f32.[ax,ay,az];
+ for f:0..<6 {k:=f/2;s:=ifx f%2==0 then 1.0f32 else -1.0f32;a:=axes[(k+1)%3];b:=axes[(k+2)%3];c:=bm_add(o,bm_mul(axes[k],s));
+  la:=bm_len(a)*2;lb:=bm_len(b)*2;
+  u0:f32=0;u1:=la;v0:f32=0;v1:=lb;
+  if long {if (k+1)%3==0 {u1=la;v1=1;}else if (k+2)%3==0 {u0=0;u1=lb;v0=0;v1=1;}else {u1=0.3;v1=1;}}
+  p0:=bm_sub(bm_sub(c,a),bm_mul(b,s));p1:=bm_sub(bm_add(c,a),bm_mul(b,s));p2:=bm_add(bm_add(c,a),bm_mul(b,s));p3:=bm_add(bm_sub(c,a),bm_mul(b,s));
+  if long && (k+2)%3==0 {bm_quad(m,p0,p1,p2,p3,[4][2]f32.[[2]f32.[u0,v0],[2]f32.[u0,v1],[2]f32.[u1,v1],[2]f32.[u1,v0]],col,mat);}
+  else {bm_quad(m,p0,p1,p2,p3,[4][2]f32.[[2]f32.[u0,v0],[2]f32.[u1,v0],[2]f32.[u1,v1],[2]f32.[u0,v1]],col,mat);}
+ }
+}
+// A lumpy stone: radii rx, ry, rz, its flat side down, turned `turn` about the vertical.
+bm_rock :: (m:[]BsMesh,o:[3]f32,rx:f32,ry:f32,rz:f32,turn:f32,seed:f32,col:[3]f32,mat:int) {
+ base:=m[0].nv;cs:=cos(turn);sn:=sin(turn);
+ for j:0..<5 {lat:= -0.5+f32(j)*0.25;for i:0..<8 {lon:=f32(i)*6.2831853/7;
+   k:=0.82+0.3*bm_hash(seed+f32(i%7)*1.3,f32(j)*2.1);if j==0 || j==4 {k=0.9;}
+   y:=sin(lat*3.1415927);h:=cos(lat*3.1415927);x:=cos(lon)*h*rx*k;z:=sin(lon)*h*rz*k;yy:=ifx y<0 then y*ry*0.45 else y*ry*k;
+   n:=bm_norm([3]f32.[cos(lon)*h/rx,y/ry,sin(lon)*h/rz]);n=[3]f32.[n[0]*cs+n[2]*sn,n[1],-n[0]*sn+n[2]*cs];
+   q:=bm_vert(m,bm_add(o,[3]f32.[x*cs+z*sn,yy,-x*sn+z*cs]),n,(x+z)*0.9+seed*0.37,yy*0.9+bm_hash(seed,5),col,mat);}}
+// Wound so each face's front is outward: the glade shader lights a back face as the far side.
+ for j:0..<4 {for i:0..<7 {a:=base+j*8+i;bm_tri(m,a,a+9,a+1);bm_tri(m,a,a+8,a+9);}}
+}
+bm_card :: (m:[]BsMesh,o:[3]f32,a:[3]f32,b:[3]f32,col:[3]f32,mat:int) {
+ bm_quad(m,bm_sub(bm_sub(o,a),b),bm_sub(bm_add(o,a),b),bm_add(bm_add(o,a),b),bm_add(bm_sub(o,a),b),[4][2]f32.[[2]f32.[0.02,0.98],[2]f32.[0.98,0.98],[2]f32.[0.98,0.02],[2]f32.[0.02,0.02]],col,mat);
+}
+
+// ---- walls along a line or an arc
+bm_top :: (p:bs.BuildPart,s:f32)->f32 {if p.form==bs.BS_GABLE_END {return p.y0+(p.y1-p.y0)*(1-abs(2*s-1));}return p.y1;}
+bm_at :: (p:bs.BuildPart,s:f32)->[2]f32 {return bs.bs_path(p,s);}
+// The wall's outward side at s: left of its line, or out from its arc's centre.
+bm_side :: (p:bs.BuildPart,s:f32)->[2]f32 {
+ if p.form==bs.BS_RING {a:=p.z1+(p.a-p.z1)*s;return [2]f32.[sin(a),cos(a)];}
+ l:=bs.bs_path_len(p);if l<0.0001 {return [2]f32.[0,1];}return [2]f32.[-(p.z1-p.z0)/l,(p.x1-p.x0)/l];
+}
+// A wall's skin, both faces, the top and the two ends: a grid roughened by `rough` metres.
+BM_GRID :: 2048;
+bm_skin_at :: (p:bs.BuildPart,s:f32,y:f32,side:f32,rough:f32)->[3]f32 {
+ q:=bm_at(p,s);n:=bm_side(p,s);
+ o:=side*p.t*0.5+rough*(bm_hash(q[0]*3.1+y*5.3,q[1]*2.7+side*1.9)-0.5+0.6*(bm_hash(floor(q[0]*1.7+q[1]*1.3)+floor(y*2.1),side)-0.5));
+ return [3]f32.[q[0]+n[0]*o,y,q[1]+n[1]*o];
+}
+// A wall's reveal key at s along it and height y: course by course from the ground, each along its
+// line (stone, boards), or daub spread in patches from the bottom.
+bm_wall_key :: (p:bs.BuildPart,s:f32,y:f32)->f32 {
+ top:=bs.bs_wall_top(p);h:=bm_clamp((y-p.y0)/bm_max(top-p.y0,0.01));
+ if p.mat==bs.BS_DAUB {q:=bm_at(p,s);return bm_clamp(h*0.78+0.22*bm_hash(floor(q[0]*2.3+q[1]*1.7),floor(y*2.6)));}
+ c:=f32(bs.bs_courses(p));r:=floor(h*c*0.999);return bm_clamp((r+s)/c);
+}
+bm_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
+bm_skin :: (m:[]BsMesh,p:bs.BuildPart,cell:f32,rough:f32,dark:f32) {
+ l:=bs.bs_path_len(p);ns:=int(l/cell+0.999);if ns<1 {ns=1;}hi:=bm_top(p,0.5);if p.form!=bs.BS_GABLE_END {hi=p.y1;}
+ nr:=int((hi-p.y0)/cell+0.999);if nr<1 {nr=1;}if (ns+1)*(nr+1)>BM_GRID {ns=BM_GRID/(nr+1)-1;}
+ g:[BM_GRID][3]f32;
+ for side:[2]f32.[-1,1] {
+  for i:0..<ns+1 {s:=f32(i)/f32(ns);top:=bm_top(p,s);for j:0..<nr+1 {y:=p.y0+(top-p.y0)*f32(j)/f32(nr);g[i*(nr+1)+j]=bm_skin_at(p,s,y,side,ifx j==0 || j==nr then rough*0.5 else rough);}}
+  base:=m[0].nv;
+  for i:0..<ns+1 {for j:0..<nr+1 {a:=g[i*(nr+1)+j];
+    di:=bm_sub(g[(ifx i<ns then i+1 else i)*(nr+1)+j],g[(ifx i>0 then i-1 else i)*(nr+1)+j]);dj:=bm_sub(g[i*(nr+1)+(ifx j<nr then j+1 else j)],g[i*(nr+1)+(ifx j>0 then j-1 else j)]);
+    n:=bm_norm(bm_cross(dj,di));sd:=bm_side(p,f32(i)/f32(ns));if (n[0]*sd[0]+n[2]*sd[1])*side<0 {n=bm_mul(n,-1);}
+    sh:=bm_shade(a[0]*7.1+a[1]*3.3+a[2]*5.9,0.16);if a[1]<p.y0+0.35 {sh=bm_mul(sh,1-dark);}
+    m[0].key=bm_wall_key(p,f32(i)/f32(ns),a[1]);k:=bm_vert(m,a,n,f32(i)/f32(ns)*l,a[1],sh,p.mat);}}
+  for i:0..<ns {for j:0..<nr {a:=base+i*(nr+1)+j;b:=a+nr+1;bm_tri(m,a,b,b+1);bm_tri(m,a,b+1,a+1);}}
+ }
+ // the top and the ends
+ for i:0..<ns {s0:=f32(i)/f32(ns);s1:=f32(i+1)/f32(ns);m[0].key=bm_wall_key(p,s1,bm_top(p,s1));
+  a:=bm_skin_at(p,s0,bm_top(p,s0),-1,0);b:=bm_skin_at(p,s1,bm_top(p,s1),-1,0);c:=bm_skin_at(p,s1,bm_top(p,s1),1,0);d:=bm_skin_at(p,s0,bm_top(p,s0),1,0);
+  bm_quad(m,a,b,c,d,[4][2]f32.[[2]f32.[s0*l,0],[2]f32.[s1*l,0],[2]f32.[s1*l,p.t],[2]f32.[s0*l,p.t]],bm_shade(s0*13+p.x0,0.1),p.mat);}
+ if p.form!=bs.BS_RING || abs(abs(p.a-p.z1)-6.2831853)>0.01 {
+  for s:[2]f32.[0,1] {top:=bm_top(p,s);m[0].key=bm_wall_key(p,s,p.y0+(top-p.y0)*0.5);a:=bm_skin_at(p,s,p.y0,-1,0);b:=bm_skin_at(p,s,p.y0,1,0);c:=bm_skin_at(p,s,top,1,0);d:=bm_skin_at(p,s,top,-1,0);
+   bm_quad(m,a,b,c,d,[4][2]f32.[[2]f32.[0,p.y0],[2]f32.[p.t,p.y0],[2]f32.[p.t,top],[2]f32.[0,top]],bm_shade(s+p.z0,0.1),p.mat);}
+ }
+}
+// Wattle: upright stakes about 0.3 m apart, and withies woven in front of one stake and behind the
+// next, each row the other way round.
+bm_wattle :: (m:[]BsMesh,p:bs.BuildPart) {
+ l:=bs.bs_path_len(p);ns:=int(l/0.3+0.999);if ns<2 {ns=2;}span:=p.y1-p.y0;if p.form==bs.BS_GABLE_END {span=p.y1-p.y0;}
+ for i:0..<ns+1 {s:=f32(i)/f32(ns);q:=bm_at(p,s);top:=bm_top(p,s);if top-p.y0<0.15 {continue;}
+  lean:=(bm_hash(q[0],q[1])-0.5)*0.03;bm_key(m,0.15*f32(i)/f32(ns+1),0.15*f32(i+1)/f32(ns+1));
+  bm_pole(m,[3]f32.[q[0],p.y0-0.02,q[1]],[3]f32.[q[0]+lean,top+0.06,q[1]-lean],0.024,0.02,5,bm_shade(f32(i)+p.x0*3,0.25),p.mat);}
+ rows:=int(span/0.062);pts:[256][3]f32;
+ for r:0..<rows {y:=p.y0+0.05+f32(r)*0.062;
+  // where this row runs: all along a plain wall, the middle of a gable end
+  s0:f32=0;s1:f32=1;if p.form==bs.BS_GABLE_END {w:=1-(y-p.y0)/(p.y1-p.y0);if w<0.08 {break;}s0=(1-w)*0.5+0.01;s1=(1+w)*0.5-0.01;}
+  else if y>p.y1-0.03 {break;}
+  i0:=int(s0*f32(ns)+0.999);i1:=int(s1*f32(ns));n:=0;
+  for i:i0..<i1+1 {for h:0..<2 {if i==i1 && h==1 {continue;}s:=(f32(i)+f32(h)*0.5)/f32(ns);q:=bm_at(p,s);sd:=bm_side(p,s);
+    off:=ifx h==1 then 0.0f32 else (ifx (i+r)%2==0 then 0.032f32 else -0.032f32);if n>=pts.count {break;}
+    pts[n]=[3]f32.[q[0]+sd[0]*off,y+(bm_hash(f32(i),f32(r))-0.5)*0.012,q[1]+sd[1]*off];n+=1;}}
+  bm_key(m,0.15+0.85*f32(r)/f32(rows),0.15+0.85*f32(r+1)/f32(rows));
+  bm_strand(m,pts[..],n,0.017,0.014,4,bm_shade(f32(r)*1.7+p.z0,0.3),p.mat,false);
+ }
+}
+// Dry-stacked fieldstone: the stacked body, then loose stones bedded along its top.
+bm_fieldstone :: (m:[]BsMesh,p:bs.BuildPart) {
+ bm_skin(m,p,0.35,0.03,0.1);l:=bs.bs_path_len(p);n:=int(l/0.26+0.999);
+ for row:[2]f32.[-0.25,0.25] {for i:0..<n {s:=(f32(i)+0.5+row)/f32(n);if s<0 || s>1 {continue;}q:=bm_at(p,s);sd:=bm_side(p,s);seed:=q[0]*3.7+q[1]*1.3+row;
+   off:=row*p.t*1.2+(bm_hash(seed,1)-0.5)*0.06;y:=bm_top(p,s)-0.04;bm_key(m,0.9+0.1*s,-1);
+   bm_rock(m,[3]f32.[q[0]+sd[0]*off,y,q[1]+sd[1]*off],0.11+0.05*bm_hash(seed,2),0.07+0.04*bm_hash(seed,3),0.1+0.04*bm_hash(seed,4),bm_hash(seed,6)*3,seed,bm_shade(seed,0.3),p.mat);}}
+}
+bm_wall :: (m:[]BsMesh,p:bs.BuildPart) {
+ if p.mat==bs.BS_BARK {k:=bs.bs_posts(p);for i:0..<k {q:=bm_at(p,f32(i)/f32(k-1));bm_key(m,f32(i)/f32(k),f32(i+1)/f32(k));bm_pole(m,[3]f32.[q[0],p.y0-0.05,q[1]],[3]f32.[q[0],p.y1,q[1]],p.t,p.t*0.85,7,bm_shade(f32(i)+p.x0,0.2),p.mat);}return;}
+ if p.mat==bs.BS_WITHY {bm_wattle(m,p);return;}
+ if p.mat==bs.BS_FIELDSTONE {bm_fieldstone(m,p);return;}
+ if p.mat==bs.BS_DAUB {bm_skin(m,p,0.22,0.035,0.18);return;}
+ bm_skin(m,p,ifx p.mat==bs.BS_ASHLAR then 0.6f32 else 0.4f32,ifx p.mat==bs.BS_ASHLAR then 0.0f32 else 0.01f32,0.08);
+}
+
+// ---- roofs: a slope from its eave line (E, along U for w metres) up V for l metres
+Slope :: struct {e:[3]f32;u:[3]f32;v:[3]f32;w:f32;l:f32;cone:bool;c:[3]f32;r:f32;rise:f32;}
+bm_slope_at :: (s:Slope,u:f32,v:f32,off:f32)->[3]f32 {
+ if s.cone {a:=u/s.r;k:=1-v/s.l;
+  n:=bm_norm([3]f32.[sin(a)*s.rise,s.r,cos(a)*s.rise]);
+  return bm_add([3]f32.[s.c[0]+sin(a)*s.r*k,s.c[1]+s.rise*(1-k),s.c[2]+cos(a)*s.r*k],bm_mul(n,off));}
+ n:=bm_norm(bm_cross(s.u,s.v));if n[1]<0 {n=bm_mul(n,-1);}
+ return bm_add(bm_add(bm_add(s.e,bm_mul(s.u,u)),bm_mul(s.v,v)),bm_mul(n,off));
+}
+bm_slope_normal :: (s:Slope,u:f32)->[3]f32 {
+ if s.cone {a:=u/s.r;return bm_norm([3]f32.[sin(a)*s.rise,s.r,cos(a)*s.rise]);}
+ n:=bm_norm(bm_cross(s.u,s.v));return ifx n[1]<0 then bm_mul(n,-1) else n;
+}
+// The slopes of a roof part (one for a shed, two for a gable, one round for a cone).
+bm_slopes :: (p:bs.BuildPart,out:[]Slope)->int {
+ if p.form==bs.BS_CONE {l:=sqrt(p.x1*p.x1+(p.y1-p.y0)*(p.y1-p.y0));out[0]=Slope.{cone=true,c=[3]f32.[p.x0,p.y0,p.z0],r=p.x1,rise=p.y1-p.y0,w=6.2831853*p.x1,l=l};return 1;}
+ if p.form==bs.BS_SHED {e:=[3]f32.[p.x0,p.y0,p.z1];top:=[3]f32.[p.x0,p.y1,p.z0];d:=bm_sub(top,e);out[0]=Slope.{e=e,u=[3]f32.[ifx p.x1>p.x0 then 1.0f32 else -1.0f32,0,0],v=bm_norm(d),w=abs(p.x1-p.x0),l=bm_len(d)};return 1;}
+ if p.a>0.5 {xm:=(p.x0+p.x1)*0.5;
+  a:=[3]f32.[p.x0,p.y0,p.z1];da:=bm_sub([3]f32.[xm,p.y1,p.z1],a);b:=[3]f32.[p.x1,p.y0,p.z0];db:=bm_sub([3]f32.[xm,p.y1,p.z0],b);
+  out[0]=Slope.{e=a,u=[3]f32.[0,0,-1],v=bm_norm(da),w=abs(p.z1-p.z0),l=bm_len(da)};out[1]=Slope.{e=b,u=[3]f32.[0,0,1],v=bm_norm(db),w=abs(p.z1-p.z0),l=bm_len(db)};return 2;}
+ zm:=(p.z0+p.z1)*0.5;
+ a:=[3]f32.[p.x0,p.y0,p.z0];da:=bm_sub([3]f32.[p.x0,p.y1,zm],a);b:=[3]f32.[p.x1,p.y0,p.z1];db:=bm_sub([3]f32.[p.x1,p.y1,zm],b);
+ out[0]=Slope.{e=a,u=[3]f32.[1,0,0],v=bm_norm(da),w=abs(p.x1-p.x0),l=bm_len(da)};out[1]=Slope.{e=b,u=[3]f32.[-1,0,0],v=bm_norm(db),w=abs(p.x1-p.x0),l=bm_len(db)};return 2;
+}
+// Reed thatch: courses about 0.3 m up the slope, each lying over the one below with a cut lip, a
+// bristly edge at the eave and a dark underside.
+bm_thatch :: (m:[]BsMesh,s:Slope,t:f32,seed:f32) {
+ du:=ifx s.cone then 0.3f32 else 0.34f32;nu:=int(s.w/du+0.999);if nu<3 {nu=3;}h:=0.3f32;nc:=int(s.l/h+0.999);lip:=0.07f32;
+ for k:0..<nc {v0:=f32(k)*h;v1:=ifx k==nc-1 then s.l else v0+h;
+  for i:0..<nu {u0:=f32(i)*s.w/f32(nu);u1:=f32(i+1)*s.w/f32(nu);
+   j0:=0.05*bm_hash(u0*3.1+seed,f32(k));j1:=0.05*bm_hash(u1*3.1+seed,f32(k));if s.cone && i==nu-1 {j1=0.05*bm_hash(seed,f32(k));}
+   if !s.cone && i==nu-1 {j1=0.05*bm_hash(u1*3.1+seed,f32(k));}
+   if s.cone && i==0 {j0=0.05*bm_hash(seed,f32(k));}
+   topoff:=ifx k==nc-1 then t else t-lip;m[0].key=(f32(k)+f32(i)/f32(nu))/f32(nc);
+   a:=bm_slope_at(s,u0,v0-j0,t);b:=bm_slope_at(s,u1,v0-j1,t);c:=bm_slope_at(s,u1,v1,topoff);d:=bm_slope_at(s,u0,v1,topoff);
+   sh:=bm_shade(u0*5.3+f32(k)*1.7+seed,0.14);if k==0 {sh=bm_mul(sh,0.9);}
+   bm_quad(m,a,b,c,d,[4][2]f32.[[2]f32.[0,0],[2]f32.[0,1],[2]f32.[v1-v0,1],[2]f32.[v1-v0,0]],sh,bs.BS_REED);
+   // the lip: the cut ends of this course over the one below, or the eave's edge down to the underside
+   ia:=ifx k==0 then bm_slope_at(s,u0,v0-j0*0.4,0) else bm_slope_at(s,u0,v0,t-lip);ib:=ifx k==0 then bm_slope_at(s,u1,v0-j1*0.4,0) else bm_slope_at(s,u1,v0,t-lip);
+   bm_quad(m,ia,ib,b,a,[4][2]f32.[[2]f32.[0,0],[2]f32.[0,1],[2]f32.[0.12,1],[2]f32.[0.12,0]],bm_mul(sh,0.72),bs.BS_REED);
+  }
+ }
+ // the underside, seen from under the eaves and inside
+ for i:0..<nu {u0:=f32(i)*s.w/f32(nu);u1:=f32(i+1)*s.w/f32(nu);for k:0..<nc {v0:=f32(k)*h;v1:=ifx k==nc-1 then s.l else v0+h;m[0].key=f32(k)/f32(nc);
+  bm_quad(m,bm_slope_at(s,u0,v0,0),bm_slope_at(s,u1,v0,0),bm_slope_at(s,u1,v1,0),bm_slope_at(s,u0,v1,0),[4][2]f32.[[2]f32.[v0,0],[2]f32.[v0,1],[2]f32.[v1,1],[2]f32.[v1,0]],[3]f32.[0.5,0.47,0.42],bs.BS_REED);}}
+ // the verges (a gable's ends)
+ if !s.cone {for u:[2]f32.[0,s.w] {for k:0..<nc {v0:=f32(k)*h;v1:=ifx k==nc-1 then s.l else v0+h;m[0].key=(f32(k)+ifx u>0 then 0.99f32 else 0.0f32)/f32(nc);
+   bm_quad(m,bm_slope_at(s,u,v0,0),bm_slope_at(s,u,v1,0),bm_slope_at(s,u,v1,ifx k==nc-1 then t else t-lip),bm_slope_at(s,u,v0,t),[4][2]f32.[[2]f32.[0,0],[2]f32.[v1-v0,0],[2]f32.[v1-v0,1],[2]f32.[0,1]],bm_shade(u+f32(k)+seed,0.12),bs.BS_REED);}}}
+}
+// Boughs: leafy sprays laid in two layers over the slope, a few of them dried brown.
+bm_boughs :: (m:[]BsMesh,s:Slope,t:f32,seed:f32) {
+ for layer:0..<2 {step:=0.26f32;nu:=int(s.w/step)+1;nv:=int(s.l/step)+1;
+  for i:0..<nu {for j:0..<nv {h1:=bm_hash(f32(i)+seed+f32(layer)*17,f32(j));h2:=bm_hash(f32(j)*1.3+seed,f32(i)+f32(layer)*5);
+    u:=(f32(i)+0.5*f32(layer)+(h1-0.5)*0.5)*step;v:=(f32(j)+0.5*f32(layer)+(h2-0.5)*0.5)*step-0.12;if u<0.05 || u>s.w-0.05 {continue;}
+    m[0].key=bm_clamp(0.5*f32(layer)+0.5*(f32(j)+f32(i)/f32(nu))/f32(nv));o:=bm_slope_at(s,u,v,0.04+t*(0.4+0.6*f32(layer))+0.03*h2);n:=bm_slope_normal(s,u);
+    dv:=bm_norm(bm_sub(bm_slope_at(s,u,v+0.1,0),bm_slope_at(s,u,v,0)));du:=bm_norm(bm_cross(dv,n));
+    a:=(h1-0.5)*1.2;ca:=cos(a);sa:=sin(a);ax:=bm_add(bm_mul(du,ca*0.26),bm_mul(dv,sa*0.26));ay:=bm_add(bm_mul(dv,ca*0.32),bm_mul(du,-sa*0.32));
+    ay=bm_add(ay,bm_mul(n,0.06*(h2-0.5)));
+    col:=ifx bm_hash(h1*9,h2*7)<0.16 then [3]f32.[1,0.62,0.32] else [3]f32.[0.75+0.25*h2,0.8+0.2*h1,0.7+0.3*h2];
+    bm_card(m,o,ax,ay,col,bs.BS_LEAF);}}}
+}
+// Rafters: poles (or sawn timbers) up the slope about 0.45 m apart, past the eave a little.
+bm_rafters :: (m:[]BsMesh,s:Slope,mat:int,seed:f32) {
+ n:=int(s.w/(ifx s.cone then 0.9f32 else 0.45f32)+0.999);if s.cone && n<9 {n=9;}
+ for i:0..<n+1 {if s.cone && i==n {continue;}u:=f32(i)*s.w/f32(n);if !s.cone {u=0.06+f32(i)*(s.w-0.12)/f32(n);}
+  bm_key(m,f32(i)/f32(n+1),f32(i+1)/f32(n+1));a:=bm_slope_at(s,u,-0.18,-0.05);b:=bm_slope_at(s,u,s.l+ifx s.cone then 0.35f32 else 0.08f32,-0.05);
+  if s.cone {d:=bm_sub(b,a);b=bm_add(a,bm_mul(d,1+0.35/s.l));}
+  if mat==bs.BS_TIMBER {o:=bm_mul(bm_add(a,b),0.5);ax:=bm_mul(bm_sub(b,a),0.5);n2:=bm_slope_normal(s,u);side:=bm_norm(bm_cross(ax,n2));bm_box(m,o,ax,bm_mul(n2,0.07),bm_mul(side,0.04),bm_shade(u+seed,0.15),mat,true);}
+  else {bm_pole(m,a,b,0.05,0.04,6,bm_shade(u*3+seed,0.25),bs.BS_BARK);}
+ }
+ bm_key(m,0,-1);
+}
+bm_roof :: (m:[]BsMesh,p:bs.BuildPart) {
+ sl:[2]Slope;n:=bm_slopes(p,sl[..]);
+ for i:0..<n {if p.mat==bs.BS_REED {bm_thatch(m,sl[i],p.t,f32(i)*7.7+p.x0);}else if p.mat==bs.BS_LEAF {bm_boughs(m,sl[i],p.t,f32(i)*3.1+p.z0);}else {bm_rafters(m,sl[i],p.mat,f32(i)*5.3);}}
+ bm_key(m,0.97,-1);
+ if p.form==bs.BS_GABLE {
+  a:=ifx p.a>0.5 then [3]f32.[(p.x0+p.x1)*0.5,p.y1,p.z0] else [3]f32.[p.x0,p.y1,(p.z0+p.z1)*0.5];b:=ifx p.a>0.5 then [3]f32.[(p.x0+p.x1)*0.5,p.y1,p.z1] else [3]f32.[p.x1,p.y1,(p.z0+p.z1)*0.5];
+  if p.mat==bs.BS_REED {
+   // the ridge: a roll of reed held by hazel liggers along both sides
+   lift:=[3]f32.[0,p.t*0.75,0];bm_pole(m,bm_add(a,lift),bm_add(b,lift),0.2,0.2,9,[3]f32.[0.86,0.8,0.7],bs.BS_REED);
+   d:=bm_norm(bm_sub(b,a));side:=bm_norm(bm_cross(d,[3]f32.[0,1,0]));
+   for sd:[2]f32.[-1,1] {o:=bm_add(lift,bm_add(bm_mul(side,sd*0.17),[3]f32.[0,0.1,0]));bm_pole(m,bm_add(a,o),bm_add(b,o),0.014,0.014,4,[3]f32.[0.8,0.8,0.8],bs.BS_WITHY);}
+  } else if p.mat==bs.BS_TIMBER {o:=bm_mul(bm_add(a,b),0.5);bm_box(m,bm_add(o,[3]f32.[0,-0.06,0]),bm_mul(bm_sub(b,a),0.5),[3]f32.[0,0.1,0],bm_mul(bm_norm(bm_cross(bm_sub(b,a),[3]f32.[0,1,0])),0.035),[3]f32.[0.9,0.9,0.9],bs.BS_TIMBER,true);}
+  else if p.mat==bs.BS_BARK {bm_pole(m,bm_add(a,[3]f32.[0,0.02,0]),bm_add(b,[3]f32.[0,0.02,0]),0.065,0.055,7,[3]f32.[0.9,0.9,0.9],bs.BS_BARK);}
+ }
+ if p.form==bs.BS_CONE && p.mat==bs.BS_REED {bm_key(m,0.96,-1);apex:=[3]f32.[p.x0,p.y1,p.z0];bm_pole(m,bm_add(apex,[3]f32.[0,p.t*0.3,0]),bm_add(apex,[3]f32.[0,p.t+0.25,0]),0.22,0.06,9,[3]f32.[0.82,0.76,0.66],bs.BS_REED);}
+}
+
+// ---- the rest
+bm_beam :: (m:[]BsMesh,p:bs.BuildPart) {
+ a:=[3]f32.[p.x0,p.y0,p.z0];b:=[3]f32.[p.x1,p.y1,p.z1];d:=bm_sub(b,a);l:=bm_len(d);dn:=bm_norm(d);o:=bm_mul(bm_add(a,b),0.5);
+ e:=ifx abs(dn[1])>0.9 then [2][3]f32.[[3]f32.[1,0,0],[3]f32.[0,0,1]] else bm_frame(dn);sh:=bm_shade(p.x0*3+p.z0*7+p.y0,0.18);
+ bm_box(m,o,bm_mul(d,0.5),bm_mul(e[0],p.t),bm_mul(e[1],p.t),sh,p.mat,true);
+ // oak pegs through the joints, near both ends
+ if p.mat==bs.BS_TIMBER && l>0.7 {for end:[2]f32.[0.11,-0.11] {c:=ifx end>0 then bm_add(a,bm_mul(dn,end+p.t)) else bm_add(b,bm_mul(dn,end-p.t));
+   for sd:[2]f32.[-1,1] {f:=bm_add(c,bm_mul(e[0],sd*p.t*1.02));bm_pole(m,f,bm_add(f,bm_mul(e[0],sd*0.03)),0.021,0.019,6,[3]f32.[0.55,0.5,0.45],bs.BS_TIMBER);}}}
+}
+bm_slab :: (m:[]BsMesh,p:bs.BuildPart) {
+ m[0].key_x=true;m[0].kx0=bm_min(p.x0,p.x1);m[0].kxs=1/bm_max(abs(p.x1-p.x0),0.01);bm_slab_body(m,p);m[0].key_x=false;
+}
+bm_min :: (a:f32,b:f32)->f32 {return ifx a<b then a else b;}
+bm_slab_body :: (m:[]BsMesh,p:bs.BuildPart) {
+ o:=[3]f32.[(p.x0+p.x1)*0.5,(p.y0+p.y1)*0.5,(p.z0+p.z1)*0.5];hx:=abs(p.x1-p.x0)*0.5;hy:=abs(p.y1-p.y0)*0.5;hz:=abs(p.z1-p.z0)*0.5;
+ if p.mat==bs.BS_LEAF {
+  // a bed of boughs: sprays laid flat
+  s:=Slope.{e=[3]f32.[o[0]-hx,p.y1-0.08,o[2]+hz],u=[3]f32.[1,0,0],v=[3]f32.[0,0,-1],w=hx*2,l=hz*2};bm_boughs(m,s,0.02,p.x0+p.z0);return;}
+ if p.mat==bs.BS_PLANK {
+  // boards side by side across the slab's wider side, on two battens
+  wide:=hx>hz;n:=int((ifx wide then hx else hz)*2/0.19+0.999);
+  for i:0..<n {f:=-1+(f32(i)+0.5)*2/f32(n);c:=ifx wide then [3]f32.[o[0]+f*hx,o[1],o[2]] else [3]f32.[o[0],o[1],o[2]+f*hz];
+   bm_box(m,c,[3]f32.[0,hy,0],ifx wide then [3]f32.[hx/f32(n)*0.97,0,0] else [3]f32.[0,0,hz/f32(n)*0.97],ifx wide then [3]f32.[0,0,hz] else [3]f32.[hx,0,0],bm_shade(f32(i)*3.3+p.x0,0.2),bs.BS_PLANK,true);}
+  for y:[2]f32.[-0.6,0.6] {bm_box(m,[3]f32.[o[0],o[1]+y*hy,o[2]],ifx wide then [3]f32.[hx*0.95,0,0] else [3]f32.[0,0,hz*0.95],[3]f32.[0,0.06,0],ifx wide then [3]f32.[0,0,hz+0.025] else [3]f32.[hx+0.025,0,0],[3]f32.[0.8,0.8,0.8],bs.BS_PLANK,true);}
+  return;}
+ if p.mat==bs.BS_EARTH {
+  // a compacted floor, mottled
+  nx:=int(hx*2/0.5)+1;nz:=int(hz*2/0.5)+1;base:=m[0].nv;
+  for i:0..<nx+1 {for j:0..<nz+1 {x:=o[0]-hx+f32(i)*hx*2/f32(nx);z:=o[2]-hz+f32(j)*hz*2/f32(nz);
+    k:=bm_vert(m,[3]f32.[x,p.y1,z],[3]f32.[0,1,0],x,z,bm_shade(x*1.3+z*2.9,0.3),p.mat);}}
+  for i:0..<nx {for j:0..<nz {a:=base+i*(nz+1)+j;b:=a+nz+1;bm_tri(m,a,b+1,b);bm_tri(m,a,a+1,b+1);}}
+  return;}
+ bm_box(m,o,[3]f32.[hx,0,0],[3]f32.[0,hy,0],[3]f32.[0,0,hz],bm_shade(p.x0+p.z0*3,0.1),p.mat,p.mat==bs.BS_TIMBER);
+}
+// A ditch: wet dark earth at its bottom, the dug spoil banked along its outer side.
+bm_trench :: (m:[]BsMesh,p:bs.BuildPart) {
+ l:=bs.bs_path_len(p);sd:=bm_side(p,0);n:=int(l/0.5)+1;
+ prof:=[5][2]f32.[[2]f32.[-0.5,0.02],[2]f32.[0.5,0.02],[2]f32.[0.62,0.12],[2]f32.[0.85,0.2],[2]f32.[1.15,0.03]];
+ cols:=[5][3]f32.[[3]f32.[0.42,0.4,0.38],[3]f32.[0.42,0.4,0.38],[3]f32.[0.82,0.78,0.72],[3]f32.[1,0.95,0.88],[3]f32.[0.95,0.92,0.85]];
+ for i:0..<n {s0:=f32(i)/f32(n);s1:=f32(i+1)/f32(n);a:=bm_at(p,s0);b:=bm_at(p,s1);m[0].key=s0;
+  for k:0..<4 {w0:=prof[k][0]*p.t;w1:=prof[k+1][0]*p.t;
+   pa:=[3]f32.[a[0]+sd[0]*w0,prof[k][1],a[1]+sd[1]*w0];pb:=[3]f32.[b[0]+sd[0]*w0,prof[k][1],b[1]+sd[1]*w0];pc:=[3]f32.[b[0]+sd[0]*w1,prof[k+1][1],b[1]+sd[1]*w1];pd:=[3]f32.[a[0]+sd[0]*w1,prof[k+1][1],a[1]+sd[1]*w1];
+   bm_quad(m,pa,pb,pc,pd,[4][2]f32.[[2]f32.[s0*l,w0],[2]f32.[s1*l,w0],[2]f32.[s1*l,w1],[2]f32.[s0*l,w1]],bm_mul(cols[k],0.92+0.08*bm_hash(s0*9+p.x0,f32(k))),bs.BS_EARTH);}}
+}
+bm_stones :: (m:[]BsMesh,p:bs.BuildPart) {
+ n:=int(6.2831853*p.x1/(p.t*1.1)+0.5);if n<5 {n=5;}
+ for i:0..<n {a:=f32(i)*6.2831853/f32(n);seed:=p.x0*3+p.z0*7+f32(i)*1.7;r:=p.t*0.5;m[0].key=f32(i)/f32(n);
+  bm_rock(m,[3]f32.[p.x0+sin(a)*p.x1,p.y0,p.z0+cos(a)*p.x1],r*(0.85+0.3*bm_hash(seed,1)),r*(0.6+0.3*bm_hash(seed,2)),r*(0.75+0.3*bm_hash(seed,3)),a,seed,bm_shade(seed,0.35),p.mat);}
+}
+
+#test "a part's mesh is closed in its vertex budget and lands where the frame puts it" {
+ m:[1]BsMesh;m[0].f=building.BuildingFrame.{x=10,z=5,turn=1};m[0].y=2;
+ p:=bs.BuildPart.{stage=1,form=bs.BS_WALL,mat=bs.BS_WITHY,x0= -1,z0=0,x1=1,z1=0,y0=0,y1=1.5,t=0.12};
+ bm_part(m[..],p);#assert !m[0].over && m[0].nv>500 && m[0].ni%3==0;
+ for i:0..<m[0].nv {v:=m[0].v[i];#assert abs(v.p[0]-10)<0.2 && abs(v.p[2]-5)<1.2 && v.p[1]>=1.9 && v.p[1]<3.7;}
+ for i:0..<m[0].ni {#assert m[0].i[i]<m[0].nv;}
+}
+#test "a part's reveal keys run 0 to 1 the way its form grows" {
+ // a woven wall: the low rows first; a floor from its first edge; thatch from the eaves
+ w:=bs.BuildPart.{stage=1,form=bs.BS_WALL,mat=bs.BS_WITHY,x0= -1,z0=0,x1=1,z1=0,y0=0,y1=1.5,t=0.12};
+ m:[1]BsMesh;bm_part(m[..],w);lo:f32=0;lon:=0;hi:f32=0;hin:=0;
+ for i:0..<m[0].nv {v:=m[0].v[i];#assert v.key>=0 && v.key<=1;if v.p[1]<0.3 {lo+=v.key;lon+=1;}if v.p[1]>1.2 {hi+=v.key;hin+=1;}}#assert lo/f32(lon)<hi/f32(hin);
+ f:=bs.BuildPart.{stage=1,form=bs.BS_SLAB,mat=bs.BS_FLAG,x0= -1,x1=1,y0=0,y1=0.06,z0= -1,z1=1};m[0].nv=0;m[0].ni=0;bm_part(m[..],f);
+ for i:0..<m[0].nv {v:=m[0].v[i];#assert abs(v.key-(v.p[0]+1)*0.5)<0.01;}
+ c:=bs.BuildPart.{stage=1,form=bs.BS_CONE,mat=bs.BS_REED,x0=0,z0=0,x1=1.9,y0=1.4,y1=3.6,t=0.28};m[0].nv=0;m[0].ni=0;bm_part(m[..],c);
+ for i:0..<m[0].nv {v:=m[0].v[i];if v.p[1]<1.6 {#assert v.key<0.3;}}
+ // a pole is revealed whole: its pose stands it up
+ p:=bs.BuildPart.{stage=1,form=bs.BS_POLE,mat=bs.BS_BARK,y1=2,t=0.06};m[0].nv=0;m[0].ni=0;bm_part(m[..],p);for i:0..<m[0].nv {#assert m[0].v[i].key==0;}
+}
+#test "every form makes geometry" {
+ rows:=[9][11]f32.[[11]f32.[1,0,0,0,0,0,0,2,0,0.06,0],[11]f32.[1,1,1,0,0,0,2,0,0,0.1,0],[11]f32.[1,3,3,0,0,0,1.5,1.8,0.4,0.2,5.9],[11]f32.[1,4,7,-1.5,0,1,1.5,1.9,-1,0.1,0],
+  [11]f32.[1,5,6,-2,2,-1.5,2,4,1.5,0.3,0],[11]f32.[1,6,6,0,1.6,0,1.7,3.4,0,0.25,0],[11]f32.[1,7,10,0,0,0,1,2,0.05,0,0],[11]f32.[1,8,8,-2,0,2,2,0,2,0.4,0],[11]f32.[1,9,4,0,0,0,0.4,0,0,0.18,0]];
+ for r:rows {m:[1]BsMesh;bm_part(m[..],bs.bs_row(r));#assert m[0].nv>0 && m[0].ni>0 && !m[0].over;}
+}
+// The mesh of one part, added to `m`. A kit piece (BS_KIT) is the drawer's to place.
+bm_part :: (m:[]BsMesh,p:bs.BuildPart) {
+ f:=p.form;bm_key(m,0,-1);m[0].key_x=false;
+ if f==bs.BS_POLE {bm_pole(m,[3]f32.[p.x0,p.y0,p.z0],[3]f32.[p.x1,p.y1,p.z1],p.t,p.t*0.82,7,bm_shade(p.x0*5+p.z0*3+p.y1,0.2),p.mat);}
+ else if f==bs.BS_BEAM {bm_beam(m,p);}
+ else if f==bs.BS_WALL || f==bs.BS_RING || f==bs.BS_GABLE_END {bm_wall(m,p);}
+ else if f==bs.BS_SHED || f==bs.BS_GABLE || f==bs.BS_CONE {bm_roof(m,p);}
+ else if f==bs.BS_SLAB {bm_slab(m,p);}
+ else if f==bs.BS_TRENCH {bm_trench(m,p);}
+ else if f==bs.BS_STONES {bm_stones(m,p);}
+ bm_key(m,0,-1);
+}
+// Whether a woven wall is hidden under daub laid by stage k on the same line: then it isn't drawn.
+bm_hidden :: (p:bs.BuildPart,q:bs.BuildPart,k:int)->bool {
+ return p.mat==bs.BS_WITHY && q.mat==bs.BS_DAUB && q.stage<=k && q.form==p.form && q.x0==p.x0 && q.z0==p.z0 && q.x1==p.x1 && q.z1==p.z1;
+}

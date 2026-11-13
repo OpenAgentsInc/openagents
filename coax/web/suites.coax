@@ -12,7 +12,7 @@
 //   coax test coax/web/suites.coax --library   # its own checks
 //
 // The convention. A suite is a .coax file under apps/openagents-web/,
-// verse/, aethyr/, everglade/, rules/, coax/web/ or coax/lib/ with a #test or #forall in it (or a --native-link line) that no other file #loads, or one
+// verse/, metaverse-engine/, everglade/, rules/, coax/web/ or coax/lib/ with a #test or #forall in it (or a --native-link line) that no other file #loads, or one
 // whose header (its first 80 lines) names itself in a `coax test` line. That
 // line is how it runs: `coax test apps/openagents-web/everglade.coax --steps
 // 2000000000` gives each of its tests 2,000,000,000 steps, and --library,
@@ -231,11 +231,11 @@ su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, from: 
   return n;
 }
 
-// Under apps/openagents-web/, verse/, aethyr/ (the engine core), everglade/ (the game), rules/ (the SRD rules: its
-// check files ran as suites under aethyr/rules/srd/ and stopped when the folder moved, #13270), coax/web/ or coax/lib/,
+// Under apps/openagents-web/, verse/, metaverse-engine/ (the engine core), everglade/ (the game), rules/ (the SRD rules: its
+// check files ran as suites under metaverse-engine/rules/srd/ and stopped when the folder moved, #13270), coax/web/ or coax/lib/,
 // and not in a hidden folder (.dev scratch).
 su_in :: (path: string) -> bool {
-  roots := [7] string.["apps/openagents-web/", "verse/", "aethyr/", "everglade/", "rules/", "coax/web/", "coax/lib/"];
+  roots := [7] string.["apps/openagents-web/", "verse/", "metaverse-engine/", "everglade/", "rules/", "coax/web/", "coax/lib/"];
   for r: roots { if su_starts(path, 0, r) { return !su_contains(path, "/."); } }
   return false;
 }
@@ -257,7 +257,7 @@ su_input :: (path: string) -> bool {
 su_web_input :: (path: string, faces: bool) -> bool {
   if su_input(path) { return true; }
   if faces && path.count > 2 && (su_starts(path, path.count - 2, ".c") || su_starts(path, path.count - 2, ".h")) { return false; }
-  roots := [11] string.["coax/platform/", "coax/lib/", "coax/web/", "apps/openagents-web/", "verse/", "aethyr/", "everglade/", "rules/", "psionic/", "proto/", "protocol/"];
+  roots := [11] string.["coax/platform/", "coax/lib/", "coax/web/", "apps/openagents-web/", "verse/", "metaverse-engine/", "everglade/", "rules/", "psionic/", "proto/", "protocol/"];
   for r: roots { if su_starts(path, 0, r) { return true; } }
   return false;
 }
@@ -265,12 +265,12 @@ su_web_input :: (path: string, faces: bool) -> bool {
 #test "a changed file that isn't Coax changes a suite only through the compiler, a descriptor or a native suite's C" {
   #assert su_input("coax/src/check.cpp") && su_input("coax/bootstrap/checker.c") && su_input("coax/build.sh") && su_input("coax/web/native-check.c");
   #assert su_input("verse/voice.pb") && su_input("os/wire/desk.pb");
-  #assert !su_input("aethyr/host/frame.c") && !su_input("apps/openagents-web/wasm-budgets.txt") && !su_input("coax/web/tool.sh");
+  #assert !su_input("metaverse-engine/host/frame.c") && !su_input("apps/openagents-web/wasm-budgets.txt") && !su_input("coax/web/tool.sh");
   #assert !su_input("apps/everglade-desktop/Sources/Workshop.swift") && !su_input("coax/remote/after.sh") && !su_input("pb") && !su_input(".gitignore");
 }
 #test "a web module's inputs are wider: the trees the build reads, its faces left to the caller on request" {
   #assert su_web_input("apps/openagents-web/wasm-budgets.txt", false) && su_web_input("coax/web/host.js", true) && su_web_input("coax/src/emit_c.cpp", true);
-  #assert su_web_input("aethyr/host/frame.c", false) && !su_web_input("aethyr/host/frame.c", true) && !su_web_input("apps/openagents-web/sound-bank.h", true);
+  #assert su_web_input("metaverse-engine/host/frame.c", false) && !su_web_input("metaverse-engine/host/frame.c", true) && !su_web_input("apps/openagents-web/sound-bank.h", true);
   #assert !su_web_input("apps/everglade-desktop/Sources/Workshop.swift", false) && !su_web_input("scripts/join-pylon.sh", true) && !su_web_input("coax/remote/check.sh", false);
 }
 #test "paths: a #load from a file's folder, dots resolved, never out of the repo" {

@@ -1,0 +1,77 @@
+// metaverse-engine/render/exr.coax: the half codec, and files written and read back for every compression, type
+// and source. exr_oracle.py decodes the same files with its own reader.
+#import "Basic";
+#load "../render/exr.coax";
+#load "exr-image.coax";
+
+exr_round :: (compression: int, type: int, src_type: int) -> bool #effects(all) {
+  src: [EXR_W * EXR_H * 5 * 4] u8;
+  exr_fill(src[..], 5, src_type == EXR_HALF);
+  ch: [5] ExrChannel;
+  size := exr_size(src_type);
+  for c: 0..<5 { ch[c] = ExrChannel.{name = EXR_NAMES[c], type = ifx c == 4 then EXR_FLOAT else type, src = src[..], src_type = src_type, offset = c * size, stride = 5 * size}; }
+  file: [40000] u8; work: [40000] u8;
+  n := exr_write(EXR_W, EXR_H, ch[..], compression, file[..], work[..]);
+  if n <= 0 || n > exr_bound(EXR_W, EXR_H, ch[..], compression) { return false; }
+  got: [EXR_W * EXR_H] f32;
+  for c: 0..<5 {
+    if !exr_read(file[0..<n], EXR_NAMES[c], got[..], work[..]) { return false; }
+    for p: 0..<EXR_W * EXR_H {
+      if f32_bits(got[p]) != f32_bits(exr_sample(c, p % EXR_W, p / EXR_W)) { return false; }
+    }
+  }
+  return true;
+}
+#test "half bits: normals, the largest, overflow, subnormals, signed zero and ties to even" {
+  #assert exr_half(1) == 15360 && exr_half(-2) == 49152 && exr_half(65504) == 31743;
+  #assert exr_half(65520) == 31744 && exr_half(-65536) == 64512;
+  #assert exr_half(f32_from_bits(2147483648)) == 32768;
+  #assert exr_half(0.000000059604644775390625f32) == 1 && exr_half(0.0000000298023223876953125f32) == 0;
+  #assert exr_half(0.0000000894069671630859375f32) == 2 && exr_half(0.00006103515625f32) == 1024;
+  #assert exr_half(1.00048828125f32) == 15360 && exr_half(1.00146484375f32) == 15362;
+}
+#test "every finite half comes back through f32 to the same bits" #steps 100000000 {
+  for h: 0..<65536 {
+    if (h & 31744) != 31744 { #assert exr_half(exr_from_half(h)) == h; }
+  }
+}
+#test "half and float layers round-trip uncompressed, ZIPS and ZIP, from half or float sources" #steps 200000000 {
+  #assert exr_round(EXR_NONE, EXR_HALF, EXR_FLOAT);
+  #assert exr_round(EXR_ZIPS, EXR_HALF, EXR_HALF);
+  #assert exr_round(EXR_ZIP, EXR_HALF, EXR_FLOAT);
+  #assert exr_round(EXR_ZIP, EXR_FLOAT, EXR_HALF);
+  #assert exr_round(EXR_NONE, EXR_FLOAT, EXR_FLOAT);
+}
+#test "the header lists channels in byte order, ZIP is smaller, and bad input is refused" #steps 100000000 {
+  src: [EXR_W * EXR_H * 5 * 4] u8; exr_fill(src[..], 5, false);
+  ch: [5] ExrChannel;
+  for c: 0..<5 { ch[c] = ExrChannel.{name = EXR_NAMES[c], type = EXR_HALF, src = src[..], src_type = EXR_FLOAT, offset = c * 4, stride = 20}; }
+  file: [40000] u8; work: [40000] u8;
+  raw := exr_write(EXR_W, EXR_H, ch[..], EXR_NONE, file[..], work[..]);
+  zip := exr_write(EXR_W, EXR_H, ch[..], EXR_ZIP, file[..], work[..]);
+  #assert raw > 0 && zip > 0 && zip < raw;
+  r := exr_info(file[0..<zip]);
+  #assert r.ok && r.w == EXR_W && r.h == EXR_H && r.compression == EXR_ZIP && r.channels == 5;
+  want := [5] string.["A", "B", "G", "R", "depth.Z"];
+  for i: 0..<5 { #assert cast(string) file[r.name_at[i]..<r.name_at[i] + r.name_n[i]] == want[i]; }
+  got: [EXR_W * EXR_H] f32;
+  #assert !exr_read(file[0..<zip], "normal.X", got[..], work[..]);
+  #assert !exr_read(file[0..<zip - 1], "R", got[..], work[..]);
+  file[0] = 0; #assert !exr_info(file[0..<zip]).ok;
+  #assert exr_write(EXR_W, EXR_H, ch[..], EXR_ZIP, file[0..<100], work[..]) == -1;
+  #assert exr_write(EXR_W, EXR_H, ch[..], 9, file[..], work[..]) == -1;
+  #assert exr_write(EXR_W, EXR_H, ch[..], EXR_ZIP, file[..], work[0..<10]) == -1;
+  ch[1].name = "R"; #assert exr_write(EXR_W, EXR_H, ch[..], EXR_NONE, file[..], work[..]) == -1;
+  ch[1].name = "G"; ch[1].offset = 4 * EXR_W * EXR_H * 5; #assert exr_write(EXR_W, EXR_H, ch[..], EXR_NONE, file[..], work[..]) == -1;
+}
+#test "the zlib wrapper: zlib's Adler-32, and streams inflate.coax takes back" {
+  abc: [3] u8; abc[0] = 97; abc[1] = 98; abc[2] = 99;
+  #assert exr_adler(abc[..]) == 38600999;
+  run: [5000] u8; for i: 0..<5000 { run[i] = cast(u8) (i % 7); }
+  z: [6000] u8; back: [5000] u8; dw: [1] DeflateWork;
+  n := exr_zlib(run[..], z[..], dw[..]);
+  #assert n > 0 && n < 100 && zlib_inflate(z[0..<n], back[..]) == 5000;
+  for i: 0..<5000 { #assert back[i] == run[i]; }
+  #assert exr_zlib(run[..], z[0..<8], dw[..]) == -1;
+}
+main :: () {}

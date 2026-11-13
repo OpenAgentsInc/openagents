@@ -4,10 +4,10 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/render/geometry/scan.coax";
+#load "../../metaverse-engine/render/geometry/scan.coax";
 #load "../../coax/lib/text/ph_num.coax";
-#load "../../aethyr/anim/face-pack.coax";
-#load "../../aethyr/tools/echo-gltf.coax";
+#load "../../metaverse-engine/anim/face-pack.coax";
+#load "../../metaverse-engine/tools/echo-gltf.coax";
 #test "Slay bindings resolve case independently of the SDK FName pool" {a:=[2]SfName.[sf_name("FACIAL_C_Jaw"),sf_name("jawOpen")];#assert sf_find(a[..],"facial_c_jaw")==0 && sf_find(a[..],"JAWOPEN")==1 && sf_find(a[..],"unknown")== -1;}
 #test "source left-handed centimetres become the existing glTF local coordinates" {p:=sf_local([10]f32.[1,2,3,0.1,0.2,0.3,0.9,1,1,1]);#assert p[0]==0.01 && p[1]==0.03 && p[2]==0.02 && p[3]== -0.1 && p[4]== -0.3 && p[5]== -0.2 && p[6]==0.9;}
 #load "slay-source.coax";

@@ -25,9 +25,9 @@ import "openagents/options/v1alpha1/options.proto";
 // carries nothing else is realm.proto's RevRequest. SQL builds every answer
 // as jsonb's text; a refusal is record.proto's RouteError.
 //
-// aethyr/forge/change.coax is the one writer of the requests: the realm edit
+// metaverse-engine/editor/change.coax is the one writer of the requests: the realm edit
 // layer, My Realm and the CLI call it. proto/verse/realm-edits-v1.json pins
-// the bytes, checked through the codec (aethyr/forge/change-goldens.coax)
+// the bytes, checked through the codec (metaverse-engine/editor/change-goldens.coax)
 // and through the routes (coax/web/api/tests/realm_record_checks.coax).
 
 // The tools a realm can give its visitors, each on or off.

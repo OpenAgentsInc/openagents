@@ -1,4 +1,4 @@
-// The Haunted House's fly-over (aethyr/cam/cinematic.coax): /worlds/haunted-house#flyover
+// The Haunted House's fly-over (metaverse-engine/cam/cinematic.coax): /worlds/haunted-house#flyover
 // flies round the house, cuts inside to the parlour's candles and back out
 // with a flash of lightning behind the cut, and hands the view back to your
 // camera. Any key or a tap skips it. Included by realm-face.c.

@@ -41,7 +41,7 @@ DR_SEAT :: [225] f32.[
   0, 4.395, 0.355, 0, 4.223, 0.4, 0, 3.75, 1.121, 0, 4.129, 0.804, 0, 4.458, 0.355, 0, 3.851, 0.957,
   0, 3.58, 1.052, 0, 3.619, 1.197, 0, 3.62, 1.2, 0.584, 3.562, 1.141, 0.61, 3.581, 1.141, 0.557, 3.542, 1.141,
   -0.584, 3.562, 1.141, -0.61, 3.581, 1.141, -0.557, 3.542, 1.141];
-// The body round the saddle a frame, as aethyr/action/ride-pose.coax reads a hull (RIDE_HULL_ROWS
+// The body round the saddle a frame, as metaverse-engine/action/ride-pose.coax reads a hull (RIDE_HULL_ROWS
 // heights from 0.5 m above the saddle bone down in 0.1 m steps, how far the surface is out to the
 // dragon's left at each, then to its right; 0 where there's no body), measured from the baked
 // frames' triangles between 0.25 m behind and 0.3 m ahead of the bone. A rider's legs are checked

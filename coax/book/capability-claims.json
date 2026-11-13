@@ -178,7 +178,7 @@
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "3c7f84162a99cebf7f30fbd8a9298c65735bb404e087b6c9507e282243b05c65"
+          "sha256": "eaf6f08972e5888ed6de324410a5c7f46c3b09fb34d816594f9131b7725c1b34"
         },
         {
           "path": "psionic/book/examples.json",
@@ -263,7 +263,7 @@
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "3c7f84162a99cebf7f30fbd8a9298c65735bb404e087b6c9507e282243b05c65"
+          "sha256": "eaf6f08972e5888ed6de324410a5c7f46c3b09fb34d816594f9131b7725c1b34"
         },
         {
           "path": "psionic/book/examples.json",
@@ -349,11 +349,11 @@
         },
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "d30c997f204dc12743e1b7fa854b5871ad5b39484be4ce37cb6c540830d572d0"
+          "sha256": "6a1158025b23e73ae42040b45de84ef625abe1f88c38539e12e3334d2c130049"
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "1744cfa81be537d8402bb42a7c797eefcfaa00c51229943bcacd73aa0507f628"
+          "sha256": "2c773a3d802d9f69668c7a0aaf09300998a3d998b1dc35760f97c7de012c9e39"
         },
         {
           "path": "coax/QUANTITIES.md",
@@ -385,7 +385,7 @@
         },
         {
           "path": "coax/SPATIAL.md",
-          "sha256": "50f137dda7104090759e913c71155360a6f037692c214a2fd40250e3a84664f8"
+          "sha256": "bc830092a2a73144c191792391c4cb18ebf1e66a50030ddc85a67d61bf05a549"
         },
         {
           "path": "coax/tests/spatial.py",
@@ -442,7 +442,7 @@
     {
       "id": "coax.wgsl.current",
       "document": "coax/book/ch17-gpu.md",
-      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate. Reviewed after #12867: `coax metal --vertex/--fragment` adds a separate Metal graphics writer over the same checked tree; the WGSL path and its refusals are unchanged. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82 adds bounded `coax wgsl --computes` entries with `atomic` storage bindings for the engine's GPU cluster cull (aethyr/render/geometry/cull.coax); Psionic browser compute remains separate. cdf2eedd13 adds checks only; 4c7669373d and c50fcbbf15 change Everglade's bindings for one zone and sun-shadow atlas tiles.",
+      "scope": "Bounded direct WGSL graphics emission and the named Everglade source consumer; planned shader syntax, general layouts and Psionic browser compute remain separate. Reviewed after #12867: `coax metal --vertex/--fragment` adds a separate Metal graphics writer over the same checked tree; the WGSL path and its refusals are unchanged. Reviewed for #12949: caf5c6c80b adds scoped Mac host acceptance without widening compute qualification; 199402193d removes only a worker-notice workaround from the unchanged spatial oracle. Reviewed for #13134: 6adbb76c82 adds bounded `coax wgsl --computes` entries with `atomic` storage bindings for the engine's GPU cluster cull (metaverse-engine/render/geometry/cull.coax); Psionic browser compute remains separate. cdf2eedd13 adds checks only; 4c7669373d and c50fcbbf15 change Everglade's bindings for one zone and sun-shadow atlas tiles.",
       "text_sha256": "4a593a91eb143f061fb948f11119f1e6f62a1e1629db334786aeb190920e94eb",
       "features": [
         {
@@ -453,15 +453,15 @@
       "evidence": [
         {
           "path": "coax/lib/compiler/wgsl.coax",
-          "sha256": "d30c997f204dc12743e1b7fa854b5871ad5b39484be4ce37cb6c540830d572d0"
+          "sha256": "6a1158025b23e73ae42040b45de84ef625abe1f88c38539e12e3334d2c130049"
         },
         {
           "path": "coax/src/shader.cpp",
-          "sha256": "481c1463f51421b1e0c9d0dcde12470bc0d223482f213e8f0a912d1f7022c51f"
+          "sha256": "1ed52e044f6b7b0fd265756ad3ce926ec8a38bc0576f45b167992adb7af79b52"
         },
         {
           "path": "docs/verse/native-gpu.md",
-          "sha256": "1744cfa81be537d8402bb42a7c797eefcfaa00c51229943bcacd73aa0507f628"
+          "sha256": "2c773a3d802d9f69668c7a0aaf09300998a3d998b1dc35760f97c7de012c9e39"
         },
         {
           "path": "apps/openagents-web/gpu/everglade-v1/gpu.module",

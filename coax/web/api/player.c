@@ -234,7 +234,7 @@ static const char *legacy(const char *path) {
   return NULL;
 }
 
-/* aethyr/session/moderation.coax's answers (#13302) */
+/* metaverse-engine/session/moderation.coax's answers (#13302) */
 #define MOD_OK 0
 #define MOD_SELF 2
 #define MOD_KICK 3
@@ -243,14 +243,14 @@ static const char *legacy(const char *path) {
 #define MOD_KIND_MUTE 2
 #define MOD_KIND_BAN 3
 // A seat ticket (#12712, spec 4.4): who the X-Verse-Player key is, for one room's socket, for
-// TICKET_MS. aethyr/session/seat-ticket.coax writes every byte of it (docs/protocol/everglade-session-v6.md
+// TICKET_MS. metaverse-engine/session/seat-ticket.coax writes every byte of it (docs/protocol/everglade-session-v6.md
 // "The seat ticket"): v5 signed with OA_ROOM_TICKET_SIGNING_KEY (#13260), else v2/v3, or the v4 envelope
 // around one, under OA_ROOM_TICKET_KEY's HMAC (#13248). coax/web/room/room-ticket.coax reads and checks it.
 // The name is verse.player_name's, the one chat, presence and the inbox show too
 // (migrations/0116_one_player_name.sql), kept to letters, digits, spaces, '-' and '_', 24 at most.
 int room_write_signed(const request *q, const char *purpose, const char *body, size_t n);   /* rooms.c (#13260) */
 #define TICKET_MS 600000
-/* seat ticket v5's one writer (ticket-sign-unit.c, aethyr/session/seat-ticket.coax; #13260) */
+/* seat ticket v5's one writer (ticket-sign-unit.c, metaverse-engine/session/seat-ticket.coax; #13260) */
 bool stk_secret_c(const char *text, unsigned char out[32]);
 size_t stk_write_c(const unsigned char secret[32], const char *pid, int acct, const char *name, const char *room, int shard,
                    long long expires, int hp, int xp, int wanted, long long owner, const char *ext, int profile, const char *saved,
@@ -259,7 +259,7 @@ size_t stk_write_c(const unsigned char secret[32], const char *pid, int acct, co
 size_t stk_hmac_write_c(const char *key, const char *pid, int acct, const char *name, const char *room, int shard,
                         long long expires, int hp, int xp, int wanted, long long owner, int envelope, const char *saved,
                         char *out, size_t cap);
-/* the EXT's class and level (aethyr/session/seat-class.coax, #13259) */
+/* the EXT's class and level (metaverse-engine/session/seat-class.coax, #13259) */
 size_t stk_class_ext_c(const char *klass, int xp, int start, char *out, size_t cap);
 static size_t ticket_name(char *out, size_t cap, const char *in) {
   size_t m = 0;
@@ -399,7 +399,7 @@ fail:
 static void room_ticket(const request *q, PGconn *db, const char *key, bool site, const char *room, const char *body) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a ticket\"}"); return; }
   const char *secret = getenv("OA_ROOM_TICKET_KEY");
-  /* v5 (#13260, aethyr/session/seat-ticket.coax; docs/deployment/room-keys.md): set, the API signs with this
+  /* v5 (#13260, metaverse-engine/session/seat-ticket.coax; docs/deployment/room-keys.md): set, the API signs with this
      private key (64 hex) and rooms check with its public key only. Unset, v2/v3/v4 under OA_ROOM_TICKET_KEY. */
   const char *signing = getenv("OA_ROOM_TICKET_SIGNING_KEY");
   unsigned char v5_key[32]; bool v5 = signing && signing[0];
@@ -609,7 +609,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, bool site
       xp = (int)character_xp(rc); start = (int)character_floor(rc);
     }
   }
-  /* the ticket, every byte of it aethyr/session/seat-ticket.coax's (ticket-sign-unit.c). HP, XP, WANTED and the
+  /* the ticket, every byte of it metaverse-engine/session/seat-ticket.coax's (ticket-sign-unit.c). HP, XP, WANTED and the
      owner generation ride in its HP field (the WANTED level the room saved, #12794: the room seats it wanted). */
   char ticket[4097];
   if (v5) {
@@ -830,7 +830,7 @@ static bool room_write_owner(const request *q, PGconn *db, int signer, const cha
 }
 // The item ledger's route (#13318, docs/decisions/0006-item-ledger-rules-in-coax.md): SQL keeps the
 // rows, locks (one writer an operation ID, the item, then the inventories in one order), keeps each
-// ID once and writes the outbox; item-policy.coax (aethyr/session/ledger.coax's rules) decides.
+// ID once and writes the outbox; item-policy.coax (metaverse-engine/session/ledger.coax's rules) decides.
 #define ITEM_GO (-1)       /* ledger.coax LEDGER_GO: a new ID, in time */
 #define ITEM_REPLAY (-2)   /* ledger.coax LEDGER_REPLAY: answer the ID's record */
 #define ITEM_OK 0          /* ledger.coax LEDGER_OK */
@@ -1235,7 +1235,7 @@ static void room_control(const request *q, PGconn *db) {
   free(out);
 }
 // Moderation (#13302; docs/protocol/moderation-v1.md, migrations/0170_moderation.sql). The rules and the
-// record's codec are Coax's (moderation-policy.coax over aethyr/session/moderation.coax); this reads the
+// record's codec are Coax's (moderation-policy.coax over metaverse-engine/session/moderation.coax); this reads the
 // facts and writes what they answer. Every action a moderator takes is one row of verse.mod_log, which
 // no one can change, written in the same statement as the ban, mute or kick it sets or lifts.
 typedef struct { int verb; long long until; char outcome[12]; char pid[48]; bool logged; } mod_done;

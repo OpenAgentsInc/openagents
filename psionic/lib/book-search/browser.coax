@@ -788,7 +788,7 @@ BB_CHAPTER_54 :: "# 54. Search the book\n\n> **Status: unimplemented — design 
   // A fresh or reused page store knows no words.
   bb_small(a[..]); #assert bs_find(a[0].vocab[0], "error") == -1 && a[0].vocab[0].n == 0;
   // Statuses come from the file name, books from the path (0 when unknown).
-  names := [5] string.["PLAN.md", "coax/book/PLAN.md", "aethyr/book/a.md", "psionic/book/b.md", "/PLAN.md"];
+  names := [5] string.["PLAN.md", "coax/book/PLAN.md", "metaverse-engine/book/a.md", "psionic/book/b.md", "/PLAN.md"];
   tiny := [8] string.["# 1. A\n\nx\n", "# 1. A\n\nx\n", "# 1. A\n\nx\n", "# 1. A\n\nx\n", "# 1. A\n\nx\n", "# 1. A\n\nx\n", "# 1. A\n\nx\n", "# 1. A\n\nx\n"];
   #assert bb_small_books(a[..], names[..], tiny[0..<5]);
   u := a[0].store[0];

@@ -2,7 +2,7 @@
 
 > **Status: partly implemented.** Everglade II's ground is a set of Metaverse Engine
 > terrain tiles in [`everglade/world/ground.coax`](../../everglade/world/ground.coax),
-> built on [`aethyr/world/terrain-tile.coax`](../../aethyr/world/terrain-tile.coax)
+> built on [`metaverse-engine/world/terrain-tile.coax`](../../metaverse-engine/world/terrain-tile.coax)
 > (#12995, #13059). The code moves into `everglade/world/` later, so this
 > chapter names functions and has no source listings yet.
 
@@ -25,7 +25,7 @@ looking solid.
 | Piece | Where |
 | --- | --- |
 | The land's height as a pure function | `e2_height` in [`everglade/world/forest.coax`](../../everglade/world/forest.coax) |
-| A tile's format, admission and sampler | `aethyr/world/terrain-tile.coax` (`terrain_tile_sample`) |
+| A tile's format, admission and sampler | `metaverse-engine/world/terrain-tile.coax` (`terrain_tile_sample`) |
 | Everglade II's tiles, record and queries | `everglade/world/ground.coax` (`e2g_convert`, `e2g_seams`, `e2g_record_read`, `e2g_y`) |
 | The ground's colour at a pixel | `e2_ground_albedo` in [`everglade/client/gpu/everglade2.coax`](../client/gpu/everglade2.coax) |
 
@@ -122,7 +122,7 @@ In `everglade/world/ground.coax`:
 - `#test "far from the origin the tiles answer as at it: queries, the drawn grid
   and the bake's frame agree"`. A set placed 1e8 m out answers the same queries.
 
-In `aethyr/world/terrain-tile.coax`:
+In `metaverse-engine/world/terrain-tile.coax`:
 
 - `#test "split tiles agree on their shared edges and sample as the whole"`.
 - `#test "hand-worked: height, slope and holes on both triangles of one
@@ -137,7 +137,7 @@ pack route with no refusal and no memory growth.
 
 ```sh
 coax/bin/coax test everglade/world/ground.coax --library
-coax/bin/coax test --library aethyr/world/terrain-tile.coax
+coax/bin/coax test --library metaverse-engine/world/terrain-tile.coax
 ```
 
 ## Mistakes

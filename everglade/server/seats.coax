@@ -119,7 +119,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_i
 }
 // How long a closed socket's character waits for its player (#12792): standing, AWAY once
 // WIRE_AWAY_MS passes, still in the rules and the world. Their rejoin within it takes the same seat.
-EG_GRACE_MS :: LIFECYCLE_HOLD_MS;   // the session lifecycle's hold (aethyr/session/lifecycle.coax)
+EG_GRACE_MS :: LIFECYCLE_HOLD_MS;   // the session lifecycle's hold (metaverse-engine/session/lifecycle.coax)
 // Seat s of room k's player rejoined on socket conn within the grace, or their silent socket gave way
 // to this one (room-relay.coax rl_take_back): the character, its conditions, effects, cooldowns, XP
 // and place are kept; what the server knows of the page is not. Its next D is a snapshot, its inputs
@@ -235,7 +235,7 @@ eg_event_to :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool,
 }
 
 
-// ---- a seat's class and level are the server's (#13259, aethyr/session/seat-class.coax)
+// ---- a seat's class and level are the server's (#13259, metaverse-engine/session/seat-class.coax)
 
 // A room holding the API's v5 public key (the checks' TK5_TEST_PUB), and a join with a v5 ticket the
 // checks' key signs for pid in room, its XP and EXT as given (ACCT acct): its seat, or -1.

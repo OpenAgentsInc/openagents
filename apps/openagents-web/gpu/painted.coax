@@ -1,9 +1,9 @@
 // Painted Village's shaders (apps/openagents-web/painted.coax): the world is drawn by Aethyr's
-// stylized shading (aethyr/render/stylized.coax: the sky, the parts, their shadows, the grass),
+// stylized shading (metaverse-engine/render/stylized.coax: the sky, the parts, their shadows, the grass),
 // which this module only names; build.sh writes apps/openagents-web/painted.wgsl from it with
 // coax/web/wgsl-module.coax (painted.module and painted.bindings beside it). The page's own part
 // is the HUD's strokes: painted_fx_vs and painted_fx_fs.
-#load "../../../aethyr/render/stylized.coax";
+#load "../../../metaverse-engine/render/stylized.coax";
 
 PaintedV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
 painted_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }

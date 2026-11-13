@@ -73,5 +73,5 @@ phase are simulated.
   ([chapter 31](ch31-bounded-control.md)).
 - R17 limits ([chapter 34](ch34-robot-models.md)).
 - Used by Metaverse Engine chapters
-  [33](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch033-sensors-read-the-simulation.md)
-  and [45](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch045-sensors-that-see-the-past.md).
+  [33](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch033-sensors-read-the-simulation.md)
+  and [45](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch045-sensors-that-see-the-past.md).

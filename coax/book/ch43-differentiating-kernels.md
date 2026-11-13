@@ -41,7 +41,7 @@ compiles.
    differentiable program that reaches a `none` kernel is refused, with the
    path to it. It is never given a zero gradient.
 6. **Gradients in a simulation.** How the OpenAgents Metaverse Engine's per-solver gradient modes
-   ([Metaverse Engine chapter 32](https://github.com/OpenAgentsInc/openagents/blob/main/aethyr/book/ch032-differentiate-a-simulation.md))
+   ([Metaverse Engine chapter 32](https://github.com/OpenAgentsInc/openagents/blob/main/metaverse-engine/book/ch032-differentiate-a-simulation.md))
    map to these declarations.
 
 ## The consumer and the gate

@@ -2,7 +2,7 @@
 // The production page selects its host; this carrier also supports complete
 // captured-frame replay through the existing browser conformance observer.
 #load "../everglade5e.coax";
-#load "../../../aethyr/render/native-host.coax";
+#load "../../../metaverse-engine/render/native-host.coax";
 
 #load "../../../everglade/npc/guard-guide-policy.coax" as guard_policy;
 #load "../../../everglade/shared/everglade-step.coax" as movement;

@@ -2,7 +2,7 @@
 // diagnostics apart from the focused evaluator's wall-time transcript.
 // OLD.json OLD_DIRECTORY NEW.json NEW_DIRECTORY OUT.json
 #import "Basic";
-#load "../../aethyr/render/tests/qualification-files.coax";
+#load "../../metaverse-engine/render/tests/qualification-files.coax";
 mbp_normalize :: (source:string,root:string,out:[]u8)->string {
   at:=0;written:=0;
   while at<source.count {

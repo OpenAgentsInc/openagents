@@ -1,7 +1,7 @@
 # Metaverse Engine UI layout: widgets that take space
 
 Status: design (GitHub #13076, phase 2). This design isn't built yet. Work starts
-only after the fantasy HUD (`aethyr/ui/hud-style.coax`, `everglade/hud/`) lands on
+only after the fantasy HUD (`metaverse-engine/ui/hud-style.coax`, `everglade/hud/`) lands on
 `main`, and only when the lead approves it.
 
 ## The problem
@@ -19,7 +19,7 @@ so you get these failures:
 - Hit areas and drawn areas drift apart, because each is worked out from its own
   copy of the arithmetic.
 
-The layout trace (`aethyr/ui/trace.coax`) finds these failures. Phase 2 stops
+The layout trace (`metaverse-engine/ui/trace.coax`) finds these failures. Phase 2 stops
 them from happening: a widget asks for space, and the layout gives every widget
 its own space.
 
@@ -45,7 +45,7 @@ can animate inside its rectangle, but the layout doesn't animate.
 ## The model
 
 The layout is a flat table of nodes. It sits next to the UI tree
-(`aethyr/ui/tree.coax`, book chapter 15) and fills in that tree's `box` fields.
+(`metaverse-engine/ui/tree.coax`, book chapter 15) and fills in that tree's `box` fields.
 
 ```
 LayNode :: struct {
@@ -140,7 +140,7 @@ more findings than before.
 3. Character Create (`everglade/client/create.coax`): the title, DRAG, the wardrobe,
    the class pane, and the bottom buttons.
 4. Everglade II's other parts: GFX, the light readout and admin mode.
-5. The fantasy HUD's parts, which come from `aethyr/ui/hud-style.coax` and
+5. The fantasy HUD's parts, which come from `metaverse-engine/ui/hud-style.coax` and
    `everglade/hud/`.
 
 When a part moves, the known entries for that part in the harness's
@@ -148,7 +148,7 @@ When a part moves, the known entries for that part in the harness's
 
 ## Checks
 
-- `aethyr/ui/layout.coax` has `#test` and `#forall` checks for the layout
+- `metaverse-engine/ui/layout.coax` has `#test` and `#forall` checks for the layout
   rules. Across the four screen sizes and a range of label lengths, they check
   that siblings never overlap, that children are always inside their parents,
   that touch buttons are always at least 44 CSS px, and that a refusal happens
@@ -159,8 +159,8 @@ When a part moves, the known entries for that part in the harness's
 ## Open questions
 
 - Should text measuring be in the layout, which would need the font in
-  `aethyr/ui`, or should the part pass in each label's width? The second keeps
-  `aethyr/ui` free of fonts, so it is the proposal.
+  `metaverse-engine/ui`, or should the part pass in each label's width? The second keeps
+  `metaverse-engine/ui` free of fonts, so it is the proposal.
 - World-anchored labels (the names over heads, damage numbers) stay outside the
   layout. Should they avoid HUD rectangles? `e2_plates` already moves names
   away from each other. The same rule could also keep them off the bar.

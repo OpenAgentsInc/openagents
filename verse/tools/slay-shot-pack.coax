@@ -4,13 +4,13 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/json/json.coax";
-#load "../../aethyr/render/geometry/scan.coax";
+#load "../../metaverse-engine/render/geometry/scan.coax";
 #load "../../coax/lib/text/ph_num.coax";
 #load "../valley/slay-shot.coax";
-#load "../../aethyr/tools/echo-gltf.coax";
+#load "../../metaverse-engine/tools/echo-gltf.coax";
 #load "slay-source.coax";
 #load "slay-camera.coax";
-#load "../../aethyr/render/slay-lights.coax";
+#load "../../metaverse-engine/render/slay-lights.coax";
 #test "the static TF0290 kick direction is the source rotation through the pack's own axes" {
  a:=ss_camera_axes(SLAY_KICK_ROLL,SLAY_KICK_PITCH,SLAY_KICK_YAW);
  #assert abs(a[0].x+SLAY_KICK_X)<0.000002 && abs(a[0].y+SLAY_KICK_Y)<0.000002 && abs(a[0].z+SLAY_KICK_Z)<0.000002;

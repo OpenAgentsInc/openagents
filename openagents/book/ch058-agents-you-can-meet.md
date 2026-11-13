@@ -46,9 +46,9 @@ A plan for what this chapter ships once the draft is approved:
 
 It builds on what exists today:
 
-- [`aethyr/agent/drive.coax`](../../aethyr/agent/drive.coax)
-- [`aethyr/talk`](../../aethyr/talk)
-- [`aethyr/actors`](../../aethyr/actors)
+- [`metaverse-engine/agent/drive.coax`](../../metaverse-engine/agent/drive.coax)
+- [`metaverse-engine/talk`](../../metaverse-engine/talk)
+- [`metaverse-engine/actors`](../../metaverse-engine/actors)
 - [`apps/everglade-desktop/next.coax`](../../apps/everglade-desktop/next.coax)
 - [`coax/lib/agent/observe/processes.coax`](../../coax/lib/agent/observe/processes.coax)
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)

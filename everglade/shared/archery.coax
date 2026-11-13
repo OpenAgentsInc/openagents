@@ -1,5 +1,5 @@
 // Everglade II's answers to the archer's questions (#13157), for the page and the room alike. The
-// flight is the engine's (aethyr/action/archery.coax, bow.coax) and the Longbow the game's
+// flight is the engine's (metaverse-engine/action/archery.coax, bow.coax) and the Longbow the game's
 // (everglade/longbow.coax), as in Everglade Experimental and the Archery Range (everglade/zone-bow.coax).
 // What only this zone knows is here: where its ground is, how big its monsters stand, and how near
 // where the room has an archer a launch must be. The page (everglade/client/arrows.coax) predicts with these and
@@ -7,7 +7,7 @@
 //   coax/bin/coax test --library everglade/shared/archery.coax
 #load "move.coax";
 #load "../longbow.coax";
-#load "../../aethyr/action/bow.coax" as bow;
+#load "../../metaverse-engine/action/bow.coax" as bow;
 
 E2AR_MONSTERS :: 12;        // the room's monsters (everglade/server/creatures.coax E2M_N): bodies 0 to 11
 E2AR_GUARD :: 12;           // the path's guard's body

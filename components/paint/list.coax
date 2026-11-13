@@ -9,7 +9,7 @@
 // appends one primitive at n and returns the new count, or n unchanged when
 // the array is full. It is the union of what GPUI paints for Zeron (boxes,
 // shadows, gradients, text, icons) and what the realm HUDs paint
-// (aethyr/ui/hud-style.coax's HudPrim: bars, rings, arcs, lines).
+// (metaverse-engine/ui/hud-style.coax's HudPrim: bars, rings, arcs, lines).
 //
 //   kind        bounds (x, y, w, h)        the rest
 //   PRIM_BOX       the box                    radius, border, fill, edge (the border's colour); on: it is a

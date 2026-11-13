@@ -1,5 +1,5 @@
 // Firm reason: 1 (the browser's own WebTransport and WebSocket are what a page's room runs on)
-// The page host's WebTransport (#13176): the transport under aethyr/net/transport.coax for a room
+// The page host's WebTransport (#13176): the transport under metaverse-engine/net/transport.coax for a room
 // URL the app opens as "wt+ws://HOST/PATH" or "wt+wss://HOST/PATH". It returns a WebSocket-shaped
 // object (readyState, onopen, onmessage, onerror, onclose, send, close), as room-worker.js does, so
 // host.js's sockets carry it like any other.
@@ -9,7 +9,7 @@
 //     wasn't ready in time (UDP blocked), this page goes straight to the WebSocket. The two are never open at once: each would take the
 //     same seat.
 //   - __wt is true once the session is ready, and host.js says "wt" in the socket's opened event.
-//   - What the app sends begins with a channel mark (NET_MARK + channel, aethyr/net/transport.coax):
+//   - What the app sends begins with a channel mark (NET_MARK + channel, metaverse-engine/net/transport.coax):
 //     channel 0 goes as one datagram, the others on one reliable stream, each frame its length (2
 //     bytes, big-endian) and its bytes. On the WebSocket fallback the mark is taken off.
 //   - What the room sends: each datagram is one frame; each stream the room opens carries frames as

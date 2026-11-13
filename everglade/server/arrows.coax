@@ -1,8 +1,8 @@
 // Everglade II's arrows, the room's (#13157): a Ranger's Attack looses a real arrow, and the room
-// flies it. The flight is the engine's (aethyr/action/archery.coax, bow.coax), the Longbow the game's
+// flies it. The flight is the engine's (metaverse-engine/action/archery.coax, bow.coax), the Longbow the game's
 // (everglade/longbow.coax) and this zone's ground and bodies everglade/shared/archery.coax's, which the page
 // predicts with too (everglade/client/arrows.coax). What crosses the socket and how far
-// back the room rewinds are aethyr/net/projectile.coax and rewind.coax, any realm's.
+// back the room rewinds are metaverse-engine/net/projectile.coax and rewind.coax, any realm's.
 //
 // A page that looses says the launch (F SEQ ...) just before the Attack's own request (C, the same SEQ).
 // The room keeps the launch for that request. When the request passes the checks every cast passes
@@ -222,7 +222,7 @@ e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
   e2at_shoot(v[..], k, 1000001, to, v[0].eg[k].tick);
   #assert a[0].loosed == 1 && e2a_flying(a) == 1 && a[0].rewound_ms == 0;
   heard := e2rt_heard(v[..], 0, out[..]);
-  // its id, the archer's seat and request, where it left and how fast (aethyr/net/projectile.coax a)
+  // its id, the archer's seat and request, where it left and how fast (metaverse-engine/net/projectile.coax a)
   got: NetShot; i := 0;
   while i < heard.count { e := i; while e < heard.count && heard[e] != '|' && heard[e] != '\n' { e += 1; } if heard[i] == 'a' { got = net_shot_read(heard[i..<e]); } i = e + 1; }
   #assert got.ok && got.id == 1 && got.seat == 0 && got.seq == 1000001 && got.vel[2] < -20 && got.age_ms == 0;
@@ -287,7 +287,7 @@ e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
   #assert e2ar_launch_ok(w.from, 0, -40);
 }
 
-// An arrow's word (a, d: aethyr/net/projectile.coax) to every placed seat within EG_VIEW m of (x, z).
+// An arrow's word (a, d: metaverse-engine/net/projectile.coax) to every placed seat within EG_VIEW m of (x, z).
 e2ar_say :: (v: [] RmServer, k: int, text: string, x: f32, z: f32) {
   room := v[0].eg[k..<k + 1];
   for o: 0..<EG_SEATS {

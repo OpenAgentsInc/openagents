@@ -28,12 +28,12 @@
 #load "../../experimental-dungeon.coax" as dungeon;
 #load "../../experimental-props.coax" as props;
 #load "../../../everglade/world/home.coax" as home;
-#load "../../../aethyr/world/building.coax" as building;
-#load "../../../aethyr/world/build-site.coax" as bsite;
-#load "../../../aethyr/world/build-site-mesh.coax" as bsm;
+#load "../../../metaverse-engine/world/building.coax" as building;
+#load "../../../metaverse-engine/world/build-site.coax" as bsite;
+#load "../../../metaverse-engine/world/build-site-mesh.coax" as bsm;
 #load "../../../everglade/world/housewright.coax" as hw;
-#load "../../../aethyr/world/build-work.coax" as bwork;
-#load "../../../aethyr/world/build-work-mesh.coax" as bwm;
+#load "../../../metaverse-engine/world/build-work.coax" as bwork;
+#load "../../../metaverse-engine/world/build-work-mesh.coax" as bwm;
 #load "../../../everglade/range/place.coax" as range;   // the Archery Range's butts, faces, posts and chalk (--append-range)
 #load "../../../everglade/legacy/v1/glade-zone.coax";
 
@@ -475,7 +475,7 @@ gp_new_houses :: (w:[]Gp,g:[]Gltf,root:string) {
  }
 }
 // The player's home (game: everglade/world/home.coax) where Experimental places it
-// (experimental-terrain.coax exp_home): its kit pieces turned with the house (aethyr/world/building.coax).
+// (experimental-terrain.coax exp_home): its kit pieces turned with the house (metaverse-engine/world/building.coax).
 gp_home :: (w:[]Gp,g:[]Gltf,root:string) {
  turn:=meadow.exp_home().turn;p:VillagePart;p.ok=true;
  for i:0..<home.HOME_PARTS {part:=home.home_part(i);p.name=part.name;
@@ -486,7 +486,7 @@ gp_home :: (w:[]Gp,g:[]Gltf,root:string) {
 }
 // The housewright showcase (game: everglade/world/housewright.coax) where Experimental places it
 // (experimental-terrain.coax exp_showcase): every tier at every stage. The staged-build parts are
-// made in Coax (aethyr/world/build-site-mesh.coax) and drawn with the village atlas: each material
+// made in Coax (metaverse-engine/world/build-site-mesh.coax) and drawn with the village atlas: each material
 // is an atlas tile, a colour and a uv scale (gp_hw_look); the timber house's kit pieces are the
 // home's MegaKit pieces.
 GP_HW_TILE :: [12]int.[9,9,9,3,5,0,9,8,3,7,9,3];
@@ -524,7 +524,7 @@ gp_housewright :: (w:[]Gp,g:[]Gltf,root:string) {
  }}
  print("Housewright showcase: % vertices\n",total);
 }
-// Build sites at any progress (aethyr/world/build-site.coax, #13106): every housewright part once,
+// Build sites at any progress (metaverse-engine/world/build-site.coax, #13106): every housewright part once,
 // in its tier's own frame (the house's middle at the origin, its ground at y 0), outside the glade's
 // environment draw. Each vertex's tint alpha is its reveal key (build-site-mesh.coax): the scene
 // draws a part as an instance and drops the pixels past its fraction (charactercreator.coax
@@ -550,7 +550,7 @@ gp_build_parts :: (w:[]Gp,g:[]Gltf,root:string) {
  }
  print("Build parts: % vertices\n",total);
 }
-// The builders' piles (aethyr/world/build-work.coax, #13108): every stock of every tier once, full,
+// The builders' piles (metaverse-engine/world/build-work.coax, #13108): every stock of every tier once, full,
 // beside its tier's site in the tier's own frame (build-work-mesh.coax bwm_pile), in the build parts'
 // materials. Item i's vertices carry reveal key i / bw_most, so the scene shows the pile with n left
 // by drawing it at bw_pile_frac, and a builder's load as item 0 alone (bw_carry_frac).

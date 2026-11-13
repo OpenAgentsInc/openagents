@@ -1,5 +1,5 @@
 // Seat ticket v5's fixtures (proto/verse/seat-ticket-v5.json; #13260): each ticket's values written by the
-// one writer (aethyr/session/seat-ticket.coax seat_ticket_v5_write) with the fixture's throwaway keys and
+// one writer (metaverse-engine/session/seat-ticket.coax seat_ticket_v5_write) with the fixture's throwaway keys and
 // zero aux give exactly the fixture's bytes; the reader takes each back with the room's public keys and
 // gives back its values; a ticket with "class_from" (the API's kept class, "" none, and its starting
 // level "start", #13259) has the EXT seat_ticket_v5_class_ext writes from them, and the room reads back
@@ -12,8 +12,8 @@
 // rooms' OA_ROOM_TICKET_PUBKEYS (docs/deployment/room-keys.md). The key comes from the environment only.
 #import "Basic";
 #run_steps 250000000;
-#load "../../../aethyr/session/seat-ticket.coax";
-#load "../../../aethyr/session/seat-class.coax";
+#load "../../../metaverse-engine/session/seat-ticket.coax";
+#load "../../../metaverse-engine/session/seat-class.coax";
 #load "../../lib/sys/tool.coax";
 #load "../../lib/sys/fs.coax";
 #load "../../lib/sys/proc.coax";

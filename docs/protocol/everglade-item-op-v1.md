@@ -6,7 +6,7 @@ Tracked in GitHub #13291 (AAA P4.2) and #13292 (AAA P4.3).
 
 - Schema and fixtures: [`proto/verse/everglade-item-op-v1.json`](../../proto/verse/everglade-item-op-v1.json)
 - Codec: `everglade/model/item-op.coax` (`#authority`)
-- Rules: `aethyr/session/ledger.coax` (the ledger) and
+- Rules: `metaverse-engine/session/ledger.coax` (the ledger) and
   `everglade/model/character.coax` `char_claim` (the record), both `#authority`
 - Room: `coax/web/room/room-items.coax`
 - Route: `POST /api/playtest/room-items` (`coax/web/api/player.c` `room_items`),

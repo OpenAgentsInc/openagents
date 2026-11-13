@@ -99,9 +99,9 @@ Aethyr (#12856 and #12845 closed):
 - the room side of the lifecycle contract;
 - current lifecycle envelopes of 8 ms native and 11 ms worker; the separate
   0.84/0.6 ms optimization targets are tracked in #12952;
-- the party contract in `aethyr/session/party.coax`;
+- the party contract in `metaverse-engine/session/party.coax`;
 - the delivered networking interfaces and consumer inventory in
-  `aethyr/net/README.md`, adopted by Everglade and authoritative Orbit v2.
+  `metaverse-engine/net/README.md`, adopted by Everglade and authoritative Orbit v2.
 
 Compiler:
 
@@ -164,9 +164,9 @@ parity. Native checks passed 117/117, with 518/518 root mutants killed.
 | #12718, #12833 | Closed after the final #12845 delivery at `b930cb4cd9`. The [child-state audit](../verification/epic-child-closure-2026-11-06.json) checks all 33 #12718 children and all 38 #12833 children as closed, including formal sub-issues. It preserves each child's existing qualification scope. |
 | #12952, #12953 | Closed by the Coax 0.52 delivery through `b2e866b1c3`: typed handles, lifetime adoption and enforced shared-rule effects. Store/entity/lifetime gates kill 144/221/37 mutants; the effect policy and full checker kill 203/13,534. All have zero survivors. Final local/100/250 gameplay and raids, forest convergence, API checks and Wasm budgets pass; paired-script native p95 is 480/630/430 µs and worker p95 486/530/491 µs. Exact scope and receipts are in the [final record](../verification/coax-checked-state-2026-11-06/README.md). |
 | #12954, #12955 | Closed through `b2e866b1c3`: in-memory transactions and persisted/published compatibility. Transaction/ledger/compatibility gates kill 51/254/306 mutants, zero survivors. Third-target and ledger refusals restore state in evaluator and native development/release. Ten independent compatibility compositions pass; the actual release-reference regression now refuses unknown production identity before comparison. The [independent audit](../verification/compat-independent-audit-2026-11-06/README.md) and [final delivery](../verification/coax-checked-state-2026-11-06/README.md) retain the evidence. No production deploy or crash atomicity is claimed. |
-| #12959 | Completed: the [Physics Lab](../../aethyr/lab/README.md) runs all six seeded scenes on Aethyr, pinned Rapier 0.36.1 and Jolt 5.6.0 from one command on coderos-4080. Every Aethyr repeat matches all sampled state bytes; all six headless captures are saved. The [results](../verse/physics-lab-2026-11-06.md) retain the stack collapse, settling gaps and timing differences. References stay in an ignored lab cache; no product, book or Psionic adoption is claimed. |
+| #12959 | Completed: the [Physics Lab](../../metaverse-engine/lab/README.md) runs all six seeded scenes on Aethyr, pinned Rapier 0.36.1 and Jolt 5.6.0 from one command on coderos-4080. Every Aethyr repeat matches all sampled state bytes; all six headless captures are saved. The [results](../verse/physics-lab-2026-11-06.md) retain the stack collapse, settling gaps and timing differences. References stay in an ignored lab cache; no product, book or Psionic adoption is claimed. |
 | #12962 | Source face/shot port landed in `5d4baa60c1`; corrected captures and retained-source recovery landed through `09a4a84221`, with local/100/250 drift passing. The [source camera follow-up](../verification/slay-camera-2026-11-06/README.md) checks all 200 authored camera frames, kills 33 math and 20 admission mutants and passes 464 page checks. It retains both a concurrent 10 s recovery failure and isolated 9,849 ms success. Still open for cinematic parity and a qualified mobile detail/cost profile; [remaining differences](../verification/valley-lab-slay-2026-11-06/README.md) stay explicit. |
-| #12610 | Aethyr 78 source landed in `d2b50a7ba2`, with the staged wrapper rename in `b7c843788e`; published from `a11100ccef` November 6 at 08:13 Chicago (revision `0LjR8W49qQGlNu3mjCk4`, 117 page identities checked): typed flight and close-up producers adopted by Hecate and Garden, actual arrival/every-frame skip checks at 30/60/144 FPS, native camera-take replay and a staged clip sidecar. All 126 new root mutants are killed; 116 camera, 229 Villa and 191 Garden checks pass, with local/100/250 drift and Wasm budgets passing. [Chapter](../../aethyr/book/ch078-cinematics-and-close-ups.md), [qualification](../verification/aethyr-cameras-2026-11-06/README.md), [publication receipt](../books/publications/aethyr.json). The chapter remains partly implemented for saved realm replay-to-video; the book epic remains open. |
+| #12610 | Aethyr 78 source landed in `d2b50a7ba2`, with the staged wrapper rename in `b7c843788e`; published from `a11100ccef` November 6 at 08:13 Chicago (revision `0LjR8W49qQGlNu3mjCk4`, 117 page identities checked): typed flight and close-up producers adopted by Hecate and Garden, actual arrival/every-frame skip checks at 30/60/144 FPS, native camera-take replay and a staged clip sidecar. All 126 new root mutants are killed; 116 camera, 229 Villa and 191 Garden checks pass, with local/100/250 drift and Wasm budgets passing. [Chapter](../../metaverse-engine/book/ch078-cinematics-and-close-ups.md), [qualification](../verification/aethyr-cameras-2026-11-06/README.md), [publication receipt](../books/publications/aethyr.json). The chapter remains partly implemented for saved realm replay-to-video; the book epic remains open. |
 | #12864–#12867 | Excluded; left for Codex. |
 
 ## #12940 verification (2026-11-06, 01:52 Chicago)
@@ -276,7 +276,7 @@ headroom). Commit `80ec7cabbc` records the review and explicit budgets.
 A subsequent cold-cache run also exposed near-limit checks in forge/doc.coax
 and scatter-hosts.coax; both now have explicit measured headroom. Property
 domains and assertions are unchanged. #12951 tracks the separate cache
-diagnostic-parity bug that a warm pass initially masked. `aethyr/book/examples.json`
+diagnostic-parity bug that a warm pass initially masked. `metaverse-engine/book/examples.json`
 keeps its existing 48 programs: the rewritten overviews link to existing
 implementation chapters rather than inventing duplicate examples.
 

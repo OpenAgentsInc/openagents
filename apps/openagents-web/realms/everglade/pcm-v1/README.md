@@ -3,9 +3,9 @@ APC1 companions preserve the exact original Ogg identity and frozen browser
 files in `../sfx/` remain unchanged. The shared checked catalogue selects
 the required companion; missing/corrupt required files refuse.
 
-Format/ABI: `aethyr/audio/host-pcm-asset.md`.
-Catalogue: `aethyr/audio/everglade-pcm-assets.coax`.
-Regenerator: `aethyr/host/build-pcm-assets.coax`.
+Format/ABI: `metaverse-engine/audio/host-pcm-asset.md`.
+Catalogue: `metaverse-engine/audio/everglade-pcm-assets.coax`.
+Regenerator: `metaverse-engine/host/build-pcm-assets.coax`.
 Source/decoder/byte identities and retained failures:
 `docs/verification/host-contract-2026-11-05/audio-pcm-assets.md`.
 

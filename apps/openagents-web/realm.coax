@@ -18,7 +18,7 @@
 //   coax/bin/coax test apps/openagents-web/realm.coax --steps 2000000000
 // (the first-step check walks the house frame by frame: about 1.3 billion steps)
 
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "ui.coax";
 #load "textkeys.coax";
 #load "../../coax/web/analytics.coax";
@@ -28,8 +28,8 @@
 #load "room.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "access.coax";                 // who may make a realm: BUILD YOUR OWN REALM hides on make 0
-#load "../../aethyr/core/budget.coax";
-#load "../../aethyr/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
+#load "../../metaverse-engine/core/budget.coax";
+#load "../../metaverse-engine/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, a HUD bar's press and flash, 0, 0
 MAX_VERTICES :: 36000;
@@ -601,7 +601,7 @@ world_down :: (r: [] Realm, v: RealmView, x: f32, y: f32, id: int) {
   r[0].wf_two = true; r[0].wf_two_moved = r[0].wf_travel; r[0].wf_two_at = r[0].time; r[0].wf_grab = false;
 }
 
-// The angle of (x, y), radians (-pi to pi), as aethyr/core/points.coax's atan2.
+// The angle of (x, y), radians (-pi to pi), as metaverse-engine/core/points.coax's atan2.
 turn_of :: (y: f32, x: f32) -> f32 {
   ax := abs(x); ay := abs(y);
   if ax == 0 && ay == 0 { return 0; }
@@ -1709,7 +1709,7 @@ memory_drop :: (r: [] Realm) {
 // The question for the server (/api/playtest/npc/ask, pt-chat-endpoint; #13261): the character's
 // id in the house (house.json's), the world, what players taught them as the scene (the server
 // quotes it in the player's turn), the conversation so far and the question, written by the NPC
-// ask's one codec (aethyr/talk/wire.coax). Who they are is the server's, never the page's. Its
+// ask's one codec (metaverse-engine/talk/wire.coax). Who they are is the server's, never the page's. Its
 // length in out, -1 when it doesn't fit.
 HAUNT_WORLD_ID :: "haunted-house";   // the world, as the page names it to the server
 HAUNT_TAUGHT :: "Players have taught you this, and it is true here: ";
@@ -2533,7 +2533,7 @@ plated :: (u: [] f32, b: Box) -> f32 {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of the Haunted House may use.
+// The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of the Haunted House may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 HOUSE_BUDGET :: FrameBudget.{steps = 8, vertices = 8000, draws = 0, bytes = 2621440};
 

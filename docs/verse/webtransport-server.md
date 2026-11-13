@@ -24,7 +24,7 @@ one archive with the host's C compiler and nothing installed, so the Mac, the
 build hosts and the room's image build it the same way.
 
 The C is a stated, firm exception to "tools in Coax", for transport and crypto
-maturity. Everything above the transport interface (`aethyr/net`) stays Coax.
+maturity. Everything above the transport interface (`metaverse-engine/net`) stays Coax.
 
 ### Why picotls with minicrypto
 

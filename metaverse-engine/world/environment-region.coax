@@ -1,0 +1,728 @@
+// Environment regions, version 1 (lighting plan Phase 1 step 3, GitHub #13063;
+// docs/verse/lighting/README.md). Where a realm's light varies by place: the map default, sphere,
+// box and polygon-with-height (prism) regions over metaverse-engine/world/environment.coax's records, their
+// transition bands, priorities and stable-id tie breaking, a fixed spatial index, and the resolver
+// that blends the region profiles at a world position into one ResolvedEnvironment.
+//
+// Shapes and distance. Each region has a signed distance d (metres, negative inside):
+//   sphere  |p - center| - radius
+//   box     the exact box distance to center +- half (axis aligned)
+//   prism   the polygon's signed distance in xz (even-odd inside, either winding) extruded over
+//           [floor, ceiling] the same way the box extrudes: outside, the length of the positive
+//           parts of (polygon distance, height distance); inside, the larger of the two
+// d is continuous everywhere (the even-odd sign only flips on an edge, where d is 0).
+//
+// Bands. A region's weight is smoothstep(s), s = clamp((outer - d) / (inner + outer), 0, 1): 1 at
+// d <= -inner, 0 at d >= outer, and continuous, with slope at most 1.5 / (inner + outer) per metre.
+// Admission requires inner + outer >= ENV_BAND_MIN, so no region has a hard edge.
+//
+// Map default and fallback. The state's profile (0: the set's default profile) is the map
+// default. Outside every region's band the result is env_resolve's, exactly.
+//
+// Overlaps normalize by priority. The candidates at a point are applied in order: priority
+// ascending, and at equal priority the higher id first, so the higher priority, then the lower id,
+// is applied last and wins. Every profile weight starts at 0 but the map default's at 1; applying a
+// region of weight w scales every profile weight by (1 - w) and adds w to the region's profile.
+// The weights therefore always sum to 1 (within float rounding), a full-weight region overrides
+// everything applied before it, and each weight is continuous because every region weight is.
+// Regions naming the same profile add into one weight.
+//
+// Blending. Channel floats and the direct colour are the weighted sum of each weighted profile's
+// sample at the day (linear). The key direction is the weighted sum normalized; a degenerate sum
+// (squared length below ENV_DIR_MIN) takes the dominant profile's. Identifiers and flags never
+// interpolate: body, film, flags, the segment (from, to, weight) and the profile id are the dominant
+// profile's: the largest weight, equal weights to the lower profile id. Resources become one
+// EnvBlend per slot: every weighted profile's ids at (profile weight x blend weight), equal ids
+// merged, then the ENV_MAX_BLEND heaviest (equal weights to the lower id), heaviest first,
+// renormalized; the weight left out is reported in `dropped`, never hidden. When one profile has
+// all the weight the result is that profile's sample exactly.
+//
+// Bounded lookup. env_region_index_replace admits a set and builds a fixed index: the xz plane is
+// cut into ENV_CELL-metre cells, wrapped onto an ENV_GRID x ENV_GRID grid of buckets, and each
+// region is listed in the buckets its influence bounds (shape bounds grown by `outer`) touch; a
+// region wider than ENV_GRID cells is in every bucket of that axis. A bucket holds at most
+// ENV_BUCKET_CAP regions, or the set is refused. A query visits at most ENV_BUCKETS buckets of at
+// most ENV_BUCKET_CAP entries, whatever the world's size, and keeps the regions whose influence
+// bounds meet the query bounds, in set order, up to ENV_MAX_CANDIDATES (a point query can never
+// exceed it; a larger tile that does is refused, to be split, never truncated).
+//
+// Two evaluation paths. One frame holds surfaces in different regions:
+//   env_resolve_camera(set, index, state, eye)    camera grading and sky selection, once a frame
+//   env_tile_candidates(set, index, bounds)       a frame's or a tile's stored candidate list
+//   env_resolve_at(set, tile, state, p)           per surface and per fog sample, inside its tile
+// Only the camera result feeds presentation (exposure, saturation, the grade) and the sky; the
+// spatial results feed surfaces and fog. Both are the same arithmetic at different positions.
+//   coax/bin/coax test metaverse-engine/world/environment-region.coax
+//   coax/bin/coax mutate metaverse-engine/world/environment-region.coax --root-only
+#module "aethyr.world.environment_region";
+#authority;
+#load "environment.coax";
+
+ENV_REGION_VERSION :: 1;    // the index and tile records' version
+ENV_BAND_MIN :: 0.25f32;    // inner + outer, metres
+ENV_CELL :: 32.0f32;        // index cell edge, metres
+ENV_GRID :: 8;              // cells wrap onto ENV_GRID x ENV_GRID buckets
+ENV_BUCKETS :: 64;
+ENV_BUCKET_CAP :: 8;
+ENV_MAX_CANDIDATES :: 8;    // = ENV_BUCKET_CAP: what one bucket, so one point, can hold
+ENV_QUERY_MAX :: 20000000.0f32; // metres
+ENV_BLEND_ACC :: 16;        // ENV_MAX_PROFILES x 2 ids before selection
+
+EnvBounds :: struct { lo: EnvDir; hi: EnvDir; }
+EnvRegionIndex :: struct {
+  version: u32; generation: int;
+  counts: [ENV_BUCKETS] int; slots: [ENV_BUCKETS] [ENV_BUCKET_CAP] int;
+  bounds: [ENV_MAX_REGIONS] EnvBounds;   // each region's influence bounds
+}
+EnvTile :: struct {
+  refusal: EnvRefusal; version: u32; generation: int; bounds: EnvBounds;
+  count: int; regions: [ENV_MAX_CANDIDATES] int;   // set region indices, ascending
+  visited: int;   // index entries examined: the query's cost, at most ENV_BUCKETS x ENV_BUCKET_CAP
+}
+EnvRegionWeights :: struct { count: int; weights: [ENV_MAX_PROFILES] f32; dominant: int; }   // per set profile index
+EnvRegionResolve :: struct { refusal: EnvRefusal; env: ResolvedEnvironment; weights: EnvRegionWeights; dropped: [ENV_RESOURCES] f32; }
+EnvBlendAcc :: struct { count: int; ids: [ENV_BLEND_ACC] u32; weights: [ENV_BLEND_ACC] f32; }
+EnvBlendPick :: struct { blend: EnvBlend; dropped: f32; }
+
+// ---- checks (written before the code below)
+
+#test "min and max keep the second at a tie, signed zeros included" {
+  #assert env_min(1, 2) == 1 && env_min(2, 1) == 1 && env_max(1, 2) == 2 && env_max(2, 1) == 2;
+  #assert 1.0f32 / env_min(0.0f32, -0.0f32) < 0 && 1.0f32 / env_min(-0.0f32, 0.0f32) > 0;
+  #assert 1.0f32 / env_max(-0.0f32, 0.0f32) > 0 && 1.0f32 / env_max(0.0f32, -0.0f32) < 0;
+}
+#test "a band's weight is 1 inside, 0 outside and smooth between" {
+  #assert env_band_weight(-2, 2, 6) == 1 && env_band_weight(-9, 2, 6) == 1 && env_band_weight(6, 2, 6) == 0 && env_band_weight(40, 2, 6) == 0;
+  #assert env_band_weight(2, 2, 6) == 0.5f32 && env_band_weight(4, 2, 6) == 0.15625f32 && env_band_weight(0, 2, 6) == 0.84375f32;
+  #assert env_band_weight(0, 0, 1) == 1 && env_band_weight(0.5, 0, 1) == 0.5f32 && env_band_weight(0.25, 1, 0.25) == 0;
+}
+#test "each shape's signed distance" {
+  s := env_region_sphere(4, 1);   // centre (4, 1, -3), radius 12
+  #assert env_region_distance(s, EnvDir.{x = 4, y = 1, z = -3}) == -12 && env_region_distance(s, EnvDir.{x = 7, y = 5, z = -3}) == -7;
+  #assert env_region_distance(s, EnvDir.{x = 4, y = 1, z = 17}) == 8;
+  b := env_region_box(5, 1);      // centre (4, 0, 0), half (3, 2, 5)
+  #assert env_region_distance(b, EnvDir.{x = 4}) == -2 && env_region_distance(b, EnvDir.{x = 5, y = 0.5, z = 1}) == -1.5f32;
+  #assert env_region_distance(b, EnvDir.{x = 10}) == 3 && env_region_distance(b, EnvDir.{x = 4, y = -2, z = -9}) == 4;
+  o := b; o.center = EnvDir.{x = 4, y = 3, z = -5};
+  #assert env_region_distance(o, EnvDir.{x = 4, y = 3, z = -5}) == -2 && env_region_distance(o, EnvDir.{x = 4, y = 7, z = -5}) == 2 && env_region_distance(o, EnvDir.{x = 4, y = 3, z = 3}) == 3;
+  #assert env_region_distance(b, EnvDir.{x = 10, y = 6, z = 0}) == 5 && env_region_distance(b, EnvDir.{x = 1, y = 2, z = 5}) == 0;
+  #assert abs(env_region_distance(b, EnvDir.{x = 0, y = 4, z = 9}) - 4.5825757f32) < 0.000001f32;
+  q := env_region_prism(6, 1);    // (1,1) (11,1) (1,9), floor -2, ceiling 10
+  #assert env_region_distance(q, EnvDir.{x = 2, y = 4, z = 2}) == -1 && env_region_distance(q, EnvDir.{x = 2, y = 9.5, z = 3}) == -0.5f32;
+  #assert env_region_distance(q, EnvDir.{x = -2, y = 4, z = 5}) == 3 && env_region_distance(q, EnvDir.{x = 3, y = 4, z = -3}) == 4;
+  #assert env_region_distance(q, EnvDir.{x = 3, y = 13, z = -3}) == 5 && env_region_distance(q, EnvDir.{x = 3, y = -5, z = 2}) == 3;
+  #assert env_region_distance(q, EnvDir.{x = 1, y = 0, z = 5}) == 0 && env_region_distance(q, EnvDir.{x = 13, y = 4, z = 1}) == 2;
+  // Beyond the hypotenuse (10x + ... ): from (11, 9) the nearest point is on the edge (11,1)-(1,9).
+  h := env_region_distance(q, EnvDir.{x = 11, y = 4, z = 9}); #assert abs(h - 6.2469497f32) < 0.000002f32;
+  #assert env_region_distance(q, EnvDir.{x = 21, y = 4, z = -9}) == 14.142136f32;
+  #assert env_region_distance(q, EnvDir.{x = -2, y = 4, z = 12}) == 4.2426405f32;
+}
+#test "the polygon's even-odd sign holds for either winding and on vertex-level rays" {
+  q := env_region_prism(6, 1); r := q; r.points[1] = q.points[2]; r.points[2] = q.points[1];
+  for t: 0..<6 {
+    p := [6] EnvDir.[EnvDir.{x = 2, y = 0, z = 2}, EnvDir.{x = -5, y = 0, z = 1}, EnvDir.{x = -5, y = 0, z = 9}, EnvDir.{x = 0, y = 0, z = 5}, EnvDir.{x = 12, y = 0, z = 1}, EnvDir.{x = 6, y = 0, z = 4}][t];
+    #assert env_polygon_distance(q, p.x, p.z) == env_polygon_distance(r, p.x, p.z);
+  }
+  // A ray level with the bottom edge and its corners: outside to the left, inside just above it.
+  #assert env_polygon_distance(q, -5, 1) == 6 && env_polygon_distance(q, -5, 9) == 6 && env_polygon_distance(q, 12, 1) == 1;
+  #assert env_polygon_distance(q, 2, 1.5) == -0.5f32 && env_polygon_distance(q, 0, 5) == 1;
+  // On an edge's crossing exactly: the half-open rule decides, and the sign is kept even at zero.
+  sq := q; sq.count = 4; sq.points[0] = EnvXZ.{x = 0, z = 0}; sq.points[1] = EnvXZ.{x = 10, z = 0}; sq.points[2] = EnvXZ.{x = 10, z = 10}; sq.points[3] = EnvXZ.{x = 0, z = 10};
+  #assert 1.0f32 / env_polygon_distance(sq, 0, 5) < 0 && 1.0f32 / env_polygon_distance(sq, 10, 5) > 0 && env_polygon_distance(sq, 5, 5) == -5;
+  #assert env_polygon_distance(sq, 5, 0) == 0 && 1.0f32 / env_polygon_distance(sq, 5, 0) < 0 && 1.0f32 / env_polygon_distance(sq, 5, 10) > 0;
+}
+#forall "band weights are continuous and monotone across every shape's edge, sampled densely" shape: 0..<3, axis: 0..<3 {
+  r := [3] EnvironmentRegion.[env_region_sphere(4, 1), env_region_box(5, 1), env_region_prism(6, 1)][shape];
+  r.inner = [3] f32.[2, 0.5, 1][shape]; r.outer = [3] f32.[6, 1, 0.75][shape];
+  // Walk out of the shape from a point inside it, along one axis.
+  start := [3] EnvDir.[EnvDir.{x = 4, y = 1, z = -3}, EnvDir.{x = 4, y = 0, z = 0}, EnvDir.{x = 3, y = 4, z = 3}][shape];
+  step: f32 = 0.01;
+  band := r.inner + r.outer;
+  before := env_region_weight(r, start); #assert before == 1;
+  seen_band := false;
+  for i: 1..<2200 {
+    p := start; move := cast(f32) i * step;
+    if axis == 0 { p.x = p.x + move; } else if axis == 1 { p.y = p.y + move; } else { p.z = p.z - move; }
+    d := env_region_distance(r, p); w := env_region_weight(r, p);
+    #assert w >= 0 && w <= 1 && w <= before && before - w <= 1.5f32 * step / band + 0.000001f32;
+    if d <= -r.inner { #assert w == 1; }
+    if d >= r.outer { #assert w == 0; }
+    if w > 0 && w < 1 { seen_band = true; }
+    before = w;
+  }
+  #assert before == 0 && seen_band;
+}
+#test "admission refuses hard edges and self-crossing polygons, at their bounds" {
+  b := env_region_box(5, 1); b.outer = 0.25; #assert env_region_admit(b).refusal == EnvRefusal.none;
+  b.outer = 0.125; b.inner = 0.125; #assert env_region_admit(b).refusal == EnvRefusal.none;
+  b.inner = 0.124; c := env_region_admit(b); #assert c.refusal == EnvRefusal.shape && c.field == ENV_F_BANDS && c.at == -1;
+  b.radius = -1; c = env_region_admit(b); #assert c.refusal == EnvRefusal.shape && c.field == ENV_F_RADIUS;
+  q := env_region_prism(6, 1); q.count = 4; q.points[0] = EnvXZ.{}; q.points[1] = EnvXZ.{x = 10}; q.points[2] = EnvXZ.{x = 10, z = 10}; q.points[3] = EnvXZ.{z = 10};
+  #assert env_region_admit(q).refusal == EnvRefusal.none && env_polygon_simple(q);
+  // The bow tie: edges 0 and 2 cross.
+  q.points[2] = EnvXZ.{z = 10}; q.points[3] = EnvXZ.{x = 10, z = 10};
+  c = env_region_admit(q); #assert c.refusal == EnvRefusal.shape && c.field == ENV_F_POINTS && !env_polygon_simple(q);
+  // Edges 1 and 3 cross.
+  q.points[0] = EnvXZ.{}; q.points[1] = EnvXZ.{x = 10, z = 10}; q.points[2] = EnvXZ.{x = 10}; q.points[3] = EnvXZ.{z = 10};
+  #assert !env_polygon_simple(q);
+  // A vertex touching a non-adjacent edge (a pinched polygon) is refused too.
+  p := env_region_prism(6, 1); p.count = 5;
+  p.points[0] = EnvXZ.{}; p.points[1] = EnvXZ.{x = 10}; p.points[2] = EnvXZ.{x = 10, z = 10}; p.points[3] = EnvXZ.{x = 5, z = 0}; p.points[4] = EnvXZ.{z = 10};
+  #assert !env_polygon_simple(p);
+  p.points[3] = EnvXZ.{x = 5, z = 0.5}; #assert env_polygon_simple(p) && env_region_admit(p).refusal == EnvRefusal.none;
+  // A vertex of an earlier edge touching a later one (edge 1 ends on edge 3).
+  p.points[0] = EnvXZ.{}; p.points[1] = EnvXZ.{x = 10}; p.points[2] = EnvXZ.{x = 5, z = 10}; p.points[3] = EnvXZ.{x = 10, z = 10}; p.points[4] = EnvXZ.{z = 10};
+  #assert !env_polygon_simple(p) && env_region_check(p).refusal == EnvRefusal.none;
+  c = env_region_admit(p); #assert c.refusal == EnvRefusal.shape && c.field == ENV_F_POINTS;
+  p.points[2] = EnvXZ.{x = 5, z = 9.5}; #assert env_polygon_simple(p);
+  p.points[0] = EnvXZ.{}; p.points[1] = EnvXZ.{x = 10}; p.points[2] = EnvXZ.{x = 10, z = 10}; p.points[4] = EnvXZ.{z = 10};
+  // A pentagon whose first and fourth edges cross (non-adjacent through the wrap).
+  p.points[3] = EnvXZ.{x = 5, z = -5}; #assert !env_polygon_simple(p);
+  // Spheres and boxes never take the polygon rule.
+  s := env_region_sphere(4, 1); s.count = 4; s.points[0] = EnvXZ.{}; s.points[1] = EnvXZ.{x = 10, z = 10}; s.points[2] = EnvXZ.{x = 10}; s.points[3] = EnvXZ.{z = 10};
+  #assert env_region_admit(s).refusal == EnvRefusal.none;
+  #assert env_region_admit(env_region_prism(6, 1)).refusal == EnvRefusal.none && env_region_admit(env_region_sphere(0, 1)).refusal == EnvRefusal.identity;
+}
+#test "a region's influence bounds are its shape grown by its outer band" {
+  #assert env_span(-0.5, 31) == 2 && env_span(0, 31.9) == 1 && env_span(-40, 400) == 15;
+  b := env_region_bounds(env_region_sphere(4, 1));
+  #assert b.lo.x == -14 && b.lo.y == -17 && b.lo.z == -21 && b.hi.x == 22 && b.hi.y == 19 && b.hi.z == 15;
+  b = env_region_bounds(env_region_box(5, 1));
+  #assert b.lo.x == 0 && b.lo.y == -3 && b.lo.z == -6 && b.hi.x == 8 && b.hi.y == 3 && b.hi.z == 6;
+  b = env_region_bounds(env_region_prism(6, 1));
+  #assert b.lo.x == 0 && b.lo.y == -3 && b.lo.z == 0 && b.hi.x == 12 && b.hi.y == 11 && b.hi.z == 10;
+  q := env_region_prism(6, 1); q.points[0] = EnvXZ.{x = 3, z = 7}; q.points[1] = EnvXZ.{x = -4, z = 2}; q.points[2] = EnvXZ.{x = 9, z = -1};
+  b = env_region_bounds(q);
+  #assert b.lo.x == -5 && b.lo.z == -2 && b.hi.x == 10 && b.hi.z == 8;
+}
+#test "the index lists each region in the wrapped buckets it touches" {
+  #assert env_wrap(0) == 0 && env_wrap(7) == 7 && env_wrap(8) == 0 && env_wrap(-1) == 7 && env_wrap(-8) == 0 && env_wrap(-9) == 7 && env_wrap(17) == 1;
+  #assert env_cell(0) == 0 && env_cell(31.9) == 0 && env_cell(32) == 1 && env_cell(-0.5) == -1 && env_cell(-32) == -1 && env_cell(-32.5) == -2;
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; next := [1] EnvironmentSet.[env_test_set()];
+  c := env_region_index_replace(active[..], index[..], next[..]);
+  #assert c.refusal == EnvRefusal.none && active[0].generation == 1 && index[0].generation == 1 && index[0].version == ENV_REGION_VERSION;
+  // Sphere: cells x -1..0, z -1..0. Box: x 0, z -1..0. Prism: x 0, z 0.
+  total := 0; for k: 0..<ENV_BUCKETS { total += index[0].counts[k]; }
+  #assert total == 7;
+  #assert index[0].counts[7 * 8 + 7] == 1 && index[0].counts[7 * 8 + 0] == 1 && index[0].counts[0 * 8 + 7] == 2 && index[0].counts[0] == 3;
+  #assert index[0].slots[0][0] == 0 && index[0].slots[0][1] == 1 && index[0].slots[0][2] == 2 && index[0].slots[7][1] == 1 && index[0].slots[63][0] == 0;
+  #assert index[0].bounds[1].hi.x == 8 && index[0].bounds[2].hi.y == 11;
+  // A region wider than the grid sits once in every bucket of that axis.
+  next[0].regions[0].radius = 1000; c = env_region_index_replace(active[..], index[..], next[..]);
+  total = 0; for k: 0..<ENV_BUCKETS { total += index[0].counts[k]; }
+  #assert c.refusal == EnvRefusal.none && total == 64 + 3 && index[0].counts[0] == 3 && index[0].counts[27] == 1 && index[0].generation == 2;
+  next[0].regions[0].radius = 12; next[0].regions[0].center.x = 4 + 32 * 8;   // the same buckets, eight cells east
+  c = env_region_index_replace(active[..], index[..], next[..]);
+  #assert c.refusal == EnvRefusal.none && index[0].counts[0] == 3 && index[0].counts[7 * 8 + 7] == 1;
+}
+#test "a bucket over capacity or a malformed region refuses the whole replacement" {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; next := [1] EnvironmentSet.[env_test_set()];
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  keep := active[0]; kept := index[0];
+  for bad: 0..<5 {
+    next[0] = env_test_set();
+    if bad == 0 {   // nine regions in one bucket
+      next[0].region_count = 9; for i: 0..<9 { next[0].regions[i] = env_region_box(cast(u32) i + 20, 7); next[0].regions[i].center.x = cast(f32) i * 256; }
+    } else if bad == 1 { next[0].regions[2].points[1] = EnvXZ.{x = 1, z = 9}; next[0].regions[2].points[2] = EnvXZ.{x = 11, z = 1}; next[0].regions[2].count = 4; next[0].regions[2].points[3] = EnvXZ.{x = 11, z = 9}; }
+    else if bad == 2 { next[0].regions[1].outer = 0.2; }
+    else if bad == 3 { next[0].version = 2; }
+    else { next[0].region_count = ENV_MAX_REGIONS + 1; }
+    c := env_region_index_replace(active[..], index[..], next[..]);
+    #assert c.refusal == [5] EnvRefusal.[EnvRefusal.capacity, EnvRefusal.shape, EnvRefusal.shape, EnvRefusal.version, EnvRefusal.capacity][bad];
+    #assert c.at == [5] int.[8, 2, 1, -1, -1][bad] && c.field == [5] int.[ENV_F_POSITION, ENV_F_POINTS, ENV_F_BANDS, ENV_F_NONE, ENV_F_NONE][bad];
+    #assert env_set_same(active[0], keep) && index[0].generation == kept.generation && index[0].counts[0] == kept.counts[0] && index[0].counts[63] == kept.counts[63];
+  }
+  // Eight in one bucket is the capacity, admitted.
+  next[0] = env_test_set(); next[0].region_count = 8;
+  for i: 0..<8 { next[0].regions[i] = env_region_box(cast(u32) i + 20, 7); next[0].regions[i].center.x = cast(f32) i * 256; }
+  c := env_region_index_replace(active[..], index[..], next[..]);
+  #assert c.refusal == EnvRefusal.none && index[0].counts[0] == 8 && index[0].slots[0][7] == 7 && index[0].generation == 2;
+}
+#test "a tile keeps the regions whose influence meets it, in set order, and refuses rather than truncates" {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; next := [1] EnvironmentSet.[env_test_set()];
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  t := env_tile_candidates(active[..], index[..], env_point(EnvDir.{x = 4, y = 0, z = 2}));
+  #assert t.refusal == EnvRefusal.none && t.count == 3 && t.regions[0] == 0 && t.regions[1] == 1 && t.regions[2] == 2 && t.generation == 1 && t.version == ENV_REGION_VERSION && t.visited == 3;
+  t = env_tile_candidates(active[..], index[..], env_point(EnvDir.{x = 20, y = 0, z = -20}));
+  #assert t.count == 1 && t.regions[0] == 0;
+  t = env_tile_candidates(active[..], index[..], env_point(EnvDir.{x = 100, y = 0, z = 100}));
+  #assert t.refusal == EnvRefusal.none && t.count == 0 && t.bounds.lo.x == 100 && t.bounds.hi.z == 100;
+  // Touching any face of a region's influence bounds counts.
+  for face: 0..<6 {
+    p := EnvDir.{x = 4, y = 0, z = 2}; v := [6] f32.[0, 12, -3, 11, 0, 10][face];
+    if face < 2 { p.x = v; } else if face < 4 { p.y = v; } else { p.z = v; }
+    t = env_tile_candidates(active[..], index[..], env_point(p));
+    #assert t.refusal == EnvRefusal.none && t.count >= 2 && t.regions[t.count - 1] == 2;
+    q := p; if face == 0 { q.x = -0.001; } else if face == 1 { q.x = 12.001; } else if face == 2 { q.y = -3.001; } else if face == 3 { q.y = 11.001; } else if face == 4 { q.z = -0.001; } else { q.z = 10.001; }
+    t = env_tile_candidates(active[..], index[..], env_point(q));
+    #assert t.count == 0 || t.regions[t.count - 1] != 2;
+  }
+  // A wide tile visits more buckets; one spanning the whole grid sees every region.
+  t = env_tile_candidates(active[..], index[..], EnvBounds.{lo = EnvDir.{x = -1000, y = -1, z = -1000}, hi = EnvDir.{x = 1000, y = 1, z = 1000}});
+  #assert t.count == 3 && t.visited == 7;
+  t = env_tile_candidates(active[..], index[..], EnvBounds.{lo = EnvDir.{x = 13, y = -1, z = -5}, hi = EnvDir.{x = 40, y = 1, z = 40}});
+  #assert t.count == 1 && t.regions[0] == 0 && t.visited == 5;
+  t = env_tile_candidates(active[..], index[..], EnvBounds.{lo = EnvDir.{x = 13, y = -1, z = -5}, hi = EnvDir.{x = 31, y = 1, z = 31}});
+  #assert t.count == 1 && t.visited == 5;
+  t = env_tile_candidates(active[..], index[..], EnvBounds.{lo = EnvDir.{x = 13, y = -1, z = 1}, hi = EnvDir.{x = 40, y = 1, z = 40}});
+  #assert t.count == 1 && t.visited == 3;
+  t = env_tile_candidates(active[..], index[..], env_point(EnvDir.{x = -5, y = 0, z = 2})); #assert t.count == 1 && t.visited == 1;
+  t = env_tile_candidates(active[..], index[..], env_point(EnvDir.{x = 4, y = 0, z = -5})); #assert t.count == 2 && t.visited == 2;
+  // Malformed queries and a stale index are refused; nine regions over one tile too.
+  t = env_tile_candidates(active[..], index[..], EnvBounds.{lo = EnvDir.{x = 1}, hi = EnvDir.{x = 0}}); #assert t.refusal == EnvRefusal.order && t.count == 0;
+  t = env_tile_candidates(active[..], index[..], EnvBounds.{lo = EnvDir.{y = 1}, hi = EnvDir.{}}); #assert t.refusal == EnvRefusal.order;
+  t = env_tile_candidates(active[..], index[..], EnvBounds.{lo = EnvDir.{z = 1}, hi = EnvDir.{}}); #assert t.refusal == EnvRefusal.order;
+  t = env_tile_candidates(active[..], index[..], env_point(EnvDir.{x = 0.0f32 / 0.0f32})); #assert t.refusal == EnvRefusal.nonfinite;
+  t = env_tile_candidates(active[..], index[..], env_point(EnvDir.{z = 20000000})); #assert t.refusal == EnvRefusal.none;
+  t = env_tile_candidates(active[..], index[..], EnvBounds.{lo = EnvDir.{x = -30000000}, hi = EnvDir.{}}); #assert t.refusal == EnvRefusal.range;
+  t = env_tile_candidates(active[..], index[..], env_point(EnvDir.{y = -20000004})); #assert t.refusal == EnvRefusal.range;
+  t = env_tile_candidates(active[..], index[..], EnvBounds.{lo = EnvDir.{}, hi = EnvDir.{x = 30000000}}); #assert t.refusal == EnvRefusal.range;
+  stale := index; stale[0].generation = 0;
+  t = env_tile_candidates(active[..], stale[..], env_point(EnvDir.{})); #assert t.refusal == EnvRefusal.reference;
+  stale = index; stale[0].version = 2;
+  t = env_tile_candidates(active[..], stale[..], env_point(EnvDir.{})); #assert t.refusal == EnvRefusal.version;
+  next[0].region_count = 9;
+  for i: 0..<9 { next[0].regions[i] = env_region_box(cast(u32) i + 20, 7); next[0].regions[i].center.x = cast(f32) (i % 3) * 32; next[0].regions[i].center.z = cast(f32) (i / 3) * 32; }
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  t = env_tile_candidates(active[..], index[..], EnvBounds.{lo = EnvDir.{x = -10, y = -1, z = -10}, hi = EnvDir.{x = 70, y = 1, z = 70}});
+  #assert t.refusal == EnvRefusal.capacity && t.count == 0;
+  t = env_tile_candidates(active[..], index[..], EnvBounds.{lo = EnvDir.{x = -10, y = -1, z = -10}, hi = EnvDir.{x = 70, y = 1, z = 40}});
+  #assert t.refusal == EnvRefusal.none && t.count == 6 && t.regions[5] == 5;
+}
+#test "a region never precedes itself; priority orders first, then the lower id is applied last" {
+  a := env_region_sphere(4, 1); b := env_region_sphere(9, 1);
+  #assert !env_region_before(a, a) && env_region_before(b, a) && !env_region_before(a, b);
+  b.priority = -1; #assert env_region_before(b, a) && !env_region_before(a, b);
+  b.priority = 1; #assert env_region_before(a, b) && !env_region_before(b, a);
+  #assert !env_heavier(0.5, 3, 0.5, 3) && env_heavier(0.5, 2, 0.5, 3) && !env_heavier(0.5, 3, 0.5, 2) && env_heavier(0.6, 3, 0.5, 2) && !env_heavier(0.4, 1, 0.5, 2);
+}
+#test "outside every region the result is env_resolve's exactly, the map default or the state's profile" {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; next := [1] EnvironmentSet.[env_test_set()];
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  for k: 0..<4 {
+    state := EnvironmentState.{version = ENV_VERSION, profile = [4] u32.[0, 7, 0, ENV_GLADE_ID][k], day = [4] f64.[0.5, 0.2, 3.9, 0.95][k]};
+    base := env_resolve(active[..], state);
+    for p: [3] EnvDir.[EnvDir.{x = 100, z = 100}, EnvDir.{x = 20, y = 50, z = 0}, EnvDir.{x = -50, z = 4}] {
+      r := env_resolve_camera(active[..], index[..], state, p);
+      #assert r.refusal == EnvRefusal.none && env_resolved_same(r.env, base.env, true) && r.dropped[0] == 0 && r.dropped[1] == 0;
+      #assert r.weights.weights[r.weights.dominant] == 1 && r.weights.count == 2;
+    }
+  }
+  // An empty set of regions is the same everywhere.
+  next[0].region_count = 0; #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  state := EnvironmentState.{version = ENV_VERSION, day = 0.5};
+  r := env_resolve_camera(active[..], index[..], state, EnvDir.{x = 4}); #assert env_resolved_same(r.env, env_resolve(active[..], state).env, true);
+  // The state's refusals are env_resolve's.
+  state.version = 2; #assert env_resolve_camera(active[..], index[..], state, EnvDir.{}).refusal == EnvRefusal.version;
+  state.version = ENV_VERSION; state.profile = 99; #assert env_resolve_camera(active[..], index[..], state, EnvDir.{}).refusal == EnvRefusal.reference;
+}
+#test "overlapping regions normalize by priority, and full weight overrides" {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; next := [1] EnvironmentSet.[env_test_set()];
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  state := EnvironmentState.{version = ENV_VERSION, day = 0.5};
+  g := env_profile_sample(active[0].profiles[0], 0.5); s7 := env_profile_sample(active[0].profiles[1], 0.5);
+  // Deep in the sphere (profile 7) and outside the box and prism: all profile 7.
+  r := env_resolve_camera(active[..], index[..], state, EnvDir.{x = 4, y = 1, z = -8});
+  #assert r.weights.weights[1] == 1 && r.weights.weights[0] == 0 && r.weights.dominant == 1 && env_resolved_same(r.env, s7, true);
+  // Inside the box (glade, priority 2) and the sphere (priority 0) and the prism (priority -3):
+  // the box applies last at full weight, so all glade.
+  r = env_resolve_camera(active[..], index[..], state, EnvDir.{x = 4, y = 0, z = 2});
+  #assert r.weights.weights[0] == 1 && r.weights.weights[1] == 0 && env_resolved_same(r.env, g, true);
+  // In the box's outer band halfway (d = .5, weight .5) inside the sphere: .5 glade, .5 profile 7;
+  // the tie goes to the lower id, the glade.
+  p := EnvDir.{x = 7.5, y = 0, z = -2};
+  #assert env_region_distance(active[0].regions[1], p) == 0.5f32 && env_region_weight(active[0].regions[0], p) == 1 && env_region_weight(active[0].regions[2], p) == 0;
+  r = env_resolve_camera(active[..], index[..], state, p);
+  #assert r.weights.weights[0] == 0.5f32 && r.weights.weights[1] == 0.5f32 && r.weights.dominant == 0 && r.env.profile == ENV_GLADE_ID;
+  #assert r.env.film == g.film && r.env.from == g.from && r.env.weight == g.weight && r.env.flags == g.flags && r.env.time == g.time && r.env.version == ENV_VERSION;
+  vg := env_channels_flat(g.channels); v7 := env_channels_flat(s7.channels); vr := env_channels_flat(r.env.channels);
+  for i: 0..<ENV_CHANNELS { #assert vr[i] == 0.5f32 * vg[i] + 0.5f32 * v7[i]; }
+  #assert vr[ENV_C_FOG_NEAR] != vg[ENV_C_FOG_NEAR];
+  #assert r.env.direct.r == 0.5f32 * g.direct.r + 0.5f32 * s7.direct.r && r.env.direct.g == 0.5f32 * g.direct.g + 0.5f32 * s7.direct.g && r.env.direct.b == 0.5f32 * g.direct.b + 0.5f32 * s7.direct.b;
+  m := EnvDir.{x = 0.5f32 * g.dir.x + 0.5f32 * s7.dir.x, y = 0.5f32 * g.dir.y + 0.5f32 * s7.dir.y, z = 0.5f32 * g.dir.z + 0.5f32 * s7.dir.z};
+  u := env_dir_unit(m); #assert r.env.dir.x == u.x && r.env.dir.y == u.y && r.env.dir.z == u.z;
+  // Sky resources: glade 0 at .5; profile 7 at day .5 blends 9 -> 9 (one id): 0 and 9 at .5 each, lower id first.
+  #assert r.env.resources[0].count == 2 && r.env.resources[0].ids[0] == 0 && r.env.resources[0].ids[1] == 9 && r.env.resources[0].weights[0] == 0.5f32 && r.env.resources[0].weights[1] == 0.5f32;
+  #assert r.env.resources[1].count == 1 && r.env.resources[1].ids[0] == 0 && r.env.resources[1].weights[0] == 1 && r.dropped[0] == 0;
+  // Profile 7 heavier past the halfway point: its identifiers win.
+  r = env_resolve_camera(active[..], index[..], state, EnvDir.{x = 7.75, y = 0, z = -2});
+  #assert r.weights.dominant == 1 && r.env.profile == 7 && r.env.film == s7.film && r.env.from == s7.from && r.env.weight == s7.weight && r.env.body == s7.body;
+  #assert abs(r.weights.weights[0] + r.weights.weights[1] - 1) < 0.000001f32 && r.weights.weights[0] == 0.15625f32;
+  #assert r.env.resources[0].ids[0] == 9 && r.env.resources[0].ids[1] == 0;
+  // Equal priority: the lower id is applied last. Swap the box to priority 0 with id 12 vs the
+  // sphere's 11: the sphere (11) now wins where both are at full weight.
+  next[0].regions[1].priority = 0;
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  r = env_resolve_camera(active[..], index[..], state, EnvDir.{x = 4, y = 0, z = 2});
+  #assert r.weights.weights[1] == 1 && r.weights.dominant == 1;
+  next[0].regions[0].id = 30;
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  r = env_resolve_camera(active[..], index[..], state, EnvDir.{x = 4, y = 0, z = 2});
+  #assert r.weights.weights[0] == 1 && r.weights.dominant == 0;
+}
+#test "the set's region order never changes the result" {
+  a: [1] EnvironmentSet; ai: [1] EnvRegionIndex; b: [1] EnvironmentSet; bi: [1] EnvRegionIndex;
+  next := [1] EnvironmentSet.[env_test_set()];
+  #assert env_region_index_replace(a[..], ai[..], next[..]).refusal == EnvRefusal.none;
+  next[0].regions[0] = env_test_set().regions[1]; next[0].regions[1] = env_test_set().regions[0];
+  #assert env_region_index_replace(b[..], bi[..], next[..]).refusal == EnvRefusal.none;
+  state := EnvironmentState.{version = ENV_VERSION, day = 0.5};
+  for p: [4] EnvDir.[EnvDir.{x = 7.5, y = 0, z = -2}, EnvDir.{x = 7.75, y = 0, z = -2}, EnvDir.{x = 4, y = 0, z = 2}, EnvDir.{x = 8, y = 2.5, z = 1.5}] {
+    x := env_resolve_camera(a[..], ai[..], state, p); y := env_resolve_camera(b[..], bi[..], state, p);
+    #assert env_resolved_same(x.env, y.env, true) && x.weights.weights[0] == y.weights.weights[0] && x.weights.weights[1] == y.weights.weights[1];
+  }
+  x := env_resolve_camera(b[..], bi[..], state, EnvDir.{x = 7.5, y = 0, z = -2}); #assert x.weights.weights[0] == 0.5f32 && x.weights.weights[1] == 0.5f32;
+}
+#test "partial overlaps compose in priority order and sum to one" {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; next := [1] EnvironmentSet.[env_test_set()];
+  // A third profile, and the prism re-pointed at it, raised above the box.
+  third := env_test_profile3(); third.id = 40; for k: 0..<3 { third.track.knots[k].resources[ENV_RES_SKY] = [3] u32.[21, 22, 23][k]; third.track.knots[k].channels.fog.near = 50; }
+  next[0].profile_count = 3; next[0].profiles[2] = third; next[0].regions[2].profile = 40; next[0].regions[2].priority = 5;
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  // At (7.5, 0, 1.25): the sphere at 1, the box at .5 (its x band), the prism (d = .5, band 2) at .15625.
+  p := EnvDir.{x = 7.5, y = 0, z = 1.25};
+  ws := env_region_weight(active[0].regions[0], p); wb := env_region_weight(active[0].regions[1], p); wq := env_region_weight(active[0].regions[2], p);
+  #assert ws == 1 && wb == 0.5f32 && wq > 0 && wq < 1;
+  state := EnvironmentState.{version = ENV_VERSION, day = 0.2};
+  r := env_resolve_camera(active[..], index[..], state, p);
+  // sphere (p7): [0, 1, 0]; box (glade): [.5, .5, 0]; prism (third): scaled by (1 - wq), plus wq.
+  #assert r.weights.count == 3 && r.weights.weights[0] == 0.5f32 * (1 - wq) && r.weights.weights[1] == 0.5f32 * (1 - wq) && r.weights.weights[2] == wq;
+  #assert abs(r.weights.weights[0] + r.weights.weights[1] + r.weights.weights[2] - 1) < 0.000001f32;
+  // Five sky ids (glade 0; p7 5 -> 9; third 21 -> 22) select the four heaviest and report the rest.
+  #assert r.env.resources[0].count == 4 && r.dropped[0] > 0;
+  sum: f32 = 0; for e: 0..<4 { sum += r.env.resources[0].weights[e]; if e > 0 { #assert r.env.resources[0].weights[e] <= r.env.resources[0].weights[e - 1]; } }
+  #assert abs(sum - 1) < 0.000001f32 && r.env.resources[0].ids[0] == 21 && r.env.resources[0].ids[1] == 22 && r.env.resources[0].ids[2] == 0 && r.env.resources[0].ids[3] == 5;
+  #assert abs(r.dropped[0] - r.weights.weights[1] * 0.5f32) < 0.000001f32 && r.dropped[1] == 0 && r.env.resources[1].count == 1;
+  // The order matters: with the prism below the sphere, the sphere overrides it.
+  next[0].regions[2].priority = -5;
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  r = env_resolve_camera(active[..], index[..], state, p);
+  #assert r.weights.weights[2] == 0 && r.weights.weights[0] == 0.5f32 && r.weights.weights[1] == 0.5f32 && r.env.resources[0].count == 3 && r.dropped[0] == 0;
+  #assert r.env.resources[0].ids[0] == 0 && r.env.resources[0].weights[0] == 0.5f32 && r.env.resources[0].ids[1] == 5 && r.env.resources[0].ids[2] == 9;
+}
+#test "blended resources merge equal ids and keep the four heaviest, lower ids first at a tie" {
+  acc: EnvBlendAcc;
+  acc = env_blend_add(acc, 7, 0.25); acc = env_blend_add(acc, 3, 0.125); acc = env_blend_add(acc, 7, 0.125); acc = env_blend_add(acc, 0, 0);
+  #assert acc.count == 3 && acc.ids[0] == 7 && acc.weights[0] == 0.375f32 && acc.ids[1] == 3 && acc.ids[2] == 0;
+  acc = env_blend_add(acc, 9, 0.125); acc = env_blend_add(acc, 4, 0.125); acc = env_blend_add(acc, 5, 0.25);
+  pick := env_blend_select(acc); b := pick.blend; dropped := pick.dropped;
+  #assert b.count == 4 && b.ids[0] == 7 && b.ids[1] == 5 && b.ids[2] == 3 && b.ids[3] == 4 && dropped == 0.125f32;
+  #assert b.weights[0] == 0.375f32 / 0.875f32 && b.weights[3] == 0.125f32 / 0.875f32;
+  one: EnvBlendAcc; one = env_blend_add(one, 2, 0.5); one = env_blend_add(one, 1, 0.5);
+  pick = env_blend_select(one); b = pick.blend; dropped = pick.dropped; #assert b.count == 2 && b.ids[0] == 1 && b.ids[1] == 2 && b.weights[0] == 0.5f32 && dropped == 0 && b.ids[2] == 0 && b.weights[2] == 0;
+}
+#test "a degenerate key-direction sum takes the dominant profile's" {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; next := [1] EnvironmentSet.[env_test_set()];
+  next[0].profiles[1] = env_glade_profile(); next[0].profiles[1].id = 7; next[0].profiles[1].track.knots[0].dir = EnvDir.{x = 0.40, y = -0.58, z = 0.62};
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  state := EnvironmentState.{version = ENV_VERSION, day = 0.5};
+  r := env_resolve_camera(active[..], index[..], state, EnvDir.{x = 7.5, y = 0, z = -2});
+  g := env_profile_sample(active[0].profiles[0], 0.5);
+  #assert r.weights.weights[0] == 0.5f32 && r.weights.dominant == 0 && r.env.dir.x == g.dir.x && r.env.dir.y == g.dir.y && r.env.dir.z == g.dir.z;
+  r = env_resolve_camera(active[..], index[..], state, EnvDir.{x = 7.49, y = 0, z = -2});
+  #assert r.weights.dominant == 0 && abs(r.env.dir.x - g.dir.x) < 0.000001f32 && abs(r.env.dir.y - g.dir.y) < 0.000001f32;
+  r = env_resolve_camera(active[..], index[..], state, EnvDir.{x = 7.51, y = 0, z = -2});
+  #assert r.weights.dominant == 1 && abs(r.env.dir.x + g.dir.x) < 0.000001f32 && abs(r.env.dir.z + g.dir.z) < 0.000001f32;
+  // At the bound exactly (squared length 2^-20) the sum still normalizes, even against the dominant.
+  t := active[0]; t.profiles[0].track.knots[0].dir = EnvDir.{y = 1}; t.profiles[1].track.knots[0].dir = EnvDir.{y = -1};
+  w := EnvRegionWeights.{count = 2, dominant = 1}; w.weights[0] = 0.50048828125; w.weights[1] = 0.49951171875;
+  b := env_region_blend(t, w, 0.5);
+  #assert b.env.dir.x == 0 && b.env.dir.y == 1 && b.env.dir.z == 0 && b.env.profile == 7 && b.weights.dominant == 1;
+  w.weights[0] = 0.500244140625; w.weights[1] = 0.499755859375;
+  b = env_region_blend(t, w, 0.5); #assert b.env.dir.y == -1;
+}
+#test "the spatial path reads its tile; a frame's camera and surfaces can sit in different regions" {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; next := [1] EnvironmentSet.[env_test_set()];
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  state := EnvironmentState.{version = ENV_VERSION, day = 0.5};
+  tile := env_tile_candidates(active[..], index[..], EnvBounds.{lo = EnvDir.{x = 0, y = -1, z = -10}, hi = EnvDir.{x = 10, y = 1, z = 4}});
+  #assert tile.refusal == EnvRefusal.none && tile.count == 3;
+  eye := env_resolve_camera(active[..], index[..], state, EnvDir.{x = 4, y = 0, z = 2});   // in the box: the glade
+  near := env_resolve_at(active[..], tile, state, EnvDir.{x = 4, y = 1, z = -8});        // in the sphere: profile 7
+  #assert eye.env.profile == ENV_GLADE_ID && near.refusal == EnvRefusal.none && near.env.profile == 7;
+  #assert eye.env.channels.presentation.exposure == 1.18f32 && near.env.channels.fog.near != eye.env.channels.fog.near;
+  // The spatial path equals the camera path at the same point.
+  for i: 0..<11 {
+    p := EnvDir.{x = cast(f32) i, y = 0, z = 2 - cast(f32) i};
+    a := env_resolve_at(active[..], tile, state, p); b := env_resolve_camera(active[..], index[..], state, p);
+    #assert a.refusal == EnvRefusal.none && env_resolved_same(a.env, b.env, true);
+  }
+  // A point outside its tile, a stale tile, a refused tile and a bad state are refused.
+  #assert env_resolve_at(active[..], tile, state, EnvDir.{x = 10, y = 1, z = 4}).refusal == EnvRefusal.none;
+  #assert env_resolve_at(active[..], tile, state, EnvDir.{x = 0, y = -1, z = -10}).refusal == EnvRefusal.none;
+  for f: 0..<7 {
+    p := EnvDir.{x = 5, y = 0, z = 0};
+    if f == 0 { p.x = 10.01; } else if f == 1 { p.x = -0.01; } else if f == 2 { p.y = 1.01; } else if f == 3 { p.y = -1.01; } else if f == 4 { p.z = 4.01; } else if f == 5 { p.z = -10.01; } else { p.y = 0.0f32 / 0.0f32; }
+    #assert env_resolve_at(active[..], tile, state, p).refusal == EnvRefusal.range;
+  }
+  old := tile; old.generation = 0; #assert env_resolve_at(active[..], old, state, EnvDir.{x = 5}).refusal == EnvRefusal.reference;
+  old = tile; old.version = 0; #assert env_resolve_at(active[..], old, state, EnvDir.{x = 5}).refusal == EnvRefusal.version;
+  old = tile; old.refusal = EnvRefusal.capacity; #assert env_resolve_at(active[..], old, state, EnvDir.{x = 5}).refusal == EnvRefusal.capacity;
+  bad := state; bad.day = 0.0 / 0.0; #assert env_resolve_at(active[..], tile, bad, EnvDir.{x = 5}).refusal == EnvRefusal.nonfinite;
+  // A camera point beyond the query range is refused.
+  #assert env_resolve_camera(active[..], index[..], state, EnvDir.{x = 30000000}).refusal == EnvRefusal.range;
+}
+#test "a pinned route walk changes continuously, probed densely along the polyline" #steps 400000000 {
+  active: [1] EnvironmentSet; index: [1] EnvRegionIndex; next := [1] EnvironmentSet.[env_test_set()];
+  #assert env_region_index_replace(active[..], index[..], next[..]).refusal == EnvRefusal.none;
+  state := EnvironmentState.{version = ENV_VERSION, day = 0.2};
+  // Glade default (z = -30) -> into the sphere (profile 7) -> into the box (glade, over it) -> up
+  // through the prism's ceiling band and out east.
+  route := [5] EnvDir.[EnvDir.{x = 4, y = 1, z = -30}, EnvDir.{x = 4, y = 1, z = -6}, EnvDir.{x = 6, y = 0, z = 3}, EnvDir.{x = 3, y = 12, z = 3}, EnvDir.{x = 30, y = 12, z = 3}];
+  g := env_profile_sample(active[0].profiles[0], 0.2); s7 := env_profile_sample(active[0].profiles[1], 0.2);
+  vg := env_channels_flat(g.channels); v7 := env_channels_flat(s7.channels);
+  // Lipschitz bound per metre: the sum of the bands' smoothstep slopes (1.5 / band) over the regions.
+  slope := 1.5f32 / 8 + 1.5f32 / 1 + 1.5f32 / 2;
+  h: f32 = 0.05;
+  prev := env_resolve_camera(active[..], index[..], state, route[0]);
+  #assert env_resolved_same(prev.env, g, true);
+  moved: f32 = 0; samples := 0;
+  for leg: 0..<4 {
+    a := route[leg]; b := route[leg + 1];
+    span := sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y) + (b.z - a.z) * (b.z - a.z));
+    n := cast(int) (span / h);
+    for i: 1..<n + 1 {
+      u := cast(f32) i / cast(f32) n;
+      p := EnvDir.{x = a.x + (b.x - a.x) * u, y = a.y + (b.y - a.y) * u, z = a.z + (b.z - a.z) * u};
+      cur := env_resolve_camera(active[..], index[..], state, p);
+      #assert cur.refusal == EnvRefusal.none;
+      step := span / cast(f32) n;
+      vp := env_channels_flat(prev.env.channels); vc := env_channels_flat(cur.env.channels);
+      for c: 0..<ENV_CHANNELS {
+        #assert abs(vc[c] - vp[c]) <= 2 * abs(v7[c] - vg[c]) * slope * step + 0.00001f32;
+        moved = env_max(moved, abs(vc[ENV_C_FOG_NEAR] - vg[ENV_C_FOG_NEAR]));
+      }
+      #assert abs(cur.env.direct.r - prev.env.direct.r) <= 2 * abs(s7.direct.r - g.direct.r) * slope * step + 0.00001f32;
+      #assert abs(cur.env.direct.b - prev.env.direct.b) <= 2 * abs(s7.direct.b - g.direct.b) * slope * step + 0.00001f32;
+      #assert abs(cur.env.dir.x - prev.env.dir.x) + abs(cur.env.dir.y - prev.env.dir.y) + abs(cur.env.dir.z - prev.env.dir.z) <= 12 * slope * step;
+      prev = cur; samples += 1;
+    }
+  }
+  // It really changed on the way and is back to the default at the end.
+  #assert samples > 1000 && moved > 3 && env_resolved_same(prev.env, g, true);
+}
+
+// ---- the code
+
+env_point :: (p: EnvDir) -> EnvBounds #effects(all) { return EnvBounds.{lo = p, hi = p}; }
+env_band_weight :: (d: f32, inner: f32, outer: f32) -> f32 #effects(all) {
+  s := env_min(env_max((outer - d) / (inner + outer), 0), 1);
+  return s * s * (3 - 2 * s);
+}
+env_sq :: (x: f32) -> f32 #effects(all) { return x * x; }
+env_min :: (a: f32, b: f32) -> f32 #effects(all) { return ifx a < b then a else b; }
+env_max :: (a: f32, b: f32) -> f32 #effects(all) { return ifx a > b then a else b; }
+// The polygon's signed distance in xz: negative inside (even-odd), either winding.
+env_polygon_distance :: (r: EnvironmentRegion, x: f32, z: f32) -> f32 #effects(all) {
+  best := 1.0f32 / 0.0f32; inside := false;
+  for i: 0..<r.count {
+    a := r.points[i]; b := r.points[(i + 1) % r.count];
+    ex := b.x - a.x; ez := b.z - a.z; wx := x - a.x; wz := z - a.z;
+    t := env_min(env_max((wx * ex + wz * ez) / (ex * ex + ez * ez), 0), 1);
+    best = env_min(best, env_sq(wx - ex * t) + env_sq(wz - ez * t));
+    if (a.z > z) != (b.z > z) && x < a.x + ex * (z - a.z) / ez { inside = !inside; }
+  }
+  d := sqrt(best);
+  return ifx inside then -d else d;
+}
+// Two outside/inside parts extruded the way a box is: the length of the positive parts, or the larger.
+env_extrude :: (a: f32, b: f32, c: f32) -> f32 #effects(all) {
+  return sqrt(env_sq(env_max(a, 0)) + env_sq(env_max(b, 0)) + env_sq(env_max(c, 0))) + env_min(env_max(a, env_max(b, c)), 0);
+}
+env_region_distance :: (r: EnvironmentRegion, p: EnvDir) -> f32 #effects(all) {
+  if r.shape == EnvShape.sphere {
+    return sqrt(env_sq(p.x - r.center.x) + env_sq(p.y - r.center.y) + env_sq(p.z - r.center.z)) - r.radius;
+  }
+  if r.shape == EnvShape.box {
+    return env_extrude(abs(p.x - r.center.x) - r.half.x, abs(p.y - r.center.y) - r.half.y, abs(p.z - r.center.z) - r.half.z);
+  }
+  return env_extrude(env_polygon_distance(r, p.x, p.z), env_max(r.floor - p.y, p.y - r.ceiling), -ENV_QUERY_MAX);
+}
+env_region_weight :: (r: EnvironmentRegion, p: EnvDir) -> f32 #effects(all) {
+  return env_band_weight(env_region_distance(r, p), r.inner, r.outer);
+}
+env_orient :: (a: EnvXZ, b: EnvXZ, c: EnvXZ) -> f32 #effects(all) { return (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x); }
+// No two non-adjacent edges meet (touching or crossing; collinear ones count as meeting).
+env_polygon_simple :: (r: EnvironmentRegion) -> bool #effects(all) {
+  n := r.count;
+  for i: 0..<n {
+    for j: i + 2..<n {
+      if i > 0 || j < n - 1 {
+        a := r.points[i]; b := r.points[i + 1]; c := r.points[j]; d := r.points[(j + 1) % n];
+        if env_orient(a, b, c) * env_orient(a, b, d) <= 0 && env_orient(c, d, a) * env_orient(c, d, b) <= 0 { return false; }
+      }
+    }
+  }
+  return true;
+}
+// A region as admitted with regions: environment.coax's checks, a real band, a simple polygon.
+env_region_admit :: (r: EnvironmentRegion) -> EnvCheck #effects(all) {
+  c := env_region_check(r);
+  if c.refusal != EnvRefusal.none { return c; }
+  if r.inner + r.outer < ENV_BAND_MIN { return env_refuse_field(EnvRefusal.shape, ENV_F_BANDS); }
+  if r.shape == EnvShape.prism && !env_polygon_simple(r) { return env_refuse_field(EnvRefusal.shape, ENV_F_POINTS); }
+  return c;
+}
+env_region_bounds :: (r: EnvironmentRegion) -> EnvBounds #effects(all) {
+  e := r.outer;
+  if r.shape == EnvShape.sphere { e = e + r.radius; return EnvBounds.{lo = EnvDir.{x = r.center.x - e, y = r.center.y - e, z = r.center.z - e}, hi = EnvDir.{x = r.center.x + e, y = r.center.y + e, z = r.center.z + e}}; }
+  if r.shape == EnvShape.box {
+    return EnvBounds.{lo = EnvDir.{x = r.center.x - r.half.x - e, y = r.center.y - r.half.y - e, z = r.center.z - r.half.z - e}, hi = EnvDir.{x = r.center.x + r.half.x + e, y = r.center.y + r.half.y + e, z = r.center.z + r.half.z + e}};
+  }
+  inf := 1.0f32 / 0.0f32;
+  b := EnvBounds.{lo = EnvDir.{x = inf, y = r.floor - e, z = inf}, hi = EnvDir.{x = -inf, y = r.ceiling + e, z = -inf}};
+  for i: 0..<r.count {
+    b.lo.x = env_min(b.lo.x, r.points[i].x); b.hi.x = env_max(b.hi.x, r.points[i].x);
+    b.lo.z = env_min(b.lo.z, r.points[i].z); b.hi.z = env_max(b.hi.z, r.points[i].z);
+  }
+  b.lo.x = b.lo.x - e; b.lo.z = b.lo.z - e; b.hi.x = b.hi.x + e; b.hi.z = b.hi.z + e;
+  return b;
+}
+env_cell :: (x: f32) -> int #effects(all) { return cast(int) floor(x / ENV_CELL); }
+env_wrap :: (c: int) -> int #effects(all) { return (c % ENV_GRID + ENV_GRID) % ENV_GRID; }
+env_span :: (lo: f32, hi: f32) -> int #effects(all) {
+  return env_cell(hi) - env_cell(lo) + 1;
+}
+// Admit a candidate set with its regions and build its index; both replace the active ones whole, or neither does.
+env_region_index_replace :: (active: [] EnvironmentSet, index: [] EnvRegionIndex, next: [] EnvironmentSet) -> EnvCheck #effects(all) {
+  c := env_set_check(next[0]);
+  if c.refusal != EnvRefusal.none { return c; }
+  s := next[0];
+  x := EnvRegionIndex.{version = ENV_REGION_VERSION};
+  for i: 0..<s.region_count {
+    c = env_region_admit(s.regions[i]);
+    if c.refusal != EnvRefusal.none { c.at = i; return c; }
+    b := env_region_bounds(s.regions[i]); x.bounds[i] = b;
+    x0 := env_cell(b.lo.x); z0 := env_cell(b.lo.z); nx := env_span(b.lo.x, b.hi.x); nz := env_span(b.lo.z, b.hi.z);
+    for a: 0..<ENV_GRID {
+      for k: 0..<ENV_GRID {
+        if a < nx && k < nz {
+          q := env_wrap(x0 + a) * ENV_GRID + env_wrap(z0 + k);
+          if x.counts[q] == ENV_BUCKET_CAP { return env_refuse_item(EnvRefusal.capacity, i, ENV_F_POSITION); }
+          x.slots[q][x.counts[q]] = i; x.counts[q] += 1;
+        }
+      }
+    }
+  }
+  c = env_set_replace(active, next);
+  x.generation = active[0].generation; index[0] = x;
+  return c;
+}
+env_bounds_meet :: (a: EnvBounds, b: EnvBounds) -> bool #effects(all) {
+  return a.lo.x <= b.hi.x && b.lo.x <= a.hi.x && a.lo.y <= b.hi.y && b.lo.y <= a.hi.y && a.lo.z <= b.hi.z && b.lo.z <= a.hi.z;
+}
+env_tile_refuse :: (r: EnvRefusal) -> EnvTile #effects(all) { return EnvTile.{refusal = r}; }
+// The bounded candidate list for a frame point or a tile: cost bounded by the index, never the world.
+env_tile_candidates :: (set: [] EnvironmentSet, index: [] EnvRegionIndex, q: EnvBounds) -> EnvTile #effects(all) {
+  if index[0].version != ENV_REGION_VERSION { return env_tile_refuse(EnvRefusal.version); }
+  if index[0].generation != set[0].generation { return env_tile_refuse(EnvRefusal.reference); }
+  v := [6] f32.[q.lo.x, q.lo.y, q.lo.z, q.hi.x, q.hi.y, q.hi.z];
+  for i: 0..<6 { r := env_scalar(v[i], -ENV_QUERY_MAX, ENV_QUERY_MAX); if r != EnvRefusal.none { return env_tile_refuse(r); } }
+  if q.lo.x > q.hi.x || q.lo.y > q.hi.y || q.lo.z > q.hi.z { return env_tile_refuse(EnvRefusal.order); }
+  mark: [ENV_MAX_REGIONS] bool; visited := 0;
+  x0 := env_cell(q.lo.x); z0 := env_cell(q.lo.z); nx := env_span(q.lo.x, q.hi.x); nz := env_span(q.lo.z, q.hi.z);
+  for a: 0..<ENV_GRID {
+    for k: 0..<ENV_GRID {
+      if a < nx && k < nz {
+        b := env_wrap(x0 + a) * ENV_GRID + env_wrap(z0 + k);
+        for e: 0..<index[0].counts[b] {
+          i := index[0].slots[b][e]; visited += 1;
+          if env_bounds_meet(index[0].bounds[i], q) { mark[i] = true; }
+        }
+      }
+    }
+  }
+  t := EnvTile.{version = ENV_REGION_VERSION, generation = set[0].generation, bounds = q, visited = visited};
+  for i: 0..<set[0].region_count {
+    if mark[i] {
+      if t.count == ENV_MAX_CANDIDATES { return env_tile_refuse(EnvRefusal.capacity); }
+      t.regions[t.count] = i; t.count += 1;
+    }
+  }
+  return t;
+}
+// Application order: priority ascending, then the higher id first (the lower id is applied last and wins).
+env_region_before :: (a: EnvironmentRegion, b: EnvironmentRegion) -> bool #effects(all) {
+  return a.priority < b.priority || (a.priority == b.priority && a.id > b.id);
+}
+// Selection order for profiles and blend ids: the larger weight, equal weights to the lower id.
+env_heavier :: (wa: f32, ida: u32, wb: f32, idb: u32) -> bool #effects(all) {
+  return wa > wb || (wa == wb && ida < idb);
+}
+env_blend_add :: (a: EnvBlendAcc, id: u32, w: f32) -> EnvBlendAcc #effects(all) {
+  acc := a;
+  for e: 0..<acc.count { if acc.ids[e] == id { acc.weights[e] += w; return acc; } }
+  acc.ids[acc.count] = id; acc.weights[acc.count] = w; acc.count += 1;
+  return acc;
+}
+env_blend_select :: (acc: EnvBlendAcc) -> EnvBlendPick #effects(all) {
+  out: EnvBlend; taken: [ENV_BLEND_ACC] bool; kept: f32 = 0; total: f32 = 0;
+  for e: 0..<acc.count { total += acc.weights[e]; }
+  for n: 0..<ENV_MAX_BLEND {
+    best := -1;
+    for e: 0..<acc.count {
+      if !taken[e] && (best < 0 || env_heavier(acc.weights[e], acc.ids[e], acc.weights[best], acc.ids[best])) { best = e; }
+    }
+    if best >= 0 { taken[best] = true; out.ids[n] = acc.ids[best]; out.weights[n] = acc.weights[best]; kept += acc.weights[best]; out.count += 1; }
+  }
+  for n: 0..<out.count { out.weights[n] = out.weights[n] / kept; }
+  return EnvBlendPick.{blend = out, dropped = total - kept};
+}
+env_region_weights :: (s: EnvironmentSet, tile: EnvTile, fallback: int, p: EnvDir) -> EnvRegionWeights #effects(all) {
+  out := EnvRegionWeights.{count = s.profile_count};
+  out.weights[fallback] = 1;
+  order := tile.regions;
+  for i: 1..<tile.count {
+    v := order[i]; b := i - 1;
+    while b >= 0 && env_region_before(s.regions[v], s.regions[order[b]]) { order[b + 1] = order[b]; b -= 1; }
+    order[b + 1] = v;
+  }
+  for i: 0..<tile.count {
+    r := s.regions[order[i]]; w := env_region_weight(r, p);
+    for k: 0..<s.profile_count { out.weights[k] = out.weights[k] * (1 - w); }
+    k := env_set_profile(s, r.profile); out.weights[k] += w;
+  }
+  for k: 1..<s.profile_count {
+    if env_heavier(out.weights[k], s.profiles[k].id, out.weights[out.dominant], s.profiles[out.dominant].id) { out.dominant = k; }
+  }
+  return out;
+}
+env_region_blend :: (s: EnvironmentSet, weights: EnvRegionWeights, day: f64) -> EnvRegionResolve #effects(all) {
+  out: EnvRegionResolve;
+  out.weights = weights;
+  out.env = env_profile_sample(s.profiles[weights.dominant], day);
+  if weights.weights[weights.dominant] == 1 { return out; }
+  v: [ENV_CHANNELS] f32; direct: EnvRgb; dir: EnvDir; acc: [ENV_RESOURCES] EnvBlendAcc;
+  for k: 0..<s.profile_count {
+    w := weights.weights[k];
+    if w > 0 {
+      e := env_profile_sample(s.profiles[k], day); f := env_channels_flat(e.channels);
+      for c: 0..<ENV_CHANNELS { v[c] += w * f[c]; }
+      direct = EnvRgb.{r = direct.r + w * e.direct.r, g = direct.g + w * e.direct.g, b = direct.b + w * e.direct.b};
+      dir = EnvDir.{x = dir.x + w * e.dir.x, y = dir.y + w * e.dir.y, z = dir.z + w * e.dir.z};
+      for slot: 0..<ENV_RESOURCES {
+        for n: 0..<e.resources[slot].count { acc[slot] = env_blend_add(acc[slot], e.resources[slot].ids[n], w * e.resources[slot].weights[n]); }
+      }
+    }
+  }
+  out.env.channels = env_channels_from(v); out.env.direct = direct;
+  if env_dot(dir, dir) >= ENV_DIR_MIN { out.env.dir = env_dir_unit(dir); }
+  for slot: 0..<ENV_RESOURCES { pick := env_blend_select(acc[slot]); out.env.resources[slot] = pick.blend; out.dropped[slot] = pick.dropped; }
+  return out;
+}
+// Per surface and per fog sample: the region profiles at p, from the tile's stored candidates.
+env_resolve_at :: (set: [] EnvironmentSet, tile: EnvTile, state: EnvironmentState, p: EnvDir) -> EnvRegionResolve #effects(all) {
+  out: EnvRegionResolve;
+  if tile.refusal != EnvRefusal.none { out.refusal = tile.refusal; return out; }
+  if tile.version != ENV_REGION_VERSION { out.refusal = EnvRefusal.version; return out; }
+  if tile.generation != set[0].generation { out.refusal = EnvRefusal.reference; return out; }
+  b := tile.bounds;
+  if !(p.x >= b.lo.x && p.x <= b.hi.x && p.y >= b.lo.y && p.y <= b.hi.y && p.z >= b.lo.z && p.z <= b.hi.z) { out.refusal = EnvRefusal.range; return out; }
+  base := env_resolve(set, state);
+  if base.refusal != EnvRefusal.none { out.refusal = base.refusal; return out; }
+  return env_region_blend(set[0], env_region_weights(set[0], tile, env_set_profile(set[0], base.env.profile), p), state.day);
+}
+// Camera grading and sky selection: once a frame, at the eye.
+env_resolve_camera :: (set: [] EnvironmentSet, index: [] EnvRegionIndex, state: EnvironmentState, eye: EnvDir) -> EnvRegionResolve #effects(all) {
+  return env_resolve_at(set, env_tile_candidates(set, index, env_point(eye)), state, eye);
+}

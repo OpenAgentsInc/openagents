@@ -6,7 +6,7 @@
 //     overshoot and, for the dragon, a roar. Return to Form plays it the other way.
 //   - the camera pulls back to SH_CAM_DRAGON times its distance round the dragon.
 //   - the dragon walks, takes off with Jump, flies and lands through the shared winged flight
-//     (aethyr/action/flight.coax), at its SRD Speeds: walking 40 ft and flying 80 ft against the
+//     (metaverse-engine/action/flight.coax), at its SRD Speeds: walking 40 ft and flying 80 ft against the
 //     druid's 30.
 //   - Fire Breath: hold to aim (the cone shows), release to breathe. The cone is the SRD's, 60 feet
 //     (18.288 m) from the dragon's mouth with a half-angle of atan(1/2), round the aim in three
@@ -23,7 +23,7 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #module "everglade.shapeshift";
 #load "../rules/srd/battle.coax";
-#load "../aethyr/action/flight.coax";
+#load "../metaverse-engine/action/flight.coax";
 #load "dragon-clips.coax";
 
 SH_DRUID :: 0; SH_WOLF :: 1; SH_DRAGON :: 2;

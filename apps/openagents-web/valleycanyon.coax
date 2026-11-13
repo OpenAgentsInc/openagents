@@ -2,16 +2,16 @@
 #load "../../verse/valley/canyon.coax";
 #load "../../verse/valley/canyon-pack-policy.coax";
 #load "../../verse/valley/slay-gpu-policy.coax";
-#load "../../aethyr/ui/draw.coax";
-#load "../../aethyr/core/budget.coax";
-#load "../../aethyr/core/assets.coax";
-#load "../../aethyr/core/sticks.coax";
+#load "../../metaverse-engine/ui/draw.coax";
+#load "../../metaverse-engine/core/budget.coax";
+#load "../../metaverse-engine/core/assets.coax";
+#load "../../metaverse-engine/core/sticks.coax";
 #load "../../verse/valley/slay-shot-play.coax";
-#load "../../aethyr/render/slay-lights.coax";
-#load "../../aethyr/move/locomotion.coax" as locomotion;
-#load "../../aethyr/move/walk.coax" as pc;
-#load "../../aethyr/cam/follow.coax" as camera;
-#load "../../aethyr/physics/collision-profiles.coax" as collision;
+#load "../../metaverse-engine/render/slay-lights.coax";
+#load "../../metaverse-engine/move/locomotion.coax" as locomotion;
+#load "../../metaverse-engine/move/walk.coax" as pc;
+#load "../../metaverse-engine/cam/follow.coax" as camera;
+#load "../../metaverse-engine/physics/collision-profiles.coax" as collision;
 CANYON_HUD :: 32768;
 #test "Source blend profiles keep body opaque, strands covered and orb additive" {
  s:[1]ValleyCanyon;for i:-1..<6 {#assert canyon_draw_blend(s[..],i)==(ifx i==2 then 2 else 0);}s[0].source_shot=true;for i:-1..<6 {#assert canyon_draw_blend(s[..],i)==(ifx i==4 then 1 else ifx i==2 then 2 else 0);}

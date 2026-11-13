@@ -135,7 +135,7 @@ e2gd_hits :: (s: [] E2) {
       // each of his attacks a swing of his Longsword, seen and heard, hit or miss
       else { gl[0].act = E2kAct.{at = now, clip = figs.BD_SLASH}; e2k_cue(s, "swing-heavy", 0.55, gl[0].x, gl[0].z, 0.9); }
     }
-    // the number over the one struck (aethyr/action/floats.coax): red over you, as much as the room took
+    // the number over the one struck (metaverse-engine/action/floats.coax): red over you, as much as the room took
     feel := ifx arrow then xf_monster_feel(XF_MON_GUARD_SHOT) else ifx harm then xf_monster_feel(XF_MON_GUARD_BLOW) else xf_struck_feel();
     _ := e2_float(s, feel, ifx harm then 1 else 0, x, y, z, ifx harm && e.seat == n[0].seat then fl.FLOAT_TAKEN else fl.FLOAT_DEALT, crit, e.amount);
     if e.amount > 0 { e2k_cue(s, ifx harm then "hit-heavy" else "hit", 0.8, x, z, 1); if e.kind == 1 { e2k_cue(s, "grunt", 0.45, x, z, 1); } }

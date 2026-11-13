@@ -1,6 +1,6 @@
 // Everglade's feel table (docs/verse/action-pipeline.md, GitHub #13072): every class ability on every
 // bar at every level, and every monster action Everglade fields, declares its animation, its effect,
-// its sound and how the body moves (aethyr/action/deed.coax DeedFeel). A realm plays an action only
+// its sound and how the body moves (metaverse-engine/action/deed.coax DeedFeel). A realm plays an action only
 // once its rules accept it (deed_answer), and only what its feel declares (deed_show); the check below
 // fails when any usable action lacks any of the four.
 //

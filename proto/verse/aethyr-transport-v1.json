@@ -1,7 +1,7 @@
 {
   "identity": "aethyr-transport-v1",
   "check": "coax/web/tool.sh coax/web/room/transport-profile.coax proto/verse/aethyr-transport-v1.json",
-  "codec": "aethyr/net/transport.coax",
+  "codec": "metaverse-engine/net/transport.coax",
   "doc": "docs/protocol/aethyr-transport-v1.md",
   "scope": "The bytes a page's pipe and a room's WebTransport session carry for each frame. On a WebSocket every frame is its own bytes, unchanged.",
   "url_prefix": "wt+",

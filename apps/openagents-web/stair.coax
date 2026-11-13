@@ -12,14 +12,14 @@
 // damage numbers and the HUD text are fx strokes (font.coax).
 //   coax/bin/coax test apps/openagents-web/stair.coax --steps 3000000000   (the three-maps check ~2.03B)
 
-#load "../../aethyr/ui/font.coax";
+#load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../verse/rules/srd5-combat.coax";
 #load "stair-tables.coax";
 #load "stair-coop.coax";
 #load "lockroom.coax";
-#load "../../aethyr/core/budget.coax";
-#load "../../aethyr/core/loop.coax";   // the fixed steps: Aethyr's one clock
+#load "../../metaverse-engine/core/budget.coax";
+#load "../../metaverse-engine/core/loop.coax";   // the fixed steps: Aethyr's one clock
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 52000;   // the swarm stage draws 39,354 at 1440 px; 36,000 clipped it (STAIR_BUDGET)
@@ -281,7 +281,7 @@ BEASTS :: 512;
 DEFENDERS :: 48;
 FX :: 160;
 STEP :: 0.0166666667;
-STAIR_STEP_NS :: 16666667;        // the same step on the clock (aethyr/core/loop.coax)
+STAIR_STEP_NS :: 16666667;        // the same step on the clock (metaverse-engine/core/loop.coax)
 STAIR_FRAME_NS :: 100000000;      // a frame's real time counts for at most 0.1 s
 STAIR_MAX_STEPS :: 8;             // and runs at most 8 steps (STAIR_BUDGET): fast-forward included
 
@@ -359,7 +359,7 @@ Stair :: struct {
   card_shot: bool;   // ?card=1: the world without the HUD, for a link's card (coax/web/og-render.ts)
   // the map's layout this frame
   portrait: bool; ox: f32; oy: f32; tile: f32; scols: int; srows: int;
-  // the camera (aethyr/cam/camera.coax's zoom and focus): the map as laid out to fit (bx, by, bt), its
+  // the camera (metaverse-engine/cam/camera.coax's zoom and focus): the map as laid out to fit (bx, by, bt), its
   // middle on the screen (acx, acy), how far in (zoom, 1 to ZOOM_MAX) and the map point, in tiles,
   // at that middle (fu, fv); what lies outside clip_y0..clip_y1 is the HUD's
   bx: f32; by: f32; bt: f32; acx: f32; acy: f32; clip_y0: f32; clip_y1: f32;
@@ -2483,7 +2483,7 @@ class_cap :: (s: [] Stair, k: f32, names: bool) -> f32 {
   return ifx names then cnc else lo(ccc, cnc);
 }
 // The seconds a frame's real time counts for: refused below zero or past a number, at most 0.1 s
-// (aethyr/core/loop.coax, as a frame's time counts on the game's clock).
+// (metaverse-engine/core/loop.coax, as a frame's time counts on the game's clock).
 stair_pace :: () -> FrameClock {
   c: FrameClock;
   c.max_frame_ns = STAIR_FRAME_NS;
@@ -3405,7 +3405,7 @@ quiet_fight :: (s: [] Stair) { s[0].phase = FIGHT; s[0].wave = 1; for g: 0..<GRO
 }
 
 // ---------------------------------------------------------------------------------------------
-// The frame budget (aethyr/core/budget.coax, book chapter 16): what one frame of Hold the Stair may
+// The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of Hold the Stair may
 // use. Its heaviest frame is the swarm stage's tenth: 39,354 vertices at 1440 by 900, which the
 // 36,000-vertex buffer clipped before this check; the buffer is now 52,000. REALMS adds 36 vertices over the old GALAXY label.
 STAIR_BUDGET :: FrameBudget.{steps = 8, vertices = 48000, draws = 0, bytes = 3932160};

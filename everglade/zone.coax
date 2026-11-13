@@ -10,28 +10,28 @@
 // It is built from the engine's and the game's modules and loads them:
 //   the scene: the meadow, your figure, the mounts, a zone's own standing things   everglade/scene/charactercreator.coax (cc)
 //   your class's bar and the SRD rules against the monsters                         zone-combat.coax
-//   the bow: this zone's ground, walls and bodies for the engine's archer           zone-bow.coax (aethyr/action/archery.coax, longbow.coax)
+//   the bow: this zone's ground, walls and bodies for the engine's archer           zone-bow.coax (metaverse-engine/action/archery.coax, longbow.coax)
 //   riding: E, the saddle, the dragon's Fire Breath                                 zone-ride.coax (mounts.coax, zone-mounts.coax)
 //   Shapechange                                                                     zone-shapechange.coax (shapeshift.coax)
-//   the agent driver                                                                zone-drive.coax (aethyr/agent/drive.coax)
+//   the agent driver                                                                zone-drive.coax (metaverse-engine/agent/drive.coax)
 //   COAX_NATIVE_CHECKS=1 coax/bin/coax test --library everglade/zone.coax
 #load "scene/charactercreator.coax" as cc;
 #load "../verse/experimental-village.coax" as village;
 #load "../verse/experimental-hostiles.coax" as hostile;
 #load "../verse/experimental-dungeon.coax" as xdungeon;
-#load "../aethyr/core/loop.coax";
-#load "../aethyr/core/quality-page.coax";   // the graphics governor, wired as every realm wires it (zone_quality_frame, #13147)
+#load "../metaverse-engine/core/loop.coax";
+#load "../metaverse-engine/core/quality-page.coax";   // the graphics governor, wired as every realm wires it (zone_quality_frame, #13147)
 #load "../rules/srd/battle.coax";
 #load "../rules/srd/condition-display.coax";   // the conditions' words and icons, every zone's (#13082)
-#load "../aethyr/core/space.coax" as asp;
-#load "../aethyr/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
-#load "../aethyr/fx/battle.coax";   // which effect each battle event starts (#13086)
+#load "../metaverse-engine/core/space.coax" as asp;
+#load "../metaverse-engine/fx/puff.coax";   // the glade's spell and combat effects (book chapter 72)
+#load "../metaverse-engine/fx/battle.coax";   // which effect each battle event starts (#13086)
 #load "scene/bodies.coax" as figs;   // the figures: Everglade's Quaternius people, skinned from baked clips
 #load "shared/everglade-move-types.coax";   // what a face hands Everglade's movement step (everglade-step.coax)
 #load "sound.coax" as exsound;
-#load "../aethyr/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held
-#load "../aethyr/cam/gyro.coax" as gy;          // a phone's turn looks and aims (#13189)
-#load "../aethyr/action/sprint.coax" as sprint;   // a Dash's sprint (dash.coax, wired in zone-combat.coax xc_sprint_frame)
+#load "../metaverse-engine/cam/mouselook.coax" as mlook;   // the mouse looks round with no button held
+#load "../metaverse-engine/cam/gyro.coax" as gy;          // a phone's turn looks and aims (#13189)
+#load "../metaverse-engine/action/sprint.coax" as sprint;   // a Dash's sprint (dash.coax, wired in zone-combat.coax xc_sprint_frame)
 #load "hud/class-bar.coax";   // Everglade's class menus: rest, in the menu your portrait opens (#13092, #13147)
 #load "hud/lines.coax";       // Everglade's line HUD (#13083)
 #load "zone-combat.coax";   // your class's level 1 bar against the monsters, and CLASSES (#13025)
@@ -40,17 +40,17 @@
 #load "zone-objects.coax";
 #load "mounts.coax" as egm;   // Everglade's horse and red dragon (docs/mounts-spec.md)
 #load "zone-ride.coax";       // riding in a zone: E, the saddle, the dragon's Fire Breath
-#load "../aethyr/agent/drive.coax";   // the agent driver: entities by id, the HUD's widgets, world operations (#13095)
+#load "../metaverse-engine/agent/drive.coax";   // the agent driver: entities by id, the HUD's widgets, world operations (#13095)
 #load "zone-drive.coax";      // ... wired to a zone
 #load "zone-touch.coax";      // a phone: which finger is the thumb's stick, JUMP, and the dragon's UP and DOWN (#13151)
-#load "../aethyr/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
-#load "../aethyr/render/mesh-cull.coax" as mc;
-#load "../aethyr/render/ghost.coax" as ghost;   // your figure as a ghost, when a zone asks (EgZone.ghost, zone_figure_blend)   // the glade's environment mesh, drawn by the runs in view (zone_mesh_cull, #13168)
+#load "../metaverse-engine/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
+#load "../metaverse-engine/render/mesh-cull.coax" as mc;
+#load "../metaverse-engine/render/ghost.coax" as ghost;   // your figure as a ghost, when a zone asks (EgZone.ghost, zone_figure_blend)   // the glade's environment mesh, drawn by the runs in view (zone_mesh_cull, #13168)
 
 // The strokes a frame may draw and the uniforms it writes (everglade/scene/gpu/charactercreator.bindings).
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 250000;   // 16 MB of strokes: the HUD and the labels (the 5E Lab's log too, which shares the count)
-U_ENV :: 208;            // the camera's resolved environment, 27 vec4s (aethyr/render/painterly.coax PAINT_ENV_U, env_gpu_pack)
+U_ENV :: 208;            // the camera's resolved environment, 27 vec4s (metaverse-engine/render/painterly.coax PAINT_ENV_U, env_gpu_pack)
 U_ENV_WORDS :: envf.ENV_FRAME_FLOATS;   // the record's words, from its owner (#13067: no second copy of the layout)
 UNIFORM_FLOATS :: 316;   // 79 vec4s (everglade/scene/gpu/fivelab.bindings, everglade/scene/gpu/charactercreator.bindings)
 HOLD_W :: 1; HOLD_A :: 2; HOLD_S :: 4; HOLD_D :: 8; HOLD_LEFT :: 16; HOLD_RIGHT :: 32; HOLD_UP :: 64; HOLD_DOWN :: 128; HOLD_IN :: 256; HOLD_OUT :: 512;
@@ -72,12 +72,12 @@ EgZone :: struct {
   xc: [1] XcCombat;
   creator: [1] cc.Creator;
   experimental_audio: [1] exsound.ExperimentalSound;
-  drive: [] Drive;   // the agent driver (aethyr/agent/drive.coax), held by the face: empty in checks, off until a driver speaks
+  drive: [] Drive;   // the agent driver (metaverse-engine/agent/drive.coax), held by the face: empty in checks, off until a driver speaks
   respawn_id: int = -1;
   rein: f32 = 1;     // the share of a gallop the stick asks while you ride (a film stage canters)
   breath_dn: f32;    // how far down the dragon's breath was aimed (its torrent keeps that tilt as the dragon flies)
   breath_puff_at: f32 = -100;   // when the breath's torrent last left the dragon's jaws (zone-ride.coax zone_breath_stream)
-  puffs: [1] FxPuffs;   // the effects as puffs (aethyr/fx/puff.coax)
+  puffs: [1] FxPuffs;   // the effects as puffs (metaverse-engine/fx/puff.coax)
   held: int; shift: bool;   // the keys held (HOLD_*), and Shift
   // the figures (everglade/scene/bodies.coax): their playback, the frame's instances (the face's objects store) and the shadow tiles' draws
   bodies: [1] figs.Bodies;
@@ -90,21 +90,21 @@ EgZone :: struct {
   put_on: bool; put_x: f32; put_y: f32; put_z: f32; put_face: f32;
   safe_on: bool; safe_x: f32; safe_y: f32; safe_z: f32; safe_face: f32;
   village_near: [1] village.EvNear;   // the walls and floors round you, for the controller
-  touch: bool; stick_on: bool; stick_ox: f32; stick_oy: f32; stick_px: f32; stick_py: f32;   // the thumb's stick (aethyr/core/sticks.coax)
+  touch: bool; stick_on: bool; stick_ox: f32; stick_oy: f32; stick_px: f32; stick_py: f32;   // the thumb's stick (metaverse-engine/core/sticks.coax)
   zt_stick: int = -100; zt_up: int = -100; zt_thumb: bool; zt_top: f32;   // a phone's fingers: the thumb's and JUMP's, and a realm's panel over the stick's side (zone-touch.coax)
   env: [U_ENV_WORDS] f32; env_n: int;   // the light: the painterly default resolved at the page's fixed noon, once (zone_light)
-  qp: [1] QualityPage; gfx_finger: int = -1;   // the graphics governor (aethyr/core/quality-page.coax): the pixels drawn and the knobs; the finger on its control
+  qp: [1] QualityPage; gfx_finger: int = -1;   // the graphics governor (metaverse-engine/core/quality-page.coax): the pixels drawn and the knobs; the finger on its control
   glade_cull: [1] mc.MeshCull;   // the glade's environment mesh's runs and their boxes, from the host (zone_mesh_cull; a face's coaxial_mesh_bounds_v1)
   gyro: [1] gy.Gyro; gyro_menu: bool; gyro_finger: int = -100;   // a phone's turn as look and aim, its menu open, the finger on its button (zone-touch.coax)
   lines: bool;  // ?net: the coordinates, the graphics and the frame rate on an upright phone too (zone-combat.coax xc_corner)
   bare: bool;   // a zone with nothing to fight (Bitcoin Lab): no class bar, no monsters, no casting keys; you walk and look
-  ghost: bool;  // your figure drawn as a ghost (aethyr/render/ghost.coax): see-through with a soft rim, as WorldBuilder's walk draws it
+  ghost: bool;  // your figure drawn as a ghost (metaverse-engine/render/ghost.coax): see-through with a soft rim, as WorldBuilder's walk draws it
   bound: f32;   // metres from the middle your body may go each way, when the zone states its own ground (WorldBuilder's 128); 0: the meadow's edge
 }
 // The world is up: the page is a zone's, and you aren't walking out of Character Create's studio.
 zone_world :: (s: [] EgZone) -> bool { c := s[0].creator[..]; return c[0].on && c[0].experimental && !c[0].walk.on; }
 
-// ---- your body's step: the face steps Everglade's controller (aethyr/move/walk.coax through
+// ---- your body's step: the face steps Everglade's controller (metaverse-engine/move/walk.coax through
 // everglade-step.coax) on the keys and the thumb's stick each frame; this is the zone's half.
 ZoneWalk :: struct { on: bool; put: bool; x: f32; y: f32; z: f32; face: f32; }
 // Whether the face walks your body this frame (never while you are down), and a place to put it first.
@@ -135,7 +135,7 @@ zone_move_in :: (s: [] EgZone) -> EgMoveIn #export_c #effects(all) {
  s:[1] EgZone;s[0].creator[0].experimental=true;s[0].you_on=true;zone_queue_escape(s[..],10,0,12);w:=zone_walk(s[..]);#assert w.put && w.x==0 && w.y==0 && w.z==0;
 }
 // How the host blends your figure's draws into the scene (coax/web/host.js coaxial_draw_blend_v1): a
-// ghost's over what is behind it (its scene shader shades it with aethyr/render/ghost.coax), else opaque.
+// ghost's over what is behind it (its scene shader shades it with metaverse-engine/render/ghost.coax), else opaque.
 zone_figure_blend :: (s: [] EgZone) -> int #export_c #effects(all) { return ifx s[0].ghost then ghost.GHOST_BLEND else 0; }
 #test "a zone's figure is opaque unless the zone draws it as a ghost" {
  s:[1] EgZone;#assert zone_figure_blend(s[..])==0;s[0].ghost=true;#assert zone_figure_blend(s[..])==2;
@@ -160,14 +160,14 @@ zone_move_scale :: (s:[] EgZone)->f32 #export_c #effects(all) {
   if !s[0].creator[0].experimental || !s[0].xc[0].started { return 1; }
   xc_sync_world(s);
   // dragging what you grapple costs a foot more each foot (grapple.coax rs_drag_feet): half the pace
-  // and a Dash's sprint over your run (aethyr/action/sprint.coax sprint_pace)
+  // and a Dash's sprint over your run (metaverse-engine/action/sprint.coax sprint_pace)
   return rs_walk_scale(s[0].xc[0].b[..],0) / f32(1 + rs_drag_feet(s[0].xc[0].b[..],0,XC_AWAY,XC_AWAY)/5) * sprint.sprint_pace(s[0].xc[0].dash[0], s[0].creator[0].clock);
 }
 // The world where you stand, for Everglade's step: the walls and floors round you and your pace.
 zone_move_world :: (s: [] EgZone, x: f32, z: f32) -> EgMoveWorld #export_c #effects(all) {
   w: EgMoveWorld;
   w.deck = true;
-  // the open field: no village, its walls or its bushes; only the zone's own standing things (aethyr/world/props.coax)
+  // the open field: no village, its walls or its bushes; only the zone's own standing things (metaverse-engine/world/props.coax)
   if s[0].creator[0].field {s[0].village_near[0].floor_n=0;s[0].village_near[0].wall_n=wprops.props_near(s[0].creator[0].props[0],x,z,8,cc.cc_ground(s[0].creator[0].flat,x,z),s[0].village_near[0].walls[..],0);w.walls=s[0].village_near[0].wall_n;w.bodies=0;w.pace=xc_bow_pace(s);if xd_holds_body(s) {w.pace=0;}return w;}
   rescue:=village.ev_player_near(s[0].village_near[..],x,s[0].you_y,z);if rescue==2 {zone_queue_escape(s,x,s[0].you_y,z);}else if rescue==0 {s[0].safe_on=true;s[0].safe_x=x;s[0].safe_y=s[0].you_y;s[0].safe_z=z;s[0].safe_face=s[0].you_face;}xc_objects_walls(s,x,z);w.walls=s[0].village_near[0].wall_n;w.floors=s[0].village_near[0].floor_n;w.bodies=0;w.pace=village.ev_bush_pace(x,s[0].you_y,z)*xc_bow_pace(s);if xd_holds_body(s) {w.pace=0;}if sprint.sprint_on(s[0].xc[0].dash[0],s[0].creator[0].clock) {w.link_flags=512;}return w;
 }
@@ -343,7 +343,7 @@ zone_scene :: (s: [] EgZone, out: [] f32) -> int #export_c #effects(all) {
 }
 
 // The glade's environment mesh (2.35 million triangles in Experimental) drawn as the runs of it the
-// view can see (aethyr/render/mesh-cull.coax, #13168): its draw takes the nearest span, and a draw
+// view can see (metaverse-engine/render/mesh-cull.coax, #13168): its draw takes the nearest span, and a draw
 // is added after the others for each further one, sharing its record. Without the host's boxes, or
 // with no room for another draw, it stays one whole draw. Returns the draws.
 ZONE_MESH_DRAWS :: 48;
@@ -401,7 +401,7 @@ zone_mesh_cull :: (s: [] EgZone, n0: int) -> int {
   #assert total > 0 && total <= mc.MC_TEST_TRIS * 3;
 }
 
-// ---- the graphics governor (aethyr/core/quality.coax through aethyr/core/quality-page.coax, #13147): in AUTO
+// ---- the graphics governor (metaverse-engine/core/quality.coax through metaverse-engine/core/quality-page.coax, #13147): in AUTO
 // it draws fewer pixels, then less grass and understory, when frames run long, and more again when
 // they keep on time. A zone's face calls zone_quality_frame every frame and answers the host's
 // pixel budget with zone_pixel_budget; the tier shows beside the frame rate
@@ -620,7 +620,7 @@ zone_cursor :: (s: [] EgZone) -> int #export_c #effects(all) {
   if c[0].on && c[0].experimental && !c[0].walk.on && (s[0].xc[0].ar[0].draw[0].on || c[0].aim > 0.01 || c[0].ml[0].shown > 0.01) { return 4; }
   return 0;
 }
-// Experimental's mouselook, the host's face (aethyr/cam/mouselook.coax): in the world while you stand
+// Experimental's mouselook, the host's face (metaverse-engine/cam/mouselook.coax): in the world while you stand
 // (dead, the cursor is free for the respawn), never in Character Create's studio or the walk out of it.
 // The mouse turns the camera as a drag does, its tilt held to the drag's.
 zone_mouselook :: (s: [] EgZone) -> int #export_c #effects(all) { return mlook.ml_host(s[0].creator[0].ml[0]); }
@@ -641,7 +641,7 @@ zone_pointer_lock :: (s: [] EgZone, status: int) #export_c #effects(all) { mlook
   s[0].creator[0].hostiles[0].hp = 0; zone_mouselook_step(s[..], 0.1); #assert zone_mouselook(s[..]) == 0;
   s[0].creator[0].experimental = false; zone_mouselook_step(s[..], 0.1); #assert zone_mouselook(s[..]) == 0;
 }
-// ---- a phone's turn (aethyr/cam/gyro.coax, #13189): the host's turn waits for the frame, which
+// ---- a phone's turn (metaverse-engine/cam/gyro.coax, #13189): the host's turn waits for the frame, which
 // turns the camera with it while the gyro aims (the bow drawn) or always, by the player's setting.
 ZONE_ACT_GYRO :: 15;   // the host keeps the outbox's record for the player and gives it back in its facts as gyro=
 zone_tilt :: (s: [] EgZone, dyaw: f32, dpitch: f32) #export_c #effects(all) { gy.gyro_feed(s[0].gyro[..], dyaw, dpitch); }
@@ -724,7 +724,7 @@ zone_action :: (s: [] EgZone) -> int #export_c #effects(all) {
  a := s[0].action; s[0].action = 0; return a; }
 zone_action_done :: (s: [] EgZone) #export_c #effects(all) { s[0].out_n = 0; }
 
-// 840 mouselook's word to the host, 841 the pointer held, 842 the reticle (percent), 843 the camera's turn, 844 its tilt (milliradians), 845 the bar slot under the pointer, 839 the gyro (aethyr/cam/gyro.coax: its mode times ten and its sensor's word)
+// 840 mouselook's word to the host, 841 the pointer held, 842 the reticle (percent), 843 the camera's turn, 844 its tilt (milliradians), 845 the bar slot under the pointer, 839 the gyro (metaverse-engine/cam/gyro.coax: its mode times ten and its sensor's word)
 // the graphics governor (zone_quality_frame): 846 its rung (-1 before it starts), 847 the tier shown (0 high, 1 med, 2 low), 848 the mode (3 auto), 849 the grass knob in hundredths
 zone_probe :: (s:[] EgZone,f:int)->int #export_c #effects(all) {if f>=900 {return xc_probe(s,f);}
   if f==846 {return ifx s[0].qp[0].ready then s[0].qp[0].q[0].rung else -1;}if f==847 {return ifx s[0].qp[0].ready then quality_tier(s[0].qp[0].q[..]) else -1;}if f==848 {return s[0].qp[0].q[0].mode;}if f==849 {return cast(int)(s[0].creator[0].q_grass*100+0.5);}

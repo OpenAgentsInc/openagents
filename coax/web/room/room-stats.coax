@@ -1,4 +1,4 @@
-#load "../../../aethyr/core/ids.coax";
+#load "../../../metaverse-engine/core/ids.coax";
 // What the room server counts about its own work for the admins' room view (#12791; research
 // docs/research/mmo.md section 15): the parts of the action path the Coax side sees. The host
 // (room-host.c with room-stats.h) times the tick, counts the bytes, the queues and the join bursts,

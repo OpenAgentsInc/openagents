@@ -54,7 +54,7 @@ starter attribution, snapshots, delayed delivery, rebuild and record reuse.
 
 A page joins a room with a seat ticket from
 `POST /api/playtest/room-ticket/ROOM` (`?t=TICKET`). The ticket has one
-writer, [`aethyr/session/seat-ticket.coax`](../../aethyr/session/seat-ticket.coax),
+writer, [`metaverse-engine/session/seat-ticket.coax`](../../metaverse-engine/session/seat-ticket.coax),
 for every version: `seat_ticket_v5_write` writes version 5
 ([seat-ticket-v5](seat-ticket-v5.md)), and `seat_ticket_hmac_write` writes
 versions 2 and 3 and the version 4 envelope around them, the HMAC tickets the

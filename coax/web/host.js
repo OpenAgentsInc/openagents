@@ -29,14 +29,14 @@
 //                             button 0 left, 2 right, -1 on ordinary pointer moves
 //   coaxial_wheel(state, dy)  the wheel, CSS pixels down (the page doesn't scroll)
 //   coaxial_mouselook(state)  optional: 0 no mouselook here, 1 its cursor is free, 2 hold the pointer
-//                             (Pointer Lock, inside a user gesture; aethyr/cam/mouselook.coax)
+//                             (Pointer Lock, inside a user gesture; metaverse-engine/cam/mouselook.coax)
 //   coaxial_look_delta(state, dx, dy) the mouse moved while the pointer is held, CSS pixels
 //   coaxial_pointer_lock(state, status) 1 the pointer is held, 0 let go (Escape too), 2 refused
 //   coaxial_tilt(state, dyaw, dpitch) the phone turned, radians (the OpenAgents app's gyro: coaxial.tilt; a
 //                             phone's browser, from devicemotion: yaw about the world's up, left positive;
 //                             pitch about the screen's across, the top tilted back positive)
 //   coaxial_gyro(state)       optional: 1 while the app wants the phone's turn (iOS asks for the motion
-//                             permission at the next touch), 0 not (aethyr/cam/gyro.coax)
+//                             permission at the next touch), 0 not (metaverse-engine/cam/gyro.coax)
 //   coaxial_gyro_status(state, status) the motion sensor: 1 its turns come, 2 refused, 3 none
 //   coaxial_inbox(state), coaxial_inbox_cap(), coaxial_message(state, kind, length)
 //                             text in: kind 1 is typed or pasted text; kind 2 the page's data-text,
@@ -109,7 +109,7 @@
 //   601 hidden, 602 shown again, 603 the page is being left (the app's beacon goes in that turn),
 //   604 an error the page raised: message, file and line, a line each,
 //   612 the network: "1" back online (a socket from before is likely dead), "0" offline (#12856)
-//   700 a driver's command (coax drive, aethyr/agent/drive.coax): the realm answers through
+//   700 a driver's command (coax drive, metaverse-engine/agent/drive.coax): the realm answers through
 //       coaxial_drive_out(state) and coaxial_drive_out_len(state), read by coaxial.drive.send
 //   613 the GPU, once the adapter opens: gpu_vendor, gpu_arch, gpu_fallback (also in every later 600), and
 //       action 33 keeps the graphics rung the app settled at (verse.quality.settled, the next 600's settled=)
@@ -132,7 +132,7 @@
 //   layers:URL|URL|...  a 2D-array texture, an image a layer, sRGB, mipmapped
 //   sound:NAME=URL a sound the app plays by name;  loop:URL  one that loops from the first touch or key
 //   sounds:/DIR/  a directory of sounds the app plays by name, DIR/NAME.ogg each, fetched when first
-//                 named (aethyr/audio/mix.coax's lines; NAME lowercase letters, digits and dashes)
+//                 named (metaverse-engine/audio/mix.coax's lines; NAME lowercase letters, digits and dashes)
 //   pack:URL      a realm's asset pack (verse/tools/pack_realm.py, docs/verse/realm-host.md): one file,
 //                 streamed, that stands for four assets in its place, its catalog (data), vertices
 //                 (storage), indices (index) and texture layers (layers), and adds its sounds by name.
@@ -168,7 +168,7 @@
 //                             (instance-cull.js has its fields); its runs draw only what the
 //                             frustum and the frame's own depth leave in view
 //   coaxial_mesh_bounds_v1(state)   optional: a big static mesh's ask for its runs' boxes
-//                             (aethyr/render/mesh-cull.coax has its words), written once from the
+//                             (metaverse-engine/render/mesh-cull.coax has its words), written once from the
 //                             pack's vertex and index bytes (meshBounds); ?meshcull=0 or
 //                             coaxial.meshCull(false) answers "draw it whole", to compare
 //   coaxial_stores(), coaxial_store_cap(k), coaxial_store(state, k), coaxial_store_bytes(state, k)
@@ -177,7 +177,7 @@
 //                             generation: bump it when the store is rewritten)
 //   coaxial_sounds(state), coaxial_sounds_len(state)  sounds to play now, a line each: NAME GAIN PAN
 //                             [DELAY], or ~NAME GAIN PAN for a looping bed, or a mixed voice and the
-//                             bus's lines (aethyr/audio/mix.coax; playSoundText)
+//                             bus's lines (metaverse-engine/audio/mix.coax; playSoundText)
 //   coaxial_sound_bank(state), coaxial_sound_bank_len(state)  sounds the realm rendered itself,
 //                             a line each: NAME AT BYTES, WAV bytes in its memory (soundBank)
 //   coaxial_water_draws(state)  how many of the last draws are water (water_vs, waterPipelines)
@@ -228,7 +228,7 @@
 // A traced page (no scene: bg_fs draws its world, 5E Lab's glade) with a particles: module draws them
 // too, right after bg_fs (and its grass and surface), the same two passes, not depth-tested: a page
 // with no depth buffer gets pipelines without one, and its shader hides puffs itself from what its
-// uniforms say (aethyr/fx/gpu-puff.coax fades them into the ground it traces). Pages with a scene
+// uniforms say (metaverse-engine/fx/gpu-puff.coax fades them into the ground it traces). Pages with a scene
 // draw theirs as before.
 // Pictures and videos from this site, optionally, drawn where the app says, over the scene and under
 // its strokes (Hecate's Cemetery's memorials):
@@ -294,7 +294,7 @@ const probe = dev && new URLSearchParams(location.search).has("probe"); // tests
 // Agent mode (?agent, in development; coax drive opens every page so: docs/verse/agent-clock.md, #13096).
 // Simulation time moves only when the agent's clock steps it (coaxial.agent.step): the page draws
 // fixed frames as a clip does (clip mode below), and the local room (room-worker.js) ticks on the
-// same clock. The session is pinned: the seed, epoch, locale and time zone of aethyr/agent/pin.coax,
+// same clock. The session is pinned: the seed, epoch, locale and time zone of metaverse-engine/agent/pin.coax,
 // which the driver hands over as globalThis.coaxialAgent before the page loads (?agent=SEED.EPOCH_MS
 // by hand). Date, Math.random and crypto.getRandomValues answer from the pin, the date moving with
 // the agent's clock. While the page loads, before the first step, it draws frames a microsecond apart.
@@ -1033,7 +1033,7 @@ async function openDevice(made = () => {}) {
   if (!navigator.gpu) return null;
   let adapter = await navigator.gpu.requestAdapter();
   if (!adapter) return null;
-  // the GPU's facts for the graphics quality's device class (aethyr/core/quality.coax quality_gpu):
+  // the GPU's facts for the graphics quality's device class (metaverse-engine/core/quality.coax quality_gpu):
   // in every later pageFacts, and told to the app now (message 613)
   gpuFacts = { gpu_vendor: String(adapter.info?.vendor || "").toLowerCase().slice(0, 32), gpu_arch: String(adapter.info?.architecture || "").toLowerCase().slice(0, 32),
     gpu_fallback: (adapter.info?.isFallbackAdapter ?? adapter.isFallbackAdapter) ? 1 : 0 };
@@ -1103,7 +1103,7 @@ async function openDevice(made = () => {}) {
   return { adapter, device, context: renderContext, format: measuredFormat || format, timing };   // the adapter held: a collected one can drop its device
 }
 
-// ---- a lost GPU device (aethyr/book ch084). The engine and every byte of its state are in
+// ---- a lost GPU device (metaverse-engine/book ch084). The engine and every byte of its state are in
 // memory, not on the GPU, so the host takes a new device, builds the pipelines again, uploads the
 // assets again, and puts the state back as the loss found it (the assets' deliveries during the
 // rebuild do not change it). Frames and input wait meanwhile; the first frame after draws the
@@ -1242,7 +1242,7 @@ function frameUpload(x) {
 // 16 columns of 96-texel cells, the pen at x 16 and the baseline at y 72 of
 // each, drawn at 64 px and cut at its cell; every mip level is drawn at its own size rather than
 // downsampled. Coax lays the text out with the same fonts' widths
-// (aethyr/ui/font.coax, "the system sans"), so this list, the cell
+// (metaverse-engine/ui/font.coax, "the system sans"), so this list, the cell
 // and the font must match it.
 const SANS_EXTRA = [183, 8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8594, 8383, 8722, 215, 8804, 8805, 8800];
 const SANS_FONT = 'Helvetica, Arial, "Liberation Sans", "Nimbus Sans", sans-serif';
@@ -1254,7 +1254,7 @@ async function loadPageFont() {
   if (!response.ok) throw Error(`UI font HTTP ${response.status}`);
   const font = new FontFace(family, await response.arrayBuffer());
   await font.load();document.fonts.add(font);pageFontFamily = JSON.stringify(family);
-  // A HUD style's title face (aethyr/ui/hud-style.coax, docs/verse/hud-styles.md): data-ui-title-font-src,
+  // A HUD style's title face (metaverse-engine/ui/hud-style.coax, docs/verse/hud-styles.md): data-ui-title-font-src,
   // -family and -weight. The atlas then holds two faces in one set of cells: the reading face in red, the
   // title face in green; only a realm whose strokes ask for a channel (everglade/scene/gpu/fivelab.coax fivelab_hud_fs) has one.
   const titleSource = script?.dataset.uiTitleFontSrc, titleFamily = script?.dataset.uiTitleFontFamily;
@@ -1745,7 +1745,7 @@ function packBytes(pack) {
   promise.catch(() => {});   // a page that stops before loadPack never asks
   return { promise, cancel: job.cancel };
 }
-// A big static mesh's runs' boxes (aethyr/render/mesh-cull.coax, #13168), once the pack's catalog
+// A big static mesh's runs' boxes (metaverse-engine/render/mesh-cull.coax, #13168), once the pack's catalog
 // is delivered: the face asks with coaxial_mesh_bounds_v1 for one index range, and its runs of
 // triangles each get the box of their vertices' positions (a vertex's first three words), flagged
 // when a vertex's keep word matches. Which runs are drawn is the realm's; this only measures.
@@ -1897,7 +1897,7 @@ async function loadPackV1(pack){
     let told=0;
     // A block build of the pack (GitHub #13305): the realm's blocks: asset lists the builds beside
     // it, NAME.TAG.vpk3, each layer GPU blocks with its levels; Coax picks one this device's GPU
-    // takes (aethyr/render/texture-format.coax). Without one, or when it won't load, the pack itself.
+    // takes (metaverse-engine/render/texture-format.coax). Without one, or when it won't load, the pack itself.
     let build=null;
     if(packBlocks.length&&!pack.broker&&!gpu.renderer&&/\.pack$/.test(pack.url)){
       pack.fetching=true;
@@ -1965,7 +1965,7 @@ async function privatePack(session, cipher) {
   if (plain.length !== session.bytes || digest !== session.sha256) throw new Error("private pack: not the pack its digest names");
   return plain;
 }
-// The pack's entries, from the one table read (aethyr/host/pack-table.coax pack_table, in the pack
+// The pack's entries, from the one table read (metaverse-engine/host/pack-table.coax pack_table, in the pack
 // reactor): its header and table checked against its length; nothing outside it is read.
 async function unpack(bytes) { return (await openPackTable()).table(bytes); }
 // Hands an asset that has arrived to the app (data into its memory) and tells it.
@@ -2096,7 +2096,7 @@ async function layerTexture(images, dataFormat = "") {   // the loading screen c
   if (encoded) loading.textures(1, 0);
   const { device } = gpu, declaredSide = dataFormat ? 0 : engine?.exports.coaxial_layers_side_v1?.(arena.state) || 0,
     [dw, dh] = declaredSide ? [declaredSide, declaredSide] : [first.width, first.height];
-  // Coax picks the format and the size tier (aethyr/render/texture-format.coax). Image layers go up
+  // Coax picks the format and the size tier (metaverse-engine/render/texture-format.coax). Image layers go up
   // as RGBA8, at most 512 a side on a phone (a block build's layers took blockTexture above).
   // Without the reactor the layers go up as they always have.
   const format = dataFormat || "rgba8unorm-srgb"; let w = dw, h = dh;
@@ -2146,7 +2146,7 @@ async function layerTexture(images, dataFormat = "") {   // the loading screen c
   } catch (error) { texture.destroy();throw error; }
   return texture;
 }
-// A block build's layers (aethyr/render/block-layer.coax): every layer's levels written as the pack
+// A block build's layers (metaverse-engine/render/block-layer.coax): every layer's levels written as the pack
 // has them, no decode and no resize. Each layer has the first's shape. A phone's tier for the format
 // (texture-format.coax tf_side) drops the levels above it.
 async function blockTexture(images, first) {
@@ -2209,7 +2209,7 @@ function shadowLayout() {
   return gpu.shadowLayout;
 }
 // The map itself: 2048 square (1024 on a phone), or, when the realm's Coax lays out shadow tiles
-// (coaxial_shadow_atlas_v1: aethyr/render/cascades.coax, #13016), the atlas it asks for. Made again
+// (coaxial_shadow_atlas_v1: metaverse-engine/render/cascades.coax, #13016), the atlas it asks for. Made again
 // when the engine wants another size; a new one is empty (shadowFresh: the tiles are opened again).
 function shadowTexture() {
   const { device } = gpu, coarse = matchMedia("(pointer: coarse)").matches ? 1 : 0, x = engine?.exports;
@@ -2292,7 +2292,7 @@ function postTargets(w, h) {
 // Group 1, once every GPU asset is in: the storage assets, the stores, the texture, its sampler.
 function bindScene() {
   if (gpu?.renderer) return;
-  // an asset or pack installed: the shadow tiles are drawn again (rate-limited in Coax: aethyr/render/cascades.coax)
+  // an asset or pack installed: the shadow tiles are drawn again (rate-limited in Coax: metaverse-engine/render/cascades.coax)
   if (engine?.exports.coaxial_shadow_event_v1 && arena?.state) engine.exports.coaxial_shadow_event_v1(arena.state, 1, 0);
   const gpuAssets = assets.filter((a) => ["storage", "index", "layers"].includes(a.kind));
   if (!gpu || gpu.sceneGroup || !engine?.exports.coaxial_draws || gpuAssets.some((a) => (!a.done || a.failed) && !engine.exports.coaxial_asset_optional_v1?.(a.i))) return;
@@ -2463,7 +2463,7 @@ function prepareContractAudio() {
   },{services,memory:contractAudioMemory}).then(adapter=>{if(owner===audioOwner)contractAudio=adapter;return adapter;}).catch(error=>{if(owner===audioOwner){audioFailure=String(error.message);say(`Audio: ${audioFailure}`);}return null;});
 }
 const sounds = new Map();   // name -> a decoding or decoded buffer
-// A realm that renders its own sounds (aethyr/audio/sfx.coax) lists them once, when audio
+// A realm that renders its own sounds (metaverse-engine/audio/sfx.coax) lists them once, when audio
 // starts: coaxial_sound_bank(state) and coaxial_sound_bank_len(state), a line each, NAME
 // AT BYTES, a WAV file's place in the wasm's memory. They join the sounds played by name.
 let banked = false;
@@ -2502,7 +2502,7 @@ function startAudio(gesture = true) {
   soundBank();
   if (!soundDir && !bankSounds.size && !assets.some((a) => a.kind === "sound" || a.kind === "loop")) return;
   try { audio = new AudioContext(hostTransport?{sampleRate:48000}:undefined); } catch { return; }
-  // checks (aethyr/tests/live-audio.coax): the live graph ends in the check's tap, which
+  // checks (metaverse-engine/tests/live-audio.coax): the live graph ends in the check's tap, which
   // records the samples on the audio thread and passes them on to the (muted) speakers
   audioOut = dev && typeof globalThis.coaxialAudioTap === "function" ? globalThis.coaxialAudioTap(audio) : audio.destination;
   if(hostTransport){if(!audioStarted||worldPaused)audio.suspend().catch(()=>{});prepareContractAudio();return;}
@@ -2518,7 +2518,7 @@ function decoded(a) {
   return sounds.get(key);
 }
 // One voice: the decoded buffer, its gain, a stereo pan clamped to -1..1, into out; with a
-// lowpass corner in hertz (a far sound, aethyr/audio/space.coax), first a one-pole lowpass,
+// lowpass corner in hertz (a far sound, metaverse-engine/audio/space.coax), first a one-pole lowpass,
 // y += c (x - y) with c = 1 - e^(-2 pi f / rate). The live host, a clip's mix and the
 // offline checks build the same graph with this.
 function soundVoice(ctx, b, gain, pan, out, lowpass) {
@@ -2541,7 +2541,7 @@ function soundAsset(name) {
   if(!hostTransport)assets.push(b);
   return b;
 }
-// The mixed voices' bus (aethyr/audio/mix.coax): the voices and the room's return into a gain the
+// The mixed voices' bus (metaverse-engine/audio/mix.coax): the voices and the room's return into a gain the
 // realm sets (!bus, its limiter at control rate), then a gentle compressor and a brick-wall limiter
 // at -1 dBFS, into the output. The room is a convolver with the realm's impulse (!room NAME).
 let bus = null;
@@ -2588,14 +2588,14 @@ function playSounds(x) {
   playSoundText(new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_sounds(arena.state), n).slice()));
 }
 // The realm's lines, NAME GAIN PAN each, an optional DELAY in seconds (a far sound is
-// heard after it is seen, aethyr/audio/space.coax) and after it an optional LOWPASS corner
+// heard after it is seen, metaverse-engine/audio/space.coax) and after it an optional LOWPASS corner
 // in hertz (a far sound is dull): at most 16 voices at once. A voice holds its place from
 // its line, while its sound still decodes, so a burst can't pass 16.
 // A line ~NAME GAIN PAN sets a looping bed instead: started on its first line, then eased
 // to each new gain and pan (gain 0 keeps it silent), outside the 16.
 const beds = new Map();   // name -> { gain, pan } nodes of a looping sound
 const heard = [];         // on this machine only: the last lines played, for the checks
-// A mixed voice's line, NAME GAIN PAN DELAY LOWPASS RATE WET ID (aethyr/audio/mix.coax), goes to the
+// A mixed voice's line, NAME GAIN PAN DELAY LOWPASS RATE WET ID (metaverse-engine/audio/mix.coax), goes to the
 // bus with its rate and room send, and at most 48 at once (the realm keeps far fewer); a line that
 // starts ! or - is the bus's (busLine).
 function deliverContractAudio(offer,owner,started){
@@ -2782,7 +2782,7 @@ function observeSize() {
 // 9 times the pixels of the page, and a scene's shaders run on each. The app's action 6 names a new
 // one and coaxial_quality(state, 0|1|2|3) tells the app the one in force; kept in localStorage
 // verse.quality. AUTO (3) caps nothing: the app's governor sets its pixels (coaxial_pixel_budget,
-// aethyr/core/quality.coax). Goldens always draw HIGH.
+// metaverse-engine/core/quality.coax). Goldens always draw HIGH.
 const QUALITY = ["high", "medium", "low", "auto"], QUALITY_CAP = [Infinity, 1.5, 1, Infinity];
 let quality = (() => {
   try { const q = QUALITY.indexOf(localStorage.getItem("verse.quality")); if (q >= 0) return q; } catch {}
@@ -2929,7 +2929,7 @@ function frame(now) {
 
 // A controller (a module that exports coaxial_pad): the first pad's left stick (x right, y
 // forward), its first button, and every button as bits (bit b for button b), once a frame; the
-// module decides what they do (myrealm: aethyr/core/input.coax; Everglade: its settings record,
+// module decides what they do (myrealm: metaverse-engine/core/input.coax; Everglade: its settings record,
 // everglade-access.coax). A pad gone sends one still frame.
 let padLive = false;
 function padPoll() {
@@ -3123,7 +3123,7 @@ function draw(now) {
   const hero = draws && gpu.shadow ? characters.want(x, arena.state, memory, now) : false;
   if (gpu.shadow && gpu.shadowLayout) shadowTexture();
   if (gpu.shadow && gpu.shadowTiles) {
-    // The shadow tiles (aethyr/render/cascades.coax): open them once the atlas is new or the engine
+    // The shadow tiles (metaverse-engine/render/cascades.coax): open them once the atlas is new or the engine
     // has none yet; then this frame draws at most the one tile the engine names, cleared, into its rect.
     const st = arena.state;
     if (gpu.shadowFresh || x.coaxial_shadow_v1(st, 6) <= 0) { x.coaxial_shadow_event_v1(st, 0, gpu.shadowCoarse); gpu.shadowFresh = false; }
@@ -3319,7 +3319,7 @@ const call = (name, ...args) => {
   try { return engine.exports[name](arena.state, ...args); } catch (e) { trapped(e); return 0; }
 };
 
-// ---- a realm that stops (aethyr/book ch084). A trap in the engine leaves its state as far as the
+// ---- a realm that stops (metaverse-engine/book ch084). A trap in the engine leaves its state as far as the
 // trapping call got, so the host keeps a copy of the state at each frame's start (every frame, or
 // every HOLD_EVERY-th for a state over HOLD_BYTES) and, when the engine traps, saves the last one
 // as the realm's rescue save and shows the reload message. The next load of the same engine (its
@@ -3516,7 +3516,7 @@ globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => l
   fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1,
   // The room's state for a page opening this one in place (zone-host.js): -1 none, 0 off, 1 opening, 2 open, 3 down.
   room: () => engine?.exports.coaxial_net_probe?.(arena.state, 0) ?? -1,
-  // The agent driver (coax drive: coax/web/drive.coax, aethyr/agent/drive.coax): send gives a realm one
+  // The agent driver (coax drive: coax/web/drive.coax, metaverse-engine/agent/drive.coax): send gives a realm one
   // command as message 700 and returns its answer (coaxial_drive_out), or null when the engine can't
   // take it yet; peek returns `size` bytes of the state at `offset` as hex, for `state` (the driver
   // reads the field's place and type from the build's layout, build/APP.layout).
@@ -3572,7 +3572,7 @@ if (dev) {
   globalThis.coaxial.reloadRenderer = async () => { try { return await loadShaders(); } catch { return false; } };
   globalThis.coaxial.renderResources = () => gpu?.renderer ? [gpu.renderer.vertexBuffer, gpu.renderer.uniformBuffer,
     ...[...gpu.renderer.resourceRecords.values()].map((r) => r.gpu), gpu.renderer.indexRecord?.gpu, gpu.renderer.sansTexture, gpu.renderer.layerTexture] : [];
-  // Live audio for aethyr/tests/live-audio.coax: a sound added as the realm's own, its
+  // Live audio for metaverse-engine/tests/live-audio.coax: a sound added as the realm's own, its
   // lines played through the host's path, and the voice graph for an offline render.
   globalThis.coaxial.audio = { add: (name, bytes, canonical=false) => { const asset={ i: assets.length, kind: "sound", name, bytes, done: true };if(canonical)bankSounds.set(name,{...asset,canonical:true});else assets.push(asset); },
     start: () => { startAudio(); return audio; }, play: (text) => playSoundText(text), playing: () => playing,
@@ -3619,7 +3619,7 @@ if (dev) {
 if (crashTest && !dev) globalThis.coaxial.trapNextFrame = () => { trapArmed = true;return !!engine; };   // staging's crash test (#13298): the next frame traps
 // The OpenAgents app turns the camera with the phone (its gyro), radians since the last call.
 globalThis.coaxial.tilt = (dyaw, dpitch) => { engine?.exports.coaxial_tilt?.(arena.state, dyaw, dpitch); };
-// A phone's browser turns the camera with the phone too, while the app asks (coaxial_gyro, aethyr/cam/gyro.coax):
+// A phone's browser turns the camera with the phone too, while the app asks (coaxial_gyro, metaverse-engine/cam/gyro.coax):
 // devicemotion's rotation rate, in the screen's frame, summed between frames. iOS asks for the motion
 // permission, which only a touch's end may do; the app hears what came of it (coaxial_gyro_status).
 // Browser glue: the sign of up from gravity is taken toward the screen's top and face, since WebKit's
@@ -3814,9 +3814,9 @@ function after(gesture, tap = false) {
     else if (code === 33) { if (!golden) try { localStorage.setItem("verse.quality.settled", text.slice(0, 16)); } catch {} }
     // a realm's sound settings, "VOLUME MUTED" (0..100, 0 or 1), back in its facts as sound=
     else if (code === 13) { if (!golden) try { localStorage.setItem("verse.sound", text.slice(0, 16)); } catch {} }
-    // a realm's input and reading settings (aethyr/ui/settings.coax), back in its facts as settings=
+    // a realm's input and reading settings (metaverse-engine/ui/settings.coax), back in its facts as settings=
     else if (code === 14) { if (!golden) try { localStorage.setItem("verse.settings", text.slice(0, 256)); } catch {} }
-    // the player's gyro settings (aethyr/cam/gyro.coax), back in its facts as gyro=
+    // the player's gyro settings (metaverse-engine/cam/gyro.coax), back in its facts as gyro=
     else if (code === 15) { if (!golden) try { localStorage.setItem("verse.gyro", text.slice(0, 32)); } catch {} }
     else if (code === ACT_VOICE && voice) voice.toggle(text === "end" ? "end" : text === "hold" ? "hold" : text === "on");
     else if (code === ACT_VOICE_TO && voice) voice.face(text);
@@ -3942,7 +3942,7 @@ for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup
     if (touch) gyroSync(false);
   });
 
-// Mouselook (aethyr/cam/mouselook.coax): the app says when it wants the pointer held; the host asks the
+// Mouselook (metaverse-engine/cam/mouselook.coax): the app says when it wants the pointer held; the host asks the
 // browser inside a user gesture (a press or a key; Chrome lets a lock let go by the page come back
 // without one), lets it go when the app frees the cursor, and says what the browser did. A refusal
 // is the app's to answer (its drag orbit), never an error here. Dev pages can stand in for the

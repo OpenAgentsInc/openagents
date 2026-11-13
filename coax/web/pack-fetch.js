@@ -27,7 +27,7 @@ export async function fetchWholePack(url, { gzip = false, init, signal, progress
       if (at < 12) return;
       const head = new Uint8Array(12); let k = 0;
       for (const c of loose) { head.set(c.subarray(0, Math.min(c.length, 12 - k)), k); k += Math.min(c.length, 12 - k); if (k >= 12) break; }
-      const size = reader.stated(head);   // aethyr/host/pack-table.coax pack_stated: -1 when these bytes don't start a pack
+      const size = reader.stated(head);   // metaverse-engine/host/pack-table.coax pack_stated: -1 when these bytes don't start a pack
       if (size < at) return;   // not a pack: kept loose, and unpack says so
       stated = size; target = new Uint8Array(size); k = 0;
       for (const c of loose) { target.set(c, k); k += c.length; }

@@ -1,7 +1,7 @@
 // The Archery Range, built (everglade/docs/archery-range-spec.md): five straw butts on wooden
 // legs, two faces on tall poles, a distance post beside each lane and a chalk shooting line, each
 // standing on the ground under it. Made in Coax from the engine's build-site meshes
-// (aethyr/world/build-site-mesh.coax), in its materials (timber; straw and paint in their own colours),
+// (metaverse-engine/world/build-site-mesh.coax), in its materials (timber; straw and paint in their own colours),
 // to layout.coax's numbers; the scene packer adds the whole range to a pack as one mesh
 // (verse/tools/assets/character_glade_pack.coax --append-range, "C glade/range").
 //
@@ -11,13 +11,13 @@
 //   straw and its legs and prop, a pole, a post. The chalk has none: you walk over it.
 //
 // A face is ten flat rings of paint on a disc, a little proud of its straw, so an arrow meets the
-// face (aethyr/action/target.coax) before the straw behind it.
+// face (metaverse-engine/action/target.coax) before the straw behind it.
 //   coax/bin/coax test --library everglade/range/place.coax
 #module "everglade.range.place";
 #load "layout.coax";
-#load "../../aethyr/world/build-site.coax" as bs;
-#load "../../aethyr/world/build-site-mesh.coax" as bsm;
-#load "../../aethyr/world/building.coax" as building;
+#load "../../metaverse-engine/world/build-site.coax" as bs;
+#load "../../metaverse-engine/world/build-site-mesh.coax" as bsm;
+#load "../../metaverse-engine/world/building.coax" as building;
 
 RG_BUTT :: 0; RG_SKYFACE :: 1; RG_POST :: 2; RG_CHALK :: 3;
 RG_PIECES :: 34;              // five butts, two sky faces, five posts, 22 dashes of chalk

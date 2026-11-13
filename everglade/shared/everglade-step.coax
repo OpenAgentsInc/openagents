@@ -8,17 +8,17 @@
 //   b  := everglade_move_after(s, w, b0, eg_step_body(p), dt)   lifts, currents, the city's edge, the clip's speed
 //   p  = eg_step_put(p, b)
 // docs/verse/2026-11-03-everglade-multiplayer-spec.md section 3.1 (the shared movement module), #12706.
-// The unit carries aethyr/move/player.coax's C surface too (the faces' verse_player_*), in place of
+// The unit carries metaverse-engine/move/player.coax's C surface too (the faces' verse_player_*), in place of
 // player.coax's own unit, so the controller is in one unit.
 #module "everglade.step";
-#load "../../aethyr/move/player.coax";
-#load "../../aethyr/move/walk.coax" as walk;
-#load "../../aethyr/physics/collide.coax" as scaled_collision;
-#load "../../aethyr/physics/query.coax" as hull_query;
+#load "../../metaverse-engine/move/player.coax";
+#load "../../metaverse-engine/move/walk.coax" as walk;
+#load "../../metaverse-engine/physics/collide.coax" as scaled_collision;
+#load "../../metaverse-engine/physics/query.coax" as hull_query;
 #load "everglade-move-types.coax";
-#load "../../aethyr/action/sprint.coax" as sprint;   // the engine's sprint, for the Dash checks
-#load "../../aethyr/core/math.coax" as link_math;
-#load "../../aethyr/physics/collision-profiles.coax" as link_collision;
+#load "../../metaverse-engine/action/sprint.coax" as sprint;   // the engine's sprint, for the Dash checks
+#load "../../metaverse-engine/core/math.coax" as link_math;
+#load "../../metaverse-engine/physics/collision-profiles.coax" as link_collision;
 #load "../../verse/ocarina/locomotion.coax" as link_motion;
 
 eg_step_body :: (p: walk.Body) -> EgBody #export_c #effects(reads, writes, traps) {
@@ -68,7 +68,7 @@ eg_step_begin :: (p0: walk.Body, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> wa
 eg_step_advance :: (p0: walk.Body, w: EgMoveWorld, bodies: [] f32, walls: [] f32, floors: [] f32, frame: f32) -> walk.Body #export_c #effects(reads, writes, traps) {
   return eg_step_advance_among(p0, w, bodies, walls, floors, floors[0..<0], frame);
 }
-// The same among hulls too (aethyr/physics/query.coax): Everglade II's rocks, each its mesh's own shape.
+// The same among hulls too (metaverse-engine/physics/query.coax): Everglade II's rocks, each its mesh's own shape.
 eg_step_advance_among :: (p0: walk.Body, w: EgMoveWorld, bodies: [] f32, walls: [] f32, floors: [] f32, hulls: [] f32, frame: f32) -> walk.Body #export_c #effects(reads, writes, traps) {
   p := p0;
   if w.aboard {
@@ -293,7 +293,7 @@ eg_test_step :: (p0: walk.Body, key_y: f32, jump: bool) -> walk.Body #effects(re
   #assert dash.pos.z > 1 && dash.pos.z < 2 && dash.collision_refusals == 0;
 }
 
-// A step at a pace scale, for Everglade's Dash (everglade/dash.coax on aethyr/action/sprint.coax), through the controller as
+// A step at a pace scale, for Everglade's Dash (everglade/dash.coax on metaverse-engine/action/sprint.coax), through the controller as
 // fivelab-face.c steps it: the sprint's pace is the scale, on link flag 512. Speed 30: 9.144 m over a 7.5 m/s run.
 eg_test_scaled_step :: (p: walk.Body, i: EgMoveIn, w: EgMoveWorld, walls: [] f32, scale: f32) -> walk.Body #effects(all) {
   empty: [1] f32; f := 1.0f32 / 64;
@@ -335,7 +335,7 @@ eg_step_advance_jump :: (p0:walk.Body,w:EgMoveWorld,bodies:[]f32,walls:[]f32,flo
   p:=p0;
   if jump.mode==EG_JUMP_DENIED { p.jumps.waiting=0; }
   shaped:=jump.mode==EG_JUMP_HIGH || jump.mode==EG_JUMP_LONG;
-  // a Dash's sprint (link flag 512, aethyr/action/sprint.coax) always takes the scaled path: its pace is
+  // a Dash's sprint (link flag 512, metaverse-engine/action/sprint.coax) always takes the scaled path: its pace is
   // the scale, the sprint over the run, in as many collision steps as it needs
   if scale==1 && !shaped && (w.link_flags&512)==0 { return eg_step_advance(p,w,bodies,walls,floors,frame); }
   if !walk.finite(scale) || scale<0 || w.aboard || (w.link_flags&32)!=0 {
