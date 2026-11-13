@@ -1,0 +1,517 @@
+// The battle's grid (GitHub #13287, split from battle.coax): its room for creatures and squares, the
+// clock's conversions for a world that draws, distance and range, who stands where and the squares'
+// index, a battle cleared in place, zones' membership and the squares a spell's area covers.
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-grid.coax
+#authority;
+
+// The battle's room: its own, unless a world gave it more (rs_use). Every way in that writes a
+// creature or a square calls it first.
+rs_room :: (b: [] RsBattle) #effects(all) {
+  if b[0].c.count == 0 { b[0].c = b[0].own[..]; }
+  if b[0].occ.count == 0 { b[0].occ = b[0].own_occ[..]; }
+}
+// A world's own room for creatures and squares (kept in its state, beside the battle), for a
+// battle bigger than RS_MAX: it starts empty.
+rs_use :: (b: [] RsBattle, c: [] RsCreature, occ: [] int) #effects(all) {
+  b[0].c = c; b[0].occ = occ; b[0].n = 0;
+  rs_reset(b);
+}
+// The most creatures the battle can hold.
+rs_room_for :: (b: [] RsBattle) -> int #effects(all) { rs_room(b); return b[0].c.count; }
+// For a world that draws or steps in seconds: ticks as seconds, and seconds as the nearest whole
+// ticks. The rules never read a float time back.
+rs_ticks_s :: (ticks: int) -> f32 #effects(all) { return f32(ticks) / f32(RS_TICKS); }
+rs_clock_s :: (b: [] RsBattle) -> f32 #effects(all) { return rs_ticks_s(b[0].clock); }
+rs_s_ticks :: (seconds: f32) -> int #effects(all) { return cast(int) floor(seconds * f32(RS_TICKS) + 0.5); }
+rs_beat :: (b: [] RsBattle) -> int #effects(all) { return rs_timing_beat(b[0].timing); }
+
+rs_abs :: (v: int) -> int #effects(all) { return rs_max(v, -v); }
+rs_sign :: (v: int) -> int #effects(all) { if v > 0 { return 1; } if v < 0 { return -1; } return 0; }
+// Distance in feet on the grid: each square 5 feet, diagonals too (the SRD's grid rule).
+rs_feet :: (ax: int, ay: int, bx: int, by: int) -> int #effects(all) { return rs_max(rs_abs(ax - bx), rs_abs(ay - by)) * RS_SQUARE; }
+// Ranges, reaches and areas measure as the battle's world declared (measure.coax): the grid's count,
+// or the straight line between the squares' middles. Movement always counts the grid (rs_feet).
+rs_range_ft :: (b: [] RsBattle, ax: int, ay: int, bx: int, by: int) -> int #effects(all) { return rs_measure_feet(b[0].measure, ax - bx, ay - by); }
+rs_feet_to :: (b: [] RsBattle, i: int, j: int) -> int #effects(all) { return rs_range_ft(b, b[0].c[i].x, b[0].c[i].y, b[0].c[j].x, b[0].c[j].y); }
+// Who stands on a square (the dead lie where they fell and still fill it), or -1.
+rs_at :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
+  if rs_indexed(b) && x >= 0 && y >= 0 && x < b[0].w && y < b[0].h {
+    k := b[0].occ[y * b[0].w + x] - 1;
+    if k < 0 { return -1; }
+    if k < b[0].n && b[0].c[k].x == x && b[0].c[k].y == y { return k; }
+  }
+  return rs_at_scan(b, x, y);
+}
+rs_at_scan :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
+  for i: 0..<b[0].n { if b[0].c[i].x == x && b[0].c[i].y == y { return i; } }
+  return -1;
+}
+// The grid is small enough to index (a battle without w and h set scans).
+rs_indexed :: (b: [] RsBattle) -> bool #effects(all) { return b[0].w > 0 && b[0].h > 0 && b[0].w * b[0].h <= b[0].occ.count; }
+// Rebuilds the squares' index from where every creature stands (the lowest index wins a square
+// two share, as the scan finds it).
+rs_index :: (b: [] RsBattle) #effects(all) {
+  rs_room(b);
+  if !rs_indexed(b) { return; }
+  for q: 0..<(b[0].w * b[0].h) { b[0].occ[q] = 0; }
+  i := b[0].n - 1;
+  while i >= 0 {
+    x := b[0].c[i].x; y := b[0].c[i].y;
+    if x >= 0 && y >= 0 && x < b[0].w && y < b[0].h { b[0].occ[y * b[0].w + x] = i + 1; }
+    i -= 1;
+  }
+}
+// Creature i to the square (x, y), keeping the index: a world's own moves (a fresh creature in a
+// slot, a placement) go through here.
+rs_place :: (b: [] RsBattle, i: int, x: int, y: int) #effects(all) {
+  rs_room(b);
+  if rs_indexed(b) {
+    ox := b[0].c[i].x; oy := b[0].c[i].y;
+    if ox >= 0 && oy >= 0 && ox < b[0].w && oy < b[0].h && b[0].occ[oy * b[0].w + ox] == i + 1 { b[0].occ[oy * b[0].w + ox] = 0; }
+    if x >= 0 && y >= 0 && x < b[0].w && y < b[0].h && b[0].occ[y * b[0].w + x] == 0 { b[0].occ[y * b[0].w + x] = i + 1; }
+  }
+  b[0].c[i].x = x; b[0].c[i].y = y;
+}
+// A battle cleared in place, for a new one: RsBattle is too big for a stack's copy. Its room stays.
+rs_reset :: (b: [] RsBattle) #effects(all) {
+  rs_room(b);
+  blank: RsCreature;
+  for i: 0..<b[0].n { b[0].c[i] = blank; }
+  b[0].n = 0; b[0].truth_zones=0;
+  for z: 0..<RS_ZONES { b[0].zone[z] = RsZone.{}; }
+  for t: 0..<RS_TERRAINS { b[0].terrain[t] = RsTerrain.{}; }
+  rs_cover_clear(b);
+  b[0].dice[0] = RsDice.{};
+  b[0].book[0] = RsLog.{};
+  b[0].rest_clock=RsRestClock.{}; rs_rest_schedule_reset(b);
+  b[0].clock = 0; b[0].w = 0; b[0].h = 0; b[0].turn_no = 0; b[0].guards = 0; b[0].aff_used = false; b[0].who = 0;
+  b[0].turn = RsTurn.{}; b[0].reaction_frame=RsReactionFrame.{}; rs_reset_world(b);
+  for q: 0..<b[0].occ.count { b[0].occ[q] = 0; }
+}
+rs_inside :: (z: RsZone, x: int, y: int) -> bool #effects(all) {
+  if !z.on || x < z.x0 || x > z.x1 || y < z.y0 || y > z.y1 { return false; }
+  if z.line {
+    // a square ahead whose middle is within half the Line's width of it (2.5 feet, half a square, for
+    // a 5-foot Line), within its length as the grid counts it (rs_feet)
+    px := f32(x - z.cx); py := f32(y - z.cy);
+    along := px * z.dx + py * z.dy;
+    across := px * z.dy - py * z.dx;
+    h := ifx z.half > 0 then z.half else 0.5f32;
+    return along > 0 && rs_measure_feet(z.measure, x - z.cx, y - z.cy) <= z.r_ft && across <= h && across >= -h;
+  }
+  return !z.round || rs_measure_feet(z.measure, x - z.cx, y - z.cy) <= z.r_ft;
+}
+rs_difficult :: (b: [] RsBattle, x: int, y: int) -> bool #effects(all) {
+  for k: 0..<RS_ZONES { if b[0].zone[k].difficult && rs_inside(b[0].zone[k], x, y) { return true; } }
+  return (rs_terrain_at(b, x, y) & TR_DIFFICULT) != 0;
+}
+// A hostile creature within 5 feet that can act: ranged attacks have Disadvantage then.
+rs_threatened :: (b: [] RsBattle, i: int) -> bool #effects(all) {
+  // a big battle reads the squares next to it (one creature a square, as rs_at reads them); a
+  // square the index has wrong, or a small battle, scans them all
+  if b[0].n > 64 && rs_indexed(b) {
+    stale := false;
+    cx := b[0].c[i].x; cy := b[0].c[i].y;
+    for y: cy - 1..<cy + 2 {
+      for x: cx - 1..<cx + 2 {
+        if x < 0 || y < 0 || x >= b[0].w || y >= b[0].h { continue; }
+        j := b[0].occ[y * b[0].w + x] - 1;
+        if j < 0 || j == i { continue; }
+        if j >= b[0].n || b[0].c[j].x != x || b[0].c[j].y != y { stale = true; continue; }
+        if b[0].c[j].team != b[0].c[i].team && rs_capable(b[0].c[j]) { return true; }
+      }
+    }
+    if !stale { return false; }
+  }
+  for j: 0..<b[0].n {
+    if j != i && b[0].c[j].team != b[0].c[i].team && rs_capable(b[0].c[j]) && rs_feet_to(b, i, j) < 2 * RS_SQUARE { return true; }
+  }
+  return false;
+}
+
+// A Line's bounds: from (cx, cy) to its far end (the length out along the longer axis), and its
+// width each side.
+rs_line_box :: (z0: RsZone) -> RsZone #effects(all) {
+  z := z0;
+  n := f32(z.r_ft) / f32(RS_SQUARE) / rs_maxf(abs(z.dx), abs(z.dy));
+  ex := z.cx + cast(int) floor(z.dx * n + 0.5); ey := z.cy + cast(int) floor(z.dy * n + 0.5);
+  pad := 1 + cast(int) floor(z.half);
+  z.x0 = rs_min(z.cx, ex) - pad; z.y0 = rs_min(z.cy, ey) - pad; z.x1 = rs_max(z.cx, ex) + pad; z.y1 = rs_max(z.cy, ey) + pad;
+  return z;
+}
+// The squares a spell's area covers from caster i toward the point (tx, ty).
+rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #effects(all) {
+  z: RsZone;
+  z.on = true; z.by = i; z.spell = -1; z.measure = b[0].measure;
+  k := rs_max(sp.area_ft / RS_SQUARE, 1);
+  cx := b[0].c[i].x; cy := b[0].c[i].y;
+  if sp.area == RS_A_CUBE_SELF {
+    // a cube originating from you: on the side toward the point, from your own space on. The squares
+    // beside you are in it (your space is never "other than you": rs_cast skips the caster), so whoever
+    // stands at your shoulder or shares your 5-foot square is caught, as the wave leaves your body in a
+    // world whose people stand anywhere in a square (owner playtest, #12930)
+    ox_ := rs_sign(tx - cx); oy_ := rs_sign(ty - cy);
+    east := ox_ > 0 || (ox_ == 0 && oy_ == 0);   // aimed at its own square: east
+    z.x0 = ifx east then cx else ifx ox_ < 0 then cx - k else cx - k / 2;
+    z.y0 = ifx oy_ > 0 then cy else ifx oy_ < 0 then cy - k else cy - k / 2;
+    z.x1 = ifx east then cx + k else ifx ox_ < 0 then cx else z.x0 + k - 1;
+    z.y1 = ifx oy_ > 0 then cy + k else ifx oy_ < 0 then cy else z.y0 + k - 1;
+    return z;
+  } else if sp.area == RS_A_LINE {
+    // a Line from you toward the point (straight ahead when it is your own square)
+    ddx := f32(tx - cx); ddy := f32(ty - cy);
+    dl := sqrt(ddx * ddx + ddy * ddy);
+    if tx == cx && ty == cy { ddx = 1; dl = 1; }
+    z.line = true; z.cx = cx; z.cy = cy; z.r_ft = sp.area_ft; z.dx = ddx / dl; z.dy = ddy / dl;
+    z.half = f32(rs_max(sp.wide_ft, RS_SQUARE)) / f32(2 * RS_SQUARE);
+    return rs_line_box(z);
+  } else if sp.area == RS_A_SPHERE {
+    // a sphere: every square whose centre is within its radius of the point's
+    z.round = true; z.cx = tx; z.cy = ty; z.r_ft = sp.area_ft;
+    z.x0 = tx - k; z.y0 = ty - k; z.x1 = tx + k; z.y1 = ty + k;
+    return z;
+  } else {
+    z.x0 = tx - (k - 1) / 2; z.y0 = ty - (k - 1) / 2;
+  }
+  z.x1 = z.x0 + k - 1; z.y1 = z.y0 + k - 1;
+  return z;
+}
+
+// ---- checks
+
+#test "grid: a battle's room is its own until a world gives it more, and a given room starts empty" {
+  b: [1] RsBattle;
+  #assert b[0].c.count == 0 && b[0].occ.count == 0;
+  #assert rs_room_for(b[..]) == RS_MAX && b[0].c.count == RS_MAX && b[0].occ.count == RS_SQUARES && RS_MAX == 216 && RS_SQUARES == 8192;
+  // a room already there is kept: its creatures and its squares each on their own
+  own: [3] RsCreature; occ: [20] int;
+  c: [1] RsBattle; c[0].c = own[..]; rs_room(c[..]); #assert c[0].c.count == 3 && c[0].occ.count == RS_SQUARES;
+  d: [1] RsBattle; d[0].occ = occ[..]; rs_room(d[..]); #assert d[0].c.count == RS_MAX && d[0].occ.count == 20;
+  // rs_use: the world's room, emptied, the battle reset
+  e: [1] RsBattle; e[0].w = 4; e[0].h = 4; e[0].clock = 77;
+  _ := rs_add(e[..], rs_fighter("One", 0, 1), 1, 1);
+  own[0].hp = 9; occ[5] = 4; e[0].n = 1;
+  rs_use(e[..], own[..], occ[..]);
+  #assert e[0].c.count == 3 && e[0].occ.count == 20 && e[0].n == 0 && e[0].clock == 0 && e[0].w == 0 && occ[5] == 0 && rs_room_for(e[..]) == 3;
+  // it starts empty before it is reset: what the world's room held is not a creature of this battle to blank
+  #assert own[0].hp == 9;
+}
+#test "grid: ticks and seconds convert to the nearest tick, and the beat is the timing's" {
+  #assert rs_ticks_s(0) == 0 && rs_ticks_s(RS_TICKS) == 1 && rs_ticks_s(1500000) == 1.5 && rs_ticks_s(-500000) == -0.5 && RS_TICKS == 1000000;
+  b: [1] RsBattle; b[0].clock = 2250000; #assert rs_clock_s(b[..]) == 2.25;
+  b[0].clock = 0; #assert rs_clock_s(b[..]) == 0;
+  #assert rs_s_ticks(0) == 0 && rs_s_ticks(1) == 1000000 && rs_s_ticks(1.5) == 1500000 && rs_s_ticks(0.25) == 250000;
+  // the nearest: half a tick up, under half down
+  #assert rs_s_ticks(0.0000004) == 0 && rs_s_ticks(0.0000006) == 1 && rs_s_ticks(0.0000014) == 1 && rs_s_ticks(0.0000016) == 2 && rs_s_ticks(-0.25) == -250000;
+  #assert rs_beat(b[..]) == 6000000;
+  #assert rs_set_timing(b[..], RS_ACTION_TIMING) && rs_beat(b[..]) == 1500000;
+}
+#test "grid: absolute value, sign, and the grid's distance: the longer count, 5 feet a square" {
+  #assert rs_abs(0) == 0 && rs_abs(1) == 1 && rs_abs(-1) == 1 && rs_abs(-7) == 7 && rs_abs(7) == 7;
+  #assert rs_sign(0) == 0 && rs_sign(1) == 1 && rs_sign(9) == 1 && rs_sign(-1) == -1 && rs_sign(-9) == -1;
+  #assert rs_feet(0, 0, 0, 0) == 0 && rs_feet(1, 1, 4, 1) == 15 && rs_feet(4, 1, 1, 1) == 15 && rs_feet(1, 1, 1, 5) == 20 && rs_feet(1, 5, 1, 1) == 20;
+  #assert rs_feet(0, 0, 3, 3) == 15 && rs_feet(0, 0, 2, 5) == 25 && rs_feet(0, 0, 5, 2) == 25 && rs_feet(3, 7, 1, 2) == 25 && rs_feet(7, 3, 2, 1) == 25 && RS_SQUARE == 5;
+  // a range is measured as the battle's world declared; between two creatures, from the first to the second
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 20;
+  i := rs_add(b[..], rs_fighter("One", 0, 1), 2, 3); j := rs_add(b[..], rs_fighter("Two", 1, 1), 5, 7);
+  #assert rs_range_ft(b[..], 2, 3, 5, 7) == 20 && rs_range_ft(b[..], 5, 7, 2, 3) == 20 && rs_feet_to(b[..], i, j) == 20 && rs_feet_to(b[..], j, i) == 20 && rs_feet_to(b[..], i, i) == 0;
+  #assert rs_range_ft(b[..], 0, 0, 3, 0) == 15 && rs_range_ft(b[..], 0, 0, 0, 3) == 15 && rs_range_ft(b[..], 0, 9, 0, 3) == 30 && rs_range_ft(b[..], 9, 0, 3, 0) == 30;
+  b[0].measure = RS_MEASURE_STRAIGHT;
+  #assert rs_range_ft(b[..], 2, 3, 5, 7) == 25 && rs_feet_to(b[..], i, j) == 25 && rs_feet_to(b[..], j, i) == 25 && rs_range_ft(b[..], 0, 0, 3, 0) == 15 && rs_range_ft(b[..], 0, 0, 0, 3) == 15;
+  // each creature's own square, not another's: a third stands elsewhere
+  k := rs_add(b[..], rs_fighter("Three", 1, 1), 2, 9);
+  #assert rs_feet_to(b[..], i, k) == 30 && rs_feet_to(b[..], k, i) == 30 && rs_feet_to(b[..], j, k) == 20 && rs_feet_to(b[..], k, j) == 20;
+}
+#test "grid: who stands on a square, by the index and by the scan, and a stale index falls back to the scan" {
+  b: [1] RsBattle; b[0].w = 6; b[0].h = 4;
+  #assert rs_indexed(b[..]) == false;   // no room yet: the squares' count is 0
+  rs_room(b[..]); #assert rs_indexed(b[..]);
+  a := rs_add(b[..], rs_fighter("A", 0, 1), 0, 0); c := rs_add(b[..], rs_fighter("C", 1, 1), 5, 3); d := rs_add(b[..], rs_fighter("D", 1, 1), 2, 1);
+  #assert rs_at(b[..], 0, 0) == a && rs_at(b[..], 5, 3) == c && rs_at(b[..], 2, 1) == d && rs_at(b[..], 1, 2) == -1 && rs_at(b[..], 3, 3) == -1;
+  #assert b[0].occ[0] == a + 1 && b[0].occ[3 * 6 + 5] == c + 1 && b[0].occ[1 * 6 + 2] == d + 1;
+  #assert rs_at_scan(b[..], 0, 0) == a && rs_at_scan(b[..], 5, 3) == c && rs_at_scan(b[..], 2, 1) == d && rs_at_scan(b[..], 1, 2) == -1 && rs_at_scan(b[..], 2, 0) == -1 && rs_at_scan(b[..], 0, 1) == -1;
+  // off the grid on each side: the scan answers (no one there), and a creature set off it by hand is found
+  #assert rs_at(b[..], -1, 0) == -1 && rs_at(b[..], 0, -1) == -1 && rs_at(b[..], 6, 0) == -1 && rs_at(b[..], 0, 4) == -1;
+  b[0].c[d].x = -1; b[0].c[d].y = 2; #assert rs_at(b[..], -1, 2) == d;
+  b[0].c[d].x = 6; b[0].c[d].y = 0; #assert rs_at(b[..], 6, 0) == d;      // not the next row's first square
+  b[0].c[d].x = 3; b[0].c[d].y = -1; #assert rs_at(b[..], 3, -1) == d;
+  b[0].c[d].x = 3; b[0].c[d].y = 4; #assert rs_at(b[..], 3, 4) == d;
+  // a stale index: the square names d but d has moved by hand: the scan finds who is there (no one). Where d
+  // went the index says no one, and that is the answer: a world moves creatures through rs_place
+  b[0].c[d].x = 4; b[0].c[d].y = 2;
+  #assert b[0].occ[1 * 6 + 2] == d + 1 && rs_at(b[..], 2, 1) == -1 && rs_at(b[..], 4, 2) == -1 && rs_at_scan(b[..], 4, 2) == d;
+  // a square that names a creature past the battle's: the scan
+  b[0].occ[2 * 6 + 1] = b[0].n + 1; b[0].c[b[0].n].x = 1; b[0].c[b[0].n].y = 2; #assert rs_at(b[..], 1, 2) == -1;
+  b[0].occ[2 * 6 + 1] = c + 1; #assert rs_at(b[..], 1, 2) == -1;   // names c, who is at (5, 3): its x and its y each decide
+  b[0].c[c].x = 1; #assert rs_at(b[..], 1, 2) == -1;
+  b[0].c[c].y = 2; #assert rs_at(b[..], 1, 2) == c;
+  b[0].c[c].x = 5; #assert rs_at(b[..], 1, 2) == -1;
+  // an empty square is no one at once, though the scan would find a creature set there by hand
+  b[0].occ[0] = 0; #assert rs_at(b[..], 0, 0) == -1 && rs_at_scan(b[..], 0, 0) == a;
+  // the index rebuilt from where everyone stands: the lowest creature wins a shared square
+  b[0].c[c].x = 0; b[0].c[c].y = 0; b[0].c[d].x = 5; b[0].c[d].y = 3;
+  rs_index(b[..]);
+  #assert b[0].occ[0] == a + 1 && b[0].occ[3 * 6 + 5] == d + 1 && b[0].occ[1 * 6 + 2] == 0 && b[0].occ[2 * 6 + 1] == 0 && rs_at(b[..], 0, 0) == a && rs_at(b[..], 5, 3) == d;
+  // every square of the grid is cleared first, the first and the last too, and none past it
+  b[0].occ[4 * 6 - 1] = 9; b[0].occ[4 * 6] = 9; b[0].c[d].x = 1; b[0].c[d].y = 1; rs_index(b[..]);
+  #assert b[0].occ[4 * 6 - 1] == 0 && b[0].occ[4 * 6] == 9 && b[0].occ[1 * 6 + 1] == d + 1;
+  b[0].c[a].x = 3; b[0].c[a].y = 3; b[0].c[c].x = 4; b[0].c[c].y = 3; b[0].occ[0] = 9; rs_index(b[..]);
+  #assert b[0].occ[0] == 0 && b[0].occ[3 * 6 + 3] == a + 1;
+  b[0].c[a].x = 0; b[0].c[a].y = 0; b[0].c[c].x = 0; b[0].c[c].y = 0; b[0].occ[4 * 6] = 0; rs_index(b[..]);
+  // creatures off the grid on any side index nothing
+  for side: 0..<4 {
+    b[0].c[d].x = ifx side == 0 then -1 else ifx side == 1 then 6 else 2; b[0].c[d].y = ifx side == 2 then -1 else ifx side == 3 then 4 else 2;
+    for q: 0..<24 { b[0].occ[q] = 7; } rs_index(b[..]);
+    n := 0; for q: 0..<24 { if b[0].occ[q] != 0 { n += 1; } } #assert n == 1 && b[0].occ[0] == a + 1;
+    #assert b[0].occ[4 * 6 + 2] == 0 && b[0].occ[4 * 6] == 0;   // the row past the grid's last is not a row
+  }
+  // a grid too big for the squares, or with no width or height, is not indexed: rs_index leaves the squares alone
+  b[0].occ[3] = 5;
+  b[0].w = 0; #assert !rs_indexed(b[..]); rs_index(b[..]); #assert b[0].occ[3] == 5;
+  b[0].w = 6; b[0].h = 0; #assert !rs_indexed(b[..]); rs_index(b[..]); #assert b[0].occ[3] == 5;
+  b[0].w = 8192; b[0].h = 1; #assert rs_indexed(b[..]);
+  b[0].w = 1; b[0].h = 5; #assert rs_indexed(b[..]);
+  b[0].w = 8193; #assert !rs_indexed(b[..]);
+  b[0].w = 4097; b[0].h = 2; #assert !rs_indexed(b[..]);
+  // rs_index takes the battle's own room when it has none
+  f: [1] RsBattle; f[0].w = 2; f[0].h = 2; rs_index(f[..]); #assert f[0].occ.count == RS_SQUARES;
+}
+#test "grid: a placement moves a creature and keeps the index: its old square freed only if its own, its new taken only if free" {
+  b: [1] RsBattle; b[0].w = 5; b[0].h = 5;
+  a := rs_add(b[..], rs_fighter("A", 0, 1), 1, 1); c := rs_add(b[..], rs_fighter("C", 1, 1), 3, 3);
+  rs_place(b[..], a, 2, 4);
+  #assert b[0].c[a].x == 2 && b[0].c[a].y == 4 && b[0].occ[1 * 5 + 1] == 0 && b[0].occ[4 * 5 + 2] == a + 1 && rs_at(b[..], 2, 4) == a && rs_at(b[..], 1, 1) == -1;
+  // onto a taken square: the creature moves, the square keeps who had it, and its old square is freed
+  rs_place(b[..], a, 3, 3);
+  #assert b[0].c[a].x == 3 && b[0].c[a].y == 3 && b[0].occ[3 * 5 + 3] == c + 1 && b[0].occ[4 * 5 + 2] == 0;
+  // from a square another holds in the index: that square is not freed
+  rs_place(b[..], a, 0, 0);
+  #assert b[0].occ[3 * 5 + 3] == c + 1 && b[0].occ[0] == a + 1;
+  // off the grid on each side: its old square freed, no square taken; and back from off the grid
+  offs := [8] int.[-1, 2, 5, 2, 2, -1, 2, 5];
+  for q: 0..<4 {
+    rs_place(b[..], a, 0, 0); #assert b[0].occ[0] == a + 1;
+    rs_place(b[..], a, offs[q * 2], offs[q * 2 + 1]);
+    n := 0; for s: 0..<25 { if b[0].occ[s] == a + 1 { n += 1; } }
+    #assert n == 0 && b[0].c[a].x == offs[q * 2] && b[0].c[a].y == offs[q * 2 + 1] && b[0].occ[3 * 5 + 3] == c + 1;
+  }
+  // a creature set by hand one past the grid's edge: the square the edge's count would wrap to, or the row past the
+  // last, is not its old square to free, nor a new square to take
+  b[0].occ[25 + 2] = 0;
+  b[0].c[a].x = 5; b[0].c[a].y = 0; b[0].occ[1 * 5 + 0] = a + 1; rs_place(b[..], a, 2, 2); #assert b[0].occ[1 * 5 + 0] == a + 1 && b[0].occ[2 * 5 + 2] == a + 1;
+  b[0].occ[1 * 5 + 0] = 0;
+  b[0].c[a].x = 2; b[0].c[a].y = 5; b[0].occ[2 * 5 + 2] = 0; b[0].occ[25 + 2] = a + 1; rs_place(b[..], a, 1, 1); #assert b[0].occ[25 + 2] == a + 1 && b[0].occ[1 * 5 + 1] == a + 1;
+  b[0].occ[25 + 2] = 0; rs_place(b[..], a, 2, 5); #assert b[0].occ[25 + 2] == 0 && b[0].occ[1 * 5 + 1] == 0;
+  // the grid's own corners are squares
+  rs_place(b[..], a, 4, 4); #assert b[0].occ[24] == a + 1;
+  rs_place(b[..], a, 0, 4); #assert b[0].occ[24] == 0 && b[0].occ[20] == a + 1;
+  rs_place(b[..], a, 4, 0); #assert b[0].occ[20] == 0 && b[0].occ[4] == a + 1;
+  // with no index (no grid), only the creature moves
+  g: [1] RsBattle; h := rs_add(g[..], rs_fighter("H", 0, 1), 1, 1);
+  rs_place(g[..], h, 3, 2); #assert g[0].c[h].x == 3 && g[0].c[h].y == 2 && g[0].occ[0] == 0 && g[0].occ.count == RS_SQUARES;
+  // and a placement takes the battle's own room when it has none
+  k: [1] RsBattle; k[0].c = k[0].own[..]; k[0].n = 1; rs_place(k[..], 0, 1, 1); #assert k[0].occ.count == RS_SQUARES;
+}
+#test "grid: a reset clears the battle in place, every part of it, and keeps its room" {
+  b: [1] RsBattle; b[0].w = 6; b[0].h = 6;
+  #assert rs_set_world(b[..], RS_EVERGLADE_WORLD);
+  i := rs_add(b[..], rs_wizard("Mordra", 0, 5), 2, 2); j := rs_add(b[..], rs_fighter("Garr", 1, 5), 4, 4);
+  rs_begin(b[..]);
+  b[0].zone[0] = RsZone.{on = true, difficult = true, x1 = 3, y1 = 3}; b[0].zone[RS_ZONES - 1] = RsZone.{on = true};
+  b[0].truth_zones = 2; b[0].terrain[0] = RsTerrain.{kind = TR_DIFFICULT, x1 = 2, y1 = 2}; b[0].terrain[RS_TERRAINS - 1] = RsTerrain.{kind = TR_HEAVY};
+  b[0].covers[0] = RsCover.{from = 1, to = 2, degree = 3}; b[0].dice[0].state = 99; b[0].dice[0].rolled = 4; b[0].dice[0].fixed = true;
+  l: [1] RsLine; rs_tell(b[..], RS_EV_CAST, 1, 0, 1, 0, 0, l[..]);
+  b[0].rest_clock.ticks = 500; b[0].rest_auto = true; b[0].clock = 12345; b[0].turn_no = 7; b[0].guards = 2; b[0].aff_used = true; b[0].who = 1;
+  b[0].turn.action = true; b[0].turn.move_left = 3; b[0].reaction_frame.on = true; b[0].reaction_frame.who = 1;
+  b[0].occ[b[0].occ.count - 1] = 5; b[0].occ[0] = 9;
+  #assert b[0].timing_sealed && b[0].book[0].count == 1;
+  rs_reset(b[..]);
+  #assert b[0].n == 0 && b[0].c[i].name_n == 0 && b[0].c[i].hp_max == 0 && b[0].c[j].name_n == 0 && b[0].c[j].level == 0 && b[0].truth_zones == 0;
+  #assert !b[0].zone[0].on && !b[0].zone[0].difficult && !b[0].zone[RS_ZONES - 1].on && b[0].terrain[0].kind == 0 && b[0].terrain[RS_TERRAINS - 1].kind == 0;
+  #assert b[0].covers[0].from == -1 && b[0].covers[0].degree == 0 && b[0].dice[0].state == 0 && b[0].dice[0].rolled == 0 && !b[0].dice[0].fixed;
+  #assert b[0].book[0].count == 0 && b[0].book[0].seq == 0 && b[0].rest_clock.ticks == 0 && !b[0].rest_auto;
+  #assert b[0].clock == 0 && b[0].w == 0 && b[0].h == 0 && b[0].turn_no == 0 && b[0].guards == 0 && !b[0].aff_used && b[0].who == 0;
+  #assert !b[0].turn.action && b[0].turn.move_left == 0 && !b[0].reaction_frame.on && b[0].reaction_frame.who == -1;
+  #assert !b[0].timing_sealed && rs_world_deviations(rs_world_of(b[..])) == 0 && b[0].measure == RS_MEASURE_GRID;
+  #assert b[0].occ[b[0].occ.count - 1] == 0 && b[0].occ[0] == 0 && b[0].c.count == RS_MAX && b[0].occ.count == RS_SQUARES;
+  // only the battle's creatures are blanked, not the room past them
+  d: [1] RsBattle; d[0].c = d[0].own[..]; d[0].n = 1; d[0].c[0].hp = 3; d[0].c[1].hp = 4;
+  rs_reset(d[..]); #assert d[0].c[0].hp == 0 && d[0].c[1].hp == 4;
+  // a battle with no room takes its own before it clears
+  e: [1] RsBattle; rs_reset(e[..]); #assert e[0].c.count == RS_MAX && e[0].occ.count == RS_SQUARES;
+}
+#test "grid: a square is in a zone inside its bounds; a round zone and a Line also by distance, a Line by its width and its side" {
+  z := RsZone.{on = true, x0 = 2, y0 = 3, x1 = 5, y1 = 7};
+  for x: 0..<8 { for y: 0..<10 { #assert rs_inside(z, x, y) == (x >= 2 && x <= 5 && y >= 3 && y <= 7); } }
+  off := z; off.on = false; #assert !rs_inside(off, 3, 4);
+  // round: within r_ft of its middle, by the zone's own measure
+  r := RsZone.{on = true, round = true, cx = 10, cy = 10, r_ft = 10, x0 = 8, y0 = 8, x1 = 12, y1 = 12};
+  #assert rs_inside(r, 10, 10) && rs_inside(r, 12, 10) && rs_inside(r, 10, 8) && rs_inside(r, 12, 12) && rs_inside(r, 8, 8) && !rs_inside(r, 13, 10);
+  r.measure = RS_MEASURE_STRAIGHT;
+  #assert rs_inside(r, 12, 10) && rs_inside(r, 10, 8) && rs_inside(r, 11, 11) && !rs_inside(r, 12, 12) && !rs_inside(r, 8, 8) && rs_inside(r, 12, 11);
+  r.r_ft = 5; #assert rs_inside(r, 11, 10) && rs_inside(r, 10, 9) && rs_inside(r, 11, 11) && !rs_inside(r, 12, 10) && !rs_inside(r, 10, 12);
+  r.cx = 9; #assert rs_inside(r, 8, 10) && !rs_inside(r, 11, 10);     // its own middle, each way
+  r.cx = 10; r.cy = 9; #assert rs_inside(r, 10, 8) && !rs_inside(r, 10, 11);
+  // a Line east from (5, 5), 20 feet long, 5 wide: the four squares ahead in its row, none behind, beside or past it
+  ln := RsZone.{on = true, line = true, cx = 5, cy = 5, dx = 1, dy = 0, r_ft = 20, half = 0.5, x0 = 0, y0 = 0, x1 = 20, y1 = 20};
+  for x: 0..<14 { for y: 3..<8 { #assert rs_inside(ln, x, y) == (y == 5 && x >= 6 && x <= 9); } }
+  // 10 feet wide: the rows each side too (their middles are a square off the line: within its half-width of one)
+  ln.half = 1; for x: 0..<14 { for y: 2..<9 { #assert rs_inside(ln, x, y) == (y >= 4 && y <= 6 && x >= 6 && x <= 9); } }
+  // no width given reads as half a square
+  ln.half = 0; #assert rs_inside(ln, 7, 5) && !rs_inside(ln, 7, 4) && !rs_inside(ln, 7, 6);
+  thin := RsZone.{on = true, line = true, cx = 0, cy = 0, dx = 0.8, dy = 0.6, r_ft = 20, half = 0, x0 = -5, y0 = -5, x1 = 20, y1 = 20};
+  #assert rs_inside(thin, 1, 1) && rs_inside(thin, 3, 2) && !rs_inside(thin, 1, 2);   // (1,1) is 0.2 of a square off the line: inside half a square, not inside none
+  ln.half = -1; #assert rs_inside(ln, 7, 5) && !rs_inside(ln, 7, 4);
+  // south from (5, 5): its own column, measured from its own start
+  s := RsZone.{on = true, line = true, cx = 5, cy = 5, dx = 0, dy = 1, r_ft = 15, half = 0.5, x0 = 0, y0 = 0, x1 = 20, y1 = 20};
+  for x: 3..<8 { for y: 0..<12 { #assert rs_inside(s, x, y) == (x == 5 && y >= 6 && y <= 8); } }
+  s.cy = 2; #assert rs_inside(s, 5, 3) && rs_inside(s, 5, 5) && !rs_inside(s, 5, 6) && !rs_inside(s, 5, 2);
+  s.cx = 4; #assert rs_inside(s, 4, 3) && !rs_inside(s, 5, 3);
+  // a Line's length by the zone's measure: a diagonal Line of 20 feet reaches 4 squares by the grid's count, 3 by the straight line
+  dg := RsZone.{on = true, line = true, cx = 0, cy = 0, dx = 0.70710678, dy = 0.70710678, r_ft = 20, half = 0.5, x0 = -5, y0 = -5, x1 = 20, y1 = 20};
+  #assert rs_inside(dg, 1, 1) && rs_inside(dg, 3, 3) && rs_inside(dg, 4, 4) && !rs_inside(dg, 5, 5) && !rs_inside(dg, -1, -1) && !rs_inside(dg, 0, 0);
+  dg.measure = RS_MEASURE_STRAIGHT; #assert rs_inside(dg, 3, 3) && !rs_inside(dg, 4, 4);
+  // its bounds still bind a Line
+  dg.x1 = 2; #assert rs_inside(dg, 2, 2) && !rs_inside(dg, 3, 3);
+}
+#test "grid: Difficult Terrain is a zone's that says so, or the world's own ground" {
+  b: [1] RsBattle; b[0].w = 10; b[0].h = 10;
+  #assert !rs_difficult(b[..], 2, 2);
+  b[0].zone[RS_ZONES - 1] = RsZone.{on = true, difficult = true, x0 = 1, y0 = 1, x1 = 3, y1 = 3};
+  #assert rs_difficult(b[..], 2, 2) && rs_difficult(b[..], 1, 3) && !rs_difficult(b[..], 4, 2) && !rs_difficult(b[..], 2, 0);
+  b[0].zone[RS_ZONES - 1].difficult = false; #assert !rs_difficult(b[..], 2, 2);   // a zone that isn't Difficult Terrain
+  b[0].zone[0] = RsZone.{on = true, difficult = true, x0 = 5, y0 = 5, x1 = 5, y1 = 5}; #assert rs_difficult(b[..], 5, 5) && !rs_difficult(b[..], 2, 2);
+  b[0].zone[0].on = false; #assert !rs_difficult(b[..], 5, 5);
+  b[0].terrain[0] = RsTerrain.{kind = TR_DIFFICULT, x0 = 7, y0 = 7, x1 = 8, y1 = 8}; #assert rs_difficult(b[..], 7, 8) && !rs_difficult(b[..], 6, 8);
+  b[0].terrain[0].kind = TR_CLIMB; #assert !rs_difficult(b[..], 7, 8);
+  b[0].terrain[0].kind = TR_CLIMB | TR_DIFFICULT; #assert rs_difficult(b[..], 7, 8) && TR_DIFFICULT == 1;
+}
+#test "grid: a creature is threatened by another team's creature within 5 feet that can act, in a small battle and a crowd" {
+  for crowd: 0..<2 {
+    b: [1] RsBattle; b[0].w = 40; b[0].h = 40;
+    me := rs_add(b[..], rs_ranger("Wren", 0, 3), 5, 5);
+    foe := rs_add(b[..], rs_fighter("Foe", 1, 1), 9, 9); mate := rs_add(b[..], rs_fighter("Mate", 0, 1), 9, 5);
+    if crowd == 1 { for q: 0..<63 { _ := rs_add(b[..], rs_fighter("Far", 0, 1), 20 + q % 20, 20 + q / 20); } #assert b[0].n == 66; }
+    #assert !rs_threatened(b[..], me);
+    // each of the eight squares round it, and none two off
+    for dx: -2..<3 { for dy: -2..<3 {
+      if dx == 0 && dy == 0 { continue; }
+      rs_place(b[..], foe, 5 + dx, 5 + dy);
+      #assert rs_threatened(b[..], me) == (dx >= -1 && dx <= 1 && dy >= -1 && dy <= 1);
+    } }
+    rs_place(b[..], foe, 6, 5); #assert rs_threatened(b[..], me) && rs_threatened(b[..], foe);
+    // its own team threatens no one, and nor does itself
+    rs_place(b[..], foe, 9, 9); rs_place(b[..], mate, 6, 5); #assert !rs_threatened(b[..], me) && !rs_threatened(b[..], mate);
+    // a foe that can't act doesn't
+    rs_place(b[..], mate, 9, 5); rs_place(b[..], foe, 5, 6); #assert rs_threatened(b[..], me);
+    b[0].c[foe].cond = RS_STUNNED; #assert !rs_threatened(b[..], me);
+    b[0].c[foe].cond = 0; b[0].c[foe].hp = 0; #assert !rs_threatened(b[..], me);
+    b[0].c[foe].hp = 5; #assert rs_threatened(b[..], me);
+    // at the grid's corner and edges, the squares off it are not read
+    rs_place(b[..], me, 0, 0); rs_place(b[..], foe, 1, 1); #assert rs_threatened(b[..], me);
+    rs_place(b[..], foe, 39, 39); rs_place(b[..], me, 38, 38); #assert rs_threatened(b[..], me) && rs_threatened(b[..], foe);
+    rs_place(b[..], me, 39, 0); rs_place(b[..], foe, 38, 1); #assert rs_threatened(b[..], me);
+    rs_place(b[..], me, 0, 39); rs_place(b[..], foe, 1, 38); #assert rs_threatened(b[..], me);
+    rs_place(b[..], foe, 3, 39); #assert !rs_threatened(b[..], me);
+    // a foe moved by hand beside it, where the index says no one: a small battle's scan sees it; a crowd's read trusts the squares
+    rs_place(b[..], me, 5, 5); rs_place(b[..], foe, 9, 9); b[0].c[foe].x = 5; b[0].c[foe].y = 4; #assert rs_threatened(b[..], me) == (crowd == 0);
+    // a stale square beside it that names the foe, who has gone: not threatened, whichever of its two counts moved
+    rs_place(b[..], foe, 5, 4); b[0].c[foe].x = 30; b[0].c[foe].y = 2; #assert !rs_threatened(b[..], me);
+    b[0].c[foe].x = 5; b[0].c[foe].y = 30; #assert !rs_threatened(b[..], me);
+    b[0].c[foe].x = 30; b[0].c[foe].y = 4; #assert !rs_threatened(b[..], me);
+    // a stale square beside it, and the foe moved by hand to another square beside it: the scan finds it there
+    b[0].c[foe].x = 6; b[0].c[foe].y = 5; #assert rs_threatened(b[..], me);
+    // the squares of column 0 and row 0 are squares: a foe there threatens a creature beside it
+    rs_place(b[..], me, 1, 7); rs_place(b[..], foe, 0, 7); #assert rs_threatened(b[..], me);
+    rs_place(b[..], me, 7, 1); rs_place(b[..], foe, 7, 0); #assert rs_threatened(b[..], me);
+    rs_place(b[..], me, 5, 5); rs_place(b[..], foe, 9, 9);
+    // a square beside it that names a creature past the battle's: the scan, which finds no one
+    b[0].occ[4 * 40 + 5] = b[0].n + 1; b[0].c[b[0].n] = rs_fighter("Ghost", 1, 1); b[0].c[b[0].n].x = 5; b[0].c[b[0].n].y = 4; #assert !rs_threatened(b[..], me);
+  }
+  // a crowd on a grid that fills the battle's squares (128 by 64): at its far corner no square past the grid is read
+  big: [1] RsBattle; big[0].w = 128; big[0].h = 64;
+  bm := rs_add(big[..], rs_ranger("Wren", 0, 3), 127, 63); bf := rs_add(big[..], rs_fighter("Foe", 1, 1), 126, 62);
+  for q: 0..<64 { _ := rs_add(big[..], rs_fighter("Far", 0, 1), 20 + q % 20, 20 + q / 20); }
+  #assert big[0].n == 66 && big[0].w * big[0].h == big[0].occ.count && rs_threatened(big[..], bm) && rs_threatened(big[..], bf);
+  rs_place(big[..], bf, 100, 10); #assert !rs_threatened(big[..], bm);
+  rs_place(big[..], bm, 127, 10); #assert !rs_threatened(big[..], bm);
+  rs_place(big[..], bm, 60, 63); #assert !rs_threatened(big[..], bm);
+  // 64 creatures still scan; 65 read the squares: the same answers either side of the line
+  for n: 64..<66 {
+    b: [1] RsBattle; b[0].w = 40; b[0].h = 40;
+    me := rs_add(b[..], rs_ranger("Wren", 0, 3), 5, 5); foe := rs_add(b[..], rs_fighter("Foe", 1, 1), 6, 6);
+    for q: 0..<n - 2 { _ := rs_add(b[..], rs_fighter("Far", 0, 1), 20 + q % 20, 20 + q / 20); } #assert b[0].n == n && rs_threatened(b[..], me);
+    // the squares' index wrong for the foe's square: the crowd's read trusts a clean neighbourhood, the scan sees the foe
+    b[0].occ[6 * 40 + 6] = 0; #assert rs_threatened(b[..], me) == (n == 64);
+  }
+}
+#test "grid: a Line's bounds run from its start to its far end along the longer axis, padded by its width" {
+  e := rs_line_box(RsZone.{cx = 5, cy = 5, dx = 1, dy = 0, r_ft = 20, half = 0.5});
+  #assert e.x0 == 4 && e.x1 == 10 && e.y0 == 4 && e.y1 == 6 && e.cx == 5 && e.cy == 5 && e.r_ft == 20;
+  w := rs_line_box(RsZone.{cx = 5, cy = 5, dx = -1, dy = 0, r_ft = 20, half = 0.5});
+  #assert w.x0 == 0 && w.x1 == 6 && w.y0 == 4 && w.y1 == 6;
+  s := rs_line_box(RsZone.{cx = 5, cy = 5, dx = 0, dy = 1, r_ft = 30, half = 1});
+  #assert s.x0 == 3 && s.x1 == 7 && s.y0 == 3 && s.y1 == 13;
+  n := rs_line_box(RsZone.{cx = 5, cy = 8, dx = 0, dy = -1, r_ft = 15, half = 1.5});
+  #assert n.x0 == 3 && n.x1 == 7 && n.y0 == 3 && n.y1 == 10;
+  // a slanted Line: the longer axis runs the whole length, the other in proportion (3-4-5: 20 feet is 4 along x, 3 along y)
+  d := rs_line_box(RsZone.{cx = 0, cy = 0, dx = 0.8, dy = 0.6, r_ft = 20, half = 0.5});
+  #assert d.x0 == -1 && d.x1 == 5 && d.y0 == -1 && d.y1 == 4;
+  u := rs_line_box(RsZone.{cx = 0, cy = 0, dx = 0.6, dy = -0.8, r_ft = 20, half = 0.5});
+  #assert u.x0 == -1 && u.x1 == 4 && u.y0 == -5 && u.y1 == 1;
+  // the far end rounds to the nearest square: 2.8 squares along y is 3, 2.2 is 2
+  h := rs_line_box(RsZone.{cx = 0, cy = 0, dx = 0.8192, dy = 0.5735, r_ft = 20, half = 2.5});
+  #assert h.x1 == 7 && h.y1 == 6 && h.x0 == -3 && h.y0 == -3;
+  l := rs_line_box(RsZone.{cx = 0, cy = 0, dx = 0.8762, dy = 0.4819, r_ft = 20, half = 2.5});
+  #assert l.x1 == 7 && l.y1 == 5 && l.x0 == -3 && l.y0 == -3;
+}
+#test "grid: the squares a spell's area covers, by its shape, from its caster or round its point" {
+  b: [1] RsBattle; b[0].w = 40; b[0].h = 40;
+  i := rs_add(b[..], rs_wizard("Mordra", 0, 5), 10, 10); other := rs_add(b[..], rs_wizard("Other", 0, 5), 20, 14);
+  // a sphere round the point: its radius each way, round, the battle's measure, its caster
+  ball := rs_area(b[..], i, rs_spell(SP_FIREBALL), 20, 15);
+  #assert ball.on && ball.by == i && ball.spell == -1 && ball.round && !ball.line && ball.cx == 20 && ball.cy == 15 && ball.r_ft == 20 && ball.measure == RS_MEASURE_GRID;
+  #assert ball.x0 == 16 && ball.x1 == 24 && ball.y0 == 11 && ball.y1 == 19;
+  #assert rs_area(b[..], other, rs_spell(SP_FIREBALL), 20, 15).by == other;
+  b[0].measure = RS_MEASURE_STRAIGHT; #assert rs_area(b[..], i, rs_spell(SP_FIREBALL), 20, 15).measure == RS_MEASURE_STRAIGHT; b[0].measure = RS_MEASURE_GRID;
+  // a cube from the caster (Thunderwave, 15 feet: 3 squares): on the side toward the point, its own square the corner
+  wave := rs_spell(SP_THUNDERWAVE); #assert wave.area == RS_A_CUBE_SELF && wave.area_ft == 15;
+  e := rs_area(b[..], i, wave, 15, 10); #assert e.x0 == 10 && e.x1 == 13 && e.y0 == 9 && e.y1 == 11 && !e.round && !e.line;
+  w := rs_area(b[..], i, wave, 3, 10); #assert w.x0 == 7 && w.x1 == 10 && w.y0 == 9 && w.y1 == 11;
+  s := rs_area(b[..], i, wave, 10, 30); #assert s.x0 == 9 && s.x1 == 11 && s.y0 == 10 && s.y1 == 13;
+  n := rs_area(b[..], i, wave, 10, 2); #assert n.x0 == 9 && n.x1 == 11 && n.y0 == 7 && n.y1 == 10;
+  se := rs_area(b[..], i, wave, 12, 11); #assert se.x0 == 10 && se.x1 == 13 && se.y0 == 10 && se.y1 == 13;
+  nw := rs_area(b[..], i, wave, 9, 9); #assert nw.x0 == 7 && nw.x1 == 10 && nw.y0 == 7 && nw.y1 == 10;
+  // aimed at its own square: east
+  own := rs_area(b[..], i, wave, 10, 10); #assert own.x0 == 10 && own.x1 == 13 && own.y0 == 9 && own.y1 == 11;
+  // from the caster's square, whoever casts
+  #assert rs_area(b[..], other, wave, 25, 14).x0 == 20 && rs_area(b[..], other, wave, 25, 14).y0 == 13;
+  // a Line from the caster toward the point: its length and half-width, a unit direction, its bounds
+  bolt := rs_spell(SP_LIGHTNING_BOLT); #assert bolt.area == RS_A_LINE && bolt.area_ft == 100 && bolt.wide_ft == 0;
+  ln := rs_area(b[..], i, bolt, 20, 10);
+  #assert ln.line && !ln.round && ln.cx == 10 && ln.cy == 10 && ln.r_ft == 100 && ln.dx == 1 && ln.dy == 0 && ln.half == 0.5 && ln.x0 == 9 && ln.x1 == 31 && ln.y0 == 9 && ln.y1 == 11;
+  up := rs_area(b[..], i, bolt, 10, 3); #assert up.dx == 0 && up.dy == -1 && up.y0 == -11 && up.y1 == 11 && up.x0 == 9 && up.x1 == 11;
+  slant := rs_area(b[..], i, bolt, 13, 14); #assert abs(slant.dx - 0.6) < 0.0001 && abs(slant.dy - 0.8) < 0.0001;
+  // aimed at its own square: straight east; and a point a hair off still aims
+  flat := rs_area(b[..], i, bolt, 10, 10); #assert flat.dx == 1 && flat.dy == 0 && flat.x1 == 31;
+  #assert rs_area(b[..], i, bolt, 11, 10).dx == 1 && rs_area(b[..], i, bolt, 10, 11).dy == 1 && rs_area(b[..], i, bolt, 9, 10).dx == -1;
+  // a wider Line (Gust of Wind, 10 feet): a whole square each side; one with no width given is 5 feet
+  gust := bolt; gust.wide_ft = 10; #assert rs_area(b[..], i, gust, 20, 10).half == 1 && rs_area(b[..], i, gust, 20, 10).y0 == 8;
+  gust.wide_ft = 0; #assert rs_area(b[..], i, gust, 20, 10).half == 0.5;
+  gust.wide_ft = 4; #assert rs_area(b[..], i, gust, 20, 10).half == 0.5;
+  gust.wide_ft = 6; #assert abs(rs_area(b[..], i, gust, 20, 10).half - 0.6) < 0.0001;
+  // a square or cube round the point: k squares a side, the point its middle (the odd one) or just past it
+  sq := RsSpell.{area = RS_A_CUBE, area_ft = 15};
+  c3 := rs_area(b[..], i, sq, 20, 15); #assert c3.x0 == 19 && c3.x1 == 21 && c3.y0 == 14 && c3.y1 == 16 && !c3.round && !c3.line;
+  sq.area_ft = 20; c4 := rs_area(b[..], i, sq, 20, 15); #assert c4.x0 == 19 && c4.x1 == 22 && c4.y0 == 14 && c4.y1 == 17;
+  sq.area_ft = 5; c1 := rs_area(b[..], i, sq, 20, 15); #assert c1.x0 == 20 && c1.x1 == 20 && c1.y0 == 15 && c1.y1 == 15;
+  // an area smaller than a square is one square; RS_A_SQUARE and no area at all take the same bounds
+  sq.area_ft = 0; c0 := rs_area(b[..], i, sq, 20, 15); #assert c0.x0 == 20 && c0.x1 == 20 && c0.y0 == 15 && c0.y1 == 15;
+  sq.area_ft = 4; #assert rs_area(b[..], i, sq, 20, 15).x1 == 20;
+  sq.area_ft = 10; sq.area = RS_A_SQUARE; c2 := rs_area(b[..], i, sq, 20, 15); #assert c2.x0 == 20 && c2.x1 == 21 && c2.y0 == 15 && c2.y1 == 16;
+  // a sphere smaller than a square still reaches one square each way of its point
+  tiny := RsSpell.{area = RS_A_SPHERE, area_ft = 2}; t := rs_area(b[..], i, tiny, 20, 15); #assert t.x0 == 19 && t.x1 == 21 && t.y0 == 14 && t.y1 == 16 && t.r_ft == 2;
+  // a 10-foot cube from the caster aimed straight south: a side of k, from half of it west
+  small := RsSpell.{area = RS_A_CUBE_SELF, area_ft = 20}; q := rs_area(b[..], i, small, 10, 30); #assert q.x0 == 8 && q.x1 == 11 && q.y0 == 10 && q.y1 == 14;
+  qe := rs_area(b[..], i, small, 30, 10); #assert qe.y0 == 8 && qe.y1 == 11 && qe.x0 == 10 && qe.x1 == 14;
+}
