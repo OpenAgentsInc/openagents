@@ -369,6 +369,71 @@ class QualifiedLookup(unittest.TestCase):
         files.update(extra or {})
         return self.tree(files, under) / "main.coax"
 
+    def test_unowned_name_a_module_also_offers_is_ambiguous(self):
+        # #13368: a file with no #module loads a module's file and uses its DUP_K, and another
+        # file with no #module declares DUP_K too. The use would bind the other file's in
+        # silence, so it is an error naming both.
+        lesson = ('#module "dup.lesson";\nDUP_K :: 1;\ndup_g :: () -> int #effects(all) { return 7; }\nDupV :: struct { x: int; }\n'
+                  'c1_k :: () -> int #effects(all) { return DUP_K + dup_g() - 7; }\n'
+                  '#test "the module file sees its own" { #assert c1_k() == 1; }\n')
+        root = self.tree({"c1.coax": lesson, "a.coax": "DUP_K :: 2;\n", "d.coax": ""}, "dup")
+        loads = '#load "c1.coax";\n#load "a.coax";\n'
+
+        def use(line, name, text=None, head=loads):
+            (root / "d.coax").write_text(head + line + "\n")
+            return self.at(root / "d.coax", "E0386", 3, line.index(name) + 1, text)
+
+        def passes(d, count="2 passed, 0 failed"):
+            (root / "d.coax").write_text(d)
+            self.assertIn(count, self.ok("test", root / "d.coax"))
+
+        d = use('#test "the root\'s use" { #assert DUP_K == 1; }', "DUP_K", "'DUP_K' is declared by both 'the unowned program' and 'dup.lesson'")
+        self.assertIn("rename one of them", d["fix"])
+        self.assertIn("as an alias", d["fix"])
+        # The order of the loads does not matter.
+        use('#test "the root\'s use" { #assert DUP_K == 1; }', "DUP_K", "'dup.lesson'", '#load "a.coax";\n#load "c1.coax";\n')
+        # Declared twice and never used unqualified outside the module: no error.
+        (root / "d.coax").write_text(loads + "main :: () {}\n")
+        self.ok("check", root / "d.coax")
+        # Procedures and types follow the same rule.
+        (root / "a.coax").write_text("dup_g :: () -> int #effects(all) { return 9; }\nDupV :: struct { y: int; }\n")
+        use("main :: () { x := dup_g(); }", "dup_g", "'dup_g'")
+        use("main :: () { v: DupV; }", "DupV", "'DupV'")
+        # What is by design stays as it was: files with no #module and modules may each keep
+        # their own. The file that declares the name uses its own, with the module loaded or not.
+        (root / "a.coax").write_text("DUP_K :: 2;\na_k :: () -> int #effects(all) { return DUP_K; }\n")
+        passes(loads + '#test "a file\'s own" { #assert a_k() == 2 && c1_k() == 1; }\n')
+        passes('#load "c1.coax";\nDUP_K :: 2;\n#test "the root\'s own" { #assert DUP_K == 2 && c1_k() == 1; }\n')
+        # A file that does not load the module itself uses the unowned name, though the program has the module.
+        (root / "b.coax").write_text('#load "a.coax";\nb_k :: () -> int #effects(all) { return DUP_K; }\n')
+        passes('#load "c1.coax";\n#load "b.coax";\n#test "another file\'s" { #assert b_k() == 2 && c1_k() == 1; }\n')
+        # ... and so does one that reaches the module only through another file's load.
+        (root / "e.coax").write_text('#load "c1.coax";\n')
+        passes('#load "e.coax";\n#load "a.coax";\n#test "through another file" { #assert DUP_K == 2 && c1_k() == 1; }\n')
+        # A file the module loads is the module's too. Loading that file here takes its names, and
+        # only its names: the module's own file is loaded as an alias, so DUP_K is the unowned one.
+        (root / "m.coax").write_text("DUP_M :: 5;\n")
+        (root / "c1.coax").write_text(lesson.replace('";\n', '";\n#load "m.coax";\n', 1))
+        (root / "a.coax").write_text("DUP_K :: 2;\nDUP_M :: 6;\n")
+        member = '#load "c1.coax" as c;\n#load "m.coax";\n#load "a.coax";\n'
+        line = '#test "the member file\'s name" { #assert DUP_M == 5; }'
+        (root / "d.coax").write_text(member + line + "\n")
+        self.at(root / "d.coax", "E0386", 4, line.index("DUP_M") + 1, "'DUP_M' is declared by both 'the unowned program' and 'dup.lesson'")
+        passes(member + '#test "the aliased file\'s name" { #assert DUP_K == 2 && c.DUP_K == 1 && c.DUP_M == 5; }\n')
+        (root / "c1.coax").write_text(lesson)
+        # Ways out. Loaded as an alias, the plain name is the unowned one and the qualified one the module's.
+        (root / "a.coax").write_text("DUP_K :: 2;\n")
+        passes('#load "c1.coax" as c;\n#load "a.coax";\n#test "qualified, and through the module" { #assert c.DUP_K == 1 && DUP_K == 2 && c1_k() == 1; }\n')
+        # A module with an #export list keeps the rest private, so the unowned name is the only one.
+        (root / "c1.coax").write_text(lesson.replace('";\n', '";\n#export c1_k;\n', 1))
+        passes(loads + '#test "the unowned one" { #assert DUP_K == 2 && c1_k() == 1; }\n')
+        # ... unless it exports that name.
+        (root / "c1.coax").write_text(lesson.replace('";\n', '";\n#export c1_k;\n#export DUP_K;\n', 1))
+        use('#test "the unowned one" { #assert DUP_K == 2; }', "DUP_K", "'dup.lesson'")
+        # A root with a module of its own owns the files it loads, and binds there first, as before.
+        (root / "c1.coax").write_text(lesson)
+        passes('#module "dup.root";\n' + loads + '#test "own module first" { #assert DUP_K == 2; }\n')
+
     def test_colliding_names_resolve_in_every_backend(self):
         main = self.tree(PAIR) / "main.coax"
         self.assertEqual(self.ok("run", main), PAIR_OUT)

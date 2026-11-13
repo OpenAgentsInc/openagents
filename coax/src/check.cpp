@@ -138,6 +138,10 @@ struct CheckInput {
   std::vector<coax_t_CK_Alias> aliases;
   std::vector<std::string> export_names;
   std::vector<coax_t_CK_Export> exports;
+  // The unowned program's loads of a module's unit with no alias (#13368): the loading unit and the
+  // loaded one, 1-based as a node's source_unit is, the loaded unit's module scope, and whether the
+  // loaded unit is the one that claims the module.
+  std::vector<coax_t_CK_Load> loads;
 };
 static int64_t module_scope(CheckInput *input,const SourceUnit *unit){
   if(!unit || unit->module.empty())return 0;
@@ -183,6 +187,17 @@ static void attach_check_input(File *file,zvec<coax_t_PS_Node> &&nodes,const std
   for(const auto &u:file->src->units)for(const auto &e:u->exports){
     const auto &name=input->export_names[export_at++];
     input->exports.push_back({module_scope(input.get(),u.get()),{name.data(),(int64_t)name.size()},{u->first_line+e.loc.line-1,e.loc.col,u->begin+e.loc.offset}});
+  }
+  for(size_t i=0;i<file->src->units.size();i++){
+    const auto &u=file->src->units[i];
+    if(!u->module.empty())continue;
+    for(int32_t target:u->loads){
+      const auto &t=file->src->units[(size_t)target];
+      if(t->module.empty())continue;
+      bool aliased=false;
+      for(const auto &a:u->aliases)if(a.target==target)aliased=true;
+      if(!aliased)input->loads.push_back({(int64_t)i+1,module_scope(input.get(),t.get()),(int64_t)target+1,t->claims});
+    }
   }
   for(const auto &m:input->modules)input->module_names.push_back({m.data(),(int64_t)m.size()});
   // Every unit's module scope is already registered above; a node takes its unit's.
@@ -235,6 +250,7 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
       {borrow_queries.data(),(int64_t)borrow_queries.size()},{borrow_origins.data(),(int64_t)borrow_origins.size()}};
     context.retain_effects={retain_effects.data(),(int64_t)retain_effects.size()};
     context.retain_reports={nullptr,0};
+    context.loads={input->loads.data(),(int64_t)input->loads.size()};
     result_work=zvec<int64_t>((size_t)caps.result_work);
     context.result_work={result_work.data(),(int64_t)result_work.size()};
     names=zvec<int64_t>((size_t)caps.names);

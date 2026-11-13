@@ -35,7 +35,12 @@ CK_Alias :: struct {scope:int;name:string;target:int;}
 // A name in a module's `#export` list. A module with any export is sealed:
 // its other declarations are private to it.
 CK_Export :: struct {scope:int;name:string;loc:CK_Loc;}
-CK_Context :: struct {nodes:[] CK_Node;types:[] CK_Type;locals:[] CK_Local;errors:[] CK_Error;bytes:[] u8;state:[] CK_State;modules:[] string;aliases:[] CK_Alias;exports:[] CK_Export;borrow_queries:[]CK_BorrowQuery;borrow_origins:[]BS_Origin;retain_effects:[]CK_RetainEffect;retain_reports:[]CK_RetainObservation;result_work:[]int;names:[]int;}
+// A load the unowned program writes with no alias: the loading unit (a node's source_unit), the
+// loaded unit (target, the same numbering) and its module scope. whole: the loaded unit is the one
+// that claims the module, so the load takes every name of the module; else only the names that
+// unit itself declares (#13368, CK_bind_check).
+CK_Load :: struct {unit:int;scope:int;target:int;whole:bool;}
+CK_Context :: struct {nodes:[] CK_Node;types:[] CK_Type;locals:[] CK_Local;errors:[] CK_Error;bytes:[] u8;state:[] CK_State;modules:[] string;aliases:[] CK_Alias;exports:[] CK_Export;borrow_queries:[]CK_BorrowQuery;borrow_origins:[]BS_Origin;retain_effects:[]CK_RetainEffect;retain_reports:[]CK_RetainObservation;result_work:[]int;names:[]int;loads:[]CK_Load;}
 CK_Options :: struct {library:bool;metal:bool;authority:bool;quantity_device:bool;}
 CK_Caps :: struct {nodes:int;types:int;locals:int;errors:int;bytes:int;result_work:int;names:int;}
 CK_BorrowQuery :: struct {kind:u8;decl:int;type:int;path:BS_Path;status:u8;start:int;count:int;next:int;retain_classes:bool;}
