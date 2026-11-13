@@ -116,7 +116,18 @@ su_norm :: (dir: string, rel: string, out: [] u8) -> string {
   return cast(string) out[0..<used];
 }
 
-// A #test or #forall at the start of a line (spaces before it allowed).
+// Whether the #load line starting at j ends in #test after its path.
+su_test_load :: (text: string, j: int) -> bool {
+  e := j; while e < text.count && text[e] != '\n' { e += 1; }
+  q := j; quotes := 0;
+  while q < e && quotes < 2 { if text[q] == '"' { quotes += 1; } q += 1; }
+  if quotes < 2 { return false; }
+  while q < e && su_space(text[q]) { q += 1; }
+  return su_starts(text, q, "#test") && (q + 5 >= text.count || !su_ident(text[q + 5]));
+}
+// A #test or #forall at the start of a line (spaces before it allowed), or a
+// #load of checks that load only under #test (`#load "tests/x.coax" #test;`):
+// those checks run when this file is tested, and need its declarations.
 su_has_tests :: (text: string) -> bool {
   i := 0;
   while i < text.count {
@@ -125,6 +136,7 @@ su_has_tests :: (text: string) -> bool {
     for word: [2] string.["#test", "#forall"] {
       if su_starts(text, j, word) && (j + word.count >= text.count || !su_ident(text[j + word.count])) { return true; }
     }
+    if su_starts(text, j, "#load") && su_test_load(text, j) { return true; }
     while i < text.count && text[i] != '\n' { i += 1; }
     i += 1;
   }
@@ -285,6 +297,7 @@ su_web_input :: (path: string, faces: bool) -> bool {
 #test "a suite has a #test or #forall at a line's start; a word that only begins so does not count" {
   #assert su_has_tests("x :: 1;\n#test \"a\" { }\n") && su_has_tests("  #forall a: 0..<3 { }");
   #assert !su_has_tests("// #testing\n#tests_off :: 1;\n") && !su_has_tests("x := \"#test\";\n");
+  #assert su_has_tests("#load \"tests/codec.coax\" #test;\n") && !su_has_tests("#load \"codec.coax\";\n") && !su_has_tests("#load \"a.coax\"; // #test\n");
 }
 #test "the header's own coax test line carries the budget and flags; another file's does not" {
   t := "// Everglade.\n//   coax/bin/coax test apps/openagents-web/everglade.coax --steps 2000000000\n#load \"x.coax\";\n";
