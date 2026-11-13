@@ -2290,11 +2290,11 @@ e2_test_vitals :: (s: [] E2, hp: int, max: int, cond: int, word: int) {
 }
 #test "a blow of the room's at you shows one red number over your head, the Hit Points it took; a critical hit larger; a miss says miss" #steps 1000000000 {
   s: [1] E2; e2_test_cast_state(s[..], FB_CL_RANGER); n := s[0].net[..]; n[0].seat = 0; n[0].hz = 30; n[0].worlds = 1;
-  e2n_record(n, "g3 0 2 0 7"); n[0].rt = 1000000; e2gd_hits(s[..]);
+  e2n_record(n, "D 0 0 0 1 e guard 0 2 0 7"); n[0].rt = 1000000; e2gd_hits(s[..]);
   shown := 0; at := -1; for q: 0..<fl.FLOATS { if s[0].floats[0].items[q].on { shown += 1; at = q; } }
   #assert shown == 1 && fl.floats_text(s[0].floats[..], at) == "-7" && s[0].floats[0].items[at].kind == fl.FLOAT_TAKEN;
   #assert abs(s[0].floats[0].items[at].x - s[0].you_x) < 0.01 && s[0].floats[0].items[at].y > s[0].you_y + 1.5;
-  e2n_record(n, "g3 0 4 0 19"); e2n_record(n, "g3 0 2 0 0"); e2gd_hits(s[..]);
+  e2n_record(n, "D 0 0 0 2 e guard 0 4 0 19"); e2n_record(n, "D 0 0 0 3 e guard 0 2 0 0"); e2gd_hits(s[..]);
   crit := false; miss := false;
   for q: 0..<fl.FLOATS { it2 := s[0].floats[0].items[q]; if it2.on && it2.crit && fl.floats_text(s[0].floats[..], q) == "-19" { crit = true; } if it2.on && it2.kind == fl.FLOAT_MISS { miss = true; } }
   #assert crit && miss;

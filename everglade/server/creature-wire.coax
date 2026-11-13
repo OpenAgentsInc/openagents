@@ -1,61 +1,39 @@
-// Everglade II's creature frames: the path guard (g2, g3) and the monsters (h2, h3). The one codec
-// both sides load: the room writes them (guard.coax, creatures.coax) and the page reads them
-// (everglade/client/net.coax). Profile proto/verse/everglade2-combat-v1.json, doc
-// docs/protocol/everglade-guard-monsters-v1.md (#13246); its check runs these functions:
-//   coax/web/tool.sh coax/web/room/combat-profile.coax proto/verse/everglade2-combat-v1.json
-// Whole numbers a space apart (everglade-wire.coax wire_int). The guard's X Z are mm and his YAW
-// thousandths of a radian; a monster's X Z are cm and its YAW thousandths. Ticks are the room's.
-//   g2 TICK LIFE STATE X Z YAW HP MAX SWING FOE     the guard, each tick he changes, else once a second
-//   g3 TICK KIND SEAT AMOUNT                        a blow: KIND 1 at him, 2 his at SEAT, 4 his critical,
-//                                                   5 his arrow, 6 its critical
-//   h2 TICK COUNT [M LIFE KIND STATE X Z YAW HP MAX ACT ACT_TICK FOE]...   the monsters in view
-//   h3 TICK KIND M SEAT AMOUNT [FX FZ TX TZ FLY_MS] a monster's event: KIND 1 its blow at SEAT, 2 a blow
-//                                                   at it, 3 an arrow loosed (with its flight), 4 it fell
-// h2 and its rows are hand-packed per tick within 1,700 bytes; that budget is the room's.
-// A reader takes a frame whole or not at all (ok false): a field missing, extra or out of range.
+// What Everglade II's guard and monsters did, or had done to them (#13276): e entries of the D frame.
+// Where each stands, its state and its Hit Points are its row's (everglade-wire.coax WK_GUARD,
+// WK_MONSTER). The one codec both sides load: the room writes the entries (guard.coax, creatures.coax)
+// and the page reads them (everglade/client/net.coax). Profile proto/verse/everglade2-combat-v2.json,
+// doc docs/protocol/everglade-guard-monsters-v2.md; its check runs these functions:
+//   coax/web/tool.sh coax/web/room/combat-profile.coax proto/verse/everglade2-combat-v2.json
+// Whole numbers a space apart (everglade-wire.coax wire_int). A place is cm. Ticks are the room's.
+//   e guard TICK KIND SEAT AMOUNT                      a blow: KIND 1 at him, 2 his at SEAT, 4 his critical,
+//                                                      5 his arrow, 6 its critical
+//   e mon TICK KIND M SEAT AMOUNT [FX FZ TX TZ FLY_MS] a monster's event: KIND 1 its blow at SEAT, 2 a blow
+//                                                      at it, 3 an arrow loosed (with its flight), 4 it fell
+// TICK may be ahead of the frame's: the guard's turn is told when the rules take it, each blow at its moment.
+// A reader takes an entry whole or not at all (ok false): a field missing, extra or out of range.
 //   coax/bin/coax test everglade/server/creature-wire.coax
 #load "../shared/everglade-wire.coax";
 
-EGC_MONS :: 12;     // the monsters the frames name at most (creatures.coax E2M_N, everglade/client/net.coax E2N_MONS)
+EGC_MONS :: WIRE_MONS;   // the monsters the entries name at most (creatures.coax E2M_N, everglade/client/net.coax E2N_MONS)
+EGC_GUARD_E :: "e guard"; EGC_MON_E :: "e mon";
 EGC_SEATS :: 64;    // a SEAT or FOE is below this, or -1 for none
 EGC_GUARD_HIT :: 1; EGC_GUARD_BLOW :: 2; EGC_GUARD_CRIT :: 4; EGC_GUARD_SHOT :: 5; EGC_GUARD_SHOT_CRIT :: 6;
 EGC_MON_BLOW :: 1; EGC_MON_HIT :: 2; EGC_MON_LOOSED :: 3; EGC_MON_FELL :: 4;
 
-EgcGuard :: struct { ok: bool; tick: int; life: int; state: int; x: int; z: int; yaw: int; hp: int; max: int; swing: int; foe: int; }
 EgcGuardHit :: struct { ok: bool; tick: int; kind: int; seat: int; amount: int; }
-EgcMon :: struct { m: int; life: int; kind: int; state: int; x: int; z: int; yaw: int; hp: int; max: int; act: int; act_tick: int; foe: int; }
-EgcMons :: struct { ok: bool; tick: int; count: int; row: [EGC_MONS] EgcMon; }
 EgcMonHit :: struct { ok: bool; tick: int; kind: int; m: int; seat: int; amount: int; fx: int; fz: int; tx: int; tz: int; fly: int; }
 
 egc_seat_ok :: (s: int) -> bool { return s >= -1 && s < EGC_SEATS; }
+// Whether an e entry is one of these: told on the reliable class, with the outcomes' room and outside the cue budget.
+egc_kept :: (t: string) -> bool { return wire_is(t, EGC_MON_E) || wire_is(t, EGC_GUARD_E); }
 
-// ---- g2
-// The guard's fields after TICK (LIFE to FOE): the bytes the room compares to know he changed.
-egc_guard_put_body :: (out: [] u8, at: int, g: EgcGuard) -> int {
-  n := wire_int(out, wire_int(out, at, g.life), g.state);
-  n = wire_int(out, wire_int(out, wire_int(out, n, g.x), g.z), g.yaw);
-  return wire_int(out, wire_int(out, wire_int(out, wire_int(out, n, g.hp), g.max), g.swing), g.foe);
-}
-egc_guard_put :: (out: [] u8, tick: int, body: string) -> int { return wire_put(out, wire_int(out, wire_put(out, 0, "g2"), tick), body); }
-egc_guard_read :: (t: string) -> EgcGuard {
-  if !wire_is(t, "g2") { return EgcGuard.{}; }
-  rd := [1] WireRd.[wire_rd(t, 2)];
-  g: EgcGuard;
-  g.tick = wire_num(t, rd[..]); g.life = wire_num(t, rd[..]); g.state = wire_num(t, rd[..]);
-  g.x = wire_num(t, rd[..]); g.z = wire_num(t, rd[..]); g.yaw = wire_num(t, rd[..]);
-  g.hp = wire_num(t, rd[..]); g.max = wire_num(t, rd[..]); g.swing = wire_num(t, rd[..]); g.foe = wire_num(t, rd[..]);
-  g.ok = rd[0].ok && !wire_more(t, rd[..]) && g.tick >= 0 && g.life >= 0 && g.state >= 0 && g.state <= 4 && g.hp >= 0 && g.max >= g.hp &&
-    g.x >= -200000 && g.x <= 200000 && g.z >= -650000 && g.z <= 200000 && g.yaw >= -7000 && g.yaw <= 7000 && egc_seat_ok(g.foe);
-  return g;
-}
-
-// ---- g3
+// ---- e guard
 egc_guard_hit_put :: (out: [] u8, h: EgcGuardHit) -> int {
-  return wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_put(out, 0, "g3"), h.tick), h.kind), h.seat), h.amount);
+  return wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_put(out, 0, EGC_GUARD_E), h.tick), h.kind), h.seat), h.amount);
 }
 egc_guard_hit_read :: (t: string) -> EgcGuardHit {
-  if !wire_is(t, "g3") { return EgcGuardHit.{}; }
-  rd := [1] WireRd.[wire_rd(t, 2)];
+  if !wire_is(t, EGC_GUARD_E) { return EgcGuardHit.{}; }
+  rd := [1] WireRd.[wire_rd(t, EGC_GUARD_E.count)];
   h: EgcGuardHit;
   h.tick = wire_num(t, rd[..]); h.kind = wire_num(t, rd[..]); h.seat = wire_num(t, rd[..]); h.amount = wire_num(t, rd[..]);
   h.ok = rd[0].ok && !wire_more(t, rd[..]) && h.tick >= 0 && h.kind >= EGC_GUARD_HIT && h.kind <= EGC_GUARD_SHOT_CRIT && h.kind != 3 &&
@@ -63,41 +41,9 @@ egc_guard_hit_read :: (t: string) -> EgcGuardHit {
   return h;
 }
 
-// ---- h2
-// One monster's row appended to rows at at; then the frame round count rows.
-egc_mon_put_row :: (rows: [] u8, at: int, r: EgcMon) -> int {
-  n := wire_int(rows, wire_int(rows, wire_int(rows, wire_int(rows, at, r.m), r.life), r.kind), r.state);
-  n = wire_int(rows, wire_int(rows, n, r.x), r.z);
-  n = wire_int(rows, wire_int(rows, wire_int(rows, n, r.yaw), r.hp), r.max);
-  return wire_int(rows, wire_int(rows, wire_int(rows, n, r.act), r.act_tick), r.foe);
-}
-egc_mon_put :: (out: [] u8, tick: int, count: int, rows: string) -> int {
-  return wire_put(out, wire_int(out, wire_int(out, wire_put(out, 0, "h2"), tick), count), rows);
-}
-egc_mon_read :: (t: string) -> EgcMons {
-  if !wire_is(t, "h2") { return EgcMons.{}; }
-  rd := [1] WireRd.[wire_rd(t, 2)];
-  o: EgcMons;
-  o.tick = wire_num(t, rd[..]); o.count = wire_num(t, rd[..]);
-  if !rd[0].ok || o.tick < 0 || o.count < 0 || o.count > EGC_MONS { return EgcMons.{}; }
-  for q: 0..<o.count {
-    r: EgcMon;
-    r.m = wire_num(t, rd[..]); r.life = wire_num(t, rd[..]); r.kind = wire_num(t, rd[..]); r.state = wire_num(t, rd[..]);
-    r.x = wire_num(t, rd[..]); r.z = wire_num(t, rd[..]); r.yaw = wire_num(t, rd[..]); r.hp = wire_num(t, rd[..]); r.max = wire_num(t, rd[..]);
-    r.act = wire_num(t, rd[..]); r.act_tick = wire_num(t, rd[..]); r.foe = wire_num(t, rd[..]);
-    if !rd[0].ok || r.m < 0 || r.m >= EGC_MONS || r.life < 0 || r.kind < 0 || r.kind > 1 || r.state < 0 || r.state > 5 ||
-      r.hp < 0 || r.max < 1 || r.hp > r.max || r.act < 0 || r.act > 2 || !egc_seat_ok(r.foe) ||
-      r.x < -20000 || r.x > 20000 || r.z < -65000 || r.z > 20000 || r.yaw < -1000000 || r.yaw > 1000000 { return EgcMons.{}; }
-    o.row[q] = r;
-  }
-  if wire_more(t, rd[..]) { return EgcMons.{}; }
-  o.ok = true;
-  return o;
-}
-
-// ---- h3
+// ---- e mon
 egc_mon_hit_put :: (out: [] u8, h: EgcMonHit) -> int {
-  n := wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_put(out, 0, "h3"), h.tick), h.kind), h.m), h.seat);
+  n := wire_int(out, wire_int(out, wire_int(out, wire_int(out, wire_put(out, 0, EGC_MON_E), h.tick), h.kind), h.m), h.seat);
   n = wire_int(out, n, h.amount);
   if h.kind != EGC_MON_LOOSED { return n; }
   n = wire_int(out, wire_int(out, n, h.fx), h.fz);
@@ -105,8 +51,8 @@ egc_mon_hit_put :: (out: [] u8, h: EgcMonHit) -> int {
   return wire_int(out, n, h.fly);
 }
 egc_mon_hit_read :: (t: string) -> EgcMonHit {
-  if !wire_is(t, "h3") { return EgcMonHit.{}; }
-  rd := [1] WireRd.[wire_rd(t, 2)];
+  if !wire_is(t, EGC_MON_E) { return EgcMonHit.{}; }
+  rd := [1] WireRd.[wire_rd(t, EGC_MON_E.count)];
   h: EgcMonHit;
   h.tick = wire_num(t, rd[..]); h.kind = wire_num(t, rd[..]); h.m = wire_num(t, rd[..]); h.seat = wire_num(t, rd[..]); h.amount = wire_num(t, rd[..]);
   if h.kind == EGC_MON_LOOSED {
@@ -118,33 +64,19 @@ egc_mon_hit_read :: (t: string) -> EgcMonHit {
   return h;
 }
 
-#test "creature wire: each frame written reads back, and a bad one is refused whole" {
-  b: [256] u8; body: [128] u8;
-  g := EgcGuard.{life = 1, state = 0, x = 0, z = -20000, yaw = 3140, hp = 11, max = 11, swing = -1, foe = -1};
-  bn := egc_guard_put_body(body[..], 0, g);
-  n := egc_guard_put(b[..], 30, cast(string) body[0..<bn]);
-  #assert cast(string) b[0..<n] == "g2 30 1 0 0 -20000 3140 11 11 -1 -1";
-  r := egc_guard_read(cast(string) b[0..<n]); #assert r.ok && r.tick == 30 && r.z == -20000 && r.yaw == 3140 && r.foe == -1 && r.swing == -1;
-  for bad: [7] string.["g2 30 1 5 0 0 0 1 1 -1 -1", "g2 30 1 0 0 0 0 2 1 -1 -1", "g2 30 1 0 0 0 7001 1 1 -1 -1", "g2 30 1 0 0 0 0 1 1 -1 64",
-    "g2 30 1 0 0 0 0 1 1 -1", "g2 30 1 0 0 0 0 1 1 -1 -1 0", "h2 30 1 0 0 0 0 1 1 -1 -1"] { #assert !egc_guard_read(bad).ok; }
-  n = egc_guard_hit_put(b[..], EgcGuardHit.{tick = 90, kind = EGC_GUARD_HIT, seat = 2, amount = 5});
-  #assert cast(string) b[0..<n] == "g3 90 1 2 5" && egc_guard_hit_read("g3 90 1 2 5").amount == 5;
-  for bad: [5] string.["g3 90 3 2 5", "g3 90 7 2 5", "g3 90 1 2 1000", "g3 90 1 -2 5", "g3 90 1 2"] { #assert !egc_guard_hit_read(bad).ok; }
-  rows: [256] u8;
-  rn := egc_mon_put_row(rows[..], 0, EgcMon.{m = 3, life = 1, kind = 0, state = 1, x = 1000, z = -20000, yaw = 3140, hp = 11, max = 11, act = 0, act_tick = 0, foe = 0});
-  rn = egc_mon_put_row(rows[..], rn, EgcMon.{m = 9, life = 1, kind = 1, state = 0, x = 500, z = -30000, yaw = 0, hp = 7, max = 7, act = 2, act_tick = 30, foe = -1});
-  n = egc_mon_put(b[..], 30, 2, cast(string) rows[0..<rn]);
-  #assert cast(string) b[0..<n] == "h2 30 2 3 1 0 1 1000 -20000 3140 11 11 0 0 0 9 1 1 0 500 -30000 0 7 7 2 30 -1";
-  m := egc_mon_read(cast(string) b[0..<n]); #assert m.ok && m.count == 2 && m.row[1].m == 9 && m.row[1].act_tick == 30 && m.row[1].foe == -1;
-  #assert egc_mon_read("h2 3 0").ok && egc_mon_read("h2 3 0").count == 0;
-  for bad: [6] string.["h2 61 1 3 1 0 1 1300 -20000 3140 99 11 1 45 0", "h2 61 13", "h2 61 1 12 1 0 1 0 0 0 1 1 0 0 0", "h2 61 2 3 1 0 1 0 0 0 1 1 0 0 0",
-    "h2 61 1 3 1 0 1 0 0 0 1 1 0 0 0 7", "h2 61 1 3 1 0 1 0 0 1000001 1 1 0 0 0"] { #assert !egc_mon_read(bad).ok; }
+#test "creature wire: each entry written reads back, and a bad one is refused whole" {
+  b: [256] u8;
+  n := egc_guard_hit_put(b[..], EgcGuardHit.{tick = 90, kind = EGC_GUARD_HIT, seat = 2, amount = 5});
+  #assert cast(string) b[0..<n] == "e guard 90 1 2 5" && egc_guard_hit_read("e guard 90 1 2 5").amount == 5 && egc_guard_hit_read("e guard 90 1 2 5").tick == 90;
+  for bad: [7] string.["e guard 90 3 2 5", "e guard 90 7 2 5", "e guard 90 1 2 1000", "e guard 90 1 -2 5", "e guard 90 1 2", "e guard 90 1 2 5 0", "e mon 90 1 2 5"] { #assert !egc_guard_hit_read(bad).ok; }
   n = egc_mon_hit_put(b[..], EgcMonHit.{tick = 90, kind = EGC_MON_LOOSED, m = 10, seat = 0, amount = 0, fx = 500, fz = -30000, tx = 520, tz = -31000, fly = 700});
-  #assert cast(string) b[0..<n] == "h3 90 3 10 0 0 500 -30000 520 -31000 700";
-  h := egc_mon_hit_read(cast(string) b[0..<n]); #assert h.ok && h.tz == -31000 && h.fly == 700;
+  #assert cast(string) b[0..<n] == "e mon 90 3 10 0 0 500 -30000 520 -31000 700";
+  h := egc_mon_hit_read(cast(string) b[0..<n]); #assert h.ok && h.tz == -31000 && h.fly == 700 && h.m == 10;
   n = egc_mon_hit_put(b[..], EgcMonHit.{tick = 90, kind = EGC_MON_HIT, m = 3, seat = -1, amount = 4, fly = 9});
-  #assert cast(string) b[0..<n] == "h3 90 2 3 -1 4" && egc_mon_hit_read("h3 90 2 3 -1 4").ok;
-  for bad: [6] string.["h3 90 5 3 0 4", "h3 90 3 10 0 0 500 -30000 520 -31000 5001", "h3 90 3 10 0 0 500 -30000 520 -31000", "h3 90 2 3 -1 4 1", "h3 90 2 12 -1 4", "h3 90 2 3 -1 1000"] {
+  #assert cast(string) b[0..<n] == "e mon 90 2 3 -1 4" && egc_mon_hit_read("e mon 90 2 3 -1 4").ok;
+  for bad: [7] string.["e mon 90 5 3 0 4", "e mon 90 3 10 0 0 500 -30000 520 -31000 5001", "e mon 90 3 10 0 0 500 -30000 520 -31000", "e mon 90 2 3 -1 4 1", "e mon 90 2 12 -1 4", "e mon 90 2 3 -1 1000", "e guard 90 2 3 -1"] {
     #assert !egc_mon_hit_read(bad).ok;
   }
+  // an entry of the reliable class: never a cue the budget may drop (everglade/server/seats.coax eg_event_who)
+  #assert egc_kept("e mon 90 2 3 -1 4") && egc_kept("e guard 90 1 2 5") && !egc_kept("e hit 1001 2003 7 3") && !egc_kept("e monk 1") && !egc_kept("e guards 1") && !egc_kept("e mon");
 }

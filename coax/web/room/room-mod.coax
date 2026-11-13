@@ -197,7 +197,7 @@ rm_mod_test_room :: (v: [] RmServer, key: string, now: int, admin_pid: string, p
   #assert rm_join(v, 0, tk_test_ask(r[..], t[..], n)) == 0;
   n = tk_sign_xp(key, pid, false, "", "pair-e2-tk", 0, now + 600000, -1, 0, t[..]);
   #assert rm_join(v, 1, tk_test_ask(r[..], t[..], n)) == 1;   // the second seat
-  rm_heard(v, 0, "H 5 ranger.0.0.0 srd-fighter 0 -"); rm_heard(v, 1, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v, 0, "H 6 ranger.0.0.0 srd-fighter 0 -"); rm_heard(v, 1, "H 6 ranger.0.0.0 srd-fighter 0 -");
   k := eg_room_at(v, v[0].conns[0].relay);
   eg_test_tick(v, k);
   return k;

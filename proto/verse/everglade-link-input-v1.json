@@ -2,7 +2,7 @@
   "identity": "everglade-link-input-v1",
   "check": "coax/web/tool.sh apps/openagents-web/everglade-link-profile.coax proto/verse/everglade-link-input-v1.json",
   "command": "J1",
-  "base_session": "everglade-session-v5",
+  "base_session": "everglade-session-v6",
   "scope": "opt-in local Link experiment; matching room required",
   "fields": [
     "SEQ",

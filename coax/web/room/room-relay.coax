@@ -588,7 +588,7 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   #assert heard[0..<27] == "y 12 15 1762190000123 2|j 0" && eg_test_has(heard, "|j 13|j 14|j 15|W 0 30 ");
   // an everglade room's frames are the server's intents, never passed on
   rm_heard(v[..], 15, "P 1 0 0 0 0 0 0 0 0 0");
-  rm_heard(v[..], 20, "H 5 x 0 0 Ana");
+  rm_heard(v[..], 20, "H 6 x 0 0 Ana");
   #assert v[0].q_n == 0;
   // One-Shot's rooms: four seats, as before
   os := "GET /api/room/relay/one-shot/abcd HTTP/1.1\r\n\r\n";

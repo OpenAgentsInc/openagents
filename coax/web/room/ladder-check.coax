@@ -150,11 +150,11 @@ tool_main :: () -> int #export_c #effects(all) {
     tool_err("ladder-check: can't open "); tool_errln(url); print("fails\n"); return 1;
   }
   // the watcher sits first, then the outlaw
-  sent := relay_conn_send(c[1..<2], "H 5 ranger.2.0.0 druid 64 Ladder Watcher");
+  sent := relay_conn_send(c[1..<2], "H 6 ranger.2.0.0 druid 64 Ladder Watcher");
   t00 := rs_now();
   while rs_now() - t00 < 1000 { while relay_conn_poll(c[1..<2], 0) == RC_TEXT { lc_hear(h[1..<2], cast(string) c[1].text[0..<c[1].text_n]); } proc_sleep(5); }
   if !relay_conn_open(c[0..<1], url_a) { tool_err("ladder-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
-  sent = relay_conn_send(c[0..<1], "H 5 ranger.1.0.0 druid 64 Ladder Outlaw") && sent;
+  sent = relay_conn_send(c[0..<1], "H 6 ranger.1.0.0 druid 64 Ladder Outlaw") && sent;
   sent = lc_steps(c[..], h[..], seq[..], 2000) && sent;
   // earn: the outlaw's bolt at the nearest of the town standing, until WANTED 3 (or SECONDS)
   strikes := 0;

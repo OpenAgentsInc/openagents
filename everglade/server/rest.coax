@@ -138,7 +138,7 @@ e2rt_room :: (v: [] RmServer, kind: string) -> int {
   path := "GET /api/room/relay/everglade/pair-e2-rest HTTP/1.1\r\n\r\n";
   if rm_join(v, 0, path) != 0 { return -1; }
   k := eg_room_at(v, v[0].conns[0].relay);
-  h: [96] u8; n := put(h[..], 0, "H 5 ranger.0.0.0 "); n = put(h[..], n, kind); n = put(h[..], n, " 0 -");
+  h: [96] u8; n := put(h[..], 0, "H 6 ranger.0.0.0 "); n = put(h[..], n, kind); n = put(h[..], n, " 0 -");
   rm_heard(v, 0, cast(string) h[0..<n]);
   for q: 0..<3 { eg_test_tick(v, k); }
   return k;
@@ -228,7 +228,7 @@ e2rt_heard :: (v: [] RmServer, c: int, box: [] u8) -> string { return rl_heard_b
   t: [256] u8; r: [512] u8; box: [16384] u8;
   n := tk_sign(key, "p-0011223344556677", false, "", "pair-e2-rest", now + 600000, -1, t[..]);
   #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-e2-rest")) == 0;
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 A");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter 0 A");
   k := eg_room_at(v[..], v[0].conns[0].relay);
   for q: 0..<3 { eg_test_tick(v[..], k); }
   c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT..<EGB_SEAT + 1];
@@ -242,7 +242,7 @@ e2rt_heard :: (v: [] RmServer, c: int, box: [] u8) -> string { return rl_heard_b
   #assert c[0].long_rest.phase == 1 && rs_sleeping(c[0]) && c[0].long_rest.sleep > sleep;
   n = tk_sign(key, "p-0011223344556677", false, "", "pair-e2-rest", now + 600000, -1, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-e2-rest")) == 0;
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter 0 A");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-fighter 0 A");
   eg_test_tick(v[..], k);
   #assert c[0].long_rest.phase == 1 && rs_sleeping(c[0]) && c[0].hp == 3 && v[0].eg[k].seat[0].last_cast == last;
   #assert eg_test_has(e2rt_heard(v[..], 1, box[..]), "z 0 3 1");
@@ -259,7 +259,7 @@ e2rt_ck_join :: (v: [] RmServer, conn: int, owner: int, capture: CharacterCaptur
   size := tk_add(request[..], 0, "GET /api/room/relay/everglade/pair-e2-rest?t="); size = tk_add(request[..], size, ticket); size = tk_add(request[..], size, " HTTP/1.1\r\n\r\n");
   if rm_join(v, conn, cast(string) request[0..<size]) < 0 { return -1; }
   k := eg_room_at(v, v[0].conns[conn].relay);
-  rm_heard(v, conn, "H 5 ranger.0.0.0 srd-fighter 0 Ash");
+  rm_heard(v, conn, "H 6 ranger.0.0.0 srd-fighter 0 Ash");
   ck_test_place(v, k);   // a seat waits for its first durable capture to play
   return k;
 }
@@ -347,8 +347,8 @@ e2rt_land :: (v: [] RmServer, k: int) { for q: 0..<90 { eg_test_tick(v, k); } }
   path:="GET /api/room/relay/everglade/pair-e2-first-aid HTTP/1.1\r\n\r\n";
   #assert rm_join(v[..],0,path)==0 && rm_join(v[..],1,path)==1;
   k:=eg_room_at(v[..],v[0].conns[0].relay);
-  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-fighter 0 -");
-  rm_heard(v[..],1,"H 5 ranger.0.0.0 srd-wizard 0 -");
+  rm_heard(v[..],0,"H 6 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v[..],1,"H 6 ranger.0.0.0 srd-wizard 0 -");
   for q:0..<3 { eg_test_tick(v[..],k); }
   room:=v[0].eg[k..<k+1];
   rules:=room[0].rules[..]; b:=rules[0].b[..];

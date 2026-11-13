@@ -18,7 +18,7 @@ tool_main :: () -> int #export_c #effects(all) {
   asked := false; go := false;
   c: [1] RelayConn;
   if !relay_conn_open(c[..], url) { tool_err("owner-seat: can't open "); tool_errln(url); print("{\"open\":false}\n"); return 1; }
-  hellos := [2] string.["H 5 ranger.1.0.0 druid 0 Owner", "H 5 ranger.1.0.0 warlock 0 Owner"];
+  hellos := [2] string.["H 6 ranger.1.0.0 druid 0 Owner", "H 6 ranger.1.0.0 warlock 0 Owner"];
   sent := relay_conn_send(c[..], hellos[0]);
   seat := -1; d := 0; elsewhere := false; restarting := false; closed := false; said := 1;
   seq := 0; m: [96] u8;

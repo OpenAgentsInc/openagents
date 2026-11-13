@@ -141,7 +141,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if !map_need_all(EG_POINTS_ZONE, mp_names[..], mp_at[..], mp_want[..]) { print("falls\n"); return 2; }
   bridge := eg_point("bridge");
   for i: 0..<BC_SEATS { h[i].deck_x0 = bridge.x - f32(BC_DECK_HALF); h[i].deck_x1 = bridge.x + f32(BC_DECK_HALF); }
-  sent := [1] bool.[relay_conn_send(c[0..<1], "H 5 ranger.2.1.0 druid 64 Bridge A") && relay_conn_send(c[1..<2], "H 5 ranger.0.0.0 druid 64 Bridge B")];
+  sent := [1] bool.[relay_conn_send(c[0..<1], "H 6 ranger.2.1.0 druid 64 Bridge A") && relay_conn_send(c[1..<2], "H 6 ranger.0.0.0 druid 64 Bridge B")];
   t0 := rs_now();
   // both to the East Gate road, 24 m from the deck: out of the meteors' way
   at_road := true;

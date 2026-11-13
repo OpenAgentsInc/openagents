@@ -14,7 +14,7 @@
 //
 // Page to server:
 //   P ENGINE RULES CONTENT         the build this page is (WIRE_PINS), just before its hello (#12839)
-//   H 5 LOOK CLASS FLAGS NAME      hello, after y: look ("ranger.SKIN.DYE.TRIM"), class ("druid"), FLAGS
+//   H 6 LOOK CLASS FLAGS NAME      hello, after y: look ("ranger.SKIN.DYE.TRIM"), class ("druid"), FLAGS
 //                                  (1 touch, 2 logged in, 8 reads packed rows: WIRE_HELLO_PACKED), the name shown ("-" none)
 //   I SEQ KX KY PX PY THETA B HEARD  one step's input (everglade-move-types.coax EgMoveIn), every step at
 //                                  30 Hz, idle ones too: the keys and the stick (-100 to 100, along the
@@ -56,6 +56,8 @@
 //     n SS ID LOOK CLASS FLAGS NAME  who a seat is ("-" none yet)
 //     e cast SS SLOT AX AY AZ SEED a cast the server took: every page plays it from SEED
 //     e hit WHO BY AMT KIND        damage (WHO and BY as TGT codes)
+//     e mon TICK KIND M SEAT AMOUNT [FX FZ TX TZ FLY_MS] | e guard TICK KIND SEAT AMOUNT   what a monster
+//                                  or the guard did or took (everglade/server/creature-wire.coax, #13276)
 //     e heal WHO AMT | e die WHO | e break PIECE IX IY IZ | e burn PIECE ON | e rebuild | e edit VERSION
 //     e stop SS SLOT WHY          a cast the server took ended before its strike (WHY: range, sight, gone,
 //                                  held, dead, left: everglade-cast-rules.coax, #12790); pages drop its strike
@@ -98,14 +100,14 @@
 #load "../../aethyr/net/budget.coax";   // priority and the order rows go in (#13178)
 
 WIRE_F_OOB :: 4;      // a D's F bit: out of band, a WebTransport seat's outcomes on a reliable stream (coax/web/room/room-wt.coax)
-WIRE_VERSION :: 5;   // 5: authoritative forest rows; 4: I's THETA in 0.1 mrad (WIRE_FINE)
+WIRE_VERSION :: 6;   // 6: Everglade II's monsters and guard are rows, their blows e entries (#13276); 5: authoritative forest rows; 4: I's THETA in 0.1 mrad (WIRE_FINE)
 WIRE_REFUSE_VERSION :: "version";   // r 0 version: the room speaks another WIRE_VERSION than the hello's (the page reloads)
 WIRE_REFUSE_ELSEWHERE :: "elsewhere";   // r 0 elsewhere: a newer seat ticket has your character, in another tab or room (#12834); the page stops rejoining
 WIRE_REFUSE_RESTARTING :: "restarting";   // r 0 restarting: the room drains before a release (#12797); the page joins again at once, on another shard
 // The oldest wire the room still speaks: a page cached from the release before still joins while its
 // hello's version is in WIRE_MIN..WIRE_VERSION. Keep WIRE_MIN below WIRE_VERSION only while the room
 // still writes what that older page reads.
-WIRE_MIN :: 5;
+WIRE_MIN :: 6;
 // The build a page and a room are, beside the wire (#12839, aethyr/session/compat.coax): one encounter
 // never mixes two engines, two rule sets or two worlds. Raise WIRE_ENGINE when the shared movement or
 // world step changes what a page predicts, WIRE_RULES when the room's rules (everglade5e-room-rules.coax,
@@ -154,6 +156,16 @@ WK_PLAYER :: 0; WK_FOLK :: 1;
 WK_PACK :: 10;             // Conjure Animals' pack: its middle; F 1 while it runs
 WK_FROG :: 11;             // a townsperson Polymorph took: P1 their index
 WK_BEAST :: 12;            // a summoned beast: P1 the form
+// Everglade II's creatures that stand in the world (#13276; everglade/server/creatures.coax, guard.coax).
+// Each declares its row's fields once, in WIRE_KIND_FIELDS below; delta, acknowledgement, priority,
+// the link budget, interest and the block list are the row layer's, as every row's are.
+WK_MONSTER :: 13;          // a wolf or a goblin: G its state (E2M_*), CLIP its act under way (E2M_ACT_*, 0 none), T0 the tick that
+                           // act began (the tick it fell, when dead; 0 none), OWNER its foe as a TGT code (-1 none), P1 its index
+                           // (0 to WIRE_MONS - 1), P2 its kind (0 a wolf, 1 a goblin), HP and MAX the battle's
+WK_GUARD :: 14;            // the path's guard: G his state (E2G_*), T0 the tick of his last swing (-1 none), OWNER his foe, HP and MAX
+WIRE_MONS :: 12;           // the monsters a room holds at most
+WIRE_MON_EID :: 970000;    // monster M's row id: WIRE_ID_MADE + WIRE_MON_EID + M
+WIRE_GUARD_EID :: 970100;  // the guard's row id: WIRE_ID_MADE + WIRE_GUARD_EID
 WK_STONE :: 20;            // a Wall of Stone: its middle, its way (YAW along it); HP and P1 its two panels' hit points, P2 its length
 WK_TENTACLES :: 21;        // Black Tentacles' square: its middle; P2 its side
 WK_THORNS :: 22;           // a Wall of Thorns: its middle, its way; P2 its length
@@ -164,7 +176,7 @@ WIRE_DOOR_WORD :: 31; WIRE_DOOR_WORDS :: 2;
 WIRE_DOORS_EID :: 960000;   // the doors row's id: WIRE_ID_MADE + WIRE_DOORS_EID
 WK_BOAT :: 25;             // a rowboat (#12861): one row each always; OWNER the seat that rows it (-1 moored), P1 its float (river.coax), P2 the oars' stroke in thousandths (-1 shipped)
 WIRE_BOAT_EID :: 961000;   // the n-th boat row's id: WIRE_ID_MADE + WIRE_BOAT_EID + n
-WK_TREE :: FOREST_KIND;             // authoritative forest state (everglade-session-v5.json forest.fields)
+WK_TREE :: FOREST_KIND;             // authoritative forest state (everglade-session-v6.json forest.fields)
 WIRE_TREE_EID :: FOREST_EID - WIRE_ID_MADE; WIRE_TREES :: FOREST_RECORDS;
 WK_EFFECT :: 30;           // a condition, buff or hold that lasts: OWNER the TGT code it is on, P1 the slot or ability, P2 its WC_* bit, T0 and DUR
 // an effect's cause (WK_EFFECT's P1) for the watch's spells on a player (everglade-status.coax ST_*)
@@ -208,7 +220,7 @@ WireHelloValue :: struct #persisted {
   for i:0..<n {packet[i]=0;}
   #assert value.ok && rd[0].ok && value.look_n==12 && value.kind_n==5 && value.name_n==8;
   out:[WIRE_FRAME]u8;m:=wire_put_hello_value(out[..],0,value);
-  #assert cast(string)out[0..<m]=="H 5 ranger.2.1.0 druid 2 Ash Wood";
+  #assert cast(string)out[0..<m]=="H 6 ranger.2.1.0 druid 2 Ash Wood";
   huge:[WIRE_FRAME+1]u8;rd[0]=wire_rd(cast(string)huge[..],1);
   #assert !wire_read_hello_value(cast(string)huge[..],rd[..]).ok && !rd[0].ok;
 }
@@ -452,7 +464,7 @@ wire_put_travel :: (out: [] u8, at: int, seq: int, code: string) -> int { return
 wire_put_refused :: (out: [] u8, at: int, seq: int, reason: string) -> int { return wire_text(out, wire_int(out, wire_put(out, at, "r"), seq), reason); }
 
 // ---- the session's other frames (#13364): a writer and a reader each, so the room and the page
-// share them and everglade-session-v5.json pins them. A reader starts past its head (wire_rd(t, 4)
+// share them and everglade-session-v6.json pins them. A reader starts past its head (wire_rd(t, 4)
 // for "e xp", 1 for "V") and leaves ok unset on a missing or bad field.
 
 // e xp SS AMOUNT: XP seat SS earned; e level SS LEVEL: its class's level went up
@@ -1184,7 +1196,7 @@ wire_hist_put :: (h: [] WireHist, q: int, e: WireS, w: f32, all: bool, moved: bo
     m.vx = wire_tenth(dx * f32(WIRE_HZ)); m.vy = wire_tenth(dy * f32(WIRE_HZ)); m.vz = wire_tenth(dz * f32(WIRE_HZ));
   }
   a := (row * WIRE_SLOTS + q) * WIRE_SF;
-  wire_s_pack(m, h[0].f[a..<a + WIRE_SF]);
+  wire_s_pack(m, h[0].f[a..<a + WIRE_SF]); wire_kind_keep(m.kind, h[0].f[a..<a + WIRE_SF]);
   h[0].id[row * WIRE_SLOTS + q] = wire_s32(e.id + 1); h[0].last[q] = wire_s32(e.id + 1);
   h[0].x[q] = e.x; h[0].y[q] = e.y; h[0].z[q] = e.z; h[0].w[q] = w; h[0].all[q] = all;
 }
@@ -1207,8 +1219,50 @@ wire_rows_same_fields :: (f:[]s32,a:int,b:int,allowed:int)->bool {
 wire_rel :: (kind: int) -> f32 {
   if kind == WK_PLAYER { return 4; }
   if kind == WK_FOLK { return 1.5; }
-  if kind == WK_BEAST || kind == WK_PACK || kind == WK_FROG { return 3; }
+  if kind == WK_BEAST || kind == WK_PACK || kind == WK_FROG || kind == WK_MONSTER || kind == WK_GUARD { return 3; }
   return 2;
+}
+// The one table of what each kind's row carries (#13276): a field outside its kind's mask is never
+// written, so it never costs a byte or reaches a page. LIFE and WARP are the row layer's own, in every
+// row. A kind from before the table (0 here) writes every field, as it always did.
+WIRE_POSE :: (1 << WS_KIND) | (1 << WS_X) | (1 << WS_Y) | (1 << WS_Z) | (1 << WS_YAW) | (1 << WS_VX) | (1 << WS_VY) | (1 << WS_VZ) | (1 << WS_LIFE) | (1 << WS_WARP);
+WIRE_KIND_MONSTER :: WIRE_POSE | (1 << WS_G) | (1 << WS_CLIP) | (1 << WS_HP) | (1 << WS_MAX) | (1 << WS_OWNER) | (1 << WS_P1) | (1 << WS_P2) | (1 << WS_T0);
+WIRE_KIND_GUARD :: WIRE_POSE | (1 << WS_G) | (1 << WS_HP) | (1 << WS_MAX) | (1 << WS_OWNER) | (1 << WS_T0);
+wire_kind_fields :: (kind: int) -> int {
+  if kind == WK_MONSTER { return WIRE_KIND_MONSTER; }
+  if kind == WK_GUARD { return WIRE_KIND_GUARD; }
+  return (1 << WIRE_SF) - 1;
+}
+// A packed row keeps only its kind's fields: the others are as an empty row has them (OWNER -1, the rest 0).
+wire_kind_keep :: (kind: int, f: [] s32) {
+  m := wire_kind_fields(kind);
+  if m == (1 << WIRE_SF) - 1 { return; }
+  z: [WIRE_SF] s32;
+  wire_s_pack(WireS.{}, z[..]);
+  for q: 0..<WIRE_SF { if (m & (1 << q)) == 0 { f[q] = z[q]; } }
+}
+#test "wire (#13276): a kind's row carries its declared fields and no other" {
+  all := WireS.{id = WIRE_ID_MADE + WIRE_MON_EID + 3, kind = WK_MONSTER, x = 1, y = 2, z = 3, yaw = 0.5, vx = 1, vy = 1, vz = 1, g = 1, clip = 2, hp = 7, max = 11, cond = 9, owner = WIRE_TGT_SEAT + 2,
+                p1 = 3, p2 = 1, temp = 4, form = 5, carry = 0.5, t0 = 90, dur = 30};
+  f: [WIRE_SF] s32;
+  wire_s_pack(all, f[..]); wire_kind_keep(all.kind, f[..]);
+  m := wire_s_unpack(all.id, f[..]);
+  #assert m.id == all.id && m.kind == WK_MONSTER && m.x == 1 && m.z == 3 && m.g == 1 && m.clip == 2 && m.hp == 7 && m.max == 11 && m.owner == WIRE_TGT_SEAT + 2 && m.p1 == 3 && m.p2 == 1 && m.t0 == 90;
+  #assert m.cond == 0 && m.temp == 0 && m.form == 0 && m.carry == 0 && m.dur == 0;
+  all.kind = WK_GUARD;
+  wire_s_pack(all, f[..]); wire_kind_keep(all.kind, f[..]);
+  g := wire_s_unpack(all.id, f[..]);
+  #assert g.kind == WK_GUARD && g.g == 1 && g.hp == 7 && g.owner == WIRE_TGT_SEAT + 2 && g.t0 == 90 && g.clip == 0 && g.p1 == 0 && g.p2 == 0 && g.cond == 0 && g.dur == 0;
+  // a kind from before the table keeps every field
+  all.kind = WK_BEAST;
+  wire_s_pack(all, f[..]); wire_kind_keep(all.kind, f[..]);
+  b := wire_s_unpack(all.id, f[..]); #assert b.cond == 9 && b.dur == 30 && b.form == 5 && b.clip == 2;
+  #assert wire_kind_fields(WK_PLAYER) == (1 << WIRE_SF) - 1 && (WIRE_KIND_GUARD & (1 << WS_CLIP)) == 0 && (WIRE_KIND_MONSTER & (1 << WS_COND)) == 0;
+  #assert wire_rel(WK_MONSTER) == 3 && wire_rel(WK_GUARD) == 3 && WIRE_MON_EID + WIRE_MONS <= WIRE_GUARD_EID;
+  // the table writes it so: a monster's row in the tick's table holds no COND, whatever it was handed
+  h: [1] WireHist; all.kind = WK_MONSTER;
+  wire_hist_begin(h[..], 1); wire_hist_put(h[..], 448, all, wire_rel(WK_MONSTER), false, true);
+  #assert wire_test_row(h[..], 448, 1).cond == 0 && wire_test_row(h[..], 448, 1).hp == 7 && wire_test_row(h[..], 448, 1).life == 1;
 }
 
 // What one seat's page holds, as far as the server knows (all zeros: nothing; the C server's memory starts so).
@@ -1933,7 +1987,7 @@ WIRE_TEST_QN :: 64; WIRE_TEST_QB :: 4096;   // the throttle check's socket queue
   #assert wire_axis(0.354) == 35 && wire_axis(-2) == -100;
   n = wire_put_hello(buf[..], 0, WireHello.{look = "ranger.2.1.0", kind = "druid", flags = 2, name = "Ash Wood;x"});
   t = cast(string) buf[0..<n];
-  #assert t == "H 5 ranger.2.1.0 druid 2 Ash Woodx";
+  #assert t == "H 6 ranger.2.1.0 druid 2 Ash Woodx";
   r[0] = wire_rd(t, 1);
   h := wire_read_hello(t, r[..]);
   #assert r[0].ok && h.version == WIRE_VERSION && h.look == "ranger.2.1.0" && h.flags == 2 && h.name == "Ash Woodx";

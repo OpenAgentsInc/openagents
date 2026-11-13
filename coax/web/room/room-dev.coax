@@ -373,7 +373,7 @@ dv_whole :: (t: string) -> int { n := 0; for c: t { if c < '0' || c > '9' || n >
   jb: [RT_TEXT + 128] u8; jn := dv_put(jb[..], 0, "GET /api/room/relay/everglade/pair-e2-ck-1?t="); jn = dv_put(jb[..], jn, net_field_dev(a, "ticket")); jn = dv_put(jb[..], jn, " HTTP/1.1\r\n\r\n");
   #assert rm_join(v[..], 0, cast(string) jb[0..<jn]) >= 0;
   k := eg_room_at(v[..], v[0].conns[0].relay); #assert k >= 0;
-  rm_heard(v[..], 0, "A 12345 0 -9876 150"); rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 Ash");
+  rm_heard(v[..], 0, "A 12345 0 -9876 150"); rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 Ash");
   rm_eg_moved(v[..], k, SeatId.{value = 0}, 0, 123.45, 0, -98.76, 1.5, 0, 0, 0, 0, 0, 0);
   #assert !ck_can_play(v[..], k, SeatId.{value = 0}) && rm_dev_checkpoint(v[..]) && ck_can_play(v[..], k, SeatId.{value = 0});
   i := dv_ck_find(v[..], pid); #assert i >= 0 && v[0].dev.ck[i].saved && v[0].dev.ck[i].c.n[13] == 123450 && v[0].dev.ck[i].c.n[15] == -98760;
@@ -414,7 +414,7 @@ dv_whole :: (t: string) -> int { n := 0; for c: t { if c < '0' || c > '9' || n >
     r2 := rm_dev_restore(v[..], cast(string) file[0..<kept]); kept = rm_dev_store(v[..]); for q: 0..<kept { file[q] = v[0].dev.store[q]; }
     jb: [RT_TEXT + 128] u8; jn := dv_put(jb[..], 0, "GET /api/room/relay/everglade/pair-e2-full-1?t="); jn = dv_put(jb[..], jn, cast(string) t[0..<tn]); jn = dv_put(jb[..], jn, " HTTP/1.1\r\n\r\n");
     #assert rm_join(v[..], p, cast(string) jb[0..<jn]) >= 0;
-    rm_heard(v[..], p, "A 12345 0 -9876 150"); rm_heard(v[..], p, "H 5 ranger.0.0.0 druid 0 Ash");
+    rm_heard(v[..], p, "A 12345 0 -9876 150"); rm_heard(v[..], p, "H 6 ranger.0.0.0 druid 0 Ash");
   }
   k := eg_room_at(v[..], v[0].conns[0].relay); #assert k >= 0 && eg_room_at(v[..], v[0].conns[1].relay) == k;
   for p: 0..<2 { rm_eg_moved(v[..], k, SeatId.{value = v[0].conns[p].seat}, 0, 1 + f32(p), 0, 2, 0, 0, 0, 0, 0, 0, 0); }

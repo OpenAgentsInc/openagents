@@ -109,7 +109,7 @@ rm_e2_admin_warp :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool 
     #assert rm_admin_local(v[..], ifx local == 1 then "127.0.0.1" else "0.0.0.0") == (local == 1);
     #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-admin HTTP/1.1\r\n\r\n") == 0;
     k := eg_room_at(v[..], v[0].conns[0].relay);
-    rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
+    rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter 0 -");
     eg_test_tick(v[..], k);
     #assert v[0].eg[k].guard[0].q >= 0;
     c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT..<EGB_SEAT + 1]; c[0].hp = 1;

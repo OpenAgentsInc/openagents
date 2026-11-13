@@ -195,7 +195,7 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-e2-im")) == 1;
   n = tk_sign(key, "p-00000000000000cc", false, "", "pair-e2-im", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 2, tk_test_ask_in(r[..], t[..], n, "pair-e2-im")) == 2;
-  for c: 0..<3 { rm_heard(v[..], c, "H 5 ranger.0.0.0 druid 0 -"); }   // placed once its hello comes
+  for c: 0..<3 { rm_heard(v[..], c, "H 6 ranger.0.0.0 druid 0 -"); }   // placed once its hello comes
   k := eg_room_at(v[..], v[0].conns[0].relay);
   for q: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   #assert eg_test_ent(box[..], 0, 1).id == 1 && eg_test_ent(box[..], 2, 1).id == 1;
@@ -234,8 +234,8 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   req:="GET /api/room/relay/everglade/pair-e2-fields HTTP/1.1\r\n\r\n";
   #assert rm_join(v[..],0,req)==0 && rm_join(v[..],1,req)==1;
   k:=eg_room_at(v[..],v[0].conns[0].relay);
-  rm_heard(v[..],0,"H 5 ranger.0.0.0 druid 0 Ash");
-  rm_heard(v[..],1,"H 5 ranger.0.0.0 druid 0 Brook");
+  rm_heard(v[..],0,"H 6 ranger.0.0.0 druid 0 Ash");
+  rm_heard(v[..],1,"H 6 ranger.0.0.0 druid 0 Brook");
   box:[1]EgInbox;eg_test_drain(v[..],box[..]);
   rm_eg_moved(v[..],k,SeatId.{value=0},0,0,0,0,0,0,0,0,1,0,0);
   rm_eg_moved(v[..],k,SeatId.{value=1},0,500,0,0,0,0,0,0,1,0,0);
@@ -263,7 +263,7 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   #assert rm_join(v[..], 0, tk_test_ask_in(r[..], t[..], n, "pair-e2-imw")) == 0;
   n = tk_sign(key, "p-00000000000000cc", false, "", "pair-e2-imw", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-e2-imw")) == 1;
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 warlock 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 warlock 0 -");
   k := eg_room_at(v[..], v[0].conns[0].relay);
   for q: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   rm_eg_moved(v[..], k, SeatId.{value = 0}, 0, 37.21, 0, 41.13, 0, 0, 0, 0, 1, 0, 0);

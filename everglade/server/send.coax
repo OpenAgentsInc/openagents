@@ -81,10 +81,12 @@ eg_table :: (v: [] RmServer, k: int) {
   }
   // summoned creatures (raiders among them) once their ground is known: G 1 while it runs (a raider's
   // level in bits 8 and up), P1 its form, MAX its most Hit Points
+  // (Everglade II's monsters and guard stand in the rules as creatures too: each has its own row,
+  // written from its own record below, so the creatures' loop passes them by: #13276)
   bf: [EGB_BEAST_FLOATS] f32;
   for q: 0..<EGB_BEASTS {
     id := egb_beast(rm[0].rules[..], q, bf[..]);
-    if id <= 0 || bf[9] < 0.5 { continue; }
+    if id <= 0 || bf[9] < 0.5 || e2_monster_of_beast(v, k, q) >= 0 || rm[0].guard[0].q == q { continue; }
     wire_hist_put(h, EG_SLOT_BEAST + q, WireS.{id = WIRE_ID_MADE + id, kind = WK_BEAST, x = bf[0], y = bf[1], z = bf[2], yaw = bf[3], hp = cast(int) bf[4], max = cast(int) bf[5],
                                                 g = cast(int) bf[8], owner = cast(int) bf[6], p1 = cast(int) bf[7]}, wire_rel(WK_BEAST), false, true);
   }
@@ -111,6 +113,7 @@ eg_table :: (v: [] RmServer, k: int) {
                                                            owner = WIRE_TGT_SEAT + q, p1 = c, p2 = WE_BIT[c], t0 = st[0].fx[c].t0, dur = st[0].fx[c].dur}, wire_rel(WK_EFFECT), true, false);
     }
   }
+  e2_monsters_rows(v, k); e2_guard_row(v, k);
   // the doors row, every seat's however far: Everglade II has no doors, its words all shut (the slot and bytes kept, #13346)
   wire_hist_put(h, EG_SLOT_DOORS, WireS.{id = WIRE_ID_MADE + EG_DOORS_ID, kind = WK_DOORS, g = 1, p1 = 0, p2 = 0, form = 0}, wire_rel(WK_DOORS), true, false);
   // whose Hit Points moved since last tick: fighting; and the slots that may be in combat with a seat (eg_combat)

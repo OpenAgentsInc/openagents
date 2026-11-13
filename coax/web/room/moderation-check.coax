@@ -39,7 +39,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   c: [2] RelayConn; h: [2] McHeard;
   if !relay_conn_open(c[0..<1], args_at(a[..], 0)) || !relay_conn_open(c[1..<2], args_at(a[..], 1)) { tool_errln("moderation-check: can't open a socket (a ticket refused?)"); print("fails\n"); return 1; }
-  sent := relay_conn_send(c[0..<1], "H 5 ranger.0.0.0 srd-fighter 0 Moderator") && relay_conn_send(c[1..<2], "H 5 ranger.0.0.0 srd-fighter 0 Player");
+  sent := relay_conn_send(c[0..<1], "H 6 ranger.0.0.0 srd-fighter 0 Moderator") && relay_conn_send(c[1..<2], "H 6 ranger.0.0.0 srd-fighter 0 Player");
   mc_wait(c[..], h[..], 2000, 0, -1);
   if !sent || !h[0].y || !h[1].y || h[0].refused || h[1].refused { tool_errln("moderation-check: a seat did not sit"); print("fails\n"); return 1; }
   commands := args_count(a[..]) - 2;

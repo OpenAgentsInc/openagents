@@ -40,8 +40,8 @@ A realm sends each frame one of five ways:
 
 | Channel | Delivery | Everglade's frames |
 | --- | --- | --- |
-| `NET_DATAGRAM` | Unreliable, unordered, at most 1,200 bytes, each one decodes alone | A seat's state each tick (`D`, part 0 only), inputs (`I`, `J1`), anchors (`g2`, `h2`, `m2`) |
-| `NET_COMBAT` | Reliable, ordered | Casts and their outcomes (`C`, `F`, `E`, `a`, `d`, `g3`, `h3`, `r`), and out-of-band `D` frames (flag 4) |
+| `NET_DATAGRAM` | Unreliable, unordered, at most 1,200 bytes, each one decodes alone | A seat's state each tick (`D`, part 0 only), inputs (`I`, `J1`), a familiar's anchor (`m2`) |
+| `NET_COMBAT` | Reliable, ordered | Casts and their outcomes (`C`, `F`, `E`, `a`, `d`, `r`), and out-of-band `D` frames (flag 4) |
 | `NET_LOOT` | Reliable, ordered | Inventory and loot (`b`, `z`, `u1`) |
 | `NET_CHAT` | Reliable, ordered | Chat |
 | `NET_SESSION` | Reliable, ordered | Everything else: joins, seats, keyframes too large for a datagram, `nq` |
@@ -78,10 +78,12 @@ channel is its own stream, so a resend in one never holds up another.
 - **Profiles.** [`aethyr-transport-v1.json`](../../proto/verse/aethyr-transport-v1.json)
   pins the mark byte, each channel's number and an input datagram with a
   repeat byte ([doc](../../docs/protocol/aethyr-transport-v1.md));
-  [`everglade2-combat-v1.json`](../../proto/verse/everglade2-combat-v1.json)
+  [`everglade2-combat-v2.json`](../../proto/verse/everglade2-combat-v2.json)
   pins `F`, `a` and `d` ([doc](../../docs/protocol/everglade-projectiles-v1.md))
-  beside Everglade II's guard and monster frames
-  ([doc](../../docs/protocol/everglade-guard-monsters-v1.md)). Their checks,
+  beside what Everglade II's guard and monsters did, the `e guard` and
+  `e mon` entries of `D`
+  ([doc](../../docs/protocol/everglade-guard-monsters-v2.md)); where they
+  stand is their rows' (session v6). Their checks,
   `coax/web/room/transport-profile.coax` and `combat-profile.coax`, run the
   codecs. [`room-relay-v1.json`](../../proto/verse/room-relay-v1.json) pins
   the relay room's own frames (`y j l m` and the clock's ping and pong,
@@ -103,9 +105,13 @@ modules (#13277). The realm supplies its step and its row's fields.
 | `predict.coax` (`NetLedger`) | Your actions that wait for the room: pressed, then confirmed or refused by the room's word, or timed out. A new socket times out what waited | Everglade II's casts and rests (`E2N_ACT_CAST`, `E2N_ACT_REST`, 5 s) |
 | `interp.coax` | The interpolation buffer (`NetState`, `net_ring_push`, `net_ring_at`, `NetLead`), the jitter buffer and tick map (`net_jitter_heard`, `net_jitter_delay`, `net_map_follow`, `net_lag_step`), the ping pick, and the easing of your own corrections (`NetCorrect`) | `everglade/client/net-core.coax` keeps `NetEnt` (an entity as Everglade's rows describe it) and calls these by `net_push`, `net_state_at` and `net_ease` |
 
+Everglade II's guard and monsters are rows (#13276): each is a `NetEnt` of
+the page's one list, drawn from the engine's ring, with its state and its
+act riding the ring so each shows at the moment the room names.
+
 Not adopted yet: Orbit League's page draws each complete snapshot as it
-comes and predicts nothing, and Everglade II's guard, monsters and familiars
-are still drawn from their own histories until they are rows (#13276).
+comes and predicts nothing, and Everglade II's familiars are still drawn
+from their own snapshot until they are rows (#13276).
 
 ## Adoption points
 

@@ -7,7 +7,7 @@
 // PATH, waits for the first scene, then runs each operation in order and prints its answer:
 //   tree | layout                 the world's entities by id, then the HUD's widgets (aethyr/agent/drive.coax)
 //   state [PATH]                  a field of the realm's state, read through the build's layout
-//                                 (build/.drive/APP.layout): `state you_x`, `state net.mon_rows[3].hp`;
+//                                 (build/.drive/APP.layout): `state you_x`, `state net.mon_hits[3].amount`;
 //                                 alone, the state's top-level fields
 //   tap ID                        a click at the centre of HUD widget ID
 //   type ID TEXT | type ID key NAME   tap ID, then the text (or one key: Enter, Escape, 1, w ...);

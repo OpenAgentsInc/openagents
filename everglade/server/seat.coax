@@ -98,6 +98,8 @@ EG_SLOT_DOORS :: 255;   // preserve the original slots and every spell reservati
 EG_BOATS :: 3;                     // the rowboats (river.coax BOATS), a row each always (WK_BOAT, #12861)
 EG_SLOT_BOAT :: EG_SLOT_DOORS - EG_BOATS;
 EG_SLOT_TREE :: 256;    // separate sparse forest records, zero unused
+// Everglade II's monsters and guard, after the forest's records (#13276): a row each (WK_MONSTER, WK_GUARD)
+EG_SLOT_MON :: EG_SLOT_TREE + WIRE_TREES; EG_SLOT_GUARD :: EG_SLOT_MON + WIRE_MONS;
 EG_DOORS_ID :: WIRE_DOORS_EID;    // its id: WIRE_ID_MADE + EG_DOORS_ID
 EG_FX_ID :: 950000;              // a watch effect's id: WIRE_ID_MADE + EG_FX_ID + SS * WE_WATCH + cause
 
@@ -132,8 +134,6 @@ EgSeat :: struct {
   familiar:E2Familiar;
   stock: [RS_MATERIAL_STOCK] RsMaterialStock;   // the reagents its casts left (everglade/shared/reagent-stock.coax)
   familiar_hash:int; familiar_sent:int; familiar_sense_sent:int;
-  guard_hash: int; guard_sent: int;   // the path guard's state it last heard (everglade/server/guard.coax e2_guard_snapshot)
-  monster_hash: int; monster_sent: int;   // the monsters it last heard (everglade/server/creatures.coax e2_monsters_snapshot)
   // Everglade II rest (everglade/server/rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and
   // the rest state the page last heard (z; -1 none since this socket)

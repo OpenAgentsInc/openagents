@@ -143,9 +143,9 @@ NET_SAME :: "~";                                       // a frame the same as th
   #assert !net_gate_fresh(g[..], 0) && !net_gate_fresh(g[..], -4);
 }
 #test "transport: a frame's channel is its first word's in a realm's table, else the session's" {
-  r := [3] NetRoute.[NetRoute.{word = "D", channel = NET_DATAGRAM}, NetRoute.{word = "h3", channel = NET_COMBAT}, NetRoute.{word = "b", channel = NET_LOOT}];
-  #assert net_route(r[..], "D 4 1 0 0 s 1") == NET_DATAGRAM && net_route(r[..], "h3 1 2") == NET_COMBAT && net_route(r[..], "b 1") == NET_LOOT;
-  #assert net_route(r[..], "h2 1") == NET_SESSION && net_route(r[..], "Dx 1") == NET_SESSION && net_route(r[..], "D") == NET_DATAGRAM;
+  r := [3] NetRoute.[NetRoute.{word = "D", channel = NET_DATAGRAM}, NetRoute.{word = "a", channel = NET_COMBAT}, NetRoute.{word = "b", channel = NET_LOOT}];
+  #assert net_route(r[..], "D 4 1 0 0 s 1") == NET_DATAGRAM && net_route(r[..], "a 1 2") == NET_COMBAT && net_route(r[..], "b 1") == NET_LOOT;
+  #assert net_route(r[..], "q 1") == NET_SESSION && net_route(r[..], "Dx 1") == NET_SESSION && net_route(r[..], "D") == NET_DATAGRAM;
   #assert net_route(r[..], "") == NET_SESSION && net_route(r[..], "y 1 2 3") == NET_SESSION && net_route(r[0..<0], "D 1") == NET_SESSION;
 }
 #test "transport: the page's count of state ticks it missed, the keyframes, and the room's stale drops" {

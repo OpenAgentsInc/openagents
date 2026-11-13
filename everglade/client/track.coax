@@ -212,10 +212,10 @@ e2_track_pointer :: (s: [] E2, t: [] Track, x: f32, y: f32, phase: int, kind: in
   // the fight, counted in the tally; a death says what last hurt you
   n := s[0].net[..];
   n[0].state = E2N_OPEN; n[0].seat = 0;
-  e2n_mon_hit(n, "h3 90 2 3 0 4");          // your blow at monster 3 (a wolf: no row yet)
-  e2n_mon_hit(n, "h3 91 1 3 0 2");          // its bite on you
-  e2n_mon_hit(n, "h3 92 4 3 -1 0");         // it fell
-  e2n_mon_hit(n, "h3 93 4 5 -1 0");         // one you never hurt
+  e2n_mon_hit(n, "e mon 90 2 3 0 4");          // your blow at monster 3 (a wolf: no row yet)
+  e2n_mon_hit(n, "e mon 91 1 3 0 2");          // its bite on you
+  e2n_mon_hit(n, "e mon 92 4 3 -1 0");         // it fell
+  e2n_mon_hit(n, "e mon 93 4 5 -1 0");         // one you never hurt
   n[0].cast_sent = 2; n[0].cast_slot = -1; s[0].mouse[0].looses = 1; n[0].xp_n = 25;
   e2_track(s[..], w[..], t[..], true);
   track_tally_send(t[..]);
@@ -230,8 +230,8 @@ e2_track_pointer :: (s: [] E2, t: [] Track, x: f32, y: f32, phase: int, kind: in
   d: WireD;
   e2n_entry(n[..], "e xp 2 50", d); e2n_entry(n[..], "e xp 3 70", d); e2n_entry(n[..], "e level 2 2", d);
   #assert n[0].xp_n == 50 && n[0].level_got == 2;
-  e2n_guard_hit(n[..], "g3 10 1 2 6");      // your blow at the guard
-  e2n_guard_row(n[..], "g2 11 1 3 0 -20000 0 0 11 0 -1");   // he is down
+  e2n_guard_hit(n[..], "e guard 10 1 2 6");      // your blow at the guard
+  e2n_test_row(n[..], 11, WireS.{id = WIRE_ID_MADE + WIRE_GUARD_EID, kind = WK_GUARD, z = -20, g = 3, hp = 0, max = 11, owner = -1, t0 = -1, life = 1});   // he is down
   #assert n[0].hit_n[E2N_FOE_GUARD] == 1 && n[0].fell_n[E2N_FOE_GUARD] == 1;
 }
 

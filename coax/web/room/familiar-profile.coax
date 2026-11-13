@@ -152,7 +152,7 @@ fp_frame :: (d: Jv, row: int, kit: bool) -> bool {
 fp_check :: (d: Jv, path: string) -> bool {
   tb: [2][512] u8;
   identity := fp_str(d, jv_get(d, 0, "identity"), tb[0][..]);
-  if identity == "" || fp_str(d, jv_get(d, 0, "base_session"), tb[1][..]) != "everglade-session-v5" { return false; }
+  if identity == "" || fp_str(d, jv_get(d, 0, "base_session"), tb[1][..]) != "everglade-session-v6" { return false; }
   want: [512] u8;
   wn := wire_put(want[..], wire_put(want[..], wire_put(want[..], 0, "proto/verse/"), identity), ".json");
   file := cast(string) want[0..<wn];

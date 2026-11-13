@@ -8,11 +8,11 @@
 // there is stepped round, and no step of his ever ends inside a player's body.
 // The room tells the pages his state (g2, each tick he changes and once a second when he doesn't) and
 // each blow (g3: AMOUNT 0 a miss; each of his turn's attacks is its own, E2G_BLOW_S apart) through the
-// creature frames' codec, creature-wire.coax (proto/verse/everglade2-combat-v1.json).
+// creature frames' codec, creature-wire.coax (proto/verse/everglade2-combat-v2.json).
 // The pages draw him a jitter buffer behind, as they draw each other (everglade/client/guard.coax).
 // His Dash is Everglade's (everglade/dash.coax): his run times eg_dash_rate from when he takes it.
 #load "../dash.coax";
-#load "creature-wire.coax";   // g2 and g3: the one codec the page reads them with (#13246)
+#load "creature-wire.coax";   // e guard: the one codec the page reads his blows with (#13246, #13276)
 
 E2G_WALK :: 1.4;            // m/s: a calm walk (the page's gait walks under 2.2 m/s, everglade/scene/bodies.coax BD_RUN_FROM)
 E2G_CHASE :: E2_RUN_SPEED; // m/s: after the one who struck him, a run as fast as yours (everglade/shared/move.coax)
@@ -51,6 +51,7 @@ E2G_WALKING :: 0; E2G_STANDING :: 1; E2G_FIGHTING :: 2; E2G_DOWN :: 3; E2G_NONE 
 E2Guard :: struct {
   q: int = -1; id: int;      // his beast slot in the rules (-1 none) and its id
   life: int;                 // each guard a new life: the pages fade a new one in
+  told_life: int;            // the life his row last said (e2_guard_row)
   state: int = E2G_NONE;
   x: f32; z: f32; yaw: f32;
   dir: f32 = -1;             // -1 toward the clearing, 1 toward the glade
@@ -369,29 +370,22 @@ e2_guard_struck :: (v: [] RmServer, k: int, s: int, hp_before: int) {
 }
 e2g_tell :: (v: [] RmServer, k: int, kind: int, s: int, amount: int) { e2g_tell_at(v, k, v[0].eg[k].tick, kind, s, amount); }
 e2g_tell_at :: (v: [] RmServer, k: int, tick: int, kind: int, s: int, amount: int) {
-  room := v[0].eg[k..<k + 1];
+  g := v[0].eg[k].guard[0];
   out: [64] u8;
   n := egc_guard_hit_put(out[..], EgcGuardHit.{tick = tick, kind = kind, seat = s, amount = amount});
-  for o: 0..<EG_SEATS {
-    st := room[0].seat[o..<o + 1];
-    if !st[0].live || !st[0].placed || st[0].conn < 0 { continue; }
-    rl_queue(v, room[0].relay, st[0].conn, -1, cast(string) out[0..<n], "");
-  }
+  // to the seats near him, and to the one it names wherever it is: an e entry of the reliable class (#13276)
+  eg_event_who(v, k, cast(string) out[0..<n], g.x, g.z, false, ifx s >= 0 && s < EG_SEATS then 1 << s else 0);
 }
-// His state to seat s: each tick he changes, and once a second when he doesn't.
-e2_guard_snapshot :: (v: [] RmServer, k: int, s: int) {
-  room := v[0].eg[k..<k + 1]; g := room[0].guard[0]; st := room[0].seat[s..<s + 1];
+// His row into the tick's table (everglade/server/send.coax eg_table; everglade-wire.coax WK_GUARD):
+// none while there is no guard, and the next one is a new life.
+e2_guard_row :: (v: [] RmServer, k: int) {
+  room := v[0].eg[k..<k + 1]; g := room[0].guard[..]; h := room[0].hist[..];
+  if g[0].state == E2G_NONE { return; }
   hp := 0; max := 0;
-  if g.q >= 0 { hp = room[0].rules[0].b[0].c[EGB_BEAST0 + g.q].hp; max = room[0].rules[0].b[0].c[EGB_BEAST0 + g.q].hp_max; }
-  row: [128] u8;
-  n := egc_guard_put_body(row[..], 0, EgcGuard.{life = g.life, state = g.state, x = cast(int) floor(g.x * 1000 + 0.5), z = cast(int) floor(g.z * 1000 + 0.5),
-    yaw = cast(int) floor(g.yaw * 1000 + 0.5), hp = hp, max = max, swing = g.swing_tick, foe = g.foe});
-  hash := eg_hash(cast(string) row[0..<n]);
-  if st[0].guard_hash == hash && room[0].tick - st[0].guard_sent < EG_HZ { return; }
-  st[0].guard_hash = hash; st[0].guard_sent = room[0].tick;
-  out: [192] u8;
-  m := egc_guard_put(out[..], room[0].tick, cast(string) row[0..<n]);
-  rl_queue(v, room[0].relay, st[0].conn, -1, cast(string) out[0..<m], "");
+  if g[0].q >= 0 { hp = room[0].rules[0].b[0].c[EGB_BEAST0 + g[0].q].hp; max = room[0].rules[0].b[0].c[EGB_BEAST0 + g[0].q].hp_max; }
+  if g[0].told_life != g[0].life { wire_hist_born(h, EG_SLOT_GUARD); g[0].told_life = g[0].life; }
+  wire_hist_put(h, EG_SLOT_GUARD, WireS.{id = WIRE_ID_MADE + WIRE_GUARD_EID, kind = WK_GUARD, x = g[0].x, z = g[0].z, yaw = e2g_wrap(g[0].yaw),
+    g = g[0].state, hp = hp, max = max, owner = ifx g[0].foe >= 0 then WIRE_TGT_SEAT + g[0].foe else -1, t0 = g[0].swing_tick}, wire_rel(WK_GUARD), false, true);
 }
 // Where his body stands for the movement step (room-world.c world2_step): false when there is none.
 rm_e2_guard_body :: (v: [] RmServer, k: int, out: [] f32) -> bool #export_c #effects(all) {
@@ -409,7 +403,7 @@ e2gt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x 
   v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-guard HTTP/1.1\r\n\r\n") == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter 0 -");
   eg_test_tick(v[..], k);
   g := v[0].eg[k].guard[..];
 
@@ -438,7 +432,7 @@ e2gt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x 
   v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-guard-way HTTP/1.1\r\n\r\n") == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter 0 -");
   eg_test_tick(v[..], k);
   g := v[0].eg[k].guard[..];
   for q: 0..<EG_HZ * 4 { eg_test_tick(v[..], k); }
@@ -460,7 +454,7 @@ e2gt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x 
   v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-guard-fight HTTP/1.1\r\n\r\n") == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter 0 -");
   eg_test_tick(v[..], k);
   g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
   me := EGB_SEAT; b[0].c[me].hp = 400; b[0].c[me].hp_max = 400;
@@ -475,7 +469,10 @@ e2gt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x 
   px := g[0].x + 0.9; pz := g[0].z;
   for q: 0..<EG_HZ * 8 {
     e2gt_at(v[..], k, px, pz); eg_test_tick(v[..], k); if g[0].swing_tick >= 0 { swung = true; }
-    heard := e2rt_heard(v[..], 0, out[..]); if eg_test_has(heard, "g3 ") { told = true; } if eg_test_has(heard, "g2 ") { state = true; }
+    heard := e2rt_heard(v[..], 0, out[..]); if eg_test_has(heard, "e guard ") { told = true; }
+    // his row, in the tick's table and so in your frame: his state, his Hit Points and you as his foe
+    w := wire_test_row(v[0].eg[k].hist[..], EG_SLOT_GUARD, v[0].eg[k].hist[0].now);
+    if w.kind == WK_GUARD && cast(int) v[0].eg[k].hist[0].last[EG_SLOT_GUARD] == WIRE_ID_MADE + WIRE_GUARD_EID + 1 && w.g == E2G_FIGHTING && w.owner == WIRE_TGT_SEAT && w.max > 0 && w.hp > 0 { state = true; }
   }
   #assert swung && g[0].state == E2G_FIGHTING && told && state;
   // you at the Hit Points one blow could take: he keeps on you; dropped, he lets you be
@@ -494,7 +491,7 @@ e2gt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x 
   v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-guard-circle HTTP/1.1\r\n\r\n") == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter 0 -");
   eg_test_tick(v[..], k);
   g := v[0].eg[k].guard[..]; b := v[0].eg[k].rules[0].b[..];
   me := EGB_SEAT; b[0].c[me].hp = 900; b[0].c[me].hp_max = 900;
@@ -518,7 +515,7 @@ e2gt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x 
   v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-guard-cast HTTP/1.1\r\n\r\n") == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-druid 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-druid 0 -");
   eg_test_tick(v[..], k);
   g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
   for q: 0..<EG_HZ { e2gt_at(v[..], k, g[0].x - 3, g[0].z + 8); eg_test_tick(v[..], k); }
@@ -541,7 +538,7 @@ e2gt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x 
   v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-guard-fighter HTTP/1.1\r\n\r\n") == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter 0 -");
   eg_test_tick(v[..], k);
   g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
   me := EGB_SEAT; b[0].c[me].hp = 900; b[0].c[me].hp_max = 900;
@@ -559,12 +556,12 @@ e2gt_at :: (v: [] RmServer, k: int, x: f32, z: f32) { v[0].eg[k].seat[0].pose.x 
   // his first turn surges (two Attack actions, four attacks), then two a turn
   #assert n == 3 && turns[0] == 4 && turns[1] == 2 && turns[2] == 2;
 }
-// The g3 lines a page heard: how many, and the last one's KIND, SEAT and AMOUNT.
+// The e guard entries a page heard: how many, and the last one's KIND, SEAT and AMOUNT.
 e2gt_g3 :: (heard: string) -> [4] int {
   r: [4] int; i := 0;
-  while i + 3 <= heard.count {
-    if heard[i] == 'g' && heard[i + 1] == '3' && heard[i + 2] == ' ' && (i == 0 || heard[i - 1] == '|' || heard[i - 1] == '\n') {
-      w: [4] int; f := 0; j := i + 3; neg := false; cur := 0; any := false;
+  while i + 8 <= heard.count {
+    if heard[i..<i + 8] == "e guard " && (i == 0 || heard[i - 1] == ';' || heard[i - 1] == ' ') {
+      w: [4] int; f := 0; j := i + 8; neg := false; cur := 0; any := false;
       while j < heard.count && heard[j] != '\n' && f < 4 {
         ch := heard[j];
         if ch == '-' { neg = true; } else if ch >= '0' && ch <= '9' { cur = cur * 10 + cast(int)(ch - '0'); any = true; }
@@ -585,7 +582,7 @@ e2gt_fight :: (v: [] RmServer, path: string) -> int {
   rm_init(v); rm_clock(v, 0, 1762190000000);
   #assert rm_join(v, 0, path) == 0;
   k := eg_room_at(v, v[0].conns[0].relay);
-  rm_heard(v, 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v, 0, "H 6 ranger.0.0.0 srd-fighter 0 -");
   eg_test_tick(v, k);
   b := v[0].eg[k].rules[0].b[..];
   b[0].c[EGB_SEAT].hp = 900; b[0].c[EGB_SEAT].hp_max = 900;

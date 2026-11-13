@@ -20,12 +20,12 @@
 #load "../../aethyr/net/projectile.coax";   // arrows over the room: the launch, the room's flight and its end (#13157)
 #load "../../aethyr/net/stats.coax";   // the netcode readout's counts (?net, #13157)
 #load "../../aethyr/net/transport.coax";   // WebSocket or WebTransport under one interface (#13176)
-#load "../server/creature-wire.coax";   // the guard's and the monsters' frames, the room's codec (#13246)
+#load "../server/creature-wire.coax";   // what the guard and the monsters did (e guard, e mon), the room's codec (#13246, #13276)
 #load "../server/kit-wire.coax";   // the Healer's Kit's frames, the room's codec (#13245)
 #load "../../aethyr/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
-E2N_ENTS :: 32;                 // the room's players this page holds (a room seats 16)
+E2N_ENTS :: 32;                 // the room's players (a room seats 16), monsters and guard this page holds: every entity its rows tell (#13276)
 E2N_REALM :: "everglade2";
 E2N_GAME :: "everglade";        // the room server's game path (/api/room/relay/everglade/CODE)
 E2N_PIPE_TICKET :: 4;           // the pipe's ask for a seat ticket: the API path, a newline, the body (as Everglade's, everglade5e-face.c)
@@ -49,16 +49,19 @@ E2N_WT_DEFAULT :: true;
 // drawn picture reaches the tick it came with (t, the room's clock), at that player as drawn.
 E2nCast :: struct { live: bool; ss: int; slot: int; ax: f32; ay: f32; az: f32; seed: int; t: int; }
 
-// The path's guard as the room says him (g2, everglade/server/guard.coax): each word with the
-// room's time it is for (ms), drawn a jitter buffer behind as the others are; his blows (g3) likewise.
-E2N_GUARD_ROWS :: 8; E2N_GUARD_HITS :: 8;
+// The path's guard and the monsters as the room's rows say them (everglade-wire.coax WK_GUARD,
+// WK_MONSTER, #13276): each is an entity of the page's one list (ents), drawn from the engine's
+// interpolation buffer as the other players are (aethyr/net/interp.coax). These are what the page's
+// readers ask for (e2n_guard_at, e2n_mon_at). Their blows, arrows and falls are e entries (e guard,
+// e mon: everglade/server/creature-wire.coax), kept until the picture reaches their moment.
+E2N_GUARD_HITS :: 8;
 E2nGuard :: struct { t: int; life: int; state: int = 4; x: f32; z: f32; yaw: f32; hp: int; max: int; swing: int = -1; foe: int = -1; }
 E2nGuardHit :: struct { live: bool; t: int; kind: int; seat: int; amount: int; }
-// The monsters as the room says them (h2, everglade/server/creatures.coax): each one's last words with
-// the room's time they are for (ms), drawn a jitter buffer behind; their blows, arrows and falls (h3).
-E2N_MONS :: 12; E2N_MON_ROWS :: 6; E2N_MON_HITS :: 16;
+E2N_MONS :: WIRE_MONS; E2N_MON_HITS :: 16;
 E2nMon :: struct { t: int; life: int; kind: int; state: int = 4; x: f32; z: f32; yaw: f32; hp: int; max: int = 1; act: int; act_t: int; foe: int = -1; }
 E2nMonHit :: struct { live: bool; t: int; kind: int; m: int; seat: int; amount: int; fx: f32; fz: f32; tx: f32; tz: f32; fly: f32; }
+E2N_MON_STATE :: 255;   // a monster's state in its ring's flags; its act under way is above it (E2N_MON_ACT)
+E2N_MON_ACT :: 8;
 E2N_FAMILIARS :: 16;
 E2nFamiliar :: struct { live:bool; form:int; x:f32; z:f32; hp:int; max:int; }
 E2Net :: struct {
@@ -127,8 +130,8 @@ E2Net :: struct {
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
   acts: [1] NetLedger;          // your casts and rests that wait for the room: pressed, then confirmed, refused or timed out (aethyr/net/predict.coax)
   familiar_rows:[E2N_FAMILIARS]E2nFamiliar; familiar_tick:int=-1;
-  guard_rows: [E2N_GUARD_ROWS] E2nGuard; guard_n: int; guard_tick: int = -1; guard_hits: [E2N_GUARD_HITS] E2nGuardHit;
-  mon_rows: [E2N_MONS * E2N_MON_ROWS] E2nMon; mon_n: [E2N_MONS] int; mon_tick: int = -1; mon_seen: [E2N_MONS] int; mon_hits: [E2N_MON_HITS] E2nMonHit;
+  guard_hits: [E2N_GUARD_HITS] E2nGuardHit;
+  mon_hits: [E2N_MON_HITS] E2nMonHit;
   familiar_seq:int=4000000; familiar_at:int=-100000; familiar_ok:bool; familiar_form:int; familiar_slot:int; familiar_spirit:int=RS_FAMILIAR_FEY; familiar_cast:int; familiar_order:int; familiar_heal_cue:bool; familiar_sense:int;
   aid_seq: int = 3000000; aid_left: int = -1; aid_at: int = -100000; aid_ok: bool;
   // your rest as the room's rules hold it (z SEQ CODE DICE, everglade/server/rest.coax): known
@@ -150,9 +153,8 @@ E2N_FOE_WOLF :: 0; E2N_FOE_GOBLIN :: 1; E2N_FOE_GUARD :: 2;
 E2N_FOE_NAMES :: [3] string.["wolf", "goblin", "guard"];
 // Monster m's kind as the room last said it (0 a wolf, 1 a goblin).
 e2n_mon_kind :: (n: [] E2Net, m: int) -> int {
-  if m < 0 || m >= E2N_MONS || n[0].mon_n[m] == 0 { return E2N_FOE_WOLF; }
-  k := n[0].mon_rows[m * E2N_MON_ROWS + n[0].mon_n[m] - 1].kind;
-  return ifx k == 1 then E2N_FOE_GOBLIN else E2N_FOE_WOLF;
+  k := ifx m >= 0 && m < E2N_MONS then e2n_ent(n, WIRE_ID_MADE + WIRE_MON_EID + m, false) else -1;
+  return ifx k >= 0 && n[0].ents[k].p2 == 1 then E2N_FOE_GOBLIN else E2N_FOE_WOLF;
 }
 
 // Whether the room opens as WebTransport first: as ?transport= asks, else E2N_WT_DEFAULT on a shard's own endpoint.
@@ -561,10 +563,6 @@ e2n_record :: (n: [] E2Net, t: string) {
   if net_conn_note(n[0].link[..], t) { return; }   // the room's word on a WebTransport link (?net)
   if t.count > 2 && t[1] == ' ' && (t[0] == 'a' || t[0] == 'd') { e2n_shot_word(n, t); return; }   // an arrow loosed or ended
   if wire_is(t,"m2") { e2n_familiar_snapshot(n,t); return; }
-  if wire_is(t,"g2") { e2n_guard_row(n,t); return; }
-  if wire_is(t,"h2") { e2n_mon_rows(n,t); return; }
-  if wire_is(t,"h3") { e2n_mon_hit(n,t); return; }
-  if wire_is(t,"g3") { e2n_guard_hit(n,t); return; }
   if wire_is(t,"m8") {
     rd:=[1]WireRd.[wire_rd(t,2)];
     mode:=wire_num(t,rd[..]);
@@ -757,6 +755,8 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     if xp { n[0].xp_n += v; } else { n[0].level_got = v; }
     return;
   }
+  if c == 'e' && wire_is(t, EGC_MON_E) { e2n_mon_hit(n, t); return; }
+  if c == 'e' && wire_is(t, EGC_GUARD_E) { e2n_guard_hit(n, t); return; }
   if c == 'e' && wire_is(t, "e cast") {
     r[0] = wire_rd(t, 6);
     ce := wire_read_cast_e(t, r[..]);
@@ -787,13 +787,31 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     return;
   }
 }
+// A row the mirror took: a player, a monster or the guard into the page's one list of entities, its
+// state into the engine's ring (aethyr/net/interp.coax). A new LIFE or a WARP starts its ring again,
+// so nothing is drawn between the last life and this one.
 e2n_row :: (n: [] E2Net, w: WireS, d: WireD) {
-  if w.id < 0 || w.kind != WK_PLAYER { return; }
+  creature := w.kind == WK_MONSTER || w.kind == WK_GUARD;
+  if w.id < 0 || (w.kind != WK_PLAYER && !creature) { return; }
+  if w.kind == WK_MONSTER && (w.id != WIRE_ID_MADE + WIRE_MON_EID + w.p1 || w.p1 < 0 || w.p1 >= E2N_MONS) { return; }
+  if w.kind == WK_GUARD && w.id != WIRE_ID_MADE + WIRE_GUARD_EID { return; }
   k := e2n_ent(n, w.id, true);
   if k < 0 { return; }
   en := n[0].ents[k..<k + 1];
   if en[0].ring_n > 0 && (w.life != en[0].life || w.warp != en[0].warp) { en[0].ring_n = 0; en[0].born = n[0].tick_t; }
-  en[0].life = w.life; en[0].warp = w.warp; en[0].kind = w.kind; en[0].seat = w.id; en[0].seen = d.tick; en[0].hp = w.hp; en[0].max = w.max;
+  // the guard you hurt fell: counted once, as his row first says so (everglade/client/track.coax)
+  if w.kind == WK_GUARD && w.g == 3 && !(en[0].ring_n > 0 && en[0].ring[en[0].ring_n - 1].f == 3) && n[0].mine[E2N_MONS] { n[0].fell_n[E2N_FOE_GUARD] += 1; n[0].mine[E2N_MONS] = false; }
+  en[0].life = w.life; en[0].warp = w.warp; en[0].kind = w.kind; en[0].seen = d.tick; en[0].hp = w.hp; en[0].max = w.max;
+  if creature {
+    // its state and its act ride its ring with its place, so each is drawn at the moment the room names
+    // (a monster's flags: its state, its act above it; its ring's a: the tick the act began, the guard's last swing)
+    en[0].owner = w.owner; en[0].p1 = w.p1; en[0].p2 = w.p2; en[0].t0 = w.t0;
+    net_push_row(en, NetState.{t = n[0].tick_t, x = w.x, y = w.y, z = w.z, yaw = w.yaw, vx = w.vx, vy = w.vy, vz = w.vz,
+                               f = ifx w.kind == WK_MONSTER then (w.g & E2N_MON_STATE) | (w.clip << E2N_MON_ACT) else w.g, a = w.t0}, n[0].hz);
+    if en[0].ring_n == 1 { en[0].shown = en[0].ring[0]; }
+    return;
+  }
+  en[0].seat = w.id;
   net_push_row(en, NetState.{t = n[0].tick_t, x = w.x, y = w.y, z = w.z, yaw = w.yaw, vx = w.vx, vy = w.vy, vz = w.vz, f = w.g, a = w.clip}, n[0].hz);
   if en[0].ring_n == 1 { en[0].shown = en[0].ring[0]; }
   if w.id == n[0].seat && net_predict_heard(n[0].pred[..], d.ack) {
@@ -1041,8 +1059,8 @@ e2n_aid_message :: (n:[] E2Net)->string {
 }
 
 e2n_clear_familiars :: (n:[]E2Net) {
-  n[0].guard_n=0; n[0].guard_tick=-1; for h:0..<E2N_GUARD_HITS { n[0].guard_hits[h].live=false; }
-  n[0].mon_tick=-1; for m:0..<E2N_MONS { n[0].mon_n[m]=0; n[0].mon_seen[m]=-1; } for h:0..<E2N_MON_HITS { n[0].mon_hits[h].live=false; }
+  for h:0..<E2N_GUARD_HITS { n[0].guard_hits[h].live=false; }
+  for h:0..<E2N_MON_HITS { n[0].mon_hits[h].live=false; }
   n[0].familiar_tick=-1; n[0].familiar_cast=0; n[0].familiar_order=0; n[0].familiar_heal_cue=false; n[0].familiar_sense=0;
   for s:0..<E2N_FAMILIARS { n[0].familiar_rows[s].live=false; }
 }
@@ -1064,17 +1082,7 @@ e2n_familiar_snapshot :: (n:[]E2Net,t:string) {
   if wire_more(t,rd[..]) { return; }
   n[0].familiar_rows=rows; n[0].familiar_tick=tick;
 }
-// The guard's row (creature-wire.coax g2): kept in time order, the oldest let go.
-e2n_guard_row :: (n:[]E2Net,t:string) {
-  if !e2n_open(n) { return; }
-  g:=egc_guard_read(t);
-  if !g.ok || g.tick<=n[0].guard_tick { return; }
-  if g.state==3 && (n[0].guard_n==0 || n[0].guard_rows[n[0].guard_n-1].state!=3) && n[0].mine[E2N_MONS] { n[0].fell_n[E2N_FOE_GUARD]+=1; n[0].mine[E2N_MONS]=false; }
-  row:=E2nGuard.{t=e2n_tick_t(n,g.tick),life=g.life,state=g.state,x=f32(g.x)/1000,z=f32(g.z)/1000,yaw=f32(g.yaw)/1000,hp=g.hp,max=g.max,swing=ifx g.swing>=0 then e2n_tick_t(n,g.swing) else -1,foe=g.foe};
-  if n[0].guard_n==E2N_GUARD_ROWS { for q:1..<E2N_GUARD_ROWS { n[0].guard_rows[q-1]=n[0].guard_rows[q]; } n[0].guard_n-=1; }
-  n[0].guard_rows[n[0].guard_n]=row; n[0].guard_n+=1; n[0].guard_tick=g.tick;
-}
-// A blow at or by the guard (creature-wire.coax g3).
+// A blow at or by the guard (creature-wire.coax e guard).
 e2n_guard_hit :: (n:[]E2Net,t:string) {
   if !e2n_open(n) { return; }
   h:=egc_guard_hit_read(t);
@@ -1083,66 +1091,55 @@ e2n_guard_hit :: (n:[]E2Net,t:string) {
   if h.seat==n[0].seat && h.amount>0 && h.kind>=EGC_GUARD_BLOW { n[0].hurt_n[E2N_FOE_GUARD]+=1; n[0].hurt_by=E2N_FOE_GUARD; }
   for q:0..<E2N_GUARD_HITS { if !n[0].guard_hits[q].live { n[0].guard_hits[q]=E2nGuardHit.{live=true,t=e2n_tick_t(n,h.tick),kind=h.kind,seat=h.seat,amount=h.amount}; return; } }
 }
-// Where the guard is at the room's time rt (ms): between the two words round it, else the nearest.
-// state 4 (none) before any word.
+// The guard at the room's time rt (ms), from the engine's buffer of his row's states; state 4 (none)
+// while the room's rows hold no guard for you (none yet, or out of your view).
 e2n_guard_at :: (n:[]E2Net,rt:int)->E2nGuard {
-  c:=n[0].guard_n;
-  if c==0 { return E2nGuard.{}; }
-  if rt<=n[0].guard_rows[0].t { return n[0].guard_rows[0]; }
-  for q:1..<c {
-    a:=n[0].guard_rows[q-1]; b:=n[0].guard_rows[q];
-    if rt>b.t { continue; }
-    if a.life!=b.life || b.t<=a.t { return b; }
-    f:=f32(rt-a.t)/f32(b.t-a.t);
-    o:=a; o.t=rt; o.x=a.x+(b.x-a.x)*f; o.z=a.z+(b.z-a.z)*f;
-    dy:=b.yaw-a.yaw; while dy>3.14159265 { dy-=6.2831853; } while dy< -3.14159265 { dy+=6.2831853; }
-    o.yaw=a.yaw+dy*f;
-    return o;
-  }
-  return n[0].guard_rows[c-1];
+  k:=e2n_ent(n,WIRE_ID_MADE+WIRE_GUARD_EID,false);
+  if k<0 || n[0].ents[k].ring_n==0 || n[0].ents[k].kind!=WK_GUARD { return E2nGuard.{}; }
+  en:=n[0].ents[k..<k+1]; p:=net_state_at(en,rt);
+  return E2nGuard.{t=rt,life=en[0].life,state=p.f,x=p.x,z=p.z,yaw=p.yaw,hp=en[0].hp,max=en[0].max,swing=ifx p.a>=0 then e2n_tick_t(n,p.a) else -1,
+                   foe=ifx en[0].owner>=WIRE_TGT_SEAT then en[0].owner-WIRE_TGT_SEAT else -1};
 }
-#test "the guard is drawn between the room's words on him, and a new life is never blended with the last" {
+// A D frame of one absolute row, as the room writes it (a check's).
+e2n_test_row :: (n:[]E2Net,tick:int,w:WireS) {
+  b:[512]u8; z:[WIRE_SF]s32; f:[WIRE_SF]s32;
+  wire_s_pack(WireS.{},z[..]); for q:0..<WIRE_SF { z[q]=0; }
+  wire_s_pack(w,f[..]); wire_kind_keep(w.kind,f[..]);
+  m:=wire_put_d(b[..],0,WireD.{tick=tick,ack=0,f=0,part=0});
+  m=wire_put_s(b[..],m,w.id,0,z[..],f[..]);
+  e2n_record(n,cast(string)b[0..<m]);
+}
+#test "the guard is his row: drawn from the engine's buffer, a new life never blended with the last, gone with his x (#13276)" {
   n:[1]E2Net; n[0].state=E2N_OPEN; n[0].seat=0; n[0].hz=30; n[0].worlds=1; n[0].w_tick=0; n[0].w_t=0;
+  gid:=WIRE_ID_MADE+WIRE_GUARD_EID;
   #assert e2n_guard_at(n[..],0).state==4;
-  e2n_record(n[..],"g2 30 1 0 0 -20000 3140 11 11 -1 -1");
-  e2n_record(n[..],"g2 60 1 0 0 -21400 3140 11 11 -1 -1");
-  e2n_record(n[..],"g2 45 1 0 0 -99000 3140 11 11 -1 -1");   // older than the last: not taken
-  g:=e2n_guard_at(n[..],1500); #assert abs(g.z+20.7)<0.001 && g.life==1 && g.hp==11;
+  e2n_test_row(n[..],30,WireS.{id=gid,kind=WK_GUARD,x=0,z=-20,yaw=3.14,g=0,hp=11,max=11,owner=-1,t0=-1,life=1});
+  e2n_test_row(n[..],31,WireS.{id=gid,kind=WK_GUARD,x=0,z=-21.4,yaw=3.14,g=2,hp=9,max=11,owner=WIRE_TGT_SEAT+2,t0=24,life=1});
+  g:=e2n_guard_at(n[..],1016); #assert abs(g.z+20.68)<0.01 && g.life==1 && g.hp==9 && g.max==11 && g.foe==2;
+  // his state and his swing are drawn at their moment: the nearer of the two states round the time asked
+  #assert e2n_guard_at(n[..],1010).state==0 && e2n_guard_at(n[..],1010).swing== -1 && e2n_guard_at(n[..],1030).state==2 && e2n_guard_at(n[..],1030).swing==800;
   #assert abs(e2n_guard_at(n[..],5000).z+21.4)<0.001 && abs(e2n_guard_at(n[..],0).z+20)<0.001;
-  e2n_record(n[..],"g2 90 2 0 0 -18000 0 11 11 -1 -1");
-  #assert abs(e2n_guard_at(n[..],2500).z+18)<0.001;
-  e2n_record(n[..],"g3 90 1 2 5");
+  // a row after a quiet while: he stood where he was until the tick before it
+  e2n_test_row(n[..],63,WireS.{id=gid,kind=WK_GUARD,x=0,z=-21.5,yaw=3.14,g=2,hp=9,max=11,owner=WIRE_TGT_SEAT+2,t0=24,life=1});
+  #assert abs(e2n_guard_at(n[..],1600).z+21.4)<0.001 && abs(e2n_guard_at(n[..],2100).z+21.5)<0.001;
+  // you hurt him and he falls: counted once, however many rows say he lies
+  n[0].mine[E2N_MONS]=true;
+  e2n_test_row(n[..],70,WireS.{id=gid,kind=WK_GUARD,x=0,z=-21.4,yaw=3.14,g=3,hp=0,max=11,owner=-1,t0=45,life=1});
+  e2n_test_row(n[..],71,WireS.{id=gid,kind=WK_GUARD,x=0,z=-21.4,yaw=3.1,g=3,hp=0,max=11,owner=-1,t0=45,life=1});
+  #assert n[0].fell_n[E2N_FOE_GUARD]==1 && !n[0].mine[E2N_MONS];
+  // the next guard: a new life, drawn where the room puts him and nowhere between
+  e2n_test_row(n[..],90,WireS.{id=gid,kind=WK_GUARD,x=0,z=-18,yaw=0,g=0,hp=11,max=11,owner=-1,t0=-1,life=2});
+  #assert abs(e2n_guard_at(n[..],2500).z+18)<0.001 && e2n_guard_at(n[..],2500).life==2 && e2n_guard_at(n[..],2500).state==0;
+  e2n_record(n[..],"D 90 0 0 1 e guard 90 1 2 5");
   #assert n[0].guard_hits[0].live && n[0].guard_hits[0].t==3000 && n[0].guard_hits[0].amount==5 && n[0].guard_hits[0].seat==2;
-  e2n_record(n[..],"g3 90 3 2 5"); #assert !n[0].guard_hits[1].live;
-  for q:0..<12 { e2n_record(n[..],"g2 1 1 0 0 0 0 1 1 -1 -1"); }   // all older than the last: none taken
-  #assert n[0].guard_n==3;
-  later:=[6]string.["g2 100 2 0 0 0 0 1 1 -1 -1","g2 101 2 0 0 0 0 1 1 -1 -1","g2 102 2 0 0 0 0 1 1 -1 -1","g2 103 2 0 0 0 0 1 1 -1 -1","g2 104 2 0 0 0 0 1 1 -1 -1","g2 105 2 0 0 0 0 1 1 -1 -1"];
-  for t:later { e2n_record(n[..],t); }   // nine words: the oldest falls off, eight are kept
-  #assert n[0].guard_n==E2N_GUARD_ROWS && n[0].guard_tick==105 && n[0].guard_rows[0].t==2000;
+  e2n_record(n[..],"D 90 0 0 2 e guard 90 3 2 5"); #assert !n[0].guard_hits[1].live;
+  // a row that is not his (another id under his kind) is no guard
+  e2n_test_row(n[..],91,WireS.{id=gid+1,kind=WK_GUARD,x=5,z=5,g=0,hp=1,max=1,life=1});
+  #assert e2n_ent(n[..],gid+1,false)<0;
+  // out of your view: the room's x, and he is none until his row comes again
+  e2n_record(n[..],"D 92 0 0 0 x 1170100"); #assert gid==1170100 && e2n_guard_at(n[..],3100).state==4;
 }
-// The monsters in view (creature-wire.coax h2): each one's row kept in time order (the oldest let go);
-// one the word leaves out is out of view since that tick (mon_seen).
-e2n_mon_rows :: (n:[]E2Net,t:string) {
-  if !e2n_open(n) { return; }
-  w:=egc_mon_read(t);
-  if !w.ok || w.tick<=n[0].mon_tick || w.count>E2N_MONS { return; }
-  rows:[E2N_MONS]E2nMon; ids:[E2N_MONS]int;
-  for q:0..<w.count {
-    r:=w.row[q]; yaw:=r.yaw;
-    // any yaw is a facing: wrapped to a half turn, never a reason to drop the word (a circling wolf's once grew a lap at a time)
-    while yaw>3142 { yaw-=6283; } while yaw< -3142 { yaw+=6283; }
-    ids[q]=r.m;
-    rows[q]=E2nMon.{t=e2n_tick_t(n,w.tick),life=r.life,kind=r.kind,state=r.state,x=f32(r.x)/100,z=f32(r.z)/100,yaw=f32(yaw)/1000,hp=r.hp,max=r.max,act=r.act,act_t=ifx r.act_tick>0 then e2n_tick_t(n,r.act_tick) else -1,foe=r.foe};
-  }
-  n[0].mon_tick=w.tick;
-  for m:0..<E2N_MONS { n[0].mon_seen[m]= -1; }
-  for q:0..<w.count {
-    m:=ids[q]; b:=m*E2N_MON_ROWS;
-    if n[0].mon_n[m]==E2N_MON_ROWS { for r:1..<E2N_MON_ROWS { n[0].mon_rows[b+r-1]=n[0].mon_rows[b+r]; } n[0].mon_n[m]-=1; }
-    n[0].mon_rows[b+n[0].mon_n[m]]=rows[q]; n[0].mon_n[m]+=1; n[0].mon_seen[m]=rows[q].t;
-  }
-}
-// A monster's event (creature-wire.coax h3).
+// A monster's event (creature-wire.coax e mon).
 e2n_mon_hit :: (n:[]E2Net,t:string) {
   if !e2n_open(n) { return; }
   h:=egc_mon_hit_read(t);
@@ -1155,41 +1152,41 @@ e2n_mon_hit :: (n:[]E2Net,t:string) {
   if h.kind==EGC_MON_FELL && n[0].mine[h.m] { n[0].fell_n[foe]+=1; n[0].mine[h.m]=false; }
   for q:0..<E2N_MON_HITS { if !n[0].mon_hits[q].live { n[0].mon_hits[q]=e; return; } }
 }
-// Monster m at the room's time rt (ms): between its two words round it, else the nearest; state 4 (gone)
-// with no word, or once the room's words have left it out of view.
+// Monster m at the room's time rt (ms), from the engine's buffer of its row's states; state 4 (gone)
+// while the room's rows hold none for you (none yet, or out of your view).
 e2n_mon_at :: (n:[]E2Net,m:int,rt:int)->E2nMon {
-  c:=n[0].mon_n[m]; b:=m*E2N_MON_ROWS;
-  if c==0 { return E2nMon.{}; }
-  if n[0].mon_seen[m]<0 && rt>n[0].mon_rows[b+c-1].t { return E2nMon.{}; }
-  if rt<=n[0].mon_rows[b].t { return n[0].mon_rows[b]; }
-  for q:1..<c {
-    a:=n[0].mon_rows[b+q-1]; w:=n[0].mon_rows[b+q];
-    if rt>w.t { continue; }
-    if a.life!=w.life || w.t<=a.t { return w; }
-    f:=f32(rt-a.t)/f32(w.t-a.t);
-    o:=a; o.t=rt; o.x=a.x+(w.x-a.x)*f; o.z=a.z+(w.z-a.z)*f;
-    dy:=w.yaw-a.yaw; while dy>3.14159265 { dy-=6.2831853; } while dy< -3.14159265 { dy+=6.2831853; }
-    o.yaw=a.yaw+dy*f; o.state=w.state; o.act=w.act; o.act_t=w.act_t; o.hp=w.hp;
-    return o;
-  }
-  return n[0].mon_rows[b+c-1];
+  k:=ifx m>=0 && m<E2N_MONS then e2n_ent(n,WIRE_ID_MADE+WIRE_MON_EID+m,false) else -1;
+  if k<0 || n[0].ents[k].ring_n==0 || n[0].ents[k].kind!=WK_MONSTER { return E2nMon.{}; }
+  en:=n[0].ents[k..<k+1]; p:=net_state_at(en,rt);
+  return E2nMon.{t=rt,life=en[0].life,kind=en[0].p2,state=p.f&E2N_MON_STATE,x=p.x,z=p.z,yaw=p.yaw,hp=en[0].hp,max=en[0].max,act=p.f>>E2N_MON_ACT,
+                 act_t=ifx p.a>0 then e2n_tick_t(n,p.a) else -1,foe=ifx en[0].owner>=WIRE_TGT_SEAT then en[0].owner-WIRE_TGT_SEAT else -1};
 }
-#test "the monsters are drawn between the room's words on them; one the words leave out is gone" {
+#test "a monster is its row: drawn from the engine's buffer with its state and act at their moment; out of view it is gone (#13276)" {
   n:[1]E2Net; n[0].state=E2N_OPEN; n[0].seat=0; n[0].hz=30; n[0].worlds=1; n[0].w_tick=0; n[0].w_t=0;
-  #assert e2n_mon_at(n[..],3,0).state==4;
-  e2n_record(n[..],"h2 30 2 3 1 0 1 1000 -20000 3140 11 11 0 0 0 9 1 1 0 500 -30000 0 7 7 2 30 -1");
-  e2n_record(n[..],"h2 60 1 3 1 0 1 1300 -20000 3140 9 11 1 45 0");
-  e2n_record(n[..],"h2 45 1 3 1 0 1 9900 -20000 3140 9 11 1 45 0");   // older than the last: not taken
-  w:=e2n_mon_at(n[..],3,1500); #assert abs(w.x-11.5)<0.001 && w.life==1 && w.state==1 && w.hp==9 && w.act==1 && w.act_t==1500;
-  #assert e2n_mon_at(n[..],9,1000).kind==1 && e2n_mon_at(n[..],9,1000).act==2 && e2n_mon_at(n[..],9,3000).state==4;
-  e2n_record(n[..],"h2 61 1 3 1 0 1 1300 -20000 3140 99 11 1 45 0");   // Hit Points over their most: not taken
-  #assert n[0].mon_tick==60;
-  e2n_record(n[..],"h2 62 1 3 1 0 1 1300 -20000 9423 9 11 0 0 0");   // a yaw laps past a turn: taken, as the facing it is
-  #assert n[0].mon_tick==62 && abs(e2n_mon_at(n[..],3,62*1000/30).yaw-3.14)<0.001;
-  e2n_record(n[..],"h3 90 3 10 0 0 500 -30000 520 -31000 700");
+  m3:=WIRE_ID_MADE+WIRE_MON_EID+3; m9:=WIRE_ID_MADE+WIRE_MON_EID+9;
+  #assert e2n_mon_at(n[..],3,0).state==4 && e2n_mon_at(n[..],-1,0).state==4 && e2n_mon_at(n[..],E2N_MONS,0).state==4;
+  e2n_test_row(n[..],30,WireS.{id=m3,kind=WK_MONSTER,x=10,z=-200,yaw=3.14,g=1,hp=11,max=11,owner=WIRE_TGT_SEAT,p1=3,p2=0,life=1});
+  e2n_test_row(n[..],30,WireS.{id=m9,kind=WK_MONSTER,x=5,z=-300,yaw=0,g=0,clip=2,hp=7,max=7,owner=-1,p1=9,p2=1,t0=30,life=1});
+  e2n_test_row(n[..],31,WireS.{id=m3,kind=WK_MONSTER,x=13,z=-200,yaw=3.14,g=1,clip=1,hp=9,max=11,owner=WIRE_TGT_SEAT,p1=3,p2=0,t0=31,life=1});
+  w:=e2n_mon_at(n[..],3,1016); #assert abs(w.x-11.45)<0.02 && w.life==1 && w.state==1 && w.hp==9 && w.max==11 && w.foe==0 && w.kind==0;
+  // its act begins when the picture reaches the row that says it, not before
+  #assert e2n_mon_at(n[..],3,1010).act==0 && e2n_mon_at(n[..],3,1010).act_t== -1 && e2n_mon_at(n[..],3,1030).act==1 && e2n_mon_at(n[..],3,1030).act_t==1033;
+  #assert e2n_mon_at(n[..],9,1000).kind==1 && e2n_mon_at(n[..],9,1000).act==2 && e2n_mon_at(n[..],9,1000).act_t==1000 && e2n_mon_at(n[..],9,1000).foe== -1;
+  #assert e2n_mon_kind(n[..],9)==E2N_FOE_GOBLIN && e2n_mon_kind(n[..],3)==E2N_FOE_WOLF && e2n_mon_kind(n[..],4)==E2N_FOE_WOLF;
+  // a row whose index is not its id's, or past the last monster, is no monster
+  e2n_test_row(n[..],61,WireS.{id=m3+1,kind=WK_MONSTER,x=1,z=1,g=1,hp=1,max=1,p1=3,life=1});
+  e2n_test_row(n[..],61,WireS.{id=WIRE_ID_MADE+WIRE_MON_EID+E2N_MONS,kind=WK_MONSTER,x=1,z=1,g=1,hp=1,max=1,p1=E2N_MONS,life=1});
+  #assert e2n_mon_at(n[..],4,2100).state==4 && e2n_ent(n[..],WIRE_ID_MADE+WIRE_MON_EID+E2N_MONS,false)<0;
+  // out of view: the room's x; back in view, a new life is not blended with the last
+  e2n_record(n[..],"D 62 0 0 0 x 1170009"); #assert m9==1170009 && e2n_mon_at(n[..],9,2100).state==4 && e2n_mon_at(n[..],3,2100).state==1;
+  e2n_test_row(n[..],90,WireS.{id=m3,kind=WK_MONSTER,x=40,z=-100,yaw=0,g=0,hp=11,max=11,owner=-1,p1=3,p2=0,life=2});
+  #assert abs(e2n_mon_at(n[..],3,2500).x-40)<0.001 && e2n_mon_at(n[..],3,2500).life==2;
+  e2n_record(n[..],"D 90 0 0 1 e mon 90 3 10 0 0 500 -30000 520 -31000 700");
   #assert n[0].mon_hits[0].live && n[0].mon_hits[0].t==3000 && abs(n[0].mon_hits[0].tz+310)<0.001 && abs(n[0].mon_hits[0].fly-0.7)<0.001;
-  e2n_record(n[..],"h3 90 2 3 -1 4"); #assert n[0].mon_hits[1].live && n[0].mon_hits[1].seat== -1 && n[0].mon_hits[1].amount==4;
-  e2n_record(n[..],"h3 90 5 3 0 4"); #assert !n[0].mon_hits[2].live;
+  e2n_record(n[..],"D 90 0 0 2 e mon 90 2 3 -1 4"); #assert n[0].mon_hits[1].live && n[0].mon_hits[1].seat== -1 && n[0].mon_hits[1].amount==4;
+  e2n_record(n[..],"D 90 0 0 3 e mon 90 5 3 0 4"); #assert !n[0].mon_hits[2].live;
+  // a whole snapshot that holds no monster: every one has gone
+  e2n_record(n[..],"D 95 0 1 0 "); #assert e2n_mon_at(n[..],3,3200).state==4;
 }
 e2n_familiar :: (n:[]E2Net)->bool {
   wizard:=n[0].klass==FB_CL_WIZARD;

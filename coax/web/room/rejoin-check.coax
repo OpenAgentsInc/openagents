@@ -93,7 +93,7 @@ tool_main :: () -> int #export_c #effects(all) {
   ua: [1024] u8; ub: [1024] u8;
   url_a := rs_ticketed(ua[..], url, "p-rejoincheck-a", "Rejoin A"); url_b := rs_ticketed(ub[..], url, "p-rejoincheck-b", "Rejoin B");
   if url.count == 0 || url_a.count == 0 || url_b.count == 0 || !relay_conn_open(c[0..<1], url_a) || !relay_conn_open(c[1..<2], url_b) { tool_err("rejoin-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
-  sent := relay_conn_send(c[0..<1], "H 5 ranger.2.1.0 druid 0 Rejoin A") && relay_conn_send(c[1..<2], "H 5 ranger.0.0.0 druid 0 Rejoin B");
+  sent := relay_conn_send(c[0..<1], "H 6 ranger.2.1.0 druid 0 Rejoin A") && relay_conn_send(c[1..<2], "H 6 ranger.0.0.0 druid 0 Rejoin B");
   seq_a := 0; seq_b := 0;
   // both stand 1 s, then A walks east 3 s
   t0 := rs_now(); n := 0;
@@ -118,7 +118,7 @@ tool_main :: () -> int #export_c #effects(all) {
   ua2: [1024] u8;
   url_a2 := rs_ticketed(ua2[..], url, "p-rejoincheck-a", "Rejoin A");
   opened := url_a2.count > 0 && relay_conn_open(c[2..<3], url_a2);
-  sent = opened && relay_conn_send(c[2..<3], "H 5 ranger.2.1.0 druid 0 Rejoin A") && sent;
+  sent = opened && relay_conn_send(c[2..<3], "H 6 ranger.2.1.0 druid 0 Rejoin A") && sent;
   // a frame still in flight on the silent socket: a walk east, which must move nobody (the room
   // closes that socket, so it may not even go)
   late := false;
@@ -141,7 +141,7 @@ tool_main :: () -> int #export_c #effects(all) {
   ua3: [1024] u8;
   url_a3 := rs_ticketed(ua3[..], url, "p-rejoincheck-a", "Rejoin A");
   again := url_a3.count > 0 && relay_conn_open(c[3..<4], url_a3);
-  sent = again && relay_conn_send(c[3..<4], "H 5 ranger.2.1.0 druid 0 Rejoin A") && sent;
+  sent = again && relay_conn_send(c[3..<4], "H 6 ranger.2.1.0 druid 0 Rejoin A") && sent;
   if again { sent = rj_run(c[..], h[..], 3, sq[..], 2000) && sent; }
   w2 := wire_mirror_of(h[1].m[..], sa);
   sa3 := h[3].seat;

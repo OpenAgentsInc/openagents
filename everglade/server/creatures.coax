@@ -20,8 +20,8 @@
 // The room tells each page the monsters within EG_VIEW m (h2: ACT 1 a blow, 2 a shot, its tell from
 // ACT_TICK; FOE a seat or -1) and their events (h3: a blow or arrow at a seat, AMOUNT 0 a miss; harm at
 // one; an arrow loosed with its flight; a fall) through the creature frames' codec, creature-wire.coax
-// (proto/verse/everglade2-combat-v1.json). The pages draw them (everglade/client/creatures.coax).
-#load "creature-wire.coax";   // h2 and h3: the one codec the page reads them with (#13246)
+// (proto/verse/everglade2-combat-v2.json). The pages draw them (everglade/client/creatures.coax).
+#load "creature-wire.coax";   // e mon: the one codec the page reads their events with (#13246, #13276)
 
 // The way (dx, dz) points, in radians as atan2(dx, dz) (within a few thousandths: a creature's facing).
 e2_heading :: (dx: f32, dz: f32) -> f32 {
@@ -65,6 +65,7 @@ E2M_FORM :: 1;              // its form in the rules' list (EGB_FORM_WOLF): neve
 E2Mon :: struct {
   q: int = -1; id: int;      // its beast slot in the rules (-1 none) and its id
   life: int;                 // each new one a new life: the pages fade it in
+  told_life: int;            // the life its row last said (e2_monsters_rows)
   kind: int; group: int; archer: bool;
   state: int = E2M_GONE;
   x: f32; z: f32; yaw: f32; hx: f32; hz: f32; hyaw: f32;
@@ -100,7 +101,7 @@ E2M_SPAWN :: [E2M_N] E2Spawn.[
   E2Spawn.{id = 10, key = "everglade2/camp/archer-1", block = MON_GOBLIN_WARRIOR, group = 3, archer = true},
   E2Spawn.{id = 11, key = "everglade2/camp/archer-2", block = MON_GOBLIN_WARRIOR, group = 3, archer = true}
 ];
-// The stat block each monster kind on the wire (h2 KIND: E2M_WOLF, E2M_GOBLIN) fields.
+// The stat block each monster kind on the wire (its row's P2: E2M_WOLF, E2M_GOBLIN) fields.
 E2M_TEMPLATE :: [2] int.[MON_WOLF, MON_GOBLIN_WARRIOR];
 e2mo_spawn_row :: (m: int) -> E2Spawn { return ifx m >= 0 && m < E2M_N then E2M_SPAWN[m] else E2Spawn.{id = -1, block = MON_NONE, group = -1}; }
 e2mo_kind :: (m: int) -> int { return ifx e2mo_spawn_row(m).block == MON_GOBLIN_WARRIOR then E2M_GOBLIN else E2M_WOLF; }
@@ -207,7 +208,7 @@ e2mo_move :: (mo: [] E2Mon, tx: f32, tz: f32, speed: f32, dt: f32, stop: f32) ->
   return st;
 }
 // The yaw stays within a half turn of 0: a wolf circling its quarry turns one way lap after lap, and a
-// yaw that grew with each lap would pass what the pages take in an h2 row (everglade/client/net.coax).
+// yaw that grew with each lap would pass what a row's YAW carries (everglade/client/net.coax).
 e2mo_wrap :: (a: f32) -> f32 { d := a; while d > 3.14159265 { d -= 6.2831853; } while d < -3.14159265 { d += 6.2831853; } return d; }
 e2mo_turn :: (yaw: f32, goal: f32, rate: f32, dt: f32) -> f32 {
   d := e2mo_wrap(goal - yaw);
@@ -372,7 +373,7 @@ e2mo_loose :: (v: [] RmServer, k: int, m: int, s: int) {
   n := egc_mon_hit_put(out[..], EgcMonHit.{tick = t, kind = EGC_MON_LOOSED, m = m, seat = s, amount = 0,
     fx = cast(int) floor(mo.x * 100 + 0.5), fz = cast(int) floor(mo.z * 100 + 0.5), tx = cast(int) floor(p.x * 100 + 0.5), tz = cast(int) floor(p.z * 100 + 0.5),
     fly = cast(int) floor(fly * 1000 + 0.5)});
-  e2mo_say(v, k, cast(string) out[0..<n], mo.x, mo.z);
+  eg_event_who(v, k, cast(string) out[0..<n], mo.x, mo.z, false, 1 << s);
 }
 // The arrows that land this tick: one at a player still within a metre of where it was aimed is the
 // Shortbow's attack roll; one stepped out of, a miss.
@@ -508,41 +509,34 @@ e2_monster_seen :: (v: [] RmServer, k: int, q: int, clear: bool) {
 }
 
 // ---- what the pages hear
-// An event to every placed seat within EG_VIEW m of (x, z).
-e2mo_say :: (v: [] RmServer, k: int, text: string, x: f32, z: f32) {
-  room := v[0].eg[k..<k + 1];
-  for o: 0..<EG_SEATS {
-    st := room[0].seat[o..<o + 1];
-    if !st[0].live || !st[0].placed || st[0].conn < 0 || e2mo_dist(st[0].pose.x, st[0].pose.z, x, z) > f32(EG_VIEW) { continue; }
-    rl_queue(v, room[0].relay, st[0].conn, -1, text, "");
-  }
-}
+// What a monster did or took, to the seats near (x, z): an e entry of the reliable class
+// (creature-wire.coax egc_kept), through the room's one event path and its interest (#13276).
 e2mo_tell :: (v: [] RmServer, k: int, kind: int, m: int, s: int, amount: int, x: f32, z: f32) { e2mo_tell_at(v, k, v[0].eg[k].tick, kind, m, s, amount, x, z); }
 e2mo_tell_at :: (v: [] RmServer, k: int, tick: int, kind: int, m: int, s: int, amount: int, x: f32, z: f32) {
   out: [96] u8;
   n := egc_mon_hit_put(out[..], EgcMonHit.{tick = tick, kind = kind, m = m, seat = s, amount = amount});
-  e2mo_say(v, k, cast(string) out[0..<n], x, z);
+  eg_event_who(v, k, cast(string) out[0..<n], x, z, false, ifx s >= 0 && s < EG_SEATS then 1 << s else 0);
 }
-// The monsters within EG_VIEW m of seat s: each tick they change, and once a second when they don't.
-e2_monsters_snapshot :: (v: [] RmServer, k: int, s: int) {
-  room := v[0].eg[k..<k + 1]; st := room[0].seat[s..<s + 1]; ms := room[0].monsters[..];
-  row: [1600] u8; n := 0; count := 0;
+// The monster whose creature is the rules' beast q, -1 none.
+e2_monster_of_beast :: (v: [] RmServer, k: int, q: int) -> int {
+  ms := e2mo_room(v, k);
+  for m: 0..<E2M_N { if q >= 0 && ms[0].mon[m].q == q && ms[0].mon[m].state != E2M_GONE { return m; } }
+  return -1;
+}
+// Each monster's row into the tick's table (everglade/server/send.coax eg_table; everglade-wire.coax
+// WK_MONSTER): one that is gone has none, and the next there is a new life.
+e2_monsters_rows :: (v: [] RmServer, k: int) {
+  room := v[0].eg[k..<k + 1]; ms := room[0].monsters[..]; h := room[0].hist[..];
   for m: 0..<E2M_N {
-    mo := ms[0].mon[m];
-    if mo.state == E2M_GONE || e2mo_dist(st[0].pose.x, st[0].pose.z, mo.x, mo.z) > f32(EG_VIEW) { continue; }
+    mo := ms[0].mon[m..<m + 1];
+    if mo[0].state == E2M_GONE { continue; }
     hp := 0; max := 1;
-    if mo.q >= 0 && mo.state != E2M_DEAD { i := EGB_BEAST0 + mo.q; hp = room[0].rules[0].b[0].c[i].hp; max = room[0].rules[0].b[0].c[i].hp_max; }
-    n = egc_mon_put_row(row[..], n, EgcMon.{m = m, life = mo.life, kind = mo.kind, state = mo.state,
-      x = cast(int) floor(mo.x * 100 + 0.5), z = cast(int) floor(mo.z * 100 + 0.5), yaw = cast(int) floor(mo.yaw * 1000 + 0.5), hp = hp, max = max,
-      act = mo.act, act_tick = ifx mo.act != 0 then mo.act_t else (ifx mo.state == E2M_DEAD then mo.down_t else 0), foe = mo.foe});
-    count += 1;
+    if mo[0].q >= 0 && mo[0].state != E2M_DEAD { i := EGB_BEAST0 + mo[0].q; hp = room[0].rules[0].b[0].c[i].hp; max = room[0].rules[0].b[0].c[i].hp_max; }
+    if mo[0].told_life != mo[0].life { wire_hist_born(h, EG_SLOT_MON + m); mo[0].told_life = mo[0].life; }
+    wire_hist_put(h, EG_SLOT_MON + m, WireS.{id = WIRE_ID_MADE + WIRE_MON_EID + m, kind = WK_MONSTER, x = mo[0].x, z = mo[0].z, yaw = e2mo_wrap(mo[0].yaw),
+      g = mo[0].state, clip = mo[0].act, hp = hp, max = max, owner = ifx mo[0].foe >= 0 then WIRE_TGT_SEAT + mo[0].foe else -1, p1 = m, p2 = mo[0].kind,
+      t0 = ifx mo[0].act != 0 then mo[0].act_t else (ifx mo[0].state == E2M_DEAD then mo[0].down_t else 0)}, wire_rel(WK_MONSTER), false, true);
   }
-  hash := eg_hash(cast(string) row[0..<n]) + count * 7919;
-  if st[0].monster_hash == hash && room[0].tick - st[0].monster_sent < EG_HZ { return; }
-  st[0].monster_hash = hash; st[0].monster_sent = room[0].tick;
-  out: [1700] u8;
-  q := egc_mon_put(out[..], room[0].tick, count, cast(string) row[0..<n]);
-  rl_queue(v, room[0].relay, st[0].conn, -1, cast(string) out[0..<q], "");
 }
 
 // ---- checks
@@ -551,7 +545,7 @@ e2mt_room :: (v: [] RmServer, code: string) -> int {
   path: [128] u8; n := wire_put(path[..], 0, "GET /api/room/relay/everglade/"); n = wire_put(path[..], n, code); n = wire_put(path[..], n, " HTTP/1.1\r\n\r\n");
   if rm_join(v, 0, cast(string) path[0..<n]) != 0 { return -1; }
   k := eg_room_at(v, v[0].conns[0].relay);
-  rm_heard(v, 0, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v, 0, "H 6 ranger.0.0.0 srd-fighter 0 -");
   eg_test_tick(v, k);
   return k;
 }
@@ -562,6 +556,80 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
   n := 0; for m: 0..<E2M_N { if (states & (1 << v[0].eg[k].monsters[0].mon[m].state)) != 0 { n += 1; } } return n;
 }
 
+#test "e2 monsters: each monster is a row of the tick's table, told to the seats near it and to no other, and never twice (#13276)" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-rows"); #assert k >= 0;
+  ms := e2mo_room(v[..], k); room := v[0].eg[k..<k + 1];
+  for q: 0..<3 { e2mt_tick(v[..], k); }
+  mo := ms[0].mon[0];
+  e2mt_at(v[..], k, mo.x + 30, mo.z); e2mt_tick(v[..], k);
+  h := room[0].hist[..]; now := h[0].now; pick: [WIRE_SLOTS] f32;
+  // every standing monster has its row, in its own slot, with its fields from its record and the battle
+  for m: 0..<E2M_N {
+    w := wire_test_row(h, EG_SLOT_MON + m, now); o := ms[0].mon[m];
+    #assert o.state != E2M_GONE && cast(int) h[0].id[(now % WIRE_BASES) * WIRE_SLOTS + EG_SLOT_MON + m] == WIRE_ID_MADE + WIRE_MON_EID + m + 1;
+    #assert w.kind == WK_MONSTER && w.p1 == m && w.p2 == o.kind && w.g == o.state && w.hp > 0 && w.max == room[0].rules[0].b[0].c[EGB_BEAST0 + o.q].hp_max && w.life > 0;
+    #assert abs(w.x - o.x) < 0.006 && abs(w.z - o.z) < 0.006 && w.cond == 0 && w.dur == 0 && w.form == 0;
+    #assert e2_monster_of_beast(v[..], k, o.q) == m;
+  }
+  #assert e2_monster_of_beast(v[..], k, -1) < 0 && e2_monster_of_beast(v[..], k, EGB_BEASTS) < 0;
+  // no monster is also a summoned creature's row, though each stands in the rules as one
+  for q: 0..<EGB_BEASTS { egb_beast_ground(room[0].rules[..], q, 0); }
+  e2mt_tick(v[..], k); now = h[0].now;
+  for q: 0..<EGB_BEASTS { if e2_monster_of_beast(v[..], k, q) >= 0 || room[0].guard[0].q == q { #assert h[0].id[(now % WIRE_BASES) * WIRE_SLOTS + EG_SLOT_BEAST + q] == 0; } }
+  // interest: the seat 30 m off is sent its row; a seat past the exit radius is not
+  eg_im_pick(v[..], k, SeatId.{value = 0}, room[0].seat[0].pose.x, room[0].seat[0].pose.z, pick[..]);
+  #assert pick[EG_SLOT_MON] >= 0;
+  e2mt_at(v[..], k, mo.x + 400, mo.z); e2mt_tick(v[..], k);
+  eg_im_pick(v[..], k, SeatId.{value = 0}, room[0].seat[0].pose.x, room[0].seat[0].pose.z, pick[..]);
+  #assert pick[EG_SLOT_MON] < 0;
+  // one that is gone has no row; the next there is a new life of the same id
+  life := wire_test_row(h, EG_SLOT_MON, h[0].now).life;
+  ms[0].mon[0].state = E2M_GONE; wire_hist_begin(h, h[0].now + 1); e2_monsters_rows(v[..], k);
+  #assert h[0].id[(h[0].now % WIRE_BASES) * WIRE_SLOTS + EG_SLOT_MON] == 0 && e2_monster_of_beast(v[..], k, mo.q) < 0;
+  #assert h[0].id[(h[0].now % WIRE_BASES) * WIRE_SLOTS + EG_SLOT_MON + 1] != 0;
+  ms[0].mon[0].state = E2M_IDLE; ms[0].mon[0].life += 1; wire_hist_begin(h, h[0].now + 1); e2_monsters_rows(v[..], k);
+  w := wire_test_row(h, EG_SLOT_MON, h[0].now);
+  #assert w.kind == WK_MONSTER && w.life != life && ms[0].mon[0].told_life == ms[0].mon[0].life;
+  // a new life with no tick out of the table is still a new life
+  life = w.life; ms[0].mon[0].life += 1; wire_hist_begin(h, h[0].now + 1); e2_monsters_rows(v[..], k);
+  #assert wire_test_row(h, EG_SLOT_MON, h[0].now).life != life;
+  life = wire_test_row(h, EG_SLOT_MON, h[0].now).life; wire_hist_begin(h, h[0].now + 1); e2_monsters_rows(v[..], k);
+  #assert wire_test_row(h, EG_SLOT_MON, h[0].now).life == life;
+  // its foe is a TGT code, and its act rides CLIP with the tick it began
+  ms[0].mon[0].foe = 0; ms[0].mon[0].act = E2M_ACT_BLOW; ms[0].mon[0].act_t = 77; ms[0].mon[0].state = E2M_CHASE; e2_monsters_rows(v[..], k);
+  w = wire_test_row(h, EG_SLOT_MON, h[0].now); #assert w.owner == WIRE_TGT_SEAT && w.clip == E2M_ACT_BLOW && w.t0 == 77 && w.g == E2M_CHASE;
+  ms[0].mon[0].act = 0; ms[0].mon[0].state = E2M_DEAD; ms[0].mon[0].down_t = 91; ms[0].mon[0].foe = -1; e2_monsters_rows(v[..], k);
+  w = wire_test_row(h, EG_SLOT_MON, h[0].now); #assert w.owner == -1 && w.clip == 0 && w.t0 == 91 && w.hp == 0 && w.max == 1 && w.g == E2M_DEAD;
+}
+// The bytes one seat hears over `ticks` ticks standing by pack 1 while it fights (a page that reads
+// packed rows): every frame, the seat's own state among them.
+e2mt_fight_bytes :: (v: [] RmServer, ticks: int) -> int {
+  rm_init(v); rm_clock(v, 0, 1762190000000);
+  if rm_join(v, 0, "GET /api/room/relay/everglade/pair-e2-bytes HTTP/1.1\r\n\r\n") != 0 { return -1; }
+  k := eg_room_at(v, v[0].conns[0].relay);
+  rm_heard(v, 0, "H 6 ranger.0.0.0 srd-fighter 8 -");
+  eg_test_tick(v, k);
+  for q: 0..<3 { e2mt_tick(v, k); }
+  b := v[0].eg[k].rules[0].b[..]; b[0].c[EGB_SEAT].hp = 5000; b[0].c[EGB_SEAT].hp_max = 5000;
+  mo := v[0].eg[k].monsters[0].mon[0];
+  out: [262144] u8; total := 0;
+  _ := e2rt_heard(v, 0, out[..]);
+  for q: 0..<ticks {
+    e2mt_at(v, k, mo.x + 6, mo.z); e2mt_tick(v, k);
+    // the page heard that tick whole and says so, as a real page does: the next rows are deltas against it
+    ib: [64] u8; n := wire_put_in(ib[..], 0, WireIn.{seq = q + 1, heard = v[0].eg[k].hist[0].now});
+    rm_heard(v, 0, cast(string) ib[0..<n]);
+    total += e2rt_heard(v, 0, out[..]).count;
+  }
+  return total;
+}
+#test "e2 monsters: a seat by a fighting pack hears under 3,000 bytes a second, its own state and every monster in view among them (#13276)" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer;
+  total := e2mt_fight_bytes(v[..], 10 * EG_HZ);
+  // measured 2026-11-12: 20,000 to 21,000 bytes in the 10 s (2.1 KB/s). The same seat on the commit before
+  // rows (40aaed77e4: h2 whole on every change, h3 and g2 beside the D frames) heard 86,000 to 88,000.
+  #assert total > 0 && total < 30000;
+}
 #test "e2 monsters: the packs and the camp stand at home in the woods and the clearing, none in the glade" #steps 4000000000 #traversal 1073741824 {
   v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-monsters"); #assert k >= 0;
   ms := v[0].eg[k].monsters[..];
@@ -651,7 +719,7 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
     e2mt_at(v[..], k, px, pz); e2mt_tick(v[..], k);
     for o: 0..<E2M_SHOTS { if ms[0].shots[o].live && ms[0].shots[o].m == 10 { flying = true; } }
     heard := e2rt_heard(v[..], 0, out[..]);
-    if eg_test_has(heard, "h3 ") { loosed = loosed || ms[0].mon[10].hit_t > 0; }
+    if eg_test_has(heard, "e mon ") { loosed = loosed || ms[0].mon[10].hit_t > 0; }
     if b[0].c[EGB_SEAT].hp < 500 { hit = true; }
   }
   #assert loosed && flying && hit;

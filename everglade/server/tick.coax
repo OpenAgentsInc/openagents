@@ -190,7 +190,7 @@ rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
     // a restored seat waiting for its first receipt is held: no world yet, while the others play on (#13185)
     if !ck_can_play(v,k,SeatId.{value=s}) { continue; }
     eg_send(v,k,SeatId.{value=s});
-    e2_familiar_snapshot(v,k,s); e2_familiar_sense_state(v,k,s); e2_guard_snapshot(v,k,s); e2_monsters_snapshot(v,k,s);
+    e2_familiar_snapshot(v,k,s); e2_familiar_sense_state(v,k,s);
   }
   v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
 }

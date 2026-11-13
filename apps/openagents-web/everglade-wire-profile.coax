@@ -1,4 +1,4 @@
-// The Everglade session profile's field-level check (#12844): proto/verse/everglade-session-v5.json
+// The Everglade session profile's field-level check (#12844): proto/verse/everglade-session-v6.json
 // names each text-wire message, its fields in order, a canonical value for each and the exact frame
 // those values make. This program holds the codec (everglade-wire.coax) to that file:
 //   - the profile's version, oldest version and pins are the codec's WIRE_VERSION, WIRE_MIN and WIRE_PINS;
@@ -17,7 +17,7 @@
 //     of the row, or of the ticket.
 // The file is the independent expected result: its frames are written by hand, not by this codec.
 // Prints a line per message and "profile holds" (exit 0), or what differs and "profile fails" (exit 1).
-//   coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v5.json
+//   coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v6.json
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
 #import "Basic";
 #load "../../everglade/shared/everglade-wire.coax";
@@ -262,6 +262,19 @@ wp_head :: (t: string) -> string {
   return t[0..<e];
 }
 
+// The row-field mask a list of field names is: bit q for the q-th of the row's fields; -1 for a name
+// the row does not have, or one named twice.
+wp_fields_mask :: (d: Jv, list: int, row: int) -> int {
+  if jv_kind(d, list) != JV_ARRAY || jv_kind(d, row) != JV_ARRAY || jv_len(d, row) != WIRE_SF { return -1; }
+  mask := 0; a: [32] u8; b: [32] u8;
+  for i: 0..<jv_len(d, list) {
+    an := jv_str(d, jv_at(d, list, i), a[..]); at := -1;
+    for q: 0..<WIRE_SF { bn := jv_str(d, jv_at(d, row, q), b[..]); if an > 0 && an == bn && cast(string) a[0..<an] == cast(string) b[0..<bn] { at = q; } }
+    if at < 0 || (mask & (1 << at)) != 0 { return -1; }
+    mask = mask | (1 << at);
+  }
+  return mask;
+}
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("everglade-wire-profile PROFILE.json"); return 2; }
@@ -286,6 +299,19 @@ tool_main :: () -> int #export_c #effects(all) {
     && wp_key(d, forest, "planted") == FOREST_PLANTED && wp_key(d, forest, "bridge_floats") == FOREST_FLOATS;
   print("%  forest identity and capacity\n", ifx forest_ok then "ok  " else "FAIL");
   if !forest_ok { bad += 1; }
+  // the creature kinds (#13276): each kind's number, ids, count and row fields are the codec's table
+  cr := jv_get(d, 0, "creatures");
+  cr_ok := wp_fields_mask(d, jv_get(d, cr, "pose"), jv_get(d, jv_get(d, 0, "row"), "fields")) == WIRE_POSE;
+  for q: 0..<2 {
+    k := jv_get(d, cr, ifx q == 0 then "monster" else "guard");
+    kind := ifx q == 0 then WK_MONSTER else WK_GUARD;
+    cr_ok = cr_ok && wp_key(d, k, "kind") == kind && wp_key(d, k, "entity_base") == WIRE_ID_MADE + (ifx q == 0 then WIRE_MON_EID else WIRE_GUARD_EID)
+      && wp_key(d, k, "count") == (ifx q == 0 then WIRE_MONS else 1)
+      && (wp_fields_mask(d, jv_get(d, k, "fields"), jv_get(d, jv_get(d, 0, "row"), "fields")) | WIRE_POSE) == wire_kind_fields(kind)
+      && (wp_fields_mask(d, jv_get(d, k, "fields"), jv_get(d, jv_get(d, 0, "row"), "fields")) & WIRE_POSE) == 0;
+  }
+  print("%  creature kinds: a monster's and the guard's number, ids and row fields\n", ifx cr_ok then "ok  " else "FAIL");
+  if !cr_ok { bad += 1; }
   fixture := jv_get(d, forest, "bridge_fixture_milli"); ranges := jv_get(d, forest, "bridge_ranges"); whole := jv_get(d, forest, "bridge_whole");
   fb: [FOREST_FLOATS] f32;
   bridge_ok := jv_len(d, fixture) == FOREST_FLOATS && jv_len(d, ranges) == FOREST_FLOATS;

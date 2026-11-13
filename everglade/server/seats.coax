@@ -215,13 +215,16 @@ eg_event :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool) { 
 eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool, who: int) {
   e := v[0].eg[k].ev_n;
   out := eg_ev_outcome(text);
-  keep := out || who != 0;   // (one aimed at a seat has the outcomes' room too: it is on that player)
+  // (one aimed at a seat has the outcomes' room too: it is on that player; and what a monster or the
+  // guard did, which no page may miss: creature-wire.coax egc_kept, #13276)
+  kept := egc_kept(text);
+  keep := out || who != 0 || kept;
   if e >= EG_EVENTS + (ifx keep then EG_EV_KEEP else 0) || v[0].eg[k].ev_bytes + text.count > EG_EV_BYTES + (ifx keep then EG_EV_KEEP_BYTES else 0) {
     v[0].eg[k].ev_dropped += 1;
     if out { v[0].st.ev_lost += 1; }   // past even the outcomes' own room: counted apart, for the vitals
     return;
   }
-  v[0].eg[k].ev_out[e] = out;
+  v[0].eg[k].ev_out[e] = out || kept;
   a := v[0].eg[k].ev_bytes;
   for i: 0..<text.count { v[0].eg[k].ev[a + i] = text[i]; }
   v[0].eg[k].ev_at[e] = a; v[0].eg[k].ev_len[e] = text.count; v[0].eg[k].ev_x[e] = x; v[0].eg[k].ev_z[e] = z; v[0].eg[k].ev_all[e] = all; v[0].eg[k].ev_who[e] = who;
@@ -252,15 +255,15 @@ eg_test_v5_join :: (v: [] RmServer, conn: int, pid: string, acct: int, room: str
   #assert eg_test_v5_join(v[..], 0, "p-00112233aabbcc01", 1, "pair-e2-lv1", 0, "c=srd-fighter,l=1") == 0;
   #assert eg_test_v5_join(v[..], 1, "p-00112233aabbcc02", 1, "pair-e2-lv1", 0, "c=srd-fighter,l=1") == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-6 0 -");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter-20 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter-6 0 -");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-fighter-20 0 -");
   for q: 0..<3 { eg_test_tick(v[..], k); }
   r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := EGB_SEAT;
   #assert r[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER && b[0].c[me].level == 1 && b[0].c[me + 1].level == 1 && r[0].klass[1] == EGB_CL0 + FB_CL_FIGHTER;
   #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter" && !v[0].eg[k].seat[0].class_report;
   // hurt, and Second Wind spent: a hello again (another level, another class), and Change character, change nothing
   b[0].c[me].hp = 3; hp_max := b[0].c[me].hp_max; b[0].c[me].uses[RS_USE_WIND] = 0;
-  for line: [4] string.["H 5 ranger.0.0.0 srd-fighter-6 0 -", "H 5 ranger.0.0.0 srd-wizard-5 0 -", "H 5 ranger.0.0.0 srd-fighter-20 0 -", "V ranger.1.2.3 srd-fighter-6"] { rm_heard(v[..], 0, line); }
+  for line: [4] string.["H 6 ranger.0.0.0 srd-fighter-6 0 -", "H 6 ranger.0.0.0 srd-wizard-5 0 -", "H 6 ranger.0.0.0 srd-fighter-20 0 -", "V ranger.1.2.3 srd-fighter-6"] { rm_heard(v[..], 0, line); }
   eg_test_tick(v[..], k);
   #assert b[0].c[me].level == 1 && r[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER && b[0].c[me].hp == 3 && b[0].c[me].hp_max == hp_max && b[0].c[me].uses[RS_USE_WIND] == 0;
   // the look is the page's: Change character took it
@@ -271,8 +274,8 @@ eg_test_v5_join :: (v: [] RmServer, conn: int, pid: string, acct: int, room: str
   #assert eg_test_v5_join(v[..], 0, "p-00112233aabbcc03", 1, "pair-e2-lv5", 0, "c=srd-fighter,l=5") == 0;
   #assert eg_test_v5_join(v[..], 1, "p-00112233aabbcc04", 0, "pair-e2-lv5", 0, "l=1") == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-wizard 0 -");     // the ticket's Fighter, at its 5
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-wizard-6 0 -");   // no class signed: the hello's Wizard, at the ticket's 1
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-wizard 0 -");     // the ticket's Fighter, at its 5
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-wizard-6 0 -");   // no class signed: the hello's Wizard, at the ticket's 1
   for q: 0..<3 { eg_test_tick(v[..], k); }
   r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := EGB_SEAT;
   #assert r[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER && b[0].c[me].level == 5 && b[0].c[me].extra_attack > 0;
@@ -280,14 +283,14 @@ eg_test_v5_join :: (v: [] RmServer, conn: int, pid: string, acct: int, room: str
   #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-5";
   #assert !v[0].eg[k].seat[0].class_report && v[0].eg[k].seat[1].class_report;
   // once: a later hello's class is not taken
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter-6 0 -"); eg_test_tick(v[..], k);
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-fighter-6 0 -"); eg_test_tick(v[..], k);
   #assert r[0].klass[1] == EGB_CL0 + FB_CL_WIZARD && b[0].c[me + 1].level == 1;
 }
 #test "seat class: XP crossing a level raises an Everglade II seat through the one table, and its player hears it (#13259)" #steps 12000000000 {
   v: [1] RmServer; eg_test_v5_room(v[..]); box: [1] EgInbox;
   #assert eg_test_v5_join(v[..], 0, "p-00112233aabbcc05", 1, "pair-e2-xp", 250, "c=srd-fighter,l=1") == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-6 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter-6 0 -");
   for q: 0..<3 { eg_test_tick(v[..], k); }
   b := v[0].eg[k].rules[0].b[..]; me := EGB_SEAT;
   #assert v[0].ev[k].xp[0] == 250 && b[0].c[me].level == 1;
@@ -316,9 +319,9 @@ eg_test_v5_join :: (v: [] RmServer, conn: int, pid: string, acct: int, room: str
   #assert rm_join(v[..], 1, tk_test_ask_in(r[..], t[..], n, "pair-e2-old")) == 1;
   #assert eg_test_v5_join(v[..], 2, "p-00112233aabbcc08", 2, "pair-e2-old", 0, "c=srd-fighter,l=1") == 2;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-cleric-6 0 -");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-cleric-6 0 -");
-  rm_heard(v[..], 2, "H 5 ranger.0.0.0 srd-rogue-4 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-cleric-6 0 -");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-cleric-6 0 -");
+  rm_heard(v[..], 2, "H 6 ranger.0.0.0 srd-rogue-4 0 -");
   for q: 0..<3 { eg_test_tick(v[..], k); }
   rr := v[0].eg[k].rules[..]; b := rr[0].b[..]; me := EGB_SEAT;
   #assert rr[0].klass[0] == EGB_CL0 + FB_CL_CLERIC && b[0].c[me].level == 1 && v[0].eg[k].seat[0].class_report;

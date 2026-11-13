@@ -1,8 +1,10 @@
 # Everglade session profile v5
 
+Status: superseded by [v6](everglade-session-v6.md) (`WIRE_MIN` is 6; `proto/verse/everglade-session-v5.json` became `everglade-session-v6.json` in #13276). Kept as history.
+
 Version 5 adds the room's forest state to the existing entity replication
 path. Its machine-readable contract is
-[`everglade-session-v5.json`](../../proto/verse/everglade-session-v5.json).
+`proto/verse/everglade-session-v5.json` (now [`everglade-session-v6.json`](../../proto/verse/everglade-session-v6.json)).
 Version 4 remains unchanged. All existing message fields and units retain
 their meanings, except the explicitly typed tree fields below.
 

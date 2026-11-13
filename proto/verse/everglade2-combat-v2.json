@@ -1,0 +1,42 @@
+{
+  "identity": "everglade2-combat-v2",
+  "check": "coax/web/tool.sh coax/web/room/combat-profile.coax proto/verse/everglade2-combat-v2.json",
+  "base_session": "everglade-session-v6",
+  "scope": "Everglade II: what the path guard and the monsters did (e entries of D), and the arrows over the room",
+  "docs": ["docs/protocol/everglade-guard-monsters-v2.md", "docs/protocol/everglade-projectiles-v1.md"],
+  "codecs": {"guard_hit monster_event": "everglade/server/creature-wire.coax", "loose shot shot_end": "aethyr/net/projectile.coax"},
+  "guard_hit": "e guard TICK KIND SEAT AMOUNT",
+  "monster_event": "e mon TICK KIND M SEAT AMOUNT [FX FZ TX TZ FLY_MS]",
+  "loose": "F SEQ FX FY FZ TX TY TZ ST VIEW",
+  "shot": "a TICK ID SEAT SEQ FX FY FZ VX VY VZ ST AGE",
+  "shot_end": "d TICK ID KIND X Y Z DX DY DZ BODY",
+  "units": {
+    "monster_event": "FX FZ TX TZ integer centimetres, FLY_MS the arrow's flight in ms; present only when KIND is loosed",
+    "projectiles": "positions and velocities in mm and mm/s, ST thousandths, VIEW the room's ms (tick * 1000 / hz) modulo 10^9, AGE ms"
+  },
+  "guard_hit_kinds": {"hit": 1, "blow": 2, "critical": 4, "arrow": 5, "arrow_critical": 6},
+  "monster_event_kinds": {"blow": 1, "hit": 2, "loosed": 3, "fell": 4},
+  "shot_end_kinds": {"stuck": 1, "body": 2, "gone": 3},
+  "max_monsters": 12,
+  "max_seats": 64,
+  "frames": [
+    {"frame": "guard_hit", "values": {"TICK": 90, "KIND": 1, "SEAT": 2, "AMOUNT": 5}, "text": "e guard 90 1 2 5"},
+    {"frame": "guard_hit", "values": {"TICK": 913, "KIND": 4, "SEAT": 3, "AMOUNT": 17}, "text": "e guard 913 4 3 17"},
+    {"frame": "guard_hit", "values": {"TICK": 914, "KIND": 5, "SEAT": 0, "AMOUNT": 0}, "text": "e guard 914 5 0 0"},
+    {"frame": "monster_event", "values": {"TICK": 90, "KIND": 3, "M": 10, "SEAT": 0, "AMOUNT": 0, "FX": 500, "FZ": -30000, "TX": 520, "TZ": -31000, "FLY_MS": 700}, "text": "e mon 90 3 10 0 0 500 -30000 520 -31000 700"},
+    {"frame": "monster_event", "values": {"TICK": 90, "KIND": 2, "M": 3, "SEAT": -1, "AMOUNT": 4}, "text": "e mon 90 2 3 -1 4"},
+    {"frame": "monster_event", "values": {"TICK": 91, "KIND": 1, "M": 3, "SEAT": 0, "AMOUNT": 2}, "text": "e mon 91 1 3 0 2"},
+    {"frame": "monster_event", "values": {"TICK": 92, "KIND": 4, "M": 3, "SEAT": -1, "AMOUNT": 0}, "text": "e mon 92 4 3 -1 0"},
+    {"frame": "loose", "values": {"SEQ": 7, "FX": 1500, "FY": 1450, "FZ": -20250, "TX": 3000, "TY": 500, "TZ": -60000, "ST": 800, "VIEW": 123456}, "text": "F 7 1500 1450 -20250 3000 500 -60000 800 123456"},
+    {"frame": "shot", "values": {"TICK": 900, "ID": 12, "SEAT": 3, "SEQ": 7, "FX": 1500, "FY": 1450, "FZ": -20250, "VX": 2000, "VY": 4500, "VZ": -40000, "ST": 1000, "AGE": 66}, "text": "a 900 12 3 7 1500 1450 -20250 2000 4500 -40000 1000 66"},
+    {"frame": "shot_end", "values": {"TICK": 915, "ID": 12, "KIND": 2, "X": 3000, "Y": 900, "Z": -60000, "DX": 50, "DY": -100, "DZ": -994, "BODY": 5}, "text": "d 915 12 2 3000 900 -60000 50 -100 -994 5"},
+    {"frame": "shot_end", "values": {"TICK": 916, "ID": 13, "KIND": 3, "X": 0, "Y": 0, "Z": 0, "DX": 0, "DY": 0, "DZ": 0, "BODY": -1}, "text": "d 916 13 3 0 0 0 0 0 0 -1"}
+  ],
+  "malformed": {
+    "guard_hit": ["e guard 90 3 2 5", "e guard 90 7 2 5", "e guard 90 1 2 1000", "e guard 90 1 -2 5", "e guard 90 1 2", "e guard 90 1 2 5 0"],
+    "monster_event": ["e mon 90 5 3 0 4", "e mon 90 3 10 0 0 500 -30000 520 -31000 5001", "e mon 90 3 10 0 0 500 -30000 520 -31000", "e mon 90 2 3 -1 4 1", "e mon 90 2 12 -1 4", "e mon 90 2 3 -1 1000"],
+    "loose": ["F 0 0 0 0 0 0 0 800 1", "F 7 0 0 0 0 0 0 1001 1", "F 7 2000001 0 0 0 0 0 800 1", "F 7 0 0 0 0 0 800 1", "F 7 0 0 0 0 0 0 800 -1"],
+    "shot": ["a 900 0 3 7 0 0 0 0 0 0 1000 0", "a 900 12 64 7 0 0 0 0 0 0 1000 0", "a 900 12 3 7 0 0 0 200001 0 0 1000 0", "a 900 12 3 7 0 0 0 0 0 0 1000 251", "a 900 12 3 7 0 0 0 0 0 0 1000"],
+    "shot_end": ["d 915 12 0 0 0 0 0 0 0 -1", "d 915 12 4 0 0 0 0 0 0 -1", "d 915 12 1 0 0 0 1001 0 0 -1", "d 915 12 1 0 0 0 0 0 0 -2"]
+  }
+}

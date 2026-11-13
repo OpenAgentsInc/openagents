@@ -92,7 +92,7 @@ e2t_stock :: (stock: [] const RsMaterialStock, key: int) -> int { for m: stock {
   eg_test_drain(v[..], box[..]);
   k := eg_room_at(v[..], v[0].conns[0].relay);
   rm_heard(v[..], 0, "H 4 ranger.0.0.0 druid 0 Old");   // v4 has no authoritative forest
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 New");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 0 New");
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 0), "r 0 version") && rm_relay_kicked(v[..], 0);
   #assert !eg_test_has(eg_test_of(box[..], 1), "r 0 version") && !rm_relay_kicked(v[..], 1);
@@ -109,7 +109,7 @@ e2t_stock :: (stock: [] const RsMaterialStock, key: int) -> int { for m: stock {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0;
   eg_test_drain(v[..], box[..]);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 Before");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 Before");
   eg_test_drain(v[..], box[..]);
   // a drain ask: only this shard's, signed with the key, near this server's clock
   at := 1762190000000;
@@ -122,7 +122,7 @@ e2t_stock :: (stock: [] const RsMaterialStock, key: int) -> int { for m: stock {
   // a page joining now is told restarting and closed
   #assert rm_join(v[..], 1, ev) == 1;
   eg_test_drain(v[..], box[..]);
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 After");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 0 After");
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 1), "r 0 restarting") && rm_relay_kicked(v[..], 1);
   #assert !eg_test_has(eg_test_of(box[..], 0), "r 0 restarting") && !rm_relay_kicked(v[..], 0);
@@ -150,14 +150,14 @@ dr_mac :: (key: string, text: string, out: [] u8) {
   k := eg_room_at(v[..], v[0].conns[0].relay);
   b: [64] u8;
   same := cast(string) b[0..<wire_put_pins(b[..], 0, WirePins.{})];
-  rm_heard(v[..], 0, same); rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 Same");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 Before");             // a page from before P: the first build's
-  rm_heard(v[..], 2, "P 1 2 1"); rm_heard(v[..], 2, "H 5 ranger.0.0.0 druid 0 Rules");
-  rm_heard(v[..], 3, "P 2 1 1"); rm_heard(v[..], 3, "H 5 ranger.0.0.0 druid 0 Engine");
-  rm_heard(v[..], 4, "P 1 1 2"); rm_heard(v[..], 4, "H 5 ranger.0.0.0 druid 0 World");
-  rm_heard(v[..], 5, "P 1 2"); rm_heard(v[..], 5, "H 5 ranger.0.0.0 druid 0 Short");   // a P that doesn't read is no build
+  rm_heard(v[..], 0, same); rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 Same");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 0 Before");             // a page from before P: the first build's
+  rm_heard(v[..], 2, "P 1 2 1"); rm_heard(v[..], 2, "H 6 ranger.0.0.0 druid 0 Rules");
+  rm_heard(v[..], 3, "P 2 1 1"); rm_heard(v[..], 3, "H 6 ranger.0.0.0 druid 0 Engine");
+  rm_heard(v[..], 4, "P 1 1 2"); rm_heard(v[..], 4, "H 6 ranger.0.0.0 druid 0 World");
+  rm_heard(v[..], 5, "P 1 2"); rm_heard(v[..], 5, "H 6 ranger.0.0.0 druid 0 Short");   // a P that doesn't read is no build
   v[0].conns[6].ticket.schema = RV_SCHEMA + 1;                         // saved by a newer room: a rollback past its limit
-  rm_heard(v[..], 6, same); rm_heard(v[..], 6, "H 5 ranger.0.0.0 druid 0 Saved");
+  rm_heard(v[..], 6, same); rm_heard(v[..], 6, "H 6 ranger.0.0.0 druid 0 Saved");
   eg_test_drain(v[..], box[..]);
   for i: 0..<7 {
     refused := i >= 2 && i != 5;
@@ -207,8 +207,8 @@ dr_mac :: (key: string, text: string, out: [] u8) {
   #assert eg_test_has(eg_test_of(box[..], 0), "y 0 0 1762190000000 1|W 0 30 ");
   k := eg_room_at(v[..], v[0].conns[0].relay);
   #assert k >= 0;
-  rm_heard(v[..], 0, "H 5 ranger.2.1.0 druid 1 Ash Vale");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.2.1.0 druid 1 Ash Vale");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 0 -");
   // seat 0 queues 8 inputs at once: 4 are stepped this tick (its bank), the rest on the next ticks
   for q: 1..<9 {
     t: [64] u8; n := put(t[..], 0, "I"); n = eg_n(t[..], n, q); n = put(t[..], n, " 0 0 0 50 0 1 0");
@@ -254,7 +254,7 @@ eg_test_input :: (v: [] RmServer, seq: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 0 -");
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   // seat 0 walks; seat 1's socket has 10 KB waiting: its frame holds its own row, not seat 0's
   rm_conn_waiting(v[..], 1, 10000);
@@ -283,7 +283,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 0 -");
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   // seat 1's page goes on sending, but what it hears comes later and later: its HEARD stays put
   box[0].deaf[1] = true;
@@ -320,7 +320,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 0 -");
   seq := 0;
   for t: 0..<3 { seq += 1; eg_test_input_on(v[..], 1, seq, box[0].m[1].heard); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   // seat 1's page goes on sending, but hears nothing in time, and the room snapshots it (as after a stall)
@@ -356,7 +356,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 0 -");
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   #assert eg_ev_outcome("e break 12 0 0 0") && eg_ev_outcome("e rebuild") && eg_ev_outcome("e edit 3") && !eg_ev_outcome("e hit 1001 2003 7 3") && !eg_ev_outcome("e breakx 1") && !eg_ev_outcome("x 3");
   // a tick of 200 hits near both seats (more than a tick's events), a hit aimed at seat 1, then 20 outcomes (e break, as v1's were)
@@ -385,7 +385,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   ev := "GET /api/room/relay/everglade/pair-e2-life HTTP/1.1\r\n\r\n";
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  for c: 0..<2 { rm_heard(v[..], c, "H 5 ranger.0.0.0 druid 0 -"); }
+  for c: 0..<2 { rm_heard(v[..], c, "H 6 ranger.0.0.0 druid 0 -"); }
   for t: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   a0 := eg_test_ent(box[..], 1, 0);
   #assert a0.kind == WK_PLAYER && a0.life >= 1;
@@ -399,14 +399,14 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   // seat 0's player leaves and another sits in seat 0 before a tick: the same id and slot, a new life
   rm_left(v[..], 0);
   #assert rm_join(v[..], 2, ev) == 0;
-  rm_heard(v[..], 2, "H 5 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 2, "H 6 ranger.0.0.0 druid 0 -");
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_ent(box[..], 1, 0).life == a1.life + 1;
 }
 #test "everglade room: a 250 ms link's TCP resend preserves every earned movement input" #steps 2000000000 {
   v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-resend HTTP/1.1\r\n\r\n") == 0;
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -");   // an Everglade II seat is placed once its hello comes
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 -");   // an Everglade II seat is placed once its hello comes
   k := eg_room_at(v[..], v[0].conns[0].relay); eg_test_tick(v[..], k);
   seq := 0;
   for q: 0..<30 { seq += 1; eg_test_input(v[..], seq); eg_test_tick(v[..], k); }
@@ -427,7 +427,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   rm_clock(v[..], 0, 1762190000000);
   ev := "GET /api/room/relay/everglade/pair-e2-stall HTTP/1.1\r\n\r\n";
   #assert rm_join(v[..], 0, ev) == 0;
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -");   // an Everglade II seat is placed once its hello comes
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 -");   // an Everglade II seat is placed once its hello comes
   k := eg_room_at(v[..], v[0].conns[0].relay);
   eg_test_tick(v[..], k);
   seq := 0;
@@ -464,7 +464,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   rm_clock(v[..], 0, 1762190000000);
   ev := "GET /api/room/relay/everglade/pair-e2-owe HTTP/1.1\r\n\r\n";
   #assert rm_join(v[..], 0, ev) == 0;
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -");   // an Everglade II seat is placed once its hello comes
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 -");   // an Everglade II seat is placed once its hello comes
   k := eg_room_at(v[..], v[0].conns[0].relay);
   eg_test_tick(v[..], k);
   seq := 0;
@@ -496,8 +496,8 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-wizard 0 -");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-wizard 0 -");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-fighter 0 -");
   for q: 0..<3 { eg_test_tick(v[..], k); }
   eg_test_drain(v[..], box[..]);
   bolt := xk_slot(FB_CL_WIZARD, 0); wind := xk_slot(FB_CL_FIGHTER, 0); sword := xk_slot(FB_CL_FIGHTER, 1);
@@ -542,8 +542,8 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-wizard 0 -");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-wizard 0 -");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-fighter 0 -");
   for q: 0..<3 { eg_test_tick(v[..], k); }
   eg_test_drain(v[..], box[..]);
   // the glade's first kept tree, as the walker and the arrows have it (everglade/shared/archery.coax)
@@ -580,7 +580,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   rm_init(v[..]); rm_clock(v[..],0,1762190000000);
   #assert rm_join(v[..],0,"GET /api/room/relay/everglade/pair-e2-protection HTTP/1.1\r\n\r\n")==0;
   k:=eg_room_at(v[..],v[0].conns[0].relay);
-  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-paladin-3 0 -");
+  rm_heard(v[..],0,"H 6 ranger.0.0.0 srd-paladin-3 0 -");
   for q:0..<3 { eg_test_tick(v[..],k); }
   r:=v[0].eg[k].rules[..]; c:=r[0].b[0].c[EGB_SEAT..<EGB_SEAT+1];
   slot:=xk_wire(FB_CL_PALADIN,fb_spell(SP_PROTECTION_GOOD_EVIL,1,FB_SELF));
@@ -593,7 +593,7 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   #assert c[0].materials[1].count==0 && c[0].conc==SP_PROTECTION_GOOD_EVIL;
   // a hello again changes nothing (#13259); Change character in the page's own room sits it at 4, and
   // the new preset does not fill the holy water again
-  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-paladin-4 0 -");
+  rm_heard(v[..],0,"H 6 ranger.0.0.0 srd-paladin-4 0 -");
   #assert c[0].level==3 && c[0].materials[1].count==0;
   rm_heard(v[..],0,"V ranger.0.0.0 srd-paladin-4");
   #assert c[0].level==4 && c[0].materials[1].count==0;
@@ -605,8 +605,8 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   request:="GET /api/room/relay/everglade/pair-e2-truth HTTP/1.1\r\n\r\n";
   #assert rm_join(v[..],0,request)==0 && rm_join(v[..],1,request)==1;
   k:=eg_room_at(v[..],v[0].conns[0].relay);
-  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-paladin-5 0 -");
-  rm_heard(v[..],1,"H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v[..],0,"H 6 ranger.0.0.0 srd-paladin-5 0 -");
+  rm_heard(v[..],1,"H 6 ranger.0.0.0 srd-fighter 0 -");
   for q:0..<3 { eg_test_tick(v[..],k); }
   r:=v[0].eg[k].rules[..]; b:=r[0].b[..]; target:=EGB_SEAT+1;
   p:=v[0].eg[k].seat[0].pose;
@@ -631,8 +631,8 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   path:="GET /api/room/relay/everglade/pair-e2-revivify HTTP/1.1\r\n\r\n";
   #assert rm_join(v[..],0,path)==0 && rm_join(v[..],1,path)==1;
   k:=eg_room_at(v[..],v[0].conns[0].relay);
-  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-cleric-5 0 -");
-  rm_heard(v[..],1,"H 5 ranger.0.0.0 srd-fighter-5 0 -");
+  rm_heard(v[..],0,"H 6 ranger.0.0.0 srd-cleric-5 0 -");
+  rm_heard(v[..],1,"H 6 ranger.0.0.0 srd-fighter-5 0 -");
   for q:0..<3 { eg_test_tick(v[..],k); }
   room:=v[0].eg[k..<k+1]; b:=room[0].rules[0].b[..];
   me:=EGB_SEAT; ally:=me+1;
@@ -666,8 +666,8 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-5 0 -");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter-5 0 -");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-fighter 0 -");
   for q: 0..<3 { eg_test_tick(v[..], k); }
   r := v[0].eg[k].rules[..];
   #assert r[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER;
@@ -691,8 +691,8 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   w := e2_kit(v[..], k, 0); at := -1; for i: 0..<fn { if five[i].kind == FB_SURGE { at = i; } }
   #assert w.n == fn && w.v[at] == wire_kit_v(uses - 1, false) && v[0].eg[k].seat[0].kit_told == e2_kit_hash(w);
   // a hello at another level changes nothing (#13259): not the level, and not the spent Action Surge
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-2 0 -");
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-wizard-6 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter-2 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-wizard-6 0 -");
   eg_test_tick(v[..], k);
   #assert r[0].b[0].c[EGB_SEAT].level == 5 && r[0].klass[0] == EGB_CL0 + FB_CL_FIGHTER && r[0].b[0].c[EGB_SEAT].uses[RS_USE_SURGE] == uses - 1;
   #assert cast(string) v[0].eg[k].seat[0].klass[0..<v[0].eg[k].seat[0].klass_n] == "srd-fighter-5";
@@ -707,8 +707,8 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-fighter-5 0 -");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-druid 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-fighter-5 0 -");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-druid 0 -");
   for q: 0..<3 { eg_test_tick(v[..], k); }
   r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := EGB_SEAT;
   // hurt to half: the Ranger comes in hurt to half too
@@ -746,8 +746,8 @@ eg_test_input_on :: (v: [] RmServer, c: int, seq: int, heard: int) {
   path:="GET /api/room/relay/everglade/pair-e2-rules HTTP/1.1\r\n\r\n";
   #assert rm_join(v[..],0,path)==0 && rm_join(v[..],1,path)==1;
   k:=eg_room_at(v[..],v[0].conns[0].relay);
-  rm_heard(v[..],0,"H 5 ranger.0.0.0 srd-fighter 0 -");
-  rm_heard(v[..],1,"H 5 ranger.0.0.0 srd-wizard 0 -");
+  rm_heard(v[..],0,"H 6 ranger.0.0.0 srd-fighter 0 -");
+  rm_heard(v[..],1,"H 6 ranger.0.0.0 srd-wizard 0 -");
   for q:0..<3 { eg_test_tick(v[..],k); }
   b:=v[0].eg[k].rules[0].b[..]; b[0].c[0].hp=1; b[0].c[0].reacted=true;
   b[0].c[1].speech_blocked=true; b[0].c[1].slots[1]=0;
@@ -782,8 +782,8 @@ e2pt_slot :: (klass: int, level: int, kind: int, sp: int) -> int {
   box: [1] EgInbox;
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 srd-wizard-5 0 -");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 srd-fighter-5 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 srd-wizard-5 0 -");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-fighter-5 0 -");
   for q: 0..<3 { rc_test_tick(v[..], k, true); }
   r := v[0].eg[k].rules[..]; b := r[0].b[..]; ms := v[0].eg[k].monsters[..];
   #assert b[0].c[EGB_SEAT].level == 5 && b[0].c[EGB_SEAT + 1].level == 5 && rs_world_deviations(rs_world_of(b)) == 61;

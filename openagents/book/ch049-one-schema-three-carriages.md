@@ -74,7 +74,7 @@ Where the schemas stand today:
 | Status | Meaning | Packages |
 | --- | --- | --- |
 | In use | A schema file, one generated codec, a fixture, and a product path that calls it | `openagents.account.v1alpha1` (agent grants), `openagents.decision.v1alpha1` (on the server), `openagents.metareal.home.v1alpha1`, `openagents.metareal.haunt.v1alpha1`, `openagents.voice.v1alpha1` |
-| In use, hand-packed | One shared hand-written codec, pinned by a profile with exact bytes | The Everglade realm session ([`everglade-session-v5.json`](../../proto/verse/everglade-session-v5.json)), its latency record, and the Orbit League frames |
+| In use, hand-packed | One shared hand-written codec, pinned by a profile with exact bytes | The Everglade realm session ([`everglade-session-v6.json`](../../proto/verse/everglade-session-v6.json)), its latency record, and the Orbit League frames |
 | Schema file | A `.proto` in `proto/`. It has no product consumer, or the code still writes other bytes by hand | `nostr.*` mirrors, `openagents.pylon.v1alpha1`, `openagents.psionic.*`, `openagents.host.v1`, `openagents.reach.v1`, `openagents.engine.v1`, `openagents.common.v1`, the Coder and CLI records |
 | Spec sketch | Drafted in the spec only. The NIP's JSON, written by a Coax library, is the definition today | Most of this book: `chat`, `capability`, `policy`, `run`, `trace`, `knowledge`, `extension`, `eval`, `xp`, `market`, `labor`, `payment`, `receipt` |
 | Planned | Named, not drafted | `openagents.sync.v1alpha1`, `openagents.session.log.v1alpha1`, `openagents.verse.doc.v1alpha1` |

@@ -92,7 +92,7 @@ fo_said :: (b: [] FoBot) {
   m: [128] u8;
   ok := relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_pins(m[..], 0, WirePins.{})]);
   if b[0].claim { ok = relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_at(m[..], 0, WireAt.{x = b[0].kx, z = b[0].kz, yaw = b[0].own.yaw})]) && ok; }
-  ok = relay_conn_send(b[0].conn[..], "H 5 ranger.0.0.0 srd-druid 0 -") && ok;
+  ok = relay_conn_send(b[0].conn[..], "H 6 ranger.0.0.0 srd-druid 0 -") && ok;
 }
 fo_pump :: (b: [] FoBot, now: int, walk: bool) {
   if !b[0].open { return; }

@@ -30,7 +30,7 @@ FZ_SENDER :: 0;            // the conn that says everything (seat 0)
 FZ_PEERS :: 4;             // conns 1 to FZ_PEERS - 1 sit too (an Everglade room's seats 1 to 3; a game's)
 FZ_FRAME :: 4096;          // the most a frame carries on a WebSocket or a stream (room-host.c ws_parse, room-wt.c)
 FZ_TICK :: 3;
-FZ_HELLO :: "H 5 ranger.0.0.0 druid 0 -";
+FZ_HELLO :: "H 6 ranger.0.0.0 druid 0 -";
 FZ_EG_PATH :: "GET /api/room/relay/everglade/everglade2-1 HTTP/1.1\r\n\r\n";
 FZ_GAME_PATH :: "GET /api/room/relay/fuzz-game/fuzz-room HTTP/1.1\r\n\r\n";
 

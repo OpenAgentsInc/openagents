@@ -67,7 +67,7 @@ Bot :: struct {
   x: f32; z: f32; y: f32; hp: int; max: int; placed: bool; z0: f32; dir: f32 = -1;
   was_x: f32; was_z: f32; was_at: int; dodge_until: int;
   m: [1] WireMirror; tm: [1] CfTiming;
-  mons: EgcMons; mons_at: int;
+  mons: BotMons; mons_at: int;   // the monsters its rows hold (the mirror's WK_MONSTER rows, #13276), and when it last heard state
   used: [BT_BAR] bool; turn: int; fight_at: int;
   cast_seq: int; cast_i: int = -1;
   next_reconnect: int; next_travel: int;
@@ -117,6 +117,20 @@ bt_bar :: (c: int, level: int, out: [] SpEntry) -> int {
   #assert bt_bar(3, 9, a[..]) == bt_bar(3, BT_LEVELS, b[..]) && bt_bar(3, 0, a[..]) == bt_bar(3, 1, b[..]);
 }
 
+// A monster as a bot's rows hold it (everglade-wire.coax WK_MONSTER): its place in cm.
+BotMon :: struct { m: int; kind: int; state: int; x: int; z: int; hp: int; max: int; }
+BotMons :: struct { count: int; row: [WIRE_MONS] BotMon; }
+// The monsters in the bot's mirror, as the room's rows last said them.
+bt_mons :: (m: [] WireMirror) -> BotMons {
+  o: BotMons;
+  for q: 0..<WIRE_MONS {
+    w := wire_mirror_of(m, WIRE_ID_MADE + WIRE_MON_EID + q);
+    if w.id < 0 || w.kind != WK_MONSTER { continue; }
+    o.row[o.count] = BotMon.{m = q, kind = w.p2, state = w.g, x = wire_cm(w.x), z = wire_cm(w.z), hp = w.hp, max = w.max};
+    o.count += 1;
+  }
+  return o;
+}
 // The nearest monster a bot would fight: its row in mons, or -1.
 bt_foe :: (b: [] Bot, now: int) -> int {
   if now - b[0].mons_at > 2000 { return -1; }
@@ -133,9 +147,9 @@ bt_foe :: (b: [] Bot, now: int) -> int {
 #test "a bot goes after the nearest monster standing, in sight, heard lately" {
   b: [1] Bot; b[0].mons_at = 1000;
   b[0].mons.count = 3;
-  b[0].mons.row[0] = EgcMon.{m = 0, x = 1000, z = 0, hp = 5, max = 11};
-  b[0].mons.row[1] = EgcMon.{m = 1, x = 300, z = 0, hp = 0, max = 11, state = 3};
-  b[0].mons.row[2] = EgcMon.{m = 2, x = 0, z = -500, hp = 11, max = 11};
+  b[0].mons.row[0] = BotMon.{m = 0, x = 1000, z = 0, hp = 5, max = 11};
+  b[0].mons.row[1] = BotMon.{m = 1, x = 300, z = 0, hp = 0, max = 11, state = 3};
+  b[0].mons.row[2] = BotMon.{m = 2, x = 0, z = -500, hp = 11, max = 11};
   #assert bt_foe(b[..], 1500) == 2;
   b[0].mons.row[2].state = 4;
   #assert bt_foe(b[..], 1500) == 0;
@@ -169,12 +183,6 @@ bt_hear :: (b: [] Bot, s: [] BtStats, t: string, now: int) {
     b[0].rejoining = true; b[0].rejoin_from = now;
     return;
   }
-  if rs_starts(t, "h2 ") { got := egc_mon_read(t); if got.ok { b[0].mons = got; b[0].mons_at = now; } return; }
-  if rs_starts(t, "h3 ") {
-    h := egc_mon_hit_read(t);
-    if h.ok && h.seat == b[0].seat && h.kind == EGC_MON_HIT { s[0].blows += 1; }
-    return;
-  }
   if !rs_starts(t, "D ") { return; }
   s[0].d += 1;
   rd: [1] WireRd; rd[0] = wire_rd(t, 1); d := wire_read_d(t, rd[..]);
@@ -190,6 +198,7 @@ bt_hear :: (b: [] Bot, s: [] BtStats, t: string, now: int) {
   }
   cf_ack(b[0].tm[..], d.ack, now);
   _ := wire_mirror_frame(b[0].m[..], t);
+  if (d.f & WIRE_F_OOB) == 0 { b[0].mons = bt_mons(b[0].m[..]); b[0].mons_at = now; }   // (an out-of-band D holds entries only)
   if b[0].seat >= 0 {
     me := wire_mirror_of(b[0].m[..], b[0].seat);
     if me.id >= 0 {
@@ -211,6 +220,7 @@ bt_hear :: (b: [] Bot, s: [] BtStats, t: string, now: int) {
         b[0].cast_i = -1; b[0].turn = 0;
       }
     }
+    if wire_is(e, EGC_MON_E) { h := egc_mon_hit_read(e); if h.ok && h.seat == b[0].seat && h.kind == EGC_MON_HIT { s[0].blows += 1; } }
     if wire_is(e, "e xp") && rs_num(rs_field(e, 2)) == b[0].seat { s[0].xp += rs_num(rs_field(e, 3)); s[0].kills += 1; }   // XP is granted for a monster it helped fell
     if wire_is(e, "e level") && rs_num(rs_field(e, 2)) == b[0].seat { s[0].levels += 1; b[0].level = rs_num(rs_field(e, 3)); }
     if wire_is(e, "v") {
@@ -229,10 +239,13 @@ bt_hear :: (b: [] Bot, s: [] BtStats, t: string, now: int) {
   b[0].cast_seq = 8; b[0].cast_i = 1;
   bt_hear(b[..], s[..], "D 40 5 0 0 e cast 3 130 100 0 200 99;e xp 3 25;e level 3 2;e xp 4 50", 30);
   #assert s[0].taken == 1 && b[0].used[1] && b[0].turn == 0 && s[0].xp == 25 && s[0].levels == 1 && b[0].level == 2 && s[0].d == 1;
-  bt_hear(b[..], s[..], "h3 41 2 5 3 6", 40);
-  bt_hear(b[..], s[..], "h3 42 4 5 3 0", 40);
-  bt_hear(b[..], s[..], "h3 42 2 5 4 6", 40);
-  #assert s[0].blows == 1 && s[0].kills == 1;   // the kill: its XP's grant, above
+  bt_hear(b[..], s[..], "D 41 5 0 0 e mon 41 2 5 3 6;e mon 42 4 5 3 0;e mon 42 2 5 4 6", 40);
+  #assert s[0].blows == 1 && s[0].kills == 1 && s[0].d == 2;
+  // the monsters a bot fights are its rows: one comes into view, is hurt, and goes with its x
+  bt_hear(b[..], s[..], "D 42 5 0 0 s 1170005 0 27915 13 250 -3000 1 7 11 1003 5", 41);
+  #assert b[0].mons.count == 1 && b[0].mons.row[0].m == 5 && b[0].mons.row[0].x == 250 && b[0].mons.row[0].z == -3000 && b[0].mons.row[0].hp == 7 && b[0].mons.row[0].max == 11 && b[0].mons.row[0].state == 1 && b[0].mons_at == 41;
+  bt_hear(b[..], s[..], "D 43 5 0 0 x 1170005", 42);
+  #assert b[0].mons.count == 0 && b[0].mons_at == 42 && s[0].d == 4;   // the kill: its XP's grant, above
   bt_hear(b[..], s[..], "r 0 version", 50);
   #assert s[0].version_refused == 1;
   b[0].travel_seq = 9;
@@ -241,8 +254,8 @@ bt_hear :: (b: [] Bot, s: [] BtStats, t: string, now: int) {
   bt_hear(b[..], s[..], "g pair-e2-soak-2", 70);
   #assert s[0].travelled == 1 && bt_code(b[..]) == "pair-e2-soak-2" && b[0].rejoining;
   // a state 150 ms after the last is a stall; a tick skipped is a drop
-  bt_hear(b[..], s[..], "D 41 5 0 0", 100);
-  bt_hear(b[..], s[..], "D 44 5 0 0", 260);
+  bt_hear(b[..], s[..], "D 44 5 0 0", 100);
+  bt_hear(b[..], s[..], "D 47 5 0 0", 260);
   #assert s[0].stalls == 1 && s[0].dropped == 2;
 }
 

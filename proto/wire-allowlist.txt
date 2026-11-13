@@ -76,7 +76,7 @@ route coax/web/api/private.c  # private projects: hand-built bodies; the api.v1 
 route coax/web/api/villa.c  # the villa: hand-built bodies; the api.v1 envelope (#13250)
 
 # Codecs outside their owning context's folders (#13316).
-codec everglade-session-v5 everglade/shared/everglade-wire.coax  # room-session codec in everglade/shared/, the folder the room and the page both load (#13316, #13346)
+codec everglade-session-v6 everglade/shared/everglade-wire.coax  # room-session codec in everglade/shared/, the folder the room and the page both load (#13316, #13346)
 codec everglade-link-input-v1 everglade/shared/everglade-link-wire.coax  # room-session codec in everglade/shared/, the folder the room and the page both load (#13316, #13346)
 codec realm-save-aesv-v1 apps/openagents-web/save.coax  # engine codec still lives in apps/openagents-web/; the Aethyr book's chapter 81 plans its move to aethyr/save.coax (#13250)
 codec everglade-edits-v1 verse/everglade/edits.coax  # world codec still lives in verse/everglade/ with the city's plan (#13250)

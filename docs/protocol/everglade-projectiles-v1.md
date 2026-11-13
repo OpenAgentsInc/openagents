@@ -2,7 +2,7 @@
 
 Arrows over a room: the page tells the room it loosed one, and the room
 flies it and tells every page. Profile:
-[`everglade2-combat-v1.json`](../../proto/verse/everglade2-combat-v1.json).
+[`everglade2-combat-v2.json`](../../proto/verse/everglade2-combat-v2.json).
 Codec: `aethyr/net/projectile.coax`, which the page and the room both load.
 Whole numbers a space apart (`aethyr/net/record.coax`): positions in mm,
 velocities in mm/s, strength in thousandths.

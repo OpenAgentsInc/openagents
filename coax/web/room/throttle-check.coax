@@ -40,7 +40,7 @@ tc_open :: (p: [] TcPage, url: string, pid: string, name: string) -> bool {
   p[0] = TcPage.{};
   if ui.count == 0 || !relay_conn_open(p[0].c[..], ui) { return false; }
   hm: [96] u8;
-  hn := rs_put(hm[..], rs_put(hm[..], 0, "H 5 ranger.0.0.0 druid 0 "), name);
+  hn := rs_put(hm[..], rs_put(hm[..], 0, "H 6 ranger.0.0.0 druid 0 "), name);
   p[0].open = relay_conn_send(p[0].c[..], cast(string) hm[0..<hn]);
   p[0].last_d = rs_now();
   return p[0].open;

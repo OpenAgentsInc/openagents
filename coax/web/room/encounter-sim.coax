@@ -162,7 +162,7 @@ es_fight :: (v: [] RmServer, enc: int, c: int, level: int, seed: int, trace: boo
   if rm_join(v, 0, "GET /api/room/relay/everglade/pair-e2-encounter-sim HTTP/1.1\r\n\r\n") != 0 { return out; }
   k := eg_room_at(v, v[0].conns[0].relay);
   hello: [64] u8; word: [32] u8;
-  n := es_put(hello[..], 0, "H 5 ranger.0.0.0 "); n = es_put(hello[..], n, cast(string) word[0..<fb_cl_kind_at(c, level, word[..])]); n = es_put(hello[..], n, " 0 -");
+  n := es_put(hello[..], 0, "H 6 ranger.0.0.0 "); n = es_put(hello[..], n, cast(string) word[0..<fb_cl_kind_at(c, level, word[..])]); n = es_put(hello[..], n, " 0 -");
   rm_heard(v, 0, cast(string) hello[0..<n]);
   es_tick(v, k);
   r := v[0].eg[k].rules[..]; b := r[0].b[..]; me := EGB_SEAT;

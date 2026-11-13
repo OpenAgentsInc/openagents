@@ -422,8 +422,8 @@ tk_test_ask_in :: (r: [] u8, t: [] u8, n: int, room: string) -> string {
   eg_test_drain(v[..], box[..]);
   k := eg_room_at(v[..], v[0].conns[0].relay);
   #assert k >= 0;
-  rm_heard(v[..], 0, "H 5 ranger.2.1.0 druid 0 Someone Else");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 3 Guest");
+  rm_heard(v[..], 0, "H 6 ranger.2.1.0 druid 0 Someone Else");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 3 Guest");
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   a := eg_test_of(box[..], 1);
@@ -517,7 +517,7 @@ tk_test_ask_in :: (r: [] u8, t: [] u8, n: int, room: string) -> string {
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
   n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-e2-tk", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");   // placed once its hello comes
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 0 -");   // placed once its hello comes
   k := eg_room_at(v[..], v[0].conns[0].relay);
   box: [1] EgInbox;
   rm_control(v[..], "pvp 0\nedit 100\n");
@@ -838,7 +838,7 @@ rl_test_ticks :: (v: [] RmServer, k: int, ticks: int, conn: int, part: string) -
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
   n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-e2-tk", now + 600000, -1, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
-  rm_heard(v[..], 0, "H 5 ranger.2.1.0 druid 0 A"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 B");
+  rm_heard(v[..], 0, "H 6 ranger.2.1.0 druid 0 A"); rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 0 B");
   k := eg_room_at(v[..], v[0].conns[0].relay);
   for i: 0..<10 { eg_test_tick(v[..], k); }
   // A is hurt, and walks a little; then A's socket closes
@@ -858,7 +858,7 @@ rl_test_ticks :: (v: [] RmServer, k: int, ticks: int, conn: int, part: string) -
   #assert eg_test_has(a, "y 0 1 ") && eg_test_has(a, " 2|") && eg_test_has(a, "j 1") && v[0].conns[2].gen.value == 2 && v[0].eg[k].seat[0].gen.value == 2;
   #assert !eg_held(v[..], k, SeatId.{value = 0}) && v[0].eg[k].seat[0].full && v[0].eg[k].seat[0].ack == 0 && rm_st_re_seat(v[..]) == 1;
   #assert v[0].eg[k].rules[0].b[0].c[EGB_SEAT + 0].hp == hp && v[0].eg[k].seat[0].pose.x == x && v[0].eg[k].seat[0].placed;
-  rm_heard(v[..], 2, "H 5 ranger.2.1.0 druid 0 A");
+  rm_heard(v[..], 2, "H 6 ranger.2.1.0 druid 0 A");
   #assert v[0].eg[k].rules[0].b[0].c[EGB_SEAT + 0].hp == hp;
   rm_heard(v[..], 1, "I 1 0 0 0 0 0 0 0");
   b := rl_heard_by(v[..], 1, box[..]);
@@ -899,12 +899,12 @@ rl_test_ticks :: (v: [] RmServer, k: int, ticks: int, conn: int, part: string) -
   n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-e2-tk", now + 60000, -1, t[..]);
   #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 128 -");
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 1 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 128 -");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 1 -");
   #assert rm_eg_glade(v[..], k, SeatId.{value = 0}) && !rm_eg_glade(v[..], k, SeatId.{value = 1});
   #assert !rm_eg_glade(v[..], k, SeatId.{value = 7}) && !rm_eg_glade(v[..], -1, SeatId.{value = 0});
   // a seat put at the spawn before its hello came is put again when that hello is Character Create's
   v[0].eg[k].seat[1].placed = true; v[0].eg[k].seat[1].checkpoint_hello = false;
-  rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 128 -");
+  rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 128 -");
   #assert rm_eg_glade(v[..], k, SeatId.{value = 1}) && !v[0].eg[k].seat[1].placed;
 }

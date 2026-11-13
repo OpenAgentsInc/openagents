@@ -1,11 +1,11 @@
 {
   "profile": "openagents.everglade.session",
-  "version": 5,
-  "min": 5,
+  "version": 6,
+  "min": 6,
   "pins": {"engine": 1, "rules": 1, "content": 1},
   "source": "everglade/shared/everglade-wire.coax",
-  "check": "coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v5.json",
-  "spec": "docs/protocol/everglade-session-v5.md",
+  "check": "coax/web/tool.sh apps/openagents-web/everglade-wire-profile.coax proto/verse/everglade-session-v6.json",
+  "spec": "docs/protocol/everglade-session-v6.md",
   "forest": {
     "kind": 26,
     "entity_base": 1162000,
@@ -24,7 +24,7 @@
   "frame_most": {"page": 1024, "server": 3800},
   "messages": [
     {"dir": "page", "head": "P", "read": true, "fields": ["engine", "rules", "content"], "values": [1, 1, 1], "text": "P 1 1 1"},
-    {"dir": "page", "head": "H", "read": true, "fields": ["version", "look", "kind", "flags", "name"], "values": [5, "ranger.2.1.0", "druid", 2, "Ash"], "text": "H 5 ranger.2.1.0 druid 2 Ash"},
+    {"dir": "page", "head": "H", "read": true, "fields": ["version", "look", "kind", "flags", "name"], "values": [6, "ranger.2.1.0", "druid", 2, "Ash"], "text": "H 6 ranger.2.1.0 druid 2 Ash"},
     {"dir": "page", "head": "I", "read": true, "fields": ["seq", "kx", "ky", "px", "py", "theta_fine", "b", "heard"], "values": [7, 0, 100, -50, 0, 15708, 1, 42], "text": "I 7 0 100 -50 0 15708 1 42"},
     {"dir": "page", "head": "C", "read": true, "fields": ["seq", "slot", "ax_cm", "ay_cm", "az_cm", "tgt"], "values": [3, 1, 1250, -20, 300, 1005], "text": "C 3 1 1250 -20 300 1005"},
     {"dir": "page", "head": "C", "read": true, "fields": ["seq", "slot", "ax_cm", "ay_cm", "az_cm", "tgt", "mode"], "values": [4, 2, 0, 0, -100, -1, 2], "text": "C 4 2 0 0 -100 -1 2"},
@@ -83,6 +83,12 @@
   "row": {
     "fields": ["kind", "x", "y", "z", "yaw", "vx", "vy", "vz", "g", "clip", "hp", "max", "cond", "owner", "p1", "p2", "temp", "form", "carry", "t0", "dur", "life", "warp"],
     "units": "cm, cm/s, centiradians, ten-thousandths of a second (carry), ticks (t0, dur); MASK bit q is field q"
+  },
+  "creatures": {
+    "pose": ["kind", "x", "y", "z", "yaw", "vx", "vy", "vz", "life", "warp"],
+    "monster": {"kind": 13, "entity_base": 1170000, "count": 12, "fields": ["g", "clip", "hp", "max", "owner", "p1", "p2", "t0"]},
+    "guard": {"kind": 14, "entity_base": 1170100, "count": 1, "fields": ["g", "hp", "max", "owner", "t0"]},
+    "events": "everglade2-combat-v2"
   },
   "ack": {
     "I.heard": "the last state tick the page heard whole: the baseline every later row is a delta against",

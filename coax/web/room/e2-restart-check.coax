@@ -119,7 +119,7 @@ rx_said :: (b: [] RxBot) {
   m: [128] u8;
   ok := relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_pins(m[..], 0, WirePins.{})]);
   if b[0].claim { ok = relay_conn_send(b[0].conn[..], cast(string) m[0..<wire_put_at(m[..], 0, WireAt.{x = b[0].kx, z = b[0].kz, yaw = b[0].own.yaw})]) && ok; }
-  h: [64] u8; hn := rs_put(h[..], 0, "H 5 ranger.0.0.0 "); hn = rs_put(h[..], hn, ifx b[0].kind_n > 0 then cast(string) b[0].kind[0..<b[0].kind_n] else "srd-druid"); hn = rs_put(h[..], hn, " 0 -");
+  h: [64] u8; hn := rs_put(h[..], 0, "H 6 ranger.0.0.0 "); hn = rs_put(h[..], hn, ifx b[0].kind_n > 0 then cast(string) b[0].kind[0..<b[0].kind_n] else "srd-druid"); hn = rs_put(h[..], hn, " 0 -");
   ok = relay_conn_send(b[0].conn[..], cast(string) h[0..<hn]) && ok;
 }
 rx_pump :: (b: [] RxBot, now: int, walk: bool) {

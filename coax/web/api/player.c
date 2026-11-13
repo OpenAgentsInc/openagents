@@ -243,7 +243,7 @@ static const char *legacy(const char *path) {
 #define MOD_KIND_MUTE 2
 #define MOD_KIND_BAN 3
 // A seat ticket (#12712, spec 4.4): who the X-Verse-Player key is, for one room's socket, for
-// TICKET_MS. aethyr/session/seat-ticket.coax writes every byte of it (docs/protocol/everglade-session-v5.md
+// TICKET_MS. aethyr/session/seat-ticket.coax writes every byte of it (docs/protocol/everglade-session-v6.md
 // "The seat ticket"): v5 signed with OA_ROOM_TICKET_SIGNING_KEY (#13260), else v2/v3, or the v4 envelope
 // around one, under OA_ROOM_TICKET_KEY's HMAC (#13248). coax/web/room/room-ticket.coax reads and checks it.
 // The name is verse.player_name's, the one chat, presence and the inbox show too

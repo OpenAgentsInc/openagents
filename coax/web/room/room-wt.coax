@@ -12,15 +12,11 @@
 EG_DG_HEAD :: 48;                                   // a D datagram's header at most ("D TICK ACK F 0 "), with room to spare
 EG_DG_ROWS :: NET_DATAGRAM_MAX - EG_DG_HEAD;        // its entries' bytes at most
 // Everglade's frames by their first word; any other is the session's.
-RM_WT_ROUTES :: [12] NetRoute.[
+RM_WT_ROUTES :: [8] NetRoute.[
   NetRoute.{word = "D", channel = NET_DATAGRAM},     // state (F 4: the combat stream's, rm_wt_channel)
-  NetRoute.{word = "g2", channel = NET_DATAGRAM},    // the path guard's row, whole each time
-  NetRoute.{word = "h2", channel = NET_DATAGRAM},    // the monsters in view, whole each time
   NetRoute.{word = "m2", channel = NET_DATAGRAM},    // your familiar, whole each time
   NetRoute.{word = "a", channel = NET_COMBAT},       // an arrow loosed
   NetRoute.{word = "d", channel = NET_COMBAT},       // and where it ended
-  NetRoute.{word = "g3", channel = NET_COMBAT},      // the guard's blows
-  NetRoute.{word = "h3", channel = NET_COMBAT},      // the monsters' blows, arrows and falls
   NetRoute.{word = "r", channel = NET_COMBAT},       // an intent refused
   NetRoute.{word = "b", channel = NET_LOOT},         // your bar's counts
   NetRoute.{word = "z", channel = NET_LOOT},         // your rest
@@ -98,14 +94,14 @@ eg_dg_state :: (entry: string) -> bool {
   v: [1] RmServer;
   #assert rm_wt_channel(v[..], "D 40 3 0 0 s 1 0 7 1") == NET_DATAGRAM && rm_wt_channel(v[..], "D 40 3 4 0 e hit 1 2 3 0") == NET_COMBAT;
   #assert rm_wt_channel(v[..], "D 40 3 5 0 e town") == NET_COMBAT && rm_wt_channel(v[..], "D x") == NET_DATAGRAM;
-  #assert rm_wt_channel(v[..], "h2 4 0") == NET_DATAGRAM && rm_wt_channel(v[..], "h3 4 0 1 2 3") == NET_COMBAT && rm_wt_channel(v[..], "a 1 2") == NET_COMBAT;
+  #assert rm_wt_channel(v[..], "m2 4 0") == NET_DATAGRAM && rm_wt_channel(v[..], "d 4 0 1 2 3") == NET_COMBAT && rm_wt_channel(v[..], "a 1 2") == NET_COMBAT;
   #assert rm_wt_channel(v[..], "b 1 2") == NET_LOOT && rm_wt_channel(v[..], "y 0 2 3") == NET_SESSION && rm_wt_channel(v[..], "W 1 30 1 2 0 1000") == NET_SESSION;
-  #assert rm_wt_hasten(v[..], "a 1302 1 0 1001325 0 0 0 0 0 0 1000 250") && rm_wt_hasten(v[..], "d 1302 1 1 0 0 0 0 0 0 -1") && !rm_wt_hasten(v[..], "a") && !rm_wt_hasten(v[..], "h3 1 2") && !rm_wt_hasten(v[..], "ab 1");
+  #assert rm_wt_hasten(v[..], "a 1302 1 0 1001325 0 0 0 0 0 0 1000 250") && rm_wt_hasten(v[..], "d 1302 1 1 0 0 0 0 0 0 -1") && !rm_wt_hasten(v[..], "a") && !rm_wt_hasten(v[..], "r 1 2") && !rm_wt_hasten(v[..], "ab 1");
   #assert eg_dg_state("s 1 0 7 1") && eg_dg_state("SAbc") && eg_dg_state("x 4") && eg_dg_state("n 1 - a b 0 -") && eg_dg_state("w 1 2");
-  #assert !eg_dg_state("e hit 1 2 3 0") && !eg_dg_state("o 4") && !eg_dg_state("e town") && !eg_dg_state("s") && !eg_dg_state("S");
+  #assert !eg_dg_state("e hit 1 2 3 0") && !eg_dg_state("e mon 4 1 2 3 0") && !eg_dg_state("e guard 4 1 2 3") && !eg_dg_state("o 4") && !eg_dg_state("e town") && !eg_dg_state("s") && !eg_dg_state("S");
   rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-wt-gate HTTP/1.1\r\n\r\n") == 0;
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 -");
   k := eg_room_at(v[..], v[0].conns[0].relay); #assert k >= 0;
   rm_wt_heard(v[..], 0, "I 1 100 0 0 0 0 0 0"); #assert v[0].eg[k].seat[0].q_n == 0;   // not a WebTransport session: nothing
   rm_wt_conn(v[..], 0, true);
@@ -144,7 +140,7 @@ wt_test_seen :: (box: [] EgInbox, c: int, s: [] WtSeen) {
 // load on a seat's frames (v1's townsfolk filled them before, #13346).
 wt_test_crowd :: (v: [] RmServer, code: string) {
   ask: [96] u8; m := put(ask[..], 0, "GET /api/room/relay/everglade/"); m = put(ask[..], m, code); m = put(ask[..], m, " HTTP/1.1\r\n\r\n");
-  for c: 2..<EG_SEATS { _ := rm_join(v, c, cast(string) ask[0..<m]); rm_heard(v, c, "H 5 ranger.0.0.0 druid 0 -"); }
+  for c: 2..<EG_SEATS { _ := rm_join(v, c, cast(string) ask[0..<m]); rm_heard(v, c, "H 6 ranger.0.0.0 druid 0 -"); }
 }
 wt_test_walk :: (v: [] RmServer, t: int) {
   b: [96] u8;
@@ -158,7 +154,7 @@ wt_test_live :: (m: [] WireMirror) -> int { n := 0; for e: 0..<WIRE_MIRROR { if 
   #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-wt-state HTTP/1.1\r\n\r\n") == 0;
   #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-e2-wt-state HTTP/1.1\r\n\r\n") == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay); #assert k >= 0;
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 0 -");
   wt_test_crowd(v[..], "pair-e2-wt-state");
   b: [96] u8; seen: [2] WtSeen; ws_most := 0;
   for t: 1..<91 {
@@ -243,7 +239,7 @@ wt_sim_run :: (loss: int, rtt: int, jitter: int, seed: int, ticks: int, out: [] 
   rm_wt_conn(v[..], 0, true);
   _ := rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-e2-wt-sim HTTP/1.1\r\n\r\n"); _2 := rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-e2-wt-sim HTTP/1.1\r\n\r\n");
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 -");
+  rm_heard(v[..], 0, "H 6 ranger.0.0.0 druid 0 -"); rm_heard(v[..], 1, "H 6 ranger.0.0.0 druid 0 -");
   wt_test_crowd(v[..], "pair-e2-wt-sim");
   b: [96] u8; age: [2] [1200] int; an := 0;
   for t: 1..<ticks + 1 {

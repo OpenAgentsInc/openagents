@@ -18,7 +18,7 @@
     r.ready_ms = Math.round(performance.now() - t0);
     const out = (await wt.createUnidirectionalStream()).getWriter();
     const frame = (t) => { const b = enc.encode(t), x = new Uint8Array(b.length + 2); x[0] = b.length >> 8; x[1] = b.length & 255; x.set(b, 2); return out.write(x); };
-    await frame('H 5 ranger.0.0.0 srd-ranger 64 Net check');
+    await frame('H 6 ranger.0.0.0 srd-ranger 64 Net check');
     let dgrams = 0, ticks = 0, missed = 0, last = -1, acked = 0, streamed = 0, bytes = 0;
     const sentAt = new Map(), rtt = [];
     const dr = wt.datagrams.readable.getReader();

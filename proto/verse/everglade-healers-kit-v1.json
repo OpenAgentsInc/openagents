@@ -1,7 +1,7 @@
 {
   "identity": "everglade-healers-kit-v1",
   "check": "coax/web/tool.sh coax/web/room/familiar-profile.coax proto/verse/everglade-healers-kit-v1.json",
-  "base_session": "everglade-session-v5",
+  "base_session": "everglade-session-v6",
   "scope": "Everglade II only",
   "request": "U1 SEQ",
   "accepted": "u1 SEQ LEFT",

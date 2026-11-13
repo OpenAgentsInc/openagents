@@ -81,7 +81,7 @@ e2a_creature :: (v: [] RmServer, k: int, b: int) -> int {
 e2a_say_end :: (v: [] RmServer, k: int, id: int, kind: int, at: [3] f32, dir: [3] f32, body: int) {
   out: [160] u8;
   n := net_shot_end_write(NetShotEnd.{tick = v[0].eg[k].tick, id = id, kind = kind, at = at, dir = dir, body = body}, out[..]);
-  if n > 0 { e2mo_say(v, k, cast(string) out[0..<n], at[0], at[2]); }
+  if n > 0 { e2ar_say(v, k, cast(string) out[0..<n], at[0], at[2]); }
 }
 // The Attack's request with a launch kept for it: loosed. False when no launch is kept for `seq` (the
 // cast goes on as it was) ; the checks every cast passes are the caller's (eg_e2_cast).
@@ -104,7 +104,7 @@ e2_arrow_loose :: (v: [] RmServer, k: int, seat_id: SeatId, slot: int, seq: int)
   a[0].loosed += 1; a[0].rewound_ms = age;
   out: [200] u8;
   n := net_shot_write(NetShot.{tick = t, id = a[0].next, seat = seat, seq = seq, from = from, vel = a[0].ar[0].arrows[0].a[i].vel, strength = strength, age_ms = age}, out[..]);
-  if n > 0 { e2mo_say(v, k, cast(string) out[0..<n], me.x, me.z); }
+  if n > 0 { e2ar_say(v, k, cast(string) out[0..<n], me.x, me.z); }
   // the ticks it missed, each against the bodies as they stood then
   ticks := net_rewind_ticks(age, EG_HZ);
   for q: 0..<ticks { e2a_fly(v, k, t - ticks + 1 + q); }
@@ -193,7 +193,7 @@ e2at_room :: (v: [] RmServer, code: string) -> int {
   path: [128] u8; n := wire_put(path[..], 0, "GET /api/room/relay/everglade/"); n = wire_put(path[..], n, code); n = wire_put(path[..], n, " HTTP/1.1\r\n\r\n");
   if rm_join(v, 0, cast(string) path[0..<n]) != 0 { return -1; }
   k := eg_room_at(v, v[0].conns[0].relay);
-  rm_heard(v, 0, "H 5 ranger.0.0.0 srd-ranger 0 -");
+  rm_heard(v, 0, "H 6 ranger.0.0.0 srd-ranger 0 -");
   eg_test_tick(v, k);
   e2mt_at(v, k, 0, -40);
   return k;
@@ -265,7 +265,9 @@ e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
   // judged in the ticks flown at once, against the wolf where it stood then
   #assert a[0].hits == 1 && b[0].c[foe].hp < 500 && e2a_flying(a) == 0;
   heard := e2rt_heard(v[..], 0, out[..]);
-  #assert eg_test_has(heard, "d ") && eg_test_has(heard, "h3 ");
+  #assert eg_test_has(heard, "d ") && !eg_test_has(heard, "e mon ");
+  e2mt_tick(v[..], k); heard = e2rt_heard(v[..], 0, out[..]);   // the blow at it is an e entry of the tick's frame
+  #assert eg_test_has(heard, "e mon ");
   // the same shot with no rewind (its page drew the present): the wolf is aside, and the arrow flies past
   v[0].eg[k].tick += XP_BEAT; e2a_remember(v[..], k); hp := b[0].c[foe].hp;
   e2at_shoot(v[..], k, 1000004, chest, v[0].eg[k].tick);
@@ -283,4 +285,14 @@ e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
   #assert a[0].loosed == 4 && a[0].rewound_ms == 0;
   w: bow.Arrow; for i: 0..<bow.ARROWS { if a[0].tag[i].id == 4 { w = a[0].ar[0].arrows[0].a[i]; } }
   #assert e2ar_launch_ok(w.from, 0, -40);
+}
+
+// An arrow's word (a, d: aethyr/net/projectile.coax) to every placed seat within EG_VIEW m of (x, z).
+e2ar_say :: (v: [] RmServer, k: int, text: string, x: f32, z: f32) {
+  room := v[0].eg[k..<k + 1];
+  for o: 0..<EG_SEATS {
+    st := room[0].seat[o..<o + 1];
+    if !st[0].live || !st[0].placed || st[0].conn < 0 || e2mo_dist(st[0].pose.x, st[0].pose.z, x, z) > f32(EG_VIEW) { continue; }
+    rl_queue(v, room[0].relay, st[0].conn, -1, text, "");
+  }
 }

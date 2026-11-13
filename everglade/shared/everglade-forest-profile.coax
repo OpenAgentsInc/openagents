@@ -1,5 +1,5 @@
 // Whole forest records and their public world-state identity. The independent contract is
-// proto/verse/everglade-session-v5.json; the host transports these sixteen floats without decisions.
+// proto/verse/everglade-session-v6.json; the host transports these sixteen floats without decisions.
 #module "everglade.forest.profile";
 #authority;
 

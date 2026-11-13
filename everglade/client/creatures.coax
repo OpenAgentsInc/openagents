@@ -1,5 +1,5 @@
 // Everglade II's monsters on the page (everglade/server/creatures.coax moves them; everglade/client/net.coax
-// keeps the room's h2 and h3 words on them). The wolves and the goblins are the pack's baked frames
+// keeps their rows and the room's e mon entries on them, #13276). The wolves and the goblins are the pack's baked frames
 // (verse/tools/assets/everglade2_pack.coax: glade/monster0..31 the wolf's Idle, Gallop, Attack and Death,
 // glade/gremlin0..39 the goblin's Idle, Jog, Sword, Shoot and Death), each a flag-18 record turned and set
 // where the room had it a jitter buffer behind, on the land. A blow plays its attack over its tell, a
