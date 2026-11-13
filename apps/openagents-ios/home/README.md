@@ -14,7 +14,7 @@ logout or changing email. Wrong codes retain the challenge for retry; resend
 requests a new one. Requests cannot overlap, and a network failure leaves a
 manual retry. Restarting during login requires a new code.
 
-After login, `GET /api/chat/history` returns at most 60 saved conversations,
+After login, `GET /api/chat/history/v1` returns at most 60 saved conversations,
 newest first, across the account's linked Nostr keys. It is a read-only
 account route available to email L1 sessions. Its Coax policy checks the
 principal and each owning account. Existing admin and conversation-writing

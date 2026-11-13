@@ -1,6 +1,6 @@
 {
   "schema": "openagents.chat.history.v1",
-  "transport": "GET /api/chat/history; application/json; no-store",
+  "transport": "GET /api/chat/history/v1; application/json; no-store",
   "authentication": "Person account, including email L1. Linked Nostr-key owners only. No agents, guests or cross-account reads.",
   "fields": {
     "schema": "literal openagents.chat.history.v1",

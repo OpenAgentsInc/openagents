@@ -175,7 +175,7 @@ static const auth_rule RULES[] = {
   R("*",    "/api/admin/", true, AP_ADMIN, "site admins (admins.conf and database admins)"),
   // ---- /chat for admins, its runner, and the rooms' chat under the same root (chat.c, room.c)
   R("*",    "/api/chat/runner/", true, AP_PUBLIC, "the chat runner's key, checked there"),
-  R("GET",  "/api/chat/history", false, AP_ACCOUNT, "the account's own saved chat list, including an email session"),
+  R("GET",  "/api/chat/history/v1", false, AP_ACCOUNT, "the account's own saved chat list, including an email session"),
   R("*",    "/api/chat/state", false, AP_ADMIN, "/chat"), R("*", "/api/chat/new", false, AP_ADMIN, "/chat"),
   R("*",    "/api/chat/send", false, AP_ADMIN, "/chat"), R("*", "/api/chat/model", false, AP_ADMIN, "/chat"),
   R("*",    "/api/chat/stop", false, AP_ADMIN, "/chat"), R("*", "/api/chat/tab", false, AP_ADMIN, "/chat"),

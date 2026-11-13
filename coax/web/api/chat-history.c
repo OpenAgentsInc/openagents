@@ -5,7 +5,7 @@
 #include <stdlib.h>
 static coax_string hs(const char *s) {return (coax_string){s,(int64_t)strlen(s)};}
 bool chat_history_route(const request *q) {
-  if (strcmp(q->path,"/api/chat/history")) return false;
+  if (strcmp(q->path,"/api/chat/history/v1")) return false;
   const auth_principal *p=auth_principal_of(q);
   if (strcmp(q->method,"GET")) {api_error(q->fd,405,"GET this");return true;}
   if (!p || !chh_owns(p->kind,hs(p->account),hs(p->account))) {api_error(q->fd,401,"Log in first.");return true;}

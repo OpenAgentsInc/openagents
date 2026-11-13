@@ -34,7 +34,7 @@ na_request :: (s:[]Starter,op:int,path:string) {
   if n<0 {na_note(s,ifx op==3 then "Type the 6 digits from the email." else "Type your email address.");return;}
   s[0].out_n=n;s[0].action=op;s[0].flight=op;s[0].dirty=true;
 }
-na_list :: (s:[]Starter) {s[0].page=2;s[0].purpose=1;na_request(s,4,"/api/chat/history");}
+na_list :: (s:[]Starter) {s[0].page=2;s[0].purpose=1;na_request(s,4,"/api/chat/history/v1");}
 na_start :: (s:[]Starter) {
   if s[0].flight!=0 {return;}
   if s[0].email_n==0 {na_note(s,"Type your email address.");return;}

@@ -32,7 +32,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/objects/"):
             obj = objects.get(self.path.removeprefix("/objects/"))
             return self.answer(200, obj.read_bytes()) if obj else self.answer(404, {})
-        if self.path == "/api/chat/history":
+        if self.path == "/api/chat/history/v1":
             if self.headers.get("Authorization") != "Bearer oa_at_fixture":
                 return self.answer(401, {"error": "Log in first."})
             counts["authorized"] += 1
