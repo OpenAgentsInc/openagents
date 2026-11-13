@@ -115,7 +115,7 @@ EF_RECKLESS :: 31; EF_SLOWED :: 32; EF_HALVED :: 33; EF_OUTLINED :: 34; EF_FLAME
 // next turn starts).
 EF_RAGE :: 36; EF_DODGE :: 37; EF_SHIELD :: 38; EF_ADDLED :: 39;
 EF_INSPIRED :: 40;   // a Bardic Inspiration die held (p. 32): its record's cond is the die's sides
-RS_RAGE_KEPT :: 1; RS_RAGE_STRUCK :: 2;   // Rage was kept up this round (entered, or extended); it attacked or forced a save this round
+RS_RAGE_KEPT :: 1; RS_RAGE_STRUCK :: 2; RS_RAGE_UPKEEP :: RS_RAGE_KEPT | RS_RAGE_STRUCK;   // Rage was kept up this round (entered, or extended); it attacked or forced a save this round
 RS_EF_KINDS :: 41;   // one past the last EF_* kind
 
 // The classes a creature can be built as (-1 for a stat block).

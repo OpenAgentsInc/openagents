@@ -1,16 +1,17 @@
 // The turn's lifecycle (GitHub #13287, split from battle.coax): rs_walk_speed to rs_team_up. Speed, the
 // start and end of a turn, the clock's tick, standing up and who is left standing.
-// Not #authority yet: it owes its mutation pass (and a check for each procedure the issue lists).
-//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-turn.coax
+// Its own checks are battle-turn-checks.coax, which battle.coax loads.
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-turn.coax --traversal 16000000000
+#authority;
 
-rs_walk_speed :: (b: [] RsBattle, i: int) -> int {
+rs_walk_speed :: (b: [] RsBattle, i: int) -> int #effects(all) {
   speed := rs_exhaustion_speed(b[0].c[i].exhaustion,b[0].c[i].speed - (ifx rs_aura_on(b[0].c[i], EF_SLOWED, b[0].clock) then 10 else 0));
   if rs_aura_on(b[0].c[i], EF_HALVED, b[0].clock) { speed = speed/2; }
   if rs_guarded(b,i) { speed = speed/2; }
   return speed;
 }
 // Standing is a movement choice, not a turn-start consequence or an Action.
-rs_stand_up :: (b: [] RsBattle, i: int) -> bool {
+rs_stand_up :: (b: [] RsBattle, i: int) -> bool #effects(all) {
   if i < 0 || i >= b[0].n { return false; }
   turn: [1] RsTurn; turn[0] = b[0].turn;
   if b[0].who==i { rs_reprice_movement(turn[..],rs_movement_allowance(b,i)); }
@@ -20,7 +21,7 @@ rs_stand_up :: (b: [] RsBattle, i: int) -> bool {
 }
 // The start of i's turn: what has run out ends and a creature at 0 makes its
 // death saving throw. A Prone creature chooses later whether to stand or crawl.
-rs_start_turn :: (b: [] RsBattle, i: int) {
+rs_start_turn :: (b: [] RsBattle, i: int) #effects(all) {
   b[0].c[i].familiar_sensing = false;
   rs_seal_timing(b);
   rs_help_start_turn(b,i);
@@ -47,7 +48,7 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
   b[0].c[i].reacted = false;
   rs_truth_start(b,i);
   rs_rite_turn(b,i);
-  if b[0].turn.new_round && (b[0].c[i].burning > 0 || b[0].c[i].breath_spent) { rs_dragon_turn_start(b,i); }   // Burning and Recharge, dragon-actions.coax
+  if b[0].turn.new_round { rs_dragon_turn_start(b,i); }   // Burning and Recharge, dragon-actions.coax: nothing for one with no fire on it and no breath spent
   if rs_effect(b[0].c[i], EF_RAGE) && !rs_capable(b[0].c[i]) { rs_rage_end(b, i, " (Incapacitated)"); }
   if b[0].c[i].hp == 0 && !b[0].c[i].dead {
     if b[0].c[i].stable || !b[0].turn.new_round { return; }
@@ -61,19 +62,18 @@ rs_start_turn :: (b: [] RsBattle, i: int) {
     else { rs_add_text(l[..], ifx r == RS_DS_OK then " death save: success (" else " death save: failure (");
            rs_add_int(l[..], b[0].c[i].death_ok); rs_add_text(l[..], " of 3 successes, "); rs_add_int(l[..], b[0].c[i].death_fail); rs_add_text(l[..], " of 3 failures)"); }
     rs_tell(b, ifx r == RS_DS_DEAD then RS_EV_DEATH else ifx r == RS_DS_UP then RS_EV_UP else RS_EV_STABLE, -1, i, i, r, 0, l[..]);
-    if r != RS_DS_UP { return; }
   }
 }
 // Creature i ends its turn: in a lasting area whose spell says so (Gust of Wind's Line), it makes the
 // spell's save again, once a round, and takes what a failure brings. A Line from you blasts from
 // where its caster stands now; it points where it was cast (changing it is a Bonus Action the world
 // doesn't send).
-rs_turn_saves :: (b: [] RsBattle, i: int) {
+rs_turn_saves :: (b: [] RsBattle, i: int) #effects(all) {
   if !b[0].turn.new_round || !rs_up(b[0].c[i]) { return; }
   for k: 0..<b[0].zone.count {
     z := b[0].zone[k];
-    if !z.on || z.spell < 0 || z.by == i || z.by < 0 || z.by >= b[0].n || b[0].c[z.by].conc != z.spell { continue; }
-    sp := rs_spell(z.spell);
+    if !z.on || z.by == i || z.by < 0 || z.by >= b[0].n || b[0].c[z.by].conc != z.spell { continue; }
+    sp := rs_spell(z.spell);   // no spell (-1) is a record with no turn_save
     if !sp.turn_save { continue; }
     if z.line && (z.cx != b[0].c[z.by].x || z.cy != b[0].c[z.by].y) {
       z.cx = b[0].c[z.by].x; z.cy = b[0].c[z.by].y;
@@ -84,9 +84,9 @@ rs_turn_saves :: (b: [] RsBattle, i: int) {
     rs_affect(b, z.by, i, z.spell, sp.level, k);
   }
 }
-rs_end_turn :: (b: [] RsBattle, i: int) {
+rs_end_turn :: (b: [] RsBattle, i: int) #effects(all) {
   // ending its turn in a foe's Spirit Guardians
-  if b[0].guards > 0 { rs_guardians(b, i); }
+  rs_guardians(b, i);   // nothing when no Emanation stands
   // ending it in a Gust of Wind
   rs_turn_saves(b, i);
   // the saves it repeats at the end of its turns
@@ -107,9 +107,9 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
       if e.kind == EF_ENFEEBLED && e.by >= 0 && e.spell >= 0 && b[0].c[e.by].conc == e.spell { rs_end_concentration(b, e.by, " (the target shook it off)"); }
       // a concentration spell with no one left under it ends (Hold Person on one target)
       if e.by >= 0 && e.spell >= 0 && b[0].c[e.by].conc == e.spell {
-        left := 0;
-        for jj: 0..<b[0].n { for kk: 0..<RS_EFFECTS { if b[0].c[jj].eff[kk].kind != EF_NONE && b[0].c[jj].eff[kk].by == e.by && b[0].c[jj].eff[kk].spell == e.spell { left += 1; } } }
-        if left == 0 { rs_end_concentration(b, e.by, " (no one left under it)"); }
+        under := false;
+        for jj: 0..<b[0].n { for kk: 0..<RS_EFFECTS { if b[0].c[jj].eff[kk].kind != EF_NONE && b[0].c[jj].eff[kk].by == e.by && b[0].c[jj].eff[kk].spell == e.spell { under = true; } } }
+        if !under { rs_end_concentration(b, e.by, " (no one left under it)"); }
       }
     }
   }
@@ -117,10 +117,9 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
   // in that turn extends it
   if b[0].turn.struck { b[0].c[i].eff = rs_state_bit(b[0].c[i].eff, EF_RAGE, RS_RAGE_STRUCK, true); }
   if rs_effect(b[0].c[i], EF_RAGE) && b[0].turn.new_round {
-    if rs_state_has(b[0].c[i], EF_RAGE, RS_RAGE_KEPT) || rs_state_has(b[0].c[i], EF_RAGE, RS_RAGE_STRUCK) { b[0].c[i].eff = rs_state_bit(b[0].c[i].eff, EF_RAGE, RS_RAGE_KEPT, false); }
+    if rs_state_has(b[0].c[i], EF_RAGE, RS_RAGE_UPKEEP) { b[0].c[i].eff = rs_state_bit(b[0].c[i].eff, EF_RAGE, RS_RAGE_UPKEEP, false); }   // kept for this round: both bits start the next one clear
     else { rs_rage_end(b, i, ""); }
   }
-  if b[0].turn.new_round { b[0].c[i].eff = rs_state_bit(b[0].c[i].eff, EF_RAGE, RS_RAGE_STRUCK, false); }
   rs_halt_finish(b[0].c[i..<i+1]);
   rs_turn_effects_end(b, i, b[0].c[i].turn_at);
   b[0].c[i].turn_at += rs_beat(b);
@@ -130,9 +129,9 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
 // The clock moves on: what lasts for a time ends when it runs out.
 // rs_tick takes a host's frame in seconds and admits it to whole ticks (rest-clock.coax keeps the
 // part of a tick left over); rs_tick_ticks takes whole ticks. Inside, time is ticks only.
-rs_tick :: (b: [] RsBattle, dt: f32) { admitted:=rs_rest_tick(b,dt); }
-rs_tick_ticks :: (b: [] RsBattle, ticks: int) { admitted:=rs_rest_tick_ticks(b,ticks); }
-rs_tick_raw :: (b: [] RsBattle, ticks: int) {
+rs_tick :: (b: [] RsBattle, dt: f32) #effects(all) { admitted:=rs_rest_tick(b,dt); }
+rs_tick_ticks :: (b: [] RsBattle, ticks: int) #effects(all) { admitted:=rs_rest_tick_ticks(b,ticks); }
+rs_tick_raw :: (b: [] RsBattle, ticks: int) #effects(all) {
   rs_seal_timing(b);
   b[0].clock += ticks;
   t := b[0].clock;
@@ -140,12 +139,12 @@ rs_tick_raw :: (b: [] RsBattle, ticks: int) {
     concentration_lost := rs_sync_concentration(b,i);
     if b[0].c[i].conc >= 0 && b[0].c[i].conc_until <= t { rs_end_concentration(b, i, " (its duration is up)"); }
     if b[0].c[i].wild_form != 0 { rs_wild_shape_lapse(b, i); }
-    for k: 0..<RS_EFFECTS { e := b[0].c[i].eff[k]; if rs_effect_clock_ended(e.kind, e.turn_end - 1, e.until, t, rs_effect_owner_turn(b, e.turn_end - 1), rs_beat(b)) { rs_drop_effect(b, i, k); } }
+    for k: 0..<RS_EFFECTS { e := b[0].c[i].eff[k]; owner := e.turn_end - 1; if rs_effect_clock_ended(e.kind, owner, e.until, t, rs_effect_owner_turn(b, owner), rs_beat(b)) { rs_drop_effect(b, i, k); } }
     _ := rs_stable_recover(b,i);
     rest_finished := rs_short_rest_finish(b,i);
     // the action adapter: spent slots and uses come back on a cooldown, one at a time
-    if rs_timing_recharge(b[0].timing) > 0 && !b[0].c[i].dead {
-      r := rs_timing_recharge(b[0].timing);
+    r := rs_timing_recharge(b[0].timing);   // 0: this profile gives nothing back on a cooldown
+    if r != 0 && !b[0].c[i].dead {
       for l: 1..<10 {
         if b[0].c[i].slots[l] >= b[0].c[i].slots_max[l] { b[0].c[i].slot_back[l] = 0; continue; }
         if b[0].c[i].slot_back[l] == 0 { b[0].c[i].slot_back[l] = t + r; }
@@ -166,7 +165,7 @@ rs_tick_raw :: (b: [] RsBattle, ticks: int) {
   }
   rs_expire_zones(b);
 }
-rs_team_up :: (b: [] RsBattle, team: int) -> int {
+rs_team_up :: (b: [] RsBattle, team: int) -> int #effects(all) {
   n := 0;
   for i: 0..<b[0].n { if b[0].c[i].team == team && !b[0].c[i].dead && b[0].c[i].hp > 0 { n += 1; } }   // rs_up, without copying each creature
   return n;

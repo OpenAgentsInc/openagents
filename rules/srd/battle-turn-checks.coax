@@ -1,0 +1,512 @@
+// battle-turn.coax's own checks (GitHub #13287): each procedure called directly, against its own
+// numbers, its whole events and what it leaves on the creatures. battle.coax loads this with `#test`.
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-turn.coax
+
+// The i-th newest event, whole: its kind, spell, who, whom, amount, damage and exact text.
+tn_ev :: (b: [] RsBattle, i: int, kind: int, spell: int, by: int, to: int, amount: int, damage: int, text: string) -> bool {
+  ev := rs_recent_at(b[0].book[..], i);
+  return ev.kind == kind && ev.spell.value == spell && ev.by.value == by && ev.to.value == to && ev.amount == amount && ev.damage == damage
+    && cast(string) ev.text[0..<ev.text_n] == text;
+}
+// The newest event's text is this line.
+tn_line :: (b: [] RsBattle, l: [] RsLine) -> bool {
+  ev := rs_recent_at(b[0].book[..], 0);
+  return cast(string) ev.text[0..<ev.text_n] == cast(string) l[0].buf[0..<l[0].n];
+}
+// An effect record in a creature's first free place; where it went.
+tn_eff :: (b: [] RsBattle, i: int, e: RsEffect) -> int {
+  for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == EF_NONE { b[0].c[i].eff[k] = e; return k; } }
+  return -1;
+}
+tn_kinds :: (c: RsCreature, kind: int) -> int {
+  n := 0;
+  for k: 0..<RS_EFFECTS { if c.eff[k].kind == kind { n += 1; } }
+  return n;
+}
+
+#test "turn: walking Speed: 10 feet less while Slowed, then Exhaustion's 5 a level, halved while Halved, halved again in a foe's Emanation" {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].clock = 100;
+  a := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 2); f := rs_add(b[..], rs_cleric("Nyx", 1, 5), 4, 2);
+  #assert rs_walk_speed(b[..], a) == 30;
+  // an effect of another kind halves nothing, and one whose time is up halves nothing
+  k := tn_eff(b[..], a, RsEffect.{kind = EF_OUTLINED, by = -1, spell = -1, until = 101, save = -1});
+  #assert rs_walk_speed(b[..], a) == 30;
+  b[0].c[a].eff[k] = RsEffect.{kind = EF_HALVED, by = -1, spell = -1, until = 100, save = -1};
+  #assert rs_walk_speed(b[..], a) == 30;
+  b[0].c[a].eff[k].until = 101;
+  #assert rs_walk_speed(b[..], a) == 15;
+  s := tn_eff(b[..], a, RsEffect.{kind = EF_SLOWED, by = -1, spell = -1, until = 101, save = -1});
+  #assert rs_walk_speed(b[..], a) == 10;
+  b[0].c[a].exhaustion = 1;
+  #assert rs_walk_speed(b[..], a) == 7;                     // (30 - 10 - 5) / 2
+  b[0].c[a].eff[k] = RsEffect.{}; b[0].c[a].eff[s] = RsEffect.{}; b[0].c[a].exhaustion = 0;
+  // a foe's Spirit Guardians within its 15 feet
+  b[0].c[f].conc = SP_SPIRIT_GUARDIANS; b[0].guards = 1;
+  #assert rs_guarded(b[..], a) && rs_walk_speed(b[..], a) == 15;
+  b[0].c[a].eff[k] = RsEffect.{kind = EF_HALVED, by = -1, spell = -1, until = 101, save = -1};
+  #assert rs_walk_speed(b[..], a) == 7;                     // 30 / 2 / 2
+  b[0].guards = 0;
+  #assert rs_walk_speed(b[..], a) == 15;
+}
+
+#test "turn: standing up prices the turn's movement first; the last creature of a table stands; a record past the count never does" {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6;
+  a := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 2); f := rs_add(b[..], rs_fighter("Foe", 1, 3), 8, 2);
+  rs_start_turn(b[..], a);
+  // Slowed since the turn began: 20 feet a turn now, and standing costs half of that
+  _ := tn_eff(b[..], a, RsEffect.{kind = EF_SLOWED, by = -1, spell = -1, until = b[0].clock + 1, save = -1});
+  b[0].c[a].cond |= RS_PRONE;
+  #assert rs_stand_up(b[..], a) && rs_turn_feet(b[0].turn) == 10 && b[0].turn.move_basis == 20 && !rs_has(b[0].c[a], RS_PRONE);
+  // a record past the battle's count, Prone, with the turn named as its own
+  b[0].c[b[0].n] = rs_fighter("Past", 0, 3); b[0].c[b[0].n].cond = RS_PRONE;
+  b[0].who = b[0].n; b[0].turn = RsTurn.{move_left = 6, move_basis = 30, move_tracked = true};
+  #assert !rs_stand_up(b[..], b[0].n) && rs_has(b[0].c[b[0].n], RS_PRONE) && b[0].turn.move_left == 6;
+  // a world's table of exactly two: the second stands
+  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]); c: [2] RsCreature; m[0].c = c[..]; m[0].n = 2;
+  c[0] = rs_fighter("One", 0, 3); c[1] = rs_fighter("Two", 1, 3); c[1].cond = RS_PRONE;
+  m[0].who = 1; m[0].turn = RsTurn.{move_left = 6, move_basis = 30, move_tracked = true};
+  #assert rs_stand_up(m[..], 1) && !rs_has(c[1], RS_PRONE) && rs_turn_feet(m[0].turn) == 15;
+}
+
+#test "turn: a turn's start seals the timing, ends what the creature's last turn left, and opens a whole new turn" {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].clock = 5000; b[0].turn_no = 7;
+  a := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 2); f := rs_add(b[..], rs_fighter("Foe", 1, 3), 12, 2); h := rs_add(b[..], rs_fighter("Ally", 0, 3), 3, 2);
+  b[0].turn.anchored = true; b[0].turn.action = true; b[0].turn.dash_n = 2;      // the last turn's leavings
+  b[0].c[a].reacted = true; b[0].c[a].familiar_sensing = true;
+  _ := tn_eff(b[..], f, RsEffect.{kind = EF_HELP_ATTACK, by = a, spell = -1, save = -1});
+  _ := tn_eff(b[..], f, RsEffect.{kind = EF_HELP_ATTACK, by = h, spell = -1, save = -1});
+  _ := tn_eff(b[..], h, RsEffect.{kind = EF_HELP_CHECK, by = a, spell = -1, save = -1});
+  _ := tn_eff(b[..], a, RsEffect.{kind = EF_READY, by = a, spell = -1, save = -1, dc = -1});
+  p := tn_eff(b[..], a, RsEffect.{kind = EF_HALT_PENDING, by = f, spell = -1, save = -1});
+  b[0].c[a].eff = rs_state_put(b[0].c[a].eff, EF_ADDLED, true);
+  b[0].c[a].grappling = f;                                                      // 50 feet off: the hold has lapsed
+  b[0].c[a].rite = SP_POISON_SPRAY;
+  seq := b[0].book[0].seq; rolled := b[0].dice[0].rolled;
+  #assert !b[0].timing_sealed;
+  rs_start_turn(b[..], a);
+  #assert b[0].timing_sealed && !rs_set_timing(b[..], RS_ACTION_TIMING);
+  #assert b[0].who == a && b[0].turn_no == 8 && b[0].book[0].seq == seq && b[0].dice[0].rolled == rolled;
+  #assert tn_kinds(b[0].c[f], EF_HELP_ATTACK) == 1 && b[0].c[f].eff[1].by == h && tn_kinds(b[0].c[h], EF_HELP_CHECK) == 0;
+  #assert tn_kinds(b[0].c[a], EF_READY) == 0 && !rs_effect(b[0].c[a], EF_ADDLED) && b[0].c[a].grappling == -1;
+  #assert b[0].c[a].eff[p].kind == EF_HALT && b[0].c[a].eff[p].until == 5000 + 6000000 && tn_kinds(b[0].c[a], EF_HALT_PENDING) == 0;
+  #assert !b[0].c[a].reacted && !b[0].c[a].familiar_sensing && b[0].c[a].rite_owed;
+  t := b[0].turn;
+  #assert !t.anchored && !t.action && !t.bonus && t.dash_n == 0 && t.move_left == 6 && t.move_feet == 0 && t.move_basis == 30 && t.move_tracked && t.new_round;
+  #assert b[0].c[a].round_at == RS_ROUND_TICKS;
+}
+
+#test "turn: Burning burns at the start of a round's turn only; Rage ends at the start of an Incapacitated creature's turn and says why" {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  a := rs_add(b[..], rs_barbarian("Garr", 0, 3), 2, 2); f := rs_add(b[..], rs_fighter("Foe", 1, 3), 12, 2);
+  b[0].c[a].burning = 2; b[0].c[a].burn_by = f;
+  hp := b[0].c[a].hp; rolled := b[0].dice[0].rolled;
+  b[0].c[a].round_at = b[0].c[a].turn_at + 1;                 // not a new round
+  rs_start_turn(b[..], a);
+  #assert !b[0].turn.new_round && b[0].c[a].burning == 2 && b[0].c[a].hp == hp && b[0].dice[0].rolled == rolled;
+  b[0].c[a].round_at = b[0].c[a].turn_at;
+  rs_start_turn(b[..], a);
+  #assert b[0].turn.new_round && b[0].c[a].burning == 1 && b[0].c[a].hp < hp && b[0].dice[0].rolled == rolled + 1;
+  b[0].c[a].burning = 0;
+  // raging and able: the Rage stands
+  b[0].c[a].eff = rs_state_put(b[0].c[a].eff, EF_RAGE, true);
+  seq := b[0].book[0].seq;
+  rs_start_turn(b[..], a);
+  #assert rs_effect(b[0].c[a], EF_RAGE) && b[0].book[0].seq == seq;
+  // Stunned: it ends
+  b[0].c[a].cond |= RS_STUNNED;
+  rs_start_turn(b[..], a);
+  #assert !rs_effect(b[0].c[a], EF_RAGE) && b[0].book[0].seq == seq + 1 && tn_ev(b[..], 0, RS_EV_END, -1, a, -1, 0, 0, "Garr's Rage ends (Incapacitated)");
+  // Stunned with no Rage: nothing to end
+  rs_start_turn(b[..], a);
+  #assert b[0].book[0].seq == seq + 1;
+}
+
+// One death save at a turn's start, from a seed: what the die will be is read from a copy of the dice.
+TnDeath :: struct { up: int; blocked: int; stable: int; dead: int; ok: int; fail: int; two: int; }
+#test "turn: a creature at 0 Hit Points rolls its death save at the start of a round's turn, and the line says what came of it" {
+  seen: [1] TnDeath;
+  for seed: 1..<241 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].state = cast(u64) seed;
+    o := rs_add(b[..], rs_fighter("Other", 1, 3), 8, 2); a := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 2);
+    b[0].c[a].hp = 0; b[0].c[a].cond = RS_UNCONSCIOUS | RS_PRONE;
+    ok0 := ifx seed % 3 == 0 then 2 else 0; fail0 := ifx seed % 4 == 0 then 2 else ifx seed % 4 == 1 then 1 else 0;
+    b[0].c[a].death_ok = ok0; b[0].c[a].death_fail = fail0;
+    noheal := seed % 2 == 0;
+    if noheal { _ := tn_eff(b[..], a, RsEffect.{kind = EF_NOHEAL, by = o, spell = -1, until = RS_NO_END, save = -1}); }
+    d: [1] RsDice; d[0] = b[0].dice[0];
+    face := rs_roll(d[..], 20);
+    rs_start_turn(b[..], a);
+    #assert b[0].book[0].seq == 1 && b[0].who == a;
+    l: [1] RsLine; rs_add_text(l[..], "Garr");
+    c := b[0].c[a];
+    if face == 20 && !noheal {
+      seen[0].up += 1;
+      rs_add_text(l[..], " rolls a 20 on a death save and regains 1 Hit Point");
+      #assert c.hp == 1 && tn_ev(b[..], 0, RS_EV_UP, -1, a, a, RS_DS_UP, 0, cast(string) l[0].buf[0..<l[0].n]);
+    } else if face == 20 {
+      seen[0].blocked += 1;
+      rs_add_text(l[..], " rolls a 20 on a death save but cannot regain Hit Points");
+      #assert c.hp == 0 && tn_ev(b[..], 0, RS_EV_STABLE, -1, a, a, RS_DS_BLOCKED, 0, cast(string) l[0].buf[0..<l[0].n]);
+    } else if face >= 10 && ok0 == 2 {
+      seen[0].stable += 1;
+      rs_add_text(l[..], " is Stable (three death save successes)");
+      hours := rs_roll(d[..], 4);   // a Stable creature regains 1 Hit Point 1d4 hours later
+      #assert c.stable_due == b[0].clock + rs_secs(hours * 3600);
+      #assert c.stable && !c.dead && tn_ev(b[..], 0, RS_EV_STABLE, -1, a, a, RS_DS_STABLE, 0, cast(string) l[0].buf[0..<l[0].n]);
+    } else if face >= 10 {
+      seen[0].ok += 1;
+      rs_add_text(l[..], " death save: success ("); rs_add_int(l[..], ok0 + 1); rs_add_text(l[..], " of 3 successes, "); rs_add_int(l[..], fail0); rs_add_text(l[..], " of 3 failures)");
+      #assert c.death_ok == ok0 + 1 && !c.stable && tn_ev(b[..], 0, RS_EV_STABLE, -1, a, a, RS_DS_OK, 0, cast(string) l[0].buf[0..<l[0].n]);
+    } else {
+      fails := fail0 + (ifx face == 1 then 2 else 1);
+      if face == 1 { seen[0].two += 1; }
+      if fails >= 3 {
+        seen[0].dead += 1;
+        rs_add_text(l[..], " dies (three death save failures)");
+        #assert c.dead && tn_ev(b[..], 0, RS_EV_DEATH, -1, a, a, RS_DS_DEAD, 0, cast(string) l[0].buf[0..<l[0].n]);
+      } else {
+        seen[0].fail += 1;
+        rs_add_text(l[..], " death save: failure ("); rs_add_int(l[..], ok0); rs_add_text(l[..], " of 3 successes, "); rs_add_int(l[..], fails); rs_add_text(l[..], " of 3 failures)");
+        #assert c.death_fail == fails && !c.dead && tn_ev(b[..], 0, RS_EV_STABLE, -1, a, a, RS_DS_FAIL, 0, cast(string) l[0].buf[0..<l[0].n]);
+      }
+    }
+    #assert b[0].dice[0].rolled == d[0].rolled;
+  }
+  s := seen[0];
+  #assert s.up > 0 && s.blocked > 0 && s.stable > 0 && s.dead > 0 && s.ok > 0 && s.fail > 0 && s.two > 0;
+}
+#test "turn: no death save for one that is up, dead, Stable, or between rounds" {
+  for mode: 0..<4 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].state = 5;
+    a := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 2);
+    if mode != 0 { b[0].c[a].hp = 0; b[0].c[a].cond = RS_UNCONSCIOUS | RS_PRONE; }
+    if mode == 1 { b[0].c[a].dead = true; }
+    if mode == 2 { b[0].c[a].stable = true; b[0].c[a].stable_due = RS_NO_END; }
+    if mode == 3 { b[0].c[a].round_at = b[0].c[a].turn_at + 1; }
+    rolled := b[0].dice[0].rolled;
+    rs_start_turn(b[..], a);
+    #assert b[0].book[0].seq == 0 && b[0].dice[0].rolled == rolled && b[0].c[a].death_ok == 0 && b[0].c[a].death_fail == 0;
+    #assert b[0].turn.new_round == (mode != 3);
+  }
+}
+
+// A Gust of Wind standing from (2, 10) along +x, and a Skeleton in it. tn_gust ends a round's turn of
+// creature i at (x, y) and counts the saves the Line asked of it.
+tn_gust :: (b: [] RsBattle, i: int, x: int, y: int) -> int {
+  rs_place(b, i, x, y);
+  b[0].who = i; b[0].turn = RsTurn.{new_round = true};
+  seq := b[0].book[0].seq;
+  rs_turn_saves(b, i);
+  to: [16] int;
+  return rs_test_saves(b, seq, SP_GUST_OF_WIND, to[..]);
+}
+#test "turn: a lasting Line asks its save of one ending a round's turn in it: a zone that is on, of a spell, another's, whose caster holds it" {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 20; b[0].dice[0].state = 31;
+  d := rs_add(b[..], rs_druid("Rowan", 0, 5), 2, 10);
+  choices := [1] int.[RS_EXEC_SOURCE[SP_GUST_OF_WIND]];
+  #assert rs_set_spells(b[0].c[d..<d+1], choices[..]);
+  on := rs_add(b[..], rs_skeleton("Skeleton", 2), 20, 3);
+  b[0].c[on].hp = 500; b[0].c[on].hp_max = 500;
+  rs_start_turn(b[..], d);
+  #assert rs_cast(b[..], d, SP_GUST_OF_WIND, 2, 30, 10, -1) && b[0].c[d].conc == SP_GUST_OF_WIND;
+  k := -1;
+  for q: 0..<b[0].zone.count { if b[0].zone[q].on && b[0].zone[q].spell == SP_GUST_OF_WIND { k = q; } }
+  #assert k >= 0 && b[0].zone[k].line && b[0].zone[k].by == d && b[0].zone[k].cx == 2 && b[0].zone[k].cy == 10;
+  z0 := b[0].zone[k];
+  #assert tn_gust(b[..], on, 8, 10) == 1;
+  #assert tn_gust(b[..], on, 8, 12) == 0;                                  // 10 feet off the Line
+  // not a round's turn; a creature that is down
+  rs_place(b[..], on, 8, 10); b[0].turn = RsTurn.{}; seq := b[0].book[0].seq; rs_turn_saves(b[..], on); #assert b[0].book[0].seq == seq;
+  b[0].c[on].hp = 0; #assert tn_gust(b[..], on, 8, 10) == 0; b[0].c[on].hp = 500;
+  // each thing a zone must be, alone
+  // a zone that is off: no save, and its Line is not moved after a caster who has moved
+  rs_place(b[..], d, 2, 12); b[0].zone[k].on = false; #assert tn_gust(b[..], on, 8, 10) == 0 && b[0].zone[k].cy == 10 && b[0].zone[k].y0 == z0.y0; rs_place(b[..], d, 2, 10); b[0].zone[k] = z0;
+  b[0].zone[k].spell = -1; b[0].c[d].conc = -1; #assert tn_gust(b[..], on, 8, 10) == 0; b[0].zone[k] = z0; b[0].c[d].conc = SP_GUST_OF_WIND;
+  b[0].zone[k].by = on; b[0].c[on].conc = SP_GUST_OF_WIND; #assert tn_gust(b[..], on, 8, 10) == 0; b[0].zone[k] = z0; b[0].c[on].conc = -1;
+  b[0].zone[k].by = -1; #assert tn_gust(b[..], on, 8, 10) == 0; b[0].zone[k] = z0;
+  // a caster past the battle's count, standing where the Line starts and holding the spell
+  n := b[0].n;
+  b[0].c[n] = b[0].c[d]; b[0].zone[k].by = n; #assert tn_gust(b[..], on, 8, 10) == 0; b[0].zone[k] = z0;
+  b[0].c[d].conc = SP_HEX; #assert tn_gust(b[..], on, 8, 10) == 0; b[0].c[d].conc = SP_GUST_OF_WIND;
+  #assert tn_gust(b[..], on, 8, 10) == 1;
+  // an area that is not a Line stays where it was cast, though its caster has moved
+  rs_place(b[..], d, 2, 12);
+  b[0].zone[k].line = false;
+  _ := tn_gust(b[..], on, 8, 10);
+  zs := b[0].zone[k];
+  #assert zs.cx == 2 && zs.cy == 10 && zs.x0 == z0.x0 && zs.y0 == z0.y0 && zs.x1 == z0.x1 && zs.y1 == z0.y1;
+  b[0].zone[k] = z0;
+  // the Line blasts from where its caster stands now: two squares down, and its box with it
+  #assert tn_gust(b[..], on, 8, 12) == 1;
+  zm := b[0].zone[k];
+  #assert zm.cx == 2 && zm.cy == 12 && zm.y0 == z0.y0 + 2 && zm.y1 == z0.y1 + 2 && zm.x0 == z0.x0 && zm.x1 == z0.x1;
+  #assert tn_gust(b[..], on, 8, 10) == 0;
+}
+
+// A repeated save at a turn's end. One staging: caster 0, the one who saves 1, another 2, another caster 3.
+TnSave :: struct { kind: int; save: int; spell: int; by: int; magic: bool; conc: int; other: int; self: bool; far: bool; diff: bool; }
+tn_save_stage :: (b: [] RsBattle, seed: int, v: TnSave) -> int {
+  b[0].w = 20; b[0].h = 8; b[0].dice[0].state = cast(u64) seed;
+  w := rs_add(b, rs_druid("Rowan", 0, 5), 1, 1); t := rs_add(b, rs_fighter("Garr", 1, 3), 5, 1);
+  o := rs_add(b, rs_fighter("Holt", 1, 3), 6, 1); x := rs_add(b, rs_druid("Other", 0, 5), 1, 3);
+  if v.magic { b[0].c[t].form = b[0].c[t].form | RS_TRAIT_MAGIC; }
+  b[0].c[w].conc = v.conc; b[0].c[w].conc_until = RS_NO_END;
+  k := tn_eff(b, t, RsEffect.{kind = v.kind, cond = ifx v.kind == EF_COND then RS_PARALYZED else 0, by = v.by, spell = v.spell, until = RS_NO_END, save = v.save, dc = 12});
+  if v.kind == EF_COND { b[0].c[t].cond |= RS_PARALYZED; }
+  if v.other == 1 { _ := tn_eff(b, o, RsEffect.{kind = EF_COND, cond = RS_PARALYZED, by = v.by, spell = v.spell, until = RS_NO_END, save = -1}); }
+  if v.self { _ := tn_eff(b, w, RsEffect.{kind = EF_HEX, by = v.by, spell = v.spell, until = RS_NO_END, save = -1}); }
+  if v.far { _ := tn_eff(b, o, RsEffect.{kind = EF_COND, cond = RS_PARALYZED, by = x, spell = v.spell, until = RS_NO_END, save = -1}); }
+  if v.diff { _ := tn_eff(b, o, RsEffect.{kind = EF_HEX, by = v.by, spell = SP_HEX, until = RS_NO_END, save = -1}); }
+  b[0].who = t; b[0].turn = RsTurn.{new_round = true};
+  return k;
+}
+// Ends creature 1's turn on b and works the save out again on m; what the concentration must do is `ends`
+// (0 stays, 1 the target shook it off, 2 no one left under it). False when the two differ.
+TnSaveSeen :: struct { pass: int; hold: int; ended: int; adv: int; }
+tn_save :: (seed: int, v: TnSave, ends: int, seen: [] TnSaveSeen) -> bool {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  k := tn_save_stage(b[..], seed, v); _ := tn_save_stage(m[..], seed, v);
+  t := 1;
+  ups := ifx v.magic && v.spell >= 0 then 1 else 0;
+  if ups == 1 { seen[0].adv += 1; }
+  want := rs_saving_throw_edges(m[..], t, v.save, 12, ups, 0);
+  rs_end_turn(b[..], t);
+  if b[0].dice[0].state != m[0].dice[0].state || b[0].dice[0].rolled != m[0].dice[0].rolled { return false; }
+  l: [1] RsLine;
+  rs_add_text(l[..], "Garr "); rs_add_text(l[..], RS_ABBR[v.save]); rs_add_text(l[..], " save against ");
+  rs_add_text(l[..], ifx v.spell >= 0 then rs_spell(v.spell).name else "the poison"); rs_add_text(l[..], " "); rs_add_int(l[..], want.total); rs_add_text(l[..], " vs DC 12");
+  rs_add_text(l[..], ifx want.passed then ": it ends" else ": it holds");
+  ended := want.passed && ends != 0;
+  at := ifx ended then 1 else 0;
+  if b[0].book[0].seq != 1 + at { return false; }
+  if !tn_ev(b[..], at, RS_EV_SAVE, v.spell, v.by, t, want.total, 0, cast(string) l[0].buf[0..<l[0].n]) { return false; }
+  e := b[0].c[t].eff[k];
+  if want.passed {
+    seen[0].pass += 1;
+    if e.kind != EF_NONE || rs_has(b[0].c[t], RS_PARALYZED) { return false; }
+  } else {
+    seen[0].hold += 1;
+    if e.kind != v.kind || e.spell != v.spell || e.by != v.by || e.save != v.save || e.dc != 12 { return false; }
+    if v.kind == EF_COND && !rs_has(b[0].c[t], RS_PARALYZED) { return false; }
+  }
+  if ended {
+    seen[0].ended += 1;
+    h: [1] RsLine;
+    rs_add_text(h[..], "Rowan's "); rs_add_text(h[..], rs_spell(v.spell).name); rs_add_text(h[..], " ends");
+    rs_add_text(h[..], ifx ends == 1 then " (the target shook it off)" else " (no one left under it)");
+    if !tn_ev(b[..], 0, RS_EV_END, v.spell, 0, -1, 0, 0, cast(string) h[0].buf[0..<h[0].n]) { return false; }
+    if b[0].c[0].conc != -1 { return false; }
+  } else if b[0].c[0].conc != v.conc { return false; }
+  return b[0].who == -1 && b[0].c[t].turn_at == m[0].c[t].turn_at + 6000000;
+}
+// Every case of the repeated save, for seeds lo to hi - 1.
+tn_saves :: (lo: int, hi: int, seen: [] TnSaveSeen) -> bool {
+  for seed: lo..<hi {
+    hold := TnSave.{kind = EF_COND, save = RS_WIS, spell = SP_HOLD_PERSON, by = 0, conc = SP_HOLD_PERSON};
+    // the only one under it: the spell ends with its success
+    #assert tn_save(seed, hold, 2, seen[..]);
+    // a Strength save (ability 0) is a save; one with Magic Resistance has Advantage against a spell's
+    v := hold; v.save = RS_STR; #assert tn_save(seed, v, 2, seen[..]);
+    v = hold; v.magic = true; #assert tn_save(seed, v, 2, seen[..]);
+    // spell 0 is a spell: its name, Magic Resistance, and its caster's Concentration
+    v = hold; v.spell = SP_PRODUCE_FLAME; v.conc = SP_PRODUCE_FLAME; v.magic = true; #assert SP_PRODUCE_FLAME == 0 && tn_save(seed, v, 2, seen[..]);
+    // no spell: "the poison", no Advantage from Magic Resistance, and nobody's Concentration
+    v = hold; v.spell = -1; v.conc = SP_HOLD_PERSON; v.magic = true; #assert tn_save(seed, v, 0, seen[..]);
+    v = hold; v.spell = -1; v.by = -1; v.conc = -1; #assert tn_save(seed, v, 0, seen[..]);
+    // a spell of no caster in this battle
+    v = hold; v.by = -1; #assert tn_save(seed, v, 0, seen[..]);
+    // another still under it, in its first place; the caster itself under it; neither ends it
+    v = hold; v.other = 1; #assert tn_save(seed, v, 0, seen[..]);
+    v = hold; v.self = true; #assert tn_save(seed, v, 0, seen[..]);
+    // another caster's same spell on someone, or this caster's other spell: not under this one
+    v = hold; v.far = true; #assert tn_save(seed, v, 2, seen[..]);
+    v = hold; v.diff = true; #assert tn_save(seed, v, 2, seen[..]);
+    // the caster holds another spell now: that one stays
+    v = hold; v.conc = SP_HEX; #assert tn_save(seed, v, 0, seen[..]);
+    // Ray of Enfeeblement ends for its caster when the target shakes it off, and says so
+    ray := TnSave.{kind = EF_ENFEEBLED, save = RS_CON, spell = SP_RAY_OF_ENFEEBLEMENT, by = 0, conc = SP_RAY_OF_ENFEEBLEMENT};
+    #assert tn_save(seed, ray, 1, seen[..]);
+    v = ray; v.other = 1; #assert tn_save(seed, v, 1, seen[..]);
+    v = ray; v.spell = SP_PRODUCE_FLAME; v.conc = SP_PRODUCE_FLAME; #assert tn_save(seed, v, 1, seen[..]);
+    v = ray; v.conc = SP_HEX; #assert tn_save(seed, v, 0, seen[..]);
+    // an effect of another kind with others under it: nothing ends
+    v = hold; v.kind = EF_WEAK; v.other = 1; #assert tn_save(seed, v, 0, seen[..]);
+  }
+  return true;
+}
+#test "turn: the save a creature repeats at the end of its turns: its line, what a success ends, and whose Concentration goes with it (seeds 1 to 10)" #steps 400000000 {
+  seen: [1] TnSaveSeen;
+  #assert tn_saves(1, 11, seen[..]);
+  #assert seen[0].pass > 10 && seen[0].hold > 10 && seen[0].ended > 5 && seen[0].adv > 0;
+}
+#test "turn: the save a creature repeats at the end of its turns: its line, what a success ends, and whose Concentration goes with it (seeds 11 to 20)" #steps 400000000 {
+  seen: [1] TnSaveSeen;
+  #assert tn_saves(11, 21, seen[..]);
+  #assert seen[0].pass > 10 && seen[0].hold > 10 && seen[0].ended > 5 && seen[0].adv > 0;
+}
+#test "turn: the save a creature repeats at the end of its turns: its line, what a success ends, and whose Concentration goes with it (seeds 21 to 30)" #steps 400000000 {
+  seen: [1] TnSaveSeen;
+  #assert tn_saves(21, 31, seen[..]);
+  #assert seen[0].pass > 10 && seen[0].hold > 10 && seen[0].ended > 5 && seen[0].adv > 0;
+}
+#test "turn: the save a creature repeats at the end of its turns: its line, what a success ends, and whose Concentration goes with it (seeds 31 to 40)" #steps 400000000 {
+  seen: [1] TnSaveSeen;
+  #assert tn_saves(31, 41, seen[..]);
+  #assert seen[0].pass > 10 && seen[0].hold > 10 && seen[0].ended > 5 && seen[0].adv > 0;
+}
+#test "turn: no repeated save between rounds, for the dead, or of a record with no save" {
+  for mode: 0..<3 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+    k := tn_save_stage(b[..], 3, TnSave.{kind = EF_COND, save = ifx mode == 2 then -1 else RS_WIS, spell = SP_HOLD_PERSON, by = 0, conc = SP_HOLD_PERSON});
+    if mode == 0 { b[0].turn.new_round = false; }
+    if mode == 1 { b[0].c[1].dead = true; }
+    rolled := b[0].dice[0].rolled;
+    rs_end_turn(b[..], 1);
+    #assert b[0].book[0].seq == 0 && b[0].dice[0].rolled == rolled && b[0].c[1].eff[k].kind == EF_COND && b[0].c[0].conc == SP_HOLD_PERSON;
+  }
+}
+
+#test "turn: Rage is kept through a round by entering it or attacking in it, and ends at the end of a round's turn with neither" {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6;
+  o := rs_add(b[..], rs_fighter("Other", 1, 3), 8, 2); a := rs_add(b[..], rs_barbarian("Garr", 0, 3), 2, 2);
+  rage := -1;
+  // entered this round (kept): it stands, and the next round starts with nothing to its name
+  b[0].c[a].eff = rs_state_put(b[0].c[a].eff, EF_RAGE, true); b[0].c[a].eff = rs_state_bit(b[0].c[a].eff, EF_RAGE, RS_RAGE_KEPT, true);
+  for k: 0..<RS_EFFECTS { if b[0].c[a].eff[k].kind == EF_RAGE { rage = k; } }
+  #assert rage >= 0 && b[0].c[a].eff[rage].cond == RS_RAGE_KEPT;
+  b[0].who = a; b[0].turn = RsTurn.{new_round = true};
+  rs_end_turn(b[..], a);
+  #assert b[0].c[a].eff[rage].kind == EF_RAGE && b[0].c[a].eff[rage].cond == 0 && b[0].book[0].seq == 0;
+  // a turn between rounds: nothing ends; an attack in it is remembered, alone
+  b[0].who = a; b[0].turn = RsTurn.{};
+  rs_end_turn(b[..], a);
+  #assert b[0].c[a].eff[rage].kind == EF_RAGE && b[0].c[a].eff[rage].cond == 0 && b[0].book[0].seq == 0;
+  b[0].who = a; b[0].turn = RsTurn.{struck = true};
+  rs_end_turn(b[..], a);
+  #assert b[0].c[a].eff[rage].kind == EF_RAGE && b[0].c[a].eff[rage].cond == RS_RAGE_STRUCK && b[0].book[0].seq == 0;
+  // the round's turn with that attack behind it: kept, and cleared
+  b[0].who = a; b[0].turn = RsTurn.{new_round = true};
+  rs_end_turn(b[..], a);
+  #assert b[0].c[a].eff[rage].kind == EF_RAGE && b[0].c[a].eff[rage].cond == 0 && b[0].book[0].seq == 0;
+  // an attack in the round's own turn
+  b[0].who = a; b[0].turn = RsTurn.{new_round = true, struck = true};
+  rs_end_turn(b[..], a);
+  #assert b[0].c[a].eff[rage].kind == EF_RAGE && b[0].c[a].eff[rage].cond == 0 && b[0].book[0].seq == 0;
+  // a round with neither: it ends
+  b[0].who = a; b[0].turn = RsTurn.{new_round = true};
+  rs_end_turn(b[..], a);
+  #assert !rs_effect(b[0].c[a], EF_RAGE) && b[0].book[0].seq == 1 && tn_ev(b[..], 0, RS_EV_END, -1, a, -1, 0, 0, "Garr's Rage ends");
+  // no Rage: an attack leaves no record
+  b[0].who = a; b[0].turn = RsTurn.{new_round = true, struck = true};
+  rs_end_turn(b[..], a);
+  #assert tn_kinds(b[0].c[a], EF_NONE) == RS_EFFECTS && b[0].book[0].seq == 1;
+}
+
+#test "turn: ending a turn ends its own Disengage and leaves the turn nobody's; another creature's end leaves both" {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6;
+  o := rs_add(b[..], rs_fighter("Other", 1, 3), 8, 2); a := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 2);
+  b[0].who = a; b[0].turn = RsTurn.{disengaged = true};
+  rs_end_turn(b[..], o);
+  #assert b[0].who == a && b[0].turn.disengaged && b[0].c[o].turn_at == 6000000 && b[0].c[a].turn_at == 0;
+  rs_end_turn(b[..], a);
+  #assert b[0].who == -1 && !b[0].turn.disengaged && b[0].c[a].turn_at == 6000000;
+}
+
+#test "turn: the clock's tick seals the timing and ends a Concentration at its tick, a Beast form at its hour, an effect whose owner's turn is past" {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6;
+  a := rs_add(b[..], rs_druid("Rowan", 0, 5), 2, 2); f := rs_add(b[..], rs_fighter("Foe", 1, 3), 8, 2); g := rs_add(b[..], rs_fighter("Third", 1, 3), 8, 4);
+  #assert !b[0].timing_sealed;
+  rs_tick_raw(b[..], 10);
+  #assert b[0].timing_sealed && b[0].clock == 10 && b[0].book[0].seq == 0;
+  // spell 0, until tick 30
+  b[0].c[a].conc = SP_PRODUCE_FLAME; b[0].c[a].conc_until = 30;
+  rs_tick_raw(b[..], 19);
+  #assert b[0].clock == 29 && b[0].c[a].conc == SP_PRODUCE_FLAME && b[0].book[0].seq == 0;
+  rs_tick_raw(b[..], 1);
+  #assert b[0].c[a].conc == -1 && b[0].book[0].seq == 1 && tn_ev(b[..], 0, RS_EV_END, SP_PRODUCE_FLAME, a, -1, 0, 0, "Rowan's Produce Flame ends (its duration is up)");
+  // Beast form 1, until tick 40
+  own := b[0].c[a];
+  b[0].c[a].wild_form = 1; b[0].c[a].wild_until = 40; b[0].c[a].wild_keep = RsWildKeep.{str = 8, dex = 12, con = 14, ac = 11, speed = 30, form = own.form, weapon = own.weapon, ranged = own.ranged};
+  rs_tick_raw(b[..], 9);
+  #assert b[0].c[a].wild_form == 1 && b[0].book[0].seq == 1;
+  rs_tick_raw(b[..], 1);
+  #assert b[0].clock == 40 && b[0].c[a].wild_form == 0 && b[0].c[a].score[RS_STR] == 8 && b[0].book[0].seq == 2;
+  // an effect on the third creature until the end of the first's turn at tick 50: the clock leaves it
+  // to that turn while the turn is still to come, whatever the bearer's own turn is; with the owner's
+  // turn already past, the clock ends it
+  k := tn_eff(b[..], g, RsEffect.{kind = EF_WEAK, by = a, spell = -1, until = 50, save = -1, turn_end = a + 1});
+  b[0].c[a].turn_at = 50; b[0].c[g].turn_at = 55; b[0].c[f].turn_at = 55;
+  rs_tick_raw(b[..], 10);
+  #assert b[0].clock == 50 && b[0].c[g].eff[k].kind == EF_WEAK;
+  b[0].c[a].turn_at = 51;
+  rs_tick_raw(b[..], 0);
+  #assert b[0].c[g].eff[k].kind == EF_NONE;
+  // one that names no turn ends at its tick, whatever the turns are (the second creature's is still to come)
+  k = tn_eff(b[..], g, RsEffect.{kind = EF_WEAK, by = a, spell = -1, until = 60, save = -1});
+  b[0].c[f].turn_at = 55;
+  rs_tick_raw(b[..], 9);
+  #assert b[0].c[g].eff[k].kind == EF_WEAK;
+  rs_tick_raw(b[..], 1);
+  #assert b[0].clock == 60 && b[0].c[g].eff[k].kind == EF_NONE;
+}
+
+#test "turn: the action profile gives slots and uses back on a cooldown, one at a time; strict timing gives nothing back" {
+  for mode: 0..<3 {
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].clock = 1000;
+    if mode != 1 { #assert rs_set_timing(b[..], RS_ACTION_TIMING); }
+    a := rs_add(b[..], rs_druid("Rowan", 0, 5), 2, 2);
+    if mode == 2 { b[0].c[a].dead = true; }
+    r := 9000000;
+    for l: 1..<10 { b[0].c[a].slots_max[l] = 4; b[0].c[a].slots[l] = 2; b[0].c[a].slot_back[l] = 0; }
+    b[0].c[a].slots[9] = 4; b[0].c[a].slot_back[9] = 77;      // full, with a stale deadline
+    b[0].c[a].slots[8] = 4;                                   // full, with none
+    for u: 0..<RS_USES { b[0].c[a].uses_max[u] = 10; b[0].c[a].uses[u] = 3; b[0].c[a].uses_back[u] = 0; }
+    b[0].c[a].uses[RS_USE_WILD] = 10; b[0].c[a].uses_back[RS_USE_WILD] = 77;
+    b[0].c[a].uses[RS_USE_LUCK] = 10;
+    rs_tick_raw(b[..], 5);
+    t0 := 1005;
+    c := b[0].c[a];
+    if mode != 0 {
+      // nothing comes back, and no deadline is set or cleared
+      for l: 1..<8 { #assert c.slots[l] == 2 && c.slot_back[l] == 0; }
+      #assert c.slot_back[9] == 77 && c.uses_back[RS_USE_WILD] == 77 && c.uses[RS_USE_CHANNEL] == 3 && c.uses_back[RS_USE_CHANNEL] == 0;
+      rs_tick_raw(b[..], r);
+      c = b[0].c[a];
+      for l: 1..<8 { #assert c.slots[l] == 2 && c.slot_back[l] == 0; }
+      for u: 0..<RS_USES { #assert c.uses[u] == (ifx u == RS_USE_WILD || u == RS_USE_LUCK then 10 else 3); }
+      continue;
+    }
+    for l: 1..<8 { #assert c.slots[l] == 2 && c.slot_back[l] == t0 + r; }
+    #assert c.slots[9] == 4 && c.slot_back[9] == 0 && c.slots[8] == 4 && c.slot_back[8] == 0;
+    for u: 0..<RS_USES {
+      if u == RS_USE_WILD || u == RS_USE_LUCK { #assert c.uses[u] == 10 && c.uses_back[u] == 0; continue; }
+      quick := u == 5 || u == 1 || u == 8 || u == 15;         // Sorcery Points, Bardic Inspiration, Lay On Hands, Focus Points
+      #assert c.uses[u] == 3 && c.uses_back[u] == t0 + (ifx quick then 4500000 else 9000000);
+    }
+    #assert RS_USE_SORCERY == 5 && RS_USE_INSPIRE == 1 && RS_USE_LAY == 8 && RS_USE_FOCUS == 15 && RS_USES == 17;
+    // one tick short of half the cooldown: nothing yet
+    rs_tick_raw(b[..], 4500000 - 1);
+    c = b[0].c[a];
+    for u: 0..<RS_USES { #assert c.uses[u] == (ifx u == RS_USE_WILD || u == RS_USE_LUCK then 10 else 3); }
+    #assert c.uses_back[RS_USE_FOCUS] == t0 + 4500000;
+    // at it: the quick ones give one back (Lay On Hands 5), and their deadline clears
+    rs_tick_raw(b[..], 1);
+    c = b[0].c[a];
+    for u: 0..<RS_USES {
+      if u == RS_USE_WILD || u == RS_USE_LUCK { #assert c.uses[u] == 10 && c.uses_back[u] == 0; continue; }
+      quick := u == 5 || u == 1 || u == 8 || u == 15;
+      #assert c.uses[u] == (ifx u == 8 then 8 else ifx quick then 4 else 3) && c.uses_back[u] == (ifx quick then 0 else t0 + 9000000);
+    }
+    for l: 1..<8 { #assert c.slots[l] == 2 && c.slot_back[l] == t0 + r; }
+    // one tick short of the cooldown, then at it: a slot of each level and one of each other use
+    rs_tick_raw(b[..], 4500000 - 1);
+    c = b[0].c[a];
+    for l: 1..<8 { #assert c.slots[l] == 2 && c.slot_back[l] == t0 + r; }
+    #assert c.uses[RS_USE_CHANNEL] == 3 && c.uses_back[RS_USE_LAY] == t0 + 9000000 - 1 + 4500000;   // the quick ones' next, set by the first tick after they came back
+    rs_tick_raw(b[..], 1);
+    c = b[0].c[a];
+    for l: 1..<8 { #assert c.slots[l] == 3 && c.slot_back[l] == 0; }
+    #assert c.slots[9] == 4 && c.slots[8] == 4;
+    #assert c.uses[RS_USE_CHANNEL] == 4 && c.uses_back[RS_USE_CHANNEL] == 0 && c.uses[RS_USE_KIT] == 4 && c.uses[RS_USE_LAY] == 8 && c.uses_back[RS_USE_LAY] == t0 + 9000000 - 1 + 4500000 && c.uses[RS_USE_FOCUS] == 4;
+  }
+}

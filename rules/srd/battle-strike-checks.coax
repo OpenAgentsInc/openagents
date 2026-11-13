@@ -1040,7 +1040,7 @@ sk_curse_damage :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, crit: boo
     #assert cast(string) l[0].buf[0..<l[0].n] == cast(string) w[0].buf[0..<w[0].n];
   }
 }
-#test "strike: Patient Defense with a Focus Point tells its line when the Monk can take it; Step of the Wind is a Monk's Dash as a Bonus Action" #steps 400000000 {
+#test "strike: Patient Defense with a Focus Point tells its line when the Monk can take it; Step of the Wind is a Monk's Dash as a Bonus Action" #steps 4000000000 {
   b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
   p: [1] RsDice; p[0].state = 4407;
