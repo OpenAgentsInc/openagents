@@ -82,8 +82,8 @@ EG_BODY_STATE :: [3] AnimGraphState.[
   AnimGraphState.{clip_param = EG_BODY_ACT, start_param = EG_BODY_ACT_T0, fade = EG_BODY_FADE},
   AnimGraphState.{clip = 6, start_param = EG_BODY_FELL, fade = EG_BODY_FADE}];
 EG_BODY_TRANSITION :: [3] AnimGraphTransition.[
-  AnimGraphTransition.{to = EG_BODY_FALLEN, when = [2] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = EG_BODY_DOWN, value = 0}, AnimGraphCond.{}], fade = EG_BODY_FADE},
-  AnimGraphTransition.{to = EG_BODY_ACTION, when = [2] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = EG_BODY_ACTING, value = 0}, AnimGraphCond.{}], fade = EG_BODY_FADE},
+  AnimGraphTransition.{to = EG_BODY_FALLEN, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = EG_BODY_DOWN, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = EG_BODY_FADE},
+  AnimGraphTransition.{to = EG_BODY_ACTION, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = EG_BODY_ACTING, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = EG_BODY_FADE},
   AnimGraphTransition.{to = EG_BODY_GROUND, fade = EG_BODY_FADE}];
 EG_BODY_LAYER :: [1] AnimGraphLayer.[AnimGraphLayer.{mask = 0, still = 1, moving = 0}];
 EG_BODY_MASK :: [65] f32.[

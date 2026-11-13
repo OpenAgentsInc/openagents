@@ -1,43 +1,47 @@
 // A character's body on the fixed step: the ECH1 locomotion graph, or one clip looped in place.
+// The graph is a table for the engine's blend graph (echo-graph.coax, graph.coax; GitHub #13306):
+// which clip follows which, each gait's pace, where a clip is entered and how long a change blends.
 // ECH1 rigs carry 24 clips at 30 fps in one fixed order: 0 idle, 1 walk, 2 jog, 3 fall, 4 land,
 // 5 walk start, 6 walk stop, 7 jog start, 8 jog stop, 10..13 walk starts turning 90 and 180
 // degrees left and right, 14..17 the same for the jog. The graph loops idle, walk and jog (0..2)
 // and plays the rest once; it never chooses 9 or 18..23.
+#load "echo-graph.coax";
 
 // The rig's clip `clip` lasts this many seconds.
 character_duration :: (c:[]Character,packs:[]CharacterPack,clip:int)->f32 {return f32_from_bits(scan_u32(character_rig(c,packs),32+clip*16+8));}
 // The start clip for a turn of `angle` radians from facing to wish: 90-degree starts in
-// (45, 135] degrees, 180-degree starts beyond 135, as the source graph chooses.
+// (45, 135] degrees, 180-degree starts beyond 135, as the source graph chooses. It is the table's
+// answer for a character setting off from the idle.
 character_start_clip :: (run:bool,angle:f32)->int {
- degrees:=angle*57.295779513;left:=degrees<0;magnitude:=abs(degrees);
- if magnitude>135 {return ifx run then (ifx left then 16 else 17) else (ifx left then 12 else 13);}
- if magnitude>45 {return ifx run then (ifx left then 14 else 15) else (ifx left then 10 else 11);}
- return ifx run then 7 else 5;
+ degrees:=angle*57.295779513;params:=[CHARACTER_PARAMS]f32.[0,0,0,1,0,1,character_flag(run),abs(degrees),character_flag(degrees<0),0];
+ return anim_graph_next(character_graph(),0,params[..]).state;
 }
 // One step of the locomotion graph: speed in m/s, grounded, and the turn from facing to wish.
 // With drive_inputs set, the world's input_on and run_requested decide moving and running.
 character_locomote :: (c:[]Character,packs:[]CharacterPack,dt:f32,speed:f32,grounded:bool,turn:f32) {
- if !c[0].ready {return;}moving:=ifx c[0].drive_inputs then c[0].input_on else speed>0.05;run:=ifx c[0].drive_inputs then c[0].run_requested else speed>2;clip:=c[0].clip;chosen:=clip;
- if clip<0 {chosen=0;}
- if !grounded {chosen=3;}else if !c[0].grounded {chosen=4;}
- else if moving && !c[0].moving {chosen=character_start_clip(run,turn);}
- else if !moving && c[0].moving {chosen=ifx clip==2 || clip==7 || (clip>=14 && clip<=17) then 8 else 6;}
- else if clip==1 || clip==2 {chosen=ifx moving then (ifx run then 2 else 1) else 0;}
- else if clip>=0 && c[0].time>=character_duration(c,packs,clip)-0.1 {chosen=ifx moving then (ifx run then 2 else 1) else 0;}
- character_play(c,packs,chosen,dt,ifx chosen==1 then speed/1.47 else ifx chosen==2 then speed/4.27 else 1.0f32,chosen<=2);
+ if !c[0].ready {return;}moving:=ifx c[0].drive_inputs then c[0].input_on else speed>0.05;run:=ifx c[0].drive_inputs then c[0].run_requested else speed>2;
+ g:=character_graph();params:=character_params(c,packs,speed,moving,run,grounded,turn);chosen:=anim_graph_next(g,c[0].clip,params[..]).state;
+ character_play(c,packs,chosen,dt,anim_graph_rate(g,chosen,speed),anim_graph_loops(g,chosen));
  c[0].moving=moving;c[0].grounded=grounded;character_face_clock(c,packs,dt);
 }
+// What the graph's transitions read (echo-graph.coax): this step's inputs against the step before.
+character_params :: (c:[]Character,packs:[]CharacterPack,speed:f32,moving:bool,run:bool,grounded:bool,turn:f32)->[CHARACTER_PARAMS]f32 {
+ clip:=c[0].clip;degrees:=turn*57.295779513;ending:=clip>=0 && clip<ECHO_CLIPS && c[0].time>=character_duration(c,packs,clip)-0.1;
+ return [CHARACTER_PARAMS]f32.[speed,character_flag(!grounded),character_flag(!c[0].grounded),character_flag(moving && !c[0].moving),character_flag(!moving && c[0].moving),
+  character_flag(moving),character_flag(run),abs(degrees),character_flag(degrees<0),character_flag(ending)];
+}
+character_flag :: (on:bool)->f32 {return ifx on then 1.0f32 else 0.0f32;}
 // The idle body: idle_clip looped in place, cross-faded in from whatever the body was showing.
 character_idle_body :: (c:[]Character,packs:[]CharacterPack,dt:f32) {
  if !c[0].ready {return;}clip:=ifx c[0].idle_clip>=0 && c[0].idle_clip<ECHO_CLIPS then c[0].idle_clip else 0;
  character_play(c,packs,clip,dt,1,true);character_face_clock(c,packs,dt);
 }
 // Advance clip `chosen` by dt at `rate` and sample it into the body. A new clip starts at its
-// source graph's entry time and cross-fades from the body over 0.1 s.
+// source graph's entry time and cross-fades from the body over the state's fade (the table's).
 character_play :: (c:[]Character,packs:[]CharacterPack,chosen:int,dt:f32,rate:f32,looping:bool) {
- if chosen!=c[0].clip {c[0].blending=c[0].clip>=0;for k:0..<c[0].joints {c[0].from[k]=c[0].body[k];}c[0].time=ifx chosen==6 then 0.1f32 else ifx chosen==8 then 0.15f32 else ifx chosen==12 then 0.2f32 else ifx chosen==13 then 0.25f32 else 0.0f32;c[0].age=0;}
+ if chosen!=c[0].clip {c[0].blending=c[0].clip>=0;for k:0..<c[0].joints {c[0].from[k]=c[0].body[k];}c[0].time=character_graph().states[chosen].enter;c[0].age=0;}
  c[0].clip=chosen;c[0].time+=dt*rate;c[0].age+=dt;
  rig:=character_rig(c,packs);descriptor:=32+chosen*16;first:=cast(int)scan_u32(rig,descriptor);frames:=cast(int)scan_u32(rig,descriptor+4);duration:=character_duration(c,packs,chosen);
- time:=ifx looping then c[0].time-duration*floor(c[0].time/duration) else lo(c[0].time,duration);frame:=lo(time*30,cast(f32)(frames-1));a:=cast(int)floor(frame);b:=ifx a+1<frames then a+1 else a;share:=frame-cast(f32)a;fade:=ifx c[0].blending then pose_fade(c[0].age,0.1) else 1.0f32;
+ time:=ifx looping then c[0].time-duration*floor(c[0].time/duration) else lo(c[0].time,duration);frame:=lo(time*30,cast(f32)(frames-1));a:=cast(int)floor(frame);b:=ifx a+1<frames then a+1 else a;share:=frame-cast(f32)a;fade:=ifx c[0].blending then pose_fade(c[0].age,character_graph().states[chosen].fade) else 1.0f32;
  for k:0..<c[0].joints {p:=c[0].rest[k];if k<c[0].tracks {p=pose_blend(character_local_at(rig,first+(a*c[0].tracks+k)*28),character_local_at(rig,first+(b*c[0].tracks+k)*28),share);}c[0].body[k]=pose_blend(c[0].from[k],p,fade);}
 }

@@ -334,3 +334,38 @@ character_next :: (c:[]Character,packs:[]CharacterPack,clip:int,moving:bool,time
  #assert character_blink_weight(-0.01)==0 && character_blink_weight(CHARACTER_BLINK)==0 && character_blink_weight(0)==0 && abs(character_blink_weight(CHARACTER_BLINK/2)-1)<0.0001;
  a:=character_axis_angle(v3(0,1,0),PI/2);#assert character_near(a.y,0.70710678) && character_near(a.w,0.70710678) && a.x==0 && a.z==0;
 }
+// The clip the locomotion graph chose when it was written out in code, before it became a table
+// (echo-graph.coax; GitHub #13306). The check below holds the table to it.
+character_start_clip_before :: (run:bool,angle:f32)->int {
+ degrees:=angle*57.295779513;left:=degrees<0;magnitude:=abs(degrees);
+ if magnitude>135 {return ifx run then (ifx left then 16 else 17) else (ifx left then 12 else 13);}
+ if magnitude>45 {return ifx run then (ifx left then 14 else 15) else (ifx left then 10 else 11);}
+ return ifx run then 7 else 5;
+}
+character_choice_before :: (c:[]Character,packs:[]CharacterPack,moving:bool,run:bool,grounded:bool,turn:f32)->int {
+ clip:=c[0].clip;chosen:=clip;
+ if clip<0 {chosen=0;}
+ if !grounded {chosen=3;}else if !c[0].grounded {chosen=4;}
+ else if moving && !c[0].moving {chosen=character_start_clip_before(run,turn);}
+ else if !moving && c[0].moving {chosen=ifx clip==2 || clip==7 || (clip>=14 && clip<=17) then 8 else 6;}
+ else if clip==1 || clip==2 {chosen=ifx moving then (ifx run then 2 else 1) else 0;}
+ else if clip>=0 && c[0].time>=character_duration(c,packs,clip)-0.1 {chosen=ifx moving then (ifx run then 2 else 1) else 0;}
+ return chosen;
+}
+#test "The locomotion table is a graph the engine may run, and it chooses what the written-out graph chose: every clip, input and turn" #steps 2000000000 {
+ #assert anim_graph_check(character_graph())==ANIM_GRAPH_OK && CHARACTER_GRAPH_TRANSITIONS==character_graph().transitions.count;
+ packs:[1]CharacterPack;c:[1]Character;n:=character_rig_fixture(packs[0].data[..],3,2);#assert character_pack_rig(packs[..],0,n) && character_spawn(c[..],packs[..],0);
+ turns:=[9]f32.[0,0.7,-0.7,0.7853982,1.57,-1.57,2.3561946,3,-3];g:=character_graph();cases:=0;
+ for clip: -1..<ECHO_CLIPS {for bits:0..<32 {for t:0..<9 {for late:0..<2 {
+  moving:=(bits&1)!=0;run:=(bits&2)!=0;grounded:=(bits&4)!=0;c[0].moving=(bits&8)!=0;c[0].grounded=(bits&16)!=0;c[0].clip=clip;
+  c[0].time=ifx late==1 && clip>=0 then character_duration(c[..],packs[..],clip) else 0.0f32;
+  want:=character_choice_before(c[..],packs[..],moving,run,grounded,turns[t]);
+  params:=character_params(c[..],packs[..],1,moving,run,grounded,turns[t]);got:=anim_graph_next(g,clip,params[..]).state;
+  #assert got==want;cases+=1;
+ }}}}
+ #assert cases==25*32*9*2;
+ // the clips' pace and the states' entry times are the ones the code had
+ #assert anim_graph_rate(g,1,3)==3.0f32/1.47 && anim_graph_rate(g,2,3)==3.0f32/4.27 && anim_graph_rate(g,5,3)==1 && anim_graph_rate(g,0,3)==1;
+ for k:0..<ECHO_CLIPS {#assert anim_graph_loops(g,k)==(k<=2) && g.states[k].clip==k && g.states[k].fade==0.1f32;
+  #assert g.states[k].enter==(ifx k==6 then 0.1f32 else ifx k==8 then 0.15f32 else ifx k==12 then 0.2f32 else ifx k==13 then 0.25f32 else 0.0f32);}
+}

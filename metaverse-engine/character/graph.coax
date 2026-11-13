@@ -4,10 +4,12 @@
 // A graph is:
 //   - clips: for each clip the game has, whether it loops, plays once or is a gait (a gait advances
 //     by the ground covered, `stride` metres a loop, so the feet keep pace), and whether it moves
-//     the legs;
+//     the legs. A gait whose length the table cannot know (it is the rig's) gives its `pace`
+//     instead, the speed it was made at: a runtime that keeps a clip's seconds plays it at
+//     speed / pace (anim_graph_rate);
 //   - states: a state plays one clip, a clip a parameter names (an action the game cued), or a blend
 //     space; it starts at the step it is entered or at the time a parameter gives;
-//   - transitions: from a state (or from any) to another when up to two conditions on the
+//   - transitions: from a state (or from any) to another when up to four conditions on the
 //     parameters hold, over `fade` seconds. The first that holds is taken, each step;
 //   - blend spaces: points along one parameter (a speed), each a clip. A stepped space plays the
 //     last point the parameter is past; a blended one plays the two points either side and says
@@ -43,16 +45,17 @@ ANIM_GRAPH_IK_REACH :: 2;   // root, mid, end: an arm whose hand goes to a point
 
 ANIM_GRAPH_NEVER :: -100.0;   // a cross-fade that ended long ago
 
-AnimGraphClip :: struct { kind: int; stride: f32; moves: bool; }
+AnimGraphClip :: struct { kind: int; stride: f32; moves: bool; pace: f32; }
 AnimGraphCond :: struct { op: int; param: int; value: f32; }
 AnimGraphState :: struct {
   clip: int = -1;          // the clip it plays, or
   clip_param: int = -1;    // the parameter that names it, or
   space: int = -1;         // the blend space that picks it
   start_param: int = -1;   // the parameter that says when it began; -1: when it was entered
+  enter: f32;              // seconds into the clip it starts at, when it starts as it is entered
   fade: f32;               // seconds a change of clip inside the state blends
 }
-AnimGraphTransition :: struct { from: int = -1; to: int; when: [2] AnimGraphCond; fade: f32; }
+AnimGraphTransition :: struct { from: int = -1; to: int; when: [4] AnimGraphCond; fade: f32; }
 AnimGraphPoint :: struct { from: f32; clip: int; }
 AnimGraphSpace :: struct { param: int; first: int; count: int; blend: bool; }
 AnimGraphLayer :: struct { mask: int; still: f32; moving: f32; }
@@ -84,7 +87,7 @@ AnimGraphPlay :: struct {
 
 ANIM_GRAPH_OK :: 0;
 ANIM_GRAPH_BAD_SIZES :: 1;        // no state, or a count that does not fit
-ANIM_GRAPH_BAD_CLIP :: 2;         // a clip's kind, or a gait with no stride
+ANIM_GRAPH_BAD_CLIP :: 2;         // a clip's kind, or a gait with neither a stride nor a pace
 ANIM_GRAPH_BAD_STATE :: 3;        // a state that names no clip, or more than one way to pick it, or one out of range
 ANIM_GRAPH_BAD_TRANSITION :: 4;   // a state or parameter out of range, an unknown condition, a fade that is not a time
 ANIM_GRAPH_BAD_SPACE :: 5;        // points out of range or not in rising order
@@ -103,7 +106,7 @@ anim_graph_cond_ok :: (g: AnimGraph, c: AnimGraphCond) -> bool {
 anim_graph_check :: (g: AnimGraph) -> int {
   if g.states.count < 1 || g.params < 0 || g.speed_param < 0 || g.speed_param >= g.params || g.joints < 0 { return ANIM_GRAPH_BAD_SIZES; }
   if g.masks.count % (ifx g.joints > 0 then g.joints else 1) != 0 { return ANIM_GRAPH_BAD_SIZES; }
-  for c: g.clips { if c.kind < ANIM_GRAPH_LOOP || c.kind > ANIM_GRAPH_GAIT || (c.kind == ANIM_GRAPH_GAIT && !(c.stride > 0 && finite(c.stride))) { return ANIM_GRAPH_BAD_CLIP; } }
+  for c: g.clips { if c.kind < ANIM_GRAPH_LOOP || c.kind > ANIM_GRAPH_GAIT || (c.kind == ANIM_GRAPH_GAIT && !((c.stride > 0 && finite(c.stride)) || (c.pace > 0 && finite(c.pace)))) { return ANIM_GRAPH_BAD_CLIP; } }
   for sp: g.spaces {
     if sp.param < 0 || sp.param >= g.params || sp.count < 1 || sp.first < 0 || sp.first + sp.count > g.points.count { return ANIM_GRAPH_BAD_SPACE; }
     for k: 0..<sp.count {
@@ -115,11 +118,11 @@ anim_graph_check :: (g: AnimGraph) -> int {
   for s: g.states {
     ways := (ifx s.clip >= 0 then 1 else 0) + (ifx s.clip_param >= 0 then 1 else 0) + (ifx s.space >= 0 then 1 else 0);
     if ways != 1 || s.clip >= g.clips.count || s.clip_param >= g.params || s.space >= g.spaces.count { return ANIM_GRAPH_BAD_STATE; }
-    if s.start_param >= g.params || !anim_graph_time_ok(s.fade) { return ANIM_GRAPH_BAD_STATE; }
+    if s.start_param >= g.params || !anim_graph_time_ok(s.fade) || !anim_graph_time_ok(s.enter) { return ANIM_GRAPH_BAD_STATE; }
   }
   for t: g.transitions {
     if t.from < -1 || t.from >= g.states.count || t.to < 0 || t.to >= g.states.count || !anim_graph_time_ok(t.fade) { return ANIM_GRAPH_BAD_TRANSITION; }
-    if !anim_graph_cond_ok(g, t.when[0]) || !anim_graph_cond_ok(g, t.when[1]) { return ANIM_GRAPH_BAD_TRANSITION; }
+    for w: t.when { if !anim_graph_cond_ok(g, w) { return ANIM_GRAPH_BAD_TRANSITION; } }
   }
   for l: g.layers {
     if l.mask < 0 || (l.mask + 1) * g.joints > g.masks.count || !anim_graph_share_ok(l.still) || !anim_graph_share_ok(l.moving) { return ANIM_GRAPH_BAD_LAYER; }
@@ -161,7 +164,7 @@ AnimGraphMove :: struct { state: int; fade: f32; moved: bool; }
 anim_graph_next :: (g: AnimGraph, state: int, params: [] f32) -> AnimGraphMove {
   for t: g.transitions {
     if t.from >= 0 && t.from != state { continue; }
-    if anim_graph_holds(t.when[0], params) && anim_graph_holds(t.when[1], params) { return AnimGraphMove.{state = t.to, fade = t.fade, moved = t.to != state}; }
+    if anim_graph_holds(t.when[0], params) && anim_graph_holds(t.when[1], params) && anim_graph_holds(t.when[2], params) && anim_graph_holds(t.when[3], params) { return AnimGraphMove.{state = t.to, fade = t.fade, moved = t.to != state}; }
   }
   return AnimGraphMove.{state = ifx state < 0 then 0 else state, fade = 0, moved = state < 0};
 }
@@ -178,7 +181,7 @@ anim_graph_step :: (g: AnimGraph, p0: AnimGraphPlay, params: [] f32, now: f32, d
   if s.clip_param >= 0 { pick.clip = cast(int) params[s.clip_param]; }
   if s.space >= 0 { pick = anim_graph_space(g, s.space, params); }
   if pick.clip < 0 || pick.clip >= g.clips.count { return p; }   // a parameter named no clip: nothing changes
-  start := ifx s.start_param >= 0 then params[s.start_param] else now;
+  start := ifx s.start_param >= 0 then params[s.start_param] else now - s.enter;
   p.state = move.state; p.mate = pick.mate; p.mate_share = pick.mate_share;
   if pick.clip != p.clip || (g.clips[pick.clip].kind == ANIM_GRAPH_ONCE && start != p.t0) {
     p.prev = p.clip; p.pt0 = p.t0; p.pphase = p.phase;
@@ -187,9 +190,19 @@ anim_graph_step :: (g: AnimGraph, p0: AnimGraphPlay, params: [] f32, now: f32, d
     p.clip = pick.clip; p.t0 = start; p.phase = 0;
   }
   c := g.clips[p.clip];
-  if c.kind == ANIM_GRAPH_GAIT && dt > 0 { p.phase += params[g.speed_param] * dt / c.stride; }
+  if c.kind == ANIM_GRAPH_GAIT && c.stride > 0 && dt > 0 { p.phase += params[g.speed_param] * dt / c.stride; }
   return p;
 }
+
+// How fast a clip plays for a character moving at `speed` m/s: a gait with a pace at speed / pace,
+// so its feet keep pace with the ground; anything else at 1.
+anim_graph_rate :: (g: AnimGraph, clip: int, speed: f32) -> f32 {
+  if clip < 0 || clip >= g.clips.count { return 1; }
+  c := g.clips[clip];
+  return ifx c.kind == ANIM_GRAPH_GAIT && c.pace > 0 then speed / c.pace else 1.0f32;
+}
+// Whether a clip goes round: everything but a once-clip.
+anim_graph_loops :: (g: AnimGraph, clip: int) -> bool { return clip >= 0 && clip < g.clips.count && g.clips[clip].kind != ANIM_GRAPH_ONCE; }
 
 // How far a cross-fade has come at `now`: 0 as it starts, 1 from its end on, eased at both ends.
 // A fade of no length is over.
@@ -251,8 +264,8 @@ anim_graph_test :: (d: [] AnimGraphTest) -> AnimGraph {
   d[0].spaces = [2] AnimGraphSpace.[AnimGraphSpace.{param = 0, first = 0, count = 3}, AnimGraphSpace.{param = 0, first = 3, count = 3, blend = true}];
   d[0].states = [3] AnimGraphState.[AnimGraphState.{space = 0, fade = 0.2}, AnimGraphState.{clip_param = 3, start_param = 4, fade = 0.1}, AnimGraphState.{clip = 4, start_param = 5}];
   d[0].transitions = [3] AnimGraphTransition.[
-    AnimGraphTransition.{to = 2, when = [2] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = 1, value = 0}, AnimGraphCond.{}], fade = 0.3},
-    AnimGraphTransition.{to = 1, when = [2] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = 2, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_NOT_ABOVE, param = 1, value = 0}], fade = 0.25},
+    AnimGraphTransition.{to = 2, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = 1, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = 0.3},
+    AnimGraphTransition.{to = 1, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = 2, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_NOT_ABOVE, param = 1, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}], fade = 0.25},
     AnimGraphTransition.{to = 0, fade = 0.4}];
   d[0].layers = [2] AnimGraphLayer.[AnimGraphLayer.{mask = 0, still = 1, moving = 0}, AnimGraphLayer.{mask = 1, still = 0.5, moving = 0.25}];
   d[0].masks = [8] f32.[0, 0.5, 1, 1,   1, 1, 0, 0];
@@ -421,4 +434,30 @@ anim_graph_p :: (speed: f32) -> [6] f32 { return [6] f32.[speed, 0, 0, 0, 0, 0];
   d[0].iks[1].kind = 3; #assert anim_graph_check(g) == ANIM_GRAPH_BAD_IK; d[0].iks[1].kind = -1; #assert anim_graph_check(g) == ANIM_GRAPH_BAD_IK; d[0].iks[1].kind = ANIM_GRAPH_IK_AIM;
   d[0].iks[1].weight_param = 6; #assert anim_graph_check(g) == ANIM_GRAPH_BAD_IK; d[0].iks[1].weight_param = 5; #assert anim_graph_check(g) == ANIM_GRAPH_OK; d[0].iks[1].weight_param = -1;
   #assert anim_graph_check(g) == ANIM_GRAPH_OK;
+}
+#test "all four of a transition's conditions must hold" {
+  d: [1] AnimGraphTest; g := anim_graph_test(d[..]);
+  on := AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = 0, value = 0}; off := AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = 0, value = 9};
+  v := anim_graph_p(1);
+  for k: 0..<4 {
+    d[0].transitions[0].when = [4] AnimGraphCond.[on, on, on, on];
+    #assert anim_graph_next(g, 0, v[..]).state == 2;
+    d[0].transitions[0].when[k] = off;
+    #assert anim_graph_next(g, 0, v[..]).state == 0;
+    d[0].transitions[0].when[k].param = 6; #assert anim_graph_check(g) == ANIM_GRAPH_BAD_TRANSITION;
+  }
+}
+#test "a state may start part way into its clip; a gait with a pace plays at speed over pace and needs no stride" {
+  d: [1] AnimGraphTest; g := anim_graph_test(d[..]);
+  d[0].states[2].start_param = -1; d[0].states[2].enter = 0.25;
+  down := [6] f32.[0, 1, 0, 0, 0, 0];
+  p: AnimGraphPlay; p = anim_graph_step(g, p, down[..], 4, 0.1); #assert p.clip == 4 && p.t0 == 3.75;
+  d[0].states[2].enter = -1; #assert anim_graph_check(g) == ANIM_GRAPH_BAD_STATE; d[0].states[2].enter = 61; #assert anim_graph_check(g) == ANIM_GRAPH_BAD_STATE; d[0].states[2].enter = 0;
+  d[0].clips[1].stride = 0; d[0].clips[1].pace = 1.5; #assert anim_graph_check(g) == ANIM_GRAPH_OK;
+  #assert anim_graph_rate(g, 1, 3) == 2 && anim_graph_rate(g, 0, 3) == 1 && anim_graph_rate(g, 2, 3) == 1 && anim_graph_rate(g, -1, 3) == 1 && anim_graph_rate(g, 6, 3) == 1;
+  d[0].clips[0].pace = 1.5; #assert anim_graph_rate(g, 0, 3) == 1; d[0].clips[0].pace = 0;   // only a gait has a pace
+  // with no stride its phase is the runtime's own to keep
+  v := anim_graph_p(1); q: AnimGraphPlay; q = anim_graph_step(g, q, v[..], 1, 0.1); #assert q.clip == 1 && q.phase == 0;
+  d[0].clips[1].pace = -1; #assert anim_graph_check(g) == ANIM_GRAPH_BAD_CLIP; d[0].clips[1].pace = 0; d[0].clips[1].stride = 1.5;
+  #assert anim_graph_loops(g, 0) && anim_graph_loops(g, 1) && !anim_graph_loops(g, 3) && !anim_graph_loops(g, -1) && !anim_graph_loops(g, 6) && anim_graph_loops(g, 5);
 }

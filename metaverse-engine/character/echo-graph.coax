@@ -1,0 +1,111 @@
+// The ECH1 locomotion graph as a table for the engine's blend graph (graph.coax; GitHub #13306).
+// ECH1 rigs carry 24 clips in one fixed order (metaverse-engine/anim/echo-pack.coax), so the table is
+// the format's and every ECH1 character uses it. A state is a clip: state k plays clip k.
+//   0 idle, 1 walk, 2 jog, 3 fall, 4 land, 5 walk start, 6 walk stop, 7 jog start, 8 jog stop,
+//   10..13 walk starts turning 90 and 180 degrees left and right, 14..17 the same for the jog.
+// The idle loops; the walk and the jog are gaits made at 1.47 and 4.27 m/s; the rest play once.
+// A stop and a 180-degree walk start begin part way in, where the source graph enters them.
+// It never chooses 9 or 18..23. Every change blends over 0.1 s.
+#load "graph.coax";
+
+// The parameters character_locomote gives each step.
+CHARACTER_P_SPEED :: 0;     // m/s
+CHARACTER_P_AIR :: 1;       // above 0: off the ground
+CHARACTER_P_WAS_AIR :: 2;   // above 0: off the ground on the step before
+CHARACTER_P_START :: 3;     // above 0: moving now and not on the step before
+CHARACTER_P_STOP :: 4;      // above 0: the other way round
+CHARACTER_P_MOVING :: 5;
+CHARACTER_P_RUN :: 6;
+CHARACTER_P_ANGLE :: 7;     // degrees from facing to wish, without its sign
+CHARACTER_P_LEFT :: 8;      // above 0: the turn is to the left
+CHARACTER_P_ENDING :: 9;    // above 0: the clip is within 0.1 s of its end
+CHARACTER_PARAMS :: 10;
+CHARACTER_GRAPH_FADE :: 0.1;
+CHARACTER_GRAPH_TRANSITIONS :: 28;
+
+CHARACTER_GRAPH_CLIP :: [24] AnimGraphClip.[
+  AnimGraphClip.{kind = ANIM_GRAPH_LOOP},   // 0 idle
+  AnimGraphClip.{kind = ANIM_GRAPH_GAIT, pace = 1.47, moves = true},   // 1 walk
+  AnimGraphClip.{kind = ANIM_GRAPH_GAIT, pace = 4.27, moves = true},   // 2 jog
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 3 fall
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 4 land
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 5 walk start
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 6 walk stop
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 7 jog start
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 8 jog stop
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 9 not chosen
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 10 walk start 90 left
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 11 walk start 90 right
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 12 walk start 180 left
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 13 walk start 180 right
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 14 jog start 90 left
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 15 jog start 90 right
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 16 jog start 180 left
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 17 jog start 180 right
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 18 not chosen
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 19 not chosen
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 20 not chosen
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 21 not chosen
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE},   // 22 not chosen
+  AnimGraphClip.{kind = ANIM_GRAPH_ONCE}    // 23 not chosen
+];
+CHARACTER_GRAPH_STATE :: [24] AnimGraphState.[
+  AnimGraphState.{clip = 0, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 1, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 2, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 3, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 4, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 5, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 6, fade = CHARACTER_GRAPH_FADE, enter = 0.1},
+  AnimGraphState.{clip = 7, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 8, fade = CHARACTER_GRAPH_FADE, enter = 0.15},
+  AnimGraphState.{clip = 9, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 10, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 11, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 12, fade = CHARACTER_GRAPH_FADE, enter = 0.2},
+  AnimGraphState.{clip = 13, fade = CHARACTER_GRAPH_FADE, enter = 0.25},
+  AnimGraphState.{clip = 14, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 15, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 16, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 17, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 18, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 19, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 20, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 21, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 22, fade = CHARACTER_GRAPH_FADE},
+  AnimGraphState.{clip = 23, fade = CHARACTER_GRAPH_FADE}
+];
+CHARACTER_GRAPH_TRANSITION :: [28] AnimGraphTransition.[
+  AnimGraphTransition.{to = 3, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_AIR, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},   // off the ground: the fall
+  AnimGraphTransition.{to = 4, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_WAS_AIR, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},   // down again: the landing
+  AnimGraphTransition.{to = 16, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_START, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_RUN, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_ANGLE, value = 135}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_LEFT, value = 0}], fade = CHARACTER_GRAPH_FADE},   // setting off: a start by the gait and the turn (180 degrees past 135, 90 past 45; left, then right)
+  AnimGraphTransition.{to = 17, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_START, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_RUN, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_ANGLE, value = 135}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{to = 12, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_START, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_ANGLE, value = 135}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_LEFT, value = 0}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{to = 13, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_START, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_ANGLE, value = 135}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{to = 14, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_START, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_RUN, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_ANGLE, value = 45}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_LEFT, value = 0}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{to = 15, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_START, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_RUN, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_ANGLE, value = 45}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{to = 10, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_START, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_ANGLE, value = 45}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_LEFT, value = 0}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{to = 11, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_START, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_ANGLE, value = 45}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{to = 7, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_START, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_RUN, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{to = 5, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_START, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{from = 2, to = 8, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_STOP, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},   // stopping: the jog's stop from the jog and its starts
+  AnimGraphTransition.{from = 7, to = 8, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_STOP, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{from = 14, to = 8, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_STOP, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{from = 15, to = 8, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_STOP, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{from = 16, to = 8, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_STOP, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{from = 17, to = 8, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_STOP, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{to = 6, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_STOP, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},   // and the walk's from anything else
+  AnimGraphTransition.{from = 1, to = 2, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_MOVING, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_RUN, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},   // walking or jogging: the gait the speed asks for
+  AnimGraphTransition.{from = 1, to = 1, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_MOVING, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{from = 1, to = 0, when = [4] AnimGraphCond.[AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{from = 2, to = 2, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_MOVING, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_RUN, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{from = 2, to = 1, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_MOVING, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{from = 2, to = 0, when = [4] AnimGraphCond.[AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{to = 2, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_ENDING, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_MOVING, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_RUN, value = 0}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},   // a clip played once, 0.1 s from its end: on to the gait, or the idle
+  AnimGraphTransition.{to = 1, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_ENDING, value = 0}, AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_MOVING, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE},
+  AnimGraphTransition.{to = 0, when = [4] AnimGraphCond.[AnimGraphCond.{op = ANIM_GRAPH_ABOVE, param = CHARACTER_P_ENDING, value = 0}, AnimGraphCond.{}, AnimGraphCond.{}, AnimGraphCond.{}], fade = CHARACTER_GRAPH_FADE}
+];
+character_graph :: () -> AnimGraph {
+  return AnimGraph.{params = CHARACTER_PARAMS, speed_param = CHARACTER_P_SPEED, clips = CHARACTER_GRAPH_CLIP[..],
+                    states = CHARACTER_GRAPH_STATE[..], transitions = CHARACTER_GRAPH_TRANSITION[..]};
+}
