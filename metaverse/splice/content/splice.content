@@ -1,5 +1,15 @@
 aethyr.content.v1 splice 2
 reach 30000
+table actors id name:text
+1|Raider 1
+2|Raider 2
+3|Raider 3
+4|Raider 4
+5|Raider 5
+6|Imperial 1
+7|Imperial 2
+8|Imperial 3
+9|Imperial 4
 table areas id name:text x:cm z:cm hx:int hz:int r:int
 1|Dome village|17500|-7500|0|0|630
 2|Gate corridor|17500|-6700|165|300|0

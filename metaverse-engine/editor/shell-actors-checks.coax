@@ -30,7 +30,7 @@ es_test_cell :: (h: [] EsTest, rev: int, out: [] u8) -> string {
 }
 
 #test "a world with actors: a time-of-day control, an Actors list, and picking one asks the page to show it" {
-  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..]; o: [80] u8;
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..]; o: [160] u8;
   es_test_actors(h[..], 5, "dusk", 0); es_test_frames(h[..], 1);
   #assert tr_find(t, "clock") > 0 && tr_find(t, "actors.list") > 0 && tr_find(t, "actor.1") > 0 && tr_find(t, "actor.6") > 0 && tr_find(t, "plan.card") < 0;
   // the time of day: a cell edit of the clock table's row 1; the one it is changes nothing
@@ -57,13 +57,18 @@ es_test_cell :: (h: [] EsTest, rev: int, out: [] u8) -> string {
   #assert tr_find(t, "clock") < 0 && tr_find(t, "actors.list") < 0;
 }
 #test "the shown actor's plan: its fields hold the plan at the time shown, and each change is one cell edit of its row" {
-  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..]; o: [80] u8;
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..]; o: [160] u8;
   es_test_actors(h[..], 5, "dusk", 6); es_test_frames(h[..], 1);
   #assert cast(string) s[0].pdraft[2][0..<s[0].pdraft_n[2]] == "850 -4500, 850 -5700" && cast(string) s[0].pdraft[0][0..<s[0].pdraft_n[0]] == "180" && cast(string) s[0].pdraft[1][0..<s[0].pdraft_n[1]] == "500";
   // what it does: Imperial 1 at dusk is row 62
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "pdo"), 0); es_test_frames(h[..], 1);
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "pdo.3"), 0);
-  #assert es_test_cell(h[..], 5, o[..]) == "plans 62 do guard";
+  #assert es_test_cell(h[..], 5, o[..]) == "plans 62 * 62|6|dusk|guard|850 -4500, 850 -5700|180|500|chase";
+  coaxial_editor_act_done(s); es_test_frames(h[..], 1);
+  // standing takes one point: the route is cut to it in the same edit
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "pdo"), 0); es_test_frames(h[..], 1);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "pdo.0"), 0);
+  #assert es_test_cell(h[..], 5, o[..]) == "plans 62 * 62|6|dusk|stand|850 -4500|180|500|chase";
   coaxial_editor_act_done(s); es_test_frames(h[..], 1);
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "pon"), 0); es_test_frames(h[..], 1);
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "pon.1"), 0);

@@ -51,7 +51,7 @@ kit 125000
 # world's assets and kinds, and the importer's early rules and words), beside E13's land brush: 165,011 bytes measured 2026-11-13 on a
 # Linux build host (the pane is about 22,000 of them); about 6% room.
 # With the actors (#13466: the time-of-day select, the Actors list, the plan's card with its selects and fields, and the plan words of
-# npc-plan.coax): 182,356 bytes measured 2026-11-13 on a Mac; about 7% room.
+# npc-plan.coax, and a new DO sent as its whole row with the route fitted): 184,926 bytes measured 2026-11-13 on a Mac; about 5% room.
 editor-shell 195000
 agents 120000
 # Crew, character creation (#13462): the body, the wardrobe and the document (metaverse-engine/kit/crew-*.coax) on the cel lofts and
@@ -340,5 +340,5 @@ painted 200000
 # With foes that move by plans by time of day (#13466: the plan reader and checks, the plan's goal each frame, the plans and clock
 # tables and the old tables' upgrade, the route and notice marks): 411,690 bytes measured 2026-11-13 on a Mac; the editor's actor
 # lines come next, so about 4% room. With them (the actors, plans and clock in the editor's model, the actor shown and the camera
-# framed on it): 414,544 bytes measured 2026-11-13 on a Mac; about 4% room.
+# framed on it, and the actors table's names): 415,408 bytes measured 2026-11-13 on a Mac; about 3% room.
 splice 430000

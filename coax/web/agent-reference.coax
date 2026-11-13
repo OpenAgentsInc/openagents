@@ -35,6 +35,8 @@ ArLimit :: struct { file: string; name: string; what: string; }
 // its content document, whether it speaks the room wire, the folders whose shapes it uses and its limits.
 ArRealm :: struct {
   page: string; title: string; authority: string; app: string; content: string; wire: bool;
+  code: string;                               // the realm's own Coax: a folder that a save on the dev server rebuilds ("": none listed)
+  world: bool;                                // a world with an ID that the `openagents realm world-*` commands edit
   roots: [AR_OWNERS] string; root_n: int;     // a registry row is the realm's when its codec or one of its files is under one of these
   limits: [16] ArLimit; limit_n: int;
 }
@@ -44,6 +46,7 @@ AR_DIAGNOSTICS :: "proto/verse/engine-diagnostics-v1.json";
 AR_CLAIMS :: "coax/book/capability-claims.json";
 AR_STATUS :: "coax/release-status.json";
 AR_SITE :: "apps/openagents-web/llms.txt";
+AR_COMMANDS :: "apps/openagents-cli/commands.coax";   // the realm command table: its world rows are listed
 AR_PAGES :: [2] string.["splice", "everglade2"];
 
 ar_limit :: (r: [] ArRealm, file: string, name: string, what: string) { r[0].limits[r[0].limit_n] = ArLimit.{file = file, name = name, what = what}; r[0].limit_n += 1; }
@@ -58,10 +61,44 @@ ar_engine_limits :: (r: [] ArRealm) {
   ar_limit(r, "metaverse-engine/agent/drive.coax", "DRV_ENTS", "entities the driver's tree lists in a frame");
   ar_limit(r, "metaverse-engine/ui/trace.coax", "UIT_MAX", "HUD widgets the layout trace keeps in a frame");
 }
+// The rows of the realm command table whose route is the world's, as table lines: `openagents realm USAGE` and the help. How many.
+ar_world_rows :: (o: [] Ar, text: string) -> int {
+  rows := 0; at := 0;
+  while at < text.count {
+    l := ar_line(text, at); at = l.next;
+    if ar_find(l.text, "route=\"world\"") < 0 || ar_find(l.text, "CliCommand.{verb=\"") < 0 { continue; }
+    ar_s(o, "| `openagents realm "); ar_lit(o, ar_field(l.text, "verb=\"")); ar_s(o, " "); ar_lit(o, ar_field(l.text, "usage=\"")); ar_s(o, "` | "); ar_lit(o, ar_field(l.text, "help=\"")); ar_s(o, " |\n");
+    rows += 1;
+  }
+  return rows;
+}
+// Where `what` first stands in s, or -1.
+ar_find :: (s: string, what: string) -> int {
+  for a: 0..<s.count - what.count + 1 { if s[a..<a + what.count] == what { return a; } }
+  return -1;
+}
+// The string literal after `key` in a line, as written (its escapes kept), or "".
+ar_field :: (line: string, key: string) -> string {
+  a := ar_find(line, key);
+  if a < 0 { return ""; }
+  from := a + key.count; i := from;
+  while i < line.count && line[i] != '"' { i += ifx line[i] == '\\' then 2 else 1; }
+  return line[from..<ifx i > line.count then line.count else i];
+}
+// A literal's text as it reads: \" is ", and a | is written so a table keeps its columns.
+ar_lit :: (o: [] Ar, raw: string) {
+  i := 0;
+  while i < raw.count {
+    if raw[i] == '\\' && i + 1 < raw.count { i += 1; }
+    if raw[i] == '|' { ar_s(o, "\\|"); } else { ar_s(o, raw[i..<i + 1]); }
+    i += 1;
+  }
+}
 ar_realm :: (page: string, r: [] ArRealm) -> bool {
   none: ArRealm; r[0] = none;
   if page == "splice" {
     r[0].page = "splice"; r[0].title = "Splice"; r[0].authority = "splice"; r[0].app = "splice"; r[0].content = "metaverse/splice/content/splice.content";
+    r[0].code = "metaverse/splice/"; r[0].world = true;
     ar_root(r, "metaverse/splice/"); ar_root(r, "metaverse-engine/content/"); ar_root(r, "metaverse-engine/editor/edit.coax"); ar_root(r, "metaverse-engine/editor/doc.coax"); ar_root(r, "metaverse-engine/agent/");
     ar_limit(r, "metaverse/splice/layer.coax", "SL_CAP", "entities in the World of colliders, placed pieces among them");
     ar_limit(r, "metaverse/splice/layer.coax", "SL_ITEMS", "placed pieces the edit layer holds");
@@ -289,11 +326,26 @@ ar_write :: (r: [] ArRealm, o: [] Ar, buf: [] u8) -> string {
   ar_s(o, "\n");
 
   // ---- the tools
-  ar_s(o, "## Operations\n\n`coax/web/tool.sh drive web apps/openagents-web /worlds/"); ar_s(o, r[0].page); ar_s(o, " OP...` drives the page in headless Chrome, one operation an argument (coax/start-here.md). The `openagents world` commands and the `world_*` tools are not built yet (#13415); when they are, they are listed here.\n\n");
+  ar_s(o, "## Operations\n\n`coax/web/tool.sh drive web apps/openagents-web /worlds/"); ar_s(o, r[0].page); ar_s(o, " OP...` drives the page in headless Chrome, one operation an argument (coax/start-here.md).\n\n");
   ar_s(o, "| Operation | What it answers |\n| --- | --- |\n");
   ar_s(o, "| `tree`, `layout` | What is in the world and on the HUD, by stable id |\n| `state PATH` | A field of the realm's state |\n| `why ID`, `why caps` | Why a thing isn't seen, reached or working; the limits applied this run |\n| `hit X Y`, `taps` | What receives a tap at a point; tap targets that are small, covered or overlapping |\n| `tap ID`, `type ID TEXT` | A click on a widget; typing into it |\n");
   ar_s(o, ifx r[0].wire then "| `walk-to ID`, `face ID`, `use ABILITY on ID`, `mount ID`, `stop` | A world operation, as a player's input; the room decides the outcome |\n" else "| `walk-to ID` and the other world operations | Refused by name: this realm takes none from a driver yet |\n");
   ar_s(o, "| `clock +MS`, `clock settle`, `clock until PATH` | Steps the agent clock |\n| `screenshot FILE`, `logs`, `perf` | The page as it is, its console, its frame counters |\n\n");
+
+  // ---- the world's edits and the realm's code
+  if r[0].world {
+    kn := fs_read(AR_COMMANDS, buf);
+    if kn < 0 { return AR_COMMANDS; }
+    ar_s(o, "## Editing the world\n\n`openagents realm VERB "); ar_s(o, r[0].authority); ar_s(o, " ...` edits the world on its dev lane (docs/protocol/world-edit-v1.md). Each write is one step that `world-undo` takes back, and the server checks it and answers a refusal in words. `--origin http://127.0.0.1:PORT` sends it to `coax serve` on this computer. The same rows are the `realm_*` MCP tools (`realm_world_plan` is `world-plan`). From `"); ar_s(o, AR_COMMANDS); ar_s(o, "`:\n\n| Command | What it does |\n| --- | --- |\n");
+    rows := ar_world_rows(o, cast(string) buf[0..<kn]);
+    if rows == 0 { return AR_COMMANDS; }
+    ar_s(o, "\n");
+  }
+  if r[0].code.count > 0 {
+    ar_s(o, "## The realm's code\n\nThe realm's code is the Coax under `"); ar_s(o, r[0].code); ar_s(o, "`: the module `"); ar_s(o, r[0].code); ar_s(o, r[0].app); ar_s(o, ".coax` and the files it loads, and its GPU code under `"); ar_s(o, r[0].code); ar_s(o, "gpu/`. ");
+    ar_s(o, "On the dev server (`coax serve`), saving one of them builds the module again and swaps the engine in every open page: the world, its placed things and its tables stay. A build that fails keeps the last good engine running. `coax/bin/coax check "); ar_s(o, r[0].code); ar_s(o, r[0].app); ar_s(o, ".coax` prints the compiler's words for it, and `coax/bin/coax test "); ar_s(o, r[0].code); ar_s(o, r[0].app); ar_s(o, ".coax` runs its checks. ");
+    ar_s(o, "A deployed page takes no code: there, every change is a world command above.\n\n");
+  }
 
   // ---- diagnostics
   ar_s(o, "## Diagnostic codes\n\n`why ID` answers with the first failed link of state, spawned, view, drawn, asset, collider, system (docs/metaverse/diagnostics.md).\n\n| Number | Code | Id | Link | Retry |\n| --- | --- | --- | --- | --- |\n");
@@ -327,6 +379,12 @@ ar_path :: (page: string, out: [] u8) -> string {
   #assert ar_word("aethyr.content.v1 splice 1", 1) == "splice" && ar_word("a b", 2) == "" && ar_starts("table x", "table ") && !ar_starts("tab", "table ");
   l := ar_line("ab\ncd", 0); m := ar_line("ab\ncd", l.next);
   #assert l.text == "ab" && l.next == 3 && m.text == "cd" && m.next == 5;
+}
+#test "a world row of the command table is a line of the reference, its quotes and bars as they read" {
+  o: [1] Ar;
+  text := "x\n  CliCommand.{verb=\"world-route\",route=\"world\",usage=\"ID FOE WHEN \\\"X Z, X Z\\\" [--rev N]\",help=\"a route; dawn|dusk\"},\n  CliCommand.{verb=\"show\",route=\"\",usage=\"SLUG\",help=\"h\"},\n";
+  #assert ar_world_rows(o[..], text) == 1 && ar_text(o[..]) == "| `openagents realm world-route ID FOE WHEN \"X Z, X Z\" [--rev N]` | a route; dawn\\|dusk |\n";
+  #assert ar_field("a=\"b\"", "c=\"") == "" && ar_find("abc", "abcd") == -1 && ar_find("abc", "c") == 2;
 }
 #test "the content section is the document's own tables, with their rows counted and the first row kept" {
   o: [1] Ar; ex: [64] u8; en: [1] int; ft: [64] u8; fn: [1] int;

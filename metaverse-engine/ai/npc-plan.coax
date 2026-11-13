@@ -126,6 +126,44 @@ npl_read :: (id: int, who: int, when: string, act: string, route: string, speed:
   p[0].ok = true;
   return NPL_OK;
 }
+// A route reshaped for DO `act`, so a change of what an NPC does is one edit that holds: the points
+// of `route` (or of `other`, another of its routes, when `route` has none, as "foe N" has none; else
+// 0 0) kept as many as `act` takes. stand, dance and sleep keep the first; guard the first two;
+// wander the first with a 6 metre area; patrol up to 8, and a second point 4 metres east when there
+// is one; follow names NPC 1, or 2 for NPC 1. "" when it does not fit out.
+npl_fit :: (act: int, route: string, other: string, who: int, out: [] u8) -> string #effects(all) {
+  xs: [NPL_POINTS] int; zs: [NPL_POINTS] int;
+  n := npl_points_of(route, xs[..], zs[..]);
+  if n == 0 { n = npl_points_of(other, xs[..], zs[..]); }
+  n = ifx n == 0 then 1 else n;   // no point at all: the place 0 0
+  if act == NPD_FOLLOW { m := ct_put(out, 0, ifx who == 1 then "foe 2" else "foe 1"); return ifx m > out.count then "" else cast(string) out[0..<m]; }
+  if act == NPD_PATROL && n == 1 { xs[1] = xs[0] + 400; zs[1] = zs[0]; n = 2; }
+  keep := ifx act == NPD_PATROL then n else ifx act == NPD_GUARD && n >= 2 then 2 else 1;
+  m := 0;
+  for k: 0..<keep {
+    if k > 0 { m = ct_put(out, m, ", "); }
+    m = ct_put_int(out, m, xs[k]); m = ct_put(out, m, " "); m = ct_put_int(out, m, zs[k]);
+  }
+  if act == NPD_WANDER { m = ct_put(out, m, " 600"); }
+  return ifx m > out.count then "" else cast(string) out[0..<m];
+}
+// The X Z points a route's text holds, up to NPL_POINTS, into xs and zs ("foe N" holds none): how many.
+npl_points_of :: (text: string, xs: [] int, zs: [] int) -> int #effects(all) {
+  n := 0;
+  for k: 0..<ct_parts(text, ',') {
+    q := npl_point(ct_part(text, ',', k));
+    if q.ok && n < NPL_POINTS { xs[n] = q.x; zs[n] = q.z; n += 1; }
+  }
+  return n;
+}
+// A plan's whole row, ID|WHO|WHEN|DO|ROUTE|SPEED|NOTICE|ON ("" when it does not fit out).
+npl_row :: (who: int, when: string, act: string, route: string, speed: int, notice: int, on: string, out: [] u8) -> string #effects(all) {
+  lw := NPL_WHEN; w := npl_word(lw[..], when);
+  n := ct_put_int(out, 0, npl_id(who, w)); n = ct_put(out, n, "|"); n = ct_put_int(out, n, who); n = ct_put(out, n, "|"); n = ct_put(out, n, when);
+  n = ct_put(out, n, "|"); n = ct_put(out, n, act); n = ct_put(out, n, "|"); n = ct_put(out, n, route); n = ct_put(out, n, "|"); n = ct_put_int(out, n, speed);
+  n = ct_put(out, n, "|"); n = ct_put_int(out, n, notice); n = ct_put(out, n, "|"); n = ct_put(out, n, on);
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
 // Why a plan was refused, in words.
 npl_why :: (why: int) -> string #effects(all) {
   if why == NPL_BAD_WHO { return "no such foe: WHO is its number"; }
@@ -204,4 +242,27 @@ npl_why :: (why: int) -> string #effects(all) {
   q: [1] NplPlan; q[0].n = 3; q[0].r = 600; q[0].lead = 4;
   #assert npl_route_read(NPD_FOLLOW, "foe 6", q[..]) == NPL_OK && q[0].n == 0 && q[0].r == 0 && q[0].lead == 6;
   #assert npl_route_read(NPD_STAND, "5 5", q[..]) == NPL_OK && q[0].lead == 0 && q[0].n == 1;
+}
+#test "a route reshaped for what an NPC does next holds, and a plan's row is written whole" {
+  o: [NPL_ROUTE] u8; p: [1] NplPlan; r: [200] u8;
+  two := "850 -4500, 850 -5700";
+  #assert npl_fit(NPD_STAND, two, "", 6, o[..]) == "850 -4500" && npl_fit(NPD_DANCE, two, "", 6, o[..]) == "850 -4500" && npl_fit(NPD_SLEEP, two, "", 6, o[..]) == "850 -4500";
+  #assert npl_fit(NPD_GUARD, two, "", 6, o[..]) == two && npl_fit(NPD_GUARD, "1 2, 3 4, 5 6", "", 6, o[..]) == "1 2, 3 4" && npl_fit(NPD_PATROL, two, "", 6, o[..]) == two;
+  #assert npl_fit(NPD_WANDER, two, "", 6, o[..]) == "850 -4500 600" && npl_fit(NPD_PATROL, "-600 -4800", "", 1, o[..]) == "-600 -4800, -200 -4800";
+  #assert npl_fit(NPD_PATROL, "0 0 600", "", 1, o[..]) == "0 0, 400 0" && npl_fit(NPD_FOLLOW, two, "", 6, o[..]) == "foe 1" && npl_fit(NPD_FOLLOW, two, "", 1, o[..]) == "foe 2";
+  #assert npl_fit(NPD_STAND, "foe 3", two, 6, o[..]) == "850 -4500" && npl_fit(NPD_STAND, "foe 3", "foe 2", 6, o[..]) == "0 0" && npl_fit(NPD_STAND, "", "", 6, o[..]) == "0 0";
+  nine := "1 1, 2 2, 3 3, 4 4, 5 5, 6 6, 7 7, 8 8, 9 9";
+  #assert npl_fit(NPD_PATROL, nine, "", 6, o[..]) == "1 1, 2 2, 3 3, 4 4, 5 5, 6 6, 7 7, 8 8";
+  small: [6] u8;
+  #assert npl_fit(NPD_PATROL, two, "", 6, small[..]) == "" && npl_fit(NPD_FOLLOW, two, "", 6, small[0..<4]) == "";
+  for a: 0..<NPL_DOS {
+    f := npl_fit(a, two, "", 6, o[..]); dl := NPL_DO; ol := NPL_ON;
+    #assert npl_read(62, 6, "dusk", dl[a], f, 100, 500, ol[0], 9, p[..]) == NPL_OK;
+  }
+  #assert npl_row(6, "dusk", "patrol", two, 180, 500, "chase", r[..]) == "62|6|dusk|patrol|850 -4500, 850 -5700|180|500|chase";
+  #assert npl_row(9, "night", "stand", "0 0", 0, 3000, "ignore", r[..]) == "93|9|night|stand|0 0|0|3000|ignore" && npl_row(6, "dusk", "patrol", two, 180, 500, "chase", r[0..<20]) == "";
+  #assert npl_row(9, "night", "stand", "0 0", 0, 3000, "ignore", r[0..<34]) == "93|9|night|stand|0 0|0|3000|ignore";
+  // exactly as long as out: it fits; no point at all: the place 0 0
+  #assert npl_fit(NPD_FOLLOW, two, "", 6, o[0..<5]) == "foe 1" && npl_fit(NPD_STAND, two, "", 6, o[0..<9]) == "850 -4500" && npl_fit(NPD_PATROL, "", "x", 6, o[..]) == "0 0, 400 0";
+  #assert npl_fit(NPD_GUARD, "5 5", "", 6, o[..]) == "5 5" && npl_fit(NPD_PATROL, "foe 2", "7 7, 8 8", 6, o[..]) == "7 7, 8 8" && npl_fit(NPD_PATROL, "7 7, x, 8 8", "", 6, o[..]) == "7 7, 8 8";
 }

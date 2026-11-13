@@ -88,7 +88,7 @@ es_plan_value :: (m: [] EdModel, p: int, c: int, out: [] u8) -> string {
   if c == 1 { return cast(string) out[0..<ct_put_int(out, 0, m[0].p_notice[p])]; }
   return cast(string) m[0].p_route[p][0..<m[0].p_route_n[p]];
 }
-// One cell of the selected actor's plan at the time shown, as an edit of the plans table.
+// One cell of the selected actor's plan at the time shown (or "*", its whole row), as an edit of the plans table.
 es_plan_cell :: (s: [] EdShell, col: string, value: string) {
   m := s[0].model[..];
   p := es_plan_shown(m);
@@ -126,7 +126,13 @@ es_actors_click :: (s: [] EdShell, id: string) -> bool {
   ld := NPL_DO; lo := NPL_ON; p := es_plan_shown(m);
   if es_index(id, "pdo.") >= 0 && es_index(id, "pdo.") < NPL_DOS {
     k := es_index(id, "pdo.");
-    if p >= 0 && cast(string) m[0].p_do[p][0..<m[0].p_do_n[p]] != ld[k] { es_plan_cell(s, "do", ld[k]); }
+    if p >= 0 && cast(string) m[0].p_do[p][0..<m[0].p_do_n[p]] != ld[k] {
+      // a new DO takes a route of its own shape: the whole row, with the route reshaped (npc-plan.coax npl_fit), is one edit
+      ro: [EM_ROUTE] u8; row: [EM_VALUE * 4] u8;
+      route := npl_fit(k, cast(string) m[0].p_route[p][0..<m[0].p_route_n[p]], "", m[0].asel, ro[..]);
+      text := npl_row(m[0].asel, es_plan_when(m), ld[k], route, m[0].p_speed[p], m[0].p_notice[p], cast(string) m[0].p_on[p][0..<m[0].p_on_n[p]], row[..]);
+      if text.count > 0 { es_plan_cell(s, "*", text); }
+    }
     return true;
   }
   if es_index(id, "pon.") >= 0 && es_index(id, "pon.") < NPL_ONS {

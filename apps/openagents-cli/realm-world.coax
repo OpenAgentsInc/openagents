@@ -13,9 +13,15 @@
 //   realm world-publish ID now|next --yes
 //   realm world-why ID THING             why a thing isn't seen, reached or working (the page's own answer)
 //   realm world-open ID                  the page that edits it
+//   realm world-foes ID                  the actors and their plans by time of day (#13466)
+//   realm world-plan ID FOE WHEN DO, world-route ID FOE WHEN "X Z, X Z", world-time ID WHEN
+//                                        an actor's plan, its route, the editor's time of day: each a
+//                                        cell edit of the world's plans or clock table (one undo step;
+//                                        metaverse-engine/ai/npc-plan.coax holds what a plan takes)
 // Places are whole centimetres, as the wire carries them. --origin http://127.0.0.1:PORT sends
 // them to `coax serve`, which answers the same routes on this computer.
 #load "../../metaverse-engine/editor/op-result.coax";
+#load "../../metaverse-engine/ai/npc-plan.coax";   // an actor's plan: its words, a route reshaped, its row (#13466)
 
 RW_ANSWER :: 400000;     // a state with its document
 RW_LINES :: 65536;       // an apply file
@@ -95,8 +101,87 @@ rw_edits :: (a: [] Args, verb: string, e: [] WorldEdit) -> int {
   else if verb == "world-turn" { e[0] = WorldEdit.{op = WE_ROTATE, id = id, yaw = forge_turn(args_whole_signed(p4))}; }
   else if verb == "world-set" { e[0] = WorldEdit.{op = WE_SET, id = id, col = we_col(p4), v = rw_cm(p5)}; }
   else if verb == "world-remove" { e[0] = WorldEdit.{op = WE_DESPAWN, id = id}; }
+  else if verb == "world-time" { e[0] = rw_cell("clock", 1, "when", p3); }
   else { return 0; }
   return ifx we_valid(e[0]) then 1 else -1;
+}
+// A cell edit of a content table: TABLE's row ROW, column COL ("*": the whole row) set to TEXT.
+rw_cell :: (table: string, row: int, col: string, text: string) -> WorldEdit #effects(all) {
+  e := WorldEdit.{ok = true, op = WE_CELL, id = row};
+  e.table_n = ct_copy(e.table[..], table); e.name_n = ct_copy(e.name[..], col); e.text_n = ct_copy(e.text[..], text);
+  return e;
+}
+// Table `name` of a content document's text: its header line and rows ("" when it has none).
+rw_table :: (content: string, name: string) -> string #effects(all) {
+  from := -1; to := content.count; at := 0;
+  for k: 0..<ct_parts(content, '\n') {
+    line := ct_part(content, '\n', k);
+    if ct_part(line, ' ', 0) == "table" {
+      if from >= 0 { to = at; break; }
+      if ct_part(line, ' ', 1) == name { from = at; }
+    }
+    at += line.count + 1;
+  }
+  return ifx from < 0 then "" else content[from..<ifx to > content.count then content.count else to];
+}
+// The row with this ID in a table's text, or "".
+rw_row :: (table: string, id: int) -> string #effects(all) {
+  for k: 1..<ct_parts(table, '\n') {
+    line := ct_part(table, '\n', k);
+    v := ct_num(ct_part(line, '|', 0));
+    if v.ok && v.v == id { return line; }
+  }
+  return "";
+}
+// world-plan and world-route: actor FOE's plan at WHEN, as it is in the world's dev tables, with what
+// the arguments change, written as its whole row: one edit that holds, since a new DO takes a route of
+// its own shape (npl_fit). 1, or 0 when the world has no such plan (the words say so), or -1.
+rw_plan_edit :: (a: [] Args, verb: string, content: string, e: [] WorldEdit, words: [] u8) -> int {
+  foe := cli_count(positional(a, 3), 1, NPL_WHO_MAX); when := positional(a, 4); arg := positional(a, 5);
+  lw := NPL_WHEN; w := npl_word(lw[..], when);
+  if foe < 1 || w < 0 || arg.count == 0 { return -1; }
+  row := rw_row(rw_table(content, "plans"), npl_id(foe, w));
+  if ct_parts(row, '|') != 8 {
+    n := forge_put(words, 0, "the world has no plan for actor "); n = forge_put_int(words, n, foe); n = forge_put(words, n, " at "); n = forge_put(words, n, when);
+    n = forge_put(words, n, " (realm world-foes ID lists its actors and their plans)");
+    return ifx n < 0 then -1 else -n;
+  }
+  ld := NPL_DO;
+  was := ct_part(row, '|', 3); route := ct_part(row, '|', 4);
+  act := ifx verb == "world-plan" then arg else was;
+  given := ifx verb == "world-route" then arg else rc_option(a, verb, "--route", "");
+  fit: [NPL_ROUTE] u8;
+  if given.count > 0 { route = given; }
+  else if act != was { route = npl_fit(npl_word(ld[..], act), route, "", foe, fit[..]); }
+  speed := ct_num(rc_option(a, verb, "--speed", ct_part(row, '|', 5))).v;
+  notice := ct_num(rc_option(a, verb, "--notice", ct_part(row, '|', 6))).v;
+  on := rc_option(a, verb, "--on", ct_part(row, '|', 7));
+  out: [WE_TEXT] u8;
+  text := npl_row(foe, when, act, route, speed, notice, on, out[..]);
+  if text.count == 0 { return -1; }
+  e[0] = rw_cell("plans", npl_id(foe, w), "*", text);
+  return ifx we_valid(e[0]) then 1 else -1;
+}
+#test "an actor's plan from the command line is its whole row, its route fitted to what it now does" {
+  a: [1] Args; e: [1] WorldEdit; o: [WE_LINE] u8; words: [200] u8;
+  content := "aethyr.content.v1 splice 2\nreach 30000\ntable clock id when:text\n1|story\ntable plans id who:int when:text do:text route:text speed:int notice:int on:text\n10|1|dawn|dance|-600 -4800|180|0|chase\n62|6|dusk|patrol|850 -4500, 850 -5700|180|500|chase\ntable templates id name:text parts:text\n";
+  #assert rw_table(content, "clock") == "table clock id when:text\n1|story\n" && rw_table(content, "nope") == "" && rw_row(rw_table(content, "plans"), 62) == "62|6|dusk|patrol|850 -4500, 850 -5700|180|500|chase";
+  for s: [6] string.["realm","world-plan","splice","6","dusk","guard"] { #assert args_add(a[..],s); }
+  #assert rw_plan_edit(a[..], "world-plan", content, e[..], words[..]) == 1 && we_write(e[0], o[..]) == "{\"op\":\"cell\",\"table\":\"plans\",\"row\":62,\"col\":\"*\",\"v\":\"62|6|dusk|guard|850 -4500, 850 -5700|180|500|chase\"}";
+  a[0] = Args.{}; for s: [10] string.["realm","world-plan","splice","1","dawn","sleep","--notice","300","--on","call"] { #assert args_add(a[..],s); }
+  #assert rw_plan_edit(a[..], "world-plan", content, e[..], words[..]) == 1 && cast(string) e[0].text[0..<e[0].text_n] == "10|1|dawn|sleep|-600 -4800|180|300|call";
+  a[0] = Args.{}; for s: [6] string.["realm","world-plan","splice","1","dawn","patrol"] { #assert args_add(a[..],s); }
+  #assert rw_plan_edit(a[..], "world-plan", content, e[..], words[..]) == 1 && cast(string) e[0].text[0..<e[0].text_n] == "10|1|dawn|patrol|-600 -4800, -200 -4800|180|0|chase";
+  a[0] = Args.{}; for s: [6] string.["realm","world-route","splice","6","dusk","0 -4500, 1200 -4500, 0 -4500"] { #assert args_add(a[..],s); }
+  #assert rw_plan_edit(a[..], "world-route", content, e[..], words[..]) == 1 && cast(string) e[0].text[0..<e[0].text_n] == "62|6|dusk|patrol|0 -4500, 1200 -4500, 0 -4500|180|500|chase";
+  a[0] = Args.{}; for s: [6] string.["realm","world-route","splice","6","dawn","0 0, 1 1"] { #assert args_add(a[..],s); }
+  n := rw_plan_edit(a[..], "world-route", content, e[..], words[..]);
+  #assert n < 0 && cast(string) words[0..<-n] == "the world has no plan for actor 6 at dawn (realm world-foes ID lists its actors and their plans)";
+  a[0] = Args.{}; for s: [4] string.["realm","world-time","splice","dusk"] { #assert args_add(a[..],s); }
+  #assert rw_edits(a[..], "world-time", e[..]) == 1 && we_write(e[0], o[..]) == "{\"op\":\"cell\",\"table\":\"clock\",\"row\":1,\"col\":\"when\",\"v\":\"dusk\"}";
+  // the command line's words are the plan's
+  lw := NPL_WHEN; ld := NPL_DO; lo := NPL_ON;
+  for w, k: CLI_DAYTIME { #assert lw[k] == w; } for w, k: CLI_PLAN_DO { #assert ld[k] == w; } for w, k: CLI_PLAN_ON { #assert lo[k] == w; }
 }
 // A whole number with an optional minus ("-45"); 0 for what is none (the row's kind refused that already).
 args_whole_signed :: (s: string) -> int #effects(all) {
@@ -241,6 +326,13 @@ rw_write :: (a: [] Args, r: [] Rep, profile: string, verb: string, slug: string,
   c := REALM_COMMANDS[rc_find(verb)];
   words := OpWords.{verb = verb, realm = slug, effect = c.effect, page = rw_page(slug, w[0].page[..]), key = rc_option(a, verb, "--key", "")};
   n := rw_edits(a, verb, w[0].e[..]);
+  if verb == "world-plan" || verb == "world-route" {
+    // the plan as the dev tables hold it now, changed by the arguments
+    cres := api_call(a, profile, "GET", rw_path(slug, "/content?lane=dev", w[0].path[..]), "", w[0].content[..]);
+    if !api_ok(cres) { words.words = api_why(cast(string) w[0].content[0..<cres.n], w[0].words[..]); return rw_answer(r, w, or_of_status(ifx cres.error == HTTP_OK then cres.status else 0, 0), words); }
+    n = rw_plan_edit(a, verb, cast(string) w[0].content[0..<cres.n], w[0].e[..], w[0].words[..]);
+    if n < -1 { words.words = cast(string) w[0].words[0..<-n]; return rw_answer(r, w, OpResult.{state = OR_REFUSED, code = ORC_BAD_REQUEST}, words); }
+  }
   if verb == "world-apply" {
     file := positional(a, 3);
     fn := fs_read(file, w[0].file[..]);
@@ -292,6 +384,36 @@ rw_write :: (a: [] Args, r: [] Rep, profile: string, verb: string, slug: string,
 }
 wr_is_publish :: (what: int) -> bool #effects(all) { return what == WB_PUBLISH_NOW || what == WB_PUBLISH_NEXT; }
 
+// realm world-foes ID: the actors, their plans by time of day and the editor's time of day, from the
+// lane's content tables, and the places a route may name.
+rw_foes :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RwWork) -> int {
+  lane := rc_option(a, "world-foes", "--lane", "dev");
+  cres := api_call(a, profile, "GET", rw_path(slug, ifx lane == "dev" then "/content?lane=dev" else "/content", w[0].path[..]), "", w[0].content[..]);
+  if !api_ok(cres) { return api_fail(r, cres, cast(string) w[0].content[0..<cres.n]); }
+  content := cast(string) w[0].content[0..<cres.n];
+  plans := rw_table(content, "plans"); actors := rw_table(content, "actors"); clock := rw_row(rw_table(content, "clock"), 1);
+  if plans.count == 0 { return fail(r, EXIT_FAIL, "this world keeps no plans: its content has no plans table"); }
+  rep_str(r, "world", slug); rep_str(r, "lane", lane); rep_str(r, "time", ct_part(clock, '|', 1));
+  if r[0].json { rep_str(r, "actors", actors); rep_str(r, "plans", plans); rep_str(r, "content", content); return rep_done(r, EXIT_OK); }
+  code := rep_done(r, EXIT_OK);
+  print("time of day in the editor: % (story: the run's own clock; realm world-time sets it)\n", ifx clock.count > 0 then ct_part(clock, '|', 1) else "story");
+  print("actors: FOE NAME, then a plan a line: WHEN DO SPEED NOTICE ON ROUTE (centimetres; speed a second)\n");
+  for k: 1..<ct_parts(actors, '\n') {
+    line := ct_part(actors, '\n', k);
+    who := ct_num(ct_part(line, '|', 0));
+    if !who.ok { continue; }
+    print("  % %\n", who.v, ct_part(line, '|', 1));
+    for j: 1..<ct_parts(plans, '\n') {
+      p := ct_part(plans, '\n', j);
+      if ct_num(ct_part(p, '|', 1)).v != who.v || ct_parts(p, '|') != 8 { continue; }
+      print("    % % % % % %\n", ct_part(p, '|', 2), ct_part(p, '|', 3), ct_part(p, '|', 5), ct_part(p, '|', 6), ct_part(p, '|', 7), ct_part(p, '|', 4));
+    }
+  }
+  print("places a route may name (areas and landmarks: ID NAME X Z ...):\n%", rw_table(content, "areas"));
+  print("%", rw_table(content, "landmarks"));
+  print("routes: stand, dance, sleep \"X Z\"; guard the post, then where it looks; patrol 2 to 8 points (a loop ends where it starts); wander \"X Z R\"; follow \"foe N\". The world refuses a route it cannot hold, in words.\n");
+  return code;
+}
 // realm world-why ID THING: the page's own answer (metaverse-engine/agent/why.coax), asked of the
 // world's page in headless Chrome.
 rw_why :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RwWork) -> int {
@@ -329,6 +451,7 @@ rw_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   w := [1] RwWork.[RwWork.{}];
   if verb == "world" { return rw_show(a, r, profile, slug, w[..]); }
   if verb == "world-why" { return rw_why(a, r, profile, slug, w[..]); }
+  if verb == "world-foes" { return rw_foes(a, r, profile, slug, w[..]); }
   if verb == "world-open" {
     ob: [300] u8; ub: [500] u8;
     n := forge_put(ub[..],0,acct_origin(a, profile, ob[..])); n = forge_put(ub[..],n,rw_page(slug, w[0].page[..])); n = forge_put(ub[..],n,"?edit");

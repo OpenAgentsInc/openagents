@@ -128,7 +128,7 @@ Every limit is shown here and none is hidden. Past one, the engine refuses or dr
 
 ## Operations
 
-`coax/web/tool.sh drive web apps/openagents-web /worlds/everglade2 OP...` drives the page in headless Chrome, one operation an argument (coax/start-here.md). The `openagents world` commands and the `world_*` tools are not built yet (#13415); when they are, they are listed here.
+`coax/web/tool.sh drive web apps/openagents-web /worlds/everglade2 OP...` drives the page in headless Chrome, one operation an argument (coax/start-here.md).
 
 | Operation | What it answers |
 | --- | --- |
@@ -193,4 +193,4 @@ table ability id name:text
 128|Rage
 ```
 
-reference sha256: f9c52cf0915a974a6cf583c5ca8cc881e4b815c2ccafce4e6e19c90af34da962
+reference sha256: 3d4e379dd1d45293139f7fa75bba074820426e3b88824c8a456d03d8a6f7cbe1

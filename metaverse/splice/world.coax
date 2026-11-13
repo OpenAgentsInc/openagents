@@ -536,14 +536,13 @@ spw_model :: (g: [] SpGame, p: [] SpwPage) -> string {
   p[0].model_rev += 1;
   return cast(string) p[0].model[0..<p[0].model_n];
 }
-// The foes' plans for the shell (#13466): the plans and clock tables, the clock, each foe by name, each
+// The foes' plans for the shell (#13466): the plans and clock tables, the clock, each foe by its name in the actors table, each
 // plan as its row holds it, and the selected foe.
 spw_model_plans :: (g: [] SpGame, p: [] SpwPage, tables: string, out: [] u8, at: int) -> int {
   c := g[0].c[..]; words := SC_CLOCK_WORD;
   n := em_plans(out, at, SPW_PLANS);
   n = em_clock(out, n, SPW_CLOCK, words[c[0].clock + 1]);
-  nm: [EM_NAME] u8;
-  for i: 0..<FOES { n = em_actor(out, n, i + 1, spw_foe_name(i, nm[..])); }
+  for i: 0..<FOES { n = em_actor(out, n, i + 1, cast(string) c[0].actor[i][0..<c[0].actor_n[i]]); }
   inside := false;
   for k: 0..<ct_parts(tables, '\n') {
     line := ct_part(tables, '\n', k);
@@ -554,12 +553,6 @@ spw_model_plans :: (g: [] SpGame, p: [] SpwPage, tables: string, out: [] u8, at:
   }
   if p[0].actor > 0 { n = em_asel(out, n, p[0].actor); }
   return n;
-}
-// A foe's name: Raider 1 to 5, then Imperial 1 to 4.
-spw_foe_name :: (i: int, out: [] u8) -> string {
-  n := ct_put(out, 0, ifx i < F_RAIDERS then "Raider " else "Imperial ");
-  n = ct_put_int(out, n, ifx i < F_RAIDERS then i + 1 else i - F_RAIDERS + 1);
-  return ifx n > out.count then "" else cast(string) out[0..<n];
 }
 // The shell selects a foe by its number (1 to FOES; 0 or any other: none). The game draws its route
 // and notice range, and a foe stands in the mine: a page elsewhere goes there.

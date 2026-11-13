@@ -61,7 +61,7 @@ mcp_schema_kind :: (o: [] Jo, kind: string) {
   jo_obj(o);
   b := rc_bound(kind);
   if kind == "bool" { jo_key(o, "type"); jo_str(o, "boolean"); }
-  else if kind == "id" || kind == "waitms" || kind == "cm" || kind == "value" || kind == "kind" {
+  else if kind == "id" || kind == "waitms" || kind == "cm" || kind == "value" || kind == "kind" || kind == "foe" || kind == "speed" || kind == "notice" {
     jo_key(o, "type"); jo_str(o, "integer"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
   } else if kind == "seconds" {
     jo_key(o, "type"); jo_str(o, "integer"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
@@ -75,6 +75,12 @@ mcp_schema_kind :: (o: [] Jo, kind: string) {
     jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); for t: CLI_WORLD_COLUMNS { jo_str(o, t); } jo_end(o);
   } else if kind == "when" {
     jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); jo_str(o, "now"); jo_str(o, "next"); jo_end(o);
+  } else if kind == "daytime" || kind == "clock" {
+    jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); if kind == "clock" { jo_str(o, "story"); } for w: CLI_DAYTIME { jo_str(o, w); } jo_end(o);
+  } else if kind == "act" {
+    jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); for w: CLI_PLAN_DO { jo_str(o, w); } jo_end(o);
+  } else if kind == "onnotice" {
+    jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); for w: CLI_PLAN_ON { jo_str(o, w); } jo_end(o);
   } else if kind == "lane" {
     jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); jo_str(o, "dev"); jo_str(o, "live"); jo_end(o);
   } else if kind == "onoff" {

@@ -9,7 +9,7 @@ The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax nam
 - realm: splice
 - page: `/worlds/splice` (module `splice`, source `apps/openagents-web/realms/splice/`)
 - wire: none. The page decides the simulation; there is no room to speak to
-- content: `metaverse/splice/content/splice.content`, revision 2, sha256 `e69ebcdc5fe960d660ead7993b60757d234041ac42cf032bbb172e0b32b2061c`
+- content: `metaverse/splice/content/splice.content`, revision 2, sha256 `2eef988dbe082d5113ff53dcc0cf2ac9d8ed5b6f8507b7e2087233d2aabf3831`
 - diagnostics: `engine-diagnostics-v1`, 17 codes, sha256 `55aa5a9b50ff02e1256e64909abf901a29f9c98a1575ae6b669281410b69c31c` (`proto/verse/engine-diagnostics-v1.json`)
 - language: Coax; the compiler's version is in `coax/release-status.json` and what it claims to do in `coax/book/capability-claims.json`
 - reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference
@@ -45,6 +45,7 @@ From `metaverse-engine/editor/authority.coax` (INVARIANTS.md, "Authoring never w
 
 | Table | Columns | Rows |
 | --- | --- | --- |
+| `actors` | `id name:text` | 9 |
 | `areas` | `id name:text x:cm z:cm hx:int hz:int r:int` | 4 |
 | `clock` | `id when:text` | 1 |
 | `kept_clear` | `id name:text x:cm z:cm hx:int hz:int r:int` | 29 |
@@ -95,7 +96,7 @@ Every limit is shown here and none is hidden. Past one, the engine refuses or dr
 
 ## Operations
 
-`coax/web/tool.sh drive web apps/openagents-web /worlds/splice OP...` drives the page in headless Chrome, one operation an argument (coax/start-here.md). The `openagents world` commands and the `world_*` tools are not built yet (#13415); when they are, they are listed here.
+`coax/web/tool.sh drive web apps/openagents-web /worlds/splice OP...` drives the page in headless Chrome, one operation an argument (coax/start-here.md).
 
 | Operation | What it answers |
 | --- | --- |
@@ -107,6 +108,34 @@ Every limit is shown here and none is hidden. Past one, the engine refuses or dr
 | `walk-to ID` and the other world operations | Refused by name: this realm takes none from a driver yet |
 | `clock +MS`, `clock settle`, `clock until PATH` | Steps the agent clock |
 | `screenshot FILE`, `logs`, `perf` | The page as it is, its console, its frame counters |
+
+## Editing the world
+
+`openagents realm VERB splice ...` edits the world on its dev lane (docs/protocol/world-edit-v1.md). Each write is one step that `world-undo` takes back, and the server checks it and answers a refusal in words. `--origin http://127.0.0.1:PORT` sends it to `coax serve` on this computer. The same rows are the `realm_*` MCP tools (`realm_world_plan` is `world-plan`). From `apps/openagents-cli/commands.coax`:
+
+| Command | What it does |
+| --- | --- |
+| `openagents realm world ID [--lane dev\|live]` | a world with an ID, as you need it to aim an edit: its revision and build, its placed things by number, its content tables (pieces, landmarks, kept-clear zones) and its reference page |
+| `openagents realm world-place ID KIND X Z [--yaw DEG] [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | place a thing of content ID KIND at X Z centimetres; the answer has its number, the new revision, and any refusal in words |
+| `openagents realm world-move ID N X Z [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | move placed thing N to X Z centimetres |
+| `openagents realm world-turn ID N DEGREES [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | turn placed thing N to DEGREES |
+| `openagents realm world-set ID N COLUMN VALUE [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | set a column of thing N: x, y, z in centimetres, yaw in degrees, or another column the world takes |
+| `openagents realm world-remove ID N [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | remove placed thing N (world-undo brings it back) |
+| `openagents realm world-undo ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | take back the newest step that stands, whoever made it |
+| `openagents realm world-redo ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | take the step last undone again |
+| `openagents realm world-original ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | remove every placed thing: the designed world again (world-undo brings them back) |
+| `openagents realm world-apply ID FILE.jsonl [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | apply world.edit.v1 edits, a JSON object a line, as one batch: all are saved or none |
+| `openagents realm world-publish ID now\|next [--rev N] [--key K] [--yes]` | make the dev revision live: for open sessions now, or from each person's next session |
+| `openagents realm world-why ID THING` | why a thing (you, piece-N, ...) is not seen, reached or working: the first link that failed, from the world's page |
+| `openagents realm world-open ID` | the address of the page that edits the world |
+| `openagents realm world-foes ID [--lane dev\|live]` | the world's actors by number and name, each one's plan at dawn, day, dusk and night (what it does, its route, speed, notice range and what it does on noticing), the editor's time of day, and the places a route may name |
+| `openagents realm world-plan ID FOE WHEN DO [--route "X Z, X Z"] [--speed CM/S] [--notice CM] [--on chase\|call\|flee\|ignore] [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | set what actor FOE does at WHEN (dawn, day, dusk, night): stand, dance, sleep, guard, patrol, wander or follow; without --route its route is cut or grown to fit; one edit, one undo step |
+| `openagents realm world-route ID FOE WHEN "X Z, X Z" [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | set actor FOE's route at WHEN: X Z points in centimetres joined by commas (patrol 2 to 8, a loop ends where it starts; guard the post then where it looks; wander "X Z R"; follow "foe N") |
+| `openagents realm world-time ID story\|dawn\|day\|dusk\|night [--rev N] [--dry-run] [--key K] [--shot OUT.png]` | the editor's time of day: the actors keep it and the light is it (story: the run's own clock); play is not changed |
+
+## The realm's code
+
+The realm's code is the Coax under `metaverse/splice/`: the module `metaverse/splice/splice.coax` and the files it loads, and its GPU code under `metaverse/splice/gpu/`. On the dev server (`coax serve`), saving one of them builds the module again and swaps the engine in every open page: the world, its placed things and its tables stay. A build that fails keeps the last good engine running. `coax/bin/coax check metaverse/splice/splice.coax` prints the compiler's words for it, and `coax/bin/coax test metaverse/splice/splice.coax` runs its checks. A deployed page takes no code: there, every change is a world command above.
 
 ## Diagnostic codes
 
@@ -156,8 +185,8 @@ passed: state spawned
 A content row, under its table's line:
 
 ```text
-table areas id name:text x:cm z:cm hx:int hz:int r:int
-1|Dome village|17500|-7500|0|0|630
+table actors id name:text
+1|Raider 1
 ```
 
-reference sha256: cee7aec1b23c7fc987fc4872433e1ac2e1d1d1f1f4321d23aa0714feb4a1981a
+reference sha256: 9ea8a01a80e3a0305ce876579197d451c6b7579a71913da9384d15727093567c
