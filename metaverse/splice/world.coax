@@ -191,6 +191,7 @@ spw_why :: (g: [] SpGame, r: SpwEdit, out: [] u8) -> string {
   if r.why == SPE_CELL { return "no such table, row or column, or a value that column does not take"; }
   if r.why == SPE_RULES { return "the tables' rules do not hold with that value"; }
   if r.why == SPE_NO_MESH { return "the world's pack has no mesh of that name: import it first"; }
+  if r.why == SPE_PLAN { return "a foe's plan or the editor's clock does not hold"; }
   if r.why == SPE_FOOT { return "a pack mesh's footprint is its bounds: hx, hz and top are not this mesh's at that size"; }
   return sl_why(g, r.v, out);
 }
@@ -207,11 +208,13 @@ SPE_FOOT :: 28;      // a row's footprint is not its pack mesh's bounds at the r
 // A world's content tables as they are edited: the document on the edit log
 // (metaverse-engine/editor/content-edit.coax), and its text as it was last opened or changed.
 // The tables keep the revision they shipped with: an edit changes cells, never what a build reads.
-SpwTables :: struct { d: [1] ForgeDoc; text: [SPW_TABLES] u8; text_n: int; open: bool; changed: bool; }
+SpwTables :: struct { d: [1] ForgeDoc; text: [SPW_TABLES] u8; text_n: int; open: bool; changed: bool; why: [240] u8; why_n: int; }
+SPE_PLAN :: 29;      // a foe's plan or the clock does not hold: the words are the tables' (SpwTables.why)
 // Opens the tables from text ("": the ones the build shipped with) into the edit log and the game.
 // False, and nothing changed, for anything but Splice's content at this build's revision.
 spw_tables_open :: (g: [] SpGame, ct: [] SpwTables, text: string) -> bool {
-  from := ifx text.count == 0 then SC_SHIPPED else text;
+  up: [SPW_TABLES] u8;
+  from := sc_upgrade(ifx text.count == 0 then SC_SHIPPED else text, up[..]);   // tables saved before the plans and the clock get the shipped ones
   read: [1] SpContent; shipped: [1] SpContent;
   if from.count > SPW_TABLES || !sc_load(read[..], from) || !sc_load(shipped[..], SC_SHIPPED) || read[0].rev != shipped[0].rev { return false; }
   if !forge_content_open(ct[0].d[..], from) { return false; }
@@ -247,7 +250,17 @@ spw_cell :: (g: [] SpGame, ct: [] SpwTables, e: WorldEdit) -> SpwEdit {
   made := forge_content_text(ct[0].d[..], g[0].c[0].rev, out[..]);
   if made.count == 0 || !sc_load(read[..], made) {
     _ := we_content_apply(ct[0].d[..], a.inv);
-    return spw_no(SPE_RULES);
+    // a plan's refusal says which plan and why, in the tables' own words (content.coax sc_plans_words)
+    ct[0].why_n = sc_plans_words(made, ct[0].why[..]).count;
+    return spw_no(ifx ct[0].why_n > 0 then SPE_PLAN else SPE_RULES);
+  }
+  // and no point of a foe's route stands inside a wall
+  wall := spw_plan_wall(g, read[..]);
+  if wall > 0 {
+    _ := we_content_apply(ct[0].d[..], a.inv);
+    n := ct_put(ct[0].why[..], 0, "plan "); n = ct_put_int(ct[0].why[..], n, wall); n = ct_put(ct[0].why[..], n, ": a point of the route stands inside a wall; put it where a foe can stand");
+    ct[0].why_n = ifx n > ct[0].why.count then 0 else n;
+    return spw_no(SPE_PLAN);
   }
   edited := e; kinds := cast(string) edited.table[0..<edited.table_n] == SPW_KINDS;
   if g[0].imp[0].checked && kinds {
@@ -267,6 +280,18 @@ spw_cell :: (g: [] SpGame, ct: [] SpwTables, e: WorldEdit) -> SpwEdit {
   ct[0].text_n = ct_copy(ct[0].text[..], made); ct[0].changed = true;
   g[0].layer[0].rev += 1;
   return SpwEdit.{ok = true, id = e.id, did = e, inv = a.inv};
+}
+// The ID of the first plan with a point of its route inside a wall (a collider of the designed world
+// or a placed piece), or 0. A wander's area may hold walls: its middle is held, not its edge.
+spw_plan_wall :: (g: [] SpGame, c: [] SpContent) -> int {
+  for k: 0..<SC_PLAN_MAX {
+    p := c[0].plans[k];
+    for i: 0..<p.n {
+      x := mp_m(p.x[i]); z := mp_m(p.z[i]); q := sl_push(g, x, z, 0.3, true);
+      if abs(q.x - x) > 0.01 || abs(q.z - z) > 0.01 { return npl_id(p.who, p.when); }
+    }
+  }
+  return 0;
 }
 // An edit of either kind: a cell on the tables, anything else on the layer.
 spw_take :: (g: [] SpGame, ct: [] SpwTables, e: WorldEdit, sure: bool) -> SpwEdit {
@@ -324,7 +349,8 @@ spw_batch :: (g: [] SpGame, x: [] SpwWork, doc: string, body: string, fenced: bo
     r := spw_take(g, x[0].ct[..], x[0].e[i], false);
     if !r.ok {
       b.status = SPB_REFUSED; b.at = i;
-      wb: [200] u8; b.why = ct_put(out_why, 0, spw_why(g, r, wb[..]));
+      wb: [200] u8;
+      b.why = ct_put(out_why, 0, ifx r.why == SPE_PLAN then cast(string) x[0].ct[0].why[0..<x[0].ct[0].why_n] else spw_why(g, r, wb[..]));
       return b;
     }
     x[0].did[i] = r.did; x[0].inv[n - 1 - i] = r.inv;

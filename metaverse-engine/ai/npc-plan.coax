@@ -1,0 +1,207 @@
+// How an NPC moves at each time of day (GitHub #13466): a plan per NPC and per time of day, kept as
+// rows of a realm's content tables and edited like any cell (world.edit.v1 `cell`), so undo, the
+// revision fence and the server's checks hold for it as for every edit. This file is the plan's
+// words, its route's one codec and its checks; metaverse-engine/ai/plan.coax turns a plan into where
+// the NPC goes each frame. Rule-based: no model is asked at run time.
+//
+// A plan is the row
+//   ID|WHO|WHEN|DO|ROUTE|SPEED|NOTICE|ON
+//   WHO     the NPC's number in its realm, 1 and up; ID is WHO * 10 + the time of day's place
+//   WHEN    dawn, day, dusk or night
+//   DO      stand, dance or sleep where it is; guard a post; patrol a route; wander an area; follow another
+//   ROUTE   whole centimetres, "X Z" points joined by commas:
+//             stand, dance, sleep   one point: where it is
+//             guard                 one point, the post; or two: the post, then where it looks
+//             patrol                2 to 8 points, walked there and back; a route whose last point is its
+//                                   first is a loop, walked round
+//             wander                "X Z R": anywhere within R of the point (R 1 to 30 metres)
+//             follow                "foe N": it keeps a step behind NPC N, beside it
+//   SPEED   centimetres a second it walks, 0 to 800
+//   NOTICE  centimetres within which it sees you, 0 to 3000 (0: never); asleep it sees less than half as far
+//   ON      what it does on seeing you: chase, call (chase, and the others near it come too), flee, ignore
+//   coax/bin/coax test metaverse-engine/ai/npc-plan.coax --library
+#authority;
+#load "../content/tables.coax";
+
+NPL_WHENS :: 4;
+NPL_WHEN :: [NPL_WHENS] string.["dawn", "day", "dusk", "night"];
+NPL_DOS :: 7;
+NPL_DO :: [NPL_DOS] string.["stand", "dance", "sleep", "guard", "patrol", "wander", "follow"];
+NPD_STAND :: 0; NPD_DANCE :: 1; NPD_SLEEP :: 2; NPD_GUARD :: 3; NPD_PATROL :: 4; NPD_WANDER :: 5; NPD_FOLLOW :: 6;
+NPL_ONS :: 4;
+NPL_ON :: [NPL_ONS] string.["chase", "call", "flee", "ignore"];
+NPO_CHASE :: 0; NPO_CALL :: 1; NPO_FLEE :: 2; NPO_IGNORE :: 3;
+NPL_POINTS :: 8;            // points in a route
+NPL_SPEED_MAX :: 800;       // cm/s
+NPL_NOTICE_MAX :: 3000;     // cm
+NPL_RADIUS_MIN :: 100; NPL_RADIUS_MAX :: 3000;   // a wander's area, cm
+NPL_REACH :: 1000000;       // cm either way a point may be (a realm holds its own to its world)
+NPL_WHO_MAX :: 99;          // NPCs a realm plans
+NPL_ROUTE :: 160;           // bytes of a route as written
+
+NplPlan :: struct {
+  ok: bool; who: int; when: int; act: int;
+  n: int; x: [NPL_POINTS] int; z: [NPL_POINTS] int;   // the route's points, cm
+  r: int;                                             // wander: the area's radius, cm
+  lead: int;                                          // follow: the NPC it follows
+  speed: int; notice: int; on: int;
+}
+
+NPL_OK :: 0; NPL_BAD_WHO :: 1; NPL_BAD_WHEN :: 2; NPL_BAD_DO :: 3; NPL_BAD_ON :: 4; NPL_BAD_SPEED :: 5;
+NPL_BAD_NOTICE :: 6; NPL_BAD_ROUTE :: 7; NPL_BAD_POINTS :: 8; NPL_BAD_RADIUS :: 9; NPL_BAD_LEAD :: 10; NPL_BAD_ID :: 11;
+
+// A word's place in a list of words, or -1.
+npl_word :: (list: [] string, s: string) -> int #effects(all) { for w, k: list { if w == s { return k; } } return -1; }
+// The row ID a plan has: who * 10 + when.
+npl_id :: (who: int, when: int) -> int #effects(all) { return who * 10 + when; }
+
+// One point "X Z" (or "X Z R" when r is asked for), spaces around it allowed.
+NplPoint :: struct { ok: bool; x: int; z: int; r: int; parts: int; }
+npl_point :: (s: string) -> NplPoint #effects(all) {
+  p := NplPoint.{}; v: [4] int;
+  for k: 0..<ct_parts(s, ' ') {
+    w := ct_part(s, ' ', k);
+    if w.count == 0 { continue; }
+    if p.parts >= 3 { return NplPoint.{}; }
+    n := ct_num(w);
+    if !n.ok || n.v < -NPL_REACH || n.v > NPL_REACH { return NplPoint.{}; }
+    v[p.parts] = n.v; p.parts += 1;
+  }
+  p.ok = p.parts >= 2; p.x = v[0]; p.z = v[1]; p.r = v[2];
+  return p;
+}
+// The route's text read into p for its DO (p.act). NPL_OK, or why not.
+npl_route_read :: (act: int, text: string, p: [] NplPlan) -> int #effects(all) {
+  p[0].n = 0; p[0].r = 0; p[0].lead = 0;
+  if text.count > NPL_ROUTE { return NPL_BAD_ROUTE; }
+  if act == NPD_FOLLOW {
+    if ct_part(text, ' ', 0) != "foe" || ct_parts(text, ' ') != 2 { return NPL_BAD_ROUTE; }
+    n := ct_num(ct_part(text, ' ', 1));
+    if !n.ok || n.v < 1 { return NPL_BAD_LEAD; }
+    p[0].lead = n.v;
+    return NPL_OK;
+  }
+  parts := ct_parts(text, ',');
+  if parts > NPL_POINTS { return NPL_BAD_POINTS; }
+  for k: 0..<parts {
+    q := npl_point(ct_part(text, ',', k));
+    if !q.ok { return NPL_BAD_ROUTE; }
+    if (q.parts == 3) != (act == NPD_WANDER) { return ifx act == NPD_WANDER then NPL_BAD_RADIUS else NPL_BAD_ROUTE; }
+    p[0].x[k] = q.x; p[0].z[k] = q.z; p[0].r = q.r; p[0].n = k + 1;
+  }
+  n := p[0].n;
+  if act == NPD_PATROL && n < 2 { return NPL_BAD_POINTS; }
+  if act == NPD_GUARD && n > 2 { return NPL_BAD_POINTS; }
+  if (act == NPD_STAND || act == NPD_DANCE || act == NPD_SLEEP || act == NPD_WANDER) && n != 1 { return NPL_BAD_POINTS; }
+  if act == NPD_WANDER && (p[0].r < NPL_RADIUS_MIN || p[0].r > NPL_RADIUS_MAX) { return NPL_BAD_RADIUS; }
+  return NPL_OK;
+}
+// The route as written: "X Z, X Z", "X Z R" or "foe N" ("" when it does not fit).
+npl_route_write :: (p: NplPlan, out: [] u8) -> string #effects(all) {
+  n := 0;
+  if p.act == NPD_FOLLOW { n = ct_put(out, 0, "foe "); n = ct_put_int(out, n, p.lead); }
+  else {
+    for k: 0..<p.n {
+      if k > 0 { n = ct_put(out, n, ", "); }
+      n = ct_put_int(out, n, p.x[k]); n = ct_put(out, n, " "); n = ct_put_int(out, n, p.z[k]);
+    }
+    if p.act == NPD_WANDER { n = ct_put(out, n, " "); n = ct_put_int(out, n, p.r); }
+  }
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// A plan's row read: its ID, WHO and the words, each checked. NPL_OK, or why not. `foes`: how many the realm has.
+npl_read :: (id: int, who: int, when: string, act: string, route: string, speed: int, notice: int, on: string, foes: int, p: [] NplPlan) -> int #effects(all) {
+  p[0] = NplPlan.{};
+  if who < 1 || who > foes || foes > NPL_WHO_MAX { return NPL_BAD_WHO; }
+  lw := NPL_WHEN; w := npl_word(lw[..], when); if w < 0 { return NPL_BAD_WHEN; }
+  if id != npl_id(who, w) { return NPL_BAD_ID; }
+  ld := NPL_DO; a := npl_word(ld[..], act); if a < 0 { return NPL_BAD_DO; }
+  lo2 := NPL_ON; o := npl_word(lo2[..], on); if o < 0 { return NPL_BAD_ON; }
+  if speed < 0 || speed > NPL_SPEED_MAX { return NPL_BAD_SPEED; }
+  if notice < 0 || notice > NPL_NOTICE_MAX { return NPL_BAD_NOTICE; }
+  p[0].who = who; p[0].when = w; p[0].act = a; p[0].on = o; p[0].speed = speed; p[0].notice = notice;
+  why := npl_route_read(a, route, p);
+  if why != NPL_OK { return why; }
+  if a == NPD_FOLLOW && (p[0].lead == who || p[0].lead > foes) { return NPL_BAD_LEAD; }
+  p[0].ok = true;
+  return NPL_OK;
+}
+// Why a plan was refused, in words.
+npl_why :: (why: int) -> string #effects(all) {
+  if why == NPL_BAD_WHO { return "no such foe: WHO is its number"; }
+  if why == NPL_BAD_WHEN { return "WHEN is dawn, day, dusk or night"; }
+  if why == NPL_BAD_DO { return "DO is stand, dance, sleep, guard, patrol, wander or follow"; }
+  if why == NPL_BAD_ON { return "ON is chase, call, flee or ignore"; }
+  if why == NPL_BAD_SPEED { return "a speed is 0 to 800 centimetres a second"; }
+  if why == NPL_BAD_NOTICE { return "how far it notices is 0 to 3000 centimetres"; }
+  if why == NPL_BAD_ROUTE { return "a route is \"X Z\" points in whole centimetres joined by commas (wander: \"X Z R\"; follow: \"foe N\")"; }
+  if why == NPL_BAD_POINTS { return "stand, dance, sleep and wander take one point, guard one or two (the post, then where it looks), patrol 2 to 8"; }
+  if why == NPL_BAD_RADIUS { return "a wander's area is \"X Z R\" with R 100 to 3000 centimetres"; }
+  if why == NPL_BAD_LEAD { return "follow names another foe: \"foe N\", not itself"; }
+  if why == NPL_BAD_ID { return "a plan's row ID is WHO times 10 plus the time of day (dawn 0, day 1, dusk 2, night 3)"; }
+  return "";
+}
+
+#test "a plan's words, its ID and its route read for each thing it can do" {
+  p: [1] NplPlan; o: [NPL_ROUTE] u8;
+  #assert npl_read(60, 6, "dawn", "patrol", "850 -4500, 850 -5700", 180, 500, "chase", 9, p[..]) == NPL_OK && p[0].ok && p[0].n == 2 && p[0].x[1] == 850 && p[0].z[1] == -5700 && p[0].when == 0 && p[0].act == NPD_PATROL;
+  #assert npl_route_write(p[0], o[..]) == "850 -4500, 850 -5700";
+  #assert npl_read(12, 1, "dusk", "dance", " -600   -4800 ", 0, 0, "ignore", 9, p[..]) == NPL_OK && p[0].x[0] == -600 && p[0].on == NPO_IGNORE && npl_route_write(p[0], o[..]) == "-600 -4800";
+  #assert npl_read(23, 2, "night", "wander", "0 -4500 600", 120, 400, "flee", 9, p[..]) == NPL_OK && p[0].r == 600 && npl_route_write(p[0], o[..]) == "0 -4500 600";
+  #assert npl_read(71, 7, "day", "follow", "foe 6", 200, 500, "call", 9, p[..]) == NPL_OK && p[0].lead == 6 && npl_route_write(p[0], o[..]) == "foe 6";
+  #assert npl_read(83, 8, "night", "guard", "0 -3700, 0 -3000", 0, 800, "chase", 9, p[..]) == NPL_OK && p[0].n == 2;
+  #assert npl_read(32, 3, "dusk", "sleep", "0 0", 0, 300, "call", 9, p[..]) == NPL_OK && p[0].act == NPD_SLEEP;
+  #assert npl_read(43, 4, "night", "stand", "1 2", 800, 3000, "chase", 9, p[..]) == NPL_OK;
+  loop := "0 0, 100 0, 100 100, 0 100, 0 0, 1 1, 2 2, 3 3";
+  #assert npl_read(50, 5, "dawn", "patrol", loop, 100, 0, "chase", 9, p[..]) == NPL_OK && p[0].n == 8;
+  dos := NPL_DO;
+  #assert npl_word(dos[..], "patrol") == NPD_PATROL && npl_word(dos[..], "Patrol") == -1 && npl_id(9, 3) == 93;
+}
+#test "a plan out of bounds, of the wrong shape or naming nobody is refused with its reason" {
+  p: [1] NplPlan;
+  #assert npl_read(60, 6, "dawn", "patrol", "0 0, 1 1", 180, 500, "chase", 5, p[..]) == NPL_BAD_WHO && !p[0].ok;
+  #assert npl_read(0, 0, "dawn", "stand", "0 0", 0, 0, "chase", 9, p[..]) == NPL_BAD_WHO;
+  #assert npl_read(10, 1, "dawn", "stand", "0 0", 0, 0, "chase", 100, p[..]) == NPL_BAD_WHO;
+  #assert npl_read(14, 1, "noon", "stand", "0 0", 0, 0, "chase", 9, p[..]) == NPL_BAD_WHEN;
+  #assert npl_read(11, 1, "dawn", "stand", "0 0", 0, 0, "chase", 9, p[..]) == NPL_BAD_ID;
+  #assert npl_read(10, 1, "dawn", "fly", "0 0", 0, 0, "chase", 9, p[..]) == NPL_BAD_DO;
+  #assert npl_read(10, 1, "dawn", "stand", "0 0", 0, 0, "panic", 9, p[..]) == NPL_BAD_ON;
+  #assert npl_read(10, 1, "dawn", "stand", "0 0", 801, 0, "chase", 9, p[..]) == NPL_BAD_SPEED && npl_read(10, 1, "dawn", "stand", "0 0", -1, 0, "chase", 9, p[..]) == NPL_BAD_SPEED;
+  #assert npl_read(10, 1, "dawn", "stand", "0 0", 0, 3001, "chase", 9, p[..]) == NPL_BAD_NOTICE && npl_read(10, 1, "dawn", "stand", "0 0", 0, -1, "chase", 9, p[..]) == NPL_BAD_NOTICE;
+  #assert npl_read(10, 1, "dawn", "stand", "", 0, 0, "chase", 9, p[..]) == NPL_BAD_ROUTE && npl_read(10, 1, "dawn", "stand", "0", 0, 0, "chase", 9, p[..]) == NPL_BAD_ROUTE;
+  #assert npl_read(10, 1, "dawn", "stand", "0 x", 0, 0, "chase", 9, p[..]) == NPL_BAD_ROUTE && npl_read(10, 1, "dawn", "stand", "0 1000001", 0, 0, "chase", 9, p[..]) == NPL_BAD_ROUTE;
+  #assert npl_read(10, 1, "dawn", "stand", "0 -1000001", 0, 0, "chase", 9, p[..]) == NPL_BAD_ROUTE && npl_read(10, 1, "dawn", "stand", "1 2 3 4", 0, 0, "chase", 9, p[..]) == NPL_BAD_ROUTE;
+  #assert npl_read(10, 1, "dawn", "stand", "0 0 50", 0, 0, "chase", 9, p[..]) == NPL_BAD_ROUTE && npl_read(10, 1, "dawn", "stand", "0 0, 1 1", 0, 0, "chase", 9, p[..]) == NPL_BAD_POINTS;
+  #assert npl_read(10, 1, "dawn", "patrol", "0 0", 100, 0, "chase", 9, p[..]) == NPL_BAD_POINTS;
+  #assert npl_read(10, 1, "dawn", "patrol", "0 0, 1 1, 2 2, 3 3, 4 4, 5 5, 6 6, 7 7, 8 8", 100, 0, "chase", 9, p[..]) == NPL_BAD_POINTS;
+  #assert npl_read(10, 1, "dawn", "guard", "0 0, 1 1, 2 2", 0, 0, "chase", 9, p[..]) == NPL_BAD_POINTS;
+  #assert npl_read(10, 1, "dawn", "dance", "0 0, 1 1", 0, 0, "chase", 9, p[..]) == NPL_BAD_POINTS && npl_read(10, 1, "dawn", "sleep", "0 0, 1 1", 0, 0, "chase", 9, p[..]) == NPL_BAD_POINTS;
+  #assert npl_read(10, 1, "dawn", "wander", "0 0", 0, 0, "chase", 9, p[..]) == NPL_BAD_RADIUS && npl_read(10, 1, "dawn", "wander", "0 0 99", 0, 0, "chase", 9, p[..]) == NPL_BAD_RADIUS;
+  #assert npl_read(10, 1, "dawn", "wander", "0 0 3001", 0, 0, "chase", 9, p[..]) == NPL_BAD_RADIUS && npl_read(10, 1, "dawn", "wander", "0 0 100", 0, 0, "chase", 9, p[..]) == NPL_OK;
+  #assert npl_read(10, 1, "dawn", "wander", "0 0 3000, 1 1 100", 0, 0, "chase", 9, p[..]) == NPL_BAD_POINTS;
+  #assert npl_read(10, 1, "dawn", "follow", "foe 1", 0, 0, "chase", 9, p[..]) == NPL_BAD_LEAD && npl_read(10, 1, "dawn", "follow", "foe 10", 0, 0, "chase", 9, p[..]) == NPL_BAD_LEAD;
+  #assert npl_read(10, 1, "dawn", "follow", "foe 0", 0, 0, "chase", 9, p[..]) == NPL_BAD_LEAD && npl_read(10, 1, "dawn", "follow", "foe x", 0, 0, "chase", 9, p[..]) == NPL_BAD_LEAD;
+  #assert npl_read(10, 1, "dawn", "follow", "6", 0, 0, "chase", 9, p[..]) == NPL_BAD_ROUTE && npl_read(10, 1, "dawn", "follow", "foe 6 7", 0, 0, "chase", 9, p[..]) == NPL_BAD_ROUTE;
+  #assert npl_read(10, 1, "dawn", "follow", "foe 100", 0, 0, "chase", 99, p[..]) == NPL_BAD_LEAD && npl_read(10, 1, "dawn", "follow", "foe 9", 0, 0, "chase", 9, p[..]) == NPL_OK;
+  long: [NPL_ROUTE + 1] u8; for k: 0..<long.count { long[k] = '1'; }
+  #assert npl_read(10, 1, "dawn", "stand", cast(string) long[..], 0, 0, "chase", 9, p[..]) == NPL_BAD_ROUTE;
+  for w: 1..<12 { #assert npl_why(w).count > 10; }
+  #assert npl_why(0) == "" && npl_why(12) == "";
+  o: [6] u8; q := NplPlan.{act = NPD_PATROL, n = 2, x = [NPL_POINTS] int.[100000, 100000, 0, 0, 0, 0, 0, 0]};
+  #assert npl_route_write(q, o[..]) == "";
+}
+#test "a plan's bounds hold at their edges, and a read leaves nothing of the one before" {
+  p: [1] NplPlan; o: [5] u8;
+  #assert npl_read(62, 6, "dusk", "patrol", "1000000 -1000000, 0 0", 800, 3000, "chase", 99, p[..]) == NPL_OK && p[0].who == 6 && p[0].when == 2 && p[0].speed == 800 && p[0].notice == 3000;
+  #assert npl_read(62, 6, "dusk", "stand", "0 0", 0, 0, "fly", 99, p[..]) == NPL_BAD_ON && !p[0].ok && p[0].n == 0;
+  #assert npl_read(20, 2, "dawn", "follow", "foe 1", 0, 0, "chase", 9, p[..]) == NPL_OK && npl_route_write(p[0], o[..]) == "foe 1";
+  #assert npl_read(10, 1, "dawn", "wander", "0 0 3000", 0, 0, "chase", 9, p[..]) == NPL_OK && p[0].r == 3000 && npl_read(90, 9, "dawn", "stand", "0 0", 0, 0, "chase", 9, p[..]) == NPL_OK;
+  edge: [NPL_ROUTE + 1] u8; for k: 0..<edge.count { edge[k] = ' '; }
+  edge[0] = '1'; edge[NPL_ROUTE - 1] = '2';
+  #assert npl_read(10, 1, "dawn", "stand", cast(string) edge[0..<NPL_ROUTE], 0, 0, "chase", 9, p[..]) == NPL_OK && p[0].z[0] == 2;
+  edge[NPL_ROUTE - 1] = ' '; edge[NPL_ROUTE] = '2';
+  #assert npl_read(10, 1, "dawn", "stand", cast(string) edge[..], 0, 0, "chase", 9, p[..]) == NPL_BAD_ROUTE;
+  q: [1] NplPlan; q[0].n = 3; q[0].r = 600; q[0].lead = 4;
+  #assert npl_route_read(NPD_FOLLOW, "foe 6", q[..]) == NPL_OK && q[0].n == 0 && q[0].r == 0 && q[0].lead == 6;
+  #assert npl_route_read(NPD_STAND, "5 5", q[..]) == NPL_OK && q[0].lead == 0 && q[0].n == 1;
+}

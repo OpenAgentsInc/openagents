@@ -9,7 +9,7 @@ The site's index is [llms.txt](https://openagents.com/llms.txt). Look a Coax nam
 - realm: splice
 - page: `/worlds/splice` (module `splice`, source `apps/openagents-web/realms/splice/`)
 - wire: none. The page decides the simulation; there is no room to speak to
-- content: `metaverse/splice/content/splice.content`, revision 2, sha256 `a812b8788a6b9194e1eb44eff9965c4e306de4fc92d32fe35fb54266ed7dcd4b`
+- content: `metaverse/splice/content/splice.content`, revision 2, sha256 `e69ebcdc5fe960d660ead7993b60757d234041ac42cf032bbb172e0b32b2061c`
 - diagnostics: `engine-diagnostics-v1`, 17 codes, sha256 `55aa5a9b50ff02e1256e64909abf901a29f9c98a1575ae6b669281410b69c31c` (`proto/verse/engine-diagnostics-v1.json`)
 - language: Coax; the compiler's version is in `coax/release-status.json` and what it claims to do in `coax/book/capability-claims.json`
 - reference: the last line of this file is the sha256 of everything above it. Two builds with the same line have the same reference
@@ -46,10 +46,12 @@ From `metaverse-engine/editor/authority.coax` (INVARIANTS.md, "Authoring never w
 | Table | Columns | Rows |
 | --- | --- | --- |
 | `areas` | `id name:text x:cm z:cm hx:int hz:int r:int` | 4 |
+| `clock` | `id when:text` | 1 |
 | `kept_clear` | `id name:text x:cm z:cm hx:int hz:int r:int` | 29 |
 | `landmarks` | `id name:text x:cm z:cm r:int` | 53 |
 | `looks` | `id name:text a:int b:int c:int` | 8 |
 | `pieces` | `id name:text kit:text scale:int look:ref.looks hx:int hz:int top:int` | 18 |
+| `plans` | `id who:int when:text do:text route:text speed:int notice:int on:text` | 36 |
 | `templates` | `id name:text parts:text` | 0 |
 
 A table's first column is `id`. Another column is `NAME:int`, `NAME:text`, `NAME:cm` (centimetres), `NAME:ref.TABLE` (the id of a row of TABLE) or `NAME:opt.TABLE` (the same, or 0 for none). A row's id is never changed or used again.
@@ -158,4 +160,4 @@ table areas id name:text x:cm z:cm hx:int hz:int r:int
 1|Dome village|17500|-7500|0|0|630
 ```
 
-reference sha256: dde335e5d232520c20914af7224b48f4bd46cb30ba39fef0a1f66c62756aa640
+reference sha256: cee7aec1b23c7fc987fc4872433e1ac2e1d1d1f1f4321d23aa0714feb4a1981a

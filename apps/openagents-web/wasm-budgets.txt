@@ -335,4 +335,7 @@ painted 200000
 # With the content tables on the edit log (E10, #13419) and the placement planner with templates (E5, #13414): 378,810 bytes measured 2026-11-13 on a Linux build host; about 6% room.
 # With a piece kind whose mesh is a mesh of the world's import pack (E11, #13420: the pack's full read, pack.coax, the importer's catalog
 # reader and the mesh into the piece store): 396,294 bytes measured 2026-11-13 on a Linux build host; about 2% room.
-splice 405000
+# With foes that move by plans by time of day (#13466: the plan reader and checks, the plan's goal each frame, the plans and clock
+# tables and the old tables' upgrade, the route and notice marks): 411,690 bytes measured 2026-11-13 on a Mac; the editor's actor
+# lines come next, so about 4% room.
+splice 430000

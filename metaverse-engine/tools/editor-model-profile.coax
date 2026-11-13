@@ -45,6 +45,13 @@ emp_check :: (profile_json: string, w: [] EmpWork) -> bool {
   if emp_str(d, jv_get(d, loc, "world"), nb[..]) != cast(string) lworld[0..<m[0].world_n] { return false; }
   if jv_int(d, jv_at(d, jv_get(d, loc, "all"), 0), -1) != m[0].all_n || jv_int(d, jv_at(d, jv_get(d, loc, "all"), 1), -1) != m[0].all_cap || jv_int(d, jv_get(d, loc, "kinds"), -1) != m[0].kinds_all { return false; }
   if jv_int(d, jv_at(d, jv_get(d, loc, "land"), 0), -1) != m[0].land_lo || jv_int(d, jv_at(d, jv_get(d, loc, "land"), 1), -1) != m[0].land_hi || jv_int(d, jv_get(d, loc, "materials"), -1) != m[0].nm { return false; }
+  // NPCs' plans by time of day (#13466)
+  if jv_int(d, jv_get(d, lim, "actors"), 0) != EM_ACTORS || jv_int(d, jv_get(d, lim, "plans"), 0) != EM_PLANS || jv_int(d, jv_get(d, lim, "route_bytes"), 0) != EM_ROUTE { return false; }
+  act := jv_get(d, 0, "actors");
+  aw := emp_str(d, jv_get(d, act, "wire"), w[0].wire[..]);
+  if aw.count == 0 || !em_read(m, aw, w[0].scratch[..]) || em_write(m, w[0].out[..]) != aw { return false; }
+  ck := m[0].clock;
+  if jv_int(d, jv_get(d, act, "actors"), -1) != m[0].na || jv_int(d, jv_get(d, act, "plans"), -1) != m[0].np || jv_int(d, jv_get(d, act, "selected"), -1) != m[0].asel || emp_str(d, jv_get(d, act, "clock"), nb[..]) != cast(string) ck[0..<m[0].clock_n] { return false; }
   empty := emp_str(d, jv_get(d, jv_get(d, 0, "empty"), "wire"), w[0].wire[..]);
   if empty.count == 0 || !em_read(m, empty, w[0].scratch[..]) || m[0].ne != 0 || m[0].lane != 1 { return false; }
   rej := jv_get(d, 0, "rejected");

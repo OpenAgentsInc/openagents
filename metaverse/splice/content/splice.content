@@ -5,6 +5,8 @@ table areas id name:text x:cm z:cm hx:int hz:int r:int
 2|Gate corridor|17500|-6700|165|300|0
 3|Rail stop|16718|9500|0|0|2600
 4|Mine|0|-3100|4400|5100|0
+table clock id when:text
+1|story
 table kept_clear id name:text x:cm z:cm hx:int hz:int r:int
 1|Village start|17500|-7800|0|0|150
 2|Scanner gate|17500|-6700|165|330|0
@@ -117,4 +119,41 @@ table pieces id name:text kit:text scale:int look:ref.looks hx:int hz:int top:in
 116|Crate|crate|1500|5|90|70|127
 117|Small crate|crate|1000|5|60|47|85
 118|Banned bot|robot|800|4|136|42|262
+table plans id who:int when:text do:text route:text speed:int notice:int on:text
+10|1|dawn|dance|-600 -4800|180|0|chase
+11|1|day|dance|-600 -4800|180|0|chase
+12|1|dusk|dance|-600 -4800|180|0|chase
+13|1|night|dance|-600 -4800|180|0|chase
+20|2|dawn|dance|-100 -5200|180|0|chase
+21|2|day|dance|-100 -5200|180|0|chase
+22|2|dusk|dance|-100 -5200|180|0|chase
+23|2|night|dance|-100 -5200|180|0|chase
+30|3|dawn|dance|400 -4700|180|0|chase
+31|3|day|dance|400 -4700|180|0|chase
+32|3|dusk|dance|400 -4700|180|0|chase
+33|3|night|dance|400 -4700|180|0|chase
+40|4|dawn|dance|-300 -4500|180|0|chase
+41|4|day|dance|-300 -4500|180|0|chase
+42|4|dusk|dance|-300 -4500|180|0|chase
+43|4|night|dance|-300 -4500|180|0|chase
+50|5|dawn|dance|-2200 -4400|180|0|chase
+51|5|day|dance|-2200 -4400|180|0|chase
+52|5|dusk|dance|-2200 -4400|180|0|chase
+53|5|night|dance|-2200 -4400|180|0|chase
+60|6|dawn|patrol|850 -4500, 850 -5700|180|500|chase
+61|6|day|patrol|850 -4500, 850 -5700|180|500|chase
+62|6|dusk|patrol|850 -4500, 850 -5700|180|500|chase
+63|6|night|patrol|850 -4500, 850 -5700|180|500|chase
+70|7|dawn|patrol|-2400 -4600, -1900 -4600|180|500|chase
+71|7|day|patrol|-2400 -4600, -1900 -4600|180|500|chase
+72|7|dusk|patrol|-2400 -4600, -1900 -4600|180|500|chase
+73|7|night|patrol|-2400 -4600, -1900 -4600|180|500|chase
+80|8|dawn|patrol|-2400 -5700, -2900 -5700|180|500|chase
+81|8|day|patrol|-2400 -5700, -2900 -5700|180|500|chase
+82|8|dusk|patrol|-2400 -5700, -2900 -5700|180|500|chase
+83|8|night|patrol|-2400 -5700, -2900 -5700|180|500|chase
+90|9|dawn|patrol|-3800 -4700, -3800 -5700|180|500|chase
+91|9|day|patrol|-3800 -4700, -3800 -5700|180|500|chase
+92|9|dusk|patrol|-3800 -4700, -3800 -5700|180|500|chase
+93|9|night|patrol|-3800 -4700, -3800 -5700|180|500|chase
 table templates id name:text parts:text

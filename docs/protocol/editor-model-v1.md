@@ -31,6 +31,10 @@ The model is lines of text, in this order.
 | `kinds N` | How many kinds the world has in all, when the model names only some. The shell's Add then says how many of them it lists. |
 | `local` | The world is kept on this device and has no live lane. The shell shows no Publish. |
 | `land RMIN RMAX` then `m ID NAME` | The world takes `terrain` edits: the smallest and the widest brush in centimetres, then each material a brush paints (its number in the edit and its name). The shell then has a Land tool with the brush's kind, material, radius and strength. |
+| `plans NAME`, `clock NAME WHEN` | The world keeps NPCs' plans by time of day (#13466, `metaverse-engine/ai/npc-plan.coax`): the content table that holds them, and the table whose row 1 holds the editor's time of day with that time (`story` is the realm's own clock, else `dawn`, `day`, `dusk` or `night`). The shell then shows a time-of-day control and an Actors list. Every change is a cell edit of those tables. |
+| `a ID NAME` | An NPC with plans: its number in the realm and its name. |
+| `p ID WHEN DO SPEED NOTICE ON ROUTE` | NPC ID's plan at that time of day: what it does (`stand`, `dance`, `sleep`, `guard`, `patrol`, `wander`, `follow`), its speed in centimetres a second, how far it notices in centimetres, what it does on noticing (`chase`, `call`, `flee`, `ignore`) and its route (`X Z, X Z`, `X Z R` for wander, or `foe N` for follow). These are the plan row's cells in order. |
+| `as ID` | The selected NPC. The page draws its route and its notice range. Left out: none. |
 | `here X Z` | The last point tapped on the ground, in whole centimetres. Left out until a point is tapped. The shell places a new thing there. |
 | `no WORDS` | The last refusal, in words. The shell shows it as a notice. |
 
@@ -50,6 +54,9 @@ but the ones the writer writes: it writes what it read and compares.
 | Templates | 32 |
 | Bytes in a template's parts | 480 |
 | Materials | 16 |
+| NPCs with plans | 16 |
+| Plans | 64 |
+| Bytes in a route | 160 |
 | Bytes in a model | 65,536 |
 
 ## What the shell sends back
@@ -60,6 +67,7 @@ The shell asks the page to act through the host, as two message kinds:
 | --- | --- | --- |
 | 520 | A `world.edit.v1` batch made from the model's revision (`docs/protocol/world-edit-v1.md`) | Sends it as its own write. The server's answer comes back in the next model: new places, or a `no` line. |
 | 521 | An entity's ID, or 0 | Selects it. |
+| 527 | `actor N`, or `actor 0` | Selects NPC N (or none): the page draws its route and notice range and frames it. |
 | 523 | `add KIND COUNT` | Plans where COUNT things of a kind go from "here" with the placement planner (`metaverse-engine/editor/place.coax`) and sends them as one batch. |
 | 522 | Words for the viewport's tools (`metaverse-engine/editor/viewport.coax`, `vp_act`): `tool play`, `tool select`, `tool move`, `tool turn`, `tool size`, `grid 10`, `grid 25`, `grid 50`, `grid 100`, `fly on`, `fly off`, `run play`, `run pause`, `step`, `sim on`, `sim off`, and for a world whose land takes edits `tool land`, `brush paint` (or `raise`, `lower`, `smooth`, `flatten`), `radius CM`, `strength PCT`, `mat N` | Picks the tool, the grid, the camera, the clock and the land's brush. Anything else changes nothing. |
 

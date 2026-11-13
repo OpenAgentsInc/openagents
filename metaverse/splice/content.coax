@@ -16,6 +16,17 @@
 //   templates   id name parts               a group of pieces saved to be placed again as one edit
 //                                           (metaverse-engine/editor/place.coax pl_template_*): each part
 //                                           a piece's ID and where it stands from the group's middle
+//   plans       id who when do route speed notice on   how each of the party's people moves at each
+//                                           time of day (metaverse-engine/ai/npc-plan.coax, #13466):
+//                                           WHO 1 to 5 the raiders, 6 to 9 the Imperial robots; ID is
+//                                           WHO * 10 + the time of day (dawn 0, day 1, dusk 2, night 3);
+//                                           every foe has a plan for each time of day, and its route
+//                                           stays in the mine (the area SC_FOE_AREA)
+//   clock       id when                     the editor's time of day (row 1): story (the run's own), or
+//                                           dawn, day, dusk or night. Only an editor (?edit) reads it;
+//                                           play keeps the story's phases
+// The plans and clock tables came after revision 2 shipped. Tables saved at revision 2 without them
+// read with the shipped ones put in (sc_upgrade), so every saved world document still opens.
 // Places and lengths are centimetres. `looks` is a table of its own because a table has eight
 // columns at most. An edit or a save names a piece by its ID; names are for people and agents.
 //   coax/bin/coax test metaverse/splice/content.coax --library
@@ -23,20 +34,28 @@
 #load "../../metaverse-engine/editor/place.coax";
 #load "pieces.coax";
 #load "content/shipped.coax";
+#load "../../metaverse-engine/ai/plan.coax";   // the foes' plans (npc-plan.coax) and where they take them
 
-SC_TABLES :: 6;
-SC_AREAS :: 0; SC_KEPT :: 1; SC_MARKS :: 2; SC_LOOKS :: 3; SC_PIECES :: 4; SC_TEMPLATES :: 5;
+SC_TABLES :: 8;
+SC_AREAS :: 0; SC_CLOCK :: 1; SC_KEPT :: 2; SC_MARKS :: 3; SC_LOOKS :: 4; SC_PIECES :: 5; SC_PLANS :: 6; SC_TEMPLATES :: 7;
 SC_TEMPLATE_MAX :: 32;   // templates a world keeps
 SC_HEAD :: [SC_TABLES] string.[
   "table areas id name:text x:cm z:cm hx:int hz:int r:int",
+  "table clock id when:text",
   "table kept_clear id name:text x:cm z:cm hx:int hz:int r:int",
   "table landmarks id name:text x:cm z:cm r:int",
   "table looks id name:text a:int b:int c:int",
   "table pieces id name:text kit:text scale:int look:ref.looks hx:int hz:int top:int",
+  "table plans id who:int when:text do:text route:text speed:int notice:int on:text",
   "table templates id name:text parts:text"];
 SC_NAME :: 24;          // bytes of a row's name kept for a refusal or a listing
 SC_AREA_MAX :: 8; SC_KEPT_MAX :: 48; SC_MARK_MAX :: 96; SC_PIECE_MAX :: 32;
 SC_SCALE_MIN :: 100; SC_SCALE_MAX :: 4000;   // a piece's size, thousandths
+SC_FOES :: 9;           // the party's people a plan names: raiders 1 to 5, Imperial robots 6 to 9
+SC_PLAN_MAX :: SC_FOES * NPL_WHENS;
+SC_FOE_AREA :: 4;       // the area (the mine) every point of a foe's route stands in
+SC_CLOCKS :: 5;
+SC_CLOCK_WORD :: [SC_CLOCKS] string.["story", "dawn", "day", "dusk", "night"];   // the editor's clock: -1 (the story's), then PH_DAWN..PH_NIGHT
 
 // A zone: a box (half sizes hx, hz) round (x, z), grown by r. Metres.
 ScZone :: struct { id: int; x: f32; z: f32; hx: f32; hz: f32; r: f32; name: [SC_NAME] u8; name_n: int; }
@@ -49,6 +68,8 @@ SpContent :: struct {
   kept: [SC_KEPT_MAX] ScZone; kept_n: int;
   marks: [SC_MARK_MAX] ScMark; mark_n: int;
   pieces: [SC_PIECE_MAX] ScPiece; piece_n: int;
+  plans: [SC_PLAN_MAX] NplPlan;   // by (WHO - 1) * 4 + the time of day
+  clock: int = -1;                // the editor's time of day: -1 the story's, else 0 dawn to 3 night
 }
 
 sc_m :: (cm: int) -> f32 { return cast(f32) cm / 100; }
@@ -89,13 +110,86 @@ sc_ok :: (d: [] ContentDoc) -> bool {
     if n < 1 || ct_str(d, SC_TEMPLATES, r, 1).count == 0 { return false; }
     for k: 0..<n { if ct_find(d, SC_PIECES, parts[k].kind) < 0 || parts[k].scale != 100 { return false; } }
   }
-  return true;
+  return sc_plans_why(d) == SCP_OK;
 }
+// Why the plans or the clock do not hold (SCP_OK when they do): a plan's own reason (SCP_PLAN + an
+// NPL_ code, npc-plan.coax), a point outside the mine, a foe without a plan for a time of day, or a
+// clock that is not one of SC_CLOCK_WORD. `row`: the plan row it was, when one.
+SCP_OK :: 0; SCP_PLAN :: 40; SCP_OUTSIDE :: 60; SCP_MISSING :: 61; SCP_CLOCK :: 62;
+ScPlanWhy :: struct { why: int; id: int; }
+sc_plans_check :: (d: [] ContentDoc) -> ScPlanWhy {
+  if ct_rows(d, SC_CLOCK) != 1 || ct_get(d, SC_CLOCK, 0, 0) != 1 { return ScPlanWhy.{why = SCP_CLOCK}; }
+  words := SC_CLOCK_WORD; known := false;
+  for w: words { if ct_str(d, SC_CLOCK, 0, 1) == w { known = true; } }
+  if !known { return ScPlanWhy.{why = SCP_CLOCK, id = 1}; }
+  area := ct_find(d, SC_AREAS, SC_FOE_AREA);
+  if area < 0 || ct_rows(d, SC_PLANS) > SC_PLAN_MAX { return ScPlanWhy.{why = SCP_MISSING}; }
+  ax := ct_get(d, SC_AREAS, area, 2); az := ct_get(d, SC_AREAS, area, 3); hx := ct_get(d, SC_AREAS, area, 4); hz := ct_get(d, SC_AREAS, area, 5);
+  for r: 0..<ct_rows(d, SC_PLANS) {
+    p: [1] NplPlan; id := ct_get(d, SC_PLANS, r, 0);
+    why := npl_read(id, ct_get(d, SC_PLANS, r, 1), ct_str(d, SC_PLANS, r, 2), ct_str(d, SC_PLANS, r, 3), ct_str(d, SC_PLANS, r, 4), ct_get(d, SC_PLANS, r, 5), ct_get(d, SC_PLANS, r, 6), ct_str(d, SC_PLANS, r, 7), SC_FOES, p[..]);
+    if why != NPL_OK { return ScPlanWhy.{why = SCP_PLAN + why, id = id}; }
+    for k: 0..<p[0].n {
+      if p[0].x[k] < ax - hx || p[0].x[k] > ax + hx || p[0].z[k] < az - hz || p[0].z[k] > az + hz { return ScPlanWhy.{why = SCP_OUTSIDE, id = id}; }
+    }
+  }
+  // every foe at every time of day: rows ascend by ID, so they are exactly 10, 11, ... 93 with none between
+  if ct_rows(d, SC_PLANS) != SC_PLAN_MAX { return ScPlanWhy.{why = SCP_MISSING}; }
+  for r: 0..<SC_PLAN_MAX { if ct_get(d, SC_PLANS, r, 0) != npl_id(r / NPL_WHENS + 1, r % NPL_WHENS) { return ScPlanWhy.{why = SCP_MISSING, id = npl_id(r / NPL_WHENS + 1, r % NPL_WHENS)}; } }
+  return ScPlanWhy.{};
+}
+sc_plans_why :: (d: [] ContentDoc) -> int { return sc_plans_check(d).why; }
+// Why tables in text do not hold as plans, in words into out ("" when they do, or they are no content document).
+sc_plans_words :: (text: string, out: [] u8) -> string {
+  d: [1] ContentDoc;
+  if !ct_read(d[..], text) || d[0].t_n != SC_TABLES { return ""; }
+  c := sc_plans_check(d[..]);
+  if c.why == SCP_OK { return ""; }
+  n := 0;
+  if c.id > 0 && c.why != SCP_CLOCK { n = ct_put(out, 0, "plan "); n = ct_put_int(out, n, c.id); n = ct_put(out, n, ": "); }
+  if c.why >= SCP_PLAN && c.why < SCP_OUTSIDE { n = ct_put(out, n, npl_why(c.why - SCP_PLAN)); }
+  if c.why == SCP_OUTSIDE {
+    a := ct_find(d[..], SC_AREAS, SC_FOE_AREA);
+    n = ct_put(out, n, "a foe's route stays in the mine: x ");
+    n = ct_put_int(out, n, ct_get(d[..], SC_AREAS, a, 2) - ct_get(d[..], SC_AREAS, a, 4)); n = ct_put(out, n, " to "); n = ct_put_int(out, n, ct_get(d[..], SC_AREAS, a, 2) + ct_get(d[..], SC_AREAS, a, 4));
+    n = ct_put(out, n, ", z "); n = ct_put_int(out, n, ct_get(d[..], SC_AREAS, a, 3) - ct_get(d[..], SC_AREAS, a, 5)); n = ct_put(out, n, " to "); n = ct_put_int(out, n, ct_get(d[..], SC_AREAS, a, 3) + ct_get(d[..], SC_AREAS, a, 5));
+    n = ct_put(out, n, " centimetres (the dome village is a stage of its own, with no foes in it)");
+  }
+  if c.why == SCP_MISSING { n = ct_put(out, n, "every foe keeps a plan for dawn, day, dusk and night: set a plan's cells, never drop its row"); }
+  if c.why == SCP_CLOCK { n = ct_put(out, n, "the clock's row 1 is story, dawn, day, dusk or night"); }
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// Tables saved at revision 2 before the plans and clock tables were: the same tables with the shipped
+// clock and plans put in where they sort (clock after areas, plans after pieces), into out. Tables
+// that already have them, or are not Splice's at all, come back as they were.
+sc_upgrade :: (text: string, out: [] u8) -> string {
+  if text.count == 0 || sc_at(text, "\ntable plans ") >= 0 { return text; }
+  kept := sc_at(text, "\ntable kept_clear "); tem := sc_at(text, "\ntable templates ");
+  if kept < 0 || tem < kept { return text; }
+  n := ct_put(out, 0, text[0..<kept + 1]); n = ct_put(out, n, sc_shipped_table(SC_SHIPPED, "clock"));
+  n = ct_put(out, n, text[kept + 1..<tem + 1]); n = ct_put(out, n, sc_shipped_table(SC_SHIPPED, "plans"));
+  n = ct_put(out, n, text[tem + 1..<text.count]);
+  return ifx n > out.count then text else cast(string) out[0..<n];
+}
+// Where `what` first stands in s, or -1.
+sc_at :: (s: string, what: string) -> int {
+  for a: 0..<s.count - what.count + 1 { if s[a] == what[0] && s[a..<a + what.count] == what { return a; } }
+  return -1;
+}
+// A table of tables as text, its header and rows ("" when it has none of that name).
+sc_shipped_table :: (s: string, name: string) -> string {
+  hb: [40] u8; hn := ct_put(hb[..], 0, "\ntable "); hn = ct_put(hb[..], hn, name); hn = ct_put(hb[..], hn, " ");
+  a := sc_at(s, cast(string) hb[0..<hn]);
+  if a < 0 { return ""; }
+  rest := s[a + 1..<s.count]; e := sc_at(rest, "\ntable ");
+  return ifx e < 0 then rest else rest[0..<e + 1];
+}
+
 // The tables in text into c; false, and c not ok, for anything but Splice's content.
 sc_load :: (c: [] SpContent, text: string) -> bool {
   c[0].ok = false; c[0].area_n = 0; c[0].kept_n = 0; c[0].mark_n = 0; c[0].piece_n = 0;
-  d: [1] ContentDoc;
-  if !ct_read(d[..], text) || !sc_ok(d[..]) { return false; }
+  d: [1] ContentDoc; up: [CT_BODY] u8;
+  if !ct_read(d[..], sc_upgrade(text, up[..])) || !sc_ok(d[..]) { return false; }
   c[0].rev = d[0].rev;
   for r: 0..<ct_rows(d[..], SC_AREAS) { c[0].areas[r] = sc_zone(d[..], SC_AREAS, r); }
   c[0].area_n = ct_rows(d[..], SC_AREAS);
@@ -119,6 +213,14 @@ sc_load :: (c: [] SpContent, text: string) -> bool {
     c[0].pieces[r] = p;
   }
   c[0].piece_n = ct_rows(d[..], SC_PIECES);
+  for r: 0..<ct_rows(d[..], SC_PLANS) {
+    p: [1] NplPlan;
+    _ := npl_read(ct_get(d[..], SC_PLANS, r, 0), ct_get(d[..], SC_PLANS, r, 1), ct_str(d[..], SC_PLANS, r, 2), ct_str(d[..], SC_PLANS, r, 3), ct_str(d[..], SC_PLANS, r, 4), ct_get(d[..], SC_PLANS, r, 5), ct_get(d[..], SC_PLANS, r, 6), ct_str(d[..], SC_PLANS, r, 7), SC_FOES, p[..]);
+    c[0].plans[r] = p[0];
+  }
+  c[0].clock = -1;
+  words := SC_CLOCK_WORD;
+  for w, k: words { if ct_str(d[..], SC_CLOCK, 0, 1) == w { c[0].clock = k - 1; } }
   c[0].ok = true;
   return true;
 }
@@ -202,3 +304,55 @@ sc_test_with :: (t: [] ScTemplateTest, row: string) -> string {
   #assert !sc_load(c, sc_test_with(t[..], "1|Crate stack|116 0 0 0 150")) && !sc_load(c, sc_test_with(t[..], "1||116 0 0 0 100")) && !sc_load(c, sc_test_with(t[..], "1|Crate stack|"));
   #assert sc_load(c, SC_SHIPPED) && c[0].rev == 2;
 }
+
+// Foe i's plan (0 to SC_FOES - 1) at time of day `when` (PH_DAWN to PH_NIGHT, npc-plan.coax NPL_WHEN's order).
+sc_plan :: (c: [] SpContent, i: int, when: int) -> NplPlan {
+  k := i * NPL_WHENS + (ifx when < 0 then 0 else ifx when >= NPL_WHENS then NPL_WHENS - 1 else when);
+  return ifx k < 0 || k >= SC_PLAN_MAX then NplPlan.{} else c[0].plans[k];
+}
+
+#test "the shipped plans are the run as it always played: raiders dance at their spots, robots patrol their posts, the clock is the story's" {
+  c: [1] SpContent;
+  #assert sc_load(c[..], SC_SHIPPED) && c[0].clock == -1;
+  for i: 0..<SC_FOES { for w: 0..<NPL_WHENS {
+    p := sc_plan(c[..], i, w); m := sc_mark(c[..], 41 + i);
+    #assert p.ok && p.who == i + 1 && p.when == w && p.x[0] == sc_cm(m.x) && p.z[0] == sc_cm(m.z) && p.speed == 180 && p.on == NPO_CHASE;
+    if i < 5 { #assert p.act == NPD_DANCE && p.notice == 0 && p.n == 1; }
+    else { t := sc_mark(c[..], 51 + i); #assert p.act == NPD_PATROL && p.notice == 500 && p.n == 2 && p.x[1] == sc_cm(t.x) && p.z[1] == sc_cm(t.z); }
+  } }
+  #assert !sc_plan(c[..], 9, 0).ok && !sc_plan(c[..], -1, 0).ok && sc_plan(c[..], 0, 7).when == 3 && sc_plan(c[..], 0, -2).when == 0;
+}
+#test "a plan that leaves the mine, a dropped plan and a clock that is no time of day are refused, each with its words" {
+  c: [1] SpContent; o: [CT_BODY] u8; w: [300] u8;
+  #assert sc_load(c[..], sc_swap("\n1|story\n", "\n1|dusk\n", o[..])) && c[0].clock == 2;
+  #assert sc_load(c[..], sc_swap("\n1|story\n", "\n1|dawn\n", o[..])) && c[0].clock == 0;
+  #assert !sc_load(c[..], sc_swap("\n1|story\n", "\n1|noon\n", o[..])) && sc_plans_words(sc_swap("\n1|story\n", "\n1|noon\n", o[..]), w[..]) == "the clock's row 1 is story, dawn, day, dusk or night";
+  bad := sc_swap("62|6|dusk|patrol|850 -4500, 850 -5700|", "62|6|dusk|patrol|17500 -6700, 850 -5700|", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "plan 62: a foe's route stays in the mine: x -4400 to 4400, z -8200 to 2000 centimetres (the dome village is a stage of its own, with no foes in it)";
+  bad = sc_swap("62|6|dusk|patrol|", "62|6|dusk|fly|", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "plan 62: DO is stand, dance, sleep, guard, patrol, wander or follow";
+  bad = sc_swap("62|6|dusk|patrol|850 -4500, 850 -5700|180|500|chase\n", "", o[..]);
+  #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "every foe keeps a plan for dawn, day, dusk and night: set a plan's cells, never drop its row";
+  good := sc_swap("62|6|dusk|patrol|850 -4500, 850 -5700|180|500|chase", "62|6|dusk|guard|0 -3700, 0 -3000|0|800|call", o[..]);
+  #assert sc_load(c[..], good) && sc_plan(c[..], 5, 2).act == NPD_GUARD && sc_plans_words(good, w[..]) == "" && sc_plans_words("oops", w[..]) == "";
+}
+#test "tables saved before the plans and the clock read with the shipped ones put in" {
+  c: [1] SpContent; o: [CT_BODY] u8; up: [CT_BODY] u8; t: [CT_BODY] u8;
+  // the revision-2 tables as they were saved: no clock, no plans
+  old := sc_swap(sc_shipped_table(SC_SHIPPED, "clock"), "", o[..]);
+  n := ct_put(t[..], 0, old); old = cast(string) t[0..<n];
+  old = sc_cut(old, sc_shipped_table(SC_SHIPPED, "plans"), o[..]);
+  #assert old.count < SC_SHIPPED.count && sc_upgrade(old, up[..]) == SC_SHIPPED && sc_load(c[..], old) && c[0].plans[0].ok && c[0].clock == -1;
+  #assert sc_upgrade(SC_SHIPPED, up[..]) == SC_SHIPPED && sc_upgrade("", up[..]) == "";
+  #assert sc_shipped_table(SC_SHIPPED, "templates") == "table templates id name:text parts:text\n" && sc_shipped_table(SC_SHIPPED, "nope") == "";
+}
+// s with its first `was` taken out, into out.
+sc_cut :: (s: string, was: string, out: [] u8) -> string {
+  for a: 0..<s.count - was.count + 1 {
+    if s[a..<a + was.count] != was { continue; }
+    n := ct_put(out, 0, s[0..<a]); n = ct_put(out, n, s[a + was.count..<s.count]);
+    return cast(string) out[0..<n];
+  }
+  return s;
+}
+sc_cm :: (m: f32) -> int { return cast(int) floor(m * 100 + 0.5); }

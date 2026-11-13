@@ -1,0 +1,179 @@
+// Where an NPC goes on its plan (GitHub #13466): the plan of its time of day
+// (metaverse-engine/ai/npc-plan.coax) turned into a goal each frame, by rule, with no model asked.
+// A realm keeps what is its own: where its NPCs stand now, its walls (it slides a step along them),
+// who sees whom and what a fight does. It asks the plan for a goal and a pose, walks toward the goal
+// at the goal's speed, and asks whether it notices you.
+//
+//   stand, dance, sleep  at the route's point, in that pose
+//   guard                at its post, looking at the route's second point when it has one
+//   patrol               along the route and back, swaying in and out of each end (the target is a
+//                        point that moves along the route: at most MP_PACE radians a second round its
+//                        cycle, slower on a route too long to keep up with at the plan's speed); a route
+//                        whose last point is its first is a loop, walked round at the plan's speed
+//   wander               to a new point of its area every MP_WANDER seconds, the same points on every host
+//   follow               a step behind the NPC it follows, beside it (to the right or the left, by its own number)
+//   coax/bin/coax test metaverse-engine/ai/plan.coax --library
+#load "npc-plan.coax";
+#load "../core/points.coax";
+
+MP_PACE :: 0.35f32;       // rad/s round a patrol's cycle, at most
+MP_WANDER :: 4.0f32;      // s at each point of a wander
+MP_BEHIND :: 1.6f32;      // m behind the one it follows
+MP_BESIDE :: 0.9f32;      // m to its side
+MP_ASLEEP :: 0.4f32;      // the share of its notice it keeps asleep
+MP_LOOP_KEEP :: 0.9f32;   // a loop's target moves this share of the plan's speed, so the walker keeps up
+MP_WALK :: 0; MP_DANCE :: 1; MP_SLEEP :: 2; MP_STAND :: 3;
+
+// A frame's goal: where it walks (metres), how fast (m/s), its pose, and the way it looks when it
+// stands still (`look`: face toward look_x, look_z).
+MpGoal :: struct { x: f32; z: f32; speed: f32; pose: int; look: bool; look_x: f32; look_z: f32; }
+
+mp_m :: (cm: int) -> f32 { return cast(f32) cm / 100; }
+// A point `s` metres along the route's points from its first (clamped to its ends).
+mp_along :: (p: NplPlan, s: f32) -> Point {
+  left := s;
+  for k: 1..<p.n {
+    ax := mp_m(p.x[k - 1]); az := mp_m(p.z[k - 1]); bx := mp_m(p.x[k]); bz := mp_m(p.z[k]);
+    d := sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+    if left <= d && d > 0 { f := left / d; return v3(ax + (bx - ax) * f, 0, az + (bz - az) * f); }
+    left -= d;
+  }
+  return v3(mp_m(p.x[p.n - 1]), 0, mp_m(p.z[p.n - 1]));
+}
+// The route's length in metres.
+mp_length :: (p: NplPlan) -> f32 {
+  l := 0.0f32;
+  for k: 1..<p.n { dx := mp_m(p.x[k]) - mp_m(p.x[k - 1]); dz := mp_m(p.z[k]) - mp_m(p.z[k - 1]); l += sqrt(dx * dx + dz * dz); }
+  return l;
+}
+mp_loop :: (p: NplPlan) -> bool { return p.n >= 3 && p.x[0] == p.x[p.n - 1] && p.z[0] == p.z[p.n - 1]; }
+// A whole number mixed into one in [0, 1): the same on every host.
+mp_hash :: (v: int) -> f32 {
+  h := (v * 1103515245 + 12345) & 0x7FFFFFFF;
+  h = ((h ^ (h >> 13)) * 1274126177) & 0x7FFFFFFF;
+  h = h ^ (h >> 16);
+  return cast(f32) (h & 0xFFFFFF) / 16777216.0;
+}
+// The goal of plan p at time t (seconds). `phase`: the NPC's own offset (radians), so two on one route are
+// not in step; `seed`: its own number for a wander; lead_x, lead_z, lead_yaw: where the one it follows
+// stands and faces (yaw 0 faces +z).
+mp_goal :: (p: NplPlan, t: f32, phase: f32, seed: int, lead_x: f32, lead_z: f32, lead_yaw: f32) -> MpGoal {
+  sp := mp_m(p.speed);
+  g := MpGoal.{speed = sp, pose = MP_STAND};
+  if p.act == NPD_FOLLOW {
+    side := ifx p.who % 2 == 0 then MP_BESIDE else -MP_BESIDE;
+    g.x = lead_x - sin(lead_yaw) * MP_BEHIND + cos(lead_yaw) * side; g.z = lead_z - cos(lead_yaw) * MP_BEHIND - sin(lead_yaw) * side;
+    g.pose = MP_WALK; g.look = true; g.look_x = lead_x + sin(lead_yaw) * 4; g.look_z = lead_z + cos(lead_yaw) * 4;
+    return g;
+  }
+  if p.n < 1 { return g; }
+  g.x = mp_m(p.x[0]); g.z = mp_m(p.z[0]);
+  if p.act == NPD_DANCE { g.pose = MP_DANCE; }
+  if p.act == NPD_SLEEP { g.pose = MP_SLEEP; }
+  if p.act == NPD_GUARD && p.n == 2 { g.look = true; g.look_x = mp_m(p.x[1]); g.look_z = mp_m(p.z[1]); }
+  if p.act == NPD_WANDER {
+    k := cast(int) floor(t / MP_WANDER) + seed * 7919;
+    a := mp_hash(k) * TAU; d := sqrt(mp_hash(k + 104729)) * mp_m(p.r);
+    g.x += sin(a) * d; g.z += cos(a) * d; g.pose = MP_WALK;
+  }
+  if p.act == NPD_PATROL {
+    g.pose = MP_WALK;
+    l := mp_length(p);
+    if l <= 0.01 { return g; }
+    if mp_loop(p) {
+      s := t * sp * MP_LOOP_KEEP + phase / TAU * l;
+      s = s - l * floor(s / l);
+      at := mp_along(p, s); g.x = at.x; g.z = at.z;
+      return g;
+    }
+    w := lo(MP_PACE, PI * sp / l);
+    k := 0.5 + 0.5 * sin(t * w + phase);
+    if p.n == 2 { g.x = mp_m(p.x[0]) + (mp_m(p.x[1]) - mp_m(p.x[0])) * k; g.z = mp_m(p.z[0]) + (mp_m(p.z[1]) - mp_m(p.z[0])) * k; return g; }
+    at := mp_along(p, k * l); g.x = at.x; g.z = at.z;
+  }
+  return g;
+}
+// How far it notices you, in metres (asleep: less than half as far); 0 when it never does.
+mp_notice :: (p: NplPlan) -> f32 {
+  if p.on == NPO_IGNORE { return 0; }
+  return mp_m(p.notice) * (ifx p.act == NPD_SLEEP then MP_ASLEEP else 1.0f32);
+}
+// Where the route is drawn for an editor: points every `step` metres along it (x, z pairs into out;
+// a wander's area and a guard's sight line likewise), and how many pairs.
+mp_dots :: (p: NplPlan, step: f32, out: [] f32) -> int {
+  n := 0; most := out.count / 2;
+  if p.n < 1 || step <= 0 || p.act == NPD_FOLLOW { return 0; }
+  if p.act == NPD_WANDER { return mp_ring(mp_m(p.x[0]), mp_m(p.z[0]), mp_m(p.r), step, out); }
+  if p.n == 1 { out[0] = mp_m(p.x[0]); out[1] = mp_m(p.z[0]); return ifx most > 0 then 1 else 0; }
+  l := mp_length(p); s := 0.0f32;
+  while s <= l + 0.001 && n < most { at := mp_along(p, s); out[n * 2] = at.x; out[n * 2 + 1] = at.z; n += 1; s += step; }
+  return n;
+}
+// Points every `step` metres round a circle (x, z pairs into out), and how many.
+mp_ring :: (cx: f32, cz: f32, r: f32, step: f32, out: [] f32) -> int {
+  if r <= 0 || step <= 0 { return 0; }
+  n := cast(int) (TAU * r / step); if n < 8 { n = 8; } if n > out.count / 2 { n = out.count / 2; }
+  for k: 0..<n { a := cast(f32) k / cast(f32) n * TAU; out[k * 2] = cx + sin(a) * r; out[k * 2 + 1] = cz + cos(a) * r; }
+  return n;
+}
+
+#test "a patrol of two points is the sway between them; a loop goes round; a long route slows its pace" {
+  p: [1] NplPlan;
+  #assert npl_read(61, 6, "day", "patrol", "850 -4500, 850 -5700", 180, 500, "chase", 9, p[..]) == NPL_OK;
+  for t: [4] f32.[0, 1.5, 7.25, 30] {
+    g := mp_goal(p[0], t, 1.7, 5, 0, 0, 0);
+    k := 0.5 + 0.5 * sin(t * 0.35 + 1.7);
+    #assert g.x == 8.5 && g.z == -45 + (-57 - -45) * k && g.speed == 1.8f32 && g.pose == MP_WALK && !g.look;
+  }
+  #assert npl_read(61, 6, "day", "patrol", "0 0, 4000 0", 100, 0, "chase", 9, p[..]) == NPL_OK;
+  g := mp_goal(p[0], 2, 0, 0, 0, 0, 0); w := PI * 1.0f32 / 40;
+  #assert abs(g.x - 40 * (0.5 + 0.5 * sin(2 * w))) < 0.001 && g.z == 0;
+  #assert npl_read(61, 6, "day", "patrol", "0 0, 1000 0, 1000 1000, 0 0", 200, 0, "chase", 9, p[..]) == NPL_OK && mp_loop(p[0]);
+  l := mp_length(p[0]);
+  #assert abs(l - (20 + sqrt(200.0f32))) < 0.001;
+  g = mp_goal(p[0], 5, 0, 0, 0, 0, 0);   // 5 s at 1.8 m/s: 9 m along the first leg
+  #assert abs(g.x - 9) < 0.001 && abs(g.z) < 0.001;
+  g = mp_goal(p[0], 8, 0, 0, 0, 0, 0);   // 14.4 m: 4.4 m up the second leg
+  #assert abs(g.x - 10) < 0.001 && abs(g.z - 4.4) < 0.001;
+  g = mp_goal(p[0], 100, 0, 0, 0, 0, 0);
+  #assert g.x >= 0 && g.x <= 10 && g.z >= 0 && g.z <= 10;
+  #assert npl_read(61, 6, "day", "patrol", "0 0, 1000 0, 1000 1000", 200, 0, "chase", 9, p[..]) == NPL_OK && !mp_loop(p[0]);
+  g = mp_goal(p[0], 0, PI * 0.5, 0, 0, 0, 0);   // the far end: k is 1
+  #assert abs(g.x - 10) < 0.001 && abs(g.z - 10) < 0.001;
+  #assert npl_read(61, 6, "day", "patrol", "0 0, 0 0", 200, 0, "chase", 9, p[..]) == NPL_OK && mp_goal(p[0], 3, 0, 0, 0, 0, 0).x == 0;
+}
+#test "stand, dance, sleep, guard, wander and follow each give their goal and pose" {
+  p: [1] NplPlan;
+  #assert npl_read(10, 1, "dawn", "dance", "-600 -4800", 0, 0, "chase", 9, p[..]) == NPL_OK;
+  g := mp_goal(p[0], 3, 0, 0, 0, 0, 0);
+  #assert g.x == -6 && g.z == -48 && g.pose == MP_DANCE && mp_notice(p[0]) == 0;
+  #assert npl_read(10, 1, "dawn", "sleep", "100 200", 0, 1000, "chase", 9, p[..]) == NPL_OK && mp_goal(p[0], 0, 0, 0, 0, 0, 0).pose == MP_SLEEP && abs(mp_notice(p[0]) - 4) < 0.001;
+  #assert npl_read(10, 1, "dawn", "stand", "100 200", 0, 1000, "ignore", 9, p[..]) == NPL_OK && mp_goal(p[0], 0, 0, 0, 0, 0, 0).pose == MP_STAND && mp_notice(p[0]) == 0;
+  #assert npl_read(10, 1, "dawn", "stand", "100 200", 0, 1000, "flee", 9, p[..]) == NPL_OK && mp_notice(p[0]) == 10;
+  #assert npl_read(10, 1, "dawn", "guard", "0 -3700, 0 -3000", 0, 800, "chase", 9, p[..]) == NPL_OK;
+  g = mp_goal(p[0], 0, 0, 0, 0, 0, 0);
+  #assert g.x == 0 && g.z == -37 && g.look && g.look_x == 0 && g.look_z == -30 && g.pose == MP_STAND;
+  #assert npl_read(10, 1, "dawn", "guard", "0 -3700", 0, 800, "chase", 9, p[..]) == NPL_OK && !mp_goal(p[0], 0, 0, 0, 0, 0, 0).look;
+  #assert npl_read(10, 1, "dawn", "wander", "0 0 500", 120, 0, "chase", 9, p[..]) == NPL_OK;
+  a := mp_goal(p[0], 1, 0, 3, 0, 0, 0); b := mp_goal(p[0], 3.9, 0, 3, 0, 0, 0); c := mp_goal(p[0], 4.1, 0, 3, 0, 0, 0); d := mp_goal(p[0], 4.1, 0, 4, 0, 0, 0);
+  #assert a.x == b.x && a.z == b.z && (a.x != c.x || a.z != c.z) && (c.x != d.x || c.z != d.z) && a.pose == MP_WALK;
+  for t: 0..<40 { e := mp_goal(p[0], cast(f32) t * 1.3, 0, 2, 0, 0, 0); #assert e.x * e.x + e.z * e.z <= 25.001; }
+  #assert npl_read(71, 7, "day", "follow", "foe 6", 200, 0, "chase", 9, p[..]) == NPL_OK;
+  g = mp_goal(p[0], 0, 0, 0, 10, 20, 0);   // the leader faces +z: a step behind it (-z), to its left (odd number)
+  #assert abs(g.x - (10 - MP_BESIDE)) < 0.001 && abs(g.z - (20 - MP_BEHIND)) < 0.001 && g.look && g.pose == MP_WALK;
+  #assert npl_read(81, 8, "day", "follow", "foe 6", 200, 0, "chase", 9, p[..]) == NPL_OK && abs(mp_goal(p[0], 0, 0, 0, 10, 20, 0).x - (10 + MP_BESIDE)) < 0.001;
+  #assert mp_hash(1) != mp_hash(2) && mp_hash(5) >= 0 && mp_hash(5) < 1;
+}
+#test "an editor's dots run along the route, round a wander's area, and never past their room" {
+  p: [1] NplPlan; out: [64] f32;
+  #assert npl_read(61, 6, "day", "patrol", "0 0, 1000 0", 100, 0, "chase", 9, p[..]) == NPL_OK;
+  n := mp_dots(p[0], 1, out[..]);
+  #assert n == 11 && out[0] == 0 && out[20] == 10 && out[21] == 0;
+  #assert mp_dots(p[0], 0.1, out[0..<10]) == 5 && mp_dots(p[0], 0, out[..]) == 0;
+  #assert npl_read(11, 1, "day", "wander", "0 0 500", 100, 0, "chase", 9, p[..]) == NPL_OK;
+  n = mp_dots(p[0], 1, out[..]);
+  #assert n == 31 && abs(out[0]) < 0.001 && abs(out[1] - 5) < 0.001;
+  #assert npl_read(11, 1, "day", "stand", "300 400", 0, 0, "chase", 9, p[..]) == NPL_OK && mp_dots(p[0], 1, out[..]) == 1 && out[0] == 3 && out[1] == 4;
+  #assert npl_read(71, 7, "day", "follow", "foe 6", 200, 0, "chase", 9, p[..]) == NPL_OK && mp_dots(p[0], 1, out[..]) == 0;
+  #assert mp_ring(0, 0, 0.1, 1, out[..]) == 8 && mp_ring(0, 0, 0, 1, out[..]) == 0 && mp_ring(0, 0, 100, 1, out[..]) == 32;
+}

@@ -37,6 +37,7 @@ T_CARD_TIME :: 2.4f32;        // the Digger's card interval
 T_MOVE_SHORT :: 1.9f32; T_MOVE_MAX :: 5.0f32; T_DRILL_REACH :: 2.6f32; T_BAD_CUT :: 2.0f32;
 T_SWEEP_EVERY :: 4.6f32; T_SWEEP_TIME :: 1.3f32; T_SWEEP_WARN :: 0.9f32; T_ARM :: 6.2f32;
 T_STUN_RANGE :: 2.0f32; T_STUN_TIME :: 12.0f32;
+T_CALL :: 12.0f32;            // a foe whose plan says call brings the others within this many metres
 T_HIT_RANGE :: 2.2f32; T_STAGGER :: 0.6f32; T_KNOCK :: 1.3f32; T_RAIDER_HP :: 2; T_IMPERIAL_HP :: 3; T_IMPERIAL_SPEED :: 3.0f32; T_PATROL :: 1.8f32;
 T_HEAT_SCRAP :: 10.0f32;      // a robot piece taken in a fight
 T_FOLLOW :: 7.5f32; T_BOT_GO :: 6.5f32;   // the Digger: keeping up with you, and driving to its work
@@ -100,6 +101,10 @@ SpGame :: struct {
   bot: bool;                   // the Digger is built (its three slots are filled): it follows you
   bot_state: int; bot_x: f32; bot_z: f32; bot_yaw: f32; bot_from: f32; bot_step: int; bot_t: f32; bot_fail: f32; bot_wall: bool; bot_spin: f32;
   fx: [FOES] f32; fz: [FOES] f32; fhp: [FOES] int; fhost: [FOES] bool; fstag: [FOES] f32;
+  fyaw: [FOES] f32; fflee: [FOES] bool; fpose: [FOES] int;   // where each faces, whether it runs from you, and its plan's pose (ai/plan.coax MP_*)
+  // the editor's (?edit): its time of day (-1 the story's; content.coax SC_CLOCK_WORD), the foe whose plan
+  // is drawn (-1 none), and whether the World runs with nobody in it for the foes to see (Simulate). Each outlives a reset
+  view: int = -1; shown: int = -1; unseen: bool;
   stun: [3] f32; boss_t: f32; boss_down: bool; core_taken: bool;
   rail_s: f32; rail_v: f32; pinged: bool; pass_t: f32;
   banner: int; banner_t: f32; msg: int; msg_t: f32; mem_t: f32; flash: f32;
@@ -211,8 +216,16 @@ g_places :: (g: [] SpGame) -> bool {
   return ok;
 }
 g_foes :: (g: [] SpGame) {
-  for i: 0..<FOES { g[0].fx[i] = foe_ax(g, i); g[0].fz[i] = foe_az(g, i); g[0].fhp[i] = ifx i < F_RAIDERS then T_RAIDER_HP else T_IMPERIAL_HP; g[0].fhost[i] = false; g[0].fstag[i] = 0; }
+  for i: 0..<FOES {
+    g[0].fx[i] = foe_ax(g, i); g[0].fz[i] = foe_az(g, i); g[0].fhp[i] = ifx i < F_RAIDERS then T_RAIDER_HP else T_IMPERIAL_HP; g[0].fhost[i] = false; g[0].fstag[i] = 0;
+    g[0].fflee[i] = false; g[0].fyaw[i] = 0;
+    // where its plan for the time of day starts it (the shipped plans start each where its landmark is)
+    pl := sc_plan(g[0].c[..], i, g_phase(g));
+    if pl.ok && pl.n > 0 { g[0].fx[i] = mp_m(pl.x[0]); g[0].fz[i] = mp_m(pl.z[0]); }
+  }
 }
+// The time of day the foes keep and the light is: the editor's when it set one, else the story's phase.
+g_phase :: (g: [] SpGame) -> int { return ifx g[0].view >= 0 then g[0].view else g[0].phase; }
 weak_at :: (g: [] SpGame, i: int) -> Point { a := ifx i == 0 then 0.0f32 else ifx i == 1 then 2.2f32 else -2.2f32; return v3(g[0].at.boss_x + sin(a) * 2.7, 1.5, g[0].at.boss_z + cos(a) * 2.7); }
 // The rail line: s metres along it, a gentle curve north.
 rail_at :: (g: [] SpGame, s: f32) -> Point { return v3(g[0].at.rail_x + sin(s * 0.03) * 8, 0, g[0].at.rail_z + s); }
@@ -242,7 +255,9 @@ g_reset :: (g: [] SpGame) {
   tables := g[0].c[0];   // the content tables are read once
   layer := g[0].layer[0];   // the edit layer is the world's, not the run's
   imports := g[0].imp[0];   // and so are the meshes it imported
+  view := g[0].view; shown := g[0].shown; unseen := g[0].unseen;   // and the editor's clock, its shown foe and Simulate
   g[0] = SpGame.{};
+  g[0].view = view; g[0].shown = shown; g[0].unseen = unseen;
   g[0].imp[0] = imports;
   g[0].gray = gray;
   if tables.ok { g[0].c[0] = tables; } else { _ := sc_load(g[0].c[..], SC_SHIPPED); }
@@ -424,25 +439,10 @@ g_step :: (g: [] SpGame, dt: f32) {
   // Heat cools only by the rover or the stash crate; at the top the Emperor's sweep comes
   if g[0].heat > 0 && (near_rover(g, T_COOL_RANGE) || near_crate(g, T_COOL_RANGE)) { g[0].heat = hi(0, g[0].heat - T_HEAT_COOL * dt); }
   if g[0].heat >= T_HEAT_MAX { g[0].mode = M_BANNER; g[0].banner = B_SWEEP; g[0].banner_t = T_BANNER; return; }
-  // the party: raiders dance where they stand and fight only if you hit them; Imperial robots
-  // patrol, notice you (from further at higher Heat), chase, and give up at the catwalk or far away
-  safe := on_deck(g, g[0].px, g[0].pz) || g[0].pz > -40.5 || g[0].pz < g[0].at.wall_z;
-  for i: 0..<FOES {
-    if g[0].fhp[i] <= 0 { continue; }
-    if g[0].fstag[i] > 0 { g[0].fstag[i] -= dt; continue; }
-    imperial := i >= F_RAIDERS;
-    d := dist2(g[0].px, g[0].pz, g[0].fx[i], g[0].fz[i]);
-    if imperial && !g[0].fhost[i] && !safe && d < T_NOTICE + g[0].heat * T_NOTICE_HEAT { g[0].fhost[i] = true; }
-    if g[0].fhost[i] && (safe || d > T_GIVE_UP) { g[0].fhost[i] = false; }
-    k := 0.5 + 0.5 * sin(g[0].t * 0.35 + cast(f32) i * 1.7);
-    tx := foe_ax(g, i) + (foe_bx(g, i) - foe_ax(g, i)) * k; tz := foe_az(g, i) + (foe_bz(g, i) - foe_az(g, i)) * k;
-    sp := T_PATROL;
-    if g[0].fhost[i] { tx = g[0].px; tz = g[0].pz; sp = ifx imperial then T_IMPERIAL_SPEED else T_RAIDER_SPEED; }
-    ex := tx - g[0].fx[i]; ez := tz - g[0].fz[i]; el := sqrt(ex * ex + ez * ez);
-    if el > 0.05 { g[0].fx[i] += ex / el * lo(sp * dt, el); g[0].fz[i] += ez / el * lo(sp * dt, el); }
-    g_foe_walls(g, i);
-    if g[0].fhost[i] && d < T_RAIDER_REACH { g_hurt(g); }
-  }
+  // the party: each foe keeps its plan for the time of day (content.coax plans, metaverse-engine/ai/plan.coax).
+  // As shipped, raiders dance where they stand and fight only if you hit them; Imperial robots patrol,
+  // notice you (from further at higher Heat), chase, and give up at the catwalk or far away
+  g_foes_step(g, dt);
   // the banned bot: its arm sweeps round every T_SWEEP_EVERY; a stunned weak point wakes after T_STUN_TIME
   if g[0].wall_gone && !g[0].boss_down {
     for i: 0..<3 { if g[0].stun[i] > 0 { g[0].stun[i] -= dt; if g[0].stun[i] <= 0 { g_say(g, MSG_WAKE); } } }
@@ -457,6 +457,43 @@ g_step :: (g: [] SpGame, dt: f32) {
     }
   }
   g_bot(g, dt);
+}
+
+// The foes on their plans. A foe that notices you does what its plan says on seeing you: chases, calls
+// the others near it too, flees, or ignores you; one in a fight or on the run gives up past T_GIVE_UP or at
+// the catwalk, and a guard past twice its notice from its post. Simulating (unseen), nobody is there to see.
+g_foes_step :: (g: [] SpGame, dt: f32) {
+  safe := on_deck(g, g[0].px, g[0].pz) || g[0].pz > -40.5 || g[0].pz < g[0].at.wall_z;
+  for i: 0..<FOES {
+    if g[0].fhp[i] <= 0 { continue; }
+    if g[0].fstag[i] > 0 { g[0].fstag[i] -= dt; continue; }
+    imperial := i >= F_RAIDERS;
+    pl := sc_plan(g[0].c[..], i, g_phase(g));
+    d := dist2(g[0].px, g[0].pz, g[0].fx[i], g[0].fz[i]);
+    see := mp_notice(pl);
+    if see > 0 && !g[0].unseen && !g[0].fhost[i] && !g[0].fflee[i] && !safe && d < see + g[0].heat * T_NOTICE_HEAT {
+      if pl.on == NPO_FLEE { g[0].fflee[i] = true; } else { g[0].fhost[i] = true; }
+      if pl.on == NPO_CALL { for j: 0..<FOES { if j != i && g[0].fhp[j] > 0 && dist2(g[0].fx[i], g[0].fz[i], g[0].fx[j], g[0].fz[j]) < T_CALL { g[0].fhost[j] = true; g[0].fflee[j] = false; } } }
+    }
+    if g[0].fhost[i] && (safe || d > T_GIVE_UP || g[0].unseen) { g[0].fhost[i] = false; }
+    if g[0].fflee[i] && (d > T_GIVE_UP || g[0].unseen) { g[0].fflee[i] = false; }
+    if g[0].fhost[i] && pl.act == NPD_GUARD && pl.n > 0 && dist2(g[0].fx[i], g[0].fz[i], mp_m(pl.x[0]), mp_m(pl.z[0])) > hi(2 * see, 4) { g[0].fhost[i] = false; }
+    lead := ifx pl.act == NPD_FOLLOW && pl.lead >= 1 && pl.lead <= FOES then pl.lead - 1 else i;
+    gl := mp_goal(pl, g[0].t, cast(f32) i * 1.7, i, g[0].fx[lead], g[0].fz[lead], g[0].fyaw[lead]);
+    tx := gl.x; tz := gl.z; sp := gl.speed;
+    g[0].fpose[i] = gl.pose;
+    if !pl.ok { tx = foe_ax(g, i); tz = foe_az(g, i); sp = T_PATROL; }
+    run := ifx imperial then T_IMPERIAL_SPEED else T_RAIDER_SPEED;
+    if g[0].fhost[i] { tx = g[0].px; tz = g[0].pz; sp = run; g[0].fpose[i] = MP_WALK; }
+    if g[0].fflee[i] { k := 6 / hi(d, 0.1); tx = g[0].fx[i] + (g[0].fx[i] - g[0].px) * k; tz = g[0].fz[i] + (g[0].fz[i] - g[0].pz) * k; sp = run; g[0].fpose[i] = MP_WALK; }
+    ex := tx - g[0].fx[i]; ez := tz - g[0].fz[i]; el := sqrt(ex * ex + ez * ez);
+    if el > 0.05 {
+      g[0].fx[i] += ex / el * lo(sp * dt, el); g[0].fz[i] += ez / el * lo(sp * dt, el);
+      if sp * dt > 0.0001 { g[0].fyaw[i] = atan2(ex, ez); }
+    } else if gl.look { g[0].fyaw[i] = atan2(gl.look_x - g[0].fx[i], gl.look_z - g[0].fz[i]); }
+    g_foe_walls(g, i);
+    if g[0].fhost[i] && d < T_RAIDER_REACH { g_hurt(g); }
+  }
 }
 
 // ---- Input
@@ -848,26 +885,31 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
     face := atan2(g[0].px - g[0].fx[i], g[0].pz - g[0].fz[i]);
     fy := ground_y(g, g[0].fx[i], g[0].fz[i]);
     reel := ifx g[0].fstag[i] > 0 then sin(t * 50) * 0.08 else 0.0f32;
+    pose := g[0].fpose[i];
     if i < F_RAIDERS {
-      // a raider: dancing (a bounce and a sway) until someone starts a fight
-      dance := !g[0].fhost[i];
+      // a raider: dancing (a bounce and a sway) until someone starts a fight, or as its plan says: asleep on
+      // its back, standing, or walking where it faces
+      dance := !g[0].fhost[i] && !g[0].fflee[i] && pose == MP_DANCE;
       beat := t * 7.5 + cast(f32) i * 1.3;
-      f := frame_at(v3(g[0].fx[i] + reel, fy + (ifx dance then abs(sin(beat)) * 0.22 else 0.0f32), g[0].fz[i]), ifx dance then sin(beat * 0.5) * 0.9 + cast(f32) i else face);
-      fk := g_thing(g, p, TK_RAIDER, ifx g[0].fhost[i] then 1 else 0, f, 0.95, ifx dance then beat else t * 9);
+      f := frame_at(v3(g[0].fx[i] + reel, fy + (ifx dance then abs(sin(beat)) * 0.22 else 0.0f32), g[0].fz[i]), ifx dance then sin(beat * 0.5) * 0.9 + cast(f32) i else ifx g[0].fhost[i] then face else g[0].fyaw[i]);
+      if pose == MP_SLEEP && !g[0].fhost[i] && !g[0].fflee[i] { f = g_lying(v3(g[0].fx[i], fy + 0.18, g[0].fz[i]), g[0].fyaw[i]); }
+      still := pose == MP_SLEEP || pose == MP_STAND;
+      fk := g_thing(g, p, TK_RAIDER, ifx g[0].fhost[i] then 1 else 0, f, 0.95, ifx dance then beat else ifx still then 0.0f32 else t * 9);
       if fk >= 0 {
-      cast_raider(buf, p, f, 0.95, 100 + i * 5, ifx g[0].fhost[i] then t3(1.0, 0.30, 0.12) else t3(1.0, 0.36, 0.62), ifx dance then beat else t * 9, cast_colour());
+      cast_raider(buf, p, f, 0.95, 100 + i * 5, ifx g[0].fhost[i] then t3(1.0, 0.30, 0.12) else t3(1.0, 0.36, 0.62), ifx dance then beat else ifx still && !g[0].fhost[i] then 0.0f32 else t * 9, cast_colour());
       g_thing_end(g, p, fk); }
     } else {
-      // an Imperial robot: white plates, an orange band, a red eye once it has seen you
-      k := 0.5 + 0.5 * sin(t * 0.35 + cast(f32) i * 1.7);
-      walk := atan2((foe_bx(g, i) - foe_ax(g, i)) * cos(t * 0.35 + cast(f32) i * 1.7), (foe_bz(g, i) - foe_az(g, i)) * cos(t * 0.35 + cast(f32) i * 1.7));
-      f := frame_at(v3(g[0].fx[i] + reel, fy, g[0].fz[i]), ifx g[0].fhost[i] then face else walk);
+      // an Imperial robot: white plates, an orange band, a red eye once it has seen you; it faces where it walks
+      f := frame_at(v3(g[0].fx[i] + reel, fy, g[0].fz[i]), ifx g[0].fhost[i] then face else g[0].fyaw[i]);
+      if pose == MP_SLEEP && !g[0].fhost[i] && !g[0].fflee[i] { f = g_lying(v3(g[0].fx[i], fy + 0.2, g[0].fz[i]), g[0].fyaw[i]); }
       ik := g_thing(g, p, TK_IMPERIAL, ifx g[0].fhost[i] then 1 else 0, f, 0.8, t);
       if ik >= 0 {
       kit_robot(buf, p, f, 0.8, 100 + i * 5, t3(0.92, 0.93, 0.96), HEAT(), ifx g[0].fhost[i] then t3(1.0, 0.22, 0.12) else t3(0.95, 0.95, 1.0), t3(0.20, 0.20, 0.28), ifx g[0].fhost[i] then 0.7 else 0.0f32);
       g_thing_end(g, p, ik); }
     }
   }
+  // the editor's shown foe: its route as dots on the ground, its notice as a ring round it (?edit)
+  if g[0].shown >= 0 && g[0].shown < FOES && g[0].fhp[g[0].shown] > 0 { g_plan_marks(g, buf, p, g[0].shown); }
   // the DJ at the booth, the dance floor's tiles changing colour on the beat, beams from the truss
   dj := frame_at(v3(-13.6, 1.0 + abs(sin(t * 7.5)) * 0.12, -51.5), PI * 0.5);
   jk := g_thing(g, p, TK_DJ, 0, dj, 1.2, t * 7.5);
@@ -924,6 +966,28 @@ g_lights :: (g: [] SpGame, l: [] f32) {
   light_put(l, 7, v3(g[0].at.crate_x, 2, g[0].at.crate_z), 5, 0.31, 0.70, 0.85, 1.0);
 }
 
+// A body lying on its back where it stands, its head toward yaw.
+g_lying :: (o: Point, yaw: f32) -> Frame {
+  head := v3(sin(yaw), 0, cos(yaw)); up := v3(0, 1, 0);
+  return Frame.{o = o, x = cross(head, up), y = head, z = up};
+}
+// The shown foe's plan, drawn in the scene for the editor: dots along its route (or round a wander's area),
+// a post at each point, and a ring as far as it notices you.
+g_plan_marks :: (g: [] SpGame, buf: [] u32, p: [] Pen, i: int) {
+  pl := sc_plan(g[0].c[..], i, g_phase(g));
+  dots: [240] f32;
+  kit_pen(p, 178, MAT_GLOW, GLOW());
+  n := mp_dots(pl, 0.7, dots[..]);
+  for k: 0..<n { block(buf, p, dots[k * 2], ground_y(g, dots[k * 2], dots[k * 2 + 1]) + 0.02, dots[k * 2 + 1], 0.09, 0.05, 0.09); }
+  if pl.act != NPD_WANDER && pl.act != NPD_FOLLOW { for k: 0..<pl.n { x := mp_m(pl.x[k]); z := mp_m(pl.z[k]); block(buf, p, x, ground_y(g, x, z), z, 0.08, 1.1, 0.08); } }
+  see := mp_notice(pl);
+  if see > 0 {
+    kit_pen(p, 179, MAT_GLOW, HEAT());
+    n = mp_ring(g[0].fx[i], g[0].fz[i], see, 0.8, dots[..]);
+    for k: 0..<n { block(buf, p, dots[k * 2], ground_y(g, dots[k * 2], dots[k * 2 + 1]) + 0.02, dots[k * 2 + 1], 0.07, 0.04, 0.07); }
+  }
+}
+
 // ---- The camera and the look
 g_camera :: (g: [] SpGame) -> CamNow {
   t := g[0].t;
@@ -948,16 +1012,17 @@ g_variant :: (g: [] SpGame) -> int {
   if g[0].mode == M_BAY { return 0; }
   if g[0].mode == M_MEMORY || g[0].mode == M_RESTORED { return 3; }
   if g[0].mode == M_TITLE { return 2; }
-  return ifx g[0].phase <= PH_DAY then 0 else ifx g[0].phase == PH_DUSK then 2 else 3;
+  ph := g_phase(g);
+  return ifx ph <= PH_DAY then 0 else ifx ph == PH_DUSK then 2 else 3;
 }
 g_clock :: (g: [] SpGame) -> f32 {
   v := g_variant(g);
-  if v == 0 { return ifx g[0].phase == PH_DAWN && g[0].mode != M_BAY then 0.29f32 else 0.5f32; }
+  if v == 0 { return ifx g_phase(g) == PH_DAWN && g[0].mode != M_BAY then 0.29f32 else 0.5f32; }
   return ifx v == 2 then 0.78f32 else 0.0f32;
 }
 g_key_light :: (g: [] SpGame) -> Point {
   v := g_variant(g);
-  if v == 0 && g[0].phase == PH_DAWN && g[0].mode != M_BAY { return unit_or(v3(0.7, 0.28, 0.6), v3(0, 1, 0)); }
+  if v == 0 && g_phase(g) == PH_DAWN && g[0].mode != M_BAY { return unit_or(v3(0.7, 0.28, 0.6), v3(0, 1, 0)); }
   if v == 0 { return unit_or(v3(-0.45, 0.66, 0.6), v3(0, 1, 0)); }
   if v == 2 { return unit_or(v3(-0.6, 0.3, 0.74), v3(0, 1, 0)); }
   return unit_or(v3(0.4, 0.5, 0.77), v3(0, 1, 0));

@@ -25,6 +25,13 @@
 //   local                               the world is kept on this device and has no live lane: nothing to publish
 //   land RMIN RMAX                      the world takes `terrain` edits: the smallest and the widest brush, centimetres
 //   m ID NAME                           a material a brush paints: its number in a `terrain` edit and its name
+//   plans NAME                          the content table NPCs' plans are rows of (#13466, metaverse-engine/ai/npc-plan.coax):
+//                                       a plan's edit is a cell edit of it
+//   clock NAME WHEN                     the content table the editor's time of day is row 1 of, and that time
+//                                       (story: the realm's own; else dawn, day, dusk or night)
+//   a ID NAME                           an NPC whose plans the world keeps: its number in the realm and its name
+//   p ID WHEN DO SPEED NOTICE ON ROUTE  its plan at that time of day (npc-plan.coax: the row's cells, in that order)
+//   as ID                               the selected NPC (left out: none)
 //   here X Z                            the last point tapped on the ground, whole centimetres (E8, #13417);
 //                                       left out until a point is tapped
 //   no WORDS                            the last refusal, in words
@@ -46,6 +53,9 @@ EM_TEMPLATES :: 32;    // templates
 EM_PARTS :: 480;       // bytes in a template's parts (place.coax PL_TEMPLATE)
 EM_MATS :: 16;         // materials a brush paints
 EM_BYTES :: 65536;     // bytes a model may take
+EM_ACTORS :: 16;       // NPCs with plans
+EM_PLANS :: 64;        // their plans
+EM_ROUTE :: 160;       // bytes in a plan's route (npc-plan.coax NPL_ROUTE)
 
 EdModel :: struct {
   ok: bool;
@@ -63,6 +73,13 @@ EdModel :: struct {
   local: bool;                           // kept on this device: no live lane
   land: bool; land_lo: int; land_hi: int;   // terrain edits are taken: a brush's radius, centimetres
   nm: int; mat_id: [EM_MATS] int; mat_name: [EM_MATS] [EM_NAME] u8; mat_n: [EM_MATS] int;
+  // NPCs' plans (#13466): the plans and clock tables, the clock, the NPCs, their plans, and the selected one
+  ptable: [WE_NAME] u8; ptable_n: int; ctable: [WE_NAME] u8; ctable_n: int; clock: [WE_NAME] u8; clock_n: int;
+  na: int; a_id: [EM_ACTORS] int; a_name: [EM_ACTORS] [EM_NAME] u8; a_name_n: [EM_ACTORS] int;
+  np: int; p_id: [EM_PLANS] int; p_speed: [EM_PLANS] int; p_notice: [EM_PLANS] int;
+  p_when: [EM_PLANS] [WE_NAME] u8; p_when_n: [EM_PLANS] int; p_do: [EM_PLANS] [WE_NAME] u8; p_do_n: [EM_PLANS] int; p_on: [EM_PLANS] [WE_NAME] u8; p_on_n: [EM_PLANS] int;
+  p_route: [EM_PLANS] [EM_ROUTE] u8; p_route_n: [EM_PLANS] int;
+  asel: int;
   here: bool; here_x: int; here_z: int;
   no: [EM_WORDS] u8; no_n: int;
 }
@@ -153,6 +170,33 @@ em_mat :: (out: [] u8, at: int, id: int, name: string) -> int {
   n := ct_put(out, at, "m "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, name);
   return ct_put(out, n, "\n");
 }
+em_plans :: (out: [] u8, at: int, name: string) -> int {
+  if !ct_name_ok(name) { return out.count + 1; }
+  n := ct_put(out, at, "plans "); n = ct_put(out, n, name);
+  return ct_put(out, n, "\n");
+}
+em_clock :: (out: [] u8, at: int, name: string, when: string) -> int {
+  if !ct_name_ok(name) || !ct_name_ok(when) { return out.count + 1; }
+  n := ct_put(out, at, "clock "); n = ct_put(out, n, name); n = ct_put(out, n, " "); n = ct_put(out, n, when);
+  return ct_put(out, n, "\n");
+}
+em_actor :: (out: [] u8, at: int, id: int, name: string) -> int {
+  if id < 1 || !em_text_ok(name, EM_NAME) { return out.count + 1; }
+  n := ct_put(out, at, "a "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, name);
+  return ct_put(out, n, "\n");
+}
+em_plan :: (out: [] u8, at: int, id: int, when: string, act: string, speed: int, notice: int, on: string, route: string) -> int {
+  if id < 1 || speed < 0 || notice < 0 || !ct_name_ok(when) || !ct_name_ok(act) || !ct_name_ok(on) || !em_text_ok(route, EM_ROUTE) { return out.count + 1; }
+  n := ct_put(out, at, "p "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, when); n = ct_put(out, n, " "); n = ct_put(out, n, act);
+  n = ct_put(out, n, " "); n = ct_put_int(out, n, speed); n = ct_put(out, n, " "); n = ct_put_int(out, n, notice); n = ct_put(out, n, " "); n = ct_put(out, n, on);
+  n = ct_put(out, n, " "); n = ct_put(out, n, route);
+  return ct_put(out, n, "\n");
+}
+em_asel :: (out: [] u8, at: int, id: int) -> int {
+  if id < 1 { return out.count + 1; }
+  n := ct_put(out, at, "as "); n = ct_put_int(out, n, id);
+  return ct_put(out, n, "\n");
+}
 em_here :: (out: [] u8, at: int, x: int, z: int) -> int {
   if x < -WE_REACH || x > WE_REACH || z < -WE_REACH || z > WE_REACH { return out.count + 1; }
   n := ct_put(out, at, "here "); n = ct_put_int(out, n, x); n = ct_put(out, n, " "); n = ct_put_int(out, n, z);
@@ -179,6 +223,14 @@ em_write :: (m: [] EdModel, out: [] u8) -> string {
   if m[0].local { n = em_local(out, n); }
   if m[0].land { n = em_land(out, n, m[0].land_lo, m[0].land_hi); }
   for k: 0..<m[0].nm { n = em_mat(out, n, m[0].mat_id[k], cast(string) m[0].mat_name[k][0..<m[0].mat_n[k]]); }
+  if m[0].ptable_n > 0 { n = em_plans(out, n, cast(string) m[0].ptable[0..<m[0].ptable_n]); }
+  if m[0].ctable_n > 0 { n = em_clock(out, n, cast(string) m[0].ctable[0..<m[0].ctable_n], cast(string) m[0].clock[0..<m[0].clock_n]); }
+  for k: 0..<m[0].na { n = em_actor(out, n, m[0].a_id[k], cast(string) m[0].a_name[k][0..<m[0].a_name_n[k]]); }
+  for k: 0..<m[0].np {
+    n = em_plan(out, n, m[0].p_id[k], cast(string) m[0].p_when[k][0..<m[0].p_when_n[k]], cast(string) m[0].p_do[k][0..<m[0].p_do_n[k]], m[0].p_speed[k], m[0].p_notice[k],
+                cast(string) m[0].p_on[k][0..<m[0].p_on_n[k]], cast(string) m[0].p_route[k][0..<m[0].p_route_n[k]]);
+  }
+  if m[0].asel > 0 { n = em_asel(out, n, m[0].asel); }
   if m[0].here { n = em_here(out, n, m[0].here_x, m[0].here_z); }
   if m[0].no_n > 0 { n = em_no(out, n, cast(string) m[0].no[0..<m[0].no_n]); }
   if n > out.count { return ""; }
@@ -202,6 +254,7 @@ em_copy :: (to: [] u8, s: string) -> int {
 em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
   m[0].ok = false; m[0].nk = 0; m[0].ne = 0; m[0].nc = 0; m[0].no_n = 0; m[0].world_n = 0; m[0].here = false; m[0].table_n = 0; m[0].ttable_n = 0; m[0].nt = 0;
   m[0].all = false; m[0].local = false; m[0].land = false; m[0].nm = 0; m[0].kinds_all = 0;
+  m[0].ptable_n = 0; m[0].ctable_n = 0; m[0].clock_n = 0; m[0].na = 0; m[0].np = 0; m[0].asel = 0;
   for k: 0..<WE_COLS { m[0].cols[k] = false; }
   if text.count < EM_SCHEMA.count || text.count > EM_BYTES { return false; }
   lines := ct_parts(text, '\n');
@@ -260,6 +313,23 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
       m[0].mat_id[k] = ct_num(ct_part(line, ' ', 1)).v;
       m[0].mat_n[k] = em_copy(m[0].mat_name[k][..], em_rest(line, 2));
       m[0].nm += 1;
+    } else if word == "plans" {
+      m[0].ptable_n = em_copy(m[0].ptable[..], em_rest(line, 1));
+    } else if word == "clock" {
+      m[0].ctable_n = em_copy(m[0].ctable[..], ct_part(line, ' ', 1)); m[0].clock_n = em_copy(m[0].clock[..], em_rest(line, 2));
+    } else if word == "a" && m[0].na < EM_ACTORS {
+      k := m[0].na;
+      m[0].a_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].a_name_n[k] = em_copy(m[0].a_name[k][..], em_rest(line, 2));
+      m[0].na += 1;
+    } else if word == "p" && m[0].np < EM_PLANS {
+      k := m[0].np;
+      m[0].p_id[k] = ct_num(ct_part(line, ' ', 1)).v;
+      m[0].p_when_n[k] = em_copy(m[0].p_when[k][..], ct_part(line, ' ', 2)); m[0].p_do_n[k] = em_copy(m[0].p_do[k][..], ct_part(line, ' ', 3));
+      m[0].p_speed[k] = ct_num(ct_part(line, ' ', 4)).v; m[0].p_notice[k] = ct_num(ct_part(line, ' ', 5)).v;
+      m[0].p_on_n[k] = em_copy(m[0].p_on[k][..], ct_part(line, ' ', 6)); m[0].p_route_n[k] = em_copy(m[0].p_route[k][..], em_rest(line, 7));
+      m[0].np += 1;
+    } else if word == "as" {
+      m[0].asel = ct_num(ct_part(line, ' ', 1)).v;
     } else if word == "here" {
       m[0].here = true; m[0].here_x = ct_num(ct_part(line, ' ', 1)).v; m[0].here_z = ct_num(ct_part(line, ' ', 2)).v;
     } else if word == "no" {
@@ -275,6 +345,16 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
 em_kind_name :: (m: [] EdModel, kind: int, out: [] u8) -> string {
   for k: 0..<m[0].nk { if m[0].kind_id[k] == kind { n := em_copy(out, cast(string) m[0].kind_name[k][0..<m[0].kind_n[k]]); return cast(string) out[0..<n]; } }
   return "";
+}
+// The NPC with this number: its place in the model, or -1.
+em_actor_at :: (m: [] EdModel, id: int) -> int {
+  for k: 0..<m[0].na { if m[0].a_id[k] == id && id > 0 { return k; } }
+  return -1;
+}
+// NPC `id`'s plan at time of day `when`: its place in the model, or -1.
+em_plan_at :: (m: [] EdModel, id: int, when: string) -> int {
+  for k: 0..<m[0].np { if m[0].p_id[k] == id && cast(string) m[0].p_when[k][0..<m[0].p_when_n[k]] == when { return k; } }
+  return -1;
 }
 // The entity with this ID: its place in the model, or -1.
 em_entity_at :: (m: [] EdModel, id: int) -> int {
@@ -379,4 +459,35 @@ em_test_text :: (out: [] u8) -> string {
   #assert em_mat(out, 0, 256, "x") > EM_BYTES && em_mat(out, 0, 1, "") > EM_BYTES;
   #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nlocal yes\n", h[0].scratch[..]) && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nall 5\n", h[0].scratch[..]);
   #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nland 0 5\n", h[0].scratch[..]) && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nm 1\n", h[0].scratch[..]);
+}
+
+// A model with NPCs' plans (#13466): the fixture proto/world/model-v1.json holds as "actors".
+em_test_actors :: (out: [] u8) -> string {
+  none: [WE_COLS] bool;
+  n := em_begin(out, "splice", 0, 4, 1, 0, 0);
+  n = em_cols(out, n, none[..]);
+  n = em_plans(out, n, "plans");
+  n = em_clock(out, n, "clock", "dusk");
+  n = em_actor(out, n, 1, "Raider 1");
+  n = em_actor(out, n, 6, "Imperial 1");
+  n = em_plan(out, n, 1, "dusk", "patrol", 150, 0, "ignore", "-1200 -4400, 1200 -4400, 1200 -5600, -1200 -4400");
+  n = em_plan(out, n, 6, "dusk", "guard", 0, 800, "call", "0 -3700, 0 -3000");
+  n = em_asel(out, n, 6);
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+#test "NPCs, their plans by time of day, the clock and the selected one read as written" {
+  h: [1] EmTest; m := h[0].m[..];
+  text := em_test_actors(h[0].out[..]);
+  #assert em_read(m, text, h[0].scratch[..]) && m[0].na == 2 && m[0].np == 2 && m[0].asel == 6;
+  pt := m[0].ptable; ctb := m[0].ctable; ck := m[0].clock; an := m[0].a_name[1]; rt := m[0].p_route[0]; dd := m[0].p_do[1]; on := m[0].p_on[1];
+  #assert cast(string) pt[0..<m[0].ptable_n] == "plans" && cast(string) ctb[0..<m[0].ctable_n] == "clock" && cast(string) ck[0..<m[0].clock_n] == "dusk";
+  #assert m[0].a_id[1] == 6 && cast(string) an[0..<m[0].a_name_n[1]] == "Imperial 1" && em_actor_at(m, 6) == 1 && em_actor_at(m, 2) == -1 && em_actor_at(m, 0) == -1;
+  #assert em_plan_at(m, 1, "dusk") == 0 && em_plan_at(m, 6, "dusk") == 1 && em_plan_at(m, 6, "dawn") == -1 && m[0].p_speed[0] == 150 && m[0].p_notice[1] == 800;
+  #assert cast(string) rt[0..<m[0].p_route_n[0]] == "-1200 -4400, 1200 -4400, 1200 -5600, -1200 -4400" && cast(string) dd[0..<m[0].p_do_n[1]] == "guard" && cast(string) on[0..<m[0].p_on_n[1]] == "call";
+  // what is not one is not written or read
+  o := h[0].out[..];
+  #assert em_plans(o, 0, "Plans") > EM_BYTES && em_clock(o, 0, "clock", "") > EM_BYTES && em_actor(o, 0, 0, "x") > EM_BYTES && em_actor(o, 0, 1, "") > EM_BYTES && em_asel(o, 0, 0) > EM_BYTES;
+  #assert em_plan(o, 0, 1, "dusk", "patrol", -1, 0, "chase", "0 0, 1 1") > EM_BYTES && em_plan(o, 0, 1, "dusk", "patrol", 1, 0, "chase", "") > EM_BYTES && em_plan(o, 0, 0, "dusk", "patrol", 1, 0, "chase", "0 0") > EM_BYTES;
+  #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nas 0\n", h[0].scratch[..]) && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\np 1 dusk patrol\n", h[0].scratch[..]);
+  #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nclock clock\n", h[0].scratch[..]);
 }
