@@ -114,6 +114,7 @@ a message. Nothing here was root-caused past what is written.
 | G24 | **`explain` has no example.** | 231 codes, 158 characters each on average; 2 mention an example. `coax/tests/fail/` has 146 failing programs covering 57 codes that could supply them |
 | G25 | **`vocab` doesn't know a program's own names.** | `vocab owed` (defined in `pay/voice-meter.coax`): "no library procedure ... has this name; nearest: seed, Noted, SwAd". The compiler's own `E0315` fix sends the agent there |
 | G26 | **No command takes source from memory.** | `coax check /dev/stdin` is `E0601`; there is no overlay flag. The resident compiler reads every unit from disk on each request and remembers only lexes, hashes and the last checked skeletons |
+| G27 | **The checker runs out on a large program that reaches `ix_checks_of`.** | Found 2026-11-13 wiring proposal 2 into Microcoder: with the `checks` question in `coax/lib/microcoder/aware.coax`, `coax check coder/tui/coder.coax` stops with `E0381` ("type checker storage or nesting budget exceeded") at `engine.coax:147`, a call unrelated to it. Each other question passes; the RLM coder's program, which also calls `ix_checks_of`, checks. The error names no declaration and no limit, so it was not traced further. Microcoder ships without `checks` until it is |
 
 ## 3. The ten proposals
 
@@ -343,3 +344,32 @@ release, taken together.
   "measurement" above is a proposal for one, not a result.
 - **The size estimates.** They come from reading the code, not from trying
   the change.
+
+## 6. Where each part stands (kept current)
+
+Updated 2026-11-13. The steps are #13445's "Build" list; "both loops" is the
+RLM coder (`coax/lib/rlm/code.coax`, `--intel` and `--memory`) and
+Microcoder's JSON-action loop (`coax/lib/microcoder/aware.coax`, the
+worker's `"intel"` and `"memory"`). Measurements on real issues are in
+`docs/research/2026-11-13-compiler-aware-runs.md`.
+
+| Step | Library | RLM coder | Microcoder |
+| --- | --- | --- | --- |
+| 1. Compiler questions as tools | `coax/lib/agent/intel/` (894608d571) | a4c5bef802 | 6d88d1bd64 |
+| 2. Structured diagnostics | `ix_check`, `ix_check_via` (3966cd7a95) | `check(path)` gives dicts | `check FILE` gives records as text |
+| 3. Edits tied to what was seen | `ix_replace` | `replace(name, seen_hash, text)` | an edit's `seen` and `name` |
+| 4. Evidence for finished | `workmem/finish.coax` (e1b747b7cd, 93f51aeeb2) | `FINAL` refused twice at most | `finished` refused twice at most |
+| 5. The resident compiler behind it | `check`, `deps` and `test` run in `coax serve`; `query` does not (G3) | as the library | as the library |
+
+| Proposal | State | Why, or where |
+| --- | --- | --- |
+| 1. Read and edit by declaration | Built | `ix_show`, `ix_replace`; `show` and `replace` in the RLM coder; `show NAME` and an edit's `name` in Microcoder |
+| 2. Which checks reach this code | Built in the library and the RLM coder (d7f0dfd3e1) | Not in Microcoder: G27 |
+| 3. Check an edit before writing it | Not built | It needs the compiler to take source from memory (G26), a compiler release; the write, check and report of proposal 1 covers the agent's need for now |
+| 4. Refactors the compiler performs | Not built | `uses` answers one entry file's program (G5) and is refused on tagged values (G1), so a rename could not prove it found every use |
+| 5. What changed, in meaning | Part built | The run store's `changed` view and the finish rule's weakened-check facts (fewer checks or `#assert`, a lost `#authority` line, a changed compatibility baseline). Not built: a public-surface or effects diff, which no recorded run has needed |
+| 6. A compiler that teaches the language | Not built | The count of diagnostics agents hit comes first, and the runs so far are too few to count |
+| 7. Typed holes | Not built | A language change (large); no run so far stalled on a type it could not find |
+| 8. Effects as the agent's limits | Not built | `deps --effects` refuses mid-sized programs (G12) and its kinds are too coarse (G13) to refuse on |
+| 9. A data set from our own history | Not built | Large; no evaluation or training run is waiting for it yet |
+| 10. Runs that replay | Part built | Recorded model replies (`GW_REPLAY`) drive both loops' selftests against the real compiler. Not built: recording the compiler's answers so a whole run replays exactly |
