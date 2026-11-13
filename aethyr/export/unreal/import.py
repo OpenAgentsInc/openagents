@@ -290,6 +290,25 @@ check(len(errors) == 0, "M_AeVertexColour did not compile: " + "; ".join(str(e) 
 for name, mesh in meshes.items():
     check(mesh.get_material(0) == material, "mesh %s does not use M_AeVertexColour" % name)
 
+# ---- the fonts
+font_tasks = []
+for rel in manifest.get("fonts", []):
+    t = unreal.AssetImportTask()
+    t.filename = os.path.join(BUNDLE, rel)
+    t.destination_path = GEN + "/Fonts"
+    t.automated = True
+    t.replace_existing = True
+    t.save = False
+    font_tasks.append(t)
+if font_tasks:
+    tools.import_asset_tasks(font_tasks)
+
+faces = {}
+for data in registry.get_assets_by_path(GEN + "/Fonts", recursive=True):
+    face = data.get_asset()
+    if isinstance(face, unreal.FontFace):
+        faces[face.get_name()] = face
+
 # ---- the level
 level_path = "%s/L_%s" % (GEN, game)
 check(levels.new_level(level_path), "could not make the level " + level_path)
@@ -316,7 +335,21 @@ for p in placements:
     a.set_editor_property("kind", p["kind"])
     a.set_editor_property("marker_name", p["name"])
 
-# ---- the manifest asset and the fonts
+# the host: the actor that runs the world's rules, and the game mode that gives it the screen
+host = actors.spawn_actor_from_class(unreal.AethyrGame, unreal.Vector(0, 0, 0))
+host.set_actor_label("AethyrGame")
+host.set_editor_property("live_material", material)
+font_names = [os.path.splitext(os.path.basename(f))[0].replace("-", "_") for f in manifest.get("fonts", [])]
+if len(font_names) == 2:
+    text_face = faces.get(font_names[0]) or faces.get(font_names[0].replace("_", "-"))
+    title_face = faces.get(font_names[1]) or faces.get(font_names[1].replace("_", "-"))
+    check(text_face is not None and title_face is not None, "the font faces %s were not found among %s" % (font_names, sorted(faces)))
+    host.set_editor_property("text_face", text_face)
+    host.set_editor_property("title_face", title_face)
+level_world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+level_world.get_world_settings().set_editor_property("default_game_mode", unreal.AethyrGameMode)
+
+# ---- the manifest asset
 factory = unreal.DataAssetFactory()
 factory.set_editor_property("data_asset_class", unreal.AethyrManifest)
 keep = tools.create_asset("DA_%sManifest" % game, GEN, unreal.AethyrManifest, factory)
@@ -326,18 +359,6 @@ if check(keep is not None, "could not make the manifest asset"):
     keep.set_editor_property("meshes", len(groups))
     keep.set_editor_property("triangles", manifest["world"]["triangles"])
     keep.set_editor_property("tuning", {k: float(v) for k, v in manifest["tuning"].items()})
-font_tasks = []
-for rel in manifest.get("fonts", []):
-    t = unreal.AssetImportTask()
-    t.filename = os.path.join(BUNDLE, rel)
-    t.destination_path = GEN + "/Fonts"
-    t.automated = True
-    t.replace_existing = True
-    t.save = False
-    font_tasks.append(t)
-if font_tasks:
-    tools.import_asset_tasks(font_tasks)
-
 assets.save_directory(GEN, only_if_is_dirty=False, recursive=True)
 check(levels.save_current_level(), "could not save the level")
 
@@ -351,6 +372,7 @@ rows.sort()
 count = lambda cls: sum(1 for r in rows if r[0] == cls)
 check(count("StaticMeshActor") == len(groups), "the level has %d mesh actors, the manifest lists %d meshes" % (count("StaticMeshActor"), len(groups)))
 check(count("AethyrCollisionBox") == len(boxes), "the level has %d collision boxes, the manifest lists %d" % (count("AethyrCollisionBox"), len(boxes)))
+check(count("AethyrGame") == 1, "the level has %d host actors, it needs one" % count("AethyrGame"))
 check(count("AethyrMarker") == len(placements), "the level has %d markers, the manifest lists %d" % (count("AethyrMarker"), len(placements)))
 asset_rows = sorted([str(d.asset_class_path.asset_name), str(d.package_name)] for d in registry.get_assets_by_path(GEN, recursive=True))
 fonts = [r for r in asset_rows if r[0] in ("Font", "FontFace")]
