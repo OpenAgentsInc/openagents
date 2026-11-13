@@ -114,6 +114,8 @@ The rows of `proto/registry.json` whose codec or files are this realm's (under `
 | `rig-pack-v2` | profile | engine | `proto/aethyr/rig-pack-v2.json` |
 | `everglade-edits-v1` | profile | world | `proto/verse/everglade-edits-v1.json` |
 | `openagents.voice.v1alpha1` | proto | room-session | `proto/openagents/voice/v1alpha1/voice.proto#Frame` |
+| `rooms-list-v1` | proto | room-session | `proto/openagents/api/v1alpha1/rooms.proto#RoomsList` |
+| `dev-api-stand-in-v1` | proto | room-session | `proto/openagents/api/v1alpha1/room_dev.proto` |
 
 ## Limits
 
@@ -200,4 +202,4 @@ table ability id name:text
 128|Rage
 ```
 
-reference sha256: f5c45bd9d6d6dc99ee6f31c59fab85d849243a4d14282adb2de1ec8c64db0485
+reference sha256: f52c4652b031bb545ddf6718c3a2e8f7ab441319c0e886e48e19b50d0ce22f18
