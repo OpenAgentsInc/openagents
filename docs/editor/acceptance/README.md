@@ -115,6 +115,30 @@ It runs with `--real-time` because under the agent clock the page does not
 reach its world's first revision on the dev server (#13475), so `state`
 shows the time of day and the actor where `clock until` would hold them.
 
+## Foes in the agent pane
+
+A fourth pass sends the same request through the editor's agent pane
+(#13466, #13465), with Claude Code chosen in the agent menu on Haiku 5.5:
+
+```sh
+coax/web/tool.sh drive web apps/openagents-web /worlds/splice \
+  --query "edit=agent" --size 1600x900 --live http://127.0.0.1:9538 \
+  --real-time --ops docs/editor/acceptance/foes-pane-run.ops
+```
+
+Each `/local/` request the page makes is answered from
+`docs/editor/acceptance/foes-pane/`, a trimmed copy of a real Haiku turn, so
+no model or Coder runs. The agent's reply shows in the pane. The drive's edit
+verbs stand in for the agent's realm tools, and each one fails the run unless
+the open editor reaches its revision. The pass then undoes its seven edits.
+It leaves `foes-pane-turn.png` and `foes-pane-dusk.png` in
+`apps/openagents-web/build/`.
+
+For the real turn, start the server with `coax/web/serve.sh`, open the same
+page and send the prompt. Coder gives Claude Code's realm tools this
+server's origin (`CODER_REALM_ORIGIN`), so they edit the world the editor
+shows.
+
 ## What it checks
 
 | Step | What must hold |

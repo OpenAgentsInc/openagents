@@ -533,6 +533,44 @@ rebuilds. What happened:
   reviewed PR. Plans stay the first path: they work on a deployed page with
   undo and server checks. Code edits work only on a dev server.
 
+**Part 3: the editor's agent pane** (#13465, Haiku 5.5, 30 steps, 86 s). This
+is a headless `/worlds/splice?edit=agent` on a dev server: you choose Claude Code
+in the agent menu, which starts on Haiku 5.5, and send the same prompt plus
+"Then set the editor's time to dusk so I can watch."
+- **First run, on the owner's server and on ours, failed.** The note the page
+  added said revision 0. Claude Code's realm tools read production, and every
+  write was refused with "log in as an admin". There were three causes:
+  - The world's tool on the dev server did not compile after a policy
+    change, so the page never loaded the world and the note said revision 0.
+  - Coder started `openagents mcp` with no origin, so the tools used the
+    CLI's default site.
+  - The refusal did not name the site.
+- **Fixed:**
+  - `coax/web/serve.sh` starts Coder with `CODER_REALM_ORIGIN`, and Coder
+    passes `--origin` to the realm tools. A local agent now reads and writes
+    the server the open editor is on. That server takes writes from this
+    computer with no login, the same rule it applies to the page.
+  - The world's `reference` link carries that origin.
+  - Against a deployed site the tools use your `openagents` login. A
+    refused write now names the site and says that only an admin's login
+    can write there.
+  - The world's tool compiles again.
+- **Second run:**
+  - The note said "revision 2", the world's real revision.
+  - The agent read the actors and plans and dry-ran its routes. Raiders 1
+    to 5 now sleep at dawn and circle a loop in the south of the mine at
+    dusk, Imperial 1 and 2 guard the tunnel mouth, and the time is dusk.
+  - The open editor followed each edit live, to revision 15, with the
+    time menu on dusk
+    ([the pane after the turn](shots/foes-pane-haiku.png)).
+  - The village gate was refused in the server's words, as in part 1.
+  - Several raider loops were refused as passing through a wall before one
+    held.
+- **Scripted run:** `docs/editor/acceptance/foes-pane-run.ops` answers the
+  page's `/local/` requests from `foes-pane/`, a trimmed copy of that turn.
+  The drive's edit verbs stand in for the tools, so no model or Coder is
+  needed ([the pane](shots/foes-pane-scripted.png)).
+
 ## Gaps, and the issues that close them
 
 Existing issues this builds on:

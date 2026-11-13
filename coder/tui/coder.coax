@@ -1031,13 +1031,24 @@ cd_claude_realm_tools :: (a: [] App) -> string {
   exe := cast(string) pb[0..<pn];
   if !fs_exists(exe) { return ""; }
   for c: exe { if c == '"' || c == '\\' || c < 32 { return ""; } }
-  out := a[0].realm_mcp[..];
-  ob: [256] u8; origin := cl_getenv("CODER_REALM_ORIGIN", ob[..]);
-  for c: origin { if c == '"' || c == '\\' || c < 32 { origin = ""; break; } }
+  ob: [256] u8;
+  return cd_realm_mcp_json(exe, cl_getenv("CODER_REALM_ORIGIN", ob[..]), a[0].realm_mcp[..]);
+}
+// The MCP config for the openagents CLI at EXE; with an origin, its realm tools read and write that site.
+// An origin that would break the JSON is left out, so the tools keep the CLI's own origin.
+cd_realm_mcp_json :: (exe: string, origin: string, out: [] u8) -> string {
+  o := origin;
+  for c: o { if c == '"' || c == '\\' || c < 32 { o = ""; break; } }
   n := cd_cat(out, 0, "{\"openagents\":{\"command\":\""); n = cd_cat(out, n, exe); n = cd_cat(out, n, "\",\"args\":[\"mcp\"");
-  if origin.count > 0 { n = cd_cat(out, n, ",\"--origin\",\""); n = cd_cat(out, n, origin); n = cd_cat(out, n, "\""); }
+  if o.count > 0 { n = cd_cat(out, n, ",\"--origin\",\""); n = cd_cat(out, n, o); n = cd_cat(out, n, "\""); }
   n = cd_cat(out, n, "]}}");
   return ifx n < out.count then cast(string) out[0..<n] else "";
+}
+#test "the realm tools' MCP config names the page's own server when Coder was told it (#13466)" {
+  b: [400] u8;
+  #assert cd_realm_mcp_json("/r/openagents", "http://127.0.0.1:9583", b[..]) == "{\"openagents\":{\"command\":\"/r/openagents\",\"args\":[\"mcp\",\"--origin\",\"http://127.0.0.1:9583\"]}}";
+  #assert cd_realm_mcp_json("/r/openagents", "", b[..]) == "{\"openagents\":{\"command\":\"/r/openagents\",\"args\":[\"mcp\"]}}";
+  #assert cd_realm_mcp_json("/r/openagents", "http://x\"y", b[..]) == "{\"openagents\":{\"command\":\"/r/openagents\",\"args\":[\"mcp\"]}}";
 }
 
 cd_claude_close :: (a: [] App) {
