@@ -839,6 +839,7 @@ def verbs(check):
         check("router: a finished worker's reply goes to the outbox under the chat rules", any(l["fate"] == "reply written to the outbox" for l in r1b)
               and reply.get("channel") == "chat" and reply.get("text") == "first")
         trigger("$ sleep 60", "--thread", "ci")
+        t_w2 = time.time()
         r2 = router()
         w2 = r2[0].get("session", "") if r2 else ""
         for _ in range(100):                # the Worker writes its session file a moment after it starts; wait for the command, not only the session line
@@ -855,13 +856,29 @@ def verbs(check):
                 break
             except (OSError, ValueError):
                 time.sleep(0.2)
+        gone = False
         if wpid:
             os.kill(wpid, 9)                # the Worker this smoke started
-            time.sleep(0.5)
+            for _ in range(600):            # until its process is gone: the Router asks kill(pid, 0), as this does
+                try:
+                    os.kill(wpid, 0)
+                except ProcessLookupError:
+                    gone = True
+                    break
+                time.sleep(0.05)
         r3 = router()
         st = subprocess.run([coder, "status", w2, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
-        check("watchdog: a worker whose process died ends as lost", any(l["fate"] == "worker lost: ended" for l in r3)
-              and st.returncode == 0 and json.loads(st.stdout)["state"] == "lost")
+        lost = any(l["fate"] == "worker lost: ended" for l in r3) and st.returncode == 0 and json.loads(st.stdout)["state"] == "lost"
+        if not lost:                        # what the check saw, for the log (#13370)
+            sd_ = os.path.join(home, ".openagents", "coder", "sessions")
+            print("     lost: worker %s, pid %s (gone after the kill: %s), command seen %s, after %.1f s" % (w2, wpid, gone, "$ sleep 60" in head.stdout, time.time() - t_w2))
+            print("     lost: the pass before: %s" % json.dumps(r2)[:600])
+            print("     lost: the pass after: %s" % json.dumps(r3)[:600])
+            print("     lost: status %s %s %s" % (st.returncode, st.stdout.strip()[:300], st.stderr.strip()[-200:]))
+            print("     lost: its files: %s" % sorted(n for n in os.listdir(sd_) if n.startswith(w2)))
+            lp_ = os.path.join(sd_, w2 + ".jsonl")
+            print("     lost: its log: %s" % (open(lp_).read()[-1500:] if os.path.exists(lp_) else "none"))
+        check("watchdog: a worker whose process died ends as lost", lost)
         # batching (chapter 17): a pass's candidates go to System One in one request, at most 8; the rest wait for the next pass
         with open(os.path.join(rdir, "sources.json"), "w") as f:
             f.write('{"sources":{"local":{"mode":"explicit_requests_only","authors":["me"],"engine":"echo"},"spam":{"mode":"ignore","authors":["*"]},'
