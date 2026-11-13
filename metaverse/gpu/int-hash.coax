@@ -61,7 +61,7 @@ tool_main :: () -> int #export_c #effects(all) {
   m := fs_read("metaverse/style.coax", src[..]);
   if m < 0 { tool_errln("int-hash: run from the repo root (no metaverse/style.coax)"); return 1; }
   style := ih_replace(cast(string) src[0..<m], IH_STYLE, IH_STYLE_INT, dst[..], 1);
-  if style.count == 0 { tool_errln("int-hash: metaverse/style.coax does not have verse_style_hash"); return 1; }
+  if style.count == 0 { tool_errln("int-hash: metaverse/style.coax does not have metaverse_style_hash"); return 1; }
   if !fs_write(fs_join(out, "style.coax", p[..]), style) { tool_errln("int-hash: cannot write style.coax"); return 1; }
   // Everglade's three, then the particles' one; their loads this copy's style and the library where it is
   if !ih_module(out, IH_V1_GPU, "../../../../", "gpu.coax", "everglade.wgsl", 3) || !ih_module(out, "everglade/client/gpu", "../../../", "gpu-fx.coax", "everglade-fx.wgsl", 1) { return 1; }
@@ -144,14 +144,14 @@ ih_page :: (out: string, name: string) -> bool {
     text = cast(string) tmp[0..<text.count];
   }
   if styled {
-    // the style's hash (verse_style_hash: the facets' jitter, the villa's leaves) too, as Everglade's
+    // the style's hash (metaverse_style_hash: the facets' jitter, the villa's leaves) too, as Everglade's
     ys: [IH_FILE] u8; yd: [IH_FILE] u8; yb: [1024] u8; yl: [2048] u8; yx: [IH_FILE] u8;
     yn := fs_read("metaverse/style.coax", ys[..]);
     if yn < 0 { tool_errln("int-hash: no metaverse/style.coax"); return false; }
     style_text:=cast(string)ys[0..<yn];
     style_times:=ifx ih_count(style_text,"return render_noise2(x,y);")==1 then 0 else 1;
     sty := ih_replace(style_text, IH_STYLE, IH_STYLE_INT, yd[..], style_times);
-    if sty.count == 0 { tool_errln("int-hash: metaverse/style.coax does not have verse_style_hash"); return false; }
+    if sty.count == 0 { tool_errln("int-hash: metaverse/style.coax does not have metaverse_style_hash"); return false; }
     // its own loads whole, as it moves beside the page
     yw: [IH_FILE] u8; vb: [1024] u8; vd: [1024] u8;
     sty = ih_whole_loads(sty, ih_cat3(fs_cwd(vb[..]), "/verse/", "", vd[..]), yw[..]);

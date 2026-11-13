@@ -16,7 +16,7 @@
 // Stages.metal haunt_vertex, haunt_fragment and haunt_sky_fragment), ported
 // by hand; its light, fog and the tone curve are the Verse engine's own functions
 // (haunt-light.coax, light.coax) written as WGSL by coax wgsl at build time
-// into the generated blocks below, as is the HUD bar (verse_bar). The
+// into the generated blocks below, as is the HUD bar (metaverse_bar). The
 // phone adds a bloom pass over the scene; the browser doesn't yet, so the
 // tone curve is applied as each pixel is drawn.
 // RealmU, a uniform block, is read from a []f32 at these offsets (floats):
@@ -39,7 +39,7 @@
 // lightning, then the cutaway's target (your chest; y under -1000: none)
 // per plate (realm.coax PLATES): x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
 realm_tone :: (c:V3)->V3 {
-  return v3(verse_haunt_night(c.x),verse_haunt_night(c.y),verse_haunt_night(c.z));
+  return v3(metaverse_haunt_night(c.x),metaverse_haunt_night(c.y),metaverse_haunt_night(c.z));
 }
 // A plate (realm.coax plate): a dark wood fill with one thin bronze line
 // round it and small rounded corners. Look 1 lights the line; 2 (under
@@ -93,7 +93,7 @@ realm_bg_fs :: (pos:V4,u:[]f32)->RealmLit {
 // ---- the house: each draw a mesh's indices over the shared vertices, one
 // instance per object (Stages.metal haunt_vertex, haunt_fragment). A vertex
 // is 48 bytes: position, normal, uv, a colour whose alpha is its sheet, its
-// outline cut (metaverse/look.coax verse_outline_strength; 0 a full outline) and
+// outline cut (metaverse/look.coax metaverse_outline_strength; 0 a full outline) and
 // two reserved words.
 RealmInstance :: struct {r0:V4; r1:V4; r2:V4; material:V4; }
 RealmLight :: struct {position:V4; color:V4; }
@@ -101,18 +101,18 @@ RealmS :: struct {pos:V4; world:V3; normal:V3; uv:V2; tint:V3; glow:f32; slice:u
 realm_word :: (i:u32,vertices:[]u32)->f32 {
   return f32_from_bits(vertices[cast(int)i]);
 }
-// ---- the moon's shadow map (haunt-light.coax verse_haunt_moon_dir, _shadow_reach): a square
+// ---- the moon's shadow map (haunt-light.coax metaverse_haunt_moon_dir, _shadow_reach): a square
 // round the eye, snapped to whole texels so the shadows hold still as you walk, drawn first by
 // shadow_vs/shadow_fs and read by scene_fs, twelve taps of the comparison sampler for a soft edge.
 realm_moon_dir :: ()->V3 {
-  return v3(verse_haunt_moon_dir(0.0f32),verse_haunt_moon_dir(1.0f32),verse_haunt_moon_dir(2.0f32));
+  return v3(metaverse_haunt_moon_dir(0.0f32),metaverse_haunt_moon_dir(1.0f32),metaverse_haunt_moon_dir(2.0f32));
 }
 realm_shadow_place :: (w:V3,u:[]f32)->V3 {
   l:V3=realm_moon_dir();
   r:V3=wg_normalize3(wg_cross3(v3(0.0f32,1.0f32,0.0f32),l));
   up:V3=wg_cross3(l,r);
-  reach:f32=verse_haunt_shadow_reach(0.0f32);
-  deep:f32=verse_haunt_shadow_reach(1.0f32);
+  reach:f32=metaverse_haunt_shadow_reach(0.0f32);
+  deep:f32=metaverse_haunt_shadow_reach(1.0f32);
   snap:f32=(reach*2.0f32)/1024.0f32;
   c:V3=v3(floor(wg_dot3(v3(u[24],u[25],u[26]),r)/snap)*snap,floor(wg_dot3(v3(u[24],u[25],u[26]),up)/snap)*snap,wg_dot3(v3(u[24],u[25],u[26]),l));
   return v3((wg_dot3(w,r)-c.x)/reach,(wg_dot3(w,up)-c.y)/reach,0.5f32-((wg_dot3(w,l)-c.z)/(2.0f32*deep)));
@@ -150,7 +150,7 @@ realm_moonlit :: (w:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompar
       k+=1;
     }
   }
-  return verse_haunt_shadow_edge(uv.x,uv.y,lit/12.0f32);
+  return metaverse_haunt_shadow_edge(uv.x,uv.y,lit/12.0f32);
 }
 realm_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]RealmInstance)->RealmS {
   b:u32=mul_wrap(id,cast(u32)12);
@@ -213,7 +213,7 @@ realm_scene_fs :: (s:RealmS,u:[]f32,lights:[]RealmLight,sheets:Tex2DArray,sheet:
   n:V3=wg_normalize3(s.normal);
   facing:f32=fmax(0.0f32,wg_dot3(n,realm_moon_dir()));
   moon:f32=ifx facing>0.0f32 then facing*realm_moonlit(s.world,n,u,shadow_map,shadow_cmp) else 0.0f32;
-  lit:V3=wg_add_f3f3(v3(verse_haunt_ambient(n.y,0.0f32),verse_haunt_ambient(n.y,1.0f32),verse_haunt_ambient(n.y,2.0f32)),wg_mul_ff3(moon,v3(verse_haunt_moonlight(0.0f32),verse_haunt_moonlight(1.0f32),verse_haunt_moonlight(2.0f32))));
+  lit:V3=wg_add_f3f3(v3(metaverse_haunt_ambient(n.y,0.0f32),metaverse_haunt_ambient(n.y,1.0f32),metaverse_haunt_ambient(n.y,2.0f32)),wg_mul_ff3(moon,v3(metaverse_haunt_moonlight(0.0f32),metaverse_haunt_moonlight(1.0f32),metaverse_haunt_moonlight(2.0f32))));
   count:u32=wg_u32_f(u[27]);
   {
     i:u32=0;
@@ -222,16 +222,16 @@ realm_scene_fs :: (s:RealmS,u:[]f32,lights:[]RealmLight,sheets:Tex2DArray,sheet:
       delta:V3=wg_sub_f3f3(v3(l.position.x,l.position.y,l.position.z),s.world);
       d:f32=wg_length3(delta);
       lambert:f32=fmax(0.08f32,wg_dot3(n,wg_div_f3f(delta,fmax(d,0.001f32))));
-      lit=wg_add_f3f3(lit,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(l.color.x,l.color.y,l.color.z),verse_haunt_attenuate(d,l.position.w)),lambert),2.2f32));
+      lit=wg_add_f3f3(lit,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(l.color.x,l.color.y,l.color.z),metaverse_haunt_attenuate(d,l.position.w)),lambert),2.2f32));
       i=add_wrap(i,1);
     }
   }
   colour:V3=wg_mul_f3f3(v3(tex.x,tex.y,tex.z),s.tint);
   d:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
   f:f32=u[28];
-  c:V3=v3(verse_haunt_shade(colour.x,lit.x,s.glow,d,0.0f32,f),verse_haunt_shade(colour.y,lit.y,s.glow,d,1.0f32,f),verse_haunt_shade(colour.z,lit.z,s.glow,d,2.0f32,f));
-  share:f32=verse_haunt_bloom_share(fmax(c.x,fmax(c.y,c.z)),s.glow);
-  ink:u32=wg_u32_f(wg_round(verse_outline_strength(s.cut,s.glow)*15.0f32));
+  c:V3=v3(metaverse_haunt_shade(colour.x,lit.x,s.glow,d,0.0f32,f),metaverse_haunt_shade(colour.y,lit.y,s.glow,d,1.0f32,f),metaverse_haunt_shade(colour.z,lit.z,s.glow,d,2.0f32,f));
+  share:f32=metaverse_haunt_bloom_share(fmax(c.x,fmax(c.y,c.z)),s.glow);
+  ink:u32=wg_u32_f(wg_round(metaverse_outline_strength(s.cut,s.glow)*15.0f32));
   return RealmLit.{light=v4(c.x,c.y,c.z,share),aux=v4(n.x,n.y,n.z,cast(f32)(add_wrap(mul_wrap(s.material,cast(u32)16),ink)))};
 }
 // ---- the post pass (host.js postLayouts): the light's bright share, blurred at a quarter and an
@@ -281,7 +281,7 @@ realm_outlined :: (p:I2,light:V3,u:[]f32,post_aux:Tex2D,post_depth:TexDepth)->V3
       d[cast(int)k]=wg_load_depth(post_depth,q,0);
       b:V4=wg_load_2d(post_aux,q,0);
       if (d[cast(int)k]<1.0f32) {
-        edge=fmax(edge,verse_outline_crease(wg_dot3(v3(a.x,a.y,a.z),v3(b.x,b.y,b.z))));
+        edge=fmax(edge,metaverse_outline_crease(wg_dot3(v3(a.x,a.y,a.z),v3(b.x,b.y,b.z))));
         other:u32=(wg_u32_f(wg_round(b.w)))>>4;
         if (((other!=(tag>>4))&&(dc<=(d[cast(int)k]+0.00001f32)))&&((tag>>4)>other)) {
           edge=fmax(edge,0.7f32);
@@ -291,8 +291,8 @@ realm_outlined :: (p:I2,light:V3,u:[]f32,post_aux:Tex2D,post_depth:TexDepth)->V3
     }
   }
   lap:f32=fmax(abs((d[0]+d[1])-(2.0f32*dc)),abs((d[2]+d[3])-(2.0f32*dc)));
-  edge=fmax(edge,verse_outline_depth(lap,dc));
-  return v3(verse_outline_ink(light.x,edge*strength),verse_outline_ink(light.y,edge*strength),verse_outline_ink(light.z,edge*strength));
+  edge=fmax(edge,metaverse_outline_depth(lap,dc));
+  return v3(metaverse_outline_ink(light.x,edge*strength),metaverse_outline_ink(light.y,edge*strength),metaverse_outline_ink(light.z,edge*strength));
 }
 realm_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
   p:I2=wg_cvt_i2f2(v2(pos.x,pos.y));
@@ -300,7 +300,7 @@ realm_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth
   light:V3=realm_outlined(p,wg_sw_rgb_f4(wg_load_2d(post_light,p,0)),u,post_aux,post_depth);
   near:V3=wg_sw_rgb_f4(gpu_sample_level(post_quarter,post_lin,uv,0.0f32));
   far:V3=wg_sw_rgb_f4(gpu_sample_level(post_eighth,post_lin,uv,0.0f32));
-  c:V3=v3(verse_haunt_glow(light.x,near.x,far.x),verse_haunt_glow(light.y,near.y,far.y),verse_haunt_glow(light.z,near.z,far.z));
+  c:V3=v3(metaverse_haunt_glow(light.x,near.x,far.x),metaverse_haunt_glow(light.y,near.y,far.y),metaverse_haunt_glow(light.z,near.z,far.z));
   return wg_make_f4_f3f(realm_panels(v2(pos.x,pos.y),realm_tone(c),u),1.0f32);
 }
 // ---- the HUD: one quad per stroke or bar (realm.coax)
@@ -328,10 +328,10 @@ realm_fx_fs :: (v:RealmV,u:[]f32)->V4 {
   along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
   d:f32=wg_length2(v2(along,v.place.y));
   if (v.tint.w>3.5f32) {
-    // A HUD bar (ui.coax bar), as splash.wgsl draws one: verse_bar mirrored
+    // A HUD bar (ui.coax bar), as splash.wgsl draws one: metaverse_bar mirrored
     // in x, so its cuts are on the plain corners.
     p:V2=wg_div_f2f(v.place,(1.0f32-(0.03f32*v.bar.x)));
-    c:f32=verse_bar(-p.x,p.y,v.shape.x,v.shape.y,v.shape.z,u[2],v.bar.x,v.bar.y);
+    c:f32=metaverse_bar(-p.x,p.y,v.shape.x,v.shape.y,v.shape.z,u[2],v.bar.x,v.bar.y);
     return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),c),v.shape.w),u[3]),1.0f32);
   }
   core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);

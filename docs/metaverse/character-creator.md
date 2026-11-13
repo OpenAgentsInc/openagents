@@ -250,7 +250,7 @@ USE IN EVERGLADE saves first. Nothing moves until the save is confirmed
    own track: a three-quarter view that sweeps across behind you, pulls out and
    cranes up midway, and comes in to straight behind you.
 3. The orbit turns to look where the run's camera looks
-   (`verse_orbit_toward`), and the camera eases into the follow camera over
+   (`metaverse_orbit_toward`), and the camera eases into the follow camera over
    1.5 seconds, so there is no jump.
 4. The keys are yours, about 90 m down the path.
 

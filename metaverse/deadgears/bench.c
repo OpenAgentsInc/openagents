@@ -34,31 +34,31 @@ int main(void) {
       if (total / FRAMES < 2.0) break;
     }
     memset(&store, 0, sizeof store);
-    verse_dg_setup(view());
-    verse_dg_spawn_crowd(view(), 200);
-    for (int i = 0; i < 10; i++) { verse_dg_input(view(), 0, 9, 1, 0, 0, -1); verse_dg_frame(view(), dt); }
+    metaverse_dg_setup(view());
+    metaverse_dg_spawn_crowd(view(), 200);
+    for (int i = 0; i < 10; i++) { metaverse_dg_input(view(), 0, 9, 1, 0, 0, -1); metaverse_dg_frame(view(), dt); }
     double per[SYSTEMS] = {0};
     for (int i = 0; i < FRAMES; i++) {
-      verse_dg_input(view(), 0, 9, 1, 0, 0, -1);
+      metaverse_dg_input(view(), 0, 9, 1, 0, 0, -1);
       double t0 = now_ms();
-      int64_t steps = verse_dg_frame_begin(view(), dt);
+      int64_t steps = metaverse_dg_frame_begin(view(), dt);
       for (int64_t s = 0; s < steps; s++) {
         for (int k = 0; k < SYSTEMS; k++) {
           double a = now_ms();
-          verse_dg_run(view(), k);
+          metaverse_dg_run(view(), k);
           double ms = now_ms() - a;
-          verse_dg_timed(view(), k, ms);
+          metaverse_dg_timed(view(), k, ms);
           per[k] += ms;
         }
-        verse_dg_step_end(view());
+        metaverse_dg_step_end(view());
       }
-      verse_dg_frame_end(view());
+      metaverse_dg_frame_end(view());
       double ms = now_ms() - t0;
       if (ms < fastest[i]) fastest[i] = ms;
     }
     for (int k = 0; k < SYSTEMS; k++) if (per[k] / FRAMES < system_ms[k]) system_ms[k] = per[k] / FRAMES;
-    alive = (int)verse_dg_alive(view());
-    entities = (int)verse_dg_entities(view());
+    alive = (int)metaverse_dg_alive(view());
+    entities = (int)metaverse_dg_entities(view());
   }
   double total = 0, worst = 0;
   for (int i = 0; i < FRAMES; i++) { total += fastest[i]; if (fastest[i] > worst) worst = fastest[i]; }

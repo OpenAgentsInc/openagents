@@ -269,7 +269,7 @@ door_hash :: (s: [] Everglade, hash: string) -> bool {
   sp := door_spot(s, id);
   s[0].spawn = sp.at; s[0].spawn_face = sp.face;
   s[0].feet = v3(sp.at.x, ground_at(s, sp.at.x, sp.at.z), sp.at.z);
-  s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+  s[0].orbit = metaverse_orbit_start(s[0].feet, s[0].spawn_face);
   s[0].warp = true; s[0].above = false; s[0].lift = 0;
   return true;
 }
@@ -374,11 +374,11 @@ door_spot :: (s: [] Everglade, i: int) -> DoorSpot {
 
 #test "camera: pulled in to your shoulders by a wall (in the crypt, a narrow room), your own body is left out" {
   g: [1] Everglade;
-  g[0].orbit = verse_orbit_start(v3(0, 0, 0), 0);
-  far := verse_orbit_ray(g[0].orbit).far;
+  g[0].orbit = metaverse_orbit_start(v3(0, 0, 0), 0);
+  far := metaverse_orbit_ray(g[0].orbit).far;
   g[0].orbit.shown = far;
   #assert far > 1 && !you_inside(g[..]);
-  g[0].orbit.shown = 0.4;   // scenery pulled the eye in (verse_orbit_limit)
+  g[0].orbit.shown = 0.4;   // scenery pulled the eye in (metaverse_orbit_limit)
   #assert you_inside(g[..]);
   g[0].lift = 1;            // the map takes the eye out again
   #assert !you_inside(g[..]);

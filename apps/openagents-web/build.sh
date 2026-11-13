@@ -225,9 +225,9 @@ splash=$!
 # (particles.wgsl loads metaverse-engine/render/particle-motion.coax and haunt-light.coax in its Coax: gpu/particles.coax.)
 # The art styles' shading (metaverse/style.coax, docs/metaverse/art-styles.md) into the fixture and every
 # painterly realm's WGSL (realms.ts --check refuses a painterly realm without it).
-style_fns="verse_style_wrap verse_style_bands verse_style_bands2 verse_style_shade verse_style_cool verse_style_keep_value verse_style_banded verse_style_ambient verse_style_dab verse_style_rim verse_style_haze verse_style_haze_glow verse_style_haze_teal verse_style_haze_hue verse_style_fog verse_style_sky_t verse_style_sky_band verse_style_halo verse_style_hash verse_style_noise verse_style_cloud_field verse_style_cloud_cover verse_style_cloud_lit verse_style_cloud_fade verse_style_tone verse_style_saturation verse_style_lift verse_style_luma verse_style_bloom_share verse_style_bloom_mix verse_style_shadow_reach verse_style_shadow_snap verse_style_shadow_across verse_style_shadow_depth verse_style_shadow_taps verse_style_shadow_radius verse_style_shadow_tap verse_style_contact verse_style_shaft_source verse_style_shaft_fade verse_style_shaft_tap verse_style_shaft_total verse_style_shaft verse_style_gust verse_style_wind verse_style_bend verse_style_grass_tilt verse_style_blade_height verse_style_grass_fade verse_style_grass_blades verse_style_grass_clear verse_style_segment verse_style_part verse_style_tip verse_style_jitter"
+style_fns="metaverse_style_wrap metaverse_style_bands metaverse_style_bands2 metaverse_style_shade metaverse_style_cool metaverse_style_keep_value metaverse_style_banded metaverse_style_ambient metaverse_style_dab metaverse_style_rim metaverse_style_haze metaverse_style_haze_glow metaverse_style_haze_teal metaverse_style_haze_hue metaverse_style_fog metaverse_style_sky_t metaverse_style_sky_band metaverse_style_halo metaverse_style_hash metaverse_style_noise metaverse_style_cloud_field metaverse_style_cloud_cover metaverse_style_cloud_lit metaverse_style_cloud_fade metaverse_style_tone metaverse_style_saturation metaverse_style_lift metaverse_style_luma metaverse_style_bloom_share metaverse_style_bloom_mix metaverse_style_shadow_reach metaverse_style_shadow_snap metaverse_style_shadow_across metaverse_style_shadow_depth metaverse_style_shadow_taps metaverse_style_shadow_radius metaverse_style_shadow_tap metaverse_style_contact metaverse_style_shaft_source metaverse_style_shaft_fade metaverse_style_shaft_tap metaverse_style_shaft_total metaverse_style_shaft metaverse_style_gust metaverse_style_wind metaverse_style_bend metaverse_style_grass_tilt metaverse_style_blade_height metaverse_style_grass_fade metaverse_style_grass_blades metaverse_style_grass_clear metaverse_style_segment metaverse_style_part metaverse_style_tip metaverse_style_jitter"
 # The blob canopies (art-styles.md 7) go where there are kit trees or a traced tree: the fixture and Everglade.
-foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canopy_sway verse_style_canopy_open verse_style_near_reach verse_style_near_blades verse_style_near_width verse_style_chroma_gain"
+foliage_fns="metaverse_style_canopy_axis metaverse_style_canopy_normal metaverse_style_canopy_sway metaverse_style_canopy_open metaverse_style_near_reach metaverse_style_near_blades metaverse_style_near_width metaverse_style_chroma_gain"
 # (the fixture's Coax, gpu/fixture.coax, loads metaverse/look.coax and metaverse/style.coax.)
 # Everglade's whole module is Coax (apps/openagents-web/gpu/everglade-v1/gpu.coax, with metaverse/style.coax): its
 # entries and bindings (apps/openagents-web/gpu/everglade-v1/gpu.module, gpu.bindings) as coax wgsl writes them; its
@@ -261,9 +261,9 @@ render_packages() {
 (chain; timed render-packages render_packages) &
 render=$!
 # The low-poly facets (art-styles.md, Flat: facets): a face's own tone, nudged round corners, the light outline.
-facet_fns="verse_style_facet_tone verse_style_facet_jitter verse_style_facet_edge"
+facet_fns="metaverse_style_facet_tone metaverse_style_facet_jitter metaverse_style_facet_edge"
 # The flat style (art-styles.md, Flat) and its palettes go to the flat realms: Hecate's Cemetery and Fairy Forest.
-flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 verse_style_flat_sky verse_style_flat_shadow verse_style_flat_fade verse_style_bayer verse_style_flat_dither verse_style_flat_hem verse_style_flat_srgb verse_style_flat_colour verse_style_flat_time"
+flat_fns="metaverse_style_flat_light metaverse_style_flat_band metaverse_style_flat_band2 metaverse_style_flat_sky metaverse_style_flat_shadow metaverse_style_flat_fade metaverse_style_bayer metaverse_style_flat_dither metaverse_style_flat_hem metaverse_style_flat_srgb metaverse_style_flat_colour metaverse_style_flat_time"
 # (Hecate's Cemetery, villa.wgsl, loads them in its Coax: gpu/villa.coax.)
 # A made realm (myrealm.wgsl) is painterly or flat when its maker picked that (low poly keeps its own look).
 # (its Coax, gpu/myrealm.coax, loads them.)
@@ -437,7 +437,7 @@ timed changelog "$here/../../coax/web/wasm.sh" "$here/changelog.coax" "$here/cha
 changelog=$!
 # /verse: the playtest's landing (verse.coax's page 1, the galaxy, is the native host's).
 timed verse "$here/../../coax/web/wasm.sh" "$here/verse.coax" "$here/verse-face.c" "$here/build/verse.wasm" &
-verse_app=$!
+metaverse_app=$!
 # /nip/01: NIP-01 in Coax, its verifier its own library; the splash's passes.
 timed nip01 "$here/../../coax/web/wasm.sh" "$here/nip01.coax" "$here/nip01-face.c" "$here/build/nip01.wasm" "$here/nip01-verify.coax" &
 nip01=$!
@@ -512,7 +512,7 @@ wait "$pylon"
 wait "$splash"
 wait "$realm"
 wait "$voice"
-wait "$verse_app"
+wait "$metaverse_app"
 wait "$garden"
 wait "$characters"
 wait "$fixture"

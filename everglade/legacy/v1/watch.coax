@@ -1132,7 +1132,7 @@ watch_crime :: (w: [] Watch, at: Point, heard: f32, you: Point, boxes: [] f32, n
 }
 watch_ground_y :: (heights: [] f32, x: f32, z: f32) -> f32 {
   if heights.count < EG_GROUND_POINTS { return 0; }
-  return verse_terrain_height(everglade_ground(), heights, x, z);
+  return metaverse_terrain_height(everglade_ground(), heights, x, z);
 }
 
 // A spell's blast of `radius` m at `at`: everyone in it takes its damage (rolled once, a Dexterity save

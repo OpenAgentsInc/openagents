@@ -621,7 +621,7 @@ sp_ring_r :: (slot: int, n: Point) -> f32 { return ifx slot == SP_METEOR && sp_w
 // The ray through screen point (x, y), device pixels.
 sp_ray :: (s: [] Everglade, x: f32, y: f32) -> OrbitRay {
   nx := x / hi(s[0].width, 1) * 2 - 1; ny := 1 - y / hi(s[0].height, 1) * 2;
-  return verse_shot_ray(s[0].sp.shot, s[0].sp.fx, s[0].sp.fy, nx, ny);
+  return metaverse_shot_ray(s[0].sp.shot, s[0].sp.fx, s[0].sp.fy, nx, ny);
 }
 // Where the pointer points: the first standing piece's box or the ground.
 sp_aim :: (s: [] Everglade) {
@@ -629,7 +629,7 @@ sp_aim :: (s: [] Everglade) {
   x := s[0].sp.px; y := s[0].sp.py;
   if !s[0].sp.seen { x = s[0].width / 2; y = s[0].height * 0.55; }
   r := sp_ray(s, x, y);
-  best := verse_terrain_ray(everglade_ground(), s[0].heights[..], r.from, r.dir, 400);
+  best := metaverse_terrain_ray(everglade_ground(), s[0].heights[..], r.from, r.dir, 400);
   ground := best < 399;
   n := v3(0, 1, 0);
   for i: 0..<w[0].n {

@@ -248,11 +248,11 @@ ground :: () -> Ground { g: Ground; g.n = CELLS; g.cell = CELL; g.west = EDGE; g
 garden_start :: (s: [] Garden) {
   s[0].started = true;
   nodes := NODE_XZ; links := LINK_AB; flats := FLAT_DISCS;
-  ok := verse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), flats[..]);
+  ok := metaverse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), flats[..]);
   s[0].feet = v3(f32(SPAWN_X), ground_at(s, f32(SPAWN_X), f32(SPAWN_Z)), f32(SPAWN_Z));
-  s[0].orbit = verse_orbit_start(s[0].feet, 0);
-  s[0].fetch.dog = verse_follower_place(ground(), s[0].heights[..], f32(DOG_X), f32(DOG_Z), 0);
-  s[0].fetch.ball = verse_ball_place(ground(), s[0].heights[..], f32(BALL_X), f32(BALL_Z), 0.12);
+  s[0].orbit = metaverse_orbit_start(s[0].feet, 0);
+  s[0].fetch.dog = metaverse_follower_place(ground(), s[0].heights[..], f32(DOG_X), f32(DOG_Z), 0);
+  s[0].fetch.ball = metaverse_ball_place(ground(), s[0].heights[..], f32(BALL_X), f32(BALL_Z), 0.12);
   s[0].follower_tuning = follow.follower_profile();
   s[0].follower_previous = follow.fetch_pose(s[0].fetch);
   s[0].button_finger = -1;
@@ -263,14 +263,14 @@ garden_start :: (s: [] Garden) {
 
 // The vase as the garden first has it: five flowers.
 vase_start :: (s: [] Garden) {
-  s[0].vase = verse_arrange_new(v3(0, f32(VASE_OPEN), 0), f32(VASE_R));
+  s[0].vase = metaverse_arrange_new(v3(0, f32(VASE_OPEN), 0), f32(VASE_R));
   for i: 0..<5 {
     a := f32(i) * 1.26 + 0.3;
-    s[0].vase = verse_arrange_pick(s[0].vase, i % ARRANGE_KINDS);
+    s[0].vase = metaverse_arrange_pick(s[0].vase, i % ARRANGE_KINDS);
     s[0].vase.stems[i] = Stem.{x = cos(a) * 0.045, z = sin(a) * 0.045, lean = 0.32, toward = yaw_of(cos(a), sin(a)), height = 0.4 + 0.06 * sin(f32(i) * 2.4), kind = i % ARRANGE_KINDS};
   }
   s[0].vase.count = 5;
-  s[0].vase = verse_arrange_pick(s[0].vase, 0);
+  s[0].vase = metaverse_arrange_pick(s[0].vase, 0);
   s[0].vase_sum = vase_sum(s[0].vase);
   s[0].kept_at = -100;
 }
@@ -418,13 +418,13 @@ garden_place_open :: (s: [] Garden, x: f32, z: f32) -> bool #export_c #effects(a
   if !s[0].started { garden_start(s); }
   e := abs(f32(EDGE)) - 1;
   if !finite(x) || !finite(z) || x < -e || x > e || z < -e || z > e { return false; }
-  return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
+  return metaverse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
 }
 // A kept place made good: itself when open, else the nearest open spot, else the spawn.
 garden_place_fix :: (s: [] Garden, p: Place) -> Place #export_c #effects(all) {
   q := p; q.y = 0; q.room = -1;
   for i: 0..<PLACE_TRIES {
-    t := verse_place_try(p.x, p.z, i);
+    t := metaverse_place_try(p.x, p.z, i);
     if garden_place_open(s, t.x, t.z) { q.x = t.x; q.z = t.z; return q; }
   }
   q.x = f32(SPAWN_X); q.z = f32(SPAWN_Z); q.face = 0; q.yaw = 0;
@@ -434,7 +434,7 @@ garden_place_fix :: (s: [] Garden, p: Place) -> Place #export_c #effects(all) {
 garden_place_camera :: (s: [] Garden, p: Place) #export_c #effects(all) {
   if !s[0].started { garden_start(s); }
   s[0].feet = v3(p.x, ground_at(s, p.x, p.z), p.z); s[0].face = p.face;
-  s[0].orbit = verse_place_orbit(p, s[0].feet);
+  s[0].orbit = metaverse_place_orbit(p, s[0].feet);
   s[0].follower_cursor = follow.FrameCursor.{};
   s[0].follower_previous = follow.fetch_pose(s[0].fetch);
   s[0].follower_alpha = 0; s[0].follower_steps = 0;
@@ -459,11 +459,11 @@ hold_bit :: (key: int) -> int {
 
 garden_key :: (s: [] Garden, key: int, mods: int) -> bool #export_c #effects(all) {
   if !s[0].started { garden_start(s); }
-  if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
-  if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
+  if key == '+' || key == '=' { s[0].orbit = metaverse_orbit_zoom(s[0].orbit, -0.8); return true; }
+  if key == '-' || key == '_' { s[0].orbit = metaverse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if key == 'e' || key == 'E' { s[0].use = true; return true; }
-  if key == KEY_ESCAPE && s[0].vase.open { s[0].vase = verse_arrange_close(s[0].vase); return true; }
-  if s[0].vase.open && key >= '1' && key < '1' + ARRANGE_KINDS { s[0].vase = verse_arrange_pick(s[0].vase, key - '1'); return true; }
+  if key == KEY_ESCAPE && s[0].vase.open { s[0].vase = metaverse_arrange_close(s[0].vase); return true; }
+  if s[0].vase.open && key >= '1' && key < '1' + ARRANGE_KINDS { s[0].vase = metaverse_arrange_pick(s[0].vase, key - '1'); return true; }
   b := hold_bit(key);
   if b == 0 { return false; }
   s[0].held = s[0].held | b;
@@ -487,7 +487,7 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 garden_pointer :: (s: [] Garden, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if !s[0].started { garden_start(s); }
   if kind != 0 { s[0].touch = true; }
-  if verse_arrange_active(s[0].vase) { return arranging_pointer(s, x, y, phase, kind, id); }
+  if metaverse_arrange_active(s[0].vase) { return arranging_pointer(s, x, y, phase, kind, id); }
   if kind == 0 && phase <= 1 { s[0].point_x = x; s[0].point_y = y; s[0].point_on = true; }
   if kind != 0 {
     s[0].touch = true;
@@ -515,9 +515,9 @@ garden_pointer :: (s: [] Garden, x: f32, y: f32, phase: int, kind: int, id: int)
 
 // The swatch or DONE under a click or tap, if any: true when it took it.
 arranging_hud :: (s: [] Garden, x: f32, y: f32) -> bool {
-  if in_box(s[0].done, x, y) { s[0].vase = verse_arrange_close(s[0].vase); return true; }
+  if in_box(s[0].done, x, y) { s[0].vase = metaverse_arrange_close(s[0].vase); return true; }
   for i: 0..<ARRANGE_KINDS {
-    if in_box(s[0].palette[i], x, y) { s[0].vase = verse_arrange_pick(s[0].vase, i); return true; }
+    if in_box(s[0].palette[i], x, y) { s[0].vase = metaverse_arrange_pick(s[0].vase, i); return true; }
   }
   return false;
 }
@@ -536,7 +536,7 @@ arranging_pointer :: (s: [] Garden, x: f32, y: f32, phase: int, kind: int, id: i
   if id != s[0].finger { return kind != 0; }
   if phase == 1 {
     dx := (x - s[0].finger_x) / k;
-    s[0].vase = verse_arrange_turn(s[0].vase, -dx * f32(LOOK_DRAG));
+    s[0].vase = metaverse_arrange_turn(s[0].vase, -dx * f32(LOOK_DRAG));
     s[0].finger_travel += (abs(x - s[0].finger_x) + abs(y - s[0].finger_y)) / k;
     s[0].finger_x = x; s[0].finger_y = y;
     return true;
@@ -547,10 +547,10 @@ arranging_pointer :: (s: [] Garden, x: f32, y: f32, phase: int, kind: int, id: i
 }
 
 // The face asks this before it moves you: in the close-up you stand still.
-garden_busy :: (s: [] Garden) -> bool #export_c #effects(all) { return verse_arrange_active(s[0].vase); }
+garden_busy :: (s: [] Garden) -> bool #export_c #effects(all) { return metaverse_arrange_active(s[0].vase); }
 
 garden_wheel :: (s: [] Garden, dy: f32) #export_c #effects(all) {
-  if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
+  if finite(dy) { s[0].orbit = metaverse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
 }
 
 axis :: (held: int, plus: int, minus: int) -> f32 {
@@ -570,14 +570,14 @@ garden_controls :: (s: [] Garden, dt: f32, dyaw: f32, dpitch: f32) #export_c #ef
   s[0].key_y = axis(h, HOLD_FORWARD, HOLD_BACK);
   s[0].run = h & HOLD_RUN != 0;
   s[0].jump = h & HOLD_JUMP != 0;
-  if verse_arrange_active(s[0].vase) {
+  if metaverse_arrange_active(s[0].vase) {
     s[0].key_x = 0; s[0].key_y = 0; s[0].run = false; s[0].jump = false;
-    s[0].vase = verse_arrange_turn(s[0].vase, (dyaw + axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT) * 2.0 * clamp(dt, 0, 0.25)));
+    s[0].vase = metaverse_arrange_turn(s[0].vase, (dyaw + axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT) * 2.0 * clamp(dt, 0, 0.25)));
     s[0].look_yaw = 0; s[0].look_pitch = 0;
     return;
   }
-  o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
-  o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
+  o := metaverse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
+  o = metaverse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
   s[0].orbit = o;
   s[0].look_yaw = 0; s[0].look_pitch = 0;
 }
@@ -619,7 +619,7 @@ shadow :: (s: [] Garden, u: [] f32, x: f32, z: f32, radius: f32, strength: f32) 
   s[0].shadow_n = n + 1;
 }
 
-ground_at :: (s: [] Garden, x: f32, z: f32) -> f32 { return verse_terrain_height(ground(), s[0].heights[..], x, z); }
+ground_at :: (s: [] Garden, x: f32, z: f32) -> f32 { return metaverse_terrain_height(ground(), s[0].heights[..], x, z); }
 
 scenery :: (s: [] Garden, u: [] f32) {
   for t: 0..<TREES {
@@ -721,7 +721,7 @@ horizon_y :: (shot: Shot, u: [] f32, height: f32) -> f32 {
 // cast half a metre lower, so the eye keeps that far above the ground.
 ground_room :: (s: [] Garden, r: OrbitRay) -> f32 {
   lifted := add(r.from, v3(0, -0.5, 0));
-  return verse_terrain_ray(ground(), s[0].heights[..], lifted, r.dir, r.far);
+  return metaverse_terrain_ray(ground(), s[0].heights[..], lifted, r.dir, r.far);
 }
 
 // The free orbit this frame: it follows you (feet as drawn) and swings in
@@ -729,12 +729,12 @@ ground_room :: (s: [] Garden, r: OrbitRay) -> f32 {
 // the ground along its line.
 camera_frame :: (s: [] Garden, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
   speed := sqrt(vx * vx + vz * vz);
-  o := verse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
-  room := verse_orbit_room(o, s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6]);
-  room = lo(room, ground_room(s, verse_orbit_ray(o)));
-  o = verse_orbit_limit(o, room, dt);
+  o := metaverse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
+  room := metaverse_orbit_room(o, s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6]);
+  room = lo(room, ground_room(s, metaverse_orbit_ray(o)));
+  o = metaverse_orbit_limit(o, room, dt);
   s[0].orbit = o;
-  return verse_orbit_shot(o);
+  return metaverse_orbit_shot(o);
 }
 
 // The paths for the ground's shader: a piece per link.
@@ -754,7 +754,7 @@ paths :: (u: [] f32) {
 by_vase :: (you: Point) -> bool { return flat_length(v3(you.x, 0, you.z)) < f32(VASE_NEAR); }
 
 // Where you hold the ball: in your right hand, raised in front of you.
-your_hand :: (you: Point, face: f32) -> Point { return verse_hand(you, face, 0.42, 1.25, 0.3); }
+your_hand :: (you: Point, face: f32) -> Point { return metaverse_hand(you, face, 0.42, 1.25, 0.3); }
 
 // The way a throw goes from here: along the camera, raised more the
 // further up it looks.
@@ -774,21 +774,21 @@ garden_play_in :: (s: [] Garden, you: Point, face: f32, vx: f32, vz: f32, dt: f3
   if fixed { s[0].dog_previous_stride = s[0].dog_stride; }
   hand := ifx fixed then follow.fixed_hand(you, face, 0.42, 1.25, 0.3) else your_hand(you, face);
   b := s[0].fetch.ball;
-  if s[0].use && verse_arrange_active(s[0].vase) {
-    if s[0].vase.open { s[0].vase = verse_arrange_close(s[0].vase); } else { s[0].vase = verse_arrange_open(s[0].vase, s[0].orbit.yaw); }
+  if s[0].use && metaverse_arrange_active(s[0].vase) {
+    if s[0].vase.open { s[0].vase = metaverse_arrange_close(s[0].vase); } else { s[0].vase = metaverse_arrange_open(s[0].vase, s[0].orbit.yaw); }
     s[0].use = false;
   }
-  if s[0].use && b.held != 0 && !verse_ball_can_pick(b, you) && by_vase(you) {
-    s[0].vase = verse_arrange_open(s[0].vase, s[0].orbit.yaw);
+  if s[0].use && b.held != 0 && !metaverse_ball_can_pick(b, you) && by_vase(you) {
+    s[0].vase = metaverse_arrange_open(s[0].vase, s[0].orbit.yaw);
     s[0].use = false;
   }
   ball_use := s[0].use;
   if s[0].use {
     if b.held == 0 {
       b = ifx fixed then follow.fixed_ball_throw(b, hand, s[0].orbit.yaw, throw_lift(s[0].orbit), v3(vx, 0, vz))
-          else verse_ball_throw(b, hand, s[0].orbit.yaw, throw_lift(s[0].orbit), v3(vx, 0, vz));
+          else metaverse_ball_throw(b, hand, s[0].orbit.yaw, throw_lift(s[0].orbit), v3(vx, 0, vz));
     } else {
-      b = verse_ball_pick(b, 0, you, hand);
+      b = metaverse_ball_pick(b, 0, you, hand);
     }
     s[0].use = false;
   }
@@ -803,9 +803,9 @@ garden_play_in :: (s: [] Garden, you: Point, face: f32, vx: f32, vz: f32, dt: f3
     s[0].fetch = published.fetch; s[0].follower_previous = published.previous; s[0].follower_status = published.status;
     if published.status != follow.FollowerStatus.ok { s[0].use = ball_use; stride_dt = 0; }
   } else {
-    if b.held == 0 { b = verse_ball_carry(b, hand); }
-    s[0].fetch.ball = verse_ball_step(b, ground(), s[0].heights[..], s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6], dt);
-    s[0].fetch = verse_fetch_step_among(s[0].fetch, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), you, dt, s[0].walls[0..<blocks * 6]);
+    if b.held == 0 { b = metaverse_ball_carry(b, hand); }
+    s[0].fetch.ball = metaverse_ball_step(b, ground(), s[0].heights[..], s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6], dt);
+    s[0].fetch = metaverse_fetch_step_among(s[0].fetch, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), you, dt, s[0].walls[0..<blocks * 6]);
   }
   s[0].dog_stride += flat_length(s[0].fetch.dog.vel) * stride_dt / 0.9;
 }
@@ -821,8 +821,8 @@ ball :: (s: [] Garden, u: [] f32, you: Point, face: f32) {
   shadow(s, u, b.pos.x, b.pos.z, 0.2, clamp(0.55 - (b.pos.y - g) * 0.12, 0.1, 0.55));
   if b.held != 0 { return; }
   arc: [ARC_POINTS * 3] f32;
-  v := verse_throw_velocity(s[0].orbit.yaw, throw_lift(s[0].orbit), f32(THROW_SPEED), v3(0, 0, 0));
-  n := verse_throw_arc(ground(), s[0].heights[..], your_hand(you, face), v, arc[..]);
+  v := metaverse_throw_velocity(s[0].orbit.yaw, throw_lift(s[0].orbit), f32(THROW_SPEED), v3(0, 0, 0));
+  n := metaverse_throw_arc(ground(), s[0].heights[..], your_hand(you, face), v, arc[..]);
   for i: 1..<n {
     p := v3(arc[i * 3], arc[i * 3 + 1], arc[i * 3 + 2]);
     size := ifx i == n - 1 then 0.22f32 else 0.07f32;
@@ -876,7 +876,7 @@ plate :: (s: [] Garden, u: [] f32, b: Box, alpha: f32, look: f32) {
 phone :: (s: [] Garden) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr, 0.5) < 700; }
 
 hint :: (s: [] Garden) -> string {
-  if verse_arrange_active(s[0].vase) {
+  if metaverse_arrange_active(s[0].vase) {
     if phone(s) { return "TAP THE VASE TO ADD · TAP A FLOWER TO TAKE IT OUT · DRAG TURNS"; }
     return "CLICK THE VASE TO ADD A FLOWER · CLICK A FLOWER TO TAKE IT OUT · DRAG TURNS · E OR ESC RETURNS";
   }
@@ -889,7 +889,7 @@ use_word :: (s: [] Garden) -> string {
   b := s[0].fetch.ball;
   if b.held == 0 { return "THROW"; }
   you := feet_in_world(s[0].feet, ground_at(s, s[0].feet.x, s[0].feet.z));
-  if verse_ball_can_pick(b, you) { return "PICK UP"; }
+  if metaverse_ball_can_pick(b, you) { return "PICK UP"; }
   if by_vase(you) { return "ARRANGE"; }
   return "";
 }
@@ -899,7 +899,7 @@ prompt :: (s: [] Garden, out: [] f32, u: [] f32, n: int, above: f32) -> int {
   k := hi(s[0].dpr, 0.5);
   word := use_word(s);
   s[0].button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
-  if word.count == 0 || verse_arrange_active(s[0].vase) { return n; }
+  if word.count == 0 || metaverse_arrange_active(s[0].vase) { return n; }
   m := n;
   cap := 9 * k;
   if phone(s) {
@@ -1002,8 +1002,8 @@ vase :: (s: [] Garden) {
   a := s[0].vase;
   for i: 0..<a.count {
     st := a.stems[i];
-    base := verse_arrange_base(a, i);
-    tip := verse_arrange_tip(a, i);
+    base := metaverse_arrange_base(a, i);
+    tip := metaverse_arrange_tip(a, i);
     shape(s, SHAPE_BOX, LOOK_LEAVES, mix(base, tip, 0.5), st.toward, st.lean, 0.014, st.height, 0.014, 0.25, 0.5, 0.2);
     leaf := mix(base, tip, 0.45);
     shape(s, SHAPE_SPHERE, LOOK_LEAVES, add(leaf, v3(sin(st.toward + 1.2) * 0.03, 0, cos(st.toward + 1.2) * 0.03)), st.toward + 1.2, 0.5, 0.025, 0.012, 0.07, 0.25, 0.52, 0.22);
@@ -1025,7 +1025,7 @@ vase :: (s: [] Garden) {
 // with garden's projection (view).
 screen_ray :: (s: [] Garden, shot: Shot, x: f32, y: f32) -> OrbitRay {
   w:=hi(s[0].width,1);h:=hi(s[0].height,1);aspect:=w/h;fy:=clamp(aspect*1.25,0.95,1.9);
-  return verse_shot_ray(shot,fy/aspect,fy,2*x/w-1,1-2*y/h);
+  return metaverse_shot_ray(shot,fy/aspect,fy,2*x/w-1,1-2*y/h);
 }
 garden_closeup_point :: (s: [] Garden, shot: Shot, x: f32, y: f32) -> Arrange {
   w := hi(s[0].width, 1); h := hi(s[0].height, 1);
@@ -1037,12 +1037,12 @@ garden_closeup_point :: (s: [] Garden, shot: Shot, x: f32, y: f32) -> Arrange {
 // The close-up's frame: the blend in or out, what the mouse points at, and
 // a click or tap placing or taking out a flower.
 close_up :: (s: [] Garden, live: Shot, t: f32, still: bool) -> Shot {
-  s[0].vase = verse_arrange_step(s[0].vase, t, still);
+  s[0].vase = metaverse_arrange_step(s[0].vase, t, still);
   shot := camera_legacy(camera_closeup(s[0].vase,camera_world(live)));
   if !s[0].vase.open { s[0].tap = false; return shot; }
   if s[0].tap {
     s[0].vase = garden_closeup_point(s,shot,s[0].tap_x,s[0].tap_y);
-    s[0].vase = verse_arrange_click(s[0].vase);
+    s[0].vase = metaverse_arrange_click(s[0].vase);
     s[0].tap = false;
   }
   if s[0].point_on && !s[0].touch {
@@ -1122,7 +1122,7 @@ garden_frame_in :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f3
   } else { play(s, shown, face, vx, vz, t); }
   vase(s);
   // nor zoomed into your head (first person, metaverse-engine/cam/camera.coax)
-  if !(s[0].vase.blend > 0.6 && flat_length(v3(shown.x, 0, shown.z)) < 1.3) && !(verse_orbit_inside(s[0].orbit) && s[0].vase.blend < 0.5) {
+  if !(s[0].vase.blend > 0.6 && flat_length(v3(shown.x, 0, shown.z)) < 1.3) && !(metaverse_orbit_inside(s[0].orbit) && s[0].vase.blend < 0.5) {
     figure(s, u, shown, face, s[0].stride, act, s[0].fetch.ball.held == 0);
   }
   pup := garden_fetch_draw(s).dog;
@@ -1166,13 +1166,13 @@ garden_store_cap :: (k: int) -> int #export_c #effects(all) {
 #test "a kept place in the Garden: open ground stays, a hedge or past the edge moves you to open ground" {
   g: [1] Garden;
   garden_start(g[..]);
-  q := garden_place_fix(g[..], verse_place(2, 0, -15, 1, 1.5, 0.4, 6, 0, -1, 1000));
+  q := garden_place_fix(g[..], metaverse_place(2, 0, -15, 1, 1.5, 0.4, 6, 0, -1, 1000));
   #assert garden_place_open(g[..], 2, -15) && q.x == 2 && q.z == -15 && q.yaw == 1.5;
   k := 0;
   cx := (g[0].walls[k] + g[0].walls[k + 3]) / 2; cz := (g[0].walls[k + 2] + g[0].walls[k + 5]) / 2;
-  m := garden_place_fix(g[..], verse_place(cx, 0, cz, 0, 0, 0.3, 5, 0, -1, 1000));
+  m := garden_place_fix(g[..], metaverse_place(cx, 0, cz, 0, 0, 0.3, 5, 0, -1, 1000));
   #assert garden_place_open(g[..], m.x, m.z);
-  out := garden_place_fix(g[..], verse_place(400, 0, 0, 0, 0, 0.3, 5, 0, -1, 1000));
+  out := garden_place_fix(g[..], metaverse_place(400, 0, 0, 0, 0, 0.3, 5, 0, -1, 1000));
   #assert out.x == f32(SPAWN_X) && out.z == f32(SPAWN_Z);
   garden_place_camera(g[..], q);
   #assert g[0].orbit.yaw == 1.5 && g[0].orbit.want == 6 && g[0].feet.x == 2;
@@ -1221,17 +1221,17 @@ garden_store_cap :: (k: int) -> int #export_c #effects(all) {
   #assert cw > 0 && abs(cx / cw) < 1 && abs(cy / cw) < 1;
   // Stand just in front of a tree, looking away from it: the eye stays clear of its trunk and canopy.
   spot := v3(-11, ground_at(g[..], -11, 8.2), 8.2);
-  g[0].orbit = verse_orbit_start(spot, 0);
-  shot := verse_orbit_shot(g[0].orbit);
+  g[0].orbit = metaverse_orbit_start(spot, 0);
+  shot := metaverse_orbit_shot(g[0].orbit);
   for i: 0..<40 { shot = camera_frame(g[..], spot, 0, 0, 1.0 / 20.0); }
   trunk := v3(-11, shot.eye.y, 6);
   #assert length(sub(shot.eye, trunk)) > 0.25 + f32(FREE_CLEAR) - 0.01;
   #assert shot.eye.y > ground_at(g[..], shot.eye.x, shot.eye.z) + 0.3;
-  #assert g[0].orbit.shown < verse_orbit_ray(g[0].orbit).far - 1;
+  #assert g[0].orbit.shown < metaverse_orbit_ray(g[0].orbit).far - 1;
   // Turned the other way, nothing is behind: it backs out to the full distance.
-  g[0].orbit = verse_orbit_look(g[0].orbit, f32(PI), 0);
+  g[0].orbit = metaverse_orbit_look(g[0].orbit, f32(PI), 0);
   for i: 0..<60 { shot = camera_frame(g[..], spot, 0, 0, 0.1); }
-  #assert near(g[0].orbit.shown, verse_orbit_ray(g[0].orbit).far, 0.05);
+  #assert near(g[0].orbit.shown, metaverse_orbit_ray(g[0].orbit).far, 0.05);
 }
 
 #test "keys walk and turn the camera; a drag turns it; letting go stops" {
@@ -1261,23 +1261,23 @@ garden_store_cap :: (k: int) -> int #export_c #effects(all) {
 #test "trees, hedges, beds and the pond keep off the paths" {
   nodes := NODE_XZ; links := LINK_AB;
   for t: 0..<TREES {
-    #assert verse_path_nearest(nodes[..], links[..], TREE[t * 4], TREE[t * 4 + 1]).d > f32(PATH_HALF) + 0.6;
+    #assert metaverse_path_nearest(nodes[..], links[..], TREE[t * 4], TREE[t * 4 + 1]).d > f32(PATH_HALF) + 0.6;
   }
   for b: 0..<BEDS {
-    #assert verse_path_nearest(nodes[..], links[..], BED[b * 4], BED[b * 4 + 1]).d > f32(PATH_HALF) + BED[b * 4 + 2] + 0.2;
+    #assert metaverse_path_nearest(nodes[..], links[..], BED[b * 4], BED[b * 4 + 1]).d > f32(PATH_HALF) + BED[b * 4 + 2] + 0.2;
   }
   for i: 0..<HEDGES {
     k := i * 5;
     for a: 0..<5 {
       for c: 0..<5 {
         x := lerp(HEDGE[k], HEDGE[k + 2], f32(a) / 4); z := lerp(HEDGE[k + 1], HEDGE[k + 3], f32(c) / 4);
-        #assert verse_path_nearest(nodes[..], links[..], x, z).d > f32(PATH_HALF) + 0.2;
+        #assert metaverse_path_nearest(nodes[..], links[..], x, z).d > f32(PATH_HALF) + 0.2;
       }
     }
   }
-  #assert verse_path_nearest(nodes[..], links[..], f32(POND_X), f32(POND_Z)).d > f32(POND_R) + f32(PATH_HALF);
+  #assert metaverse_path_nearest(nodes[..], links[..], f32(POND_X), f32(POND_Z)).d > f32(POND_R) + f32(PATH_HALF);
   // You start on the path in from the south, the dog beside you.
-  #assert verse_path_nearest(nodes[..], links[..], f32(SPAWN_X), f32(SPAWN_Z)).d < 0.01;
+  #assert metaverse_path_nearest(nodes[..], links[..], f32(SPAWN_X), f32(SPAWN_Z)).d < 0.01;
   #assert LINKS <= PATHS;
 }
 
@@ -1342,7 +1342,7 @@ garden_store_cap :: (k: int) -> int #export_c #effects(all) {
   live := Shot.{eye = v3(0, 2.5, -6), at = v3(0, 1.5, 0)};
   shot := live;
   for i: 0..<10 { shot = close_up(g[..], live, 0.1, false); }
-  #assert verse_arrange_ready(g[0].vase);
+  #assert metaverse_arrange_ready(g[0].vase);
   // Walking keys don't walk you.
   #assert garden_key(g[..], 'w', 0);
   garden_controls(g[..], 0.1, 0, 0);
@@ -1360,13 +1360,13 @@ garden_store_cap :: (k: int) -> int #export_c #effects(all) {
   cy := u[U_VIEW + 4] * open_at.x + u[U_VIEW + 5] * open_at.y + u[U_VIEW + 6] * open_at.z + u[U_VIEW + 7];
   cw := u[U_VIEW + 12] * open_at.x + u[U_VIEW + 13] * open_at.y + u[U_VIEW + 14] * open_at.z + u[U_VIEW + 15];
   sx := (cx / cw + 1) * 0.5 * 1280; sy := (1 - cy / cw) * 0.5 * 800;
-  g[0].vase = verse_arrange_pick(g[0].vase, 3);
+  g[0].vase = metaverse_arrange_pick(g[0].vase, 3);
   #assert garden_pointer(g[..], sx, sy, 0, 0, 1) && garden_pointer(g[..], sx, sy, 2, 0, 1);
   shot = close_up(g[..], live, 0.016, false);
   #assert g[0].vase.count == before + 1 && g[0].vase.stems[before].kind == 3;
-  #assert same(verse_arrange_base(g[0].vase, before), open_at, 0.01);
+  #assert same(metaverse_arrange_base(g[0].vase, before), open_at, 0.01);
   // Its head, clicked, takes it out.
-  tip := verse_arrange_tip(g[0].vase, before);
+  tip := metaverse_arrange_tip(g[0].vase, before);
   cx = u[U_VIEW] * tip.x + u[U_VIEW + 1] * tip.y + u[U_VIEW + 2] * tip.z + u[U_VIEW + 3];
   cy = u[U_VIEW + 4] * tip.x + u[U_VIEW + 5] * tip.y + u[U_VIEW + 6] * tip.z + u[U_VIEW + 7];
   cw = u[U_VIEW + 12] * tip.x + u[U_VIEW + 13] * tip.y + u[U_VIEW + 14] * tip.z + u[U_VIEW + 15];
@@ -1461,7 +1461,7 @@ GARDEN_BUDGET :: FrameBudget.{steps = 8, vertices = 4000, draws = DRAWS, bytes =
 #test "the Garden consumes actual carried and multi-step targets and resets with a fresh player clock" {
   gf_s: [1] Garden; garden_start(gf_s[..]);
   for gf_i: 0..<GROUND_POINTS { gf_s[0].heights[gf_i] = 2.5; }
-  gf_s[0].fetch.dog = verse_follower_place(ground(), gf_s[0].heights[..], -30, -30, 0);
+  gf_s[0].fetch.dog = metaverse_follower_place(ground(), gf_s[0].heights[..], -30, -30, 0);
   gf_s[0].fetch.ball.held = 0;
   gf_out: [3000 * VERTEX_FLOATS] f32; gf_u: [UNIFORM_FLOATS] f32;
   gf_clock: realm_loop.FrameClock; gf_targets: [8] walk_frame.StepTarget;
@@ -1481,8 +1481,8 @@ GARDEN_BUDGET :: FrameBudget.{steps = 8, vertices = 4000, draws = DRAWS, bytes =
   gf_n = garden_frame_on_clock(gf_s[..], gf_out[..], gf_u[..], 1280, 800, 1, gf_clock, gf_targets[0..<1], true,
     7, 0, -3, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert gf_s[0].fetch.dog.pos.x == gf_x && gf_s[0].time == gf_time && gf_s[0].follower_steps == 0;
-  garden_place_camera(gf_s[..], verse_place(-30, 0, -30, 0, 0, 0.3, 5, 0, -1, 1000));
-  gf_s[0].fetch.dog = verse_follower_place(ground(), gf_s[0].heights[..], -30, -30, 0);
+  garden_place_camera(gf_s[..], metaverse_place(-30, 0, -30, 0, 0, 0.3, 5, 0, -1, 1000));
+  gf_s[0].fetch.dog = metaverse_follower_place(ground(), gf_s[0].heights[..], -30, -30, 0);
   gf_clock = realm_loop.FrameClock.{}; gf_clock = realm_loop.loop_frame(gf_clock, 0.03125).clock;
   gf_targets[1] = gf_targets[0]; gf_targets[1].feet.x = -26;
   gf_n = garden_frame_on_clock(gf_s[..], gf_out[..], gf_u[..], 1280, 800, 1, gf_clock, gf_targets[0..<2], true,

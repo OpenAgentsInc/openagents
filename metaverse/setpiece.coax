@@ -4,9 +4,9 @@
 // and migrations/0036_sandbox_pieces.sql) has Gemini pick one piece from
 // this catalogue with its bounded fields, checks it against the same
 // catalogue, and the page reads that answer here and checks it again
-// (verse_piece_read). Then a seeded generator lays the piece out in front
-// of you (verse_piece_layout) as placements the Sandbox's engine adds
-// (metaverse/haunt.coax verse_haunt_put): one undo step, one publish.
+// (metaverse_piece_read). Then a seeded generator lays the piece out in front
+// of you (metaverse_piece_layout) as placements the Sandbox's engine adds
+// (metaverse/haunt.coax metaverse_haunt_put): one undo step, one publish.
 //
 // The catalogue, kept small and done well:
 //   flock     birds that fly round whoever is walking: count 3-12, kind crow | bat
@@ -56,16 +56,16 @@ TAU :: 6.2831853;
 
 SetPiece :: struct { piece: int = -1; count: int = -1; kind: int = -1; colour: int = -1; size: int = -1; }
 
-verse_piece_count :: () -> int #export_c #effects(all) { return PIECES; }
-verse_piece_name :: (piece: int) -> string #export_c #effects(all) { if piece < 0 || piece >= PIECES { return ""; } return PIECE_NAMES[piece]; }
-verse_piece_mesh :: (mesh: int) -> string #export_c #effects(all) { if mesh < 0 || mesh >= PIECE_MESHES { return ""; } return PIECE_MESH_NAMES[mesh]; }
-verse_piece_label :: (mesh: int) -> string #export_c #effects(all) { if mesh < 0 || mesh >= PIECE_MESHES { return ""; } return PIECE_MESH_LABELS[mesh]; }
-verse_piece_places_max :: () -> int #export_c #effects(all) { return PLACES_MAX; }
+metaverse_piece_count :: () -> int #export_c #effects(all) { return PIECES; }
+metaverse_piece_name :: (piece: int) -> string #export_c #effects(all) { if piece < 0 || piece >= PIECES { return ""; } return PIECE_NAMES[piece]; }
+metaverse_piece_mesh :: (mesh: int) -> string #export_c #effects(all) { if mesh < 0 || mesh >= PIECE_MESHES { return ""; } return PIECE_MESH_NAMES[mesh]; }
+metaverse_piece_label :: (mesh: int) -> string #export_c #effects(all) { if mesh < 0 || mesh >= PIECE_MESHES { return ""; } return PIECE_MESH_LABELS[mesh]; }
+metaverse_piece_places_max :: () -> int #export_c #effects(all) { return PLACES_MAX; }
 
 sp_clamp :: (x: int, a: int, b: int) -> int { if x < a { return a; } if x > b { return b; } return x; }
 
 // Holds a piece to the catalogue (see the top of the file).
-verse_piece_check :: (p: SetPiece) -> SetPiece #export_c #effects(all) {
+metaverse_piece_check :: (p: SetPiece) -> SetPiece #export_c #effects(all) {
   out: SetPiece;
   if p.piece < 0 || p.piece >= PIECES { return out; }
   k := p.piece;
@@ -115,7 +115,7 @@ sp_int :: (digits: string) -> int {
 
 // Reads the selector's answer ({piece, count, kind, colour, size}) and
 // holds it to the catalogue.
-verse_piece_read :: (json: string) -> SetPiece #export_c #effects(all) {
+metaverse_piece_read :: (json: string) -> SetPiece #export_c #effects(all) {
   pieces := PIECE_NAMES; kinds := KIND_NAMES; colours := COLOUR_NAMES; sizes := SIZE_NAMES;
   p: SetPiece;
   p.piece = sp_find(pieces[..], sp_value(json, "piece"));
@@ -123,11 +123,11 @@ verse_piece_read :: (json: string) -> SetPiece #export_c #effects(all) {
   p.kind = sp_find(kinds[..], sp_value(json, "kind"));
   p.colour = sp_find(colours[..], sp_value(json, "colour"));
   p.size = sp_find(sizes[..], sp_value(json, "size"));
-  return verse_piece_check(p);
+  return metaverse_piece_check(p);
 }
 
 // What the piece is, for the notice: "A flock of 7 crows".
-verse_piece_says :: (p: SetPiece, buf: [] u8) -> string #export_c #effects(all) {
+metaverse_piece_says :: (p: SetPiece, buf: [] u8) -> string #export_c #effects(all) {
   n := 0;
   if p.piece == PIECE_FLOCK { n = sp_text(buf, n, "A flock of "); n = sp_number(buf, n, p.count); n = sp_text(buf, n, ifx p.kind == 1 then " bats" else " birds"); }
   if p.piece == PIECE_LANTERNS { n = sp_text(buf, n, "A ring of "); n = sp_number(buf, n, p.count); n = sp_text(buf, n, " "); n = sp_text(buf, n, COLOUR_NAMES[sp_clamp(p.colour, 0, COLOURS - 1)]); n = sp_text(buf, n, " lanterns"); }
@@ -160,24 +160,24 @@ sp_put :: (out: [] f32, n: int, mesh: int, x: f32, y: f32, z: f32, yaw: f32, sca
 }
 
 // How far the piece reaches from its middle, metres.
-verse_piece_reach :: (p: SetPiece) -> f32 #export_c #effects(all) {
+metaverse_piece_reach :: (p: SetPiece) -> f32 #export_c #effects(all) {
   if p.piece == PIECE_LANTERNS { return ifx p.size == 0 then 3.0f32 else ifx p.size == 2 then 8.0f32 else 5.0f32; }
   if p.piece == PIECE_GROVE { spread := ifx p.size == 0 then 1.6f32 else ifx p.size == 2 then 2.8f32 else 2.2f32; return spread * sqrt(cast(f32) p.count) + 1.0f32; }
-  if p.piece == PIECE_POND { return verse_piece_pond_radius(p) + 1.5f32; }
+  if p.piece == PIECE_POND { return metaverse_piece_pond_radius(p) + 1.5f32; }
   return 0.0f32;
 }
-verse_piece_pond_radius :: (p: SetPiece) -> f32 #export_c #effects(all) { return ifx p.size == 0 then 1.8f32 else ifx p.size == 2 then 4.2f32 else 2.8f32; }
+metaverse_piece_pond_radius :: (p: SetPiece) -> f32 #export_c #effects(all) { return ifx p.size == 0 then 1.8f32 else ifx p.size == 2 then 4.2f32 else 2.8f32; }
 
 // Lays piece p out for someone standing at (x, z) looking along heading
 // (they look along -(sin heading, cos heading)): a flock round them, the
 // rest just in front, clear of their feet. Writes placements to out and
 // returns how many (0 for no piece). The same seed lays it out the same way.
-verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out: [] f32) -> int #export_c #effects(all) {
-  q := verse_piece_check(p);
+metaverse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out: [] f32) -> int #export_c #effects(all) {
+  q := metaverse_piece_check(p);
   if q.piece < 0 { return 0; }
   r: [1] Seeded; r[0].s = (seed % 4294967296 + 4294967296) % 4294967296;
   n := 0;
-  reach := verse_piece_reach(q);
+  reach := metaverse_piece_reach(q);
   cx := x - sin(heading) * (reach + 2.0f32); cz := z - cos(heading) * (reach + 2.0f32);
   if q.piece == PIECE_FLOCK {
     mesh := ifx q.kind == 1 then MESH_BAT else MESH_CROW;
@@ -217,7 +217,7 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
     }
   }
   if q.piece == PIECE_POND {
-    radius := verse_piece_pond_radius(q);
+    radius := metaverse_piece_pond_radius(q);
     // The water: eight squares turned a thirty-second of a turn apart, their
     // corners on the rim (never in less than 0.92 of it), the points under the stones.
     for k: 0..<8 {
@@ -242,43 +242,43 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
 // ---- checks
 
 #test "the catalogue holds a piece to its fields" {
-  p := verse_piece_check(SetPiece.{piece = PIECE_FLOCK, count = 40, kind = 3, colour = 2, size = 0});
+  p := metaverse_piece_check(SetPiece.{piece = PIECE_FLOCK, count = 40, kind = 3, colour = 2, size = 0});
   #assert p.piece == PIECE_FLOCK && p.count == 12 && p.kind == 0 && p.colour == -1 && p.size == -1;   // too many, a tree kind, no colour or size
-  p = verse_piece_check(SetPiece.{piece = PIECE_FLOCK, count = 1, kind = 1});
+  p = metaverse_piece_check(SetPiece.{piece = PIECE_FLOCK, count = 1, kind = 1});
   #assert p.count == 3 && p.kind == 1;
-  p = verse_piece_check(SetPiece.{piece = PIECE_LANTERNS});
+  p = metaverse_piece_check(SetPiece.{piece = PIECE_LANTERNS});
   #assert p.count == 8 && p.kind == -1 && p.colour == 0 && p.size == 1;   // the defaults
-  p = verse_piece_check(SetPiece.{piece = PIECE_GROVE, count = 5, kind = 1, size = 9});
+  p = metaverse_piece_check(SetPiece.{piece = PIECE_GROVE, count = 5, kind = 1, size = 9});
   #assert p.count == 5 && p.kind == 2 && p.size == 1;   // a bat is no tree
-  p = verse_piece_check(SetPiece.{piece = PIECE_POND, count = 9, kind = 2, colour = 1, size = 2});
+  p = metaverse_piece_check(SetPiece.{piece = PIECE_POND, count = 9, kind = 2, colour = 1, size = 2});
   #assert p.count == -1 && p.kind == -1 && p.colour == -1 && p.size == 2;
-  #assert verse_piece_check(SetPiece.{piece = 4}).piece == -1 && verse_piece_check(SetPiece.{piece = -1, count = 3}).count == -1;
+  #assert metaverse_piece_check(SetPiece.{piece = 4}).piece == -1 && metaverse_piece_check(SetPiece.{piece = -1, count = 3}).count == -1;
 }
 
 #test "the selector's answer is read and held to the catalogue" {
-  p := verse_piece_read("{\"piece\": \"flock\", \"count\": 9, \"kind\": \"bat\", \"colour\": \"\", \"size\": \"\"}");
+  p := metaverse_piece_read("{\"piece\": \"flock\", \"count\": 9, \"kind\": \"bat\", \"colour\": \"\", \"size\": \"\"}");
   #assert p.piece == PIECE_FLOCK && p.count == 9 && p.kind == 1 && p.colour == -1;
-  p = verse_piece_read("{\"piece\":\"lanterns\",\"count\":99,\"colour\":\"blue\",\"size\":\"large\",\"model\":\"gemini\"}");
+  p = metaverse_piece_read("{\"piece\":\"lanterns\",\"count\":99,\"colour\":\"blue\",\"size\":\"large\",\"model\":\"gemini\"}");
   #assert p.piece == PIECE_LANTERNS && p.count == 16 && p.colour == 4 && p.size == 2;
-  p = verse_piece_read("{\"piece\":\"grove\",\"kind\":\"palm\",\"count\":\"lots\"}");
+  p = metaverse_piece_read("{\"piece\":\"grove\",\"kind\":\"palm\",\"count\":\"lots\"}");
   #assert p.piece == PIECE_GROVE && p.kind == 2 && p.count == 9;   // an unknown kind and a count that isn't one: the defaults
-  #assert verse_piece_read("{\"piece\":\"castle\",\"count\":3}").piece == -1;
-  #assert verse_piece_read("{\"piece\":\"Flock\"}").piece == -1;   // exact catalogue words only
-  #assert verse_piece_read("{\"error\":\"none fit\"}").piece == -1 && verse_piece_read("").piece == -1;
-  #assert verse_piece_read("{\"piece\":\"pond").piece == -1;      // cut short
-  #assert verse_piece_read("{\"count\":\"pond\",\"piece\":\"pond\"}").piece == PIECE_POND;
+  #assert metaverse_piece_read("{\"piece\":\"castle\",\"count\":3}").piece == -1;
+  #assert metaverse_piece_read("{\"piece\":\"Flock\"}").piece == -1;   // exact catalogue words only
+  #assert metaverse_piece_read("{\"error\":\"none fit\"}").piece == -1 && metaverse_piece_read("").piece == -1;
+  #assert metaverse_piece_read("{\"piece\":\"pond").piece == -1;      // cut short
+  #assert metaverse_piece_read("{\"count\":\"pond\",\"piece\":\"pond\"}").piece == PIECE_POND;
 }
 
 #test "what a piece is, in words" {
   buf: [64] u8;
-  #assert verse_piece_says(verse_piece_check(SetPiece.{piece = PIECE_FLOCK, count = 7}), buf[..]) == "A flock of 7 birds";
-  #assert verse_piece_says(verse_piece_check(SetPiece.{piece = PIECE_LANTERNS, count = 12, colour = 4}), buf[..]) == "A ring of 12 blue lanterns";
-  #assert verse_piece_says(verse_piece_check(SetPiece.{piece = PIECE_POND, size = 0}), buf[..]) == "A small pond";
+  #assert metaverse_piece_says(metaverse_piece_check(SetPiece.{piece = PIECE_FLOCK, count = 7}), buf[..]) == "A flock of 7 birds";
+  #assert metaverse_piece_says(metaverse_piece_check(SetPiece.{piece = PIECE_LANTERNS, count = 12, colour = 4}), buf[..]) == "A ring of 12 blue lanterns";
+  #assert metaverse_piece_says(metaverse_piece_check(SetPiece.{piece = PIECE_POND, size = 0}), buf[..]) == "A small pond";
 }
 
 #test "a flock: its birds round whoever they follow, overhead, apart" {
   out: [PLACES_MAX * PLACE_FLOATS] f32;
-  n := verse_piece_layout(SetPiece.{piece = PIECE_FLOCK, count = 8}, 42, 10, 10, 0, out[..]);
+  n := metaverse_piece_layout(SetPiece.{piece = PIECE_FLOCK, count = 8}, 42, 10, 10, 0, out[..]);
   #assert n == 8;
   for i: 0..<n {
     o := i * PLACE_FLOATS;
@@ -287,13 +287,13 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
     #assert ring >= 1.8 && ring <= 3.4 && out[o + 2] >= 3.0 && out[o + 2] <= 4.2;   // places round them, not the world's
   }
   bats: [PLACES_MAX * PLACE_FLOATS] f32;
-  #assert verse_piece_layout(SetPiece.{piece = PIECE_FLOCK, count = 3, kind = 1}, 42, 0, 0, 0, bats[..]) == 3 && bats[0] == cast(f32) MESH_BAT;
+  #assert metaverse_piece_layout(SetPiece.{piece = PIECE_FLOCK, count = 3, kind = 1}, 42, 0, 0, 0, bats[..]) == 3 && bats[0] == cast(f32) MESH_BAT;
 }
 
 #test "a seed lays a piece out the same way every time, another seed differently" {
   a: [PLACES_MAX * PLACE_FLOATS] f32; b: [PLACES_MAX * PLACE_FLOATS] f32; c: [PLACES_MAX * PLACE_FLOATS] f32;
   g := SetPiece.{piece = PIECE_GROVE, count = 6, kind = 5};
-  na := verse_piece_layout(g, 7, 0, 0, 0, a[..]); nb := verse_piece_layout(g, 7, 0, 0, 0, b[..]); nc := verse_piece_layout(g, 8, 0, 0, 0, c[..]);
+  na := metaverse_piece_layout(g, 7, 0, 0, 0, a[..]); nb := metaverse_piece_layout(g, 7, 0, 0, 0, b[..]); nc := metaverse_piece_layout(g, 8, 0, 0, 0, c[..]);
   #assert na == 6 && nb == 6 && nc == 6;
   same := true; differ := false;
   for i: 0..<na * PLACE_FLOATS { if a[i] != b[i] { same = false; } if a[i] != c[i] { differ = true; } }
@@ -303,7 +303,7 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
 #test "a grove stands in front of you, its trees apart" {
   out: [PLACES_MAX * PLACE_FLOATS] f32;
   // looking along -z (heading 0): the grove is at negative z, clear of your feet
-  n := verse_piece_layout(SetPiece.{piece = PIECE_GROVE, count = 9, kind = 3}, 1234, 0, 0, 0, out[..]);
+  n := metaverse_piece_layout(SetPiece.{piece = PIECE_GROVE, count = 9, kind = 3}, 1234, 0, 0, 0, out[..]);
   #assert n == 9;
   for i: 0..<n {
     o := i * PLACE_FLOATS;
@@ -315,7 +315,7 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
 
 #test "lanterns ring their middle, lit in their colour" {
   out: [PLACES_MAX * PLACE_FLOATS] f32;
-  n := verse_piece_layout(SetPiece.{piece = PIECE_LANTERNS, count = 6, colour = 3, size = 0}, 5, 0, 0, 3.14159265, out[..]);
+  n := metaverse_piece_layout(SetPiece.{piece = PIECE_LANTERNS, count = 6, colour = 3, size = 0}, 5, 0, 0, 3.14159265, out[..]);
   #assert n == 6;
   // looking along +z: the ring's middle is 5 m ahead (its 3 m reach and 2 m clear)
   for i: 0..<n {
@@ -328,7 +328,7 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
 
 #test "a pond: water within its rim, stones round it, and nothing for no piece" {
   out: [PLACES_MAX * PLACE_FLOATS] f32;
-  n := verse_piece_layout(SetPiece.{piece = PIECE_POND, size = 2}, 99, 0, 0, 0, out[..]);
+  n := metaverse_piece_layout(SetPiece.{piece = PIECE_POND, size = 2}, 99, 0, 0, 0, out[..]);
   #assert n <= PLACES_MAX && n > 8 + 10;
   water := 0; stones := 0;
   for i: 0..<n {
@@ -337,14 +337,14 @@ verse_piece_layout :: (p: SetPiece, seed: int, x: f32, z: f32, heading: f32, out
     if out[o] == cast(f32) MESH_STONE { stones += 1; }
   }
   #assert water == 8 && stones == 28;   // one every 0.9 m of a 4.2 m rim, at most 28
-  #assert verse_piece_layout(SetPiece.{piece = -1}, 1, 0, 0, 0, out[..]) == 0;
+  #assert metaverse_piece_layout(SetPiece.{piece = -1}, 1, 0, 0, 0, out[..]) == 0;
   small: [2 * PLACE_FLOATS] f32;
-  #assert verse_piece_layout(SetPiece.{piece = PIECE_FLOCK, count = 12}, 1, 0, 0, 0, small[..]) == 2;   // never past what it's given
+  #assert metaverse_piece_layout(SetPiece.{piece = PIECE_FLOCK, count = 12}, 1, 0, 0, 0, small[..]) == 2;   // never past what it's given
 }
 
 // The selector's request body, {"sentence": "..."}: quotes and backslashes
 // escaped, control bytes as spaces. Returns its length, or -1 if it doesn't fit.
-verse_piece_body :: (sentence: string, out: [] u8) -> int #export_c #effects(all) {
+metaverse_piece_body :: (sentence: string, out: [] u8) -> int #export_c #effects(all) {
   n := sp_text(out, 0, "{\"sentence\":\"");
   for i: 0..<sentence.count {
     c := sentence[i];
@@ -357,8 +357,8 @@ verse_piece_body :: (sentence: string, out: [] u8) -> int #export_c #effects(all
 
 #test "the sentence goes to the selector as JSON" {
   buf: [64] u8;
-  n := verse_piece_body("a \"big\" pond\\\nplease", buf[..]);
+  n := metaverse_piece_body("a \"big\" pond\\\nplease", buf[..]);
   #assert cast(string) buf[0..<n] == "{\"sentence\":\"a \\\"big\\\" pond\\\\ please\"}";
   small: [16] u8;
-  #assert verse_piece_body("a flock of birds follows me", small[..]) == -1;
+  #assert metaverse_piece_body("a flock of birds follows me", small[..]) == -1;
 }

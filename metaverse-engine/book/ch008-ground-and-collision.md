@@ -100,7 +100,7 @@ ground_sample :: (g: Ground, heights: [] f32,
 A point beyond the rectangle reads its nearest edge. The sample reports the
 selected triangle's slopes and which axes were clamped. A consumer extending
 the edge as a surface sets the slope on each clamped axis to zero before
-forming its normal. Both the spatial queries and `verse_terrain_normal` do
+forming its normal. Both the spatial queries and `metaverse_terrain_normal` do
 that. At a corner beyond both axes, the continuation's normal is straight up.
 
 The descriptor admits at most 1,048,576 cells on either axis, finite in-range
@@ -225,7 +225,7 @@ for these realm families:
 | Hecate's Cemetery | `hecates-cemetery`, `villa` |
 | Dead Gears | `dead-gears`, `deadgears` |
 
-The C faces use `verse_player_advance_in_realm`; Grid and Dead Gears bind their
+The C faces use `metaverse_player_advance_in_realm`; Grid and Dead Gears bind their
 Coax `World` from the table. An unknown identity returns an invalid declaration
 and preserves the input Player. The old C exports retain their signatures.
 Trusted direct helpers such as `move_across` retain their larger-move contract;

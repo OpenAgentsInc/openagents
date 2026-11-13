@@ -11,7 +11,7 @@
 
 uiskin :: (id: int) -> UiSkin {
   if id == UISKIN_EVERGLADE { return everglade_skin(); }
-  if id == UISKIN_VERSE { return verse_skin(); }
+  if id == UISKIN_VERSE { return metaverse_skin(); }
   if id == UISKIN_TERMINAL { return terminal_skin(); }
   return zeron_skin();
 }
@@ -42,7 +42,7 @@ uiskin_named :: (name: string) -> int {
   #assert z == 2 && list[0].kind == PRIM_SHADOW && list[1].kind == PRIM_BOX && list[1].radius == 12;
   e := uiskin_panel(list[..], 0, everglade_skin(), 10, 10, 200, 100);
   #assert e == 7 && list[1].border == 3 && list[2].x == 13 && list[3].w == 4;       // shadow, frame, lit edge, four studs
-  v := uiskin_panel(list[..], 0, verse_skin(), 10, 10, 200, 100);
+  v := uiskin_panel(list[..], 0, metaverse_skin(), 10, 10, 200, 100);
   #assert v == 5 && list[0].radius == 0 && list[1].kind == PRIM_LINE && list[1].a == 20;
   t := uiskin_panel(list[..], 0, terminal_skin(), 0, 0, 20, 5);
   #assert t == 1 && list[0].border == 1 && list[0].fill.a == 0;

@@ -122,11 +122,11 @@ hd_text_fit :: (out:[]f32,at:int,text:string,x:f32,y:f32,cap:f32,width:f32,p:HdP
 hd_panel :: (out:[]f32,at:int,b:HudBox,p:HdPen,active:bool)->int {
   n:=at;
   for i:0..<6 {
-    a:=verse_hud_frame_point(b.x,b.y,b.x+b.width,b.y+b.height,10,i);
-    z:=verse_hud_frame_point(b.x,b.y,b.x+b.width,b.y+b.height,10,i+1);
+    a:=metaverse_hud_frame_point(b.x,b.y,b.x+b.width,b.y+b.height,10,i);
+    z:=metaverse_hud_frame_point(b.x,b.y,b.x+b.width,b.y+b.height,10,i+1);
     n=hd_line(out,n,a.x,a.y,z.x,z.y,p,1,0.34);
   }
-  arm:=verse_hud_frame_arm(b.width,1);kind:=ifx active then 2 else 0;
+  arm:=metaverse_hud_frame_arm(b.width,1);kind:=ifx active then 2 else 0;
   n=hd_line(out,n,b.x,b.y+arm*0.6,b.x,b.y,p,kind,0.92);
   n=hd_line(out,n,b.x,b.y,b.x+arm,b.y,p,kind,0.92);
   n=hd_line(out,n,b.x+b.width,b.y+b.height-arm*0.6,b.x+b.width,b.y+b.height,p,kind,0.92);

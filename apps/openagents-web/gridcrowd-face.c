@@ -55,8 +55,8 @@ EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uin
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_gridcrowd_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_gridcrowd_uniform_floats(); }
 
-// Each player the page lists, posed: their clips moved on for how they move (verse_cast_update) and
-// their joints placed where they stand (verse_cast_pose) and scaled to their height about their feet,
+// Each player the page lists, posed: their clips moved on for how they move (metaverse_cast_update) and
+// their joints placed where they stand (metaverse_cast_pose) and scaled to their height about their feet,
 // into store 1 after the looks. A slot that holds someone new starts their clips afresh. The clock is
 // the crowd's, so a clip is the same every time.
 static void people_out(uint32_t state) {
@@ -72,9 +72,9 @@ static void people_out(uint32_t state) {
     const float *p = &g->people.e[i * PERSON_FLOATS];
     if (anim_whose[i] != p[5]) { anims[i] = (coax_t_Anim){0}; anims[i].fade_start = -1; anims[i].start = t; anim_whose[i] = p[5]; }
     int64_t act = (int64_t)p[4];
-    anims[i] = verse_cast_update(b, cast_set, anims[i], act, act == 3 && p[1] > 0.05f, t);
+    anims[i] = metaverse_cast_update(b, cast_set, anims[i], act, act == 3 && p[1] > 0.05f, t);
     coax_t_Joint *js = &palette[i * joints];
-    if (!verse_cast_pose(b, cast_set, anims[i], t, p[0], p[1], p[2], p[3], (coax_v_t_Joint){js, joints})) return;
+    if (!metaverse_cast_pose(b, cast_set, anims[i], t, p[0], p[1], p[2], p[3], (coax_v_t_Joint){js, joints})) return;
     float k = p[6] > 0.5f && p[6] < 1.5f ? p[6] : 1.0f, foot[3] = {p[0], p[1], p[2]};
     if (k != 1.0f) for (int64_t j = 0; j < joints; j++)
       for (int r = 0; r < 3; r++) {
@@ -120,9 +120,9 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
     if (bytes > 0 && bytes <= sizeof data) gridcrowd_data(at(state), (coax_string){(const char *)data, bytes});
     else gridcrowd_arrived(at(state), false);
   } else if (i == 5) {
-    // Cast.bin: admitted whole (verse_cast_open checks every buffer, index and joint), or no player draws
+    // Cast.bin: admitted whole (metaverse_cast_open checks every buffer, index and joint), or no player draws
     cast_n = bytes <= CAST_CAP ? bytes : 0;
-    cast_set = verse_cast_open((coax_v_u8){cast_bytes, cast_n});
+    cast_set = metaverse_cast_open((coax_v_u8){cast_bytes, cast_n});
     cast_open = cast_n > 0 && cast_set.ok && cast_set.joints <= JOINTS_MAX;
     gridcrowd_cast(at(state), cast_open, cast_set.body_vertices.offset / 4, cast_set.body_indices.offset / 4, cast_set.body_indices.count, cast_set.joints);
   } else if (i >= 1 && i <= 7) gridcrowd_arrived(at(state), bytes > 0);

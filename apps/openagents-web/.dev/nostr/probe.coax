@@ -43,7 +43,7 @@ np_observed :: (p:[]NostrProbe,observation:[]int) #export_c #effects(all) {
   p[0].initialized=true;p[0].pending=false;
 }
 np_slot :: (width:f32,height:f32,d:f32,index:int)->Box {
-  r:=verse_hud_slot(width/d,height/d,0,index,5);
+  r:=metaverse_hud_slot(width/d,height/d,0,index,5);
   return Box.{x0=r.x*d,y0=r.y*d,x1=(r.x+r.width)*d,y1=(r.y+r.height)*d};
 }
 np_pointer :: (p:[]NostrProbe,x:f32,y:f32,phase:int)->bool #export_c #effects(all) {

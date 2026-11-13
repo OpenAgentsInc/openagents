@@ -89,7 +89,7 @@ export const CLOCK = /^(cycle|real|fixed:(0(\.\d{1,4})?|1(\.0{1,4})?))$/
 // anime realm draws with it. Required once metaverse/style.coax exists (as-presets).
 export const STYLE_BLOCK = "// ---- generated: metaverse/style.coax"
 // A module coax wgsl writes whole carries the style as its own functions (coax/web/wgsl-module.coax).
-export const STYLE_MODULE = "fn coax_p_verse_style_"
+export const STYLE_MODULE = "fn coax_p_metaverse_style_"
 // Or the module's Coax source (its first line names it, from the repo root) loads the presets,
 // for a flat realm that draws with its own light and calls none of them (Orbit League).
 const MODULE_SOURCE = /^\/\/ ---- generated: (\S+\.coax) \(the module\)/

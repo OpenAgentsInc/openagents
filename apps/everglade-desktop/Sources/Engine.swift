@@ -27,17 +27,17 @@ struct Pack {
   var catalog = Data(), vertices = Data(), indices = Data(), layers: [Data] = []
   init?(_ url: URL) {
     guard let d = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
-    let table = UnsafeMutablePointer<AethyrPack>.allocate(capacity: 1)
-    table.initialize(to: AethyrPack())
+    let table = UnsafeMutablePointer<EnginePack>.allocate(capacity: 1)
+    table.initialize(to: EnginePack())
     defer { table.deinitialize(count: 1); table.deallocate() }
-    guard d.withUnsafeBytes({ aethyr_pack_open(table, $0.baseAddress, d.count) }) == 1 else { return nil }
-    for k in 0..<aethyr_pack_count(table) {
-      let at = Int(aethyr_pack_at(table, k)), bytes = d.subdata(in: at..<at + Int(aethyr_pack_bytes(table, k)))
-      switch aethyr_pack_kind(table, k) {
-      case Int32(AETHYR_PACK_CATALOG): catalog = bytes
-      case Int32(AETHYR_PACK_VERTICES): vertices = bytes
-      case Int32(AETHYR_PACK_INDICES): indices = bytes
-      case Int32(AETHYR_PACK_LAYER): layers.append(bytes)
+    guard d.withUnsafeBytes({ engine_pack_open(table, $0.baseAddress, d.count) }) == 1 else { return nil }
+    for k in 0..<engine_pack_count(table) {
+      let at = Int(engine_pack_at(table, k)), bytes = d.subdata(in: at..<at + Int(engine_pack_bytes(table, k)))
+      switch engine_pack_kind(table, k) {
+      case Int32(ENGINE_PACK_CATALOG): catalog = bytes
+      case Int32(ENGINE_PACK_VERTICES): vertices = bytes
+      case Int32(ENGINE_PACK_INDICES): indices = bytes
+      case Int32(ENGINE_PACK_LAYER): layers.append(bytes)
       default: break
       }
     }

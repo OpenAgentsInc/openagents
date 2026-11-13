@@ -85,9 +85,9 @@ worldbuilder_beyond :: (xz:V2)->f32 { return ifx fmax(abs(xz.x),abs(xz.y))>WB_GR
 // One layer's albedo at xz, linear (metaverse-engine/render/terrain-shade.coax's equations from the page's table).
 worldbuilder_layer :: (k:int,xz:V2,u:[]f32)->V3 {
   at:int=WB_U_LAYERS+(k*12);
-  t:f32=clampf(aethyr_terrain_blend_t(xz.x,xz.y,u[at+3],u[at+8],0.0f32,u[at+7],u[at+9],0.0f32),0.0f32,1.0f32);
-  gain:f32=aethyr_terrain_gain(xz.x,xz.y,u[at+10],u[at+11],0.37f32,0.0f32);
-  return v3(aethyr_terrain_decode(u[at],u[at+4],t,gain),aethyr_terrain_decode(u[at+1],u[at+5],t,gain),aethyr_terrain_decode(u[at+2],u[at+6],t,gain));
+  t:f32=clampf(engine_terrain_blend_t(xz.x,xz.y,u[at+3],u[at+8],0.0f32,u[at+7],u[at+9],0.0f32),0.0f32,1.0f32);
+  gain:f32=engine_terrain_gain(xz.x,xz.y,u[at+10],u[at+11],0.37f32,0.0f32);
+  return v3(engine_terrain_decode(u[at],u[at+4],t,gain),engine_terrain_decode(u[at+1],u[at+5],t,gain),engine_terrain_decode(u[at+2],u[at+6],t,gain));
 }
 worldbuilder_bg_fs :: (pos:V4,u:[]f32)->V4 {
   p:V2=v2(pos.x,pos.y);
@@ -289,9 +289,9 @@ worldbuilder_scene_fs :: (s:WorldbuilderS,u:[]f32,sheets:Tex2DArray,sheet:Sample
     if (ndv<0.0f32) {
       gpu_demote_helper();
     }
-    rim:f32=aethyr_ghost_rim(ndv);
-    glow:V3=v3(aethyr_ghost_channel(rim,0),aethyr_ghost_channel(rim,1),aethyr_ghost_channel(rim,2));
-    return wg_make_f4_f3f(worldbuilder_out(wg_mul_f3f(glow,u[3])),aethyr_ghost_alpha(rim));
+    rim:f32=engine_ghost_rim(ndv);
+    glow:V3=v3(engine_ghost_channel(rim,0),engine_ghost_channel(rim,1),engine_ghost_channel(rim,2));
+    return wg_make_f4_f3f(worldbuilder_out(wg_mul_f3f(glow,u[3])),engine_ghost_alpha(rim));
   }
   if (textured&&(tex.w<0.4f32)) {
     gpu_demote_helper();

@@ -154,11 +154,11 @@ fpc_has :: (o: [] FpText, t: string) -> bool #effects(all) {
   o: [1] FpText; n := frame_plan_header(o[..]);
   #assert n == o[0].n && n > 1500 && n < 8192 && o[0].b[0] == '/' && o[0].b[1] == '*';
   #assert fpc_has(o[..], "/* The frame plan's numbers (GitHub #13303). Written by metaverse-engine/render/frame-plan.coax:\n *   coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h\n * Never edit it by hand. The record layout is stated at the top of frame-plan.coax. */\n#ifndef");
-  #assert fpc_has(o[..], "#ifndef AETHYR_FRAME_PLAN_H\n#define AETHYR_FRAME_PLAN_H\n#define AETHYR_FP_MAGIC 827344449u\n#define AETHYR_FP_VERSION 1u\n#define AETHYR_FP_WORDS 8u\n#define AETHYR_FP_MOST_OPS 256u\n");
-  #assert fpc_has(o[..], "#define AETHYR_FP_FLAG_KEEP 1u\n#define AETHYR_FP_FLAG_STORE_DEPTH 2u\n#define AETHYR_FP_FLAG_VALID 4u\n#define AETHYR_FP_FLAG_DEPTH_WRITE 8u\n#define AETHYR_FP_FLAG_AUX_WRITE 16u\n#define AETHYR_FP_OP_BEGIN 0u\n");
-  #assert fpc_has(o[..], "#define AETHYR_FP_OP_MEDIA_AFTER 7u\n#define AETHYR_FP_OP_CULL_EARLY 8u\n") && fpc_has(o[..], "#define AETHYR_FP_OP_PARTICLE_SORT 12u\n#define AETHYR_FP_PASS_BACKGROUND 0u\n") && fpc_has(o[..], "#define AETHYR_FP_PASS_HUD 12u\n#define AETHYR_FP_PASS_SHADOW_CLEAR 14u\n") && fpc_has(o[..], "#define AETHYR_FP_PASS_SCENE_LATE 17u\n#define AETHYR_FP_TARGET_NONE 0u\n");
-  #assert fpc_has(o[..], "#define AETHYR_FP_TARGET_E1 11u\n#define AETHYR_FP_DEPTH_NONE 0u\n#define AETHYR_FP_DEPTH_ALWAYS 1u\n#define AETHYR_FP_DEPTH_LESS 2u\n#define AETHYR_FP_BLEND_REPLACE 0u\n");
-  #assert fpc_has(o[..], "#define AETHYR_FP_BLEND_UNDER 6u\n#define AETHYR_FP_SOURCE_VERTICES 0u\n#define AETHYR_FP_SOURCE_RECORDS 1u\n#define AETHYR_FP_SOURCE_CURRENT 2u\n#define AETHYR_FP_SOURCE_SHADOW_RECORDS 3u\n#define AETHYR_FP_SOURCE_LATE 4u\n#define AETHYR_FP_HOST_SCENE 1u\n") && fpc_has(o[..], "#define AETHYR_FP_HOST_PARTICLES_READY 524288u\n#endif\n");
+  #assert fpc_has(o[..], "#ifndef ENGINE_FRAME_PLAN_H\n#define ENGINE_FRAME_PLAN_H\n#define ENGINE_FP_MAGIC 827344449u\n#define ENGINE_FP_VERSION 1u\n#define ENGINE_FP_WORDS 8u\n#define ENGINE_FP_MOST_OPS 256u\n");
+  #assert fpc_has(o[..], "#define ENGINE_FP_FLAG_KEEP 1u\n#define ENGINE_FP_FLAG_STORE_DEPTH 2u\n#define ENGINE_FP_FLAG_VALID 4u\n#define ENGINE_FP_FLAG_DEPTH_WRITE 8u\n#define ENGINE_FP_FLAG_AUX_WRITE 16u\n#define ENGINE_FP_OP_BEGIN 0u\n");
+  #assert fpc_has(o[..], "#define ENGINE_FP_OP_MEDIA_AFTER 7u\n#define ENGINE_FP_OP_CULL_EARLY 8u\n") && fpc_has(o[..], "#define ENGINE_FP_OP_PARTICLE_SORT 12u\n#define ENGINE_FP_PASS_BACKGROUND 0u\n") && fpc_has(o[..], "#define ENGINE_FP_PASS_HUD 12u\n#define ENGINE_FP_PASS_SHADOW_CLEAR 14u\n") && fpc_has(o[..], "#define ENGINE_FP_PASS_SCENE_LATE 17u\n#define ENGINE_FP_TARGET_NONE 0u\n");
+  #assert fpc_has(o[..], "#define ENGINE_FP_TARGET_E1 11u\n#define ENGINE_FP_DEPTH_NONE 0u\n#define ENGINE_FP_DEPTH_ALWAYS 1u\n#define ENGINE_FP_DEPTH_LESS 2u\n#define ENGINE_FP_BLEND_REPLACE 0u\n");
+  #assert fpc_has(o[..], "#define ENGINE_FP_BLEND_UNDER 6u\n#define ENGINE_FP_SOURCE_VERTICES 0u\n#define ENGINE_FP_SOURCE_RECORDS 1u\n#define ENGINE_FP_SOURCE_CURRENT 2u\n#define ENGINE_FP_SOURCE_SHADOW_RECORDS 3u\n#define ENGINE_FP_SOURCE_LATE 4u\n#define ENGINE_FP_HOST_SCENE 1u\n") && fpc_has(o[..], "#define ENGINE_FP_HOST_PARTICLES_READY 524288u\n#endif\n");
   #assert o[0].b[n - 1] == '\n' && !fpc_has(o[..], "AETHYR_FP_PASS_INVALID");
   again: [1] FpText; again[0].n = 77; #assert frame_plan_header(again[..]) == n && again[0].b[0] == '/';
 }
@@ -223,6 +223,6 @@ fpc_page_has :: (w: [] u32, kind: RenderOpKind, pass: RenderPassId) -> int #effe
 }
 #test "the header has the host's bits and the shipping members" {
   o: [1] FpText; n := frame_plan_header(o[..]);
-  #assert n > 0 && fpc_has(o[..], "#define AETHYR_FP_HOST_SCENE 1u\n") && fpc_has(o[..], "#define AETHYR_FP_HOST_TILES 16384u\n") && fpc_has(o[..], "#define AETHYR_FP_HOST_PARTICLES_READY 524288u\n");
-  #assert fpc_has(o[..], "#define AETHYR_FP_OP_CULL_EARLY 8u\n") && fpc_has(o[..], "#define AETHYR_FP_PASS_SCENE_LATE 17u\n") && fpc_has(o[..], "#define AETHYR_FP_SOURCE_LATE 4u\n");
+  #assert n > 0 && fpc_has(o[..], "#define ENGINE_FP_HOST_SCENE 1u\n") && fpc_has(o[..], "#define ENGINE_FP_HOST_TILES 16384u\n") && fpc_has(o[..], "#define ENGINE_FP_HOST_PARTICLES_READY 524288u\n");
+  #assert fpc_has(o[..], "#define ENGINE_FP_OP_CULL_EARLY 8u\n") && fpc_has(o[..], "#define ENGINE_FP_PASS_SCENE_LATE 17u\n") && fpc_has(o[..], "#define ENGINE_FP_SOURCE_LATE 4u\n");
 }

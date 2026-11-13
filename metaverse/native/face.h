@@ -2,8 +2,8 @@
 // calls it: the same C, built with gcc instead of to wasm32. Pointer width
 // follows the explicitly selected face ABI. Counts and GPU/wire words stay
 // u32; legacy native faces retain their below-4-GB allocation requirements.
-#ifndef VERSE_NATIVE_FACE_H
-#define VERSE_NATIVE_FACE_H
+#ifndef METAVERSE_NATIVE_FACE_H
+#define METAVERSE_NATIVE_FACE_H
 #include <stdint.h>
 #include "face-address.h"
 

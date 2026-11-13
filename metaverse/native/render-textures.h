@@ -1,7 +1,7 @@
 // Exact observed mip bytes. The Coax codec and shared texture-origin policy
 // admit them; this effect layer only allocates, row-packs and uploads pixels.
-#ifndef AETHYR_RENDER_TEXTURES_H
-#define AETHYR_RENDER_TEXTURES_H
+#ifndef ENGINE_RENDER_TEXTURES_H
+#define ENGINE_RENDER_TEXTURES_H
 #include "render-host.h"
 #include "RenderTexture.h"
 #include "frame-input.h"

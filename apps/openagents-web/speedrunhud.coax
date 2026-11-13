@@ -417,7 +417,7 @@ sr_frame :: (s: [] SpeedrunHud, out: [] f32, at: int, b: SrBox, p: f32, cut: f32
   x1 := b.x + b.width; y1 := b.y + b.height;
   sr_glass(s, b, cut, fill * ease(p * 1.4 - 0.2));
   pa: [1] Path; path_clear(pa[..]);
-  for i: 0..<7 { q := verse_hud_frame_point(b.x, b.y, x1, y1, cut, i); path_add(pa[..], q.x, q.y); }
+  for i: 0..<7 { q := metaverse_hud_frame_point(b.x, b.y, x1, y1, cut, i); path_add(pa[..], q.x, q.y); }
   v := sr_path(s, out, at, pa[..], eout(p * 1.3), ifx accent >= 0 then accent else T_MID, 0.6, 1.2);
   a := lo(arm, b.width * 0.25) * ease(p * 2 - 0.6);
   light := flicker(p * 2 - 1);

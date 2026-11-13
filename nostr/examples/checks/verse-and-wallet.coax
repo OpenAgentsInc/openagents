@@ -35,7 +35,7 @@
 
 #test "the hand-worked numbers" {
   // 21 sats and a 1-sat fee from 1000; 21000 msat is 210n.
-  #assert BALANCE - 21 - FEE == 978 && verse_wallet_sat_to_msat(21) == 21000;
+  #assert BALANCE - 21 - FEE == 978 && metaverse_wallet_sat_to_msat(21) == 21000;
   #assert n57_invoice(PY_INVOICE).msat == 21000;
   // Ana's move at +1001 rides frame 2 (t = +1250) and is drawn at +1750.
   #assert 1250 + DRAW_MS - 1001 == 749 && POST_MS + 2 * NET_MS + DRAW_MS == 830 && 830 <= BUDGET_MS;

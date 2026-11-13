@@ -6,7 +6,7 @@
 // (BLOCK numbers each: min and max corners), the same lists the camera
 // keeps clear of. While someone holds it (held: 0 you, 1 or more a
 // character) it doesn't move by itself: whoever holds it carries it at
-// their hand (verse_ball_carry) until they throw or drop it.
+// their hand (metaverse_ball_carry) until they throw or drop it.
 //
 // Fetch is a character's game with it (a dog's): it follows you; when the
 // ball is thrown it runs straight to it, picks it up in its mouth, brings
@@ -41,10 +41,10 @@ Ball :: struct {
   spin: f32;             // radians it has rolled, for drawing
 }
 
-verse_ball_place :: (g: Ground, heights: [] f32, x: f32, z: f32, radius: f32) -> Ball #export_c #effects(all) {
+metaverse_ball_place :: (g: Ground, heights: [] f32, x: f32, z: f32, radius: f32) -> Ball #export_c #effects(all) {
   b: Ball;
   if radius > 0 && finite(radius) { b.radius = radius; }
-  b.pos = v3(x, verse_terrain_height(g, heights, x, z) + b.radius, z);
+  b.pos = v3(x, metaverse_terrain_height(g, heights, x, z) + b.radius, z);
   b.resting = true;
   return b;
 }
@@ -52,9 +52,9 @@ verse_ball_place :: (g: Ground, heights: [] f32, x: f32, z: f32, radius: f32) ->
 // The ground under it pushes it out and takes the speed going in.
 ground_contact :: (b: Ball, g: Ground, heights: [] f32) -> Ball {
   next := b;
-  h := verse_terrain_height(g, heights, b.pos.x, b.pos.z);
+  h := metaverse_terrain_height(g, heights, b.pos.x, b.pos.z);
   if b.pos.y - b.radius >= h { return next; }
-  n := verse_terrain_normal(g, heights, b.pos.x, b.pos.z);
+  n := metaverse_terrain_normal(g, heights, b.pos.x, b.pos.z);
   next.pos.y = h + b.radius;
   into := dot(b.vel, n);
   if into < 0 {
@@ -120,9 +120,9 @@ ball_substep :: (b: Ball, g: Ground, heights: [] f32, spheres: [] f32, boxes: []
   next = scenery_contact(next, spheres, boxes);
   next = ground_contact(next, g, heights);
   // Touching the ground: it rolls, slowing; on gentle ground, slow enough, it stops.
-  h := verse_terrain_height(g, heights, next.pos.x, next.pos.z);
+  h := metaverse_terrain_height(g, heights, next.pos.x, next.pos.z);
   if next.pos.y - next.radius <= h + 0.002 {
-    n := verse_terrain_normal(g, heights, next.pos.x, next.pos.z);
+    n := metaverse_terrain_normal(g, heights, next.pos.x, next.pos.z);
     along := sub(next.vel, times(n, dot(next.vel, n)));
     speed := length(along);
     if speed > 0 {
@@ -139,7 +139,7 @@ ball_substep :: (b: Ball, g: Ground, heights: [] f32, spheres: [] f32, boxes: []
 }
 
 // A frame for a ball nobody holds.
-verse_ball_step :: (b: Ball, g: Ground, heights: [] f32, spheres: [] f32, boxes: [] f32, dt: f32) -> Ball #export_c #effects(all) {
+metaverse_ball_step :: (b: Ball, g: Ground, heights: [] f32, spheres: [] f32, boxes: [] f32, dt: f32) -> Ball #export_c #effects(all) {
   if b.held >= 0 || b.resting || !finite3(b.pos) || !finite3(b.vel) { return b; }
   t := ifx finite(dt) then clamp(dt, 0, f32(SUBSTEP) * f32(MAX_SUBSTEPS)) else 0.0f32;
   next := b;
@@ -154,19 +154,19 @@ verse_ball_step :: (b: Ball, g: Ground, heights: [] f32, spheres: [] f32, boxes:
 
 // A character's hand (or a dog's mouth): ahead of its feet, at height,
 // a little to its right.
-verse_hand :: (feet: Point, face: f32, ahead: f32, up: f32, right: f32) -> Point #export_c #effects(all) {
+metaverse_hand :: (feet: Point, face: f32, ahead: f32, up: f32, right: f32) -> Point #export_c #effects(all) {
   return add(feet, v3(sin(face) * ahead - cos(face) * right, up, cos(face) * ahead + sin(face) * right));
 }
 
 // Whether `who`, its hand at hand and feet at feet, can pick the ball up.
-verse_ball_can_pick :: (b: Ball, feet: Point) -> bool #export_c #effects(all) {
+metaverse_ball_can_pick :: (b: Ball, feet: Point) -> bool #export_c #effects(all) {
   if b.held >= 0 { return false; }
   gap := sub(b.pos, feet);
   return flat_length(gap) <= f32(REACH) && abs(gap.y) < 1.5 && length(b.vel) < 4;
 }
 
-verse_ball_pick :: (b: Ball, who: int, feet: Point, hand: Point) -> Ball #export_c #effects(all) {
-  if who < 0 || !verse_ball_can_pick(b, feet) { return b; }
+metaverse_ball_pick :: (b: Ball, who: int, feet: Point, hand: Point) -> Ball #export_c #effects(all) {
+  if who < 0 || !metaverse_ball_can_pick(b, feet) { return b; }
   next := b;
   next.held = who; next.resting = false; next.vel = v3(0, 0, 0); next.pos = hand;
   if who == 0 { next.thrown = false; }
@@ -174,7 +174,7 @@ verse_ball_pick :: (b: Ball, who: int, feet: Point, hand: Point) -> Ball #export
 }
 
 // Held: it goes where the hand does.
-verse_ball_carry :: (b: Ball, hand: Point) -> Ball #export_c #effects(all) {
+metaverse_ball_carry :: (b: Ball, hand: Point) -> Ball #export_c #effects(all) {
   if b.held < 0 || !finite3(hand) { return b; }
   next := b;
   next.pos = hand; next.vel = v3(0, 0, 0);
@@ -182,7 +182,7 @@ verse_ball_carry :: (b: Ball, hand: Point) -> Ball #export_c #effects(all) {
 }
 
 // Let go of with a velocity (zero: dropped).
-verse_ball_release :: (b: Ball, hand: Point, vel: Point) -> Ball #export_c #effects(all) {
+metaverse_ball_release :: (b: Ball, hand: Point, vel: Point) -> Ball #export_c #effects(all) {
   next := b;
   next.held = -1; next.resting = false;
   if finite3(hand) { next.pos = hand; }
@@ -192,29 +192,29 @@ verse_ball_release :: (b: Ball, hand: Point, vel: Point) -> Ball #export_c #effe
 
 // The velocity of a throw along yaw, raised by lift radians, plus how the
 // thrower was moving.
-verse_throw_velocity :: (yaw: f32, lift: f32, speed: f32, carrier: Point) -> Point #export_c #effects(all) {
+metaverse_throw_velocity :: (yaw: f32, lift: f32, speed: f32, carrier: Point) -> Point #export_c #effects(all) {
   dir := v3(sin(yaw) * cos(lift), sin(lift), cos(yaw) * cos(lift));
   v := times(dir, speed);
   if finite3(carrier) { v = add(v, v3(carrier.x, 0, carrier.z)); }
   return v;
 }
 
-verse_ball_throw :: (b: Ball, hand: Point, yaw: f32, lift: f32, carrier: Point) -> Ball #export_c #effects(all) {
+metaverse_ball_throw :: (b: Ball, hand: Point, yaw: f32, lift: f32, carrier: Point) -> Ball #export_c #effects(all) {
   if b.held < 0 { return b; }
-  next := verse_ball_release(b, hand, verse_throw_velocity(yaw, lift, f32(THROW_SPEED), carrier));
+  next := metaverse_ball_release(b, hand, metaverse_throw_velocity(yaw, lift, f32(THROW_SPEED), carrier));
   next.thrown = true;
   return next;
 }
 
 // Where a throw would go: points ARC_STEP seconds apart from hand, up to
 // out.count / 3 of them, until it meets the ground; returns how many.
-verse_throw_arc :: (g: Ground, heights: [] f32, hand: Point, vel: Point, out: [] f32) -> int #export_c #effects(all) {
+metaverse_throw_arc :: (g: Ground, heights: [] f32, hand: Point, vel: Point, out: [] f32) -> int #export_c #effects(all) {
   p := hand; v := vel;
   n := 0;
   while (n + 1) * 3 <= out.count {
     out[n * 3] = p.x; out[n * 3 + 1] = p.y; out[n * 3 + 2] = p.z;
     n += 1;
-    if p.y < verse_terrain_height(g, heights, p.x, p.z) { break; }
+    if p.y < metaverse_terrain_height(g, heights, p.x, p.z) { break; }
     for k: 0..<3 {
       v.y -= f32(GRAVITY) * f32(ARC_STEP) / 3;
       p = add(p, times(v, f32(ARC_STEP) / 3));
@@ -238,18 +238,18 @@ DOG_BODY :: 0.4;          // metres: the dog's body round its feet, against scen
 
 Fetch :: struct { mode: int; dog: Follower; ball: Ball; }
 
-dog_mouth :: (d: Follower) -> Point { return verse_hand(d.pos, d.face, f32(MOUTH_AHEAD), f32(MOUTH_UP), 0); }
+dog_mouth :: (d: Follower) -> Point { return metaverse_hand(d.pos, d.face, f32(MOUTH_AHEAD), f32(MOUTH_UP), 0); }
 
 // A frame of the game: the dog (a Follower) and the ball, with you at
 // `you`. Following, it uses the paths; chasing, it runs straight.
-verse_fetch_step :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32,
+metaverse_fetch_step :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32,
                      you: Point, dt: f32) -> Fetch #export_c #effects(all) {
   none: [6] f32;
-  return verse_fetch_step_among(f, g, heights, nodes, links, half, you, dt, none[0..<0]);
+  return metaverse_fetch_step_among(f, g, heights, nodes, links, half, you, dt, none[0..<0]);
 }
 
 // The same among scenery the dog goes round (terrain.coax blocks).
-verse_fetch_step_among :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32,
+metaverse_fetch_step_among :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32,
                            you: Point, dt: f32, blocks: [] f32) -> Fetch #export_c #effects(all) {
   next := f;
   none: [2] int;
@@ -266,7 +266,7 @@ verse_fetch_step_among :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, 
     // Aim the feet so the mouth lands on the ball.
     back := sub(f.dog.pos, b.pos); back.y = 0;
     spot := add(b.pos, times(unit_or(back, v3(0, 0, -1)), f32(MOUTH_AHEAD) - 0.2));
-    next.dog = verse_follower_step_among(f.dog, g, heights, nodes, none[0..<0], half, spot, 0.05, dt, blocks, f32(DOG_BODY));
+    next.dog = metaverse_follower_step_among(f.dog, g, heights, nodes, none[0..<0], half, spot, 0.05, dt, blocks, f32(DOG_BODY));
     mouth := dog_mouth(next.dog);
     if length(sub(mouth, b.pos)) < 0.5 + b.radius && length(b.vel) < f32(CATCH_SPEED) {
       next.ball = b;
@@ -274,15 +274,15 @@ verse_fetch_step_among :: (f: Fetch, g: Ground, heights: [] f32, nodes: [] f32, 
       next.mode = FETCH_BRING;
     }
   } else if next.mode == FETCH_BRING {
-    next.dog = verse_follower_step_among(f.dog, g, heights, nodes, links, half, you, f32(BRING_STOP), dt, blocks, f32(DOG_BODY));
-    next.ball = verse_ball_carry(b, dog_mouth(next.dog));
+    next.dog = metaverse_follower_step_among(f.dog, g, heights, nodes, links, half, you, f32(BRING_STOP), dt, blocks, f32(DOG_BODY));
+    next.ball = metaverse_ball_carry(b, dog_mouth(next.dog));
     if flat_length(sub(next.dog.pos, you)) <= f32(BRING_STOP) + 0.3 && flat_length(next.dog.vel) < 0.6 {
-      next.ball = verse_ball_release(next.ball, dog_mouth(next.dog), v3(0, 0, 0));
+      next.ball = metaverse_ball_release(next.ball, dog_mouth(next.dog), v3(0, 0, 0));
       next.ball.thrown = false;
       next.mode = FETCH_FOLLOW;
     }
   } else {
-    next.dog = verse_follower_step_among(f.dog, g, heights, nodes, links, half, you, f32(FOLLOW_STOP), dt, blocks, f32(DOG_BODY));
+    next.dog = metaverse_follower_step_among(f.dog, g, heights, nodes, links, half, you, f32(FOLLOW_STOP), dt, blocks, f32(DOG_BODY));
   }
   return next;
 }
@@ -295,7 +295,7 @@ tb_ground :: () -> Ground { g: Ground; g.n = 16; g.cell = 4; g.west = -32; g.sou
 tb_build :: (h: [] f32) -> bool {
   n := TB_NODES; l := TB_LINKS;
   flats := [8] f32.[0, 0, 7, 0,   20, 0, 3, 0];
-  return verse_terrain_build(tb_ground(), h, n[..], l[..], 0.9, flats[..]);
+  return metaverse_terrain_build(tb_ground(), h, n[..], l[..], 0.9, flats[..]);
 }
 
 #test "dropped, it bounces lower each time and comes to rest on the ground" {
@@ -303,20 +303,20 @@ tb_build :: (h: [] f32) -> bool {
   h: [17 * 17] f32;
   #assert tb_build(h[..]);
   nothing: [1] f32;
-  b := verse_ball_place(g, h[..], 1, 1, 0.12);
-  #assert b.resting && near(b.pos.y, verse_terrain_height(g, h[..], 1, 1) + 0.12, 0.0001);
-  b = verse_ball_release(b, v3(1, 3, 1), v3(0, 0, 0));
+  b := metaverse_ball_place(g, h[..], 1, 1, 0.12);
+  #assert b.resting && near(b.pos.y, metaverse_terrain_height(g, h[..], 1, 1) + 0.12, 0.0001);
+  b = metaverse_ball_release(b, v3(1, 3, 1), v3(0, 0, 0));
   top := b.pos.y; going_up := false; bounces := 0;
   for i: 0..<600 {
     was := b.vel.y;
-    b = verse_ball_step(b, g, h[..], nothing[0..<0], nothing[0..<0], 1.0 / 60.0);
-    #assert b.pos.y >= verse_terrain_height(g, h[..], b.pos.x, b.pos.z) + b.radius - 0.0001;
+    b = metaverse_ball_step(b, g, h[..], nothing[0..<0], nothing[0..<0], 1.0 / 60.0);
+    #assert b.pos.y >= metaverse_terrain_height(g, h[..], b.pos.x, b.pos.z) + b.radius - 0.0001;
     if was <= 0 && b.vel.y > 0 { bounces += 1; going_up = true; }
     if going_up && b.vel.y <= 0 { #assert b.pos.y < top; top = b.pos.y; going_up = false; }
   }
   #assert bounces >= 2;
   #assert b.resting && length(b.vel) == 0;
-  #assert near(b.pos.y, verse_terrain_height(g, h[..], b.pos.x, b.pos.z) + b.radius, 0.002);
+  #assert near(b.pos.y, metaverse_terrain_height(g, h[..], b.pos.x, b.pos.z) + b.radius, 0.002);
 }
 
 #forall "a throw never ends up under the ground or faster than it went" k: 0..<8 #steps 37000000 {
@@ -324,15 +324,15 @@ tb_build :: (h: [] f32) -> bool {
   h: [17 * 17] f32;
   #assert tb_build(h[..]);
   nothing: [1] f32;
-  b := verse_ball_place(g, h[..], 0, 0, 0.12);
+  b := metaverse_ball_place(g, h[..], 0, 0, 0.12);
   b.held = 0;
-  b = verse_ball_throw(b, v3(0, 1.4, 0), f32(k) * 0.79, 0.1 + f32(k % 4) * 0.25, v3(0, 0, 0));
+  b = metaverse_ball_throw(b, v3(0, 1.4, 0), f32(k) * 0.79, 0.1 + f32(k % 4) * 0.25, v3(0, 0, 0));
   #assert b.held < 0 && b.thrown && !b.resting;
   first := length(b.vel);
   for i: 0..<100 {
-    b = verse_ball_step(b, g, h[..], nothing[0..<0], nothing[0..<0], 1.0 / 15.0);
+    b = metaverse_ball_step(b, g, h[..], nothing[0..<0], nothing[0..<0], 1.0 / 15.0);
     #assert finite3(b.pos);
-    #assert b.pos.y >= verse_terrain_height(g, h[..], b.pos.x, b.pos.z) + b.radius - 0.001;
+    #assert b.pos.y >= metaverse_terrain_height(g, h[..], b.pos.x, b.pos.z) + b.radius - 0.001;
     // Falling can add speed; never more than the drop allows.
     #assert length(b.vel) * length(b.vel) <= first * first + 2 * f32(GRAVITY) * 12 + 0.01;
   }
@@ -348,17 +348,17 @@ tb_build :: (h: [] f32) -> bool {
   for i: 0..<12 {
     for j: 0..<12 {
       x := -28 + f32(i) * 5; z := -28 + f32(j) * 5;
-      n := verse_terrain_normal(g, h[..], x, z);
+      n := metaverse_terrain_normal(g, h[..], x, z);
       if n.y < steep { steep = n.y; best = v3(x, 0, z); }
     }
   }
   #assert steep < f32(REST_SLOPE);
-  down := verse_terrain_normal(g, h[..], best.x, best.z);
-  b := verse_ball_release(verse_ball_place(g, h[..], best.x, best.z, 0.12), v3(best.x, verse_terrain_height(g, h[..], best.x, best.z) + 0.12, best.z), v3(0, 0, 0));
-  for i: 0..<30 { b = verse_ball_step(b, g, h[..], nothing[0..<0], nothing[0..<0], 1.0 / 30.0); }
+  down := metaverse_terrain_normal(g, h[..], best.x, best.z);
+  b := metaverse_ball_release(metaverse_ball_place(g, h[..], best.x, best.z, 0.12), v3(best.x, metaverse_terrain_height(g, h[..], best.x, best.z) + 0.12, best.z), v3(0, 0, 0));
+  for i: 0..<30 { b = metaverse_ball_step(b, g, h[..], nothing[0..<0], nothing[0..<0], 1.0 / 30.0); }
   #assert (b.pos.x - best.x) * down.x + (b.pos.z - best.z) * down.z > 0.05 && b.spin > 0;
-  level := verse_ball_place(g, h[..], 1, 1, 0.12);
-  #assert same(verse_ball_step(level, g, h[..], nothing[0..<0], nothing[0..<0], 0.5).pos, level.pos, 0);
+  level := metaverse_ball_place(g, h[..], 1, 1, 0.12);
+  #assert same(metaverse_ball_step(level, g, h[..], nothing[0..<0], nothing[0..<0], 0.5).pos, level.pos, 0);
 }
 
 #test "it bounces off a hedge and a tree, and never stays inside them" {
@@ -368,17 +368,17 @@ tb_build :: (h: [] f32) -> bool {
   hedge := [6] f32.[-3, 0, 4, 3, 1.2, 5];
   tree := [4] f32.[0, 0.9, -4, 1.0];
   nothing: [1] f32;
-  b := verse_ball_release(verse_ball_place(g, h[..], 0, 0, 0.12), v3(0, 0.8, 0), v3(0, 0.5, 8));
+  b := metaverse_ball_release(metaverse_ball_place(g, h[..], 0, 0, 0.12), v3(0, 0.8, 0), v3(0, 0.5, 8));
   hit := false;
   for i: 0..<90 {
-    b = verse_ball_step(b, g, h[..], nothing[0..<0], hedge[..], 1.0 / 60.0);
+    b = metaverse_ball_step(b, g, h[..], nothing[0..<0], hedge[..], 1.0 / 60.0);
     #assert !(b.pos.x > -3 && b.pos.x < 3 && b.pos.y < 1.2 && b.pos.z > 4 - b.radius + 0.001 && b.pos.z < 5);
     if b.vel.z < 0 { hit = true; }
   }
   #assert hit && b.pos.z < 4;
-  c := verse_ball_release(verse_ball_place(g, h[..], 0, 0, 0.12), v3(0, 1.0, 0), v3(0, 0.6, -8));
+  c := metaverse_ball_release(metaverse_ball_place(g, h[..], 0, 0, 0.12), v3(0, 1.0, 0), v3(0, 0.6, -8));
   for i: 0..<60 {
-    c = verse_ball_step(c, g, h[..], tree[..], nothing[0..<0], 1.0 / 60.0);
+    c = metaverse_ball_step(c, g, h[..], tree[..], nothing[0..<0], 1.0 / 60.0);
     #assert length(sub(c.pos, v3(0, 0.9, -4))) >= 1.0 + c.radius - 0.001;
   }
   #assert c.pos.z > -3;
@@ -391,25 +391,25 @@ tb_build :: (h: [] f32) -> bool {
   g := tb_ground();
   h: [17 * 17] f32;
   #assert tb_build(h[..]);
-  b := verse_ball_place(g, h[..], 1, 0, 0.12);
+  b := metaverse_ball_place(g, h[..], 1, 0, 0.12);
   feet := v3(0, 0, 0);
-  #assert verse_ball_can_pick(b, feet);
-  #assert !verse_ball_can_pick(b, v3(5, 0, 0));
-  hand := verse_hand(feet, 0, 0.35, 1.0, 0.25);
+  #assert metaverse_ball_can_pick(b, feet);
+  #assert !metaverse_ball_can_pick(b, v3(5, 0, 0));
+  hand := metaverse_hand(feet, 0, 0.35, 1.0, 0.25);
   #assert near(hand.z, 0.35, 0.0001) && near(hand.x, -0.25, 0.0001) && hand.y == 1;
-  p := verse_ball_pick(b, 0, feet, hand);
+  p := metaverse_ball_pick(b, 0, feet, hand);
   #assert p.held == 0 && same(p.pos, hand, 0) && !p.thrown;
-  #assert verse_ball_pick(p, 1, feet, hand).held == 0;
-  #assert verse_ball_pick(b, 0, v3(5, 0, 0), hand).held == -1;
-  moved := verse_ball_carry(p, v3(3, 1, 3));
+  #assert metaverse_ball_pick(p, 1, feet, hand).held == 0;
+  #assert metaverse_ball_pick(b, 0, v3(5, 0, 0), hand).held == -1;
+  moved := metaverse_ball_carry(p, v3(3, 1, 3));
   #assert same(moved.pos, v3(3, 1, 3), 0);
   nothing: [1] f32;
-  #assert same(verse_ball_step(moved, g, h[..], nothing[0..<0], nothing[0..<0], 1).pos, moved.pos, 0);
-  #assert same(verse_ball_carry(b, v3(9, 9, 9)).pos, b.pos, 0);
+  #assert same(metaverse_ball_step(moved, g, h[..], nothing[0..<0], nothing[0..<0], 1).pos, moved.pos, 0);
+  #assert same(metaverse_ball_carry(b, v3(9, 9, 9)).pos, b.pos, 0);
   // A throw goes the way asked, up by the lift, and lets go.
-  t := verse_ball_throw(moved, hand, f32(PI) / 2, 0.5, v3(1, 0, 0));
+  t := metaverse_ball_throw(moved, hand, f32(PI) / 2, 0.5, v3(1, 0, 0));
   #assert t.held == -1 && t.thrown && t.vel.x > f32(THROW_SPEED) * 0.8 && t.vel.y > 0 && near(t.vel.z, 0, 0.001);
-  #assert verse_ball_throw(b, hand, 0, 0.5, v3(0, 0, 0)).vel.z == 0;
+  #assert metaverse_ball_throw(b, hand, 0, 0.5, v3(0, 0, 0)).vel.z == 0;
 }
 
 #test "the aim arc starts at the hand, falls, and stops at the ground" {
@@ -417,12 +417,12 @@ tb_build :: (h: [] f32) -> bool {
   h: [17 * 17] f32;
   #assert tb_build(h[..]);
   out: [120] f32;
-  v := verse_throw_velocity(0, 0.5, f32(THROW_SPEED), v3(0, 0, 0));
-  n := verse_throw_arc(g, h[..], v3(0, 1.4, 0), v, out[..]);
+  v := metaverse_throw_velocity(0, 0.5, f32(THROW_SPEED), v3(0, 0, 0));
+  n := metaverse_throw_arc(g, h[..], v3(0, 1.4, 0), v, out[..]);
   #assert n > 5 && n <= 40;
   #assert out[0] == 0 && near(out[1], 1.4, 0.0001);
   last := v3(out[(n - 1) * 3], out[(n - 1) * 3 + 1], out[(n - 1) * 3 + 2]);
-  #assert last.y < verse_terrain_height(g, h[..], last.x, last.z) + 0.5 && last.z > 5;
+  #assert last.y < metaverse_terrain_height(g, h[..], last.x, last.z) + 0.5 && last.z > 5;
 }
 
 #test "fetch: the dog runs to the ball, brings it back by the paths and drops it at your feet" {
@@ -431,30 +431,30 @@ tb_build :: (h: [] f32) -> bool {
   #assert tb_build(h[..]);
   n := TB_NODES; l := TB_LINKS;
   nothing: [1] f32;
-  you := v3(-8, verse_terrain_height(g, h[..], -8, 0), 0);
+  you := v3(-8, metaverse_terrain_height(g, h[..], -8, 0), 0);
   f: Fetch;
-  f.dog = verse_follower_place(g, h[..], -6, 1.5, 0);
-  f.ball = verse_ball_place(g, h[..], -8, 0.5, 0.12);
+  f.dog = metaverse_follower_place(g, h[..], -6, 1.5, 0);
+  f.ball = metaverse_ball_place(g, h[..], -8, 0.5, 0.12);
   f.ball.held = 0;
-  f.ball = verse_ball_throw(f.ball, verse_hand(you, f32(PI) / 2, 0.35, 1.2, 0.25), f32(PI) / 2, 0.4, v3(0, 0, 0));
+  f.ball = metaverse_ball_throw(f.ball, metaverse_hand(you, f32(PI) / 2, 0.35, 1.2, 0.25), f32(PI) / 2, 0.4, v3(0, 0, 0));
   chased := false; brought := false; dropped := false;
   for i: 0..<300 {
-    f.ball = verse_ball_step(f.ball, g, h[..], nothing[0..<0], nothing[0..<0], 0.1);
-    f = verse_fetch_step(f, g, h[..], n[..], l[..], 0.9, you, 0.1);
+    f.ball = metaverse_ball_step(f.ball, g, h[..], nothing[0..<0], nothing[0..<0], 0.1);
+    f = metaverse_fetch_step(f, g, h[..], n[..], l[..], 0.9, you, 0.1);
     if f.mode == FETCH_CHASE { chased = true; }
     if f.mode == FETCH_BRING { brought = true; #assert f.ball.held == 1; }
     if brought && f.mode == FETCH_FOLLOW { dropped = true; break; }
   }
   #assert chased && brought && dropped;
   #assert f.ball.held == -1 && !f.ball.thrown;
-  for i: 0..<20 { f.ball = verse_ball_step(f.ball, g, h[..], nothing[0..<0], nothing[0..<0], 0.1); }
-  #assert verse_ball_can_pick(f.ball, you);
+  for i: 0..<20 { f.ball = metaverse_ball_step(f.ball, g, h[..], nothing[0..<0], nothing[0..<0], 0.1); }
+  #assert metaverse_ball_can_pick(f.ball, you);
   // Picked up by you before the dog gets there: it gives up.
   f.ball.held = 0;
-  f.ball = verse_ball_throw(f.ball, verse_hand(you, 0, 0.35, 1.2, 0.25), 0, 0.4, v3(0, 0, 0));
-  f = verse_fetch_step(f, g, h[..], n[..], l[..], 0.9, you, 0.1);
+  f.ball = metaverse_ball_throw(f.ball, metaverse_hand(you, 0, 0.35, 1.2, 0.25), 0, 0.4, v3(0, 0, 0));
+  f = metaverse_fetch_step(f, g, h[..], n[..], l[..], 0.9, you, 0.1);
   #assert f.mode == FETCH_CHASE;
   f.ball.held = 0;
-  f = verse_fetch_step(f, g, h[..], n[..], l[..], 0.9, you, 0.1);
+  f = metaverse_fetch_step(f, g, h[..], n[..], l[..], 0.9, you, 0.1);
   #assert f.mode == FETCH_FOLLOW;
 }

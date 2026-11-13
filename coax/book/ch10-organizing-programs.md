@@ -305,15 +305,15 @@ An `#export` list makes a module's API explicit. The engine HUD does this:
 ```jai
 // metaverse/hud.coax
 #module "verse.hud";
-#export HudRect, HudPoint, verse_hud_slot;
-#export verse_hud_frame_point, verse_hud_frame_arm, verse_hud_tone, verse_hud_cut, verse_hud_outline, verse_hud_arm_down;
+#export HudRect, HudPoint, metaverse_hud_slot;
+#export metaverse_hud_frame_point, metaverse_hud_frame_arm, metaverse_hud_tone, metaverse_hud_cut, metaverse_hud_outline, metaverse_hud_arm_down;
 #load "hud/types.coax";
 #load "hud/frame.coax";
 ```
 
 Once a module has a list, the rest of its declarations are private. The
 landing page's nostr board loads it as `#load "../../metaverse/hud.coax" as
-hud;` and calls `hud.verse_hud_slot(...)`; writing `hud.HUD_ARM`, or plain
+hud;` and calls `hud.metaverse_hud_slot(...)`; writing `hud.HUD_ARM`, or plain
 `HUD_ARM`, stops with E0389 (`'HUD_ARM' is private to module 'verse.hud'`).
 The files the module loads (`hud/frame.coax` here) are part of it, so they
 use the private constants freely, and each keeps its own `#authority` and

@@ -2,14 +2,14 @@
 // them (src/anim/anim.cpp, src/player_core.cpp, src/grid_world.cpp).
 //
 // The host loads Cast.bin (metaverse/tools/pack_cast.py) and passes its bytes
-// to every call. verse_cast_open admits them: the buffer table, every
+// to every call. metaverse_cast_open admits them: the buffer table, every
 // buffer's size and stride, and every index, joint and frame inside its
 // buffer. After that the host only uploads the vertex and index buffers the
 // Cast names and draws them with the joint palettes written here.
 //
 // Your character plays seven clips (idle, walk, sprint, the three-part
 // jump, and a dance), cross-fading 0.18 s from one to the next. The dance
-// is asked for (verse_cast_dance) and plays while you stand; moving or
+// is asked for (metaverse_cast_dance) and plays while you stand; moving or
 // jumping ends it. A clip's pose is each
 // joint's motion relative to its parent, blended per joint and chained from
 // the root, so a cross-fade keeps every bone its length. The robots replay
@@ -17,7 +17,7 @@
 // stands by the start, three times their size.
 //
 // Each robot bone has a capsule round the faces it moves (pack_cast.py fits
-// them in the bind pose). verse_cast_bodies places them with the palette
+// them in the bind pose). metaverse_cast_bodies places them with the palette
 // the robots were drawn with, so what you bump into is what you see.
 
 PI :: 3.14159265;
@@ -227,7 +227,7 @@ robots_ok :: (bones: int, frames: int, robot_clips: int) -> bool {
 between :: (a: f32, most: f32) -> bool { return a > 0 && a <= most; }
 
 // Admits Cast.bin. A Cast that is not ok draws nothing.
-verse_cast_open :: (b: [] u8) -> Cast #export_c #effects(all) {
+metaverse_cast_open :: (b: [] u8) -> Cast #export_c #effects(all) {
   c: Cast;
   bad := c;
   if b.count < 16 + BUFFERS * 32 || int_at(b, 0) != MAGIC || int_at(b, 4) != 1 || int_at(b, 8) != BUFFERS { return bad; }
@@ -295,9 +295,9 @@ verse_cast_open :: (b: [] u8) -> Cast #export_c #effects(all) {
 }
 
 // Robots on the Grid: one per patrol, and the Foreman.
-verse_cast_robots :: (c: Cast) -> int #export_c #effects(all) { return ifx c.ok then c.patrols.count + 1 else 0; }
+metaverse_cast_robots :: (c: Cast) -> int #export_c #effects(all) { return ifx c.ok then c.patrols.count + 1 else 0; }
 // The palette's joints: yours, then each robot's.
-verse_cast_palette :: (c: Cast) -> int #export_c #effects(all) { return ifx c.ok then c.joints + verse_cast_robots(c) * c.bones else 0; }
+metaverse_cast_palette :: (c: Cast) -> int #export_c #effects(all) { return ifx c.ok then c.joints + metaverse_cast_robots(c) * c.bones else 0; }
 
 // ---- Your clips ----
 
@@ -328,12 +328,12 @@ ground :: (act: int) -> Move {
   return Move.idle;
 }
 
-// Moves the clips on for the player's act now (verse_player_act: 0
+// Moves the clips on for the player's act now (metaverse_player_act: 0
 // idle, 1 walking, 2 running, 3 airborne), whether you are rising, and the
 // time in seconds, as aethyr's AnimationSystem: a jump starts, loops in the
 // air and lands; walking off a ledge only loops; landing while you move
 // goes straight back to the walk.
-verse_cast_update :: (b: [] u8, c: Cast, a: Anim, act: int, rising: bool, now: f64) -> Anim #export_c #effects(all) {
+metaverse_cast_update :: (b: [] u8, c: Cast, a: Anim, act: int, rising: bool, now: f64) -> Anim #export_c #effects(all) {
   if !c.ok || b.count != c.size { return a; }
   out := a;
   moving := act == 1 || act == 2;
@@ -357,7 +357,7 @@ verse_cast_update :: (b: [] u8, c: Cast, a: Anim, act: int, rising: bool, now: f
 }
 
 // Asks for the dance, or stops it if you are dancing.
-verse_cast_dance :: (a: Anim) -> Anim #export_c #effects(all) {
+metaverse_cast_dance :: (a: Anim) -> Anim #export_c #effects(all) {
   out := a;
   out.dance = !a.dance;
   return out;
@@ -451,7 +451,7 @@ fading :: (a: Anim, now: f64) -> f32 {
 }
 
 // Your pose at `now`, placed at the feet facing `face`, into out[0..joints).
-verse_cast_pose :: (b: [] u8, c: Cast, a: Anim, now: f64, x: f32, y: f32, z: f32, face: f32, out: [] Joint) -> bool #export_c #effects(all) {
+metaverse_cast_pose :: (b: [] u8, c: Cast, a: Anim, now: f64, x: f32, y: f32, z: f32, face: f32, out: [] Joint) -> bool #export_c #effects(all) {
   if !c.ok || b.count != c.size || out.count < c.joints { return false; }
   if !finite(x) || !finite(y) || !finite(z) || !finite(face) { return false; }
   w := fading(a, now);
@@ -531,8 +531,8 @@ patrol :: (b: [] u8, c: Cast, r: int, seconds: f64) -> Sample {
 }
 
 // Every robot at `now` seconds into the Grid, into out after your joints.
-verse_cast_robots_pose :: (b: [] u8, c: Cast, now: f64, out: [] Joint) -> bool #export_c #effects(all) {
-  if !c.ok || b.count != c.size || out.count < verse_cast_palette(c) { return false; }
+metaverse_cast_robots_pose :: (b: [] u8, c: Cast, now: f64, out: [] Joint) -> bool #export_c #effects(all) {
+  if !c.ok || b.count != c.size || out.count < metaverse_cast_palette(c) { return false; }
   if !(now >= 0) || !(now < 100000000) { return false; }
   for r: 0..<c.patrols.count {
     s := patrol(b, c, r, now);
@@ -551,16 +551,16 @@ moved :: (j: Joint, p: Vec3) -> Vec3 {
             j.m[8] * p.x + j.m[9] * p.y + j.m[10] * p.z + j.m[11]);
 }
 
-// Every robot's body capsules as verse_cast_robots_pose placed them in
+// Every robot's body capsules as metaverse_cast_robots_pose placed them in
 // `palette`: BODY numbers each (one end, the other, the radius), robot by
 // robot, into out. Returns how many capsules, or 0 if out or the palette is
 // short.
-verse_cast_bodies :: (b: [] u8, c: Cast, palette: [] Joint, out: [] f32) -> int #export_c #effects(all) {
-  if !c.ok || b.count != c.size || palette.count < verse_cast_palette(c) { return 0; }
-  n := verse_cast_robots(c) * c.robot_bodies.count;
+metaverse_cast_bodies :: (b: [] u8, c: Cast, palette: [] Joint, out: [] f32) -> int #export_c #effects(all) {
+  if !c.ok || b.count != c.size || palette.count < metaverse_cast_palette(c) { return 0; }
+  n := metaverse_cast_robots(c) * c.robot_bodies.count;
   if out.count < n * BODY { return 0; }
   k := 0;
-  for r: 0..<verse_cast_robots(c) {
+  for r: 0..<metaverse_cast_robots(c) {
     for i: 0..<c.robot_bodies.count {
       at := c.robot_bodies.offset + i * 32;
       j := palette[c.joints + r * c.bones + int_at(b, at + 28)];
@@ -707,16 +707,16 @@ small :: (b: [] u8) -> Layout {
 #test "the small cast is admitted, with its counts" {
   bytes: [4096] u8;
   l := small(bytes[..]);
-  c := verse_cast_open(bytes[0..<l.size]);
+  c := metaverse_cast_open(bytes[0..<l.size]);
   #assert c.ok && c.size == l.size;
   #assert c.joints == 2 && c.bones == 2 && c.rate == 2 && c.scale == 2;
   #assert c.poses.count == 36 && c.body_vertices.count == 3 && c.robot_lines.count == 2;
   #assert c.poses.offset == l.poses && c.patrol_samples.offset == l.samples;
   #assert c.skeleton.end == l.skeleton + 32 && c.patrol_samples.end == l.samples + 120;
   #assert c.robot_bodies.offset == l.bodies && c.robot_bodies.count == 1 && c.robot_bodies.end == l.size;
-  #assert verse_cast_robots(c) == 4 && verse_cast_palette(c) == 2 + 4 * 2;
+  #assert metaverse_cast_robots(c) == 4 && metaverse_cast_palette(c) == 2 + 4 * 2;
   // Trailing bytes are allowed; the Cast remembers what it was admitted from.
-  #assert verse_cast_open(bytes[..]).ok && verse_cast_open(bytes[..]).size == 4096;
+  #assert metaverse_cast_open(bytes[..]).ok && metaverse_cast_open(bytes[..]).size == 4096;
 }
 
 #test "the limits of the fixed storage" {
@@ -733,123 +733,123 @@ small :: (b: [] u8) -> Layout {
 #test "a damaged table is refused" {
   bytes: [4096] u8;
   l := small(bytes[..]);
-  #assert !verse_cast_open(bytes[0..<l.size - 1]).ok;             // cut short
-  #assert verse_cast_open(bytes[0..<l.size]).ok;
-  #assert !verse_cast_open(bytes[0..<100]).ok && !verse_cast_open(bytes[0..<16 + BUFFERS * 32 - 1]).ok;
+  #assert !metaverse_cast_open(bytes[0..<l.size - 1]).ok;             // cut short
+  #assert metaverse_cast_open(bytes[0..<l.size]).ok;
+  #assert !metaverse_cast_open(bytes[0..<100]).ok && !metaverse_cast_open(bytes[0..<16 + BUFFERS * 32 - 1]).ok;
   copy := bytes; copy[0] = 0;                                       // magic
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 4, 2);                              // version
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 8, 12);                             // buffer count
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; copy[16 + 32 * 2] = 'P';                            // a semantic
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; copy[16 + 32 * 2 + 5] = 'x';                        // past its name
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; copy[16 + 32 * 13 + 15] = 'x';                      // the last name's last byte
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 16 + 32 * 3 + 24, 60);              // stride
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 16 + 32 * 3 + 20, 64 * 3 - 1);      // length != rows * stride
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 16 + 32 * 12 + 16, l.samples + 4);  // not on 16 bytes, its samples moved too
   for k: 0..<l.size - l.samples - 4 { copy[l.samples + 4 + k] = bytes[l.samples + k]; }
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 16 + 32 * 13 + 16, l.bodies + 16);  // moved past the end
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 16 + 32 * 12 + 16, l.patrols);      // overlaps the one before
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 16 + 16, 0);                        // overlaps the table
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 16 + 32 * 12 + 28, 0); put32(copy[..], 16 + 32 * 12 + 20, 0);   // empty
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
 }
 
 #test "every index, joint, frame and sample is checked against its buffer" {
   bytes: [4096] u8;
   l := small(bytes[..]);
   copy := bytes; put32(copy[..], l.body_indices + 4, 3);            // past the vertices
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.body_indices, 3);                 // the first index too
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; copy[l.body_vertices + 128 + 48] = 2;                // past the joints
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; copy[l.body_vertices + 128 + 51] = 2;                // the fourth joint too
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; copy[l.body_vertices + 55] = 6;                      // no such texture slot
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; copy[l.body_vertices + 55] = 5;
-  #assert verse_cast_open(copy[0..<l.size]).ok;
+  #assert metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.body_vertices + 44, 2000000);      // the last weight out of range
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.body_vertices, 2000000);           // the first position
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.skeleton, 0);                      // the root its own parent
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.skeleton, -2);
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.skeleton + 16, 1);                 // a child its own parent
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.skeleton + 4, 2000000);             // a bind position out of range
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.skeleton + 16 + 12, -2000000);
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.clips + 6 * 8, 17);                // the dance past the poses
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.clips + 6 * 8, 16);                // up to the last pose frame
-  #assert verse_cast_open(copy[0..<l.size]).ok;
+  #assert metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.clips + 4, 0);                     // an empty clip
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.poses, -2000000);                   // a pose out of range
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.poses + 32 * 35 + 24, 2000000);     // the last one's last number
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.setup, 0);                         // no bones
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.setup, 3);                         // frames not whole per bone
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.setup + 4, 0);                      // no rate
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.setup + 8, 11);                     // too big
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.robot_clips + 16, 3);              // idle past the frames
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.robot_clips + 24, 0);               // no duration
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.robot_clips + 24, 601);
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.robot_clips + 8, 0);                // the walk's too
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; copy[l.robot_vertices + 48] = 2;                     // past the bones
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 16 + 32 * 8 + 28, 1); put32(copy[..], 16 + 32 * 8 + 20, 4);   // half a line
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], 16 + 32 * 7 + 28, 2); put32(copy[..], 16 + 32 * 7 + 20, 8);   // two thirds of a face
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.patrols + 20, 2);                  // past the samples
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.samples + 12, 2);                   // no such robot clip
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.samples + 12, 0.5);                 // not a whole clip
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.samples + 12, -1);
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.samples, 2000000);                  // the first sample's x
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.samples + 5 * 20 + 16, 2000000);    // the last sample's time
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; put32(copy[..], l.bodies + 28, 2);                   // a body on no bone
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.bodies + 12, 0);                    // no width
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.bodies + 12, 2.5);                  // too wide
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.bodies + 12, 2);
-  #assert verse_cast_open(copy[0..<l.size]).ok;
+  #assert metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.bodies, 2000000);                   // the first end
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
   copy = bytes; putf(copy[..], l.bodies + 24, -2000000);             // the other end's last number
-  #assert !verse_cast_open(copy[0..<l.size]).ok;
+  #assert !metaverse_cast_open(copy[0..<l.size]).ok;
 }
 
 #test "a closed cast draws nothing" {
@@ -858,26 +858,26 @@ small :: (b: [] u8) -> Layout {
   c: Cast;
   a: Anim;
   out: [10] Joint;
-  #assert !verse_cast_pose(bytes[0..<l.size], c, a, 0, 0, 0, 0, 0, out[..]);
-  #assert !verse_cast_robots_pose(bytes[0..<l.size], c, 0, out[..]);
-  #assert verse_cast_robots(c) == 0 && verse_cast_palette(c) == 0;
+  #assert !metaverse_cast_pose(bytes[0..<l.size], c, a, 0, 0, 0, 0, 0, out[..]);
+  #assert !metaverse_cast_robots_pose(bytes[0..<l.size], c, 0, out[..]);
+  #assert metaverse_cast_robots(c) == 0 && metaverse_cast_palette(c) == 0;
   // Nor do other bytes than it was admitted from.
-  good := verse_cast_open(bytes[0..<l.size]);
-  #assert !verse_cast_pose(bytes[0..<l.size - 16], good, a, 0, 0, 0, 0, 0, out[..]);
-  #assert !verse_cast_robots_pose(bytes[0..<l.size - 16], good, 0, out[..]);
-  #assert verse_cast_update(bytes[0..<l.size - 16], good, a, 1, false, 1).move == Move.idle;
+  good := metaverse_cast_open(bytes[0..<l.size]);
+  #assert !metaverse_cast_pose(bytes[0..<l.size - 16], good, a, 0, 0, 0, 0, 0, out[..]);
+  #assert !metaverse_cast_robots_pose(bytes[0..<l.size - 16], good, 0, out[..]);
+  #assert metaverse_cast_update(bytes[0..<l.size - 16], good, a, 1, false, 1).move == Move.idle;
   // Nor a palette too small, or a place or time out of range.
-  #assert !verse_cast_pose(bytes[0..<l.size], good, a, 0, 0, 0, 0, 0, out[0..<1]);
-  #assert !verse_cast_robots_pose(bytes[0..<l.size], good, 0, out[0..<9]);
-  #assert !verse_cast_pose(bytes[0..<l.size], good, a, 0, 2000000, 0, 0, 0, out[..]);
-  #assert !verse_cast_pose(bytes[0..<l.size], good, a, 0, 0, 2000000, 0, 0, out[..]);
-  #assert !verse_cast_pose(bytes[0..<l.size], good, a, 0, 0, 0, 2000000, 0, out[..]);
-  #assert !verse_cast_pose(bytes[0..<l.size], good, a, 0, 0, 0, 0, 2000000, out[..]);
-  #assert !verse_cast_robots_pose(bytes[0..<l.size], good, -1, out[..]);
-  #assert !verse_cast_robots_pose(bytes[0..<l.size], good, 100000000, out[..]);
-  #assert verse_cast_robots_pose(bytes[0..<l.size], good, 99999999, out[..]);
-  #assert verse_cast_pose(bytes[0..<l.size], good, a, 0, 0, 0, 0, 0, out[0..<2]);
-  #assert verse_cast_robots_pose(bytes[0..<l.size], good, 0, out[..]);
+  #assert !metaverse_cast_pose(bytes[0..<l.size], good, a, 0, 0, 0, 0, 0, out[0..<1]);
+  #assert !metaverse_cast_robots_pose(bytes[0..<l.size], good, 0, out[0..<9]);
+  #assert !metaverse_cast_pose(bytes[0..<l.size], good, a, 0, 2000000, 0, 0, 0, out[..]);
+  #assert !metaverse_cast_pose(bytes[0..<l.size], good, a, 0, 0, 2000000, 0, 0, out[..]);
+  #assert !metaverse_cast_pose(bytes[0..<l.size], good, a, 0, 0, 0, 2000000, 0, out[..]);
+  #assert !metaverse_cast_pose(bytes[0..<l.size], good, a, 0, 0, 0, 0, 2000000, out[..]);
+  #assert !metaverse_cast_robots_pose(bytes[0..<l.size], good, -1, out[..]);
+  #assert !metaverse_cast_robots_pose(bytes[0..<l.size], good, 100000000, out[..]);
+  #assert metaverse_cast_robots_pose(bytes[0..<l.size], good, 99999999, out[..]);
+  #assert metaverse_cast_pose(bytes[0..<l.size], good, a, 0, 0, 0, 0, 0, out[0..<2]);
+  #assert metaverse_cast_robots_pose(bytes[0..<l.size], good, 0, out[..]);
 }
 
 #forall "quaternions turn as Rodrigues' formula and chain in order" ia: -3..<4, ib: -3..<4 {
@@ -979,22 +979,22 @@ small :: (b: [] u8) -> Layout {
   #assert edge.a == 3 && edge.b == 3 && edge.f == 0;
 }
 
-opened :: (bytes: [] u8) -> Cast { return verse_cast_open(bytes); }
+opened :: (bytes: [] u8) -> Cast { return metaverse_cast_open(bytes); }
 
 #test "you walk, run and stop, fading 0.18 s between clips" {
   bytes: [4096] u8;
   l := small(bytes[..]);
   b := bytes[0..<l.size]; c := opened(b);
   a: Anim;
-  a = verse_cast_update(b, c, a, 0, false, 1);
+  a = metaverse_cast_update(b, c, a, 0, false, 1);
   #assert a.move == Move.idle && a.fade_start == -1 && fading(a, 1) == 0;
-  a = verse_cast_update(b, c, a, 1, false, 2);
+  a = metaverse_cast_update(b, c, a, 1, false, 2);
   #assert a.move == Move.walking && a.from == Move.idle && a.start == 2 && a.fade_start == 2;
   #assert fading(a, 2) == 1 && near(fading(a, 2.09), 0.5, 0.0001) && fading(a, 2.18) == 0 && fading(a, 3) == 0;
-  #assert verse_cast_update(b, c, a, 1, false, 2.5).start == 2;
-  a = verse_cast_update(b, c, a, 2, false, 3);
+  #assert metaverse_cast_update(b, c, a, 1, false, 2.5).start == 2;
+  a = metaverse_cast_update(b, c, a, 2, false, 3);
   #assert a.move == Move.running && a.from == Move.walking && a.from_start == 2;
-  a = verse_cast_update(b, c, a, 0, false, 4);
+  a = metaverse_cast_update(b, c, a, 0, false, 4);
   #assert a.move == Move.idle && a.from == Move.running;
 }
 
@@ -1003,19 +1003,19 @@ opened :: (bytes: [] u8) -> Cast { return verse_cast_open(bytes); }
   l := small(bytes[..]);
   b := bytes[0..<l.size]; c := opened(b);
   a: Anim;
-  a = verse_cast_update(b, c, a, 3, true, 10);
+  a = metaverse_cast_update(b, c, a, 3, true, 10);
   #assert a.move == Move.jump_start && a.air;
   // Jump_Start has 3 frames, at 30 fps and 1.2 times speed: 1/12 s.
-  a = verse_cast_update(b, c, a, 3, false, 10.08);
+  a = metaverse_cast_update(b, c, a, 3, false, 10.08);
   #assert a.move == Move.jump_start;
-  a = verse_cast_update(b, c, a, 3, false, 10.084);
+  a = metaverse_cast_update(b, c, a, 3, false, 10.084);
   #assert a.move == Move.jump_loop && a.from == Move.jump_start && a.start == 10.084;
   // Landing, standing still: the landing, then idle once its 3 frames (0.1 s) are done.
-  a = verse_cast_update(b, c, a, 0, false, 11);
+  a = metaverse_cast_update(b, c, a, 0, false, 11);
   #assert a.move == Move.jump_land && !a.air;
-  a = verse_cast_update(b, c, a, 0, false, 11.09);
+  a = metaverse_cast_update(b, c, a, 0, false, 11.09);
   #assert a.move == Move.jump_land;
-  a = verse_cast_update(b, c, a, 0, false, 11.1);
+  a = metaverse_cast_update(b, c, a, 0, false, 11.1);
   #assert a.move == Move.idle && a.from == Move.jump_land;
 }
 
@@ -1024,15 +1024,15 @@ opened :: (bytes: [] u8) -> Cast { return verse_cast_open(bytes); }
   l := small(bytes[..]);
   b := bytes[0..<l.size]; c := opened(b);
   a: Anim;
-  a = verse_cast_update(b, c, verse_cast_update(b, c, a, 3, true, 0), 1, false, 1);
+  a = metaverse_cast_update(b, c, metaverse_cast_update(b, c, a, 3, true, 0), 1, false, 1);
   #assert a.move == Move.walking && !a.air;
   r: Anim;
-  r = verse_cast_update(b, c, verse_cast_update(b, c, r, 3, true, 0), 2, false, 1);
+  r = metaverse_cast_update(b, c, metaverse_cast_update(b, c, r, 3, true, 0), 2, false, 1);
   #assert r.move == Move.running;
   s: Anim;
-  s = verse_cast_update(b, c, verse_cast_update(b, c, s, 3, true, 0), 0, false, 1);
+  s = metaverse_cast_update(b, c, metaverse_cast_update(b, c, s, 3, true, 0), 0, false, 1);
   #assert s.move == Move.jump_land;
-  s = verse_cast_update(b, c, s, 1, false, 1.05);
+  s = metaverse_cast_update(b, c, s, 1, false, 1.05);
   #assert s.move == Move.walking;
 }
 
@@ -1041,10 +1041,10 @@ opened :: (bytes: [] u8) -> Cast { return verse_cast_open(bytes); }
   l := small(bytes[..]);
   b := bytes[0..<l.size]; c := opened(b);
   a: Anim;
-  a = verse_cast_update(b, c, a, 1, false, 0);
-  a = verse_cast_update(b, c, a, 3, false, 1);
+  a = metaverse_cast_update(b, c, a, 1, false, 0);
+  a = metaverse_cast_update(b, c, a, 3, false, 1);
   #assert a.move == Move.jump_loop && a.from == Move.walking;
-  a = verse_cast_update(b, c, a, 3, true, 5);
+  a = metaverse_cast_update(b, c, a, 3, true, 5);
   #assert a.move == Move.jump_loop && a.start == 1;
 }
 
@@ -1067,24 +1067,24 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   a: Anim;
   out: [2] Joint;
   // Idle frame 2 (at 2/30 s).
-  #assert verse_cast_pose(b, c, a, f64(2.0f32 / 30), 0, 0, 0, 0, out[..]);
+  #assert metaverse_cast_pose(b, c, a, f64(2.0f32 / 30), 0, 0, 0, 0, out[..]);
   #assert close(moved(out[1], TIP), apply(chain(root_at(2), child_at(2)), TIP), 0.0001);
   #assert close(moved(out[0], v3(0, 0, 1)), apply(root_at(2), v3(0, 0, 1)), 0.0001);
   // Halfway between frames 1 and 2: each joint halfway relative to its parent.
-  #assert verse_cast_pose(b, c, a, f64(1.5f32 / 30), 0, 0, 0, 0, out[..]);
+  #assert metaverse_cast_pose(b, c, a, f64(1.5f32 / 30), 0, 0, 0, 0, out[..]);
   #assert close(moved(out[1], TIP), apply(chain(root_at(1.5), child_at(1.5)), TIP), 0.0001);
   // The end of idle (frame 3) and the walk's two frames, 4 and 5.
-  #assert verse_cast_pose(b, c, a, f64(3.5f32 / 30), 0, 0, 0, 0, out[..]);
+  #assert metaverse_cast_pose(b, c, a, f64(3.5f32 / 30), 0, 0, 0, 0, out[..]);
   #assert close(moved(out[1], TIP), apply(chain(root_at(3), child_at(3)), TIP), 0.0001);
   w := Anim.{move = Move.walking, start = 0, from = Move.idle, from_start = 0, fade_start = -1, air = false};
-  #assert verse_cast_pose(b, c, w, f64(0.5f32 / 48), 0, 0, 0, 0, out[..]);
+  #assert metaverse_cast_pose(b, c, w, f64(0.5f32 / 48), 0, 0, 0, 0, out[..]);
   #assert close(moved(out[1], TIP), apply(chain(root_at(4.5), child_at(4.5)), TIP), 0.0001);
   // A one-shot holds its last frame: the landing (frames 13 to 15).
   land := Anim.{move = Move.jump_land, start = 0, from = Move.idle, from_start = 0, fade_start = -1, air = false};
-  #assert verse_cast_pose(b, c, land, 5, 0, 0, 0, 0, out[..]);
+  #assert metaverse_cast_pose(b, c, land, 5, 0, 0, 0, 0, out[..]);
   #assert close(moved(out[1], TIP), apply(chain(root_at(15), child_at(15)), TIP), 0.00001);
   // Placed at (3, 1, -2) facing +X.
-  #assert verse_cast_pose(b, c, a, 0, 3, 1, -2, f32(PI / 2), out[..]);
+  #assert metaverse_cast_pose(b, c, a, 0, 3, 1, -2, f32(PI / 2), out[..]);
   #assert close(moved(out[0], v3(0, 0, 1)), v3(4, 1, -2), 0.0001);
   #assert close(moved(out[1], TIP), v3(3 - 0.2, 3, -2 - 0.3), 0.0001);
 }
@@ -1095,7 +1095,7 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   b := bytes[0..<l.size]; c := opened(b);
   a := Anim.{move = Move.walking, start = 0, from = Move.idle, from_start = 0, fade_start = 0, air = false};
   out: [2] Joint;
-  #assert verse_cast_pose(b, c, a, f64(FADE / 2), 0, 0, 0, 0, out[..]);
+  #assert metaverse_cast_pose(b, c, a, f64(FADE / 2), 0, 0, 0, 0, out[..]);
   // The walk at 0.09 s is frame 4.32; idle at 0.09 s is frame 2.7.
   walk := 4.32f32; idle := 2.7f32;
   root := Rigid.{q = nlerp(yaw_turn(idle / 10), yaw_turn(walk / 10), 0.5), t = v3(0, 0, (idle + walk) / 16)};
@@ -1108,9 +1108,9 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   e := sub(TIP, B);
   #assert near(sqrt(d.x * d.x + d.y * d.y + d.z * d.z), sqrt(e.x * e.x + e.y * e.y + e.z * e.z), 0.0001);
   // Before the fade it is idle; after it, the walk.
-  #assert verse_cast_pose(b, c, a, 0, 0, 0, 0, 0, out[..]);
+  #assert metaverse_cast_pose(b, c, a, 0, 0, 0, 0, 0, out[..]);
   #assert close(moved(out[1], TIP), apply(chain(root_at(0), child_at(0)), TIP), 0.0001);
-  #assert verse_cast_pose(b, c, a, 0.5, 0, 0, 0, 0, out[..]);
+  #assert metaverse_cast_pose(b, c, a, 0.5, 0, 0, 0, 0, out[..]);
   // The walk at 0.5 s: 24 frames, wrapped to 0: frame 4.
   #assert close(moved(out[1], TIP), apply(chain(root_at(4), child_at(4)), TIP), 0.0001);
 }
@@ -1122,7 +1122,7 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   out: [10] Joint;
   // A quarter of a second in: patrol 0 halfway from sample 0 to 1, at
   // (0.5, 0.25); its clip time 1.25 s: walk frame 0.5 (wrapped from 2.5).
-  #assert verse_cast_robots_pose(b, c, 0.25, out[..]);
+  #assert metaverse_cast_robots_pose(b, c, 0.25, out[..]);
   #assert close(moved(out[2], v3(0, 0, 0)), v3(0.5 + 1, 0, 0.25), 0.0001);
   half := yaw_turn(f32(PI / 4));
   #assert close(moved(out[3], v3(0, 0, 0.5)), add(v3(0.5, 0, 0.25), times(rotate(half, v3(0, 0, 0.5)), 2)), 0.0001);
@@ -1138,13 +1138,13 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   #assert near(front.x, sin(f32(FOREMAN_YAW)) * 6, 0.0001) && near(front.z, cos(f32(FOREMAN_YAW)) * 6, 0.0001);
   // At 0.75 s: between samples 1 and 2 (1.5, 0.75); clip time 1.75: walk
   // frame 1.5, between its last frame and its first.
-  #assert verse_cast_robots_pose(b, c, 0.75, out[..]);
+  #assert metaverse_cast_robots_pose(b, c, 0.75, out[..]);
   #assert close(moved(out[2], v3(0, 0, 0)), v3(1.5 + 1, 0, 0.75), 0.0001);
   // Patrols loop: 2 s later, the same place.
-  #assert verse_cast_robots_pose(b, c, 2.25, out[..]);
+  #assert metaverse_cast_robots_pose(b, c, 2.25, out[..]);
   #assert close(moved(out[2], v3(0, 0, 0)), v3(1.5, 0, 0.25), 0.0001);
   // Between the last sample (1, 0.5) and the first (0, 0), at 1.75 s.
-  #assert verse_cast_robots_pose(b, c, 1.75, out[..]);
+  #assert metaverse_cast_robots_pose(b, c, 1.75, out[..]);
   #assert close(moved(out[3], v3(0, 0, 0)), v3(0.5, 0, 0.25), 0.0001);
 }
 
@@ -1153,9 +1153,9 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   l := small(bytes[..]);
   b := bytes[0..<l.size]; c := opened(b);
   palette: [10] Joint;
-  #assert verse_cast_robots_pose(b, c, 0, palette[..]);
+  #assert metaverse_cast_robots_pose(b, c, 0, palette[..]);
   out: [28] f32;
-  #assert verse_cast_bodies(b, c, palette[..], out[..]) == 4;
+  #assert metaverse_cast_bodies(b, c, palette[..], out[..]) == 4;
   // Patrol 1 stands at (5, 5) facing +Z at twice the size: bone 1's capsule
   // from (0, 0.2, 0.1) to (0, 1, 0.1), 0.25 wide, is twice as long and wide.
   #assert close(v3(out[7], out[8], out[9]), v3(5, 0.4, 5.2), 0.0001);
@@ -1164,16 +1164,16 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   #assert near(out[27], 1.5, 0.0001) && near(out[25], 6, 0.0001);
   #assert close(v3(out[21], 0, out[23]), v3(f32(FOREMAN_X) + sin(f32(FOREMAN_YAW)) * 0.6, 0, f32(FOREMAN_Z) + cos(f32(FOREMAN_YAW)) * 0.6), 0.0001);
   // Each one's own bone: patrol 0's walk turns bone 1, not bone 0.
-  #assert verse_cast_robots_pose(b, c, 0.25, palette[..]);
-  #assert verse_cast_bodies(b, c, palette[..], out[..]) == 4;
+  #assert metaverse_cast_robots_pose(b, c, 0.25, palette[..]);
+  #assert metaverse_cast_bodies(b, c, palette[..], out[..]) == 4;
   #assert close(v3(out[0], out[1], out[2]), moved(palette[3], v3(0, 0.2, 0.1)), 0.0001);
   #assert close(v3(out[3], out[4], out[5]), moved(palette[3], v3(0, 1, 0.1)), 0.0001);
   // Too little room, a short palette or other bytes: none.
-  #assert verse_cast_bodies(b, c, palette[..], out[0..<27]) == 0;
-  #assert verse_cast_bodies(b, c, palette[0..<9], out[..]) == 0;
-  #assert verse_cast_bodies(bytes[0..<l.size - 16], c, palette[..], out[..]) == 0;
+  #assert metaverse_cast_bodies(b, c, palette[..], out[0..<27]) == 0;
+  #assert metaverse_cast_bodies(b, c, palette[0..<9], out[..]) == 0;
+  #assert metaverse_cast_bodies(bytes[0..<l.size - 16], c, palette[..], out[..]) == 0;
   closed: Cast;
-  #assert verse_cast_bodies(b, closed, palette[..], out[..]) == 0;
+  #assert metaverse_cast_bodies(b, closed, palette[..], out[..]) == 0;
 }
 
 #test "times just under a loop's start round to its last frame" {
@@ -1205,29 +1205,29 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   l := small(bytes[..]);
   b := bytes[0..<l.size]; c := opened(b);
   a: Anim;
-  a = verse_cast_update(b, c, a, 0, false, 1);
-  a = verse_cast_dance(a);
+  a = metaverse_cast_update(b, c, a, 0, false, 1);
+  a = metaverse_cast_dance(a);
   #assert a.dance && a.move == Move.idle;
-  a = verse_cast_update(b, c, a, 0, false, 2);
+  a = metaverse_cast_update(b, c, a, 0, false, 2);
   #assert a.move == Move.dancing && a.from == Move.idle && a.start == 2 && a.dance;
   // It loops: still dancing a while later.
-  a = verse_cast_update(b, c, a, 0, false, 9);
+  a = metaverse_cast_update(b, c, a, 0, false, 9);
   #assert a.move == Move.dancing && a.start == 2;
   #assert speed(Move.dancing) == 1 && !once(Move.dancing);
   // Asked again, it stops.
-  s := verse_cast_update(b, c, verse_cast_dance(a), 0, false, 10);
+  s := metaverse_cast_update(b, c, metaverse_cast_dance(a), 0, false, 10);
   #assert s.move == Move.idle && !s.dance && s.from == Move.dancing;
   // Walking ends it, and stopping again doesn't bring it back.
-  w := verse_cast_update(b, c, a, 1, false, 10);
+  w := metaverse_cast_update(b, c, a, 1, false, 10);
   #assert w.move == Move.walking && !w.dance;
-  #assert verse_cast_update(b, c, w, 0, false, 11).move == Move.idle;
+  #assert metaverse_cast_update(b, c, w, 0, false, 11).move == Move.idle;
   // So does a jump; landing goes to the landing, not the dance.
-  j := verse_cast_update(b, c, a, 3, true, 10);
+  j := metaverse_cast_update(b, c, a, 3, true, 10);
   #assert j.move == Move.jump_start && !j.dance;
-  j = verse_cast_update(b, c, j, 0, false, 11);
+  j = metaverse_cast_update(b, c, j, 0, false, 11);
   #assert j.move == Move.jump_land;
   // Asked in the air, it never starts.
-  air := verse_cast_update(b, c, verse_cast_dance(j), 3, false, 12);
+  air := metaverse_cast_update(b, c, metaverse_cast_dance(j), 3, false, 12);
   #assert !air.dance && air.move != Move.dancing;
 }
 

@@ -632,7 +632,7 @@ in `metaverse/grid.coax` writes a 4x4 matrix for the native renderer like
 this:
 
 ```jai
-verse_grid_view :: (eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
+metaverse_grid_view :: (eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
                        width: f32, height: f32, out: [] f32) -> bool #export_c {
   if !(width > 0) || !(height > 0) || out.count < 16 { return false; }
   // ...
@@ -848,7 +848,7 @@ share any memory; it's for code that copies between buffers and must not
 copy a buffer onto itself.
 
 > Note: This is how `metaverse/cast.coax` loads the character and robot
-> animation file. `verse_cast_open :: (b: [] u8) -> Cast` checks the
+> animation file. `metaverse_cast_open :: (b: [] u8) -> Cast` checks the
 > file's length, magic, version and buffer count with `int_at`, `u32_at`
 > and friends, and returns a `Cast` that isn't `ok` if anything is off. The
 > native side owns the file's bytes. Chapter 18 shows the same idea

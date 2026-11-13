@@ -95,16 +95,16 @@ it does not add a new renderer, GPU target or physical-device gate.
 **Verification:** `coax/bin/coax test metaverse/hud.coax --library`; the chapter 26
 `ch26_verse` unit checks the actual public API and refusal cases.
 
-The module exports `HudRect`, `HudPoint`, `verse_hud_slot`,
-`verse_hud_frame_point`, `verse_hud_frame_arm`, `verse_hud_tone`,
-`verse_hud_cut`, `verse_hud_outline` and `verse_hud_arm_down`. Use the
+The module exports `HudRect`, `HudPoint`, `metaverse_hud_slot`,
+`metaverse_hud_frame_point`, `metaverse_hud_frame_arm`, `metaverse_hud_tone`,
+`metaverse_hud_cut`, `metaverse_hud_outline` and `metaverse_hud_arm_down`. Use the
 [authored export list](../metaverse/hud.coax) as the boundary; `HUD_*` constants
 remain private.
 
 Sizes and positions use the caller's consistent UI coordinate units;
 `bottom` is the bottom safe-area inset. Returned rectangles and points are
 owned values. No input is retained and no GPU resource is created.
-`verse_hud_slot` returns a zero rectangle for an invalid slot/count or width
+`metaverse_hud_slot` returns a zero rectangle for an invalid slot/count or width
 below 100; it admits counts 1–12 and indices `0..<count`. It does not claim
 general NaN/infinity admission. The caller supplies sensible finite geometry
 and owns conversion to platform pixels and GPU lifetimes.

@@ -379,13 +379,13 @@ sg_frame :: (s: Stage, shot: StageShot, k: f32) -> CamNow {
 anime_camera_at :: (s: Stage, t: f32) -> CamNow {
   a := sg_frame(s, s.shot, 0);
   b := sg_frame(s, s.shot, 1);
-  f := verse_flight_new();
-  f = verse_flight_key(f, 0, a.eye, a.at, true, EASE_LINEAR);
-  f = verse_flight_key(f, SHOT_DRIFT, b.eye, b.at, false, EASE_OUT);
-  f = verse_flight_start(f, f64(s.shot.at), false);
+  f := metaverse_flight_new();
+  f = metaverse_flight_key(f, 0, a.eye, a.at, true, EASE_LINEAR);
+  f = metaverse_flight_key(f, SHOT_DRIFT, b.eye, b.at, false, EASE_OUT);
+  f = metaverse_flight_start(f, f64(s.shot.at), false);
   live := Shot.{eye = b.eye, at = b.at};
-  now := verse_flight_shot(f, f64(t), live);
-  if !verse_flight_flying(f, f64(t)) { now = live; }
+  now := metaverse_flight_shot(f, f64(t), live);
+  if !metaverse_flight_flying(f, f64(t)) { now = live; }
   c := CamNow.{eye = now.eye, at = now.at, fov = a.fov};
   if s.shake > 0 {
     q := s.shake;

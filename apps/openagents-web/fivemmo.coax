@@ -533,8 +533,8 @@ mmo_key :: (s: [] Everglade, m: [] Mmo, key: int, mods: int) -> int #export_c #e
   if !s[0].started { everglade_start(s); }
   if key >= '1' && key <= '9' { return MM_DO_SLOT + key - '1'; }
   if key == MM_KEY_TAB || key == 't' || key == 'T' { return MM_DO_TAB; }   // Tab, or T where the page's own Tab moves focus
-  if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return 1; }
-  if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return 1; }
+  if key == '+' || key == '=' { s[0].orbit = metaverse_orbit_zoom(s[0].orbit, -0.8); return 1; }
+  if key == '-' || key == '_' { s[0].orbit = metaverse_orbit_zoom(s[0].orbit, 0.8); return 1; }
   b := hold_bit(key);
   if b == 0 || b == HOLD_RUN || b == HOLD_JUMP || b == HOLD_DIVE { return 0; }
   s[0].held = s[0].held | b;

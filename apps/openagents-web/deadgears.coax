@@ -240,8 +240,8 @@ me_slot :: (g: Game) -> int { return slot_of(dg_player(g)); }
 
 dg_page_start :: (s: [] DeadGears) {
   s[0].started = true;
-  for q: 0..<TYPES { s[0].skel[q] = fig.verse_figure_skeleton(kind_shape(q)); }   // built once (#ea44)
-  s[0].suit_rig = fig.verse_figure_skeleton(suit_shape());
+  for q: 0..<TYPES { s[0].skel[q] = fig.metaverse_figure_skeleton(kind_shape(q)); }   // built once (#ea44)
+  s[0].suit_rig = fig.metaverse_figure_skeleton(suit_shape());
   g := game(s);
   dg_setup(g);
   s[0].pitch = f32(PITCH_REST);
@@ -1069,8 +1069,8 @@ run_share :: (speed: f32) -> f32 { return clamp((speed - f32(pc.WALK)) / f32(pc.
 // run's, or between; a slow step is short, its legs swinging less.
 stride_length :: (speed: f32) -> f32 {
   shape := suit_shape();
-  walked := fig.verse_figure_speed(shape, fig.Gait.walk) / fig.verse_figure_stride_rate(shape, fig.Gait.walk);
-  ran := fig.verse_figure_speed(shape, fig.Gait.run) / fig.verse_figure_stride_rate(shape, fig.Gait.run);
+  walked := fig.metaverse_figure_speed(shape, fig.Gait.walk) / fig.metaverse_figure_stride_rate(shape, fig.Gait.walk);
+  ran := fig.metaverse_figure_speed(shape, fig.Gait.run) / fig.metaverse_figure_stride_rate(shape, fig.Gait.run);
   return lerp(walked, ran, run_share(speed)) * clamp(speed / 1.5, 0.3, 1);
 }
 wrap01 :: (x: f32) -> f32 { return x - floor(x); }
@@ -1107,8 +1107,8 @@ suit_pose :: (s: [] DeadGears, ally: bool, duck: bool, speed: f32) -> fig.Pose {
   g := game(s);
   stride := ifx ally then s[0].ally_step else s[0].you_step;
   rig := fig.Rig.person;
-  legs := fig.verse_figure_blend(fig.verse_figure_gait(rig, fig.Gait.walk, stride, t), fig.verse_figure_gait(rig, fig.Gait.run, stride, t), run_share(speed));
-  p := fig.verse_figure_blend(fig.verse_figure_gait(rig, fig.Gait.stand, stride, t), legs, clamp(speed / 1.5, 0, 1));
+  legs := fig.metaverse_figure_blend(fig.metaverse_figure_gait(rig, fig.Gait.walk, stride, t), fig.metaverse_figure_gait(rig, fig.Gait.run, stride, t), run_share(speed));
+  p := fig.metaverse_figure_blend(fig.metaverse_figure_gait(rig, fig.Gait.stand, stride, t), legs, clamp(speed / 1.5, 0, 1));
   // The swinging foot clears the deck: the leg folds the whole swing, not
   // only at its middle, so the foot on the deck is the one that carries you.
   lifted := cos(stride * f32(PI) * 2) * clamp(speed / 1.5, 0, 1);
@@ -1168,7 +1168,7 @@ suit_pose :: (s: [] DeadGears, ally: bool, duck: bool, speed: f32) -> fig.Pose {
 // right hand. On the deck the lowest foot (or knee) stands on it.
 suit_joints :: (s: [] DeadGears, at: Point, yaw: f32, p: fig.Pose, ally: bool, joints: [] fig.Fv) -> bool {
   k := s[0].suit_rig;
-  if !fig.verse_figure_joints_at(k, p, fig.Place.{x = at.x, y = at.y, z = at.z, yaw = yaw}, joints) { return false; }
+  if !fig.metaverse_figure_joints_at(k, p, fig.Place.{x = at.x, y = at.y, z = at.z, yaw = yaw}, joints) { return false; }
   if ally || s[0].pl.body.on_ground {
     low := 1000.0f32;
     for q: 0..<2 {
@@ -1318,8 +1318,8 @@ creature_pose :: (s: [] DeadGears, kind: int, m: Mutant, x: f32) -> fig.Pose {
   run := kind == HOUND || kind == CRAWLER;
   gait := ifx m.stun > 0 then fig.Gait.stand else ifx run then fig.Gait.run else fig.Gait.walk;
   if kind == CRAWLER && !m.severed { gait = fig.Gait.trot; }
-  rate := fig.verse_figure_stride_rate(shape, gait) * (ifx m.severed then 0.5f32 else 1.0f32);
-  p := fig.verse_figure_gait(shape.rig, gait, t * rate + x * 0.31 + f32(m.seq) * 0.17, t);
+  rate := fig.metaverse_figure_stride_rate(shape, gait) * (ifx m.severed then 0.5f32 else 1.0f32);
+  p := fig.metaverse_figure_gait(shape.rig, gait, t * rate + x * 0.31 + f32(m.seq) * 0.17, t);
   if shape.rig == fig.Rig.person {
     // Reaching: the reaver's blades forward, the brute's long arms low.
     reach: f32 = ifx kind == REAVER then -1.15f32 else -0.35f32;
@@ -1341,7 +1341,7 @@ bones :: (s: [] DeadGears, kind: int, origin: Point, yaw: f32, m: Mutant, flesh:
   size := s[0].skel[kind].size;
   pose := creature_pose(s, kind, m, origin.x);
   joints: [fig.MAX_JOINTS] fig.Fv;
-  if !fig.verse_figure_joints_at(s[0].skel[kind], pose, fig.Place.{x = origin.x, y = origin.y, z = origin.z, yaw = yaw}, joints[..]) { return; }
+  if !fig.metaverse_figure_joints_at(s[0].skel[kind], pose, fig.Place.{x = origin.x, y = origin.y, z = origin.z, yaw = yaw}, joints[..]) { return; }
   rig := s[0].skel[kind].rig;
   eye := v3(1.0, 0.3, 0.28);
   for q: 0..<s[0].skel[kind].parts {
@@ -2568,9 +2568,9 @@ limb_at :: (f: Fx) -> Point {
     s: [1] DeadGears;
     started(s[..]);
     m: Mutant;
-    k := fig.verse_figure_skeleton(kind_shape(kinds[q]));
+    k := fig.metaverse_figure_skeleton(kind_shape(kinds[q]));
     joints: [fig.MAX_JOINTS] fig.Fv;
-    #assert fig.verse_figure_joints_at(k, creature_pose(s[..], kinds[q], m, 0), fig.Place.{}, joints[..]);
+    #assert fig.metaverse_figure_joints_at(k, creature_pose(s[..], kinds[q], m, 0), fig.Place.{}, joints[..]);
     top: f32 = 0; front: f32 = -10; back: f32 = 10; wide: f32 = 0;
     for j: 0..<k.joints { top = hi(top, joints[j].y); front = hi(front, joints[j].z); back = lo(back, joints[j].z); wide = hi(wide, abs(joints[j].x)); }
     dims[q * 3] = top; dims[q * 3 + 1] = front - back; dims[q * 3 + 2] = wide;

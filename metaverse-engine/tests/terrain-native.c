@@ -37,7 +37,7 @@ int main(void) {
   for (int j = 0; j < 3; ++j) {
     for (int i = 0; i < 14; ++i) {
       float x = g.west + (float)i * g.cell, z = g.south + (float)j * g.cell;
-      float y = verse_terrain_height(g, (coax_v_f32){heights, 42}, x, z);
+      float y = metaverse_terrain_height(g, (coax_v_f32){heights, 42}, x, z);
       assert(word(y) == word(heights[j * 14 + i]));
     }
   }
@@ -46,23 +46,23 @@ int main(void) {
   g.n = 1; g.rows = 1; g.cell = 1; g.west = 0; g.south = 0;
   float corners[4] = {-93.68108367919922f, -72.09828186035156f, -0.0f, 5.823012351989746f};
   for (int i = 0; i < 4; ++i)
-    assert(word(verse_terrain_height(g, (coax_v_f32){corners, 4}, (float)(i % 2), (float)(i / 2))) == word(corners[i]));
+    assert(word(metaverse_terrain_height(g, (coax_v_f32){corners, 4}, (float)(i % 2), (float)(i / 2))) == word(corners[i]));
   float plane[4] = {0, 1, 2, 4};
   g.cell = 2; g.west = -3; g.south = 5;
-  coax_t_Point normal = verse_terrain_normal(g, (coax_v_f32){plane, 4}, -1.5f, 5.5f);
+  coax_t_Point normal = metaverse_terrain_normal(g, (coax_v_f32){plane, 4}, -1.5f, 5.5f);
   assert(fabs((double)normal.x + .5 / sqrt(3.5)) < .000001);
   assert(fabs((double)normal.y - 1 / sqrt(3.5)) < .000001);
   assert(fabs((double)normal.z + 1.5 / sqrt(3.5)) < .000001);
-  normal = verse_terrain_normal(g, (coax_v_f32){plane, 4}, -10, 6);
+  normal = metaverse_terrain_normal(g, (coax_v_f32){plane, 4}, -10, 6);
   assert(normal.x == 0 && fabs((double)normal.y - 1 / sqrt(2.0)) < .000001);
   assert(fabs((double)normal.z + 1 / sqrt(2.0)) < .000001);
-  normal = verse_terrain_normal(g, (coax_v_f32){plane, 4}, 100, 100);
+  normal = metaverse_terrain_normal(g, (coax_v_f32){plane, 4}, 100, 100);
   assert(normal.x == 0 && normal.y == 1 && normal.z == 0);
-  assert(verse_terrain_height(g, (coax_v_f32){NULL, 0}, -1.5f, 5.5f) == 0);
-  normal = verse_terrain_normal(g, (coax_v_f32){plane, 3}, -1.5f, 5.5f);
+  assert(metaverse_terrain_height(g, (coax_v_f32){NULL, 0}, -1.5f, 5.5f) == 0);
+  normal = metaverse_terrain_normal(g, (coax_v_f32){plane, 3}, -1.5f, 5.5f);
   assert(normal.x == 0 && normal.y == 1 && normal.z == 0);
   g.rows = -1;
-  assert(verse_terrain_height(g, (coax_v_f32){plane, 4}, -1.5f, 5.5f) == 0);
+  assert(metaverse_terrain_height(g, (coax_v_f32){plane, 4}, -1.5f, 5.5f) == 0);
   puts("legacy terrain: LP64 layout/defaults, exact nonbinary vertices, corner words, slopes, constant edge normals and refused views pass");
   return 0;
 }

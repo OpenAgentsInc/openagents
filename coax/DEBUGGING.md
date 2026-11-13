@@ -119,7 +119,7 @@ the compiler comes from the existing checked Coax fingerprint module.
 stepping, values, loaded-file stacks, multi-line statement lowering, stale
 source refusal, escaped paths, duplicate private names in separate libraries,
 native diagnostics and sanitizer abort stacks. The iOS Simulator Grid was
-also attached to LLDB at `verse_cast_pose` in `metaverse/cast.coax`.
+also attached to LLDB at `metaverse_cast_pose` in `metaverse/cast.coax`.
 
 This is line-level debugging and a name/type presentation bridge. It is not
 a Coax expression evaluator or a complete type visualizer. Native C types

@@ -39,7 +39,7 @@ slot_i.x = (width − total) / 2 + i · (size + gap)
 slot_i.y = height − bottom − size − 12
 ```
 
-`verse_hud_slot` in [metaverse/hud.coax](../../metaverse/hud.coax) is this layout.
+`metaverse_hud_slot` in [metaverse/hud.coax](../../metaverse/hud.coax) is this layout.
 The HUD frame is a faint outline with 45° cuts on two corners and bright L
 brackets on the other two, its arm at most a quarter of the box's width
 ([metaverse-engine/ui/hud-frame.coax](../ui/hud-frame.coax)).
@@ -224,7 +224,7 @@ slots. Work these out by hand:
    slot 2 focused both give action 2.
 
 The example [metaverse-engine/examples/focus-a-menu.coax](../examples/focus-a-menu.coax)
-places the slots with `verse_hud_slot`, the function that draws them, and
+places the slots with `metaverse_hud_slot`, the function that draws them, and
 runs the keyboard through the settings:
 
 <!-- source: metaverse-engine/examples/focus-a-menu.coax example -->
@@ -234,7 +234,7 @@ SLOT_1 :: 1; SETTINGS :: 10; TEXT_SCALE :: 11; REDUCED_MOTION :: 12; CLOSE :: 13
 DIALOG :: 4;   // the settings dialog's index; the tree is built each frame, with it only when open
 
 slot_box :: (i: int) -> HudBox {
-  r := verse_hud_slot(320, 700, 34, i, 3);
+  r := metaverse_hud_slot(320, 700, 34, i, 3);
   return HudBox.{x = r.x, y = r.y, width = r.width, height = r.height};
 }
 
@@ -331,7 +331,7 @@ coax/bin/coax test metaverse-engine/ui/hud.coax --library
 ## What exists today
 
 - [metaverse/hud.coax](../../metaverse/hud.coax): the `verse.hud` module,
-  `verse_hud_slot`, with checks that the hotbar fits a 320-point phone above
+  `metaverse_hud_slot`, with checks that the hotbar fits a 320-point phone above
   the home indicator and that slots stay separate in landscape.
 - [metaverse-engine/ui/hud-frame.coax](../ui/hud-frame.coax): the frame's points,
   arms, cuts and greys, shared by the web landing and the iOS app.
@@ -358,7 +358,7 @@ coax/bin/coax test metaverse-engine/ui/hud.coax --library
   sources, the MIT notice and the boundary between reusable algorithms and
   DOM/framework/audio effects owned by hosts.
 - [metaverse/light.coax](../../metaverse/light.coax): the slot and bar shading
-  (`verse_slot_light`, `verse_slot_cover`, `verse_bar`, `verse_slot_icon`).
+  (`metaverse_slot_light`, `metaverse_slot_cover`, `metaverse_bar`, `metaverse_slot_icon`).
 - Filament, the stroke font in `metaverse-engine/ui/font.coax`
   ([coax/font.md](../../coax/font.md)), and GPUI's atlas for Geist in
   `coax/web/gpui.js`.

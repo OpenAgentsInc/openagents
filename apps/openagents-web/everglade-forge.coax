@@ -93,7 +93,7 @@ fg_has :: (text: string, part: string) -> bool {
   return false;
 }
 
-fg_grey :: (k: f32, light: f32, tone: int) -> Ink { g := verse_hud_tone(tone); return ink(k, light, g, g, g); }
+fg_grey :: (k: f32, light: f32, tone: int) -> Ink { g := metaverse_hud_tone(tone); return ink(k, light, g, g, g); }
 fg_cyan :: (k: f32, light: f32) -> Ink { return ink(k, light, FG_CYAN_R, FG_CYAN_G, FG_CYAN_B); }
 
 fg_rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: f32, light: f32, r: f32, g: f32, b: f32) -> int {
@@ -103,12 +103,12 @@ fg_rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: f32, li
 // The Verse's HUD frame: the outline with its two cuts, the brackets on the other two corners.
 fg_frame :: (s: [] Everglade, out: [] f32, at: int, b: Box, cut: f32, light: f32, accent: bool) -> int {
   k := hi(s[0].dpr, 0.5); n := at;
-  g := verse_hud_tone(1);
+  g := metaverse_hud_tone(1);
   for i: 0..<6 {
-    a := verse_hud_frame_point(b.x0, b.y0, b.x1, b.y1, cut, i); c := verse_hud_frame_point(b.x0, b.y0, b.x1, b.y1, cut, i + 1);
-    n = fg_rule(out, n, a.x, a.y, c.x, c.y, k, verse_hud_outline() * light, g, g, g);
+    a := metaverse_hud_frame_point(b.x0, b.y0, b.x1, b.y1, cut, i); c := metaverse_hud_frame_point(b.x0, b.y0, b.x1, b.y1, cut, i + 1);
+    n = fg_rule(out, n, a.x, a.y, c.x, c.y, k, metaverse_hud_outline() * light, g, g, g);
   }
-  arm := verse_hud_frame_arm(b.x1 - b.x0, k); down := arm * verse_hud_arm_down();
+  arm := metaverse_hud_frame_arm(b.x1 - b.x0, k); down := arm * metaverse_hud_arm_down();
   r := ifx accent then FG_CYAN_R else g; gg := ifx accent then FG_CYAN_G else g; bb := ifx accent then FG_CYAN_B else g;
   n = fg_rule(out, n, b.x0, b.y0 + down, b.x0, b.y0, k, light, r, gg, bb);
   n = fg_rule(out, n, b.x0, b.y0, b.x0 + arm, b.y0, k, light, r, gg, bb);
@@ -187,7 +187,7 @@ forge_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   // AETHYRFORGE, top left
   hb := Box.{x0 = g, y0 = g, x1 = g + pw, y1 = g + 58 * k};
   plate(s, u, hb, 0.8, 0);
-  n = fg_frame(s, out, n, hb, verse_hud_cut(1) * k, 1, true);
+  n = fg_frame(s, out, n, hb, metaverse_hud_cut(1) * k, 1, true);
   n = fg_text(s, out, n, "REALM EDITOR", hb.x0 + 16 * k, hb.y0 + 26 * k, 12 * k, fg_grey(k, 0.97, 0));
   // the realm it edits: Everglade, Everglade 5E or a fork's name (everglade-fork.coax fork_title)
   said_b: [96] u8;
@@ -202,7 +202,7 @@ forge_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   // ticks along the header's foot
   tx := hb.x0 + 16 * k;
   while tx < hb.x1 - 40 * k {
-    n = fg_rule(out, n, tx, hb.y1 - 6 * k, tx, hb.y1 - 3 * k, k, 0.25, verse_hud_tone(2), verse_hud_tone(2), verse_hud_tone(2));
+    n = fg_rule(out, n, tx, hb.y1 - 6 * k, tx, hb.y1 - 3 * k, k, 0.25, metaverse_hud_tone(2), metaverse_hud_tone(2), metaverse_hud_tone(2));
     tx += 8 * k;
   }
   // DONE, top right
@@ -211,14 +211,14 @@ forge_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   if narrow { db = Box.{x0 = w - g - dw, y0 = hb.y1 + 8 * k, x1 = w - g, y1 = hb.y1 + 48 * k}; }
   s[0].ev.boxes[EB_DONE] = db;
   plate(s, u, db, 0.82, ifx s[0].ev.lit == EB_DONE then 2.0f32 else 0.0f32);
-  n = fg_frame(s, out, n, db, verse_hud_cut(0) * k, 1, false);
+  n = fg_frame(s, out, n, db, metaverse_hud_cut(0) * k, 1, false);
   n = fg_text(s, out, n, "DONE · ESC", db.x0 + 18 * k, db.y1 - 15 * k, 8.5 * k, fg_grey(k, 0.95, 0));
   // CHANGES, under it
   top := ifx narrow then db.y1 + 10 * k else hb.y1 + 10 * k;
   bottom := ifx narrow then lo(h - g, top + 300 * k) else lo(h - g, top + 620 * k);
   pb := Box.{x0 = g, y0 = top, x1 = g + pw, y1 = bottom};
   plate(s, u, pb, 0.78, 0);
-  n = fg_frame(s, out, n, pb, verse_hud_cut(2) * k, 1, true);
+  n = fg_frame(s, out, n, pb, metaverse_hud_cut(2) * k, 1, true);
   keys: [FG_ROWS] int;
   kn := fg_keys(s, keys[..]);
   if !s[0].fg.opened && kn > 0 { s[0].fg.open = keys[0]; }
@@ -238,7 +238,7 @@ forge_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
     n = fg_text(s, out, n, word, b.x0 + 10 * k, b.y1 - 7 * k, 7 * k, ifx on then fg_cyan(k, 1) else fg_grey(k, 0.75, 1));
     fx = b.x0 - 6 * k; i -= 1;
   }
-  n = fg_rule(out, n, pb.x0 + 12 * k, pb.y0 + 42 * k, pb.x1 - 12 * k, pb.y0 + 42 * k, k, 0.3, verse_hud_tone(2), verse_hud_tone(2), verse_hud_tone(2));
+  n = fg_rule(out, n, pb.x0 + 12 * k, pb.y0 + 42 * k, pb.x1 - 12 * k, pb.y0 + 42 * k, k, 0.3, metaverse_hud_tone(2), metaverse_hud_tone(2), metaverse_hud_tone(2));
   // the rows
   y := pb.y0 + 50 * k;
   foot := pb.y1 - 30 * k;
@@ -255,7 +255,7 @@ forge_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
     kind := fg_kind_of(key);
     engine := kind == FG_ENGINE;
     // the tick at its left: blue for the engine, white for the realm
-    tr := ifx engine then FG_CYAN_R else verse_hud_tone(0); tgr := ifx engine then FG_CYAN_G else verse_hud_tone(0); tbb := ifx engine then FG_CYAN_B else verse_hud_tone(0);
+    tr := ifx engine then FG_CYAN_R else metaverse_hud_tone(0); tgr := ifx engine then FG_CYAN_G else metaverse_hud_tone(0); tbb := ifx engine then FG_CYAN_B else metaverse_hud_tone(0);
     n = fg_rule(out, n, rb.x0 + 4 * k, rb.y0 + 8 * k, rb.x0 + 4 * k, rb.y0 + 32 * k, k, ifx open then 1.0f32 else 0.7f32, tr, tgr, tbb);
     if open { n = fg_frame(s, out, n, rb, 6 * k, 0.8, engine); }
     title := ifx key < 0 then fg_live_title(s, -1 - key, buf[..]) else FG_FIXED_TITLE[key];
@@ -276,13 +276,13 @@ forge_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
       li := ifx c == '+' then fg_cyan(k, 0.95) else ifx c == '-' then ink(k, 0.95, FG_RED_R, FG_RED_G, FG_RED_B) else fg_grey(k, 0.85, 1);
       n = fg_text(s, out, n, line, rb.x0 + 22 * k, ly, fg_fit(line, 6.5 * k, rb.x1 - rb.x0 - 36 * k), li);
     }
-    if !open && r + 1 < kn { n = fg_rule(out, n, rb.x0 + 14 * k, rb.y1, rb.x1 - 6 * k, rb.y1, k, 0.15, verse_hud_tone(2), verse_hud_tone(2), verse_hud_tone(2)); }
+    if !open && r + 1 < kn { n = fg_rule(out, n, rb.x0 + 14 * k, rb.y1, rb.x1 - 6 * k, rb.y1, k, 0.15, metaverse_hud_tone(2), metaverse_hud_tone(2), metaverse_hud_tone(2)); }
     y += rh + 4 * k;
   }
   if kn == 0 { n = fg_text(s, out, n, "NOTHING HERE YET", pb.x0 + 16 * k, pb.y0 + 72 * k, 7.5 * k, fg_grey(k, 0.7, 2)); }
   // the keys, along its foot
   keys_line := ifx narrow then "TAP A THING TO PICK IT" else "1-5 PLACE · Z UNDO · Y REDO · CLICK A THING TO PICK IT";
-  n = fg_rule(out, n, pb.x0 + 12 * k, foot + 4 * k, pb.x1 - 12 * k, foot + 4 * k, k, 0.3, verse_hud_tone(2), verse_hud_tone(2), verse_hud_tone(2));
+  n = fg_rule(out, n, pb.x0 + 12 * k, foot + 4 * k, pb.x1 - 12 * k, foot + 4 * k, k, 0.3, metaverse_hud_tone(2), metaverse_hud_tone(2), metaverse_hud_tone(2));
   n = fg_text(s, out, n, keys_line, pb.x0 + 16 * k, pb.y1 - 11 * k, fg_fit(keys_line, 6.5 * k, pw - 32 * k), fg_grey(k, 0.65, 2));
   return n;
 }

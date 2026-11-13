@@ -76,15 +76,15 @@ static void new_battle(uint32_t state) {
   mb_new(mb(), pick, 7 + (int64_t)frames);
   mmo_set_pick(mm(), pick);
   coax_t_Point p = mmo_start_point(mm());
-  player = verse_player_place(p.x, 0, p.z, 3.14159265f);
-  controls = verse_player_v2_reset();
+  player = metaverse_player_place(p.x, 0, p.z, 3.14159265f);
+  controls = metaverse_player_v2_reset();
   (void)state;
 }
 static void start(uint32_t state) {
   if (placed) return;
   placed = true;
   new_battle(state);
-  sticks = verse_sticks_reset();
+  sticks = metaverse_sticks_reset();
   // the camera behind you, looking up the grid at the Skeletons
   city(state)->orbit.yaw = 3.14159265f;
   if (!river_built) {
@@ -139,7 +139,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   float frame = dt;
   quality_state = state;
   everglade_quality_frame(at(state), frame, golden);   /* the graphics quality's governor (everglade-quality.coax) */
-  dt = verse_player_counts(player, frame);
+  dt = metaverse_player_counts(player, frame);
   if (!golden) now += dt;
   everglade_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
   // the battle on its clock (a golden frame holds it, as it holds the river)
@@ -147,15 +147,15 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   take_battle(state);
   float pace = mmo_pace(mm());
   bool stuck = pace <= 0;
-  verse_player_v2_input(control(), stuck ? 0 : g->key_x, stuck ? 0 : g->key_y, stuck ? 0 : sticks.pad_x, stuck ? 0 : sticks.pad_y, false, false, 0, 0);
+  metaverse_player_v2_input(control(), stuck ? 0 : g->key_x, stuck ? 0 : g->key_y, stuck ? 0 : sticks.pad_x, stuck ? 0 : sticks.pad_y, false, false, 0, 0);
   player.body.pace = pace;
-  verse_player_v2_heading(control(), player, everglade_player_theta(at(state)));
+  metaverse_player_v2_heading(control(), player, everglade_player_theta(at(state)));
   if (sticks.zoom != 0) everglade_wheel(at(state), sticks.zoom);
-  sticks = verse_sticks_used(sticks);
+  sticks = metaverse_sticks_used(sticks);
   int64_t walls = everglade_walls_on(at(state), false);
   int64_t nb = mmo_bodies(at(state), mm(), (coax_v_f32){bodies, sizeof bodies / sizeof bodies[0]});
   int64_t floors = everglade_floors_near(at(state), player.body.pos.x, player.body.pos.z);
-  player = verse_player_v2_advance(control(), player, frame, (coax_v_f32){bodies, nb * 7}, (coax_v_f32){g->walls.e, walls * 6},
+  player = metaverse_player_v2_advance(control(), player, frame, (coax_v_f32){bodies, nb * 7}, (coax_v_f32){g->walls.e, walls * 6},
                                          (coax_v_f32){g->floors.e, floors * 10}, (coax_string){"everglade", sizeof "everglade" - 1}).player;
   // on the grid; and where the engine couldn't take you (a Skeleton in the way, Restrained), back
   coax_t_Point kept = mmo_hold(mm(), player.body.pos.x, player.body.pos.z);
@@ -170,17 +170,17 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   /* the controller's floor is flat at 0; stand on the green's terrain, which rises above it */
   { float gy = mmo_ground(at(state), player.body.pos.x, player.body.pos.z);
     if (player.body.pos.y < gy) { player.body.pos.y = gy; player.body.prev_pos.y = gy; if (player.body.vel.y < 0) player.body.vel.y = 0; } }
-  coax_t_Vec3 feet = verse_player_feet(player);
+  coax_t_Vec3 feet = metaverse_player_feet(player);
   int64_t sq = mmo_square(feet.x, feet.z);
   mb_want(mb(), sq / 100, sq % 100);
   float speed = __builtin_sqrtf(player.body.vel.x * player.body.vel.x + player.body.vel.z * player.body.vel.z);
-  mmo_pose(at(state), mm(), feet.x, feet.y, feet.z, verse_player_face(player), speed, dt);
+  mmo_pose(at(state), mm(), feet.x, feet.y, feet.z, metaverse_player_face(player), speed, dt);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_everglade_max_vertices() * coaxial_everglade_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_everglade_uniform_floats()};
-  { coax_t_Vec3 want = verse_player_asked(player); everglade_intent(at(state), want.x, want.z); }   /* the camera's heading (#12777) */
+  { coax_t_Vec3 want = metaverse_player_asked(player); everglade_intent(at(state), want.x, want.z); }   /* the camera's heading (#12777) */
   everglade_guide_begin(at(state), golden);
-  int64_t n = everglade_frame(at(state), out, u, w, h, scale, dt, still != 0 || golden, feet.x, feet.y, feet.z, verse_player_face(player),
-                              verse_player_act(player), player.body.vel.x, player.body.vel.z,
+  int64_t n = everglade_frame(at(state), out, u, w, h, scale, dt, still != 0 || golden, feet.x, feet.y, feet.z, metaverse_player_face(player),
+                              metaverse_player_act(player), player.body.vel.x, player.body.vel.z,
                               sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   (void)n;
   // Everglade's first frame starts its orbit at the town's spawn; turn it once to look up the grid
@@ -232,13 +232,13 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, in
   return mmo_key_up(at(state), key) ? 1u : 0u;
 }
 EXPORT("coaxial_focus") void coaxial_focus(uint32_t state) { (void)state; }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { city(state)->held = 0; city(state)->drag_on = false; sticks = verse_sticks_reset(); }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { city(state)->held = 0; city(state)->drag_on = false; sticks = metaverse_sticks_reset(); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   start(state);
   int64_t what = mmo_pointer(at(state), mm(), x, y, phase, kind, id);
   if (what >= 100) { act(state, what); return 1u; }
   if (what != 0) return 1u;
-  if (kind != 0) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  if (kind != 0) sticks = metaverse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
 }
 EXPORT("coaxial_media") uint32_t coaxial_media(uint32_t state) { coax_t_Everglade *g = city(state); return g->sp.media_big.count ? (uint32_t)(uintptr_t)g->sp.media_big.data : (uint32_t)(uintptr_t)g->sp.media.e; }

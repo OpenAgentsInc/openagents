@@ -27,7 +27,7 @@ ld_air_depth :: (e: ResolvedEnvironment, eye: V3, p: V3) -> f32 {
   for i: 0..<4 { height := eye.y + ray.y * (cast(f32) i + 0.5f32) * 0.25f32; density = density + exp(-fmax(height, 0) / f.height_falloff); }
   return fmax(distance - f.start, 0) * f.density * density * 0.25f32;
 }
-ld_haze_window :: (e: ResolvedEnvironment, distance: f32) -> f32 { f := e.channels.fog; return verse_style_haze_window(distance, f.near, f.far, f.far_gain); }
+ld_haze_window :: (e: ResolvedEnvironment, distance: f32) -> f32 { f := e.channels.fog; return metaverse_style_haze_window(distance, f.near, f.far, f.far_gain); }
 ld_atmosphere :: (e: ResolvedEnvironment, colour: V3, eye: V3, p: V3) -> V3 {
   f := e.channels.fog;
   d := sub3(p, eye); ray := normalize3(add3(d, v3(0, 0.00001f32, 0))); sun := ld_sun_dir(e);
@@ -38,7 +38,7 @@ ld_atmosphere :: (e: ResolvedEnvironment, colour: V3, eye: V3, p: V3) -> V3 {
 ld_film :: (e: ResolvedEnvironment, c: V3) -> V3 { f := film_exposed(film_rgb(c.x, c.y, c.z), e.channels.presentation.exposure); return v3(f.r, f.g, f.b); }
 ld_output :: (e: ResolvedEnvironment, c: V3) -> V3 {
   f := ld_film(e, c); y := f.x * 0.2126f32 + f.y * 0.7152f32 + f.z * 0.0722f32; s := e.channels.presentation.saturation;
-  return transfer_encode(v3(verse_style_saturation(f.x, y, s), verse_style_saturation(f.y, y, s), verse_style_saturation(f.z, y, s)));
+  return transfer_encode(v3(metaverse_style_saturation(f.x, y, s), metaverse_style_saturation(f.y, y, s), metaverse_style_saturation(f.z, y, s)));
 }
 ld_sky_base :: (e: ResolvedEnvironment, rd: V3) -> V3 {
   k := e.channels.sky; up := saturate(rd.y); return mix3(ld_v(k.horizon), ld_v(k.zenith), sqrt(saturate(up * 1.5f32 + 0.08f32)));
@@ -70,7 +70,7 @@ LD_NAMES :: [7] string.["glade", "sunlit-path", "deep-canopy", "painterly-night"
 ld_resolve :: (v: int, active: [] EnvironmentSet, index: [] EnvRegionIndex, eye: EnvDir) -> EnvRegionResolve {
   // the delta named, as the frame's whole light (the set's profiles are the glade, sunlit, canopy)
   if v < 3 { out: EnvRegionResolve; out.env = env_profile_sample(active[0].profiles[v], 0.5); return out; }
-  p := verse_style_compat_profile(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP)).profile;
+  p := metaverse_style_compat_profile(metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP)).profile;
   out: EnvRegionResolve; out.env = env_profile_sample(p, cast(f64) (v - 3) * 0.25); return out;
 }
 ld_print3 :: (c: V3) { print("\t%\t%\t%", c.x, c.y, c.z); }

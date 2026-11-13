@@ -88,7 +88,7 @@ FetchStep :: struct { fetch: Fetch; previous: FetchPose; status: FollowerStatus;
 #test "the grounded follower uses declared tuning checked triangles and previous-pose drawing" {
   ff_g := mesh.Ground.{n = 1, cell = 100, west = -50, south = -50};
   ff_h := [4] f32.[2.5, 2.5, 2.5, 2.5]; ff_empty: [1] f32; ff_links: [1] int;
-  ff_f := verse_follower_place(ff_g, ff_h[..], 0, 0, 0);
+  ff_f := metaverse_follower_place(ff_g, ff_h[..], 0, 0, 0);
   ff_p := follower_profile();
   #assert ff_p.walk_speed == 2.6 && ff_p.run_speed == 5.2 && ff_p.acceleration == 14 && ff_p.turn_rate == 9;
   ff_step := follower_step(ff_f, ff_p, ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
@@ -130,7 +130,7 @@ FetchStep :: struct { fetch: Fetch; previous: FetchPose; status: FollowerStatus;
 #test "fixed fetch follows chases brings stays and picks up on the assigned tick" {
   ff_g := mesh.Ground.{n = 1, cell = 100, west = -50, south = -50};
   ff_h: [4] f32; ff_empty: [1] f32; ff_links: [1] int; ff_f: Fetch;
-  ff_f.dog = verse_follower_place(ff_g, ff_h[..], 0, 0, 0); ff_f.ball.held = 99;
+  ff_f.dog = metaverse_follower_place(ff_g, ff_h[..], 0, 0, 0); ff_f.ball.held = 99;
   ff_r := fetch_step(ff_f, follower_profile(), ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
     v3(20, 0, 0), v3(20, 1.25, 0), ff_empty[0..<0], ff_empty[0..<0], ff_empty[0..<0], true, false);
   #assert ff_r.status == FollowerStatus.ok && ff_r.fetch.dog.pos.x == 0.00341796875 && ff_r.previous.dog.x == 0;
@@ -217,7 +217,7 @@ follower_step :: (ff_f: Follower, ff_p: tuning.LocomotionProfile,
   ff_dt := follower_step_seconds(); ff_next := ff_f;
   ff_away := flat_gap(ff_f.pos, ff_to); ff_want := v3(0, 0, 0);
   if ff_away > ff_stop {
-    ff_aim := past_blocks(ff_f.pos, verse_route_next(ff_nodes, ff_links, ff_half, ff_f.pos, ff_to), ff_blocks, ff_radius);
+    ff_aim := past_blocks(ff_f.pos, metaverse_route_next(ff_nodes, ff_links, ff_half, ff_f.pos, ff_to), ff_blocks, ff_radius);
     ff_dir := sub(ff_aim, ff_f.pos); ff_dir.y = 0; ff_dir = unit_or(ff_dir, v3(0, 0, 0));
     ff_speed := ifx ff_away > f32(FOLLOW_FAR) then ff_p.run_speed else ff_p.walk_speed;
     ff_speed = lo(ff_speed, (ff_away - ff_stop) * 2.5 + 0.4);
@@ -257,7 +257,7 @@ fixed_throw_velocity :: (ff_yaw: f32, ff_lift: f32, ff_speed: f32, ff_carrier: P
 }
 fixed_ball_throw :: (ff_b: Ball, ff_hand: Point, ff_yaw: f32, ff_lift: f32, ff_carrier: Point) -> Ball #effects(all) {
   if ff_b.held < 0 { return ff_b; }
-  ff_next := verse_ball_release(ff_b, ff_hand, fixed_throw_velocity(ff_yaw, ff_lift, f32(THROW_SPEED), ff_carrier));
+  ff_next := metaverse_ball_release(ff_b, ff_hand, fixed_throw_velocity(ff_yaw, ff_lift, f32(THROW_SPEED), ff_carrier));
   ff_next.thrown = true; return ff_next;
 }
 fixed_mouth :: (ff_d: Follower) -> Point #effects(all) { return fixed_hand(ff_d.pos, ff_d.face, f32(MOUTH_AHEAD), f32(MOUTH_UP), 0); }
@@ -286,8 +286,8 @@ fetch_step :: (ff_f: Fetch, ff_p: tuning.LocomotionProfile, ff_g: mesh.Ground, f
     ff_spheres: [] f32, ff_boxes: [] f32, ff_blocks: [] f32, ff_enabled: bool, ff_auto_pick: bool) -> FetchStep #effects(all) {
   ff_out := FetchStep.{fetch = ff_f, previous = fetch_pose(ff_f)};
   ff_next := ff_f; ff_b := ff_f.ball;
-  if ff_b.held == 0 { ff_b = verse_ball_carry(ff_b, ff_hand); }
-  ff_b = verse_ball_step(ff_b, ff_g, ff_heights, ff_spheres, ff_boxes, follower_step_seconds());
+  if ff_b.held == 0 { ff_b = metaverse_ball_carry(ff_b, ff_hand); }
+  ff_b = metaverse_ball_step(ff_b, ff_g, ff_heights, ff_spheres, ff_boxes, follower_step_seconds());
   ff_next.ball = ff_b;
   if ff_next.mode == FETCH_FOLLOW {
     if ff_b.held < 0 && ff_b.thrown { ff_next.mode = FETCH_CHASE; }
@@ -310,14 +310,14 @@ fetch_step :: (ff_f: Fetch, ff_p: tuning.LocomotionProfile, ff_g: mesh.Ground, f
       ff_next.ball.held = 1; ff_next.ball.resting = false; ff_next.ball.vel = v3(0, 0, 0); ff_next.mode = FETCH_BRING;
     }
   } else if ff_next.mode == FETCH_BRING {
-    ff_next.ball = verse_ball_carry(ff_b, ff_mouth);
+    ff_next.ball = metaverse_ball_carry(ff_b, ff_mouth);
     if ff_enabled && flat_length(sub(ff_next.dog.pos, ff_you)) <= f32(BRING_STOP) + 0.3 && flat_length(ff_next.dog.vel) < 0.6 {
-      ff_next.ball = verse_ball_release(ff_next.ball, ff_mouth, v3(0, 0, 0));
+      ff_next.ball = metaverse_ball_release(ff_next.ball, ff_mouth, v3(0, 0, 0));
       ff_next.ball.thrown = false; ff_next.mode = FETCH_FOLLOW;
     }
   }
-  if ff_auto_pick && !ff_next.ball.thrown && ff_next.mode == FETCH_FOLLOW && verse_ball_can_pick(ff_next.ball, ff_you) {
-    ff_next.ball = verse_ball_pick(ff_next.ball, 0, ff_you, ff_hand);
+  if ff_auto_pick && !ff_next.ball.thrown && ff_next.mode == FETCH_FOLLOW && metaverse_ball_can_pick(ff_next.ball, ff_you) {
+    ff_next.ball = metaverse_ball_pick(ff_next.ball, 0, ff_you, ff_hand);
   }
   ff_out.fetch = ff_next; return ff_out;
 }

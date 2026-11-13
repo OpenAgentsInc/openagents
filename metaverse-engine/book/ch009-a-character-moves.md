@@ -237,18 +237,18 @@ ramp :: (degrees: f32) -> Player {
   rise := 4 * sin(degrees * f32(PI) / 180) / cos(degrees * f32(PI) / 180);
   stand_put_quad(f[..], 0, -2, 0, 4, 0, 0, 4, 0, 0, rise);   // 4 m by 4 m, rising toward +Z
   w: World; w.floors = f[..];
-  p := verse_player_place(0, rise / 2 + 0.1, 2, 0);              // over its middle, 0.1 m up
+  p := metaverse_player_place(0, rise / 2 + 0.1, 2, 0);              // over its middle, 0.1 m up
   for k: 0..<128 { p = step(w, p, STEP); }
   return p;
 }
 main :: () {
   w: World;
-  p := held(verse_player_place(0, 0, 0, 0), 0, 1, true);
+  p := held(metaverse_player_place(0, 0, 0, 0), 0, 1, true);
   n := 0;
   while flat_speed(p) < f32(RUN) { p = step(w, p, STEP); n += 1; }
   print("from rest to RUN: % steps, % s\n", n, f32(n) * f32(STEP));
 
-  q := verse_player_input(verse_player_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0);
+  q := metaverse_player_input(metaverse_player_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0);
   peak := 0.0f32; up := 0; air := 0;
   while true {
     q = step(w, q, STEP); air += 1;
@@ -418,7 +418,7 @@ records the C facade parity, actual scene checks and complete Wasm links.
 server holds), Camera (the orbit, which the step never reads), Player (a page's
 body and camera), World, physical stepping and interpolation.
 The Walk unit declares no C exports of its own. `metaverse-engine/move/player.coax` retains
-the published `verse_player_*` C signatures as thin adapters to `walk_*`.
+the published `metaverse_player_*` C signatures as thin adapters to `walk_*`.
 Coax consumers that qualify names load Walk directly; an alias cannot
 re-export a different module's types. Related generated C headers must still
 be rebuilt together.

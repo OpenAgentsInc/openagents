@@ -44,7 +44,7 @@ units, and adds only the glue between them (`publish`, `receive`, `draw_x`,
 | [nipmv.coax](../../coax/lib/nostr/nipmv.coax) | `mv_frame_read`, `mv_order`, `mv_online` | a pose frame for this world, its order, and presence | 85 |
 | [nip57.coax](../../coax/lib/nostr/nip57.coax), [nip75.coax](../../coax/lib/nostr/nip75.coax) | `n57_pay`, `n57_request_tags`, `n57_invoice`, `n57_receipt`, `n75_tally` | the zap request, the receipt, and the goal's count | 71 |
 | [nip47.coax](../../coax/lib/nostr/nip47.coax) | `n47_request`, `n47_spend`, `n47_code` | a Wallet Connect payment against its budget | 72 |
-| [pay/wallet.coax](../../pay/wallet.coax) | `verse_wallet_msat_up`, `verse_wallet_msat_down`, `verse_wallet_amount_ok`, `bw_invoice_is`, `verse_wallet_may_send`, `verse_wallet_step` | whether the Spark wallet pays, and how the payment moves | this chapter |
+| [pay/wallet.coax](../../pay/wallet.coax) | `metaverse_wallet_msat_up`, `metaverse_wallet_msat_down`, `metaverse_wallet_amount_ok`, `bw_invoice_is`, `metaverse_wallet_may_send`, `metaverse_wallet_step` | whether the Spark wallet pays, and how the payment moves | this chapter |
 
 `pay/wallet.coax`, `nip57.coax`, `nip47.coax`, `relay_server.coax` and
 `relay_route.coax` decide money, admission or policy. Each is an
@@ -61,8 +61,8 @@ In production today:
   (`apps/openagents-ios`) sends and receives on Breez's Spark SDK on
   mainnet through `Wallet/SparkHost.swift`, and every payment rule is
   `pay/wallet.coax`: the keypad, LNURL-pay bounds through
-  `verse_wallet_amount_ok`, the high-fee and expiry warnings,
-  `verse_wallet_may_send` and the state machine `verse_wallet_step`
+  `metaverse_wallet_amount_ok`, the high-fee and expiry warnings,
+  `metaverse_wallet_may_send` and the state machine `metaverse_wallet_step`
   ([docs/lightning/](../../docs/lightning/README.md)). It pays BOLT11
   invoices, Lightning addresses and LNURL-pay, and buys bitcoin through
   MoonPay and Cash App pages that `wallet.coax` checks. The 12 words that
@@ -165,15 +165,15 @@ Ana last heard from Ben at +1180. NIP-MV marks a player offline after
 
 Ben's LNURL server accepts 1,000 to 100,000,000 msat. Spark pays whole
 sats, so the wallet rounds the bounds inward:
-`verse_wallet_msat_up(1000) = 1` and
-`verse_wallet_msat_down(100000000) = 100000` sats.
+`metaverse_wallet_msat_up(1000) = 1` and
+`metaverse_wallet_msat_down(100000000) = 100000` sats.
 
-1. `verse_wallet_amount_ok(21, 1, 100000, 1000)`: 21 is at least 1, at
+1. `metaverse_wallet_amount_ok(21, 1, 100000, 1000)`: 21 is at least 1, at
    most 100,000, and at most the 1,000 spendable. It passes.
 2. The invoice's human-readable part is `lnbc210n`: mainnet (`lnbc`), and
    210 units of `n`, 100 msat each, which is 21,000 msat. `bw_invoice_is`
    checks `21000 % 100 = 0` and `21000 / 100 = 210`. It passes.
-3. `verse_wallet_may_send(quoted, 21, 1, 1, 1000, T0 + 62, T0 + 3661)`:
+3. `metaverse_wallet_may_send(quoted, 21, 1, 1, 1000, T0 + 62, T0 + 3661)`:
    the state is `quoted`, 21 and 1 are valid, `T0 + 62` is before the
    invoice expires (`T0 + 61` plus BOLT #11's default 3,600 s), the fee 1
    is not above the shown fee 1, and `21 <= 1000 - 1`. The verdict is
@@ -405,10 +405,10 @@ ZapCheck :: struct { amount_ok: bool; invoice_ok: bool; verdict: Verdict; pays: 
 zap_check :: (pay: N57Pay, msat: int, invoice: string, fee: int, cap: int, spendable: int, now: int, expires: int) -> ZapCheck {
   c: ZapCheck;
   sats := msat / 1000;                          // Spark pays whole sats
-  low := verse_wallet_msat_up(pay.min); high := verse_wallet_msat_down(pay.max);
-  c.amount_ok = msat % 1000 == 0 && verse_wallet_amount_ok(sats, low, high, spendable);
+  low := metaverse_wallet_msat_up(pay.min); high := metaverse_wallet_msat_down(pay.max);
+  c.amount_ok = msat % 1000 == 0 && metaverse_wallet_amount_ok(sats, low, high, spendable);
   c.invoice_ok = bw_invoice_is(invoice, msat);
-  c.verdict = verse_wallet_may_send(Pay.quoted, sats, fee, cap, spendable, now, expires);
+  c.verdict = metaverse_wallet_may_send(Pay.quoted, sats, fee, cap, spendable, now, expires);
   c.pays = c.amount_ok && c.invoice_ok && c.verdict == Verdict.send;
   return c;
 }
@@ -507,12 +507,12 @@ main :: () {
   print("the wallet's rules (pay/wallet.coax), Ana has % sats\n", BALANCE);
   ok := zap_check(pay, 21000, inv, FEE, FEE, BALANCE, T0 + 62, T0 + 61 + EXPIRY);
   show_check("21 sats, fee 1", ok);
-  fl := verse_wallet_start();
-  fl = verse_wallet_step(fl, Event.quote); fl = verse_wallet_step(fl, Event.confirm);
+  fl := metaverse_wallet_start();
+  fl = metaverse_wallet_step(fl, Event.quote); fl = metaverse_wallet_step(fl, Event.confirm);
   print("flow: quote, confirm -> % (sends %)\n", PAY_STATE[cast(int) fl.state], fl.sends);
-  fl = verse_wallet_step(fl, Event.confirm);
+  fl = metaverse_wallet_step(fl, Event.confirm);
   print("a second confirm -> % (sends %)\n", PAY_STATE[cast(int) fl.state], fl.sends);
-  fl = verse_wallet_step(fl, Event.sent);
+  fl = metaverse_wallet_step(fl, Event.sent);
   balance := BALANCE - 21 - FEE;
   print("the SDK reports sent -> %; balance % - 21 - % = % sats\n", PAY_STATE[cast(int) fl.state], BALANCE, FEE, balance);
 
@@ -664,7 +664,7 @@ written from their specifications. It shares no code with Coax.
 
 #test "the hand-worked numbers" {
   // 21 sats and a 1-sat fee from 1000; 21000 msat is 210n.
-  #assert BALANCE - 21 - FEE == 978 && verse_wallet_sat_to_msat(21) == 21000;
+  #assert BALANCE - 21 - FEE == 978 && metaverse_wallet_sat_to_msat(21) == 21000;
   #assert n57_invoice(PY_INVOICE).msat == 21000;
   // Ana's move at +1001 rides frame 2 (t = +1250) and is drawn at +1750.
   #assert 1250 + DRAW_MS - 1001 == 749 && POST_MS + 2 * NET_MS + DRAW_MS == 830 && 830 <= BUDGET_MS;

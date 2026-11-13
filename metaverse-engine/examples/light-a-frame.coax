@@ -10,14 +10,14 @@ r4 :: (x: f32) -> f32 { return cast(f32) floor(x * 10000 + 0.5) / 10000; }
 // book:begin example
 main :: () {
   // 1. The key light at the four clock keys, from the painterly preset's sun.
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   u: [STYLE_FLOATS] f32;
   same := true;
   for i: 0..<4 {
     clock := cast(f32) i * 0.25;
     k := light_key(p.sun_low, p.sun_high, p.sun_azimuth, p.moon_below, clock);
     print("clock %: % at elevation % deg, toward % % %\n", clock, ifx k.moon then "moon" else "sun", r4(k.elevation / DEG), r4(k.x), r4(k.y), r4(k.z));
-    if !verse_style_at(p, clock, u[..]) { print("no preset\n"); return; }
+    if !metaverse_style_at(p, clock, u[..]) { print("no preset\n"); return; }
     moon := ifx k.moon then 1.0f32 else 0.0f32;
     same = same && u[SU_KEY_DIR] == k.x && u[SU_KEY_DIR + 1] == k.y && u[SU_KEY_DIR + 2] == k.z && u[SU_KEY_DIR + 3] == moon;
   }
@@ -46,7 +46,7 @@ main :: () {
 
   // 4. The day's haze: none to 20 m, then thicker, capped at 0.88.
   for d: [4] f32.[20, 100, 200, 5000] {
-    print("haze at % m: %\n", d, r4(verse_style_haze(d, 0, 0, 20, 0.011, 0.88, 60)));
+    print("haze at % m: %\n", d, r4(metaverse_style_haze(d, 0, 0, 20, 0.011, 0.88, 60)));
   }
 }
 // book:end example

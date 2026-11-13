@@ -63,8 +63,8 @@ if [[ ${#engine[@]} -eq 0 || ! -f metaverse/platform/voice.c ]]; then
   echo "build.sh: the voice engine (metaverse/voice*.coax, metaverse/platform/voice.c) is not there yet" >&2
   exit 1
 fi
-"$compiler" c metaverse-engine/audio/voice.coax --library --header "$gen/AethyrVoice.h" > "$gen/AethyrVoice.c.tmp.$$"
-mv "$gen/AethyrVoice.c.tmp.$$" "$gen/AethyrVoice.c"
+"$compiler" c metaverse-engine/audio/voice.coax --library --header "$gen/EngineVoice.h" > "$gen/EngineVoice.c.tmp.$$"
+mv "$gen/EngineVoice.c.tmp.$$" "$gen/EngineVoice.c"
 flags=(-std=c11 -O2 -g "${sysflags[@]}" -Wall -Wextra -Wno-unused-parameter
        -Wno-unused-function -Wno-unused-variable -Wno-missing-field-initializers -Wno-sign-compare)
 # Generated Coax C is compiled with its own (quieter) flags.
@@ -75,7 +75,7 @@ for c in "${engine[@]}"; do
   "$cc" "${gflags[@]}" -I "$gen" -c "$c" -o "$o"
   objs+=("$o")
 done
-"$cc" "${gflags[@]}" -I "$gen" -c "$gen/AethyrVoice.c" -o "$out/AethyrVoice.o"
+"$cc" "${gflags[@]}" -I "$gen" -c "$gen/EngineVoice.c" -o "$out/EngineVoice.o"
 "$cc" "${flags[@]}" -I "$gen" -I metaverse/platform -c metaverse/platform/voice.c -o "$out/voice.o"
 objs+=("$out/voice.o")
 parakeet="$out/parakeet"
@@ -93,5 +93,5 @@ for c in ws wav speech; do
 done
 "$cc" "${flags[@]}" ${defs[@]+"${defs[@]}"} -I "$gen" -o "$out/voice-host" "$here/host.c" "$out/ws.o" "$out/wav.o" "$out/speech.o" "${objs[@]}" \
   "${speechlibs[@]}" "${hostlibs[@]}" -lpthread -lm
-"$cc" "${flags[@]}" -I "$gen" -o "$out/voice-client" "$here/client.c" "$out/ws.o" "$out/wav.o" "$out/AethyrVoice.o" "${objs[@]}" -lm
+"$cc" "${flags[@]}" -I "$gen" -o "$out/voice-client" "$here/client.c" "$out/ws.o" "$out/wav.o" "$out/EngineVoice.o" "${objs[@]}" -lm
 echo "built $out/voice-host and $out/voice-client"

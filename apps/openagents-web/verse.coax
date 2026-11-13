@@ -136,7 +136,7 @@ HTTP_PLAYER :: 8;          // host.js: send this browser's playtest player key
 // The landing's notes under the box.
 NOTE_NONE :: 0; NOTE_BAD :: 1; NOTE_EMPTY :: 2;
 
-VerseState :: struct {
+MetaverseState :: struct {
   started: bool;
   time: f32; width: f32; height: f32; dpr: f32; still: bool;
   page: int;                 // PAGE_* (the host sets it: data-page)
@@ -184,20 +184,20 @@ VerseState :: struct {
 }
 
 // Which page (the host's data-page), before anything else.
-verse_page :: (s: [] VerseState, page: int) #export_c #effects(all) {
-  if !s[0].started { verse_reset(s); }
+metaverse_page :: (s: [] MetaverseState, page: int) #export_c #effects(all) {
+  if !s[0].started { metaverse_reset(s); }
   s[0].page = ifx page == PAGE_GALAXY then PAGE_GALAXY else PAGE_LANDING;
 }
 
-verse_reset :: (s: [] VerseState) {
+metaverse_reset :: (s: [] MetaverseState) {
   s[0].started = true;
   s[0].press = -1; s[0].press_id = -1; s[0].hover = -1; s[0].over = -1; s[0].join_id = -1; s[0].want_id = -1;
   s[0].wants = WANT_MINE | WANT_LIST;
   s[0].rot = 0.6; s[0].tilt = 0.42; s[0].nudge_at = -100; s[0].toast_at = -100;
 }
 
-email_text :: (s: [] VerseState) -> string { return cast(string) s[0].email[0..<s[0].email_n]; }
-kept_text :: (s: [] VerseState) -> string { return cast(string) s[0].kept[0..<s[0].kept_n]; }
+email_text :: (s: [] MetaverseState) -> string { return cast(string) s[0].email[0..<s[0].email_n]; }
+kept_text :: (s: [] MetaverseState) -> string { return cast(string) s[0].kept[0..<s[0].kept_n]; }
 
 // An email as the server takes it (verse.api's check): something, one @,
 // then two or more dot-separated parts, no spaces, at most 120 bytes.
@@ -225,7 +225,7 @@ email_byte :: (c: int) -> int {
   return c;
 }
 
-email_type :: (s: [] VerseState, text: string) {
+email_type :: (s: [] MetaverseState, text: string) {
   if s[0].typed_all { s[0].email_n = 0; s[0].typed_all = false; }
   for i: 0..<text.count {
     c := email_byte(cast(int) text[i]);
@@ -236,7 +236,7 @@ email_type :: (s: [] VerseState, text: string) {
 
 // Cmd or Ctrl with A, C or X in a focused box holding text (textkeys.coax):
 // whether it was one. Cutting empties the box through n.
-box_command :: (s: [] VerseState, cmd: int, text: string, n: [] int) -> bool {
+box_command :: (s: [] MetaverseState, cmd: int, text: string, n: [] int) -> bool {
   if cmd == TK_ALL { s[0].typed_all = text.count > 0; return true; }
   if cmd != TK_COPY && cmd != TK_CUT { return false; }
   if s[0].typed_all {
@@ -248,25 +248,25 @@ box_command :: (s: [] VerseState, cmd: int, text: string, n: [] int) -> bool {
 
 // ---- out to the host
 
-act :: (s: [] VerseState, action: int, text: string) { s[0].out_n = put(s[0].outbox[..], 0, text); s[0].action = action; }
+act :: (s: [] MetaverseState, action: int, text: string) { s[0].out_n = put(s[0].outbox[..], 0, text); s[0].action = action; }
 // Go to url once the action waiting (if any) is taken.
-go_to :: (s: [] VerseState, url: string) { s[0].next_n = put(s[0].next[..], 0, url); }
+go_to :: (s: [] MetaverseState, url: string) { s[0].next_n = put(s[0].next[..], 0, url); }
 
 // One request to this site (the face hands it to coaxial_http).
-request :: (s: [] VerseState, url: string, flags: int) {
+request :: (s: [] MetaverseState, url: string, flags: int) {
   s[0].req_url_n = put(s[0].req_url[..], 0, url); s[0].req_flags = flags; s[0].req_ready = true;
 }
 // The galaxy asks GET /api/playtest/access once (access.coax); the face sends it and says its id.
-verse_access_wants :: (s: [] VerseState) -> bool #export_c #effects(all) { return s[0].page == PAGE_GALAXY && access_wants(s[0].acc[..]); }
-verse_access_sent :: (s: [] VerseState, id: int) #export_c #effects(all) { access_sent(s[0].acc[..], id); }
-verse_requested :: (s: [] VerseState, id: int) #export_c #effects(all) {
+metaverse_access_wants :: (s: [] MetaverseState) -> bool #export_c #effects(all) { return s[0].page == PAGE_GALAXY && access_wants(s[0].acc[..]); }
+metaverse_access_sent :: (s: [] MetaverseState, id: int) #export_c #effects(all) { access_sent(s[0].acc[..], id); }
+metaverse_requested :: (s: [] MetaverseState, id: int) #export_c #effects(all) {
   s[0].req_ready = false;
   if s[0].want_id == -2 { s[0].want_id = id; if id < 0 { realm_answered(s, "0\n"); } }
   if s[0].going && s[0].join_id == -2 { s[0].join_id = id; if id < 0 { s[0].answered = true; } }
 }
 
 // The join: {email, player, sid, how}, as the playtest sent it.
-join :: (s: [] VerseState, t: [] Track, how: string, wanted: bool) {
+join :: (s: [] MetaverseState, t: [] Track, how: string, wanted: bool) {
   b := s[0].req_body[..]; n := 0;
   n = put(b, n, "{\"email\":\""); n = put(b, n, email_text(s));
   n = put(b, n, "\",\"player\":\""); n = put(b, n, cast(string) t[0].pid[0..<t[0].pid_n]);
@@ -279,7 +279,7 @@ join :: (s: [] VerseState, t: [] Track, how: string, wanted: bool) {
 // ---- what a press does
 
 // PLAYTEST NOW: straight into the Haunted House, as a guest (or as the email given before).
-enter :: (s: [] VerseState, t: [] Track) {
+enter :: (s: [] MetaverseState, t: [] Track) {
   if s[0].going { return; }
   s[0].note = NOTE_NONE; s[0].focused = false;
   s[0].going = true; s[0].going_at = s[0].time; s[0].answered = true;
@@ -287,13 +287,13 @@ enter :: (s: [] VerseState, t: [] Track) {
   go_to(s, PLANET_PATH[HOUSE]);
 }
 
-focus :: (s: [] VerseState, t: [] Track) {
+focus :: (s: [] MetaverseState, t: [] Track) {
   s[0].focused = true; s[0].typed_at = s[0].time;
   if !s[0].opened { s[0].opened = true; track(t, "join-open"); }
 }
 
 // The planet p was picked (via the map or its tag).
-pick :: (s: [] VerseState, t: [] Track, p: int, via: string) {
+pick :: (s: [] MetaverseState, t: [] Track, p: int, via: string) {
   open := realm_kind_at(s, p) == KIND_OPEN;
   if track_begin(t, "planet-click") { track_str(t, "planet", realm_id_at(s, p)); track_str(t, "via", via); track_bool(t, "open", open); track_end(t); }
   if p >= PLANETS { open_realm(s, realm_id_at(s, p)); return; }
@@ -310,7 +310,7 @@ pick :: (s: [] VerseState, t: [] Track, p: int, via: string) {
   s[0].toast_n = n; s[0].toast_at = s[0].time;
 }
 
-press_button :: (s: [] VerseState, t: [] Track, b: int) {
+press_button :: (s: [] MetaverseState, t: [] Track, b: int) {
   if b == BTN_ENTER { enter(s, t); return; }
   if b == BTN_HOUSE { pick(s, t, HOUSE, "tag"); return; }
   if b == BTN_CODING { pick(s, t, CODING, "tag"); return; }
@@ -321,7 +321,7 @@ press_button :: (s: [] VerseState, t: [] Track, b: int) {
 // ---- input
 
 // A key: a code point, or a named key below zero (ui.coax KEY_*).
-verse_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool #export_c #effects(all) {
+metaverse_key :: (s: [] MetaverseState, t: [] Track, key: int, mods: int) -> bool #export_c #effects(all) {
   if s[0].page == PAGE_GALAXY { return world_key(s, t, key); }
   if s[0].page != PAGE_LANDING || s[0].going { return false; }
   if key == KEY_ENTER { enter(s, t); return true; }
@@ -329,7 +329,7 @@ verse_key :: (s: [] VerseState, t: [] Track, key: int, mods: int) -> bool #expor
 }
 
 // Typed or pasted text (kind 1), what this browser kept (4), and the join's answer.
-verse_message :: (s: [] VerseState, t: [] Track, kind: int, bytes: string) #export_c #effects(all) {
+metaverse_message :: (s: [] MetaverseState, t: [] Track, kind: int, bytes: string) #export_c #effects(all) {
   if kind == MSG_TEXT && s[0].page == PAGE_GALAXY { return; }
   if access_take(s[0].acc[..], kind, bytes) { return; }
   if kind >= HTTP_KIND && kind < HTTP_KIND + HTTPS && kind - HTTP_KIND == s[0].want_id && s[0].want_out != 0 {
@@ -352,7 +352,7 @@ verse_message :: (s: [] VerseState, t: [] Track, kind: int, bytes: string) #expo
 // The planet at (x, y) (-1 none): of those in reach, the one whose middle
 // is nearest for its size, so a small world in front of a big one's glow
 // still answers.
-planet_at :: (s: [] VerseState, x: f32, y: f32) -> int {
+planet_at :: (s: [] MetaverseState, x: f32, y: f32) -> int {
   best := -1; score := 1.0e9f32;
   for p: 0..<PLANETS + s[0].realm_n {
     if !planet_shown(s, p) { continue; }
@@ -366,7 +366,7 @@ planet_at :: (s: [] VerseState, x: f32, y: f32) -> int {
 }
 
 // The button at (x, y), of those drawn last frame (-1 none).
-button_at :: (s: [] VerseState, x: f32, y: f32) -> int {
+button_at :: (s: [] MetaverseState, x: f32, y: f32) -> int {
   slop := 4 * s[0].dpr;
   for i: 0..<BUTTONS {
     if !s[0].shown[i] { continue; }
@@ -377,7 +377,7 @@ button_at :: (s: [] VerseState, x: f32, y: f32) -> int {
 }
 
 // The pointer in device pixels: phase 0 down, 1 move, 2 up, 3 cancel; kind 0 a mouse, 1 a finger or pen.
-verse_pointer :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
+metaverse_pointer :: (s: [] MetaverseState, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if phase == POINTER_DOWN { s[0].touch = kind != 0; }
   b := button_at(s, x, y);
   galaxy := s[0].page == PAGE_GALAXY;
@@ -438,18 +438,18 @@ verse_pointer :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kin
   return kind == 0;
 }
 
-verse_wants_text :: (s: [] VerseState) -> bool #export_c #effects(all) {
+metaverse_wants_text :: (s: [] MetaverseState) -> bool #export_c #effects(all) {
   if s[0].page == PAGE_GALAXY { return false; }
   return s[0].page == PAGE_LANDING && s[0].focused && !s[0].going;
 }
-verse_cursor :: (s: [] VerseState) -> int #export_c #effects(all) {
+metaverse_cursor :: (s: [] MetaverseState) -> int #export_c #effects(all) {
   if s[0].hover >= 0 || s[0].press >= 0 || s[0].guide_held { return 1; }
   if s[0].page == PAGE_LANDING { return 2; }   // the playtest's crosshair over the orbs
   if s[0].page == PAGE_GALAXY && s[0].over >= 0 && realm_kind_at(s, s[0].over) == KIND_OPEN { return 1; }
   return 0;
 }
 // What the pointer is over, for the click event.
-verse_label :: (s: [] VerseState, x: f32, y: f32) -> string #export_c #effects(all) {
+metaverse_label :: (s: [] MetaverseState, x: f32, y: f32) -> string #export_c #effects(all) {
   b := button_at(s, x, y);
   if b == BTN_FIELD { return "email"; }
   if b == BTN_GO { return "go"; }
@@ -462,25 +462,25 @@ verse_label :: (s: [] VerseState, x: f32, y: f32) -> string #export_c #effects(a
   if s[0].page == PAGE_GALAXY { p := planet_at(s, x, y); if p >= 0 { return realm_id_at(s, p); } }
   return "";
 }
-verse_action :: (s: [] VerseState) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
-verse_action_done :: (s: [] VerseState) #export_c #effects(all) { for i: 0..<OUTBOX { s[0].outbox[i] = 0; } s[0].out_n = 0; }
+metaverse_action :: (s: [] MetaverseState) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
+metaverse_action_done :: (s: [] MetaverseState) #export_c #effects(all) { for i: 0..<OUTBOX { s[0].outbox[i] = 0; } s[0].out_n = 0; }
 
 // ---- the Agent orb: hold to talk to the playtest's guide
 
 // A press on the orb turns the microphone on (inside the press, where the
 // browser lets a page ask for it); letting go ends the turn.
-guide_hold :: (s: [] VerseState, t: [] Track, id: int) {
+guide_hold :: (s: [] MetaverseState, t: [] Track, id: int) {
   if s[0].going { return; }
   s[0].guide_held = true; s[0].guide_id = id; s[0].guide_at = s[0].time;
   act(s, ACT_VOICE, "on");
   if !s[0].guide_on { s[0].guide_on = true; if track_begin(t, "voice-on") { track_str(t, "to", "guide"); track_end(t); } }
 }
-guide_let_go :: (s: [] VerseState) {
+guide_let_go :: (s: [] MetaverseState) {
   s[0].guide_held = false; s[0].guide_id = -1;
   act(s, ACT_VOICE, "end");
 }
 // What voice.js says: "phase|caption"; off (or a notice) means the microphone is off.
-guide_said :: (s: [] VerseState, text: string) {
+guide_said :: (s: [] MetaverseState, text: string) {
   split := 0;
   while split < text.count && text[split] != '|' { split += 1; }
   s[0].guide_phase_n = 0;
@@ -492,9 +492,9 @@ guide_said :: (s: [] VerseState, text: string) {
   if n > 0 || phase == "notice" || phase == "connecting" { s[0].guide_text_n = n; }
   if phase == "off" || phase == "notice" { s[0].guide_on = false; }
 }
-guide_phase :: (s: [] VerseState) -> string { return cast(string) s[0].guide_phase[0..<s[0].guide_phase_n]; }
+guide_phase :: (s: [] MetaverseState) -> string { return cast(string) s[0].guide_phase[0..<s[0].guide_phase_n]; }
 // The words under the orb: what to do, or what it's doing.
-guide_label :: (s: [] VerseState) -> string {
+guide_label :: (s: [] MetaverseState) -> string {
   p := guide_phase(s);
   if s[0].guide_held && (p == "" || p == "off" || p == "notice" || p == "connecting") { return "CONNECTING"; }
   if s[0].guide_held { return "LISTENING"; }
@@ -511,7 +511,7 @@ HOUSE :: 1; CODING :: 4;
 
 // Where planet p is on the screen now, in device pixels: the playtest's
 // projection (a tilted disc, nearer is bigger), the house turning on its own.
-project :: (s: [] VerseState, p: int) -> GalaxySeen {
+project :: (s: [] MetaverseState, p: int) -> GalaxySeen {
   w := s[0].width; h := s[0].height;
   m := lo(w, h) * 0.95; cx := w * 0.5; cy := h * 0.55;
   orbit := REALM_ORBIT; size := 0.024f32;
@@ -522,14 +522,14 @@ project :: (s: [] VerseState, p: int) -> GalaxySeen {
 }
 
 // The galaxy's worlds and then players' realms (p from PLANETS).
-planet_shown :: (s: [] VerseState, p: int) -> bool { return p >= PLANETS || PLANET_LISTED[p] || s[0].all; }
-realm_kind_at :: (s: [] VerseState, p: int) -> int { return ifx p >= PLANETS then KIND_OPEN else PLANET_KIND[p]; }
-realm_id_at :: (s: [] VerseState, p: int) -> string {
+planet_shown :: (s: [] MetaverseState, p: int) -> bool { return p >= PLANETS || PLANET_LISTED[p] || s[0].all; }
+realm_kind_at :: (s: [] MetaverseState, p: int) -> int { return ifx p >= PLANETS then KIND_OPEN else PLANET_KIND[p]; }
+realm_id_at :: (s: [] MetaverseState, p: int) -> string {
   if p < PLANETS { return PLANET_ID[p]; }
   i := p - PLANETS;
   return cast(string) s[0].realm_ids[i * REALM_ID..<i * REALM_ID + s[0].realm_id_n[i]];
 }
-realm_name_at :: (s: [] VerseState, p: int) -> string {
+realm_name_at :: (s: [] MetaverseState, p: int) -> string {
   if p < PLANETS { return PLANET_NAME[p]; }
   i := p - PLANETS;
   return cast(string) s[0].realm_names[i * REALM_NAME..<i * REALM_NAME + s[0].realm_name_n[i]];
@@ -546,8 +546,8 @@ realm_kind_of :: (kind: string) -> int {
   if kind == "village" { return 1; }
   return 2;
 }
-mine_text :: (s: [] VerseState) -> string { return cast(string) s[0].mine[0..<s[0].mine_n]; }
-player_text :: (s: [] VerseState) -> string { return cast(string) s[0].player[0..<s[0].player_n]; }
+mine_text :: (s: [] MetaverseState) -> string { return cast(string) s[0].mine[0..<s[0].mine_n]; }
+player_text :: (s: [] MetaverseState) -> string { return cast(string) s[0].player[0..<s[0].player_n]; }
 
 // A world's name for the map: unescaped, printable, at most REALM_NAME bytes.
 realm_name_into :: (raw: string, out: [] u8) -> int {
@@ -559,8 +559,8 @@ realm_name_into :: (raw: string, out: [] u8) -> int {
 }
 
 // The page facts' player (its public id; the key stays in the browser).
-verse_facts :: (s: [] VerseState, facts: string) #export_c #effects(all) {
-  if !s[0].started { verse_reset(s); }
+metaverse_facts :: (s: [] MetaverseState, facts: string) #export_c #effects(all) {
+  if !s[0].started { metaverse_reset(s); }
   s[0].all = text_has(fact_of(facts, "url"), "realms=all");
   id := fact_of(facts, "player");
   if !world_id_ok(id) || id.count > 32 { return; }
@@ -568,7 +568,7 @@ verse_facts :: (s: [] VerseState, facts: string) #export_c #effects(all) {
   s[0].player_n = id.count;
 }
 
-open_realm :: (s: [] VerseState, id: string) {
+open_realm :: (s: [] MetaverseState, id: string) {
   if s[0].next_n > 0 || s[0].action != 0 || !world_id_ok(id) { return; }
   n := put(s[0].next[..], 0, "/worlds/haunted-house#");
   s[0].next_n = put(s[0].next[..], n, id);
@@ -576,7 +576,7 @@ open_realm :: (s: [] VerseState, id: string) {
 }
 
 // MAKE YOUR REALM opens the realm builder; YOUR REALM opens the one you have.
-realm_button :: (s: [] VerseState, t: [] Track) {
+realm_button :: (s: [] MetaverseState, t: [] Track) {
   if s[0].mine_n > 0 {
     if track_begin(t, "planet-click") { track_str(t, "planet", mine_text(s)); track_str(t, "via", "your-realm"); track_bool(t, "open", true); track_end(t); }
     open_realm(s, mine_text(s));
@@ -590,7 +590,7 @@ realm_button :: (s: [] VerseState, t: [] Track) {
 // The galaxy without a pointer: LEFT and RIGHT step through the open worlds
 // it shows (the table's order, then players' realms), ENTER opens the one
 // chosen, as a click on it would.
-world_key :: (s: [] VerseState, t: [] Track, key: int) -> bool {
+world_key :: (s: [] MetaverseState, t: [] Track, key: int) -> bool {
   if key == KEY_ENTER && s[0].over >= 0 { pick(s, t, s[0].over, "key"); return true; }
   if key != KEY_LEFT && key != KEY_RIGHT { return false; }
   n := PLANETS + s[0].realm_n;
@@ -604,7 +604,7 @@ world_key :: (s: [] VerseState, t: [] Track, key: int) -> bool {
 }
 
 // The next of the galaxy's requests, one at a time.
-realm_ask :: (s: [] VerseState) {
+realm_ask :: (s: [] MetaverseState) {
   if s[0].wants & WANT_MINE != 0 && s[0].player_n == 0 { s[0].wants -= WANT_MINE; }
   bit := 0;
   order := [2] int.[WANT_MINE, WANT_LIST];
@@ -623,10 +623,10 @@ realm_ask :: (s: [] VerseState) {
   }
 }
 
-realm_say :: (s: [] VerseState, text: string) { s[0].toast_n = put(s[0].toast[..], 0, text); s[0].toast_at = s[0].time; }
+realm_say :: (s: [] MetaverseState, text: string) { s[0].toast_n = put(s[0].toast[..], 0, text); s[0].toast_at = s[0].time; }
 
 // A planet object's id, name and kind into slot i of the map's realms.
-realm_keep :: (s: [] VerseState, t: string, obj: int, i: int) -> bool {
+realm_keep :: (s: [] MetaverseState, t: string, obj: int, i: int) -> bool {
   at: [1] int;
   idn := world_field(t, obj, "id", at[..]);
   if at[0] < 0 || !world_id_ok(t[at[0]..<at[0] + idn]) || idn > REALM_ID { return false; }
@@ -640,7 +640,7 @@ realm_keep :: (s: [] VerseState, t: string, obj: int, i: int) -> bool {
 }
 
 // A galaxy request's answer ("STATUS\n" and the body; "0\n" none).
-realm_answered :: (s: [] VerseState, bytes: string) {
+realm_answered :: (s: [] MetaverseState, bytes: string) {
   w := s[0].want_out; s[0].want_out = 0; s[0].want_id = -1;
   ok := bytes.count > 4 && bytes[0..<4] == "200\n";
   t := ifx ok then bytes[4..<bytes.count] else "";
@@ -697,12 +697,12 @@ white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARC
 bronze :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
 ember :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.4 * k, EMBER_R, EMBER_G, EMBER_B); }
 
-plate :: (s: [] VerseState, b: Box, alpha: f32, look: f32) {
+plate :: (s: [] MetaverseState, b: Box, alpha: f32, look: f32) {
   n := s[0].plate_n;
   if n >= PLATES { return; }
   s[0].plates[n] = b; s[0].plate_alpha[n] = alpha; s[0].plate_look[n] = look; s[0].plate_n = n + 1;
 }
-button_look :: (s: [] VerseState, i: int, lit_up: bool) -> f32 {
+button_look :: (s: [] MetaverseState, i: int, lit_up: bool) -> f32 {
   look: f32 = ifx lit_up then LOOK_LIT else LOOK_PLAIN;
   if s[0].press == i || s[0].hover == i { look += LOOK_HOVER; }
   return look;
@@ -718,7 +718,7 @@ centred :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: 
 fit_cap :: (text: string, cap: f32, gap: f32, width: f32) -> f32 { return lo(cap, width / hi(measure(text, gap, space_for(gap), false), 0.001)); }
 
 // A button: its plate and its label, centred.
-plate_button :: (s: [] VerseState, out: [] f32, at: int, i: int, b: Box, label: string, lit_up: bool) -> int {
+plate_button :: (s: [] MetaverseState, out: [] f32, at: int, i: int, b: Box, label: string, lit_up: bool) -> int {
   k := s[0].dpr;
   s[0].boxes[i] = b; s[0].shown[i] = true;
   plate(s, b, 0.92, button_look(s, i, lit_up));
@@ -740,7 +740,7 @@ ring :: (out: [] f32, at: int, cx: f32, cy: f32, rx: f32, ry: f32, segments: int
 }
 
 // The OpenAgents mark (the power symbol) and the word, top left.
-brand :: (s: [] VerseState, out: [] f32, at: int, word: string) -> int {
+brand :: (s: [] MetaverseState, out: [] f32, at: int, word: string) -> int {
   k := s[0].dpr;
   x := 16 * k + 8 * k; y := 16 * k + 9 * k; r := 6 * k;
   vertices := at;
@@ -776,15 +776,15 @@ ORB_ALPHA :: 0.4;
 SPARK_R :: 1.0; SPARK_G :: 0.824; SPARK_B :: 0.627;   // 255, 210, 160
 
 // A number in [0, 1), the same run every visit.
-luck :: (s: [] VerseState) -> f32 {
+luck :: (s: [] MetaverseState) -> f32 {
   s[0].luck += 1;
   v := sin(s[0].luck * 12.9898 + 78.233) * 43758.5453;
   return v - floor(v);
 }
-new_orb :: (s: [] VerseState, x: f32, y: f32, r: f32) -> Orb { s[0].orb_id += 1; return Orb.{id = s[0].orb_id, x = x, y = y, r = r}; }
+new_orb :: (s: [] MetaverseState, x: f32, y: f32, r: f32) -> Orb { s[0].orb_id += 1; return Orb.{id = s[0].orb_id, x = x, y = y, r = r}; }
 
 // Sends orb i sideways around the biggest other orb, into an orbit.
-orb_kick :: (s: [] VerseState, i: int) {
+orb_kick :: (s: [] MetaverseState, i: int) {
   big := -1;
   for j: 0..<s[0].orb_n { if j != i && (big < 0 || s[0].orbs[j].r > s[0].orbs[big].r) { big = j; } }
   if big < 0 { return; }
@@ -793,7 +793,7 @@ orb_kick :: (s: [] VerseState, i: int) {
   v := ORB_KICK * sqrt(ORB_GRAVITY * b.r * b.r / sqrt(d * d + ORB_SOFTENING));
   s[0].orbs[i].vx += -dy / d * v; s[0].orbs[i].vy += dx / d * v;
 }
-orb_seed :: (s: [] VerseState, w: f32, h: f32) {
+orb_seed :: (s: [] MetaverseState, w: f32, h: f32) {
   s[0].seeded = true; s[0].orb_n = 4;
   s[0].orbs[0] = new_orb(s, w * 0.2, h * 0.84, 24);   // clear of the Agent orb under the button
   s[0].orbs[1] = new_orb(s, w * 0.22, h * 0.32, 9);
@@ -802,27 +802,27 @@ orb_seed :: (s: [] VerseState, w: f32, h: f32) {
   for i: 1..<4 { orb_kick(s, i); }
 }
 // A press at (x, y), device pixels.
-orb_hold :: (s: [] VerseState, x: f32, y: f32) {
+orb_hold :: (s: [] MetaverseState, x: f32, y: f32) {
   k := hi(s[0].dpr, 0.5);
   s[0].hold = new_orb(s, x / k, y / k, ORB_HOLD_START); s[0].holding = true; s[0].hold_at = s[0].time;
 }
-orb_drop :: (s: [] VerseState) {
+orb_drop :: (s: [] MetaverseState) {
   if !s[0].holding { return; }
   s[0].holding = false;
   if s[0].orb_n >= ORBS - 1 { for i: 1..<s[0].orb_n { s[0].orbs[i - 1] = s[0].orbs[i]; } s[0].orb_n -= 1; }
   s[0].orbs[s[0].orb_n] = s[0].hold; s[0].orb_n += 1;
   orb_kick(s, s[0].orb_n - 1);
 }
-spark :: (s: [] VerseState, x: f32, y: f32, vx: f32, vy: f32, life: f32, size: f32) {
+spark :: (s: [] MetaverseState, x: f32, y: f32, vx: f32, vy: f32, life: f32, size: f32) {
   if s[0].spark_n >= SPARKS { return; }
   s[0].sparks[s[0].spark_n] = Spark.{x = x, y = y, vx = vx, vy = vy, life = life, max = life, size = size}; s[0].spark_n += 1;
 }
-bounced_once :: (s: [] VerseState, key: int) -> bool {
+bounced_once :: (s: [] MetaverseState, key: int) -> bool {
   for i: 0..<s[0].bounced_n { if s[0].bounced[i] == key { return true; } }
   return false;
 }
 // One frame of the playtest's step, in a w x h CSS pixel hero.
-orb_step :: (s: [] VerseState, w: f32, h: f32) {
+orb_step :: (s: [] MetaverseState, w: f32, h: f32) {
   calm := s[0].still;
   if s[0].holding {
     s[0].hold.r = lo(ORB_HOLD_MAX, ORB_HOLD_START + (s[0].time - s[0].hold_at) * 1000 / ORB_HOLD_GROW_MS);
@@ -915,7 +915,7 @@ lo_i :: (a: int, b: int) -> int { if a < b { return a; } return b; }
 // The orbs at 60 steps a second whatever the frame rate, and drawn.
 ORB_STEP_NS :: 16666667;      // 1/60 s on the clock (metaverse-engine/core/loop.coax)
 ORB_FRAME_NS :: 100000000;    // the longest frame that counts: 0.1 s
-draw_orbs :: (s: [] VerseState, out: [] f32, at: int, dt: f32) -> int {
+draw_orbs :: (s: [] MetaverseState, out: [] f32, at: int, dt: f32) -> int {
   k := hi(s[0].dpr, 0.5); w := s[0].width / k; h := s[0].height / k;
   if !s[0].seeded { orb_seed(s, w, h); }
   // still (reduced motion, or the release walk's golden): they move only while a press makes one
@@ -972,7 +972,7 @@ centred_sans :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, 
 // screen (on a short screen no eyebrow, gap 10 and a 56-pixel button).
 Hero :: struct { eyebrow: f32; title: f32; title_cap: f32; title_lines: int; lede: f32; lines: int; lede_cap: f32; button: Box; low: bool;
                orb_x: f32; orb_y: f32; orb_r: f32; orb_label: f32; }   // the Agent orb under the button, and its words
-hero :: (s: [] VerseState) -> Hero {
+hero :: (s: [] MetaverseState) -> Hero {
   k := s[0].dpr; w := s[0].width / k; h := s[0].height / k;
   o: Hero;
   o.low = h <= 520;
@@ -1007,7 +1007,7 @@ hero :: (s: [] VerseState) -> Hero {
   return o;
 }
 
-draw_landing :: (s: [] VerseState, out: [] f32, at: int) -> int {
+draw_landing :: (s: [] MetaverseState, out: [] f32, at: int) -> int {
   k := s[0].dpr; d := k; w := s[0].width; cx := w * 0.5;
   vertices := draw_orbs(s, out, at, s[0].dt);
   vertices = brand(s, out, vertices, "OPENAGENTS");
@@ -1042,7 +1042,7 @@ draw_landing :: (s: [] VerseState, out: [] f32, at: int) -> int {
 GUIDE_R :: 22.0;
 GUIDE_RED :: 1.9; GUIDE_GREEN :: 1.1; GUIDE_BLUE :: 0.55;   // tints the orb's grey to #ff8c1f's warmth
 CAPTION_LINES :: 4;
-draw_guide :: (s: [] VerseState, out: [] f32, at: int, o: Hero) -> int {
+draw_guide :: (s: [] MetaverseState, out: [] f32, at: int, o: Hero) -> int {
   k := s[0].dpr; d := k; vertices := at;
   p := guide_phase(s);
   busy := s[0].guide_held || p == "replying" || p == "thinking" || p == "heard";
@@ -1089,7 +1089,7 @@ draw_guide :: (s: [] VerseState, out: [] f32, at: int, o: Hero) -> int {
 
 // ---- the galaxy
 
-draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
+draw_galaxy :: (s: [] MetaverseState, out: [] f32, at: int) -> int {
   k := s[0].dpr; d := k; w := s[0].width; h := s[0].height; cx := w * 0.5;
   vertices := at;
   phone := s[0].touch || w < 640 * k;
@@ -1211,9 +1211,9 @@ enter_hint :: (small: bool) -> string { return ifx small then "TAP A LIT PLANET 
 
 // The host calls this once a frame. dt is seconds since the last frame;
 // still: the visitor prefers reduced motion. Returns the vertex count.
-verse_frame :: (s: [] VerseState, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
+metaverse_frame :: (s: [] MetaverseState, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c #effects(all) {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
-  if !s[0].started { verse_reset(s); }
+  if !s[0].started { metaverse_reset(s); }
   // back to a page left by going on (the browser kept it): it answers again
   if s[0].going && s[0].next_n == 0 && s[0].time - s[0].going_at > 6 { s[0].going = false; }
   s[0].time += clamp(dt, 0, 0.1); s[0].dt = dt;
@@ -1266,29 +1266,29 @@ coaxial_verse_uniform_floats :: () -> int #export_c #effects(all) { return UNIFO
 // ---- checks
 
 // A page at w x h CSS pixels and dpr 2, its facts in, one frame drawn.
-page_at :: (s: [] VerseState, t: [] Track, page: int, w: f32, h: f32) {
+page_at :: (s: [] MetaverseState, t: [] Track, page: int, w: f32, h: f32) {
   s[0].page = page;
   track_init(t, ifx page == PAGE_GALAXY then "galaxy" else "landing");
   facts := "tab=0123456789abcdef\nfresh=1\nvisitor=feedfacecafebeef\nnow=1000\nnav=50\nurl=https://openagents.com/verse\nua=Mozilla/5.0\ncoarse=0";
   _ := track_message(t, HOST_PAGE, facts);
   out: [6 * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  drawn := verse_frame(s, t, out[..], u[..], w * 2, h * 2, 2, 0.016, true);
+  drawn := metaverse_frame(s, t, out[..], u[..], w * 2, h * 2, 2, 0.016, true);
   offline(s);
 }
-redraw :: (s: [] VerseState, t: [] Track, dt: f32) {
+redraw :: (s: [] MetaverseState, t: [] Track, dt: f32) {
   frame(s, t, dt);
   offline(s);
 }
-frame :: (s: [] VerseState, t: [] Track, dt: f32) {
+frame :: (s: [] MetaverseState, t: [] Track, dt: f32) {
   out: [6 * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  _ := verse_frame(s, t, out[..], u[..], s[0].width, s[0].height, s[0].dpr, dt, true);
+  _ := metaverse_frame(s, t, out[..], u[..], s[0].width, s[0].height, s[0].dpr, dt, true);
 }
 // The galaxy's requests with no server: each fails at once.
-offline :: (s: [] VerseState) { if s[0].page == PAGE_GALAXY && s[0].req_ready && s[0].want_id == -2 { verse_requested(s, -1); } }
-url_is :: (s: [] VerseState, url: string) -> bool { return s[0].req_ready && cast(string) s[0].req_url[0..<s[0].req_url_n] == url; }
-poke :: (s: [] VerseState, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) { _ := verse_pointer(s, t, x, y, phase, kind, id); }
-take_action :: (s: [] VerseState) { _ := verse_action(s); verse_action_done(s); }
-click :: (s: [] VerseState, t: [] Track, b: Box) {
+offline :: (s: [] MetaverseState) { if s[0].page == PAGE_GALAXY && s[0].req_ready && s[0].want_id == -2 { metaverse_requested(s, -1); } }
+url_is :: (s: [] MetaverseState, url: string) -> bool { return s[0].req_ready && cast(string) s[0].req_url[0..<s[0].req_url_n] == url; }
+poke :: (s: [] MetaverseState, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) { _ := metaverse_pointer(s, t, x, y, phase, kind, id); }
+take_action :: (s: [] MetaverseState) { _ := metaverse_action(s); metaverse_action_done(s); }
+click :: (s: [] MetaverseState, t: [] Track, b: Box) {
   x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
   poke(s, t, x, y, POINTER_DOWN, 0, 1);
   poke(s, t, x, y, POINTER_UP, 0, 1);
@@ -1304,11 +1304,11 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
 
 #test "the landing fits a phone and a desktop" {
   for size: 0..<2 {
-    s: [1] VerseState; t: [1] Track;
+    s: [1] MetaverseState; t: [1] Track;
     w := ifx size == 0 then 390.0f32 else 1440.0f32; h := ifx size == 0 then 844.0f32 else 900.0f32;
     page_at(s[..], t[..], PAGE_LANDING, w, h);
     out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-    n := verse_frame(s[..], t[..], out[..], u[..], w * 2, h * 2, 2, 0, true);
+    n := metaverse_frame(s[..], t[..], out[..], u[..], w * 2, h * 2, 2, 0, true);
     #assert n > 0 && n % 6 == 0 && n < MAX_VERTICES;
     for v: 0..<n { x := out[v * VERTEX_FLOATS]; #assert x > -40 && x < w * 2 + 40; }
     #assert !s[0].shown[BTN_FIELD] && !s[0].shown[BTN_GO] && s[0].shown[BTN_ENTER];
@@ -1320,7 +1320,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
 
 #test "the Agent orb under PLAYTEST NOW: held, the microphone is on; let go, the turn ends; its words show" {
   for size: 0..<2 {
-    s: [1] VerseState; t: [1] Track;
+    s: [1] MetaverseState; t: [1] Track;
     w := ifx size == 0 then 390.0f32 else 1440.0f32; h := ifx size == 0 then 844.0f32 else 900.0f32;
     page_at(s[..], t[..], PAGE_LANDING, w, h);
     g := s[0].boxes[BTN_GUIDE]; e := s[0].boxes[BTN_ENTER];
@@ -1333,25 +1333,25 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
     take_action(s[..]);
     poke(s[..], t[..], x + 3, y, POINTER_MOVE, 1, 7);
     #assert s[0].action == 0 && guide_label(s[..]) == "CONNECTING";
-    verse_message(s[..], t[..], MSG_VOICE, "listening|");
+    metaverse_message(s[..], t[..], MSG_VOICE, "listening|");
     #assert guide_label(s[..]) == "LISTENING";
     poke(s[..], t[..], x, y, POINTER_UP, 1, 7);
     #assert s[0].action == ACT_VOICE && cast(string) s[0].outbox[0..<s[0].out_n] == "end" && !s[0].guide_held;
     take_action(s[..]);
-    verse_message(s[..], t[..], MSG_VOICE, "replying|The Metaverse is worlds you walk into. The Haunted House is the first one, and it wants to be scarier.");
+    metaverse_message(s[..], t[..], MSG_VOICE, "replying|The Metaverse is worlds you walk into. The Haunted House is the first one, and it wants to be scarier.");
     #assert guide_label(s[..]) != "LISTENING" && s[0].guide_text_n > 40;
     out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-    n := verse_frame(s[..], t[..], out[..], u[..], w * 2, h * 2, 2, 0, true);
+    n := metaverse_frame(s[..], t[..], out[..], u[..], w * 2, h * 2, 2, 0, true);
     #assert n > 0 && n < MAX_VERTICES;
     for v: 0..<n { vx := out[v * VERTEX_FLOATS]; #assert vx > -60 && vx < w * 2 + 60; }
     // spoken, the reply stays to be read; off, the orb asks again
-    verse_message(s[..], t[..], MSG_VOICE, "off|");
+    metaverse_message(s[..], t[..], MSG_VOICE, "off|");
     #assert s[0].guide_text_n > 40 && guide_label(s[..]) == "HOLD THE ORB TO ASK ME" && !s[0].guide_on;
   }
 }
 
 #test "PLAYTEST NOW goes straight to the Haunted House as a guest, once; Enter does too" {
-  s: [1] VerseState; t: [1] Track;
+  s: [1] MetaverseState; t: [1] Track;
   page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
   #assert batch_has(t[..], "\"ev\":\"landing\"");
   click(s[..], t[..], s[0].boxes[BTN_ENTER]);
@@ -1365,7 +1365,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
 }
 
 #test "a press in the stars makes an orb that grows while held, then joins the rest" {
-  s: [1] VerseState; t: [1] Track;
+  s: [1] MetaverseState; t: [1] Track;
   page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
   #assert s[0].orb_n == 4 && !s[0].holding;
   poke(s[..], t[..], 200, 200, POINTER_DOWN, 0, 1);
@@ -1380,11 +1380,11 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   for i: 0..<120 { orb_step(s[..], 1440, 900); }
   #assert s[0].orb_n >= 1 && s[0].orb_n <= 5;
   for i: 0..<s[0].orb_n { o := s[0].orbs[i]; #assert o.x >= 0 && o.x <= 1440 && o.y >= 0 && o.y <= 900; }
-  #assert verse_cursor(s[..]) == 2 && !verse_wants_text(s[..]);
+  #assert metaverse_cursor(s[..]) == 2 && !metaverse_wants_text(s[..]);
 }
 
 #test "the orbs run at most 8 steps a frame, however long it was, on Aethyr's clock" {
-  s: [1] VerseState; t: [1] Track;
+  s: [1] MetaverseState; t: [1] Track;
   page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
   s[0].still = false;
   frame(s[..], t[..], 3.0);   // a stalled tab: counted as 0.1 s, so 5 or 6 steps with what was owed
@@ -1396,13 +1396,13 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
 }
 
 #test "a returning player's email is filled in and joined again" {
-  s: [1] VerseState; t: [1] Track;
+  s: [1] MetaverseState; t: [1] Track;
   s[0].page = PAGE_LANDING;
-  verse_message(s[..], t[..], MSG_KEPT, "me@example.org");
+  metaverse_message(s[..], t[..], MSG_KEPT, "me@example.org");
   page_at(s[..], t[..], PAGE_LANDING, 1440, 900);
   #assert email_text(s[..]) == "me@example.org" && s[0].req_ready && s[0].req_flags == HTTP_POST;
   #assert text_has(cast(string) s[0].req_body[0..<s[0].req_body_n], "\"how\":\"return\"");
-  verse_requested(s[..], 0);
+  metaverse_requested(s[..], 0);
   click(s[..], t[..], s[0].boxes[BTN_ENTER]);
   #assert s[0].action == 0 && !s[0].req_ready && batch_has(t[..], "\"how\":\"email\"");
   redraw(s[..], t[..], 0.016);
@@ -1410,7 +1410,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
 }
 
 #test "only the Haunted House opens" {
-  s: [1] VerseState; t: [1] Track;
+  s: [1] MetaverseState; t: [1] Track;
   page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
   #assert batch_has(t[..], "\"ev\":\"map\"");
   #assert s[0].shown[BTN_HOUSE] && !s[0].shown[BTN_CODING];
@@ -1440,8 +1440,8 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   }
   #assert fixture >= 0 && !PLANET_LISTED[fixture];
   for all: 0..<2 {
-    s: [1] VerseState; t: [1] Track;
-    if all == 1 { verse_facts(s[..], "url=https://openagents.com/verse?realms=all"); }
+    s: [1] MetaverseState; t: [1] Track;
+    if all == 1 { metaverse_facts(s[..], "url=https://openagents.com/verse?realms=all"); }
     page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
     q := project(s[..], fixture);
     #assert (planet_at(s[..], q.x, q.y) == fixture) == (all == 1);
@@ -1455,12 +1455,12 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
 
 #test "without a pointer, the arrows choose an open world and ENTER opens it" {
   for all: 0..<2 {
-    s: [1] VerseState; t: [1] Track;
-    if all == 1 { verse_facts(s[..], "url=https://openagents.com/verse?realms=all"); }
+    s: [1] MetaverseState; t: [1] Track;
+    if all == 1 { metaverse_facts(s[..], "url=https://openagents.com/verse?realms=all"); }
     page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
     seen := 0; last := -1;
     for i: 0..<PLANETS + 2 {
-      #assert verse_key(s[..], t[..], KEY_RIGHT, 0);
+      #assert metaverse_key(s[..], t[..], KEY_RIGHT, 0);
       p := s[0].over;
       #assert p >= 0 && realm_kind_at(s[..], p) == KIND_OPEN && planet_shown(s[..], p);
       if p > last { seen += 1; last = p; }
@@ -1468,17 +1468,17 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
     open := 0;
     for p: 0..<PLANETS { if PLANET_KIND[p] == KIND_OPEN && (PLANET_LISTED[p] || all == 1) { open += 1; } }
     #assert seen == open;
-    #assert verse_key(s[..], t[..], KEY_LEFT, 0) && verse_key(s[..], t[..], KEY_RIGHT, 0);
+    #assert metaverse_key(s[..], t[..], KEY_LEFT, 0) && metaverse_key(s[..], t[..], KEY_RIGHT, 0);
     s[0].over = -1;
-    #assert verse_key(s[..], t[..], KEY_RIGHT, 0) && s[0].over == HOUSE;
-    #assert verse_key(s[..], t[..], KEY_ENTER, 0);
+    #assert metaverse_key(s[..], t[..], KEY_RIGHT, 0) && s[0].over == HOUSE;
+    #assert metaverse_key(s[..], t[..], KEY_ENTER, 0);
     redraw(s[..], t[..], 0.016);
     #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/haunted-house";
   }
 }
 
 #test "a drag turns the galaxy and opens nothing" {
-  s: [1] VerseState; t: [1] Track;
+  s: [1] MetaverseState; t: [1] Track;
   page_at(s[..], t[..], PAGE_GALAXY, 390, 844);
   before := s[0].rot;
   x := s[0].width * 0.5; y := s[0].height * 0.2;
@@ -1490,7 +1490,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
 }
 
 #test "a finger's first tap names a world, the second opens it" {
-  s: [1] VerseState; t: [1] Track;
+  s: [1] MetaverseState; t: [1] Track;
   page_at(s[..], t[..], PAGE_GALAXY, 390, 844);
   q := project(s[..], HOUSE);
   for tap: 0..<2 {
@@ -1503,30 +1503,30 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
 }
 
 #test "the galaxy asks for your realm and the newest realms, and draws them" {
-  s: [1] VerseState; t: [1] Track;
+  s: [1] MetaverseState; t: [1] Track;
   s[0].page = PAGE_GALAXY;
-  verse_facts(s[..], "tab=1\nplayer=p-0123456789abcdef\naccount=");
+  metaverse_facts(s[..], "tab=1\nplayer=p-0123456789abcdef\naccount=");
   #assert player_text(s[..]) == "p-0123456789abcdef";
   track_init(t[..], "galaxy");
   _ := track_message(t[..], HOST_PAGE, "tab=0123456789abcdef\nfresh=1\nvisitor=feedfacecafebeef\nnow=1000\nnav=50");
   s[0].width = 2880; s[0].height = 1800; s[0].dpr = 2;
   frame(s[..], t[..], 0.016);
   #assert url_is(s[..], "/api/playtest/planets/mine") && s[0].req_flags == HTTP_ANSWER | HTTP_PLAYER;
-  verse_requested(s[..], 2);
-  verse_message(s[..], t[..], HTTP_KIND + 2, "200\n{\"planet\": {\"id\": \"planet-mine1\", \"name\": \"My \\\"Den\\\"\", \"kind\": \"forest\"}, \"invited\": false, \"saved\": null}");
+  metaverse_requested(s[..], 2);
+  metaverse_message(s[..], t[..], HTTP_KIND + 2, "200\n{\"planet\": {\"id\": \"planet-mine1\", \"name\": \"My \\\"Den\\\"\", \"kind\": \"forest\"}, \"invited\": false, \"saved\": null}");
   #assert mine_text(s[..]) == "planet-mine1" && cast(string) s[0].mine_name[0..<s[0].mine_name_n] == "My \"Den\"";
   frame(s[..], t[..], 0.016);
   #assert url_is(s[..], "/api/playtest/planets?after=1000000000");
-  verse_requested(s[..], 3);
-  verse_message(s[..], t[..], HTTP_KIND + 3, "200\n{\"n\": 12, \"planets\": []}");
+  metaverse_requested(s[..], 3);
+  metaverse_message(s[..], t[..], HTTP_KIND + 3, "200\n{\"n\": 12, \"planets\": []}");
   frame(s[..], t[..], 0.016);
   #assert url_is(s[..], "/api/playtest/planets?after=4");
-  verse_requested(s[..], 4);
-  verse_message(s[..], t[..], HTTP_KIND + 4, "200\n{\"n\": 12, \"planets\": [{\"n\": 11, \"id\": \"planet-a\", \"name\": \"Old\", \"kind\": \"village\"}, {\"n\": 12, \"id\": \"planet-b\", \"name\": \"New\", \"kind\": \"cemetery\"}]}");
+  metaverse_requested(s[..], 4);
+  metaverse_message(s[..], t[..], HTTP_KIND + 4, "200\n{\"n\": 12, \"planets\": [{\"n\": 11, \"id\": \"planet-a\", \"name\": \"Old\", \"kind\": \"village\"}, {\"n\": 12, \"id\": \"planet-b\", \"name\": \"New\", \"kind\": \"cemetery\"}]}");
   #assert s[0].realm_n == 2 && realm_id_at(s[..], PLANETS) == "planet-b" && realm_name_at(s[..], PLANETS + 1) == "Old";
   #assert s[0].realm_kind[0] == 2 && s[0].realm_kind[1] == 1 && realm_kind_at(s[..], PLANETS) == KIND_OPEN;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  n := verse_frame(s[..], t[..], out[..], u[..], 2880, 1800, 2, 0, true);
+  n := metaverse_frame(s[..], t[..], out[..], u[..], 2880, 1800, 2, 0, true);
   #assert n > 0 && n < MAX_VERTICES && !s[0].req_ready && s[0].shown[BTN_REALM] && u[5] <= PLATES;
   // a realm on the map opens its world; YOUR REALM opens yours
   q := project(s[..], PLANETS);
@@ -1543,13 +1543,13 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
 
 #test "MAKE YOUR WORLD opens the realm builder, on a phone and a desk" {
   for size: 0..<2 {
-    s: [1] VerseState; t: [1] Track;
+    s: [1] MetaverseState; t: [1] Track;
     page_at(s[..], t[..], PAGE_GALAXY, ifx size == 0 then 402 else 1440, ifx size == 0 then 874 else 900);
     #assert s[0].shown[BTN_REALM] && s[0].mine_n == 0;
     click(s[..], t[..], s[0].boxes[BTN_REALM]);
     frame(s[..], t[..], 0.016);
     #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds/new";
-    #assert batch_has(t[..], "make-realm") && !verse_wants_text(s[..]) && !s[0].req_ready;
+    #assert batch_has(t[..], "make-realm") && !metaverse_wants_text(s[..]) && !s[0].req_ready;
   }
 }
 
@@ -1561,7 +1561,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
 }
 
 #test "the galaxy's GUEST · LOG IN is a control: a press opens /login" {
-  s: [1] VerseState; t: [1] Track;
+  s: [1] MetaverseState; t: [1] Track;
   page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
   #assert s[0].shown[BTN_WHO];
   click(s[..], t[..], s[0].boxes[BTN_WHO]);
@@ -1573,19 +1573,19 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
 #test "MAKE YOUR WORLD hides on the galaxy only when the access answer says make 0" {
   answers := [3] string.["200\ninvites 1\nmake 0\nin 0\ncreator 0\nasked none\n", "200\ninvites 0\nmake 1\nin 0\ncreator 0\nasked none\n", "0\n"];
   for z: 0..<3 {
-    s: [1] VerseState; t: [1] Track;
+    s: [1] MetaverseState; t: [1] Track;
     page_at(s[..], t[..], PAGE_GALAXY, 1440, 900);
-    #assert verse_access_wants(s[..]);
-    verse_access_sent(s[..], 6);
-    verse_message(s[..], t[..], ACCESS_ANSWER + 6, answers[z]);
-    #assert !verse_access_wants(s[..]);
+    #assert metaverse_access_wants(s[..]);
+    metaverse_access_sent(s[..], 6);
+    metaverse_message(s[..], t[..], ACCESS_ANSWER + 6, answers[z]);
+    #assert !metaverse_access_wants(s[..]);
     redraw(s[..], t[..], 0.016);
     #assert s[0].shown[BTN_REALM] == (z != 0);
     realm_button(s[..], t[..]);
     frame(s[..], t[..], 0.016);
     #assert (s[0].action == ACT_NAVIGATE) == (z != 0);
   }
-  l: [1] VerseState; u: [1] Track;
+  l: [1] MetaverseState; u: [1] Track;
   page_at(l[..], u[..], PAGE_LANDING, 1440, 900);
-  #assert !verse_access_wants(l[..]);   // only the galaxy links to the builder
+  #assert !metaverse_access_wants(l[..]);   // only the galaxy links to the builder
 }

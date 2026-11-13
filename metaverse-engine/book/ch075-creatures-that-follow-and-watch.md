@@ -319,7 +319,7 @@ digest :: (s: Scene) -> int {
 play :: (a: f64, b: f64, say: bool) -> int {
   wall := [6] f32.[-3, 0, 9, 3, 3, 10]; c: Colliders; c.boxes = wall[..];
   g := mesh.Ground.{n = 1, cell = 100, west = -50, south = -50}; h: [4] f32;
-  s: Scene; s.dog = verse_follower_place(g, h[..], -8, 24, 0);
+  s: Scene; s.dog = metaverse_follower_place(g, h[..], -8, 24, 0);
   t: clock.FrameClock; frames := 0;
   while s.tick < TICKS {
     f := clock.loop_frame(t, ifx frames % 2 == 0 then a else b); t = f.clock; frames += 1;

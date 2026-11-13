@@ -135,8 +135,8 @@ fixture_canopy :: (i:s32,u:[]f32)->V4 {
   w2:V4=fixture_st(25,u);
   t:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2];
   wd:V2=v2(w2.x,w2.y);
-  theta:f32=verse_style_wind(wg_dot2(wg_sw_xz_f4(FIXTURE_TRUNK()),wd),verse_style_gust(FIXTURE_TRUNK().x,FIXTURE_TRUNK().z,t,wd.x,wd.y,w.z,w.w),t,w.x,w.y,w.z);
-  d:f32=verse_style_canopy_sway(theta,w.x,fixture_st(26,u).y,c[cast(int)i].y/FIXTURE_CANOPY_TOP);
+  theta:f32=metaverse_style_wind(wg_dot2(wg_sw_xz_f4(FIXTURE_TRUNK()),wd),metaverse_style_gust(FIXTURE_TRUNK().x,FIXTURE_TRUNK().z,t,wd.x,wd.y,w.z,w.w),t,w.x,w.y,w.z);
+  d:f32=metaverse_style_canopy_sway(theta,w.x,fixture_st(26,u).y,c[cast(int)i].y/FIXTURE_CANOPY_TOP);
   return wg_add_f4f4(c[cast(int)i],v4(wd.x*d,0.0f32,wd.y*d,0.0f32));
 }
 // Leafy gaps (spec 7): the crown is open where its leaf noise, small clumps over the sphere round the
@@ -146,8 +146,8 @@ fixture_canopy :: (i:s32,u:[]f32)->V4 {
 fixture_canopy_open :: (p:V3,thick:f32,u:[]f32)->bool {
   q:V3=wg_normalize3(wg_sub_f3f3(p,FIXTURE_CANOPY_C()));
   a:f32=wg_atan2(q.z,q.x);
-  n:f32=(verse_style_noise((a*4.1f32)+11.0f32,(q.y*6.0f32)+2.0f32)*0.6f32)+(verse_style_noise((a*9.3f32)+3.0f32,(q.y*12.5f32)+5.0f32)*0.4f32);
-  return verse_style_canopy_open(n+((0.22f32*thick)*thick),fixture_st(26,u).z)>0.5f32;
+  n:f32=(metaverse_style_noise((a*4.1f32)+11.0f32,(q.y*6.0f32)+2.0f32)*0.6f32)+(metaverse_style_noise((a*9.3f32)+3.0f32,(q.y*12.5f32)+5.0f32)*0.4f32);
+  return metaverse_style_canopy_open(n+((0.22f32*thick)*thick),fixture_st(26,u).z)>0.5f32;
 }
 FIXTURE_CANOPY_C :: ()->V3 {return v3(3.9f32,2.5f32,-2.6f32);}
 FIXTURE_BODY :: ()->V4 {return v4(-0.3f32,0.0f32,-1.8f32,0.24f32);} // a figure: capsule from y 0.24 to 1.30, head above
@@ -310,7 +310,7 @@ fixture_trace :: (o:V3,d:V3,u:[]f32)->FixtureHit {
         k:f32=fixture_st(26,u).x;
         nc:V3=wg_normalize3(wg_sub_f3f3(p,v3(c_2.x,c_2.y,c_2.z)));
         nb:V3=wg_normalize3(wg_sub_f3f3(p,FIXTURE_CANOPY_C()));
-        h=FixtureHit.{t=tc,n=wg_normalize3(v3(verse_style_canopy_normal(nc.x,nb.x,k),verse_style_canopy_normal(nc.y,nb.y,k),verse_style_canopy_normal(nc.z,nb.z,k))),albedo=v3(0.11f32,0.27f32,0.05f32),kind=1.0f32,id=4.0f32};
+        h=FixtureHit.{t=tc,n=wg_normalize3(v3(metaverse_style_canopy_normal(nc.x,nb.x,k),metaverse_style_canopy_normal(nc.y,nb.y,k),metaverse_style_canopy_normal(nc.z,nb.z,k))),albedo=v3(0.11f32,0.27f32,0.05f32),kind=1.0f32,id=4.0f32};
       }
       i+=1;
     }
@@ -361,7 +361,7 @@ fixture_trace :: (o:V3,d:V3,u:[]f32)->FixtureHit {
   return h;
 }
 // ---- the key light's shadow map (spec 3; host.js shadowLayout, caster_vs): the scene's shapes
-// drawn from the key light into a depth map round the eye (verse_style_shadow_reach: 60 m, 40 on a
+// drawn from the key light into a depth map round the eye (metaverse_style_shadow_reach: 60 m, 40 on a
 // phone), its middle snapped to whole texels so shadows hold still, and read back here with the
 // style's Poisson taps (9 at 2.5 texels, 4 on a phone), so a cast shadow has the terminator's soft edge.
 FIXTURE_CASTER_SEGMENTS :: cast(u32)24;
@@ -379,13 +379,13 @@ fixture_light_space :: (u:[]f32)->FixtureLight {
   l:V3=wg_sw_xyz_f4(fixture_st(1,u));
   ax:V3=ifx abs(l.y)<0.999f32 then wg_normalize3(wg_cross3(v3(0.0f32,1.0f32,0.0f32),l)) else v3(1.0f32,0.0f32,0.0f32);
   ay:V3=wg_cross3(l,ax);
-  reach:f32=verse_style_shadow_reach(fixture_st(31,u).z);
+  reach:f32=metaverse_style_shadow_reach(fixture_st(31,u).z);
   size:f32=fmax(fixture_st(21,u).x,1.0f32);
   c:V3=v3(FIXTURE_EYE().x,0.0f32,FIXTURE_EYE().z);
-  return FixtureLight.{ax=ax,ay=ay,l=l,mx=verse_style_shadow_snap(wg_dot3(c,ax),reach,size),my=verse_style_shadow_snap(wg_dot3(c,ay),reach,size),reach=reach};
+  return FixtureLight.{ax=ax,ay=ay,l=l,mx=metaverse_style_shadow_snap(wg_dot3(c,ax),reach,size),my=metaverse_style_shadow_snap(wg_dot3(c,ay),reach,size),reach=reach};
 }
 fixture_shadow_place :: (w:V3,k:FixtureLight)->V3 { // -1..1 across the map, and depth
-  return v3(verse_style_shadow_across(wg_dot3(w,k.ax)-k.mx,k.reach),verse_style_shadow_across(wg_dot3(w,k.ay)-k.my,k.reach),verse_style_shadow_depth(wg_dot3(wg_sub_f3f3(w,wg_add_f3f3(wg_mul_ff3(k.mx,k.ax),wg_mul_ff3(k.my,k.ay))),k.l),k.reach));
+  return v3(metaverse_style_shadow_across(wg_dot3(w,k.ax)-k.mx,k.reach),metaverse_style_shadow_across(wg_dot3(w,k.ay)-k.my,k.reach),metaverse_style_shadow_depth(wg_dot3(wg_sub_f3f3(w,wg_add_f3f3(wg_mul_ff3(k.mx,k.ax),wg_mul_ff3(k.my,k.ay))),k.l),k.reach));
 }
 fixture_caster_vs :: (v:u32,i:u32,u:[]f32)->V4 {
   corner:[6]U2=[6]U2.[u2(0,0),u2(1,0),u2(1,1),u2(0,0),u2(1,1),u2(0,1)];
@@ -433,7 +433,7 @@ fixture_map_lit :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerComp
   {
     k:f32=0.0f32;
     while k<taps {
-      o:V2=v2(verse_style_shadow_tap(k,phone,0.0f32),verse_style_shadow_tap(k,phone,1.0f32));
+      o:V2=v2(metaverse_style_shadow_tap(k,phone,0.0f32),metaverse_style_shadow_tap(k,phone,1.0f32));
       lit=lit+gpu_compare(shadow_map,shadow_cmp,wg_add_f2f2(uv,wg_mul_f2f(wg_mul_f2f(o,r),texel_2)),q.z-0.0004f32);
       k=k+1.0f32;
     }
@@ -443,7 +443,7 @@ fixture_map_lit :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerComp
 fixture_shadow :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->f32 {
   // the figure moves in a realm, so it keeps a contact blob under it (spec 3), under the cast shadow
   blob:f32=1.0f32-(smoothstep(0.15f32,0.55f32,wg_length2(wg_sub_f2f2(v2(p.x,p.z),wg_sw_xz_f4(FIXTURE_BODY()))))*stepf(p.y,0.02f32));
-  return verse_style_contact(fixture_map_lit(p,n,u,shadow_map,shadow_cmp),blob,fixture_st(4,u).w);
+  return metaverse_style_contact(fixture_map_lit(p,n,u,shadow_map,shadow_cmp),blob,fixture_st(4,u).w);
 }
 // The painted sky along d (spec 5): from the ray, not the screen, so it holds still as the eye
 // pitches. The gradient by elevation, the horizon band lifted toward the haze, the sun or moon
@@ -458,16 +458,16 @@ fixture_sky :: (d:V3,l:V3,u:[]f32)->V3 {
   // round the sun the haze key painted over the sky, round the moon its light added (as Everglade's)
   h:V3=wg_sw_xyz_f4(fixture_st(13,u));
   z:V3=wg_sw_xyz_f4(fixture_st(12,u));
-  t:f32=verse_style_sky_t(up);
+  t:f32=metaverse_style_sky_t(up);
   c:V3=wg_mix_f3f3f(h,z,t);
-  gain:f32=verse_style_chroma_gain(fixture_sky_sat(c),mix(fixture_sky_sat(h),fixture_sky_sat(z),t),1.0f32);
-  cy:f32=verse_style_luma(c.x,c.y,c.z);
+  gain:f32=metaverse_style_chroma_gain(fixture_sky_sat(c),mix(fixture_sky_sat(h),fixture_sky_sat(z),t),1.0f32);
+  cy:f32=metaverse_style_luma(c.x,c.y,c.z);
   c=wg_max_f3f3(wg_add_f3f3(v3(cy,cy,cy),wg_mul_f3f(wg_sub_f3f3(c,v3(cy,cy,cy)),gain)),v3(0.0f32,0.0f32,0.0f32));
-  c=wg_mix_f3f3f(c,wg_sw_xyz_f4(fixture_st(10,u)),verse_style_sky_band(up,fixture_st(12,u).w));
+  c=wg_mix_f3f3f(c,wg_sw_xyz_f4(fixture_st(10,u)),metaverse_style_sky_band(up,fixture_st(12,u).w));
   ct:f32=wg_dot3(d,l);
   moon:bool=fixture_st(1,u).w>0.5f32;
   disc:f32=smoothstep(cos(fixture_st(14,u).x*1.15f32),cos(fixture_st(14,u).x*0.85f32),ct);
-  halo:f32=(verse_style_halo(ct,fixture_st(14,u).y)*0.5f32)+(verse_style_halo(ct,fixture_st(14,u).z)*0.25f32);
+  halo:f32=(metaverse_style_halo(ct,fixture_st(14,u).y)*0.5f32)+(metaverse_style_halo(ct,fixture_st(14,u).z)*0.25f32);
   if moon {
     c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(fixture_st(0,u)),halo),0.5f32));
   } else {
@@ -479,14 +479,14 @@ fixture_sky :: (d:V3,l:V3,u:[]f32)->V3 {
   if ((up>0.01f32)&&(cl.x>0.0f32)) {
     t_2:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2]; // still: the clouds stand where they were at 0
     p:V2=wg_add_f2f2(wg_mul_f2f(wg_div_f2f(v2(d.x,d.z),up),cl.y),wg_mul_f2f(wg_mul_f2f(wg_sw_xy_f4(fixture_st(25,u)),cl.z),t_2));
-    n:f32=verse_style_cloud_field(p.x,p.y,c2.x,c2.y,cl.w);
-    cover:f32=verse_style_cloud_cover(n,cl.x,c2.z,c2.w);
+    n:f32=metaverse_style_cloud_field(p.x,p.y,c2.x,c2.y,cl.w);
+    cover:f32=metaverse_style_cloud_cover(n,cl.x,c2.z,c2.w);
     toward:V2=wg_mul_f2f(wg_normalize2(wg_add_f2f2(v2(l.x,l.z),v2(0.0001f32,0.0001f32))),260.0f32);
-    lit:f32=verse_style_cloud_lit(n,verse_style_cloud_field(p.x+toward.x,p.y+toward.y,c2.x,c2.y,cl.w));
+    lit:f32=metaverse_style_cloud_lit(n,metaverse_style_cloud_field(p.x+toward.x,p.y+toward.y,c2.x,c2.y,cl.w));
     // at night (the stars out) the clouds go dim and thin, so the moonlit sky stays dark
     night:f32=fixture_st(14,u).w;
     cloud:V3=wg_mul_f3f(wg_mul_f3f(wg_mix_f3f3f(wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(fixture_st(4,u)),fixture_st(17,u).w),0.9f32),wg_sw_xyz_f4(fixture_st(17,u)),lit),fmax(fixture_st(0,u).w,0.3f32)),(1.0f32-(0.75f32*night)));
-    c=wg_mix_f3f3f(c,cloud,(cover*verse_style_cloud_fade(up))*(1.0f32-(0.5f32*night)));
+    c=wg_mix_f3f3f(c,cloud,(cover*metaverse_style_cloud_fade(up))*(1.0f32-(0.5f32*night)));
   }
   return c;
 }
@@ -496,19 +496,19 @@ fixture_sky :: (d:V3,l:V3,u:[]f32)->V3 {
 fixture_banded :: (a:V3,dark:V3,bright:V3,band:f32,u:[]f32)->V3 {
   s:V3=wg_mul_f3f3(a,dark);
   t:V3=wg_sw_xyz_f4(fixture_st(4,u));
-  tl:f32=verse_style_luma(t.x,t.y,t.z);
+  tl:f32=metaverse_style_luma(t.x,t.y,t.z);
   k:f32=fixture_st(21,u).w;
-  m:V3=v3(verse_style_cool(s.x,t.x,tl,k),verse_style_cool(s.y,t.y,tl,k),verse_style_cool(s.z,t.z,tl,k));
-  y:f32=verse_style_luma(s.x,s.y,s.z);
-  ym:f32=verse_style_luma(m.x,m.y,m.z);
-  cool:V3=v3(verse_style_keep_value(m.x,y,ym),verse_style_keep_value(m.y,y,ym),verse_style_keep_value(m.z,y,ym));
+  m:V3=v3(metaverse_style_cool(s.x,t.x,tl,k),metaverse_style_cool(s.y,t.y,tl,k),metaverse_style_cool(s.z,t.z,tl,k));
+  y:f32=metaverse_style_luma(s.x,s.y,s.z);
+  ym:f32=metaverse_style_luma(m.x,m.y,m.z);
+  cool:V3=v3(metaverse_style_keep_value(m.x,y,ym),metaverse_style_keep_value(m.y,y,ym),metaverse_style_keep_value(m.z,y,ym));
   l:V3=wg_mul_f3f3(a,bright);
-  return v3(verse_style_banded(cool.x,l.x,band),verse_style_banded(cool.y,l.y,band),verse_style_banded(cool.z,l.z,band));
+  return v3(metaverse_style_banded(cool.x,l.x,band),metaverse_style_banded(cool.y,l.y,band),metaverse_style_banded(cool.z,l.z,band));
 }
 // Where a surface sits in the bands: the wrapped key times the shadow map, three bands (two for a character).
 fixture_surface_band :: (h:FixtureHit,lit:f32,u:[]f32)->f32 {
-  w:f32=verse_style_wrap(wg_dot3(h.n,wg_sw_xyz_f4(fixture_st(1,u))))*lit;
-  return ifx h.kind>2.5f32 then verse_style_bands2(w,fixture_st(8,u).x,fixture_st(8,u).y) else verse_style_bands(w,fixture_st(7,u).x,fixture_st(7,u).y,fixture_st(7,u).z,fixture_st(7,u).w);
+  w:f32=metaverse_style_wrap(wg_dot3(h.n,wg_sw_xyz_f4(fixture_st(1,u))))*lit;
+  return ifx h.kind>2.5f32 then metaverse_style_bands2(w,fixture_st(8,u).x,fixture_st(8,u).y) else metaverse_style_bands(w,fixture_st(7,u).x,fixture_st(7,u).y,fixture_st(7,u).z,fixture_st(7,u).w);
 }
 fixture_shade :: (h:FixtureHit,o:V3,d:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V3 {
   if (h.kind>3.5f32) {
@@ -522,7 +522,7 @@ fixture_shade :: (h:FixtureHit,o:V3,d:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:
   lit:f32=fixture_shadow(p,n,u,shadow_map,shadow_cmp);
   band:f32=fixture_surface_band(h,lit,u);
   key:V3=wg_mul_f3f(wg_sw_xyz_f4(fixture_st(0,u)),fixture_st(0,u).w);
-  amb:V3=v3(verse_style_ambient(n.y,fixture_st(5,u).x,fixture_st(6,u).x,fixture_st(5,u).w),verse_style_ambient(n.y,fixture_st(5,u).y,fixture_st(6,u).y,fixture_st(5,u).w),verse_style_ambient(n.y,fixture_st(5,u).z,fixture_st(6,u).z,fixture_st(5,u).w));
+  amb:V3=v3(metaverse_style_ambient(n.y,fixture_st(5,u).x,fixture_st(6,u).x,fixture_st(5,u).w),metaverse_style_ambient(n.y,fixture_st(5,u).y,fixture_st(6,u).y,fixture_st(5,u).w),metaverse_style_ambient(n.y,fixture_st(5,u).z,fixture_st(6,u).z,fixture_st(5,u).w));
   dark:V3=wg_mul_f3f3(wg_sw_xyz_f4(fixture_st(4,u)),amb);
   bright:V3=wg_add_f3f3(key,amb);
   a:V3=h.albedo;
@@ -545,25 +545,25 @@ fixture_shade :: (h:FixtureHit,o:V3,d:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:
     rs:f32=ifx character then fixture_st(3,u).x else fixture_st(2,u).w;
     // the rim is the key's light: a cast shadow takes it too
     // (not on a blade: a field seen edge on would all be rim)
-    c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(fixture_st(2,u)),verse_style_rim(wg_dot3(n,wg_neg_f3(d)),ndl,fixture_st(3,u).y,fixture_st(3,u).z,rs)),lit),ifx h.id==12.0f32 then 0.0f32 else 1.0f32));
+    c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(fixture_st(2,u)),metaverse_style_rim(wg_dot3(n,wg_neg_f3(d)),ndl,fixture_st(3,u).y,fixture_st(3,u).z,rs)),lit),ifx h.id==12.0f32 then 0.0f32 else 1.0f32));
   }
   // the haze, the same for everything (spec 4)
   hz:V4=fixture_st(9,u);
-  f:f32=verse_style_haze(h.t,p.y,0.0f32,hz.x,hz.y,hz.z,hz.w);
+  f:f32=metaverse_style_haze(h.t,p.y,0.0f32,hz.x,hz.y,hz.z,hz.w);
   hz3:V3=wg_sw_xyz_f4(fixture_st(10,u));
-  hue:V3=v3(verse_style_haze_hue(hz3.x,0.0f32,f,hz.z),verse_style_haze_hue(hz3.y,1.0f32,f,hz.z),verse_style_haze_hue(hz3.z,2.0f32,f,hz.z));
-  hc:V3=wg_mix_f3f3f(hue,wg_sw_xyz_f4(fixture_st(11,u)),verse_style_haze_glow(wg_dot3(d,l)));
-  return v3(verse_style_fog(c.x,hc.x,f),verse_style_fog(c.y,hc.y,f),verse_style_fog(c.z,hc.z,f));
+  hue:V3=v3(metaverse_style_haze_hue(hz3.x,0.0f32,f,hz.z),metaverse_style_haze_hue(hz3.y,1.0f32,f,hz.z),metaverse_style_haze_hue(hz3.z,2.0f32,f,hz.z));
+  hc:V3=wg_mix_f3f3f(hue,wg_sw_xyz_f4(fixture_st(11,u)),metaverse_style_haze_glow(wg_dot3(d,l)));
+  return v3(metaverse_style_fog(c.x,hc.x,f),metaverse_style_fog(c.y,hc.y,f),metaverse_style_fog(c.z,hc.z,f));
 }
 fixture_tone :: (c:V3,u:[]f32)->V3 {
   if (fixture_st(18,u).w<0.5f32) {
     return c;
   }
   e:f32=fixture_st(18,u).x;
-  t:V3=v3(verse_style_tone(c.x,e),verse_style_tone(c.y,e),verse_style_tone(c.z,e));
-  y:f32=verse_style_luma(t.x,t.y,t.z);
-  t=v3(verse_style_saturation(t.x,y,fixture_st(18,u).y),verse_style_saturation(t.y,y,fixture_st(18,u).y),verse_style_saturation(t.z,y,fixture_st(18,u).y));
-  return v3(verse_style_lift(t.x,fixture_st(18,u).z),verse_style_lift(t.y,fixture_st(18,u).z),verse_style_lift(t.z,fixture_st(18,u).z));
+  t:V3=v3(metaverse_style_tone(c.x,e),metaverse_style_tone(c.y,e),metaverse_style_tone(c.z,e));
+  y:f32=metaverse_style_luma(t.x,t.y,t.z);
+  t=v3(metaverse_style_saturation(t.x,y,fixture_st(18,u).y),metaverse_style_saturation(t.y,y,fixture_st(18,u).y),metaverse_style_saturation(t.z,y,fixture_st(18,u).y));
+  return v3(metaverse_style_lift(t.x,fixture_st(18,u).z),metaverse_style_lift(t.y,fixture_st(18,u).z),metaverse_style_lift(t.z,fixture_st(18,u).z));
 }
 // The eye's ray through pixel p, from a fixed camera.
 fixture_ray :: (p:V2,u:[]f32)->V3 {
@@ -613,7 +613,7 @@ fixture_paint :: (p:V2,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,sha
     // black for sky, what glows, and what the haze has taken
     wp:V3=wg_add_f3f3(FIXTURE_EYE(),wg_mul_f3f(d,h.t));
     hz:V4=fixture_st(9,u);
-    if (((h.kind<0.5f32)||(h.kind>3.5f32))||(verse_style_haze(h.t,wp.y,0.0f32,hz.x,hz.y,hz.z,hz.w)>=0.35f32)) {
+    if (((h.kind<0.5f32)||(h.kind>3.5f32))||(metaverse_style_haze(h.t,wp.y,0.0f32,hz.x,hz.y,hz.z,hz.w)>=0.35f32)) {
       return v4(0.0f32,0.0f32,0.0f32,0.0f32);
     }
     return v4(ifx fixture_surface_band(h,fixture_shadow(wp,h.n,u,shadow_map,shadow_cmp),u)<0.5f32 then 1.0f32 else 0.0f32,h.id/16.0f32,1.0f32,0.0f32);
@@ -621,7 +621,7 @@ fixture_paint :: (p:V2,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,sha
   c:V3=v3(0.0f32,0.0f32,0.0f32);
   if (h.kind==0.0f32) {
     c=fixture_sky(d,wg_sw_xyz_f4(fixture_st(1,u)),u);
-    shaft_glow[0]=verse_style_shaft_source(wg_dot3(d,wg_sw_xyz_f4(fixture_st(1,u))));
+    shaft_glow[0]=metaverse_style_shaft_source(wg_dot3(d,wg_sw_xyz_f4(fixture_st(1,u))));
     c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_make_f3_f(fixture_stars(p,u)),fixture_st(14,u).w),0.6f32));
   } else {
     c=fixture_shade(h,FIXTURE_EYE(),d,u,shadow_map,shadow_cmp);
@@ -631,18 +631,18 @@ fixture_paint :: (p:V2,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,sha
     hx:FixtureHit=fixture_trace(FIXTURE_EYE(),fixture_ray(wg_add_f2f2(p,v2(w,0.0f32)),u),u);
     hy:FixtureHit=fixture_trace(FIXTURE_EYE(),fixture_ray(wg_add_f2f2(p,v2(0.0f32,w)),u),u);
     edge:f32=ifx (hx.id!=h.id)||(hy.id!=h.id) then 1.0f32 else 0.0f32;
-    edge=fmax(edge,fmax(verse_outline_crease(wg_dot3(h.n,hx.n)),verse_outline_crease(wg_dot3(h.n,hy.n))));
+    edge=fmax(edge,fmax(metaverse_outline_crease(wg_dot3(h.n,hx.n)),metaverse_outline_crease(wg_dot3(h.n,hy.n))));
     wp:V3=wg_add_f3f3(FIXTURE_EYE(),wg_mul_f3f(d,h.t));
     hz:V4=fixture_st(9,u);
-    f:f32=verse_style_haze(h.t,wp.y,0.0f32,hz.x,hz.y,hz.z,hz.w);
-    shaft_glow[0]=verse_style_shaft_source(wg_dot3(d,wg_sw_xyz_f4(fixture_st(1,u))))*f; // far, hazed things let the glow through
+    f:f32=metaverse_style_haze(h.t,wp.y,0.0f32,hz.x,hz.y,hz.z,hz.w);
+    shaft_glow[0]=metaverse_style_shaft_source(wg_dot3(d,wg_sw_xyz_f4(fixture_st(1,u))))*f; // far, hazed things let the glow through
     style:f32=fixture_st(31,u).y;
     cap:f32=fixture_st(31,u).x;
-    c=v3(verse_outline_styled(style,c.x,edge,cap,f),verse_outline_styled(style,c.y,edge,cap,f),verse_outline_styled(style,c.z,edge,cap,f));
+    c=v3(metaverse_outline_styled(style,c.x,edge,cap,f),metaverse_outline_styled(style,c.y,edge,cap,f),metaverse_outline_styled(style,c.z,edge,cap,f));
   }
   // linear light and the share of it that blooms; post_fs blooms, tones and encodes it
   b:V4=fixture_st(19,u);
-  return v4(c.x,c.y,c.z,ifx h.kind>3.5f32 then 1.0f32 else verse_style_bloom_share(verse_style_luma(c.x,c.y,c.z),b.x,b.y));
+  return v4(c.x,c.y,c.z,ifx h.kind>3.5f32 then 1.0f32 else metaverse_style_bloom_share(metaverse_style_luma(c.x,c.y,c.z),b.x,b.y));
 }
 // ---- the grass (spec 8): one tapered triangle a blade, instanced from a hash of its cell (no buffer of
 // blades), 24 a square metre to 32 m ahead of the eye (8 to 18 m on a phone), shrinking over the last
@@ -658,9 +658,9 @@ fixture_path_albedo :: (q:V2)->V3 {
   return wg_mix_f3f3f(v3(0.30f32,0.21f32,0.10f32),v3(0.26f32,0.20f32,0.11f32),0.5f32+(0.5f32*sin(q.x*0.17f32)));
 }
 fixture_grass_mask :: (q:V2)->f32 { // 1 where grass grows: none on the path or in the pond
-  path:f32=fmin(verse_style_segment(q.x,q.y,FIXTURE_PATH0().x,FIXTURE_PATH0().y,FIXTURE_PATH0().z,FIXTURE_PATH0().w),verse_style_segment(q.x,q.y,FIXTURE_PATH1().x,FIXTURE_PATH1().y,FIXTURE_PATH1().z,FIXTURE_PATH1().w))-FIXTURE_PATH_W;
+  path:f32=fmin(metaverse_style_segment(q.x,q.y,FIXTURE_PATH0().x,FIXTURE_PATH0().y,FIXTURE_PATH0().z,FIXTURE_PATH0().w),metaverse_style_segment(q.x,q.y,FIXTURE_PATH1().x,FIXTURE_PATH1().y,FIXTURE_PATH1().z,FIXTURE_PATH1().w))-FIXTURE_PATH_W;
   pond:f32=wg_length2(wg_sub_f2f2(q,wg_sw_xz_f4(FIXTURE_POND())))-FIXTURE_POND().w;
-  return verse_style_grass_clear(path)*verse_style_grass_clear(pond);
+  return metaverse_style_grass_clear(path)*metaverse_style_grass_clear(pond);
 }
 FixtureG :: struct {pos:V4; world:V3; n:V3; albedo:V3; }
 fixture_grass_vs :: (v:u32,i:u32,u:[]f32)->FixtureG {
@@ -682,24 +682,24 @@ fixture_grass_vs :: (v:u32,i:u32,u:[]f32)->FixtureG {
   k:V2=wg_add_f2f2(c,v2(b*7.13f32,b*(-3.71f32)));
   q:V2=wg_add_f2f2(c,v2(fixture_hash(k),fixture_hash(wg_add_f2f2(k,v2(19.1f32,7.7f32)))));
   dist:f32=wg_length2(wg_sub_f2f2(q,wg_sw_xz_f3(FIXTURE_EYE())));
-  tall:f32=(verse_style_blade_height(fixture_hash(wg_add_f2f2(k,v2(3.3f32,41.9f32))),g.w,g2.x)*verse_style_grass_fade(dist,r,g.z))*fixture_grass_mask(q);
+  tall:f32=(metaverse_style_blade_height(fixture_hash(wg_add_f2f2(k,v2(3.3f32,41.9f32))),g.w,g2.x)*metaverse_style_grass_fade(dist,r,g.z))*fixture_grass_mask(q);
   if (tall<0.02f32) {
     return o;
   } // none here: a point, nothing drawn
   // the wind, frozen at t = 0 under still (goldens, reduced motion)
   t:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2];
   wd:V2=v2(w2.x,w2.y);
-  theta:f32=verse_style_wind(wg_dot2(q,wd),verse_style_gust(q.x,q.y,t,wd.x,wd.y,w.z,w.w),t,w.x,w.y,w.z);
+  theta:f32=metaverse_style_wind(wg_dot2(q,wd),metaverse_style_gust(q.x,q.y,t,wd.x,wd.y,w.z,w.w),t,w.x,w.y,w.z);
   // a mover (the figure) parts the blades within 0.7 m: they lean away from it
   away:V2=wg_sub_f2f2(q,wg_sw_xz_f4(FIXTURE_BODY()));
-  part:f32=verse_style_part(wg_length2(away),w2.w);
-  lean:V2=wg_add_f2f2(wg_mul_f2f(wd,verse_style_bend(theta,tall,1.0f32)),wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_normalize2(wg_add_f2f2(away,v2(0.0001f32,0.0001f32))),tall),0.85f32),part));
+  part:f32=metaverse_style_part(wg_length2(away),w2.w);
+  lean:V2=wg_add_f2f2(wg_mul_f2f(wd,metaverse_style_bend(theta,tall,1.0f32)),wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_normalize2(wg_add_f2f2(away,v2(0.0001f32,0.0001f32))),tall),0.85f32),part));
   ang:f32=fixture_hash(wg_add_f2f2(k,v2(5.9f32,13.3f32)))*6.2831853f32;
   across:V3=wg_mul_f3f(wg_mul_f3f(v3(cos(ang),0.0f32,sin(ang)),g2.y),0.5f32);
   world:V3=v3(q.x,0.0f32,q.y);
   base:V3=fixture_meadow(q);
   hj:f32=fixture_hash(wg_add_f2f2(k,v2(31.7f32,2.9f32)));
-  a:V3=v3(verse_style_jitter(base.x,0.0f32,hj,g2.w),verse_style_jitter(base.y,1.0f32,hj,g2.w),verse_style_jitter(base.z,2.0f32,hj,g2.w));
+  a:V3=v3(metaverse_style_jitter(base.x,0.0f32,hj,g2.w),metaverse_style_jitter(base.y,1.0f32,hj,g2.w),metaverse_style_jitter(base.z,2.0f32,hj,g2.w));
   if (v==0) {
     world=wg_sub_f3f3(world,across);
     o.albedo=wg_mul_f3f(a,FIXTURE_ROOT);
@@ -708,12 +708,12 @@ fixture_grass_vs :: (v:u32,i:u32,u:[]f32)->FixtureG {
     o.albedo=wg_mul_f3f(a,FIXTURE_ROOT);
   } else {
     world=wg_add_f3f3(world,v3(lean.x,sqrt(fmax((tall*tall)-wg_dot2(lean,lean),(tall*tall)*0.15f32)),lean.y));
-    o.albedo=v3(verse_style_tip(a.x,0.0f32,g2.z),verse_style_tip(a.y,1.0f32,g2.z),verse_style_tip(a.z,2.0f32,g2.z));
+    o.albedo=v3(metaverse_style_tip(a.x,0.0f32,g2.z),metaverse_style_tip(a.y,1.0f32,g2.z),metaverse_style_tip(a.z,2.0f32,g2.z));
   }
   // the normal: up, tilted toward the light by the bend (the bright bands rolling across the field)
   l:V3=wg_sw_xyz_f4(fixture_st(1,u));
   lx:V2=wg_normalize2(wg_add_f2f2(v2(l.x,l.z),v2(0.0001f32,0.0001f32)));
-  tilt:f32=verse_style_grass_tilt(theta,w.x,w2.z);
+  tilt:f32=metaverse_style_grass_tilt(theta,w.x,w2.z);
   o.n=wg_normalize3(v3(lx.x*sin(tilt),cos(tilt),lx.y*sin(tilt)));
   e:M3=fixture_eye_basis(u);
   rel:V3=wg_sub_f3f3(world,FIXTURE_EYE());
@@ -729,7 +729,7 @@ fixture_grass_fs :: (g:FixtureG,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCo
   h:FixtureHit=FixtureHit.{t=wg_length3(wg_sub_f3f3(g.world,FIXTURE_EYE())),n=wg_normalize3(g.n),albedo=g.albedo,kind=1.0f32,id=12.0f32};
   c:V3=fixture_shade(h,FIXTURE_EYE(),d,u,shadow_map,shadow_cmp);
   b:V4=fixture_st(19,u);
-  return FixtureLit.{light=v4(c.x,c.y,c.z,verse_style_bloom_share(verse_style_luma(c.x,c.y,c.z),b.x,b.y)),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+  return FixtureLit.{light=v4(c.x,c.y,c.z,metaverse_style_bloom_share(metaverse_style_luma(c.x,c.y,c.z),b.x,b.y)),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
 }
 // ---- the pack's meshes: its vertices (pack_realm.py: the Haunted House's 48
 // bytes, position, normal, uv, colour with its layer in the top byte), a
@@ -803,7 +803,7 @@ fixture_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eigh
   uv:V2=wg_div_f2f2(v2(pos.x,pos.y),wg_at2(u,0));
   b:V3=wg_add_f3f3(wg_mul_f3f(wg_sw_rgb_f4(gpu_sample_level(post_quarter,post_lin,uv,0.0f32)),0.55f32),wg_mul_f3f(wg_sw_rgb_f4(gpu_sample_level(post_eighth,post_lin,uv,0.0f32)),0.45f32));
   m:f32=fixture_st(19,u).z;
-  c:V3=v3(verse_style_bloom_mix(light.x,b.x,m),verse_style_bloom_mix(light.y,b.y,m),verse_style_bloom_mix(light.z,b.z,m));
+  c:V3=v3(metaverse_style_bloom_mix(light.x,b.x,m),metaverse_style_bloom_mix(light.y,b.y,m),metaverse_style_bloom_mix(light.z,b.z,m));
   c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_ff3(fixture_shafts(v2(pos.x,pos.y),uv,u,post_aux,post_lin),wg_sw_xyz_f4(fixture_st(11,u))),fixture_st(0,u).w));
   return wg_make_f4_f3f(fixture_panels(v2(pos.x,pos.y),wg_pow_f3f3(wg_clamp_f3f3f3(fixture_tone(c,u),v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),wg_make_f3_f(1.0f32/2.2f32)),u),1.0f32);
 }
@@ -814,7 +814,7 @@ fixture_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eigh
 fixture_shafts :: (p:V2,uv:V2,u:[]f32,post_aux:Tex2D,post_lin:Sampler)->f32 {
   sh:V4=fixture_st(20,u);
   l:V3=fixture_screen_at(wg_sw_xyz_f4(fixture_st(1,u)),u);
-  fade:f32=verse_style_shaft_fade(l.x,l.y,sh.w)*l.z;
+  fade:f32=metaverse_style_shaft_fade(l.x,l.y,sh.w)*l.z;
   if ((fade<=0.0f32)||(sh.z<=0.0f32)) {
     return 0.0f32;
   }
@@ -829,11 +829,11 @@ fixture_shafts :: (p:V2,uv:V2,u:[]f32,post_aux:Tex2D,post_lin:Sampler)->f32 {
       if (wg_any_lt_f2f2(q,v2(0.0f32,0.0f32))||wg_any_gt_f2f2(q,v2(1.0f32,1.0f32))) {
         break;
       }
-      sum=sum+(gpu_sample_level(post_aux,post_lin,q,0.0f32).x*verse_style_shaft_tap(i,sh.y));
+      sum=sum+(gpu_sample_level(post_aux,post_lin,q,0.0f32).x*metaverse_style_shaft_tap(i,sh.y));
       i=i+1.0f32;
     }
   }
-  return verse_style_shaft(sum,verse_style_shaft_total(n,sh.y),sh.z,fade);
+  return metaverse_style_shaft(sum,metaverse_style_shaft_total(n,sh.y),sh.z,fade);
 }
 // ---- the strokes: one quad per stroke or light (fixture.coax lit, tinted_dot)
 FixtureV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }

@@ -6,7 +6,7 @@
 // the pack's catalog here, its vertices, indices and layers on the GPU, and two stores, the frame's
 // instances (zone_scene) and the clips baked once (zone_bake); fivelab-fx.wgsl draws the effects
 // (puffs) after the figures. Your body walks on Everglade's controller as fivelab-face.c walks it:
-// everglade-step.coax (metaverse-engine/move/walk.coax, with player.coax's verse_player_*) steps it on the keys,
+// everglade-step.coax (metaverse-engine/move/walk.coax, with player.coax's metaverse_player_*) steps it on the keys,
 // and the zone says where it may stand and draws it.
 #include "archery-range.h"
 #include "Everglade-step.h"
@@ -69,13 +69,13 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   width = w; height = h; dpr = scale; quality_state = state; zone_quality_frame(zone(state), dt, w, h, scale, golden);
   // your body's step on Everglade's controller, in everglade-face.c's order
   coax_t_ZoneWalk walk = zone_walk(zone(state));
-  if (walk.put) player = verse_player_place(walk.x, walk.y, walk.z, walk.face);
+  if (walk.put) player = metaverse_player_place(walk.x, walk.y, walk.z, walk.face);
   if (walk.on) {
     float frame = dt;
-    float step = verse_player_counts(player, frame);
+    float step = metaverse_player_counts(player, frame);
     coax_t_EgMoveIn input = zone_move_in(zone(state));
     input.pad_x = sticks.pad_x; input.pad_y = sticks.pad_y;
-    input.run = verse_runs(input.run, sticks.run, sticks.pad_x, sticks.pad_y);
+    input.run = metaverse_runs(input.run, sticks.run, sticks.pad_x, sticks.pad_y);
     input.jump = input.jump || sticks.jump;
     coax_t_EgMoveWorld mw = zone_move_world(zone(state), player.body.pos.x, player.body.pos.z);
     player.body = eg_step_begin(player.body, input, mw, step); player.cam.theta = input.theta;
@@ -87,15 +87,15 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     coax_t_EgJump jump = zone_jump_plan(zone(state), origin, intent, player.body.jumps.waiting > 0);
     player.body = eg_step_advance_jump(player.body, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){walls.data, mw.walls * 6}, (coax_v_f32){floors.data, mw.floors * 10}, frame, zone_move_scale(zone(state)), jump);
     coax_t_EgBody kept = zone_keep_body(zone(state), origin, eg_step_body(player.body));
-    if (kept.x != player.body.pos.x || kept.z != player.body.pos.z) player = verse_player_constrain(player, kept.x, kept.z);
+    if (kept.x != player.body.pos.x || kept.z != player.body.pos.z) player = metaverse_player_constrain(player, kept.x, kept.z);
     player.body = eg_step_put(player.body, kept);
     zone_rest_motion(zone(state), origin, kept, intent.walk, intent.jump);
-    coax_t_Vec3 feet = verse_player_feet(player);
-    zone_you(zone(state), feet.x, feet.y, feet.z, verse_player_face(player), !player.body.on_ground, false, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
+    coax_t_Vec3 feet = metaverse_player_feet(player);
+    zone_you(zone(state), feet.x, feet.y, feet.z, metaverse_player_face(player), !player.body.on_ground, false, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   } else {
-    sticks = verse_sticks_reset();
+    sticks = metaverse_sticks_reset();
   }
-  sticks = verse_sticks_used(sticks);
+  sticks = metaverse_sticks_used(sticks);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_range_max_vertices() * coaxial_range_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_range_uniform_floats()};
   int64_t n = range_frame(at(state), out, u, w, h, scale, dt, still != 0);
@@ -140,7 +140,7 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr stat
 
 EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int32_t mods) { (void)mods; return zone_key(zone(state), key) ? 1u : 0u; }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) { return zone_key_up(zone(state), key, mods) ? 1u : 0u; }
-EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { zone_blur(zone(state)); sticks = verse_sticks_reset(); }
+EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { zone_blur(zone(state)); sticks = metaverse_sticks_reset(); }
 /* Aethyr host contract v1 (metaverse-engine/host/README.md), as fivelab-face.c has it: a native build says so;
    the browser's module does not yet. */
 #if defined(COAXIAL_NATIVE_ADDRESS)
@@ -151,13 +151,13 @@ EXPORT("coaxial_focus") void coaxial_focus(cx_face_addr state) { (void)state; }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   bool took = range_pointer(at(state), x, y, phase, kind, id);
   // the finger the zone says is the thumb's moves the stick (metaverse-engine/core/sticks.coax)
-  if (zone_thumb(zone(state))) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  if (zone_thumb(zone(state))) sticks = metaverse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return took ? 1u : 0u;
 }
 // Additive DOM input hook: the mouse's buttons, for the bow.
 EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
   bool took = range_pointer_buttons(at(state), x, y, phase, kind, id, button);
-  if (zone_thumb(zone(state))) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  if (zone_thumb(zone(state))) sticks = metaverse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return took ? 1u : 0u;
 }
 EXPORT("coaxial_wheel") uint32_t coaxial_wheel(cx_face_addr state, float dy) { return zone_wheel(zone(state), dy) ? 1u : 0u; }

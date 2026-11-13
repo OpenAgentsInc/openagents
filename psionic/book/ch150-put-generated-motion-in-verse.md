@@ -352,7 +352,7 @@ it is refused. The floor here is the ankle's bind height, 0.086 m.
 // a different joint count or more frames than the slot holds is refused
 // and the bytes are left as they were.
 mv_splice :: (b:[]u8,h:MvHandoff)->MvStatus {
-    c:=verse_cast_open(b);
+    c:=metaverse_cast_open(b);
     if !c.ok {return MvStatus.admission;}
     if h.status!=MvStatus.ok || h.joints!=c.joints {return MvStatus.shape;}
     if h.frames>frames_of(b,c,Move.dancing) {return MvStatus.length;}
@@ -368,10 +368,10 @@ mv_splice :: (b:[]u8,h:MvHandoff)->MvStatus {
 ```
 
 The splice writes into the dance slot because the dance is the clip
-`metaverse/cast.coax` plays on request (`verse_cast_dance`) while you stand,
+`metaverse/cast.coax` plays on request (`metaverse_cast_dance`) while you stand,
 fading 0.18 s into it, and moving or jumping fades it back out. Nothing in
 the Metaverse changes: the Cast is the same format, admitted by the same
-`verse_cast_open`, and only the slot's frames and its frame count differ.
+`metaverse_cast_open`, and only the slot's frames and its frame count differ.
 The splice refuses a Cast that is not admitted, a handoff of a different
 joint count, or more frames than the slot holds, and then writes nothing.
 
@@ -420,12 +420,12 @@ playing it.
 <!-- source: psionic/examples/motion-verse.coax play -->
 ```jai
     bytes:[MVX_BYTES]u8;n:=mv_cast_build(bytes[..],30);b:=bytes[0..<n];
-    before:=mv_digest(b);put:=mv_splice(b,h);c:=verse_cast_open(b);
+    before:=mv_digest(b);put:=mv_splice(b,h);c:=metaverse_cast_open(b);
     print("Cast of % bytes: splice %, admitted %, dance % frames, digest % (was %)\n",n,put,c.ok,frames_of(b,c,Move.dancing),mv_digest(b),before);
     again:=mv_scene(s,predictor[..],decoder[..],7,4,0,1,budget,leg,map,rig,3);copy:[MVX_BYTES]u8;m:=mv_cast_build(copy[..],30);
     copied:=mv_splice(copy[0..<m],again.handoff);
     print("the same destination and weights again: %, digest %\n",copied,mv_digest(copy[0..<m]));
-    a:Anim;a=verse_cast_update(b,c,a,0,false,0);a=verse_cast_dance(a);a=verse_cast_update(b,c,a,0,false,1);
+    a:Anim;a=metaverse_cast_update(b,c,a,0,false,0);a=metaverse_cast_dance(a);a=metaverse_cast_update(b,c,a,0,false,1);
     print("at 1 s: %, fading from %\n",a.move,a.from);
     out:[MV_JOINTS]Joint;mvx_pose(b,c,a,1.5,out[..]);
     far:=0.0;for k:0..<rig.count {far=mb_larger(far,mvx_far(mvx_v(moved(out[k],v3(f32(rig.bind[k][0]),f32(rig.bind[k][1]),f32(rig.bind[k][2])))),mv_world(h.q[15][k],h.t[15][k],rig.bind[k])));}
@@ -433,7 +433,7 @@ playing it.
     hips:[3]f64;
     for i:0..<3 {mvx_pose(b,c,a,1+0.09*f64(i),out[..]);hips[i]=f64(moved(out[1],v3(f32(rig.bind[1][0]),f32(rig.bind[1][1]),f32(rig.bind[1][2]))).y);}
     print("hips height (mm) at 1, 1.09 and 1.18 s, into, halfway and out of the fade: % % %\n",mvx_mm(hips[0]),mvx_mm(hips[1]),mvx_mm(hips[2]));
-    a=verse_cast_update(b,c,a,1,false,2);
+    a=metaverse_cast_update(b,c,a,1,false,2);
     print("walking at 2 s: %, fading from %\n",a.move,a.from);
 ```
 
@@ -528,7 +528,7 @@ worst, and the leg barely moves: the foot skates. That is what the check is
 for, and what trained weights have to fix.
 
 The Metaverse plays the clip. At 1 s the dance is asked for and fades in from the
-idle. At 1.5 s the Metaverse's own `verse_cast_pose` draws dance frame 15, and every
+idle. At 1.5 s the Metaverse's own `metaverse_cast_pose` draws dance frame 15, and every
 one of the 65 joints is within 10 µm of the handoff (the rows are F32). The
 hips are 0.908 m up in the idle and 0.982 m in the dance; halfway through
 the fade they are at 0.945 m, the average. Walking at 2 s fades the dance
@@ -613,7 +613,7 @@ loading it also runs those of chapters 147 to 149 and of `metaverse/cast.coax`.
   the mapped skeleton within 10⁻⁹, and every other joint keeps its bone
   length and turns with its parent.
 - **The Metaverse.** A splice writes x, y, z, w and the translation as `metaverse/cast.coax`
-  reads them; `verse_cast_pose` draws each dance frame within 10 µm of the
+  reads them; `metaverse_cast_pose` draws each dance frame within 10 µm of the
   handoff; the fade starts at the idle, ends at the dance, keeps each bone's
   length between the idle's and the dance's halfway, and fades out to the
   walk. Refused splices leave the bytes, and the digest covers the dance's

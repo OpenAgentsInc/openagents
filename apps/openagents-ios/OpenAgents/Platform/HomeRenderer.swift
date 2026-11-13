@@ -8,14 +8,14 @@ private struct HauntUniform { var rows: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float
 private struct CastUniform { var rows: (SIMD4<Float>, SIMD4<Float>, SIMD4<Float>, SIMD4<Float>); var size: SIMD2<Float>; var scale: Float; var pad: Float }
 
 /// The Grid's cast for one frame: the view matrix by rows
-/// (verse_grid_view) and a call that writes every joint's palette entry
-/// into the buffer it is given (verse_cast_pose, verse_cast_robots_pose).
+/// (metaverse_grid_view) and a call that writes every joint's palette entry
+/// into the buffer it is given (metaverse_cast_pose, metaverse_cast_robots_pose).
 struct CastFrame {
     var view: [Float]
     var pose: (coax_v_t_Joint) -> Bool
 }
 
-/// Cast.bin's buffers on the GPU, at the offsets verse_cast_open admitted,
+/// Cast.bin's buffers on the GPU, at the offsets metaverse_cast_open admitted,
 /// and the character's texture layers.
 final class CastAssets {
     let cast: coax_t_Cast
@@ -23,7 +23,7 @@ final class CastAssets {
     fileprivate let robotVertices: MTLBuffer, robotFaces: MTLBuffer, robotLines: MTLBuffer
     fileprivate let sheets: MTLTexture
     fileprivate var palettes: [MTLBuffer] = []
-    /// The terminal ahead of where you arrive (verse_grid_props): one
+    /// The terminal ahead of where you arrive (metaverse_grid_props): one
     /// rigid mesh on an identity joint, drawn like a robot.
     fileprivate let propVertices: MTLBuffer, propFaces: MTLBuffer, propLines: MTLBuffer, still: MTLBuffer
     fileprivate let propFaceCount: Int, propLineCount: Int
@@ -56,11 +56,11 @@ final class CastAssets {
         guard let command = queue.makeCommandBuffer(), let blit = command.makeBlitCommandEncoder() else { throw HomeError.resource("Cast textures") }
         blit.generateMipmaps(for: sheets); blit.endEncoding(); command.commit()
         self.sheets = sheets
-        var vertices = [UInt8](repeating: 0, count: Int(verse_grid_prop_vertices()) * 64)
-        var faces = [UInt32](repeating: 0, count: Int(verse_grid_prop_faces()))
-        var lines = [UInt32](repeating: 0, count: Int(verse_grid_prop_lines()))
+        var vertices = [UInt8](repeating: 0, count: Int(metaverse_grid_prop_vertices()) * 64)
+        var faces = [UInt32](repeating: 0, count: Int(metaverse_grid_prop_faces()))
+        var lines = [UInt32](repeating: 0, count: Int(metaverse_grid_prop_lines()))
         let built = vertices.withUnsafeMutableBufferPointer { v in faces.withUnsafeMutableBufferPointer { f in lines.withUnsafeMutableBufferPointer { l in
-            verse_grid_props(coax_v_u8(data: v.baseAddress, count: Int64(v.count)), coax_v_u32(data: f.baseAddress, count: Int64(f.count)), coax_v_u32(data: l.baseAddress, count: Int64(l.count)))
+            metaverse_grid_props(coax_v_u8(data: v.baseAddress, count: Int64(v.count)), coax_v_u32(data: f.baseAddress, count: Int64(f.count)), coax_v_u32(data: l.baseAddress, count: Int64(l.count)))
         } } }
         var identity: [Float] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]
         guard built, let pv = device.makeBuffer(bytes: vertices, length: vertices.count, options: .storageModeShared),
@@ -69,7 +69,7 @@ final class CastAssets {
               let still = device.makeBuffer(bytes: &identity, length: identity.count * 4, options: .storageModeShared) else { throw HomeError.resource("Grid props") }
         propVertices = pv; propFaces = pf; propLines = pl; self.still = still
         propFaceCount = faces.count; propLineCount = lines.count / 2
-        let length = Int(verse_cast_palette(cast)) * MemoryLayout<coax_t_Joint>.stride
+        let length = Int(metaverse_cast_palette(cast)) * MemoryLayout<coax_t_Joint>.stride
         for _ in 0..<3 {
             guard let palette = device.makeBuffer(length: length, options: .storageModeShared) else { throw HomeError.resource("Cast palette") }
             palettes.append(palette)
@@ -298,8 +298,8 @@ final class HomeRenderer {
     private func drawHaunt(_ e: MTLRenderCommandEncoder, _ assets: HauntAssets, _ m: [Float], _ frame: Int, _ time: Double) {
         guard m.count == 16 else { return }
         let instances = assets.instances[frame], lights = assets.lightBuffers[frame]
-        let count = verse_haunt_instances(assets.state, time, coax_v_t_HauntInstance(data: instances.contents().assumingMemoryBound(to: coax_t_HauntInstance.self), count: 4096), coax_v_t_HauntDraw(data: assets.drawPackets, count: 256))
-        let lightCount = verse_haunt_lights(assets.state, time, coax_v_t_HauntGPUlight(data: lights.contents().assumingMemoryBound(to: coax_t_HauntGPUlight.self), count: 64))
+        let count = metaverse_haunt_instances(assets.state, time, coax_v_t_HauntInstance(data: instances.contents().assumingMemoryBound(to: coax_t_HauntInstance.self), count: 4096), coax_v_t_HauntDraw(data: assets.drawPackets, count: 256))
+        let lightCount = metaverse_haunt_lights(assets.state, time, coax_v_t_HauntGPUlight(data: lights.contents().assumingMemoryBound(to: coax_t_HauntGPUlight.self), count: 64))
         let eye = assets.state.eye
         var u = HauntUniform(rows: (SIMD4(m[0],m[1],m[2],m[3]), SIMD4(m[4],m[5],m[6],m[7]), SIMD4(m[8],m[9],m[10],m[11]), SIMD4(m[12],m[13],m[14],m[15])), eyeTime: SIMD4(eye.x,eye.y,eye.z,Float(time)), options: SIMD4(Float(lightCount),time < assets.state.flash_until ? 1 : 0,0,0))
         e.setRenderPipelineState(hauntFaces); e.setDepthStencilState(solid); e.setCullMode(.none)
@@ -325,7 +325,7 @@ final class HomeRenderer {
         e.drawIndexedPrimitives(type: .triangle, indexCount: assets.propFaceCount, indexType: .uint32, indexBuffer: assets.propFaces, indexBufferOffset: 0)
         e.setVertexBuffer(assets.bodyVertices, offset: 0, index: 0); e.setVertexBuffer(palette, offset: 0, index: 1)
         e.drawIndexedPrimitives(type: .triangle, indexCount: Int(c.body_indices.count), indexType: .uint32, indexBuffer: assets.bodyIndices, indexBufferOffset: 0)
-        let robots = Int(verse_cast_robots(c))
+        let robots = Int(metaverse_cast_robots(c))
         e.setVertexBuffer(assets.robotVertices, offset: 0, index: 0)
         for r in 0..<robots {
             e.setVertexBuffer(palette, offset: (Int(c.joints) + r * Int(c.bones)) * joint, index: 1)

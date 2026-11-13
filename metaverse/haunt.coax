@@ -58,17 +58,17 @@ Haunt :: struct {
  #assert (hh_pan(1,0,0)>0);#assert (hh_pan(-1,0,0)<0);
 }
 #test "portal requires proximity; no accidental teleport at spawn" {
- #assert (!verse_haunt_portal(0,0));#assert (verse_haunt_portal(-1.5,10));#assert (!verse_haunt_portal(-1.5,14));
+ #assert (!metaverse_haunt_portal(0,0));#assert (metaverse_haunt_portal(-1.5,10));#assert (!metaverse_haunt_portal(-1.5,14));
 }
 #test "walking in through the front door, on either side of it, advances the quest" {
  rooms:=[2]HauntArea.[HauntArea.{rect=HauntRect.{x0= -5.4,z0=0.45,x1=21.4,z1=19.55}},HauntArea.{rect=HauntRect.{x0=6,z0=20,x1=10,z1=28},room=true}];
  for x:[3]f32.[6.5,7,7.9] {
   s:Haunt;s.ok=true;s.areas=rooms[..];s.area_count=2;
   z:f32=2;t:f64=0;
-  while z<23 && s.quest==0 {p:=hh_p(x,0,z);s=verse_haunt_advance(s,t,p,p,0,0.05,true);z+=0.05;t+=1.0/60;}
-  #assert s.quest==1 && z<20.2 && verse_haunt_step_line(s)=="Pick something from the hotbar";
+  while z<23 && s.quest==0 {p:=hh_p(x,0,z);s=metaverse_haunt_advance(s,t,p,p,0,0.05,true);z+=0.05;t+=1.0/60;}
+  #assert s.quest==1 && z<20.2 && metaverse_haunt_step_line(s)=="Pick something from the hotbar";
  }
- s:Haunt;s.ok=true;s.areas=rooms[..];s.area_count=2;p:=hh_p(6.5,0,19);s=verse_haunt_advance(s,0,p,p,0,0,true);#assert s.quest==0;
+ s:Haunt;s.ok=true;s.areas=rooms[..];s.area_count=2;p:=hh_p(6.5,0,19);s=metaverse_haunt_advance(s,0,p,p,0,0,true);#assert s.quest==0;
 }
 #test "quest advances only the current action and stops at eight" {
  #assert (hh_quest(0,"edit")==0);#assert (hh_quest(1,"edit")==2);#assert (hh_quest(2,"place")==3);#assert (hh_quest(7,"survey")==8);#assert (hh_quest(8,"survey")==8);
@@ -104,7 +104,7 @@ hh_action :: (v:HH_Action)->HauntAction {
 }
 // The host allocates bounded arrays once; all string/codec views borrow the
 // retained resource bytes. None point into a temporary Swift string or stack.
-verse_haunt_open :: (bytes:[]u8,s:Haunt)->Haunt #export_c #effects(all) {
+metaverse_haunt_open :: (bytes:[]u8,s:Haunt)->Haunt #export_c #effects(all) {
  next:=s;next.ok=false;if bytes.count<1 || bytes.count>262144{return next;}next.mesh_count=0;next.entity_count=0;next.area_count=0;next.walk_count=0;next.light_count=0;next.people_count=0;next.zone_count=0;next.action_count=0;next.pending_count=0;
  doc:=HH_Resource_decode_minimal(bytes);
  if doc.error!=0 || HH_Resource_get_version(doc).value!=1 || (HH_Resource_get_world_id(doc).value!="haunted-house" && HH_Resource_get_world_id(doc).value!="sandbox") || HH_Resource_get_vertices_resource(doc).value!="Haunt.vertices" || HH_Resource_get_indices_resource(doc).value!="Haunt.indices" {return next;}
@@ -141,7 +141,7 @@ verse_haunt_open :: (bytes:[]u8,s:Haunt)->Haunt #export_c #effects(all) {
  for i:0..<next.light_count {l:=next.lights[i];owner:=hh_find(next,l.parent);if owner>=0 {l.mount=hh_local(next.entities[owner],l.pos);next.lights[i]=l;}}
  next.ok=next.mesh_count>0 && next.entity_count>0 && next.walk_count>0;return next;
 }
-verse_haunt_mesh :: (s:Haunt,name:string)->int #export_c #effects(all) {for i:0..<s.mesh_count {if s.meshes[i].name==name{return i;}}return -1;}
+metaverse_haunt_mesh :: (s:Haunt,name:string)->int #export_c #effects(all) {for i:0..<s.mesh_count {if s.meshes[i].name==name{return i;}}return -1;}
 hh_find :: (s:Haunt,id:string)->int {for i:0..<s.entity_count {if s.entities[i].id==id{return i;}}return -1;}
 hh_inside :: (z:HauntZone,p:HauntPoint)->bool {if z.sphere{return hh_len(z.pos,p)<=z.radius;}return abs(p.x-z.pos.x)<=z.half.x && abs(p.y-z.pos.y)<=z.half.y && abs(p.z-z.pos.z)<=z.half.z;}
 hh_due :: (e:HauntEvent,t:f64)->bool {return !e.done && t>=e.due;}
@@ -154,7 +154,7 @@ hh_sound :: (s:Haunt,name:string,at:HauntPoint,flat:bool,volume:f32)->Haunt {
 hh_apply :: (s:Haunt,a:HauntAction)->Haunt {
  next:=s;i:=hh_find(s,a.target);
  if a.op=="show" || a.op=="hide" {if i>=0{next.entities[i].hidden=a.op=="hide";}}
- if a.op=="morph" && i>=0 {m:=verse_haunt_mesh(s,a.name);if m>=0 {next.entities[i].mesh=m;next.entities[i].scale=a.value;next.entities[i].motion=2;}}
+ if a.op=="morph" && i>=0 {m:=metaverse_haunt_mesh(s,a.name);if m>=0 {next.entities[i].mesh=m;next.entities[i].scale=a.value;next.entities[i].motion=2;}}
  if a.op=="toast" || a.op=="say" {next.toast=a.text;next.toast_until=s.time+4;}
  if a.op=="fx" {if a.name=="lightning"{next.flash_until=s.time+0.22;}else{next.spark_until=s.time+2;next.spark=a.at;}}
  if a.op=="light" {next.dim_until=s.time+cast(f64)a.duration;}
@@ -181,10 +181,10 @@ hh_quest :: (step:int,action:string)->int {
  if (step==3 && action=="publish") || (step==5 && action=="realm") {return step+2;}
  if (step==0 && action=="walk-in") || (step==1 && action=="edit") || (step==2 && action=="place") || (step==3 && action=="publish") || (step==4 && action=="share") || (step==5 && action=="realm") || (step==6 && action=="invite") || (step==7 && action=="survey") {return step+1;}return step;
 }
-verse_haunt_quest :: (s:Haunt,action:string)->Haunt #export_c #effects(all) {next:=s;next.quest=hh_quest(s.quest,action);next.dirty=true;return next;}
-verse_haunt_portal :: (x:f32,z:f32)->bool #export_c #effects(all) {return (x+1.5)*(x+1.5)+(z-10)*(z-10)<2.25;}
-verse_haunt_area :: (s:Haunt,p:HauntPoint)->int #export_c #effects(all) {for i:0..<s.area_count {if hh_contains(s.areas[i].rect,p.x,p.z){return i;}}return -1;}
-verse_haunt_advance :: (s:Haunt,t:f64,player:HauntPoint,eye:HauntPoint,heading:f32,distance:f32,ground:bool)->Haunt #export_c #effects(all) {
+metaverse_haunt_quest :: (s:Haunt,action:string)->Haunt #export_c #effects(all) {next:=s;next.quest=hh_quest(s.quest,action);next.dirty=true;return next;}
+metaverse_haunt_portal :: (x:f32,z:f32)->bool #export_c #effects(all) {return (x+1.5)*(x+1.5)+(z-10)*(z-10)<2.25;}
+metaverse_haunt_area :: (s:Haunt,p:HauntPoint)->int #export_c #effects(all) {for i:0..<s.area_count {if hh_contains(s.areas[i].rect,p.x,p.z){return i;}}return -1;}
+metaverse_haunt_advance :: (s:Haunt,t:f64,player:HauntPoint,eye:HauntPoint,heading:f32,distance:f32,ground:bool)->Haunt #export_c #effects(all) {
  next:=s;next.time=t;next.player=player;next.eye=eye;next.heading=heading;next.sound_count=0;
  if !s.ok{return next;}
  next=hh_people_step(next,hh_clamp(cast(f32)(t-s.time),0,0.1));
@@ -192,7 +192,7 @@ verse_haunt_advance :: (s:Haunt,t:f64,player:HauntPoint,eye:HauntPoint,heading:f
  // Walked in: at the orange light, or anywhere in the room it is in (the
  // light's 1.4 m reach misses a player who comes through the door's left side).
  light:=hh_p(8,0,21.6);
- if next.quest==0 && (hh_len(player,light)<1.4 || (verse_haunt_area(s,player)>=0 && verse_haunt_area(s,player)==verse_haunt_area(s,light))) {next.quest=1;next.dirty=true;}
+ if next.quest==0 && (hh_len(player,light)<1.4 || (metaverse_haunt_area(s,player)>=0 && metaverse_haunt_area(s,player)==metaverse_haunt_area(s,light))) {next.quest=1;next.dirty=true;}
  for i:0..<s.zone_count {
   z:=s.zones[i];inside:=hh_inside(z,hh_p(player.x,player.y+1,player.z));bit:=cast(u32)1<<i;
   if inside && hh_can_fire((s.fired&bit)!=0,z.once,z.entered) {
@@ -205,15 +205,15 @@ verse_haunt_advance :: (s:Haunt,t:f64,player:HauntPoint,eye:HauntPoint,heading:f
  remaining:=0;for i:0..<next.pending_count {ev:=next.pending[i];if hh_due(ev,t){next=hh_apply(next,ev.action);}else{next.pending[remaining]=ev;remaining+=1;}}next.pending_count=remaining;
  if s.talking>=0 && hh_len(player,hh_person_position(s,s.talking))>3.2 {next.talking=-1;next.reply="";}
  next.steps+=distance;
- if ground && next.steps>0.85 {next.steps=0;area:=verse_haunt_area(s,player);surface:=ifx area>=0 then s.areas[area].surface else 2;name:=ifx surface==1 then "step_wood_1" else ifx surface==0 then "step_stone_1" else ifx surface==3 then "step_metal_1" else "step_grass_1";next=hh_sound(next,name,player,true,0.38);}
+ if ground && next.steps>0.85 {next.steps=0;area:=metaverse_haunt_area(s,player);surface:=ifx area>=0 then s.areas[area].surface else 2;name:=ifx surface==1 then "step_wood_1" else ifx surface==0 then "step_stone_1" else ifx surface==3 then "step_metal_1" else "step_grass_1";next=hh_sound(next,name,player,true,0.38);}
  if ground && !s.was_ground {next=hh_sound(next,"land",player,true,0.5);}if !ground && s.was_ground {next=hh_sound(next,"jump",player,true,0.35);}next.was_ground=ground;
  return next;
 }
 // A walk must keep the capsule within the walkable union. Slide separately
 // along X and Z when a combined move meets a wall, as the old house did.
 // Whether (x, z) is on the house's walkable floor (a kept place, eg-pos, is checked by it).
-verse_haunt_walkable :: (s:Haunt,x:f32,z:f32)->bool #export_c #effects(all) {return s.ok && hh_walk(s,x,z);}
-verse_haunt_constrain :: (s:Haunt,was:HauntPoint,want:HauntPoint)->HauntPoint #export_c #effects(all) {
+metaverse_haunt_walkable :: (s:Haunt,x:f32,z:f32)->bool #export_c #effects(all) {return s.ok && hh_walk(s,x,z);}
+metaverse_haunt_constrain :: (s:Haunt,was:HauntPoint,want:HauntPoint)->HauntPoint #export_c #effects(all) {
  if hh_walk(s,want.x,want.z) {return want;}
  if hh_walk(s,want.x,was.z) {return hh_p(want.x,want.y,was.z);}
  if hh_walk(s,was.x,want.z) {return hh_p(was.x,want.y,want.z);}
@@ -221,7 +221,7 @@ verse_haunt_constrain :: (s:Haunt,was:HauntPoint,want:HauntPoint)->HauntPoint #e
 }
 // The shader receives ready-to-bind transforms. Grouped draws keep the
 // forest's hundreds of instances in a few draw calls.
-verse_haunt_instances :: (s:Haunt,t:f64,out:[]HauntInstance,draws:[]HauntDraw)->int #export_c #effects(all) {
+metaverse_haunt_instances :: (s:Haunt,t:f64,out:[]HauntInstance,draws:[]HauntDraw)->int #export_c #effects(all) {
  base:=0;nd:=0;if !s.ok{return 0;}
  for m:0..<s.mesh_count {
   begin:=base;
@@ -240,11 +240,11 @@ verse_haunt_instances :: (s:Haunt,t:f64,out:[]HauntInstance,draws:[]HauntDraw)->
    if base>=out.count{return 0;}e:HauntEntity;e.pos=s.player;e.yaw=s.facing;e.tint=hh_p(1,1,1);out[base]=hh_instance(e);base+=1;
   }
   if s.meshes[m].name=="Custom_Moon" {
-   goal:=verse_haunt_goal(s);
+   goal:=metaverse_haunt_goal(s);
    if s.quest<8 && hh_len(goal,s.player)>1.1 {
     if base>=out.count{return 0;}e:HauntEntity;e.pos=hh_p(goal.x,1.15+sin(cast(f32)t*2.2)*0.08,goal.z);e.scale=0.3*(1+sin(cast(f32)t*3.2)*0.12);e.tint=hh_p(1,0.55,0.12);e.glow=1;e.yaw=cast(f32)t*0.8;out[base]=hh_instance(e);base+=1;
    }
-   zone:=ifx s.editing && s.selected<0 then verse_haunt_zone_near(s) else -1;
+   zone:=ifx s.editing && s.selected<0 then metaverse_haunt_zone_near(s) else -1;
    if zone>=0 {for k:0..<8 {
     if base>=out.count{return 0;}e:HauntEntity;e.pos=hh_zone_mark(s.zones[zone],k);e.pos.y=0.12+sin(cast(f32)t*3+cast(f32)k)*0.03;e.scale=0.07;e.tint=hh_p(0.45,0.75,1);e.glow=1.5;out[base]=hh_instance(e);base+=1;
    }}
@@ -256,20 +256,20 @@ verse_haunt_instances :: (s:Haunt,t:f64,out:[]HauntInstance,draws:[]HauntDraw)->
  }
  return nd;
 }
-verse_haunt_lights :: (s:Haunt,t:f64,out:[]HauntGPUlight)->int #export_c #effects(all) {
+metaverse_haunt_lights :: (s:Haunt,t:f64,out:[]HauntGPUlight)->int #export_c #effects(all) {
  if out.count<s.light_count+2{return 0;}f:=cast(f32)t;
  for i:0..<s.light_count {l:=s.lights[i];owner:=hh_find(s,l.parent);if owner>=0 {p:=s.entities[owner];l.pos=hh_mounted(p,l.mount);if p.hidden || p.scale<=0{l.intensity=0;}}gain:=l.intensity*(1+l.flicker*0.2*sin(f*7+l.pos.x*2));if t<s.dim_until {gain*=0.15;}
   out[i].position=[4]f32.[l.pos.x,l.pos.y,l.pos.z,l.radius];out[i].color=[4]f32.[l.color.x*gain,l.color.y*gain,l.color.z*gain,1];
  }
- dark:=false;area:=verse_haunt_area(s,s.player);if area>=0{dark=s.areas[area].dark;}gain:=ifx dark then 1.0f32 else 0.25f32;
+ dark:=false;area:=metaverse_haunt_area(s,s.player);if area>=0{dark=s.areas[area].dark;}gain:=ifx dark then 1.0f32 else 0.25f32;
  out[s.light_count].position=[4]f32.[s.player.x,1.7,s.player.z,5.5];out[s.light_count].color=[4]f32.[gain,gain*0.65,gain*0.3,1];
- goal:=verse_haunt_goal(s);gain=ifx s.quest<8 then 0.8+sin(f*3.2)*0.35 else 0.0f32;
+ goal:=metaverse_haunt_goal(s);gain=ifx s.quest<8 then 0.8+sin(f*3.2)*0.35 else 0.0f32;
  out[s.light_count+1].position=[4]f32.[goal.x,1.15,goal.z,3];out[s.light_count+1].color=[4]f32.[gain,gain*0.55,gain*0.12,1];return s.light_count+2;
 }
 // Where light i's flame burns: the first flame (motion 4) on the light's
 // own object, where that object now stands, else the light itself. A wall
 // torch's light sits back in the wall; its embers come off the flame.
-verse_haunt_light_flame :: (s:Haunt,i:int)->HauntPoint #export_c #effects(all) {
+metaverse_haunt_light_flame :: (s:Haunt,i:int)->HauntPoint #export_c #effects(all) {
  if i<0 || i>=s.light_count{return hh_p(0,0,0);}l:=s.lights[i];owner:=hh_find(s,l.parent);if owner<0{return l.pos;}p:=s.entities[owner];
  for k:0..<s.entity_count {e:=s.entities[k];if e.motion==4 && e.parent==l.parent {return hh_mounted(p,e.mount);}}
  return hh_mounted(p,l.mount);
@@ -280,31 +280,31 @@ verse_haunt_light_flame :: (s:Haunt,i:int)->HauntPoint #export_c #effects(all) {
  es[2].id="lamp";es[2].pos=hh_p(1,1,1);es[2].scale=1;
  ls:[3]HauntLight;ls[0].parent="torch";ls[0].pos=hh_p(5,1.8,20.4);ls[0].mount=hh_p(0,0.8,-0.4);ls[1].parent="lamp";ls[1].pos=hh_p(1,2,1);ls[1].mount=hh_p(0,1,0);ls[2].pos=hh_p(9,2,9);
  s:Haunt;s.entities=es[..];s.entity_count=3;s.lights=ls[..];s.light_count=3;
- f:=verse_haunt_light_flame(s,0);#assert abs(f.x-5)<0.001 && abs(f.y-1.6)<0.001 && abs(f.z-19.98)<0.001;
- es[0].pos.x=6;s.entities=es[..];f=verse_haunt_light_flame(s,0);#assert abs(f.x-6)<0.001;
- f=verse_haunt_light_flame(s,1);#assert abs(f.y-2)<0.001;
- f=verse_haunt_light_flame(s,2);#assert f.x==9;
+ f:=metaverse_haunt_light_flame(s,0);#assert abs(f.x-5)<0.001 && abs(f.y-1.6)<0.001 && abs(f.z-19.98)<0.001;
+ es[0].pos.x=6;s.entities=es[..];f=metaverse_haunt_light_flame(s,0);#assert abs(f.x-6)<0.001;
+ f=metaverse_haunt_light_flame(s,1);#assert abs(f.y-2)<0.001;
+ f=metaverse_haunt_light_flame(s,2);#assert f.x==9;
 }
 // What you can use is in reach and in front of the camera: within HH_AIM
 // (38°) of the flat look direction, -(sin heading, cos heading). The one
 // nearest the centre of view wins; a thing at your feet counts as ahead.
 HH_AIM :: 0.78801075;
 hh_aim :: (s:Haunt,p:HauntPoint)->f32 {dx:=p.x-s.player.x;dz:=p.z-s.player.z;d:=sqrt(dx*dx+dz*dz);if d<0.35{return 1;}return (-sin(s.heading)*dx-cos(s.heading)*dz)/d;}
-verse_haunt_reach :: (s:Haunt,person:int)->bool #export_c #effects(all) {return person>=0 && person<s.people_count && hh_len(s.player,hh_person_position(s,person))<3.2;}
-verse_haunt_near :: (s:Haunt)->int #export_c #effects(all) {best:=-1;score:f32=HH_AIM;for i:0..<s.people_count {if !verse_haunt_reach(s,i){continue;}a:=hh_aim(s,hh_person_position(s,i));if a>score {best=i;score=a;}}return best;}
+metaverse_haunt_reach :: (s:Haunt,person:int)->bool #export_c #effects(all) {return person>=0 && person<s.people_count && hh_len(s.player,hh_person_position(s,person))<3.2;}
+metaverse_haunt_near :: (s:Haunt)->int #export_c #effects(all) {best:=-1;score:f32=HH_AIM;for i:0..<s.people_count {if !metaverse_haunt_reach(s,i){continue;}a:=hh_aim(s,hh_person_position(s,i));if a>score {best=i;score=a;}}return best;}
 #test "you use only what is in reach and in front, the one nearest the centre" {
  folks:[2]HauntPerson;folks[0].pos=hh_p(0,0,2);folks[1].pos=hh_p(0.9,0,2.5);
  s:Haunt;s.people=folks[..];s.people_count=1;s.player=hh_p(0,0,0);
- s.heading=3.14159265;#assert (verse_haunt_near(s)==0);
- s.heading=0;#assert (verse_haunt_near(s)== -1);#assert (verse_haunt_reach(s,0));
- s.heading=1.57079633;#assert (verse_haunt_near(s)== -1);
- s.people_count=2;s.heading=3.14159265;#assert (verse_haunt_near(s)==0);
- s.heading=3.14159265+0.34;#assert (verse_haunt_near(s)==1);
- folks[0].pos=hh_p(0,0,5);s.heading=3.14159265;#assert (verse_haunt_near(s)==1);
+ s.heading=3.14159265;#assert (metaverse_haunt_near(s)==0);
+ s.heading=0;#assert (metaverse_haunt_near(s)== -1);#assert (metaverse_haunt_reach(s,0));
+ s.heading=1.57079633;#assert (metaverse_haunt_near(s)== -1);
+ s.people_count=2;s.heading=3.14159265;#assert (metaverse_haunt_near(s)==0);
+ s.heading=3.14159265+0.34;#assert (metaverse_haunt_near(s)==1);
+ folks[0].pos=hh_p(0,0,5);s.heading=3.14159265;#assert (metaverse_haunt_near(s)==1);
  d:HauntEntity;d.motion=5;d.pos=hh_p(1,0,0);doors:[1]HauntEntity;doors[0]=d;s.entities=doors[..];s.entity_count=1;
- s.heading=1.57079633;#assert (verse_haunt_door(s)== -1);s.heading= -1.57079633;#assert (verse_haunt_door(s)==0);
+ s.heading=1.57079633;#assert (metaverse_haunt_door(s)== -1);s.heading= -1.57079633;#assert (metaverse_haunt_door(s)==0);
 }
-verse_haunt_talk :: (s:Haunt,person:int,kind:int)->Haunt #export_c #effects(all) {
+metaverse_haunt_talk :: (s:Haunt,person:int,kind:int)->Haunt #export_c #effects(all) {
  next:=s;if person<0 || person>=s.people_count {next.talking=-1;next.reply="";return next;}
  next.talking=person;p:=s.people[person];
  if kind==0 {line:=HH_Person_iter_greet(p.doc);next.reply=ifx line.has_value then line.value else "Hello.";}
@@ -315,19 +315,19 @@ verse_haunt_talk :: (s:Haunt,person:int,kind:int)->Haunt #export_c #effects(all)
 }
 // Caller-owned strings (from an import or teaching input) are retained by
 // the native storage host for the lifetime of this world.
-verse_haunt_teach :: (s:Haunt,person:int,knowledge:string)->Haunt #export_c #effects(all) {next:=s;if person>=0 && person<s.people_count && knowledge.count<=4096 {next.people[person].knowledge=knowledge;next.dirty=true;}return next;}
+metaverse_haunt_teach :: (s:Haunt,person:int,knowledge:string)->Haunt #export_c #effects(all) {next:=s;if person>=0 && person<s.people_count && knowledge.count<=4096 {next.people[person].knowledge=knowledge;next.dirty=true;}return next;}
 hh_word :: (text:string,word:string)->bool {if word.count==0 || text.count<word.count{return false;}for i:0..<text.count-word.count+1 {same:=true;for j:0..<word.count {b:=text[i+j];if b>=65 && b<=90{b+=32;}if b!=word[j]{same=false;break;}}if same{return true;}}return false;}
-verse_haunt_ask :: (s:Haunt,text:string)->Haunt #export_c #effects(all) {
+metaverse_haunt_ask :: (s:Haunt,text:string)->Haunt #export_c #effects(all) {
  next:=s;if s.talking<0 || s.talking>=s.people_count{return next;}p:=s.people[s.talking];
  if p.knowledge.count>0 {known:=hh_knowledge(p.knowledge,text);if known.count>0 {next.reply=known;return next;}}
  if hh_word(text,"name") || hh_word(text,"who"){next.reply=p.name;return next;}
  if hh_word(text,"job") || hh_word(text,"do you do"){next.reply=p.role;return next;}
  if hh_word(text,"where") || hh_word(text,"place"){next.reply="The Haunted House. Agatha is in the kitchen; the garden is past the back hall.";return next;}
- if hh_word(text,"edit") || hh_word(text,"build") || hh_word(text,"help"){return verse_haunt_talk(s,s.talking,1);}
- if hh_word(text,"bye"){return verse_haunt_talk(s,-1,0);}return verse_haunt_talk(s,s.talking,2);
+ if hh_word(text,"edit") || hh_word(text,"build") || hh_word(text,"help"){return metaverse_haunt_talk(s,s.talking,1);}
+ if hh_word(text,"bye"){return metaverse_haunt_talk(s,-1,0);}return metaverse_haunt_talk(s,s.talking,2);
 }
 // Reusable ray picker, against each mesh's transformed bounds.
-verse_haunt_pick :: (s:Haunt,origin:HauntPoint,direction:HauntPoint)->int #export_c #effects(all) {
+metaverse_haunt_pick :: (s:Haunt,origin:HauntPoint,direction:HauntPoint)->int #export_c #effects(all) {
  best:=-1;distance:=15.0f32;
  for i:0..<s.entity_count {e:=s.entities[i];if e.motion==7 {e=hh_flocked(s,e,s.time);}if e.hidden || e.scale<=0 || (e.fixed && hh_person_index(s,e.id)<0){continue;}b:=s.meshes[e.mesh];c:=cos(e.yaw);sn:=sin(e.yaw);
   px:=origin.x-e.pos.x;pz:=origin.z-e.pos.z;
@@ -337,15 +337,15 @@ verse_haunt_pick :: (s:Haunt,origin:HauntPoint,direction:HauntPoint)->int #expor
   if near<=far && far>=0 && near<distance {distance=near;best=i;}
  }return best;
 }
-verse_haunt_edit :: (s:Haunt,index:int,op:int,value:f32)->Haunt #export_c #effects(all) {
+metaverse_haunt_edit :: (s:Haunt,index:int,op:int,value:f32)->Haunt #export_c #effects(all) {
  next:=s;if index<0 || index>=s.entity_count{return next;}e:=s.entities[index];person:=hh_person_index(s,e.id);if e.fixed && e.motion!=5 && person<0{return next;}
  if op==0{e.pos.x+=value;}if op==1{e.pos.y+=value;}if op==2{e.pos.z+=value;}if op==3{e.yaw+=value;}if op==4{e.scale=hh_clamp(e.scale*value,0.1,8);}if op==5{e.tint=hh_p(1,0.55,0.25);}if op==6{e.hidden=!e.hidden;}if op==7{e.scale=0;}if op==8{e.tint=hh_p(0.6,0.8,1);}if op==9{e.yaw+=1.5707963;e.solid=!e.solid;}
  if person>=0 && (op==0 || op==2) {if !hh_walk(s,e.pos.x,e.pos.z){return next;}next.people[person].pos=hh_p(e.pos.x,next.people[person].pos.y,e.pos.z);}
  next.entities[index]=e;next.selected=index;next.dirty=true;return next;
 }
 // The character an entity is (-1 a thing).
-verse_haunt_person_of :: (s:Haunt,entity:int)->int #export_c #effects(all) {if entity<0 || entity>=s.entity_count{return -1;}return hh_person_index(s,s.entities[entity].id);}
-verse_haunt_add :: (s:Haunt,mesh:int,id:string,name:string,x:f32,z:f32)->Haunt #export_c #effects(all) {
+metaverse_haunt_person_of :: (s:Haunt,entity:int)->int #export_c #effects(all) {if entity<0 || entity>=s.entity_count{return -1;}return hh_person_index(s,s.entities[entity].id);}
+metaverse_haunt_add :: (s:Haunt,mesh:int,id:string,name:string,x:f32,z:f32)->Haunt #export_c #effects(all) {
  next:=s;if mesh<0 || mesh>=s.mesh_count || s.entity_count>=s.entities.count || !hh_walk(s,x,z){return next;}
  e:HauntEntity;e.id=id;e.name=name;e.mesh=mesh;e.pos=hh_p(x,0,z);e.tint=hh_p(1,1,1);e.solid=true;next.entities[next.entity_count]=e;next.selected=next.entity_count;next.entity_count+=1;next.dirty=true;next.quest=hh_quest(s.quest,"place");return next;
 }
@@ -354,7 +354,7 @@ verse_haunt_add :: (s:Haunt,mesh:int,id:string,name:string,x:f32,z:f32)->Haunt #
 // mesh, where and how it was laid out, still or bobbing (motion 3). A
 // flock's bird (motion 7) keeps its place round the flock, not the world's,
 // so it isn't held to the walk.
-verse_haunt_put :: (s:Haunt,mesh:int,id:string,name:string,at:HauntPoint,yaw:f32,scale:f32,tint:HauntPoint,glow:f32,motion:int,solid:bool)->Haunt #export_c #effects(all) {
+metaverse_haunt_put :: (s:Haunt,mesh:int,id:string,name:string,at:HauntPoint,yaw:f32,scale:f32,tint:HauntPoint,glow:f32,motion:int,solid:bool)->Haunt #export_c #effects(all) {
  next:=s;if mesh<0 || mesh>=s.mesh_count || s.entity_count>=s.entities.count || id.count==0 || (motion!=7 && !hh_walk(s,at.x,at.z)){return next;}
  e:HauntEntity;e.id=id;e.name=name;e.mesh=mesh;e.pos=at;e.yaw=yaw;e.scale=hh_clamp(scale,0.1,8);e.tint=tint;e.glow=hh_clamp(glow,0,2);e.motion=ifx motion==7 || motion==3 then motion else 0;e.solid=solid && motion!=7;
  if !hh_entity_ok(e,s.mesh_count){return next;}
@@ -378,13 +378,13 @@ hh_flocked :: (s:Haunt,e:HauntEntity,t:f64)->HauntEntity {
 }
 #test "a flock follows you: its middle eases after you, a bird flies round it" {
  s:Haunt;s.ok=true;
- s=verse_haunt_advance(s,0,hh_p(10,0,10),hh_p(10,1.6,10),0,0,true);
+ s=metaverse_haunt_advance(s,0,hh_p(10,0,10),hh_p(10,1.6,10),0,0,true);
  #assert s.flock_on && s.flock.x==10 && s.flock.z==7.5;   // the first frame: just ahead of you at once
- s=verse_haunt_advance(s,0.1,hh_p(12,0,10),hh_p(12,1.6,10),0,0,true);
+ s=metaverse_haunt_advance(s,0.1,hh_p(12,0,10),hh_p(12,1.6,10),0,0,true);
  #assert abs(s.flock.x-10.32)<0.001;                     // then after you, a little each frame
- for k:0..<60 {s=verse_haunt_advance(s,0.2+cast(f64)k*0.1,hh_p(12,0,10),hh_p(12,1.6,10),0,0,true);}
+ for k:0..<60 {s=metaverse_haunt_advance(s,0.2+cast(f64)k*0.1,hh_p(12,0,10),hh_p(12,1.6,10),0,0,true);}
  #assert abs(s.flock.x-12)<0.01;
- s=verse_haunt_advance(s,7,hh_p(80,0,10),hh_p(80,1.6,10),0,0,true);
+ s=metaverse_haunt_advance(s,7,hh_p(80,0,10),hh_p(80,1.6,10),0,0,true);
  #assert s.flock.x==80;                                  // gone far: waiting there
  e:HauntEntity;e.pos=hh_p(2,3,0);e.motion=7;e.scale=1;
  for t:[3]f64.[0,1.5,4] {d:=hh_flocked(s,e,t);dx:=d.pos.x-80;dz:=d.pos.z-7.5;r:=sqrt(dx*dx+dz*dz);#assert r>1.6 && r<2.4 && d.pos.y>2.7 && d.pos.y<3.3;}
@@ -393,14 +393,14 @@ hh_flocked :: (s:Haunt,e:HauntEntity,t:f64)->HauntEntity {
 #test "a set piece's part is placed whole, a bird anywhere, the rest on the walk" {
  m:=[2]HauntMesh.[HauntMesh.{name="a"},HauntMesh.{name="b"}];es:[3]HauntEntity;w:=[1]HauntRect.[HauntRect.{x0= -5,z0= -5,x1=5,z1=5}];
  s:Haunt;s.ok=true;s.meshes=m[..];s.mesh_count=2;s.entities=es[..];s.walks=w[..];s.walk_count=1;
- s=verse_haunt_put(s,1,"p1","Tree",hh_p(1,0,2),0.5,1.2,hh_p(0.9,0.9,0.9),0,0,true);
+ s=metaverse_haunt_put(s,1,"p1","Tree",hh_p(1,0,2),0.5,1.2,hh_p(0.9,0.9,0.9),0,0,true);
  #assert s.entity_count==1 && s.entities[0].mesh==1 && s.entities[0].solid && s.entities[0].yaw==0.5 && s.entities[0].scale==1.2 && s.dirty;
- s=verse_haunt_put(s,0,"p2","Bird",hh_p(40,3,0),0,1.5,hh_p(1,1,1),0,7,true);
+ s=metaverse_haunt_put(s,0,"p2","Bird",hh_p(40,3,0),0,1.5,hh_p(1,1,1),0,7,true);
  #assert s.entity_count==2 && s.entities[1].motion==7 && !s.entities[1].solid;   // a bird is never in your way
- #assert verse_haunt_put(s,0,"p3","Tree",hh_p(40,0,0),0,1,hh_p(1,1,1),0,0,true).entity_count==2;   // off the walk
- #assert verse_haunt_put(s,2,"p3","Tree",hh_p(0,0,0),0,1,hh_p(1,1,1),0,0,true).entity_count==2;    // no such mesh
- s=verse_haunt_put(s,0,"p3","Tree",hh_p(0,0,0),0,1,hh_p(1,1,1),0,0,true);
- #assert verse_haunt_put(s,0,"p4","Tree",hh_p(0,0,0),0,1,hh_p(1,1,1),0,0,true).entity_count==3;   // full
+ #assert metaverse_haunt_put(s,0,"p3","Tree",hh_p(40,0,0),0,1,hh_p(1,1,1),0,0,true).entity_count==2;   // off the walk
+ #assert metaverse_haunt_put(s,2,"p3","Tree",hh_p(0,0,0),0,1,hh_p(1,1,1),0,0,true).entity_count==2;    // no such mesh
+ s=metaverse_haunt_put(s,0,"p3","Tree",hh_p(0,0,0),0,1,hh_p(1,1,1),0,0,true);
+ #assert metaverse_haunt_put(s,0,"p4","Tree",hh_p(0,0,0),0,1,hh_p(1,1,1),0,0,true).entity_count==3;   // full
 }
 
 // Generated codecs write the exact shared Save contract. Static room and
@@ -417,7 +417,7 @@ hh_encode_entity :: (e:HauntEntity,out:[]u8,tmp:[]u8)->HH_Entity {
  tint:=hh_proto_vec(e.tint,a[..],b[..]);v=HH_Entity_set_tint(v,tint,out);
  v=HH_Entity_set_glow(v,e.glow,tmp);v=HH_Entity_set_hidden(v,e.hidden,out);v=HH_Entity_set_fixed(v,e.fixed,tmp);v=HH_Entity_set_solid(v,e.solid,out);v=HH_Entity_set_motion(v,cast(u32)e.motion,tmp);v=HH_Entity_set_parent(v,e.parent,out);return v;
 }
-verse_haunt_save :: (s:Haunt,out:[]u8,tmp:[]u8)->int #export_c #effects(all) {
+metaverse_haunt_save :: (s:Haunt,out:[]u8,tmp:[]u8)->int #export_c #effects(all) {
  if !s.ok || !lifetimes.haunt_facts_ok(s.quest,s.fired,s.zone_count) {return 0;}
  v:=HH_Save_set_version(HH_Save_new(),1,out);v=HH_Save_set_world_id(v,s.world_id,tmp);v=HH_Save_set_source_commit(v,s.revision,out);v=HH_Save_set_fired_zones(v,s.fired,tmp);v=HH_Save_set_quest_step(v,cast(u32)s.quest,out);v=HH_Save_set_title(v,s.title,tmp);v=HH_Save_set_instance_id(v,s.instance_id,out);v=HH_Save_set_feedback(v,s.feedback,tmp);
  a:[8192]u8;b:[8192]u8;
@@ -442,10 +442,10 @@ verse_haunt_save :: (s:Haunt,out:[]u8,tmp:[]u8)->int #export_c #effects(all) {
  if !use_out {for byte,i:encoded.wire {out[i]=byte;}}
  return encoded.wire.count;
 }
-verse_haunt_restore :: (s:Haunt,bytes:[]u8)->Haunt #export_c #effects(all) {
- next:=s;if !verse_haunt_save_valid(s,bytes){return next;}
+metaverse_haunt_restore :: (s:Haunt,bytes:[]u8)->Haunt #export_c #effects(all) {
+ next:=s;if !metaverse_haunt_save_valid(s,bytes){return next;}
  v:=HH_Save_decode_minimal(bytes);quest:=cast(int)HH_Save_get_quest_step(v).value;fired:=HH_Save_get_fired_zones(v).value;
- next=verse_haunt_open(s.resource.wire,s);iterator:=HH_Save_iter_entities(v);
+ next=metaverse_haunt_open(s.resource.wire,s);iterator:=HH_Save_iter_entities(v);
  // No mutation precedes this point: a bad import leaves the world intact.
  iterator=HH_Save_iter_entities(v);while iterator.has_value {e:=hh_entity(iterator.value);index:=hh_find(next,e.id);if index<0{index=next.entity_count;next.entity_count+=1;}next.entities[index]=e;iterator=HH_Save_next_entities(iterator);}
  pi:=HH_Save_iter_people(v);while pi.has_value {id:=HH_Person_get_id(pi.value).value;index:=hh_person_index(next,id);
@@ -453,7 +453,7 @@ verse_haunt_restore :: (s:Haunt,bytes:[]u8)->Haunt #export_c #effects(all) {
  zi:=HH_Save_iter_zones(v);while zi.has_value {id:=HH_Zone_get_id(zi.value).value;for i:0..<s.zone_count {if next.zones[i].id==id {next.zones[i].pos=hh_v(HH_Zone_get_position(zi.value).value);next.zones[i].half=hh_v(HH_Zone_get_half(zi.value).value);next.zones[i].radius=HH_Zone_get_radius(zi.value).value;next.zones[i].sphere=HH_Zone_get_sphere(zi.value).value;next.zones[i].once=HH_Zone_get_once(zi.value).value;}}zi=HH_Save_next_zones(zi);}
  next.quest=ifx quest==4 || quest==6 then quest+1 else quest;next.fired=fired;next.title=HH_Save_get_title(v).value;next.instance_id=HH_Save_get_instance_id(v).value;if next.instance_id.count==0{next.instance_id=next.world_id;}next.feedback=HH_Save_get_feedback(v).value;next.dirty=false;next.selected=-1;next.talking=-1;return next;
 }
-verse_haunt_walls :: (s:Haunt,out:[]f32)->int #export_c #effects(all) {
+metaverse_haunt_walls :: (s:Haunt,out:[]f32)->int #export_c #effects(all) {
  count:=0;for i:0..<s.entity_count {
   e:=s.entities[i];if !e.solid || e.hidden || e.scale<=0 {continue;}
   low:HauntPoint;high:HauntPoint;
@@ -462,73 +462,73 @@ verse_haunt_walls :: (s:Haunt,out:[]f32)->int #export_c #effects(all) {
   if (count+1)*6>out.count{return 0;}at:=count*6;out[at]=low.x;out[at+1]=low.y;out[at+2]=low.z;out[at+3]=high.x;out[at+4]=high.y;out[at+5]=high.z;count+=1;
  }return count;
 }
-verse_haunt_ray :: (eye:HauntPoint,at:HauntPoint,x:f32,y:f32,width:f32,height:f32)->HauntPoint #export_c #effects(all) {
+metaverse_haunt_ray :: (eye:HauntPoint,at:HauntPoint,x:f32,y:f32,width:f32,height:f32)->HauntPoint #export_c #effects(all) {
  fx:=at.x-eye.x;fy:=at.y-eye.y;fz:=at.z-eye.z;l:=sqrt(fx*fx+fy*fy+fz*fz);fx/=l;fy/=l;fz/=l;
  rl:=sqrt(fx*fx+fz*fz);rx:=-fz/rl;rz:=fx/rl;ux:=-fy*rz;uy:=rz*fx-rx*fz;uz:=fy*rx;
  px:=(x/width*2-1)*width/height*0.57922;py:=(1-y/height*2)*0.57922;
  dx:=fx+rx*px+ux*py;dy:=fy+uy*py;dz:=fz+rz*px+uz*py;length:=sqrt(dx*dx+dy*dy+dz*dz);return hh_p(dx/length,dy/length,dz/length);
 }
-verse_haunt_goal :: (s:Haunt)->HauntPoint #export_c #effects(all) {
+metaverse_haunt_goal :: (s:Haunt)->HauntPoint #export_c #effects(all) {
  if s.quest==0 || s.quest==3{return hh_p(8,0,21.6);}if s.quest==1 || s.quest==2{return hh_p(8,0,25.4);}if s.quest==5{return hh_p(13,0,4);}if s.quest==6{return hh_p(2,0,4);}if s.quest==7{return hh_p(7,0,10);}return hh_p(7,0,4);
 }
-verse_haunt_goal_name :: (s:Haunt)->string #export_c #effects(all) {if s.quest==0{return "Explore";}if s.quest==1{return "Edit";}if s.quest==2{return "Place";}if s.quest==3{return "Save";}if s.quest==4{return "Share";}if s.quest==5{return "Create";}if s.quest==6{return "Invite";}if s.quest==7{return "Survey";}return "Complete";}
+metaverse_haunt_goal_name :: (s:Haunt)->string #export_c #effects(all) {if s.quest==0{return "Explore";}if s.quest==1{return "Edit";}if s.quest==2{return "Place";}if s.quest==3{return "Save";}if s.quest==4{return "Share";}if s.quest==5{return "Create";}if s.quest==6{return "Invite";}if s.quest==7{return "Survey";}return "Complete";}
 // The quest, Make it yours, as a player meets it: a sentence for the step,
 // and at its orange orb (in reach and in front, as for a person) the prompt
 // that does it (standing in the orb counts whichever way you look). The bearing is the goal's angle from the look direction,
 // its sign the side, for a glow at the screen's edge.
-verse_haunt_step_line :: (s:Haunt)->string #export_c #effects(all) {
+metaverse_haunt_step_line :: (s:Haunt)->string #export_c #effects(all) {
  if s.quest==0{return "Walk in through the front door";}if s.quest==1{return "Pick something from the hotbar";}if s.quest==2{return "Place something in the hall";}
  if s.quest==3{return "Save your house at the orb";}if s.quest==4{return "Share your house: the orb in the yard";}if s.quest==5{return "Make the house your own";}
  if s.quest==6{return "Invite a friend: the orb by the gate";}if s.quest==7{return "Tell us how it went";}return "Quest complete";
 }
-verse_haunt_goal_prompt :: (s:Haunt)->string #export_c #effects(all) {
+metaverse_haunt_goal_prompt :: (s:Haunt)->string #export_c #effects(all) {
  if s.quest==1{return "Pick a thing";}if s.quest==2{return "Place something here";}if s.quest==3{return "Save your house";}if s.quest==4{return "Copy the link";}
  if s.quest==5{return "Make it yours";}if s.quest==6{return "Copy the invite";}if s.quest==7{return "Tell us how it went";}return "";
 }
-verse_haunt_at_goal :: (s:Haunt)->bool #export_c #effects(all) {
- if s.quest<1 || s.quest>7{return false;}g:=verse_haunt_goal(s);dx:=g.x-s.player.x;dz:=g.z-s.player.z;
+metaverse_haunt_at_goal :: (s:Haunt)->bool #export_c #effects(all) {
+ if s.quest<1 || s.quest>7{return false;}g:=metaverse_haunt_goal(s);dx:=g.x-s.player.x;dz:=g.z-s.player.z;
  d:=dx*dx+dz*dz;return d<1.2*1.2 || (d<2.4*2.4 && hh_aim(s,g)>HH_AIM);
 }
-verse_haunt_goal_bearing :: (s:Haunt)->f32 #export_c #effects(all) {
- g:=verse_haunt_goal(s);dx:=g.x-s.player.x;dz:=g.z-s.player.z;fx:=-sin(s.heading);fz:=-cos(s.heading);
+metaverse_haunt_goal_bearing :: (s:Haunt)->f32 #export_c #effects(all) {
+ g:=metaverse_haunt_goal(s);dx:=g.x-s.player.x;dz:=g.z-s.player.z;fx:=-sin(s.heading);fz:=-cos(s.heading);
  return hh_atan2(fx*dz-fz*dx,fx*dx+fz*dz);
 }
 #test "the quest's orb answers only in reach and in front, and points the way" {
  s:Haunt;s.quest=1;s.player=hh_p(8,0,23.4);s.heading=3.14159265;
- #assert verse_haunt_at_goal(s) && verse_haunt_goal_prompt(s)=="Pick a thing";
- #assert abs(verse_haunt_goal_bearing(s))<0.01;
- s.heading=0;#assert !verse_haunt_at_goal(s) && abs(verse_haunt_goal_bearing(s))>3.1;
- s.heading=3.14159265-1.57079633;a:=verse_haunt_goal_bearing(s);s.heading=3.14159265+1.57079633;#assert abs(a)>1.5 && abs(a+verse_haunt_goal_bearing(s))<0.01;
- s.heading=3.14159265;s.player=hh_p(8,0,18);#assert !verse_haunt_at_goal(s);
- s.heading=0;s.player=hh_p(8.5,0,25);#assert verse_haunt_at_goal(s);
- s.quest=0;s.player=hh_p(8,0,23.4);#assert !verse_haunt_at_goal(s) && verse_haunt_goal_prompt(s)=="";
- s.quest=8;#assert !verse_haunt_at_goal(s) && verse_haunt_step_line(s)=="Quest complete";
+ #assert metaverse_haunt_at_goal(s) && metaverse_haunt_goal_prompt(s)=="Pick a thing";
+ #assert abs(metaverse_haunt_goal_bearing(s))<0.01;
+ s.heading=0;#assert !metaverse_haunt_at_goal(s) && abs(metaverse_haunt_goal_bearing(s))>3.1;
+ s.heading=3.14159265-1.57079633;a:=metaverse_haunt_goal_bearing(s);s.heading=3.14159265+1.57079633;#assert abs(a)>1.5 && abs(a+metaverse_haunt_goal_bearing(s))<0.01;
+ s.heading=3.14159265;s.player=hh_p(8,0,18);#assert !metaverse_haunt_at_goal(s);
+ s.heading=0;s.player=hh_p(8.5,0,25);#assert metaverse_haunt_at_goal(s);
+ s.quest=0;s.player=hh_p(8,0,23.4);#assert !metaverse_haunt_at_goal(s) && metaverse_haunt_goal_prompt(s)=="";
+ s.quest=8;#assert !metaverse_haunt_at_goal(s) && metaverse_haunt_step_line(s)=="Quest complete";
 }
 #test "the quest runs from walking in to complete, a step at a time, with no sharing" {
  s:Haunt;steps:=[6]string.["walk-in","edit","place","publish","realm","survey"];at:=[7]int.[0,1,2,3,5,7,8];
- for i:0..<6 {#assert s.quest==at[i];#assert verse_haunt_step_line(s).count>0;s=verse_haunt_quest(s,steps[(i+1)%6]);#assert s.quest==at[i];s=verse_haunt_quest(s,steps[i]);}
- #assert s.quest==8 && verse_haunt_goal_prompt(s)=="";
- old:Haunt;old.quest=4;#assert verse_haunt_quest(old,"").quest==5;old.quest=6;#assert verse_haunt_quest(old,"").quest==7;
- #assert verse_haunt_quest(old,"survey").quest==8;
+ for i:0..<6 {#assert s.quest==at[i];#assert metaverse_haunt_step_line(s).count>0;s=metaverse_haunt_quest(s,steps[(i+1)%6]);#assert s.quest==at[i];s=metaverse_haunt_quest(s,steps[i]);}
+ #assert s.quest==8 && metaverse_haunt_goal_prompt(s)=="";
+ old:Haunt;old.quest=4;#assert metaverse_haunt_quest(old,"").quest==5;old.quest=6;#assert metaverse_haunt_quest(old,"").quest==7;
+ #assert metaverse_haunt_quest(old,"survey").quest==8;
 }
-verse_haunt_place_point :: (s:Haunt)->HauntPoint #export_c #effects(all) {return hh_p(s.player.x-sin(s.heading)*2,0,s.player.z-cos(s.heading)*2);}
-verse_haunt_view :: (s:Haunt)->Haunt #export_c #effects(all) {next:=s;next.camera=(s.camera+1)%3;return next;}
-verse_haunt_edit_mode :: (s:Haunt,active:bool)->Haunt #export_c #effects(all) {next:=s;next.editing=active;if active {next.quest=hh_quest(s.quest,"edit");}next.dirty=true;return next;}
-verse_haunt_select :: (s:Haunt,index:int)->Haunt #export_c #effects(all) {next:=s;if index>=0 && index<s.entity_count{next.selected=index;}else{next.selected=-1;}return next;}
-verse_haunt_door :: (s:Haunt)->int #export_c #effects(all) {best:=-1;score:f32=HH_AIM;for i:0..<s.entity_count {e:=s.entities[i];if e.motion!=5 || hh_len(s.player,e.pos)>=2.5{continue;}a:=hh_aim(s,e.pos);if a>score {score=a;best=i;}}return best;}
+metaverse_haunt_place_point :: (s:Haunt)->HauntPoint #export_c #effects(all) {return hh_p(s.player.x-sin(s.heading)*2,0,s.player.z-cos(s.heading)*2);}
+metaverse_haunt_view :: (s:Haunt)->Haunt #export_c #effects(all) {next:=s;next.camera=(s.camera+1)%3;return next;}
+metaverse_haunt_edit_mode :: (s:Haunt,active:bool)->Haunt #export_c #effects(all) {next:=s;next.editing=active;if active {next.quest=hh_quest(s.quest,"edit");}next.dirty=true;return next;}
+metaverse_haunt_select :: (s:Haunt,index:int)->Haunt #export_c #effects(all) {next:=s;if index>=0 && index<s.entity_count{next.selected=index;}else{next.selected=-1;}return next;}
+metaverse_haunt_door :: (s:Haunt)->int #export_c #effects(all) {best:=-1;score:f32=HH_AIM;for i:0..<s.entity_count {e:=s.entities[i];if e.motion!=5 || hh_len(s.player,e.pos)>=2.5{continue;}a:=hh_aim(s,e.pos);if a>score {score=a;best=i;}}return best;}
 // The zone you're in or nearest within 3 m (-1 none), for editing it.
-verse_haunt_zone_near :: (s:Haunt)->int #export_c #effects(all) {best:=-1;distance:=3.0f32;for i:0..<s.zone_count {z:=s.zones[i];dx:=z.pos.x-s.player.x;dz:=z.pos.z-s.player.z;d:=sqrt(dx*dx+dz*dz)-ifx z.sphere then z.radius else hh_min(z.half.x,z.half.z);if d<distance {distance=d;best=i;}}return best;}
+metaverse_haunt_zone_near :: (s:Haunt)->int #export_c #effects(all) {best:=-1;distance:=3.0f32;for i:0..<s.zone_count {z:=s.zones[i];dx:=z.pos.x-s.player.x;dz:=z.pos.z-s.player.z;d:=sqrt(dx*dx+dz*dz)-ifx z.sphere then z.radius else hh_min(z.half.x,z.half.z);if d<distance {distance=d;best=i;}}return best;}
 #test "a click above the middle of the view looks up, right of it looks right" {
  eye:=hh_p(0,1,0);at:=hh_p(0,1,-1);
- up:=verse_haunt_ray(eye,at,400,100,800,600);#assert (up.y>0.2);#assert (abs(up.x)<0.001);
- down:=verse_haunt_ray(eye,at,400,500,800,600);#assert (down.y< -0.2);
- right:=verse_haunt_ray(eye,at,700,300,800,600);#assert (right.x>0.2);#assert (abs(right.y)<0.001);
- mid:=verse_haunt_ray(eye,at,400,300,800,600);#assert (mid.z< -0.999);
+ up:=metaverse_haunt_ray(eye,at,400,100,800,600);#assert (up.y>0.2);#assert (abs(up.x)<0.001);
+ down:=metaverse_haunt_ray(eye,at,400,500,800,600);#assert (down.y< -0.2);
+ right:=metaverse_haunt_ray(eye,at,700,300,800,600);#assert (right.x>0.2);#assert (abs(right.y)<0.001);
+ mid:=metaverse_haunt_ray(eye,at,400,300,800,600);#assert (mid.z< -0.999);
 }
 #test "the zone to edit is the nearest within three metres" {
  zs:[2]HauntZone;zs[0].pos=hh_p(0,0,0);zs[0].half=hh_p(1,1,1);zs[1].pos=hh_p(5,0,0);zs[1].sphere=true;zs[1].radius=0.5;
- s:Haunt;s.zones=zs[..];s.zone_count=2;s.player=hh_p(0.5,0,0);#assert verse_haunt_zone_near(s)==0;
- s.player=hh_p(4,0,0);#assert verse_haunt_zone_near(s)==1;s.player=hh_p(20,0,0);#assert verse_haunt_zone_near(s)== -1;
+ s:Haunt;s.zones=zs[..];s.zone_count=2;s.player=hh_p(0.5,0,0);#assert metaverse_haunt_zone_near(s)==0;
+ s.player=hh_p(4,0,0);#assert metaverse_haunt_zone_near(s)==1;s.player=hh_p(20,0,0);#assert metaverse_haunt_zone_near(s)== -1;
 }
 // Eight marks around a zone's edge on the floor, k 0 to 7: its corners and
 // sides' middles, or around its circle.
@@ -542,20 +542,20 @@ hh_zone_mark :: (z:HauntZone,k:int)->HauntPoint {
  ps:[1]HauntPerson;ps[0].id="mort";ps[0].pos=hh_p(0,0,-4);
  walks:=[1]HauntRect.[HauntRect.{x0= -10,z0= -10,x1=10,z1=10}];
  s:Haunt;s.meshes=meshes[..];s.mesh_count=1;s.entities=es[..];s.entity_count=2;s.people=ps[..];s.people_count=1;s.walks=walks[..];s.walk_count=1;s.selected= -1;
- #assert verse_haunt_pick(s,hh_p(0,1,0),hh_p(0,0,-1))==0 && verse_haunt_person_of(s,0)==0 && verse_haunt_person_of(s,1)== -1;
- #assert verse_haunt_pick(s,hh_p(3,1,0),hh_p(0,0,-1))== -1;   // a fixed thing stays unpickable
- s=verse_haunt_edit(s,0,0,0.5);s=verse_haunt_edit(s,0,2,0.25);
+ #assert metaverse_haunt_pick(s,hh_p(0,1,0),hh_p(0,0,-1))==0 && metaverse_haunt_person_of(s,0)==0 && metaverse_haunt_person_of(s,1)== -1;
+ #assert metaverse_haunt_pick(s,hh_p(3,1,0),hh_p(0,0,-1))== -1;   // a fixed thing stays unpickable
+ s=metaverse_haunt_edit(s,0,0,0.5);s=metaverse_haunt_edit(s,0,2,0.25);
  #assert s.entities[0].pos.x==0.5 && s.people[0].pos.x==0.5 && s.people[0].pos.z== -3.75 && s.dirty;
- #assert verse_haunt_edit(s,0,0,20).entities[0].pos.x==0.5;   // not off the floor
- #assert verse_haunt_edit(s,1,0,1).entities[1].pos.x==3;      // a fixed thing stays put
+ #assert metaverse_haunt_edit(s,0,0,20).entities[0].pos.x==0.5;   // not off the floor
+ #assert metaverse_haunt_edit(s,1,0,1).entities[1].pos.x==3;      // a fixed thing stays put
  zs:[1]HauntZone;zs[0].pos=hh_p(1,1,1);zs[0].half=hh_p(1,1,2);s.zones=zs[..];s.zone_count=1;s.player=hh_p(0,0,0);s.heading=0;
- s=verse_haunt_zone_edit(s,0,3,0.25);s=verse_haunt_zone_edit(s,0,4,-0.5);#assert s.zones[0].pos.x==1.25 && s.zones[0].pos.z==0.5 && s.zones[0].pos.y==1;
- s=verse_haunt_zone_edit(s,0,5,0);#assert s.zones[0].pos.x==0 && s.zones[0].pos.z== -2;
+ s=metaverse_haunt_zone_edit(s,0,3,0.25);s=metaverse_haunt_zone_edit(s,0,4,-0.5);#assert s.zones[0].pos.x==1.25 && s.zones[0].pos.z==0.5 && s.zones[0].pos.y==1;
+ s=metaverse_haunt_zone_edit(s,0,5,0);#assert s.zones[0].pos.x==0 && s.zones[0].pos.z== -2;
  #assert hh_zone_mark(s.zones[0],0).x== -1 && hh_zone_mark(s.zones[0],4).z==0;
 }
-verse_haunt_zone_edit :: (s:Haunt,index:int,op:int,value:f32)->Haunt #export_c #effects(all) {next:=s;if index<0 || index>=s.zone_count{return next;}z:=s.zones[index];if op==0{z.once=!z.once;}if op==1{z.radius=hh_clamp(z.radius+value,0.2,10);z.half=hh_p(hh_clamp(z.half.x+value,0.2,10),z.half.y,hh_clamp(z.half.z+value,0.2,10));}if op==2 {next.fired=next.fired&(0xffffffff^(cast(u32)1<<index));z.entered=false;}if op==3{z.pos.x+=value;}if op==4{z.pos.z+=value;}if op==5{at:=verse_haunt_place_point(s);z.pos=hh_p(at.x,z.pos.y,at.z);}next.zones[index]=z;next.dirty=true;return next;}
+metaverse_haunt_zone_edit :: (s:Haunt,index:int,op:int,value:f32)->Haunt #export_c #effects(all) {next:=s;if index<0 || index>=s.zone_count{return next;}z:=s.zones[index];if op==0{z.once=!z.once;}if op==1{z.radius=hh_clamp(z.radius+value,0.2,10);z.half=hh_p(hh_clamp(z.half.x+value,0.2,10),z.half.y,hh_clamp(z.half.z+value,0.2,10));}if op==2 {next.fired=next.fired&(0xffffffff^(cast(u32)1<<index));z.entered=false;}if op==3{z.pos.x+=value;}if op==4{z.pos.z+=value;}if op==5{at:=metaverse_haunt_place_point(s);z.pos=hh_p(at.x,z.pos.y,at.z);}next.zones[index]=z;next.dirty=true;return next;}
 
-verse_haunt_save_valid :: (s:Haunt,bytes:[]u8)->bool #export_c #effects(all) {
+metaverse_haunt_save_valid :: (s:Haunt,bytes:[]u8)->bool #export_c #effects(all) {
  if bytes.count>262144{return false;}
  v:=HH_Save_decode_minimal(bytes);if v.error!=0 || HH_Save_get_version(v).value!=1 || HH_Save_get_world_id(v).value!=s.world_id || HH_Save_get_source_commit(v).value!=s.revision {return false;}
  quest:=cast(int)HH_Save_get_quest_step(v).value;fired:=HH_Save_get_fired_zones(v).value;
@@ -574,20 +574,20 @@ verse_haunt_save_valid :: (s:Haunt,bytes:[]u8)->bool #export_c #effects(all) {
  return true;
 }
 hh_person_index :: (s:Haunt,id:string)->int {for i:0..<s.people_count {if s.people[i].id==id{return i;}}return -1;}
-verse_haunt_add_person :: (s:Haunt,id:string,name:string,figure:string,out:[]u8,tmp:[]u8)->Haunt #export_c #effects(all) {
- next:=s;pos:=verse_haunt_place_point(s);mesh:=verse_haunt_mesh(s,figure);
+metaverse_haunt_add_person :: (s:Haunt,id:string,name:string,figure:string,out:[]u8,tmp:[]u8)->Haunt #export_c #effects(all) {
+ next:=s;pos:=metaverse_haunt_place_point(s);mesh:=metaverse_haunt_mesh(s,figure);
  if name.count<1 || name.count>128 || id.count<1 || id.count>128 || s.people_count>=s.people.count || mesh<0 || !hh_walk(s,pos.x,pos.z){return next;}
  doc:=HH_Person_set_id(HH_Person_new(),id,out);doc=HH_Person_set_name(doc,name,tmp);doc=HH_Person_set_role(doc,"guest",out);
  a:[128]u8;b:[128]u8;position:=hh_proto_vec(pos,a[..],b[..]);doc=HH_Person_set_position(doc,position,tmp);doc=HH_Person_append_greet(doc,"Hello. What would you like to know?",out);
- if doc.error!=0{return next;}next=verse_haunt_add(next,mesh,id,name,pos.x,pos.z);if next.entity_count==s.entity_count{return s;}
+ if doc.error!=0{return next;}next=metaverse_haunt_add(next,mesh,id,name,pos.x,pos.z);if next.entity_count==s.entity_count{return s;}
  person:HauntPerson;person.doc=doc;person.id=id;person.name=name;person.role="guest";person.pos=pos;next.people[next.people_count]=person;next.people_count+=1;return next;
 }
-verse_haunt_person_action :: (s:Haunt,index:int,action:int)->Haunt #export_c #effects(all) {
+metaverse_haunt_person_action :: (s:Haunt,index:int,action:int)->Haunt #export_c #effects(all) {
  next:=s;if index<0 || index>=s.people_count{return next;}p:=s.people[index];entity:=hh_find(s,p.id);if entity<0{return next;}
  if action==0{p.brain="follower";}if action==1{p.brain="townsfolk";}if action==2{p.brain="guard";}if action==3{p.brain="";}if action==4{p.brain="critter";}
- if action==5 {pos:=verse_haunt_place_point(s);if hh_walk(s,pos.x,pos.z){p.pos=pos;next.entities[entity].pos=pos;}}
+ if action==5 {pos:=metaverse_haunt_place_point(s);if hh_walk(s,pos.x,pos.z){p.pos=pos;next.entities[entity].pos=pos;}}
  if action==6{next.entities[entity].hidden=true;p.brain="";}
- if action==7 {figure:=verse_haunt_mesh(s,"Custom_Fig_Guest0");if figure>=0{next.entities[entity].mesh=figure;}}
+ if action==7 {figure:=metaverse_haunt_mesh(s,"Custom_Fig_Guest0");if figure>=0{next.entities[entity].mesh=figure;}}
  next.people[index]=p;next.dirty=true;return next;
 }
 hh_atan2 :: (y:f32,x:f32)->f32 {
@@ -608,34 +608,34 @@ LIFE_HEARD :: 7.0;     // metres: a haunt this close startles them
 // A deterministic share in [0, 1) for person `index` in time slot `slot`.
 hh_life_hash :: (index:int,slot:int,salt:int)->f32 {n:=index*7919+slot*104729+salt*31337+12345;if n<0{n=-n;}m:=(n*n/7+n*13)%1000;return cast(f32)m/1000;}
 #test "idle: they breathe and shift their weight, and glance about at their own times" {
- a:=verse_haunt_life(0,1,false,false,-1,false);b:=verse_haunt_life(0,1.8,false,false,-1,false);
+ a:=metaverse_haunt_life(0,1,false,false,-1,false);b:=metaverse_haunt_life(0,1.8,false,false,-1,false);
  #assert a.stretch!=b.stretch && a.roll!=b.roll && abs(a.roll)<=0.04 && abs(a.stretch)<=0.013;
  // two people glance differently at the same moment
- c:=verse_haunt_life(1,1,false,false,-1,false);#assert c.yaw!=a.yaw || c.roll!=a.roll;
+ c:=metaverse_haunt_life(1,1,false,false,-1,false);#assert c.yaw!=a.yaw || c.roll!=a.roll;
  // the same person at the same time does the same thing (no randomness)
- d:=verse_haunt_life(0,1,false,false,-1,false);#assert d.yaw==a.yaw && d.lift==a.lift;
+ d:=metaverse_haunt_life(0,1,false,false,-1,false);#assert d.yaw==a.yaw && d.lift==a.lift;
  // glances stay small: they look about, never spin round
- for k:0..<40 {g:=verse_haunt_life(k%5,cast(f32)k*0.9,false,false,-1,false);#assert abs(g.yaw)<=0.81 && g.lift>=0 && g.lift<=0.09;}
+ for k:0..<40 {g:=metaverse_haunt_life(k%5,cast(f32)k*0.9,false,false,-1,false);#assert abs(g.yaw)<=0.81 && g.lift>=0 && g.lift<=0.09;}
 }
 #test "some glances come with a fidget: a little hop, at their own slots" {
- hops:=0;for slot:0..<40 {g:=verse_haunt_life(2,cast(f32)slot*LIFE_LOOK+0.6,false,false,-1,false);if g.lift>0.03{hops+=1;}}
+ hops:=0;for slot:0..<40 {g:=metaverse_haunt_life(2,cast(f32)slot*LIFE_LOOK+0.6,false,false,-1,false);if g.lift>0.03{hops+=1;}}
  #assert hops>0 && hops<40;
 }
 #test "near you they stop glancing; in a conversation they nod and gesture" {
- n:=verse_haunt_life(0,2,true,false,-1,false);#assert n.yaw==0 && n.lift==0 && n.pitch>0;
- t1:=verse_haunt_life(0,2,true,true,-1,false);t2:=verse_haunt_life(0,2.3,true,true,-1,false);
+ n:=metaverse_haunt_life(0,2,true,false,-1,false);#assert n.yaw==0 && n.lift==0 && n.pitch>0;
+ t1:=metaverse_haunt_life(0,2,true,true,-1,false);t2:=metaverse_haunt_life(0,2.3,true,true,-1,false);
  #assert t1.yaw==0 && t1.pitch!=t2.pitch && abs(t1.pitch)<=0.1 && (t1.roll!=t2.roll);
 }
 #test "a startle: up and back with a shiver, then over" {
- s:=verse_haunt_life(0,5,false,false,0.2,false);#assert s.lift>0.1 && s.pitch< -0.05;
- e:=verse_haunt_life(0,5,false,false,LIFE_STARTLE+0.1,false);i:=verse_haunt_life(0,5,false,false,-1,false);#assert e.lift==i.lift && e.pitch==i.pitch;
+ s:=metaverse_haunt_life(0,5,false,false,0.2,false);#assert s.lift>0.1 && s.pitch< -0.05;
+ e:=metaverse_haunt_life(0,5,false,false,LIFE_STARTLE+0.1,false);i:=metaverse_haunt_life(0,5,false,false,-1,false);#assert e.lift==i.lift && e.pitch==i.pitch;
  // a startle beats a conversation's nod
- t:=verse_haunt_life(0,5,true,true,0.2,false);#assert t.lift>0.1;
+ t:=metaverse_haunt_life(0,5,true,true,0.2,false);#assert t.lift>0.1;
 }
 #test "walking, they keep their glance and hop still: only the sway and breath" {
- w:=verse_haunt_life(2,cast(f32)3*LIFE_LOOK+0.6,false,false,-1,true);#assert w.yaw==0 && w.lift==0 && w.pitch==0;
+ w:=metaverse_haunt_life(2,cast(f32)3*LIFE_LOOK+0.6,false,false,-1,true);#assert w.yaw==0 && w.lift==0 && w.pitch==0;
 }
-verse_haunt_life :: (index:int,t:f32,near:bool,talking:bool,startle:f32,moving:bool)->HauntLife #export_c #effects(all) {
+metaverse_haunt_life :: (index:int,t:f32,near:bool,talking:bool,startle:f32,moving:bool)->HauntLife #export_c #effects(all) {
  out:HauntLife;phase:=cast(f32)index*1.7;
  out.stretch=0.012*sin(t*1.9+phase);
  out.roll=0.035*sin(t*0.45+phase);
@@ -692,7 +692,7 @@ hh_person_life :: (s:Haunt,entity:int,t:f64)->HauntLife {
  p:=s.people[person];distance:=hh_len(e.pos,s.player);
  moving:=p.brain=="townsfolk" || (p.brain=="follower" && distance>1.8) || (p.brain=="critter" && distance<4);
  since:=ifx p.startled>0 then cast(f32)(t-p.startled) else -1;
- return verse_haunt_life(person,cast(f32)t,distance<LIFE_NEAR,s.talking==person,since,moving && s.talking!=person);
+ return metaverse_haunt_life(person,cast(f32)t,distance<LIFE_NEAR,s.talking==person,since,moving && s.talking!=person);
 }
 hh_wrap :: (a:f32)->f32 {r:=a;while r>3.14159265{r-=6.2831853;}while r< -3.14159265{r+=6.2831853;}return r;}
 hh_turn_to :: (yaw:f32,want:f32,dt:f32)->f32 {return yaw+hh_wrap(want-yaw)*hh_min(1,dt*5);}
@@ -709,16 +709,16 @@ hh_people_step :: (s:Haunt,dt:f32)->Haunt {
   else if s.editing {}
   else if s.talking==i || p.brain=="guard" || distance<LIFE_NEAR {e.yaw=hh_turn_to(e.yaw,facing,dt);}
   else {e.yaw=hh_turn_to(e.yaw,next.people[i].home_yaw,dt);}
-  if s.talking!=i && move {dx:=target.x-e.pos.x;dz:=target.z-e.pos.z;length:=sqrt(dx*dx+dz*dz);if length>0.1 {desired:=hh_p(e.pos.x+dx/length*dt,e.pos.y,e.pos.z+dz/length*dt);e.pos=verse_haunt_constrain(s,e.pos,desired);}}
+  if s.talking!=i && move {dx:=target.x-e.pos.x;dz:=target.z-e.pos.z;length:=sqrt(dx*dx+dz*dz);if length>0.1 {desired:=hh_p(e.pos.x+dx/length*dt,e.pos.y,e.pos.z+dz/length*dt);e.pos=metaverse_haunt_constrain(s,e.pos,desired);}}
   next.entities[entity]=e;
  }return next;
 }
 HauntMapRect :: struct { x:f32;y:f32;width:f32;height:f32;kind:int; }
-verse_haunt_map :: (s:Haunt,width:f32,height:f32,out:[]HauntMapRect)->int #export_c #effects(all) {
+metaverse_haunt_map :: (s:Haunt,width:f32,height:f32,out:[]HauntMapRect)->int #export_c #effects(all) {
  if out.count<s.area_count+2{return 0;}k:=hh_min((width-40)/40,(height-150)/65);ox:=20+10*k;oy:=100+55*k;
  for i:0..<s.area_count {r:=s.areas[i].rect;out[i]=HauntMapRect.{x=ox+r.x0*k,y=oy-r.z1*k,width=(r.x1-r.x0)*k,height=(r.z1-r.z0)*k,kind=ifx s.areas[i].room then 0 else 1};}
  p:=s.player;out[s.area_count]=HauntMapRect.{x=ox+(p.x-0.45)*k,y=oy-(p.z+0.45)*k,width=0.9*k,height=0.9*k,kind=2};
- g:=verse_haunt_goal(s);out[s.area_count+1]=HauntMapRect.{x=ox+(g.x-0.35)*k,y=oy-(g.z+0.35)*k,width=0.7*k,height=0.7*k,kind=3};return s.area_count+2;
+ g:=metaverse_haunt_goal(s);out[s.area_count+1]=HauntMapRect.{x=ox+(g.x-0.35)*k,y=oy-(g.z+0.35)*k,width=0.7*k,height=0.7*k,kind=3};return s.area_count+2;
 }
 
 hh_instance :: (e:HauntEntity)->HauntInstance {c:=cos(e.yaw)*e.scale;sn:=sin(e.yaw)*e.scale;v:HauntInstance;v.rows=[12]f32.[c,0,sn,e.pos.x,0,e.scale,0,e.pos.y,-sn,0,c,e.pos.z];v.material=[4]f32.[e.tint.x,e.tint.y,e.tint.z,e.glow];return v;}
@@ -735,14 +735,14 @@ hh_mounted :: (e:HauntEntity,p:HauntPoint)->HauntPoint {return hh_p(e.pos.x+(cos
 }
 
 #test "a personal copy has its own identity and advances only Create" {
- s:Haunt;s.quest=5;next:=verse_haunt_fork(s,"Mine","copy-1");
+ s:Haunt;s.quest=5;next:=metaverse_haunt_fork(s,"Mine","copy-1");
  #assert next.title=="Mine" && next.instance_id=="copy-1" && next.quest==7;
- next=verse_haunt_fork(s,"","copy-1");#assert next.quest==5;
- s.quest=7;next=verse_haunt_feedback(s,"Fun house");#assert next.quest==8 && next.feedback=="Fun house";
+ next=metaverse_haunt_fork(s,"","copy-1");#assert next.quest==5;
+ s.quest=7;next=metaverse_haunt_feedback(s,"Fun house");#assert next.quest==8 && next.feedback=="Fun house";
 }
-verse_haunt_fork :: (s:Haunt,title:string,id:string)->Haunt #export_c #effects(all) {next:=s;if title.count<1 || title.count>128 || id.count<1 || id.count>128{return next;}next.title=title;next.instance_id=id;next.quest=hh_quest(s.quest,"realm");next.dirty=true;return next;}
-verse_haunt_feedback :: (s:Haunt,text:string)->Haunt #export_c #effects(all) {next:=s;if text.count>4096{return next;}next.feedback=text;next.quest=hh_quest(s.quest,"survey");next.dirty=true;return next;}
-verse_haunt_saved_title :: (bytes:[]u8)->string #export_c #effects(all) {v:=HH_Save_decode_minimal(bytes);if v.error!=0 || HH_Save_get_version(v).value!=1{return "";}return HH_Save_get_title(v).value;}
+metaverse_haunt_fork :: (s:Haunt,title:string,id:string)->Haunt #export_c #effects(all) {next:=s;if title.count<1 || title.count>128 || id.count<1 || id.count>128{return next;}next.title=title;next.instance_id=id;next.quest=hh_quest(s.quest,"realm");next.dirty=true;return next;}
+metaverse_haunt_feedback :: (s:Haunt,text:string)->Haunt #export_c #effects(all) {next:=s;if text.count>4096{return next;}next.feedback=text;next.quest=hh_quest(s.quest,"survey");next.dirty=true;return next;}
+metaverse_haunt_saved_title :: (bytes:[]u8)->string #export_c #effects(all) {v:=HH_Save_decode_minimal(bytes);if v.error!=0 || HH_Save_get_version(v).value!=1{return "";}return HH_Save_get_title(v).value;}
 hh_knowledge :: (text:string,question:string)->string {
  best:="";score:=0;start:=0;
  for i:0..<text.count+1 {

@@ -570,7 +570,7 @@ ok   #test trees keep off the trails, the stream and the glades (1 case, 1362799
          16723986  12.3%     18290298     15356  ffp_lake_near  metaverse/fairy-forest/park.coax:32
          15105764  11.1%     20123292         1  path_planes  apps/openagents-web/fairy.coax:291
          13859453  10.2%     15855558      3041  ff_stream_near_some  metaverse/fairy-forest/forest.coax:496
-         13223648   9.7%     14257179      1016  verse_path_nearest  metaverse-engine/world/terrain.coax:88
+         13223648   9.7%     14257179      1016  metaverse_path_nearest  metaverse-engine/world/terrain.coax:88
          10778886   7.9%     13093768      1707  ffpk_path_gap  apps/openagents-web/fairypark.coax:15
           8000610   5.9%      8001730     28755  ffp_rock_lift  metaverse/fairy-forest/park.coax:91
           6713210   4.9%      6713210    897270  lo  metaverse-engine/core/points.coax:27
@@ -1079,20 +1079,20 @@ MAX_SAT :: 2_100_000_000_000_000;
 // ---- Amounts ----
 
 // The SDK counts satoshis; payment.v1 counts millisatoshis.
-verse_wallet_sat_to_msat :: (sat: int) -> int #export_c {
+metaverse_wallet_sat_to_msat :: (sat: int) -> int #export_c {
   if sat < 0 || sat > MAX_SAT { return -1; }
   return sat * 1000;
 }
 
 #forall "sats to msat" sat: -3..<40 {
-  m := verse_wallet_sat_to_msat(sat);
+  m := metaverse_wallet_sat_to_msat(sat);
   if sat < 0 { #assert m == -1; } else { #assert m == sat * 1000; }
 }
 
 #test "sats to msat at the top" {
-  #assert verse_wallet_sat_to_msat(MAX_SAT) == MAX_SAT * 1000;
-  #assert verse_wallet_sat_to_msat(MAX_SAT + 1) == -1;
-  #assert verse_wallet_sat_to_msat(0) == 0;
+  #assert metaverse_wallet_sat_to_msat(MAX_SAT) == MAX_SAT * 1000;
+  #assert metaverse_wallet_sat_to_msat(MAX_SAT + 1) == -1;
+  #assert metaverse_wallet_sat_to_msat(0) == 0;
 }
 ```
 
@@ -1113,10 +1113,10 @@ the start:
 ```jai
 #forall "every four events" a: Event, b: Event, c: Event, d: Event {
   events := [4] Event.[a, b, c, d];
-  f := verse_wallet_start();
+  f := metaverse_wallet_start();
   for e: events {
     before := f;
-    f = verse_wallet_step(f, e);
+    f = metaverse_wallet_step(f, e);
     #assert f.sends <= 1;
     // ...
   }

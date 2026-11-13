@@ -114,7 +114,7 @@ zone_walk :: (s: [] EgZone) -> ZoneWalk #export_c #effects(all) {
   if s[0].creator[0].hostiles[0].ready && s[0].creator[0].hostiles[0].hp<=0 {return w;}w.on=true;if s[0].put_on {w.put=true;w.x=s[0].put_x;w.y=s[0].put_y;w.z=s[0].put_z;w.face=s[0].put_face;s[0].put_on=false;s[0].you_on=true;}else if !s[0].you_on {w.put=true;s[0].you_on=true;}if w.put {s[0].xc[0].jump=EgJump.{};s[0].xc[0].jump_run=0;s[0].you_x=w.x;s[0].you_y=w.y;s[0].you_z=w.z;s[0].you_face=w.face;s[0].creator[0].player_x=w.x;s[0].creator[0].player_y=w.y;s[0].creator[0].player_z=w.z;}return w;
 }
 // Your keys for Everglade's step: W, A, S and D along the camera, Shift (Everglade runs unless it
-// is held: verse_runs), Space to jump. The face adds the thumb's stick.
+// is held: metaverse_runs), Space to jump. The face adds the thumb's stick.
 zone_move_in :: (s: [] EgZone) -> EgMoveIn #export_c #effects(all) {
   h := s[0].held;
   // a Dash's sprint runs you ahead the way it heads (xc_sprint_frame steers it), at its pace (zone_move_scale)

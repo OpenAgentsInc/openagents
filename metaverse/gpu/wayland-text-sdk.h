@@ -1,6 +1,6 @@
 // Firm reason: 6 (Wayland text-input/data-device SDK and owned nonblocking descriptors; Coax admits text, bounds, deadlines and owners).
-#ifndef AETHYR_WAYLAND_TEXT_SDK_H
-#define AETHYR_WAYLAND_TEXT_SDK_H
+#ifndef ENGINE_WAYLAND_TEXT_SDK_H
+#define ENGINE_WAYLAND_TEXT_SDK_H
 #include <fcntl.h>
 #include <errno.h>
 #include <time.h>

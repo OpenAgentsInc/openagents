@@ -98,11 +98,11 @@ static void start(uint32_t state) {
   if (!track_state.page_n) track_init(tr(), track_cstr("fairy-forest"));
   if (placed) return;
   coax_t_Point spawn = fairy_spawn(at(state));
-  player = verse_player_place(spawn.x, spawn.y, spawn.z, fairy_spawn_face());
-  controls = verse_player_v2_reset();
-  sticks = verse_sticks_reset();
+  player = metaverse_player_place(spawn.x, spawn.y, spawn.z, fairy_spawn_face());
+  controls = metaverse_player_v2_reset();
+  sticks = metaverse_sticks_reset();
   placed = true;
-  verse_place_golden(place_k(), golden);
+  metaverse_place_golden(place_k(), golden);
   place_seen(state);
   if (!stream_built) {
     int64_t n = fairy_course((coax_v_f32){course, 48});
@@ -229,12 +229,12 @@ static bool progress_message(uint32_t state, int32_t kind, uint32_t length) {
 // Where you are, kept so a reload puts you back (place-face.h).
 static coax_t_Place place_here(uint32_t state) {
   if (!placed) return (coax_t_Place){0};
-  return fairy_place_of(at(state), player.body.pos.x, player.body.pos.y, player.body.pos.z, verse_player_face(player));
+  return fairy_place_of(at(state), player.body.pos.x, player.body.pos.y, player.body.pos.z, metaverse_player_face(player));
 }
 static void place_put(uint32_t state, coax_t_Place p) {
   coax_t_Place q = fairy_place_fix(at(state), p);
-  player = verse_player_place(q.x, 0, q.z, q.face);
-  controls = verse_player_v2_reset();
+  player = metaverse_player_place(q.x, 0, q.z, q.face);
+  controls = metaverse_player_v2_reset();
   fairy_place_camera(at(state), q);
 }
 
@@ -257,7 +257,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_t_Fairy *g = fairy(state);
   width = w; height = h; dpr = scale;
   float frame = dt;   /* the player's clock (metaverse-engine/core/loop.coax) steps it; the rest moves by what it counts */
-  dt = verse_player_counts(player, frame);
+  dt = metaverse_player_counts(player, frame);
   now += dt;
   fairy_golden(at(state), golden);
   fairy_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
@@ -278,17 +278,17 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   // with flight off for visitors (SETTINGS), there are no wings.
   int64_t beats_were = player.body.beats, jumps_were = (int64_t)player.body.jumps.pressed;
   bool grounded = player.body.on_ground;
-  player = verse_player_v2_flying(control(), player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y),
+  player = metaverse_player_v2_flying(control(), player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, metaverse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y),
                                      jump && !afloat, afloat ? 0 : taps, fairy_may_fly(at(state)) && !afloat, g->run && !afloat);
   player.body.pace = swim.pace;
-  verse_player_v2_heading(control(), player, fairy_player_theta(at(state)));
+  metaverse_player_v2_heading(control(), player, fairy_player_theta(at(state)));
 
   if (sticks.zoom != 0) fairy_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (metaverse/grid.coax) */
-  sticks = verse_sticks_used(sticks);
+  sticks = metaverse_sticks_used(sticks);
   int64_t walls = fairy_walls(at(state));
-  player = verse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},
+  player = metaverse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},
                                          (coax_v_f32){0, 0}, (coax_string){"fairy-forest", sizeof "fairy-forest" - 1}).player;
-  coax_t_Vec3 feet = verse_player_feet(player);
+  coax_t_Vec3 feet = metaverse_player_feet(player);
   bool pressed = (int64_t)player.body.jumps.pressed != jumps_were;
   /* a flap, for the wings and the count: a beat the steps took, or a press from the ground or with wings */
   bool beat = player.body.beats != beats_were || (pressed && (grounded || fairy_may_fly(at(state))));
@@ -311,8 +311,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (swim.medium >= 2) lift = swim.feet - fairy_ground(at(state), feet.x, feet.z);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_fairy_max_vertices() * coaxial_fairy_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_fairy_uniform_floats()};
-  int64_t n = fairy_frame(at(state), out, u, w, h, scale, dt, still != 0, feet.x, lift, feet.z, verse_player_face(player),
-                          verse_player_act(player), player.body.vel.x, player.body.vel.z, air, flap_phase,
+  int64_t n = fairy_frame(at(state), out, u, w, h, scale, dt, still != 0, feet.x, lift, feet.z, metaverse_player_face(player),
+                          metaverse_player_act(player), player.body.vel.x, player.body.vel.z, air, flap_phase,
                           sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   if (n > 0) {
     int64_t at_water = fairy_water_at();
@@ -500,9 +500,9 @@ static void social_frame(uint32_t state, float dt) {
   if (now - room_at < ffs_room_every()) return;
   room_at = now;
   int64_t un = room_url(ffs_room(), false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
-  coax_t_Vec3 feet = verse_player_feet(player);
+  coax_t_Vec3 feet = metaverse_player_feet(player);
   float air = player.body.on_ground ? 0.0f : feet.y;
-  int64_t bn = room_presence_body(feet.x, air, feet.z, verse_player_face(player), f->room.e[0].last, (coax_v_u8){room_body, sizeof room_body});
+  int64_t bn = room_presence_body(feet.x, air, feet.z, metaverse_player_face(player), f->room.e[0].last, (coax_v_u8){room_body, sizeof room_body});
   if (un <= 0 || bn <= 0) return;
   room_ask = coaxial_http((uint32_t)(uintptr_t)room_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)room_body, (uint32_t)bn, 1 | 4 | 8);
   room_asked_at = now;
@@ -593,13 +593,13 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, in
   track_key_up(tr(), key);
   return fairy_key_up(at(state), key, mods) ? 1u : 0u;
 }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { fairy_blur(at(state)); sticks = verse_sticks_reset(); track_blur(tr()); }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { fairy_blur(at(state)); sticks = metaverse_sticks_reset(); track_blur(tr()); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   start(state);
   track_pointer(tr(), x, y, phase, kind, (coax_string){"", 0});
   track_drain(&track_state);
   if (fairy_pointer(at(state), x, y, phase, kind, id)) { edit_face_drain(ed(state)); return 1u; }
-  if (kind != 0) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  if (kind != 0) sticks = metaverse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
 }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { fairy_wheel(at(state), dy); }

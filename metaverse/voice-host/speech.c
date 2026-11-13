@@ -690,7 +690,7 @@ static void split_more(splitter *sp, bool done) {
     if (next == -2) return;  // decide this byte when the next one is known
     size_t start = sp->from;
     while (start < i && (sp->reply[start] == ' ' || sp->reply[start] == '\n')) start++;
-    if (verse_voice_reply_sentence_end((unsigned char)sp->reply[i], next, (int64_t)(i - start + 1), sp->sentences == 0)) emit(sp, i + 1);
+    if (metaverse_voice_reply_sentence_end((unsigned char)sp->reply[i], next, (int64_t)(i - start + 1), sp->sentences == 0)) emit(sp, i + 1);
     sp->scan = i + 1;
   }
   if (done && sp->from < sp->n) emit(sp, sp->n);

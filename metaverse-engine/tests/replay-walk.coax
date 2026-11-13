@@ -32,7 +32,7 @@ Walk :: struct {
   fault_at: int = -1;   // from this step on, the step reads something it shouldn't
 }
 walk_init :: (w: [] Walk) {
-  w[0] = Walk.{you = verse_player_place(0, 0, 0, 0)};
+  w[0] = Walk.{you = metaverse_player_place(0, 0, 0, 0)};
   w[0].peer = [BODY] f32.[3, 0, 3, 3, 1.4, 3, 0.4];
 }
 walk_digest :: (w: [] Walk) -> int {

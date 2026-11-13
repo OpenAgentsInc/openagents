@@ -608,7 +608,7 @@ is evidence for the visible noise change, not an image-tolerance pass.
 The painterly fixture has a separate [migration record](../../docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/fixture/noise-migration.json).
 Its four clock keys, four phone views and shaft view retain their original
 screenshots beside the new ones. Restoring only `fixture_hash` and
-`verse_style_hash` to their old formulas makes all nine scenarios pass their
+`metaverse_style_hash` to their old formulas makes all nine scenarios pass their
 original golden policy. Putting the current integer shader in the old
 executor makes all nine pass against the reviewed new baselines. The noon
 control also compares complete raw images and identical producer bytes.

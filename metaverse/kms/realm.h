@@ -2,8 +2,8 @@
 // browser contract (coax/web/host.js, the realm's -face.c) without Wasm,
 // plus the realm's light as scalar Coax (its -light.coax), because there is
 // no WGSL here. A face decides nothing; the realm's Coax does.
-#ifndef VERSE_KMS_REALM_H
-#define VERSE_KMS_REALM_H
+#ifndef METAVERSE_KMS_REALM_H
+#define METAVERSE_KMS_REALM_H
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

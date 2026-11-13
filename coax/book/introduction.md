@@ -70,7 +70,7 @@ The wallet shows a different side of the language. It starts like this:
 MAX_SAT :: 2_100_000_000_000_000;
 
 // The SDK counts satoshis; payment.v1 counts millisatoshis.
-verse_wallet_sat_to_msat :: (sat: int) -> int #export_c {
+metaverse_wallet_sat_to_msat :: (sat: int) -> int #export_c {
   if sat < 0 || sat > MAX_SAT { return -1; }
   return sat * 1000;
 }

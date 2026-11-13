@@ -3,8 +3,8 @@
 // printable key is what a US keyboard types with it held (host.js sends the
 // browser's e.key, which is that), so a realm's text field gets capitals and
 // punctuation.
-#ifndef VERSE_KMS_KEYS_H
-#define VERSE_KMS_KEYS_H
+#ifndef METAVERSE_KMS_KEYS_H
+#define METAVERSE_KMS_KEYS_H
 #include "realm.h"
 #include <linux/input-event-codes.h>
 #include <stddef.h>

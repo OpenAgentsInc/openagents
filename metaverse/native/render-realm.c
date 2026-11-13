@@ -44,17 +44,17 @@ static unsigned char *rr_file(const char *directory,coax_string name,size_t *byt
 static RhgBytes rr_package_read(void *user,coax_string name){RhgRealm *r=user;free(r->last_file);size_t bytes=0;r->last_file=rr_file(r->package_directory,name,&bytes);return(RhgBytes){r->last_file,bytes};}
 static unsigned char *rr_asset_file(coax_string url,size_t *bytes){return rr_file("render-assets",(coax_string){url.data+1,url.count-1},bytes);}
 static int rr_deliver_data(RealmHost *h,int64_t row,const unsigned char *bytes,size_t size,char *error,size_t error_bytes){
-  if(!aethyr_native_span(0,size,0,UINT32_MAX))return rr_error(error,error_bytes,"asset byte count does not fit the producer ABI");
+  if(!engine_native_span(0,size,0,UINT32_MAX))return rr_error(error,error_bytes,"asset byte count does not fit the producer ABI");
   uint32_t capacity=coaxial_asset_capacity(h->state,(int32_t)row);
   cx_face_addr destination=coaxial_asset(h->state,(int32_t)row,(uint32_t)size);
-  if(!aethyr_native_span((uint64_t)(uintptr_t)bytes,size,(uint64_t)(uintptr_t)bytes,size)
-      ||aethyr_render_asset_span(destination,capacity,size,rh_address_limit()).status!=COAX_RenderFrameStatus_ok)return rr_error(error,error_bytes,"asset destination allocation refused by Coax");
+  if(!engine_native_span((uint64_t)(uintptr_t)bytes,size,(uint64_t)(uintptr_t)bytes,size)
+      ||engine_render_asset_span(destination,capacity,size,rh_address_limit()).status!=COAX_RenderFrameStatus_ok)return rr_error(error,error_bytes,"asset destination allocation refused by Coax");
   if(size)memcpy(rh_ptr(destination),bytes,size);return 1;
 }
 int rhgr_deliver(RealmHost *h,int64_t profile,char *error,size_t error_bytes){
-  int64_t count=aethyr_render_asset_count(profile);if(count<0)return rr_error(error,error_bytes,"unknown canonical asset profile");
+  int64_t count=engine_render_asset_count(profile);if(count<0)return rr_error(error,error_bytes,"unknown canonical asset profile");
   for(int64_t row=0;row<count;row++){
-    coax_t_RenderAsset asset=aethyr_render_asset(profile,row);if(!asset.initial&&!asset.gpu_required)continue;
+    coax_t_RenderAsset asset=engine_render_asset(profile,row);if(!asset.initial&&!asset.gpu_required)continue;
     const unsigned char *bytes=NULL;unsigned char *owned=NULL;size_t size=0;
     if(asset.packed){
       if(!h->pack){size_t n=(size_t)asset.url.count;char *path=malloc(n+14);if(!path)return 0;memcpy(path,"render-assets",13);memcpy(path+13,asset.url.data,n);path[n+13]=0;int result=rh_pack(h,path);free(path);if(result)return rr_error(error,error_bytes,"canonical pack is unavailable");}
@@ -63,16 +63,16 @@ int rhgr_deliver(RealmHost *h,int64_t profile,char *error,size_t error_bytes){
       else{if(!entry)return rr_error(error,error_bytes,"canonical packed delivery part is missing");bytes=entry->bytes;size=entry->length;}
       if(asset.pack_part==1){char progress[64];int n=snprintf(progress,sizeof progress,"%zu %zu",h->pack_size,h->pack_size);rh_send(h,RH_PACK_KIND,progress,(size_t)n);}
     }else if(asset.kind==COAX_RenderAssetKind_layers){
-      for(int64_t layer=0;layer<asset.url_count;layer++){size_t length=0;unsigned char *image=rr_asset_file(aethyr_render_asset_url(profile,row,layer),&length);if(!image){free(owned);return rr_error(error,error_bytes,"canonical layer input is unavailable");}free(image);size++;}
+      for(int64_t layer=0;layer<asset.url_count;layer++){size_t length=0;unsigned char *image=rr_asset_file(engine_render_asset_url(profile,row,layer),&length);if(!image){free(owned);return rr_error(error,error_bytes,"canonical layer input is unavailable");}free(image);size++;}
     }else{owned=rr_asset_file(asset.url,&size);bytes=owned;if(!owned)return rr_error(error,error_bytes,"canonical asset input is unavailable");}
     if(asset.kind==COAX_RenderAssetKind_data&&!rr_deliver_data(h,row,bytes,size,error,error_bytes)){free(owned);return 0;}
-    if(!aethyr_native_span(0,size,0,UINT32_MAX)){free(owned);return rr_error(error,error_bytes,"asset observation does not fit the producer ABI");}
+    if(!engine_native_span(0,size,0,UINT32_MAX)){free(owned);return rr_error(error,error_bytes,"asset observation does not fit the producer ABI");}
     coaxial_asset_ready(h->state,(int32_t)asset.row,(uint32_t)size);free(owned);
   }
   return 1;
 }
 static coax_v_u32 rr_words(const void *pointer,size_t capacity,size_t bytes){
-  uint64_t address=(uint64_t)(uintptr_t)pointer;coax_t_RenderHostWordView view=aethyr_render_words(address,address,capacity,bytes);
+  uint64_t address=(uint64_t)(uintptr_t)pointer;coax_t_RenderHostWordView view=engine_render_words(address,address,capacity,bytes);
   if(view.status!=COAX_RenderFrameStatus_ok)return(coax_v_u32){0};return(coax_v_u32){(uint32_t*)(uintptr_t)view.address,view.words};
 }
 static coax_t_RenderHostWordView rr_draw_words(RealmHost *h,uint64_t bytes){
@@ -80,18 +80,18 @@ static coax_t_RenderHostWordView rr_draw_words(RealmHost *h,uint64_t bytes){
   uint32_t capacity=coaxial_draw_capacity(h->state);
   // A static owner's measured allocation is distinct from the state arena.
   if(capacity){
-    coax_t_RenderHostByteView object=aethyr_render_asset_span(address,capacity,bytes,rh_address_limit());
+    coax_t_RenderHostByteView object=engine_render_asset_span(address,capacity,bytes,rh_address_limit());
     if(object.status!=COAX_RenderFrameStatus_ok)return(coax_t_RenderHostWordView){.status=object.status};
-    return aethyr_render_words(address,address,capacity,bytes);
+    return engine_render_words(address,address,capacity,bytes);
   }
-  return aethyr_render_words(address,(uint64_t)(uintptr_t)h->arena,h->arena_size,bytes);
+  return engine_render_words(address,(uint64_t)(uintptr_t)h->arena,h->arena_size,bytes);
 }
 static coax_t_RenderUpload rr_upload(const void *pointer,size_t capacity,size_t bytes,const VkcBuffer *gpu){
   coax_t_RenderUpload upload;coax_default_t_RenderUpload(&upload);upload.source_address=(uint64_t)(uintptr_t)pointer;upload.source_base=upload.source_address;
   upload.source_bytes=capacity;upload.bytes=bytes;upload.gpu_bytes=gpu->size;return upload;
 }
 static int rr_add_buffer(RhgRealm *r,int64_t set,int64_t resource,coax_t_RenderHostBinding binding,char *error,size_t error_bytes){
-  uint8_t scratch[32];coax_string name=aethyr_render_buffer_name(binding.source,(coax_v_u8){scratch,32});if(!name.count)return 1;
+  uint8_t scratch[32];coax_string name=engine_render_buffer_name(binding.source,(coax_v_u8){scratch,32});if(!name.count)return 1;
   for(size_t i=0;i<r->buffer_count;i++)if(rr_same(name,r->named[i].name))return 1; // same physical allocation, e.g. main/particle u
   if(r->buffer_count==r->buffer_limit)return rr_error(error,error_bytes,"named buffer observations exceed the Coax resource capacity");
   RrBuffer *buffer=&r->buffers[r->buffer_count];buffer->source=binding.source;memcpy(buffer->name,name.data,(size_t)name.count);
@@ -103,9 +103,9 @@ static int rr_add_buffer(RhgRealm *r,int64_t set,int64_t resource,coax_t_RenderH
     case COAX_RenderSourceKind_immutable_storage_asset:case COAX_RenderSourceKind_mesh_asset:{
       const RhEntry *entry=binding.source.kind==COAX_RenderSourceKind_immutable_storage_asset?rh_entry(h,RH_VERTICES):NULL;
       if(entry){buffer->capacity=entry->length;unsigned char *copy=malloc(entry->length?entry->length:1);if(!copy)return 0;memcpy(copy,entry->bytes,entry->length);buffer->immutable=copy;}
-      else{size_t bytes=0;coax_t_RenderAsset asset=aethyr_render_asset_source(r->profile,binding.source);if(asset.valid&&!asset.packed)buffer->immutable=rr_asset_file(asset.url,&bytes);buffer->capacity=bytes;}
+      else{size_t bytes=0;coax_t_RenderAsset asset=engine_render_asset_source(r->profile,binding.source);if(asset.valid&&!asset.packed)buffer->immutable=rr_asset_file(asset.url,&bytes);buffer->capacity=bytes;}
       if(!buffer->immutable){
-        coax_t_RenderBufferView empty=aethyr_render_mesh_placeholder(r->profile,set,resource,r->device->props.limits.maxStorageBufferRange);
+        coax_t_RenderBufferView empty=engine_render_mesh_placeholder(r->profile,set,resource,r->device->props.limits.maxStorageBufferRange);
         if(empty.status!=COAX_RenderResourceStatus_ok)return rr_error(error,error_bytes,"immutable canonical buffer input is missing");
         buffer->capacity=(size_t)empty.bytes;buffer->immutable=calloc(buffer->capacity,1);if(!buffer->immutable)return 0;buffer->placeholder=1;
       }break;
@@ -114,16 +114,16 @@ static int rr_add_buffer(RhgRealm *r,int64_t set,int64_t resource,coax_t_RenderH
   }
   // The existing Coax resource-view policy owns minimum size and padding;
   // Vulkan's buffer itself has exactly this requested byte extent.
-  coax_t_RenderBufferView allocation=aethyr_render_buffer_bytes(buffer->capacity,r->device->props.limits.maxStorageBufferRange);
+  coax_t_RenderBufferView allocation=engine_render_buffer_bytes(buffer->capacity,r->device->props.limits.maxStorageBufferRange);
   if(allocation.status!=COAX_RenderResourceStatus_ok)return rr_error(error,error_bytes,"physical buffer allocation refused by Coax");
-  if(!rhg_ledger_acquire(buffer->source.kind==COAX_RenderSourceKind_main_uniform?RHG_UNIFORM:RHG_STORAGE,aethyr_render_buffer_words((int64_t)allocation.bytes),&buffer->handle))return rr_error(error,error_bytes,"buffer allocation refused by the Coax ledger");
+  if(!rhg_ledger_acquire(buffer->source.kind==COAX_RenderSourceKind_main_uniform?RHG_UNIFORM:RHG_STORAGE,engine_render_buffer_words((int64_t)allocation.bytes),&buffer->handle))return rr_error(error,error_bytes,"buffer allocation refused by the Coax ledger");
   buffer->gpu=vkc_buffer(r->device,allocation.bytes);buffer->retained=calloc((size_t)buffer->gpu.size,1);if(!buffer->retained){vkc_free(r->device,&buffer->gpu);rhg_ledger_release(&buffer->handle);return 0;}
   r->named[r->buffer_count]=(coax_t_RenderHostNamedBuffer){.name={buffer->name,name.count},.observed={.source_capacity=buffer->capacity,.logical_payload=buffer->capacity,.initialized_highwater=buffer->gpu.size,.gpu_bytes=buffer->gpu.size,.alignment=4,.zero_initialized=true}};
   r->buffer_count++;return 1;
 }
 static VkSampler rr_sampler(RhgRealm *r,coax_string name){
   for(size_t i=0;i<r->sampler_count;i++)if(rr_same(name,r->sampler_names[i]))return r->samplers[i];
-  coax_t_RenderSamplerDescriptor d=aethyr_render_sampler(name);if(d.status!=COAX_RenderResourceStatus_ok||r->sampler_count==16)return VK_NULL_HANDLE;
+  coax_t_RenderSamplerDescriptor d=engine_render_sampler(name);if(d.status!=COAX_RenderResourceStatus_ok||r->sampler_count==16)return VK_NULL_HANDLE;
   VkSamplerCreateInfo info={.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,.magFilter=d.mag_linear?VK_FILTER_LINEAR:VK_FILTER_NEAREST,.minFilter=d.min_linear?VK_FILTER_LINEAR:VK_FILTER_NEAREST,
     .mipmapMode=d.mip_linear?VK_SAMPLER_MIPMAP_MODE_LINEAR:VK_SAMPLER_MIPMAP_MODE_NEAREST,.addressModeU=d.address_u==COAX_RenderSamplerAddress_repeat?VK_SAMPLER_ADDRESS_MODE_REPEAT:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
     .addressModeV=d.address_v==COAX_RenderSamplerAddress_repeat?VK_SAMPLER_ADDRESS_MODE_REPEAT:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -139,17 +139,17 @@ static int rr_binding(void *user,coax_t_RenderHostUse use,coax_t_RenderOp op,con
     if(use.source.kind==COAX_RenderSourceKind_bloom_step){generated_bytes=op.bloom_step.e;generated_size=sizeof op.bloom_step.e;}
     if(use.source.kind==COAX_RenderSourceKind_media_uniform&&media){generated_bytes=media->uniforms.e;generated_size=sizeof media->uniforms.e;}
     if(generated_bytes){owned=calloc(1,sizeof*owned);if(!owned)return 0;
-      if(!rhg_ledger_acquire(RHG_UNIFORM,aethyr_render_buffer_words((int64_t)generated_size),&owned->handle)){free(owned);return 0;}
+      if(!rhg_ledger_acquire(RHG_UNIFORM,engine_render_buffer_words((int64_t)generated_size),&owned->handle)){free(owned);return 0;}
       owned->gpu=vkc_buffer(r->device,generated_size);owned->next=r->generated;r->generated=owned;
       generated.words=(coax_v_u32){(uint32_t*)generated_bytes,(int64_t)(generated_size/4)};generated.observed=(coax_t_RenderBufferObserved){.source_capacity=generated_size,.logical_payload=generated_size,.gpu_bytes=owned->gpu.size,.alignment=4,.zero_initialized=true};}
-    coax_t_RenderHostBufferReceipt view=aethyr_render_resolve_buffer(r->profile,use.binding_set,use.use.resource,(coax_v_t_RenderHostNamedBuffer){r->named,(int64_t)r->buffer_count},generated);
+    coax_t_RenderHostBufferReceipt view=engine_render_resolve_buffer(r->profile,use.binding_set,use.use.resource,(coax_v_t_RenderHostNamedBuffer){r->named,(int64_t)r->buffer_count},generated);
     if(view.status!=COAX_RenderResourceStatus_ok)return 0;
     if(owned){memcpy(owned->gpu.map,generated_bytes,generated_size);out->buffer=&owned->gpu;}else out->buffer=&r->buffers[view.named_index].gpu;
     out->offset=view.view.offset;out->range=view.view.bytes;return 1;
   }
   if(use.use.native_kind==VKS_IMAGE){
     if(r->media&&media&&use.source.kind==COAX_RenderSourceKind_media_image){out->image=rhglm_binding(r->media,media->line);return out->image!=NULL;}
-    coax_t_RenderHostTextureReceipt view=aethyr_render_resolve_texture(r->profile,use.binding_set,use.use.resource,rhgt_names(r->textures),media?media->line:-1);
+    coax_t_RenderHostTextureReceipt view=engine_render_resolve_texture(r->profile,use.binding_set,use.use.resource,rhgt_names(r->textures),media?media->line:-1);
     if(view.status!=COAX_RenderResourceStatus_ok)return 0;
     if(view.source.kind==COAX_RenderSourceKind_render_target)out->image=rhg_target_image(r->renderer,view.source.target);
     if(view.source.kind==COAX_RenderSourceKind_pass_source)out->image=rhg_target_image(r->renderer,op.source);
@@ -159,25 +159,25 @@ static int rr_binding(void *user,coax_t_RenderHostUse use,coax_t_RenderOp op,con
   if(use.use.native_kind==VKS_SAMPLER){out->sampler=rr_sampler(r,use.source.sampler_name);return out->sampler!=VK_NULL_HANDLE;}return 0;
 }
 static coax_t_RenderAssetReadiness rr_asset_ready(RhgRealm *r){
-  int64_t count=aethyr_render_asset_count(r->profile);coax_t_RenderAssetObservation *observed=rfi_array((size_t)count,sizeof*observed);
+  int64_t count=engine_render_asset_count(r->profile);coax_t_RenderAssetObservation *observed=rfi_array((size_t)count,sizeof*observed);
   if(!observed)return(coax_t_RenderAssetReadiness){0};
   for(int64_t row=0;row<count;row++)observed[row]=(coax_t_RenderAssetObservation){.row=row,.state=COAX_RenderAssetState_pending};
   bool particles=false;
   for(size_t i=0;i<r->buffer_count;i++){
-    RrBuffer *buffer=&r->buffers[i];coax_t_RenderAsset asset=aethyr_render_asset_source(r->profile,buffer->source);
+    RrBuffer *buffer=&r->buffers[i];coax_t_RenderAsset asset=engine_render_asset_source(r->profile,buffer->source);
     if(asset.valid&&buffer->gpu.buf&&!buffer->placeholder)observed[asset.row].state=COAX_RenderAssetState_ready;
     if(buffer->source.kind==COAX_RenderSourceKind_particle_emitters&&buffer->gpu.buf)particles=true;
   }
-  coax_t_RenderAsset index=aethyr_render_asset_find(r->profile,COAX_RenderAssetKind_index,0);if(index.valid&&r->index_bytes)observed[index.row].state=COAX_RenderAssetState_ready;
-  for(int64_t set=0;set<2;set++)for(int64_t resource=0;resource<aethyr_render_binding_count(r->profile,set);resource++){
-    coax_t_RenderHostBinding binding=aethyr_render_binding(r->profile,set,resource);if(binding.source.kind!=COAX_RenderSourceKind_layers)continue;
-    coax_t_RenderAsset asset=aethyr_render_asset_source(r->profile,binding.source);
-    coax_t_RenderHostTextureReceipt texture=aethyr_render_resolve_texture(r->profile,set,resource,rhgt_names(r->textures),-1);
+  coax_t_RenderAsset index=engine_render_asset_find(r->profile,COAX_RenderAssetKind_index,0);if(index.valid&&r->index_bytes)observed[index.row].state=COAX_RenderAssetState_ready;
+  for(int64_t set=0;set<2;set++)for(int64_t resource=0;resource<engine_render_binding_count(r->profile,set);resource++){
+    coax_t_RenderHostBinding binding=engine_render_binding(r->profile,set,resource);if(binding.source.kind!=COAX_RenderSourceKind_layers)continue;
+    coax_t_RenderAsset asset=engine_render_asset_source(r->profile,binding.source);
+    coax_t_RenderHostTextureReceipt texture=engine_render_resolve_texture(r->profile,set,resource,rhgt_names(r->textures),-1);
     if(asset.valid&&texture.status==COAX_RenderResourceStatus_ok)observed[asset.row].state=COAX_RenderAssetState_ready;
   }
   // The package already authenticated both stage modules and device features;
   // actual VkPipeline creation is part of the candidate before submission.
-  coax_t_RenderAssetReadiness result=aethyr_render_asset_readiness(r->profile,true,particles,(coax_v_t_RenderAssetObservation){observed,count});free(observed);return result;
+  coax_t_RenderAssetReadiness result=engine_render_asset_readiness(r->profile,true,particles,(coax_v_t_RenderAssetObservation){observed,count});free(observed);return result;
 }
 RhgRealm *rhgr_open(Vkc *device,RealmHost *producer,int64_t profile,const char *package_file,char *error,size_t error_bytes){
   RhgRealm *r=calloc(1,sizeof*r);if(!r)return NULL;r->device=device;r->producer=producer;r->profile=profile;
@@ -187,19 +187,19 @@ RhgRealm *rhgr_open(Vkc *device,RealmHost *producer,int64_t profile,const char *
   RhgBytes json=rr_package_read(r,(coax_string){base,(int64_t)strlen(base)});if(!json.data){rr_error(error,error_bytes,"canonical render package is missing");rhgr_close(r);return NULL;}
   r->package_manifest=malloc(json.bytes?json.bytes:1);if(!r->package_manifest){rhgr_close(r);return NULL;}memcpy(r->package_manifest,json.data,json.bytes);r->package_bytes=json.bytes;
   r->renderer=rhg_open(device,profile,(coax_string){(char*)r->package_manifest,(int64_t)r->package_bytes},rr_package_read,r,error,error_bytes);if(!r->renderer){rhgr_close(r);return NULL;}
-  coax_t_RenderHostBufferSizes sizes=aethyr_render_buffer_sizes(profile,producer->max_vertices,producer->floats,producer->uniform_floats,device->props.limits.maxStorageBufferRange);
+  coax_t_RenderHostBufferSizes sizes=engine_render_buffer_sizes(profile,producer->max_vertices,producer->floats,producer->uniform_floats,device->props.limits.maxStorageBufferRange);
   if(sizes.status!=COAX_RenderFrameStatus_ok){rr_error(error,error_bytes,"producer allocation layout refused by Coax");rhgr_close(r);return NULL;}
-  if(!rhg_ledger_acquire(RHG_VERTEX,aethyr_render_buffer_words((int64_t)sizes.vertex_bytes),&r->hud_handle)){rr_error(error,error_bytes,"vertex buffer refused by the Coax ledger");rhgr_close(r);return NULL;}
-  r->hud=vkc_buffer(device,sizes.vertex_bytes);r->buffer_limit=(size_t)aethyr_native_resource_limit();r->buffers=calloc(r->buffer_limit,sizeof*r->buffers);r->named=calloc(r->buffer_limit,sizeof*r->named);
+  if(!rhg_ledger_acquire(RHG_VERTEX,engine_render_buffer_words((int64_t)sizes.vertex_bytes),&r->hud_handle)){rr_error(error,error_bytes,"vertex buffer refused by the Coax ledger");rhgr_close(r);return NULL;}
+  r->hud=vkc_buffer(device,sizes.vertex_bytes);r->buffer_limit=(size_t)engine_native_resource_limit();r->buffers=calloc(r->buffer_limit,sizeof*r->buffers);r->named=calloc(r->buffer_limit,sizeof*r->named);
   if(!r->buffers||!r->named){rhgr_close(r);return NULL;}
-  for(int64_t set=0;set<2;set++)for(int64_t resource=0;resource<aethyr_render_binding_count(profile,set);resource++){
-    coax_t_RenderHostBinding binding=aethyr_render_binding(profile,set,resource);
+  for(int64_t set=0;set<2;set++)for(int64_t resource=0;resource<engine_render_binding_count(profile,set);resource++){
+    coax_t_RenderHostBinding binding=engine_render_binding(profile,set,resource);
     if(binding.binding.kind==COAX_RenderResourceKind_uniform||binding.binding.kind==COAX_RenderResourceKind_storage)if(!rr_add_buffer(r,set,resource,binding,error,error_bytes)){rhgr_close(r);return NULL;}
   }
   const RhEntry *index=rh_entry(producer,RH_INDICES);if(index){r->index_size=index->length;r->index_bytes=malloc(index->length?index->length:1);if(r->index_bytes)memcpy(r->index_bytes,index->bytes,index->length);}
-  else{coax_t_RenderAsset asset=aethyr_render_asset_find(profile,COAX_RenderAssetKind_index,0);if(asset.valid){if(asset.packed){rr_error(error,error_bytes,"canonical packed index delivery is missing");rhgr_close(r);return NULL;}r->index_bytes=rr_asset_file(asset.url,&r->index_size);}}
+  else{coax_t_RenderAsset asset=engine_render_asset_find(profile,COAX_RenderAssetKind_index,0);if(asset.valid){if(asset.packed){rr_error(error,error_bytes,"canonical packed index delivery is missing");rhgr_close(r);return NULL;}r->index_bytes=rr_asset_file(asset.url,&r->index_size);}}
   if(r->index_size){
-    if(!rhg_ledger_acquire(RHG_INDEX,aethyr_render_buffer_words((int64_t)r->index_size),&r->index_handle)){rr_error(error,error_bytes,"index buffer refused by the Coax ledger");rhgr_close(r);return NULL;}
+    if(!rhg_ledger_acquire(RHG_INDEX,engine_render_buffer_words((int64_t)r->index_size),&r->index_handle)){rr_error(error,error_bytes,"index buffer refused by the Coax ledger");rhgr_close(r);return NULL;}
     r->index=vkc_buffer(device,r->index_size);}
   FILE *texture_file=fopen("render-assets/textures.config","r");if(texture_file){fclose(texture_file);if(!rfi_load_textures("render-assets/textures.config",&r->texture_inputs,error,error_bytes)){rhgr_close(r);return NULL;}}
   r->textures=rhgt_open(device,&r->texture_inputs,error,error_bytes);if(!r->textures){rhgr_close(r);return NULL;}
@@ -233,18 +233,18 @@ int rhgr_frame(RhgRealm *r,uint32_t hud_vertices,uint32_t width,uint32_t height,
   }
   uploads[n]=rr_upload(rh_ptr(h->vertices),(size_t)h->max_vertices*(size_t)h->floats*4,(size_t)hud_vertices*(size_t)h->floats*4,&r->hud);
   uploads[n+1]=rr_upload(r->index_bytes,r->index_size,r->index_size,&r->index);
-  coax_t_RenderFrameResult span=aethyr_native_uploads(limits,(coax_v_t_RenderUpload){uploads,(int64_t)n+2});
+  coax_t_RenderFrameResult span=engine_native_uploads(limits,(coax_v_t_RenderUpload){uploads,(int64_t)n+2});
   if(span.status!=COAX_RenderFrameStatus_ok){free(uploads);free(sources);free(bytes);return rr_error(error,error_bytes,"actual producer source/upload spans refused by Coax");}
   // Effectful store getters were read once. Retain admitted CPU candidates
   // across a later frame refusal, so a subsequent zero update cannot lose them.
   for(size_t i=0;i<n;i++){
-    RrBuffer *b=&r->buffers[i];coax_t_RenderHostUploadReceipt staged=aethyr_render_upload_stage(b->upload,bytes[i],b->capacity);
+    RrBuffer *b=&r->buffers[i];coax_t_RenderHostUploadReceipt staged=engine_render_upload_stage(b->upload,bytes[i],b->capacity);
     if(staged.status!=COAX_RenderFrameStatus_ok){free(sources);free(bytes);free(uploads);return rr_error(error,error_bytes,"pending producer upload refused by Coax");}
     if(bytes[i])memcpy(b->retained,sources[i],bytes[i]);b->upload=staged.next;
     r->named[i].words=rr_words(b->retained,(size_t)b->gpu.size,(size_t)b->gpu.size);uploads[i]=rr_upload(b->retained,(size_t)b->gpu.size,(size_t)b->upload.pending,&b->gpu);
   }
   free(sources);free(bytes);
-  coax_t_RenderRuntimePreflight preflight=aethyr_render_preflight(r->profile,counts,limits,(coax_v_t_RenderUpload){uploads,(int64_t)n+2});
+  coax_t_RenderRuntimePreflight preflight=engine_render_preflight(r->profile,counts,limits,(coax_v_t_RenderUpload){uploads,(int64_t)n+2});
   if(preflight.status!=COAX_RenderRuntimeStatus_ok){free(uploads);return rr_error(error,error_bytes,"producer frame counts refused by Coax");}
   coax_v_u32 draws={0};if(counts.draw_count){
     coax_t_RenderHostWordView draw_view=rr_draw_words(h,(uint64_t)counts.draw_count*16);
@@ -253,11 +253,11 @@ int rhgr_frame(RhgRealm *r,uint32_t hud_vertices,uint32_t width,uint32_t height,
   }
   coax_v_u32 indices=rr_words(r->index_bytes,r->index_size,r->index_size);coax_t_RenderGeometryBuffer *geometry=calloc(r->buffer_limit,sizeof*geometry);coax_t_RenderDrawDomain *domains=calloc(counts.draw_count?(size_t)counts.draw_count:1,sizeof*domains);
   if(!geometry||!domains){free(geometry);free(domains);free(uploads);return 0;}
-  coax_t_RenderHostGeometryBuffers mapped=aethyr_render_geometry_buffers(r->profile,(coax_v_t_RenderHostNamedBuffer){r->named,(int64_t)n},(coax_v_t_RenderGeometryBuffer){geometry,(int64_t)r->buffer_limit});
+  coax_t_RenderHostGeometryBuffers mapped=engine_render_geometry_buffers(r->profile,(coax_v_t_RenderHostNamedBuffer){r->named,(int64_t)n},(coax_v_t_RenderGeometryBuffer){geometry,(int64_t)r->buffer_limit});
   coax_v_f32 uniforms={(float*)rh_ptr(h->uniforms),h->uniform_floats};coax_v_f32 hud={(float*)rh_ptr(h->vertices),(int64_t)h->max_vertices*h->floats};
   coax_t_RenderAssetReadiness readiness=rr_asset_ready(r);
-  coax_t_RenderRuntimeFrame receipt=aethyr_render_frame(r->profile,counts,limits,readiness.readiness,readiness.particles_ready,(coax_v_t_RenderUpload){uploads,(int64_t)n+2},draws,indices,uniforms,
-    (coax_v_t_RenderGeometryBuffer){geometry,mapped.count},hud,(coax_v_t_RenderDrawDomain){domains,counts.draw_count},aethyr_render_geometry_work());
+  coax_t_RenderRuntimeFrame receipt=engine_render_frame(r->profile,counts,limits,readiness.readiness,readiness.particles_ready,(coax_v_t_RenderUpload){uploads,(int64_t)n+2},draws,indices,uniforms,
+    (coax_v_t_RenderGeometryBuffer){geometry,mapped.count},hud,(coax_v_t_RenderDrawDomain){domains,counts.draw_count},engine_render_geometry_work());
   free(geometry);free(domains);free(uploads);
   if(readiness.status!=COAX_RenderAssetStatus_ok||mapped.status!=COAX_RenderResourceStatus_ok||receipt.status!=COAX_RenderRuntimeStatus_ok){
     if(error_bytes)snprintf(error,error_bytes,"producer refused: readiness%u/%u mapping%u runtime%u geometry%u frame%u draw%lld upload%lld",readiness.status,readiness.readiness,mapped.status,receipt.status,receipt.geometry_status,receipt.frame.status,(long long)receipt.frame.bad_draw,(long long)receipt.frame.bad_upload);return 0;
@@ -280,7 +280,7 @@ int rhgr_frame(RhgRealm *r,uint32_t hud_vertices,uint32_t width,uint32_t height,
   RhgFrame frame={.media_receipt=media.receipt,.media_rects={media.rects,media.receipt.count},.hud=&r->hud,.index=r->index_size?&r->index:NULL,.draw_words=draws,.binding=rr_binding,.user=r};int result=rhg_execute(r->renderer,&receipt,&frame,coarse,format,error,error_bytes);
   rhgm_close(&media);
   if(result&&r->presentation.enabled){r->display=rhg_present_plan(r->renderer,r->presentation.plan,error,error_bytes);if(!r->display)result=0;}
-  for(size_t i=0;i<n;i++)r->buffers[i].upload=aethyr_render_upload_ack(r->buffers[i].upload,result!=0);
+  for(size_t i=0;i<n;i++)r->buffers[i].upload=engine_render_upload_ack(r->buffers[i].upload,result!=0);
   // execute waits for its submission; these per-op observations can now be
   // released without accumulating device allocations across frames.
   for(RrGenerated *b=r->generated;b;){RrGenerated *next=b->next;vkc_free(r->device,&b->gpu);rhg_ledger_release(&b->handle);free(b);b=next;}r->generated=NULL;return result;
@@ -293,7 +293,7 @@ uint8_t *rhgr_jpeg(RhgRealm *r,size_t *bytes){
   coax_t_HostImageExtent size=hpi_extent(display->w,display->h);if(size.width<1||size.height<1)return NULL;
   VksImage scaled={0},*image=display;RhgHandle handle={0};uint8_t *raw=NULL,*work=NULL,*jpeg=NULL,*base64=NULL;
   if(size.width!=display->w||size.height!=display->h){
-    int64_t words=aethyr_render_format_words(display->format==VK_FORMAT_R8G8B8A8_UNORM?COAX_RenderTextureFormat_rgba8:COAX_RenderTextureFormat_bgra8,size.width,size.height,1,1);
+    int64_t words=engine_render_format_words(display->format==VK_FORMAT_R8G8B8A8_UNORM?COAX_RenderTextureFormat_rgba8:COAX_RenderTextureFormat_bgra8,size.width,size.height,1,1);
     if(!rhg_ledger_acquire(RHG_COLOR,words,&handle))return NULL;
     scaled=vks_image(r->device,(uint32_t)size.width,(uint32_t)size.height,1,0,display->format,VKS_TARGET);image=&scaled;
     if(!vks_blit(r->device,display,image,VK_FILTER_LINEAR))goto done;
@@ -318,13 +318,13 @@ void rhgr_drop_gpu(RhgRealm *r){
 int rhgr_device(RhgRealm *r,Vkc *device,char *error,size_t size){
   if(!r||r->device||!device)return rr_error(error,size,"old physical device must retire before replacement");r->device=device;r->recovery_upload_bytes=0;
   r->renderer=rhg_open(device,r->profile,(coax_string){(const char*)r->package_manifest,(int64_t)r->package_bytes},rr_package_read,r,error,size);if(!r->renderer)return 0;
-  RealmHost *h=r->producer;coax_t_RenderHostBufferSizes sizes=aethyr_render_buffer_sizes(r->profile,h->max_vertices,h->floats,h->uniform_floats,device->props.limits.maxStorageBufferRange);
-  if(sizes.status!=COAX_RenderFrameStatus_ok||!rhg_ledger_acquire(RHG_VERTEX,aethyr_render_buffer_words(sizes.vertex_bytes),&r->hud_handle))return rr_error(error,size,"replacement vertex allocation refused by Coax");r->hud=vkc_buffer(device,sizes.vertex_bytes);
-  if(r->index_size){if(!rhg_ledger_acquire(RHG_INDEX,aethyr_render_buffer_words(r->index_size),&r->index_handle))return rr_error(error,size,"replacement index allocation refused by Coax");r->index=vkc_buffer(device,r->index_size);}
+  RealmHost *h=r->producer;coax_t_RenderHostBufferSizes sizes=engine_render_buffer_sizes(r->profile,h->max_vertices,h->floats,h->uniform_floats,device->props.limits.maxStorageBufferRange);
+  if(sizes.status!=COAX_RenderFrameStatus_ok||!rhg_ledger_acquire(RHG_VERTEX,engine_render_buffer_words(sizes.vertex_bytes),&r->hud_handle))return rr_error(error,size,"replacement vertex allocation refused by Coax");r->hud=vkc_buffer(device,sizes.vertex_bytes);
+  if(r->index_size){if(!rhg_ledger_acquire(RHG_INDEX,engine_render_buffer_words(r->index_size),&r->index_handle))return rr_error(error,size,"replacement index allocation refused by Coax");r->index=vkc_buffer(device,r->index_size);}
   for(size_t i=0;i<r->buffer_count;i++){
-    RrBuffer *b=&r->buffers[i];coax_t_RenderBufferView allocation=aethyr_render_buffer_bytes(b->capacity,device->props.limits.maxStorageBufferRange);
-    if(allocation.status!=COAX_RenderResourceStatus_ok||allocation.bytes!=r->named[i].observed.gpu_bytes||!rhg_ledger_acquire(b->source.kind==COAX_RenderSourceKind_main_uniform?RHG_UNIFORM:RHG_STORAGE,aethyr_render_buffer_words(allocation.bytes),&b->handle))return rr_error(error,size,"replacement retained buffer refused by Coax");
-    b->gpu=vkc_buffer(device,allocation.bytes);coax_t_RenderHostUploadReceipt staged=aethyr_render_upload_stage(b->upload,b->capacity,b->capacity);if(staged.status!=COAX_RenderFrameStatus_ok)return rr_error(error,size,"replacement complete upload refused by Coax");b->upload=staged.next;r->recovery_upload_bytes+=(int64_t)staged.next.pending;
+    RrBuffer *b=&r->buffers[i];coax_t_RenderBufferView allocation=engine_render_buffer_bytes(b->capacity,device->props.limits.maxStorageBufferRange);
+    if(allocation.status!=COAX_RenderResourceStatus_ok||allocation.bytes!=r->named[i].observed.gpu_bytes||!rhg_ledger_acquire(b->source.kind==COAX_RenderSourceKind_main_uniform?RHG_UNIFORM:RHG_STORAGE,engine_render_buffer_words(allocation.bytes),&b->handle))return rr_error(error,size,"replacement retained buffer refused by Coax");
+    b->gpu=vkc_buffer(device,allocation.bytes);coax_t_RenderHostUploadReceipt staged=engine_render_upload_stage(b->upload,b->capacity,b->capacity);if(staged.status!=COAX_RenderFrameStatus_ok)return rr_error(error,size,"replacement complete upload refused by Coax");b->upload=staged.next;r->recovery_upload_bytes+=(int64_t)staged.next.pending;
   }
   r->textures=rhgt_open(device,&r->texture_inputs,error,size);if(!r->textures)return 0;rhglm_device(r->media,device);return 1;
 }

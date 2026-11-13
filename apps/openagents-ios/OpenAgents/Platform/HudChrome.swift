@@ -6,10 +6,10 @@ import UIKit
 // point wide with a soft glow, as the lander's lines are; text that is
 // chrome (buttons, headings, the wordmark) is Michroma in capitals, spaced.
 enum Hud {
-    static func grey(_ k: Int64, _ alpha: CGFloat = 1) -> UIColor { UIColor(white: CGFloat(verse_hud_tone(k)), alpha: alpha) }
+    static func grey(_ k: Int64, _ alpha: CGFloat = 1) -> UIColor { UIColor(white: CGFloat(metaverse_hud_tone(k)), alpha: alpha) }
     static let white = grey(0), light = grey(1), mid = grey(2), dim = grey(3)
-    static let blue = UIColor(red: CGFloat(verse_hud_tone(4)), green: CGFloat(verse_hud_tone(5)), blue: CGFloat(verse_hud_tone(6)), alpha: 1)
-    static let cutButton = CGFloat(verse_hud_cut(0)), cutPanel = CGFloat(verse_hud_cut(1))
+    static let blue = UIColor(red: CGFloat(metaverse_hud_tone(4)), green: CGFloat(metaverse_hud_tone(5)), blue: CGFloat(metaverse_hud_tone(6)), alpha: 1)
+    static let cutButton = CGFloat(metaverse_hud_cut(0)), cutPanel = CGFloat(metaverse_hud_cut(1))
 
     /// Michroma at size points, growing with Dynamic Type as style does.
     static func chrome(_ size: CGFloat, _ style: UIFont.TextStyle = .footnote) -> UIFont {
@@ -24,11 +24,11 @@ enum Hud {
         let x0 = Float(b.minX), y0 = Float(b.minY), x1 = Float(b.maxX), y1 = Float(b.maxY)
         let outline = UIBezierPath()
         for i in 0...6 {
-            let p = verse_hud_frame_point(x0, y0, x1, y1, Float(cut), Int64(i))
+            let p = metaverse_hud_frame_point(x0, y0, x1, y1, Float(cut), Int64(i))
             let at = CGPoint(x: CGFloat(p.x), y: CGFloat(p.y))
             if i == 0 { outline.move(to: at) } else { outline.addLine(to: at) }
         }
-        let arm = CGFloat(verse_hud_frame_arm(Float(b.width), 1)), down = arm * CGFloat(verse_hud_arm_down())
+        let arm = CGFloat(metaverse_hud_frame_arm(Float(b.width), 1)), down = arm * CGFloat(metaverse_hud_arm_down())
         let brackets = UIBezierPath()
         brackets.move(to: CGPoint(x: b.minX, y: b.minY + down)); brackets.addLine(to: CGPoint(x: b.minX, y: b.minY)); brackets.addLine(to: CGPoint(x: b.minX + arm, y: b.minY))
         brackets.move(to: CGPoint(x: b.maxX, y: b.maxY - down)); brackets.addLine(to: CGPoint(x: b.maxX, y: b.maxY)); brackets.addLine(to: CGPoint(x: b.maxX - arm, y: b.maxY))
@@ -60,7 +60,7 @@ final class HudFrame: UIView {
 
     private func restyle() {
         fill.fillColor = UIColor(white: 1, alpha: glass).cgColor
-        outline.strokeColor = tint.withAlphaComponent(CGFloat(verse_hud_outline()) * light).cgColor
+        outline.strokeColor = tint.withAlphaComponent(CGFloat(metaverse_hud_outline()) * light).cgColor
         brackets.strokeColor = tint.withAlphaComponent(min(1, light)).cgColor
         brackets.shadowColor = tint.cgColor; brackets.shadowOpacity = Float(0.55 * light)
         outline.shadowColor = tint.cgColor; outline.shadowOpacity = Float(0.2 * light)

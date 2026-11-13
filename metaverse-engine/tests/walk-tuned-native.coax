@@ -7,16 +7,16 @@ walk_tuned_assertions :: () #export_c #effects(all) {
   native_world.locomotion.acceleration = 32;
   native_world.locomotion.gravity = 8;
   native_world.locomotion.jump_speed = 4;
-  native_person := verse_player_input(verse_player_place(0, 0, 0, 0), 1, 0, 0, 0, false, false, 0, 0);
+  native_person := metaverse_player_input(metaverse_player_place(0, 0, 0, 0), 1, 0, 0, 0, false, false, 0, 0);
   native_person.cam.theta = 0;
   native_moved := advance_in(native_world, native_person, f32(STEP));
   #assert native_moved.body.vel.x == 0.5 && native_moved.body.pos.x == 0.0078125;
-  native_person = verse_player_input(verse_player_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0);
+  native_person = metaverse_player_input(metaverse_player_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0);
   native_jumped := advance_in(native_world, native_person, f32(STEP));
   #assert native_jumped.body.vel.y == 3.875 && native_jumped.body.pos.y == 0.060546875 && !native_jumped.body.on_ground;
 
   native_default: World;
-  native_person = verse_player_input(verse_player_place(0, 0, 0, 0), 1, 0, 0, 0, true, false, 0, 0);
+  native_person = metaverse_player_input(metaverse_player_place(0, 0, 0, 0), 1, 0, 0, 0, true, false, 0, 0);
   native_person.cam.theta = 0; native_person.body.clock.carry_ns = 10000000;
   native_trace := native_scheduler.advance_traced(native_default, native_person, 0.006);
   #assert native_trace.count == 1 && native_trace.player.body.clock.ticks == 1 && native_trace.player.body.clock.ran == 1;

@@ -99,7 +99,7 @@ everglade_hud :: () -> UiHud {
 }
 
 // The Verse's: SCIFI's colours (hud_tokens(HUD_SCIFI)): thin bars and lines, no outline.
-verse_hud :: () -> UiHud {
+metaverse_hud :: () -> UiHud {
   cyan := rgba(0.216, 0.851, 0.851, 1);
   return UiHud.{
     hp = rgba(0.85, 0.13, 0.10, 1), hp_low = rgba(1, 0.3, 0.25, 1), low = 0.34,

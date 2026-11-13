@@ -783,8 +783,8 @@ walk_advance :: (p: Player, frame: f32) -> Player #effects(all) {
   return advance_in(w, p, frame);
 }
 
-// The same among bodies (BODY numbers each, as verse_cast_bodies writes
-// them) and walls (WALL numbers each, as verse_grid_walls writes them); a
+// The same among bodies (BODY numbers each, as metaverse_cast_bodies writes
+// them) and walls (WALL numbers each, as metaverse_grid_walls writes them); a
 // partial last one is ignored.
 walk_advance_among :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32) -> Player #effects(all) {
   w: World;

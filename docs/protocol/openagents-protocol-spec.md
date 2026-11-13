@@ -3598,7 +3598,7 @@ message Operation {
     SpendList spend_list = 60; SpendSettle spend_settle = 61; ChatsInvite chats_invite = 62;
     ThreadList thread_list = 63; ThreadRead thread_read = 64; ThreadSend thread_send = 65; ThreadStop thread_stop = 66; ThreadRun thread_run = 67;
     // studio.* (Agent Studio, ~15), verse.private, robot.lab, request.operation
-    StudioOp studio = 70; VersePrivate verse_private = 71; RobotLab robot_lab = 72; RequestOperation request_operation = 73;
+    StudioOp studio = 70; MetaversePrivate metaverse_private = 71; RobotLab robot_lab = 72; RequestOperation request_operation = 73;
     // app.rpc: EngineInfo, ListHarnesses, ListModels, ListSkills, ListCommands, AuthorizeSync, RelayCommand, RunCommand (≤60 KiB)
     AppRpc app_rpc = 80;
   }

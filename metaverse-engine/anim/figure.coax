@@ -2,7 +2,7 @@
 // realms that draw characters as soft shapes rather than skinned meshes (a
 // shadow visitor, a pet). A figure is a rig (a person or a four-legged
 // animal), a shape (its build, set by an agent or a slider) and a pose
-// (each joint's turn); verse_figure_place turns the three into bones in the
+// (each joint's turn); metaverse_figure_place turns the three into bones in the
 // world, each a round cone between two joints, which a realm's shader
 // blends into one smooth body (apps/openagents-web/characters.wgsl).
 //
@@ -12,7 +12,7 @@
 // turns everything below it. Pitch + tips a bone that points up forward (a
 // bow, a nod) and swings a bone that hangs down backward (an arm, a leg);
 // roll + tips the top of the body toward its left. Every joint has limits
-// (verse_figure_limit) a motion is checked against (metaverse-engine/anim/motion.coax).
+// (metaverse_figure_limit) a motion is checked against (metaverse-engine/anim/motion.coax).
 //
 // The gaits are worked out here, from a clock: a person idles, walks and
 // runs; an animal walks (each foot in turn), trots (diagonal pairs) and
@@ -46,7 +46,7 @@ PATTERNS :: 5;
 LOOK_LIT :: 0; LOOK_SOFT :: 1;
 
 // A figure's build. 1 is the rig's usual; every number is held to its range
-// (verse_figure_shape_ok, verse_figure_shape_fix). An animal reads all of
+// (metaverse_figure_shape_ok, metaverse_figure_shape_fix). An animal reads all of
 // them; a person reads size, legs, body, girth and head.
 Shape :: struct {
   rig: Rig = Rig.person;
@@ -170,12 +170,12 @@ shape_range :: (i: int) -> Fv {   // x the lowest, y the highest, z the usual
 }
 SHAPE_NUMBERS :: 10;
 SHAPE_NAMES :: [10] string.["size", "legs", "body", "girth", "head", "snout", "ears", "ear_size", "tail", "fluff"];
-verse_figure_shape_get :: (s: Shape, i: int) -> f32 #export_c #effects(all) {
+metaverse_figure_shape_get :: (s: Shape, i: int) -> f32 #export_c #effects(all) {
   if i == 0 { return s.size; } if i == 1 { return s.legs; } if i == 2 { return s.body; } if i == 3 { return s.girth; }
   if i == 4 { return s.head; } if i == 5 { return s.snout; } if i == 6 { return s.ears; } if i == 7 { return s.ear_size; }
   if i == 8 { return s.tail; } return s.fluff;
 }
-verse_figure_shape_set :: (s: Shape, i: int, v: f32) -> Shape #export_c #effects(all) {
+metaverse_figure_shape_set :: (s: Shape, i: int, v: f32) -> Shape #export_c #effects(all) {
   r := s; range := shape_range(i);
   w := ifx finite(v) then clamp(v, range.x, range.y) else range.z;
   if i == 0 { r.size = w; } else if i == 1 { r.legs = w; } else if i == 2 { r.body = w; } else if i == 3 { r.girth = w; }
@@ -184,14 +184,14 @@ verse_figure_shape_set :: (s: Shape, i: int, v: f32) -> Shape #export_c #effects
   return r;
 }
 colour_ok :: (c: Fv) -> bool { return finite(c.x) && finite(c.y) && finite(c.z) && c.x >= 0 && c.y >= 0 && c.z >= 0 && c.x <= 1 && c.y <= 1 && c.z <= 1; }
-verse_figure_shape_ok :: (s: Shape) -> bool #export_c #effects(all) {
-  for i: 0..<SHAPE_NUMBERS { v := verse_figure_shape_get(s, i); r := shape_range(i); if !finite(v) || v < r.x || v > r.y { return false; } }
+metaverse_figure_shape_ok :: (s: Shape) -> bool #export_c #effects(all) {
+  for i: 0..<SHAPE_NUMBERS { v := metaverse_figure_shape_get(s, i); r := shape_range(i); if !finite(v) || v < r.x || v > r.y { return false; } }
   return colour_ok(s.coat) && colour_ok(s.marks) && s.pattern >= 0 && s.pattern < PATTERNS && (s.look == LOOK_LIT || s.look == LOOK_SOFT);
 }
 // The shape with every number held to its range (and a bad one the usual).
-verse_figure_shape_fix :: (s: Shape) -> Shape #export_c #effects(all) {
+metaverse_figure_shape_fix :: (s: Shape) -> Shape #export_c #effects(all) {
   r := s;
-  for i: 0..<SHAPE_NUMBERS { r = verse_figure_shape_set(r, i, verse_figure_shape_get(s, i)); }
+  for i: 0..<SHAPE_NUMBERS { r = metaverse_figure_shape_set(r, i, metaverse_figure_shape_get(s, i)); }
   if !colour_ok(r.coat) { r.coat = fv(0.55, 0.36, 0.2); }
   if !colour_ok(r.marks) { r.marks = fv(0.92, 0.88, 0.82); }
   if r.pattern < 0 || r.pattern >= PATTERNS { r.pattern = PATTERN_PLAIN; }
@@ -229,7 +229,7 @@ shape_number :: (s: string) -> f32 {
   if digits == 0 || digits > 9 || i != s.count { return 0.0 / 0.0; }
   return sign * v;
 }
-verse_figure_shape_read :: (s: Shape, text: string) -> ShapeRead #export_c #effects(all) {
+metaverse_figure_shape_read :: (s: Shape, text: string) -> ShapeRead #export_c #effects(all) {
   r := ShapeRead.{ok = true, shape = s};
   if text.count > 2048 { return ShapeRead.{shape = s, why = "a shape is at most 2048 bytes"}; }
   line := 0; i := 0;
@@ -264,7 +264,7 @@ verse_figure_shape_read :: (s: Shape, text: string) -> ShapeRead #export_c #effe
     if at < 0 { return ShapeRead.{shape = s, line = line, why = "not a part of a shape"}; }
     v := shape_number(one); range := shape_range(at);
     if !finite(v) || v < range.x || v > range.y { return ShapeRead.{shape = s, line = line, why = "outside its range", at = at}; }
-    r.shape = verse_figure_shape_set(r.shape, at, v);
+    r.shape = metaverse_figure_shape_set(r.shape, at, v);
   }
   return r;
 }
@@ -389,17 +389,17 @@ animal :: (s: Shape) -> Skeleton {
   return k;
 }
 
-verse_figure_skeleton :: (s: Shape) -> Skeleton #export_c #effects(all) {
-  f := verse_figure_shape_fix(s);
+metaverse_figure_skeleton :: (s: Shape) -> Skeleton #export_c #effects(all) {
+  f := metaverse_figure_shape_fix(s);
   return ifx f.rig == Rig.animal then animal(f) else person(f);
 }
-verse_figure_joints :: (r: Rig) -> int #export_c #effects(all) { return ifx r == Rig.animal then ANIMAL_JOINTS else PERSON_JOINTS; }
-verse_figure_joint_name :: (r: Rig, j: int) -> string #export_c #effects(all) {
-  if j < 0 || j >= verse_figure_joints(r) { return ""; }
+metaverse_figure_joints :: (r: Rig) -> int #export_c #effects(all) { return ifx r == Rig.animal then ANIMAL_JOINTS else PERSON_JOINTS; }
+metaverse_figure_joint_name :: (r: Rig, j: int) -> string #export_c #effects(all) {
+  if j < 0 || j >= metaverse_figure_joints(r) { return ""; }
   return ifx r == Rig.animal then ANIMAL_NAMES[j] else PERSON_NAMES[j];
 }
-verse_figure_joint_named :: (r: Rig, name: string) -> int #export_c #effects(all) {
-  for j: 0..<verse_figure_joints(r) { if verse_figure_joint_name(r, j) == name { return j; } }
+metaverse_figure_joint_named :: (r: Rig, name: string) -> int #export_c #effects(all) {
+  for j: 0..<metaverse_figure_joints(r) { if metaverse_figure_joint_name(r, j) == name { return j; } }
   return -1;
 }
 
@@ -441,16 +441,16 @@ animal_limit :: (j: int) -> Limit {
   }
   return lim(0, 0, 0, 0, 0, 0);
 }
-verse_figure_limit :: (r: Rig, j: int) -> Limit #export_c #effects(all) { return ifx r == Rig.animal then animal_limit(j) else person_limit(j); }
+metaverse_figure_limit :: (r: Rig, j: int) -> Limit #export_c #effects(all) { return ifx r == Rig.animal then animal_limit(j) else person_limit(j); }
 within :: (a: f32, range: Fv) -> bool { return a >= range.x - 0.0001 && a <= range.y + 0.0001; }
 // Whether joint j may turn t (no tolerance beyond rounding).
-verse_figure_turn_ok :: (r: Rig, j: int, t: Fv) -> bool #export_c #effects(all) {
-  l := verse_figure_limit(r, j);
+metaverse_figure_turn_ok :: (r: Rig, j: int, t: Fv) -> bool #export_c #effects(all) {
+  l := metaverse_figure_limit(r, j);
   return finite(t.x) && finite(t.y) && finite(t.z) && within(t.x, l.pitch) && within(t.y, l.yaw) && within(t.z, l.roll);
 }
 // t held to joint j's limits.
-verse_figure_turn_hold :: (r: Rig, j: int, t: Fv) -> Fv #export_c #effects(all) {
-  l := verse_figure_limit(r, j);
+metaverse_figure_turn_hold :: (r: Rig, j: int, t: Fv) -> Fv #export_c #effects(all) {
+  l := metaverse_figure_limit(r, j);
   return fv(clamp(ifx finite(t.x) then t.x else 0, l.pitch.x, l.pitch.y), clamp(ifx finite(t.y) then t.y else 0, l.yaw.x, l.yaw.y),
             clamp(ifx finite(t.z) then t.z else 0, l.roll.x, l.roll.y));
 }
@@ -461,12 +461,12 @@ verse_figure_turn_hold :: (r: Rig, j: int, t: Fv) -> Fv #export_c #effects(all) 
 Place :: struct { x: f32; y: f32; z: f32; yaw: f32; }
 
 // The joints of a posed figure in the world (out: one per joint).
-verse_figure_joints_at :: (k: Skeleton, p: Pose, at: Place, out: [] Fv) -> bool #export_c #effects(all) {
+metaverse_figure_joints_at :: (k: Skeleton, p: Pose, at: Place, out: [] Fv) -> bool #export_c #effects(all) {
   if out.count < k.joints || k.joints > MAX_JOINTS { return false; }
   rot: [MAX_JOINTS] M3;
   base := m3_turn(fv(0, at.yaw, 0));
   for j: 0..<k.joints {
-    t := verse_figure_turn_hold(k.rig, j, p.turn[j]);
+    t := metaverse_figure_turn_hold(k.rig, j, p.turn[j]);
     parent := k.parent[j];
     if parent < 0 || parent >= j {
       lift := fv_times(fv(clamp(p.lift.x, -3, 3), clamp(p.lift.y, -3, 3), clamp(p.lift.z, -3, 3)), k.size);
@@ -484,29 +484,29 @@ verse_figure_joints_at :: (k: Skeleton, p: Pose, at: Place, out: [] Fv) -> bool 
 // shader: end a and its radius (plus 1000 × the bone's region), end b and
 // its radius. Returns how many bones; bound (4 floats) gets a sphere round
 // all of them.
-verse_figure_place :: (k: Skeleton, p: Pose, at: Place, out: [] f32, bound: [] f32) -> int #export_c #effects(all) {
+metaverse_figure_place :: (k: Skeleton, p: Pose, at: Place, out: [] f32, bound: [] f32) -> int #export_c #effects(all) {
   if bound.count < 4 { return 0; }
   joints: [MAX_JOINTS] Fv;
-  if !verse_figure_joints_at(k, p, at, joints[..]) { return 0; }
+  if !metaverse_figure_joints_at(k, p, at, joints[..]) { return 0; }
   return figure_bones(k, joints[..], out, bound);
 }
 
 // The same, seated: an animal whose hind legs fold under it (a sit, a howl,
 // lying down, any motion that sits, an agent's too) rests on the ground
-// (verse_figure_seat), whatever its build. Anything else is placed as it is.
-verse_figure_place_seated :: (k: Skeleton, p: Pose, at: Place, out: [] f32, bound: [] f32) -> int #export_c #effects(all) {
+// (metaverse_figure_seat), whatever its build. Anything else is placed as it is.
+metaverse_figure_place_seated :: (k: Skeleton, p: Pose, at: Place, out: [] f32, bound: [] f32) -> int #export_c #effects(all) {
   if bound.count < 4 { return 0; }
   joints: [MAX_JOINTS] Fv;
-  if !verse_figure_joints_at(k, p, at, joints[..]) { return 0; }
-  verse_figure_seat(k, p, at, joints[..]);
+  if !metaverse_figure_joints_at(k, p, at, joints[..]) { return 0; }
+  metaverse_figure_seat(k, p, at, joints[..]);
   return figure_bones(k, joints[..], out, bound);
 }
 
 // How far an animal's pose sits: 0 standing, 1 its hind legs folded under it
 // (both hips pitched forward 63 degrees or more; from 35 it starts).
-verse_figure_sitting :: (k: Skeleton, p: Pose) -> f32 #export_c #effects(all) {
+metaverse_figure_sitting :: (k: Skeleton, p: Pose) -> f32 #export_c #effects(all) {
   if k.rig != Rig.animal { return 0; }
-  hip := -(verse_figure_turn_hold(k.rig, A_LH, p.turn[A_LH]).x + verse_figure_turn_hold(k.rig, A_RH, p.turn[A_RH]).x) * 0.5;
+  hip := -(metaverse_figure_turn_hold(k.rig, A_LH, p.turn[A_LH]).x + metaverse_figure_turn_hold(k.rig, A_RH, p.turn[A_RH]).x) * 0.5;
   return smooth01((hip - 0.61) / 0.49);
 }
 // The lowest point of part i's two ends (their balls' bottoms).
@@ -550,8 +550,8 @@ seat_pitch :: (k: Skeleton, joints: [] Fv, src: [] Fv, c: Fv, yaw: f32, angle: f
 // it sits, then, if that sinks its front paws, legs or chest, the body tips up
 // about the rump until they stand on the ground; past that it is lifted, so
 // nothing is ever under the ground.
-verse_figure_seat :: (k: Skeleton, p: Pose, at: Place, joints: [] Fv) #export_c #effects(all) {
-  w := verse_figure_sitting(k, p);
+metaverse_figure_seat :: (k: Skeleton, p: Pose, at: Place, joints: [] Fv) #export_c #effects(all) {
+  w := metaverse_figure_sitting(k, p);
   if !(w > 0) || joints.count < k.joints { return; }
   src: [MAX_JOINTS] Fv;
   for j: 0..<k.joints { src[j] = joints[j]; }
@@ -596,7 +596,7 @@ front_low :: (j: int) -> bool { return j > A_LF && j <= A_LF + 4 || j > A_RF && 
 // A hind leg's knee, hock, paw or toe.
 hind_low :: (j: int) -> bool { return j > A_LH && j <= A_LH + 4 || j > A_RH && j <= A_RH + 4; }
 
-// A posed figure's joints to its bones, as verse_figure_place writes them.
+// A posed figure's joints to its bones, as metaverse_figure_place writes them.
 figure_bones :: (k: Skeleton, joints: [] Fv, out: [] f32, bound: [] f32) -> int {
   n := 0;
   c := fv(0, 0, 0);
@@ -625,17 +625,17 @@ Gait :: enum u8 { stand; walk; trot; run; }
 // How many strides a second a gait takes, for a figure of this shape, and
 // how fast it then goes (metres a second): a longer leg strides slower and
 // further.
-verse_figure_stride_rate :: (s: Shape, g: Gait) -> f32 #export_c #effects(all) {
+metaverse_figure_stride_rate :: (s: Shape, g: Gait) -> f32 #export_c #effects(all) {
   leg := hi(0.2, s.size * s.legs);
   base: f32 = ifx g == Gait.walk then 1.0f32 else ifx g == Gait.trot then 1.5f32 else ifx g == Gait.run then 1.9f32 else 0.25f32;
   if s.rig == Rig.person { base = ifx g == Gait.walk then 0.95f32 else ifx g == Gait.run || g == Gait.trot then 1.45f32 else 0.25f32; }
   return base / sqrt(leg);
 }
-verse_figure_speed :: (s: Shape, g: Gait) -> f32 #export_c #effects(all) {
+metaverse_figure_speed :: (s: Shape, g: Gait) -> f32 #export_c #effects(all) {
   leg := hi(0.2, s.size * s.legs);
   stride: f32 = ifx g == Gait.walk then 0.85f32 else ifx g == Gait.trot then 1.25f32 else ifx g == Gait.run then 2.4f32 else 0;
   if s.rig == Rig.person { stride = ifx g == Gait.walk then 1.45f32 else ifx g == Gait.run || g == Gait.trot then 2.6f32 else 0; leg = leg * 0.9; }
-  return stride * leg * verse_figure_stride_rate(s, g);
+  return stride * leg * metaverse_figure_stride_rate(s, g);
 }
 
 wave :: (phase: f32) -> f32 { return sin(phase * 2 * PI); }
@@ -731,12 +731,12 @@ animal_gait :: (g: Gait, phase: f32, clock: f32) -> Pose {
 
 // The gait's pose at phase (0..1 through one stride) and clock (seconds,
 // for breathing and idling).
-verse_figure_gait :: (r: Rig, g: Gait, phase: f32, clock: f32) -> Pose #export_c #effects(all) {
+metaverse_figure_gait :: (r: Rig, g: Gait, phase: f32, clock: f32) -> Pose #export_c #effects(all) {
   return ifx r == Rig.animal then animal_gait(g, fract(phase), clock) else person_gait(g, fract(phase), clock);
 }
 
 // A blend of two poses, t from a to b, joint by joint.
-verse_figure_blend :: (a: Pose, b: Pose, t: f32) -> Pose #export_c #effects(all) {
+metaverse_figure_blend :: (a: Pose, b: Pose, t: f32) -> Pose #export_c #effects(all) {
   r: Pose; w := clamp(t, 0, 1);
   for j: 0..<MAX_JOINTS { r.turn[j] = fv_mix(a.turn[j], b.turn[j], w); }
   r.lift = fv_mix(a.lift, b.lift, w);
@@ -747,72 +747,72 @@ verse_figure_blend :: (a: Pose, b: Pose, t: f32) -> Pose #export_c #effects(all)
 
 #test "a person stands on the ground, as tall as its shape" {
   s: Shape;
-  k := verse_figure_skeleton(s);
+  k := metaverse_figure_skeleton(s);
   p: Pose;
   joints: [MAX_JOINTS] Fv;
-  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  #assert metaverse_figure_joints_at(k, p, Place.{}, joints[..]);
   #assert abs(joints[P_L_TOE].y - 0.04) < 0.03 && abs(joints[P_R_FOOT].y - 0.06) < 0.001;
   #assert joints[P_CROWN].y > 1.6 && joints[P_CROWN].y < 1.85;
   #assert joints[P_L_HAND].x > 0 && joints[P_R_HAND].x < 0;
-  s.size = 0.5; k = verse_figure_skeleton(s);
-  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  s.size = 0.5; k = metaverse_figure_skeleton(s);
+  #assert metaverse_figure_joints_at(k, p, Place.{}, joints[..]);
   #assert joints[P_CROWN].y > 0.8 && joints[P_CROWN].y < 0.95;
 }
 #test "an animal stands on its four paws, its head in front" {
   s: Shape; s.rig = Rig.animal;
-  k := verse_figure_skeleton(s);
+  k := metaverse_figure_skeleton(s);
   p: Pose;
   joints: [MAX_JOINTS] Fv;
-  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  #assert metaverse_figure_joints_at(k, p, Place.{}, joints[..]);
   for leg: 0..<4 { #assert abs(joints[A_LF + leg * 5 + 3].y - 0.035) < 0.002; }
   #assert joints[A_NOSE].z > joints[A_CHEST].z && joints[A_TAIL_TIP].z < joints[A_PELVIS].z;
   #assert joints[A_L_EAR_TIP].y > joints[A_L_EAR].y;
-  s.ears = 1; k = verse_figure_skeleton(s);
-  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  s.ears = 1; k = metaverse_figure_skeleton(s);
+  #assert metaverse_figure_joints_at(k, p, Place.{}, joints[..]);
   #assert joints[A_L_EAR_TIP].y < joints[A_L_EAR].y;
-  s.legs = 1.5; k = verse_figure_skeleton(s);
-  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  s.legs = 1.5; k = metaverse_figure_skeleton(s);
+  #assert metaverse_figure_joints_at(k, p, Place.{}, joints[..]);
   #assert abs(joints[A_RH + 3].y - 0.035) < 0.002;
 }
 #test "a figure faces where it is placed, and turns carry their children" {
   s: Shape;
-  k := verse_figure_skeleton(s);
+  k := metaverse_figure_skeleton(s);
   p: Pose;
   joints: [MAX_JOINTS] Fv;
-  #assert verse_figure_joints_at(k, p, Place.{x = 2, z = 3, yaw = PI * 0.5}, joints[..]);
+  #assert metaverse_figure_joints_at(k, p, Place.{x = 2, z = 3, yaw = PI * 0.5}, joints[..]);
   #assert joints[P_L_TOE].x > joints[P_L_FOOT].x + 0.1;
   p.turn[P_L_SHOULDER] = fv(0, 0, PI * 0.5);
-  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  #assert metaverse_figure_joints_at(k, p, Place.{}, joints[..]);
   #assert joints[P_L_HAND].x > 0.6 && abs(joints[P_L_HAND].y - joints[P_L_SHOULDER].y) < 0.01;
   p.turn[P_L_SHOULDER] = fv(-PI * 0.5, 0, 0);
-  #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+  #assert metaverse_figure_joints_at(k, p, Place.{}, joints[..]);
   #assert joints[P_L_HAND].z > 0.5;
 }
 #test "turns are held to their joint's limits, and the limits are checked" {
-  #assert verse_figure_turn_ok(Rig.person, P_L_KNEE, fv(1, 0, 0));
-  #assert !verse_figure_turn_ok(Rig.person, P_L_KNEE, fv(-1, 0, 0));
-  #assert !verse_figure_turn_ok(Rig.person, P_L_KNEE, fv(0.0 / 0.0, 0, 0));
-  h := verse_figure_turn_hold(Rig.person, P_L_KNEE, fv(-1, 0.5, 0));
+  #assert metaverse_figure_turn_ok(Rig.person, P_L_KNEE, fv(1, 0, 0));
+  #assert !metaverse_figure_turn_ok(Rig.person, P_L_KNEE, fv(-1, 0, 0));
+  #assert !metaverse_figure_turn_ok(Rig.person, P_L_KNEE, fv(0.0 / 0.0, 0, 0));
+  h := metaverse_figure_turn_hold(Rig.person, P_L_KNEE, fv(-1, 0.5, 0));
   #assert h.x > -0.1 && h.y < 0.2;
-  #assert verse_figure_turn_ok(Rig.animal, A_PELVIS, fv(0, 3, 3));
-  #assert !verse_figure_turn_ok(Rig.animal, A_NOSE, fv(0.1, 0, 0));
-  #assert verse_figure_joint_named(Rig.animal, "tail_2") == A_TAIL_2 && verse_figure_joint_named(Rig.person, "tail") == -1;
-  #assert verse_figure_joint_name(Rig.animal, A_RH + 2) == "hind_right_hock";
+  #assert metaverse_figure_turn_ok(Rig.animal, A_PELVIS, fv(0, 3, 3));
+  #assert !metaverse_figure_turn_ok(Rig.animal, A_NOSE, fv(0.1, 0, 0));
+  #assert metaverse_figure_joint_named(Rig.animal, "tail_2") == A_TAIL_2 && metaverse_figure_joint_named(Rig.person, "tail") == -1;
+  #assert metaverse_figure_joint_name(Rig.animal, A_RH + 2) == "hind_right_hock";
 }
 #test "a shape is held to its ranges" {
   s: Shape;
-  #assert verse_figure_shape_ok(s);
+  #assert metaverse_figure_shape_ok(s);
   s.size = 9; s.pattern = 12; s.coat = fv(2, 0, 0);
-  #assert !verse_figure_shape_ok(s);
-  f := verse_figure_shape_fix(s);
-  #assert verse_figure_shape_ok(f) && f.size == 1.8 && f.pattern == 0;
-  #assert verse_figure_shape_set(f, 6, 0.0 / 0.0).ears == 0;
+  #assert !metaverse_figure_shape_ok(s);
+  f := metaverse_figure_shape_fix(s);
+  #assert metaverse_figure_shape_ok(f) && f.size == 1.8 && f.pattern == 0;
+  #assert metaverse_figure_shape_set(f, 6, 0.0 / 0.0).ears == 0;
 }
 #test "bones are placed inside their bound, regions and radii packed" {
   s: Shape; s.rig = Rig.animal;
-  k := verse_figure_skeleton(s);
+  k := metaverse_figure_skeleton(s);
   out: [MAX_PARTS * BONE_FLOATS] f32; bound: [4] f32;
-  n := verse_figure_place(k, verse_figure_gait(Rig.animal, Gait.trot, 0.3, 1), Place.{x = 1}, out[..], bound[..]);
+  n := metaverse_figure_place(k, metaverse_figure_gait(Rig.animal, Gait.trot, 0.3, 1), Place.{x = 1}, out[..], bound[..]);
   #assert n == k.parts && n > 25 && n <= MAX_PARTS;
   for i: 0..<n {
     o := i * BONE_FLOATS;
@@ -822,19 +822,19 @@ verse_figure_blend :: (a: Pose, b: Pose, t: f32) -> Pose #export_c #effects(all)
     #assert sqrt(dx * dx + dy * dy + dz * dz) < bound[3];
   }
   small: [16] f32;
-  #assert verse_figure_place(k, Pose.{}, Place.{}, small[..], bound[..]) == 2;
+  #assert metaverse_figure_place(k, Pose.{}, Place.{}, small[..], bound[..]) == 2;
 }
 #test "every gait keeps its turns inside the limits and its feet near the ground" {
   for r: 0..<2 {
     rig := ifx r == 0 then Rig.person else Rig.animal;
     s: Shape; s.rig = rig;
-    k := verse_figure_skeleton(s);
+    k := metaverse_figure_skeleton(s);
     for g: 0..<4 {
       for n: 0..<20 {
-        p := verse_figure_gait(rig, cast(Gait) cast(u8) g, cast(f32) n / 20, cast(f32) n);
-        for j: 0..<k.joints { #assert verse_figure_turn_ok(rig, j, p.turn[j]); }
+        p := metaverse_figure_gait(rig, cast(Gait) cast(u8) g, cast(f32) n / 20, cast(f32) n);
+        for j: 0..<k.joints { #assert metaverse_figure_turn_ok(rig, j, p.turn[j]); }
         joints: [MAX_JOINTS] Fv;
-        #assert verse_figure_joints_at(k, p, Place.{}, joints[..]);
+        #assert metaverse_figure_joints_at(k, p, Place.{}, joints[..]);
         low: f32 = 10;
         for j: 0..<k.joints { low = lo(low, joints[j].y); }
         #assert low > -0.08 && low < 0.15;
@@ -844,27 +844,27 @@ verse_figure_blend :: (a: Pose, b: Pose, t: f32) -> Pose #export_c #effects(all)
 }
 #test "a shape is read from text, and refused whole when any of it is wrong" {
   s: Shape; s.rig = Rig.animal;
-  r := verse_figure_shape_read(s, "size 1.3; ears 1\npattern patches; coat 0.2 0.1 0.05; look soft");
+  r := metaverse_figure_shape_read(s, "size 1.3; ears 1\npattern patches; coat 0.2 0.1 0.05; look soft");
   #assert r.ok && r.shape.size == 1.3 && r.shape.ears == 1 && r.shape.pattern == PATTERN_PATCHES && r.shape.coat.x == 0.2 && r.shape.look == LOOK_SOFT && r.shape.legs == 1;
-  bad := verse_figure_shape_read(s, "size 1.3; legs 9");
+  bad := metaverse_figure_shape_read(s, "size 1.3; legs 9");
   #assert !bad.ok && bad.line == 2 && bad.shape.size == 1 && bad.why == "outside its range" && SHAPE_NAMES[bad.at] == "legs";
-  #assert verse_figure_shape_read(s, "wings 2").at == -1;
-  #assert !verse_figure_shape_read(s, "wings 2").ok && !verse_figure_shape_read(s, "pattern spots").ok;
-  #assert !verse_figure_shape_read(s, "coat 1 2 0").ok && !verse_figure_shape_read(s, "size").ok && !verse_figure_shape_read(s, "size 1 2").ok;
-  #assert verse_figure_shape_read(s, "").ok;
+  #assert metaverse_figure_shape_read(s, "wings 2").at == -1;
+  #assert !metaverse_figure_shape_read(s, "wings 2").ok && !metaverse_figure_shape_read(s, "pattern spots").ok;
+  #assert !metaverse_figure_shape_read(s, "coat 1 2 0").ok && !metaverse_figure_shape_read(s, "size").ok && !metaverse_figure_shape_read(s, "size 1 2").ok;
+  #assert metaverse_figure_shape_read(s, "").ok;
 }
 #test "a lift grows with the figure" {
   s: Shape; s.rig = Rig.animal; s.size = 1.5;
-  k := verse_figure_skeleton(s);
+  k := metaverse_figure_skeleton(s);
   p: Pose; p.lift = fv(0, 0.1, 0);
   a: [MAX_JOINTS] Fv; b: [MAX_JOINTS] Fv;
-  #assert verse_figure_joints_at(k, Pose.{}, Place.{}, a[..]) && verse_figure_joints_at(k, p, Place.{}, b[..]);
+  #assert metaverse_figure_joints_at(k, Pose.{}, Place.{}, a[..]) && metaverse_figure_joints_at(k, p, Place.{}, b[..]);
   #assert abs(b[A_PELVIS].y - a[A_PELVIS].y - 0.15) < 0.001;
 }
 #test "a faster gait goes faster, a bigger figure strides slower" {
   s: Shape; s.rig = Rig.animal;
-  #assert verse_figure_speed(s, Gait.walk) < verse_figure_speed(s, Gait.trot) && verse_figure_speed(s, Gait.trot) < verse_figure_speed(s, Gait.run);
-  #assert verse_figure_speed(s, Gait.stand) == 0;
+  #assert metaverse_figure_speed(s, Gait.walk) < metaverse_figure_speed(s, Gait.trot) && metaverse_figure_speed(s, Gait.trot) < metaverse_figure_speed(s, Gait.run);
+  #assert metaverse_figure_speed(s, Gait.stand) == 0;
   big := s; big.size = 1.6;
-  #assert verse_figure_stride_rate(big, Gait.walk) < verse_figure_stride_rate(s, Gait.walk);
+  #assert metaverse_figure_stride_rate(big, Gait.walk) < metaverse_figure_stride_rate(s, Gait.walk);
 }

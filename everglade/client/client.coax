@@ -588,7 +588,7 @@ e2_start :: (s: [] E2) -> bool #export_c #effects(all) {
   face := ifx z < 0 then figs.atan2(e2_road_x(z - 2) - x, -2.0f32) else 3.14159265f32;
   if s[0].start_kept { x = s[0].start_x; face = s[0].start_face; }   // /play: where you stood last
   s[0].placed = true; s[0].you_x = x; s[0].you_z = z; s[0].you_face = face; s[0].you_y = e2_height(x, z);
-  s[0].orbit = figs.verse_orbit_start(figs.v3(x, s[0].you_y, z), face);
+  s[0].orbit = figs.metaverse_orbit_start(figs.v3(x, s[0].you_y, z), face);
   return true;
 }
 
@@ -722,7 +722,7 @@ e2_familiar_shot :: (s:[]E2,shot:figs.Shot)->figs.Shot {
 }
 #test "a drag looks up past the horizon, centred on you; on the land the eye holds and the view tilts on up" #steps 400000000 {
   s: [1] E2; s[0].k = 1; s[0].plant_done = true;
-  e2_you(s[..], 0, 0, 0, 3.14159265); s[0].orbit = figs.verse_orbit_start(figs.v3(0, s[0].you_y, 0), 3.14159265);
+  e2_you(s[..], 0, 0, 0, 3.14159265); s[0].orbit = figs.metaverse_orbit_start(figs.v3(0, s[0].you_y, 0), 3.14159265);
   s[0].orbit.want = 4; s[0].orbit.zoom = 4; s[0].view = e2_mode();
   // from looking down to looking up, a step at a time: centred, over the land, and no jump
   last := figs.Shot.{}; lastp := -1.0f32; pressed := false;

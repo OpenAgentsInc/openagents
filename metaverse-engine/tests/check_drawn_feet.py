@@ -59,7 +59,7 @@ def check(case, compiler, directory, cc, release=False, sanitize=False):
     input_c.write_text(f'''#include "{player_h.name}"
 #include <stdbool.h>
 void probe_input(int mode, float result[3]) {{
-  coax_t_Player p = verse_player_place(5, 1.25f, 2, 0);
+  coax_t_Player p = metaverse_player_place(5, 1.25f, 2, 0);
   p.prev_pos = (coax_t_Vec3){{1, 0.25f, -6}};
   p.clock.carry_ns = p.clock.step_ns / 4;
   p.on_ground = false;
@@ -67,7 +67,7 @@ void probe_input(int mode, float result[3]) {{
   if (mode == 2) {{ p.prev_pos.y *= 2; p.pos.y *= 2; }}
   if (mode == 3) p.prev_pos = p.pos;
   if (mode == 4) {{ p.prev_pos.y += 2.5f; p.pos.y += 2.5f; }}
-  coax_t_Vec3 feet = verse_player_feet(p);
+  coax_t_Vec3 feet = metaverse_player_feet(p);
   result[0] = feet.x; result[1] = feet.y; result[2] = feet.z;
 }}
 ''')

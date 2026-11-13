@@ -236,8 +236,8 @@ static void parakeet_run(job *j) {
   bool ok = true;
   int done = 0;
   coax_v_u8 speech = {j->speech, (int64_t)j->frames};
-  while (verse_voice_asr_continue(j->cancel || j->stop, ok, done, j->windows)) {
-    int64_t end = verse_voice_asr_cut(start, (int64_t)j->n, j->windows - done, speech);
+  while (metaverse_voice_asr_continue(j->cancel || j->stop, ok, done, j->windows)) {
+    int64_t end = metaverse_voice_asr_cut(start, (int64_t)j->n, j->windows - done, speech);
     if (end < 0 || end - start > (int64_t)(sizeof x / sizeof x[0])) {
       snprintf(j->err, sizeof j->err, "no bounded plan for the turn");
       ok = false;
@@ -247,13 +247,13 @@ static void parakeet_run(job *j) {
     coax_v_s16 in = {j->pcm + start, w};
     coax_v_f32 out = {x, w};
     double ms = 0;
-    ok = verse_voice_asr_convert(in, out) && speech_parakeet_window(x, (size_t)w, piece, sizeof piece, &ms, j->err, sizeof j->err);
+    ok = metaverse_voice_asr_convert(in, out) && speech_parakeet_window(x, (size_t)w, piece, sizeof piece, &ms, j->err, sizeof j->err);
     j->infer_ms += ms;
     done++;
     start = end;
     if (!ok) break;
     coax_v_u8 dst = {text, MAX_TEXT};
-    used = verse_voice_asr_append(dst, used, (coax_string){piece, (int64_t)strlen(piece)});
+    used = metaverse_voice_asr_append(dst, used, (coax_string){piece, (int64_t)strlen(piece)});
     if (used < 0) { ok = false; break; }
   }
   speech_parakeet_clear();
@@ -653,13 +653,13 @@ static size_t flight_max(const session *s) {
 }
 
 static void maybe_recognize(session *s) {
-  if (!verse_voice_asr_partials(g_recognizer)) return;  // a resident local model recognizes each turn once
+  if (!metaverse_voice_asr_partials(g_recognizer)) return;  // a resident local model recognizes each turn once
   if (s->turn_refused || s->tn < OA_VOICE_FRAME_SAMPLES || s->nflight == MAX_FLIGHT) return;
   uint32_t silence = ms_of(s->tn - s->voiced_end);
   size_t cover = s->done_cover > flight_max(s) ? s->done_cover : flight_max(s);
   // Early recognition may overlap one still in flight (a mid-sentence pause
   // started it); the regular cadence waits for the last one to finish.
-  bool early = verse_voice_reply_recognize_early(silence, ms_of(s->voiced_end), ms_of(cover));
+  bool early = metaverse_voice_reply_recognize_early(silence, ms_of(s->voiced_end), ms_of(cover));
   bool cadence = s->nflight == 0 && s->tn - s->partial_at >= PARTIAL_EVERY;
   if (!early && !cadence) return;
   // pay/voice-meter.coax decides whether re-sending the turn so far fits; the
@@ -713,10 +713,10 @@ static void submit_recognition(session *s, job_kind kind, const int16_t *pcm, si
 static void parakeet_final(session *s) {
   s->final_pending = false;
   s->plan = "parakeet";
-  int64_t windows = verse_voice_asr_plan((int64_t)s->fin_n, (int64_t)s->fin_nvoiced);
+  int64_t windows = metaverse_voice_asr_plan((int64_t)s->fin_n, (int64_t)s->fin_nvoiced);
   uint64_t epoch = oa_voice_epoch(s->v);
   if (windows <= 0) {
-    int64_t v = verse_voice_asr_admit(s->turn_no, s->dropped_upto, epoch, epoch, false, windows, true, 0);
+    int64_t v = metaverse_voice_asr_admit(s->turn_no, s->dropped_upto, epoch, epoch, false, windows, true, 0);
     logf_("%s: %s %s without a model call (%zu samples, %zu voiced frames)", s->sid, s->turn,
           v == 1 ? "no speech" : "refused", s->fin_n, s->fin_nvoiced);
     if (v == 5) {
@@ -767,7 +767,7 @@ static void parakeet_final(session *s) {
 static void plan_final(session *s) {
   if (g_recognizer == PROVIDER_PARAKEET) { parakeet_final(s); return; }
   size_t voiced = s->fin_voiced ? s->fin_voiced : s->fin_n;  // no voiced frame seen: all of it must be covered
-  int64_t p = verse_voice_reply_final_plan(ms_of(voiced), ms_of(s->done_cover), s->done_text[0] != 0,
+  int64_t p = metaverse_voice_reply_final_plan(ms_of(voiced), ms_of(s->done_cover), s->done_text[0] != 0,
                                               s->done_cut_ms, ms_of(flight_max(s)));
   if (p == 3) {  // wait for the in-flight recognition, then decide again
     s->final_pending = true;
@@ -1340,7 +1340,7 @@ static void on_job_done(job *j) {
   if (j->kind == JOB_PARAKEET) {
     for (int i = 0; i < s->nasr; i++)
       if (s->asr[i] == j) { s->asr[i] = s->asr[--s->nasr]; break; }
-    int64_t v = verse_voice_asr_admit(j->turn_no, s->dropped_upto, j->epoch, oa_voice_epoch(s->v), j->cancel != 0,
+    int64_t v = metaverse_voice_asr_admit(j->turn_no, s->dropped_upto, j->epoch, oa_voice_epoch(s->v), j->cancel != 0,
                                       j->windows, j->ok, j->bytes);
     static const char *verdicts[] = {"final", "no speech", "stale", "cancelled", "failed", "too long"};
     logf_("%s: %s parakeet %s: %d of %d window(s), %zu samples, inference %.0f ms, recognition %llu ms after TURN_END",
@@ -1807,7 +1807,7 @@ int main(int argc, char **argv) {
   signal(SIGPIPE, SIG_IGN);
   speech_init();
   g_speech.verbose = g_verbose;
-  if (!verse_voice_asr_synthesizes(g_synth)) {
+  if (!metaverse_voice_asr_synthesizes(g_synth)) {
     logf_("%s does not synthesize speech; choose --synthesizer google or local", one_name(g_synth));
     return 2;
   }

@@ -240,7 +240,7 @@ ground :: () -> Ground {
   g.rim_from = 100000; g.rim = 0;   // no bowl: the park is flat land between the avenues
   return g;
 }
-ground_at :: (s: [] Fairy, x: f32, z: f32) -> f32 { return verse_terrain_height(ground(), s[0].heights[..], x, z); }
+ground_at :: (s: [] Fairy, x: f32, z: f32) -> f32 { return metaverse_terrain_height(ground(), s[0].heights[..], x, z); }
 fairy_ground :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c #effects(all) { return walk_at(s, x, z); }
 // How far a bridge's deck stands over the ground at (x, z) (0 off one): the stream's say on the water adds it to your height.
 fairy_deck_lift :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c #effects(all) { return walk_at(s, x, z) - ground_at(s, x, z); }
@@ -251,13 +251,13 @@ fairy_start :: (s: [] Fairy) {
   s[0].started = true;
   ff_stream_line(s[0].stream[..]);
   nodes := FF_NODE_XZ; links := FF_LINK_AB; flats := FF_FLATS;
-  shaped_ok := verse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(FF_PATH_HALF), flats[..]);
+  shaped_ok := metaverse_terrain_build(ground(), s[0].heights[..], nodes[..], links[..], f32(FF_PATH_HALF), flats[..]);
   park_ground(s);
   carve(s);
   path_planes(s);
   s[0].feet = v3(f32(FF_SPAWN_X), ground_at(s, f32(FF_SPAWN_X), f32(FF_SPAWN_Z)), f32(FF_SPAWN_Z));
   s[0].face = f32(FF_SPAWN_FACE);
-  s[0].orbit = verse_orbit_start(s[0].feet, f32(FF_SPAWN_FACE));
+  s[0].orbit = metaverse_orbit_start(s[0].feet, f32(FF_SPAWN_FACE));
   s[0].button_finger = -1; s[0].flap_finger = -1;
   s[0].upgrade[0].ask_wear = -1; s[0].upgrade[0].ask_get = true;   // UPGRADE asks once the face can
   s[0].near_creature = -1;
@@ -385,7 +385,7 @@ fairy_pond_z :: () -> f32 #export_c #effects(all) { return f32(FF_POND_Z); }
 // Clear of the trails, the stream (line: s[0].stream), the glades, the heart tree and the creatures?
 open_ground :: (line: [] f32, x: f32, z: f32, room: f32) -> bool {
   nodes := FF_NODE_XZ; links := FF_LINK_AB;
-  if verse_path_nearest(nodes[..], links[..], x, z).d < f32(FF_PATH_HALF) + 2.5 + room { return false; }
+  if metaverse_path_nearest(nodes[..], links[..], x, z).d < f32(FF_PATH_HALF) + 2.5 + room { return false; }
   st := ff_stream_near_line(line, x, z);
   if st.d < st.half + 2.5 + room { return false; }
   if sqrt(x * x + z * z) < 17 + room { return false; }
@@ -554,14 +554,14 @@ fairy_place_open :: (s: [] Fairy, x: f32, z: f32) -> bool #export_c #effects(all
   if !s[0].started { fairy_start(s); }
   if !finite(x) || !finite(z) || x < f32(FF_PARK_W) + 1 || x > f32(FF_PARK_E) - 1 || z < f32(FF_PARK_S) + 1 || z > f32(FF_PARK_N) - 1 { return false; }
   if walk_at(s, x, z) < f32(FF_LEVEL) + 0.1 { return false; }
-  return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
+  return metaverse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
 }
 // A kept place made good: itself when open, else the nearest open spot, else the spawn.
 fairy_place_fix :: (s: [] Fairy, p: Place) -> Place #export_c #effects(all) {
   q := p; q.y = 0; q.room = FF_LAYOUT;
   for i: 0..<PLACE_TRIES {
     if p.room != FF_LAYOUT { break; }   // kept in the old valley: its places aren't the park's
-    t := verse_place_try(p.x, p.z, i);
+    t := metaverse_place_try(p.x, p.z, i);
     if fairy_place_open(s, t.x, t.z) { q.x = t.x; q.z = t.z; return q; }
   }
   q.x = f32(FF_SPAWN_X); q.z = f32(FF_SPAWN_Z); q.face = f32(FF_SPAWN_FACE); q.yaw = f32(FF_SPAWN_FACE);
@@ -571,9 +571,9 @@ fairy_place_fix :: (s: [] Fairy, p: Place) -> Place #export_c #effects(all) {
 fairy_place_camera :: (s: [] Fairy, p: Place) #export_c #effects(all) {
   if !s[0].started { fairy_start(s); }
   s[0].feet = v3(p.x, walk_at(s, p.x, p.z), p.z); s[0].face = p.face;
-  s[0].orbit = verse_place_orbit(p, s[0].feet);
+  s[0].orbit = metaverse_place_orbit(p, s[0].feet);
 }
-fairy_place_of :: (s: [] Fairy, x: f32, y: f32, z: f32, face: f32) -> Place #export_c #effects(all) { return verse_place_of(x, y, z, face, s[0].orbit, FF_LAYOUT); }
+fairy_place_of :: (s: [] Fairy, x: f32, y: f32, z: f32, face: f32) -> Place #export_c #effects(all) { return metaverse_place_of(x, y, z, face, s[0].orbit, FF_LAYOUT); }
 
 // ---- the controls
 
@@ -597,8 +597,8 @@ fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c #effects(all) 
   if ffb_key(s, key) { return true; }
   used := redit_key(s[0].ed[..], key, true);
   if used > 0 { return used == 1; }
-  if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
-  if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
+  if key == '+' || key == '=' { s[0].orbit = metaverse_orbit_zoom(s[0].orbit, -0.8); return true; }
+  if key == '-' || key == '_' { s[0].orbit = metaverse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if ffs_key(s, key, mods) { return true; }
   if s[0].talk > 0 { return talk_key(s, key, mods); }
   if ffmap_key(s, key) { return true; }
@@ -703,7 +703,7 @@ look_drag :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
 }
 
 fairy_wheel :: (s: [] Fairy, dy: f32) #export_c #effects(all) {
-  if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
+  if finite(dy) { s[0].orbit = metaverse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
 }
 
 axis :: (held: int, plus: int, minus: int) -> f32 {
@@ -720,8 +720,8 @@ fairy_controls :: (s: [] Fairy, dt: f32, dyaw: f32, dpitch: f32) #export_c #effe
   s[0].key_y = axis(h, HOLD_FORWARD, HOLD_BACK);
   s[0].run = h & HOLD_RUN != 0;
   s[0].jump = h & HOLD_JUMP != 0 || s[0].flap_on;
-  o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
-  o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
+  o := metaverse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
+  o = metaverse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
   s[0].orbit = o;
   s[0].look_yaw = 0; s[0].look_pitch = 0;
 }
@@ -1080,7 +1080,7 @@ thornfall :: (s: [] Fairy, eye: Point) {
       x = cx + cos(an) * d; z = cz + sin(an) * d;
       if abs(z - gz) < 3 && x > f32(LOG_X0) - 4 && x < f32(LOG_X1) + 3 { continue; }
       nodes := FF_NODE_XZ; links := FF_LINK_AB;
-      if verse_path_nearest(nodes[..], links[..], x, z).d < f32(FF_PATH_HALF) + 1 { continue; }
+      if metaverse_path_nearest(nodes[..], links[..], x, z).d < f32(FF_PATH_HALF) + 1 { continue; }
     }
     bloomed := patch >= 0 && f[0].bloomed[patch];
     back := ff_restored(f, x, z, s[0].time);
@@ -1774,20 +1774,20 @@ project :: (u: [] f32, p: Point, width: f32, height: f32) -> Point {
 
 ground_room :: (s: [] Fairy, r: OrbitRay) -> f32 {
   lifted := add(r.from, v3(0, -0.5, 0));
-  return verse_terrain_ray(ground(), s[0].heights[..], lifted, r.dir, r.far);
+  return metaverse_terrain_ray(ground(), s[0].heights[..], lifted, r.dir, r.far);
 }
 
 camera_frame :: (s: [] Fairy, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
   speed := sqrt(vx * vx + vz * vz);
   // making your fairy on a phone: the pane covers the upper half, so she stands in the lower
   aim := ifx s[0].maker[0].open && phone(s) then add(feet, v3(0, 1.3, 0)) else feet;
-  o := verse_orbit_follow(s[0].orbit, aim, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
+  o := metaverse_orbit_follow(s[0].orbit, aim, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
   camera_spheres(s, feet);
-  room := verse_orbit_room(o, s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6]);
-  room = lo(room, ground_room(s, verse_orbit_ray(o)));
-  o = verse_orbit_limit(o, room, dt);
+  room := metaverse_orbit_room(o, s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6]);
+  room = lo(room, ground_room(s, metaverse_orbit_ray(o)));
+  o = metaverse_orbit_limit(o, room, dt);
   s[0].orbit = o;
-  return verse_orbit_shot(o);
+  return metaverse_orbit_shot(o);
 }
 
 // The ground's rows and its planes (fairy.wgsl reads the paths from them,
@@ -2251,7 +2251,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   ups := FFL_BODY_UP; acrosses := FFL_BODY_ACROSS;
   s[0].fig_on = true; s[0].fig_at = shown; s[0].fig_up = ups[body]; s[0].fig_across = acrosses[body];
   // zoomed into your head (first person, metaverse-engine/cam/camera.coax) you aren't drawn, unless the map lifts the eye out
-  if !verse_orbit_inside(s[0].orbit) || s[0].map[0].lift > 0.5 { fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap, worn); }
+  if !metaverse_orbit_inside(s[0].orbit) || s[0].map[0].lift > 0.5 { fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap, worn); }
   s[0].fig_on = false;
   ffk_carried(s, shown, face);
   s[0].mine = false;
@@ -2518,18 +2518,18 @@ top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
   fairy_start(g[..]);
   sx := f32(FF_SPAWN_X); sz := f32(FF_SPAWN_Z);
   #assert fairy_place_open(g[..], sx, sz);
-  q := fairy_place_fix(g[..], verse_place(sx + 1, 0, sz + 1, 1, 1.5, 0.4, 6, 0, FF_LAYOUT, 1000));
+  q := fairy_place_fix(g[..], metaverse_place(sx + 1, 0, sz + 1, 1, 1.5, 0.4, 6, 0, FF_LAYOUT, 1000));
   #assert q.x == sx + 1 && q.z == sz + 1;
   t := g[0].trees[0..<2];
-  m := fairy_place_fix(g[..], verse_place(t[0], 0, t[1], 0, 0, 0.3, 5, 0, FF_LAYOUT, 1000));
+  m := fairy_place_fix(g[..], metaverse_place(t[0], 0, t[1], 0, 0, 0.3, 5, 0, FF_LAYOUT, 1000));
   #assert fairy_place_open(g[..], m.x, m.z) && (m.x != t[0] || m.z != t[1]);
-  w := fairy_place_fix(g[..], verse_place(f32(FF_POND_X), 0, f32(FF_POND_Z), 0, 0, 0.3, 5, 0, FF_LAYOUT, 1000));
+  w := fairy_place_fix(g[..], metaverse_place(f32(FF_POND_X), 0, f32(FF_POND_Z), 0, 0, 0.3, 5, 0, FF_LAYOUT, 1000));
   #assert fairy_place_open(g[..], w.x, w.z);
   // the middle of the Reservoir is water: you come out on its shore
-  r := fairy_place_fix(g[..], verse_place(0, 0, 280, 0, 0, 0.3, 5, 0, FF_LAYOUT, 1000));
+  r := fairy_place_fix(g[..], metaverse_place(0, 0, 280, 0, 0, 0.3, 5, 0, FF_LAYOUT, 1000));
   #assert r.x == 0 && r.z == 280 || fairy_place_open(g[..], r.x, r.z);
   // a place kept in the old valley (outdoors, room -1), even open ground in the park: back to the spawn
-  o := fairy_place_fix(g[..], verse_place(-33, 0, -37, 0.4, 1.5, 0.4, 6, 0, -1, 1000));
+  o := fairy_place_fix(g[..], metaverse_place(-33, 0, -37, 0.4, 1.5, 0.4, 6, 0, -1, 1000));
   #assert o.x == sx && o.z == sz && o.room == FF_LAYOUT;
   #assert fairy_place_of(g[..], 1, 0, 2, 0).room == FF_LAYOUT;
   fairy_place_camera(g[..], q);
@@ -2548,13 +2548,13 @@ top_under :: (g: [] Fairy, x: f32, z: f32, feet: f32) -> f32 {
   for turn: 1..<4 {
     for pitch_i: 2..<6 {
       for dist_i: 0..<4 {
-        o := verse_orbit_start(feet, face);
+        o := metaverse_orbit_start(feet, face);
         o.yaw = o.yaw + (f32(turn) - 2) * 0.3;
         o.pitch = -0.3 + f32(pitch_i) * 0.24;
         z := f32(FREE_NEAR) + f32(dist_i) * 2.5;
         o.want = z; o.zoom = z;
-        o.shown = verse_orbit_ray(o).far;
-        view(verse_orbit_shot(o), 1280, 800, u[..], U_VIEW);
+        o.shown = metaverse_orbit_ray(o).far;
+        view(metaverse_orbit_shot(o), 1280, 800, u[..], U_VIEW);
         hc := project(u[..], head, 1280, 800);
         if hc.x < -1000 { continue; }
         hs := hi(dist2(hc, project(u[..], add(head, v3(0, hr, 0)), 1280, 800)), dist2(hc, project(u[..], add(head, times(v3(-cos(face), 0, sin(face)), hr)), 1280, 800)));
@@ -2593,7 +2593,7 @@ dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return 
   nodes := FF_NODE_XZ; links := FF_LINK_AB;
   for t: 0..<g[0].tree_n {
     x := g[0].trees[t * TREE_FLOATS]; z := g[0].trees[t * TREE_FLOATS + 1];
-    #assert verse_path_nearest(nodes[..], links[..], x, z).d > f32(FF_PATH_HALF) + 2;
+    #assert metaverse_path_nearest(nodes[..], links[..], x, z).d > f32(FF_PATH_HALF) + 2;
     st := ff_stream_near_line(g[0].stream[..], x, z);
     #assert st.d > st.half + 2;
   }

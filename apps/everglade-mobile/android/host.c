@@ -354,11 +354,11 @@ static void model_open(void) {
   // (metaverse-engine/host/core/host-core.h).
   size_t n; const uint8_t *d = asset("everglade2.pack", &n);
   const char *bad = "Everglade: the app's everglade2.pack is damaged or doesn't hold the player's parts. Rebuild with apps/everglade-mobile/android/build.sh.";
-  static AethyrCorePack pack;
-  if (!aethyr_core_pack(&pack, d, n)) STOP("%s", bad);
+  static EngineCorePack pack;
+  if (!engine_core_pack(&pack, d, n)) STOP("%s", bad);
   const uint8_t *layers[64 + 16]; size_t cn = 0, vn = 0, in = 0, ln[64 + 16]; uint32_t layer_count = 0;
-  const uint8_t *catalog = aethyr_core_entry(&pack, pack.catalog, &cn), *vertices = aethyr_core_entry(&pack, pack.vertices, &vn), *indices = aethyr_core_entry(&pack, pack.indices, &in);
-  for (int k = 0; k < pack.colours && layer_count < 80; k++) { layers[layer_count] = aethyr_core_entry(&pack, pack.colour[k], &ln[layer_count]); layer_count++; }
+  const uint8_t *catalog = engine_core_entry(&pack, pack.catalog, &cn), *vertices = engine_core_entry(&pack, pack.vertices, &vn), *indices = engine_core_entry(&pack, pack.indices, &in);
+  for (int k = 0; k < pack.colours && layer_count < 80; k++) { layers[layer_count] = engine_core_entry(&pack, pack.colour[k], &ln[layer_count]); layer_count++; }
   if (!catalog || !vertices || !indices || layer_count == 0) STOP("%s", bad);
   struct ModelOpen o = { catalog, (int32_t)cn, 0, 0 };
   deep(model_make, &o);

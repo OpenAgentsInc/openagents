@@ -231,7 +231,7 @@ decides turns).
 
 ### The final transcript
 
-`verse_voice_reply_final_plan` in `voice-reply.coax` decides at
+`metaverse_voice_reply_final_plan` in `voice-reply.coax` decides at
 `TURN_END`, from the turn's numbers only:
 
 - **partial**: a finished recognition with words covers every voiced frame
@@ -251,7 +251,7 @@ mutation testing (`coax mutate`, zero survivors) are in the file.
 
 ### Sentences
 
-`verse_voice_reply_sentence_end` decides where a streamed reply is cut:
+`metaverse_voice_reply_sentence_end` decides where a streamed reply is cut:
 after `.` `!` `?` followed by whitespace (or at a newline), once the
 sentence is at least 8 bytes. The reply's first piece must be at least 24
 bytes and may also end at `,` `;` `:`. That is short to render, but long
@@ -283,9 +283,9 @@ surviving mutants) makes every decision; `host.c` and `speech.c` only move
 bytes, run threads and call the engine:
 
 - **Once per turn.** No PARTIALs and no early recognition: the ended turn goes
-  to the model once (`verse_voice_asr_partials`).
+  to the model once (`metaverse_voice_asr_partials`).
 - **PCM.** The turn's 16 kHz samples become the model's f32 samples in
-  `[-1, 1)` (`verse_voice_asr_convert`).
+  `[-1, 1)` (`metaverse_voice_asr_convert`).
 - **No speech.** A turn under 320 samples or with fewer than 8 voiced frames
   (160 ms) is no speech without a model call: FINAL with no text, then ENDED,
   as an empty transcript always was. Empty model text is the same.
@@ -298,7 +298,7 @@ bytes, run threads and call the engine:
 - **Cancellation and epochs.** The host stamps each recognition with its turn
   and media epoch. CANCEL marks it cancelled; a barge-in's new epoch makes it
   stale. Either stops it between windows (a call already running finishes) and
-  `verse_voice_asr_admit` drops its transcript. Words never decide admission.
+  `metaverse_voice_asr_admit` drops its transcript. Words never decide admission.
 - **Resident buffers.** After every turn, `psionic_parakeet_clear` discards the
   engine's audio, features and text; the weights stay.
 

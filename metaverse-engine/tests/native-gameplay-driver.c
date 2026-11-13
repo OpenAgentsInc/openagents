@@ -6,7 +6,7 @@
 
 typedef struct { const char *name; void (*run)(void); unsigned body_calls; } NativeScenario;
 #include "native-gameplay-registry.h"
-extern void aethyr_native_assert_probe(void);
+extern void engine_native_assert_probe(void);
 
 static void *execute(void *opaque) {
   const NativeScenario *scenario = opaque;
@@ -16,7 +16,7 @@ static void *execute(void *opaque) {
 
 int main(int argc, char **argv) {
   if (argc != 2) return 2;
-  if (!strcmp(argv[1], "--assert-probe")) { aethyr_native_assert_probe(); return 3; }
+  if (!strcmp(argv[1], "--assert-probe")) { engine_native_assert_probe(); return 3; }
   const NativeScenario *chosen = NULL;
   for (unsigned i = 0; i < sizeof scenarios / sizeof scenarios[0]; ++i) {
     if (!strcmp(scenarios[i].name, argv[1])) {

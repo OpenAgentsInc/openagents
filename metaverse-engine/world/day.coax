@@ -1,7 +1,7 @@
 // The day adapter for the environment resolver (lighting plan Phase 1 step 4, GitHub #13064;
 // docs/metaverse/lighting/README.md). It is not a second clock: it reads the simulation tick through the
 // clock modes metaverse-engine/world/style-clock.coax already has (fixed, cycle and real: StyleClock,
-// verse_style_clock, verse_style_clock_at) and the room server's day (coax/web/room/room-sky.coax:
+// metaverse_style_clock, metaverse_style_clock_at) and the room server's day (coax/web/room/room-sky.coax:
 // W's TICK, HZ and DAY), and gives the EnvironmentState day that metaverse-engine/world/environment.coax
 // env_resolve takes.
 //
@@ -81,10 +81,10 @@ day_frac :: (d: f64) -> f64 #effects(all) { return d - floor(d); }
   #assert day_at(r, DayWorld.shared, 7 + 120 * 21600).day == 1;
   #assert day_at(r, DayWorld.shared, 8).day == 0.75 + 1.0 / (120.0 * 86400.0);
 }
-#test "the clocks read metaverse/style-preset's modes: the same time of day as verse_style_clock_at" {
+#test "the clocks read metaverse/style-preset's modes: the same time of day as metaverse_style_clock_at" {
   cases := [4] string.["fixed:0.25", "cycle", "real", "noon"];
   for k: 0..<4 {
-    sc := verse_style_clock(cases[k], "1700000000000", "0.6");
+    sc := metaverse_style_clock(cases[k], "1700000000000", "0.6");
     c := day_from_style(sc, 30, 500, DaySource.local);
     #assert c.at == cast(f64) sc.at && c.epoch == 500 && c.hz == 30;
     #assert (c.mode == DayMode.fixed) == (sc.mode == STYLE_CLOCK_FIXED) && (c.mode == DayMode.cycle) == (sc.mode == STYLE_CLOCK_CYCLE) && (c.mode == DayMode.real) == (sc.mode == STYLE_CLOCK_REAL);
@@ -92,13 +92,13 @@ day_frac :: (d: f64) -> f64 #effects(all) { return d - floor(d); }
     for i: 0..<5 {
       seconds := [5] f64.[0, 1, 720, 2879, 50000][i];
       r := day_at(c, DayWorld.solo, 500 + cast(s64) (seconds * 30));
-      #assert r.refusal == DayRefusal.none && abs(day_frac(r.day) - (cast(f64) verse_style_clock_at(sc, cast(f32) seconds))) <= 0.0002;
+      #assert r.refusal == DayRefusal.none && abs(day_frac(r.day) - (cast(f64) metaverse_style_clock_at(sc, cast(f32) seconds))) <= 0.0002;
     }
   }
-  #assert day_from_style(verse_style_clock("fixed:0.25", "", ""), 30, 0, DaySource.local).mode == DayMode.fixed;
-  #assert day_from_style(verse_style_clock("cycle", "5", ""), 30, 0, DaySource.local).seconds == STYLE_CYCLE_SECONDS;
-  #assert day_from_style(verse_style_clock("real", "", "0.1"), 30, 0, DaySource.local).seconds == DAY_REAL_SECONDS;
-  #assert day_from_style(verse_style_clock("cycle", "5", ""), 30, 0, DaySource.authority).source == DaySource.authority;
+  #assert day_from_style(metaverse_style_clock("fixed:0.25", "", ""), 30, 0, DaySource.local).mode == DayMode.fixed;
+  #assert day_from_style(metaverse_style_clock("cycle", "5", ""), 30, 0, DaySource.local).seconds == STYLE_CYCLE_SECONDS;
+  #assert day_from_style(metaverse_style_clock("real", "", "0.1"), 30, 0, DaySource.local).seconds == DAY_REAL_SECONDS;
+  #assert day_from_style(metaverse_style_clock("cycle", "5", ""), 30, 0, DaySource.authority).source == DaySource.authority;
 }
 #test "a shared world never uses a visitor's local wall clock; a fixed one, an authority's or a solo page's is fine" {
   local_cycle := day_cycle(0.3, 30, 0, DaySource.local);
@@ -111,7 +111,7 @@ day_frac :: (d: f64) -> f64 #effects(all) { return d - floor(d); }
   f := day_fixed(0.3, 30); f.source = DaySource.local;
   #assert day_at(f, DayWorld.shared, 10).refusal == DayRefusal.none;
   // a visitor's page clock in a room is refused, not quietly drawn
-  page := day_from_style(verse_style_clock("real", "", "0.9"), 30, 0, DaySource.local);
+  page := day_from_style(metaverse_style_clock("real", "", "0.9"), 30, 0, DaySource.local);
   #assert day_state(page, DayWorld.shared, 10, 0).refusal == DayRefusal.local_clock && day_state(page, DayWorld.shared, 10, 0).state.version == 0;
 }
 #test "malformed clocks and ticks are refused, each for its reason" {
@@ -235,7 +235,7 @@ day_cycle :: (at: f64, hz: u32, epoch: s64, source: DaySource) -> DayClock #effe
 day_real :: (at: f64, hz: u32, epoch: s64, source: DaySource) -> DayClock #effects(all) {
   return DayClock.{version = DAY_VERSION, mode = DayMode.real, source = source, hz = hz, epoch = epoch, at = at, seconds = DAY_REAL_SECONDS};
 }
-// A page's StyleClock (verse_style_clock: realms.json "clock", host.js's now= and day=) held from
+// A page's StyleClock (metaverse_style_clock: realms.json "clock", host.js's now= and day=) held from
 // tick `epoch`: its time of day then is the clock's `at`. A fixed clock is authored; a cycle or real
 // one comes from `source` (local when it is the page's own facts).
 day_from_style :: (c: StyleClock, hz: u32, epoch: s64, source: DaySource) -> DayClock #effects(all) {

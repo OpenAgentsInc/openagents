@@ -486,8 +486,8 @@ SEALED = {
     "main.coax": '#import "Basic";\n#load "mid.coax" as mid;\n#load "geo/geo.coax" as geo;\n'
                  'main :: () { r := geo.Rect.{w = 4, h = 5}; print("% % % %\\n", geo.area(r), mid.mid_area(), mid.MID, geo.UNIT); }\n',
 }
-HUD_EXPORTS = ["HudPoint", "HudRect", "verse_hud_arm_down", "verse_hud_cut", "verse_hud_frame_arm", "verse_hud_frame_point",
-               "verse_hud_outline", "verse_hud_slot", "verse_hud_tone"]
+HUD_EXPORTS = ["HudPoint", "HudRect", "metaverse_hud_arm_down", "metaverse_hud_cut", "metaverse_hud_frame_arm", "metaverse_hud_frame_point",
+               "metaverse_hud_outline", "metaverse_hud_slot", "metaverse_hud_tone"]
 
 
 class Visibility(unittest.TestCase):
@@ -592,10 +592,10 @@ class Visibility(unittest.TestCase):
         lib.write_text(self.ok("c", hud, "--library", "--header", header))
         host = self.base / "host.c"
         host.write_text('#include <stdio.h>\n#include "hud.h"\nint main(void) {\n'
-                        '  coax_t_HudRect r = verse_hud_slot(320, 700, 34, 0, 6);\n'
-                        '  coax_t_HudPoint p = verse_hud_frame_point(0, 0, 100, 40, 7, 1);\n'
+                        '  coax_t_HudRect r = metaverse_hud_slot(320, 700, 34, 0, 6);\n'
+                        '  coax_t_HudPoint p = metaverse_hud_frame_point(0, 0, 100, 40, 7, 1);\n'
                         '  printf("%zu %zu %g %g %g %g %g %g %g %g\\n", sizeof(coax_t_HudRect), sizeof(coax_t_HudPoint), r.width, r.height, p.x, p.y,\n'
-                        '         verse_hud_frame_arm(400, 1), verse_hud_tone(4), verse_hud_cut(1), verse_hud_outline() + verse_hud_arm_down());\n'
+                        '         metaverse_hud_frame_arm(400, 1), metaverse_hud_tone(4), metaverse_hud_cut(1), metaverse_hud_outline() + metaverse_hud_arm_down());\n'
                         '  return 0;\n}\n')
         exe = self.base / "host"
         subprocess.run([cc, "-std=c11", "-I", str(self.base), str(host), str(lib), "-lm", "-o", str(exe)], check=True)

@@ -215,7 +215,7 @@ enc_decision :: (w: WDecision, a: [] u8, b: [] u8) -> V_FrameDecision {
 
 // Encode one Frame into out. Bytes written, or 0 (unknown kind, a bound
 // broken, invalid UTF-8, or not enough room).
-verse_voice_wire_encode :: (msgs: [] WMsg, out: [] u8) -> int #export_c #effects(all) {
+metaverse_voice_wire_encode :: (msgs: [] WMsg, out: [] u8) -> int #export_c #effects(all) {
   if msgs.count < 1 { return 0; }
   w := msgs[0];
   a: [MAX_FRAME] u8;
@@ -421,7 +421,7 @@ dec_body :: (ok: [] Ok, fr: V_Frame, k: u32, w: [] WMsg) {
 
 // Decode one Frame. Strings and bytes borrow from `input`. False when the
 // frame is malformed, over a bound, or has no body.
-verse_voice_wire_decode :: (input: [] u8, msgs: [] WMsg) -> bool #export_c #effects(all) {
+metaverse_voice_wire_decode :: (input: [] u8, msgs: [] WMsg) -> bool #export_c #effects(all) {
   if msgs.count < 1 || input.count > MAX_FRAME { return false; }
   empty: WMsg;
   msgs[0] = empty;
@@ -443,7 +443,7 @@ verse_voice_wire_decode :: (input: [] u8, msgs: [] WMsg) -> bool #export_c #effe
 // face and has protoc decode each encoded frame. These checks decode those
 // exact protoc-verified frames.
 
-dec :: (b: [] u8, out: [] WMsg) -> bool { return verse_voice_wire_decode(b, out); }
+dec :: (b: [] u8, out: [] WMsg) -> bool { return metaverse_voice_wire_decode(b, out); }
 
 #test "hello" {
   b := [93] u8.[10,91,8,1,16,1,26,35,10,11,110,112,117,98,49,112,108,97,121,101,114,16,1,26,6,99,104,97,114,111,110,32,2,42,8,101,110,116,105,116,121,58,55,34,13,97,103,101,110,116,58,102,111,114,101,109,97,110,40,128,247,2,48,192,187,1,56,1,66,6,99,104,97,114,111,110,74,13,115,101,115,115,105,111,110,45,116,111,107,101,110,80,1];

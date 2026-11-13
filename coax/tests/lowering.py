@@ -191,11 +191,11 @@ class OrderedLowering(unittest.TestCase):
 
     def test_the_hud_slot_lowering_names_its_checked_declaration(self):
         hud = ROOT.parent / "metaverse/hud.coax"
-        (slot,) = self.lowering(hud, "--proc", "verse_hud_slot")["procedures"]
+        (slot,) = self.lowering(hud, "--proc", "metaverse_hud_slot")["procedures"]
         decls = subprocess.run([str(COAX), "deps", str(hud), "--declarations"], capture_output=True, text=True, check=True)
-        (row,) = [d for d in json.loads(decls.stdout)["declarations"] if d["name"] == "verse_hud_slot"]
+        (row,) = [d for d in json.loads(decls.stdout)["declarations"] if d["name"] == "metaverse_hud_slot"]
         self.assertEqual((slot["id"], slot["span"]), (row["id"], row["span"]))
-        self.assertEqual(slot["id"], "coax.decl.v1:verse.hud:proc:verse_hud_slot")
+        self.assertEqual(slot["id"], "coax.decl.v1:verse.hud:proc:metaverse_hud_slot")
         self.assertTrue(slot["eligible"])
         ops = slot["operations"]
         self.assertTrue(all(Path(o["unit"]).name == "hud.coax" for o in ops))

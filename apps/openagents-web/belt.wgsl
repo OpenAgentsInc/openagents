@@ -63,11 +63,11 @@ fn coax_p_bg_fs(p_pos: vec4f) -> vec4f {
   var l_k: i32;
   var l_n: i32;
   var l_k_10: i32;
-  l_stars = coax_p_verse_starfield(l_pos.x, l_pos.y, coax_at_u(i32(8i)), coax_at_u(i32(9i)), coax_at_u(i32(2i)), coax_at_u(i32(7i)));
+  l_stars = coax_p_metaverse_starfield(l_pos.x, l_pos.y, coax_at_u(i32(8i)), coax_at_u(i32(9i)), coax_at_u(i32(2i)), coax_at_u(i32(7i)));
   l_c = coax_p_wg_add_f3f3(coax_p_v3(0x1.89374cp-8f, 0x1.0624dep-7f, 0x1.cac084p-7f), coax_p_wg_mul_f3f(coax_p_wg_mul_f3f(coax_p_v3(0x1.b33334p-1f, 0x1.ccccccp-1f, 0x1.000000p0f), l_stars), 0x1.99999ap-1f));
   l_d = coax_p_wg_length2(coax_p_wg_sub_f2f2(coax_p_v2(l_pos.x, l_pos.y), coax_p_v2(coax_at_u(i32(4i)), coax_at_u(i32(5i)))));
-  l_disc = coax_p_verse_sun_disc(l_d, coax_at_u(i32(6i)));
-  l_corona = coax_p_verse_sun_corona(l_d, coax_at_u(i32(6i)), coax_at_u(i32(7i)));
+  l_disc = coax_p_metaverse_sun_disc(l_d, coax_at_u(i32(6i)));
+  l_corona = coax_p_metaverse_sun_corona(l_d, coax_at_u(i32(6i)), coax_at_u(i32(7i)));
   l_c = coax_p_wg_mix_f3f3f(coax_p_wg_add_f3f3(l_c, coax_p_wg_mul_f3f(coax_p_wg_mul_f3f(coax_p_BELT_SUN_GLOW(), l_corona), 0x1.ccccccp-1f)), coax_p_BELT_SUN_CORE(), l_disc);
   l_c = coax_p_wg_add_f3f3(l_c, coax_p_wg_mul_f3f(coax_p_BELT_DUST(), coax_p_belt_belt_dust(coax_p_v2(l_pos.x, l_pos.y))));
   l_worlds = coax_p_wg_i32_f(coax_at_u(i32(11i)));
@@ -127,7 +127,7 @@ fn coax_p_v4(p_x: f32, p_y: f32, p_z: f32, p_w: f32) -> vec4f {
   var l_w: f32 = p_w;
   return vec4f(l_x, l_y, l_z, l_w);
 }
-fn coax_p_verse_starfield(p_x: f32, p_y: f32, p_drift_x: f32, p_drift_y: f32, p_t: f32, p_dpr: f32) -> f32 {
+fn coax_p_metaverse_starfield(p_x: f32, p_y: f32, p_drift_x: f32, p_drift_y: f32, p_t: f32, p_dpr: f32) -> f32 {
   var l_x: f32 = p_x;
   var l_y: f32 = p_y;
   var l_drift_x: f32 = p_drift_x;
@@ -139,9 +139,9 @@ fn coax_p_verse_starfield(p_x: f32, p_y: f32, p_drift_x: f32, p_drift_y: f32, p_
   var l_mid: f32;
   var l_near: f32;
   l_k = coax_p_stars_max(l_dpr, 0x1.000000p-1f);
-  l_far = (coax_p_verse_star_layer((l_x + (l_drift_x * 0x1.47ae14p-6f)), (l_y + (l_drift_y * 0x1.47ae14p-6f)), (0x1.200000p3f * l_k), 0x1.eb851ep-4f, (0x1.19999ap-1f * l_k), l_t, 0x1.000000p0f) * 0x1.19999ap-1f);
-  l_mid = (coax_p_verse_star_layer((l_x + (l_drift_x * 0x1.99999ap-5f)), (l_y + (l_drift_y * 0x1.99999ap-5f)), (0x1.700000p4f * l_k), 0x1.99999ap-4f, (0x1.99999ap-1f * l_k), l_t, 0x1.c00000p2f) * 0x1.b33334p-1f);
-  l_near = (coax_p_verse_star_layer((l_x + (l_drift_x * 0x1.99999ap-4f)), (l_y + (l_drift_y * 0x1.99999ap-4f)), (0x1.e80000p5f * l_k), 0x1.47ae14p-4f, (0x1.19999ap0f * l_k), l_t, 0x1.a00000p3f) * 0x1.333334p0f);
+  l_far = (coax_p_metaverse_star_layer((l_x + (l_drift_x * 0x1.47ae14p-6f)), (l_y + (l_drift_y * 0x1.47ae14p-6f)), (0x1.200000p3f * l_k), 0x1.eb851ep-4f, (0x1.19999ap-1f * l_k), l_t, 0x1.000000p0f) * 0x1.19999ap-1f);
+  l_mid = (coax_p_metaverse_star_layer((l_x + (l_drift_x * 0x1.99999ap-5f)), (l_y + (l_drift_y * 0x1.99999ap-5f)), (0x1.700000p4f * l_k), 0x1.99999ap-4f, (0x1.99999ap-1f * l_k), l_t, 0x1.c00000p2f) * 0x1.b33334p-1f);
+  l_near = (coax_p_metaverse_star_layer((l_x + (l_drift_x * 0x1.99999ap-4f)), (l_y + (l_drift_y * 0x1.99999ap-4f)), (0x1.e80000p5f * l_k), 0x1.47ae14p-4f, (0x1.19999ap0f * l_k), l_t, 0x1.a00000p3f) * 0x1.333334p0f);
   return ((l_far + l_mid) + l_near);
 }
 fn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {
@@ -169,7 +169,7 @@ fn coax_p_wg_length2(p_a: vec2f) -> f32 {
   var l_a: vec2f = p_a;
   return sqrt(dot(l_a, l_a));
 }
-fn coax_p_verse_sun_disc(p_d: f32, p_r: f32) -> f32 {
+fn coax_p_metaverse_sun_disc(p_d: f32, p_r: f32) -> f32 {
   var l_d: f32 = p_d;
   var l_r: f32 = p_r;
   var l_rr: f32;
@@ -186,7 +186,7 @@ fn coax_p_verse_sun_disc(p_d: f32, p_r: f32) -> f32 {
   }
   return (0x1.000000p-1f - (0x1.000000p-1f * l_x));
 }
-fn coax_p_verse_sun_corona(p_d: f32, p_r: f32, p_dpr: f32) -> f32 {
+fn coax_p_metaverse_sun_corona(p_d: f32, p_r: f32, p_dpr: f32) -> f32 {
   var l_d: f32 = p_d;
   var l_r: f32 = p_r;
   var l_dpr: f32 = p_dpr;
@@ -477,7 +477,7 @@ fn coax_p_stars_max(p_a: f32, p_b: f32) -> f32 {
   }
   return l_b;
 }
-fn coax_p_verse_star_layer(p_x: f32, p_y: f32, p_cell: f32, p_density: f32, p_size: f32, p_t: f32, p_seed: f32) -> f32 {
+fn coax_p_metaverse_star_layer(p_x: f32, p_y: f32, p_cell: f32, p_density: f32, p_size: f32, p_t: f32, p_seed: f32) -> f32 {
   var l_x: f32 = p_x;
   var l_y: f32 = p_y;
   var l_cell: f32 = p_cell;

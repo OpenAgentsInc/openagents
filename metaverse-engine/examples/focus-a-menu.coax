@@ -1,5 +1,5 @@
 // Book chapter 15: a realm's HUD as one UI tree on a 320 by 700 phone with a 34-point home
-// indicator. Its hotbar slots come from verse_hud_slot, the function that draws them; the same
+// indicator. Its hotbar slots come from metaverse_hud_slot, the function that draws them; the same
 // boxes are hit-tested and focused. The keyboard opens the settings, changes them, closes them
 // and lands back on the settings button; a tap and the key give the same action; a tree with an
 // unlabelled button is refused.
@@ -13,7 +13,7 @@ SLOT_1 :: 1; SETTINGS :: 10; TEXT_SCALE :: 11; REDUCED_MOTION :: 12; CLOSE :: 13
 DIALOG :: 4;   // the settings dialog's index; the tree is built each frame, with it only when open
 
 slot_box :: (i: int) -> HudBox {
-  r := verse_hud_slot(320, 700, 34, i, 3);
+  r := metaverse_hud_slot(320, 700, 34, i, 3);
   return HudBox.{x = r.x, y = r.y, width = r.width, height = r.height};
 }
 

@@ -51,8 +51,8 @@ builds that path.
 3. **Holding an answer twice.** A count out of range is held to its range; a
    missing count is the default. A kind, colour or size that isn't the
    piece's is the piece's default. An unknown piece is no piece (-1). The
-   server does this in SQL and the game does it again in `verse_piece_read`.
-4. **Layout from a seed.** `verse_piece_layout` lays a piece out in front of
+   server does this in SQL and the game does it again in `metaverse_piece_read`.
+4. **Layout from a seed.** `metaverse_piece_layout` lays a piece out in front of
    you, clear of your feet, as placements of `PLACE_FLOATS` floats each
    (mesh, position, yaw, scale, colour, glow, motion, solid). A flock's
    placements are offsets round whoever walks. The same seed gives the same
@@ -73,7 +73,7 @@ builds that path.
 ## What exists today
 
 - [metaverse/setpiece.coax](../../metaverse/setpiece.coax): the Sandbox catalogue,
-  `verse_piece_read`, `verse_piece_layout` and their checks.
+  `metaverse_piece_read`, `metaverse_piece_layout` and their checks.
 - [coax/web/api/npc.c](../../coax/web/api/npc.c): the set piece route and
   the spoken realm edit route.
 - [coax/web/api/migrations/0036_sandbox_pieces.sql](../../coax/web/api/migrations/0036_sandbox_pieces.sql):

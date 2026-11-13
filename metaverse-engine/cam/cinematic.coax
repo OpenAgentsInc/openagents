@@ -4,11 +4,11 @@
 // the view back to whatever camera the player has (the host's live Shot),
 // blended over HANDBACK seconds so nothing jumps. The host keeps a Flight
 // value and passes it back each frame:
-//   verse_flight_new, verse_flight_key (author it), verse_flight_start,
-//   verse_flight_shot each frame with the live camera, verse_flight_skip
-//   on a key or a touch, verse_flight_take for what is on screen now (the
-//   host changes the scene behind a cut), verse_flight_active until it is
-//   over. A free orbit takes the last shot with verse_orbit_toward.
+//   metaverse_flight_new, metaverse_flight_key (author it), metaverse_flight_start,
+//   metaverse_flight_shot each frame with the live camera, metaverse_flight_skip
+//   on a key or a touch, metaverse_flight_take for what is on screen now (the
+//   host changes the scene behind a cut), metaverse_flight_active until it is
+//   over. A free orbit takes the last shot with metaverse_orbit_toward.
 //   coax/bin/coax test metaverse-engine/cam/cinematic.coax
 
 #load "../core/points.coax";
@@ -53,12 +53,12 @@ fl_finite :: (s: Shot) -> bool {
   return finite(s.eye.x) && finite(s.eye.y) && finite(s.eye.z) && finite(s.at.x) && finite(s.at.y) && finite(s.at.z);
 }
 
-verse_flight_new :: () -> Flight #export_c #effects(all) { f: Flight; return f; }
+metaverse_flight_new :: () -> Flight #export_c #effects(all) { f: Flight; return f; }
 
 // A key `at` seconds into the flight (after the last key; others are
 // refused), the camera at eye looking at `at`. A cut jumps to it; otherwise
 // the flight comes to it from the key before, eased as `ease` says.
-verse_flight_key :: (f: Flight, at: f32, eye: Point, look: Point, cut: bool, easing: int) -> Flight #export_c #effects(all) {
+metaverse_flight_key :: (f: Flight, at: f32, eye: Point, look: Point, cut: bool, easing: int) -> Flight #export_c #effects(all) {
   if f.count >= FLIGHT_KEYS || !finite(at) || at < 0 { return f; }
   if f.count > 0 && at <= f.keys[f.count - 1].at { return f; }
   s := Shot.{eye = eye, at = look};
@@ -70,7 +70,7 @@ verse_flight_key :: (f: Flight, at: f32, eye: Point, look: Point, cut: bool, eas
 }
 
 // It starts flying at `now`. With reduced motion, or with no keys, it is over at once.
-verse_flight_start :: (f: Flight, now: f64, reduced: bool) -> Flight #export_c #effects(all) {
+metaverse_flight_start :: (f: Flight, now: f64, reduced: bool) -> Flight #export_c #effects(all) {
   next := f;
   next.start = now; next.backing = false;
   next.running = f.count > 0 && !reduced;
@@ -78,7 +78,7 @@ verse_flight_start :: (f: Flight, now: f64, reduced: bool) -> Flight #export_c #
 }
 
 // How long the authored part lasts, seconds.
-verse_flight_length :: (f: Flight) -> f32 #export_c #effects(all) {
+metaverse_flight_length :: (f: Flight) -> f32 #export_c #effects(all) {
   if f.count == 0 { return 0; }
   return f.keys[f.count - 1].at;
 }
@@ -86,10 +86,10 @@ verse_flight_length :: (f: Flight) -> f32 #export_c #effects(all) {
 // The take on screen at `now`: the index of the last cut at or before it
 // (0 the first), or -1 once the flight is handing back or over. A host
 // changes its scene when this changes, behind the cut.
-verse_flight_take :: (f: Flight, now: f64) -> int #export_c #effects(all) {
+metaverse_flight_take :: (f: Flight, now: f64) -> int #export_c #effects(all) {
   if !f.running || f.backing { return -1; }
   t := f32(now - f.start);
-  if t >= verse_flight_length(f) { return -1; }
+  if t >= metaverse_flight_length(f) { return -1; }
   take := 0;
   for i: 0..<f.count { if f.keys[i].cut && f.keys[i].at <= t { take = i; } }
   return take;
@@ -112,20 +112,20 @@ fl_flown :: (f: Flight, t: f32) -> Shot {
 }
 
 // Whether the flight still owns the camera (flying or handing back).
-verse_flight_active :: (f: Flight, now: f64) -> bool #export_c #effects(all) {
+metaverse_flight_active :: (f: Flight, now: f64) -> bool #export_c #effects(all) {
   if !f.running { return false; }
   if f.backing { return f32(now - f.back_at) < f32(HANDBACK); }
-  return f32(now - f.start) < verse_flight_length(f) + f32(HANDBACK);
+  return f32(now - f.start) < metaverse_flight_length(f) + f32(HANDBACK);
 }
 
 // Whether input is still the flight's: a key or a touch skips it.
-verse_flight_flying :: (f: Flight, now: f64) -> bool #export_c #effects(all) {
-  return f.running && !f.backing && f32(now - f.start) < verse_flight_length(f);
+metaverse_flight_flying :: (f: Flight, now: f64) -> bool #export_c #effects(all) {
+  return f.running && !f.backing && f32(now - f.start) < metaverse_flight_length(f);
 }
 
 // A key or a touch: the hand-back starts now, from where the camera is.
-verse_flight_skip :: (f: Flight, now: f64) -> Flight #export_c #effects(all) {
-  if !verse_flight_flying(f, now) { return f; }
+metaverse_flight_skip :: (f: Flight, now: f64) -> Flight #export_c #effects(all) {
+  if !metaverse_flight_flying(f, now) { return f; }
   next := f;
   next.back_from = fl_flown(f, f32(now - f.start));
   next.back_at = now; next.backing = true;
@@ -134,13 +134,13 @@ verse_flight_skip :: (f: Flight, now: f64) -> Flight #export_c #effects(all) {
 
 // The shot at `now`; `live` is the camera the player has, which the
 // flight hands back to. Past the end it is `live`.
-verse_flight_shot :: (f: Flight, now: f64, live: Shot) -> Shot #export_c #effects(all) {
+metaverse_flight_shot :: (f: Flight, now: f64, live: Shot) -> Shot #export_c #effects(all) {
   if !f.running { return live; }
   from := f.back_from; at := f.back_at;
   if !f.backing {
     t := f32(now - f.start);
-    if t < verse_flight_length(f) { return fl_flown(f, t); }
-    from = f.keys[f.count - 1].shot; at = f.start + f64(verse_flight_length(f));
+    if t < metaverse_flight_length(f) { return fl_flown(f, t); }
+    from = f.keys[f.count - 1].shot; at = f.start + f64(metaverse_flight_length(f));
   }
   u := fl_ease(EASE_SMOOTH, f32(now - at) / f32(HANDBACK));
   if u >= 1 || !fl_finite(live) { return live; }
@@ -152,69 +152,69 @@ verse_flight_shot :: (f: Flight, now: f64, live: Shot) -> Shot #export_c #effect
 fl_near :: (a: Point, b: Point, e: f32) -> bool { return length(sub(a, b)) <= e; }
 
 demo :: () -> Flight {
-  f := verse_flight_new();
-  f = verse_flight_key(f, 0, v3(0, 10, -20), v3(0, 0, 0), false, EASE_LINEAR);
-  f = verse_flight_key(f, 2, v3(10, 8, -10), v3(0, 0, 0), false, EASE_SMOOTH);
-  f = verse_flight_key(f, 4, v3(10, 4, 0), v3(0, 1, 5), false, EASE_SMOOTH);
-  f = verse_flight_key(f, 5, v3(-5, 3, 20), v3(0, 1, 25), true, EASE_LINEAR);
-  f = verse_flight_key(f, 8, v3(-5, 2, 10), v3(0, 1, 25), false, EASE_OUT);
+  f := metaverse_flight_new();
+  f = metaverse_flight_key(f, 0, v3(0, 10, -20), v3(0, 0, 0), false, EASE_LINEAR);
+  f = metaverse_flight_key(f, 2, v3(10, 8, -10), v3(0, 0, 0), false, EASE_SMOOTH);
+  f = metaverse_flight_key(f, 4, v3(10, 4, 0), v3(0, 1, 5), false, EASE_SMOOTH);
+  f = metaverse_flight_key(f, 5, v3(-5, 3, 20), v3(0, 1, 25), true, EASE_LINEAR);
+  f = metaverse_flight_key(f, 8, v3(-5, 2, 10), v3(0, 1, 25), false, EASE_OUT);
   return f;
 }
 live_shot :: () -> Shot { return Shot.{eye = v3(1, 2, 3), at = v3(1, 2, 8)}; }
 
 #test "a flight passes through every key at its time" {
-  f := verse_flight_start(demo(), 100, false);
+  f := metaverse_flight_start(demo(), 100, false);
   for i: 0..<f.count {
     if i + 1 < f.count && f.keys[i + 1].cut { continue; }
-    s := verse_flight_shot(f, 100 + f64(f.keys[i].at), live_shot());
+    s := metaverse_flight_shot(f, 100 + f64(f.keys[i].at), live_shot());
     if i + 1 < f.count { #assert fl_near(s.eye, f.keys[i].shot.eye, 0.001); }
   }
 }
 
 #test "keys out of order or past the bound are refused" {
   f := demo();
-  #assert verse_flight_key(f, 3, v3(0, 0, 0), v3(0, 0, 1), false, 0).count == f.count;
-  g := verse_flight_new();
-  for i: 0..<40 { g = verse_flight_key(g, f32(i), v3(0, 0, 0), v3(0, 0, 1), false, 0); }
+  #assert metaverse_flight_key(f, 3, v3(0, 0, 0), v3(0, 0, 1), false, 0).count == f.count;
+  g := metaverse_flight_new();
+  for i: 0..<40 { g = metaverse_flight_key(g, f32(i), v3(0, 0, 0), v3(0, 0, 1), false, 0); }
   #assert g.count == FLIGHT_KEYS;
 }
 
 #forall "between keys it moves smoothly, never jumping" i: 0..<400 {
-  f := verse_flight_start(demo(), 0, false);
+  f := metaverse_flight_start(demo(), 0, false);
   t := f64(i) * 0.02;
-  a := verse_flight_shot(f, t, live_shot()); b := verse_flight_shot(f, t + 0.005, live_shot());
+  a := metaverse_flight_shot(f, t, live_shot()); b := metaverse_flight_shot(f, t + 0.005, live_shot());
   // the cut at 5 s is the one jump
   if !(t < 5.0 && t + 0.005 >= 5.0) { #assert length(sub(a.eye, b.eye)) < 0.25; }
 }
 
 #test "a cut holds the take before it, then jumps, and the take changes" {
-  f := verse_flight_start(demo(), 0, false);
-  #assert fl_near(verse_flight_shot(f, 4.5, live_shot()).eye, v3(10, 4, 0), 0.0001);
-  #assert fl_near(verse_flight_shot(f, 5.0, live_shot()).eye, v3(-5, 3, 20), 0.0001);
-  #assert verse_flight_take(f, 4.9) == 0 && verse_flight_take(f, 5.1) == 3;
+  f := metaverse_flight_start(demo(), 0, false);
+  #assert fl_near(metaverse_flight_shot(f, 4.5, live_shot()).eye, v3(10, 4, 0), 0.0001);
+  #assert fl_near(metaverse_flight_shot(f, 5.0, live_shot()).eye, v3(-5, 3, 20), 0.0001);
+  #assert metaverse_flight_take(f, 4.9) == 0 && metaverse_flight_take(f, 5.1) == 3;
 }
 
 #test "it ends handing the camera back, without a jump" {
-  f := verse_flight_start(demo(), 0, false);
-  #assert verse_flight_flying(f, 7.9) && !verse_flight_flying(f, 8.1);
-  #assert verse_flight_active(f, 8.1) && verse_flight_take(f, 8.1) == -1;
-  #assert fl_near(verse_flight_shot(f, 8.0, live_shot()).eye, v3(-5, 2, 10), 0.01);
-  #assert fl_near(verse_flight_shot(f, 8.0 + f64(HANDBACK), live_shot()).eye, live_shot().eye, 0.0001);
-  #assert !verse_flight_active(f, 8.0 + f64(HANDBACK) + 0.01);
+  f := metaverse_flight_start(demo(), 0, false);
+  #assert metaverse_flight_flying(f, 7.9) && !metaverse_flight_flying(f, 8.1);
+  #assert metaverse_flight_active(f, 8.1) && metaverse_flight_take(f, 8.1) == -1;
+  #assert fl_near(metaverse_flight_shot(f, 8.0, live_shot()).eye, v3(-5, 2, 10), 0.01);
+  #assert fl_near(metaverse_flight_shot(f, 8.0 + f64(HANDBACK), live_shot()).eye, live_shot().eye, 0.0001);
+  #assert !metaverse_flight_active(f, 8.0 + f64(HANDBACK) + 0.01);
 }
 
 #test "a skip hands back from where the camera is" {
-  f := verse_flight_start(demo(), 0, false);
-  here := verse_flight_shot(f, 3.0, live_shot());
-  s := verse_flight_skip(f, 3.0);
-  #assert !verse_flight_flying(s, 3.0) && verse_flight_active(s, 3.1);
-  #assert fl_near(verse_flight_shot(s, 3.0, live_shot()).eye, here.eye, 0.0001);
-  #assert fl_near(verse_flight_shot(s, 3.0 + f64(HANDBACK), live_shot()).eye, live_shot().eye, 0.0001);
-  #assert verse_flight_skip(s, 3.5).back_at == s.back_at;
+  f := metaverse_flight_start(demo(), 0, false);
+  here := metaverse_flight_shot(f, 3.0, live_shot());
+  s := metaverse_flight_skip(f, 3.0);
+  #assert !metaverse_flight_flying(s, 3.0) && metaverse_flight_active(s, 3.1);
+  #assert fl_near(metaverse_flight_shot(s, 3.0, live_shot()).eye, here.eye, 0.0001);
+  #assert fl_near(metaverse_flight_shot(s, 3.0 + f64(HANDBACK), live_shot()).eye, live_shot().eye, 0.0001);
+  #assert metaverse_flight_skip(s, 3.5).back_at == s.back_at;
 }
 
 #test "reduced motion or no keys: no flight" {
-  #assert !verse_flight_active(verse_flight_start(demo(), 0, true), 0);
-  #assert !verse_flight_active(verse_flight_start(verse_flight_new(), 0, false), 0);
-  #assert fl_near(verse_flight_shot(verse_flight_start(demo(), 0, true), 1, live_shot()).eye, live_shot().eye, 0);
+  #assert !metaverse_flight_active(metaverse_flight_start(demo(), 0, true), 0);
+  #assert !metaverse_flight_active(metaverse_flight_start(metaverse_flight_new(), 0, false), 0);
+  #assert fl_near(metaverse_flight_shot(metaverse_flight_start(demo(), 0, true), 1, live_shot()).eye, live_shot().eye, 0);
 }

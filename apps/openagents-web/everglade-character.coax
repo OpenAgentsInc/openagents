@@ -77,7 +77,7 @@ everglade_character :: (s: [] Everglade, u: [] f32, width: f32, height: f32) {
   scl_put3(b, SCL_KEY_DIR, l.x, l.y, l.z);
   kw := u[st + SU_KEY + 3];
   scl_put3(b, SCL_KEY, u[st + SU_KEY] * kw, u[st + SU_KEY + 1] * kw, u[st + SU_KEY + 2] * kw);
-  // the sky's and the ground's ambient at the preset's scale (verse_style_ambient)
+  // the sky's and the ground's ambient at the preset's scale (metaverse_style_ambient)
   aw := u[st + SU_SKY_AMB + 3];
   scl_put3(b, SCL_SKY, u[st + SU_SKY_AMB] * aw, u[st + SU_SKY_AMB + 1] * aw, u[st + SU_SKY_AMB + 2] * aw);
   scl_put3(b, SCL_GROUND, u[st + SU_GROUND_AMB] * aw, u[st + SU_GROUND_AMB + 1] * aw, u[st + SU_GROUND_AMB + 2] * aw);
@@ -95,11 +95,11 @@ everglade_character :: (s: [] Everglade, u: [] f32, width: f32, height: f32) {
   size := u[st + SU_SHADOW];
   on := size >= 1;
   phone := u[st + SU_STYLE + 2] > 0.5;
-  reach := verse_style_shadow_reach(ifx phone then 1.0f32 else 0.0f32);
+  reach := metaverse_style_shadow_reach(ifx phone then 1.0f32 else 0.0f32);
   ax := ifx abs(l.y) < 0.999 then unit_or(cross(v3(0, 1, 0), l), v3(1, 0, 0)) else v3(1, 0, 0);
   ay := cross(l, ax);
-  mx := verse_style_shadow_snap(u[U_EYE] * ax.x + u[U_EYE + 2] * ax.z, reach, hi(size, 1));
-  my := verse_style_shadow_snap(u[U_EYE] * ay.x + u[U_EYE + 2] * ay.z, reach, hi(size, 1));
+  mx := metaverse_style_shadow_snap(u[U_EYE] * ax.x + u[U_EYE + 2] * ax.z, reach, hi(size, 1));
+  my := metaverse_style_shadow_snap(u[U_EYE] * ay.x + u[U_EYE + 2] * ay.z, reach, hi(size, 1));
   rows := [12] f32.[ax.x / reach, ax.y / reach, ax.z / reach, -mx / reach,
                     ay.x / reach, ay.y / reach, ay.z / reach, -my / reach,
                     -l.x / (4 * reach), -l.y / (4 * reach), -l.z / (4 * reach), 0.5];

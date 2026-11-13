@@ -125,7 +125,7 @@ cam_right_up :: (fwd: [3] f32) -> [2][3] f32 {
   end := cam_run_frame(1); #assert abs(end.turn) < 0.0001 && abs(end.dist - f32(FREE_DIST)) < 0.001;
   last := first;
   for i: 1..<400 { t := f32(i) * 0.06; s := cam_run_track(t, studio, feet, 3.14159265, 3, 20); #assert length(sub(s.eye, last.eye)) < 0.6; last = s; }
-  o := verse_orbit_start(feet, 3.14159265);
+  o := metaverse_orbit_start(feet, 3.14159265);
   cut: [1] CamCut; cut[0] = cam_cut_enter(studio, o, 0, 0, CamOutcome.retain); cut[0].hand = 1.5;
   chase := Shot.{eye = v3(0, 2, 4), at = v3(0, 1, -4)};
   handed := false; t := 0.0f32;

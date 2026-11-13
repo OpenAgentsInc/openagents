@@ -25,7 +25,7 @@ static RhgBytes native_file(PackageFiles *files,coax_string name){
 static RhgBytes native_read(void *user,coax_string name){return native_file(user,name);}
 static coax_v_u32 native_words(const RfiBytes *bytes){
   uint64_t address=(uint64_t)(uintptr_t)bytes->data;
-  coax_t_RenderHostWordView view=aethyr_render_words(address,address,bytes->size,bytes->size);
+  coax_t_RenderHostWordView view=engine_render_words(address,address,bytes->size,bytes->size);
   assert(view.status==COAX_RenderFrameStatus_ok);return(coax_v_u32){(uint32_t*)(uintptr_t)view.address,view.words};
 }
 static coax_t_RenderUpload native_upload(const RfiBytes *bytes,const VkcBuffer *gpu){
@@ -36,7 +36,7 @@ static coax_t_RenderUpload native_upload(const RfiBytes *bytes,const VkcBuffer *
 static int same_name(coax_string a,coax_string b){return a.count==b.count&&!memcmp(a.data,b.data,(size_t)a.count);}
 static VkSampler native_sampler(NativeFrame *frame,coax_string name){
   for(size_t i=0;i<frame->sampler_count;i++)if(same_name(frame->sampler_names[i],name))return frame->samplers[i];
-  coax_t_RenderSamplerDescriptor desc=aethyr_render_sampler(name);assert(desc.status==COAX_RenderResourceStatus_ok&&frame->sampler_count<16);
+  coax_t_RenderSamplerDescriptor desc=engine_render_sampler(name);assert(desc.status==COAX_RenderResourceStatus_ok&&frame->sampler_count<16);
   VkSamplerCreateInfo info={.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,.magFilter=desc.mag_linear?VK_FILTER_LINEAR:VK_FILTER_NEAREST,
     .minFilter=desc.min_linear?VK_FILTER_LINEAR:VK_FILTER_NEAREST,.mipmapMode=desc.mip_linear?VK_SAMPLER_MIPMAP_MODE_LINEAR:VK_SAMPLER_MIPMAP_MODE_NEAREST,
     .addressModeU=desc.address_u==COAX_RenderSamplerAddress_repeat?VK_SAMPLER_ADDRESS_MODE_REPEAT:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -58,7 +58,7 @@ static int native_binding(void *user,coax_t_RenderHostUse use,coax_t_RenderOp op
       generated.words=(coax_v_u32){(uint32_t*)generated_bytes,(int64_t)(generated_size/4)};
       generated.observed=(coax_t_RenderBufferObserved){.source_capacity=generated_size,.logical_payload=generated_size,.gpu_bytes=owned->gpu.size,.alignment=4,.zero_initialized=true};
     }
-    coax_t_RenderHostBufferReceipt receipt=aethyr_native_resolve_buffer(frame->input.counts[0],use.binding_set,use.use.resource,
+    coax_t_RenderHostBufferReceipt receipt=engine_native_resolve_buffer(frame->input.counts[0],use.binding_set,use.use.resource,
       (coax_v_t_RenderHostNamedBuffer){frame->named,(int64_t)frame->input.buffer_count},generated);
     if(receipt.status!=COAX_RenderResourceStatus_ok)return 0;
     if(owned){memcpy(owned->gpu.map,generated_bytes,generated_size);out->buffer=&owned->gpu;}
@@ -66,7 +66,7 @@ static int native_binding(void *user,coax_t_RenderHostUse use,coax_t_RenderOp op
     out->offset=receipt.view.offset;out->range=receipt.view.bytes;return 1;
   }
   if(use.use.native_kind==VKS_IMAGE){
-    coax_t_RenderHostTextureReceipt texture=aethyr_render_resolve_texture(frame->input.counts[0],use.binding_set,use.use.resource,
+    coax_t_RenderHostTextureReceipt texture=engine_render_resolve_texture(frame->input.counts[0],use.binding_set,use.use.resource,
       rhgt_names(frame->textures),media?media->line:-1);
     if(texture.status!=COAX_RenderResourceStatus_ok)return 0;
     if(use.source.kind==COAX_RenderSourceKind_render_target)out->image=rhg_target_image(frame->renderer,use.source.target);
@@ -104,9 +104,9 @@ int main(int argc,char **argv){
   if(frame.input.buffer_count==1&&!strcmp(frame.input.buffers[0].name,"presentation-probe")){
     int result=native_presentation_probe(&frame.input,argv[2],argv[3],argv[4]);rfi_close(&frame.input);return result;
   }
-  coax_t_RenderHostBool coarse=aethyr_render_bool(frame.input.counts[12]);
+  coax_t_RenderHostBool coarse=engine_render_bool(frame.input.counts[12]);
   if(!coarse.ok){fprintf(stderr,"raw coarse flag refused by Coax\n");return 2;}
-  for(size_t i=0;i<frame.input.buffer_count;i++)if(!aethyr_render_bool(frame.input.buffers[i].zero_initialized).ok){fprintf(stderr,"raw buffer initialization flag refused by Coax\n");return 2;}
+  for(size_t i=0;i<frame.input.buffer_count;i++)if(!engine_render_bool(frame.input.buffers[i].zero_initialized).ok){fprintf(stderr,"raw buffer initialization flag refused by Coax\n");return 2;}
   frame.textures=rhgt_open(&frame.device,&frame.input,error,sizeof error);if(!frame.textures){fprintf(stderr,"%s\n",error);return 2;}
   const char *slash=strrchr(argv[2],'/');size_t directory_size=slash?(size_t)(slash-argv[2]):1;
   PackageFiles files={.directory=calloc(directory_size+1,1)};assert(files.directory);if(slash)memcpy(files.directory,argv[2],directory_size);else files.directory[0]='.';
@@ -129,16 +129,16 @@ int main(int argc,char **argv){
   uploads[n]=native_upload(&frame.input.hud,&frame.hud);uploads[n+1]=native_upload(&frame.input.indices,&frame.index);
   int64_t *c=frame.input.counts;coax_t_FrameCounts counts={.width=c[1],.height=c[2],.hud_vertices=c[3],.vertex_stride=c[4],.draw_count=c[5],.water_draws=c[6],.grass_instances=c[7],.particle_instances=c[8],.surface_vertices=c[9],.caster_vertices=c[10],.caster_instances=c[11]};
   coax_v_t_RenderUpload span_uploads={uploads,(int64_t)n+2};
-  coax_t_RenderRuntimePreflight preflight=aethyr_render_preflight(c[0],counts,limits,span_uploads);
+  coax_t_RenderRuntimePreflight preflight=engine_render_preflight(c[0],counts,limits,span_uploads);
   if(preflight.status!=COAX_RenderRuntimeStatus_ok){fprintf(stderr,"preflight refused: %u frame%u\n",preflight.status,preflight.frame.status);return 4;}
   for(size_t i=0;i<n;i++)frame.named[i].words=native_words(&frame.input.buffers[i].bytes);
   coax_v_u32 uniforms=native_words(&frame.input.uniforms),hud=native_words(&frame.input.hud),draws=native_words(&frame.input.draws),indices=native_words(&frame.input.indices);
-  int64_t resource_limit=aethyr_native_resource_limit();coax_t_RenderGeometryBuffer *geometry=calloc((size_t)resource_limit,sizeof*geometry);assert(geometry);
-  coax_t_RenderHostGeometryBuffers mapped=aethyr_native_geometry_buffers(c[0],(coax_v_t_RenderHostNamedBuffer){frame.named,(int64_t)n},(coax_v_t_RenderGeometryBuffer){geometry,resource_limit});
+  int64_t resource_limit=engine_native_resource_limit();coax_t_RenderGeometryBuffer *geometry=calloc((size_t)resource_limit,sizeof*geometry);assert(geometry);
+  coax_t_RenderHostGeometryBuffers mapped=engine_native_geometry_buffers(c[0],(coax_v_t_RenderHostNamedBuffer){frame.named,(int64_t)n},(coax_v_t_RenderGeometryBuffer){geometry,resource_limit});
   if(mapped.status!=COAX_RenderResourceStatus_ok){fprintf(stderr,"buffer mapping refused: %u\n",mapped.status);return 4;}
   coax_t_RenderDrawDomain *domains=calloc(counts.draw_count?(size_t)counts.draw_count:1,sizeof*domains);assert(domains);
-  coax_t_RenderRuntimeFrame receipt=aethyr_render_frame(c[0],counts,limits,COAX_RenderReadiness_ready,true,span_uploads,draws,indices,
-    (coax_v_f32){(float*)uniforms.data,uniforms.count},(coax_v_t_RenderGeometryBuffer){geometry,mapped.count},(coax_v_f32){(float*)hud.data,hud.count},(coax_v_t_RenderDrawDomain){domains,counts.draw_count},aethyr_render_geometry_work());
+  coax_t_RenderRuntimeFrame receipt=engine_render_frame(c[0],counts,limits,COAX_RenderReadiness_ready,true,span_uploads,draws,indices,
+    (coax_v_f32){(float*)uniforms.data,uniforms.count},(coax_v_t_RenderGeometryBuffer){geometry,mapped.count},(coax_v_f32){(float*)hud.data,hud.count},(coax_v_t_RenderDrawDomain){domains,counts.draw_count},engine_render_geometry_work());
   if(receipt.status!=COAX_RenderRuntimeStatus_ok){fprintf(stderr,"frame refused: %u geometry%u frame%u\n",receipt.status,receipt.geometry_status,receipt.frame.status);return 4;}
   if(!rhgm_rects(c[0],&frame.input,frame.textures,c[1],c[2],&frame.media,error,sizeof error)){fprintf(stderr,"%s\n",error);return 5;}
   if(!rhgt_frame_admit(frame.textures,c[0],&receipt,coarse.value,screen_format,error,sizeof error)){fprintf(stderr,"%s\n",error);return 5;}

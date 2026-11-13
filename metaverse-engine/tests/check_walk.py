@@ -170,7 +170,7 @@ def qualify(args):
                 prior = {'identity':identity,'c_sha256':sha(code.read_bytes()),'header_sha256':sha(header.read_bytes())}
                 metadata.write_text(json.dumps(prior,indent=2)+'\n')
             emissions[name] = {'code':code,'header':header,'proof':prior,'reused_emission':reusable}
-        public = lambda header: set(re.findall(r'\b(verse_player_\w+|verse_runs|coax_default_t_\w+)\s*\(',header.read_text()))
+        public = lambda header: set(re.findall(r'\b(metaverse_player_\w+|metaverse_runs|coax_default_t_\w+)\s*\(',header.read_text()))
         old_symbols = public(emissions['frozen']['header']); new_symbols = public(emissions['current']['header'])
         if not old_symbols or old_symbols-new_symbols:
             raise RuntimeError('legacy C declarations missing: '+str(sorted(old_symbols-new_symbols)))

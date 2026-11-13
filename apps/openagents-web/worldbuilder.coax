@@ -581,7 +581,7 @@ hit_at :: (s: [] WorldBuilder, lx: f32, ly: f32) -> int {
 }
 
 field_offset :: (s: [] WorldBuilder, lx: f32) -> int {
-  sk := verse_skin();
+  sk := metaverse_skin();
   tx := lx - s[0].ed_text_x + s[0].ed_scroll;
   return text_offset(s[0].atlas[..], sk.body.face, eb_text(s[0].ed[..]), ifx tx < 0 then 0.0f32 else tx);
 }
@@ -1048,7 +1048,7 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
   lw := s[0].width / d; lh := s[0].height / d;
   g: f32 = 16;
   phone := lw < 640;
-  sk := verse_skin();
+  sk := metaverse_skin();
   m := measure_font(a);
 
   sh: [1] Sheet;

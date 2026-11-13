@@ -207,16 +207,16 @@ myrealm_sky_styled :: (d:V3,p:V2,u:[]f32)->V3 {
   ct:f32=wg_dot3(d,l);
   moon:bool=myrealm_st(1,u).w>0.5f32;
   if myrealm_flat_style(u) {
-    c:V3=wg_mix_f3f3f(wg_sw_xyz_f4(myrealm_st(12,u)),wg_sw_xyz_f4(myrealm_st(13,u)),verse_style_flat_sky(up));
+    c:V3=wg_mix_f3f3f(wg_sw_xyz_f4(myrealm_st(12,u)),wg_sw_xyz_f4(myrealm_st(13,u)),metaverse_style_flat_sky(up));
     if (ct>cos(myrealm_st(14,u).x)) {
       c=wg_mul_f3f(wg_sw_xyz_f4(myrealm_st(17,u)),ifx moon then 0.85f32 else 1.1f32);
     }
     return wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(myrealm_st(17,u)),myrealm_stars(p,u)),myrealm_st(14,u).w),smoothstep(0.0f32,0.2f32,up)));
   }
-  c:V3=wg_mix_f3f3f(wg_sw_xyz_f4(myrealm_st(13,u)),wg_sw_xyz_f4(myrealm_st(12,u)),verse_style_sky_t(up));
-  c=wg_mix_f3f3f(c,wg_sw_xyz_f4(myrealm_st(10,u)),verse_style_sky_band(up,myrealm_st(12,u).w));
+  c:V3=wg_mix_f3f3f(wg_sw_xyz_f4(myrealm_st(13,u)),wg_sw_xyz_f4(myrealm_st(12,u)),metaverse_style_sky_t(up));
+  c=wg_mix_f3f3f(c,wg_sw_xyz_f4(myrealm_st(10,u)),metaverse_style_sky_band(up,myrealm_st(12,u).w));
   disc:f32=smoothstep(cos(myrealm_st(14,u).x*1.15f32),cos(myrealm_st(14,u).x*0.85f32),ct);
-  halo:f32=(verse_style_halo(ct,myrealm_st(14,u).y)*0.5f32)+(verse_style_halo(ct,myrealm_st(14,u).z)*0.25f32);
+  halo:f32=(metaverse_style_halo(ct,myrealm_st(14,u).y)*0.5f32)+(metaverse_style_halo(ct,myrealm_st(14,u).z)*0.25f32);
   if moon {
     c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(myrealm_st(0,u)),halo),0.5f32));
   } else {
@@ -228,13 +228,13 @@ myrealm_sky_styled :: (d:V3,p:V2,u:[]f32)->V3 {
   if ((up>0.01f32)&&(cl.x>0.0f32)) {
     t:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2];
     q:V2=wg_add_f2f2(wg_mul_f2f(wg_div_f2f(v2(d.x,d.z),up),cl.y),wg_mul_f2f(wg_mul_f2f(wg_sw_xy_f4(myrealm_st(25,u)),cl.z),t));
-    n:f32=verse_style_cloud_field(q.x,q.y,c2.x,c2.y,cl.w);
-    cover:f32=verse_style_cloud_cover(n,cl.x,c2.z,c2.w);
+    n:f32=metaverse_style_cloud_field(q.x,q.y,c2.x,c2.y,cl.w);
+    cover:f32=metaverse_style_cloud_cover(n,cl.x,c2.z,c2.w);
     toward:V2=wg_mul_f2f(wg_normalize2(wg_add_f2f2(v2(l.x,l.z),v2(0.0001f32,0.0001f32))),260.0f32);
-    lit:f32=verse_style_cloud_lit(n,verse_style_cloud_field(q.x+toward.x,q.y+toward.y,c2.x,c2.y,cl.w));
+    lit:f32=metaverse_style_cloud_lit(n,metaverse_style_cloud_field(q.x+toward.x,q.y+toward.y,c2.x,c2.y,cl.w));
     night:f32=myrealm_st(14,u).w;
     cloud:V3=wg_mul_f3f(wg_mul_f3f(wg_mix_f3f3f(wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(myrealm_st(4,u)),myrealm_st(17,u).w),0.9f32),wg_sw_xyz_f4(myrealm_st(17,u)),lit),fmax(myrealm_st(0,u).w,0.3f32)),(1.0f32-(0.75f32*night)));
-    c=wg_mix_f3f3f(c,cloud,(cover*verse_style_cloud_fade(up))*(1.0f32-(0.5f32*night)));
+    c=wg_mix_f3f3f(c,cloud,(cover*metaverse_style_cloud_fade(up))*(1.0f32-(0.5f32*night)));
   }
   return wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_make_f3_f(myrealm_stars(p,u)),myrealm_st(14,u).w),smoothstep(0.0f32,0.25f32,up)));
 }
@@ -243,24 +243,24 @@ myrealm_sky_styled :: (d:V3,p:V2,u:[]f32)->V3 {
 myrealm_painted :: (a:V3,n:V3,d:V3,u:[]f32)->V3 {
   l:V3=myrealm_key_l(u);
   ndl:f32=wg_dot3(n,l);
-  band:f32=verse_style_bands(verse_style_wrap(ndl),myrealm_st(7,u).x,myrealm_st(7,u).y,myrealm_st(7,u).z,myrealm_st(7,u).w);
-  amb:V3=v3(verse_style_ambient(n.y,myrealm_st(5,u).x,myrealm_st(6,u).x,myrealm_st(5,u).w),verse_style_ambient(n.y,myrealm_st(5,u).y,myrealm_st(6,u).y,myrealm_st(5,u).w),verse_style_ambient(n.y,myrealm_st(5,u).z,myrealm_st(6,u).z,myrealm_st(5,u).w));
+  band:f32=metaverse_style_bands(metaverse_style_wrap(ndl),myrealm_st(7,u).x,myrealm_st(7,u).y,myrealm_st(7,u).z,myrealm_st(7,u).w);
+  amb:V3=v3(metaverse_style_ambient(n.y,myrealm_st(5,u).x,myrealm_st(6,u).x,myrealm_st(5,u).w),metaverse_style_ambient(n.y,myrealm_st(5,u).y,myrealm_st(6,u).y,myrealm_st(5,u).w),metaverse_style_ambient(n.y,myrealm_st(5,u).z,myrealm_st(6,u).z,myrealm_st(5,u).w));
   s:V3=wg_mul_f3f3(wg_mul_f3f3(a,wg_sw_xyz_f4(myrealm_st(4,u))),amb);
   t:V3=wg_sw_xyz_f4(myrealm_st(4,u));
-  tl:f32=verse_style_luma(t.x,t.y,t.z);
+  tl:f32=metaverse_style_luma(t.x,t.y,t.z);
   k:f32=myrealm_st(21,u).w;
-  m:V3=v3(verse_style_cool(s.x,t.x,tl,k),verse_style_cool(s.y,t.y,tl,k),verse_style_cool(s.z,t.z,tl,k));
-  y:f32=verse_style_luma(s.x,s.y,s.z);
-  ym:f32=verse_style_luma(m.x,m.y,m.z);
-  cool:V3=v3(verse_style_keep_value(m.x,y,ym),verse_style_keep_value(m.y,y,ym),verse_style_keep_value(m.z,y,ym));
+  m:V3=v3(metaverse_style_cool(s.x,t.x,tl,k),metaverse_style_cool(s.y,t.y,tl,k),metaverse_style_cool(s.z,t.z,tl,k));
+  y:f32=metaverse_style_luma(s.x,s.y,s.z);
+  ym:f32=metaverse_style_luma(m.x,m.y,m.z);
+  cool:V3=v3(metaverse_style_keep_value(m.x,y,ym),metaverse_style_keep_value(m.y,y,ym),metaverse_style_keep_value(m.z,y,ym));
   lit:V3=wg_mul_f3f3(a,wg_add_f3f3(wg_mul_f3f(wg_sw_xyz_f4(myrealm_st(0,u)),myrealm_st(0,u).w),amb));
-  c:V3=v3(verse_style_banded(cool.x,lit.x,band),verse_style_banded(cool.y,lit.y,band),verse_style_banded(cool.z,lit.z,band));
-  c=wg_add_f3f3(c,wg_mul_f3f(wg_sw_xyz_f4(myrealm_st(2,u)),verse_style_rim(wg_dot3(n,wg_neg_f3(d)),ndl,myrealm_st(3,u).y,myrealm_st(3,u).z,myrealm_st(2,u).w)));
+  c:V3=v3(metaverse_style_banded(cool.x,lit.x,band),metaverse_style_banded(cool.y,lit.y,band),metaverse_style_banded(cool.z,lit.z,band));
+  c=wg_add_f3f3(c,wg_mul_f3f(wg_sw_xyz_f4(myrealm_st(2,u)),metaverse_style_rim(wg_dot3(n,wg_neg_f3(d)),ndl,myrealm_st(3,u).y,myrealm_st(3,u).z,myrealm_st(2,u).w)));
   return c;
 }
 // A flat surface (fairy.wgsl's): three hard tones between the palette's shade and lit colours.
 myrealm_flat_lit :: (a:V3,n:V3,u:[]f32)->V3 {
-  band:f32=verse_style_flat_band(verse_style_flat_light(wg_dot3(n,myrealm_key_l(u)),1.0f32));
+  band:f32=metaverse_style_flat_band(metaverse_style_flat_light(wg_dot3(n,myrealm_key_l(u)),1.0f32));
   return wg_mul_f3f3(a,wg_mix_f3f3f(wg_sw_xyz_f4(myrealm_st(4,u)),wg_mul_f3f(wg_sw_xyz_f4(myrealm_st(0,u)),myrealm_st(0,u).w),band));
 }
 // The lamp and the lanterns on a styled surface: soft for painterly, in two flat steps for flat.
@@ -277,13 +277,13 @@ myrealm_styled_lights :: (a:V3,p:V3,n:V3,u:[]f32)->V3 {
 myrealm_styled_far :: (c:V3,p:V3,dist:f32,d:V3,u:[]f32)->V3 {
   hz:V4=myrealm_st(9,u);
   if myrealm_flat_style(u) {
-    return wg_mix_f3f3f(c,wg_sw_xyz_f4(myrealm_st(13,u)),verse_style_flat_fade(fmax(dist-u[39],0.0f32),hz.x,1.0f32/fmax(hz.y,0.0001f32),hz.z));
+    return wg_mix_f3f3f(c,wg_sw_xyz_f4(myrealm_st(13,u)),metaverse_style_flat_fade(fmax(dist-u[39],0.0f32),hz.x,1.0f32/fmax(hz.y,0.0001f32),hz.z));
   }
-  f:f32=verse_style_haze(fmax(dist-u[39],0.0f32),p.y,0.0f32,hz.x,hz.y,hz.z,hz.w);
+  f:f32=metaverse_style_haze(fmax(dist-u[39],0.0f32),p.y,0.0f32,hz.x,hz.y,hz.z,hz.w);
   hz3:V3=wg_sw_xyz_f4(myrealm_st(10,u));
-  hue:V3=v3(verse_style_haze_hue(hz3.x,0.0f32,f,hz.z),verse_style_haze_hue(hz3.y,1.0f32,f,hz.z),verse_style_haze_hue(hz3.z,2.0f32,f,hz.z));
-  hc:V3=wg_mix_f3f3f(hue,wg_sw_xyz_f4(myrealm_st(11,u)),verse_style_haze_glow(wg_dot3(d,myrealm_key_l(u))));
-  return v3(verse_style_fog(c.x,hc.x,f),verse_style_fog(c.y,hc.y,f),verse_style_fog(c.z,hc.z,f));
+  hue:V3=v3(metaverse_style_haze_hue(hz3.x,0.0f32,f,hz.z),metaverse_style_haze_hue(hz3.y,1.0f32,f,hz.z),metaverse_style_haze_hue(hz3.z,2.0f32,f,hz.z));
+  hc:V3=wg_mix_f3f3f(hue,wg_sw_xyz_f4(myrealm_st(11,u)),metaverse_style_haze_glow(wg_dot3(d,myrealm_key_l(u))));
+  return v3(metaverse_style_fog(c.x,hc.x,f),metaverse_style_fog(c.y,hc.y,f),metaverse_style_fog(c.z,hc.z,f));
 }
 // Painterly's tone curve, saturation and black lift (none for flat: the palette shows as it is).
 myrealm_tone :: (c:V3,u:[]f32)->V3 {
@@ -291,10 +291,10 @@ myrealm_tone :: (c:V3,u:[]f32)->V3 {
     return c;
   }
   e:f32=myrealm_st(18,u).x;
-  t:V3=v3(verse_style_tone(c.x,e),verse_style_tone(c.y,e),verse_style_tone(c.z,e));
-  y:f32=verse_style_luma(t.x,t.y,t.z);
-  t=v3(verse_style_saturation(t.x,y,myrealm_st(18,u).y),verse_style_saturation(t.y,y,myrealm_st(18,u).y),verse_style_saturation(t.z,y,myrealm_st(18,u).y));
-  return v3(verse_style_lift(t.x,myrealm_st(18,u).z),verse_style_lift(t.y,myrealm_st(18,u).z),verse_style_lift(t.z,myrealm_st(18,u).z));
+  t:V3=v3(metaverse_style_tone(c.x,e),metaverse_style_tone(c.y,e),metaverse_style_tone(c.z,e));
+  y:f32=metaverse_style_luma(t.x,t.y,t.z);
+  t=v3(metaverse_style_saturation(t.x,y,myrealm_st(18,u).y),metaverse_style_saturation(t.y,y,myrealm_st(18,u).y),metaverse_style_saturation(t.z,y,myrealm_st(18,u).y));
+  return v3(metaverse_style_lift(t.x,myrealm_st(18,u).z),metaverse_style_lift(t.y,myrealm_st(18,u).z),metaverse_style_lift(t.z,myrealm_st(18,u).z));
 }
 // A styled realm's colour is linear light (the preset's numbers, the sheets' samples): toned, then
 // encoded for the screen (fixture.wgsl's post).

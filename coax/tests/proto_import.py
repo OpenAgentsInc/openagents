@@ -389,7 +389,7 @@ main :: () {a:[4] u8;b:[4] u8;
         r=run([executable,'c',source,'--library','--header',header],env=env)
         self.assertEqual(r.returncode,0,r.stderr.decode())
         self.assertIn(b'generator=coax0-coax-v1',r.stdout)
-        self.assertIn(b'verse_home_init',header.read_bytes())
+        self.assertIn(b'metaverse_home_init',header.read_bytes())
         fixture=ROOT/'coax/tests/proto/types.pb';generated=isolated/'types.coax'
         r=run([executable,'proto',fixture,'--prefix','Alone','-o',generated],env=env)
         self.assertEqual(r.returncode,0,r.stderr.decode());self.assertIn(b'Alone_Scalars',generated.read_bytes())

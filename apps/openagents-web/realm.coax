@@ -37,7 +37,7 @@ PLATES :: 28;   // the most plates (panels and buttons) one frame shows
 // width, height, time, fade, still, panels, dpr, 0; the view matrix's four
 // rows; the eye and the light count; the flash, 0, 0, 0; then per panel
 // x0, y0, x1, y1, scale, alpha, look (plate: LOOK_*), 0. The face writes the view, the eye,
-// the lights and the flash (verse_grid_view, verse_haunt_lights).
+// the lights and the flash (metaverse_grid_view, metaverse_haunt_lights).
 PANEL_AT :: 32;
 UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
 
@@ -95,7 +95,7 @@ tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, gl
 
 // ---- what the house says this frame (realm-face.c fills it)
 
-MAP_MAX :: 66;   // verse_haunt_map's boxes: rooms, you and the people
+MAP_MAX :: 66;   // metaverse_haunt_map's boxes: rooms, you and the people
 ITEMS :: 5;      // edit mode's hotbar: short names (the face's), so a phone fits them
 QUEST_STEPS :: 8;
 TYPED_MAX :: 480;  // what's typed (the survey's answer, a question, a lesson), in bytes
@@ -135,11 +135,11 @@ RealmView :: struct {
   reply: string;        // what they said
   // the move stick (grid.coax Sticks), where a thumb is down
   move_on: bool; ox: f32; oy: f32; pad_x: f32; pad_y: f32;
-  // the map (verse_haunt_map, in the map box's pixels): x, y, width, height, kind
+  // the map (metaverse_haunt_map, in the map box's pixels): x, y, width, height, kind
   map_n: int; map: [MAP_MAX * 5] f32;
   // a player's world: the changes offered to its owner (world.coax), the newest's who and what
   offers: int; offer_who: string; offer_what: string;
-  // the room (room.coax): the camera (verse_grid_view's rows), everyone else
+  // the room (room.coax): the camera (metaverse_grid_view's rows), everyone else
   // here (a name and where they are drawn: x, y, z, yaw), how many in all,
   // and the chat's last lines, oldest first
   has_view: bool; camera: [16] f32;
@@ -690,7 +690,7 @@ on_stick :: (r: [] Realm, x: f32, y: f32) -> bool {
 // The pointer in device pixels: phase 0 down, 1 move, 2 up, 3 cancel; kind
 // 0 a mouse, 1 a finger or pen; id the host's number for it. Returns
 // whether it was used here: only a finger that starts on the move stick is
-// the face's, for the thumbs (verse_sticks_world_touch).
+// the face's, for the thumbs (metaverse_sticks_world_touch).
 realm_pointer :: (r: [] Realm, v: RealmView, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if redit_pointer(r[0].ed[..], x, y, phase, id) { return true; }
   r[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then button_at(r, x, y) else -1;
@@ -726,7 +726,7 @@ realm_pointer :: (r: [] Realm, v: RealmView, x: f32, y: f32, phase: int, kind: i
 }
 LOOK_RADIANS :: 0.006;   // grid.coax LOOK
 
-// The wheel, in CSS pixels down: sizes the picked thing, else zooms the camera out (verse_player_zoom).
+// The wheel, in CSS pixels down: sizes the picked thing, else zooms the camera out (metaverse_player_zoom).
 realm_wheel :: (r: [] Realm, dy: f32) #export_c #effects(all) {
   if r[0].sized { xform(r, exp(-dy * 0.0015), 0); return; }
   r[0].zoom += dy * 0.01;
@@ -1146,7 +1146,7 @@ draw_map :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) 
   room := ifx r[0].map then "MAP" else ifx v.title.count > 0 then v.title else "HAUNTED HOUSE";
   cap := ifx r[0].map then 9 * k else 6.5 * k;
   vertices = draw_fit(k, out, vertices, room, b.x0 + 10 * k, b.y0 + 8 * k + cap, cap, GAP, SPACE, orange(k, 0.9), b.x1 - b.x0 - 20 * k);
-  // verse_haunt_map lays the house out at any size; fit it under the name and centre it.
+  // metaverse_haunt_map lays the house out at any size; fit it under the name and centre it.
   x0 := 1e9f32; y0 := 1e9f32; x1 := -1e9f32; y1 := -1e9f32;
   for i: 0..<v.map_n {
     o := i * 5;

@@ -626,7 +626,7 @@ arrive_at :: (s: [] Belt, k: int) {
   s[0].ships[k].slot = berth(s, k, sh.at);
   buf: [96] u8;
   if sh.faction != FREE_BELT { rival_arrive(s, k); return; }
-  queued := verse_command_queued(s[0].cmd[..], k) > 0;
+  queued := metaverse_command_queued(s[0].cmd[..], k) > 0;
   if is_ice(sh.at) && !queued && sh.cargo_cap > 0.0 && sh.cargo < sh.cargo_cap {
     s[0].ships[k].mode = MINING;
     s[0].ships[k].work = WORK_MINE; s[0].ships[k].work_rock = sh.at;
@@ -931,10 +931,10 @@ go :: (s: [] Belt, fast: bool) {
     if !s[0].cmd[0].selected[k] { continue; }
     if s[0].shift && s[0].ships[k].mode == FLYING {
       // Shift and an order: it waits until this ship arrives
-      if verse_command_push(s[0].cmd[..], k, CmdOrder.{target = s[0].dest, arg = ifx fast then 1 else 0}) { queued += 1; }
+      if metaverse_command_push(s[0].cmd[..], k, CmdOrder.{target = s[0].dest, arg = ifx fast then 1 else 0}) { queued += 1; }
       continue;
     }
-    if !s[0].shift { verse_command_clear(s[0].cmd[..], k); }
+    if !s[0].shift { metaverse_command_clear(s[0].cmd[..], k); }
     lag := order_lag(s, k);
     if lag > ORDER_LAG_MIN {
       // far from Hearth: the order goes out at light speed; until it arrives the ship keeps to what it was doing
@@ -978,8 +978,8 @@ go :: (s: [] Belt, fast: bool) {
 }
 // A ship that has arrived takes the next order off its queue: true when it burned for it.
 next_order :: (s: [] Belt, k: int) -> bool {
-  while verse_command_queued(s[0].cmd[..], k) > 0 {
-    o := verse_command_pop(s[0].cmd[..], k);
+  while metaverse_command_queued(s[0].cmd[..], k) > 0 {
+    o := metaverse_command_pop(s[0].cmd[..], k);
     p := plan_for(s, k, o.target, o.arg == 1);
     if launch(s, k, o.target, p) {
       s[0].ships[k].work = ifx is_ice(o.target) && s[0].ships[k].cargo_cap > 0.0 then WORK_MINE else WORK_NONE;
@@ -1397,7 +1397,7 @@ send_ship :: (s: [] Belt, k: int, dest: int, work: int) -> bool {
   if !p.ok || !p.enough { p = plan_for(s, k, dest, true); }
   if !p.ok || !p.enough { p = plan_for(s, k, dest, false); }
   if !launch(s, k, dest, p) { return false; }
-  verse_command_clear(s[0].cmd[..], k);
+  metaverse_command_clear(s[0].cmd[..], k);
   s[0].ships[k].work = work; s[0].ships[k].work_rock = dest;
   return true;
 }
@@ -1553,12 +1553,12 @@ group_key :: (s: [] Belt, g: int, set: bool) {
   n := put(buf[..], 0, "GROUP "); n = put_count(buf[..], n, f64(g));
   if set {
     if selected_count(s) == 0 { return; }
-    ok := verse_command_group_set(s[0].cmd[..], g);
+    ok := metaverse_command_group_set(s[0].cmd[..], g);
     n = put(buf[..], n, ": "); n = put_count(buf[..], n, f64(selected_count(s))); n = put(buf[..], n, ifx selected_count(s) == 1 then " SHIP" else " SHIPS");
     say(s, cast(string) buf[0..<n]);
     return;
   }
-  if verse_command_group_recall(s[0].cmd[..], g) { s[0].dest = -1; say(s, cast(string) buf[0..<n]); }
+  if metaverse_command_group_recall(s[0].cmd[..], g) { s[0].dest = -1; say(s, cast(string) buf[0..<n]); }
 }
 belt_key :: (s: [] Belt, key: int, mods: int) -> bool #export_c #effects(all) {
   started(s);
@@ -1779,7 +1779,7 @@ box_select :: (s: [] Belt, x0: f32, y0: f32, x1: f32, y1: f32) {
     q := ship_screen(s, k);
     xs[k] = pix(q.x); ys[k] = pix(q.y); mine[k] = s[0].ships[k].faction == FREE_BELT;
   }
-  n := verse_command_box(s[0].cmd[..], xs[0..<s[0].ship_n], ys[0..<s[0].ship_n], mine[0..<s[0].ship_n], x0, y0, x1, y1, s[0].shift);
+  n := metaverse_command_box(s[0].cmd[..], xs[0..<s[0].ship_n], ys[0..<s[0].ship_n], mine[0..<s[0].ship_n], x0, y0, x1, y1, s[0].shift);
   s[0].dest = -1;
 }
 
@@ -1896,7 +1896,7 @@ belt_pointer :: (s: [] Belt, x: f32, y: f32, phase: int, kind: int, id: int) -> 
     if phase == 2 && !both && !s[0].dragging {
       // a long-press on your ship adds it to the selection, or takes it out
       own := ship_at(s, x, y, 16 * k, FREE_BELT);
-      if own >= 0 && s[0].clock - s[0].press_t >= LONG_PRESS { verse_command_toggle(s[0].cmd[..], own); s[0].dest = -1; }
+      if own >= 0 && s[0].clock - s[0].press_t >= LONG_PRESS { metaverse_command_toggle(s[0].cmd[..], own); s[0].dest = -1; }
       else { map_tap(s, x, y); }
     }
     s[0].fingers[f].id = -1;
@@ -3249,7 +3249,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   s[0].w = 1440; s[0].h = 900; s[0].dpr = 1;
   box_select(s[..], -100000, -100000, 100000, 100000);
   #assert selected_count(s[..]) == 3;   // the Free Belt's three, not the rivals
-  #assert belt_key(s[..], '4', 2) && verse_command_group_size(s[0].cmd[..], 4) == 3;
+  #assert belt_key(s[..], '4', 2) && metaverse_command_group_size(s[0].cmd[..], 4) == 3;
   select_only(s[..], 1);
   #assert belt_key(s[..], '4', 0) && selected_count(s[..]) == 3;
   #assert belt_key(s[..], '2', 0) && s[0].speed == 2;   // 1-3 stay the clock
@@ -3263,14 +3263,14 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   set_dest(s[..], P_STATION);
   go(s[..], false);
   s[0].shift = false;
-  #assert s[0].ships[0].at == rock && verse_command_queued(s[0].cmd[..], 0) == 1;
+  #assert s[0].ships[0].at == rock && metaverse_command_queued(s[0].cmd[..], 0) == 1;
   turned := false;
   for i: 0..<400 {
     s[0].t += DAY;
     step_ships(s[..], DAY);
     if s[0].ships[0].mode == FLYING && s[0].ships[0].at == P_STATION { turned = true; break; }
   }
-  #assert turned && verse_command_queued(s[0].cmd[..], 0) == 0;
+  #assert turned && metaverse_command_queued(s[0].cmd[..], 0) == 0;
 }
 
 #test "MINE ICE with several ships: each plans from where it is, and a full hold flies home to unload" {
@@ -3282,7 +3282,7 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   s[0].ships[0].mode = MINING; s[0].ships[0].at = far; s[0].ships[0].work = WORK_MINE; s[0].ships[0].work_rock = far;
   s[0].ships[0].cargo = s[0].ships[0].cargo_cap;
   near := nearest_ice(s[..], 1);
-  verse_command_only(s[0].cmd[..], 0); verse_command_toggle(s[0].cmd[..], 1); verse_command_toggle(s[0].cmd[..], 2);
+  metaverse_command_only(s[0].cmd[..], 0); metaverse_command_toggle(s[0].cmd[..], 1); metaverse_command_toggle(s[0].cmd[..], 2);
   mine_order(s[..]);
   #assert s[0].ships[0].mode == FLYING && s[0].ships[0].at == P_STATION && s[0].ships[0].work_rock == far;
   #assert s[0].ships[1].mode == FLYING && s[0].ships[1].at == near && s[0].ships[1].work == WORK_MINE;
@@ -3301,13 +3301,13 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   belt_start(s[..]);
   s[0].w = 390; s[0].h = 844; s[0].dpr = 3;
   // send LANTERN and KITE off so RASP stands alone at Hearth
-  verse_command_only(s[0].cmd[..], 1); verse_command_toggle(s[0].cmd[..], 2);
+  metaverse_command_only(s[0].cmd[..], 1); metaverse_command_toggle(s[0].cmd[..], 2);
   set_dest(s[..], P_ICE); go(s[..], true);
   for i: 0..<40 { s[0].t += DAY; step_ships(s[..], DAY); }
   q := ship_screen(s[..], 0);
   x := pix(q.x); y := pix(q.y);
   #assert ship_at(s[..], x, y, 48, FREE_BELT) == 0;
-  verse_command_only(s[0].cmd[..], 1);
+  metaverse_command_only(s[0].cmd[..], 1);
   #assert belt_pointer(s[..], x, y, 0, 1, 7);
   s[0].clock += 0.6;
   #assert belt_pointer(s[..], x, y, 2, 1, 7);

@@ -14,37 +14,37 @@ MAX_SAT :: 2_100_000_000_000_000;
 // ---- Amounts ----
 
 // The SDK counts satoshis; payment.v1 counts millisatoshis.
-verse_wallet_sat_to_msat :: (sat: int) -> int #export_c #effects(all) {
+metaverse_wallet_sat_to_msat :: (sat: int) -> int #export_c #effects(all) {
   if sat < 0 || sat > MAX_SAT { return -1; }
   return sat * 1000;
 }
 
 #forall "sats to msat" sat: -3..<40 {
-  m := verse_wallet_sat_to_msat(sat);
+  m := metaverse_wallet_sat_to_msat(sat);
   if sat < 0 { #assert m == -1; } else { #assert m == sat * 1000; }
 }
 
 #test "sats to msat at the top" {
-  #assert verse_wallet_sat_to_msat(MAX_SAT) == MAX_SAT * 1000;
-  #assert verse_wallet_sat_to_msat(MAX_SAT + 1) == -1;
-  #assert verse_wallet_sat_to_msat(0) == 0;
+  #assert metaverse_wallet_sat_to_msat(MAX_SAT) == MAX_SAT * 1000;
+  #assert metaverse_wallet_sat_to_msat(MAX_SAT + 1) == -1;
+  #assert metaverse_wallet_sat_to_msat(0) == 0;
 }
 
 // The fewest whole sats at or above a millisatoshi bound (an LNURL's
 // minSendable), and the most at or below one (its maxSendable); -1 for a
 // bound that is negative or past all the bitcoin there is.
-verse_wallet_msat_up :: (msat: int) -> int #export_c #effects(all) {
+metaverse_wallet_msat_up :: (msat: int) -> int #export_c #effects(all) {
   if msat < 0 || msat > MAX_SAT * 1000 { return -1; }
   return (msat + 999) / 1000;
 }
-verse_wallet_msat_down :: (msat: int) -> int #export_c #effects(all) {
+metaverse_wallet_msat_down :: (msat: int) -> int #export_c #effects(all) {
   if msat < 0 || msat > MAX_SAT * 1000 { return -1; }
   return msat / 1000;
 }
 
 #forall "msat bounds" msat: -3..<4010 {
-  up := verse_wallet_msat_up(msat);
-  down := verse_wallet_msat_down(msat);
+  up := metaverse_wallet_msat_up(msat);
+  down := metaverse_wallet_msat_down(msat);
   if msat < 0 { #assert up == -1 && down == -1; }
   else {
     #assert up * 1000 >= msat && (up - 1) * 1000 < msat;
@@ -53,15 +53,15 @@ verse_wallet_msat_down :: (msat: int) -> int #export_c #effects(all) {
 }
 
 #test "msat bounds at the top" {
-  #assert verse_wallet_msat_up(MAX_SAT * 1000) == MAX_SAT;
-  #assert verse_wallet_msat_up(MAX_SAT * 1000 + 1) == -1;
-  #assert verse_wallet_msat_down(MAX_SAT * 1000 + 1) == -1;
-  #assert verse_wallet_msat_down(MAX_SAT * 1000) == MAX_SAT;
+  #assert metaverse_wallet_msat_up(MAX_SAT * 1000) == MAX_SAT;
+  #assert metaverse_wallet_msat_up(MAX_SAT * 1000 + 1) == -1;
+  #assert metaverse_wallet_msat_down(MAX_SAT * 1000 + 1) == -1;
+  #assert metaverse_wallet_msat_down(MAX_SAT * 1000) == MAX_SAT;
 }
 
 // Whether an amount is one the recipient takes: at least one sat, within
 // what it says it accepts (0 for no bound), and within what is spendable.
-verse_wallet_amount_ok :: (amount: int, low: int, high: int, spendable: int) -> bool #export_c #effects(all) {
+metaverse_wallet_amount_ok :: (amount: int, low: int, high: int, spendable: int) -> bool #export_c #effects(all) {
   if amount <= 0 || amount > MAX_SAT { return false; }
   if amount < low { return false; }
   if high > 0 && amount > high { return false; }
@@ -69,69 +69,69 @@ verse_wallet_amount_ok :: (amount: int, low: int, high: int, spendable: int) -> 
 }
 
 #forall "amounts" amount: -1..<7, low: 0..<4, high: 0..<6, spendable: 0..<7 {
-  ok := verse_wallet_amount_ok(amount, low, high, spendable);
+  ok := metaverse_wallet_amount_ok(amount, low, high, spendable);
   #assert ok == (amount >= 1 && amount >= low && (high == 0 || amount <= high) && amount <= spendable);
 }
 
 #test "amounts at the top" {
-  #assert verse_wallet_amount_ok(MAX_SAT, 0, 0, MAX_SAT);
-  #assert !verse_wallet_amount_ok(MAX_SAT + 1, 0, 0, MAX_SAT + 1);
+  #assert metaverse_wallet_amount_ok(MAX_SAT, 0, 0, MAX_SAT);
+  #assert !metaverse_wallet_amount_ok(MAX_SAT + 1, 0, 0, MAX_SAT + 1);
 }
 
 // ---- The keypad ----
 
 // A digit typed after `sats`; -1 if it would pass all the bitcoin there is
 // or isn't a digit. A leading zero stays zero.
-verse_wallet_digit :: (sats: int, digit: int) -> int #export_c #effects(all) {
+metaverse_wallet_digit :: (sats: int, digit: int) -> int #export_c #effects(all) {
   if digit < 0 || digit > 9 || sats < 0 { return -1; }
   if sats > (MAX_SAT - digit) / 10 { return -1; }
   return sats * 10 + digit;
 }
-verse_wallet_backspace :: (sats: int) -> int #export_c #effects(all) {
+metaverse_wallet_backspace :: (sats: int) -> int #export_c #effects(all) {
   if sats < 0 { return -1; }
   return sats / 10;
 }
 
 #forall "the keypad" sats: -1..<40, digit: -1..<11 {
-  next := verse_wallet_digit(sats, digit);
+  next := metaverse_wallet_digit(sats, digit);
   if digit < 0 || digit > 9 || sats < 0 { #assert next == -1; }
-  else { #assert next == sats * 10 + digit && verse_wallet_backspace(next) == sats; }
-  #assert verse_wallet_backspace(sats) == (ifx sats < 0 then -1 else sats / 10);
+  else { #assert next == sats * 10 + digit && metaverse_wallet_backspace(next) == sats; }
+  #assert metaverse_wallet_backspace(sats) == (ifx sats < 0 then -1 else sats / 10);
 }
 
 #test "the keypad at the top" {
   top := MAX_SAT / 10;
-  #assert verse_wallet_digit(top, 0) == MAX_SAT;
-  #assert verse_wallet_digit(top, 1) == -1;
-  #assert verse_wallet_digit(top + 1, 0) == -1;
-  #assert verse_wallet_digit(top - 1, 9) == MAX_SAT - 1;
+  #assert metaverse_wallet_digit(top, 0) == MAX_SAT;
+  #assert metaverse_wallet_digit(top, 1) == -1;
+  #assert metaverse_wallet_digit(top + 1, 0) == -1;
+  #assert metaverse_wallet_digit(top - 1, 9) == MAX_SAT - 1;
 }
 
 // ---- Warnings ----
 
 // A fee above a tenth of the amount is shown as high on the review screen.
 // (fee > amount / 10 is fee * 10 > amount in whole sats, without overflow.)
-verse_wallet_fee_high :: (amount: int, fee: int) -> bool #export_c #effects(all) {
+metaverse_wallet_fee_high :: (amount: int, fee: int) -> bool #export_c #effects(all) {
   return fee > amount / 10;
 }
 
 #forall "high fees" amount: 0..<60, fee: 0..<12 {
-  #assert verse_wallet_fee_high(amount, fee) == (fee * 10 > amount);
+  #assert metaverse_wallet_fee_high(amount, fee) == (fee * 10 > amount);
 }
 
 #test "high fees past all the bitcoin" {
-  #assert verse_wallet_fee_high(MAX_SAT, MAX_SAT + 1);
-  #assert verse_wallet_fee_high(MAX_SAT, MAX_SAT / 10 + 1);
-  #assert !verse_wallet_fee_high(MAX_SAT, MAX_SAT / 10);
+  #assert metaverse_wallet_fee_high(MAX_SAT, MAX_SAT + 1);
+  #assert metaverse_wallet_fee_high(MAX_SAT, MAX_SAT / 10 + 1);
+  #assert !metaverse_wallet_fee_high(MAX_SAT, MAX_SAT / 10);
 }
 
 // An invoice about to lapse: less than a minute left, or already gone.
-verse_wallet_expiring :: (now: int, expires: int) -> bool #export_c #effects(all) {
+metaverse_wallet_expiring :: (now: int, expires: int) -> bool #export_c #effects(all) {
   return expires - now < 60;
 }
 
 #forall "expiring" now: 0..<5, left: -2..<70 {
-  #assert verse_wallet_expiring(now, now + left) == (left < 60);
+  #assert metaverse_wallet_expiring(now, now + left) == (left < 60);
 }
 
 // ---- Sending ----
@@ -142,7 +142,7 @@ Verdict :: enum u8 { send; over_cap; over_limit; expired; bad_amount; busy; }
 // Whether a confirmed quote may be paid. Every input comes from the host:
 // the fee may not pass `cap` (what the review screen showed), and the
 // amount and fee together may not pass `left` (what is spendable).
-verse_wallet_may_send :: (state: Pay, amount: int, fee: int, cap: int, left: int,
+metaverse_wallet_may_send :: (state: Pay, amount: int, fee: int, cap: int, left: int,
                              now: int, expires: int) -> Verdict #export_c #effects(all) {
   if state != Pay.quoted { return Verdict.busy; }
   if amount <= 0 || fee < 0 || amount > MAX_SAT { return Verdict.bad_amount; }
@@ -153,7 +153,7 @@ verse_wallet_may_send :: (state: Pay, amount: int, fee: int, cap: int, left: int
 }
 
 #forall "may_send" state: Pay, amount: -1..<6, fee: -1..<4, cap: 0..<3, left: 0..<8, late: bool {
-  v := verse_wallet_may_send(state, amount, fee, cap, left, ifx late then 10 else 9, 10);
+  v := metaverse_wallet_may_send(state, amount, fee, cap, left, ifx late then 10 else 9, 10);
   if state != Pay.quoted { #assert v == Verdict.busy; }
   else if amount <= 0 || fee < 0 { #assert v == Verdict.bad_amount; }
   else if late { #assert v == Verdict.expired; }
@@ -163,9 +163,9 @@ verse_wallet_may_send :: (state: Pay, amount: int, fee: int, cap: int, left: int
 }
 
 #test "may_send near all the bitcoin" {
-  #assert verse_wallet_may_send(Pay.quoted, MAX_SAT, 0, 0, MAX_SAT, 0, 1) == Verdict.send;
-  #assert verse_wallet_may_send(Pay.quoted, MAX_SAT, 1, 1, MAX_SAT, 0, 1) == Verdict.over_limit;
-  #assert verse_wallet_may_send(Pay.quoted, MAX_SAT + 1, 0, 0, MAX_SAT + 1, 0, 1) == Verdict.bad_amount;
+  #assert metaverse_wallet_may_send(Pay.quoted, MAX_SAT, 0, 0, MAX_SAT, 0, 1) == Verdict.send;
+  #assert metaverse_wallet_may_send(Pay.quoted, MAX_SAT, 1, 1, MAX_SAT, 0, 1) == Verdict.over_limit;
+  #assert metaverse_wallet_may_send(Pay.quoted, MAX_SAT + 1, 0, 0, MAX_SAT + 1, 0, 1) == Verdict.bad_amount;
 }
 
 // What happened. The host steps the flow with each event in turn.
@@ -184,12 +184,12 @@ Event :: enum u8 {
 // sendPayment was called for that quote.
 Flow :: struct { state: Pay; quote: int; sends: int; }
 
-verse_wallet_start :: () -> Flow #export_c #effects(all) { return Flow.{state = Pay.idle, quote = 0, sends = 0}; }
+metaverse_wallet_start :: () -> Flow #export_c #effects(all) { return Flow.{state = Pay.idle, quote = 0, sends = 0}; }
 
 // How the payment moves. One send per quote; an unknown outcome waits for
 // the SDK, never becoming a failure or a second send; a finished payment
 // stays finished until the person closes it.
-verse_wallet_step :: (f: Flow, e: Event) -> Flow #export_c #effects(all) {
+metaverse_wallet_step :: (f: Flow, e: Event) -> Flow #export_c #effects(all) {
   next := f;
   if e == Event.quote {
     if f.state == Pay.idle || f.state == Pay.quoted || f.state == Pay.not_sent {
@@ -212,13 +212,13 @@ verse_wallet_step :: (f: Flow, e: Event) -> Flow #export_c #effects(all) {
 }
 
 #test "a fresh payment" {
-  f := verse_wallet_start();
+  f := metaverse_wallet_start();
   #assert f.state == Pay.idle && f.quote == 0 && f.sends == 0;
 }
 
 #forall "each step" state: Pay, e: Event, sends: 0..<2 {
   f := Flow.{state = state, quote = 3, sends = sends};
-  n := verse_wallet_step(f, e);
+  n := metaverse_wallet_step(f, e);
   if e == Event.quote {
     if state == Pay.idle || state == Pay.quoted || state == Pay.not_sent { #assert n.state == Pay.quoted && n.quote == 4 && n.sends == 0; }
     else { #assert n.state == state && n.quote == 3 && n.sends == sends; }
@@ -240,10 +240,10 @@ verse_wallet_step :: (f: Flow, e: Event) -> Flow #export_c #effects(all) {
 // saying so; a success is never undone except by closing it.
 #forall "every four events" a: Event, b: Event, c: Event, d: Event {
   events := [4] Event.[a, b, c, d];
-  f := verse_wallet_start();
+  f := metaverse_wallet_start();
   for e: events {
     before := f;
-    f = verse_wallet_step(f, e);
+    f = metaverse_wallet_step(f, e);
     #assert f.sends <= 1;
     if f.state == Pay.sending || f.state == Pay.unknown { #assert f.sends == 1; }
     if before.state == Pay.unknown && f.state == Pay.not_sent { #assert e == Event.failed; }
@@ -270,20 +270,20 @@ RATE_TOP :: 100_000;
 
 // The most adding an on-chain deposit to the balance costs at the SDK's
 // fastest recommended rate; -1 for a rate that isn't one.
-verse_wallet_claim_fee_max :: (fastest: int) -> int #export_c #effects(all) {
+metaverse_wallet_claim_fee_max :: (fastest: int) -> int #export_c #effects(all) {
   if fastest < 0 || fastest > RATE_TOP { return -1; }
   return (fastest + CLAIM_LEEWAY) * CLAIM_VBYTES;
 }
 
 #forall "claim fee ceiling" rate: -2..<300 {
-  m := verse_wallet_claim_fee_max(rate);
+  m := metaverse_wallet_claim_fee_max(rate);
   if rate < 0 { #assert m == -1; } else { #assert m == (rate + 1) * 99; }
 }
 
 #test "claim fee ceiling at the top" {
-  #assert verse_wallet_claim_fee_max(RATE_TOP) == (RATE_TOP + 1) * 99;
-  #assert verse_wallet_claim_fee_max(RATE_TOP + 1) == -1;
-  #assert verse_wallet_claim_fee_max(0) == 99;
+  #assert metaverse_wallet_claim_fee_max(RATE_TOP) == (RATE_TOP + 1) * 99;
+  #assert metaverse_wallet_claim_fee_max(RATE_TOP + 1) == -1;
+  #assert metaverse_wallet_claim_fee_max(0) == 99;
 }
 
 BuyCheck :: enum u8 { ok; no_provider; no_amount; too_small; too_large; no_fee; }
@@ -292,7 +292,7 @@ BuyCheck :: enum u8 { ok; no_provider; no_amount; too_small; too_large; no_fee; 
 // arrives on-chain and pays the claim from itself, so it must be more than
 // `claim_max`. When the SDK couldn't say (`claim_max` -1), a MoonPay
 // purchase is refused, since nothing shows it covers its claim.
-verse_wallet_buy_amount :: (provider: int, amount: int, claim_max: int) -> BuyCheck #export_c #effects(all) {
+metaverse_wallet_buy_amount :: (provider: int, amount: int, claim_max: int) -> BuyCheck #export_c #effects(all) {
   if provider != BUY_MOONPAY && provider != BUY_CASHAPP { return BuyCheck.no_provider; }
   if amount <= 0 { return BuyCheck.no_amount; }
   if amount > MAX_SAT { return BuyCheck.too_large; }
@@ -302,7 +302,7 @@ verse_wallet_buy_amount :: (provider: int, amount: int, claim_max: int) -> BuyCh
 }
 
 #forall "buy amounts" provider: -1..<3, amount: -1..<6, claim: -3..<5 {
-  v := verse_wallet_buy_amount(provider, amount, claim);
+  v := metaverse_wallet_buy_amount(provider, amount, claim);
   if provider < 0 || provider > 1 { #assert v == BuyCheck.no_provider; }
   else if amount <= 0 { #assert v == BuyCheck.no_amount; }
   else if provider == 0 && claim < 0 { #assert v == BuyCheck.no_fee; }
@@ -313,13 +313,13 @@ verse_wallet_buy_amount :: (provider: int, amount: int, claim_max: int) -> BuyCh
 }
 
 #test "buy amounts at the top" {
-  #assert verse_wallet_buy_amount(BUY_CASHAPP, MAX_SAT, -1) == BuyCheck.ok;
-  #assert verse_wallet_buy_amount(BUY_CASHAPP, MAX_SAT + 1, -1) == BuyCheck.too_large;
-  #assert verse_wallet_buy_amount(BUY_MOONPAY, MAX_SAT + 1, -1) == BuyCheck.too_large;
-  #assert verse_wallet_buy_amount(BUY_MOONPAY, MAX_SAT, -1) == BuyCheck.no_fee;
-  #assert verse_wallet_buy_amount(BUY_MOONPAY, MAX_SAT, MAX_SAT - 1) == BuyCheck.ok;
-  #assert verse_wallet_buy_amount(BUY_MOONPAY, 100, 99) == BuyCheck.ok;
-  #assert verse_wallet_buy_amount(BUY_MOONPAY, 99, 99) == BuyCheck.too_small;
+  #assert metaverse_wallet_buy_amount(BUY_CASHAPP, MAX_SAT, -1) == BuyCheck.ok;
+  #assert metaverse_wallet_buy_amount(BUY_CASHAPP, MAX_SAT + 1, -1) == BuyCheck.too_large;
+  #assert metaverse_wallet_buy_amount(BUY_MOONPAY, MAX_SAT + 1, -1) == BuyCheck.too_large;
+  #assert metaverse_wallet_buy_amount(BUY_MOONPAY, MAX_SAT, -1) == BuyCheck.no_fee;
+  #assert metaverse_wallet_buy_amount(BUY_MOONPAY, MAX_SAT, MAX_SAT - 1) == BuyCheck.ok;
+  #assert metaverse_wallet_buy_amount(BUY_MOONPAY, 100, 99) == BuyCheck.ok;
+  #assert metaverse_wallet_buy_amount(BUY_MOONPAY, 99, 99) == BuyCheck.too_small;
 }
 
 bw_alnum :: (c: u8) -> bool #effects(all) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
@@ -365,7 +365,7 @@ CASHAPP_PAGE :: "https://cash.app/launch/lightning/";
 // Whether a MoonPay page the SDK returned may open: Breez's page for
 // bitcoin (currencyCode btc) to `address`, the deposit address the wallet
 // itself reports, and nothing else.
-verse_wallet_moonpay_page :: (raw: [] u8, address: [] u8) -> bool #export_c #effects(all) {
+metaverse_wallet_moonpay_page :: (raw: [] u8, address: [] u8) -> bool #export_c #effects(all) {
   url := cast(string) raw;
   to := cast(string) address;
   for c: url { if !bw_urlchar(c) { return false; } }
@@ -415,7 +415,7 @@ bw_invoice_is :: (inv: string, msat: int) -> bool #effects(all) {
 // Whether a Cash App page may open: a mainnet Lightning invoice the wallet
 // made, for exactly the amount asked. Both the invoice's own stated amount
 // and `invoice_sats` (what the SDK read from it) must be that amount.
-verse_wallet_cashapp_page :: (raw: [] u8, amount: int, invoice_sats: int) -> bool #export_c #effects(all) {
+metaverse_wallet_cashapp_page :: (raw: [] u8, amount: int, invoice_sats: int) -> bool #export_c #effects(all) {
   url := cast(string) raw;
   if !bw_starts(url, 0, CASHAPP_PAGE) { return false; }
   for k: CASHAPP_PAGE.count..<url.count { if !bw_alnum(url[k]) { return false; } }
@@ -435,11 +435,11 @@ bw_text :: (a: string, b: string, c: string) -> BwText #effects(all) {
 ADDR :: "bc1pqqqsyqcyq5rqwzqfpg9scrgwpugpzysnzs23v9ccrydpk8qarc0sjr0ud9";
 moonpay_ok :: (url: string, address: string) -> bool #effects(all) {
   u := bw_text(url, "", ""); a := bw_text(address, "", "");
-  return verse_wallet_moonpay_page(u.b[0..<u.n], a.b[0..<a.n]);
+  return metaverse_wallet_moonpay_page(u.b[0..<u.n], a.b[0..<a.n]);
 }
 cashapp_ok :: (url: string, amount: int, invoice: int) -> bool #effects(all) {
   u := bw_text(url, "", "");
-  return verse_wallet_cashapp_page(u.b[0..<u.n], amount, invoice);
+  return metaverse_wallet_cashapp_page(u.b[0..<u.n], amount, invoice);
 }
 
 #test "MoonPay pages" {
@@ -570,8 +570,8 @@ cashapp_ok :: (url: string, amount: int, invoice: int) -> bool #effects(all) {
 // (it opens on exactly one step), the bitcoin seen arriving, then received.
 Buy :: enum u8 { idle; asking; open; arriving; received; failed; }
 BuyEvent :: enum u8 {
-  ask;      // the person chose a provider and verse_wallet_buy_amount said ok
-  page;     // the SDK returned a page and verse_wallet_moonpay_page or _cashapp_page passed it
+  ask;      // the person chose a provider and metaverse_wallet_buy_amount said ok
+  page;     // the SDK returned a page and metaverse_wallet_moonpay_page or _cashapp_page passed it
   refused;  // the SDK failed, or the page didn't pass
   seen;     // a new on-chain deposit appeared (MoonPay)
   paid;     // the SDK reported the incoming payment complete
@@ -580,7 +580,7 @@ BuyEvent :: enum u8 {
 
 // How a purchase moves. The host opens the provider's page only on the step
 // from asking to open, so one answer from the SDK opens one page.
-verse_wallet_buy_step :: (b: Buy, e: BuyEvent) -> Buy #export_c #effects(all) {
+metaverse_wallet_buy_step :: (b: Buy, e: BuyEvent) -> Buy #export_c #effects(all) {
   if e == BuyEvent.ask { return ifx b == Buy.asking then b else Buy.asking; }
   if e == BuyEvent.page { return ifx b == Buy.asking then Buy.open else b; }
   if e == BuyEvent.refused { return ifx b == Buy.asking then Buy.failed else b; }
@@ -594,18 +594,18 @@ verse_wallet_buy_step :: (b: Buy, e: BuyEvent) -> Buy #export_c #effects(all) {
 // a page only when a purchase isn't already asking (a second tap, on either
 // provider, starts nothing), and open a page only on the step from asking to
 // open. A second answer, or one that comes after the page opened, opens none.
-verse_wallet_buy_starts :: (b: Buy, e: BuyEvent) -> bool #export_c #effects(all) { return e == BuyEvent.ask && b != Buy.asking; }
-verse_wallet_buy_opens :: (b: Buy, e: BuyEvent) -> bool #export_c #effects(all) { return e == BuyEvent.page && b == Buy.asking; }
+metaverse_wallet_buy_starts :: (b: Buy, e: BuyEvent) -> bool #export_c #effects(all) { return e == BuyEvent.ask && b != Buy.asking; }
+metaverse_wallet_buy_opens :: (b: Buy, e: BuyEvent) -> bool #export_c #effects(all) { return e == BuyEvent.page && b == Buy.asking; }
 
 #forall "what each step does" b: Buy, e: BuyEvent {
-  n := verse_wallet_buy_step(b, e);
-  #assert verse_wallet_buy_starts(b, e) == (e == BuyEvent.ask && b != Buy.asking);
-  #assert verse_wallet_buy_opens(b, e) == (n == Buy.open && b != Buy.open);
-  if verse_wallet_buy_starts(b, e) { #assert n == Buy.asking; }
+  n := metaverse_wallet_buy_step(b, e);
+  #assert metaverse_wallet_buy_starts(b, e) == (e == BuyEvent.ask && b != Buy.asking);
+  #assert metaverse_wallet_buy_opens(b, e) == (n == Buy.open && b != Buy.open);
+  if metaverse_wallet_buy_starts(b, e) { #assert n == Buy.asking; }
 }
 
 #forall "each purchase step" b: Buy, e: BuyEvent {
-  n := verse_wallet_buy_step(b, e);
+  n := metaverse_wallet_buy_step(b, e);
   if e == BuyEvent.ask { #assert n == Buy.asking; }
   if e == BuyEvent.page { #assert n == (ifx b == Buy.asking then Buy.open else b); }
   if e == BuyEvent.refused { #assert n == (ifx b == Buy.asking then Buy.failed else b); }
@@ -624,10 +624,10 @@ verse_wallet_buy_opens :: (b: Buy, e: BuyEvent) -> bool #export_c #effects(all) 
   calls := 0; opened := 0;
   for x: events {
     before := s;
-    if verse_wallet_buy_starts(before, x) { calls += 1; opened = 0; }
-    if verse_wallet_buy_opens(before, x) { opened += 1; #assert calls >= 1; }
+    if metaverse_wallet_buy_starts(before, x) { calls += 1; opened = 0; }
+    if metaverse_wallet_buy_opens(before, x) { opened += 1; #assert calls >= 1; }
     #assert opened <= 1;
-    s = verse_wallet_buy_step(s, x);
+    s = metaverse_wallet_buy_step(s, x);
     if x == BuyEvent.ask { pages = 0; }
     if s == Buy.open && before != Buy.open {
       #assert before == Buy.asking && x == BuyEvent.page;

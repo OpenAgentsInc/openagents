@@ -1,7 +1,7 @@
 // Vulkan effects for a package and frame admitted by the shared Coax renderer.
 // RenderHost.h is generated from metaverse-engine/render/native-host.coax by the build.
-#ifndef AETHYR_NATIVE_RENDER_HOST_H
-#define AETHYR_NATIVE_RENDER_HOST_H
+#ifndef ENGINE_NATIVE_RENDER_HOST_H
+#define ENGINE_NATIVE_RENDER_HOST_H
 #include "RenderHost.h"
 #include "vks.h"
 
@@ -20,7 +20,7 @@ typedef struct {
 } RhgFrame;
 
 RhgRenderer *rhg_open(Vkc *device,int64_t expected_profile,coax_string json,RhgRead read,void *user,char *error,size_t error_bytes);
-// The receipt must be the unmodified result of aethyr_render_frame for these
+// The receipt must be the unmodified result of engine_render_frame for these
 // exact resources. Media receipts/rectangles must likewise be the unmodified
 // result of the shared composer for these physical textures. Refusal makes
 // no render submission for Coax/resource refusal; preparation may allocate
@@ -44,7 +44,7 @@ VksImage *rhg_target_image(RhgRenderer *renderer,coax_t_RenderTarget target);
 uint64_t rhg_draw_commands(const RhgRenderer *renderer);
 // The GPU resource ledger (metaverse-engine/render/registry.coax), one per process as in
 // the browser's face. Ask before creating a buffer or image, release when it is
-// freed; a zero handle is none. Words come from Coax (aethyr_render_*_words).
+// freed; a zero handle is none. Words come from Coax (engine_render_*_words).
 enum {RHG_UNIFORM,RHG_STORAGE,RHG_COLOR,RHG_VERTEX,RHG_INDEX,RHG_TEXTURE};
 typedef struct {int64_t slot,generation;} RhgHandle;
 int rhg_ledger_acquire(int kind,int64_t words,RhgHandle *out);

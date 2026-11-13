@@ -1729,7 +1729,7 @@ lab_walk :: (s: [] Lab) -> ZoneWalk #export_c #effects(all) {
     if me != s[0].you_me {
       // a new hero faces the way the camera looks, so the follow camera swings in from behind it
       s[0].w[0].put_face = figs.atan2(s[0].fwd.x, s[0].fwd.z);
-      s[0].orbit = figs.verse_orbit_start(figs.v3(s[0].w[0].put_x, 0, s[0].w[0].put_z), s[0].w[0].put_face);
+      s[0].orbit = figs.metaverse_orbit_start(figs.v3(s[0].w[0].put_x, 0, s[0].w[0].put_z), s[0].w[0].put_face);
     } else { s[0].w[0].put_face = s[0].w[0].you_face; }
     s[0].you_me = me; s[0].my_sx = b[0].c[me].x; s[0].my_sy = b[0].c[me].y;
     s[0].w[0].you_x = s[0].w[0].put_x; s[0].w[0].you_y = 0; s[0].w[0].you_z = s[0].w[0].put_z; s[0].w[0].you_face = s[0].w[0].put_face;
@@ -1740,7 +1740,7 @@ lab_walk :: (s: [] Lab) -> ZoneWalk #export_c #effects(all) {
   return w;
 }
 // Your keys for Everglade's step: W, A, S and D along the camera, Shift (Everglade runs unless it
-// is held: verse_runs), Space to jump. The face adds the thumb's stick.
+// is held: metaverse_runs), Space to jump. The face adds the thumb's stick.
 lab_move_in :: (s: [] Lab) -> EgMoveIn #export_c #effects(all) {
   if s[0].w[0].creator[0].experimental { return zone_move_in(s[0].w[..]); }
   h := s[0].w[0].held;
@@ -2050,7 +2050,7 @@ lab_layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
   // its vertical scale from the view's shape), swung in from the spectator's over BLEND_TIME
   if s[0].blend > 0 {
     sp := figs.Shot.{eye = figs.v3(s[0].eye.x, s[0].eye.y, s[0].eye.z), at = figs.v3(shot.at.x, shot.at.y, shot.at.z)};
-    mix := figs.verse_shot_mix(sp, figs.verse_orbit_shot(s[0].orbit), s[0].blend);
+    mix := figs.metaverse_shot_mix(sp, figs.metaverse_orbit_shot(s[0].orbit), s[0].blend);
     s[0].eye = P3.{x = mix.eye.x, y = mix.eye.y, z = mix.eye.z};
     s[0].fwd = norm3(P3.{x = mix.at.x - mix.eye.x, y = mix.at.y - mix.eye.y, z = mix.at.z - mix.eye.z});
     s[0].right = norm3(P3.{x = -s[0].fwd.z, y = 0, z = s[0].fwd.x});

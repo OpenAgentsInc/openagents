@@ -47,9 +47,9 @@ Since #13060 these functions and numbers live in the Metaverse Engine: the numbe
 evaluation in `metaverse-engine/render/painterly.coax`, the transfer helpers in `metaverse-engine/render/transfer.coax`,
 the normal packing and contact taps in `metaverse-engine/render/contact-shade.coax`, and the exposed film
 response in `metaverse-engine/render/filmic.coax`. The `cg_*` names in the app files are thin delegates, and
-`verse_style_preset(STYLE_PAINTERLY, ...)` names the glade profile as its default environment.
+`metaverse_style_preset(STYLE_PAINTERLY, ...)` names the glade profile as its default environment.
 
-Since #13065, `verse_style_compat_profile` turns a preset's four clock keys into a profile:
+Since #13065, `metaverse_style_compat_profile` turns a preset's four clock keys into a profile:
 painterly's noon knot is the glade's (it resolves bit-equal to `env_glade_profile()`), and its
 dawn, dusk and night are deltas on the glade; lowpoly keeps its own. Everglade II's places are in
 `everglade/world/environment.coax` (`e2_environment_set()`): the open glade as the map default,
@@ -229,7 +229,7 @@ resolved record yet, and Phase 1 does not change them):
 | Everglade 5E (`everglade5e.coax`) | Everglade v1's shader (`everglade5e.wgsl`) | with v1's adapter |
 | The fixture (`fixture.coax`, `gpu/fixture.coax`) | `metaverse/style.coax` presets at its own clock (`fixture.wgsl`, 71 vec4s) | the style-preset compatibility profile, once its shader reads the record |
 | One-shot's Table Display glade (`oneshot.coax`, `oneshot-table.coax`) | its own shader constants (`oneshot.wgsl`, 442 vec4s) | the painterly default, as 5E Lab |
-| Made realms that pick low poly or flat, or author a time of day or mist (`myrealm.coax`) | `verse_style_at` at the spec's time | a made realm's authored profile (painterly with nothing authored already gets the glade, #13066) |
+| Made realms that pick low poly or flat, or author a time of day or mist (`myrealm.coax`) | `metaverse_style_at` at the spec's time | a made realm's authored profile (painterly with nothing authored already gets the glade, #13066) |
 | The Metaverse Engine examples (`metaverse-engine/examples/light-a-frame.coax`, `shade-a-material.coax`) and `metaverse/experimental-terrain.coax` | their own constants or the style presets | book chapters: they read the record when the light chapter does |
 
 ## Phase 2 — Shared surface inputs and a consistent linear pipeline

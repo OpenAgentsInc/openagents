@@ -175,7 +175,7 @@ fp_num :: (o: [] FpText, v: int) #effects(all) {
   for k: 0..<n { o[0].b[o[0].n] = d[n - 1 - k]; o[0].n += 1; }
 }
 fp_define :: (o: [] FpText, group: string, name: string, v: int) #effects(all) {
-  fp_put(o, "#define AETHYR_FP_"); fp_put(o, group); fp_put(o, name); fp_put(o, " "); fp_num(o, v); fp_put(o, "u\n");
+  fp_put(o, "#define ENGINE_FP_"); fp_put(o, group); fp_put(o, name); fp_put(o, " "); fp_num(o, v); fp_put(o, "u\n");
 }
 fp_group :: (o: [] FpText, group: string, names: [] const string) #effects(all) {
   for k: 0..<names.count { fp_define(o, group, names[k], k); }
@@ -186,7 +186,7 @@ frame_plan_header :: (o: [] FpText) -> int #effects(all) {
   fp_put(o, "/* The frame plan's numbers (GitHub #13303). Written by metaverse-engine/render/frame-plan.coax:\n");
   fp_put(o, " *   coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h\n");
   fp_put(o, " * Never edit it by hand. The record layout is stated at the top of frame-plan.coax. */\n");
-  fp_put(o, "#ifndef AETHYR_FRAME_PLAN_H\n#define AETHYR_FRAME_PLAN_H\n");
+  fp_put(o, "#ifndef ENGINE_FRAME_PLAN_H\n#define ENGINE_FRAME_PLAN_H\n");
   fp_define(o, "", "MAGIC", FRAME_PLAN_MAGIC); fp_define(o, "", "VERSION", FRAME_PLAN_VERSION); fp_define(o, "", "WORDS", FRAME_PLAN_WORDS);
   fp_define(o, "", "MOST_OPS", RENDER_OPS);
   fp_define(o, "FLAG_", "KEEP", FP_KEEP); fp_define(o, "FLAG_", "STORE_DEPTH", FP_STORE_DEPTH); fp_define(o, "FLAG_", "VALID", FP_VALID);

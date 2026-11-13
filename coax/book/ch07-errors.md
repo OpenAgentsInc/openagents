@@ -677,7 +677,7 @@ person confirms a payment, Swift asks Coax whether it may be sent:
 Pay :: enum u8 { idle; quoted; sending; succeeded; not_sent; unknown; }
 Verdict :: enum u8 { send; over_cap; over_limit; expired; bad_amount; busy; }
 
-verse_wallet_may_send :: (state: Pay, amount: int, fee: int, cap: int, left: int,
+metaverse_wallet_may_send :: (state: Pay, amount: int, fee: int, cap: int, left: int,
                              now: int, expires: int) -> Verdict #export_c {
   if state != Pay.quoted { return Verdict.busy; }
   if amount <= 0 || fee < 0 || amount > MAX_SAT { return Verdict.bad_amount; }

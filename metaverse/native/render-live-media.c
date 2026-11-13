@@ -40,26 +40,26 @@ static int lm_read(void *context,coax_string url,uint8_t *out,size_t bytes){
 RhgLiveMedia *rhglm_open(Vkc *device,const char *mount,size_t notice_capacity){
  if(!device||!mount||notice_capacity>INT64_MAX)return NULL;RhgLiveMedia *m=calloc(1,sizeof*m);if(!m)return NULL;m->device=device;m->capacity=(size_t)hic_capacity();m->notice_capacity=notice_capacity;
  m->mount=realpath(mount,NULL);m->cache=rhgi_open();m->images=rfi_array(m->capacity,sizeof*m->images);m->lines=rfi_array(m->capacity,sizeof*m->lines);m->requests=rfi_array(m->capacity,sizeof*m->requests);m->observed=rfi_array(m->capacity,sizeof*m->observed);m->physical=rfi_array(m->capacity,sizeof*m->physical);m->notices=rfi_array(m->capacity,sizeof*m->notices);m->names=rfi_array(m->capacity,sizeof*m->names);m->notice=rfi_array(notice_capacity,1);m->last_notice=rfi_array(notice_capacity,1);
- if(!m->mount||!m->cache||m->capacity!=(size_t)aethyr_render_media_capacity()||!m->images||!m->lines||!m->requests||!m->observed||!m->physical||!m->notices||!m->names||!m->notice||!m->last_notice){rhglm_close(m);return NULL;}return m;
+ if(!m->mount||!m->cache||m->capacity!=(size_t)engine_render_media_capacity()||!m->images||!m->lines||!m->requests||!m->observed||!m->physical||!m->notices||!m->names||!m->notice||!m->last_notice){rhglm_close(m);return NULL;}return m;
 }
 static RhglmImage *lm_upload(RhgLiveMedia *m,RhgiImage image){
  if(image.slot<0||(uint64_t)image.slot>=m->capacity)return NULL;RhglmImage *p=&m->images[image.slot];p->cpu=image;if(!image.decoded||p->gpu.image||p->failed)return p;
- coax_t_RenderAssetMip extent=aethyr_render_asset_mip(image.width,image.height,1,0,m->device->props.limits.maxImageDimension2D,m->device->props.limits.maxImageArrayLayers);
- if(!extent.valid||!rhg_ledger_acquire(RHG_TEXTURE,aethyr_render_texture_words(image.width,image.height,1,1,4),&p->handle)){p->failed=1;return p;}
+ coax_t_RenderAssetMip extent=engine_render_asset_mip(image.width,image.height,1,0,m->device->props.limits.maxImageDimension2D,m->device->props.limits.maxImageArrayLayers);
+ if(!extent.valid||!rhg_ledger_acquire(RHG_TEXTURE,engine_render_texture_words(image.width,image.height,1,1,4),&p->handle)){p->failed=1;return p;}
  p->gpu=vks_image_levels(m->device,(uint32_t)extent.width,(uint32_t)extent.height,1,0,VK_FORMAT_R8G8B8A8_UNORM,VKS_TEXTURE,1);vks_upload(m->device,&p->gpu,image.pixels,image.bytes);return p;
 }
 int rhglm_prepare(RhgLiveMedia *m,int64_t profile,coax_string packet,int64_t width,int64_t height,RhgMediaRects *out,char *error,size_t error_bytes){
  if(!m)return 0;m->notice_bytes=0;memset(m->lines,0,m->capacity*sizeof*m->lines);
- coax_t_RenderMediaParse parsed=aethyr_render_media_parse(packet,(coax_v_t_RenderMediaRequest){m->requests,(int64_t)m->capacity});if(parsed.status!=COAX_RenderMediaStatus_ok)return lm_error(error,error_bytes,"Coax refused live media packet");
+ coax_t_RenderMediaParse parsed=engine_render_media_parse(packet,(coax_v_t_RenderMediaRequest){m->requests,(int64_t)m->capacity});if(parsed.status!=COAX_RenderMediaStatus_ok)return lm_error(error,error_bytes,"Coax refused live media packet");
  size_t count=0,physical_count=0;
  for(int64_t i=0;i<parsed.count;i++){
   coax_t_RenderMediaRequest request=m->requests[i];RhgiImage cpu=rhgi_get(m->cache,(int64_t)request.kind,request.url,(RhgiSource){lm_size,lm_read,m});RhglmImage *image=lm_upload(m,cpu);bool ready=image&&image->gpu.image&&rhg_ledger_live(&image->handle);bool failed=cpu.failed||(image&&image->failed);coax_string url=image?image->cpu.url:request.url;
   bool duplicate=false;for(size_t j=0;j<count;j++)if(m->observed[j].kind==request.kind&&lm_same(m->observed[j].url,url)){duplicate=true;break;}
   if(!duplicate){m->observed[count]=(coax_t_RenderHostMediaImage){.kind=request.kind,.url=url,.ready=ready,.width=ready?cpu.width:0,.height=ready?cpu.height:0};m->notices[count]=(coax_t_HostMediaNotice){.url=url,.ready=ready,.failed=failed,.width=ready?cpu.width:0,.height=ready?cpu.height:0};count++;}
-  if(ready){if(request.line<0||(uint64_t)request.line>=m->capacity)return lm_error(error,error_bytes,"Coax media line exceeds physical SDK storage");m->lines[request.line]=image;coax_string name=aethyr_render_texture_name((coax_t_RenderBindingSource){.kind=COAX_RenderSourceKind_media_image,.index=request.line,.valid=true},(coax_v_u8){(uint8_t*)m->names[physical_count],32});m->physical[physical_count++]=(coax_t_RenderHostMediaTexture){.name=name,.width=cpu.width,.height=cpu.height,.layers=1};}
+  if(ready){if(request.line<0||(uint64_t)request.line>=m->capacity)return lm_error(error,error_bytes,"Coax media line exceeds physical SDK storage");m->lines[request.line]=image;coax_string name=engine_render_texture_name((coax_t_RenderBindingSource){.kind=COAX_RenderSourceKind_media_image,.index=request.line,.valid=true},(coax_v_u8){(uint8_t*)m->names[physical_count],32});m->physical[physical_count++]=(coax_t_RenderHostMediaTexture){.name=name,.width=cpu.width,.height=cpu.height,.layers=1};}
  }
  RhgMediaRects candidate={0};candidate.rects=rfi_array(m->capacity,sizeof*candidate.rects);if(!candidate.rects)return 0;
- candidate.receipt=aethyr_render_media_draws(profile,(coax_v_t_RenderMediaRequest){m->requests,parsed.count},(coax_v_t_RenderHostMediaImage){m->observed,(int64_t)count},width,height,(coax_v_t_RenderHostMediaTexture){m->physical,(int64_t)physical_count},(coax_v_t_RenderMediaRect){candidate.rects,(int64_t)m->capacity});
+ candidate.receipt=engine_render_media_draws(profile,(coax_v_t_RenderMediaRequest){m->requests,parsed.count},(coax_v_t_RenderHostMediaImage){m->observed,(int64_t)count},width,height,(coax_v_t_RenderHostMediaTexture){m->physical,(int64_t)physical_count},(coax_v_t_RenderMediaRect){candidate.rects,(int64_t)m->capacity});
  if(candidate.receipt.status!=COAX_RenderHostMediaStatus_ok){rhgm_close(&candidate);return lm_error(error,error_bytes,"Coax refused actual live media composition");}
  int64_t n=rhgi_notice(m->notices,count,m->notice,m->notice_capacity);if(n<0){rhgm_close(&candidate);return lm_error(error,error_bytes,"Coax refused complete live media notice");}
  if(n&&(m->last_bytes!=(size_t)n||memcmp(m->last_notice,m->notice,(size_t)n)))m->notice_bytes=(size_t)n;*out=candidate;return 1;

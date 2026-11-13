@@ -75,7 +75,7 @@ canyon_walls :: (walls:[]f32) {
 canyon_start :: (s:[]ValleyCanyon) {
   if s[0].started {return;}s[0].started=true;b:=canyon_bounds();s[0].you=pc.walk_place((b.low.x+b.high.x)*0.5,canyon_ground(),b.low.z-6,0);s[0].you.body.on_ground=true;s[0].you.cam.phi=1.3;s[0].you.cam.dist=3;s[0].you.cam.prev_dist=3;s[0].you.cam.max_dist=3;
 }
-canyon_blur :: (s:[]ValleyCanyon) #export_c #effects(all) {s[0].keys=0;s[0].spell=false;s[0].thumbs=verse_sticks_reset();for k:0..<4 {s[0].active[k]=false;}s[0].look_x=0;s[0].look_y=0;s[0].drag=false;s[0].you=pc.walk_input(s[0].you,0,0,0,0,false,false,0,0);}
+canyon_blur :: (s:[]ValleyCanyon) #export_c #effects(all) {s[0].keys=0;s[0].spell=false;s[0].thumbs=metaverse_sticks_reset();for k:0..<4 {s[0].active[k]=false;}s[0].look_x=0;s[0].look_y=0;s[0].drag=false;s[0].you=pc.walk_input(s[0].you,0,0,0,0,false,false,0,0);}
 canyon_hold :: (s:[]ValleyCanyon,key:int,down:bool)->bool #export_c #effects(all) {
   if key== -1 {canyon_blur(s);return true;}bit:=0;if key==87 || key==119 {bit=1;}if key==83 || key==115 {bit=2;}if key==65 || key==97 {bit=4;}if key==68 || key==100 {bit=8;}if key==32 {bit=16;}if key== -13 {bit=32;}
   if s[0].walking && bit!=0 {if down {s[0].keys|=bit;}else {s[0].keys=(s[0].keys|bit)-bit;}if bit==16 {p:=s[0].you;s[0].you=pc.walk_input(p,p.body.key_x,p.body.key_y,p.body.pad_x,p.body.pad_y,p.body.run,down,0,0);}return true;}
@@ -87,7 +87,7 @@ canyon_step :: (s:[]ValleyCanyon,dt:f32,still:bool) #export_c #effects(all) {
  walls:[12]f32;canyon_walls(walls[..]);declaration:=collision.collision_profile_lookup("valley-canyon");w:=pc.World.{ground=canyon_ground(),room=80,walls=walls[..],collision=declaration.profile,locomotion=locomotion.LocomotionProfile.{source_velocity=true,walk_speed=1.47,run_speed=4.27,gravity=9.8,jump_speed=6,acceleration=5,turn_rate=10}};
  trace:=pc.advance_traced(w,p,dt);s[0].you=trace.player;wish:=pc.wish(p);want:=pc.atan2(wish.x,wish.z);
  for step:0..<trace.count {target:=trace.targets[step];e:=s[0].echo[..];e[0].drive_inputs=true;e[0].input_on=target.act==1 || target.act==2;e[0].run_requested=target.act==2;e[0].speed=sqrt(target.velocity.x*target.velocity.x+target.velocity.z*target.velocity.z);e[0].falling=target.act==3;e[0].turn=pc.wrap_angle(want-target.face);character_step(e,s[0].pack[..],1.0/64.0);}
- s[0].now+=cast(f64)(trace.count)/64;s[0].look_x=0;s[0].look_y=0;s[0].thumbs=verse_sticks_used(t);
+ s[0].now+=cast(f64)(trace.count)/64;s[0].look_x=0;s[0].look_y=0;s[0].thumbs=metaverse_sticks_used(t);
 }
 canyon_ready :: (s:[]ValleyCanyon)->bool #export_c #effects(all) {return s[0].pack_verified && !s[0].failed && s[0].echo[0].ready && s[0].assets[0]>0 && s[0].assets[1]==187564308 && s[0].assets[2]==73674948 && s[0].assets[3]==35;}
 canyon_face_select :: (s:[]ValleyCanyon,clip:int) {_:=character_face_play(s[0].echo[..],s[0].pack[..],clip);}

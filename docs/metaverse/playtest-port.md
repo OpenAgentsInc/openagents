@@ -197,7 +197,7 @@ Main's pages (`web/`), the ones the playtest reaches first:
 
 ## 3. Endpoints (`tools/serve.py`)
 
-Bodies are JSON. "Owner" is `Authorization: Bearer $VERSE_OWNER_TOKEN`.
+Bodies are JSON. "Owner" is `Authorization: Bearer $METAVERSE_OWNER_TOKEN`.
 
 | Route | Request → response |
 | --- | --- |

@@ -393,21 +393,21 @@ bake_sample :: (set: [] BakeSet, now: BakeKey, frame: Ground, ao: [] f32, bounce
   n := frame.n; p := (n + 1) * (n + 1);
   if !ground_valid(frame) || ao.count != p || bounce.count != p * 3 { return BakeSample.{}; }
   span := f32(n) * frame.cell;
-  bk_in := aethyr_bake_inside(x, frame.west, span) * aethyr_bake_inside(z, frame.south, span);
+  bk_in := engine_bake_inside(x, frame.west, span) * engine_bake_inside(z, frame.south, span);
   if !bake_current(set[0], now) || bk_in == 0 {
     if set[0].require { return BakeSample.{}; }
     set[0].fallbacks += 1;
     return BakeSample.{ok = true, fallback = true, ao = 1};
   }
   gx := (x - frame.west) / frame.cell; gz := (z - frame.south) / frame.cell;
-  ix := aethyr_bake_index(gx, f32(n)); iz := aethyr_bake_index(gz, f32(n));
-  fx := aethyr_bake_fraction(gx, ix); fz := aethyr_bake_fraction(gz, iz);
+  ix := engine_bake_index(gx, f32(n)); iz := engine_bake_index(gz, f32(n));
+  fx := engine_bake_fraction(gx, ix); fz := engine_bake_fraction(gz, iz);
   q := cast(int) iz * (n + 1) + cast(int) ix;
-  s := aethyr_bake_rise(h, set[0].rise);
+  s := engine_bake_rise(h, set[0].rise);
   out := BakeSample.{ok = true};
-  out.ao = aethyr_bake_ao(aethyr_bake_bilerp(ao[q], ao[q + 1], ao[q + n + 1], ao[q + n + 2], fx, fz), s);
+  out.ao = engine_bake_ao(engine_bake_bilerp(ao[q], ao[q + 1], ao[q + n + 1], ao[q + n + 2], fx, fz), s);
   for bk_c: 0..<3 {
-    out.bounce[bk_c] = aethyr_bake_bounce(aethyr_bake_bilerp(bounce[q * 3 + bk_c], bounce[(q + 1) * 3 + bk_c],
+    out.bounce[bk_c] = engine_bake_bounce(engine_bake_bilerp(bounce[q * 3 + bk_c], bounce[(q + 1) * 3 + bk_c],
       bounce[(q + n + 1) * 3 + bk_c], bounce[(q + n + 2) * 3 + bk_c], fx, fz), s);
   }
   return out;

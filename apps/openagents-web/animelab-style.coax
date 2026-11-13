@@ -1,6 +1,6 @@
 // Anime Lab's style block (docs/metaverse/art-styles.md, Anime), its own library
 // for the page's face (animelab-face.c): the anime preset in a variant and a
-// tier, at the realm's clock, as verse_style_at writes it. It is a library of
+// tier, at the realm's clock, as metaverse_style_at writes it. It is a library of
 // its own because the stage's camera (metaverse-engine/cam/cinematic.coax, metaverse-engine/core/points.coax)
 // and the presets' checks share short names in one unit; the face hands the
 // block to animelab.coax, which copies it into the uniforms.
@@ -8,12 +8,12 @@
 #load "../../metaverse/style-preset.coax";
 
 // The variant a name says (pastoral, action, dusk, neon), -1 for none of them.
-animelab_style_variant :: (name: string) -> int #export_c #effects(all) { return verse_style_anime_variant(name); }
+animelab_style_variant :: (name: string) -> int #export_c #effects(all) { return metaverse_style_anime_variant(name); }
 // The anime block for `variant` at `clock`, on a phone or not, into out (STYLE_FLOATS); false when
 // the variant is unknown.
 animelab_style_block :: (variant: int, phone: bool, clock: f32, out: [] f32) -> bool #export_c #effects(all) {
-  p := verse_style_anime(variant, ifx phone then STYLE_PHONE else STYLE_DESKTOP);
-  return verse_style_at(p, clock, out);
+  p := metaverse_style_anime(variant, ifx phone then STYLE_PHONE else STYLE_DESKTOP);
+  return metaverse_style_at(p, clock, out);
 }
 animelab_style_floats :: () -> int #export_c #effects(all) { return STYLE_FLOATS; }
 

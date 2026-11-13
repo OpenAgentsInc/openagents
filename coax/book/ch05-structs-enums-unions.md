@@ -398,7 +398,7 @@ update, or when the values are too large to copy back and forth cheaply.
 
 > Note: The procedures in the native Metaverse home use the first style
 > almost everywhere. `metaverse-engine/move/player.coax` advances the player with
-> `verse_player_advance_among :: (p: Player, frame: f32, ...) -> Player`,
+> `metaverse_player_advance_among :: (p: Player, frame: f32, ...) -> Player`,
 > and the host keeps the returned `Player`. A procedure that hands back the
 > whole new state is easy to test, because the old state is still there to
 > compare against.
@@ -824,7 +824,7 @@ complete by construction, at the cost of treating any new member as "a
 shot". Choose the final `else` with that in mind.
 
 > Note: `pay/wallet.coax` drives a real payment through its states
-> this way. `verse_wallet_step :: (f: Flow, e: Event) -> Flow` is an
+> this way. `metaverse_wallet_step :: (f: Flow, e: Event) -> Flow` is an
 > `if e == Event.quote { ... } else if e == Event.confirm { ... }` chain,
 > and a `#forall state: Pay, e: Event, sends: 0..<2` check walks every state
 > and event pair to prove things like "a payment is never sent twice".

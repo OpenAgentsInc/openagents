@@ -466,8 +466,8 @@ RENDER_PASS_DATA :: [67]RenderCatalogPass.[
   RenderCatalogPass.{entry=RenderEntry.{valid=true,source="apps/openagents-web/gpu/garden.coax",vertex="garden_bg_vs",fragment="garden_bg_fs",wgsl_vertex="bg_vs",wgsl_fragment="bg_fs",binding_set=0},pass=RenderPassId.background,use_first=175,use_count=1},
   RenderCatalogPass.{entry=RenderEntry.{valid=true,source="apps/openagents-web/gpu/garden.coax",vertex="garden_scene_vs",fragment="garden_scene_fs",wgsl_vertex="scene_vs",wgsl_fragment="scene_fs",binding_set=0},pass=RenderPassId.scene,use_first=176,use_count=3},
   RenderCatalogPass.{entry=RenderEntry.{valid=true,source="apps/openagents-web/gpu/garden.coax",vertex="garden_fx_vs",fragment="garden_fx_fs",wgsl_vertex="fx_vs",wgsl_fragment="fx_fs",binding_set=0},pass=RenderPassId.hud,use_first=179,use_count=1},
-  RenderCatalogPass.{entry=RenderEntry.{valid=true,source="apps/openagents-web/gpu/verse.coax",vertex="verse_bg_vs",fragment="verse_bg_fs",wgsl_vertex="bg_vs",wgsl_fragment="bg_fs",binding_set=0},pass=RenderPassId.background,use_first=180,use_count=1},
-  RenderCatalogPass.{entry=RenderEntry.{valid=true,source="apps/openagents-web/gpu/verse.coax",vertex="verse_fx_vs",fragment="verse_fx_fs",wgsl_vertex="fx_vs",wgsl_fragment="fx_fs",binding_set=0},pass=RenderPassId.hud,use_first=181,use_count=3}];
+  RenderCatalogPass.{entry=RenderEntry.{valid=true,source="apps/openagents-web/gpu/verse.coax",vertex="metaverse_bg_vs",fragment="metaverse_bg_fs",wgsl_vertex="bg_vs",wgsl_fragment="bg_fs",binding_set=0},pass=RenderPassId.background,use_first=180,use_count=1},
+  RenderCatalogPass.{entry=RenderEntry.{valid=true,source="apps/openagents-web/gpu/verse.coax",vertex="metaverse_fx_vs",fragment="metaverse_fx_fs",wgsl_vertex="fx_vs",wgsl_fragment="fx_fs",binding_set=0},pass=RenderPassId.hud,use_first=181,use_count=3}];
 
 render_catalog :: (index:int)->RenderCatalog #effects(all) {
   if index<0 || index>=RENDER_CATALOG_COUNT {return RenderCatalog.{};}

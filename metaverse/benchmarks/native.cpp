@@ -54,11 +54,11 @@ static void place(const std::vector<anim::Rigid>&in,coax_t_BenchFrame f,std::vec
 }
 using Clock=std::chrono::steady_clock;
 template<class F>static double measure(F body,uint64_t&count){allocations=0;observe_alloc=true;auto begin=Clock::now();body();auto end=Clock::now();observe_alloc=false;count+=allocations;return std::chrono::duration<double,std::nano>(end-begin).count();}
-static coax_t_BenchStats stats(const std::vector<double>&samples){std::vector<double>scratch(samples.size());auto s=verse_bench_stats({const_cast<double*>(samples.data()),(int64_t)samples.size()},{scratch.data(),(int64_t)scratch.size()});assert(s.ok);return s;}
+static coax_t_BenchStats stats(const std::vector<double>&samples){std::vector<double>scratch(samples.size());auto s=metaverse_bench_stats({const_cast<double*>(samples.data()),(int64_t)samples.size()},{scratch.data(),(int64_t)scratch.size()});assert(s.ok);return s;}
 static void print(const char*name,const std::vector<double>&values,uint64_t allocations){auto s=stats(values);std::printf("\"%s\":{\"count\":%lld,\"median_ns\":%.17g,\"p95_ns\":%.17g,\"mean_ns\":%.17g,\"cv\":%.17g,\"allocations\":%llu,\"samples_ns\":[",name,s.count,s.median,s.p95,s.mean,s.cv,(unsigned long long)allocations);for(size_t i=0;i<values.size();++i)std::printf("%s%.17g",i?",":"",values[i]);std::printf("]}");}
 static void native_stats_cases(){
  double values[2]={1,3},scratch[2]={};
- auto call=[&](int64_t count,int64_t capacity){return verse_bench_stats({values,count},{scratch,capacity});};
+ auto call=[&](int64_t count,int64_t capacity){return metaverse_bench_stats({values,count},{scratch,capacity});};
  assert(call(2,2).ok && call(2,2).cv==.5 && call(2,2).median==2);
  assert(!call(-1,2).ok && !call(0,2).ok && !call(65537,65537).ok && !call(2,1).ok);
  for(double bad:{NAN,INFINITY,-INFINITY}){values[0]=bad;assert(!call(2,2).ok);}
@@ -66,25 +66,25 @@ static void native_stats_cases(){
 int main(int argc,char**argv){
  native_stats_cases();assert(argc==2 || argc==3);int repeats=argc==3?std::atoi(argv[2]):9;assert(repeats>0 && repeats<=100);
  FILE*f=std::fopen(argv[1],"rb");assert(f);std::fseek(f,0,SEEK_END);long length=std::ftell(f);assert(length>0);std::rewind(f);std::vector<uint8_t>b(length);assert(std::fread(b.data(),1,b.size(),f)==b.size());std::fclose(f);
- auto c=verse_cast_open({b.data(),(int64_t)b.size()});assert(c.ok && c.joints==65);auto data=reference(b);
- std::vector<coax_t_Joint>palette(verse_cast_palette(c)),native(c.joints);
- std::vector<float>bodies((size_t)(verse_cast_robots(c)*c.robot_bodies.count*7));int64_t body_count=0;std::vector<anim::Rigid>rigid;rigid.reserve(c.joints);
- auto player=verse_player_place(0,0,0,0);auto animation=coax_t_Anim{};animation.fade_start=-1;
- auto plan=verse_bench_plan();assert(plan.warmup==180 && plan.samples==540);
+ auto c=metaverse_cast_open({b.data(),(int64_t)b.size()});assert(c.ok && c.joints==65);auto data=reference(b);
+ std::vector<coax_t_Joint>palette(metaverse_cast_palette(c)),native(c.joints);
+ std::vector<float>bodies((size_t)(metaverse_cast_robots(c)*c.robot_bodies.count*7));int64_t body_count=0;std::vector<anim::Rigid>rigid;rigid.reserve(c.joints);
+ auto player=metaverse_player_place(0,0,0,0);auto animation=coax_t_Anim{};animation.fade_start=-1;
+ auto plan=metaverse_bench_plan();assert(plan.warmup==180 && plan.samples==540);
  std::vector<double>coax,native_time,robots,movement,clock;size_t samples=(size_t)repeats*plan.samples;
  for(auto*v:{&coax,&native_time,&robots,&movement,&clock})v->reserve(samples);
  double max_error=0;uint64_t c_alloc=0,n_alloc=0,r_alloc=0,p_alloc=0,ignored=0;volatile double sink=0;
  for(int repeat=-1;repeat<repeats;++repeat){
   int frames=(int)(repeat<0?plan.warmup:plan.samples);
-  for(int i=0;i<frames;++i){int frame=repeat<0?i:(int)plan.warmup+repeat*(int)plan.samples+i;auto fixture=verse_bench_frame(frame);if(fixture.dance)animation=verse_cast_dance(animation);
-   animation=verse_cast_update({b.data(),(int64_t)b.size()},c,animation,fixture.act,fixture.rising,fixture.now);auto layers=pose(animation,fixture.now);
+  for(int i=0;i<frames;++i){int frame=repeat<0?i:(int)plan.warmup+repeat*(int)plan.samples+i;auto fixture=metaverse_bench_frame(frame);if(fixture.dance)animation=metaverse_cast_dance(animation);
+   animation=metaverse_cast_update({b.data(),(int64_t)b.size()},c,animation,fixture.act,fixture.rising,fixture.now);auto layers=pose(animation,fixture.now);
    uint64_t ca=0,na=0,ra=0,pa=0;double ct=0,nt=0;
-   auto coax_call=[&]{assert(verse_cast_pose({b.data(),(int64_t)b.size()},c,animation,fixture.now,fixture.x,fixture.y,fixture.z,fixture.face,{palette.data(),(int64_t)palette.size()}));};
+   auto coax_call=[&]{assert(metaverse_cast_pose({b.data(),(int64_t)b.size()},c,animation,fixture.now,fixture.x,fixture.y,fixture.z,fixture.face,{palette.data(),(int64_t)palette.size()}));};
    auto native_call=[&]{anim::evaluateAll(data,0,layers,0,rigid);place(rigid,fixture,native);};
    if((i+repeat)&1){ct=measure(coax_call,ca);nt=measure(native_call,na);}else{nt=measure(native_call,na);ct=measure(coax_call,ca);}
    for(int64_t j=0;j<c.joints;++j)for(int k=0;k<12;++k){double error=std::abs((double)palette[j].m.e[k]-native[j].m.e[k]);assert(std::isfinite(error));max_error=std::max(max_error,error);}
-   auto rt=measure([&]{assert(verse_cast_robots_pose({b.data(),(int64_t)b.size()},c,fixture.now,{palette.data(),(int64_t)palette.size()}));body_count=verse_cast_bodies({b.data(),(int64_t)b.size()},c,{palette.data(),(int64_t)palette.size()},{bodies.data(),(int64_t)bodies.size()});assert(body_count>0);},ra);
-   auto pt=measure([&]{player=verse_player_input(player,0,0,0,fixture.pad_y,fixture.run,fixture.rising,0,0);player=verse_player_advance_among(player,1.f/60.f,{bodies.data(),body_count*7},{nullptr,0});},pa);
+   auto rt=measure([&]{assert(metaverse_cast_robots_pose({b.data(),(int64_t)b.size()},c,fixture.now,{palette.data(),(int64_t)palette.size()}));body_count=metaverse_cast_bodies({b.data(),(int64_t)b.size()},c,{palette.data(),(int64_t)palette.size()},{bodies.data(),(int64_t)bodies.size()});assert(body_count>0);},ra);
+   auto pt=measure([&]{player=metaverse_player_input(player,0,0,0,fixture.pad_y,fixture.run,fixture.rising,0,0);player=metaverse_player_advance_among(player,1.f/60.f,{bodies.data(),body_count*7},{nullptr,0});},pa);
    auto overhead=measure([]{},ignored);sink+=palette[0].m.e[0]+player.pos.x;
    if(repeat>=0){coax.push_back(ct);native_time.push_back(nt);robots.push_back(rt);movement.push_back(pt);clock.push_back(overhead);c_alloc+=ca;n_alloc+=na;r_alloc+=ra;p_alloc+=pa;}
   }

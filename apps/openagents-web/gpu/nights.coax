@@ -14,27 +14,27 @@ nights_ground_active :: (kind:f32,marker:f32,enabled:f32)->bool {return kind>5.5
 // source vertex tints, then normalize its Rec.709 luma without darkening the
 // source floor. Both the sampled texture and this material gain are linear.
 nights_ground_grass_colour :: (sample:V3)->V3 {
- native:=cg_decode(v3(0.36862701177597046f32,0.47843098640441895f32,0.21176500618457794f32));return mul3(sample,scale3(native,1.0f32/verse_style_luma(native.x,native.y,native.z)));
+ native:=cg_decode(v3(0.36862701177597046f32,0.47843098640441895f32,0.21176500618457794f32));return mul3(sample,scale3(native,1.0f32/metaverse_style_luma(native.x,native.y,native.z)));
 }
 #test "Nights ground borrows native grass diffuse while preserving neutral-sample luminance" {
  c:=nights_ground_grass_colour(v3(0.5,0.5,0.5));#assert c.y>c.x && c.x>c.z;
- #assert abs(verse_style_luma(c.x,c.y,c.z)-0.5)<0.00001;
+ #assert abs(metaverse_style_luma(c.x,c.y,c.z)-0.5)<0.00001;
  #assert c.x/0.5f32<0.75 && c.y/0.5f32>1.15 && c.z/0.5f32<0.3;
  #assert nights_ground_grass_colour(v3(0,0,0)).y==0;
 }
 #test "Nights spring material grade is local bounded lighter and preserves flower hue" {
  original:=v3(0.035,0.05,0.012);grass:=nights_spring_green(original,7002);earth:=nights_spring_earth(v3(0.06,0.045,0.02));
- #assert verse_style_luma(grass.x,grass.y,grass.z)>0.075 && grass.y>grass.x && grass.z>original.z;
+ #assert metaverse_style_luma(grass.x,grass.y,grass.z)>0.075 && grass.y>grass.x && grass.z>original.z;
  #assert earth.x>0.14 && earth.y>0.13 && earth.z>0.09;
  #assert nights_flora_active(6,7004) && !nights_flora_active(6,0) && !nights_flora_active(5,7004) && !nights_flora_active(6,7001);
  purple:=v3(0.6,0.2,0.9);flower:=nights_spring_flower(purple);#assert flower.z>flower.x && flower.x>flower.y && flower.z<=1;#assert abs(flower.x/flower.z-purple.x/purple.z)<0.00001;
 }
 nights_flora_active :: (kind:f32,marker:f32)->bool {return kind>5.5f32 && kind<6.5f32 && marker>7001.5f32 && marker<7006.5f32;}
 nights_spring_green :: (sample:V3,marker:f32)->V3 {
- y:=fmax(verse_style_luma(sample.x,sample.y,sample.z),0.002f32);tone:=(ifx marker<7001.5f32 then 0.015f32 else 0.01f32)+0.36f32*sqrt(y);palette:=ifx marker>7003.5f32 then v3(0.72f32,1.20f32,0.35f32) else v3(0.60f32,1.24f32,0.40f32);palette=scale3(palette,1.0f32/verse_style_luma(palette.x,palette.y,palette.z));hue:=mix3(scale3(sample,1.0f32/y),palette,0.40f32);return v3(clampf(hue.x*tone,0,0.85),clampf(hue.y*tone,0,0.85),clampf(hue.z*tone,0,0.85));
+ y:=fmax(metaverse_style_luma(sample.x,sample.y,sample.z),0.002f32);tone:=(ifx marker<7001.5f32 then 0.015f32 else 0.01f32)+0.36f32*sqrt(y);palette:=ifx marker>7003.5f32 then v3(0.72f32,1.20f32,0.35f32) else v3(0.60f32,1.24f32,0.40f32);palette=scale3(palette,1.0f32/metaverse_style_luma(palette.x,palette.y,palette.z));hue:=mix3(scale3(sample,1.0f32/y),palette,0.40f32);return v3(clampf(hue.x*tone,0,0.85),clampf(hue.y*tone,0,0.85),clampf(hue.z*tone,0,0.85));
 }
 nights_spring_earth :: (sample:V3)->V3 {
- y:=fmax(verse_style_luma(sample.x,sample.y,sample.z),0.002f32);tone:=0.05f32+0.45f32*sqrt(y);cream:=v3(1.08f32,1.03f32,0.78f32);cream=scale3(cream,1.0f32/verse_style_luma(cream.x,cream.y,cream.z));return scale3(mix3(scale3(sample,1.0f32/y),cream,0.70f32),tone);
+ y:=fmax(metaverse_style_luma(sample.x,sample.y,sample.z),0.002f32);tone:=0.05f32+0.45f32*sqrt(y);cream:=v3(1.08f32,1.03f32,0.78f32);cream=scale3(cream,1.0f32/metaverse_style_luma(cream.x,cream.y,cream.z));return scale3(mix3(scale3(sample,1.0f32/y),cream,0.70f32),tone);
 }
 nights_spring_flower :: (sample:V3)->V3 {peak:=fmax(sample.x,fmax(sample.y,sample.z));gain:=ifx peak>0.6666667f32 then 1.0f32/peak else 1.5f32;return scale3(sample,gain);}
 #test "Nights spring native grass roots retain depth without shading flowers or fern" {
@@ -62,7 +62,7 @@ nights_canopy_light :: (s:FivelabS,albedo:V3,u:[]f32,shadow:f32)->V4 {
  indirect:=mul3(albedo,scale3(cg_hemisphere(u,n),1.10f32));direct:=cg_irradiance(u,n,nights_canopy_wrap(ndl),0,visibility);
  back:=pow(saturate(dot3(scale3(sun,-1),view)),2.0f32);transmission:=0.18f32*back*(1.0f32-abs(ndl))*visibility;
  colour:=add3(indirect,mul3(albedo,add3(direct,scale3(cg_sun_colour(u),transmission))));colour=cg_atmosphere(u,colour,eye,s.world);
- share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(u,eye,s.world))/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
+ share:=saturate(metaverse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(u,eye,s.world))/fmax(metaverse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
 }
 #test "Nights crown lighting wraps through thin leaves without affecting solid materials" {
  #assert nights_canopy_active(6,7006) && !nights_canopy_active(6,7004) && !nights_canopy_active(5,7006) && !nights_canopy_active(6,0);
@@ -85,7 +85,7 @@ nights_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,sheets:Te
   sky:=mix3(cg_decode(cg_sky(u,normalize3(ray),wg_at3(u,32),u[2])),v3(tex.x,tex.y,tex.z),cg_sky_plate_weight(plate));tex=v4(sky.x,sky.y,sky.z,1);
  }
  if (tex.w<0.35f32) {gpu_demote_helper();}
- graded:=s;if nights_flora_active(s.local.x,s.local.y) {tint:=cg_decode(s.tint);gain:=scale3(tint,1.0f32/fmax(verse_style_luma(tint.x,tint.y,tint.z),0.02f32));albedo:=mul3(v3(tex.x,tex.y,tex.z),gain);albedo=ifx s.local.y>7004.5f32 && s.local.y<7005.5f32 then nights_spring_flower(albedo) else nights_spring_green(albedo,s.local.y);albedo=scale3(albedo,nights_grass_root_shade(s.local.y,s.world.y));tex=v4(albedo.x,albedo.y,albedo.z,tex.w);graded.tint=v3(1,1,1);}
+ graded:=s;if nights_flora_active(s.local.x,s.local.y) {tint:=cg_decode(s.tint);gain:=scale3(tint,1.0f32/fmax(metaverse_style_luma(tint.x,tint.y,tint.z),0.02f32));albedo:=mul3(v3(tex.x,tex.y,tex.z),gain);albedo=ifx s.local.y>7004.5f32 && s.local.y<7005.5f32 then nights_spring_flower(albedo) else nights_spring_green(albedo,s.local.y);albedo=scale3(albedo,nights_grass_root_shade(s.local.y,s.world.y));tex=v4(albedo.x,albedo.y,albedo.z,tex.w);graded.tint=v3(1,1,1);}
  c:V4;
  if canopy {c=nights_canopy_light(graded,v3(tex.x,tex.y,tex.z),u,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}
  else if (s.dye.w>11.5f32) {c=cg_environment_fs(graded,tex,front,u,cg_shadow_visibility(s.world,s.normal,u,shadow_map,shadow_cmp));}

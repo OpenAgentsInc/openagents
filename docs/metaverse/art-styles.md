@@ -72,8 +72,8 @@ Each style is an engine preset: one Coax record in `metaverse/style-preset.coax`
 (`StylePreset`) holding every number this document gives, keyed by time of
 day where it changes (built October 29, as-presets; the block's layout is the
 `SU_*` constants there). A realm reads its preset with
-`verse_style_preset(style, tier)`, evaluates it with
-`verse_style_at(preset, clock)` each frame and copies the result into its
+`metaverse_style_preset(style, tier)`, evaluates it with
+`metaverse_style_at(preset, clock)` each frame and copies the result into its
 uniforms as one block (`STYLE_FLOATS`, 32 vec4f). The shading functions
 (bands, rim, shadow tint, haze, sky, grass wind, foliage normal, tone) are
 Coax in `metaverse/style.coax` (a file of their own, because `coax wgsl` writes
@@ -105,21 +105,21 @@ and light that reads as two or three flat tones per form.
 | Light | The palette's lit colour and its shade colour; the ambient is that one flat shade colour (the same from sky and ground, no hemisphere) |
 | Specular | None: no dab, no sparkle, no Fresnel reflection, no highlight on water |
 | Rim and outline | None. No rim light, no toon outline, no outline pass |
-| Shadows | Flat translucent shapes on the ground: flat all through with a soft rim from 0.7 of the radius out (`verse_style_flat_shadow`), multiplying toward the palette's shadow colour; strength 0.45. No shadow map |
-| Sky | One flat colour, and a soft band of the horizon colour: all of it at the horizon, none 14 degrees up (`verse_style_flat_sky`). The sun or moon a flat disc, no halo; no clouds |
-| Distance | One soft fade into the horizon colour, from 40 m over 80 m to at most half (`verse_style_flat_fade`). No haze layers, no fog clutter |
-| Trim | A thin accent line along some hems and edges (`verse_style_flat_hem`, 0.06 m), where the realm asks: trim, not an outline |
-| Gradient | Now and then a slight one down a tall shape: up to 0.25 darker toward its foot in 4 flat steps with a 4x4 ordered dither where they meet (`verse_style_flat_dither`) |
+| Shadows | Flat translucent shapes on the ground: flat all through with a soft rim from 0.7 of the radius out (`metaverse_style_flat_shadow`), multiplying toward the palette's shadow colour; strength 0.45. No shadow map |
+| Sky | One flat colour, and a soft band of the horizon colour: all of it at the horizon, none 14 degrees up (`metaverse_style_flat_sky`). The sun or moon a flat disc, no halo; no clouds |
+| Distance | One soft fade into the horizon colour, from 40 m over 80 m to at most half (`metaverse_style_flat_fade`). No haze layers, no fog clutter |
+| Trim | A thin accent line along some hems and edges (`metaverse_style_flat_hem`, 0.06 m), where the realm asks: trim, not an outline |
+| Gradient | Now and then a slight one down a tall shape: up to 0.25 darker toward its foot in 4 flat steps with a 4x4 ordered dither where they meet (`metaverse_style_flat_dither`) |
 | Grass | A few short flat tufts (4 a square metre, 2 on a phone, 0.15 to 0.29 m), one flat step darker than their ground; no field of blades |
 | Water | Two flat bands of the palette's water by depth and a flat shore line; no reflection, no sparkle |
 | Post | No tone curve, no saturation or black lift: the palette shows as it is. A little bloom (0.12) on what glows only |
 | Phones | The same look; fewer tufts. Flat is cheaper than painterly: no shadow map, no shafts, no clouds, no noise |
 
-The preset is `verse_style_flat(palette, tier)` in `metaverse/style-preset.coax`
-(`STYLE_FLAT`; `verse_style_preset(STYLE_FLAT, tier)` is the garden's). Its
+The preset is `metaverse_style_flat(palette, tier)` in `metaverse/style-preset.coax`
+(`STYLE_FLAT`; `metaverse_style_preset(STYLE_FLAT, tier)` is the garden's). Its
 spare block slots carry flat's own numbers: `SU_RIM2.w` the hem width,
 `SU_GROUND_AMB.w` the gradient's darkening, `SU_BLOOM.w` its steps. The
-shading functions are `verse_style_flat_*` and `verse_style_bayer` in
+shading functions are `metaverse_style_flat_*` and `metaverse_style_bayer` in
 `metaverse/style.coax`, generated into each flat realm's WGSL with the rest of
 the style block. The checks: `#test "flat: ..."` in both files pin the three
 hard tones (and that the generated band function is the preset's own edges),
@@ -132,7 +132,7 @@ Each flat realm has its own palette, 20 roles (`FLAT_*` in
 `metaverse/style.coax`: sky, horizon, ground and a second ground, path, the lit,
 shade and shadow light, accent, dark, light, two foliage colours, water,
 wood, warm, mint, rock, lavender, sage), written once in sRGB in
-`verse_style_flat_srgb` and read by the preset and by the shaders alike. A
+`metaverse_style_flat_srgb` and read by the preset and by the shaders alike. A
 realm keeps its shapes; its palette decides their colours. How it maps a
 shape to the palette is the realm's: Hecate's Cemetery gives most shapes their
 own pastel and maps the rest by material (iron to indigo), Fairy Forest by drawing every
@@ -155,7 +155,7 @@ stage (0.8; half for what glows and for her skin and clothes).
   orange (orange is Bitcoin's), pale mint, rose-lavender, a dusty rose for the
   flowers, lavender-grey stone, a soft lavender-blue shade and shadow, and a
   crisp white edge. Dawn and dusk warm the palette and night takes it to a
-  blue dusk (`verse_style_flat_time`); the faded world is a pale lilac-grey
+  blue dusk (`metaverse_style_flat_time`); the faded world is a pale lilac-grey
   of the same lightness. It draws no grass. Its lakes are flat water in three
   tones by the depth of the bed under them (deep, open, and two light bands
   along the shore) with slow broken ripple lines drifting across the open
@@ -198,9 +198,9 @@ in). Shared in `metaverse/style.coax` for any flat realm that asks for it
 
 | | Facets |
 | --- | --- |
-| Faces | Each face one tone, from the face's own normal (the screen derivatives of its position), between the palette's shade and lit: `verse_style_facet_tone`, half Lambert eased from 0.18 over 0.7 |
-| Round shapes | Coarse: a sphere eight faces round and five down, a cylinder or cone eight sides (the rest of their vertex grid collapsed, so the draw counts stay). Crowns, stones and plain shapes have each corner nudged in or out by up to 16 percent of the radius (`verse_style_facet_jitter`; the seam and the poles share a value, so no crack opens); characters keep even faces |
-| Edges | A crisp light line, one pixel, along a shape's outline where it stands in front of something clearly further (4 percent and 0.25 m) or the sky (`verse_style_facet_edge`, in the post pass from the distance the scene writes to its second target). The ground and the water ask for none; it fades out from 60 to 140 m and to 0.4 by night |
+| Faces | Each face one tone, from the face's own normal (the screen derivatives of its position), between the palette's shade and lit: `metaverse_style_facet_tone`, half Lambert eased from 0.18 over 0.7 |
+| Round shapes | Coarse: a sphere eight faces round and five down, a cylinder or cone eight sides (the rest of their vertex grid collapsed, so the draw counts stay). Crowns, stones and plain shapes have each corner nudged in or out by up to 16 percent of the radius (`metaverse_style_facet_jitter`; the seam and the poles share a value, so no crack opens); characters keep even faces |
+| Edges | A crisp light line, one pixel, along a shape's outline where it stands in front of something clearly further (4 percent and 0.25 m) or the sky (`metaverse_style_facet_edge`, in the post pass from the distance the scene writes to its second target). The ground and the water ask for none; it fades out from 60 to 140 m and to 0.4 by night |
 | Ground | Its own faces show (each cell's two triangles their own tone) |
 | Cost | Fewer triangles than before; four more texture loads a pixel in the post pass. Fairy Forest on a phone (390x844 at 3x, headless): 1.06 ms GPU p50 against 1.33 before |
 
@@ -215,15 +215,15 @@ little softer and more painted than the crisp foreground.
 
 | | Anime |
 | --- | --- |
-| Shading | Cel: half Lambert (N.L folded to 0..1) under the cast shadow's light, cut into **two tones** (shadow under the edge, lit over it) with a hard edge antialiased over a few thousandths, never a gradient (`verse_style_anime_cel`). An optional third tone, a sharp **highlight spot** where N.H passes a cut (hair sheen, metal, an eye's glint: `verse_style_anime_spot`). Characters' edge eases down 0.12 where they face the eye, so a face toward the camera stays lit (`verse_style_anime_cel_char`) |
-| Shadow tone | The lit tone at a set share of its value (0.45 to 0.62 by variant), times a cool **blue-violet tint** over the tint's own luminance (`verse_style_anime_shadow`), then put back to exactly that share of the lit luminance (`verse_style_keep_value`): cooler, never grey or black, and the same value step on every albedo |
-| Ink lines | A **coloured** line (the albedo darkened to 0.22 to 0.45 of itself, never pure black: `verse_style_anime_ink_colour`) along silhouettes (a depth gap past 4 percent of the distance and 0.15 m) and creases (normals turning past 40 degrees) from screen-space depth and normal differences (`verse_style_anime_ink_edge`). Its width is the variant's (1.5 to 3 px) near and thins to a quarter of it by the variant's far distance (70 to 150 m: `verse_style_anime_ink_width`); under a pixel it covers the pixel in part (`verse_style_anime_ink_cover`) |
-| Rim | A thin, hard bright rim where N.V falls under 0.24 (0.28 for action), more on the key light's side (`verse_style_anime_rim`), on characters and on the world's near shapes against the sky |
-| Sky | A vivid gradient, the deep zenith brought down most of the sky (power 0.4 to 0.6) to a pale horizon (`verse_style_anime_sky`): deep blue over pale cyan by day; orange, pink and violet at dawn and dusk, with a warm band low toward the sun (`verse_style_anime_glow`); deep indigo with stars at night (`verse_style_anime_star`) |
-| Clouds | Big flat-shaded cumulus: the dome layer cut with a crisp edge (`verse_style_cloud_cover` at cut 0.545..0.555) and a towering bank over the horizon (`verse_style_anime_cumulus_top`, `verse_style_anime_cumulus`), each shaded in **two or three flat tones** with hard edges (`verse_style_anime_cloud_tone`), lit on the sun's side and high in each head (`verse_style_anime_cumulus_lit`); the shadow tone is the top's colour drawn toward the zenith's, so it is the sky's blue, never grey (`verse_style_anime_cloud_colour`) |
-| Distance | Aerial perspective toward the pale horizon colour, no height term, a painted backdrop rather than fog (`verse_style_anime_aerial`); far off the cel edge softens, its antialias up to 9 times wider (`verse_style_anime_far_aa`), and the ink thins. The foreground stays crisp |
-| Light and post | Clean and saturated (1.15 to 1.25), shadows lifted (0.01 to 0.025), a tone curve; bloom on lights and spells, everything emissive blooming fully (`verse_style_anime_glow_share`); lens sparkles (`verse_style_anime_sparkle`) and light streaks (`verse_style_anime_streak`) on bright points; a gentle vignette (`verse_style_anime_vignette`); light shafts as painterly's |
-| Motion | Speed lines for action and impact frames: thin spokes round a clear middle, redrawn every twelfth of a second (`verse_style_anime_speed_lines`), drawn by the realm when it wants them. Drifting petals, sparkles and embers are the realm's particles |
+| Shading | Cel: half Lambert (N.L folded to 0..1) under the cast shadow's light, cut into **two tones** (shadow under the edge, lit over it) with a hard edge antialiased over a few thousandths, never a gradient (`metaverse_style_anime_cel`). An optional third tone, a sharp **highlight spot** where N.H passes a cut (hair sheen, metal, an eye's glint: `metaverse_style_anime_spot`). Characters' edge eases down 0.12 where they face the eye, so a face toward the camera stays lit (`metaverse_style_anime_cel_char`) |
+| Shadow tone | The lit tone at a set share of its value (0.45 to 0.62 by variant), times a cool **blue-violet tint** over the tint's own luminance (`metaverse_style_anime_shadow`), then put back to exactly that share of the lit luminance (`metaverse_style_keep_value`): cooler, never grey or black, and the same value step on every albedo |
+| Ink lines | A **coloured** line (the albedo darkened to 0.22 to 0.45 of itself, never pure black: `metaverse_style_anime_ink_colour`) along silhouettes (a depth gap past 4 percent of the distance and 0.15 m) and creases (normals turning past 40 degrees) from screen-space depth and normal differences (`verse_style_anime_ink_edge`). Its width is the variant's (1.5 to 3 px) near and thins to a quarter of it by the variant's far distance (70 to 150 m: `metaverse_style_anime_ink_width`); under a pixel it covers the pixel in part (`metaverse_style_anime_ink_cover`) |
+| Rim | A thin, hard bright rim where N.V falls under 0.24 (0.28 for action), more on the key light's side (`metaverse_style_anime_rim`), on characters and on the world's near shapes against the sky |
+| Sky | A vivid gradient, the deep zenith brought down most of the sky (power 0.4 to 0.6) to a pale horizon (`metaverse_style_anime_sky`): deep blue over pale cyan by day; orange, pink and violet at dawn and dusk, with a warm band low toward the sun (`metaverse_style_anime_glow`); deep indigo with stars at night (`metaverse_style_anime_star`) |
+| Clouds | Big flat-shaded cumulus: the dome layer cut with a crisp edge (`metaverse_style_cloud_cover` at cut 0.545..0.555) and a towering bank over the horizon (`metaverse_style_anime_cumulus_top`, `metaverse_style_anime_cumulus`), each shaded in **two or three flat tones** with hard edges (`metaverse_style_anime_cloud_tone`), lit on the sun's side and high in each head (`metaverse_style_anime_cumulus_lit`); the shadow tone is the top's colour drawn toward the zenith's, so it is the sky's blue, never grey (`metaverse_style_anime_cloud_colour`) |
+| Distance | Aerial perspective toward the pale horizon colour, no height term, a painted backdrop rather than fog (`metaverse_style_anime_aerial`); far off the cel edge softens, its antialias up to 9 times wider (`metaverse_style_anime_far_aa`), and the ink thins. The foreground stays crisp |
+| Light and post | Clean and saturated (1.15 to 1.25), shadows lifted (0.01 to 0.025), a tone curve; bloom on lights and spells, everything emissive blooming fully (`metaverse_style_anime_glow_share`); lens sparkles (`metaverse_style_anime_sparkle`) and light streaks (`metaverse_style_anime_streak`) on bright points; a gentle vignette (`metaverse_style_anime_vignette`); light shafts as painterly's |
+| Motion | Speed lines for action and impact frames: thin spokes round a clear middle, redrawn every twelfth of a second (`metaverse_style_anime_speed_lines`), drawn by the realm when it wants them. Drifting petals, sparkles and embers are the realm's particles |
 | Shadows | A real shadow map, crisp: 4 taps at 1 texel (2048, 1024 on a phone); the cel band does the tinting, so no cooling pass |
 | Grass and water | Lush grass in the pastoral (16 a square metre, 6 on a phone), a little elsewhere, none in the city; no normal tilt (the cel band reads the light). Water in hard bands with sparkles |
 | Phones | The same look: the same bands, tint, ink, rim, sky and tone. A smaller shadow map, one cloud octave, half the shafts, less grass, 0.8 of the bloom |
@@ -236,7 +236,7 @@ One preset each, the same functions; a realm or a zone picks one.
 | --- | --- | --- | --- | --- |
 | What | a bright summer day: painted backgrounds, big clouds, lush greens (a countryside film) | battle anime: harder contrast, thicker lines, strong rims, glowing spells, speed lines | magic hour all day: golden-pink sky, long shadows, sentimental | a night city all day: cyan and magenta neon, wet reflective ground |
 | Time | follows the clock (noon day, dusk, night) | follows the clock | the sun held at 8 degrees at every hour | the sun never up: the moon keys, stars out, at every hour |
-| Seen at (`verse_style_anime_home`) | 0.5 (noon) | 0.0 (night) | 0.75 | 0.0 |
+| Seen at (`metaverse_style_anime_home`) | 0.5 (noon) | 0.0 (night) | 0.75 | 0.0 |
 | Cel edge, antialias | 0.46, 0.008 | 0.52, 0.005 | 0.50, 0.008 | 0.50, 0.006 |
 | Shadow value share | 0.62 | 0.45 | 0.55 | 0.50 |
 | Shadow tint (at its home) | (0.62, 0.66, 1.00) | (0.45, 0.45, 1.00) | (0.62, 0.48, 0.92) | (0.52, 0.38, 1.00) |
@@ -277,27 +277,27 @@ zone may name its own variant; one without takes the realm's, else pastoral:
   The facts (message 600) carry `variant=` and `zone.<id>.variant=`; a URL's
   `?variant=NAME` sets `variant=` for shots, the way `?clock=` pins the clock.
 - The module turns the name into its preset:
-  `verse_style_anime(verse_style_anime_variant(name), tier)`, and may pin its
-  clock to `verse_style_anime_home(variant)` for a hero still.
+  `metaverse_style_anime(metaverse_style_anime_variant(name), tier)`, and may pin its
+  clock to `metaverse_style_anime_home(variant)` for a hero still.
 
 ### The API
 
 `metaverse/style-preset.coax`: `STYLE_ANIME` (4); `ANIME_PASTORAL` (0),
 `ANIME_ACTION` (1), `ANIME_DUSK` (2), `ANIME_NEON` (3), `ANIME_VARIANTS` (4)
-and `ANIME_VARIANT_NAME`; `verse_style_anime(variant, tier) -> StylePreset`
-(not ok, variant -1, for an unknown variant); `verse_style_preset(STYLE_ANIME,
-tier)` is pastoral; `verse_style_anime_variant(name) -> int` (-1 for none);
-`verse_style_anime_home(variant) -> f32`. `StylePreset` gains `variant`,
+and `ANIME_VARIANT_NAME`; `metaverse_style_anime(variant, tier) -> StylePreset`
+(not ok, variant -1, for an unknown variant); `metaverse_style_preset(STYLE_ANIME,
+tier)` is pastoral; `metaverse_style_anime_variant(name) -> int` (-1 for none);
+`metaverse_style_anime_home(variant) -> f32`. `StylePreset` gains `variant`,
 `ink_width`, `ink_dark`, `ink_far` and `vignette` (-1 and 0 in the other
-styles). `verse_style_at` fills the usual block, and anime's own numbers go
+styles). `metaverse_style_at` fills the usual block, and anime's own numbers go
 in the slots flat uses for its own (each `SU_*` comment names them):
 
 | Slot | Anime |
 | --- | --- |
-| `SU_BANDS` | the cel edge twice (so `verse_style_bands` is the two-tone band), its antialias, the shadow tone's share of the lit value |
+| `SU_BANDS` | the cel edge twice (so `metaverse_style_bands` is the two-tone band), its antialias, the shadow tone's share of the lit value |
 | `SU_BANDS2` | characters' edge and antialias, the spot's N.H cut and strength |
 | `SU_RIM2` | character rim strength, N.V where the rim starts and where it is full, the ink width near (px) |
-| `SU_TINT` | the shadow tint (its hue: `verse_style_anime_shadow`), blob shadow strength |
+| `SU_TINT` | the shadow tint (its hue: `metaverse_style_anime_shadow`), blob shadow strength |
 | `SU_GROUND_AMB.w` | the ink's share of its albedo |
 | `SU_BLOOM.w` | the distance (m) the ink thins to a quarter by |
 | `SU_HAZE`, `SU_HAZE_COLOUR` | the aerial fade (start, density, cap) toward its pale colour; `.w` the vignette's strength |
@@ -306,12 +306,12 @@ in the slots flat uses for its own (each `SU_*` comment names them):
 | `SU_CLOUD_TOP` | the clouds' lit top, `.w` how far their shadow tone goes to the zenith's colour |
 | `SU_STYLE.x` | the ink's opacity (1) |
 
-`metaverse/style.coax`: the functions above (`verse_style_anime_*`, scalar f32
+`metaverse/style.coax`: the functions above (`metaverse_style_anime_*`, scalar f32
 in the subset `coax wgsl` writes; their parameters are `an_`-prefixed as
 flat's are `fl_`) and the anime palette, `ANIME_*` slots (grass, grass2,
 foliage, stone, roof, wood, path, water, skin, hair, coat, banner, gold,
 spell, spell2, fire, neon cyan, neon magenta, asphalt, guardian) in
-`verse_style_anime_srgb(slot, ch)` and, linear, `verse_style_anime_colour`:
+`metaverse_style_anime_srgb(slot, ch)` and, linear, `metaverse_style_anime_colour`:
 clean saturated albedos shared by every variant, whose light makes the day,
 the dusk and the night. A realm emits them into its WGSL by loading
 `metaverse/style.coax` in its Coax (`apps/openagents-web/gpu/<module>.coax`).
@@ -392,7 +392,7 @@ colour += rim * rim_colour
 - Not on the ground: terrain has no silhouette, and a rim on it lights the
   whole grazing meadow (at night a silver sheen between the grass blades).
 - It is a light term, so it fogs with the surface and never draws over the sky.
-- A realm may draw with no outlines at all: `verse_style_no_outlines`
+- A realm may draw with no outlines at all: `metaverse_style_no_outlines`
   (`metaverse/style-preset.coax`) sets the rim strengths and `outline_max` to 0
   on every key and both tiers. Everglade draws so since October 29 (the
   owner: "remove the toon outlines from everglade"): the bright line the
@@ -409,7 +409,7 @@ colour += rim * rim_colour
   shapes with `caster_vs` (`coaxial_caster_vertices`/`_instances`) and reads
   the map in `bg_fs`. The map covers the eye's near 60 m (40 m on a phone),
   its middle snapped to whole texels, its depth twice the reach either way
-  (`verse_style_shadow_reach`, `_snap`, `_across`, `_depth`, `_tap`).
+  (`metaverse_style_shadow_reach`, `_snap`, `_across`, `_depth`, `_tap`).
 - **The rim is the key's light**: a cast shadow takes it too (the rim term
   is multiplied by the shadow map's term).
 - **Blob shadows stay** under movers (the player, pets, NPCs) as contact
@@ -432,8 +432,8 @@ colour += rim * rim_colour
   A multiply, not a mix: mixing a warm colour toward blue passes through
   grey, while this turns olive ground teal and brown ground slate, still
   ground, never grey or black. `cool` is the preset's (`SU_SHADOW.w`, 1.5 for
-  painterly, 0 for lowpoly), in `metaverse/style.coax` `verse_style_cool` and
-  `verse_style_keep_value`.
+  painterly, 0 for lowpoly), in `metaverse/style.coax` `metaverse_style_cool` and
+  `metaverse_style_keep_value`.
 - **Ambient** is a hemisphere, sky colour above and a warm bounce below:
   by day sky (0.55, 0.66, 0.84) and ground (0.45, 0.40, 0.30), at 0.55 of the
   key; at night sky (0.14, 0.18, 0.34) and ground (0.06, 0.06, 0.08).
@@ -468,7 +468,7 @@ The haze is coloured, never grey or white: where it is thin (the middle
 distance) its hue leans teal, and it turns to `haze_colour`'s blue as it
 thickens toward its cap, so the near world stays crisp and saturated, the
 middle distance goes teal and the far ridges blue, as Breath of the Wild's
-valleys do (`metaverse/style.coax` `verse_style_haze_hue`, added October 29).
+valleys do (`metaverse/style.coax` `metaverse_style_haze_hue`, added October 29).
 
 At 40 m by day the haze is 0.36, at 100 m 0.74 (comparison round 3: from 0.58, as the
 references step their middle distance back), and it caps at 0.88 from about 160 m so
@@ -539,7 +539,7 @@ the sky without a seam.
   numbers here, 0.22 and 0.10, didn't read), is added to the light in the key
   light's in-haze colour times its strength. Shafts are full while the light is
   in the frame and fade out over 0.35 of the frame past its edge
-  (`verse_style_shaft_source`, `_fade`, `_tap`, `_total`, `verse_style_shaft`).
+  (`metaverse_style_shaft_source`, `_fade`, `_tap`, `_total`, `metaverse_style_shaft`).
   The fixture's `?sun=AZ&sunup=EL` (degrees) puts the sun behind its tree for
   the golden `fixture-painterly-shafts`; its post pass costs 0.17 ms more with
   the sun in view at 1440×900 on an M-series Mac.
@@ -565,7 +565,7 @@ the sky without a seam.
   leaf noise, fewer through its thick middle than at its edge), so the sky
   shows through and the light shafts stream through as streaks.
 - **Built** (October 29, as-blob-foliage): `metaverse/style.coax` holds
-  `verse_style_canopy_axis` (an ellipsoid's gradient, a sphere's when the half
+  `metaverse_style_canopy_axis` (an ellipsoid's gradient, a sphere's when the half
   sizes match), `_canopy_normal` (the 0.85 mix), `_canopy_sway` (0.05 m at
   the top, by the grass's wind) and `_canopy_open` (the gaps); the preset's
   `SU_FOLIAGE` row carries the mix, the sway and the gap share.
@@ -605,7 +605,7 @@ the sky without a seam.
   phone's. If the realm's frame budget is missed, the phone tier halves the
   density before the radius.
 - **Built** (October 29, as-wind-grass): `metaverse/style.coax` holds the wind
-  (`verse_style_wind`, `_gust`, `_bend`, shared with the foliage's sway), the
+  (`metaverse_style_wind`, `_gust`, `_bend`, shared with the foliage's sway), the
   blade numbers (`_blade_height`, `_grass_fade`, `_grass_blades`), the mask
   (`_grass_clear`: none on a masked shape, all 0.25 m clear of it;
   `_segment` for a capsule or a path), the parting (`_part`), the tilt, the
@@ -707,15 +707,15 @@ ones. The physics (W1), the mesh and the swimmer don't change, only the look:
 
 ### 13. Light through the day
 
-`verse_style_at(preset, clock)` interpolates the keys linearly in the clock
+`metaverse_style_at(preset, clock)` interpolates the keys linearly in the clock
 (0 midnight, 0.25 dawn, 0.5 noon, 0.75 dusk). The sun's elevation follows
 the clock (−20° at midnight to 60° at noon on the preset's azimuth), and its
 azimuth swings a quarter turn either side of it, so it rises on one side and
-sets on the other. `verse_style_clock` reads the page's facts (`clock`,
-`now`, `day`) and `verse_style_clock_at` runs it: a `cycle` day is 48 real
+sets on the other. `metaverse_style_clock` reads the page's facts (`clock`,
+`now`, `day`) and `metaverse_style_clock_at` runs it: a `cycle` day is 48 real
 minutes and the same for every visitor (it counts from 1970), `real` is the
 visitor's local time, and a realm with its own moon puts it in with
-`verse_style_own_moon`. Below
+`metaverse_style_own_moon`. Below
 −6° the moon is the key, with key strength 0.16 and its own colour (0.62,
 0.70, 0.95). Key colours: by day (1.00, 0.95, 0.85) at strength 1.0, and at
 dusk or dawn (1.00, 0.66, 0.40) at 0.85.
@@ -728,7 +728,7 @@ starts at 45 m, so the near and middle distance stay clear. The haze itself is
 cool, a blue-violet (comparison round 6, below): the warm light falls on what
 is near and the distance steps back violet, warm only toward the sun.
 A surface's saturation is also capped from below
-(`verse_style_chroma_gain`): the shadow tint and the light may take it down
+(`metaverse_style_chroma_gain`): the shadow tint and the light may take it down
 to no less than 0.7 of its albedo's saturation.
 
 Night was made truly dark the same day (the owner: "It shouldn't be that
@@ -750,7 +750,7 @@ The preset gives colours and strengths, and the realm gives where the light is.
 
 ### 14. The phone tier
 
-`verse_style_preset(style, PHONE)` (a coarse pointer, or a canvas under
+`metaverse_style_preset(style, PHONE)` (a coarse pointer, or a canvas under
 600 css px wide):
 
 | | desktop | phone |
@@ -960,7 +960,7 @@ and torches.
 **Built** (October 29, eg-paint-foliage): Everglade grows the grass of section
 8 round the eye once the pack is in (not from the map): the far field (24 a
 m² out to 32 m, 8 out to 18 on a phone) and a near ring on top of it (32 more
-a m² within 7 m, 24 within 6 m on a phone, `verse_style_near_*`), the near
+a m² within 7 m, 24 within 6 m on a phone, `metaverse_style_near_*`), the near
 blades widening toward the eye to 2.4 times at it, so the ground under you
 reads as thick grass as in another.jpg, not single blades. No grass on the
 streets and trails, the commons, the market and the forecourt, the river, or

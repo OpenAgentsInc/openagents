@@ -47,7 +47,7 @@
 #include "RenderIdentity.h"
 #endif
 #endif
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
 #include "render-realm.h"
 #include "linux-window-session.h"
 #else
@@ -120,7 +120,7 @@ static int to_text_rect(void *,float[4]);
 static const char *image_request_observer;
 extern int32_t guard_http(cx_face_addr,uint32_t,cx_face_addr,uint32_t,uint32_t,int64_t);
 static volatile int touched;
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
 static int64_t recovery_observed[23];
 #endif
 // Optional native shell effects; ordinary realms keep the existing defaults.
@@ -239,7 +239,7 @@ bool realm_key_up(void *state, int key) { (void)state; touched = 1; rh_key(&H,ke
 
 // The spec's files that are the realm's: its uniforms, stores and particles (with their
 // capacities, so the buffers hold what they grow to) and the pack's indices.
-#ifndef AETHYR_RENDER_TYPED
+#ifndef ENGINE_RENDER_TYPED
 static const void *file(void *user, const char *name, size_t *size, size_t *cap) {
   (void)user;
   if (!strcmp(name, "u.bin")) { *size = *cap = (size_t)H.uniform_floats * 4; return rh_ptr(H.uniforms); }
@@ -273,7 +273,7 @@ static Mice mice;
 static int cursor;
 static Vkp *window_p;          // the window's presenter (--window): its size, to scale the pointer
 static float draw_w, draw_h;
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
 static int64_t session_observed[89];
 __attribute__((weak)) int32_t coaxial_field_probe(cx_face_addr,int32_t);
 __attribute__((weak)) int64_t rhn_socket_queue_info(int32_t);
@@ -306,7 +306,7 @@ static void os_requests(void) {
   FILE *f = fopen(path, "a");
   if (f) { if (a >= 1000) fprintf(f, "talk %d\n", (int)(a - 1000)); else fprintf(f, "agent %d\n", (int)a); fclose(f); }
   // show where it opens: the desk's screen in the world, unless the desk already shows
-  if (desk.mode == PANEL_CLOSED) desk.mode = verse_panel_next(desk.mode, 66);
+  if (desk.mode == PANEL_CLOSED) desk.mode = metaverse_panel_next(desk.mode, 66);
   fprintf(stderr, "vk-realm: agent %d's transcript asked for\n", (int)a);
 }
 static float panel_draw_w, panel_draw_h;
@@ -372,7 +372,7 @@ static uint32_t with_cursor(uint32_t n) {
 }
 static uint32_t produce_frame(float width,float height,float scale,float dt){
   producer_calls++;
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
   // Preserve the producer's requested count for Coax admission. The legacy
   // rh_frame helper clips it and is retained only by the legacy spec path.
   return coaxial_frame(H.state,H.vertices,H.uniforms,width,height,scale,dt,0);
@@ -382,7 +382,7 @@ static uint32_t produce_frame(float width,float height,float scale,float dt){
 }
 
 static uint32_t hud_vertices;   // the last frame's own vertices (rh_frame's count)
-#ifndef AETHYR_RENDER_TYPED
+#ifndef ENGINE_RENDER_TYPED
 typedef struct { VkcBuffer *buf; uint32_t version; size_t cap; } Store;
 static Store stores[4];
 static VkcBuffer *uniforms, *puffs, *hud;
@@ -493,7 +493,7 @@ static void press_keys(const char *keys, int frame) {
   }
 }
 
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
 // Diagnostic physical effects only. The Coax observer admits these raw facts;
 // it also verifies the complete SDK/product source fence outside this process.
 static void frame_image(RhgRealm *s){if(!rh_http_image_due())return;size_t bytes=0;uint8_t *image=rhgr_jpeg(s,&bytes);rh_http_image_ready(image,bytes);if(image_request_observer){FILE *f=fopen(image_request_observer,"wb");int64_t row[4]={(int64_t)producer_calls,(int64_t)bytes,rh_http_image_due(),image!=NULL};if(f){fwrite(row,sizeof row,1,f);fclose(f);}}free(image);}
@@ -567,7 +567,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--shot")) shot = val, i++;
     else if (!strcmp(a, "--shot-at")) shot_at = atof(val), i++;
     else if (!strcmp(a, "--headless")) headless = atoi(val), i++;
-    else if (!strcmp(a, "--stats-frames")) sample_capacity = (int)verse_panel_sample_capacity(atoi(val)), i++;
+    else if (!strcmp(a, "--stats-frames")) sample_capacity = (int)metaverse_panel_sample_capacity(atoi(val)), i++;
     else if (!strcmp(a, "--out")) out = val, i++;
     else if (!strcmp(a, "--raw-out")) raw_out = val, i++;
     else if (!strcmp(a, "--fps")) fps = atof(val), i++;
@@ -617,7 +617,7 @@ int main(int argc, char **argv) {
   if(replay_path&&rh_replay_open(replay_path)){fprintf(stderr,"vk-realm: refused room replay\n");return 1;}
   if(benchmark_path){benchmark_file=fopen(benchmark_path,"w");if(!benchmark_file)return 1;fprintf(benchmark_file,"{\"schema\":\"everglade.native-benchmark.v1\",\"rowColumns\":[\"replay_seconds\",\"frame_interval_ms\",\"controller_river_wall_ms\",\"scene_hud_wall_ms\",\"tail_wall_ms\",\"pre_submit_wall_ms\",\"gpu_span_ms\",\"input_to_gpu_complete_ms\",\"host_encode_cpu_ms\",\"frame_thread_cpu_ms\"],\"rows\":[");if(coaxial_frame_parts)coaxial_frame_parts(H.state,-1);}
   rh_page(&H, page);
-#ifndef AETHYR_RENDER_TYPED
+#ifndef ENGINE_RENDER_TYPED
   if (rh_pack(&H, pack)) return 1;
 #else
   // The compiled Coax asset profile selects the typed route's staged pack.
@@ -659,9 +659,9 @@ int main(int argc, char **argv) {
     sizes[nextra++] = (uint32_t)strtoul(p, (char **)&p, 10);
     if (*p == ',') p++;
   }
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
   if(chdir(dir)){fprintf(stderr,"vk-realm: no directory %s\n",dir);return 1;}
-  char asset_error[256];if(!rhgr_deliver(&H,AETHYR_RENDER_PROFILE_ID,asset_error,sizeof asset_error)){fprintf(stderr,"vk-realm: %s\n",asset_error);return 1;}
+  char asset_error[256];if(!rhgr_deliver(&H,ENGINE_RENDER_PROFILE_ID,asset_error,sizeof asset_error)){fprintf(stderr,"vk-realm: %s\n",asset_error);return 1;}
 #else
   rh_deliver(&H, nextra, sizes);
 #endif
@@ -669,7 +669,7 @@ int main(int argc, char **argv) {
   if(rh_host_version()==1&&(!headless||headless_audio)&&rh_audio_enable(&H,audio_muted)<0)fprintf(stderr,"vk-realm: audio device or bank admission unavailable\n");
   // one frame so the stores exist at their sizes before the spec's buffers are made
   if(rh_host_version()!=1)hud_vertices = produce_frame(320,180,scale,1.0f/60);
-#ifndef AETHYR_RENDER_TYPED
+#ifndef ENGINE_RENDER_TYPED
   if (chdir(dir)) { fprintf(stderr, "vk-realm: no directory %s\n", dir); return 1; }
 #endif
 
@@ -696,12 +696,12 @@ int main(int argc, char **argv) {
     if (!w) { w = p.w; h = p.h; }
   }
   double t_open = now_s();
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
   if(!w)w=320;if(!h)h=180;char render_error[256];
-  RhgRealm *s=rhgr_open(&v,&H,AETHYR_RENDER_PROFILE_ID,AETHYR_RENDER_PACKAGE_FILE,render_error,sizeof render_error);
+  RhgRealm *s=rhgr_open(&v,&H,ENGINE_RENDER_PROFILE_ID,ENGINE_RENDER_PACKAGE_FILE,render_error,sizeof render_error);
   if(!s){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}
   int nlast=1;VksImage *typed_last[1]={NULL};VksImage **last=typed_last;
-  fprintf(stderr,"vk-realm: canonical profile%lld at %ux%u, package made in %.0f ms\n",(long long)AETHYR_RENDER_PROFILE_ID,w,h,(now_s()-t_open)*1000);
+  fprintf(stderr,"vk-realm: canonical profile%lld at %ux%u, package made in %.0f ms\n",(long long)ENGINE_RENDER_PROFILE_ID,w,h,(now_s()-t_open)*1000);
 #else
   VkSpecFiles files = {file, NULL, w, h};
   VkSpec *s = vk_spec_open(&v, "spec.txt", &files);
@@ -725,7 +725,7 @@ int main(int argc, char **argv) {
 #endif
 
   static double stepped[MAX_FRAMES], took[MAX_FRAMES], presented[MAX_FRAMES];
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
   if(benchmark_file){fprintf(stderr,"vk-realm: benchmark timestamps require the legacy pass host\n");return 2;}
 #endif
   if(benchmark_file&&benchmark_timestamps){VkQueryPoolCreateInfo q={.sType=VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,.queryType=VK_QUERY_TYPE_TIMESTAMP,.queryCount=2};if(vkCreateQueryPool(v.dev,&q,NULL,&benchmark_queries)!=VK_SUCCESS)return 1;}
@@ -783,7 +783,7 @@ int main(int argc, char **argv) {
         if (t < film_at) t = film_at;
         dt = (float)((double)(t - film_at) * 1e-9); film_at = t;
       }
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
       if(!rhgr_prepare(s,w,h,COAX_RenderTextureFormat_rgba8,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}
 #endif
       hud_vertices = produce_frame((float)w,(float)h,scale,dt);
@@ -798,13 +798,13 @@ int main(int argc, char **argv) {
           fprintf(stderr, "vk-realm: --film-view %d is not a view-projection in the realm's %u uniforms\n", film_view, (unsigned)H.uniform_floats); return 1;
         }
       }
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
       if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_graph(s);frame_image(s);rhgr_deliver_media(s);
 #else
       update(s);
 #endif
       rh_after(&H, net_dir != NULL);
-#ifndef AETHYR_RENDER_TYPED
+#ifndef ENGINE_RENDER_TYPED
       if (film_acc && film_in) vks_submit(&v, record, s);
 #endif
       if (film_acc && film_in) {
@@ -828,7 +828,7 @@ int main(int argc, char **argv) {
       }
       if (go && went_to(go)) { why = "it went to another realm"; travelled = 1; frames++; break; }
       double t1 = now_s();
-#ifndef AETHYR_RENDER_TYPED
+#ifndef ENGINE_RENDER_TYPED
       if (!(film_acc && film_in)) vks_submit(&v, record, s);
 #endif
       stepped[frames] = t1 - t0;
@@ -860,7 +860,7 @@ int main(int argc, char **argv) {
     }
     free(film_raw); free(film_acc);
     if (!travelled) why = "it drew its frames";
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
     if(host_recovery){if(!world_replacement(s,&v,w,h,scale,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: replacement failed: %s\n",render_error);return 1;}last[0]=rhgr_graph(s);}
 #endif
     if(raw_out){
@@ -900,24 +900,24 @@ int main(int argc, char **argv) {
       if (desk_size) sscanf(desk_size, "%ux%u", &ddw, &ddh);
       if (!vkdesk_open(&v, &desk, desk_dir, ddw, ddh)) {
         // a start in a mode is the toggle's own key pressed once (os/verse-panel.coax decides)
-        if (desk_mode && !strcmp(desk_mode, "docked")) desk.mode = verse_panel_next(desk.mode, 67);
-        if (desk_mode && !strcmp(desk_mode, "flat")) desk.mode = verse_panel_next(desk.mode, 68);
+        if (desk_mode && !strcmp(desk_mode, "docked")) desk.mode = metaverse_panel_next(desk.mode, 67);
+        if (desk_mode && !strcmp(desk_mode, "flat")) desk.mode = metaverse_panel_next(desk.mode, 68);
         // the realm learns it has a desk, so a realm with a screen for it shows that screen
         rh_send(&H, 611, "desk=1\n", 7);
         panel_draw_w = (float)w; panel_draw_h = (float)h; desk.world = world_rect;
-        if (desk_mode && !strcmp(desk_mode, "world")) desk.mode = verse_panel_next(desk.mode, 66);
+        if (desk_mode && !strcmp(desk_mode, "world")) desk.mode = metaverse_panel_next(desk.mode, 66);
         p.overlay = vkdesk_overlay; p.overlay_user = &desk; fprintf(stderr, "vk-realm: the desk is up (%ux%u); F9 shows it, F10 is flat mode\n", ddw, ddh); }
     }
     if (windowed) fprintf(stderr, "vk-realm: in a %ux%u window%s at %.3f Hz, drawn at %ux%u; closing the window or %.0f s ends it\n", p.w, p.h, fullscreen ? " (full screen)" : "", 1 / screen.period, w, h, seconds);
     else fprintf(stderr, "vk-realm: on %ux%u at %.3f Hz, %d keyboards, %d mice; Escape held a second or %.0f s returns the screen\n", p.w, p.h, 1 / screen.period, keyboard_count,
             mice.count, seconds);
     double start = now_s(), prev = start;
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
     coax_t_HostLinuxWindowSession session;coax_default_t_HostLinuxWindowSession(&session);int session_hidden=0;
 #endif
     while (1) {
       // The bounded timing sample is not a lifetime cap. Keep its recent half in order.
-      int keep = (int)verse_panel_sample_keep(frames, sample_capacity);
+      int keep = (int)metaverse_panel_sample_keep(frames, sample_capacity);
       if (keep != frames) {
         memmove(stepped, stepped + frames - keep, (size_t)keep * sizeof *stepped);
         memmove(took, took + frames - keep, (size_t)keep * sizeof *took);
@@ -953,7 +953,7 @@ int main(int argc, char **argv) {
       // image or the preceding submission still owns the mutable buffers.
       touch_activity(t);agents_poll(t);vkdesk_pump(&desk,t);os_requests();
       vkhands_poll(&hands,t,p.w,p.h,hand_to);rh_net_poll(&H);rh_replay_poll(&H);
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
       if(host_window){session.messages=coaxial_net_probe?coaxial_net_probe(H.state,6):-1;int effect=(int)hlws_offer((coax_v_t_HostLinuxWindowSession){&session,1},(int64_t)((now_s()-start)*1000),(int64_t)producer_calls,coaxial_net_probe?coaxial_net_probe(H.state,0):-1,coaxial_net_probe?coaxial_net_probe(H.state,1):-1);
        if(effect<0){fprintf(stderr,"vk-realm: window schedule refused: phase=%lld started=%lld last=%lld at=%lld now=%lld frames=%llu net=%d seat=%d; fence=%d reserved=%d suspended=%d life=%lld,%lld,%lld,%lld clock=%lld\n",(long long)session.phase,(long long)session.started,(long long)session.last,(long long)session.at,(long long)((now_s()-start)*1000),(unsigned long long)producer_calls,coaxial_net_probe?coaxial_net_probe(H.state,0):-1,coaxial_net_probe?coaxial_net_probe(H.state,1):-1,(int)vkGetFenceStatus(v.dev,p.fence),p.reserved,win.suspended,(long long)rh_lifecycle_info(0),(long long)rh_lifecycle_info(1),(long long)rh_lifecycle_info(2),(long long)rh_lifecycle_info(3),(long long)rh_lifecycle_info(4));why="window diagnostic refused";break;}
        if(effect==1){rh_key(&H,-2,0,1);rh_key(&H,-2,0,0);}
@@ -970,7 +970,7 @@ int main(int argc, char **argv) {
       int affordable=vkp_reserve(&v,&p);
       if(affordable<0){vkp_resize(&v,&p,p.w,p.h);continue;}
       if(!affordable){struct timespec nap={0,2000000};nanosleep(&nap,NULL);continue;}
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
       coax_t_RenderTextureFormat physical_format=p.format.format==VK_FORMAT_R8G8B8A8_UNORM?COAX_RenderTextureFormat_rgba8:p.format.format==VK_FORMAT_B8G8R8A8_UNORM?COAX_RenderTextureFormat_bgra8:COAX_RenderTextureFormat_invalid;
       if(!rhgr_prepare(s,w,h,physical_format,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}
 #endif
@@ -992,7 +992,7 @@ int main(int argc, char **argv) {
       if(!offer){struct timespec nap={0,2000000};nanosleep(&nap,NULL);continue;}
       if(offer>0)producer_calls++;
       hud_vertices = with_cursor(offer<0?produce_frame((float)w,(float)h,scale,(float)dt):requested);
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
       if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_screen(s);frame_image(s);rhgr_deliver_media(s);
 #else
       update(s);
@@ -1037,7 +1037,7 @@ int main(int argc, char **argv) {
   int skip = frames > 120 ? 60 : headless ? 1 : 0, n = frames - skip;
   if (n > 0) {
     const char *names[2] = {
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
       "step+render", headless ? "post-render" : "wait"
 #else
       "step", headless ? "gpu" : "wait"
@@ -1067,13 +1067,13 @@ int main(int argc, char **argv) {
     qsort(sorted, (size_t)g, sizeof(double), cmp_double);
     printf("vk-realm: frame time median %.2f ms, 95th %.2f ms, 99th %.2f ms\n", sorted[g / 2] * 1000, sorted[g * 95 / 100] * 1000, sorted[g * 99 / 100] * 1000);
   }
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
   printf("vk-realm: %s, %ux%u, %d frames, %llu draws the last; it ended because %s\n",v.props.deviceName,w,h,frames,(unsigned long long)rhgr_draw_commands(s),why);
 #else
   printf("vk-realm: %s, %ux%u, %d frames, %u draws the last; it ended because %s\n", v.props.deviceName, w, h, frames, vk_spec_drawn(s), why);
 #endif
   if (v.validating) printf("vk-realm: validation: %d errors, %d warnings\n", vkc_validation_errors, vkc_validation_warnings);
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
   printf("vk-realm: ledger: %lld objects, %lld words live at the last frame (epoch %lld)\n",(long long)rhg_ledger_info(1),(long long)rhg_ledger_info(2),(long long)rhg_ledger_info(0));
   int64_t closed_cpu=rhgr_close(s);
   if(host_window){session_observed[80]=v.validating;session_observed[81]=vkc_validation_errors;session_observed[82]=vkc_validation_warnings;session_observed[83]=rhg_ledger_info(1);session_observed[84]=rhg_ledger_info(2);session_observed[85]=closed_cpu;}
@@ -1099,12 +1099,12 @@ int main(int argc, char **argv) {
   rh_net_close();
   if(coaxial_close)coaxial_close(H.state);
   rh_close(&H);
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
   // Join process-owned workers before global TLS teardown. Engine retirement
   // alone does not wait for a worker's immutable job and thread-local state.
   if(rhn_socket_pool_shutdown)rhn_socket_pool_shutdown();
 #endif
-#ifdef AETHYR_RENDER_TYPED
+#ifdef ENGINE_RENDER_TYPED
   if(host_window){session_observed[86]=rh_audio_info(&H,42);session_observed[87]=rh_audio_info(&H,43);FILE *f=fopen(host_window,"wb");if(!f)return 1;int ok=fwrite(session_observed,sizeof session_observed,1,f)==1;if(fclose(f)||!ok)return 1;}
   if(host_recovery){FILE *f=fopen(host_recovery,"wb");if(!f)return 1;int ok=fwrite(recovery_observed,sizeof recovery_observed,1,f)==1;if(fclose(f)||!ok)return 1;}
 #endif

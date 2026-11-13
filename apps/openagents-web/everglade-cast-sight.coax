@@ -19,7 +19,7 @@ cr_sight :: (s: [] Everglade, feet: Point, aim: Point) -> bool {
   dir := times(d, 1 / span);
   far := span - f32(CR_SHORT);
   // the ground (a hill between)
-  if s[0].heights.count > 0 && verse_terrain_ray(everglade_ground(), s[0].heights[..], eye, dir, far) < far - 0.05 { return false; }
+  if s[0].heights.count > 0 && metaverse_terrain_ray(everglade_ground(), s[0].heights[..], eye, dir, far) < far - 0.05 { return false; }
   if !sp_on(s) { return true; }
   w := sp_dm(s);
   for i: 0..<w[0].n {

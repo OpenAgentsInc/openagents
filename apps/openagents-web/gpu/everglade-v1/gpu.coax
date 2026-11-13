@@ -69,19 +69,19 @@ eg_st :: (i:u32,u:[]f32)->V4 {
 // where it starts (u.sun.w) and its density (u.eye.w), both the preset's own but thinned over the
 // map's lift, teal where thin and the preset's blue far off, warm toward the key light.
 eg_haze_share :: (d:f32,y:f32,u:[]f32)->f32 {
-  return verse_style_haze(d,y,u[25]-2.5f32,u[31],u[27],eg_st(9,u).z,eg_st(9,u).w);
+  return metaverse_style_haze(d,y,u[25]-2.5f32,u[31],u[27],eg_st(9,u).z,eg_st(9,u).w);
 }
 eg_haze_colour :: (f:f32,v:V3,u:[]f32)->V3 {
   hz:V3=wg_sw_xyz_f4(eg_st(10,u));
   cap:f32=eg_st(9,u).z;
-  h:V3=v3(verse_style_haze_hue(hz.x,0.0f32,f,cap),verse_style_haze_hue(hz.y,1.0f32,f,cap),verse_style_haze_hue(hz.z,2.0f32,f,cap));
+  h:V3=v3(metaverse_style_haze_hue(hz.x,0.0f32,f,cap),metaverse_style_haze_hue(hz.y,1.0f32,f,cap),metaverse_style_haze_hue(hz.z,2.0f32,f,cap));
   // the green between the trunks (comparison round 2: the references' near haze is a green-teal mist,
   // ours a clear sky blue): looking level, the haze takes the meadow's hue, the light it has crossed
   // the grass and the leaves to reach; by day only, none looking up or down
   green:V3=wg_div_f3f(eg_meadow_srgb(0.5f32),wg_dot3(eg_meadow_srgb(0.5f32),v3(0.3333f32,0.3333f32,0.3333f32)));
   level:f32=1.0f32-smoothstep(0.05f32,0.35f32,abs(v.y));
   h=wg_mix_f3f3f(h,wg_mul_f3f3(h,green),(0.38f32*level)*(1.0f32-eg_st(14,u).w));
-  glow:f32=verse_style_haze_glow(wg_dot3(v,wg_sw_xyz_f4(eg_st(1,u))));
+  glow:f32=metaverse_style_haze_glow(wg_dot3(v,wg_sw_xyz_f4(eg_st(1,u))));
   // under the moon the haze takes its light as the sky round it does (eg_sky: the key's colour at its
   // strength, added by half the halo), never the key-through-haze colour, many times the night haze's:
   // that lit the far ridges and hills a flat grey band under the dark sky (the owner, November 4)
@@ -276,16 +276,16 @@ eg_sky :: (d:V3,l:V3,u:[]f32)->V3 {
   // the saturation its two ends have there (teal, cream, gold: not grey)
   h:V3=wg_sw_xyz_f4(eg_st(13,u));
   z:V3=wg_sw_xyz_f4(eg_st(12,u));
-  t:f32=verse_style_sky_t(up);
+  t:f32=metaverse_style_sky_t(up);
   c:V3=wg_mix_f3f3f(h,z,t);
-  gain:f32=verse_style_chroma_gain(eg_saturation(c),mix(eg_saturation(h),eg_saturation(z),t),1.0f32);
-  cy:f32=verse_style_luma(c.x,c.y,c.z);
+  gain:f32=metaverse_style_chroma_gain(eg_saturation(c),mix(eg_saturation(h),eg_saturation(z),t),1.0f32);
+  cy:f32=metaverse_style_luma(c.x,c.y,c.z);
   c=wg_max_f3f3(wg_add_f3f3(v3(cy,cy,cy),wg_mul_f3f(wg_sub_f3f3(c,v3(cy,cy,cy)),gain)),v3(0.0f32,0.0f32,0.0f32));
-  c=wg_mix_f3f3f(c,wg_sw_xyz_f4(eg_st(10,u)),verse_style_sky_band(up,eg_st(12,u).w));
+  c=wg_mix_f3f3f(c,wg_sw_xyz_f4(eg_st(10,u)),metaverse_style_sky_band(up,eg_st(12,u).w));
   ct:f32=wg_dot3(d,l);
   moon:bool=eg_st(1,u).w>0.5f32;
   disc:f32=smoothstep(cos(eg_st(14,u).x*1.15f32),cos(eg_st(14,u).x*0.85f32),ct);
-  halo:f32=(verse_style_halo(ct,eg_st(14,u).y)*0.5f32)+(verse_style_halo(ct,eg_st(14,u).z)*0.25f32);
+  halo:f32=(metaverse_style_halo(ct,eg_st(14,u).y)*0.5f32)+(metaverse_style_halo(ct,eg_st(14,u).z)*0.25f32);
   // round the sun the sky takes the haze key's colour (painted over, not added: added, the tone
   // curve whitens it; at dusk it is deep orange), round the moon its light is added
   if moon {
@@ -303,13 +303,13 @@ eg_sky :: (d:V3,l:V3,u:[]f32)->V3 {
   if ((up>0.01f32)&&(cl.x>0.0f32)) {
     t_2:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2];
     p:V2=wg_add_f2f2(wg_mul_f2f(wg_div_f2f(v2(d.x,d.z),up),cl.y),wg_mul_f2f(wg_mul_f2f(wg_sw_xy_f4(eg_st(25,u)),cl.z),t_2));
-    n:f32=verse_style_cloud_field(p.x,p.y,c2.x,c2.y,cl.w);
-    cover:f32=verse_style_cloud_cover(n,cl.x,c2.z,c2.w);
+    n:f32=metaverse_style_cloud_field(p.x,p.y,c2.x,c2.y,cl.w);
+    cover:f32=metaverse_style_cloud_cover(n,cl.x,c2.z,c2.w);
     toward:V2=wg_mul_f2f(wg_normalize2(wg_add_f2f2(v2(l.x,l.z),v2(0.0001f32,0.0001f32))),260.0f32);
-    lit:f32=verse_style_cloud_lit(n,verse_style_cloud_field(p.x+toward.x,p.y+toward.y,c2.x,c2.y,cl.w));
+    lit:f32=metaverse_style_cloud_lit(n,metaverse_style_cloud_field(p.x+toward.x,p.y+toward.y,c2.x,c2.y,cl.w));
     night:f32=eg_st(14,u).w;
     cloud:V3=wg_mul_f3f(wg_mul_f3f(wg_mix_f3f3f(wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(4,u)),eg_st(17,u).w),0.9f32),wg_sw_xyz_f4(eg_st(17,u)),lit),fmax(eg_st(0,u).w,0.3f32)),(1.0f32-(0.75f32*night)));
-    c=wg_mix_f3f3f(c,cloud,(cover*verse_style_cloud_fade(up))*(1.0f32-(0.5f32*night)));
+    c=wg_mix_f3f3f(c,cloud,(cover*metaverse_style_cloud_fade(up))*(1.0f32-(0.5f32*night)));
   }
   return wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_make_f3_f(eg_stars(d)),eg_st(14,u).w),0.6f32));
 }
@@ -359,7 +359,7 @@ eg_ridges :: (d:V3,sky_c:V3,u:[]f32)->V3 {
       lean:f32=eg_noise(wg_add_f2f2(wg_mul_f2f(ring,1.7f32),v2(9.0f32,k)))-0.5f32;
       face:f32=0.75f32+(0.5f32*clampf((wg_dot3(v3(-dir.x,0.0f32,-dir.y),wg_sw_xyz_f4(eg_st(1,u)))*0.5f32)+lean,0.0f32,1.0f32));
       land:V3=wg_mix_f3f3f(v3(0.05f32,0.15f32,0.05f32),v3(0.06f32,0.12f32,0.17f32),(cast(f32)(i))*0.5f32);
-      amb:V3=v3(verse_style_ambient(1.0f32,eg_st(5,u).x,eg_st(6,u).x,eg_st(5,u).w),verse_style_ambient(1.0f32,eg_st(5,u).y,eg_st(6,u).y,eg_st(5,u).w),verse_style_ambient(1.0f32,eg_st(5,u).z,eg_st(6,u).z,eg_st(5,u).w));
+      amb:V3=v3(metaverse_style_ambient(1.0f32,eg_st(5,u).x,eg_st(6,u).x,eg_st(5,u).w),metaverse_style_ambient(1.0f32,eg_st(5,u).y,eg_st(6,u).y,eg_st(5,u).w),metaverse_style_ambient(1.0f32,eg_st(5,u).z,eg_st(6,u).z,eg_st(5,u).w));
       lit:V3=wg_mul_f3f3(land,wg_add_f3f3(wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w),face),amb));
       // a fixed step of the haze cap a layer (0.15, 0.4, 0.65), so each stays apart and the nearest stays green;
       // never less than the haze a surface that far off takes (the owner, October 29: in fog and storm the far
@@ -381,7 +381,7 @@ eg_bg_fs :: (sky:EgSky,u:[]f32)->EgLit {
   l:V3=wg_sw_xyz_f4(eg_st(1,u));
   c:V3=eg_water_under_view(eg_weather_streaks(eg_weather_sky(eg_ridges(d,eg_sky(d,l,u),u),d,u),d,1000.0f32,u),wg_add_f3f3(v3(u[24],u[25],u[26]),wg_mul_f3f(d,1000.0f32)),d,u); // the far ridges; the weather (W9); diving, the underwater look (W7)
   b:V4=eg_st(19,u);
-  return EgLit.{light=v4(c.x,c.y,c.z,verse_style_bloom_share(verse_style_luma(c.x,c.y,c.z),b.x,b.y)),aux=v4(verse_style_shaft_source(wg_dot3(d,l)),0.0f32,0.0f32,0.0f32)};
+  return EgLit.{light=v4(c.x,c.y,c.z,metaverse_style_bloom_share(metaverse_style_luma(c.x,c.y,c.z),b.x,b.y)),aux=v4(metaverse_style_shaft_source(wg_dot3(d,l)),0.0f32,0.0f32,0.0f32)};
 }
 EgObj :: struct {r0:V4; r1:V4; r2:V4; colour:V4; } // the Ranger's joints, then each person's (three rows each, then three of colours) // the river's baked nodes (metaverse/water-look.coax)
 eg_word :: (i:u32,vertices:[]u32)->f32 {
@@ -652,14 +652,14 @@ eg_spell_soft :: (look:u32)->bool {
   return (look>=EG_LOOK_FIRE)&&(look<=EG_LOOK_RING);
 }
 eg_canopy_n :: (n:V3,blob:V3)->V3 {
-  return wg_normalize3(v3(verse_style_canopy_normal(n.x,blob.x,EG_CANOPY_MIX),verse_style_canopy_normal(n.y,blob.y,EG_CANOPY_MIX),verse_style_canopy_normal(n.z,blob.z,EG_CANOPY_MIX)));
+  return wg_normalize3(v3(metaverse_style_canopy_normal(n.x,blob.x,EG_CANOPY_MIX),metaverse_style_canopy_normal(n.y,blob.y,EG_CANOPY_MIX),metaverse_style_canopy_normal(n.z,blob.z,EG_CANOPY_MIX)));
 }
 // How far the wind moves a canopy point `share` of its tree's height up, the tree standing at `at`:
 // the grass's wind (frozen at 0 under still), 0.05 m at the top.
 eg_canopy_sway :: (at:V3,share:f32,u:[]f32)->V3 {
   t:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2];
-  theta:f32=verse_style_wind(wg_dot2(v2(at.x,at.z),EG_WIND_DIR()),verse_style_gust(at.x,at.z,t,EG_WIND_DIR().x,EG_WIND_DIR().y,EG_WIND().z,EG_WIND().w),t,EG_WIND().x,EG_WIND().y,EG_WIND().z);
-  d:f32=verse_style_canopy_sway(theta,EG_WIND().x,EG_CANOPY_SWAY,share);
+  theta:f32=metaverse_style_wind(wg_dot2(v2(at.x,at.z),EG_WIND_DIR()),metaverse_style_gust(at.x,at.z,t,EG_WIND_DIR().x,EG_WIND_DIR().y,EG_WIND().z,EG_WIND().w),t,EG_WIND().x,EG_WIND().y,EG_WIND().z);
+  d:f32=metaverse_style_canopy_sway(theta,EG_WIND().x,EG_CANOPY_SWAY,share);
   return v3(EG_WIND_DIR().x*d,0.0f32,EG_WIND_DIR().y*d);
 }
 eg_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]EgObj,pose:[]V4)->EgS {
@@ -902,7 +902,7 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
   return o;
 }
 // ---- the key light's shadow map (spec 3; host.js shadow_vs): every draw but the ground drawn from the
-// light into a depth map round the eye (verse_style_shadow_reach: 60 m, 40 on a phone), its middle
+// light into a depth map round the eye (metaverse_style_shadow_reach: 60 m, 40 on a phone), its middle
 // snapped to whole texels so shadows hold still, read back with the preset's Poisson taps. A leaf
 // card's clear texels cast nothing, so the canopies throw dappled shade.
 EgLight :: struct {ax:V3; ay:V3; l:V3; mx:f32; my:f32; reach:f32; }
@@ -910,10 +910,10 @@ eg_light_space :: (u:[]f32)->EgLight {
   l:V3=wg_sw_xyz_f4(eg_st(1,u));
   ax:V3=ifx abs(l.y)<0.999f32 then wg_normalize3(wg_cross3(v3(0.0f32,1.0f32,0.0f32),l)) else v3(1.0f32,0.0f32,0.0f32);
   ay:V3=wg_cross3(l,ax);
-  reach:f32=verse_style_shadow_reach(eg_st(31,u).z);
+  reach:f32=metaverse_style_shadow_reach(eg_st(31,u).z);
   size:f32=fmax(eg_st(21,u).x,1.0f32);
   c:V3=v3(u[24],0.0f32,u[26]);
-  return EgLight.{ax=ax,ay=ay,l=l,mx=verse_style_shadow_snap(wg_dot3(c,ax),reach,size),my=verse_style_shadow_snap(wg_dot3(c,ay),reach,size),reach=reach};
+  return EgLight.{ax=ax,ay=ay,l=l,mx=metaverse_style_shadow_snap(wg_dot3(c,ax),reach,size),my=metaverse_style_shadow_snap(wg_dot3(c,ay),reach,size),reach=reach};
 }
 // ---- the shadow tiles (metaverse-engine/render/cascades.coax cascade_rows; everglade.coax U_CASCADE, #13016):
 // once the host opens the atlas, the key light's map is up to four tiles of one depth texture, each
@@ -952,7 +952,7 @@ eg_casc_try :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,
     t:f32=0.0f32;
     while t<9.0f32 {
       if (t>=taps) {break;}
-      o:V2=v2(verse_style_shadow_tap(t,phone,0.0f32)*f.x,verse_style_shadow_tap(t,phone,1.0f32)*f.y);
+      o:V2=v2(metaverse_style_shadow_tap(t,phone,0.0f32)*f.x,metaverse_style_shadow_tap(t,phone,1.0f32)*f.y);
       lit=lit+gpu_compare(shadow_map,shadow_cmp,wg_add_f2f2(uv,o),q.z-f.z);
       t=t+1.0f32;
     }
@@ -977,7 +977,7 @@ eg_casc_lit :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,
   return 1.0f32;
 }
 eg_shadow_place :: (w:V3,k:EgLight)->V3 {
-  return v3(verse_style_shadow_across(wg_dot3(w,k.ax)-k.mx,k.reach),verse_style_shadow_across(wg_dot3(w,k.ay)-k.my,k.reach),verse_style_shadow_depth(wg_dot3(wg_sub_f3f3(w,wg_add_f3f3(wg_mul_ff3(k.mx,k.ax),wg_mul_ff3(k.my,k.ay))),k.l),k.reach));
+  return v3(metaverse_style_shadow_across(wg_dot3(w,k.ax)-k.mx,k.reach),metaverse_style_shadow_across(wg_dot3(w,k.ay)-k.my,k.reach),metaverse_style_shadow_depth(wg_dot3(wg_sub_f3f3(w,wg_add_f3f3(wg_mul_ff3(k.mx,k.ax),wg_mul_ff3(k.my,k.ay))),k.l),k.reach));
 }
 EgShade :: struct {pos:V4;uv1:V2; uv:V2; slice:u32 #flat; cut:u32 #flat; local:V3; shard:u32 #flat; bare:f32 #flat; }
 // A burning tree's leaves (dye.z of a canopy: the share gone) gone in clumps from its crown, the same
@@ -1132,7 +1132,7 @@ eg_map_lit :: (p:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,p
       if (k>=taps) {
         break;
       }
-      o:V2=v2(verse_style_shadow_tap(k,phone,0.0f32),verse_style_shadow_tap(k,phone,1.0f32));
+      o:V2=v2(metaverse_style_shadow_tap(k,phone,0.0f32),metaverse_style_shadow_tap(k,phone,1.0f32));
       lit=lit+gpu_compare(shadow_map,shadow_cmp,wg_add_f2f2(uv,wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(o,r),1.6f32),texel_2)),q.z-0.0006f32);
       k=k+1.0f32;
     }
@@ -1546,7 +1546,7 @@ eg_scene_fs :: (s:EgS,front:bool,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
     return eg_glass(s,front,u);
   }
   paint_leaf_far=((s.look==EG_LOOK_CANOPY)&&(eg_st(31,u).z>0.5f32))&&(wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world))>EG_LEAF_FAR);
-  lit:f32=verse_style_contact(eg_map_lit(s.world,n,u,shadow_map,shadow_cmp,paint_leaf_far),1.0f32-shadow,eg_st(4,u).w);
+  lit:f32=metaverse_style_contact(eg_map_lit(s.world,n,u,shadow_map,shadow_cmp,paint_leaf_far),1.0f32-shadow,eg_st(4,u).w);
   res:EgLit=eg_paint(base,n,s.world,lit,(s.look==EG_LOOK_CHARACTER)||(s.look==3),s.look!=99,u,heights,water_nodes,paint_leaf_far);
   if ((mark_ice>0.0f32)||(mark_glow.x>0.0f32)) {
     // ice: a soft sheen of the sky at a glancing look, lit as the sun lights it; moonlight added
@@ -1702,23 +1702,23 @@ eg_paint :: (dry:V3,n:V3,world:V3,lit:f32,character:bool,rim:bool,u:[]f32,height
   base:V3=eg_weather_wet_base(dry,n,character,u); // rain darkens what it wets (W9)
   // by day the key also passes the drifting cloud shadows (none under the moon)
   shade:f32=ifx eg_st(1,u).w>0.5f32 then lit else lit*eg_cloud(v2(world.x,world.z),v2(u[2]*0.8f32,u[2]*0.5f32));
-  w:f32=verse_style_wrap(wg_dot3(n,l))*shade;
-  band0:f32=ifx character then verse_style_bands2(w,eg_st(8,u).x,eg_st(8,u).y) else verse_style_bands(w,eg_st(7,u).x,eg_st(7,u).y,eg_st(7,u).z,eg_st(7,u).w);
+  w:f32=metaverse_style_wrap(wg_dot3(n,l))*shade;
+  band0:f32=ifx character then metaverse_style_bands2(w,eg_st(8,u).x,eg_st(8,u).y) else metaverse_style_bands(w,eg_st(7,u).x,eg_st(7,u).y,eg_st(7,u).z,eg_st(7,u).w);
   // past the near ground the bands draw together (spec 15, fine detail): a crown, a roof, a wall at
   // forty metres reads as one mass in its light, not a lace of lit and shadowed pieces
   band:f32=mix(band0,EG_BAND_FAR_MID,EG_BAND_FAR_SHARE*smoothstep(EG_BAND_FAR_FROM,EG_BAND_FAR_TO,wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),world))));
   key:V3=wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w);
-  amb:V3=wg_mul_ff3(eg_sky_seen(world,u,heights),v3(verse_style_ambient(n.y,eg_st(5,u).x,eg_st(6,u).x,eg_st(5,u).w),verse_style_ambient(n.y,eg_st(5,u).y,eg_st(6,u).y,eg_st(5,u).w),verse_style_ambient(n.y,eg_st(5,u).z,eg_st(6,u).z,eg_st(5,u).w)));
+  amb:V3=wg_mul_ff3(eg_sky_seen(world,u,heights),v3(metaverse_style_ambient(n.y,eg_st(5,u).x,eg_st(6,u).x,eg_st(5,u).w),metaverse_style_ambient(n.y,eg_st(5,u).y,eg_st(6,u).y,eg_st(5,u).w),metaverse_style_ambient(n.y,eg_st(5,u).z,eg_st(6,u).z,eg_st(5,u).w)));
   c:V3=eg_banded(base,wg_mul_f3f3(wg_sw_xyz_f4(eg_st(4,u)),amb),wg_add_f3f3(key,amb),band,u);
   c=wg_add_f3f3(c,wg_mul_f3f3(base,eg_lamp_light(world,n,u)));
   // the shadow tint and the light may grey a surface only so far: 0.7 of its albedo's saturation stays
-  gain:f32=verse_style_chroma_gain(eg_saturation(c),eg_saturation(base),0.7f32);
-  cy:f32=verse_style_luma(c.x,c.y,c.z);
+  gain:f32=metaverse_style_chroma_gain(eg_saturation(c),eg_saturation(base),0.7f32);
+  cy:f32=metaverse_style_luma(c.x,c.y,c.z);
   c=wg_max_f3f3(wg_add_f3f3(v3(cy,cy,cy),wg_mul_f3f(wg_sub_f3f3(c,v3(cy,cy,cy)),gain)),v3(0.0f32,0.0f32,0.0f32));
   rs:f32=ifx character then eg_st(3,u).x else eg_st(2,u).w;
   if (rim&&(rs>0.0f32)) {
-    c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(2,u)),verse_style_rim(wg_dot3(n,wg_neg_f3(v)),wg_dot3(n,l),eg_st(3,u).y,eg_st(3,u).z,rs)),lit));
-  } // (none without outlines: verse_style_no_outlines)
+    c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(2,u)),metaverse_style_rim(wg_dot3(n,wg_neg_f3(v)),wg_dot3(n,l),eg_st(3,u).y,eg_st(3,u).z,rs)),lit));
+  } // (none without outlines: metaverse_style_no_outlines)
   if (!paint_leaf_far) {
     c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f3(wg_mul_ff3(eg_water_caustics(world,n,u,water_nodes),base),key),lit));
   } // light the water focuses on what lies under it
@@ -1729,7 +1729,7 @@ eg_paint :: (dry:V3,n:V3,world:V3,lit:f32,character:bool,rim:bool,u:[]f32,height
   c=eg_weather_streaks(c,v,d,u); // the rain between you and it (W9)
   c=eg_water_under_view(c,world,v,u); // diving: the underwater look (W7)
   b:V4=eg_st(19,u);
-  return EgLit.{light=v4(c.x,c.y,c.z,verse_style_bloom_share(verse_style_luma(c.x,c.y,c.z),b.x,b.y)),aux=v4(verse_style_shaft_source(wg_dot3(v,l))*fog,d/EG_AUX_DISTANCE,0.0f32,0.0f32)};
+  return EgLit.{light=v4(c.x,c.y,c.z,metaverse_style_bloom_share(metaverse_style_luma(c.x,c.y,c.z),b.x,b.y)),aux=v4(metaverse_style_shaft_source(wg_dot3(v,l))*fog,d/EG_AUX_DISTANCE,0.0f32,0.0f32)};
 }
 // The lamps' light at p (normal n): each pools within its reach, (1 - (d/reach)^2)^2, wrapped round
 // the surface a little so the ground under a lamp lights all round it; none by day.
@@ -1792,14 +1792,14 @@ eg_saturation :: (c:V3)->f32 {
 eg_banded :: (a:V3,dark:V3,bright:V3,band:f32,u:[]f32)->V3 {
   s:V3=wg_mul_f3f3(a,dark);
   t:V3=wg_sw_xyz_f4(eg_st(4,u));
-  tl:f32=verse_style_luma(t.x,t.y,t.z);
+  tl:f32=metaverse_style_luma(t.x,t.y,t.z);
   k:f32=eg_st(21,u).w;
-  m:V3=v3(verse_style_cool(s.x,t.x,tl,k),verse_style_cool(s.y,t.y,tl,k),verse_style_cool(s.z,t.z,tl,k));
-  y:f32=verse_style_luma(s.x,s.y,s.z);
-  ym:f32=verse_style_luma(m.x,m.y,m.z);
-  cool:V3=v3(verse_style_keep_value(m.x,y,ym),verse_style_keep_value(m.y,y,ym),verse_style_keep_value(m.z,y,ym));
+  m:V3=v3(metaverse_style_cool(s.x,t.x,tl,k),metaverse_style_cool(s.y,t.y,tl,k),metaverse_style_cool(s.z,t.z,tl,k));
+  y:f32=metaverse_style_luma(s.x,s.y,s.z);
+  ym:f32=metaverse_style_luma(m.x,m.y,m.z);
+  cool:V3=v3(metaverse_style_keep_value(m.x,y,ym),metaverse_style_keep_value(m.y,y,ym),metaverse_style_keep_value(m.z,y,ym));
   l:V3=wg_mul_f3f3(a,bright);
-  return v3(verse_style_banded(cool.x,l.x,band),verse_style_banded(cool.y,l.y,band),verse_style_banded(cool.z,l.z,band));
+  return v3(metaverse_style_banded(cool.x,l.x,band),metaverse_style_banded(cool.y,l.y,band),metaverse_style_banded(cool.z,l.z,band));
 }
 EgV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
 eg_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
@@ -1883,9 +1883,9 @@ EG_WATER_BED :: 0.15f32; // the linear radiance a lit bed under the water has, a
 eg_water_host_sky :: (dir:V3,level:f32,u:[]f32)->V3 {
   l:V3=wg_sw_xyz_f4(eg_st(1,u));
   d:V3=wg_normalize3(v3(dir.x,fmax(dir.y,0.0f32),dir.z));
-  sharp:V3=wg_mix_f3f3f(wg_sw_xyz_f4(eg_st(10,u)),wg_sw_xyz_f4(eg_st(12,u)),verse_style_sky_t(d.y));
+  sharp:V3=wg_mix_f3f3f(wg_sw_xyz_f4(eg_st(10,u)),wg_sw_xyz_f4(eg_st(12,u)),metaverse_style_sky_t(d.y));
   blurred:V3=wg_mix_f3f3f(wg_sw_xyz_f4(eg_st(10,u)),wg_sw_xyz_f4(eg_st(12,u)),0.55f32);
-  return wg_add_f3f3(wg_mix_f3f3f(sharp,blurred,level*level),wg_mul_f3f(wg_mul_f3f(ifx eg_st(1,u).w>0.5f32 then wg_sw_xyz_f4(eg_st(0,u)) else wg_sw_xyz_f4(eg_st(11,u)),verse_style_halo(wg_dot3(d,l),eg_st(14,u).z)),0.25f32));
+  return wg_add_f3f3(wg_mix_f3f3f(sharp,blurred,level*level),wg_mul_f3f(wg_mul_f3f(ifx eg_st(1,u).w>0.5f32 then wg_sw_xyz_f4(eg_st(0,u)) else wg_sw_xyz_f4(eg_st(11,u)),metaverse_style_halo(wg_dot3(d,l),eg_st(14,u).z)),0.25f32));
 }
 eg_water_host_sun :: (u:[]f32)->V4 {
   return wg_make_f4_f3f(wg_sw_xyz_f4(eg_st(1,u)),ifx eg_st(0,u).w<=0.0f32 then 0.0f32 else 1.0f32);
@@ -1899,7 +1899,7 @@ eg_water_host_light :: (world:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:Sam
 // The same with the soft shadows at world already worked out (sh), so a caller that needs them twice
 // sums the 16 of them once.
 eg_water_host_light_shaded :: (world:V3,n:V3,sh:f32,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,paint_leaf_far:bool)->V3 {
-  amb:V3=v3(verse_style_ambient(n.y,eg_st(5,u).x,eg_st(6,u).x,eg_st(5,u).w),verse_style_ambient(n.y,eg_st(5,u).y,eg_st(6,u).y,eg_st(5,u).w),verse_style_ambient(n.y,eg_st(5,u).z,eg_st(6,u).z,eg_st(5,u).w));
+  amb:V3=v3(metaverse_style_ambient(n.y,eg_st(5,u).x,eg_st(6,u).x,eg_st(5,u).w),metaverse_style_ambient(n.y,eg_st(5,u).y,eg_st(6,u).y,eg_st(5,u).w),metaverse_style_ambient(n.y,eg_st(5,u).z,eg_st(6,u).z,eg_st(5,u).w));
   return wg_add_f3f3(amb,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w),fmax(wg_dot3(n,wg_sw_xyz_f4(eg_st(1,u))),0.0f32)),eg_map_lit(world,n,u,shadow_map,shadow_cmp,paint_leaf_far)),sh));
 }
 eg_water_node :: (k:u32,f:u32,water_nodes:[]f32)->f32 {
@@ -2081,7 +2081,7 @@ eg_water_under_view :: (c:V3,world:V3,d:V3,u:[]f32)->V3 {
   }
   tr:V3=wg_exp_f3(wg_mul_f3f(wg_neg_f3(EG_WATER_UNDER_ABSORB()),path));
   key:V3=wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w);
-  light:V3=wg_mul_f3f(EG_WATER_UNDER_SCATTER(),(0.35f32+(0.65f32*verse_style_luma(key.x,key.y,key.z))));
+  light:V3=wg_mul_f3f(EG_WATER_UNDER_SCATTER(),(0.35f32+(0.65f32*metaverse_style_luma(key.x,key.y,key.z))));
   col:V3=wg_add_f3f3(wg_mul_f3f3(wg_mul_f3f3(c,EG_WATER_UNDER_TINT()),tr),wg_mul_f3f3(light,wg_sub_f3f3(v3(1.0f32,1.0f32,1.0f32),tr)));
   col=wg_add_f3f3(col,wg_mul_f3f(wg_mul_f3f3(v3(1.0f32,0.97f32,0.85f32),key),((eg_water_motes(o,d,fmin(path,6.0f32),u)*0.6f32)+eg_water_shafts(o,d,path,level,u))));
   return col;
@@ -2102,7 +2102,7 @@ eg_weather_desktop :: (u:[]f32)->bool {
 }
 eg_weather_sky :: (c:V3,d:V3,u:[]f32)->V3 {
   cloud:f32=fmax(u[1478]-0.15f32,0.0f32)/0.85f32;
-  grey:V3=wg_mul_f3f3(wg_make_f3_f(verse_style_luma(c.x,c.y,c.z)),v3(0.86f32,0.92f32,0.98f32));
+  grey:V3=wg_mul_f3f3(wg_make_f3_f(metaverse_style_luma(c.x,c.y,c.z)),v3(0.86f32,0.92f32,0.98f32));
   o:V3=wg_mix_f3f3f(c,wg_mul_f3f(grey,(1.0f32-(0.25f32*cloud))),cloud*0.7f32);
   o=wg_add_f3f3(o,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(0.75f32,0.8f32,1.0f32),u[1475]),0.8f32),smoothstep(-0.1f32,0.3f32,d.y)));
   return o;
@@ -2270,7 +2270,7 @@ eg_weather_streaks :: (c:V3,v:V3,d:f32,u:[]f32)->V3 {
     }
   }
   key:V3=wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w);
-  tint:V3=wg_mul_f3f(v3(0.78f32,0.84f32,0.9f32),(0.45f32+(0.55f32*clampf(verse_style_luma(key.x,key.y,key.z),0.0f32,1.0f32))));
+  tint:V3=wg_mul_f3f(v3(0.78f32,0.84f32,0.9f32),(0.45f32+(0.55f32*clampf(metaverse_style_luma(key.x,key.y,key.z),0.0f32,1.0f32))));
   return wg_mix_f3f3f(c,tint,clampf(a,0.0f32,1.0f32)*0.4f32);
 }
 eg_water_shoal :: (k:f32,depth:f32)->f32 {
@@ -3518,9 +3518,9 @@ eg_tone :: (c:V3,u:[]f32)->V3 {
   e:f32=eg_st(18,u).x*EG_FILM;
   f:=film_rec709(film_rgb(fmax(c.x,0.0f32)*e,fmax(c.y,0.0f32)*e,fmax(c.z,0.0f32)*e));
   t:V3=v3(f.r,f.g,f.b);
-  y:f32=verse_style_luma(t.x,t.y,t.z);
-  t=v3(verse_style_saturation(t.x,y,eg_st(18,u).y),verse_style_saturation(t.y,y,eg_st(18,u).y),verse_style_saturation(t.z,y,eg_st(18,u).y));
-  return v3(verse_style_lift(t.x,eg_st(18,u).z),verse_style_lift(t.y,eg_st(18,u).z),verse_style_lift(t.z,eg_st(18,u).z));
+  y:f32=metaverse_style_luma(t.x,t.y,t.z);
+  t=v3(metaverse_style_saturation(t.x,y,eg_st(18,u).y),metaverse_style_saturation(t.y,y,eg_st(18,u).y),metaverse_style_saturation(t.z,y,eg_st(18,u).y));
+  return v3(metaverse_style_lift(t.x,eg_st(18,u).z),metaverse_style_lift(t.y,eg_st(18,u).z),metaverse_style_lift(t.z,eg_st(18,u).z));
 }
 // Under the water on a desktop (W7, metaverse/water-under.coax water_under_tier): the view wavers a
 // few pixels where the pixel's near-plane point is under the river, and a pale meniscus marks where
@@ -3562,7 +3562,7 @@ eg_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Te
   }
   b:V3=wg_add_f3f3(wg_mul_f3f(wg_sw_rgb_f4(gpu_sample_level(post_quarter,post_lin,uv,0.0f32)),0.55f32),wg_mul_f3f(wg_sw_rgb_f4(gpu_sample_level(post_eighth,post_lin,uv,0.0f32)),0.45f32));
   m:f32=eg_st(19,u).z;
-  c:V3=v3(verse_style_bloom_mix(light.x,b.x,m),verse_style_bloom_mix(light.y,b.y,m),verse_style_bloom_mix(light.z,b.z,m));
+  c:V3=v3(metaverse_style_bloom_mix(light.x,b.x,m),metaverse_style_bloom_mix(light.y,b.y,m),metaverse_style_bloom_mix(light.z,b.z,m));
   c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_ff3(eg_shafts(v2(pos.x,pos.y),uv,u,post_aux,post_lin),wg_sw_xyz_f4(eg_st(11,u))),eg_st(0,u).w));
   return wg_make_f4_f3f(eg_plates(v2(pos.x,pos.y),eg_encode(wg_mul_f3f(eg_tone(c,u),u[3])),u),1.0f32);
 }
@@ -3576,7 +3576,7 @@ eg_shafts :: (p:V2,uv:V2,u:[]f32,post_aux:Tex2D,post_lin:Sampler)->f32 {
     return 0.0f32;
   }
   at:V2=v2(0.5f32+((0.5f32*k.x)/k.w),0.5f32-((0.5f32*k.y)/k.w));
-  fade:f32=verse_style_shaft_fade(at.x,at.y,sh.w);
+  fade:f32=metaverse_style_shaft_fade(at.x,at.y,sh.w);
   if (fade<=0.0f32) {
     return 0.0f32;
   }
@@ -3594,11 +3594,11 @@ eg_shafts :: (p:V2,uv:V2,u:[]f32,post_aux:Tex2D,post_lin:Sampler)->f32 {
       if (wg_any_lt_f2f2(q,v2(0.0f32,0.0f32))||wg_any_gt_f2f2(q,v2(1.0f32,1.0f32))) {
         break;
       }
-      sum=sum+(gpu_sample_level(post_aux,post_lin,q,0.0f32).x*verse_style_shaft_tap(i,sh.y));
+      sum=sum+(gpu_sample_level(post_aux,post_lin,q,0.0f32).x*metaverse_style_shaft_tap(i,sh.y));
       i=i+1.0f32;
     }
   }
-  return verse_style_shaft(sum,verse_style_shaft_total(n,sh.y),sh.z,fade);
+  return metaverse_style_shaft(sum,metaverse_style_shaft_total(n,sh.y),sh.z,fade);
 }
 // ---- the grass (art-styles.md 8): one tapered triangle a blade, instanced from a hash of its cell
 // (no buffer of blades), in a square two radii across round the eye, world-aligned so blades hold
@@ -3645,7 +3645,7 @@ eg_meadow :: (q:V2)->V3 {
 }
 eg_grass_mask :: (q:V2,u:[]f32,heights:[]f32,water_nodes:[]f32)->f32 {
   if (q.y<EG_GLADE_SEAM) { return 0.0f32; }
-  m:f32=verse_style_grass_clear(eg_path_near(q,u)-u[229]);
+  m:f32=metaverse_style_grass_clear(eg_path_near(q,u)-u[229]);
   if (m==0.0f32) { return 0.0f32; }
   {
     k:s32=0;
@@ -3654,7 +3654,7 @@ eg_grass_mask :: (q:V2,u:[]f32,heights:[]f32,water_nodes:[]f32)->f32 {
       if (sq.z<=0.0f32) {
         break;
       }
-      m=m*verse_style_grass_clear(wg_length2(wg_sub_f2f2(q,v2(sq.x,sq.y)))-sq.z);
+      m=m*metaverse_style_grass_clear(wg_length2(wg_sub_f2f2(q,v2(sq.x,sq.y)))-sq.z);
       if (m==0.0f32) { return 0.0f32; }
       k+=1;
     }
@@ -3667,12 +3667,12 @@ eg_grass_mask :: (q:V2,u:[]f32,heights:[]f32,water_nodes:[]f32)->f32 {
         {k+=1; continue;}
       }
       d:f32=fmax(fmax(b.x-q.x,q.x-b.z),fmax(b.y-q.y,q.y-b.w));
-      m=m*verse_style_grass_clear(d-0.3f32);
+      m=m*metaverse_style_grass_clear(d-0.3f32);
       if (m==0.0f32) { return 0.0f32; }
       k+=1;
     }
   }
-  return m*verse_style_grass_clear(0.25f32-(eg_water_over(q,u,heights,water_nodes)*5.0f32));
+  return m*metaverse_style_grass_clear(0.25f32-(eg_water_over(q,u,heights,water_nodes)*5.0f32));
 }
 EgG :: struct {pos:V4; world:V3; n:V3; albedo:V3; glow:V3; }
 eg_grass_vs :: (v:u32,i:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgG {
@@ -3689,9 +3689,9 @@ eg_grass_vs :: (v:u32,i:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgG {
   per:u32=wg_max_u(wg_u32_f(g.x),1);
   r:f32=g.y;
   side:u32=wg_u32_f(2.0f32*r);
-  // past the far field's blades the near ring's (verse_style_near_*): a square 2 reach across, hashed
+  // past the far field's blades the near ring's (metaverse_style_near_*): a square 2 reach across, hashed
   // apart from the far field's by an offset seed, widened toward the eye
-  reach:f32=verse_style_near_reach(eg_st(31,u).z);
+  reach:f32=metaverse_style_near_reach(eg_st(31,u).z);
   far_n:u32=mul_wrap(mul_wrap(per,side),side);
   near:bool=i>=far_n;
   nper:u32=wg_max_u(wg_u32_f(eg_st(26,u).w),1);
@@ -3714,15 +3714,15 @@ eg_grass_vs :: (v:u32,i:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgG {
   }
   // the spells' marks on the blades (ground_mark): frost on their tops, scorch burning them short
   mk:EgMark=eg_ground_mark(q,ifx v==2 then 1.0f32 else 0.0f32,u);
-  tall:f32=((verse_style_blade_height(eg_hash(wg_add_f2f2(k,v2(3.3f32,41.9f32))),g.w,g2.x)*verse_style_grass_fade(dist,r,g.z))*eg_grass_mask(q,u,heights,water_nodes))*(1.0f32-mk.short_);
+  tall:f32=((metaverse_style_blade_height(eg_hash(wg_add_f2f2(k,v2(3.3f32,41.9f32))),g.w,g2.x)*metaverse_style_grass_fade(dist,r,g.z))*eg_grass_mask(q,u,heights,water_nodes))*(1.0f32-mk.short_);
   if (tall<0.02f32) {
     return o;
   }
   t:f32=ifx u[4]>0.5f32 then 0.0f32 else u[2];
   wd:V2=v2(w2.x,w2.y);
-  theta:f32=verse_style_wind(wg_dot2(q,wd),verse_style_gust(q.x,q.y,t,wd.x,wd.y,w.z,w.w),t,w.x,w.y,w.z);
+  theta:f32=metaverse_style_wind(wg_dot2(q,wd),metaverse_style_gust(q.x,q.y,t,wd.x,wd.y,w.z,w.w),t,w.x,w.y,w.z);
   // the movers (their blob shadows: you, the people, the cats) part the blades within 0.7 m
-  lean:V2=wg_mul_f2f(wd,verse_style_bend(theta,tall,1.0f32));
+  lean:V2=wg_mul_f2f(wd,metaverse_style_bend(theta,tall,1.0f32));
   {
     m:s32=0;
     while m<8 {
@@ -3731,16 +3731,16 @@ eg_grass_vs :: (v:u32,i:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgG {
         break;
       }
       away:V2=wg_sub_f2f2(q,v2(sh.x,sh.y));
-      lean=wg_add_f2f2(lean,wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_normalize2(wg_add_f2f2(away,v2(0.0001f32,0.0001f32))),tall),0.85f32),verse_style_part(wg_length2(away),w2.w)));
+      lean=wg_add_f2f2(lean,wg_mul_f2f(wg_mul_f2f(wg_mul_f2f(wg_normalize2(wg_add_f2f2(away,v2(0.0001f32,0.0001f32))),tall),0.85f32),metaverse_style_part(wg_length2(away),w2.w)));
       m+=1;
     }
   }
   ang:f32=eg_hash(wg_add_f2f2(k,v2(5.9f32,13.3f32)))*6.2831853f32;
-  across:V3=wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(cos(ang),0.0f32,sin(ang)),g2.y),0.5f32),verse_style_near_width(dist,reach));
+  across:V3=wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(cos(ang),0.0f32,sin(ang)),g2.y),0.5f32),metaverse_style_near_width(dist,reach));
   world:V3=v3(q.x,eg_ground_y(q,u,heights),q.y);
   base:V3=eg_meadow(q);
   hj:f32=eg_hash(wg_add_f2f2(k,v2(31.7f32,2.9f32)));
-  a:V3=v3(verse_style_jitter(base.x,0.0f32,hj,g2.w),verse_style_jitter(base.y,1.0f32,hj,g2.w),verse_style_jitter(base.z,2.0f32,hj,g2.w));
+  a:V3=v3(metaverse_style_jitter(base.x,0.0f32,hj,g2.w),metaverse_style_jitter(base.y,1.0f32,hj,g2.w),metaverse_style_jitter(base.z,2.0f32,hj,g2.w));
   if (v==0) {
     world=wg_sub_f3f3(world,across);
     o.albedo=wg_mul_f3f(a,EG_ROOT);
@@ -3749,13 +3749,13 @@ eg_grass_vs :: (v:u32,i:u32,u:[]f32,heights:[]f32,water_nodes:[]f32)->EgG {
     o.albedo=wg_mul_f3f(a,EG_ROOT);
   } else {
     world=wg_add_f3f3(world,v3(lean.x,sqrt(fmax((tall*tall)-wg_dot2(lean,lean),(tall*tall)*0.15f32)),lean.y));
-    o.albedo=v3(verse_style_tip(a.x,0.0f32,g2.z),verse_style_tip(a.y,1.0f32,g2.z),verse_style_tip(a.z,2.0f32,g2.z));
+    o.albedo=v3(metaverse_style_tip(a.x,0.0f32,g2.z),metaverse_style_tip(a.y,1.0f32,g2.z),metaverse_style_tip(a.z,2.0f32,g2.z));
   }
   o.albedo=wg_mix_f3f3f(o.albedo,wg_pow_f3f3(mk.tint,v3(2.2f32,2.2f32,2.2f32)),mk.cover);
   o.glow=mk.glow;
   l:V3=wg_sw_xyz_f4(eg_st(1,u));
   lx:V2=wg_normalize2(wg_add_f2f2(v2(l.x,l.z),v2(0.0001f32,0.0001f32)));
-  tilt:f32=verse_style_grass_tilt(theta,w.x,w2.z);
+  tilt:f32=metaverse_style_grass_tilt(theta,w.x,w2.z);
   o.n=wg_normalize3(v3(lx.x*sin(tilt),cos(tilt),lx.y*sin(tilt)));
   o.pos=eg_clip(world,u);
   o.world=world;

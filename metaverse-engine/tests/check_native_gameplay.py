@@ -279,7 +279,7 @@ def qualify(args, work):
     values = []
     for row in records:
         name = row['procedure']
-        if not re.fullmatch(r'aethyr_native_(everglade|deadgears)_[0-9]+', name):
+        if not re.fullmatch(r'engine_native_(everglade|deadgears)_[0-9]+', name):
             raise RuntimeError('invalid scenario symbol')
         declarations.append('extern void ' + name + '(void);')
         values.append('  {' + json.dumps(name) + ', ' + name + ', ' + str(row['cases']) + '},')

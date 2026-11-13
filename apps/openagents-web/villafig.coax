@@ -59,7 +59,7 @@ vf_start :: (f: [] Figs) #export_c #effects(all) {
     s: Shape;
     f[0].figs[i] = VfFig.{};
     f[0].figs[i].shape = s;
-    f[0].figs[i].skel = verse_figure_skeleton(s);
+    f[0].figs[i].skel = metaverse_figure_skeleton(s);
     f[0].figs[i].now = Play.{}; f[0].figs[i].last = Play.{};
   }
 }
@@ -68,7 +68,7 @@ vf_start :: (f: [] Figs) #export_c #effects(all) {
 vf_motion_named :: (f: [] Figs, name: string) -> int #export_c #effects(all) {
   for i: 0..<f[0].motion_n {
     m := f[0].motions[i..<i + 1];
-    if m[0].ok && verse_motion_name(m) == name { return i; }
+    if m[0].ok && metaverse_motion_name(m) == name { return i; }
   }
   return -1;
 }
@@ -85,16 +85,16 @@ vf_motion_add :: (f: [] Figs, text: string) -> int #export_c #effects(all) {
   if !f[0].started { vf_start(f); }
   one: [1] Motion;
   if !verse_motion_read(one[..], text) {
-    e := verse_motion_error(one[..]);
+    e := metaverse_motion_error(one[..]);
     n := 0;
     while n < e.count && n < MOTION_ERROR { f[0].error[n] = e[n]; n += 1; }
     f[0].error_n = n;
     return -1;
   }
   f[0].error_n = 0;
-  name := verse_motion_name(one[..]);
+  name := metaverse_motion_name(one[..]);
   for i: f[0].stock_n..<f[0].motion_n {
-    if verse_motion_name(f[0].motions[i..<i + 1]) == name { f[0].motions[i] = one[0]; return i; }
+    if metaverse_motion_name(f[0].motions[i..<i + 1]) == name { f[0].motions[i] = one[0]; return i; }
   }
   if f[0].motion_n >= VF_MOTIONS { return -1; }
   f[0].motions[f[0].motion_n] = one[0];
@@ -111,13 +111,13 @@ vf_set :: (f: [] Figs, i: int, dog: bool, numbers: [] f32, pattern: int, cr: f32
   if !f[0].started { vf_start(f); }
   s: Shape;
   s.rig = ifx dog then Rig.animal else Rig.person;
-  for k: 0..<VF_NUMBERS { if k < numbers.count { s = verse_figure_shape_set(s, k, numbers[k]); } }
+  for k: 0..<VF_NUMBERS { if k < numbers.count { s = metaverse_figure_shape_set(s, k, numbers[k]); } }
   s.pattern = pattern;
   s.coat = fv(cr, cg, cb); s.marks = fv(mr, mg, mb);
   s.look = ifx dog then LOOK_LIT else LOOK_SOFT;
-  s = verse_figure_shape_fix(s);
+  s = metaverse_figure_shape_fix(s);
   f[0].figs[i].shape = s;
-  f[0].figs[i].skel = verse_figure_skeleton(s);
+  f[0].figs[i].skel = metaverse_figure_skeleton(s);
 }
 
 // A dog's details past its build (after vf_set): its tail's shape (0 straight, 1 a plume:
@@ -130,9 +130,9 @@ vf_dress :: (f: [] Figs, i: int, tail: int, ruff: f32) #export_c #effects(all) {
   s.tail_curl = ifx tail == VF_TAIL_CURL then 1.0f32 else ifx tail == VF_TAIL_PLUME then 0.35f32 else 0.0f32;
   if tail == VF_TAIL_PLUME { s.fluff = s.fluff * 1.6; }
   s.ruff = ruff;
-  s = verse_figure_shape_fix(s);
+  s = metaverse_figure_shape_fix(s);
   f[0].figs[i].shape = s;
-  f[0].figs[i].skel = verse_figure_skeleton(s);
+  f[0].figs[i].skel = metaverse_figure_skeleton(s);
 }
 
 // The gait for a speed (metres a second).
@@ -161,12 +161,12 @@ vf_step :: (f: [] Figs, i: int, speed: f32, dt: f32) #export_c #effects(all) {
   }
   w.since += t;
   shown := ifx w.gait == Gait.stand && w.since < f32(VF_FADE) then w.was else w.gait;
-  w.phase = fract(w.phase + verse_figure_stride_rate(w.shape, shown) * t);
+  w.phase = fract(w.phase + metaverse_figure_stride_rate(w.shape, shown) * t);
   // finished plays end
   for k: 0..<2 {
     play := ifx k == 0 then w.last else w.now;
     if play.motion < 0 { continue; }
-    if play.motion >= f[0].motion_n || verse_motion_done(f[0].motions[play.motion..<play.motion + 1], play, f[0].clock) {
+    if play.motion >= f[0].motion_n || metaverse_motion_done(f[0].motions[play.motion..<play.motion + 1], play, f[0].clock) {
       if k == 0 { w.last = Play.{}; } else { w.now = Play.{}; }
     }
   }
@@ -181,7 +181,7 @@ vf_emote :: (f: [] Figs, i: int, slot: int) -> bool #export_c #effects(all) {
   w := f[0].figs[i];
   if m[0].rig != w.shape.rig { return false; }
   now := f[0].clock;
-  if w.now.motion == slot && w.now.stop < 0 && !verse_motion_done(m, w.now, now) && m[0].mode != MODE_ONCE {
+  if w.now.motion == slot && w.now.stop < 0 && !metaverse_motion_done(m, w.now, now) && m[0].mode != MODE_ONCE {
     w.now.stop = now; f[0].figs[i] = w; return true;
   }
   if w.now.motion >= 0 && w.now.stop < 0 { w.now.stop = now; }
@@ -196,7 +196,7 @@ vf_still :: (f: [] Figs, i: int) -> bool #export_c #effects(all) {
   if i < 0 || i >= VF_FIGS { return false; }
   p := f[0].figs[i].now;
   if p.motion < 0 || p.motion >= f[0].motion_n || p.stop >= 0 { return false; }
-  return f[0].motions[p.motion].still && !verse_motion_done(f[0].motions[p.motion..<p.motion + 1], p, f[0].clock);
+  return f[0].motions[p.motion].still && !metaverse_motion_done(f[0].motions[p.motion..<p.motion + 1], p, f[0].clock);
 }
 
 // The motion figure i plays now, or -1.
@@ -208,13 +208,13 @@ vf_playing :: (f: [] Figs, i: int) -> int #export_c #effects(all) {
 }
 
 vf_pose :: (f: [] Figs, w: VfFig) -> Pose {
-  p := verse_figure_gait(w.shape.rig, w.gait, w.phase, f[0].clock);
-  if w.since < f32(VF_FADE) { p = verse_figure_blend(verse_figure_gait(w.shape.rig, w.was, w.phase, f[0].clock), p, smooth01(w.since / f32(VF_FADE))); }
+  p := metaverse_figure_gait(w.shape.rig, w.gait, w.phase, f[0].clock);
+  if w.since < f32(VF_FADE) { p = metaverse_figure_blend(metaverse_figure_gait(w.shape.rig, w.was, w.phase, f[0].clock), p, smooth01(w.since / f32(VF_FADE))); }
   for play: [2] Play.[w.last, w.now] {
     if play.motion < 0 || play.motion >= f[0].motion_n { continue; }
     m := f[0].motions[play.motion..<play.motion + 1];
     if m[0].rig != w.shape.rig { continue; }
-    p = verse_motion_over(m, play, p, f[0].clock);
+    p = metaverse_motion_over(m, play, p, f[0].clock);
   }
   return p;
 }
@@ -225,7 +225,7 @@ vf_place :: (f: [] Figs, i: int, x: f32, y: f32, z: f32, yaw: f32, out: [] f32, 
   if i < 0 || i >= VF_FIGS || !f[0].started { return 0; }
   w := f[0].figs[i];
   // a dog that sits (any motion that folds its hind legs under it) rests its rump on the ground
-  return verse_figure_place_seated(w.skel, vf_pose(f, w), Place.{x = x, y = y, z = z, yaw = yaw}, out, bound);
+  return metaverse_figure_place_seated(w.skel, vf_pose(f, w), Place.{x = x, y = y, z = z, yaw = yaw}, out, bound);
 }
 
 // A still emote (sit, sleep, dig...) ends: it fades back to standing.

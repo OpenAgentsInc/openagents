@@ -28,7 +28,7 @@ at 1/64 s, Orbit League at 1/120 s, and Dead Gears' rules
 (`metaverse/deadgears/ecs.coax`), Everglade's debris (`metaverse/demolish.coax`) and
 Hold the Stair at 1/60 s. The page faces of the haunted house, Fairy Forest,
 the Garden, Everglade and the villa no longer clamp the frame to 0.1 s; they
-move their realm by `verse_player_counts`, what the player's clock counts the
+move their realm by `metaverse_player_counts`, what the player's clock counts the
 frame for.
 
 No frame runs more steps than a realm's budget (8, `metaverse-engine/core/budget.coax`):
@@ -116,7 +116,7 @@ zone (0.2). The steps read it through an `InputBuffer`:
   clamped and counted (`mended`). `input_blur` releases every level at once.
 
 The walking controller (`metaverse-engine/move/player.coax`) takes its jump from the first
-step after the press. In the realms that call `verse_player_input` once a
+step after the press. In the realms that call `metaverse_player_input` once a
 frame, its look still turns the camera at once; the Grid's session splits
 the look over the steps, and the other realms follow with ec-migrate. Checks: every press goes to the step a
 separate model names, over 64 random runs of 200 frames with frames of zero
@@ -330,7 +330,7 @@ up, or half a rise plus 5.2), the jump held climbs at 3.2 m/s, between beats
 you glide at 1.5 m/s, a rise stops past 40 m, and the dive held falls at
 7 m/s. The face hands the walker the presses, taps, whether you have wings
 (the realm's settings, not in water) and the dive held
-(`verse_player_input_flying`), and only draws the wings. It replaced
+(`metaverse_player_input_flying`), and only draws the wings. It replaced
 `fairy-face.c`'s once-a-frame flight, which flew higher or lower at
 different frame rates. Checks: `metaverse-engine/move/flight.coax` (mutation 0 survivors)
 and `metaverse-engine/move/walk.coax` ("a flight of beats, climbs, glides and a dive has

@@ -55,10 +55,10 @@ fn coax_p_particle_vs(p_v: u32, p_n: u32) -> coax_t12 {
   l_t = coax_at_u(i32(2i));
   l_speed = l_e.z.w;
   l_seed = l_e.w.x;
-  l_off = coax_p_v3(coax_p_verse_particle_offset(l_kind, l_seed, l_i, l_t, l_speed, l_e.x.w, 0.0f), coax_p_verse_particle_offset(l_kind, l_seed, l_i, l_t, l_speed, l_e.x.w, 0x1.000000p0f), coax_p_verse_particle_offset(l_kind, l_seed, l_i, l_t, l_speed, l_e.x.w, 0x1.000000p1f));
+  l_off = coax_p_v3(coax_p_metaverse_particle_offset(l_kind, l_seed, l_i, l_t, l_speed, l_e.x.w, 0.0f), coax_p_metaverse_particle_offset(l_kind, l_seed, l_i, l_t, l_speed, l_e.x.w, 0x1.000000p0f), coax_p_metaverse_particle_offset(l_kind, l_seed, l_i, l_t, l_speed, l_e.x.w, 0x1.000000p1f));
   l_w = coax_p_wg_make_f4_f3f(coax_p_wg_add_f3f3(coax_p_v3(l_e.x.x, l_e.x.y, l_e.x.z), l_off), 0x1.000000p0f);
   l_c = coax_p_v4(coax_p_wg_dot4(coax_p_wg_at4(8i), l_w), coax_p_wg_dot4(coax_p_wg_at4(12i), l_w), coax_p_wg_dot4(coax_p_wg_at4(16i), l_w), coax_p_wg_dot4(coax_p_wg_at4(20i), l_w));
-  l_half = (coax_p_verse_particle_size(l_kind, l_seed, l_i, l_t, l_speed, l_e.z.z) * 0x1.000000p-1f);
+  l_half = (coax_p_metaverse_particle_size(l_kind, l_seed, l_i, l_t, l_speed, l_e.z.z) * 0x1.000000p-1f);
   l_px = ((((l_half * coax_p_wg_length3(coax_p_v3(coax_at_u(i32(12i)), coax_at_u(i32(13i)), coax_at_u(i32(14i))))) / coax_p_fmax(l_c.w, 0x1.47ae14p-7f)) * coax_at_u(i32(1i))) * 0x1.000000p-1f);
   l_grow = coax_p_fmax(0x1.000000p0f, (0x1.19999ap1f / coax_p_fmax(l_px, 0x1.0624dep-10f)));
   l_s = (l_half * l_grow);
@@ -67,7 +67,7 @@ fn coax_p_particle_vs(p_v: u32, p_n: u32) -> coax_t12 {
   l_o.x = l_c;
   l_d = coax_p_wg_length3(coax_p_wg_sub_f3f3(coax_p_v3(coax_at_u(i32(24i)), coax_at_u(i32(25i)), coax_at_u(i32(26i))), coax_p_v3(l_w.x, l_w.y, l_w.z)));
   l_fog = exp((((-l_d) * l_d) * 0x1.3a92a4p-11f));
-  l_o.z = coax_p_wg_div_f3f(coax_p_wg_mul_f3f(coax_p_wg_mul_f3f(coax_p_v3(l_e.y.x, l_e.y.y, l_e.y.z), coax_p_verse_particle_glow(l_kind, l_seed, l_i, l_t, l_speed, l_e.y.w)), l_fog), sqrt(l_grow));
+  l_o.z = coax_p_wg_div_f3f(coax_p_wg_mul_f3f(coax_p_wg_mul_f3f(coax_p_v3(l_e.y.x, l_e.y.y, l_e.y.z), coax_p_metaverse_particle_glow(l_kind, l_seed, l_i, l_t, l_speed, l_e.y.w)), l_fog), sqrt(l_grow));
   return l_o;
 }
 fn coax_p_particle_fs(p_p: coax_t12) -> vec4f {
@@ -80,7 +80,7 @@ fn coax_p_particle_fs(p_p: coax_t12) -> vec4f {
     discard;
   }
   l_a = (exp(((-l_r2) * 0x1.000000p2f)) * (0x1.000000p0f - l_r2));
-  return coax_p_wg_make_f4_f3f(coax_p_wg_mul_f3f(l_p.z, l_a), (coax_p_verse_haunt_bloom_share(coax_p_fmax(l_p.z.x, coax_p_fmax(l_p.z.y, l_p.z.z)), 0x1.000000p0f) * l_a));
+  return coax_p_wg_make_f4_f3f(coax_p_wg_mul_f3f(l_p.z, l_a), (coax_p_metaverse_haunt_bloom_share(coax_p_fmax(l_p.z.x, coax_p_fmax(l_p.z.y, l_p.z.z)), 0x1.000000p0f) * l_a));
 }
 fn coax_p_v2(p_x: f32, p_y: f32) -> vec2f {
   var l_x: f32 = p_x;
@@ -100,7 +100,7 @@ fn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {
   var l_z: f32 = p_z;
   return vec3f(l_x, l_y, l_z);
 }
-fn coax_p_verse_particle_offset(p_kind: f32, p_seed: f32, p_i: f32, p_t: f32, p_speed: f32, p_radius: f32, p_axis: f32) -> f32 {
+fn coax_p_metaverse_particle_offset(p_kind: f32, p_seed: f32, p_i: f32, p_t: f32, p_speed: f32, p_radius: f32, p_axis: f32) -> f32 {
   var l_kind: f32 = p_kind;
   var l_seed: f32 = p_seed;
   var l_i: f32 = p_i;
@@ -114,8 +114,8 @@ fn coax_p_verse_particle_offset(p_kind: f32, p_seed: f32, p_i: f32, p_t: f32, p_
   var l_spread: f32;
   var l_drift: f32;
   var l_wander: f32;
-  l_a = coax_p_verse_particle_age(l_kind, l_seed, l_i, l_t, l_speed);
-  l_h = coax_p_verse_particle_hash(l_seed, l_i, (l_axis + 0x1.000000p0f));
+  l_a = coax_p_metaverse_particle_age(l_kind, l_seed, l_i, l_t, l_speed);
+  l_h = coax_p_metaverse_particle_hash(l_seed, l_i, (l_axis + 0x1.000000p0f));
   l_w = (l_t * l_speed);
   if ((l_kind < 0x1.000000p-1f))
   {
@@ -161,7 +161,7 @@ fn coax_p_wg_dot4(p_a: vec4f, p_b: vec4f) -> f32 {
   var l_b: vec4f = p_b;
   return dot(l_a, l_b);
 }
-fn coax_p_verse_particle_size(p_kind: f32, p_seed: f32, p_i: f32, p_t: f32, p_speed: f32, p_size: f32) -> f32 {
+fn coax_p_metaverse_particle_size(p_kind: f32, p_seed: f32, p_i: f32, p_t: f32, p_speed: f32, p_size: f32) -> f32 {
   var l_kind: f32 = p_kind;
   var l_seed: f32 = p_seed;
   var l_i: f32 = p_i;
@@ -169,12 +169,12 @@ fn coax_p_verse_particle_size(p_kind: f32, p_seed: f32, p_i: f32, p_t: f32, p_sp
   var l_speed: f32 = p_speed;
   var l_size: f32 = p_size;
   var l_a: f32;
-  l_a = coax_p_verse_particle_age(l_kind, l_seed, l_i, l_t, l_speed);
+  l_a = coax_p_metaverse_particle_age(l_kind, l_seed, l_i, l_t, l_speed);
   if ((l_kind < 0x1.000000p-1f))
   {
     return (l_size * (0x1.000000p0f - (l_a * 0x1.333334p-1f)));
   }
-  return (l_size * (0x1.666666p-1f + (0x1.333334p-1f * coax_p_verse_particle_hash(l_seed, l_i, 0x1.800000p2f))));
+  return (l_size * (0x1.666666p-1f + (0x1.333334p-1f * coax_p_metaverse_particle_hash(l_seed, l_i, 0x1.800000p2f))));
 }
 fn coax_p_wg_length3(p_a: vec3f) -> f32 {
   var l_a: vec3f = p_a;
@@ -194,7 +194,7 @@ fn coax_p_wg_sub_f3f3(p_a: vec3f, p_b: vec3f) -> vec3f {
   var l_b: vec3f = p_b;
   return coax_p_v3((l_a.x - l_b.x), (l_a.y - l_b.y), (l_a.z - l_b.z));
 }
-fn coax_p_verse_particle_glow(p_kind: f32, p_seed: f32, p_i: f32, p_t: f32, p_speed: f32, p_flicker: f32) -> f32 {
+fn coax_p_metaverse_particle_glow(p_kind: f32, p_seed: f32, p_i: f32, p_t: f32, p_speed: f32, p_flicker: f32) -> f32 {
   var l_kind: f32 = p_kind;
   var l_seed: f32 = p_seed;
   var l_i: f32 = p_i;
@@ -207,8 +207,8 @@ fn coax_p_verse_particle_glow(p_kind: f32, p_seed: f32, p_i: f32, p_t: f32, p_sp
   var l_edge: f32;
   var l_p: f32;
   var l_p2: f32;
-  l_a = coax_p_verse_particle_age(l_kind, l_seed, l_i, l_t, l_speed);
-  l_h = coax_p_verse_particle_hash(l_seed, l_i, 0x1.400000p2f);
+  l_a = coax_p_metaverse_particle_age(l_kind, l_seed, l_i, l_t, l_speed);
+  l_h = coax_p_metaverse_particle_hash(l_seed, l_i, 0x1.400000p2f);
   if ((l_kind < 0x1.000000p-1f))
   {
     l_fade = ((0x1.000000p0f - l_a) * coax_p_pm_lo(0x1.000000p0f, (l_a * 0x1.800000p3f)));
@@ -260,7 +260,7 @@ fn coax_p_particles_under_panel(p_p: vec2f) -> bool {
   }
   return false;
 }
-fn coax_p_verse_haunt_bloom_share(p_peak: f32, p_glow: f32) -> f32 {
+fn coax_p_metaverse_haunt_bloom_share(p_peak: f32, p_glow: f32) -> f32 {
   var l_peak: f32 = p_peak;
   var l_glow: f32 = p_glow;
   var l_own: f32;
@@ -269,15 +269,15 @@ fn coax_p_verse_haunt_bloom_share(p_peak: f32, p_glow: f32) -> f32 {
   l_past = coax_p_hl_min(0x1.000000p0f, (coax_p_hl_max(0.0f, (l_peak - 0x1.000000p0f)) / (l_peak + 0x1.000000p-1f)));
   return (l_own + (((0x1.000000p0f - l_own) * l_past) * 0x1.333334p-1f));
 }
-fn coax_p_verse_particle_age(p_kind: f32, p_seed: f32, p_i: f32, p_t: f32, p_speed: f32) -> f32 {
+fn coax_p_metaverse_particle_age(p_kind: f32, p_seed: f32, p_i: f32, p_t: f32, p_speed: f32) -> f32 {
   var l_kind: f32 = p_kind;
   var l_seed: f32 = p_seed;
   var l_i: f32 = p_i;
   var l_t: f32 = p_t;
   var l_speed: f32 = p_speed;
-  return coax_p_pm_fract((((l_t * l_speed) / coax_p_verse_particle_life(l_kind)) + coax_p_verse_particle_hash(l_seed, l_i, 0.0f)));
+  return coax_p_pm_fract((((l_t * l_speed) / coax_p_metaverse_particle_life(l_kind)) + coax_p_metaverse_particle_hash(l_seed, l_i, 0.0f)));
 }
-fn coax_p_verse_particle_hash(p_seed: f32, p_i: f32, p_k: f32) -> f32 {
+fn coax_p_metaverse_particle_hash(p_seed: f32, p_i: f32, p_k: f32) -> f32 {
   var l_seed: f32 = p_seed;
   var l_i: f32 = p_i;
   var l_k: f32 = p_k;
@@ -319,7 +319,7 @@ fn coax_p_hl_min(p_a: f32, p_b: f32) -> f32 {
   }
   return l_b;
 }
-fn coax_p_verse_particle_life(p_kind: f32) -> f32 {
+fn coax_p_metaverse_particle_life(p_kind: f32) -> f32 {
   var l_kind: f32 = p_kind;
   if ((l_kind < 0x1.000000p-1f))
   {

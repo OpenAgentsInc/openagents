@@ -4,8 +4,8 @@
 // (metaverse/tools/pack_realm.py has the format), hands the pack's parts to the
 // realm as the browser does, and passes messages, keys and frames. It
 // draws nothing; a GPU host (metaverse/gpu) draws what it hands back.
-#ifndef VERSE_NATIVE_REALM_HOST_H
-#define VERSE_NATIVE_REALM_HOST_H
+#ifndef METAVERSE_NATIVE_REALM_HOST_H
+#define METAVERSE_NATIVE_REALM_HOST_H
 #include <stddef.h>
 #include <stdint.h>
 #include "face-address.h"

@@ -31,14 +31,14 @@ fly_take :: (r: [] FlyRead, text: string, at: int, key: bool) {
   f := r[0].f; v := r[0].v;
   if r[0].field != 7 || f.count == FLY_KEYS || (f.count == 0 && v[0] != 0) { r[0].bad = true; return; }
   if f.count > 0 && v[0] <= f.keys[f.count - 1].at { r[0].bad = true; return; }
-  r[0].f = verse_flight_key(f, v[0], v3(v[1], v[2], v[3]), v3(v[4], v[5], v[6]), false, EASE_LINEAR);
+  r[0].f = metaverse_flight_key(f, v[0], v3(v[1], v[2], v[3]), v3(v[4], v[5], v[6]), false, EASE_LINEAR);
   r[0].field = 0;
 }
 
 // The path in `text`, or ok false. The first key is at 0; each key is later than the one before;
 // there are 2 to FLY_KEYS keys.
 fly_parse :: (text: string) -> FlyPath {
-  r: [1] FlyRead;   // its flight starts empty, as verse_flight_new makes one
+  r: [1] FlyRead;   // its flight starts empty, as metaverse_flight_new makes one
   for ch, i: text { if ch == ',' || ch == '~' { fly_take(r[..], text, i, ch == '~'); } }
   fly_take(r[..], text, text.count, true);
   if r[0].bad || r[0].f.count < 2 { return FlyPath.{}; }

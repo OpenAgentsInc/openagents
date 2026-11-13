@@ -312,7 +312,7 @@ step 1 doesn't. The two steps of frame 1 split the 0.3 rad look.
 
 ## The walking controller
 
-`verse_player_input` is the controller's entry point for one frame's
+`metaverse_player_input` is the controller's entry point for one frame's
 controls. It records a jump as a press with `input_level`:
 
 <!-- source: metaverse-engine/move/walk.coax input -->
@@ -360,15 +360,15 @@ body_step_fixed :: (w: World, given: Body, dt: f32) -> Body #effects(all) {
   beat := t.pressed && !given.on_ground;   // a press in the air: a wing beat, if the realm flies
 ```
 
-Before this change, `verse_player_input` applied the jump when it was called,
+Before this change, `metaverse_player_input` applied the jump when it was called,
 once a frame. The states that the steps pass through are the same as before:
 the jump still starts at the next step. What changed is that a press now
 belongs to a step, which replay ([chapter 5](ch005-replay-a-session-exactly.md))
 needs.
 
-The legacy `verse_player_input` API still applies look at its call boundary.
-Frame-driven adopters now use `verse_player_v2_input` and
-`verse_player_v2_advance`: a sidecar buffers relative look and samples it at
+The legacy `metaverse_player_input` API still applies look at its call boundary.
+Frame-driven adopters now use `metaverse_player_v2_input` and
+`metaverse_player_v2_advance`: a sidecar buffers relative look and samples it at
 each physical step without changing the published `Player` layout. Absolute
 camera headings are held levels, consumed at the first step. Garden, Villa,
 the Haunted House, Fairy Forest, Five MMO and Dead Gears use this adapter.

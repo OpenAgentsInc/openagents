@@ -867,7 +867,7 @@ A request is `openagents.host-request.v1`:
 | `spend.list` | `operate` | `spends` |
 | `spend.settle` | `operate` | `settled` |
 | `chats.invite` | `observe` | `chats` |
-| `verse.private` | `observe` | `verse_private` |
+| `verse.private` | `observe` | `metaverse_private` |
 | `thread.list` | `observe` | `threads` |
 | `thread.read` | `observe` | `thread` |
 | `thread.send` | `operate` | `dispatched` |
@@ -1029,7 +1029,7 @@ carries ends. It admits only the host's Coder task store. A device holding
 its chat grant ends. A host that serves no chats refuses it as
 `unavailable`, and an older host as `malformed` or `unsupported`.
 `verse.private` carries `{world_key}`, the device's Metaverse realm public key
-as 64 lowercase hex characters, and returns `verse_private`:
+as 64 lowercase hex characters, and returns `metaverse_private`:
 `{placements}`, the owner's private Metaverse placements file
 (`openagents.verse.private-placements.v1`, at most 65,536 bytes) as the
 host's Metaverse home holds it, or `null` when it holds none

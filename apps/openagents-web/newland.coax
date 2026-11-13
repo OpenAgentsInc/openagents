@@ -393,10 +393,10 @@ ring :: (out: [] f32, at: int, x: f32, y: f32, r: f32, k: Ink, light: f32) -> in
 frame :: (out: [] f32, at: int, b: Box, cut: f32, k: Ink, light: f32, p: Pen) -> int {
   v := at;
   for i: 0..<6 {
-    a := verse_hud_frame_point(b.x0, b.y0, b.x1, b.y1, cut, i); c := verse_hud_frame_point(b.x0, b.y0, b.x1, b.y1, cut, i + 1);
+    a := metaverse_hud_frame_point(b.x0, b.y0, b.x1, b.y1, cut, i); c := metaverse_hud_frame_point(b.x0, b.y0, b.x1, b.y1, cut, i + 1);
     v = rule(out, v, a.x, a.y, c.x, c.y, k, HUD_OUTLINE * light);
   }
-  arm := verse_hud_frame_arm(b.x1 - b.x0, p.d);
+  arm := metaverse_hud_frame_arm(b.x1 - b.x0, p.d);
   v = rule(out, v, b.x0, b.y0 + arm * HUD_ARM_DOWN, b.x0, b.y0, k, light);
   v = rule(out, v, b.x0, b.y0, b.x0 + arm, b.y0, k, light);
   v = rule(out, v, b.x1, b.y1 - arm * HUD_ARM_DOWN, b.x1, b.y1, k, light);
@@ -698,7 +698,7 @@ figure :: (out: [] f32, at: int, c: Cam, k: Skeleton, pose: Pose, x: f32, z: f32
 // The same figure with its feet y above the floor (a jump); its shadow stays on the floor.
 figure_up :: (out: [] f32, at: int, c: Cam, k: Skeleton, pose: Pose, x: f32, y: f32, z: f32, yaw: f32, tint: Ink, light: f32, p: Pen, top: [] Spot) -> int {
   joints: [MAX_JOINTS] Fv;
-  if !verse_figure_joints_at(k, pose, Place.{x = 0, y = 0, z = 0, yaw = yaw}, joints[..]) { return at; }
+  if !metaverse_figure_joints_at(k, pose, Place.{x = 0, y = 0, z = 0, yaw = yaw}, joints[..]) { return at; }
   v := at;
   bone := tint; bone.core = 0.8 * p.d; bone.glow = 2.6 * p.d;
   w := fv(x, y, z);
@@ -758,8 +758,8 @@ people :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int
   for i: 0..<n {
     w := spots[i];
     sh := person_shape(i);
-    k := verse_figure_skeleton(sh);
-    pose := verse_figure_gait(Rig.person, w.gait, w.phase, t + cast(f32) i * 1.3);
+    k := metaverse_figure_skeleton(sh);
+    pose := metaverse_figure_gait(Rig.person, w.gait, w.phase, t + cast(f32) i * 1.3);
     top: [1] Spot;
     v = figure(out, v, c, k, pose, w.x, w.z, w.yaw, cool, 0.9 * seen, p, top[..]);
     s[0].head_ok[i] = top[0].ok && inside(c.clip, top[0].x, top[0].y); s[0].head_x[i] = top[0].x; s[0].head_y[i] = top[0].y;
@@ -786,7 +786,7 @@ agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int
   if seen <= 0 { return v; }
   pale := ink(p, INK_PALE); accent := ink(p, INK_BRIGHT); dim := ink(p, INK_DIM);
   sh: Shape; sh.size = 0.95;
-  k := verse_figure_skeleton(sh);
+  k := metaverse_figure_skeleton(sh);
   slot: [MAX_PLOTS] int;
   for a: 0..<s[0].agents {
     pk := s[0].agent_plot[a];
@@ -797,7 +797,7 @@ agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int
     r := 1.25 + 0.35 * cast(f32) (j % 2);
     x := pl.x + r * cos(ang); z := pl.z + r * sin(ang);
     yaw := angle_of(pl.x - x, pl.z - z);
-    pose := verse_figure_gait(Rig.person, Gait.stand, 0, t * 1.4 + cast(f32) a);
+    pose := metaverse_figure_gait(Rig.person, Gait.stand, 0, t * 1.4 + cast(f32) a);
     // at work: a hand to the tree
     pose.turn[P_R_SHOULDER] = fv(-1.1 - 0.15 * sin(t * 3.1 + cast(f32) a), 0, -0.2);
     pose.turn[P_R_ELBOW] = fv(-0.5, 0, 0);

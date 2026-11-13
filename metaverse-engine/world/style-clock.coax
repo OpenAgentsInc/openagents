@@ -25,7 +25,7 @@ sp_number :: (text: string) -> f64 {
 /** The page's clock from its facts: `clock` (fixed:T, cycle or real; noon when
  *  it is none of them), `now` (ms since 1970, for a cycle everyone shares) and
  *  `day` (the visitor's local time of day, 0 to 1, for real). */
-verse_style_clock :: (clock: string, now_ms: string, day: string) -> StyleClock {
+metaverse_style_clock :: (clock: string, now_ms: string, day: string) -> StyleClock {
   c: StyleClock; c.mode = STYLE_CLOCK_FIXED; c.at = 0.5;
   if clock == "cycle" {
     n := sp_number(now_ms);
@@ -44,7 +44,7 @@ verse_style_clock :: (clock: string, now_ms: string, day: string) -> StyleClock 
   return c;
 }
 /** The time of day `seconds` after the page opened (0 midnight, 0.5 noon). */
-verse_style_clock_at :: (c: StyleClock, seconds: f32) -> f32 {
+metaverse_style_clock_at :: (c: StyleClock, seconds: f32) -> f32 {
   if c.mode == STYLE_CLOCK_FIXED { return c.at; }
   day := ifx c.mode == STYLE_CLOCK_CYCLE then STYLE_CYCLE_SECONDS else 86400.0f32;
   t := c.at + seconds / day;
@@ -52,16 +52,16 @@ verse_style_clock_at :: (c: StyleClock, seconds: f32) -> f32 {
 }
 sc_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
 #test "the clock: fixed pins it, cycle turns every 48 minutes for everyone alike, real follows the visitor" {
-  f := verse_style_clock("fixed:0.25", "1700000000000", "0.9");
-  #assert f.mode == STYLE_CLOCK_FIXED && f.at == 0.25 && verse_style_clock_at(f, 999) == 0.25;
-  #assert verse_style_clock("fixed:2", "", "").at == 0.5 && verse_style_clock("", "", "").at == 0.5 && verse_style_clock("noon", "5", "0.1").mode == STYLE_CLOCK_FIXED;
+  f := metaverse_style_clock("fixed:0.25", "1700000000000", "0.9");
+  #assert f.mode == STYLE_CLOCK_FIXED && f.at == 0.25 && metaverse_style_clock_at(f, 999) == 0.25;
+  #assert metaverse_style_clock("fixed:2", "", "").at == 0.5 && metaverse_style_clock("", "", "").at == 0.5 && metaverse_style_clock("noon", "5", "0.1").mode == STYLE_CLOCK_FIXED;
   // 2,880 s into a cycle day is a whole day: back where it was; 720 s is a quarter
-  c := verse_style_clock("cycle", "2880000", "0.9");
+  c := metaverse_style_clock("cycle", "2880000", "0.9");
   #assert c.mode == STYLE_CLOCK_CYCLE && c.at == 0;
-  #assert sc_near(verse_style_clock_at(c, 720), 0.25) && sc_near(verse_style_clock_at(c, 2880), 0);
-  a := verse_style_clock("cycle", "1700000000000", ""); b := verse_style_clock("cycle", "1700000720000", "");
-  #assert sc_near(verse_style_clock_at(a, 720), b.at);   // two visitors twelve minutes apart see the same sky
-  r := verse_style_clock("real", "", "0.75");
-  #assert r.mode == STYLE_CLOCK_REAL && r.at == 0.75 && sc_near(verse_style_clock_at(r, 21600), 0.0);
-  #assert verse_style_clock("real", "", "x").mode == STYLE_CLOCK_FIXED;
+  #assert sc_near(metaverse_style_clock_at(c, 720), 0.25) && sc_near(metaverse_style_clock_at(c, 2880), 0);
+  a := metaverse_style_clock("cycle", "1700000000000", ""); b := metaverse_style_clock("cycle", "1700000720000", "");
+  #assert sc_near(metaverse_style_clock_at(a, 720), b.at);   // two visitors twelve minutes apart see the same sky
+  r := metaverse_style_clock("real", "", "0.75");
+  #assert r.mode == STYLE_CLOCK_REAL && r.at == 0.75 && sc_near(metaverse_style_clock_at(r, 21600), 0.0);
+  #assert metaverse_style_clock("real", "", "x").mode == STYLE_CLOCK_FIXED;
 }

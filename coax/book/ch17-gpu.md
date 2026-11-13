@@ -358,7 +358,7 @@ icons. Here's one of the smaller ones, the conversion from a display
 (sRGB) value to linear light:
 
 ```jai
-verse_decode :: (v:f32)->f32 #export_c {
+metaverse_decode :: (v:f32)->f32 #export_c {
   if v<=0.04045f32 { return v/12.92f32; }
   return pow((v+0.055f32)/1.055f32,2.4f32);
 }
@@ -387,7 +387,7 @@ Coax." Its fragment stages are mostly one line that unpacks vectors and
 calls a generated function:
 
 ```c
-fragment float4 dot_fragment(DotOut in [[stage_in]]) {float c=verse_dot(in.uv.x,in.uv.y,in.light,in.soft,in.crisp);return float4(c,c,c,0);}
+fragment float4 dot_fragment(DotOut in [[stage_in]]) {float c=metaverse_dot(in.uv.x,in.uv.y,in.light,in.soft,in.crisp);return float4(c,c,c,0);}
 ```
 
 The app's build script, `apps/openagents-ios/generate.sh`, joins the two

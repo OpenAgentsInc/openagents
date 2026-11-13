@@ -154,19 +154,19 @@ cg_town_albedo :: (m:f32,t:V3,p:V3,n:V3)->V3 {
   gy:=fract(p.y/0.42f32);gx:=fract((along+off)/0.8f32);
   mortar:=fmax(1.0f32-smoothstep(0.0f32,0.045f32,fmin(gy,1.0f32-gy)),1.0f32-smoothstep(0.0f32,0.03f32,fmin(gx,1.0f32-gx)));
   if (n.y>0.7f32) {mortar=0;}
-  k:=0.86f32+0.24f32*verse_style_hash(col+row*17.0f32,m*3.0f32);
-  moss:=smoothstep(0.6f32,1.0f32,verse_style_hash(col*1.3f32,row+5.0f32))*0.25f32;
+  k:=0.86f32+0.24f32*metaverse_style_hash(col+row*17.0f32,m*3.0f32);
+  moss:=smoothstep(0.6f32,1.0f32,metaverse_style_hash(col*1.3f32,row+5.0f32))*0.25f32;
   g:=(t.x+t.y+t.z)/3.0f32;c:=scale3(mix3(t,v3(g*1.04f32,g,g*0.94f32),0.5f32),k);c=mix3(c,v3(0.45f32,0.52f32,0.30f32),moss);return mix3(c,scale3(c,0.68f32),mortar);
  }
  if (m<2.5f32) {
   frame:=1.0f32-smoothstep(0.0f32,0.09f32,abs(fract(along/1.6f32+0.5f32)-0.5f32)*1.6f32);
   foot:=1.0f32-smoothstep(1.9f32,2.7f32,p.y); // the plateau stands at 1.8 m (CG_PLATEAU)
-  c:=scale3(t,0.94f32+0.08f32*verse_style_hash(floor(along*3.0f32),floor(p.y*3.0f32)));
+  c:=scale3(t,0.94f32+0.08f32*metaverse_style_hash(floor(along*3.0f32),floor(p.y*3.0f32)));
   c=mix3(c,scale3(c,0.78f32),saturate(foot));return mix3(c,v3(0.36f32,0.25f32,0.15f32),frame*0.9f32);
  }
  if (m<4.5f32) {
   gy:=fract(p.y/0.22f32);row:=floor(p.y/0.22f32);col:=floor((along+ifx fract(row*0.5f32)>0.25f32 then 0.15f32 else 0.0f32)/0.3f32);
-  c:=scale3(t,0.85f32+0.25f32*verse_style_hash(col,row));return scale3(c,0.62f32+0.38f32*smoothstep(0.0f32,0.25f32,gy));
+  c:=scale3(t,0.85f32+0.25f32*metaverse_style_hash(col,row));return scale3(c,0.62f32+0.38f32*smoothstep(0.0f32,0.25f32,gy));
  }
  grain:=0.86f32+0.14f32*sin(p.y*31.0f32+sin(along*1.3f32)*0.8f32);
  return scale3(t,grain);
@@ -209,20 +209,20 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
   albedo=mix3(albedo,cg_decode(v3(0.50f32,0.46f32,0.24f32)),trail*0.80f32);}
  if (leaves) {
   if (s.tint.x>s.tint.y*1.2f32) {age:=cg_noise(v2(s.world.x*1.4f32+s.world.y*0.7f32,s.world.z*1.4f32));albedo=cg_decode(cg_leaf_palette(s.tint,age));}
-  albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));
+  albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));
  }
- if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}
+ if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));}
  if (kind>7.5f32) {albedo=cg_decode(s.tint);}
- else if (kind>6.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
+ else if (kind>6.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));}
  town:=ifx !village && kind>3.5f32 && kind<4.5f32 && s.world.z< -32.5f32 then cg_town_material(s.tint) else -1.0f32;
  if (town>=0) {albedo=cg_decode(cg_town_albedo(town,s.tint,s.world,n));}
  if (kind>3.5f32 && kind<4.5f32 && town<0 && !village) {
   // Neutral grey stone (the placement tint keeps its value, loses most of its olive) with moss on
   // faces that look up, as the reference's cliff tops.
-  base:=cg_decode(s.tint);grey:=verse_style_luma(base.x,base.y,base.z);base=mix3(base,v3(grey,grey*1.02f32,grey*0.96f32),0.35f32);
+  base:=cg_decode(s.tint);grey:=metaverse_style_luma(base.x,base.y,base.z);base=mix3(base,v3(grey,grey*1.02f32,grey*0.96f32),0.35f32);
   moss:=smoothstep(0.30f32,0.85f32,n.y+0.25f32*(cg_noise(v2(s.world.x*0.9f32+s.world.y,s.world.z*0.9f32))-0.5f32))*(0.55f32+0.45f32*cg_noise(v2(s.world.x*1.7f32,s.world.z*1.7f32)));
   base=mix3(base,scale3(cg_decode(v3(0.52f32,0.64f32,0.26f32)),fmax(grey/0.22f32,0.7f32)),moss*0.85f32);
-  albedo=scale3(base,0.60f32+0.50f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));
+  albedo=scale3(base,0.60f32+0.50f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));
  }
  visibility:=shadow*cg_cloud(u,s.world.x,s.world.z);
  ndl:=dot3(n,sun);direct:=saturate(ndl);ao:f32=1;
@@ -243,9 +243,9 @@ cg_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32)->V4 {
  if (dark) {
   // the dungeon's air carries no sky haze
   colour=cg_dungeon_light(albedo,n,s.world,u);indirect=scale3(albedo,0.04f32);
-  inner:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,inner);
+  inner:=saturate(metaverse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(metaverse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,inner);
  }
- colour=cg_atmosphere(u,colour,eye,s.world);share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(u,eye,s.world))/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
+ colour=cg_atmosphere(u,colour,eye,s.world);share:=saturate(metaverse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(u,eye,s.world))/fmax(metaverse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
 }
 // Everglade Experimental's dungeon (metaverse/experimental-dungeon.coax), lit by its torches alone:
 // u[60..63] its block (west, south, east, north), u[64] its ceiling's height (0 when there is none
@@ -272,7 +272,7 @@ cg_dungeon_light :: (albedo:V3,n:V3,p:V3,u:[]f32)->V3 {
  colour:V3=mul3(albedo,light);
  eye:V3=sub3(p,v3(u[16],u[17],u[18]));range:f32=u[65];
  if (range>0.0f32 && dot3(eye,eye)<=range*range) {
-  grey:f32=verse_style_luma(albedo.x,albedo.y,albedo.z)*0.32f32;
+  grey:f32=metaverse_style_luma(albedo.x,albedo.y,albedo.z)*0.32f32;
   colour=mix3(v3(grey,grey,grey),colour,saturate((light.x-0.03f32)/0.15f32));
  }
  return colour;
@@ -359,7 +359,7 @@ charactercreator_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_ste
       while k<4 {
         o:V2=v2(((cast(f32)(k&1)*2.0f32)-1.0f32)*texel.x,((cast(f32)(k>>1)*2.0f32)-1.0f32)*texel.y);
         t:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+o.x,uv.y+o.y),0.0f32);
-        c=add3(c,scale3(v3(t.x,t.y,t.z),verse_style_bloom_share(fmax(t.x,fmax(t.y,t.z)),0.62f32,0.30f32)*t.w));
+        c=add3(c,scale3(v3(t.x,t.y,t.z),metaverse_style_bloom_share(fmax(t.x,fmax(t.y,t.z)),0.62f32,0.30f32)*t.w));
         k+=1;
       }
     }
@@ -373,7 +373,7 @@ charactercreator_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_ste
 }
 
 cg_post_sample :: (image:Tex2D,lin:Sampler,uv:V2)->V3 {return cg_rgb(gpu_sample_level(image,lin,uv,0));}
-cg_luma :: (c:V3)->f32 {return verse_style_luma(c.x,c.y,c.z);}
+cg_luma :: (c:V3)->f32 {return metaverse_style_luma(c.x,c.y,c.z);}
 cg_fxaa :: (uv:V2,step:V2,image:Tex2D,lin:Sampler)->V3 {
  center:=cg_post_sample(image,lin,uv);
  nw:=cg_luma(cg_post_sample(image,lin,v2(uv.x-step.x,uv.y-step.y)));ne:=cg_luma(cg_post_sample(image,lin,v2(uv.x+step.x,uv.y-step.y)));

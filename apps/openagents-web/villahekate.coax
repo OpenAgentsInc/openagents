@@ -199,8 +199,8 @@ hekate_particles :: (s: [] Villa, out: [] f32) {
   p := hekate_pose(s);
   g := ground_at(s, p.x, p.z);
   top := hk_at(v3(p.x, g + f32(HK_FLOAT), p.z), p.yaw, 0.62, 2.85, 0.46);
-  if verse_emitter_put(out, s[0].emitter_n, top.x, top.y, top.z, 0.12, 0.8, 0.88, 1.0, 0.9, 0, 30, 0.04, 0.9, 13.7) { s[0].emitter_n += 1; }
-  if verse_emitter_put(out, s[0].emitter_n, p.x, g + f32(HK_FLOAT) + 0.2, p.z, 0.7, 0.82, 0.84, 1.0, 0.8, 2, 20, 0.035, 0.6, 17.3) { s[0].emitter_n += 1; }
+  if metaverse_emitter_put(out, s[0].emitter_n, top.x, top.y, top.z, 0.12, 0.8, 0.88, 1.0, 0.9, 0, 30, 0.04, 0.9, 13.7) { s[0].emitter_n += 1; }
+  if metaverse_emitter_put(out, s[0].emitter_n, p.x, g + f32(HK_FLOAT) + 0.2, p.z, 0.7, 0.82, 0.84, 1.0, 0.8, 2, 20, 0.035, 0.6, 17.3) { s[0].emitter_n += 1; }
 }
 
 #test "Hekate floats round the garden's ring path, on it, and her dog keeps at her heels" {

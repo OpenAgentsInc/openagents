@@ -35,7 +35,7 @@ cam_cut_play :: (c: [] CamCut, track: Shot, now: f32) -> Shot {
   if c[0].phase == CamCutPhase.entering {
     u := ifx c[0].enter > 0 then (now - c[0].start) / c[0].enter else 1.0f32;
     if u >= 1 { c[0].phase = CamCutPhase.playing; c[0].last = track; return track; }
-    s := verse_shot_mix(c[0].entry, track, ifx u < 0 then 0.0f32 else u);
+    s := metaverse_shot_mix(c[0].entry, track, ifx u < 0 then 0.0f32 else u);
     c[0].last = s; return s;
   }
   if c[0].phase == CamCutPhase.playing { c[0].last = track; return track; }
@@ -49,7 +49,7 @@ cam_cut_end :: (c: [] CamCut, live: Orbit, heading: f32, now: f32) -> Orbit {
   o := live;
   if c[0].outcome == CamOutcome.resume { o = c[0].saved; o.pivot = live.pivot; o.shown = live.shown; }
   else if c[0].outcome == CamOutcome.reset_behind { o.yaw = wrap_angle(heading); o.pitch = c[0].saved.pitch; }
-  else { o = verse_orbit_toward(live, c[0].last); }
+  else { o = metaverse_orbit_toward(live, c[0].last); }
   return o;
 }
 // Cancelled (a key, a click): the hand-back starts now from where the camera is.
@@ -63,7 +63,7 @@ cam_cut_hand :: (c: [] CamCut, chase: Shot, now: f32) -> Shot {
   if c[0].phase != CamCutPhase.handing { return c[0].last; }
   u := ifx c[0].hand > 0 then (now - c[0].hand_at) / c[0].hand else 1.0f32;
   if u >= 1 { c[0].phase = CamCutPhase.done; return chase; }
-  s := verse_shot_mix(c[0].from, chase, ifx u < 0 then 0.0f32 else u);
+  s := metaverse_shot_mix(c[0].from, chase, ifx u < 0 then 0.0f32 else u);
   c[0].last = s;
   return s;
 }
@@ -79,7 +79,7 @@ cam_cut_live :: (c: CamCut) -> bool { return c.phase == CamCutPhase.entering || 
 cam_test_near :: (a: Shot, b: Shot, e: f32) -> bool { return length(sub(a.eye, b.eye)) <= e && length(sub(a.at, b.at)) <= e; }
 
 #test "entry starts on the live shot; the hand-back ends on the follow camera's, each frame a small step" {
-  o := verse_orbit_start(v3(0, 0, 0), 0);
+  o := metaverse_orbit_start(v3(0, 0, 0), 0);
   live := Shot.{eye = v3(0, 2, -4), at = v3(0, 1.5, 1)};
   track := Shot.{eye = v3(5, 3, 0), at = v3(0, 1, 0)};
   c := [1] CamCut.[cam_cut_enter(live, o, 10, 0.6, CamOutcome.retain)];
@@ -90,7 +90,7 @@ cam_test_near :: (a: Shot, b: Shot, e: f32) -> bool { return length(sub(a.eye, b
   chase := Shot.{eye = v3(0, 2, -4.2), at = v3(0, 1.4, 1)};
   back := cam_cut_end(c[..], o, 0, 12);
   // retain: the orbit turned to look the way the track looked
-  f := verse_orbit_forward(back);
+  f := metaverse_orbit_forward(back);
   #assert f.x < -0.5;
   prev := cam_cut_hand(c[..], chase, 12);
   #assert cam_test_near(prev, track, 0.0001);   // its first frame is the track's last
@@ -107,7 +107,7 @@ cam_test_near :: (a: Shot, b: Shot, e: f32) -> bool { return length(sub(a.eye, b
 }
 
 #test "outcomes: resume the saved follow, reset behind the subject; cancel and drop" {
-  o := verse_orbit_start(v3(0, 0, 0), 0.3); o.pitch = 0.5;
+  o := metaverse_orbit_start(v3(0, 0, 0), 0.3); o.pitch = 0.5;
   track := Shot.{eye = v3(5, 3, 0), at = v3(0, 1, 0)};
   c := [1] CamCut.[cam_cut_enter(Shot.{eye = v3(0, 2, -4), at = v3(0, 1, 1)}, o, 0, 0.5, CamOutcome.resume)];
   _ := cam_cut_play(c[..], track, 1);

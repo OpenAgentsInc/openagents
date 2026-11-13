@@ -93,7 +93,7 @@ gridwalk_frame :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: b
   if g.count < 1 { return; }
   g[0].width = width; g[0].height = height; g[0].dpr = dpr;
   g[0].now += cast(f64) pc.hi(ifx pc.finite(dt) then dt else 0, 0);
-  if frozen { g[0].thumbs = verse_sticks_used(g[0].thumbs); return; }
+  if frozen { g[0].thumbs = metaverse_sticks_used(g[0].thumbs); return; }
   s := gw_session(g);
   clock := loop_accept(g[0].you.body.clock, cast(f64) dt);
   steps := loop_due(clock);
@@ -103,7 +103,7 @@ gridwalk_frame :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: b
   }
   e := replay_frame_event(s, gw_intent(g, key_x, key_y, shift, space, look_x, look_y, zoom), steps);
   v := replay_offer(s, e);
-  g[0].thumbs = verse_sticks_used(g[0].thumbs);
+  g[0].thumbs = metaverse_sticks_used(g[0].thumbs);
   for k: 0..<steps { gw_step(g); }
   g[0].you.body.clock = loop_ran(clock);
 }

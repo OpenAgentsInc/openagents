@@ -187,7 +187,7 @@ tips_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   villa_kept(t[..], "tips=0f");
   #assert t[0].tips[0].been && !villa_fly_wanted(t[..]);
   villa_step(t[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
-  #assert !t[0].fl_flying && !verse_flight_active(t[0].flight, t[0].time) && t[0].pet[0].action == 0;
+  #assert !t[0].fl_flying && !metaverse_flight_active(t[0].flight, t[0].time) && t[0].pet[0].action == 0;
   r: [1] Villa;
   villa_kept(r[..], "tips=4");
   #assert !r[0].tips[0].been && villa_fly_wanted(r[..]) && r[0].tips[0].step == TIP_FIELD;

@@ -10,16 +10,16 @@
 VERSE_EMITTER_FLOATS :: 16;
 VERSE_EMITTERS :: 24;
 VERSE_PARTICLES_PER :: 64;
-VERSE_LAMP_FLOATS :: 8;
-VERSE_AREA_FLOATS :: 6;
+METAVERSE_LAMP_FLOATS :: 8;
+METAVERSE_AREA_FLOATS :: 6;
 pe_lo :: (a:f32,b:f32)->f32 { if a<b { return a; } return b; }
 pe_hi :: (a:f32,b:f32)->f32 { if a>b { return a; } return b; }
 
-verse_emitter_cap :: ()->int #export_c #effects(all) { return VERSE_EMITTERS; }
-verse_particles_per :: ()->int #export_c #effects(all) { return VERSE_PARTICLES_PER; }
+metaverse_emitter_cap :: ()->int #export_c #effects(all) { return VERSE_EMITTERS; }
+metaverse_particles_per :: ()->int #export_c #effects(all) { return VERSE_PARTICLES_PER; }
 
 // Writes emitter k (if it fits); the count is clamped to the per-emitter bound.
-verse_emitter_put :: (out:[]f32,k:int,x:f32,y:f32,z:f32,radius:f32,r:f32,g:f32,b:f32,flicker:f32,kind:f32,count:f32,size:f32,speed:f32,seed:f32)->bool #export_c #effects(all) {
+metaverse_emitter_put :: (out:[]f32,k:int,x:f32,y:f32,z:f32,radius:f32,r:f32,g:f32,b:f32,flicker:f32,kind:f32,count:f32,size:f32,speed:f32,seed:f32)->bool #export_c #effects(all) {
   if k<0 || k>=VERSE_EMITTERS || out.count<(k+1)*VERSE_EMITTER_FLOATS { return false; }
   o:=k*VERSE_EMITTER_FLOATS;
   out[o]=x;out[o+1]=y;out[o+2]=z;out[o+3]=radius;
@@ -32,29 +32,29 @@ verse_emitter_put :: (out:[]f32,k:int,x:f32,y:f32,z:f32,radius:f32,r:f32,g:f32,b
 // The house's emitters for an eye at (ex, ey, ez). lamps: per light x y z
 // radius r g b flicker; areas: per area x0 z0 x1 z1 outdoor dark. Returns
 // how many it wrote.
-verse_particles_haunt :: (lamps:[]f32,lamp_n:int,areas:[]f32,area_n:int,ex:f32,ey:f32,ez:f32,out:[]f32)->int #export_c #effects(all) {
+metaverse_particles_haunt :: (lamps:[]f32,lamp_n:int,areas:[]f32,area_n:int,ex:f32,ey:f32,ez:f32,out:[]f32)->int #export_c #effects(all) {
   n:=0;
-  ln:=lamp_n;if ln*VERSE_LAMP_FLOATS>lamps.count { ln=lamps.count/VERSE_LAMP_FLOATS; }
-  an:=area_n;if an*VERSE_AREA_FLOATS>areas.count { an=areas.count/VERSE_AREA_FLOATS; }
+  ln:=lamp_n;if ln*METAVERSE_LAMP_FLOATS>lamps.count { ln=lamps.count/METAVERSE_LAMP_FLOATS; }
+  an:=area_n;if an*METAVERSE_AREA_FLOATS>areas.count { an=areas.count/METAVERSE_AREA_FLOATS; }
   // The room you stand in: dust lit by its candles; a dark room's is barely there.
   for a:0..<an {
-    o:=a*VERSE_AREA_FLOATS;
+    o:=a*METAVERSE_AREA_FLOATS;
     if areas[o+4]>0.5f32 || ex<areas[o] || ex>areas[o+2] || ez<areas[o+1] || ez>areas[o+3] { continue; }
     cx:=(areas[o]+areas[o+2])*0.5f32;cz:=(areas[o+1]+areas[o+3])*0.5f32;
     r:=pe_lo(areas[o+2]-areas[o],areas[o+3]-areas[o+1])*0.5f32;
     gain:=ifx areas[o+5]>0.5f32 then 0.35f32 else 1.0f32;
-    if verse_emitter_put(out,n,cx,0.0f32,cz,r,0.8f32*gain,0.7f32*gain,0.52f32*gain,0.0f32,1.0f32,64.0f32,0.024f32,1.0f32,cast(f32)(a+1)) { n+=1; }
+    if metaverse_emitter_put(out,n,cx,0.0f32,cz,r,0.8f32*gain,0.7f32*gain,0.52f32*gain,0.0f32,1.0f32,64.0f32,0.024f32,1.0f32,cast(f32)(a+1)) { n+=1; }
     break;
   }
   // Fireflies over the open ground near you.
   for a:0..<an {
-    o:=a*VERSE_AREA_FLOATS;
+    o:=a*METAVERSE_AREA_FLOATS;
     if areas[o+4]<0.5f32 { continue; }
     cx:=(areas[o]+areas[o+2])*0.5f32;cz:=(areas[o+1]+areas[o+3])*0.5f32;
     dx:=ex-cx;dz:=ez-cz;
     if dx*dx+dz*dz>30.0f32*30.0f32 { continue; }
     r:=pe_lo(9.0f32,pe_lo(areas[o+2]-areas[o],areas[o+3]-areas[o+1])*0.5f32);
-    if verse_emitter_put(out,n,cx,0.0f32,cz,r,0.95f32,1.3f32,0.42f32,0.0f32,2.0f32,64.0f32,0.08f32,1.0f32,cast(f32)(a+11)) { n+=1; }
+    if metaverse_emitter_put(out,n,cx,0.0f32,cz,r,0.95f32,1.3f32,0.42f32,0.0f32,2.0f32,64.0f32,0.08f32,1.0f32,cast(f32)(a+11)) { n+=1; }
   }
   // Embers off the nearest flickering flames, nearest first.
   taken:[64]bool;
@@ -62,15 +62,15 @@ verse_particles_haunt :: (lamps:[]f32,lamp_n:int,areas:[]f32,area_n:int,ex:f32,e
     best:=-1;bd:=30.0f32*30.0f32;
     for i:0..<ln {
       if i>=64 || taken[i] { continue; }
-      o:=i*VERSE_LAMP_FLOATS;
+      o:=i*METAVERSE_LAMP_FLOATS;
       if lamps[o+7]<0.05f32 { continue; }
       dx:=lamps[o]-ex;dy:=lamps[o+1]-ey;dz:=lamps[o+2]-ez;d:=dx*dx+dy*dy+dz*dz;
       if d<bd { bd=d;best=i; }
     }
     if best<0 { break; }
     taken[best]=true;
-    o:=best*VERSE_LAMP_FLOATS;
-    if !verse_emitter_put(out,n,lamps[o],lamps[o+1]-0.08f32,lamps[o+2],0.8f32,lamps[o+4]*1.6f32,lamps[o+5]*1.3f32+0.3f32,lamps[o+6]+0.1f32,lamps[o+7],0.0f32,22.0f32,0.034f32,1.0f32,cast(f32)(best+31)) { break; }
+    o:=best*METAVERSE_LAMP_FLOATS;
+    if !metaverse_emitter_put(out,n,lamps[o],lamps[o+1]-0.08f32,lamps[o+2],0.8f32,lamps[o+4]*1.6f32,lamps[o+5]*1.3f32+0.3f32,lamps[o+6]+0.1f32,lamps[o+7],0.0f32,22.0f32,0.034f32,1.0f32,cast(f32)(best+31)) { break; }
     n+=1;
   }
   return n;
@@ -78,10 +78,10 @@ verse_particles_haunt :: (lamps:[]f32,lamp_n:int,areas:[]f32,area_n:int,ex:f32,e
 
 #test "an emitter that doesn't fit isn't written" {
   out:[32]f32;
-  #assert verse_emitter_put(out[..],1,1.0f32,2.0f32,3.0f32,0.5f32,1.0f32,1.0f32,1.0f32,0.0f32,0.0f32,500.0f32,0.02f32,1.0f32,7.0f32);
+  #assert metaverse_emitter_put(out[..],1,1.0f32,2.0f32,3.0f32,0.5f32,1.0f32,1.0f32,1.0f32,0.0f32,0.0f32,500.0f32,0.02f32,1.0f32,7.0f32);
   #assert out[16]==1.0f32 && out[25]==64.0f32;
-  #assert !verse_emitter_put(out[..],2,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,1.0f32,0.0f32,0.0f32,0.0f32);
-  #assert !verse_emitter_put(out[..],-1,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,1.0f32,0.0f32,0.0f32,0.0f32);
+  #assert !metaverse_emitter_put(out[..],2,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,1.0f32,0.0f32,0.0f32,0.0f32);
+  #assert !metaverse_emitter_put(out[..],-1,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,0.0f32,1.0f32,0.0f32,0.0f32,0.0f32);
 }
 #test "a room's dust, the yard's fireflies and the nearest flames' embers" {
   lamps:[24]f32;
@@ -92,7 +92,7 @@ verse_particles_haunt :: (lamps:[]f32,lamp_n:int,areas:[]f32,area_n:int,ex:f32,e
   areas[0]=6.0f32;areas[1]=20.0f32;areas[2]=10.0f32;areas[3]=28.0f32;
   areas[6]=-5.0f32;areas[7]=0.0f32;areas[8]=21.0f32;areas[9]=19.0f32;areas[10]=1.0f32;
   out:[384]f32;
-  n:=verse_particles_haunt(lamps[..],3,areas[..],2,8.0f32,1.6f32,24.0f32,out[..]);
+  n:=metaverse_particles_haunt(lamps[..],3,areas[..],2,8.0f32,1.6f32,24.0f32,out[..]);
   #assert n==3;
   #assert out[8]==1.0f32 && out[0]==8.0f32 && out[3]==2.0f32;
   #assert out[24]==2.0f32;
@@ -102,7 +102,7 @@ verse_particles_haunt :: (lamps:[]f32,lamp_n:int,areas:[]f32,area_n:int,ex:f32,e
   lamps:[512]f32;for i:0..<64 { lamps[i*8]=cast(f32)(i%8);lamps[i*8+2]=cast(f32)(i/8);lamps[i*8+7]=0.5f32; }
   areas:[6]f32;
   out:[384]f32;
-  #assert verse_particles_haunt(lamps[..],64,areas[..],0,3.0f32,0.0f32,3.0f32,out[..])==VERSE_EMITTERS;
+  #assert metaverse_particles_haunt(lamps[..],64,areas[..],0,3.0f32,0.0f32,3.0f32,out[..])==VERSE_EMITTERS;
   small:[40]f32;
-  #assert verse_particles_haunt(lamps[..],64,areas[..],0,3.0f32,0.0f32,3.0f32,small[..])==2;
+  #assert metaverse_particles_haunt(lamps[..],64,areas[..],0,3.0f32,0.0f32,3.0f32,small[..])==2;
 }

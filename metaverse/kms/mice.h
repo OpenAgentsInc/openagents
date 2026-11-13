@@ -3,8 +3,8 @@
 // host.js's pointer down and up (phase 0 and 2, moves 1 between), the wheel as its deltaY
 // (CSS pixels down, 100 a notch as Chromium gives). What metaverse/gpu/vk-realm.c reads.
 // Linux only; the caller needs read access to /dev/input (root).
-#ifndef VERSE_KMS_MICE_H
-#define VERSE_KMS_MICE_H
+#ifndef METAVERSE_KMS_MICE_H
+#define METAVERSE_KMS_MICE_H
 #include <dirent.h>
 #include <fcntl.h>
 #include <linux/input.h>

@@ -60,7 +60,7 @@ night_ready :: (s:[]Nights)->bool #export_c #effects(all) {return s[0].ready && 
 night_start :: (s:[]Nights) {if s[0].started || !s[0].ready {return;}z:=s[0].zones[s[0].zone];s[0].you=pc.walk_place(z.x,z.y,z.z,0);s[0].you.cam.phi=1.24;s[0].you.cam.dist=5;s[0].you.cam.max_dist=3.5;s[0].started=true;}
 night_label :: (s:[]Nights,which:int)->string {if which==0 {return cast(string)s[0].heroes[s[0].hero].name[0..<s[0].heroes[s[0].hero].name_n];}if which==1 {return cast(string)s[0].zones[s[0].zone].name[0..<s[0].zones[s[0].zone].name_n];}c:=s[0].clip;return cast(string)s[0].heroes[s[0].hero].clips[c].name[0..<s[0].heroes[s[0].hero].clips[c].name_n];}
 night_clip_find :: (s:[]Nights,name:string)->int {for i:0..<s[0].heroes[s[0].hero].clip_n {c:=s[0].heroes[s[0].hero].clips[i];if cast(string)c.name[0..<c.name_n]==name {return i;}}return 0;}
-night_blur :: (s:[]Nights) #export_c #effects(all) {s[0].keys=0;s[0].thumbs=verse_sticks_reset();s[0].drag=false;s[0].look_x=0;s[0].look_y=0;}
+night_blur :: (s:[]Nights) #export_c #effects(all) {s[0].keys=0;s[0].thumbs=metaverse_sticks_reset();s[0].drag=false;s[0].look_x=0;s[0].look_y=0;}
 night_key :: (s:[]Nights,key:int,down:bool)->bool #export_c #effects(all) {
  k:=ifx key>=97 && key<=122 then key-32 else key;bit:=ifx k==87 then 1 else ifx k==83 then 2 else ifx k==65 then 4 else ifx k==68 then 8 else ifx k== -13 then 16 else ifx k==32 then 32 else 0;
  if bit!=0 {if down {s[0].keys=s[0].keys|bit;}else {s[0].keys=s[0].keys&(63-bit);}return true;}if !down {return false;}if k==77 {s[0].menu= !s[0].menu;night_blur(s);return true;}if k== -1 {if s[0].menu {s[0].menu=false;return true;}s[0].choosing= !s[0].choosing;night_blur(s);return true;}if !s[0].ready {return false;}
@@ -85,7 +85,7 @@ night_pointer :: (s:[]Nights,x:f32,y:f32,phase:int,kind:int,id:int)->bool #expor
  hit:=night_ui_hit(s,x,y);s[0].ui_hover=hit;if phase==0 && hit>0 {s[0].ui_down=hit;night_ui_action(s,hit);return true;}
  if phase>=2 && s[0].ui_down>0 {s[0].ui_down=0;return true;}
  if s[0].menu {return true;}
- if kind!=0 {s[0].thumbs=verse_sticks_world_touch(s[0].thumbs,id,phase,x,y,s[0].width,s[0].height,s[0].d,f64(s[0].clock));return true;}
+ if kind!=0 {s[0].thumbs=metaverse_sticks_world_touch(s[0].thumbs,id,phase,x,y,s[0].width,s[0].height,s[0].d,f64(s[0].clock));return true;}
  if phase==0 {s[0].drag=true;s[0].drag_id=id;s[0].px=x;s[0].py=y;}else if phase==1 && s[0].drag && id==s[0].drag_id {s[0].look_x-=(x-s[0].px)*0.005;s[0].look_y-=(y-s[0].py)*0.005;s[0].px=x;s[0].py=y;}else if phase>=2 {s[0].drag=false;}return true;
 }
 
@@ -93,7 +93,7 @@ night_step :: (s:[]Nights,dt:f32,still:bool) #export_c #effects(all) {
  night_start(s);if !s[0].ready || still || !(dt>0 && dt<1) {return;}s[0].clock+=dt;s[0].clip_clock+=dt;t:=s[0].thumbs;k:=s[0].keys;p:=s[0].you;
  if s[0].choosing {p=pc.walk_input(p,0,0,0,0,false,false,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);s[0].you=p;}
  if !s[0].choosing && !s[0].menu {p=pc.walk_input(p,f32((ifx (k&8)!=0 then 1 else 0)-(ifx (k&4)!=0 then 1 else 0)),f32((ifx (k&1)!=0 then 1 else 0)-(ifx (k&2)!=0 then 1 else 0)),t.pad_x,t.pad_y,pc.walk_runs((k&16)!=0,t.run,t.pad_x,t.pad_y),(k&32)!=0 || t.jump || s[0].ui_jump,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);world:pc.World;world.ground=s[0].zones[s[0].zone].y;world.walls=s[0].walls[0..<s[0].box_n*6];p=pc.advance_in(world,p,dt);z:=s[0].zones[s[0].zone];x:=p.body.pos.x;zz:=p.body.pos.z;if !night_inside_union(s,x,zz) {x=s[0].you.body.pos.x;zz=s[0].you.body.pos.z;}for zi:0..<s[0].zone_n {nz:=s[0].zones[zi];if x>=nz.x0 && x<=nz.x1 && zz>=nz.z0 && zz<=nz.z1 {s[0].zone=zi;}}for i:0..<s[0].box_n {b:=s[0].boxes[i];if x>b.x0-0.3 && x<b.x1+0.3 && zz>b.z0-0.3 && zz<b.z1+0.3 {x=s[0].you.body.pos.x;zz=s[0].you.body.pos.z;}}p=pc.walk_constrain(p,x,zz);s[0].you=p;}
- next:=ifx s[0].forced>=0 then s[0].forced else night_clip_find(s,ifx !s[0].choosing && abs(p.body.vel.x)+abs(p.body.vel.z)>0.05 then (ifx p.body.run then "run" else "walk") else "pause1");if next!=s[0].clip {s[0].clip=next;s[0].clip_clock=0;}s[0].look_x=0;s[0].look_y=0;s[0].ui_jump=false;s[0].thumbs=verse_sticks_used(t);
+ next:=ifx s[0].forced>=0 then s[0].forced else night_clip_find(s,ifx !s[0].choosing && abs(p.body.vel.x)+abs(p.body.vel.z)>0.05 then (ifx p.body.run then "run" else "walk") else "pause1");if next!=s[0].clip {s[0].clip=next;s[0].clip_clock=0;}s[0].look_x=0;s[0].look_y=0;s[0].ui_jump=false;s[0].thumbs=metaverse_sticks_used(t);
 }
 night_inside_union :: (s:[]Nights,x:f32,z:f32)->bool {
  for corner:0..<4 {cx:=x+(ifx corner%2==0 then -0.3f32 else 0.3f32);cz:=z+(ifx corner<2 then -0.3f32 else 0.3f32);inside:=false;for i:0..<s[0].zone_n {r:=s[0].zones[i];if cx>=r.x0 && cx<=r.x1 && cz>=r.z0 && cz<=r.z1 {inside=true;}}if !inside {return false;}}

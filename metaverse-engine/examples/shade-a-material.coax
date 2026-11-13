@@ -30,14 +30,14 @@ main :: () {
 
   // The painterly preset at noon, where the fixture's shader reads it: 156 floats in.
   u: [156 + STYLE_FLOATS] f32;
-  if !verse_style_at(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.5, u[156..<156 + STYLE_FLOATS]) { print("no preset\n"); return; }
+  if !metaverse_style_at(metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.5, u[156..<156 + STYLE_FLOATS]) { print("no preset\n"); return; }
   s := u[156..<156 + STYLE_FLOATS];
   print("bands: edges % and %, softness %, mid %; cool %\n", s[SU_BANDS], s[SU_BANDS + 1], s[SU_BANDS + 2], s[SU_BANDS + 3], s[SU_SHADOW + 3]);
   // A level patch of grass (its normal straight up) under the noon key.
   ny := 1.0f32;
-  amb := mat_rgb(verse_style_ambient(ny, s[SU_SKY_AMB], s[SU_GROUND_AMB], s[SU_SKY_AMB + 3]),
-                 verse_style_ambient(ny, s[SU_SKY_AMB + 1], s[SU_GROUND_AMB + 1], s[SU_SKY_AMB + 3]),
-                 verse_style_ambient(ny, s[SU_SKY_AMB + 2], s[SU_GROUND_AMB + 2], s[SU_SKY_AMB + 3]));
+  amb := mat_rgb(metaverse_style_ambient(ny, s[SU_SKY_AMB], s[SU_GROUND_AMB], s[SU_SKY_AMB + 3]),
+                 metaverse_style_ambient(ny, s[SU_SKY_AMB + 1], s[SU_GROUND_AMB + 1], s[SU_SKY_AMB + 3]),
+                 metaverse_style_ambient(ny, s[SU_SKY_AMB + 2], s[SU_GROUND_AMB + 2], s[SU_SKY_AMB + 3]));
   tint := mat_rgb(s[SU_TINT], s[SU_TINT + 1], s[SU_TINT + 2]);
   k := s[SU_KEY + 3];
   dark := mat_rgb(tint.r * amb.r, tint.g * amb.g, tint.b * amb.b);

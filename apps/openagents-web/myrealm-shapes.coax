@@ -13,13 +13,13 @@ FIG_PI :: 3.14159265;
 // phase is how far through its strides it is.
 person_figure :: (s: [] MyRealm, x: f32, y: f32, z: f32, yaw: f32, size: f32, r: f32, g: f32, b: f32, look: int, pace: f32, phase: f32) {
   shape := fig.Shape.{size = size, girth = 1.15, head = 1.2};
-  k := fig.verse_figure_skeleton(shape);
-  stand := fig.verse_figure_gait(fig.Rig.person, fig.Gait.stand, phase, s[0].time);
-  walk := fig.verse_figure_gait(fig.Rig.person, fig.Gait.walk, phase, s[0].time);
-  p := fig.verse_figure_blend(stand, walk, clamp(pace, 0, 1));
+  k := fig.metaverse_figure_skeleton(shape);
+  stand := fig.metaverse_figure_gait(fig.Rig.person, fig.Gait.stand, phase, s[0].time);
+  walk := fig.metaverse_figure_gait(fig.Rig.person, fig.Gait.walk, phase, s[0].time);
+  p := fig.metaverse_figure_blend(stand, walk, clamp(pace, 0, 1));
   joints: [fig.MAX_JOINTS] fig.Fv;
   // a figure faces +z at yaw 0, turned by its yaw: (sin a, cos a); ours (sin yaw, -cos yaw)
-  if !fig.verse_figure_joints_at(k, p, fig.Place.{x = x, y = y, z = z, yaw = FIG_PI - yaw}, joints[..]) { return; }
+  if !fig.metaverse_figure_joints_at(k, p, fig.Place.{x = x, y = y, z = z, yaw = FIG_PI - yaw}, joints[..]) { return; }
   // its lowest foot on the ground
   low: f32 = 1000;
   for q: 0..<2 {
@@ -403,14 +403,14 @@ animal_shape :: (kind: int) -> fig.Shape {
 // its head down to the grass by graze.
 animal_figure :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, pace: f32, phase: f32, graze: f32, i: int) {
   sh := animal_shape(kind);
-  k := fig.verse_figure_skeleton(sh);
-  stand := fig.verse_figure_gait(fig.Rig.animal, fig.Gait.stand, phase, s[0].time);
-  walk := fig.verse_figure_gait(fig.Rig.animal, fig.Gait.walk, phase, s[0].time);
-  p := fig.verse_figure_blend(stand, walk, clamp(pace, 0, 1));
+  k := fig.metaverse_figure_skeleton(sh);
+  stand := fig.metaverse_figure_gait(fig.Rig.animal, fig.Gait.stand, phase, s[0].time);
+  walk := fig.metaverse_figure_gait(fig.Rig.animal, fig.Gait.walk, phase, s[0].time);
+  p := fig.metaverse_figure_blend(stand, walk, clamp(pace, 0, 1));
   p.turn[fig.A_NECK].x += 0.9 * graze; p.turn[fig.A_HEAD].x += 0.5 * graze;
   if kind == DINO { p.turn[fig.A_NECK].x -= 0.5; }   // a long neck held high
   joints: [fig.MAX_JOINTS] fig.Fv;
-  if !fig.verse_figure_joints_at(k, p, fig.Place.{x = x, y = 0, z = z, yaw = FIG_PI - yaw}, joints[..]) { return; }
+  if !fig.metaverse_figure_joints_at(k, p, fig.Place.{x = x, y = 0, z = z, yaw = FIG_PI - yaw}, joints[..]) { return; }
   low: f32 = 1000;
   for leg: 0..<4 { top := fig.A_LF + leg * 5; low = lo(low, lo(joints[top + 3].y, joints[top + 4].y) - 0.032 * sh.size); }
   for j: 0..<k.joints { joints[j].y -= low; }

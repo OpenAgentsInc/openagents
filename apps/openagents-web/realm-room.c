@@ -39,7 +39,7 @@ static void room_frame(float dt) {
   if (room_ask >= 0 && now - room_asked_at < ROOM_WAIT) return;
   if (now - room_at < ROOM_EVERY) return;
   int64_t un = room_url(room_name(), false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
-  coax_t_Vec3 feet = verse_player_feet(player);
+  coax_t_Vec3 feet = metaverse_player_feet(player);
   int64_t bn = room_presence_body(feet.x, feet.y, feet.z, player.cam.theta, room.last, (coax_v_u8){room_body, sizeof room_body});
   room_at = now;
   if (un <= 0 || bn <= 0) return;
@@ -102,8 +102,8 @@ static bool room_message(int32_t kind, uint32_t length) {
 }
 
 static void room_describe(coax_t_RealmView *v) {
-  coax_t_Vec3 eye = verse_player_view_eye(player, house.camera), at = verse_player_view_at(player, house.camera);
-  v->has_view = verse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, width, height, (coax_v_f32){v->camera.e, 16});
+  coax_t_Vec3 eye = metaverse_player_view_eye(player, house.camera), at = metaverse_player_view_at(player, house.camera);
+  v->has_view = metaverse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, width, height, (coax_v_f32){v->camera.e, 16});
   v->others = room.others;
   for (int64_t i = 0; i < room.others; i++) {
     v->other_name.e[i] = room_other_name(room_of(), i);

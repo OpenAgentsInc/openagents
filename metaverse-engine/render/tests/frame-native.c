@@ -36,9 +36,9 @@ int main(int argc,char **argv) {
     coax_v_t_RenderUpload u={n[0]?uploads:NULL,n[0]};
     coax_v_t_RenderDrawDomain ds={n[2]?domains:NULL,n[2]};
     coax_v_u32 ws={n[1]?words:NULL,n[1]},is={n[3]?indices:NULL,n[3]};
-    coax_t_RenderFrameResult r=aethyr_frame_admit(c,l,d,u,ws,ds,is);
-    coax_t_RenderFrameResult p=aethyr_frame_preflight(l,u);
-    coax_t_RenderDecodedDraw q=aethyr_frame_decode(ws,record);
+    coax_t_RenderFrameResult r=engine_frame_admit(c,l,d,u,ws,ds,is);
+    coax_t_RenderFrameResult p=engine_frame_preflight(l,u);
+    coax_t_RenderDecodedDraw q=engine_frame_decode(ws,record);
     if(i==0) {
       if(!strcmp(fault,"status"))r.status=COAX_RenderFrameStatus_bad_draw;
       if(!strcmp(fault,"slot"))r.bad_draw=0;

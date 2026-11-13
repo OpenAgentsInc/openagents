@@ -11,11 +11,11 @@
 RW_DATA :: 33554432;
 RwFault :: struct { name: string; needle: string; replacement: string; }
 RW_FAULTS :: [5] RwFault.[
-  RwFault.{name="ack", needle="coax_t_RenderHostBool q=aethyr_render_bool(submitted);if(!q.ok)return;render_uploads.states.e[slot]=aethyr_render_upload_ack(render_uploads.states.e[slot],q.value);", replacement="render_uploads.states.e[slot]=aethyr_render_upload_ack(render_uploads.states.e[slot],submitted!=0);"},
-  RwFault.{name="pipeline", needle="coax_t_RenderHostBool q=aethyr_render_bool(ready);if(!q.ok)return COAX_RenderPackageStatus_invalid;return aethyr_render_package_pipeline(candidate_view(),entry,q.value);", replacement="return aethyr_render_package_pipeline(candidate_view(),entry,ready!=0);"},
-  RwFault.{name="mesh-capacity", needle="aethyr_render_mesh_placeholder(render_descriptor_profile,set,resource,device_capacity)", replacement="aethyr_render_mesh_placeholder(render_descriptor_profile,set,resource,16)"},
-  RwFault.{name="draw-object", needle="aethyr_render_words(address,render_draw_base,render_draw_capacity,bytes)", replacement="aethyr_render_words(address,0,memory_bytes,bytes)"},
-  RwFault.{name="draw-null", needle="coax_t_RenderHostByteView span=aethyr_render_asset_span(address,render_draw_capacity,bytes,memory_bytes);", replacement="coax_t_RenderHostByteView span={.status=COAX_RenderFrameStatus_ok};"}
+  RwFault.{name="ack", needle="coax_t_RenderHostBool q=engine_render_bool(submitted);if(!q.ok)return;render_uploads.states.e[slot]=engine_render_upload_ack(render_uploads.states.e[slot],q.value);", replacement="render_uploads.states.e[slot]=engine_render_upload_ack(render_uploads.states.e[slot],submitted!=0);"},
+  RwFault.{name="pipeline", needle="coax_t_RenderHostBool q=engine_render_bool(ready);if(!q.ok)return COAX_RenderPackageStatus_invalid;return engine_render_package_pipeline(candidate_view(),entry,q.value);", replacement="return engine_render_package_pipeline(candidate_view(),entry,ready!=0);"},
+  RwFault.{name="mesh-capacity", needle="engine_render_mesh_placeholder(render_descriptor_profile,set,resource,device_capacity)", replacement="engine_render_mesh_placeholder(render_descriptor_profile,set,resource,16)"},
+  RwFault.{name="draw-object", needle="engine_render_words(address,render_draw_base,render_draw_capacity,bytes)", replacement="engine_render_words(address,0,memory_bytes,bytes)"},
+  RwFault.{name="draw-null", needle="coax_t_RenderHostByteView span=engine_render_asset_span(address,render_draw_capacity,bytes,memory_bytes);", replacement="coax_t_RenderHostByteView span={.status=COAX_RenderFrameStatus_ok};"}
 ];
 rw_join :: (a: string, b: string, out: [] u8) -> string { return fs_join(a, b, out); }
 rw_hash :: (path: string, hash: [] u8, data: [] u8) -> bool {

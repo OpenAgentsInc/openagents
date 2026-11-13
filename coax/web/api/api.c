@@ -358,7 +358,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (chat_route(&q)) return;   // before the rooms: /api/chat/state etc. are /chat's, any other /api/chat/<room> a room's
   if (room_route(&q)) return;
   if (seats_route(&q)) return;
-  if (verse_packs_route(&q)) return;
+  if (metaverse_packs_route(&q)) return;
   if (service_route(&q)) return;   // the service levels and alerts (service.c, #13297)
   if (realms_route(&q)) return;   // before the players': /api/playtest/realms...
   if (player_route(&q)) return;

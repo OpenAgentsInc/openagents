@@ -34,7 +34,7 @@ flower_kind :: (i: int) -> int { return cast(int) FLOWER_AT[i * 3 + 2]; }
 in_garden :: (x: f32, z: f32) -> bool { return x > f32(GARDEN_X0) && x < f32(GARDEN_X1) && z > f32(GARDEN_Z0) && z < f32(GARDEN_Z1); }
 hand_of :: (s: [] Villa) -> Point {
   return ifx s[0].follower_clocked then follow.fixed_hand(s[0].feet, s[0].face, f32(HAND_AHEAD), f32(HAND_UP), f32(HAND_RIGHT))
-    else verse_hand(s[0].feet, s[0].face, f32(HAND_AHEAD), f32(HAND_UP), f32(HAND_RIGHT));
+    else metaverse_hand(s[0].feet, s[0].face, f32(HAND_AHEAD), f32(HAND_UP), f32(HAND_RIGHT));
 }
 
 play_has :: (s: [] Villa, skill: int, word: string) -> bool {
@@ -55,14 +55,14 @@ play_do :: (s: [] Villa, what: int) {
     if !play_has(s, SKILL_FETCH, "fetch") { return; }
     if b.held != 0 {   // the ball comes to your hand: from your pocket, or from the ground
       if b.held == 1 { pet_toast(p, "Let them bring it back first"); return; }
-      s[0].fetch.ball = verse_ball_pick(b, 0, s[0].feet, hand_of(s));
+      s[0].fetch.ball = metaverse_ball_pick(b, 0, s[0].feet, hand_of(s));
       s[0].fetch.ball.held = 0;
       return;
     }
     vel := ifx s[0].follower_clocked then follow.fixed_throw_velocity(s[0].face, 0, s[0].speed, v3(0, 0, 0))
       else v3(sin(s[0].face) * s[0].speed, 0, cos(s[0].face) * s[0].speed);
     s[0].fetch.ball = ifx s[0].follower_clocked then follow.fixed_ball_throw(b, hand_of(s), s[0].face, 0.5, vel)
-      else verse_ball_throw(b, hand_of(s), s[0].face, 0.5, vel);
+      else metaverse_ball_throw(b, hand_of(s), s[0].face, 0.5, vel);
     pet_ev(p, EV_FETCH, 0);
     q[0].stay = false; q[0].stop_ask = true;
     return;
@@ -99,7 +99,7 @@ play_do :: (s: [] Villa, what: int) {
     p[0].put_x = s[0].feet.x + ahead.x * 0.9; p[0].put_z = s[0].feet.z + ahead.z * 0.9; p[0].put_yaw = s[0].face;
     if !villa_place_open(s, p[0].put_x, p[0].put_z) {
       for i: 1..<PLACE_TRIES {
-        t := verse_place_try(p[0].put_x, p[0].put_z, i);
+        t := metaverse_place_try(p[0].put_x, p[0].put_z, i);
         if villa_place_open(s, t.x, t.z) { p[0].put_x = t.x; p[0].put_z = t.z; break; }
       }
     }
@@ -143,12 +143,12 @@ play_actions :: (s: [] Villa) {
 }
 play_ball :: (s: [] Villa, dt: f32) {
   b := s[0].fetch.ball;
-  if b.held == 0 { s[0].fetch.ball = verse_ball_carry(b, hand_of(s)); }
+  if b.held == 0 { s[0].fetch.ball = metaverse_ball_carry(b, hand_of(s)); }
   else if b.held < 0 {
-    s[0].fetch.ball = verse_ball_step(b, ground(), s[0].heights[..], s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6], dt);
+    s[0].fetch.ball = metaverse_ball_step(b, ground(), s[0].heights[..], s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6], dt);
     // brought back and dropped by you: it comes to your hand
     nb := s[0].fetch.ball;
-    if !nb.thrown && s[0].fetch.mode == FETCH_FOLLOW && verse_ball_can_pick(nb, s[0].feet) { s[0].fetch.ball = verse_ball_pick(nb, 0, s[0].feet, hand_of(s)); s[0].fetch.ball.held = 0; }
+    if !nb.thrown && s[0].fetch.mode == FETCH_FOLLOW && metaverse_ball_can_pick(nb, s[0].feet) { s[0].fetch.ball = metaverse_ball_pick(nb, 0, s[0].feet, hand_of(s)); s[0].fetch.ball.held = 0; }
   }
 }
 

@@ -6,13 +6,13 @@ FLIGHT_CUT :: 3.4;
 
 // book:begin arrival
 flight_keys :: () -> Flight {
-  f := verse_flight_new();
+  f := metaverse_flight_new();
   px := f32(PLANET_X); py := f32(PLANET_Y); pz := f32(PLANET_Z);
-  f = verse_flight_key(f, 0, v3(px + 14, py + 18, pz - 190), v3(px, py, pz), false, EASE_LINEAR);
-  f = verse_flight_key(f, 3.2, v3(px + 3, py + 12, pz - 64), v3(px, py + 22, pz), false, EASE_IN);
-  f = verse_flight_key(f, f32(FLIGHT_CUT), v3(-17, 70, -95), v3(-17, 0, -4), true, EASE_LINEAR);
-  f = verse_flight_key(f, 6.0, v3(-24, 24, -54), v3(-17, 1, -14), false, EASE_SMOOTH);
-  f = verse_flight_key(f, 8.6, v3(-17, 2.7, -32.2), v3(-17, 1.5, -23), false, EASE_SMOOTH);
+  f = metaverse_flight_key(f, 0, v3(px + 14, py + 18, pz - 190), v3(px, py, pz), false, EASE_LINEAR);
+  f = metaverse_flight_key(f, 3.2, v3(px + 3, py + 12, pz - 64), v3(px, py + 22, pz), false, EASE_IN);
+  f = metaverse_flight_key(f, f32(FLIGHT_CUT), v3(-17, 70, -95), v3(-17, 0, -4), true, EASE_LINEAR);
+  f = metaverse_flight_key(f, 6.0, v3(-24, 24, -54), v3(-17, 1, -14), false, EASE_SMOOTH);
+  f = metaverse_flight_key(f, 8.6, v3(-17, 2.7, -32.2), v3(-17, 1.5, -23), false, EASE_SMOOTH);
   return f;
 }
 // book:end arrival

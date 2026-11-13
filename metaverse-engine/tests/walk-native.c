@@ -76,7 +76,7 @@ int main(int argc,char **argv){
  const char *fault=argc>1?argv[1]:"none";schema();
   coax_t_Player constructed;coax_default_t_Player(&constructed);emit(-1,-1,constructed);
  for(int kind=0;kind<8;++kind){
-  coax_t_Player p=verse_player_place(kind==4?.4f:0,kind==6?2.5f:0,0,0);
+  coax_t_Player p=metaverse_player_place(kind==4?.4f:0,kind==6?2.5f:0,0,0);
   p.on_ground=true;p.clock.carry_ns=10000000;
   p.collision_status=2;p.collision_refusals=(UINT64_C(1)<<40)|7;
   p.collision_residual=.125f;p.collision_passes=7;p.collision_floor_cut=true;
@@ -85,9 +85,9 @@ int main(int argc,char **argv){
   emit(kind,-1,p);
   for(int frame=0;frame<96;++frame){
    bool run=frame%40<24,jump=frame%32<3;
-   p=verse_player_input(p,frame%19<6?.4f:0,frame<80?1:0,0,0,run,jump,
+   p=metaverse_player_input(p,frame%19<6?.4f:0,frame<80?1:0,0,0,run,jump,
                         frame<60?.013f:-.007f,frame%17==0?.003f:0);
-   if(frame==20)p=verse_player_zoom(p,.75f);
+   if(frame==20)p=metaverse_player_zoom(p,.75f);
    p=walk_parity_frame(kind,p,duration(frame));
    producer_loss(&p,fault,kind,frame);emit(kind,frame,p);
   }

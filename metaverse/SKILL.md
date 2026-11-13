@@ -102,7 +102,7 @@ realms (and its `wait`):
 ```
 
 If the realm is `flat` or `painterly`, `#load "../../../verse/style.coax"` in
-`gpu/<module>.coax` and call its `verse_style_*` light (Orbit League's
+`gpu/<module>.coax` and call its `metaverse_style_*` light (Orbit League's
 `gpu/orbitleague.coax` is flat; Fairy Forest's `gpu/fairy.coax` too); `lowpoly`
 needs nothing.
 

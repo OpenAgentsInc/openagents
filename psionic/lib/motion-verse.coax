@@ -145,7 +145,7 @@ mv_world :: (q:[4]f64,t:[3]f64,bind:[3]f64)->[3]f64 {
 // a different joint count or more frames than the slot holds is refused
 // and the bytes are left as they were.
 mv_splice :: (b:[]u8,h:MvHandoff)->MvStatus {
-    c:=verse_cast_open(b);
+    c:=metaverse_cast_open(b);
     if !c.ok {return MvStatus.admission;}
     if h.status!=MvStatus.ok || h.joints!=c.joints {return MvStatus.shape;}
     if h.frames>frames_of(b,c,Move.dancing) {return MvStatus.length;}
@@ -162,7 +162,7 @@ mv_splice :: (b:[]u8,h:MvHandoff)->MvStatus {
 
 // FNV-1a over the dance slot's rows: one number for "the same poses".
 mv_digest :: (b:[]u8)->u64 {
-    c:=verse_cast_open(b);h:u64=0xcbf29ce484222325;
+    c:=metaverse_cast_open(b);h:u64=0xcbf29ce484222325;
     if !c.ok {return 0;}
     from:=c.poses.offset+first_of(b,c,Move.dancing)*c.joints*32;to:=from+frames_of(b,c,Move.dancing)*c.joints*32;
     for i:from..<to {h=mul_wrap(h^cast(u64)b[i],cast(u64)0x100000001b3);}
@@ -419,12 +419,12 @@ mv_shape :: ()->MbShape {s:=mb_small();s.decoded=28;return s;}
 }
 
 #test "the built Cast is admitted, its clips the real idle's first frame" {
-    bytes:[131072]u8;n:=mv_cast_build(bytes[..],30);b:=bytes[0..<n];c:=verse_cast_open(b);
+    bytes:[131072]u8;n:=mv_cast_build(bytes[..],30);b:=bytes[0..<n];c:=metaverse_cast_open(b);
     #assert c.ok && c.joints==65 && c.poses.count==36*65 && frames_of(b,c,Move.dancing)==30 && first_of(b,c,Move.dancing)==6;
     #assert frames_of(b,c,Move.walking)==1 && first_of(b,c,Move.walking)==1 && first_of(b,c,Move.idle)==0;
     for k:0..<65 {#assert u32_at(b,c.poses.offset+(35*65+k)*32+12)==MV_CAST_IDLE_BITS[7*k+3] && u32_at(b,c.poses.offset+k*32+24)==MV_CAST_IDLE_BITS[7*k+6];}
     for k:0..<65 {#assert s32_at(b,c.skeleton.offset+16*k)==MV_CAST_PARENT[k] && u32_at(b,c.skeleton.offset+16*k+8)==MV_CAST_BIND_BITS[3*k+1];}
-    #assert verse_cast_robots(c)==2 && c.bones==1 && c.rate==30 && c.scale==1;
+    #assert metaverse_cast_robots(c)==2 && c.bones==1 && c.rate==30 && c.scale==1;
     // The least admission takes, laid out by hand: 464 bytes of header and
     // table, then each buffer on a 16-byte boundary, 76,784 bytes in all.
     #assert n==76784 && c.skeleton.offset==464 && c.clips.offset==1504 && c.poses.offset==1568 && c.body_vertices.offset==76448;
@@ -432,7 +432,7 @@ mv_shape :: ()->MbShape {s:=mb_small();s.decoded=28;return s;}
     #assert c.robot_lines.count==2 && c.robot_clips.count==2 && c.robot_frames.count==1 && c.patrols.count==1 && c.patrol_samples.count==1 && c.robot_bodies.count==1;
     #assert int_at(b,c.robot_clips.offset+4)==1 && f32_at(b,c.robot_clips.offset+8)==1 && int_at(b,c.robot_clips.offset+20)==1 && f32_at(b,c.robot_clips.offset+24)==1;
     #assert f32_at(b,c.robot_bodies.offset+12)==0.25 && int_at(b,c.patrols.offset+4)==1;
-    short:[131072]u8;m:=mv_cast_build(short[..],20);#assert verse_cast_open(short[0..<m]).ok && m==n-10*65*32;
+    short:[131072]u8;m:=mv_cast_build(short[..],20);#assert metaverse_cast_open(short[0..<m]).ok && m==n-10*65*32;
 }
 
 #test "a splice writes x, y, z, w and the translation, and the dance plays it" {
@@ -440,7 +440,7 @@ mv_shape :: ()->MbShape {s:=mb_small();s.decoded=28;return s;}
     bytes:[131072]u8;n:=mv_cast_build(bytes[..],30);b:=bytes[0..<n];
     // Scribble over every row of the dance first, so each row the splice writes shows.
     for i:0..<30*65 {rigid_out(b,1568+(6*65+i)*32,Rigid.{q=yaw_turn(1),t=v3(1,2,3)});}
-    #assert mv_splice(b,h)==MvStatus.ok;c:=verse_cast_open(b);
+    #assert mv_splice(b,h)==MvStatus.ok;c:=metaverse_cast_open(b);
     #assert c.ok && frames_of(b,c,Move.dancing)==6;
     for f:0..<6 {for k:0..<65 {
         r:=rigid_at(b,c.poses.offset+((6+f)*65+k)*32);
@@ -452,26 +452,26 @@ mv_shape :: ()->MbShape {s:=mb_small();s.decoded=28;return s;}
     // Played: each dance frame, on the frame, is the handoff's pose.
     out:[65]Joint;d:=Anim.{move=Move.dancing,start=0,from=Move.idle,from_start=0,fade_start= -1};
     for f:0..<6 {
-        #assert verse_cast_pose(b,c,d,f64(f)/30,0,0,0,0,out[..]);
+        #assert metaverse_cast_pose(b,c,d,f64(f)/30,0,0,0,0,out[..]);
         for k:0..<65 {#assert mvt_near3(mvt_at(out[k],rig,k),mv_world(h.q[f][k],h.t[f][k],rig.bind[k]),0.00001);}
     }
 }
 
 #test "the dance fades in from the idle and out to the walk" {
     rig:=mv_verse_rig();h:=mv_handoff(mvt_clip(8,pose_gltf(),2),mv_leg(),mv_leg_map(),rig,3);
-    bytes:[131072]u8;n:=mv_cast_build(bytes[..],30);b:=bytes[0..<n];#assert mv_splice(b,h)==MvStatus.ok;c:=verse_cast_open(b);
-    a:Anim;a=verse_cast_update(b,c,a,0,false,0);a=verse_cast_dance(a);a=verse_cast_update(b,c,a,0,false,1);
+    bytes:[131072]u8;n:=mv_cast_build(bytes[..],30);b:=bytes[0..<n];#assert mv_splice(b,h)==MvStatus.ok;c:=metaverse_cast_open(b);
+    a:Anim;a=metaverse_cast_update(b,c,a,0,false,0);a=metaverse_cast_dance(a);a=metaverse_cast_update(b,c,a,0,false,1);
     #assert a.move==Move.dancing && a.from==Move.idle && a.fade_start==1;
-    out:[65]Joint;idle:[65]Joint;#assert verse_cast_pose(b,c,Anim.{},0,0,0,0,0,idle[..]);
+    out:[65]Joint;idle:[65]Joint;#assert metaverse_cast_pose(b,c,Anim.{},0,0,0,0,0,idle[..]);
     // At the fade's start the idle shows; after it, the dance's frame.
-    #assert verse_cast_pose(b,c,a,1,0,0,0,0,out[..]);
+    #assert metaverse_cast_pose(b,c,a,1,0,0,0,0,out[..]);
     for k:0..<65 {#assert mvt_near3(mvt_at(out[k],rig,k),mvt_at(idle[k],rig,k),0.00001);}
-    #assert verse_cast_pose(b,c,a,1+7.0/30,0,0,0,0,out[..]);
+    #assert metaverse_cast_pose(b,c,a,1+7.0/30,0,0,0,0,out[..]);
     for k:0..<65 {#assert mvt_near3(mvt_at(out[k],rig,k),mv_world(h.q[7][k],h.t[7][k],rig.bind[k]),0.00001);}
     // Halfway, each joint blends relative to its parent, so every bone's
     // length lies between the idle's (its half-float rows stretch a finger
     // bone by 2 mm) and the dance's, which are the bind lengths.
-    #assert verse_cast_pose(b,c,a,1+FADE/2,0,0,0,0,out[..]);
+    #assert metaverse_cast_pose(b,c,a,1+FADE/2,0,0,0,0,out[..]);
     for k:2..<65 {
         p:=rig.parent[k];mid:=pose_norm3(mvt_minus(mvt_at(out[k],rig,k),mvt_at(out[p],rig,p)));
         from:=pose_norm3(mvt_minus(mvt_at(idle[k],rig,k),mvt_at(idle[p],rig,p)));to:=pose_norm3(mvt_minus(rig.bind[k],rig.bind[p]));
@@ -479,15 +479,15 @@ mv_shape :: ()->MbShape {s:=mb_small();s.decoded=28;return s;}
         #assert mid>=low-0.00001 && mid<=high+0.00001;
     }
     // Walking ends it: the dance fades out into the walk.
-    a=verse_cast_update(b,c,a,1,false,2);#assert a.move==Move.walking && a.from==Move.dancing && !a.dance;
-    #assert verse_cast_pose(b,c,a,2+FADE,0,0,0,0,out[..]);
+    a=metaverse_cast_update(b,c,a,1,false,2);#assert a.move==Move.walking && a.from==Move.dancing && !a.dance;
+    #assert metaverse_cast_pose(b,c,a,2+FADE,0,0,0,0,out[..]);
     for k:0..<65 {#assert mvt_near3(mvt_at(out[k],rig,k),mvt_at(idle[k],rig,k),0.00001);}
 }
 
 #test "a splice the Cast cannot take leaves the bytes as they were" {
     rig:=mv_verse_rig();h:=mv_handoff(mvt_clip(6,pose_gltf(),0),mv_leg(),mv_leg_map(),rig,3);
     bytes:[131072]u8;n:=mv_cast_build(bytes[..],5);b:=bytes[0..<n];before:=mv_digest(b);
-    #assert mv_splice(b,h)==MvStatus.length && mv_digest(b)==before && frames_of(b,verse_cast_open(b),Move.dancing)==5;
+    #assert mv_splice(b,h)==MvStatus.length && mv_digest(b)==before && frames_of(b,metaverse_cast_open(b),Move.dancing)==5;
     bad:=h;bad.status=MvStatus.pose;#assert mv_splice(b,bad)==MvStatus.shape && mv_digest(b)==before;
     bad=h;bad.joints=64;#assert mv_splice(b,bad)==MvStatus.shape && mv_digest(b)==before;
     h.frames=5;#assert mv_splice(b,h)==MvStatus.ok && mv_digest(b)!=before;
@@ -495,7 +495,7 @@ mv_shape :: ()->MbShape {s:=mb_small();s.decoded=28;return s;}
 }
 
 #test "the digest covers the dance's rows and only them" {
-    bytes:[131072]u8;n:=mv_cast_build(bytes[..],2);b:=bytes[0..<n];c:=verse_cast_open(b);
+    bytes:[131072]u8;n:=mv_cast_build(bytes[..],2);b:=bytes[0..<n];c:=metaverse_cast_open(b);
     from:=c.poses.offset+6*65*32;want:u64=0xcbf29ce484222325;
     for i:from..<from+2*65*32 {want=mul_wrap(want^cast(u64)b[i],cast(u64)1099511628211);}
     #assert mv_digest(b)==want;

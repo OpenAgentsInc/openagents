@@ -1,6 +1,6 @@
 // Firm reason: 6 (Wayland/XKB SDK: keymap, compose and physical listener effects; Coax normalizes the ABI).
-#ifndef AETHYR_WAYLAND_INPUT_SDK_H
-#define AETHYR_WAYLAND_INPUT_SDK_H
+#ifndef ENGINE_WAYLAND_INPUT_SDK_H
+#define ENGINE_WAYLAND_INPUT_SDK_H
 #include <xkbcommon/xkbcommon.h>
 #include <xkbcommon/xkbcommon-compose.h>
 #include <sys/mman.h>

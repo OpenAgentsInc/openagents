@@ -22,9 +22,9 @@
 // `coax/remote/check.sh reports` fails when it isn't what
 //   coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library > metaverse/native/pack-table-gen.h
 // writes. Its three exports are renamed here, so a binary that also links the face's own unit links.
-#define aethyr_pack_stated rh_aethyr_pack_stated
-#define aethyr_pack_table rh_aethyr_pack_table
-#define aethyr_pack_head_max rh_aethyr_pack_head_max
+#define engine_pack_stated rh_aethyr_pack_stated
+#define engine_pack_table rh_aethyr_pack_table
+#define engine_pack_head_max rh_aethyr_pack_head_max
 #include "pack-table-gen.h"
 
 extern char **environ;
@@ -142,7 +142,7 @@ int rh_pack(RealmHost *h, const char *path) {
   // before a byte of an entry is read.
   const uint8_t *b = h->pack;
   static coax_t_PackTable table;
-  if (!aethyr_pack_table((coax_string){(const char *)b, (int64_t)h->pack_size}, (int64_t)h->pack_size, (coax_v_t_PackTable){&table, 1})) {
+  if (!engine_pack_table((coax_string){(const char *)b, (int64_t)h->pack_size}, (int64_t)h->pack_size, (coax_v_t_PackTable){&table, 1})) {
     fprintf(stderr, "realm-host: %s: %.*s\n", path, (int)table.why.count, table.why.data); return 1;
   }
   uint32_t count = (uint32_t)table.count;

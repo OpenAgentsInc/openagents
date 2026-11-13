@@ -1,6 +1,6 @@
 // SDK effects for Coax-admitted Ogg/Opus and required APC1 companions.
-#ifndef VERSE_NATIVE_AUDIO_OPUS_H
-#define VERSE_NATIVE_AUDIO_OPUS_H
+#ifndef METAVERSE_NATIVE_AUDIO_OPUS_H
+#define METAVERSE_NATIVE_AUDIO_OPUS_H
 #include "audio-host.h"
 typedef struct {int64_t sdk_opens,reads,source_words,companion_words,coded_words,retained_words;} RhAudioDecodeObservation;
 // All inputs are immutable borrowed spans for this synchronous call. A null

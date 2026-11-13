@@ -191,7 +191,7 @@ Swim :: struct {
 
 // ---- the bed
 
-// The ground's height at (x, z), as metaverse-engine/world/terrain.coax's verse_terrain_height
+// The ground's height at (x, z), as metaverse-engine/world/terrain.coax's metaverse_terrain_height
 // reads it (the same two triangles a cell the ground draws).
 river_bed :: (r: [] River, heights: [] f32, x: f32, z: f32) -> f32 {
   n := r[0].n;

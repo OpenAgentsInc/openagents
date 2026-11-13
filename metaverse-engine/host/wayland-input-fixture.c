@@ -1,6 +1,6 @@
 // Firm reason: 6 (Wayland/XKB SDK fixture: call the actual production listeners with real SDK objects/keymap descriptors).
 #define _GNU_SOURCE
-#define AETHYR_WAYLAND_INPUT_V1
+#define ENGINE_WAYLAND_INPUT_V1
 #include <stdbool.h>
 #include <stdint.h>
 #include <fcntl.h>

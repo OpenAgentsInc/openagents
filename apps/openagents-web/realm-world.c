@@ -60,7 +60,7 @@ static int world_status(uint32_t length) {
 // The house as it is now, published (the owner) or offered (anyone else).
 static bool world_send(void) {
   if (!world_holds() || !opened || send_ask >= 0) return false;
-  int64_t n = verse_haunt_save(house, (coax_v_u8){saved, sizeof saved}, (coax_v_u8){scratch, sizeof scratch});
+  int64_t n = metaverse_haunt_save(house, (coax_v_u8){saved, sizeof saved}, (coax_v_u8){scratch, sizeof scratch});
   if (n <= 0) return false;
   int64_t cn = save_pack(text(SAVE_WORLD), SAVE_SCHEMA, (coax_v_u8){saved, n}, n, (coax_v_u8){container, sizeof container});
   if (cn <= 0) return false;

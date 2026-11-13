@@ -320,7 +320,7 @@ What the Mac agent does, following the native Vulkan host
 1. Add the ledger's C exports (`metaverse-engine/render/host.coax`, over
    `registry.coax`) to `apps/openagents-ios/generate.sh`; they aren't
    compiled into the app today. Swift then calls
-   `aethyr_render_registry_storage`, `_open`, `_acquire`, `_release`,
+   `engine_render_registry_storage`, `_open`, `_acquire`, `_release`,
    `_live` and `_advance`.
 2. Acquire a handle before every `makeBuffer` and `makeTexture` in
    `HomeRenderer.swift`: the Cast buffers and texture sheets, the Grid props'

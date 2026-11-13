@@ -1,6 +1,6 @@
 // Native audio SDK boundary. PCM/WAV, bank spans and memory admission are Coax.
-#ifndef VERSE_NATIVE_AUDIO_HOST_H
-#define VERSE_NATIVE_AUDIO_HOST_H
+#ifndef METAVERSE_NATIVE_AUDIO_HOST_H
+#define METAVERSE_NATIVE_AUDIO_HOST_H
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

@@ -8,7 +8,7 @@
 //
 // The way to your tombstone: when your dog's stone goes into the garden, a
 // glowing line runs on the ground from you to it, along the garden paths
-// (metaverse-engine/world/terrain.coax verse_route_points), and fades when you get there.
+// (metaverse-engine/world/terrain.coax metaverse_route_points), and fades when you get there.
 // WALK TO THEIR STONE in YOUR DOG lights it again.
 
 EXAMPLE_X :: -15.15; EXAMPLE_Z :: -16.0;   // the stone, facing south down the avenue
@@ -53,10 +53,10 @@ guide_route :: (s: [] Villa, plot: int) {
   g := s[0].guide[..];
   nodes := NODE_XZ; links := LINK_AB;
   end := guide_end(plot);
-  close := verse_path_nearest(nodes[..], links[..], end.x, end.z);
+  close := metaverse_path_nearest(nodes[..], links[..], end.x, end.z);
   onto := v3(close.x, 0, close.z);
   from := v3(s[0].feet.x, 0, s[0].feet.z);
-  n := verse_route_points(nodes[..], links[..], f32(PATH_HALF), from, onto, g[0].pts[0..<(GUIDE_POINTS - 1) * 2]);
+  n := metaverse_route_points(nodes[..], links[..], f32(PATH_HALF), from, onto, g[0].pts[0..<(GUIDE_POINTS - 1) * 2]);
   if n < 2 { g[0].n = 0; return; }
   if flat_length(sub(onto, end)) > 0.05 { g[0].pts[n * 2] = end.x; g[0].pts[n * 2 + 1] = end.z; n += 1; }
   g[0].n = n;
@@ -153,8 +153,8 @@ example_block :: (s: [] Villa) {
   nodes := NODE_XZ; links := LINK_AB;
   x := f32(EXAMPLE_X); z := f32(EXAMPLE_Z);
   #assert in_garden(x, z);
-  #assert verse_path_nearest(nodes[..], links[..], x, z).d > f32(PATH_HALF) + 0.5;
-  #assert verse_path_nearest(nodes[..], links[..], x + 0.3, z - 0.35).d > f32(PATH_HALF) + 0.2;   // its vase too
+  #assert metaverse_path_nearest(nodes[..], links[..], x, z).d > f32(PATH_HALF) + 0.5;
+  #assert metaverse_path_nearest(nodes[..], links[..], x + 0.3, z - 0.35).d > f32(PATH_HALF) + 0.2;   // its vase too
   for p: 0..<PLOTS {
     #assert abs(plot_x(p) - x) > 1.2 || abs(plot_z(p) - z) > 2.0;
   }
@@ -228,10 +228,10 @@ guide_placed :: (s: [] Villa, q: int) {
     // between, it keeps to the paths: every point but the first and last on one, and each leg
     // but the first and last along one (its middle on a path's strip)
     for i: 1..<g[0].n - 1 {
-      #assert verse_path_nearest(nodes[..], links[..], g[0].pts[i * 2], g[0].pts[i * 2 + 1]).d < 0.01;
+      #assert metaverse_path_nearest(nodes[..], links[..], g[0].pts[i * 2], g[0].pts[i * 2 + 1]).d < 0.01;
       if i < g[0].n - 2 {
         mx := (g[0].pts[i * 2] + g[0].pts[i * 2 + 2]) / 2; mz := (g[0].pts[i * 2 + 1] + g[0].pts[i * 2 + 3]) / 2;
-        #assert verse_path_nearest(nodes[..], links[..], mx, mz).d < f32(PATH_HALF);   // on it (a short cut stays on its strip)
+        #assert metaverse_path_nearest(nodes[..], links[..], mx, mz).d < f32(PATH_HALF);   // on it (a short cut stays on its strip)
       }
     }
     // the last leg, from the path to the stone, crosses no other plot's bed

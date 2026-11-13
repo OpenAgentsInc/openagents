@@ -49,7 +49,7 @@ parity_run :: (fps: int, camera: bool) -> ParityRun {
   col: Colliders; col.ground = -10; col.boxes = wall[..];
   ts: [2] attn.AttnTarget;
   m: CamMode; g: [1] CamGround; none: [4] f32;
-  o := verse_orbit_start(v3(0, 0, 0), 0.4);
+  o := metaverse_orbit_start(v3(0, 0, 0), 0.4);
   uneven := [6] int.[1000000, 23000000, 7000000, 48000000, 11000000, 100000000];   // the last a 100 ms stall, caught up in one frame
   h: u64 = 2166136261; ha: u64 = 2166136261;
   elapsed := 0; frame := 0; total := 10000000000;
@@ -72,9 +72,9 @@ parity_run :: (fps: int, camera: bool) -> ParityRun {
       // the camera reads the finished pose: its ground ring, the centred follow and the shot
       feet := v3(a.x, 0, a.z);
       cam_test_fill(g[..], feet.x, feet.z, 0.05);
-      o = verse_orbit_follow(o, feet, a.face, true, f32(f64(ns) / 1e9));
+      o = metaverse_orbit_follow(o, feet, a.face, true, f32(f64(ns) / 1e9));
       k := cam_centred(m, g[..], o, none[0..<0]);
-      o = verse_orbit_limit(o, k.room, f32(f64(ns) / 1e9));
+      o = metaverse_orbit_limit(o, k.room, f32(f64(ns) / 1e9));
       _ := cam_shot(m, o, k.eye_pitch, k.press);
     }
     elapsed += ns; frame += 1;

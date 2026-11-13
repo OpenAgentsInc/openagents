@@ -36,23 +36,23 @@ static void start(uint32_t state) {
   if (!track_state.page_n) track_init(tr(), track_cstr("garden"));
   if (placed) return;
   coax_t_Point spawn = garden_spawn(at(state));
-  player = verse_player_place(spawn.x, spawn.y, spawn.z, 0);
-  controls = verse_player_v2_reset();
-  sticks = verse_sticks_reset();
+  player = metaverse_player_place(spawn.x, spawn.y, spawn.z, 0);
+  controls = metaverse_player_v2_reset();
+  sticks = metaverse_sticks_reset();
   placed = true;
-  verse_place_golden(place_k(), golden);
+  metaverse_place_golden(place_k(), golden);
   garden_walls(at(state));   // the page started: its orbit is where you start
   place_seen(state);
 }
 
 static coax_t_Place place_here(uint32_t state) {
   if (!placed) return (coax_t_Place){0};
-  return verse_place_of(player.body.pos.x, player.body.pos.y, player.body.pos.z, verse_player_face(player), garden(state)->orbit, -1);
+  return metaverse_place_of(player.body.pos.x, player.body.pos.y, player.body.pos.z, metaverse_player_face(player), garden(state)->orbit, -1);
 }
 static void place_put(uint32_t state, coax_t_Place p) {
   coax_t_Place q = garden_place_fix(at(state), p);
-  player = verse_player_place(q.x, 0, q.z, q.face);
-  controls = verse_player_v2_reset();
+  player = metaverse_player_place(q.x, 0, q.z, q.face);
+  controls = metaverse_player_v2_reset();
   garden_place_camera(at(state), q);
 }
 
@@ -72,27 +72,27 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_t_Garden *g = garden(state);
   width = w; height = h; dpr = scale;
   float frame = dt;   /* the player's clock (metaverse-engine/core/loop.coax) steps it; the rest moves by what it counts */
-  dt = verse_player_counts(player, frame);
+  dt = metaverse_player_counts(player, frame);
   now += dt;
   g->golden = golden;
   g->wall_ms = track_state.epoch + track_state.t * 1000.0;
   garden_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
   bool busy = garden_busy(at(state));
-  if (busy) sticks = verse_sticks_reset();
-  verse_player_v2_input(control(), g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y), g->jump || sticks.jump, 0, 0);
-  verse_player_v2_heading(control(), player, garden_player_theta(at(state)));
+  if (busy) sticks = metaverse_sticks_reset();
+  metaverse_player_v2_input(control(), g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, metaverse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y), g->jump || sticks.jump, 0, 0);
+  metaverse_player_v2_heading(control(), player, garden_player_theta(at(state)));
   if (sticks.zoom != 0) garden_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (metaverse/grid.coax) */
-  sticks = verse_sticks_used(sticks);
+  sticks = metaverse_sticks_used(sticks);
   int64_t walls = garden_walls(at(state));
-  coax_t_AdvanceTrace walked = verse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},
+  coax_t_AdvanceTrace walked = metaverse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},
                                          (coax_v_f32){0, 0}, (coax_string){"garden", sizeof "garden" - 1});
   player = walked.player;
-  coax_t_Vec3 feet = verse_player_feet(player);
+  coax_t_Vec3 feet = metaverse_player_feet(player);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_garden_max_vertices() * coaxial_garden_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_garden_uniform_floats()};
   int64_t n = garden_frame_on_clock(at(state), out, u, w, h, scale, player.body.clock,
-                           (coax_v_t_StepTarget){walked.targets.e, walked.count}, still != 0, feet.x, feet.y, feet.z, verse_player_face(player),
-                           verse_player_act(player), player.body.vel.x, player.body.vel.z,
+                           (coax_v_t_StepTarget){walked.targets.e, walked.count}, still != 0, feet.x, feet.y, feet.z, metaverse_player_face(player),
+                           metaverse_player_act(player), player.body.vel.x, player.body.vel.z,
                            sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   place_frame(state);
   track_frame(tr(), dt, w, h, scale);
@@ -121,13 +121,13 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, in
   track_key_up(tr(), key);
   return garden_key_up(at(state), key, mods) ? 1u : 0u;
 }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { garden_blur(at(state)); sticks = verse_sticks_reset(); track_blur(tr()); }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { garden_blur(at(state)); sticks = metaverse_sticks_reset(); track_blur(tr()); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   start(state);
   track_pointer(tr(), x, y, phase, kind, (coax_string){"", 0});
   track_drain(&track_state);
   if (garden_pointer(at(state), x, y, phase, kind, id)) return 1u;
-  if (kind != 0) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  if (kind != 0) sticks = metaverse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
 }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { garden_wheel(at(state), dy); }

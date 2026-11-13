@@ -239,8 +239,8 @@ route_leg :: (r: [] Route, solids: [] f32, ns: int, ax: f32, az: f32, bx: f32, b
   if d < 0.05 { return; }
   if d <= f32(DIRECT_MAX) && folk_clear(solids, ns, ax, az, bx, bz) { route_put(r, bx, bz); return; }
   nodes := EG_NODE_XZ; links := EG_LINK_AB;
-  pa := verse_path_nearest(nodes[..], links[..], ax, az);
-  pb := verse_path_nearest(nodes[..], links[..], bx, bz);
+  pa := metaverse_path_nearest(nodes[..], links[..], ax, az);
+  pb := metaverse_path_nearest(nodes[..], links[..], bx, bz);
   if pa.link < 0 || pb.link < 0 { route_put(r, bx, bz); return; }
   route_put(r, pa.x, pa.z);
   if pa.link == pb.link { route_put(r, pb.x, pb.z); route_put(r, bx, bz); return; }
@@ -287,7 +287,7 @@ folk_surface :: (levels: [] f32, x: f32, z: f32) -> f32 {
 // A walker's medium at (x, z): on the ground, wading or swimming (metaverse/water-wade.coax).
 folk_medium :: (heights: [] f32, levels: [] f32, x: f32, z: f32) -> int {
   if heights.count < EG_GROUND_POINTS { return MEDIUM_GROUND; }
-  return medium_walking(folk_surface(levels, x, z), verse_terrain_height(everglade_ground(), heights, x, z));
+  return medium_walking(folk_surface(levels, x, z), metaverse_terrain_height(everglade_ground(), heights, x, z));
 }
 
 // The walk's seconds: each piece at FOLK_WALK times the pace its medium allows (half in the water); a piece

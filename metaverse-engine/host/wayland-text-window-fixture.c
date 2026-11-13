@@ -1,7 +1,7 @@
 // Firm reason: 6 (real XKB compose state and production Wayland window callbacks, without opening a display or GPU).
 #define _GNU_SOURCE
-#define AETHYR_WAYLAND_INPUT_V1
-#define AETHYR_WAYLAND_TEXT_V1
+#define ENGINE_WAYLAND_INPUT_V1
+#define ENGINE_WAYLAND_TEXT_V1
 #include <stdbool.h>
 #include <stdint.h>
 #include "vkw.h"

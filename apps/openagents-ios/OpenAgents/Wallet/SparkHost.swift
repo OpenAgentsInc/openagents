@@ -332,8 +332,8 @@ actor SparkHost {
             if a.network != .bitcoin { return .unsupported("This Spark address is for a test network.") }
             return .spark(address: a.address, amount: nil)
         case .lnurlWithdraw(let d):
-            return .withdraw(note: d.defaultDescription, low: UInt64(max(0, verse_wallet_msat_up(Int64(clamping: d.minWithdrawable)))),
-                             high: UInt64(max(0, verse_wallet_msat_down(Int64(clamping: d.maxWithdrawable)))))
+            return .withdraw(note: d.defaultDescription, low: UInt64(max(0, metaverse_wallet_msat_up(Int64(clamping: d.minWithdrawable)))),
+                             high: UInt64(max(0, metaverse_wallet_msat_down(Int64(clamping: d.maxWithdrawable)))))
         case .bolt12Offer, .bolt12Invoice, .bolt12InvoiceRequest:
             return .unsupported("This is a BOLT12 offer. Ask for a Lightning invoice or address instead.")
         case .lnurlAuth:
@@ -348,8 +348,8 @@ actor SparkHost {
     }
 
     private func lnurl(_ name: String, _ d: LnurlPayRequestDetails) -> Destination {
-        .lnurl(name: name, low: UInt64(max(1, verse_wallet_msat_up(Int64(clamping: d.minSendable)))),
-               high: UInt64(max(0, verse_wallet_msat_down(Int64(clamping: d.maxSendable)))), comment: Int(d.commentAllowed))
+        .lnurl(name: name, low: UInt64(max(1, metaverse_wallet_msat_up(Int64(clamping: d.minSendable)))),
+               high: UInt64(max(0, metaverse_wallet_msat_down(Int64(clamping: d.maxSendable)))), comment: Int(d.commentAllowed))
     }
 
     /// A quote for the request last parsed. `amount` is required unless the
@@ -526,10 +526,10 @@ actor SparkHost {
 
     /// The most adding an on-chain deposit to the balance costs now: the
     /// SDK's fastest recommended rate plus the leeway set in `open`, for its
-    /// claim transaction (verse_wallet_claim_fee_max). Nil if it can't say.
+    /// claim transaction (metaverse_wallet_claim_fee_max). Nil if it can't say.
     func claimFeeMax() async -> UInt64? {
         guard let fees = try? await connected().recommendedFees() else { return nil }
-        let most = verse_wallet_claim_fee_max(Int64(clamping: fees.fastestFee))
+        let most = metaverse_wallet_claim_fee_max(Int64(clamping: fees.fastestFee))
         return most < 0 ? nil : UInt64(most)
     }
 
@@ -549,7 +549,7 @@ actor SparkHost {
                 // buyBitcoin moves the wallet to a fresh deposit address; this
                 // reads the one it uses now.
                 let address = try await sdk.receivePayment(request: ReceivePaymentRequest(paymentMethod: .bitcoinAddress(newAddress: false))).paymentRequest
-                passed = Self.bytes(page) { url in Self.bytes(address) { verse_wallet_moonpay_page(url, $0) } }
+                passed = Self.bytes(page) { url in Self.bytes(address) { metaverse_wallet_moonpay_page(url, $0) } }
             case .cashApp:
                 page = try await sdk.buyBitcoin(request: .cashApp(amountSats: amount)).url
                 var invoiceSats: Int64 = -1
@@ -558,7 +558,7 @@ actor SparkHost {
                    d.network == .bitcoin, let msat = d.amountMsat {
                     invoiceSats = Int64(clamping: msat / 1000)
                 }
-                passed = Self.bytes(page) { verse_wallet_cashapp_page($0, Int64(clamping: amount), invoiceSats) }
+                passed = Self.bytes(page) { metaverse_wallet_cashapp_page($0, Int64(clamping: amount), invoiceSats) }
             }
         } catch {
             NSLog("OpenAgents wallet: buy: %@", String(describing: error))

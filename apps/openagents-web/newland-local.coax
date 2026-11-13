@@ -187,14 +187,14 @@ local_agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, mid: Fv, p: Pen,
   v := local_desk(out, at, s, c, mid, p);
   if l[0].n == 0 { return v; }
   sh: Shape; sh.size = 0.95;
-  k := verse_figure_skeleton(sh);
+  k := metaverse_figure_skeleton(sh);
   you := wk_at(mid, WK_SPAWN_X, 0, WK_SPAWN_Z);
   for a: 0..<l[0].n {
     g := l[0].a[a];
     w := local_place(a, l[0].n);
     at_grid := wk_at(mid, w.x, w.y, w.z);
     yaw := angle_of(you.x - at_grid.x, you.z - at_grid.z);
-    pose := verse_figure_gait(Rig.person, Gait.stand, 0, t * 1.4 + cast(f32) a);
+    pose := metaverse_figure_gait(Rig.person, Gait.stand, 0, t * 1.4 + cast(f32) a);
     if g.working { pose.turn[P_R_SHOULDER] = fv(-1.1 - 0.15 * sin(t * 3.1 + cast(f32) a), 0, -0.2); pose.turn[P_R_ELBOW] = fv(-0.5, 0, 0); }
     tint := ink(p, ifx g.working then INK_BLUE else INK_PALE);
     top: [1] Spot;

@@ -124,7 +124,7 @@ enum WalletBackup {
         }
         var seen: Int64 {
             get { Int64(defaults.integer(forKey: "wallet.backup.seen")) }
-            nonmutating set { if verse_backup_newer(seen, newValue) { defaults.set(Int(newValue), forKey: "wallet.backup.seen") } }
+            nonmutating set { if metaverse_backup_newer(seen, newValue) { defaults.set(Int(newValue), forKey: "wallet.backup.seen") } }
         }
         /// Remembers a backup this phone made or opened. A new vault starts its epochs again.
         func remember(vault v: String, epoch: Int64) {
@@ -166,8 +166,8 @@ enum WalletVault {
         }
     }
 
-    /// A size or code Swift can't import from Coax (pay/wallet-vault.coax's verse_backup_number).
-    static func number(_ which: Int64) -> Int { Int(verse_backup_number(which)) }
+    /// A size or code Swift can't import from Coax (pay/wallet-vault.coax's metaverse_backup_number).
+    static func number(_ which: Int64) -> Int { Int(metaverse_backup_number(which)) }
 
     static func random(_ n: Int) throws -> [UInt8] {
         var b = [UInt8](repeating: 0, count: n)
@@ -317,10 +317,10 @@ enum WalletVault {
     /// over url, as the API takes it, and the key's public half. Coax derives the key, signs and
     /// wipes it; the private key never reaches Swift.
     static func nostrProof(seed: Data, url: String, now: Date = Date()) throws -> (proof: String, pubkey: String)? {
-        var s = [UInt8](seed), aux = try random(32), nonce = try random(16), out = [UInt8](repeating: 0, count: Int(verse_backup_number(8)))
+        var s = [UInt8](seed), aux = try random(32), nonce = try random(16), out = [UInt8](repeating: 0, count: Int(metaverse_backup_number(8)))
         defer { wipe(&s); wipe(&aux) }
         let n = text(url) { u in bytes(&s) { sv in bytes(&aux) { av in bytes(&nonce) { nv in bytes(&out) { ov in
-            verse_wallet_nostr_proof(sv, av, nv, Int64(now.timeIntervalSince1970), u, ov)
+            metaverse_wallet_nostr_proof(sv, av, nv, Int64(now.timeIntervalSince1970), u, ov)
         } } } } }
         guard n > 0 else { return nil }
         let proof = String(decoding: out[0..<Int(n)], as: UTF8.self)
@@ -409,7 +409,7 @@ final class WalletBackupClient: @unchecked Sendable {
 }
 
 /// What this phone paid in the last 24 hours and the limit it last heard, for when the server
-/// can't be asked (pay/wallet-backup.coax's verse_limit_local). Sizes and times only.
+/// can't be asked (pay/wallet-backup.coax's metaverse_limit_local). Sizes and times only.
 struct SpendLedger {
     var defaults: UserDefaults = .standard
     var now: () -> Date = { Date() }

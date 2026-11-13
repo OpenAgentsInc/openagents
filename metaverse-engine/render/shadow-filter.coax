@@ -2,11 +2,11 @@
 #module "aethyr.render.shadow_filter";
 #load "light.coax";
 // Tap positions and extent in texels; light.coax owns the tap count.
-verse_style_shadow_radius :: (on_phone:f32)->f32 #export_c #effects(all) {return 2.5f32;}
-#test "the shadow filter's taps reach 2.5 texels, on a phone too" {#assert verse_style_shadow_radius(0.0f32)==2.5f32 && verse_style_shadow_radius(1.0f32)==2.5f32;}
+metaverse_style_shadow_radius :: (on_phone:f32)->f32 #export_c #effects(all) {return 2.5f32;}
+#test "the shadow filter's taps reach 2.5 texels, on a phone too" {#assert metaverse_style_shadow_radius(0.0f32)==2.5f32 && metaverse_style_shadow_radius(1.0f32)==2.5f32;}
 // Tap k's offset on the unit disc, `which` 0 across and 1 down: nine spread Poisson points, or a
 // phone's four in a turned square.
-verse_style_shadow_tap :: (k:f32,on_phone:f32,which:f32)->f32 #export_c #effects(all) {
+metaverse_style_shadow_tap :: (k:f32,on_phone:f32,which:f32)->f32 #export_c #effects(all) {
  x:=0.0f32; y:=0.0f32;
  if on_phone>0.5f32 {
   if k<0.5f32 {x=-0.60f32;y=-0.25f32;} else if k<1.5f32 {x=0.25f32;y=-0.60f32;} else if k<2.5f32 {x=0.60f32;y=0.25f32;} else {x=-0.25f32;y=0.60f32;}
@@ -18,12 +18,12 @@ verse_style_shadow_tap :: (k:f32,on_phone:f32,which:f32)->f32 #export_c #effects
  if which>0.5f32 {return y;} return x;
 }
 #test "nine Poisson taps at 2.5 texels on desktop, four on a phone, all on the unit disc" {
- #assert verse_style_shadow_taps(0.0f32)==9.0f32 && verse_style_shadow_taps(1.0f32)==4.0f32;
- for k:0..<9 {x:=verse_style_shadow_tap(cast(f32)k,0.0f32,0.0f32); y:=verse_style_shadow_tap(cast(f32)k,0.0f32,1.0f32);
+ #assert metaverse_style_shadow_taps(0.0f32)==9.0f32 && metaverse_style_shadow_taps(1.0f32)==4.0f32;
+ for k:0..<9 {x:=metaverse_style_shadow_tap(cast(f32)k,0.0f32,0.0f32); y:=metaverse_style_shadow_tap(cast(f32)k,0.0f32,1.0f32);
   #assert x*x+y*y<=1.0f32;
-  for j:0..<9 {if j!=k {u:=verse_style_shadow_tap(cast(f32)j,0.0f32,0.0f32)-x; v:=verse_style_shadow_tap(cast(f32)j,0.0f32,1.0f32)-y; #assert u*u+v*v>0.09f32;}}}
+  for j:0..<9 {if j!=k {u:=metaverse_style_shadow_tap(cast(f32)j,0.0f32,0.0f32)-x; v:=metaverse_style_shadow_tap(cast(f32)j,0.0f32,1.0f32)-y; #assert u*u+v*v>0.09f32;}}}
  sx:=0.0f32; sy:=0.0f32;
- for k:0..<4 {x:=verse_style_shadow_tap(cast(f32)k,1.0f32,0.0f32); y:=verse_style_shadow_tap(cast(f32)k,1.0f32,1.0f32); #assert x*x+y*y<=1.0f32; sx=sx+x; sy=sy+y;}
+ for k:0..<4 {x:=metaverse_style_shadow_tap(cast(f32)k,1.0f32,0.0f32); y:=metaverse_style_shadow_tap(cast(f32)k,1.0f32,1.0f32); #assert x*x+y*y<=1.0f32; sx=sx+x; sy=sy+y;}
  #assert abs(sx)<0.0001f32 && abs(sy)<0.0001f32;
 }
 #forall "the nine desktop taps and the four phone taps are where the filter puts them, an index's half rounding up" k:0..<9 {
@@ -32,13 +32,13 @@ verse_style_shadow_tap :: (k:f32,on_phone:f32,which:f32)->f32 #export_c #effects
   px := [4] f32.[-0.60, 0.25, 0.60, -0.25];
   py := [4] f32.[-0.25, -0.60, 0.25, 0.60];
   f := cast(f32) k;
-  #assert verse_style_shadow_tap(f, 0, 0) == dx[k] && verse_style_shadow_tap(f, 0, 1) == dy[k];
-  #assert verse_style_shadow_tap(f - 0.5, 0, 0) == dx[k] && verse_style_shadow_tap(f - 0.5, 0, 1) == dy[k];
+  #assert metaverse_style_shadow_tap(f, 0, 0) == dx[k] && metaverse_style_shadow_tap(f, 0, 1) == dy[k];
+  #assert metaverse_style_shadow_tap(f - 0.5, 0, 0) == dx[k] && metaverse_style_shadow_tap(f - 0.5, 0, 1) == dy[k];
   p := ifx k < 4 then k else 3;
-  #assert verse_style_shadow_tap(f, 1, 0) == px[p] && verse_style_shadow_tap(f, 1, 1) == py[p];
-  #assert verse_style_shadow_tap(f - 0.5, 1, 0) == px[p] && verse_style_shadow_tap(f - 0.5, 1, 1) == py[p];
+  #assert metaverse_style_shadow_tap(f, 1, 0) == px[p] && metaverse_style_shadow_tap(f, 1, 1) == py[p];
+  #assert metaverse_style_shadow_tap(f - 0.5, 1, 0) == px[p] && metaverse_style_shadow_tap(f - 0.5, 1, 1) == py[p];
 }
 #test "the shadow filter's tap switches flip at their own edges: past half is a phone, past half is down" {
- #assert verse_style_shadow_tap(1.0f32,0.5f32,0.0f32)==-0.326f32 && verse_style_shadow_tap(1.0f32,0.51f32,0.0f32)==0.25f32;
- #assert verse_style_shadow_tap(1.0f32,0.0f32,0.5f32)==-0.326f32 && verse_style_shadow_tap(1.0f32,0.0f32,0.51f32)==-0.406f32;
+ #assert metaverse_style_shadow_tap(1.0f32,0.5f32,0.0f32)==-0.326f32 && metaverse_style_shadow_tap(1.0f32,0.51f32,0.0f32)==0.25f32;
+ #assert metaverse_style_shadow_tap(1.0f32,0.0f32,0.5f32)==-0.326f32 && metaverse_style_shadow_tap(1.0f32,0.0f32,0.51f32)==-0.406f32;
 }

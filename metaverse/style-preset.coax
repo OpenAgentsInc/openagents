@@ -1,19 +1,19 @@
 // The art styles' presets (docs/metaverse/art-styles.md, Presets): every number a
-// style gives, as one record a realm reads with verse_style_preset(style,
-// tier) and evaluates at its clock with verse_style_at(preset, clock, out),
+// style gives, as one record a realm reads with metaverse_style_preset(style,
+// tier) and evaluates at its clock with metaverse_style_at(preset, clock, out),
 // which fills the STYLE_FLOATS uniform block (32 vec4f) its WGSL reads. The
 // shading functions that use those numbers are metaverse/style.coax (loaded
 // here so the checks below can run them on a preset's own numbers); they are
 // a separate file because coax wgsl writes only scalar functions.
 //
 // What changes through the day is a StyleKey at each of four clock keys:
-// midnight (0), dawn (0.25), noon (0.5) and dusk (0.75); verse_style_at is
+// midnight (0), dawn (0.25), noon (0.5) and dusk (0.75); metaverse_style_at is
 // linear between them. Where the spec gives one value for "dusk/dawn", both
 // keys take it. A few values the spec leaves open (dusk ambient, dusk
 // exposure and shaft weight, the clouds' lit top away from noon) are
 // between its day and night numbers and marked "between" below.
 //
-// verse_style_compat_profile gives the four keys as an metaverse-engine/world/environment.coax profile
+// metaverse_style_compat_profile gives the four keys as an metaverse-engine/world/environment.coax profile
 // (lighting plan Phase 1 step 5, #13065): painterly's noon is the glade, its other keys deltas on it.
 //
 //   coax/bin/coax test metaverse/style-preset.coax
@@ -24,8 +24,8 @@
 STYLE_LOWPOLY :: 0;
 STYLE_PAINTERLY :: 1;
 STYLE_PHOTOREAL :: 2;
-STYLE_FLAT :: 3;            // flat-shaded low poly in a realm's own few colours (verse_style_flat)
-STYLE_ANIME :: 4;           // cel-shaded anime in one of its variants (verse_style_anime)
+STYLE_FLAT :: 3;            // flat-shaded low poly in a realm's own few colours (metaverse_style_flat)
+STYLE_ANIME :: 4;           // cel-shaded anime in one of its variants (metaverse_style_anime)
 // anime's variants (art-styles.md, Anime: variants), realms.json "variant"
 ANIME_PASTORAL :: 0;        // a bright summer day: painted backgrounds, big clouds, lush greens
 ANIME_ACTION :: 1;          // battle anime: harder contrast, thicker lines, strong rims, glowing spells
@@ -219,14 +219,14 @@ lowpoly_key :: () -> StyleKey {
 }
 
 // Flat's key at clock key i (0 midnight, 1 dawn, 2 noon, 3 dusk) in `palette`'s colours
-// (metaverse/style.coax verse_style_flat_colour), with what the time does to them (verse_style_flat_time):
+// (metaverse/style.coax metaverse_style_flat_colour), with what the time does to them (metaverse_style_flat_time):
 // the key is the palette's lit light and the shadow tint its dark tone's; the ambient is one flat
 // colour, the same from the sky and the ground; the sky is the palette's flat colour over its horizon
 // band, and the haze slots hold the one far fade into the horizon colour.
 flat_rgb :: (palette: int, slot: int, i: int, ch: int) -> f32 {
   dusk := ifx i == 1 || i == 3 then 1.0f32 else 0.0f32;
   night := ifx i == 0 then 1.0f32 else 0.0f32;
-  return verse_style_flat_colour(f32(palette), f32(slot), f32(ch)) * verse_style_flat_time(f32(palette), f32(ch), dusk, night);
+  return metaverse_style_flat_colour(f32(palette), f32(slot), f32(ch)) * metaverse_style_flat_time(f32(palette), f32(ch), dusk, night);
 }
 flat_key :: (palette: int, i: int) -> StyleKey {
   k: StyleKey;
@@ -247,7 +247,7 @@ flat_key :: (palette: int, i: int) -> StyleKey {
 /** Flat (docs/metaverse/art-styles.md, Flat) in `palette` (FLAT_CEMETERY, FLAT_GARDEN, FLAT_FAIRY) for `tier`:
  *  three hard tones, no specular, no rim and no outline, a flat sky and a flat translucent
  *  shadow, no post pass but a little bloom on what glows. The realm's palette is its own. */
-verse_style_flat :: (palette: int, tier: int) -> StylePreset {
+metaverse_style_flat :: (palette: int, tier: int) -> StylePreset {
   p: StylePreset;
   p.style = STYLE_FLAT; p.tier = ifx tier == STYLE_PHONE then STYLE_PHONE else STYLE_DESKTOP;
   on_phone := p.tier == STYLE_PHONE;
@@ -255,13 +255,13 @@ verse_style_flat :: (palette: int, tier: int) -> StylePreset {
   p.ok = true; p.palette = palette; p.variant = -1;
   for i: 0..<STYLE_KEYS { p.keys[i] = flat_key(palette, i); }
   p.sun_azimuth = 0.6; p.sun_low = -20 * DEG; p.sun_high = 60 * DEG; p.moon_below = -6 * DEG;
-  p.band_e0 = 0.38; p.band_e1 = 0.62; p.band_soft = 0.01; p.band_mid = 0.5;      // verse_style_flat_band
-  p.char_edge = 0.45; p.char_soft = 0.01;                                         // verse_style_flat_band2
+  p.band_e0 = 0.38; p.band_e1 = 0.62; p.band_soft = 0.01; p.band_mid = 0.5;      // metaverse_style_flat_band
+  p.char_edge = 0.45; p.char_soft = 0.01;                                         // metaverse_style_flat_band2
   p.dab_cut = 2; p.dab_strength = 0;                                              // no specular, not even a dab
   p.rim_world = 0; p.rim_char = 0; p.rim_start = 0.38; p.rim_full = 0.12;
   p.blob = 0.45;                                                                  // a flat shadow's strength
   p.haze_height_mix = 0; p.haze_glow = 0; p.haze_tier = 1;
-  p.sky_lift = 1; p.sky_power = 1;                                                // verse_style_flat_sky: the band all the way to the horizon colour
+  p.sky_lift = 1; p.sky_power = 1;                                                // metaverse_style_flat_sky: the band all the way to the horizon colour
   p.sun_disc = 1.5 * DEG;                                                         // a flat disc, no halo, no clouds
   p.toned = 0; p.saturation = 1; p.black_lift = 0;                                // the palette shows as it is
   p.bloom_threshold = 0.9; p.bloom_knee = 0.1; p.bloom_mix = 0.12;               // only what glows
@@ -274,7 +274,7 @@ verse_style_flat :: (palette: int, tier: int) -> StylePreset {
   p.wind_x = 0.8; p.wind_z = 0.6; p.wind_tilt = 0; p.parting = 0.7;
   p.canopy_mix = 0; p.sway = 0.03; p.canopy_gap = 0; p.grass_near = 0;
   // water in two flat bands of the palette's water, no sparkle, a flat foam line
-  wr := verse_style_flat_colour(f32(palette), f32(FLAT_WATER), 0); wg := verse_style_flat_colour(f32(palette), f32(FLAT_WATER), 1); wb := verse_style_flat_colour(f32(palette), f32(FLAT_WATER), 2);
+  wr := metaverse_style_flat_colour(f32(palette), f32(FLAT_WATER), 0); wg := metaverse_style_flat_colour(f32(palette), f32(FLAT_WATER), 1); wb := metaverse_style_flat_colour(f32(palette), f32(FLAT_WATER), 2);
   p.shallow_r = wr; p.shallow_g = wg; p.shallow_b = wb; p.shallow_depth = 0.4;
   p.mid_r = wr * 0.78; p.mid_g = wg * 0.78; p.mid_b = wb * 0.78; p.mid_depth = 1.5;
   p.deep_r = wr * 0.6; p.deep_g = wg * 0.6; p.deep_b = wb * 0.6; p.water_soft = 0.01;
@@ -384,7 +384,7 @@ anime_key :: (variant: int, i: int) -> StyleKey {
  *  for `tier`: two hard cel tones and a highlight spot, a cool shadow tone at a set share of the lit
  *  value, coloured ink lines thinning with distance, a thin hard rim, a vivid gradient sky with flat
  *  cumulus, an aerial fade, bloom and a vignette. Not ok, variant -1, for an unknown variant. */
-verse_style_anime :: (variant: int, tier: int) -> StylePreset {
+metaverse_style_anime :: (variant: int, tier: int) -> StylePreset {
   p: StylePreset;
   p.style = STYLE_ANIME; p.tier = ifx tier == STYLE_PHONE then STYLE_PHONE else STYLE_DESKTOP; p.palette = -1;
   on_phone := p.tier == STYLE_PHONE;
@@ -438,24 +438,24 @@ verse_style_anime :: (variant: int, tier: int) -> StylePreset {
 
 ANIME_VARIANT_NAME :: [ANIME_VARIANTS] string.["pastoral", "action", "dusk", "neon"];
 /** The variant a realm names (realms.json "variant", the page fact variant=): ANIME_*, or -1 for none of them. */
-verse_style_anime_variant :: (name: string) -> int {
+metaverse_style_anime_variant :: (name: string) -> int {
   for i: 0..<ANIME_VARIANTS { if name == ANIME_VARIANT_NAME[i] { return i; } }
   return -1;
 }
 /** The clock a variant is meant to be seen at (its hero still, a realm's fixed clock): pastoral noon,
  *  action midnight, dusk at dusk, neon midnight. -1 for an unknown variant. */
-verse_style_anime_home :: (variant: int) -> f32 {
+metaverse_style_anime_home :: (variant: int) -> f32 {
   if variant < 0 || variant >= ANIME_VARIANTS { return -1; }
   return an4(variant, 0.5, 0.0, 0.75, 0.0);
 }
 
 /** The preset of `style` (STYLE_LOWPOLY, STYLE_PAINTERLY, STYLE_PHOTOREAL, STYLE_FLAT, STYLE_ANIME) for
  *  `tier` (STYLE_DESKTOP, STYLE_PHONE). Photoreal has none yet: ok is false. Flat comes in a
- *  realm's palette (verse_style_flat); here it is the garden's. Anime comes in a variant
- *  (verse_style_anime); here it is pastoral. */
-verse_style_preset :: (style: int, tier: int) -> StylePreset {
-  if style == STYLE_FLAT { return verse_style_flat(FLAT_GARDEN, tier); }
-  if style == STYLE_ANIME { return verse_style_anime(ANIME_PASTORAL, tier); }
+ *  realm's palette (metaverse_style_flat); here it is the garden's. Anime comes in a variant
+ *  (metaverse_style_anime); here it is pastoral. */
+metaverse_style_preset :: (style: int, tier: int) -> StylePreset {
+  if style == STYLE_FLAT { return metaverse_style_flat(FLAT_GARDEN, tier); }
+  if style == STYLE_ANIME { return metaverse_style_anime(ANIME_PASTORAL, tier); }
   p: StylePreset;
   p.style = style; p.tier = ifx tier == STYLE_PHONE then STYLE_PHONE else STYLE_DESKTOP;
   p.palette = -1; p.variant = -1;
@@ -480,13 +480,13 @@ verse_style_preset :: (style: int, tier: int) -> StylePreset {
     p.bloom_threshold = 0.85; p.bloom_knee = 0.25; p.bloom_mix = ifx on_phone then 0.22 else 0.30;
     p.shaft_samples = ifx on_phone then 12.0 else 24.0; p.shaft_decay = 0.94; p.shaft_margin = 0.35;
     p.shadow_size = ifx on_phone then 1024.0 else 2048.0; p.shadow_taps = ifx on_phone then 4.0 else 9.0; p.shadow_radius = 2.5;
-    p.shadow_cool = 1.5;    // painterly shadows are cool: the shadow band takes the tint's hue once more (style.coax verse_style_cool), warm albedos too
+    p.shadow_cool = 1.5;    // painterly shadows are cool: the shadow band takes the tint's hue once more (style.coax metaverse_style_cool), warm albedos too
     p.grass_density = ifx on_phone then 8.0 else 24.0; p.grass_radius = ifx on_phone then 18.0 else 32.0; p.grass_fade = 6;
     p.grass_low = 0.35; p.grass_high = 0.60; p.grass_width = 0.06; p.grass_tip = 0.15; p.grass_jitter = 0.04;
     p.wind_amp = 0.30; p.wind_wavelength = 12; p.wind_speed = 3; p.wind_gust = 1.0 / 25.0;
     p.wind_x = 0.8; p.wind_z = 0.6; p.wind_tilt = 20 * DEG; p.parting = 0.7;
     p.canopy_mix = 0.85; p.sway = 0.05; p.canopy_gap = 0.36;
-    p.grass_near = ifx on_phone then 24.0 else 32.0;   // the near ring's added blades a m2 (style.coax verse_style_near_reach)
+    p.grass_near = ifx on_phone then 24.0 else 32.0;   // the near ring's added blades a m2 (style.coax metaverse_style_near_reach)
     p.shallow_r = 0.30; p.shallow_g = 0.72; p.shallow_b = 0.74; p.shallow_depth = 0.4;
     p.mid_r = 0.10; p.mid_g = 0.45; p.mid_b = 0.55; p.mid_depth = 1.5;
     p.deep_r = 0.05; p.deep_g = 0.22; p.deep_b = 0.36; p.water_soft = 0.15;
@@ -505,15 +505,15 @@ verse_style_preset :: (style: int, tier: int) -> StylePreset {
  *  the glade (env_glade_profile, the lighting plan's painterly default, #13060). ok is false for a
  *  style with no default profile (lowpoly, flat, anime and photoreal keep their own keys). */
 StyleEnvironment :: struct { ok: bool; profile: EnvironmentProfile; }
-verse_style_environment :: (p: StylePreset) -> StyleEnvironment {
+metaverse_style_environment :: (p: StylePreset) -> StyleEnvironment {
   e: StyleEnvironment;
   if p.ok && p.environment == ENV_GLADE_ID { e.ok = true; e.profile = env_glade_profile(); }
   return e;
 }
 #test "the painterly preset's default environment resolves to the glade profile" {
   for tier: 0..<2 {
-    p := verse_style_preset(STYLE_PAINTERLY, tier);
-    e := verse_style_environment(p);
+    p := metaverse_style_preset(STYLE_PAINTERLY, tier);
+    e := metaverse_style_environment(p);
     #assert p.environment == ENV_GLADE_ID && e.ok && env_profile_check(e.profile).refusal == EnvRefusal.none;
     // Resolved at any time of day it is the glade's constant noon, exactly.
     glade := env_profile_sample(env_glade_profile(), 0.5);
@@ -524,16 +524,16 @@ verse_style_environment :: (p: StylePreset) -> StyleEnvironment {
     // The material response on top stays the painterly preset's own.
     #assert p.shadow_cool == 1.5 && p.band_e0 == 0.20f32 && p.band_e1 == 0.58f32 && p.rim_world == 0.30f32 && p.dab_strength == 0.35f32;
     // The glade light keeps the same default, and so does a realm with no outlines.
-    #assert verse_style_glade_light(p).environment == ENV_GLADE_ID && verse_style_no_outlines(p).environment == ENV_GLADE_ID;
+    #assert metaverse_style_glade_light(p).environment == ENV_GLADE_ID && metaverse_style_no_outlines(p).environment == ENV_GLADE_ID;
   }
   // The other styles keep their own presets and get no glade.
   for style: 0..<5 {
     if style == STYLE_PAINTERLY { continue; }
-    q := verse_style_preset(style, STYLE_DESKTOP);
-    #assert q.environment == 0 && !verse_style_environment(q).ok;
+    q := metaverse_style_preset(style, STYLE_DESKTOP);
+    #assert q.environment == 0 && !metaverse_style_environment(q).ok;
   }
-  for v: 0..<ANIME_VARIANTS { #assert !verse_style_environment(verse_style_anime(v, STYLE_DESKTOP)).ok; }
-  for f: 0..<3 { #assert !verse_style_environment(verse_style_flat(f, STYLE_DESKTOP)).ok; }
+  for v: 0..<ANIME_VARIANTS { #assert !metaverse_style_environment(metaverse_style_anime(v, STYLE_DESKTOP)).ok; }
+  for f: 0..<3 { #assert !metaverse_style_environment(metaverse_style_flat(f, STYLE_DESKTOP)).ok; }
 }
 
 // ---- compatibility profile checks (written before the code below)
@@ -544,7 +544,7 @@ style_env_rgb_is :: (c: EnvRgb, r: f32, g: f32, b: f32) -> bool { return c.r == 
 style_env_luma :: (c: EnvRgb) -> f32 { return c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722; }
 #test "painterly's compatibility profile: four keys, and noon is the glade exactly" {
   for tier: 0..<2 {
-    e := verse_style_compat_profile(verse_style_preset(STYLE_PAINTERLY, tier));
+    e := metaverse_style_compat_profile(metaverse_style_preset(STYLE_PAINTERLY, tier));
     #assert e.ok && env_profile_check(e.profile).refusal == EnvRefusal.none;
     #assert e.profile.id == STYLE_ENV_PAINTERLY && e.profile.version == ENV_VERSION && e.profile.track.count == 4;
     for i: 0..<4 { #assert e.profile.track.knots[i].time == [4] f32.[0, 0.25, 0.5, 0.75][i]; }
@@ -559,7 +559,7 @@ style_env_luma :: (c: EnvRgb) -> f32 { return c.r * 0.2126 + c.g * 0.7152 + c.b 
   }
 }
 #test "painterly's dawn, dusk and night are deltas on the glade: its film, saturation, exposure and shapes kept" {
-  e := verse_style_compat_profile(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP));
+  e := metaverse_style_compat_profile(metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP));
   g := env_glade_profile().track.knots[0];
   for n: 0..<3 {
     i := [3] int.[0, 1, 3][n];
@@ -608,7 +608,7 @@ style_env_luma :: (c: EnvRgb) -> f32 { return c.r * 0.2126 + c.g * 0.7152 + c.b 
   #assert env_dot(env_dir_unit(hd), env_dir_unit(hk)) < -0.49 && abs(env_dot(env_dir_unit(hm), env_dir_unit(hs)) + 1) < 0.0001;
 }
 #test "painterly's day runs through its keys: halfway is the mean, and midnight wraps" {
-  p := verse_style_compat_profile(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP)).profile;
+  p := metaverse_style_compat_profile(metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP)).profile;
   for s: 0..<4 {
     a := env_knot_resolve(p.track.knots[s]); b := env_knot_resolve(p.track.knots[(s + 1) % 4]);
     m := env_profile_sample(p, cast(f64) s * 0.25 + 0.125);
@@ -619,13 +619,13 @@ style_env_luma :: (c: EnvRgb) -> f32 { return c.r * 0.2126 + c.g * 0.7152 + c.b 
   #assert env_resolved_same(env_profile_sample(p, 1.5), env_profile_sample(p, 0.5), true);
 }
 #test "lowpoly keeps its own profile: its key's numbers, its direction through the day, no film" {
-  q := verse_style_preset(STYLE_LOWPOLY, STYLE_DESKTOP);
-  e := verse_style_compat_profile(q);
+  q := metaverse_style_preset(STYLE_LOWPOLY, STYLE_DESKTOP);
+  e := metaverse_style_compat_profile(q);
   #assert e.ok && e.profile.id == STYLE_ENV_LOWPOLY && env_profile_check(e.profile).refusal == EnvRefusal.none && e.profile.track.count == 4;
   o: [STYLE_FLOATS] f32;
   for i: 0..<4 {
     k := e.profile.track.knots[i]; s := lowpoly_key(); c := k.channels;
-    #assert verse_style_at(q, k.time, o[..]);
+    #assert metaverse_style_at(q, k.time, o[..]);
     #assert k.dir.x == o[SU_KEY_DIR] && k.dir.y == o[SU_KEY_DIR + 1] && k.dir.z == o[SU_KEY_DIR + 2];
     #assert (k.body == EnvBody.moon) == (o[SU_KEY_DIR + 3] == 1) && (k.body == EnvBody.moon) == (i == 0);
     r := env_knot_resolve(k);
@@ -639,21 +639,21 @@ style_env_luma :: (c: EnvRgb) -> f32 { return c.r * 0.2126 + c.g * 0.7152 + c.b 
 #test "the style response stays apart from the environment: material changes keep the profile, other styles have none" {
   for style: 0..<2 {
     sty := [2] int.[STYLE_PAINTERLY, STYLE_LOWPOLY][style];
-    a := verse_style_compat_profile(verse_style_preset(sty, STYLE_DESKTOP)).profile;
-    p := verse_style_preset(sty, STYLE_PHONE);
+    a := metaverse_style_compat_profile(metaverse_style_preset(sty, STYLE_DESKTOP)).profile;
+    p := metaverse_style_preset(sty, STYLE_PHONE);
     // (the glade light is a material change for painterly, whose light is the glade's; lowpoly's
     // light is its own keys', which the glade light rewrites at noon, so it is not a lowpoly material)
-    variants := [4] StylePreset.[p, verse_style_no_outlines(p), ifx sty == STYLE_PAINTERLY then verse_style_glade_light(p) else p, p];
+    variants := [4] StylePreset.[p, metaverse_style_no_outlines(p), ifx sty == STYLE_PAINTERLY then metaverse_style_glade_light(p) else p, p];
     variants[3].band_e0 = 0.4; variants[3].shadow_cool = 0; variants[3].saturation = 1.3; variants[3].dab_strength = 0;
     for v: 0..<4 {
-      b := verse_style_compat_profile(variants[v]).profile;
+      b := metaverse_style_compat_profile(variants[v]).profile;
       #assert b.id == a.id && b.track.count == a.track.count;
       for i: 0..<4 { #assert style_env_knot_same(a.track.knots[i], b.track.knots[i]); }
     }
   }
-  for v: 0..<ANIME_VARIANTS { #assert !verse_style_compat_profile(verse_style_anime(v, STYLE_DESKTOP)).ok; }
-  for f: 0..<3 { #assert !verse_style_compat_profile(verse_style_flat(f, STYLE_DESKTOP)).ok; }
-  #assert !verse_style_compat_profile(verse_style_preset(STYLE_PHOTOREAL, STYLE_DESKTOP)).ok;
+  for v: 0..<ANIME_VARIANTS { #assert !metaverse_style_compat_profile(metaverse_style_anime(v, STYLE_DESKTOP)).ok; }
+  for f: 0..<3 { #assert !metaverse_style_compat_profile(metaverse_style_flat(f, STYLE_DESKTOP)).ok; }
+  #assert !metaverse_style_compat_profile(metaverse_style_preset(STYLE_PHOTOREAL, STYLE_DESKTOP)).ok;
 }
 
 // ---- the compatibility profiles (lighting plan Phase 1 step 5, GitHub #13065)
@@ -670,7 +670,7 @@ style_env_luma :: (c: EnvRgb) -> f32 { return c.r * 0.2126 + c.g * 0.7152 + c.b 
 //              night the moon, a deep blue-black sky and a low ambient.
 //   lowpoly    its own profile from lowpoly_key: white light at the key's strength, its flat grey
 //              ambient, its light distance fog, no clouds, no film; the key's direction moves
-//              through the day as verse_style_at moves it.
+//              through the day as metaverse_style_at moves it.
 // Flat, anime and photoreal keep their keys (ok is false).
 STYLE_ENV_PAINTERLY :: 2;   // the painterly day's profile id (its noon is the glade, ENV_GLADE_ID)
 STYLE_ENV_LOWPOLY :: 3;
@@ -680,9 +680,9 @@ STYLE_ENV_TIMES :: [STYLE_KEYS] f32.[0, 0.25, 0.5, 0.75];
 style_env_dir :: (turn: f32, elevation: f32) -> EnvDir { return env_glade_body_dir(turn, elevation); }
 // Painterly's knot at key i: the glade's knot, with the deltas below.
 painterly_env_knot :: (i: int) -> EnvironmentKnot { return env_glade_day_knot(i); }   // metaverse-engine/world/environment.coax
-// The key light's direction at `clock` as verse_style_at puts it (SU_KEY_DIR), and whether it is the moon.
+// The key light's direction at `clock` as metaverse_style_at puts it (SU_KEY_DIR), and whether it is the moon.
 style_key_dir :: (p: StylePreset, clock: f32) -> EnvDir {
-  e := verse_style_sun_elevation(p, clock);
+  e := metaverse_style_sun_elevation(p, clock);
   az := p.sun_azimuth + (clock - floor(clock) - 0.5) * 3.14159265;
   d := EnvDir.{x = cos(e) * sin(az), y = sin(e), z = cos(e) * cos(az)};
   if e < p.moon_below { d = EnvDir.{x = -d.x, y = -d.y, z = -d.z}; }
@@ -692,7 +692,7 @@ style_key_dir :: (p: StylePreset, clock: f32) -> EnvDir {
 lowpoly_env_knot :: (p: StylePreset, i: int) -> EnvironmentKnot {
   s := p.keys[i]; t := STYLE_ENV_TIMES[i];
   k := EnvironmentKnot.{time = t, dir = style_key_dir(p, t), kelvin = 6500, white = 6500, intensity = s.key_strength, film = EnvFilm.none};
-  k.body = ifx verse_style_sun_elevation(p, t) < p.moon_below then EnvBody.moon else EnvBody.sun;
+  k.body = ifx metaverse_style_sun_elevation(p, t) < p.moon_below then EnvBody.moon else EnvBody.sun;
   c: EnvChannels;
   up := env_rgb(s.sky_r * s.ambient, s.sky_g * s.ambient, s.sky_b * s.ambient);
   down := env_rgb(s.ground_r * s.ambient, s.ground_g * s.ambient, s.ground_b * s.ambient);
@@ -709,7 +709,7 @@ lowpoly_env_knot :: (p: StylePreset, i: int) -> EnvironmentKnot {
 }
 /** Preset `p`'s four clock keys as its compatibility profile (painterly: the glade at noon and its
  *  deltas; lowpoly: its own). ok is false for the styles that keep their keys. */
-verse_style_compat_profile :: (p: StylePreset) -> StyleEnvironment {
+metaverse_style_compat_profile :: (p: StylePreset) -> StyleEnvironment {
   e: StyleEnvironment;
   if !p.ok || (p.style != STYLE_PAINTERLY && p.style != STYLE_LOWPOLY) { return e; }
   paint := p.style == STYLE_PAINTERLY;
@@ -722,10 +722,10 @@ verse_style_compat_profile :: (p: StylePreset) -> StyleEnvironment {
 /** `p` lit as Character Create's glade (docs/metaverse/character-glade-lighting.md, the owner,
  *  November 7: "rebuild everglade itself to use that lighting and foliage from character create").
  *  Ocarina's smooth light in place of hard cel bands; Ore's noon sun, 4500 K under a 6500 K white
- *  balance (metaverse-engine/render/light.coax verse_style_balanced: 1, .856, .750); thin clear air near the
+ *  balance (metaverse-engine/render/light.coax metaverse_style_balanced: 1, .856, .750); thin clear air near the
  *  town with a warm forward glow far off; olive, not blue, shadows; the glade's soft-knee bloom and
  *  saturation. Night, dawn and dusk keep their own keys. */
-verse_style_glade_light :: (p: StylePreset) -> StylePreset {
+metaverse_style_glade_light :: (p: StylePreset) -> StylePreset {
   q := p;
   q.band_soft = 0.30; q.char_soft = 0.22; q.shadow_cool = 0.6;
   q.bloom_threshold = 0.62; q.bloom_knee = 0.30; q.saturation = 1.16;
@@ -740,8 +740,8 @@ verse_style_glade_light :: (p: StylePreset) -> StylePreset {
   return q;
 }
 #test "the glade light warms and softens only noon, and keeps the other keys" {
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
-  q := verse_style_glade_light(p);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  q := metaverse_style_glade_light(p);
   #assert q.band_soft > p.band_soft && q.keys[2].key_b < q.keys[2].key_g && q.keys[2].key_g < q.keys[2].key_r;
   #assert q.keys[2].haze_cap < p.keys[2].haze_cap && q.keys[2].haze_start > p.keys[2].haze_start;
   #assert q.keys[0].key_strength == p.keys[0].key_strength && q.keys[1].haze_cap == p.keys[1].haze_cap && q.keys[3].exposure == p.keys[3].exposure;
@@ -749,15 +749,15 @@ verse_style_glade_light :: (p: StylePreset) -> StylePreset {
 
 // ---- a made realm under the glade (lighting plan Phase 1, #13066)
 // A painterly realm that authors no lighting (no time of day, no mist) renders under the glade: its
-// style block is the glade-lit preset's (verse_style_glade_light: the material response, the bands,
+// style block is the glade-lit preset's (metaverse_style_glade_light: the material response, the bands,
 // rim, dab, haze reach and the style shader's exposure) with every lighting word that means the same
 // thing in both read from the resolved environment: the key's direction and colour (its strength in
 // the style shader's own units stays the preset's), the sky and ground ambient, the haze's air and
 // sun tint, the sky's zenith and horizon, and the saturation. The numbers live once, in the profile.
 #test "a made painterly realm with nothing authored is the glade's resolved light" {
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   r := env_profile_sample(env_glade_profile(), 0.5); c := r.channels;
-  o: [STYLE_FLOATS] f32; #assert verse_style_glade_env(p, r, o[..]);
+  o: [STYLE_FLOATS] f32; #assert metaverse_style_glade_env(p, r, o[..]);
   #assert o[SU_KEY_DIR] == r.dir.x && o[SU_KEY_DIR + 1] == r.dir.y && o[SU_KEY_DIR + 2] == r.dir.z && o[SU_KEY_DIR + 3] == 0;
   m := r.direct.r;   // the glade's key is warm: red is its largest
   #assert o[SU_KEY] == 1 && o[SU_KEY + 1] == r.direct.g / m && o[SU_KEY + 2] == r.direct.b / m;
@@ -765,20 +765,20 @@ verse_style_glade_light :: (p: StylePreset) -> StylePreset {
   #assert o[SU_HAZE_COLOUR] == c.fog.air.r && o[SU_HAZE_KEY + 2] == c.fog.sun_tint.b && o[SU_ZENITH + 1] == c.sky.zenith.g && o[SU_HORIZON + 2] == c.sky.horizon.b;
   #assert o[SU_TONE + 1] == c.presentation.saturation;
   // the rest is the glade-lit preset's at the record's time
-  g: [STYLE_FLOATS] f32; #assert verse_style_at(verse_style_glade_light(p), r.time, g[..]);
+  g: [STYLE_FLOATS] f32; #assert metaverse_style_at(metaverse_style_glade_light(p), r.time, g[..]);
   #assert o[SU_KEY + 3] == g[SU_KEY + 3] && o[SU_SKY_AMB + 3] == g[SU_SKY_AMB + 3] && o[SU_TONE] == g[SU_TONE] && o[SU_BANDS + 2] == g[SU_BANDS + 2] && o[SU_HAZE] == g[SU_HAZE];
   #assert o[SU_STYLE + 3] == g[SU_STYLE + 3] && o[SU_GRASS] == g[SU_GRASS];
   // the painterly compatibility profile at noon is the same light
-  q: [STYLE_FLOATS] f32; #assert verse_style_glade_env(p, env_profile_sample(verse_style_compat_profile(p).profile, 0.5), q[..]);
+  q: [STYLE_FLOATS] f32; #assert metaverse_style_glade_env(p, env_profile_sample(metaverse_style_compat_profile(p).profile, 0.5), q[..]);
   for i: 0..<STYLE_FLOATS { #assert q[i] == o[i]; }
   // a moon key flags it; a too-short block or a preset that isn't ok writes nothing
-  n := r; n.body = EnvBody.moon; #assert verse_style_glade_env(p, n, o[..]) && o[SU_KEY_DIR + 3] == 1;
-  short: [8] f32; #assert !verse_style_glade_env(p, r, short[..]);
-  bad := p; bad.ok = false; #assert !verse_style_glade_env(bad, r, o[..]);
+  n := r; n.body = EnvBody.moon; #assert metaverse_style_glade_env(p, n, o[..]) && o[SU_KEY_DIR + 3] == 1;
+  short: [8] f32; #assert !metaverse_style_glade_env(p, r, short[..]);
+  bad := p; bad.ok = false; #assert !metaverse_style_glade_env(bad, r, o[..]);
 }
 /** `p` lit as the glade from the resolved environment `r` into `out` (at least STYLE_FLOATS). */
-verse_style_glade_env :: (p: StylePreset, r: ResolvedEnvironment, out: [] f32) -> bool {
-  if !verse_style_at(verse_style_glade_light(p), r.time, out) { return false; }
+metaverse_style_glade_env :: (p: StylePreset, r: ResolvedEnvironment, out: [] f32) -> bool {
+  if !metaverse_style_at(metaverse_style_glade_light(p), r.time, out) { return false; }
   c := r.channels; d := r.direct;
   m := d.r; if d.g > m { m = d.g; } if d.b > m { m = d.b; } if m <= 0 { m = 1; }
   out[SU_KEY] = d.r / m; out[SU_KEY + 1] = d.g / m; out[SU_KEY + 2] = d.b / m;
@@ -796,14 +796,14 @@ verse_style_glade_env :: (p: StylePreset, r: ResolvedEnvironment, out: [] f32) -
 /** `p` with no toon outlines: no outline pass (outline_max 0) and no rim line along silhouettes,
  *  on the world and on characters, at every key and on both tiers. Everglade draws so (the owner,
  *  October 29: "remove the toon outlines from everglade"); the other painterly realms keep theirs. */
-verse_style_no_outlines :: (p: StylePreset) -> StylePreset {
+metaverse_style_no_outlines :: (p: StylePreset) -> StylePreset {
   q := p;
   q.outline_max = 0; q.rim_world = 0; q.rim_char = 0;
   return q;
 }
 
 // The sun's elevation at `clock` (0 midnight, 0.5 noon): sun_low at midnight to sun_high at noon.
-verse_style_sun_elevation :: (p: StylePreset, clock: f32) -> f32 {
+metaverse_style_sun_elevation :: (p: StylePreset, clock: f32) -> f32 {
   return 0.5 * (p.sun_low + p.sun_high) - 0.5 * (p.sun_high - p.sun_low) * cos(6.2831853 * clock);
 }
 
@@ -841,11 +841,11 @@ style_key_at :: (p: StylePreset, clock: f32) -> StyleKey {
 /** The preset at `clock` (0 midnight, 0.25 dawn, 0.5 noon, 0.75 dusk; wraps)
  *  into `out` (at least STYLE_FLOATS): the realm copies it into its uniforms
  *  as one block. False, and nothing written, for a preset that isn't ok. */
-verse_style_at :: (p: StylePreset, clock: f32, out: [] f32) -> bool {
+metaverse_style_at :: (p: StylePreset, clock: f32, out: [] f32) -> bool {
   if !p.ok || out.count < STYLE_FLOATS { return false; }
   for i: 0..<STYLE_FLOATS { out[i] = 0; }
   k := style_key_at(p, clock);
-  e := verse_style_sun_elevation(p, clock);
+  e := metaverse_style_sun_elevation(p, clock);
   moon := e < p.moon_below;
   // the key's direction: the sun, or below moon_below the moon opposite it (a realm with a real moon puts its own)
   // its azimuth swings through the day: the preset's at noon, a quarter turn east at dawn and west at dusk
@@ -889,10 +889,10 @@ verse_style_at :: (p: StylePreset, clock: f32, out: [] f32) -> bool {
   return true;
 }
 
-// ---- the clock: metaverse-engine/world/style-clock.coax (StyleClock, verse_style_clock, verse_style_clock_at)
+// ---- the clock: metaverse-engine/world/style-clock.coax (StyleClock, metaverse_style_clock, metaverse_style_clock_at)
 /** A realm with a moon of its own (Hecate's, in its real phase) puts its
  *  direction in while the moon is the key; the preset's colours stay. */
-verse_style_own_moon :: (out: [] f32, x: f32, y: f32, z: f32) {
+metaverse_style_own_moon :: (out: [] f32, x: f32, y: f32, z: f32) {
   l := sqrt(x * x + y * y + z * z);
   if out.count < STYLE_FLOATS || out[SU_KEY_DIR + 3] < 0.5 || l <= 0 { return; }
   out[SU_KEY_DIR] = x / l; out[SU_KEY_DIR + 1] = y / l; out[SU_KEY_DIR + 2] = z / l;
@@ -906,37 +906,37 @@ STYLE_KEYED_AT :: [STYLE_KEYED] int.[SU_KEY, SU_KEY + 1, SU_KEY + 2, SU_KEY + 3,
 sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
 
 #test "the shadow tint is blue or violet all day: blue the largest, nothing under 0.35" {
-  p := verse_style_preset(STYLE_PAINTERLY, 0); o: [STYLE_FLOATS] f32;
+  p := metaverse_style_preset(STYLE_PAINTERLY, 0); o: [STYLE_FLOATS] f32;
   for i: 0..<48 {
-    #assert verse_style_at(p, f32(i) / 48.0, o[..]);
+    #assert metaverse_style_at(p, f32(i) / 48.0, o[..]);
     #assert o[SU_TINT + 2] >= o[SU_TINT] && o[SU_TINT + 2] >= o[SU_TINT + 1];
     #assert o[SU_TINT] >= 0.35 && o[SU_TINT + 1] >= 0.35 && o[SU_TINT + 2] >= 0.35;
   }
-  #assert verse_style_at(p, 0.5, o[..]);
+  #assert metaverse_style_at(p, 0.5, o[..]);
   #assert sp_near(o[SU_TINT], 0.52) && sp_near(o[SU_TINT + 1], 0.58) && sp_near(o[SU_TINT + 2], 0.86) && sp_near(o[SU_TINT + 3], 0.35);
 }
 #test "the rim's colour is the key's, warmed, by clock: day, dusk and dawn, the moon's blue at 0.35" {
-  day := verse_style_preset(STYLE_PAINTERLY, 0); o: [STYLE_FLOATS] f32;
-  #assert verse_style_at(day, 0.5, o[..]);
+  day := metaverse_style_preset(STYLE_PAINTERLY, 0); o: [STYLE_FLOATS] f32;
+  #assert metaverse_style_at(day, 0.5, o[..]);
   #assert sp_near(o[SU_RIM], 1.00) && sp_near(o[SU_RIM + 1], 0.84) && sp_near(o[SU_RIM + 2], 0.60) && sp_near(o[SU_RIM + 3], 0.30) && sp_near(o[SU_RIM2], 0.45);
-  #assert verse_style_at(day, 0.25, o[..]);
+  #assert metaverse_style_at(day, 0.25, o[..]);
   #assert sp_near(o[SU_RIM], 1.00) && sp_near(o[SU_RIM + 1], 0.62) && sp_near(o[SU_RIM + 2], 0.40);
-  #assert verse_style_at(day, 0.0, o[..]);
+  #assert metaverse_style_at(day, 0.0, o[..]);
   #assert sp_near(o[SU_RIM], 0.34) && sp_near(o[SU_RIM + 1], 0.42) && sp_near(o[SU_RIM + 2], 0.70) && sp_near(o[SU_RIM + 3], 0.105) && sp_near(o[SU_RIM2], 0.1575);
 }
 #test "a realm with no outlines draws no outline and no rim, by day and night, desktop and phone" {
   for tier: 0..<2 {
-    q := verse_style_no_outlines(verse_style_preset(STYLE_PAINTERLY, ifx tier == 0 then STYLE_DESKTOP else STYLE_PHONE));
+    q := metaverse_style_no_outlines(metaverse_style_preset(STYLE_PAINTERLY, ifx tier == 0 then STYLE_DESKTOP else STYLE_PHONE));
     #assert q.ok && q.outline_max == 0 && q.rim_world == 0 && q.rim_char == 0 && q.band_e0 == 0.20;
     o: [STYLE_FLOATS] f32;
     for c: 0..<4 {
-      #assert verse_style_at(q, 0.25 * cast(f32) c, o[..]);
+      #assert metaverse_style_at(q, 0.25 * cast(f32) c, o[..]);
       #assert o[SU_RIM + 3] == 0 && o[SU_RIM2] == 0 && o[SU_STYLE] == 0;
     }
   }
 }
 #test "the painterly preset holds the spec's shading numbers" {
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   #assert p.ok;
   #assert p.band_e0 == 0.20 && p.band_e1 == 0.58 && p.band_soft == 0.06 && p.band_mid == 0.55;
   #assert p.char_edge == 0.40 && p.char_soft == 0.08;
@@ -948,10 +948,10 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert sp_near(p.wind_x * p.wind_x + p.wind_z * p.wind_z, 1);
 }
 #test "the phone tier: less in it, the same painting" {
-  d := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
-  f := verse_style_preset(STYLE_PAINTERLY, STYLE_PHONE);
+  d := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  f := metaverse_style_preset(STYLE_PAINTERLY, STYLE_PHONE);
   #assert d.shadow_size == 2048 && d.shadow_taps == 9 && f.shadow_size == 1024 && f.shadow_taps == 4;
-  #assert d.shadow_cool == 1.5 && f.shadow_cool == 1.5 && verse_style_preset(STYLE_LOWPOLY, STYLE_DESKTOP).shadow_cool == 0;
+  #assert d.shadow_cool == 1.5 && f.shadow_cool == 1.5 && metaverse_style_preset(STYLE_LOWPOLY, STYLE_DESKTOP).shadow_cool == 0;
   #assert d.grass_density == 24 && d.grass_radius == 32 && f.grass_density == 8 && f.grass_radius == 18;
   #assert d.grass_near == 32 && f.grass_near == 24;
   #assert d.cloud_octaves == 2 && f.cloud_octaves == 1;
@@ -962,26 +962,26 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   // bands, rim, tint and tone are the same on both
   #assert d.band_e0 == f.band_e0 && d.band_e1 == f.band_e1 && d.rim_world == f.rim_world && d.saturation == f.saturation;
   a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32;
-  #assert verse_style_at(d, 0.5, a[..]) && verse_style_at(f, 0.5, b[..]);
+  #assert metaverse_style_at(d, 0.5, a[..]) && metaverse_style_at(f, 0.5, b[..]);
   #assert sp_near(b[SU_HAZE + 1], a[SU_HAZE + 1] * 1.25);
   for i: 0..<4 { #assert a[SU_TINT + i] == b[SU_TINT + i]; #assert a[SU_TONE + i] == b[SU_TONE + i]; #assert a[SU_BANDS + i] == b[SU_BANDS + i]; }
   #assert sp_near(a[SU_SHADOW + 3], 1.5) && a[SU_SHADOW + 3] == b[SU_SHADOW + 3];
 }
 #test "photoreal has no preset yet and refuses to evaluate" {
-  p := verse_style_preset(STYLE_PHOTOREAL, STYLE_DESKTOP);
+  p := metaverse_style_preset(STYLE_PHOTOREAL, STYLE_DESKTOP);
   #assert !p.ok;
   out: [STYLE_FLOATS] f32;
   out[0] = 7;
-  #assert !verse_style_at(p, 0.5, out[..]);
+  #assert !metaverse_style_at(p, 0.5, out[..]);
   #assert out[0] == 7;
-  #assert !verse_style_preset(9, STYLE_DESKTOP).ok;
+  #assert !metaverse_style_preset(9, STYLE_DESKTOP).ok;
   short: [8] f32;
-  #assert !verse_style_at(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.5, short[..]);
+  #assert !metaverse_style_at(metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.5, short[..]);
 }
 #test "every key evaluates to its own numbers: noon day, dusk, midnight night, dawn as dusk" {
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   o: [STYLE_FLOATS] f32;
-  #assert verse_style_at(p, 0.5, o[..]);
+  #assert metaverse_style_at(p, 0.5, o[..]);
   #assert sp_near(o[SU_KEY], 1.0) && sp_near(o[SU_KEY + 1], 0.95) && sp_near(o[SU_KEY + 2], 0.85) && sp_near(o[SU_KEY + 3], 1.0);
   #assert sp_near(o[SU_TINT], 0.52) && sp_near(o[SU_TINT + 1], 0.58) && sp_near(o[SU_TINT + 2], 0.86);
   #assert sp_near(o[SU_HAZE], 40) && sp_near(o[SU_HAZE + 1], 0.020) && sp_near(o[SU_HAZE + 2], 0.88) && sp_near(o[SU_HAZE + 3], 60);
@@ -989,31 +989,31 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert sp_near(o[SU_HORIZON], o[SU_HAZE_COLOUR]) && sp_near(o[SU_HORIZON + 2], o[SU_HAZE_COLOUR + 2]);
   #assert sp_near(o[SU_ZENITH + 2], 0.86) && sp_near(o[SU_TONE], 1.6) && sp_near(o[SU_RIM + 3], 0.30) && sp_near(o[SU_SHAFTS + 2], 0.44);
   #assert o[SU_KEY_DIR + 3] == 0 && sp_near(o[SU_KEY_DIR + 1], sin(60 * DEG)) && o[SU_SUN + 3] == 0;
-  #assert verse_style_at(p, 0.75, o[..]);
+  #assert metaverse_style_at(p, 0.75, o[..]);
   #assert sp_near(o[SU_KEY + 1], 0.66) && sp_near(o[SU_KEY + 3], 0.85) && sp_near(o[SU_HAZE], 45) && sp_near(o[SU_HAZE + 1], 0.009) && sp_near(o[SU_HAZE + 3], 50);
   #assert sp_near(o[SU_TINT], 0.36) && sp_near(o[SU_TINT + 1], 0.58) && sp_near(o[SU_HORIZON], 0.92) && sp_near(o[SU_RIM + 1], 0.62);
   // the dusk haze is cool, a blue-violet under the warm light (comparison round 6), never the light's apricot
   #assert sp_near(o[SU_HAZE_COLOUR + 2], 0.86) && o[SU_HAZE_COLOUR + 2] > o[SU_HAZE_COLOUR] && o[SU_HAZE_COLOUR] > o[SU_HAZE_COLOUR + 1];
   #assert sp_near(o[SU_KEY_DIR + 1], sin(20 * DEG)) && o[SU_KEY_DIR + 3] == 0;
   dusk_x := o[SU_KEY_DIR];
-  #assert verse_style_at(p, 0.25, o[..]);
+  #assert metaverse_style_at(p, 0.25, o[..]);
   #assert sp_near(o[SU_KEY + 1], 0.66) && sp_near(o[SU_HAZE_COLOUR], 0.62) && sp_near(o[SU_HAZE_KEY + 1], 0.34);
   #assert abs(o[SU_KEY_DIR] - dusk_x) > 0.5;   // the sun rises on one side and sets on the other
-  #assert verse_style_at(p, 0.0, o[..]);
+  #assert metaverse_style_at(p, 0.0, o[..]);
   #assert sp_near(o[SU_KEY], 0.62) && sp_near(o[SU_KEY + 2], 0.95) && sp_near(o[SU_KEY + 3], 0.16);
   #assert sp_near(o[SU_HAZE], 30) && sp_near(o[SU_HAZE + 1], 0.010) && sp_near(o[SU_HAZE + 2], 0.6) && sp_near(o[SU_HAZE + 3], 40);
   #assert sp_near(o[SU_HAZE_COLOUR + 2], 0.09) && sp_near(o[SU_ZENITH + 2], 0.022) && sp_near(o[SU_TONE], 0.95) && sp_near(o[SU_SHAFTS + 2], 0.12);
   #assert sp_near(o[SU_RIM], 0.34) && sp_near(o[SU_RIM + 3], 0.105) && sp_near(o[SU_RIM2], 0.1575);
   // the moon is the key at midnight, up in the sky, and the stars are out
   #assert o[SU_KEY_DIR + 3] == 1 && o[SU_KEY_DIR + 1] > 0 && o[SU_SUN + 3] == 1;
-  #assert verse_style_at(p, 1.0, o[..]) && sp_near(o[SU_KEY], 0.62) && sp_near(o[SU_STYLE + 3], 0);
+  #assert metaverse_style_at(p, 1.0, o[..]) && sp_near(o[SU_KEY], 0.62) && sp_near(o[SU_STYLE + 3], 0);
 }
 #test "halfway between keys is the mean of both" {
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   for i: 0..<4 {
     a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32; m: [STYLE_FLOATS] f32;
     c := cast(f32) i * 0.25;
-    #assert verse_style_at(p, c, a[..]) && verse_style_at(p, c + 0.25, b[..]) && verse_style_at(p, c + 0.125, m[..]);
+    #assert metaverse_style_at(p, c, a[..]) && metaverse_style_at(p, c + 0.25, b[..]) && metaverse_style_at(p, c + 0.125, m[..]);
     // every keyed number (key, rim, tint, ambient, haze, sky, clouds, exposure, shafts)
     for n: 0..<STYLE_KEYED {
       j := STYLE_KEYED_AT[n];
@@ -1022,71 +1022,71 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   }
 }
 #test "shadows are blue or violet all day and night, no channel below 0.35" {
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   o: [STYLE_FLOATS] f32;
   for i: 0..<96 {
-    #assert verse_style_at(p, cast(f32) i / 96.0, o[..]);
+    #assert metaverse_style_at(p, cast(f32) i / 96.0, o[..]);
     r := o[SU_TINT]; g := o[SU_TINT + 1]; b := o[SU_TINT + 2];
     #assert b > r && b > g && r >= 0.35 && g >= 0.35;
   }
 }
 #test "the sun runs -20 degrees at midnight to 60 at noon; the moon keys below -6" {
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
-  #assert sp_near(verse_style_sun_elevation(p, 0), -20 * DEG) && sp_near(verse_style_sun_elevation(p, 0.5), 60 * DEG);
-  #assert sp_near(verse_style_sun_elevation(p, 0.25), 20 * DEG) && sp_near(verse_style_sun_elevation(p, 0.75), 20 * DEG);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  #assert sp_near(metaverse_style_sun_elevation(p, 0), -20 * DEG) && sp_near(metaverse_style_sun_elevation(p, 0.5), 60 * DEG);
+  #assert sp_near(metaverse_style_sun_elevation(p, 0.25), 20 * DEG) && sp_near(metaverse_style_sun_elevation(p, 0.75), 20 * DEG);
   o: [STYLE_FLOATS] f32;
   for i: 0..<48 {
     c := cast(f32) i / 48.0;
-    #assert verse_style_at(p, c, o[..]);
-    e := verse_style_sun_elevation(p, c);
+    #assert metaverse_style_at(p, c, o[..]);
+    e := metaverse_style_sun_elevation(p, c);
     #assert (o[SU_KEY_DIR + 3] == 1) == (e < -6 * DEG);
     #assert sp_near(o[SU_KEY_DIR] * o[SU_KEY_DIR] + o[SU_KEY_DIR + 1] * o[SU_KEY_DIR + 1] + o[SU_KEY_DIR + 2] * o[SU_KEY_DIR + 2], 1);
     #assert o[SU_KEY_DIR + 1] > -0.11;   // the key is never far below the horizon
   }
 }
 #test "the preset's own numbers run through the shading functions as the spec says" {
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   o: [STYLE_FLOATS] f32;
-  #assert verse_style_at(p, 0.5, o[..]);
-  h100 := verse_style_haze(100, 0, 0, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2], o[SU_HAZE + 3]);
-  h200 := verse_style_haze(200, 0, 0, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2], o[SU_HAZE + 3]);
+  #assert metaverse_style_at(p, 0.5, o[..]);
+  h100 := metaverse_style_haze(100, 0, 0, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2], o[SU_HAZE + 3]);
+  h200 := metaverse_style_haze(200, 0, 0, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2], o[SU_HAZE + 3]);
   #assert abs(h100 - 0.70) < 0.01 && abs(h200 - 0.88) < 0.01;
-  #assert verse_style_haze(9000, 0, 0, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2], o[SU_HAZE + 3]) == o[SU_HAZE + 2];
-  #assert verse_style_bands(0.4, o[SU_BANDS], o[SU_BANDS + 1], o[SU_BANDS + 2], o[SU_BANDS + 3]) == o[SU_BANDS + 3];
+  #assert metaverse_style_haze(9000, 0, 0, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2], o[SU_HAZE + 3]) == o[SU_HAZE + 2];
+  #assert metaverse_style_bands(0.4, o[SU_BANDS], o[SU_BANDS + 1], o[SU_BANDS + 2], o[SU_BANDS + 3]) == o[SU_BANDS + 3];
   // the phone's haze is thicker at the same distance
   f: [STYLE_FLOATS] f32;
-  #assert verse_style_at(verse_style_preset(STYLE_PAINTERLY, STYLE_PHONE), 0.5, f[..]);
-  #assert verse_style_haze(100, 0, 0, f[SU_HAZE], f[SU_HAZE + 1], f[SU_HAZE + 2], f[SU_HAZE + 3]) > h100;
+  #assert metaverse_style_at(metaverse_style_preset(STYLE_PAINTERLY, STYLE_PHONE), 0.5, f[..]);
+  #assert metaverse_style_haze(100, 0, 0, f[SU_HAZE], f[SU_HAZE + 1], f[SU_HAZE + 2], f[SU_HAZE + 3]) > h100;
 }
 #test "lowpoly is one light term, light fog and no post" {
-  p := verse_style_preset(STYLE_LOWPOLY, STYLE_PHONE);
+  p := metaverse_style_preset(STYLE_LOWPOLY, STYLE_PHONE);
   o: [STYLE_FLOATS] f32;
-  #assert p.ok && verse_style_at(p, 0.3, o[..]);
+  #assert p.ok && metaverse_style_at(p, 0.3, o[..]);
   #assert o[SU_TONE + 3] == 0 && o[SU_BLOOM + 2] == 0 && o[SU_SHAFTS + 2] == 0 && o[SU_GRASS] == 0 && o[SU_FOLIAGE + 3] == 0 && o[SU_CLOUDS] == 0;
   #assert o[SU_BANDS + 3] == 1 && o[SU_STYLE] == 1 && o[SU_STYLE + 1] == 0 && o[SU_STYLE + 2] == 1;
   #assert sp_near(o[SU_STYLE + 3], 0.3);
 }
 #test "a realm's own moon takes the key's direction at night, never by day" {
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   o: [STYLE_FLOATS] f32;
-  #assert verse_style_at(p, 0.0, o[..]);
-  verse_style_own_moon(o[..], 0, 3, 4);
+  #assert metaverse_style_at(p, 0.0, o[..]);
+  metaverse_style_own_moon(o[..], 0, 3, 4);
   #assert sp_near(o[SU_KEY_DIR + 1], 0.6) && sp_near(o[SU_KEY_DIR + 2], 0.8) && sp_near(o[SU_KEY], 0.62);
-  #assert verse_style_at(p, 0.5, o[..]);
+  #assert metaverse_style_at(p, 0.5, o[..]);
   y := o[SU_KEY_DIR + 1];
-  verse_style_own_moon(o[..], 0, 3, 4);
+  metaverse_style_own_moon(o[..], 0, 3, 4);
   #assert o[SU_KEY_DIR + 1] == y;
 }
 #test "a cycle's day is smooth: no key number jumps between neighbouring frames" {
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32;
-  #assert verse_style_at(p, 0, a[..]);
+  #assert metaverse_style_at(p, 0, a[..]);
   for i: 1..<200 {
-    #assert verse_style_at(p, cast(f32) i / 200.0, b[..]);
+    #assert metaverse_style_at(p, cast(f32) i / 200.0, b[..]);
     // a step is a fiftieth of its quarter day's change: linear, no jump at a key
     k := (i - 1) / 50;
     k0: [STYLE_FLOATS] f32; k1: [STYLE_FLOATS] f32;
-    #assert verse_style_at(p, cast(f32) k * 0.25, k0[..]) && verse_style_at(p, cast(f32) (k + 1) * 0.25, k1[..]);
+    #assert metaverse_style_at(p, cast(f32) k * 0.25, k0[..]) && metaverse_style_at(p, cast(f32) (k + 1) * 0.25, k1[..]);
     for n: 0..<STYLE_KEYED { j := STYLE_KEYED_AT[n]; #assert abs(b[j] - a[j]) <= abs(k1[j] - k0[j]) / 50.0 + 0.0001; }
     for j: 0..<STYLE_FLOATS { a[j] = b[j]; }
   }
@@ -1095,94 +1095,94 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
 // ---- flat (art-styles.md, Flat)
 sp_flat_lum :: (p: StylePreset, slot: int) -> f32 {
   f := f32(p.palette);
-  return verse_style_luma(verse_style_flat_colour(f, f32(slot), 0), verse_style_flat_colour(f, f32(slot), 1), verse_style_flat_colour(f, f32(slot), 2));
+  return metaverse_style_luma(metaverse_style_flat_colour(f, f32(slot), 0), metaverse_style_flat_colour(f, f32(slot), 1), metaverse_style_flat_colour(f, f32(slot), 2));
 }
 #test "flat: three hard tones from the preset's own edges, two for characters, on both tiers" {
   for t: 0..<2 {
-    p := verse_style_flat(FLAT_CEMETERY, t);
+    p := metaverse_style_flat(FLAT_CEMETERY, t);
     #assert p.ok && p.style == STYLE_FLAT && p.band_soft <= 0.01 && p.char_soft <= 0.01;
     o: [STYLE_FLOATS] f32;
-    #assert verse_style_at(p, 0.5, o[..]);
+    #assert metaverse_style_at(p, 0.5, o[..]);
     for i: 0..<1001 {
       w := f32(i) / 1000.0;
-      b := verse_style_bands(w, o[SU_BANDS], o[SU_BANDS + 1], o[SU_BANDS + 2], o[SU_BANDS + 3]);
-      #assert sp_near(b, verse_style_flat_band(w));   // the generated function is the preset
+      b := metaverse_style_bands(w, o[SU_BANDS], o[SU_BANDS + 1], o[SU_BANDS + 2], o[SU_BANDS + 3]);
+      #assert sp_near(b, metaverse_style_flat_band(w));   // the generated function is the preset
       if abs(w - p.band_e0) > 0.011 && abs(w - p.band_e1) > 0.011 { #assert b == 0 || sp_near(b, 0.5) || b == 1; }
-      c := verse_style_bands2(w, o[SU_BANDS2], o[SU_BANDS2 + 1]);
-      #assert sp_near(c, verse_style_flat_band2(w));
+      c := metaverse_style_bands2(w, o[SU_BANDS2], o[SU_BANDS2 + 1]);
+      #assert sp_near(c, metaverse_style_flat_band2(w));
       if abs(w - p.char_edge) > 0.011 { #assert c == 0 || c == 1; }
     }
   }
 }
 #test "flat: no specular, no rim, no outline, no shafts, no clouds, no tone curve, at every hour" {
   for pal: 0..<FLAT_PALETTES { for t: 0..<2 {
-    p := verse_style_flat(pal, t);
-    #assert p.dab_strength == 0 && verse_style_dab(1.0, p.dab_cut, p.dab_strength) == 0 && p.sparkle_angle == 0;
+    p := metaverse_style_flat(pal, t);
+    #assert p.dab_strength == 0 && metaverse_style_dab(1.0, p.dab_cut, p.dab_strength) == 0 && p.sparkle_angle == 0;
     o: [STYLE_FLOATS] f32;
     for c: 0..<24 {
-      #assert verse_style_at(p, f32(c) / 24.0, o[..]);
+      #assert metaverse_style_at(p, f32(c) / 24.0, o[..]);
       #assert o[SU_RIM + 3] == 0 && o[SU_RIM2] == 0 && o[SU_STYLE] == 0 && o[SU_SHAFTS + 2] == 0 && o[SU_CLOUDS] == 0;
       #assert o[SU_TONE + 3] == 0 && o[SU_TONE] == 1 && o[SU_TONE + 1] == 1 && o[SU_TONE + 2] == 0;
       #assert o[SU_SHADOW] == 0 && o[SU_FOLIAGE + 3] == 0 && o[SU_STYLE + 1] == f32(STYLE_FLAT);
       // the ambient is one flat colour: as much from the ground as from the sky
       for k: 0..<3 { #assert o[SU_SKY_AMB + k] == o[SU_GROUND_AMB + k]; }
-      #assert verse_style_rim(0.0, 1.0, o[SU_RIM2 + 1], o[SU_RIM2 + 2], o[SU_RIM + 3]) == 0;
+      #assert metaverse_style_rim(0.0, 1.0, o[SU_RIM2 + 1], o[SU_RIM2 + 2], o[SU_RIM + 3]) == 0;
     }
   } }
   // painterly keeps its own: rim, dab, bands and outlines as before
-  q := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  q := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   #assert q.palette == -1 && q.rim_world == 0.30 && q.dab_strength == 0.35 && q.band_e0 == 0.20 && q.outline_max == 0.35 && q.hem_width == 0;
 }
 #test "flat: each realm its own palette; the cemetery's is moonlit all day, the garden's turns" {
-  c := verse_style_flat(FLAT_CEMETERY, STYLE_DESKTOP); g := verse_style_flat(FLAT_GARDEN, STYLE_DESKTOP);
+  c := metaverse_style_flat(FLAT_CEMETERY, STYLE_DESKTOP); g := metaverse_style_flat(FLAT_GARDEN, STYLE_DESKTOP);
   a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32;
   // the cemetery, moonlit pastel (121b37dbd3): a periwinkle sky (blue the most, never saturated), deep indigo, cream, cream trim
-  #assert verse_style_at(c, 0.0, a[..]) && verse_style_at(c, 0.5, b[..]);
+  #assert metaverse_style_at(c, 0.0, a[..]) && metaverse_style_at(c, 0.5, b[..]);
   for i: 0..<STYLE_FLOATS - 4 { #assert a[i] == b[i] || (i >= SU_KEY_DIR && i < SU_KEY_DIR + 4) || (i >= SU_SUN && i < SU_SUN + 4); }
-  sky_r := verse_style_flat_srgb(0, FLAT_SKY, 0); sky_g := verse_style_flat_srgb(0, FLAT_SKY, 1); sky_b := verse_style_flat_srgb(0, FLAT_SKY, 2);
+  sky_r := metaverse_style_flat_srgb(0, FLAT_SKY, 0); sky_g := metaverse_style_flat_srgb(0, FLAT_SKY, 1); sky_b := metaverse_style_flat_srgb(0, FLAT_SKY, 2);
   #assert sky_b > sky_g && sky_g > sky_r && sky_b - sky_r < 0.3 && sky_r > 0.25;
   #assert sp_near(a[SU_ZENITH], pow(sky_r, 2.2)) && sp_near(a[SU_ZENITH + 2], pow(sky_b, 2.2));
   // pastel: the darkest tone is deep indigo, not black; the woods sit between it and the cream
   #assert sp_flat_lum(c, FLAT_DARK) > 0.02 && sp_flat_lum(c, FLAT_DARK) < 0.06 && sp_flat_lum(c, FLAT_LIGHT) > 0.7;
   #assert sp_flat_lum(c, FLAT_FOLIAGE) > sp_flat_lum(c, FLAT_DARK) && sp_flat_lum(c, FLAT_FOLIAGE) < 0.25;
-  #assert verse_style_flat_srgb(0, FLAT_DARK, 2) > verse_style_flat_srgb(0, FLAT_DARK, 0);              // indigo
-  #assert verse_style_flat_srgb(0, FLAT_LIGHT, 0) >= verse_style_flat_srgb(0, FLAT_LIGHT, 2);           // cream, not blue-white
-  #assert verse_style_flat_srgb(0, FLAT_ACCENT, 0) > verse_style_flat_srgb(0, FLAT_ACCENT, 1) && verse_style_flat_srgb(0, FLAT_ACCENT, 1) > verse_style_flat_srgb(0, FLAT_ACCENT, 2);   // warm cream trim
+  #assert metaverse_style_flat_srgb(0, FLAT_DARK, 2) > metaverse_style_flat_srgb(0, FLAT_DARK, 0);              // indigo
+  #assert metaverse_style_flat_srgb(0, FLAT_LIGHT, 0) >= metaverse_style_flat_srgb(0, FLAT_LIGHT, 2);           // cream, not blue-white
+  #assert metaverse_style_flat_srgb(0, FLAT_ACCENT, 0) > metaverse_style_flat_srgb(0, FLAT_ACCENT, 1) && metaverse_style_flat_srgb(0, FLAT_ACCENT, 1) > metaverse_style_flat_srgb(0, FLAT_ACCENT, 2);   // warm cream trim
   // the garden: olive and lime greens, cattail orange, pale mint, lavender, a soft sky
   for slot: 0..<3 {
     f := ifx slot == 0 then FLAT_FOLIAGE else ifx slot == 1 then FLAT_FOLIAGE2 else FLAT_GROUND;
-    #assert verse_style_flat_srgb(1, f32(f), 1) > verse_style_flat_srgb(1, f32(f), 0) && verse_style_flat_srgb(1, f32(f), 0) > verse_style_flat_srgb(1, f32(f), 2);
+    #assert metaverse_style_flat_srgb(1, f32(f), 1) > metaverse_style_flat_srgb(1, f32(f), 0) && metaverse_style_flat_srgb(1, f32(f), 0) > metaverse_style_flat_srgb(1, f32(f), 2);
   }
-  #assert verse_style_flat_srgb(1, FLAT_WARM, 0) > 0.8 && verse_style_flat_srgb(1, FLAT_WARM, 0) > verse_style_flat_srgb(1, FLAT_WARM, 1) && verse_style_flat_srgb(1, FLAT_WARM, 1) > verse_style_flat_srgb(1, FLAT_WARM, 2);
-  #assert verse_style_flat_srgb(1, FLAT_MINT, 1) > verse_style_flat_srgb(1, FLAT_MINT, 2) && verse_style_flat_srgb(1, FLAT_MINT, 2) > verse_style_flat_srgb(1, FLAT_MINT, 0) && sp_flat_lum(g, FLAT_MINT) > 0.6;
-  #assert verse_style_flat_srgb(1, FLAT_LAVENDER, 2) > verse_style_flat_srgb(1, FLAT_LAVENDER, 0) && verse_style_flat_srgb(1, FLAT_LAVENDER, 0) > verse_style_flat_srgb(1, FLAT_LAVENDER, 1);
+  #assert metaverse_style_flat_srgb(1, FLAT_WARM, 0) > 0.8 && metaverse_style_flat_srgb(1, FLAT_WARM, 0) > metaverse_style_flat_srgb(1, FLAT_WARM, 1) && metaverse_style_flat_srgb(1, FLAT_WARM, 1) > metaverse_style_flat_srgb(1, FLAT_WARM, 2);
+  #assert metaverse_style_flat_srgb(1, FLAT_MINT, 1) > metaverse_style_flat_srgb(1, FLAT_MINT, 2) && metaverse_style_flat_srgb(1, FLAT_MINT, 2) > metaverse_style_flat_srgb(1, FLAT_MINT, 0) && sp_flat_lum(g, FLAT_MINT) > 0.6;
+  #assert metaverse_style_flat_srgb(1, FLAT_LAVENDER, 2) > metaverse_style_flat_srgb(1, FLAT_LAVENDER, 0) && metaverse_style_flat_srgb(1, FLAT_LAVENDER, 0) > metaverse_style_flat_srgb(1, FLAT_LAVENDER, 1);
   #assert sp_flat_lum(g, FLAT_SKY) > 0.5 && sp_flat_lum(g, FLAT_DARK) < 0.02;
   // the two are not the same palette
   differ := 0;
-  for slot: 0..<FLAT_SLOTS { for ch: 0..<3 { if abs(verse_style_flat_srgb(0, f32(slot), f32(ch)) - verse_style_flat_srgb(1, f32(slot), f32(ch))) > 0.1 { differ += 1; } } }
+  for slot: 0..<FLAT_SLOTS { for ch: 0..<3 { if abs(metaverse_style_flat_srgb(0, f32(slot), f32(ch)) - metaverse_style_flat_srgb(1, f32(slot), f32(ch))) > 0.1 { differ += 1; } } }
   #assert differ > FLAT_SLOTS;
   // the garden: its palette at noon, warmer at dusk, a blue dusk at night
-  #assert verse_style_at(g, 0.5, a[..]);
-  #assert sp_near(a[SU_ZENITH + 1], pow(verse_style_flat_srgb(1, FLAT_SKY, 1), 2.2)) && sp_near(a[SU_KEY], 1.0);
-  #assert verse_style_at(g, 0.0, b[..]);
+  #assert metaverse_style_at(g, 0.5, a[..]);
+  #assert sp_near(a[SU_ZENITH + 1], pow(metaverse_style_flat_srgb(1, FLAT_SKY, 1), 2.2)) && sp_near(a[SU_KEY], 1.0);
+  #assert metaverse_style_at(g, 0.0, b[..]);
   #assert b[SU_ZENITH] < a[SU_ZENITH] * 0.3 && b[SU_ZENITH + 2] > b[SU_ZENITH] && b[SU_KEY + 2] > b[SU_KEY];
-  #assert verse_style_at(g, 0.75, b[..]) && b[SU_KEY] / b[SU_KEY + 2] > a[SU_KEY] / a[SU_KEY + 2];
+  #assert metaverse_style_at(g, 0.75, b[..]) && b[SU_KEY] / b[SU_KEY + 2] > a[SU_KEY] / a[SU_KEY + 2];
   // every slot of both is a colour (0 to 1), and only FLAT_SLOTS of them
-  for pal: 0..<FLAT_PALETTES { for slot: 0..<FLAT_SLOTS { for ch: 0..<3 { v := verse_style_flat_srgb(f32(pal), f32(slot), f32(ch)); #assert v >= 0 && v <= 1; } } }
-  #assert !verse_style_flat(FLAT_PALETTES, STYLE_DESKTOP).ok && !verse_style_flat(-1, STYLE_DESKTOP).ok;
-  #assert verse_style_preset(STYLE_FLAT, STYLE_DESKTOP).ok && verse_style_preset(STYLE_FLAT, STYLE_DESKTOP).palette == FLAT_GARDEN;
+  for pal: 0..<FLAT_PALETTES { for slot: 0..<FLAT_SLOTS { for ch: 0..<3 { v := metaverse_style_flat_srgb(f32(pal), f32(slot), f32(ch)); #assert v >= 0 && v <= 1; } } }
+  #assert !metaverse_style_flat(FLAT_PALETTES, STYLE_DESKTOP).ok && !metaverse_style_flat(-1, STYLE_DESKTOP).ok;
+  #assert metaverse_style_preset(STYLE_FLAT, STYLE_DESKTOP).ok && metaverse_style_preset(STYLE_FLAT, STYLE_DESKTOP).palette == FLAT_GARDEN;
 }
 #test "flat: the hem, the dither, flat shadows and the phone's fewer tufts" {
-  d := verse_style_flat(FLAT_GARDEN, STYLE_DESKTOP); f := verse_style_flat(FLAT_GARDEN, STYLE_PHONE);
+  d := metaverse_style_flat(FLAT_GARDEN, STYLE_DESKTOP); f := metaverse_style_flat(FLAT_GARDEN, STYLE_PHONE);
   o: [STYLE_FLOATS] f32;
-  #assert verse_style_at(d, 0.5, o[..]);
+  #assert metaverse_style_at(d, 0.5, o[..]);
   #assert sp_near(o[SU_RIM2 + 3], 0.06) && sp_near(o[SU_GROUND_AMB + 3], 0.25) && o[SU_BLOOM + 3] == 4;
-  #assert verse_style_flat_hem(0.0, o[SU_RIM2 + 3], 0.005) == 1 && verse_style_flat_hem(0.2, o[SU_RIM2 + 3], 0.005) == 0;
-  #assert o[SU_TINT + 3] == 0.45 && verse_style_flat_shadow(0.5) == 1;
+  #assert metaverse_style_flat_hem(0.0, o[SU_RIM2 + 3], 0.005) == 1 && metaverse_style_flat_hem(0.2, o[SU_RIM2 + 3], 0.005) == 0;
+  #assert o[SU_TINT + 3] == 0.45 && metaverse_style_flat_shadow(0.5) == 1;
   #assert d.grass_density == 4 && f.grass_density == 2 && f.grass_radius < d.grass_radius && d.grass_high < 0.3;
   // the same look on both: bands, palette and tone
   b: [STYLE_FLOATS] f32;
-  #assert verse_style_at(f, 0.5, b[..]);
+  #assert metaverse_style_at(f, 0.5, b[..]);
   for i: 0..<4 { #assert o[SU_BANDS + i] == b[SU_BANDS + i] && o[SU_TINT + i] == b[SU_TINT + i] && o[SU_TONE + i] == b[SU_TONE + i] && o[SU_ZENITH + i] == b[SU_ZENITH + i]; }
 }
 
@@ -1193,24 +1193,24 @@ sp_sat :: (r: f32, g: f32, b: f32) -> f32 {
 }
 #test "anime: each variant's two hard tones from its own block, a spot, its ink and vignette in the spare slots" {
   for v: 0..<ANIME_VARIANTS { for t: 0..<2 {
-    p := verse_style_anime(v, t);
+    p := metaverse_style_anime(v, t);
     #assert p.ok && p.style == STYLE_ANIME && p.variant == v && p.palette == -1 && p.tier == t;
     o: [STYLE_FLOATS] f32;
-    #assert verse_style_at(p, verse_style_anime_home(v), o[..]);
+    #assert metaverse_style_at(p, metaverse_style_anime_home(v), o[..]);
     #assert o[SU_STYLE + 1] == f32(STYLE_ANIME) && o[SU_STYLE] == 1 && o[SU_TONE + 3] == 1;
     // one edge twice: the bands are the anime cel band, two tones and nothing between past the antialias
     #assert o[SU_BANDS] == o[SU_BANDS + 1] && o[SU_BANDS + 2] <= 0.008;
     for i: 0..<1001 {
       w := f32(i) / 1000.0;
-      b := verse_style_bands(w, o[SU_BANDS], o[SU_BANDS + 1], o[SU_BANDS + 2], o[SU_BANDS + 3]);
-      #assert sp_near(b, verse_style_anime_cel(w, o[SU_BANDS], o[SU_BANDS + 2]));
+      b := metaverse_style_bands(w, o[SU_BANDS], o[SU_BANDS + 1], o[SU_BANDS + 2], o[SU_BANDS + 3]);
+      #assert sp_near(b, metaverse_style_anime_cel(w, o[SU_BANDS], o[SU_BANDS + 2]));
       if abs(w - o[SU_BANDS]) > o[SU_BANDS + 2] + 0.0001 { #assert b == 0 || b == 1; }
-      c := verse_style_anime_cel_char(w, 0.5, o[SU_BANDS2], o[SU_BANDS2 + 1]);
+      c := metaverse_style_anime_cel_char(w, 0.5, o[SU_BANDS2], o[SU_BANDS2 + 1]);
       if abs(w - (o[SU_BANDS2] - 0.06)) > o[SU_BANDS2 + 1] + 0.0001 { #assert c == 0 || c == 1; }
     }
     // the shadow keeps a share of the lit value, and a hard spot past its cut
     #assert o[SU_BANDS + 3] >= 0.45 && o[SU_BANDS + 3] <= 0.62 && o[SU_BANDS + 3] == p.band_mid;
-    #assert verse_style_anime_spot(1.0, o[SU_BANDS2 + 2], 0.004, o[SU_BANDS2 + 3]) == o[SU_BANDS2 + 3] && verse_style_anime_spot(0.9, o[SU_BANDS2 + 2], 0.004, o[SU_BANDS2 + 3]) == 0;
+    #assert metaverse_style_anime_spot(1.0, o[SU_BANDS2 + 2], 0.004, o[SU_BANDS2 + 3]) == o[SU_BANDS2 + 3] && metaverse_style_anime_spot(0.9, o[SU_BANDS2 + 2], 0.004, o[SU_BANDS2 + 3]) == 0;
     // the spare slots carry anime's own: ink width, darkness, the distance it thins by, the vignette
     #assert o[SU_RIM2 + 3] == p.ink_width && o[SU_GROUND_AMB + 3] == p.ink_dark && o[SU_BLOOM + 3] == p.ink_far && o[SU_HAZE_COLOUR + 3] == p.vignette;
     #assert p.ink_width >= 1.5 && p.ink_dark > 0.2 && p.ink_dark < 0.5 && p.vignette > 0 && p.hem_width == 0 && p.dither_steps == 0;
@@ -1219,26 +1219,26 @@ sp_sat :: (r: f32, g: f32, b: f32) -> f32 {
   } }
   // the other styles keep their slots: flat its hem and dither, painterly its haze height
   f: [STYLE_FLOATS] f32;
-  #assert verse_style_at(verse_style_flat(FLAT_GARDEN, STYLE_DESKTOP), 0.5, f[..]);
+  #assert metaverse_style_at(metaverse_style_flat(FLAT_GARDEN, STYLE_DESKTOP), 0.5, f[..]);
   #assert sp_near(f[SU_RIM2 + 3], 0.06) && sp_near(f[SU_GROUND_AMB + 3], 0.25) && f[SU_BLOOM + 3] == 4 && f[SU_HAZE_COLOUR + 3] == 0;
-  #assert verse_style_at(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.5, f[..]) && sp_near(f[SU_HAZE_COLOUR + 3], 0.6) && f[SU_RIM2 + 3] == 0;
-  #assert verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP).variant == -1 && verse_style_flat(FLAT_FAIRY, STYLE_DESKTOP).variant == -1;
+  #assert metaverse_style_at(metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.5, f[..]) && sp_near(f[SU_HAZE_COLOUR + 3], 0.6) && f[SU_RIM2 + 3] == 0;
+  #assert metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP).variant == -1 && metaverse_style_flat(FLAT_FAIRY, STYLE_DESKTOP).variant == -1;
 }
 #test "anime: the shadow tone is cooler than the lit and keeps its share of the value, every variant, every hour" {
   for v: 0..<ANIME_VARIANTS {
-    p := verse_style_anime(v, STYLE_DESKTOP); o: [STYLE_FLOATS] f32;
+    p := metaverse_style_anime(v, STYLE_DESKTOP); o: [STYLE_FLOATS] f32;
     for c: 0..<24 {
-      #assert verse_style_at(p, f32(c) / 24.0, o[..]);
-      tr := o[SU_TINT]; anime_tint_green := o[SU_TINT + 1]; tb := o[SU_TINT + 2]; tl := verse_style_luma(tr, anime_tint_green, tb); depth := o[SU_BANDS + 3];
+      #assert metaverse_style_at(p, f32(c) / 24.0, o[..]);
+      tr := o[SU_TINT]; anime_tint_green := o[SU_TINT + 1]; tb := o[SU_TINT + 2]; tl := metaverse_style_luma(tr, anime_tint_green, tb); depth := o[SU_BANDS + 3];
       #assert tb > tr && tb > anime_tint_green && tr > 0.3 && anime_tint_green > 0.3;   // blue-violet, never grey
       for s: 0..<ANIME_SLOTS {
         // the lit tone under the key; its shadow
-        lr := verse_style_anime_colour(f32(s), 0) * o[SU_KEY]; lg := verse_style_anime_colour(f32(s), 1) * o[SU_KEY + 1]; lb := verse_style_anime_colour(f32(s), 2) * o[SU_KEY + 2];
-        y := verse_style_luma(lr, lg, lb);
-        sr := verse_style_anime_shadow(lr, tr, tl, depth); sg := verse_style_anime_shadow(lg, anime_tint_green, tl, depth); sb := verse_style_anime_shadow(lb, tb, tl, depth);
-        m := verse_style_luma(sr, sg, sb);
-        kr := verse_style_keep_value(sr, depth * y, m); kg := verse_style_keep_value(sg, depth * y, m); kb := verse_style_keep_value(sb, depth * y, m);
-        #assert abs(verse_style_luma(kr, kg, kb) - depth * y) < 0.00001;
+        lr := metaverse_style_anime_colour(f32(s), 0) * o[SU_KEY]; lg := metaverse_style_anime_colour(f32(s), 1) * o[SU_KEY + 1]; lb := metaverse_style_anime_colour(f32(s), 2) * o[SU_KEY + 2];
+        y := metaverse_style_luma(lr, lg, lb);
+        sr := metaverse_style_anime_shadow(lr, tr, tl, depth); sg := metaverse_style_anime_shadow(lg, anime_tint_green, tl, depth); sb := metaverse_style_anime_shadow(lb, tb, tl, depth);
+        m := metaverse_style_luma(sr, sg, sb);
+        kr := metaverse_style_keep_value(sr, depth * y, m); kg := metaverse_style_keep_value(sg, depth * y, m); kb := metaverse_style_keep_value(sb, depth * y, m);
+        #assert abs(metaverse_style_luma(kr, kg, kb) - depth * y) < 0.00001;
         if lr > 0.0001 && lg > 0.0001 { #assert kb / kr > lb / lr * 1.05 && kb / kg > lb / lg * 1.05; }
       }
     }
@@ -1246,68 +1246,68 @@ sp_sat :: (r: f32, g: f32, b: f32) -> f32 {
 }
 #test "anime: the sky's zenith darker and more saturated than its horizon, every variant at every key" {
   for v: 0..<ANIME_VARIANTS {
-    p := verse_style_anime(v, STYLE_DESKTOP); o: [STYLE_FLOATS] f32;
+    p := metaverse_style_anime(v, STYLE_DESKTOP); o: [STYLE_FLOATS] f32;
     for c: 0..<4 {
-      #assert verse_style_at(p, 0.25 * f32(c), o[..]);
+      #assert metaverse_style_at(p, 0.25 * f32(c), o[..]);
       zr := o[SU_ZENITH]; zg := o[SU_ZENITH + 1]; zb := o[SU_ZENITH + 2]; hr := o[SU_HORIZON]; hg := o[SU_HORIZON + 1]; hb := o[SU_HORIZON + 2];
-      #assert verse_style_luma(zr, zg, zb) < verse_style_luma(hr, hg, hb) * 0.6;
+      #assert metaverse_style_luma(zr, zg, zb) < metaverse_style_luma(hr, hg, hb) * 0.6;
       #assert sp_sat(zr, zg, zb) > sp_sat(hr, hg, hb);
       #assert zb > zr && zb > zg;   // blue or violet up top
       // the gradient by the functions: the zenith at the top, the horizon at the bottom
-      #assert sp_near(verse_style_anime_sky(zb, hb, 1.0, o[SU_HORIZON + 3]), zb) && abs(verse_style_anime_sky(zb, hb, 0.0, o[SU_HORIZON + 3]) - hb) < 0.003;
+      #assert sp_near(metaverse_style_anime_sky(zb, hb, 1.0, o[SU_HORIZON + 3]), zb) && abs(metaverse_style_anime_sky(zb, hb, 0.0, o[SU_HORIZON + 3]) - hb) < 0.003;
       // clouds: a shadow tone between the top and the zenith's colour, so never grey
-      sh := verse_style_anime_cloud_colour(o[SU_CLOUD_TOP + 2], zb, o[SU_CLOUD_TOP + 3], 0.0);
+      sh := metaverse_style_anime_cloud_colour(o[SU_CLOUD_TOP + 2], zb, o[SU_CLOUD_TOP + 3], 0.0);
       #assert sh <= st_max(o[SU_CLOUD_TOP + 2], zb) && sh >= st_min(o[SU_CLOUD_TOP + 2], zb) && o[SU_CLOUD_TOP + 3] > 0.2;
     }
   }
   // pastoral noon: deep blue over pale cyan, big clouds out
   o: [STYLE_FLOATS] f32;
-  #assert verse_style_at(verse_style_anime(ANIME_PASTORAL, STYLE_DESKTOP), 0.5, o[..]);
+  #assert metaverse_style_at(metaverse_style_anime(ANIME_PASTORAL, STYLE_DESKTOP), 0.5, o[..]);
   #assert o[SU_HORIZON + 2] > 0.9 && o[SU_HORIZON + 1] > o[SU_HORIZON] && o[SU_ZENITH + 2] > 0.6 && o[SU_CLOUDS] >= 0.4 && o[SU_SUN + 3] == 0 && o[SU_KEY_DIR + 3] == 0;
 }
 #test "anime: dusk is magic hour all day with a warm horizon; neon is night at every hour" {
-  d := verse_style_anime(ANIME_DUSK, STYLE_DESKTOP); n := verse_style_anime(ANIME_NEON, STYLE_PHONE);
+  d := metaverse_style_anime(ANIME_DUSK, STYLE_DESKTOP); n := metaverse_style_anime(ANIME_NEON, STYLE_PHONE);
   o: [STYLE_FLOATS] f32;
   for c: 0..<48 {
     t := f32(c) / 48.0;
-    #assert verse_style_at(d, t, o[..]);
+    #assert metaverse_style_at(d, t, o[..]);
     // a warm horizon (orange-gold: red over green over blue), a warm key low in the sky, no moon, no stars
     #assert o[SU_HORIZON] > 0.9 && o[SU_HORIZON] > o[SU_HORIZON + 1] && o[SU_HORIZON + 1] > o[SU_HORIZON + 2];
     #assert o[SU_KEY] > o[SU_KEY + 2] && o[SU_KEY_DIR + 3] == 0 && o[SU_SUN + 3] == 0 && sp_near(o[SU_KEY_DIR + 1], sin(8 * DEG));
     #assert o[SU_HAZE_KEY + 3] > 0.8 && o[SU_HAZE_KEY] > o[SU_HAZE_KEY + 2];   // a strong warm band toward the sun
-    #assert verse_style_at(n, t, o[..]);
+    #assert metaverse_style_at(n, t, o[..]);
     // the moon keys, faint; the stars are out; the zenith near black; the rim magenta neon
     #assert o[SU_KEY_DIR + 3] == 1 && o[SU_SUN + 3] == 1 && o[SU_KEY + 3] < 0.3 && o[SU_KEY_DIR + 1] > 0;
-    #assert verse_style_luma(o[SU_ZENITH], o[SU_ZENITH + 1], o[SU_ZENITH + 2]) < 0.01;
+    #assert metaverse_style_luma(o[SU_ZENITH], o[SU_ZENITH + 1], o[SU_ZENITH + 2]) < 0.01;
     #assert o[SU_RIM] > 0.9 && o[SU_RIM + 2] > 0.8 && o[SU_RIM + 1] < 0.3 && o[SU_GRASS] == 0;
   }
   // pastoral and action follow their clock: day at noon, a warm horizon at dusk, night at midnight
   for v: 0..<2 {
-    p := verse_style_anime(v, STYLE_DESKTOP);
-    #assert verse_style_at(p, 0.75, o[..]) && o[SU_HORIZON] > o[SU_HORIZON + 1] && o[SU_HORIZON + 1] > o[SU_HORIZON + 2];
-    #assert verse_style_at(p, 0.0, o[..]) && o[SU_KEY_DIR + 3] == 1 && o[SU_SUN + 3] == 1;
-    #assert verse_style_at(p, 0.5, o[..]) && o[SU_KEY_DIR + 3] == 0 && o[SU_HORIZON + 2] > o[SU_HORIZON];
+    p := metaverse_style_anime(v, STYLE_DESKTOP);
+    #assert metaverse_style_at(p, 0.75, o[..]) && o[SU_HORIZON] > o[SU_HORIZON + 1] && o[SU_HORIZON + 1] > o[SU_HORIZON + 2];
+    #assert metaverse_style_at(p, 0.0, o[..]) && o[SU_KEY_DIR + 3] == 1 && o[SU_SUN + 3] == 1;
+    #assert metaverse_style_at(p, 0.5, o[..]) && o[SU_KEY_DIR + 3] == 0 && o[SU_HORIZON + 2] > o[SU_HORIZON];
   }
 }
 #test "anime: action is harder than pastoral: deeper shadows, a harder edge, thicker ink, stronger rims and bloom" {
-  a := verse_style_anime(ANIME_ACTION, STYLE_DESKTOP); p := verse_style_anime(ANIME_PASTORAL, STYLE_DESKTOP);
+  a := metaverse_style_anime(ANIME_ACTION, STYLE_DESKTOP); p := metaverse_style_anime(ANIME_PASTORAL, STYLE_DESKTOP);
   #assert a.band_mid < p.band_mid && a.band_soft < p.band_soft && a.ink_width > p.ink_width && a.ink_dark < p.ink_dark;
   #assert a.rim_world > p.rim_world && a.rim_char > p.rim_char && a.bloom_mix > p.bloom_mix && a.bloom_threshold < p.bloom_threshold && a.vignette > p.vignette;
   // the ink thins with distance on each variant's own numbers, and never vanishes
   for v: 0..<ANIME_VARIANTS {
-    q := verse_style_anime(v, STYLE_DESKTOP); o: [STYLE_FLOATS] f32;
-    #assert verse_style_at(q, 0.5, o[..]);
-    anime_near_width := verse_style_anime_ink_width(2.0, o[SU_RIM2 + 3], o[SU_BLOOM + 3]);
-    mid := verse_style_anime_ink_width(o[SU_BLOOM + 3] * 0.5, o[SU_RIM2 + 3], o[SU_BLOOM + 3]);
-    far := verse_style_anime_ink_width(o[SU_BLOOM + 3] * 3.0, o[SU_RIM2 + 3], o[SU_BLOOM + 3]);
+    q := metaverse_style_anime(v, STYLE_DESKTOP); o: [STYLE_FLOATS] f32;
+    #assert metaverse_style_at(q, 0.5, o[..]);
+    anime_near_width := metaverse_style_anime_ink_width(2.0, o[SU_RIM2 + 3], o[SU_BLOOM + 3]);
+    mid := metaverse_style_anime_ink_width(o[SU_BLOOM + 3] * 0.5, o[SU_RIM2 + 3], o[SU_BLOOM + 3]);
+    far := metaverse_style_anime_ink_width(o[SU_BLOOM + 3] * 3.0, o[SU_RIM2 + 3], o[SU_BLOOM + 3]);
     #assert anime_near_width == q.ink_width && mid < anime_near_width && far < mid && sp_near(far, anime_near_width * 0.25);
   }
 }
 #test "anime: the phone draws the same look with less in it" {
   for v: 0..<ANIME_VARIANTS {
-    d := verse_style_anime(v, STYLE_DESKTOP); f := verse_style_anime(v, STYLE_PHONE);
+    d := metaverse_style_anime(v, STYLE_DESKTOP); f := metaverse_style_anime(v, STYLE_PHONE);
     a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32;
-    #assert verse_style_at(d, 0.5, a[..]) && verse_style_at(f, 0.5, b[..]);
+    #assert metaverse_style_at(d, 0.5, a[..]) && metaverse_style_at(f, 0.5, b[..]);
     for i: 0..<4 {
       #assert a[SU_BANDS + i] == b[SU_BANDS + i] && a[SU_BANDS2 + i] == b[SU_BANDS2 + i] && a[SU_TINT + i] == b[SU_TINT + i] && a[SU_TONE + i] == b[SU_TONE + i];
       #assert a[SU_ZENITH + i] == b[SU_ZENITH + i] && a[SU_HAZE + i] == b[SU_HAZE + i] && a[SU_RIM + i] == b[SU_RIM + i];
@@ -1316,34 +1316,34 @@ sp_sat :: (r: f32, g: f32, b: f32) -> f32 {
     #assert d.shadow_size == 2048 && f.shadow_size == 1024 && d.cloud_octaves == 2 && f.cloud_octaves == 1 && d.shaft_samples == 24 && f.shaft_samples == 12;
     #assert f.grass_density <= d.grass_density && f.grass_radius < d.grass_radius && sp_near(f.bloom_mix, d.bloom_mix * 0.8) && f.sparkle_grid > d.sparkle_grid;
   }
-  #assert verse_style_anime(ANIME_PASTORAL, STYLE_DESKTOP).grass_density == 16 && verse_style_anime(ANIME_PASTORAL, STYLE_PHONE).grass_density == 6;
+  #assert metaverse_style_anime(ANIME_PASTORAL, STYLE_DESKTOP).grass_density == 16 && metaverse_style_anime(ANIME_PASTORAL, STYLE_PHONE).grass_density == 6;
 }
 #test "anime: halfway between keys is the mean of both, for the variants that follow the clock" {
   for v: 0..<2 {
-    p := verse_style_anime(v, STYLE_DESKTOP);
+    p := metaverse_style_anime(v, STYLE_DESKTOP);
     for i: 0..<4 {
       a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32; m: [STYLE_FLOATS] f32;
       c := f32(i) * 0.25;
-      #assert verse_style_at(p, c, a[..]) && verse_style_at(p, c + 0.25, b[..]) && verse_style_at(p, c + 0.125, m[..]);
+      #assert metaverse_style_at(p, c, a[..]) && metaverse_style_at(p, c + 0.25, b[..]) && metaverse_style_at(p, c + 0.125, m[..]);
       for n: 0..<STYLE_KEYED { j := STYLE_KEYED_AT[n]; #assert sp_near(m[j], 0.5 * (a[j] + b[j])); }
     }
   }
 }
 #test "anime: its variants by name, its default, and where each is meant to be seen" {
-  for v: 0..<ANIME_VARIANTS { #assert verse_style_anime_variant(ANIME_VARIANT_NAME[v]) == v; }
-  #assert verse_style_anime_variant("pastoral") == ANIME_PASTORAL && verse_style_anime_variant("neon") == ANIME_NEON;
-  #assert verse_style_anime_variant("") == -1 && verse_style_anime_variant("Neon") == -1 && verse_style_anime_variant("cel") == -1;
-  #assert verse_style_anime_home(ANIME_PASTORAL) == 0.5 && verse_style_anime_home(ANIME_ACTION) == 0 && verse_style_anime_home(ANIME_DUSK) == 0.75 && verse_style_anime_home(ANIME_NEON) == 0;
-  #assert verse_style_anime_home(-1) == -1 && verse_style_anime_home(ANIME_VARIANTS) == -1;
-  q := verse_style_preset(STYLE_ANIME, STYLE_PHONE);
+  for v: 0..<ANIME_VARIANTS { #assert metaverse_style_anime_variant(ANIME_VARIANT_NAME[v]) == v; }
+  #assert metaverse_style_anime_variant("pastoral") == ANIME_PASTORAL && metaverse_style_anime_variant("neon") == ANIME_NEON;
+  #assert metaverse_style_anime_variant("") == -1 && metaverse_style_anime_variant("Neon") == -1 && metaverse_style_anime_variant("cel") == -1;
+  #assert metaverse_style_anime_home(ANIME_PASTORAL) == 0.5 && metaverse_style_anime_home(ANIME_ACTION) == 0 && metaverse_style_anime_home(ANIME_DUSK) == 0.75 && metaverse_style_anime_home(ANIME_NEON) == 0;
+  #assert metaverse_style_anime_home(-1) == -1 && metaverse_style_anime_home(ANIME_VARIANTS) == -1;
+  q := metaverse_style_preset(STYLE_ANIME, STYLE_PHONE);
   #assert q.ok && q.style == STYLE_ANIME && q.variant == ANIME_PASTORAL && q.tier == STYLE_PHONE;
-  #assert !verse_style_anime(-1, STYLE_DESKTOP).ok && !verse_style_anime(ANIME_VARIANTS, STYLE_DESKTOP).ok && verse_style_anime(ANIME_VARIANTS, STYLE_DESKTOP).variant == -1;
+  #assert !metaverse_style_anime(-1, STYLE_DESKTOP).ok && !metaverse_style_anime(ANIME_VARIANTS, STYLE_DESKTOP).ok && metaverse_style_anime(ANIME_VARIANTS, STYLE_DESKTOP).variant == -1;
   out: [STYLE_FLOATS] f32; out[0] = 7;
-  #assert !verse_style_at(verse_style_anime(9, STYLE_DESKTOP), 0.5, out[..]) && out[0] == 7;
+  #assert !metaverse_style_at(metaverse_style_anime(9, STYLE_DESKTOP), 0.5, out[..]) && out[0] == 7;
   // four looks, not one: each variant's sky at its home differs from every other's
   for v: 0..<ANIME_VARIANTS { for w: v + 1..<ANIME_VARIANTS {
     a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32;
-    #assert verse_style_at(verse_style_anime(v, STYLE_DESKTOP), verse_style_anime_home(v), a[..]) && verse_style_at(verse_style_anime(w, STYLE_DESKTOP), verse_style_anime_home(w), b[..]);
+    #assert metaverse_style_at(metaverse_style_anime(v, STYLE_DESKTOP), metaverse_style_anime_home(v), a[..]) && metaverse_style_at(metaverse_style_anime(w, STYLE_DESKTOP), metaverse_style_anime_home(w), b[..]);
     differ := 0;
     for i: 0..<3 { if abs(a[SU_HORIZON + i] - b[SU_HORIZON + i]) > 0.05 || abs(a[SU_KEY + i] - b[SU_KEY + i]) > 0.05 { differ += 1; } }
     #assert differ > 0;

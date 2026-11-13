@@ -9,7 +9,7 @@
 // realm). --aethyr passes each final transcript through the Metaverse Engine's event gate
 // (metaverse-engine/audio/voice.coax), as a realm does, and replays the record at the end.
 #include "../platform/voice.h"
-#include "AethyrVoice.h"
+#include "EngineVoice.h"
 #include "wav.h"
 #include "ws.h"
 #include <arpa/inet.h>
@@ -106,7 +106,7 @@ static const char *verdict_name(int64_t v) {
   static const char *n[] = {"ACCEPTED", "DUPLICATE", "STALE", "UNKNOWN", "FULL", "REPLAYING", "TOO_LONG", "LOG_FULL"};
   return v >= 0 && v < 8 ? n[v] : "?";
 }
-static int64_t realm_step(void) { realm_steps++; return aethyr_voice_step(RV()); }
+static int64_t realm_step(void) { realm_steps++; return engine_voice_step(RV()); }
 typedef struct { char turn[16]; int64_t request, epoch; } realm_hold;
 static realm_hold holds[8];
 static int nholds;
@@ -138,9 +138,9 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--after-end") && v) { after_end = v; i++; }
     else if (!strcmp(a, "--exact") && v) { exact = v; i++; }
     else if (!strcmp(a, "--aethyr")) {
-      realm = calloc(1, (size_t)aethyr_voice_size());
+      realm = calloc(1, (size_t)engine_voice_size());
       if (!realm) return 2;
-      aethyr_voice_init(RV(), 12669);
+      engine_voice_init(RV(), 12669);
     }
     else if (a[0] != '-' && !wav) wav = a;
     else { usage(); return 2; }
@@ -299,19 +299,19 @@ int main(int argc, char **argv) {
               for (int k = 0; k < nholds; k++)
                 if (e->turn.len == strlen(holds[k].turn) && !memcmp(e->turn.ptr, holds[k].turn, e->turn.len)) h = &holds[k];
               coax_string txt = {(const char *)e->text.ptr, (int64_t)e->text.len};
-              int64_t verdict = h ? aethyr_voice_offer(RV(), h->request, h->epoch, txt) : 3;
+              int64_t verdict = h ? engine_voice_offer(RV(), h->request, h->epoch, txt) : 3;
               printf("aethyr offer %.*s request=%lld epoch=%lld %s\n", (int)e->turn.len, e->turn.ptr, h ? (long long)h->request : 0LL,
                      h ? (long long)h->epoch : 0LL, verdict_name(verdict));
               if (verdict == 0) {
                 // The same transcript again is refused: one answer per hold.
-                printf("aethyr offer-again %s\n", verdict_name(aethyr_voice_offer(RV(), h->request, h->epoch, txt)));
+                printf("aethyr offer-again %s\n", verdict_name(engine_voice_offer(RV(), h->request, h->epoch, txt)));
                 int64_t took = realm_step();
                 char heard[700];
                 coax_v_u8 hv = {(uint8_t *)heard, (int64_t)sizeof heard - 1};
-                int64_t hn = aethyr_voice_heard(RV(), hv);
+                int64_t hn = engine_voice_heard(RV(), hv);
                 heard[hn > 0 ? hn : 0] = 0;
-                printf("aethyr heard took=%lld request=%lld kind=%s \"%s\"\n", (long long)took, (long long)aethyr_voice_heard_request(RV()),
-                       aethyr_voice_heard_kind(RV()) == 2 ? "NO_SPEECH" : "FINAL", heard);
+                printf("aethyr heard took=%lld request=%lld kind=%s \"%s\"\n", (long long)took, (long long)engine_voice_heard_request(RV()),
+                       engine_voice_heard_kind(RV()) == 2 ? "NO_SPEECH" : "FINAL", heard);
               }
             }
             if (e->phase == OA_TURN_PHASE_FINAL) {
@@ -455,11 +455,11 @@ int main(int argc, char **argv) {
         srcn = held <= 1 ? ns : nt;
         sp = held <= 1 ? &pos : &tpos;
         if (realm) {
-          int64_t pv = aethyr_voice_control(RV(), 1);
+          int64_t pv = engine_voice_control(RV(), 1);
           realm_step();
           snprintf(holds[nholds].turn, sizeof holds[nholds].turn, "%s", turn);
-          holds[nholds].request = aethyr_voice_holding(RV());
-          holds[nholds].epoch = aethyr_voice_epoch(RV());
+          holds[nholds].request = engine_voice_holding(RV());
+          holds[nholds].epoch = engine_voice_epoch(RV());
           printf("aethyr press %s %s request=%lld epoch=%lld\n", turn, verdict_name(pv), (long long)holds[nholds].request,
                  (long long)holds[nholds].epoch);
           nholds++;
@@ -511,9 +511,9 @@ int main(int argc, char **argv) {
               send_msg(&x);
             }
             if (realm) {
-              int64_t cv = aethyr_voice_control(RV(), 2);
+              int64_t cv = engine_voice_control(RV(), 2);
               realm_step();
-              printf("aethyr cancel %s epoch=%lld\n", verdict_name(cv), (long long)aethyr_voice_epoch(RV()));
+              printf("aethyr cancel %s epoch=%lld\n", verdict_name(cv), (long long)engine_voice_epoch(RV()));
             }
             if (!quiet) printf("after-end %s\n", after_end);
           }
@@ -615,10 +615,10 @@ int main(int argc, char **argv) {
 
   if (realm) {
     int64_t steps = realm_steps;
-    bool matched = aethyr_voice_replay(RV(), 2166136261, steps);
+    bool matched = engine_voice_replay(RV(), 2166136261, steps);
     printf("aethyr record applied=%lld duplicate=%lld stale=%lld unknown=%lld steps=%lld replay=%s\n",
-           (long long)aethyr_voice_applied(RV()), (long long)aethyr_voice_refused(RV(), 1), (long long)aethyr_voice_refused(RV(), 2),
-           (long long)aethyr_voice_refused(RV(), 3), (long long)steps, matched ? "matched" : "DIVERGED");
+           (long long)engine_voice_applied(RV()), (long long)engine_voice_refused(RV(), 1), (long long)engine_voice_refused(RV(), 2),
+           (long long)engine_voice_refused(RV(), 3), (long long)steps, matched ? "matched" : "DIVERGED");
     if (!matched) rc = 1;
   }
   printf("summary finals=%d partials=%d speeches=%d speech_updates=%d speech_ends=%d interrupted=%d audio_in=%d downlink_samples=%zu "

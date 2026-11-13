@@ -27,12 +27,12 @@
 
 extern char **environ;
 // os/verse-panel.coax's modes and routes
-#define PANEL_CLOSED verse_panel_closed()
-#define PANEL_FLAT verse_panel_flat()
-#define PANEL_WORLD verse_panel_world()
+#define PANEL_CLOSED metaverse_panel_closed()
+#define PANEL_FLAT metaverse_panel_flat()
+#define PANEL_WORLD metaverse_panel_world()
 #define VKDESK_STRIPS 64
-#define PANEL_TOGGLE verse_panel_toggle()
-#define PANEL_TO_DESK verse_panel_to_desk()
+#define PANEL_TOGGLE metaverse_panel_toggle()
+#define PANEL_TO_DESK metaverse_panel_to_desk()
 
 typedef struct {
   pid_t pid;
@@ -132,7 +132,7 @@ static void vkdesk_say(VkDesk *d, const char *line) {
 // xdg_toplevel.close is also how the outer compositor delivers Super+W.
 // Coax decides whether the visible desktop owns that close request.
 static int vkdesk_window_close(VkDesk *d) {
-  if (verse_panel_close_to(d->mode,d->pid>0)!=PANEL_TO_DESK) return 0;
+  if (metaverse_panel_close_to(d->mode,d->pid>0)!=PANEL_TO_DESK) return 0;
   vkdesk_say(d,"close\n");
   return 1;
 }
@@ -207,14 +207,14 @@ static void vkdesk_overlay(VkCommandBuffer cmd, VkImage dst, uint32_t w, uint32_
   int32_t r[4];
   if (d->mode == PANEL_WORLD) {
     // the desk as the world's screen slants: VKDESK_STRIPS columns, each fitted between the
-    // screen's top and bottom edges where it stands (os/verse-panel.coax verse_panel_strip);
+    // screen's top and bottom edges where it stands (os/verse-panel.coax metaverse_panel_strip);
     // a strip off the display is left out, so a screen partly in view shows that part
     d->world_ok = d->world && d->world(d->world_c, w, h);
     if (!d->world_ok) return;
     int32_t *c = d->world_c;
     for (int i = 0; i < VKDESK_STRIPS; i++) {
       int32_t q[4];
-      for (int k = 0; k < 4; k++) q[k] = (int32_t)verse_panel_strip(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], i, VKDESK_STRIPS, k);
+      for (int k = 0; k < 4; k++) q[k] = (int32_t)metaverse_panel_strip(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], i, VKDESK_STRIPS, k);
       if (q[2] <= q[0] || q[3] <= q[1] || q[0] < 0 || q[1] < 0 || q[2] > (int32_t)w || q[3] > (int32_t)h) continue;
       int32_t sx0 = (int32_t)((int64_t)d->dw * i / VKDESK_STRIPS), sx1 = (int32_t)((int64_t)d->dw * (i + 1) / VKDESK_STRIPS);
       // the strip's rows less what stands in front of it: up to 9 pieces, each its share of the desk
@@ -241,7 +241,7 @@ static void vkdesk_overlay(VkCommandBuffer cmd, VkImage dst, uint32_t w, uint32_
     }
     return;
   } else
-    for (int k = 0; k < 4; k++) r[k] = (int32_t)verse_panel_rect(d->mode, w, h, d->dw, d->dh, k);
+    for (int k = 0; k < 4; k++) r[k] = (int32_t)metaverse_panel_rect(d->mode, w, h, d->dw, d->dh, k);
   if (r[2] <= r[0] || r[3] <= r[1]) return;
   if (d->mode == PANEL_FLAT) {
     VkClearColorValue black = {.float32 = {0, 0, 0, 1}};
@@ -261,12 +261,12 @@ static int vkdesk_key(int code, int pressed) {
     char release[64]; snprintf(release,sizeof release,"keydown %d 0\n",code);
     vkdesk_say(d,release); d->key_down[code]=0; return 1;
   }
-  int64_t to = verse_panel_key_to(d->mode, code);
+  int64_t to = metaverse_panel_key_to(d->mode, code);
   if (to == PANEL_TOGGLE) {
-    if (pressed==1) { d->mode = verse_panel_next(d->mode, code); fprintf(stderr, "vk-realm: the desk is %s\n", d->mode == PANEL_CLOSED ? "closed" : d->mode == PANEL_FLAT ? "flat" : d->mode == PANEL_WORLD ? "in the world" : "docked"); }
+    if (pressed==1) { d->mode = metaverse_panel_next(d->mode, code); fprintf(stderr, "vk-realm: the desk is %s\n", d->mode == PANEL_CLOSED ? "closed" : d->mode == PANEL_FLAT ? "flat" : d->mode == PANEL_WORLD ? "in the world" : "docked"); }
     return 1;
   }
-  if (to == verse_panel_voice()) {
+  if (to == metaverse_panel_voice()) {
     // the session listens and types what it heard (os/verse-session.coax "voice"); a press each way
     const char *run = getenv("VERSE_RUN");
     if (pressed==1 && run) { char path[1100]; snprintf(path, sizeof path, "%s/requests", run); FILE *f = fopen(path, "a"); if (f) { fputs("voice\n", f); fclose(f); } fprintf(stderr, "vk-realm: voice\n"); }
@@ -291,11 +291,11 @@ static int vkdesk_point(VkDesk *d,float x,float y,int64_t *ox,int64_t *oy) {
   if (d->mode == PANEL_WORLD) {
     if (!d->world_ok) return 0;
     int32_t *c = d->world_c;
-    px = verse_panel_point_quad(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], VKDESK_STRIPS, d->dw, d->dh, (int64_t)x, (int64_t)y, 0);
-    py = verse_panel_point_quad(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], VKDESK_STRIPS, d->dw, d->dh, (int64_t)x, (int64_t)y, 1);
+    px = metaverse_panel_point_quad(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], VKDESK_STRIPS, d->dw, d->dh, (int64_t)x, (int64_t)y, 0);
+    py = metaverse_panel_point_quad(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], VKDESK_STRIPS, d->dw, d->dh, (int64_t)x, (int64_t)y, 1);
   } else {
-    px = verse_panel_point(d->mode, d->sw, d->sh, d->dw, d->dh, (int64_t)x, (int64_t)y, 0);
-    py = verse_panel_point(d->mode, d->sw, d->sh, d->dw, d->dh, (int64_t)x, (int64_t)y, 1);
+    px = metaverse_panel_point(d->mode, d->sw, d->sh, d->dw, d->dh, (int64_t)x, (int64_t)y, 0);
+    py = metaverse_panel_point(d->mode, d->sw, d->sh, d->dw, d->dh, (int64_t)x, (int64_t)y, 1);
   }
   *ox=px;*oy=py;return px>=0 && py>=0;
 }

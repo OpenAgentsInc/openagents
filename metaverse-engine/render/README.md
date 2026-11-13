@@ -281,7 +281,7 @@ The iOS Metal host (`HomeRenderer.swift`) does not use the ledger yet.
 
 ### Native projection consumer and residual adapters
 
-[`metaverse/grid.coax`](../../metaverse/grid.coax)'s exported `verse_grid_view` calls
+[`metaverse/grid.coax`](../../metaverse/grid.coax)'s exported `metaverse_grid_view` calls
 [`metaverse/grid-render.coax`](../../metaverse/grid-render.coax). The adapter constructs
 a one-pass, sixteen-word uniform descriptor and delegates viewport/pass
 decisions to this authority module before any matrix output write. Short matrices

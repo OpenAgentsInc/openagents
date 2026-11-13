@@ -67,7 +67,7 @@ VIEW_AT :: 8; LAMP_AT :: 24; EYE_AT :: 28; RAY_AT :: 32;
 SKY_AT :: 44; HORIZON_AT :: 48; GROUND_AT :: 52; SUN_AT :: 56; WATER_AT :: 60;
 PANEL_AT :: 64;
 POOL_AT :: PANEL_AT + PLATES * 8;   // per lantern x, y, z, on (16), then their colour and strength
-// a painterly or flat realm's style block (verse_style_at at its time of day); all 0 for low poly,
+// a painterly or flat realm's style block (metaverse_style_at at its time of day); all 0 for low poly,
 // which keeps its own sky and light
 STYLE_AT :: POOL_AT + LANTERNS * 4 + 4;
 UNIFORM_FLOATS :: STYLE_AT + STYLE_FLOATS;
@@ -2618,22 +2618,22 @@ STARS :: [4] f32.[0, 0.1, 0.35, 1];
 // painterly compatibility profile at its noon, which is the glade's (lighting plan Phase 1, #13066).
 realm_unlit :: (s: [] MyRealm) -> bool { return !s[0].timed && !s[0].mist; }
 realm_glade_style :: (p: StylePreset, o: [] f32) -> bool {
-  e := verse_style_compat_profile(p); if !e.ok { return false; }
-  return verse_style_glade_env(p, env_profile_sample(e.profile, 0.5), o);
+  e := metaverse_style_compat_profile(p); if !e.ok { return false; }
+  return metaverse_style_glade_env(p, env_profile_sample(e.profile, 0.5), o);
 }
 #test "a made painterly realm with nothing authored renders under the glade" {
   s: [1] MyRealm;
   #assert read_spec(s[..], "realm built\nname Quiet\nstyle painterly\nground meadow\n") && realm_unlit(s[..]) && s[0].tod == 0;
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   o: [STYLE_FLOATS] f32; #assert realm_glade_style(p, o[..]);
-  g: [STYLE_FLOATS] f32; #assert verse_style_glade_env(p, env_profile_sample(env_glade_profile(), 0.5), g[..]);
+  g: [STYLE_FLOATS] f32; #assert metaverse_style_glade_env(p, env_profile_sample(env_glade_profile(), 0.5), g[..]);
   for i: 0..<STYLE_FLOATS { #assert o[i] == g[i]; }
   // a time of day or mist is authored light: the realm keeps its own keys
   #assert read_spec(s[..], "realm built\nname Dusk\nstyle painterly\ntime day\n") && !realm_unlit(s[..]);
   #assert read_spec(s[..], "realm built\nname Mist\nstyle painterly\nfeature mist\n") && !realm_unlit(s[..]);
   #assert read_spec(s[..], "realm built\nname Quiet\nstyle painterly\n") && realm_unlit(s[..]);
   // a flat preset has no glade
-  #assert !realm_glade_style(verse_style_preset(STYLE_FLAT, STYLE_DESKTOP), o[..]);
+  #assert !realm_glade_style(metaverse_style_preset(STYLE_FLAT, STYLE_DESKTOP), o[..]);
 }
 #test "a browser check reads the glade's style block back from a made realm's frame" {
   s: [1] MyRealm; t: [1] Track; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
@@ -2642,7 +2642,7 @@ realm_glade_style :: (p: StylePreset, o: [] f32) -> bool {
   s[0].spec_ready = true;
   _ := realm_frame(s[..], t[..], out[..], u[..], 1280, 720, 1, 0, true);
   #assert realm_probe(s[..], PROBE_GLADE) == 1;
-  g: [STYLE_FLOATS] f32; #assert realm_glade_style(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), g[..]);
+  g: [STYLE_FLOATS] f32; #assert realm_glade_style(metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), g[..]);
   for i: 0..<STYLE_FLOATS { v := g[i] * 1000000.0f32; #assert realm_probe(s[..], PROBE_STYLE + i) == cast(int) (v + (ifx v < 0 then -0.5f32 else 0.5f32)); }
   #assert realm_probe(s[..], PROBE_STYLE + SU_TONE + 1) == 1160000 && PROBE_STYLE >= 3000 + TALK_LINE;
   // a timed realm is not the glade's
@@ -2725,9 +2725,9 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   uniforms[SKY_AT + 3] = ifx style == "painterly" then 1.0f32 else 0.0f32;
   if s[0].spec_ready && (style == "painterly" || style == "flat") {
     tier := ifx width < 600 * s[0].dpr then STYLE_PHONE else STYLE_DESKTOP;
-    p := ifx style == "flat" then verse_style_flat(FLAT_GARDEN, tier) else verse_style_preset(STYLE_PAINTERLY, tier);
+    p := ifx style == "flat" then metaverse_style_flat(FLAT_GARDEN, tier) else metaverse_style_preset(STYLE_PAINTERLY, tier);
     done := ifx style == "painterly" && realm_unlit(s) then realm_glade_style(p, uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS])
-      else verse_style_at(p, TOD_CLOCK[tod], uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
+      else metaverse_style_at(p, TOD_CLOCK[tod], uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
     if snow_paint && (tod == 1 || tod == 2) { snow_low_sky(uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]); }
     if s[0].mist { mist_style(uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]); }
     s[0].style_glade = done && style == "painterly" && realm_unlit(s);
@@ -2807,7 +2807,7 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
 
 #test "painterly snow at dawn and dusk takes the snow-light sky: violet top, rose horizon, fewer clouds" {
   o: [STYLE_FLOATS] f32;
-  done := verse_style_at(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.75, o[..]);
+  done := metaverse_style_at(metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.75, o[..]);
   #assert o[SU_HORIZON + 1] > o[SU_HORIZON + 2];   // the preset's own dusk: peach
   snow_low_sky(o[..]);
   #assert o[SU_ZENITH + 2] > o[SU_ZENITH] && o[SU_HORIZON] > o[SU_HORIZON + 2] && o[SU_HORIZON + 2] > o[SU_HORIZON + 1];

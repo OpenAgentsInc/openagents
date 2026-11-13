@@ -72,7 +72,7 @@ si_local :: (host: string) -> bool #effects(all) {
 }
 
 // The text's code, or kind SIGNIN_NONE. debug admits the local hosts.
-verse_signin_parse :: (raw: [] u8, debug: bool) -> SigninCode #export_c #effects(all) {
+metaverse_signin_parse :: (raw: [] u8, debug: bool) -> SigninCode #export_c #effects(all) {
   none: SigninCode;
   all := cast(string) raw;
   a := 0; b := all.count;
@@ -130,7 +130,7 @@ si_num :: (buf: [] u8, at: int, n: int) -> int #effects(all) {
 si_part :: (raw: [] u8, at: int, n: int) -> string #effects(all) { return cast(string) raw[at..<at + n]; }
 
 // What the confirmation sheet asks.
-verse_signin_question :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c #effects(all) {
+metaverse_signin_question :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c #effects(all) {
   if c.kind == SIGNIN_SIGNIN {
     o := si_put(out, 0, "Log in to ");
     o = si_put(out, o, si_part(raw, c.host_at, c.host_n));
@@ -141,7 +141,7 @@ verse_signin_question :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_
 }
 
 // The URL the signed request goes to.
-verse_signin_url :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c #effects(all) {
+metaverse_signin_url :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c #effects(all) {
   if c.kind == SIGNIN_NONE { return -1; }
   o := si_put(out, 0, ifx c.local then "http://" else "https://");
   o = si_put(out, o, si_part(raw, c.host_at, c.host_n));
@@ -154,7 +154,7 @@ verse_signin_url :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c #ef
 }
 
 // The body, byte for byte (its SHA-256 goes in the payload tag).
-verse_signin_body :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c #effects(all) {
+metaverse_signin_body :: (raw: [] u8, c: SigninCode, out: [] u8) -> int #export_c #effects(all) {
   if c.kind == SIGNIN_NONE { return -1; }
   secret := si_part(raw, c.secret_at, c.secret_n);
   if c.kind == SIGNIN_INVITE {
@@ -188,7 +188,7 @@ si_tags :: (buf: [] u8, at: int, url: string, payload: string) -> int #effects(a
 }
 
 // NIP-01: [0,pubkey,created_at,27235,tags,""], whose SHA-256 is the event id.
-verse_signin_serial :: (pubkey: [] u8, created_at: int, url: [] u8, payload: [] u8, out: [] u8) -> int #export_c #effects(all) {
+metaverse_signin_serial :: (pubkey: [] u8, created_at: int, url: [] u8, payload: [] u8, out: [] u8) -> int #export_c #effects(all) {
   pk := cast(string) pubkey; u := cast(string) url; pl := cast(string) payload;
   if !si_is_hex(pk, 64) || !si_is_hex(pl, 64) || !si_plain(u) || created_at < 0 { return -1; }
   o := si_put(out, 0, "[0,\"");
@@ -201,7 +201,7 @@ verse_signin_serial :: (pubkey: [] u8, created_at: int, url: [] u8, payload: [] 
 }
 
 // The signed event (NIP-98 kind 27235), for "Authorization: Nostr <base64>".
-verse_signin_event :: (id: [] u8, pubkey: [] u8, created_at: int, url: [] u8, payload: [] u8, sig: [] u8, out: [] u8) -> int #export_c #effects(all) {
+metaverse_signin_event :: (id: [] u8, pubkey: [] u8, created_at: int, url: [] u8, payload: [] u8, sig: [] u8, out: [] u8) -> int #export_c #effects(all) {
   ih := cast(string) id; pk := cast(string) pubkey; u := cast(string) url; pl := cast(string) payload; sg := cast(string) sig;
   if !si_is_hex(ih, 64) || !si_is_hex(pk, 64) || !si_is_hex(pl, 64) || !si_is_hex(sg, 128) || !si_plain(u) || created_at < 0 { return -1; }
   o := si_put(out, 0, "{\"id\":\"");
@@ -231,7 +231,7 @@ si_name :: (body: string) -> string #effects(all) {
 }
 
 // What to say after the server answered (status 0: no answer at all).
-verse_signin_result :: (kind: int, status: int, body: [] u8, out: [] u8) -> int #export_c #effects(all) {
+metaverse_signin_result :: (kind: int, status: int, body: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if status == 200 {
     if kind == SIGNIN_SIGNIN { return si_put(out, 0, "Logged in. Look at your computer."); }
     name := si_name(cast(string) body);
@@ -249,7 +249,7 @@ verse_signin_result :: (kind: int, status: int, body: [] u8, out: [] u8) -> int 
 }
 
 // The phone's public key (32 bytes, x-only) as an npub, for showing; -1 if it isn't 32 bytes.
-verse_signin_npub :: (pubkey: [] u8, out: [] u8) -> int #export_c #effects(all) {
+metaverse_signin_npub :: (pubkey: [] u8, out: [] u8) -> int #export_c #effects(all) {
   if pubkey.count != 32 { return -1; }
   r := nip19_encode_checked(N19_NPUB, cast(string) pubkey, out, false);
   if r.error != NC_OK { return -1; }
@@ -269,16 +269,16 @@ tx :: (a: string, b: string, c: string) -> Tx #effects(all) {
   return r;
 }
 si_text :: (raw: [] u8, at: int, n: int) -> string #effects(all) { return cast(string) raw[at..<at + n]; }
-kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) { t := tx(a, b, c); return verse_signin_parse(t.b[0..<t.n], debug).kind; }
+kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) { t := tx(a, b, c); return metaverse_signin_parse(t.b[0..<t.n], debug).kind; }
 
 #test "a sign-in code on production and staging" {
   t := tx("https://openagents.com/signin#c=", SECRET, "");
-  c := verse_signin_parse(t.b[0..<t.n], false);
+  c := metaverse_signin_parse(t.b[0..<t.n], false);
   #assert c.kind == SIGNIN_SIGNIN && !c.local;
   #assert si_text(t.b[..], c.host_at, c.host_n) == "openagents.com";
   #assert si_text(t.b[..], c.secret_at, c.secret_n) == SECRET;
   s := tx("openagents://staging.openagents.com/signin#c=", SECRET, "");
-  d := verse_signin_parse(s.b[0..<s.n], false);
+  d := metaverse_signin_parse(s.b[0..<s.n], false);
   #assert d.kind == SIGNIN_SIGNIN && si_text(s.b[..], d.host_at, d.host_n) == "staging.openagents.com";
   #assert kind_of("  https://openagents.com/signin#c=", SECRET, "\n", false) == SIGNIN_SIGNIN;
   #assert kind_of("https://openagents.com/signin/#c=", SECRET, "", false) == SIGNIN_SIGNIN;
@@ -290,7 +290,7 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) {
   #assert kind_of("https://openagents.com/login/#c=", SECRET, "", false) == SIGNIN_SIGNIN;
   #assert kind_of("https://openagents.com/login/#link=", SECRET, "", false) == SIGNIN_NONE;
   i := tx("https://openagents.com/projects/ab-12#invite=", SECRET, "");
-  c := verse_signin_parse(i.b[0..<i.n], false);
+  c := metaverse_signin_parse(i.b[0..<i.n], false);
   #assert c.kind == SIGNIN_INVITE && si_text(i.b[..], c.slug_at, c.slug_n) == "ab-12";
   #assert si_text(i.b[..], c.secret_at, 64) == SECRET;
   #assert kind_of("https://openagents.com/projects/ab-12/#invite=", SECRET, "", false) == SIGNIN_INVITE;
@@ -324,11 +324,11 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) {
 #test "local hosts only in debug, only over http" {
   #assert kind_of("http://127.0.0.1:8810/signin#c=", SECRET, "", false) == SIGNIN_NONE;
   t := tx("http://127.0.0.1:8810/signin#c=", SECRET, "");
-  c := verse_signin_parse(t.b[0..<t.n], true);
+  c := metaverse_signin_parse(t.b[0..<t.n], true);
   #assert c.kind == SIGNIN_SIGNIN && c.local;
   o := tx("openagents://localhost:9/signin#c=", SECRET, "");
-  #assert verse_signin_parse(o.b[0..<o.n], true).local;
-  #assert !verse_signin_parse(o.b[0..<o.n], false).local;
+  #assert metaverse_signin_parse(o.b[0..<o.n], true).local;
+  #assert !metaverse_signin_parse(o.b[0..<o.n], false).local;
   #assert kind_of("http://localhost/signin#c=", SECRET, "", true) == SIGNIN_NONE;
   #assert kind_of("http://localhost:/signin#c=", SECRET, "", true) == SIGNIN_NONE;
   #assert kind_of("http://localhost:12345/signin#c=", SECRET, "", true) == SIGNIN_SIGNIN;
@@ -340,40 +340,40 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) {
 #test "urls and bodies" {
   buf: [600] u8;
   t := tx("openagents://staging.openagents.com/signin#c=", SECRET, "");
-  c := verse_signin_parse(t.b[0..<t.n], false);
-  n := verse_signin_url(t.b[0..<t.n], c, buf[..]);
+  c := metaverse_signin_parse(t.b[0..<t.n], false);
+  n := metaverse_signin_url(t.b[0..<t.n], c, buf[..]);
   #assert cast(string) buf[0..<n] == "https://staging.openagents.com/api/auth/phone/approve";
-  n = verse_signin_body(t.b[0..<t.n], c, buf[..]);
+  n = metaverse_signin_body(t.b[0..<t.n], c, buf[..]);
   w := tx("{\"challenge\":\"", SECRET, "\"}");
   #assert cast(string) buf[0..<n] == cast(string) w.b[0..<w.n];
   l := tx("https://openagents.com/login#c=", SECRET, "");
-  n = verse_signin_url(l.b[0..<l.n], verse_signin_parse(l.b[0..<l.n], false), buf[..]);
+  n = metaverse_signin_url(l.b[0..<l.n], metaverse_signin_parse(l.b[0..<l.n], false), buf[..]);
   #assert cast(string) buf[0..<n] == "https://openagents.com/api/auth/phone/approve";
   i := tx("https://openagents.com/projects/ab-12#invite=", SECRET, "");
-  ci := verse_signin_parse(i.b[0..<i.n], false);
-  n = verse_signin_url(i.b[0..<i.n], ci, buf[..]);
+  ci := metaverse_signin_parse(i.b[0..<i.n], false);
+  n = metaverse_signin_url(i.b[0..<i.n], ci, buf[..]);
   #assert cast(string) buf[0..<n] == "https://openagents.com/api/private/ab-12/claim";
-  n = verse_signin_body(i.b[0..<i.n], ci, buf[..]);
+  n = metaverse_signin_body(i.b[0..<i.n], ci, buf[..]);
   w = tx("{\"token\":\"", SECRET, "\"}");
   #assert cast(string) buf[0..<n] == cast(string) w.b[0..<w.n];
   d := tx("http://127.0.0.1:8810/signin#c=", SECRET, "");
-  n = verse_signin_url(d.b[0..<d.n], verse_signin_parse(d.b[0..<d.n], true), buf[..]);
+  n = metaverse_signin_url(d.b[0..<d.n], metaverse_signin_parse(d.b[0..<d.n], true), buf[..]);
   #assert cast(string) buf[0..<n] == "http://127.0.0.1:8810/api/auth/phone/approve";
   none: SigninCode;
-  #assert verse_signin_url(t.b[0..<t.n], none, buf[..]) == -1 && verse_signin_body(t.b[0..<t.n], none, buf[..]) == -1;
-  #assert verse_signin_question(t.b[0..<t.n], none, buf[..]) == -1;
+  #assert metaverse_signin_url(t.b[0..<t.n], none, buf[..]) == -1 && metaverse_signin_body(t.b[0..<t.n], none, buf[..]) == -1;
+  #assert metaverse_signin_question(t.b[0..<t.n], none, buf[..]) == -1;
 }
 
 #test "the question names the host" {
   buf: [200] u8;
   t := tx("https://staging.openagents.com/signin#c=", SECRET, "");
-  n := verse_signin_question(t.b[0..<t.n], verse_signin_parse(t.b[0..<t.n], false), buf[..]);
+  n := metaverse_signin_question(t.b[0..<t.n], metaverse_signin_parse(t.b[0..<t.n], false), buf[..]);
   #assert cast(string) buf[0..<n] == "Log in to staging.openagents.com?";
   l := tx("https://openagents.com/login#c=", SECRET, "");
-  n = verse_signin_question(l.b[0..<l.n], verse_signin_parse(l.b[0..<l.n], false), buf[..]);
+  n = metaverse_signin_question(l.b[0..<l.n], metaverse_signin_parse(l.b[0..<l.n], false), buf[..]);
   #assert cast(string) buf[0..<n] == "Log in to openagents.com?";
   i := tx("https://openagents.com/projects/ab#invite=", SECRET, "");
-  n = verse_signin_question(i.b[0..<i.n], verse_signin_parse(i.b[0..<i.n], false), buf[..]);
+  n = metaverse_signin_question(i.b[0..<i.n], metaverse_signin_parse(i.b[0..<i.n], false), buf[..]);
   #assert cast(string) buf[0..<n] == "Link this phone to the project you were invited to?";
 }
 
@@ -381,48 +381,48 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int #effects(all) {
   buf: [1200] u8;
   u := tx("https://openagents.com/api/auth/phone/approve", "", "");
   pk := tx(PUB, "", ""); pl := tx(SECRET, "", ""); sg := tx(SECRET, SECRET, "");
-  n := verse_signin_serial(pk.b[0..<pk.n], 1700000000, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]);
+  n := metaverse_signin_serial(pk.b[0..<pk.n], 1700000000, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]);
   w := tx("[0,\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",1700000000,27235,[[\"u\",\"https://openagents.com/api/auth/phone/approve\"],[\"method\",\"POST\"],[\"payload\",\"",
           SECRET, "\"]],\"\"]");
   #assert cast(string) buf[0..<n] == cast(string) w.b[0..<w.n];
-  n = verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 0, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]);
+  n = metaverse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 0, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]);
   e := tx("{\"id\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":0,\"kind\":27235,\"tags\":[[\"u\",\"https://openagents.com/api/auth/phone/approve\"],[\"method\",\"POST\"],[\"payload\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]],\"content\":\"\",\"sig\":\"",
           SECRET, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}");
   #assert cast(string) buf[0..<n] == cast(string) e.b[0..<e.n];
   up := tx("F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9", "", "");
-  #assert verse_signin_serial(up.b[0..<up.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]) == -1;
-  #assert verse_signin_serial(pk.b[0..<pk.n], -1, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]) == -1;
+  #assert metaverse_signin_serial(up.b[0..<up.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]) == -1;
+  #assert metaverse_signin_serial(pk.b[0..<pk.n], -1, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]) == -1;
   q := tx("https://x/\"a", "", "");
-  #assert verse_signin_serial(pk.b[0..<pk.n], 1, q.b[0..<q.n], pl.b[0..<pl.n], buf[..]) == -1;
+  #assert metaverse_signin_serial(pk.b[0..<pk.n], 1, q.b[0..<q.n], pl.b[0..<pl.n], buf[..]) == -1;
   sp := tx("https://x/ a", "", "");
-  #assert verse_signin_serial(pk.b[0..<pk.n], 1, sp.b[0..<sp.n], pl.b[0..<pl.n], buf[..]) == -1;
-  #assert verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], pl.b[0..<pl.n], buf[..]) == -1;
-  #assert verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], -1, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]) == -1;
+  #assert metaverse_signin_serial(pk.b[0..<pk.n], 1, sp.b[0..<sp.n], pl.b[0..<pl.n], buf[..]) == -1;
+  #assert metaverse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], pl.b[0..<pl.n], buf[..]) == -1;
+  #assert metaverse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], -1, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]) == -1;
   small: [10] u8;
-  #assert verse_signin_serial(pk.b[0..<pk.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], small[..]) == -1;
-  #assert verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], small[..]) == -1;
+  #assert metaverse_signin_serial(pk.b[0..<pk.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], small[..]) == -1;
+  #assert metaverse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], small[..]) == -1;
 }
 
 #test "what the phone says after" {
   buf: [200] u8;
   a := tx("{\"ok\":true,\"kind\":\"signin\"}", "", "");
-  n := verse_signin_result(SIGNIN_SIGNIN, 200, a.b[0..<a.n], buf[..]);
+  n := metaverse_signin_result(SIGNIN_SIGNIN, 200, a.b[0..<a.n], buf[..]);
   #assert cast(string) buf[0..<n] == "Logged in. Look at your computer.";
   b := tx("{\"ok\":true,\"name\":\"Ada\"}", "", "");
-  n = verse_signin_result(SIGNIN_INVITE, 200, b.b[0..<b.n], buf[..]);
+  n = metaverse_signin_result(SIGNIN_INVITE, 200, b.b[0..<b.n], buf[..]);
   #assert cast(string) buf[0..<n] == "This phone is linked to your project as Ada.";
-  n = verse_signin_result(SIGNIN_INVITE, 200, a.b[0..<a.n], buf[..]);
+  n = metaverse_signin_result(SIGNIN_INVITE, 200, a.b[0..<a.n], buf[..]);
   #assert cast(string) buf[0..<n] == "This phone is linked to your project.";
   c := tx("{\"ok\":true,\"name\":\"A\\\"x\"}", "", "");
-  n = verse_signin_result(SIGNIN_INVITE, 200, c.b[0..<c.n], buf[..]);
+  n = metaverse_signin_result(SIGNIN_INVITE, 200, c.b[0..<c.n], buf[..]);
   #assert cast(string) buf[0..<n] == "This phone is linked to your project.";
-  n = verse_signin_result(SIGNIN_INVITE, 404, a.b[0..<0], buf[..]);
+  n = metaverse_signin_result(SIGNIN_INVITE, 404, a.b[0..<0], buf[..]);
   #assert cast(string) buf[0..<n] == "That code was used or has expired.";
-  n = verse_signin_result(SIGNIN_SIGNIN, 429, a.b[0..<0], buf[..]);
+  n = metaverse_signin_result(SIGNIN_SIGNIN, 429, a.b[0..<0], buf[..]);
   #assert cast(string) buf[0..<n] == "Too many tries; wait a minute.";
-  n = verse_signin_result(SIGNIN_SIGNIN, 500, a.b[0..<0], buf[..]);
+  n = metaverse_signin_result(SIGNIN_SIGNIN, 500, a.b[0..<0], buf[..]);
   #assert cast(string) buf[0..<n] == "Not logged in: the server answered 500.";
-  n = verse_signin_result(SIGNIN_SIGNIN, 0, a.b[0..<0], buf[..]);
+  n = metaverse_signin_result(SIGNIN_SIGNIN, 0, a.b[0..<0], buf[..]);
   #assert cast(string) buf[0..<n] == "Couldn't reach openagents.com. Check the connection and try again.";
 }
 
@@ -472,10 +472,10 @@ in_set :: (c: int, set: string) -> bool #effects(all) { for x: set { if cast(int
   #assert kind_of("https://openagents.com/signin/x#c=", SECRET, "", false) == SIGNIN_NONE;
   #assert kind_of("openagents://127.0.0.1:1/signin#c=", SECRET, "", false) == SIGNIN_NONE;
   t := tx("  http://localhost:7/projects/ab#invite=", SECRET, "");
-  c := verse_signin_parse(t.b[0..<t.n], true);
+  c := metaverse_signin_parse(t.b[0..<t.n], true);
   #assert c.kind == SIGNIN_INVITE && c.local && c.host_at == 9 && c.host_n == 11 && c.slug_at == 30 && c.slug_n == 2 && c.secret_at == 40 && c.secret_n == 64;
   o := tx(" openagents://openagents.com/login#c=", SECRET, "");
-  d := verse_signin_parse(o.b[0..<o.n], true);
+  d := metaverse_signin_parse(o.b[0..<o.n], true);
   #assert d.kind == SIGNIN_SIGNIN && !d.local && d.host_at == 14 && d.secret_at == 37;
 }
 
@@ -484,13 +484,13 @@ in_set :: (c: int, set: string) -> bool #effects(all) { for x: set { if cast(int
   u := tx("https://openagents.com/api/auth/phone/approve", "", "");
   pk := tx(PUB, "", ""); pl := tx(SECRET, "", ""); sg := tx(SECRET, SECRET, "");
   bad := tx("0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef", "", "");
-  #assert verse_signin_serial(pk.b[0..<pk.n], 0, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]) > 0;
-  #assert verse_signin_serial(pk.b[0..<pk.n], 0, u.b[0..<u.n], bad.b[0..<bad.n], buf[..]) == -1;
-  #assert verse_signin_serial(pk.b[0..<pk.n], 0, u.b[0..<0], pl.b[0..<pl.n], buf[..]) == -1;
-  #assert verse_signin_event(bad.b[0..<bad.n], pk.b[0..<pk.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]) == -1;
-  #assert verse_signin_event(pl.b[0..<pl.n], bad.b[0..<bad.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]) == -1;
-  #assert verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 1, u.b[0..<u.n], bad.b[0..<bad.n], sg.b[0..<sg.n], buf[..]) == -1;
-  #assert verse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 1, u.b[0..<0], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]) == -1;
+  #assert metaverse_signin_serial(pk.b[0..<pk.n], 0, u.b[0..<u.n], pl.b[0..<pl.n], buf[..]) > 0;
+  #assert metaverse_signin_serial(pk.b[0..<pk.n], 0, u.b[0..<u.n], bad.b[0..<bad.n], buf[..]) == -1;
+  #assert metaverse_signin_serial(pk.b[0..<pk.n], 0, u.b[0..<0], pl.b[0..<pl.n], buf[..]) == -1;
+  #assert metaverse_signin_event(bad.b[0..<bad.n], pk.b[0..<pk.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]) == -1;
+  #assert metaverse_signin_event(pl.b[0..<pl.n], bad.b[0..<bad.n], 1, u.b[0..<u.n], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]) == -1;
+  #assert metaverse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 1, u.b[0..<u.n], bad.b[0..<bad.n], sg.b[0..<sg.n], buf[..]) == -1;
+  #assert metaverse_signin_event(pl.b[0..<pl.n], pk.b[0..<pk.n], 1, u.b[0..<0], pl.b[0..<pl.n], sg.b[0..<sg.n], buf[..]) == -1;
 }
 
 #test "the member's name in an answer" {
@@ -506,9 +506,9 @@ in_set :: (c: int, set: string) -> bool #effects(all) { for x: set { if cast(int
   // NIP-19's example key, 7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e
   key := [32] u8.[126, 126, 156, 66, 169, 27, 254, 241, 159, 169, 41, 229, 253, 161, 183, 46, 14, 188, 26, 76, 17, 65, 103, 62, 39, 148, 35, 77, 134, 173, 223, 78];
   out: [100] u8;
-  n := verse_signin_npub(key[..], out[..]);
+  n := metaverse_signin_npub(key[..], out[..]);
   #assert cast(string) out[0..<n] == "npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg";
-  #assert verse_signin_npub(key[0..<31], out[..]) == -1;
+  #assert metaverse_signin_npub(key[0..<31], out[..]) == -1;
   small: [20] u8;
-  #assert verse_signin_npub(key[..], small[..]) == -1;
+  #assert metaverse_signin_npub(key[..], small[..]) == -1;
 }

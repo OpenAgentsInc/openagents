@@ -27,7 +27,7 @@ anim_camera_read :: (d:Jv,row:int,seconds:f32,out:[]AnimSceneCamera)->int #effec
  for k:0..<n {key:=jv_at(d,keys,k);if !anim_keys(d,key,anim_field_keys("anim.scene.cameras[].keys[]")) {return ANIM_SCHEMA;}at:=anim_number(d,jv_get(d,key,"at"),0,cast(f64)seconds);eye:=jv_get(d,key,"eye");look:=jv_get(d,key,"look");cut:=jv_kind(d,jv_get(d,key,"cut"));ease:=anim_integer(d,jv_get(d,key,"ease"),0,3);
   if !at.ok || cast(f32)at.value<=previous || !anim_vector(d,eye,3,1000000) || !anim_vector(d,look,3,1000000) || (cut!=JV_TRUE && cut!=JV_FALSE) || ease<0 {return ANIM_NUMBER;}
   e:=anim_point(d,eye);target:=anim_point(d,look);if !anim_camera_distance(length(sub(e,target))) {return ANIM_NUMBER;}
-  c.flight=verse_flight_key(c.flight,cast(f32)at.value,e,target,cut==JV_TRUE,ease);previous=cast(f32)at.value;
+  c.flight=metaverse_flight_key(c.flight,cast(f32)at.value,e,target,cut==JV_TRUE,ease);previous=cast(f32)at.value;
  }out[0]=c;return ANIM_OK;
 }
 anim_scene_read :: (d:Jv,packs:[]AnimPack,rigs:[]AnimRig,performances:[]AnimPerformance,out:[]AnimScene)->int #effects(all) {

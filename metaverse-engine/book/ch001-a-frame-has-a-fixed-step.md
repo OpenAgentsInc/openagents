@@ -495,7 +495,7 @@ Before this module, each realm kept its own accumulator:
 
 All of them now step on `metaverse-engine/core/loop.coax`. Dead Gears' clock keeps its
 1/60 s step as 16,666,666 ns, rounded down, so 0.05 s is still three steps
-without the slack. The faces move their realm by `verse_player_counts`, the
+without the slack. The faces move their realm by `metaverse_player_counts`, the
 time the player's clock counts the frame for (`loop_counts`), so the frame's
 animation and the player's steps are clamped by one clock.
 

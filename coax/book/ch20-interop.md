@@ -4,8 +4,8 @@ Coax code doesn't run on its own in the OpenAgents app. The app is a UIKit
 program written in Swift, and every Coax file it uses arrives as a small C
 library: a `.c` file Xcode compiles and a `.h` file Swift imports. When you
 tap Start on the home screen, Swift calls a Coax procedure named
-`verse_camera_dolly_start`, and on every frame until the camera lands it
-calls `verse_camera_dolly` to find out where the camera is. Neither side knows
+`metaverse_camera_dolly_start`, and on every frame until the camera lands it
+calls `metaverse_camera_dolly` to find out where the camera is. Neither side knows
 much about the other. They agree on a C header, and that header is the
 whole contract.
 
@@ -879,8 +879,8 @@ ld: 1 duplicate symbols
 ```
 
 That's why every exported procedure in `metaverse/` carries its file's
-name: `verse_camera_dolly`, `verse_player_feet`,
-`verse_wallet_sat_to_msat`. It reads long, but C has one namespace, and
+name: `metaverse_camera_dolly`, `metaverse_player_feet`,
+`metaverse_wallet_sat_to_msat`. It reads long, but C has one namespace, and
 the prefix is how you share it.
 
 One thing that does repeat safely is a `#foreign` declaration. Both
@@ -950,8 +950,8 @@ shot and starts a dolly, passing the system's Reduce Motion setting so
 Coax can turn the swoop into a cut:
 
 ```swift
-let from = lastShot ?? verse_camera_overview(0)
-stage = .arriving(verse_camera_dolly_start(from, now, UIAccessibility.isReduceMotionEnabled))
+let from = lastShot ?? metaverse_camera_overview(0)
+stage = .arriving(metaverse_camera_dolly_start(from, now, UIAccessibility.isReduceMotionEnabled))
 ```
 
 Swift keeps the returned `coax_t_Dolly` in an enum case, and on every
@@ -959,8 +959,8 @@ frame it asks Coax where the camera should be:
 
 ```swift
 case .arriving(let d):
-    shot = verse_camera_dolly(d, timestamp, follow)
-    if verse_camera_dolly_done(d, timestamp) { arrive() }
+    shot = metaverse_camera_dolly(d, timestamp, follow)
+    if metaverse_camera_dolly_done(d, timestamp) { arrive() }
 ```
 
 Notice the division of labor. Swift owns the clock, the touches, the

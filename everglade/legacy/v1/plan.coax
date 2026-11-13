@@ -289,7 +289,7 @@ everglade_build_ground :: (heights: [] f32) -> bool {
   flats: [EG_FLATS * FLAT] f32;
   made := everglade_flats(flats[..]);
   if made == 0 { return false; }
-  if !verse_terrain_build(everglade_ground(), heights, nodes[..], links[..], f32(EG_PATH_HALF), flats[..]) { return false; }
+  if !metaverse_terrain_build(everglade_ground(), heights, nodes[..], links[..], f32(EG_PATH_HALF), flats[..]) { return false; }
   everglade_carve_river(heights);
   everglade_carve_ponds(heights);
   everglade_meet_glade(heights);
@@ -335,7 +335,7 @@ everglade_pond_level :: (heights: [] f32, p: int) -> f32 {
   low := 1000000.0f32;
   for k: 0..<24 {
     a := f32(k) / 24 * 6.2831853;
-    low = lo(low, verse_terrain_height(everglade_ground(), heights, x + r * cos(a), z + r * sin(a)));
+    low = lo(low, metaverse_terrain_height(everglade_ground(), heights, x + r * cos(a), z + r * sin(a)));
   }
   return low - f32(EG_POND_BANK);
 }
@@ -478,7 +478,7 @@ everglade_walk_height :: (heights: [] f32, deck: f32, x: f32, z: f32) -> f32 { r
 // The same with the deck's planks that are down (`out`, a bit each: everglade_deck_plank): where one
 // is down there is no deck, and you are on the ground under it (the river's bed).
 everglade_walk_height_out :: (heights: [] f32, deck: f32, out: int, x: f32, z: f32) -> f32 {
-  h := ez_walk_height(verse_terrain_height(everglade_ground(), heights, x, z), x, z);   // past the seam, the glade's
+  h := ez_walk_height(metaverse_terrain_height(everglade_ground(), heights, x, z), x, z);   // past the seam, the glade's
   if everglade_deck_holds(out, x, z) { return hi(h, deck); }
   return h;
 }
@@ -800,7 +800,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   for t: 0..<EG_PARK_TREES {
     x := EG_PARK_TREE[t * 4]; z := EG_PARK_TREE[t * 4 + 1];
     #assert everglade_in_town(x, z) && !everglade_in_pond(x, z, 3);
-    #assert verse_path_nearest(nodes[..], links[..], x, z).d > f32(EG_PATH_HALF) + 2.5;
+    #assert metaverse_path_nearest(nodes[..], links[..], x, z).d > f32(EG_PATH_HALF) + 2.5;
     for k: 0..<ns { #assert box_gap(solids[..], k, x, z) > 2.5; }
     #assert EG_PARK_TREE[t * 4 + 3] >= 2 && EG_PARK_TREE[t * 4 + 3] <= 3;
   }
@@ -865,13 +865,13 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   for g: 0..<EG_GATES {
     gx := EG_GATE[g * 4]; gz := EG_GATE[g * 4 + 1];
     nodes := EG_NODE_XZ; links := EG_LINK_AB;
-    #assert verse_path_nearest(nodes[..], links[..], gx, gz).d < 0.01;
+    #assert metaverse_path_nearest(nodes[..], links[..], gx, gz).d < 0.01;
   }
   // The river trail crosses on the bridge.
   nodes := EG_NODE_XZ; links := EG_LINK_AB;
   for k: 0..<9 {
     z := -15.0 + f32(k);
-    p := verse_path_nearest(nodes[..], links[..], 88, z);
+    p := metaverse_path_nearest(nodes[..], links[..], 88, z);
     if p.d < 0.01 { #assert z > EG_BRIDGE[1] + f32(EG_PATH_HALF) && z < EG_BRIDGE[3] - f32(EG_PATH_HALF); }
   }
 }
@@ -960,8 +960,8 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   heights: [EG_GROUND_POINTS] f32;
   #assert everglade_build_ground(heights[..]);
   g := everglade_ground();
-  #assert near(verse_terrain_height(g, heights[..], 2, 1), 0, 0.02);
-  #assert near(verse_terrain_height(g, heights[..], 34, 3), 0, 0.05);
+  #assert near(metaverse_terrain_height(g, heights[..], 2, 1), 0, 0.02);
+  #assert near(metaverse_terrain_height(g, heights[..], 34, 3), 0, 0.05);
   // Under each building the ground is level, so its box stands on it.
   for b: 0..<EG_BUILDINGS {
     k := b * EG_BOX;
@@ -969,7 +969,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
     for c: 0..<4 {
       x := ifx c % 2 == 0 then EG_BUILDING[k] else EG_BUILDING[k + 2];
       z := ifx c / 2 == 0 then EG_BUILDING[k + 1] else EG_BUILDING[k + 3];
-      h := verse_terrain_height(g, heights[..], x, z);
+      h := metaverse_terrain_height(g, heights[..], x, z);
       lowest = lo(lowest, h); highest = hi(highest, h);
     }
     #assert highest - lowest < 0.25;
@@ -978,14 +978,14 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
     k := b * EG_BOX;
     lowest := 1000.0f32; highest := -1000.0f32;
     for c: 0..<4 {
-      h := verse_terrain_height(g, heights[..], EG_DHOUSE[k + (c % 2) * 2], EG_DHOUSE[k + 1 + (c / 2) * 2]);
+      h := metaverse_terrain_height(g, heights[..], EG_DHOUSE[k + (c % 2) * 2], EG_DHOUSE[k + 1 + (c / 2) * 2]);
       lowest = lo(lowest, h); highest = hi(highest, h);
     }
     #assert highest - lowest < 0.25;
   }
   // The forest past the walls rises; the trails out climb gently, the river trail over the bridge's deck.
   deck := everglade_deck(heights[..]);
-  #assert verse_terrain_height(g, heights[..], -160, -160) > verse_terrain_height(g, heights[..], -40, -40) + 2;
+  #assert metaverse_terrain_height(g, heights[..], -160, -160) > metaverse_terrain_height(g, heights[..], -40, -40) + 2;
   for l: 0..<EG_LINKS {
     a := EG_LINK_AB[l * 2]; b := EG_LINK_AB[l * 2 + 1];
     ax := EG_NODE_XZ[a * 2]; az := EG_NODE_XZ[a * 2 + 1]; bx := EG_NODE_XZ[b * 2]; bz := EG_NODE_XZ[b * 2 + 1];
@@ -1027,14 +1027,14 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   // Deep enough to swim in the middle, shallow enough to wade at the edge.
   z := -30.0f32;
   j := cast(int) ((z - f32(EG_EDGE)) / f32(EG_CELL));
-  #assert levels[j] - verse_terrain_height(g, heights[..], 88, z) > 2.1;
-  #assert levels[j] - verse_terrain_height(g, heights[..], 86.5, z) < 1.25;
+  #assert levels[j] - metaverse_terrain_height(g, heights[..], 88, z) > 2.1;
+  #assert levels[j] - metaverse_terrain_height(g, heights[..], 86.5, z) < 1.25;
   // The deck stands over the water and the trail's ground either side of it.
   deck := everglade_deck(heights[..]);
   b := cast(int) ((-11.5 - f32(EG_EDGE)) / f32(EG_CELL));
   #assert deck > levels[b] + 0.8;
   #assert everglade_walk_height(heights[..], deck, 88, -11.5) == deck;
-  #assert abs(verse_terrain_height(g, heights[..], EG_BRIDGE[0], -7) - deck) < 0.3 && abs(verse_terrain_height(g, heights[..], EG_BRIDGE[2], -13) - deck) < 0.3;
+  #assert abs(metaverse_terrain_height(g, heights[..], EG_BRIDGE[0], -7) - deck) < 0.3 && abs(metaverse_terrain_height(g, heights[..], EG_BRIDGE[2], -13) - deck) < 0.3;
 }
 
 #test "every place, gate and character has a name, and the hashes are distinct" {
@@ -1061,7 +1061,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   for p: 0..<EG_PONDS {
     x := EG_POND[p * 4]; z := EG_POND[p * 4 + 1]; r := EG_POND[p * 4 + 2];
     // the water stays off the trail, with a bank to stand on
-    trail := verse_path_nearest(nodes[..], links[..], x, z).d;
+    trail := metaverse_path_nearest(nodes[..], links[..], x, z).d;
     #assert trail > r + f32(EG_PATH_HALF) + 1.5;
     town := everglade_in_town(x, z);
     #assert EG_POND_OPEN[p] >= r + 4;
@@ -1079,13 +1079,13 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
     d := sqrt((gx - x) * (gx - x) + (gz - z) * (gz - z));
     // deep at the middle by the pond's depth (within a grid cell's slope), dry ground 2 m past the rim
     #assert level - heights[j * w + i] > EG_POND[p * 4 + 3] * 0.8;
-    #assert verse_terrain_height(everglade_ground(), heights[..], x + r + 2, z) >= level + 0.2;
+    #assert metaverse_terrain_height(everglade_ground(), heights[..], x + r + 2, z) >= level + 0.2;
   }
   // the carve leaves the ring the level is read from: the same level after it
   raw: [EG_GROUND_POINTS] f32;
   flats: [EG_FLATS * FLAT] f32;
   #assert everglade_flats(flats[..]) == EG_FLATS;
-  #assert verse_terrain_build(everglade_ground(), raw[..], nodes[..], links[..], f32(EG_PATH_HALF), flats[..]);
+  #assert metaverse_terrain_build(everglade_ground(), raw[..], nodes[..], links[..], f32(EG_PATH_HALF), flats[..]);
   everglade_carve_river(raw[..]);
   for p: 0..<EG_PONDS { #assert abs(everglade_pond_level(raw[..], p) - everglade_pond_level(heights[..], p)) < 0.001; }
 }

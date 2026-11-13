@@ -1670,7 +1670,7 @@ on an `metaverse-engine/core/loop.coax` `FrameClock`, and everything a realm mov
 its steps (animation, its room's timing) moves by `loop_counted` or
 `loop_counts`: the frame's time after that clock's refusal, clamp and drop.
 The page faces of the haunted house, Fairy Forest, the Garden, Everglade and
-the villa move their realm by `verse_player_counts` and hand the player the
+the villa move their realm by `metaverse_player_counts` and hand the player the
 frame itself. No clock in a realm runs more steps in one frame than the
 realm's declared budget (`steps = 8`, `metaverse-engine/core/budget.coax`); time past the
 cap is dropped and counted on the clock, never run later. `metaverse-engine/core/loop.coax`
@@ -4387,7 +4387,7 @@ schema-1 resource subset, rejects unknown/duplicate fields and non-minimal
 varints, and emits existing HudInvocation bytes. Native adapters only transfer
 bytes; the resource and invocation have no second hand-written wire codec.
 The home is the Grid seen from high above, slowly orbiting, with only the Start
-bar over it (`verse_home_hud_frame`). Start dollies the camera down to land
+bar over it (`metaverse_home_hud_frame`). Start dollies the camera down to land
 behind you; `metaverse-engine/cam/camera.coax` owns the overview orbit and the dolly path
 (eased, from behind and above, never below where it lands, a cut under
 reduced motion; a tap hurries it). Controls, the hotbar and the balance appear
@@ -4443,10 +4443,10 @@ The wallet sends and receives (Lightning invoices and addresses, LNURL,
 on-chain, Spark). `Wallet/SparkHost.swift` is the only file that imports the
 SDK and hands the screens plain values. `pay/wallet.coax` is
 `#authority` and compiled into the app, so its checks run on every build. It
-decides each send: `verse_wallet_may_send` passes a quote only while its
+decides each send: `metaverse_wallet_may_send` passes a quote only while its
 payment is quoted, before it expires, with the fee no more than the review
 screen showed, and with amount plus fee within what is spendable. The payment
-moves only through `verse_wallet_step`:
+moves only through `metaverse_wallet_step`:
 - one `sendPayment` per quote, under one idempotency key;
 - an unknown outcome waits for the SDK and is never shown as a failure;
 - a finished payment stays finished until the person closes it.
@@ -4459,23 +4459,23 @@ Buying bitcoin (Wallet → Buy bitcoin, #12613) goes through the SDK's
 `buyBitcoin` with MoonPay's Bitcoin delivery or Cash App's Lightning invoice,
 never an asset other than bitcoin. `pay/wallet.coax` decides it:
 
-- `verse_wallet_buy_amount` passes a MoonPay amount only when it is more than
+- `metaverse_wallet_buy_amount` passes a MoonPay amount only when it is more than
   the most the SDK may pay to claim the deposit
-  (`verse_wallet_claim_fee_max`: the fastest recommended rate plus 1 sat/vB,
+  (`metaverse_wallet_claim_fee_max`: the fastest recommended rate plus 1 sat/vB,
   times its 99-vbyte claim). When the SDK can't give that rate, a MoonPay
   purchase is refused.
-- `verse_wallet_moonpay_page` passes only `https://buy.moonpay.io` with
+- `metaverse_wallet_moonpay_page` passes only `https://buy.moonpay.io` with
   exactly one `currencyCode=btc` and exactly one `walletAddress` equal to the
   deposit address the wallet itself reports after the call. Every query
   parameter name is letters and digits, and the page has no `#` or `;`, so
   no other currency or address can hide behind an encoded name or a
   fragment.
-- `verse_wallet_cashapp_page` passes only a `https://cash.app/launch/lightning/`
+- `metaverse_wallet_cashapp_page` passes only a `https://cash.app/launch/lightning/`
   link to a mainnet invoice (`lnbc` followed by the amount, not `lnbcrt`)
   whose own stated amount is exactly the sats asked, to the millisatoshi,
   and whose amount as the SDK parsed it is the same.
-- `verse_wallet_buy_step` moves the purchase, and the host acts only on what
-  `verse_wallet_buy_starts` and `verse_wallet_buy_opens` say from the state
+- `metaverse_wallet_buy_step` moves the purchase, and the host acts only on what
+  `metaverse_wallet_buy_starts` and `metaverse_wallet_buy_opens` say from the state
   before each event: it asks the SDK for a page only when no request is
   already out, and opens a page only on the step from asking to open. One
   SDK answer opens at most one page, and a second tap or a late answer opens
@@ -6547,7 +6547,7 @@ seats the class; the checkpoint's persisted class bit stays 0 or 1 (the Warlock
 or not), so a restoring hello reseats a class. USE IN EVERGLADE's run drives
 Everglade's ordinary input path (no teleport, no private movement), so the room
 moves the seat as for held keys and the drawn and room facings agree at the
-hand-off; its camera ends in the follow camera through `verse_orbit_toward`, and
+hand-off; its camera ends in the follow camera through `metaverse_orbit_toward`, and
 any key during it only skips. Checks: `fivebar-test.coax` "Character Create",
 `everglade5e-rules.coax`, `everglade/server/battle.coax` "a seat's class", room
 `room.coax` "Character Create class", `everglade5e.coax` "create:" and "classes:".
@@ -7717,7 +7717,7 @@ Character Create's glade lighting numbers are held once, as `ENV_GLADE_*` in
 painterly default's GPU evaluation (`metaverse-engine/render/painterly.coax`, with
 `transfer.coax`, `contact-shade.coax` and `filmic.coax` `film_exposed`) reads the
 same constants. The app's `cg_*` lighting names are delegates and hold no numbers.
-`verse_style_preset(STYLE_PAINTERLY, ...)` names the glade profile as its default
+`metaverse_style_preset(STYLE_PAINTERLY, ...)` names the glade profile as its default
 environment (`environment = ENV_GLADE_ID`); lowpoly, flat, anime and photoreal
 name none. Character Create's glade stays identical to the P1.1 baseline within
 its declared bounds (GitHub #13060). Checks: `coax test metaverse-engine/render/painterly.coax`
@@ -7740,7 +7740,7 @@ record's key. A refused resolution writes the last record held, or the glade's n
 partial one. Everglade II's set is `everglade/world/environment.coax` `e2_environment_set`, its
 day the room's (`day_from_room`); a page with no room is the glade's fixed noon. A painterly made
 realm (`myrealm`) that authors no time of day and no mist writes its style block under the glade
-(`metaverse/style-preset.coax` `verse_style_glade_env`). Character Create stays inside the P1.1
+(`metaverse/style-preset.coax` `metaverse_style_glade_env`). Character Create stays inside the P1.1
 baseline's bounds (GitHub #13066). Checks: `coax test metaverse-engine/render/environment-frame.coax`
 (`#authority`, zero mutants), `coax test metaverse-engine/render/painterly.coax` ("the glade record draws
 exactly the constants"), the `every frame writes the camera's environment` checks in

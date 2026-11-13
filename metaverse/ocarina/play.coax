@@ -156,7 +156,7 @@ ocl_tick :: (s:[]OcarinaLab,speed:f32,grounded:bool) {
  s[0].grounded=grounded;s[0].time+=ocl_motion_rate(s[0].clip,speed,s[0].source_speeds[s[0].clip])/64;s[0].age+=1.0/64.0;ocl_present(s);
 }
 ocl_start :: (s:[]OcarinaLab) {if s[0].started {return;}s[0].started=true;p:=s[0].spawn;s[0].backflip=false;s[0].jump_active=false;s[0].backflip_age=0;s[0].you=pc.walk_place(p.x,p.y,p.z,0);s[0].you.body.on_ground=true;s[0].you.cam.phi=1.38;s[0].you.cam.dist=3;s[0].you.cam.prev_dist=3;s[0].you.cam.max_dist=3;}
-ocl_blur :: (s:[]OcarinaLab) #export_c #effects(all) {s[0].keys=0;s[0].look_x=0;s[0].look_y=0;s[0].drag=false;s[0].thumbs=verse_sticks_reset();for k:0..<4 {s[0].active[k]=false;}p:=s[0].you;s[0].you=pc.walk_input(p,0,0,0,0,false,false,0,0);}
+ocl_blur :: (s:[]OcarinaLab) #export_c #effects(all) {s[0].keys=0;s[0].look_x=0;s[0].look_y=0;s[0].drag=false;s[0].thumbs=metaverse_sticks_reset();for k:0..<4 {s[0].active[k]=false;}p:=s[0].you;s[0].you=pc.walk_input(p,0,0,0,0,false,false,0,0);}
 ocl_key :: (s:[]OcarinaLab,raw_key:int)->bool #export_c #effects(all) {
  key:=ifx raw_key>=97 && raw_key<=122 then raw_key-32 else raw_key;
  if key==82 {ocl_blur(s);s[0].started=false;s[0].inspect=0;s[0].forced=false;s[0].grounded=true;ocl_start(s);ocl_select(s,0);return true;}
@@ -206,7 +206,7 @@ ocl_step :: (s:[]OcarinaLab,dt:f32,still:bool) #export_c #effects(all) {
  k:=s[0].keys;t:=s[0].thumbs;p:=pc.walk_input(s[0].you,cast(f32)((ifx (k&8)!=0 then 1 else 0)-(ifx (k&4)!=0 then 1 else 0)),cast(f32)((ifx (k&1)!=0 then 1 else 0)-(ifx (k&2)!=0 then 1 else 0)),t.pad_x,t.pad_y,pc.walk_runs((k&32)!=0,t.run,t.pad_x,t.pad_y),(k&16)!=0 || t.jump,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);p.cam.phi=ocl_camera_pitch(p.cam.phi);p.body.pace=ocl_input_pace(p.body.key_x,p.body.key_y,p.body.pad_x,p.body.pad_y);
  schedule:=pc.walk_schedule(p.body.clock,dt);if !schedule.ok {return;}p.body.clock=schedule.clock;s[0].frame_steps=schedule.count;
  for step:0..<schedule.count {previous:=p.body.pos;p=ocl_source_step(s,p);dx:=p.body.pos.x-previous.x;dz:=p.body.pos.z-previous.z;ocl_tick(s,sqrt(dx*dx+dz*dz)*64,p.body.on_ground);}
- p.body.clock=clock.loop_ran(p.body.clock);s[0].you=p;s[0].now+=cast(f64)schedule.count/64;s[0].look_x=0;s[0].look_y=0;s[0].thumbs=verse_sticks_used(t);
+ p.body.clock=clock.loop_ran(p.body.clock);s[0].you=p;s[0].now+=cast(f64)schedule.count/64;s[0].look_x=0;s[0].look_y=0;s[0].thumbs=metaverse_sticks_used(t);
 }
 #test "Ocarina phone top controls have disjoint visible hit areas including jump" #steps 1000000000 {
  s:[1]OcarinaLab;s[0].width=390;s[0].height=844;ocl_start(s[..]);

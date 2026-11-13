@@ -360,13 +360,13 @@ the costs a search lowers.
   holds them: nodes (x, z pairs) and links (two node numbers each), each
   link a strip `half` metres either side of its line. `costs` is Dijkstra
   over at most `MAX_NODES` (48) nodes, where a metre over grass costs
-  `OFF_PATH` (2.2) metres on a path; `verse_route_next` picks the next point
-  from where a follower stands, and `verse_route_points` lists the whole
+  `OFF_PATH` (2.2) metres on a path; `metaverse_route_next` picks the next point
+  from where a follower stands, and `metaverse_route_points` lists the whole
   route for a guide line. Everglade's streets (`EG_NODE_XZ`, `EG_LINK_AB`,
   `EG_PATH_HALF` 1.5 m) and its townsfolk (`everglade/legacy/v1/routines.coax`)
   have their own. A shared `metaverse-engine/world/nav/graph.coax` with typed results and
   the same tie-break is not built.
-- **Following and avoidance.** `verse_follower_step_among` walks at
+- **Following and avoidance.** `metaverse_follower_step_among` walks at
   `FOLLOW_WALK` (2.6 m/s), runs at `FOLLOW_RUN` (5.2 m/s) beyond
   `FOLLOW_FAR` (9 m), accelerates at `FOLLOW_ACCEL` (14 m/s²), turns at
   `FOLLOW_TURN` (9 per second) and slides along `FOLLOW_BLOCK` boxes.
@@ -392,8 +392,8 @@ the costs a search lowers.
 - [metaverse-engine/world/nav/grid.coax](../world/nav/grid.coax): walking grids and flow
   fields, with its oracle and the Dead Gears identity check.
 - [metaverse-engine/world/terrain.coax](../world/terrain.coax): the path graph,
-  `verse_route_next`, `verse_route_points`, `Follower`,
-  `verse_follower_step` and `verse_follower_step_among`.
+  `metaverse_route_next`, `metaverse_route_points`, `Follower`,
+  `metaverse_follower_step` and `metaverse_follower_step_among`.
 - [metaverse/deadgears/arena.coax](../../metaverse/deadgears/arena.coax): Dead
   Gears' own walking grid (`NAV_CELL` 0.5 m, 64 × 76 cells, `NAV_CLEAR`
   0.38 m) and its three flow fields: to you, to where the support engineer

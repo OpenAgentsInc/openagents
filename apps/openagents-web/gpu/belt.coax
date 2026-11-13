@@ -35,11 +35,11 @@ belt_bg_vs :: (i:u32,_iid1:u32)->V4 {
   return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
 }
 belt_bg_fs :: (pos:V4,u:[]f32)->V4 {
-  stars:f32=verse_starfield(pos.x,pos.y,u[8],u[9],u[2],u[7]);
+  stars:f32=metaverse_starfield(pos.x,pos.y,u[8],u[9],u[2],u[7]);
   c:V3=wg_add_f3f3(v3(0.006f32,0.008f32,0.014f32),wg_mul_f3f(wg_mul_f3f(v3(0.85f32,0.9f32,1.0f32),stars),0.8f32));
   d:f32=wg_length2(wg_sub_f2f2(v2(pos.x,pos.y),v2(u[4],u[5])));
-  disc:f32=verse_sun_disc(d,u[6]);
-  corona:f32=verse_sun_corona(d,u[6],u[7]);
+  disc:f32=metaverse_sun_disc(d,u[6]);
+  corona:f32=metaverse_sun_corona(d,u[6],u[7]);
   c=wg_mix_f3f3f(wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(BELT_SUN_GLOW(),corona),0.9f32)),BELT_SUN_CORE(),disc);
   c=wg_add_f3f3(c,wg_mul_f3f(BELT_DUST(),belt_belt_dust(v2(pos.x,pos.y),u)));
   worlds:s32=wg_i32_f(u[11]);

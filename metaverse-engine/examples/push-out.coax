@@ -6,8 +6,8 @@
 // high, a post (a capsule), and a wall whose corners are reversed. Each run is 2 s of holding
 // forward (+Z) from z = 0, on the 1/64 s step.
 walk :: (w: World, run: bool) -> Player {
-  p := verse_player_place(0, 0, 0, 0);
-  for k: 0..<128 { p = step(w, verse_player_input(p, 0, 1, 0, 0, run, false, 0, 0), STEP); }
+  p := metaverse_player_place(0, 0, 0, 0);
+  for k: 0..<128 { p = step(w, metaverse_player_input(p, 0, 1, 0, 0, run, false, 0, 0), STEP); }
   return p;
 }
 show :: (what: string, p: Player) {

@@ -1,5 +1,5 @@
-#ifndef VERSE_HOST_H
-#define VERSE_HOST_H
+#ifndef METAVERSE_HOST_H
+#define METAVERSE_HOST_H
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>

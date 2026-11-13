@@ -345,7 +345,7 @@ valley_step :: (s:[]ValleyLab,dt:f32,still:bool) {
   walls[114]=a.x-8;walls[115]=a.y;walls[116]=a.z;walls[117]=b.x-8;walls[118]=b.y;walls[119]=b.z;
 
   s[0].you=pc.walk_advance_in_realm(p,dt,empty,walls[..],empty,"valley-lab");
-  s[0].look_x=0;s[0].look_y=0;s[0].zoom=0;s[0].thumbs=verse_sticks_used(t);s[0].now+=cast(f64)dt;
+  s[0].look_x=0;s[0].look_y=0;s[0].zoom=0;s[0].thumbs=metaverse_sticks_used(t);s[0].now+=cast(f64)dt;
 }
 valley_vertex :: (s:[]ValleyLab,p:Point,c:Point) {
   #assert s[0].mesh_n<VALLEY_MESH;

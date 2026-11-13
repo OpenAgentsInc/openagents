@@ -94,12 +94,12 @@ static void start(uint32_t state) {
   if (!track_state.page_n) track_init(tr(), track_cstr("hecates-cemetery"));
   if (placed) return;
   coax_t_Point spawn = villa_spawn(at(state));
-  player = verse_player_place(spawn.x, spawn.y, spawn.z, 0);
-  controls = verse_player_v2_reset();
-  sticks = verse_sticks_reset();
+  player = metaverse_player_place(spawn.x, spawn.y, spawn.z, 0);
+  controls = metaverse_player_v2_reset();
+  sticks = metaverse_sticks_reset();
   cast();
   placed = true;
-  verse_place_golden(place_k(), golden);
+  metaverse_place_golden(place_k(), golden);
   villa_walls(at(state));   // the page started: its orbit is where you start
   villa_on_realm_clock(at(state));
   place_seen(state);
@@ -108,12 +108,12 @@ static void start(uint32_t state) {
 // Where you are, kept so a reload puts you back (place-face.h).
 static coax_t_Place place_here(uint32_t state) {
   if (!placed) return (coax_t_Place){0};
-  return verse_place_of(player.body.pos.x, player.body.pos.y, player.body.pos.z, verse_player_face(player), villa(state)->orbit, -1);
+  return metaverse_place_of(player.body.pos.x, player.body.pos.y, player.body.pos.z, metaverse_player_face(player), villa(state)->orbit, -1);
 }
 static void place_put(uint32_t state, coax_t_Place p) {
   coax_t_Place q = villa_place_fix(at(state), p);
-  player = verse_player_place(q.x, 0, q.z, q.face);
-  controls = verse_player_v2_reset();
+  player = metaverse_player_place(q.x, 0, q.z, q.face);
+  controls = metaverse_player_v2_reset();
   villa_place_camera(at(state), q);
 }
 
@@ -238,25 +238,25 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_t_Villa *v = villa(state);
   width = w; height = h; dpr = scale;
   float frame = dt;   /* the player's clock (metaverse-engine/core/loop.coax) steps it; the rest moves by what it counts */
-  dt = verse_player_counts(player, frame);
+  dt = metaverse_player_counts(player, frame);
   now += dt;
   v->golden = golden;
   if (!v->started || v->time == 0) v->still = still != 0;
   v->wall_ms = track_state.epoch + track_state.t * 1000.0;
   villa_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
   bool busy = villa_busy(at(state));
-  if (busy) sticks = verse_sticks_reset();
-  verse_player_v2_input(control(), v->key_x, v->key_y, sticks.pad_x, sticks.pad_y, verse_runs(v->run, sticks.run, sticks.pad_x, sticks.pad_y), v->jump || sticks.jump, 0, 0);
-  verse_player_v2_heading(control(), player, villa_player_theta(at(state)));
+  if (busy) sticks = metaverse_sticks_reset();
+  metaverse_player_v2_input(control(), v->key_x, v->key_y, sticks.pad_x, sticks.pad_y, metaverse_runs(v->run, sticks.run, sticks.pad_x, sticks.pad_y), v->jump || sticks.jump, 0, 0);
+  metaverse_player_v2_heading(control(), player, villa_player_theta(at(state)));
   if (sticks.zoom != 0) villa_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (metaverse/grid.coax) */
-  sticks = verse_sticks_used(sticks);
+  sticks = metaverse_sticks_used(sticks);
   int64_t walls = villa_walls(at(state));
-  coax_t_AdvanceTrace walked = verse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){v->walls.e, walls * 6},
+  coax_t_AdvanceTrace walked = metaverse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){v->walls.e, walls * 6},
                                          (coax_v_f32){0, 0}, (coax_string){"hecates-cemetery", sizeof "hecates-cemetery" - 1});
   player = walked.player;
-  coax_t_Vec3 feet = verse_player_feet(player);
+  coax_t_Vec3 feet = metaverse_player_feet(player);
   villa_step_on_clock(at(state), player.body.clock, (coax_v_t_StepTarget){walked.targets.e, walked.count},
-                      feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.body.vel.x, player.body.vel.z);
+                      feet.x, feet.y, feet.z, metaverse_player_face(player), metaverse_player_act(player), player.body.vel.x, player.body.vel.z);
   {   // metres walked and each 20 m square of the cemetery visited once (analytics.coax track_walk, track_area)
     static float last_x, last_z; static bool placed;
     if (placed) { float dx = feet.x - last_x, dz = feet.z - last_z; track_walk(tr(), __builtin_sqrt((double)(dx * dx + dz * dz))); }
@@ -326,13 +326,13 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, in
   track_key_up(tr(), key);
   return villa_key_up(at(state), key, mods) ? 1u : 0u;
 }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { villa_blur(at(state)); sticks = verse_sticks_reset(); track_blur(tr()); }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { villa_blur(at(state)); sticks = metaverse_sticks_reset(); track_blur(tr()); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   start(state);
   track_pointer(tr(), x, y, phase, kind, (coax_string){"", 0});
   track_drain(&track_state);
   if (villa_pointer(at(state), x, y, phase, kind, id)) { pet_action(state); return 1u; }
-  if (kind != 0) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  if (kind != 0) sticks = metaverse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
 }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { villa_wheel(at(state), dy); }

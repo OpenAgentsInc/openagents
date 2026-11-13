@@ -5,7 +5,7 @@
 // ground of lines every 4 m out to 264 m, brighter on the street lines every
 // 24 m, fading into the black field from 6 m to 110 m, with a ring at your
 // feet. You walk it with metaverse-engine/move/player.coax; your character and the robots
-// are metaverse/cast.coax's, drawn by the host with verse_grid_view.
+// are metaverse/cast.coax's, drawn by the host with metaverse_grid_view.
 //
 // aethyr's Pylon terminal stands 4 m ahead of where you start ("The
 // terminal" below).
@@ -193,14 +193,14 @@ ring :: (h: int, c: Camera, center: Vec3, radius: f32, count: int, light: f32, w
 
 #test "Grid projection admission preserves output on a nonfinite viewport" {
   out:[16]f32;for i:0..<16 {out[i]=19;}
-  #assert !verse_grid_view(0,2,-4,0,1,0,1.0f32/0.0f32,100,out[..]);
+  #assert !metaverse_grid_view(0,2,-4,0,1,0,1.0f32/0.0f32,100,out[..]);
   for i:0..<16 {#assert out[i]==19;}
 }
 
 // The camera as a 4x4 matrix, by rows, from the world to Metal's clip
 // space: the same screen position as `project`, and depth 0 at NEAR to 1 at
 // FAR, so the host's depth-tested meshes line up with the lines drawn here.
-verse_grid_view :: (eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
+metaverse_grid_view :: (eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
                        width: f32, height: f32, out: [] f32) -> bool #export_c #effects(all) {
   if !grid_render_view_allowed(width,height,out.count) {return false;}
   c := camera(v3(eye_x, eye_y, eye_z), v3(at_x, at_y, at_z), width, height);
@@ -268,13 +268,13 @@ prop_vertex :: (b: [] u8, i: int, p: Vec3, tone: int) {
   b[at + 55] = 255;                                        // flat, no texture
 }
 
-verse_grid_prop_vertices :: () -> int #export_c #effects(all) { return PROP_VERTICES; }
-verse_grid_prop_faces :: () -> int #export_c #effects(all) { return PROP_FACES; }
-verse_grid_prop_lines :: () -> int #export_c #effects(all) { return PROP_LINES; }
+metaverse_grid_prop_vertices :: () -> int #export_c #effects(all) { return PROP_VERTICES; }
+metaverse_grid_prop_faces :: () -> int #export_c #effects(all) { return PROP_FACES; }
+metaverse_grid_prop_lines :: () -> int #export_c #effects(all) { return PROP_LINES; }
 
 // The terminal's vertices (64 bytes each), triangles and edge pairs, into
 // buffers of at least those sizes. Their joint is the identity.
-verse_grid_props :: (vertices: [] u8, faces: [] u32, lines: [] u32) -> bool #export_c #effects(all) {
+metaverse_grid_props :: (vertices: [] u8, faces: [] u32, lines: [] u32) -> bool #export_c #effects(all) {
   if vertices.count < PROP_VERTICES * 64 || faces.count < PROP_FACES || lines.count < PROP_LINES { return false; }
   quads: [24] int;
   q := 0;
@@ -310,7 +310,7 @@ verse_grid_props :: (vertices: [] u8, faces: [] u32, lines: [] u32) -> bool #exp
 }
 
 // The terminal's boxes as walls for player.coax: WALL numbers each.
-verse_grid_walls :: (out: [] f32) -> int #export_c #effects(all) {
+metaverse_grid_walls :: (out: [] f32) -> int #export_c #effects(all) {
   if out.count < PROPS * WALL { return 0; }
   for i: 0..<PROPS {
     b := prop(i);
@@ -358,7 +358,7 @@ reach :: (eye: Vec3, feet: Vec3) -> f32 { return hi(0, length(sub(eye, feet)) - 
 // into a width by height view (pixels, scale pixels per point), and, when
 // `controls` (you are playing, not watching the overview or the dolly), the
 // sticks and the hotbar, lit if you are dancing, at `now` seconds.
-verse_grid_frame :: (h: int, s: Sticks, eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
+metaverse_grid_frame :: (h: int, s: Sticks, eye_x: f32, eye_y: f32, eye_z: f32, at_x: f32, at_y: f32, at_z: f32,
                         feet_x: f32, feet_y: f32, feet_z: f32,
                         width: f32, height: f32, scale: f32, dancing: bool, now: f64, controls: bool) #export_c #effects(all) {
   if !(width > 0) || !(height > 0) { return; }
@@ -529,7 +529,7 @@ clip :: (m: [] f32, p: Vec3, width: f32, height: f32) -> Vec3 {
 
 #forall "the view matrix puts points where the lines go, with depth 0 at NEAR and 1 at FAR" ix: -3..<4, iz: 1..<6 {
   m: [16] f32;
-  #assert verse_grid_view(1, 2.5, -4, 0.5, 1.4, 0.3, 1170, 2532, m[..]);
+  #assert metaverse_grid_view(1, 2.5, -4, 0.5, 1.4, 0.3, 1170, 2532, m[..]);
   c := camera(v3(1, 2.5, -4), v3(0.5, 1.4, 0.3), 1170, 2532);
   p := v3(f32(ix) * 0.7, f32(iz) * 0.3, f32(iz) * 1.3);
   s := project(c, view(c, p));
@@ -545,8 +545,8 @@ clip :: (m: [] f32, p: Vec3, width: f32, height: f32) -> Vec3 {
 
 #test "no view for an empty screen or a short matrix" {
   m: [16] f32;
-  #assert !verse_grid_view(0, 2, -4, 0, 1, 0, 0, 100, m[..]) && !verse_grid_view(0, 2, -4, 0, 1, 0, 100, 0, m[..]);
-  #assert !verse_grid_view(0, 2, -4, 0, 1, 0, 100, 100, m[0..<15]);
+  #assert !metaverse_grid_view(0, 2, -4, 0, 1, 0, 0, 100, m[..]) && !metaverse_grid_view(0, 2, -4, 0, 1, 0, 100, 0, m[..]);
+  #assert !metaverse_grid_view(0, 2, -4, 0, 1, 0, 100, 100, m[0..<15]);
 }
 
 #test "near" { #assert near(1, 1.5, 0.5) && !near(1, 1.6, 0.5); }
@@ -556,7 +556,7 @@ clip :: (m: [] f32, p: Vec3, width: f32, height: f32) -> Vec3 {
   vertices: [2048] u8;
   faces: [72] u32;
   lines: [48] u32;
-  #assert verse_grid_props(vertices[..], faces[..], lines[..]);
+  #assert metaverse_grid_props(vertices[..], faces[..], lines[..]);
   // The desk's first corner, and the screen's last, from their vertices.
   #assert f32_from_bits(cast(u32) vertices[0] | (cast(u32) vertices[1] << 8) | (cast(u32) vertices[2] << 16) | (cast(u32) vertices[3] << 24)) == -1.4;
   at := (16 + 7) * 64;
@@ -579,17 +579,17 @@ clip :: (m: [] f32, p: Vec3, width: f32, height: f32) -> Vec3 {
     #assert d == 1 || d == 2 || d == 4;
   }
   // Short buffers: nothing.
-  #assert !verse_grid_props(vertices[0..<2047], faces[..], lines[..]);
-  #assert !verse_grid_props(vertices[..], faces[0..<71], lines[..]);
-  #assert !verse_grid_props(vertices[..], faces[..], lines[0..<47]);
+  #assert !metaverse_grid_props(vertices[0..<2047], faces[..], lines[..]);
+  #assert !metaverse_grid_props(vertices[..], faces[0..<71], lines[..]);
+  #assert !metaverse_grid_props(vertices[..], faces[..], lines[0..<47]);
 }
 
 #test "the terminal's walls" {
   out: [12] f32;
-  #assert verse_grid_walls(out[..]) == 2;
+  #assert metaverse_grid_walls(out[..]) == 2;
   #assert out[0] == -1.4 && out[1] == 0 && out[2] == 3.5 && out[3] == 1.4 && out[4] == 1 && out[5] == 4.5;
   #assert out[6] == -1.2 && out[7] == 1 && near(out[8], 3.9, 0.00001) && out[9] == 1.2 && near(out[10], 2.4, 0.00001) && near(out[11], 4.1, 0.00001);
-  #assert verse_grid_walls(out[0..<11]) == 0;
+  #assert metaverse_grid_walls(out[0..<11]) == 0;
   #assert display_byte(0) == 0 && display_byte(1) == 255 && display_byte(2) == 255 && display_byte(0.001) == 3;
 }
 
@@ -609,7 +609,7 @@ clip :: (m: [] f32, p: Vec3, width: f32, height: f32) -> Vec3 {
 
 // The Haunted House portal is geometry in the Grid. Its screen projection
 // also supplies the platform's accessible hit target and floating name.
-verse_grid_portal :: (h:int,ex:f32,ey:f32,ez:f32,ax:f32,ay:f32,az:f32,width:f32,height:f32,scale:f32) -> Screen #export_c #effects(all) {
+metaverse_grid_portal :: (h:int,ex:f32,ey:f32,ez:f32,ax:f32,ay:f32,az:f32,width:f32,height:f32,scale:f32) -> Screen #export_c #effects(all) {
  c:=camera(v3(ex,ey,ez),v3(ax,ay,az),width,height);
  for i:0..<32 {
   a:=f32(i)*f32(PI)/32;b:=f32(i+1)*f32(PI)/32;
@@ -621,6 +621,6 @@ verse_grid_portal :: (h:int,ex:f32,ey:f32,ez:f32,ax:f32,ay:f32,az:f32,width:f32,
  marker:=view(c,v3(-1.5,3.2,10));if marker.z<0.05{return Screen.{x= -10000,y= -10000};}
  return project(c,marker);
 }
-verse_grid_controls :: (h:int,s:Sticks,width:f32,height:f32,scale:f32) #export_c #effects(all) {sticks_out(h,s,width,height,hi(scale,0.5));}
+metaverse_grid_controls :: (h:int,s:Sticks,width:f32,height:f32,scale:f32) #export_c #effects(all) {sticks_out(h,s,width,height,hi(scale,0.5));}
 
 

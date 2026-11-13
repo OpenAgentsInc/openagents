@@ -48,16 +48,16 @@ static void vkhands_poll(VkHands *h, double now, uint32_t w, uint32_t hgt, void 
     for (ssize_t i = 0; i < n; i++) {
       if (buf[i] != '\n') { if (h->line_n < sizeof h->line) h->line[h->line_n++] = buf[i]; continue; }
       coax_string text = {h->line, (int64_t)h->line_n};
-      int64_t what = verse_hands_read(text, 0);
+      int64_t what = metaverse_hands_read(text, 0);
       h->line_n = 0;
       int pinched = what == 2;   // os/verse-hands.coax HANDS_PINCH
-      h->run = verse_hands_run(h->run, pinched);
+      h->run = metaverse_hands_run(h->run, pinched);
       int was = h->down;
-      h->down = verse_hands_down(was, h->run);
+      h->down = metaverse_hands_down(was, h->run);
       if (what == 0) { h->seen = 0; if (was && !h->down && h->x >= 0) to((float)h->x * w / 1e6f, (float)h->y * hgt / 1e6f, 2); continue; }
       h->seen = 1;
-      h->x = verse_hands_ease(h->x, verse_hands_screen(verse_hands_read(text, 1), 0));
-      h->y = verse_hands_ease(h->y, verse_hands_screen(verse_hands_read(text, 2), 1));
+      h->x = metaverse_hands_ease(h->x, metaverse_hands_screen(metaverse_hands_read(text, 1), 0));
+      h->y = metaverse_hands_ease(h->y, metaverse_hands_screen(metaverse_hands_read(text, 2), 1));
       float sx = (float)h->x * w / 1e6f, sy = (float)h->y * hgt / 1e6f;
       to(sx, sy, h->down && !was ? 0 : !h->down && was ? 2 : 1);
     }

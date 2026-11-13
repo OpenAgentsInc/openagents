@@ -88,7 +88,7 @@ belt_socket_opened :: (s: [] Belt, id: int) #export_c #effects(all) { lr_opened(
 net_rebase :: (s: [] Belt, text: string) -> bool {
   cam := s[0].cam; follow := s[0].follow; place := s[0].follow_place; framed := s[0].framed; sys := s[0].system;
   belt_reset(s);
-  for k: 0..<SHIPS { verse_command_clear(s[0].cmd[..], k); s[0].sight_n[k] = 0; s[0].sight_head[k] = 0; }
+  for k: 0..<SHIPS { metaverse_command_clear(s[0].cmd[..], k); s[0].sight_n[k] = 0; s[0].sight_head[k] = 0; }
   s[0].tac[0].on = false;
   ok := load_game(s, text);
   s[0].cam = cam; s[0].follow = follow; s[0].follow_place = place; s[0].framed = framed; s[0].system = sys;

@@ -72,7 +72,7 @@
         "engine",
         "art-styles"
       ],
-      "body": "`metaverse/style.coax`: the `StylePreset` record with every painterly number in the spec (band edges and softness, rim, shadow tint, ambient, haze per clock key, sky, bloom, shafts, grass, foliage, water, tone, phone tier), the lowpoly preset (what realms draw today: one light term, light fog, no post) and a photoreal placeholder that refuses to evaluate. `verse_style_preset(style, tier)` and `verse_style_at(preset, clock)` (linear between the midnight, dawn, noon and dusk keys) fill a `STYLE_FLOATS` uniform block (32 vec4f). The shading functions are written in the subset `coax/web/wgsl.py` lowers and emitted into a realm's WGSL between `// ---- generated: metaverse/style.coax` markers; the band, rim, tint, haze and tone functions land here as stubs with their checks, and the feature tasks fill them.\n\nSpecification: `docs/metaverse/art-styles.md`, Presets.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-tag; Everglade: eg-paint-light. Those tasks wait on this one.",
+      "body": "`metaverse/style.coax`: the `StylePreset` record with every painterly number in the spec (band edges and softness, rim, shadow tint, ambient, haze per clock key, sky, bloom, shafts, grass, foliage, water, tone, phone tier), the lowpoly preset (what realms draw today: one light term, light fog, no post) and a photoreal placeholder that refuses to evaluate. `metaverse_style_preset(style, tier)` and `metaverse_style_at(preset, clock)` (linear between the midnight, dawn, noon and dusk keys) fill a `STYLE_FLOATS` uniform block (32 vec4f). The shading functions are written in the subset `coax/web/wgsl.py` lowers and emitted into a realm's WGSL between `// ---- generated: metaverse/style.coax` markers; the band, rim, tint, haze and tone functions land here as stubs with their checks, and the feature tasks fill them.\n\nSpecification: `docs/metaverse/art-styles.md`, Presets.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-tag; Everglade: eg-paint-light. Those tasks wait on this one.",
       "files": [
         "metaverse/style.coax",
         "coax/web/wgsl.py",
@@ -225,7 +225,7 @@
         "engine",
         "art-styles"
       ],
-      "body": "`verse_style_at` drives the key light from the realm's clock: the sun's elevation from −20° at midnight to 60° at noon on the preset's azimuth; below −6° the moon is the key (0.35, (0.62, 0.70, 0.95)); key colour and strength by clock (day (1.00, 0.95, 0.85) 1.0, dusk/dawn (1.00, 0.72, 0.48) 0.75). A realm with its own moon (Hecate's) passes its direction and keeps the preset's colours. `cycle` turns once every 48 real minutes; `?clock=` pins it.\n\nSpecification: `docs/metaverse/art-styles.md`, 13. Light through the day.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-light; Everglade: eg-paint-light. Those tasks wait on this one.",
+      "body": "`metaverse_style_at` drives the key light from the realm's clock: the sun's elevation from −20° at midnight to 60° at noon on the preset's azimuth; below −6° the moon is the key (0.35, (0.62, 0.70, 0.95)); key colour and strength by clock (day (1.00, 0.95, 0.85) 1.0, dusk/dawn (1.00, 0.72, 0.48) 0.75). A realm with its own moon (Hecate's) passes its direction and keeps the preset's colours. `cycle` turns once every 48 real minutes; `?clock=` pins it.\n\nSpecification: `docs/metaverse/art-styles.md`, 13. Light through the day.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-light; Everglade: eg-paint-light. Those tasks wait on this one.",
       "files": [
         "metaverse/style.coax",
         "apps/openagents-web/fixture.coax"
@@ -492,7 +492,7 @@
         "engine",
         "art-styles"
       ],
-      "body": "`verse_style_preset(style, PHONE)` for a coarse pointer or a canvas under 600 css px: shadow map 1024² with 4 taps, grass 8/m² to 18 m, one cloud octave, 12 shaft samples, bloom 0.22, haze ×1.25, sparkle grid 0.25 m. Bands, rim, tint, palette and tone are identical. If a realm misses its phone frame budget, grass density halves before its radius.\n\nSpecification: `docs/metaverse/art-styles.md`, 14. The phone tier.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-review; Everglade: eg-paint-review. Those tasks wait on this one.",
+      "body": "`metaverse_style_preset(style, PHONE)` for a coarse pointer or a canvas under 600 css px: shadow map 1024² with 4 taps, grass 8/m² to 18 m, one cloud octave, 12 shaft samples, bloom 0.22, haze ×1.25, sparkle grid 0.25 m. Bands, rim, tint, palette and tone are identical. If a realm misses its phone frame budget, grass density halves before its radius.\n\nSpecification: `docs/metaverse/art-styles.md`, 14. The phone tier.\n\nNeeded by Hecate's Cemetery (Planetary Villa, https://openagents.com/projects/planetary-villa): hc-paint-review; Everglade: eg-paint-review. Those tasks wait on this one.",
       "files": [
         "metaverse/style.coax",
         "coax/web/host.js"

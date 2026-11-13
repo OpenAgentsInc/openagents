@@ -4,7 +4,7 @@ import UIKit
 /// lost"; #13217). It asks the moment the wallet first holds money: one tap backs the wallet up
 /// with the account's passkey. Then it says the wallet is backed up, or that the account's backup
 /// isn't this wallet's or no longer works. pay/wallet-backup.coax decides which
-/// (verse_backup_card); WalletBackupFlow does the work.
+/// (metaverse_backup_card); WalletBackupFlow does the work.
 @MainActor
 final class WalletBackupCardView: UIView {
     /// "Not now" hides the offer until the app starts again.
@@ -70,7 +70,7 @@ final class WalletBackupCardView: UIView {
 
     private func show() {
         let backup = summary?.backup
-        phase = verse_backup_card(Int64(min(balance, UInt64(Int64.max))), flow.client.isLoggedIn, backup != nil, backup?.counts ?? false,
+        phase = metaverse_backup_card(Int64(min(balance, UInt64(Int64.max))), flow.client.isLoggedIn, backup != nil, backup?.counts ?? false,
                                   backup != nil && backup?.vault == flow.memory.vault, Self.notNow)
         card.isHidden = phase == 0
         later.isHidden = !(phase == 1 || phase == 2)

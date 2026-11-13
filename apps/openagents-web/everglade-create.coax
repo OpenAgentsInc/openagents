@@ -81,9 +81,9 @@ cz_facts :: (s: [] Everglade, text: string) {
   x := ez_spawn_x(); z := ez_spawn_z();
   s[0].spawn = v3(x, 0, z); s[0].spawn_face = f32(GLADE_FACE);   // as the room seats you (everglade-glade.coax)
   s[0].feet = v3(x, walk_at(s, x, z), z);
-  s[0].orbit = verse_orbit_start(s[0].feet, 0);
+  s[0].orbit = metaverse_orbit_start(s[0].feet, 0);
   s[0].warp = true; s[0].above = false; s[0].lift = 0;
-  s[0].day = verse_style_clock(CZ_CLOCK, fact(text, "now"), fact(text, "day"));
+  s[0].day = metaverse_style_clock(CZ_CLOCK, fact(text, "now"), fact(text, "day"));
   s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
 }
 
@@ -179,7 +179,7 @@ cz_walk :: (s: [] Everglade) {
   if c[0].walking { return; }
   c[0].walking = true; c[0].glide = 0; c[0].run_t = 0; c[0].handed = false; c[0].toward = false;
   c[0].address = true; c[0].dragging = false; c[0].down = -1;
-  s[0].orbit = verse_orbit_start(s[0].feet, 0);
+  s[0].orbit = metaverse_orbit_start(s[0].feet, 0);
   jn_character_created(s);
 }
 CZ_RUN_ALL :: CZ_SWING + CZ_RUN + CZ_EASE;
@@ -458,7 +458,7 @@ cz_studio :: (s: [] Everglade, feet: Point) -> Shot {
 }
 // After USE IN EVERGLADE, the run's camera (cz_track): from the studio's it swings round behind you
 // over CZ_SWING s, keeps its own track through the run, then eases into the follow camera `chase`
-// over CZ_EASE s, the orbit turned first to look the way it looks (verse_orbit_toward), so the hand-off
+// over CZ_EASE s, the orbit turned first to look the way it looks (metaverse_orbit_toward), so the hand-off
 // has no jump. Then the follow camera alone.
 cz_shot :: (s: [] Everglade, feet: Point, chase: Shot, dt: f32) -> Shot {
   c := s[0].cz[..];
@@ -480,8 +480,8 @@ cz_shot :: (s: [] Everglade, feet: Point, chase: Shot, dt: f32) -> Shot {
   }
   track := cz_frame_shot(s, feet, yaw, cz_frame(clamp((t - f32(CZ_SWING)) / f32(CZ_RUN), 0, 1)), false);
   if t < f32(CZ_SWING + CZ_RUN) { return track; }
-  if !c[0].toward { c[0].toward = true; s[0].orbit = verse_orbit_toward(s[0].orbit, track); }
-  if t < f32(CZ_RUN_ALL) { return verse_shot_mix(track, chase, (t - f32(CZ_SWING + CZ_RUN)) / f32(CZ_EASE)); }
+  if !c[0].toward { c[0].toward = true; s[0].orbit = metaverse_orbit_toward(s[0].orbit, track); }
+  if t < f32(CZ_RUN_ALL) { return metaverse_shot_mix(track, chase, (t - f32(CZ_SWING + CZ_RUN)) / f32(CZ_EASE)); }
   c[0].handed = true;   // the follow camera, the bar and the keys are yours
   return chase;
 }

@@ -127,8 +127,8 @@ final class WalletBackupFlow {
             // A 401 that asks for no proof means the server no longer takes this login (it ended, or
             // the account was frozen, which ends every login): the phone is logged out.
             let loggedIn = auth.loggedIn && !(answer.status == 401 && !answer.stepUp)
-            let local = verse_limit_local(sats, ledger.spent, ledger.limit, loggedIn)
-            switch verse_limit_next(Int64(answer.status), answer.stepUp, stepped, auth.loggedIn, local) {
+            let local = metaverse_limit_local(sats, ledger.spent, ledger.limit, loggedIn)
+            switch metaverse_limit_next(Int64(answer.status), answer.stepUp, stepped, auth.loggedIn, local) {
             case 0: return .pay(id)
             case 1:
                 do { _ = try await prove(); stepped = true } catch { return .refuse(error.localizedDescription) }

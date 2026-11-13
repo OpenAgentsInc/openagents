@@ -50,7 +50,7 @@ covers :: (cover: int, voiced_end: int) -> bool #effects(all) {
   return cover >= voiced_end + GUARD_MS;
 }
 
-verse_voice_reply_final_plan :: (voiced_end: int, done_cover: int, done_text: bool, done_cut_silence: int, flight_cover: int) -> int #export_c #effects(all) {
+metaverse_voice_reply_final_plan :: (voiced_end: int, done_cover: int, done_text: bool, done_cut_silence: int, flight_cover: int) -> int #export_c #effects(all) {
   if done_text && covers(done_cover, voiced_end) { return PLAN_USE; }
   if covers(flight_cover, voiced_end) { return PLAN_WAIT; }
   if done_text && done_cover > 0 && done_cut_silence >= CUT_SILENCE_MS { return PLAN_TAIL; }
@@ -63,7 +63,7 @@ verse_voice_reply_final_plan :: (voiced_end: int, done_cover: int, done_text: bo
   f := flight * 60;
   c := cut * 100;
   t := text == 1;
-  p := verse_voice_reply_final_plan(v, d, t, c, f);
+  p := metaverse_voice_reply_final_plan(v, d, t, c, f);
   // A partial stands as final only if it has words and covers every voiced
   // frame plus the guard: nothing the speaker said is left out.
   if p == PLAN_USE { #assert t && d >= v + GUARD_MS; }
@@ -78,23 +78,23 @@ verse_voice_reply_final_plan :: (voiced_end: int, done_cover: int, done_text: bo
 }
 
 #test "the final plan at the edges" {
-  #assert verse_voice_reply_final_plan(1000, 1100, true, 0, 0) == PLAN_USE;
-  #assert verse_voice_reply_final_plan(1000, 1099, true, 0, 0) == PLAN_WHOLE;
-  #assert verse_voice_reply_final_plan(1000, 1100, false, 0, 0) == PLAN_WHOLE;
-  #assert verse_voice_reply_final_plan(1000, 1099, true, 0, 1100) == PLAN_WAIT;
-  #assert verse_voice_reply_final_plan(1000, 0, false, 0, 1099) == PLAN_WHOLE;
-  #assert verse_voice_reply_final_plan(1000, 800, true, 200, 0) == PLAN_TAIL;
-  #assert verse_voice_reply_final_plan(1000, 800, true, 199, 0) == PLAN_WHOLE;
-  #assert verse_voice_reply_final_plan(1000, 800, false, 200, 0) == PLAN_WHOLE;
-  #assert verse_voice_reply_final_plan(0, 0, true, 300, 0) == PLAN_WHOLE;
-  #assert verse_voice_reply_final_plan(0, 100, true, 0, 0) == PLAN_USE;
-  #assert verse_voice_reply_final_plan(1000, 1, true, 200, 0) == PLAN_TAIL;
-  #assert verse_voice_reply_final_plan(1000, 0, true, 200, 0) == PLAN_WHOLE;
+  #assert metaverse_voice_reply_final_plan(1000, 1100, true, 0, 0) == PLAN_USE;
+  #assert metaverse_voice_reply_final_plan(1000, 1099, true, 0, 0) == PLAN_WHOLE;
+  #assert metaverse_voice_reply_final_plan(1000, 1100, false, 0, 0) == PLAN_WHOLE;
+  #assert metaverse_voice_reply_final_plan(1000, 1099, true, 0, 1100) == PLAN_WAIT;
+  #assert metaverse_voice_reply_final_plan(1000, 0, false, 0, 1099) == PLAN_WHOLE;
+  #assert metaverse_voice_reply_final_plan(1000, 800, true, 200, 0) == PLAN_TAIL;
+  #assert metaverse_voice_reply_final_plan(1000, 800, true, 199, 0) == PLAN_WHOLE;
+  #assert metaverse_voice_reply_final_plan(1000, 800, false, 200, 0) == PLAN_WHOLE;
+  #assert metaverse_voice_reply_final_plan(0, 0, true, 300, 0) == PLAN_WHOLE;
+  #assert metaverse_voice_reply_final_plan(0, 100, true, 0, 0) == PLAN_USE;
+  #assert metaverse_voice_reply_final_plan(1000, 1, true, 200, 0) == PLAN_TAIL;
+  #assert metaverse_voice_reply_final_plan(1000, 0, true, 200, 0) == PLAN_WHOLE;
 }
 
 // Recognize early: the speaker has been quiet for EARLY_MS after voicing,
 // and nothing finished or in flight covers the last voiced frame yet.
-verse_voice_reply_recognize_early :: (silence_ms: int, voiced_end: int, cover: int) -> bool #export_c #effects(all) {
+metaverse_voice_reply_recognize_early :: (silence_ms: int, voiced_end: int, cover: int) -> bool #export_c #effects(all) {
   if voiced_end <= 0 { return false; }
   if silence_ms < EARLY_MS { return false; }
   return !covers(cover, voiced_end);
@@ -104,17 +104,17 @@ verse_voice_reply_recognize_early :: (silence_ms: int, voiced_end: int, cover: i
   s := silence * 60;
   v := voiced * 80;
   c := cover * 80;
-  e := verse_voice_reply_recognize_early(s, v, c);
+  e := metaverse_voice_reply_recognize_early(s, v, c);
   #assert e == (v > 0 && s >= EARLY_MS && !(c >= v + GUARD_MS));
 }
 
 #test "recognizing early at the edges" {
-  #assert verse_voice_reply_recognize_early(160, 500, 0);
-  #assert !verse_voice_reply_recognize_early(159, 500, 0);
-  #assert !verse_voice_reply_recognize_early(400, 0, 0);
-  #assert !verse_voice_reply_recognize_early(400, 500, 600);
-  #assert verse_voice_reply_recognize_early(400, 500, 599);
-  #assert verse_voice_reply_recognize_early(400, 1, 0);
+  #assert metaverse_voice_reply_recognize_early(160, 500, 0);
+  #assert !metaverse_voice_reply_recognize_early(159, 500, 0);
+  #assert !metaverse_voice_reply_recognize_early(400, 0, 0);
+  #assert !metaverse_voice_reply_recognize_early(400, 500, 600);
+  #assert metaverse_voice_reply_recognize_early(400, 500, 599);
+  #assert metaverse_voice_reply_recognize_early(400, 1, 0);
 }
 
 // ---- Sentences ----
@@ -128,7 +128,7 @@ verse_voice_reply_recognize_early :: (silence_ms: int, voiced_end: int, cover: i
 // the next one.
 is_space :: (c: int) -> bool #effects(all) { return c == ' ' || c == '\n' || c == '\t' || c == '\r'; }
 
-verse_voice_reply_sentence_end :: (cur: int, next: int, length: int, first: bool) -> bool #export_c #effects(all) {
+metaverse_voice_reply_sentence_end :: (cur: int, next: int, length: int, first: bool) -> bool #export_c #effects(all) {
   if next == -2 { return false; }
   if length < MIN_SENTENCE { return false; }
   if first && length < MIN_FIRST { return false; }
@@ -139,7 +139,7 @@ verse_voice_reply_sentence_end :: (cur: int, next: int, length: int, first: bool
 }
 
 #forall "sentence ends" cur: 0..<128, next: -2..<128, size: 6..<10, f: 0..<2 {
-  e := verse_voice_reply_sentence_end(cur, next, size, f == 1);
+  e := metaverse_voice_reply_sentence_end(cur, next, size, f == 1);
   punct := cur == '.' || cur == '!' || cur == '?';
   space := next == ' ' || next == '\n' || next == '\t' || next == '\r';
   want := next != -2 && size >= MIN_SENTENCE && f == 0 && (cur == '\n' || (punct && (next == -1 || space)));
@@ -147,7 +147,7 @@ verse_voice_reply_sentence_end :: (cur: int, next: int, length: int, first: bool
 }
 
 #forall "clause ends" cur: 32..<128, next: -2..<128, size: 22..<27, f: 0..<2 {
-  e := verse_voice_reply_sentence_end(cur, next, size, f == 1);
+  e := metaverse_voice_reply_sentence_end(cur, next, size, f == 1);
   punct := cur == '.' || cur == '!' || cur == '?';
   clause := cur == ',' || cur == ';' || cur == ':';
   space := next == ' ' || next == '\n' || next == '\t' || next == '\r';
@@ -157,27 +157,27 @@ verse_voice_reply_sentence_end :: (cur: int, next: int, length: int, first: bool
 }
 
 #test "sentence ends" {
-  #assert verse_voice_reply_sentence_end('.', ' ', 8, false);
-  #assert !verse_voice_reply_sentence_end('.', ' ', 7, false);
-  #assert !verse_voice_reply_sentence_end('.', '5', 20, false);   // 1.5
-  #assert !verse_voice_reply_sentence_end('.', -2, 20, false);    // not arrived yet
-  #assert verse_voice_reply_sentence_end('?', -1, 20, false);
-  #assert verse_voice_reply_sentence_end('!', '\n', 20, false);
-  #assert verse_voice_reply_sentence_end('.', '\t', 20, false);
-  #assert verse_voice_reply_sentence_end('.', '\r', 20, false);
-  #assert verse_voice_reply_sentence_end('\n', 'A', 20, false);
-  #assert !verse_voice_reply_sentence_end(',', ' ', 20, false);
-  #assert verse_voice_reply_sentence_end(',', ' ', 24, true);
-  #assert verse_voice_reply_sentence_end('.', ' ', 24, true);
-  #assert !verse_voice_reply_sentence_end('.', ' ', 23, true);   // "Hello there!" joins the next
-  #assert !verse_voice_reply_sentence_end('\n', 'A', 23, true);
-  #assert verse_voice_reply_sentence_end('\n', 'A', 24, true);
-  #assert !verse_voice_reply_sentence_end(',', ' ', 23, true);
-  #assert !verse_voice_reply_sentence_end(',', ' ', 40, false);
-  #assert verse_voice_reply_sentence_end(';', '\n', 30, true);
-  #assert verse_voice_reply_sentence_end(':', '\t', 30, true);
-  #assert verse_voice_reply_sentence_end(':', '\r', 30, true);
-  #assert !verse_voice_reply_sentence_end(',', '5', 30, true);   // 1,500
-  #assert !verse_voice_reply_sentence_end(',', -1, 30, true);
-  #assert !verse_voice_reply_sentence_end(',', -2, 30, true);
+  #assert metaverse_voice_reply_sentence_end('.', ' ', 8, false);
+  #assert !metaverse_voice_reply_sentence_end('.', ' ', 7, false);
+  #assert !metaverse_voice_reply_sentence_end('.', '5', 20, false);   // 1.5
+  #assert !metaverse_voice_reply_sentence_end('.', -2, 20, false);    // not arrived yet
+  #assert metaverse_voice_reply_sentence_end('?', -1, 20, false);
+  #assert metaverse_voice_reply_sentence_end('!', '\n', 20, false);
+  #assert metaverse_voice_reply_sentence_end('.', '\t', 20, false);
+  #assert metaverse_voice_reply_sentence_end('.', '\r', 20, false);
+  #assert metaverse_voice_reply_sentence_end('\n', 'A', 20, false);
+  #assert !metaverse_voice_reply_sentence_end(',', ' ', 20, false);
+  #assert metaverse_voice_reply_sentence_end(',', ' ', 24, true);
+  #assert metaverse_voice_reply_sentence_end('.', ' ', 24, true);
+  #assert !metaverse_voice_reply_sentence_end('.', ' ', 23, true);   // "Hello there!" joins the next
+  #assert !metaverse_voice_reply_sentence_end('\n', 'A', 23, true);
+  #assert metaverse_voice_reply_sentence_end('\n', 'A', 24, true);
+  #assert !metaverse_voice_reply_sentence_end(',', ' ', 23, true);
+  #assert !metaverse_voice_reply_sentence_end(',', ' ', 40, false);
+  #assert metaverse_voice_reply_sentence_end(';', '\n', 30, true);
+  #assert metaverse_voice_reply_sentence_end(':', '\t', 30, true);
+  #assert metaverse_voice_reply_sentence_end(':', '\r', 30, true);
+  #assert !metaverse_voice_reply_sentence_end(',', '5', 30, true);   // 1,500
+  #assert !metaverse_voice_reply_sentence_end(',', -1, 30, true);
+  #assert !metaverse_voice_reply_sentence_end(',', -2, 30, true);
 }

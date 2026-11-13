@@ -144,7 +144,7 @@ cam_ground_height :: (g: [] CamGround, x: f32, z: f32) -> f32 {
 // book:begin centred
 // The pitch range of mode m, widening into first person as the orbit goes in.
 cam_pitch :: (m: CamMode, o: Orbit, p: f32) -> f32 {
-  f := verse_orbit_first(o);
+  f := metaverse_orbit_first(o);
   low := -(m.pitch_up + (f32(FREE_FIRST_PITCH) - m.pitch_up) * f);
   high := m.pitch_down + (f32(FREE_FIRST_PITCH) - m.pitch_down) * f;
   return ifx p < low then low else ifx p > high then high else p;
@@ -152,8 +152,8 @@ cam_pitch :: (m: CamMode, o: Orbit, p: f32) -> f32 {
 // The eye's line at pitch p: from the head (the eyes in first person), straight back along the look.
 CamRay :: struct { from: Point; dir: Point; far: f32; }
 cam_ray :: (o: Orbit, p: f32) -> CamRay {
-  q := o; q.pitch = p; f := verse_orbit_forward(q);
-  return CamRay.{from = verse_orbit_ray(o).from, dir = v3(-f.x, -f.y, -f.z), far = ifx o.zoom > 0 then o.zoom else 0.0f32};
+  q := o; q.pitch = p; f := metaverse_orbit_forward(q);
+  return CamRay.{from = metaverse_orbit_ray(o).from, dir = v3(-f.x, -f.y, -f.z), far = ifx o.zoom > 0 then o.zoom else 0.0f32};
 }
 cam_ray_ok :: (m: CamMode, g: [] CamGround, r: CamRay, t: f32) -> bool {
   x := r.from.x + r.dir.x * t; z := r.from.z + r.dir.z * t;
@@ -180,7 +180,7 @@ cam_eye_pitch :: (m: CamMode, g: [] CamGround, o: Orbit, p: f32) -> f32 {
 cam_press :: (m: CamMode, o: Orbit, p: f32, eye: f32) -> f32 {
   if eye <= p { return 0; }
   v := (eye - p) / (eye + m.pitch_up); v = ifx v > 1 then 1.0f32 else v;
-  return v * (1 - verse_orbit_first(o));
+  return v * (1 - metaverse_orbit_first(o));
 }
 // How far along the line before a body sphere (x, y, z, r each), keeping the orbit's clearance.
 cam_sphere_room :: (r: CamRay, spheres: [] f32) -> f32 {
@@ -202,14 +202,14 @@ cam_shot :: (m: CamMode, o: Orbit, eye_pitch: f32, press: f32) -> Shot {
   t := ifx o.shown < r.far then o.shown else r.far; t = ifx t > 0 then t else 0.0f32;
   eye := v3(r.from.x + r.dir.x * t, r.from.y + r.dir.y * t, r.from.z + r.dir.z * t);
   d := m.aim_ahead;
-  if press <= 0 || t < 0.05 { f := verse_orbit_forward(o); return Shot.{eye = eye, at = v3(eye.x + f.x * d, eye.y + f.y * d, eye.z + f.z * d)}; }
+  if press <= 0 || t < 0.05 { f := metaverse_orbit_forward(o); return Shot.{eye = eye, at = v3(eye.x + f.x * d, eye.y + f.y * d, eye.z + f.z * d)}; }
   ax := r.from.x - eye.x; ay := r.from.y + press * m.press_lift - eye.y; az := r.from.z - eye.z;
   l := sqrt(ax * ax + ay * ay + az * az);
   return Shot.{eye = eye, at = v3(eye.x + ax / l * d, eye.y + ay / l * d, eye.z + az / l * d)};
 }
 // One step of the centred follow's eye: the eye pitch and press for orbit o, and the room along its
 // line before the ground and the body spheres. The caller limits the orbit with the room
-// (verse_orbit_limit: in at once, out gently) after every pose it reads is final.
+// (metaverse_orbit_limit: in at once, out gently) after every pose it reads is final.
 CamCentred :: struct { eye_pitch: f32; press: f32; room: f32; }
 cam_centred :: (m: CamMode, g: [] CamGround, o: Orbit, body: [] f32) -> CamCentred {
   out: CamCentred;
@@ -335,12 +335,12 @@ cam_off_axis :: (s: Shot, x: f32, z: f32) -> f32 {
   m: CamMode; g: [1] CamGround;
   feet := v3(2, cam_test_height(2, -30, 0.05), -30);
   cam_test_fill(g[..], feet.x, feet.z, 0.05);
-  o := verse_orbit_start(feet, 0.4);
+  o := metaverse_orbit_start(feet, 0.4);
   pressed := false; last: Shot; first := true;
   for k: 0..<40 {
     o.pitch = cam_pitch(m, o, 1.1 - f32(k) * 0.06);
     c := cam_centred(m, g[..], o, none[0..<0]);
-    o = verse_orbit_limit(o, c.room, 0.016);
+    o = metaverse_orbit_limit(o, c.room, 0.016);
     s := cam_shot(m, o, c.eye_pitch, c.press);
     #assert s.eye.y >= cam_ground_height(g[..], s.eye.x, s.eye.z) + 0.19;
     #assert cam_off_axis(s, feet.x, feet.z) < 0.02;

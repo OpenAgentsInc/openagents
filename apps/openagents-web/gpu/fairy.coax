@@ -78,17 +78,17 @@ FAIRY_P_ROCK :: 17.0f32;
 FAIRY_P_LAVENDER :: 18.0f32;
 FAIRY_P_SAGE :: 19.0f32;
 fairy_pal :: (slot:f32)->V3 {
-  return v3(verse_style_flat_colour(FAIRY_PALETTE,slot,0.0f32),verse_style_flat_colour(FAIRY_PALETTE,slot,1.0f32),verse_style_flat_colour(FAIRY_PALETTE,slot,2.0f32));
+  return v3(metaverse_style_flat_colour(FAIRY_PALETTE,slot,0.0f32),metaverse_style_flat_colour(FAIRY_PALETTE,slot,1.0f32),metaverse_style_flat_colour(FAIRY_PALETTE,slot,2.0f32));
 }
 // Through the day (fairy.coax U_NIGHT, metaverse/fairy-forest/night.coax): the palette at noon, warmer at
-// dawn and dusk, a blue dusk by night (verse_style_flat_time).
+// dawn and dusk, a blue dusk by night (metaverse_style_flat_time).
 fairy_by_time :: (u:[]f32)->V3 {
-  return v3(verse_style_flat_time(FAIRY_PALETTE,0.0f32,u[793],u[792]),verse_style_flat_time(FAIRY_PALETTE,1.0f32,u[793],u[792]),verse_style_flat_time(FAIRY_PALETTE,2.0f32,u[793],u[792]));
+  return v3(metaverse_style_flat_time(FAIRY_PALETTE,0.0f32,u[793],u[792]),metaverse_style_flat_time(FAIRY_PALETTE,1.0f32,u[793],u[792]),metaverse_style_flat_time(FAIRY_PALETTE,2.0f32,u[793],u[792]));
 }
 fairy_tp :: (slot:f32,u:[]f32)->V3 {
   return wg_mul_f3f3(fairy_pal(slot),fairy_by_time(u));
 }
-// The flat preset's numbers (metaverse/style-preset.coax verse_style_flat): the far fade, the hem, a tall
+// The flat preset's numbers (metaverse/style-preset.coax metaverse_style_flat): the far fade, the hem, a tall
 // shape's dithered darkening toward its foot and its steps.
 // Fairy Forest keeps the near and middle park crisp: only the far terrain fades (from 140 m, over 260 m, at most 0.35).
 FAIRY_FADE_FROM :: 140.0f32;
@@ -125,7 +125,7 @@ fairy_sun_dir :: (u:[]f32)->V3 {
 // moon) a flat disc, and by night a few flat stars.
 fairy_sky_colour :: (d:V3,u:[]f32)->V3 {
   up:f32=d.y;
-  c:V3=wg_mix_f3f3f(fairy_tp(FAIRY_P_SKY,u),fairy_tp(FAIRY_P_HORIZON,u),verse_style_flat_sky(up));
+  c:V3=wg_mix_f3f3f(fairy_tp(FAIRY_P_SKY,u),fairy_tp(FAIRY_P_HORIZON,u),metaverse_style_flat_sky(up));
   cs:f32=wg_dot3(d,fairy_sun_dir(u));
   if (cs>0.99966f32) {
     c=wg_mix_f3f3f(wg_mul_f3f(fairy_pal(FAIRY_P_LIGHT),1.1f32),wg_mul_f3f(fairy_pal(FAIRY_P_LIGHT),0.8f32),u[792]);
@@ -191,7 +191,7 @@ fairy_faded :: (c:V3,r:f32)->V3 {
 fairy_hazed :: (c:V3,world:V3,u:[]f32)->V3 {
   d:f32=fmax(wg_length3(wg_sub_f3f3(world,v3(u[24],u[25],u[26])))-u[36],0.0f32);
   backdrop:f32=(smoothstep(8.0f32,40.0f32,world.y-u[41])*smoothstep(50.0f32,140.0f32,d))*0.7f32;
-  return wg_mix_f3f3f(c,fairy_tp(FAIRY_P_HORIZON,u),fmax(verse_style_flat_fade(d,FAIRY_FADE_FROM,FAIRY_FADE_OVER,FAIRY_FADE_CAP),backdrop));
+  return wg_mix_f3f3f(c,fairy_tp(FAIRY_P_HORIZON,u),fmax(metaverse_style_flat_fade(d,FAIRY_FADE_FROM,FAIRY_FADE_OVER,FAIRY_FADE_CAP),backdrop));
 }
 fairy_plate :: (p:V2,under:V3,r:V4,s:V4)->V3 {
   if (s.x<=0.0f32) {
@@ -315,7 +315,7 @@ fairy_box_vertex :: (id:u32)->FairyVert {
 }
 // Low poly (art-styles.md, Flat: facets): a sphere is coarse, eight faces round and five down, the
 // rest of its 16 x 10 grid collapsed to nothing; `nudge` moves each corner in or out by up to that
-// share of the radius (verse_style_facet_jitter, seeded per shape), so a crown or a stone reads as cut.
+// share of the radius (metaverse_style_facet_jitter, seeded per shape), so a crown or a stone reads as cut.
 FAIRY_ROUND :: 8.0f32;
 FAIRY_DOWN :: 5.0f32;
 fairy_nothing :: ()->FairyVert {
@@ -332,7 +332,7 @@ fairy_sphere_vertex :: (id:u32,nudge:f32,seed:f32)->FairyVert {
   lon:f32=(i/FAIRY_ROUND)*FAIRY_TAU;
   lat:f32=(j/FAIRY_DOWN)*3.14159265f32;
   n:V3=v3(sin(lat)*cos(lon),cos(lat),sin(lat)*sin(lon));
-  return FairyVert.{p=wg_mul_f3f(wg_mul_f3f(n,0.5f32),(1.0f32+(nudge*verse_style_facet_jitter(i,j,FAIRY_ROUND,FAIRY_DOWN,seed)))),n=n};
+  return FairyVert.{p=wg_mul_f3f(wg_mul_f3f(n,0.5f32),(1.0f32+(nudge*metaverse_style_facet_jitter(i,j,FAIRY_ROUND,FAIRY_DOWN,seed)))),n=n};
 }
 // Eight flat sides (the other eight collapsed) and flat caps.
 fairy_cylinder_vertex :: (id:u32)->FairyVert {
@@ -405,7 +405,7 @@ fairy_blob_shadows :: (p:V2,u:[]f32)->f32 {
         c:f32=wg_dot2(q,v2(-away.y,away.x));
         q=v2(a/stretch,c);
       }
-      s=fmax(s,verse_style_flat_shadow(wg_length2(q)/b.z)*fmin(b.w*1.6f32,1.0f32));
+      s=fmax(s,metaverse_style_flat_shadow(wg_length2(q)/b.z)*fmin(b.w*1.6f32,1.0f32));
       i+=1;
     }
   }
@@ -523,7 +523,7 @@ fairy_ground_colour :: (xz:V2,aa:f32,paths:V2)->V3 {
 // it leaves). No rim, no specular.
 fairy_painted :: (c:V3,n:V3,world:V3,shadow:f32,character:bool,u:[]f32)->V3 {
   // one tone a face (art-styles.md, Flat: facets), between the palette's shade and lit
-  band:f32=verse_style_facet_tone(wg_dot3(n,fairy_sun_dir(u)),1.0f32);
+  band:f32=metaverse_style_facet_tone(wg_dot3(n,fairy_sun_dir(u)),1.0f32);
   if character {
     band=0.25f32+(0.75f32*band);
   }
@@ -650,11 +650,11 @@ fairy_scene_fs :: (s:FairyS,u:[]f32,heights:[]f32)->FairyLit {
   // trim: a thin cream line along the hem of her clothes
   if (look==6) {
     from_hem:f32=(s.local.y+0.5f32)*s.size.x;
-    base=wg_mix_f3f3f(base,fairy_pal(FAIRY_P_ACCENT),verse_style_flat_hem(from_hem,FAIRY_HEM*0.5f32,fmax(local_aa*s.size.x,0.001f32)));
+    base=wg_mix_f3f3f(base,fairy_pal(FAIRY_P_ACCENT),metaverse_style_flat_hem(from_hem,FAIRY_HEM*0.5f32,fmax(local_aa*s.size.x,0.001f32)));
   }
   // a tall shape (a trunk, the heart tree) steps a little darker toward its foot, dithered where the steps meet
   if ((s.size.y>0.0f32)&&(look<99)) {
-    t:f32=verse_style_flat_dither(0.5f32-s.local.y,s.pos.x,s.pos.y,FAIRY_DITHER_STEPS);
+    t:f32=metaverse_style_flat_dither(0.5f32-s.local.y,s.pos.x,s.pos.y,FAIRY_DITHER_STEPS);
     base=wg_mix_f3f3f(base,wg_mul_f3f(wg_mul_f3f3(base,fairy_pal(FAIRY_P_SHADE)),0.8f32),(t*FAIRY_DITHER)*s.size.y);
   }
   r:V2=fairy_restored(xz,u);
@@ -667,7 +667,7 @@ fairy_scene_fs :: (s:FairyS,u:[]f32,heights:[]f32)->FairyLit {
     // what glows skips the tones: one flat light colour (a wing, glow 0.3, keeps a little of its face's tone)
     c=wg_mul_f3f(base,ifx glow<1.0f32 then 1.0f32 else 1.3f32);
     if (glow<0.5f32) {
-      c=wg_mul_f3f(base,mix(0.86f32,1.04f32,verse_style_facet_tone(wg_dot3(n,fairy_sun_dir(u)),1.0f32)));
+      c=wg_mul_f3f(base,mix(0.86f32,1.04f32,metaverse_style_facet_tone(wg_dot3(n,fairy_sun_dir(u)),1.0f32)));
     }
     if (!keep) {
       c=wg_mul_f3f(c,mix(0.35f32,1.0f32,r.x));
@@ -949,7 +949,7 @@ fairy_water_fresnel :: (c:f32)->f32 {
   m2:f32=m*m;
   return FAIRY_WATER_F0+((((1.0f32-FAIRY_WATER_F0)*m2)*m2)*m);
 }
-// ---- the flat water: two flat bands of the palette's water by depth (verse_style_flat's
+// ---- the flat water: two flat bands of the palette's water by depth (metaverse_style_flat's
 // shallow, mid and deep), a flat cream shore line and rings, no reflection and no sparkle.
 // The mesh, the waves and the ripples are the W2 shader's (everglade.wgsl), from
 // metaverse/fairy-forest/stream.coax's nodes (store 2).
@@ -976,7 +976,7 @@ fairy_water_fragment :: (i:FairyWaterOut,u:[]f32)->FairyWaterShade {
   foam:f32=fmax(line,rings);
   alpha:f32=(0.6f32+(0.35f32*stepf(0.4f32,depth)))*smoothstep(-0.05f32,0.1f32,depth);
   emit:V3=wg_mix_f3f3f(wg_mul_f3f(body,alpha),wg_mul_f3f3(fairy_pal(FAIRY_P_LIGHT),fairy_tp(FAIRY_P_LIT,u)),foam);
-  hz:f32=verse_style_flat_fade(fmax(dist-u[36],0.0f32),FAIRY_FADE_FROM,FAIRY_FADE_OVER,FAIRY_FADE_CAP);
+  hz:f32=metaverse_style_flat_fade(fmax(dist-u[36],0.0f32),FAIRY_FADE_FROM,FAIRY_FADE_OVER,FAIRY_FADE_CAP);
   trans:V3=wg_make_f3_f((1.0f32-alpha)*(1.0f32-foam));
   o.emit=wg_add_f3f3(wg_mul_f3f(emit,(1.0f32-hz)),wg_mul_f3f3(wg_mul_f3f(fairy_tp(FAIRY_P_HORIZON,u),hz),wg_sub_f3f3(v3(1.0f32,1.0f32,1.0f32),trans)));
   o.transmit=trans;
@@ -1028,10 +1028,10 @@ fairy_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth
   own:f32=wg_load_2d(post_aux,p,0).w;
   if ((own>0.0f32)&&(own<140.0f32)) {
     hi:I2=wg_sub_i2i2(wg_cvt_i2f2(wg_at2(u,0)),i2(1,1));
-    e:f32=verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_add_i2i2(p,i2(1,0)),i2(0,0),hi),0).w);
-    e=fmax(e,verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_sub_i2i2(p,i2(1,0)),i2(0,0),hi),0).w));
-    e=fmax(e,verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_add_i2i2(p,i2(0,1)),i2(0,0),hi),0).w));
-    e=fmax(e,verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_sub_i2i2(p,i2(0,1)),i2(0,0),hi),0).w));
+    e:f32=metaverse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_add_i2i2(p,i2(1,0)),i2(0,0),hi),0).w);
+    e=fmax(e,metaverse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_sub_i2i2(p,i2(1,0)),i2(0,0),hi),0).w));
+    e=fmax(e,metaverse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_add_i2i2(p,i2(0,1)),i2(0,0),hi),0).w));
+    e=fmax(e,metaverse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_sub_i2i2(p,i2(0,1)),i2(0,0),hi),0).w));
     c=wg_mix_f3f3f(c,fairy_tp(FAIRY_P_ACCENT,u),((e*0.85f32)*(1.0f32-smoothstep(60.0f32,140.0f32,own)))*(1.0f32-(u[792]*0.6f32)));
   }
   return wg_make_f4_f3f(fairy_plates(v2(pos.x,pos.y),fairy_encode(c),u),1.0f32);

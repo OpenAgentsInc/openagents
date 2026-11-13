@@ -33,8 +33,8 @@ final class HomeViewController: UIViewController {
     /// Voice: the toggle, level and caption (Voice/VoiceBar.swift).
     private let voice = VoiceBar()
     private var gridHandle: Int64 = 0
-    private var player = verse_player_place(0, 0, 0, 0)
-    private var sticks = verse_sticks_reset()
+    private var player = metaverse_player_place(0, 0, 0, 0)
+    private var sticks = metaverse_sticks_reset()
     private var gridTouches: [ObjectIdentifier: Int64] = [:]
     private var walls: [Float] = []
     private var danceElement: UIAccessibilityElement?
@@ -43,7 +43,7 @@ final class HomeViewController: UIViewController {
     private var lastTick: Double?
     private var gridElement: UIAccessibilityElement?
     private var youElement: UIAccessibilityElement?
-    // Cast.bin, admitted by verse_cast_open; its bytes stay put for every call.
+    // Cast.bin, admitted by metaverse_cast_open; its bytes stay put for every call.
     private var castBytes: UnsafeMutableRawBufferPointer?
     private var cast: CastAssets?
     private var anim = coax_t_Anim(move: 0, start: 0, from: 0, from_start: 0, fade_start: -1, air: false, dance: false)
@@ -69,8 +69,8 @@ final class HomeViewController: UIViewController {
         do {
             guard let url = Bundle.main.url(forResource: "Home", withExtension: "pb") else { throw HomeError.resource("Home.pb") }
             let bytes = try Data(contentsOf: url)
-            handle = bytes.withUnsafeBytes { mr_create($0.bindMemory(to: UInt8.self).baseAddress, $0.count, Int(verse_home_capacity())) }
-            guard handle != 0, verse_home_init(handle), mr_ok(handle) else { throw HomeError.resource("Home configuration") }
+            handle = bytes.withUnsafeBytes { mr_create($0.bindMemory(to: UInt8.self).baseAddress, $0.count, Int(metaverse_home_capacity())) }
+            guard handle != 0, metaverse_home_init(handle), mr_ok(handle) else { throw HomeError.resource("Home configuration") }
             renderer = try HomeRenderer(layer: surface.metalLayer)
             let element = HomeActionElement(accessibilityContainer: surface)
             element.accessibilityLabel = "Start"
@@ -121,7 +121,7 @@ final class HomeViewController: UIViewController {
             renderer?.resize(size)
             lastSize = size
             gridElement?.accessibilityFrameInContainerSpace = view.bounds
-            verse_home_resume(handle)
+            metaverse_home_resume(handle)
             trackedTouch = nil
             updateScene(at: CACurrentMediaTime())
         }
@@ -129,8 +129,8 @@ final class HomeViewController: UIViewController {
     @objc private func suspend() {
         clock?.invalidate(); clock = nil; trackedTouch = nil
         turn.stop()
-        verse_home_resume(handle)
-        sticks = verse_sticks_reset(); gridTouches = [:]; lastTick = nil
+        metaverse_home_resume(handle)
+        sticks = metaverse_sticks_reset(); gridTouches = [:]; lastTick = nil
     }
     // Face ID and the camera prompt resign active; only leaving the app
     // closes the wallet (receiving still works: the SSP holds Lightning).
@@ -144,7 +144,7 @@ final class HomeViewController: UIViewController {
         refreshBalance()
         turn.view = view; turn.use = "native-grid"; turn.start()
         guard house == nil, renderer != nil, clock == nil else { return }
-        verse_home_resume(handle)
+        metaverse_home_resume(handle)
         let link = CADisplayLink(target: DisplayTarget(owner: self), selector: #selector(DisplayTarget.tick(_:)))
         link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 60)
         link.add(to: .main, forMode: .common); clock = link
@@ -262,14 +262,14 @@ final class HomeViewController: UIViewController {
         walletButton.accessibilityValue = balanceLabel.text
         walletButton.accessibilityHint = reason
     }
-    @objc private func motionChanged() { verse_home_resume(handle) }
+    @objc private func motionChanged() { metaverse_home_resume(handle) }
     fileprivate func frame(_ link: CADisplayLink) { updateScene(at: link.timestamp) }
     private func updateScene(at timestamp: Double) {
         guard renderer != nil, lastSize.width > 0, lastSize.height > 0 else { return }
         if inGrid { return updateGrid(at: timestamp) }
         let scale = surface.metalLayer.contentsScale
         mr_clear_frame(handle)
-        verse_home_frame(handle, timestamp, lastSize.width, lastSize.height, scale, view.safeAreaInsets.bottom * scale, UIAccessibility.isReduceMotionEnabled)
+        metaverse_home_frame(handle, timestamp, lastSize.width, lastSize.height, scale, view.safeAreaInsets.bottom * scale, UIAccessibility.isReduceMotionEnabled)
         guard mr_ok(handle) else { suspend(); NSLog("OpenAgents: invalid home draw packet"); return }
         renderer?.draw(handle: handle, time: timestamp)
         if let bar = mr_bar(handle)?.pointee {
@@ -279,16 +279,16 @@ final class HomeViewController: UIViewController {
     }
     private func route(_ phase: Int64, _ touch: UITouch) {
         let point = touch.location(in: view); let scale = surface.metalLayer.contentsScale
-        let activated = verse_home_touch(handle, phase, point.x * scale, point.y * scale)
+        let activated = metaverse_home_touch(handle, phase, point.x * scale, point.y * scale)
         if activated { publishInvocation() }
     }
     private func publishInvocation() {
-        invocationCount = verse_home_presses(handle)
+        invocationCount = metaverse_home_presses(handle)
         startElement?.accessibilityValue = String(invocationCount)
         if let bytes = mr_output(handle), mr_output_size(handle) > 0 {
             let invocation = Data(bytes: bytes, count: mr_output_size(handle))
             // Bytes remain a real HudInvocation at the routing boundary.
-            NotificationCenter.default.post(name: .init("VerseHudInvocation"), object: invocation)
+            NotificationCenter.default.post(name: .init("MetaverseHudInvocation"), object: invocation)
             NSLog("Verse home.start #%lld (%ld protobuf bytes)", invocationCount, invocation.count)
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -300,9 +300,9 @@ final class HomeViewController: UIViewController {
         let bytes = UnsafeMutableRawBufferPointer.allocate(byteCount: data.count, alignment: 16)
         data.copyBytes(to: bytes)
         castBytes = bytes
-        let cast = verse_cast_open(castView(bytes))
-        palette = Array(repeating: coax_t_Joint(), count: Int(verse_cast_palette(cast)))
-        bodies = Array(repeating: 0, count: Int(verse_cast_robots(cast) * cast.robot_bodies.count) * 7)
+        let cast = metaverse_cast_open(castView(bytes))
+        palette = Array(repeating: coax_t_Joint(), count: Int(metaverse_cast_palette(cast)))
+        bodies = Array(repeating: 0, count: Int(metaverse_cast_robots(cast) * cast.robot_bodies.count) * 7)
         let layers = try [5, 9, 10, 11, 12, 16].map { layer -> URL in
             guard let url = Bundle.main.url(forResource: "cast-layer\(layer)", withExtension: "jpg") else { throw HomeError.resource("cast-layer\(layer).jpg") }
             return url
@@ -323,11 +323,11 @@ final class HomeViewController: UIViewController {
         var config: UInt8 = 0
         gridHandle = mr_create(&config, 1, 1)
         guard gridHandle != 0 else { NSLog("OpenAgents: no storage for the Grid"); return }
-        player = verse_player_place(0, 0, 0, 0)
+        player = metaverse_player_place(0, 0, 0, 0)
         walls = Array(repeating: 0, count: 64)
-        let wallCount = walls.withUnsafeMutableBufferPointer { Int(verse_grid_walls(coax_v_f32(data: $0.baseAddress, count: Int64($0.count)))) }
+        let wallCount = walls.withUnsafeMutableBufferPointer { Int(metaverse_grid_walls(coax_v_f32(data: $0.baseAddress, count: Int64($0.count)))) }
         walls = Array(walls.prefix(wallCount * 6))
-        sticks = verse_sticks_reset(); gridTouches = [:]; lastTick = nil
+        sticks = metaverse_sticks_reset(); gridTouches = [:]; lastTick = nil
         let element = UIAccessibilityElement(accessibilityContainer: surface)
         element.accessibilityLabel = "The Grid"
         element.accessibilityHint = "Drag on the left to walk, drag on the right to look, tap on the right to jump."
@@ -350,8 +350,8 @@ final class HomeViewController: UIViewController {
     private func beginArrival() {
         guard inGrid, case .overview = stage, let element = gridElement else { return }
         let now = CACurrentMediaTime()
-        let from = lastShot ?? verse_camera_overview(0)
-        stage = .arriving(verse_camera_dolly_start(from, now, UIAccessibility.isReduceMotionEnabled))
+        let from = lastShot ?? metaverse_camera_overview(0)
+        stage = .arriving(metaverse_camera_dolly_start(from, now, UIAccessibility.isReduceMotionEnabled))
         trackedTouch = nil
         element.accessibilityValue = "arriving"
         view.accessibilityElements = [element] + [youElement].compactMap { cast == nil ? nil : $0 } + [signInButton]
@@ -362,7 +362,7 @@ final class HomeViewController: UIViewController {
     private func arrive() {
         stage = .playing
         UserDefaults.standard.set(true, forKey: "OAGridSeen")
-        sticks = verse_sticks_reset(); gridTouches = [:]
+        sticks = metaverse_sticks_reset(); gridTouches = [:]
         view.isMultipleTouchEnabled = true
         balanceLabel.isHidden = false; walletButton.isHidden = false; voice.isHidden = false
         view.accessibilityElements = ([gridElement, youElement, danceElement, walletButton, housePortal].compactMap { $0 }.filter { $0 !== youElement || cast != nil }) + voice.accessibleParts + [signInButton]
@@ -377,7 +377,7 @@ final class HomeViewController: UIViewController {
         let frameClock = capture == nil ? 0 : R0FrameCapture.clock()
         defer { capture?.endFrame(captureFrame, since: frameClock) }
         if captureFrame >= 0 {
-            let input = verse_bench_frame(Int64(captureFrame))
+            let input = metaverse_bench_frame(Int64(captureFrame))
             sticks.pad_y = input.pad_y
             sticks.run = input.run; sticks.jump = input.rising; sticks.dance = input.dance
         }
@@ -386,9 +386,9 @@ final class HomeViewController: UIViewController {
         if playing {
             // The phone's turn looks too, as the right thumb does.
             let turned = turn.take()
-            player = verse_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw + Float(turned.yaw), sticks.dpitch + Float(turned.pitch))
-            if sticks.dance || danceRequested { anim = verse_cast_dance(anim); danceRequested = false }
-            sticks = verse_sticks_used(sticks)
+            player = metaverse_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw + Float(turned.yaw), sticks.dpitch + Float(turned.pitch))
+            if sticks.dance || danceRequested { anim = metaverse_cast_dance(anim); danceRequested = false }
+            sticks = metaverse_sticks_used(sticks)
         }
         // The robots move first; then you, among their bodies.
         #if DEBUG
@@ -400,10 +400,10 @@ final class HomeViewController: UIViewController {
             let now = timestamp - (gridStart ?? timestamp), b = castView(bytes), c = cast.cast
             placed = palette.withUnsafeMutableBufferPointer { joints in
                 let view = coax_v_t_Joint(data: joints.baseAddress, count: Int64(joints.count))
-                posed = verse_cast_robots_pose(b, c, now, view)
+                posed = metaverse_cast_robots_pose(b, c, now, view)
                 guard posed else { return 0 }
                 return bodies.withUnsafeMutableBufferPointer {
-                    Int(verse_cast_bodies(b, c, view, coax_v_f32(data: $0.baseAddress, count: Int64($0.count))))
+                    Int(metaverse_cast_bodies(b, c, view, coax_v_f32(data: $0.baseAddress, count: Int64($0.count))))
                 }
             }
         }
@@ -412,39 +412,39 @@ final class HomeViewController: UIViewController {
         let playerClock = capture == nil ? 0 : R0FrameCapture.clock()
         #endif
         player = bodies.withUnsafeMutableBufferPointer { b in walls.withUnsafeMutableBufferPointer { w in
-            verse_player_advance_among(player, frame, coax_v_f32(data: b.baseAddress, count: Int64(placed * 7)),
+            metaverse_player_advance_among(player, frame, coax_v_f32(data: b.baseAddress, count: Int64(placed * 7)),
                                           coax_v_f32(data: w.baseAddress, count: Int64(w.count)))
         } }
         #if DEBUG
         capture?.elapsed("player_update", frame: captureFrame, since: playerClock)
         #endif
-        let feet = verse_player_feet(player), face = verse_player_face(player)
+        let feet = metaverse_player_feet(player), face = metaverse_player_face(player)
         // The camera: the overview, the dolly down to you, or your own.
-        let follow = coax_t_Shot(eye: point(verse_player_eye(player)), at: point(verse_player_at(player)))
+        let follow = coax_t_Shot(eye: point(metaverse_player_eye(player)), at: point(metaverse_player_at(player)))
         var shot = follow
         switch stage {
         case .overview:
             if overviewEpoch == nil { overviewEpoch = timestamp }
-            shot = verse_camera_overview(timestamp - (overviewEpoch ?? timestamp))
+            shot = metaverse_camera_overview(timestamp - (overviewEpoch ?? timestamp))
         case .arriving(let d):
-            shot = verse_camera_dolly(d, timestamp, follow)
-            if verse_camera_dolly_done(d, timestamp) { arrive() }
+            shot = metaverse_camera_dolly(d, timestamp, follow)
+            if metaverse_camera_dolly_done(d, timestamp) { arrive() }
         case .playing: break
         }
         lastShot = shot
         let eye = shot.eye, at = shot.at
         let width = Float(lastSize.width), height = Float(lastSize.height), scale = surface.metalLayer.contentsScale
         mr_clear_frame(gridHandle)
-        verse_grid_frame(gridHandle, sticks, eye.x, eye.y, eye.z, at.x, at.y, at.z, feet.x, feet.y, feet.z,
+        metaverse_grid_frame(gridHandle, sticks, eye.x, eye.y, eye.z, at.x, at.y, at.z, feet.x, feet.y, feet.z,
                             width, height, Float(scale), anim.dance, timestamp, playing)
-        let portal = verse_grid_portal(gridHandle, eye.x, eye.y, eye.z, at.x, at.y, at.z, width, height, Float(scale))
+        let portal = metaverse_grid_portal(gridHandle, eye.x, eye.y, eye.z, at.x, at.y, at.z, width, height, Float(scale))
         housePortal.isHidden = !playing || !portal.x.isFinite || !portal.y.isFinite || portal.x < 0 || portal.x > width || portal.y < 0 || portal.y > height
         housePortal.frame = CGRect(x: CGFloat(portal.x)/scale - 85, y: CGFloat(portal.y)/scale - 35, width: 170, height: 44)
         // Over the overview, the home's Start bar.
         var bar: Int64?
         if case .overview = stage {
             mr_clear_frame(handle)
-            verse_home_hud_frame(handle, timestamp, lastSize.width, lastSize.height, scale, view.safeAreaInsets.bottom * scale)
+            metaverse_home_hud_frame(handle, timestamp, lastSize.width, lastSize.height, scale, view.safeAreaInsets.bottom * scale)
             guard mr_ok(handle) else { suspend(); NSLog("OpenAgents: invalid home draw packet"); return }
             bar = handle
             if let b = mr_bar(handle)?.pointee {
@@ -460,13 +460,13 @@ final class HomeViewController: UIViewController {
         var castFrame: CastFrame?
         if let cast, let bytes = castBytes {
             let now = timestamp - (gridStart ?? timestamp), b = castView(bytes), c = cast.cast
-            anim = verse_cast_update(b, c, anim, verse_player_act(player), player.body.vel.y > 0, now)
+            anim = metaverse_cast_update(b, c, anim, metaverse_player_act(player), player.body.vel.y > 0, now)
             var matrix = [Float](repeating: 0, count: 16)
-            let viewed = matrix.withUnsafeMutableBufferPointer { verse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, width, height, coax_v_f32(data: $0.baseAddress, count: 16)) }
+            let viewed = matrix.withUnsafeMutableBufferPointer { metaverse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, width, height, coax_v_f32(data: $0.baseAddress, count: 16)) }
             let anim = anim, robots = palette, joints = Int(c.joints)
             if viewed && posed {
                 castFrame = CastFrame(view: matrix) { out in
-                    guard out.count >= robots.count, verse_cast_pose(b, c, anim, now, feet.x, feet.y, feet.z, face, out) else { return false }
+                    guard out.count >= robots.count, metaverse_cast_pose(b, c, anim, now, feet.x, feet.y, feet.z, face, out) else { return false }
                     robots.withUnsafeBufferPointer { (out.data! + joints).update(from: $0.baseAddress! + joints, count: robots.count - joints) }
                     return true
                 }
@@ -477,7 +477,7 @@ final class HomeViewController: UIViewController {
         }
         renderer?.draw(handle: gridHandle, time: timestamp, cast: cast, frame: castFrame, bar: bar)
         guard playing else { return }
-        if verse_haunt_portal(feet.x, feet.z) { enterHouse(); return }
+        if metaverse_haunt_portal(feet.x, feet.z) { enterHouse(); return }
         #if DEBUG
         if capture?.finished == true { gridElement?.accessibilityValue = "benchmark.complete"; return }
         #endif
@@ -494,7 +494,7 @@ final class HomeViewController: UIViewController {
         screen.closed = { [self, weak screen, weak window] in
             screen?.closed = nil
             self.house = nil
-            self.player = verse_player_place(-1.5, 0, 7, .pi)
+            self.player = metaverse_player_place(-1.5, 0, 7, .pi)
             window?.rootViewController = self
             self.resume()
         }
@@ -508,7 +508,7 @@ final class HomeViewController: UIViewController {
             if phase == 0 { gridTouches[id] = nextTouchSlot; nextTouchSlot += 1 }
             guard let slot = gridTouches[id] else { continue }
             let point = touch.location(in: view)
-            sticks = verse_sticks_touch(sticks, slot, phase, Float(point.x * scale), Float(point.y * scale),
+            sticks = metaverse_sticks_touch(sticks, slot, phase, Float(point.x * scale), Float(point.y * scale),
                                            Float(lastSize.width), Float(lastSize.height), Float(scale), touch.timestamp)
             if phase >= 2 { gridTouches[id] = nil }
         }
@@ -516,16 +516,16 @@ final class HomeViewController: UIViewController {
     private func activateAccessibleButton() -> Bool {
         guard let bar = mr_bar(handle)?.pointee, bar.width > 0 else { return false }
         let x = Double(bar.x+bar.width/2), y = Double(bar.y+bar.height/2)
-        _ = verse_home_touch(handle, 0, x, y)
-        if verse_home_touch(handle, 2, x, y) { publishInvocation(); return true }
+        _ = metaverse_home_touch(handle, 0, x, y)
+        if metaverse_home_touch(handle, 2, x, y) { publishInvocation(); return true }
         return false
     }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         if playing { return routeGrid(touches, 0) }
         // A touch during the dolly hurries it.
         if case .arriving(let d) = stage {
-            let follow = coax_t_Shot(eye: point(verse_player_eye(player)), at: point(verse_player_at(player)))
-            stage = .arriving(verse_camera_dolly_hurry(d, CACurrentMediaTime(), follow))
+            let follow = coax_t_Shot(eye: point(metaverse_player_eye(player)), at: point(metaverse_player_at(player)))
+            stage = .arriving(metaverse_camera_dolly_hurry(d, CACurrentMediaTime(), follow))
             return
         }
         guard trackedTouch == nil, let touch = touches.first else { return }

@@ -42,10 +42,10 @@ class HomeTests(unittest.TestCase):
             'mr_dots':(C.POINTER(Dot),[C.c_int64]),'mr_lines':(C.POINTER(Line),[C.c_int64]),
             'mr_bar':(C.POINTER(Bar),[C.c_int64]),'mr_output':(C.c_void_p,[C.c_int64]),'mr_output_size':(C.c_size_t,[C.c_int64]),
             'host_load':(C.c_double,[C.c_int64,C.c_int64]),'host_label_byte':(None,[C.c_int64,C.c_int64,C.c_int64]),
-            'verse_home_capacity':(C.c_int64,[]),'verse_home_init':(C.c_bool,[C.c_int64]),
-            'verse_home_frame':(None,[C.c_int64]+[C.c_double]*5+[C.c_bool]),
-            'verse_home_touch':(C.c_bool,[C.c_int64,C.c_int64,C.c_double,C.c_double]),
-            'verse_home_resume':(None,[C.c_int64]),'verse_home_presses':(C.c_int64,[C.c_int64])}
+            'metaverse_home_capacity':(C.c_int64,[]),'metaverse_home_init':(C.c_bool,[C.c_int64]),
+            'metaverse_home_frame':(None,[C.c_int64]+[C.c_double]*5+[C.c_bool]),
+            'metaverse_home_touch':(C.c_bool,[C.c_int64,C.c_int64,C.c_double,C.c_double]),
+            'metaverse_home_resume':(None,[C.c_int64]),'metaverse_home_presses':(C.c_int64,[C.c_int64])}
         for name,(result,args) in signatures.items():
             f=getattr(l,name);f.restype=result;f.argtypes=args
     @classmethod
@@ -55,12 +55,12 @@ class HomeTests(unittest.TestCase):
         for h in self.handles:self.lib.mr_destroy(h)
     def create(self,data=None,valid=True):
         if data is None:data=RESOURCE.read_bytes()
-        h=self.lib.mr_create(C.c_char_p(data),len(data),self.lib.verse_home_capacity());self.handles.append(h)
+        h=self.lib.mr_create(C.c_char_p(data),len(data),self.lib.metaverse_home_capacity());self.handles.append(h)
         self.assertNotEqual(h,0)
-        self.assertEqual(self.lib.verse_home_init(h),valid)
+        self.assertEqual(self.lib.metaverse_home_init(h),valid)
         return h
     def frame(self,h,t=0,reduced=False,w=1206,hgt=2622):
-        self.lib.mr_clear_frame(h);self.lib.verse_home_frame(h,t,w,hgt,3,102,reduced)
+        self.lib.mr_clear_frame(h);self.lib.metaverse_home_frame(h,t,w,hgt,3,102,reduced)
         self.assertTrue(self.lib.mr_ok(h))
     def test_resource_reproducible(self):
         actual=proto('--encode=openagents.metareal.home.v1alpha1.HomeConfiguration',(ROOT/'metaverse/home.textproto').read_bytes())
@@ -110,7 +110,7 @@ class HomeTests(unittest.TestCase):
         for packet,count in [(self.lib.mr_dots(h),self.lib.mr_dot_count(h)),(self.lib.mr_lines(h),self.lib.mr_line_count(h))]:
             for i in range(count):
                 self.assertTrue(all(math.isfinite(getattr(packet[i],name)) for name,_ in packet[i]._fields_))
-        t=self.lib.host_load(h,31);self.lib.verse_home_resume(h);self.frame(h,10000)
+        t=self.lib.host_load(h,31);self.lib.metaverse_home_resume(h);self.frame(h,10000)
         self.assertEqual(t,self.lib.host_load(h,31))
         for w,height in [(2622,1206),(2048,2732),(1,1),(0,0)]:self.frame(h,10000,w=w,hgt=height)
     def test_determinism_and_reduced_motion(self):
@@ -123,27 +123,27 @@ class HomeTests(unittest.TestCase):
         self.assertEqual(bar.label,b'Start');x=bar.x+bar.width/2;y=bar.y+bar.height/2
         # Cancel and drag well outside do not activate; release alone never does.
         for phase,tx,ty in [(2,x,y),(0,x,y),(3,x,y),(0,x,y),(1,0,0),(2,0,0)]:
-            self.assertFalse(self.lib.verse_home_touch(h,phase,tx,ty))
-        self.assertEqual(self.lib.verse_home_presses(h),0)
+            self.assertFalse(self.lib.metaverse_home_touch(h,phase,tx,ty))
+        self.assertEqual(self.lib.metaverse_home_presses(h),0)
         for n in range(1,13):
-            self.assertFalse(self.lib.verse_home_touch(h,0,x,y))
-            self.assertTrue(self.lib.verse_home_touch(h,2,x,y))
-            self.assertFalse(self.lib.verse_home_touch(h,2,x,y))
+            self.assertFalse(self.lib.metaverse_home_touch(h,0,x,y))
+            self.assertTrue(self.lib.metaverse_home_touch(h,2,x,y))
+            self.assertFalse(self.lib.metaverse_home_touch(h,2,x,y))
             data=C.string_at(self.lib.mr_output(h),self.lib.mr_output_size(h))
             result=subprocess.run([PROTOC,'-I'+str(ROOT/'proto'),'--decode=openagents.engine.v1.HudInvocation','openagents/engine/v1/hud.proto'],input=data,capture_output=True,check=True).stdout.decode()
             expected=f'schema:1 world:"home" action_id:"home.start" request_id:"home-start-{n}" revision:{n}'
             self.assertEqual(data,proto('--encode=openagents.engine.v1.HudInvocation',expected.encode()))
             for text in ['schema: 1','world: "home"','action_id: "home.start"',f'request_id: "home-start-{n}"',f'revision: {n}']:self.assertIn(text,result)
-        self.assertEqual(self.lib.verse_home_presses(h),12)
+        self.assertEqual(self.lib.metaverse_home_presses(h),12)
     def test_generation_and_platform_bounds(self):
         a=self.create();self.lib.mr_destroy(a);b=self.create()
         self.assertNotEqual(a,b);self.assertFalse(self.lib.mr_ok(a));self.assertTrue(self.lib.mr_ok(b))
         self.assertEqual(self.lib.host_load(b,-1),0);self.assertFalse(self.lib.mr_ok(b))
     def test_shader_numeric_contract(self):
-        dot=self.lib.verse_dot;dot.restype=C.c_float;dot.argtypes=[C.c_float]*5
+        dot=self.lib.metaverse_dot;dot.restype=C.c_float;dot.argtypes=[C.c_float]*5
         self.assertEqual(dot(2,0,1,0,0),0)
         self.assertGreater(dot(0,0,1,0,1),dot(.7,0,1,0,1))
-        tone=self.lib.verse_tone;tone.restype=C.c_float;tone.argtypes=[C.c_float]
+        tone=self.lib.metaverse_tone;tone.restype=C.c_float;tone.argtypes=[C.c_float]
         self.assertAlmostEqual(tone(0),0);self.assertGreater(tone(2),tone(1))
 
 if __name__=='__main__':unittest.main()

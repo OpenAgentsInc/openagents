@@ -209,9 +209,9 @@ EnvResolve :: struct { refusal: EnvRefusal; env: ResolvedEnvironment; }
 #test "the glade resolves to its sun colour and direction at every time of day" {
   p := env_glade_profile(); base := env_profile_sample(p, 0.5);
   // cg_sun_colour: decode(balanced(4500 K, 6500 K)) * 2.15; cg_sun_dir: normalize(-.40, .58, -.62).
-  #assert base.direct.r == env_srgb_linear(light.verse_style_balanced(4500, 6500, 0)) * 2.15f32;
-  #assert base.direct.g == env_srgb_linear(light.verse_style_balanced(4500, 6500, 1)) * 2.15f32;
-  #assert base.direct.b == env_srgb_linear(light.verse_style_balanced(4500, 6500, 2)) * 2.15f32;
+  #assert base.direct.r == env_srgb_linear(light.metaverse_style_balanced(4500, 6500, 0)) * 2.15f32;
+  #assert base.direct.g == env_srgb_linear(light.metaverse_style_balanced(4500, 6500, 1)) * 2.15f32;
+  #assert base.direct.b == env_srgb_linear(light.metaverse_style_balanced(4500, 6500, 2)) * 2.15f32;
   #assert base.direct.r == 2.15f32 && base.direct.g > 1.5f32 && base.direct.g < 1.6f32 && base.direct.b > 1.1f32 && base.direct.b < 1.2f32;
   n := sqrt(0.40f32 * 0.40f32 + 0.58f32 * 0.58f32 + 0.62f32 * 0.62f32);
   #assert base.dir.x == -0.40f32 / n && base.dir.y == 0.58f32 / n && base.dir.z == -0.62f32 / n;
@@ -890,9 +890,9 @@ env_day_time :: (day: f64) -> f32 #effects(all) {
 }
 env_knot_resolve :: (k: EnvironmentKnot) -> ResolvedEnvironment #effects(all) {
   r := ResolvedEnvironment.{version = ENV_VERSION, time = k.time, body = k.body, film = k.film, flags = k.flags, dir = env_dir_unit(k.dir), channels = k.channels};
-  r.direct = EnvRgb.{r = env_srgb_linear(light.verse_style_balanced(k.kelvin, k.white, 0)) * k.intensity,
-    g = env_srgb_linear(light.verse_style_balanced(k.kelvin, k.white, 1)) * k.intensity,
-    b = env_srgb_linear(light.verse_style_balanced(k.kelvin, k.white, 2)) * k.intensity};
+  r.direct = EnvRgb.{r = env_srgb_linear(light.metaverse_style_balanced(k.kelvin, k.white, 0)) * k.intensity,
+    g = env_srgb_linear(light.metaverse_style_balanced(k.kelvin, k.white, 1)) * k.intensity,
+    b = env_srgb_linear(light.metaverse_style_balanced(k.kelvin, k.white, 2)) * k.intensity};
   for s: 0..<ENV_RESOURCES { r.resources[s].count = 1; r.resources[s].ids[0] = k.resources[s]; r.resources[s].weights[0] = 1; }
   return r;
 }

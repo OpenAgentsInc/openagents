@@ -206,8 +206,8 @@ satellite :: (h: int, c: int, at: f64) -> int {
   return hub;
 }
 
-verse_home_capacity :: () -> int #export_c #effects(all) { return CELL_CAPACITY; }
-verse_home_init :: (h: int) -> bool #export_c #effects(all) {
+metaverse_home_capacity :: () -> int #export_c #effects(all) { return CELL_CAPACITY; }
+metaverse_home_init :: (h: int) -> bool #export_c #effects(all) {
   i := 0; while i < CELL_CAPACITY { host_store(h,i,0.0); i += 1; }
   if !admit_config(h) { return false; }
   set_int(h,0,get_int(h,20)); host_store(h,42,0.012); host_store(h,30,-1.0);
@@ -279,17 +279,17 @@ update :: (h: int, dt: f64, t: f64) {
 }
 
 // Reusable HUD bar layout and ownership live in the engine, not the iOS view.
-verse_hud_hits :: (x: f64, y: f64, bx: f64, by: f64, bw: f64, bh: f64, slop: f64) -> bool #export_c #effects(all) {
+metaverse_hud_hits :: (x: f64, y: f64, bx: f64, by: f64, bw: f64, bh: f64, slop: f64) -> bool #export_c #effects(all) {
   return x >= bx-slop && x <= bx+bw+slop && y >= by-slop && y <= by+bh+slop;
 }
-verse_hud_touch :: (phase: int, x: f64, y: f64, bx: f64, by: f64, bw: f64, bh: f64, down: bool) -> int #export_c #effects(all) {
-  if phase == 0 { if verse_hud_hits(x,y,bx,by,bw,bh,0.0) { return 1; } return 0; }
-  if phase == 1 { if down && verse_hud_hits(x,y,bx,by,bw,bh,bh*0.6) { return 1; } return 0; }
-  if phase == 2 { if down && verse_hud_hits(x,y,bx,by,bw,bh,bh*0.6) { return 2; } }
+metaverse_hud_touch :: (phase: int, x: f64, y: f64, bx: f64, by: f64, bw: f64, bh: f64, down: bool) -> int #export_c #effects(all) {
+  if phase == 0 { if metaverse_hud_hits(x,y,bx,by,bw,bh,0.0) { return 1; } return 0; }
+  if phase == 1 { if down && metaverse_hud_hits(x,y,bx,by,bw,bh,bh*0.6) { return 1; } return 0; }
+  if phase == 2 { if down && metaverse_hud_hits(x,y,bx,by,bw,bh,bh*0.6) { return 2; } }
   return 0;
 }
 
-verse_home_frame :: (h: int, now: f64, width: f64, height: f64, scale: f64, safe_bottom: f64, reduced: bool) #export_c #effects(all) {
+metaverse_home_frame :: (h: int, now: f64, width: f64, height: f64, scale: f64, safe_bottom: f64, reduced: bool) #export_c #effects(all) {
   if width < 1.0 || height < 1.0 || scale < 1.0 || width > 16384.0 || height > 16384.0 { return; }
   last := host_load(h,30); dt := 0.0; if last >= 0.0 { dt = clamp(now-last,0.0,0.1); }
   host_store(h,30,now); t := host_load(h,31)+dt; host_store(h,31,t);
@@ -355,7 +355,7 @@ verse_home_frame :: (h: int, now: f64, width: f64, height: f64, scale: f64, safe
 // The Start bar alone: laid out at the bottom, pressed and flashing. The
 // home draws it over its graph; the Grid's overview (metaverse-engine/cam/camera.coax)
 // draws it over the Grid.
-verse_home_hud_frame :: (h: int, now: f64, width: f64, height: f64, scale: f64, safe_bottom: f64) #export_c #effects(all) {
+metaverse_home_hud_frame :: (h: int, now: f64, width: f64, height: f64, scale: f64, safe_bottom: f64) #export_c #effects(all) {
   if width < 1.0 || height < 1.0 || scale < 1.0 || width > 16384.0 || height > 16384.0 { return; }
   last := host_load(h,30); dt := 0.0; if last >= 0.0 { dt = clamp(now-last,0.0,0.1); }
   host_store(h,30,now);
@@ -396,9 +396,9 @@ invocation :: (h: int) -> bool {
   for value:encoded.wire {host_output_byte(h,cast(int)value);}
   return true;
 }
-verse_home_touch :: (h: int, phase: int, x: f64, y: f64) -> bool #export_c #effects(all) {
+metaverse_home_touch :: (h: int, phase: int, x: f64, y: f64) -> bool #export_c #effects(all) {
   down := get_int(h,110) == 1;
-  result := verse_hud_touch(phase,x,y,host_load(h,104),host_load(h,105),host_load(h,106),host_load(h,107),down);
+  result := metaverse_hud_touch(phase,x,y,host_load(h,104),host_load(h,105),host_load(h,106),host_load(h,107),down);
   if phase == 0 {
     set_int(h,110,result); set_int(h,111,result);
     host_store(h,116,x); host_store(h,117,y); set_int(h,118,1-result);
@@ -429,5 +429,5 @@ verse_home_touch :: (h: int, phase: int, x: f64, y: f64) -> bool #export_c #effe
   }
   return false;
 }
-verse_home_resume :: (h: int) #export_c #effects(all) { host_store(h,30,-1.0); set_int(h,110,0); set_int(h,111,0); set_int(h,118,0); }
-verse_home_presses :: (h: int) -> int #export_c #effects(all) { return get_int(h,114); }
+metaverse_home_resume :: (h: int) #export_c #effects(all) { host_store(h,30,-1.0); set_int(h,110,0); set_int(h,111,0); set_int(h,118,0); }
+metaverse_home_presses :: (h: int) -> int #export_c #effects(all) { return get_int(h,114); }

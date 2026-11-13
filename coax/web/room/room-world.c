@@ -22,7 +22,7 @@ bool world_cut_take(int k, int s) {
 }
 
 static void pose_of(coax_t_Body p, bool moved, float out[WORLD_POSE]) {
-  out[0] = p.pos.x; out[1] = p.pos.y; out[2] = p.pos.z; out[3] = verse_body_face(p);
+  out[0] = p.pos.x; out[1] = p.pos.y; out[2] = p.pos.z; out[3] = metaverse_body_face(p);
   out[4] = p.vel.x; out[5] = p.vel.y; out[6] = p.vel.z;
   out[7] = p.on_ground ? 1 : 0;            /* G: 1 on the ground, 2 swimming, 4 in a boat (world_step adds them) */
   out[8] = (float)p.act;                   /* CLIP: the controller's act (metaverse-engine/move/walk.coax Act) */
@@ -63,7 +63,7 @@ bool world2_contact(const float from[3], const float to[3]) {
 /* at (x, z, facing): where the room puts the seat back (room-everglade.coax rm_e2_place, #13057); NULL the spawn */
 bool world2_place(int k, int s, const float *at, float out[WORLD_POSE]) {
   if (k < 0 || k >= WORLD_ROOMS || s < 0 || s >= WORLD_SEATS || !world2_prepare()) return false;
-  seat_p[k][s] = at ? verse_body_place(at[0], 0, at[1], at[2]) : verse_body_place(e2mg_spawn_x(), 0, e2mg_spawn_z(), e2mg_spawn_face()); seat_cut[k][s] = true;
+  seat_p[k][s] = at ? metaverse_body_place(at[0], 0, at[1], at[2]) : metaverse_body_place(e2mg_spawn_x(), 0, e2mg_spawn_z(), e2mg_spawn_face()); seat_cut[k][s] = true;
   pose_of(seat_p[k][s], false, out);
   return true;
 }
@@ -97,7 +97,7 @@ bool world2_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]
   coax_v_f32 near = e2mg_bodies(e2mg()), hulls = e2mg_hulls(e2mg());
   p = eg_step_advance_among(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, (coax_v_f32){hulls.data, mw.hulls}, dt);
   coax_t_E2Spot kept = e2m_keep(p.pos.x, p.pos.z, fx, fz);
-  if (kept.x != p.pos.x || kept.z != p.pos.z) p = verse_body_constrain(p, kept.x, kept.z);
+  if (kept.x != p.pos.x || kept.z != p.pos.z) p = metaverse_body_constrain(p, kept.x, kept.z);
   seat_p[k][s] = p;
   pose_of(p, true, out);
   return true;

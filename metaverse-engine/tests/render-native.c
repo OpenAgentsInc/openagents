@@ -51,7 +51,7 @@ int main(void){
     for(unsigned i=0;i<6;i++)for(unsigned j=0;j<6;j++)for(int n=15;n<=17;n++){
         float w=screens[i],h=screens[j];int expected=isfinite(w)&&isfinite(h)&&w>0&&h>0&&n>=16;
         assert(render_view(w,h,n)==expected);for(int q=0;q<18;q++)matrix[q]=19;
-        assert(verse_grid_view(0,2,-4,0,1,0,w,h,(coax_v_f32){matrix,n})==expected);
+        assert(metaverse_grid_view(0,2,-4,0,1,0,w,h,(coax_v_f32){matrix,n})==expected);
         assert(matrix[16]==19 && matrix[17]==19);if(!expected)for(int q=0;q<18;q++)assert(matrix[q]==19);
     }
     assert(effects==0);

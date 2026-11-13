@@ -124,9 +124,9 @@ glade_capsule_n :: (p:V3,a:V3,b:V3)->V3 {
 glade_tree :: (i:int,u:[]f32)->V4 {
   fi:f32=cast(f32)i;
   a:f32=(fi*0.3926991f32)+(0.35f32*sin(fi*2.3f32));
-  rx:f32=u[1764]+5.5f32+(2.5f32*verse_style_hash(fi,3.0f32));
-  rz:f32=u[1765]+5.0f32+(2.5f32*verse_style_hash(fi,7.0f32));
-  size:f32=0.8f32+(0.45f32*verse_style_hash(fi,11.0f32));
+  rx:f32=u[1764]+5.5f32+(2.5f32*metaverse_style_hash(fi,3.0f32));
+  rz:f32=u[1765]+5.0f32+(2.5f32*metaverse_style_hash(fi,7.0f32));
+  size:f32=0.8f32+(0.45f32*metaverse_style_hash(fi,11.0f32));
   return v4(cos(a)*rx,0.0f32,sin(a)*rz,size);
 }
 // A look's class (its look less 16 for each team), and its team.
@@ -261,19 +261,19 @@ glade_mark :: (marks:f32,k:f32)->bool {
 
 glade_sky :: (rd:V3,sun:V3,t:f32)->V3 {
   up:f32=fmax(rd.y,0.0f32);
-  st:f32=verse_style_sky_t(up);
+  st:f32=metaverse_style_sky_t(up);
   c:V3=mix3(v3(0.78f32,0.84f32,0.86f32),v3(0.32f32,0.52f32,0.84f32),st);
-  halo:f32=verse_style_halo(dot3(rd,sun),7.0f32);
+  halo:f32=metaverse_style_halo(dot3(rd,sun),7.0f32);
   c=add3(c,scale3(v3(1.0f32,0.86f32,0.62f32),halo*0.45f32));
-  disc:f32=verse_style_halo(dot3(rd,sun),900.0f32);
+  disc:f32=metaverse_style_halo(dot3(rd,sun),900.0f32);
   c=add3(c,scale3(v3(1.0f32,0.95f32,0.85f32),disc*3.0f32));
   if (rd.y>0.02f32) {
     k:f32=300.0f32/rd.y;
     x:f32=(rd.x*k)+(t*2.0f32);
     z:f32=rd.z*k;
-    n:f32=verse_style_cloud_field(x,z,0.0032f32,0.0091f32,2.0f32);
-    cover:f32=verse_style_cloud_cover(n,0.4f32,0.48f32,0.62f32)*verse_style_cloud_fade(rd.y);
-    lit:f32=verse_style_cloud_lit(n,verse_style_cloud_field(x+(sun.x*40.0f32),z+(sun.z*40.0f32),0.0032f32,0.0091f32,2.0f32));
+    n:f32=metaverse_style_cloud_field(x,z,0.0032f32,0.0091f32,2.0f32);
+    cover:f32=metaverse_style_cloud_cover(n,0.4f32,0.48f32,0.62f32)*metaverse_style_cloud_fade(rd.y);
+    lit:f32=metaverse_style_cloud_lit(n,metaverse_style_cloud_field(x+(sun.x*40.0f32),z+(sun.z*40.0f32),0.0032f32,0.0091f32,2.0f32));
     cloud:V3=mix3(v3(0.62f32,0.66f32,0.76f32),v3(1.0f32,0.97f32,0.92f32),lit);
     c=mix3(c,cloud,cover);
   }
@@ -281,9 +281,9 @@ glade_sky :: (rd:V3,sun:V3,t:f32)->V3 {
 }
 // The grass at (x, z): two greens broken up by noise, dabbed, the grid painted on in the clearing.
 glade_grass :: (x:f32,z:f32,u:[]f32,t:f32)->V3 {
-  n1:f32=verse_style_noise(x*0.35f32,z*0.35f32);
-  n2:f32=verse_style_noise((x*1.7f32)+5.0f32,(z*1.7f32)+2.0f32);
-  dab:f32=verse_style_noise(x*6.0f32,z*6.0f32);
+  n1:f32=metaverse_style_noise(x*0.35f32,z*0.35f32);
+  n2:f32=metaverse_style_noise((x*1.7f32)+5.0f32,(z*1.7f32)+2.0f32);
+  dab:f32=metaverse_style_noise(x*6.0f32,z*6.0f32);
   c:V3=mix3(v3(0.16f32,0.3f32,0.07f32),v3(0.33f32,0.46f32,0.13f32),(n1*0.65f32)+(n2*0.35f32));
   c=scale3(c,0.88f32+(0.24f32*dab));
   hw:f32=u[1764]; hd:f32=u[1765]; sq:f32=fmax(u[1766],0.1f32);
@@ -324,11 +324,11 @@ glade_glade :: (p:V2,u:[]f32)->V3 {
         if (zb.x>0.5f32) {
           if ((((pos.x>=za.x)&&(pos.x<=za.z))&&(pos.z>=za.y))&&(pos.z<=za.w)) {
             if (zb.x<1.5f32) {
-              vine:f32=verse_style_noise(pos.x*3.0f32,pos.z*3.0f32);
+              vine:f32=metaverse_style_noise(pos.x*3.0f32,pos.z*3.0f32);
               albedo=mix3(albedo,v3(0.05f32,0.2f32,0.04f32),0.55f32+(0.35f32*vine));
               glow=add3(glow,scale3(v3(0.1f32,0.3f32,0.05f32),0.15f32*smoothstep(0.55f32,0.8f32,vine)));
             } else {
-              mote:f32=verse_style_noise((pos.x*2.0f32)+(t*0.7f32),(pos.z*2.0f32)-(t*0.5f32));
+              mote:f32=metaverse_style_noise((pos.x*2.0f32)+(t*0.7f32),(pos.z*2.0f32)-(t*0.5f32));
               glow=add3(glow,scale3(v3(0.55f32,0.3f32,1.0f32),0.18f32+(0.35f32*smoothstep(0.6f32,0.9f32,mote))));
             }
           }
@@ -358,12 +358,12 @@ glade_glade :: (p:V2,u:[]f32)->V3 {
     }
   } else if (h.m<1.5f32) {
     albedo=v3(0.24f32,0.15f32,0.08f32);
-    albedo=scale3(albedo,0.8f32+(0.4f32*verse_style_noise(pos.y*4.0f32,(pos.x+pos.z)*6.0f32)));
+    albedo=scale3(albedo,0.8f32+(0.4f32*metaverse_style_noise(pos.y*4.0f32,(pos.x+pos.z)*6.0f32)));
   } else if (h.m<2.5f32) {
-    leaf:f32=verse_style_noise((pos.x*1.3f32)+pos.y,(pos.z*1.3f32)-pos.y);
+    leaf:f32=metaverse_style_noise((pos.x*1.3f32)+pos.y,(pos.z*1.3f32)-pos.y);
     albedo=mix3(v3(0.09f32,0.24f32,0.06f32),v3(0.3f32,0.45f32,0.1f32),leaf);
     // painted leaf masses: the normal nudged by the noise, so the bands break into dabs
-    n=normalize3(add3(n,scale3(v3(leaf-0.5f32,verse_style_noise(pos.x*2.1f32,pos.z*2.1f32)-0.5f32,0.5f32-leaf),0.9f32)));
+    n=normalize3(add3(n,scale3(v3(leaf-0.5f32,metaverse_style_noise(pos.x*2.1f32,pos.z*2.1f32)-0.5f32,0.5f32-leaf),0.9f32)));
   } else {
     who:int=cast(int)h.who;
     tk:V4=wg_at4(u,36+(who*8));
@@ -393,7 +393,7 @@ glade_glade :: (p:V2,u:[]f32)->V3 {
       // a barbarian: bare arms and chest over a fur kilt; a monk: a saffron robe with a dark sash
       if (barb) {
         albedo=v3(0.74f32,0.52f32,0.38f32);
-        if (pos.y<0.8f32) { albedo=scale3(v3(0.36f32,0.25f32,0.15f32),0.8f32+(0.4f32*verse_style_noise(pos.x*14.0f32,pos.y*14.0f32))); }
+        if (pos.y<0.8f32) { albedo=scale3(v3(0.36f32,0.25f32,0.15f32),0.8f32+(0.4f32*metaverse_style_noise(pos.x*14.0f32,pos.y*14.0f32))); }
       }
       if (monk) {
         albedo=v3(0.92f32,0.55f32,0.12f32);
@@ -422,7 +422,7 @@ glade_glade :: (p:V2,u:[]f32)->V3 {
       }
       // a fighter's chain mail over leather
       if (figh) {
-        albedo=scale3(v3(0.5f32,0.52f32,0.56f32),0.75f32+(0.5f32*verse_style_noise(pos.y*40.0f32,wg_atan2(pos.z-tk.y,pos.x-tk.x)*9.0f32)));
+        albedo=scale3(v3(0.5f32,0.52f32,0.56f32),0.75f32+(0.5f32*metaverse_style_noise(pos.y*40.0f32,wg_atan2(pos.z-tk.y,pos.x-tk.x)*9.0f32)));
         if (pos.y<0.62f32) { albedo=v3(0.3f32,0.22f32,0.14f32); }
       }
       // a paladin's bright plate, gold at the shoulders
@@ -508,7 +508,7 @@ glade_glade :: (p:V2,u:[]f32)->V3 {
     }
     // Poisoned: a sick green cast; enfeebled: drained grey; Temporary Hit Points: a red ward at the rim
     if (glade_mark(ts.z,1.0f32)) { albedo=mix3(albedo,v3(0.4f32,0.55f32,0.08f32),0.45f32); }
-    if (glade_mark(ts.z,3.0f32)) { albedo=scale3(v3(1.0f32,1.0f32,1.0f32),verse_style_luma(albedo.x,albedo.y,albedo.z)*0.8f32); }
+    if (glade_mark(ts.z,3.0f32)) { albedo=scale3(v3(1.0f32,1.0f32,1.0f32),metaverse_style_luma(albedo.x,albedo.y,albedo.z)*0.8f32); }
     if (glade_mark(ts.z,4.0f32)) {
       wr:f32=pow(1.0f32-saturate(dot3(n,scale3(rd,-1.0f32))),3.0f32);
       glow=add3(glow,scale3(v3(0.9f32,0.15f32,0.25f32),wr*0.9f32));
@@ -522,7 +522,7 @@ glade_glade :: (p:V2,u:[]f32)->V3 {
       hx:f32=pow(1.0f32-saturate(dot3(n,scale3(rd,-1.0f32))),4.0f32);
       glow=add3(glow,scale3(v3(0.55f32,0.15f32,0.8f32),hx*(0.7f32+(0.3f32*sin((t*9.0f32)+pos.y*6.0f32)))));
     }
-    if (ts.x>1.5f32) { albedo=scale3(v3(0.4f32,0.4f32,0.42f32),verse_style_luma(albedo.x,albedo.y,albedo.z)*2.2f32); }
+    if (ts.x>1.5f32) { albedo=scale3(v3(0.4f32,0.4f32,0.42f32),metaverse_style_luma(albedo.x,albedo.y,albedo.z)*2.2f32); }
     if (ts.y>0.5f32) {
       rim:f32=pow(1.0f32-saturate(dot3(n,scale3(rd,-1.0f32))),2.0f32);
       glow=add3(glow,scale3(v3(0.7f32,0.4f32,1.0f32),(0.35f32+(0.25f32*sin(t*5.0f32)))+(rim*0.9f32)));
@@ -535,19 +535,19 @@ glade_glade :: (p:V2,u:[]f32)->V3 {
     sh:GladeHit=glade_trace(add3(pos,scale3(n,0.02f32)),sun,u,true);
     if (sh.m>0.0f32) { lit=0.0f32; }
   }
-  w:f32=verse_style_wrap(ndl)*lit;
-  band:f32=verse_style_bands(w,0.2f32,0.58f32,0.06f32,0.55f32);
-  if (h.m>2.5f32) { band=verse_style_bands2(w,0.4f32,0.08f32); }
-  amb:f32=verse_style_ambient(n.y,1.0f32,0.55f32,1.0f32);
+  w:f32=metaverse_style_wrap(ndl)*lit;
+  band:f32=metaverse_style_bands(w,0.2f32,0.58f32,0.06f32,0.55f32);
+  if (h.m>2.5f32) { band=metaverse_style_bands2(w,0.4f32,0.08f32); }
+  amb:f32=metaverse_style_ambient(n.y,1.0f32,0.55f32,1.0f32);
   shadow_light:V3=scale3(v3(0.36f32,0.44f32,0.62f32),0.62f32*amb);
   lit_light:V3=add3(scale3(v3(1.0f32,0.9f32,0.74f32),1.25f32),scale3(shadow_light,0.6f32));
-  c:V3=v3(verse_style_shade(albedo.x,shadow_light.x,lit_light.x,band),
-          verse_style_shade(albedo.y,shadow_light.y,lit_light.y,band),
-          verse_style_shade(albedo.z,shadow_light.z,lit_light.z,band));
+  c:V3=v3(metaverse_style_shade(albedo.x,shadow_light.x,lit_light.x,band),
+          metaverse_style_shade(albedo.y,shadow_light.y,lit_light.y,band),
+          metaverse_style_shade(albedo.z,shadow_light.z,lit_light.z,band));
   c=add3(c,glow);
   // haze toward the horizon
   hz:f32=1.0f32-exp((-h.t)*0.011f32);
-  hc:V3=mix3(v3(0.72f32,0.8f32,0.84f32),v3(1.0f32,0.9f32,0.75f32),verse_style_halo(dot3(rd,sun),5.0f32)*0.5f32);
+  hc:V3=mix3(v3(0.72f32,0.8f32,0.84f32),v3(1.0f32,0.9f32,0.75f32),metaverse_style_halo(dot3(rd,sun),5.0f32)*0.5f32);
   return mix3(c,hc,hz*0.85f32);
 }
 
@@ -557,9 +557,9 @@ glade_bg_fs :: (pos:V4,u:[]f32)->V4 {
   if (u[10]>0.5f32) {
     c=glade_glade(p,u);
     // the style's tone and grade, then the display's curve
-    c=v3(verse_style_tone(c.x,1.15f32),verse_style_tone(c.y,1.15f32),verse_style_tone(c.z,1.15f32));
-    l:f32=verse_style_luma(c.x,c.y,c.z);
-    c=v3(verse_style_saturation(c.x,l,1.12f32),verse_style_saturation(c.y,l,1.12f32),verse_style_saturation(c.z,l,1.12f32));
+    c=v3(metaverse_style_tone(c.x,1.15f32),metaverse_style_tone(c.y,1.15f32),metaverse_style_tone(c.z,1.15f32));
+    l:f32=metaverse_style_luma(c.x,c.y,c.z);
+    c=v3(metaverse_style_saturation(c.x,l,1.12f32),metaverse_style_saturation(c.y,l,1.12f32),metaverse_style_saturation(c.z,l,1.12f32));
     // the HUD's strip along the top: dark glass, so its text reads over the sky
     if (p.y<u[11]) { c=add3(scale3(c,0.22f32),v3(0.01f32,0.012f32,0.016f32)); }
   } else {

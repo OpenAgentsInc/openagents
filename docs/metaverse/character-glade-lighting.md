@@ -79,10 +79,10 @@ pass also used `docs/research/lighting/research.md` and the Metaverse Engine boo
 
 Engine changes (`metaverse-engine/render/`, so every scene can use them):
 
-- `light.coax` 4b adds `verse_style_haze_phase`, a Henyey-Greenstein forward-Mie lobe
-  normalised so isotropic haze is 1, and `verse_style_haze_window`, Ore's near/far fade window.
-- `light.coax` 4c adds `verse_style_kelvin`, Tanner Helland's black-body fit, and
-  `verse_style_balanced`, a light seen through a white balance. Ore's noon sun is 4500 K
+- `light.coax` 4b adds `metaverse_style_haze_phase`, a Henyey-Greenstein forward-Mie lobe
+  normalised so isotropic haze is 1, and `metaverse_style_haze_window`, Ore's near/far fade window.
+- `light.coax` 4c adds `metaverse_style_kelvin`, Tanner Helland's black-body fit, and
+  `metaverse_style_balanced`, a light seen through a white balance. Ore's noon sun is 4500 K
   under 6500 K.
 - `filmic.coax` is self-contained (its own `film_atan2`) so a named scene module can load
   it next to the noise module.
@@ -172,7 +172,7 @@ The `cg_*` names stay as thin delegates, so Everglade II, Experimental and the l
 compile unchanged until their consumers read the resolver (#13066). `metaverse/character-glade.coax`
 holds the glade's composition (terrain, path, planting, town) and no lighting, so nothing moved from
 it. `metaverse/style-preset.coax`'s painterly preset names the glade profile as its default environment
-(`environment = ENV_GLADE_ID`, `verse_style_environment`); its bands, rim, dab and `shadow_cool`
+(`environment = ENV_GLADE_ID`, `metaverse_style_environment`); its bands, rim, dab and `shadow_cool`
 stay as the material response on top, and the other styles name none.
 
 Character Create renders exactly as before: against the P1.1 baseline every one of the 16 captures

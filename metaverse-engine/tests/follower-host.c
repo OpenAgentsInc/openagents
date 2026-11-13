@@ -44,7 +44,7 @@ EXPORT("follower_init") void follower_init(void) {
   scene_walls(scene_view(&scene));
   for (size_t i = 0; i < sizeof scene.heights.e / sizeof(float); ++i) scene.heights.e[i] = 2.5f;
   scene.golden = true;
-  scene_place(scene_view(&scene), verse_place(origin_x, 0, origin_z, 0, 1.234567f, 0.4f, 6, 0, -1, 1000));
+  scene_place(scene_view(&scene), metaverse_place(origin_x, 0, origin_z, 0, 1.234567f, 0.4f, 6, 0, -1, 1000));
   scene.fetch.dog = (coax_t_Follower){.pos = {origin_x, 2.5f, origin_z - 3}};
   scene.fetch.ball.held = 0;
   scene.fetch.ball.thrown = false;
@@ -53,32 +53,32 @@ EXPORT("follower_init") void follower_init(void) {
 #if !defined(FOLLOWER_GARDEN)
   villa_on_realm_clock(scene_view(&scene));
 #endif
-  player = verse_player_input(verse_player_place(origin_x, 0, origin_z, 0), 1, 0, 0, 0, true, false, 0, 0);
+  player = metaverse_player_input(metaverse_player_place(origin_x, 0, origin_z, 0), 1, 0, 0, 0, true, false, 0, 0);
   player.cam.theta = 1.234567f;
   memset(&walked, 0, sizeof walked);
   drawn_vertices = 0;
 }
 
 static void draw_frame(int fault, float counted) {
-  coax_t_Vec3 feet = verse_player_feet(player);
+  coax_t_Vec3 feet = metaverse_player_feet(player);
   coax_v_f32 out = {vertices, sizeof vertices / sizeof(float)};
   coax_v_f32 u = {uniforms, sizeof uniforms / sizeof(float)};
   coax_v_t_StepTarget targets = {walked.targets.e, walked.count};
 #if defined(FOLLOWER_GARDEN)
   if (fault == 2) {
     drawn_vertices = garden_frame(scene_view(&scene), out, u, 1280, 800, 1, counted, true,
-      feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.body.vel.x, player.body.vel.z,
+      feet.x, feet.y, feet.z, metaverse_player_face(player), metaverse_player_act(player), player.body.vel.x, player.body.vel.z,
       false, 0, 0, 0, 0);
   } else {
     drawn_vertices = garden_frame_on_clock(scene_view(&scene), out, u, 1280, 800, 1, player.body.clock, targets, true,
-      feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.body.vel.x, player.body.vel.z,
+      feet.x, feet.y, feet.z, metaverse_player_face(player), metaverse_player_act(player), player.body.vel.x, player.body.vel.z,
       false, 0, 0, 0, 0);
   }
 #else
-  if (fault == 2) villa_step(scene_view(&scene), counted, feet.x, feet.y, feet.z, verse_player_face(player),
-      verse_player_act(player), player.body.vel.x, player.body.vel.z);
+  if (fault == 2) villa_step(scene_view(&scene), counted, feet.x, feet.y, feet.z, metaverse_player_face(player),
+      metaverse_player_act(player), player.body.vel.x, player.body.vel.z);
   else villa_step_on_clock(scene_view(&scene), player.body.clock, targets, feet.x, feet.y, feet.z,
-      verse_player_face(player), verse_player_act(player), player.body.vel.x, player.body.vel.z);
+      metaverse_player_face(player), metaverse_player_act(player), player.body.vel.x, player.body.vel.z);
   drawn_vertices = villa_draw(scene_view(&scene), out, u, 1280, 800, 1, false, 0, 0, 0, 0);
 #endif
 }
@@ -88,8 +88,8 @@ static void draw_frame(int fault, float counted) {
    due steps, carry, alpha, follower motion, or expected coordinates. */
 EXPORT("follower_apply") void follower_apply(int32_t operation, float frame, int32_t fault) {
   if (operation == 0) {
-    float counted = verse_player_counts(player, frame);
-    walked = verse_player_advance_in_realm_traced(player, frame, (coax_v_f32){0, 0},
+    float counted = metaverse_player_counts(player, frame);
+    walked = metaverse_player_advance_in_realm_traced(player, frame, (coax_v_f32){0, 0},
       (coax_v_f32){scene.walls.e, scene.wall_n * 6}, (coax_v_f32){0, 0}, (coax_string){realm, sizeof realm - 1});
     player = walked.player;
     if (fault == 1 && walked.count > 0) {
@@ -103,8 +103,8 @@ EXPORT("follower_apply") void follower_apply(int32_t operation, float frame, int
   } else if (operation == 2) {
     player.body.vel.x = 100; /* a finite incoming velocity whose move is refused */
   } else if (operation == 3) {
-    player = verse_player_input(verse_player_place(origin_x + 2, 0, origin_z, 0), 1, 0, 0, 0, true, false, 0, 0);
-    scene_place(scene_view(&scene), verse_place(origin_x + 2, 0, origin_z, 0, 0, 0.4f, 6, 0, -1, 1000));
+    player = metaverse_player_input(metaverse_player_place(origin_x + 2, 0, origin_z, 0), 1, 0, 0, 0, true, false, 0, 0);
+    scene_place(scene_view(&scene), metaverse_place(origin_x + 2, 0, origin_z, 0, 0, 0.4f, 6, 0, -1, 1000));
   } else if (operation == 4) {
     scene.follower_tuning.acceleration = 0;
 #if defined(FOLLOWER_GARDEN)

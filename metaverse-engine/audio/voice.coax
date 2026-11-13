@@ -60,17 +60,17 @@ voice_session :: (r: [] VoiceRealm) -> ReplaySession #effects(all) {
 }
 
 // FNV-1a over a transcript's bytes.
-aethyr_voice_digest :: (text: string) -> int #export_c #effects(all) {
+engine_voice_digest :: (text: string) -> int #export_c #effects(all) {
   h := 2166136261;
   for c: text { h = ((h ^ cast(int) c) * 16777619) & 4294967295; }
   return h;
 }
 
-aethyr_voice_size :: () -> int #export_c #effects(all) { return size_of(VoiceRealm); }
+engine_voice_size :: () -> int #export_c #effects(all) { return size_of(VoiceRealm); }
 
 // A new recording: nothing heard, nothing asked.
 VOICE_INITIAL :: 2166136261;   // the constructed realm's digest: nothing heard
-aethyr_voice_init :: (r: [] VoiceRealm, seed: int) #export_c #effects(all) {
+engine_voice_init :: (r: [] VoiceRealm, seed: int) #export_c #effects(all) {
   r[0] = VoiceRealm.{};
   replay_record(voice_session(r), VOICE_INITIAL, seed);
   r[0].state = VOICE_INITIAL;
@@ -82,19 +82,19 @@ aethyr_voice_init :: (r: [] VoiceRealm, seed: int) #export_c #effects(all) {
 // its way is stale).
 VOICE_PRESS :: 1;
 VOICE_CANCEL :: 2;
-aethyr_voice_control :: (r: [] VoiceRealm, kind: int) -> int #export_c #effects(all) {
+engine_voice_control :: (r: [] VoiceRealm, kind: int) -> int #export_c #effects(all) {
   s := voice_session(r);
   e := ReplayEvent.{source = REPLAY_ACTIONS, request = r[0].channels[REPLAY_ACTIONS].last + 1, epoch = r[0].channels[REPLAY_ACTIONS].epoch};
   e.words[VW_KIND] = kind;
   return replay_offer(s, e);
 }
 // The open hold's request (0 when none) and the epoch its answer must carry.
-aethyr_voice_holding :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return r[0].holding; }
-aethyr_voice_epoch :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return replay_epoch(voice_session(r), REPLAY_MODEL); }
+engine_voice_holding :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return r[0].holding; }
+engine_voice_epoch :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return replay_epoch(voice_session(r), REPLAY_MODEL); }
 
 // The voice host's final transcript for (request, epoch): REPLAY_ACCEPTED, or why not. An
 // accepted answer applies at the next step; its text goes into the log first.
-aethyr_voice_offer :: (r: [] VoiceRealm, request: int, epoch: int, text: string) -> int #export_c #effects(all) {
+engine_voice_offer :: (r: [] VoiceRealm, request: int, epoch: int, text: string) -> int #export_c #effects(all) {
   s := voice_session(r);
   e := ReplayEvent.{source = REPLAY_MODEL, request = request, epoch = epoch};
   v := replay_verdict(s, e);
@@ -107,13 +107,13 @@ aethyr_voice_offer :: (r: [] VoiceRealm, request: int, epoch: int, text: string)
   e.words[VW_KIND] = ifx text.count == 0 then VOICE_NO_SPEECH else VOICE_FINAL;
   e.words[VW_AT] = at;
   e.words[VW_BYTES] = text.count;
-  e.words[VW_DIGEST] = aethyr_voice_digest(text);
+  e.words[VW_DIGEST] = engine_voice_digest(text);
   return replay_offer(s, e);
 }
 
 // One step, live or in a replay: apply the answers the record holds for it, then mark the
 // step with the realm's digest. Returns the answers applied this step.
-aethyr_voice_step :: (r: [] VoiceRealm) -> int #export_c #effects(all) {
+engine_voice_step :: (r: [] VoiceRealm) -> int #export_c #effects(all) {
   s := voice_session(r);
   took := 0;
   while true {
@@ -135,7 +135,7 @@ aethyr_voice_step :: (r: [] VoiceRealm) -> int #export_c #effects(all) {
     at := e.words[VW_AT];
     bytes := e.words[VW_BYTES];
     if e.source != REPLAY_MODEL || at < 0 || bytes < 0 || bytes > VOICE_TEXT || at + bytes > r[0].log_used
-       || aethyr_voice_digest(cast(string) r[0].log[at..<at + bytes]) != e.words[VW_DIGEST] {
+       || engine_voice_digest(cast(string) r[0].log[at..<at + bytes]) != e.words[VW_DIGEST] {
       r[0].corrupt += 1;
       continue;
     }
@@ -152,204 +152,204 @@ aethyr_voice_step :: (r: [] VoiceRealm) -> int #export_c #effects(all) {
   return took;
 }
 
-aethyr_voice_heard :: (r: [] VoiceRealm, out: [] u8) -> int #export_c #effects(all) {
+engine_voice_heard :: (r: [] VoiceRealm, out: [] u8) -> int #export_c #effects(all) {
   if out.count < r[0].heard_bytes { return -1; }
   for i: 0..<r[0].heard_bytes { out[i] = r[0].heard[i]; }
   return r[0].heard_bytes;
 }
-aethyr_voice_heard_kind :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return r[0].heard_kind; }
-aethyr_voice_heard_request :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return r[0].heard_request; }
-aethyr_voice_applied :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return r[0].applied; }
-aethyr_voice_refused :: (r: [] VoiceRealm, verdict: int) -> int #export_c #effects(all) { return replay_refused(voice_session(r), verdict); }
+engine_voice_heard_kind :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return r[0].heard_kind; }
+engine_voice_heard_request :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return r[0].heard_request; }
+engine_voice_applied :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return r[0].applied; }
+engine_voice_refused :: (r: [] VoiceRealm, verdict: int) -> int #export_c #effects(all) { return replay_refused(voice_session(r), verdict); }
 
 // Replays the recording in place (its record and log kept) from a realm constructed again,
 // whose digest is `initial`: false, and nothing changed, if that is not the recording's.
 // Then true when every step matched.
-aethyr_voice_replay :: (r: [] VoiceRealm, initial: int, steps: int) -> bool #export_c #effects(all) {
+engine_voice_replay :: (r: [] VoiceRealm, initial: int, steps: int) -> bool #export_c #effects(all) {
   s := voice_session(r);
   if !replay_play(s, initial) { return false; }
   r[0].heard_bytes = 0; r[0].heard_kind = 0; r[0].heard_request = 0; r[0].applied = 0; r[0].corrupt = 0;
   r[0].state = initial;
   r[0].holding = 0;
-  for k: 0..<steps { a := aethyr_voice_step(r); }
+  for k: 0..<steps { a := engine_voice_step(r); }
   return replay_matched(s);
 }
-aethyr_voice_digest_session :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return replay_digest(voice_session(r)); }
+engine_voice_digest_session :: (r: [] VoiceRealm) -> int #export_c #effects(all) { return replay_digest(voice_session(r)); }
 
 // ---- checks
 
 #test "a hold's transcript is applied once, at the next step" {
   r: [1] VoiceRealm;
-  aethyr_voice_init(r[..], 9);
-  #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
-  #assert aethyr_voice_holding(r[..]) == 0;   // the press applies at the next step
-  #assert aethyr_voice_offer(r[..], 1, 0, "too early") == REPLAY_UNKNOWN;
-  #assert aethyr_voice_step(r[..]) == 0 && aethyr_voice_holding(r[..]) == 1 && aethyr_voice_epoch(r[..]) == 0;
-  #assert aethyr_voice_offer(r[..], 1, 0, "Add a lighthouse on the cliff.") == REPLAY_ACCEPTED;
-  #assert aethyr_voice_offer(r[..], 1, 0, "Add a lighthouse on the cliff.") == REPLAY_DUPLICATE;
-  #assert r[0].log_used == 30 && aethyr_voice_holding(r[..]) == 1;   // a refused offer writes nothing
-  #assert aethyr_voice_step(r[..]) == 1 && aethyr_voice_step(r[..]) == 0 && aethyr_voice_holding(r[..]) == 0;
+  engine_voice_init(r[..], 9);
+  #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
+  #assert engine_voice_holding(r[..]) == 0;   // the press applies at the next step
+  #assert engine_voice_offer(r[..], 1, 0, "too early") == REPLAY_UNKNOWN;
+  #assert engine_voice_step(r[..]) == 0 && engine_voice_holding(r[..]) == 1 && engine_voice_epoch(r[..]) == 0;
+  #assert engine_voice_offer(r[..], 1, 0, "Add a lighthouse on the cliff.") == REPLAY_ACCEPTED;
+  #assert engine_voice_offer(r[..], 1, 0, "Add a lighthouse on the cliff.") == REPLAY_DUPLICATE;
+  #assert r[0].log_used == 30 && engine_voice_holding(r[..]) == 1;   // a refused offer writes nothing
+  #assert engine_voice_step(r[..]) == 1 && engine_voice_step(r[..]) == 0 && engine_voice_holding(r[..]) == 0;
   out: [700] u8;
-  n := aethyr_voice_heard(r[..], out[..]);
+  n := engine_voice_heard(r[..], out[..]);
   #assert cast(string) out[0..<n] == "Add a lighthouse on the cliff.";
-  #assert aethyr_voice_heard_kind(r[..]) == VOICE_FINAL && aethyr_voice_heard_request(r[..]) == 1 && aethyr_voice_applied(r[..]) == 1;
-  #assert aethyr_voice_heard(r[..], out[0..<29]) == -1 && aethyr_voice_heard(r[..], out[0..<30]) == 30;
-  #assert aethyr_voice_refused(r[..], REPLAY_DUPLICATE) == 1 && aethyr_voice_refused(r[..], REPLAY_UNKNOWN) == 1;
+  #assert engine_voice_heard_kind(r[..]) == VOICE_FINAL && engine_voice_heard_request(r[..]) == 1 && engine_voice_applied(r[..]) == 1;
+  #assert engine_voice_heard(r[..], out[0..<29]) == -1 && engine_voice_heard(r[..], out[0..<30]) == 30;
+  #assert engine_voice_refused(r[..], REPLAY_DUPLICATE) == 1 && engine_voice_refused(r[..], REPLAY_UNKNOWN) == 1;
   // Each press is its own question; an earlier one's answer still lands, and closes no newer hold.
-  #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED && aethyr_voice_step(r[..]) == 0 && aethyr_voice_holding(r[..]) == 2;
-  #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED && aethyr_voice_step(r[..]) == 0 && aethyr_voice_holding(r[..]) == 3;
-  #assert aethyr_voice_offer(r[..], 2, 0, "first") == REPLAY_ACCEPTED && aethyr_voice_step(r[..]) == 1;
-  #assert aethyr_voice_holding(r[..]) == 3 && aethyr_voice_heard_request(r[..]) == 2;
+  #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED && engine_voice_step(r[..]) == 0 && engine_voice_holding(r[..]) == 2;
+  #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED && engine_voice_step(r[..]) == 0 && engine_voice_holding(r[..]) == 3;
+  #assert engine_voice_offer(r[..], 2, 0, "first") == REPLAY_ACCEPTED && engine_voice_step(r[..]) == 1;
+  #assert engine_voice_holding(r[..]) == 3 && engine_voice_heard_request(r[..]) == 2;
 }
 
 #test "cancelled and late answers are refused" {
   r: [1] VoiceRealm;
-  aethyr_voice_init(r[..], 1);
-  #assert aethyr_voice_offer(r[..], 1, 0, "never asked") == REPLAY_UNKNOWN;
-  #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
-  #assert aethyr_voice_step(r[..]) == 0;
-  #assert aethyr_voice_holding(r[..]) == 1;
-  #assert aethyr_voice_control(r[..], VOICE_CANCEL) == REPLAY_ACCEPTED;
-  #assert aethyr_voice_step(r[..]) == 0 && aethyr_voice_holding(r[..]) == 0 && aethyr_voice_epoch(r[..]) == 1;
-  #assert aethyr_voice_offer(r[..], 1, 0, "make it night") == REPLAY_STALE;
-  #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
-  #assert aethyr_voice_step(r[..]) == 0;
-  #assert aethyr_voice_holding(r[..]) == 2;
-  #assert aethyr_voice_offer(r[..], 2, 0, "old epoch") == REPLAY_STALE;
-  #assert aethyr_voice_offer(r[..], 2, 1, "make it night") == REPLAY_ACCEPTED;
-  #assert aethyr_voice_refused(r[..], REPLAY_UNKNOWN) == 1 && aethyr_voice_refused(r[..], REPLAY_STALE) == 2;
+  engine_voice_init(r[..], 1);
+  #assert engine_voice_offer(r[..], 1, 0, "never asked") == REPLAY_UNKNOWN;
+  #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
+  #assert engine_voice_step(r[..]) == 0;
+  #assert engine_voice_holding(r[..]) == 1;
+  #assert engine_voice_control(r[..], VOICE_CANCEL) == REPLAY_ACCEPTED;
+  #assert engine_voice_step(r[..]) == 0 && engine_voice_holding(r[..]) == 0 && engine_voice_epoch(r[..]) == 1;
+  #assert engine_voice_offer(r[..], 1, 0, "make it night") == REPLAY_STALE;
+  #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
+  #assert engine_voice_step(r[..]) == 0;
+  #assert engine_voice_holding(r[..]) == 2;
+  #assert engine_voice_offer(r[..], 2, 0, "old epoch") == REPLAY_STALE;
+  #assert engine_voice_offer(r[..], 2, 1, "make it night") == REPLAY_ACCEPTED;
+  #assert engine_voice_refused(r[..], REPLAY_UNKNOWN) == 1 && engine_voice_refused(r[..], REPLAY_STALE) == 2;
   #assert r[0].log_used == 13;
   // An unknown control kind changes nothing but the record.
-  #assert aethyr_voice_control(r[..], 9) == REPLAY_ACCEPTED;
-  #assert aethyr_voice_step(r[..]) == 1 && r[0].corrupt == 1 && aethyr_voice_holding(r[..]) == 0;
+  #assert engine_voice_control(r[..], 9) == REPLAY_ACCEPTED;
+  #assert engine_voice_step(r[..]) == 1 && r[0].corrupt == 1 && engine_voice_holding(r[..]) == 0;
 }
 
 #test "an empty transcript is no speech, and still closes the hold" {
   r: [1] VoiceRealm;
-  aethyr_voice_init(r[..], 1);
-  #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
-  #assert aethyr_voice_step(r[..]) == 0;
-  #assert aethyr_voice_offer(r[..], 1, 0, "") == REPLAY_ACCEPTED && aethyr_voice_holding(r[..]) == 1;
-  #assert aethyr_voice_step(r[..]) == 1 && aethyr_voice_heard_kind(r[..]) == VOICE_NO_SPEECH && r[0].heard_bytes == 0;
-  #assert aethyr_voice_holding(r[..]) == 0;
+  engine_voice_init(r[..], 1);
+  #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
+  #assert engine_voice_step(r[..]) == 0;
+  #assert engine_voice_offer(r[..], 1, 0, "") == REPLAY_ACCEPTED && engine_voice_holding(r[..]) == 1;
+  #assert engine_voice_step(r[..]) == 1 && engine_voice_heard_kind(r[..]) == VOICE_NO_SPEECH && r[0].heard_bytes == 0;
+  #assert engine_voice_holding(r[..]) == 0;
   #assert r[0].events[1].words[VW_KIND] == VOICE_NO_SPEECH && r[0].events[1].words[VW_DIGEST] == 2166136261;
 }
 
 #test "a transcript past 600 bytes, or past the log, is refused" {
   r: [1] VoiceRealm;
-  aethyr_voice_init(r[..], 1);
+  engine_voice_init(r[..], 1);
   big: [601] u8;
   for i: 0..<601 { big[i] = 'a'; }
   for k: 0..<8 {
-    #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
-    #assert aethyr_voice_step(r[..]) == 0;
+    #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
+    #assert engine_voice_step(r[..]) == 0;
     // Each answered on its own; the hold closes at the step after its answer.
-    if k == 0 { #assert aethyr_voice_offer(r[..], 1, 0, cast(string) big[..]) == VOICE_TOO_LONG && r[0].log_used == 0; }
-    if k < 6 { #assert aethyr_voice_offer(r[..], k + 1, 0, cast(string) big[0..<600]) == REPLAY_ACCEPTED; }
+    if k == 0 { #assert engine_voice_offer(r[..], 1, 0, cast(string) big[..]) == VOICE_TOO_LONG && r[0].log_used == 0; }
+    if k < 6 { #assert engine_voice_offer(r[..], k + 1, 0, cast(string) big[0..<600]) == REPLAY_ACCEPTED; }
     if k == 6 {
       #assert r[0].log_used == 3600;
-      #assert aethyr_voice_offer(r[..], 7, 0, cast(string) big[0..<497]) == VOICE_LOG_FULL && r[0].log_used == 3600;
-      #assert aethyr_voice_offer(r[..], 7, 0, cast(string) big[0..<496]) == REPLAY_ACCEPTED && r[0].log_used == 4096;
+      #assert engine_voice_offer(r[..], 7, 0, cast(string) big[0..<497]) == VOICE_LOG_FULL && r[0].log_used == 3600;
+      #assert engine_voice_offer(r[..], 7, 0, cast(string) big[0..<496]) == REPLAY_ACCEPTED && r[0].log_used == 4096;
     }
-    if k == 7 { #assert aethyr_voice_offer(r[..], 8, 0, "") == REPLAY_ACCEPTED; }
-    #assert aethyr_voice_step(r[..]) == 1;
+    if k == 7 { #assert engine_voice_offer(r[..], 8, 0, "") == REPLAY_ACCEPTED; }
+    #assert engine_voice_step(r[..]) == 1;
   }
-  #assert aethyr_voice_applied(r[..]) == 8 && aethyr_voice_heard(r[..], big[0..<0]) == 0;
+  #assert engine_voice_applied(r[..]) == 8 && engine_voice_heard(r[..], big[0..<0]) == 0;
   r[0].heard_bytes = 1;
-  #assert aethyr_voice_heard(r[..], big[0..<0]) == -1;
+  #assert engine_voice_heard(r[..], big[0..<0]) == -1;
 }
 
 #test "a record replays every heard request, and a changed log is never applied" {
   r: [1] VoiceRealm;
-  aethyr_voice_init(r[..], 4);
-  #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
-  #assert aethyr_voice_step(r[..]) == 0;
-  #assert aethyr_voice_offer(r[..], 1, 0, "Hello Foreman. What are we building today?") == REPLAY_ACCEPTED;
-  #assert aethyr_voice_step(r[..]) == 1;
-  #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
-  #assert aethyr_voice_step(r[..]) == 0;
-  #assert aethyr_voice_control(r[..], VOICE_CANCEL) == REPLAY_ACCEPTED;
-  #assert aethyr_voice_step(r[..]) == 0;
-  #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
-  #assert aethyr_voice_step(r[..]) == 0;
-  #assert aethyr_voice_offer(r[..], 3, 1, "") == REPLAY_ACCEPTED;
-  #assert aethyr_voice_step(r[..]) == 1 && aethyr_voice_step(r[..]) == 0;
+  engine_voice_init(r[..], 4);
+  #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
+  #assert engine_voice_step(r[..]) == 0;
+  #assert engine_voice_offer(r[..], 1, 0, "Hello Foreman. What are we building today?") == REPLAY_ACCEPTED;
+  #assert engine_voice_step(r[..]) == 1;
+  #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
+  #assert engine_voice_step(r[..]) == 0;
+  #assert engine_voice_control(r[..], VOICE_CANCEL) == REPLAY_ACCEPTED;
+  #assert engine_voice_step(r[..]) == 0;
+  #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED;
+  #assert engine_voice_step(r[..]) == 0;
+  #assert engine_voice_offer(r[..], 3, 1, "") == REPLAY_ACCEPTED;
+  #assert engine_voice_step(r[..]) == 1 && engine_voice_step(r[..]) == 0;
   live := r[0].state;
-  digest := aethyr_voice_digest_session(r[..]);
-  #assert aethyr_voice_replay(r[..], VOICE_INITIAL, 7);
-  #assert r[0].state == live && aethyr_voice_applied(r[..]) == 2 && aethyr_voice_heard_kind(r[..]) == VOICE_NO_SPEECH;
-  #assert aethyr_voice_epoch(r[..]) == 1 && aethyr_voice_heard_request(r[..]) == 3;
-  #assert aethyr_voice_digest_session(r[..]) == digest;
-  #assert aethyr_voice_offer(r[..], 4, 1, "live during a replay") == REPLAY_REPLAYING;
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 6) && aethyr_voice_replay(r[..], VOICE_INITIAL, 7);
+  digest := engine_voice_digest_session(r[..]);
+  #assert engine_voice_replay(r[..], VOICE_INITIAL, 7);
+  #assert r[0].state == live && engine_voice_applied(r[..]) == 2 && engine_voice_heard_kind(r[..]) == VOICE_NO_SPEECH;
+  #assert engine_voice_epoch(r[..]) == 1 && engine_voice_heard_request(r[..]) == 3;
+  #assert engine_voice_digest_session(r[..]) == digest;
+  #assert engine_voice_offer(r[..], 4, 1, "live during a replay") == REPLAY_REPLAYING;
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 6) && engine_voice_replay(r[..], VOICE_INITIAL, 7);
   // One byte of the log changed: that answer is refused at its step, and the replay diverges.
   r[0].log[0] = 'J';
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1 && aethyr_voice_applied(r[..]) == 1;
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1 && engine_voice_applied(r[..]) == 1;
   r[0].log[0] = 'H';
-  #assert aethyr_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 0;
+  #assert engine_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 0;
   // An answer that points outside the log, or comes from another source, is never applied.
   r[0].events[1].words[VW_AT] = 1;
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1;
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1;
   r[0].events[1].words[VW_AT] = -1;
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1;
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1;
   r[0].events[1].words[VW_AT] = 0; r[0].events[1].words[VW_BYTES] = -1;
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1;
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1;
   r[0].events[1].words[VW_BYTES] = 601;
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1;
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1;
   r[0].events[1].words[VW_BYTES] = 43;
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1;
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1;
   r[0].events[1].words[VW_BYTES] = 42; r[0].events[1].source = REPLAY_NETWORK;
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1;
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 1;
   r[0].events[1].source = REPLAY_MODEL;
-  #assert aethyr_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 0;
-  #assert aethyr_voice_digest("") == 2166136261 && aethyr_voice_digest("a") == 3826002220;
-  #assert aethyr_voice_size() == size_of(VoiceRealm);
+  #assert engine_voice_replay(r[..], VOICE_INITIAL, 7) && r[0].corrupt == 0;
+  #assert engine_voice_digest("") == 2166136261 && engine_voice_digest("a") == 3826002220;
+  #assert engine_voice_size() == size_of(VoiceRealm);
   // Another constructed state: refused, and nothing reset.
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL + 1, 7) && aethyr_voice_applied(r[..]) == 2 && r[0].heard_kind == VOICE_NO_SPEECH;
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL + 1, 7) && engine_voice_applied(r[..]) == 2 && r[0].heard_kind == VOICE_NO_SPEECH;
   // A replay of no steps starts from nothing heard.
   r[0].holding = 5; r[0].heard_bytes = 5;
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 0);
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 0);
   #assert r[0].heard_bytes == 0 && r[0].heard_kind == 0 && r[0].heard_request == 0 && r[0].applied == 0 && r[0].holding == 0;
   #assert r[0].state == VOICE_INITIAL;
   r[0].corrupt = 3;
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 0) && r[0].corrupt == 0;
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 0) && r[0].corrupt == 0;
 }
 
 #test "what a step mixes into the realm's state" {
   r: [1] VoiceRealm;
   r[0].applied = 9; r[0].holding = 4; r[0].log_used = 7;
-  aethyr_voice_init(r[..], 2);
+  engine_voice_init(r[..], 2);
   #assert r[0].applied == 0 && r[0].holding == 0 && r[0].log_used == 0 && r[0].state == VOICE_INITIAL;
-  #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED && aethyr_voice_step(r[..]) == 0;
+  #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED && engine_voice_step(r[..]) == 0;
   h := replay_mix(replay_mix(VOICE_INITIAL, VOICE_PRESS), 1);
   #assert r[0].state == h && r[0].events[0].request == 1;
-  #assert aethyr_voice_offer(r[..], 1, 0, "Make it night.") == REPLAY_ACCEPTED && aethyr_voice_step(r[..]) == 1;
-  h = replay_mix(replay_mix(replay_mix(h, 1), VOICE_FINAL), aethyr_voice_digest("Make it night."));
+  #assert engine_voice_offer(r[..], 1, 0, "Make it night.") == REPLAY_ACCEPTED && engine_voice_step(r[..]) == 1;
+  h = replay_mix(replay_mix(replay_mix(h, 1), VOICE_FINAL), engine_voice_digest("Make it night."));
   #assert r[0].state == h;
-  #assert aethyr_voice_control(r[..], VOICE_CANCEL) == REPLAY_ACCEPTED && aethyr_voice_step(r[..]) == 0;
+  #assert engine_voice_control(r[..], VOICE_CANCEL) == REPLAY_ACCEPTED && engine_voice_step(r[..]) == 0;
   #assert r[0].state == replay_mix(h, VOICE_CANCEL) && r[0].events[2].request == 2;
 }
 
 #test "an answer whose bytes run past 600 or past the log is never applied" {
   r: [1] VoiceRealm;
-  aethyr_voice_init(r[..], 3);
+  engine_voice_init(r[..], 3);
   big: [601] u8;
   for i: 0..<601 { big[i] = 'b'; }
-  #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED && aethyr_voice_step(r[..]) == 0;
-  #assert aethyr_voice_offer(r[..], 1, 0, cast(string) big[0..<600]) == REPLAY_ACCEPTED;
-  #assert aethyr_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED && aethyr_voice_step(r[..]) == 1;
-  #assert aethyr_voice_offer(r[..], 2, 0, "b") == REPLAY_ACCEPTED && aethyr_voice_step(r[..]) == 1;
+  #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED && engine_voice_step(r[..]) == 0;
+  #assert engine_voice_offer(r[..], 1, 0, cast(string) big[0..<600]) == REPLAY_ACCEPTED;
+  #assert engine_voice_control(r[..], VOICE_PRESS) == REPLAY_ACCEPTED && engine_voice_step(r[..]) == 1;
+  #assert engine_voice_offer(r[..], 2, 0, "b") == REPLAY_ACCEPTED && engine_voice_step(r[..]) == 1;
   // 601 bytes that are all in the log, with their own digest: still not a transcript.
   r[0].events[1].words[VW_BYTES] = 601;
-  r[0].events[1].words[VW_DIGEST] = aethyr_voice_digest(cast(string) big[..]);
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 3) && r[0].corrupt == 1;
+  r[0].events[1].words[VW_DIGEST] = engine_voice_digest(cast(string) big[..]);
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 3) && r[0].corrupt == 1;
   // Bytes past the log's end (zeros), with their digest: not applied.
   r[0].events[1].words[VW_AT] = 590; r[0].events[1].words[VW_BYTES] = 20;
   zeros: [20] u8;
   for i: 0..<11 { zeros[i] = 'b'; }
-  r[0].events[1].words[VW_DIGEST] = aethyr_voice_digest(cast(string) zeros[..]);
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 3) && r[0].corrupt == 1;
+  r[0].events[1].words[VW_DIGEST] = engine_voice_digest(cast(string) zeros[..]);
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 3) && r[0].corrupt == 1;
   r[0].events[1].words[VW_BYTES] = 11;
-  r[0].events[1].words[VW_DIGEST] = aethyr_voice_digest(cast(string) zeros[0..<11]);
-  #assert !aethyr_voice_replay(r[..], VOICE_INITIAL, 3) && r[0].corrupt == 0 && r[0].heard_bytes == 1;
+  r[0].events[1].words[VW_DIGEST] = engine_voice_digest(cast(string) zeros[0..<11]);
+  #assert !engine_voice_replay(r[..], VOICE_INITIAL, 3) && r[0].corrupt == 0 && r[0].heard_bytes == 1;
 }

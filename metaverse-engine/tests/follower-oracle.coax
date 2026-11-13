@@ -153,9 +153,9 @@ ff_test_same_fetch :: (a: Fetch, b: Fetch) -> bool {
   ff_f.ball.thrown = ff_thrown; ff_f.ball.resting = true;
   ff_you := v3(ifx ff_spot < 2 then 2.0f32 else 20.0f32,0,0); ff_hand := v3(3,1.25,2);
   ff_before := ff_f;
-  if ff_before.ball.held == 0 { ff_before.ball = verse_ball_carry(ff_before.ball,ff_hand); }
-  ff_before.ball = verse_ball_step(ff_before.ball,ff_g,ff_h[..],ff_empty[0..<0],ff_empty[0..<0],1.0/64);
-  ff_expected := verse_fetch_step_among(ff_before,ff_g,ff_h[..],ff_nodes[..],ff_links[..],0.9,ff_you,1.0/64,ff_empty[0..<0]);
+  if ff_before.ball.held == 0 { ff_before.ball = metaverse_ball_carry(ff_before.ball,ff_hand); }
+  ff_before.ball = metaverse_ball_step(ff_before.ball,ff_g,ff_h[..],ff_empty[0..<0],ff_empty[0..<0],1.0/64);
+  ff_expected := metaverse_fetch_step_among(ff_before,ff_g,ff_h[..],ff_nodes[..],ff_links[..],0.9,ff_you,1.0/64,ff_empty[0..<0]);
   ff_actual := fetch_step(ff_f,follower_profile(),ff_g,ff_h[..],ff_nodes[..],ff_links[..],0.9,ff_you,ff_hand,
     ff_empty[0..<0],ff_empty[0..<0],ff_empty[0..<0],true,false);
   #assert ff_actual.status == FollowerStatus.ok && ff_test_same_fetch(ff_actual.fetch,ff_expected);

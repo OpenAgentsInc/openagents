@@ -18,7 +18,7 @@
 // after each step, place_message(state, kind, inbox, length) at the top of
 // coaxial_message (true: it was the place's), and lets place_action() take
 // the outbox when the page has no action of its own. A place the location's
-// hash named (verse_place_named) wins only until you walk off it: the first
+// hash named (metaverse_place_named) wins only until you walk off it: the first
 // step off it drops the hash too (action 3, empty), so a reload brings
 // you back where you were, not to the place the link named.
 #pragma once
@@ -46,27 +46,27 @@ static coax_v_t_PlaceKeeper place_k(void) { return (coax_v_t_PlaceKeeper){&place
 static double place_wall_ms(void) { return track_state.epoch > 0 ? track_state.epoch + track_state.t * 1000.0 : 0; }
 
 // You were first put down (the spawn, or where the hash named).
-static void place_seen(cx_face_addr state) { verse_place_open(place_k(), place_here(state)); }
+static void place_seen(cx_face_addr state) { metaverse_place_open(place_k(), place_here(state)); }
 
 static void place_keep(cx_face_addr state, bool leaving) {
   coax_t_Place here = place_here(state);
   here.at = place_wall_ms();
-  int64_t due = verse_place_due(place_k(), here, track_state.t, leaving);
+  int64_t due = metaverse_place_due(place_k(), here, track_state.t, leaving);
   if (place_keeper.moved && place_keeper.named && !place_unhashed) { place_unhash = true; place_unhashed = true; }
   if (!due) return;
   int64_t done = 0;
   if (due & 1) {
-    int64_t n = verse_place_text(here, verse_place_slot(place_k()), (coax_v_u8){place_text_out, sizeof place_text_out});
+    int64_t n = metaverse_place_text(here, metaverse_place_slot(place_k()), (coax_v_u8){place_text_out, sizeof place_text_out});
     if (n > 0) { place_text_n = (uint32_t)n; done |= 1; }
   }
   if (due & 2) {
-    int64_t un = verse_place_url(place_k(), (coax_v_u8){place_url, sizeof place_url});
-    int64_t bn = un > 0 ? verse_place_send(place_k(), here, leaving, (coax_v_u8){place_body, sizeof place_body}) : 0;
+    int64_t un = metaverse_place_url(place_k(), (coax_v_u8){place_url, sizeof place_url});
+    int64_t bn = un > 0 ? metaverse_place_send(place_k(), here, leaving, (coax_v_u8){place_body, sizeof place_body}) : 0;
     int32_t id = bn > 0 ? coaxial_http((cx_face_addr)(uintptr_t)place_url, (uint32_t)un, (cx_face_addr)(uintptr_t)place_body, (uint32_t)bn, leaving ? 1 | 8 : 1 | 4 | 8) : -1;
     if (id >= 0) { done |= 2; if (!leaving) place_post_id = id; }
-    else if (bn > 0 && !leaving) verse_place_unsent(place_k());
+    else if (bn > 0 && !leaving) metaverse_place_unsent(place_k());
   }
-  verse_place_kept(place_k(), here, track_state.t, done);
+  metaverse_place_kept(place_k(), here, track_state.t, done);
 }
 static void place_frame(cx_face_addr state) { place_keep(state, false); }
 
@@ -76,29 +76,29 @@ static void place_frame(cx_face_addr state) { place_keep(state, false); }
 static bool place_message(cx_face_addr state, int32_t kind, const uint8_t *inbox, uint32_t length) {
   coax_string text = {(const char *)inbox, (int64_t)length};
   if (kind == 600) {
-    verse_place_facts(place_k(), text);
-    if (verse_place_ask(place_k())) {
-      int64_t un = verse_place_url(place_k(), (coax_v_u8){place_url, sizeof place_url});
+    metaverse_place_facts(place_k(), text);
+    if (metaverse_place_ask(place_k())) {
+      int64_t un = metaverse_place_url(place_k(), (coax_v_u8){place_url, sizeof place_url});
       if (un > 0) place_ask_id = coaxial_http((cx_face_addr)(uintptr_t)place_url, (uint32_t)un, 0, 0, 4 | 8);
-      if (place_ask_id < 0) verse_place_server(place_k(), (coax_string){"0\n", 2});   // no copy coming: send without one
+      if (place_ask_id < 0) metaverse_place_server(place_k(), (coax_string){"0\n", 2});   // no copy coming: send without one
     }
     return false;
   }
   if (kind == 601 || kind == 603) { place_keep(state, true); return false; }
   if (kind == PLACE_MESSAGE) {
-    coax_t_Place p = verse_place_read(text, verse_place_slot(place_k()));
-    if (verse_place_take(place_k(), p)) place_put(state, p);
+    coax_t_Place p = metaverse_place_read(text, metaverse_place_slot(place_k()));
+    if (metaverse_place_take(place_k(), p)) place_put(state, p);
     return true;
   }
   if (place_post_id >= 0 && kind == 512 + place_post_id) {
     place_post_id = -1;
-    verse_place_heard(place_k(), text);
+    metaverse_place_heard(place_k(), text);
     return true;
   }
   if (place_ask_id >= 0 && kind == 512 + place_ask_id) {
     place_ask_id = -1;
-    coax_t_Place p = verse_place_server(place_k(), text);
-    if (verse_place_take(place_k(), p)) place_put(state, p);
+    coax_t_Place p = metaverse_place_server(place_k(), text);
+    if (metaverse_place_take(place_k(), p)) place_put(state, p);
     return true;
   }
   return false;

@@ -400,12 +400,12 @@ does between a page's face and its platform, written once over the engine's Coax
 
 | The core does | Through |
 | --- | --- |
-| Sorts a pack's entries by kind | `aethyr_core_pack` over the one reader (`pack-table.coax`) |
-| Hands the pack to the face in the browser's order | `aethyr_core_deliver`: the progress message, asset 0 the catalog, 1 and 2 the vertex and index sizes, the rig, then 3 the layers' count and the page's own assets |
-| Reads a paged block build whole | `aethyr_core_image` (`page-pack.coax`, every page checked) |
-| Tells a block layer from an image, and gives its levels | `aethyr_core_layer`, `aethyr_core_level` (`block-layer.coax`) |
-| Picks the block build a GPU takes | `aethyr_core_format` (`texture-format.coax` `tf_pick`) |
-| Asks the page for the frame plan and walks it, whole or not at all | `aethyr_core_plan` over the one C walk, `core/frame-plan-walk.h` (#13303) |
+| Sorts a pack's entries by kind | `engine_core_pack` over the one reader (`pack-table.coax`) |
+| Hands the pack to the face in the browser's order | `engine_core_deliver`: the progress message, asset 0 the catalog, 1 and 2 the vertex and index sizes, the rig, then 3 the layers' count and the page's own assets |
+| Reads a paged block build whole | `engine_core_image` (`page-pack.coax`, every page checked) |
+| Tells a block layer from an image, and gives its levels | `engine_core_layer`, `engine_core_level` (`block-layer.coax`) |
+| Picks the block build a GPU takes | `engine_core_format` (`texture-format.coax` `tf_pick`) |
+| Asks the page for the frame plan and walks it, whole or not at all | `engine_core_plan` over the one C walk, `core/frame-plan-walk.h` (#13303) |
 
 A host compiles the core's face once (`core/core-face.coax`, as C) and includes the header. The
 Mac and iPhone page host (`apple/PageHost.m`) is built on it; the Android app's host uses it for
@@ -437,7 +437,7 @@ one it was built for. A page without the export keeps the host's built-in order.
 `features` is the host's word: bits 0 to 13 are the pipelines the page's shader module gave it
 (`RenderFeatures`' fields in order), and the rest say what it did before it asked: the shadow atlas
 is tiled, the instance cull staged runs, its character pass has a character, it sorts particles,
-the scene's assets are in (`AETHYR_FP_HOST_*`). The page says what it would draw; a fact is drawn
+the scene's assets are in (`ENGINE_FP_HOST_*`). The page says what it would draw; a fact is drawn
 only when both have it.
 
 Everglade II (`apps/openagents-web/everglade2-face.c`, `e2_frame_plan`) is the first page on it: its
@@ -479,8 +479,8 @@ that line: `pack_cell_line` writes it (the pack tool calls it),
 (`proto/verse/asset-pack-v2.json`, `cell_lines`) states the line and holds
 fixtures to this module. A host does three things, and decides nothing:
 
-1. Asks for the cell: `aethyr_pack_cell(image, key)` on the reader's C face
-   (`aethyr_pack_cell_ranges` in `pack-table.h`), or `result.cell(key)` on
+1. Asks for the cell: `engine_pack_cell(image, key)` on the reader's C face
+   (`engine_pack_cell_ranges` in `pack-table.h`), or `result.cell(key)` on
    what `loadPaged(pack, {demand: true})` returns in `coax/web/pack-host.js`.
    It gets the cell's digest and up to eight byte ranges, each inside the
    image. A cell the catalog lists twice, or whose line is damaged, is not

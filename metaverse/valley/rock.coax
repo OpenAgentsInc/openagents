@@ -106,7 +106,7 @@ rock_colour :: (normal:Point,mode:int,height:f32)->Point {
   albedo:=v3(ROCK_MATERIAL.r,ROCK_MATERIAL.g,ROCK_MATERIAL.b);if mode==1 {return albedo;}
   // Pin a unit sun vector and use shared chapter 12/13 lighting arithmetic.
   direct:=hi(0,dot(normal,v3(-0.48,0.8,-0.36)));
-  ambient:=verse_style_ambient(normal.y,0.22,0.08,1);
+  ambient:=metaverse_style_ambient(normal.y,0.22,0.08,1);
   strata:=0.94+0.06*abs((height*3-floor(height*3))*2-1);
   return times(albedo,(ambient+direct*0.64)*strata);
 }

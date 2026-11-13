@@ -16,7 +16,7 @@ audiolab 140000
 animelab 190000
 belt 320000
 builder 100000
-# WorldBuilder on Aethyrforge's edit log (metaverse-engine/editor/edit.coax), EditBuf (components/core/edit.coax) and the control kit (components/kit/controls.coax, verse_skin, gpu_draw, #13226): 122,449 bytes measured on Linux; about 6% room.
+# WorldBuilder on Aethyrforge's edit log (metaverse-engine/editor/edit.coax), EditBuf (components/core/edit.coax) and the control kit (components/kit/controls.coax, metaverse_skin, gpu_draw, #13226): 122,449 bytes measured on Linux; about 6% room.
 # ... and with the ground (#13225): an Aethyr terrain tile (metaverse-engine/world/terrain-tile.coax), the engine's brushes (metaverse-engine/world/terrain-edit.coax),
 # the forge log's land steps, the exact ground ray (metaverse-engine/physics/ground-query.coax), the brush bar and the view's framing (#13224): 166,099 bytes measured on Linux; about 5% room.
 # ... and it is an Everglade zone too (worldbuilder-walk.coax, everglade/zone.coax, #13225): your character on the shared controller, as the

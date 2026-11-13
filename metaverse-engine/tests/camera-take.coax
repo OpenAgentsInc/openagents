@@ -12,19 +12,19 @@ take_same :: (a:CameraShot,b:CameraShot)->bool {
 }
 TakeRate :: struct {maximum:f32;cuts:int;skips:int;ok:bool=true;}
 take_rate :: (fps:int,shard:int,shards:int)->TakeRate #effects(all) {
- r:TakeRate;f:=verse_flight_start(flight_keys(),0,false);live:=take_live();last:=camera_flight(f,0,live);last_take:=verse_flight_take(f,0);
+ r:TakeRate;f:=metaverse_flight_start(flight_keys(),0,false);live:=take_live();last:=camera_flight(f,0,live);last_take:=metaverse_flight_take(f,0);
  for frame:1..<fps*10+1 {
-  now:=f64(frame)/f64(fps);s:=camera_flight(f,now,live);part:=verse_flight_take(f,now);
+  now:=f64(frame)/f64(fps);s:=camera_flight(f,now,live);part:=metaverse_flight_take(f,now);
   if last_take==0 && part==2 {r.cuts+=1;}
   else {speed:=take_distance(s.eye,last.eye)*f32(fps);if speed>r.maximum {r.maximum=speed;}}
   last=s;last_take=part;
  }
  // Every displayed source frame can be skipped. Check the starting shot, the
  // midpoint, every hand-back frame's analytic bound, and the exact deadline.
- for frame:0..<cast(int)(f64(verse_flight_length(f))*f64(fps))+1 {
+ for frame:0..<cast(int)(f64(metaverse_flight_length(f))*f64(fps))+1 {
   if frame%shards!=shard {continue;}
-  at:=f64(frame)/f64(fps);if !verse_flight_flying(f,at) {continue;}
-  skip:=verse_flight_skip(f,at);source:=camera_flight(f,at,live);
+  at:=f64(frame)/f64(fps);if !metaverse_flight_flying(f,at) {continue;}
+  skip:=metaverse_flight_skip(f,at);source:=camera_flight(f,at,live);
   if !take_same(source,camera_flight(skip,at,live)) {r.ok=false;}
   if !take_same(live,camera_flight(skip,at+f64(HANDBACK),live)) {r.ok=false;}
   mid:=camera_flight(skip,at+f64(HANDBACK)*0.5,live);
@@ -37,7 +37,7 @@ take_rate :: (fps:int,shard:int,shards:int)->TakeRate #effects(all) {
   }
   r.skips+=1;
  }
- if !take_same(live,camera_flight(verse_flight_start(flight_keys(),0,true),0,live)) {r.ok=false;}
+ if !take_same(live,camera_flight(metaverse_flight_start(flight_keys(),0,true),0,live)) {r.ok=false;}
  return r;
 }
 take_rate_slice :: (shard:int)->bool #effects(all) {
@@ -78,22 +78,22 @@ take_rate_slice :: (shard:int)->bool #effects(all) {
 #test "Hecate 30/60/144 FPS and every-frame skip slice 32/32" {#assert take_rate_slice(31);}
 
 CameraTake :: struct {flight:Flight;vase:Arrange;shot:CameraShot;}
-take_new :: ()->CameraTake #effects(all) {return CameraTake.{flight=flight_keys(),vase=verse_arrange_new(v3(-17,1,-23),0.1),shot=take_live()};}
+take_new :: ()->CameraTake #effects(all) {return CameraTake.{flight=flight_keys(),vase=metaverse_arrange_new(v3(-17,1,-23),0.1),shot=take_live()};}
 // book:begin step
 take_step :: (state:CameraTake,tick:int,command:int)->CameraTake #effects(all) {
  next:=state;now:=f64(tick)/64;
- if command==1 {next.flight=verse_flight_start(next.flight,now,false);}
- if command==2 {next.flight=verse_flight_skip(next.flight,now);}
- if command==3 {next.vase=verse_arrange_open(next.vase,0);}
+ if command==1 {next.flight=metaverse_flight_start(next.flight,now,false);}
+ if command==2 {next.flight=metaverse_flight_skip(next.flight,now);}
+ if command==3 {next.vase=metaverse_arrange_open(next.vase,0);}
  if command==4 {
   // The opening is below the look point by ARRANGE_LIFT. This projected
   // coordinate is calculated from the authored pitch and distance.
   ny:= -f32(ARRANGE_LIFT)*cos(f32(ARRANGE_PITCH))/(f32(ARRANGE_DIST)+f32(ARRANGE_LIFT)*sin(f32(ARRANGE_PITCH)));
   next.vase=camera_closeup_point(next.vase,state.shot,1,1,0,ny);
-  next.vase=verse_arrange_click(next.vase);
+  next.vase=metaverse_arrange_click(next.vase);
  }
- if command==5 {next.vase=verse_arrange_close(next.vase);}
- next.vase=verse_arrange_step(next.vase,1.0f32/64,false);
+ if command==5 {next.vase=metaverse_arrange_close(next.vase);}
+ next.vase=metaverse_arrange_step(next.vase,1.0f32/64,false);
  next.shot=camera_flight(next.flight,now,take_live());
  if next.vase.blend>0 {next.shot=camera_closeup(next.vase,take_live());}
  return next;

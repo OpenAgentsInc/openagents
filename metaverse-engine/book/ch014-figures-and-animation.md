@@ -181,7 +181,7 @@ main :: () {
   // A motion that turns a joint past its limit is refused with the line and the range, not bent.
   m: [1] Motion;
   ok := verse_motion_read(m[..], "motion wave; rig person; seconds 2; once; at 0.5; right_shoulder 0 0 -250");
-  print("a wave past the shoulder's limit read %: %\n", ok, verse_motion_error(m[..]));
+  print("a wave past the shoulder's limit read %: %\n", ok, metaverse_motion_error(m[..]));
   print("clip for 0.05 m/s %, 1.3 m/s %, 6 m/s %, in the air %\n", RANGER_CLIP_NAME[skin_motion(0.05, false)], RANGER_CLIP_NAME[skin_motion(1.3, false)], RANGER_CLIP_NAME[skin_motion(6, false)], RANGER_CLIP_NAME[skin_motion(1.3, true)]);
 }
 ```
@@ -253,7 +253,7 @@ change.
   walk is not recorded yet.
 - **The rest of `skin.coax`'s mutants.** The 87 survivors above.
 - **Collision from the pose.** The Grid's robot capsules come from the same
-  palette that draws them (`verse_cast_bodies`); the same for skinned
+  palette that draws them (`metaverse_cast_bodies`); the same for skinned
   characters through `pose_chain` is still to do.
 
 ## Dependencies

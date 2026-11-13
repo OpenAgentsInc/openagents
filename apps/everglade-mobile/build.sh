@@ -111,7 +111,7 @@ emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
 # entries through the reader (pack-table.h, which includes the face under its old name).
 "$coax" c "$repo/metaverse-engine/host/core/core-face.coax" --library --header "$work/c/aethyr-core-face.h" > "$work/c/aethyr-core-face.c"
 # (Its SHA-256 helpers are also native-audio's: this unit keeps its own names for them.)
-"${cc[@]}" -w -DS_hash=aethyr_core_S_hash -DS_hex=aethyr_core_S_hex -c "$work/c/aethyr-core-face.c" -o "$work/c/aethyr-core-face.o"
+"${cc[@]}" -w -DS_hash=engine_core_S_hash -DS_hex=engine_core_S_hex -c "$work/c/aethyr-core-face.c" -o "$work/c/aethyr-core-face.o"
 printf '#include "aethyr-core-face.h"\n' > "$work/c/aethyr-pack-table.h"
 xcrun -sdk "$sdk" clang -target "$target" -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -I"$work/c" -c "$repo/metaverse-engine/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # A phone's tier for the pack's layers is Coax's (metaverse-engine/render/texture-format.coax tf_side), which

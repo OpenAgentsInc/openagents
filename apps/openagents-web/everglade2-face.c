@@ -1,7 +1,7 @@
 // Everglade v2's C face for the browser (coax/web/host.js): scalar Wasm exports over everglade/client/client.coax,
 // which says what is round you, where you may stand and what is drawn. It decides nothing.
 // The controller steps your body as fivelab-face.c's Player mode does: everglade-step.coax
-// (metaverse-engine/move/walk.coax, with player.coax's verse_player_*) on the keys and a phone's thumbs
+// (metaverse-engine/move/walk.coax, with player.coax's metaverse_player_*) on the keys and a phone's thumbs
 // (metaverse-engine/core/sticks.coax). The scene is three stores: the records (the glade, its grass, your
 // character's parts), the clips baked once (into the state, sized by everglade/scene/bodies.coax), and the
 // kit pieces in view this frame.
@@ -108,7 +108,7 @@ static coax_t_Body step_frame(cx_face_addr state, coax_t_Body p, coax_t_EgMoveIn
   coax_v_f32 near = e2_move_bodies(at(state)), hulls = e2_move_hulls(at(state));
   p = eg_step_advance_among(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, (coax_v_f32){hulls.data, mw.hulls}, frame);
   coax_t_Point kept = e2_keep_from(at(state), p.pos.x, p.pos.z, fx, fz);
-  if (kept.x != p.pos.x || kept.z != p.pos.z) p = verse_body_constrain(p, kept.x, kept.z);
+  if (kept.x != p.pos.x || kept.z != p.pos.z) p = metaverse_body_constrain(p, kept.x, kept.z);
   return p;
 }
 static coax_t_Body step_once(cx_face_addr state, coax_t_Body p, coax_t_EgMoveIn input, float dt) {
@@ -184,15 +184,15 @@ EXPORT("coaxial_frame")
 uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr uniforms, float w, float h, float scale, float dt, uint32_t still) {
   width = w; height = h; dpr = scale; now += dt;
   quality_state = state; e2_quality_frame(at(state), dt, w, h, scale, golden);
-  if (e2_start(at(state))) player = verse_body_place(e2_at(state)->you_x, 0, e2_at(state)->you_z, e2_at(state)->you_face);
+  if (e2_start(at(state))) player = metaverse_body_place(e2_at(state)->you_x, 0, e2_at(state)->you_z, e2_at(state)->you_face);
   /* Character Create's run starts from you as the studio drew you (everglade/client/create.coax e2c_walk) */
-  if (e2_reseat(at(state))) player = verse_body_place(player.pos.x, 0, player.pos.z, e2_at(state)->you_face);
+  if (e2_reseat(at(state))) player = metaverse_body_place(player.pos.x, 0, player.pos.z, e2_at(state)->you_face);
   float frame = dt;
-  float step = verse_body_counts(player, frame);
+  float step = metaverse_body_counts(player, frame);
   e2_look(at(state), sticks.dyaw, sticks.dpitch, sticks.zoom);
   coax_t_EgMoveIn input = e2_move_in(at(state));
   input.pad_x = sticks.pad_x; input.pad_y = sticks.pad_y;
-  input.run = verse_runs(input.run, sticks.run, sticks.pad_x, sticks.pad_y);
+  input.run = metaverse_runs(input.run, sticks.run, sticks.pad_x, sticks.pad_y);
   input.jump = input.jump || sticks.jump;
   int64_t mono = coaxial_now_ms();
   if (e2_net_live(at(state))) {
@@ -228,7 +228,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     step_acc = 0; step_jump_held = 0;
     player = step_frame(state, player, input, step, frame);
   }
-  coax_t_Vec3 feet = verse_body_feet(player);
+  coax_t_Vec3 feet = metaverse_body_feet(player);
   if (e2_net_live(at(state))) {
     /* drawn from where the last step left you toward where the next one will, by its time gone, less
        what a re-run moved you, eased out */
@@ -236,8 +236,8 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     feet = eg_step_drawn(eg_step_feet(player), step_next, step_acc * 30);
     feet.x += off.x; feet.y += off.y; feet.z += off.z;
   }
-  e2_you(at(state), feet.x, feet.y, feet.z, verse_body_face(player));
-  sticks = verse_sticks_used(sticks);
+  e2_you(at(state), feet.x, feet.y, feet.z, metaverse_body_face(player));
+  sticks = metaverse_sticks_used(sticks);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_e2_max_vertices() * coaxial_e2_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_e2_uniform_floats()};
   int64_t n = e2_frame(at(state), out, u, w, h, scale, dt, still != 0);
@@ -351,7 +351,7 @@ EXPORT("coaxial_key") uint32_t coaxial_key(cx_face_addr state, int32_t key, int3
   return e2_key(at(state), key, mods) ? 1u : 0u;
 }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key, int32_t mods) { track_key_up(tr(), key); return e2_key_up(at(state), key, mods) ? 1u : 0u; }
-EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { e2_blur(at(state)); sticks = verse_sticks_reset(); track_blur(tr()); }
+EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { e2_blur(at(state)); sticks = metaverse_sticks_reset(); track_blur(tr()); }
 /* Aethyr host contract v1 (metaverse-engine/host/README.md). The face has what v1 asks of a face: addresses
    of the host's width (face-address.h), focus as a call of its own, and the whole allocations its
    action, media and sound-bank bytes are in. A native build says so. The browser's module does not
@@ -366,13 +366,13 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr state, float x, 
   e2_track_pointer(at(state), tr(), x, y, phase, kind); track_drain();
   if (e2_pointer(at(state), x, y, phase, kind, id)) return 1u;
   // a finger is a thumb's: the stick, the look, a tap's jump
-  if (kind != 0) { sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
+  if (kind != 0) { sticks = metaverse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
   return 0u;
 }
 EXPORT("coaxial_pointer_buttons_v1") uint32_t coaxial_pointer_buttons_v1(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
   e2_track_pointer(at(state), tr(), x, y, phase, kind); track_drain();
   if (e2_pointer_buttons(at(state), x, y, phase, kind, id, button)) return 1u;
-  if (kind != 0) { sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
+  if (kind != 0) { sticks = metaverse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
   return 0u;
 }
 EXPORT("coaxial_wheel") uint32_t coaxial_wheel(cx_face_addr state, float dy) { return e2_wheel(at(state), dy) ? 1u : 0u; }

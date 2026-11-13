@@ -1,7 +1,7 @@
 // Canonical CPU image ownership only. The caller owns actual GPU uploads and
 // ledger handles; decoded pixels do not by themselves assert GPU readiness.
-#ifndef AETHYR_RENDER_IMAGES_H
-#define AETHYR_RENDER_IMAGES_H
+#ifndef ENGINE_RENDER_IMAGES_H
+#define ENGINE_RENDER_IMAGES_H
 #include "RenderTexture.h"
 #include <stddef.h>
 #include <stdint.h>

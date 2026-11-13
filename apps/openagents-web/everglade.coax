@@ -131,7 +131,7 @@ WATER_FLOATS :: 324;
 // The fountain's two numbers in the block's spare W_GRID2 z and w (the river leaves them): the
 // ground under it, and 1 when it is drawn (everglade.wgsl fountain_vertex).
 U_FOUNTAIN :: U_WATER + 318;
-// Then the painterly preset at the clock (metaverse/style-preset.coax verse_style_at, SU_* rows; everglade.wgsl u.style).
+// Then the painterly preset at the clock (metaverse/style-preset.coax metaverse_style_at, SU_* rows; everglade.wgsl u.style).
 STYLE_AT :: U_WATER + WATER_FLOATS;
 // Then where no grass grows (art-styles.md 8): the buildings' and the props' footprints, x0, z0, x1, z1.
 SOLIDS :: 32;
@@ -582,7 +582,7 @@ coaxial_everglade_max_vertices :: () -> int #export_c #effects(all) { return MAX
 coaxial_everglade_vertex_floats :: () -> int #export_c #effects(all) { return VERTEX_FLOATS; }
 coaxial_everglade_uniform_floats :: () -> int #export_c #effects(all) { return UNIFORM_FLOATS; }
 
-ground_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return verse_terrain_height(everglade_ground(), s[0].heights[..], x, z); }
+ground_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return metaverse_terrain_height(everglade_ground(), s[0].heights[..], x, z); }
 // Where you stand: the ground, the bridge's deck over the river, or ice on the water (everglade-frost.coax).
 walk_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return hi(everglade_walk_height_out(s[0].heights[..], s[0].deck, sp_deck_out_at(s, x, z), x, z), fr_floor(s, x, z)); }
 
@@ -706,7 +706,7 @@ everglade_start :: (s: [] Everglade) {
   s[0].spawn = v3(f32(EG_SPAWN_X), 0, f32(EG_SPAWN_Z));
   s[0].spawn_face = f32(PI);
   s[0].feet = v3(s[0].spawn.x, ground_at(s, s[0].spawn.x, s[0].spawn.z), s[0].spawn.z);
-  s[0].orbit = verse_orbit_start(s[0].feet, 0);
+  s[0].orbit = metaverse_orbit_start(s[0].feet, 0);
   s[0].map_finger = -1;
   s[0].near = -1; s[0].talk = -1; s[0].talk_finger = -1; s[0].near_boat = -1;
   s[0].focus = -1; s[0].pick = 0; s[0].thanks = -1; s[0].board_finger = -1; s[0].news = -1; s[0].talk_quest = -1;
@@ -1163,7 +1163,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c #effec
     eg_stage(s, fact(text, "url"));   // ?stage=roof (everglade-stand.coax)
     if eg_query_is(fact(text,"url"),"pack","everglade-link") {s[0].link_materials=true;}
     rp_facts(s, fact(text, "url"));   // ?raid=preview (everglade-raid-preview.coax)
-    s[0].day = verse_style_clock(fact(text, "clock"), fact(text, "now"), fact(text, "day"));
+    s[0].day = metaverse_style_clock(fact(text, "clock"), fact(text, "now"), fact(text, "day"));
     s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
     cz_facts(s, text);   // at Character Create: the glade's clearing, the studio's light (everglade-create.coax)
     ms := sp_number(fact(text, "now"));
@@ -1351,12 +1351,12 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
     s[0].boat_start = boat;
     px := EG_POND[p * 4]; pz := EG_POND[p * 4 + 1];
     nodes := EG_NODE_XZ; links := EG_LINK_AB;
-    by := verse_path_nearest(nodes[..], links[..], px, pz);
+    by := metaverse_path_nearest(nodes[..], links[..], px, pz);
     dx := by.x - px; dz := by.z - pz; d := hi(sqrt(dx * dx + dz * dz), 0.01);
     x := px + dx / d * (EG_POND[p * 4 + 2] + 2); z := pz + dz / d * (EG_POND[p * 4 + 2] + 2);
     s[0].spawn = v3(x, 0, z); s[0].spawn_face = yaw_of(px - x, pz - z);
     s[0].feet = v3(x, ground_at(s, x, z), z);
-    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].orbit = metaverse_orbit_start(s[0].feet, s[0].spawn_face);
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     return;
   }
@@ -1364,7 +1364,7 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
   if hash == "river-wade" {
     s[0].spawn = v3(88, 0, -1.5); s[0].spawn_face = yaw_of(0, -1);
     s[0].feet = v3(88, ground_at(s, 88, -1.5), -1.5);
-    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].orbit = metaverse_orbit_start(s[0].feet, s[0].spawn_face);
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     return;
   }
@@ -1373,7 +1373,7 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
     x := f32(EG_RIVER_X) - 4.5; z := f32(EG_WEIR_Z) + 3;
     s[0].spawn = v3(x, 0, z); s[0].spawn_face = yaw_of(f32(EG_RIVER_X) - x, f32(EG_POOL_Z) - z);
     s[0].feet = v3(x, ground_at(s, x, z), z);
-    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].orbit = metaverse_orbit_start(s[0].feet, s[0].spawn_face);
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     return;
   }
@@ -1382,7 +1382,7 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
     bm := board_middle();
     s[0].spawn = v3(bm.x, 0, bm.z + 1.5); s[0].spawn_face = f32(PI);
     s[0].feet = v3(bm.x, ground_at(s, bm.x, bm.z + 1.5), bm.z + 1.5);
-    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].orbit = metaverse_orbit_start(s[0].feet, s[0].spawn_face);
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     return;
   }
@@ -1391,7 +1391,7 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
     x := ez_spawn_x(); z := ez_spawn_z();
     s[0].spawn = v3(x, 0, z); s[0].spawn_face = f32(PI);
     s[0].feet = v3(x, walk_at(s, x, z), z);
-    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].orbit = metaverse_orbit_start(s[0].feet, s[0].spawn_face);
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     return;
   }
@@ -1409,7 +1409,7 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
     x := r.fx + r.vx * v + r.ux * u; z := r.fz + r.vz * v + r.uz * u;
     s[0].spawn = v3(x, 0, z); s[0].spawn_face = r.face;
     s[0].feet = v3(x, ground_at(s, x, z), z);
-    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].orbit = metaverse_orbit_start(s[0].feet, s[0].spawn_face);
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     return;
   }
@@ -1420,7 +1420,7 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
     x := EG_SPOT[i * 3] + sin(f) * 1.6; z := EG_SPOT[i * 3 + 1] + cos(f) * 1.6;
     s[0].spawn = v3(x, 0, z); s[0].spawn_face = wrap_angle(f + f32(PI));
     s[0].feet = v3(x, ground_at(s, x, z), z);
-    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].orbit = metaverse_orbit_start(s[0].feet, s[0].spawn_face);
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     return;
   }
@@ -1437,7 +1437,7 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
     s[0].spawn = v3(nx, 0, nz);
     s[0].spawn_face = ifx most > 1 then yaw_of(px - nx, pz - nz) else 0.0f32;
     s[0].feet = v3(nx, ground_at(s, nx, nz), nz);
-    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].orbit = metaverse_orbit_start(s[0].feet, s[0].spawn_face);
     s[0].warp = true;
     s[0].above = false; s[0].lift = 0;
     return;
@@ -1498,8 +1498,8 @@ eg_play_key :: (s: [] Everglade, key: int, mods: int) -> bool {
   if (key == 'e' || key == 'E') && s[0].near < 0 && rest_on(s) { rest_take(s); return true; }
   if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
   if (key == 'e' || key == 'E') && boat_prompt_on(s) { boat_use(s); return true; }
-  if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
-  if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
+  if key == '+' || key == '=' { s[0].orbit = metaverse_orbit_zoom(s[0].orbit, -0.8); return true; }
+  if key == '-' || key == '_' { s[0].orbit = metaverse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if key == 'm' || key == 'M' { everglade_guard_invalidate(s); s[0].above = !s[0].above; return true; }
   if key == KEY_ESCAPE && s[0].above { s[0].above = false; return true; }
   if key == KEY_ENTER && !s[0].above && !s[0].ev.editing { chat_open(s); return true; }   // the room's chat (everglade-room.coax)
@@ -1581,7 +1581,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
 
 everglade_wheel :: (s: [] Everglade, dy: f32) #export_c #effects(all) {
   if cz_wheel(s, dy) { return; }
-  if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
+  if finite(dy) { s[0].orbit = metaverse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
 }
 
 axis :: (held: int, plus: int, minus: int) -> f32 {
@@ -1609,22 +1609,22 @@ everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export
     else {s[0].link_flags|=ifx s[0].link_action==6 then 128 else 64;s[0].key_x=0;s[0].key_y=1;s[0].run=true;s[0].jump=s[0].link_action==6 && s[0].link_seconds>el_duration(s[0].link[..])-0.08;s[0].link_seconds=hi(0,s[0].link_seconds-clamp(dt,0,0.25));}
   }
   if cz_drive(s, dt) { s[0].look_yaw = 0; s[0].look_pitch = 0; return; }   // Character Create's run: its own input, its own camera (everglade-create.coax)
-  o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
-  o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
+  o := metaverse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
+  o = metaverse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
   s[0].orbit = o;
   s[0].look_yaw = 0; s[0].look_pitch = 0;
 }
 
 // First person (zoomed in past the closest): the eye is in your head, so your body isn't drawn;
 // the map's lift takes the eye out again. And when scenery has pulled the eye in to your shoulders
-// (a crypt, a narrow room, a wall at your back: verse_orbit_limit), it would look out through your
+// (a crypt, a narrow room, a wall at your back: metaverse_orbit_limit), it would look out through your
 // own hood and cloak, so then too.
 EYE_IN_CLOAK :: 0.9;   // m along the camera's ray from your head
 you_inside :: (s: [] Everglade) -> bool {
   if cz_camera_own(s) { return false; }   // Character Create's studio camera, not the orbit, is looking (everglade-create.coax)
   o := s[0].orbit;
-  pulled := finite(o.shown) && o.shown < lo(f32(EYE_IN_CLOAK), verse_orbit_ray(o).far - 0.1);
-  return (verse_orbit_inside(o) || pulled) && s[0].lift < 0.5;
+  pulled := finite(o.shown) && o.shown < lo(f32(EYE_IN_CLOAK), metaverse_orbit_ray(o).far - 0.1);
+  return (metaverse_orbit_inside(o) || pulled) && s[0].lift < 0.5;
 }
 
 everglade_player_theta :: (s: [] Everglade) -> f32 #export_c #effects(all) { return wrap_angle(s[0].orbit.yaw + f32(PI)); }
@@ -3206,7 +3206,7 @@ frog_spot :: (s: [] Everglade, p: int, i: int) -> Point {
     nodes := EG_NODE_XZ; links := EG_LINK_AB;
     for q: 0..<EG_PONDS {
       px := EG_POND[q * 4]; pz := EG_POND[q * 4 + 1];
-      by := verse_path_nearest(nodes[..], links[..], px, pz);
+      by := metaverse_path_nearest(nodes[..], links[..], px, pz);
       from := atan2(by.z - pz, by.x - px) + 0.8;
       level := everglade_pond_level(s[0].heights[..], q);
       for k: 0..<FROG_SPOTS {
@@ -3270,7 +3270,7 @@ wildlife :: (s: [] Everglade, you: Point, still: bool) {
     h := wl_hash(gx, gz);
     if h > FLY_SHARE { continue; }
     ax := (gx + 0.5) * FLY_CELL; az := (gz + 0.5) * FLY_CELL;
-    if verse_path_nearest(nodes[..], links[..], ax, az).d < f32(EG_PATH_HALF) + 2 { continue; }
+    if metaverse_path_nearest(nodes[..], links[..], ax, az).d < f32(EG_PATH_HALF) + 2 { continue; }
     w := t * (0.6 + h) + h * 40;
     p := v3(ax + 1.2 * sin(w) + 0.4 * sin(w * 2.3), 0, az + 1.2 * cos(w * 0.8));
     p.y = ground_at(s, p.x, p.z) + 1.3 + 0.4 * sin(w * 1.7);   // over the grass's tips
@@ -3408,7 +3408,7 @@ horizon_y :: (shot: Shot, u: [] f32, height: f32) -> f32 {
 ground_room :: (s: [] Everglade, r: OrbitRay) -> f32 {
   lifted := add(r.from, v3(0, -0.5, 0));
   if glade_ray_near(lifted, r.dir, r.far) { return glade_ground_ray(s, lifted, r.dir, r.far); }   // the glade's ground (everglade-glade.coax)
-  return verse_terrain_ray(everglade_ground(), s[0].heights[..], lifted, r.dir, r.far);
+  return metaverse_terrain_ray(everglade_ground(), s[0].heights[..], lifted, r.dir, r.far);
 }
 
 // How far the camera may back out along r before a trunk or a rock (forest_bodies' girths and
@@ -3505,7 +3505,7 @@ weather_frame :: (s: [] Everglade, u: [] f32, still: bool) {
 everglade_rise :: (s: [] Everglade) -> f32 #export_c #effects(all) { return s[0].rise; }
 everglade_flow_gain :: (s: [] Everglade) -> f32 #export_c #effects(all) { return ifx s[0].flow_gain > 0 then s[0].flow_gain else 1.0f32; }
 
-// The motion your controls ask for this frame (verse_player_asked), from the face before the frame:
+// The motion your controls ask for this frame (metaverse_player_asked), from the face before the frame:
 // the follow camera turns toward it, never toward a velocity a collider or a room's correction set (#12777).
 everglade_intent :: (s: [] Everglade, x: f32, z: f32) #export_c #effects(all) { s[0].intent_x = x; s[0].intent_z = z; }
 // The flyover benchmark's probe (globalThis.coaxial.fieldProbe(30)): 0 when no #fly= path has the
@@ -3517,15 +3517,15 @@ everglade_fly_ms :: (s: [] Everglade) -> int #export_c #effects(all) {
 
 camera_frame :: (s: [] Everglade, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
   speed := sqrt(vx * vx + vz * vz);
-  o := verse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
-  room := verse_orbit_room(o, s[0].boxes[0..<0], s[0].boxes[0..<s[0].box_n * 6]);
-  room = lo(room, ground_room(s, verse_orbit_ray(o)));
-  room = lo(room, trunks_room(s, verse_orbit_ray(o)));
-  room = lo(room, eg_stand_room(s, verse_orbit_ray(o)));   // a roof you stand on (everglade-stand.coax)
-  room = lo(room, everglade_character_room(s, verse_orbit_ray(o)));   // ?stage=echo: Echo (everglade-character.coax)
-  o = verse_orbit_limit(o, room, dt);
+  o := metaverse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
+  room := metaverse_orbit_room(o, s[0].boxes[0..<0], s[0].boxes[0..<s[0].box_n * 6]);
+  room = lo(room, ground_room(s, metaverse_orbit_ray(o)));
+  room = lo(room, trunks_room(s, metaverse_orbit_ray(o)));
+  room = lo(room, eg_stand_room(s, metaverse_orbit_ray(o)));   // a roof you stand on (everglade-stand.coax)
+  room = lo(room, everglade_character_room(s, metaverse_orbit_ray(o)));   // ?stage=echo: Echo (everglade-character.coax)
+  o = metaverse_orbit_limit(o, room, dt);
   s[0].orbit = o;
-  shot := verse_orbit_shot(o);
+  shot := metaverse_orbit_shot(o);
   // Diving, the camera comes down with you to about your head, so the view
   // goes under the water (metaverse/water-under.coax) instead of staying on top.
   s[0].sink += ((ifx s[0].water == WATER_DIVING then 1.0f32 else 0.0f32) - s[0].sink) * settle(2.5, dt);
@@ -4182,7 +4182,7 @@ everglade_shadows :: (s: [] Everglade, u: [] f32) {
   if size < 1 { c[0].draw = -1; return; }
   l := unit_or(v3(u[STYLE_AT + SU_KEY_DIR], u[STYLE_AT + SU_KEY_DIR + 1], u[STYLE_AT + SU_KEY_DIR + 2]), v3(0, 1, 0));
   _ := cascade_frame(c, u[U_EYE], u[U_EYE + 2], l.x, l.y, l.z, true);
-  reach := verse_style_shadow_reach(ifx c[0].phone then 1.0f32 else 0.0f32);
+  reach := metaverse_style_shadow_reach(ifx c[0].phone then 1.0f32 else 0.0f32);
   cascade_rows(c[0], u[U_CASCADE..<U_CASCADE + CASCADE_BLOCK], u[STYLE_AT + SU_SHADOW + 2], 2 * reach / size, reach);
 }
 // The host's side (the faces' coaxial_shadow_*_v1, coax/web/host.js): the atlas it makes, in texels
@@ -4400,12 +4400,12 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // (in a room the turning day is the server's, everglade-net.coax net_sky_day, #12709)
   if !still && redit_row_on(s[0].ev.ed[..], "daycycle") {
     sky := ifx s[0].day.mode == STYLE_CLOCK_CYCLE then net_sky_day(s) else -1.0f32;
-    s[0].clock = ifx sky >= 0 then sky else verse_style_clock_at(s[0].day, cast(f32) (s[0].time - s[0].day_from));
+    s[0].clock = ifx sky >= 0 then sky else metaverse_style_clock_at(s[0].day, cast(f32) (s[0].time - s[0].day_from));
   }
   else if s[0].day.mode != STYLE_CLOCK_FIXED { s[0].clock = 0.5; }
   fork_frame(s, ifx still then 0.0f32 else dt);   // a fork's rules: night holds the clock (everglade-fork.coax)
   // no toon outlines here (the owner, October 29): no rim line along any silhouette, people, props, buildings or trees
-  _ := verse_style_at(verse_style_glade_light(verse_style_no_outlines(verse_style_preset(STYLE_PAINTERLY, ifx phone(s) then STYLE_PHONE else STYLE_DESKTOP))), s[0].clock, u[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
+  _ := metaverse_style_at(metaverse_style_glade_light(metaverse_style_no_outlines(metaverse_style_preset(STYLE_PAINTERLY, ifx phone(s) then STYLE_PHONE else STYLE_DESKTOP))), s[0].clock, u[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
   sun := unit_or(v3(u[STYLE_AT + SU_KEY_DIR], u[STYLE_AT + SU_KEY_DIR + 1], u[STYLE_AT + SU_KEY_DIR + 2]), v3(0, 1, 0));
   u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z;
   spells_light(s, u);
@@ -4421,8 +4421,8 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // reads the buildings and the houses: weather u[U_WEATHER + 11])
   near_solids(u, shot.eye);
   gr := u[STYLE_AT + SU_GRASS + 1];
-  // the far field (4 r2 a density) and the near ring past it (style.coax verse_style_near_blades)
-  reach := verse_style_near_reach(u[STYLE_AT + SU_STYLE + 2]);
+  // the far field (4 r2 a density) and the near ring past it (style.coax metaverse_style_near_blades)
+  reach := metaverse_style_near_reach(u[STYLE_AT + SU_STYLE + 2]);
   far := cast(int) (2 * gr) * cast(int) (2 * gr) * cast(int) u[STYLE_AT + SU_GRASS];
   ring := ifx u[STYLE_AT + SU_FOLIAGE + 3] > 0 then cast(int) (2 * reach) * cast(int) (2 * reach) * cast(int) u[STYLE_AT + SU_FOLIAGE + 3] else 0;
   s[0].grass_n = ifx s[0].pack_ready && s[0].lift < 0.01 then far + ring else 0;
@@ -4570,7 +4570,7 @@ everglade_store_used :: (s: [] Everglade, k: int) -> int #export_c #effects(all)
     if abs(x) > f32(EG_THICKET) || abs(z) > f32(EG_THICKET) { continue; }   // the thicket's row, past the edge
     if park_tree(x, z) { continue; }   // the great lawn's (plan.coax EG_PARK_TREE)
     #assert woods_all_round(x, z, 0.99) && everglade_in_woods(x + 0.7, z + 0.7) && everglade_in_woods(x - 0.7, z - 0.7);
-    #assert verse_path_nearest(nodes[..], links[..], x, z).d >= f32(EG_TRAIL_FREE) + 0.7;
+    #assert metaverse_path_nearest(nodes[..], links[..], x, z).d >= f32(EG_TRAIL_FREE) + 0.7;
     #assert !everglade_in_town(x, z) || park_tree(x, z);
     k := cast(int) g[0].trees[t * TREE_FLOATS + 4];
     #assert k >= 0 && k < KIT_TREES;

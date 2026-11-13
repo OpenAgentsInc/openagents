@@ -38,7 +38,7 @@
 //
 // Materials: meadow, autumn meadow, forest litter and path dirt: the pack's old vertex colours
 // (sRGB, as the ground shader decoded them) re-encoded for the table's 2.2 power, so each decodes to
-// the same linear colour. A sample's weights are the layers in order with aethyr_terrain_over: autumn
+// the same linear colour. A sample's weights are the layers in order with engine_terrain_over: autumn
 // over the meadow by e2_gold, litter over both by 0.6 e2_forest, the path over all by e2_path
 // (forest.coax e2_ground_layer); each quantized to a byte. The litter takes the autumn under it (red
 // 0.25 to 0.45): its blend is a layer share, autumn's weight against the meadow's, which gives back
@@ -169,10 +169,10 @@ e2g_albedo :: (t: [] e2tt.TerrainMaterial, w: [4] f32, x: f32, z: f32) -> [3] f3
   for k: 0..<4 {
     if w[k] <= 0 { continue; }
     m := t[k];
-    tt := e2bk.aethyr_terrain_blend_t(x, z, m.blend_scale[0], m.blend_weight[0], m.blend_offset[0], m.blend_scale[1], m.blend_weight[1], m.blend_offset[1]);
-    if m.share_weight > 0 { tt += m.share_weight * e2bk.aethyr_terrain_share(w[m.share_of], w[m.share_against]); }
-    gain := e2bk.aethyr_terrain_gain(x, z, m.gain[0], m.gain[1], m.gain_scale, m.gain_offset);
-    for c: 0..<3 { out[c] += w[k] * e2bk.aethyr_terrain_decode(m.albedo_a[c], m.albedo_b[c], tt, gain); }
+    tt := e2bk.engine_terrain_blend_t(x, z, m.blend_scale[0], m.blend_weight[0], m.blend_offset[0], m.blend_scale[1], m.blend_weight[1], m.blend_offset[1]);
+    if m.share_weight > 0 { tt += m.share_weight * e2bk.engine_terrain_share(w[m.share_of], w[m.share_against]); }
+    gain := e2bk.engine_terrain_gain(x, z, m.gain[0], m.gain[1], m.gain_scale, m.gain_offset);
+    for c: 0..<3 { out[c] += w[k] * e2bk.engine_terrain_decode(m.albedo_a[c], m.albedo_b[c], tt, gain); }
   }
   return out;
 }
@@ -180,7 +180,7 @@ e2g_byte :: (w: f32) -> u8 { v := floor(w * 255 + 0.5); return cast(u8)(ifx v < 
 // A sample's four weights from the land: the layers, in order.
 e2g_weights :: (x: f32, z: f32) -> [4] f32 {
   w := [4] f32.[1, 0, 0, 0];
-  for l: 0..<3 { c := e2_ground_layer(x, z, l); for k: 0..<4 { w[k] = e2bk.aethyr_terrain_over(w[k], c, ifx k == l + 1 then 1.0f32 else 0.0f32); } }
+  for l: 0..<3 { c := e2_ground_layer(x, z, l); for k: 0..<4 { w[k] = e2bk.engine_terrain_over(w[k], c, ifx k == l + 1 then 1.0f32 else 0.0f32); } }
   return w;
 }
 

@@ -245,18 +245,18 @@ e2_ground_pick :: (w:V4,k:f32)->f32 {return ifx k<0.5f32 then w.x else ifx k<1.5
 // One material's linear albedo at (x, z) with the point's weights w (metaverse-engine/render/terrain-shade.coax).
 e2_ground_material :: (x:f32,z:f32,ground:[]V4,m:int,w:V4)->V3 {
  b:=E2_GROUND_HEAD+m*E2_GROUND_MATERIAL;a:=ground[b];c:=ground[b+1];f:=ground[b+2];g:=ground[b+3];h:=ground[b+4];
- t:=aethyr_terrain_blend_t(x,z,f.x,f.y,f.z,f.w,g.x,g.y);
- if (a.w>0.0f32) {t=t+a.w*aethyr_terrain_share(e2_ground_pick(w,c.w),e2_ground_pick(w,h.z));}
- gain:=aethyr_terrain_gain(x,z,g.z,g.w,h.x,h.y);
- return v3(aethyr_terrain_decode(a.x,c.x,t,gain),aethyr_terrain_decode(a.y,c.y,t,gain),aethyr_terrain_decode(a.z,c.z,t,gain));
+ t:=engine_terrain_blend_t(x,z,f.x,f.y,f.z,f.w,g.x,g.y);
+ if (a.w>0.0f32) {t=t+a.w*engine_terrain_share(e2_ground_pick(w,c.w),e2_ground_pick(w,h.z));}
+ gain:=engine_terrain_gain(x,z,g.z,g.w,h.x,h.y);
+ return v3(engine_terrain_decode(a.x,c.x,t,gain),engine_terrain_decode(a.y,c.y,t,gain),engine_terrain_decode(a.z,c.z,t,gain));
 }
 // The ground's weights at (x, z): its layers over the meadow in order (forest.coax e2_ground_layer),
 // as the tile's converter takes them (ground.coax e2g_weights).
 e2_ground_weights :: (x:f32,z:f32)->V4 {
  w:=v4(1,0,0,0);
- c:=e2_ground_layer(x,z,0);w=v4(aethyr_terrain_over(w.x,c,0),aethyr_terrain_over(w.y,c,1),aethyr_terrain_over(w.z,c,0),aethyr_terrain_over(w.w,c,0));
- c=e2_ground_layer(x,z,1);w=v4(aethyr_terrain_over(w.x,c,0),aethyr_terrain_over(w.y,c,0),aethyr_terrain_over(w.z,c,1),aethyr_terrain_over(w.w,c,0));
- c=e2_ground_layer(x,z,2);w=v4(aethyr_terrain_over(w.x,c,0),aethyr_terrain_over(w.y,c,0),aethyr_terrain_over(w.z,c,0),aethyr_terrain_over(w.w,c,1));
+ c:=e2_ground_layer(x,z,0);w=v4(engine_terrain_over(w.x,c,0),engine_terrain_over(w.y,c,1),engine_terrain_over(w.z,c,0),engine_terrain_over(w.w,c,0));
+ c=e2_ground_layer(x,z,1);w=v4(engine_terrain_over(w.x,c,0),engine_terrain_over(w.y,c,0),engine_terrain_over(w.z,c,1),engine_terrain_over(w.w,c,0));
+ c=e2_ground_layer(x,z,2);w=v4(engine_terrain_over(w.x,c,0),engine_terrain_over(w.y,c,0),engine_terrain_over(w.z,c,0),engine_terrain_over(w.w,c,1));
  return w;
 }
 e2_ground_albedo :: (x:f32,z:f32,ground:[]V4)->V3 {
@@ -274,11 +274,11 @@ e2_ground_ao :: (x:f32,z:f32,ground:[]V4)->f32 {
  grid:=ground[0];head:=ground[1];
  if (head.z<0.5f32) {return 1.0f32;}
  n:=grid.x;span:=n*grid.y;
- if (aethyr_bake_inside(x,grid.z,span)*aethyr_bake_inside(z,grid.w,span)<0.5f32) {return 1.0f32;}
- gx:=(x-grid.z)/grid.y;gz:=(z-grid.w)/grid.y;ix:=aethyr_bake_index(gx,n);iz:=aethyr_bake_index(gz,n);
- fx:=aethyr_bake_fraction(gx,ix);fz:=aethyr_bake_fraction(gz,iz);
+ if (engine_bake_inside(x,grid.z,span)*engine_bake_inside(z,grid.w,span)<0.5f32) {return 1.0f32;}
+ gx:=(x-grid.z)/grid.y;gz:=(z-grid.w)/grid.y;ix:=engine_bake_index(gx,n);iz:=engine_bake_index(gz,n);
+ fx:=engine_bake_fraction(gx,ix);fz:=engine_bake_fraction(gz,iz);
  side:=cast(int)n+1;q:=cast(int)iz*side+cast(int)ix;
- ao:=aethyr_bake_ao(aethyr_bake_bilerp(e2_ground_at(ground,q),e2_ground_at(ground,q+1),e2_ground_at(ground,q+side),e2_ground_at(ground,q+side+1),fx,fz),aethyr_bake_rise(0,head.x));
+ ao:=engine_bake_ao(engine_bake_bilerp(e2_ground_at(ground,q),e2_ground_at(ground,q+1),e2_ground_at(ground,q+side),e2_ground_at(ground,q+side+1),fx,fz),engine_bake_rise(0,head.x));
  edge:=fmin(fmin(x-grid.z,grid.z+span-x),fmin(z-grid.w,grid.w+span-z));t:=saturate(edge/head.y);
  return 1.0f32+(ao-1.0f32)*t*t*(3.0f32-2.0f32*t);
 }
@@ -291,8 +291,8 @@ e2_ground_ao :: (x:f32,z:f32,ground:[]V4)->f32 {
  g[b]=v4(0.2,0.3,0.1,1);g[b+1]=v4(0.6,0.3,0.1,1);g[b+2]=v4(0,0,0,0);g[b+3]=v4(0,0,0.9,0.2);g[b+4]=v4(1.5,7,0,0);
  w:=v4(0.1,0.3,0.6,0);
  got:=e2_ground_material(3,4,g[..],2,w);
- gain:=aethyr_terrain_gain(3,4,0.9,0.2,1.5,7);
- #assert abs(got.x-aethyr_terrain_decode(0.2,0.6,0.75,gain))<0.000001 && abs(got.y-aethyr_terrain_decode(0.3,0.3,0.75,gain))<0.000001;
+ gain:=engine_terrain_gain(3,4,0.9,0.2,1.5,7);
+ #assert abs(got.x-engine_terrain_decode(0.2,0.6,0.75,gain))<0.000001 && abs(got.y-engine_terrain_decode(0.3,0.3,0.75,gain))<0.000001;
  // the weights are the layers over the meadow, adding to one
  ww:=e2_ground_weights(-4.2,-8.8);
  #assert abs(ww.x+ww.y+ww.z+ww.w-1)<0.00001;
@@ -338,18 +338,18 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32,table:[]V4
   albedo=mix3(albedo,lawn,e2_field_cover(s.world.x,s.world.z)*away*0.75f32);}
  if (leaves) {
   if (s.tint.x>s.tint.y*1.2f32) {age:=cg_noise(v2(s.world.x*1.4f32+s.world.y*0.7f32,s.world.z*1.4f32));albedo=cg_decode(cg_leaf_palette(s.tint,age));}
-  albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));
+  albedo=scale3(albedo,0.70f32+0.45f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));
  }
- if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}
- if (kind>6.5f32 && kind<8.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
+ if (kind>2.5f32 && kind<3.5f32 && s.tint.y<0.99f32) {albedo=scale3(cg_decode(v3(1,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));}
+ if (kind>6.5f32 && kind<8.5f32) {albedo=scale3(cg_decode(ifx n.y>0.15f32 then v3(1,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));}
  town:f32= -1.0f32;
  if (kind>3.5f32 && kind<4.5f32 && town<0) {
   // Neutral grey stone (the placement tint keeps its value, loses most of its olive) with moss on
   // faces that look up, as the reference's cliff tops.
-  base:=cg_decode(s.tint);grey:=verse_style_luma(base.x,base.y,base.z);base=mix3(base,v3(grey,grey*1.02f32,grey*0.96f32),0.35f32);
+  base:=cg_decode(s.tint);grey:=metaverse_style_luma(base.x,base.y,base.z);base=mix3(base,v3(grey,grey*1.02f32,grey*0.96f32),0.35f32);
   moss:=smoothstep(0.30f32,0.85f32,n.y+0.25f32*(cg_noise(v2(s.world.x*0.9f32+s.world.y,s.world.z*0.9f32))-0.5f32))*(0.55f32+0.45f32*cg_noise(v2(s.world.x*1.7f32,s.world.z*1.7f32)));
   base=mix3(base,scale3(cg_decode(v3(0.52f32,0.64f32,0.26f32)),fmax(grey/0.22f32,0.7f32)),moss*0.85f32);
-  albedo=scale3(base,0.60f32+0.50f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));
+  albedo=scale3(base,0.60f32+0.50f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));
  }
  visibility:=shadow*cg_cloud(u,s.world.x,s.world.z);
  ndl:=dot3(n,sun);direct:=saturate(ndl);ao:f32=1;
@@ -371,7 +371,7 @@ e2_environment_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,shadow:f32,table:[]V4
   colour=add3(colour,mul3(albedo,scale3(v3(1.35f32,1.16f32,0.62f32),scatter*(ifx grass then s.local.y else 1.0f32))));
  }
  if (ground) {mottle:=cg_noise(v2(s.world.x*2,s.world.z*2));meadow:=1.0f32-e2_path(s.world.x,s.world.z);grain:=cg_noise(v2(s.world.x*14,s.world.z*14));surface:=(0.90f32+0.16f32*mottle)*(1.0f32+meadow*(grain-0.5f32)*0.18f32)*mix(cg_soil(v2(s.world.x,s.world.z)),1,meadow);colour=scale3(colour,surface);indirect=scale3(indirect,surface);}
- colour=cg_atmosphere(u,colour,eye,s.world);share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(u,eye,s.world))/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
+ colour=cg_atmosphere(u,colour,eye,s.world);share:=saturate(metaverse_style_luma(indirect.x,indirect.y,indirect.z)*exp(-cg_air_depth(u,eye,s.world))/fmax(metaverse_style_luma(colour.x,colour.y,colour.z),0.00001f32));return v4(colour.x,colour.y,colour.z,share);
 }
 
 cc_player_light :: (u:[]f32,albedo:V3,n:V3,view:V3,visibility:f32)->V3 {
@@ -400,7 +400,7 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visib
  m:=objects[cast(int)s.who];at:=cast(int)s.slice*3;ma:=mats[at];mb:=mats[at+1];mc:=mats[at+2];kind:=cast(int)(ma.w+0.5f32);
  albedo:=cc_albedo(v3(tex.x,tex.y,tex.z),s.dye,s.tint,v3(ma.x,ma.y,ma.z),mc.z>0.5f32);
  if (m.f.w>1.5f32 && s.slice==FIVELAB_EYE_LAYER) {
-  iris:=saturate((tex.x-fmax(tex.y,tex.z))*5.0f32);shade:=clampf(verse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
+  iris:=saturate((tex.x-fmax(tex.y,tex.z))*5.0f32);shade:=clampf(metaverse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
   albedo=mix3(albedo,scale3(cg_decode(v3(m.f.x,m.f.y,m.f.z)),shade),iris);
  }
  g:=normalize3(add3(s.normal,v3(0,0.00001f32,0)));if (!front) {g=scale3(g,-1);}
@@ -426,7 +426,7 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visib
  }
  if (film && kind==CM_CLOTH) {colour=add3(colour,scale3(mul3(cm_sheen(scale3(albedo,mc.y),r,n,sun,view),sunc),visibility));}
  if (film && kind==CM_HAIR) {t:=cm_strand(n,d.px,d.py,d.ux,d.uy);colour=add3(colour,scale3(mul3(cm_hair(albedo,r,t,n,sun,view),sunc),visibility));}
- share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));
+ share:=saturate(metaverse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(metaverse_style_luma(colour.x,colour.y,colour.z),0.00001f32));
  colour=cg_atmosphere(u,colour,eye,s.world);return v4(colour.x,colour.y,colour.z,share);
 }
 everglade2_scene_fs :: (s:FivelabS,front:bool,u:[]f32,objects:[]FivelabObj,mats:[]V4,ground:[]V4,sheets:Tex2DArray,sheet:Sampler,data:Tex2DArray,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->Everglade2Lit {
@@ -460,7 +460,7 @@ everglade2_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f3
       while k<4 {
         o:V2=v2(((cast(f32)(k&1)*2.0f32)-1.0f32)*texel.x,((cast(f32)(k>>1)*2.0f32)-1.0f32)*texel.y);
         t:V4=gpu_sample_level(bloom_src,bloom_lin,v2(uv.x+o.x,uv.y+o.y),0.0f32);
-        c=add3(c,scale3(v3(t.x,t.y,t.z),verse_style_bloom_share(fmax(t.x,fmax(t.y,t.z)),0.62f32,0.30f32)*t.w));
+        c=add3(c,scale3(v3(t.x,t.y,t.z),metaverse_style_bloom_share(fmax(t.x,fmax(t.y,t.z)),0.62f32,0.30f32)*t.w));
         k+=1;
       }
     }

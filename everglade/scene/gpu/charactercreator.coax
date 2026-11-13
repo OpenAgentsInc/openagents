@@ -27,7 +27,7 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visib
  // The array sampler already decodes sRGB. Dye masks are authored in display space.
  display:=cg_encode(v3(tex.x,tex.y,tex.z));albedo:=mul3(cg_decode(fivelab_dye(display,s.dye)),cg_decode(s.tint));
  if (m.f.w>1.5f32 && s.slice==FIVELAB_EYE_LAYER) {
-  iris:=saturate((tex.x-fmax(tex.y,tex.z))*5.0f32);shade:=clampf(verse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
+  iris:=saturate((tex.x-fmax(tex.y,tex.z))*5.0f32);shade:=clampf(metaverse_style_luma(tex.x,tex.y,tex.z)*3.0f32,0.15f32,1.3f32);
   albedo=mix3(albedo,scale3(cg_decode(v3(m.f.x,m.f.y,m.f.z)),shade),iris);
  }
  n:=normalize3(add3(s.normal,v3(0,0.00001f32,0)));if (!front) {n=scale3(n,-1);}
@@ -39,7 +39,7 @@ cc_player_fs :: (s:FivelabS,tex:V4,front:bool,u:[]f32,objects:[]FivelabObj,visib
  indirect:=mul3(albedo,add3(cg_hemisphere(u,n),scale3(v3(0.85f32,0.72f32,0.52f32),saturate(dot3(n,normalize3(add3(view,v3(0,0.35f32,0))))))));
  dark:=cg_dungeon_in(s.world,u);
  if (dark) {colour=cg_dungeon_light(albedo,n,s.world,u);indirect=scale3(albedo,0.04f32);}
- share:=saturate(verse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(verse_style_luma(colour.x,colour.y,colour.z),0.00001f32));
+ share:=saturate(metaverse_style_luma(indirect.x,indirect.y,indirect.z)/fmax(metaverse_style_luma(colour.x,colour.y,colour.z),0.00001f32));
  // the dungeon's air carries no sky haze
  if (!dark) {colour=cg_atmosphere(u,colour,eye,s.world);}
  return v4(colour.x,colour.y,colour.z,share);

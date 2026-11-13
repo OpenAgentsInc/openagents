@@ -68,9 +68,9 @@ VILLA_P_WOOD :: 14.0f32;
 VILLA_P_ROCK :: 17.0f32;
 VILLA_P_SLATE :: 18.0f32;
 villa_pal :: (slot:f32)->V3 {
-  return v3(verse_style_flat_colour(VILLA_PALETTE,slot,0.0f32),verse_style_flat_colour(VILLA_PALETTE,slot,1.0f32),verse_style_flat_colour(VILLA_PALETTE,slot,2.0f32));
+  return v3(metaverse_style_flat_colour(VILLA_PALETTE,slot,0.0f32),metaverse_style_flat_colour(VILLA_PALETTE,slot,1.0f32),metaverse_style_flat_colour(VILLA_PALETTE,slot,2.0f32));
 }
-// The flat preset's numbers (metaverse/style-preset.coax verse_style_flat): the far fade, the hem's
+// The flat preset's numbers (metaverse/style-preset.coax metaverse_style_flat): the far fade, the hem's
 // width, a tall shape's dithered darkening toward its foot and its steps, a flat shadow's strength.
 VILLA_FADE_FROM :: 40.0f32;
 VILLA_FADE_OVER :: 80.0f32;
@@ -158,7 +158,7 @@ villa_bg_fs :: (pos:V4,u:[]f32)->VillaLit {
   d:V3=villa_ray(v2(pos.x,pos.y),u);
   space:f32=u[27];
   // the sky: one flat dusty blue, a soft paler band at the horizon; space (the flight) keeps its stars
-  sky:V3=wg_mix_f3f3f(villa_pal(VILLA_P_SKY),villa_pal(VILLA_P_HORIZON),verse_style_flat_sky(d.y));
+  sky:V3=wg_mix_f3f3f(villa_pal(VILLA_P_SKY),villa_pal(VILLA_P_HORIZON),metaverse_style_flat_sky(d.y));
   deep:V3=wg_add_f3f3(v3(0.004f32,0.003f32,0.012f32),wg_mul_f3f(v3(0.02f32,0.012f32,0.04f32),pow(1.0f32-abs(wg_dot3(d,wg_normalize3(v3(0.3f32,0.2f32,1.0f32)))),6.0f32)));
   sky=wg_mix_f3f3f(sky,wg_add_f3f3(deep,wg_mul_f3f(wg_mul_f3f(v3(0.85f32,0.9f32,1.0f32),villa_stars(d,space,u)),1.2f32)),space);
   mo:V4=villa_moon(d,sky,u);
@@ -220,7 +220,7 @@ villa_box_vertex :: (id:u32)->VillaVert {
 }
 // Low poly (art-styles.md, Flat: facets): a sphere is coarse, eight faces round and five down, the
 // rest of its lons x lats grid collapsed to nothing; `nudge` moves each corner in or out by up to that
-// share of the radius (verse_style_facet_jitter, seeded per shape), so a crown or a stone reads as cut.
+// share of the radius (metaverse_style_facet_jitter, seeded per shape), so a crown or a stone reads as cut.
 VILLA_ROUND :: 8.0f32;
 VILLA_DOWN :: 5.0f32;
 villa_nothing :: ()->VillaVert {
@@ -237,7 +237,7 @@ villa_globe_vertex :: (id:u32,lons:u32,lats:u32,nudge:f32,seed:f32)->VillaVert {
   lon:f32=(i/VILLA_ROUND)*VILLA_TAU;
   lat:f32=(j/VILLA_DOWN)*3.14159265f32;
   n:V3=v3(sin(lat)*cos(lon),cos(lat),sin(lat)*sin(lon));
-  return VillaVert.{p=wg_mul_f3f(wg_mul_f3f(n,0.5f32),(1.0f32+(nudge*verse_style_facet_jitter(i,j,VILLA_ROUND,VILLA_DOWN,seed)))),n=n};
+  return VillaVert.{p=wg_mul_f3f(wg_mul_f3f(n,0.5f32),(1.0f32+(nudge*metaverse_style_facet_jitter(i,j,VILLA_ROUND,VILLA_DOWN,seed)))),n=n};
 }
 // Eight flat sides and flat caps: 48 side vertices, then 8 triangles a cap, top then bottom.
 villa_cylinder_vertex :: (id:u32)->VillaVert {
@@ -373,7 +373,7 @@ villa_shade_shadows :: (p:V2,u:[]f32)->f32 {
       q:V2=wg_sub_f2f2(wg_sub_f2f2(p,v2(b.x,b.y)),wg_mul_f2f(away,t));
       // narrowing a little toward its far end, as a crown's shadow does
       r:f32=b.z*(1.0f32-((0.35f32*t)/fmax(reach,0.001f32)));
-      s=fmax(s,verse_style_flat_shadow(wg_length2(q)/r)*fmin(strength*1.4f32,1.0f32));
+      s=fmax(s,metaverse_style_flat_shadow(wg_length2(q)/r)*fmin(strength*1.4f32,1.0f32));
       i+=1;
     }
   }
@@ -429,7 +429,7 @@ villa_scene_fs :: (s:VillaS,u:[]f32)->VillaLit {
   }
   smooth_n:V3=wg_normalize3(s.normal);
   d:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
-  fade:f32=verse_style_flat_fade(d,VILLA_FADE_FROM,VILLA_FADE_OVER,VILLA_FADE_CAP);
+  fade:f32=metaverse_style_flat_fade(d,VILLA_FADE_FROM,VILLA_FADE_OVER,VILLA_FADE_CAP);
   // You: a spirit visiting from another realm, pale lavender light, solid at its heart and
   // dissolving toward its rim in a fine ordered dither that drifts, so the bloom and the wisps
   // rising off you (villa.coax particles) make it soft and fuzzy.
@@ -439,7 +439,7 @@ villa_scene_fs :: (s:VillaS,u:[]f32)->VillaLit {
     body:f32=smoothstep(0.0f32,0.8f32,facing);
     cell:V2=wg_add_f2f2(wg_floor_f2(wg_div_f2f(v2(s.pos.x,s.pos.y),fmax(u[6],1.0f32))),v2(drift,drift*2.0f32));
     // a third of its heart and nearly all of its rim let what is behind it show
-    if (verse_style_bayer(cell.x,cell.y)>(body*0.68f32)) {
+    if (metaverse_style_bayer(cell.x,cell.y)>(body*0.68f32)) {
       gpu_demote_helper();
     }
     core:V3=wg_mix_f3f3f(v3(0.5f32,0.55f32,0.92f32),v3(0.8f32,0.82f32,1.0f32),body);
@@ -473,7 +473,7 @@ villa_scene_fs :: (s:VillaS,u:[]f32)->VillaLit {
     half:f32=u[493];
     aa:f32=ground_aa;
     base=wg_mix_f3f3f(base,villa_pal(VILLA_P_PATH),1.0f32-smoothstep(half-aa,half+aa,pd));
-    base=wg_mix_f3f3f(base,villa_pal(VILLA_P_LIGHT),verse_style_flat_hem(abs(pd-half),0.035f32,aa)*0.7f32);
+    base=wg_mix_f3f3f(base,villa_pal(VILLA_P_LIGHT),metaverse_style_flat_hem(abs(pd-half),0.035f32,aa)*0.7f32);
     cover=villa_shade_shadows(xz,u);
     edge=0.0f32;
   } else if (s.look==4) {
@@ -484,11 +484,11 @@ villa_scene_fs :: (s:VillaS,u:[]f32)->VillaLit {
   // trim: a thin cream line along the top of the iron (the gate's bar, the railings' tips)
   if (s.look==3) {
     from_top:f32=(0.5f32-s.local.y)*s.size.x;
-    base=wg_mix_f3f3f(base,villa_pal(VILLA_P_ACCENT),verse_style_flat_hem(from_top,0.03f32,fmax(local_aa*s.size.x,0.001f32)));
+    base=wg_mix_f3f3f(base,villa_pal(VILLA_P_ACCENT),metaverse_style_flat_hem(from_top,0.03f32,fmax(local_aa*s.size.x,0.001f32)));
   }
   // one tone a face (art-styles.md, Flat: facets), between the palette's shade and lit; no specular;
   // the cast shadow a soft lavender shape on the ground
-  band:f32=verse_style_facet_tone(wg_dot3(n,villa_key_dir(u)),1.0f32);
+  band:f32=metaverse_style_facet_tone(wg_dot3(n,villa_key_dir(u)),1.0f32);
   c:V3=wg_mul_f3f3(base,wg_mix_f3f3f(villa_pal(VILLA_P_SHADE),villa_pal(VILLA_P_LIT),band));
   c=wg_mul_f3f3(c,wg_mix_f3f3f(v3(1.0f32,1.0f32,1.0f32),villa_pal(VILLA_P_SHADOW),cover));
   c=wg_mix_f3f3f(c,villa_pal(VILLA_P_HORIZON),fade);
@@ -580,10 +580,10 @@ villa_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth
   own:f32=wg_load_2d(post_aux,p,0).w;
   if (((own>0.0f32)&&(own<140.0f32))&&(u[27]<0.5f32)) {
     hi:I2=wg_sub_i2i2(wg_cvt_i2f2(wg_at2(u,0)),i2(1,1));
-    e:f32=verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_add_i2i2(p,i2(1,0)),i2(0,0),hi),0).w);
-    e=fmax(e,verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_sub_i2i2(p,i2(1,0)),i2(0,0),hi),0).w));
-    e=fmax(e,verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_add_i2i2(p,i2(0,1)),i2(0,0),hi),0).w));
-    e=fmax(e,verse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_sub_i2i2(p,i2(0,1)),i2(0,0),hi),0).w));
+    e:f32=metaverse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_add_i2i2(p,i2(1,0)),i2(0,0),hi),0).w);
+    e=fmax(e,metaverse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_sub_i2i2(p,i2(1,0)),i2(0,0),hi),0).w));
+    e=fmax(e,metaverse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_add_i2i2(p,i2(0,1)),i2(0,0),hi),0).w));
+    e=fmax(e,metaverse_style_facet_edge(own,wg_load_2d(post_aux,wg_clamp_i2i2i2(wg_sub_i2i2(p,i2(0,1)),i2(0,0),hi),0).w));
     c=wg_mix_f3f3f(c,villa_pal(VILLA_P_ACCENT),(e*0.8f32)*(1.0f32-smoothstep(60.0f32,140.0f32,own)));
   }
   return wg_make_f4_f3f(villa_plates(v2(pos.x,pos.y),villa_encode(c),u),1.0f32);

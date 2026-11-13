@@ -655,7 +655,7 @@ main :: () {
 ```
 
 [Exact transcript](../fixtures/verse-villain/example.out), checked in debug
-and release. [The independent oracle](../tests/verse_villain_oracle.py)
+and release. [The independent oracle](../tests/metaverse_villain_oracle.py)
 also audits saved identities, candidate bytes, framing, diagnostics, neutral
 answers, CSV, blind-pair mapping and provider accounting. It checks arithmetic
 and records; it cannot prove that a villain's line is compelling.

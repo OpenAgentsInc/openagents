@@ -8,7 +8,7 @@
 // FETCH, BOW, WAG), played over its gait, and its SHAPE: a slider for each
 // of its build's numbers, its pattern and its colours. An agent sets the
 // same through the link: /worlds/characters#motion=<a motion document>, or
-// #shape=<a shape> (figure.coax verse_figure_shape_read) for the chosen
+// #shape=<a shape> (figure.coax metaverse_figure_shape_read) for the chosen
 // figure; each is checked, and the page says why if it is refused. Drag
 // turns the view, the wheel zooms.
 //
@@ -158,7 +158,7 @@ phone :: (c: [] Chars) -> bool { return c[0].touch || c[0].width < 640 * c[0].dp
 // ---- the cast
 
 walker :: (name: string, s: Shape, at: Place) -> Walker {
-  w: Walker; w.name = name; w.shape = verse_figure_shape_fix(s); w.skel = verse_figure_skeleton(w.shape); w.at = at;
+  w: Walker; w.name = name; w.shape = metaverse_figure_shape_fix(s); w.skel = metaverse_figure_skeleton(w.shape); w.at = at;
   w.angle = angle_of(at.z, at.x); w.radius = hi(1.2, sqrt(at.x * at.x + at.z * at.z));
   return w;
 }
@@ -203,9 +203,9 @@ step :: (w: Walker, dt: f32) -> Walker {
   r := w;
   r.since += dt;
   g := ifx r.gait == Gait.stand && r.since < FADE_GAIT then r.was else r.gait;
-  r.phase = fract(r.phase + verse_figure_stride_rate(r.shape, g) * dt);
-  speed := verse_figure_speed(r.shape, r.gait);
-  if r.since < FADE_GAIT { speed = verse_figure_speed(r.shape, r.was) + (speed - verse_figure_speed(r.shape, r.was)) * r.since / FADE_GAIT; }
+  r.phase = fract(r.phase + metaverse_figure_stride_rate(r.shape, g) * dt);
+  speed := metaverse_figure_speed(r.shape, r.gait);
+  if r.since < FADE_GAIT { speed = metaverse_figure_speed(r.shape, r.was) + (speed - metaverse_figure_speed(r.shape, r.was)) * r.since / FADE_GAIT; }
   if speed > 0 {
     r.angle += speed / r.radius * dt;
     r.at.x = cos(r.angle) * r.radius; r.at.z = sin(r.angle) * r.radius; r.at.yaw = -r.angle;
@@ -213,9 +213,9 @@ step :: (w: Walker, dt: f32) -> Walker {
   return r;
 }
 gait_pose :: (w: Walker, clock: f32) -> Pose {
-  now := verse_figure_gait(w.shape.rig, w.gait, w.phase, clock);
+  now := metaverse_figure_gait(w.shape.rig, w.gait, w.phase, clock);
   if w.since >= FADE_GAIT { return now; }
-  return verse_figure_blend(verse_figure_gait(w.shape.rig, w.was, w.phase, clock), now, smooth01(w.since / FADE_GAIT));
+  return metaverse_figure_blend(metaverse_figure_gait(w.shape.rig, w.was, w.phase, clock), now, smooth01(w.since / FADE_GAIT));
 }
 // The gait, then the emote fading out, then the one playing, over it.
 pose_of :: (c: [] Chars, w: Walker) -> Pose {
@@ -224,7 +224,7 @@ pose_of :: (c: [] Chars, w: Walker) -> Pose {
     if play.motion < 0 || play.motion >= c[0].motion_n { continue; }
     m := c[0].motions[play.motion..<play.motion + 1];
     if m[0].rig != w.shape.rig { continue; }
-    p = verse_motion_over(m, play, p, c[0].time);
+    p = metaverse_motion_over(m, play, p, c[0].time);
   }
   return p;
 }
@@ -249,7 +249,7 @@ emote :: (c: [] Chars, i: int, slot: int) {
   w := c[0].figs[i];
   now := c[0].time;
   m := c[0].motions[slot..<slot + 1];
-  if w.now.motion == slot && w.now.stop < 0 && !verse_motion_done(m, w.now, now) && m[0].mode != MODE_ONCE {
+  if w.now.motion == slot && w.now.stop < 0 && !metaverse_motion_done(m, w.now, now) && m[0].mode != MODE_ONCE {
     w.now.stop = now; c[0].figs[i] = w; return;
   }
   if w.now.motion >= 0 && w.now.stop < 0 { w.now.stop = now; }
@@ -269,8 +269,8 @@ gait_for :: (c: [] Chars, i: int, g: Gait) {
 }
 reshape :: (c: [] Chars, i: int, s: Shape) {
   if i < 0 || i >= c[0].fig_n { return; }
-  c[0].figs[i].shape = verse_figure_shape_fix(s);
-  c[0].figs[i].skel = verse_figure_skeleton(c[0].figs[i].shape);
+  c[0].figs[i].shape = metaverse_figure_shape_fix(s);
+  c[0].figs[i].skel = metaverse_figure_skeleton(c[0].figs[i].shape);
 }
 // Ends finished plays.
 settle :: (c: [] Chars, i: int) {
@@ -278,7 +278,7 @@ settle :: (c: [] Chars, i: int) {
   for k: 0..<2 {
     play := ifx k == 0 then w.last else w.now;
     if play.motion < 0 { continue; }
-    if play.motion >= c[0].motion_n || verse_motion_done(c[0].motions[play.motion..<play.motion + 1], play, c[0].time) {
+    if play.motion >= c[0].motion_n || metaverse_motion_done(c[0].motions[play.motion..<play.motion + 1], play, c[0].time) {
       if k == 0 { w.last = Play.{}; } else { w.now = Play.{}; }
     }
   }
@@ -306,7 +306,7 @@ say :: (c: [] Chars, a: string, b: string, bad: bool) {
 take_link :: (c: [] Chars, hash: string) {
   if hash.count > 6 && hash[0..<6] == "shape=" {
     i := c[0].chosen;
-    r := verse_figure_shape_read(c[0].figs[i].shape, hash[6..<hash.count]);
+    r := metaverse_figure_shape_read(c[0].figs[i].shape, hash[6..<hash.count]);
     if !r.ok {
       buf: [96] u8;
       n := motion_put(buf[..], 0, "line "); n = motion_put_int(buf[..], n, r.line); n = motion_put(buf[..], n, ": ");
@@ -332,7 +332,7 @@ take_link :: (c: [] Chars, hash: string) {
   if slot >= MOTIONS { return; }
   m := c[0].motions[slot..<slot + 1];
   if !verse_motion_read(m, text) {
-    say(c, "YOUR MOTION WAS REFUSED · ", verse_motion_error(m), true);
+    say(c, "YOUR MOTION WAS REFUSED · ", metaverse_motion_error(m), true);
     if c[0].linked < 0 { blank: Motion; m[0] = blank; }
     else { for i: 0..<c[0].fig_n { if c[0].figs[i].now.motion == slot { c[0].figs[i].now = Play.{}; } if c[0].figs[i].last.motion == slot { c[0].figs[i].last = Play.{}; } } c[0].linked = -1; c[0].motion_n = slot; }
     return;
@@ -341,10 +341,10 @@ take_link :: (c: [] Chars, hash: string) {
   who := -1;
   if c[0].figs[c[0].chosen].shape.rig == m[0].rig { who = c[0].chosen; }
   for i: 0..<c[0].fig_n { if who < 0 && c[0].figs[i].shape.rig == m[0].rig { who = i; } }
-  if who < 0 { say(c, "YOUR MOTION IS FOR A RIG NOT HERE · ", verse_motion_name(m), true); return; }
+  if who < 0 { say(c, "YOUR MOTION IS FOR A RIG NOT HERE · ", metaverse_motion_name(m), true); return; }
   c[0].chosen = who;
   emote(c, who, slot);
-  say(c, "PLAYING YOUR MOTION · ", verse_motion_name(m), false);
+  say(c, "PLAYING YOUR MOTION · ", metaverse_motion_name(m), false);
 }
 coaxial_chars_hash :: (c: [] Chars, length: int) #export_c #effects(all) {
   n := clamp(cast(f32) length, 0, cast(f32) INBOX);
@@ -423,7 +423,7 @@ shape_panel :: (c: [] Chars, out: [] f32, at: int, w: Walker, m: f32, bottom: f3
     v = words(out, v, SHAPE_NAMES[at_number], x0 + pad, y + 3.2 * k, 6.5 * k, ink_of(k, 0.8, false));
     tx0 := x0 + pad + label_w; tx1 := x0 + pw - pad;
     range := shape_range(at_number);
-    f := clamp((verse_figure_shape_get(w.shape, at_number) - range.x) / hi(range.y - range.x, 0.001), 0, 1);
+    f := clamp((metaverse_figure_shape_get(w.shape, at_number) - range.x) / hi(range.y - range.x, 0.001), 0, 1);
     kx := tx0 + (tx1 - tx0) * f;
     if lit(out, v, tx0, y, tx1, y, 0.6 * k, 0.35, 1.5 * k, PARCH_R, PARCH_G, PARCH_B, MODE_STROKE) { v += 6; }
     if kx > tx0 + 0.5 && lit(out, v, tx0, y, kx, y, 1.0 * k, 0.9, 2 * k, GOLD_R, GOLD_G, GOLD_B, MODE_STROKE) { v += 6; }
@@ -464,7 +464,7 @@ slide :: (c: [] Chars, r: int, x: f32) {
   at := c[0].slider_of[r];
   range := shape_range(at);
   i := c[0].chosen;
-  reshape(c, i, verse_figure_shape_set(c[0].figs[i].shape, at, range.x + (range.y - range.x) * f));
+  reshape(c, i, metaverse_figure_shape_set(c[0].figs[i].shape, at, range.x + (range.y - range.x) * f));
 }
 slider_at :: (c: [] Chars, x: f32, y: f32) -> int {
   if !c[0].shaping { return -1; }
@@ -497,7 +497,7 @@ coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height:
     w := c[0].figs[i];
     if (i + 1) * FIG_FLOATS > FIGS * FIG_FLOATS { break; }
     bones := u[BONE_AT + i * MAX_PARTS * BONE_FLOATS ..< BONE_AT + (i + 1) * MAX_PARTS * BONE_FLOATS];
-    n := verse_figure_place(w.skel, pose_of(c, w), w.at, bones, c[0].figs[i].bound[..]);
+    n := metaverse_figure_place(w.skel, pose_of(c, w), w.at, bones, c[0].figs[i].bound[..]);
     o := FIG_AT + i * FIG_FLOATS;
     b := c[0].figs[i].bound;
     u[o] = b[0]; u[o + 1] = b[1]; u[o + 2] = b[2]; u[o + 3] = b[3];
@@ -564,7 +564,7 @@ coaxial_chars_frame :: (c: [] Chars, out: [] f32, u: [] f32, width: f32, height:
     for e: 0..<emotes {
       slot := emote_slot(c, w.shape.rig, e);
       label := ifx slot == c[0].linked then "YOURS" else ifx !four && e < PERSON_MOTIONS then PERSON_MOTION_LABELS[e]
-               else ifx four && e < ANIMAL_MOTIONS then ANIMAL_MOTION_LABELS[e] else verse_motion_name(c[0].motions[slot..<slot + 1]);
+               else ifx four && e < ANIMAL_MOTIONS then ANIMAL_MOTION_LABELS[e] else metaverse_motion_name(c[0].motions[slot..<slot + 1]);
       vertices = button(c, out, vertices, BTN_EMOTE + e, Box.{x0 = ex, y0 = ey, x1 = ex + ew, y1 = ey + bh}, label, playing(c, c[0].chosen, slot));
       ex += ew + gap;
     }

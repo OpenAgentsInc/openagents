@@ -31,10 +31,10 @@ cam_drag :: (dx: f32, dy: f32, k: f32) -> [2] f32 { return [2] f32.[-(dx / k * f
 // The wheel (CSS px, down is out), at most CAM_WHEEL_MAX of it.
 cam_wheel :: (o: Orbit, dy: f32) -> Orbit {
   d := ifx dy > f32(CAM_WHEEL_MAX) then f32(CAM_WHEEL_MAX) else ifx dy < -f32(CAM_WHEEL_MAX) then -f32(CAM_WHEEL_MAX) else dy;
-  return verse_orbit_zoom(o, d * f32(CAM_WHEEL_ZOOM));
+  return metaverse_orbit_zoom(o, d * f32(CAM_WHEEL_ZOOM));
 }
 // A thumb's pinch (metaverse-engine/core/sticks.coax), as the wheel.
-cam_pinch :: (o: Orbit, zoom: f32) -> Orbit { if zoom == 0 { return o; } return verse_orbit_zoom(o, zoom * f32(CAM_WHEEL_ZOOM)); }
+cam_pinch :: (o: Orbit, zoom: f32) -> Orbit { if zoom == 0 { return o; } return metaverse_orbit_zoom(o, zoom * f32(CAM_WHEEL_ZOOM)); }
 
 // Mouselook's framing: the eye and its aim both move CAM_SHOULDER right and CAM_LIFT up, as far as
 // share (its fade) has come.
@@ -64,21 +64,21 @@ cam_chase_orbit :: (m: CamMode, orbit: Orbit, in: CamChaseIn, dt: f32) -> Orbit 
     o.yaw = wrap_angle(o.yaw + turn * (ifx dt * 1.5 < 1 then dt * 1.5 else 1.0f32));
   }
   if !in.look_up {
-    o = verse_orbit_look(o, in.look_yaw, in.look_pitch);
-    o = verse_orbit_keys(o, in.turn, in.tilt, dt);
-    if in.zoom != 0 { o = verse_orbit_zoom(o, in.zoom * 6 * lo(dt, 0.1)); }
+    o = metaverse_orbit_look(o, in.look_yaw, in.look_pitch);
+    o = metaverse_orbit_keys(o, in.turn, in.tilt, dt);
+    if in.zoom != 0 { o = metaverse_orbit_zoom(o, in.zoom * 6 * lo(dt, 0.1)); }
     if in.held { o.idle = 0; }
-    return verse_orbit_follow(o, in.feet, in.heading, in.moving, dt);
+    return metaverse_orbit_follow(o, in.feet, in.heading, in.moving, dt);
   }
   // the turn is the shared orbit's; the tilt is the mode's, up past the horizon
-  o = verse_orbit_look(o, in.look_yaw, 0);
-  o = verse_orbit_keys(o, in.turn, 0, dt);
+  o = metaverse_orbit_look(o, in.look_yaw, 0);
+  o = metaverse_orbit_keys(o, in.turn, 0, dt);
   tilt := in.look_pitch + in.tilt * f32(FREE_KEY_TURN) * 0.6 * (ifx dt < 0.25 then dt else 0.25f32);
   if tilt != 0 { o.pitch = cam_pitch(m, o, o.pitch - tilt); o.idle = 0; }
-  if in.zoom != 0 { o = verse_orbit_zoom(o, in.zoom * 6 * (ifx dt < 0.1 then dt else 0.1f32)); }
+  if in.zoom != 0 { o = metaverse_orbit_zoom(o, in.zoom * 6 * (ifx dt < 0.1 then dt else 0.1f32)); }
   p0 := o.pitch;
   if in.held { o.idle = 0; }
-  o = verse_orbit_follow(o, in.feet, in.heading, in.moving, dt);
+  o = metaverse_orbit_follow(o, in.feet, in.heading, in.moving, dt);
   // the shared follow eases a look past its own range back into it; here a look up holds until the
   // walk's own recentring, a while after the last look
   if p0 < f32(FREE_PITCH_MIN) && !(in.moving && o.idle >= f32(FREE_RECENTRE_AFTER)) { o.pitch = cam_pitch(m, o, p0); }
@@ -100,14 +100,14 @@ cam_trunk :: (spheres: [] f32, n: int, pivot: Point, x: f32, z: f32, r: f32) -> 
 CamChaseOut :: struct { orbit: Orbit; eye_pitch: f32; press: f32; }
 cam_chase_settle :: (m: CamMode, g: [] CamGround, o: Orbit, spheres: [] f32, dt: f32) -> CamChaseOut {
   c := cam_centred(m, g, o, spheres);
-  return CamChaseOut.{orbit = verse_orbit_limit(o, c.room, dt), eye_pitch = c.eye_pitch, press = c.press};
+  return CamChaseOut.{orbit = metaverse_orbit_limit(o, c.room, dt), eye_pitch = c.eye_pitch, press = c.press};
 }
 // The orbit kept clear metres over a level floor at y 0 along its ray.
 cam_chase_floor :: (o: Orbit, clear: f32, dt: f32) -> Orbit {
-  ray := verse_orbit_ray(o);
+  ray := metaverse_orbit_ray(o);
   room := ray.far;
   if ray.dir.y < -0.0001 { room = lo(room, (ray.from.y - clear) / -ray.dir.y); }
-  return verse_orbit_limit(o, room, dt);
+  return metaverse_orbit_limit(o, room, dt);
 }
 
 #test "a drag turns and tilts by CAM_DRAG_TURN a pixel; the wheel zooms at most CAM_WHEEL_MAX of an event" {
@@ -132,7 +132,7 @@ cam_chase_floor :: (o: Orbit, clear: f32, dt: f32) -> Orbit {
 }
 #test "the follow step: a look up holds past the horizon until the walk recentres; the floor keeps the eye up" #steps 200000000 {
   m := CamMode.{id = CamModeId.follow};
-  o := verse_orbit_start(v3(0, 0, 0), 0);
+  o := metaverse_orbit_start(v3(0, 0, 0), 0);
   in: CamChaseIn; in.look_up = true; in.feet = v3(0, 0, 0); in.look_pitch = 1.5;
   o = cam_chase_orbit(m, o, in, 1.0f32 / 30);
   #assert o.pitch < f32(FREE_PITCH_MIN) && o.idle < 0.1;
@@ -145,9 +145,9 @@ cam_chase_floor :: (o: Orbit, clear: f32, dt: f32) -> Orbit {
   n := cam_ground_next(g[..], o.pivot.x, o.pivot.z, 13, cells[..]);
   for k: 0..<n { cam_ground_put(g[..], cells[k * 2], cells[k * 2 + 1], 0); }
   sp: [12] f32; out := cam_chase_settle(m, g[..], o, sp[0..<0], 1.0f32 / 30);
-  #assert out.orbit.shown <= verse_orbit_ray(o).far && out.press == 0;
+  #assert out.orbit.shown <= metaverse_orbit_ray(o).far && out.press == 0;
   // the shared range: a look down through the floor pulls the eye in over it
-  q := verse_orbit_start(v3(0, 0, 0), 0); q.pitch = -0.5;
-  f := cam_chase_floor(q, 0.3, 1.0f32 / 30); r := verse_orbit_ray(f);
+  q := metaverse_orbit_start(v3(0, 0, 0), 0); q.pitch = -0.5;
+  f := cam_chase_floor(q, 0.3, 1.0f32 / 30); r := metaverse_orbit_ray(f);
   #assert r.from.y + r.dir.y * f.shown >= 0.299;
 }

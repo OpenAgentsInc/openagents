@@ -790,7 +790,7 @@ lab_message :: (w: [] LabWalk, kind: int, t: string) -> bool {
   s := w[0].z[..];
   if zone_message(s, kind, t) { return false; }
   if kind != HOST_PAGE { return false; }
-  lab_enter(w); zone_enter(s, t); w[0].in_app = lab_has(t, "ua=AethyrPageHost");
+  lab_enter(w); zone_enter(s, t); w[0].in_app = lab_has(t, "ua=EnginePageHost");
   v := lab_staged(w, t);
   if lab_hub(w) {
     // a hub: ?at=<slug> on any page (a station, a district's first, "start"), ?at=N on a local one the tour's Nth
@@ -870,7 +870,7 @@ lab_test_walk :: (w: [] LabWalk) {
   #assert cast(string) w[0].z[0].outbox[0..<w[0].z[0].out_n] == "/worlds";
   #assert !lab_press(w[..], 600, 300, 0, 8);
   // in the apps the host draws its own Worlds button: the page's is gone and takes no press
-  #assert lab_has("tab=1\nua=AethyrPageHost/1 (macOS)", "ua=AethyrPageHost") && !lab_has("ua=Mozilla", "ua=AethyrPageHost");
+  #assert lab_has("tab=1\nua=EnginePageHost/1 (macOS)", "ua=EnginePageHost") && !lab_has("ua=Mozilla", "ua=EnginePageHost");
   w[0].in_app = true; #assert !lab_press(w[..], 1150, 20, 0, 9);
 }
 #test "lab walk: a check reads where you are and where the stations stand" #steps 400000000 {

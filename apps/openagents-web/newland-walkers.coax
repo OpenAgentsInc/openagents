@@ -114,10 +114,10 @@ walkers_draw :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) 
   white := ink(p, INK_WHITE); bright := ink(p, INK_BRIGHT);
   for i: 0..<r[0].others {
     sh := person_shape(i + 3);
-    k := verse_figure_skeleton(sh);
+    k := metaverse_figure_skeleton(sh);
     sp := w[0].speed[i];
     gait := ifx sp > 5.2 then Gait.run else ifx sp > 0.5 then Gait.walk else Gait.stand;
-    pose := verse_figure_gait(Rig.person, gait, w[0].phase[i], t + cast(f32) i * 1.7);
+    pose := metaverse_figure_gait(Rig.person, gait, w[0].phase[i], t + cast(f32) i * 1.7);
     top: [1] Spot;
     x := w[0].drawn[i * 3]; z := w[0].drawn[i * 3 + 1];
     v = figure_up(out, v, c, k, pose, x, w[0].feet_y[i], z, w[0].drawn[i * 3 + 2], bright, 1, p, top[..]);

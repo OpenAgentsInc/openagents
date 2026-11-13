@@ -9,7 +9,7 @@
 
 #load "zeron.coax";
 
-verse_skin :: () -> UiSkin {
+metaverse_skin :: () -> UiSkin {
   s := zeron_skin();
   s.id = UISKIN_VERSE; s.name = "verse";
   cyan := rgba(0.216, 0.851, 0.851, 1);         // the Arwes accent
@@ -51,12 +51,12 @@ verse_skin :: () -> UiSkin {
   s.frame_mid = rgba(0.42, 0.42, 0.42, 1); s.frame_light = rgba(0.78, 0.78, 0.78, 1); s.trim = cyan;
   s.shadow = 0; s.stud = 0;
   s.md.block_radius = 0; s.md.code_radius = 0;
-  s.hud = verse_hud();
+  s.hud = metaverse_hud();
   return s;
 }
 
 #test "the Verse skin is grey and cyan with square corners and no shadow" {
-  s := verse_skin();
+  s := metaverse_skin();
   #assert s.id == UISKIN_VERSE && s.name == "verse" && s.frame == UIFRAME_CUT && s.shadow == 0 && s.radius_control == 0;
   #assert s.ink.r == s.ink.g && s.ink.g == s.ink.b && s.accent.g > s.accent.r + 0.5 && s.md.block_radius == 0;
 }

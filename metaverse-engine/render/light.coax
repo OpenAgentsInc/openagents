@@ -2,7 +2,7 @@
 // ambient, a shadow map that holds still as the eye moves, a mover's contact shadow, height haze
 // and bounded local lights. Every material reads the same numbers.
 //
-// The shader functions below keep their verse_style_ names, as metaverse-engine/render/material.coax's do:
+// The shader functions below keep their metaverse_style_ names, as metaverse-engine/render/material.coax's do:
 // coax wgsl emits each as `coax_p_<name>`, so every realm's WGSL is byte for byte what it was when
 // they lived in metaverse/style.coax, which loads this file. The CPU pieces (the key light by clock,
 // the light's space and its snapped middle, local lights) are what a realm's frame and its checks
@@ -14,56 +14,56 @@
 #load "material.coax";
 
 // A hemisphere ambient channel: ground below, sky above, by the normal's y.
-verse_style_ambient :: (ny:f32,sky:f32,ground:f32,scale:f32)->f32 #export_c #effects(all) {
+metaverse_style_ambient :: (ny:f32,sky:f32,ground:f32,scale:f32)->f32 #export_c #effects(all) {
  return (ground+(sky-ground)*(st_sat(ny*0.5f32+0.5f32)))*scale;
 }
 // ---- 3. Real shadows: the key light's shadow map (host.js shadowLayout, 2048 square, 1024 on a phone)
 // How far round the eye the map reaches, in metres: the camera's near 60 m, 40 m on a phone.
-verse_style_shadow_reach :: (on_phone:f32)->f32 #export_c #effects(all) {if on_phone>0.5f32 {return 40.0f32;} return 60.0f32;}
+metaverse_style_shadow_reach :: (on_phone:f32)->f32 #export_c #effects(all) {if on_phone>0.5f32 {return 40.0f32;} return 60.0f32;}
 // The map's place snapped to whole texels (reach across size texels each way), so shadows hold still as the eye moves.
-verse_style_shadow_snap :: (x:f32,reach:f32,size:f32)->f32 #export_c #effects(all) {
+metaverse_style_shadow_snap :: (x:f32,reach:f32,size:f32)->f32 #export_c #effects(all) {
  texel:=2.0f32*reach/st_max(size,1.0f32);
  return floor(x/texel+0.5f32)*texel;
 }
 // A point's place across the map, -1 to 1 from its middle (x metres across the light from the
 // snapped middle), and its depth, 0 to 1, from how far it lies toward the light (`along`, metres
 // past the middle): nearer the light is nearer 0, and the map holds twice its reach either way.
-verse_style_shadow_across :: (x:f32,reach:f32)->f32 #export_c #effects(all) {return x/st_max(reach,0.001f32);}
-verse_style_shadow_depth :: (along:f32,reach:f32)->f32 #export_c #effects(all) {return 0.5f32-along/(4.0f32*st_max(reach,0.001f32));}
+metaverse_style_shadow_across :: (x:f32,reach:f32)->f32 #export_c #effects(all) {return x/st_max(reach,0.001f32);}
+metaverse_style_shadow_depth :: (along:f32,reach:f32)->f32 #export_c #effects(all) {return 0.5f32-along/(4.0f32*st_max(reach,0.001f32));}
 // How many Poisson taps the filter takes (where they are and how far out they reach,
-// verse_style_shadow_tap and verse_style_shadow_radius, stay in metaverse/style.coax).
-verse_style_shadow_taps :: (on_phone:f32)->f32 #export_c #effects(all) {if on_phone>0.5f32 {return 4.0f32;} return 9.0f32;}
+// metaverse_style_shadow_tap and metaverse_style_shadow_radius, stay in metaverse/style.coax).
+metaverse_style_shadow_taps :: (on_phone:f32)->f32 #export_c #effects(all) {if on_phone>0.5f32 {return 4.0f32;} return 9.0f32;}
 // The cast shadow (1 lit, 0 shadowed) with a mover's blob under it: the blob darkens to
 // 1 - strength (0.35) at its middle and never lightens a cast shadow.
-verse_style_contact :: (cast_lit:f32,blob:f32,strength:f32)->f32 #export_c #effects(all) {return st_min(cast_lit,1.0f32-strength*st_sat(blob));}
+metaverse_style_contact :: (cast_lit:f32,blob:f32,strength:f32)->f32 #export_c #effects(all) {return st_min(cast_lit,1.0f32-strength*st_sat(blob));}
 
 // ---- 4. Atmosphere: haze
 // The haze's share at distance d, height y over the ground at the eye (base_y):
 // exponential past `start`, thinner higher up (falloff), capped.
-verse_style_haze :: (d:f32,y:f32,base_y:f32,start:f32,density:f32,cap:f32,falloff:f32)->f32 #export_c #effects(all) {
+metaverse_style_haze :: (d:f32,y:f32,base_y:f32,start:f32,density:f32,cap:f32,falloff:f32)->f32 #export_c #effects(all) {
  dist:=1.0f32-exp(-density*st_max(d-start,0.0f32));
  height:=exp(-st_max(y-base_y,0.0f32)/st_max(falloff,0.001f32));
  return st_min(dist*(1.0f32+(height-1.0f32)*0.6f32),cap);
 }
 // How much of the key light's colour the haze takes looking toward it (V.L).
-verse_style_haze_glow :: (vdl:f32)->f32 #export_c #effects(all) {
+metaverse_style_haze_glow :: (vdl:f32)->f32 #export_c #effects(all) {
  a:=st_sat(vdl);a2:=a*a;a4:=a2*a2;
  // Ore's open-field noon fog is a broad forward-Mie lobe, not only a tight disc: the larger of
  // the old cos^8 and a g .70 lobe rescaled to 0 at right angles and 1 at the key (4b's phase).
- p0:=verse_style_haze_phase(0.0f32,0.70f32);mie:=st_sat((verse_style_haze_phase(a,0.70f32)-p0)/(verse_style_haze_phase(1.0f32,0.70f32)-p0));
+ p0:=metaverse_style_haze_phase(0.0f32,0.70f32);mie:=st_sat((metaverse_style_haze_phase(a,0.70f32)-p0)/(metaverse_style_haze_phase(1.0f32,0.70f32)-p0));
  return st_max(a4*a4,mie)*0.45f32;
 }
 // One channel of a surface through the haze: toward haze_c (the haze's colour
 // with the key's glow mixed in) by the haze's share f.
-verse_style_fog :: (c:f32,haze_c:f32,f:f32)->f32 #export_c #effects(all) {return c+(haze_c-c)*st_sat(f);}
+metaverse_style_fog :: (c:f32,haze_c:f32,f:f32)->f32 #export_c #effects(all) {return c+(haze_c-c)*st_sat(f);}
 
 // The haze's hue by its share (art-styles.md 4): teal where it is thin, the middle distance, turning
 // to the preset's blue as it thickens toward its cap, so far ridges step back teal, then blue, and
 // the haze never whitens what's near. One channel (0 red, 1 green, 2 blue) of the haze colour h.
-verse_style_haze_teal :: (ch:f32)->f32 #export_c #effects(all) {if ch<0.5f32 {return 0.70f32;} if ch<1.5f32 {return 1.0f32;} return 0.84f32;}
-verse_style_haze_hue :: (h:f32,ch:f32,f:f32,cap:f32)->f32 #export_c #effects(all) {
- t:=verse_style_haze_teal(ch);
- far:=verse_style_soft_step((0.15f32+cap)*0.5f32,(cap-0.15f32)*0.5f32,f);
+metaverse_style_haze_teal :: (ch:f32)->f32 #export_c #effects(all) {if ch<0.5f32 {return 0.70f32;} if ch<1.5f32 {return 1.0f32;} return 0.84f32;}
+metaverse_style_haze_hue :: (h:f32,ch:f32,f:f32,cap:f32)->f32 #export_c #effects(all) {
+ t:=metaverse_style_haze_teal(ch);
+ far:=metaverse_style_soft_step((0.15f32+cap)*0.5f32,(cap-0.15f32)*0.5f32,f);
  return h*(t+(1.0f32-t)*far);
 }
 
@@ -72,19 +72,19 @@ verse_style_haze_hue :: (h:f32,ch:f32,f:f32,cap:f32)->f32 #export_c #effects(all
 // The Mie phase of air with anisotropy g (Henyey-Greenstein), scaled so still air (g = 0) is 1:
 // with g near .62-.70, as Ocarina's open-field fog, haze looking toward the sun glows warm and
 // looking away stays sky blue. vdl is the view ray's cosine to the key light.
-verse_style_haze_phase :: (vdl:f32,g:f32)->f32 #export_c #effects(all) {
+metaverse_style_haze_phase :: (vdl:f32,g:f32)->f32 #export_c #effects(all) {
  g2:=g*g;d:=st_max(1.0f32+g2-2.0f32*g*st_max(-1.0f32,st_min(1.0f32,vdl)),0.0001f32);
  return (1.0f32-g2)/(d*sqrt(d));
 }
 // The haze thickens only past `near` and fully by `far` (Ore's FarFade window), by `gain` more:
 // near ground stays clear while far ridges sit in lit air.
-verse_style_haze_window :: (d:f32,near:f32,far:f32,gain:f32)->f32 #export_c #effects(all) {
- return 1.0f32+gain*verse_style_soft_step((near+far)*0.5f32,st_max(far-near,0.0001f32)*0.5f32,d);
+metaverse_style_haze_window :: (d:f32,near:f32,far:f32,gain:f32)->f32 #export_c #effects(all) {
+ return 1.0f32+gain*metaverse_style_soft_step((near+far)*0.5f32,st_max(far-near,0.0001f32)*0.5f32,d);
 }
 // ---- 4c. Colour temperature (Ore: noon sun 4500 K under a 6500 K white balance)
 // One display channel (0 red, 1 green, 2 blue) of a black body at `kelvin`, 0 to 1, by Tanner
 // Helland's fit to the CIE tables (1000-40000 K).
-verse_style_kelvin :: (kelvin:f32,ch:f32)->f32 #export_c #effects(all) {
+metaverse_style_kelvin :: (kelvin:f32,ch:f32)->f32 #export_c #effects(all) {
  t:=st_max(10.0f32,st_min(400.0f32,kelvin/100.0f32));v:f32=1;
  if ch<0.5f32 {if t>66.0f32 {v=329.698727446f32*pow(t-60.0f32,-0.1332047592f32)/255.0f32;}}
  else if ch<1.5f32 {v=ifx t<=66.0f32 then (99.4708025861f32*log(t)-161.1195681661f32)/255.0f32 else 288.1221695283f32*pow(t-60.0f32,-0.0755148492f32)/255.0f32;}
@@ -93,22 +93,22 @@ verse_style_kelvin :: (kelvin:f32,ch:f32)->f32 #export_c #effects(all) {
 }
 // A light at `kelvin` seen through a camera balanced for `white`: the channel's ratio, so a
 // 4500 K sun under 6500 K balance is golden and white light at the balance stays neutral.
-verse_style_balanced :: (kelvin:f32,white:f32,ch:f32)->f32 #export_c #effects(all) {
- return verse_style_kelvin(kelvin,ch)/st_max(verse_style_kelvin(white,ch),0.001f32);
+metaverse_style_balanced :: (kelvin:f32,white:f32,ch:f32)->f32 #export_c #effects(all) {
+ return metaverse_style_kelvin(kelvin,ch)/st_max(metaverse_style_kelvin(white,ch),0.001f32);
 }
 #test "forward haze glows toward the sun, windows near ground and balanced sunlight is warm" {
- #assert abs(verse_style_haze_phase(0.3,0)-1)<0.00001;
- #assert verse_style_haze_phase(1,0.62)>verse_style_haze_phase(0.5,0.62) && verse_style_haze_phase(0.5,0.62)>verse_style_haze_phase(-1,0.62);
- #assert abs(verse_style_haze_phase(1,0.6)-(1-0.36)/(0.4*0.4*0.4))<0.001;
- #assert verse_style_haze_window(5,10,45,1.6)==1 && abs(verse_style_haze_window(60,10,45,1.6)-2.6)<0.0001;
- #assert verse_style_haze_window(27.5,10,45,1.6)>1.7 && verse_style_haze_window(27.5,10,45,1.6)<1.9;
- #assert verse_style_kelvin(6500,0)==1 && verse_style_kelvin(4500,0)==1 && verse_style_kelvin(4500,2)<0.80 && verse_style_kelvin(1500,2)==0;
- #assert verse_style_kelvin(10000,2)==1 && verse_style_kelvin(10000,0)<0.85 && verse_style_kelvin(10000,1)<0.92;
- #assert abs(verse_style_balanced(6500,6500,1)-1)<0.00001 && verse_style_balanced(4500,6500,2)<verse_style_balanced(4500,6500,1);
- #assert verse_style_balanced(4500,6500,1)<1 && verse_style_balanced(4500,6500,0)==1;
+ #assert abs(metaverse_style_haze_phase(0.3,0)-1)<0.00001;
+ #assert metaverse_style_haze_phase(1,0.62)>metaverse_style_haze_phase(0.5,0.62) && metaverse_style_haze_phase(0.5,0.62)>metaverse_style_haze_phase(-1,0.62);
+ #assert abs(metaverse_style_haze_phase(1,0.6)-(1-0.36)/(0.4*0.4*0.4))<0.001;
+ #assert metaverse_style_haze_window(5,10,45,1.6)==1 && abs(metaverse_style_haze_window(60,10,45,1.6)-2.6)<0.0001;
+ #assert metaverse_style_haze_window(27.5,10,45,1.6)>1.7 && metaverse_style_haze_window(27.5,10,45,1.6)<1.9;
+ #assert metaverse_style_kelvin(6500,0)==1 && metaverse_style_kelvin(4500,0)==1 && metaverse_style_kelvin(4500,2)<0.80 && metaverse_style_kelvin(1500,2)==0;
+ #assert metaverse_style_kelvin(10000,2)==1 && metaverse_style_kelvin(10000,0)<0.85 && metaverse_style_kelvin(10000,1)<0.92;
+ #assert abs(metaverse_style_balanced(6500,6500,1)-1)<0.00001 && metaverse_style_balanced(4500,6500,2)<metaverse_style_balanced(4500,6500,1);
+ #assert metaverse_style_balanced(4500,6500,1)<1 && metaverse_style_balanced(4500,6500,0)==1;
  // The fit's own values (the 66 and 19 seams meet or clip, so the comparisons there are exact either way).
- #assert abs(verse_style_kelvin(10000,0)-0.7910)<0.0005 && abs(verse_style_kelvin(10000,1)-0.8552)<0.0005;
- #assert abs(verse_style_kelvin(4500,1)-0.8531)<0.0005 && abs(verse_style_kelvin(4500,2)-0.7350)<0.0005;
+ #assert abs(metaverse_style_kelvin(10000,0)-0.7910)<0.0005 && abs(metaverse_style_kelvin(10000,1)-0.8552)<0.0005;
+ #assert abs(metaverse_style_kelvin(4500,1)-0.8531)<0.0005 && abs(metaverse_style_kelvin(4500,2)-0.7350)<0.0005;
 }
 
 // ---- the key light from the clock (CPU)
@@ -147,8 +147,8 @@ light_space :: (lx: f32, ly: f32, lz: f32, eye_x: f32, eye_z: f32, reach: f32, s
     s.axx = lz / n; s.axz = -lx / n;
   }
   s.ayx = ly * s.axz; s.ayy = lz * s.axx - lx * s.axz; s.ayz = -ly * s.axx;   // cross(l, ax)
-  s.mx = verse_style_shadow_snap(eye_x * s.axx + eye_z * s.axz, reach, size);
-  s.my = verse_style_shadow_snap(eye_x * s.ayx + eye_z * s.ayz, reach, size);
+  s.mx = metaverse_style_shadow_snap(eye_x * s.axx + eye_z * s.axz, reach, size);
+  s.my = metaverse_style_shadow_snap(eye_x * s.ayx + eye_z * s.ayz, reach, size);
   s.reach = reach;
   s.texel = 2 * reach / st_max(size, 1);
   return s;
@@ -158,7 +158,7 @@ light_space :: (lx: f32, ly: f32, lz: f32, eye_x: f32, eye_z: f32, reach: f32, s
 // keeps the same fraction of a texel however the eye moves: shadow edges don't crawl.
 light_map_texel :: (s: LightSpace, x: f32, y: f32, z: f32, which: int) -> f32 {
   along := ifx which == 0 then x * s.axx + z * s.axz - s.mx else x * s.ayx + y * s.ayy + z * s.ayz - s.my;
-  return (verse_style_shadow_across(along, s.reach) * 0.5 + 0.5) * (2 * s.reach / s.texel);
+  return (metaverse_style_shadow_across(along, s.reach) * 0.5 + 0.5) * (2 * s.reach / s.texel);
 }
 // book:end space
 
@@ -170,7 +170,7 @@ LocalLight :: struct { x: f32; y: f32; z: f32; radius: f32; r: f32; g: f32; b: f
 LocalLights :: struct { lights: [LIGHT_LOCAL_MAX] LocalLight; count: int; refused: int; }
 
 // A local light's share at distance d of its radius r: (1 - d/r)^2, none at r and past it
-// (metaverse/haunt-light.coax verse_haunt_attenuate, the Haunted House's).
+// (metaverse/haunt-light.coax metaverse_haunt_attenuate, the Haunted House's).
 light_falloff :: (d: f32, r: f32) -> f32 {
   q := st_max(0, 1 - d / st_max(r, 0.01));
   return q * q;
@@ -203,10 +203,10 @@ light_local_at :: (s: LocalLights, x: f32, y: f32, z: f32) -> MatRgb {
 
 // ---- checks
 #test "hemisphere ambient: the ground's straight down, the sky's straight up, halfway level, scaled" {
-  #assert verse_style_ambient(-1, 0.8, 0.2, 1) == 0.2f32 && verse_style_ambient(1, 0.8, 0.2, 1) == 0.8f32;
-  #assert abs(verse_style_ambient(0, 0.8, 0.2, 1) - 0.5f32) < 0.000001f32 && abs(verse_style_ambient(0, 0.8, 0.2, 2) - 1.0f32) < 0.000001f32;
-  #assert verse_style_ambient(-3, 0.8, 0.2, 1) == 0.2f32 && verse_style_ambient(3, 0.8, 0.2, 1) == 0.8f32;
-  #assert abs(verse_style_ambient(0.5, 0.8, 0.2, 1) - 0.65f32) < 0.000001f32;
+  #assert metaverse_style_ambient(-1, 0.8, 0.2, 1) == 0.2f32 && metaverse_style_ambient(1, 0.8, 0.2, 1) == 0.8f32;
+  #assert abs(metaverse_style_ambient(0, 0.8, 0.2, 1) - 0.5f32) < 0.000001f32 && abs(metaverse_style_ambient(0, 0.8, 0.2, 2) - 1.0f32) < 0.000001f32;
+  #assert metaverse_style_ambient(-3, 0.8, 0.2, 1) == 0.2f32 && metaverse_style_ambient(3, 0.8, 0.2, 1) == 0.8f32;
+  #assert abs(metaverse_style_ambient(0.5, 0.8, 0.2, 1) - 0.65f32) < 0.000001f32;
 }
 #test "the key at the four clock keys: the moon at midnight, the sun at its height at noon, an eighth of a turn round at dawn and dusk" {
   low := -0.9f32; high := 1.1f32; az := 0.3f32; below := -0.05f32;
@@ -298,69 +298,69 @@ light_local_at :: (s: LocalLights, x: f32, y: f32, z: f32) -> MatRgb {
   #assert e.r == 0 && e.g == 0 && e.b == 0;
 }
 #test "the shadow map reaches 60 m, 40 m on a phone, snapped to whole texels" {
- #assert verse_style_shadow_reach(0.0f32)==60.0f32 && verse_style_shadow_reach(1.0f32)==40.0f32;
+ #assert metaverse_style_shadow_reach(0.0f32)==60.0f32 && metaverse_style_shadow_reach(1.0f32)==40.0f32;
  // 120 m over 2048 texels: 0.0586 m a texel; a point moves only in whole texels
  t:=120.0f32/2048.0f32;
- #assert abs(verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)-10.0f32)<t*0.5f32+0.00001f32;
- #assert abs(verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)/t-floor(verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)/t+0.5f32))<0.001f32;
- #assert verse_style_shadow_snap(10.01f32,60.0f32,2048.0f32)==verse_style_shadow_snap(10.0f32,60.0f32,2048.0f32);
+ #assert abs(metaverse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)-10.0f32)<t*0.5f32+0.00001f32;
+ #assert abs(metaverse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)/t-floor(metaverse_style_shadow_snap(10.0f32,60.0f32,2048.0f32)/t+0.5f32))<0.001f32;
+ #assert metaverse_style_shadow_snap(10.01f32,60.0f32,2048.0f32)==metaverse_style_shadow_snap(10.0f32,60.0f32,2048.0f32);
 }
 #test "the map's depth runs 0 at the light's side to 1 away from it, over twice the reach each way" {
- #assert verse_style_shadow_depth(0.0f32,60.0f32)==0.5f32;
- #assert verse_style_shadow_depth(120.0f32,60.0f32)==0.0f32 && verse_style_shadow_depth(-120.0f32,60.0f32)==1.0f32;
- #assert verse_style_shadow_depth(1.0f32,60.0f32)<verse_style_shadow_depth(0.0f32,60.0f32);
- #assert verse_style_shadow_across(60.0f32,60.0f32)==1.0f32 && verse_style_shadow_across(-20.0f32,40.0f32)==-0.5f32;
+ #assert metaverse_style_shadow_depth(0.0f32,60.0f32)==0.5f32;
+ #assert metaverse_style_shadow_depth(120.0f32,60.0f32)==0.0f32 && metaverse_style_shadow_depth(-120.0f32,60.0f32)==1.0f32;
+ #assert metaverse_style_shadow_depth(1.0f32,60.0f32)<metaverse_style_shadow_depth(0.0f32,60.0f32);
+ #assert metaverse_style_shadow_across(60.0f32,60.0f32)==1.0f32 && metaverse_style_shadow_across(-20.0f32,40.0f32)==-0.5f32;
 }
 #test "a mover's blob darkens to 0.65 under it and never lightens a cast shadow" {
- #assert abs(verse_style_contact(1.0f32,1.0f32,0.35f32)-0.65f32)<0.0001f32;
- #assert verse_style_contact(1.0f32,0.0f32,0.35f32)==1.0f32;
- #assert verse_style_contact(0.2f32,1.0f32,0.35f32)==0.2f32;
+ #assert abs(metaverse_style_contact(1.0f32,1.0f32,0.35f32)-0.65f32)<0.0001f32;
+ #assert metaverse_style_contact(1.0f32,0.0f32,0.35f32)==1.0f32;
+ #assert metaverse_style_contact(0.2f32,1.0f32,0.35f32)==0.2f32;
 }
 #test "day haze: 0.58 at 100 m, 0.86 at 200 m, never past its cap" {
- #assert verse_style_haze(20.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==0.0f32;
- #assert abs(verse_style_haze(100.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)-0.585f32)<0.005f32;
- #assert abs(verse_style_haze(200.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)-0.862f32)<0.005f32;
- #assert verse_style_haze(5000.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==0.88f32;
+ #assert metaverse_style_haze(20.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==0.0f32;
+ #assert abs(metaverse_style_haze(100.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)-0.585f32)<0.005f32;
+ #assert abs(metaverse_style_haze(200.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)-0.862f32)<0.005f32;
+ #assert metaverse_style_haze(5000.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==0.88f32;
 }
 #test "haze thins higher up, to 0.4 of itself far above the eye" {
- low:=verse_style_haze(100.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
- high:=verse_style_haze(100.0f32,60.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
- top:=verse_style_haze(100.0f32,10000.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
+ low:=metaverse_style_haze(100.0f32,0.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
+ high:=metaverse_style_haze(100.0f32,60.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
+ top:=metaverse_style_haze(100.0f32,10000.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32);
  #assert high<low;
  #assert abs(top-low*0.4f32)<0.001f32;
- #assert verse_style_haze(100.0f32,-30.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==low;
+ #assert metaverse_style_haze(100.0f32,-30.0f32,0.0f32,20.0f32,0.011f32,0.88f32,60.0f32)==low;
 }
 #test "the haze glows toward the key light only" {
- #assert verse_style_haze_glow(-1.0f32)==0.0f32;
- #assert verse_style_haze_glow(0.0f32)==0.0f32;
- #assert abs(verse_style_haze_glow(1.0f32)-0.45f32)<0.0001f32;
+ #assert metaverse_style_haze_glow(-1.0f32)==0.0f32;
+ #assert metaverse_style_haze_glow(0.0f32)==0.0f32;
+ #assert abs(metaverse_style_haze_glow(1.0f32)-0.45f32)<0.0001f32;
  // broader than cos^8 off the key, never weaker
- #assert verse_style_haze_glow(0.5f32)>0.01f32 && verse_style_haze_glow(0.7f32)>0.45f32*0.0576f32 && verse_style_haze_glow(0.9f32)>=0.45f32*0.43f32;
- #assert abs(verse_style_fog(0.2f32,0.8f32,0.5f32)-0.5f32)<0.0001f32;
+ #assert metaverse_style_haze_glow(0.5f32)>0.01f32 && metaverse_style_haze_glow(0.7f32)>0.45f32*0.0576f32 && metaverse_style_haze_glow(0.9f32)>=0.45f32*0.43f32;
+ #assert abs(metaverse_style_fog(0.2f32,0.8f32,0.5f32)-0.5f32)<0.0001f32;
 }
 #test "haze is teal in the middle distance and the preset's blue far off" {
  // the day haze (0.56, 0.74, 0.90): thin, at a share of 0.15, it's teal (green the largest)
- r:=verse_style_haze_hue(0.56f32,0.0f32,0.15f32,0.88f32); g:=verse_style_haze_hue(0.74f32,1.0f32,0.15f32,0.88f32); b:=verse_style_haze_hue(0.90f32,2.0f32,0.15f32,0.88f32);
+ r:=metaverse_style_haze_hue(0.56f32,0.0f32,0.15f32,0.88f32); g:=metaverse_style_haze_hue(0.74f32,1.0f32,0.15f32,0.88f32); b:=metaverse_style_haze_hue(0.90f32,2.0f32,0.15f32,0.88f32);
  #assert abs(r-0.392f32)<0.001f32 && g==0.74f32 && abs(b-0.756f32)<0.001f32;
  #assert g>r && b>r;
  // at its cap, the blue itself
- #assert abs(verse_style_haze_hue(0.56f32,0.0f32,0.88f32,0.88f32)-0.56f32)<0.0001f32 && abs(verse_style_haze_hue(0.90f32,2.0f32,0.88f32,0.88f32)-0.90f32)<0.0001f32;
+ #assert abs(metaverse_style_haze_hue(0.56f32,0.0f32,0.88f32,0.88f32)-0.56f32)<0.0001f32 && abs(metaverse_style_haze_hue(0.90f32,2.0f32,0.88f32,0.88f32)-0.90f32)<0.0001f32;
  // and it turns steadily between
- for i:0..<80 {f:=cast(f32)i*0.01f32; #assert verse_style_haze_hue(0.56f32,0.0f32,f+0.01f32,0.88f32)>=verse_style_haze_hue(0.56f32,0.0f32,f,0.88f32);}
+ for i:0..<80 {f:=cast(f32)i*0.01f32; #assert metaverse_style_haze_hue(0.56f32,0.0f32,f+0.01f32,0.88f32)>=metaverse_style_haze_hue(0.56f32,0.0f32,f,0.88f32);}
 }
 #test "each shadow switch flips at its own edge: past half is a phone" {
-  #assert verse_style_shadow_reach(0.5) == 60 && verse_style_shadow_reach(0.51) == 40;
-  #assert verse_style_shadow_taps(0.5) == 9 && verse_style_shadow_taps(0.51) == 4;
+  #assert metaverse_style_shadow_reach(0.5) == 60 && metaverse_style_shadow_reach(0.51) == 40;
+  #assert metaverse_style_shadow_taps(0.5) == 9 && metaverse_style_shadow_taps(0.51) == 4;
 }
 #test "haze over raised ground: its height counts from the eye's ground, and thins by e at one falloff" {
-  #assert verse_style_haze(100, 70, 10, 20, 0.011, 0.88, 60) == verse_style_haze(100, 60, 0, 20, 0.011, 0.88, 60);
+  #assert metaverse_style_haze(100, 70, 10, 20, 0.011, 0.88, 60) == metaverse_style_haze(100, 60, 0, 20, 0.011, 0.88, 60);
   // at one falloff up the height term is 1/e: the haze is 1 + (1/e - 1) 0.6 = 0.6207 of the level one
-  level := verse_style_haze(100, 0, 0, 20, 0.011, 0.88, 60);
-  #assert abs(verse_style_haze(100, 60, 0, 20, 0.011, 0.88, 60) - level * 0.62073f32) < 0.0001f32;
-  #assert abs(verse_style_haze(100, 30, 0, 20, 0.011, 0.88, 30) - level * 0.62073f32) < 0.0001f32;
+  level := metaverse_style_haze(100, 0, 0, 20, 0.011, 0.88, 60);
+  #assert abs(metaverse_style_haze(100, 60, 0, 20, 0.011, 0.88, 60) - level * 0.62073f32) < 0.0001f32;
+  #assert abs(metaverse_style_haze(100, 30, 0, 20, 0.011, 0.88, 30) - level * 0.62073f32) < 0.0001f32;
 }
 #test "the haze's teal: red 0.70 to half, green 1 to one and a half, blue 0.84 past" {
-  #assert verse_style_haze_teal(0.49) == 0.70f32 && verse_style_haze_teal(0.5) == 1 && verse_style_haze_teal(1.49) == 1 && verse_style_haze_teal(1.5) == 0.84f32;
+  #assert metaverse_style_haze_teal(0.49) == 0.70f32 && metaverse_style_haze_teal(0.5) == 1 && metaverse_style_haze_teal(1.49) == 1 && metaverse_style_haze_teal(1.5) == 0.84f32;
 }
 #test "the azimuth wraps with the clock, bit for bit; the moon is the sun turned about" {
   a := light_key(0.3, 0.3, 0.2, -1, 0.25); b := light_key(0.3, 0.3, 0.2, -1, 1.25); c := light_key(0.3, 0.3, 0.2, -1, 2.75);
@@ -379,11 +379,11 @@ light_local_at :: (s: LocalLights, x: f32, y: f32, z: f32) -> MatRgb {
   ax := lz / h; az := -lx / h;
   yx := ly * az; yy := lz * ax - lx * az; yz := -ly * ax;
   #assert s.axx == ax && s.axz == az && s.ayx == yx && s.ayy == yy && s.ayz == yz;
-  #assert s.mx == verse_style_shadow_snap(7.3f32 * ax - 4.1f32 * az, 60, 2048) && s.my == verse_style_shadow_snap(7.3f32 * yx - 4.1f32 * yz, 60, 2048);
+  #assert s.mx == metaverse_style_shadow_snap(7.3f32 * ax - 4.1f32 * az, 60, 2048) && s.my == metaverse_style_shadow_snap(7.3f32 * yx - 4.1f32 * yz, 60, 2048);
   #assert s.mx != 0 && s.my != 0;
   edge := light_space(0.0447f32, 0.999f32, 0, 5, 3, 60, 2048);   // |ly| at the limit: overhead, +x
   #assert edge.axx == 1 && edge.axz == 0;
-  #assert edge.my == verse_style_shadow_snap(-3.0f32 * 0.999f32, 60, 2048);
+  #assert edge.my == metaverse_style_shadow_snap(-3.0f32 * 0.999f32, 60, 2048);
 }
 #test "a point's texel on the map, worked from the space: along ax and along ay" {
   n := sqrt(0.3f32 * 0.3f32 + 0.8f32 * 0.8f32 + 0.5f32 * 0.5f32);

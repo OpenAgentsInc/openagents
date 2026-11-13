@@ -479,7 +479,7 @@ step's result and the colliders and changes only the camera's fields:
 `target`, `spring_vel` and `dist`. `Player` keeps those fields, because the
 realms' C faces read them. `steps_in` (chapter 1) runs `step_once`, the
 player's step and then the camera's, so every realm that advances through
-`verse_player_advance` gets the same camera as before, bit for bit.
+`metaverse_player_advance` gets the same camera as before, bit for bit.
 
 <!-- source: metaverse-engine/move/walk.coax camera -->
 ```jai
@@ -681,9 +681,9 @@ main :: () {
   walls := [6] f32.[-3, 0, 4, 3, 2.5, 4.5];              // a wall 4 m ahead
   w: World; w.walls = walls[..];
   p: [3] Player;
-  for c: 0..<3 { p[c] = verse_player_place(0, 0, 0, 0); }
+  for c: 0..<3 { p[c] = metaverse_player_place(0, 0, 0, 0); }
   for f: 0..<120 {
-    for c: 0..<3 { p[c] = frame_with(w, verse_player_input(p[c], 0, 1, 0, 0, f > 20, f == 60, 0, 0), 1.0f32 / 60, c); }
+    for c: 0..<3 { p[c] = frame_with(w, metaverse_player_input(p[c], 0, 1, 0, 0, f > 20, f == 60, 0, 0), 1.0f32 / 60, c); }
   }
   for c: 0..<3 {
     print("camera steps % a step: feet at (%, %, %); the camera looks at z = %\n", c, p[c].body.pos.x, p[c].body.pos.y, p[c].body.pos.z, p[c].cam.target.z);
@@ -691,14 +691,14 @@ main :: () {
   print("the same player each way: %\n", walker_same(p[0], p[1]) && walker_same(p[2], p[1]));
   names := [3] string.["first person", "follow", "top down"];
   for m: 0..<3 {
-    s := verse_player_view(p[1], m);
+    s := metaverse_player_view(p[1], m);
     print("%: eye (%, %, %), looking at (%, %, %)\n", names[m], s.eye.x, s.eye.y, s.eye.z, s.at.x, s.at.y, s.at.z);
   }
   high := CameraShot.{eye = world_point(0, 38, -62), at = world_point(0, 0, 3)};
   d := shot_dive_start(high, 0.75);
   for k: 0..<49 {
     if k % 12 == 0 {
-      s := shot_dive(d, verse_player_view(p[1], 1));
+      s := shot_dive(d, metaverse_player_view(p[1], 1));
       print("dive % of 48: share %, eye (%, %, %)\n", k, shot_dive_share(d), s.eye.x, s.eye.y, s.eye.z);
     }
     d = shot_dive_advance(d, 0.015625);
@@ -848,8 +848,8 @@ moves the rest of the realms' cameras onto `CameraShot`:
   `wk_dive`) moves onto `shot_dive`.
 - `SpaceCam` (`metaverse-engine/cam/spacecam.coax`) makes `CameraShot`s. (Ice Cream
   Man's boom is done: `metaverse/icecream/camera.coax` is a `Follow` now.)
-- The free orbit's easing (`verse_orbit_follow`, `verse_orbit_limit`) moves
-  from the frame to the fixed step, and `verse_orbit_room` reads the realm's
+- The free orbit's easing (`metaverse_orbit_follow`, `metaverse_orbit_limit`) moves
+  from the frame to the fixed step, and `metaverse_orbit_room` reads the realm's
   `Colliders` through `follow_room`.
 
 ## Dependencies

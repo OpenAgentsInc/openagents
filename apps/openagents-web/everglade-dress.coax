@@ -215,7 +215,7 @@ street_dress :: (s: [] Everglade, u: [] f32, eye: Point) {
     best := -1.0f32; px := nx; pz := nz;
     for c: 0..<4 {
       cx := nx + (ifx c % 2 == 0 then 2.6f32 else -2.6f32); cz := nz + (ifx c < 2 then 2.6f32 else -2.6f32);
-      d := verse_path_nearest(nodes[..], links[..], cx, cz).d;
+      d := metaverse_path_nearest(nodes[..], links[..], cx, cz).d;
       if d > best { best = d; px = cx; pz = cz; }
     }
     g := ground_at(s, px, pz);
@@ -273,7 +273,7 @@ ivy :: (s: [] Everglade, b: int, w: int, i: int, cx: f32, y: f32, cz: f32, nx: f
     k := i * 5;
     for e: 0..<2 {
       x := BUNTING[k + e * 2]; z := BUNTING[k + e * 2 + 1];
-      #assert verse_path_nearest(nodes[..], links[..], x, z).d > f32(EG_PATH_HALF) + 0.4;
+      #assert metaverse_path_nearest(nodes[..], links[..], x, z).d > f32(EG_PATH_HALF) + 0.4;
       for b: 0..<EG_BUILDINGS {
         q := b * EG_BOX;
         #assert x < EG_BUILDING[q] - 0.5 || x > EG_BUILDING[q + 2] + 0.5 || z < EG_BUILDING[q + 1] - 0.5 || z > EG_BUILDING[q + 3] + 0.5;

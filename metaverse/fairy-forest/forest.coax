@@ -554,7 +554,7 @@ ff_carve :: (h: f32, s: StreamNear) -> f32 {
   f: [1] Forest;
   #assert ff_patch_near(f[..], f32(FF_SPAWN_X), f32(FF_SPAWN_Z)) == 0;
   nodes := FF_NODE_XZ; links := FF_LINK_AB;
-  #assert verse_path_nearest(nodes[..], links[..], f32(FF_SPAWN_X), f32(FF_SPAWN_Z)).d < 3;
+  #assert metaverse_path_nearest(nodes[..], links[..], f32(FF_SPAWN_X), f32(FF_SPAWN_Z)).d < 3;
 }
 
 #test "the trails and glades keep out of the stream; the pond is wide" {

@@ -70,7 +70,7 @@ reports nine real Mac LLDB regression cases, including stepping after one
 Coax statement lowered to several C statements. Its scope includes escaped
 paths, stale-source refusal, separate-library private names, native compiler
 diagnostics and sanitizer stacks. It also records a live iOS Simulator
-attachment at `verse_cast_pose` in `cast.coax`, with a stack through Swift.
+attachment at `metaverse_cast_pose` in `cast.coax`, with a stack through Swift.
 Those are results for the recorded sources/toolchain. They do not establish
 GPU source debugging, physical-device crash symbolication or every current
 compiler/target workflow.

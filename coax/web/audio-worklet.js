@@ -1,6 +1,6 @@
 // Firm reason: 1 (browser AudioWorklet SDK: copies shared Coax PCM blocks to measured output planes).
 import {AudioBridge,AudioRefusal} from './audio-bridge.js';
-class AethyrAudio extends AudioWorkletProcessor {
+class EngineAudio extends AudioWorkletProcessor {
   constructor(options){
     super();const p=options.processorOptions;this.cursor=1024;this.block=null;this.callbacks=0;this.deviceFrames=0;this.failed=null;this.schedule=p.schedule||[];this.next=0;this.observe=p.observe===true;
     try{this.bridge=new AudioBridge(p.module);}catch(error){this.failed=String(error.stack||error);this.port.postMessage({error:this.failed});return;}
@@ -32,4 +32,4 @@ class AethyrAudio extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor('aethyr-coax-audio-v1',AethyrAudio);
+registerProcessor('aethyr-coax-audio-v1',EngineAudio);

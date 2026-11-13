@@ -1894,7 +1894,7 @@ fn coax_p_splash_fx_fs(p_v: coax_t15) -> vec4f {
   if ((l_mode > 0x1.c00000p1f))
   {
     l_p = coax_p_wg_div_f2f(l_v.y, (0x1.000000p0f - (0x1.eb851ep-6f * l_v.f4.x)));
-    l_c = coax_p_verse_bar((-l_p.x), l_p.y, l_v.z.x, l_v.z.y, l_v.z.z, coax_at_u(i32(2i)), l_v.f4.x, l_v.f4.y);
+    l_c = coax_p_metaverse_bar((-l_p.x), l_p.y, l_v.z.x, l_v.z.y, l_v.z.z, coax_at_u(i32(2i)), l_v.f4.x, l_v.f4.y);
     return coax_p_wg_make_f4_f3f(coax_p_wg_mul_f3f(coax_p_wg_mul_f3f(coax_p_wg_mul_f3f(coax_p_v3(l_v.w.x, l_v.w.y, l_v.w.z), l_c), l_v.z.w), coax_at_u(i32(3i))), 0x1.000000p0f);
   }
   if (((l_mode > 0x1.800000p0f) && (l_mode < 0x1.400000p1f)))
@@ -2465,7 +2465,7 @@ fn coax_p_wg_div_f2f(p_a: vec2f, p_b: f32) -> vec2f {
   var l_b: f32 = p_b;
   return coax_p_v2((l_a.x / l_b), (l_a.y / l_b));
 }
-fn coax_p_verse_bar(p_x: f32, p_y: f32, p_w: f32, p_h: f32, p_k: f32, p_t: f32, p_press: f32, p_flash: f32) -> f32 {
+fn coax_p_metaverse_bar(p_x: f32, p_y: f32, p_w: f32, p_h: f32, p_k: f32, p_t: f32, p_press: f32, p_flash: f32) -> f32 {
   var l_x: f32 = p_x;
   var l_y: f32 = p_y;
   var l_w: f32 = p_w;

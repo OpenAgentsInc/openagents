@@ -12,7 +12,7 @@
 // 2 its indices (GPU buffers), 3 its texture sheets (a GPU texture array);
 // the sounds come by name.
 //
-// The house is saved (save.coax) whenever it changed: verse_haunt_save's
+// The house is saved (save.coax) whenever it changed: metaverse_haunt_save's
 // bytes in an AESV container with a CRC, kept in this browser as the current
 // save and the last good one (the host's action 4 into IndexedDB, message 4
 // on the next visit). A player who joined with an email (the facts' account)
@@ -24,7 +24,7 @@
 // with the player key), which answers as the character the server knows by
 // their id, with what players taught them and the conversation so far. When it can't (an
 // error, the day's answers used up, nothing back in NPC_WAIT seconds) the
-// house's own lines answer (verse_haunt_ask). What you TEACH a character is
+// house's own lines answer (metaverse_haunt_ask). What you TEACH a character is
 // added to what they know and kept with the house's save.
 // A question VOICE heard (realm_heard) in a conversation goes the same way,
 // and their answer, theirs or the house's lines, is spoken (realm_voice_say);
@@ -242,7 +242,7 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
   if (i == 2) index_count = bytes / 4;
 }
 
-static void rebuild_walls(void) { wall_count = verse_haunt_walls(house, (coax_v_f32){walls, 4096 * 6}); }
+static void rebuild_walls(void) { wall_count = metaverse_haunt_walls(house, (coax_v_f32){walls, 4096 * 6}); }
 
 // The record kept on an earlier visit (message 4), read out of the inbox as
 // it arrives: later messages (the page facts, 600) reuse the inbox before the
@@ -266,8 +266,8 @@ static bool open_save(uint8_t *bytes, size_t cap, coax_t_SaveSlots s, bool *fell
     if (k.which == 0 || k.count > (int64_t)sizeof restored) return false;
     memcpy(restored, bytes + k.at, (size_t)k.count);
     coax_v_u8 payload = {restored, k.count};
-    if (!verse_haunt_save_valid(house, payload)) { if (k.which == 2) return false; continue; }
-    house = verse_haunt_restore(house, payload);
+    if (!metaverse_haunt_save_valid(house, payload)) { if (k.which == 2) return false; continue; }
+    house = metaverse_haunt_restore(house, payload);
     rebuild_walls();
     count_placed();
     *fell_back = k.which == 2;
@@ -349,7 +349,7 @@ static void heard_post(uint32_t length) {
 // player with an email.
 static void keep(bool at_once) {
   if (world_holds() || !house.dirty || realm.action || (!at_once && now - kept_at < 1.5)) return;
-  int64_t n = verse_haunt_save(house, (coax_v_u8){saved, sizeof saved}, (coax_v_u8){scratch, sizeof scratch});
+  int64_t n = metaverse_haunt_save(house, (coax_v_u8){saved, sizeof saved}, (coax_v_u8){scratch, sizeof scratch});
   if (n <= 0) return;
   int64_t cn = save_pack(text(SAVE_WORLD), SAVE_SCHEMA, (coax_v_u8){saved, n}, n, (coax_v_u8){container, sizeof container});
   if (cn <= 0) return;
@@ -395,10 +395,10 @@ static void open_house(void) {
   s.actions = (coax_v_t_HauntAction){actions, 256};
   s.pending = (coax_v_t_HauntEvent){pending, 256};
   s.talking = -1; s.selected = -1; s.holding = -1; s.was_ground = true;
-  house = verse_haunt_open((coax_v_u8){document, document_n}, s);
+  house = metaverse_haunt_open((coax_v_u8){document, document_n}, s);
   if (!house.ok) { failed = true; return; }
   for (int64_t i = 0; i < house.mesh_count; i++)
-    if (!verse_haunt_draw_range(meshes[i].first, meshes[i].count, index_count)) { failed = true; return; }
+    if (!metaverse_haunt_draw_range(meshes[i].first, meshes[i].count, index_count)) { failed = true; return; }
   rebuild_walls();
   if (house.world_id.count == 7 && !memcmp(house.world_id.data, "sandbox", 7)) {
     sandbox = true; save_world = "sandbox"; items = sandbox_items;
@@ -406,14 +406,14 @@ static void open_house(void) {
     world_open(text("sandbox"));
   }
   if (kept_n && !world_holds()) restore_kept();
-  for (int i = 0; i < 5; i++) item_mesh[i] = verse_haunt_mesh(house, text(items[i].mesh));
-  player = sandbox ? verse_player_place(0, 0, -2, 0) : verse_player_place(7, 0, 2, 0);
-  controls = verse_player_v2_reset();
+  for (int i = 0; i < 5; i++) item_mesh[i] = metaverse_haunt_mesh(house, text(items[i].mesh));
+  player = sandbox ? metaverse_player_place(0, 0, -2, 0) : metaverse_player_place(7, 0, 2, 0);
+  controls = metaverse_player_v2_reset();
   house.camera = 1; player.cam.phi = 1.107f;   // one camera: behind you, pulled in and cut away indoors
-  sticks = verse_sticks_reset();
+  sticks = metaverse_sticks_reset();
   opened = true;
   // where you were, if it came first (place-face.h); else where you start
-  verse_place_golden(place_k(), golden);
+  metaverse_place_golden(place_k(), golden);
   if (place_pending.ok) { place_put(0, place_pending); place_pending.ok = false; }
   place_seen(0);
   apply_server();   // the server's save, if it came first and is newer
@@ -428,45 +428,45 @@ static void follow_talk(void);
 static coax_t_Place place_here(uint32_t state) {
   (void)state;
   if (!opened) return (coax_t_Place){0};
-  return verse_place(player.body.pos.x, player.body.pos.y, player.body.pos.z, verse_player_face(player), player.cam.theta, player.cam.phi, zoom_pref,
+  return metaverse_place(player.body.pos.x, player.body.pos.y, player.body.pos.z, metaverse_player_face(player), player.cam.theta, player.cam.phi, zoom_pref,
                      1, -1, 0);
 }
 // Put you back: on the walkable floor nearest it, clear of the walls, else where you start.
 static bool place_open(float x, float z) {
-  if (!verse_haunt_walkable(house, x, z)) return false;
-  return verse_place_clear((coax_v_f32){walls, wall_count * 6}, wall_count, x, 0, z, 0.3f);
+  if (!metaverse_haunt_walkable(house, x, z)) return false;
+  return metaverse_place_clear((coax_v_f32){walls, wall_count * 6}, wall_count, x, 0, z, 0.3f);
 }
 static void place_put(uint32_t state, coax_t_Place p) {
   (void)state;
   if (!opened) { place_pending = p; return; }
   float x = sandbox ? 0 : 7, z = sandbox ? -2 : 2;
-  for (int64_t i = 0, tries = verse_place_tries(); i < tries; i++) {
-    coax_t_Place t = verse_place_try(p.x, p.z, i);
+  for (int64_t i = 0, tries = metaverse_place_tries(); i < tries; i++) {
+    coax_t_Place t = metaverse_place_try(p.x, p.z, i);
     if (place_open(t.x, t.z)) { x = t.x; z = t.z; break; }
   }
-  player = verse_player_place(x, 0, z, p.face);
-  controls = verse_player_v2_reset();
+  player = metaverse_player_place(x, 0, z, p.face);
+  controls = metaverse_player_v2_reset();
   house.camera = 1;   // one camera, whatever an older save kept
   player.cam.theta = p.yaw;
   player.cam.phi = isfinite(p.pitch) && p.pitch > 0.3f && p.pitch < 2.2f ? p.pitch : 1.107f;
   if (isfinite(p.zoom) && p.zoom >= ZOOM_NEAR && p.zoom <= ZOOM_FAR) zoom_pref = p.zoom;
-  house.facing = verse_player_face(player);
+  house.facing = metaverse_player_face(player);
 }
 
 // E: talk to whoever is near, else the quest's orb, else open the door
 // (activateNearby, with the orb before the door so a door beside it
 // never hides it).
 static void use_nearby(void) {
-  int64_t person = verse_haunt_near(house);
-  if (person >= 0) { house = verse_haunt_talk(house, person, 0); return; }
-  if (verse_haunt_at_goal(house)) { do_goal(); return; }
-  int64_t door = verse_haunt_door(house);
-  if (door >= 0) { house = verse_haunt_edit(house, door, 9, 0); rebuild_walls(); }
+  int64_t person = metaverse_haunt_near(house);
+  if (person >= 0) { house = metaverse_haunt_talk(house, person, 0); return; }
+  if (metaverse_haunt_at_goal(house)) { do_goal(); return; }
+  int64_t door = metaverse_haunt_door(house);
+  if (door >= 0) { house = metaverse_haunt_edit(house, door, 9, 0); rebuild_walls(); }
 }
 
 // Undo and redo (HauntAssets.remember, undo, redo), on saves of the house.
 static bool snapshot(int k) {
-  int64_t n = verse_haunt_save(house, (coax_v_u8){history[k], SNAP}, (coax_v_u8){scratch, sizeof scratch});
+  int64_t n = metaverse_haunt_save(house, (coax_v_u8){history[k], SNAP}, (coax_v_u8){scratch, sizeof scratch});
   history_len[k] = n > 0 ? (uint32_t)n : 0;
   return n > 0;
 }
@@ -484,7 +484,7 @@ static void back_to(int k) {
   bool editing = house.editing;
   live_k ^= 1;
   memcpy(live[live_k], history[k], history_len[k]);
-  house = verse_haunt_restore(house, (coax_v_u8){live[live_k], history_len[k]});
+  house = metaverse_haunt_restore(house, (coax_v_u8){live[live_k], history_len[k]});
   // An undo never takes back a step of the quest.
   house.editing = editing; house.camera = camera; house.dirty = true;
   if (house.quest < quest) house.quest = quest;
@@ -511,15 +511,15 @@ static double emote_at = -10;
 
 static void picked_is(int64_t i) {
   if (house.selected >= 0 && i != house.selected && gesture_at < 0) world_edited();
-  house = verse_haunt_select(house, i);
+  house = metaverse_haunt_select(house, i);
   house.editing = house.selected >= 0;
 }
 
 // Where a ray through (x, y) on the screen meets the floor you stand on (false: it doesn't, or it's too far).
 static bool ground_at(float x, float y, float *gx, float *gz) {
-  coax_t_Vec3 eye = verse_player_view_eye(player, house.camera), at = verse_player_view_at(player, house.camera);
-  coax_t_HauntPoint ray = verse_haunt_ray(point(eye), point(at), x, y, width, height);
-  float floor_y = verse_player_feet(player).y;
+  coax_t_Vec3 eye = metaverse_player_view_eye(player, house.camera), at = metaverse_player_view_at(player, house.camera);
+  coax_t_HauntPoint ray = metaverse_haunt_ray(point(eye), point(at), x, y, width, height);
+  float floor_y = metaverse_player_feet(player).y;
   if (ray.y > -0.02f) return false;
   float t = (floor_y - eye.y) / ray.y;
   if (t > 14) return false;
@@ -529,15 +529,15 @@ static bool ground_at(float x, float y, float *gx, float *gz) {
 
 // What's under (x, y) on the screen: -1 nothing.
 static int64_t pick_at(float x, float y) {
-  coax_t_Vec3 eye = verse_player_view_eye(player, house.camera), at = verse_player_view_at(player, house.camera);
-  coax_t_HauntPoint ray = verse_haunt_ray(point(eye), point(at), x, y, width, height);
-  return verse_haunt_pick(house, point(eye), ray);
+  coax_t_Vec3 eye = metaverse_player_view_eye(player, house.camera), at = metaverse_player_view_at(player, house.camera);
+  coax_t_HauntPoint ray = metaverse_haunt_ray(point(eye), point(at), x, y, width, height);
+  return metaverse_haunt_pick(house, point(eye), ray);
 }
 
 // A tap with nothing held: a character in reach talks, a thing is picked, nothing lets go.
 static void tap(float x, float y) {
-  int64_t i = pick_at(x, y), person = verse_haunt_person_of(house, i);
-  if (person >= 0 && verse_haunt_reach(house, person)) { picked_is(-1); house = verse_haunt_talk(house, person, 0); return; }
+  int64_t i = pick_at(x, y), person = metaverse_haunt_person_of(house, i);
+  if (person >= 0 && metaverse_haunt_reach(house, person)) { picked_is(-1); house = metaverse_haunt_talk(house, person, 0); return; }
   picked_is(i);
 }
 
@@ -554,8 +554,8 @@ static void drag_to(float x, float y) {
   coax_t_HauntPoint at = entities[i].pos;
   if (gesture_at < 0) { grab_dx = at.x - gx; grab_dz = at.z - gz; }
   gesture();
-  house = verse_haunt_edit(house, i, 0, gx + grab_dx - at.x);
-  house = verse_haunt_edit(house, i, 2, gz + grab_dz - at.z);
+  house = metaverse_haunt_edit(house, i, 0, gx + grab_dx - at.x);
+  house = metaverse_haunt_edit(house, i, 2, gz + grab_dz - at.z);
   rebuild_walls();
 }
 
@@ -563,8 +563,8 @@ static void xform_picked(coax_t_Xform x) {
   int64_t i = house.selected;
   if (i < 0 || i >= house.entity_count) return;
   gesture();
-  if (x.scale != 1) house = verse_haunt_edit(house, i, 4, x.scale);
-  if (x.turn != 0) house = verse_haunt_edit(house, i, 3, x.turn);
+  if (x.scale != 1) house = metaverse_haunt_edit(house, i, 4, x.scale);
+  if (x.turn != 0) house = metaverse_haunt_edit(house, i, 3, x.turn);
   rebuild_walls();
 }
 
@@ -574,7 +574,7 @@ static void gesture_frame(void) {
 }
 
 // What a character does (their brain), as the row's word, and the action
-// (verse_haunt_person_action) for what they do next: stay, follow, wander,
+// (metaverse_haunt_person_action) for what they do next: stay, follow, wander,
 // guard, flee, and round again.
 static int brain_is(coax_string b, const char *t) { return b.count == (int64_t)strlen(t) && memcmp(b.data, t, (size_t)b.count) == 0; }
 static const char *mind_word(coax_string b) {
@@ -596,39 +596,39 @@ static void edit_op(int64_t op) {
   float dx = way == 0 ? fz : way == 1 ? -fz : way == 2 ? fx : way == 3 ? -fx : 0;
   float dz = way == 0 ? -fx : way == 1 ? fx : way == 2 ? fz : way == 3 ? -fz : 0;
   if ((op >= 8 && op <= 11) || (op >= 17 && op <= 20)) {
-    int64_t z = verse_haunt_zone_near(house);
+    int64_t z = metaverse_haunt_zone_near(house);
     if (z < 0) return;
     remember();
     if (op >= 17) {
-      if (dx != 0) house = verse_haunt_zone_edit(house, z, 3, dx * step);
-      if (dz != 0) house = verse_haunt_zone_edit(house, z, 4, dz * step);
+      if (dx != 0) house = metaverse_haunt_zone_edit(house, z, 3, dx * step);
+      if (dz != 0) house = metaverse_haunt_zone_edit(house, z, 4, dz * step);
       return;
     }
     static const int64_t zone_op[4] = {1, 1, 0, 2};
-    house = verse_haunt_zone_edit(house, z, zone_op[op - 8], op == 8 ? 0.25f : op == 9 ? -0.25f : 0);
+    house = metaverse_haunt_zone_edit(house, z, zone_op[op - 8], op == 8 ? 0.25f : op == 9 ? -0.25f : 0);
     return;
   }
   int64_t i = house.selected;
   if (i < 0 || i >= house.entity_count) return;
-  int64_t person = verse_haunt_person_of(house, i);
+  int64_t person = metaverse_haunt_person_of(house, i);
   remember();
   // A character (HauntViewController.characterMenu): what they do next, come
   // to where you look, or leave.
   if (person >= 0 && (op == 15 || op == 16 || op == 7)) {
-    if (op == 15) house = verse_haunt_person_action(house, person, mind_next(people[person].brain));
-    if (op == 16) house = verse_haunt_person_action(house, person, 5);
-    if (op == 7) { house = verse_haunt_person_action(house, person, 6); house.selected = -1; }
+    if (op == 15) house = metaverse_haunt_person_action(house, person, mind_next(people[person].brain));
+    if (op == 16) house = metaverse_haunt_person_action(house, person, 5);
+    if (op == 7) { house = metaverse_haunt_person_action(house, person, 6); house.selected = -1; }
     rebuild_walls();
     return;
   }
   if (op <= 3) {
-    if (dx != 0) house = verse_haunt_edit(house, i, 0, dx * step);
-    if (dz != 0) house = verse_haunt_edit(house, i, 2, dz * step);
+    if (dx != 0) house = metaverse_haunt_edit(house, i, 0, dx * step);
+    if (dz != 0) house = metaverse_haunt_edit(house, i, 2, dz * step);
   }
-  if (op == 4) house = verse_haunt_edit(house, i, 3, 0.7853982f);
-  if (op == 5) house = verse_haunt_edit(house, i, 4, 1.2f);
-  if (op == 6) house = verse_haunt_edit(house, i, 4, 1 / 1.2f);
-  if (op == 7) { house = verse_haunt_edit(house, i, 7, 0); picked_is(-1); }
+  if (op == 4) house = metaverse_haunt_edit(house, i, 3, 0.7853982f);
+  if (op == 5) house = metaverse_haunt_edit(house, i, 4, 1.2f);
+  if (op == 6) house = metaverse_haunt_edit(house, i, 4, 1 / 1.2f);
+  if (op == 7) { house = metaverse_haunt_edit(house, i, 7, 0); picked_is(-1); }
   rebuild_walls();
   world_edited();
 }
@@ -639,7 +639,7 @@ static void place_at(int64_t slot, const char *via, float x, float z) {
   coax_t_HauntPoint at = {x, 0, z};
   int64_t before = house.entity_count;
   snprintf(placed[placed_n], sizeof placed[0], "placed-%d", placed_n);
-  house = verse_haunt_add(house, item_mesh[slot], text(placed[placed_n]), text(items[slot].name), at.x, at.z);
+  house = metaverse_haunt_add(house, item_mesh[slot], text(placed[placed_n]), text(items[slot].name), at.x, at.z);
   if (house.entity_count == before) { toast("There's no room there"); return; }
   placed_n++;
   picked_is(-1);
@@ -649,21 +649,21 @@ static void place_at(int64_t slot, const char *via, float x, float z) {
 }
 // In front of you (the quest's orb).
 static void place(int64_t slot, const char *via) {
-  coax_t_HauntPoint at = verse_haunt_place_point(house);
+  coax_t_HauntPoint at = metaverse_haunt_place_point(house);
   place_at(slot, via, at.x, at.z);
 }
 
 // E at the quest's orb: the step it asks for.
 static void do_goal(void) {
-  if (!verse_haunt_at_goal(house)) return;
+  if (!metaverse_haunt_at_goal(house)) return;
   switch (house.quest) {
-  case 1: realm.hold = 0; house = verse_haunt_quest(house, text("edit")); break;
+  case 1: realm.hold = 0; house = metaverse_haunt_quest(house, text("edit")); break;
   case 2: remember(); place(0, "orb"); break;
   case 3:
-    house = verse_haunt_quest(house, text("publish"));
+    house = metaverse_haunt_quest(house, text("publish"));
     if (world_holds()) { house.dirty = false; world_send(); break; }
     keep(true); toast(has_account ? "Saved, here and on the server" : "Saved in this browser"); break;
-  case 5: house = verse_haunt_fork(house, text("My Haunted House"), text("mine")); toast("This house is yours now"); break;
+  case 5: house = metaverse_haunt_fork(house, text("My Haunted House"), text("mine")); toast("This house is yours now"); break;
   case 7: realm_ask_text(realm_of()); break;
   }
 }
@@ -681,7 +681,7 @@ static void send_feedback(void) {
   coax_string typed = realm_typed(realm_of());
   size_t n = typed.count < (int64_t)sizeof feedback ? (size_t)typed.count : sizeof feedback;
   memcpy(feedback, typed.data, n);
-  house = verse_haunt_feedback(house, (coax_string){feedback, (int64_t)n});
+  house = metaverse_haunt_feedback(house, (coax_string){feedback, (int64_t)n});
   realm_track_answer(tr(), (coax_string){feedback, (int64_t)n});
   post_answer(n);
   realm_close_text(realm_of());
@@ -715,7 +715,7 @@ static void npc_say(coax_string words) {
 
 // The house's own lines answer.
 static void npc_scripted(void) {
-  house = verse_haunt_ask(house, (coax_string){question, (int64_t)question_n});
+  house = metaverse_haunt_ask(house, (coax_string){question, (int64_t)question_n});
   if (house.talking >= 0) realm_remember(realm_of(), true, house.reply);
   npc_say(house.reply);
   follow_talk();   // "bye" ends it
@@ -796,7 +796,7 @@ static void teach(int64_t who, coax_string lesson) {
   if (slot < 0) { toast("They can't take in any more today"); return; }
   memcpy(taught[slot], next, m);
   remember();
-  house = verse_haunt_teach(house, who, (coax_string){taught[slot], (int64_t)m});
+  house = metaverse_haunt_teach(house, who, (coax_string){taught[slot], (int64_t)m});
   realm_track_teach(tr(), people[who].name, (coax_string){lesson.data + a, b - a});
   static char said[160];
   snprintf(said, sizeof said, "%.*s will remember that", (int)people[who].name.count, people[who].name.data);
@@ -806,7 +806,7 @@ static void teach(int64_t who, coax_string lesson) {
 // The sentence to the selector.
 static void ask_piece(coax_string typed) {
   if (!sandbox || piece_ask >= 0) { if (piece_ask >= 0) toast("Still making the last one"); return; }
-  int64_t n = verse_piece_body(typed, (coax_v_u8){piece_body, sizeof piece_body});
+  int64_t n = metaverse_piece_body(typed, (coax_v_u8){piece_body, sizeof piece_body});
   piece_ask = n > 0 ? coaxial_http((uint32_t)(uintptr_t)PIECE_URL, sizeof PIECE_URL - 1, (uint32_t)(uintptr_t)piece_body, (uint32_t)n, HTTP_ASK) : -1;
   if (piece_ask < 0) { track_fail(tr(), text("piece"), 0); toast("That didn't reach the server; try again"); return; }
   piece_asked_at = now;
@@ -815,9 +815,9 @@ static void ask_piece(coax_string typed) {
 
 // Lays the piece out in front of you: one undo step, then published.
 static void make_piece(coax_t_SetPiece p) {
-  coax_t_Vec3 feet = verse_player_feet(player);
+  coax_t_Vec3 feet = metaverse_player_feet(player);
   uint32_t seed = (uint32_t)(int64_t)wall_ms() * 2654435761u ^ (uint32_t)piece_id_n;
-  int64_t n = verse_piece_layout(p, (int64_t)seed, feet.x, feet.z, house.heading, (coax_v_f32){places, sizeof places / sizeof places[0]});
+  int64_t n = metaverse_piece_layout(p, (int64_t)seed, feet.x, feet.z, house.heading, (coax_v_f32){places, sizeof places / sizeof places[0]});
   if (n <= 0) { toast("That isn't one of the Sandbox's set pieces yet"); return; }
   int h0 = history_at;
   remember();
@@ -825,14 +825,14 @@ static void make_piece(coax_t_SetPiece p) {
   for (int64_t i = 0; i < n && piece_id_n < 1024; i++) {
     const float *o = places + i * 12;
     int64_t m = (int64_t)o[0], before = house.entity_count;
-    int64_t mesh = verse_haunt_mesh(house, verse_piece_mesh(m));
+    int64_t mesh = metaverse_haunt_mesh(house, metaverse_piece_mesh(m));
     snprintf(piece_ids[piece_id_n], sizeof piece_ids[0], "s%06x-%02d", (unsigned)(seed & 0xffffff), (int)i);
-    house = verse_haunt_put(house, mesh, text(piece_ids[piece_id_n]), verse_piece_label(m), (coax_t_HauntPoint){o[1], o[2], o[3]},
+    house = metaverse_haunt_put(house, mesh, text(piece_ids[piece_id_n]), metaverse_piece_label(m), (coax_t_HauntPoint){o[1], o[2], o[3]},
                             o[4], o[5], (coax_t_HauntPoint){o[6], o[7], o[8]}, o[9], (int64_t)o[10], o[11] > 0.5f);
     if (house.entity_count > before) { piece_id_n++; added++; }
   }
   if (!added) { history_at = history_n = h0; toast("There's no room there"); return; }   // nothing changed: no undo step
-  coax_string said = verse_piece_says(p, (coax_v_u8){(uint8_t *)piece_said, sizeof piece_said - 1});
+  coax_string said = metaverse_piece_says(p, (coax_v_u8){(uint8_t *)piece_said, sizeof piece_said - 1});
   piece_said[said.count] = 0;
   rebuild_walls();
   realm_track_place(tr(), said, text("piece"));
@@ -850,7 +850,7 @@ static void take_piece(uint32_t length) {
   int status = 0;
   for (const char *c = b; nl && c < nl && *c >= '0' && *c <= '9'; c++) status = status * 10 + (*c - '0');
   if (status == 200 && nl) {
-    coax_t_SetPiece p = verse_piece_read((coax_string){nl + 1, (int64_t)(b + length - nl - 1)});
+    coax_t_SetPiece p = metaverse_piece_read((coax_string){nl + 1, (int64_t)(b + length - nl - 1)});
     if (p.piece >= 0) { make_piece(p); return; }
   }
   track_fail(tr(), text("piece"), status);
@@ -900,16 +900,16 @@ static void take_asks(void) {
   if (asks & 4096) world_decide(false);
   if (asks & 1) use_nearby();
   if ((asks & 4) && house.talking >= 0) {
-    house = verse_haunt_talk(house, house.talking, 1);
+    house = metaverse_haunt_talk(house, house.talking, 1);
     realm_remember(realm_of(), true, house.reply);
   }
-  if (asks & 8) house = verse_haunt_talk(house, -1, 0);
+  if (asks & 8) house = metaverse_haunt_talk(house, -1, 0);
   // VOICE heard a question: in a conversation, theirs to answer; else the realm's owner's and admins'
   // words go to the edit layer's selector (realm_hear); the voice host answers the rest as the house.
   if ((asks & 8192) && house.talking >= 0) ask_npc(realm_heard(realm_of()), true);
   else if (asks & 8192) { if (realm_hear(realm_of())) edit_face_drain(ed()); }
   // Walked away: the conversation ends.
-  if (house.talking >= 0 && !verse_haunt_reach(house, house.talking)) house = verse_haunt_talk(house, -1, 0);
+  if (house.talking >= 0 && !metaverse_haunt_reach(house, house.talking)) house = metaverse_haunt_talk(house, -1, 0);
   follow_talk();
 }
 
@@ -936,26 +936,26 @@ static void step(float frame, float dt) {
     zoom_pref += realm.zoom; realm.zoom = 0;
     zoom_pref = zoom_pref < ZOOM_NEAR ? ZOOM_NEAR : zoom_pref > ZOOM_FAR ? ZOOM_FAR : zoom_pref;
   }
-  int64_t here = verse_haunt_area(house, point(verse_player_feet(player)));
+  int64_t here = metaverse_haunt_area(house, point(metaverse_player_feet(player)));
   player.cam.max_dist = here >= 0 && areas[here].room && zoom_pref > ROOM_ZOOM ? ROOM_ZOOM : zoom_pref;
-  if (realm.hold >= 0 && house.quest == 1) house = verse_haunt_quest(house, text("edit"));   // a hotbar item in hand
-  bool run = verse_runs((realm.held & 16) != 0, sticks.run, sticks.pad_x, sticks.pad_y), jump = sticks.jump || (realm.held & 32) || jump_asked;
+  if (realm.hold >= 0 && house.quest == 1) house = metaverse_haunt_quest(house, text("edit"));   // a hotbar item in hand
+  bool run = metaverse_runs((realm.held & 16) != 0, sticks.run, sticks.pad_x, sticks.pad_y), jump = sticks.jump || (realm.held & 32) || jump_asked;
   jump_asked = false;
-  verse_player_v2_input(control(), realm_key_x(r), realm_key_y(r), sticks.pad_x, sticks.pad_y, run, jump,
+  metaverse_player_v2_input(control(), realm_key_x(r), realm_key_y(r), sticks.pad_x, sticks.pad_y, run, jump,
                                  sticks.dyaw + realm.dyaw, sticks.dpitch + realm.dpitch);
   realm.dyaw = 0; realm.dpitch = 0;
-  sticks = verse_sticks_used(sticks);
-  player = verse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){walls, wall_count * 6},
+  sticks = metaverse_sticks_used(sticks);
+  player = metaverse_player_v2_advance(control(), player, frame, (coax_v_f32){0, 0}, (coax_v_f32){walls, wall_count * 6},
                                          (coax_v_f32){0, 0}, house.world_id).player;
-  coax_t_HauntPoint kept = verse_haunt_constrain(house, point(was), point(player.body.pos));
-  player = verse_player_constrain(player, kept.x, kept.z);
-  coax_t_Vec3 feet = verse_player_feet(player);
+  coax_t_HauntPoint kept = metaverse_haunt_constrain(house, point(was), point(player.body.pos));
+  player = metaverse_player_constrain(player, kept.x, kept.z);
+  coax_t_Vec3 feet = metaverse_player_feet(player);
   float distance = hypotf(feet.x - was.x, feet.z - was.z);
   track_walk(tr(), distance);   // walking milestones (analytics.coax)
-  house.facing = verse_player_face(player);
+  house.facing = metaverse_player_face(player);
   if (now - emote_at < 0.8) house.facing += (float)((now - emote_at) / 0.8) * 6.2831853f;   // the emote: a spin
-  coax_t_Vec3 eye = verse_player_view_eye(player, house.camera);
-  house = verse_haunt_advance(house, now, point(feet), point(eye), player.cam.theta, distance, player.body.on_ground);
+  coax_t_Vec3 eye = metaverse_player_view_eye(player, house.camera);
+  house = metaverse_haunt_advance(house, now, point(feet), point(eye), player.cam.theta, distance, player.body.on_ground);
   take_asks();
   gesture_frame();
   house.editing = house.selected >= 0 && house.selected < house.entity_count;
@@ -977,17 +977,17 @@ static void describe(void) {
   v.ready = opened; v.failed = failed;
   v.loaded = (float)(((ready >> 0) & 1) + ((ready >> 1) & 1) + ((ready >> 2) & 1) + ((ready >> 3) & 1)) / 4;
   if (opened) {
-    coax_t_Vec3 feet = verse_player_feet(player);
-    int64_t area = verse_haunt_area(house, point(feet));
+    coax_t_Vec3 feet = metaverse_player_feet(player);
+    int64_t area = metaverse_haunt_area(house, point(feet));
     v.title = area >= 0 ? areas[area].name : sandbox ? text("Sandbox") : (coax_string){"Haunted House", 13};
-    bool goal = verse_haunt_at_goal(house);
+    bool goal = metaverse_haunt_at_goal(house);
     v.quest = sandbox ? -1 : house.quest;
     v.no_voice = sandbox;
     v.pieces = sandbox;
-    v.quest_line = sandbox ? (coax_string){"", 0} : verse_haunt_step_line(house);
-    v.goal = goal ? verse_haunt_goal_prompt(house) : (coax_string){"", 0};
-    v.bearing = verse_haunt_goal_bearing(house);
-    // over the front door's top, for the first step's marker (verse_haunt_goal is just inside it)
+    v.quest_line = sandbox ? (coax_string){"", 0} : metaverse_haunt_step_line(house);
+    v.goal = goal ? metaverse_haunt_goal_prompt(house) : (coax_string){"", 0};
+    v.bearing = metaverse_haunt_goal_bearing(house);
+    // over the front door's top, for the first step's marker (metaverse_haunt_goal is just inside it)
     v.door_at.e[0] = 8; v.door_at.e[1] = 2.7f; v.door_at.e[2] = 19.9f;
     v.editing = false;
     v.me = realm_me(realm_of());
@@ -997,7 +997,7 @@ static void describe(void) {
     v.selected = picked ? entities[house.selected].name : (coax_string){"", 0};
     if (picked) { coax_t_HauntPoint at = entities[house.selected].pos; v.sel_at.e[0] = at.x; v.sel_at.e[1] = at.y; v.sel_at.e[2] = at.z; }
     if (picked && v.selected.count == 0) v.selected = text("Thing");
-    int64_t who = picked ? verse_haunt_person_of(house, house.selected) : -1;
+    int64_t who = picked ? metaverse_haunt_person_of(house, house.selected) : -1;
     v.person = who >= 0;
     if (who >= 0) { v.selected = people[who].name; v.mind = text(mind_word(people[who].brain)); }
     int64_t zone = -1;
@@ -1006,7 +1006,7 @@ static void describe(void) {
     v.can_undo = history_at > 0;
     v.can_redo = history_at + 1 < history_n;
     v.notice = now < house.toast_until ? house.toast : (coax_string){"", 0};
-    int64_t person = verse_haunt_near(house), door = verse_haunt_door(house);
+    int64_t person = metaverse_haunt_near(house), door = metaverse_haunt_door(house);
     v.target = person >= 0 ? people[person].name : !goal && door >= 0 ? (coax_string){"Door", 4} : (coax_string){"", 0};
     v.talking = house.talking >= 0 ? people[house.talking].name : (coax_string){"", 0};
     v.reply = house.reply;
@@ -1017,7 +1017,7 @@ static void describe(void) {
     {   // the minimap, or the map when it's open
       coax_t_Box b = realm_map_box(realm_of());
       (void)b;   // realm.coax fits the house into its box
-      int64_t n = verse_haunt_map(house, 800, 1200, (coax_v_t_HauntMapRect){boxes, 66});
+      int64_t n = metaverse_haunt_map(house, 800, 1200, (coax_v_t_HauntMapRect){boxes, 66});
       for (int64_t i = 0; i < n && i < 66; i++) {
         float *m = v.map.e + i * 5;
         m[0] = boxes[i].x; m[1] = boxes[i].y; m[2] = boxes[i].width; m[3] = boxes[i].height; m[4] = (float)boxes[i].kind;
@@ -1037,7 +1037,7 @@ static void choose_particles(float ex, float ey, float ez) {
   for (int64_t i = 0; i < ln; i++) {
     coax_t_HauntLight l = house.lights.data[i];
     float *o = lamp_floats + i * 8, *g = lights[i].color.e;
-    coax_t_HauntPoint p = verse_haunt_light_flame(house, i);
+    coax_t_HauntPoint p = metaverse_haunt_light_flame(house, i);
     bool lit = g[0] + g[1] + g[2] > 0;
     o[0] = p.x; o[1] = p.y; o[2] = p.z; o[3] = l.radius;
     o[4] = l.color.x; o[5] = l.color.y; o[6] = l.color.z; o[7] = lit ? l.flicker : 0;
@@ -1047,7 +1047,7 @@ static void choose_particles(float ex, float ey, float ez) {
     float *o = area_floats + i * 6;
     o[0] = a.rect.x0; o[1] = a.rect.z0; o[2] = a.rect.x1; o[3] = a.rect.z1; o[4] = a.room ? 0 : 1; o[5] = a.dark ? 1 : 0;
   }
-  emitter_n = verse_particles_haunt((coax_v_f32){lamp_floats, ln * 8}, ln, (coax_v_f32){area_floats, an * 6}, an,
+  emitter_n = metaverse_particles_haunt((coax_v_f32){lamp_floats, ln * 8}, ln, (coax_v_f32){area_floats, an * 6}, an,
     ex, ey, ez, (coax_v_f32){emitters, 24 * 16});
 }
 
@@ -1057,7 +1057,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (!realm.dpr) realm_reset(realm_of());
   width = w; height = h; dpr = scale;
   float frame = dt;   /* the player's clock (metaverse-engine/core/loop.coax) steps it; the rest moves by what it counts */
-  dt = verse_player_counts(player, frame);
+  dt = metaverse_player_counts(player, frame);
   now += dt;
   if (!opened && !failed && (ready & 15) == 15) open_house();
   draw_count = 0;
@@ -1074,12 +1074,12 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   realm_track(realm_of(), (coax_v_t_RealmSeen){&seen, 1}, tr(), view, house.camera);
   track_drain(&track_state);
   if (opened) {
-    coax_t_Vec3 eye = verse_player_view_eye(player, house.camera), at = verse_player_view_at(player, house.camera);
+    coax_t_Vec3 eye = metaverse_player_view_eye(player, house.camera), at = metaverse_player_view_at(player, house.camera);
     bool flown = flight_view(&eye, &at, still != 0);
-    verse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, w, h, (coax_v_f32){u + 8, 16});
+    metaverse_grid_view(eye.x, eye.y, eye.z, at.x, at.y, at.z, w, h, (coax_v_f32){u + 8, 16});
     if (!realm_row_on(realm_of(), (coax_string){"scares", 6})) house.spark_until = 0;   /* the board: no sparks */
-    draw_count = verse_haunt_instances(house, fx_now(), (coax_v_t_HauntInstance){instances, 4096}, (coax_v_t_HauntDraw){draws, 256});
-    light_count = verse_haunt_lights(house, fx_now(), (coax_v_t_HauntGPUlight){lights, 64});
+    draw_count = metaverse_haunt_instances(house, fx_now(), (coax_v_t_HauntInstance){instances, 4096}, (coax_v_t_HauntDraw){draws, 256});
+    light_count = metaverse_haunt_lights(house, fx_now(), (coax_v_t_HauntGPUlight){lights, 64});
     instance_end = 0;
     for (int64_t i = 0; i < draw_count; i++) if (draws[i].base + draws[i].instances > instance_end) instance_end = draws[i].base + draws[i].instances;
     u[24] = house.eye.x; u[25] = house.eye.y; u[26] = house.eye.z; u[27] = (float)light_count;
@@ -1088,7 +1088,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     u[28] = now < house.flash_until ? 1.0f : 0.0f;
     if (!realm_row_on(realm_of(), (coax_string){"scares", 6})) u[28] = 0;   /* the board: no lightning */
     // The cutaway (realm.wgsl): what stands between the eye and you isn't drawn. Not in a flight.
-    coax_t_Vec3 feet = verse_player_feet(player);
+    coax_t_Vec3 feet = metaverse_player_feet(player);
     u[29] = feet.x; u[30] = flown ? -1e4f : feet.y + 1.0f; u[31] = feet.z;
   }
   return n < 0 ? 0u : (uint32_t)n;
@@ -1100,7 +1100,7 @@ EXPORT("coaxial_particles") uint32_t coaxial_particles(uint32_t state) { (void)s
 EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(uint32_t state) { (void)state; return (uint32_t)(emitter_n * 16 * sizeof(float)); }
 EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_t state) {
   (void)state;
-  return opened ? (uint32_t)(emitter_n * verse_particles_per()) : 0u;
+  return opened ? (uint32_t)(emitter_n * metaverse_particles_per()) : 0u;
 }
 
 // ---- the scene the host draws: indexed draws over the vertices and indices,
@@ -1134,14 +1134,14 @@ EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t 
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) {
   (void)state; track_key_up(tr(), key); return realm_key(realm_of(), view, key, mods, false) ? 1u : 0u;
 }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { (void)state; realm_blur(realm_of()); sticks = verse_sticks_reset(); track_blur(tr()); }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { (void)state; realm_blur(realm_of()); sticks = metaverse_sticks_reset(); track_blur(tr()); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   (void)state;
   track_pointer(tr(), x, y, phase, kind, realm_button_label(realm_of(), x, y));
   track_drain(&track_state);
   if (phase == 0 && opened && flight_skip()) return 1u;
   if (realm_pointer(realm_of(), view, x, y, phase, kind, id)) { edit_face_drain(ed()); take_asks(); return 1u; }
-  if (kind != 0 && opened) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  if (kind != 0 && opened) sticks = metaverse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
 }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { (void)state; realm_wheel(realm_of(), dy); }

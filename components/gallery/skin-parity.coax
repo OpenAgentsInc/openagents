@@ -19,7 +19,7 @@ parity_same :: (c: Rgba, h: HudRgba) -> bool { return c.r == h.r && c.g == h.g &
   #assert s.radius == t.radius && s.border == t.line && s.stud == t.stud && s.shadow == t.shadow;
 }
 #test "parity: the Verse skin's colours are SCIFI's" {
-  s := verse_skin(); t := hud_tokens(HUD_SCIFI);
+  s := metaverse_skin(); t := hud_tokens(HUD_SCIFI);
   #assert parity_same(s.surface, t.frame_dark) && parity_same(s.frame_mid, t.frame_mid) && parity_same(s.frame_light, t.frame_light);
   #assert parity_same(s.trim, t.trim) && parity_same(s.accent, t.trim) && parity_same(s.ink, t.text) && parity_same(s.muted, t.text_dim);
   #assert parity_same(s.danger, t.bad) && parity_same(s.success, t.good) && parity_same(s.warning, t.damage);
@@ -32,6 +32,6 @@ parity_hud :: (h: UiHud, t: HudTokens) -> bool {
       && parity_same(h.name, t.title) && parity_same(h.miss, t.text_dim) && parity_same(h.harm, t.bad);
 }
 #test "parity: the HUD set's roles are FANTASY's in Everglade and SCIFI's in the Verse" {
-  #assert parity_hud(everglade_skin().hud, hud_tokens(HUD_FANTASY)) && parity_hud(verse_skin().hud, hud_tokens(HUD_SCIFI));
-  #assert !parity_hud(verse_skin().hud, hud_tokens(HUD_FANTASY));
+  #assert parity_hud(everglade_skin().hud, hud_tokens(HUD_FANTASY)) && parity_hud(metaverse_skin().hud, hud_tokens(HUD_SCIFI));
+  #assert !parity_hud(metaverse_skin().hud, hud_tokens(HUD_FANTASY));
 }

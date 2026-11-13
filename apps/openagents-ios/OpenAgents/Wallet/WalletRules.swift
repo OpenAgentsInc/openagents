@@ -26,13 +26,13 @@ enum Money {
         let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = "USD"
         return f.string(from: NSNumber(value: Double(sats) / 100_000_000 * rate)).map { "≈ " + $0 }
     }
-    /// Digits typed into an amount field, kept through verse_wallet_digit:
+    /// Digits typed into an amount field, kept through metaverse_wallet_digit:
     /// nil when it isn't a whole number of sats or passes all the bitcoin.
     static func typed(_ text: String) -> UInt64? {
         var sats: Int64 = 0
         for c in text where c != "," && c != " " {
             guard let d = c.wholeNumberValue, c.isASCII else { return nil }
-            sats = verse_wallet_digit(sats, Int64(d))
+            sats = metaverse_wallet_digit(sats, Int64(d))
             if sats < 0 { return nil }
         }
         return UInt64(sats)

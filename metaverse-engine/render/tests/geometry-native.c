@@ -33,8 +33,8 @@ int main(int argc,char **argv) {
   coax_t_RenderDrawDomain *ds=calloc(c.draw_count?c.draw_count:1,sizeof*ds);assert(ds);
   for(int64_t i=0;i<c.draw_count;i++)ds[i].vertices=UINT64_C(99);
   coax_v_t_RenderDrawDomain domains={ds,c.draw_count};
-  coax_t_RenderGeometryResult g=aethyr_geometry_probe(profile,c,draws,indices,u,(coax_v_t_RenderGeometryBuffer){bs,n},hud,domains);
-  coax_t_RenderFrameResult frame=aethyr_geometry_frame_probe(c,g.direct,draws,indices,domains);
+  coax_t_RenderGeometryResult g=engine_geometry_probe(profile,c,draws,indices,u,(coax_v_t_RenderGeometryBuffer){bs,n},hud,domains);
+  coax_t_RenderFrameResult frame=engine_geometry_frame_probe(c,g.direct,draws,indices,domains);
   printf("{\"geometry_status\":%u,\"frame_status\":%u,\"bad_draw\":%" PRId64 ",\"bad_resource\":%" PRId64 ",\"work\":%" PRId64 ",\"direct\":[%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "],\"domains\":[",(unsigned)g.status,(unsigned)frame.status,g.bad_draw,g.bad_resource,g.work,g.direct.hud_vertices,g.direct.grass_instances,g.direct.particle_instances,g.direct.surface_vertices,g.direct.caster_vertices,g.direct.caster_instances);
   for(int64_t i=0;i<c.draw_count;i++) {
     if(i)putchar(',');coax_t_RenderDrawDomain d=ds[i];

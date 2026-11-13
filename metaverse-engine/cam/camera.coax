@@ -1,5 +1,5 @@
 // The engine's cameras. Each one answers with a Shot, an eye and the point
-// it looks at, as verse_grid_view and verse_grid_frame take them, so one
+// it looks at, as metaverse_grid_view and metaverse_grid_frame take them, so one
 // camera can hand over to another by blending shots:
 // - the overview the home screen shows, high above where you arrive,
 //   slowly circling it;
@@ -50,7 +50,7 @@ bezier :: (a: Point, b: Point, c: Point, d: Point, t: f32) -> Point {
 
 // The home screen's camera at `now` seconds: circling high above the spawn,
 // rising and falling a little, looking down at it.
-verse_camera_overview :: (now: f64) -> Shot #export_c #effects(all) {
+metaverse_camera_overview :: (now: f64) -> Shot #export_c #effects(all) {
   t := f32(now);
   if !finite(t) { t = 0; }
   // Wrapped, so a long-running home loses no float precision.
@@ -67,7 +67,7 @@ verse_camera_overview :: (now: f64) -> Shot #export_c #effects(all) {
 
 // Start pressed at `now`, the camera showing `from`. With reduced motion,
 // it cuts.
-verse_camera_dolly_start :: (from: Shot, now: f64, reduced: bool) -> Dolly #export_c #effects(all) {
+metaverse_camera_dolly_start :: (from: Shot, now: f64, reduced: bool) -> Dolly #export_c #effects(all) {
   return Dolly.{from = from, start = now, length = ifx reduced then 0.0f32 else f32(DOLLY)};
 }
 
@@ -77,13 +77,13 @@ progress :: (d: Dolly, now: f64) -> f32 {
   return clamp01(f32((now - d.start) / f64(d.length)));
 }
 
-verse_camera_dolly_done :: (d: Dolly, now: f64) -> bool #export_c #effects(all) { return progress(d, now) >= 1; }
+metaverse_camera_dolly_done :: (d: Dolly, now: f64) -> bool #export_c #effects(all) { return progress(d, now) >= 1; }
 
 // The shot at `now`, ending on `to`. The eye leaves along the line toward
 // `to` at the height it had, then comes down and in from behind `to`; the
 // look-at turns to `to` sooner, so the character is in view before the
 // camera settles behind it.
-verse_camera_dolly :: (d: Dolly, now: f64, to: Shot) -> Shot #export_c #effects(all) {
+metaverse_camera_dolly :: (d: Dolly, now: f64, to: Shot) -> Shot #export_c #effects(all) {
   t := progress(d, now);
   if t >= 1 || !finite3(d.from.eye) || !finite3(d.from.at) { return to; }
   a := d.from.eye; z := to.eye;
@@ -101,10 +101,10 @@ verse_camera_dolly :: (d: Dolly, now: f64, to: Shot) -> Shot #export_c #effects(
 
 // A touch during the dolly: what is left of it now takes HURRY seconds,
 // from where the camera is.
-verse_camera_dolly_hurry :: (d: Dolly, now: f64, to: Shot) -> Dolly #export_c #effects(all) {
-  if verse_camera_dolly_done(d, now) { return d; }
+metaverse_camera_dolly_hurry :: (d: Dolly, now: f64, to: Shot) -> Dolly #export_c #effects(all) {
+  if metaverse_camera_dolly_done(d, now) { return d; }
   if f32(now - d.start) + f32(HURRY) >= d.length { return d; }
-  return Dolly.{from = verse_camera_dolly(d, now, to), start = now, length = f32(HURRY)};
+  return Dolly.{from = metaverse_camera_dolly(d, now, to), start = now, length = f32(HURRY)};
 }
 
 // ---- The free orbit ----
@@ -115,10 +115,10 @@ verse_camera_dolly_hurry :: (d: Dolly, now: f64, to: Shot) -> Dolly #export_c #e
 // sits on the line from the pivot to where it wants to be, as far along it
 // as scenery allows, so it is never behind a tree or inside a wall, and
 // it always looks the same way, so nothing jumps when it pulls in. A frame:
-//   verse_orbit_look (a drag or a thumb) and verse_orbit_keys (the arrows),
-//   verse_orbit_follow (you moved), verse_orbit_room against the scenery
-//   along verse_orbit_ray (and the host's ground along the same ray),
-//   verse_orbit_limit with the room left, verse_orbit_shot to draw.
+//   metaverse_orbit_look (a drag or a thumb) and metaverse_orbit_keys (the arrows),
+//   metaverse_orbit_follow (you moved), metaverse_orbit_room against the scenery
+//   along metaverse_orbit_ray (and the host's ground along the same ray),
+//   metaverse_orbit_limit with the room left, metaverse_orbit_shot to draw.
 
 FREE_DIST :: ash.SHOT_ORBIT_DIST;   // metres back, to start
 FREE_NEAR :: 1.5;            // the closest a zoom comes in
@@ -161,38 +161,38 @@ Orbit :: struct {
 OrbitRay :: struct { from: Point; dir: Point; far: f32; }
 
 // Behind your feet, facing as you do.
-verse_orbit_start :: (feet: Point, facing: f32) -> Orbit #export_c #effects(all) {
+metaverse_orbit_start :: (feet: Point, facing: f32) -> Orbit #export_c #effects(all) {
   o: Orbit;
   o.yaw = ifx finite(facing) then wrap_angle(facing) else 0.0f32;
   o.pivot = ifx finite3(feet) then add(feet, v3(0, f32(FREE_HEIGHT), 0)) else v3(0, f32(FREE_HEIGHT), 0);
-  o.shown = verse_orbit_ray(o).far;
+  o.shown = metaverse_orbit_ray(o).far;
   return o;
 }
 
 // Where it looks, and its right hand (level).
-verse_orbit_forward :: (o: Orbit) -> Point #export_c #effects(all) { return orbit_pt(ash.shot_orbit_forward(o.yaw, o.pitch)); }
-verse_orbit_right :: (o: Orbit) -> Point #export_c #effects(all) { return orbit_pt(ash.shot_orbit_right(o.yaw)); }
+metaverse_orbit_forward :: (o: Orbit) -> Point #export_c #effects(all) { return orbit_pt(ash.shot_orbit_forward(o.yaw, o.pitch)); }
+metaverse_orbit_right :: (o: Orbit) -> Point #export_c #effects(all) { return orbit_pt(ash.shot_orbit_right(o.yaw)); }
 // Between this file's points and the Metaverse Engine's world points: the same metres.
 orbit_pt :: (w: asp.WorldPoint) -> Point { return v3(w.x, w.y, w.z); }
 orbit_wpt :: (p: Point) -> asp.WorldPoint { return asp.world_point(p.x, p.y, p.z); }
 
 // How far into first person it is: 0 out at FREE_NEAR or further, 1 with
 // the eye in your head. It follows the eased zoom, so it changes smoothly.
-verse_orbit_first :: (o: Orbit) -> f32 #export_c #effects(all) {
+metaverse_orbit_first :: (o: Orbit) -> f32 #export_c #effects(all) {
   if !finite(o.zoom) { return 0; }
   return clamp01(1 - o.zoom / f32(FREE_NEAR));
 }
 
 // The eye is in your head (or nearly): the host leaves your body out.
-verse_orbit_inside :: (o: Orbit) -> bool #export_c #effects(all) { return verse_orbit_first(o) >= f32(FREE_INSIDE); }
+metaverse_orbit_inside :: (o: Orbit) -> bool #export_c #effects(all) { return metaverse_orbit_first(o) >= f32(FREE_INSIDE); }
 
 // How far up and down it may look, widening in first person.
-pitch_low :: (o: Orbit) -> f32 { return lerp(f32(FREE_PITCH_MIN), -f32(FREE_FIRST_PITCH), verse_orbit_first(o)); }
-pitch_high :: (o: Orbit) -> f32 { return lerp(f32(FREE_PITCH_MAX), f32(FREE_FIRST_PITCH), verse_orbit_first(o)); }
+pitch_low :: (o: Orbit) -> f32 { return lerp(f32(FREE_PITCH_MIN), -f32(FREE_FIRST_PITCH), metaverse_orbit_first(o)); }
+pitch_high :: (o: Orbit) -> f32 { return lerp(f32(FREE_PITCH_MAX), f32(FREE_FIRST_PITCH), metaverse_orbit_first(o)); }
 
 // A drag or a thumb: positive dyaw turns left, positive dpitch looks up,
 // in radians.
-verse_orbit_look :: (o: Orbit, dyaw: f32, dpitch: f32) -> Orbit #export_c #effects(all) {
+metaverse_orbit_look :: (o: Orbit, dyaw: f32, dpitch: f32) -> Orbit #export_c #effects(all) {
   next := o;
   moved := false;
   if finite(dyaw) && dyaw != 0 { next.yaw = wrap_angle(o.yaw + dyaw); moved = true; }
@@ -202,16 +202,16 @@ verse_orbit_look :: (o: Orbit, dyaw: f32, dpitch: f32) -> Orbit #export_c #effec
 }
 
 // The arrow keys held: turn (1 left, -1 right) and tilt (1 up, -1 down).
-verse_orbit_keys :: (o: Orbit, turn: f32, tilt: f32, dt: f32) -> Orbit #export_c #effects(all) {
+metaverse_orbit_keys :: (o: Orbit, turn: f32, tilt: f32, dt: f32) -> Orbit #export_c #effects(all) {
   if !finite(dt) || dt <= 0 { return o; }
   t := lo(dt, 0.25);
-  return verse_orbit_look(o, clamp(turn, -1, 1) * f32(FREE_KEY_TURN) * t, clamp(tilt, -1, 1) * f32(FREE_KEY_TURN) * 0.6 * t);
+  return metaverse_orbit_look(o, clamp(turn, -1, 1) * f32(FREE_KEY_TURN) * t, clamp(tilt, -1, 1) * f32(FREE_KEY_TURN) * 0.6 * t);
 }
 
 // The wheel or a pinch: positive is further out. Coming in, it stops at
 // FREE_NEAR; FREE_PUSH more goes into your head (want 0, first person). Out
 // of your head, any zoom out comes back to FREE_NEAR.
-verse_orbit_zoom :: (o: Orbit, delta: f32) -> Orbit #export_c #effects(all) {
+metaverse_orbit_zoom :: (o: Orbit, delta: f32) -> Orbit #export_c #effects(all) {
   next := o;
   if !finite(delta) || delta == 0 { return next; }
   if o.want < f32(FREE_NEAR) {
@@ -231,7 +231,7 @@ verse_orbit_zoom :: (o: Orbit, delta: f32) -> Orbit #export_c #effects(all) {
 // camera that swung toward where you walk turned that way with it, and held
 // W and D (or any heading off straight ahead) circled it about a radian a
 // second with no look at all (#12718). heading is kept for the callers.
-verse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f32) -> Orbit #export_c #effects(all) {
+metaverse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f32) -> Orbit #export_c #effects(all) {
   next := o;
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
   if !finite3(feet) { return next; }
@@ -240,7 +240,7 @@ verse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f3
   else { next.pivot = mix(o.pivot, dest, settle(f32(FREE_FOLLOW), t)); }
   next.idle = lo(o.idle + t, 1000);
   // Looking out of your eyes it never swings: you walk where you look.
-  outside := 1 - verse_orbit_first(o);
+  outside := 1 - metaverse_orbit_first(o);
   if moving && next.idle >= f32(FREE_RECENTRE_AFTER) && outside > 0.001 {
     ramp := clamp01((next.idle - f32(FREE_RECENTRE_AFTER)) / 0.6) * outside;
     next.pitch = lerp(o.pitch, f32(FREE_PITCH), settle(f32(FREE_RECENTRE), t) * ramp);
@@ -257,16 +257,16 @@ verse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f3
 
 // Going in, the shoulder offset closes and the line's start rises from the
 // pivot to your eyes, a little in front of your face (metaverse-engine/cam/follow.coax).
-verse_orbit_ray :: (o: Orbit) -> OrbitRay #export_c #effects(all) {
-  a := ash.shot_orbit_ray(orbit_wpt(o.pivot), o.yaw, o.pitch, o.zoom, verse_orbit_first(o));
+metaverse_orbit_ray :: (o: Orbit) -> OrbitRay #export_c #effects(all) {
+  a := ash.shot_orbit_ray(orbit_wpt(o.pivot), o.yaw, o.pitch, o.zoom, metaverse_orbit_first(o));
   return OrbitRay.{from = orbit_pt(a.from), dir = orbit_pt(a.dir), far = a.far};
 }
 
 // How far along the ray the eye may go before scenery, keeping
 // FREE_CLEAR from it: spheres (SPHERE numbers each) and boxes (BOX
 // numbers each). Scenery the pivot is inside doesn't count.
-verse_orbit_room :: (o: Orbit, spheres: [] f32, boxes: [] f32) -> f32 #export_c #effects(all) {
-  r := verse_orbit_ray(o);
+metaverse_orbit_room :: (o: Orbit, spheres: [] f32, boxes: [] f32) -> f32 #export_c #effects(all) {
+  r := metaverse_orbit_ray(o);
   room := r.far;
   for i: 0..<spheres.count / SPHERE {
     c := v3(spheres[i * SPHERE], spheres[i * SPHERE + 1], spheres[i * SPHERE + 2]);
@@ -304,11 +304,11 @@ verse_orbit_room :: (o: Orbit, spheres: [] f32, boxes: [] f32) -> f32 #export_c 
 }
 
 // Scenery left `room` along the ray this frame (the least of
-// verse_orbit_room and the host's ground): the eye comes in at once and
+// metaverse_orbit_room and the host's ground): the eye comes in at once and
 // backs out gently, never past where it wants to be.
-verse_orbit_limit :: (o: Orbit, room: f32, dt: f32) -> Orbit #export_c #effects(all) {
+metaverse_orbit_limit :: (o: Orbit, room: f32, dt: f32) -> Orbit #export_c #effects(all) {
   next := o;
-  far := verse_orbit_ray(o).far;
+  far := metaverse_orbit_ray(o).far;
   free := ifx finite(room) then clamp(room, lo(f32(FREE_MIN_ROOM), far), far) else far;
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
   if free < o.shown || !finite(o.shown) { next.shown = free; }
@@ -318,14 +318,14 @@ verse_orbit_limit :: (o: Orbit, room: f32, dt: f32) -> Orbit #export_c #effects(
 }
 
 // What to draw: the eye on the ray, looking forward.
-verse_orbit_shot :: (o: Orbit) -> Shot #export_c #effects(all) {
-  a := ash.shot_orbit(ash.shot_orbit_ray(orbit_wpt(o.pivot), o.yaw, o.pitch, o.zoom, verse_orbit_first(o)), o.shown, o.yaw, o.pitch);
+metaverse_orbit_shot :: (o: Orbit) -> Shot #export_c #effects(all) {
+  a := ash.shot_orbit(ash.shot_orbit_ray(orbit_wpt(o.pivot), o.yaw, o.pitch, o.zoom, metaverse_orbit_first(o)), o.shown, o.yaw, o.pitch);
   return Shot.{eye = orbit_pt(a.eye), at = orbit_pt(a.at)};
 }
 
 // Turns to look the way a shot does: how another camera (a cinematic, a
 // close-up) hands control back without a jump in direction.
-verse_orbit_toward :: (o: Orbit, s: Shot) -> Orbit #export_c #effects(all) {
+metaverse_orbit_toward :: (o: Orbit, s: Shot) -> Orbit #export_c #effects(all) {
   d := sub(s.at, s.eye);
   if !finite3(d) || length(d) < 0.0001 { return o; }
   next := o;
@@ -337,7 +337,7 @@ verse_orbit_toward :: (o: Orbit, s: Shot) -> Orbit #export_c #effects(all) {
 
 // Partway from one shot to another (eased): how a host blends into a
 // close-up and back out to its live camera without a jump.
-verse_shot_mix :: (a: Shot, b: Shot, t: f32) -> Shot #export_c #effects(all) {
+metaverse_shot_mix :: (a: Shot, b: Shot, t: f32) -> Shot #export_c #effects(all) {
   k := ease(t);
   return Shot.{eye = mix(a.eye, b.eye, k), at = mix(a.at, b.at, k)};
 }
@@ -345,7 +345,7 @@ verse_shot_mix :: (a: Shot, b: Shot, t: f32) -> Shot #export_c #effects(all) {
 // The ray from the eye through a point on the screen: nx, ny from -1 to 1
 // (right, up), with the projection's horizontal and vertical scales fx, fy
 // (a point d ahead and x across lands at x * fx / d). What a click points at.
-verse_shot_ray :: (s: Shot, fx: f32, fy: f32, nx: f32, ny: f32) -> OrbitRay #export_c #effects(all) {
+metaverse_shot_ray :: (s: Shot, fx: f32, fy: f32, nx: f32, ny: f32) -> OrbitRay #export_c #effects(all) {
   f := unit_or(sub(s.at, s.eye), v3(0, 0, 1));
   r := unit_or(cross(f, v3(0, 1, 0)), v3(1, 0, 0));
   up := cross(r, f);
@@ -368,7 +368,7 @@ behind_you :: () -> Shot { return Shot.{eye = v3(0, 2.6, -4.2), at = v3(0, 1.6, 
 }
 
 #forall "the overview circles the spawn from high up, looking down" i: 0..<120 {
-  s := verse_camera_overview(f64(i) * 7.3);
+  s := metaverse_camera_overview(f64(i) * 7.3);
   out := v3(s.eye.x - f32(CENTER_X), 0, s.eye.z - f32(CENTER_Z));
   #assert near(length(out), f32(ORBIT_RADIUS), 0.01);
   #assert s.eye.y >= f32(ORBIT_HEIGHT - SWAY) - 0.01 && s.eye.y <= f32(ORBIT_HEIGHT + SWAY) + 0.01;
@@ -376,38 +376,38 @@ behind_you :: () -> Shot { return Shot.{eye = v3(0, 2.6, -4.2), at = v3(0, 1.6, 
 }
 
 #test "the overview moves slowly and never jumps" {
-  a := verse_camera_overview(10);
-  b := verse_camera_overview(10 + 1.0 / 60.0);
+  a := metaverse_camera_overview(10);
+  b := metaverse_camera_overview(10 + 1.0 / 60.0);
   #assert length(sub(a.eye, b.eye)) < 0.1;
   // Around the wrap, after a full circle.
   w := f64(2 * PI / ORBIT_SPEED);
-  c := verse_camera_overview(w - 1.0 / 120.0);
-  e := verse_camera_overview(w + 1.0 / 120.0);
+  c := metaverse_camera_overview(w - 1.0 / 120.0);
+  e := metaverse_camera_overview(w + 1.0 / 120.0);
   #assert length(sub(c.eye, e.eye)) < 0.1;
   // A clock it can't use gives the first view.
-  #assert same(verse_camera_overview(0).eye, verse_camera_overview(f64(1.0 / 0.0)).eye, 0.0001);
+  #assert same(metaverse_camera_overview(0).eye, metaverse_camera_overview(f64(1.0 / 0.0)).eye, 0.0001);
 }
 
 #test "the dolly starts where the camera is and ends behind you" {
-  from := verse_camera_overview(20);
-  d := verse_camera_dolly_start(from, 100, false);
-  #assert same(verse_camera_dolly(d, 100, behind_you()).eye, from.eye, 0.001);
-  #assert same(verse_camera_dolly(d, 100, behind_you()).at, from.at, 0.001);
-  #assert !verse_camera_dolly_done(d, 100);
-  end := verse_camera_dolly(d, 100 + f64(DOLLY), behind_you());
+  from := metaverse_camera_overview(20);
+  d := metaverse_camera_dolly_start(from, 100, false);
+  #assert same(metaverse_camera_dolly(d, 100, behind_you()).eye, from.eye, 0.001);
+  #assert same(metaverse_camera_dolly(d, 100, behind_you()).at, from.at, 0.001);
+  #assert !metaverse_camera_dolly_done(d, 100);
+  end := metaverse_camera_dolly(d, 100 + f64(DOLLY), behind_you());
   #assert same(end.eye, behind_you().eye, 0.0001) && same(end.at, behind_you().at, 0.0001);
-  #assert verse_camera_dolly_done(d, 100 + f64(DOLLY));
-  #assert !verse_camera_dolly_done(d, 100 + f64(DOLLY) - 0.01);
+  #assert metaverse_camera_dolly_done(d, 100 + f64(DOLLY));
+  #assert !metaverse_camera_dolly_done(d, 100 + f64(DOLLY) - 0.01);
   // Before it starts (a clock stepping back), it holds the first shot.
-  #assert same(verse_camera_dolly(d, 99, behind_you()).eye, from.eye, 0.001);
+  #assert same(metaverse_camera_dolly(d, 99, behind_you()).eye, from.eye, 0.001);
 }
 
 #forall "the dolly is smooth, above the ground, and comes in from behind" step: 0..<170, round: 0..<3 {
-  from := verse_camera_overview(f64(round) * 40);
-  d := verse_camera_dolly_start(from, 0, false);
+  from := metaverse_camera_overview(f64(round) * 40);
+  d := metaverse_camera_dolly_start(from, 0, false);
   t := f64(step) / 20;
-  a := verse_camera_dolly(d, t, behind_you());
-  b := verse_camera_dolly(d, t + 1.0 / 60.0, behind_you());
+  a := metaverse_camera_dolly(d, t, behind_you());
+  b := metaverse_camera_dolly(d, t + 1.0 / 60.0, behind_you());
   // At 60 frames a second no step is far: the swoop is gentle.
   #assert length(sub(a.eye, b.eye)) < 0.45;
   #assert a.eye.y >= behind_you().eye.y - 0.001;
@@ -421,197 +421,197 @@ behind_you :: () -> Shot { return Shot.{eye = v3(0, 2.6, -4.2), at = v3(0, 1.6, 
 }
 
 #test "the last stretch comes down from behind and above you" {
-  d := verse_camera_dolly_start(verse_camera_overview(0), 0, false);
-  late := verse_camera_dolly(d, f64(DOLLY) * 0.9, behind_you());
+  d := metaverse_camera_dolly_start(metaverse_camera_overview(0), 0, false);
+  late := metaverse_camera_dolly(d, f64(DOLLY) * 0.9, behind_you());
   // Behind you is -z here: the eye is further back and higher than its end.
   #assert late.eye.z < behind_you().eye.z && late.eye.y > behind_you().eye.y;
 }
 
 #test "reduced motion cuts" {
-  d := verse_camera_dolly_start(verse_camera_overview(5), 50, true);
-  #assert verse_camera_dolly_done(d, 50);
-  #assert same(verse_camera_dolly(d, 50, behind_you()).eye, behind_you().eye, 0);
+  d := metaverse_camera_dolly_start(metaverse_camera_overview(5), 50, true);
+  #assert metaverse_camera_dolly_done(d, 50);
+  #assert same(metaverse_camera_dolly(d, 50, behind_you()).eye, behind_you().eye, 0);
 }
 
 #test "a touch hurries the rest from where the camera is" {
-  d := verse_camera_dolly_start(verse_camera_overview(5), 0, false);
-  mid := verse_camera_dolly(d, 2, behind_you());
-  h := verse_camera_dolly_hurry(d, 2, behind_you());
+  d := metaverse_camera_dolly_start(metaverse_camera_overview(5), 0, false);
+  mid := metaverse_camera_dolly(d, 2, behind_you());
+  h := metaverse_camera_dolly_hurry(d, 2, behind_you());
   #assert near(h.length, f32(HURRY), 0) && h.start == 2;
-  #assert same(verse_camera_dolly(h, 2, behind_you()).eye, mid.eye, 0.001);
-  #assert verse_camera_dolly_done(h, 2 + f64(HURRY));
+  #assert same(metaverse_camera_dolly(h, 2, behind_you()).eye, mid.eye, 0.001);
+  #assert metaverse_camera_dolly_done(h, 2 + f64(HURRY));
   // Already nearly there: it isn't slowed down.
-  late := verse_camera_dolly_hurry(d, f64(DOLLY) - 0.5, behind_you());
+  late := metaverse_camera_dolly_hurry(d, f64(DOLLY) - 0.5, behind_you());
   #assert late.start == 0 && late.length == f32(DOLLY);
   // Done: nothing changes.
-  done := verse_camera_dolly_hurry(d, 100, behind_you());
+  done := metaverse_camera_dolly_hurry(d, 100, behind_you());
   #assert done.start == 0;
 }
 
 #test "a broken shot is not followed" {
   bad := Shot.{eye = v3(f32(0.0 / 0.0), 1, 1), at = v3(0, 0, 0)};
-  d := verse_camera_dolly_start(bad, 0, false);
-  #assert same(verse_camera_dolly(d, 1, behind_you()).eye, behind_you().eye, 0);
+  d := metaverse_camera_dolly_start(bad, 0, false);
+  #assert same(metaverse_camera_dolly(d, 1, behind_you()).eye, behind_you().eye, 0);
 }
 
 // ---- The free orbit's checks ----
 
 settled :: (o: Orbit) -> Orbit {
   next := o;
-  for i: 0..<240 { next = verse_orbit_limit(verse_orbit_follow(next, sub(next.pivot, v3(0, f32(FREE_HEIGHT), 0)), 0, false, 1.0 / 60.0), 1000, 1.0 / 60.0); }
+  for i: 0..<240 { next = metaverse_orbit_limit(metaverse_orbit_follow(next, sub(next.pivot, v3(0, f32(FREE_HEIGHT), 0)), 0, false, 1.0 / 60.0), 1000, 1.0 / 60.0); }
   return next;
 }
 
 #test "it starts behind you and above, over your right shoulder" {
-  o := verse_orbit_start(v3(4, 0, 2), 0);
-  s := verse_orbit_shot(o);
+  o := metaverse_orbit_start(v3(4, 0, 2), 0);
+  s := metaverse_orbit_shot(o);
   #assert s.eye.z < 2 && s.eye.y > f32(FREE_HEIGHT);
   // Facing +Z your right is -X: the eye is a little that way.
   #assert s.eye.x < 4 && s.eye.x > 4 - 1;
   #assert near(length(sub(s.eye, o.pivot)), length(v3(f32(FREE_SHOULDER), 0, f32(FREE_DIST))), 0.001);
   // And it looks the way you face, a little down.
-  f := verse_orbit_forward(o);
+  f := metaverse_orbit_forward(o);
   #assert f.z > 0.9 && f.y < 0 && near(f.x, 0, 0.00001);
-  r := verse_orbit_right(o);
+  r := metaverse_orbit_right(o);
   #assert same(r, v3(-1, 0, 0), 0.00001);
-  #assert same(verse_orbit_start(v3(0, 0, 0), f32(0.0 / 0.0)).pivot, v3(0, f32(FREE_HEIGHT), 0), 0);
+  #assert same(metaverse_orbit_start(v3(0, 0, 0), f32(0.0 / 0.0)).pivot, v3(0, f32(FREE_HEIGHT), 0), 0);
 }
 
 #forall "the shot is whole and looks forward wherever it turns" iy: -6..<7, ip: -4..<5 {
-  o := verse_orbit_start(v3(1, 2, 3), 0);
-  o = verse_orbit_look(o, f32(iy) * 0.6, f32(ip) * 0.4);
+  o := metaverse_orbit_start(v3(1, 2, 3), 0);
+  o = metaverse_orbit_look(o, f32(iy) * 0.6, f32(ip) * 0.4);
   #assert o.pitch >= f32(FREE_PITCH_MIN) && o.pitch <= f32(FREE_PITCH_MAX);
-  s := verse_orbit_shot(o);
+  s := metaverse_orbit_shot(o);
   #assert finite3(s.eye) && finite3(s.at);
-  #assert near(length(verse_orbit_forward(o)), 1, 0.0001);
+  #assert near(length(metaverse_orbit_forward(o)), 1, 0.0001);
   d := unit_or(sub(s.at, s.eye), v3(0, 0, 0));
-  #assert same(d, verse_orbit_forward(o), 0.0001);
+  #assert same(d, metaverse_orbit_forward(o), 0.0001);
   // The pivot (you) is ahead of the eye and a little to its left.
   to := sub(o.pivot, s.eye);
-  #assert dot(to, verse_orbit_forward(o)) > 0;
-  #assert dot(to, verse_orbit_right(o)) < 0;
+  #assert dot(to, metaverse_orbit_forward(o)) > 0;
+  #assert dot(to, metaverse_orbit_right(o)) < 0;
 }
 
 #test "looking turns it, the keys turn it at their rate, and junk is ignored" {
-  o := verse_orbit_start(v3(0, 0, 0), 0);
-  l := verse_orbit_look(o, 0.5, 0.1);
+  o := metaverse_orbit_start(v3(0, 0, 0), 0);
+  l := metaverse_orbit_look(o, 0.5, 0.1);
   #assert near(l.yaw, 0.5, 0.00001) && near(l.pitch, f32(FREE_PITCH) - 0.1, 0.00001) && l.idle == 0;
-  #assert verse_orbit_look(o, f32(0.0 / 0.0), f32(1.0 / 0.0)).yaw == o.yaw;
-  #assert verse_orbit_look(o, 0, 0).idle == o.idle;
-  k := verse_orbit_keys(o, 1, 0, 0.2);
+  #assert metaverse_orbit_look(o, f32(0.0 / 0.0), f32(1.0 / 0.0)).yaw == o.yaw;
+  #assert metaverse_orbit_look(o, 0, 0).idle == o.idle;
+  k := metaverse_orbit_keys(o, 1, 0, 0.2);
   #assert near(k.yaw, f32(FREE_KEY_TURN) * 0.2, 0.0001);
-  #assert near(verse_orbit_keys(o, 1, 0, 3).yaw, f32(FREE_KEY_TURN) * 0.25, 0.0001);
-  #assert verse_orbit_keys(o, 1, 0, -1).yaw == o.yaw;
-  #assert near(verse_orbit_keys(o, 9, 0, 0.1).yaw, f32(FREE_KEY_TURN) * 0.1, 0.0001);
-  #assert verse_orbit_look(o, 0, 99).pitch == f32(FREE_PITCH_MIN) && verse_orbit_look(o, 0, -99).pitch == f32(FREE_PITCH_MAX);
+  #assert near(metaverse_orbit_keys(o, 1, 0, 3).yaw, f32(FREE_KEY_TURN) * 0.25, 0.0001);
+  #assert metaverse_orbit_keys(o, 1, 0, -1).yaw == o.yaw;
+  #assert near(metaverse_orbit_keys(o, 9, 0, 0.1).yaw, f32(FREE_KEY_TURN) * 0.1, 0.0001);
+  #assert metaverse_orbit_look(o, 0, 99).pitch == f32(FREE_PITCH_MIN) && metaverse_orbit_look(o, 0, -99).pitch == f32(FREE_PITCH_MAX);
 }
 
 #test "zoom asks for a distance, and it eases there" {
-  o := verse_orbit_zoom(verse_orbit_start(v3(0, 0, 0), 0), 3);
+  o := metaverse_orbit_zoom(metaverse_orbit_start(v3(0, 0, 0), 0), 3);
   #assert near(o.want, f32(FREE_DIST) + 3, 0.0001) && o.zoom == f32(FREE_DIST);
-  #assert verse_orbit_zoom(o, 100).want == f32(FREE_FAR) && verse_orbit_zoom(o, -100).want == f32(FREE_NEAR);
+  #assert metaverse_orbit_zoom(o, 100).want == f32(FREE_FAR) && metaverse_orbit_zoom(o, -100).want == f32(FREE_NEAR);
   s := settled(o);
-  #assert near(s.zoom, o.want, 0.01) && near(s.shown, verse_orbit_ray(s).far, 0.05);
+  #assert near(s.zoom, o.want, 0.01) && near(s.shown, metaverse_orbit_ray(s).far, 0.05);
 }
 
 #test "the pivot follows you, smoothly, and cuts when you jump far" {
-  o := verse_orbit_start(v3(0, 0, 0), 0);
-  a := verse_orbit_follow(o, v3(1, 0, 0), 0, true, 1.0 / 60.0);
+  o := metaverse_orbit_start(v3(0, 0, 0), 0);
+  a := metaverse_orbit_follow(o, v3(1, 0, 0), 0, true, 1.0 / 60.0);
   #assert a.pivot.x > 0 && a.pivot.x < 0.5;
-  for i: 0..<120 { a = verse_orbit_follow(a, v3(1, 0, 0), 0, true, 1.0 / 60.0); }
+  for i: 0..<120 { a = metaverse_orbit_follow(a, v3(1, 0, 0), 0, true, 1.0 / 60.0); }
   #assert near(a.pivot.x, 1, 0.001) && near(a.pivot.y, f32(FREE_HEIGHT), 0.001);
   // One 1/30 s frame goes as far as two 1/60 s ones.
-  one := verse_orbit_follow(o, v3(1, 0, 0), 0, false, 1.0 / 30.0);
-  two := verse_orbit_follow(verse_orbit_follow(o, v3(1, 0, 0), 0, false, 1.0 / 60.0), v3(1, 0, 0), 0, false, 1.0 / 60.0);
+  one := metaverse_orbit_follow(o, v3(1, 0, 0), 0, false, 1.0 / 30.0);
+  two := metaverse_orbit_follow(metaverse_orbit_follow(o, v3(1, 0, 0), 0, false, 1.0 / 60.0), v3(1, 0, 0), 0, false, 1.0 / 60.0);
   #assert near(one.pivot.x, two.pivot.x, 0.0001);
-  cut := verse_orbit_follow(o, v3(40, 0, 0), 0, true, 1.0 / 60.0);
+  cut := metaverse_orbit_follow(o, v3(40, 0, 0), 0, true, 1.0 / 60.0);
   #assert cut.pivot.x == 40;
-  #assert same(verse_orbit_follow(o, v3(f32(0.0 / 0.0), 0, 0), 0, true, 0.1).pivot, o.pivot, 0);
+  #assert same(metaverse_orbit_follow(o, v3(f32(0.0 / 0.0), 0, 0), 0, true, 0.1).pivot, o.pivot, 0);
 }
 
 #test "walking never turns the camera: whatever way you walk, only your look turns it (#12718)" {
-  o := verse_orbit_look(verse_orbit_start(v3(0, 0, 0), 0), 0.001, 0.3);
+  o := metaverse_orbit_look(metaverse_orbit_start(v3(0, 0, 0), 0), 0.001, 0.3);
   // each way you can walk, for 10 s: the yaw stays; a while after the look the pitch eases back
   for k: 0..<8 {
     heading := f32(k) * f32(PI) / 4;
     a := o;
-    for i: 0..<600 { a = verse_orbit_follow(a, v3(0, 0, 0), heading, true, 1.0 / 60.0); }
+    for i: 0..<600 { a = metaverse_orbit_follow(a, v3(0, 0, 0), heading, true, 1.0 / 60.0); }
     #assert near(a.yaw, o.yaw, 0.00001) && abs(a.pitch - f32(FREE_PITCH)) < abs(o.pitch - f32(FREE_PITCH));
   }
   // standing still, the pitch stays too
   b := o;
-  for i: 0..<600 { b = verse_orbit_follow(b, v3(0, 0, 0), 0, false, 1.0 / 60.0); }
+  for i: 0..<600 { b = metaverse_orbit_follow(b, v3(0, 0, 0), 0, false, 1.0 / 60.0); }
   #assert near(b.yaw, o.yaw, 0.00001) && near(b.pitch, o.pitch, 0.00001);
 }
 
 #test "a tree behind you pulls the eye in at once; it backs out gently" {
   nothing: [1] f32;
-  o := settled(verse_orbit_start(v3(0, 0, 0), 0));
-  r := verse_orbit_ray(o);
+  o := settled(metaverse_orbit_start(v3(0, 0, 0), 0));
+  r := metaverse_orbit_ray(o);
   spot := add(r.from, times(r.dir, 3));
   tree := [4] f32.[spot.x, spot.y, spot.z, 0.5];
-  room := verse_orbit_room(o, tree[..], nothing[0..<0]);
+  room := metaverse_orbit_room(o, tree[..], nothing[0..<0]);
   #assert room < 3 - 0.5 && room > 3 - 0.5 - f32(FREE_CLEAR) - 0.05;
-  pulled := verse_orbit_limit(o, room, 1.0 / 60.0);
+  pulled := metaverse_orbit_limit(o, room, 1.0 / 60.0);
   #assert near(pulled.shown, room, 0.00001);
-  s := verse_orbit_shot(pulled);
+  s := metaverse_orbit_shot(pulled);
   #assert length(sub(s.eye, spot)) >= 0.5 + f32(FREE_CLEAR) - 0.01;
   // Gone again: one frame moves it only a little way out.
-  back := verse_orbit_limit(pulled, 1000, 1.0 / 60.0);
+  back := metaverse_orbit_limit(pulled, 1000, 1.0 / 60.0);
   #assert back.shown > pulled.shown && back.shown < pulled.shown + 0.2;
   // The view's direction never changes as it pulls in.
-  #assert same(unit_or(sub(s.at, s.eye), v3(0, 0, 0)), verse_orbit_forward(o), 0.0001);
+  #assert same(unit_or(sub(s.at, s.eye), v3(0, 0, 0)), metaverse_orbit_forward(o), 0.0001);
 }
 
 #test "only scenery on the line counts" {
   nothing: [1] f32;
-  o := settled(verse_orbit_start(v3(0, 0, 0), 0));
-  far := verse_orbit_ray(o).far;
+  o := settled(metaverse_orbit_start(v3(0, 0, 0), 0));
+  far := metaverse_orbit_ray(o).far;
   ahead := [4] f32.[0, 1.5, 4, 1];      // in front of you
   aside := [4] f32.[6, 1.5, -2, 1];     // off to the side
   around := [4] f32.[0, 1.5, 0, 3];     // you are inside it
-  #assert verse_orbit_room(o, ahead[..], nothing[0..<0]) == far;
-  #assert verse_orbit_room(o, aside[..], nothing[0..<0]) == far;
-  #assert verse_orbit_room(o, around[..], nothing[0..<0]) == far;
+  #assert metaverse_orbit_room(o, ahead[..], nothing[0..<0]) == far;
+  #assert metaverse_orbit_room(o, aside[..], nothing[0..<0]) == far;
+  #assert metaverse_orbit_room(o, around[..], nothing[0..<0]) == far;
   wall := [6] f32.[-5, 0, -3, 5, 4, -2.5];     // a hedge behind you
-  room := verse_orbit_room(o, nothing[0..<0], wall[..]);
+  room := metaverse_orbit_room(o, nothing[0..<0], wall[..]);
   #assert room < far && room > 0;
-  hit := add(verse_orbit_ray(o).from, times(verse_orbit_ray(o).dir, room));
+  hit := add(metaverse_orbit_ray(o).from, times(metaverse_orbit_ray(o).dir, room));
   #assert near(hit.z, -2.5 + f32(FREE_CLEAR), 0.01);
   beside := [6] f32.[3, 0, -6, 6, 4, -4];
-  #assert verse_orbit_room(o, nothing[0..<0], beside[..]) == far;
+  #assert metaverse_orbit_room(o, nothing[0..<0], beside[..]) == far;
   bent := [6] f32.[1, 1, 1, 0, 0, 0];   // a box with its corners swapped is nothing
-  #assert verse_orbit_room(o, nothing[0..<0], bent[..]) == far;
+  #assert metaverse_orbit_room(o, nothing[0..<0], bent[..]) == far;
 }
 
 #forall "the eye stays inside the room it is given" k: 0..<40 {
-  o := settled(verse_orbit_start(v3(0, 0, 0), f32(k) * 0.3));
+  o := settled(metaverse_orbit_start(v3(0, 0, 0), f32(k) * 0.3));
   room := f32(k % 9) * 0.7;
-  l := verse_orbit_limit(o, room, 1.0 / 60.0);
+  l := metaverse_orbit_limit(o, room, 1.0 / 60.0);
   #assert l.shown <= hi(room, f32(FREE_MIN_ROOM)) + 0.00001;
   #assert l.shown >= f32(FREE_MIN_ROOM) - 0.00001;
-  #assert verse_orbit_limit(o, f32(0.0 / 0.0), 1.0 / 60.0).shown <= verse_orbit_ray(o).far + 0.00001;
+  #assert metaverse_orbit_limit(o, f32(0.0 / 0.0), 1.0 / 60.0).shown <= metaverse_orbit_ray(o).far + 0.00001;
 }
 
 #forall "another camera's shot hands back without a turn" iy: -5..<6, ip: -2..<4 {
-  o := verse_orbit_look(verse_orbit_start(v3(2, 0, 2), 0), f32(iy) * 0.55, -f32(ip) * 0.3);
-  back := verse_orbit_toward(verse_orbit_start(v3(2, 0, 2), 1), verse_orbit_shot(o));
-  #assert same(verse_orbit_forward(back), verse_orbit_forward(o), 0.001);
-  #assert verse_orbit_toward(o, Shot.{eye = v3(1, 1, 1), at = v3(1, 1, 1)}).yaw == o.yaw;
+  o := metaverse_orbit_look(metaverse_orbit_start(v3(2, 0, 2), 0), f32(iy) * 0.55, -f32(ip) * 0.3);
+  back := metaverse_orbit_toward(metaverse_orbit_start(v3(2, 0, 2), 1), metaverse_orbit_shot(o));
+  #assert same(metaverse_orbit_forward(back), metaverse_orbit_forward(o), 0.001);
+  #assert metaverse_orbit_toward(o, Shot.{eye = v3(1, 1, 1), at = v3(1, 1, 1)}).yaw == o.yaw;
 }
 
 #test "a shot blends from one to the other and rests at both ends" {
   a := behind_you(); b := Shot.{eye = v3(3, 2, 1), at = v3(0, 1, 0)};
-  #assert same(verse_shot_mix(a, b, 0).eye, a.eye, 0.00001) && same(verse_shot_mix(a, b, 1).at, b.at, 0.00001);
-  m := verse_shot_mix(a, b, 0.5);
+  #assert same(metaverse_shot_mix(a, b, 0).eye, a.eye, 0.00001) && same(metaverse_shot_mix(a, b, 1).at, b.at, 0.00001);
+  m := metaverse_shot_mix(a, b, 0.5);
   #assert near(m.eye.x, 1.5, 0.0001);
 }
 
 #test "the screen's middle points along the shot, and its edges at the projection's edges" {
   s := Shot.{eye = v3(0, 2, -4), at = v3(0, 2, 0)};
-  r := verse_shot_ray(s, 1.2, 1.5, 0, 0);
+  r := metaverse_shot_ray(s, 1.2, 1.5, 0, 0);
   #assert same(r.dir, v3(0, 0, 1), 0.0001) && same(r.from, s.eye, 0.0001);
-  e := verse_shot_ray(s, 1.2, 1.5, 1, 1);
+  e := metaverse_shot_ray(s, 1.2, 1.5, 1, 1);
   // A point on that ray, projected the way a host's view does, lands at (1, 1).
   p := add(e.from, times(e.dir, 3));
   f := v3(0, 0, 1); rr := unit_or(cross(f, v3(0, 1, 0)), v3(1, 0, 0)); up := cross(rr, f);
@@ -620,48 +620,48 @@ settled :: (o: Orbit) -> Orbit {
 }
 
 #test "zooming in past the closest goes on into your head" {
-  o := verse_orbit_zoom(verse_orbit_start(v3(4, 0, 2), 0), -100);
+  o := metaverse_orbit_zoom(metaverse_orbit_start(v3(4, 0, 2), 0), -100);
   #assert o.want == f32(FREE_NEAR) && o.push == 0;
   // At the closest, a little more isn't enough; FREE_PUSH in all is.
-  a := verse_orbit_zoom(o, -f32(FREE_PUSH) * 0.5);
+  a := metaverse_orbit_zoom(o, -f32(FREE_PUSH) * 0.5);
   #assert a.want == f32(FREE_NEAR) && near(a.push, f32(FREE_PUSH) * 0.5, 0.0001);
-  #assert verse_orbit_zoom(a, 0.01).push == 0;
-  b := verse_orbit_zoom(a, -f32(FREE_PUSH) * 0.5);
-  #assert b.want == 0 && b.push == 0 && verse_orbit_first(b) == 0;
+  #assert metaverse_orbit_zoom(a, 0.01).push == 0;
+  b := metaverse_orbit_zoom(a, -f32(FREE_PUSH) * 0.5);
+  #assert b.want == 0 && b.push == 0 && metaverse_orbit_first(b) == 0;
   // Settled: your eyes, a little in front of your face, looking your way.
   s := settled(b);
-  #assert verse_orbit_first(s) > 0.999 && verse_orbit_inside(s);
-  eye := verse_orbit_shot(s).eye;
+  #assert metaverse_orbit_first(s) > 0.999 && metaverse_orbit_inside(s);
+  eye := metaverse_orbit_shot(s).eye;
   #assert same(eye, v3(4, f32(FREE_EYE), 2 + f32(FREE_FACE)), 0.01);
-  #assert same(unit_or(sub(verse_orbit_shot(s).at, eye), v3(0, 0, 0)), verse_orbit_forward(s), 0.0001);
+  #assert same(unit_or(sub(metaverse_orbit_shot(s).at, eye), v3(0, 0, 0)), metaverse_orbit_forward(s), 0.0001);
   // It looks nearly straight up and down; the third person can't.
-  #assert near(verse_orbit_look(s, 0, 99).pitch, -f32(FREE_FIRST_PITCH), 0.0001);
-  #assert near(verse_orbit_look(s, 0, -99).pitch, f32(FREE_FIRST_PITCH), 0.0001);
-  #assert !verse_orbit_inside(settled(o));
+  #assert near(metaverse_orbit_look(s, 0, 99).pitch, -f32(FREE_FIRST_PITCH), 0.0001);
+  #assert near(metaverse_orbit_look(s, 0, -99).pitch, f32(FREE_FIRST_PITCH), 0.0001);
+  #assert !metaverse_orbit_inside(settled(o));
 }
 
 #test "zooming out of your head comes back to the closest, smoothly" {
-  start := settled(verse_orbit_zoom(verse_orbit_start(v3(0, 0, 0), 0), -100));
-  inside := settled(verse_orbit_zoom(verse_orbit_zoom(start, -1), -1));
-  #assert verse_orbit_inside(inside);
+  start := settled(metaverse_orbit_zoom(metaverse_orbit_start(v3(0, 0, 0), 0), -100));
+  inside := settled(metaverse_orbit_zoom(metaverse_orbit_zoom(start, -1), -1));
+  #assert metaverse_orbit_inside(inside);
   // Looking straight up in first person, then out again.
-  up := verse_orbit_look(inside, 0, 99);
-  out := verse_orbit_zoom(up, 0.05);
+  up := metaverse_orbit_look(inside, 0, 99);
+  out := metaverse_orbit_zoom(up, 0.05);
   #assert out.want == f32(FREE_NEAR);
   // Each frame of the way out, the eye moves only a little.
   o := out;
   for i: 0..<240 {
-    was := verse_orbit_shot(o).eye;
-    o = verse_orbit_limit(verse_orbit_follow(o, v3(0, 0, 0), 0, false, 1.0 / 60.0), 1000, 1.0 / 60.0);
-    #assert length(sub(verse_orbit_shot(o).eye, was)) < 0.3;
+    was := metaverse_orbit_shot(o).eye;
+    o = metaverse_orbit_limit(metaverse_orbit_follow(o, v3(0, 0, 0), 0, false, 1.0 / 60.0), 1000, 1.0 / 60.0);
+    #assert length(sub(metaverse_orbit_shot(o).eye, was)) < 0.3;
   }
-  #assert verse_orbit_first(o) < 0.001 && !verse_orbit_inside(o);
+  #assert metaverse_orbit_first(o) < 0.001 && !metaverse_orbit_inside(o);
   #assert o.pitch >= f32(FREE_PITCH_MIN) - 0.001;
   // Back where it was at the closest, but for the look.
-  same_look := settled(verse_orbit_look(start, 0, start.pitch - o.pitch));
-  #assert same(verse_orbit_shot(o).eye, verse_orbit_shot(same_look).eye, 0.02);
+  same_look := settled(metaverse_orbit_look(start, 0, start.pitch - o.pitch));
+  #assert same(metaverse_orbit_shot(o).eye, metaverse_orbit_shot(same_look).eye, 0.02);
   // In your head, walking doesn't swing the view.
   w := inside;
-  for i: 0..<300 { w = verse_orbit_follow(w, v3(0, 0, 0), f32(PI) / 2, true, 1.0 / 60.0); }
+  for i: 0..<300 { w = metaverse_orbit_follow(w, v3(0, 0, 0), f32(PI) / 2, true, 1.0 / 60.0); }
   #assert near(w.yaw, inside.yaw, 0.00001);
 }

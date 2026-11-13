@@ -8,7 +8,7 @@
 // itself.
 //   coax/bin/coax test metaverse/icecream/camera.coax --library --steps 1000000000   (the house seeds ~512M)
 #load "mesh.coax";
-#load "../../metaverse-engine/cam/follow.coax" as aethyr_follow;   // the follow camera every walking realm uses (metaverse-engine/book ch010)
+#load "../../metaverse-engine/cam/follow.coax" as engine_follow;   // the follow camera every walking realm uses (metaverse-engine/book ch010)
 
 CAM_MIN_ZOOM :: 0.5f32;
 CAM_MAX_ZOOM :: 8.0f32;

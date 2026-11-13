@@ -1,6 +1,6 @@
 // The actual native producer and the same checked renderer used by captures.
-#ifndef AETHYR_RENDER_REALM_H
-#define AETHYR_RENDER_REALM_H
+#ifndef ENGINE_RENDER_REALM_H
+#define ENGINE_RENDER_REALM_H
 #include "render-host.h"
 #include "realm-host.h"
 typedef struct RhgRealm RhgRealm;

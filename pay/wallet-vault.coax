@@ -2,10 +2,10 @@
 // #13217): coax/lib/nostr/vault-wallet.coax's sealing and opening (its wb_* exports are the app's),
 // and two things of the app's own:
 //
-//   verse_wallet_nostr_proof   the wallet words' NIP-06 key signs the challenge that links it to the
+//   metaverse_wallet_nostr_proof   the wallet words' NIP-06 key signs the challenge that links it to the
 //                           account (the opt-in "Use my wallet words for my Nostr identity"); the
 //                           key is made, used and wiped inside this file and never reaches Swift
-//   verse_backup_number     the sizes and codes Swift needs, so it writes none of its own
+//   metaverse_backup_number     the sizes and codes Swift needs, so it writes none of its own
 //
 // The seed never leaves the phone except inside the object wb_make seals. Swift brings the
 // system's randomness, the memory scrypt needs and the passkey's PRF output; nothing here does
@@ -18,14 +18,14 @@
 #load "../coax/lib/nostr/nip98_sign.coax";
 #authority;
 
-// The words, the seed and the key on their way to verse_wallet_nostr_key: zero again when it returns.
+// The words, the seed and the key on their way to metaverse_wallet_nostr_key: zero again when it returns.
 VbKey :: struct { phrase: [BIP39_MAX_TEXT] u8; work: [OS_WORK_BYTES] u8; seed: [64] u8; key: [32] u8; }
 
 
 #test "the numbers Swift sizes its buffers with" {
   want := [9] int.[235, 24576, 4096, 17, 2, 3, BIP39_WORK_BYTES, 215, 5500];
-  for i: 0..<9 { #assert verse_backup_number(i) == want[i]; }
-  #assert verse_backup_number(9) == -1 && verse_backup_number(-1) == -1;
+  for i: 0..<9 { #assert metaverse_backup_number(i) == want[i]; }
+  #assert metaverse_backup_number(9) == -1 && metaverse_backup_number(-1) == -1;
   #assert WB_FRESH == 235 && WB_SLOTS_TEXT_MAX == 24576 && WB_OBJECT_MAX == 4096 && WB_LOG_N == 17 && VT_M_PRF == 2 && VT_M_RECOVERY == 3;
 }
 #test "the wallet words' key signs the link challenge: a NIP-98 event over the URL, by NIP-06's key, with no body" #steps 8000000000 {
@@ -33,7 +33,7 @@ VbKey :: struct { phrase: [BIP39_MAX_TEXT] u8; work: [OS_WORK_BYTES] u8; seed: [
   #assert bip39_decode_ct("leader monkey parrot ring guide accident before fence cannon height naive bean", work[..], v[..]) == 16;
   aux: [32] u8; nonce: [16] u8; for i: 0..<32 { aux[i] = cast(u8) (i + 3); } for i: 0..<16 { nonce[i] = cast(u8) (17 * i); }
   out: [N98S_HEADER] u8; ev: [N98S_EVENT] u8; U := "https://openagents.com/api/auth/link/nostr?c=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-  n := verse_wallet_nostr_proof(v[..], aux[..], nonce[..], 1794000000, U, out[..]);
+  n := metaverse_wallet_nostr_proof(v[..], aux[..], nonce[..], 1794000000, U, out[..]);
   d := base64_decode_checked(cast(string) out[0..<n], ev[..], false);
   #assert n > 0 && d.error == NC_OK;
   text := cast(string) ev[0..<d.written]; vw: [N98S_EVENT] u8;
@@ -44,12 +44,12 @@ VbKey :: struct { phrase: [BIP39_MAX_TEXT] u8; work: [OS_WORK_BYTES] u8; seed: [
   #assert n98s_has(text, "[\"u\",\"https://openagents.com/api/auth/link/nostr?c=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]");
   #assert n98s_has(text, "[\"method\",\"POST\"]") && !n98s_has(text, "payload");
   // exactly enough room, and one byte less; inputs that aren't a seed, a nonce or a URL
-  #assert verse_wallet_nostr_proof(v[..], aux[..], nonce[..], 1794000000, U, out[0..<n]) == n && verse_wallet_nostr_proof(v[..], aux[..], nonce[..], 1794000000, U, out[0..<n - 1]) == -1;
-  #assert verse_wallet_nostr_proof(v[0..<15], aux[..], nonce[..], 1794000000, U, out[..]) == -1 && verse_wallet_nostr_proof(v[..], aux[..], nonce[0..<15], 1794000000, U, out[..]) == -1;
-  #assert verse_wallet_nostr_proof(v[..], aux[..], nonce[..], 1794000000, "not a url", out[..]) == -1;
+  #assert metaverse_wallet_nostr_proof(v[..], aux[..], nonce[..], 1794000000, U, out[0..<n]) == n && metaverse_wallet_nostr_proof(v[..], aux[..], nonce[..], 1794000000, U, out[0..<n - 1]) == -1;
+  #assert metaverse_wallet_nostr_proof(v[0..<15], aux[..], nonce[..], 1794000000, U, out[..]) == -1 && metaverse_wallet_nostr_proof(v[..], aux[..], nonce[0..<15], 1794000000, U, out[..]) == -1;
+  #assert metaverse_wallet_nostr_proof(v[..], aux[..], nonce[..], 1794000000, "not a url", out[..]) == -1;
   w: [1] VbKey;
-  #assert verse_wallet_nostr_proof_work(v[..], aux[..], nonce[..], 1794000000, U, out[..], w[..]) == n && vb_key_zero_test(w[0]);
-  #assert verse_wallet_nostr_proof_work(v[..], aux[..], nonce[0..<15], 1794000000, U, out[..], w[..]) == -1 && vb_key_zero_test(w[0]);
+  #assert metaverse_wallet_nostr_proof_work(v[..], aux[..], nonce[..], 1794000000, U, out[..], w[..]) == n && vb_key_zero_test(w[0]);
+  #assert metaverse_wallet_nostr_proof_work(v[..], aux[..], nonce[0..<15], 1794000000, U, out[..], w[..]) == -1 && vb_key_zero_test(w[0]);
 }
 #test "the wallet's words give their NIP-06 key (NIP-06's own vector), and nothing else does" #steps 4000000000 {
   // leader monkey parrot ring guide accident before fence cannon height naive bean
@@ -58,29 +58,29 @@ VbKey :: struct { phrase: [BIP39_MAX_TEXT] u8; work: [OS_WORK_BYTES] u8; seed: [
   phrase: [BIP39_MAX_TEXT] u8; work: [OS_WORK_BYTES] u8; n := bip39_encode_ct(e[..], work[..], phrase[..]);
   seed: [64] u8; node: [32] u8;
   #assert oneseed_seed_ct(cast(string) phrase[0..<n], "", work[..], seed[..]) == 64 && oneseed_nostr_ct(seed[..], 0, work[..], node[..]) == 32;
-  #assert verse_wallet_nostr_key(e[..], key[0..<32]) && key[32] == 9;
+  #assert metaverse_wallet_nostr_key(e[..], key[0..<32]) && key[32] == 9;
   for i: 0..<32 { #assert key[i] == node[i]; }
   // NIP-06's first vector: these words give this private key
   v: [16] u8; vw := "leader monkey parrot ring guide accident before fence cannon height naive bean";
-  #assert bip39_decode_ct(vw, work[..], v[..]) == 16 && verse_wallet_nostr_key(v[..], key[0..<32]);
+  #assert bip39_decode_ct(vw, work[..], v[..]) == 16 && metaverse_wallet_nostr_key(v[..], key[0..<32]);
   vt_bytes("7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a", want[..]);
   for i: 0..<32 { #assert key[i] == want[i]; }
   // 24 words too; sizes that aren't a seed's, or no room, give nothing
   e32: [32] u8; for i: 0..<32 { e32[i] = cast(u8) (i + 1); }
-  #assert verse_wallet_nostr_key(e32[..], key[0..<32]) && key[0] != want[0];
+  #assert metaverse_wallet_nostr_key(e32[..], key[0..<32]) && key[0] != want[0];
   for i: 0..<32 { key[i] = 7; }
-  #assert !verse_wallet_nostr_key(e[0..<15], key[0..<32]) && !verse_wallet_nostr_key(e32[0..<20], key[0..<32]) && !verse_wallet_nostr_key(e[..], key[0..<31]) && !verse_wallet_nostr_key(e[..], key[..]);
+  #assert !metaverse_wallet_nostr_key(e[0..<15], key[0..<32]) && !metaverse_wallet_nostr_key(e32[0..<20], key[0..<32]) && !metaverse_wallet_nostr_key(e[..], key[0..<31]) && !metaverse_wallet_nostr_key(e[..], key[..]);
   for i: 0..<32 { #assert key[i] == 7; }
   // nothing of the words, the seed or the key is left behind
   w: [1] VbKey;
-  #assert verse_wallet_nostr_key_work(v[..], key[0..<32], w[..]) && vb_key_zero_test(w[0]);
+  #assert metaverse_wallet_nostr_key_work(v[..], key[0..<32], w[..]) && vb_key_zero_test(w[0]);
   w[0].key[31] = 1; #assert !vb_key_zero_test(w[0]); w[0].key[31] = 0; w[0].seed[63] = 1; #assert !vb_key_zero_test(w[0]); w[0].seed[63] = 0;
   w[0].phrase[0] = 1; #assert !vb_key_zero_test(w[0]); w[0].phrase[0] = 0; w[0].work[9] = 1; #assert !vb_key_zero_test(w[0]);
 }
 vb_key_zero_test :: (w: VbKey) -> bool #effects(all) { a := w.phrase; b := w.work; c := w.seed; d := w.key; return vt_zero_test(a[..]) && vt_zero_test(b[..]) && vt_zero_test(c[..]) && vt_zero_test(d[..]); }
 
 // What Swift needs to size its buffers and read answers (Swift can't import a Coax constant).
-verse_backup_number :: (which: int) -> int #export_c #effects(all) {
+metaverse_backup_number :: (which: int) -> int #export_c #effects(all) {
   if which == 0 { return WB_FRESH; }
   if which == 1 { return WB_SLOTS_TEXT_MAX; }
   if which == 2 { return WB_OBJECT_MAX; }
@@ -97,10 +97,10 @@ verse_backup_number :: (which: int) -> int #export_c #effects(all) {
 // /api/auth/link/nostr?c=..., {"proof"}): a NIP-98 event over url, method POST, no body, signed by
 // the NIP-06 key of the seed's entropy, as base64. aux: 32 random bytes; nonce: 16. The count
 // written, or -1. The event names its public key; the private key is zero again on return.
-verse_wallet_nostr_proof :: (entropy: [] u8, aux: [] u8, nonce: [] u8, created_at: int, url: string, out: [] u8) -> int #export_c #effects(all) {
-  w: [1] VbKey; return verse_wallet_nostr_proof_work(entropy, aux, nonce, created_at, url, out, w[..]);
+metaverse_wallet_nostr_proof :: (entropy: [] u8, aux: [] u8, nonce: [] u8, created_at: int, url: string, out: [] u8) -> int #export_c #effects(all) {
+  w: [1] VbKey; return metaverse_wallet_nostr_proof_work(entropy, aux, nonce, created_at, url, out, w[..]);
 }
-verse_wallet_nostr_proof_work :: (entropy: [] u8, aux: [] u8, nonce: [] u8, created_at: int, url: string, out: [] u8, w: [] VbKey) -> int #effects(all) {
+metaverse_wallet_nostr_proof_work :: (entropy: [] u8, aux: [] u8, nonce: [] u8, created_at: int, url: string, out: [] u8, w: [] VbKey) -> int #effects(all) {
   h: [N98S_HEADER] u8; n := -1;
   // No body: with bind false n98s_header reads no body bytes, so it is handed aux whole (an empty
   // slice's bounds would be numbers no check could tell apart).
@@ -119,11 +119,11 @@ vb_key_derive :: (entropy: [] u8, w: [] VbKey) -> bool #effects(all) {
   n := bip39_encode_ct(entropy, w[0].work[..], w[0].phrase[..]);
   return oneseed_seed_ct(cast(string) w[0].phrase[0..<n], "", w[0].work[..], w[0].seed[..]) == 64 && oneseed_nostr_ct(w[0].seed[..], 0, w[0].work[..], w[0].key[..]) == 32;
 }
-// The key in out (32 bytes), for the checks; the app takes only verse_wallet_nostr_proof.
-verse_wallet_nostr_key :: (entropy: [] u8, out: [] u8) -> bool #effects(all) {
-  w: [1] VbKey; return verse_wallet_nostr_key_work(entropy, out, w[..]);
+// The key in out (32 bytes), for the checks; the app takes only metaverse_wallet_nostr_proof.
+metaverse_wallet_nostr_key :: (entropy: [] u8, out: [] u8) -> bool #effects(all) {
+  w: [1] VbKey; return metaverse_wallet_nostr_key_work(entropy, out, w[..]);
 }
-verse_wallet_nostr_key_work :: (entropy: [] u8, out: [] u8, w: [] VbKey) -> bool #effects(all) {
+metaverse_wallet_nostr_key_work :: (entropy: [] u8, out: [] u8, w: [] VbKey) -> bool #effects(all) {
   ok := out.count == 32 && vb_key_derive(entropy, w);
   if ok { for i: 0..<32 { out[i] = w[0].key[i]; } }
   w[0] = VbKey.{};

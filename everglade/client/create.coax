@@ -319,7 +319,7 @@ e2c_back :: (s: [] E2) {
   c := s[0].cz[..];
   c[0].walking = true; c[0].handed = true; c[0].changing = false; c[0].run_t = f32(E2C_SWING + E2C_RUN + E2C_EASE);
   s[0].you_face = c[0].back_face; s[0].reseat = true;
-  s[0].orbit = figs.verse_orbit_start(figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), c[0].back_face);
+  s[0].orbit = figs.metaverse_orbit_start(figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), c[0].back_face);
 }
 // Esc in the world opens the menu, Esc again (or Back to the game) shuts it; Enter takes Change character.
 e2c_menu_key :: (s: [] E2, key: int) -> bool {
@@ -361,7 +361,7 @@ e2c_walk :: (s: [] E2) {
   c[0].dragging = false; c[0].down = -1;
   s[0].you_face = s[0].creator[0].yaw; s[0].reseat = true;   // the controller takes you as the studio drew you
   heading := e2_auto_heading(s[0].you_x, s[0].you_z);
-  s[0].orbit = figs.verse_orbit_start(figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), heading);
+  s[0].orbit = figs.metaverse_orbit_start(figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), heading);
 }
 // Any key or click while it plays: on to the ease into the follow camera.
 e2c_skip :: (s: [] E2) { c := s[0].cz[..]; if e2c_running(s) && c[0].run_t < f32(E2C_SWING + E2C_RUN) { c[0].run_t = f32(E2C_SWING + E2C_RUN); } }

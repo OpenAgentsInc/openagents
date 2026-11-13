@@ -74,13 +74,13 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   zone_quality_frame(zone(state), dt, w, h, scale, golden);
   // your body's step on Everglade's controller, in lab-walk-face.h's order; in the overview it stands
   coax_t_ZoneWalk zw = zone_walk(zone(state));
-  if (zw.put) player = verse_player_place(zw.x, zw.y, zw.z, zw.face);
+  if (zw.put) player = metaverse_player_place(zw.x, zw.y, zw.z, zw.face);
   if (zw.on && wbw_walks(walk(state))) {
     float frame = dt;
-    float step = verse_player_counts(player, frame);
+    float step = metaverse_player_counts(player, frame);
     coax_t_EgMoveIn input = zone_move_in(zone(state));
     input.pad_x = sticks.pad_x; input.pad_y = sticks.pad_y;
-    input.run = verse_runs(input.run, sticks.run, sticks.pad_x, sticks.pad_y);
+    input.run = metaverse_runs(input.run, sticks.run, sticks.pad_x, sticks.pad_y);
     input.jump = input.jump || sticks.jump;
     coax_t_EgMoveWorld mw = zone_move_world(zone(state), player.body.pos.x, player.body.pos.z);
     player.body = eg_step_begin(player.body, input, mw, step); player.cam.theta = input.theta;
@@ -92,15 +92,15 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     coax_t_EgJump jump = zone_jump_plan(zone(state), origin, intent, player.body.jumps.waiting > 0);
     player.body = eg_step_advance_jump(player.body, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){walls.data, mw.walls * 6}, (coax_v_f32){floors.data, mw.floors * 10}, frame, zone_move_scale(zone(state)), jump);
     coax_t_EgBody kept = zone_keep_body(zone(state), origin, eg_step_body(player.body));
-    if (kept.x != player.body.pos.x || kept.z != player.body.pos.z) player = verse_player_constrain(player, kept.x, kept.z);
+    if (kept.x != player.body.pos.x || kept.z != player.body.pos.z) player = metaverse_player_constrain(player, kept.x, kept.z);
     player.body = eg_step_put(player.body, kept);
     zone_rest_motion(zone(state), origin, kept, intent.walk, intent.jump);
-    coax_t_Vec3 feet = verse_player_feet(player);
-    zone_you(zone(state), feet.x, feet.y, feet.z, verse_player_face(player), !player.body.on_ground, false, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
+    coax_t_Vec3 feet = metaverse_player_feet(player);
+    zone_you(zone(state), feet.x, feet.y, feet.z, metaverse_player_face(player), !player.body.on_ground, false, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   } else {
-    sticks = verse_sticks_reset();
+    sticks = metaverse_sticks_reset();
   }
-  sticks = verse_sticks_used(sticks);
+  sticks = metaverse_sticks_used(sticks);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, wbw_max_vertices() * wbw_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, wbw_uniform_floats()};
   int64_t n = wbw_frame(walk(state), (coax_v_f32){zone_strokes, sizeof zone_strokes / sizeof zone_strokes[0]}, out, u, w, h, scale, dt, still != 0);
@@ -119,12 +119,12 @@ EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t 
   bool used = wbw_key(walk(state), key, mods); drain(state); return used ? 1u : 0u;
 }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { return wbw_key_up(walk(state), key, mods) ? 1u : 0u; }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { wbw_blur(walk(state)); sticks = verse_sticks_reset(); }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { wbw_blur(walk(state)); sticks = metaverse_sticks_reset(); }
 EXPORT("coaxial_focus") void coaxial_focus(uint32_t state) { (void)state; }
 static uint32_t pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id, int32_t button) {
   bool used = wbw_pointer(walk(state), x, y, phase, kind, id, button);
   // the finger the zone says is the thumb's moves the stick (metaverse-engine/core/sticks.coax)
-  if (zone_thumb(zone(state))) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  if (zone_thumb(zone(state))) sticks = metaverse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   drain(state);
   return used ? 1u : 0u;
 }

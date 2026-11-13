@@ -322,7 +322,7 @@ static void fetch(const request *q, const char *sid) {
   if (pid == 0) { stream_pack(q->fd, p, sid); _exit(0); }
 }
 
-bool verse_packs_route(const request *q) {
+bool metaverse_packs_route(const request *q) {
   const char *base = packs_base(q->path);
   if (!base) return false;
   const char *rest = q->path + strlen(base);

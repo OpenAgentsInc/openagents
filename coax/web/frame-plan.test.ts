@@ -9,7 +9,7 @@ import { join } from "node:path"
 const root = join(import.meta.dir, "../..")
 const header = readFileSync(join(root, "metaverse-engine/host/frame-plan.h"), "utf8")
 const host = readFileSync(join(root, "coax/web/host.js"), "utf8")
-const defines = new Map([...header.matchAll(/^#define AETHYR_FP_(\w+) (\d+)u$/gm)].map((m) => [m[1], Number(m[2])]))
+const defines = new Map([...header.matchAll(/^#define ENGINE_FP_(\w+) (\d+)u$/gm)].map((m) => [m[1], Number(m[2])]))
 const start = host.indexOf("const FP = {"), end = host.indexOf("};", start)
 const FP = new Function(`${host.slice(start, end + 2)} return FP;`)() as Record<string, any>
 

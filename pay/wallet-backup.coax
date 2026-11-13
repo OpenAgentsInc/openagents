@@ -3,11 +3,11 @@
 // hands this file plain values; this file decides. The sealing and opening are
 // pay/wallet-vault.coax's and coax/lib/nostr/vault-wallet.coax's.
 //
-//   verse_backup_card   what the wallet screen's backup card shows
-//   verse_backup_newer  whether an epoch raises the highest this phone has made or opened (the rollback floor)
-//   verse_limit_local   a payment against the limit this phone last knew, by its own count,
+//   metaverse_backup_card   what the wallet screen's backup card shows
+//   metaverse_backup_newer  whether an epoch raises the highest this phone has made or opened (the rollback floor)
+//   metaverse_limit_local   a payment against the limit this phone last knew, by its own count,
 //                       for when our server can't be asked; nothing while logged out
-//   verse_limit_next    what the app does with the server's answer to "may I pay?"
+//   metaverse_limit_next    what the app does with the server's answer to "may I pay?"
 //
 // Our server answers whether a payment needs a fresh proof that it is you; it can't stop one,
 // so the app is what keeps the limit. A changed app, or the wallet's words used somewhere else,
@@ -28,7 +28,7 @@ VL_PAY :: 0; VL_STEP_UP :: 1; VL_OVER :: 2; VL_REFUSED :: 3; VL_LOG_IN :: 4;
 VL_MAX_SAT :: 2_100_000_000_000_000;
 
 #forall "the backup card" balance: 0..<3, logged_in: bool, backup: bool, counts: bool, mine: bool, later: bool {
-  c := verse_backup_card(balance, logged_in, backup, counts, mine, later);
+  c := metaverse_backup_card(balance, logged_in, backup, counts, mine, later);
   if !logged_in { #assert c == (ifx balance > 0 && !later then VB_OFFER_LOGIN else VB_HIDDEN); }
   else if backup && !counts { #assert c == VB_BROKEN; }
   else if backup && !mine { #assert c == VB_NOT_THIS; }
@@ -36,16 +36,16 @@ VL_MAX_SAT :: 2_100_000_000_000_000;
   else { #assert c == (ifx balance > 0 && !later then VB_OFFER else VB_HIDDEN); }
 }
 #test "the offer comes the moment the wallet first holds money: one sat is enough, none isn't" {
-  #assert verse_backup_card(0, true, false, false, false, false) == VB_HIDDEN && verse_backup_card(1, true, false, false, false, false) == VB_OFFER;
-  #assert verse_backup_card(-1, true, false, false, false, false) == VB_HIDDEN && verse_backup_card(5000, false, false, false, false, false) == VB_OFFER_LOGIN;
+  #assert metaverse_backup_card(0, true, false, false, false, false) == VB_HIDDEN && metaverse_backup_card(1, true, false, false, false, false) == VB_OFFER;
+  #assert metaverse_backup_card(-1, true, false, false, false, false) == VB_HIDDEN && metaverse_backup_card(5000, false, false, false, false, false) == VB_OFFER_LOGIN;
   // a backup that no longer works, or isn't this phone's, is said whatever the balance and never hidden by "Not now"
-  #assert verse_backup_card(0, true, true, false, true, true) == VB_BROKEN && verse_backup_card(0, true, true, true, false, true) == VB_NOT_THIS;
+  #assert metaverse_backup_card(0, true, true, false, true, true) == VB_BROKEN && metaverse_backup_card(0, true, true, true, false, true) == VB_NOT_THIS;
 }
 #test "the rollback floor only goes up" {
-  #assert verse_backup_newer(0, 1) && !verse_backup_newer(3, 2) && !verse_backup_newer(3, 3) && verse_backup_newer(3, 4) && verse_backup_newer(-5, 0);
+  #assert metaverse_backup_newer(0, 1) && !metaverse_backup_newer(3, 2) && !metaverse_backup_newer(3, 3) && metaverse_backup_newer(3, 4) && metaverse_backup_newer(-5, 0);
 }
 #forall "the limit this phone last knew, by its own count" amount: 0..<6, spent: 0..<5, limit: -1..<5, logged_in: bool {
-  v := verse_limit_local(amount, spent, limit, logged_in);
+  v := metaverse_limit_local(amount, spent, limit, logged_in);
   if amount == 0 { #assert v == VL_REFUSED; }
   else if limit < 0 { #assert v == VL_PAY; }                 // this phone never had an account's limit
   else if !logged_in { #assert v == VL_LOG_IN; }             // it had one, and the login is gone: nothing pays
@@ -53,32 +53,32 @@ VL_MAX_SAT :: 2_100_000_000_000_000;
   else { #assert v == VL_OVER; }
 }
 #test "the local count at the edges" {
-  #assert verse_limit_local(20000, 0, 20000, true) == VL_PAY && verse_limit_local(20001, 0, 20000, true) == VL_OVER && verse_limit_local(1, 20000, 20000, true) == VL_OVER;
-  #assert verse_limit_local(VL_MAX_SAT, 0, VL_MAX_SAT, true) == VL_PAY && verse_limit_local(VL_MAX_SAT + 1, 0, -1, true) == VL_REFUSED && verse_limit_local(-1, 0, -1, true) == VL_REFUSED;
-  #assert verse_limit_local(1, -1, 5, true) == VL_REFUSED && verse_limit_local(1, 0, 0, true) == VL_OVER;
+  #assert metaverse_limit_local(20000, 0, 20000, true) == VL_PAY && metaverse_limit_local(20001, 0, 20000, true) == VL_OVER && metaverse_limit_local(1, 20000, 20000, true) == VL_OVER;
+  #assert metaverse_limit_local(VL_MAX_SAT, 0, VL_MAX_SAT, true) == VL_PAY && metaverse_limit_local(VL_MAX_SAT + 1, 0, -1, true) == VL_REFUSED && metaverse_limit_local(-1, 0, -1, true) == VL_REFUSED;
+  #assert metaverse_limit_local(1, -1, 5, true) == VL_REFUSED && metaverse_limit_local(1, 0, 0, true) == VL_OVER;
   // a stolen phone whose account was frozen (every login ended): not one sat, though the limit had room
-  #assert verse_limit_local(1, 0, 20000, false) == VL_LOG_IN && verse_limit_local(1, 0, 0, false) == VL_LOG_IN && verse_limit_local(1, 0, -1, false) == VL_PAY;
+  #assert metaverse_limit_local(1, 0, 20000, false) == VL_LOG_IN && metaverse_limit_local(1, 0, 0, false) == VL_LOG_IN && metaverse_limit_local(1, 0, -1, false) == VL_PAY;
 }
 #forall "what the app does with the server's answer" status: 0..<7, stepped: bool, can: bool, local: 0..<5 {
   s := [7] int.[0, 200, 401, 409, 400, 500, 429];
-  v := verse_limit_next(s[status], status == 2, stepped, can, local);
+  v := metaverse_limit_next(s[status], status == 2, stepped, can, local);
   if status == 1 { #assert v == VL_PAY; }                                // the server said go
   else if status == 2 { #assert v == (ifx can && !stepped then VL_STEP_UP else VL_OVER); }   // prove it is you, once
   else if status == 3 || status == 4 { #assert v == VL_REFUSED; }        // the server refused this payment
   else { #assert v == local; }                                           // it couldn't be asked: this phone's own count
 }
 #test "a 401 that isn't a step-up (logged out, a login that ended) falls back to this phone's own count" {
-  #assert verse_limit_next(401, false, false, true, VL_PAY) == VL_PAY && verse_limit_next(401, false, false, true, VL_OVER) == VL_OVER;
-  #assert verse_limit_next(401, true, false, true, VL_PAY) == VL_STEP_UP && verse_limit_next(401, true, true, true, VL_PAY) == VL_OVER;
-  #assert verse_limit_next(403, false, false, true, VL_PAY) == VL_REFUSED && verse_limit_next(503, false, false, true, VL_OVER) == VL_OVER;
-  #assert verse_limit_next(299, false, false, true, VL_OVER) == VL_PAY && verse_limit_next(199, false, false, true, VL_OVER) == VL_OVER;
-  #assert verse_limit_next(300, false, false, true, VL_OVER) == VL_OVER && verse_limit_next(399, false, false, true, VL_OVER) == VL_OVER;
-  #assert verse_limit_next(499, false, false, true, VL_PAY) == VL_REFUSED && verse_limit_next(400, false, false, true, VL_PAY) == VL_REFUSED;
+  #assert metaverse_limit_next(401, false, false, true, VL_PAY) == VL_PAY && metaverse_limit_next(401, false, false, true, VL_OVER) == VL_OVER;
+  #assert metaverse_limit_next(401, true, false, true, VL_PAY) == VL_STEP_UP && metaverse_limit_next(401, true, true, true, VL_PAY) == VL_OVER;
+  #assert metaverse_limit_next(403, false, false, true, VL_PAY) == VL_REFUSED && metaverse_limit_next(503, false, false, true, VL_OVER) == VL_OVER;
+  #assert metaverse_limit_next(299, false, false, true, VL_OVER) == VL_PAY && metaverse_limit_next(199, false, false, true, VL_OVER) == VL_OVER;
+  #assert metaverse_limit_next(300, false, false, true, VL_OVER) == VL_OVER && metaverse_limit_next(399, false, false, true, VL_OVER) == VL_OVER;
+  #assert metaverse_limit_next(499, false, false, true, VL_PAY) == VL_REFUSED && metaverse_limit_next(400, false, false, true, VL_PAY) == VL_REFUSED;
 }
 // balance: the wallet's sats. backup: the account has a backup. counts: one of its passkeys is
 // still on the account. mine: its vault is the one this phone made or restored from. later: the
 // person pressed Not now since the app started.
-verse_backup_card :: (balance: int, logged_in: bool, backup: bool, counts: bool, mine: bool, later: bool) -> int #export_c #effects(all) {
+metaverse_backup_card :: (balance: int, logged_in: bool, backup: bool, counts: bool, mine: bool, later: bool) -> int #export_c #effects(all) {
   if logged_in && backup {
     if !counts { return VB_BROKEN; }
     if !mine { return VB_NOT_THIS; }
@@ -89,7 +89,7 @@ verse_backup_card :: (balance: int, logged_in: bool, backup: bool, counts: bool,
   return VB_OFFER;
 }
 // Whether epoch is past the highest this phone has made or opened: then it is the new floor.
-verse_backup_newer :: (seen: int, epoch: int) -> bool #export_c #effects(all) {
+metaverse_backup_newer :: (seen: int, epoch: int) -> bool #export_c #effects(all) {
   return epoch > seen;
 }
 
@@ -97,7 +97,7 @@ verse_backup_newer :: (seen: int, epoch: int) -> bool #export_c #effects(all) {
 // daily limit this phone last heard from its account (-1: it never heard one). logged_in: the
 // app has a login the server still takes. A phone that has heard a limit pays nothing while it
 // is logged out: freezing an account ends every login, and that is what stops a stolen phone.
-verse_limit_local :: (amount: int, spent: int, limit: int, logged_in: bool) -> int #export_c #effects(all) {
+metaverse_limit_local :: (amount: int, spent: int, limit: int, logged_in: bool) -> int #export_c #effects(all) {
   if amount <= 0 || amount > VL_MAX_SAT || spent < 0 { return VL_REFUSED; }
   if limit < 0 { return VL_PAY; }
   if !logged_in { return VL_LOG_IN; }
@@ -106,8 +106,8 @@ verse_limit_local :: (amount: int, spent: int, limit: int, logged_in: bool) -> i
 }
 // status: the HTTP status of POST /api/wallet/spend (0: no answer). step_up: its refusal asked for
 // a fresh proof. stepped: the app already proved it for this payment. can: this phone has a way to
-// prove it (a passkey, or its key on the account). local: verse_limit_local's answer.
-verse_limit_next :: (status: int, step_up: bool, stepped: bool, can: bool, local: int) -> int #export_c #effects(all) {
+// prove it (a passkey, or its key on the account). local: metaverse_limit_local's answer.
+metaverse_limit_next :: (status: int, step_up: bool, stepped: bool, can: bool, local: int) -> int #export_c #effects(all) {
   if status >= 200 && status < 300 { return VL_PAY; }
   if status == 401 && step_up {
     if can && !stepped { return VL_STEP_UP; }

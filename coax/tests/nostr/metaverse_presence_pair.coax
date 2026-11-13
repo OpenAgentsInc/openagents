@@ -6,8 +6,8 @@
 // mv_frame_read admits them for the world and mv_order drops any replayed or
 // reordered one. Each received frame's latency is the receiver's wall clock
 // minus the sender's t, both on this machine. Run two at once:
-//   coax/web/tool.sh coax/tests/nostr/verse_presence_pair.coax --role a --relay ws://localhost:PORT &
-//   coax/web/tool.sh coax/tests/nostr/verse_presence_pair.coax --role b --relay ws://localhost:PORT
+//   coax/web/tool.sh coax/tests/nostr/metaverse_presence_pair.coax --role a --relay ws://localhost:PORT &
+//   coax/web/tool.sh coax/tests/nostr/metaverse_presence_pair.coax --role b --relay ws://localhost:PORT
 // [--frames N (40)] [--every MS (250)] [--budget MS (100)] [--start WALL_MS: when both
 // begin sending, so neither sends before the other subscribes]. Prints one JSON
 // line and exits 0 when every frame of the other arrived, in order, admitted,
@@ -94,37 +94,37 @@ vp_median :: (v: [] int, n: int) -> int {
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) { tool_errln("verse_presence_pair: arguments too long"); return 2; }
+  if !args_load(a[..]) { tool_errln("metaverse_presence_pair: arguments too long"); return 2; }
   role := args_value(a[..], "--role", "");
   url := args_value(a[..], "--relay", "");
-  if (role != "a" && role != "b") || url.count == 0 { tool_errln("usage: verse_presence_pair --role a|b --relay ws://HOST:PORT [--frames N] [--every MS] [--budget MS] [--start WALL_MS]"); return 2; }
+  if (role != "a" && role != "b") || url.count == 0 { tool_errln("usage: metaverse_presence_pair --role a|b --relay ws://HOST:PORT [--frames N] [--every MS] [--budget MS] [--start WALL_MS]"); return 2; }
   frames := args_whole(args_value(a[..], "--frames", "40"));
   every := args_whole(args_value(a[..], "--every", "250"));
   budget := args_whole(args_value(a[..], "--budget", "100"));
-  if frames < 1 || frames > VP_MAX || every < 10 || budget < 1 { tool_errln("verse_presence_pair: --frames 1..1000, --every >= 10, --budget >= 1"); return 2; }
+  if frames < 1 || frames > VP_MAX || every < 10 || budget < 1 { tool_errln("metaverse_presence_pair: --frames 1..1000, --every >= 10, --budget >= 1"); return 2; }
   peer := ifx role == "a" then "b" else "a";
 
   key: [32] u8; pkey: [32] u8; pub: [33] u8; ppub: [33] u8;
-  if !vp_key(role, key[..]) || !vp_key(peer, pkey[..]) || !bip32_public(key[..], pub[..]) || !bip32_public(pkey[..], ppub[..]) { tool_errln("verse_presence_pair: no test key"); return 2; }
+  if !vp_key(role, key[..]) || !vp_key(peer, pkey[..]) || !bip32_public(key[..], pub[..]) || !bip32_public(pkey[..], ppub[..]) { tool_errln("metaverse_presence_pair: no test key"); return 2; }
   wipe(pkey[..]);   // only the peer's public key is needed
   me_hex: [64] u8; peer_hex: [64] u8;
   vp_hex(pub[1..<33], me_hex[..]); vp_hex(ppub[1..<33], peer_hex[..]);
 
   out: [2] CliRelay;   // 0 publishes, 1 subscribes
-  if !cr_open(out[0..<1], url, key[..]) || !cr_open(out[1..<2], url, key[..]) { tool_errln("verse_presence_pair: can't connect"); wipe(key[..]); return 1; }
+  if !cr_open(out[0..<1], url, key[..]) || !cr_open(out[1..<2], url, key[..]) { tool_errln("metaverse_presence_pair: can't connect"); wipe(key[..]); return 1; }
   filter: [512] u8;
   f := vp_put(filter[..], 0, "{\"kinds\":[23300],\"authors\":[\"");
   f = vp_put(filter[..], f, cast(string) peer_hex[..]);
   f = vp_put(filter[..], f, "\"],\"#w\":[\""); f = vp_put(filter[..], f, MV_PLAZA); f = vp_put(filter[..], f, "\"]}");
-  if f < 0 || !cr_req(out[1..<2], cast(string) filter[0..<f]) { tool_errln("verse_presence_pair: REQ failed"); wipe(key[..]); return 1; }
-  if cr_next(out[1..<2], cxsock_now_ms() + 5000) != CR_EOSE { tool_errln("verse_presence_pair: no EOSE"); wipe(key[..]); return 1; }
+  if f < 0 || !cr_req(out[1..<2], cast(string) filter[0..<f]) { tool_errln("metaverse_presence_pair: REQ failed"); wipe(key[..]); return 1; }
+  if cr_next(out[1..<2], cxsock_now_ms() + 5000) != CR_EOSE { tool_errln("metaverse_presence_pair: no EOSE"); wipe(key[..]); return 1; }
   // Both clients subscribe before either sends: they start sending at the
   // wall-clock --start (ms since the epoch) the runner gives both, or 1.5 s
   // after this one's EOSE. A start more than 60 s ahead is refused.
   wall := cxproc_wall_us() / 1000;
   start := args_whole(args_value(a[..], "--start", "0"));
   if start <= 0 { start = wall + 1500; }
-  if start - wall > 60000 { tool_errln("verse_presence_pair: --start is more than 60 s ahead"); wipe(key[..]); return 2; }
+  if start - wall > 60000 { tool_errln("metaverse_presence_pair: --start is more than 60 s ahead"); wipe(key[..]); return 2; }
   settle := cxsock_now_ms() + (ifx start > wall then start - wall else 0);
 
   world := mv_plaza();
@@ -156,7 +156,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if wait - cxsock_now_ms() > 50 { wait = cxsock_now_ms() + 50; }
     if wait <= cxsock_now_ms() { wait = cxsock_now_ms() + 1; }
     r := cr_next(out[1..<2], wait);
-    if r == CR_FAIL || r == CR_CLOSED { tool_errln("verse_presence_pair: subscription ended"); break; }
+    if r == CR_FAIL || r == CR_CLOSED { tool_errln("metaverse_presence_pair: subscription ended"); break; }
     if r != CR_EVENT { continue; }
     arrived := cxproc_wall_us() / 1000;
     text := cr_event(out[1..<2]);

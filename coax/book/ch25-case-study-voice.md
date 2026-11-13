@@ -680,7 +680,7 @@ lead, gaps are bridged, slow onsets expire".
 That test name mentions pre-roll. Because a turn only starts after 160 ms
 of speech, the start of the first word has already gone by when the
 machine decides. The engine keeps the last 16 frames in a ring, and
-`verse_voice_preroll` hands the onset back so recognition hears the
+`metaverse_voice_preroll` hands the onset back so recognition hears the
 first syllable. You'll see `pre-roll 160 ms` in the client's output later.
 
 ## Barge-in and media epochs
@@ -740,7 +740,7 @@ breath doesn't cut the reply, and it happens once per turn:
   } else if !speech { s[0].barge_run = 0; }
 ```
 
-*Listing 25-10: Barge-in in `verse_voice_uplink`*
+*Listing 25-10: Barge-in in `metaverse_voice_uplink`*
 
 Notice `self_decide`. The engine doesn't cut playback directly here. It
 makes a decision, the same kind of decision an outside decider could send,
@@ -1469,10 +1469,10 @@ uint32_t oa_voice_uplink(oa_voice *v, const int16_t *pcm, int16_t *out16k, oa_vo
   if (!pcm) return 0;
   coax_t_VoiceFeatures k;
   memset(&k, 0, sizeof k);
-  coax_v_s16 in = {(int16_t *)pcm, (int64_t)verse_voice_input_frame_samples(sv(v))};
+  coax_v_s16 in = {(int16_t *)pcm, (int64_t)metaverse_voice_input_frame_samples(sv(v))};
   coax_v_s16 out = {out16k, out16k ? OA_VOICE_FRAME_SAMPLES : 0};
   coax_v_t_VoiceFeatures fv = {&k, 1};
-  uint32_t ev = verse_voice_uplink(sv(v), in, out, fv);
+  uint32_t ev = metaverse_voice_uplink(sv(v), in, out, fv);
   if (f) features_out(&k, f);
   return ev;
 }
@@ -1481,7 +1481,7 @@ uint32_t oa_voice_uplink(oa_voice *v, const int16_t *pcm, int16_t *out16k, oa_vo
 *Listing 25-19: One call through the C face*
 
 Notice that the input view's count comes from Coax
-(`verse_voice_input_frame_samples`), not from the caller. Chapter 20
+(`metaverse_voice_input_frame_samples`), not from the caller. Chapter 20
 warned that Coax trusts the count it's given; here the face makes sure
 the count is the one the engine was configured for.
 

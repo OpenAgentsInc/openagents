@@ -284,8 +284,8 @@ static void start(cx_face_addr state) {
   if (!track_state.page_n) track_init(tr(), e5_realm(at(state)));
   if (placed) return;
   coax_t_Point spawn = everglade_spawn(at(state));
-  player = verse_player_place(spawn.x, spawn.y, spawn.z, everglade_spawn_face(at(state)));
-  sticks = verse_sticks_reset();
+  player = metaverse_player_place(spawn.x, spawn.y, spawn.z, everglade_spawn_face(at(state)));
+  sticks = metaverse_sticks_reset();
   placed = true;
   if (!river_built) {
     everglade_levels(at(state), (coax_v_f32){river_levels, 177 + 16});
@@ -300,13 +300,13 @@ static void start(cx_face_addr state) {
 static coax_t_Place place_here(cx_face_addr state) {
   coax_t_Everglade *g = city(state);
   if (!placed) return (coax_t_Place){0};
-  return everglade_place_here(at(state), verse_place_of(player.body.pos.x, player.body.pos.y, player.body.pos.z, verse_player_face(player), g->orbit,
+  return everglade_place_here(at(state), metaverse_place_of(player.body.pos.x, player.body.pos.y, player.body.pos.z, metaverse_player_face(player), g->orbit,
                         everglade_room_at(at(state), player.body.pos.x, player.body.pos.z)));
 }
 // Put you at a kept place, on open ground near it if it no longer is.
 static void place_put(cx_face_addr state, coax_t_Place p) {
   coax_t_Place q = everglade_place_fix(at(state), p);
-  player = verse_player_place(q.x, 0, q.z, q.face);
+  player = metaverse_player_place(q.x, 0, q.z, q.face);
   everglade_place_camera(at(state), q);
   swim = (coax_t_Swim){0}; swim.pace = 1; swim.breath = 1; swim.surface = -1000;
   place_back = true;
@@ -359,7 +359,7 @@ EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(cx_face_addr state, in
   if (field >= 40 && field < 50) return (int32_t)everglade_create_probe(at(state), field - 40);
   if (field>=20 && field<=28) return (int32_t)everglade_avatar_probe(at(state),field);
   if (field >= 0 && field < 3) return (int32_t)(probe_feet[field] * 1000);
-  if (field == 3) return (int32_t)verse_player_act(player);
+  if (field == 3) return (int32_t)metaverse_player_act(player);
   if (field == 4) return (int32_t)city(state)->skin.e[0].clip;
   if (field == 5) return (int32_t)(probe_speed * 100);
   if (field == 6) return (int32_t)net_probe(at(state), 14);
@@ -410,12 +410,12 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   quality_state = state;
   everglade_quality_frame(at(state), frame, golden);   /* the graphics quality's governor (everglade-quality.coax) */
   e5_tick(e5v(), frame);   /* the frame rate in the corner (everglade5e.coax e5_fps_draw) */
-  dt = verse_player_counts(player, frame);
+  dt = metaverse_player_counts(player, frame);
   if (!golden) now += dt;
   everglade_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
   if (everglade_warp(at(state))) {
     coax_t_Point spawn = everglade_spawn(at(state));
-    player = verse_player_place(spawn.x, spawn.y, spawn.z, everglade_spawn_face(at(state)));
+    player = metaverse_player_place(spawn.x, spawn.y, spawn.z, everglade_spawn_face(at(state)));
     // you stand there on the ground: out of the water and any rowboat, breathing, still
     if (river_built) everglade_river_reset(rv());
     swim = (coax_t_Swim){0}; swim.pace = 1; swim.breath = 1; swim.surface = -1000;
@@ -423,14 +423,14 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   // Your movement step (everglade-move.coax, the world's half; everglade-step.coax, the controller's):
   // the same Coax step the room server runs for your seat, in the order written there.
   bool busy = everglade_busy(at(state)) || everglade_held(at(state));
-  if (busy) sticks = verse_sticks_reset();
+  if (busy) sticks = metaverse_sticks_reset();
   /* a controller's stick walks as a thumb's does (everglade-access.coax everglade_pad) */
   float walk_x = sticks.pad_x + (busy ? 0 : everglade_pad_x(at(state))), walk_y = sticks.pad_y + (busy ? 0 : everglade_pad_y(at(state)));
   walk_x = walk_x < -1 ? -1 : walk_x > 1 ? 1 : walk_x; walk_y = walk_y < -1 ? -1 : walk_y > 1 ? 1 : walk_y;
-  coax_t_EgMoveIn input = {g->key_x, g->key_y, walk_x, walk_y, verse_runs(g->run, sticks.run, walk_x, walk_y),
+  coax_t_EgMoveIn input = {g->key_x, g->key_y, walk_x, walk_y, metaverse_runs(g->run, sticks.run, walk_x, walk_y),
                            g->jump || sticks.jump, everglade_player_theta(at(state))};
   if (sticks.zoom != 0) everglade_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (metaverse/grid.coax) */
-  sticks = verse_sticks_used(sticks);
+  sticks = metaverse_sticks_used(sticks);
   coax_t_Seat seat = {0};
   if (river.aboard >= 0) {
     // in a rowboat: W and S row, A and D turn (a thumb's stick too); you sit where it takes you
@@ -500,7 +500,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   }
   if (swim.defeated) {
     // the sixth level of Exhaustion: you come to on the nearer bank
-    player = verse_player_place(swim.bank_x, 0, swim.bank_z, verse_player_face(player));
+    player = metaverse_player_place(swim.bank_x, 0, swim.bank_z, metaverse_player_face(player));
     swim.medium = 0; swim.pace = 1;
   }
   // the spells' fields over the floats (Reverse Gravity, the Wind Walls: everglade-abilities.coax), as last frame left them
@@ -524,7 +524,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
       if (boarded != river.aboard) { boarded = river.aboard; boarded_at = now; }
       if (net_boat_refused(at(state), river.aboard, (float)(now - boarded_at))) {
         coax_t_Seat off = everglade_river_leave(rv(), heights, now);
-        if (off.on) player = verse_player_place(off.x, 0, off.z, off.yaw);
+        if (off.on) player = metaverse_player_place(off.x, 0, off.z, off.yaw);
         swim = everglade_river_swim(rv(), heights, player.body.pos.x, player.body.pos.z, false, 0, now);
         boarded = -1; boarded_at = -1;
       }
@@ -537,7 +537,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   if (everglade_boat_take(at(state))) {
     if (river.aboard >= 0) {
       coax_t_Seat off = everglade_river_leave(rv(), heights, now);
-      if (off.on) player = verse_player_place(off.x, 0, off.z, off.yaw);
+      if (off.on) player = metaverse_player_place(off.x, 0, off.z, off.yaw);
       swim = everglade_river_swim(rv(), heights, player.body.pos.x, player.body.pos.z, false, 0, now);
     } else if (everglade_river_board(rv(), everglade_river_boat_near(rv(), player.body.pos.x, player.body.pos.z))) {
       swim = everglade_river_swim(rv(), heights, player.body.pos.x, player.body.pos.z, false, 0, now);
@@ -546,7 +546,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   bool small = everglade_phone(at(state));
   everglade_water(at(state), swim.medium, swim.feet, swim.breath, swim.levels,
                   everglade_river_vertices(small), everglade_river_patches(), (coax_v_f32){river_floats, 28 * 8}, floats);
-  coax_t_Vec3 feet = verse_player_feet(player);
+  coax_t_Vec3 feet = metaverse_player_feet(player);
   if (net_live(at(state))) {
     // drawn between the last two steps' ends (the controller's feet at each), and less what a re-run
     // moved you, eased out
@@ -557,13 +557,13 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   probe_feet[0] = feet.x; probe_feet[1] = feet.y; probe_feet[2] = feet.z; probe_speed = show_vx * show_vx + show_vz * show_vz;
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_everglade_max_vertices() * coaxial_everglade_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_everglade_uniform_floats()};
-  { coax_t_Vec3 want = verse_player_asked(player); everglade_intent(at(state), want.x, want.z); }   /* the camera's heading (#12777) */
+  { coax_t_Vec3 want = metaverse_player_asked(player); everglade_intent(at(state), want.x, want.z); }   /* the camera's heading (#12777) */
   everglade_guide_begin(at(state), golden);
   if (!e5_rules.started) e5r_start(e5r(), 20261103);
   e5_before(at(state), e5v(), (coax_v_f32){e5_bar_buf, 49 * 6}, e5_bar_n, (coax_v_f32){e5_hero_buf, 32}, e5_hero_n, (float)now);
   double measure_scene=frame_measuring?coaxial_measure_ms():0;
-  int64_t n = everglade_frame(at(state), out, u, w, h, scale, dt, still != 0 || golden, feet.x, feet.y, feet.z, verse_player_face(player),
-                           verse_player_act(player), show_vx, show_vz,
+  int64_t n = everglade_frame(at(state), out, u, w, h, scale, dt, still != 0 || golden, feet.x, feet.y, feet.z, metaverse_player_face(player),
+                           metaverse_player_act(player), show_vx, show_vz,
                            sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   guide_out(state);
   n = everglade_finish_frame(at(state), out, u);
@@ -572,8 +572,8 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   double measure_tail=frame_measuring?coaxial_measure_ms():0;
   {
     /* the room's server (everglade-net.coax): the clock, the socket, the world where it is drawn */
-    net_step(at(state), (int64_t)guard_now_ms(), feet.x, feet.y, feet.z, verse_player_face(player), show_vx, show_vz,
-             !player.body.on_ground, swim.medium, river.aboard >= 0, verse_player_act(player));
+    net_step(at(state), (int64_t)guard_now_ms(), feet.x, feet.y, feet.z, metaverse_player_face(player), show_vx, show_vz,
+             !player.body.on_ground, swim.medium, river.aboard >= 0, metaverse_player_act(player));
     net_drain(state);
     sound_n = (uint32_t)everglade_sound_lines(at(state));   /* the cues of the page's frame and the room's events (everglade-sound.coax) */
     ticket_out();
@@ -736,9 +736,9 @@ static void room_out(cx_face_addr state, float dt) {
   int64_t un = room_url(room, false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
   room_asked_n = room.count < (int64_t)sizeof room_asked ? (int)room.count : 0;
   memcpy(room_asked, room.data, (size_t)room_asked_n);
-  coax_t_Vec3 feet = verse_player_feet(player);
+  coax_t_Vec3 feet = metaverse_player_feet(player);
   float air = player.body.on_ground ? 0.0f : feet.y;
-  int64_t bn = room_presence_body(feet.x, air, feet.z, verse_player_face(player), city(state)->room.e[0].last, (coax_v_u8){room_body, sizeof room_body});
+  int64_t bn = room_presence_body(feet.x, air, feet.z, metaverse_player_face(player), city(state)->room.e[0].last, (coax_v_u8){room_body, sizeof room_body});
   if (un <= 0 || bn <= 0) return;
   room_id = coaxial_http((cx_face_addr)(uintptr_t)room_url_buf, (uint32_t)un, (cx_face_addr)(uintptr_t)room_body, (uint32_t)bn, 1 | 4 | 8);
   if (room_id < 0) room_id = -1;
@@ -859,13 +859,13 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(cx_face_addr state, int32_t key
   return everglade_key_up(at(state), key, mods) ? 1u : 0u;
 }
 EXPORT("coaxial_focus") void coaxial_focus(cx_face_addr state) { everglade_guard_focus(at(state), true); guard_out(state); guide_out(state); }
-EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { everglade_blur(at(state)); guard_out(state); guide_out(state); sticks = verse_sticks_reset(); track_blur(tr()); }
+EXPORT("coaxial_blur") void coaxial_blur(cx_face_addr state) { everglade_blur(at(state)); guard_out(state); guide_out(state); sticks = metaverse_sticks_reset(); track_blur(tr()); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(cx_face_addr state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   start(state);
   track_pointer(tr(), x, y, phase, kind, (coax_string){"", 0});
   track_drain(&track_state);
   if (everglade_pointer(at(state), x, y, phase, kind, id)) return 1u;
-  if (kind != 0) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
+  if (kind != 0) sticks = metaverse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now);
   return kind != 0 ? 1u : 0u;
 }
 // The accessible layer (coax/web/host.js a11yMirror; everglade-access.coax): the HUD's controls as
@@ -1011,7 +1011,7 @@ EXPORT("coaxial_hash") void coaxial_hash(cx_face_addr state, uint32_t length) {
   everglade_hash(at(state), (coax_string){(const char *)inbox, length});
   // a hash that named a place (or the map) wins over the kept one
   coax_t_Everglade *g = city(state);
-  verse_place_named(place_k(), g->warp || g->above);
+  metaverse_place_named(place_k(), g->warp || g->above);
 }
 
 EXPORT("coaxial_action") int32_t coaxial_action(cx_face_addr state) {

@@ -39,7 +39,7 @@ int main(void) {
   vkw_top_close(NULL,NULL); assert(window.closed);
   assert(vkdesk_window_close(&desk)==1); window.closed=0;
   char close_output[256]; read_pipe(pipefd[0],close_output,sizeof close_output); assert(strcmp(close_output,"close\n")==0 && !window.closed);
-  desk.mode=verse_panel_next(PANEL_CLOSED,KEY_F9); assert(vkdesk_window_close(&desk)==1); read_pipe(pipefd[0],close_output,sizeof close_output); assert(strcmp(close_output,"close\n")==0);
+  desk.mode=metaverse_panel_next(PANEL_CLOSED,KEY_F9); assert(vkdesk_window_close(&desk)==1); read_pipe(pipefd[0],close_output,sizeof close_output); assert(strcmp(close_output,"close\n")==0);
   desk.mode=PANEL_WORLD; assert(vkdesk_window_close(&desk)==1); read_pipe(pipefd[0],close_output,sizeof close_output); assert(strcmp(close_output,"close\n")==0);
   desk.mode=PANEL_CLOSED; assert(vkdesk_window_close(&desk)==0);
   desk.mode=PANEL_FLAT; desk.pid=-1; assert(vkdesk_window_close(&desk)==0); desk.pid=1;

@@ -166,7 +166,7 @@ fr_many :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
   v := at;
   pale := ink(p, INK_PALE); bright := ink(p, INK_BRIGHT); blue := ink(p, INK_BLUE); white := ink(p, INK_WHITE);
   sh: Shape; sh.size = 0.82;
-  k := verse_figure_skeleton(sh);
+  k := metaverse_figure_skeleton(sh);
   caged := fr_in(t, FR_APART + 1.2, 1.4) * fr_out(t, FR_REFOCUS + 0.3, 1.4);
   phones := fr_in(t, FR_POCKET, 1.0) * fr_out(t, FR_VERSE - 1.5, 1.0);
   arguing := fr_in(t, FR_ARGUE, 0.5) * fr_out(t, FR_FARMED + 0.3, 0.6);
@@ -184,7 +184,7 @@ fr_many :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
     if arguing > 0.5 { look = ifx pair then fv(1, 0, 0) else fv(-1, 0, 0); }
     if w.walking { look = fv_sub(w.to, w.from); }
     yaw := angle_of(look.x, look.z);
-    pose := verse_figure_gait(Rig.person, ifx w.walking then Gait.walk else Gait.stand, fract(t * 1.3 + f32(i) * 0.37), t * 1.2 + f32(i));
+    pose := metaverse_figure_gait(Rig.person, ifx w.walking then Gait.walk else Gait.stand, fract(t * 1.3 + f32(i) * 0.37), t * 1.2 + f32(i));
     // a phone held up, the head bowed to it while they're apart
     if phones > 0 && !w.walking {
       pose.turn[P_R_SHOULDER] = fv(-0.75 * phones, 0, -0.1);
@@ -332,7 +332,7 @@ fr_tables :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
       }
     }
     sh: Shape; sh.size = 0.95;
-    k := verse_figure_skeleton(sh);
+    k := metaverse_figure_skeleton(sh);
     for s: 0..<FR_SEATS {
       side := ifx s < 6 then -1.0f32 else 1.0f32;
       x := o.x - 2.1 + 0.84 * f32(s % 6);
@@ -347,7 +347,7 @@ fr_tables :: (out: [] f32, at: int, c: Cam, p: Pen, t: f32) -> int {
       v = seg(out, v, c, fv(x - 0.24, 1.3, back_z), fv(x + 0.24, 1.3, back_z), dim, seen);
       for l: 0..<2 { lx := ifx l == 0 then -0.2f32 else 0.2f32; v = seg(out, v, c, fv(x + lx, 0, z - side * 0.18), fv(x + lx, 0.44, z - side * 0.18), dim, seen); }
       // the one in it: seated, facing the table
-      pose := verse_figure_gait(Rig.person, Gait.stand, 0, t + f32(s));
+      pose := metaverse_figure_gait(Rig.person, Gait.stand, 0, t + f32(s));
       pose.turn[P_L_HIP] = fv(-1.5, 0, 0.05); pose.turn[P_R_HIP] = fv(-1.5, 0, -0.05);
       pose.turn[P_L_KNEE] = fv(1.5, 0, 0); pose.turn[P_R_KNEE] = fv(1.5, 0, 0);
       pose.turn[P_R_SHOULDER] = fv(-0.6, 0, -0.1); pose.turn[P_L_SHOULDER] = fv(-0.6, 0, 0.1);

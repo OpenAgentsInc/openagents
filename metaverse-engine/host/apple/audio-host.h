@@ -5,8 +5,8 @@
 // (apps/metaverse-engine-desktop/MetalRealm.m) and the Metaverse Engine's page host (metaverse-engine/host/apple/PageHost.m)
 // each answer those four; the wrappers are audio-host.c, built into the TU that has the Coax
 // types. The Swift side is apps/metaverse-engine-desktop/Sources/MetalAudio.swift.
-#ifndef AETHYR_APPLE_AUDIO_HOST_H
-#define AETHYR_APPLE_AUDIO_HOST_H
+#ifndef ENGINE_APPLE_AUDIO_HOST_H
+#define ENGINE_APPLE_AUDIO_HOST_H
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

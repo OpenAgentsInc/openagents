@@ -109,7 +109,7 @@ emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
 # entries through the reader (pack-table.h, which includes the face under its old name).
 "$coax" c "$repo/metaverse-engine/host/core/core-face.coax" --library --header "$work/c/aethyr-core-face.h" > "$work/c/aethyr-core-face.c"
 # (Its SHA-256 helpers are also native-audio's: this unit keeps its own names for them.)
-/usr/bin/clang "${cflags[@]}" -w -DS_hash=aethyr_core_S_hash -DS_hex=aethyr_core_S_hex -c "$work/c/aethyr-core-face.c" -o "$work/c/aethyr-core-face.o"
+/usr/bin/clang "${cflags[@]}" -w -DS_hash=engine_core_S_hash -DS_hex=engine_core_S_hex -c "$work/c/aethyr-core-face.c" -o "$work/c/aethyr-core-face.o"
 printf '#include "aethyr-core-face.h"\n' > "$work/c/aethyr-pack-table.h"
 /usr/bin/clang -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -I"$work/c" -c "$repo/metaverse-engine/host/apple/PageHost.m" -o "$work/c/page-host.o"
 # The realms' sound: the Metaverse Engine's Apple audio host (metaverse-engine/host/apple/audio-host.h, PageAudio.swift and

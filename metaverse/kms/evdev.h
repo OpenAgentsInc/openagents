@@ -1,8 +1,8 @@
 // The keyboards, read from evdev and grabbed so keys reach the realm and not
 // the console under it: what metaverse/kms and metaverse/gpu's display session use.
 // Linux only; the caller needs read access to /dev/input (root).
-#ifndef VERSE_KMS_EVDEV_H
-#define VERSE_KMS_EVDEV_H
+#ifndef METAVERSE_KMS_EVDEV_H
+#define METAVERSE_KMS_EVDEV_H
 #include "keys.h"
 #include <dirent.h>
 #include <fcntl.h>

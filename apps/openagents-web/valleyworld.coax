@@ -119,7 +119,7 @@ world_step :: (s:[]ValleyWorld,dt:f32,still:bool) #export_c #effects(all) {
  w:=pc.World.{ground= -128,room=150,heightfields=field[..],walls=walls[..],collision=collision.collision_profile_lookup("valley-canyon").profile,locomotion=locomotion.LocomotionProfile.{source_velocity=true,walk_speed=1.47,run_speed=4.27,gravity=9.8,jump_speed=6,acceleration=5,turn_rate=10}};
  trace:=pc.advance_traced(w,p,dt);next:=trace.player;blocked:=!world_safe(s,next.body.pos.x,next.body.pos.z);if blocked {next.body.pos=p.body.pos;next.body.prev_pos=p.body.pos;next.body.vel=pc.Vec3.{};next.cam.target=p.cam.target;next.cam.prev_target=p.cam.target;next.body.on_ground=p.body.on_ground;next.body.act=pc.Act.idle;}c[0].you=next;wish:=pc.wish(p);want:=pc.atan2(wish.x,wish.z);
  for step:0..<trace.count {target:=trace.targets[step];c[0].echo[0].drive_inputs=true;c[0].echo[0].input_on=!blocked && (target.act==1 || target.act==2);c[0].echo[0].run_requested=target.act==2;character_locomote(c[0].echo[..],c[0].pack[..],1.0/64.0,ifx blocked then 0.0f32 else sqrt(target.velocity.x*target.velocity.x+target.velocity.z*target.velocity.z),target.act!=3,pc.wrap_angle(want-target.face));}
- c[0].now+=cast(f64)(trace.count)/64;c[0].look_x=0;c[0].look_y=0;c[0].thumbs=verse_sticks_used(t);
+ c[0].now+=cast(f64)(trace.count)/64;c[0].look_x=0;c[0].look_y=0;c[0].thumbs=metaverse_sticks_used(t);
 }
 world_asset :: (s:[]ValleyWorld,index:int,bytes:int) #export_c #effects(all) {
  if index<0 || index>3 {return;}s[0].assets[index]=bytes;if bytes==0 {s[0].failed=true;return;}

@@ -24,8 +24,8 @@
 #endif
 #include <TargetConditionals.h>
 #include "aethyr-core-face.h"
-#define AETHYR_PACK_TABLE_PROVIDED
-#define AETHYR_CORE_FACE
+#define ENGINE_PACK_TABLE_PROVIDED
+#define ENGINE_CORE_FACE
 #include "../core/host-core.h"
 
 typedef uintptr_t A;
@@ -254,7 +254,7 @@ static NSData *phInflate(NSData *gz) {
  put(@"tab", [tab stringByAppendingFormat:@"%04x", (unsigned)(getpid() & 0xffff)]); put(@"fresh", @1); put(@"visitor", tab);
  put(@"now", @((long long)(NSDate.date.timeIntervalSince1970 * 1000))); put(@"nav", [NSString stringWithFormat:@"%.1f", (CACurrentMediaTime() - opened) * 1000]);
  put(@"url", [config.origin stringByAppendingString:config.path ?: @"/"]); put(@"ref", @"");
- put(@"ua", [NSString stringWithFormat:@"AethyrPageHost/1 (%@)", NSProcessInfo.processInfo.operatingSystemVersionString]);
+ put(@"ua", [NSString stringWithFormat:@"EnginePageHost/1 (%@)", NSProcessInfo.processInfo.operatingSystemVersionString]);
  put(@"lang", NSLocale.preferredLanguages.firstObject ?: @"en"); put(@"tz", NSTimeZone.localTimeZone.name);
  put(@"sw", @((int)screenPixels.width)); put(@"sh", @((int)screenPixels.height));
  put(@"vw", @((int)points.width)); put(@"vh", @((int)points.height)); put(@"dpr", @(dpr > 0 ? dpr : 2));
@@ -394,7 +394,7 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
 // The pack's layers as one array of GPU blocks (GitHub #13305): a block build's layers
 // (metaverse-engine/render/block-layer.coax) go up as they are, every level of every layer, with no
 // decode, no resize and no mips made here. nil when this GPU has no such format.
-- (id<MTLTexture>)blockLayers:(const AethyrCorePack *)pack first:(const AethyrCoreLayer *)first {
+- (id<MTLTexture>)blockLayers:(const EngineCorePack *)pack first:(const EngineCoreLayer *)first {
  MTLPixelFormat format = MTLPixelFormatInvalid;
  if (!strcmp(first->tag, "astc4")) format = MTLPixelFormatASTC_4x4_sRGB;
  else if (!strcmp(first->tag, "astc6")) format = MTLPixelFormatASTC_6x6_sRGB;
@@ -407,10 +407,10 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
  d.arrayLength = (NSUInteger)pack->colours; d.mipmapLevelCount = (NSUInteger)first->shape.levels; d.usage = MTLTextureUsageShaderRead;
  id<MTLTexture> t = [device newTextureWithDescriptor:d]; if (!t) return nil;
  for (int k = 0; k < pack->colours; k++) {
-  AethyrCoreLayer layer = aethyr_core_layer(pack, pack->colour[k]);
+  EngineCoreLayer layer = engine_core_layer(pack, pack->colour[k]);
   for (int level = 0; ; level++) {
    size_t n; int w, h, across, down;
-   const uint8_t *b = aethyr_core_level(&layer, level, &n, &w, &h, &across, &down);
+   const uint8_t *b = engine_core_level(&layer, level, &n, &w, &h, &across, &down);
    if (!b) break;
    [t replaceRegion:MTLRegionMake2D(0, 0, w, h) mipmapLevel:level slice:k withBytes:b bytesPerRow:(NSUInteger)across * 16 bytesPerImage:0];
   }
@@ -563,7 +563,7 @@ typedef struct { MTLPixelFormat format; BOOL blend; MTLBlendFactor src, dst, src
 }
 // What the core calls of the face: its exports, with a message followed by the host's turn (after),
 // and a destination taken when the bytes fit the capacity the face states.
-static void *phSpan(void *user, AethyrAddr at, uint32_t capacity, uint32_t n) { return n <= capacity ? (void *)at : NULL; }
+static void *phSpan(void *user, EngineAddr at, uint32_t capacity, uint32_t n) { return n <= capacity ? (void *)at : NULL; }
 static void phMessage(A state, int32_t kind, uint32_t n) { AEPageHost *h = phCurrent; if (!h) return; h->x.message(state, kind, n); [h after]; }
 static int phHasBuild(void *user, const char *tag) {
  return [[NSFileManager defaultManager] fileExistsAtPath:[NSString stringWithFormat:@"%@.%s.vpk3", (__bridge NSString *)user, tag]] ? 1 : 0;
@@ -583,12 +583,12 @@ static int phHasBuild(void *user, const char *tag) {
   phone = YES;
 #endif
   BOOL astc = [device supportsFamily:MTLGPUFamilyApple2];
-  aethyr_core_format(bc, astc, phone, phHasBuild, (__bridge void *)base, tag);
+  engine_core_format(bc, astc, phone, phHasBuild, (__bridge void *)base, tag);
   if (tag[0]) {
    NSData *file = [NSData dataWithContentsOfFile:[NSString stringWithFormat:@"%@.%s.vpk3", base, tag] options:NSDataReadingMappedIfSafe error:nil];
-   int64_t want = file ? aethyr_core_image_bytes(file.bytes, file.length) : -1;
+   int64_t want = file ? engine_core_image_bytes(file.bytes, file.length) : -1;
    NSMutableData *image = want > 0 ? [NSMutableData dataWithLength:(NSUInteger)want] : nil;
-   if (image && aethyr_core_image(file.bytes, file.length, image.mutableBytes, (size_t)want)) packBytes = image;
+   if (image && engine_core_image(file.bytes, file.length, image.mutableBytes, (size_t)want)) packBytes = image;
    phLog(@"pack: the %s block build %@", tag, packBytes ? @"is read whole, every page checked" : @"is refused; the pack itself is loaded");
   }
  }
@@ -598,20 +598,20 @@ static int phHasBuild(void *user, const char *tag) {
  const uint8_t *b = packBytes.bytes; size_t n = packBytes.length;
  // The host core sorts the pack's entries through the one pack reader (metaverse-engine/host/pack-table.coax
  // pack_table): every extent is checked against the whole file before a byte of it is read here.
- static AethyrCorePack pack;
- if (!aethyr_core_pack(&pack, b, n)) return n ? @"the realm's pack is damaged" : @"the realm's pack is missing";
+ static EngineCorePack pack;
+ if (!engine_core_pack(&pack, b, n)) return n ? @"the realm's pack is damaged" : @"the realm's pack is missing";
  if (pack.catalog < 0 || pack.vertices < 0 || pack.indices < 0) return @"the realm's pack lacks its catalog, vertices or indices";
- packVertices = aethyr_core_entry(&pack, pack.vertices, &packVertexBytes);
- packIndices = aethyr_core_entry(&pack, pack.indices, &packIndexBytes);
+ packVertices = engine_core_entry(&pack, pack.vertices, &packVertexBytes);
+ packIndices = engine_core_entry(&pack, pack.indices, &packIndexBytes);
  NSMutableArray<NSData *> *colour = [NSMutableArray array], *maps = [NSMutableArray array];
- for (int k = 0; k < pack.colours; k++) { size_t len; const uint8_t *at = aethyr_core_entry(&pack, pack.colour[k], &len); [colour addObject:[NSData dataWithBytesNoCopy:(void *)at length:len freeWhenDone:NO]]; }
- for (int k = 0; k < pack.datas; k++) { size_t len; const uint8_t *at = aethyr_core_entry(&pack, pack.data[k], &len); [maps addObject:[NSData dataWithBytesNoCopy:(void *)at length:len freeWhenDone:NO]]; }
+ for (int k = 0; k < pack.colours; k++) { size_t len; const uint8_t *at = engine_core_entry(&pack, pack.colour[k], &len); [colour addObject:[NSData dataWithBytesNoCopy:(void *)at length:len freeWhenDone:NO]]; }
+ for (int k = 0; k < pack.datas; k++) { size_t len; const uint8_t *at = engine_core_entry(&pack, pack.data[k], &len); [maps addObject:[NSData dataWithBytesNoCopy:(void *)at length:len freeWhenDone:NO]]; }
  // The core hands the face the pack's parts in the browser's order: the progress message, asset 0
  // the catalog (copied in once its destination is measured), 1 and 2 the vertex and index bytes,
  // the rig when the pack has one. Asset 3, the layers, follows once they are on the GPU.
- AethyrCoreFace face = {x.asset, x.asset_capacity, x.asset_ready, x.inbox, x.inbox_cap, x.message ? phMessage : NULL, x.rig_v1, x.rig_ready_v1, x.frame_plan_v1, phSpan, NULL};
+ EngineCoreFace face = {x.asset, x.asset_capacity, x.asset_ready, x.inbox, x.inbox_cap, x.message ? phMessage : NULL, x.rig_v1, x.rig_ready_v1, x.frame_plan_v1, phSpan, NULL};
  phCurrent = self;
- aethyr_core_deliver(&pack, &face, state, AETHYR_CORE_GEOMETRY, 0, NULL);
+ engine_core_deliver(&pack, &face, state, ENGINE_CORE_GEOMETRY, 0, NULL);
  [self meshBounds];
  storageBuffer = [device newBufferWithBytes:packVertices length:packVertexBytes options:MTLResourceStorageModeShared];
  indexBuffer = [device newBufferWithBytes:packIndices length:packIndexBytes options:MTLResourceStorageModeShared];
@@ -620,8 +620,8 @@ static int phHasBuild(void *user, const char *tag) {
  // The host's device may ask for smaller layers (a phone's tier, metaverse-engine/render/texture-format.coax).
  int dataSide = 512;
  if (config.layerSide) { int s = config.layerSide(side), ds = config.layerSide(dataSide); if (s > 0 && s < side) side = s; if (ds > 0 && ds < dataSide) dataSide = ds; }
- AethyrCoreLayer first;
- sheets = aethyr_core_blocks(&pack, &first) ? [self blockLayers:&pack first:&first] : nil;
+ EngineCoreLayer first;
+ sheets = engine_core_blocks(&pack, &first) ? [self blockLayers:&pack first:&first] : nil;
  BOOL blocks = sheets != nil;
  if (!sheets) sheets = [self layers:colour side:side data:NO];
  if (!sheets) return @"the realm's pack has a picture this Mac can't read";
@@ -635,7 +635,7 @@ static int phHasBuild(void *user, const char *tag) {
    [dataLayers replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 slice:0 withBytes:flat bytesPerRow:4 bytesPerImage:0];
   }
  }
- aethyr_core_deliver(&pack, &face, state, AETHYR_CORE_LAYERS, 0, NULL);
+ engine_core_deliver(&pack, &face, state, ENGINE_CORE_LAYERS, 0, NULL);
  // an asset or pack installed: the shadow tiles are drawn again
  if (x.shadow_event_v1) x.shadow_event_v1(state, 1, 0);
  [self after];

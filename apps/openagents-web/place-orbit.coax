@@ -6,29 +6,29 @@
 #load "../../metaverse-engine/cam/camera.coax";
 
 // Where you are, for keeping: feet (the face's player), facing, the orbit, the room.
-verse_place_of :: (x: f32, y: f32, z: f32, face: f32, o: Orbit, room: int) -> Place #export_c #effects(all) {
-  return verse_place(x, y, z, face, o.yaw, o.pitch, o.want, 0, room, 0);
+metaverse_place_of :: (x: f32, y: f32, z: f32, face: f32, o: Orbit, room: int) -> Place #export_c #effects(all) {
+  return metaverse_place(x, y, z, face, o.yaw, o.pitch, o.want, 0, room, 0);
 }
 // The orbit for a kept place at these feet: its yaw and pitch, its distance within the orbit's reach.
-verse_place_orbit :: (p: Place, feet: Point) -> Orbit #export_c #effects(all) {
-  o := verse_orbit_start(feet, p.yaw);
+metaverse_place_orbit :: (p: Place, feet: Point) -> Orbit #export_c #effects(all) {
+  o := metaverse_orbit_start(feet, p.yaw);
   o.pitch = ifx finite(p.pitch) then clamp(p.pitch, f32(FREE_PITCH_MIN), f32(FREE_PITCH_MAX)) else f32(FREE_PITCH);
   z := ifx finite(p.zoom) then clamp(p.zoom, f32(FREE_NEAR), f32(FREE_FAR)) else f32(FREE_DIST);
   o.want = z; o.zoom = z;
-  o.shown = verse_orbit_ray(o).far;
+  o.shown = metaverse_orbit_ray(o).far;
   return o;
 }
 
 #test "the orbit comes back as it was kept, within its reach" {
   feet := v3(4, 1, -3);
-  o := verse_orbit_start(feet, 0.5);
+  o := metaverse_orbit_start(feet, 0.5);
   o.pitch = 0.6; o.want = 8;
-  p := verse_place_of(4, 0, -3, 0.5, o, -1);
+  p := metaverse_place_of(4, 0, -3, 0.5, o, -1);
   #assert p.ok && p.yaw == 0.5 && p.pitch == 0.6 && p.zoom == 8 && p.room == -1;
-  b := verse_place_orbit(p, feet);
+  b := metaverse_place_orbit(p, feet);
   #assert b.yaw == 0.5 && b.pitch == 0.6 && b.want == 8 && b.zoom == 8;
   #assert b.pivot.x == feet.x && b.pivot.z == feet.z;
-  far := verse_place(0, 0, 0, 0, 0, 9, 900, 0, -1, 1);
-  c := verse_place_orbit(far, feet);
+  far := metaverse_place(0, 0, 0, 0, 0, 9, 900, 0, -1, 1);
+  c := metaverse_place_orbit(far, feet);
   #assert c.want == f32(FREE_FAR) && c.pitch == f32(FREE_PITCH_MAX);
 }

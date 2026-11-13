@@ -106,7 +106,7 @@ LB_MADE_STUB :: "{const f=globalThis.fetch;globalThis.fetch=function(u,o){const 
 LB_STUBS :: [13] string.["", "", "", "", "", "", "", "made", "night", "", "", "", ""];
 // painterly's compatibility profile at midnight, as the page would pack it
 lb_night_words :: () -> [envf.ENV_FRAME_FLOATS] f32 #effects(all) {
-  e := verse_style_compat_profile(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP));
+  e := metaverse_style_compat_profile(metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP));
   return env_gpu_pack(env_profile_sample(e.profile, 0.0));
 }
 #test "the night record is painterly's midnight: a moon, a dark sky, the glade's film" {
@@ -501,7 +501,7 @@ lb_env :: (c: [] Cdp, s: [] Lb, name: string) -> bool {
 // words the made realm's shader reads as light (metaverse/style-preset.coax SU_*: the key's colour, its
 // direction, the sky and ground ambient, the haze's air and sun tint, the zenith, the horizon and the
 // saturation), read back from the page (myrealm.coax realm_probe 6000 + i, millionths) and computed
-// here from env_glade_profile independently of the page's own verse_style_glade_env.
+// here from env_glade_profile independently of the page's own metaverse_style_glade_env.
 LB_SU :: [9] int.[0, 4, 20, 24, 40, 44, 48, 52, 73];   // SU_KEY, SU_KEY_DIR, SU_SKY_AMB, SU_GROUND_AMB, SU_HAZE_COLOUR, SU_HAZE_KEY, SU_ZENITH, SU_HORIZON, SU_TONE + 1
 lb_glade_style :: (o: [] f32) #effects(all) {
   r := env_profile_sample(env_glade_profile(), 0.5); c := r.channels; d := r.direct;

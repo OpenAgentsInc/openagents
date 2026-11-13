@@ -10,7 +10,7 @@ mvx_v :: (p:Vec3)->[3]f64 {return [3]f64.[f64(p.x),f64(p.y),f64(p.z)];}
 mvx_far :: (a:[3]f64,b:[3]f64)->f64 {return mb_larger(abs(a[0]-b[0]),mb_larger(abs(a[1]-b[1]),abs(a[2]-b[2])));}
 
 // The Metaverse poses the character at the origin facing +Z, or says why not.
-mvx_pose :: (b:[]u8,c:Cast,a:Anim,now:f64,out:[]Joint) {if !verse_cast_pose(b,c,a,now,0,0,0,0,out) {print("pose refused\n");}}
+mvx_pose :: (b:[]u8,c:Cast,a:Anim,now:f64,out:[]Joint) {if !metaverse_cast_pose(b,c,a,now,0,0,0,0,out) {print("pose refused\n");}}
 
 // A front view, 4 cm a character: '#' a joint, '.' empty.
 mvx_draw :: (label:string,out:[]Joint,rig:MvRig) {
@@ -54,12 +54,12 @@ main :: () {
 // book:end scene
 // book:begin play
     bytes:[MVX_BYTES]u8;n:=mv_cast_build(bytes[..],30);b:=bytes[0..<n];
-    before:=mv_digest(b);put:=mv_splice(b,h);c:=verse_cast_open(b);
+    before:=mv_digest(b);put:=mv_splice(b,h);c:=metaverse_cast_open(b);
     print("Cast of % bytes: splice %, admitted %, dance % frames, digest % (was %)\n",n,put,c.ok,frames_of(b,c,Move.dancing),mv_digest(b),before);
     again:=mv_scene(s,predictor[..],decoder[..],7,4,0,1,budget,leg,map,rig,3);copy:[MVX_BYTES]u8;m:=mv_cast_build(copy[..],30);
     copied:=mv_splice(copy[0..<m],again.handoff);
     print("the same destination and weights again: %, digest %\n",copied,mv_digest(copy[0..<m]));
-    a:Anim;a=verse_cast_update(b,c,a,0,false,0);a=verse_cast_dance(a);a=verse_cast_update(b,c,a,0,false,1);
+    a:Anim;a=metaverse_cast_update(b,c,a,0,false,0);a=metaverse_cast_dance(a);a=metaverse_cast_update(b,c,a,0,false,1);
     print("at 1 s: %, fading from %\n",a.move,a.from);
     out:[MV_JOINTS]Joint;mvx_pose(b,c,a,1.5,out[..]);
     far:=0.0;for k:0..<rig.count {far=mb_larger(far,mvx_far(mvx_v(moved(out[k],v3(f32(rig.bind[k][0]),f32(rig.bind[k][1]),f32(rig.bind[k][2])))),mv_world(h.q[15][k],h.t[15][k],rig.bind[k])));}
@@ -67,7 +67,7 @@ main :: () {
     hips:[3]f64;
     for i:0..<3 {mvx_pose(b,c,a,1+0.09*f64(i),out[..]);hips[i]=f64(moved(out[1],v3(f32(rig.bind[1][0]),f32(rig.bind[1][1]),f32(rig.bind[1][2]))).y);}
     print("hips height (mm) at 1, 1.09 and 1.18 s, into, halfway and out of the fade: % % %\n",mvx_mm(hips[0]),mvx_mm(hips[1]),mvx_mm(hips[2]));
-    a=verse_cast_update(b,c,a,1,false,2);
+    a=metaverse_cast_update(b,c,a,1,false,2);
     print("walking at 2 s: %, fading from %\n",a.move,a.from);
 // book:end play
 // book:begin render

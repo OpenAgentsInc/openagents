@@ -34,7 +34,7 @@ SH_WINDOW :: Window.{i0 = -6, j0 = -6, cols = 12, rows = 12};
 
 sh_heights :: (h: [] f32) -> bool {
   nodes := SH_NODES; links := SH_LINKS; flats := SH_FLATS;
-  return verse_terrain_build(sh_ground(), h, nodes[..], links[..], f32(SH_HALF), flats[..]);
+  return metaverse_terrain_build(sh_ground(), h, nodes[..], links[..], f32(SH_HALF), flats[..]);
 }
 
 sh_digest :: (out: [] Placed, n: int) -> int { return ifx n < 0 then -1 else scatter_digest(out, n); }
@@ -51,7 +51,7 @@ scatter_case :: (k: int) -> int #export_c #effects(all) {
     heights: [625] f32;
     if !sh_heights(heights[..]) { return -1; }
     h := 2166136261;
-    for t: 0..<n { h = scatter_mix(h, cast(int) f32_bits(verse_terrain_height(sh_ground(), heights[..], out[t].x, out[t].z))); }
+    for t: 0..<n { h = scatter_mix(h, cast(int) f32_bits(metaverse_terrain_height(sh_ground(), heights[..], out[t].x, out[t].z))); }
     return h;
   }
   if k == 3 { return sh_digest(out[..], scatter_fill(SH_SEED, sh_rocks(), Window.{i0 = -8, j0 = -8, cols = 16, rows = 16}, keeps[..], out[..])); }

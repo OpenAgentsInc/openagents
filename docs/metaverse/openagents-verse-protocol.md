@@ -2279,7 +2279,7 @@ we keep a reader for old records for as long as such records exist.
 | NIP-MV `23301` gesture | same | `presence.v1.Gesture` | same |
 | NIP-MV `23302` zone command | same, `openagents zone` CLI | `presence.v1.ZoneCommand` | same |
 | Shared bodies `verse-bare.bodies.v1`, `verse-coast.bodies.v1` | `crates/verse/src/shared.rs` | `presence.v1.BodySnapshot` + profile registry | profile IDs unchanged |
-| Object states (lamp, door, workstation, task wall) | `verse_net::mv::object` | `presence.v1.ObjectState` | entity ID rule unchanged |
+| Object states (lamp, door, workstation, task wall) | `metaverse_net::mv::object` | `presence.v1.ObjectState` | entity ID rule unchanged |
 | Pylon/wellspring projection | `crates/world-tree` | `presence.v1.ObjectState.pylon/wellspring` | NIP-PYLON authority unchanged |
 | World chat kind 9, scopes, districts | `verse-net/src/chat.rs` | `social.v1.ChatLine` | NIP-C7 events |
 | NIP-29 rooms, NIP-17 PMs | same | `social.v1.Room`, `nostr.nip29.v1`, `nostr.nip17.v1` | upstream NIPs |

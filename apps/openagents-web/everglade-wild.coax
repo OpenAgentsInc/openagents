@@ -469,7 +469,7 @@ wd_fences :: (s: [] Everglade, f: [] f32, n: int) -> int {
 wd_grass :: (s: [] Everglade, x: f32, z: f32) -> bool {
   if fr_wet(s, x, z) { return false; }
   nodes := EG_NODE_XZ; links := EG_LINK_AB;
-  if verse_path_nearest(nodes[..], links[..], x, z).d < f32(EG_PATH_HALF) + 0.3 { return false; }
+  if metaverse_path_nearest(nodes[..], links[..], x, z).d < f32(EG_PATH_HALF) + 0.3 { return false; }
   for q: 0..<s[0].box_n {
     b := s[0].boxes[q * 6..<q * 6 + 6];
     if x >= b[0] - 0.3 && x <= b[3] + 0.3 && z >= b[2] - 0.3 && z <= b[5] + 0.3 { return false; }

@@ -297,7 +297,7 @@ Its content carries three more fields, which other clients ignore:
 
 The entity id is `obj-` and the first 20 hex digits of the SHA-256 of
 `node`, since a node ID has slashes; a reader refuses an object whose id
-isn't its node's. `p` is the node's standing point. `verse_net::mv::object`
+isn't its node's. `p` is the node's standing point. `metaverse_net::mv::object`
 encodes and decodes it.
 
 A publisher SHOULD write entity state when an entity joins, when it comes

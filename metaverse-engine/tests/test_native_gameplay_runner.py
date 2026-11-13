@@ -55,7 +55,7 @@ class ReceiptTests(unittest.TestCase):
 
     def test_finite_wrapper_cannot_skip_an_unchanged_inner_body(self):
         body = '{\n  #assert true;\n}\n'
-        row = {'procedure': 'aethyr_native_deadgears_0', 'kind': 'forall', 'cases': 10,
+        row = {'procedure': 'engine_native_deadgears_0', 'kind': 'forall', 'cases': 10,
                'original_bindings': ' k: 0..<10 ', 'body_sha256': RUNNER.digest(body.encode()),
                'original_name': 'fixture'}
         source = row['procedure'] + ' :: () #export_c #effects(all) {\n  for k: 0..<10 ' + body + '}\n'

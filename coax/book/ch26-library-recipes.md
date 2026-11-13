@@ -61,9 +61,9 @@ The imported module names identify the API; physical source ownership and
 }
 
 #test "the public HUD API places a slot and refuses an invalid slot" {
-  slot := hud.verse_hud_slot(320, 700, 34, 0, 6);
-  refused := hud.verse_hud_slot(320, 700, 34, 6, 6);
-  point := hud.verse_hud_frame_point(0, 0, 100, 40, 7, 1);
+  slot := hud.metaverse_hud_slot(320, 700, 34, 0, 6);
+  refused := hud.metaverse_hud_slot(320, 700, 34, 6, 6);
+  point := hud.metaverse_hud_frame_point(0, 0, 100, 40, 7, 1);
   #assert slot.x == 13 && slot.y == 610 && slot.width == 44 && slot.height == 44;
   #assert refused.x == 0 && refused.y == 0 && refused.width == 0 && refused.height == 0;
   #assert point.x == 93 && point.y == 0;
@@ -73,7 +73,7 @@ main :: () {
   trace := [6] u8.['[', '8', '4', '0', '2', ']'];
   sequence.reverse(trace[1..<5]);
   print("%\n", cast(string) trace[..]);
-  slot := hud.verse_hud_slot(320, 700, 34, 0, 6);
+  slot := hud.metaverse_hud_slot(320, 700, 34, 0, 6);
   print("HUD slot: % % % %\n", int(slot.x), int(slot.y), int(slot.width), int(slot.height));
 }
 ```

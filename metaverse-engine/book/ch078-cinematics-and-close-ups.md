@@ -57,7 +57,7 @@ and strictly increasing. A key with a nonfinite shot is refused. Easing is
 
 The eye and look point follow Catmull–Rom splines through each pair of keys.
 The neighbouring keys set their tangents. A cut holds the previous take until
-the cut's time, then jumps to the cut key. `verse_flight_take` tells the page
+the cut's time, then jumps to the cut key. `metaverse_flight_take` tells the page
 which take is visible so it can change the scene at that boundary.
 
 Hecate's keys now live in
@@ -76,7 +76,7 @@ is (-17, -40, 120); the table shows the resulting world coordinates.
 The authored part ends at the last key. `camera_flight` holds that key while
 blending to the live camera. A skip captures the current authored shot and
 starts the same hand-back immediately. With reduced motion, or no keys,
-`verse_flight_start` leaves the flight inactive and the producer returns the
+`metaverse_flight_start` leaves the flight inactive and the producer returns the
 live shot at once. The host continues to own input, scene changes and the
 player's free orbit.
 

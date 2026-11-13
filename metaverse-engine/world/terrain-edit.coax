@@ -12,7 +12,7 @@
 // Heights: raise adds amount x coverage (a negative amount lowers); smooth moves a sample toward the
 // mean of its four neighbours by strength x coverage; flatten moves it toward a level the same way.
 // With `pin` the tile's outer ring of samples never moves, so the tile's edge meets whatever lies
-// round it. Paint lays a material over what is there, as aethyr_terrain_over does
+// round it. Paint lays a material over what is there, as engine_terrain_over does
 // (metaverse-engine/render/terrain-shade.coax): the weights so far scale by 1 - c and c joins the material's.
 // A sample keeps its four heaviest influences as bytes that add to 255.
 //

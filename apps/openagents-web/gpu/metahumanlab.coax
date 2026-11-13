@@ -107,13 +107,13 @@ mhlab_trace :: (ro:V3,rd:V3,u:[]f32,shadow:bool,figure:bool)->MhlabHit {
 mhlab_sky :: (rd:V3,sun:V3)->V3 {
   up:f32=saturate(rd.y);
   c:V3=mix3(v3(0.5f32,0.53f32,0.57f32),v3(0.2f32,0.23f32,0.29f32),pow(up,0.6f32));
-  c=add3(c,scale3(v3(1.0f32,0.9f32,0.75f32),verse_style_halo(dot3(rd,sun),6.0f32)*0.12f32));
+  c=add3(c,scale3(v3(1.0f32,0.9f32,0.75f32),metaverse_style_halo(dot3(rd,sun),6.0f32)*0.12f32));
   return c;
 }
 // The floor at (x, z): pale grey, a line every metre and a fainter one every 25 cm near the middle.
 mhlab_floor :: (x:f32,z:f32)->V3 {
   c:V3=v3(0.46f32,0.47f32,0.49f32);
-  c=scale3(c,0.94f32+(0.06f32*verse_style_noise(x*2.0f32,z*2.0f32)));
+  c=scale3(c,0.94f32+(0.06f32*metaverse_style_noise(x*2.0f32,z*2.0f32)));
   lx:f32=abs(fract(x+0.5f32)-0.5f32);
   lz:f32=abs(fract(z+0.5f32)-0.5f32);
   line:f32=1.0f32-smoothstep(0.004f32,0.014f32,fmin(lx,lz));
@@ -178,8 +178,8 @@ mhlab_shade :: (eye:V3,rd:V3,h:MhlabHit,u:[]f32,figure:bool,lit_in:f32)->V3 {
     sh:MhlabHit=mhlab_trace(add3(pos,scale3(n,0.01f32)),sun,u,true,figure);
     if (sh.m>0.0f32) { lit=0.0f32; }
   }
-  w:f32=verse_style_wrap(ndl)*lit;
-  amb:f32=verse_style_ambient(n.y,1.0f32,0.5f32,1.0f32);
+  w:f32=metaverse_style_wrap(ndl)*lit;
+  amb:f32=metaverse_style_ambient(n.y,1.0f32,0.5f32,1.0f32);
   sky:V3=scale3(v3(0.42f32,0.48f32,0.6f32),0.5f32*amb);
   key:V3=scale3(v3(1.0f32,0.93f32,0.82f32),1.35f32*w);
   c:V3=v3(albedo.x*(sky.x+key.x),albedo.y*(sky.y+key.y),albedo.z*(sky.z+key.z));
@@ -212,7 +212,7 @@ mhlab_out :: (c:V3,u:[]f32)->V3 {
   if (u[5]>0.5f32) {
     return v3(mhlab_srgb(mhlab_aces(c.x*u[385])),mhlab_srgb(mhlab_aces(c.y*u[385])),mhlab_srgb(mhlab_aces(c.z*u[385])));
   }
-  return v3(verse_style_tone(c.x,1.2f32),verse_style_tone(c.y,1.2f32),verse_style_tone(c.z,1.2f32));
+  return v3(metaverse_style_tone(c.x,1.2f32),metaverse_style_tone(c.y,1.2f32),metaverse_style_tone(c.z,1.2f32));
 }
 // The HUD's strip along the top and the key line's along the bottom: dark glass, so their text reads.
 mhlab_strips :: (p:V2,c:V3,u:[]f32)->V3 {

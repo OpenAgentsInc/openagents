@@ -1,8 +1,8 @@
 // Optional face effects for a realm that does not publish the corresponding
 // capability. Include once in a static host, or compile once inside a closed
 // producer DSO. Executable fallbacks must not preempt that DSO's real face.
-#ifndef VERSE_NATIVE_FACE_DEFAULTS_H
-#define VERSE_NATIVE_FACE_DEFAULTS_H
+#ifndef METAVERSE_NATIVE_FACE_DEFAULTS_H
+#define METAVERSE_NATIVE_FACE_DEFAULTS_H
 #include "face.h"
 #define NONE __attribute__((weak))
 NONE void coaxial_state_init(cx_face_addr s) { (void)s; }

@@ -111,7 +111,7 @@ tool_main :: ()->int #export_c #effects(all) {
   if !st_check_run(old_args[..],false,"wrong-identity-python",out) || !st_check_run(new_args[..],false,"wrong-identity-coax",out) || !st_check_same(old_header,new_header) {return 1;}
   // Compile the generated header and consume every public macro through C.
   probe:=fs_join(out,"identity-probe.c",paths[10][..]);binary:=fs_join(out,"identity-probe",paths[11][..]);
-  if !fs_write(probe,"#include \"coax-identity.h\"\n#include <inttypes.h>\n#include <stdio.h>\nint main(void){printf(\"%\"PRId64\"\\n%s\\n%s\\n%s\\n%s\\n\",AETHYR_RENDER_PROFILE,AETHYR_RENDER_APP,AETHYR_RENDER_SLUG,AETHYR_RENDER_PACKAGE,AETHYR_RENDER_PACKAGE_SHA256);}\n") {return 1;}
+  if !fs_write(probe,"#include \"coax-identity.h\"\n#include <inttypes.h>\n#include <stdio.h>\nint main(void){printf(\"%\"PRId64\"\\n%s\\n%s\\n%s\\n%s\\n\",ENGINE_RENDER_PROFILE,ENGINE_RENDER_APP,ENGINE_RENDER_SLUG,ENGINE_RENDER_PACKAGE,ENGINE_RENDER_PACKAGE_SHA256);}\n") {return 1;}
   cc:=[6]string.[ifx tool_os()==TOOL_MAC then "clang" else "cc","-std=c11",probe,"-o",binary,""];
   if !st_check_run(cc[0..<5],true,"compile-identity",out) {return 1;}run:=[1]string.[binary];if !st_check_run(run[..],true,"run-identity",out) {return 1;}
   // proc_run preserves lines separated by newlines and omits the final terminator.

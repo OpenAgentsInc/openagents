@@ -1494,29 +1494,29 @@ dg_same :: (a: Game, b: Game) -> bool {
 
 // ---- the C face's calls: a host holds one DgStore and passes it as a view
 
-verse_dg_setup :: (s: [] DgStore) #export_c #effects(all) { dg_setup(dg_bind(s)); }
-verse_dg_input :: (s: [] DgStore, px: f32, pz: f32, firing: bool, repairing: bool, ax: f32, az: f32) #export_c #effects(all) {
+metaverse_dg_setup :: (s: [] DgStore) #export_c #effects(all) { dg_setup(dg_bind(s)); }
+metaverse_dg_input :: (s: [] DgStore, px: f32, pz: f32, firing: bool, repairing: bool, ax: f32, az: f32) #export_c #effects(all) {
   g := dg_bind(s);
   me := dg_player(g);
   if me != ECS_NONE { g.pos[slot_of(me)] = v3(px, 0, pz); }
   g.input[0] = Input.{aim_x = ax, aim_z = az, firing = firing, repairing = repairing};
 }
 // n more mutants, laid out as the 200-mutant check lays them out.
-verse_dg_spawn_crowd :: (s: [] DgStore, n: int) #export_c #effects(all) {
+metaverse_dg_spawn_crowd :: (s: [] DgStore, n: int) #export_c #effects(all) {
   g := dg_bind(s);
   for k: 0..<n { e := dg_spawn_mutant(g, k % TYPES, -14 + f32(k % 28), -20 + f32(k / 28) * 0.5, -1); }
   ecs_flush(g.e);   // between frames: they join before the next step
 }
-verse_dg_frame :: (s: [] DgStore, frame_dt: f32) #export_c #effects(all) { dg_frame(dg_bind(s), frame_dt); }
-verse_dg_frame_begin :: (s: [] DgStore, frame_dt: f32) -> int #export_c #effects(all) { return dg_frame_begin(dg_bind(s), frame_dt); }
-verse_dg_run :: (s: [] DgStore, id: int) #export_c #effects(all) { g := dg_bind(s); dg_run(g, id, g.clock[0].dt); }
-verse_dg_step_end :: (s: [] DgStore) #export_c #effects(all) { dg_step_end(dg_bind(s)); }
-verse_dg_frame_end :: (s: [] DgStore) #export_c #effects(all) { dg_frame_end(dg_bind(s)); }
-verse_dg_timed :: (s: [] DgStore, id: int, ms: f64) #export_c #effects(all) { ecs_stats_add(dg_bind(s).stats, id, ms); }
-verse_dg_systems :: () -> int #export_c #effects(all) { return DG_SYSTEMS; }
-verse_dg_alive :: (s: [] DgStore) -> int #export_c #effects(all) { return dg_alive_mutants(dg_bind(s)); }
-verse_dg_entities :: (s: [] DgStore) -> int #export_c #effects(all) { return ecs_count(dg_bind(s).e); }
-verse_dg_phase :: (s: [] DgStore) -> int #export_c #effects(all) { return s[0].st[0].phase; }
+metaverse_dg_frame :: (s: [] DgStore, frame_dt: f32) #export_c #effects(all) { dg_frame(dg_bind(s), frame_dt); }
+metaverse_dg_frame_begin :: (s: [] DgStore, frame_dt: f32) -> int #export_c #effects(all) { return dg_frame_begin(dg_bind(s), frame_dt); }
+metaverse_dg_run :: (s: [] DgStore, id: int) #export_c #effects(all) { g := dg_bind(s); dg_run(g, id, g.clock[0].dt); }
+metaverse_dg_step_end :: (s: [] DgStore) #export_c #effects(all) { dg_step_end(dg_bind(s)); }
+metaverse_dg_frame_end :: (s: [] DgStore) #export_c #effects(all) { dg_frame_end(dg_bind(s)); }
+metaverse_dg_timed :: (s: [] DgStore, id: int, ms: f64) #export_c #effects(all) { ecs_stats_add(dg_bind(s).stats, id, ms); }
+metaverse_dg_systems :: () -> int #export_c #effects(all) { return DG_SYSTEMS; }
+metaverse_dg_alive :: (s: [] DgStore) -> int #export_c #effects(all) { return dg_alive_mutants(dg_bind(s)); }
+metaverse_dg_entities :: (s: [] DgStore) -> int #export_c #effects(all) { return ecs_count(dg_bind(s).e); }
+metaverse_dg_phase :: (s: [] DgStore) -> int #export_c #effects(all) { return s[0].st[0].phase; }
 
 // ---- checks: every check of the demo's tests/dead-gears-test.cpp
 

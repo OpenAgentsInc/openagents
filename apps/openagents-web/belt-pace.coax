@@ -12,14 +12,14 @@ main :: () {
   s: [1] Belt;
   belt_start(s[..]);
   s[0].w = 1440; s[0].h = 900; s[0].dpr = 1;
-  verse_command_only(s[0].cmd[..], 0); verse_command_toggle(s[0].cmd[..], 1); verse_command_toggle(s[0].cmd[..], 3);
+  metaverse_command_only(s[0].cmd[..], 0); metaverse_command_toggle(s[0].cmd[..], 1); metaverse_command_toggle(s[0].cmd[..], 3);
   mine_order(s[..]);
   t0 := s[0].t;
   first := -1.0; trips := 0;
   for d: 0..<1460 {
     s[0].t += DAY; step_ships(s[..], DAY);
     // a player who keeps re-ordering MINE ICE whenever a miner sits idle at home
-    for k: 0..<s[0].ship_n { if s[0].ships[k].faction == FREE_BELT && s[0].ships[k].cargo_cap > 0.0 && s[0].ships[k].mode == PARKED && s[0].ships[k].work == WORK_NONE { verse_command_only(s[0].cmd[..], k); mine_order(s[..]); if s[0].dest >= 0 { go(s[..], true); } } }
+    for k: 0..<s[0].ship_n { if s[0].ships[k].faction == FREE_BELT && s[0].ships[k].cargo_cap > 0.0 && s[0].ships[k].mode == PARKED && s[0].ships[k].work == WORK_NONE { metaverse_command_only(s[0].cmd[..], k); mine_order(s[..]); if s[0].dest >= 0 { go(s[..], true); } } }
     if first < 0.0 && s[0].station[0].metal >= FREIGHTER_METAL { first = f64(d); }
     // a player who builds what the yard offers: freighters, then the refinery
     if yard_can(s[..]) == YARD_OK { ok := yard_build(s[..]); }

@@ -10,7 +10,7 @@
 // stroke's place, width, light and glow.
 //
 // Temporary: hand-written WGSL until whole modules come from Coax (docs/metaverse/native-gpu.md, G6), except
-// the HUD bar, which is metaverse/light.coax's verse_bar (the iOS Start
+// the HUD bar, which is metaverse/light.coax's metaverse_bar (the iOS Start
 // bar's light, Stages.metal bar_fragment) written as WGSL by coax wgsl at
 // build time into the block below. The nebula is the previous
 // openagents.com splash's, unchanged.
@@ -72,7 +72,7 @@ splash_bg_fs :: (pos:V4,u:[]f32)->V4 {
   return wg_make_f4_f3f(splash_panel(v2(pos.x,pos.y),c,u),1.0f32);
 }
 // The panel behind the terminal, a prompt or a slide: dark glass in
-// verse_bar's shape (its two 45° cuts), faint scanlines and an inner glow
+// metaverse_bar's shape (its two 45° cuts), faint scanlines and an inner glow
 // in the state's colour. The bar itself, edge and sweep, is drawn over it
 // as a MODE_BAR quad.
 splash_panel :: (p:V2,under:V3,u:[]f32)->V3 {
@@ -128,7 +128,7 @@ splash_fx_fs :: (v:SplashV,u:[]f32)->V4 {
     // shape its half width, half height, scale and light. As iOS draws it,
     // a press shrinks the bar a little.
     p:V2=wg_div_f2f(v.place,(1.0f32-(0.03f32*v.bar.x)));
-    c:f32=verse_bar(-p.x,p.y,v.shape.x,v.shape.y,v.shape.z,u[2],v.bar.x,v.bar.y);
+    c:f32=metaverse_bar(-p.x,p.y,v.shape.x,v.shape.y,v.shape.z,u[2],v.bar.x,v.bar.y);
     return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),c),v.shape.w),u[3]),1.0f32);
   }
   if ((mode>1.5f32)&&(mode<2.5f32)) {

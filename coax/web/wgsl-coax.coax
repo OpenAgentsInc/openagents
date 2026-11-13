@@ -19,7 +19,7 @@
 //   coax/web/tool.sh wgsl-coax OUT.coax PREFIX IN.wgsl... [--stop MARKER] [--loads A,B]
 // --stop ends each input at the first line holding MARKER (a generated
 // section); procedures it calls that are not defined are taken as f32
-// functions of the realm's own Coax (verse_style_*), called by name.
+// functions of the realm's own Coax (metaverse_style_*), called by name.
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
@@ -1173,7 +1173,7 @@ call :: (w: []W, name: string) -> Val {
   }
   g := fn_find(w, name);
   if g < 0 {
-    // the realm's own Coax (verse_style_*), or a procedure coax wgsl wrote from it (coax_p_NAME is
+    // the realm's own Coax (metaverse_style_*), or a procedure coax wgsl wrote from it (coax_p_NAME is
     // NAME): an f32 function, called by its Coax name
     callee := name;
     if name.count > 7 && name[0..<7] == "coax_p_" { callee = name[7..<name.count]; }

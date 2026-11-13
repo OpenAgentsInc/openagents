@@ -4,10 +4,10 @@
 #authority;
 EN_EG_CURRENT :: [5]string.["eg_hash2 :: (p:V2)->f32 {\n  return render_noise2(p.x,p.y);\n}","h:f32=render_noise3(m.r0.w,m.r1.w,m.r2.w);","o.dye=v4(fmin(fract(m.colour.w)/0.98f32,1.0f32),render_noise3(at.x,at.y,at.z),0.0f32,0.0f32);","eg_hash :: (p:V2)->f32 {\n  return render_noise2(p.x,p.y);\n}","eg_weather_hash :: (p:V2)->f32 {\n  return render_noise2(p.x,p.y);\n}"];
 EN_EG_OLD :: [5]string.["eg_hash2 :: (p:V2)->f32 {\n  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);\n}","h:f32=fract(sin(wg_dot3(v3(m.r0.w,m.r1.w,m.r2.w),v3(12.9898f32,4.1414f32,78.233f32)))*43758.547f32);","o.dye=v4(fmin(fract(m.colour.w)/0.98f32,1.0f32),fract(sin(wg_dot3(at,v3(12.9898f32,4.1414f32,78.233f32)))*43758.547f32),0.0f32,0.0f32);","eg_hash :: (p:V2)->f32 {\n  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);\n}","eg_weather_hash :: (p:V2)->f32 {\n  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);\n}"];
-EN_STYLE_CURRENT :: "verse_style_hash :: (x:f32,y:f32)->f32 #export_c #effects(all) {\n return render_noise2(x,y);\n}";
-EN_STYLE_OLD :: "verse_style_hash :: (x:f32,y:f32)->f32 #export_c #effects(all) {\n v:=sin(x*127.1f32+y*311.7f32)*43758.5453f32;\n return v-floor(v);\n}";
+EN_STYLE_CURRENT :: "metaverse_style_hash :: (x:f32,y:f32)->f32 #export_c #effects(all) {\n return render_noise2(x,y);\n}";
+EN_STYLE_OLD :: "metaverse_style_hash :: (x:f32,y:f32)->f32 #export_c #effects(all) {\n v:=sin(x*127.1f32+y*311.7f32)*43758.5453f32;\n return v-floor(v);\n}";
 EN_EG_TESTS :: [3]string.["#test \"eg_hash2 live lattice uses the portable integer noise profile\" {\n  #assert f32_bits(eg_hash2(v2(1,2)))==0x3f6013da;\n}\n","#test \"eg_hash live lattice uses the portable integer noise profile\" {\n  #assert f32_bits(eg_hash(v2(1,2)))==0x3f6013da;\n}\n","#test \"eg_weather_hash live lattice uses the portable integer noise profile\" {\n  #assert f32_bits(eg_weather_hash(v2(1,2)))==0x3f6013da;\n}\n"];
-EN_STYLE_TEST :: "#test \"style live lattice uses the portable integer noise profile\" {\n #assert f32_bits(verse_style_hash(1,2))==0x3f6013da;\n}\n";
+EN_STYLE_TEST :: "#test \"style live lattice uses the portable integer noise profile\" {\n #assert f32_bits(metaverse_style_hash(1,2))==0x3f6013da;\n}\n";
 #load "everglade-noise-checks.coax";
 en_edit_count :: (relative:string,sine:bool)->int #effects(all) {if !sine {return 0;}if relative=="apps/openagents-web/gpu/everglade-v1/gpu.coax" {return 8;}if relative=="metaverse/style.coax" {return 2;}return 0;}
 en_transform :: (relative:string,source:string,sine:bool,site:int,out:[]u8)->int #effects(all) {

@@ -3681,8 +3681,8 @@
     {
       "pass_id": "background",
       "source": "apps/openagents-web/gpu/verse.coax",
-      "vertex": "verse_bg_vs",
-      "fragment": "verse_bg_fs",
+      "vertex": "metaverse_bg_vs",
+      "fragment": "metaverse_bg_fs",
       "wgsl_vertex": "bg_vs",
       "wgsl_fragment": "bg_fs",
       "binding_set": 0,
@@ -3700,8 +3700,8 @@
     {
       "pass_id": "hud",
       "source": "apps/openagents-web/gpu/verse.coax",
-      "vertex": "verse_fx_vs",
-      "fragment": "verse_fx_fs",
+      "vertex": "metaverse_fx_vs",
+      "fragment": "metaverse_fx_fs",
       "wgsl_vertex": "fx_vs",
       "wgsl_fragment": "fx_fs",
       "binding_set": 0,

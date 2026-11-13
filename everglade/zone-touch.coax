@@ -125,7 +125,7 @@ zt_stick :: (s: [] EgZone, x: f32, y: f32, phase: int, id: int) -> bool {
   return true;
 }
 // Whether the pointer event the zone just took (zone_pointer) was the thumb's: the face then hands
-// it to its stick (metaverse-engine/core/sticks.coax verse_sticks_world_touch).
+// it to its stick (metaverse-engine/core/sticks.coax metaverse_sticks_world_touch).
 zone_thumb :: (s: [] EgZone) -> bool #export_c #effects(all) { return s[0].zt_thumb; }
 zt_blur :: (s: [] EgZone) { s[0].zt_stick = ZT_NONE; s[0].zt_up = ZT_NONE; s[0].zt_thumb = false; s[0].gyro_finger = ZT_NONE; }
 

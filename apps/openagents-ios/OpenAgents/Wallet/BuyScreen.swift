@@ -3,7 +3,7 @@ import UIKit
 /// Buy bitcoin with dollars through MoonPay or Cash App, Breez's two
 /// providers. The SDK makes the provider's page for this wallet;
 /// pay/wallet.coax checks the amount, passes the page and moves the
-/// purchase (verse_wallet_buy_step), so one answer opens one page. After
+/// purchase (metaverse_wallet_buy_step), so one answer opens one page. After
 /// the page opens, the screen shows what the SDK reports coming in.
 final class BuyViewController: WalletForm {
     private let host: SparkHost
@@ -70,7 +70,7 @@ final class BuyViewController: WalletForm {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        if isMovingFromParent { flow = verse_wallet_buy_step(flow, BuyEvent.done) }
+        if isMovingFromParent { flow = metaverse_wallet_buy_step(flow, BuyEvent.done) }
     }
 
     @objc private func back() { Task { @MainActor in await look() } }
@@ -90,7 +90,7 @@ final class BuyViewController: WalletForm {
     private func choose(_ p: SparkHost.Provider) {
         view.endEditing(true)
         let sats = Money.typed(amount.text ?? "") ?? 0
-        switch verse_wallet_buy_amount(p.rawValue, Int64(clamping: sats), claimMax.map { Int64(clamping: $0) } ?? -1) {
+        switch metaverse_wallet_buy_amount(p.rawValue, Int64(clamping: sats), claimMax.map { Int64(clamping: $0) } ?? -1) {
         case BuyCheck.ok: break
         case BuyCheck.noAmount: return fail("Enter how many sats to buy.")
         case BuyCheck.noFee: return fail("We couldn't get today's network fees, so a MoonPay purchase can't start yet. Try again in a moment.")
@@ -98,8 +98,8 @@ final class BuyViewController: WalletForm {
         default: return fail("That amount can't be bought.")
         }
         // A tap while a page is being asked for, on either button, starts nothing.
-        let starts = verse_wallet_buy_starts(flow, BuyEvent.ask)
-        flow = verse_wallet_buy_step(flow, BuyEvent.ask)
+        let starts = metaverse_wallet_buy_starts(flow, BuyEvent.ask)
+        flow = metaverse_wallet_buy_step(flow, BuyEvent.ask)
         guard starts else { return }
         provider = p; asked = sats
         busy(p == .moonpay ? moonpay : cashApp) { [self] in
@@ -110,14 +110,14 @@ final class BuyViewController: WalletForm {
                 // UI tests only: hold the answer so a second tap lands while the page is being asked for.
                 if ProcessInfo.processInfo.environment["OPENAGENTS_BUY_KEEP_PAGE"] == "1" { try? await Task.sleep(for: .seconds(2)) }
                 #endif
-                let opens = verse_wallet_buy_opens(flow, BuyEvent.page)
-                flow = verse_wallet_buy_step(flow, BuyEvent.page)
+                let opens = metaverse_wallet_buy_opens(flow, BuyEvent.page)
+                flow = metaverse_wallet_buy_step(flow, BuyEvent.page)
                 guard opens else { return }
                 show(p == .moonpay ? "Waiting for MoonPay" : "Waiting for Cash App",
                      p == .moonpay ? "Finish paying on MoonPay's page. The bitcoin shows here once MoonPay sends it." : "Finish paying in Cash App. The bitcoin shows here once Cash App pays.")
                 openPage(page)
             } catch {
-                flow = verse_wallet_buy_step(flow, BuyEvent.refused)
+                flow = metaverse_wallet_buy_step(flow, BuyEvent.refused)
                 show("Not started", error.localizedDescription + " No money was taken.")
             }
         }
@@ -139,7 +139,7 @@ final class BuyViewController: WalletForm {
     private func look() async {
         guard provider == .moonpay, flow == BuyState.open || flow == BuyState.arriving else { return }
         guard let d = ((try? await host.deposits()) ?? []).first(where: { !before.contains("\($0.txid):\($0.vout)") }) else { return }
-        flow = verse_wallet_buy_step(flow, BuyEvent.seen)
+        flow = metaverse_wallet_buy_step(flow, BuyEvent.seen)
         show(Money.text(d.amount) + " on its way",
              d.problem ?? (d.mature ? "It has 3 confirmations and is being added to your balance." : "MoonPay sent it. It's in your balance after 3 confirmations, usually about 30 minutes."))
     }
@@ -147,7 +147,7 @@ final class BuyViewController: WalletForm {
     private func arrived(_ a: SparkHost.Activity) {
         let ours = provider == .moonpay ? a.rail == "On-chain" : a.rail == "Lightning" && a.amount == asked
         guard ours else { return }
-        flow = verse_wallet_buy_step(flow, BuyEvent.paid)
+        flow = metaverse_wallet_buy_step(flow, BuyEvent.paid)
         guard flow == BuyState.received else { return }
         show("Received " + Money.text(a.amount), "It's in your balance.")
         status.textColor = Look.good

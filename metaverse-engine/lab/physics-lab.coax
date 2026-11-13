@@ -101,5 +101,5 @@ tool_main :: ()->int #export_c #effects(all) {
     pngbuf:[4096]u8;png:=fs_join(dir,"compare.png",pngbuf[..]);shot:=[8]string.["env","CDP_WEBGPU=swiftshader","coax/web/tool.sh","shot",lt_text(u[..]),png,"1500x800","300"];if !lab_run(shot[..],deadline) {return 13;}
   }
   if !matched {tool_errln("physics lab: unknown --scene");return 2;}
-  lt_put(json[..],"],\"aethyr_repeat_all_sample_bytes_equal\":true}\n");jbuf:[4096]u8;path:=fs_join(out,"results.json",jbuf[..]);if json[0].full || !fs_write(path,lt_text(json[..])) {return 14;}print("%\n",path);return 0;
+  lt_put(json[..],"],\"engine_repeat_all_sample_bytes_equal\":true}\n");jbuf:[4096]u8;path:=fs_join(out,"results.json",jbuf[..]);if json[0].full || !fs_write(path,lt_text(json[..])) {return 14;}print("%\n",path);return 0;
 }

@@ -41,7 +41,7 @@ size_t oa_voice_size(void) { return sizeof(struct oa_voice); }
 
 void oa_voice_init(oa_voice *v, uint32_t input_rate) {
   memset(v, 0, sizeof *v);
-  verse_voice_init(sv(v), input_rate);
+  metaverse_voice_init(sv(v), input_rate);
 }
 
 void oa_voice_configure(oa_voice *v, const oa_voice_config *c) {
@@ -50,11 +50,11 @@ void oa_voice_configure(oa_voice *v, const oa_voice_config *c) {
     .end_silence_ms = c->end_silence_ms, .min_speech_ms = c->min_speech_ms,
     .max_turn_ms = c->max_turn_ms, .confidence_floor = c->confidence_floor,
     .speech_threshold = c->speech_threshold, .jitter_target = c->jitter_target};
-  verse_voice_configure(sv(v), k);
+  metaverse_voice_configure(sv(v), k);
 }
 
 void oa_voice_get_config(const oa_voice *v, oa_voice_config *out) {
-  coax_t_VoiceConfig k = verse_voice_config(sv(v));
+  coax_t_VoiceConfig k = metaverse_voice_config(sv(v));
   out->end_silence_ms = k.end_silence_ms;
   out->min_speech_ms = k.min_speech_ms;
   out->max_turn_ms = k.max_turn_ms;
@@ -63,7 +63,7 @@ void oa_voice_get_config(const oa_voice *v, oa_voice_config *out) {
   out->jitter_target = k.jitter_target;
 }
 
-uint32_t oa_voice_input_frame_samples(const oa_voice *v) { return verse_voice_input_frame_samples(sv(v)); }
+uint32_t oa_voice_input_frame_samples(const oa_voice *v) { return metaverse_voice_input_frame_samples(sv(v)); }
 
 static void features_out(const coax_t_VoiceFeatures *k, oa_voice_features *f) {
   f->stream = k->stream;
@@ -84,17 +84,17 @@ uint32_t oa_voice_uplink(oa_voice *v, const int16_t *pcm, int16_t *out16k, oa_vo
   if (!pcm) return 0;
   coax_t_VoiceFeatures k;
   memset(&k, 0, sizeof k);
-  coax_v_s16 in = {(int16_t *)pcm, (int64_t)verse_voice_input_frame_samples(sv(v))};
+  coax_v_s16 in = {(int16_t *)pcm, (int64_t)metaverse_voice_input_frame_samples(sv(v))};
   coax_v_s16 out = {out16k, out16k ? OA_VOICE_FRAME_SAMPLES : 0};
   coax_v_t_VoiceFeatures fv = {&k, 1};
-  uint32_t ev = verse_voice_uplink(sv(v), in, out, fv);
+  uint32_t ev = metaverse_voice_uplink(sv(v), in, out, fv);
   if (f) features_out(&k, f);
   return ev;
 }
 
 uint32_t oa_voice_preroll(const oa_voice *v, int16_t *out16k, uint32_t cap) {
   if (!out16k) return 0;
-  return verse_voice_preroll(sv(v), (coax_v_s16){out16k, cap});
+  return metaverse_voice_preroll(sv(v), (coax_v_s16){out16k, cap});
 }
 
 uint32_t oa_voice_downlink(oa_voice *v, int16_t *pcm, uint32_t n, uint32_t rate, oa_voice_features *f) {
@@ -102,7 +102,7 @@ uint32_t oa_voice_downlink(oa_voice *v, int16_t *pcm, uint32_t n, uint32_t rate,
   memset(&k, 0, sizeof k);
   coax_v_s16 io = {pcm, pcm ? (int64_t)n : 0};
   coax_v_t_VoiceFeatures fv = {&k, f ? 1 : 0};
-  uint32_t ev = verse_voice_downlink(sv(v), io, rate, fv);
+  uint32_t ev = metaverse_voice_downlink(sv(v), io, rate, fv);
   if (f) features_out(&k, f);
   return ev;
 }
@@ -114,12 +114,12 @@ bool oa_voice_decide(oa_voice *v, const oa_voice_decision *d) {
     .epoch = d->media_epoch, .action = d->action, .gain_db = d->gain_db,
     .duck_db = d->duck_db, .rate = d->playback_rate, .hold_ms = d->hold_ms,
     .confidence = d->confidence, .deadline = d->deadline_sequence};
-  return verse_voice_decide(sv(v), k);
+  return metaverse_voice_decide(sv(v), k);
 }
 
 bool oa_voice_last_decision(const oa_voice *v, oa_voice_decision *out) {
   coax_t_VoiceDecision k;
-  if (!out || !verse_voice_last_decision(sv(v), (coax_v_t_VoiceDecision){&k, 1})) return false;
+  if (!out || !metaverse_voice_last_decision(sv(v), (coax_v_t_VoiceDecision){&k, 1})) return false;
   memset(out, 0, sizeof *out);
   out->has = k.has;
   out->stream = k.stream;
@@ -136,31 +136,31 @@ bool oa_voice_last_decision(const oa_voice *v, oa_voice_decision *out) {
   return true;
 }
 
-void oa_voice_playing(oa_voice *v, bool playing) { verse_voice_playing(sv(v), playing); }
-uint64_t oa_voice_epoch(const oa_voice *v) { return verse_voice_epoch(sv(v)); }
-uint64_t oa_voice_set_epoch(oa_voice *v, uint64_t epoch) { return verse_voice_set_epoch(sv(v), epoch); }
-uint64_t oa_voice_cut(oa_voice *v) { return verse_voice_cut(sv(v)); }
-void oa_voice_cancel_turn(oa_voice *v) { verse_voice_cancel_turn(sv(v)); }
-void oa_voice_push_to_talk(oa_voice *v, bool pressed) { verse_voice_push_to_talk(sv(v), pressed); }
-float oa_voice_gain_db(const oa_voice *v) { return verse_voice_gain_db(sv(v)); }
-float oa_voice_playback_rate(const oa_voice *v) { return verse_voice_playback_rate(sv(v)); }
-uint32_t oa_voice_current_turn_state(const oa_voice *v) { return verse_voice_turn_state(sv(v)); }
-uint32_t oa_voice_current_playback_state(const oa_voice *v) { return verse_voice_playback_state(sv(v)); }
-uint32_t oa_voice_uplink_sequence(const oa_voice *v) { return verse_voice_uplink_sequence(sv(v)); }
-uint32_t oa_voice_downlink_sequence(const oa_voice *v) { return verse_voice_downlink_sequence(sv(v)); }
-uint32_t oa_voice_turn_ms(const oa_voice *v) { return verse_voice_turn_ms(sv(v)); }
+void oa_voice_playing(oa_voice *v, bool playing) { metaverse_voice_playing(sv(v), playing); }
+uint64_t oa_voice_epoch(const oa_voice *v) { return metaverse_voice_epoch(sv(v)); }
+uint64_t oa_voice_set_epoch(oa_voice *v, uint64_t epoch) { return metaverse_voice_set_epoch(sv(v), epoch); }
+uint64_t oa_voice_cut(oa_voice *v) { return metaverse_voice_cut(sv(v)); }
+void oa_voice_cancel_turn(oa_voice *v) { metaverse_voice_cancel_turn(sv(v)); }
+void oa_voice_push_to_talk(oa_voice *v, bool pressed) { metaverse_voice_push_to_talk(sv(v), pressed); }
+float oa_voice_gain_db(const oa_voice *v) { return metaverse_voice_gain_db(sv(v)); }
+float oa_voice_playback_rate(const oa_voice *v) { return metaverse_voice_playback_rate(sv(v)); }
+uint32_t oa_voice_current_turn_state(const oa_voice *v) { return metaverse_voice_turn_state(sv(v)); }
+uint32_t oa_voice_current_playback_state(const oa_voice *v) { return metaverse_voice_playback_state(sv(v)); }
+uint32_t oa_voice_uplink_sequence(const oa_voice *v) { return metaverse_voice_uplink_sequence(sv(v)); }
+uint32_t oa_voice_downlink_sequence(const oa_voice *v) { return metaverse_voice_downlink_sequence(sv(v)); }
+uint32_t oa_voice_turn_ms(const oa_voice *v) { return metaverse_voice_turn_ms(sv(v)); }
 
 bool oa_voice_jitter_push(oa_voice *v, uint32_t sequence, uint64_t epoch, const int16_t *pcm, uint32_t n) {
   if (!pcm) return false;
-  return verse_voice_jitter_push(sv(v), sequence, epoch, (coax_v_s16){(int16_t *)pcm, n});
+  return metaverse_voice_jitter_push(sv(v), sequence, epoch, (coax_v_s16){(int16_t *)pcm, n});
 }
 uint32_t oa_voice_jitter_pop(oa_voice *v, int16_t *out, uint32_t n) {
   if (!out) return OA_EV_UNDERRUN;
   if (n > OA_VOICE_MAX_DOWNLINK_SAMPLES) n = OA_VOICE_MAX_DOWNLINK_SAMPLES;
-  return verse_voice_jitter_pop(sv(v), (coax_v_s16){out, n});
+  return metaverse_voice_jitter_pop(sv(v), (coax_v_s16){out, n});
 }
-uint32_t oa_voice_jitter_depth(const oa_voice *v) { return verse_voice_jitter_depth(sv(v)); }
-void oa_voice_jitter_flush(oa_voice *v) { verse_voice_jitter_flush(sv(v)); }
+uint32_t oa_voice_jitter_depth(const oa_voice *v) { return metaverse_voice_jitter_depth(sv(v)); }
+void oa_voice_jitter_flush(oa_voice *v) { metaverse_voice_jitter_flush(sv(v)); }
 
 /* ------------------------------------------------------------ the wire */
 
@@ -342,7 +342,7 @@ size_t oa_voice_encode(uint8_t *out, size_t cap, const oa_voice_msg *m) {
   if (cap > OA_VOICE_MAX_FRAME_BYTES) cap = OA_VOICE_MAX_FRAME_BYTES;
   coax_t_WMsg w;
   msg_in(m, &w);
-  int64_t n = verse_voice_wire_encode((coax_v_t_WMsg){&w, 1}, (coax_v_u8){out, (int64_t)cap});
+  int64_t n = metaverse_voice_wire_encode((coax_v_t_WMsg){&w, 1}, (coax_v_u8){out, (int64_t)cap});
   return n > 0 ? (size_t)n : 0;
 }
 
@@ -351,7 +351,7 @@ bool oa_voice_decode(const uint8_t *in, size_t n, oa_voice_msg *m) {
   memset(m, 0, sizeof *m);
   if (!in || n == 0 || n > OA_VOICE_MAX_FRAME_BYTES) return false;
   coax_t_WMsg w;
-  if (!verse_voice_wire_decode((coax_v_u8){(uint8_t *)in, (int64_t)n}, (coax_v_t_WMsg){&w, 1})) return false;
+  if (!metaverse_voice_wire_decode((coax_v_u8){(uint8_t *)in, (int64_t)n}, (coax_v_t_WMsg){&w, 1})) return false;
   msg_out(&w, m);
   return true;
 }
@@ -359,32 +359,32 @@ bool oa_voice_decode(const uint8_t *in, size_t n, oa_voice_msg *m) {
 /* ------------------------------------------------------------ floor */
 
 size_t oa_voice_floor_size(void) { return sizeof(struct oa_voice_floor); }
-void oa_voice_floor_init(oa_voice_floor *fl) { memset(fl, 0, sizeof *fl); verse_voice_floor_init(sf(fl)); }
-bool oa_voice_floor_consent(oa_voice_floor *fl, uint32_t slot, bool consent) { return verse_voice_floor_consent(sf(fl), slot, consent); }
-bool oa_voice_floor_bind(oa_voice_floor *fl, uint32_t slot, uint32_t target) { return verse_voice_floor_bind(sf(fl), slot, target); }
-bool oa_voice_floor_grant(oa_voice_floor *fl, int32_t slot) { return verse_voice_floor_grant(sf(fl), slot); }
-bool oa_voice_floor_may_hear(const oa_voice_floor *fl, uint32_t slot) { return verse_voice_floor_may_hear(sf(fl), slot); }
-uint32_t oa_voice_floor_route(const oa_voice_floor *fl, uint32_t slot) { return verse_voice_floor_route(sf(fl), slot); }
-uint64_t oa_voice_floor_epoch(const oa_voice_floor *fl) { return verse_voice_floor_epoch(sf(fl)); }
-uint64_t oa_voice_floor_bump(oa_voice_floor *fl) { return verse_voice_floor_bump(sf(fl)); }
-bool oa_voice_floor_epoch_ok(const oa_voice_floor *fl, uint64_t epoch) { return verse_voice_floor_epoch_ok(sf(fl), epoch); }
+void oa_voice_floor_init(oa_voice_floor *fl) { memset(fl, 0, sizeof *fl); metaverse_voice_floor_init(sf(fl)); }
+bool oa_voice_floor_consent(oa_voice_floor *fl, uint32_t slot, bool consent) { return metaverse_voice_floor_consent(sf(fl), slot, consent); }
+bool oa_voice_floor_bind(oa_voice_floor *fl, uint32_t slot, uint32_t target) { return metaverse_voice_floor_bind(sf(fl), slot, target); }
+bool oa_voice_floor_grant(oa_voice_floor *fl, int32_t slot) { return metaverse_voice_floor_grant(sf(fl), slot); }
+bool oa_voice_floor_may_hear(const oa_voice_floor *fl, uint32_t slot) { return metaverse_voice_floor_may_hear(sf(fl), slot); }
+uint32_t oa_voice_floor_route(const oa_voice_floor *fl, uint32_t slot) { return metaverse_voice_floor_route(sf(fl), slot); }
+uint64_t oa_voice_floor_epoch(const oa_voice_floor *fl) { return metaverse_voice_floor_epoch(sf(fl)); }
+uint64_t oa_voice_floor_bump(oa_voice_floor *fl) { return metaverse_voice_floor_bump(sf(fl)); }
+bool oa_voice_floor_epoch_ok(const oa_voice_floor *fl, uint64_t epoch) { return metaverse_voice_floor_epoch_ok(sf(fl), epoch); }
 
 /* ------------------------------------------------------------ meter */
 
 size_t oa_voice_meter_size(void) { return sizeof(struct oa_voice_meter); }
 void oa_voice_meter_init(oa_voice_meter *m, uint32_t day, uint64_t budget_msat) {
   memset(m, 0, sizeof *m);
-  verse_voice_meter_init(sm(m), day, budget_msat);
+  metaverse_voice_meter_init(sm(m), day, budget_msat);
 }
-void oa_voice_meter_day(oa_voice_meter *m, uint32_t day) { verse_voice_meter_day(sm(m), day); }
-void oa_voice_meter_budget(oa_voice_meter *m, uint64_t budget_msat) { verse_voice_meter_budget(sm(m), budget_msat); }
+void oa_voice_meter_day(oa_voice_meter *m, uint32_t day) { metaverse_voice_meter_day(sm(m), day); }
+void oa_voice_meter_budget(oa_voice_meter *m, uint64_t budget_msat) { metaverse_voice_meter_budget(sm(m), budget_msat); }
 bool oa_voice_meter_may_run(const oa_voice_meter *m, uint64_t max_ms, uint64_t max_chars) {
-  return verse_voice_meter_may_run(sm(m), max_ms, max_chars);
+  return metaverse_voice_meter_may_run(sm(m), max_ms, max_chars);
 }
 bool oa_voice_meter_charge(oa_voice_meter *m, uint64_t recognized_ms, uint64_t synthesized_chars) {
-  return verse_voice_meter_charge(sm(m), recognized_ms, synthesized_chars);
+  return metaverse_voice_meter_charge(sm(m), recognized_ms, synthesized_chars);
 }
 void oa_voice_meter_report_get(const oa_voice_meter *m, oa_voice_meter_report *out) {
-  coax_t_MeterReport r = verse_voice_meter_report(sm(m));
+  coax_t_MeterReport r = metaverse_voice_meter_report(sm(m));
   *out = (oa_voice_meter_report){r.recognized_ms, r.synthesized_chars, r.free_ms_left, r.free_chars_left, r.owed_msat};
 }

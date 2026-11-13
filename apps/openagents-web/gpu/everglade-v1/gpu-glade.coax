@@ -81,15 +81,15 @@ eg_glade_grass :: (id:u32,instance:u32,m:EgObj,u:[]f32,vertices:[]u32)->EgS {
 eg_glade_noise :: (p:V2)->f32 {
   i:V2=v2(floor(p.x),floor(p.y));f:V2=v2(fract(p.x),fract(p.y));
   f=v2(f.x*f.x*(3.0f32-2.0f32*f.x),f.y*f.y*(3.0f32-2.0f32*f.y));
-  a:f32=verse_style_hash(i.x,i.y);b:f32=verse_style_hash(i.x+1.0f32,i.y);c:f32=verse_style_hash(i.x,i.y+1.0f32);d:f32=verse_style_hash(i.x+1.0f32,i.y+1.0f32);
+  a:f32=metaverse_style_hash(i.x,i.y);b:f32=metaverse_style_hash(i.x+1.0f32,i.y);c:f32=metaverse_style_hash(i.x,i.y+1.0f32);d:f32=metaverse_style_hash(i.x+1.0f32,i.y+1.0f32);
   return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);
 }
 eg_glade_soil :: (p:V2)->f32 {
   cell:V2=v2(floor(p.x*3.5f32),floor(p.y*3.5f32));local:V2=v2(fract(p.x*3.5f32),fract(p.y*3.5f32));
   first:f32=10.0f32;second:f32=10.0f32;
   for j:0..<3 {for i:0..<3 {x:f32=cast(f32)i-1.0f32;y:f32=cast(f32)j-1.0f32;
-    dx:f32=x+0.15f32+0.7f32*verse_style_hash(cell.x+x,cell.y+y)-local.x;
-    dy:f32=y+0.15f32+0.7f32*verse_style_hash(cell.x+x+17.0f32,cell.y+y+3.0f32)-local.y;
+    dx:f32=x+0.15f32+0.7f32*metaverse_style_hash(cell.x+x,cell.y+y)-local.x;
+    dy:f32=y+0.15f32+0.7f32*metaverse_style_hash(cell.x+x+17.0f32,cell.y+y+3.0f32)-local.y;
     d:f32=dx*dx+dy*dy;if (d<first) {second=first;first=d;} else if (d<second) {second=d;}
   }}
   return (0.86f32+0.14f32*smoothstep(0.0f32,0.05f32,second-first))*(0.94f32+0.06f32*eg_glade_noise(v2(p.x*2.0f32,p.y*2.0f32)));
@@ -144,16 +144,16 @@ eg_glade_albedo :: (s:EgS,tex:V4,n:V3)->V3 {
   }
   if (leaves) {
     if (s.tint.x>s.tint.y*1.2f32) {age:f32=eg_glade_noise(v2(p.x*1.4f32+p.y*0.7f32,p.z*1.4f32));albedo=eg_glade_decode(eg_glade_leaf(s.tint,age));}
-    albedo=wg_mul_f3f(albedo,0.70f32+0.45f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));
+    albedo=wg_mul_f3f(albedo,0.70f32+0.45f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));
   }
-  if ((kind>2.5f32)&&(kind<3.5f32)&&(s.tint.y<0.99f32)) {albedo=wg_mul_f3f(eg_glade_decode(v3(1.0f32,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(verse_style_luma(tex.x,tex.y,tex.z))));}
-  if (kind>6.5f32) {albedo=wg_mul_f3f(eg_glade_decode(ifx n.y>0.15f32 then v3(1.0f32,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));}
+  if ((kind>2.5f32)&&(kind<3.5f32)&&(s.tint.y<0.99f32)) {albedo=wg_mul_f3f(eg_glade_decode(v3(1.0f32,0.42f32,0.32f32)),0.7f32+0.3f32*sqrt(saturate(metaverse_style_luma(tex.x,tex.y,tex.z))));}
+  if (kind>6.5f32) {albedo=wg_mul_f3f(eg_glade_decode(ifx n.y>0.15f32 then v3(1.0f32,0.60f32,0.12f32) else v3(0.86f32,0.78f32,0.60f32)),0.72f32+0.28f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));}
   if ((kind>3.5f32)&&(kind<4.5f32)) {
     // neutral grey stone with moss on the faces that look up, as the reference's cliff tops
-    base:V3=eg_glade_decode(s.tint);grey:f32=verse_style_luma(base.x,base.y,base.z);base=wg_mix_f3f3f(base,v3(grey,grey*1.02f32,grey*0.96f32),0.35f32);
+    base:V3=eg_glade_decode(s.tint);grey:f32=metaverse_style_luma(base.x,base.y,base.z);base=wg_mix_f3f3f(base,v3(grey,grey*1.02f32,grey*0.96f32),0.35f32);
     moss:f32=smoothstep(0.30f32,0.85f32,n.y+0.25f32*(eg_glade_noise(v2(p.x*0.9f32+p.y,p.z*0.9f32))-0.5f32))*(0.55f32+0.45f32*eg_glade_noise(v2(p.x*1.7f32,p.z*1.7f32)));
     base=wg_mix_f3f3f(base,wg_mul_f3f(eg_glade_decode(v3(0.52f32,0.64f32,0.26f32)),fmax(grey/0.22f32,0.7f32)),moss*0.85f32);
-    albedo=wg_mul_f3f(base,0.60f32+0.50f32*sqrt(verse_style_luma(tex.x,tex.y,tex.z)));
+    albedo=wg_mul_f3f(base,0.60f32+0.50f32*sqrt(metaverse_style_luma(tex.x,tex.y,tex.z)));
   }
   if ((kind>1.5f32)&&(kind<2.5f32)) {
     green:f32=saturate((s.tint.y-s.tint.x)*4.0f32);

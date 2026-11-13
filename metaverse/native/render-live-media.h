@@ -1,6 +1,6 @@
 // Actual bundled file and Vulkan image effects over the shared media policies.
-#ifndef AETHYR_RENDER_LIVE_MEDIA_H
-#define AETHYR_RENDER_LIVE_MEDIA_H
+#ifndef ENGINE_RENDER_LIVE_MEDIA_H
+#define ENGINE_RENDER_LIVE_MEDIA_H
 #include "render-media.h"
 typedef struct RhgLiveMedia RhgLiveMedia;
 RhgLiveMedia *rhglm_open(Vkc *,const char *physical_mount,size_t notice_capacity);

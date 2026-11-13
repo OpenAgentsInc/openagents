@@ -190,7 +190,7 @@ gl_aw_fit :: (r: [] GlArwes, m: TextMeasure) {
 // own list. now: the page's clock; px, py: the pointer in page coordinates.
 // Returns its height.
 gl_arwes :: (r: [] GlArwes, sh: [] Sheet, m: TextMeasure, x: f32, y: f32, w: f32, now: f32, px: f32, py: f32, hot_kind: int, hot_b: int) -> f32 {
-  s := verse_skin();
+  s := metaverse_skin();
   if !r[0].ready { gl_aw_init(r, now); }
   ground := sheet_box(sh, x, y, w, 0, 12, 1, s.canvas, s.hairline);
   ix := x + 20; iw := w - 40; h: f32 = 20;

@@ -181,10 +181,10 @@ ZapCheck :: struct { amount_ok: bool; invoice_ok: bool; verdict: Verdict; pays: 
 zap_check :: (pay: N57Pay, msat: int, invoice: string, fee: int, cap: int, spendable: int, now: int, expires: int) -> ZapCheck {
   c: ZapCheck;
   sats := msat / 1000;                          // Spark pays whole sats
-  low := verse_wallet_msat_up(pay.min); high := verse_wallet_msat_down(pay.max);
-  c.amount_ok = msat % 1000 == 0 && verse_wallet_amount_ok(sats, low, high, spendable);
+  low := metaverse_wallet_msat_up(pay.min); high := metaverse_wallet_msat_down(pay.max);
+  c.amount_ok = msat % 1000 == 0 && metaverse_wallet_amount_ok(sats, low, high, spendable);
   c.invoice_ok = bw_invoice_is(invoice, msat);
-  c.verdict = verse_wallet_may_send(Pay.quoted, sats, fee, cap, spendable, now, expires);
+  c.verdict = metaverse_wallet_may_send(Pay.quoted, sats, fee, cap, spendable, now, expires);
   c.pays = c.amount_ok && c.invoice_ok && c.verdict == Verdict.send;
   return c;
 }
@@ -331,12 +331,12 @@ main :: () {
   print("the wallet's rules (pay/wallet.coax), Ana has % sats\n", BALANCE);
   ok := zap_check(pay, 21000, inv, FEE, FEE, BALANCE, T0 + 62, T0 + 61 + EXPIRY);
   show_check("21 sats, fee 1", ok);
-  fl := verse_wallet_start();
-  fl = verse_wallet_step(fl, Event.quote); fl = verse_wallet_step(fl, Event.confirm);
+  fl := metaverse_wallet_start();
+  fl = metaverse_wallet_step(fl, Event.quote); fl = metaverse_wallet_step(fl, Event.confirm);
   print("flow: quote, confirm -> % (sends %)\n", PAY_STATE[cast(int) fl.state], fl.sends);
-  fl = verse_wallet_step(fl, Event.confirm);
+  fl = metaverse_wallet_step(fl, Event.confirm);
   print("a second confirm -> % (sends %)\n", PAY_STATE[cast(int) fl.state], fl.sends);
-  fl = verse_wallet_step(fl, Event.sent);
+  fl = metaverse_wallet_step(fl, Event.sent);
   balance := BALANCE - 21 - FEE;
   print("the SDK reports sent -> %; balance % - 21 - % = % sats\n", PAY_STATE[cast(int) fl.state], BALANCE, FEE, balance);
 

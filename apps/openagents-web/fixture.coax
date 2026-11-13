@@ -219,7 +219,7 @@ fixture_message :: (s: [] Fixture, kind: int, text: string) #export_c #effects(a
   s[0].mask = s[0].paint >= 0 && query_has(fact_line(text, "url"), "probe=shadow");
   s[0].pitch = clamp(query_decimal(fact_line(text, "url"), "pitch="), -0.6, 0.6);
   s[0].sun_az = query_decimal(fact_line(text, "url"), "sun=") * DEG; s[0].sun_up = clamp(query_decimal(fact_line(text, "url"), "sunup="), -89, 89) * DEG;
-  s[0].day = verse_style_clock(fact_line(text, "clock"), fact_line(text, "now"), fact_line(text, "day"));
+  s[0].day = metaverse_style_clock(fact_line(text, "clock"), fact_line(text, "now"), fact_line(text, "day"));
   s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
   // the style fixture is a test view: it doesn't count as a visit or keep anything
   if s[0].paint < 0 { s[0].visits += 1; s[0].dirty = true; }
@@ -704,14 +704,14 @@ fixture_frame :: (s: [] Fixture, out: [] f32, uniforms: [] f32, width: f32, heig
   n := ifx s[0].paint >= 0 then draw_paint(s, out) else draw_realm(s, out);
   if s[0].paint >= 0 {
     // the clock turns unless the page is still (goldens, reduced motion)
-    if !still { s[0].clock = verse_style_clock_at(s[0].day, s[0].time - s[0].day_from); }
+    if !still { s[0].clock = metaverse_style_clock_at(s[0].day, s[0].time - s[0].day_from); }
     // the preset for this canvas (a phone's tier under 600 css px wide), at the clock
     tier := ifx width / s[0].dpr < 600 then STYLE_PHONE else STYLE_DESKTOP;
     // the traced scene has no meshes, so the view's first row carries the pitch (fixture.wgsl ray)
     for i: 0..<16 { uniforms[VIEW_AT + i] = 0; }
     uniforms[VIEW_AT] = s[0].pitch;
-    if verse_style_at(verse_style_preset(s[0].paint, tier), s[0].clock, uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]) { uniforms[7] = ifx s[0].mask then 2.0f32 else 1.0f32; }
-    // the grass: a square 2 radius across and one deep ahead of the eye at the density (verse_style_grass_blades);
+    if metaverse_style_at(metaverse_style_preset(s[0].paint, tier), s[0].clock, uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]) { uniforms[7] = ifx s[0].mask then 2.0f32 else 1.0f32; }
+    // the grass: a square 2 radius across and one deep ahead of the eye at the density (metaverse_style_grass_blades);
     // none in the shadow probe's mask
     g := uniforms[STYLE_AT + SU_GRASS + 1];
     s[0].blades = ifx s[0].mask then 0 else cast(int) (2 * g * g * uniforms[STYLE_AT + SU_GRASS]);

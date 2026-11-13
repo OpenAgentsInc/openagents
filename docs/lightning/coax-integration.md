@@ -190,7 +190,7 @@ module yet. When it lands:
 1. Done 2026-10-28: `SparkHost.swift` and the screens (`Wallet/WalletScreens.swift`).
 2. Done 2026-10-28: `pay/wallet.coax` with `#authority`: units, LNURL
    bounds, the keypad, the high-fee and expiry warnings, `may_send`, and the
-   payment state machine `verse_wallet_step` (it replaced `after_send`),
+   payment state machine `metaverse_wallet_step` (it replaced `after_send`),
    with a `#forall` over every four-event sequence. `coax mutate`: 155 of
    155 mutants killed.
 3. Exit-data backup and the recoverable-funds display.

@@ -13,7 +13,7 @@ show :: (what: string, a: f32, b: f32) {
 main :: () {
   w: World;
   frame := cast(f32) (1.0 / 60.0);
-  p := verse_player_input(verse_player_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
+  p := metaverse_player_input(metaverse_player_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
   q := p;
   feet := 0.0f32; eye := 0.0f32; last_feet := 0.0f32; last_eye := 0.0f32;
   py := 0.0f32; pdy := 0.0f32; pe := 0.0f32; pde := 0.0f32;
@@ -21,7 +21,7 @@ main :: () {
   for k: 0..<40 {
     p = advance_in(w, p, frame);
     q = advance_in(w, q, frame);
-    y := verse_player_feet(p).y; e := verse_player_eye(p).y;                   // interpolated
+    y := metaverse_player_feet(p).y; e := metaverse_player_eye(p).y;                   // interpolated
     ly := q.body.pos.y; le := q.cam.target.y + orbit_offset(q).y * q.cam.dist;             // the last step
     if k >= 2 && !p.body.on_ground {
       feet = hi(feet, abs((y - py) - pdy)); eye = hi(eye, abs((e - pe) - pde));

@@ -21,8 +21,8 @@
  * Audio is mono signed 16-bit PCM in host byte order (little-endian on every
  * platform we ship).
  */
-#ifndef VERSE_PLATFORM_VOICE_H
-#define VERSE_PLATFORM_VOICE_H
+#ifndef METAVERSE_PLATFORM_VOICE_H
+#define METAVERSE_PLATFORM_VOICE_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -507,4 +507,4 @@ void     oa_voice_meter_report_get(const oa_voice_meter *m, oa_voice_meter_repor
 #ifdef __cplusplus
 }
 #endif
-#endif /* VERSE_PLATFORM_VOICE_H */
+#endif /* METAVERSE_PLATFORM_VOICE_H */

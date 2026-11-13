@@ -1,8 +1,8 @@
 // Raw measurement-file transport shared by CPU and Vulkan drivers. This
 // header does no resource-role lookup, Coax admission, decoding or rendering.
 // Paths are tokens relative to frame.config (or absolute); '-' is empty.
-#ifndef AETHYR_FRAME_INPUT_H
-#define AETHYR_FRAME_INPUT_H
+#ifndef ENGINE_FRAME_INPUT_H
+#define ENGINE_FRAME_INPUT_H
 #include <errno.h>
 #include <inttypes.h>
 #include <stdint.h>

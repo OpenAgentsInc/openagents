@@ -75,9 +75,9 @@ rsp_read_identity :: (text:string,app:string,slug:string)->RspIdentity #effects(
 rsp_header :: (identity:RspIdentity,app:string,slug:string,hash:string,out:[]u8)->string #effects(all) {
   if !identity.ok {return "";}
   o:[1]Jo;jo_start(o[..],out);
-  jo_put(o[..],"// Generated from the Coax-built render.json; do not edit.\n#ifndef AETHYR_RENDER_IDENTITY_H\n#define AETHYR_RENDER_IDENTITY_H\n#include <stdint.h>\n#define AETHYR_RENDER_TYPED 1\n#define AETHYR_RENDER_PROFILE_ID INT64_C(");
-  jo_int(o[..],identity.profile);jo_put(o[..],")\n#define AETHYR_RENDER_PROFILE AETHYR_RENDER_PROFILE_ID\n#define AETHYR_RENDER_APP ");jo_quoted(o[..],app);
-  jo_put(o[..],"\n#define AETHYR_RENDER_SLUG ");jo_quoted(o[..],slug);
-  jo_put(o[..],"\n#define AETHYR_RENDER_PACKAGE_FILE \"render/render.json\"\n#define AETHYR_RENDER_PACKAGE AETHYR_RENDER_PACKAGE_FILE\n#define AETHYR_RENDER_PACKAGE_SHA256 ");jo_quoted(o[..],hash);jo_put(o[..],"\n#endif\n");
+  jo_put(o[..],"// Generated from the Coax-built render.json; do not edit.\n#ifndef ENGINE_RENDER_IDENTITY_H\n#define ENGINE_RENDER_IDENTITY_H\n#include <stdint.h>\n#define ENGINE_RENDER_TYPED 1\n#define ENGINE_RENDER_PROFILE_ID INT64_C(");
+  jo_int(o[..],identity.profile);jo_put(o[..],")\n#define ENGINE_RENDER_PROFILE ENGINE_RENDER_PROFILE_ID\n#define ENGINE_RENDER_APP ");jo_quoted(o[..],app);
+  jo_put(o[..],"\n#define ENGINE_RENDER_SLUG ");jo_quoted(o[..],slug);
+  jo_put(o[..],"\n#define ENGINE_RENDER_PACKAGE_FILE \"render/render.json\"\n#define ENGINE_RENDER_PACKAGE ENGINE_RENDER_PACKAGE_FILE\n#define ENGINE_RENDER_PACKAGE_SHA256 ");jo_quoted(o[..],hash);jo_put(o[..],"\n#endif\n");
   return ifx o[0].bad then "" else jo_text(o[..]);
 }

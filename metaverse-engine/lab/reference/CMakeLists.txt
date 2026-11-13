@@ -1,6 +1,6 @@
 # Firm reason: 6 (Jolt's SDK build and its lab-only executable; no scene or metric logic).
 cmake_minimum_required(VERSION 3.20)
-project(AethyrLabJolt LANGUAGES CXX)
+project(EngineLabJolt LANGUAGES CXX)
 if(NOT DEFINED JOLT_SOURCE)
   message(FATAL_ERROR "JOLT_SOURCE must name the pinned lab cache")
 endif()

@@ -42,7 +42,7 @@ bk_schema_ok :: (s: string) -> bool {
   return true;
 }
 #test "a schema is a plain lower-case name" {
-  #assert bk_schema_ok("") && bk_schema_ok("auth") && bk_schema_ok("verse_x");
+  #assert bk_schema_ok("") && bk_schema_ok("auth") && bk_schema_ok("metaverse_x");
   #assert !bk_schema_ok("auth;drop") && !bk_schema_ok("Auth") && !bk_schema_ok("a b") && !bk_schema_ok("a'");
 }
 

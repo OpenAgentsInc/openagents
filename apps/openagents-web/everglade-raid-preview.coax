@@ -74,7 +74,7 @@ RaidPreview :: struct {
 
 // ?raid=preview (and &cine=1): you by the commons facing the South Gate, the raid to come.
 rp_facts :: (s: [] Everglade, url: string) {
-  if eg_query_is(url,"from","grid") {s[0].orbit=verse_orbit_start(s[0].feet,f32(PI));}
+  if eg_query_is(url,"from","grid") {s[0].orbit=metaverse_orbit_start(s[0].feet,f32(PI));}
   // a staged shot of Darian and his staff (docs/metaverse/clips.md), in the preview or a room
   if eg_query_is(url, "stage", "darian") { s[0].rp.stage = 4; }
   if eg_query_is(url, "stage", "darian-15") { s[0].rp.stage = 15; }
@@ -88,7 +88,7 @@ rp_facts :: (s: [] Everglade, url: string) {
     s[0].rp.echo_at = v3(ex, ground_at(s, ex, ez), ez); s[0].rp.echo_heading = f32(RP_ECHO_HEADING);
     s[0].spawn = v3(RP_YOU[0], 0, RP_YOU[1]); s[0].spawn_face = yaw_of(0, -1);
     s[0].feet = v3(RP_YOU[0], ground_at(s, RP_YOU[0], RP_YOU[1]), RP_YOU[1]);
-    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].orbit = metaverse_orbit_start(s[0].feet, s[0].spawn_face);
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
   }
   if !eg_query_is(url, "raid", "preview") { return; }
@@ -96,7 +96,7 @@ rp_facts :: (s: [] Everglade, url: string) {
   s[0].rp.cine = eg_query_is(url, "cine", "1");
   s[0].spawn = v3(RP_YOU[0], 0, RP_YOU[1]); s[0].spawn_face = yaw_of(0, -1);
   s[0].feet = v3(RP_YOU[0], ground_at(s, RP_YOU[0], RP_YOU[1]), RP_YOU[1]);
-  s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+  s[0].orbit = metaverse_orbit_start(s[0].feet, s[0].spawn_face);
   s[0].warp = true; s[0].above = false; s[0].lift = 0;
 }
 // Whether the raid's people are drawn this frame (everglade.coax everglade_store_used uploads them).

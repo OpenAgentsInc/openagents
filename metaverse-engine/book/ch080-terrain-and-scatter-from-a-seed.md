@@ -57,7 +57,7 @@ GroundSample :: struct {
 GroundNormal :: struct { x: f32; y: f32 = 1; z: f32; }
 ```
 
-`verse_terrain_build` fills the heights. The hills are `HILL` (1.6 m) high
+`metaverse_terrain_build` fills the heights. The hills are `HILL` (1.6 m) high
 and rise toward the edge from `rim_from` metres out at `rim` metres per
 metre squared, so a realm sits in a shallow bowl. Everglade sets its own rim
 (`EG_RIM_FROM`, 80 m, at `EG_RIM`, 0.004). On each path strip the ground
@@ -70,7 +70,7 @@ on what you see:
 <!-- source: metaverse-engine/world/terrain.coax height -->
 ```jai
 // The height of the drawn surface at x, z (the edge's beyond it).
-verse_terrain_height :: (g: Ground, heights: [] f32, x: f32, z: f32) -> f32 #export_c #effects(all) {
+metaverse_terrain_height :: (g: Ground, heights: [] f32, x: f32, z: f32) -> f32 #export_c #effects(all) {
   q := ground_sample(g, heights, terrain_units.Quantity.{value = x}, terrain_units.Quantity.{value = z});
   return q.height.value;   // an invalid sample publishes the legacy zero height
 }
@@ -338,7 +338,7 @@ main :: () {
   print("trees inside a keep-out: %\n", inside);
   for t: 0..<3 {
     p := out[t];
-    y := verse_terrain_height(sh_ground(), heights[..], p.x, p.z);
+    y := metaverse_terrain_height(sh_ground(), heights[..], p.x, p.z);
     print("tree (%, %): at (% cm, % cm, % cm), scale %/100, kind %\n", p.i, p.j, cm(p.x), cm(y), cm(p.z), cm(p.size), p.kind);
   }
 
@@ -464,7 +464,7 @@ The vegetation module's 92 root mutants and the sky module's 54 are killed.
 
 The chapter is done when:
 
-- `verse_terrain_height` and the drawn mesh agree at every vertex and at
+- `metaverse_terrain_height` and the drawn mesh agree at every vertex and at
   sampled interior points. Chapter 8's checks hold this.
 - No scattered thing stands in a keep-out, for every realm. Holds for the
   module. Realms are not on it yet.

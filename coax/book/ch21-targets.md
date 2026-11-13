@@ -74,7 +74,7 @@ host's C in `metaverse/platform/host.c`, and the UI tests launch the real
 app in the simulator and tap the rendered HUD through the native touch
 path, which exercises both directions. Version 0.13.0 adds `#line` mappings
 and hashed name/type maps. The actual Simulator app has been attached in LLDB
-at `verse_cast_pose` in `cast.coax`, with Coax variable names and a stack
+at `metaverse_cast_pose` in `cast.coax`, with Coax variable names and a stack
 through Swift. Chapter 12 explains the commands and limits. This is useful
 source-debugging evidence, but does not establish a complete physical-device
 symbolication workflow, every ABI case or a general supported-target matrix.

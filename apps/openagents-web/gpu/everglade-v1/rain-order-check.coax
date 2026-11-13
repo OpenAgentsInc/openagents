@@ -70,6 +70,6 @@ rain_before :: (c:V3,v:V3,d:f32,u:[]f32)->V3 {
     }
   }
   key:V3=wg_mul_f3f(wg_sw_xyz_f4(eg_st(0,u)),eg_st(0,u).w);
-  tint:V3=wg_mul_f3f(v3(0.78f32,0.84f32,0.9f32),(0.45f32+(0.55f32*clampf(verse_style_luma(key.x,key.y,key.z),0.0f32,1.0f32))));
+  tint:V3=wg_mul_f3f(v3(0.78f32,0.84f32,0.9f32),(0.45f32+(0.55f32*clampf(metaverse_style_luma(key.x,key.y,key.z),0.0f32,1.0f32))));
   return wg_mix_f3f3f(c,tint,clampf(a,0.0f32,1.0f32)*0.4f32);
 }

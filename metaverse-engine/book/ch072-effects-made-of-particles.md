@@ -58,17 +58,17 @@ and capped by a budget.
    `x y z radius  r g b flicker  kind count size speed  seed 0 0 0`
    (`VERSE_EMITTER_FLOATS`). A frame has at most 24 emitters
    (`VERSE_EMITTERS`) of at most 64 particles each (`VERSE_PARTICLES_PER`).
-   `verse_emitter_put` clamps the count and refuses an emitter that doesn't
+   `metaverse_emitter_put` clamps the count and refuses an emitter that doesn't
    fit.
-2. **Stateless motion.** `verse_particle_hash(seed, i, k)` gives a number in
+2. **Stateless motion.** `metaverse_particle_hash(seed, i, k)` gives a number in
    [0, 1) per particle. Its age is a function of time and kind: embers live
-   1.6 s, dust 14 s, fireflies 7 s (`verse_particle_life`). Offset, glow and
+   1.6 s, dust 14 s, fireflies 7 s (`metaverse_particle_life`). Offset, glow and
    size are functions of the same inputs, so the shader and the CPU checks
    see the same numbers.
 3. **Choosing emitters.** A realm's function picks emitters for the eye's
    position: dust in the room you stand in, embers off the nearest
    flickering flames, fireflies over nearby outdoor areas
-   (`verse_particles_haunt`). The choice is a pure function of the scene
+   (`metaverse_particles_haunt`). The choice is a pure function of the scene
    and the eye.
 4. **One shader source.** Particle motion is written once in Coax and
    emitted as WGSL by `coax wgsl` (`apps/openagents-web/gpu/particles.coax`

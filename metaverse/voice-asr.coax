@@ -26,27 +26,27 @@ ASR_WHISPER :: 2;    // Psionic's Whisper ("--provider psionic")
 ASR_PARAKEET :: 3;   // Psionic's resident Parakeet TDT 0.6B v3 (nvidia/parakeet-tdt-0.6b-v3 @ 541d1f99)
 ASR_KINDS :: 4;
 
-verse_voice_asr_known :: (r: int) -> bool #export_c #effects(all) { return r >= ASR_LOCAL && r < ASR_KINDS; }
+metaverse_voice_asr_known :: (r: int) -> bool #export_c #effects(all) { return r >= ASR_LOCAL && r < ASR_KINDS; }
 
 // May this recognizer also synthesize replies? Parakeet is recognition only.
-verse_voice_asr_synthesizes :: (r: int) -> bool #export_c #effects(all) {
-  return verse_voice_asr_known(r) && r != ASR_PARAKEET;
+metaverse_voice_asr_synthesizes :: (r: int) -> bool #export_c #effects(all) {
+  return metaverse_voice_asr_known(r) && r != ASR_PARAKEET;
 }
 
 // Re-recognizing the open turn every second for PARTIALs and early finals
 // suits a fast or hosted recognizer. A resident local model whose calls
 // serialize recognizes each turn once, when it ends.
-verse_voice_asr_partials :: (r: int) -> bool #export_c #effects(all) {
-  return verse_voice_asr_known(r) && r != ASR_PARAKEET;
+metaverse_voice_asr_partials :: (r: int) -> bool #export_c #effects(all) {
+  return metaverse_voice_asr_known(r) && r != ASR_PARAKEET;
 }
 
 #test "recognizer identities" {
   #assert ASR_LOCAL == 0 && ASR_GOOGLE == 1 && ASR_WHISPER == 2 && ASR_PARAKEET == 3;
   for r: -2..<6 {
     k := r >= 0 && r <= 3;
-    #assert verse_voice_asr_known(r) == k;
-    #assert verse_voice_asr_synthesizes(r) == (k && r != 3);
-    #assert verse_voice_asr_partials(r) == (k && r != 3);
+    #assert metaverse_voice_asr_known(r) == k;
+    #assert metaverse_voice_asr_synthesizes(r) == (k && r != 3);
+    #assert metaverse_voice_asr_partials(r) == (k && r != 3);
   }
 }
 
@@ -60,7 +60,7 @@ ASR_SEARCH :: 50;          // frames either side of an even split a cut may move
 
 // The turn's 16-bit samples as the model's f32 samples in [-1, 1). False,
 // and nothing written, when out is not exactly as long as pcm.
-verse_voice_asr_convert :: (pcm: [] s16, out: [] f32) -> bool #export_c #effects(all) {
+metaverse_voice_asr_convert :: (pcm: [] s16, out: [] f32) -> bool #export_c #effects(all) {
   if out.count != pcm.count { return false; }
   for i: 0..<pcm.count { out[i] = f32(pcm[i]) / 32768.0; }
   return true;
@@ -69,7 +69,7 @@ verse_voice_asr_convert :: (pcm: [] s16, out: [] f32) -> bool #export_c #effects
 #forall "PCM conversion is exact and bounded" v: -32768..<32768 {
   p: [1] s16; o: [1] f32;
   p[0] = cast(s16) v;
-  #assert verse_voice_asr_convert(p[..], o[..]);
+  #assert metaverse_voice_asr_convert(p[..], o[..]);
   #assert o[0] * 32768.0 == f32(v) && o[0] >= -1.0 && o[0] < 1.0;
 }
 
@@ -77,10 +77,10 @@ verse_voice_asr_convert :: (pcm: [] s16, out: [] f32) -> bool #export_c #effects
   p: [3] s16; o: [4] f32;
   p[0] = 16384; p[1] = -32768; p[2] = 1;
   o[0] = 7.0;
-  #assert !verse_voice_asr_convert(p[..], o[..]) && o[0] == 7.0;
-  #assert !verse_voice_asr_convert(p[..], o[0..<2]) && o[0] == 7.0;
-  #assert verse_voice_asr_convert(p[..], o[0..<3]) && o[0] == 0.5 && o[1] == -1.0 && o[2] == 1.0 / 32768.0;
-  #assert verse_voice_asr_convert(p[0..<0], o[0..<0]);
+  #assert !metaverse_voice_asr_convert(p[..], o[..]) && o[0] == 7.0;
+  #assert !metaverse_voice_asr_convert(p[..], o[0..<2]) && o[0] == 7.0;
+  #assert metaverse_voice_asr_convert(p[..], o[0..<3]) && o[0] == 0.5 && o[1] == -1.0 && o[2] == 1.0 / 32768.0;
+  #assert metaverse_voice_asr_convert(p[0..<0], o[0..<0]);
 }
 
 // ---- The plan for one ended turn ----
@@ -88,7 +88,7 @@ verse_voice_asr_convert :: (pcm: [] s16, out: [] f32) -> bool #export_c #effects
 // than ASR_MIN_VOICED voiced frames: the model is not asked), -1 refused (it
 // would take more than ASR_WINDOWS calls), else 1..ASR_WINDOWS.
 ASR_REFUSED :: -1;
-verse_voice_asr_plan :: (samples: int, voiced_frames: int) -> int #export_c #effects(all) {
+metaverse_voice_asr_plan :: (samples: int, voiced_frames: int) -> int #export_c #effects(all) {
   if samples < ASR_MIN || voiced_frames < ASR_MIN_VOICED { return 0; }
   k := (samples + ASR_MAX - 1) / ASR_MAX;
   if k > ASR_WINDOWS { return ASR_REFUSED; }
@@ -96,13 +96,13 @@ verse_voice_asr_plan :: (samples: int, voiced_frames: int) -> int #export_c #eff
 }
 
 #test "the plan at its edges" {
-  #assert verse_voice_asr_plan(0, 100) == 0 && verse_voice_asr_plan(319, 100) == 0;
-  #assert verse_voice_asr_plan(320, 8) == 1 && verse_voice_asr_plan(320, 7) == 0;
-  #assert verse_voice_asr_plan(48000, 0) == 0 && verse_voice_asr_plan(48000, 8) == 1;
-  #assert verse_voice_asr_plan(327520, 9) == 1 && verse_voice_asr_plan(327521, 9) == 2;
-  #assert verse_voice_asr_plan(480000, 9) == 2;   // the host's 30 s turn: two calls, never one
-  #assert verse_voice_asr_plan(655040, 9) == 2 && verse_voice_asr_plan(655041, 9) == 3;
-  #assert verse_voice_asr_plan(1310080, 9) == 4 && verse_voice_asr_plan(1310081, 9) == ASR_REFUSED;
+  #assert metaverse_voice_asr_plan(0, 100) == 0 && metaverse_voice_asr_plan(319, 100) == 0;
+  #assert metaverse_voice_asr_plan(320, 8) == 1 && metaverse_voice_asr_plan(320, 7) == 0;
+  #assert metaverse_voice_asr_plan(48000, 0) == 0 && metaverse_voice_asr_plan(48000, 8) == 1;
+  #assert metaverse_voice_asr_plan(327520, 9) == 1 && metaverse_voice_asr_plan(327521, 9) == 2;
+  #assert metaverse_voice_asr_plan(480000, 9) == 2;   // the host's 30 s turn: two calls, never one
+  #assert metaverse_voice_asr_plan(655040, 9) == 2 && metaverse_voice_asr_plan(655041, 9) == 3;
+  #assert metaverse_voice_asr_plan(1310080, 9) == 4 && metaverse_voice_asr_plan(1310081, 9) == ASR_REFUSED;
 }
 
 // Where the window that starts at `start` ends, with `left` windows (this one
@@ -114,7 +114,7 @@ verse_voice_asr_plan :: (samples: int, voiced_frames: int) -> int #export_c #eff
 // quietest (the two frames either side added), then the nearest the split,
 // then the earlier. With none, the even split itself. -1 when no plan exists:
 // left < 1, start..<n cannot be covered, or speech has too few frames.
-verse_voice_asr_cut :: (start: int, n: int, left: int, speech: [] u8) -> int #export_c #effects(all) {
+metaverse_voice_asr_cut :: (start: int, n: int, left: int, speech: [] u8) -> int #export_c #effects(all) {
   rest := n - start;
   if left < 1 || rest < left * ASR_MIN || rest > left * ASR_MAX || speech.count * ASR_FRAME < n { return -1; }
   if left == 1 { return n; }
@@ -174,7 +174,7 @@ verse_voice_asr_cut :: (start: int, n: int, left: int, speech: [] u8) -> int #ex
       if !have || cost < wc || (cost == wc && d < wd) { have = true; want = c; wc = cost; wd = d; }
     }
   }
-  #assert verse_voice_asr_cut(start, n, left, speech[0..<frames]) == want;
+  #assert metaverse_voice_asr_cut(start, n, left, speech[0..<frames]) == want;
 }
 
 #forall "every turn is covered exactly once by bounded calls" step: 0..<160, seed: 0..<3 #steps 900000000 {
@@ -186,14 +186,14 @@ verse_voice_asr_cut :: (start: int, n: int, left: int, speech: [] u8) -> int #ex
     x = (x * 1103515245 + 12345) & 2147483647;
     speech[f] = cast(u8) ((x >> 16) & 255);
   }
-  k := verse_voice_asr_plan(n, frames + 8);
+  k := metaverse_voice_asr_plan(n, frames + 8);
   want := (n + 327519) / 327520;
   if want > 4 { #assert k == ASR_REFUSED; }
   else {
     #assert k == want;
     start := 0;
     for w: 0..<k {
-      e := verse_voice_asr_cut(start, n, k - w, speech[0..<frames]);
+      e := metaverse_voice_asr_cut(start, n, k - w, speech[0..<frames]);
       size := e - start;
       #assert size >= 320 && size <= 327520;
       // A cut is on a frame boundary, unless the model's bound leaves none to choose.
@@ -211,54 +211,54 @@ verse_voice_asr_cut :: (start: int, n: int, left: int, speech: [] u8) -> int #ex
   // An even split is sample 240000 (frame 750). A pause at frames 760..762:
   // boundaries 761 and 762 have both neighbours quiet; 761 is nearer.
   speech[760] = 10; speech[761] = 10; speech[762] = 10;
-  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 761 * 320;
+  #assert metaverse_voice_asr_cut(0, n, 2, speech[..]) == 761 * 320;
   // An equally quiet boundary nearer the split wins.
   speech[745] = 10; speech[746] = 10;
-  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 746 * 320;
+  #assert metaverse_voice_asr_cut(0, n, 2, speech[..]) == 746 * 320;
   // A quieter one farther away still wins over a nearer one.
   speech[790] = 3; speech[791] = 3;
-  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 791 * 320;
+  #assert metaverse_voice_asr_cut(0, n, 2, speech[..]) == 791 * 320;
   // Both neighbours count: boundary 747 (10 + 0) beats 746 (10 + 10).
   speech[790] = 200; speech[791] = 200; speech[747] = 0;
-  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 747 * 320;
+  #assert metaverse_voice_asr_cut(0, n, 2, speech[..]) == 747 * 320;
   // Beyond ASR_SEARCH frames from the split it is not considered.
   speech[698] = 0; speech[699] = 0;
-  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 747 * 320;
+  #assert metaverse_voice_asr_cut(0, n, 2, speech[..]) == 747 * 320;
   // With speech everywhere the nearest boundary to the split is the cut.
   for f: 0..<1500 { speech[f] = 200; }
-  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 240000;
+  #assert metaverse_voice_asr_cut(0, n, 2, speech[..]) == 240000;
   // Equal cost at equal distance either side of the split: the earlier.
   speech[748] = 9; speech[749] = 9; speech[751] = 9; speech[752] = 9;
-  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 749 * 320;
+  #assert metaverse_voice_asr_cut(0, n, 2, speech[..]) == 749 * 320;
   speech[751] = 8;
-  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 752 * 320;
+  #assert metaverse_voice_asr_cut(0, n, 2, speech[..]) == 752 * 320;
   // The last window ends at the turn's end.
-  #assert verse_voice_asr_cut(240000, n, 1, speech[..]) == n;
-  #assert verse_voice_asr_cut(240001, n, 1, speech[..]) == n;
+  #assert metaverse_voice_asr_cut(240000, n, 1, speech[..]) == n;
+  #assert metaverse_voice_asr_cut(240001, n, 1, speech[..]) == n;
 }
 
 #test "a cut refuses what it cannot cover" {
   speech: [4200] u8;
-  #assert verse_voice_asr_cut(0, 1000, 0, speech[..]) == -1;
-  #assert verse_voice_asr_cut(0, 639, 2, speech[..]) == -1 && verse_voice_asr_cut(0, 640, 2, speech[..]) == 320;
-  #assert verse_voice_asr_cut(0, 319, 1, speech[..]) == -1 && verse_voice_asr_cut(0, 320, 1, speech[..]) == 320;
-  #assert verse_voice_asr_cut(0, 327521, 1, speech[..]) == -1 && verse_voice_asr_cut(5, 327525, 1, speech[..]) == 327525;
-  #assert verse_voice_asr_cut(0, 655041, 2, speech[..]) == -1 && verse_voice_asr_cut(0, 655040, 2, speech[..]) == 327520;
-  #assert verse_voice_asr_cut(7, 1300007, 4, speech[..]) > 7;
+  #assert metaverse_voice_asr_cut(0, 1000, 0, speech[..]) == -1;
+  #assert metaverse_voice_asr_cut(0, 639, 2, speech[..]) == -1 && metaverse_voice_asr_cut(0, 640, 2, speech[..]) == 320;
+  #assert metaverse_voice_asr_cut(0, 319, 1, speech[..]) == -1 && metaverse_voice_asr_cut(0, 320, 1, speech[..]) == 320;
+  #assert metaverse_voice_asr_cut(0, 327521, 1, speech[..]) == -1 && metaverse_voice_asr_cut(5, 327525, 1, speech[..]) == 327525;
+  #assert metaverse_voice_asr_cut(0, 655041, 2, speech[..]) == -1 && metaverse_voice_asr_cut(0, 655040, 2, speech[..]) == 327520;
+  #assert metaverse_voice_asr_cut(7, 1300007, 4, speech[..]) > 7;
   // Too few frames of speech for the turn.
-  #assert verse_voice_asr_cut(0, 6400, 2, speech[0..<19]) == -1 && verse_voice_asr_cut(0, 6400, 2, speech[0..<20]) == 3200;
-  #assert verse_voice_asr_cut(0, 6401, 1, speech[0..<20]) == -1 && verse_voice_asr_cut(0, 6401, 1, speech[0..<21]) == 6401;
+  #assert metaverse_voice_asr_cut(0, 6400, 2, speech[0..<19]) == -1 && metaverse_voice_asr_cut(0, 6400, 2, speech[0..<20]) == 3200;
+  #assert metaverse_voice_asr_cut(0, 6401, 1, speech[0..<20]) == -1 && metaverse_voice_asr_cut(0, 6401, 1, speech[0..<21]) == 6401;
 }
 
 // ---- Between calls ----
 // After each call: go on to the next window only while nothing cancelled
 // the turn and every call so far succeeded.
-verse_voice_asr_continue :: (cancelled: bool, ok: bool, done: int, windows: int) -> bool #export_c #effects(all) {
+metaverse_voice_asr_continue :: (cancelled: bool, ok: bool, done: int, windows: int) -> bool #export_c #effects(all) {
   return !cancelled && ok && done < windows;
 }
 
 #forall "a recognition stops at cancellation or failure" c: 0..<2, ok: 0..<2, done: 0..<5, k: 1..<5 {
-  #assert verse_voice_asr_continue(c == 1, ok == 1, done, k) == (c == 0 && ok == 1 && done < k);
+  #assert metaverse_voice_asr_continue(c == 1, ok == 1, done, k) == (c == 0 && ok == 1 && done < k);
 }
 
 // Appends one window's text to the turn's transcript (`used` bytes of out),
@@ -267,7 +267,7 @@ verse_voice_asr_continue :: (cancelled: bool, ok: bool, done: int, windows: int)
 // result would not fit out or ASR_TEXT bytes.
 ASR_TEXT :: 600;   // TurnEvent.text max_bytes
 asr_space :: (c: u8) -> bool #effects(all) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
-verse_voice_asr_append :: (out: [] u8, used: int, piece: string) -> int #export_c #effects(all) {
+metaverse_voice_asr_append :: (out: [] u8, used: int, piece: string) -> int #export_c #effects(all) {
   if used < 0 || used > out.count { return -1; }
   a := 0;
   b := piece.count;
@@ -284,19 +284,19 @@ verse_voice_asr_append :: (out: [] u8, used: int, piece: string) -> int #export_
 
 #test "window texts join with one space" {
   out: [700] u8;
-  n := verse_voice_asr_append(out[..], 0, "  Hello Foreman.  ");
+  n := metaverse_voice_asr_append(out[..], 0, "  Hello Foreman.  ");
   #assert cast(string) out[0..<n] == "Hello Foreman.";
-  n = verse_voice_asr_append(out[..], n, "\t\n");
+  n = metaverse_voice_asr_append(out[..], n, "\t\n");
   #assert cast(string) out[0..<n] == "Hello Foreman.";
-  n = verse_voice_asr_append(out[..], n, "\rWhat are we building today?\r\n");
+  n = metaverse_voice_asr_append(out[..], n, "\rWhat are we building today?\r\n");
   #assert cast(string) out[0..<n] == "Hello Foreman. What are we building today?";
-  n = verse_voice_asr_append(out[..], 0, "a   ");
+  n = metaverse_voice_asr_append(out[..], 0, "a   ");
   #assert cast(string) out[0..<n] == "a";
-  n = verse_voice_asr_append(out[..], n, " b");
+  n = metaverse_voice_asr_append(out[..], n, " b");
   #assert cast(string) out[0..<n] == "a b";
-  #assert verse_voice_asr_append(out[..], 0, "") == 0 && verse_voice_asr_append(out[..], 0, "   ") == 0;
-  #assert verse_voice_asr_append(out[..], -1, "x") == -1 && verse_voice_asr_append(out[..], 701, "x") == -1;
-  #assert verse_voice_asr_append(out[..], 700, "") == 700 && verse_voice_asr_append(out[..], 600, "") == 600;
+  #assert metaverse_voice_asr_append(out[..], 0, "") == 0 && metaverse_voice_asr_append(out[..], 0, "   ") == 0;
+  #assert metaverse_voice_asr_append(out[..], -1, "x") == -1 && metaverse_voice_asr_append(out[..], 701, "x") == -1;
+  #assert metaverse_voice_asr_append(out[..], 700, "") == 700 && metaverse_voice_asr_append(out[..], 600, "") == 600;
   #assert asr_space(' ') && asr_space('\t') && asr_space('\n') && asr_space('\r') && !asr_space('a') && !asr_space(0);
 }
 
@@ -304,14 +304,14 @@ verse_voice_asr_append :: (out: [] u8, used: int, piece: string) -> int #export_
   out: [700] u8;
   big: [599] u8;
   for i: 0..<599 { big[i] = 'a'; }
-  n := verse_voice_asr_append(out[..], 0, cast(string) big[..]);
+  n := metaverse_voice_asr_append(out[..], 0, cast(string) big[..]);
   #assert n == 599;
   out[599] = 'z';
-  #assert verse_voice_asr_append(out[..], n, "b") == -1 && out[599] == 'z';   // 599 + space + 1
-  #assert verse_voice_asr_append(out[..], 0, cast(string) big[0..<598]) == 598 && verse_voice_asr_append(out[..], 598, "b") == 600;
+  #assert metaverse_voice_asr_append(out[..], n, "b") == -1 && out[599] == 'z';   // 599 + space + 1
+  #assert metaverse_voice_asr_append(out[..], 0, cast(string) big[0..<598]) == 598 && metaverse_voice_asr_append(out[..], 598, "b") == 600;
   small: [5] u8;
-  #assert verse_voice_asr_append(small[..], 0, "abcde") == 5 && verse_voice_asr_append(small[..], 0, "abcdef") == -1;
-  #assert verse_voice_asr_append(small[..], 2, "cde") == -1 && verse_voice_asr_append(small[..], 2, "cd") == 5;
+  #assert metaverse_voice_asr_append(small[..], 0, "abcde") == 5 && metaverse_voice_asr_append(small[..], 0, "abcdef") == -1;
+  #assert metaverse_voice_asr_append(small[..], 2, "cde") == -1 && metaverse_voice_asr_append(small[..], 2, "cd") == 5;
 }
 
 // ---- Admission ----
@@ -326,7 +326,7 @@ ASR_STALE :: 2;        // drop silently: a newer epoch or a dropped turn owns th
 ASR_CANCELLED :: 3;    // drop silently: the client cancelled it
 ASR_FAILED :: 4;       // the provider failed: an ERROR_CODE_PROVIDER, then ENDED
 ASR_TOO_LONG :: 5;     // refused: more than ASR_TEXT bytes, or more than ASR_WINDOWS calls
-verse_voice_asr_admit :: (turn_no: int, dropped_upto: int, epoch: u64, epoch_now: u64, cancelled: bool,
+metaverse_voice_asr_admit :: (turn_no: int, dropped_upto: int, epoch: u64, epoch_now: u64, cancelled: bool,
                           windows: int, ok: bool, text_bytes: int) -> int #export_c #effects(all) {
   if cancelled { return ASR_CANCELLED; }
   if turn_no <= dropped_upto || epoch != epoch_now { return ASR_STALE; }
@@ -339,7 +339,7 @@ verse_voice_asr_admit :: (turn_no: int, dropped_upto: int, epoch: u64, epoch_now
 
 #forall "admission" turn: 1..<4, dropped: 0..<4, e: 0..<2, c: 0..<2, w: -1..<3, ok: 0..<2, b: 0..<4 {
   bytes := ifx b == 0 then 0 else ifx b == 1 then 1 else ifx b == 2 then 600 else 601;
-  v := verse_voice_asr_admit(turn, dropped, 7, cast(u64) (7 + e), c == 1, w, ok == 1, bytes);
+  v := metaverse_voice_asr_admit(turn, dropped, 7, cast(u64) (7 + e), c == 1, w, ok == 1, bytes);
   if c == 1 { #assert v == ASR_CANCELLED; }
   else if turn <= dropped || e == 1 { #assert v == ASR_STALE; }
   else if w == -1 || bytes > 600 { #assert v == ASR_TOO_LONG; }
@@ -352,17 +352,17 @@ verse_voice_asr_admit :: (turn_no: int, dropped_upto: int, epoch: u64, epoch_now
 }
 
 #test "admission at its edges" {
-  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 1, true, 12) == ASR_FINAL;
-  #assert verse_voice_asr_admit(3, 3, 5, 5, false, 1, true, 12) == ASR_STALE;
-  #assert verse_voice_asr_admit(3, 2, 5, 6, false, 1, true, 12) == ASR_STALE;
-  #assert verse_voice_asr_admit(3, 2, 6, 5, false, 1, true, 12) == ASR_STALE;
-  #assert verse_voice_asr_admit(3, 2, 5, 5, true, 1, true, 12) == ASR_CANCELLED;
-  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 1, false, 12) == ASR_FAILED;
-  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 0, false, 0) == ASR_NO_SPEECH;
-  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 2, true, 0) == ASR_NO_SPEECH;
-  #assert verse_voice_asr_admit(3, 2, 5, 5, false, -1, true, 0) == ASR_TOO_LONG;
-  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 1, true, -1) == ASR_TOO_LONG;
-  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 1, true, 600) == ASR_FINAL;
-  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 1, true, 601) == ASR_TOO_LONG;
-  #assert verse_voice_asr_admit(1, 0, 0, 0, false, 4, true, 1) == ASR_FINAL;
+  #assert metaverse_voice_asr_admit(3, 2, 5, 5, false, 1, true, 12) == ASR_FINAL;
+  #assert metaverse_voice_asr_admit(3, 3, 5, 5, false, 1, true, 12) == ASR_STALE;
+  #assert metaverse_voice_asr_admit(3, 2, 5, 6, false, 1, true, 12) == ASR_STALE;
+  #assert metaverse_voice_asr_admit(3, 2, 6, 5, false, 1, true, 12) == ASR_STALE;
+  #assert metaverse_voice_asr_admit(3, 2, 5, 5, true, 1, true, 12) == ASR_CANCELLED;
+  #assert metaverse_voice_asr_admit(3, 2, 5, 5, false, 1, false, 12) == ASR_FAILED;
+  #assert metaverse_voice_asr_admit(3, 2, 5, 5, false, 0, false, 0) == ASR_NO_SPEECH;
+  #assert metaverse_voice_asr_admit(3, 2, 5, 5, false, 2, true, 0) == ASR_NO_SPEECH;
+  #assert metaverse_voice_asr_admit(3, 2, 5, 5, false, -1, true, 0) == ASR_TOO_LONG;
+  #assert metaverse_voice_asr_admit(3, 2, 5, 5, false, 1, true, -1) == ASR_TOO_LONG;
+  #assert metaverse_voice_asr_admit(3, 2, 5, 5, false, 1, true, 600) == ASR_FINAL;
+  #assert metaverse_voice_asr_admit(3, 2, 5, 5, false, 1, true, 601) == ASR_TOO_LONG;
+  #assert metaverse_voice_asr_admit(1, 0, 0, 0, false, 4, true, 1) == ASR_FINAL;
 }

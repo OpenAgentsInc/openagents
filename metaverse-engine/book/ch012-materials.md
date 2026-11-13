@@ -32,28 +32,28 @@ and two smoothed steps place the shadow, mid and lit bands:
 <!-- source: metaverse-engine/render/material.coax bands -->
 ```jai
 // smoothstep(e - s, e + s, x): a band edge at e, blended over 2s.
-verse_style_soft_step :: (e:f32,s:f32,x:f32)->f32 #export_c #effects(all) {
+metaverse_style_soft_step :: (e:f32,s:f32,x:f32)->f32 #export_c #effects(all) {
  t:=st_sat((x-(e-s))/st_max(2.0f32*s,0.000001f32));
  return t*t*(3.0f32-2.0f32*t);
 }
 
 // ---- 1. Shading: soft toon bands
 // Wrapped Lambert: N.L lifted a quarter, so the terminator sits past the side.
-verse_style_wrap :: (ndl:f32)->f32 #export_c #effects(all) {return st_sat((ndl+0.25f32)/1.25f32);}
+metaverse_style_wrap :: (ndl:f32)->f32 #export_c #effects(all) {return st_sat((ndl+0.25f32)/1.25f32);}
 // Three bands: shadow 0, mid (`mid`, 0.55), lit 1, edges e0 and e1 (0.20, 0.58)
 // softened over s (0.06). w is the wrapped term times the shadow map's soft term.
-verse_style_bands :: (w:f32,e0:f32,e1:f32,s:f32,mid:f32)->f32 #export_c #effects(all) {
- return mid*verse_style_soft_step(e0,s,w)+(1.0f32-mid)*verse_style_soft_step(e1,s,w);
+metaverse_style_bands :: (w:f32,e0:f32,e1:f32,s:f32,mid:f32)->f32 #export_c #effects(all) {
+ return mid*metaverse_style_soft_step(e0,s,w)+(1.0f32-mid)*metaverse_style_soft_step(e1,s,w);
 }
 // Two bands, for characters: one edge (0.40, softness 0.08).
-verse_style_bands2 :: (w:f32,e:f32,s:f32)->f32 #export_c #effects(all) {return verse_style_soft_step(e,s,w);}
+metaverse_style_bands2 :: (w:f32,e:f32,s:f32)->f32 #export_c #effects(all) {return metaverse_style_soft_step(e,s,w);}
 ```
 
 These are plain `f32` functions that work on one colour channel at a time,
 because the Metal scalar profile has no vectors. A realm's shader is Coax
 too (for example, `apps/openagents-web/gpu/fixture.coax`), and `coax wgsl`
 emits each function it calls as `coax_p_<name>`. The functions keep their
-`verse_style_` names, and `metaverse/style.coax` loads
+`metaverse_style_` names, and `metaverse/style.coax` loads
 `metaverse-engine/render/material.coax`, so every realm's call sites are unchanged.
 The check that every committed WGSL module still matches its Coax source
 reports no change:
@@ -71,10 +71,10 @@ has the same body for every procedure it had; the C differs only in the
 compiler's temporary and source-line numbers, plus the new procedures, which
 no realm calls yet.
 
-The module also holds the cool shadow (`verse_style_cool` and
-`verse_style_keep_value`: the shadow band takes the tint's hue once more and
+The module also holds the cool shadow (`metaverse_style_cool` and
+`metaverse_style_keep_value`: the shadow band takes the tint's hue once more and
 is scaled back to its own luminance), the banded mix, the wet-surface dab,
-the rim light and `verse_style_luma`.
+the rim light and `metaverse_style_luma`.
 
 ## The material record
 
@@ -169,7 +169,7 @@ mat_rgb :: (r: f32, g: f32, b: f32) -> MatRgb { return MatRgb.{r = r, g = g, b =
 // Where a surface sits in the three bands: the wrapped key light (n.l) times the shadow map's lit
 // share, against the preset's edges e0 and e1, softness and mid band.
 material_band :: (ndl: f32, lit: f32, e0: f32, e1: f32, soft: f32, mid: f32) -> f32 {
-  return verse_style_bands(verse_style_wrap(ndl) * lit, e0, e1, soft, mid);
+  return metaverse_style_bands(metaverse_style_wrap(ndl) * lit, e0, e1, soft, mid);
 }
 
 // One banded surface, the CPU form of a painterly realm's fragment shader (gpu/fixture.coax,
@@ -178,12 +178,12 @@ material_band :: (ndl: f32, lit: f32, e0: f32, e1: f32, soft: f32, mid: f32) -> 
 // mixed by the band.
 material_banded :: (a: MatRgb, dark: MatRgb, bright: MatRgb, t: MatRgb, cool: f32, band: f32) -> MatRgb {
   s := mat_rgb(a.r * dark.r, a.g * dark.g, a.b * dark.b);
-  tl := verse_style_luma(t.r, t.g, t.b);
-  m := mat_rgb(verse_style_cool(s.r, t.r, tl, cool), verse_style_cool(s.g, t.g, tl, cool), verse_style_cool(s.b, t.b, tl, cool));
-  y := verse_style_luma(s.r, s.g, s.b);
-  ym := verse_style_luma(m.r, m.g, m.b);
-  c := mat_rgb(verse_style_keep_value(m.r, y, ym), verse_style_keep_value(m.g, y, ym), verse_style_keep_value(m.b, y, ym));
-  return mat_rgb(verse_style_banded(c.r, a.r * bright.r, band), verse_style_banded(c.g, a.g * bright.g, band), verse_style_banded(c.b, a.b * bright.b, band));
+  tl := metaverse_style_luma(t.r, t.g, t.b);
+  m := mat_rgb(metaverse_style_cool(s.r, t.r, tl, cool), metaverse_style_cool(s.g, t.g, tl, cool), metaverse_style_cool(s.b, t.b, tl, cool));
+  y := metaverse_style_luma(s.r, s.g, s.b);
+  ym := metaverse_style_luma(m.r, m.g, m.b);
+  c := mat_rgb(metaverse_style_keep_value(m.r, y, ym), metaverse_style_keep_value(m.g, y, ym), metaverse_style_keep_value(m.b, y, ym));
+  return mat_rgb(metaverse_style_banded(c.r, a.r * bright.r, band), metaverse_style_banded(c.g, a.g * bright.g, band), metaverse_style_banded(c.b, a.b * bright.b, band));
 }
 ```
 
@@ -245,14 +245,14 @@ main :: () {
 
   // The painterly preset at noon, where the fixture's shader reads it: 156 floats in.
   u: [156 + STYLE_FLOATS] f32;
-  if !verse_style_at(verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.5, u[156..<156 + STYLE_FLOATS]) { print("no preset\n"); return; }
+  if !metaverse_style_at(metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP), 0.5, u[156..<156 + STYLE_FLOATS]) { print("no preset\n"); return; }
   s := u[156..<156 + STYLE_FLOATS];
   print("bands: edges % and %, softness %, mid %; cool %\n", s[SU_BANDS], s[SU_BANDS + 1], s[SU_BANDS + 2], s[SU_BANDS + 3], s[SU_SHADOW + 3]);
   // A level patch of grass (its normal straight up) under the noon key.
   ny := 1.0f32;
-  amb := mat_rgb(verse_style_ambient(ny, s[SU_SKY_AMB], s[SU_GROUND_AMB], s[SU_SKY_AMB + 3]),
-                 verse_style_ambient(ny, s[SU_SKY_AMB + 1], s[SU_GROUND_AMB + 1], s[SU_SKY_AMB + 3]),
-                 verse_style_ambient(ny, s[SU_SKY_AMB + 2], s[SU_GROUND_AMB + 2], s[SU_SKY_AMB + 3]));
+  amb := mat_rgb(metaverse_style_ambient(ny, s[SU_SKY_AMB], s[SU_GROUND_AMB], s[SU_SKY_AMB + 3]),
+                 metaverse_style_ambient(ny, s[SU_SKY_AMB + 1], s[SU_GROUND_AMB + 1], s[SU_SKY_AMB + 3]),
+                 metaverse_style_ambient(ny, s[SU_SKY_AMB + 2], s[SU_GROUND_AMB + 2], s[SU_SKY_AMB + 3]));
   tint := mat_rgb(s[SU_TINT], s[SU_TINT + 1], s[SU_TINT + 2]);
   k := s[SU_KEY + 3];
   dark := mat_rgb(tint.r * amb.r, tint.g * amb.g, tint.b * amb.b);

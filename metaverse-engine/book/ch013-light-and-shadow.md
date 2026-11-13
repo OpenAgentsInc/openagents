@@ -49,7 +49,7 @@ The clock runs from 0 at midnight through 0.25 at dawn, 0.5 at noon and
 preset's `low` at midnight and `high` at noon. Below `moon_below` the moon
 leads, opposite the sun, so exactly one of the two is the key at any time.
 `light_key` uses the same arithmetic, in the same order, as the realms'
-uniform writer, `verse_style_at` in `metaverse/style-preset.coax`, which puts
+uniform writer, `metaverse_style_at` in `metaverse/style-preset.coax`, which puts
 the direction into the block's `SU_KEY_DIR` words.
 
 ## A shadow map that holds still
@@ -78,8 +78,8 @@ light_space :: (lx: f32, ly: f32, lz: f32, eye_x: f32, eye_z: f32, reach: f32, s
     s.axx = lz / n; s.axz = -lx / n;
   }
   s.ayx = ly * s.axz; s.ayy = lz * s.axx - lx * s.axz; s.ayz = -ly * s.axx;   // cross(l, ax)
-  s.mx = verse_style_shadow_snap(eye_x * s.axx + eye_z * s.axz, reach, size);
-  s.my = verse_style_shadow_snap(eye_x * s.ayx + eye_z * s.ayz, reach, size);
+  s.mx = metaverse_style_shadow_snap(eye_x * s.axx + eye_z * s.axz, reach, size);
+  s.my = metaverse_style_shadow_snap(eye_x * s.ayx + eye_z * s.ayz, reach, size);
   s.reach = reach;
   s.texel = 2 * reach / st_max(size, 1);
   return s;
@@ -89,7 +89,7 @@ light_space :: (lx: f32, ly: f32, lz: f32, eye_x: f32, eye_z: f32, reach: f32, s
 // keeps the same fraction of a texel however the eye moves: shadow edges don't crawl.
 light_map_texel :: (s: LightSpace, x: f32, y: f32, z: f32, which: int) -> f32 {
   along := ifx which == 0 then x * s.axx + z * s.axz - s.mx else x * s.ayx + y * s.ayy + z * s.ayz - s.my;
-  return (verse_style_shadow_across(along, s.reach) * 0.5 + 0.5) * (2 * s.reach / s.texel);
+  return (metaverse_style_shadow_across(along, s.reach) * 0.5 + 0.5) * (2 * s.reach / s.texel);
 }
 ```
 
@@ -97,7 +97,7 @@ light_map_texel :: (s: LightSpace, x: f32, y: f32, z: f32, which: int) -> f32 {
 to both. A point that holds still keeps the same fraction of a texel however
 the eye moves, because the map under it moves only in whole texels.
 `fixture_light_space` in the fixture realm's shader builds the same space on
-the GPU. The haze is `verse_style_haze`: exponential past a start distance,
+the GPU. The haze is `metaverse_style_haze`: exponential past a start distance,
 thinner higher up, and capped, so a far ridge keeps some contrast.
 
 ## Local lights
@@ -110,7 +110,7 @@ LocalLight :: struct { x: f32; y: f32; z: f32; radius: f32; r: f32; g: f32; b: f
 LocalLights :: struct { lights: [LIGHT_LOCAL_MAX] LocalLight; count: int; refused: int; }
 
 // A local light's share at distance d of its radius r: (1 - d/r)^2, none at r and past it
-// (metaverse/haunt-light.coax verse_haunt_attenuate, the Haunted House's).
+// (metaverse/haunt-light.coax metaverse_haunt_attenuate, the Haunted House's).
 light_falloff :: (d: f32, r: f32) -> f32 {
   q := st_max(0, 1 - d / st_max(r, 0.01));
   return q * q;
@@ -142,7 +142,7 @@ light_local_at :: (s: LocalLights, x: f32, y: f32, z: f32) -> MatRgb {
 ```
 
 A lantern or a spell is a point, a radius and a colour. Its share falls off
-as (1 − d/r)², the Haunted House's `verse_haunt_attenuate`, and ends at its
+as (1 − d/r)², the Haunted House's `metaverse_haunt_attenuate`, and ends at its
 radius. A frame holds at most 16. `light_local_add` takes a light whole or
 refuses it: past 16, with a radius that isn't above 0, or with a colour below
 0. Each refusal is counted.
@@ -176,21 +176,21 @@ Work these out by hand first:
 
 The example [metaverse-engine/examples/light-a-frame.coax](../examples/light-a-frame.coax)
 runs these. It also writes the painterly preset's uniform block with
-`verse_style_at` at each clock key and compares its key direction with
+`metaverse_style_at` at each clock key and compares its key direction with
 `light_key`'s, bit for bit:
 
 <!-- source: metaverse-engine/examples/light-a-frame.coax example -->
 ```jai
 main :: () {
   // 1. The key light at the four clock keys, from the painterly preset's sun.
-  p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  p := metaverse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   u: [STYLE_FLOATS] f32;
   same := true;
   for i: 0..<4 {
     clock := cast(f32) i * 0.25;
     k := light_key(p.sun_low, p.sun_high, p.sun_azimuth, p.moon_below, clock);
     print("clock %: % at elevation % deg, toward % % %\n", clock, ifx k.moon then "moon" else "sun", r4(k.elevation / DEG), r4(k.x), r4(k.y), r4(k.z));
-    if !verse_style_at(p, clock, u[..]) { print("no preset\n"); return; }
+    if !metaverse_style_at(p, clock, u[..]) { print("no preset\n"); return; }
     moon := ifx k.moon then 1.0f32 else 0.0f32;
     same = same && u[SU_KEY_DIR] == k.x && u[SU_KEY_DIR + 1] == k.y && u[SU_KEY_DIR + 2] == k.z && u[SU_KEY_DIR + 3] == moon;
   }
@@ -219,7 +219,7 @@ main :: () {
 
   // 4. The day's haze: none to 20 m, then thicker, capped at 0.88.
   for d: [4] f32.[20, 100, 200, 5000] {
-    print("haze at % m: %\n", d, r4(verse_style_haze(d, 0, 0, 20, 0.011, 0.88, 60)));
+    print("haze at % m: %\n", d, r4(metaverse_style_haze(d, 0, 0, 20, 0.011, 0.88, 60)));
   }
 }
 ```
