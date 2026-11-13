@@ -1,0 +1,160 @@
+// Riding's words (#13268). A mount itself is a row (everglade-wire.coax WK_MOUNT): egm_row writes it
+// from the room's mount and egm_row_take lays it over a page's. What a player asks is an E (use)
+// frame of a kind below, and what the room answers is an e entry told to the asker alone. The one
+// codec both sides load: the page writes the asks and reads the answers and the rows
+// (everglade/client/ride.coax); the room reads the asks and writes the answers and the rows
+// (everglade/server/riding.coax). Profile proto/verse/everglade2-riding-v1.json, doc
+// docs/protocol/everglade-riding-v1.md; its check runs these functions:
+//   coax/web/tool.sh coax/web/room/riding-profile.coax proto/verse/everglade2-riding-v1.json
+// Whole numbers a space apart (everglade-wire.coax wire_int).
+//   E SEQ 20 MOUNT        mount the mount MOUNT (0 to WIRE_MOUNTS - 1), standing within its reach
+//   E SEQ 21 0            get down from the mount you ride
+//   E SEQ 22 0            bring your flier down (it lands unless you fly on)
+//   e ride SEQ CODE MOUNT the room's answer to ask SEQ: CODE 0 done, else why not (mounts.coax E2R_*);
+//                         MOUNT the mount it was about, -1 none
+// SEQ rises with each ask, above 0. A reader takes a word whole or not at all (ok false).
+//   coax/bin/coax test everglade/shared/mount-wire.coax --library
+#load "everglade-wire.coax";
+#load "../server/mounts.coax";
+
+EGM_RIDE_E :: "e ride";
+EGM_CODES :: 11;   // E2R_OK to E2R_GROUND
+
+EgmAsk :: struct { ok: bool; seq: int; kind: int; mount: int; }
+EgmAnswer :: struct { ok: bool; seq: int; code: int; mount: int = -1; }
+
+egm_use_of :: (a: EgmAsk) -> WireUse { return WireUse.{seq = a.seq, kind = a.kind, id = ifx a.kind == WE_MOUNT then a.mount else 0}; }
+egm_use_read :: (u: WireUse) -> EgmAsk {
+  if u.seq <= 0 || u.id < 0 { return EgmAsk.{}; }
+  if u.kind == WE_MOUNT { if u.id >= WIRE_MOUNTS { return EgmAsk.{}; } return EgmAsk.{ok = true, seq = u.seq, kind = u.kind, mount = u.id}; }
+  if (u.kind == WE_DISMOUNT || u.kind == WE_LAND) && u.id == 0 { return EgmAsk.{ok = true, seq = u.seq, kind = u.kind, mount = -1}; }
+  return EgmAsk.{};
+}
+// Whether an e entry is riding's answer: told to its asker alone, on the reliable class.
+egm_kept :: (t: string) -> bool { return wire_is(t, EGM_RIDE_E); }
+egm_answer_put :: (out: [] u8, a: EgmAnswer) -> int { return wire_int(out, wire_int(out, wire_int(out, wire_put(out, 0, EGM_RIDE_E), a.seq), a.code), a.mount); }
+egm_answer_read :: (t: string) -> EgmAnswer {
+  if !wire_is(t, EGM_RIDE_E) { return EgmAnswer.{}; }
+  rd := [1] WireRd.[wire_rd(t, EGM_RIDE_E.count)];
+  a: EgmAnswer;
+  a.seq = wire_num(t, rd[..]); a.code = wire_num(t, rd[..]); a.mount = wire_num(t, rd[..]);
+  a.ok = rd[0].ok && !wire_more(t, rd[..]) && a.seq > 0 && a.code >= 0 && a.code < EGM_CODES && a.mount >= -1 && a.mount < WIRE_MOUNTS;
+  return a;
+}
+
+// ---- the row
+// Mount k's row: where it is and faces, its speed along its heading as its velocity, its feet's height
+// (a flier's, a jump's), its state, its gait, the tick its transition began, its rider and its kind.
+egm_row :: (r: E2Mounts, k: int) -> WireS {
+  m := r.m[k];
+  up := ifx m.flies then m.wing.y else m.hop;
+  vy := ifx m.flies then m.wing.vy else m.hop_v;
+  speed := ifx m.flies && m.wing.phase != WING_GROUND then m.wing.speed else m.speed;
+  return WireS.{id = WIRE_ID_MADE + WIRE_MOUNT_EID + k, kind = WK_MOUNT, x = m.x, y = up, z = m.z, yaw = m.face,
+    vx = speed * sin(m.face), vy = vy, vz = speed * cos(m.face),
+    g = m.state, clip = m.clip, t0 = m.since_tick, owner = ifx m.rider >= 0 && m.state != MOUNT_FREE then WIRE_TGT_SEAT + m.rider else -1,
+    p1 = r.kind[k], p2 = wire_cm(up)};
+}
+// The mount index a row's id names, -1 none.
+egm_row_index :: (id: int) -> int { k := id - WIRE_ID_MADE - WIRE_MOUNT_EID; return ifx k >= 0 && k < WIRE_MOUNTS then k else -1; }
+// A row's speed along its heading (backing: under 0).
+egm_row_speed :: (e: WireS) -> f32 { return e.vx * sin(e.yaw) + e.vz * cos(e.yaw); }
+// A row laid over a page's mount k: the room's word for where it is, how fast, who rides it and since
+// when. What no row carries (its gait's phase, a flier's phase and bank) stays the page's own; a mount
+// the page had not heard of is placed. `whole` false keeps the page's own place and speed (its
+// rider's prediction is ahead of the row), and takes only who rides it and its state.
+egm_row_take :: (r: [] E2Mounts, e: WireS, whole_in: bool) -> int {
+  whole := whole_in;
+  k := egm_row_index(e.id);
+  if k < 0 || e.kind != WK_MOUNT || e.p1 < 0 || e.p1 >= MK_KINDS { return -1; }
+  if k >= r[0].n || !r[0].m[k].on || r[0].kind[k] != e.p1 {
+    for q: r[0].n..<k + 1 { r[0].m[q] = Mount.{}; r[0].kind[q] = MK_HORSE; r[0].land[q] = false; }
+    if k >= r[0].n { r[0].n = k + 1; }
+    r[0].m[k] = ifx e.p1 == MK_DRAGON then mount_place_wings(e.x, e.z, e.yaw, 0) else mount_place(e.x, e.z, e.yaw);
+    r[0].kind[k] = e.p1;
+    whole = true;
+  }
+  m := r[0].m[k..<k + 1];
+  rider := ifx e.owner >= WIRE_TGT_SEAT then e.owner - WIRE_TGT_SEAT else -1;
+  if m[0].state != e.g || m[0].rider != rider || m[0].since_tick != e.t0 {
+    // a transition the page had not begun: the rider comes from, or steps down, beside it
+    if (e.g == MOUNT_MOUNTING || e.g == MOUNT_DISMOUNTING) && (m[0].state != e.g || m[0].rider != rider) {
+      none: [6] f32;
+      off := mount_step_off(Mount.{on = true, x = e.x, z = e.z, face = e.yaw}, mk_tune(e.p1), none[..], 0);
+      m[0].from_x = off.x; m[0].from_z = off.z;
+    }
+    m[0].state = e.g; m[0].rider = rider; m[0].since_tick = e.t0;
+    if e.g == MOUNT_FREE { r[0].land[k] = false; }
+  }
+  if whole {
+    m[0].x = e.x; m[0].z = e.z; m[0].face = e.yaw; m[0].clip = e.clip;
+    speed := egm_row_speed(e);
+    if m[0].flies {
+      m[0].wing.x = e.x; m[0].wing.z = e.z; m[0].wing.y = e.y; m[0].wing.vy = e.vy; m[0].wing.yaw = e.yaw;
+      if m[0].wing.phase == WING_GROUND { m[0].speed = speed; if e.y > 0.05 { m[0].wing.phase = WING_AIR; m[0].wing.speed = speed; } }
+      else { m[0].wing.speed = speed; if e.y <= 0 && e.vy == 0 { m[0].wing.phase = WING_GROUND; m[0].speed = speed; } }
+    } else { m[0].speed = speed; m[0].hop = e.y; m[0].hop_v = e.vy; }
+  }
+  return k;
+}
+
+#test "riding wire: each ask packs into an E and reads back, and a bad one is refused whole" {
+  b: [64] u8;
+  u := egm_use_of(EgmAsk.{seq = 5000001, kind = WE_MOUNT, mount = 1});
+  n := wire_put_use(b[..], 0, u); #assert cast(string) b[0..<n] == "E 5000001 20 1";
+  a := egm_use_read(u); #assert a.ok && a.seq == 5000001 && a.kind == WE_MOUNT && a.mount == 1;
+  u = egm_use_of(EgmAsk.{seq = 7, kind = WE_DISMOUNT, mount = 3}); n = wire_put_use(b[..], 0, u); #assert cast(string) b[0..<n] == "E 7 21 0";
+  a = egm_use_read(u); #assert a.ok && a.kind == WE_DISMOUNT && a.mount == -1 && a.seq == 7;
+  u = egm_use_of(EgmAsk.{seq = 8, kind = WE_LAND}); n = wire_put_use(b[..], 0, u); #assert cast(string) b[0..<n] == "E 8 22 0";
+  a = egm_use_read(u); #assert a.ok && a.kind == WE_LAND && a.mount == -1;
+  #assert egm_use_read(WireUse.{seq = 1, kind = WE_MOUNT, id = WIRE_MOUNTS - 1}).ok && egm_use_read(WireUse.{seq = 1, kind = WE_MOUNT, id = 0}).mount == 0;
+  bad := [9] WireUse.[WireUse.{seq = 0, kind = WE_MOUNT, id = 0}, WireUse.{seq = -1, kind = WE_MOUNT, id = 0}, WireUse.{seq = 1, kind = WE_MOUNT, id = -1}, WireUse.{seq = 1, kind = WE_MOUNT, id = WIRE_MOUNTS},
+    WireUse.{seq = 1, kind = WE_DISMOUNT, id = 1}, WireUse.{seq = 1, kind = WE_LAND, id = 1}, WireUse.{seq = 1, kind = WE_KIT, id = 0}, WireUse.{seq = 1, kind = 19, id = 0}, WireUse.{seq = 1, kind = 23, id = 0}];
+  for x: bad { #assert !egm_use_read(x).ok; }
+  #assert WE_MOUNT == 20 && WE_DISMOUNT == 21 && WE_LAND == 22 && WIRE_MOUNTS == E2R_MOUNTS && EGM_CODES == E2R_GROUND + 1;
+}
+#test "riding wire: the answer written reads back, and a bad one is refused whole" {
+  b: [64] u8;
+  n := egm_answer_put(b[..], EgmAnswer.{seq = 5000001, code = E2R_OK, mount = 1}); #assert cast(string) b[0..<n] == "e ride 5000001 0 1";
+  a := egm_answer_read("e ride 5000001 0 1"); #assert a.ok && a.seq == 5000001 && a.code == 0 && a.mount == 1;
+  a = egm_answer_read("e ride 3 10 -1"); #assert a.ok && a.code == E2R_GROUND && a.mount == -1;
+  for bad: [9] string.["e ride", "e ride 3", "e ride 3 0", "e ride 0 0 1", "e ride 3 11 0", "e ride 3 -1 0", "e ride 3 0 4", "e ride 3 0 -2", "e ride 3 0 1 1"] { #assert !egm_answer_read(bad).ok; }
+  #assert egm_kept("e ride 3 0 1") && !egm_kept("e rider 3 0 1") && !egm_kept("e fam 3 0 8") && !wire_outcome("e ride 3 0 1") && !egm_answer_read("e fam 3 0 1").ok;
+}
+#test "riding wire: a mount's row carries where it is, how fast, who rides it and since when, and a page's mount takes it" {
+  r: [1] E2Mounts; none: [6] f32;
+  #assert e2r_add(r[..], MK_HORSE, 3, 4, 0.5, 0) == 0 && e2r_add(r[..], MK_DRAGON, -9, 6, 1, 0) == 1;
+  e := egm_row(r[0], 0);
+  #assert e.id == WIRE_ID_MADE + WIRE_MOUNT_EID && e.kind == WK_MOUNT && e.x == 3 && e.z == 4 && e.yaw == 0.5 && e.g == MOUNT_FREE && e.owner == -1 && e.p1 == MK_HORSE && e.p2 == 0 && e.vx == 0 && e.vz == 0;
+  #assert egm_row_index(e.id) == 0 && egm_row_index(egm_row(r[0], 1).id) == 1 && egm_row_index(WIRE_ID_MADE + WIRE_MOUNT_EID + WIRE_MOUNTS) == -1 && egm_row_index(WIRE_ID_MADE + WIRE_FAM_EID) == -1;
+  // seat 5 mounts at tick 90 and gallops: the row names its rider, the tick, and its speed along its heading
+  #assert e2r_mount(r[..], 5, 0, 4, 4, true, 90) == E2R_OK;
+  e = egm_row(r[0], 0); #assert e.g == MOUNT_MOUNTING && e.owner == WIRE_TGT_SEAT + 5 && e.t0 == 90;
+  for i: 0..<90 { o := e2r_step(r[..], 0, 0, 100, true, false, 0, 91 + i, 30, none[..], 0); }
+  e = egm_row(r[0], 0);
+  #assert e.g == MOUNT_RIDDEN && r[0].m[0].speed > 5 && abs(egm_row_speed(e) - r[0].m[0].speed) < 0.001 && e.clip == r[0].m[0].clip;
+  // only its kind's fields survive the packing (the table's mask)
+  f: [WIRE_SF] s32; wire_s_pack(e, f[..]); wire_kind_keep(e.kind, f[..]); back := wire_s_unpack(e.id, f[..]);
+  #assert back.owner == e.owner && back.t0 == e.t0 && back.p1 == MK_HORSE && back.g == MOUNT_RIDDEN && back.clip == e.clip && back.hp == 0 && back.cond == 0 && back.dur == 0;
+  #assert (WIRE_KIND_MOUNT & (1 << WS_HP)) == 0 && wire_rel(WK_MOUNT) == 3 && WIRE_FAM_EID < WIRE_MOUNT_EID;
+  // a page that never heard of it places it from the row; one that had takes the room's word whole
+  p: [1] E2Mounts;
+  #assert egm_row_take(p[..], back, false) == 0 && p[0].n == 1 && p[0].kind[0] == MK_HORSE && p[0].m[0].state == MOUNT_RIDDEN && p[0].m[0].rider == 5;
+  #assert abs(p[0].m[0].x - r[0].m[0].x) < 0.006 && abs(p[0].m[0].z - r[0].m[0].z) < 0.006 && abs(p[0].m[0].speed - r[0].m[0].speed) < 0.03;
+  // its rider's page keeps its own place and speed (it is ahead of the row) and takes only who and when
+  p[0].m[0].x = 50; p[0].m[0].speed = 2;
+  #assert egm_row_take(p[..], back, false) == 0 && p[0].m[0].x == 50 && p[0].m[0].speed == 2;
+  #assert egm_row_take(p[..], back, true) == 0 && p[0].m[0].x != 50 && p[0].m[0].speed > 5;
+  // the dragon's row, second: the page's first mount stays, and the flier is placed with wings
+  d := egm_row(r[0], 1);
+  #assert egm_row_take(p[..], d, false) == 1 && p[0].n == 2 && p[0].m[1].flies && p[0].kind[1] == MK_DRAGON && p[0].m[0].rider == 5;
+  // aloft: its feet's height is the row's y and P2, and the page's flier is in the air at it
+  d.y = 12; d.p2 = 1200; d.g = MOUNT_RIDDEN; d.owner = WIRE_TGT_SEAT + 2; d.vx = 3;
+  #assert egm_row_take(p[..], d, true) == 1 && mount_aloft(p[0].m[1]) && p[0].m[1].wing.y == 12 && p[0].m[1].rider == 2;
+  // it is free again: nobody rides it on the page either
+  d.g = MOUNT_FREE; d.owner = -1; d.t0 = 400;
+  #assert egm_row_take(p[..], d, false) == 1 && p[0].m[1].state == MOUNT_FREE && p[0].m[1].rider == -1 && p[0].m[1].since_tick == 400;
+  // no mount's row, or a kind that is none: refused
+  d.id = WIRE_ID_MADE + WIRE_FAM_EID; #assert egm_row_take(p[..], d, true) == -1;
+  d.id = WIRE_ID_MADE + WIRE_MOUNT_EID; d.p1 = MK_KINDS; #assert egm_row_take(p[..], d, true) == -1;
+}

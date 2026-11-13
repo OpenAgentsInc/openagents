@@ -1,0 +1,178 @@
+// A mount on Everglade's land (#13268): the boxes a mount's body meets, cut from the same planting a
+// walker's step walks among (move.coax e2m_world_still), and one mount's step among them. The room
+// steps a ridden mount with e2ml_step once for each of its rider's inputs, and the rider's page
+// predicts it with the same call on the same inputs, so both put the mount in the same place.
+//
+// The mount engine (metaverse-engine/action/mount.coax) collides with boxes (six floats: x0 y0 z0 x1
+// y1 z1, y from the walker's plane). A trunk is the square round its circle, as tall as the tree; a
+// rock is its hull's bounds; a camp prop its footprint's bounds. A mount keeps to the land a walker
+// may stand on (e2m_keep): past its edge it slides along it or stops.
+//   coax/bin/coax test everglade/shared/mount-land.coax --library
+#load "move.coax";
+#load "../server/mounts.coax";
+
+E2ML_BOXES :: 96;          // boxes gathered round one mount
+E2ML_TREE_TOP :: 14.0;     // a trunk's box reaches the crown: a dragon on the ground meets it too
+E2ML_MORE :: 2.0;          // metres past the engine's reach the boxes are gathered: a gallop's step and a little
+
+e2ml_box :: (out: [] f32, n: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) -> int {
+  if n >= E2ML_BOXES || (n + 1) * 6 > out.count { return n; }
+  o := n * 6;
+  out[o] = x0; out[o + 1] = y0; out[o + 2] = z0; out[o + 3] = x1; out[o + 4] = y1; out[o + 5] = z1;
+  return n + 1;
+}
+e2ml_trunk :: (out: [] f32, n: int, t: [3] f32, x: f32, z: f32, reach: f32) -> int {
+  if abs(t[0] - x) > reach + t[2] || abs(t[1] - z) > reach + t[2] { return n; }
+  return e2ml_box(out, n, t[0] - t[2], 0, t[1] - t[2], t[0] + t[2], f32(E2ML_TREE_TOP), t[1] + t[2]);
+}
+e2ml_rock :: (out: [] f32, n: int, p: E2RockPrep, x: f32, z: f32, reach: f32) -> int {
+  if !p.ok || x < p.lo[0] - reach || x > p.hi[0] + reach || z < p.lo[2] - reach || z > p.hi[2] + reach { return n; }
+  return e2ml_box(out, n, p.lo[0], p.lo[1], p.lo[2], p.hi[0], p.hi[1], p.hi[2]);
+}
+// The boxes within `reach` of (x, z) into out (six floats each); how many. `still` is the land's kept
+// numbers (move.coax E2Still) or empty: the boxes are the same either way.
+e2ml_boxes :: (still: [] E2Still, items: [] f32, kinds: [] u8, first: [] int, planted: bool, x: f32, z: f32, reach: f32, out: [] f32) -> int #effects(all) {
+  kept := still.count > 0 && still[0].done;
+  n := 0;
+  span := cast(int) floor(reach / f32(E2_CELL)) + 1;
+  ci := cast(int) floor((x - f32(E2_CELL_X0)) / f32(E2_CELL)); cj := cast(int) floor((f32(E2_CELL_Z0) - z) / f32(E2_CELL));
+  for dj: -span..<span + 1 { for di: -span..<span + 1 {
+    i := ci + di; j := cj + dj;
+    if i < 0 || j < 0 || i >= E2_CELLS_X || j >= E2_CELLS_Z || !planted { continue; }
+    c := j * E2_CELLS_X + i;
+    for q: first[c]..<first[c + 1] {
+      kit := cast(int) kinds[q]; rock := e2_kit_rock(kit);
+      if kit >= E2_TREES && rock < 0 { continue; }
+      o := q * E2_ITEM_FLOATS; px := items[o]; pz := items[o + 2]; sh := items[o + 5];
+      if abs(px - x) > reach + 6 || abs(pz - z) > reach + 6 { continue; }
+      if rock >= 0 {
+        r := E2Rock.{model = rock, x = px, y = items[o + 1], z = pz, yaw = items[o + 3], sh = sh, sv = items[o + 4]};
+        p := ifx kept then e2_still_rock(still, q, r) else e2_rock_prep(r);
+        n = e2ml_rock(out, n, p, x, z, reach);
+      } else { n = e2ml_trunk(out, n, e2_trunk(kit, px, pz, items[o + 3], sh), x, z, reach); }
+    }
+  }}
+  for i: 0..<CG_ITEMS {
+    if kept {
+      g := still[0].glade[i]; if !g.kept { continue; }
+      if g.tree { n = e2ml_trunk(out, n, g.trunk, x, z, reach); } else { n = e2ml_rock(out, n, g.prep, x, z, reach); }
+      continue;
+    }
+    gt := cg_item(i); if !e2_glade_kept(gt) { continue; }
+    if abs(gt.x - x) > reach + 6 || abs(gt.z - z) > reach + 6 { continue; }
+    if gt.kind <= 1 { n = e2ml_trunk(out, n, e2_glade_trunk(gt), x, z, reach); }
+    else { n = e2ml_rock(out, n, e2_rock_prep(e2_glade_rock(gt)), x, z, reach); }
+  }
+  for i: 0..<E2_GLADE_STONES {
+    if abs(e2_glade_stone(i).x - x) > reach + 6 || abs(e2_glade_stone(i).z - z) > reach + 6 { continue; }
+    n = e2ml_rock(out, n, ifx kept then still[0].stone_prep[i] else e2_rock_prep(e2_glade_stone(i)), x, z, reach);
+  }
+  for i: 0..<E2_CAMP_PROPS {
+    p := E2_CAMP[i]; h := E2_CAMP_HALF[p.kit]; px := e2_camp_px(p); pz := e2_camp_pz(p);
+    if E2_CAMP_ROUND[p.kit] { n = e2ml_trunk(out, n, [3] f32.[px, pz, h[0] * p.scale], x, z, reach); continue; }
+    // a turned box's bounds on the ground
+    c := abs(cos(p.yaw)); sn := abs(sin(p.yaw)); hx := (h[0] * c + h[1] * sn) * p.scale; hz := (h[0] * sn + h[1] * c) * p.scale;
+    if abs(px - x) > reach + hx || abs(pz - z) > reach + hz { continue; }
+    n = e2ml_box(out, n, px - hx, 0, pz - hz, px + hx, h[2] * p.scale, pz + hz);
+  }
+  return n;
+}
+// How far round mount k its boxes are gathered.
+e2ml_reach :: (r: E2Mounts, k: int) -> f32 { return mount_reach(mk_tune(r.kind[k])) + f32(E2ML_MORE); }
+
+// Mount k's step at `tick` among the land's boxes, from its rider's keys (mounts.coax e2r_step), kept
+// to the land a walker may stand on. The room's and the page's one step.
+e2ml_step :: (r: [] E2Mounts, k: int, kx: int, ky: int, run: bool, jump: bool, tick: int, hz: int,
+              still: [] E2Still, items: [] f32, kinds: [] u8, first: [] int, planted: bool) -> E2RStep #effects(all) {
+  if k < 0 || k >= r[0].n { return E2RStep.{}; }
+  walls: [E2ML_BOXES * 6] f32;
+  fx := r[0].m[k].x; fz := r[0].m[k].z;
+  n := e2ml_boxes(still, items, kinds, first, planted, fx, fz, e2ml_reach(r[0], k), walls[..]);
+  o := e2r_step(r, k, kx, ky, run, jump, 0, tick, hz, walls[..], n);
+  kept := e2m_keep(r[0].m[k].x, r[0].m[k].z, fx, fz);
+  if kept.x != r[0].m[k].x || kept.z != r[0].m[k].z {
+    r[0].m[k].x = kept.x; r[0].m[k].z = kept.z; r[0].m[k].blocked = true;
+    if r[0].m[k].flies { r[0].m[k].wing.x = kept.x; r[0].m[k].wing.z = kept.z; }
+    if kept.x == fx && kept.z == fz { r[0].m[k].speed = 0; }
+  }
+  return o;
+}
+// Seat `seat` asks to get down from its mount, among the land's boxes (mounts.coax e2r_dismount).
+e2ml_dismount :: (r: [] E2Mounts, seat: int, free: bool, tick: int, still: [] E2Still, items: [] f32, kinds: [] u8, first: [] int, planted: bool) -> int #effects(all) {
+  k := e2r_of(r[0], seat);
+  walls: [E2ML_BOXES * 6] f32; n := 0;
+  if k >= 0 { n = e2ml_boxes(still, items, kinds, first, planted, r[0].m[k].x, r[0].m[k].z, e2ml_reach(r[0], k), walls[..]); }
+  return e2r_dismount(r, seat, free, tick, walls[..], n);
+}
+
+// Where Everglade's mounts stand when a room opens: a riding horse north-east of the glade's middle and a
+// red dragon north-west of it, both behind where a new player stands, both clear of the glade's trees and stones (the
+// check below holds them clear). A page learns them from their rows.
+E2MlPlace :: struct { kind: int; x: f32; z: f32; face: f32; }
+E2ML_PLACES :: [2] E2MlPlace.[E2MlPlace.{kind = MK_HORSE, x = 9.0, z = 9.0, face = 3.14159265}, E2MlPlace.{kind = MK_DRAGON, x = -9.0, z = 6.0, face = 3.14159265}];
+e2ml_lay :: (r: [] E2Mounts) #effects(all) {
+  r[0] = E2Mounts.{};
+  for p: E2ML_PLACES { k := e2r_add(r, p.kind, p.x, p.z, p.face, 0); }
+}
+
+#test "mount land: the boxes round a place are its trunks, rocks and props, and none far from them" #steps 4000000000 {
+  g: [1] E2MoveGround; e2mg_plant(g[..]);
+  out: [E2ML_BOXES * 6] f32; bare: [E2ML_BOXES * 6] f32;
+  // the glade's middle: its own trees and stones within 30 m, each a box off the ground's plane
+  n := e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, 0, 0, 30, out[..]);
+  #assert n > 4 && n <= E2ML_BOXES;
+  for q: 0..<n { #assert out[q * 6] < out[q * 6 + 3] && out[q * 6 + 2] < out[q * 6 + 5] && out[q * 6 + 1] < out[q * 6 + 4]; }
+  // the same boxes with nothing kept (a page's): bit for bit
+  none: [] E2Still;
+  m := e2ml_boxes(none, g[0].items[..], g[0].kinds[..], g[0].first[..], true, 0, 0, 30, bare[..]);
+  #assert m == n; for q: 0..<n * 6 { #assert out[q] == bare[q]; }
+  // a walker's trunk near a place on the path is one of the mount's boxes there, the square round it
+  z := -120.0f32; x := e2_road_x(z) + 9;
+  w := e2mg_move_world(g[..], x, z, false); b := e2mg_bodies(g[..]);
+  n = e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, x, z, 8, out[..]);
+  for q: 0..<w.bodies {
+    found := false;
+    for i: 0..<n { if abs(out[i * 6] - (b[q * 7] - b[q * 7 + 6])) < 0.001 && abs(out[i * 6 + 5] - (b[q * 7 + 2] + b[q * 7 + 6])) < 0.001 && out[i * 6 + 4] == f32(E2ML_TREE_TOP) { found = true; } }
+    #assert found;
+  }
+  // the camp's stall is a box where it stands
+  stall := E2_CAMP[1]; sx := e2_camp_px(stall); sz := e2_camp_pz(stall);
+  n = e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, sx, sz, 3, out[..]);
+  held := false; for i: 0..<n { if out[i * 6] < sx && out[i * 6 + 3] > sx && out[i * 6 + 2] < sz && out[i * 6 + 5] > sz { held = true; } }
+  #assert held;
+  // out past the land's cells: none, and no trap
+  #assert e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, 5000, 5000, 8, out[..]) == 0;
+  // a full buffer keeps what fits
+  small: [12] f32; #assert e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, 0, 0, 30, small[..]) == 2;
+}
+#test "mount land: the mounts are laid clear of everything, a rider can step down beside each, and a horse stops at a tree" #steps 4000000000 {
+  g: [1] E2MoveGround; e2mg_plant(g[..]);
+  r: [1] E2Mounts; e2ml_lay(r[..]);
+  #assert r[0].n == 2 && r[0].kind[0] == MK_HORSE && r[0].kind[1] == MK_DRAGON && r[0].m[1].flies && !r[0].m[0].flies;
+  out: [E2ML_BOXES * 6] f32;
+  for k: 0..<r[0].n {
+    m := r[0].m[k]; t := mk_tune(r[0].kind[k]);
+    n := e2ml_boxes(g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true, m.x, m.z, e2ml_reach(r[0], k), out[..]);
+    #assert mount_body_clear(t, m.x, m.z, m.face, out[..], n) && mount_step_off(m, t, out[..], n).ok && e2_may_stand(m.x, m.z);
+  }
+  // seat 3 mounts the horse from beside it and rides north at a walk: it moves, and stays on the land
+  #assert e2r_mount(r[..], 3, 0, r[0].m[0].x + 1.2, r[0].m[0].z, true, 100) == E2R_OK;
+  z0 := r[0].m[0].z; seated := false;
+  for i: 0..<240 {
+    o := e2ml_step(r[..], 0, 0, 100, false, false, 101 + i, 30, g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true);
+    if o.seated { seated = true; #assert o.rider == 3; }
+    #assert e2_may_stand(r[0].m[0].x, r[0].m[0].z);
+  }
+  #assert seated && r[0].m[0].state == MOUNT_RIDDEN && (abs(r[0].m[0].z - z0) > 5 || r[0].m[0].blocked);
+  // at a gallop for a minute it never leaves the walkable land and is never inside a box it counts
+  for i: 0..<1800 {
+    o := e2ml_step(r[..], 0, ifx (i / 200) % 2 == 0 then 30 else -40, 100, true, false, 400 + i, 30, g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true);
+    #assert e2_may_stand(r[0].m[0].x, r[0].m[0].z);
+  }
+  // it gets down where there is room, and its rider stands on the land
+  r[0].m[0].speed = 0;
+  code := e2ml_dismount(r[..], 3, true, 3000, g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true);
+  #assert code == E2R_OK || code == E2R_NO_ROOM;
+  #assert e2ml_dismount(r[..], 9, true, 3000, g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true) == E2R_ON_FOOT;
+  #assert e2ml_step(r[..], 7, 0, 0, false, false, 1, 30, g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true).rider == -1;
+}

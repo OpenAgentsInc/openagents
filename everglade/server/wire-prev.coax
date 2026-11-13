@@ -30,7 +30,7 @@
 // Wire 6 under wire 7 (#13276 made Everglade II's familiars rows, their requests and the Healer's
 // Kit's E kinds, and the room's answers e entries of D told to the asker). A wire 6 page reads and
 // writes frames of their own instead, with the codec in wire-prev-wire.coax:
-//   withheld     every WK_FAMILIAR row (wprev_pick)
+//   withheld     every WK_FAMILIAR row, and every WK_MOUNT row (#13268: wire 6 had no riding) (wprev_pick)
 //   said as      e fam as m1 m4 m5 m6 or m7 by its order, e fam-cast as m3, e kit as u1 (wprev_entry)
 //   beside D     m2, the familiars the seat may see, and m8, whose senses it has: each on a change,
 //                else once a second (wprev_after)
@@ -47,10 +47,11 @@ wprev_seat :: (v: [] RmServer, k: int, s: int) -> bool {
 
 
 // ---- the hooks
-// The rows the old page has no reader for: a wire 6 seat is sent no familiar's row.
+// The rows the old page has no reader for: a wire 6 seat is sent no familiar's row and no mount's.
 wprev_pick :: (v: [] RmServer, k: int, s: int, pick: [] f32) {
   if !wprev_seat(v, k, s) { return; }
   for q: 0..<EG_SEATS { pick[EG_SLOT_FAM + q] = -1; }
+  for q: 0..<WIRE_MOUNTS { pick[EG_SLOT_MOUNT + q] = -1; }
 }
 // A D entry for seat s: true when the old wire said it as a frame of its own, which is queued now, so
 // the entry stays out of the seat's D.
@@ -208,10 +209,11 @@ wpt_at :: (v: [] RmServer, k: int, s: int, x: f32, z: f32) { v[0].eg[k].seat[s].
   out: [16384] u8; _ := rl_heard_by(v[..], 0, out[..]);
   wprev_after(v[..], k, 0);
   #assert rl_heard_by(v[..], 0, out[..]).count == 0;
-  // and a seat on the version before: every familiar's row is withheld and no other
+  // and a seat on the version before: every familiar's row and every mount's is withheld and no other
   v[0].eg[k].seat[0].wire = WIRE_MIN;
   wprev_pick(v[..], k, 0, pick[..]);
-  for q: 0..<WIRE_SLOTS { #assert (pick[q] < 0) == (q >= EG_SLOT_FAM && q < EG_SLOT_FAM + EG_SEATS); }
+  for q: 0..<WIRE_SLOTS { #assert (pick[q] < 0) == (q >= EG_SLOT_FAM && q < EG_SLOT_MOUNT + WIRE_MOUNTS); }
+  #assert EG_SLOT_MOUNT == EG_SLOT_FAM + EG_SEATS && EG_SLOT_MOUNT == 477 && EG_SLOT_MOUNT + WIRE_MOUNTS <= WIRE_SLOTS;
   #assert wprev_entry(v[..], k, 0, "e fam 3 0 8") && !wprev_entry(v[..], k, 0, "e hit 1001 2003 7 3") && !wprev_entry(v[..], k, 0, "e mon 90 2 3 -1 4");
   #assert rl_heard_by(v[..], 0, out[..]) == "m1 3 8";
   #assert wprev_heard(v[..], k, 0, "M5 3") && wprev_heard(v[..], k, 0, "U1 3") && !wprev_heard(v[..], k, 0, "I 1 0 0 0 0 0 0 0") && !wprev_heard(v[..], k, 0, "E 1 9 8");

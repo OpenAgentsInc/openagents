@@ -1,0 +1,33 @@
+{
+  "identity": "everglade2-riding-v1",
+  "check": "coax/web/tool.sh coax/web/room/riding-profile.coax proto/verse/everglade2-riding-v1.json",
+  "base_session": "everglade-session-v7",
+  "spec": "docs/protocol/everglade-riding-v1.md",
+  "scope": "Everglade II only, in wire 7: a mount is a row of the session, an ask an E (use) kind, the answer an e entry of D told to the asker alone",
+  "row": {"kind": 16, "entity_base": 1170300, "count": 4, "first_slot": 477, "fields": ["g", "clip", "owner", "p1", "p2", "t0"]},
+  "request": "E SEQ KIND ID",
+  "uses": {"mount": 20, "dismount": 21, "land": 22},
+  "states": {"free": 0, "mounting": 1, "ridden": 2, "dismounting": 3},
+  "mount_kinds": {"horse": 0, "dragon": 1},
+  "answer": "e ride SEQ CODE MOUNT",
+  "codes": {"ok": 0, "none": 1, "held": 2, "riding": 3, "taken": 4, "far": 5, "on_foot": 6, "busy": 7, "aloft": 8, "no_room": 9, "ground": 10},
+  "refusal": "r SEQ ride",
+  "requests": [
+    {"text": "E 5000001 20 1", "use": "mount", "seq": 5000001, "mount": 1},
+    {"text": "E 5000002 20 0", "use": "mount", "seq": 5000002, "mount": 0},
+    {"text": "E 7 21 0", "use": "dismount", "seq": 7, "mount": -1},
+    {"text": "E 8 22 0", "use": "land", "seq": 8, "mount": -1}
+  ],
+  "answers": [
+    {"text": "e ride 5000001 0 1", "seq": 5000001, "code": 0, "mount": 1},
+    {"text": "e ride 5000002 4 0", "seq": 5000002, "code": 4, "mount": 0},
+    {"text": "e ride 7 9 3", "seq": 7, "code": 9, "mount": 3},
+    {"text": "e ride 8 6 -1", "seq": 8, "code": 6, "mount": -1},
+    {"text": "e ride 9 10 1", "seq": 9, "code": 10, "mount": 1}
+  ],
+  "refusals": [
+    {"text": "r 3 ride", "seq": 3, "reason": "ride"}
+  ],
+  "malformed_requests": ["E 0 20 0", "E -1 20 0", "E 1 20 4", "E 1 20 -1", "E 1 21 1", "E 1 22 2", "E 1 19 0", "E 1 23 0"],
+  "malformed_answers": ["e ride", "e ride 3", "e ride 3 0", "e ride 0 0 1", "e ride 3 11 0", "e ride 3 -1 0", "e ride 3 0 4", "e ride 3 0 -2", "e ride 3 0 1 1", "e rider 3 0 1"]
+}

@@ -113,7 +113,7 @@ eg_table :: (v: [] RmServer, k: int) {
                                                            owner = WIRE_TGT_SEAT + q, p1 = c, p2 = WE_BIT[c], t0 = st[0].fx[c].t0, dur = st[0].fx[c].dur}, wire_rel(WK_EFFECT), true, false);
     }
   }
-  e2_monsters_rows(v, k); e2_guard_row(v, k); e2_familiars_rows(v, k);
+  e2_monsters_rows(v, k); e2_guard_row(v, k); e2_familiars_rows(v, k); e2_mounts_rows(v, k);
   // the doors row, every seat's however far: Everglade II has no doors, its words all shut (the slot and bytes kept, #13346)
   wire_hist_put(h, EG_SLOT_DOORS, WireS.{id = WIRE_ID_MADE + EG_DOORS_ID, kind = WK_DOORS, g = 1, p1 = 0, p2 = 0, form = 0}, wire_rel(WK_DOORS), true, false);
   // whose Hit Points moved since last tick: fighting; and the slots that may be in combat with a seat (eg_combat)

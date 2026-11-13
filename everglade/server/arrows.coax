@@ -104,7 +104,10 @@ e2_arrow_loose :: (v: [] RmServer, k: int, seat_id: SeatId, slot: int, seq: int)
   st[0].loose = NetLoose.{};
   if e2a_flying(a) == 0 { a[0].epoch = t - E2A_LEAD; for i: 0..<bow.ARROWS { a[0].ar[0].arrows[0].a[i] = bow.Arrow.{}; a[0].tag[i] = E2ArrowTag.{}; } }
   me := st[0].pose;
-  from := ifx e2ar_launch_ok(l.from, me.x, me.z) then l.from else e2ar_hand(me.x, me.z, l.to);
+  // from a saddle (riding.coax): the hand is the saddle's height higher and may be the mount's length from its middle
+  ride := e2rd_lift(v, k, seat);
+  hand := e2ar_hand(me.x, me.z, l.to); if ride.on { hand[1] += ride.up; }
+  from := ifx (ifx ride.on then e2ar_launch_ok_from(l.from, me.x, me.z, ride.up, ride.reach) else e2ar_launch_ok(l.from, me.x, me.z)) then l.from else hand;
   strength := ifx l.strength < 0 then 0.0f32 else ifx l.strength > 1 then 1.0f32 else l.strength;
   // the moment the page was drawing, inside the bound: how long ago the arrow left
   now_ms := t * 1000 / EG_HZ;

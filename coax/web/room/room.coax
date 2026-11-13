@@ -51,6 +51,7 @@
 #load "../../../everglade/server/creatures.coax";   // Everglade II's wolves and goblins
 #load "../../../everglade/shared/archery.coax";   // Everglade II's ground and bodies for an arrow, the page's too (#13157)
 #load "../../../metaverse-engine/net/projectile.coax";   // projectiles over a room: the launch, the flight, the end, the bodies' past
+#load "../../../everglade/server/riding.coax";   // riding: the zone's mounts, their step, asks and rows (#13268)
 #load "../../../everglade/server/arrows.coax";   // Everglade II's arrows: the room flies each one
 
 #load "../../../everglade/server/rest.coax";   // Everglade II rests, room-authoritative on the shared rules (#13046)

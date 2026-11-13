@@ -21,7 +21,7 @@ bool world2_prepare(void);
 /* the planting world2_prepare made (an E2MoveGround), which the room's arrows fly among too (everglade/server/arrows.coax rm_e2_land) */
 void *world2_ground(void);
 bool world2_place(int k, int s, const float *at, float out[WORLD_POSE]);
-bool world2_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]);
+bool world2_step(int k, int s, const int64_t in[WORLD_IN], const float *ride, float out[WORLD_POSE]);
 void world2_guard(int k, bool on, float x, float z);
 int world2_near(float x, float z, float *out, int cap);
 #endif

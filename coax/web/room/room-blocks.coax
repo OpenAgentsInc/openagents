@@ -34,6 +34,10 @@ eg_im_table :: (v: [] RmServer, k: int) {
       // whoever blocks its owner never does (#13276)
       on := cast(int) h[0].f[a + WS_OWNER] - WIRE_TGT_SEAT;
       if on >= 0 && on < EG_SEATS { of = on; }
+    } else if kind == WK_MOUNT {
+      // a ridden mount rides on its rider's seat: its rider always hears it, and whoever blocks its rider never does (#13268)
+      on := cast(int) h[0].f[a + WS_OWNER] - WIRE_TGT_SEAT;
+      if on >= 0 && on < eg_cap(v, k) { of = on; }
     } else if kind == WK_DOORS || forest_public(kind) {
       flags = IM_ROOM;   // doors and physical forest state stay shared, regardless of their starter
     } else if (kind == WK_ZONE || kind == WK_STONE || kind == WK_TENTACLES || kind == WK_THORNS || kind == WK_LINE) && cast(int) h[0].f[a + WS_OWNER] < 0 {
@@ -239,7 +243,7 @@ im_test_blocks :: (im: [] Interest, s: int) -> int {
   #assert eg_test_ent(box[..], 0, 2).id == 2;
   c: [4] int;
   im_counts(v[0].eg[k].im[..], SeatId.{value = 0}, c[..]);
-  #assert c[0] == 5 && rm_st_relevant(v[..], k, SeatId.{value = 0}) == 5;   // itself, seats 1 and 2, and Everglade II's two room-wide entities
+  #assert c[0] == 7 && rm_st_relevant(v[..], k, SeatId.{value = 0}) == 7;   // itself, seats 1 and 2, Everglade II's two room-wide entities, and the glade's two mounts (#13268)
 }
 
 #test "interest (#12845): the party health channel cannot disclose a distant player's position" #steps 4000000000 {

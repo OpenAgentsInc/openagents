@@ -42,3 +42,4 @@
 #load "../../../everglade/server/room-checks.coax" #test;
 #load "../../../everglade/server/nav-checks.coax" #test;   // the room's cells and navigation (#13280, #13281)
 #load "../../../everglade/server/zone-checks.coax" #test;   // a zone's storage: a room's seats as a view, 150 in one zone (#13275)
+#load "../../../everglade/server/riding-checks.coax" #test;   // riding in the room (#13268)

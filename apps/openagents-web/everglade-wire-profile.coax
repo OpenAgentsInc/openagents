@@ -302,9 +302,9 @@ tool_main :: () -> int #export_c #effects(all) {
   // the creature kinds (#13276): each kind's number, ids, count and row fields are the codec's table
   cr := jv_get(d, 0, "creatures");
   cr_ok := wp_fields_mask(d, jv_get(d, cr, "pose"), jv_get(d, jv_get(d, 0, "row"), "fields")) == WIRE_POSE;
-  cr_names := [3] string.["monster", "guard", "familiar"]; cr_kinds := [3] int.[WK_MONSTER, WK_GUARD, WK_FAMILIAR];
-  cr_ids := [3] int.[WIRE_MON_EID, WIRE_GUARD_EID, WIRE_FAM_EID]; cr_counts := [3] int.[WIRE_MONS, 1, WIRE_SEATS];
-  for q: 0..<3 {
+  cr_names := [4] string.["monster", "guard", "familiar", "mount"]; cr_kinds := [4] int.[WK_MONSTER, WK_GUARD, WK_FAMILIAR, WK_MOUNT];
+  cr_ids := [4] int.[WIRE_MON_EID, WIRE_GUARD_EID, WIRE_FAM_EID, WIRE_MOUNT_EID]; cr_counts := [4] int.[WIRE_MONS, 1, WIRE_SEATS, WIRE_MOUNTS];
+  for q: 0..<4 {
     k := jv_get(d, cr, cr_names[q]);
     kind := cr_kinds[q];
     cr_ok = cr_ok && wp_key(d, k, "kind") == kind && wp_key(d, k, "entity_base") == WIRE_ID_MADE + cr_ids[q]
@@ -312,7 +312,7 @@ tool_main :: () -> int #export_c #effects(all) {
       && (wp_fields_mask(d, jv_get(d, k, "fields"), jv_get(d, jv_get(d, 0, "row"), "fields")) | WIRE_POSE) == wire_kind_fields(kind)
       && (wp_fields_mask(d, jv_get(d, k, "fields"), jv_get(d, jv_get(d, 0, "row"), "fields")) & WIRE_POSE) == 0;
   }
-  print("%  creature kinds: a monster's, the guard's and a familiar's number, ids and row fields\n", ifx cr_ok then "ok  " else "FAIL");
+  print("%  creature kinds: a monster's, the guard's, a familiar's and a mount's number, ids and row fields\n", ifx cr_ok then "ok  " else "FAIL");
   if !cr_ok { bad += 1; }
   fixture := jv_get(d, forest, "bridge_fixture_milli"); ranges := jv_get(d, forest, "bridge_ranges"); whole := jv_get(d, forest, "bridge_whole");
   fb: [FOREST_FLOATS] f32;

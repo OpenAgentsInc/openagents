@@ -76,11 +76,15 @@ static bool everglade2_room_tick(int k, int64_t room_work_start) {
       rm_eg_moved(view(), k, (coax_t_SeatId){ s}, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
     while (rm_eg_input(view(), k, (coax_t_SeatId){ s}, inv)) {
       int64_t input_began = ROOM_LATENCY_ACTIVE(k,s) ? now_us() : 0;
-      if (!world2_step(k, s, in, pose)) break;
+      /* a rider's input steps its mount, and its body is where the mount seats it (riding.coax, #13268) */
+      float ride[3];
+      bool aboard = rm_e2_ride(view(), k, (coax_t_SeatId){ s}, inv, (coax_v_f32){ride, 3});
+      if (!world2_step(k, s, in, aboard ? ride : NULL, pose)) break;
       rm_eg_moved(view(), k, (coax_t_SeatId){ s}, in[0], pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
       if(input_began)ROOM_LATENCY_STEP(k,s,in[0],input_began,now_us());
     }
   }
+  rm_e2_mounts_tick(view(), k);   /* riders gone or fallen are off; a mount nobody rides steps */
   part_us[PART_MOVE] += now_us() - tm;
   int64_t te = now_us();
   /* The kit asks about contact in the same collision world that stepped these bodies. */

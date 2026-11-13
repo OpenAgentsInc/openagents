@@ -7,7 +7,7 @@
   "scope": "What a room on wire 7 writes a seat whose hello said wire 6, and reads from it, in place of what wire 7 changed: Everglade II's familiars and Healer's Kit as the frames a wire 6 page reads and writes. Kept for one release (#13398).",
   "docs": ["docs/protocol/everglade-previous-wire.md", "docs/protocol/everglade-familiar-v2.md"],
   "codec": "everglade/server/wire-prev-wire.coax",
-  "withheld": {"row_kinds": [15], "entries": []},
+  "withheld": {"row_kinds": [15, 16], "entries": []},
   "beside_d": {"m2": "TICK COUNT [OWNER FORM X Z HP MAX]...: the familiars the seat may see, on a change, else once a second", "m8": "MODE: whose senses the seat has (this wire's familiar row's G), on a change, else once a second"},
   "said_as": [
     {"entry": "e fam 4000001 0 8", "frame": "m1 4000001 8"},

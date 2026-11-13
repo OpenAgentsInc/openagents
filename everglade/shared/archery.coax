@@ -68,6 +68,14 @@ e2ar_launch_ok :: (from: [3] f32, x: f32, z: f32) -> bool {
   if !(dx == dx) || !(dz == dz) || !(up == up) { return false; }
   return dx * dx + dz * dz <= f32(E2AR_HAND_SLACK * E2AR_HAND_SLACK) && up >= f32(E2AR_HAND_LOW) && up <= f32(E2AR_HAND_HIGH);
 }
+// The same for an archer in a saddle (#13268): the hand is up to `lift` m higher than a walker's and
+// up to `reach` m farther from the mount's middle, which is where the room has its rider.
+e2ar_launch_ok_from :: (from: [3] f32, x: f32, z: f32, lift: f32, reach: f32) -> bool {
+  dx := from[0] - x; dz := from[2] - z; up := from[1] - e2_height(from[0], from[2]);
+  if !(dx == dx) || !(dz == dz) || !(up == up) || !(lift >= 0) || !(reach >= 0) { return false; }
+  far := f32(E2AR_HAND_SLACK) + reach;
+  return dx * dx + dz * dz <= far * far && up >= f32(E2AR_HAND_LOW) && up <= f32(E2AR_HAND_HIGH) + lift;
+}
 // The launch the room flies when the page's is refused or it said none: from the hand of an archer
 // standing at (x, z) facing the aim.
 e2ar_hand :: (x: f32, z: f32, to: [3] f32) -> [3] f32 {

@@ -82,7 +82,9 @@ int world2_near(float x, float z, float *out, int cap) {
   }
   return n;
 }
-bool world2_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]) {
+/* ride (x, z, facing): the seat is carried by its mount this step (everglade/server/riding.coax rm_e2_ride),
+   so the step seats it there (the shared step's aboard branch) and it walks nowhere; NULL on foot. */
+bool world2_step(int k, int s, const int64_t in[WORLD_IN], const float *ride, float out[WORLD_POSE]) {
   if (k < 0 || k >= WORLD_ROOMS || s < 0 || s >= WORLD_SEATS || !world2_prepare()) return false;
   const float dt = 1.0f / WORLD_HZ;
   /* in: SEQ KX KY PX PY THETA B, as world_step reads them */
@@ -93,11 +95,14 @@ bool world2_step(int k, int s, const int64_t in[WORLD_IN], float out[WORLD_POSE]
   float fx = p.pos.x, fz = p.pos.z;
   coax_t_EgMoveWorld mw = e2mg_move_world(e2mg(), p.pos.x, p.pos.z, input.run);
   if (guard_on[k]) mw.bodies = e2mg_guard(e2mg(), mw.bodies, p.pos.x, p.pos.z, guard_xz[k][0], guard_xz[k][1]);
+  if (ride) { mw.aboard = true; mw.seat_x = ride[0]; mw.seat_z = ride[1]; mw.seat_yaw = ride[2]; }
   p = eg_step_begin(p, input, mw, dt);
   coax_v_f32 near = e2mg_bodies(e2mg()), hulls = e2mg_hulls(e2mg());
   p = eg_step_advance_among(p, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, (coax_v_f32){hulls.data, mw.hulls}, dt);
-  coax_t_E2Spot kept = e2m_keep(p.pos.x, p.pos.z, fx, fz);
-  if (kept.x != p.pos.x || kept.z != p.pos.z) p = metaverse_body_constrain(p, kept.x, kept.z);
+  if (!ride) {   /* a mount keeps itself to the land (everglade/shared/mount-land.coax e2ml_step) */
+    coax_t_E2Spot kept = e2m_keep(p.pos.x, p.pos.z, fx, fz);
+    if (kept.x != p.pos.x || kept.z != p.pos.z) p = metaverse_body_constrain(p, kept.x, kept.z);
+  }
   seat_p[k][s] = p;
   pose_of(p, true, out);
   return true;

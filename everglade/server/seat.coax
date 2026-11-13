@@ -110,6 +110,8 @@ EG_SLOT_TREE :: EG_SLOT_DOORS + 1;    // separate sparse forest records, zero un
 EG_SLOT_MON :: EG_SLOT_TREE + WIRE_TREES; EG_SLOT_GUARD :: EG_SLOT_MON + WIRE_MONS;
 // and each seat's familiar after them (WK_FAMILIAR, #13276): its owner's seat past EG_SLOT_FAM
 EG_SLOT_FAM :: EG_SLOT_GUARD + 1;
+// and the zone's mounts after the familiars' (WK_MOUNT, #13268): 477 to 480
+EG_SLOT_MOUNT :: EG_SLOT_FAM + EG_SEATS;
 EG_DOORS_ID :: WIRE_DOORS_EID;    // its id: WIRE_ID_MADE + EG_DOORS_ID
 EG_FX_ID :: 950000;              // a watch effect's id: WIRE_ID_MADE + EG_FX_ID + SS * WE_WATCH + cause
 
@@ -145,6 +147,7 @@ EgSeat :: struct {
   loose: NetLoose;               // an arrow's launch its page said, kept for the Attack's request of the same number (everglade/server/arrows.coax)
   aid: E2Aid;
   familiar:E2Familiar;
+  ride_last: int;   // the newest riding ask heard (everglade/server/riding.coax)
   stock: [RS_MATERIAL_STOCK] RsMaterialStock;   // the reagents its casts left (everglade/shared/reagent-stock.coax)
   // Everglade II rest (everglade/server/rest.coax): the inputs the room last stepped, what that step showed of
   // the body (seen: an actual step since it was placed; settled: grounded, still, keys released) and
@@ -215,6 +218,7 @@ EgRoom :: struct {
   monsters: [1] E2Monsters;      // Everglade II's wolves and goblins (everglade/server/creatures.coax)
   nav: [1] E2RoomNav;            // its cells and its creatures' navigation (everglade/server/nav.coax, #13280, #13281)
   arrows: [1] E2Arrows;          // Everglade II's arrows in the air (everglade/server/arrows.coax)
+  mounts: [1] E2Mounts; mounts_laid: bool; mount_at: [E2R_MOUNTS] int;   // the zone's mounts and the tick each last stepped (everglade/server/riding.coax, #13268)
   tk: [EG_ZONE_SEATS] Ticket;         // who each seat's ticket says its player is, kept while the seat is held (#12792)
   hurts: [1] HbBatch;   // one whole-tick world damage snapshot per seat, dealt after heals
   rules: [1] EgBattle;

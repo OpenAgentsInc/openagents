@@ -56,9 +56,9 @@ wq_check :: (d: Jv, path: string) -> bool {
   if wq_str(d, jv_get(d, 0, "check"), tb[1][..]) != cast(string) cb[0..<cn] { print("check: not this program\n"); return false; }
   if wq_str(d, jv_get(d, 0, "codec"), tb[1][..]) != "everglade/server/wire-prev-wire.coax" { print("codec\n"); return false; }
   if wq_str(d, jv_get(d, 0, "base_session"), tb[1][..]) != "everglade-session-v7" { print("base_session\n"); return false; }
-  // what a seat on the old wire is not sent: every familiar's row, and no entry (each is said as its old frame)
+  // what a seat on the old wire is not sent: every familiar's row and every mount's, and no entry (each is said as its old frame)
   wh := jv_get(d, 0, "withheld"); kinds := jv_get(d, wh, "row_kinds"); ents := jv_get(d, wh, "entries");
-  if jv_len(d, kinds) != 1 || jv_int(d, jv_at(d, kinds, 0), -1) != WK_FAMILIAR { print("withheld.row_kinds\n"); return false; }
+  if jv_len(d, kinds) != 2 || jv_int(d, jv_at(d, kinds, 0), -1) != WK_FAMILIAR || jv_int(d, jv_at(d, kinds, 1), -1) != WK_MOUNT { print("withheld.row_kinds\n"); return false; }
   if jv_kind(d, ents) != JV_ARRAY || jv_len(d, ents) != 0 { print("withheld.entries\n"); return false; }
   // each entry of this wire, as the old frame it is said as: every order of e fam, e fam-cast and e kit
   said := jv_get(d, 0, "said_as"); heads: [7] bool; names := [7] string.["m1", "m3", "m4", "m5", "m6", "m7", "u1"];

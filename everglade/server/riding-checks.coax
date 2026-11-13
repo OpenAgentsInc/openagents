@@ -1,0 +1,125 @@
+// The room's riding checks (#13268; everglade/server/riding.coax), loaded with #test by
+// coax/web/room/room-everglade.coax.
+//   coax/bin/coax test coax/web/room/room.coax --only "riding"
+
+// A room's tick as the host runs it (room-tick.c everglade2_room_tick): a seat is placed beside the
+// horse (seat s at 10.2 + s, 9), a rider's input steps its mount and seats it, a walker's steps it by
+// its own PX PY, then the mounts' own tick and the rules.
+e2rd_test_tick :: (v: [] RmServer, k: int) {
+  eg_test_clock(v);
+  if !rm_eg_begin(v, k) { return; }
+  in: [EG_IN_FIELDS] int; ride: [3] f32;
+  for s: 0..<eg_cap(v, k) {
+    if rm_eg_unplaced(v, k, SeatId.{value = s}) { rm_eg_moved(v, k, SeatId.{value = s}, 0, 10.2 + f32(s), 0, 9, 0, 0, 0, 0, 1, 0, 0); }
+    while rm_eg_input(v, k, SeatId.{value = s}, in[..]) {
+      p := v[0].eg[k].seat[s].pose;
+      if rm_e2_ride(v, k, SeatId.{value = s}, in[..], ride[..]) { rm_eg_moved(v, k, SeatId.{value = s}, in[0], ride[0], 0, ride[1], ride[2], 0, 0, 0, 1, 0, 0); }
+      else { rm_eg_moved(v, k, SeatId.{value = s}, in[0], p.x + f32(in[3]) / 100.0, 0, p.z + f32(in[4]) / 100.0, 0, 0, 0, 0, 1, 1, 0); }
+    }
+  }
+  rm_e2_mounts_tick(v, k);
+  xz: [2] f32;
+  for q: 0..<rm_eg_beasts() { if rm_eg_beast_at(v, k, q, xz[..]) { rm_eg_beast_ground(v, k, q, 0); } }
+  rm_eg_end(v, k);
+}
+// Conn c's input SEQ with the walk keys (kx, ky) and buttons b, standing where it is.
+e2rd_test_input :: (v: [] RmServer, c: int, seq: int, kx: int, ky: int, b: int) {
+  t: [96] u8; n := put(t[..], 0, "I"); n = eg_n(t[..], n, seq); n = eg_n(t[..], n, kx); n = eg_n(t[..], n, ky); n = put(t[..], n, " 0 0 0"); n = eg_n(t[..], n, b); n = put(t[..], n, " 0");
+  rm_heard(v, c, cast(string) t[0..<n]);
+}
+#test "riding: a seat mounts the horse beside it, its inputs steer it, its body is the saddle's, and everyone near hears the mount's row" #steps 6000000000 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-e2-riding HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1 && rm_join(v[..], 2, ev) == 2;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 7 ranger.0.0.0 srd-fighter 0 -"); rm_heard(v[..], 1, "H 7 ranger.0.0.0 srd-fighter 0 -"); rm_heard(v[..], 2, "H 6 ranger.0.0.0 srd-fighter 0 -");
+  hd: [1] EgInbox; out: [16384] u8;
+  for q: 0..<3 { e2rd_test_tick(v[..], k); eg_test_drain(v[..], hd[..]); }
+  room := v[0].eg[k..<k + 1]; r := room[0].mounts[..]; h := room[0].hist[..];
+  mid := WIRE_ID_MADE + WIRE_MOUNT_EID;
+  // the zone's mounts are laid and free, each a row; the wire 7 pages hear them, the wire 6 page none
+  #assert room[0].mounts_laid && r[0].n == 2 && r[0].m[0].state == MOUNT_FREE && r[0].kind[1] == MK_DRAGON;
+  w := wire_test_row(h, EG_SLOT_MOUNT, h[0].now);
+  #assert cast(int) h[0].id[(h[0].now % WIRE_BASES) * WIRE_ZSLOTS + EG_SLOT_MOUNT] == mid + 1 && w.kind == WK_MOUNT && w.x == 9 && w.z == 9 && w.owner == -1 && w.g == MOUNT_FREE && w.p1 == MK_HORSE;
+  #assert eg_test_ent(hd[..], 0, mid).id == mid && eg_test_ent(hd[..], 1, mid + 1).p1 == MK_DRAGON && eg_test_ent(hd[..], 2, mid).id != mid;
+  // an ID past the zone's mounts is no riding ask; a mount the zone doesn't hold is answered so
+  rm_heard(v[..], 0, "E 1 20 4"); #assert eg_test_has(e2rt_heard(v[..], 0, out[..]), "r 1 ride") && room[0].seat[0].ride_last == 0;
+  rm_heard(v[..], 0, "E 1 20 3"); e2rd_test_tick(v[..], k); eg_test_drain(v[..], hd[..]);
+  #assert eg_test_has(eg_test_of(hd[..], 0), "e ride 1 1 3") && !eg_test_has(eg_test_of(hd[..], 1), "e ride");
+  // seat 0 (1.2 m from the horse) mounts it: told so alone, and the row names its rider and the tick
+  rm_heard(v[..], 0, "E 2 20 0"); at := room[0].tick;
+  #assert r[0].m[0].state == MOUNT_MOUNTING && r[0].m[0].rider == 0 && r[0].m[0].since_tick == at && room[0].seat[0].ride_last == 2;
+  rm_heard(v[..], 0, "E 2 20 0");   // heard twice: once
+  e2rd_test_tick(v[..], k); eg_test_drain(v[..], hd[..]);
+  #assert eg_test_has(eg_test_of(hd[..], 0), "e ride 2 0 0") && !eg_test_has(eg_test_of(hd[..], 1), "e ride");
+  #assert eg_test_ent(hd[..], 1, mid).g == MOUNT_MOUNTING && eg_test_ent(hd[..], 1, mid).owner == WIRE_TGT_SEAT && eg_test_ent(hd[..], 1, mid).t0 == at;
+  // seat 1 asks for the same horse: someone else has it; for the dragon, 20 m off: out of reach
+  rm_heard(v[..], 1, "E 1 20 0"); rm_heard(v[..], 1, "E 2 20 1");
+  e2rd_test_tick(v[..], k); eg_test_drain(v[..], hd[..]);
+  #assert eg_test_has(eg_test_of(hd[..], 1), "e ride 1 4 0") && eg_test_has(eg_test_of(hd[..], 1), "e ride 2 5 1") && r[0].m[1].state == MOUNT_FREE;
+  // its inputs carry it into the saddle (0.6 s) and then steer the horse: forward at a gallop
+  seq := 1;
+  for q: 0..<25 { e2rd_test_input(v[..], 0, seq, 0, 0, 1); seq += 1; e2rd_test_tick(v[..], k); }
+  #assert r[0].m[0].state == MOUNT_RIDDEN && room[0].seat[0].pose.x == r[0].m[0].x && room[0].seat[0].pose.z == r[0].m[0].z && r[0].m[0].x == 9 && r[0].m[0].z == 9;
+  for q: 0..<60 { e2rd_test_input(v[..], 0, seq, 0, 100, WB_RUN); seq += 1; e2rd_test_tick(v[..], k); }
+  eg_test_drain(v[..], hd[..]);
+  #assert r[0].m[0].speed > 8 && r[0].m[0].z < 9 - 8 && room[0].seat[0].pose.x == r[0].m[0].x && room[0].seat[0].pose.z == r[0].m[0].z && room[0].seat[0].ack == seq - 1;
+  far := eg_test_ent(hd[..], 1, mid);
+  #assert far.g == MOUNT_RIDDEN && abs(far.z - r[0].m[0].z) < 0.02 && abs(egm_row_speed(far) - r[0].m[0].speed) < 0.05 && far.clip == r[0].m[0].clip;
+  #assert abs(eg_test_ent(hd[..], 1, 0).z - r[0].m[0].z) < 0.02;   // the rider's own row is the saddle's place
+  // no input, no step: a rider whose inputs are late has a horse that waits for them
+  z := r[0].m[0].z; e2rd_test_tick(v[..], k); e2rd_test_tick(v[..], k); #assert r[0].m[0].z == z;
+  // it can't land a horse, and gets down beside it: on its feet there after the 0.5 s
+  rm_heard(v[..], 0, "E 3 22 0"); rm_heard(v[..], 0, "E 4 21 0");
+  #assert r[0].m[0].state == MOUNT_DISMOUNTING;
+  for q: 0..<20 { e2rd_test_input(v[..], 0, seq, 0, 0, 0); seq += 1; e2rd_test_tick(v[..], k); }
+  eg_test_drain(v[..], hd[..]);
+  #assert eg_test_has(eg_test_of(hd[..], 0), "e ride 3 10 0") && eg_test_has(eg_test_of(hd[..], 0), "e ride 4 0 0");
+  #assert r[0].m[0].state == MOUNT_FREE && r[0].m[0].rider == -1 && e2r_of(r[0], 0) == -1;
+  me := room[0].seat[0].pose; dx := me.x - r[0].m[0].x; dz := me.z - r[0].m[0].z;
+  #assert abs(sqrt(dx * dx + dz * dz) - mk_tune(MK_HORSE).side) < 0.01 && eg_test_ent(hd[..], 1, mid).owner == -1 && eg_test_ent(hd[..], 1, mid).g == MOUNT_FREE;
+  // on foot again it walks by its own steps, and the horse stays where it was left
+  hx := r[0].m[0].x; hz := r[0].m[0].z;
+  e2rd_test_input(v[..], 0, seq, 0, 0, 0); seq += 1; e2rd_test_tick(v[..], k);
+  #assert r[0].m[0].x == hx && r[0].m[0].z == hz && room[0].seat[0].pose.x == me.x;
+  // asks from the ground: it rides nothing
+  rm_heard(v[..], 0, "E 5 21 0"); e2rd_test_tick(v[..], k); eg_test_drain(v[..], hd[..]);
+  #assert eg_test_has(eg_test_of(hd[..], 0), "e ride 5 6 -1");
+}
+#test "riding: a rider who leaves the room is off its mount at once, one the rules hold can't mount, and a saddle lifts where its arrow may leave" #steps 6000000000 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  ev := "GET /api/room/relay/everglade/pair-e2-riding-leave HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_heard(v[..], 0, "H 7 ranger.0.0.0 srd-fighter 0 -"); rm_heard(v[..], 1, "H 7 ranger.0.0.0 srd-fighter 0 -");
+  for q: 0..<3 { e2rd_test_tick(v[..], k); }
+  room := v[0].eg[k..<k + 1]; r := room[0].mounts[..];
+  #assert !e2rd_lift(v[..], k, 0).on;
+  rm_heard(v[..], 0, "E 1 20 0");
+  for q: 0..<25 { e2rd_test_input(v[..], 0, q + 1, 0, 0, 0); e2rd_test_tick(v[..], k); }
+  #assert r[0].m[0].state == MOUNT_RIDDEN && e2r_of(r[0], 0) == 0;
+  // in the saddle its hand is the saddle's height higher, and may be the horse's half length from its middle
+  lift := e2rd_lift(v[..], k, 0);
+  #assert lift.on && lift.up == mk_seat_up(MK_HORSE) && lift.reach == mk_tune(MK_HORSE).half_length && !e2rd_lift(v[..], k, 1).on;
+  me := room[0].seat[0].pose; g := e2_height(me.x, me.z);
+  hand := [3] f32.[me.x, g + f32(E2AR_HAND_HIGH) + 1.2, me.z];
+  #assert !e2ar_launch_ok(hand, me.x, me.z) && e2ar_launch_ok_from(hand, me.x, me.z, lift.up, lift.reach);
+  #assert !e2ar_launch_ok_from([3] f32.[me.x, g + f32(E2AR_HAND_HIGH) + lift.up + 0.5, me.z], me.x, me.z, lift.up, lift.reach);
+  #assert !e2ar_launch_ok_from([3] f32.[me.x + f32(E2AR_HAND_SLACK) + lift.reach + 0.5, hand[1], me.z], me.x, me.z, lift.up, lift.reach);
+  // seat 1, held still by the rules (0 Hit Points), may not mount the dragon it stands beside
+  room[0].seat[1].pose.x = r[0].m[1].x + 2; room[0].seat[1].pose.z = r[0].m[1].z;
+  c := room[0].rules[0].b[0].c[EGB_SEAT + 1..<EGB_SEAT + 2]; hp := c[0].hp; c[0].hp = 0;
+  #assert !e2rd_free(v[..], k, 1) && e2rd_free(v[..], k, 0) && !e2rd_free(v[..], k, 7) && !e2rd_free(v[..], k, -1);
+  rm_heard(v[..], 1, "E 1 20 1"); #assert r[0].m[1].state == MOUNT_FREE;
+  c[0].hp = hp;
+  rm_heard(v[..], 1, "E 2 20 1"); #assert r[0].m[1].state == MOUNT_MOUNTING && r[0].m[1].rider == 1;
+  // seat 1 falls (0 Hit Points) while on its way up: off at the next tick; the horse's rider stays on
+  c[0].hp = 0; e2rd_test_tick(v[..], k);
+  #assert r[0].m[1].state == MOUNT_FREE && r[0].m[1].rider == -1 && r[0].m[0].state == MOUNT_RIDDEN;
+  c[0].hp = hp;
+  // seat 0's socket closes and its grace runs out: the horse is free where it stood
+  rm_left(v[..], 0);
+  for q: 0..<3 { e2rd_test_tick(v[..], k); }
+  if room[0].seat[0].live { room[0].seat[0].live = false; e2rd_test_tick(v[..], k); }
+  #assert r[0].m[0].state == MOUNT_FREE && r[0].m[0].rider == -1 && r[0].m[0].on;
+}

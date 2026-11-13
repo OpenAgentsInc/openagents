@@ -172,6 +172,12 @@ WK_GUARD :: 14;            // the path's guard: G his state (E2G_*), T0 the tick
 WK_FAMILIAR :: 15;         // a familiar (#13276): OWNER its owner as a TGT code, P1 its form (the index into rules/srd RS_FAMILIAR_FORMS), HP and MAX,
                            // G whose senses its owner has (0 their own, 1 its sight, 2 its sight and hearing). One a seat; pocketed, released or dead it has no row
 WIRE_FAM_EID :: 970200;    // owner seat S's familiar's row id: WIRE_ID_MADE + WIRE_FAM_EID + S
+WK_MOUNT :: 16;            // a mount (#13268; everglade/server/riding.coax): G its state (metaverse-engine/action/mount.coax MOUNT_*), CLIP its gait,
+                           // T0 the tick its mounting or dismounting began, OWNER its rider as a TGT code (-1 nobody), P1 its kind
+                           // (everglade/shared/mount-kinds.coax MK_*), P2 its feet's height over the ground in centimetres (a flier's, a jump's).
+                           // Its velocity is its speed along its heading (backing: against it) and its feet's speed up
+WIRE_MOUNTS :: 4;          // the mounts a zone holds (everglade/server/mounts.coax E2R_MOUNTS)
+WIRE_MOUNT_EID :: 970300;  // mount M's row id: WIRE_ID_MADE + WIRE_MOUNT_EID + M
 WIRE_MONS :: 12;           // the monsters a room holds at most
 WIRE_MON_EID :: 970000;    // monster M's row id: WIRE_ID_MADE + WIRE_MON_EID + M
 WIRE_GUARD_EID :: 970100;  // the guard's row id: WIRE_ID_MADE + WIRE_GUARD_EID
@@ -211,6 +217,8 @@ WE_TALK :: 1; WE_DOOR :: 2; WE_BOAT :: 3; WE_BOARD :: 4; WE_END :: 5;
 // summon a companion, begin the Wizard's Find Familiar, pocket recall or release it, step it, have it deliver Cure Wounds,
 // borrow its senses; use the kit on the nearest dying ally
 WE_FAM_SUMMON :: 9; WE_FAM_RITE :: 10; WE_FAM_ORDER :: 11; WE_FAM_STEP :: 12; WE_FAM_CURE :: 13; WE_FAM_SENSES :: 14; WE_KIT :: 15;
+// Riding (#13268; everglade/shared/mount-wire.coax): mount the mount ID, get down (ID 0), bring a flier down (ID 0)
+WE_MOUNT :: 20; WE_DISMOUNT :: 21; WE_LAND :: 22;
 WE_SAY :: 6; WE_WEAR :: 7; WE_BARE :: 8;   // Everglade II (#13291, #13292): talk to dialogue ID (the content tables'), wear item ID, empty equipment slot ID
 
 WireIn :: struct #persisted { seq: int; kx: int; ky: int; px: int; py: int; theta: f32; b: int; heard: int; }   // theta goes in WIRE_FINE units (0.1 mrad)
@@ -1155,7 +1163,7 @@ wire_rows_same_fields :: (f:[]s32,a:int,b:int,allowed:int)->bool {
 wire_rel :: (kind: int) -> f32 {
   if kind == WK_PLAYER { return 4; }
   if kind == WK_FOLK { return 1.5; }
-  if kind == WK_BEAST || kind == WK_PACK || kind == WK_FROG || kind == WK_MONSTER || kind == WK_GUARD || kind == WK_FAMILIAR { return 3; }
+  if kind == WK_BEAST || kind == WK_PACK || kind == WK_FROG || kind == WK_MONSTER || kind == WK_GUARD || kind == WK_FAMILIAR || kind == WK_MOUNT { return 3; }
   return 2;
 }
 // The one table of what each kind's row carries (#13276): a field outside its kind's mask is never
@@ -1165,10 +1173,12 @@ WIRE_POSE :: (1 << WS_KIND) | (1 << WS_X) | (1 << WS_Y) | (1 << WS_Z) | (1 << WS
 WIRE_KIND_MONSTER :: WIRE_POSE | (1 << WS_G) | (1 << WS_CLIP) | (1 << WS_HP) | (1 << WS_MAX) | (1 << WS_OWNER) | (1 << WS_P1) | (1 << WS_P2) | (1 << WS_T0);
 WIRE_KIND_GUARD :: WIRE_POSE | (1 << WS_G) | (1 << WS_HP) | (1 << WS_MAX) | (1 << WS_OWNER) | (1 << WS_T0);
 WIRE_KIND_FAMILIAR :: WIRE_POSE | (1 << WS_G) | (1 << WS_HP) | (1 << WS_MAX) | (1 << WS_OWNER) | (1 << WS_P1);
+WIRE_KIND_MOUNT :: WIRE_POSE | (1 << WS_G) | (1 << WS_CLIP) | (1 << WS_OWNER) | (1 << WS_P1) | (1 << WS_P2) | (1 << WS_T0);
 wire_kind_fields :: (kind: int) -> int {
   if kind == WK_MONSTER { return WIRE_KIND_MONSTER; }
   if kind == WK_GUARD { return WIRE_KIND_GUARD; }
   if kind == WK_FAMILIAR { return WIRE_KIND_FAMILIAR; }
+  if kind == WK_MOUNT { return WIRE_KIND_MOUNT; }
   return (1 << WIRE_SF) - 1;
 }
 // A packed row keeps only its kind's fields: the others are as an empty row has them (OWNER -1, the rest 0).

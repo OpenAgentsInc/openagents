@@ -23,6 +23,11 @@ MK_DRAGON_PACE :: 7.5;          // m/s, the walker's run for a 30-ft Speed
 // A kind's handling, and the dragon's wings.
 mk_tune :: (kind: int) -> MountTune { return ifx kind == MK_DRAGON then MK_RED_DRAGON else MK_RIDING_HORSE; }
 mk_dragon_wings :: () -> WingProfile { return wing_profile_srd(40, 80, f32(MK_DRAGON_PACE)); }
+// How high over its feet a kind seats its rider's pelvis at most (the horse's saddle bone and the
+// dragon's, with their seat's lift: everglade/mounts.coax EG_SADDLE, EG_DRAGON_SADDLE). The room bounds
+// where a rider's arrow may leave by it; a page draws the saddle from the model's own frame.
+MK_HORSE_SEAT_UP :: 1.7; MK_DRAGON_SEAT_UP :: 4.2;
+mk_seat_up :: (kind: int) -> f32 { return ifx kind == MK_DRAGON then f32(MK_DRAGON_SEAT_UP) else f32(MK_HORSE_SEAT_UP); }
 // A rider's keys on a mount of `kind`, from the steering `i` (forward, turn, and the gallop asked
 // for): on the horse Shift gallops and Space jumps; on the dragon Space takes off, beats and (held)
 // climbs, Shift dives in the air and never gallops, and `land` (X, pressed in the air) brings it down.

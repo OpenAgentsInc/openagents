@@ -1,0 +1,115 @@
+// Riding's profile check (#13268): proto/verse/everglade2-riding-v1.json names the mount's row, each
+// ask (an E kind), the room's answer (e ride) and its codes. This program holds the one codec
+// (everglade/shared/mount-wire.coax, which the room and the page both load) to that file: the row's
+// kind, ids, count, first slot and fields are the codec's table; each ask's text reads as its values
+// and writes back as the text; each answer the same; the codes are the room's (mounts.coax E2R_*);
+// what is malformed is refused whole. The file's texts are written by hand, not by this codec.
+// Prints "PROFILE: profile holds" (exit 0), or what differs and "profile fails" (exit 1).
+//   coax/web/tool.sh coax/web/room/riding-profile.coax proto/verse/everglade2-riding-v1.json
+#import "Basic";
+#load "room.coax";
+#load "../../lib/json/json.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+
+RP_FILE :: 16384;
+RP_NONE :: -999999999;
+
+rp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+rp_int :: (d: Jv, o: int, key: string) -> int { return jv_int(d, jv_get(d, o, key), RP_NONE); }
+// An object of exactly these names and values, in this order.
+rp_enum :: (d: Jv, key: string, names: [] string, values: [] int) -> bool {
+  o := jv_get(d, 0, key); tb: [64] u8;
+  if jv_kind(d, o) != JV_OBJECT || jv_len(d, o) != names.count { return false; }
+  for i: 0..<names.count {
+    if rp_int(d, o, names[i]) != values[i] { return false; }
+  }
+  return true;
+}
+rp_check :: (d: Jv, file: string) -> bool {
+  tb: [2][256] u8; out: [128] u8;
+  if rp_str(d, jv_get(d, 0, "identity"), tb[0][..]) != "everglade2-riding-v1" { print("identity\n"); return false; }
+  cb: [200] u8; cn := wire_put(cb[..], wire_put(cb[..], 0, "coax/web/tool.sh coax/web/room/riding-profile.coax "), file);
+  if rp_str(d, jv_get(d, 0, "check"), tb[0][..]) != cast(string) cb[0..<cn] { print("check: not this program\n"); return false; }
+  if rp_str(d, jv_get(d, 0, "base_session"), tb[0][..]) != "everglade-session-v7" || WIRE_VERSION != 7 { print("base_session\n"); return false; }
+  // the row: the codec's kind, ids, count, slots and fields
+  row := jv_get(d, 0, "row");
+  if rp_int(d, row, "kind") != WK_MOUNT || rp_int(d, row, "entity_base") != WIRE_ID_MADE + WIRE_MOUNT_EID || rp_int(d, row, "count") != WIRE_MOUNTS
+    || rp_int(d, row, "count") != E2R_MOUNTS || rp_int(d, row, "first_slot") != EG_SLOT_MOUNT { print("row\n"); return false; }
+  fields := jv_get(d, row, "fields"); mask := 0;
+  names := [6] string.["g", "clip", "owner", "p1", "p2", "t0"]; bits := [6] int.[WS_G, WS_CLIP, WS_OWNER, WS_P1, WS_P2, WS_T0];
+  if jv_kind(d, fields) != JV_ARRAY || jv_len(d, fields) != 6 { print("row.fields\n"); return false; }
+  for i: 0..<6 { if rp_str(d, jv_at(d, fields, i), tb[0][..]) != names[i] { print("row.fields %\n", i); return false; } mask |= 1 << bits[i]; }
+  if (mask | WIRE_POSE) != wire_kind_fields(WK_MOUNT) || (mask & WIRE_POSE) != 0 { print("row.fields: not the codec's table\n"); return false; }
+  // the E kinds, the states, the kinds of mount and the codes
+  if !rp_enum(d, "uses", [3] string.["mount", "dismount", "land"][..], [3] int.[WE_MOUNT, WE_DISMOUNT, WE_LAND][..]) { print("uses\n"); return false; }
+  if !rp_enum(d, "states", [4] string.["free", "mounting", "ridden", "dismounting"][..], [4] int.[MOUNT_FREE, MOUNT_MOUNTING, MOUNT_RIDDEN, MOUNT_DISMOUNTING][..]) { print("states\n"); return false; }
+  if !rp_enum(d, "mount_kinds", [2] string.["horse", "dragon"][..], [2] int.[MK_HORSE, MK_DRAGON][..]) || MK_KINDS != 2 { print("mount_kinds\n"); return false; }
+  if !rp_enum(d, "codes", [11] string.["ok", "none", "held", "riding", "taken", "far", "on_foot", "busy", "aloft", "no_room", "ground"][..],
+      [11] int.[E2R_OK, E2R_NONE, E2R_HELD, E2R_RIDING, E2R_TAKEN, E2R_FAR, E2R_ON_FOOT, E2R_BUSY, E2R_ALOFT, E2R_NO_ROOM, E2R_GROUND][..]) || EGM_CODES != 11 { print("codes\n"); return false; }
+  if rp_str(d, jv_get(d, 0, "request"), tb[0][..]) != "E SEQ KIND ID" || rp_str(d, jv_get(d, 0, "answer"), tb[1][..]) != "e ride SEQ CODE MOUNT" { print("request or answer\n"); return false; }
+  // each ask: the text reads as its values and writes back as the text
+  reqs := jv_get(d, 0, "requests"); seen: [3] bool;
+  if jv_kind(d, reqs) != JV_ARRAY || jv_len(d, reqs) < 3 { print("requests\n"); return false; }
+  for i: 0..<jv_len(d, reqs) {
+    r := jv_at(d, reqs, i);
+    text := rp_str(d, jv_get(d, r, "text"), tb[0][..]); use := rp_str(d, jv_get(d, r, "use"), tb[1][..]);
+    rd := [1] WireRd.[wire_rd(text, 1)];
+    u := wire_read_use(text, rd[..]);
+    a := egm_use_read(u);
+    which := ifx use == "mount" then 0 else ifx use == "dismount" then 1 else ifx use == "land" then 2 else -1;
+    if which < 0 || !wire_is(text, "E") || !rd[0].ok || wire_fields(text) != 4 || !a.ok || a.kind != WE_MOUNT + which { print("request %: %\n", i, text); return false; }
+    seen[which] = true;
+    if a.seq != rp_int(d, r, "seq") || a.mount != rp_int(d, r, "mount") { print("request %: its values\n", i); return false; }
+    n := wire_put_use(out[..], 0, egm_use_of(a));
+    if cast(string) out[0..<n] != text || egf_use_read(u, RS_FAMILIAR_FEY).ok || egf_kit_read(u) != 0 { print("request %: written %\n", i, cast(string) out[0..<n]); return false; }
+  }
+  for q: 0..<3 { if !seen[q] { print("requests: a use has none\n"); return false; } }
+  // each answer: written from its values it is the text, and the text reads back as them; told to the asker alone
+  answers := jv_get(d, 0, "answers");
+  if jv_kind(d, answers) != JV_ARRAY || jv_len(d, answers) < 3 { print("answers\n"); return false; }
+  for i: 0..<jv_len(d, answers) {
+    r := jv_at(d, answers, i);
+    text := rp_str(d, jv_get(d, r, "text"), tb[0][..]);
+    want := EgmAnswer.{seq = rp_int(d, r, "seq"), code = rp_int(d, r, "code"), mount = rp_int(d, r, "mount")};
+    n := egm_answer_put(out[..], want); g := egm_answer_read(text);
+    if cast(string) out[0..<n] != text || !g.ok || g.seq != want.seq || g.code != want.code || g.mount != want.mount || !egm_kept(text) || egf_kept(text) || wire_outcome(text) { print("answer %: %\n", i, text); return false; }
+  }
+  refusals := jv_get(d, 0, "refusals");
+  if jv_kind(d, refusals) != JV_ARRAY || jv_len(d, refusals) != 1 { print("refusals\n"); return false; }
+  r0 := jv_at(d, refusals, 0);
+  reason := rp_str(d, jv_get(d, r0, "reason"), tb[1][..]);
+  n := wire_put_refused(out[..], 0, rp_int(d, r0, "seq"), reason);
+  if reason != E2RD_REFUSED || rp_str(d, jv_get(d, 0, "refusal"), tb[0][..]) != "r SEQ ride" || cast(string) out[0..<n] != rp_str(d, jv_get(d, r0, "text"), tb[0][..]) { print("refusal\n"); return false; }
+  // what is malformed is refused whole
+  bad := jv_get(d, 0, "malformed_requests");
+  if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 6 { print("malformed_requests\n"); return false; }
+  for i: 0..<jv_len(d, bad) {
+    t := rp_str(d, jv_at(d, bad, i), tb[0][..]);
+    rd := [1] WireRd.[wire_rd(t, 1)];
+    u := wire_read_use(t, rd[..]);
+    if !rd[0].ok || egm_use_read(u).ok { print("malformed_requests %: %\n", i, t); return false; }
+  }
+  worse := jv_get(d, 0, "malformed_answers");
+  if jv_kind(d, worse) != JV_ARRAY || jv_len(d, worse) < 6 { print("malformed_answers\n"); return false; }
+  for i: 0..<jv_len(d, worse) {
+    t := rp_str(d, jv_at(d, worse, i), tb[0][..]);
+    if egm_answer_read(t).ok { print("malformed_answers %: %\n", i, t); return false; }
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: riding-profile PROFILE.json"); return 2; }
+  path := args_at(a[..], 0);
+  text: [RP_FILE] u8; n := fs_read(path, text[..]);
+  nodes: [2048] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("riding-profile: cannot parse JSON"); return 2; }
+  if !rp_check(d[0], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

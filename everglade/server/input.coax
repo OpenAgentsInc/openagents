@@ -50,6 +50,7 @@ eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := se
     // a familiar's request and the Healer's Kit's (familiar-wire.coax, #13276, #13245): the same asks a wire 6 page's M and U frames make
     if u.kind >= WE_FAM_SUMMON && u.kind <= WE_FAM_SENSES { e2_familiar_use(v, k, seat_id, u); return; }
     if u.kind == WE_KIT { e2_aid_asked(v, k, seat_id, egf_kit_read(u)); return; }
+    if u.kind >= WE_MOUNT && u.kind <= WE_LAND { e2rd_asked(v, k, seat_id, u); return; }   // riding (riding.coax, #13268)
     if u.kind != WE_END { eg_refuse(v, k, seat_id, u.seq, "unbuilt"); return; }
     // an end takes its place among the seat's inputs, as a cast does (rc_ready): with inputs sent
     // before it still queued, it waits for them (eg_ends_due), and the inputs after it wait for it

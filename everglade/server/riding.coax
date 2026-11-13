@@ -1,0 +1,110 @@
+// Riding in the room (#13268): the room holds its zone's mounts (everglade/server/mounts.coax, the
+// authority on who may ride), steps each ridden one once for each of its rider's inputs among the
+// land's boxes (everglade/shared/mount-land.coax e2ml_step, the step the rider's page predicts with),
+// answers the asks (everglade/shared/mount-wire.coax: E kinds 20 to 22, e ride) and writes each mount
+// as a row (WK_MOUNT, slots EG_SLOT_MOUNT on). A rider's body is where its mount seats it: the host's
+// walker steps it aboard (room-tick.c, room-world.c world2_step's `ride`), not on its own feet.
+//
+// One input of the rider's is one step of its mount, as it is one step of a walker: a rider whose
+// inputs are late has a mount that waits for them, and the page's re-run of its unacknowledged inputs
+// steps its mount the same way. A mount nobody rides steps once a tick (a flier left in the air comes
+// down). A rider that leaves the room or falls is off its mount at once.
+//   coax/bin/coax test coax/web/room/room.coax   (the room's suite runs the checks in everglade/server/room-checks.coax)
+#load "../shared/mount-land.coax";
+#load "../shared/mount-wire.coax";
+
+E2RD_REFUSED :: "ride";   // r SEQ ride: the ask was no riding ask at all
+
+e2rd_room :: (v: [] RmServer, k: int) -> [] E2Mounts {
+  room := v[0].eg[k..<k + 1];
+  if !room[0].mounts_laid { e2ml_lay(room[0].mounts[..]); room[0].mounts_laid = true; for m: 0..<E2R_MOUNTS { room[0].mount_at[m] = -1; } }
+  return room[0].mounts[..];
+}
+// Whether seat s's conditions let it act and move: placed, alive, and not held still by the rules.
+e2rd_free :: (v: [] RmServer, k: int, s: int) -> bool {
+  room := v[0].eg[k..<k + 1];
+  if s < 0 || s >= eg_cap(v, k) || !room[0].seat[s].live || !room[0].seat[s].placed { return false; }
+  if !room[0].rules[0].live[s] { return true; }   // a seat the rules don't hold yet: nothing holds it
+  c := room[0].rules[0].b[0].c[EGB_SEAT + s];
+  return !c.dead && c.hp > 0 && rs_locomotion_scale(room[0].rules[0].b[..], EGB_SEAT + s) > 0;
+}
+// Mount m's step from its rider's keys at the room's tick, among the land's boxes (none in a room
+// with no planting: the checks').
+e2rd_step :: (v: [] RmServer, k: int, m: int, kx: int, ky: int, b: int) -> E2RStep {
+  r := e2rd_room(v, k); g := v[0].e2land; tick := v[0].eg[k].tick;
+  v[0].eg[k].mount_at[m] = tick;
+  if g.count > 0 && g[0].done {
+    return e2ml_step(r, m, kx, ky, (b & WB_RUN) != 0, (b & WB_JUMP) != 0, tick, EG_HZ, g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true);
+  }
+  none: [6] f32;
+  return e2r_step(r, m, kx, ky, (b & WB_RUN) != 0, (b & WB_JUMP) != 0, 0, tick, EG_HZ, none[..], 0);
+}
+// Seat s's input `in` (rm_eg_input's: SEQ KX KY PX PY THETA B) steps the mount it is on. True when
+// the seat is carried: out is where its body is after the step (x, z, facing), which the host's
+// walker takes in place of a step on foot. False: it is on foot.
+rm_e2_ride :: (v: [] RmServer, k: int, s_id: SeatId, in: [] int, out: [] f32) -> bool #export_c #effects(all) { s := s_id.value;
+  if !rm_eg_live(v, k) || s < 0 || s >= eg_cap(v, k) || in.count < EG_IN_FIELDS || out.count < 3 { return false; }
+  r := e2rd_room(v, k);
+  m := e2r_of(r[0], s);
+  if m < 0 { return false; }
+  o := e2rd_step(v, k, m, in[1], in[2], in[6]);
+  if o.off { out[0] = o.x; out[1] = o.z; out[2] = r[0].m[m].face; return true; }   // the last step down: on its feet where it stepped off
+  body := e2r_body(r[0], m, v[0].eg[k].tick, EG_HZ);
+  if !body.on { return false; }
+  out[0] = body.x; out[1] = body.z; out[2] = body.yaw;
+  return true;
+}
+// After the seats' steps: a rider that left or fell is off its mount, and every mount nobody rides
+// that still moves (a flier in the air, a horse slowing) steps once.
+rm_e2_mounts_tick :: (v: [] RmServer, k: int) #export_c #effects(all) {
+  if !rm_eg_live(v, k) { return; }
+  r := e2rd_room(v, k); tick := v[0].eg[k].tick;
+  for m: 0..<r[0].n {
+    rider := r[0].m[m].rider;
+    if r[0].m[m].state != MOUNT_FREE && !e2rd_free(v, k, rider) {
+      // held still by a spell it stays in the saddle; gone or fallen it is off
+      gone := rider < 0 || rider >= eg_cap(v, k) || !v[0].eg[k].seat[rider].live || !v[0].eg[k].seat[rider].placed;
+      down := !gone && v[0].eg[k].rules[0].live[rider] && (v[0].eg[k].rules[0].b[0].c[EGB_SEAT + rider].dead || v[0].eg[k].rules[0].b[0].c[EGB_SEAT + rider].hp <= 0);
+      if gone || down { left := e2r_leave(r, rider, tick); }
+    }
+    h := r[0].m[m];
+    if h.state == MOUNT_FREE && v[0].eg[k].mount_at[m] != tick && (mount_aloft(h) || h.speed != 0 || h.hop != 0 || h.hop_v != 0) { o := e2rd_step(v, k, m, 0, 0, 0); }
+  }
+}
+// A riding ask (E kinds 20 to 22), answered to the asker alone.
+e2rd_asked :: (v: [] RmServer, k: int, seat_id: SeatId, u: WireUse) { s := seat_id.value;
+  a := egm_use_read(u);
+  if !a.ok { eg_refuse(v, k, seat_id, u.seq, E2RD_REFUSED); return; }
+  st := v[0].eg[k].seat[s..<s + 1];
+  if a.seq <= st[0].ride_last { return; }
+  st[0].ride_last = a.seq;
+  r := e2rd_room(v, k); tick := v[0].eg[k].tick; free := e2rd_free(v, k, s);
+  code := E2R_NONE; mount := -1;
+  if a.kind == WE_MOUNT {
+    mount = a.mount;
+    code = ifx st[0].placed then e2r_mount(r, s, a.mount, st[0].pose.x, st[0].pose.z, free, tick) else E2R_HELD;
+  } else {
+    mount = e2r_of(r[0], s);
+    if a.kind == WE_LAND { code = e2r_land(r, s); }
+    else {
+      g := v[0].e2land;
+      if g.count > 0 && g[0].done { code = e2ml_dismount(r, s, free, tick, g[0].still[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true); }
+      else { none: [6] f32; code = e2r_dismount(r, s, free, tick, none[..], 0); }
+    }
+  }
+  b: [48] u8; n := egm_answer_put(b[..], EgmAnswer.{seq = a.seq, code = code, mount = mount});
+  eg_event_only(v, k, cast(string) b[0..<n], s);
+}
+// Every mount's row this tick (eg_table).
+e2_mounts_rows :: (v: [] RmServer, k: int) {
+  r := e2rd_room(v, k); h := v[0].eg[k].hist[..];
+  for m: 0..<r[0].n { if r[0].m[m].on { wire_hist_put(h, EG_SLOT_MOUNT + m, egm_row(r[0], m), wire_rel(WK_MOUNT), false, false); } }
+}
+// How an arrow may leave a rider's hand: how far over a walker's hand the saddle lifts it, and how far
+// from its mount's middle the saddle is at most. `on` false: seat s is on foot.
+E2RdLift :: struct { on: bool; up: f32; reach: f32; }
+e2rd_lift :: (v: [] RmServer, k: int, s: int) -> E2RdLift {
+  r := e2rd_room(v, k); m := e2r_of(r[0], s);
+  if m < 0 || r[0].m[m].state != MOUNT_RIDDEN { return E2RdLift.{}; }
+  return E2RdLift.{on = true, up = mk_seat_up(r[0].kind[m]) + mount_feet(r[0].m[m], 0), reach = mk_tune(r[0].kind[m]).half_length};
+}

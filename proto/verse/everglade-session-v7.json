@@ -90,8 +90,10 @@
     "monster": {"kind": 13, "entity_base": 1170000, "count": 12, "fields": ["g", "clip", "hp", "max", "owner", "p1", "p2", "t0"]},
     "guard": {"kind": 14, "entity_base": 1170100, "count": 1, "fields": ["g", "hp", "max", "owner", "t0"]},
     "familiar": {"kind": 15, "entity_base": 1170200, "count": 16, "fields": ["g", "hp", "max", "owner", "p1"]},
+    "mount": {"kind": 16, "entity_base": 1170300, "count": 4, "fields": ["g", "clip", "owner", "p1", "p2", "t0"]},
     "events": "everglade2-combat-v2",
-    "familiar_words": "everglade2-familiar-v2"
+    "familiar_words": "everglade2-familiar-v2",
+    "riding_words": "everglade2-riding-v1"
   },
   "ack": {
     "I.heard": "the last state tick the page heard whole: the baseline every later row is a delta against",
