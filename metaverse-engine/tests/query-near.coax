@@ -47,13 +47,16 @@ qn_same_hit :: (a: QueryHit, b: QueryHit) -> bool {
 qn_same_ground :: (a: QueryGround, b: QueryGround) -> bool {
   return f32_bits(a.y) == f32_bits(b.y) && f32_bits(a.gx) == f32_bits(b.gx) && f32_bits(a.gz) == f32_bits(b.gz) && a.steep == b.steep && a.shape == b.shape && a.index == b.index && a.status == b.status;
 }
-// Every query both ways in scene `seed`; how many answers named a box or a capsule.
-qn_compare :: (seed: int, cell: f32, ground: bool) -> int {
+// Every query both ways in scene `seed`; how many answers named a box or a capsule. held: the last
+// `held` boxes and capsules are added after the build (a zone's moving bodies).
+qn_compare :: (seed: int, cell: f32, ground: bool) -> int { return qn_compare_held(seed, cell, ground, 0); }
+qn_compare_held :: (seed: int, cell: f32, ground: bool, held: int) -> int {
   s: [1] QnScene; r := [1] OracleDraw.[OracleDraw.{rng = seed * 7919 + 3}];
   qn_scene(s[..], r[..]);
   s[0].near[0] = qn_view(s[..]);
   plain := Colliders.{ground = -0.25, ground_enabled = ground, boxes = s[0].boxes[..], capsules = s[0].capsules[..]};
-  #assert query_near_build(s[0].near[..], plain, cell);
+  first := plain; first.boxes = s[0].boxes[0..<(QN_BOXES - held) * QUERY_BOX]; first.capsules = s[0].capsules[0..<(QN_CAPSULES - held) * QUERY_CAPSULE];
+  #assert query_near_build(s[0].near[..], first, cell);
   fast := plain; fast.near = s[0].near[..];
   named := 0;
   for q: 0..<40 {
@@ -83,6 +86,9 @@ qn_compare :: (seed: int, cell: f32, ground: bool) -> int {
 #forall "near: every query answers as the scan of every collider does, bit for bit, in cells of 8 m (2 of 2)" seed: 12..<24 #steps 400000000 { #assert qn_compare(seed, 8, false) > 8; }
 #forall "near: the same in cells of 3 m and of 25 m, where more colliders are wide or share a cell" seed: 0..<8 #steps 400000000 {
   #assert qn_compare(seed + 100, 3, true) > 8 && qn_compare(seed + 200, 25, true) > 8;
+}
+#forall "near: boxes and capsules added after the build are asked by every query, and the answers stay the scan's" seed: 0..<8 #steps 400000000 {
+  #assert qn_compare_held(seed + 300, 8, true, 9) > 8 && qn_compare_held(seed + 400, 8, false, 14) > 8;
 }
 #test "near: the build files each collider once, the wide and the refused apart" {
   s: [1] QnScene; r := [1] OracleDraw.[OracleDraw.{rng = 99}];
@@ -125,6 +131,18 @@ qn_compare :: (seed: int, cell: f32, ground: bool) -> int {
   h = query_ray(fewer, o, d, 2); #assert s[0].n[QUERY_NEAR_WHOLE] == 4 && qn_same_hit(h, query_ray(Colliders.{boxes = s[0].boxes[0..<QUERY_BOX * 10], capsules = s[0].capsules[..]}, o, d, 2));
   fewer = fast; fewer.capsules = s[0].capsules[0..<QUERY_CAPSULE];
   h = query_ray(fewer, o, d, 2); #assert s[0].n[QUERY_NEAR_WHOLE] == 5;
+  // more colliders than at the build are asked with the pick; but not when the build ended inside one
+  part: [1] QnScene; part[0] = s[0]; part[0].near[0] = qn_view(part[..]);
+  built := plain; built.boxes = part[0].boxes[0..<QUERY_BOX * (QN_BOXES - 10) + 3]; built.capsules = part[0].capsules[0..<QUERY_CAPSULE * (QN_CAPSULES - 7)];
+  #assert query_near_build(part[0].near[..], built, 8);
+  more := plain; more.boxes = part[0].boxes[..]; more.capsules = part[0].capsules[..]; more.near = part[0].near[..];
+  h = query_ray(more, o, d, 2); #assert part[0].n[QUERY_NEAR_WHOLE] == 1 && part[0].n[QUERY_NEAR_PICKS] == 0 && qn_same_hit(h, query_ray(plain, o, d, 2));
+  built.boxes = part[0].boxes[0..<QUERY_BOX * (QN_BOXES - 10)]; built.capsules = part[0].capsules[0..<QUERY_CAPSULE * (QN_CAPSULES - 7) + 2];
+  #assert query_near_build(part[0].near[..], built, 8);
+  h = query_ray(more, o, d, 2); #assert part[0].n[QUERY_NEAR_WHOLE] == 1 && part[0].n[QUERY_NEAR_PICKS] == 0;
+  built.capsules = part[0].capsules[0..<QUERY_CAPSULE * (QN_CAPSULES - 7)];
+  #assert query_near_build(part[0].near[..], built, 8);
+  h = query_ray(more, o, d, 2); #assert part[0].n[QUERY_NEAR_PICKS] == 1 && part[0].n[QUERY_NEAR_WHOLE] == 0 && qn_same_hit(h, query_ray(plain, o, d, 2));
   // scratch too small for the pick: the found slots, the boxes, the capsules, their ids
   mid := world_point(0, 1, 0); ids: [8] QueryId;
   want := query_overlap_checked(plain, mid, 40, ids[..]);

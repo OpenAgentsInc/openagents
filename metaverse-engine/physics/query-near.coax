@@ -15,12 +15,15 @@
 //    rounding, of the region's middle: a superset of the colliders the region touches;
 //  - a collider query_box or query_capsule refuses (not finite, inside out, no radius) never
 //    answers, so it is in no list;
-//  - a region too large, a pick that does not fit the scratch space, or colliders whose counts
-//    changed since the build: the query runs on every collider, as with no index.
+//  - a region too large, a pick that does not fit the scratch space, or fewer colliders than at
+//    the build: the query runs on every collider, as with no index;
+//  - boxes and capsules added after the build (a zone's moving bodies after its standing ones) are
+//    in no cell: every query asks them, after the indexed ones of their kind, so collider order holds.
+//    The ones the index was built over must not change: rebuild when one does.
 // Floors, hulls, heightfields and the flat ground are not indexed: they pass through as they are.
 // The index's storage is the realm's (views, as SpatialGrid's): the scratch arrays hold the last
 // pick, so one index serves one query at a time. Rebuild after changing a box or a capsule.
-// metaverse-engine/physics/collide.coax's walker still asks every collider it is given.
+// metaverse-engine/physics/collide.coax's walker moves on a pick too (collide_move).
 //   coax/bin/coax test metaverse-engine/physics/query.coax --library
 #load "../core/spatial.coax";
 
@@ -99,7 +102,11 @@ query_near_whole :: (c: Colliders) -> Colliders #effects(all) {
 // is); or c with no index when the rectangle is not one, is too large, or the pick does not fit.
 query_near_pick :: (c: Colliders, x0: f32, z0: f32, x1: f32, z1: f32) -> Colliders #effects(all) {
   k := c.near[0];
-  if k.n.count < QUERY_NEAR_COUNTERS || k.n[QUERY_NEAR_BUILT] != 1 || k.n[QUERY_NEAR_BOX_NUMBERS] != c.boxes.count || k.n[QUERY_NEAR_CAPSULE_NUMBERS] != c.capsules.count { return query_near_whole(c); }
+  if k.n.count < QUERY_NEAR_COUNTERS || k.n[QUERY_NEAR_BUILT] != 1 { return query_near_whole(c); }
+  // the colliders the index was built over, then any added since (asked by every query)
+  b_built := k.n[QUERY_NEAR_BOX_NUMBERS]; c_built := k.n[QUERY_NEAR_CAPSULE_NUMBERS];
+  if c.boxes.count < b_built || c.capsules.count < c_built { return query_near_whole(c); }
+  if (c.boxes.count > b_built && b_built % QUERY_BOX != 0) || (c.capsules.count > c_built && c_built % QUERY_CAPSULE != 0) { return query_near_whole(c); }
   if !query_finite(x0) || !query_finite(z0) || !query_finite(x1) || !query_finite(z1) || x1 < x0 || z1 < z0 { return query_near_whole(c); }
   hx := (x1 - x0) / 2; hz := (z1 - z0) / 2; mx := x0 + hx; mz := z0 + hz;
   r := sqrt(hx * hx + hz * hz) + k.reach[0] + f32(QUERY_NEAR_PAD) + (abs(mx) + abs(mz) + hx + hz) * 0.000002;
@@ -112,7 +119,7 @@ query_near_pick :: (c: Colliders, x0: f32, z0: f32, x1: f32, z1: f32) -> Collide
     while b > 0 && k.found[b - 1] > v { k.found[b] = k.found[b - 1]; b -= 1; }
     k.found[b] = v;
   }
-  nb := query_boxes(c); w := k.n[QUERY_NEAR_WIDE];
+  nb := b_built / QUERY_BOX; w := k.n[QUERY_NEAR_WIDE];
   i := 0; j := 0; bn := 0; cn := 0;
   while i < m || j < w {
     slot := 0;
@@ -126,6 +133,16 @@ query_near_pick :: (c: Colliders, x0: f32, z0: f32, x1: f32, z1: f32) -> Collide
       for q: 0..<QUERY_CAPSULE { k.capsules[cn * QUERY_CAPSULE + q] = c.capsules[(slot - nb) * QUERY_CAPSULE + q]; }
       k.capsule_id[cn] = slot - nb; cn += 1;
     }
+  }
+  for slot: nb..<query_boxes(c) {
+    if bn >= k.box_id.count || (bn + 1) * QUERY_BOX > k.boxes.count { return query_near_whole(c); }
+    for q: 0..<QUERY_BOX { k.boxes[bn * QUERY_BOX + q] = c.boxes[slot * QUERY_BOX + q]; }
+    k.box_id[bn] = slot; bn += 1;
+  }
+  for slot: c_built / QUERY_CAPSULE..<query_capsules(c) {
+    if cn >= k.capsule_id.count || (cn + 1) * QUERY_CAPSULE > k.capsules.count { return query_near_whole(c); }
+    for q: 0..<QUERY_CAPSULE { k.capsules[cn * QUERY_CAPSULE + q] = c.capsules[slot * QUERY_CAPSULE + q]; }
+    k.capsule_id[cn] = slot; cn += 1;
   }
   none: [] QueryNear; s := c; s.near = none;
   s.boxes = k.boxes[0..<bn * QUERY_BOX]; s.capsules = k.capsules[0..<cn * QUERY_CAPSULE];

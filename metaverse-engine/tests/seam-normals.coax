@@ -159,6 +159,37 @@ sn_index :: (s: [] SnIndex, c: Colliders, cell: f32) -> bool {
     box_id = s[0].bid[..], capsule_id = s[0].cid[..], reach = s[0].reach[..], n = s[0].n[..]};
   return query_near_build(s[0].near[..], c, cell);
 }
+// A walk over a tiled floor with posts on it, with the walker on the broadphase (World.near, #13279)
+// and without: the same body, bit for bit, every step, and never a wall where the tiles meet.
+sn_same_body :: (a: Body, b: Body) -> bool {
+  return f32_bits(a.pos.x) == f32_bits(b.pos.x) && f32_bits(a.pos.y) == f32_bits(b.pos.y) && f32_bits(a.pos.z) == f32_bits(b.pos.z) &&
+    f32_bits(a.vel.x) == f32_bits(b.vel.x) && f32_bits(a.vel.y) == f32_bits(b.vel.y) && f32_bits(a.vel.z) == f32_bits(b.vel.z) &&
+    a.on_ground == b.on_ground && a.sliding == b.sliding && a.collision_status == b.collision_status && a.collision_passes == b.collision_passes && a.query_status == b.query_status;
+}
+#test "walking: a tiled floor's seams are never a wall with the walker on the broadphase, and the walk is the scan's, bit for bit" #steps 2000000000 {
+  s: [1] SnTiles; k: [1] SnIndex;
+  sn_tiles(s[..], 0, 0.02);
+  // a post on the floor, added after the build as a body that moves is: every step asks it
+  posts := [QUERY_CAPSULE] f32.[1.0, 0, 1.0, 1.0, 2, 1.0, 0.25];
+  plain := World.{ground = -5, walls = s[0].boxes[..], bodies = posts[..]};
+  built := colliders(plain); built.capsules = posts[0..<0];
+  #assert sn_index(k[..], built, 2);
+  fast := plain; fast.near = k[0].near[..];
+  met := 0;
+  for h: 0..<16 {
+    yaw := f32(h) * f32(TAU) / 16;
+    a := body_place_in(plain, 0.1, 0.02, 0.1, yaw); b := body_place_in(fast, 0.1, 0.02, 0.1, yaw);
+    #assert a.on_ground && sn_same_body(a, b);
+    for step: 0..<48 {
+      a = body_history_step(plain, body_input(a, 0, 1, 0, 0, false, false, yaw)); b = body_history_step(fast, body_input(b, 0, 1, 0, 0, false, false, yaw));
+      #assert sn_same_body(a, b) && a.collision_status == CollideStatus.ok && a.query_status == QueryStatus.ok && a.on_ground && !a.sliding;
+      near_post := abs(a.pos.x - 1.0) < 0.7 && abs(a.pos.z - 1.0) < 0.7;
+      if near_post { met += 1; }
+    }
+  }
+  // the walks asked picks, and some of them walked round a post
+  #assert k[0].n[QUERY_NEAR_PICKS] > 500 && met > 10;
+}
 // The points of one seam study: a lattice 1/8 m apart over the middle of the field, which lands on
 // cell lines, corners, diagonals and tile lines, and beside each by an eighth.
 SN_LATTICE :: 33;

@@ -9,6 +9,8 @@
 #load "../world/rock-hulls.coax";
 #load "../world/camp.coax";   // the goblin camp's props (everglade/server/creatures.coax)
 #load "../world/points.coax";   // the spawn (#13078)
+#load "../../metaverse-engine/physics/query.coax" as near_query;   // the engine's broadphase, for the land's trunks (#13279)
+#load "../../metaverse-engine/core/spatial.coax" as near_grid;      // its grid's storage
 
 E2_NEAR_BODIES :: 48;         // trunks the controller walks round
 // Everglade II's own pace: a jog and a stroll. The shared controller's speeds (metaverse-engine/move/locomotion.coax:
@@ -178,8 +180,74 @@ e2_hulls_hold :: (hulls: [] f32, n: int, x: f32, z: f32) -> bool {
 // are the world's (#13280); this is only what stands on it.
 E2_STILL_ROCKS :: 4096;   // planted rocks kept at once, by q % E2_STILL_ROCKS
 E2StillGlade :: struct { kept: bool; tree: bool; x: f32; z: f32; scale: f32; trunk: [3] f32; rock: E2Rock; prep: E2RockPrep; }
+// The planting's trunks, indexed once (#13279): the room builds the engine's broadphase
+// (metaverse-engine/physics/query-near.coax) over every planted tree's trunk, in planting order, and a
+// step's world asks it for the trunks round the seat. Before this each step walked the nine cells
+// round the seat and worked every tree's trunk out again. What a step is handed is the same bits in
+// the same order (the check below holds the two to each other over the whole land), so the page,
+// which still works them out, and the room agree. More trees than E2_TRUNKS, or a pick that does
+// not fit: the step walks the cells, as before.
+E2_TRUNKS :: 66000;         // planted trees indexed (the land plants under 65,536)
+E2_TRUNK_CELL :: 8.0;       // m a side of an index cell
+E2_TRUNK_LISTS :: 16384;
+E2_TRUNK_PICK :: 512;       // trunks one step's pick may hold
+E2_TRUNK_REACH :: 5.0;      // m either way of the seat that a planted tree's place counts (e2m_world_still)
+E2Trunks :: struct {
+  built: bool; count: int; need: f32;   // need: the reach, plus the farthest a trunk stands from its tree's place
+  caps: [E2_TRUNKS * 7] f32; px: [E2_TRUNKS] f32; pz: [E2_TRUNKS] f32;
+  head: [E2_TRUNK_LISTS] int; next: [E2_TRUNKS] int; prev: [E2_TRUNKS] int; at: [E2_TRUNKS] int; cx: [E2_TRUNKS] int; cz: [E2_TRUNKS] int;
+  gx: [E2_TRUNKS] f32; gz: [E2_TRUNKS] f32; cell: [1] f32; gn: [near_grid.SPATIAL_COUNTERS] int;
+  wide: [16] int; found: [E2_TRUNK_PICK] int; pb: [near_query.QUERY_BOX] f32; pc: [E2_TRUNK_PICK * 7] f32;
+  bid: [1] int; cid: [E2_TRUNK_PICK] int; reach: [1] f32; n: [near_query.QUERY_NEAR_COUNTERS] int;
+}
+e2_trunks_near :: (t: [] E2Trunks) -> near_query.QueryNear {
+  g := near_grid.SpatialGrid.{head = t[0].head[..], next = t[0].next[..], prev = t[0].prev[..], at = t[0].at[..], cx = t[0].cx[..], cz = t[0].cz[..],
+    x = t[0].gx[..], z = t[0].gz[..], cell = t[0].cell[..], n = t[0].gn[..]};
+  return near_query.QueryNear.{grid = g, wide = t[0].wide[..], found = t[0].found[..], boxes = t[0].pb[..], capsules = t[0].pc[..],
+    box_id = t[0].bid[..], capsule_id = t[0].cid[..], reach = t[0].reach[..], n = t[0].n[..]};
+}
+// Every planted tree's trunk, in planting order, and the index over them. Not built (the cells are
+// walked) when the land is not planted, holds more trees than fit, or the index refuses.
+e2_trunks_build :: (t: [] E2Trunks, items: [] f32, kinds: [] u8, first: [] int, planted: bool) {
+  t[0].built = false; t[0].count = 0;
+  if !planted { return; }
+  n := 0; off: f32 = 0;
+  for q: 0..<first[E2_CELLS_X * E2_CELLS_Z] {
+    kit := cast(int) kinds[q];
+    if kit >= E2_TREES || e2_kit_rock(kit) >= 0 { continue; }
+    if n >= E2_TRUNKS { return; }
+    o := q * E2_ITEM_FLOATS; px := items[o]; pz := items[o + 2];
+    k := e2_trunk(kit, px, pz, items[o + 3], items[o + 5]);
+    m := n * 7;
+    t[0].caps[m] = k[0]; t[0].caps[m + 1] = f32(E2_TRUNK_LOW); t[0].caps[m + 2] = k[1]; t[0].caps[m + 3] = k[0]; t[0].caps[m + 4] = f32(E2_TRUNK_HIGH); t[0].caps[m + 5] = k[1]; t[0].caps[m + 6] = k[2];
+    t[0].px[n] = px; t[0].pz[n] = pz;
+    if abs(k[0] - px) > off { off = abs(k[0] - px); } if abs(k[1] - pz) > off { off = abs(k[1] - pz); }
+    n += 1;
+  }
+  near := [1] near_query.QueryNear.[e2_trunks_near(t)];
+  if !near_query.query_near_build(near[..], near_query.Colliders.{capsules = t[0].caps[0..<n * 7], ground_enabled = false}, f32(E2_TRUNK_CELL)) { return; }
+  t[0].count = n; t[0].need = f32(E2_TRUNK_REACH) + off; t[0].built = true;
+}
+// The planted trunks round (x, z) into out from its n-th body, as walking the cells writes them: the
+// count after, or -1 when the index can't say (the caller walks the cells).
+e2_trunks_round :: (t: [] E2Trunks, out: [] f32, n: int, x: f32, z: f32) -> int {
+  if !t[0].built { return -1; }
+  near := [1] near_query.QueryNear.[e2_trunks_near(t)];
+  all := near_query.Colliders.{capsules = t[0].caps[0..<t[0].count * 7], ground_enabled = false, near = near[..]};
+  pick := near_query.query_near_pick(all, x - t[0].need, z - t[0].need, x + t[0].need, z + t[0].need);
+  if t[0].n[near_query.QUERY_NEAR_PICKED] != 1 { return -1; }
+  m := n;
+  for e: 0..<pick.capsules.count / 7 {
+    i := t[0].cid[e];
+    if abs(t[0].px[i] - x) > f32(E2_TRUNK_REACH) || abs(t[0].pz[i] - z) > f32(E2_TRUNK_REACH) { continue; }
+    o := i * 7;
+    m = e2m_body(out, m, t[0].caps[o], t[0].caps[o + 2], t[0].caps[o + 3], t[0].caps[o + 5], t[0].caps[o + 1], t[0].caps[o + 4], t[0].caps[o + 6]);
+  }
+  return m;
+}
 E2Still :: struct {
   done: bool;
+  trunks: [1] E2Trunks;   // the planting's trunks, indexed (e2_trunks_build; e2mg_plant builds it)
   glade: [CG_ITEMS] E2StillGlade;
   stone: [E2_GLADE_STONES] E2Rock; stone_prep: [E2_GLADE_STONES] E2RockPrep;
   rock_q: [E2_STILL_ROCKS] int; rock: [E2_STILL_ROCKS] E2RockPrep;   // rock_q: the planted rock's number + 1 (0 none)
@@ -226,6 +294,10 @@ e2m_world :: (items: [] f32, kinds: [] u8, first: [] int, planted: bool, out: []
 e2m_world_still :: (still: [] E2Still, items: [] f32, kinds: [] u8, first: [] int, planted: bool, out: [] f32, hulls: [] f32, x: f32, z: f32) -> EgMoveWorld {
   kept := still.count > 0 && still[0].done;
   w: EgMoveWorld; w.deck = true; n := 0; at := 0; rocks := 0;
+  // the planted trunks from the index, when the land has one and it can say; the cells below then
+  // hand over only their rocks
+  indexed := false;
+  if kept && planted { got := e2_trunks_round(still[0].trunks[..], out, 0, x, z); if got >= 0 { n = got; indexed = true; } }
   ci := cast(int) floor((x - f32(E2_CELL_X0)) / f32(E2_CELL)); cj := cast(int) floor((f32(E2_CELL_Z0) - z) / f32(E2_CELL));
   for dj: -1..<2 { for di: -1..<2 {
     i := ci + di; j := cj + dj;
@@ -234,6 +306,7 @@ e2m_world_still :: (still: [] E2Still, items: [] f32, kinds: [] u8, first: [] in
     for q: first[c]..<first[c + 1] {
       kit := cast(int) kinds[q]; rock := e2_kit_rock(kit);
       if kit >= E2_TREES && rock < 0 { continue; }
+      if indexed && rock < 0 { continue; }
       o := q * E2_ITEM_FLOATS; px := items[o]; pz := items[o + 2]; sh := items[o + 5];
       reach := ifx rock >= 0 then 2 + 4.2 * sh else 5.0f32;
       if abs(px - x) > reach || abs(pz - z) > reach { continue; }
@@ -301,7 +374,8 @@ E2MoveGround :: struct {
 }
 e2mg_plant :: (g: [] E2MoveGround) #export_c #effects(all) {
   if g[0].done { return; }
-  g[0].planted = e2_plant(g[0].items[..], g[0].kinds[..], g[0].first[..]); e2_still(g[0].still[..]); g[0].done = true;
+  g[0].planted = e2_plant(g[0].items[..], g[0].kinds[..], g[0].first[..]); e2_still(g[0].still[..]);
+  e2_trunks_build(g[0].still[0].trunks[..], g[0].items[..], g[0].kinds[..], g[0].first[..], true); g[0].done = true;
 }
 // The step's world at (x, z) when running (or not): its bodies are e2mg_bodies' until the next call.
 e2mg_move_world :: (g: [] E2MoveGround, x: f32, z: f32, running: bool) -> EgMoveWorld #export_c #effects(all) {
@@ -411,6 +485,25 @@ e2mg_spawn_face :: () -> f32 #export_c #effects(all) { return f32(E2_SPAWN_FACE)
   }}
   for k: 0..<E2_STILL_ROCKS { if g[0].still[0].rock_q[k] > 0 { kept_rocks += 1; } }
   #assert rocks > 40 && trunks > 400 && kept_rocks > 10;   // the walk met the glade's rocks, the woods' and the trunks
+  // the room's trunks came from the index (#13279), every one of those steps; and it hands over the
+  // same bits off the path too: a lattice over the whole land, the deep woods and the edges past them
+  tk := g[0].still[0].trunks[..];
+  #assert tk[0].built && tk[0].count > 30000 && tk[0].count < E2_TRUNKS && tk[0].need >= f32(E2_TRUNK_REACH) && tk[0].need < 7;
+  #assert tk[0].n[near_query.QUERY_NEAR_PICKS] == 840 && tk[0].n[near_query.QUERY_NEAR_WHOLE] == 0;
+  deep := 0; full := 0;
+  for j: 0..<26 { for i: 0..<15 {
+    x := f32(E2_CELL_X0) + (f32(i) - 0.63) * f32(E2_CELL) * f32(E2_CELLS_X) / 13; z := f32(E2_CELL_Z0) - (f32(j) - 0.39) * f32(E2_CELL) * f32(E2_CELLS_Z) / 24;
+    w := e2mg_move_world(g[..], x, z, false);
+    v := e2m_world(g[0].items[..], g[0].kinds[..], g[0].first[..], true, out[..], hulls[..], x, z);
+    #assert v.bodies == w.bodies && v.hulls == w.hulls;
+    for q: 0..<w.bodies * 7 { #assert out[q] == g[0].bodies[q]; }
+    for q: 0..<w.hulls { #assert hulls[q] == g[0].hulls[q]; }
+    deep += w.bodies; if w.bodies == E2_NEAR_BODIES { full += 1; }
+  }}
+  #assert deep > 1500 && tk[0].n[near_query.QUERY_NEAR_WHOLE] == 0 && tk[0].n[near_query.QUERY_NEAR_ASKED] < tk[0].n[near_query.QUERY_NEAR_PICKS] * 200;
+  // an index that is not built, or a land not planted, hands nothing over: the cells are walked
+  none_t: [1] E2Trunks; #assert e2_trunks_round(none_t[..], out[..], 0, 0, 0) == -1;
+  e2_trunks_build(none_t[..], g[0].items[..], g[0].kinds[..], g[0].first[..], false); #assert !none_t[0].built;
   // a kept rock is e2_rock_prep's own, and a slot another rock took is worked out again
   r := E2Rock.{model = 4, x = 30, y = e2_height(30, -120) - 0.1, z = -120, yaw = 0.7, sh = 0.8, sv = 0.8};
   r2 := E2Rock.{model = 2, x = 31, y = e2_height(31, -121), z = -121, yaw = 0.2, sh = 1.1, sv = 0.9};

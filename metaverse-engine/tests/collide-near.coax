@@ -1,0 +1,95 @@
+// The checks of the walker on the broadphase (metaverse-engine/physics/collide.coax collide_move with
+// Colliders.near, #13279): a move answers what it answers on every collider, bit for bit, in the
+// scenes of tests/query-near.coax; most moves ask a pick, and one pushed far asks every collider.
+cn_same :: (a: CollideResult, b: CollideResult) -> bool {
+  return a.status == b.status && a.passes == b.passes && f32_bits(a.residual) == f32_bits(b.residual) && a.floor_cut == b.floor_cut &&
+    qn_same_point(a.state.feet, b.state.feet) && qn_same_point(a.state.velocity, b.state.velocity);
+}
+// Moves both ways in scene `seed`, begun beside and inside its boxes and capsules; how many were pushed.
+cn_compare :: (seed: int, cell: f32, held: int) -> int {
+  s: [1] QnScene; r := [1] OracleDraw.[OracleDraw.{rng = seed * 104729 + 11}];
+  qn_scene(s[..], r[..]);
+  s[0].near[0] = qn_view(s[..]);
+  plain := Colliders.{ground = -0.25, boxes = s[0].boxes[..], capsules = s[0].capsules[..]};
+  first := plain; first.boxes = s[0].boxes[0..<(QN_BOXES - held) * QUERY_BOX]; first.capsules = s[0].capsules[0..<(QN_CAPSULES - held) * QUERY_CAPSULE];
+  #assert query_near_build(s[0].near[..], first, cell);
+  fast := plain; fast.near = s[0].near[..];
+  p: CollideProfile; pushed := 0;
+  for q: 0..<160 {
+    // beside a collider's edge, where the capsule reaches it
+    x := oracle_draw(r[..]) * 126 - 63; z := oracle_draw(r[..]) * 126 - 63; y := oracle_draw(r[..]) * 2 - 0.5;
+    if q % 4 != 3 {
+      if q % 2 == 0 { b := query_box(plain, cast(int) (oracle_draw(r[..]) * f32(QN_BOXES - 1))); if b.ok { x = b.low.x - 0.35 + oracle_draw(r[..]) * 0.5; z = b.low.z + oracle_draw(r[..]) * (b.high.z - b.low.z); y = b.low.y - 0.2 + oracle_draw(r[..]) * 0.6; } }
+      else { k := query_capsule(plain, cast(int) (oracle_draw(r[..]) * f32(QN_CAPSULES - 1))); if k.ok { x = k.a.x + (oracle_draw(r[..]) - 0.5) * (k.r + 0.5); z = k.a.z + (oracle_draw(r[..]) - 0.5) * (k.r + 0.5); y = k.a.y - 0.6; } }
+    }
+    given := CollideState.{feet = world_point(x, y, z), velocity = world_point(oracle_draw(r[..]) * 6 - 3, 0, oracle_draw(r[..]) * 6 - 3)};
+    dx := (oracle_draw(r[..]) - 0.5) * 0.2; dz := (oracle_draw(r[..]) - 0.5) * 0.2;
+    a := collide_move(plain, p, given, dx, dz); b := collide_move(fast, p, given, dx, dz);
+    #assert cn_same(a, b);
+    if a.status != CollideStatus.ok || a.state.feet.x != given.feet.x + dx || a.state.feet.z != given.feet.z + dz { pushed += 1; }
+  }
+  // most moves asked a pick, and a pick held a small share of the colliders
+  #assert s[0].n[QUERY_NEAR_PICKS] > 120 && s[0].n[QUERY_NEAR_ASKED] < s[0].n[QUERY_NEAR_PICKS] * QN_SLOTS / 4;
+  return pushed;
+}
+#forall "the walker on the index: a move answers as it does on every collider, bit for bit (cells of 8 m)" seed: 0..<12 #steps 800000000 { #assert cn_compare(seed, 8, 0) > 30; }
+#forall "the walker on the index: the same in cells of 3 m and 25 m, and with bodies added after the build" seed: 0..<6 #steps 800000000 {
+  #assert cn_compare(seed + 50, 3, 0) > 30 && cn_compare(seed + 60, 25, 0) > 30 && cn_compare(seed + 70, 8, 24) > 30;
+}
+#test "the walker on the index: a move pushed farther than its pick reaches is done again on every collider; a refused one is refused the same" {
+  // a hall 40 m wide (wide: every query asks it) with a pillar just past its east side, 18 m from the start
+  boxes := [2 * QUERY_BOX] f32.[-20, 0, -20, 20, 3, 20,   20.4, 0, -1, 21.5, 3, 1];
+  s: [1] QnScene; s[0].near[0] = qn_view(s[..]);
+  plain := Colliders.{boxes = boxes[..]};
+  #assert query_near_build(s[0].near[..], plain, 2);
+  fast := plain; fast.near = s[0].near[..];
+  p: CollideProfile;
+  // deep in the hall, nearest its east side: pushed out there, 18 m, into the pillar's reach, which pushes
+  // back: no place is clear, so the move is refused. On the pick alone (the hall) it would have been taken.
+  given := collide_test_state(2, 0, 0, 0, 0, 0);
+  a := collide_move(plain, p, given, 0.1, 0); b := collide_move(fast, p, given, 0.1, 0);
+  #assert cn_same(a, b) && a.status == CollideStatus.unresolved && s[0].n[QUERY_NEAR_WHOLE] == 1 && s[0].n[QUERY_NEAR_PICKS] == 1;
+  #assert collide_move(Colliders.{boxes = boxes[0..<QUERY_BOX]}, p, given, 0.1, 0).status == CollideStatus.ok;
+  // a short move in the open asks the pick alone
+  given = collide_test_state(40, 0, 40, 1, 0, 1);
+  b = collide_move(fast, p, given, 0.1, 0.05); #assert cn_same(collide_move(plain, p, given, 0.1, 0.05), b) && s[0].n[QUERY_NEAR_WHOLE] == 1 && s[0].n[QUERY_NEAR_PICKS] == 2;
+  // refusals: a profile, a state, a move too long
+  bad := p; bad.max_passes = 0; zero: f32 = 0;
+  #assert cn_same(collide_move(plain, bad, given, 0.1, 0), collide_move(fast, bad, given, 0.1, 0)) && collide_move(fast, bad, given, 0.1, 0).status == CollideStatus.bad_profile;
+  nowhere := collide_test_state(zero / zero, 0, 0, 0, 0, 0);
+  #assert collide_move(fast, p, nowhere, 0.1, 0).status == CollideStatus.bad_state;
+  #assert cn_same(collide_move(plain, p, given, 0.2, 0), collide_move(fast, p, given, 0.2, 0)) && collide_move(fast, p, given, 0.2, 0).status == CollideStatus.travel_limit;
+  // the reach a move notes: the farther axis, and a place that is no number is farther than any
+  far := [COLLIDE_FAR] f32.[1, 2, 0];
+  collide_far(far[..], collide_test_state(1.5, 0, 0, 0, 0, 0)); #assert far[2] == 2;
+  collide_far(far[..], collide_test_state(4.5, 0, 2, 0, 0, 0)); #assert far[2] == 3.5;
+  collide_far(far[..], collide_test_state(1, 0, 2, 0, 0, 0)); #assert far[2] == 3.5;
+  collide_far(far[..], collide_test_state(zero / zero, 0, 2, 0, 0, 0)); #assert far[2] != far[2];
+  short := [2] f32.[0, 0]; collide_far(short[..], collide_test_state(9, 0, 9, 0, 0, 0)); #assert short[1] == 0;
+  // the passes alone (trusted direct moves use them) push as the noted ones do, and note what a move would
+  post := [QUERY_CAPSULE] f32.[5, 0, 5, 5, 3, 5, 0.5]; wall := [QUERY_BOX] f32.[9, 0, 9, 10, 3, 10];
+  both := Colliders.{boxes = wall[..], capsules = post[..]};
+  at := collide_test_state(5.6, 0, 5, -1, 0, 0); far = [COLLIDE_FAR] f32.[5.6, 5, 0];
+  pass := collide_bodies(both, p, at, -0.1, 0); noted := collide_bodies_far(both, p, at, -0.1, 0, far[..]);
+  #assert pass.pushed && noted.pushed && collide_test_same(pass.state, noted.state) && abs(pass.state.feet.x - 5.8) < 0.0001 && pass.state.velocity.x == 0 && abs(far[2] - 0.2) < 0.0001;
+  at = collide_test_state(8.9, 0, 9.5, 2, 0, 0); far = [COLLIDE_FAR] f32.[8.9, 9.5, 0];
+  #assert collide_test_same(collide_walls(both, p, at), collide_walls_far(both, p, at, far[..])) && abs(collide_walls(both, p, at).feet.x - 8.7) < 0.0001 && abs(far[2] - 0.2) < 0.0001;
+}
+CN_MANY :: 5000;
+#test "the walker on the index: a zone past the walker's capacity is walked on a pick" {
+  // 5,000 pillars on a grid 6 m apart: more than COLLIDE_MAX_SHAPES
+  boxes: [CN_MANY * QUERY_BOX] f32;
+  for i: 0..<CN_MANY { x := f32(i % 100) * 6; z := f32(i / 100) * 6; o := i * QUERY_BOX; boxes[o] = x; boxes[o + 1] = 0; boxes[o + 2] = z; boxes[o + 3] = x + 1; boxes[o + 4] = 3; boxes[o + 5] = z + 1; }
+  head: [4096] int; next: [CN_MANY] int; prev: [CN_MANY] int; at: [CN_MANY] int; cx: [CN_MANY] int; cz: [CN_MANY] int; gx: [CN_MANY] f32; gz: [CN_MANY] f32; cell: [1] f32; gn: [SPATIAL_COUNTERS] int;
+  wide: [8] int; found: [64] int; pb: [64 * QUERY_BOX] f32; pc: [QUERY_CAPSULE] f32; bid: [64] int; cid: [1] int; reach: [1] f32; n: [QUERY_NEAR_COUNTERS] int;
+  near := [1] QueryNear.[QueryNear.{grid = SpatialGrid.{head = head[..], next = next[..], prev = prev[..], at = at[..], cx = cx[..], cz = cz[..], x = gx[..], z = gz[..], cell = cell[..], n = gn[..]},
+    wide = wide[..], found = found[..], boxes = pb[..], capsules = pc[..], box_id = bid[..], capsule_id = cid[..], reach = reach[..], n = n[..]}];
+  plain := Colliders.{boxes = boxes[..]};
+  #assert query_near_build(near[..], plain, 6);
+  fast := plain; fast.near = near[..];
+  p: CollideProfile; given := collide_test_state(5.75, 0, 0.5, 1, 0, 0);
+  #assert collide_move(plain, p, given, 0.1, 0).status == CollideStatus.capacity;
+  r := collide_move(fast, p, given, 0.1, 0);
+  // stopped at the second pillar's west face (x = 6), a radius off it
+  #assert r.status == CollideStatus.ok && abs(r.state.feet.x - 5.7) < 0.0001 && r.state.velocity.x == 0 && n[QUERY_NEAR_PICKS] == 1 && n[QUERY_NEAR_ASKED] < 12;
+}

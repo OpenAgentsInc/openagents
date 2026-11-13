@@ -89,6 +89,11 @@ World :: struct {
   floors: [] f32;       // STAND_FLOATS numbers each (metaverse-engine/physics/stand.coax), on the same floor as the walls
   heightfields: [] QueryHeightfield;
   hulls: [] f32;        // convex solids (metaverse-engine/physics/query.coax): their tops are floors, their sides stop you
+  // An index over the walls and the bodies (metaverse-engine/physics/query-near.coax, #13279), or none. A zone
+  // with thousands of them builds it once (query_near_build over colliders(w)); the step and the
+  // ground under you then ask only the ones near, and answer the same. Bodies added after the build
+  // (the ones that move) are asked every time.
+  near: [] QueryNear;
   collision: CollideProfile;
   locomotion: LocomotionProfile;
   flight: FlightProfile;   // off unless the realm flies (metaverse-engine/move/flight.coax)
@@ -195,7 +200,7 @@ atan2 :: (y: f32, x: f32) -> f32 #effects(all) {
 // The world as the Metaverse Engine's colliders: the ground, the walls as boxes, the bodies as capsules and
 // the floors (metaverse-engine/physics/query.coax).
 colliders :: (w: World) -> Colliders #effects(all) {
-  return Colliders.{ground = w.ground, boxes = w.walls, capsules = w.bodies, floors = w.floors, heightfields = w.heightfields, hulls = w.hulls};
+  return Colliders.{ground = w.ground, boxes = w.walls, capsules = w.bodies, floors = w.floors, heightfields = w.heightfields, hulls = w.hulls, near = w.near};
 }
 // The floor under feet at (x, z): what they stand on (query_stand), the ground or the highest
 // wall top your capsule is over or floor you are over that is no more than STEP_UP above them.
