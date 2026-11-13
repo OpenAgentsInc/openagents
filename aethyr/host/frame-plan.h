@@ -1,0 +1,61 @@
+/* The frame plan's numbers (GitHub #13303). Written by aethyr/render/frame-plan.coax:
+ *   coax/web/tool.sh aethyr/tools/frame-plan-header.coax > aethyr/host/frame-plan.h
+ * Never edit it by hand. The record layout is stated at the top of frame-plan.coax. */
+#ifndef AETHYR_FRAME_PLAN_H
+#define AETHYR_FRAME_PLAN_H
+#define AETHYR_FP_MAGIC 827344449u
+#define AETHYR_FP_VERSION 1u
+#define AETHYR_FP_WORDS 8u
+#define AETHYR_FP_MOST_OPS 256u
+#define AETHYR_FP_FLAG_KEEP 1u
+#define AETHYR_FP_FLAG_STORE_DEPTH 2u
+#define AETHYR_FP_FLAG_VALID 4u
+#define AETHYR_FP_FLAG_DEPTH_WRITE 8u
+#define AETHYR_FP_FLAG_AUX_WRITE 16u
+#define AETHYR_FP_OP_BEGIN 0u
+#define AETHYR_FP_OP_END 1u
+#define AETHYR_FP_OP_DRAW 2u
+#define AETHYR_FP_OP_COPY 3u
+#define AETHYR_FP_OP_EACH_BEGIN 4u
+#define AETHYR_FP_OP_EACH_END 5u
+#define AETHYR_FP_OP_MEDIA_BEFORE 6u
+#define AETHYR_FP_OP_MEDIA_AFTER 7u
+#define AETHYR_FP_PASS_BACKGROUND 0u
+#define AETHYR_FP_PASS_SHADOW 1u
+#define AETHYR_FP_PASS_CASTER 2u
+#define AETHYR_FP_PASS_GRASS 3u
+#define AETHYR_FP_PASS_SURFACE 4u
+#define AETHYR_FP_PASS_SCENE 5u
+#define AETHYR_FP_PASS_WATER_TRANSMIT 6u
+#define AETHYR_FP_PASS_WATER_EMIT 7u
+#define AETHYR_FP_PASS_PARTICLE_OVER 8u
+#define AETHYR_FP_PASS_PARTICLE 9u
+#define AETHYR_FP_PASS_BLOOM 10u
+#define AETHYR_FP_PASS_POST 11u
+#define AETHYR_FP_PASS_HUD 12u
+#define AETHYR_FP_TARGET_NONE 0u
+#define AETHYR_FP_TARGET_SCREEN 1u
+#define AETHYR_FP_TARGET_LIGHT 2u
+#define AETHYR_FP_TARGET_AUX 3u
+#define AETHYR_FP_TARGET_SCENE_DEPTH 4u
+#define AETHYR_FP_TARGET_SHADOW_MAP 5u
+#define AETHYR_FP_TARGET_WATER_LIGHT 6u
+#define AETHYR_FP_TARGET_WATER_DEPTH 7u
+#define AETHYR_FP_TARGET_Q0 8u
+#define AETHYR_FP_TARGET_Q1 9u
+#define AETHYR_FP_TARGET_E0 10u
+#define AETHYR_FP_TARGET_E1 11u
+#define AETHYR_FP_DEPTH_NONE 0u
+#define AETHYR_FP_DEPTH_ALWAYS 1u
+#define AETHYR_FP_DEPTH_LESS 2u
+#define AETHYR_FP_BLEND_REPLACE 0u
+#define AETHYR_FP_BLEND_MAXIMUM 1u
+#define AETHYR_FP_BLEND_MULTIPLY 2u
+#define AETHYR_FP_BLEND_ADD 3u
+#define AETHYR_FP_BLEND_KEEP 4u
+#define AETHYR_FP_BLEND_OVER 5u
+#define AETHYR_FP_BLEND_UNDER 6u
+#define AETHYR_FP_SOURCE_VERTICES 0u
+#define AETHYR_FP_SOURCE_RECORDS 1u
+#define AETHYR_FP_SOURCE_CURRENT 2u
+#endif

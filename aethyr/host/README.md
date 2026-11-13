@@ -393,6 +393,22 @@ the repository root:
 coax/bin/coax c aethyr/host/pack-table-face.coax --library > verse/native/pack-table-gen.h
 ```
 
+### The frame plan
+
+A page's engine may export `uint32_t coaxial_frame_plan_v1(state, uint32_t features, uint32_t *out, uint32_t cap)`
+(GitHub #13303). It writes the frame's operations as records of 8 words; record 0 is the version
+record. [`aethyr/render/frame-plan.coax`](../render/frame-plan.coax) states the layout, writes the
+records from `passes.coax`'s plan and reads them back. A host walks them and maps a pass id to its
+pipeline and bindings; it decides no order, and it refuses a plan whose version record is not the
+one it was built for. A page without the export keeps the host's built-in order. No page exports it
+yet. C hosts read the numbers from [`frame-plan.h`](frame-plan.h), which that module writes:
+
+```sh
+coax/web/tool.sh aethyr/tools/frame-plan-header.coax > aethyr/host/frame-plan.h
+```
+
+`check.sh reports` has a `frame-plan-h` step that fails when the committed header is stale.
+
 ### Packs paged by world cell
 
 A pack may say which bytes of its image each world cell's content is, so a

@@ -1,0 +1,162 @@
+// Checks for aethyr/render/frame-plan.coax, which loads this file with #test.
+//   coax/bin/coax test aethyr/render/frame-plan.coax
+
+#test "the name tables are the enums: one name a member, in the enums' order" {
+  #assert cast(int) RenderPassId.invalid == FP_PASSES.count && cast(int) RenderTarget.invalid == FP_TARGETS.count;
+  #assert cast(int) RenderOpKind.media_after == FP_KINDS.count - 1 && cast(int) RenderDepth.less == FP_DEPTHS.count - 1;
+  #assert cast(int) RenderBlend.under == FP_BLENDS.count - 1 && cast(int) RenderDrawSource.current == FP_SOURCES.count - 1;
+  #assert cast(int) RenderPassId.hud == 12 && cast(int) RenderTarget.e1 == 11 && cast(int) RenderOpKind.begin == 0 && cast(int) RenderOpKind.copy == 3;
+}
+
+// Everglade's kind of frame: every feature on.
+fpc_full :: () -> RenderPlan #effects(all) {
+  f := RenderFeatures.{scene = true, shadow = true, casters = true, grass = true, water = true, water_copy = true, post = true, post_depth = true,
+                       particles = true, particle_depth = true, particle_over = true, media = true};
+  c := FrameCounts.{width = 1280, height = 800, vertex_stride = 16, hud_vertices = 96, draw_count = 9, water_draws = 2, grass_instances = 4000,
+                    particle_instances = 64, caster_vertices = 300, caster_instances = 5};
+  return render_plan(f, c, RenderReadiness.ready, true);
+}
+// A plan read back from words, written again, is the same words.
+fpc_again :: (w: [] u32, n: int) -> bool #effects(all) {
+  q: [1] RenderPlan; q[0].status = RenderPlanStatus.ok; q[0].count = frame_plan_count(w[0..<n]);
+  if q[0].count < 0 { return false; }
+  for i: 0..<q[0].count { q[0].ops[i] = frame_plan_op(w[0..<n], i); }
+  v: [2072] u32;
+  if frame_plan_write(q[..], v[..]) != n { return false; }
+  for i: 0..<n { if v[i] != w[i] { return false; } }
+  return true;
+}
+fpc_has :: (o: [] FpText, t: string) -> bool #effects(all) {
+  for at: 0..<o[0].n - t.count + 1 { hit := true; for k: 0..<t.count { if o[0].b[at + k] != t[k] { hit = false; break; } } if hit { return true; } }
+  return false;
+}
+
+#test "a plan written and read back is the plan: every operation, kind and pass, and the same words again" {
+  q: [1] RenderPlan; q[0] = fpc_full();
+  #assert q[0].status == RenderPlanStatus.ok && q[0].count > 20;
+  w: [2072] u32; for i: 0..<w.count { w[i] = 0xffffffff; }
+  n := frame_plan_write(q[..], w[..]);
+  #assert n == frame_plan_size(q[0].count) && n == (q[0].count + 1) * 8 && frame_plan_count(w[0..<n]) == q[0].count;
+  #assert w[0] == 0x31504641 && w[1] == 1 && w[2] == 8 && w[3] == cast(u32) q[0].count && w[4] == 0 && w[5] == 0 && w[6] == 0 && w[7] == 0;
+  #assert w[n] == 0xffffffff;   // nothing past the plan is written
+  blooms := 0;
+  for i: 0..<q[0].count {
+    a := frame_plan_op(w[0..<n], i); b := q[0].ops[i];
+    #assert a.kind == b.kind && a.pass == b.pass && a.first == b.first && a.count == b.count && a.instances == b.instances;
+    #assert a.colour0 == b.colour0 && a.colour1 == b.colour1 && a.depth == b.depth && a.source == b.source && a.target == b.target;
+    #assert a.state.valid == b.state.valid && a.state.colour == b.state.colour && a.state.alpha == b.state.alpha && a.state.outputs == b.state.outputs;
+    for k: 0..<4 { #assert a.bloom_step[k] == b.bloom_step[k]; }
+    if b.pass == RenderPassId.bloom && b.kind == RenderOpKind.draw { blooms += 1; }
+  }
+  #assert blooms == 5 && fpc_again(w[..], n);
+  // the flat page too: a background and a HUD
+  q[0] = render_plan(RenderFeatures.{}, FrameCounts.{width = 320, height = 180, vertex_stride = 16, hud_vertices = 6}, RenderReadiness.ready, true);
+  n = frame_plan_write(q[..], w[..]);
+  #assert n == 40 && frame_plan_count(w[0..<n]) == 4 && fpc_again(w[..], n) && frame_plan_op(w[0..<n], 2).pass == RenderPassId.hud && frame_plan_op(w[0..<n], 2).count == 6;
+}
+
+#test "each field has its own place: one operation's words, bit for bit, and each field read back" {
+  q: [1] RenderPlan; q[0].status = RenderPlanStatus.ok; q[0].count = 1;
+  q[0].ops[0] = RenderOp.{kind = RenderOpKind.draw, pass = RenderPassId.bloom, draw_source = RenderDrawSource.current,
+    colour0 = RenderTarget.light, colour1 = RenderTarget.aux, depth = RenderTarget.scene_depth, source = RenderTarget.q1, target = RenderTarget.e0,
+    keep = true, store_depth = true, first = 7, count = 300, instances = 70000, bloom_step = [4] f32.[1, 2, 3, 4]};
+  q[0].ops[0].state = RenderPassState.{valid = true, depth = RenderDepth.less, depth_write = true, bias = 2, slope = 3,
+    colour = RenderBlend.multiply, alpha = RenderBlend.under, outputs = 2, aux_write = true};
+  w: [16] u32;
+  #assert frame_plan_write(q[..], w[..]) == 16;
+  #assert w[8] == 2 + (10 << 8) + (2 << 16) + (2 << 24);
+  #assert w[9] == 2 + (3 << 8) + (4 << 16) + (9 << 24);
+  #assert w[10] == 10 + (2 << 8) + (6 << 16) + (2 << 24);
+  #assert w[11] == 31 + (2 << 8) + (3 << 16);
+  #assert w[12] == 7 && w[13] == 300 && w[14] == 70000 && w[15] == 1 + (2 << 8) + (3 << 16) + (4 << 24);
+  o := frame_plan_op(w[..], 0);
+  #assert o.kind == RenderOpKind.draw && o.pass == RenderPassId.bloom && o.draw_source == RenderDrawSource.current && o.state.depth == RenderDepth.less;
+  #assert o.colour0 == RenderTarget.light && o.colour1 == RenderTarget.aux && o.depth == RenderTarget.scene_depth && o.source == RenderTarget.q1 && o.target == RenderTarget.e0;
+  #assert o.state.colour == RenderBlend.multiply && o.state.alpha == RenderBlend.under && o.state.outputs == 2 && o.state.bias == 2 && o.state.slope == 3;
+  #assert o.keep && o.store_depth && o.state.valid && o.state.depth_write && o.state.aux_write && o.first == 7 && o.count == 300 && o.instances == 70000;
+  #assert o.bloom_step[0] == 1 && o.bloom_step[1] == 2 && o.bloom_step[2] == 3 && o.bloom_step[3] == 4;
+  // each flag alone, written and read
+  flags := [5] u32.[FP_KEEP, FP_STORE_DEPTH, FP_VALID, FP_DEPTH_WRITE, FP_AUX_WRITE];
+  for k: 0..<5 {
+    p := RenderOp.{kind = RenderOpKind.begin}; p.state.aux_write = false; p.state.outputs = 0; p.instances = 0;
+    if k == 0 { p.keep = true; } if k == 1 { p.store_depth = true; } if k == 2 { p.state.valid = true; }
+    if k == 3 { p.state.depth_write = true; } if k == 4 { p.state.aux_write = true; }
+    q[0].ops[0] = p;
+    #assert frame_plan_write(q[..], w[..]) == 16 && w[11] == flags[k];
+    r := frame_plan_op(w[..], 0);
+    #assert r.keep == (k == 0) && r.store_depth == (k == 1) && r.state.valid == (k == 2) && r.state.depth_write == (k == 3) && r.state.aux_write == (k == 4);
+  }
+}
+
+#test "a plan that is not ok, does not fit, or holds a field out of range is refused and leaves no magic" {
+  q: [1] RenderPlan; q[0] = fpc_full(); w: [2072] u32;
+  n := frame_plan_size(q[0].count);
+  w[0] = 99; #assert frame_plan_write(q[..], w[0..<n - 1]) == 0 && w[0] == 0;
+  #assert frame_plan_write(q[..], w[0..<n]) == n;
+  w[0] = 99; #assert frame_plan_write(q[..], w[0..<1]) == 0 && w[0] == 0;
+  #assert frame_plan_write(q[..], w[0..<0]) == 0;
+  q[0].status = RenderPlanStatus.loading; #assert frame_plan_write(q[..], w[..]) == 0 && w[0] == 0;
+  q[0].status = RenderPlanStatus.invalid; #assert frame_plan_write(q[..], w[..]) == 0;
+  q[0].status = RenderPlanStatus.ok; q[0].count = RENDER_OPS + 1; #assert frame_plan_write(q[..], w[..]) == 0;
+  q[0].count = -1; #assert frame_plan_write(q[..], w[..]) == 0;
+  q[0].count = 0; w[8] = 7; #assert frame_plan_write(q[..], w[..]) == 8 && frame_plan_count(w[0..<8]) == 0 && w[0] == FRAME_PLAN_MAGIC && w[8] == 7;
+  // the most operations a plan holds are written
+  for i: 0..<RENDER_OPS { q[0].ops[i] = RenderOp.{kind = RenderOpKind.end}; }
+  q[0].count = RENDER_OPS; #assert frame_plan_write(q[..], w[..]) == 2056 && frame_plan_count(w[0..<2056]) == RENDER_OPS;
+  good := RenderOp.{kind = RenderOpKind.draw, pass = RenderPassId.scene};
+  #assert frame_plan_op_ok(good);
+  o := good; o.first = -1; #assert !frame_plan_op_ok(o); o.first = 0x80000000; #assert !frame_plan_op_ok(o);
+  o = good; o.count = -1; #assert !frame_plan_op_ok(o); o.count = 0x80000000; #assert !frame_plan_op_ok(o);
+  o = good; o.instances = -1; #assert !frame_plan_op_ok(o); o.instances = 0x80000000; #assert !frame_plan_op_ok(o);
+  o = good; o.first = 0x7fffffff; o.count = 0x7fffffff; o.instances = 0x7fffffff; #assert frame_plan_op_ok(o);
+  o = good; o.state.bias = 256; #assert !frame_plan_op_ok(o); o.state.bias = 255; #assert frame_plan_op_ok(o); o.state.bias = -1; #assert !frame_plan_op_ok(o);
+  o = good; o.state.slope = 256; #assert !frame_plan_op_ok(o); o.state.slope = 255; #assert frame_plan_op_ok(o); o.state.slope = -1; #assert !frame_plan_op_ok(o);
+  o = good; o.state.outputs = 256; #assert !frame_plan_op_ok(o); o.state.outputs = 255; #assert frame_plan_op_ok(o); o.state.outputs = -1; #assert !frame_plan_op_ok(o);
+  o = good; o.pass = RenderPassId.invalid; #assert !frame_plan_op_ok(o); o.kind = RenderOpKind.end; #assert frame_plan_op_ok(o);
+  o = good; o.colour0 = RenderTarget.invalid; #assert !frame_plan_op_ok(o);
+  o = good; o.colour1 = RenderTarget.invalid; #assert !frame_plan_op_ok(o);
+  o = good; o.depth = RenderTarget.invalid; #assert !frame_plan_op_ok(o);
+  o = good; o.source = RenderTarget.invalid; #assert !frame_plan_op_ok(o);
+  o = good; o.target = RenderTarget.invalid; #assert !frame_plan_op_ok(o);
+  for k: 0..<4 {
+    o = good; o.bloom_step[k] = 0.5; #assert !frame_plan_op_ok(o);
+    o.bloom_step[k] = -1; #assert !frame_plan_op_ok(o); o.bloom_step[k] = 256; #assert !frame_plan_op_ok(o);
+    o.bloom_step[k] = 255; #assert frame_plan_op_ok(o); o.bloom_step[k] = 0; #assert frame_plan_op_ok(o);
+  }
+  // one bad operation refuses the whole plan: the last, and the first
+  q[0] = fpc_full(); q[0].ops[q[0].count - 1].first = -1; w[0] = 99;
+  #assert frame_plan_write(q[..], w[..]) == 0 && w[0] == 0;
+  q[0] = fpc_full(); q[0].ops[0].first = -1; w[0] = 99;
+  #assert frame_plan_write(q[..], w[..]) == 0 && w[0] == 0;
+}
+
+#test "a host refuses another version, another record size, a short buffer and a count past the plan's limit" {
+  q: [1] RenderPlan; q[0] = fpc_full(); w: [2072] u32;
+  n := frame_plan_write(q[..], w[..]);
+  #assert frame_plan_count(w[0..<n]) == q[0].count && frame_plan_count(w[0..<n - 1]) == -1 && frame_plan_count(w[0..<7]) == -1 && frame_plan_count(w[0..<0]) == -1;
+  #assert frame_plan_op(w[0..<n], q[0].count - 1).kind == q[0].ops[q[0].count - 1].kind && frame_plan_op(w[0..<n], 0).kind == q[0].ops[0].kind;
+  out := frame_plan_op(w[0..<n], q[0].count); #assert out.kind == RenderOpKind.end && out.pass == RenderPassId.invalid && out.count == 0;
+  under := frame_plan_op(w[0..<n], -1); #assert under.kind == RenderOpKind.end && under.pass == RenderPassId.invalid;
+  #assert frame_plan_op(w[0..<n - 1], 0).pass == RenderPassId.invalid;   // a refused plan has no operation
+  w[0] = FRAME_PLAN_MAGIC + 1; #assert frame_plan_count(w[0..<n]) == -1; w[0] = FRAME_PLAN_MAGIC;
+  w[1] = 2; #assert frame_plan_count(w[0..<n]) == -1; w[1] = 1;
+  w[2] = 9; #assert frame_plan_count(w[0..<n]) == -1; w[2] = 8;
+  w[3] = cast(u32) (RENDER_OPS + 1); #assert frame_plan_count(w[..]) == -1;
+  w[3] = cast(u32) RENDER_OPS; #assert frame_plan_count(w[..]) == RENDER_OPS && frame_plan_count(w[0..<2055]) == -1 && frame_plan_size(RENDER_OPS) == 2056;
+  w[3] = 0x80000000; #assert frame_plan_count(w[..]) == -1;
+  // an empty plan is a plan: eight words, no operation
+  w[3] = 0; #assert frame_plan_count(w[0..<8]) == 0 && frame_plan_count(w[0..<9]) == 0;
+}
+
+#test "the header names every number once, with the enums' values" {
+  o: [1] FpText; n := frame_plan_header(o[..]);
+  #assert n == o[0].n && n > 1500 && n < 8192 && o[0].b[0] == '/' && o[0].b[1] == '*';
+  #assert fpc_has(o[..], "/* The frame plan's numbers (GitHub #13303). Written by aethyr/render/frame-plan.coax:\n *   coax/web/tool.sh aethyr/tools/frame-plan-header.coax > aethyr/host/frame-plan.h\n * Never edit it by hand. The record layout is stated at the top of frame-plan.coax. */\n#ifndef");
+  #assert fpc_has(o[..], "#ifndef AETHYR_FRAME_PLAN_H\n#define AETHYR_FRAME_PLAN_H\n#define AETHYR_FP_MAGIC 827344449u\n#define AETHYR_FP_VERSION 1u\n#define AETHYR_FP_WORDS 8u\n#define AETHYR_FP_MOST_OPS 256u\n");
+  #assert fpc_has(o[..], "#define AETHYR_FP_FLAG_KEEP 1u\n#define AETHYR_FP_FLAG_STORE_DEPTH 2u\n#define AETHYR_FP_FLAG_VALID 4u\n#define AETHYR_FP_FLAG_DEPTH_WRITE 8u\n#define AETHYR_FP_FLAG_AUX_WRITE 16u\n#define AETHYR_FP_OP_BEGIN 0u\n");
+  #assert fpc_has(o[..], "#define AETHYR_FP_OP_MEDIA_AFTER 7u\n#define AETHYR_FP_PASS_BACKGROUND 0u\n") && fpc_has(o[..], "#define AETHYR_FP_PASS_HUD 12u\n#define AETHYR_FP_TARGET_NONE 0u\n");
+  #assert fpc_has(o[..], "#define AETHYR_FP_TARGET_E1 11u\n#define AETHYR_FP_DEPTH_NONE 0u\n#define AETHYR_FP_DEPTH_ALWAYS 1u\n#define AETHYR_FP_DEPTH_LESS 2u\n#define AETHYR_FP_BLEND_REPLACE 0u\n");
+  #assert fpc_has(o[..], "#define AETHYR_FP_BLEND_UNDER 6u\n#define AETHYR_FP_SOURCE_VERTICES 0u\n#define AETHYR_FP_SOURCE_RECORDS 1u\n#define AETHYR_FP_SOURCE_CURRENT 2u\n#endif\n");
+  #assert o[0].b[n - 1] == '\n' && !fpc_has(o[..], "AETHYR_FP_PASS_INVALID");
+  again: [1] FpText; again[0].n = 77; #assert frame_plan_header(again[..]) == n && again[0].b[0] == '/';
+}

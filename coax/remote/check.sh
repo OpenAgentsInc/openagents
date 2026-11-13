@@ -263,6 +263,7 @@ reports() {
   visuals
   generated
   pack_reader_c
+  frame_plan_h
   app_realms
   pack_cells
   cards
@@ -287,6 +288,11 @@ generated() {
 # verse/native/realm-host.c take no Coax step. Committed, so it is compared with its source here.
 pack_reader_c() {
   step pack-reader-c bash -c 'coax/bin/coax c aethyr/host/pack-table-face.coax --library | cmp -s - verse/native/pack-table-gen.h || { echo "verse/native/pack-table-gen.h is not what the compiler writes for aethyr/host/pack-table-face.coax. From the repository root: coax/bin/coax c aethyr/host/pack-table-face.coax --library > verse/native/pack-table-gen.h, then commit it."; exit 1; }' || status=1
+}
+# The frame plan's numbers for C hosts (#13303): aethyr/host/frame-plan.h is what aethyr/render/frame-plan.coax
+# writes. Committed, because a host's build takes no Coax step for it; compared with its source here.
+frame_plan_h() {
+  step frame-plan-h bash -c 'coax/web/tool.sh aethyr/tools/frame-plan-header.coax | cmp -s - aethyr/host/frame-plan.h || { echo "aethyr/host/frame-plan.h is not what aethyr/render/frame-plan.coax writes; run: coax/web/tool.sh aethyr/tools/frame-plan-header.coax > aethyr/host/frame-plan.h"; exit 1; }' || status=1
 }
 # The Mac and iPhone apps' realms and passes still resolve, emit and compile (#13389): a client's
 # Coax moved (#13268) and both apps stopped building with no check saying so. Their Swift and
@@ -488,6 +494,7 @@ reports_since() {
   fi
   # Its sources: the reader, its face and the compiler that writes the C.
   if grep -Eq '^(aethyr/host/pack-table|verse/native/pack-table-gen\.h|coax/(src|lib/compiler|bootstrap)/|coax/VERSION)' "$out/changed"; then pack_reader_c; fi
+  if grep -Eq '^(aethyr/render/(frame-plan|passes|types)\.coax|aethyr/host/frame-plan\.h|aethyr/tools/frame-plan-header\.coax)' "$out/changed"; then frame_plan_h; fi
   if grep -Eq '^(apps/openagents-web/(realms|og/)|coax/web/og\.ts)' "$out/changed"; then
     cards
   fi
