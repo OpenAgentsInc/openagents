@@ -205,6 +205,8 @@ mono_css :: (out: [] u8) -> int {
   // the sessions beside the chat: every Coder session on this machine, newest first
   n = mc(out, n, ".side{position:fixed;left:0;top:0;bottom:0;width:264px;padding:12px 8px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;overscroll-behavior:contain;border-right:1px solid var(--line-dim);scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
   n = mc(out, n, ".side .row{padding:7px 10px}.side .row-t{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.side .row .meta{text-transform:none;letter-spacing:0;font:11px/1.4 var(--mono)}.side>.meta{padding:10px 10px 4px}");
+  // a place: an icon beside its name, a link; the app's frame is a side of places and nothing else
+  n = mc(out, n, ".row-i{flex-direction:row;align-items:center;gap:10px;text-decoration:none;box-sizing:border-box}.row.row-i>.ic{position:static;width:16px;height:16px;margin:0;color:inherit;animation:none}.row-i:hover,.row-i:focus-visible{color:#fff;outline:none}.app{min-height:100dvh}");
   n = mc(out, n, ".row[data-state=busy]{position:relative;padding-right:32px}.row[data-state=busy] .meta{color:var(--ink)}");
   n = mc(out, n, ".row>.ic{position:absolute;right:10px;top:50%;width:14px;height:14px;margin-top:-7px;color:var(--ink);animation:turn 2.4s linear infinite}");
   n = mc(out, n, "@keyframes turn{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.row>.ic{animation:none}}");

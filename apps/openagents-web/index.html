@@ -21,6 +21,7 @@ html:not(.gpu) body{overflow:auto}
 a{color:var(--light)}
 a:hover{color:var(--accent)}
 /* When the GPU draws the page, the text stays for agents, search engines and screen readers only. */
+.inside canvas,.inside main{display:none}.inside #home-root{position:fixed;inset:0;background:#000;z-index:30}
 .gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
 </style>
 </head>
@@ -38,5 +39,16 @@ a:hover{color:var(--accent)}
 <p><code>curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh &amp;&amp; bash /tmp/join-pylon.sh --model elephant-1 --self-test</code></p>
 </main>
 <script type="module" src="/coaxial/host.js" data-app="newland"></script>
+<script type="module">
+// Someone logged in gets the app's frame (home-web: an empty screen and a side of places) over the public home page.
+try {
+  const r = await fetch("/api/auth/account", { credentials: "same-origin", signal: AbortSignal.timeout(4000) });
+  if (r.ok && (await r.json()).logged_in === true) {
+    document.documentElement.classList.add("inside");
+    const root = document.createElement("div"); root.id = "home-root"; document.body.appendChild(root);
+    await import("/coaxial/dom-host.js?app=home-web&root=home-root");
+  }
+} catch {}
+</script>
 </body>
 </html>
