@@ -1,6 +1,12 @@
 // battle-strike.coax's own checks (GitHub #13287): each procedure called directly, against its own
 // numbers, its whole events and what it leaves on the creatures. battle.coax loads this with `#test`.
 //   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-strike.coax
+//
+// Most checks here stage the same battle twice from one stream of picks: the unit's procedure runs
+// on one, and what it must do is worked out a second time, step by step, on the other with the same
+// dice. Then the two battles must be the same: every event with its text, every creature's Hit
+// Points, conditions, effects, uses and notes, the turn's flags and the dice. Counters prove each
+// branch was met.
 
 // The i-th newest event, whole: its kind, spell, attacker, target, amount, damage, feature and exact text.
 sk_ev :: (b: [] RsBattle, i: int, kind: int, spell: int, by: int, to: int, amount: int, damage: int, feat: int, text: string) -> bool {
@@ -8,14 +14,1055 @@ sk_ev :: (b: [] RsBattle, i: int, kind: int, spell: int, by: int, to: int, amoun
   return ev.kind == kind && ev.spell.value == spell && ev.by.value == by && ev.to.value == to && ev.amount == amount && ev.damage == damage && ev.feat == feat
     && cast(string) ev.text[0..<ev.text_n] == text;
 }
+// A pick from a stream: 0 to n - 1, and one chance in n.
+sk_of :: (p: [] RsDice, n: int) -> int { return rs_roll(p, n) - 1; }
+sk_one :: (p: [] RsDice, n: int) -> bool { return rs_roll(p, n) == 1; }
+// An effect record in a creature's first free place.
+sk_eff :: (b: [] RsBattle, i: int, e: RsEffect) {
+  for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == EF_NONE { b[0].c[i].eff[k] = e; return; } }
+}
+// Where two battles differ (0: nowhere): 1 the dice, 2 the book's count, 100 + k event k from the
+// newest, 3 the turn, 4 the battle's own fields, 1000 + 100 * creature + field.
+sk_differ :: (b: [] RsBattle, m: [] RsBattle) -> int {
+  if b[0].dice[0].state != m[0].dice[0].state || b[0].dice[0].rolled != m[0].dice[0].rolled { return 1; }
+  if b[0].book[0].seq != m[0].book[0].seq || b[0].book[0].count != m[0].book[0].count { return 2; }
+  for k: 0..<rs_min(b[0].book[0].count, 40) {
+    x := rs_recent_at(b[0].book[..], k); y := rs_recent_at(m[0].book[..], k);
+    if x.kind != y.kind || x.spell.value != y.spell.value || x.by.value != y.by.value || x.to.value != y.to.value || x.feat != y.feat || x.amount != y.amount || x.damage != y.damage
+       || x.x != y.x || x.y != y.y || x.at != y.at || cast(string) x.text[0..<x.text_n] != cast(string) y.text[0..<y.text_n] { return 100 + k; }
+  }
+  t := b[0].turn; u := m[0].turn;
+  if t.disengaged != u.disengaged || t.action != u.action || t.bonus != u.bonus || t.slot_spent != u.slot_spent || t.move_left != u.move_left || t.move_feet != u.move_feet || t.dash_n != u.dash_n
+     || t.cleaved != u.cleaved || t.frenzied != u.frenzied || t.struck != u.struck || t.moved != u.moved || t.aimed != u.aimed || t.anchored != u.anchored || t.last_hit != u.last_hit
+     || t.last_crit != u.last_crit || t.sneaked != u.sneaked || t.colossus != u.colossus || t.stunned != u.stunned { return 3; }
+  if b[0].n != m[0].n || b[0].who != m[0].who || b[0].ko_by != m[0].ko_by || b[0].clock != m[0].clock || b[0].turn_no != m[0].turn_no { return 4; }
+  for i: 0..<b[0].n {
+    at := 1000 + 100 * i;
+    c := b[0].c[i]; d := m[0].c[i];
+    if c.hp != d.hp || c.temp != d.temp || c.dead != d.dead || c.hp_max != d.hp_max { return at + 1; }
+    if c.cond != d.cond || c.reacted != d.reacted || c.exhaustion != d.exhaustion { return at + 2; }
+    if c.x != d.x || c.y != d.y || c.team != d.team { return at + 3; }
+    if c.death_fail != d.death_fail || c.death_ok != d.death_ok || c.stable != d.stable { return at + 4; }
+    if c.conc != d.conc || c.rest.phase != d.rest.phase || c.restrained_by != d.restrained_by { return at + 5; }
+    for k: 0..<RS_USES { if c.uses[k] != d.uses[k] { return at + 6; } }
+    for k: 0..<RS_NOTES { if c.note[k] != d.note[k] { return at + 7; } }
+    for k: 0..<10 { if c.slots[k] != d.slots[k] { return at + 8; } }
+    for k: 0..<RS_EFFECTS {
+      e := c.eff[k]; f := d.eff[k];
+      if e.kind != f.kind || e.cond != f.cond || e.by != f.by || e.spell != f.spell || e.until != f.until || e.save != f.save || e.dc != f.dc || e.turn_end != f.turn_end { return at + 10 + k; }
+    }
+  }
+  return 0;
+}
 
-#test "strike: a creature's own next turn ends a beat after its turn began while it runs, else when its next begins; a dead one has none" {
+// ---- rs_strike_resolved, worked out a second time
+
+// What one staging chose, for the call: who strikes whom, with what.
+SkArgs :: struct { i: int; j: int; ally: int; w: int; bare: bool; wp: RsWeapon; printed: int; ab: int; dmod: int; }
+// The branches the second working met, counted.
+SkSeen :: struct {
+  hit: int; miss: int; crit: int; shoots: int; long_cancel: int; long_down: int; at_range: int; sacred: int; sacred_low: int; parry: int; parry_edge: int; parry_no: int;
+  graze: int; graze_zero: int; graze_one: int; graze_kill: int; graze_dead: int; martial: int; martial_one: int; flat: int; no_dice: int; one_die: int;
+  mod_zero: int; mod_neg_bare: int; bare: int; rage: int; rage_one: int; frenzy: int; frenzy_one: int; sneak: int; sneak_one: int; sneak_rank0: int; sneak_ally: int; sneak_ally_down: int; sneak_adv: int;
+  planned: int; plan_two: int; plan_one: int; plan_nokit: int; colossus: int; colossus_one: int; colossus_full: int; weak: int; weak_one: int; floor0: int; radiant: int; radiant_same: int; force: int; force_same: int;
+  deflect: int; cut_zero: int; cut_one: int; dodge: int; dodge_one: int; dodge_zero: int; dodge_down: int; immune: int; vulnerable: int; resisted: int; resisted_one: int;
+  plus: int; plus_dice_only: int; plus_flat_only: int; plus_one_die: int; plus_flat_one: int; plus_dead: int; plus_note: int; rider: int; rider_dead: int; curse: int; cunning: int; stun: int;
+  sap: int; vex: int; vex_zero: int; vex_one: int; slow: int; slow_zero: int; slow_one: int; left_one: int; left_zero: int; redirect: int; redirect_pass: int; redirect_fail: int; redirect_eq: int; redirect_one_use: int;
+  redirect_cut_one: int; redirect_no_cut: int; redirect_kill: int; ko: int; ko_far: int; kill: int; seek: int; hidden: int; crit_down: int; unarmed: int; rested: int;
+}
+sk_mastery :: (m: [] RsBattle, i: int, w: int, kind: int) -> bool {
+  bit := 1; for n: 0..<kind { bit = bit * 2; }
+  return rs_weapon(w).mastery == kind && (m[0].c[i].masteries / bit) % 2 == 1;
+}
+sk_physical :: (kind: int) -> bool { return kind == RS_BLUDGEONING || kind == RS_PIERCING || kind == RS_SLASHING; }
+sk_note :: (l: [] RsLine, got: int, before: int) {
+  if got == before { return; }
+  if got == 0 { rs_add_text(l, ", immune"); return; }
+  if got > before { rs_add_text(l, ", vulnerable"); return; }
+  rs_add_text(l, ", resisted");
+}
+sk_resolved :: (m: [] RsBattle, seen: [] SkSeen, a: SkArgs) -> bool {
+  i := a.i; j := a.j; w := a.w; wp := a.wp;
+  me := m[0].c[i];
+  strength := a.ab == RS_STR;
+  if me.rest.phase != 0 { seen[0].rested += 1; }
+  m[0].c[i].rest.phase = 0;
+  m[0].turn.struck = true;
+  feet := rs_feet_to(m, i, j);
+  melee := wp.range_ft <= 5;
+  if wp.both && feet <= 5 { melee = true; }
+  was_ko := m[0].ko_by;
+  m[0].ko_by = 0;
+  if melee && me.knockout { m[0].ko_by = i + 1; seen[0].ko += 1; }
+  if !melee && me.knockout && i == 0 { seen[0].ko_far += 1; }
+  edge := rs_attack_edge(m, i, j, melee, strength);
+  if !melee {
+    seen[0].shoots += 1;
+    if feet == wp.range_ft { seen[0].at_range += 1; }
+    if feet > wp.range_ft {
+      if edge > 0 { edge = 0; seen[0].long_cancel += 1; } else { if edge == 0 { seen[0].long_down += 1; } edge = -1; }
+    }
+  }
+  bonus := a.printed;
+  sacred := melee && w != W_UNARMED && rs_aura_on(me, EF_SACRED, m[0].clock);
+  if sacred {
+    seen[0].sacred += 1;
+    cha := rs_mod(me.score[RS_CHA]);
+    if cha <= 1 { seen[0].sacred_low += 1; }
+    bonus += ifx cha < 1 then 1 else cha;
+  }
+  if rs_hidden_at(me) >= 0 { seen[0].hidden += 1; }
+  r := rs_roll_attack(m, i, j, edge, bonus, 20 - me.rank[RS_RK_CRIT_RANGE], false);
+  if rs_has_feature(me, RS_FT_SEEKING) && me.uses[RS_USE_SORCERY] > 0 && !r.hit { seen[0].seek += 1; }
+  rs_unhide(m, i);
+  t0 := m[0].c[j];
+  if r.hit && !r.crit && melee && rs_has_feature(t0, RS_FT_PARRY) && !t0.reacted && rs_capable(t0) {
+    if r.total == r.ac + 2 { seen[0].parry_no += 1; }
+    if r.total - r.ac <= 1 {
+      if r.total == r.ac + 1 { seen[0].parry_edge += 1; }
+      seen[0].parry += 1;
+      m[0].c[j].reacted = true; r.hit = false; r.ac = r.ac + 2; r.parry = true;
+    }
+  }
+  hit := r.hit; crit := r.crit;
+  if hit && feet <= 5 && rs_has(m[0].c[j], RS_PARALYZED | RS_UNCONSCIOUS) { crit = true; }
+  m[0].turn.last_hit = 0;
+  if hit && melee { m[0].turn.last_hit = j + 1; }
+  m[0].turn.last_crit = crit;
+  l: [1] RsLine;
+  rs_add_name(l[..], m, i);
+  if melee { rs_add_text(l[..], " attacks "); } else { rs_add_text(l[..], " shoots "); }
+  rs_add_name(l[..], m, j); rs_add_text(l[..], " with ");
+  if w == W_UNARMED { rs_add_text(l[..], "an Unarmed Strike"); seen[0].unarmed += 1; } else { rs_add_text(l[..], wp.name); }
+  rs_add_text(l[..], ": "); rs_add_roll(l[..], r, bonus);
+  if crit { rs_add_text(l[..], ": critical hit"); } else if hit { rs_add_text(l[..], ": hit"); } else { rs_add_text(l[..], ": miss"); }
+  if hit { rs_tell(m, RS_EV_ATTACK, -1, i, j, r.total, ifx crit then 1 else 0, l[..]); } else { rs_tell(m, RS_EV_MISS, -1, i, j, r.total, 0, l[..]); }
+  if !hit {
+    seen[0].miss += 1;
+    gm := rs_mod(me.score[a.ab]);
+    if sk_mastery(m, i, w, M_GRAZE) {
+      if gm == 0 { seen[0].graze_zero += 1; }
+      if m[0].c[j].dead && gm >= 1 { seen[0].graze_dead += 1; }
+      if gm >= 1 && !m[0].c[j].dead {
+        seen[0].graze += 1; if gm == 1 { seen[0].graze_one += 1; }
+        g := rs_resisted(m, j, gm, wp.damage);
+        gl: [1] RsLine;
+        rs_add_text(gl[..], "  Graze: "); rs_add_name(gl[..], m, j); rs_add_text(gl[..], " takes "); rs_add_int(gl[..], g); rs_add_text(gl[..], " "); rs_add_text(gl[..], RS_DAMAGE[wp.damage]);
+        rs_tell(m, RS_EV_DAMAGE, -1, i, j, g, wp.damage, gl[..]);
+        seq := m[0].book[0].seq;
+        rs_damage(m, i, j, g, wp.damage, false, -1);
+        if m[0].book[0].seq != seq { seen[0].graze_kill += 1; }
+      }
+    }
+    m[0].ko_by = was_ko;
+    return false;
+  }
+  seen[0].hit += 1; if crit { seen[0].crit += 1; }
+  tg := m[0].c[j];
+  mult := 1; if crit { mult = 2; }
+  ndice := wp.dice; sides := wp.sides;
+  if w == W_UNARMED && me.rank[RS_RK_MARTIAL_DIE] >= 1 { ndice = 1; sides = me.rank[RS_RK_MARTIAL_DIE]; seen[0].martial += 1; if sides == 1 { seen[0].martial_one += 1; } }
+  rolled := 0;
+  if ndice >= 1 { rolled = rs_sum(m[0].dice[..], ndice * mult, sides); if ndice == 1 { seen[0].one_die += 1; } }
+  else { if w == W_UNARMED { rolled = 1; seen[0].flat += 1; } else { seen[0].no_dice += 1; } }
+  amount := rolled;
+  nomod := a.bare || wp.bare;
+  adds := !nomod || a.dmod < 0;
+  if nomod { seen[0].bare += 1; if a.dmod < 0 { seen[0].mod_neg_bare += 1; } if a.dmod == 0 { seen[0].mod_zero += 1; } }
+  if adds { amount += a.dmod; }
+  rage := 0;
+  if rs_effect(me, EF_RAGE) && strength { rage = me.rank[RS_RK_RAGE_BONUS]; amount += rage; seen[0].rage += 1; if rage == 1 { seen[0].rage_one += 1; } }
+  frenzy := 0;
+  if rs_turn_owner(m) == i && rs_has_feature(me, RS_FT_FRENZY) && rs_effect(me, EF_RAGE) && strength && rs_aura_on(me, EF_RECKLESS, m[0].clock) && !m[0].turn.frenzied {
+    m[0].turn.frenzied = true;
+    frenzy = rs_sum(m[0].dice[..], me.rank[RS_RK_RAGE_BONUS] * mult, 6); amount += frenzy;
+    seen[0].frenzy += 1; if frenzy == 1 { seen[0].frenzy_one += 1; }
+  }
+  sneak := 0; plan := 0;
+  if !m[0].turn.sneaked && (wp.finesse || !melee) && w != W_UNARMED {
+    ally := false; down := false;
+    for k: 0..<m[0].n {
+      c := m[0].c[k];
+      if k == i || c.team != me.team || rs_feet_to(m, k, j) > 5 { continue; }
+      if c.dead || c.hp <= 0 || rs_has(c, RS_INCAPACITATED) { down = true; continue; }
+      ally = true;
+    }
+    if me.rank[RS_RK_SNEAK_DICE] < 1 { if r.edge == 1 || (ally && r.edge == 0) { seen[0].sneak_rank0 += 1; } }
+    else if r.edge == 1 || (ally && r.edge == 0) {
+      if r.edge == 1 && !ally { seen[0].sneak_adv += 1; } if r.edge == 0 { seen[0].sneak_ally += 1; }
+      m[0].turn.sneaked = true;
+      dice_n := me.rank[RS_RK_SNEAK_DICE];
+      want := me.note[RS_NT_STRIKE_PLAN];
+      if rs_has_feature(me, RS_FT_CUNNING_STRIKE) && want != CS_NONE {
+        kit := want != CS_POISON || rs_has_feature(me, RS_FT_POISON_KIT);
+        if !kit { seen[0].plan_nokit += 1; }
+        if kit && dice_n == 1 { seen[0].plan_one += 1; }
+        if kit && dice_n >= 2 { if dice_n == 2 { seen[0].plan_two += 1; } dice_n -= 1; plan = want; seen[0].planned += 1; }
+      }
+      sneak = rs_sum(m[0].dice[..], dice_n * mult, 6); amount += sneak;
+      seen[0].sneak += 1; if sneak == 1 { seen[0].sneak_one += 1; }
+    } else if down && !ally && r.edge == 0 { seen[0].sneak_ally_down += 1; }
+  }
+  colossus := 0;
+  if rs_has_feature(me, RS_FT_COLOSSUS) && !m[0].turn.colossus && w != W_UNARMED {
+    if tg.hp == tg.hp_max { seen[0].colossus_full += 1; }
+    if tg.hp < tg.hp_max { m[0].turn.colossus = true; colossus = rs_sum(m[0].dice[..], mult, 8); amount += colossus; seen[0].colossus += 1; if colossus == 1 { seen[0].colossus_one += 1; } }
+  }
+  weak := 0;
+  if rs_effect(me, EF_ENFEEBLED) { weak = rs_roll(m[0].dice[..], 8); amount -= weak; seen[0].weak += 1; if weak == 1 { seen[0].weak_one += 1; } }
+  if amount < 0 { amount = 0; seen[0].floor0 += 1; }
+  kind := wp.damage;
+  if sacred {
+    if rs_resisted(m, j, amount, RS_RADIANT) > rs_resisted(m, j, amount, kind) { kind = RS_RADIANT; seen[0].radiant += 1; } else if kind != RS_RADIANT { seen[0].radiant_same += 1; }
+  }
+  if w == W_UNARMED && rs_has_feature(me, RS_FT_EMPOWERED_STRIKES) {
+    if rs_resisted(m, j, amount, RS_FORCE) > rs_resisted(m, j, amount, kind) { kind = RS_FORCE; seen[0].force += 1; } else if kind != RS_FORCE { seen[0].force_same += 1; }
+  }
+  cut := 0; deflected := false;
+  if rs_has_feature(tg, RS_FT_DEFLECT) && !tg.reacted && rs_capable(tg) && sk_physical(kind) {
+    m[0].c[j].reacted = true; deflected = true;
+    cut = rs_roll(m[0].dice[..], 10) + rs_mod(tg.score[RS_DEX]) + tg.level;
+    seen[0].deflect += 1; if cut == 0 { seen[0].cut_zero += 1; } if cut == 1 { seen[0].cut_one += 1; }
+  }
+  before := amount - cut; if before < 0 { before = 0; }
+  resisted := rs_resisted(m, j, before, kind);
+  dealt := resisted;
+  dodged := false;
+  if rs_has_feature(tg, RS_FT_UNCANNY_DODGE) && !m[0].c[j].reacted && rs_capable(tg) {
+    if dealt == 0 { seen[0].dodge_zero += 1; }
+    if dealt >= 1 && !rs_up(m[0].c[i]) { seen[0].dodge_down += 1; }
+    if dealt >= 1 && rs_up(m[0].c[i]) { m[0].c[j].reacted = true; if dealt == 1 { seen[0].dodge_one += 1; } dealt = dealt / 2; dodged = true; seen[0].dodge += 1; }
+  }
+  dl: [1] RsLine;
+  rs_add_text(dl[..], "  "); rs_add_name(dl[..], m, j); rs_add_text(dl[..], " takes "); rs_add_int(dl[..], dealt); rs_add_text(dl[..], " "); rs_add_text(dl[..], RS_DAMAGE[kind]); rs_add_text(dl[..], " (");
+  if ndice >= 1 { rs_add_int(dl[..], ndice * mult); rs_add_text(dl[..], "d"); rs_add_int(dl[..], sides); } else { rs_add_int(dl[..], rolled); }
+  if adds { rs_add_text(dl[..], " + "); rs_add_int(dl[..], a.dmod); }
+  if rage != 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], rage); rs_add_text(dl[..], " Rage"); }
+  if frenzy != 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], frenzy); rs_add_text(dl[..], " Frenzy"); }
+  if sneak != 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], sneak); rs_add_text(dl[..], " Sneak Attack"); }
+  if colossus != 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], colossus); rs_add_text(dl[..], " Colossus Slayer"); }
+  if weak != 0 { rs_add_text(dl[..], ", -"); rs_add_int(dl[..], weak); rs_add_text(dl[..], " enfeebled"); }
+  if cut >= 1 { rs_add_text(dl[..], ", Deflect Attacks -"); rs_add_int(dl[..], cut); }
+  if dodged { rs_add_text(dl[..], ", halved by Uncanny Dodge"); }
+  else {
+    sk_note(dl[..], resisted, before);
+    if resisted != before { if resisted == 0 { seen[0].immune += 1; } else if resisted > before { seen[0].vulnerable += 1; } else { seen[0].resisted += 1; if resisted == 1 { seen[0].resisted_one += 1; } } }
+  }
+  rs_add_text(dl[..], ")");
+  rs_tell_ft(m, RS_EV_DAMAGE, -1, i, j, dealt, kind, ifx sneak != 0 then RS_FT_SNEAK_ATTACK else RS_FT_NONE, dl[..]);
+  if m[0].c[j].hp == 0 && !m[0].c[j].dead && crit && dealt > 0 { seen[0].crit_down += 1; }
+  rs_damage(m, i, j, dealt, kind, crit, -1);
+  if m[0].c[j].dead { seen[0].kill += 1; }
+  if wp.plus_dice >= 1 || wp.plus_flat >= 1 {
+    if m[0].c[j].dead { seen[0].plus_dead += 1; }
+    else {
+      seen[0].plus += 1;
+      if wp.plus_dice >= 1 && wp.plus_flat == 0 { seen[0].plus_dice_only += 1; if wp.plus_dice == 1 { seen[0].plus_one_die += 1; } }
+      if wp.plus_dice == 0 { seen[0].plus_flat_only += 1; if wp.plus_flat == 1 { seen[0].plus_flat_one += 1; } }
+      extra := wp.plus_flat;
+      if wp.plus_dice >= 1 { extra += rs_sum(m[0].dice[..], wp.plus_dice * mult, wp.plus_sides); }
+      got := rs_resisted(m, j, extra, wp.plus_kind);
+      pl: [1] RsLine;
+      rs_add_text(pl[..], "  "); rs_add_name(pl[..], m, j); rs_add_text(pl[..], " takes "); rs_add_int(pl[..], got); rs_add_text(pl[..], " "); rs_add_text(pl[..], RS_DAMAGE[wp.plus_kind]); rs_add_text(pl[..], " (");
+      if wp.plus_dice >= 1 { rs_add_int(pl[..], wp.plus_dice * mult); rs_add_text(pl[..], "d"); rs_add_int(pl[..], wp.plus_sides); } else { rs_add_int(pl[..], wp.plus_flat); }
+      sk_note(pl[..], got, extra); if got != extra { seen[0].plus_note += 1; }
+      rs_add_text(pl[..], ")");
+      rs_tell(m, RS_EV_DAMAGE, -1, i, j, got, wp.plus_kind, pl[..]);
+      rs_damage(m, i, j, got, wp.plus_kind, crit, -1);
+    }
+  }
+  if wp.adv_dice >= 1 && r.edge == 1 {
+    if m[0].c[j].dead { seen[0].rider_dead += 1; }
+    else {
+      seen[0].rider += 1;
+      extra := rs_resisted(m, j, rs_sum(m[0].dice[..], wp.adv_dice * mult, wp.adv_sides), kind);
+      al: [1] RsLine;
+      rs_add_text(al[..], "  "); rs_add_name(al[..], m, j); rs_add_text(al[..], " takes "); rs_add_int(al[..], extra); rs_add_text(al[..], " "); rs_add_text(al[..], RS_DAMAGE[kind]); rs_add_text(al[..], " more (Advantage)");
+      rs_tell(m, RS_EV_DAMAGE, -1, i, j, extra, kind, al[..]);
+      rs_damage(m, i, j, extra, kind, crit, -1);
+    }
+  }
+  seq := m[0].book[0].seq;
+  rs_curse_damage(m, i, j, crit);
+  if m[0].book[0].seq != seq { seen[0].curse += 1; }
+  if plan != 0 { rs_cunning_effect(m, i, j, plan); seen[0].cunning += 1; }
+  seq = m[0].book[0].seq;
+  if w == W_UNARMED || w == W_SHORTSWORD || w == W_MACE || w == W_DAGGER { rs_stunning_strike(m, i, j); }
+  if m[0].book[0].seq != seq { seen[0].stun += 1; }
+  if !m[0].c[j].dead && m[0].c[j].hp == 0 { seen[0].left_zero += 1; }
+  if !m[0].c[j].dead && m[0].c[j].hp >= 1 {
+    if m[0].c[j].hp == 1 { seen[0].left_one += 1; }
+    until := rs_next_turn_tick(m, i);
+    if sk_mastery(m, i, w, M_SAP) { seen[0].sap += 1; _ := rs_put_effect(m, j, RsEffect.{kind = EF_WEAK, by = i, spell = -1, until = until, save = -1}); }
+    if sk_mastery(m, i, w, M_VEX) {
+      if dealt == 0 { seen[0].vex_zero += 1; } if dealt == 1 { seen[0].vex_one += 1; }
+      if dealt >= 1 { seen[0].vex += 1; _ := rs_put_effect(m, i, RsEffect.{kind = EF_VEX, cond = j, by = i, spell = -1, until = until, turn_end = i + 1, save = -1}); }
+    }
+    if sk_mastery(m, i, w, M_SLOW) {
+      if dealt == 0 { seen[0].slow_zero += 1; } if dealt == 1 { seen[0].slow_one += 1; }
+      if dealt >= 1 { seen[0].slow += 1; _ := rs_put_effect(m, j, RsEffect.{kind = EF_SLOWED, by = i, spell = -1, until = until, save = -1}); }
+    }
+  }
+  if !deflected && amount == 0 && m[0].c[j].uses[RS_USE_FOCUS] >= 1 && rs_up(m[0].c[j]) && rs_up(m[0].c[i]) { seen[0].redirect_no_cut += 1; }
+  if cut >= 1 && amount <= cut && m[0].c[j].uses[RS_USE_FOCUS] >= 1 && rs_up(m[0].c[j]) && rs_up(m[0].c[i]) {
+    seen[0].redirect += 1; if amount == cut { seen[0].redirect_eq += 1; } if m[0].c[j].uses[RS_USE_FOCUS] == 1 { seen[0].redirect_one_use += 1; } if cut == 1 { seen[0].redirect_cut_one += 1; }
+    m[0].c[j].uses[RS_USE_FOCUS] -= 1;
+    dc := 8 + rs_proficiency(m[0].c[j].level) + rs_mod(m[0].c[j].score[RS_WIS]);
+    saving := rs_saving_throw(m, i, RS_DEX, dc);
+    rl: [1] RsLine;
+    rs_add_name(rl[..], m, j); rs_add_text(rl[..], " redirects the blow: "); rs_add_name(rl[..], m, i);
+    rs_add_text(rl[..], " DEX save "); rs_add_int(rl[..], saving.total); rs_add_text(rl[..], " vs DC "); rs_add_int(rl[..], dc);
+    if saving.passed { seen[0].redirect_pass += 1; rs_add_text(rl[..], ": success"); rs_tell(m, RS_EV_SAVE, -1, j, i, saving.total, 0, rl[..]); }
+    else {
+      seen[0].redirect_fail += 1;
+      back := rs_sum(m[0].dice[..], 2, m[0].c[j].rank[RS_RK_MARTIAL_DIE]) + rs_mod(m[0].c[j].score[RS_DEX]);
+      rs_add_text(rl[..], ": failure, "); rs_add_int(rl[..], back); rs_add_text(rl[..], " "); rs_add_text(rl[..], RS_DAMAGE[kind]);
+      rs_tell(m, RS_EV_DAMAGE, -1, j, i, back, kind, rl[..]);
+      rs_damage(m, j, i, rs_resisted(m, i, back, kind), kind, false, -1);
+      if !rs_up(m[0].c[i]) { seen[0].redirect_kill += 1; }
+    }
+  }
+  m[0].ko_by = was_ko;
+  return true;
+}
+SK_SCORES :: [5] int.[1, 8, 10, 12, 16];
+SK_WEAPONS :: [10] int.[W_UNARMED, W_UNARMED, W_SHORTSWORD, W_GREATSWORD, W_LONGSWORD, W_MACE, W_LONGBOW, W_GREATAXE, W_DAGGER, W_SHORTBOW];
+SK_KINDS :: [7] int.[RS_SLASHING, RS_BLUDGEONING, RS_PIERCING, RS_RADIANT, RS_FORCE, RS_FIRE, RS_NECROTIC];
+// One staging, from a stream of picks: an attacker (Garr), a target (Holt), a third creature beside
+// the target or two squares off, a weapon and everything that can change the strike.
+sk_stage :: (b: [] RsBattle, p: [] RsDice) -> SkArgs {
+  rs_reset(b); b[0].w = 30; b[0].h = 8; b[0].who = -1; b[0].clock = rs_secs(100); b[0].ko_by = 7; b[0].turn = RsTurn.{move_left = 6};
+  a: SkArgs;
+  squares := [6] int.[1, 1, 1, 2, 6, 7];
+  dist := squares[sk_of(p, 6)];
+  tgt := ifx sk_one(p, 2) then rs_monk("Holt", 1, 3) else rs_fighter("Holt", 1, 3);
+  if sk_one(p, 3) { a.j = rs_add(b, tgt, 3 + dist, 3); a.i = rs_add(b, rs_fighter("Garr", 0, 3), 3, 3); }
+  else { a.i = rs_add(b, rs_fighter("Garr", 0, 3), 3, 3); a.j = rs_add(b, tgt, 3 + dist, 3); }
+  a.ally = rs_add(b, rs_fighter("Ally", ifx sk_one(p, 4) then 1 else 0, 3), 3 + dist, ifx sk_one(p, 3) then 5 else 4);
+  if sk_one(p, 5) { b[0].c[a.ally].cond = RS_INCAPACITATED; }
+  if sk_one(p, 6) { b[0].c[a.ally].hp = 0; }
+  i := a.i; j := a.j; now := b[0].clock;
+  // the attacker
+  b[0].c[i].score[RS_STR] = SK_SCORES[sk_of(p, 5)]; b[0].c[i].score[RS_DEX] = SK_SCORES[sk_of(p, 5)]; b[0].c[i].score[RS_CHA] = SK_SCORES[sk_of(p, 5)];
+  a.ab = ifx sk_one(p, 3) then RS_DEX else RS_STR; a.dmod = sk_of(p, 5) - 1; a.printed = sk_of(p, 9) + 2;
+  b[0].c[i].rank[RS_RK_CRIT_RANGE] = sk_of(p, 3);
+  b[0].c[i].rank[RS_RK_RAGE_BONUS] = 1 + sk_of(p, 2);
+  if !sk_one(p, 3) { b[0].c[i].eff = rs_state_put(b[0].c[i].eff, EF_RAGE, true); }
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_FRENZY, !sk_one(p, 4));
+  if !sk_one(p, 4) { sk_eff(b, i, RsEffect.{kind = EF_RECKLESS, by = i, spell = -1, until = ifx sk_one(p, 5) then now else now + rs_secs(6), save = -1}); }
+  b[0].turn.frenzied = sk_one(p, 5);
+  if !sk_one(p, 5) { b[0].who = i; }
+  sneaks := [5] int.[0, 1, 1, 2, 3];
+  b[0].c[i].rank[RS_RK_SNEAK_DICE] = sneaks[sk_of(p, 5)];
+  b[0].turn.sneaked = sk_one(p, 6);
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_CUNNING_STRIKE, !sk_one(p, 4));
+  b[0].c[i].note[RS_NT_STRIKE_PLAN] = sk_of(p, 4);
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_POISON_KIT, sk_one(p, 2));
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_COLOSSUS, sk_one(p, 2));
+  b[0].turn.colossus = sk_one(p, 6);
+  if sk_one(p, 4) { sk_eff(b, i, RsEffect.{kind = EF_ENFEEBLED, by = j, spell = SP_RAY_OF_ENFEEBLEMENT, until = now + rs_secs(60), save = -1}); }
+  if sk_one(p, 3) { sk_eff(b, i, RsEffect.{kind = EF_SACRED, by = i, spell = -1, until = ifx sk_one(p, 6) then now else now + rs_secs(10), save = -1}); }
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_EMPOWERED_STRIKES, sk_one(p, 2));
+  dies := [4] int.[0, 0, 1, 6];
+  b[0].c[i].rank[RS_RK_MARTIAL_DIE] = dies[sk_of(p, 4)];
+  b[0].c[i].knockout = sk_one(p, 4);
+  b[0].c[i].masteries = ifx sk_one(p, 2) then 126 else sk_of(p, 128);
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_STUNNING_STRIKE, sk_one(p, 2));
+  b[0].c[i].note[RS_NT_STUN] = ifx sk_one(p, 4) then 0 else 1;
+  b[0].c[i].uses[RS_USE_FOCUS] = sk_of(p, 3);
+  if sk_one(p, 6) { b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_SEEKING, true); b[0].c[i].uses[RS_USE_SORCERY] = 2; }
+  if sk_one(p, 6) { sk_eff(b, i, RsEffect.{kind = EF_COND, cond = RS_INVISIBLE, by = i, spell = RS_HIDE_SPELL, until = RS_NO_END, save = -1, dc = 15}); }
+  if sk_one(p, 10) { b[0].c[i].hp = 0; } else if sk_one(p, 5) { b[0].c[i].hp = 2; }
+  if sk_one(p, 5) { b[0].c[i].rest.phase = 1; }
+  // the weapon
+  a.w = SK_WEAPONS[sk_of(p, 10)];
+  a.wp = rs_weapon(a.w);
+  a.bare = sk_one(p, 5);
+  sides := [4] int.[1, 2, 4, 8];
+  if sk_one(p, 3) { a.wp.dice = sk_of(p, 3); a.wp.sides = sides[sk_of(p, 4)]; }
+  if sk_one(p, 3) { a.wp.damage = SK_KINDS[sk_of(p, 7)]; }
+  if sk_one(p, 3) { a.wp.finesse = !a.wp.finesse; }
+  ranges := [5] int.[5, 5, 6, 30, 30];
+  if sk_one(p, 3) && a.wp.range_ft <= 5 { a.wp.range_ft = ranges[sk_of(p, 5)]; }
+  a.wp.both = sk_one(p, 5); a.wp.bare = sk_one(p, 6);
+  some := [4] int.[0, 0, 1, 2]; flats := [4] int.[0, 0, 1, 3];
+  a.wp.plus_dice = some[sk_of(p, 4)]; a.wp.plus_sides = ifx sk_one(p, 2) then 4 else 6; a.wp.plus_flat = flats[sk_of(p, 4)]; a.wp.plus_kind = SK_KINDS[3 + sk_of(p, 4)];
+  a.wp.adv_dice = some[sk_of(p, 4)]; a.wp.adv_sides = ifx sk_one(p, 2) then 4 else 6;
+  // the target
+  acs := [5] int.[5, 10, 14, 18, 30]; hps := [8] int.[0, 1, 2, 3, 6, 40, 40, 40];
+  b[0].c[j].ac = acs[sk_of(p, 5)]; b[0].c[j].hp_max = ifx sk_one(p, 3) then 4 else 40; b[0].c[j].hp = rs_min(hps[sk_of(p, 8)], b[0].c[j].hp_max);
+  if b[0].c[j].hp == 0 && sk_one(p, 2) { b[0].c[j].cond = RS_UNCONSCIOUS; }
+  if sk_one(p, 12) { b[0].c[j].hp = 0; b[0].c[j].dead = true; }   // (its callers never strike the dead; the strike itself must still leave them be)
+  b[0].c[j].feats = rs_feature_put(b[0].c[j].feats, RS_FT_PARRY, sk_one(p, 3));
+  b[0].c[j].reacted = sk_one(p, 4);
+  if sk_one(p, 8) { b[0].c[j].cond |= RS_STUNNED; }
+  if sk_one(p, 10) { b[0].c[j].cond |= RS_PARALYZED; }
+  if sk_one(p, 10) { b[0].c[j].cond |= RS_PRONE; }
+  b[0].c[j].feats = rs_feature_put(b[0].c[j].feats, RS_FT_DEFLECT, sk_one(p, 2));
+  dexes := [3] int.[1, 10, 16];
+  b[0].c[j].score[RS_DEX] = dexes[sk_of(p, 3)];
+  levels := [3] int.[0, 1, 3];
+  b[0].c[j].level = levels[sk_of(p, 3)];
+  b[0].c[j].feats = rs_feature_put(b[0].c[j].feats, RS_FT_UNCANNY_DODGE, sk_one(p, 3));
+  if sk_one(p, 5) { b[0].c[j].resist = 1 << SK_KINDS[sk_of(p, 7)]; }
+  if sk_one(p, 5) { b[0].c[j].vulnerable = 1 << SK_KINDS[sk_of(p, 7)]; }
+  if sk_one(p, 5) { b[0].c[j].immune = 1 << SK_KINDS[sk_of(p, 7)]; }
+  b[0].c[j].uses[RS_USE_FOCUS] = sk_of(p, 3); b[0].c[j].rank[RS_RK_MARTIAL_DIE] = 6;
+  if sk_one(p, 4) { b[0].c[j].temp = 2; }
+  if sk_one(p, 10) { b[0].c[j].floor = 1; }
+  if sk_one(p, 6) { b[0].c[j].immune_cond = RS_POISONED; }
+  if sk_one(p, 4) { sk_eff(b, j, RsEffect.{kind = EF_HEX, cond = RS_STR, by = i, spell = SP_HEX, until = now + rs_secs(600), save = -1}); }
+  if sk_one(p, 5) { sk_eff(b, j, RsEffect.{kind = EF_MARK, by = i, spell = SP_HUNTERS_MARK, until = now + rs_secs(600), save = -1}); }
+  // a list nearly full: what a strike leaves on the target may find no room
+  if sk_one(p, 10) { free := sk_of(p, 3); for k: 0..<RS_EFFECTS - free { if b[0].c[j].eff[k].kind == EF_NONE { b[0].c[j].eff[k] = RsEffect.{kind = EF_BLESS, by = j, spell = SP_BLESS, until = now + rs_secs(60), save = -1}; } } }
+  b[0].dice[0] = RsDice.{state = cast(u64) rs_roll(p, 1000000)};
+  return a;
+}
+#test "strike: one attack roll and its damage, worked out a second time on a twin battle over 6000 stagings: the two end the same, and every branch was met" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  seen: [1] SkSeen;
+  p: [1] RsDice; p[0].state = 20261113;
+  for n: 0..<6000 {
+    q: [1] RsDice; q[0] = p[0];
+    a := sk_stage(b[..], p[..]);
+    a2 := sk_stage(m[..], q[..]);
+    #assert a2.i == a.i && a2.j == a.j && a2.w == a.w && sk_differ(b[..], m[..]) == 0;
+    got := rs_strike_resolved(b[..], a.i, a.j, a.w, a.bare, a.wp, a.printed, a.ab, a.dmod);
+    want := sk_resolved(m[..], seen[..], a);
+    #assert got == want;
+    #assert sk_differ(b[..], m[..]) == 0;
+  }
+  s := seen[0];
+  #assert s.hit > 500 && s.miss > 500 && s.crit > 100 && s.shoots > 300 && s.long_cancel > 5 && s.long_down > 5 && s.at_range > 5 && s.sacred > 100 && s.sacred_low > 20 && s.parry > 20 && s.parry_edge > 3 && s.parry_no > 3;
+  #assert s.graze > 20 && s.graze_zero > 5 && s.graze_one > 5 && s.graze_kill > 3 && s.graze_dead > 3 && s.martial > 50 && s.martial_one > 20 && s.flat > 50 && s.no_dice > 50 && s.one_die > 100;
+  #assert s.mod_zero > 20 && s.mod_neg_bare > 20 && s.bare > 100 && s.rage > 100 && s.rage_one > 50 && s.frenzy > 20 && s.frenzy_one > 0 && s.sneak > 50 && s.sneak_one > 3 && s.sneak_rank0 > 10 && s.sneak_ally > 10 && s.sneak_ally_down > 3 && s.sneak_adv > 10;
+  #assert s.planned > 10 && s.plan_two > 3 && s.plan_one > 3 && s.plan_nokit > 3 && s.colossus > 50 && s.colossus_one > 5 && s.colossus_full > 20 && s.weak > 100 && s.weak_one > 10 && s.floor0 > 10;
+  #assert s.radiant > 5 && s.radiant_same > 50 && s.force > 5 && s.force_same > 20 && s.deflect > 50 && s.cut_zero > 2 && s.cut_one > 2 && s.dodge > 50 && s.dodge_one > 3 && s.dodge_zero > 3 && s.dodge_down > 3;
+  #assert s.immune > 20 && s.vulnerable > 20 && s.resisted > 20 && s.resisted_one > 2 && s.plus > 200 && s.plus_dice_only > 50 && s.plus_flat_only > 50 && s.plus_one_die > 20 && s.plus_flat_one > 20 && s.plus_dead > 20 && s.plus_note > 20;
+  #assert s.rider > 20 && s.rider_dead > 3 && s.curse > 50 && s.cunning > 10 && s.stun > 10 && s.sap > 20 && s.vex > 10 && s.vex_zero > 0 && s.vex_one > 0 && s.slow > 5 && s.slow_zero > 0 && s.slow_one >= 0 && s.left_one > 20 && s.left_zero > 20;
+  #assert s.redirect > 5 && s.redirect_pass > 1 && s.redirect_fail > 1 && s.redirect_eq > 0 && s.redirect_one_use > 1 && s.redirect_cut_one >= 0 && s.redirect_no_cut > 0 && s.redirect_kill >= 0;
+  #assert s.ko > 100 && s.ko_far > 5 && s.kill > 100 && s.seek > 20 && s.hidden > 100 && s.crit_down > 5 && s.unarmed > 200 && s.rested > 200;
+}
+
+// ---- the actions, on a staged scene
+
+// A scene: an actor (Garr: a Fighter, a Barbarian, a Monk or a Rogue), a target (Holt), a third
+// (Kell) and a Paladin (Pell) near them, each on either side, and a live-looking record one past the
+// battle's count (Ghost), which nothing may reach.
+SkScene :: struct { i: int; j: int; k: int; f: int; }
+SK_SPOT_X :: [11] int.[6, 6, 6, 5, 7, 7, 11, 69, 70, 125, 126];
+SK_SPOT_Y :: [11] int.[3, 3, 2, 2, 3, 1, 3, 3, 3, 3, 3];
+sk_fill :: (b: [] RsBattle, i: int, free: int) {
+  left := rs_effect_free(b[0].c[i]) - free;
+  for k: 0..<RS_EFFECTS { if left > 0 && b[0].c[i].eff[k].kind == EF_NONE { b[0].c[i].eff[k] = RsEffect.{kind = EF_BLESS, by = i, spell = SP_BLESS, until = b[0].clock + rs_secs(60), save = -1}; left -= 1; } }
+}
+sk_scene :: (b: [] RsBattle, p: [] RsDice) -> SkScene {
+  rs_reset(b); b[0].w = 140; b[0].h = 8; b[0].clock = rs_secs(100); b[0].turn = RsTurn.{move_left = 6};
+  s: SkScene; now := b[0].clock;
+  team := sk_of(p, 2); cls := sk_of(p, 4); lvl := 1 + 2 * sk_of(p, 3);
+  actor := ifx cls == 0 then rs_fighter("Garr", team, lvl) else ifx cls == 1 then rs_barbarian("Garr", team, lvl) else ifx cls == 2 then rs_monk("Garr", team, lvl) else rs_rogue("Garr", team, lvl);
+  tgt := ifx sk_one(p, 2) then rs_monk("Holt", 1 - team, 3) else rs_fighter("Holt", 1 - team, 3);
+  spot := sk_of(p, 11);
+  if sk_one(p, 3) { s.j = rs_add(b, tgt, SK_SPOT_X[spot], SK_SPOT_Y[spot]); s.i = rs_add(b, actor, 5, 3); }
+  else { s.i = rs_add(b, actor, 5, 3); s.j = rs_add(b, tgt, SK_SPOT_X[spot], SK_SPOT_Y[spot]); }
+  kx := [4] int.[5, 6, 4, 8]; ky := [4] int.[4, 4, 3, 3]; kat := sk_of(p, 4);
+  s.k = rs_add(b, rs_fighter("Kell", ifx sk_one(p, 3) then team else 1 - team, 3), kx[kat], ky[kat]);
+  fx := [3] int.[4, 4, 12]; fy := [3] int.[2, 4, 3]; fat := sk_of(p, 3);
+  s.f = rs_add(b, rs_paladin("Pell", ifx sk_one(p, 2) then team else 1 - team, 6), fx[fat], fy[fat]);
+  ghost := rs_fighter("Ghost", 1 - team, 3); ghost.x = 6; ghost.y = 2; ghost.turn_at = 4242;
+  b[0].c[b[0].n] = ghost;
+  i := s.i; j := s.j;
+  b[0].who = ifx sk_one(p, 8) then j else i;
+  b[0].turn.action = sk_one(p, 10); b[0].turn.bonus = sk_one(p, 10); b[0].turn.anchored = sk_one(p, 6); b[0].turn.cleaved = sk_one(p, 8); b[0].turn.stunned = sk_one(p, 8);
+  // the actor
+  if sk_one(p, 12) { b[0].c[i].cond = RS_STUNNED; }
+  if sk_one(p, 16) { sk_eff(b, i, RsEffect.{kind = EF_HALT, by = j, spell = SP_COMMAND, until = now + rs_secs(6), save = -1}); }
+  forms := [2] int.[MON_IMP, MON_GOBLIN_WARRIOR];
+  if sk_one(p, 16) { b[0].c[i].wild_form = forms[sk_of(p, 2)]; }
+  if sk_one(p, 16) { b[0].c[i].shape_form = forms[sk_of(p, 2)]; }
+  b[0].c[i].weapon = ifx sk_one(p, 3) then W_GREATAXE else SK_WEAPONS[sk_of(p, 10)];
+  bows := [5] int.[-1, W_UNARMED, W_LONGBOW, W_SHORTBOW, W_SHORTBOW];
+  b[0].c[i].ranged = bows[sk_of(p, 5)];
+  b[0].c[i].masteries = ifx sk_one(p, 2) then 126 else sk_of(p, 128);
+  b[0].c[i].rank[RS_RK_EXTRA_ATTACK] = sk_of(p, 3);
+  dies := [4] int.[0, 1, 6, 6];
+  b[0].c[i].rank[RS_RK_MARTIAL_DIE] = dies[sk_of(p, 4)];
+  b[0].c[i].uses[RS_USE_FOCUS] = sk_of(p, 3); b[0].c[i].uses_max[RS_USE_FOCUS] = 3 * sk_of(p, 2);
+  b[0].c[i].level = 1 + sk_of(p, 3);
+  b[0].c[i].score[RS_STR] = SK_SCORES[sk_of(p, 5)]; b[0].c[i].score[RS_DEX] = SK_SCORES[sk_of(p, 5)]; b[0].c[i].score[RS_WIS] = SK_SCORES[sk_of(p, 5)];
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_ATHLETE, sk_one(p, 2));
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_OPEN_HAND, !sk_one(p, 4));
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_STUNNING_STRIKE, sk_one(p, 2));
+  b[0].c[i].note[RS_NT_STUN] = ifx sk_one(p, 4) then 0 else 1;
+  if sk_one(p, 10) { sk_eff(b, i, RsEffect.{kind = EF_COND, cond = RS_CHARMED, by = ifx sk_one(p, 2) then j else s.k, spell = SP_HYPNOTIC_PATTERN, until = now + rs_secs(60), save = -1}); }
+  if sk_one(p, 6) { sk_eff(b, i, RsEffect.{kind = EF_RECKLESS, by = i, spell = -1, until = now + rs_secs(6), save = -1}); }
+  if sk_one(p, 5) { b[0].c[i].eff = rs_state_put(b[0].c[i].eff, EF_RAGE, true); }
+  if sk_one(p, 6) { sk_fill(b, i, sk_of(p, 3)); }
+  b[0].c[i].speed = ifx sk_one(p, 2) then 30 else 40;
+  // who has an Aura of Protection, and how well
+  b[0].c[i].feats = rs_feature_put(b[0].c[i].feats, RS_FT_AURA_OF_PROTECTION, sk_one(p, 3));
+  b[0].c[s.k].feats = rs_feature_put(b[0].c[s.k].feats, RS_FT_AURA_OF_PROTECTION, sk_one(p, 2));
+  b[0].c[s.f].feats = rs_feature_put(b[0].c[s.f].feats, RS_FT_AURA_OF_PROTECTION, !sk_one(p, 4));
+  b[0].c[i].score[RS_CHA] = SK_SCORES[sk_of(p, 5)]; b[0].c[s.k].score[RS_CHA] = SK_SCORES[sk_of(p, 5)]; b[0].c[s.f].score[RS_CHA] = SK_SCORES[sk_of(p, 5)];
+  if sk_one(p, 6) { b[0].c[s.f].cond = RS_INCAPACITATED; }
+  if sk_one(p, 8) { b[0].c[s.f].hp = 0; }
+  // the target
+  hps := [4] int.[1, 2, 5, 40]; acs := [3] int.[5, 12, 18];
+  b[0].c[j].hp_max = ifx sk_one(p, 4) then 2 else 40; b[0].c[j].hp = rs_min(hps[sk_of(p, 4)], b[0].c[j].hp_max); b[0].c[j].ac = acs[sk_of(p, 3)];
+  if sk_one(p, 12) { b[0].c[j].hp = 0; b[0].c[j].dead = true; }
+  if sk_one(p, 10) { b[0].c[j].hp = 0; }
+  if sk_one(p, 10) { b[0].c[j].cond |= RS_STUNNED; }
+  if sk_one(p, 10) { b[0].c[j].cond |= RS_PRONE; }
+  if sk_one(p, 5) { b[0].c[j].immune_cond = RS_POISONED; }
+  if sk_one(p, 3) { sk_eff(b, j, RsEffect.{kind = EF_HEX, cond = RS_STR, by = ifx sk_one(p, 3) then s.k else i, spell = SP_HEX, until = now + rs_secs(600), save = -1}); }
+  if sk_one(p, 3) { sk_eff(b, j, RsEffect.{kind = EF_MARK, by = ifx sk_one(p, 3) then s.k else i, spell = SP_HUNTERS_MARK, until = now + rs_secs(600), save = -1}); }
+  if sk_one(p, 5) { b[0].c[j].resist = (1 << RS_NECROTIC) | (1 << RS_BLUDGEONING); }
+  if sk_one(p, 6) { sk_fill(b, j, sk_of(p, 3)); }
+  // the third
+  khp := [3] int.[0, 1, 40];
+  b[0].c[s.k].hp = khp[sk_of(p, 3)];
+  if sk_one(p, 10) { b[0].c[s.k].hp = 0; b[0].c[s.k].dead = true; }
+  if sk_one(p, 8) { b[0].c[s.k].cond = RS_INCAPACITATED; }
+  if sk_one(p, 6) { sk_fill(b, s.k, sk_of(p, 2)); }
+  b[0].dice[0] = RsDice.{state = cast(u64) rs_roll(p, 1000000)};
+  return s;
+}
+// The branches the actions' second working met.
+SkActs :: struct {
+  yes: int; no: int; other_turn: int; spent: int; unable: int; wild: int; shape: int; below: int; past: int; dead: int; self: int; far: int; near: int; charmed: int; unfit: int; reckless: int; reckless_no: int;
+  cleave: int; cleave_past: int; cleave_far: int; extra: int; extra_beside: int; extra_none: int; no_bow: int; fist_bow: int; at_long: int; past_long: int; no_die: int; die_one: int; no_focus: int; one_focus: int;
+  flurry_one: int; flurry_two: int; open: int; addle: int; addle_full: int; push: int; push_n: [4] int; topple: int; oh_saved: int; oh_down: int;
+}
+sk_strike :: (m: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
+  if !rs_strikes_fit(m, i, j, w, 1, false) { return false; }
+  c := m[0].c[i];
+  ab := rs_attack_ability(c, w);
+  return rs_strike_resolved(m, i, j, w, bare, rs_weapon(w), rs_weapon_attack(c, w), ab, rs_mod(c.score[ab]));
+}
+sk_attack :: (m: [] RsBattle, seen: [] SkActs, i: int, j: int, reckless: bool, cleave_to: int) -> bool {
+  if m[0].who != i { seen[0].other_turn += 1; return false; }
+  if m[0].turn.action { seen[0].spent += 1; return false; }
+  if !rs_can_act(m[0].c[i]) { seen[0].unable += 1; return false; }
+  me := m[0].c[i];
+  if me.wild_form != 0 { seen[0].wild += 1; return rs_stat_multiattack(m, i, j, rs_monster_action(me.wild_form)); }
+  if me.shape_form != 0 { seen[0].shape += 1; return rs_stat_multiattack(m, i, j, rs_monster_action(me.shape_form)); }
+  if j < 0 { seen[0].below += 1; return false; }
+  if j > m[0].n - 1 { seen[0].past += 1; return false; }
+  if m[0].c[j].dead { seen[0].dead += 1; return false; }
+  if j == i { seen[0].self += 1; return false; }
+  if rs_feet_to(m, i, j) > 5 { if rs_feet_to(m, i, j) == 10 { seen[0].near += 1; } seen[0].far += 1; return false; }
+  if rs_charmed_by(me, j) { seen[0].charmed += 1; return false; }
+  w := me.weapon;
+  if !rs_strikes_fit(m, i, j, w, 1 + me.rank[RS_RK_EXTRA_ATTACK], true) { seen[0].unfit += 1; return false; }
+  m[0].turn.action = true;
+  if reckless && me.level >= 2 && me.klass == RS_BARBARIAN && !rs_aura_on(me, EF_RECKLESS, m[0].clock) {
+    if rs_put_effect(m, i, RsEffect.{kind = EF_RECKLESS, by = i, spell = -1, until = rs_next_turn_tick(m, i), save = -1}) {
+      seen[0].reckless += 1;
+      l: [1] RsLine; rs_add_name(l[..], m, i); rs_add_text(l[..], " attacks recklessly");
+      rs_tell(m, RS_EV_CONDITION, -1, i, i, 0, 0, l[..]);
+    } else { seen[0].reckless_no += 1; }
+  }
+  hit := rs_strike(m, i, j, w, false);
+  k := cleave_to;
+  if hit && sk_mastery(m, i, w, M_CLEAVE) && !m[0].turn.cleaved && k >= 0 && k != j && k != i {
+    if k > m[0].n - 1 { seen[0].cleave_past += 1; }
+    else if !m[0].c[k].dead && m[0].c[k].team != m[0].c[i].team {
+      if rs_feet_to(m, i, k) > 5 || rs_feet_to(m, j, k) > 5 { seen[0].cleave_far += 1; }
+      else {
+        seen[0].cleave += 1;
+        m[0].turn.cleaved = true;
+        l: [1] RsLine; rs_add_text(l[..], "  Cleave carries on into "); rs_add_name(l[..], m, k);
+        rs_tell(m, RS_EV_CONDITION, -1, i, k, 0, 0, l[..]);
+        _ := rs_strike(m, i, k, w, true);
+      }
+    }
+  }
+  rs_after_blow(m, i);
+  for e: 0..<m[0].c[i].rank[RS_RK_EXTRA_ATTACK] {
+    t := j;
+    if !rs_up(m[0].c[j]) { t = rs_beside(m, i); if t < 0 { seen[0].extra_none += 1; } else { seen[0].extra_beside += 1; } }
+    if t < 0 || !rs_can_act(m[0].c[i]) { break; }
+    seen[0].extra += 1;
+    _ := rs_strike(m, i, t, w, false);
+    rs_after_blow(m, i);
+  }
+  seen[0].yes += 1;
+  return true;
+}
+sk_shoot :: (m: [] RsBattle, seen: [] SkActs, i: int, j: int) -> bool {
+  if m[0].who != i { seen[0].other_turn += 1; return false; }
+  if m[0].turn.action { seen[0].spent += 1; return false; }
+  if !rs_can_act(m[0].c[i]) { seen[0].unable += 1; return false; }
+  bow := m[0].c[i].ranged;
+  if bow <= -1 { seen[0].no_bow += 1; return false; }
+  if bow == 0 { seen[0].fist_bow += 1; }
+  if j < 0 { seen[0].below += 1; return false; }
+  if j > m[0].n - 1 { seen[0].past += 1; return false; }
+  if m[0].c[j].dead { seen[0].dead += 1; return false; }
+  if j == i { seen[0].self += 1; return false; }
+  if rs_feet_to(m, i, j) == rs_weapon(bow).long_ft { seen[0].at_long += 1; }
+  if rs_feet_to(m, i, j) > rs_weapon(bow).long_ft { if rs_feet_to(m, i, j) == rs_weapon(bow).long_ft + 5 { seen[0].past_long += 1; } seen[0].far += 1; return false; }
+  if !rs_strikes_fit(m, i, j, bow, 1 + m[0].c[i].rank[RS_RK_EXTRA_ATTACK], false) { seen[0].unfit += 1; return false; }
+  m[0].turn.action = true;
+  _ := rs_strike(m, i, j, bow, false);
+  rs_after_blow(m, i);
+  for e: 0..<m[0].c[i].rank[RS_RK_EXTRA_ATTACK] {
+    if !rs_up(m[0].c[j]) { seen[0].extra_none += 1; break; }
+    if !rs_can_act(m[0].c[i]) { break; }
+    seen[0].extra += 1;
+    _ := rs_strike(m, i, j, bow, false);
+    rs_after_blow(m, i);
+  }
+  seen[0].yes += 1;
+  return true;
+}
+sk_bonus_strike :: (m: [] RsBattle, seen: [] SkActs, i: int, j: int) -> bool {
+  if m[0].who != i { seen[0].other_turn += 1; return false; }
+  if m[0].turn.bonus { seen[0].spent += 1; return false; }
+  if !rs_can_act(m[0].c[i]) { seen[0].unable += 1; return false; }
+  if m[0].c[i].rank[RS_RK_MARTIAL_DIE] < 1 { seen[0].no_die += 1; return false; }
+  if m[0].c[i].rank[RS_RK_MARTIAL_DIE] == 1 { seen[0].die_one += 1; }
+  if j < 0 { seen[0].below += 1; return false; }
+  if j > m[0].n - 1 { seen[0].past += 1; return false; }
+  if m[0].c[j].dead { seen[0].dead += 1; return false; }
+  if rs_feet_to(m, i, j) > 5 { if rs_feet_to(m, i, j) == 10 { seen[0].near += 1; } seen[0].far += 1; return false; }
+  if !rs_strikes_fit(m, i, j, W_UNARMED, 1, false) { seen[0].unfit += 1; return false; }
+  m[0].turn.bonus = true;
+  _ := rs_strike(m, i, j, W_UNARMED, false);
+  seen[0].yes += 1;
+  return true;
+}
+sk_open_hand :: (m: [] RsBattle, seen: [] SkActs, i: int, j: int, how: int) {
+  if !rs_has_feature(m[0].c[i], RS_FT_OPEN_HAND) { return; }
+  if m[0].c[j].dead || m[0].c[j].hp < 1 { seen[0].oh_down += 1; return; }
+  seen[0].open += 1;
+  l: [1] RsLine;
+  if how == 0 {
+    room := false;
+    for e: m[0].c[j].eff { if e.kind == EF_ADDLED || e.kind == EF_NONE { room = true; } }
+    if !room { seen[0].addle_full += 1; return; }
+    seen[0].addle += 1;
+    m[0].c[j].eff = rs_state_put(m[0].c[j].eff, EF_ADDLED, true);
+    rs_add_text(l[..], "  "); rs_add_name(l[..], m, j); rs_add_text(l[..], " is addled: no Opportunity Attacks until its next turn");
+    rs_tell(m, RS_EV_CONDITION, -1, i, j, 0, 0, l[..]);
+    return;
+  }
+  ab := RS_DEX; if how == 1 { ab = RS_STR; }
+  dc := 8 + rs_proficiency(m[0].c[i].level) + rs_mod(m[0].c[i].score[RS_WIS]);
+  saving := rs_saving_throw(m, j, ab, dc);
+  rs_add_text(l[..], "  "); rs_add_name(l[..], m, j); rs_add_text(l[..], ifx how == 1 then " STR save " else " DEX save ");
+  rs_add_int(l[..], saving.total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
+  if saving.passed { seen[0].oh_saved += 1; rs_add_text(l[..], ": success"); rs_tell(m, RS_EV_SAVE, -1, i, j, saving.total, 0, l[..]); return; }
+  if how == 2 {
+    seen[0].topple += 1;
+    m[0].c[j].cond |= RS_PRONE;
+    rs_add_text(l[..], ": knocked Prone");
+    rs_tell(m, RS_EV_CONDITION, -1, i, j, RS_PRONE, 0, l[..]);
+    return;
+  }
+  seen[0].push += 1;
+  dx := 0; if m[0].c[j].x > m[0].c[i].x { dx = 1; } if m[0].c[j].x < m[0].c[i].x { dx = -1; }
+  dy := 0; if m[0].c[j].y > m[0].c[i].y { dy = 1; } if m[0].c[j].y < m[0].c[i].y { dy = -1; }
+  moved := 0;
+  while moved < 3 {
+    nx := m[0].c[j].x + dx; ny := m[0].c[j].y + dy;
+    if nx < 0 || ny < 0 || nx > m[0].w - 1 || ny > m[0].h - 1 { break; }
+    if rs_at(m, nx, ny) >= 0 { break; }
+    rs_truth_move(m, j, nx, ny); moved += 1;
+  }
+  seen[0].push_n[moved] += 1;
+  rs_add_text(l[..], ": pushed "); rs_add_int(l[..], moved * 5); rs_add_text(l[..], " feet");
+  rs_tell(m, RS_EV_PUSH, -1, i, j, moved * 5, 0, l[..]);
+}
+sk_flurry :: (m: [] RsBattle, seen: [] SkActs, i: int, j: int, how: int) -> bool {
+  if m[0].who != i { seen[0].other_turn += 1; return false; }
+  if m[0].turn.bonus { seen[0].spent += 1; return false; }
+  if !rs_can_act(m[0].c[i]) { seen[0].unable += 1; return false; }
+  if m[0].c[i].uses[RS_USE_FOCUS] < 1 { seen[0].no_focus += 1; return false; }
+  if m[0].c[i].uses[RS_USE_FOCUS] == 1 { seen[0].one_focus += 1; }
+  if j < 0 { seen[0].below += 1; return false; }
+  if j > m[0].n - 1 { seen[0].past += 1; return false; }
+  if m[0].c[j].dead { seen[0].dead += 1; return false; }
+  if rs_feet_to(m, i, j) > 5 { if rs_feet_to(m, i, j) == 10 { seen[0].near += 1; } seen[0].far += 1; return false; }
+  if !rs_strikes_fit(m, i, j, W_UNARMED, 2, false) { seen[0].unfit += 1; return false; }
+  m[0].turn.bonus = true; m[0].c[i].uses[RS_USE_FOCUS] -= 1;
+  l: [1] RsLine; rs_add_name(l[..], m, i); rs_add_text(l[..], " spends a Focus Point on Flurry of Blows");
+  rs_tell_ft(m, RS_EV_CONDITION, -1, i, i, 0, 0, RS_FT_FLURRY, l[..]);
+  blows := 0;
+  while blows < 2 {
+    if m[0].c[j].dead || rs_feet_to(m, i, j) > 5 { break; }
+    blows += 1;
+    if rs_strike(m, i, j, W_UNARMED, false) { rs_open_hand(m, i, j, how); }
+  }
+  if blows == 1 { seen[0].flurry_one += 1; } if blows == 2 { seen[0].flurry_two += 1; }
+  seen[0].yes += 1;
+  return true;
+}
+// Whom the call names: mostly the target, sometimes no one, the record past the count, or the actor.
+sk_whom :: (p: [] RsDice, n: int, s: SkScene) -> int {
+  r := sk_of(p, 16);
+  return ifx r == 0 then -1 else ifx r == 1 then n else ifx r == 2 then s.i else s.j;
+}
+#test "strike: rs_strike asks the riders' room for one attack at the target alone, then resolves with the weapon's own numbers" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  p: [1] RsDice; p[0].state = 4401;
+  yes := 0; no := 0;
+  for n: 0..<2500 {
+    q: [1] RsDice; q[0] = p[0];
+    s := sk_scene(b[..], p[..]); s2 := sk_scene(m[..], q[..]);
+    w := SK_WEAPONS[sk_of(p[..], 10)]; bare := sk_one(p[..], 3);
+    #assert sk_differ(b[..], m[..]) == 0;
+    got := rs_strike(b[..], s.i, s.j, w, bare);
+    want := sk_strike(m[..], s.i, s.j, w, bare);
+    #assert got == want;
+    #assert sk_differ(b[..], m[..]) == 0;
+    if b[0].turn.struck { yes += 1; } else { no += 1; }
+  }
+  #assert yes > 1000 && no > 30;
+}
+#test "strike: the Attack action: whose turn, the Beast's action in a form, a foe in reach, Reckless Attack, Cleave and Extra Attack, worked out twice" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  seen: [1] SkActs;
+  p: [1] RsDice; p[0].state = 4402;
+  plain := 0;
+  for n: 0..<5000 {
+    q: [1] RsDice; q[0] = p[0];
+    s := sk_scene(b[..], p[..]); s2 := sk_scene(m[..], q[..]);
+    j := sk_whom(p[..], b[0].n, s);
+    reckless := sk_one(p[..], 3);
+    cleaves := [6] int.[-1, s.i, s.j, s.k, s.f, b[0].n];
+    cleave_to := cleaves[sk_of(p[..], 6)];
+    if sk_one(p[..], 2) { cleave_to = s.k; }
+    got := false;
+    if !reckless && cleave_to == -1 { got = rs_attack_action(b[..], s.i, j); plain += 1; } else { got = rs_attack(b[..], s.i, j, reckless, cleave_to); }
+    want := sk_attack(m[..], seen[..], s.i, j, reckless, cleave_to);
+    #assert got == want;
+    #assert sk_differ(b[..], m[..]) == 0;
+  }
+  a := seen[0];
+  #assert plain > 100 && a.yes > 300 && a.other_turn > 100 && a.spent > 100 && a.unable > 100 && a.wild > 50 && a.shape > 50 && a.below > 50 && a.past > 50 && a.dead > 30 && a.self > 50;
+  #assert a.far > 100 && a.near > 30 && a.charmed > 5 && a.unfit > 5 && a.reckless > 5 && a.reckless_no >= 0 && a.cleave > 5 && a.cleave_past >= 0 && a.cleave_far > 0 && a.extra > 50 && a.extra_beside > 5 && a.extra_none > 5;
+}
+#test "strike: shooting: a ranged weapon in hand, a living target within its long range, and Extra Attack while it stands, worked out twice" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  seen: [1] SkActs;
+  p: [1] RsDice; p[0].state = 4403;
+  for n: 0..<4000 {
+    q: [1] RsDice; q[0] = p[0];
+    s := sk_scene(b[..], p[..]); s2 := sk_scene(m[..], q[..]);
+    j := sk_whom(p[..], b[0].n, s);
+    got := rs_shoot(b[..], s.i, j);
+    want := sk_shoot(m[..], seen[..], s.i, j);
+    #assert got == want;
+    #assert sk_differ(b[..], m[..]) == 0;
+  }
+  a := seen[0];
+  #assert a.yes > 300 && a.other_turn > 100 && a.spent > 100 && a.unable > 100 && a.no_bow > 100 && a.fist_bow > 100 && a.below > 30 && a.past > 30 && a.dead > 30 && a.self > 30;
+  #assert a.far > 30 && a.at_long > 10 && a.past_long > 10 && a.unfit >= 0 && a.extra > 50 && a.extra_none > 20;
+}
+#test "strike: Martial Arts' Bonus Action strike, Flurry of Blows and Open Hand Technique, worked out twice" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  seen: [1] SkActs; flurry: [1] SkActs; hand: [1] SkActs;
+  p: [1] RsDice; p[0].state = 4404;
+  for n: 0..<6000 {
+    q: [1] RsDice; q[0] = p[0];
+    s := sk_scene(b[..], p[..]); s2 := sk_scene(m[..], q[..]);
+    j := sk_whom(p[..], b[0].n, s);
+    op := sk_of(p[..], 3); how := sk_of(p[..], 3);
+    if op == 0 {
+      got := rs_bonus_strike(b[..], s.i, j); want := sk_bonus_strike(m[..], seen[..], s.i, j);
+      #assert got == want;
+    }
+    if op == 1 {
+      got := rs_flurry(b[..], s.i, j, how); want := sk_flurry(m[..], flurry[..], s.i, j, how);
+      #assert got == want;
+    }
+    if op == 2 {
+      // against a wall too: the push stops at the grid's edge and at a filled square
+      if sk_one(p[..], 4) { rs_place(b[..], s.j, 5, 1); rs_place(m[..], s.j, 5, 1); }
+      if sk_one(p[..], 4) { rs_place(b[..], s.j, 3, 5); rs_place(m[..], s.j, 3, 5); rs_place(b[..], s.i, 2, 4); rs_place(m[..], s.i, 2, 4); }
+      if sk_one(p[..], 6) { rs_place(b[..], s.j, 137, 3); rs_place(m[..], s.j, 137, 3); rs_place(b[..], s.i, 136, 3); rs_place(m[..], s.i, 136, 3); }
+      if sk_one(p[..], 6) { rs_place(b[..], s.j, 1, 3); rs_place(m[..], s.j, 1, 3); rs_place(b[..], s.i, 2, 3); rs_place(m[..], s.i, 2, 3); }
+      rs_open_hand(b[..], s.i, s.j, how); sk_open_hand(m[..], hand[..], s.i, s.j, how);
+    }
+    #assert sk_differ(b[..], m[..]) == 0;
+  }
+  a := seen[0];
+  #assert a.yes > 100 && a.other_turn > 50 && a.spent > 50 && a.unable > 50 && a.no_die > 100 && a.die_one > 50 && a.below > 20 && a.past > 20 && a.dead > 20 && a.far > 50 && a.near > 10 && a.unfit >= 0;
+  f := flurry[0];
+  #assert f.yes > 100 && f.other_turn > 50 && f.spent > 50 && f.unable > 50 && f.no_focus > 100 && f.one_focus > 50 && f.below > 20 && f.past > 20 && f.dead > 20 && f.far > 50 && f.near > 10 && f.flurry_one > 3 && f.flurry_two > 100;
+  h := hand[0];
+  #assert h.open > 500 && h.addle > 100 && h.addle_full > 0 && h.push > 50 && h.push_n[0] > 0 && h.push_n[1] > 0 && h.push_n[2] > 0 && h.push_n[3] > 20 && h.topple > 50 && h.oh_saved > 50 && h.oh_down > 50;
+}
+
+// ---- the riders and the small procedures
+
+SkRiders :: struct {
+  stun: int; stun_saved: int; stun_failed: int; stun_unready: int; stun_down: int; stun_already: int; stun_room1: int; stun_room2: int;
+  withdraw: int; withdraw_moves: int; withdraw_still: int; cs_down: int; poison_full: int; poison_one: int; poison_immune: int; poison_immune_full: int; trip_prone: int; trip: int; poison: int; cs_saved: int; cs_auto: int; tripped: int; poisoned: int;
+  curse: int; curse_hex: int; curse_mark: int; curse_other: int; curse_dead: int; curse_kill: int; curse_both: int; curse_crit_down: int;
+  blow: int; blow_no_crit: int; blow_no_feat: int; blow_anchored: int; rage: int; rage_none: int;
+}
+sk_stunning_strike :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int) {
+  me := m[0].c[i];
+  if !(rs_has_feature(me, RS_FT_STUNNING_STRIKE) && me.note[RS_NT_STUN] != 0 && me.uses[RS_USE_FOCUS] >= 1 && !m[0].turn.stunned) { seen[0].stun_unready += 1; return; }
+  if m[0].c[j].dead || m[0].c[j].hp < 1 { seen[0].stun_down += 1; return; }
+  if rs_has(m[0].c[j], RS_STUNNED) { seen[0].stun_already += 1; return; }
+  if rs_effect_free(m[0].c[j]) <= 1 { if rs_effect_free(m[0].c[j]) == 1 { seen[0].stun_room1 += 1; } return; }
+  if rs_effect_free(m[0].c[j]) == 2 { seen[0].stun_room2 += 1; }
+  seen[0].stun += 1;
+  m[0].turn.stunned = true; m[0].c[i].uses[RS_USE_FOCUS] -= 1;
+  dc := 8 + rs_proficiency(me.level) + rs_mod(me.score[RS_WIS]);
+  saving := rs_saving_throw(m, j, RS_CON, dc);
+  until := rs_next_turn_tick(m, i);
+  l: [1] RsLine;
+  rs_add_text(l[..], "  "); rs_add_name(l[..], m, i); rs_add_text(l[..], " spends a Focus Point on a Stunning Strike: "); rs_add_name(l[..], m, j);
+  rs_add_text(l[..], " CON save "); rs_add_int(l[..], saving.total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
+  if saving.passed {
+    seen[0].stun_saved += 1;
+    rs_add_text(l[..], ": success, half Speed and exposed");
+    rs_tell_ft(m, RS_EV_SAVE, -1, i, j, saving.total, 0, RS_FT_STUNNING_STRIKE, l[..]);
+    _ := rs_put_effect(m, j, RsEffect.{kind = EF_HALVED, by = i, spell = -1, until = until, save = -1});
+    _ := rs_put_effect(m, j, RsEffect.{kind = EF_EXPOSED, by = i, spell = -1, until = until, save = -1});
+  } else {
+    seen[0].stun_failed += 1;
+    rs_add_text(l[..], ": failure, Stunned");
+    rs_tell_ft(m, RS_EV_CONDITION, -1, i, j, saving.total, 0, RS_FT_STUNNING_STRIKE, l[..]);
+    _ := rs_put_effect(m, j, RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = i, spell = -1, until = until, save = -1});
+  }
+}
+sk_cunning_effect :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, plan: int) {
+  me := m[0].c[i];
+  if plan == 3 {
+    seen[0].withdraw += 1;
+    l: [1] RsLine; rs_add_name(l[..], m, i); rs_add_text(l[..], ": Cunning Strike, Withdraw");
+    rs_tell(m, RS_EV_CONDITION, -1, i, i, 0, 0, l[..]);
+    if m[0].who == i && !m[0].turn.anchored { m[0].turn.move_left += me.speed / 10; seen[0].withdraw_moves += 1; } else { seen[0].withdraw_still += 1; }
+    return;
+  }
+  if m[0].c[j].dead || m[0].c[j].hp < 1 { seen[0].cs_down += 1; return; }
+  immune := (m[0].c[j].immune_cond & RS_POISONED) != 0;
+  if plan == 2 {
+    if !immune && !rs_has(m[0].c[j], RS_PETRIFIED) && rs_effect_free(m[0].c[j]) == 0 { seen[0].poison_full += 1; return; }
+    if !immune && rs_effect_free(m[0].c[j]) == 1 { seen[0].poison_one += 1; }
+    if immune && rs_effect_free(m[0].c[j]) == 0 { seen[0].poison_immune_full += 1; }
+  }
+  if plan == 1 && rs_has(m[0].c[j], RS_PRONE) { seen[0].trip_prone += 1; return; }
+  dc := 8 + rs_mod(me.score[RS_DEX]) + rs_proficiency(me.level);
+  saving := rs_saving_throw(m, j, ifx plan == 1 then RS_DEX else RS_CON, dc);
+  ok := saving.passed;
+  if plan == 2 && immune { ok = true; seen[0].poison_immune += 1; }
+  l: [1] RsLine;
+  rs_add_text(l[..], "  "); rs_add_name(l[..], m, j);
+  if plan == 1 { rs_add_text(l[..], " Cunning Strike, Trip: DEX save "); seen[0].trip += 1; } else { rs_add_text(l[..], " Cunning Strike, Poison: CON save "); seen[0].poison += 1; }
+  if saving.automatic { rs_add_text(l[..], "automatic failure"); seen[0].cs_auto += 1; }
+  else { rs_add_int(l[..], saving.total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); }
+  if ok { seen[0].cs_saved += 1; rs_add_text(l[..], ": success"); rs_tell(m, RS_EV_SAVE, -1, i, j, saving.total, 0, l[..]); return; }
+  if plan == 1 {
+    seen[0].tripped += 1;
+    rs_add_text(l[..], ": failure, Prone"); rs_tell(m, RS_EV_CONDITION, -1, i, j, saving.total, 0, l[..]);
+    m[0].c[j].cond |= RS_PRONE;
+    return;
+  }
+  seen[0].poisoned += 1;
+  rs_add_text(l[..], ": failure, Poisoned"); rs_tell(m, RS_EV_CONDITION, -1, i, j, saving.total, 0, l[..]);
+  _ := rs_put_effect(m, j, RsEffect.{kind = EF_COND, cond = RS_POISONED, by = i, spell = -1, until = m[0].clock + rs_secs(60), save = RS_CON, dc = dc});
+}
+sk_curse_damage :: (m: [] RsBattle, seen: [] SkRiders, i: int, j: int, crit: bool) {
+  told := 0;
+  for k: 0..<RS_EFFECTS {
+    e := m[0].c[j].eff[k];
+    if e.kind != EF_HEX && e.kind != EF_MARK { continue; }
+    if e.by != i { seen[0].curse_other += 1; continue; }
+    if m[0].c[j].dead { seen[0].curse_dead += 1; continue; }
+    seen[0].curse += 1; told += 1;
+    hex := e.kind == EF_HEX;
+    kind := RS_FORCE; sp := SP_HUNTERS_MARK;
+    if hex { kind = RS_NECROTIC; sp = SP_HEX; seen[0].curse_hex += 1; } else { seen[0].curse_mark += 1; }
+    extra := rs_resisted(m, j, rs_sum(m[0].dice[..], ifx crit then 2 else 1, 6), kind);
+    h: [1] RsLine;
+    rs_add_text(h[..], "  "); rs_add_name(h[..], m, j); rs_add_text(h[..], " takes "); rs_add_int(h[..], extra);
+    if hex { rs_add_text(h[..], " Necrotic from Hex"); } else { rs_add_text(h[..], " Force from Hunter's Mark"); }
+    rs_tell(m, RS_EV_DAMAGE, sp, i, j, extra, kind, h[..]);
+    if crit && m[0].c[j].hp == 0 && extra > 0 { seen[0].curse_crit_down += 1; }
+    rs_damage(m, i, j, extra, kind, crit, sp);
+    if m[0].c[j].dead { seen[0].curse_kill += 1; }
+  }
+  if told == 2 { seen[0].curse_both += 1; }
+}
+#test "strike: Stunning Strike, Cunning Strike's effects, Hex and Hunter's Mark, Remarkable Athlete and Rage's end, worked out twice" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  seen: [1] SkRiders;
+  p: [1] RsDice; p[0].state = 4405;
+  for n: 0..<8000 {
+    q: [1] RsDice; q[0] = p[0];
+    s := sk_scene(b[..], p[..]); s2 := sk_scene(m[..], q[..]);
+    op := sk_of(p[..], 5); i := s.i; j := s.j;
+    if op == 0 { rs_stunning_strike(b[..], i, j); sk_stunning_strike(m[..], seen[..], i, j); }
+    if op == 1 {
+      plan := 1 + sk_of(p[..], 3);
+      rs_cunning_effect(b[..], i, j, plan); sk_cunning_effect(m[..], seen[..], i, j, plan);
+    }
+    if op == 2 {
+      crit := sk_one(p[..], 2);
+      rs_curse_damage(b[..], i, j, crit); sk_curse_damage(m[..], seen[..], i, j, crit);
+    }
+    if op == 3 {
+      // After each attack: Remarkable Athlete moves half its Speed after a Critical Hit, once for that hit
+      crit := !sk_one(p[..], 3);
+      b[0].turn.last_crit = crit; m[0].turn.last_crit = crit;
+      rs_after_blow(b[..], i);
+      if !crit { seen[0].blow_no_crit += 1; } else if !rs_has_feature(m[0].c[i], RS_FT_ATHLETE) { seen[0].blow_no_feat += 1; } else if m[0].turn.anchored { seen[0].blow_anchored += 1; }
+      else { seen[0].blow += 1; m[0].turn.move_left += m[0].c[i].speed / 10; m[0].turn.last_crit = false; }
+      #assert b[0].turn.last_crit == m[0].turn.last_crit;
+    }
+    if op == 4 {
+      rs_rage_end(b[..], i, ": it did not attack");
+      if !rs_effect(m[0].c[i], EF_RAGE) { seen[0].rage_none += 1; }
+      else {
+        seen[0].rage += 1;
+        for k: 0..<RS_EFFECTS { if m[0].c[i].eff[k].kind == EF_RAGE { m[0].c[i].eff[k] = RsEffect.{}; } }
+        l: [1] RsLine; rs_add_name(l[..], m[..], i); rs_add_text(l[..], "'s Rage ends: it did not attack");
+        rs_tell(m[..], RS_EV_END, -1, i, -1, 0, 0, l[..]);
+      }
+    }
+    #assert sk_differ(b[..], m[..]) == 0;
+  }
+  r := seen[0];
+  #assert r.stun > 50 && r.stun_saved > 10 && r.stun_failed > 10 && r.stun_unready > 100 && r.stun_down > 10 && r.stun_already > 5 && r.stun_room1 > 0 && r.stun_room2 > 0;
+  #assert r.withdraw > 100 && r.withdraw_moves > 50 && r.withdraw_still > 20 && r.cs_down > 50 && r.poison_full > 3 && r.poison_one > 3 && r.poison_immune > 20 && r.poison_immune_full > 0 && r.trip_prone > 10;
+  #assert r.trip > 100 && r.poison > 100 && r.cs_saved > 50 && r.cs_auto > 5 && r.tripped > 30 && r.poisoned > 30;
+  #assert r.curse > 200 && r.curse_hex > 100 && r.curse_mark > 100 && r.curse_other > 50 && r.curse_dead > 10 && r.curse_kill > 10 && r.curse_both > 20 && r.curse_crit_down > 5;
+  #assert r.blow > 100 && r.blow_no_crit > 100 && r.blow_no_feat > 100 && r.blow_anchored > 20 && r.rage > 100 && r.rage_none > 300;
+}
+
+#test "strike: the best Aura of Protection in reach, an ally's or its own; a foe beside; Sneak Attack's ally; a mastery; whose turn ends when, on 6000 scenes" #steps 4000000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  p: [1] RsDice; p[0].state = 4406;
+  auras := 0; own := 0; least := 0; at10 := 0; at15 := 0; two := 0; down := 0; besides := 0; first := 0; none := 0; allies := 0; lone := 0; has := 0; hasnt := 0; running := 0;
+  for n: 0..<6000 {
+    s := sk_scene(b[..], p[..]);
+    // the Paladin sometimes two or three squares from the target, where its aura ends
+    if sk_one(p[..], 2) { rs_place(b[..], s.f, 5, ifx sk_one(p[..], 2) then 5 else 6); rs_place(b[..], s.j, 5, ifx sk_one(p[..], 2) then 3 else 2); rs_place(b[..], s.i, 9, 3); }
+    for j: 0..<b[0].n {
+      best := 0; count := 0;
+      for k: 0..<b[0].n {
+        c := b[0].c[k];
+        if !rs_has_feature(c, RS_FT_AURA_OF_PROTECTION) || c.team != b[0].c[j].team { continue; }
+        if c.dead || c.hp < 1 || (c.cond & (RS_INCAPACITATED | RS_PARALYZED | RS_PETRIFIED | RS_STUNNED | RS_UNCONSCIOUS)) != 0 { down += 1; continue; }
+        feet := rs_feet_to(b[..], k, j);
+        if feet == 15 { at15 += 1; }
+        if feet > 10 { continue; }
+        if feet == 10 { at10 += 1; }
+        mine := rs_mod(c.score[RS_CHA]); if mine < 1 { mine = 1; least += 1; }
+        if mine > best { best = mine; }
+        count += 1; if k == j { own += 1; }
+      }
+      if count > 0 { auras += 1; } if count > 1 { two += 1; }
+      #assert rs_aura(b[..], j) == best;
+      for ability: 0..<6 { #assert rs_save_in(b[..], j, ability) == rs_save_bonus(b[0].c[j], ability) + best; }
+    }
+    // a foe standing within 5 feet: the first in the battle's order
+    for i: 0..<b[0].n {
+      want := -1; found := 0;
+      for k: 0..<b[0].n {
+        c := b[0].c[k];
+        if k == i || c.dead || c.hp < 1 || c.team == b[0].c[i].team || rs_feet_to(b[..], i, k) > 5 { continue; }
+        if want < 0 { want = k; } found += 1;
+      }
+      if want >= 0 { besides += 1; } else { none += 1; } if found > 1 { first += 1; }
+      #assert rs_beside(b[..], i) == want;
+      for j: 0..<b[0].n {
+        ally := false;
+        for k: 0..<b[0].n {
+          c := b[0].c[k];
+          if k != i && c.team == b[0].c[i].team && !c.dead && c.hp > 0 && (c.cond & RS_INCAPACITATED) == 0 && rs_feet_to(b[..], k, j) <= 5 { ally = true; }
+        }
+        if ally { allies += 1; } else { lone += 1; }
+        #assert rs_sneak_ally(b[..], i, j) == ally;
+      }
+      for w: 0..<10 { for kind: 0..<7 {
+        bit := 1; for z: 0..<kind { bit = bit * 2; }
+        want_m := rs_weapon(w).mastery == kind && (b[0].c[i].masteries / bit) % 2 == 1;
+        if want_m { has += 1; } else { hasnt += 1; }
+        #assert rs_mastery(b[..], i, w, kind) == want_m;
+      } }
+    }
+    // the end of a creature's own next turn: a beat after its turn began while it runs, else when its next begins
+    b[0].c[s.i].turn_at = 7000 + n; b[0].c[s.j].turn_at = 9000 + n;
+    for i: 0..<b[0].n {
+      #assert rs_own_turn_end(b[..], i) == b[0].c[i].turn_at + (ifx b[0].who == i then rs_beat(b[..]) else 0);
+      #assert rs_effect_owner_turn(b[..], i) == (ifx b[0].c[i].dead then -1 else b[0].c[i].turn_at);
+      if b[0].who == i { running += 1; }
+    }
+    // no creature below the first or past the count has a turn to end, though a record lies there
+    #assert b[0].c[b[0].n].turn_at == 4242 && !b[0].c[b[0].n].dead && rs_effect_owner_turn(b[..], b[0].n) == -1 && rs_effect_owner_turn(b[..], -1) == -1;
+  }
+  #assert rs_beat(b[..]) > 0 && running > 5000;
+  #assert auras > 3000 && own > 500 && least > 500 && at10 > 100 && at15 > 100 && two > 200 && down > 500 && besides > 3000 && first > 300 && none > 3000 && allies > 3000 && lone > 3000 && has > 3000 && hasnt > 3000;
+}
+#test "strike: a mastery needs the weapon's property and the creature's bit for it, the first bit too; a Reaction borrows no turn's end" {
   b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].who = -1;
   a := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 3);
   g := rs_add(b[..], rs_fighter("Holt", 1, 3), 2, 3);
-  b[0].c[a].turn_at = 7000; b[0].c[g].turn_at = 9000;
-  #assert rs_turn_owner(b[..]) != a && rs_own_turn_end(b[..], a) == 7000 && rs_own_turn_end(b[..], g) == 9000;
-  #assert rs_effect_owner_turn(b[..], a) == 7000 && rs_effect_owner_turn(b[..], g) == 9000 && rs_effect_owner_turn(b[..], -1) == -1 && rs_effect_owner_turn(b[..], 2) == -1;
-  b[0].c[g].dead = true;
-  #assert rs_effect_owner_turn(b[..], g) == -1 && rs_effect_owner_turn(b[..], a) == 7000;
+  // the Unarmed Strike has no mastery property (M_NONE), which is bit 1 of the creature's
+  b[0].c[a].masteries = 1;
+  #assert rs_mastery(b[..], a, W_UNARMED, M_NONE) && !rs_mastery(b[..], a, W_GREATSWORD, M_NONE) && !rs_mastery(b[..], a, W_GREATSWORD, M_GRAZE);
+  b[0].c[a].masteries = 2;
+  #assert !rs_mastery(b[..], a, W_UNARMED, M_NONE) && rs_mastery(b[..], a, W_GREATAXE, M_CLEAVE) && !rs_mastery(b[..], a, W_GREATSWORD, M_GRAZE);
+  b[0].c[a].masteries = 4;
+  #assert rs_mastery(b[..], a, W_GREATSWORD, M_GRAZE) && !rs_mastery(b[..], a, W_GREATAXE, M_CLEAVE) && !rs_mastery(b[..], a, W_GREATAXE, M_GRAZE);
+  // within 5 feet is less than two squares
+  #assert rs_beside_ft(0) && rs_beside_ft(5) && !rs_beside_ft(10) && !rs_beside_ft(15);
+  // while a Reaction borrows the turn, the turn's owner is the one reacting
+  b[0].c[a].turn_at = 7000; b[0].c[g].turn_at = 9000; b[0].who = a;
+  #assert rs_own_turn_end(b[..], a) == 7000 + rs_beat(b[..]) && rs_own_turn_end(b[..], g) == 9000;
+  b[0].reaction_frame.on = true; b[0].reaction_frame.who = g;
+  #assert rs_own_turn_end(b[..], a) == 7000 && rs_own_turn_end(b[..], g) == 9000 + rs_beat(b[..]);
+}
+#test "strike: a damage line's note: nothing when unchanged, vulnerable when more, immune at none, resisted when less" {
+  wants := [6] string.["", ", vulnerable", ", immune", ", resisted", ", resisted", ""];
+  gots := [6] int.[4, 8, 0, 2, 1, 0]; befores := [6] int.[4, 4, 4, 4, 3, 0];
+  for k: 0..<6 {
+    l: [1] RsLine; rs_add_text(l[..], "x");
+    rs_resist_note(l[..], gots[k], befores[k]);
+    w: [1] RsLine; rs_add_text(w[..], "x"); rs_add_text(w[..], wants[k]);
+    #assert cast(string) l[0].buf[0..<l[0].n] == cast(string) w[0].buf[0..<w[0].n];
+  }
+}
+#test "strike: Patient Defense with a Focus Point tells its line when the Monk can take it; Step of the Wind is a Monk's Dash as a Bonus Action" #steps 400000000 {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]);
+  p: [1] RsDice; p[0].state = 4407;
+  took := 0; refused := 0; dashed := 0; stayed := 0;
+  for n: 0..<3000 {
+    q: [1] RsDice; q[0] = p[0];
+    s := sk_scene(b[..], p[..]); s2 := sk_scene(m[..], q[..]);
+    i := s.i;
+    if sk_one(p[..], 2) {
+      got := rs_patient_defense(b[..], i);
+      want := rs_disengage_use(m[..], i, RS_DISENGAGE_DODGE);
+      if want {
+        took += 1;
+        l: [1] RsLine; rs_add_name(l[..], m[..], i); rs_add_text(l[..], " spends a Focus Point on Patient Defense: Disengage and Dodge");
+        rs_tell_ft(m[..], RS_EV_CONDITION, -1, i, i, 0, 0, RS_FT_PATIENT_DEFENSE, l[..]);
+      } else { refused += 1; }
+      #assert got == want;
+    } else {
+      got := rs_step_of_the_wind(b[..], i);
+      want := rs_dash_use(m[..], i, RS_DASH_WIND);
+      if want { dashed += 1; } else { stayed += 1; }
+      #assert got == want && (!got || b[0].turn.dash_n == 1);
+      // not Cunning Action's Dash, which a creature without that feature is refused, nor the action's
+      #assert !want || (b[0].turn.bonus && b[0].turn.action == m[0].turn.action && b[0].c[i].uses_max[RS_USE_FOCUS] > 0);
+    }
+    #assert sk_differ(b[..], m[..]) == 0;
+  }
+  #assert took > 20 && refused > 500 && dashed > 100 && stayed > 500;
 }
