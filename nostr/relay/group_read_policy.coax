@@ -1,0 +1,68 @@
+// Read-only projections of the relay's authenticated NIP-29 state. A
+// projection itself grants no membership; relay.coax fills it only after
+// g29_admit accepts a verified control event and the store commits it.
+#load "../../coax/lib/crypto/bytes.coax";
+#authority;
+NgGroup :: struct { id: string; is_private: bool; hidden: bool; deleted: bool; members: [] u8; }
+#test "private messages and hidden metadata require current membership" {
+  key: [32] u8; other: [32] u8; key[0]=1; other[0]=2;
+  groups: [1] NgGroup; groups[0]=NgGroup.{id="room",is_private=true,hidden=false,members=key[..]};
+  #assert ng_visible(groups[..],"room",false,1,key[..]) && !ng_visible(groups[..],"room",false,1,other[..]);
+  #assert ng_visible(groups[..],"room",true,39000,other[..]);
+  groups[0].hidden=true; #assert !ng_visible(groups[..],"room",true,39000,other[..]);
+  #assert ng_visible(groups[..],"room",true,39000,key[..]);
+  groups[0].deleted=true; #assert !ng_visible(groups[..],"room",false,1,key[..]);
+  #assert ng_visible(groups[..],"another",false,1,other[..]);
+}
+#forall "a membership match includes every key byte" at: 0..<32 {
+  keys: [64] u8; readers: [32] u8;
+  for i: 0..<32 { keys[i]=cast(u8) (i+1); keys[32+i]=cast(u8) (i+40); readers[i]=keys[32+i]; }
+  group:=NgGroup.{members=keys[..]}; #assert ng_member(group,readers[..]);
+  readers[at]^=128; #assert !ng_member(group,readers[..]);
+}
+#test "reader keys are whole consecutive 32-byte entries" {
+  key:[32]u8; readers:[65]u8;
+  for i:0..<32 {key[i]=cast(u8)(i+1);readers[32+i]=key[i];}
+  group:=NgGroup.{members=key[..]};
+  #assert ng_member(group,readers[0..<64]) && ng_member(group,readers[..]);
+  #assert !ng_member(group,readers[0..<63]) && !ng_member(group,readers[0..<32]);
+}
+#test "mailbox h tags do not acquire unrelated group visibility rules" {
+  groups: [1] NgGroup; groups[0]=NgGroup.{id="mailbox",is_private=true,hidden=true,deleted=true};
+  none: [1] u8;
+  for kind: [11] int.[78,3187,3188,30078,30174,30175,30178,30186,30300,30350,30621] {
+    #assert ng_mailbox(kind) && ng_visible(groups[..],"mailbox",false,kind,none[..]);
+  }
+  for kind: [8] int.[1,77,79,3186,3189,30077,30620,30622] { #assert !ng_mailbox(kind); }
+}
+#forall "deleted group identifiers cannot be reused" used: bool, exists: bool, create: bool {
+  #assert ng_reserved(used,exists,create)==(used && !exists && create);
+}
+ng_mailbox :: (kind: int) -> bool #effects(all) {
+  for k: [11] int.[78,3187,3188,30078,30174,30175,30178,30186,30300,30350,30621] { if kind==k { return true; } }
+  return false;
+}
+ng_member :: (group: NgGroup, readers: [] u8) -> bool #effects(all) {
+  for m: 0..<group.members.count / 32 { for r: 0..<readers.count / 32 {
+    if cb_ct_equal(group.members[32*m..<32*m+32],readers[32*r..<32*r+32])==CB_MAX64 { return true; }
+  } }
+  return false;
+}
+ng_visible :: (groups: [] NgGroup, name: string, metadata: bool, kind: int, readers: [] u8) -> bool #effects(all) {
+  if !metadata && ng_mailbox(kind) { return true; }
+  for g: groups {
+    if g.id=="" || g.id!=name { continue; }
+    if g.deleted { return false; }
+    restricted := ifx metadata then g.hidden else g.is_private;
+    return !restricted || ng_member(g,readers);
+  }
+  return true;
+}
+ng_reserved :: (used: bool, exists: bool, create: bool) -> bool #effects(all) { return used && !exists && create; }
+ng_scope_required :: (kind: int) -> bool #effects(all) {
+  for k: [9] int.[9000,9001,9002,9005,9007,9008,9009,9021,9022] { if kind==k { return true; } }
+  return false;
+}
+#forall "only NIP-29 control kinds require a group scope" kind: 8999..<9024 {
+  #assert ng_scope_required(kind)==(kind==9000 || kind==9001 || kind==9002 || kind==9005 || kind==9007 || kind==9008 || kind==9009 || kind==9021 || kind==9022);
+}

@@ -1,0 +1,381 @@
+this derivation will be built:
+  /nix/store/7xgwf4aiyxck04mri4smsdjkk20sik62-nodejs-24.22.2.drv
+these 32 paths will be fetched (45.6 MiB download, 157.2 MiB unpacked):
+  /nix/store/rkcyq4xkbb1045l9gvkmrmsr7xzn3k5x-ada-4.0.0
+  /nix/store/ic27066xy2xgdddziwnnh7kl6gx25mps-bzip2-1.0.8-bin
+  /nix/store/1q848v3z5vz95h20p560mdg6815c3f42-c-ares-1.34.9
+  /nix/store/4ar4316ix4npp991142wq8x5i129c7pd-diffutils-3.12
+  /nix/store/j2dpvp2m7zyhghnpwfrqj58fawsz8c6p-ed-1.22.6
+  /nix/store/4d81lw0vjpxpaf3d5shahwp2a3hs446s-file-5.48
+  /nix/store/5zsc280i2i7bqgjn7kln87w1ss6li22f-findutils-4.11.0
+  /nix/store/6jw5614njszmn5v325j9lq1fwp4p6lyx-gawk-5.4.1
+  /nix/store/zf3wrhmm315grcqw2q5gxxabfbbxys29-gnu-config-2024-01-01
+  /nix/store/xajdnxzflx2calfnqvvjh5zb6lmmjiaa-gnumake-4.4.1
+  /nix/store/x275j18p7dx6kv7vfj45saapbhbljia4-gnused-4.10
+  /nix/store/7g2i4irm3d2yvbwan7c3gr4pkgwc313p-gnutar-1.35
+  /nix/store/ab0r3yf7x5f5x1qxnf9idd53wvrj4a1v-gtest-1.18.0
+  /nix/store/pd6kmgkpz1bmpck9sc2yr520hmvrzm1l-gzip-1.15
+  /nix/store/xzh11b3p4p3pbyypkcgvqdzcqs5qys0s-hdrhistogram_c-0.11.10
+  /nix/store/f6sc8iqwxy7ig3lqi07as1pz5mag109i-icu4c-78.3
+  /nix/store/dyvl2ip4lhcdbavvb79fflj2vnxcbr80-libuv-1.53.0
+  /nix/store/33zgf5z6gvvs676krfsy8yilavr6817l-llhttp-9.4.3
+  /nix/store/9z7ar8bkmppwwljip63h9z8jpb16mwc4-lndir-1.0.6
+  /nix/store/4ai8chvs30fgch5qrlw6a5bj0rn4xs40-merve-1.2.2
+  /nix/store/p2dpjyq2paaw2kw37lq7a83k4k1aaraf-nbytes-0.1.4
+  /nix/store/p6qz7sbyrk15sq92zqad72xvq3lg2r5r-nodejs-slim-24.22.2
+  /nix/store/gzy1fpimh039nvcajdvwm8vag8j57qd5-nodejs-slim-24.22.2-corepack
+  /nix/store/8p3dzhn2dy0gx8dczp1n68g53nkxfkcb-nodejs-slim-24.22.2-npm
+  /nix/store/jjx4z5lamb00psmiyag0fqmc8gy2i640-patch-2.8.1
+  /nix/store/61x24n3w879ayzpcjzijqsg1pc2lvavy-patchelf-0.15.2
+  /nix/store/jglxdk9y0yfk3mc9dbr675pfmv42a89y-simdjson-5.0.5
+  /nix/store/93bglvc57aj2aznfj41brqrpzaz112xb-simdutf-9.3.3
+  /nix/store/vd29sjk0bfwm2fygq5a9an70qd8hfnlb-stdenv-linux-no-cc
+  /nix/store/mx9g3gy5v63pm62130vbb1npz6fp2kf2-update-autotools-gnu-config-scripts-hook
+  /nix/store/05b72v3aw8l031q23z7f5c8wq7j67gdx-uvwasi-0.0.23
+  /nix/store/6mm66zaj29q72pcax4xhzgh4vwp6qy0y-xz-5.8.4-bin
+copying path '/nix/store/9z7ar8bkmppwwljip63h9z8jpb16mwc4-lndir-1.0.6' from 'https://cache.nixos.org'...
+copying path '/nix/store/ic27066xy2xgdddziwnnh7kl6gx25mps-bzip2-1.0.8-bin' from 'https://cache.nixos.org'...
+copying path '/nix/store/1q848v3z5vz95h20p560mdg6815c3f42-c-ares-1.34.9' from 'https://cache.nixos.org'...
+copying path '/nix/store/4ar4316ix4npp991142wq8x5i129c7pd-diffutils-3.12' from 'https://cache.nixos.org'...
+copying path '/nix/store/4d81lw0vjpxpaf3d5shahwp2a3hs446s-file-5.48' from 'https://cache.nixos.org'...
+copying path '/nix/store/5zsc280i2i7bqgjn7kln87w1ss6li22f-findutils-4.11.0' from 'https://cache.nixos.org'...
+copying path '/nix/store/xajdnxzflx2calfnqvvjh5zb6lmmjiaa-gnumake-4.4.1' from 'https://cache.nixos.org'...
+copying path '/nix/store/x275j18p7dx6kv7vfj45saapbhbljia4-gnused-4.10' from 'https://cache.nixos.org'...
+copying path '/nix/store/7g2i4irm3d2yvbwan7c3gr4pkgwc313p-gnutar-1.35' from 'https://cache.nixos.org'...
+copying path '/nix/store/6jw5614njszmn5v325j9lq1fwp4p6lyx-gawk-5.4.1' from 'https://cache.nixos.org'...
+copying path '/nix/store/ab0r3yf7x5f5x1qxnf9idd53wvrj4a1v-gtest-1.18.0' from 'https://cache.nixos.org'...
+copying path '/nix/store/xzh11b3p4p3pbyypkcgvqdzcqs5qys0s-hdrhistogram_c-0.11.10' from 'https://cache.nixos.org'...
+copying path '/nix/store/33zgf5z6gvvs676krfsy8yilavr6817l-llhttp-9.4.3' from 'https://cache.nixos.org'...
+copying path '/nix/store/pd6kmgkpz1bmpck9sc2yr520hmvrzm1l-gzip-1.15' from 'https://cache.nixos.org'...
+copying path '/nix/store/f6sc8iqwxy7ig3lqi07as1pz5mag109i-icu4c-78.3' from 'https://cache.nixos.org'...
+copying path '/nix/store/dyvl2ip4lhcdbavvb79fflj2vnxcbr80-libuv-1.53.0' from 'https://cache.nixos.org'...
+copying path '/nix/store/4ai8chvs30fgch5qrlw6a5bj0rn4xs40-merve-1.2.2' from 'https://cache.nixos.org'...
+copying path '/nix/store/jglxdk9y0yfk3mc9dbr675pfmv42a89y-simdjson-5.0.5' from 'https://cache.nixos.org'...
+copying path '/nix/store/p2dpjyq2paaw2kw37lq7a83k4k1aaraf-nbytes-0.1.4' from 'https://cache.nixos.org'...
+copying path '/nix/store/j2dpvp2m7zyhghnpwfrqj58fawsz8c6p-ed-1.22.6' from 'https://cache.nixos.org'...
+copying path '/nix/store/61x24n3w879ayzpcjzijqsg1pc2lvavy-patchelf-0.15.2' from 'https://cache.nixos.org'...
+copying path '/nix/store/6mm66zaj29q72pcax4xhzgh4vwp6qy0y-xz-5.8.4-bin' from 'https://cache.nixos.org'...
+copying path '/nix/store/zf3wrhmm315grcqw2q5gxxabfbbxys29-gnu-config-2024-01-01' from 'https://cache.nixos.org'...
+copying path '/nix/store/93bglvc57aj2aznfj41brqrpzaz112xb-simdutf-9.3.3' from 'https://cache.nixos.org'...
+copying path '/nix/store/05b72v3aw8l031q23z7f5c8wq7j67gdx-uvwasi-0.0.23' from 'https://cache.nixos.org'...
+copying path '/nix/store/jjx4z5lamb00psmiyag0fqmc8gy2i640-patch-2.8.1' from 'https://cache.nixos.org'...
+copying path '/nix/store/mx9g3gy5v63pm62130vbb1npz6fp2kf2-update-autotools-gnu-config-scripts-hook' from 'https://cache.nixos.org'...
+copying path '/nix/store/rkcyq4xkbb1045l9gvkmrmsr7xzn3k5x-ada-4.0.0' from 'https://cache.nixos.org'...
+copying path '/nix/store/vd29sjk0bfwm2fygq5a9an70qd8hfnlb-stdenv-linux-no-cc' from 'https://cache.nixos.org'...
+copying path '/nix/store/p6qz7sbyrk15sq92zqad72xvq3lg2r5r-nodejs-slim-24.22.2' from 'https://cache.nixos.org'...
+copying path '/nix/store/gzy1fpimh039nvcajdvwm8vag8j57qd5-nodejs-slim-24.22.2-corepack' from 'https://cache.nixos.org'...
+copying path '/nix/store/8p3dzhn2dy0gx8dczp1n68g53nkxfkcb-nodejs-slim-24.22.2-npm' from 'https://cache.nixos.org'...
+building '/nix/store/7xgwf4aiyxck04mri4smsdjkk20sik62-nodejs-24.22.2.drv'...
+  ok   NIP-11: 200 with CORS
+  ok   NIP-11: the Rust relay's limits, NIPs 1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77
+  ok   NIP-11: shared event profile content limit is explicit
+  ok   NIP-11: reads open, writes need AUTH
+  ok   two WebSocket handshakes with the right Sec-WebSocket-Accept
+  ok   NIP-42: each connection gets its own 64-hex challenge first
+  ok   NIP-42: a write before AUTH gets auth-required
+  ok   NIP-42: reading needs no AUTH
+  ok   NIP-42: AUTH with a wrong challenge is refused
+  ok   NIP-42: AUTH with another relay is refused
+  ok   NIP-42: AUTH with created 601 s ago is refused
+  ok   NIP-42: AUTH with kind 1 is refused
+  ok   NIP-42: AUTH with two challenge tags is refused
+  ok   NIP-42: AUTH with a bad signature is refused
+  ok   NIP-42: AUTH with a wrong id is refused
+  ok   NIP-42: refused AUTH answers authenticate nothing
+  ok   NIP-42: the right answer (relay URL in another case, with a slash) gets OK true
+  ok   NIP-42: the AUTH event is not delivered to a kind 22242 subscription
+  ok   NIP-42: the same key again is still OK true
+  ok   NIP-42: a second key on one connection
+  ok   NIP-42: kind 22242 is never stored
+  ok   NIP-42: a new connection gets a new challenge
+  ok   NIP-42: an answer to another connection's challenge is refused
+  ok   NIP-42: a new connection is anonymous until it answers
+  ok   REQ on an empty relay: EOSE only
+  ok   publish a kind 1: OK true
+  ok   the open subscription gets it live, bytes as published
+  ok   the same event again: duplicate
+  ok   a bad signature: OK false invalid
+  ok   a changed content: id refused ['OK', 'a9cd7ee1973deb6c54a13bdd9db826d1b0b842526bf62f6e261803214c96dd50', False, 'invalid: event id does not match its content']
+  ok   refused events are not delivered
+  ok   kind 0: an older version after a newer one is superseded
+  ok   kind 0: only the newest is served
+  ok   addressable: the lower id at the same second replaces
+  ok   addressable: the retired id is a duplicate
+  ok   addressable: one version, the lowest id
+  ok   kinds 30621, 30623, 1621, 1630, 1633, 1111 accepted
+  ok   REQ a {"#a": ["30617:09af09af09af09af09af09af09af09af09af09af09af0
+  ok   REQ d {"kinds": [30621, 30623], "#d": ["coax"]}
+  ok   REQ e {"#e": ["111111111111111111111111111111111111111111111111111
+  ok   REQ E {"#E": ["222222222222222222222222222222222222222222222222222
+  ok   REQ q {"#q": ["333333333333333333333333333333333333333333333333333
+  ok   REQ pp {"#p": ["000000000000000000000000000000000000000000000000000
+  ok   REQ au {"authors": ["77796578aa567750a4bc5b9d246a1a6cac6cbd089a0a13
+  ok   REQ ids {"ids": ["ed9185be626b9279fb22c4b9b316c71339262cebe4a583eda7
+  ok   REQ lim {"kinds": [1630, 1633], "limit": 1}
+  ok   REQ zero {"kinds": [1], "limit": 0}
+  ok   REQ since {"kinds": [1], "since": 1794608476}
+  ok   REQ until {"kinds": [1], "until": 1794608475}
+  ok   an expired event is refused
+  ok   an event that expires in 8 s is accepted ['OK', 'af6e0e0cb7f9af841f441edf5adcfba6d427aa6e328df8063033946ee983b422', True, '']
+  ok   and served before it expires
+  ok   created_at 1000 s ahead is refused
+  ok   another live event
+  ok   after CLOSE nothing more arrives ['OK', '93c30bb1d41135271855a85e5cf6ebd654dd6a676124e0ba7fcf4f012593e5da', True, ''] None
+  ok   65-character sub id refused
+  ok   17 filters: CLOSED restricted
+  ok   an empty list: CLOSED invalid
+  ok   eight open filters: query cost
+  ok   #e not hex: CLOSED
+  ok   a 33rd subscription is refused
+  ok   reusing a sub id replaces it within the limit
+  ok   AUTH without a relay tag: refused
+  ok   kind 22242 cannot be published
+  ok   unknown verb: NOTICE
+  ok   ping: pong with the same payload
+  ok   binary: NOTICE
+  note session reached the expiry wait 3.0 s after start
+  ok   an expired event is no longer served
+  ok   a 131074-byte frame: close 1009 on its header
+  ok   close 1000 is answered
+  ok   NIP-09: AUTH for the deletion session
+  ok   NIP-09: publish to be deleted
+  ok   NIP-09: publish v1
+  ok   NIP-09: publish kept
+  ok   NIP-09: a kind 5 naming an e, an a and an unknown id is stored
+  ok   NIP-09: the e and a targets are no longer served; the other note is
+  ok   NIP-45: COUNT over two filters counts the one visible match once
+  ok   NIP-45: COUNT of the deletion requests
+  ok   NIP-45: a bad filter is CLOSED
+  ok   NIP-09: the deletion request itself is served
+  ok   NIP-09: the deleted event published again is refused
+  ok   NIP-09: a version of the address newer than the request is accepted
+  ok   NIP-62: an event by a second key
+  ok   NIP-62: a request naming another relay is stored
+  ok   NIP-62: and changes nothing here
+  ok   NIP-62: a request naming ALL_RELAYS is stored
+  ok   NIP-62: only the requests remain from that key
+  ok   NIP-62: its old event is refused
+  ok   NIP-70: AUTH as the first key
+  ok   NIP-70: another key's protected event is refused
+  ok   NIP-70: its own protected event is accepted
+  ok   NIP-70: after AUTH as the second key too, its protected event is accepted
+  ok   NIP-50: four events stored
+  ok   NIP-50: two whole-word matches, the one with two first; kind 4 and "zyxwvu" left out
+  ok   NIP-50: every term must match; the limit keeps the best
+  ok   NIP-50: a search that is not a string is CLOSED
+  ok   NIP-50: a live search subscription opens empty
+  ok   NIP-50: a second connection authenticates
+  ok   NIP-50: a later event is stored
+  ok   NIP-50: a later event is stored
+  ok   NIP-50: a later event is stored
+  ok   NIP-50: only the kind 1 event with both terms is delivered live
+  ok   NIP-94: signed file metadata passes the shared validator
+  ok   NIP-94: malformed file metadata is refused
+  ok   NIP-94: metadata is delivered unchanged
+  ok   NIP-65: signed relay-list updates are admitted
+  ok   NIP-65: only the newest relay list is delivered unchanged
+  ok   private writes: author AUTH
+  ok   private app data refuses another authenticated author
+  ok   private app data accepts its exact author
+  ok   artifacts require a curve recipient and NIP-44 v2 outer envelope
+  ok   run-head envelope accepts d before h
+  ok   NIP-77: 40 kind 9999 events stored
+  ok   NIP-77: after 1 rounds the client has the 5 the relay lacks and needs the 10 it lacks
+  ok   NIP-77: NEG-MSG after NEG-CLOSE is NEG-ERR closed
+  ok   NIP-77: the same 40 events agree in one round
+  ok   NIP-77: sync s2 opened
+  ok   NIP-77: sync s3 opened
+  ok   NIP-77: sync s4 opened
+  ok   NIP-77: sync s5 opened
+  ok   NIP-77: sync s2 opened
+  ok   NIP-77: a fifth sync is NEG-ERR blocked
+  ok   NIP-77: the limit is per connection
+  ok   NIP-77: after NEG-CLOSE a slot is free again
+  ok   NIP-77: a search filter is NEG-ERR invalid
+  ok   NIP-77: bad hex is NEG-ERR invalid
+  ok   NIP-77: and that sync is gone
+  ok   NIP-77: a message that is not Negentropy is NEG-ERR
+  ok   NIP-77: version 2 is answered with the version the relay speaks
+  ok   NIP-77: a message of 32768 bytes is read
+  ok   NIP-77: one of 32769 bytes is longer than a JSON string the relay reads: NOTICE
+  ok   NIP-77: a NEG-ERR from a client is a NOTICE
+  ok   NIP-77: the connection still serves REQ
+  ok   restart with --store: the same 67 events come back, in order
+  ok   restart with --store: the tombstones come back from the saved requests
+  ok   without --store the store is in memory: a new relay starts empty
+  ok   TLS: a zero rate limit refused at start ('relay: --rate needs three limits from 1 to 1000000')
+  ok   TLS: two rate limits refused at start ('relay: --rate takes EVENTS,REQS,KEY_EVENTS')
+  ok   rate: NIP-11 carries the configured limits
+  ok   rate: AUTH
+  ok   rate: two EVENTs from one key are accepted
+  ok   rate: the third from that key in a minute is refused
+  ok   rate: the connection has used its 3 EVENTs
+  ok   rate: another connection, another key: accepted
+  ok   rate: the key window holds across connections
+  ok   rate: the third REQ in a minute is CLOSED
+  ok   rate: without --rate, the Rust relay's 120, 120 and 60
+  ok   TLS: a difficulty over 256 refused at start ('relay: --pow needs 0 to 256 bits')
+  ok   pow: off by default, not in NIP-11
+  ok   pow: --pow 8 is advertised as min_pow_difficulty
+  ok   pow: --pow 8 lists NIP-13
+  ok   pow: AUTH
+  ok   pow: an event without a nonce is refused with pow: ('pow: difficulty 1 is less than 8')
+  ok   pow: a lucky id that commits to 4 is refused
+  ok   pow: 8 zero bits committing to 8 are accepted
+  ok   TLS: a short --admin key refused at start ('relay: --admin needs a 64-digit hex public key')
+  ok   TLS: a non-hex --admin key refused at start ('relay: --admin needs a 64-digit hex public key')
+  ok   NIP-86: without --admin a POST is a 400 and NIP-11 lists no 86
+  ok   NIP-86: with --admin NIP-11 lists 86
+  ok   NIP-86: supportedmethods from the admin key
+  ok   NIP-86: another key is 403
+  ok   NIP-86: a NIP-98 event for another URL is 401 ({'result': None, 'error': 'unauthorized: the u tag is not this URL'})
+  ok   NIP-86: no payload tag is 401
+  ok   NIP-86: another Content-Type is 415
+  ok   NIP-86: a NIP-98 event is good once
+  ok   NIP-86: a body over 4096 bytes is 413
+  ok   NIP-86: a bad Content-Length is 400
+  ok   NIP-86: the other key publishes before any ban
+  ok   NIP-86: banpubkey
+  ok   NIP-86: a banned key is refused
+  ok   NIP-86: listbannedpubkeys
+  ok   NIP-86: a disallowed kind is refused, others pass
+  ok   NIP-86: after unbanpubkey the key publishes again
+  ok   NIP-86: with an allow list only its keys publish
+  ok   NIP-86: an unknown method is 400
+  ok   NIP-29: a keyless group relay does not advertise signed state
+  ok   NIP-29: AUTH
+  ok   NIP-29: a create-group is stored
+  ok   NIP-29: its creator posts to it
+  ok   NIP-29: a second create of g1 is refused
+  ok   NIP-29: a 39000 not from the relay is refused
+  ok   NIP-29: a post to a group that does not exist is refused
+  ok   NIP-29: an event without an h tag is not the groups' business
+  ok   NIP-29: another key joins the open group
+  ok   NIP-29: and cannot join twice
+  ok   NIP-29: a plain member cannot put a user
+  ok   NIP-29: the new member posts
+  ok   owned 0400 key exposes only its public identity
+  ok   owned 0600 key exposes only its public identity
+  ok   keyed relay advertises its actual signing identity and NIP-29
+  ok   private writes: author AUTH
+  ok   private app data refuses another authenticated author
+  ok   private app data accepts its exact author
+  ok   artifacts require a curve recipient and NIP-44 v2 outer envelope
+  ok   run-head envelope accepts d before h
+  ok   keyed groups: two independent authenticated members
+  ok   private hidden group created with its flags applied immediately
+  ok   all four group snapshots independently verify with Noble
+  ok   hidden state is absent for anonymous and nonmember readers
+  ok   admin adds second member
+  ok   current member reads private history
+  ok   anonymous reader cannot fetch private messages
+  ok   moderator deletes another author in the same group
+  ok   scoped moderation removes history and prevents resurrection
+  ok   admin removes second member
+  ok   removed member loses stored access immediately
+  ok   COUNT observes current private-group membership
+  ok   restart rebuilds membership and cross-author deletion tombstones
+  ok   admin deletes group
+  ok   deleted group history and state are hidden even from former members
+  ok   deleted group identifier cannot expose old history through reuse
+  ok   relay key refuses short without replacement
+  ok   relay key refuses long without replacement
+  ok   relay key refuses zero without replacement
+  ok   relay key refuses order without replacement
+  ok   relay key refuses public without replacement
+  ok   relay key refuses symlink without blocking
+  ok   relay key refuses fifo without blocking
+  ok   NIP-11 lists all eleven configured Block roles
+  ok   NIP-AA: direct authentication accepts the independently signed owner attestation
+  ok   NIP-AM: authenticated agent publishes metrics under its proved owner
+  ok   NIP-AM: an unrelated recipient is not an owner
+  ok   NIP-AM: only the authenticated owner reads the retained metric
+  ok   NIP-AM: unrelated private readers see no metric
+  ok   NIP-OA: the original signed profile retains a standing owner proof
+  ok   NIP-AO: telemetry routes from the proved agent to its owner
+  ok   NIP-AO: control routes from owner to agent
+  ok   NIP-AO: no observer frame enters persistent history
+  ok   NIP-AE: encrypted engram envelope admitted
+  ok   NIP-AE: malformed blinded coordinate refused
+  ok   NIP-AE: authenticated owner reads the original ciphertext
+  ok   NIP-AP: shared persona definition admitted
+  ok   NIP-AP: malformed persona coordinate refused
+  ok   NIP-AP: team catalog admitted
+  ok   NIP-MP: repository grouping admitted without granting repository authority
+  ok   NIP-MP: duplicate repository member refused
+  ok   NIP-MP: 64 independently signed repository members obey the bound
+  ok   NIP-MP: 65 independently signed repository members obey the bound
+  ok   NIP-RS: author writes three private read-state coordinates
+  ok   NIP-RS: capped enumeration is a newest-first prefix with floor two
+  ok   NIP-ER: future reminder accepted without early delivery
+  ok   NIP-ER: future reminder delivered when due on the open subscription
+  ok   NIP-DV: typed private DM and active membership established
+  ok   NIP-DV: viewer hides its own DM without leaving
+  ok   NIP-DV: relay signs an owner-scoped visibility snapshot
+  ok   NIP-DV: a nonmember cannot change visibility
+  ok   NIP-IA: owner archives its agent using the current signed standing proof
+  ok   NIP-IA: relay-signed public archived set includes the agent
+  ok   NIP-IA: an unrelated actor cannot unarchive the agent
+  ok   NIP-IA: restart reconstructs only relay-signed archival decisions
+  ok   NIP-DV: restart retains the viewer visibility snapshot
+  ok   NIP-IA: a non-banned identity can self-unarchive
+  ok   NIP-DV: viewer reopens its active DM after restart
+  ok   NIP-DV: replacement snapshot clears the hidden set
+  ok   persistence: no FILE.nip86 before the first policy change
+  ok   persistence: banpubkey and disallowkind
+  ok   persistence: both changes are framed in FILE.nip86 (0600), 153 bytes
+  ok   persistence: a listing is not saved
+  ok   persistence: a group is created, posted to and joined
+  ok   persistence: the restart replays the journal and rebuilds the groups (['relay: replayed 3 saved events: 3 stored, 0 duplicates or replaced', 'relay: replayed 2 policy changes', 'relay: rebuilt groups from 3 stored group events (3 changed a group)'])
+  ok   persistence: the ban survives the restart
+  ok   persistence: the banned key is still refused
+  ok   persistence: the disallowed kind is still refused
+  ok   persistence: the group survives: a second create is refused
+  ok   persistence: its member survives
+  ok   persistence: the member and the creator post after the restart
+  ok   persistence: a torn last journal record is cut (['relay: replayed 5 saved events: 5 stored, 0 duplicates or replaced', 'relay: replayed 2 policy changes, a partial last write cut', 'relay: rebuilt groups from 5 stored group events (5 changed a group)'])
+  ok   persistence: the ban survives the cut
+  ok   persistence: a whole journal record the relay would not have saved refuses to start, the file unchanged
+  ok   checkpoint: a first start with empty files (['relay: tombstones: room for 8192 (0 the input can ask for, 8192 more), 3200 KiB'])
+  ok   checkpoint: an event is stored
+  ok   checkpoint: a NIP-86 change is saved
+  ok   checkpoint: it names both files, sizes and SHA-256, after each commit ('coax-relay-fresh 1 000000000000000358 4c27582f011283411ed337')
+  ok   checkpoint: the restart is fresh (['relay: tombstones: room for 8192 (0 the input can ask for, 8192 more), 3200 KiB'])
+  ok   checkpoint: an emptied policy journal (the ban rolled back) refuses to start ('relay: tombstones: room for 8192 (0 the input can ask for, 8192 more), 3200 KiB\nrelay: checkpoint: store 358 of 358 byte')
+  ok   checkpoint: the journal put back starts fresh again
+  ok   connections: seventeenth from the same socket address is refused
+  ok   connections: another address retains access while the first is capped
+  ok   NIP-67: a complete empty history carries finish
+  ok   NIP-67: a capped history makes no completeness claim
+  ok   connections: closing a socket releases its address quota
+  ok   compaction: drops expired ordinary bytes and preserves expired replacement heads and deletion history
+  ok   compaction: copies the policy journal exactly
+  ok   compaction: source generation remains unchanged
+  ok   compaction: candidate passes full replay and gets its own checkpoint
+  ok   compaction: refuses to overwrite an existing candidate
+  ok   maintenance: original generation has a trusted checkpoint
+  ok   maintenance: verifies both generations and atomically selects the candidate: relay maintenance: selected verified generation; previous generation retained
+
+  ok   maintenance: compacted store selected and previous checkpoint retained
+  ok   maintenance: next generation 1 verified
+  ok   maintenance: next generation 2 verified
+  ok   maintenance: keeps current, previous and legacy initial; prunes older numeric generations
+  ok   maintenance: damaged checkpoint-covered input leaves the current pointer unchanged
+  ok   TLS: a group- or world-readable key (0644) refused at start ('relay: the --tls-key file must be a regular file owned by this user with mode 0600 or 0400')
+  ok   TLS: a key path that is a symbolic link refused at start ('relay: the --tls-key file must be a regular file owned by this user with mode 0600 or 0400')
+  ok   TLS: a key that is not the certificate's refused at start ("relay: cannot read the --tls-key file, or it is not the certificate's key")
+  ok   TLS: a certificate without a key refused at start ('relay: --tls-cert and --tls-key go together')
+  ok   TLS: a ws:// --url on a TLS relay refused at start ('relay: NIP-42 needs a ws:// (wss:// with TLS) relay URL without brackets: pass --url')
+  ok   TLS: a client that trusts another CA refuses the relay (certificate verify failed)
+  ok   TLS: a client that expects another name refuses the relay (hostname mismatch)
+  ok   TLS: a plaintext client on the TLS port is closed without an answer
+  ok   TLS: with two stalled handshakes open, another client connects, gets its challenge and REQ to EOSE in 0.00 s
+  ok   TLS: the stalled handshakes are closed after the 10 s handshake limit (10.0 s)
+  ok   TLS: the relay still serves after the refused and timed-out connections
+  ok   TLS: SIGHUP reports a successful reload
+  ok   TLS: new connections receive the renewed certificate
+  ok   TLS: an existing WebSocket survives the certificate reload
+  ok   TLS: a malformed replacement reports failure
+  ok   TLS: a failed reload retains the last good certificate
+  ok   no sanitizer report
+relay_session: ok

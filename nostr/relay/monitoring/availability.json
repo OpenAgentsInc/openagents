@@ -1,0 +1,40 @@
+{
+  "displayName": "Coax relay: NIP-11 or TLS unavailable",
+  "combiner": "OR",
+  "enabled": true,
+  "severity": "ERROR",
+  "notificationChannels": [
+    "projects/openagentsgemini/notificationChannels/14067723742793378411"
+  ],
+  "documentation": {
+    "content": "The public HTTPS NIP-11 check has failed for two minutes. Check nostr-relay.service on oa-relay-1, its certificate, and the checkpoint/replay logs. Run nostr/relay/vm.sh status and logs. Preserve the store and checkpoint. #13382.",
+    "mimeType": "text/markdown"
+  },
+  "userLabels": {
+    "service": "coax-relay",
+    "issue": "13382"
+  },
+  "conditions": [
+    {
+      "displayName": "Coax relay: NIP-11 or TLS unavailable",
+      "conditionThreshold": {
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND metric.label.check_id=\"coax-relay-nip-11-and-tls-fYNYUFRBICs\"",
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 1,
+        "duration": "120s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "perSeriesAligner": "ALIGN_NEXT_OLDER"
+          }
+        ],
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "alertStrategy": {
+    "autoClose": "86400s"
+  }
+}

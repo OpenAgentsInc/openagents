@@ -52,6 +52,26 @@ NFC_STALE :: 4;     // a file was rolled back: refuse
 NFC_FORK :: 5;      // a file was forked: refuse
 NFC_BAD :: 6;       // the checkpoint can't be read: refuse
 
+#test "only whole frames inside a checked immutable prefix reuse verification" {
+  #assert nfc_frame_verified(100, 0, 4, 100, 120);
+  #assert nfc_frame_verified(100, 0, 4, 100, 100);
+  #assert nfc_frame_verified(100, 40, 44, 99, 120);
+  #assert !nfc_frame_verified(100, 40, 44, 101, 120);
+  #assert !nfc_frame_verified(100, 100, 104, 110, 120);
+  #assert !nfc_frame_verified(0, 0, 4, 10, 120);
+  #assert !nfc_frame_verified(-1, 0, 4, 10, 120);
+  #assert !nfc_frame_verified(121, 0, 4, 10, 120);
+  #assert !nfc_frame_verified(100, -1, 3, 10, 120);
+  #assert !nfc_frame_verified(100, 0, 5, 10, 120);
+  #assert !nfc_frame_verified(100, 0, 4, 4, 120);
+}
+// Not an authorization token: frontier must come from a successful digest
+// comparison of the still-locked exact store prefix, never a size flag or
+// unvalidated checkpoint. All parsing, ID and store rules still run.
+nfc_frame_verified :: (frontier: int, at: int, from: int, to: int, total: int) -> bool #effects(all) {
+  return frontier <= total && at >= 0 && from - at == 4 && to > from && to <= frontier;
+}
+
 // ---- test helpers ------------------------------------------------------------
 
 nfc_t_point :: (size: int, b: u8) -> NfcPoint #effects(all) { p: NfcPoint; p.size = size; for k: 0..<32 { p.digest[k] = b; } p.digest[31] = cast(u8) (b + 1); return p; }

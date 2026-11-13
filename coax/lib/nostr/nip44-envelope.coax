@@ -1,0 +1,25 @@
+// The Rust relay's bounded NIP-44 v2 outer-envelope profile. This validates
+// syntax/version/size only; it neither decrypts nor authenticates ciphertext.
+// Preserve its legacy padding-bit behavior through the shared base64 reader.
+#load "base64.coax";
+#authority;
+#forall "the envelope carries exactly version two" version: 0..<256 {
+  raw: [99] u8; raw[0] = cast(u8) version; text: [132] u8;
+  r := base64_encode_checked(cast(string) raw[..],text[..],false);
+  #assert r.error == NC_OK && n44_v2_content(cast(string) text[..]) == (version == 2);
+}
+#test "the relay's exact content length limits and decoded minimum" {
+  text: [87476] u8; for i: 0..<text.count { text[i] = 'A'; } text[1] = 'g';
+  #assert !n44_v2_content(cast(string) text[0..<128]) && n44_v2_content(cast(string) text[0..<132]);
+  #assert n44_v2_content(cast(string) text[0..<87472]) && !n44_v2_content(cast(string) text[..]);
+  #assert !n44_v2_content(cast(string) text[0..<133]);
+  text[131] = '='; #assert !n44_v2_content(cast(string) text[0..<132]);
+  text[131] = 'A'; text[5] = '!'; #assert !n44_v2_content(cast(string) text[0..<132]);
+}
+n44_v2_content :: (content: string) -> bool #effects(all) {
+  // Bound complete base64 quartets; the shared decoder owns partial
+  // quartet refusal, padding and the decoded minimum.
+  if content.count / 4 > 21868 { return false; }
+  if base64_envelope_size(content) < 99 { return false; }
+  return content[0]=='A' && (base64_digit(content[1]) >> 4)==2;
+}

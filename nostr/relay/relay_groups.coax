@@ -1,0 +1,61 @@
+// NIP-29 effects over the shared group policy, event signer and store.
+// Controls commit before state changes or relay-authored publications.
+ry_group_sync :: (w: [] RyWork, store: [] RdStore) {
+  for i: 0..<RR_GROUPS {
+    g:=w[0].groups[i];
+    for m: 0..<g.n { for b: 0..<32 { w[0].group_readers[(i*G29_MAX_MEMBERS+m)*32+b]=g.members[m].key[b]; } }
+    w[0].group_acl[i]=NgGroup.{id=cast(string) w[0].groups[i].id.b[0..<g.id.n],is_private=g.is_private,hidden=g.hidden,
+      deleted=!g.exists && g.id.n>0,members=w[0].group_readers[i*G29_MAX_MEMBERS*32..<(i*G29_MAX_MEMBERS+g.n)*32]};
+  }
+  if w[0].groups_on { store[0].s[0].groups=w[0].group_acl[..]; w[0].search[0].groups=w[0].group_acl[..]; }
+}
+ry_group_deleted_event :: (w: [] RyWork, store: [] RdStore, e: NostrEvent, authorized: bool) -> bool {
+  if e.kind!=G29_DELETE_EVENT { return true; }
+  r:=g29_read(e); tomb: [1] NsdTomb; name:=r.h;
+  if !nsd_group_tomb(authorized && e.verified && r.status==G29_OK && r.has_h && r.has_e,e.kind,cast(string) name.b[0..<name.n],e.public_key,r.e,tomb[..]) { return false; }
+  retired:=nsd_apply(store[0].s[..],store[0].tb[..],tomb[0]); store[0].ix[0].ok=false;
+  return retired>=0;
+}
+ry_group_clocks :: (w: [] RyWork, store: [] RdStore) {
+  for i: 0..<store[0].s[0].n {
+    rec:=store[0].s[0].recs[i];
+    if rec.kind<G29_METADATA || rec.kind>G29_ROLES || !ns_equal32(rec.author,w[0].relay_public) { continue; }
+    for g: 0..<RR_GROUPS {
+      id:=w[0].groups[g].id;
+      if rec.d_n==id.n && cast(string) rec.d[0..<rec.d_n]==cast(string) id.b[0..<id.n] && rec.created>w[0].group_clock[g] { w[0].group_clock[g]=rec.created; }
+    }
+  }
+}
+ry_group_publish :: (conns: [] RyConn, w: [] RyWork, store: [] RdStore, slot: int, now: int) -> bool {
+  if !w[0].key_on || !w[0].groups[slot].exists { return true; }
+  at:=rk_state_time(w[0].group_clock[slot],now); if at<0 { return false; }
+  for which: 0..<4 {
+    tags: [8192] u8; n: int;
+    if which==0 { n=cl_write_metadata(w[0].groups[slot],w[0].channels[slot],tags[..]); }
+    else if which==1 { n=g29_write_admins(w[0].groups[slot],w[0].relay_public,tags[..]); }
+    else if which==2 { n=g29_write_members(w[0].groups[slot],tags[..]); }
+    else { n=g29_write_roles(w[0].groups[slot],tags[..]); }
+    if n<0 { return false; }
+    aux: [32] u8; defer { secure_zero(aux[..]); #assert crypto_zeroed(aux[..]); }
+    for i: 0..<32 { byte:=ry_host_random(); if byte<0 { return false; } aux[i]=cast(u8) byte; }
+    event: [16384] u8;
+    length:=rk_sign(w[0].relay_key[..],aux[..],at,G29_METADATA+which,tags[0..<n],w[0].scratch[..],event[..]);
+    if length<1 { return false; }
+    original:=cast(string) event[0..<length];
+    admitted:=rs_admit_read(original,at,false,true,w[0].scratch[..]);
+    admitted=rs_admit_verified(admitted,ne_signed_fast(admitted.e));
+    if admitted.reason!=RS_ACCEPT || !rr_fanout(rd_admit(store,admitted,original)) { return false; }
+    if store[0].saved { ry_fresh_grew(w[0].fresh[..],RY_STORE_FILE,cxstore_size(),original); }
+    ry_fanout(conns,w,admitted.e);
+  }
+  w[0].group_clock[slot]=at; return true;
+}
+// The relay identity is public; append it outside the limitation object.
+ry_key_document :: (base: string, public_key: [] u8, out: [] u8) -> int {
+  hex: [64] u8; encoded:=hex_encode_checked(cast(string) public_key,hex[..],false);
+  if encoded.error!=NC_OK || base.count<1 { return -1; }
+  n:=json_raw(out,0,base[0..<base.count-1]);
+  n=json_raw(out,n,",\"pubkey\":"); n=json_write_string(out,n,cast(string) hex[..]);
+  n=json_raw(out,n,",\"self\":"); n=json_write_string(out,n,cast(string) hex[..]);
+  return json_raw(out,n,"}");
+}

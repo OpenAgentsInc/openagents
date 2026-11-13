@@ -1,0 +1,19 @@
+// Unicode White_Space, shared by text and outer-envelope policies.
+// No locale, trimming allocation or second UTF-8 decoder.
+// coax test components/core/space.coax --library
+#authority;
+#forall "Unicode White_Space is its twenty-five scalar values" code:0..<0x3101 {
+  expected:=false;
+  for c:[25]int.[9,10,11,12,13,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288] {if code==c {expected=true;}}
+  #assert rune_white_space(cast(u32)code)==expected;
+}
+#test "BOM and high Unicode scalars are not whitespace" {#assert !rune_white_space(0xfeff) && !rune_white_space(0x10ffff);}
+rune_white_space :: (c: u32) -> bool #effects(all) {
+  return (c >= 9 && c <= 13) || c == 32 || c == 0x85 || c == 0xa0 || c == 0x1680 ||
+    (c >= 0x2000 && c <= 0x200a) || c == 0x2028 || c == 0x2029 || c == 0x202f || c == 0x205f || c == 0x3000;
+}
+
+#forall "C0 and C1 controls exclude adjacent whitespace scalars" code:0..<162 {
+  #assert rune_control(cast(u32)code)==((code>=0 && code<32) || (code>126 && code<160));
+}
+rune_control :: (c:u32) -> bool #effects(all) {return c<32 || (c>=127 && c<=159);}

@@ -1,0 +1,17 @@
+compaction 95931 ms; bytes 121714373 -> 112742351
+old checkpoint before: 396278 nostr-relay 600; after: 396278 nostr-relay 600
+/var/lib/nostr-relay-cp/generations/1794609475
+Result=success
+ExecMainStatus=0
+Nov 13 22:30:45 oa-relay-1 systemd[1]: Starting oa-relay-compact.service - Compact expired Coax relay events into a checked generation...
+Nov 13 22:30:54 oa-relay-1 maintain[89253]: relay maintenance: command failed; current generation retained
+Nov 13 22:30:54 oa-relay-1 systemd[1]: oa-relay-compact.service: Main process exited, code=exited, status=3/NOTIMPLEMENTED
+Nov 13 22:30:54 oa-relay-1 systemd[1]: oa-relay-compact.service: Failed with result 'exit-code'.
+Nov 13 22:30:54 oa-relay-1 systemd[1]: Failed to start oa-relay-compact.service - Compact expired Coax relay events into a checked generation.
+Nov 13 22:30:54 oa-relay-1 systemd[1]: oa-relay-compact.service: Consumed 9.303s CPU time.
+Nov 13 22:37:55 oa-relay-1 systemd[1]: Starting oa-relay-compact.service - Compact expired Coax relay events into a checked generation...
+Nov 13 22:39:31 oa-relay-1 maintain[89735]: relay maintenance: selected verified generation; previous generation retained
+Nov 13 22:39:31 oa-relay-1 maintain[89735]: relay maintenance: served-set digest ea15bf7f8d186aa01cc777362f7502909e6e5bef33673e09a080ab7843243bc5 unchanged at 1794609475
+Nov 13 22:39:31 oa-relay-1 systemd[1]: oa-relay-compact.service: Deactivated successfully.
+Nov 13 22:39:31 oa-relay-1 systemd[1]: Finished oa-relay-compact.service - Compact expired Coax relay events into a checked generation.
+Nov 13 22:39:31 oa-relay-1 systemd[1]: oa-relay-compact.service: Consumed 1min 34.434s CPU time.

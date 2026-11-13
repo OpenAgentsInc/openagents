@@ -232,12 +232,14 @@ unless it says otherwise:
       only exactly `["shared","true"]` live; 39604 to 39613, 39620 and 39650
       are never served from history but are delivered live. Keep them, or
       align them (say which way)?
-   c. **Writes of the private kinds** keep the Coax relay's rules: the Rust
+   c. **Writes of the private kinds — approved 2026-11-13.** The owner
+      answered “Approve both” to porting these checks and the file-backed
+      relay signing key in the #13382/#13454 chat. The Rust
       relay also refuses kind 78 and 30078 from a connection not
       authenticated as their author, the relay-only Block kinds, malformed
       run, artifact and private-policy envelopes, and a 3188 whose content
-      isn't NIP-44 v2 or whose `p` isn't a point. Port those write checks
-      too? Reads never depend on them.
+      isn't NIP-44 v2 or whose `p` isn't a point. These write checks are
+      being ported under #13382. Reads never depend on them.
 2. **Advertisement.** Rust advertises 17, 59, 65, 67, 94 and 98, which the
    Coax relay doesn't. For each: wire it before cutover, or drop it from
    the advertisement. Nothing was changed.
@@ -617,14 +619,15 @@ Details: `docs/verification/2026-11-01-nostr-book-chapters-11-104.md`.
    `b01de252f7`), then re-pin the OpenAgents NIP folder digest in
    `coax/tests/nostr/profiles.py` (now `fb7563e7…`, pinned `2fb1f51f…`).
    Its pin test fails until then.
-4. **May the Coax relay hold a signing key?** NIP-43 (13534, 8000, 8001)
+4. **File-backed Coax relay signing key — approved 2026-11-13.** The owner
+   answered “Approve both” in the #13382/#13454 chat, authorizing the
+   file-backed relay key and private-kind write checks. NIP-43 (13534, 8000, 8001)
    and NIP-29's relay-signed group state (39000 to 39003) need the relay
    to sign with its own key, loaded from a file. This is the same question
    as "Real Pylon keys: your sign-off" below: the signer audit is not
-   approval to hold a real key, and safe key-file reading isn't built.
-   Until you decide, the relay has no key, signs nothing, and refuses
-   every 39000 to 39005 event. Say yes or no here; nothing is built until
-   then.
+   approval to hold a real key. The implementation must admit only an
+   owner-only regular key file and erase the authored signing workspace.
+   This approval does not authorize retirement of the Rust fallback.
 5. **Presence frames against the relay's rate limit (#12630).** Two Metaverse
    clients exchanged signed NIP-MV pose frames (kind 23300) through a local
    Coax relay with test keys: every frame arrived, in order, median 5 ms
@@ -1228,3 +1231,23 @@ The Mac was not available to the agent:
       responses; live natural-language interpretation quality is unqualified.
       Use the private `anim_direct_oracle.py --live` flow documented in
       `docs/verification/animation-lab-a7-2026-11-07/README.md`.
+
+## Relay fallback retirement and optional admin role (#13382, 2026-11-13)
+
+The file-backed signing key and private-kind writes were approved in this
+chat and are deployed with the existing relay identity. The Coax relay's
+public WSS/NIP-11 checks and eleven extensions pass. See
+[the rollout record](docs/verification/2026-11-13-relay-followups/README.md).
+
+Pending the owner's explicit yes by name, retain Cloud Run
+`openagents-nostr-relay` in `us-central1`, database `nostr_relay_v2` in
+Cloud SQL `khala-sync-pg`, and its three cutover backups `1794510495518`,
+`1794519112832`, `1794523583705`. A read-only metadata check at
+2026-11-13 22:14 UTC found the last received event at
+2026-11-12 21:47:46 UTC and no rows after the final cutover backup. Recheck
+before deleting. No retirement or backup deletion is authorized by the
+approval of the signing key and write checks.
+
+NIP-86/98 is wired and tested but needs an explicitly designated admin
+Nostr public key to be enabled in production. The former relay configured
+none. The production endpoint remains disabled pending that optional key.

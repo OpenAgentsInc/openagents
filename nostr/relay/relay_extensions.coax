@@ -1,0 +1,137 @@
+// Host orchestration for Block's extensions. Shared NIP modules own every
+// credential, route and consent decision. No decrypted payload is inspected.
+#load "../../coax/lib/nostr/nipoa.coax";
+#load "../../coax/lib/nostr/nipaa.coax";
+#load "../../coax/lib/nostr/nipao.coax";
+#load "../../coax/lib/nostr/nipam.coax";
+#load "../../coax/lib/nostr/nipia.coax";
+#load "../../coax/lib/nostr/nipdv.coax";
+#load "../../coax/lib/nostr/nipcl.coax";
+#load "relay_extension_policy.coax";
+// This relay has open membership. NIP-AA's direct-auth path remains NIP-42;
+// an optional valid owner attestation records only this connection's pair.
+// It does not add the owner to readers or grant membership/admin privileges.
+rx_auth :: (c:[]RyConn,e:NostrEvent,now:int) {
+  claim:=rx_credential(e,now);
+  if claim.status!=NOA_OK {return;}
+  for i:0..<c[0].auth[0].n {
+    if ns_equal32(e.public_key,rx_auth_key(c[0].auth[0],i)) {c[0].owners[i]=RxOwner.{agent=e.public_key,owner=claim.owner,valid=true};return;}
+  }
+}
+rx_auth_key :: (a:RrAuth,i:int) -> [32]u8 {key:[32]u8;for j:0..<32 {key[j]=a.keys[32*i+j];}return key;}
+// A current connection credential or the agent's current signed kind-0
+// standing proof. Both retain their agent identity; neither changes read scope.
+rx_owned :: (conns:[]RyConn,store:[]RdStore,agent:[32]u8,owner:[32]u8) -> bool {
+  for c:conns {if c.h<0 || !c.ws {continue;}for claim:c.owners {
+    if rx_pair(claim,agent,owner) {return true;}
+  }}
+  for i:0..<store[0].s[0].n {
+    rec:=store[0].s[0].recs[i];
+    if rec.live && rec.kind==0 && ns_equal32(rec.author,agent) && ia_profile(rsd_event(store[0].s[..],i),agent,owner) {return true;}
+  }
+  return false;
+}
+rx_profile :: (store:[]RdStore,key:[32]u8,out:[]NostrEvent) -> int {
+  for i:0..<store[0].s[0].n {rec:=store[0].s[0].recs[i];if rec.live && rec.kind==0 && ns_equal32(rec.author,key) {out[0]=rsd_event(store[0].s[..],i);return 1;}}
+  return 0;
+}
+rx_observer :: (conns:[]RyConn,c:[]RyConn,w:[]RyWork,store:[]RdStore,e:NostrEvent,now:int) -> int {
+  if !rp_has(ry_readers(c[0].auth[..]),e.public_key) {return 2;}
+  tags:=nt_event_of(e);agent:[32]u8;recipient:[32]u8;
+  if !am_key(tags,"agent",agent[..]) || !am_key(tags,"p",recipient[..]) {return 1;}
+  cipher:[65536]u8;n:=json_unescape(e.original[e.content_from..<e.content_to],cipher[..]);
+  if n<0 || !n44_v2_content(cast(string)cipher[0..<n]) {return 1;}
+  owner:=ifx ns_equal32(e.public_key,agent) then recipient else e.public_key;
+  if ns_equal32(owner,agent) || !rx_owned(conns,store,agent,owner) {return 3;}
+  ah:[64]u8;oh:[64]u8;an:=hex_encode_checked(cast(string)agent[..],ah[..],false);on:=hex_encode_checked(cast(string)owner[..],oh[..],false);
+  if an.error!=NC_OK || on.error!=NC_OK {return 1;}
+  pairs:=[1]AoPair.[AoPair.{agent=cast(string)ah[..],owner=cast(string)oh[..]}];
+  frame:=ao_check(e,e.original,pairs[..],now);
+  if frame.error==AO_DROP {return 4;}if frame.error!=AO_FANOUT {return 1;}
+  // Reuse the shared fixed-window limiter with seconds scaled to its
+  // 60-unit window: this gives the NIP-AO 100-per-second IP and agent gates.
+  ip:[32]u8;for i:0..<RC_ADDRESS_BYTES {ip[i]=c[0].peer[i];}
+  scaled:=now*RT_WINDOW;
+  a:=rt_key_slot(w[0].observer_agents[..],agent[..],scaled);p:=rt_key_slot(w[0].observer_ips[..],ip[..],scaled);
+  if a<0 || p<0 || !rt_take(w[0].observer_agents[0].w[a..<a+1],100,scaled) || !rt_take(w[0].observer_ips[0].w[p..<p+1],100,scaled) {return 5;}
+  return 0;
+}
+// Publish a relay decision only after a complete signature has been verified.
+// The durable original is committed before any state projection or delivery.
+rx_publish :: (conns:[]RyConn,w:[]RyWork,store:[]RdStore,kind:int,tags:[]u8,now:int) -> bool {
+  aux:[32]u8;defer {secure_zero(aux[..]);#assert crypto_zeroed(aux[..]);}
+  for i:0..<32 {b:=ry_host_random();if b<0 {return false;}aux[i]=cast(u8)b;}
+  event:[RY_OUT]u8;n:=rk_sign(w[0].relay_key[..],aux[..],now,kind,tags,w[0].scratch[..],event[..]);
+  if n<1 {return false;}
+  original:=cast(string)event[0..<n];admitted:=rs_admit_read(original,now,false,true,w[0].scratch[..]);
+  admitted=rs_admit_verified(admitted,ne_signed_fast(admitted.e));
+  if admitted.reason!=RS_ACCEPT {return false;}
+  result:=rd_admit(store,admitted,original);
+  if !rr_fanout(result) {return false;}
+  if store[0].saved {ry_fresh_grew(w[0].fresh[..],RY_STORE_FILE,cxstore_size(),original);}
+  ry_fanout(conns,w,admitted.e);return true;
+}
+rx_archive_prepare :: (w:[]RyWork,store:[]RdStore,e:NostrEvent,now:int) -> IaRequest {
+  target:=ia_read(e);profile:[1]NostrEvent;n:=rx_profile(store,target.target,profile[..]);p:=w[0].admin[0];
+  return ia_decide(e,now,p.admins[0..<p.admins_n],n86_find(p.banned,target.target)>=0,profile[0..<n]);
+}
+// Replay the relay's signed decisions, rather than re-authorizing an old
+// request against today's admins, bans, owner profiles or clock.
+rx_replay :: (w:[]RyWork,store:[]RdStore) -> bool {
+  if !w[0].key_on {return true;}
+  for i:0..<store[0].s[0].n {
+    e:=rsd_event(store[0].s[..],i);
+    if !ns_equal32(e.public_key,w[0].relay_public) {continue;}
+    if (e.kind==8002 || e.kind==8003 || e.kind==13535 || e.kind==30622) && e.created_at>w[0].extension_clock {w[0].extension_clock=e.created_at;}
+    if e.kind==8002 || e.kind==8003 {
+      request:=rx_archive_delta(e,w[0].relay_public);result:=ia_apply(w[0].archived[..],request);
+      if result!=IA_OK && result!=IA_SAME {return false;}
+    }
+    if e.kind==39000 && w[0].groups_on {
+      channel:=cl_read(e,w[0].relay_public);
+      if channel.status!=CL_OK {continue;}
+      for g:0..<RR_GROUPS {if g29_same(w[0].groups[g].id,channel.id) {w[0].channels[g]=channel;}}
+    }
+  }
+  return true;
+}
+rx_archive_publish :: (conns:[]RyConn,w:[]RyWork,store:[]RdStore,request:IaRequest,now:int) -> bool {
+  next:[1]IaState;next[0]=w[0].archived[0];result:=ia_apply(next[..],request);
+  if result==IA_SAME {return true;}if result!=IA_OK {return false;}
+  at:=rk_state_time(w[0].extension_clock,now);if at<0 {return false;}
+  tags:[8192]u8;n:=ia_delta(request,tags[..]);
+  if n<0 || !rx_publish(conns,w,store,ifx request.archive then IA_ARCHIVED else IA_UNARCHIVED,tags[0..<n],at) {return false;}
+  w[0].archived[0]=next[0];w[0].extension_clock=at;
+  n=ia_snapshot(next[0],tags[..]);
+  return n>=0 && rx_publish(conns,w,store,IA_LIST,tags[0..<n],at);
+}
+rx_archive_snapshot :: (conns:[]RyConn,w:[]RyWork,store:[]RdStore,now:int) -> bool {
+  at:=rk_state_time(w[0].extension_clock,now);if at<0 {return false;}
+  tags:[8192]u8;n:=ia_snapshot(w[0].archived[0],tags[..]);
+  if n<0 || !rx_publish(conns,w,store,IA_LIST,tags[0..<n],at) {return false;}
+  w[0].extension_clock=at;return true;
+}
+rx_dm_prepare :: (w:[]RyWork,store:[]RdStore,e:NostrEvent,out:[]DvMember) -> int {
+  request:=g29_read(e);if request.status!=G29_OK || !request.has_h {return DV_SHAPE;}
+  hidden:[DV_MAX_HIDDEN]G29Name;held:=0;
+  for i:0..<store[0].s[0].n {
+    rec:=store[0].s[0].recs[i];if !rec.live || rec.kind!=DV_SNAPSHOT || !ns_equal32(rec.author,w[0].relay_public) {continue;}
+    snapshot:=rsd_event(store[0].s[..],i);text:[64]u8;key:[32]u8;n:=nb_one(nt_event_of(snapshot),"d",text[..]);
+    if n!=64 || !ne_lower_hex(cast(string)text[..],key[..]) || !ns_equal32(key,e.public_key) {continue;}
+    held=dv_hidden(snapshot,w[0].relay_public,e.public_key,hidden[..]);if held<0 {return DV_SHAPE;}
+  }
+  for i:0..<RR_GROUPS {
+    g:=w[0].groups[i];r:=DvMember.{viewer=e.public_key,channel=g.id,dm=g29_is(w[0].channels[i].type,"dm"),active=g.exists && g29_member(g,e.public_key)>=0};
+    for h:0..<held {if g29_same(hidden[h],g.id) {r.hidden=true;}}
+    out[i]=r;
+  }
+  result:=dv_command(out,e.public_key,e.kind,request.h);
+  total:=0;for r:out {if r.dm && r.active && r.hidden {total+=1;}}
+  return ifx total>DV_MAX_HIDDEN then DV_LIMIT else result;
+}
+rx_dm_publish :: (conns:[]RyConn,w:[]RyWork,store:[]RdStore,members:[]DvMember,viewer:[32]u8,now:int) -> bool {
+  at:=rk_state_time(w[0].extension_clock,now);if at<0 {return false;}
+  tags:[8192]u8;n:=dv_snapshot(members,viewer,tags[..]);
+  if n<0 || !rx_publish(conns,w,store,DV_SNAPSHOT,tags[0..<n],at) {return false;}
+  w[0].extension_clock=at;return true;
+}

@@ -86,6 +86,9 @@ rd_replay :: (d: [] RdStore, now: int, text: [] u8, scratch: [] u8) -> RsdReplay
   d[0].ix[0].ok = false;
   return rsd_replay_deleting(d[0].s[..], d[0].tb[..], d[0].relay, d[0].work, now, text, scratch, true);
 }
+rd_replay_prefix :: (d: [] RdStore, now: int, text: [] u8, scratch: [] u8, verified_prefix: int) -> RsdReplay {
+  return rsd_replay_prefix(d[0].s[..], d[0].tb[..], d[0].relay, d[0].work, now, text, scratch, true, verified_prefix);
+}
 // A current index, rebuilt when stale: whether there is one.
 rd_index :: (d: [] RdStore) -> bool {
   x := d[0].ix[0]; s := d[0].s[0];
@@ -117,7 +120,7 @@ rd_count :: (d: [] RdStore, text: string, now: int, w: [] N45Work, out: [] u8, r
 
 RD_QBUF :: 1024;   // one search string's lowercase terms
 // One search's working space: a decoded content, the terms, the scores.
-RdSearch :: struct { buf: [RS_MAX_MESSAGE] u8; qbuf: [RD_QBUF] u8; q: [1] N50Query; score: [RS_MAX_LIMIT] int; }
+RdSearch :: struct { buf: [RS_MAX_MESSAGE] u8; qbuf: [RD_QBUF] u8; q: [1] N50Query; score: [RS_MAX_LIMIT] int; complete: bool; groups: [] NgGroup; }
 
 // Filter k of a REQ (or of a subscription's saved filters, text with
 // from and to) read with its search; reads the terms into w[0].q when
@@ -166,11 +169,17 @@ rd_req_filter :: (d: [] RdStore, text: string, m: MsMsg, k: int, now: int, w: []
   sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
   f: [1] NostrFilter;
   r := rd_filter(text[m.filter_from[k]..<m.filter_to[k]], f[..], sp[..], w);
+  w[0].complete = false;
   if r.error != FR_OK { return 0; }
   f[0].gate = ifx r.has then RP_SEARCH else RP_STORED; f[0].readers = readers;
-  if !r.has { return rd_query(d, f[0], now, out); }
+  if !r.has {
+    n := rd_query(d, f[0], now, out);
+    w[0].complete = n < rs_limit(f[0]) && n < out.count;
+    return n;
+  }
   built := rd_index(d);
   a := n50_scan(d[0].s[..], d[0].ix[..], f[0], w[0].q[0], now, w[0].buf[..], out, w[0].score[0..<out.count]);
+  w[0].complete = a.n >= 0 && a.n < rs_limit(f[0]) && a.n < out.count;
   return ifx a.n < 0 then 0 else a.n;
 }
 // Whether filter k of subscription i matches the live event e, its search
@@ -183,7 +192,7 @@ rd_sub_filter :: (subs: [] RsSub, i: int, k: int, e: NostrEvent, w: [] RdSearch,
   f: [1] NostrFilter;
   r := rd_filter(cast(string) subs[i].text[subs[i].from[k]..<subs[i].to[k]], f[..], sp[..], w);
   f[0].gate = RP_LIVE; f[0].readers = readers;
-  if r.error != FR_OK || !rsd_match(f[0], e) { return false; }
+  if r.error != FR_OK || !rsd_match_scoped(f[0], e, w[0].groups) { return false; }
   if !r.has { return true; }
   if n50_excluded(e.kind) || rp_unsearched(e.kind) { return false; }
   if w[0].q[0].n == 0 { return true; }
@@ -218,7 +227,7 @@ rd_neg_items :: (d: [] RdStore, filter: string, now: int, out: [] NegItem, reade
   s := d[0].s[..];
   later := ns_store_seen(s, now); n := 0;
   for i: 0..<s[0].n {
-    if !ns_store_visible(s, i, now) || !rsd_match(f[0], rsd_event(s, i)) { continue; }
+    if !ns_store_visible(s, i, now) || !rsd_match_scoped(f[0], rsd_event(s, i), s[0].groups) { continue; }
     if n == out.count { return -1; }
     out[n] = NegItem.{created = s[0].recs[i].created, id = s[0].recs[i].id};
     n += 1;

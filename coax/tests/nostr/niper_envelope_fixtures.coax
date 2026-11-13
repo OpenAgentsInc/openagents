@@ -1,0 +1,6 @@
+// Public outer-envelope fixtures, independent of encryption and signing.
+erf_v :: (s:string)->N32Text {t:N32Text;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
+// A 30300 by author a with id bytes i, at created_at.
+erf_ev :: (a:u8,i:u8,at:int,tags:string,out:[]u8)->NostrEvent {e:=g29_ev(30300,a,i,tags,out);e.created_at=at;return e;}
+// A reminder head read from tags, by author 0xa1.
+erf_r :: (i:u8,at:int,tags:string)->ErReminder {b:[1024]u8;return er_read(erf_ev(0xa1,i,at,tags,b[..]));}

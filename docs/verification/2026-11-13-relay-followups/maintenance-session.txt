@@ -1,0 +1,18 @@
+  ok   compaction: drops expired ordinary bytes and preserves expired replacement heads and deletion history
+  ok   compaction: copies the policy journal exactly
+  ok   compaction: source generation remains unchanged
+  ok   compaction: candidate passes full replay and gets its own checkpoint
+  ok   compaction: refuses to overwrite an existing candidate
+  ok   maintenance: original generation has a trusted checkpoint
+  ok   maintenance: verifies both generations and atomically selects the candidate: relay maintenance: selected verified generation; previous generation retained
+
+  ok   maintenance: compacted store selected and previous checkpoint retained
+  ok   maintenance: checking never rewrites the original checkpoint or its ownership
+  ok   maintenance: next generation 1 verified
+  ok   maintenance: next generation 2 verified
+  ok   maintenance: keeps current, previous and legacy initial; prunes older numeric generations
+  ok   maintenance: scheduler fixture has a trusted checkpoint
+  ok   maintenance: scheduler uses every digit of the actual clock: relay maintenance: selected verified generation; previous generation retained
+
+  ok   maintenance: default-clock compaction retains the expected live bytes
+  ok   maintenance: damaged checkpoint-covered input leaves the current pointer unchanged

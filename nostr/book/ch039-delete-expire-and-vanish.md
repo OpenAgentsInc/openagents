@@ -84,6 +84,10 @@ request's `created_at` as `until`.
 ```jai
 nsd_covers :: (tb: [] NsdTombs, k: int, c: RsdRec) -> bool #effects(all) {
   t := tb[0].t[k]; r := c;
+  if t.what == NSD_GROUP_E {
+    if r.kind==5 || r.kind==62 || t.d_n<1 || t.d_n>64 || r.group_n!=t.d_n { return false; }
+    return ns_equal32(t.id,r.id) && cast(string) t.d[0..<t.d_n]==cast(string) r.group[0..<r.group_n];
+  }
   if t.what == NSD_VANISH { return r.kind != 62 && ns_equal32(r.author, t.signer) && r.created <= t.until; }
   m := NsMeta.{id = r.id, author = r.author, kind = r.kind, created = r.created, identifier = cast(string) r.d[0..<r.d_n]};
   if t.what == NSD_E { return r.kind != 62 && ns_delete_id(m, t.signer, t.id); }
@@ -104,7 +108,7 @@ nsd_blocked :: (tb: [] NsdTombs, c: RsdRec) -> bool #effects(all) {
 nsd_indexed :: (tb: [] NsdTombs) -> bool #effects(all) { return tb[0].slots.count > tb[0].t.count; }
 // A tombstone's key: what any event it covers shares with it.
 nsd_key :: (t: NsdTomb) -> int #effects(all) {
-  if t.what == NSD_E { return ns_id_hash(t.id); }
+  if t.what == NSD_E || t.what == NSD_GROUP_E { return ns_id_hash(t.id); }
   if t.what == NSD_A { return ns_address_hash(t.kind, t.author, t.d, t.d_n); }
   return ns_id_hash(t.signer);
 }
@@ -146,7 +150,7 @@ nsd_apply :: (s: [] RsdStore, tb: [] NsdTombs, t: NsdTomb) -> int #effects(all) 
   gone := 0;
   if ns_indexed(s) && t.what != NSD_VANISH {
     q: RsdRec; q.kind = t.kind; q.author = t.author; q.d = t.d; q.d_n = t.d_n;
-    i := ifx t.what == NSD_E then ns_find_id(s, t.id) else ns_find_address(s, q);
+    i := ifx t.what == NSD_E || t.what == NSD_GROUP_E then ns_find_id(s, t.id) else ns_find_address(s, q);
     if i >= 0 && s[0].recs[i].live && nsd_covers(tb, k, s[0].recs[i]) { ns_store_retire(s, i); gone = 1; }
     return gone;
   }

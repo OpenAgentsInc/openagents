@@ -254,6 +254,8 @@ g29_admit :: (g:[]G29Group,e:NostrEvent,relay:[32]u8)->int #effects(all) {
     if g[0].exists {return G29_EXISTS;}
     if r.previous_n>0 {return G29_PREVIOUS;}
     g[0].exists=true;g[0].id=r.h;              // a slot without a group is all zero
+    g[0].name=r.name;g[0].is_private=r.is_private;g[0].restricted=r.restricted;
+    g[0].hidden=r.hidden;g[0].closed=r.closed;
     admin:G29Read;admin.roles[0]=g29_text("admin");admin.roles_n=1;
     s:=g29_put(g,e.public_key,admin);
     g29_remember(g,e.id);return s;

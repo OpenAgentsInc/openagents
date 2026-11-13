@@ -1,0 +1,54 @@
+#run_steps 250000000;
+// NIP-AM's public outer route, not its encrypted accounting payload.
+// https://github.com/block/nostr-nips/blob/main/NIP-AM.md (pinned locally
+// at nostr/nips/block/NIP-AM.md). Original bytes remain the stored record.
+// coax test coax/lib/nostr/nipam.coax --library
+#load "nipoa.coax";
+#load "nip44-envelope.coax";
+#load "../crypto/secp_fast.coax";
+#authority;
+AM_OK :: 0; AM_EVENT :: 1; AM_TAGS :: 2; AM_CIPHER :: 3; AM_AUTH :: 4; AM_OWNER :: 5;
+AmMetric :: struct {status:int=AM_EVENT;agent:[32]u8;owner:[32]u8;}
+#test "metrics require exact agent and owner routes and v2 ciphertext" {
+  raw:[99]u8;raw[0]=2;cipher:[132]u8;encoded:=base64_encode_checked(cast(string)raw[..],cipher[..],false);#assert encoded.error==NC_OK;
+  tags:="[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"agent\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]";
+  text:[1024]u8;n:=json_raw(text[..],0,tags);end:=json_raw(text[..],n,cast(string)cipher[..]);
+  e:=NostrEvent.{error=NE_OK,verified=true,kind=44200,original=cast(string)text[0..<end],tags_to=n,content_from=n,content_to=end};
+  #assert ne_lower_hex("c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",e.public_key[..]);
+  r:=am_read(e);#assert r.status==AM_OK && r.owner[0]==0x79 && r.agent[0]==0xc6;
+  #assert am_admit(r,false,true)==AM_AUTH && am_admit(r,true,false)==AM_OWNER && am_admit(r,true,true)==AM_OK;
+  e.public_key[0]^=1;#assert am_read(e).status==AM_TAGS;e.public_key[0]^=1;
+  e.content_to=n;#assert am_read(e).status==AM_CIPHER;
+  text[n]='\\';e.original=cast(string)text[0..<n+1];e.content_to=n+1;#assert am_read(e).status==AM_EVENT;
+  text[n]=cipher[0];e.original=cast(string)text[0..<end];e.content_to=end;
+  e.error=NE_ID;#assert am_read(e).status==AM_EVENT;e.error=NE_OK;
+  e.kind=44201;#assert am_read(e).status==AM_EVENT;e.kind=44200;e.verified=false;#assert am_read(e).status==AM_EVENT;
+}
+#test "a route key is one complete tag naming a curve point" {
+  key:[32]u8;
+  #assert !am_key(n34_event("[]",1),"p",key[..]);
+  #assert !am_key(n34_event("[[\"p\"]]",1),"p",key[..]);
+  #assert !am_key(n34_event("[[\"p\",\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"]]",1),"p",key[..]);
+  #assert !am_key(n34_event("[[\"p\",\"x\"],[\"p\",\"x\"]]",1),"p",key[..]);
+  #assert !am_key(n34_event("[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]",1),"p",key[..]);
+  #assert am_admit(AmMetric.{status=AM_TAGS},true,true)==AM_TAGS;
+}
+am_key :: (e:NtEvent,name:string,out:[]u8) -> bool #effects(all) {
+  tag:=nt_tag(e,name,0);decoded:[64]u8;
+  if tag.n!=1 || tag.values<1 {return false;}
+  n:=json_unescape(nt_raw(e,tag.v[0]),decoded[..]);
+  return n==64 && ne_lower_hex(cast(string)decoded[..],out) && fg_lift_x_vartime(out).ok;
+}
+am_read :: (e:NostrEvent) -> AmMetric #effects(all) {
+  r:AmMetric;
+  if e.error!=NE_OK || !e.verified || e.kind!=44200 {return r;}
+  tags:=nt_event_of(e);r.agent=e.public_key;
+  agent:[32]u8;
+  if nt_tags(tags,"h")!=0 || !am_key(tags,"p",r.owner[..]) || !am_key(tags,"agent",agent[..]) || !ns_equal32(agent,r.agent) {r.status=AM_TAGS;return r;}
+  cipher:[65536]u8;n:=json_unescape(e.original[e.content_from..<e.content_to],cipher[..]);
+  if n<0 {return r;}
+  r.status=ifx n44_v2_content(cast(string)cipher[0..<n]) then AM_OK else AM_CIPHER;return r;
+}
+am_admit :: (r:AmMetric,authenticated:bool,owner:bool) -> int #effects(all) {
+  if r.status!=AM_OK {return r.status;}if !authenticated {return AM_AUTH;}if !owner {return AM_OWNER;}return AM_OK;
+}

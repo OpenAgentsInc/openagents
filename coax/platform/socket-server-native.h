@@ -45,6 +45,9 @@ int64_t cxsrv_listen(int64_t port);
 int64_t cxsrv_bound_port(void);
 int64_t cxsrv_poll(int64_t timeout_ms);
 int64_t cxsrv_accept(void);
+/* Normalized IP, 16 bytes; IPv4 is ::ffff:a.b.c.d. -1 for an invalid
+   handle/index. This is the actual socket peer, never a forwarded header. */
+int64_t cxsrv_peer_byte(int64_t h, int64_t i);
 int64_t cxsrv_read(int64_t h);
 int64_t cxsrv_byte(int64_t h, int64_t i);
 int64_t cxsrv_write(int64_t h, int64_t byte);

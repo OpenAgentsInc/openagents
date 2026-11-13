@@ -29,8 +29,9 @@ ry_export_open :: () -> int #foreign #effects(all);
 ry_export_put :: (b: int) -> int #foreign #effects(all);
 ry_export_commit :: () -> int #foreign #effects(all);
 ry_export_abort :: () #foreign #effects(all);
+ry_export_journal :: () -> int #foreign #effects(all);
 
-RY_SERVE :: 0; RY_IMPORT :: 1; RY_CHECK :: 2; RY_EXPORT :: 3;
+RY_SERVE :: 0; RY_IMPORT :: 1; RY_CHECK :: 2; RY_EXPORT :: 3; RY_COMPACT :: 4; RY_IDENTITY :: 5;
 RY_STORE_FILE :: 0; RY_JOURNAL_FILE :: 1;
 
 #assert RI_NSD_DELETED == NSD_DELETED && RI_NSD_NO_ROOM == NSD_NO_ROOM;
@@ -202,6 +203,7 @@ ry_tombs_in :: (export: bool) -> int {
       line := cast(string) text[0..<to - from];
       r := rs_admit_read(line, 0, false, false, scratch[..]);
       if r.e.error == NE_OK && r.e.kind == 62 { n += 1; }
+      if r.e.error == NE_OK && r.e.kind == 9005 { n += 1; }
       if r.e.error == NE_OK && r.e.kind == 5 {
         t := nsd_read(line, rsd_rec(r), "", work[..]);
         n += ifx t < 0 then work.count else t;
@@ -283,6 +285,35 @@ ry_hex :: (d: [] u8, hex: [] u8) -> string {
   h := "0123456789abcdef";
   for k: 0..<32 { hex[2 * k] = h[cast(int) (d[k] >> 4)]; hex[2 * k + 1] = h[cast(int) (d[k] & 15)]; }
   return cast(string) hex[0..<64];
+}
+// --compact OUT writes a NEW framed store and exact OUT.nip86 journal.
+// It never rewrites the source or its checkpoint. Run --check-store on the
+// candidate with a new checkpoint and --adopt before switching generations;
+// retain the old pair for rollback. Full replay above verified every frame.
+ry_compact :: (w: [] RyWork, now: int) {
+  total := cxstore_load(); text: [NS_FRAME_MAX_ORIGINAL] u8;
+  if total < 0 || ry_export_open() != 0 { print("relay: compaction needs a readable source and a new OUT\n"); ry_host_exit(2); return; }
+  at := 0; kept := 0; dropped := 0; bytes := 0;
+  while at < total {
+    head: [4] u8;
+    for i: 0..<4 { head[i] = cast(u8) cxstore_byte(at + i); }
+    f := ns_file_next(head[..], at, total);
+    if f.status != NSF_OK || f.to - f.from > text.count { ry_export_abort(); ry_host_exit(3); return; }
+    for i: f.from..<f.to { text[i - f.from] = cast(u8) cxstore_byte(i); }
+    r := rsd_replay_read(cast(string) text[0..<f.to - f.from], now, w[0].scratch[..]);
+    if r.reason != RS_ACCEPT { ry_export_abort(); ry_host_exit(3); return; }
+    if rsc_keep(r.e.kind, r.expiration, now) {
+      for i: at..<f.to { if ry_export_put(cxstore_byte(i)) != 0 { ry_export_abort(); ry_host_exit(2); return; } }
+      kept += 1; bytes += f.to - at;
+    } else { dropped += 1; }
+    at = f.to;
+  }
+  if ry_export_commit() != 0 || ry_export_journal() != 0 { print("relay: compaction candidate incomplete; source unchanged\n"); ry_host_exit(2); return; }
+  journal := ry_journal_load();
+  if journal < 0 { ry_export_abort(); ry_host_exit(2); return; }
+  for i: 0..<journal { if ry_export_put(ry_journal_byte(i)) != 0 { ry_export_abort(); ry_host_exit(2); return; } }
+  if ry_export_commit() != 0 { ry_host_exit(2); return; }
+  print("relay: compacted % frames, dropped % expired ordinary frames, % bytes became %; journal copied exactly\n", kept, dropped, total, bytes);
 }
 // The SHA-256 of the whole export, which --export printed for it.
 ry_import_digest :: (total: int, out: [] u8) {

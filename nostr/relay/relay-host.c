@@ -6,7 +6,7 @@
    lent to ry_main for the life of the process.
      relay --listen 127.0.0.1 --port 7447 [--url ws://name:7447] [--store FILE]
            [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem]
-           [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]... [--groups]
+           [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]... [--groups] [--key-file FILE] [--identity]
            [--checkpoint FILE [--adopt]] [--import EXPORT --now T | --check-store [--now T]]
    (port 0 picks a free one). --url is the relay URL NIP-42 AUTH events
    must name; without it the relay uses ws://ADDRESS:PORT, or
@@ -21,7 +21,9 @@
    difficulty an EVENT needs (0, off, without it); relay.coax checks both
    values. --admin PUBKEY (64 hex digits, up to 4 times) turns on NIP-86
    management for those keys; relay.coax checks each. --groups turns on
-   NIP-29 groups. With --store FILE the NIP-86 policy's changes go to
+   NIP-29 groups; --key-file supplies its 32 raw secret bytes in an owned
+   regular 0400/0600 file. --identity prints only the derived public key and
+   exits without listening. With --store FILE the NIP-86 policy's changes go to
    FILE.nip86 (ry_journal_*: the same effects as store-file-native.c's,
    for a second file, created only at the first change); relay.coax frames
    and replays it. --checkpoint FILE keeps the freshness checkpoint
@@ -43,10 +45,13 @@
 #include "socket-server-native.h"
 #include "store-file-native.h"
 #include "tls-native.h"
+#include "private-file.h"
 #include "relay.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <signal.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,7 +82,8 @@ static long long pow_bits = -1;
 static const char *admins[8];
 static int admin_n = 0;
 static int groups = 0;
-static int mode = 0;               /* 0 serve, 1 --import, 2 --check-store, 3 --export */
+static const char *relay_key_path = NULL;
+static int mode = 0;               /* 0 serve, 1 import, 2 check, 3 export, 4 compact, 5 public identity */
 static long long now_flag = -1;    /* --now */
 static int adopt = 0;
 static int exit_code = 0;
@@ -250,6 +256,7 @@ int64_t ry_import_byte(int64_t i) { return i >= 0 && i < import_n ? import_data[
 static const char *export_path = NULL;
 static long long export_from = 0;   /* --from */
 static char export_tmp[4200];
+static char compact_journal_path[4200];
 static FILE *export_file;
 int64_t ry_host_export_from(void) { return (int64_t)export_from; }
 /* Opens OUT.tmp for writing; OUT must not exist: 0, or -1. */
@@ -263,6 +270,12 @@ int64_t ry_export_open(void) {
   if (!export_file) { close(f); unlink(export_tmp); return -1; }
   setvbuf(export_file, NULL, _IOFBF, 1 << 20);
   return 0;
+}
+int64_t ry_export_journal(void) {
+  if (!export_path || strlen(export_path) + 7 > sizeof compact_journal_path) return -1;
+  snprintf(compact_journal_path, sizeof compact_journal_path, "%s.nip86", export_path);
+  export_path = compact_journal_path;
+  return ry_export_open();
 }
 int64_t ry_export_put(int64_t b) {
   if (!export_file || b < 0 || b > 255) return -1;
@@ -355,6 +368,48 @@ int64_t ry_host_random(void) {
   unsigned char b;
   return getentropy(&b, 1) == 0 ? b : -1;
 }
+int64_t ry_key_on(void) { return relay_key_path != NULL; }
+/* The Coax codec decides the count. Only an owned regular 0400/0600 file
+   is read; a FIFO or symlink cannot block or redirect key loading. */
+int64_t ry_key_load(coax_v_u8 out) {
+  if (!relay_key_path || out.count != 32 || !out.data) return -1;
+  struct rlimit core = {0,0};
+  if (setrlimit(RLIMIT_CORE, &core) != 0 || mlock(out.data,32) != 0) return -1;
+  int fd = cx_private_open(relay_key_path);
+  if (fd < 0) return -1;
+  int64_t n = 0;
+  while (n < 32) {
+    ssize_t r = read(fd,out.data+n,(size_t)(32-n));
+    if (r < 0 && errno == EINTR) continue;
+    if (r < 0) { close(fd); return -1; }
+    if (!r) break;
+    n += r;
+  }
+  unsigned char extra = 0; ssize_t more;
+  do { more = read(fd,&extra,1); } while (more < 0 && errno == EINTR);
+  explicit_bzero(&extra,sizeof extra);
+  close(fd);
+  return more < 0 ? -1 : n + (more > 0);
+}
+int64_t ry_key_end(coax_v_u8 key) {
+  if (key.count != 32 || !key.data) return -1;
+  explicit_bzero(key.data,(size_t)key.count);
+  munlock(key.data,(size_t)key.count);
+  return 0;
+}
+bool rk_public(coax_v_u8 key, coax_v_u8 out) {
+  coax_t_NostrSignWork work = {0};
+  bool result = rk_public_into(key,out,(coax_v_t_NostrSignWork){&work,1});
+  explicit_bzero(&work,sizeof work);
+  return result;
+}
+int64_t rk_sign(coax_v_u8 key, coax_v_u8 aux, int64_t created, int64_t kind,
+                coax_v_u8 tags, coax_v_u8 scratch, coax_v_u8 out) {
+  coax_t_NostrSignWork work = {0};
+  int64_t result = rk_sign_into(key,aux,created,kind,tags,scratch,out,(coax_v_t_NostrSignWork){&work,1});
+  explicit_bzero(&work,sizeof work);
+  return result;
+}
 
 static void *run(void *arg) {
   (void)arg;
@@ -370,6 +425,16 @@ static const char *tls_why(int64_t e) {
   if (e == CXTLS_CERT) return "cannot read the --tls-cert file";
   if (e == CXTLS_UNSUPPORTED) return "TLS server mode is not available on this platform";
   return "cannot set up TLS";
+}
+
+static volatile sig_atomic_t reload_pending;
+static const char *reload_cert, *reload_key;
+static void reload_signal(int sig) { (void)sig; reload_pending = 1; }
+int64_t ry_host_reload(void) {
+  if (!reload_pending) return 0;
+  reload_pending = 0;
+  if (!reload_cert || !reload_key) return 0;
+  return cxtls_server_load(reload_cert, reload_key) == 0 ? 1 : -1;
 }
 
 int main(int argc, char **argv) {
@@ -391,10 +456,16 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[i], "--groups")) groups = 1;
     else if (!strcmp(argv[i], "--adopt")) adopt = 1;
     else if (!strcmp(argv[i], "--check-store")) mode = mode ? -1 : 2;
+    else if (!strcmp(argv[i], "--identity")) mode = mode ? -1 : 5;
+    else if (!strcmp(argv[i], "--key-file") && i + 1 < argc) relay_key_path = argv[++i];
     else if (!strcmp(argv[i], "--import") && i + 1 < argc) { import_path = argv[++i]; mode = mode ? -1 : 1; }
     else if (!strcmp(argv[i], "--export") && i + 1 < argc) {
       export_path = argv[++i]; mode = mode ? -1 : 3;
       if (!export_path[0] || strlen(export_path) + 5 > sizeof export_tmp) { fprintf(stderr, "relay: bad --export path\n"); return 2; }
+    }
+    else if (!strcmp(argv[i], "--compact") && i + 1 < argc) {
+      export_path = argv[++i]; mode = mode ? -1 : 4;
+      if (!export_path[0] || strlen(export_path) + 12 > sizeof export_tmp) { fprintf(stderr, "relay: bad --compact path\n"); return 2; }
     }
     else if (!strcmp(argv[i], "--from") && i + 1 < argc) {
       char tail = 0;
@@ -427,10 +498,10 @@ int main(int argc, char **argv) {
       snprintf(journal_path, sizeof journal_path, "%s.nip86", sp);
       store = 1;
     }
-    else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]... [--groups] [--checkpoint FILE [--adopt]] [--tombstones N] [--import EXPORT --now T | --check-store [--now T] | --export OUT [--from BYTE] [--now T]]\n"); return 2; }
+    else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS] [--admin PUBKEY]... [--groups] [--key-file FILE] [--identity] [--checkpoint FILE [--adopt]] [--tombstones N] [--import EXPORT --now T | --check-store [--now T] | --export OUT [--from BYTE] [--now T] | --compact OUT [--now T]]\n"); return 2; }
   }
-  if (mode < 0) { fprintf(stderr, "relay: --import, --check-store and --export don't go together\n"); return 2; }
-  if (mode != 0 && !store) { fprintf(stderr, "relay: --import, --check-store and --export need --store\n"); return 2; }
+  if (mode < 0) { fprintf(stderr, "relay: offline modes do not go together\n"); return 2; }
+  if (mode != 0 && mode != 5 && !store) { fprintf(stderr, "relay: --import, --check-store, --export and --compact need --store\n"); return 2; }
   if (export_from != 0 && mode != 3) { fprintf(stderr, "relay: --from goes with --export\n"); return 2; }
   if (mode == 1 && now_flag < 0) { fprintf(stderr, "relay: --import needs --now (the export's time)\n"); return 2; }
   if ((cert == NULL) != (key == NULL)) { fprintf(stderr, "relay: --tls-cert and --tls-key go together\n"); return 2; }
@@ -440,6 +511,12 @@ int main(int argc, char **argv) {
     cxsrv_set_tls(1);
     tls = 1;
   }
+  reload_cert = cert; reload_key = key;
+  struct sigaction reload_action;
+  memset(&reload_action, 0, sizeof reload_action);
+  reload_action.sa_handler = reload_signal;
+  sigemptyset(&reload_action.sa_mask);
+  if (sigaction(SIGHUP, &reload_action, NULL) != 0) { perror("relay: SIGHUP"); return 2; }
   setvbuf(stdout, NULL, _IOLBF, 0);
   events = ry_store_events(capacity);
   if (events < 0) return 2;
@@ -452,7 +529,7 @@ int main(int argc, char **argv) {
   items = (coax_v_t_NegItem){calloc((size_t)events, sizeof(coax_t_NegItem)), events};
   int64_t slots = ry_store_slots(events);
   ids = ints(slots); addrs = ints(slots);
-  int64_t ntombs = ry_store_tombs();
+  int64_t ntombs = mode == 5 ? 0 : ry_store_tombs();
   if (ntombs < 0) return 2;
   tombs = (coax_v_t_NsdTomb){calloc((size_t)(ntombs ? ntombs : 1), sizeof(coax_t_NsdTomb)), ntombs};
   tomb_slots = ints(2 * ntombs + 1);

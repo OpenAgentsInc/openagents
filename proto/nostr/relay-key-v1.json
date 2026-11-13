@@ -1,0 +1,15 @@
+{
+  "id": "nostr.relay-key.v1",
+  "format": "raw",
+  "bytes": 32,
+  "encoding": "big-endian secp256k1 secret scalar, 1 <= value < curve order",
+  "custody": "owned regular file, exact mode 0400 or 0600; symlinks refused; never generated or replaced by startup",
+  "goldens": [
+    {
+      "name": "public test scalar one",
+      "hex": "0000000000000000000000000000000000000000000000000000000000000001",
+      "x_only_public_key": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+    }
+  ],
+  "check": "relay_key_policy.coax checks exact length; shared signer checks scalar; relay_session.py checks public derivation, invalid scalars and file effects"
+}

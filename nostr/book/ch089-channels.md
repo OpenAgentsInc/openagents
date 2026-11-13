@@ -191,6 +191,7 @@ cl_admit :: (g:[]G29Group,c:[]ClChannel,e:NostrEvent,relay:[32]u8,now:int,g29:[]
     if g29_is(type,"dm") || (g29_is(type,"system") && !open) {g[0].is_private=true;g[0].hidden=true;}
   }
   if l.mode!=CL_KEEP {c[0].labels=l.labels;c[0].labels_n=l.n;}
+  if g29_is(c[0].type,"dm") {g[0].is_private=true;g[0].hidden=true;}
   return CL_OK;
 }
 ```

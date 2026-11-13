@@ -139,7 +139,7 @@ built or whose store has changed since, returns `n = -1`.
 // Reads record i as a candidate: inserted into out in query order when it is
 // visible, matches f and is not already there.
 nsi_take :: (s: [] RsdStore, f: NostrFilter, now: int, i: int, n: int, limit: int, out: [] int) -> int {
-  if !ns_store_visible(s, i, now) || !rsd_match(f, rsd_event(s, i)) { return n; }
+  if !ns_store_visible(s, i, now) || !rsd_match_scoped(f, rsd_event(s, i), s[0].groups) { return n; }
   for k: 0..<n { if out[k] == i { return n; } }
   return ns_store_insert(s, i, n, limit, out);
 }

@@ -111,9 +111,9 @@ nt_select :: (e:NtEvent,name:string,index:int,marker:string,k:int)->NtTag #effec
 nt_tag :: (e:NtEvent,name:string,k:int)->NtTag #effects(all) {return nt_select(e,name,-1,"",k);}
 // How many tags nt_select selects with this index and marker, or -1 when the tags don't read.
 nt_count :: (e:NtEvent,name:string,index:int,marker:string)->int #effects(all) {
- k:=0;t:=nt_select(e,name,index,marker,k);
- while t.found {k+=1;t=nt_select(e,name,index,marker,k);}
- return ifx t.n<0 then -1 else k;
+ // nt_select already counts all matches. An index beyond the maximum
+ // possible number of tags avoids selecting/copying an unused value.
+ return nt_select(e,name,index,marker,e.original.count).n;
 }
 nt_tags :: (e:NtEvent,name:string)->int #effects(all) {return nt_count(e,name,-1,"");}
 #test "tags count by name and by marker" {
@@ -209,6 +209,13 @@ nt_values :: (e:NtEvent,name:string,out:[]NtSpan)->int #effects(all) {
  out:[2]NtSpan;
  #assert nt_values(e,"b",out[..])==2 && nt_raw(e,out[0])=="09af" && nt_raw(e,out[1])=="0000";
  #assert nt_values(e,"b",out[0..<1])==-1 && nt_values(e,"q",out[0..<0])==0;
+}
+
+#test "counting a long tag list preserves marker counts without selecting values" {
+ tags:[1024]u8;n:=json_raw(tags[..],0,"[");
+ for i:0..<65 {if i>0 {n=json_raw(tags[..],n,",");}n=json_raw(tags[..],n,"[\"x\",\"y\"]");}
+ n=json_raw(tags[..],n,"]");e:=n34_event(cast(string)tags[0..<n],1);
+ #assert nt_count(e,"x",-1,"")==65 && nt_count(e,"x",0,"y")==65 && nt_count(e,"x",0,"z")==0;
 }
 
 // book:begin repo

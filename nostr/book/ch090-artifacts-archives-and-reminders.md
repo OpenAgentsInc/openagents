@@ -35,7 +35,7 @@ NIP-ER event reminders (30300). What is not built is listed under
 | [nipia.coax](../../coax/lib/nostr/nipia.coax) | `ia_decide(e, now, admins, banned, profile)` | Freshness and the consent path |
 | [nipia.coax](../../coax/lib/nostr/nipia.coax) | `ia_apply`, `ia_delta`, `ia_snapshot` | The archive set and the tags of the 8002, 8003 and 13535 |
 | [nipia.coax](../../coax/lib/nostr/nipia.coax) | `ia_list(e, relay, out)` | A client's reading of the relay's 13535 |
-| [niper.coax](../../coax/lib/nostr/niper.coax) | `er_number`, `er_read(e)` | The `not_before` rule and the outer event |
+| [niper-envelope.coax](../../coax/lib/nostr/niper-envelope.coax) | `er_number`, `er_read(e)` | The `not_before` rule and the outer event |
 | [niper.coax](../../coax/lib/nostr/niper.coax) | `er_store`, `er_wins` | One head per reminder address |
 | [niper.coax](../../coax/lib/nostr/niper.coax) | `er_visible`, `er_gate`, `er_relay_due` | Author-only reads and the relay's due push |
 | [niper.coax](../../coax/lib/nostr/niper.coax) | `er_open`, `er_content` | Decrypting with the author's own key, and the plaintext rules |
@@ -285,7 +285,7 @@ floating point. An event has exactly one nonempty `d`, at most one
 `invalid: malformed not_before`. A `not_before` in the future is never a
 reason to refuse.
 
-<!-- source: coax/lib/nostr/niper.coax number -->
+<!-- source: coax/lib/nostr/niper-envelope.coax number -->
 ```jai
 // A decimal Unix time: its value, or -1.
 er_number :: (s:N32Text)->int #effects(all) {

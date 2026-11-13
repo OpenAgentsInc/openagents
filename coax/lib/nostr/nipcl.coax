@@ -134,9 +134,16 @@ cl_admit :: (g:[]G29Group,c:[]ClChannel,e:NostrEvent,relay:[32]u8,now:int,g29:[]
     if g29_is(type,"dm") || (g29_is(type,"system") && !open) {g[0].is_private=true;g[0].hidden=true;}
   }
   if l.mode!=CL_KEEP {c[0].labels=l.labels;c[0].labels_n=l.n;}
+  if g29_is(c[0].type,"dm") {g[0].is_private=true;g[0].hidden=true;}
   return CL_OK;
 }
 // book:end admit
+#test "a DM metadata edit cannot remove its private and hidden flags" {
+  g:[1]G29Group;c:[1]ClChannel;n:[1]int;
+  #assert clf_do(g[..],c[..],9007,0xaa,1,"[[\"h\",\"dm\"],[\"channel_type\",\"dm\"]]",n[..])==CL_OK;
+  #assert clf_do(g[..],c[..],9002,0xaa,2,"[[\"h\",\"dm\"],[\"name\",\"Updated\"]]",n[..])==CL_OK;
+  #assert g[0].is_private && g[0].hidden;
+}
 
 // book:begin write
 // The 39000 tags the relay signs: NIP-29's metadata, then the identity tags.

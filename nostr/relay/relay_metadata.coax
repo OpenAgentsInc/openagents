@@ -1,0 +1,19 @@
+// Relay admission of NIP-94 file metadata uses the shared reader. It does
+// not download or serve file bytes: a 1063 event describes its source URL.
+#load "../../coax/lib/nostr/nip94.coax";
+#authority;
+#test "file metadata uses the shared required fields and refuses malformed tags" {
+  e := n32_event(1063, "[[\"url\",\"https://files.example/a\"],[\"m\",\"image/png\"],[\"x\",\"d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\"]]");
+  #assert rm_metadata_ok(e);
+  #assert !rm_metadata_ok(n32_event(1063, "[]"));
+  #assert !rm_metadata_ok(n32_event(1063, "[[\"url\",\"x\"],[\"m\",\"bad\"],[\"x\",\"wrong\"]]"));
+  #assert rm_metadata_ok(n32_event(1, "[]")) && rm_metadata_ok(n32_event(10002, "[]"));
+  bad: NostrEvent; #assert !rm_metadata_ok(bad);
+}
+// Parsed event only; the caller still verifies its ID/signature and applies
+// authentication, rate, private-write and durable-store policies separately.
+rm_metadata_ok :: (e: NostrEvent) -> bool #effects(all) {
+  if e.error != NE_OK { return false; }
+  if e.kind != N94_KIND_FILE { return true; }
+  return n94_file(e).status == N94_OK;
+}

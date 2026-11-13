@@ -20,6 +20,9 @@
 #   nostr/relay/vm.sh setup             packages, user, data disk, units (idempotent)
 #   nostr/relay/vm.sh ship BINARY       install a relay binary (nostr/relay/build.sh's, built on a
 #                                       Debian 12 build host) as /opt/nostr-relay/relay-SHA, then current
+#   nostr/relay/vm.sh ship-maintenance BINARY  install the checked Coax compactor
+#   nostr/relay/vm.sh enable-compaction    enable its weekly timer after a manual run
+#   nostr/relay/vm.sh reload               reload a validated certificate without disconnecting peers
 #   nostr/relay/vm.sh cert              a certificate for relay, relay-staging and relay-coax.openagents.com
 #                                       by DNS-01 (below), before the name points here
 #   nostr/relay/vm.sh cert-renew-by-http   after: the certificate by HTTP-01 for relay and relay-coax,
@@ -89,19 +92,19 @@ install -d -o nostr-relay -g nostr-relay -m 0700 /var/lib/nostr-relay/store /var
 install -d -m 0755 /opt/nostr-relay /etc/letsencrypt/renewal-hooks/deploy
 cat > /etc/letsencrypt/renewal-hooks/deploy/nostr-relay <<EOF
 #!/bin/sh
-# Copies the renewed certificate where the relay (user nostr-relay) reads it, 0400, and restarts it.
+# Copies the renewed certificate where the relay (user nostr-relay) reads it, 0400, and reloads it.
 set -e
 src=/etc/letsencrypt/live/relay.openagents.com
 install -o nostr-relay -g nostr-relay -m 0400 "\$src/fullchain.pem" /etc/nostr-relay/tls/fullchain.pem
 install -o nostr-relay -g nostr-relay -m 0400 "\$src/privkey.pem" /etc/nostr-relay/tls/privkey.pem
-systemctl try-restart nostr-relay
+systemctl try-reload-or-restart nostr-relay
 EOF
 chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/nostr-relay
 cat > /usr/local/bin/oa-relay-cp-push <<EOF
 #!/bin/sh
 # Copies the freshness checkpoint to its versioned, retention-locked object when it changed.
 set -e
-cp=/var/lib/nostr-relay-cp/relay.cp; last=/var/lib/nostr-relay-cp/.pushed
+cp=/var/lib/nostr-relay-cp/current/relay.cp; last=/var/lib/nostr-relay-cp/.pushed
 [ -f "\$cp" ] || exit 0
 if [ -f "\$last" ] && cmp -s "\$cp" "\$last"; then exit 0; fi
 cp "\$cp" "\$last.tmp"
@@ -128,6 +131,16 @@ OnUnitActiveSec=60
 WantedBy=timers.target
 EOF
 [ -f /etc/nostr-relay/flags ] || echo "RELAY_FLAGS=" > /etc/nostr-relay/flags
+# One pointer selects the store, journal and boot-disk checkpoint together.
+# Initial generation links the existing cutover files; subsequent generations
+# have their own boot-disk checkpoint and data-disk store/journal pair.
+if [ ! -L /var/lib/nostr-relay-cp/current ]; then
+  install -d -o nostr-relay -g nostr-relay -m 0700 /var/lib/nostr-relay-cp/generations/initial
+  ln -s /var/lib/nostr-relay/store/relay.store /var/lib/nostr-relay-cp/generations/initial/relay.store
+  ln -s /var/lib/nostr-relay/store/relay.store.nip86 /var/lib/nostr-relay-cp/generations/initial/relay.store.nip86
+  ln -s /var/lib/nostr-relay-cp/relay.cp /var/lib/nostr-relay-cp/generations/initial/relay.cp
+  ln -s /var/lib/nostr-relay-cp/generations/initial /var/lib/nostr-relay-cp/current
+fi
 cat > /etc/systemd/system/nostr-relay.service <<EOF
 [Unit]
 Description=Coax Nostr relay (relay.openagents.com, #13361)
@@ -138,7 +151,8 @@ RequiresMountsFor=/var/lib/nostr-relay
 User=nostr-relay
 Group=nostr-relay
 EnvironmentFile=/etc/nostr-relay/flags
-ExecStart=/opt/nostr-relay/current/relay --listen 0.0.0.0 --port 443 --url wss://relay.openagents.com --store /var/lib/nostr-relay/store/relay.store --checkpoint /var/lib/nostr-relay-cp/relay.cp --tls-cert /etc/nostr-relay/tls/fullchain.pem --tls-key /etc/nostr-relay/tls/privkey.pem \$RELAY_FLAGS
+ExecStart=/opt/nostr-relay/current/relay --listen 0.0.0.0 --port 443 --url wss://relay.openagents.com --store /var/lib/nostr-relay-cp/current/relay.store --checkpoint /var/lib/nostr-relay-cp/current/relay.cp --tls-cert /etc/nostr-relay/tls/fullchain.pem --tls-key /etc/nostr-relay/tls/privkey.pem \$RELAY_FLAGS
+ExecReload=/bin/kill -HUP \$MAINPID
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
@@ -148,7 +162,29 @@ RestartSec=2
 [Install]
 WantedBy=multi-user.target
 EOF
+cat > /etc/systemd/system/oa-relay-compact.service <<EOF
+[Unit]
+Description=Compact expired Coax relay events into a checked generation
+RequiresMountsFor=/var/lib/nostr-relay
+[Service]
+Type=oneshot
+ExecStart=/opt/nostr-relay/maintain
+ExecStopPost=/bin/systemctl start nostr-relay
+TimeoutStartSec=12min
+EOF
+cat > /etc/systemd/system/oa-relay-compact.timer <<EOF
+[Unit]
+Description=Compact expired Coax relay events weekly
+[Timer]
+OnCalendar=Sun *-*-* 09:00:00 UTC
+RandomizedDelaySec=15min
+Persistent=true
+[Install]
+WantedBy=timers.target
+EOF
 systemctl daemon-reload
+# The compaction timer is enabled separately, after shipping and testing its
+# maintenance binary. setup never silently enables an absent program.
 systemctl enable --now oa-relay-cp.timer >/dev/null 2>&1
 echo setup done'
 }
@@ -266,7 +302,11 @@ case "${1:-}" in
   create) create ;;
   setup) setup ;;
   ship) ship "${2:?BINARY}" ;;
-  start|stop|restart|enable) on "systemctl $1 nostr-relay" ;;
+  ship-maintenance)
+    g compute scp "${2:?BINARY}" "$vm:/tmp/oa-relay-maintain" --zone "$zone" --tunnel-through-iap --quiet
+    on "install -m 0755 /tmp/oa-relay-maintain /opt/nostr-relay/maintain && rm /tmp/oa-relay-maintain" ;;
+  enable-compaction) on "test -x /opt/nostr-relay/maintain && systemctl enable --now oa-relay-compact.timer" ;;
+  start|stop|restart|reload|enable) on "systemctl $1 nostr-relay" ;;
   status) on "systemctl status nostr-relay --no-pager -n 0; systemctl is-active oa-relay-cp.timer" ;;
   logs) on "journalctl -u nostr-relay --no-pager -n ${2:-40}" ;;
   ssh) shift; [[ "${1:-}" == "--" ]] && shift; on "$*" ;;

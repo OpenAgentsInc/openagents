@@ -15,6 +15,7 @@
 // double for this store by changing one #load.
 #load "store_policy.coax";
 #load "store_dedup_policy.coax";
+#load "group_read_policy.coax";
 #authority;
 
 RSD_MAX :: 2048; RSD_ARENA :: 4194304;
@@ -28,6 +29,8 @@ NSS_ACCEPT :: 0; NSS_DUP :: 1; NSS_SUPERSEDED :: 2; NSS_BAD :: 3; NSS_UNVERIFIED
 RsdRec :: struct {
   live: bool; id: [32] u8; author: [32] u8; kind: int; created: int; expiry: int;
   d: [256] u8; d_n: int; from: int; to: int; tags_from: int; tags_to: int;
+  group: [64] u8; group_n: int;
+  not_before: int;
 }
 // The caller owns arena and recs (the relay sizes them RSD_ARENA and RSD_MAX).
 // n records are in use and used arena bytes; live and bytes count the live
@@ -45,7 +48,7 @@ RsdRec :: struct {
 // them (empty, or not longer than recs) admission scans every record, as it
 // always did; the decisions are the same either way. probes counts the
 // slots the lookups read, for the checks.
-RsdStore :: struct { n: int; used: int; live: int; bytes: int; now: int; arena: [] u8; recs: [] RsdRec; ids: [] int; addrs: [] int; probes: int; }
+RsdStore :: struct { n: int; used: int; live: int; bytes: int; now: int; arena: [] u8; recs: [] RsdRec; ids: [] int; addrs: [] int; probes: int; groups: [] NgGroup; }
 NsRoom :: struct { ok: bool; keep: int; }
 // An admission decided but not yet applied: the result, what it writes
 // (nothing, an append retiring record at when at >= 0, or an in-place
@@ -443,7 +446,14 @@ ns_store_same_address :: (a: RsdRec, b: RsdRec) -> bool #effects(all) {
 ns_store_newer :: (a: RsdRec, b: RsdRec) -> bool #effects(all) { return a.created > b.created || (a.created == b.created && ns_before(a.id, b.id)); }
 // Records the latest query time; expired regular events go at compaction.
 ns_store_seen :: (s: [] RsdStore, now: int) -> bool #effects(all) { if now > s[0].now { s[0].now = now; return true; } return false; }
-ns_store_visible :: (s: [] RsdStore, i: int, now: int) -> bool #effects(all) { return s[0].recs[i].live && !ns_expired(s[0].recs[i].expiry, now); }
+#test "only a due reminder enters any stored read or sync" {
+  recs:[1]RsdRec;s:[1]RsdStore;s[0].recs=recs[..];recs[0]=nss_t_rec(1,30300,1);recs[0].live=true;recs[0].not_before=1000;
+  #assert !ns_store_visible(s[..],0,999) && ns_store_visible(s[..],0,1000) && ns_store_visible(s[..],0,1001);
+  recs[0].kind=1;#assert ns_store_visible(s[..],0,999);
+}
+ns_store_visible :: (s: [] RsdStore, i: int, now: int) -> bool #effects(all) {
+  r:=s[0].recs[i];return r.live && !ns_expired(r.expiry,now) && (r.kind!=30300 || r.not_before<=now);
+}
 // Moves every kept record's original down to close the gaps, in index order
 // (which is arena order: a record's bytes never move up). Replaced records
 // and expired regular events are dropped. keep is a record index; the

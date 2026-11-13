@@ -1,0 +1,74 @@
+#run_steps 250000000;
+// Decisions for the relay's configured, open-membership Block roles. The
+// socket/store layer supplies original verified events and current state.
+#load "../../coax/lib/nostr/nipaa.coax";
+#load "../../coax/lib/nostr/nipia.coax";
+#load "../../coax/lib/nostr/block-ingest.coax";
+#authority;
+RxOwner :: struct {agent:[32]u8;owner:[32]u8;valid:bool;}
+#test "advertisement follows configured relay-signing and group roles" {
+  out:[1024]u8;
+  n:=rx_document("{}",false,false,out[..]);#assert n>0;
+  #assert cast(string)out[0..<n]=="{\"supported_extensions\":[\"nip-mp\",\"nip-oa\",\"nip-rs\",\"nip-aa\",\"nip-ae\",\"nip-am\",\"nip-ao\",\"nip-ap\",\"nip-er\"]}";
+  n=rx_document("{}",true,true,out[..]);#assert n>0 && cast(string)out[n-20..<n]==",\"nip-dv\",\"nip-ia\"]}";
+  n=rx_document("{}",true,false,out[..]);#assert n>0 && cast(string)out[n-11..<n]==",\"nip-ia\"]}";
+  n=rx_document("{}",false,true,out[..]);#assert n>0 && cast(string)out[n-11..<n]==",\"nip-er\"]}";
+  n=rx_document("{\"name\":\"Relay\"}",false,false,out[..]);#assert n>0 && cast(string)out[0..<16]=="{\"name\":\"Relay\",";
+  #assert rx_document("",true,true,out[..])== -1 && rx_document("{}",true,true,out[0..<1])== -1;
+  #assert rx_document("[]",false,false,out[..])== -1 && rx_document("}",false,false,out[..])== -1;
+  #assert rx_document("{\"x\":}",false,false,out[..])== -1 && rx_document("{}x",false,false,out[..])== -1;
+  n=rx_document(" { } ",false,false,out[..]);#assert n>0 && json_valid(cast(string)out[0..<n]);
+}
+#test "an owner connection grant requires a current verified AUTH credential" {
+  b:[1024]u8;e:=noa_ev(NOA_T_AGENT,22242,NOA_T_TIME,naa_tags(NAA_T_CHALLENGE,NAA_T_TAG,b[..]));
+  c:=rx_credential(e,NOA_T_TIME);#assert c.status==NOA_OK && c.owner[0]==0x79;
+  #assert rx_credential(e,NOA_T_TIME+121).status!=NOA_OK && rx_credential(e,NOA_T_TIME-121).status!=NOA_OK;
+  #assert rx_credential(e,NOA_T_TIME+120).status==NOA_OK && rx_credential(e,NOA_T_TIME-120).status==NOA_OK;
+  e.kind=1;#assert rx_credential(e,NOA_T_TIME).status!=NOA_OK;
+  #assert rx_credential(e,NOA_T_TIME).status==NOA_OUTSIDE;
+  e.kind=22242;e.created_at=1713957000;#assert rx_credential(e,1713957000).status==NOA_OUTSIDE;
+  e.created_at=NOA_T_TIME;
+  e.kind=22242;e.verified=false;#assert rx_credential(e,NOA_T_TIME).status!=NOA_OK;
+}
+#forall "owner projections preserve every agent and owner byte" at:0..<32 {
+  agent:=g29_k(1);owner:=g29_k(2);r:=RxOwner.{agent=agent,owner=owner,valid=true};
+  #assert rx_pair(r,agent,owner);agent[at]^=1;#assert !rx_pair(r,agent,owner);agent[at]^=1;
+  owner[at]^=1;#assert !rx_pair(r,agent,owner);owner[at]^=1;r.valid=false;#assert !rx_pair(r,agent,owner);
+}
+#test "only original decisions signed by this relay rebuild archival" {
+  buf:[2048]u8;relay:=g29_k(0xee);
+  e:=g29_ev(8002,0xee,1,"[[\"-\"],[\"p\",\"^b\"],[\"consent\",\"self\"]]",buf[..]);
+  r:=rx_archive_delta(e,relay);#assert r.status==IA_OK && r.archive && r.target[31]==0xbb;
+  #assert r.consent==IA_ADMIN && ns_equal32(r.by,relay) && ns_equal32(r.id,e.id);
+  e.kind=8003;r=rx_archive_delta(e,relay);#assert r.status==IA_OK && !r.archive;
+  e.public_key[31]^=1;#assert rx_archive_delta(e,relay).status!=IA_OK;e.public_key[31]^=1;
+  e.verified=false;#assert rx_archive_delta(e,relay).status!=IA_OK;e.verified=true;
+  e.kind=8001;#assert rx_archive_delta(e,relay).status!=IA_OK;
+  e=g29_ev(8002,0xee,1,"[[\"p\",\"^b\"]]",buf[..]);#assert rx_archive_delta(e,relay).status!=IA_OK;
+  e=g29_ev(8002,0xee,1,"[[\"-\"],[\"-\"],[\"p\",\"^b\"]]",buf[..]);#assert rx_archive_delta(e,relay).status!=IA_OK;
+}
+rx_credential :: (e:NostrEvent,now:int) -> NoaClaim #effects(all) {
+  claim:=noa_read(e);
+  if e.kind!=22242 || e.created_at<now-NAA_WINDOW || e.created_at>now+NAA_WINDOW {return noa_status(claim,NOA_OUTSIDE);}
+  return noa_status(claim,noa_decide(claim,noa_signed(claim),e.kind,e.created_at,false,true));
+}
+rx_pair :: (r:RxOwner,agent:[32]u8,owner:[32]u8) -> bool #effects(all) {return r.valid && ns_equal32(r.agent,agent) && ns_equal32(r.owner,owner);}
+rx_archive_delta :: (e:NostrEvent,relay:[32]u8) -> IaRequest #effects(all) {
+  r:IaRequest;
+  if e.error!=NE_OK || !e.verified || !ns_equal32(e.public_key,relay) || (e.kind!=8002 && e.kind!=8003) {return r;}
+  tags:=nt_event_of(e);dash:=nt_tag(tags,"-",0);hex:[64]u8;n:=nb_one(tags,"p",hex[..]);
+  if dash.n!=1 || !dash.found || dash.values!=0 || n!=64 || !ne_lower_hex(cast(string)hex[..],r.target[..]) {return r;}
+  r.status=IA_OK;r.archive=e.kind==8002;r.consent=IA_ADMIN;r.by=relay;r.id=e.id;return r;
+}
+rx_document :: (base:string,key:bool,groups:bool,out:[]u8) -> int #effects(all) {
+  parsed:[1]Json;json_start(parsed[..],base);if json_next(parsed[..])!=JSON_OBJECT {return -1;}
+  peek:[1]Json;peek[0]=parsed[0];empty:=json_next(peek[..])==JSON_OBJECT_END;
+  if !json_skip(parsed[..]) {return -1;}
+  end:=parsed[0].from;if json_next(parsed[..])!=JSON_END {return -1;}
+  n:=json_raw(out,0,base[0..<end]);
+  if !empty {n=json_raw(out,n,",");}
+  n=json_raw(out,n,"\"supported_extensions\":[\"nip-mp\",\"nip-oa\",\"nip-rs\",\"nip-aa\",\"nip-ae\",\"nip-am\",\"nip-ao\",\"nip-ap\",\"nip-er\"");
+  if key && groups {n=json_raw(out,n,",\"nip-dv\"");}
+  if key {n=json_raw(out,n,",\"nip-ia\"");}
+  return json_raw(out,n,"]}");
+}

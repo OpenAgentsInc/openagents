@@ -1,0 +1,34 @@
+// Relay key-file v1 is exactly 32 raw bytes. Secret scalar admission and
+// all signing arithmetic remain the shared signer's responsibility.
+#authority;
+RK_SIGN_STEPS :: 12;
+#forall "the raw key file has exactly one size" n: -1..<66 { #assert rk_key_count(n) == (n == 32); }
+#test "group state timestamps advance, stay bounded, and refuse clock exhaustion" {
+  #assert rk_state_time(0,1000)==1000 && rk_state_time(1000,1000)==1001;
+  #assert rk_state_time(1899,1000)==1900 && rk_state_time(1900,1000)== -1;
+  #assert rk_state_time(0,-1)== -1 && rk_state_time(-1,0)== -1;
+  #assert rk_state_time(0,0)==1;
+}
+rk_key_count :: (n: int) -> bool #effects(all) { return n == 32; }
+rk_state_time :: (previous: int, now: int) -> int #effects(all) {
+  if previous < 0 || now < 0 || previous >= now + 900 { return -1; }
+  return ifx previous >= now then previous + 1 else now;
+}
+rk_group_publish :: (kind: int) -> bool #effects(all) {
+  return kind==9000 || kind==9001 || kind==9002 || kind==9007 || kind==9021 || kind==9022;
+}
+#forall "snapshots follow state changes, not every chat message" kind: 8999..<9024 {
+  expected:=false; for k: [6] int.[9000,9001,9002,9007,9021,9022] { if kind==k { expected=true; } }
+  #assert rk_group_publish(kind)==expected;
+}
+// Four bounded 16 KiB signed output frames, in addition to the incoming
+// control. Reserve the buffers' full bound, not their usual encoded size.
+rk_snapshot_room :: (events: int, capacity: int, bytes: int, arena: int, incoming: int) -> bool #effects(all) {
+  return events>=0 && events<=capacity-5 && bytes>=0 && incoming>=0 && bytes+incoming<=arena-65536;
+}
+#test "a control reserves space for all four signed snapshots" {
+  #assert rk_snapshot_room(0,5,0,65536,0);
+  #assert rk_snapshot_room(5,10,100,65736,100);
+  #assert !rk_snapshot_room(6,10,100,65736,100) && !rk_snapshot_room(5,10,101,65736,100);
+  #assert !rk_snapshot_room(-1,10,100,65736,100) && !rk_snapshot_room(5,10,-1,65736,100) && !rk_snapshot_room(5,10,100,65736,-1);
+}

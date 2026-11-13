@@ -16,6 +16,7 @@
 #load "../../coax/lib/nostr/store.coax";
 #load "store_file.coax";
 #load "store_recover.coax";
+#load "store_fresh.coax";
 #load "store_delete.coax";
 #load "../../coax/lib/nostr/event_verify_fast.coax";
 
@@ -104,6 +105,13 @@ rsd_replay :: (s: [] RsdStore, now: int, text: [] u8, scratch: [] u8) -> RsdRepl
 // so the stored deletion and vanish requests' tombstones come back in tb in
 // file order (relay and out as rsd_admit_deleting's).
 rsd_replay_deleting :: (s: [] RsdStore, tb: [] NsdTombs, relay: string, work: [] NsdTomb, now: int, text: [] u8, scratch: [] u8, deleting: bool) -> RsdReplay {
+  return rsd_replay_prefix(s, tb, relay, work, now, text, scratch, deleting, 0);
+}
+// Private replay integration: verified_prefix is zero unless durable.coax
+// has hashed and matched the checkpoint on this exact locked file. It is
+// evidence of earlier signature verification, not caller event authority.
+// Full audit (--check-store), import and uncheckpointed starts pass zero.
+rsd_replay_prefix :: (s: [] RsdStore, tb: [] NsdTombs, relay: string, work: [] NsdTomb, now: int, text: [] u8, scratch: [] u8, deleting: bool, verified_prefix: int) -> RsdReplay {
   out: RsdReplay;
   total := cxstore_load();
   if total < 0 { return out; }
@@ -129,7 +137,10 @@ rsd_replay_deleting :: (s: [] RsdStore, tb: [] NsdTombs, relay: string, work: []
     t := cast(string) text[0..<f.to - f.from];
     out.frames += 1;
     r := rsd_replay_read(t, now, scratch);
-    if r.reason == RS_ACCEPT { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
+    if r.reason == RS_ACCEPT {
+      if nfc_frame_verified(verified_prefix, at, f.from, f.to, total) { r.e.verified = true; }
+      else { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
+    }
     reason := r.reason;
     if reason == RS_ACCEPT { reason = ifx deleting then rsd_admit_deleting(s, tb, r, t, relay, work, false) else rsd_admit(s, r, t); }
     if nsr_replayed(reason) != NSR_NEXT { out.refused = true; out.at = at; out.reason = reason; return out; }

@@ -170,8 +170,11 @@ rs_tag :: (e: NostrEvent, name: u8, out: [] u8) -> int #effects(all) {
 // NIP-40: the expiration time, or -1 when there is none or it isn't a
 // plain decimal of at most 16 digits (then the event never expires).
 rs_expiration :: (e: NostrEvent) -> int #effects(all) {
+  return rs_tag_time(e,"expiration");
+}
+rs_tag_time :: (e: NostrEvent, name: string) -> int #effects(all) {
   b: [16] u8;
-  n := rs_tag_named(e, "expiration", b[..]);
+  n := rs_tag_named(e, name, b[..]);
   if n < 1 { return -1; }
   v := 0;
   for i: 0..<n {
@@ -591,7 +594,7 @@ rs_sub_matches :: (subs: [] RsSub, i: int, e: NostrEvent) -> bool #effects(all) 
 
 // The same bytes as relay_route.coax's RR_NIP11, which nostr/relay/relay.coax
 // serves (nostr/examples/checks/relay-info.coax checks that they agree).
-RS_NIP11 :: "{\"name\":\"OpenAgents Relay\",\"description\":\"OpenAgents-owned Nostr relay, written in Coax. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,17,40,42,45,50,59,62,70,77],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
+RS_NIP11 :: "{\"name\":\"OpenAgents Relay\",\"description\":\"OpenAgents-owned Nostr relay, written in Coax. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,17,40,42,45,50,59,62,65,67,70,77,94],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_content_length\":65536,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
 #test "the NIP-11 document is JSON and states the limits in force" {
   #assert json_valid(RS_NIP11);
   #assert RS_MAX_MESSAGE == 131072 && RS_MAX_SUBS == 32 && RS_MAX_LIMIT == 127 && MS_SUB_MAX == 64 && RS_MAX_TAGS == 256 && RS_FUTURE == 900;

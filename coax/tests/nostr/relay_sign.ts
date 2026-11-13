@@ -15,6 +15,17 @@ const input = await new Response(Bun.stdin.stream()).text();
 for (const line of input.split("\n")) {
   if (!line.trim()) continue;
   const t = JSON.parse(line);
+  if (process.env.RELAY_TEST_ATTEST === "1") {
+    const conditions = t.conditions ?? "";
+    const hash = sha256(new TextEncoder().encode("nostr:agent-auth:" + t.agent + ":" + conditions));
+    console.log(JSON.stringify(["auth", pubkey, conditions, bytesToHex(schnorr.sign(hash, secret, new Uint8Array(32)))]));
+    continue;
+  }
+  if (process.env.RELAY_TEST_VERIFY === "1") {
+    const id = sha256(new TextEncoder().encode(JSON.stringify([0, t.pubkey, t.created_at, t.kind, t.tags, t.content])));
+    console.log(JSON.stringify(bytesToHex(id) === t.id && schnorr.verify(t.sig, id, t.pubkey)));
+    continue;
+  }
   const ser = JSON.stringify([0, pubkey, t.created_at, t.kind, t.tags, t.content]);
   const id = sha256(new TextEncoder().encode(ser));
   const sig = bytesToHex(schnorr.sign(id, secret, new Uint8Array(32)));

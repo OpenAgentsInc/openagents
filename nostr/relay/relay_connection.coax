@@ -1,0 +1,44 @@
+// Per-address connection admission. The socket host supplies normalized
+// 16-byte IP addresses (IPv4 uses ::ffff:a.b.c.d), never forwarding headers.
+// The running relay owns the active handles and address snapshots.
+#authority;
+RC_ADDRESS_BYTES :: 16;
+RC_PER_ADDRESS :: 16;
+
+#test "one address cannot occupy the listener, and another keeps its slots" {
+  active: [17] int; peers: [17 * RC_ADDRESS_BYTES] u8; address: [16] u8;
+  for b: 0..<16 { address[b] = cast(u8) (b + 1); }
+  for i: 0..<17 { active[i] = -1; for b: 0..<16 { peers[i * 16 + b] = address[b]; } }
+  for i: 0..<16 {
+    #assert rc_admit(active[..], peers[..], address[..]);
+    active[i] = i + 1;
+  }
+  #assert !rc_admit(active[..], peers[..], address[..]);
+  for byte: 0..<16 {
+    address[byte] ^= 1; #assert rc_admit(active[..], peers[..], address[..]); address[byte] ^= 1;
+  }
+  active[7] = -1; #assert rc_admit(active[..], peers[..], address[..]);
+  active[7] = 1; peers[7 * 16 + 15] = 1;
+  #assert rc_admit(active[..], peers[..], address[..]);
+  for i: 0..<17 { active[i] = 0; }
+  #assert rc_admit(active[..], peers[..], address[..]);
+}
+#test "invalid observations refuse before indexing" {
+  active: [1] int; peers: [16] u8; address: [17] u8;
+  #assert !rc_admit(active[..], peers[..], address[0..<15]);
+  #assert !rc_admit(active[..], peers[..], address[..]);
+  #assert !rc_admit(active[..], peers[0..<15], address[0..<16]);
+  active[0] = 0; #assert rc_admit(active[..], peers[..], address[0..<16]);
+  #assert RC_PER_ADDRESS == 16;
+}
+rc_admit :: (active: [] int, peers: [] u8, address: [] u8) -> bool #effects(all) {
+  if address.count != RC_ADDRESS_BYTES || peers.count / RC_ADDRESS_BYTES != active.count || peers.count % RC_ADDRESS_BYTES != 0 { return false; }
+  count := 0;
+  for i: 0..<active.count {
+    if active[i] <= 0 { continue; }
+    same := true;
+    for b: 0..<RC_ADDRESS_BYTES { if peers[i * RC_ADDRESS_BYTES + b] != address[b] { same = false; } }
+    if same { count += 1; }
+  }
+  return count < RC_PER_ADDRESS;
+}

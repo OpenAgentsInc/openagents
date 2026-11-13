@@ -1,0 +1,26 @@
+// File effects and orchestration only. The owner approved file-backed relay
+// custody on 2026-11-13 (#13382). No key is generated or replaced at startup.
+// The host erases the complete authored signing workspace, including padding.
+#load "relay_key_policy.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+ry_key_on :: () -> int #foreign #effects(all);
+ry_key_load :: (out: [] u8) -> int #foreign #effects(all);
+ry_key_end :: (key: [] u8) -> int #foreign #effects(all);
+rk_public :: (key: [] u8, out: [] u8) -> bool #foreign #effects(all);
+rk_sign :: (key: [] u8, aux: [] u8, created: int, kind: int, tags: [] u8, scratch: [] u8, out: [] u8) -> int #foreign #effects(all);
+
+// The C host owns and erases the complete workspace around these calls.
+// Coax owns every signing decision, including the bounded stage loop.
+rk_public_into :: (key: [] u8, out: [] u8, work: [] NostrSignWork) -> bool #export_c #effects(all) {
+  aux: [32] u8;
+  if es_key(key,aux[..],work[..]) != EVENT_MORE || out.count != 32 { return false; }
+  for i: 0..<32 { out[i] = work[0].pub[i]; }
+  return true;
+}
+rk_sign_into :: (key: [] u8, aux: [] u8, created: int, kind: int, tags: [] u8, scratch: [] u8, out: [] u8, work: [] NostrSignWork) -> int #export_c #effects(all) {
+  for step: 0..<RK_SIGN_STEPS {
+    n := nostr_event_sign_step(key,aux,created,kind,cast(string) tags,"",work,scratch,out,false);
+    if n != EVENT_MORE { return n; }
+  }
+  return EVENT_REFUSED;
+}

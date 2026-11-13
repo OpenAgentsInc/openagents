@@ -109,6 +109,14 @@
 #load "../../coax/lib/nostr/message_agree.coax";
 // The freshness checkpoint, the import and the served-set digest (#12631).
 #load "store_fresh.coax";
+#load "relay_connection.coax";
+#load "store_compact.coax";
+#load "relay_metadata.coax";
+#load "relay_key.coax";
+#load "relay_groups.coax";
+#load "relay_extensions.coax";
+#load "relay_write.coax";
+#load "../../coax/lib/nostr/block-ingest.coax";
 #load "relay_import.coax";
 #load "relay_equal.coax";
 #load "durable.coax";
@@ -139,6 +147,8 @@ cxsrv_listen :: (port: int) -> int #foreign #effects(all);
 cxsrv_bound_port :: () -> int #foreign #effects(all);
 cxsrv_poll :: (timeout_ms: int) -> int #foreign #effects(all);
 cxsrv_accept :: () -> int #foreign #effects(all);
+cxsrv_peer_byte :: (h: int, i: int) -> int #foreign #effects(all);
+ry_host_reload :: () -> int #foreign #effects(all);
 cxsrv_read :: (h: int) -> int #foreign #effects(all);
 cxsrv_byte :: (h: int, i: int) -> int #foreign #effects(all);
 cxsrv_write :: (h: int, byte: int) -> int #foreign #effects(all);
@@ -182,8 +192,10 @@ RY_NEG_SLACK :: 4096;
 
 RyConn :: struct {
   h: int = -1; ws: bool; gen: int;
+  peer: [RC_ADDRESS_BYTES] u8;
   since: int;   // accepted, or the last complete frame taken (rr_deadline)
   n42: [1] Nip42; auth: [1] RrAuth;
+  owners: [RR_KEYS] RxOwner;
   rt: [1] RtConn;                 // this connection's EVENT and REQ windows
   inb: [RY_IN] u8; used: int;
   rd: [1] WsReader;
@@ -207,6 +219,7 @@ RyWork :: struct {
   rate: RtConfig;                 // --rate, or relay_rate.coax's defaults
   pow: int;                       // --pow: the NIP-13 difficulty an EVENT needs, 0 off
   keys: [1] RtKeys;               // the per-key EVENT windows
+  observer_agents: [1] RtKeys; observer_ips: [1] RtKeys;
   nip11: [4096] u8; nip11_n: int; // RR_NIP11 with the rate limits (rt_nip11)
   neg_items: [RR_NEG_MAX] NegItem; // one sync's items (rd_neg_items)
   neg_in: [RR_NEG_IN] u8;          // one NEG-OPEN or NEG-MSG message, decoded
@@ -215,9 +228,15 @@ RyWork :: struct {
   admin_last: int;                 // when a NIP-98 id was last remembered
   url: [512] u8; url_n: int;       // the relay URL, which a NIP-98 u tag names
   http: [N86_OUT] u8;              // one NIP-86 reply body
+  relay_key: [32] u8; relay_public: [32] u8; key_on: bool; fatal: bool;
+  group_clock: [RR_GROUPS] int;
+  reminder_clock: int;
+  archived: [1] IaState; extension_clock: int;
   groups_on: bool;                 // --groups
   journal: bool;                   // --store: policy changes go to FILE.nip86
+  group_acl: [RR_GROUPS] NgGroup; group_readers: [RR_GROUPS * G29_MAX_MEMBERS * 32] u8;
   groups: [RR_GROUPS] G29Group;    // NIP-29 groups (exists marks a live slot)
+  channels: [RR_GROUPS] ClChannel;
   fresh: [1] RyFresh;              // --checkpoint (durable.coax)
 }
 
@@ -237,6 +256,7 @@ ry_shut :: (c: [] RyConn) {
   if c[0].h >= 0 { r := cxsrv_close(c[0].h); }
   c[0].h = -1; c[0].ws = false; c[0].used = 0; c[0].rd[0] = WsReader.{};
   rr_auth_reset(c[0].auth[..]); c[0].rt[0] = RtConn.{}; rr_neg_reset(c[0].neg[..]);
+  for i:0..<RR_KEYS {c[0].owners[i]=RxOwner.{};}
   for i: 0..<RS_MAX_SUBS { c[0].subs[i].live = false; }
 }
 ry_close :: (c: [] RyConn, w: [] RyWork, code: int) {
@@ -256,6 +276,7 @@ ry_readers :: (a: [] RrAuth) -> [] u8 { return a[0].keys[0..<32 * a[0].n]; }
 // A new event goes to every matching live subscription on every connection
 // whose readers may have it.
 ry_fanout :: (conns: [] RyConn, w: [] RyWork, e: NostrEvent) {
+  if e.kind==30300 && rs_tag_time(e,"not_before")>cxsrv_now_s() {return;}
   for i: 0..<conns.count {
     for k: 0..<RS_MAX_SUBS {
       if !rr_deliver(conns[i].h >= 0, conns[i].ws, rd_sub_matches(conns[i].subs[..], k, e, w[0].search[..], ry_readers(conns[i].sub_auth[k..<k + 1]))) { continue; }
@@ -271,22 +292,67 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
   r := rs_admit_read(event, cxsrv_now_s(), rr_writes_need_auth(true), rr_authed(c[0].auth[..]), w[0].scratch[..]);
   if r.reason == RS_BAD_EVENT { ok := ry_notice(c, w, RS_BAD_EVENT); return; }
   id := r.e.id;
+  if r.reason == RS_ACCEPT && !rm_metadata_ok(r.e) {
+    ok := ry_text(c, w, ms_write_ok(id[..], false, "invalid", "malformed NIP-94 file metadata", w[0].body[..])); return;
+  }
   gs: RyGroup; gt: [1] G29Group;   // the event's group step, and its state if the store takes it
+  archive_request:IaRequest;dm_members:[RR_GROUPS]DvMember;
+  is_archive:=r.e.kind==IA_ARCHIVE || r.e.kind==IA_UNARCHIVE;
+  is_dm:=r.e.kind==DV_HIDE || r.e.kind==DV_OPEN;
   if r.reason == RS_ACCEPT && w[0].pow > 0 {
     a := nip13_admit(event, w[0].pow, w[0].scratch[..], false);
     if a.error != N13_OK { ry_ok_reason(c, w, id[..], cast(string) w[0].out[0..<nip13_reason(a, w[0].out[..])]); return; }
   }
   if r.reason == RS_ACCEPT { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
   if r.reason == RS_ACCEPT {
+    write := rw_check(r.e,ry_readers(c[0].auth[..]));
+    if write != RW_OK { ok := ry_text(c,w,ms_write_ok(id[..],false,RW_PREFIX[write],RW_TEXT[write],w[0].body[..])); return; }
+    block := nb_check(r.e,cxsrv_now_s());
+    if block != NB_OK { ok := ry_text(c,w,ms_write_ok(id[..],false,"invalid",NB_REASONS[block],w[0].body[..])); return; }
+    if r.e.kind==44200 {
+      metric:=am_read(r.e);
+      code:=am_admit(metric,rp_has(ry_readers(c[0].auth[..]),r.e.public_key),rx_owned(conns,store,r.e.public_key,metric.owner));
+      if code!=AM_OK {ok:=ry_text(c,w,ms_write_ok(id[..],false,ifx code==AM_AUTH then "auth-required" else ifx code==AM_OWNER then "restricted" else "invalid","agent turn metric route is not authorized",w[0].body[..]));return;}
+    }
+    if r.e.kind==AO_KIND_FRAME {
+      code:=rx_observer(conns,c,w,store,r.e,cxsrv_now_s());
+      if code!=0 {
+        ok:=ry_text(c,w,ms_write_ok(id[..],code==4,ifx code==4 then "" else ifx code==2 then "auth-required" else ifx code==3 then "restricted" else ifx code==5 then "rate-limited" else "invalid",ifx code==4 then "" else "agent observer frame is not authorized",w[0].body[..]));return;
+      }
+    }
     key := r.e.public_key;
-    rt := rt_event(c[0].rt[..], w[0].keys[..], w[0].rate, key[..], cxsrv_now_s());
+    rt := ifx r.e.kind==AO_KIND_FRAME then RT_OK else rt_event(c[0].rt[..], w[0].keys[..], w[0].rate, key[..], cxsrv_now_s());
     if rt != RT_OK { ok := ry_text(c, w, ms_write_ok(id[..], false, rt_prefix(rt), rt_text(rt), w[0].body[..])); return; }
     a := n86_admit(w[0].admin[0], key, id, r.e.kind);
     if a != N86_ADMIT_OK { ok := ry_text(c, w, ms_write_ok(id[..], false, rr_admin_prefix(a), rr_admin_text(a), w[0].body[..])); return; }
-    if w[0].groups_on {
+    if is_archive || is_dm {
+      st:=store[0].s[0];
+      if !w[0].key_on || (is_dm && !w[0].groups_on) {ok:=ry_text(c,w,ms_write_ok(id[..],false,"restricted","relay identity and group service are required",w[0].body[..]));return;}
+      if !rp_has(ry_readers(c[0].auth[..]),r.e.public_key) {ok:=ry_text(c,w,ms_write_ok(id[..],false,"auth-required","authenticate as the command author",w[0].body[..]));return;}
+      if rk_state_time(w[0].extension_clock,cxsrv_now_s())<0 || !rk_snapshot_room(st.live,st.recs.count,st.bytes,st.arena.count,event.count) {ok:=ry_text(c,w,ms_write_ok(id[..],false,"rate-limited","relay state has no publication capacity",w[0].body[..]));return;}
+    }
+    if is_archive {
+      archive_request=rx_archive_prepare(w,store,r.e,cxsrv_now_s());
+      next:[1]IaState;next[0]=w[0].archived[0];code:=ia_apply(next[..],archive_request);
+      if code!=IA_OK && code!=IA_SAME {ok:=ry_text(c,w,ms_write_ok(id[..],false,"restricted","identity archival consent or capacity refused",w[0].body[..]));return;}
+    }
+    if is_dm {
+      code:=rx_dm_prepare(w,store,r.e,dm_members[..]);
+      if code!=DV_OK && code!=DV_UNCHANGED {ok:=ry_text(c,w,ms_write_ok(id[..],false,"restricted","DM visibility requires an active DM membership",w[0].body[..]));return;}
+    }
+    if w[0].groups_on && !is_dm {
       gs = ry_group(w, r.e, gt[..]);
       g := gs.g;
       if g != G29_OK && g != G29_PASS { ok := ry_text(c, w, ms_write_ok(id[..], false, rr_group_prefix(g), rr_group_text(g), w[0].body[..])); return; }
+      if g==G29_OK && r.e.kind==G29_DELETE_EVENT && store[0].tb[0].n>=store[0].tb[0].t.count {
+        ok:=ry_text(c,w,ms_write_ok(id[..],false,"blocked","no room for group deletion history",w[0].body[..])); return;
+      }
+      if g==G29_OK && gs.slot>=0 && w[0].key_on && rk_group_publish(r.e.kind) {
+        st:=store[0].s[0];
+        if rk_state_time(w[0].group_clock[gs.slot],cxsrv_now_s())<0 || !rk_snapshot_room(st.live,st.recs.count,st.bytes,st.arena.count,event.count) {
+          ok:=ry_text(c,w,ms_write_ok(id[..],false,"rate-limited","group state has no publication capacity",w[0].body[..])); return;
+        }
+      }
     }
     p := nip70_admit(event, true, c[0].auth[..], w[0].scratch[..]);
     if p.decision != N70_ACCEPT { ok := ry_text(c, w, ms_write_ok(id[..], false, nip70_prefix(p.decision), nip70_text(p.decision), w[0].body[..])); return; }
@@ -298,33 +364,54 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
   }
   prefix := ifx rr_store_extra(reason) then rr_store_prefix(reason) else rs_prefix(reason);
   why := ifx rr_store_extra(reason) then rr_store_text(reason) else rs_text(reason);
+  if rr_fanout(reason) && is_archive && !rx_archive_publish(conns,w,store,archive_request,cxsrv_now_s()) {w[0].fatal=true;return;}
+  if rr_fanout(reason) && is_dm && !rx_dm_publish(conns,w,store,dm_members[..],r.e.public_key,cxsrv_now_s()) {w[0].fatal=true;return;}
   ok := ry_text(c, w, ms_write_ok(id[..], rs_accepted(reason), prefix, why, w[0].body[..]));
-  if rr_group_keep(gs.g, gs.slot, rr_fanout(reason)) { w[0].groups[gs.slot] = gt[0]; }
-  if rr_fanout(reason) { ry_fanout(conns, w, r.e); }
+  changed:=rr_group_keep(gs.g,gs.slot,rr_fanout(reason));
+  early:=changed && ng_scope_required(r.e.kind) && r.e.kind!=G29_CREATE_GROUP;
+  if early { ry_fanout(conns,w,r.e); }
+  if changed {
+    w[0].groups[gs.slot]=gt[0];w[0].channels[gs.slot]=gs.channel;ry_group_sync(w,store);
+    if !ry_group_deleted_event(w,store,r.e,gs.g==G29_OK) { w[0].fatal=true; return; }
+    if rk_group_publish(r.e.kind) && !ry_group_publish(conns,w,store,gs.slot,cxsrv_now_s()) { w[0].fatal=true; return; }
+  }
+  if rr_fanout(reason) && !early { ry_fanout(conns,w,r.e); }
 }
 // One event's NIP-29 step over w.groups: g29_admit's answer (RR_G29_FULL
 // when a create finds no free slot) and the group's slot (rr_group_slot's,
 // -1 without an h tag); gt (zeroed by the caller) holds the group's state
 // after the event, which the caller keeps only when rr_group_keep says so.
-RyGroup :: struct { g: int; slot: int = -1; }
+RyGroup :: struct { g: int; slot: int = -1; channel:ClChannel; }
 ry_group :: (w: [] RyWork, e: NostrEvent, gt: [] G29Group) -> RyGroup {
+  // In these protocols h names a mailbox/run, not a NIP-29 group.
+  if ng_mailbox(e.kind) { return RyGroup.{g=G29_PASS}; }
+  if e.kind==DV_HIDE || e.kind==DV_OPEN {return RyGroup.{g=G29_PASS};}
+  if nt_tags(nt_event_of(e),"h")==0 && (e.kind<9000 || e.kind>9022) {return RyGroup.{g=G29_PASS};}
   gi := -1;
   gr := g29_read(e);
   if gr.status == G29_OK && gr.has_h {
     live: [RR_GROUPS] bool; same: [RR_GROUPS] bool;
-    for i: 0..<RR_GROUPS { live[i] = w[0].groups[i].exists; same[i] = live[i] && g29_same(w[0].groups[i].id, gr.h); }
+    for i: 0..<RR_GROUPS { live[i] = w[0].groups[i].id.n > 0; same[i] = live[i] && g29_same(w[0].groups[i].id, gr.h); }
     gi = rr_group_slot(live[..], same[..], e.kind == G29_CREATE_GROUP);
     if gi >= 0 && live[gi] { gt[0] = w[0].groups[gi]; }
   }
-  relay: [32] u8;   // the relay has no key: no event is the relay's
-  return RyGroup.{g = ifx gi == -2 then RR_G29_FULL else g29_admit(gt, e, relay), slot = gi};
+  if gr.status == G29_OK && !gr.has_h && ng_scope_required(e.kind) { return RyGroup.{g=G29_SHAPE}; }
+  if gi>=0 && ng_reserved(gt[0].id.n>0,gt[0].exists,e.kind==G29_CREATE_GROUP) { return RyGroup.{g=G29_EXISTS,slot=gi}; }
+  channel:[1]ClChannel;if gi>=0 {channel[0]=w[0].channels[gi];}
+  result:=RR_G29_FULL;
+  if gi!= -2 {
+    verdict:[1]int;code:=cl_admit(gt,channel[..],e,w[0].relay_public,cxsrv_now_s(),verdict[..]);
+    result=ifx code==CL_OK || code==CL_GROUP then verdict[0] else G29_SHAPE;
+  }
+  if result==G29_OK && e.kind==G29_DELETE_GROUP && gi>=0 { gt[0].id=w[0].groups[gi].id; }
+  return RyGroup.{g=result,slot=gi,channel=channel[0]};
 }
 // The groups rebuilt from the --store file after the store's replay: every
 // stored event with an h tag, in file order, through the same step as a
 // live EVENT (each was stored, so each counts as taken). text holds one
 // original. How many group events were read and how many changed a group.
 RyGroups :: struct { events: int; kept: int; }
-ry_groups_replay :: (w: [] RyWork, now: int, text: [] u8) -> RyGroups {
+ry_groups_replay :: (w: [] RyWork, store: [] RdStore, now: int, text: [] u8) -> RyGroups {
   out: RyGroups;
   total := cxstore_load();
   at := 0;
@@ -336,12 +423,17 @@ ry_groups_replay :: (w: [] RyWork, now: int, text: [] u8) -> RyGroups {
     for i: f.from..<f.to { text[i - f.from] = cast(u8) cxstore_byte(i); }
     r := rsd_replay_read(cast(string) text[0..<f.to - f.from], now, w[0].scratch[..]);
     if r.reason == RS_ACCEPT && g29_read(r.e).has_h {
-      r = rs_admit_verified(r, ne_signed_fast(r.e));
+      // rd_replay already verified this exact locked file (including any
+      // checkpoint-covered prefix). Rebuild policy without verifying twice.
+      r.e.verified = true;
       if r.reason == RS_ACCEPT {
         gt: [1] G29Group;
         gs := ry_group(w, r.e, gt[..]);
         out.events += 1;
-        if rr_group_keep(gs.g, gs.slot, true) { w[0].groups[gs.slot] = gt[0]; out.kept += 1; }
+        if rr_group_keep(gs.g, gs.slot, true) {
+          w[0].groups[gs.slot] = gt[0];w[0].channels[gs.slot]=gs.channel;out.kept += 1;
+          if !ry_group_deleted_event(w,store,r.e,gs.g==G29_OK) { w[0].fatal=true; return out; }
+        }
       }
     }
     at = f.to;
@@ -369,10 +461,11 @@ ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string, m: MsMsg
   slot := rs_sub_open(c[0].subs[..], m, text, RS_MAX_SUBS);
   if slot < 0 { ok := ry_closed(c, w, sub, -slot); return; }
   c[0].sub_auth[slot] = c[0].auth[0];
-  now := cxsrv_now_s(); sent := 0;
+  now := cxsrv_now_s(); sent := 0; complete := true;
   for k: 0..<m.filters {
     idx: [RS_MAX_LIMIT] int;
     n := rd_req_filter(store, text, m, k, now, w[0].search[..], idx[..], readers);
+    complete = complete && w[0].search[0].complete;
     for q: 0..<n {
       t := rr_take(w[0].sent[..], sent, idx[q]);
       if t == -1 { continue; }
@@ -381,7 +474,7 @@ ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string, m: MsMsg
       if !ry_text(c, w, ms_write_event(sub, rsd_text(rd_store(store), idx[q]), w[0].body[..])) { return; }
     }
   }
-  ok := ry_text(c, w, ms_write_eose(sub, w[0].body[..]));
+  ok := ry_text(c, w, ms_write_eose_complete(sub, complete, w[0].body[..]));
 }
 // COUNT (NIP-45, chapter 40): charged as a REQ, then nip45.coax's
 // n45_answer over the store's index: the exact count of distinct visible
@@ -405,6 +498,7 @@ ry_auth :: (c: [] RyConn, w: [] RyWork, obj: string) {
   a := nip42_admit(c[0].n42[..], c[0].gen, cxsrv_now_s(), obj, w[0].scratch[..], false);
   key := a.public_key;
   k := rr_auth(c[0].auth[..], a.error, key[..]);
+  if k==RR_A_OK {e.verified=true;rx_auth(c,e,cxsrv_now_s());}
   ok := ry_text(c, w, ms_write_ok(id[..], k == RR_A_OK, rr_auth_prefix(k), rr_auth_text(k), w[0].body[..]));
 }
 // NEG-ERR for session sub (NIP-77), with the record limit when there is one.
@@ -634,17 +728,42 @@ ry_frames :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore) {
   }
 }
 ry_serve :: (conns: [] RyConn, w: [] RyWork, store: [] RdStore) {
+  w[0].reminder_clock=cxsrv_now_s();
   while true {
+    if w[0].fatal { ry_host_exit(3); return; }
+    reload := ry_host_reload();
+    if reload < 0 { print("relay: certificate reload failed; keeping the previous certificate\n"); }
+    if reload > 0 { print("relay: certificate reloaded without interrupting connections\n"); }
     r := cxsrv_poll(1000);
+    due_now:=cxsrv_now_s();
+    if due_now>w[0].reminder_clock {
+      for i:0..<store[0].s[0].n {
+        rec:=store[0].s[0].recs[i];
+        if rec.kind==30300 && rec.not_before>w[0].reminder_clock && rec.not_before<=due_now && ns_store_visible(store[0].s[..],i,due_now) {
+          ry_fanout(conns,w,rsd_event(store[0].s[..],i));
+        }
+      }
+      w[0].reminder_clock=due_now;
+    }
     while true {
       h := cxsrv_accept();
       if h <= 0 { break; }
       handles: [RY_CONNS] int;
-      for i: 0..<conns.count { handles[i] = conns[i].h; }
+      peers: [RY_CONNS * RC_ADDRESS_BYTES] u8; peer: [RC_ADDRESS_BYTES] u8; valid := true;
+      for b: 0..<RC_ADDRESS_BYTES {
+        byte := cxsrv_peer_byte(h, b);
+        if byte < 0 { valid = false; } else { peer[b] = cast(u8) byte; }
+      }
+      for i: 0..<conns.count {
+        handles[i] = conns[i].h;
+        for b: 0..<RC_ADDRESS_BYTES { peers[i * RC_ADDRESS_BYTES + b] = conns[i].peer[b]; }
+      }
+      if !valid || !rc_admit(handles[0..<conns.count], peers[0..<conns.count * RC_ADDRESS_BYTES], peer[..]) { x := cxsrv_close(h); continue; }
       slot := rr_free_slot(handles[0..<conns.count]);
       if slot < 0 { x := cxsrv_close(h); continue; }
       w[0].gen = rr_next_gen(w[0].gen);
       conns[slot].h = h; conns[slot].ws = false; conns[slot].used = 0; conns[slot].rd[0] = WsReader.{};
+      conns[slot].peer = peer;
       conns[slot].gen = w[0].gen; rr_auth_reset(conns[slot].auth[..]); conns[slot].since = cxsrv_now_s();
       conns[slot].rt[0] = RtConn.{}; rr_neg_reset(conns[slot].neg[..]);
     }
@@ -737,6 +856,17 @@ ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time
   if mode == RY_SERVE && cxsrv_listen(ry_host_port()) != 0 { print("relay: cannot listen\n"); return; }
   conns: [RY_CONNS] RyConn;
   w: [1] RyWork;
+  w[0].key_on = ry_key_on() == 1;
+  defer { if w[0].key_on { #assert ry_key_end(w[0].relay_key[..]) == 0; } }
+  if w[0].key_on && (!rk_key_count(ry_key_load(w[0].relay_key[..])) || !rk_public(w[0].relay_key[..],w[0].relay_public[..])) {
+    print("relay: refusing the signing key file (owned regular 0400/0600 file, 32 raw bytes, valid scalar required)\n"); ry_host_exit(2); return;
+  }
+  if mode==RY_IDENTITY {
+    if !w[0].key_on {ry_host_exit(2);return;}
+    hex:[64]u8;encoded:=hex_encode_checked(cast(string)w[0].relay_public[..],hex[..],false);
+    if encoded.error!=NC_OK {ry_host_exit(2);return;}
+    print("%\n",cast(string)hex[..]);return;
+  }
   url: [512] u8; u := -1;
   if mode == RY_SERVE { u = ry_url(cxsrv_bound_port(), url[..]); }
   else if ry_host_url_count() > 0 && ry_host_url_count() <= url.count {
@@ -755,7 +885,8 @@ ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time
     t0 := ry_host_ns();
     if !ry_fresh_check(w[0].fresh[..]) { ry_host_exit(3); return; }
     text: [NS_FRAME_MAX_ORIGINAL] u8;
-    rp := rd_replay(store[..], now, text[..], w[0].scratch[..]);
+    prefix := ifx mode == RY_SERVE && w[0].fresh[0].on && w[0].fresh[0].had then w[0].fresh[0].cp.store.size else 0;
+    rp := rd_replay_prefix(store[..], now, text[..], w[0].scratch[..], prefix);
     if rp.refused { print("relay: refusing to start: the --store file is damaged at byte % (reason %); it was not changed\n", rp.at, rp.reason); ry_host_exit(3); return; }
     if !rp.ok { print("relay: cannot open, lock or read the --store file\n"); ry_host_exit(3); return; }
     print("relay: replayed % saved events: % stored, % duplicates or replaced%\n", rp.frames, rp.stored, rp.kept, ifx rp.cut then ", a partial last write cut" else "");
@@ -765,7 +896,7 @@ ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time
     if !jp.ok { print("relay: cannot open, lock or read the --store file's .nip86 policy journal\n"); return; }
     if jp.frames > 0 || jp.cut { print("relay: replayed % policy changes%\n", jp.frames, ifx jp.cut then ", a partial last write cut" else ""); }
     if w[0].groups_on {
-      gp := ry_groups_replay(w[..], cxsrv_now_s(), text[..]);
+      gp := ry_groups_replay(w[..], store[..], now, text[..]);
       print("relay: rebuilt groups from % stored group events (% changed a group)\n", gp.events, gp.kept);
     }
     if w[0].fresh[0].on && !ry_fresh_after(w[0].fresh[..]) { print("relay: refusing to start: the checkpoint can't be written\n"); ry_host_exit(3); return; }
@@ -777,8 +908,12 @@ ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time
       served := ry_served(store[..], items, now);
     }
   }
+  if w[0].fatal { ry_host_exit(3); return; }
+  if !rx_replay(w[..],store[..]) {ry_host_exit(3);return;}
+  ry_group_sync(w[..],store[..]);
   if mode == RY_CHECK { return; }
   if mode == RY_EXPORT { ry_export(store[..], items, now); return; }
+  if mode == RY_COMPACT { ry_compact(w[..], now); return; }
   w[0].rate = ry_rate();
   for i: 0..<u { w[0].url[i] = url[i]; }
   w[0].url_n = u;
@@ -798,9 +933,22 @@ ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time
   powed: [4096] u8;
   pn := rr_nip11_pow(cast(string) base[0..<b], w[0].pow, powed[..]);
   w[0].nip11_n = pn;
-  if pn >= 0 && w[0].groups_on { w[0].nip11_n = rr_nip11_nip(cast(string) powed[0..<pn], 29, w[0].nip11[..]); }
+  if pn >= 0 && w[0].groups_on && w[0].key_on { w[0].nip11_n = rr_nip11_nip(cast(string) powed[0..<pn], 29, w[0].nip11[..]); }
   else { for i: 0..<pn { w[0].nip11[i] = powed[i]; } }
   if w[0].nip11_n < 0 { print("relay: the NIP-11 document does not fit\n"); return; }
+  if w[0].key_on {
+    n:=ry_key_document(cast(string) w[0].nip11[0..<w[0].nip11_n],w[0].relay_public[..],powed[..]);
+    if n<0 { ry_host_exit(2); return; }
+    for i: 0..<n { w[0].nip11[i]=powed[i]; } w[0].nip11_n=n;
+  }
+  en:=rx_document(cast(string)w[0].nip11[0..<w[0].nip11_n],w[0].key_on,w[0].groups_on,powed[..]);
+  if en<0 {ry_host_exit(2);return;}
+  for i:0..<en {w[0].nip11[i]=powed[i];}w[0].nip11_n=en;
+  if w[0].groups_on && w[0].key_on {
+    ry_group_clocks(w[..],store[..]);
+    for i: 0..<RR_GROUPS { if w[0].groups[i].exists && !ry_group_publish(conns[..],w[..],store[..],i,now) { ry_host_exit(3); return; } }
+  }
+  if w[0].key_on && !rx_archive_snapshot(conns[..],w[..],store[..],now) {ry_host_exit(3);return;}
   print("relay: listening on port %\n", cxsrv_bound_port());
   ry_serve(conns[..], w[..], store[..]);
 }

@@ -32,12 +32,14 @@ refuses it when it trusts another CA.
 
   python3 coax/tests/nostr/relay_session.py      # COAX=..., BUN=..., NOBLE=... override
   python3 coax/tests/nostr/relay_session.py --tls [--client EXE]
+  python3 coax/tests/nostr/relay_session.py --followups [--relay PREBUILT_EXE]
 """
 import base64
 import hashlib
 import json
 import os
 import shutil
+import signal
 import socket
 import ssl
 import struct
@@ -73,21 +75,25 @@ def sign(templates, label=None):
     return [json.loads(l) for l in out.stdout.splitlines() if l.strip()]
 
 
-def connect(port, ctx=None, name='localhost'):
-    s = socket.create_connection(('127.0.0.1', port), timeout=5)
+def connect(port, ctx=None, name='localhost', source=None):
+    s = socket.create_connection(('127.0.0.1', port), timeout=5, source_address=(source, 0) if source else None)
     ctx = ctx or TLS_CTX
     return ctx.wrap_socket(s, server_hostname=name) if ctx else s
 
 
 class Ws:
-    def __init__(self, port):
-        self.s = connect(port)
+    def __init__(self, port, source=None):
+        self.s = connect(port, source=source)
         key = base64.b64encode(os.urandom(16)).decode()
         self.s.sendall(('GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
                         'Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n' % key).encode())
         head = b''
         while b'\r\n\r\n' not in head:
-            head += self.s.recv(4096)
+            chunk = self.s.recv(4096)
+            if not chunk:
+                self.s.close()
+                raise ConnectionError('relay closed before the WebSocket upgrade')
+            head += chunk
         head, self.buf = head.split(b'\r\n\r\n', 1)
         want = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
         self.ok = head.startswith(b'HTTP/1.1 101') and ('Sec-WebSocket-Accept: ' + want).encode() in head
@@ -156,7 +162,7 @@ class Ws:
         while True:
             m = self.recv()
             if m is None or m[0] == 'EOSE' or m[0] == 'CLOSED':
-                return events, m
+                return events, m[:2] if m and m[0] == 'EOSE' else m
             if m[0] == 'EVENT' and m[1] == sub:
                 events.append(m[2])
 
@@ -198,9 +204,9 @@ def session(port, now):
         {"kind": 0, "created_at": T + 1, "tags": [], "content": "{\"name\":\"v2\"}"},                  # 2
         {"kind": 30617, "created_at": T, "tags": [["d", "repo"]], "content": "a"},                     # 3
         {"kind": 30617, "created_at": T, "tags": [["d", "repo"]], "content": "b"},                     # 4
-        {"kind": 30621, "created_at": T, "tags": [["d", "coax"], ["a", "30617:x:repo"]], "content": ""},  # 5
+        {"kind": 30621, "created_at": T, "tags": [["d", "coax"], ["a", "30617:" + "09af" * 16 + ":repo"]], "content": ""},  # 5
         {"kind": 30623, "created_at": T, "tags": [["d", "coax"]], "content": ""},                      # 6
-        {"kind": 1621, "created_at": T, "tags": [["a", "30617:x:repo"], ["p", "0" * 64]], "content": "issue"},  # 7
+        {"kind": 1621, "created_at": T, "tags": [["a", "30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:repo"], ["p", "0" * 64]], "content": "issue"},  # 7
         {"kind": 1630, "created_at": T, "tags": [["e", "1" * 64]], "content": ""},                     # 8
         {"kind": 1633, "created_at": T, "tags": [["e", "1" * 64]], "content": ""},                     # 9
         {"kind": 1111, "created_at": T, "tags": [["E", "2" * 64], ["q", "3" * 64]], "content": "c"},   # 10
@@ -245,7 +251,7 @@ def session(port, now):
     # the website's kinds and tag filters
     oks = [publish(b, ev[i]) for i in range(5, 11)]
     check(all(o[2] is True for o in oks), 'kinds 30621, 30623, 1621, 1630, 1633, 1111 accepted')
-    for sub, flt, want in [('a', {'#a': ['30617:x:repo']}, {ev[5]['id'], ev[7]['id']}),
+    for sub, flt, want in [('a', {'#a': ['30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:repo']}, {ev[5]['id'], ev[7]['id']}),
                            ('d', {'kinds': [30621, 30623], '#d': ['coax']}, {ev[5]['id'], ev[6]['id']}),
                            ('e', {'#e': ['1' * 64], 'kinds': [1630, 1631, 1632, 1633]}, {ev[8]['id'], ev[9]['id']}),
                            ('E', {'#E': ['2' * 64]}, {ev[10]['id']}), ('q', {'#q': ['3' * 64]}, {ev[10]['id']}),
@@ -622,7 +628,7 @@ def admin(exe, log):
                          stdout=subprocess.PIPE, stderr=log, text=True, env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
     try:
         port = int(p.stdout.readline().split()[-1])
-        check(info(port)['supported_nips'] == [1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77, 86], 'NIP-86: with --admin NIP-11 lists 86')
+        check(info(port)['supported_nips'] == [1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 65, 67, 70, 77, 86, 94, 98], 'NIP-86: with --admin NIP-11 lists 86')
         body = '{"method":"supportedmethods","params":[]}'
         code, r = post(port, body, nip98(port, body))
         check(code == 200 and 'banpubkey' in r['result'] and 'supportedmethods' not in r['result'], 'NIP-86: supportedmethods from the admin key')
@@ -676,7 +682,7 @@ def groups(exe, log):
                          stdout=subprocess.PIPE, stderr=log, text=True, env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
     try:
         port = int(p.stdout.readline().split()[-1])
-        check(info(port)['supported_nips'] == [1, 9, 11, 17, 29, 40, 42, 45, 50, 59, 62, 70, 77], 'NIP-29: with --groups NIP-11 lists 29')
+        check(29 not in info(port)['supported_nips'], 'NIP-29: a keyless group relay does not advertise signed state')
         now = int(time.time())
         b_key = 'coax relay r1 second test key'
         bk = sign([{"kind": 1, "created_at": 1, "tags": [], "content": ""}], b_key)[0]['pubkey']
@@ -695,7 +701,7 @@ def groups(exe, log):
         check(publish(w, a[0]) == ['OK', a[0]['id'], True, ''], 'NIP-29: a create-group is stored')
         check(publish(w, a[1])[2] is True, 'NIP-29: its creator posts to it')
         check(publish(w, a[2])[3] == 'duplicate: the group already exists', 'NIP-29: a second create of g1 is refused')
-        check(publish(w, a[3])[3] == 'restricted: group metadata is signed only by the relay', 'NIP-29: a 39000 not from the relay is refused')
+        check(publish(w, a[3])[3].startswith('restricted:'), 'NIP-29: a 39000 not from the relay is refused')
         check(publish(w, a[4])[3] == 'invalid: no such group', 'NIP-29: a post to a group that does not exist is refused')
         check(publish(w, a[5])[2] is True, 'NIP-29: an event without an h tag is not the groups\' business')
         check(publish(w, b[0])[2] is True, 'NIP-29: another key joins the open group')
@@ -705,6 +711,223 @@ def groups(exe, log):
         w.close()
     finally:
         p.terminate(); p.wait(10)
+
+
+def keyed_groups(exe, log, d):
+    """Relay identity, signed state, scoped reads and durable moderation."""
+    key = d / 'relay-signing.key'
+    key.write_bytes((1).to_bytes(32, 'big'))
+    key.chmod(0o600)
+    relay_pub = '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'
+    for mode in [0o400, 0o600]:
+        key.chmod(mode)
+        identity = subprocess.run([str(exe), '--identity', '--key-file', str(key)], capture_output=True, timeout=20)
+        check(identity.returncode == 0 and identity.stdout.decode().strip() == relay_pub,
+              'owned %04o key exposes only its public identity' % mode)
+    store = d / 'keyed.store'
+    extra = ['--groups', '--key-file', str(key)]
+    other_label = 'coax relay r1 second test key'
+    now = int(time.time()) - 30
+    def event(kind, tags, content='', label=None):
+        nonlocal now
+        now += 1
+        return sign([dict(kind=kind, created_at=now, tags=tags, content=content)], label)[0]
+    other = event(1, [], label=other_label)['pubkey']
+    def history(w, kinds, sub='g'):
+        w.send(['REQ', sub, {'kinds': kinds}])
+        events, end = w.until_eose(sub)
+        w.send(['CLOSE', sub])
+        return events
+    p, port = start(exe, log, store, extra=extra)
+    try:
+        document = info(port)
+        check(document.get('self') == relay_pub and document.get('pubkey') == relay_pub and 29 in document['supported_nips'],
+              'keyed relay advertises its actual signing identity and NIP-29')
+        private_writes(port)
+        a, b, public = Ws(port), Ws(port), Ws(port)
+        check(a.auth()[2] is True and b.auth(b.auth_event(label=other_label))[2] is True, 'keyed groups: two independent authenticated members')
+        create = event(9007, [['h', 'secret'], ['name', 'Secret'], ['private'], ['hidden'], ['restricted'], ['closed']])
+        check(publish(a, create)[2] is True, 'private hidden group created with its flags applied immediately')
+        snapshots = history(a, [39000, 39001, 39002, 39003])
+        verified = subprocess.run([BUN, str(HERE / 'relay_sign.ts')], input=''.join(json.dumps(e)+'\n' for e in snapshots),
+            capture_output=True, text=True, check=True, timeout=60,
+            env={**os.environ, 'NODE_PATH': NOBLE, 'RELAY_TEST_VERIFY': '1'})
+        check(len(snapshots) == 4 and all(e['pubkey'] == relay_pub for e in snapshots) and verified.stdout.splitlines() == ['true'] * 4,
+              'all four group snapshots independently verify with Noble')
+        check(history(public, [39000, 39001, 39002, 39003]) == [] and history(b, [39000]) == [], 'hidden state is absent for anonymous and nonmember readers')
+        check(publish(a, event(9000, [['h', 'secret'], ['p', other]]))[2] is True, 'admin adds second member')
+        message = event(9, [['h', 'secret']], 'member message', other_label)
+        check(publish(b, message)[2] is True and history(b, [9]) == [message], 'current member reads private history')
+        check(history(public, [9]) == [], 'anonymous reader cannot fetch private messages')
+        check(publish(a, event(9005, [['h', 'secret'], ['e', message['id']]]))[2] is True, 'moderator deletes another author in the same group')
+        check(history(b, [9]) == [] and publish(b, message)[2] is False, 'scoped moderation removes history and prevents resurrection')
+        check(publish(a, event(9001, [['h', 'secret'], ['p', other]]))[2] is True, 'admin removes second member')
+        later = event(9, [['h', 'secret']], 'after removal')
+        check(publish(a, later)[2] is True and history(b, [9]) == [], 'removed member loses stored access immediately')
+        b.send(['COUNT', 'count', {'kinds': [9]}])
+        count = b.recv()
+        check(count == ['COUNT', 'count', {'count': 0}], 'COUNT observes current private-group membership')
+        a.close(); b.close(); public.close()
+    finally:
+        p.terminate(); p.wait(10)
+    p, port = start(exe, log, store, extra=extra)
+    try:
+        a, b = Ws(port), Ws(port)
+        a.auth(); b.auth(b.auth_event(label=other_label))
+        check(history(a, [9]) == [later] and history(b, [9]) == [], 'restart rebuilds membership and cross-author deletion tombstones')
+        check(publish(a, event(9008, [['h', 'secret']]))[2] is True, 'admin deletes group')
+        check(history(a, [9, 39000, 39001, 39002, 39003]) == [], 'deleted group history and state are hidden even from former members')
+        check(publish(a, event(9007, [['h', 'secret']]))[2] is False, 'deleted group identifier cannot expose old history through reuse')
+        a.close(); b.close()
+    finally:
+        p.terminate(); p.wait(10)
+    # File effects must refuse before serving, without creating a replacement key.
+    cases = [('short', bytes(31), 0o600), ('long', bytes(33), 0o600), ('zero', bytes(32), 0o600),
+             ('order', bytes.fromhex('fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141'), 0o600),
+             ('public', (1).to_bytes(32, 'big'), 0o644)]
+    for name, data, mode in cases:
+        invalid = d / ('invalid-' + name); invalid.write_bytes(data); invalid.chmod(mode)
+        result = subprocess.run([str(exe), '--port', '0', '--key-file', str(invalid)], capture_output=True, timeout=20)
+        check(result.returncode != 0 and b'listening' not in result.stdout and invalid.read_bytes() == data, 'relay key refuses ' + name + ' without replacement')
+    for name in ['symlink', 'fifo']:
+        invalid = d / ('invalid-' + name)
+        if name == 'symlink': invalid.symlink_to(key)
+        else: os.mkfifo(invalid, 0o600)
+        result = subprocess.run([str(exe), '--port', '0', '--key-file', str(invalid)], capture_output=True, timeout=20)
+        check(result.returncode != 0 and b'listening' not in result.stdout, 'relay key refuses ' + name + ' without blocking')
+
+
+def extensions(exe, log, d):
+    """Configured relay roles for every formerly advertised Block extension."""
+    key = d / 'extensions.key'; key.write_bytes((1).to_bytes(32, 'big')); key.chmod(0o600)
+    store = d / 'extensions.store'; extra = ['--groups', '--key-file', str(key)]
+    agent_label = 'coax relay r1 second test key'
+    other_label = 'coax relay r1 third test key'
+    now = int(time.time()) - 100
+    def event(kind, tags, content='', label=None):
+        nonlocal now
+        now += 1
+        return sign([dict(kind=kind, created_at=now, tags=tags, content=content)], label)[0]
+    owner = event(1, [])['pubkey']; agent = event(1, [], label=agent_label)['pubkey']
+    other = event(1, [], label=other_label)['pubkey']
+    proof = subprocess.run([BUN, str(HERE / 'relay_sign.ts')], input=json.dumps({'agent': agent})+'\n',
+        capture_output=True, text=True, check=True, timeout=60,
+        env={**os.environ, 'NODE_PATH': NOBLE, 'RELAY_TEST_ATTEST': '1'})
+    auth_tag = json.loads(proof.stdout)
+    cipher = base64.b64encode(bytes([2]) + bytes(98)).decode()
+    def history(w, filt, sub='ext'):
+        w.send(['REQ', sub, filt]); got, end = w.until_eose(sub); w.send(['CLOSE', sub]); return got, end
+    p, port = start(exe, log, store, extra=extra)
+    try:
+        check(set(info(port).get('supported_extensions', [])) == {'nip-aa','nip-ae','nip-am','nip-ao','nip-ap','nip-dv','nip-er','nip-ia','nip-mp','nip-oa','nip-rs'}, 'NIP-11 lists all eleven configured Block roles')
+        a, b, c = Ws(port), Ws(port), Ws(port)
+        a.auth(); c.auth(c.auth_event(label=other_label))
+        challenge = b.auth_event(label=agent_label)
+        challenge['tags'].append(auth_tag)
+        check(b.auth(sign([challenge], agent_label)[0])[2] is True, 'NIP-AA: direct authentication accepts the independently signed owner attestation')
+        metric = event(44200, [['p', owner], ['agent', agent]], cipher, agent_label)
+        check(publish(b, metric)[2] is True, 'NIP-AM: authenticated agent publishes metrics under its proved owner')
+        invalid = event(44200, [['p', other], ['agent', agent]], cipher, agent_label)
+        check(publish(b, invalid)[2] is False, 'NIP-AM: an unrelated recipient is not an owner')
+        got, _ = history(a, {'kinds':[44200], '#p':[owner]})
+        check(got == [metric], 'NIP-AM: only the authenticated owner reads the retained metric')
+        got, _ = history(c, {'kinds':[44200], '#p':[other]})
+        check(got == [], 'NIP-AM: unrelated private readers see no metric')
+        profile = event(0, [auth_tag], '{"name":"attested agent"}', agent_label)
+        check(publish(b, profile)[2] is True, 'NIP-OA: the original signed profile retains a standing owner proof')
+        a.send(['REQ','telemetry',{'kinds':[24200], '#p':[owner]}]);a.until_eose('telemetry')
+        telemetry = event(24200, [['p',owner],['agent',agent],['frame','telemetry']], cipher, agent_label)
+        check(publish(b, telemetry)[2] is True and a.recv()[2] == telemetry, 'NIP-AO: telemetry routes from the proved agent to its owner')
+        a.send(['CLOSE','telemetry'])
+        b.send(['REQ','control',{'kinds':[24200], '#p':[agent]}]);b.until_eose('control')
+        control = event(24200, [['p',agent],['agent',agent],['frame','control']], cipher)
+        check(publish(a, control)[2] is True and b.recv()[2] == control, 'NIP-AO: control routes from owner to agent')
+        b.send(['CLOSE','control'])
+        got, _ = history(a, {'kinds':[24200], '#p':[owner]})
+        check(got == [], 'NIP-AO: no observer frame enters persistent history')
+        engram = event(30174, [['d','01'*32],['p',owner]], cipher, agent_label)
+        check(publish(b, engram)[2] is True, 'NIP-AE: encrypted engram envelope admitted')
+        check(publish(b, event(30174,[['d','not-hex'],['p',owner]],cipher,agent_label))[2] is False, 'NIP-AE: malformed blinded coordinate refused')
+        got, _ = history(a, {'kinds':[30174], '#p':[owner]})
+        check(got == [engram], 'NIP-AE: authenticated owner reads the original ciphertext')
+        check(publish(a,event(30175,[['d','assistant-one'],['shared','true']],'{"display_name":"Assistant"}'))[2] is True, 'NIP-AP: shared persona definition admitted')
+        check(publish(a,event(30175,[['d','bad/slug']],'{}'))[2] is False, 'NIP-AP: malformed persona coordinate refused')
+        check(publish(a,event(30178,[['d','team-one']],'{}'))[2] is True, 'NIP-AP: team catalog admitted')
+        project = event(30621,[['d','project'],['a','30617:'+agent+':repo']])
+        check(publish(a,project)[2] is True, 'NIP-MP: repository grouping admitted without granting repository authority')
+        check(publish(a,event(30621,[['d','project'],['a','30617:'+agent+':repo'],['a','30617:'+agent+':repo']]))[2] is False, 'NIP-MP: duplicate repository member refused')
+        for count in [64, 65]:
+            members = [['a', '30617:' + '09af' * 16 + ':repo-%d' % i] for i in range(count)]
+            bounded = event(30621, [['d', 'limits-%d' % count]] + members)
+            check(publish(a, bounded)[2] is (count == 64), 'NIP-MP: %d independently signed repository members obey the bound' % count)
+
+        slots = [event(30078,[['d','read-state:'+str(i)*32],['t','read-state']],cipher) for i in range(3)]
+        check(all(publish(a,e)[2] is True for e in slots), 'NIP-RS: author writes three private read-state coordinates')
+        got, _ = history(a, {'kinds':[30078],'authors':[owner],'limit':2})
+        check(got == list(reversed(slots[-2:])), 'NIP-RS: capped enumeration is a newest-first prefix with floor two')
+        due = int(time.time()) + 3
+        reminder = event(30300,[['d','reminder'],['not_before',str(due)]],cipher)
+        a.send(['REQ','reminder',{'kinds':[30300],'authors':[owner]}]);a.until_eose('reminder')
+        check(publish(a,reminder)[2] is True, 'NIP-ER: future reminder accepted without early delivery')
+        delivered = a.recv(timeout=6)
+        check(isinstance(delivered,list) and delivered[:2] == ['EVENT','reminder'] and delivered[2] == reminder and int(time.time()) >= due, 'NIP-ER: future reminder delivered when due on the open subscription')
+        a.send(['CLOSE','reminder'])
+        create = event(9007,[['h','direct'],['channel_type','dm']])
+        check(publish(a,create)[2] is True and publish(a,event(9000,[['h','direct'],['p',agent]]))[2] is True, 'NIP-DV: typed private DM and active membership established')
+        check(publish(a,event(41012,[['h','direct']]))[2] is True, 'NIP-DV: viewer hides its own DM without leaving')
+        snapshots, _ = history(a, {'kinds':[30622],'#p':[owner]})
+        check(len(snapshots)==1 and ['h','direct'] in snapshots[0]['tags'], 'NIP-DV: relay signs an owner-scoped visibility snapshot')
+        outsider = event(41012,[['h','direct']],label=other_label)
+        check(publish(c,outsider)[2] is False, 'NIP-DV: a nonmember cannot change visibility')
+        archive = event(9035,[['-'],['p',agent]])
+        # Keep command timestamps fresh even if a slow sanitizer run crossed the initial offset.
+        archive = sign([{**archive,'created_at':int(time.time())}])[0]
+        check(publish(a,archive)[2] is True, 'NIP-IA: owner archives its agent using the current signed standing proof')
+        archived, _ = history(a, {'kinds':[13535]})
+        check(len(archived)==1 and ['p',agent] in archived[0]['tags'], 'NIP-IA: relay-signed public archived set includes the agent')
+        wrong = sign([dict(kind=9036,created_at=int(time.time()),tags=[['-'],['p',agent]],content='')],other_label)[0]
+        check(publish(c,wrong)[2] is False, 'NIP-IA: an unrelated actor cannot unarchive the agent')
+        a.close();b.close();c.close()
+    finally:
+        p.terminate();p.wait(10)
+    p, port = start(exe, log, store, extra=extra)
+    try:
+        a, b = Ws(port), Ws(port);a.auth();b.auth(b.auth_event(label=agent_label))
+        archived, _ = history(a, {'kinds':[13535]})
+        check(len(archived)==1 and ['p',agent] in archived[0]['tags'], 'NIP-IA: restart reconstructs only relay-signed archival decisions')
+        snapshots, _ = history(a, {'kinds':[30622],'#p':[owner]})
+        check(len(snapshots)==1 and ['h','direct'] in snapshots[0]['tags'], 'NIP-DV: restart retains the viewer visibility snapshot')
+        unarchive = sign([dict(kind=9036,created_at=int(time.time()),tags=[['-'],['p',agent]],content='')],agent_label)[0]
+        check(publish(b,unarchive)[2] is True, 'NIP-IA: a non-banned identity can self-unarchive')
+        check(publish(a,event(41010,[['h','direct']]))[2] is True, 'NIP-DV: viewer reopens its active DM after restart')
+        snapshots, _ = history(a, {'kinds':[30622],'#p':[owner]})
+        check(len(snapshots)==1 and not any(t[0]=='h' for t in snapshots[0]['tags']), 'NIP-DV: replacement snapshot clears the hidden set')
+        a.close();b.close()
+    finally:
+        p.terminate();p.wait(10)
+
+
+def private_writes(port):
+    w = Ws(port); check(w.auth()[2] is True, 'private writes: author AUTH')
+    now = int(time.time()) - 10
+    other_label = 'coax relay r1 second test key'
+    templates = [dict(kind=78, created_at=now, tags=[], content='sealed'),
+                 dict(kind=30078, created_at=now, tags=[['d', 'private']], content='sealed')]
+    foreign = sign(templates, other_label)
+    own = sign(templates)
+    check(all(publish(w, e)[2] is False for e in foreign), 'private app data refuses another authenticated author')
+    check(all(publish(w, e)[2] is True for e in own), 'private app data accepts its exact author')
+    h = '01' * 32
+    pub = own[0]['pubkey']
+    ciphertext = base64.b64encode(bytes([2]) + bytes(98)).decode()
+    tags = [['p', pub], ['h', h], ['t', 'oa:artifact:v1']]
+    artifacts = sign([dict(kind=3188, created_at=now, tags=tags, content=ciphertext),
+                      dict(kind=3188, created_at=now+1, tags=tags, content='{}'),
+                      dict(kind=3188, created_at=now+2, tags=[['p', 'f'*64], ['h', h], ['t', 'oa:artifact:v1']], content=ciphertext)])
+    check(publish(w, artifacts[0])[2] is True and all(publish(w, e)[2] is False for e in artifacts[1:]), 'artifacts require a curve recipient and NIP-44 v2 outer envelope')
+    run = sign([dict(kind=30186, created_at=now, tags=[['d', h], ['h', h], ['p', pub], ['t', 'oa:run:v1']], content='sealed')])[0]
+    check(publish(w, run)[2] is True, 'run-head envelope accepts d before h')
+    w.close()
 
 
 def persistence(exe, log, d):
@@ -829,7 +1052,7 @@ def proof_of_work(exe, log):
     try:
         port = int(p.stdout.readline().split()[-1])
         check(info(port)['limitation'].get('min_pow_difficulty') == 8, 'pow: --pow 8 is advertised as min_pow_difficulty')
-        check(info(port)['supported_nips'] == [1, 9, 11, 13, 17, 40, 42, 45, 50, 59, 62, 70, 77], 'pow: --pow 8 lists NIP-13')
+        check(info(port)['supported_nips'] == [1, 9, 11, 13, 17, 40, 42, 45, 50, 59, 62, 65, 67, 70, 77, 94], 'pow: --pow 8 lists NIP-13')
         w = Ws(port)
         check(w.auth()[2] is True, 'pow: AUTH')
         now = int(time.time())
@@ -878,8 +1101,155 @@ def nip11(port):
     check(head.startswith(b'HTTP/1.1 200') and b'Access-Control-Allow-Origin: *' in head, 'NIP-11: 200 with CORS')
     lim = doc['limitation']
     check(lim['max_message_length'] == 131072 and lim['max_subscriptions'] == 32 and lim['max_limit'] == 127
-          and lim['max_subid_length'] == 64 and doc['supported_nips'] == [1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77], 'NIP-11: the Rust relay\'s limits, NIPs 1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77')
+          and lim['max_subid_length'] == 64 and doc['supported_nips'] == [1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 65, 67, 70, 77, 94], 'NIP-11: the Rust relay\'s limits, NIPs 1, 9, 11, 17, 40, 42, 45, 50, 59, 62, 70, 77')
+    check(lim['max_content_length'] == 65536, 'NIP-11: shared event profile content limit is explicit')
     check(lim['auth_required'] is False and lim['restricted_writes'] is True, 'NIP-11: reads open, writes need AUTH')
+
+
+def connection_limits(exe, log):
+    p, port = start(exe, log)
+    opened = []
+    try:
+        opened = [Ws(port) for _ in range(16)]
+        try:
+            extra = Ws(port); extra.close(); refused = False
+        except (OSError, ssl.SSLError):
+            refused = True
+        check(refused, 'connections: seventeenth from the same socket address is refused')
+        other = Ws(port, source='127.0.0.2'); opened.append(other)
+        check(other.ok, 'connections: another address retains access while the first is capped')
+        other.send(['REQ', 'finish', {}])
+        check(other.recv() == ['EOSE', 'finish', ['finish']], 'NIP-67: a complete empty history carries finish')
+        other.send(['REQ', 'capped', {'limit': 0}])
+        check(other.recv() == ['EOSE', 'capped'], 'NIP-67: a capped history makes no completeness claim')
+        opened[0].close()
+        opened[1].send(['REQ', 'release', {'ids': ['0' * 64]}])
+        opened[1].until_eose('release')
+        replacement = Ws(port); opened.append(replacement)
+        check(replacement.ok, 'connections: closing a socket releases its address quota')
+    finally:
+        for w in opened:
+            w.close()
+        p.terminate(); p.wait(10)
+
+
+def metadata(port):
+    events = sign([
+        {'kind': 1063, 'created_at': int(time.time()), 'content': 'a file', 'tags': [
+            ['url', 'https://files.example/a'], ['m', 'image/png'], ['x', 'd9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5']]},
+        {'kind': 1063, 'created_at': int(time.time()), 'content': 'bad', 'tags': []},
+        {'kind': 10002, 'created_at': int(time.time()) - 1, 'content': '', 'tags': [['r', 'wss://old.example']]},
+        {'kind': 10002, 'created_at': int(time.time()), 'content': '', 'tags': [['r', 'wss://relay.example', 'read']]},
+    ])
+    w = Ws(port)
+    try:
+        check(w.auth()[2] is True and publish(w, events[0])[2] is True,
+              'NIP-94: signed file metadata passes the shared validator')
+        check(publish(w, events[1])[2] is False, 'NIP-94: malformed file metadata is refused')
+        w.send(['REQ', 'files', {'kinds': [1063]}])
+        got, _ = w.until_eose('files')
+        check(got == [events[0]], 'NIP-94: metadata is delivered unchanged')
+        check(publish(w, events[2])[2] is True and publish(w, events[3])[2] is True,
+              'NIP-65: signed relay-list updates are admitted')
+        w.send(['REQ', 'relays', {'kinds': [10002], 'authors': [events[3]['pubkey']]}])
+        got, _ = w.until_eose('relays')
+        check(got == [events[3]], 'NIP-65: only the newest relay list is delivered unchanged')
+    finally:
+        w.close()
+
+
+def compact_cases(exe, d, log):
+    now = int(time.time())
+    events = sign([
+        {'kind': 3188, 'created_at': now - 8 * 86400, 'tags': [], 'content': 'expired host'},
+        {'kind': 1, 'created_at': now - 50, 'tags': [], 'content': 'keep'},
+        {'kind': 30001, 'created_at': now - 50, 'tags': [['d', 'head'], ['expiration', str(now)]], 'content': 'expired head'},
+        {'kind': 5, 'created_at': now - 50, 'tags': [['expiration', str(now)]], 'content': ''},
+    ])
+    original = d / 'compact-source.store'
+    frames = [json.dumps(e, separators=(',', ':')).encode() for e in events]
+    original.write_bytes(b''.join(struct.pack('>I', len(e)) + e for e in frames))
+    journal = original.with_name(original.name + '.nip86')
+    journal.write_bytes(b'')
+    output = d / 'compact-candidate.store'
+    args = [str(exe), '--store', str(original), '--store-capacity', '128', '--url', 'wss://relay.test', '--now', str(now)]
+    result = subprocess.run(args + ['--compact', str(output)], capture_output=True, text=True, timeout=60)
+    expected = b''.join(struct.pack('>I', len(e)) + e for e in frames[1:])
+    check(result.returncode == 0 and output.read_bytes() == expected,
+          'compaction: drops expired ordinary bytes and preserves expired replacement heads and deletion history')
+    check(output.with_name(output.name + '.nip86').read_bytes() == journal.read_bytes(),
+          'compaction: copies the policy journal exactly')
+    check(original.read_bytes() == b''.join(struct.pack('>I', len(e)) + e for e in frames),
+          'compaction: source generation remains unchanged')
+    cp = d / 'compact-candidate.cp'
+    checked = subprocess.run([str(exe), '--store', str(output), '--store-capacity', '128',
+                              '--url', 'wss://relay.test', '--now', str(now), '--check-store',
+                              '--checkpoint', str(cp), '--adopt'], capture_output=True, text=True, timeout=60)
+    check(checked.returncode == 0 and cp.exists(), 'compaction: candidate passes full replay and gets its own checkpoint')
+    again = subprocess.run(args + ['--compact', str(output)], capture_output=True, text=True, timeout=60)
+    check(again.returncode != 0 and output.read_bytes() == expected, 'compaction: refuses to overwrite an existing candidate')
+    # Exercise the actual Coax maintenance runner with a harmless service
+    # controller. The fixture has no running relay, production paths or keys.
+    boot = d / 'boot'; data = d / 'data'; initial = boot / 'generations' / 'initial'
+    initial.mkdir(parents=True); data.mkdir()
+    (initial / 'relay.store').symlink_to(original)
+    (initial / 'relay.store.nip86').symlink_to(journal)
+    (boot / 'current').symlink_to(initial)
+    adopted = subprocess.run([str(exe), '--store', str(initial / 'relay.store'), '--store-capacity', '128',
+                              '--url', 'wss://relay.openagents.com', '--now', str(now), '--check-store',
+                              '--checkpoint', str(initial / 'relay.cp'), '--adopt'], capture_output=True, text=True, timeout=60)
+    check(adopted.returncode == 0, 'maintenance: original generation has a trusted checkpoint')
+    command = [str(ROOT / 'coax/web/tool.sh'), str(ROOT / 'nostr/relay/maintain.coax'),
+               '--root', str(boot), '--data', str(data), '--relay', str(exe), '--systemctl', '/bin/true',
+               '--owner', str(os.getuid()) + ':' + str(os.getgid()), '--now', str(now)]
+    old_checkpoint = (initial / 'relay.cp').stat()
+    maintained = subprocess.run(command, capture_output=True, text=True, timeout=180)
+    check(maintained.returncode == 0 and (boot / 'current').resolve() == boot / 'generations' / str(now),
+          'maintenance: verifies both generations and atomically selects the candidate: ' + maintained.stderr[-300:])
+    check((boot / 'current' / 'relay.store').read_bytes() == expected and (initial / 'relay.cp').exists(),
+          'maintenance: compacted store selected and previous checkpoint retained')
+    retained_checkpoint = (initial / 'relay.cp').stat()
+    check((old_checkpoint.st_ino, old_checkpoint.st_uid, old_checkpoint.st_mode)
+          == (retained_checkpoint.st_ino, retained_checkpoint.st_uid, retained_checkpoint.st_mode),
+          'maintenance: checking never rewrites the original checkpoint or its ownership')
+    for step in (1, 2):
+        next_run = subprocess.run(command[:-1] + [str(now + step)], capture_output=True, text=True, timeout=60)
+        check(next_run.returncode == 0, 'maintenance: next generation %d verified' % step)
+    check(not (data / str(now)).exists() and not (boot / 'generations' / str(now)).exists()
+          and (data / str(now + 1)).exists() and initial.exists(),
+          'maintenance: keeps current, previous and legacy initial; prunes older numeric generations')
+    # The scheduler omits --now. proc_run strips the newline from date's
+    # output, so truncating another byte silently moves its clock to 1975.
+    real_boot = d / 'boot-real'; real_data = d / 'data-real'
+    real_initial = real_boot / 'generations' / 'initial'
+    real_initial.mkdir(parents=True); real_data.mkdir()
+    (real_initial / 'relay.store').symlink_to(original)
+    (real_initial / 'relay.store.nip86').symlink_to(journal)
+    (real_boot / 'current').symlink_to(real_initial)
+    ready = subprocess.run([str(exe), '--store', str(real_initial / 'relay.store'),
+                            '--store-capacity', '128', '--url', 'wss://relay.openagents.com',
+                            '--check-store', '--checkpoint', str(real_initial / 'relay.cp'), '--adopt'],
+                           capture_output=True, text=True, timeout=60)
+    check(ready.returncode == 0, 'maintenance: scheduler fixture has a trusted checkpoint')
+    begin = int(time.time())
+    real_command = [str(ROOT / 'coax/web/tool.sh'), str(ROOT / 'nostr/relay/maintain.coax'),
+                    '--root', str(real_boot), '--data', str(real_data), '--relay', str(exe),
+                    '--systemctl', '/bin/true', '--owner', str(os.getuid()) + ':' + str(os.getgid())]
+    actual = subprocess.run(real_command, capture_output=True, text=True, timeout=180)
+    selected_name = (real_boot / 'current').resolve().name
+    check(actual.returncode == 0 and selected_name.isdecimal()
+          and begin <= int(selected_name) <= int(time.time()),
+          'maintenance: scheduler uses every digit of the actual clock: ' + actual.stderr[-300:])
+    check((real_boot / 'current' / 'relay.store').read_bytes() == expected,
+          'maintenance: default-clock compaction retains the expected live bytes')
+    # A damaged input must fail before switching the pointer.
+    selected = (boot / 'current').resolve()
+    damaged = bytearray((data / str(now + 2)).read_bytes())
+    damaged[len(damaged) // 2] ^= 1
+    (data / str(now + 2)).write_bytes(damaged)
+    refused = subprocess.run(command[:-1] + [str(now + 3)], capture_output=True, text=True, timeout=60)
+    check(refused.returncode != 0 and (boot / 'current').resolve() == selected,
+          'maintenance: damaged checkpoint-covered input leaves the current pointer unchanged')
 
 
 def certs(d):
@@ -974,6 +1344,32 @@ def tls_cases(exe, d, log, store, client):
         again, end = w.until_eose('after')
         check(end == ['EOSE', 'after'] and again == k1, 'TLS: the relay still serves after the refused and timed-out connections')
         w.close()
+        # A reload changes future handshakes while an existing subscription
+        # remains usable. A bad replacement must retain the last good context.
+        w = Ws(port)
+        with connect(port) as before:
+            old_certificate = before.getpeercert(binary_form=True)
+        original_pem = (d / 'leaf.pem').read_bytes()
+        subprocess.run(['openssl', 'x509', '-req', '-in', str(d / 'leaf.csr'),
+                        '-CA', str(d / 'ca.pem'), '-CAkey', str(d / 'ca.key'),
+                        '-set_serial', '42', '-days', '1', '-extfile', str(d / 'leaf.ext'),
+                        '-out', str(d / 'leaf.pem')], check=True, capture_output=True)
+        p.send_signal(signal.SIGHUP)
+        check('certificate reloaded' in p.stdout.readline(), 'TLS: SIGHUP reports a successful reload')
+        with connect(port) as after:
+            new_certificate = after.getpeercert(binary_form=True)
+        check(new_certificate != old_certificate, 'TLS: new connections receive the renewed certificate')
+        w.send(['REQ', 'reload', {'kinds': [1]}])
+        _, end = w.until_eose('reload')
+        check(end == ['EOSE', 'reload'], 'TLS: an existing WebSocket survives the certificate reload')
+        (d / 'leaf.pem').write_text('invalid certificate\n')
+        p.send_signal(signal.SIGHUP)
+        check('reload failed' in p.stdout.readline(), 'TLS: a malformed replacement reports failure')
+        with connect(port) as after_bad:
+            check(after_bad.getpeercert(binary_form=True) == new_certificate,
+                  'TLS: a failed reload retains the last good certificate')
+        (d / 'leaf.pem').write_bytes(original_pem)
+        w.close()
         if client:
             env = {**os.environ, 'RX_PORT': str(port), 'CXTLS_TEST_CA': str(d / 'ca.pem'),
                    'ASAN_OPTIONS': 'detect_leaks=1:abort_on_error=1', 'UBSAN_OPTIONS': 'print_stacktrace=1:halt_on_error=1'}
@@ -1002,56 +1398,74 @@ def main():
             SCHEME = 'wss'
             TLS_CTX = ssl.create_default_context(cafile=str(d / 'ca.pem'))
             TLS_ARGS = ['--tls-cert', str(d / 'leaf.pem'), '--tls-key', str(d / 'leaf.key')]
-        exe = d / 'relay'
-        t0 = time.monotonic()
-        subprocess.run([str(ROOT / 'nostr/relay/build.sh'), str(exe), '--sanitize'], check=True, stdout=subprocess.DEVNULL)
-        print('build %.1f s' % (time.monotonic() - t0))
+        exe = Path(args[args.index('--relay') + 1]).resolve() if '--relay' in args else d / 'relay'
+        if '--relay' not in args:
+            t0 = time.monotonic()
+            subprocess.run([str(ROOT / 'nostr/relay/build.sh'), str(exe), '--sanitize'], check=True, stdout=subprocess.DEVNULL)
+            print('build %.1f s' % (time.monotonic() - t0))
         with open(d / 'relay.err', 'w') as log:
-            store = d / 'events.log'
-            p, port = start(exe, log, store)
-            try:
-                nip11(port)
-                session(port, int(time.time()))
-                deleted, kept = deletion(port)
-                protected(port)
-                search(port)
-                negentropy(port)
-                w = Ws(port)
-                w.send(['REQ', 'before', {}])
-                before, _ = w.until_eose('before')
-                w.close()
-            finally:
-                p.terminate(); p.wait(10)
-            p, port = start(exe, log, store)
-            try:
-                w = Ws(port)
-                w.send(['REQ', 'after', {}])
-                got, _ = w.until_eose('after')
-                check(len(before) > 0 and got == before,
-                      'restart with --store: the same %d events come back, in order' % len(before))
-                check(w.auth()[2] is True and publish(w, deleted)[3] == 'blocked: a deletion request covers this event'
-                      and publish(w, kept)[3].startswith('duplicate'),
-                      'restart with --store: the tombstones come back from the saved requests')
-                w.close()
-            finally:
-                p.terminate(); p.wait(10)
-            p, port = start(exe, log)
-            try:
-                w = Ws(port)
-                w.send(['REQ', 'mem', {}])
-                got, _ = w.until_eose('mem')
-                check(got == [], 'without --store the store is in memory: a new relay starts empty')
-                w.close()
-            finally:
-                p.terminate(); p.wait(10)
-            rate_limits(exe, log)
-            proof_of_work(exe, log)
-            admin(exe, log)
-            groups(exe, log)
-            persistence(exe, log, d)
-            checkpoint(exe, log, d)
-            if tls:
-                tls_cases(exe, d, log, store, client)
+            if '--followups' in args:
+                p, port = start(exe, log)
+                try:
+                    metadata(port)
+                    private_writes(port)
+                finally:
+                    p.terminate(); p.wait(10)
+                compact_cases(exe, d, log)
+                keyed_groups(exe, log, d)
+                extensions(exe, log, d)
+            else:
+                store = d / 'events.log'
+                p, port = start(exe, log, store)
+                try:
+                    nip11(port)
+                    session(port, int(time.time()))
+                    deleted, kept = deletion(port)
+                    protected(port)
+                    search(port)
+                    metadata(port)
+                    private_writes(port)
+                    negentropy(port)
+                    w = Ws(port)
+                    w.send(['REQ', 'before', {}])
+                    before, _ = w.until_eose('before')
+                    w.close()
+                finally:
+                    p.terminate(); p.wait(10)
+                p, port = start(exe, log, store)
+                try:
+                    w = Ws(port)
+                    w.send(['REQ', 'after', {}])
+                    got, _ = w.until_eose('after')
+                    check(len(before) > 0 and got == before,
+                          'restart with --store: the same %d events come back, in order' % len(before))
+                    check(w.auth()[2] is True and publish(w, deleted)[3] == 'blocked: a deletion request covers this event'
+                          and publish(w, kept)[3].startswith('duplicate'),
+                          'restart with --store: the tombstones come back from the saved requests')
+                    w.close()
+                finally:
+                    p.terminate(); p.wait(10)
+                p, port = start(exe, log)
+                try:
+                    w = Ws(port)
+                    w.send(['REQ', 'mem', {}])
+                    got, _ = w.until_eose('mem')
+                    check(got == [], 'without --store the store is in memory: a new relay starts empty')
+                    w.close()
+                finally:
+                    p.terminate(); p.wait(10)
+                rate_limits(exe, log)
+                proof_of_work(exe, log)
+                admin(exe, log)
+                groups(exe, log)
+                keyed_groups(exe, log, d)
+                extensions(exe, log, d)
+                persistence(exe, log, d)
+                checkpoint(exe, log, d)
+                connection_limits(exe, log)
+                compact_cases(exe, d, log)
+                if tls:
+                    tls_cases(exe, d, log, store, client)
         err = (d / 'relay.err').read_text()
         check('runtime error' not in err and 'AddressSanitizer' not in err, 'no sanitizer report')
         if err.strip():

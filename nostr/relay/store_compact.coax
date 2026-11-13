@@ -1,0 +1,35 @@
+// Durable log compaction removes only expired ordinary events. Replacement
+// heads and all deletion, vanish and group-control history stay: they can
+// still prevent resurrection or reconstruct policy after their own expiry.
+#load "store_policy.coax";
+#authority;
+#test "generation retention keeps current, previous and all foreign names" {
+  #assert !rsc_prune_name("100", "100", "99") && !rsc_prune_name("99", "100", "99");
+  for name: [7] string.["initial","",".","..","1/a","-1","1234567890123"] { #assert !rsc_prune_name(name,"100","99"); }
+  #assert rsc_prune_name("0","100","99") && rsc_prune_name("123456789012","100","99");
+}
+#forall "every generation character must be an ASCII digit" at: 0..<12, byte: 0..<128 {
+  name: [12] u8; for i: 0..<12 { name[i] = '1'; } name[at] = cast(u8) byte;
+  #assert rsc_prune_name(cast(string) name[..],"100","99") == (byte >= 48 && byte <= 57);
+}
+rsc_prune_name :: (name: string, current: string, previous: string) -> bool #effects(all) {
+  if name.count < 1 || name.count > 12 || name == current || name == previous { return false; }
+  for c: name { if c < '0' || c > '9' { return false; } }
+  return true;
+}
+#test "expired host envelopes leave at the exact boundary" {
+  #assert rsc_keep(3188, -1, 1000) && rsc_keep(3188, 1001, 1000);
+  #assert !rsc_keep(3188, 1000, 1000) && !rsc_keep(3188, 999, 1000);
+  #assert !rsc_keep(1, 0, 0) && rsc_keep(1, -1, 0);
+}
+#test "every policy-bearing kind survives expiry" {
+  for kind: [10] int.[0,3,5,62,10000,19999,30000,39999,9000,9030] { #assert rsc_keep(kind, 0, 1000); }
+  #assert !rsc_keep(8999, 0, 1000) && !rsc_keep(9031, 0, 1000);
+  #assert !rsc_keep(4, 0, 1000) && !rsc_keep(6, 0, 1000) && !rsc_keep(61, 0, 1000) && !rsc_keep(63, 0, 1000);
+  #assert !rsc_keep(9999, 0, 1000) && !rsc_keep(40000, 0, 1000);
+}
+rsc_keep :: (kind: int, expiry: int, now: int) -> bool #effects(all) {
+  if kind == 5 || kind == 62 || (kind >= 9000 && kind <= 9030) { return true; }
+  if ns_class(kind) != NS_ORDINARY { return true; }
+  return !ns_expired(expiry, now);
+}

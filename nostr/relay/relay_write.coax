@@ -1,0 +1,56 @@
+// The private-kind write gates of the pre-reset Rust relay, ported with
+// owner approval 2026-11-13 (#13382, NEEDS_OWNER 1c). Outer envelopes only:
+// nothing decrypts content or grants authority from a decoded body.
+#load "relay_private.coax";
+#load "../../coax/lib/nostr/nip44-envelope.coax";
+#load "../../coax/lib/crypto/secp_fast.coax";
+#load "../../components/core/text.coax";
+#load "../../components/core/space.coax";
+#load "relay_write-checks.coax" #test;
+#authority;
+RW_OK :: 0; RW_EVENT :: 1; RW_AUTH :: 2; RW_RELAY :: 3;
+RW_RUN :: 4; RW_ARTIFACT :: 5; RW_POLICY :: 6;
+RW_PREFIX :: [7] string.["","invalid","auth-required","restricted","invalid","invalid","invalid"];
+RW_TEXT :: [7] string.["","event is not verified","this private record requires authentication by its exact author",
+  "this kind is relay-authored only","malformed run envelope","malformed artifact envelope","malformed private-policy envelope"];
+
+rw_relay_kind :: (kind: int) -> bool #effects(all) {
+  return (kind >= 39000 && kind <= 39007) || kind == 30622 || kind == 8002 || kind == 8003 || kind == 13535;
+}
+// Rust str::trim_start uses Unicode White_Space. UTF-8 decoding is shared
+// with the component core; the event reader has already validated the text.
+rw_space :: (c:u32) -> bool #effects(all) {return rune_white_space(c);}
+rw_plaintext :: (content: string) -> bool #effects(all) {
+  at := 0;
+  while at < content.count { r := rune_at(content,at); if !rw_space(r.code) { break; } at += r.len; }
+  return at < content.count && content[at] == '{';
+}
+rw_fields :: (kind: int, author: [32] u8, tags: RpTags, content: string, readers: [] u8) -> int #effects(all) {
+  if rw_relay_kind(kind) { return RW_RELAY; }
+  private_policy := kind == 30181 && tags.policy;
+  exact := kind == 78 || kind == 30078 || kind == 3187 || kind == 3188 || kind == 30186 || private_policy;
+  if exact && !rp_has(readers,author) { return RW_AUTH; }
+  if kind == 3187 || kind == 30186 {
+    envelope := tags.p_values == 1 && tags.h_values == 1 && tags.run == 1 && tags.h_hex;
+    if kind == 30186 { envelope = envelope && tags.d_values == 1 && tags.d_is_h; }
+    if !envelope || content.count == 0 || rw_plaintext(content) { return RW_RUN; }
+  }
+  if kind == 3188 {
+    if tags.tags != 3 || !tags.two || tags.p_named != 1 || tags.h_named != 1 || tags.t_named != 1 ||
+       tags.artifact != 1 || !tags.p_hex || !tags.h_hex || !n44_v2_content(content) { return RW_ARTIFACT; }
+    key: [32] u8; t := tags;
+    if !ne_lower_hex(cast(string) t.first_p[0..<t.first_p_n],key[..]) || !fg_lift_x_vartime(key[..]).ok { return RW_ARTIFACT; }
+  }
+  if private_policy && (tags.p_named != 1 || !tags.p_author || !tags.d_hex || rw_plaintext(content)) { return RW_POLICY; }
+  return RW_OK;
+}
+rw_check :: (e: NostrEvent, readers: [] u8) -> int #effects(all) {
+  if e.error != NE_OK || !e.verified { return RW_EVENT; }
+  tags := rp_read(e.original[e.tags_from..<e.tags_to],e.public_key,readers);
+  if e.kind != 3187 && e.kind != 3188 && e.kind != 30186 && e.kind != 30181 {
+    return rw_fields(e.kind,e.public_key,tags,"",readers);
+  }
+  content: [65536] u8; n := json_unescape(e.original[e.content_from..<e.content_to],content[..]);
+  if n < 0 { return RW_EVENT; }
+  return rw_fields(e.kind,e.public_key,tags,cast(string) content[0..<n],readers);
+}

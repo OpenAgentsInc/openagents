@@ -303,7 +303,7 @@ n50_query :: (s: [] RsdStore, ix: [] NsiIndex, x: [] N50Index, f: NostrFilter, q
   n := 0;
   for p: from..<to {
     i := x[0].rec[p]; res.scanned += 1;
-    if !ns_store_visible(s, i, now) || !rsd_match(f, rsd_event(s, i)) { continue; }
+    if !ns_store_visible(s, i, now) || !rsd_match_scoped(f, rsd_event(s, i), s[0].groups) { continue; }
     k := json_unescape(n50_content(rsd_text(s, i)), buf);
     if k < 0 { res.unread += 1; continue; }
     sc := n50_score(cast(string) buf[0..<k], q);

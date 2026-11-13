@@ -48,10 +48,12 @@
 // 30300 and 30350 need authors naming only the readers; 30174 needs one
 // of the two.
 //
-// Not here: the Rust relay's NIP-29 private and hidden groups, which read
-// group state the Coax relay doesn't hold (NEEDS_OWNER, "Coax relay
-// cutover").
+// Current NIP-29 private and hidden group membership additionally gates
+// every stored, live and synchronization read through rp_group_visible.
 #load "../../coax/lib/nostr/filter.coax";
+#load "../../coax/lib/nostr/nip29.coax";
+#load "../../coax/lib/nostr/nip34-event.coax";
+#load "group_read_policy.coax";
 #authority;
 
 RP_STORED :: 1;   // a REQ, COUNT or sync without a search
@@ -60,6 +62,62 @@ RP_LIVE :: 3;     // a new event to a live subscription
 RP_POLICY :: "oa:cap-policy:private:v1";
 RP_RUN :: "oa:run:v1";
 RP_ARTIFACT :: "oa:artifact:v1";
+
+// Match all h scopes, and hidden metadata's d scope, as Rust's stored
+// queries do. The same current membership gates live delivery and sync.
+rp_group_visible :: (groups: [] NgGroup, e: NostrEvent, readers: [] u8) -> bool #effects(all) {
+  if groups.count == 0 { return true; }
+  metadata := e.kind >= 39000 && e.kind <= 39005;
+  // Stored projections retain their original tag span, not a transient
+  // parser count. Inspect only scope values: unrelated long tags and empty
+  // tags must not acquire a group policy of their own.
+  original:=nt_event_of(e);
+  for which:0..<2 {
+    if which==1 && !metadata {continue;}
+    name:=ifx which==0 then "h" else "d";
+    count:=nt_tags(original,name);if count<0 {return false;}
+    for i:0..<count {
+      tag:=nt_tag(original,name,i);if tag.values<1 {continue;}
+      value:[64]u8;n:=json_unescape(nt_raw(original,tag.v[0]),value[..]);
+      if n<1 {continue;} // a longer value cannot name a bounded group id
+      if !ng_visible(groups,cast(string)value[0..<n],which==1,e.kind,readers) {return false;}
+    }
+  }
+  return true;
+}
+#test "group reads inspect every scope and hidden metadata's d tag" {
+  key:=g29_k(0xaa); other:=g29_k(0xbb); buf:[2048]u8;
+  groups:[2]NgGroup;
+  groups[0]=NgGroup.{id="public"};
+  groups[1]=NgGroup.{id="secret",is_private=true,hidden=true,members=key[..]};
+  e:=g29_ev(9,0xaa,1,"[[\"h\",\"public\"],[\"h\",\"secret\"]]",buf[..]);
+  #assert rp_group_visible(groups[..],e,key[..]) && !rp_group_visible(groups[..],e,other[..]);
+  #assert rp_group_visible(groups[0..<0],e,other[..]);
+  e=g29_ev(39000,0xaa,1,"[[\"d\",\"secret\"]]",buf[..]);
+  #assert !rp_group_visible(groups[..],e,other[..]) && rp_group_visible(groups[..],e,key[..]);
+  e.kind=38999; #assert rp_group_visible(groups[..],e,other[..]);
+  e=g29_ev(9,0xaa,1,"[[\"p\",\"secret\"],[\"h\"],[\"h\",\"unknown\"]]",buf[..]);
+  #assert rp_group_visible(groups[..],e,other[..]);
+  text:[1024]u8;n:=json_raw(text[..],0,"[[],[\"unrelated\",\"");
+  for i:0..<300 {text[n+i]='a';}n+=300;n=json_raw(text[..],n,"\"],[\"h\",\"\"]]");
+  e=nt_event(cast(string)text[0..<n]);e.kind=9;
+  #assert rp_group_visible(groups[..],e,other[..]);
+}
+#test "scope boundaries use current single-group flags and complete tag syntax" {
+  key:=g29_k(0xaa);other:=g29_k(0xbb);buf:[1024]u8;
+  groups:=[1]NgGroup.[NgGroup.{id="s",is_private=true,members=key[..]}];
+  e:=g29_ev(9,0xaa,1,"[[\"h\",\"s\"]]",buf[..]);
+  #assert !rp_group_visible(groups[..],e,other[..]) && rp_group_visible(groups[..],e,key[..]);
+  groups[0].is_private=false;groups[0].hidden=true;
+  for kind:39000..<39006 {
+    e=g29_ev(kind,0xaa,1,"[[\"d\",\"s\"]]",buf[..]);
+    #assert !rp_group_visible(groups[..],e,other[..]) && rp_group_visible(groups[..],e,key[..]);
+  }
+  e.kind=39006;#assert rp_group_visible(groups[..],e,other[..]);
+  e=g29_ev(9,0xaa,1,"[[\"h\",\"s\"]]",buf[..]);#assert rp_group_visible(groups[..],e,other[..]);
+  e.original="[5]";e.tags_from=0;e.tags_to=3;#assert !rp_group_visible(groups[..],e,other[..]);
+  empty:=rp_read("[[\"d\",\"\"],[\"h\",\"\"]]",key,key[..]);#assert empty.d_is_h;
+}
 
 // What one reading of an event's tags found (rp_read).
 RpTags :: struct {
@@ -74,6 +132,7 @@ RpTags :: struct {
   shared: bool; shared_exact: bool;
   first_p: [64] u8; first_p_n: int = -1;  // the first p value when it is at most 64 bytes
   first_h: [64] u8; first_h_n: int = -1;
+  first_d: [64] u8; first_d_n: int = -1;
 }
 
 // Whether v is 64 lowercase hex digits.
@@ -135,6 +194,8 @@ rp_read :: (tags: string, author: [32] u8, readers: [] u8) -> RpTags #effects(al
     if shared && truth { t[0].shared = true; }
     tok = json_next(j[..]);
   }
+  t[0].d_is_h = t[0].first_d_n >= 0 && t[0].first_d_n == t[0].first_h_n &&
+    cast(string) t[0].first_d[0..<t[0].first_d_n] == cast(string) t[0].first_h[0..<t[0].first_d_n];
   return t[0];
 }
 // One tag's first value s, by the tag's name. long: s is over 64 bytes (or
@@ -158,7 +219,7 @@ rp_value :: (t: [] RpTags, name: string, s: string, long: bool, author: [32] u8,
     t[0].h_values += 1;
   }
   if name == "d" {
-    if t[0].d_values == 0 { t[0].d_is_h = !long && t[0].first_h_n == s.count && cast(string) t[0].first_h[0..<s.count] == s; }
+    if t[0].d_values == 0 && !long { t[0].first_d_n = s.count; for i: 0..<s.count { t[0].first_d[i] = s[i]; } }
     if rp_hex(s) { t[0].d_hex = true; }
     t[0].d_values += 1;
   }
@@ -329,7 +390,7 @@ rp_t_bits :: (mode: int, kind: int, tags: string) -> int #effects(all) {
   #assert !t.h_hex && t.d_is_h && t.d_hex && t.d_values == 2;
   t = rp_read("[[\"h\",\"ab\"],[\"d\",\"ac\"]]", a, b); #assert !t.d_is_h;
   t = rp_read("[[\"h\",\"ab\"],[\"d\",\"a\"]]", a, b); #assert !t.d_is_h;
-  t = rp_read("[[\"d\",\"ab\"],[\"h\",\"ab\"]]", a, b); #assert !t.d_is_h && t.h_values == 1;
+  t = rp_read("[[\"d\",\"ab\"],[\"h\",\"ab\"]]", a, b); #assert t.d_is_h && t.h_values == 1;
   t = rp_read("[[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"h\",\"ab\"],[\"d\",\"ab\"]]", a, b);
   #assert t.h_hex && t.h_values == 2 && !t.d_is_h;
   // names: over 8 bytes count as none; exactly 8 is a name; an empty tag

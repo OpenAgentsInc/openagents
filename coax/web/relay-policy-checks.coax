@@ -1,0 +1,16 @@
+// Pure policy suites for nostr/relay/, which sits outside suites.coax's
+// library roots. Keep relay policy changes in the normal touched-suite gate.
+// Socket, TLS, crash and independent signature checks remain relay_session.py.
+// coax test coax/web/relay-policy-checks.coax --library
+#run_steps 250000000;
+#load "../lib/nostr/store.coax";
+#load "../../nostr/relay/relay_connection.coax";
+#load "../../nostr/relay/relay_metadata.coax";
+#load "../../nostr/relay/relay_rate.coax";
+#load "../../nostr/relay/relay_route.coax";
+#load "../../nostr/relay/message_server.coax";
+#load "../../nostr/relay/store_fresh.coax";
+#load "../../nostr/relay/store_compact.coax";
+#load "../../nostr/relay/relay_key_policy.coax";
+#load "../../nostr/relay/relay_write.coax";
+#load "../../nostr/relay/relay_extension_policy.coax";

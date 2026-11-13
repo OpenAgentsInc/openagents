@@ -1,0 +1,40 @@
+{
+  "displayName": "Coax relay: served certificate expires within 14 days",
+  "combiner": "OR",
+  "enabled": true,
+  "severity": "ERROR",
+  "notificationChannels": [
+    "projects/openagentsgemini/notificationChannels/14067723742793378411"
+  ],
+  "documentation": {
+    "content": "The certificate actually served by relay.openagents.com expires within 14 days. Check certbot.timer, certbot.service, and the relay reload log on oa-relay-1. Renew and reload; verify the certificate from outside the VM. #13382.",
+    "mimeType": "text/markdown"
+  },
+  "userLabels": {
+    "service": "coax-relay",
+    "issue": "13382"
+  },
+  "conditions": [
+    {
+      "displayName": "Coax relay: served certificate expires within 14 days",
+      "conditionThreshold": {
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/time_until_ssl_cert_expires\" AND resource.type=\"uptime_url\" AND metric.label.check_id=\"coax-relay-nip-11-and-tls-fYNYUFRBICs\"",
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 14,
+        "duration": "600s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "perSeriesAligner": "ALIGN_MIN"
+          }
+        ],
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "alertStrategy": {
+    "autoClose": "86400s"
+  }
+}

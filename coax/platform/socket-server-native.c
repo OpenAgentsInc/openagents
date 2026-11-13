@@ -26,6 +26,7 @@ typedef struct {
   int64_t out_n;
   cxtls_server *tls;      /* NULL on a plain listener */
   int64_t hs_deadline;    /* while the TLS handshake runs; 0 after it */
+  unsigned char peer[16];
 } cxsrv_conn;
 
 static int listen_fd = -1;
@@ -121,8 +122,17 @@ int64_t cxsrv_poll(int64_t timeout_ms) {
 int64_t cxsrv_accept(void) {
   init();
   if (listen_fd < 0) return CXSRV_ERROR;
-  int fd = accept(listen_fd, NULL, NULL);
+  struct sockaddr_storage peer;
+  socklen_t peer_len = sizeof peer;
+  int fd = accept(listen_fd, (struct sockaddr *)&peer, &peer_len);
   if (fd < 0) return CXSRV_NONE;
+  unsigned char normalized[16] = {0};
+  if (peer.ss_family == AF_INET) {
+    normalized[10] = normalized[11] = 255;
+    memcpy(normalized + 12, &((struct sockaddr_in *)&peer)->sin_addr, 4);
+  } else if (peer.ss_family == AF_INET6) {
+    memcpy(normalized, &((struct sockaddr_in6 *)&peer)->sin6_addr, 16);
+  } else { close(fd); return CXSRV_ERROR; }
   for (int i = 0; i < CXSRV_MAX; i++) {
     if (conns[i].fd >= 0) continue;
     if (nonblocking(fd) != 0) break;
@@ -147,10 +157,16 @@ int64_t cxsrv_accept(void) {
       conns[i].hs_deadline = now_ms() + CXSRV_TLS_HANDSHAKE_MS;
     }
     conns[i].fd = fd; conns[i].in_n = 0; conns[i].out_n = 0;
+    memcpy(conns[i].peer, normalized, 16);
     return i + 1;
   }
   close(fd);
   return CXSRV_FULL;
+}
+
+int64_t cxsrv_peer_byte(int64_t h, int64_t i) {
+  if (h < 1 || h > CXSRV_MAX || i < 0 || i >= 16 || conns[h - 1].fd < 0) return -1;
+  return conns[h - 1].peer[i];
 }
 
 static cxsrv_conn *conn(int64_t h) {

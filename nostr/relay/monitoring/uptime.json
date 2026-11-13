@@ -1,0 +1,39 @@
+{
+  "checkerType": "STATIC_IP_CHECKERS",
+  "contentMatchers": [
+    {
+      "content": "\"name\":\"OpenAgents Relay\"",
+      "matcher": "CONTAINS_STRING"
+    }
+  ],
+  "displayName": "Coax relay NIP-11 and TLS",
+  "httpCheck": {
+    "headers": {
+      "Accept": "application/nostr+json"
+    },
+    "path": "/",
+    "port": 443,
+    "requestMethod": "GET",
+    "useSsl": true,
+    "validateSsl": true
+  },
+  "monitoredResource": {
+    "labels": {
+      "host": "relay.openagents.com",
+      "project_id": "openagentsgemini"
+    },
+    "type": "uptime_url"
+  },
+  "name": "projects/openagentsgemini/uptimeCheckConfigs/coax-relay-nip-11-and-tls-fYNYUFRBICs",
+  "period": "60s",
+  "selectedRegions": [
+    "USA_IOWA",
+    "EUROPE",
+    "ASIA_PACIFIC"
+  ],
+  "timeout": "10s",
+  "userLabels": {
+    "issue": "13382",
+    "service": "coax-relay"
+  }
+}

@@ -1,0 +1,98 @@
+RW_TEST_KEY :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+RW_TEST_H :: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+#test "app data requires its exact authenticated author" {
+  author: [32] u8; other: [32] u8; author[0]=1; other[0]=2; t: RpTags;
+  for kind: [2] int.[78,30078] {
+    #assert rw_fields(kind,author,t,"",author[..])==RW_OK && rw_fields(kind,author,t,"",other[..])==RW_AUTH;
+    #assert rw_fields(kind,author,t,"",other[0..<0])==RW_AUTH;
+  }
+  #assert rw_fields(1,author,t,"",other[0..<0])==RW_OK;
+  bad: NostrEvent; #assert rw_check(bad,other[..])==RW_EVENT;
+  bad.error=NE_OK; #assert rw_check(bad,other[..])==RW_EVENT;
+}
+#test "every relay-only Block kind is blocked at the user boundary" {
+  for kind: [12] int.[8002,8003,13535,30622,39000,39001,39002,39003,39004,39005,39006,39007] { #assert rw_relay_kind(kind); }
+  for kind: [8] int.[8001,8004,13534,13536,30621,30623,38999,39008] { #assert !rw_relay_kind(kind); }
+  key: [32] u8; t: RpTags; #assert rw_fields(39000,key,t,"",key[..])==RW_RELAY;
+}
+#test "run envelopes accept d before h and reject plaintext and malformed routes" {
+  key: [32] u8; key[0]=1;
+  t := rp_read("[[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"p\",\"peer\"],[\"t\",\"oa:run:v1\"]]",key,key[..]);
+  #assert t.d_is_h && rw_fields(30186,key,t,"sealed",key[..])==RW_OK;
+  #assert rw_fields(3187,key,t,"sealed",key[0..<0])==RW_AUTH;
+  #assert rw_fields(3187,key,t,"",key[..])==RW_RUN && rw_fields(3187,key,t," \t{}",key[..])==RW_RUN;
+  #assert rw_plaintext("  {}") && !rw_plaintext(" ciphertext");
+  t.h_values=2; #assert rw_fields(3187,key,t,"sealed",key[..])==RW_RUN;
+}
+#test "private preferences preserve the Rust outer-envelope policy" {
+  key: [32] u8; #assert ne_lower_hex(RW_TEST_KEY,key[..]);
+  t := rp_read("[[\"t\",\"oa:cap-policy:private:v1\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]]",key,key[..]);
+  #assert rw_fields(30181,key,t,"sealed",key[..])==RW_OK && rw_fields(30181,key,t,"{}",key[..])==RW_POLICY;
+  #assert rw_fields(30181,key,t,"sealed",key[0..<0])==RW_AUTH;
+  t.p_named=2; #assert rw_fields(30181,key,t,"sealed",key[..])==RW_POLICY;
+}
+#test "artifact route and ciphertext use the shared curve and NIP-44 checks" {
+  key: [32] u8; #assert ne_lower_hex(RW_TEST_KEY,key[..]);
+  t := rp_read("[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:artifact:v1\"]]",key,key[..]);
+  raw: [99] u8; raw[0]=2; text: [132] u8; encoded:=base64_encode_checked(cast(string) raw[..],text[..],false);
+  #assert encoded.error==NC_OK && rw_fields(3188,key,t,cast(string) text[..],key[..])==RW_OK;
+  #assert rw_fields(3188,key,t,"not ciphertext",key[..])==RW_ARTIFACT;
+  for i: 0..<64 { t.first_p[i]='f'; } #assert rw_fields(3188,key,t,cast(string) text[..],key[..])==RW_ARTIFACT;
+}
+
+#forall "Rust whitespace is the Unicode White_Space set" code: 0..<0x3100 {
+  expected := false;
+  for c: [25] int.[9,10,11,12,13,32,0x85,0xa0,0x1680,0x2000,0x2001,0x2002,0x2003,0x2004,0x2005,0x2006,0x2007,0x2008,0x2009,0x200a,0x2028,0x2029,0x202f,0x205f,0x3000] { if code == c { expected = true; } }
+  #assert rw_space(cast(u32) code) == expected;
+}
+#test "non-whitespace Unicode and an empty body are not plaintext objects" {
+  #assert !rw_space(0xfeff) && !rw_space(0x10ffff) && !rw_plaintext("") && !rw_plaintext(" ");
+}
+#test "author checks cover every private kind without claiming neighboring kinds" {
+  key:[32]u8;key[0]=1;t:RpTags;t.policy=true;
+  for kind:[6]int.[78,30078,3187,3188,30186,30181] {#assert rw_fields(kind,key,t,"sealed",key[0..<0])==RW_AUTH;}
+  for kind:[6]int.[77,30079,3186,3189,30187,30182] {#assert rw_fields(kind,key,t,"sealed",key[0..<0])==RW_OK;}
+  t.policy=false;#assert rw_fields(30181,key,t,"{}",key[0..<0])==RW_OK;
+}
+#test "run head adds exactly one matching d to the ordinary run envelope" {
+  key:[32]u8;t:=RpTags.{p_values=1,h_values=1,run=1,h_hex=true};
+  #assert rw_fields(3187,key,t,"sealed",key[..])==RW_OK && rw_fields(30186,key,t,"sealed",key[..])==RW_RUN;
+  t.d_values=1;t.d_is_h=true;#assert rw_fields(30186,key,t,"sealed",key[..])==RW_OK;
+  t.d_is_h=false;#assert rw_fields(30186,key,t,"sealed",key[..])==RW_RUN;
+  t.d_is_h=true;t.d_values=2;#assert rw_fields(30186,key,t,"sealed",key[..])==RW_RUN;
+}
+#forall "each artifact envelope fact is independently required" fault:0..<10 {
+  key:[32]u8;#assert ne_lower_hex(RW_TEST_KEY,key[..]);
+  t:=rp_read("[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:artifact:v1\"]]",key,key[..]);
+  raw:[99]u8;raw[0]=2;text:[132]u8;encoded:=base64_encode_checked(cast(string)raw[..],text[..],false);
+  #assert encoded.error==NC_OK;
+  if fault==0 {t.tags=4;} if fault==1 {t.two=false;} if fault==2 {t.p_named=2;} if fault==3 {t.h_named=2;}
+  if fault==4 {t.t_named=2;} if fault==5 {t.artifact=0;} if fault==6 {t.p_hex=false;} if fault==7 {t.h_hex=false;}
+  if fault==8 {t.first_p[0]='g';} if fault==9 {t.first_p_n=63;}
+  #assert rw_fields(3188,key,t,cast(string)text[..],key[..])==RW_ARTIFACT;
+}
+// A policy-boundary fixture carries the exact retained JSON spans. Signature
+// verification itself is exercised by the independently signed socket sessions.
+rw_fixture :: (kind:int,tags:string,raw_content:string,out:[]u8) -> NostrEvent {
+  n:=json_raw(out,0,tags);end:=json_raw(out,n,raw_content);
+  e:=NostrEvent.{error=NE_OK,verified=true,kind=kind,original=cast(string)out[0..<end],tags_to=n,content_from=n,content_to=end};
+  #assert ne_lower_hex(RW_TEST_KEY,e.public_key[..]);return e;
+}
+#test "the original content spans drive the write gate including escapes and empty data" {
+  buf:[4096]u8;key:[32]u8;#assert ne_lower_hex(RW_TEST_KEY,key[..]);
+  e:=rw_fixture(78,"[]","",buf[..]);#assert rw_check(e,key[..])==RW_OK;
+  e=rw_fixture(30181,"[]","",buf[..]);#assert rw_check(e,key[..])==RW_OK;
+  e=rw_fixture(30181,"[]","\\",buf[..]);#assert rw_check(e,key[..])==RW_EVENT;
+  tags:="[[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"p\",\"peer\"],[\"t\",\"oa:run:v1\"]]";
+  for kind:[2]int.[3187,30186] {
+    e=rw_fixture(kind,tags,"sealed",buf[..]);#assert rw_check(e,key[..])==RW_OK;
+    e=rw_fixture(kind,tags,"\\u007b}",buf[..]);#assert rw_check(e,key[..])==RW_RUN;
+  }
+  e=rw_fixture(3188,"[]","sealed",buf[..]);#assert rw_check(e,key[..])==RW_ARTIFACT;
+  raw:[99]u8;raw[0]=2;cipher:[132]u8;encoded:=base64_encode_checked(cast(string)raw[..],cipher[..],false);
+  #assert encoded.error==NC_OK;
+  e=rw_fixture(3188,"[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"h\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"t\",\"oa:artifact:v1\"]]",cast(string)cipher[..],buf[..]);
+  #assert rw_check(e,key[..])==RW_OK;
+  e=rw_fixture(30181,"[[\"t\",\"oa:cap-policy:private:v1\"]]","{}",buf[..]);#assert rw_check(e,key[..])==RW_POLICY;
+  e.error=NE_SIGNATURE;#assert rw_check(e,key[..])==RW_EVENT;
+}

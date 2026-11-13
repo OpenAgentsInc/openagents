@@ -1890,6 +1890,8 @@
     "coax/lib/nostr/nipar.coax",
     "coax/lib/nostr/nipia.coax",
     "coax/lib/nostr/niper.coax",
+    "coax/lib/nostr/niper-envelope.coax",
+    "coax/tests/nostr/niper_envelope_fixtures.coax",
     "coax/tests/nostr/nipar_fixtures.coax",
     "coax/tests/nostr/nipia_fixtures.coax",
     "coax/tests/nostr/niper_fixtures.coax",

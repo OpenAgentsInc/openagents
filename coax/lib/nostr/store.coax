@@ -83,6 +83,11 @@ rsd_rec :: (r: RsAdmit) -> RsdRec {
   c: RsdRec;
   c.id = r.e.id; c.author = r.e.public_key; c.kind = r.e.kind; c.created = r.e.created_at;
   c.expiry = r.expiration; c.d = r.d; c.d_n = r.d_n; c.tags_from = r.e.tags_from; c.tags_to = r.e.tags_to;
+  if c.kind==30300 { due:=rs_tag_time(r.e,"not_before"); if due>=0 {c.not_before=due;} }
+  if !ng_mailbox(c.kind) {
+    none: [1] u8; tags := rp_read(r.e.original[r.e.tags_from..<r.e.tags_to],c.author,none[0..<0]);
+    if tags.h_values == 1 && tags.first_h_n > 0 { c.group=tags.first_h; c.group_n=tags.first_h_n; }
+  }
   return c;
 }
 // Whether r is a verified, accepted result for exactly text.
@@ -110,13 +115,16 @@ rsd_match :: (f: NostrFilter, e: NostrEvent) -> bool {
   ok := e.tags_from >= 0 && e.tags_from <= e.tags_to && e.tags_to <= e.original.count;
   return rp_visible(f.gate, e.kind, e.public_key, ifx ok then e.original[e.tags_from..<e.tags_to] else "", f.readers);
 }
+rsd_match_scoped :: (f: NostrFilter, e: NostrEvent, groups: [] NgGroup) -> bool {
+  return rsd_match(f,e) && (f.gate==0 || rp_group_visible(groups,e,f.readers));
+}
 // Up to rs_limit(f) (and out.count) live, unexpired records matching f,
 // newest first, then lowest id, as indexes into out: the count.
 rsd_query :: (s: [] RsdStore, f: NostrFilter, now: int, out: [] int) -> int {
   later := ns_store_seen(s, now);
   limit := rs_limit(f); n := 0;
   for i: 0..<s[0].n {
-    if !ns_store_visible(s, i, now) || !rsd_match(f, rsd_event(s, i)) { continue; }
+    if !ns_store_visible(s, i, now) || !rsd_match_scoped(f, rsd_event(s, i), s[0].groups) { continue; }
     n = ns_store_insert(s, i, n, limit, out);
   }
   return n;

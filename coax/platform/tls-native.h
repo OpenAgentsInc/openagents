@@ -128,6 +128,9 @@ int64_t cxtls_close(int64_t h);
 #define CXTLS_KEY (-14)
 #define CXTLS_CERT (-15)
 typedef struct cxtls_server cxtls_server;
+/* May be called again by the listener thread between accepts. Success
+   replaces the context for future connections; failure preserves it.
+   Existing SSL connections retain their original context in both cases. */
 int64_t cxtls_server_load(const char *cert_path, const char *key_path);
 cxtls_server *cxtls_server_new(int fd);
 int64_t cxtls_server_handshake(cxtls_server *s);

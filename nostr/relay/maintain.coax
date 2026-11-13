@@ -1,0 +1,131 @@
+// Offline scheduled compaction. A generation holds links to the data disk
+// and a checkpoint on the boot disk; one atomic current link selects all
+// three. Old generations remain available for a deliberate rollback.
+// coax/web/tool.sh nostr/relay/maintain.coax --help
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "store_compact.coax";
+
+#test "served-set comparison accepts only a complete unambiguous digest" {
+  hex := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  line := "relay: served set at 1: 0 events, digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef (1 ms)\n";
+  #assert mt_digest(line) == hex;
+  #assert mt_digest("digest short") == "" && mt_digest("a, digest xyz ") == "";
+  #assert mt_digest("a, digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0 ") == "";
+}
+mt_digest :: (s: string) -> string {
+  key := ", digest "; found := -1;
+  for i: 0..<s.count - key.count {
+    if s[i..<i + key.count] == key { if found >= 0 { return ""; } found = i + key.count; }
+  }
+  if found < 0 || found + 64 >= s.count || s[found + 64] != ' ' { return ""; }
+  for i: found..<found + 64 { c := s[i]; if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return ""; } }
+  return s[found..<found + 64];
+}
+mt_run :: (argv: [$N] string, out: [] u8) -> int {
+  err: [16384] u8; av := argv; r := proc_run(av[..], 180000, out, err[..]);
+  if r.err_n > 0 { tool_err(cast(string) err[0..<r.err_n]); }
+  if r.status != 0 || r.timed_out || r.cut {
+    if r.out_n>0 {tool_err(cast(string)out[0..<r.out_n]);}
+    print("relay maintenance: % % failed (status %, timed out %, cut %); current generation retained\n",argv[0],argv[1],r.status,r.timed_out,r.cut);return -1;
+  }
+  return r.out_n;
+}
+// Numeric generation names belong exclusively to this tool. Keep current
+// and previous, plus the legacy initial generation. Otherwise retaining
+// every compacted copy would merely move the unbounded growth elsewhere.
+mt_prune :: (generations: string, data: string, selected: string, previous: string) -> bool {
+  entries: [1] FsList; count := fs_list(generations, entries[..]);
+  if count < 0 { return false; }
+  for i: 0..<count {
+    name := fs_entry(entries[..], i);
+    if !rsc_prune_name(name, fs_base(selected), fs_base(previous)) { continue; }
+    paths: [6] [4096] u8;
+    dir := fs_join(generations, name, paths[0][..]);
+    if dir == "" || fs_kind(dir) != FS_DIR { continue; }
+    files: [1] FsList; n := fs_list(dir, files[..]); known := n == 3;
+    for j: 0..<n { f := fs_entry(files[..], j); if f != "relay.store" && f != "relay.store.nip86" && f != "relay.cp" { known = false; } }
+    if !known { continue; }
+    store := fs_join(data, name, paths[1][..]);
+    journal: [4096] u8;
+    if store == "" || store.count + 6 > journal.count || fs_kind(store) != FS_FILE { continue; }
+    for j: 0..<store.count { journal[j] = store[j]; }
+    suffix := ".nip86"; for j: 0..<suffix.count { journal[store.count + j] = suffix[j]; }
+    if !fs_remove(store) || !fs_remove(cast(string) journal[0..<store.count + suffix.count]) || !fs_remove(dir) { return false; }
+  }
+  return true;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args; if !args_load(args[..]) { return 2; }
+  if args_has(args[..], "--help") {
+    tool_errln("maintain --root BOOT_DIR --data DATA_DIR --relay BINARY [--systemctl PROGRAM] [--now SECONDS]"); return 0;
+  }
+  root := args_value(args[..], "--root", "/var/lib/nostr-relay-cp");
+  data := args_value(args[..], "--data", "/var/lib/nostr-relay/store");
+  relay := args_value(args[..], "--relay", "/opt/nostr-relay/current/relay");
+  systemctl := args_value(args[..], "--systemctl", "systemctl");
+  owner := args_value(args[..], "--owner", "nostr-relay:nostr-relay");
+  paths: [12] [4096] u8;
+  current := fs_join(root, "current", paths[0][..]);
+  store := fs_join(current, "relay.store", paths[1][..]);
+  checkpoint := fs_join(current, "relay.cp", paths[2][..]);
+  lock := fs_join(root, "maintenance.lock", paths[3][..]);
+  if current == "" || store == "" || checkpoint == "" || lock == "" || !fs_exists(checkpoint) || !fs_try_lock(lock) { return 2; }
+  defer { unlocked := fs_unlock(); }
+  previous_path: [4096] u8; previous := fs_realpath(current, previous_path[..]);
+  if previous == "" { return 2; }
+  clock: [64] u8; n := mt_run([2] string.["date", "+%s"], clock[..]);
+  if n < 2 { return 2; }
+  // proc_run joins lines without a trailing newline: retain every digit.
+  now := args_value(args[..], "--now", cast(string) clock[0..<n]);
+  // The relay parses this argument independently. It also makes a unique,
+  // easily inspected generation name; refuse a collision, never overwrite.
+  for c: now { if c < '0' || c > '9' { return 2; } }
+  if now.count == 0 || now.count > 12 { return 2; }
+  generations := fs_join(root, "generations", paths[4][..]);
+  generation := fs_join(generations, now, paths[5][..]);
+  candidate := fs_join(data, now, paths[6][..]);
+  newstore := fs_join(generation, "relay.store", paths[7][..]);
+  newcp := fs_join(generation, "relay.cp", paths[8][..]);
+  newlink := fs_join(root, "current.new", paths[9][..]);
+  if generations == "" || generation == "" || candidate == "" || newstore == "" || newcp == "" || newlink == "" || fs_exists(generation) || fs_exists(candidate) { return 2; }
+  out: [16384] u8;
+  if mt_run([3] string.[systemctl,"stop","nostr-relay"], out[..]) < 0 { return 2; }
+  // The systemd oneshot additionally has ExecStopPost=start, covering a
+  // killed maintenance process as well as all normal failure returns.
+  defer { started := mt_run([3] string.[systemctl,"start","nostr-relay"], out[..]); }
+  // --check-store refreshes its checkpoint. Verify against a private copy,
+  // preserving the original checkpoint bytes, inode and service ownership
+  // even when a later step fails while this tool is running as root.
+  temp_path:[4096]u8; temporary:=fs_temp("oa-relay-maintenance-",temp_path[..]);
+  if temporary=="" {return 3;}
+  defer {removed:=fs_remove(temporary);}
+  verifycp:=fs_join(temporary,"relay.cp",paths[10][..]);
+  cp_data:[4096]u8;cp_n:=fs_read(checkpoint,cp_data[..]);
+  if verifycp=="" || cp_n<0 || !fs_write(verifycp,cast(string)cp_data[0..<cp_n]) {return 3;}
+  before: [16384] u8;
+  b := mt_run([12] string.[relay,"--check-store","--store",store,"--checkpoint",verifycp,"--now",now,"--url","wss://relay.openagents.com","--store-capacity","150000"], before[..]);
+  if b < 0 || mt_digest(cast(string) before[0..<b]) == "" { return 3; }
+  if mt_run([11] string.[relay,"--compact",candidate,"--store",store,"--now",now,"--url","wss://relay.openagents.com","--store-capacity","150000"], out[..]) < 0 { return 3; }
+  if !fs_mkdir(generation) || mt_run([4] string.["ln","-s",candidate,newstore], out[..]) < 0 { return 3; }
+  journal: [4096] u8; linked: [4096] u8;
+  // The host names the policy journal by appending this exact suffix.
+  cj := "";
+  nj := fs_join(generation, "relay.store.nip86", linked[..]);
+  if candidate.count + 6 > journal.count || nj == "" { return 3; }
+  for i: 0..<candidate.count { journal[i] = candidate[i]; }
+  suffix := ".nip86"; for i: 0..<suffix.count { journal[candidate.count + i] = suffix[i]; }
+  cj = cast(string) journal[0..<candidate.count + suffix.count];
+  if mt_run([4] string.["ln","-s",cj,nj], out[..]) < 0 { return 3; }
+  after: [16384] u8;
+  a := mt_run([13] string.[relay,"--check-store","--adopt","--store",newstore,"--checkpoint",newcp,"--now",now,"--url","wss://relay.openagents.com","--store-capacity","150000"], after[..]);
+  if a < 0 || mt_digest(cast(string) before[0..<b]) != mt_digest(cast(string) after[0..<a]) { tool_errln("relay maintenance: served set changed; candidate retained for inspection"); return 3; }
+  print("relay maintenance: served-set digest % unchanged at %\n",mt_digest(cast(string)before[0..<b]),now);
+  if mt_run([6] string.["chown","-R",owner,generation,candidate,cj], out[..]) < 0 { return 3; }
+  if mt_run([4] string.["ln","-s",generation,newlink], out[..]) < 0 || !fs_rename(newlink,current) { return 3; }
+  if mt_run([3] string.["sync","-f",root], out[..]) < 0 { return 3; }
+  if !mt_prune(generations, data, generation, previous) { tool_errln("relay maintenance: selected generation is valid; older generation cleanup failed"); return 3; }
+  tool_errln("relay maintenance: selected verified generation; previous generation retained");
+  return 0;
+}

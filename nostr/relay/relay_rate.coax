@@ -25,7 +25,7 @@
 
 RT_WINDOW :: 60;            // seconds in one window
 RT_LIMIT_MAX :: 1000000;    // the largest limit a configuration may set
-RT_KEYS :: 64;              // keys tracked at once
+RT_KEYS :: 4096;            // keys tracked at once (bounded, about 192 KiB)
 // Decisions. RT_OK lets the message through.
 RT_OK :: 0; RT_EVENT_RATE :: 1; RT_REQ_RATE :: 2; RT_KEY_RATE :: 3; RT_KEYS_FULL :: 4;
 RT_REASONS :: 5;
@@ -33,12 +33,12 @@ RT_REASONS :: 5;
 RtConfig :: struct { events: int; reqs: int; key_events: int; }
 RtWindow :: struct { started: int; count: int; }    // count 0: no window open
 RtConn :: struct { events: RtWindow; reqs: RtWindow; }
-RtKeys :: struct { key: [2048] u8; w: [RT_KEYS] RtWindow; n: int; }   // RT_KEYS x 32 bytes
+RtKeys :: struct { key: [RT_KEYS * 32] u8; w: [RT_KEYS] RtWindow; n: int; }
 
 #test "the defaults are the Rust relay's, and a configuration needs every limit in range" {
   d := rt_default();
   #assert d.events == 120 && d.reqs == 120 && d.key_events == 60 && rt_config_ok(d);
-  #assert RT_KEYS * 32 == 2048;
+  #assert RT_KEYS == 4096;
   c := d; c.events = 0; #assert !rt_config_ok(c);
   c = d; c.reqs = 0; #assert !rt_config_ok(c);
   c = d; c.key_events = 0; #assert !rt_config_ok(c);
@@ -98,7 +98,12 @@ rt_take :: (w: [] RtWindow, limit: int, now: int) -> bool #effects(all) {
   k[0].w[1] = RtWindow.{started = 100, count = 1};
   #assert rt_key_slot(k[..], a[0..<31], 100) == -1;
   // fill the table; every window is open at 100
-  for i: 2..<RT_KEYS { c: [32] u8; c[0] = cast(u8) i; s := rt_key_slot(k[..], c[..], 100); #assert s == i; k[0].w[s] = RtWindow.{started = 100, count = 1}; }
+  for i: 2..<65 { c: [32] u8; c[0] = cast(u8) i; s := rt_key_slot(k[..], c[..], 100); #assert s == i; k[0].w[s] = RtWindow.{started = 100, count = 1}; }
+  for i: 65..<RT_KEYS {
+    k[0].key[32 * i] = cast(u8) (i % 256); k[0].key[32 * i + 1] = cast(u8) (i / 256);
+    k[0].w[i] = RtWindow.{started = 100, count = 1};
+  }
+  k[0].n = RT_KEYS;
   #assert k[0].n == RT_KEYS;
   n: [32] u8; n[5] = 9;
   #assert rt_key_slot(k[..], n[..], 159) == -1 && k[0].n == RT_KEYS;

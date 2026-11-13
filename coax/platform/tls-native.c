@@ -3,6 +3,7 @@
 #define _POSIX_C_SOURCE 200809L
 #define _DARWIN_C_SOURCE 1
 #include "tls-native.h"
+#include "private-file.h"
 #include "socket-native.h"
 #include <stdlib.h>
 #include <string.h>
@@ -263,12 +264,8 @@ static SSL_CTX *cxtls_server_ctx = NULL;
    open descriptor (no window between the check and the read). */
 static EVP_PKEY *cxtls_server_key(const char *path, int64_t *why) {
   *why = CXTLS_KEY;
-  int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NOCTTY);
-  if (fd < 0) { if (errno == ELOOP) *why = CXTLS_KEY_MODE; return NULL; }
-  struct stat st;
-  if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != geteuid() || (st.st_mode & 077) != 0) {
-    close(fd); *why = CXTLS_KEY_MODE; return NULL;
-  }
+  int fd = cx_private_open(path);
+  if (fd < 0) { if (errno == ELOOP || errno == EPERM) *why = CXTLS_KEY_MODE; return NULL; }
   BIO *b = BIO_new_fd(fd, BIO_CLOSE);
   if (b == NULL) { close(fd); return NULL; }
   EVP_PKEY *k = PEM_read_bio_PrivateKey(b, NULL, NULL, NULL);
@@ -277,7 +274,7 @@ static EVP_PKEY *cxtls_server_key(const char *path, int64_t *why) {
 }
 
 int64_t cxtls_server_load(const char *cert_path, const char *key_path) {
-  if (cxtls_server_ctx != NULL || cert_path == NULL || key_path == NULL) return CXTLS_ERROR;
+  if (cert_path == NULL || key_path == NULL) return CXTLS_ERROR;
   ERR_clear_error();
   int64_t why = 0;
   EVP_PKEY *key = cxtls_server_key(key_path, &why);
@@ -295,7 +292,13 @@ int64_t cxtls_server_load(const char *cert_path, const char *key_path) {
   EVP_PKEY_free(key);   /* the context holds its own reference */
   ERR_clear_error();
   if (result != 0) { SSL_CTX_free(c); return result; }
+  /* Publish only after every check. SSL_new holds its own context reference,
+     so existing connections retain the old certificate until they close.
+     The single listener thread calls this between accepts, never concurrently
+     with cxtls_server_new. A failed replacement leaves the old context live. */
+  SSL_CTX *old = cxtls_server_ctx;
   cxtls_server_ctx = c;
+  SSL_CTX_free(old);
   return 0;
 }
 

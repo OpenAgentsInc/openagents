@@ -1,0 +1,91 @@
+// Relay-side outer envelopes for the pinned Block NIPs. Bodies stay opaque;
+// NIP-01 originals and the shared tag, UTF-8, project and cipher readers
+// remain the only parsers. This grants no owner, member or repository rights.
+// coax test coax/lib/nostr/block-ingest.coax --library --run-steps 250000000
+#run_steps 250000000;
+#load "niper-envelope.coax";
+#load "nip44-envelope.coax";
+#load "nip34-event.coax";
+#load "../../../components/core/text.coax";
+#load "../../../components/core/space.coax";
+#load "block-ingest-checks.coax" #test;
+#authority;
+NB_OK :: 0; NB_EVENT :: 1; NB_RESERVED :: 2; NB_ENGRAM :: 3;
+NB_PERSONA :: 4; NB_TEAM :: 5; NB_REMINDER :: 6; NB_PROJECT :: 7;
+NB_REASONS :: [8]string.["","unverified event","private managed-agent aggregates are reserved",
+  "malformed agent engram","malformed persona","malformed team catalog","malformed event reminder","malformed project"];
+NB_HORIZON :: 31536000;
+// Exactly one named tag with at least one value, decoded into caller memory.
+nb_one :: (e:NtEvent,name:string,out:[]u8) -> int #effects(all) {
+  tag:=nt_tag(e,name,0);
+  if tag.n!=1 || tag.values<1 {return -1;}
+  return json_unescape(nt_raw(e,tag.v[0]),out);
+}
+nb_hex64 :: (e:NtEvent,name:string,out:[]u8) -> bool #effects(all) {
+  text:[64]u8;n:=nb_one(e,name,text[..]);return n==64 && ne_lower_hex(cast(string)text[..],out);
+}
+nb_shared :: (e:NtEvent) -> bool #effects(all) {
+  t:=nt_tag(e,"shared",0);
+  return t.n==0 || (t.n==1 && t.values==1 && json_is(nt_raw(e,t.v[0]),"true"));
+}
+nb_slug :: (s:string) -> bool #effects(all) {
+  if s.count<1 || s.count>64 {return false;}
+  for c,i:s {
+    if !((c>='a' && c<='z') || (c>='0' && c<='9') || (i>0 && (c=='_' || c=='-'))) {return false;}
+  }
+  return true;
+}
+nb_team_name :: (s:string) -> bool #effects(all) {
+  n:=0;at:=0;
+  while at<s.count {
+    c:=rune_at(s,at);n+=1;at+=c.len;
+    if rune_control(c.code) || rune_white_space(c.code) {return false;}
+  }
+  return n>=1 && n<=64;
+}
+nb_project_count :: (count:int) -> bool #effects(all) {return count>=0 && count<=64;}
+nb_project :: (e:NtEvent) -> bool #effects(all) {
+  project:=n34_project(e);if project.status!=N34_OK {return false;}
+  value:[2049]u8;n:=nb_one(e,"d",value[..]);if n<1 {return false;}
+  count:=nt_tags(e,"a");if !nb_project_count(count) {return false;}
+  members:[64][256]u8;sizes:[64]int;
+  for i:0..<count {
+    tag:=nt_tag(e,"a",i);if tag.values<1 || tag.values>2 {return false;}
+    sizes[i]=json_unescape(nt_raw(e,tag.v[0]),members[i][..]);if sizes[i]== -1 {return false;}
+    coordinate:=cast(string)members[i][0..<sizes[i]];
+    parsed:=nt_coord(coordinate);if parsed.kind!=N34_KIND_REPO || parsed.d>=coordinate.count {return false;}
+    for j:0..<i {if sizes[j]==sizes[i] && cast(string)members[j][0..<sizes[j]]==coordinate {return false;}}
+  }
+  names:=[4]string.["name","description","buzz-channel","buzz-visibility"];
+  limits:=[4]int.[256,2048,256,256];
+  for name,i:names {
+    t:=nt_tag(e,name,0);if t.n>1 {return false;}
+    if t.n==1 {n=json_unescape(nt_raw(e,t.v[0]),value[..]);if n<0 || n>limits[i] {return false;}}
+  }
+  return true;
+}
+nb_check :: (e:NostrEvent,now:int) -> int #effects(all) {
+  if e.error!=NE_OK || !e.verified {return NB_EVENT;}
+  if e.kind==30179 {return NB_RESERVED;}
+  if e.kind!=30174 && e.kind!=30175 && e.kind!=30178 && e.kind!=30300 && e.kind!=30621 {return NB_OK;}
+  tags:=nt_event_of(e);value:[2049]u8;
+  if e.kind==30621 {return ifx nb_project(tags) then NB_OK else NB_PROJECT;}
+  if e.kind==30175 || e.kind==30178 {
+    n:=nb_one(tags,"d",value[..]);
+    if n== -1 || !nb_shared(tags) {return ifx e.kind==30175 then NB_PERSONA else NB_TEAM;}
+    valid:=ifx e.kind==30175 then nb_slug(cast(string)value[0..<n]) else nb_team_name(cast(string)value[0..<n]);
+    return ifx valid then NB_OK else ifx e.kind==30175 then NB_PERSONA else NB_TEAM;
+  }
+  content:[65536]u8;n:=json_unescape(e.original[e.content_from..<e.content_to],content[..]);
+  if n== -1 {return NB_EVENT;}
+  if !n44_v2_content(cast(string)content[0..<n]) {return ifx e.kind==30174 then NB_ENGRAM else NB_REMINDER;}
+  if e.kind==30174 {
+    pk:[32]u8;
+    if !nb_hex64(tags,"p",pk[..]) || !nb_hex64(tags,"d",pk[..]) {return NB_ENGRAM;}
+    return NB_OK;
+  }
+  reminder:=er_read(e);
+  if reminder.status!=ER_OK || (reminder.has_nb && reminder.nb>now+NB_HORIZON) {return NB_REMINDER;}
+  if reminder.has_nb && nt_tags(tags,"expiration")>1 {return NB_REMINDER;}
+  return NB_OK;
+}

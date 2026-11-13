@@ -1,0 +1,164 @@
+this derivation will be built:
+  /nix/store/7xgwf4aiyxck04mri4smsdjkk20sik62-nodejs-24.22.2.drv
+these 34 paths will be fetched (46.1 MiB download, 158.3 MiB unpacked):
+  /nix/store/rkcyq4xkbb1045l9gvkmrmsr7xzn3k5x-ada-4.0.0
+  /nix/store/sx0fyd6228r3m84d5bccs6d5kz81lh9n-brotli-1.2.1-lib
+  /nix/store/ic27066xy2xgdddziwnnh7kl6gx25mps-bzip2-1.0.8-bin
+  /nix/store/1q848v3z5vz95h20p560mdg6815c3f42-c-ares-1.34.9
+  /nix/store/4ar4316ix4npp991142wq8x5i129c7pd-diffutils-3.12
+  /nix/store/j2dpvp2m7zyhghnpwfrqj58fawsz8c6p-ed-1.22.6
+  /nix/store/4d81lw0vjpxpaf3d5shahwp2a3hs446s-file-5.48
+  /nix/store/5zsc280i2i7bqgjn7kln87w1ss6li22f-findutils-4.11.0
+  /nix/store/6jw5614njszmn5v325j9lq1fwp4p6lyx-gawk-5.4.1
+  /nix/store/zf3wrhmm315grcqw2q5gxxabfbbxys29-gnu-config-2024-01-01
+  /nix/store/xajdnxzflx2calfnqvvjh5zb6lmmjiaa-gnumake-4.4.1
+  /nix/store/x275j18p7dx6kv7vfj45saapbhbljia4-gnused-4.10
+  /nix/store/7g2i4irm3d2yvbwan7c3gr4pkgwc313p-gnutar-1.35
+  /nix/store/ab0r3yf7x5f5x1qxnf9idd53wvrj4a1v-gtest-1.18.0
+  /nix/store/pd6kmgkpz1bmpck9sc2yr520hmvrzm1l-gzip-1.15
+  /nix/store/xzh11b3p4p3pbyypkcgvqdzcqs5qys0s-hdrhistogram_c-0.11.10
+  /nix/store/f6sc8iqwxy7ig3lqi07as1pz5mag109i-icu4c-78.3
+  /nix/store/dyvl2ip4lhcdbavvb79fflj2vnxcbr80-libuv-1.53.0
+  /nix/store/33zgf5z6gvvs676krfsy8yilavr6817l-llhttp-9.4.3
+  /nix/store/9z7ar8bkmppwwljip63h9z8jpb16mwc4-lndir-1.0.6
+  /nix/store/4ai8chvs30fgch5qrlw6a5bj0rn4xs40-merve-1.2.2
+  /nix/store/p2dpjyq2paaw2kw37lq7a83k4k1aaraf-nbytes-0.1.4
+  /nix/store/2slk4gxc605zqc9k3spzlli96vql7m14-nghttp2-1.70.0-lib
+  /nix/store/p6qz7sbyrk15sq92zqad72xvq3lg2r5r-nodejs-slim-24.22.2
+  /nix/store/gzy1fpimh039nvcajdvwm8vag8j57qd5-nodejs-slim-24.22.2-corepack
+  /nix/store/8p3dzhn2dy0gx8dczp1n68g53nkxfkcb-nodejs-slim-24.22.2-npm
+  /nix/store/jjx4z5lamb00psmiyag0fqmc8gy2i640-patch-2.8.1
+  /nix/store/61x24n3w879ayzpcjzijqsg1pc2lvavy-patchelf-0.15.2
+  /nix/store/jglxdk9y0yfk3mc9dbr675pfmv42a89y-simdjson-5.0.5
+  /nix/store/93bglvc57aj2aznfj41brqrpzaz112xb-simdutf-9.3.3
+  /nix/store/vd29sjk0bfwm2fygq5a9an70qd8hfnlb-stdenv-linux-no-cc
+  /nix/store/mx9g3gy5v63pm62130vbb1npz6fp2kf2-update-autotools-gnu-config-scripts-hook
+  /nix/store/05b72v3aw8l031q23z7f5c8wq7j67gdx-uvwasi-0.0.23
+  /nix/store/6mm66zaj29q72pcax4xhzgh4vwp6qy0y-xz-5.8.4-bin
+copying path '/nix/store/9z7ar8bkmppwwljip63h9z8jpb16mwc4-lndir-1.0.6' from 'https://cache.nixos.org'...
+copying path '/nix/store/sx0fyd6228r3m84d5bccs6d5kz81lh9n-brotli-1.2.1-lib' from 'https://cache.nixos.org'...
+copying path '/nix/store/ic27066xy2xgdddziwnnh7kl6gx25mps-bzip2-1.0.8-bin' from 'https://cache.nixos.org'...
+copying path '/nix/store/1q848v3z5vz95h20p560mdg6815c3f42-c-ares-1.34.9' from 'https://cache.nixos.org'...
+copying path '/nix/store/4ar4316ix4npp991142wq8x5i129c7pd-diffutils-3.12' from 'https://cache.nixos.org'...
+copying path '/nix/store/4d81lw0vjpxpaf3d5shahwp2a3hs446s-file-5.48' from 'https://cache.nixos.org'...
+copying path '/nix/store/5zsc280i2i7bqgjn7kln87w1ss6li22f-findutils-4.11.0' from 'https://cache.nixos.org'...
+copying path '/nix/store/6jw5614njszmn5v325j9lq1fwp4p6lyx-gawk-5.4.1' from 'https://cache.nixos.org'...
+copying path '/nix/store/xajdnxzflx2calfnqvvjh5zb6lmmjiaa-gnumake-4.4.1' from 'https://cache.nixos.org'...
+copying path '/nix/store/x275j18p7dx6kv7vfj45saapbhbljia4-gnused-4.10' from 'https://cache.nixos.org'...
+copying path '/nix/store/7g2i4irm3d2yvbwan7c3gr4pkgwc313p-gnutar-1.35' from 'https://cache.nixos.org'...
+copying path '/nix/store/ab0r3yf7x5f5x1qxnf9idd53wvrj4a1v-gtest-1.18.0' from 'https://cache.nixos.org'...
+copying path '/nix/store/pd6kmgkpz1bmpck9sc2yr520hmvrzm1l-gzip-1.15' from 'https://cache.nixos.org'...
+copying path '/nix/store/xzh11b3p4p3pbyypkcgvqdzcqs5qys0s-hdrhistogram_c-0.11.10' from 'https://cache.nixos.org'...
+copying path '/nix/store/f6sc8iqwxy7ig3lqi07as1pz5mag109i-icu4c-78.3' from 'https://cache.nixos.org'...
+copying path '/nix/store/dyvl2ip4lhcdbavvb79fflj2vnxcbr80-libuv-1.53.0' from 'https://cache.nixos.org'...
+copying path '/nix/store/2slk4gxc605zqc9k3spzlli96vql7m14-nghttp2-1.70.0-lib' from 'https://cache.nixos.org'...
+copying path '/nix/store/33zgf5z6gvvs676krfsy8yilavr6817l-llhttp-9.4.3' from 'https://cache.nixos.org'...
+copying path '/nix/store/4ai8chvs30fgch5qrlw6a5bj0rn4xs40-merve-1.2.2' from 'https://cache.nixos.org'...
+copying path '/nix/store/jglxdk9y0yfk3mc9dbr675pfmv42a89y-simdjson-5.0.5' from 'https://cache.nixos.org'...
+copying path '/nix/store/p2dpjyq2paaw2kw37lq7a83k4k1aaraf-nbytes-0.1.4' from 'https://cache.nixos.org'...
+copying path '/nix/store/05b72v3aw8l031q23z7f5c8wq7j67gdx-uvwasi-0.0.23' from 'https://cache.nixos.org'...
+copying path '/nix/store/61x24n3w879ayzpcjzijqsg1pc2lvavy-patchelf-0.15.2' from 'https://cache.nixos.org'...
+copying path '/nix/store/6mm66zaj29q72pcax4xhzgh4vwp6qy0y-xz-5.8.4-bin' from 'https://cache.nixos.org'...
+copying path '/nix/store/j2dpvp2m7zyhghnpwfrqj58fawsz8c6p-ed-1.22.6' from 'https://cache.nixos.org'...
+copying path '/nix/store/zf3wrhmm315grcqw2q5gxxabfbbxys29-gnu-config-2024-01-01' from 'https://cache.nixos.org'...
+copying path '/nix/store/93bglvc57aj2aznfj41brqrpzaz112xb-simdutf-9.3.3' from 'https://cache.nixos.org'...
+copying path '/nix/store/jjx4z5lamb00psmiyag0fqmc8gy2i640-patch-2.8.1' from 'https://cache.nixos.org'...
+copying path '/nix/store/mx9g3gy5v63pm62130vbb1npz6fp2kf2-update-autotools-gnu-config-scripts-hook' from 'https://cache.nixos.org'...
+copying path '/nix/store/rkcyq4xkbb1045l9gvkmrmsr7xzn3k5x-ada-4.0.0' from 'https://cache.nixos.org'...
+copying path '/nix/store/vd29sjk0bfwm2fygq5a9an70qd8hfnlb-stdenv-linux-no-cc' from 'https://cache.nixos.org'...
+copying path '/nix/store/p6qz7sbyrk15sq92zqad72xvq3lg2r5r-nodejs-slim-24.22.2' from 'https://cache.nixos.org'...
+copying path '/nix/store/gzy1fpimh039nvcajdvwm8vag8j57qd5-nodejs-slim-24.22.2-corepack' from 'https://cache.nixos.org'...
+copying path '/nix/store/8p3dzhn2dy0gx8dczp1n68g53nkxfkcb-nodejs-slim-24.22.2-npm' from 'https://cache.nixos.org'...
+building '/nix/store/7xgwf4aiyxck04mri4smsdjkk20sik62-nodejs-24.22.2.drv'...
+  ok   NIP-94: signed file metadata passes the shared validator
+  ok   NIP-94: malformed file metadata is refused
+  ok   NIP-94: metadata is delivered unchanged
+  ok   NIP-65: signed relay-list updates are admitted
+  ok   NIP-65: only the newest relay list is delivered unchanged
+  ok   private writes: author AUTH
+  ok   private app data refuses another authenticated author
+  ok   private app data accepts its exact author
+  ok   artifacts require a curve recipient and NIP-44 v2 outer envelope
+  ok   run-head envelope accepts d before h
+  ok   compaction: drops expired ordinary bytes and preserves expired replacement heads and deletion history
+  ok   compaction: copies the policy journal exactly
+  ok   compaction: source generation remains unchanged
+  ok   compaction: candidate passes full replay and gets its own checkpoint
+  ok   compaction: refuses to overwrite an existing candidate
+  ok   maintenance: original generation has a trusted checkpoint
+  ok   maintenance: verifies both generations and atomically selects the candidate: relay maintenance: selected verified generation; previous generation retained
+
+  ok   maintenance: compacted store selected and previous checkpoint retained
+  ok   maintenance: next generation 1 verified
+  ok   maintenance: next generation 2 verified
+  ok   maintenance: keeps current, previous and legacy initial; prunes older numeric generations
+  ok   maintenance: damaged checkpoint-covered input leaves the current pointer unchanged
+  ok   owned 0400 key exposes only its public identity
+  ok   owned 0600 key exposes only its public identity
+  ok   keyed relay advertises its actual signing identity and NIP-29
+  ok   private writes: author AUTH
+  ok   private app data refuses another authenticated author
+  ok   private app data accepts its exact author
+  ok   artifacts require a curve recipient and NIP-44 v2 outer envelope
+  ok   run-head envelope accepts d before h
+  ok   keyed groups: two independent authenticated members
+  ok   private hidden group created with its flags applied immediately
+  ok   all four group snapshots independently verify with Noble
+  ok   hidden state is absent for anonymous and nonmember readers
+  ok   admin adds second member
+  ok   current member reads private history
+  ok   anonymous reader cannot fetch private messages
+  ok   moderator deletes another author in the same group
+  ok   scoped moderation removes history and prevents resurrection
+  ok   admin removes second member
+  ok   removed member loses stored access immediately
+  ok   COUNT observes current private-group membership
+  ok   restart rebuilds membership and cross-author deletion tombstones
+  ok   admin deletes group
+  ok   deleted group history and state are hidden even from former members
+  ok   deleted group identifier cannot expose old history through reuse
+  ok   relay key refuses short without replacement
+  ok   relay key refuses long without replacement
+  ok   relay key refuses zero without replacement
+  ok   relay key refuses order without replacement
+  ok   relay key refuses public without replacement
+  ok   relay key refuses symlink without blocking
+  ok   relay key refuses fifo without blocking
+  ok   NIP-11 lists all eleven configured Block roles
+  ok   NIP-AA: direct authentication accepts the independently signed owner attestation
+  ok   NIP-AM: authenticated agent publishes metrics under its proved owner
+  ok   NIP-AM: an unrelated recipient is not an owner
+  ok   NIP-AM: only the authenticated owner reads the retained metric
+  ok   NIP-AM: unrelated private readers see no metric
+  ok   NIP-OA: the original signed profile retains a standing owner proof
+  ok   NIP-AO: telemetry routes from the proved agent to its owner
+  ok   NIP-AO: control routes from owner to agent
+  ok   NIP-AO: no observer frame enters persistent history
+  ok   NIP-AE: encrypted engram envelope admitted
+  ok   NIP-AE: malformed blinded coordinate refused
+  ok   NIP-AE: authenticated owner reads the original ciphertext
+  ok   NIP-AP: shared persona definition admitted
+  ok   NIP-AP: malformed persona coordinate refused
+  ok   NIP-AP: team catalog admitted
+  ok   NIP-MP: repository grouping admitted without granting repository authority
+  ok   NIP-MP: duplicate repository member refused
+  ok   NIP-MP: 64 independently signed repository members obey the bound
+  ok   NIP-MP: 65 independently signed repository members obey the bound
+  ok   NIP-RS: author writes three private read-state coordinates
+  ok   NIP-RS: capped enumeration is a newest-first prefix with floor two
+  ok   NIP-ER: future reminder accepted without early delivery
+  ok   NIP-ER: future reminder delivered when due on the open subscription
+  ok   NIP-DV: typed private DM and active membership established
+  ok   NIP-DV: viewer hides its own DM without leaving
+  ok   NIP-DV: relay signs an owner-scoped visibility snapshot
+  ok   NIP-DV: a nonmember cannot change visibility
+  ok   NIP-IA: owner archives its agent using the current signed standing proof
+  ok   NIP-IA: relay-signed public archived set includes the agent
+  ok   NIP-IA: an unrelated actor cannot unarchive the agent
+  ok   NIP-IA: restart reconstructs only relay-signed archival decisions
+  ok   NIP-DV: restart retains the viewer visibility snapshot
+  ok   NIP-IA: a non-banned identity can self-unarchive
+  ok   NIP-DV: viewer reopens its active DM after restart
+  ok   NIP-DV: replacement snapshot clears the hidden set
+  ok   no sanitizer report
+relay_session: ok

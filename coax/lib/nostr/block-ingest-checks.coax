@@ -1,0 +1,133 @@
+// Checks precede the relay's use of this policy; synthetic verified records
+// isolate outer admission from signature verification's independent oracles.
+nb_fixture :: (kind:int,tags:string,content:string,out:[]u8) -> NostrEvent {
+  n:=json_raw(out,0,tags);end:=json_raw(out,n,content);
+  return NostrEvent.{error=NE_OK,verified=true,kind=kind,original=cast(string)out[0..<end],tags_to=n,content_from=n,content_to=end};
+}
+#test "unverified records and the reserved private aggregate refuse" {
+  e:NostrEvent;#assert nb_check(e,1000)==NB_EVENT;
+  e.error=NE_OK;#assert nb_check(e,1000)==NB_EVENT;
+  e.verified=true;#assert nb_check(e,1000)==NB_OK;e.kind=30179;#assert nb_check(e,1000)==NB_RESERVED;
+}
+#test "persona slug and shared flags are admitted independently" {
+  b:[4096]u8;e:=nb_fixture(30175,"[[\"d\",\"agent-one_2\"],[\"shared\",\"true\"]]","{}",b[..]);
+  #assert nb_check(e,1000)==NB_OK;
+  for tags:[5]string.["[]","[[\"d\",\"x\"],[\"d\",\"y\"]]","[[\"d\",\"_x\"]]","[[\"d\",\"x/y\"]]","[[\"d\",\"x\"],[\"shared\",\"false\"]]"] {
+    e=nb_fixture(30175,tags,"{}",b[..]);#assert nb_check(e,1000)==NB_PERSONA;
+  }
+  #assert nb_slug("a") && nb_slug("0") && !nb_slug("") && !nb_slug("A") && !nb_slug("-a");
+}
+#test "team names count Unicode scalars and exclude whitespace and controls" {
+  #assert nb_team_name("équipe-一") && !nb_team_name("two teams") && !nb_team_name("a b") && !nb_team_name("a\nb") && !nb_team_name("");
+  name:[65]u8;for i:0..<65 {name[i]='a';}
+  #assert nb_team_name(cast(string)name[0..<64]) && !nb_team_name(cast(string)name[..]);
+  b:[4096]u8;e:=nb_fixture(30178,"[[\"d\",\"team\"]]","opaque",b[..]);#assert nb_check(e,1000)==NB_OK;
+  e=nb_fixture(30178,"[[\"d\",\"two teams\"]]","opaque",b[..]);#assert nb_check(e,1000)==NB_TEAM;
+}
+#test "shared tags and required values have exact cardinality" {
+  out:[16]u8;
+  #assert nb_one(n34_event("[[\"x\",\"caf\\u00e9\"]]",1),"x",out[..])==5;
+  #assert nb_one(n34_event("[[\"x\"]]",1),"x",out[..])== -1;
+  #assert nb_shared(n34_event("[]",1)) && !nb_shared(n34_event("[[\"shared\",\"true\",\"x\"]]",1));
+  #assert !nb_shared(n34_event("[[\"shared\",\"true\"],[\"shared\",\"true\"]]",1));
+}
+#test "project membership is grouping without repository authority" {
+  #assert nb_project(n34_event("[[\"d\",\"project\"]]",30621));
+  #assert !nb_project(n34_event("[[\"d\",\"\"]]",30621));
+  #assert !nb_project(n34_event("[[\"d\",\"project\"],[\"a\",\"30621:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:repo\"]]",30621));
+  b:[4096]u8;e:=nb_fixture(30621,"[[\"d\",\"project\"]]","",b[..]);#assert nb_check(e,1000)==NB_OK;
+  e=nb_fixture(30621,"[]","",b[..]);#assert nb_check(e,1000)==NB_PROJECT;
+}
+#test "engram and reminder bodies use only the shared NIP-44 v2 envelope gate" {
+  raw:[99]u8;raw[0]=2;cipher:[132]u8;encoded:=base64_encode_checked(cast(string)raw[..],cipher[..],false);#assert encoded.error==NC_OK;
+  b:[4096]u8;
+  e:=nb_fixture(30174,"[[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"p\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]]",cast(string)cipher[..],b[..]);
+  #assert nb_check(e,1000)==NB_OK;
+  e=nb_fixture(30174,"[]",cast(string)cipher[..],b[..]);#assert nb_check(e,1000)==NB_ENGRAM;
+  e=nb_fixture(30174,"[]","plaintext",b[..]);#assert nb_check(e,1000)==NB_ENGRAM;
+  e=nb_fixture(30300,"[[\"d\",\"reminder\"],[\"not_before\",\"31537000\"]]",cast(string)cipher[..],b[..]);#assert nb_check(e,1000)==NB_OK;
+  #assert nb_check(e,999)==NB_REMINDER;
+  e=nb_fixture(30300,"[[\"d\",\"reminder\"],[\"not_before\",\"1000\"],[\"expiration\",\"1001\"],[\"expiration\",\"1002\"]]",cast(string)cipher[..],b[..]);#assert nb_check(e,1000)==NB_REMINDER;
+  e=nb_fixture(30300,"[]","plaintext",b[..]);#assert nb_check(e,1000)==NB_REMINDER;
+}
+#forall "persona coordinates admit exactly the ASCII slug alphabet" code:0..<128,position:0..<2 {
+  text:=[2]u8.['a','a'];text[position]=cast(u8)code;allowed:=false;
+  for c:"abcdefghijklmnopqrstuvwxyz0123456789" {if code==cast(int)c {allowed=true;}}
+  if position==1 && (code==45 || code==95) {allowed=true;}
+  #assert nb_slug(cast(string)text[..])==allowed;
+}
+#test "persona coordinate lengths include one and sixty-four bytes" {
+  text:[65]u8;for i:0..<65 {text[i]='a';}
+  #assert nb_slug(cast(string)text[0..<64]) && !nb_slug(cast(string)text[..]);
+}
+#forall "team names exclude every Unicode space and C0 C1 control" code:0..<161 {
+  escape:=[6]u8.['\\','u','0','0','0','0'];
+  for i:0..<4 {escape[5-i]="0123456789abcdef"[(code>>(4*i))&15];}
+  text:[4]u8;n:=json_unescape(cast(string)escape[..],text[..]);#assert n>0;
+  blocked:=code<32 || (code>=127 && code<160);
+  for c:[20]int.[32,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,0] {if code==c {blocked=true;}}
+  #assert nb_team_name(cast(string)text[0..<n])== !blocked;
+}
+#test "project grouping has bounded metadata" {
+  tags:[16384]u8;coordinate:[96]u8;
+  value:[2049]u8;for i:0..<value.count {value[i]='x';}
+  for name,i:[4]string.["name","description","buzz-channel","buzz-visibility"] {
+    limit:=ifx i==1 then 2048 else 256;
+    for extra:0..<2 {
+      n:=json_raw(tags[..],0,"[[\"d\",\"project\"],[");n=json_write_string(tags[..],n,name);n=json_raw(tags[..],n,",");
+      n=json_write_string(tags[..],n,cast(string)value[0..<limit+extra]);n=json_raw(tags[..],n,"]]");
+      #assert nb_project(n34_event(cast(string)tags[0..<n],30621))==(extra==0);
+    }
+  }
+}
+
+#forall "project member counts include zero and sixty-four" count: -1..<67 {#assert nb_project_count(count)==(count>=0 && count<65);}
+#test "project members are unique repository coordinates with at most a marker" {
+  #assert nb_project(n34_event("[[\"d\",\"p\"],[\"a\",\"30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:one\"],[\"a\",\"30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:two\",\"marker\"]]",30621));
+  #assert !nb_project(n34_event("[[\"d\",\"p\"],[\"a\",\"30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:one\"],[\"a\",\"30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:one\"]]",30621));
+  #assert !nb_project(n34_event("[[\"d\",\"p\"],[\"a\",\"30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:one\",\"x\",\"y\"]]",30621));
+}
+#test "project metadata cardinality and empty values are explicit" {
+  tags:[8192]u8;value:[2050]u8;for i:0..<value.count {value[i]='x';}
+  for name:[4]string.["name","description","buzz-channel","buzz-visibility"] {
+    n:=json_raw(tags[..],0,"[[\"d\",\"p\"],[");n=json_write_string(tags[..],n,name);n=json_raw(tags[..],n,",\"\"]]");
+    #assert nb_project(n34_event(cast(string)tags[0..<n],30621));
+    n-=1;n=json_raw(tags[..],n,",[");n=json_write_string(tags[..],n,name);n=json_raw(tags[..],n,",\"x\"]]");
+    #assert !nb_project(n34_event(cast(string)tags[0..<n],30621));
+  }
+  #assert nb_project(n34_event("[[\"d\",\"p\"],[\"buzz-channel\"]]",30621));
+  n:=json_raw(tags[..],0,"[[\"d\",\"p\"],[\"description\",");n=json_write_string(tags[..],n,cast(string)value[..]);n=json_raw(tags[..],n,"]]");
+  #assert !nb_project(n34_event(cast(string)tags[0..<n],30621));
+}
+#test "project coordinates require a nonempty identifier and decode capacity" {
+  #assert !nb_project(n34_event("[[\"d\",\"p\"],[\"a\",\"30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:\"]]",30621));
+  #assert !nb_project(n34_event("[[\"d\",\"p\"],[\"a\",\"30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:one\"],[\"a\",\"30621:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:two\"]]",30621));
+  tags:[8192]u8;coordinate:[257]u8;n:=json_raw(coordinate[..],0,"30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:");
+  for i:n..<coordinate.count {coordinate[i]='x';}
+  end:=json_raw(tags[..],0,"[[\"d\",\"p\"],[\"a\",");end=json_write_string(tags[..],end,cast(string)coordinate[..]);end=json_raw(tags[..],end,"]]");
+  #assert !nb_project(n34_event(cast(string)tags[0..<end],30621));
+  end=json_raw(tags[..],0,"[[\"d\",\"p\"]");
+  for i:0..<65 {end=json_raw(tags[..],end,",[\"a\",\"30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:x\"]");}
+  end=json_raw(tags[..],end,"]");#assert !nb_project(n34_event(cast(string)tags[0..<end],30621));
+}
+#test "team failures preserve their category at the outer write boundary" {
+  b:[4096]u8;
+  for tags:[4]string.["[]","[[\"d\",\"team\"],[\"shared\",\"false\"]]","[[\"d\",\"\"]]","[[\"d\",\" team\"]]"] {
+    #assert nb_check(nb_fixture(30178,tags,"",b[..]),1000)==NB_TEAM;
+  }
+}
+#test "each engram route is one decoded lowercase hex identifier" {
+  key:[32]u8;
+  #assert nb_hex64(n34_event("[[\"p\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]]",1),"p",key[..]);
+  #assert !nb_hex64(n34_event("[[\"p\",\"x\"]]",1),"p",key[..]);
+  #assert !nb_hex64(n34_event("[[\"p\",\"gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg\"]]",1),"p",key[..]);
+  raw:[99]u8;raw[0]=2;cipher:[132]u8;encoded:=base64_encode_checked(cast(string)raw[..],cipher[..],false);#assert encoded.error==NC_OK;b:[4096]u8;
+  for tags:[2]string.["[[\"p\",\"x\"],[\"d\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]]","[[\"p\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"],[\"d\",\"x\"]]"] {
+    #assert nb_check(nb_fixture(30174,tags,cast(string)cipher[..],b[..]),1000)==NB_ENGRAM;
+  }
+  for kind:[2]int.[30174,30300] {
+    #assert nb_check(nb_fixture(kind,"[]","",b[..]),1000)==(ifx kind==30174 then NB_ENGRAM else NB_REMINDER);
+    #assert nb_check(nb_fixture(kind,"[]","\\",b[..]),1000)==NB_EVENT;
+  }
+  #assert nb_check(nb_fixture(30300,"[[\"d\",\"r\"],[\"not_before\",\"1000\"],[\"expiration\",\"1001\"]]",cast(string)cipher[..],b[..]),1000)==NB_OK;
+}

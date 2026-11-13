@@ -226,6 +226,23 @@ ms_write_eose :: (sub: string, out: [] u8) -> int #effects(all) {
   n = json_write_string(out, n, sub);
   return json_raw(out, n, "]");
 }
+#test "NIP-67 emits finish only when the entire stored answer is known" {
+  out: [64] u8;
+  n := ms_write_eose_complete("s", true, out[..]);
+  #assert cast(string) out[0..<n] == "[\"EOSE\",\"s\",[\"finish\"]]";
+  #assert ms_write_eose_complete("s", true, out[0..<n]) == n;
+  #assert ms_write_eose_complete("s", true, out[0..<n - 1]) == -1;
+  n = ms_write_eose_complete("s", false, out[..]);
+  #assert cast(string) out[0..<n] == "[\"EOSE\",\"s\"]";
+}
+// At a query cap we omit the optional hint: finish is definitive, while
+// absence is deliberately inconclusive (NIP-67). No extra full-store scan.
+ms_write_eose_complete :: (sub: string, complete: bool, out: [] u8) -> int #effects(all) {
+  if !complete { return ms_write_eose(sub, out); }
+  n := json_raw(out, 0, "[\"EOSE\",");
+  n = json_write_string(out, n, sub);
+  return json_raw(out, n, ",[\"finish\"]]");
+}
 ms_write_closed :: (sub: string, prefix: string, text: string, out: [] u8) -> int #effects(all) {
   if prefix.count == 0 { return -1; }
   n := json_raw(out, 0, "[\"CLOSED\",");
