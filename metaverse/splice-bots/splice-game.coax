@@ -2058,10 +2058,15 @@ g_play_run :: (g: [] SpGame) -> int {
   wk := [1] SwWalker.[SwWalker.{}];
   if !sp_night_walk(g, wk[..], false) { return 42; }
   if !(g[0].zone == Z_MINE && near_rover(g, T_SAVE_RANGE) && g[0].have[H_CORE]) { return 43; }
-  if !(g_key(g, -15, true)) { return 36; } if !(g_key(g, 'x', true)) { return 37; }
+  // the ending (#13505): SPLICE CORE in Sniper's edit bay plays the 15-second hologram, then SCENE RESTORED, then the teaser
+  if !(g_key(g, -15, true) && g[0].mode == M_BAY) { return 36; } if !(g_key(g, 'x', true)) { return 37; }
   if !(g[0].mode == M_MEMORY) { return 38; }
-  for i: 0..<800 { g_step(g, 0.02); }
-  if !(g[0].mode == M_RESTORED) { return 39; }
+  for i: 0..<740 { g_step(g, 0.02); }
+  if !(g[0].mode == M_MEMORY) { return 38; }   // the hologram holds its 15 seconds
+  for i: 0..<20 { g_step(g, 0.02); }
+  if !(g[0].mode == M_RESTORED && !g[0].bt[0].teaser) { return 39; }
+  for i: 0..<cast(int) (SB_RESTORED / 0.02) + 2 { g_step(g, 0.02); }
+  if !(g[0].mode == M_RESTORED && g[0].bt[0].teaser) { return 39; }
   if !(g_key(g, 'r', true)) { return 40; }
   if !(g[0].mode == M_PLAY && g[0].zone == Z_VILLAGE && !g[0].rubble_gone && g[0].hearts == T_HEARTS) { return 41; }
   return 0;
