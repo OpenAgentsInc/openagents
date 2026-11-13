@@ -27,6 +27,7 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 | `proto/` | The protocol's protobuf schemas, descriptors, vendor schemas and checks |
 | `docs/protocol/` | The OpenAgents Protocol spec, the contract for every surface |
 | `docs/verification/`, `docs/lightning/`, `docs/metaverse/`, `docs/voice/` | Verification plan, the Breez Spark wallet plan, the Metaverse and the Metaverse Engine, the Coax-native voice proposal |
+| `openagents/` | *The OpenAgents Book* (`book/`): openagents.com and the iPhone app on Coax Native first, then the general agent and its economy. Design drafts; its [contract](openagents/book/CONTRACT.md) says what moves a chapter forward; check with `python3 psionic/tests/book.py --book openagents` (#13512) |
 | `nostr/` | Nostr: `nips/` (official, external and OpenAgents NIPs, pinned) and `book/`, *Nostr From Scratch*, which builds every primitive, the client, the relay and every NIP in Coax (implemented chapters cite the existing `coax/lib/crypto/`, `coax/lib/nostr/` and `coax/lib/net/` code; check with `python3 psionic/tests/book.py --book nostr`; epic #12612) |
 
 ## Shared asset library

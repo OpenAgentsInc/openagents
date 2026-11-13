@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Book tooling: closed example inventory, exact source listings, links and runs.
 
-One checker serves the Psionic, Metaverse Engine, Nostr, Coder and Bitcoin books
-(`--book psionic|aethyr|nostr|coder|bitcoin`). Each book keeps chapters as
+One checker serves the Psionic, Metaverse Engine, Nostr, Coder, Bitcoin and
+OpenAgents books (`--book psionic|aethyr|nostr|coder|bitcoin|openagents`). Each book keeps chapters as
 chNNN-slug.md, an examples.json inventory of its examples/*.coax programs, and
 a status marker on every design draft. Coder has no example programs of its
 own yet: the programs its chapters run are inventoried by another book.
@@ -48,6 +48,7 @@ BOOKS = {
     "nostr": ("nostr/book", "nostr/examples", "nostr/README.md", 0),
     "coder": ("coder/book", None, None, 1),
     "bitcoin": ("bitcoin/book", "bitcoin/examples", "bitcoin/README.md", 0),
+    "openagents": ("openagents/book", "openagents/examples", None, 0),
 }
 # Coder's chapters 1-22 moved from Psionic; their programs stay in Psionic's
 # inventory (and its closed-inventory check) until their code moves.
@@ -57,6 +58,21 @@ FENCES = {"coder": ("```json", "```sh")}
 # The Metaverse Engine's engine-core tasks each own one chapter, named in its status block.
 TASKS = {"aethyr": "apps/openagents-web/projects/verse/work/engine-core.json"}
 DRAFT = "> **Status: unimplemented — design draft.**"
+# The OpenAgents book's contract (openagents/book/CONTRACT.md): its provenance
+# file, and planned paths that must not duplicate a current owner.
+PROVENANCE = {"openagents": "openagents/book/provenance.json"}
+SUPERSEDED = {
+    "openagents/agent/journal": "coax/lib/agent/journal.coax",
+    "openagents/agent/session": "coax/lib/agent/session/",
+    "openagents/agent/members/engines": "coax/lib/agent/engine/",
+    "openagents/agent/fleet": "coax/lib/agent/observe/",
+    "openagents/agent/surfaces": "apps/",
+    "openagents/wallet": "pay/ and apps/openagents-ios/OpenAgents/Wallet",
+    "openagents/pay": "pay/",
+    "openagents/api": "coax/web/api/",
+    "openagents/release": "coax/remote/ and coax/native-updates.md",
+    "openagents/registry/identity": "coax/web/api/ and coax/lib/nostr/",
+}
 # Kinds a book's library must never build (Nostr chapter 74: Cashu and
 # Fedimint, excluded by AGENTS.md's Bitcoin-only rule). The table file holds
 # the kinds; the pinned README and NIP texts must agree with it; and only the
@@ -175,6 +191,8 @@ def check(name="psionic"):
     assert listings >= least, "required library/example listings missing"
     if name in EXCLUDED:
         excluded(EXCLUDED[name])
+    if name in PROVENANCE:
+        provenance(name, book)
     for item in examples:
         source = path(item["source"])
         chapter = path(item["chapter"])
@@ -299,6 +317,44 @@ def excluded(rule):
     allowed = set(rule["allowed"])
     assert naming <= allowed, f"files name an excluded kind or ecash with no owner decision: {sorted(naming - allowed)}"
     assert allowed <= naming, f"allowed files that no longer name ecash: {sorted(allowed - naming)}"
+
+
+def provenance(name, book):
+    """Each chapter depends only on earlier ones; its part, promises and planned
+    paths agree with the provenance file and the current owners."""
+    registry = json.loads(path(f"{book}/chapters.json").read_text())["chapters"]
+    data = json.loads(path(PROVENANCE[name]).read_text())
+    rows = {row["number"]: row for row in data["chapters"]}
+    assert sorted(rows) == [c["number"] for c in registry], f"{PROVENANCE[name]}: one row per chapter"
+    summary = path(f"{book}/SUMMARY.md").read_text()
+    heads = list(re.finditer(r"^## ([IVX]+)\. ", summary, re.M))
+    for i, head in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(summary)
+        listed = [int(n) for n in re.findall(r"^- \[(\d+)\. ", summary[head.end():end], re.M)]
+        low, high = data["parts"][head.group(1)]
+        assert listed == list(range(low, high + 1)), f"SUMMARY part {head.group(1)} is not chapters {low}-{high}"
+    covered = set()
+    for c in registry:
+        n, row = c["number"], rows[c["number"]]
+        low, high = data["parts"][row["part"]]
+        assert low <= n <= high, f"chapter {n}: part {row['part']} is chapters {low}-{high}"
+        later = [d for d in c["depends_on"] if isinstance(d, int) and d >= n]
+        assert not later, f"chapter {n} depends on later chapters {later}; the book is cumulative"
+        text = path(f"{book}/{c['file']}").read_text()
+        line = re.search(r"\*\*Promises covered\*\*[^:]*\):\s*(.+)", text)
+        assert line and re.findall(r"P\d+", line.group(1)) == row["promises"], f"chapter {n}: promises differ from {PROVENANCE[name]}"
+        covered |= set(row["promises"])
+        planned = re.search(r"^Planned paths: (.+?)(?:\n\n|\Z)", text, re.M | re.S)
+        assert planned, f"chapter {n}: no 'Planned paths:' line"
+        # "none" (or "none new") names owners that exist; anything else lists new paths.
+        # A linked path is an existing owner the line cites, not a new path.
+        plain = re.sub(r"\[[^\]]*\]\([^)]*\)", "", planned.group(1))
+        new = [] if plain.startswith("none") else re.findall(r"`([^`]+)`", plain)
+        for item in new:
+            assert not (ROOT / item).exists(), f"chapter {n}: planned path {item} exists; cite it as built"
+            for old, owner in SUPERSEDED.items():
+                assert not item.startswith(old), f"chapter {n}: planned path {item} duplicates {owner}"
+    assert covered == {f"P{i}" for i in range(1, 17)}, f"promises with no chapter: {sorted({f'P{i}' for i in range(1, 17)} - covered)}"
 
 
 def chapters(name, book):

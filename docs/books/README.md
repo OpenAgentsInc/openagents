@@ -1,7 +1,7 @@
 # The OpenAgents books
 
 OpenAgents builds open agents that people can own, inspect, improve and earn
-from, on open protocols and Bitcoin. These seven books build the pieces that
+from, on open protocols and Bitcoin. These eight books build the pieces that
 needs, from scratch, in one language, with every claim checked.
 
 | Book | What you build | Read it when you want to |
@@ -13,6 +13,7 @@ needs, from scratch, in one language, with every claim checked.
 | [Coder: Coding Agents From Scratch](../../coder/book/README.md) | A coding agent and its harness | build or drive an agent |
 | [Bitcoin From Scratch](../../bitcoin/book/README.md) | Bitcoin and Lightning, from SHA-256 to channels | understand or check how money moves |
 | [Nostr From Scratch](../../nostr/book/README.md) | A Nostr client, a relay and the NIPs OpenAgents uses | understand identity, events and markets |
+| [The OpenAgents Book](../../openagents/book/README.md) | openagents.com and the iPhone app on Coax Native, then the general agent behind them (design drafts) | build the product apps or the agent |
 
 ## The argument
 
