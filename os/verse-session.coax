@@ -179,7 +179,7 @@ VsPylon :: struct {
   // the agents on this machine (verse-agents.coax), for the Grid: where they go, and when last looked
   home: [1024] u8; home_n: int; agents: [4096] u8; agents_n: int; agents_ms: int;
   last: [2048] u8; last_n: int;
-  run: [4096] u8; run_n: int;   // the run directory, for the realm (VERSE_RUN) when the session has a desk
+  run: [4096] u8; run_n: int;   // the run directory, for the realm (METAVERSE_RUN) when the session has a desk
   list: [1] VaList;             // the agents as last seen, with their transcripts' paths
   dir: [4096] u8; dir_n: int;   // the install, for verse-transcript
   // your voice (F7): the recorder while it listens, where it writes, and a file in place of the
@@ -451,7 +451,7 @@ vs_identity :: (cli: string, facts: string, home: string) -> bool {
 
 // The desk (V3), the session's own: the Coax compositor, headless, its test channel on two FIFOs in
 // the run directory (desk.in, desk.out), opened read-write so it never sees an end while realms come
-// and go; vk-realm attaches to them (VERSE_RUN), so the desk's windows outlive travel. The handle
+// and go; vk-realm attaches to them (METAVERSE_RUN), so the desk's windows outlive travel. The handle
 // is the session's: releasing it at the end stops the compositor. -1 when there is no desk.
 vs_desk_start :: (dir: string, run: string, size: DeskSize) -> int {
   b: [6] [4096] u8;
@@ -516,8 +516,8 @@ vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: stri
   if state.count > 0 { ok = ok && proc_arg(h, "--net") && proc_arg(h, state); }
   ok = ok && proc_cwd(h, rdir);
   // where the session's desk FIFOs are, when it runs one
-  rv: [4200] u8; rn := vs_fill(rv[..], "VERSE_RUN="); for i: 0..<py[0].run_n { if rn < 4200 { rv[rn] = py[0].run[i]; rn += 1; } }
-  if py[0].run_n > 0 { ok = ok && proc_env(h, cast(string) rv[0..<rn]); }
+  rv: [4200] u8; rn := vs_fill(rv[..], "METAVERSE_RUN="); for i: 0..<py[0].run_n { if rn < 4200 { rv[rn] = py[0].run[i]; rn += 1; } }
+  if py[0].run_n > 0 { ok = ok && proc_env(h, cast(string) rv[0..<rn]) && proc_env(h, cast(string) rv[4..<rn]); }   // METAVERSE_RUN, and VERSE_RUN for a realm built before #13405
   if !ok || proc_start(h) != 0 { d := proc_release(h); print("verse-session: % did not start\n", realm); vs_flush(); return -1; }
   c := proc_close_stdin(h);
   line: [65536] u8;

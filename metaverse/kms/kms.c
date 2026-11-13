@@ -145,13 +145,13 @@ static int save_ppm(const char *path, const uint32_t *px, int w, int h, int stri
   return fclose(f);
 }
 
-// ---- recording: every shown frame, halved, piped to ffmpeg ($VERSE_KMS_FFMPEG)
+// ---- recording: every shown frame, halved, piped to ffmpeg ($METAVERSE_KMS_FFMPEG)
 
 static FILE *recorder;
 static uint32_t *half;
 
 static void record_open(const char *path, int w, int h) {
-  const char *ff = getenv("VERSE_KMS_FFMPEG");
+  const char *ff = (getenv("METAVERSE_KMS_FFMPEG") ? getenv("METAVERSE_KMS_FFMPEG") : getenv("VERSE_KMS_FFMPEG"));
   char cmd[1024];
   snprintf(cmd, sizeof cmd,
            "%s -loglevel error -y -f rawvideo -pix_fmt bgr0 -s %dx%d -framerate 40 -i - "
@@ -241,7 +241,7 @@ static void on_flip(int fd, unsigned seq, unsigned s, unsigned us, void *data) {
 }
 
 static int run_screen(double seconds, float scale, const char *shot, const char *record, int demo) {
-  const char *card = getenv("VERSE_KMS_CARD");
+  const char *card = (getenv("METAVERSE_KMS_CARD") ? getenv("METAVERSE_KMS_CARD") : getenv("VERSE_KMS_CARD"));
   int fd = -1;
   if (card) fd = open(card, O_RDWR | O_CLOEXEC);
   for (int i = 0; fd < 0 && i < 8; i++) {

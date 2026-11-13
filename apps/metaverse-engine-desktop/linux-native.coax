@@ -53,13 +53,13 @@ ForgeNative :: struct {
 }
 fgn_boot :: (s:[]ForgeNative) #export_c #effects(all) {
   env:[4096]u8;home:=proc_getenv("HOME",env[..]);p:[4096]u8;
-  workspace:=proc_getenv("AETHYRFORGE_WORKSPACE",p[..]);if workspace=="" {workspace=fs_join(home,".openagents/aethyrforge/workspace",p[..]);}
+  workspace:=(ifx proc_getenv("METAVERSE_ENGINE_WORKSPACE",p[..])!="" then proc_getenv("METAVERSE_ENGINE_WORKSPACE",p[..]) else proc_getenv("AETHYRFORGE_WORKSPACE",p[..]));if workspace=="" {workspace=fs_join(home,".openagents/aethyrforge/workspace",p[..]);}
   s[0].wn=workspace.count;for i:0..<workspace.count {s[0].workspace[i]=workspace[i];}
-  engine:=proc_getenv("AETHYRFORGE_ENGINE",p[..]);if engine!="echo" {engine="auto";}
+  engine:=(ifx proc_getenv("METAVERSE_ENGINE_CODER_ENGINE",p[..])!="" then proc_getenv("METAVERSE_ENGINE_CODER_ENGINE",p[..]) else proc_getenv("AETHYRFORGE_ENGINE",p[..]));if engine!="echo" {engine="auto";}
   s[0].en=engine.count;for i:0..<engine.count {s[0].engine[i]=engine[i];}
   context:=fs_join(home,".openagents/aethyrforge/native-linux/bitcoin-lab-context.txt",p[..]);s[0].cn=context.count;for i:0..<context.count {s[0].context[i]=context[i];}
   fgl_init(s[0].hud[..],FGN_EPOCH,cast(string)s[0].workspace[0..<s[0].wn],"Coder ready · Enter to compose",false,0);
-  lab_start(s[0].lab[..]);source:=proc_getenv("AETHYRFORGE_LAB_SOURCE",p[..]);lab_do(s[0].lab[..],ifx source=="recording" then 220 else ifx source=="own-node" then 222 else 221);
+  lab_start(s[0].lab[..]);source:=(ifx proc_getenv("METAVERSE_ENGINE_LAB_SOURCE",p[..])!="" then proc_getenv("METAVERSE_ENGINE_LAB_SOURCE",p[..]) else proc_getenv("AETHYRFORGE_LAB_SOURCE",p[..]));lab_do(s[0].lab[..],ifx source=="recording" then 220 else ifx source=="own-node" then 222 else 221);
   if source=="" {path:[4096]u8;selection:[1025]u8;n:=fs_read(fgn_selection_file(path[..]),selection[..]);if n>0 && n<=1024 {for i:0..<n {s[0].lab[0].inbox[i]=selection[i];}lab_hash(s[0].lab[..],n);}}
   s[0].initialized=true;
 }
@@ -196,7 +196,7 @@ fgn_lab_tick :: (s:[]ForgeNative) {
 }
 
 fgn_selection_file :: (out:[]u8)->string {
-  env:[4096]u8;configured:=proc_getenv("AETHYRFORGE_LAB_SELECTION_FILE",env[..]);if configured!="" {if configured.count>out.count {return "";}for i:0..<configured.count {out[i]=configured[i];}return cast(string)out[0..<configured.count];}
+  env:[4096]u8;configured:=(ifx proc_getenv("METAVERSE_ENGINE_LAB_SELECTION_FILE",env[..])!="" then proc_getenv("METAVERSE_ENGINE_LAB_SELECTION_FILE",env[..]) else proc_getenv("AETHYRFORGE_LAB_SELECTION_FILE",env[..]));if configured!="" {if configured.count>out.count {return "";}for i:0..<configured.count {out[i]=configured[i];}return cast(string)out[0..<configured.count];}
   home:[4096]u8;root:=proc_getenv("HOME",home[..]);return fs_join(root,".openagents/aethyrforge/selection.txt",out);
 }
 fgn_selection_save :: (s:[]ForgeNative) #export_c #effects(all) {

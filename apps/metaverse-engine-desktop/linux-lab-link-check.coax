@@ -2,7 +2,7 @@
 #load "linux-native.coax";
 #load "../../coax/lib/sys/tool.coax";
 tool_main :: ()->int #export_c #effects(all) {
-  env:[4096]u8;file:=proc_getenv("AETHYRFORGE_LAB_SELECTION_FILE",env[..]);if file=="" || fs_exists(file) {tool_errln("set AETHYRFORGE_LAB_SELECTION_FILE to a fresh test path");return 2;}
+  env:[4096]u8;file:=(ifx proc_getenv("METAVERSE_ENGINE_LAB_SELECTION_FILE",env[..])!="" then proc_getenv("METAVERSE_ENGINE_LAB_SELECTION_FILE",env[..]) else proc_getenv("AETHYRFORGE_LAB_SELECTION_FILE",env[..]));if file=="" || fs_exists(file) {tool_errln("set METAVERSE_ENGINE_LAB_SELECTION_FILE to a fresh test path");return 2;}
   s:[1]ForgeNative;fgn_boot(s[..]);until:=proc_now_ms()+15000;
   while !s[0].lab[0].remote[0].model[0].ready && proc_now_ms()<until {fgn_lab_tick(s[..]);proc_sleep(20);}
   if !s[0].lab[0].remote[0].model[0].ready {fgn_close(s[..]);return 1;}

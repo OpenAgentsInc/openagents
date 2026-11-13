@@ -4,7 +4,7 @@
 # (docs/metaverse/native-gpu.md). It takes the screen, so run it when nobody is
 # using it.
 #   metaverse/gpu/display.sh HOST [vk-display options: --seconds N --demo --shot-at S]
-#   VERSE_DISPLAY_ESCAPE=S   also press Escape (a virtual keyboard) after S seconds
+#   METAVERSE_DISPLAY_ESCAPE=S   also press Escape (a virtual keyboard) after S seconds
 # On HOST, as root (sudo -n): switch to a free VT so the desktop pauses and
 # lets go of the display, run, and switch back. A watchdog switches back and
 # kills the host if it outlives --seconds by 20 s. The presented image at
@@ -20,13 +20,14 @@ trap 'rm -rf "$work"' EXIT
 seconds=60
 for ((i = 1; i <= $#; i++)); do [[ "${!i}" == --seconds ]] && { j=$((i + 1)); seconds="${!j}"; }; done
 
-VERSE_KMS_GEN_ONLY=1 VERSE_KMS_REGEN=1 "$root/metaverse/kms/build.sh" "$work" > /dev/null
+METAVERSE_KMS_GEN_ONLY=1 METAVERSE_KMS_REGEN=1 "$root/metaverse/kms/build.sh" "$work" > /dev/null
 light="$root/metaverse/kms/starcatch-light.coax"
 "$coax" spirv "$light" --fill starcatch_sky_r,starcatch_sky_g,starcatch_sky_b -o "$work/sky.spv"
 "$coax" spirv "$light" --stroke starcatch_fx -o "$work/fx.spv"
 cp "$here"/vk-display.c "$here"/vk-escape.c "$here"/vkc.c "$here"/vkc.h "$here"/vkd.c "$here"/vkd.h "$here"/vkp.c "$here"/vkp.h "$here"/vkr.c "$here"/vkr.h "$work/"
 args="$*"
-escape="${VERSE_DISPLAY_ESCAPE:-}"
+build_only="${METAVERSE_DISPLAY_BUILD_ONLY:-${VERSE_DISPLAY_BUILD_ONLY:-}}"
+escape="${METAVERSE_DISPLAY_ESCAPE:-${VERSE_DISPLAY_ESCAPE:-}}"
 
 COPYFILE_DISABLE=1 tar --no-xattrs -C "$work" -cf - . | ssh -o BatchMode=yes "$host" "set -e
 d=\$(mktemp -d); trap 'rm -rf \$d' EXIT; tar -x -C \"\$d\" 2>/dev/null; cd \"\$d\"
@@ -35,12 +36,12 @@ nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validatio
   realm=\"starcatch-native.c starcatch.c starcatch-light.c\"
   gcc -std=c11 -O2 -Wall -Wno-unknown-pragmas -I. \$(pkg-config --cflags libdrm) vk-display.c vkc.c vkd.c vkp.c vkr.c \$realm \$(pkg-config --libs libdrm) -lvulkan -lm -o vk-display
   gcc -std=c11 -O2 -Wall vk-escape.c -o vk-escape
-  ${VERSE_DISPLAY_BUILD_ONLY:+echo built; exit 0}
+  ${build_only:+echo built; exit 0}
   echo \"VK_ADD_LAYER_PATH=\$(dirname \$(find /nix/store -maxdepth 6 -name VkLayer_khronos_validation.json -path \"*validation-layers*\" | head -1))\" > env
   echo \"LD_LIBRARY_PATH=\$(pkg-config --variable=libdir vulkan)\" >> env
 '
 [ -x vk-display ] || exit 0
-[ -n \"${VERSE_DISPLAY_BUILD_ONLY:-}\" ] && exit 0
+[ -n \"${METAVERSE_DISPLAY_BUILD_ONLY:-${VERSE_DISPLAY_BUILD_ONLY:-}}\" ] && exit 0
 . ./env
 sudo -n rm -f /tmp/verse-display-shot.ppm
 from=\$(sudo -n fgconsole); to=\$(sudo -n fgconsole --next-available)
@@ -61,6 +62,6 @@ echo \"display.sh: back on VT \$from (\$(sudo -n fgconsole))\"
 [ -f shot.ppm ] && sudo -n cp shot.ppm /tmp/verse-display-shot.ppm && sudo -n chmod 644 /tmp/verse-display-shot.ppm
 exit \${status:-0}
 "
-if [[ -z "${VERSE_DISPLAY_BUILD_ONLY:-}" ]]; then
+if [[ -z "${METAVERSE_DISPLAY_BUILD_ONLY:-${VERSE_DISPLAY_BUILD_ONLY:-}}" ]]; then
   scp -q "$host:/tmp/verse-display-shot.ppm" display-shot.ppm 2>/dev/null && echo "display.sh: the presented image is in display-shot.ppm" || true
 fi

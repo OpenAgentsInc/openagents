@@ -12,7 +12,7 @@
 // verified, a refused or broken connection, a malformed reply, the deadline).
 // The optional --host-v1 normalizes PATH through the shared origin-bound
 // HTTP target authority. Nine-argument pre-contract callers retain their path rules.
-// Redirects are not followed (the realm's API answers where it is asked). VERSE_AUTOMATION, when
+// Redirects are not followed (the realm's API answers where it is asked). METAVERSE_AUTOMATION, when
 // set, goes as X-Verse-Automation, so the site's analytics and presence leave an automated run
 // out (coax/web/api/player.c); a person playing has none.
 // tool.sh: tls
@@ -69,7 +69,8 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   player := ifx args_at(a[..], 6) == "-" then "" else args_at(a[..], 6);
   am: [128] u8;
-  auto := net_env("VERSE_AUTOMATION", am[..]);
+  auto := net_env("METAVERSE_AUTOMATION", am[..]);
+  if auto == "" { auto = net_env("VERSE_AUTOMATION", am[..]); }
   req: [NET_REQ] u8;
   rn := ifx v1 then net_request_host(req[..],host,path,flags,cast(string)body[0..<bn],player,auto) else net_request(req[..], host, path, flags, cast(string) body[0..<bn], player, auto);
   if rn < 0 { return net_none(outp); }

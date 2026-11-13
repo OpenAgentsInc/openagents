@@ -294,7 +294,8 @@ static NSColor *orange(void) { return NSColor.systemOrangeColor; }
   env[@"CODER_MICRO_WORKER"] = [resources URLByAppendingPathComponent:@"mcworker"].path;
   [env removeObjectForKey:@"CODER_ASK_FILE"]; env[@"CODER_REALM_TOOLS"] = @"0";
   if (_sceneSessionURL) {
-    env[@"AETHYRFORGE_SCENE_SESSION"] = _sceneSessionURL.path;
+    env[@"METAVERSE_ENGINE_SCENE_SESSION"] = _sceneSessionURL.path;
+    env[@"AETHYRFORGE_SCENE_SESSION"] = _sceneSessionURL.path;   // the name before #13405, for a tool built before it
     env[@"AETHYRFORGE_SCENE_TOOL"] = [resources URLByAppendingPathComponent:@"aethyrforge-scene"].path;
   }
   env[@"BROWSER"] = @"/usr/bin/true"; env[@"NO_OPEN_BROWSER"] = @"1";

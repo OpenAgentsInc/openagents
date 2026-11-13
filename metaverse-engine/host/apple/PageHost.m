@@ -119,10 +119,10 @@ typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // ki
 @end
 
 static __weak AEPageHost *phCurrent;   // the page the face's imports reach: one is open at a time
-// AETHYR_PAGE_LOG=1 says on stderr what crosses the network (never a body, a key or a ticket).
+// ENGINE_PAGE_LOG=1 says on stderr what crosses the network (never a body, a key or a ticket).
 static void phLog(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
 static void phLog(NSString *format, ...) {
- static int on = -1; if (on < 0) on = getenv("AETHYR_PAGE_LOG") != NULL;
+ static int on = -1; if (on < 0) on = (getenv("ENGINE_PAGE_LOG") ? getenv("ENGINE_PAGE_LOG") : getenv("AETHYR_PAGE_LOG")) != NULL;
  if (!on) return;
  va_list a; va_start(a, format); NSString *line = [[NSString alloc] initWithFormat:format arguments:a]; va_end(a);
  fprintf(stderr, "page host: %s\n", line.UTF8String);
@@ -575,10 +575,10 @@ static int phHasBuild(void *user, const char *tag) {
 // (NAME.TAG.vpk3, written by metaverse-engine/tools/block-pack.coax), read whole with every page
 // checked; else the pack itself, inflated when it is the site's gzipped file (NAME.pack.gz), as
 // host.js does. Coax picks the format (texture-format.coax tf_pick) from what the device has and
-// which builds stand there. AETHYR_BLOCKS=0 loads the pack itself, to compare.
+// which builds stand there. ENGINE_BLOCKS=0 loads the pack itself, to compare.
 static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  NSData *packBytes = nil;
- const char *blocksOff = getenv("AETHYR_BLOCKS");
+ const char *blocksOff = (getenv("ENGINE_BLOCKS") ? getenv("ENGINE_BLOCKS") : getenv("AETHYR_BLOCKS"));
  if ([path hasSuffix:@".pack"] && !(blocksOff && !strcmp(blocksOff, "0"))) {
   NSString *base = [path stringByDeletingPathExtension]; char tag[8];
   BOOL bc = NO, phone = NO;
@@ -663,7 +663,7 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
 // A big static mesh's runs' boxes (metaverse-engine/render/mesh-cull.coax, #13168), as host.js meshBounds
 // writes them: the face asks for one index range once its catalog is in, and each run of its
 // triangles gets the box of its vertices' positions, flagged when a vertex's keep word matches.
-// AETHYR_MESH_CULL=0 answers "draw it whole", to compare.
+// ENGINE_MESH_CULL=0 answers "draw it whole", to compare.
 - (void)meshBounds {
  uint32_t *ask = x.mesh_bounds_v1 ? (uint32_t *)x.mesh_bounds_v1(state) : NULL;
  if (!ask || ((uintptr_t)ask & 3) || ask[0] != 1 || !packVertices || !packIndices) return;
@@ -685,7 +685,7 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
   }
   float *b = box + r * 8; b[0] = lo[0]; b[1] = lo[1]; b[2] = lo[2]; b[3] = kept; b[4] = hi[0]; b[5] = hi[1]; b[6] = hi[2]; b[7] = 0;
  }
- const char *off = getenv("AETHYR_MESH_CULL");
+ const char *off = (getenv("ENGINE_MESH_CULL") ? getenv("ENGINE_MESH_CULL") : getenv("AETHYR_MESH_CULL"));
  ask[10] = (uint32_t)runs; ask[0] = off && !strcmp(off, "0") ? 4 : 2;
 }
 
@@ -1060,10 +1060,10 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  // The frame's order is the engine's (metaverse-engine/render/passes.coax, GitHub #13303): a page whose face has
  // coaxial_frame_plan_v1 is drawn by the one C walk (host/core/frame-plan-walk.h) calling planBegin, planDraw and the
  // rest below, which map a pass to its Metal pipeline, depth state and bindings and decide no order. This host's word
- // says what it has: no grass, water, character pass, instance cull or particle sort. AETHYR_PLAN=off draws a page
+ // says what it has: no grass, water, character pass, instance cull or particle sort. ENGINE_PLAN=off draws a page
  // that has a plan in the order below, to compare.
  BOOL planned = NO; int planOps = -1;
- if (x.frame_plan_v1 && !(getenv("AETHYR_PLAN") && !strcmp(getenv("AETHYR_PLAN"), "off"))) {
+ if (x.frame_plan_v1 && !((getenv("ENGINE_PLAN") ? getenv("ENGINE_PLAN") : getenv("AETHYR_PLAN")) && !strcmp((getenv("ENGINE_PLAN") ? getenv("ENGINE_PLAN") : getenv("AETHYR_PLAN")), "off"))) {
   BOOL sparkly = scene && particleBuffer && [self shader:@"particle"];
   uint32_t bits = (scene ? ENGINE_FP_HOST_SCENE | ENGINE_FP_HOST_SCENE_READY : 0) | (shadowPipe ? ENGINE_FP_HOST_SHADOW : 0) | (post ? ENGINE_FP_HOST_POST : 0)
    | (sparkly ? ENGINE_FP_HOST_PARTICLES | ENGINE_FP_HOST_PARTICLES_READY : 0) | (sparkly && [self shader:@"particle_over"] ? ENGINE_FP_HOST_PARTICLE_OVER : 0)
@@ -1174,7 +1174,7 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  double t2 = CACurrentMediaTime();
  [cmd commit]; last = cmd;
  if (wait) { [cmd waitUntilCompleted]; last = nil; }
- if (getenv("AETHYR_PAGE_TIMES")) {   // a developer's look at where a frame's time goes
+ if ((getenv("ENGINE_PAGE_TIMES") ? getenv("ENGINE_PAGE_TIMES") : getenv("AETHYR_PAGE_TIMES"))) {   // a developer's look at where a frame's time goes
   static double face, encode, gpu; static int frames;
   face += t1 - t0; encode += t2 - t1; if (wait) gpu += cmd.GPUEndTime - cmd.GPUStartTime;
   if (++frames == 120) { fprintf(stderr, "page host: %dx%d face %.2f ms, uploads and encoding %.2f ms, GPU %.2f ms a frame; the frame's order: %s (%d operations)\n", width, height, face / frames * 1000, encode / frames * 1000, gpu / frames * 1000, planned ? "the engine's plan" : "this host's own", planOps); face = encode = gpu = 0; frames = 0; }

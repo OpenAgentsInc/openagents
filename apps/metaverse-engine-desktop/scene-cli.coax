@@ -72,7 +72,7 @@ tool_main :: ()->int #export_c #effects(all) {
   if verb=="--help" {print("usage: aethyrforge-scene show | apply 'JSON' | npcs [people|buildings] | npc 'JSON' | raid ['JSON'] [--session FILE]\n");return 0;}
   if verb!="show" && verb!="apply" && verb!="npcs" && verb!="npc" && verb!="raid" {tool_errln("usage: aethyrforge-scene show | apply 'JSON' | npcs | npc 'JSON' | raid ['JSON'] [--session FILE]");return 2;}
   env:[4096]u8;path:[4096]u8;session:=args_value(a[..],"--session","");
-  if session=="" {session=proc_getenv("AETHYRFORGE_SCENE_SESSION",env[..]);}
+  if session=="" {session=(ifx proc_getenv("METAVERSE_ENGINE_SCENE_SESSION",env[..])!="" then proc_getenv("METAVERSE_ENGINE_SCENE_SESSION",env[..]) else proc_getenv("AETHYRFORGE_SCENE_SESSION",env[..]));}
   if session=="" {home:[4096]u8;session=fs_join(proc_getenv("HOME",home[..]),".openagents/aethyrforge/scene-session.json",path[..]);}
   data:[65536]u8;n:=fs_read(session,data[..]);s:[1]ForgeSceneSession;
   if n<0 || !fs_session(cast(string)data[0..<n],proc_now_ms(),s[..]) {return scene_error("No fresh local Aethyrforge scene session. Open the desktop app.");}

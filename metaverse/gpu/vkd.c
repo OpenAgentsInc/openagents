@@ -164,7 +164,7 @@ void vkd_open(Vkc *v, Vkd *d, const char *who) {
   drmModeModeInfo mode;
   const char *iexts[] = {VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_DISPLAY_EXTENSION_NAME, VK_EXT_DIRECT_MODE_DISPLAY_EXTENSION_NAME,
                          VK_EXT_ACQUIRE_DRM_DISPLAY_EXTENSION_NAME};
-  const char *force = getenv("VERSE_KMS_COPY");
+  const char *force = (getenv("METAVERSE_KMS_COPY") ? getenv("METAVERSE_KMS_COPY") : getenv("VERSE_KMS_COPY"));
   int direct = !(force && *force && strcmp(force, "0"));
   for (int i = 0; i < 4 && direct; i++) direct = has_instance_extension(iexts[i]);
   int fd = -1;

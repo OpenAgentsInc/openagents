@@ -19,7 +19,7 @@ tool_main :: ()->int #export_c #effects(all) {
  self:[4096]u8;self_n:=cxproc_self_path(self[..]);if self_n<1||!hlwc_add(inputs[..],cast(string)self[0..<self_n]) {return 1;}
  bin:=fs_join(build,"vk-realm",paths[0][..]);if !hlwc_add(inputs[..],bin)||!hlwc_add(inputs[..],facts)||!hlwc_add(inputs[..],manifest)||!hlwc_add(inputs[..],fs_join(build,"libhostaudio.so",paths[1][..]))||!hlwc_tree(inputs[..],fs_join(build,"render",paths[2][..]),0)||!hlwc_tree(inputs[..],fs_join(build,"render-assets",paths[3][..]),0) {return 1;}
  raw:=fs_join(out,"observed.i64",paths[4][..]);argv:=[14]string.["nice","-n15",bin,build,"unused","--facts",facts,"--size","320x180","--golden","--headless","90","--host-recovery",raw];
- env:=[2]string.["VERSE_NATIVE_CLOCK_MS=0","LP_NUM_THREADS=2"];stdout:[1048576]u8;stderr:[1048576]u8;r:=rtq_command(argv[..],env[0..<(ifx software then 2 else 1)],proc_now_ms()+(ifx software then RTQ_DEADLINE_MS else 240000),out,"world",stdout[..],stderr[..]);
+ env:=[2]string.["METAVERSE_NATIVE_CLOCK_MS=0","LP_NUM_THREADS=2"];stdout:[1048576]u8;stderr:[1048576]u8;r:=rtq_command(argv[..],env[0..<(ifx software then 2 else 1)],proc_now_ms()+(ifx software then RTQ_DEADLINE_MS else 240000),out,"world",stdout[..],stderr[..]);
  bytes:[184]u8;q:[23]int;if fs_read(raw,bytes[..])!=bytes.count {return 1;}
  for i:0..<q.count {word:u64;for lane:0..<8 {word|=cast(u64)bytes[i*8+lane]<<(lane*8);}q[i]=cast,trunc(int)word;}
  // The SDK cannot assert its own immutable input fence. This observation is

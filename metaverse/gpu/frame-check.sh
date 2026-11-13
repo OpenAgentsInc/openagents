@@ -16,7 +16,7 @@ coax="${COAX:-$root/coax/bin/coax}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/frame-check.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
-VERSE_KMS_GEN_ONLY=1 VERSE_KMS_REGEN=1 "$root/metaverse/kms/build.sh" "$work" > /dev/null
+METAVERSE_KMS_GEN_ONLY=1 METAVERSE_KMS_REGEN=1 "$root/metaverse/kms/build.sh" "$work" > /dev/null
 light="$root/metaverse/kms/starcatch-light.coax"
 "$coax" spirv "$light" --fill starcatch_sky_r,starcatch_sky_g,starcatch_sky_b -o "$work/sky.spv"
 "$coax" spirv "$light" --stroke starcatch_fx -o "$work/fx.spv"

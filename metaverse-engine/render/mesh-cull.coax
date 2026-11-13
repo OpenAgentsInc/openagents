@@ -9,7 +9,7 @@
 // coaxial_mesh_bounds_v1(state): the address of a MeshCull (0: nothing asked). Its `ask` words:
 //   MC_STATE   1 asked; the host writes 2 when the boxes are in, 3 when it refuses (the range is
 //              outside the pack, or more runs than MC_CAP). A host's switch (host.js
-//              coaxial.meshCull(false), the Mac's AETHYR_MESH_CULL=0) sets 4: answered, drawn whole.
+//              coaxial.meshCull(false), the Mac's ENGINE_MESH_CULL=0) sets 4: answered, drawn whole.
 //   MC_FIRST, MC_COUNT   the mesh's first index and index count in the pack's indices
 //   MC_WORD, MC_STRIDE   its vertices' first word in the pack's vertices, and words a vertex (the
 //                        position is the vertex's first three words, f32)

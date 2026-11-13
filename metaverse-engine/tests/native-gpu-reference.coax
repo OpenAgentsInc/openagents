@@ -8,7 +8,7 @@ nr_replace :: (text:string,needle:string,replacement:string,out:[]u8)->string {
 nr_observer :: (profile:int,text:string,out:[]u8)->string {
   a:[65536]u8;b:[65536]u8;
   entry:="int main(int argc,char **argv){";
-  opened:="int main(int argc,char **argv){\n  FILE *observer=fopen(getenv(\"AETHYR_REFERENCE_OUT\"),\"wb\");if(!observer)return 2;\n";
+  opened:="int main(int argc,char **argv){\n  FILE *observer=fopen(getenv(\"ENGINE_REFERENCE_OUT\"),\"wb\");if(!observer)return 2;\n";
   s:=nr_replace(text,entry,opened,a[..]);if s=="" {return "";}
   device:="vkc_open(&v);fprintf(stderr,\"observer_device=%u,%u,%u,%d,%d,%d,%d\\n\",v.props.vendorID,v.props.deviceID,v.props.driverVersion,v.demote_helper_supported,v.demote_helper_enabled,v.shader_int64_enabled,v.validating);";
   s=nr_replace(s,"vkc_open(&v);",device,b[..]);if s=="" {return "";}

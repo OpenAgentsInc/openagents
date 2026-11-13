@@ -10,7 +10,7 @@ here="$(cd "$(dirname "$0")" && pwd -P)"
 root="$(cd "$here/../.." && pwd -P)"
 host="${1:?usage: light-check.sh HOST}"
 coax="$root/coax/bin/coax"
-src="${VERSE_GPU_LIGHT:-$root/metaverse/light.coax}"
+src="${METAVERSE_GPU_LIGHT:-${VERSE_GPU_LIGHT:-$root/metaverse/light.coax}}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/light-check.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 

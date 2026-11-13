@@ -127,9 +127,9 @@ carrier. `COAXIAL_RENDER=0` produces the low-level legacy diagnostic artifact;
 the shipping pages use the shared facade. A different source with the same
 basename is never silently replaced by a catalog carrier.
 
-The native launcher defaults to the shared package. `VERSE_GPU_RENDERER=legacy`
+The native launcher defaults to the shared package. `METAVERSE_GPU_RENDERER=legacy`
 selects its retained comparison route. Run one realm per bounded check command;
-`VERSE_GPU_CHECK_SIZES=''` keeps the 90-frame integration check and omits its
+`METAVERSE_GPU_CHECK_SIZES=''` keeps the 90-frame integration check and omits its
 separate performance sweep. Native runtime package loading happens at startup;
 the browser's live shader replacement has its own transaction controls.
 
@@ -274,7 +274,7 @@ candidate is prepared or its buffers are written. `vk-realm` prints the
 ledger at the last frame and after close:
 
 ```sh
-REALM=newland VERSE_GPU_CHECK_SIZES='' metaverse/gpu/realm.sh local check
+REALM=newland METAVERSE_GPU_CHECK_SIZES='' metaverse/gpu/realm.sh local check
 ```
 
 The iOS Metal host (`HomeRenderer.swift`) does not use the ledger yet.

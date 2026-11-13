@@ -20,7 +20,7 @@
 #   metaverse/gpu/realm.sh HOST window [vk-realm options: --fullscreen --seconds N --size WxH --demo]
 #                                                    the same travel as screen, in a window on HOST's
 #                                                    Wayland desktop (vkw.h): no root, no VT; the
-#                                                    window's close ends it (VERSE_WAYLAND_DISPLAY
+#                                                    window's close ends it (METAVERSE_WAYLAND_DISPLAY
 #                                                    names the display, default wayland-1)
 #   metaverse/gpu/realm.sh HOST install DIR              builds the realms and keeps them in DIR on HOST, with
 #                                                    verse-session (os/verse-session.coax), the boot
@@ -58,12 +58,12 @@ shift 2
 dest=""
 if [[ "$mode" == install || "$mode" == ship ]]; then dest="${1:?usage: realm.sh HOST $mode DIR}"; shift; fi
 case "$mode" in check|screen|net|window|install|ship) ;; *) echo "realm.sh: unknown mode $mode" >&2; exit 2 ;; esac
-renderer="${VERSE_GPU_RENDERER:-shared}"
-case "$renderer" in shared|legacy) ;; *) echo "realm.sh: VERSE_GPU_RENDERER must be shared or legacy" >&2; exit 2 ;; esac
-check_sizes="${VERSE_GPU_CHECK_SIZES-320x180 2560x1440 3840x2160}"
-check_frames="${VERSE_GPU_CHECK_FRAMES:-600}"
-[[ "$check_frames" =~ ^[1-9][0-9]*$ && "$check_frames" -le 90000 ]] || { echo "realm.sh: invalid VERSE_GPU_CHECK_FRAMES" >&2; exit 2; }
-for size in $check_sizes; do [[ "$size" =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || { echo "realm.sh: invalid VERSE_GPU_CHECK_SIZES" >&2; exit 2; }; done
+renderer="${METAVERSE_GPU_RENDERER:-${VERSE_GPU_RENDERER:-shared}}"
+case "$renderer" in shared|legacy) ;; *) echo "realm.sh: METAVERSE_GPU_RENDERER must be shared or legacy" >&2; exit 2 ;; esac
+check_sizes="${METAVERSE_GPU_CHECK_SIZES-${VERSE_GPU_CHECK_SIZES-320x180 2560x1440 3840x2160}}"
+check_frames="${METAVERSE_GPU_CHECK_FRAMES:-${VERSE_GPU_CHECK_FRAMES:-600}}"
+[[ "$check_frames" =~ ^[1-9][0-9]*$ && "$check_frames" -le 90000 ]] || { echo "realm.sh: invalid METAVERSE_GPU_CHECK_FRAMES" >&2; exit 2; }
+for size in $check_sizes; do [[ "$size" =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || { echo "realm.sh: invalid METAVERSE_GPU_CHECK_SIZES" >&2; exit 2; }; done
 work="$(mktemp -d "${TMPDIR:-/tmp}/realm.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 seconds=60
@@ -257,7 +257,7 @@ if [ $mode = check ]; then
     # the frame the spec was written from (wasm-run's 90th, golden, clock 0), drawn by vk-passes and by vk-realm
     export VK_ADD_LAYER_PATH VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation
     if [ -f spec/spec.txt ]; then (cd spec && \$here/vk-passes spec.txt \$here/\$r/passes.f32); fi
-    VERSE_NATIVE_CLOCK_MS=0 ./vk-realm \$drawdir \$given --golden --size 320x180 --headless 90 --out \$here/\$r/realm.f32
+    METAVERSE_NATIVE_CLOCK_MS=0 ./vk-realm \$drawdir \$given --golden --size 320x180 --headless 90 --out \$here/\$r/realm.f32
     if [ -f passes.f32 ]; then
       cmp passes.f32 realm.f32 && echo \"realm.sh: \$r: the realm's 90th frame is vk-passes' to the bit\" || { echo \"realm.sh: \$r: the frames differ, \$(cmp -l passes.f32 realm.f32 | wc -l) bytes\"; differ=\"\$differ \$r\"; }
     else echo \"realm.sh: \$r:90-frame native execution checked; image comparison has its separate recorded fixture\"; fi
@@ -271,7 +271,7 @@ if [ $mode = check ]; then
     for i in \$(seq ${REALM_PICK:-2}); do keys=\"\$keys\$f:-5:1,\$((f + 1)):-5:0,\"; f=\$((f + 10)); done
     keys=\"\$keys\$f:-2:1,\$((f + 1)):-2:0\"
     cd \$here/verse; rm -f \$here/go
-    status=0; VERSE_NATIVE_CLOCK_MS=0 ./vk-realm \$(cat drawdir) \$(cat given) --size 320x180 --headless 600 --keys \$keys --go \$here/go || status=\$?
+    status=0; METAVERSE_NATIVE_CLOCK_MS=0 ./vk-realm \$(cat drawdir) \$(cat given) --size 320x180 --headless 600 --keys \$keys --go \$here/go || status=\$?
     slug=\$(cat \$here/go 2>/dev/null || true)
     [ \$status = 3 ] && [ -n \"\$slug\" ] || { echo \"realm.sh: travel: the galaxy went nowhere (status \$status)\"; exit 1; }
     to=\$(module_of \$slug)
@@ -286,9 +286,9 @@ if [ $mode = check ]; then
 fi
 if [ $mode = net ]; then
   cd \$here/$first
-  VERSE_AUTOMATION=$automation ./net \$here/answer openagents.com 443 4 '/api/playtest/planets?after=1000000000' - - 65536 10000
+  METAVERSE_AUTOMATION=$automation ./net \$here/answer openagents.com 443 4 '/api/playtest/planets?after=1000000000' - - 65536 10000
   echo \"realm.sh: the helper's answer: \$(head -c 120 \$here/answer | tr '\\n' ' ')\"
-  VERSE_AUTOMATION=$automation VERSE_NATIVE_NET_LOG=1 ./vk-realm \$(cat drawdir) \$(cat given) --name $first --size 320x180 --headless 3000 --net \$here/kept
+  METAVERSE_AUTOMATION=$automation METAVERSE_NATIVE_NET_LOG=1 ./vk-realm \$(cat drawdir) \$(cat given) --name $first --size 320x180 --headless 3000 --net \$here/kept
   echo \"realm.sh: kept: \$(ls \$here/kept 2>/dev/null | tr '\\n' ' ')\"
   exit 0
 fi
@@ -314,14 +314,14 @@ fi
 if [ $mode = window ]; then
   # travel in a window on the desktop, as screen does on the bare screen: no root, no VT, no watchdog
   # (the window's close, --seconds or a signal end it)
-  export XDG_RUNTIME_DIR=\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)} WAYLAND_DISPLAY=${VERSE_WAYLAND_DISPLAY:-wayland-1}
+  export XDG_RUNTIME_DIR=\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)} WAYLAND_DISPLAY=${METAVERSE_WAYLAND_DISPLAY:-${VERSE_WAYLAND_DISPLAY:-wayland-1}}
   mkdir -p \$HOME/.local/state/verse
   cur=$first; start=\$(date +%s); status=0
   while :; do
     left=\$(( $seconds - (\$(date +%s) - start) ))
     [ \$left -gt 0 ] || break
     rm -f \$here/go; status=0
-    (cd \$here/\$cur && ${automation:+VERSE_AUTOMATION=$automation} ./vk-realm \$(cat drawdir) \$(cat given) --name \$cur --window --net \$HOME/.local/state/verse $args --seconds \$left --go \$here/go) || status=\$?
+    (cd \$here/\$cur && ${automation:+METAVERSE_AUTOMATION=$automation} ./vk-realm \$(cat drawdir) \$(cat given) --name \$cur --window --net \$HOME/.local/state/verse $args --seconds \$left --go \$here/go) || status=\$?
     [ \$status = 3 ] || break
     slug=\$(cat \$here/go 2>/dev/null || true); next=\$(module_of \$slug)
     if [ -n \"\$next\" ]; then echo \"realm.sh: \$cur opened \$slug (\$next)\"; cur=\$next; else echo \"realm.sh: \$cur opened \$slug, which is not native here; staying\"; fi
@@ -344,7 +344,7 @@ while :; do
   left=\$(( $seconds - (\$(date +%s) - start) ))
   [ \$left -gt 0 ] || break
   rm -f \$here/go; status=0
-  (cd \$here/\$cur && sudo -n env VK_DRIVER_FILES=\$VK_DRIVER_FILES LD_LIBRARY_PATH=\$LD_LIBRARY_PATH ${automation:+VERSE_AUTOMATION=$automation} \
+  (cd \$here/\$cur && sudo -n env VK_DRIVER_FILES=\$VK_DRIVER_FILES LD_LIBRARY_PATH=\$LD_LIBRARY_PATH ${automation:+METAVERSE_AUTOMATION=$automation} \
     ./vk-realm \$(cat drawdir) \$(cat given) --name \$cur --shot \$here/shot.ppm --net \$HOME/.local/state/verse $args --seconds \$left --go \$here/go) || status=\$?
   [ \$status = 3 ] || break
   slug=\$(cat \$here/go 2>/dev/null || true); next=\$(module_of \$slug)

@@ -52,7 +52,7 @@ hvt_workload :: ()->bool {
 tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   if args_count(a[..])==1 && args_at(a[..],0)=="--clocks" {
-    bytes:[64]u8;fake:=proc_getenv("VERSE_NATIVE_CLOCK_MS",bytes[..]);ms:=hvn_clock(0);seconds:=hvn_clock(1);
+    bytes:[64]u8;fake:=(ifx proc_getenv("METAVERSE_NATIVE_CLOCK_MS",bytes[..])!="" then proc_getenv("METAVERSE_NATIVE_CLOCK_MS",bytes[..]) else proc_getenv("VERSE_NATIVE_CLOCK_MS",bytes[..]));ms:=hvn_clock(0);seconds:=hvn_clock(1);
     if fake!="" {n:=args_whole(fake);return ifx ms==n && seconds==n/1000 then 0 else 1;}
     return ifx ms>=0 && seconds>=1000000000 && ms/1000<seconds then 0 else 1;
   }

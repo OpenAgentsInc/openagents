@@ -37,7 +37,7 @@ and its engine. New starts a new conversation, Reload resets Bitcoin Lab,
 and Quit closes the app and its engines. Subsequent turns fork the window's
 own durable session in Coder's session log (`~/.openagents/coder/sessions/`,
 `$CODER_HOME` first), so `coder ls` and `coder log` read them. The default
-workspace is `~/.openagents/aethyrforge/workspace/`; `AETHYRFORGE_WORKSPACE`
+workspace is `~/.openagents/aethyrforge/workspace/`; `METAVERSE_ENGINE_WORKSPACE`
 overrides it. Turns use the existing automatic router/provider logins and
 Coder's consent ledger. Unlike Coder's own runs they carry no remembered
 facts (`coder remember`), offer Codex no Coder tools, and run no "$ "
@@ -56,7 +56,7 @@ Focused checks:
 ```sh
 coax/bin/coax test apps/metaverse-engine-desktop/linux-native.coax --only 'native Aethyrforge'
 # A fresh directory isolates the session log, router and ledger from the owner's:
-CODER_HOME=/tmp/aethyrforge-coder-check AETHYRFORGE_ENGINE=echo \
+CODER_HOME=/tmp/aethyrforge-coder-check METAVERSE_ENGINE_CODER_ENGINE=echo \
   coax/web/tool.sh apps/metaverse-engine-desktop/linux-native-check.coax
 # Actual offscreen Vulkan; --keys opens the real Coax composer:
 ~/.openagents/bin/aethyrforge-native ~/.openagents/aethyrforge/native-linux - \

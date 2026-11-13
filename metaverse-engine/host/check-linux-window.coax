@@ -26,7 +26,7 @@ tool_main :: ()->int #export_c #effects(all) {
  unset:=proc_unset(p,"PORT");env_ok:=proc_env(p,"OA_ROOM_DEV_ADMIN=0");if !unset||!env_ok||proc_start(p)!=0 {return 1;}
  ready:=false;until:=proc_now_ms()+10000;while proc_now_ms()<until {for byte:"127.0.0.1" {pushed:=cxsock_host_push(int(byte));}sock:=cxsock_connect(port,100);if sock>=0 {c:=cxsock_close(sock);ready=true;break;}proc_sleep(20);}if !ready {return 1;}
  origin:[128]u8;jo_start(o[..],origin[..]);jo_put(o[..],"http://127.0.0.1:");jo_int(o[..],port);site:=jo_text(o[..]);
- local:[256]u8;jo_start(o[..],local[..]);jo_put(o[..],"VERSE_NATIVE_LOCAL_ROOM=ws://127.0.0.1:");jo_int(o[..],port);
+ local:[256]u8;jo_start(o[..],local[..]);jo_put(o[..],"METAVERSE_NATIVE_LOCAL_ROOM=ws://127.0.0.1:");jo_int(o[..],port);
  raw:=fs_join(out,"observed.i64",paths[5][..]);state:=fs_join(out,"state",paths[6][..]);if !fs_mkdir(state) {return 1;}
  argv:=[20]string.["nice","-n15",bin,build,"unused","--facts",facts,"--size","320x180","--window","--seconds","40","--net",state,"--origin",site,"--host-window",raw,"--mute-audio","--audio"];
  env:=[1]string.[jo_text(o[..])];stdout:[1048576]u8;stderr:[1048576]u8;r:=rtq_command(argv[..],env[..],proc_now_ms()+90000,out,"world",stdout[..],stderr[..]);

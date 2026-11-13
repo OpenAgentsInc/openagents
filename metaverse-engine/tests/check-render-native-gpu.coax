@@ -93,7 +93,7 @@ nt_case :: (profile:int,variant:int,host:string,remote:string,work:string,layer:
   prefix:[256]u8;p:[1]Jo;jo_start(p[..],prefix[..]);jo_put(p[..],names[variant]);jo_put(p[..],".json");json_name:=jo_text(p[..]);remote_json:=fs_join(remote,json_name,paths[0][..]);local_json:=fs_join(work,json_name,paths[1][..]);
   raw_name_buf:[256]u8;jo_start(p[..],raw_name_buf[..]);jo_put(p[..],names[variant]);jo_put(p[..],".raw");raw_name:=jo_text(p[..]);remote_raw:=fs_join(remote,raw_name,paths[2][..]);local_raw:=fs_join(work,raw_name,paths[3][..]);
   layer_env:[4096]u8;jo_start(p[..],layer_env[..]);jo_put(p[..],"VK_ADD_LAYER_PATH=");jo_put(p[..],layer);
-  out_env:[4096]u8;w:[1]Jo;jo_start(w[..],out_env[..]);jo_put(w[..],"AETHYR_REFERENCE_OUT=");jo_put(w[..],remote_raw);
+  out_env:[4096]u8;w:[1]Jo;jo_start(w[..],out_env[..]);jo_put(w[..],"ENGINE_REFERENCE_OUT=");jo_put(w[..],remote_raw);
   shaders:[4]string;if profile==0 {shaders=[4]string.["filtered.spv",ifx variant==1 then "fault.spv" else "invalid.spv","array.spv",ifx variant==2 then "fault-array.spv" else "invalid-array.spv"];}else {shaders[0]="helper.spv";shaders[1]="range.spv";}
   count:=ifx profile==0 then 4 else 2;
   stdout:[65536]u8;stderr:[65536]u8;args:[24]string;n:=0;for v:[7]string.["env","VK_DRIVER_FILES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json",jo_text(p[..]),"VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation",jo_text(w[..]),"timeout","240"] {args[n]=v;n+=1;}args[n]="./reference";n+=1;for i:0..<count {args[n]=shaders[i];n+=1;}

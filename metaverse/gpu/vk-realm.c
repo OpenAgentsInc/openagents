@@ -300,7 +300,7 @@ static void os_requests(void) {
   if (!coaxial_os_request || desk.pid <= 0) return;
   int32_t a = coaxial_os_request(H.state);
   if (a < 0) return;
-  const char *run = getenv("VERSE_RUN");
+  const char *run = (getenv("METAVERSE_RUN") ? getenv("METAVERSE_RUN") : getenv("VERSE_RUN"));
   if (!run) return;
   char path[1100]; snprintf(path, sizeof path, "%s/requests", run);
   FILE *f = fopen(path, "a");
@@ -343,9 +343,9 @@ static void to_pointer_window(void *user, float x, float y, int phase);
 // the hand's point, in the screen's pixels, into the path a mouse's would take
 static void hand_to(float x, float y, int phase) {
   touched = 1;
-  // VERSE_HANDS_LOG: each press and release, and every 30th move, on stderr (for checking a hand)
+  // METAVERSE_HANDS_LOG: each press and release, and every 30th move, on stderr (for checking a hand)
   static int moves; static int log_on = -1;
-  if (log_on < 0) log_on = getenv("VERSE_HANDS_LOG") != NULL;
+  if (log_on < 0) log_on = (getenv("METAVERSE_HANDS_LOG") ? getenv("METAVERSE_HANDS_LOG") : getenv("VERSE_HANDS_LOG")) != NULL;
   if (log_on && (phase != 1 || moves++ % 30 == 0)) fprintf(stderr, "vk-realm: hand %s at %.0f, %.0f\n", phase == 0 ? "down" : phase == 2 ? "up" : "moves", x, y);
   if (windowed_now) { to_pointer_window(NULL, x, y, phase); return; }
   if (pointer_to_desk(x, y, phase)) return;

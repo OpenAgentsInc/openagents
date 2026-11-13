@@ -524,7 +524,7 @@ int rh_net_open(RealmHost *h, const char *helper, const char *host, int port, co
   snprintf(net.name, sizeof net.name, "%s", name);
   net.port = port;
   net.on = 1;
-  net.log = getenv("VERSE_NATIVE_NET_LOG") != NULL;   // each request and its answer's status, on stderr
+  net.log = (getenv("METAVERSE_NATIVE_NET_LOG") ? getenv("METAVERSE_NATIVE_NET_LOG") : getenv("VERSE_NATIVE_NET_LOG")) != NULL;   // each request and its answer's status, on stderr
   signal(SIGPIPE, SIG_IGN);
   return 0;
 }
@@ -597,7 +597,7 @@ void rh_net_close(void) {
 // The host's imports (coax/web/host.js imports.env), natively. Requests go out once
 // rh_net_open has been called; before it they are refused, as a page offline has them.
 static int64_t clock_ms(void) {
-  const char *fake = getenv("VERSE_NATIVE_CLOCK_MS");
+  const char *fake = (getenv("METAVERSE_NATIVE_CLOCK_MS") ? getenv("METAVERSE_NATIVE_CLOCK_MS") : getenv("VERSE_NATIVE_CLOCK_MS"));
   if (fake) return atoll(fake);
   struct timespec t;
   clock_gettime(CLOCK_MONOTONIC, &t);
@@ -607,7 +607,7 @@ int64_t guard_now_ms(void) { return clock_ms(); }
 double coaxial_measure_ms(void) {struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (double)t.tv_sec*1000+(double)t.tv_nsec/1000000;}
 // Unix wall seconds. The explicit deterministic-test override drives both
 // imported clocks, as wasm-run's clock/clock_s fixtures do.
-int64_t coaxial_now_seconds(void) {const char *fake=getenv("VERSE_NATIVE_CLOCK_MS");return fake?atoll(fake)/1000:(int64_t)time(NULL);}
+int64_t coaxial_now_seconds(void) {const char *fake=(getenv("METAVERSE_NATIVE_CLOCK_MS") ? getenv("METAVERSE_NATIVE_CLOCK_MS") : getenv("VERSE_NATIVE_CLOCK_MS"));return fake?atoll(fake)/1000:(int64_t)time(NULL);}
 // byte storage (env.coaxial_storage_*: the browser's IndexedDB): none natively, refused as host.js
 // refuses it where the browser has none (UNAVAILABLE), so the app keeps going without it
 int32_t coaxial_storage_put(int32_t a, int32_t b, uint32_t c, int32_t d, int32_t e, uint32_t f, int32_t g, uint32_t h, int32_t i) {

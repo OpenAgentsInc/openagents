@@ -62,7 +62,7 @@ fp_run :: (host: string, realm: string, work: string, allow: string, keep: strin
   build := [4] string.["coax/web/wasm.sh", app, face, wasm];
   home := [2] string.["coax/web/project/build-home.sh", wasm];
   if fp_step("the wasm", ifx realm == "newland" then home[..] else build[..], o[..]) < 0 { return 1; }
-  frame := [16] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "coax/web/tool.sh", "metaverse/native/wasm-run.coax", wasm, "--size", "320x180", "--frames", "90", "--every", "90", "--golden", "--page", fp_page(realm), "--dump", dir];
+  frame := [16] string.["env", "METAVERSE_NATIVE_CLOCK_MS=0", "coax/web/tool.sh", "metaverse/native/wasm-run.coax", wasm, "--size", "320x180", "--frames", "90", "--every", "90", "--golden", "--page", fp_page(realm), "--dump", dir];
   if fp_step("the frame", frame[..], o[..]) < 0 { return 1; }
   // the module the browser draws, and the entries lowered
   gb: [1024] u8; wb: [1024] u8;

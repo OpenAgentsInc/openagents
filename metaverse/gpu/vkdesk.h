@@ -76,7 +76,7 @@ static int vkdesk_open(Vkc *v, VkDesk *d, const char *dir, uint32_t dw, uint32_t
   // the session's compositor, when it runs one (verse-session: DIR/../desk.in and desk.out, FIFOs),
   // so the desk's windows outlive travel; else one of our own
   char fin[1100], fout[1100];
-  const char *run = getenv("VERSE_RUN");
+  const char *run = (getenv("METAVERSE_RUN") ? getenv("METAVERSE_RUN") : getenv("VERSE_RUN"));
   if (run) {
     snprintf(fin, sizeof fin, "%s/desk.in", run); snprintf(fout, sizeof fout, "%s/desk.out", run);
     struct stat st;
@@ -268,7 +268,7 @@ static int vkdesk_key(int code, int pressed) {
   }
   if (to == metaverse_panel_voice()) {
     // the session listens and types what it heard (os/verse-session.coax "voice"); a press each way
-    const char *run = getenv("VERSE_RUN");
+    const char *run = (getenv("METAVERSE_RUN") ? getenv("METAVERSE_RUN") : getenv("VERSE_RUN"));
     if (pressed==1 && run) { char path[1100]; snprintf(path, sizeof path, "%s/requests", run); FILE *f = fopen(path, "a"); if (f) { fputs("voice\n", f); fclose(f); } fprintf(stderr, "vk-realm: voice\n"); }
     return 1;
   }

@@ -72,13 +72,13 @@ else "$root/coax/web/wasm.sh" "$web/$module.coax" "$web/$module-face.c" "$work/$
 "$here/build.sh" "$module" "$work/c"
 cp "$here/everglade.facts" "$here/build.sh" "$here/musl-math.sh" ${pack:+"$pack"} "$work/c/"
 mkdir -p "$work/c/wasm"
-(cd "$root" && VERSE_NATIVE_CLOCK_MS=0 coax/web/tool.sh metaverse/native/wasm-run.coax "$work/$realm.wasm" ${given[@]+"${given[@]}"} "${steps[@]}" --dump "$work/c/wasm") > "$work/wasm.txt"
+(cd "$root" && METAVERSE_NATIVE_CLOCK_MS=0 coax/web/tool.sh metaverse/native/wasm-run.coax "$work/$realm.wasm" ${given[@]+"${given[@]}"} "${steps[@]}" --dump "$work/c/wasm") > "$work/wasm.txt"
 COPYFILE_DISABLE=1 tar --no-xattrs -C "$work/c" -cf - . | ssh -o BatchMode=yes "$host" "set -e
 d=\$(mktemp -d); trap 'rm -rf \$d' EXIT; cd \$d; tar -xf - 2>/dev/null
 mkdir -p metaverse/native; cp build.sh musl-math.sh metaverse/native/
 nix-shell -p gcc --run 'COAX=/nonexistent metaverse/native/build.sh $module \$PWD' > /dev/null
 ./realm-run --test-travel
-VERSE_NATIVE_CLOCK_MS=0 ./realm-run $there ${steps[*]} --against wasm" > "$work/native.txt" || status=$?
+METAVERSE_NATIVE_CLOCK_MS=0 ./realm-run $there ${steps[*]} --against wasm" > "$work/native.txt" || status=$?
 grep -v "^frame" "$work/native.txt"
 # The frames, without the uniforms' and stores' hashes (compared above, within rounding).
 strip() { grep "^frame" "$1" | sed -E 's/ u [0-9a-f]+//; s/ s[0-9] [0-9]+ [0-9a-f]+//g'; }

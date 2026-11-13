@@ -570,7 +570,7 @@ int32_t mf_sound_probe(void *host,int32_t slot,float right,float ahead,float up)
 
 // Imports copy borrowed producer bytes while that call owns them. Concrete
 // network callbacks are queued by the platform and fenced again on delivery.
-int64_t guard_now_ms(void){const char *fixed=getenv("VERSE_NATIVE_CLOCK_MS");int64_t observed;if(fixed&&parseNumber(fixed,&observed))return observed;return milliseconds();}
+int64_t guard_now_ms(void){const char *fixed=(getenv("METAVERSE_NATIVE_CLOCK_MS") ? getenv("METAVERSE_NATIVE_CLOCK_MS") : getenv("VERSE_NATIVE_CLOCK_MS"));int64_t observed;if(fixed&&parseNumber(fixed,&observed))return observed;return milliseconds();}
 double coaxial_measure_ms(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return(double)t.tv_sec*1000+(double)t.tv_nsec/1000000;}
 int32_t coaxial_socket_open(uintptr_t address,uint32_t length){MFRealm *r=activeRealm;if(!r)return -1;NSString *url=[[NSString alloc]initWithBytes:(void*)address length:length encoding:NSUTF8StringEncoding];if(!url)return -1;
  if([url hasPrefix:@"local:"]){uint8_t target[8192];int64_t n=htr_local_target(cs(url),cs(r->localOrigin?:@""),(coax_v_u8){target,sizeof target});if(n<0)return -1;url=[[NSString alloc]initWithBytes:target length:(NSUInteger)n encoding:NSUTF8StringEncoding];}

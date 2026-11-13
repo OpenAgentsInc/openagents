@@ -39,7 +39,7 @@ sudo metaverse/kms/run.sh metaverse/kms/build --seconds 300
 
 Space starts, the arrows move the basket, Escape leaves. To record a
 video while it runs, add `--demo` (the realm's demo player holds the keys)
-and `--record FILE.mp4` with `VERSE_KMS_FFMPEG` naming an ffmpeg (on NixOS,
+and `--record FILE.mp4` with `METAVERSE_KMS_FFMPEG` naming an ffmpeg (on NixOS,
 `nix-shell -p ffmpeg --run 'command -v ffmpeg'`); frames are halved to
 1280x720. The keyboard is
 grabbed while it runs, so VT keys don't work; Escape or the time limit

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build verse-kms for one realm: Coax to C, then the host C compiler.
 #   metaverse/kms/build.sh [OUT_DIR]       generate C and build OUT_DIR/verse-kms
-#   VERSE_KMS_GEN_ONLY=1 metaverse/kms/build.sh OUT_DIR
+#   METAVERSE_KMS_GEN_ONLY=1 metaverse/kms/build.sh OUT_DIR
 #                                      generate C only (for a Linux box without coax)
 # On Linux it links libdrm (pkg-config libdrm; on NixOS run it in
 # `nix-shell -p gcc pkg-config libdrm`). On macOS it builds the headless mode.
@@ -10,7 +10,7 @@ here="$(cd "$(dirname "$0")" && pwd -P)"
 root="$(cd "$here/../.." && pwd -P)"
 out="${1:-$here/build}"
 mkdir -p "$out"
-if [[ -f "$out/starcatch.c" && -z "${VERSE_KMS_REGEN:-}" && ! -x "$root/coax/bin/coax" ]]; then
+if [[ -f "$out/starcatch.c" && -z "${METAVERSE_KMS_REGEN:-${VERSE_KMS_REGEN:-}}" && ! -x "$root/coax/bin/coax" ]]; then
   echo "using the C already in $out"
 else
   coax="$root/coax/bin/coax"
@@ -22,7 +22,7 @@ else
   "$coax" c "$here/starcatch-light.coax" --library --header "$out/starcatch-light.h" > "$out/starcatch-light.c"
   cp "$here/kms.c" "$here/realm.h" "$here/keys.h" "$here/evdev.h" "$here/starcatch-native.c" "$out/"
 fi
-[[ -n "${VERSE_KMS_GEN_ONLY:-}" ]] && exit 0
+[[ -n "${METAVERSE_KMS_GEN_ONLY:-${VERSE_KMS_GEN_ONLY:-}}" ]] && exit 0
 cc="${CC:-cc}"
 flags=(-std=c11 -O2 -g -pthread -I "$out")
 libs=(-lm)

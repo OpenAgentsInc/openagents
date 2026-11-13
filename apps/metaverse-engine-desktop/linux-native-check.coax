@@ -13,7 +13,7 @@ fgnt_turn :: (s:[]ForgeNative,text:string)->bool {
 }
 tool_main :: ()->int #export_c #effects(all) {
   s:[1]ForgeNative;fgn_boot(s[..]);
-  if cast(string)s[0].engine[0..<s[0].en]!="echo" || !proc_has_env("CODER_HOME") {tool_errln("Use AETHYRFORGE_ENGINE=echo and an isolated CODER_HOME.");return 2;}
+  if cast(string)s[0].engine[0..<s[0].en]!="echo" || !proc_has_env("CODER_HOME") {tool_errln("Use METAVERSE_ENGINE_CODER_ENGINE=echo and an isolated CODER_HOME.");return 2;}
   out:[FGN_VERTICES*12]f32;u:[88]f32;
   n:=fgn_frame(s[..],out[..],u[..],1440,900,1,0.016);
   if n<=0 || n>FGN_VERTICES || s[0].lab[0].mesh_n<216 || !s[0].hud[0].ready {tool_errln("FAIL native scene");return 1;}

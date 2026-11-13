@@ -32,7 +32,7 @@ int rhn_http_path(const char *bytes,size_t n){uint8_t target[12288];return n<=IN
 int rhn_utf8(const char *bytes,size_t n){return n<=INT64_MAX&&hns_utf8((coax_string){bytes,(int64_t)n});}
 int32_t rhn_socket_open(const char *url,uint32_t n){
  uint8_t target[4096];if(!mn_uri((const uint8_t*)url,n)){
-  const char *bound=getenv("VERSE_NATIVE_LOCAL_ROOM");if(!bound||!htr_local_target)return -1;
+  const char *bound=(getenv("METAVERSE_NATIVE_LOCAL_ROOM") ? getenv("METAVERSE_NATIVE_LOCAL_ROOM") : getenv("VERSE_NATIVE_LOCAL_ROOM"));if(!bound||!htr_local_target)return -1;
   int64_t count=htr_local_target((coax_string){url,n},(coax_string){bound,(int64_t)strlen(bound)},(coax_v_u8){target,sizeof target});
   if(count<0)return -1;url=(const char*)target;n=(uint32_t)count;
  }

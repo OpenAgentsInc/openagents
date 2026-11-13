@@ -5,7 +5,7 @@
 //   coax/web/tool.sh metaverse/tools/humans/upload_packs.coax                  every pack in ~/.openagents/verse/private-build/web/
 //   coax/web/tool.sh metaverse/tools/humans/upload_packs.coax human human-robe  those packs only
 //   coax/web/tool.sh metaverse/tools/humans/upload_packs.coax --dry-run ...     says each gcloud command instead of running it
-//   VERSE_PACKS_DIR=DIR ...                                                 packs from DIR instead
+//   METAVERSE_PACKS_DIR=DIR ...                                                 packs from DIR instead
 //
 // For each NAME.pack: its SHA-256, then gzip -9, then AES-256-CTR under a fresh random key and iv,
 // stored as gs://openagentsgemini-verse-private-assets/packs/<sha256> (Cache-Control no-store; the
@@ -156,8 +156,8 @@ tool_main :: () -> int #export_c #effects(all) {
   u: [1] Up;
   hb: [4096] u8; home := proc_getenv("HOME", hb[..]);
   dd: [1] Ub; ub(dd[..], home); ub(dd[..], "/.openagents/verse/private-build/web");
-  dir := up_env(u[..], "VERSE_PACKS_DIR", ub_text(dd[..]));
-  bucket := up_env(u[..], "VERSE_PACKS_BUCKET", "openagentsgemini-verse-private-assets");
+  dir := up_env(u[..], "METAVERSE_PACKS_DIR", up_env(u[..], "VERSE_PACKS_DIR", ub_text(dd[..])));
+  bucket := up_env(u[..], "METAVERSE_PACKS_BUCKET", up_env(u[..], "VERSE_PACKS_BUCKET", "openagentsgemini-verse-private-assets"));
   u[0].gcloud = up_env(u[..], "GCLOUD", "gcloud");
   u[0].openssl = up_env(u[..], "OPENSSL", "openssl");
   // gcloud runs as the automation account unless CLOUDSDK_CONFIG says otherwise (each gcloud child gets it)
