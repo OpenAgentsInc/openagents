@@ -1,7 +1,8 @@
 // Listing: the frames set's pieces for a page of things that stands beside the site's side
 // (docs/app-shell.md): the page itself, a list of entries under a heading, an entry (a thing's name
 // as a link, a line about it, facts under it, a small picture when it has one, and its actions), a
-// link that looks like a button, and a choice of a few (a sort, a filter). /projects and /worlds are
+// link that looks like a button, a choice of a few (a sort, a filter), and, for the app shell, another
+// page held beside the side and the loading screen over it while it comes. /projects and /worlds are
 // built from them. Each builds nodes in the tree and nothing else; every look is the skin's
 // (components/skin/mono.coax, mono_page_css).
 //   coax/bin/coax test components/kit/listing.coax
@@ -68,6 +69,38 @@ k_choice :: (t: [] Tree, id: string, label: string, on: bool) -> int {
   return i;
 }
 
+// Held page: another page of the site, in a frame that fills the room right of the side (the app shell's
+// main area, docs/app-shell.md). `src` is a path here (k_here's rule; nothing for any other). `title` names
+// it for a reader. The frame loads its page once: a page moved to is a new id, so a new frame, and the old
+// one, taken away, takes everything its page ran with it.
+k_held :: (t: [] Tree, id: string, src: string, title: string) -> int {
+  if !k_here(src) { return -1; }
+  i := tr_open(t, id, TG_IFRAME, "held");
+  tr_attr(t, i, AT_SRC, src); tr_attr(t, i, AT_TITLE, title);
+  tr_close(t);
+  return i;
+}
+// Loading: a page on its way, over the room it will take: centred in it, a framed panel with the page's
+// name, a line filled as far as `share` of it has come (0 to 1; below 0 not known, and the line runs),
+// and what is loading now (`step`, which may be empty). It is a status a screen reader reads out.
+k_loading :: (t: [] Tree, u: [] Ui, id: string, name: string, step: string, share: f32) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8; ide: [UI_ID] u8;
+  room := tr_open(t, id, TG_DIV, "ld");
+  tr_attr(t, room, AT_ROLE, "status"); tr_attr(t, room, AT_LIVE, "polite"); tr_attr(t, room, AT_LABEL, "Loading");
+  p := k_frame(t, u, tr_cat(ida[..], id, ".p"), TG_DIV, "ld-p", MF_PANEL);
+  n := tr_leaf(t, tr_cat(idb[..], id, ".n"), TG_SPAN, "ld-n", name);
+  line := tr_open(t, tr_cat(idc[..], id, ".l"), TG_SPAN, "meter-l ld-l");
+  tr_attr(t, line, AT_HIDDEN, "true");   // the words under it say how far, when that is known
+  if share < 0 { tr_attr(t, line, AT_STATE, "wait"); }
+  fill := tr_leaf(t, tr_cat(idd[..], id, ".f"), TG_SPAN, "meter-f", "");
+  k_var(t, fill, ifx share < 0 then 0.3 else share);
+  tr_close(t);
+  w := tr_leaf(t, tr_cat(ide[..], id, ".s"), TG_SPAN, "meta ld-s", ifx step.count > 0 then step else "Loading");
+  tr_close(t);
+  tr_close(t);
+  return room;
+}
+
 // ---------------------------------------------------------------- checks
 
 LsTest :: struct { t: [1] Tree; u: [1] Ui; }
@@ -120,4 +153,21 @@ LsTest :: struct { t: [1] Tree; u: [1] Ui; }
   tr_close(t);
   #assert tr_class(t, g) == "chips" && tr_attr_of(t, g, AT_ROLE) == "group" && tr_attr_of(t, g, AT_LABEL) == "Sort by";
   #assert t[0].nodes[a].tag == TG_BUTTON && tr_class(t, a) == "chip" && tr_attr_of(t, a, AT_PRESSED) == "true" && tr_attr_of(t, b, AT_PRESSED) == "false" && t[0].depth == 0;
+}
+#test "a held page is a frame of a path here, a new one for each id; its loading screen is a status with the page's name, a line and the step" {
+  h: [1] LsTest; t := h[0].t[..]; u := h[0].u[..];
+  ui_begin(u, 0, true); tr_begin(t);
+  f := k_held(t, "held.1", "/worlds/splice?edit", "Splice");
+  ld := k_loading(t, u, "ld", "Splice", "ASSETS 3.1 / 12 MB 40%", 0.4);
+  w := k_loading(t, u, "ld2", "Worlds", "", -1);
+  ui_end(u);
+  #assert t[0].lost == 0 && t[0].depth == 0;
+  #assert t[0].nodes[f].tag == TG_IFRAME && tr_class(t, f) == "held" && tr_attr_of(t, f, AT_SRC) == "/worlds/splice?edit" && tr_attr_of(t, f, AT_TITLE) == "Splice";
+  #assert k_held(t, "far", "https://evil.example/", "x") == -1 && k_held(t, "far2", "//evil.example/", "x") == -1 && tr_find(t, "far") < 0;
+  #assert tr_class(t, ld) == "ld" && tr_attr_of(t, ld, AT_ROLE) == "status" && tr_attr_of(t, ld, AT_LIVE) == "polite";
+  pn := tr_find(t, "ld.p");
+  #assert t[0].nodes[pn].parent == ld && t[0].nodes[pn].frame == mono_kind(MF_PANEL) + 1 && tr_text_of(t, tr_find(t, "ld.n")) == "Splice" && tr_text_of(t, tr_find(t, "ld.s")) == "ASSETS 3.1 / 12 MB 40%";
+  #assert !tr_has(t, tr_find(t, "ld.l"), AT_STATE) && tr_attr_of(t, tr_find(t, "ld.f"), AT_VARS) != "" && tr_attr_of(t, tr_find(t, "ld.l"), AT_HIDDEN) == "true";
+  // not known: the line runs, and the words say only that it loads
+  #assert tr_attr_of(t, tr_find(t, "ld2.l"), AT_STATE) == "wait" && tr_text_of(t, tr_find(t, "ld2.s")) == "Loading" && tr_text_of(t, tr_find(t, "ld2.n")) == "Worlds";
 }

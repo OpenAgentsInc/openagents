@@ -35,6 +35,7 @@ ES_DRAFT :: 16;        // bytes typed into a number's field
 ES_CLICK :: 1; ES_INPUT :: 2; ES_SUBMIT :: 3; ES_MODEL :: 6;
 ES_AGENT :: 7;         // the page was opened for the agent (?edit=agent): the foot is open from the start
 ES_PLANNED :: 8;       // a hosted turn's plan (world.plan.v1), in the inbox: its steps become one batch of edits
+ES_HELD :: 14;         // the page is held in the app shell, beside the site's side (docs/app-shell.md): no column for the side here
 // Code (E12, #13421). The page's host says the dev server serves this page (ES_CODE_HERE, the page's module in
 // the inbox); a deployed page's host never does, and the shell then has no Code button and no Code pane.
 // What the shell asks the dev server (realm.code.v1, code-wire.coax) goes by the host's dom_stream, and
@@ -87,6 +88,7 @@ EdShell :: struct {
   brush: int = 1; mat: int; radius: int = 3; strength: int = 5;   // the land's brush: its kind (ES_BRUSH), the material it paints (its place in the model's list), its radius (ES_RADIUS_CM) and its strength (tens of percent, less one)
   group: [PL_PARTS] int; ngroup: int;    // the things gathered to save as a template, by ID
   tname: [EM_NAME] u8; tname_n: int;     // the name typed for it
+  held: bool;                            // the site's side is the app shell's, around this page: the dock has no column for it
   agent: bool; agent_made: bool;         // the foot with the chat's conversation is open; it was opened once (it is then kept, put away)
   turn_due: bool;                        // the conversation has not been told of the world as it now is
   said: [EM_WORDS] u8; said_n: int;      // the shell's own word about what was typed, until the next action
@@ -369,7 +371,7 @@ es_build :: (s: [] EdShell) {
   buf: [UI_ID] u8; buf2: [UI_ID] u8; name: [EM_NAME] u8; line: [EM_WORDS] u8;
   tr_begin(t);
   dock := k_dock(t, "editor", true);
-  places := k_dock_side(t, "places");   // the site's side, which the page's host puts in the slot (coax/web/host.js)
+  if !s[0].held { places := k_dock_side(t, "places"); }   // the site's side, which the page's host puts in the slot (coax/web/host.js)
   if !s[0].have {
     bar := k_pane(t, u, "bar", DK_TOP, "");
     wait := tr_leaf(t, "bar.wait", TG_SPAN, "meta", "Opening the world");
@@ -910,6 +912,7 @@ coaxial_editor_event :: (s: [] EdShell, kind: int, slot: int, length: int) #expo
 }
 es_event :: (s: [] EdShell, kind: int, slot: int, length: int) {
   if kind == ES_MODEL { es_model(s, length); return; }
+  if kind == ES_HELD { s[0].held = true; s[0].dirty = true; return; }
   if kind == ES_AGENT { s[0].agent = true; s[0].agent_made = true; s[0].turn_due = true; return; }
   if kind == ES_PLANNED { es_plan(s, length); return; }
   if kind == ES_CODE_HERE { es_code_here(s, length); return; }
@@ -1072,6 +1075,16 @@ es_test_frames :: (h: [] EsTest, n: int) {
   #assert !tr_has(t, tr_find(t, "undo"), AT_DISABLED) && tr_has(t, tr_find(t, "redo"), AT_DISABLED);
   es_test_frames(h[..], 3);
   #assert !coaxial_editor_busy(s) && coaxial_editor_frame(s, 0.016, true) == 0;
+}
+
+#test "the dock keeps a column for the site's side, unless the page is held in the app shell, whose side is around it" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  es_test_model(h[..], 0, 7, 3, "");
+  n := coaxial_editor_frame(s, 0.016, true);
+  #assert tr_find(t, "places.slot") > 0 && tr_find(t, "thing.1.t") > 0;
+  coaxial_editor_event(s, ES_HELD, 0, 0);
+  n = coaxial_editor_frame(s, 0.016, true);
+  #assert tr_find(t, "places") < 0 && tr_find(t, "places.slot") < 0 && tr_find(t, "thing.1.t") > 0 && t[0].depth == 0;
 }
 
 #test "a press on a thing asks the page to select it; the selected thing shows its fields filled and its kind's facts" {

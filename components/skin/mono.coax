@@ -506,6 +506,34 @@ mono_page_css :: (out: [] u8, at: int) -> int {
   return n;
 }
 
+// The app shell's rules (components/kit/listing.coax k_held, k_loading; docs/app-shell.md), after the others from `at`:
+// another page held in a frame over the room right of the side (all of the window when the side is put away or the
+// window is narrow), and its loading screen over that same room, a panel in its centre, until the page has drawn.
+// Bytes written in all.
+mono_held_css :: (out: [] u8, at: int) -> int {
+  n := at;
+  n = mc(out, n, ".held{position:fixed;top:0;left:300px;width:calc(100% - 300px);height:100%;margin:0;border:0;display:block;background:var(--ground)}");
+  n = mc(out, n, ".ld{position:fixed;top:0;right:0;bottom:0;left:300px;z-index:3;box-sizing:border-box;padding:0 16px;display:flex;align-items:center;justify-content:center;background:var(--ground)}");
+  n = mc(out, n, "body:has(.ib[data-state=side]) .held,body:has(.ib[data-state=side]) .ld{left:0;width:100%}");
+  n = mc(out, n, ".ld-p{position:relative;box-sizing:border-box;width:min(360px,100%);padding:20px 22px;display:flex;flex-direction:column;gap:12px}");
+  n = mc(out, n, ".ld-n{color:var(--ink);font:500 15px/1.4 var(--sans);overflow-wrap:anywhere}.ld-s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}");
+  // a line whose end is not known runs, a third of it at a time; with reduced motion it stands, dim
+  n = mc(out, n, ".ld-l{overflow:hidden}.ld-l[data-state=wait] .meter-f{width:30%;transform:none;animation:ld-run 1.2s ease-in-out infinite}@keyframes ld-run{from{margin-left:-30%}to{margin-left:100%}}");
+  n = mc(out, n, "@media (prefers-reduced-motion:reduce){.ld-l[data-state=wait] .meter-f{animation:none;width:100%;opacity:.35}}");
+  n = mc(out, n, "@media (max-width:760px){.held,.ld{left:0;width:100%}}");
+  return n;
+}
+
+#test "the shell's rules fit, and have no hue" {
+  css: [32768] u8; n := mono_css(css[..]);
+  m := mono_held_css(css[..], n);
+  #assert m > n + 900 && m < n + 2400 && mono_held_css(css[0..<n], n) == n;
+  text := cast(string) css[n..<m];
+  k := 0; hue := false;
+  while k + 4 <= text.count { if cast(string) text[k..<k + 4] == "hsl(" || cast(string) text[k..<k + 4] == "rgb(" { hue = true; } k += 1; }
+  #assert !hue;
+}
+
 #test "the work log's rules follow the page's, fit, and have no hue" {
   css: [32768] u8; n := mono_css(css[..]);
   m := mono_work_css(css[..], n);

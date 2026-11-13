@@ -72,6 +72,12 @@
 //   prefer color-scheme dark|light | prefer reduced-motion reduce|no-preference | prefer size WxH
 //   prefer pointer coarse|fine    a finger or a mouse: the page's touch rules hold or not
 //   perf                          frames drawn in one second, and the world loop's counters
+//   back | forward | reload       the browser's own Back or Forward (it answers the address after) or a reload (it waits
+//                                 for the page as it waited at the start); `address` says where the page is
+//   mark ID | same ID             a mark on the page's element ID; then whether the element there now is that same node
+//                                 (the app shell's side through a move between its pages: docs/app-shell.md); a reload
+//                                 makes every node again
+//   gone ID [within MS]           waits in real time until the page's element ID doesn't show (a loading screen)
 // The agent clock (GitHub #13096, docs/metaverse/agent-clock.md): the page opens in agent mode (?agent,
 // coax/web/host.js), where simulation time moves only when `clock` or a world operation steps it; the
 // page and its offline room (coax/web/room-worker.js) step together, and the session is pinned to the
@@ -442,6 +448,8 @@ DvS :: struct {
   value: [1048576] u8;
 }
 // A script's text value: its length, or -1.
+// Waits for two of the page's frames (the browser's evaluate awaits the promise).
+DV_TWO_FRAMES :: "new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(''))))";
 dv_eval :: (s: [] DvS, script: string) -> string {
   n := media_value(s[0].c[..], script, s[0].value[..]);
   return ifx n >= 0 then cast(string) s[0].value[0..<n] else "";
@@ -726,10 +734,37 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     if pn == 0 || dv_starts(page, "taps: 0 targets") { dv_s(out, hud); return true; }
     dv_s(out, "the page's elements:\n"); dv_s(out, page); dv_s(out, "the HUD:\n"); dv_s(out, hud); return true;
   }
+  // moving between a site's pages (the app shell, docs/app-shell.md): Back, Forward, a reload, the address, and whether
+  // an element stays the same node through a move (mark, then same) or has gone (a loading screen)
+  if w0 == "back" || w0 == "forward" { a := dv_eval(s, dd_history_js(w0 == "back")); dv_s(out, a); return dv_starts(a, "at "); }
+  if w0 == "address" { dv_s(out, dv_eval(s, DD_ADDRESS)); return true; }
+  if w0 == "reload" {
+    t0 := proc_now_ms();
+    _ := dv_eval(s, "globalThis.coaxDriveOld = 1, ''");   // the old document, which answers for a moment after
+    if cdp_call(s[0].c[..], "Page.reload", "{}", CDP_CALL_MS) < 0 { dv_s(out, "the reload failed: "); dv_s(out, cdp_error(s[0].c[..])); return false; }
+    waited := 0;
+    while dv_eval(s, "globalThis.coaxDriveOld ? 'old' : 'new'") != "new" && waited < 10000 { proc_sleep(50); waited += 50; }
+    why: [1] Dv;
+    if !dv_ready(s, why[..]) { dv_s(out, dv_text(why[..])); return false; }
+    dv_s(out, "reloaded "); dv_s(out, dv_eval(s, DD_ADDRESS)); dv_s(out, " in "); dv_i(out, proc_now_ms() - t0); dv_s(out, " ms"); return true;
+  }
+  if w0 == "mark" || w0 == "same" || w0 == "gone" {
+    jb: [600] u8; id := dv_word(op, 1);
+    js := dd_id_js(id, ifx w0 == "mark" then DD_MARK else ifx w0 == "same" then DD_SAME else DD_SHOWS, jb[..]);
+    if js.count == 0 { dv_s(out, w0); dv_s(out, " takes the id of one of the page's elements"); return false; }
+    if w0 == "mark" { a := dv_eval(s, js); dv_s(out, a); dv_s(out, " "); dv_s(out, id); return a == "marked"; }
+    if w0 == "same" { a := dv_eval(s, js); dv_s(out, a); dv_s(out, " ("); dv_s(out, id); dv_s(out, ")"); return dv_starts(a, "the same"); }
+    // gone ID [within MS]: waits in real time until it doesn't show
+    most := ifx dv_word(op, 2) == "within" && dv_int(dv_word(op, 3)) > 0 then dv_int(dv_word(op, 3)) else s[0].within;
+    t0 := proc_now_ms();
+    while dv_eval(s, js) == "shows" && proc_now_ms() - t0 < most { proc_sleep(100); }
+    if dv_eval(s, js) == "shows" { dv_s(out, id); dv_s(out, " still shows after "); dv_i(out, most); dv_s(out, " ms"); return false; }
+    dv_s(out, id); dv_s(out, " gone after "); dv_i(out, proc_now_ms() - t0); dv_s(out, " ms"); return true;
+  }
   if s[0].dom {
     if w0 == "tree" || w0 == "layout" { js: [16384] u8; dv_s(out, dv_eval(s, dd_tree_js(js[..]))); return true; }
     if w0 != "tap" && w0 != "type" && w0 != "swap" && w0 != "answer" && w0 != "screenshot" && w0 != "logs" && w0 != "prefer" && w0 != "drop" && w0 != "text" {
-      dv_s(out, "this page is drawn by the browser and has no world: it takes tree, hit X Y, taps, tap ID, type ID TEXT, text ID, swap, answer, drop ID FILE, screenshot, logs and prefer"); return false;
+      dv_s(out, "this page is drawn by the browser and has no world: it takes tree, hit X Y, taps, tap ID, type ID TEXT, text ID, swap, answer, drop ID FILE, back, forward, reload, address, mark, same, gone, screenshot, logs and prefer"); return false;
     }
   }
   if w0 == "tree" || w0 == "layout" || w0 == "status" || w0 == "target" || w0 == "why" { dv_s(out, dv_send(s, op)); return true; }
@@ -803,6 +838,8 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
       }
       if x < 0 || y < 0 || dv_word(at, 2).count > 0 { dv_s(out, at); return false; }
       if !dv_mouse(s, "mouseMoved", x, y) || !dv_mouse(s, "mousePressed", x, y) || !dv_mouse(s, "mouseReleased", x, y) { dv_s(out, "the click failed: "); dv_s(out, cdp_error(s[0].c[..])); return false; }
+      // a page the browser draws answers a press on its next frame: the next operation reads what the press made
+      if s[0].dom { _ := dv_eval(s, DV_TWO_FRAMES); }
       dv_s(out, "tapped "); dv_s(out, id);
       if eq > 0 && dv_word(op, 0) == "tap" { dv_s(out, cast(string) dv_rest(op, 1)[id.count..<dv_rest(op, 1).count]); }
       // the point clicked, the window's (`at` may name it in the canvas's own pixels, and its text is not kept)
@@ -1172,6 +1209,21 @@ dv_session :: (s: [] DvS, path: string, query: string, wh: ArgsSize, ops: [] str
   if resident { rs_release(c, r[..], false); } else { cdp_close(c); }
   return status;
 }
+// Waits until the page drew its first scene (or, drawn by the browser, went idle): false, with why in `why`, when it
+// never did or failed.
+dv_ready :: (s: [] DvS, why: [] Dv) -> bool {
+  start := proc_now_ms(); idle_from := -1;
+  while true {
+    status := dv_eval(s, MEDIA_READY_JS); now := proc_now_ms();
+    if status == "idle" { if idle_from < 0 { idle_from = now; } } else { idle_from = -1; }
+    step := media_ready_step(status, now - start, ifx idle_from < 0 then 0 else now - idle_from, MEDIA_READY_MS);
+    if step == MEDIA_READY { return true; }
+    if step == MEDIA_TIMEOUT { dv_s(why, "the page never drew its first scene: "); return false; }
+    if step == MEDIA_FAILED { dv_s(why, "the page failed to load: "); dv_s(why, status); dv_s(why, " "); return false; }
+    proc_sleep(MEDIA_POLL_MS);
+  }
+  return false;
+}
 DV_FIRST_MS :: 250;   // ms the page draws after the first command, before the operations start (of the agent clock, with one)
 dv_open :: (s: [] DvS, path: string, query: string, wh: ArgsSize) -> int {
   c := s[0].c[..];
@@ -1195,16 +1247,9 @@ dv_open :: (s: [] DvS, path: string, query: string, wh: ArgsSize) -> int {
   }
   q: [8192] u8; k: [1] Jo; jo_start(k[..], q[..]); jo_obj(k[..]); jo_key(k[..], "url"); jo_str(k[..], dv_text(u[..])); jo_end(k[..]);
   if cdp_call(c, "Page.navigate", jo_text(k[..]), CDP_CALL_MS) < 0 { tool_err("drive: "); tool_errln(cdp_error(c)); return 1; }
-  start := proc_now_ms(); idle_from := -1;
-  while true {
-    status := dv_eval(s, MEDIA_READY_JS); now := proc_now_ms();
-    if status == "idle" { if idle_from < 0 { idle_from = now; } } else { idle_from = -1; }
-    step := media_ready_step(status, now - start, ifx idle_from < 0 then 0 else now - idle_from, MEDIA_READY_MS);
-    if step == MEDIA_READY { break; }
-    if step == MEDIA_TIMEOUT { tool_err("drive: the page never drew its first scene: "); tool_errln(dv_text(u[..])); return 1; }
-    if step == MEDIA_FAILED { tool_err("drive: the page failed to load: "); tool_errln(status); return 1; }
-    proc_sleep(MEDIA_POLL_MS);
-  }
+  start := proc_now_ms();
+  why: [1] Dv;
+  if !dv_ready(s, why[..]) { tool_err("drive: "); tool_err(dv_text(why[..])); tool_errln(dv_text(u[..])); return 1; }
   // The realm lists nothing until a driver speaks: speak once, then let a few frames list the world.
   first := dv_send(s, "status");
   if first != "none: idle" {

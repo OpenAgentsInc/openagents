@@ -30,9 +30,15 @@
 // address it goes to is another page. Any other module opened with &path= is told it once too, as event 13 (a
 // project's attachments, project-files-web, learn the project from /projects/SLUG).
 // &as=NAME names the copy in coaxialDoms when a page holds two of one module.
+// The app shell holds the pages it doesn't draw itself in a frame beside the side (shell.js): a page of the shell's
+// (data-shell on its script) opened at the top of the window becomes the shell instead of starting its own module, and
+// the shell opens itself by address with &top, the page's own shell. That shell is told the address with its query.
+import { shellTakes, shellHost, shellHeld, shellGo, shellDrawn } from "./shell.js";
 const named = new URL(import.meta.url).searchParams;
 const script = named.has("app") ? null : document.querySelector("script[data-app]");
+if (shellTakes(script)) await new Promise(() => {});   // this page is the shell's now: its own module never starts
 const app = named.get("app") || script.dataset.app;
+const top = !named.has("app") || named.has("top");   // the page's own module, not a part opened by another
 const root = document.getElementById(named.get("root") || script?.dataset.root || "coaxial-root");
 const fixed = named.get("path");
 const NONE = 0xffff, SVG = "http://www.w3.org/2000/svg", LAYERS = ["fr-bg", "fr-line", "fr-deco"];
@@ -142,7 +148,7 @@ function frame(now) {
   last = now;
   const n = x.dom_frame(state, dt, calm());
   if (n < 0) clear();
-  else if (n > 0) apply(x.dom_out(state), n);
+  else if (n > 0) { apply(x.dom_out(state), n); if (top) shellDrawn(); }   // held in the shell's frame: drawn
   const copy = x.dom_clip_len?.(state) || 0;
   if (copy) { navigator.clipboard?.writeText(text.decode(new Uint8Array(memory.buffer, x.dom_clip(state), copy))).catch(() => {}); x.dom_clip_done(state); }
   if (x.dom_busy(state)) ask(); else last = 0;
@@ -316,7 +322,7 @@ async function start() {
   const go = (at, len, push) => {
     const url = text.decode(new Uint8Array(memory.buffer, at, len));
     if (!url.startsWith("/") || url.startsWith("//")) return;
-    if (!push || fixed) { location.assign(url); return; }
+    if (!push || fixed) { if (!(top && shellGo(url))) location.assign(url); return; }   // in the shell's frame, the shell's
     pushed = true;
     if (url !== location.pathname + location.search) history.pushState(null, "", url);
   };
@@ -345,7 +351,9 @@ async function start() {
   }
   const going = WebAssembly.Module.imports(module).some((i) => i.name === "dom_go"), shell = going && !fixed;
   if (fixed) send(13, 0, fixed);
-  if (shell) { send(13, 0, location.pathname); addEventListener("popstate", () => send(13, 0, location.pathname)); }
+  const here = () => (top ? location.pathname + location.search : location.pathname);
+  if (shell && top && !shellHeld) shellHost(own, root);   // before the first address: the frame it draws talks to it
+  if (shell) { send(13, 0, here()); addEventListener("popstate", () => send(13, 0, here())); }
   root.addEventListener("click", (e) => {
     const drop = e.target.closest?.('button[data-drop]:not([data-drop=""])');
     if (drop && root.contains(drop)) { pick(drop); return; }   // a drop target that names what it takes: a press opens the picker
@@ -386,11 +394,13 @@ async function start() {
   ask();
   // development: the dev server says when a module was rebuilt
   // (a page that opened this host over its canvas listens itself; a world's write is not a rebuild)
-  if (!named.has("app") && (location.hostname === "127.0.0.1" || location.hostname === "localhost")) {
+  // (a page held in the shell's frame listens too: a reload there is the frame's alone; the shell reloads the window
+  // only for a page or its own module, so a world's import or another module's rebuild doesn't take the frame down)
+  if (top && (location.hostname === "127.0.0.1" || location.hostname === "localhost")) {
     try {
       new WebSocket(`ws://${location.host}/coaxial/live`).onmessage = (m) => {
-        let kind = ""; try { kind = JSON.parse(m.data).kind || ""; } catch { /* not JSON: a rebuild */ }
-        if (kind !== "world") location.reload();
+        let said = {}; try { said = JSON.parse(m.data) || {}; } catch { said = { kind: "wasm" }; /* not JSON: a rebuild */ }
+        if (said.kind === "page" || (said.kind === "wasm" && (!said.path || said.path === `/build/${app}.wasm`))) location.reload();
       };
     } catch { /* no dev server */ }
   }

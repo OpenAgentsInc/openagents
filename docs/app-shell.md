@@ -40,77 +40,108 @@ list shows at most 24 rows, as many as its API sends.
   private project whose members include their key, and a published project
   they dropped. Someone logged out gets an empty list.
 - **The shell:** `apps/openagents-web/chat-web.coax`. It draws the side and,
-  beside it, either the chat or, at `/`, nothing.
+  beside it, the chat, Settings, nothing (at `/`), or another module's page
+  held in a frame under its loading screen.
 
-## Why one module, and how navigation works
+## How navigation keeps the side
 
-Each page of the site is its own document with its own module, so a link
-rebuilds whatever is on the page, the side included. To keep the side still,
-the pages it holds have to be drawn by one module that stays loaded while the
-address changes.
+**Since 2026-11-13** (GitHub #13487). The side never unloads while you move
+between the pages it reaches: the home page, the chat, Settings, Projects, the
+worlds' list and a world's editor. Moving between them changes only the room
+right of the side.
 
 The side and the chat's session list are one thing (the list is the side's
-middle), so the shell is the chat's own module rather than a second module
-that would have to be told the chat's sessions. At `/` it draws the side and
-nothing else; at `/chat` (or any other address it is opened on, such as the
-editor's foot) it draws the chat.
+middle), so the shell is the chat's own module, `chat-web`, at the top of the
+window. It draws some pages itself and holds the others in a frame.
 
-- The browser host (`coax/web/dom-host.js`) treats a module that imports
-  `dom_go` as an app shell. It tells the module the address as it starts and
-  after Back or Forward (event 13). A press on a link in the module is
-  reported as a press; when the module answers with a pushed address, the host
-  puts it in the address bar with the History API and the browser does not
-  follow the link. Any other link is followed as usual, so a project, a world
-  and Settings are ordinary page loads.
-- Moving between `/` and `/chat` never rebuilds the side. A direct load of
-  either address works: `/` is `index.html`, `/chat` is `chat/index.html`, and
-  both load the same module.
-- For links that still leave the shell, the side is the same module's drawing
-  with its state kept in the browser (whether it is put away, which folds are
-  shut, with the agents setting, through `dom_keep`), and the skin turns on cross-document view
-  transitions (`@view-transition { navigation: auto }`, with
-  `view-transition-name: side`), so the side stays still between two pages
+- **Pages it draws itself:** the home page (`/`), the chat (`/chat`) and
+  Settings (`/settings`, `/settings/SECTION`). Moving between them changes the
+  module's drawing in place.
+- **Pages it holds:** every other page the side reaches is another module's:
+  Projects and each project's page (`/projects/...`, the GPU), the worlds'
+  list (`/worlds`, `worlds-web`), a world's editor (`/worlds/ID?edit`, the
+  world's GPU module and the editor's shell) and the older settings pages
+  (`/settings/security` and the rest). `ss_held` in `site-side.coax` says which.
+  The shell draws the side and, beside it, that page in a frame
+  (`k_held`, `components/kit/listing.coax`) at the same address. The page in
+  the frame runs as itself.
+- **One frame for each page moved to.** A move to another held page makes a
+  new frame (its id ends in a count), and a move away takes the old frame off
+  the page. The browser then ends everything the page ran: its canvas, its GPU
+  device, its sockets and workers, its listeners and its timers. Nothing is
+  torn down by hand, so nothing is missed. A held page plays a world in the
+  window, not in the frame: a world without `?edit` is a page of its own,
+  with no side.
+- **The loading screen.** Until the held page has drawn, the room right of the
+  side shows the kit's loading screen (`k_loading`, styled by
+  `mono_held_css`): a framed panel in the centre with the page's name, a line
+  and what is loading. A world's page says how far it has come (its own
+  loading screen's words, `ENGINE`, `SHADERS 7/9`, `ASSETS 3.1 / 12 MB`, and
+  the percentage), and the line fills; a page that doesn't say runs the line.
+  The screen goes when the page has drawn: a world's loading screen is gone,
+  or a page without one has drawn its first frame.
+- **Addresses.** A press on a link in the side, or in Settings, is the
+  module's (`cw_keeps`): when the shell draws or holds the address it pushes
+  it with the History API and draws what is there, and the browser does not
+  follow the link. A link inside a held page (a world's Edit button, a
+  project), or the page's own move (a GPU page's action 1), goes to the shell
+  the same way (`shell.js`, `shellGo`). Any other address (a world to play,
+  `/login`, another site) is a page load of the whole window. Back and Forward
+  tell the module the address with its query (event 13) and it draws that.
+- **A full load of any address works.** `/` and `/chat` load the shell's
+  module. A held page names itself on its host's script: `data-shell="page"`
+  (always) or `data-shell="edit"` (a world's page, when the address has
+  `?edit`; `realms.ts` writes it). Opened at the top of the window, such a page
+  becomes the shell (`shellTakes`): it empties itself, opens the chat's module
+  there as the page's own shell, and its own module never starts; the shell
+  then holds the same address in its frame. A held page that is opened inside
+  some other frame, or a world played, starts as before.
+- **A load of the whole window** (a world to play, `/login`) rebuilds the
+  side; its state is kept in the browser (whether it is put away and which
+  folds are shut, through `dom_keep`), and the skin's cross-document view
+  transitions (`view-transition-name: side`) keep it still between two pages
   that both have it.
 
-## The home page and its cost
+The glue is `coax/web/shell.js`, imported by `host.js` and `dom-host.js`. It
+carries words across the frame and decides no address:
 
-`index.html` holds the public page's engine
-(`<script type="module" src="/coaxial/host.js" data-app="newland">`) inside a
-`<template>`, so none of it loads until one request to `/api/auth/account`
-answers. Someone logged in gets the shell (dom-host and `chat-web.wasm`, no
-engine); anyone else gets the template's script, which the release build still
-finds and rewrites as before. A logged-out visitor pays that one small request
-(at most 3 seconds when the API is slow) before the engine starts.
+| Word | From | What |
+| --- | --- | --- |
+| event 13 | the window | the address, with its query, as the shell starts and after Back or Forward |
+| event 14 | the held page | how far it has come (`PERCENT WHAT`), or that it has drawn (slot 1) |
+| event 15 | the held page | an address it goes to: the shell keeps it or the window goes there |
+
+A word from any frame but the one shown now is not heard. The window's title is
+the held page's while one is held.
 
 ## The world editor
 
-The editor (`/worlds/ID?edit`) shows the same side down its left. The editor's
-shell (`metaverse-engine/editor/shell.coax`) gives it a column, `k_dock_side`,
-with a slot, and the page's host (`coax/web/host.js`) opens a second copy of
-the chat's module there with `path=/side`: the side alone, and every place in
-it another page. The editor's own panes are the strip across the top, one side
-on the right (what is selected, then the world's things and actors; the code,
-the assets or the files take its place while one is open) and the agent's pane
-at the foot, where the chat shows without a side. The scene's canvas is the
-room they leave. Putting the side away narrows its column to the button that
-brings it back.
+The editor (`/worlds/ID?edit`) is a held page: the shell's side is to its left.
+The editor's shell (`metaverse-engine/editor/shell.coax`) is told so (event 14,
+`ES_HELD`) and draws no column for the side. The editor's own panes are the
+strip across the top, one side on the right (what is selected, then the world's
+things and actors; the code, the assets or the files take its place while one
+is open) and the agent's pane at the foot, where the chat shows without a side.
+The scene's canvas is the room they leave, inside the frame.
 
-## What each remaining page needs
+Opened anywhere but the shell's frame (a page that holds the editor in a frame
+of its own), the editor still shows the site's side itself: the editor's shell
+gives it a column, `k_dock_side`, and the page's host (`coax/web/host.js`)
+opens a second copy of the chat's module there with `path=/side`, the side
+alone, every place in it another page.
 
-- **The Projects and Worlds lists** live in the side's folds, so the side no
-  longer links to `/projects` or `/worlds`. `/worlds` is a kit page beside the
-  side (`apps/openagents-web/worlds-web.coax`, opened with
-  `dom-host.js?app=worlds-web`). `/projects` is still the GPU galaxy
-  (`projects.coax`) and holds the drop where a new project starts, which the
-  Projects + opens.
-- **The older settings pages and the login** (`/settings/security`, `/data`,
-  `/delete`, `/devices`, `/wallet`, `/agents`, `/lightning`, and `/login`) are
-  GPU pages too; the same applies. Settings itself is in the shell (below), and
-  its Account section links to them.
+## What is left
+
+- **The Projects and Worlds lists** live in the side's folds. A project in the
+  Projects fold and the Projects + (`/projects#new`, the GPU galaxy's drop) are
+  held pages; so is `/worlds`, the kit page `worlds-web`.
+- **Published projects' pages** (`/projects/SLUG` from the API,
+  `coax/web/api/migrations/0038_project_publish.sql`) have no `data-shell`: a
+  full load of one shows no side. Moving to one from inside the shell holds it.
+- **The login** (`/login`) is a page of its own, with no side.
 - **A new page drawn by the browser** joins the shell by adding a view to the
-  shell module (as the home page is) or, when it is large, by being opened into
-  a slot beside the side with `dom-host.js?app=NAME&root=ID`, as the editor
-  opens the chat in its foot.
+  shell module (as Settings is) or, when it is large, as a held page: its
+  module's own page with `data-shell="page"`, and its address in `ss_held`.
 - **Resizing the side by dragging** is not built; the width is fixed at 300 px.
 
 ## Settings

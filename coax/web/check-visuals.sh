@@ -39,15 +39,17 @@ done < <(find "$app" -name '*.html' -not -path '*/build/*' -not -path '*/node_mo
 # is a Coax module drawn by dom-host.js from the /chat components, on ?edit for a dev server
 # or an admin only), a page's own pane's empty mount (host.js paneOpen, #13462: drawn the same way,
 # from the kit), the
-# loading screen (loader.js) and the zone frame (zone-host.js: another Coaxial
-# page opened in place, which draws everything in Coax itself), each line marked.
-for f in "$here/host.js" "$here/render.js" "$here/loader.js" "$here/zone-host.js" "$here/drop.js" "$here"/unlock/*.ts; do
+# loading screen (loader.js), the zone frame (zone-host.js: another Coaxial
+# page opened in place, which draws everything in Coax itself) and the app shell's empty mount (shell.js: the
+# chat's module, drawn by dom-host.js from the kit, takes the page), each line marked.
+for f in "$here/host.js" "$here/render.js" "$here/loader.js" "$here/zone-host.js" "$here/drop.js" "$here/shell.js" "$here"/unlock/*.ts; do
   [[ -e "$f" ]] || continue
   case "$f" in *.test.ts) continue ;; esac
   marked='// (dev only|keyboard field|accessible layer|text fallback|editor shell|page pane)$'
   [[ "$(basename "$f")" == host.js ]] || marked='^$'
   [[ "$(basename "$f")" == loader.js ]] && marked='// loading screen$'
   [[ "$(basename "$f")" == zone-host.js ]] && marked='// zone frame$'
+  [[ "$(basename "$f")" == shell.js ]] && marked='// app shell mount$'
   n="$(grep -E 'innerHTML|insertAdjacentHTML|\.style\.|createElement\("(div|span|button|a|img|form|section|pre|p|h[1-6]|style|svg|canvas|iframe)"\)|className *=' "$f" | grep -cvE "$marked" || true)"
   [[ "$n" -eq 0 ]] || bad "$(basename "$f"): builds or styles visible UI ($n place(s)); draw it in Coax"
 done

@@ -220,12 +220,12 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
   // the chat's gear opens Agents and models and reads the account again
   cw_test_press(s, "settings");
   #assert s[0].page == SW_PAGE && s[0].set[0].section == SW_MODELS && cw_test_go(s) == "/settings/models" && cw_test_door(s) == "/api/chat/account";
-  // a link to a page of its own (the security page) is let go
+  // a link to an older settings page (the security page, another module's): held beside the side
   cw_test_answer(s, 200, "{\"claude\":null}");
   cw_test_path(s, "/settings/account");
   coaxial_chatweb_go_done(s);
   cw_test_press(s, "acct.security.go");
-  #assert coaxial_chatweb_go_len(s) == 0 && s[0].page == SW_PAGE;
+  #assert cw_test_go(s) == "/settings/security" && coaxial_chatweb_go_push(s) && s[0].page == SS_HELD;
   // logged out, the foot is Log in, a page of its own
   o: [1] CwTest; c := o[0].s[..];
   n = coaxial_chatweb_frame(c, 0.016, true);
@@ -240,8 +240,10 @@ cw_settings_event :: (s: [] ChatWeb, kind: int, id: string, length: int) -> bool
   cw_test_path(e, "/settings");
   #assert e[0].page == SW_PAGE && e[0].set[0].section == SW_ACCOUNT;
   cw_test_path(e, "/settings/security");
-  #assert e[0].page == SS_FOOT;   // an older settings page draws its own side
-  // from there, or from the side alone, Settings is a page away
+  #assert e[0].page == SS_HELD;   // an older settings page: another module's, held beside the side
+  // from the chat in the editor's foot, or from the side alone, Settings is a page away
+  cw_test_path(e, "/worlds/splice");
+  #assert e[0].page == SS_FOOT;
   cw_test_press(e, "settings");
   #assert cw_test_go(e) == "/settings/models" && !coaxial_chatweb_go_push(e) && e[0].page == SS_FOOT;
 }

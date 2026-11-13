@@ -281,8 +281,12 @@ import { RenderHost } from "./render.js";
 import {mediaSource} from "./media-source.js";
 import {actionSource} from "./action-source.js";
 import {warmPage, enterPage} from "./zone-host.js";
+import { shellTakes, shellHeld, shellGo, shellDrawn, shellWatch } from "./shell.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
+// The app shell (docs/app-shell.md, shell.js): a page of the shell's (data-shell) opened at the top of the window becomes
+// the shell, which holds this same address in a frame beside the site's side; this host runs in that frame, not here.
+if (shellTakes(script)) await new Promise(() => {});
 const app = (script && script.dataset.app) || "app";
 // A deploy names the files by their content (data-wasm, data-wgsl), so a CDN
 // can keep them for good; in development they are /build/APP.wasm and /APP.wgsl.
@@ -401,6 +405,8 @@ const goldenScene = firstPacks.size > 0 || firstAssets.some((a) => a.kind === "i
 const loading = startLoading({ realm: realmId, assets: firstAssets.length + firstPacks.size,
   textured: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "layers"),
   scene: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "index"), golden });
+// Held in the app shell's frame: the shell's loading screen says what this one says, and goes when it does (shell.js).
+if (shellHeld && loading.on) shellWatch(document.getElementById("coaxial-load"));
 // A claimed realm's maker (ev-claim-realm, docs/metaverse/makers.md): their name, from oa-api, as message
 // MAKER_KIND for the realm to draw ("Made by <name>" and TIP, in Coax); nothing when unclaimed, offline or in a golden shot.
 // Only a realm with a tip page asks (data-maker, coax/web/realms.ts): the rest have no maker to find.
@@ -3212,7 +3218,7 @@ function draw(now) {
       if (probe || dev) globalThis.coaxial.renderStatus = { submitted, readiness: gpu.renderer.readiness, refusal: gpu.renderer.lastRefusal, error: gpu.renderer.error?.message, captureArmed: probeArmed, observed: !!gpu.renderer.observation, probed: gpu.probed };
       if (gpu.snap) { const take = gpu.snap;gpu.snap = null;take(); }
       document.documentElement.classList.add("gpu");
-      if (loading.on) loading.frame(globalThis.coaxial.sceneReady);
+      if (loading.on) loading.frame(globalThis.coaxial.sceneReady); else if (shellHeld) shellDrawn();
       if (gpu.renderer.observation) report(gpu.renderer.observation, gpu.renderer.lastTexture);
       if (!hostTransport&&engine.exports.coaxial_sounds) playSounds(engine.exports);
       after(false);
@@ -3613,7 +3619,7 @@ function draw(now) {
     }
   }
   document.documentElement.classList.add("gpu");
-  if (loading.on) loading.frame(globalThis.coaxial.sceneReady);
+  if (loading.on) loading.frame(globalThis.coaxial.sceneReady); else if (shellHeld) shellDrawn();   // a page with no loading screen: drawn
   if (readback) report(readback, texture);
   if (!hostTransport&&x.coaxial_sounds) playSounds(x);
   if (cellPack) pumpCells(x);
@@ -3972,7 +3978,7 @@ function agentOpen() {
 const SIDE_SLOT = "places.slot";
 let sideAsked = false;
 function sideOpen() {
-  if (sideAsked || !document.getElementById(SIDE_SLOT)) return;
+  if (sideAsked || shellHeld || !document.getElementById(SIDE_SLOT)) return;   // held in the app shell: its side is around this page
   sideAsked = true;
   import(`/coaxial/dom-host.js?app=${AGENT}&root=${SIDE_SLOT}&path=/side&as=side`).catch((error) => { console.error(error); });
 }
@@ -4014,6 +4020,8 @@ function editorCarry(shell, x) {
   shell.after ||= () => { editorActs(); sideOpen(); agentOpen(); editorRoom(); after(false); };
   shell.still = agentMode;
   // ?edit=agent: the page was opened for the agent (a world's card on /chat), so the foot is open from the start
+  // held in the app shell (shell.js), the side is the shell's, around this page: the dock keeps no column for it
+  if (shellHeld && !shell.heldTold) { shell.heldTold = true; shell.exports().dom_event(shell.state(), 14, 0, 0); if (agentMode) shell.now(); else shell.ask(); }
   if (!shell.told) { shell.told = true; if (new URLSearchParams(location.search).get("edit") === "agent") { shell.exports().dom_event(shell.state(), 7, 0, 0); shell.ask(); } }
   // Code (E12, #13421): on the dev server's page the shell is told the page's module (event 9), and asks that
   // server for the realm's own sources. A deployed page's shell is never told, so it has no Code pane.
@@ -4335,12 +4343,14 @@ globalThis.coaxial.voice = voice;
 // page: assigning such an address only changes the hash, and the app would go on showing the old one.
 // A page opened in place by another (zone-host.js, data-zone on its frame) goes on as the whole tab.
 const zoned = (() => { try { return window.top !== window && window.frameElement?.dataset.zone === "1"; } catch { return false; } })();
-const tabLocation = zoned ? window.top.location : location;
+const tabLocation = zoned || shellHeld ? window.top.location : location;   // held in the app shell's frame: another site is the window's
 function navigateTo(path) {
   const to = new URL(path, location.href);
   const samePage = to.origin === location.origin && to.pathname === location.pathname && to.search === location.search;
   // A page warmed with action 18 is handed over in place (zone-host.js) rather than loaded again.
   if (!(samePage && to.hash) && to.origin === location.origin && enterPage(to.pathname + to.search + to.hash, zoneOut)) return;
+  // held in the app shell's frame: the shell keeps the address beside its side, or lets the window go there (shell.js)
+  if (!(samePage && to.hash) && to.origin === location.origin && shellGo(to.pathname + to.search + to.hash)) return;
   tabLocation.assign(to.href);
   if (samePage && to.hash) tabLocation.reload();
 }
@@ -4883,6 +4893,7 @@ async function main() {
       for (const incoming of packIncoming.values()) incoming.cancel();packIncoming.clear();
       document.documentElement.classList.remove("gpu"); loading.fail("SHADERS FAILED TO COMPILE", !gpu);
       if (!gpu) noGpuNotice();
+      shellDrawn();   // held in the shell's frame: what failed shows
       lifeBeacon("load-fail", !navigator.gpu ? "no WebGPU" : !gpu ? "no GPU adapter" : "shaders failed to compile");
       return;
     }
@@ -4893,7 +4904,7 @@ async function main() {
     for (const a of firstAssets) loadAsset(a);
     for (const pack of firstPacks) loadPack(pack);
   } catch (e) {
-    document.documentElement.classList.remove("gpu");
+    document.documentElement.classList.remove("gpu"); shellDrawn();
     loading.fail(`${gpu || /gpu|adapter|device/i.test(e.message) ? "GPU" : "ENGINE"} FAILED: ${e.message}`);
     lifeBeacon("load-fail", `${gpu || /gpu|adapter|device/i.test(e.message) ? "GPU" : "ENGINE"} FAILED: ${e.message}`);
     say(`${app}: ${e.message}`, true);

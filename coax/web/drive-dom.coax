@@ -89,6 +89,28 @@ dd_text_js :: (id: string, out: [] u8) -> string {
   n = dd_put(out, n, "\"); if (!e) return 'no element with that id on the page (tree lists them)'; return e.innerText || '(it says nothing)'; })()");
   return cast(string) out[0..<n];
 }
+// A script about the page's element of this id: BODY runs with it as `e` (null when there is none). An id that would
+// break out of its quotes is refused ("").
+dd_id_js :: (id: string, body: string, out: [] u8) -> string {
+  if id.count == 0 || id.count > 200 { return ""; }
+  for c: id { if c == '"' || c == '\\' || c < 32 { return ""; } }
+  n := dd_put(out, 0, "(() => { const e = document.getElementById(\""); n = dd_put(out, n, id); n = dd_put(out, n, "\"); "); n = dd_put(out, n, body); n = dd_put(out, n, " })()");
+  return ifx n >= out.count then "" else cast(string) out[0..<n];
+}
+// mark ID and same ID: whether an element stays the same node while the page moves (the app shell's side, which a
+// move between its pages never makes again): `mark` sets a mark on the node, `same` answers whether the node there now
+// bears it. A node made again (a page loaded again) bears none.
+DD_MARK :: "if (!e) return 'no element with that id on the page (tree lists them)'; e.__driveMark = true; return 'marked';";
+DD_SAME :: "if (!e) return 'no element with that id on the page (tree lists them)'; return e.__driveMark ? 'the same element as marked' : 'a new element: the one marked was taken away';";
+// gone ID: whether the element shows ("shows") or not ("gone").
+DD_SHOWS :: "return e && e.isConnected ? 'shows' : 'gone';";
+// back, forward: the browser's own Back or Forward, then two frames once the address has changed (or two seconds
+// without it): the address after, or that it stayed.
+dd_history_js :: (back: bool) -> string {
+  return ifx back then "(async () => { const was = location.href; history.back(); for (let i = 0; i < 40 && location.href === was; i++) await new Promise((r) => setTimeout(r, 50)); await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); return location.href === was ? 'the address stayed ' + location.pathname + location.search : 'at ' + location.pathname + location.search; })()"
+    else "(async () => { const was = location.href; history.forward(); for (let i = 0; i < 40 && location.href === was; i++) await new Promise((r) => setTimeout(r, 50)); await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); return location.href === was ? 'the address stayed ' + location.pathname + location.search : 'at ' + location.pathname + location.search; })()";
+}
+DD_ADDRESS :: "location.pathname + location.search";
 // The target script for a row named by what it says: "file=splice-game.coax" is the element whose id
 // starts with "file." and whose own words are exactly that text (a list's row, whatever its place).
 DD_NAMED_TAIL :: "; const e = [...document.querySelectorAll('[id]')].find((x) => x.id.startsWith(P + '.') && x.textContent.trim() === W); if (!e) return 'no element under that id says that (tree lists them)'; e.scrollIntoView({ block: 'nearest', inline: 'nearest' }); const r = e.getBoundingClientRect(); if (!(r.width > 0 && r.height > 0)) return 'that element does not show'; return Math.round(r.left + r.width / 2) + ' ' + Math.round(r.top + r.height / 2); })()";
@@ -172,6 +194,13 @@ dd_has :: (s: string, part: string) -> bool {
   #assert dd_has(dd_answer_js("/api/chat/complete", "\"{}\"", b[..]), "said[\"/api/chat/complete\"] = \"{}\"; globalThis.fetch") && dd_answer_js("api", "\"{}\"", b[..]) == "" && dd_answer_js("/a?b", "\"{}\"", b[..]) == "";
   #assert dd_target_js("", b[..]) == "" && dd_target_js("a\"b", b[..]) == "" && dd_target_js("a\\b", b[..]) == "" && dd_target_js("a\nb", b[..]) == "";
   #assert dd_px("0") == 0 && dd_px("1280") == 1280 && dd_px("-1") == -1 && dd_px("") == -1 && dd_px("123456") == -1 && dd_px("1.5") == -1;
+}
+#test "the scripts about one element name it, and refuse an id that would break out of its quotes" {
+  b: [600] u8;
+  #assert dd_id_js("side", DD_MARK, b[..]) == "(() => { const e = document.getElementById(\"side\"); if (!e) return 'no element with that id on the page (tree lists them)'; e.__driveMark = true; return 'marked'; })()";
+  #assert dd_has(dd_id_js("loading", DD_SHOWS, b[..]), "getElementById(\"loading\"); return e && e.isConnected") && dd_id_js("a\"b", DD_SAME, b[..]) == "" && dd_id_js("", DD_SAME, b[..]) == "";
+  t: [16] u8; #assert dd_id_js("side", DD_SAME, t[..]) == "";
+  #assert dd_has(dd_history_js(true), "history.back()") && dd_has(dd_history_js(false), "history.forward()");
 }
 #test "the text script names the element and refuses an id that would break out of its quotes" {
   b: [600] u8;

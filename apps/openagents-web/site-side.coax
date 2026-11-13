@@ -16,7 +16,7 @@ ss_place_of :: (path: string) -> int {
   hrefs := SS_HREFS;
   for k: 0..<SS_PLACES {
     h := hrefs[k];
-    if path.count >= h.count && cast(string) path[0..<h.count] == h && (path.count == h.count || path[h.count] == '/' || path[h.count] == '?') { return k; }
+    if path.count >= h.count && cast(string) path[0..<h.count] == h && (path.count == h.count || path[h.count] == '/' || path[h.count] == '?' || path[h.count] == '#') { return k; }
   }
   return -2;
 }
@@ -27,12 +27,49 @@ ss_in_shell :: (path: string) -> bool { p := ss_place_of(path); return p == SS_H
 // editor opens at "/side"; from there every place is another page). A page of a place that holds the side
 // beside its own content names its place after "/side" ("/side/projects" on /projects), so the side shows it as
 // the place you are in (ss_side_place).
-SS_FOOT :: -3; SS_SIDE :: -4;
+// A page the shell holds (SS_HELD) is another module's page: the shell draws the side and, beside it, that page in a
+// frame (ss_held).
+SS_FOOT :: -3; SS_SIDE :: -4; SS_HELD :: -5;
 ss_page_of :: (path: string) -> int {
   if path == "/side" || (path.count > 6 && cast(string) path[0..<6] == "/side/") { return SS_SIDE; }
+  if ss_held(path) { return SS_HELD; }
   p := ss_place_of(path);
   if p == SS_HOME || p == SS_CHATS { return p; }
   return SS_FOOT;
+}
+
+// Whether the shell holds an address (path and query) as a page of another module beside the side, in a frame, so
+// moving to it keeps the side (docs/app-shell.md): Projects and every project's page, the list of worlds, a world's
+// editor (/worlds/ID?edit; a world played, without ?edit, is a page of its own with no side), and the older settings
+// pages under /settings/ (the shell's own sections, settings-web.coax's, are read before this).
+ss_held :: (path: string) -> bool {
+  e := 0;
+  while e < path.count && path[e] != '?' && path[e] != '#' { e += 1; }
+  p := cast(string) path[0..<e];
+  q := ifx e < path.count && path[e] == '?' then cast(string) path[e + 1..<path.count] else "";
+  if ss_under(p, "/projects") || p == "/worlds" || p == "/worlds/" || ss_under(p, "/worlds/new") || (ss_under(p, "/settings/") && p.count > 10) { return true; }
+  if p.count <= 8 || cast(string) p[0..<8] != "/worlds/" { return false; }
+  id := cast(string) p[8..<p.count];
+  if id.count > 0 && id[id.count - 1] == '/' { id = cast(string) id[0..<id.count - 1]; }
+  return ss_world_id_ok(id) && ss_has_word(q, "edit");
+}
+// Whether a path is `base` or under it ("/projects", "/projects/coax"; not "/projectsx").
+ss_under :: (p: string, base: string) -> bool {
+  if p.count < base.count || cast(string) p[0..<base.count] != base { return false; }
+  return p.count == base.count || base[base.count - 1] == '/' || p[base.count] == '/';
+}
+// Whether a query ("a=1&edit") names `key`, bare or with a value.
+ss_has_word :: (q: string, key: string) -> bool {
+  at := 0;
+  while at < q.count {
+    e := at;
+    while e < q.count && q[e] != '&' && q[e] != '#' { e += 1; }
+    w := cast(string) q[at..<e];
+    if w == key || (w.count > key.count && cast(string) w[0..<key.count] == key && w[key.count] == '=') { return true; }
+    if e < q.count && q[e] == '#' { return false; }
+    at = e + 1;
+  }
+  return false;
 }
 
 // The place the side alone stands in: "/side/projects" is on Projects; "/side" alone, or anything else, on none (-2).
@@ -146,7 +183,17 @@ SS_NEW_LABELS :: [3] string.["New chat", "New project", "New world"];
   #assert ss_place_of("/projects") == SS_PROJECTS && ss_place_of("/projects/coax") == SS_PROJECTS && ss_place_of("/worlds/new") == SS_WORLDS;
   #assert ss_place_of("/chatter") == -2 && ss_place_of("/chat-gpu") == -2 && ss_place_of("/settings") == -2;
   #assert ss_in_shell("/") && ss_in_shell("/chat") && !ss_in_shell("/projects") && !ss_in_shell("/worlds") && !ss_in_shell("/login");
-  #assert ss_page_of("/") == SS_HOME && ss_page_of("/chat/x") == SS_CHATS && ss_page_of("/worlds/splice") == SS_FOOT && ss_page_of("/projects") == SS_FOOT && ss_page_of("/side") == SS_SIDE;
+  #assert ss_page_of("/") == SS_HOME && ss_page_of("/chat/x") == SS_CHATS && ss_page_of("/worlds/splice") == SS_FOOT && ss_page_of("/projects") == SS_HELD && ss_page_of("/side") == SS_SIDE;
+}
+#test "the shell holds Projects, the worlds' list, a world's editor and the older settings pages; a world played is a page of its own" {
+  #assert ss_held("/projects") && ss_held("/projects/coax") && ss_held("/projects?x=1") && !ss_held("/projectsx") && !ss_held("/project");
+  #assert ss_held("/worlds") && ss_held("/worlds/") && ss_held("/worlds?sort=new") && !ss_held("/worldsx") && ss_held("/worlds/new");
+  #assert ss_held("/worlds/splice?edit") && ss_held("/worlds/splice/?edit") && ss_held("/worlds/splice?edit=agent") && ss_held("/worlds/splice?x=1&edit") && ss_held("/worlds/splice?edit#here");
+  #assert !ss_held("/worlds/splice") && !ss_held("/worlds/splice?editor") && !ss_held("/worlds/splice?x#edit") && !ss_held("/worlds/Bad?edit") && !ss_held("/worlds/a/b?edit");
+  #assert ss_held("/settings/security") && ss_held("/settings/devices?x") && !ss_held("/settings/") && !ss_held("/settings") && !ss_held("/settingsx/a");
+  #assert !ss_held("/") && !ss_held("/chat") && !ss_held("/login") && !ss_held("");
+  #assert ss_page_of("/worlds/splice?edit") == SS_HELD && ss_page_of("/worlds") == SS_HELD && ss_page_of("/side/worlds") == SS_SIDE && ss_page_of("/chat?edit") == SS_CHATS;
+  #assert ss_has_word("edit", "edit") && ss_has_word("a&edit=1", "edit") && !ss_has_word("edits", "edit") && !ss_has_word("", "edit") && !ss_has_word("a=edit", "edit");
 }
 #test "the side alone on a place's page lights that place, and nothing on any other" {
   #assert ss_page_of("/side/projects") == SS_SIDE && ss_page_of("/side/worlds") == SS_SIDE && ss_page_of("/sidebar") == SS_FOOT && ss_page_of("/side/") == SS_FOOT;

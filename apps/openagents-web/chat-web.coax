@@ -46,6 +46,7 @@
 //   coax/bin/coax test apps/openagents-web/chat-web.coax
 
 #load "../../components/kit/frames.coax";
+#load "../../components/kit/listing.coax";      // k_held, k_loading: another page held beside the side, and its loading screen
 #load "chat-tools.coax";                     // tool calls: what each is called, how it stands, a run drawn (#13481)
 #load "site-side.coax";                      // the side's rules: places, who is logged in, search, sections
 #load "settings-web.coax";                   // Settings in the shell: its sections, its search, Account, Limits, About
@@ -143,6 +144,14 @@ CW_KEPT :: 12;
 // The address the page is at (dom-host.js), as it starts and after Back or Forward: "/" is the home page, the app
 // shell with nothing beside its side; any other is the chat (docs/app-shell.md).
 CW_PATH :: 13;
+// The page held beside the side (SS_HELD, docs/app-shell.md), from the host: how far it has come ("PERCENT WHAT", the
+// realm's loading screen's words, or empty when not known), or that it has drawn (the slot is 1). Only the frame shown
+// now is heard.
+CW_FRAME :: 14;
+// An address the held page goes to (a link pressed in it, its own action 1): the shell holds it or draws it, and pushes
+// it; anything else, the browser goes to.
+CW_GOTO :: 15;
+CW_HELD :: 320;        // bytes of a held page's address
 CW_PLANNED :: 8;       // an action for the page that opened this conversation: a world.plan.v1 for its editor
 
 ChatWeb :: struct {
@@ -229,7 +238,11 @@ ChatWeb :: struct {
   projects: [SS_WORLDS_MAX] SsWorld; projects_n: int; projects_asked: bool;   // the projects they are in, under Projects
   shut: int;                         // the side's folds shut: bit k for place k (kept in this browser)
   out_due: bool;                     // Log out was pressed: it goes when no other request is out
-  go: [96] u8; go_n: int; go_push: bool;   // an address for the host: pushed (the shell stays) or gone to
+  go: [CW_HELD] u8; go_n: int; go_push: bool;   // an address for the host: pushed (the shell stays) or gone to
+  held: [CW_HELD] u8; held_n: int;   // the page held beside the side (SS_HELD): its address
+  held_k: int;                       // which frame holds it: each page moved to is a new frame (its id ends in this)
+  held_drawn: bool;                  // the page has drawn: the loading screen is gone
+  held_step: [64] u8; held_step_n: int; held_share: f32;   // what is loading now, and how far (below 0: not known)
   marking: bool;                     // Copy shows its check: build again when it gives way
   doc: [1] MdDoc;
   pool: [CW_POOL] u8; pool_n: int;
@@ -406,6 +419,60 @@ cw_side_keeps :: (s: [] ChatWeb, k: int, claude: bool, sec: int) -> bool {
   }
   return before < CW_RECENT;
 }
+// The page an address is, beside the side: Settings' section, the home page, the chat, a page held in the frame, or (a
+// copy of this module in another page) the chat alone or the side alone.
+cw_at :: (s: [] ChatWeb, path: string) {
+  sec := sw_section_of(path);
+  if sec >= 0 { s[0].page = SW_PAGE; s[0].set[0].section = sec; s[0].set[0].menu = 0; }
+  else { s[0].page = ss_page_of(path); }
+  s[0].here = ss_side_place(path);
+  if s[0].page == SS_HELD { cw_hold(s, path); }
+}
+// The page held beside the side is the one at `path`: a new frame for it, and its loading screen until it draws.
+cw_hold :: (s: [] ChatWeb, path: string) {
+  if path.count > CW_HELD || (s[0].held_n > 0 && cast(string) s[0].held[0..<s[0].held_n] == path) { return; }
+  s[0].held_n = cw_put(s[0].held[..], 0, path);
+  s[0].held_k += 1; s[0].held_drawn = false; s[0].held_step_n = 0; s[0].held_share = -1;
+}
+// An address the shell keeps: it pushes it and draws what is there (true), or (false) it is another page, which the
+// browser goes to. In a copy of this module inside another page (the side alone, the chat alone) nothing is kept.
+cw_keeps :: (s: [] ChatWeb, url: string) -> bool {
+  if s[0].page == SS_SIDE || s[0].page == SS_FOOT || url.count == 0 || url.count > CW_HELD || url[0] != '/' { return false; }
+  p := ss_page_of(url);
+  if sw_section_of(url) < 0 && p != SS_HELD && p != SS_CHATS && !(p == SS_HOME && s[0].me_n > 0) { return false; }
+  cw_at(s, url);
+  cw_go_to(s, url, true);
+  return true;
+}
+// The held page's name, for its loading screen: the world's, when it is one they may edit; else its place's.
+cw_held_name :: (s: [] ChatWeb) -> string {
+  path := cast(string) s[0].held[0..<s[0].held_n];
+  for w: 0..<s[0].worlds_n {
+    id := cast(string) s[0].worlds[w].id[0..<s[0].worlds[w].id_n];
+    if path.count > 8 + id.count && cast(string) path[8..<8 + id.count] == id && cast(string) path[0..<8] == "/worlds/" && (path[8 + id.count] == '?' || path[8 + id.count] == '/') { return cast(string) s[0].worlds[w].name[0..<s[0].worlds[w].name_n]; }
+  }
+  for j: 0..<s[0].projects_n {
+    href: [80] u8; hn := ss_project_href(cast(string) s[0].projects[j].id[0..<s[0].projects[j].id_n], href[..]);
+    if path.count >= hn && cast(string) path[0..<hn] == cast(string) href[0..<hn] && (path.count == hn || path[hn] == '?' || path[hn] == '#' || path[hn] == '/') { return cast(string) s[0].projects[j].name[0..<s[0].projects[j].name_n]; }
+  }
+  p := ss_place_of(path); names := SS_NAMES;
+  if p >= 0 { return names[p]; }
+  return ifx path.count > 9 && cast(string) path[0..<10] == "/settings/" then "Settings" else "OpenAgents";
+}
+// The held page's word of how far it has come: "PERCENT WHAT", or nothing when that is not known.
+cw_held_heard :: (s: [] ChatWeb, said: string) {
+  i := 0; pct := 0;
+  while i < said.count && said[i] >= '0' && said[i] <= '9' && i < 3 { pct = pct * 10 + cast(int) (said[i] - '0'); i += 1; }
+  if i == 0 || i >= said.count || said[i] != ' ' { s[0].held_share = -1; s[0].held_step_n = 0; return; }
+  s[0].held_share = cast(f32) (ifx pct > 100 then 100 else pct) / 100.0;
+  s[0].held_step_n = cw_put(s[0].held_step[..], 0, cast(string) said[i + 1..<said.count]);
+}
+// The address a link on the page goes to ("" for a node that is not one).
+cw_href_of :: (s: [] ChatWeb, id: string) -> string {
+  at := tr_find(s[0].tree[..], id);
+  if at < 0 || s[0].tree[0].nodes[at].tag != TG_A { return ""; }
+  return tr_attr_of(s[0].tree[..], at, AT_HREF);
+}
 // The address for the host: pushed, the shell stays and draws it; else the browser goes there.
 cw_go_to :: (s: [] ChatWeb, url: string, push: bool) { s[0].go_n = cw_put(s[0].go[..], 0, url); s[0].go_push = push; }
 // The shell shows the chat, at its own address.
@@ -526,8 +593,15 @@ cw_build :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
   tr_begin(t);
   s[0].marking = false;
-  page := tr_open(t, "chat", TG_MAIN, ifx s[0].page == SS_HOME || s[0].page == SS_SIDE || s[0].page == SW_PAGE then "home" else "chat");
+  page := tr_open(t, "chat", TG_MAIN, ifx s[0].page == SS_HOME || s[0].page == SS_SIDE || s[0].page == SW_PAGE || s[0].page == SS_HELD then "home" else "chat");
   cw_side(s);
+  if s[0].page == SS_HELD {   // another page, held in a frame beside the side, under its loading screen until it draws
+    ida: [UI_ID] u8;
+    name := cw_held_name(s);
+    f := k_held(t, tr_join(ida[..], "held.", s[0].held_k), cast(string) s[0].held[0..<s[0].held_n], name);
+    if !s[0].held_drawn { l := k_loading(t, u, "loading", name, cast(string) s[0].held_step[0..<s[0].held_step_n], s[0].held_share); }
+    tr_close(t); return;
+  }
   if s[0].page == SS_HOME || s[0].page == SS_SIDE { tr_close(t); return; }   // the home page, or the editor's left: the side, and nothing beside it
   if s[0].page == SW_PAGE { cw_settings_page(s); tr_close(t); return; }   // Settings, beside the side
   if s[0].count > 0 || s[0].lrun || s[0].error_n > 0 { cw_transcript(s); }   // an error shows in a new chat too
@@ -1330,7 +1404,7 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   if !s[0].dirty && !s[0].animating { return 0; }
   d := s[0].dom[..];
   if !d[0].styled {
-    n := mono_work_css(s[0].css[..], mono_set_css(s[0].css[..], mono_css(s[0].css[..])));
+    n := mono_held_css(s[0].css[..], mono_work_css(s[0].css[..], mono_set_css(s[0].css[..], mono_css(s[0].css[..]))));
     dm_style(d, cast(string) s[0].css[0..<n]);
   }
   ui_begin(s[0].ui[..], s[0].time, reduced);
@@ -1367,10 +1441,19 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   if kind == CW_PATH {
     n := ifx length < 0 || length > CW_INBOX then 0 else length;
     path := cast(string) s[0].inbox[0..<n];
-    sec := sw_section_of(path);
-    if sec >= 0 { s[0].page = SW_PAGE; s[0].set[0].section = sec; s[0].set[0].menu = 0; }
-    else { s[0].page = ss_page_of(path); }
-    s[0].here = ss_side_place(path);
+    cw_at(s, path);
+    s[0].dirty = true; return;
+  }
+  if kind == CW_FRAME {
+    if s[0].page != SS_HELD { return; }
+    n := ifx length < 0 || length > CW_INBOX then 0 else length;
+    if slot == 1 { s[0].held_drawn = true; } else { cw_held_heard(s, cast(string) s[0].inbox[0..<n]); }
+    s[0].dirty = true; return;
+  }
+  if kind == CW_GOTO {
+    n := ifx length < 0 || length > CW_INBOX then 0 else length;
+    url := cast(string) s[0].inbox[0..<n];
+    if !cw_keeps(s, url) && url.count > 0 && url.count <= CW_HELD && url[0] == '/' { cw_go_to(s, url, false); }   // another page: the browser goes
     s[0].dirty = true; return;
   }
   if kind == CW_WORLD {
@@ -1414,7 +1497,8 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     s[0].shut ^= 1 << k; cw_keep(s);
   }
   else if kind == CW_CLICK && (id == "fold.projects.add" || id == "fold.worlds.add") {
-    news := SS_NEW_HREFS; cw_go_to(s, news[ifx id == "fold.worlds.add" then SS_WORLDS else SS_PROJECTS], false);
+    news := SS_NEW_HREFS; url := news[ifx id == "fold.worlds.add" then SS_WORLDS else SS_PROJECTS];
+    if !cw_keeps(s, url) { cw_go_to(s, url, false); }   // the shell holds a new world's and a new project's pages
   }
   else if kind == CW_CLICK && id == "fold.chats.add" {
     cw_clear(s); s[0].sel_n = 0; s[0].csel_n = 0; s[0].view = CW_CHAT;
@@ -1466,6 +1550,9 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   }
   else if kind == CW_CLICK && id == "claude.save" { cw_connect(s); }
   else if kind == CW_CLICK && id == "claude.remove" { if cw_go(s, CF_UNKEY, "/api/chat/key_remove", "{}") { s[0].note_n = 0; } }
+  // any other link the shell keeps (a place, a world's editor, an older settings page): its address is pushed and
+  // drawn beside the side, so the side stays; a link it doesn't keep, the browser follows
+  else if kind == CW_CLICK && cw_keeps(s, cw_href_of(s, id)) {}
   else if kind == CW_CLICK && cq_press(id) == 1 { s[0].opens_n = cq_toggle(s[0].opens[..], s[0].opens_n, id); }
   else if kind == CW_CLICK && cq_press(id) == 2 { cw_copy_call(s, id); }
   else if kind == CW_CLICK && cw_copy_of(id) < 0 && id.count > 5 && cast(string) id[id.count - 5..<id.count] == ".copy" {
@@ -2286,6 +2373,58 @@ cw_test_path :: (s: [] ChatWeb, path: string) {
   n := coaxial_chatweb_frame(s, 0.016, true);
 }
 cw_test_go :: (s: [] ChatWeb) -> string { return cast(string) s[0].go[0..<s[0].go_n]; }
+cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  coaxial_chatweb_event(s, kind, slot, text.count);
+  n := coaxial_chatweb_frame(s, 0.016, true);
+}
+
+#test "another module's page is held beside the side in a new frame, under a loading screen until it draws; the side stays" {
+  h: [1] CwTest; s := h[0].s[..];
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  cw_test_answer(s, 200, "logged_in 1\naccount acct_1\nemail a@example.com\n");
+  cw_test_path(s, "/chat");
+  t := s[0].tree[..];
+  side := tr_find(t, "side");
+  #assert side >= 0 && s[0].page == SS_CHATS;
+  // the list of worlds (Back, or the Worlds + of a page held before): held in a frame, its loading screen over it
+  cw_test_path(s, "/worlds"); n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].page == SS_HELD && coaxial_chatweb_go_len(s) == 0;
+  f := tr_find(t, "held.1");
+  #assert f >= 0 && t[0].nodes[f].tag == TG_IFRAME && tr_attr_of(t, f, AT_SRC) == "/worlds" && tr_find(t, "side") >= 0 && tr_find(t, "composer") < 0;
+  #assert tr_find(t, "loading") >= 0 && tr_text_of(t, tr_find(t, "loading.n")) == "Worlds" && tr_attr_of(t, tr_find(t, "loading.l"), AT_STATE) == "wait";
+  // how far it has come, then that it drew: the loading screen goes, the frame stays
+  cw_test_held(s, CW_FRAME, 0, "40 ASSETS 3.1 / 12 MB");
+  #assert tr_text_of(t, tr_find(t, "loading.s")) == "ASSETS 3.1 / 12 MB" && !tr_has(t, tr_find(t, "loading.l"), AT_STATE) && s[0].held_share > 0.39 && s[0].held_share < 0.41;
+  cw_test_held(s, CW_FRAME, 1, "");
+  #assert tr_find(t, "loading") < 0 && tr_find(t, "held.1") >= 0;
+  // the held page's own link to a world's editor: kept, a new frame, its loading screen back
+  cw_test_held(s, CW_GOTO, 0, "/worlds/splice?edit");
+  #assert cw_test_go(s) == "/worlds/splice?edit" && coaxial_chatweb_go_push(s) && tr_find(t, "held.1") < 0 && tr_attr_of(t, tr_find(t, "held.2"), AT_SRC) == "/worlds/splice?edit" && tr_find(t, "loading") >= 0;
+  coaxial_chatweb_go_done(s);
+  // a word from a frame no longer shown is not heard; the same address again is the same frame
+  cw_test_path(s, "/worlds/splice?edit");
+  #assert tr_find(t, "held.2") >= 0 && tr_find(t, "held.3") < 0;
+  // a world played is a page of its own: the browser goes there
+  cw_test_held(s, CW_GOTO, 0, "/worlds/splice");
+  #assert cw_test_go(s) == "/worlds/splice" && !coaxial_chatweb_go_push(s) && s[0].page == SS_HELD;
+  coaxial_chatweb_go_done(s);
+  cw_test_held(s, CW_GOTO, 0, "https://evil.example/");
+  #assert coaxial_chatweb_go_len(s) == 0;
+  // Back to the chat: the frame is taken away, and with it the page it held
+  cw_test_path(s, "/chat");
+  #assert s[0].page == SS_CHATS && tr_find(t, "held.2") < 0 && tr_find(t, "composer") >= 0 && tr_find(t, "side") >= 0;
+  cw_test_held(s, CW_FRAME, 1, "");
+  #assert s[0].page == SS_CHATS;
+  // a direct load of a held address lands on it
+  cw_test_path(s, "/settings/devices");
+  #assert s[0].page == SS_HELD && tr_attr_of(t, tr_find(t, "held.3"), AT_SRC) == "/settings/devices" && tr_text_of(t, tr_find(t, "loading.n")) == "Settings";
+  // the side alone in another page keeps nothing: every link there is another page
+  cw_test_path(s, "/side");
+  coaxial_chatweb_go_done(s);
+  cw_test_press(s, "place.worlds");
+  #assert coaxial_chatweb_go_len(s) == 0 && s[0].page == SS_SIDE;
+}
 
 #test "the side is always there: its head, then Chats, Projects and Worlds as folds with a + each, Chats current, and who is logged in at its foot" {
   ts: [1] CwTest; s := ts[0].s[..];
@@ -2332,10 +2471,12 @@ cw_test_go :: (s: [] ChatWeb) -> string { return cast(string) s[0].go[0..<s[0].g
   coaxial_chatweb_event(k, CW_KEPT, 0, w.count);
   #assert k[0].shut == 5;
   cw_test_press(s, "fold.worlds.add");
-  #assert cw_test_go(s) == "/worlds/new" && !coaxial_chatweb_go_push(s);
+  #assert cw_test_go(s) == "/worlds/new" && coaxial_chatweb_go_push(s) && s[0].page == SS_HELD;
   coaxial_chatweb_go_done(s);
   cw_test_press(s, "fold.projects.add");
-  #assert cw_test_go(s) == "/projects#new" && !coaxial_chatweb_go_push(s);
+  #assert cw_test_go(s) == "/projects#new" && coaxial_chatweb_go_push(s) && s[0].page == SS_HELD;
+  n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_text_of(s[0].tree[..], tr_find(s[0].tree[..], "loading.n")) == "Projects";
   coaxial_chatweb_go_done(s);
   cw_test_path(s, "/");
   cw_test_press(s, "fold.chats.add");
@@ -2354,12 +2495,15 @@ cw_test_go :: (s: [] ChatWeb) -> string { return cast(string) s[0].go[0..<s[0].g
   #assert tr_class(t, 0) == "chat" && tr_find(t, "composer") >= 0 && coaxial_chatweb_go_len(s) == 0;
   cw_test_press(s, "side.h.home");
   #assert s[0].page == SS_HOME && cw_test_go(s) == "/" && coaxial_chatweb_go_push(s);
-  // Back: the host says the address; a project is a page of its own, so the shell lets its link go
+  // Back: the host says the address; a project is another module's page, which the shell holds beside the side
   cw_test_path(s, "/chat");
   #assert s[0].page == SS_CHATS;
   coaxial_chatweb_go_done(s);
   cw_test_press(s, "project.coax");
-  #assert coaxial_chatweb_go_len(s) == 0 && s[0].page == SS_CHATS;
+  #assert cw_test_go(s) == "/projects/coax" && coaxial_chatweb_go_push(s) && s[0].page == SS_HELD;
+  coaxial_chatweb_go_done(s); n = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_text_of(t, tr_find(t, "loading.n")) == "Coax";
+  cw_test_path(s, "/chat");
   // in the editor's foot the address is the world's: the chat alone, as the editor draws the side itself
   cw_test_path(s, "/worlds/splice"); n = coaxial_chatweb_frame(s, 0.016, true);
   #assert s[0].page == SS_FOOT && tr_class(t, 0) == "chat" && tr_find(t, "composer") >= 0 && tr_find(t, "side") < 0 && tr_find(t, "side.show") < 0;

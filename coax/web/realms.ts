@@ -293,9 +293,7 @@ ${links}
 </ul>
 <p><a href="/worlds/index.md">Worlds as text</a></p>
 </main>
-<p id="side-root"></p>
-<script type="module" src="/coaxial/dom-host.js" data-app="worlds-web" data-root="page-root"></script>
-<script type="module" src="/coaxial/dom-host.js?app=chat-web&amp;root=side-root&amp;path=/side/worlds"></script>
+<script type="module" src="/coaxial/dom-host.js" data-app="worlds-web" data-root="page-root" data-shell="page"></script>
 </body>
 </html>
 `
@@ -389,7 +387,7 @@ ${loaderMarkup(r.title, `/worlds/${r.slug}/index.md`)}
 <main>
 <h1>${t}</h1><p><a href="/worlds/${r.slug}/index.md">${t}</a></p>${existsSync(join(SITE, "realms", r.slug, "map.fallback")) ? "\n" + readFileSync(join(SITE, "realms", r.slug, "map.fallback"), "utf8").trimEnd() : ""}
 </main>
-<script type="module" src="/coaxial/host.js" data-app="${r.module}"${renderAttributes(r.slug, r.module)}${slot}${assets}></script>
+<script type="module" src="/coaxial/host.js" data-app="${r.module}" data-shell="edit"${renderAttributes(r.slug, r.module)}${slot}${assets}></script>
 ${r.project_asset ? projectScript(r.module, r.project_asset) : ""}</body>
 </html>
 `
@@ -628,7 +626,7 @@ function domainPlay(r: Realm, list: World[] = worlds()): string {
   const d = r.domain!, c = d.create ? list.find((w) => w.realm?.slug === d.create)?.realm : undefined
   const html = page(c ? { ...r, arrival: c.arrival, ui_font_src: c.ui_font_src, ui_font_family: c.ui_font_family, ui_title_font_src: c.ui_title_font_src, ui_title_font_family: c.ui_title_font_family, ui_title_font_weight: c.ui_title_font_weight } : r, false)
   const head = html.slice(html.indexOf("<head>") + 7, html.indexOf("<script>"))
-  return html.replace(head, domainHead(r, d.title, "/play", "noindex, nofollow") + "\n")
+  return html.replace(head, domainHead(r, d.title, "/play", "noindex, nofollow") + "\n").replace(' data-shell="edit"', "")   // a realm's own domain has no app shell
     .replaceAll(`/worlds/${r.slug}/index.md`, `/worlds/${r.slug}/domain/index.md`)
     .replace(/(<b class="ln">)[^<]*(<\/b>)/, `$1${esc(d.title)}$2`).replace(/aria-label="Loading [^"]*"/, `aria-label="Loading ${esc(d.title)}"`)
     .replace(/READ ABOUT [^<]*/, `READ ABOUT ${esc(d.title)}`).replace(/<h1>[^]*?<\/h1><p><a href="([^"]+)">[^<]*<\/a>/, `<h1>${esc(d.title)}</h1><p><a href="$1">${esc(d.title)}</a>`)
@@ -688,7 +686,8 @@ if (import.meta.main) {
     [join(SITE, "realms", "index.md"), listMarkdown(list)], [join(SITE, "realms", "index.html"), listPage(list)]]
   for (const w of list) if (w.realm) out.push([join(SITE, "realms", w.realm.slug, "index.html"), page(w.realm, w.listed !== false)])
   // short: the same page at a top-level path (openagents.com/druid); the site bucket serves DIR/index.html for /DIR
-  for (const w of list) if (w.realm?.short) out.push([join(SITE, w.realm.short.slice(1), "index.html"), page(w.realm, w.listed !== false)])
+  // (with no app shell: the shell holds a world's editor at its own address, /worlds/SLUG?edit)
+  for (const w of list) if (w.realm?.short) out.push([join(SITE, w.realm.short.slice(1), "index.html"), page(w.realm, w.listed !== false).replace(' data-shell="edit"', "")])
   for (const w of list) if (w.realm?.domain) out.push(...domainPages(w.realm, list).map(([f, t]) => [join(SITE, "realms", w.realm!.slug, "domain", f), t] as [string, string]))
   const behind: string[] = []
   for (const [file, text] of out) {

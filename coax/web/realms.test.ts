@@ -31,7 +31,7 @@ test("the tagged table passes, and every realm has a style and a clock", () => {
 test("manifest realms preserve reviewed shared and legacy renderer adoption", () => {
   for (const world of worlds()) if (world.realm) {
     if (world.realm.slug === "anime-lab") {
-      expect(page(world.realm)).toContain('data-app="animelab"')
+      expect(page(world.realm)).toContain('data-app="animelab" data-shell="edit"')
       expect(page(world.realm)).not.toContain('data-render=')
       expect(page(world.realm)).not.toContain('data-render-profile=')
       continue
@@ -248,9 +248,9 @@ test("/worlds lists the listed realms: its rows, its text and its links", () => 
     expect(listMarkdown(list)).toContain(`(https://openagents.com/worlds/${r.slug})`)
     expect(listPage(list)).toContain(`<a href="/worlds/${r.slug}">`)
   }
-  // a page of the kit beside the site's side, lit on Worlds (worlds-web.coax, docs/app-shell.md)
-  expect(listPage(list)).toContain('<script type="module" src="/coaxial/dom-host.js" data-app="worlds-web" data-root="page-root"></script>')
-  expect(listPage(list)).toContain('src="/coaxial/dom-host.js?app=chat-web&amp;root=side-root&amp;path=/side/worlds"')
+  // a page of the kit, held by the app shell beside the site's side (worlds-web.coax, docs/app-shell.md, shell.js)
+  expect(listPage(list)).toContain('<script type="module" src="/coaxial/dom-host.js" data-app="worlds-web" data-root="page-root" data-shell="page"></script>')
+  expect(listPage(list)).not.toContain("side-root")
   expect(listPage(list)).not.toContain("/coaxial/host.js")
   // each row's picture is its card when the site has the file, and never the default card
   for (const r of shown) {
@@ -281,6 +281,6 @@ test("a realm's own domain: a plain host, no openagents.com, and pages under the
     expect(html).toContain(`<link rel="icon" type="image/svg+xml" href="/worlds/${r.slug}/domain/icon.svg">`)
     expect(html).toContain(`content="https://${r.domain!.host}/worlds/${r.slug}/domain/card.jpg"`)
     if (file === "index.html") { expect(html).toContain(`href="${r.domain!.entry}" data-play>PLAY NOW</a>`); expect(html).toContain(`history.pushState(null, "", ENTRY)`); expect(html).toContain("Hosted by OpenAgents</footer>") }
-    if (file === "play/index.html") { expect(html).toContain(`data-app="${r.module}"`); expect(html).toContain(`data-ui-font-family="CharacterCreateARKaiC"`); expect(html).toContain("cull:/everglade2-cull.wgsl"); expect(html).toContain(`<title>${r.domain!.title}</title>`) }
+    if (file === "play/index.html") { expect(html).not.toContain("data-shell"); expect(html).toContain(`data-app="${r.module}"`); expect(html).toContain(`data-ui-font-family="CharacterCreateARKaiC"`); expect(html).toContain("cull:/everglade2-cull.wgsl"); expect(html).toContain(`<title>${r.domain!.title}</title>`) }
   }
 })
