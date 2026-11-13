@@ -1324,7 +1324,8 @@ cw_tick :: (s: [] ChatWeb) {
   // Settings: the limits and the release, once each, when its page is open
   if s[0].page == SW_PAGE && !s[0].set[0].limits_asked { if cw_go(s, CF_LIMITS, "/api/auth/limits?as=lines", "") { s[0].set[0].limits_asked = true; } return; }
   if s[0].page == SW_PAGE && !s[0].set[0].about_asked { if cw_go(s, CF_ABOUT, "/build/about.txt", "") { s[0].set[0].about_asked = true; } return; }
-  if s[0].card_due_n > 0 && !s[0].live {
+  // a card waits for the turn to end, so a running session's tool calls stay the transcript's last message
+  if s[0].card_due_n > 0 && !s[0].live && !s[0].lrun {
     url: [96] u8;
     n := cw_put(url[..], 0, "/api/worlds/"); n = cw_put(url[..], n, cast(string) s[0].card_due[0..<s[0].card_due_n]); n = cw_put(url[..], n, "/card");
     if cw_go(s, CF_CARD, cast(string) url[0..<n], "") { s[0].card_due_n = 0; }
@@ -1986,6 +1987,7 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
     if coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/log?id=20261113-050000-001&after=9000" { break; }
     if coaxial_chatweb_asking(s) { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/sessions" then CW_T_SESSIONS else ""); }
   }
+  #assert s[0].card_due_n > 0 && s[0].who[s[0].count - 1] == CW_TOOL;   // the world's card waits for the turn's end
   n = kw_put(piece[..], 0, "{\"next\":9900,\"size\":9900}\n"); n = kw_put(piece[..], n, plans_end);
   cw_test_answer(s, 200, cast(string) piece[0..<n]);
   #assert s[0].count == 3 && s[0].who[2] == CW_AGENT && !s[0].lrun && cq_calls(cw_text(s, 1), calls[..]) == 15 && calls[14].state == KW_DONE;

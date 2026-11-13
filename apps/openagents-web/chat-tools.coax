@@ -355,6 +355,16 @@ cq_summary :: (calls: [] CqCall, out: [] u8) -> string {
   if m > 2 { num: [24] u8; n = kw_put(out, n, ", and "); n = kw_put(out, n, tr_join(num[..], "", m - 2)); n = kw_put(out, n, ifx m - 2 == 1 then " more tool" else " more tools"); }
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
+// The first call of the tool a run used most (the first such tool on a tie): the run's line takes its icon.
+cq_top :: (calls: [] CqCall) -> int {
+  best := 0; most := 0;
+  for c, i: calls {
+    k := cq_key(c); m := 0;
+    for d: calls { if cq_key(d) == k { m += 1; } }
+    if m > most { most = m; best = i; }
+  }
+  return best;
+}
 // The running call's words, for the line under the transcript, or "".
 cq_now :: (text: string, out: [] u8) -> string {
   calls: [CQ_MOST] CqCall; n := cq_calls(text, calls[..]);
@@ -385,7 +395,7 @@ cq_draw :: (t: [] Tree, u: [] Ui, id: string, text: string, live: bool, opens: [
   open := live || cq_open(opens, sum);
   if !live {
     sb: [400] u8;
-    g := k_work_group_begin(t, u, sum, cq_icon(calls[0]), cq_summary(calls[0..<n], sb[..]), n, "", kw_worst(states[0..<n]), open);
+    g := k_work_group_begin(t, u, sum, cq_icon(calls[cq_top(calls[0..<n])]), cq_summary(calls[0..<n], sb[..]), n, "", kw_worst(states[0..<n]), open);
   }
   if open {
     groups := cq_groups(calls[0..<n], starts[..]);
@@ -559,6 +569,7 @@ cq_test_wrap :: (r: string, out: [] u8) -> string { n := kw_put(out, 0, "{\"ok\"
   calls: [CQ_MOST] CqCall; starts: [CQ_GROUPS] int; sb: [400] u8; lb: [200] u8;
   m := cq_calls(text, calls[..]);
   #assert m == 15 && cq_groups(calls[0..<m], starts[..]) == 4 && starts[3] == 3;
+  #assert cq_top(calls[0..<m]) == 3 && cq_top(calls[0..<3]) == 0 && cq_top(calls[0..<0]) == 0;
   #assert cq_summary(calls[0..<m], sb[..]) == "Set foe plans ×12, Look up tools, and 2 more tools" && cq_now(text, lb[..]) == "Set foe 3's night plan: patrol";
   opens: [CQ_OPENS] int; no := 0;
   ui_begin(u, 0, true); tr_begin(t);
