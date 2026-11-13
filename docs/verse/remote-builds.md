@@ -212,6 +212,39 @@ ledger) and 215,836 on 2026-11-10 (268 jobs, $16.49). The ledger counts a
 job's whole wall time, so it shows how busy the hosts are, not what the cache
 saved; the report line of each job does.
 
+### The default build and the old set
+
+`apps/openagents-web/build.sh` makes the pages of what is live. Sixteen
+modules are the old set (#13269): v1 Everglade (`everglade`, `fivemmo`,
+`everglade5e`), Experimental and the 5E Lab (`fivelab`), and the lab pages
+(`animationlab`, `animelab`, `audiolab`, `bitcoin-lab`, `bitcoin-lab-walk`,
+`metahumanlab`, `nostr-lab-walk`, `ocarinalab`, `portallab`, `splatlab`,
+`valleylab`, `waterlab`). Their lines in `build.sh` start with `old`, and they
+build only under `COAXIAL_PAGES=all`.
+
+- A release sets `COAXIAL_PAGES=all` (`coax/web/deploy.sh`,
+  `coax/remote/pages.sh`), so what ships is every page, as before.
+- A branch's check and a change's fast run skip the old set
+  (`check.sh branch`, `web`). The whole run's `modules I/N` jobs still build
+  every module, so a break in an old page is reported after landing.
+- To build one old module on a host: `coax/remote/remote.sh run --
+  coax/remote/check.sh module fivelab`.
+- A dev build's `build/` has no old module, so its page 404s its `.wasm`
+  until you build it by name or fetch main's pages (`pages.sh`).
+- Every module, old or not, keeps its line in `wasm-budgets.txt`.
+
+Measured on 2026-11-12 on one `c3d-highcpu-30` host, release mode, with the
+unit cache off (1,013 units compiled, none read):
+
+| | Modules `build.sh` links | Build |
+| --- | --- | --- |
+| `COAXIAL_PAGES=all` (the build before #13269) | 73 | 160.3 s |
+| The default build | 57 | 124.3 s |
+
+The pages on `everglade/zone.coax` that are still live (`archery-range`,
+`worldbuilder`) stay in the default build until they are ported onto the one
+client (#13268).
+
 ### One page build per commit
 
 `coax/remote/pages.sh COMMIT` puts COMMIT's built pages into this checkout:

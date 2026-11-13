@@ -137,11 +137,15 @@ web_whole='^(coax/src/|coax/bootstrap/|coax/lib/compiler/|coax/platform/|coax/we
 # build.sh's wasm.sh commands, one a line. project and projects draw from
 # tables build.sh writes from Nostr first (openagents project bake), so only
 # build.sh (the release) builds them.
-module_cmds() {
+# With "live", without the old set (build.sh's `old timed NAME`, #13269: v1 Everglade, Experimental and
+# the labs): the default build doesn't make them, so a change's fast run and a branch's check don't
+# either. The whole run's `modules I/N` and `module NAME` build them as before.
+module_cmds() {   # [live]
   awk '{ if (sub(/\\$/, "")) { buf = buf $0 " "; next } print buf $0; buf = "" }' "$root/apps/openagents-web/build.sh" |
     grep 'coax/web/wasm.sh"' | grep -vE '/build/(project|projects)\.wasm"' |
-    # build.sh's step timer (`timed NAME CMD`, #13154) and its `& made+=($!)` are its own: the command alone.
-    sed -E 's/(^|[[:space:]])timed[[:space:]]+[A-Za-z0-9_-]+[[:space:]]+/\1/; s/[[:space:]]+&([[:space:]].*)?$//'
+    { if [[ "${1:-}" == live ]]; then grep -vE '(^|[[:space:]])old[[:space:]]+timed[[:space:]]'; else cat; fi; } |
+    # build.sh's step timer (`timed NAME CMD`, #13154), its `old` and its `& made+=($!)` are its own: the command alone.
+    sed -E 's/(^|[[:space:]])(old[[:space:]]+)?timed[[:space:]]+[A-Za-z0-9_-]+[[:space:]]+/\1/; s/[[:space:]]+&([[:space:]].*)?$//'
 }
 # The .coax files the change reaches through #load, in $out/affected, once: 0,
 # 3 when the graph can't tell, else the tool failed.
@@ -201,7 +205,7 @@ web_touched() {
   affected_files
   case $? in
     0) ;;
-    3) module_cmds > "$out/modules"; build_modules; return ;;
+    3) module_cmds live > "$out/modules"; build_modules; return ;;
     *) echo "modules: suites --affected failed, so the touched modules are unknown" >> "$log"; return 1 ;;
   esac
   while IFS= read -r cmd; do
@@ -213,7 +217,7 @@ web_touched() {
       esac
     done
     (( hit == 0 )) || printf '%s\n' "$cmd" >> "$out/modules"
-  done < <(module_cmds)
+  done < <(module_cmds live)
   build_modules
 }
 build_modules() {   # each command in $out/modules, as build.sh runs it

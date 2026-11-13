@@ -30,7 +30,8 @@ t=$(now)
 if [[ "${COAX_VISUALS:-}" == report ]]; then "$here/check-visuals.sh" "$app" || echo "deploy: check-visuals fails (a report here)" >&2
 else "$here/check-visuals.sh" "$app"; fi
 lap visuals "$t"
-t=$(now); COAXIAL_MODE=release "$app/build.sh"; lap build "$t"
+# COAXIAL_PAGES=all: a release ships every page, the old set too (apps/openagents-web/build.sh, #13269).
+t=$(now); COAXIAL_MODE=release COAXIAL_PAGES=all "$app/build.sh"; lap build "$t"
 
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
 # Bundle host modules before content naming; deployed pages need one immutable

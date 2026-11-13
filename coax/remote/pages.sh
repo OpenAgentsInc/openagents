@@ -89,7 +89,7 @@ build() {   # commit: stored when this returns 0
   local status
   # COAX_PAGES_TRY keeps the host from replaying an earlier run of this job.
   COAX_PAGES_TRY="$(date +%s)" "$here/remote.sh" run --commit "$commit" --no-fallback -- \
-    bash -c 'COAXIAL_MODE=release apps/openagents-web/build.sh && "$COAX_SHARED_CACHE_TOOL" publish-pages "$1" "$COAX_JOB_MARKER"' pages "$commit" >&2
+    bash -c 'COAXIAL_MODE=release COAXIAL_PAGES=all apps/openagents-web/build.sh && "$COAX_SHARED_CACHE_TOOL" publish-pages "$1" "$COAX_JOB_MARKER"' pages "$commit" >&2
   status=$?
   gcloud storage rm "$lock" --quiet > /dev/null 2>&1
   (( status == 0 )) || { say "the build of ${commit:0:10} failed (status $status)"; return 1; }
