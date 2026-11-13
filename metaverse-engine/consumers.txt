@@ -12,8 +12,7 @@
 
 # P2: one world
 adopt metaverse-engine/world/ #13280  # cells, owners, resource manifests and the streaming walk become the one world's cells and paged packs
-adopt metaverse-engine/physics/sim/ #13279  # the scene, broad and narrow phase and batched rigid bodies go behind query_*; the legacy rigid and contact modules retire onto them
-adopt metaverse-engine/physics/query-fluid.coax #13279  # fluid and trigger volumes are answered by the same broadphase
+adopt metaverse-engine/physics/query-fluid.coax #13280  # fluid and trigger volumes are a zone's data, asked through the same broadphase as its boxes and capsules (query-near.coax, #13279)
 adopt metaverse-engine/core/checkpoint.coax #13282  # travel between zone owners carries a versioned checkpoint of the character's state
 adopt metaverse-engine/state/ #13282  # declared facts and lifetimes are what a hand-off carries: auras, cooldowns, resources
 adopt metaverse-engine/session/ #13275  # the room core takes outcome slots and region ownership when it loses its seat count
@@ -43,6 +42,9 @@ pipeline metaverse-engine/render/exr.coax metaverse-engine/tools/film-frames.coa
 pipeline metaverse-engine/audio/measure.coax metaverse-engine/audio/sfx-tool.coax  # the sound-effect bank is judged by loudness when it is built
 
 # The Metaverse Engine book's own implementations: a chapter builds each and its example runs it
+book metaverse-engine/physics/sim/scene.coax metaverse-engine/book/ch017-a-scene-owns-the-state.md
+book metaverse-engine/physics/sim/broad.coax metaverse-engine/book/ch020-find-the-pairs-that-might-touch.md
+book metaverse-engine/physics/sim/narrow.coax metaverse-engine/book/ch021-find-where-they-touch.md
 book metaverse-engine/physics/sim/particles.coax metaverse-engine/book/ch023-particles-and-their-neighbors.md
 book metaverse-engine/physics/sim/sph.coax metaverse-engine/book/ch024-liquids-from-particles.md
 book metaverse-engine/physics/sim/pbd.coax metaverse-engine/book/ch025-cloth-and-rope-from-constraints.md

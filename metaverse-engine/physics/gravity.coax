@@ -9,10 +9,10 @@
 //             drum's rotating frame is centrifugal, omega^2 r away from
 //             its axis, with Coriolis -2 omega x v on anything moving
 // and `scale` multiplies it (a station spinning down to 0 and back up).
-// Units are metres, seconds and radians, f64 (metaverse-engine/physics/rigid.coax).
+// Units are metres, seconds and radians, f64 (metaverse-engine/core/math-d.coax).
 //   coax/bin/coax test --library metaverse-engine/physics/gravity.coax
 
-#load "rigid.coax";
+#load "sim/rigid.coax";
 
 GRAVITY_NONE :: 0;
 GRAVITY_CONSTANT :: 1;

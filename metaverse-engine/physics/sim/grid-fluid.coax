@@ -12,7 +12,7 @@
 // Multigrid, vorticity confinement, solid cells from distance fields, 3D
 // and device kernels are not built yet.
 //   coax/bin/coax test --library metaverse-engine/physics/sim/grid-fluid.coax
-#load "../rigid.coax";
+#load "../../core/math-d.coax";
 
 GF_SIDE :: 64;
 GF_FACES :: 4160;            // (64 + 1) x 64: the largest field

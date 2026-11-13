@@ -65,7 +65,7 @@ order.
 - [metaverse-engine/cam/spacecam.coax](../cam/spacecam.coax): a floating-origin
   camera in f64 with zoom over twelve decades, checked by "a hull at 5 AU
   draws to the pixel".
-- [metaverse-engine/physics/rigid.coax](../physics/rigid.coax): island sleep (`SLEEP_LINEAR`,
+- [metaverse-engine/physics/sim/rigid.coax](../physics/sim/rigid.coax): island sleep (`SLEEP_LINEAR`,
   `SLEEP_TIME`) that streaming reuses at cell edges.
 - [coax/web/host.js](../../coax/web/host.js): one streamed pack per page with
   progress messages (605), and later assets (sounds, particles, fonts)

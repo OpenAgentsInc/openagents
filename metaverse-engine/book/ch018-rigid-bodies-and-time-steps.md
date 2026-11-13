@@ -6,7 +6,7 @@
 > profiles: explicit Euler, semi-implicit Euler and an implicit gyroscopic
 > step. Its checks measure each profile on free fall, a symmetric top, the
 > intermediate-axis flip against the Jacobi elliptic solution, energy and
-> momentum, and step halving, and agree with [`metaverse-engine/physics/rigid.coax`](../physics/rigid.coax).
+> momentum, and step halving, and agree with [`metaverse-engine/physics/sim/rigid.coax`](../physics/sim/rigid.coax).
 > Device kernels, f32 profiles, sleeping and moving chapter 17's scene onto
 > these arrays are not built yet.
 
@@ -171,7 +171,7 @@ They pin free fall to `x₀ + v₀t + ½gt² ± ½gΔt t` per profile, keep stat
 bodies still, match momentum changes to impulses, measure precession and the
 flip interval, show explicit energy growth against implicit dissipation,
 halve the energy error by halving the step (all three profiles are first
-order), and match `metaverse-engine/physics/rigid.coax`'s RK4 attitude to 10⁻⁶ after 1,000
+order), and match `metaverse-engine/physics/sim/rigid.coax`'s RK4 attitude to 10⁻⁶ after 1,000
 steps.
 
 ## The design in the Metaverse Engine
@@ -214,7 +214,7 @@ reports its own error budget rather than inheriting the CPU's.
 - Intermediate-axis spin: the flip period against the Jacobi elliptic
   solution, and `|L|` and energy drift reported per profile over 10⁵ steps.
 - Momentum ledger: total momentum changes only by named external impulses.
-- Agreement with `metaverse-engine/physics/rigid.coax` on shared cases within a stated
+- Agreement with `metaverse-engine/physics/sim/rigid.coax` on shared cases within a stated
   tolerance; device kernels against the CPU profile within theirs.
 - Step-halving: error falls at the integrator's stated order.
 

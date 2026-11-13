@@ -86,7 +86,7 @@ module that any realm declares, instead of code that belongs to Everglade.
 - [docs/metaverse/water.md](../../docs/metaverse/water.md): phases W1–W11, each with
   its port notes and differences from the previous Rust engine.
 - [metaverse/water.coax](../../metaverse/water.coax) and
-  [metaverse-engine/physics/rigid.coax](../physics/rigid.coax): the W1 physics, with all
+  [metaverse-engine/physics/sim/rigid.coax](../physics/sim/rigid.coax): the W1 physics, with all
   fifteen of the old tests as `#test` checks.
 - [everglade/legacy/v1/river.coax](../../everglade/legacy/v1/river.coax): Everglade's
   4 m river, its current round the bridge piles, and its rowboats.

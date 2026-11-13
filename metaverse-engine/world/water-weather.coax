@@ -30,7 +30,7 @@
 // sample each frame.
 //   coax/bin/coax test --library metaverse-engine/world/water-weather.coax --steps 2000000000
 
-#load "../physics/rigid.coax";
+#load "../core/math-d.coax";
 
 WEATHER_TICK_HZ :: 120;          // the world tick (physics::water::event::TICK_HZ)
 WEATHER_BLOCK_SECONDS :: 600;

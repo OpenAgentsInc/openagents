@@ -15,7 +15,7 @@
 // clay, muscle, a sparse grid, rigid coupling and device kernels are not
 // built yet.
 //   coax/bin/coax test --library metaverse-engine/physics/sim/mpm.coax
-#load "../rigid.coax";
+#load "../../core/math-d.coax";
 
 MPM_PARTICLES :: 4096;
 MPM_GRID :: 64;                   // cells a side; nodes are (MPM_GRID + 1)^2

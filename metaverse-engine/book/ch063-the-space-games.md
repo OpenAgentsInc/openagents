@@ -63,10 +63,10 @@ delta-v, propellant and time are computed, not invented.
   [orbitleague.coax](../../apps/openagents-web/orbitleague.coax) (the page and
   its drawing; `orbitleague.wgsl` traces the scene) over
   [metaverse-engine/physics/vehicle.coax](../physics/vehicle.coax),
-  [contact.coax](../physics/contact.coax),
+  [contact.coax](../physics/sim/contact.coax),
   [gravity.coax](../physics/gravity.coax),
   [thrust.coax](../physics/thrust.coax),
-  [rigid.coax](../physics/rigid.coax) and
+  [rigid.coax](../physics/sim/rigid.coax) and
   [drum.coax](../../metaverse/drum.coax); the room server in
   [coax/web/room/room.coax](../../coax/web/room/room.coax).
 - Belt 2200: [belt.coax](../../apps/openagents-web/belt.coax) over

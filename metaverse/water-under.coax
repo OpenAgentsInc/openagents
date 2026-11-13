@@ -26,7 +26,7 @@
 //   A realm shows it as the muffled share (water_under_muffle) if anything.
 //   coax/bin/coax test --library metaverse/water-under.coax
 
-#load "../metaverse-engine/physics/rigid.coax";
+#load "../metaverse-engine/core/math-d.coax";
 
 WATER_IOR_D :: 1.33;
 // The cone of Snell's window: rays from below within this of straight up

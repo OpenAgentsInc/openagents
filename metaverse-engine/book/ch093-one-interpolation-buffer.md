@@ -45,22 +45,32 @@ net_on_from :: (p: NetState, rt: int, ahead_ms: int) -> NetState {
   ahead := f32(nc_lo(nc_hi(rt - p.t, 0), ahead_ms)) / 1000;
   return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y + p.vy * ahead, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, f = p.f, a = p.a};
 }
+// The two states round server time rt in a ring (their places in it, oldest first) and how far
+// from the first to the second rt is (0 to 1): at or before the oldest, or past the newest, that
+// state twice. A realm blends what is its own in a state with it (Orbit League: a body's turn).
+NetSpan :: struct { a: int; b: int; f: f32; }
+net_ring_span :: (ring: [] NetState, rt: int) -> NetSpan {
+  c := ring.count;
+  if c == 0 || rt <= ring[0].t { return NetSpan.{}; }
+  for q: 0..<c - 1 {
+    if rt > ring[q + 1].t { continue; }
+    return NetSpan.{a = q, b = q + 1, f = f32(rt - ring[q].t) / f32(nc_hi(ring[q + 1].t - ring[q].t, 1))};
+  }
+  return NetSpan.{a = c - 1, b = c - 1};
+}
 // Where the ring's entity (its states, oldest first) is at server time rt; it goes on past its
 // newest state for ahead_ms at most.
 net_ring_at :: (ring: [] NetState, rt: int, ahead_ms: int) -> NetState {
   c := ring.count;
   if c == 0 { return NetState.{}; }
   if rt <= ring[0].t { return ring[0]; }
-  for q: 0..<c - 1 {
-    a := ring[q]; b := ring[q + 1];
-    if rt > b.t { continue; }
-    f := f32(rt - a.t) / f32(nc_hi(b.t - a.t, 1));
-    o := ifx f < 0.5 then a else b;
-    return NetState.{t = rt, x = nc_lerp(a.x, b.x, f), y = nc_lerp(a.y, b.y, f), z = nc_lerp(a.z, b.z, f), yaw = a.yaw + net_turn(a.yaw, b.yaw) * f,
-                     vx = nc_lerp(a.vx, b.vx, f), vy = nc_lerp(a.vy, b.vy, f), vz = nc_lerp(a.vz, b.vz, f), f = o.f, a = o.a};
-  }
+  s := net_ring_span(ring, rt);
   // past the newest: on by its velocity for ahead_ms (a frame late or lost), then held
-  return net_on_from(ring[c - 1], rt, ahead_ms);
+  if s.a == s.b { return net_on_from(ring[c - 1], rt, ahead_ms); }
+  a := ring[s.a]; b := ring[s.b]; f := s.f;
+  o := ifx f < 0.5 then a else b;
+  return NetState.{t = rt, x = nc_lerp(a.x, b.x, f), y = nc_lerp(a.y, b.y, f), z = nc_lerp(a.z, b.z, f), yaw = a.yaw + net_turn(a.yaw, b.yaw) * f,
+                   vx = nc_lerp(a.vx, b.vx, f), vy = nc_lerp(a.vy, b.vy, f), vz = nc_lerp(a.vz, b.vz, f), f = o.f, a = o.a};
 }
 // Where an entity went on to past its newest state (lead: that state; on: drawn past it last
 // frame), and the difference from where the states after it put it (x, y, z), eased out.

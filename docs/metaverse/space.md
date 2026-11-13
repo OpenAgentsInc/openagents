@@ -11,8 +11,8 @@ Orbit League's first playable built these (October 30).
 
 | Module | What it gives | Loads |
 | --- | --- | --- |
-| `metaverse-engine/physics/rigid.coax` | Rigid bodies: Newton for the centre of mass, Euler's equations, RK4 attitude, sleep, a momentum ledger | |
-| `metaverse-engine/physics/contact.coax` | Contacts: sphere-sphere, sphere-oriented box, box-plane (its corners), sphere-triangle and sphere-mesh; rays (plane, sphere, triangle); swept sphere tests against planes and spheres; the impulse answer (restitution, Coulomb friction, positional push); forces and impulses at a point | rigid |
+| `metaverse-engine/physics/sim/rigid.coax` | Rigid bodies: Newton for the centre of mass, Euler's equations, RK4 attitude, sleep, a momentum ledger | |
+| `metaverse-engine/physics/sim/contact.coax` | Contacts: sphere-sphere, sphere-oriented box, box-plane (its corners), sphere-triangle and sphere-mesh; rays (plane, sphere, triangle); swept sphere tests against planes and spheres; the impulse answer (restitution, Coulomb friction, positional push); forces and impulses at a point | rigid |
 | `metaverse-engine/physics/gravity.coax` | Gravity as a field: none, constant, point mass (inverse-square, `mu = G M`) or a spinning drum (centrifugal down, Coriolis on what moves), each scaled (a station spinning down). `gravity_at(field, pos)`, `gravity_on(field, pos, vel)`, `gravity_up`, `gravity_step`; `drum_spin_for(radius, g)`, circular orbit speed and period | rigid |
 | `metaverse-engine/physics/thrust.coax` | Thrusters (force at a body point along a body direction) burning a tank: real propellant (mass falls, Tsiolkovsky delta-v) or a game budget (a boost meter); RCS torque clamped to its jets, and a rate hold | contact |
 | `metaverse-engine/physics/vehicle.coax` | A wheeled controller: four suspension rays along the chassis's own down, spring and damper, tyres inside the friction circle, steering that fades with speed, handbrake drift, sticky wheels on walls and ceilings, air control, jump, double jump and the dodge (a second jump with the stick pushed: a punch along it and a flip toward it); the chassis box against the arena's planes | contact |

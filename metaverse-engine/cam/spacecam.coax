@@ -9,7 +9,7 @@
 // by `tilt` radians about the screen's horizontal so +Z shows as height.
 //   coax/bin/coax test --library metaverse-engine/cam/spacecam.coax
 
-#load "../physics/rigid.coax";
+#load "../core/math-d.coax";
 #load "../../coax/lib/quantity.coax" as spacecam_units;
 
 // This is the existing world-in-metres convention, not the screen/view basis.

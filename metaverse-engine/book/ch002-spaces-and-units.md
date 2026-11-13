@@ -374,7 +374,7 @@ replaces the older vector types behind the existing C interfaces:
 - `Point` in [metaverse-engine/core/points.coax](../core/points.coax);
 - `Vec3` in [metaverse-engine/move/player.coax](../move/player.coax);
 - the f64 `D3` type with a floating origin in
-  [metaverse-engine/physics/rigid.coax](../physics/rigid.coax) and
+  [metaverse-engine/physics/sim/rigid.coax](../physics/sim/rigid.coax) and
   [metaverse-engine/cam/spacecam.coax](../cam/spacecam.coax). When these move, this
   module gains f64 spaces. These types and floating-origin arithmetic are
   outside this chapter's native f32 profile.

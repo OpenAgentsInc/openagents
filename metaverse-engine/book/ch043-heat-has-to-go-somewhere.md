@@ -59,7 +59,7 @@ Nothing thermal. [`metaverse-engine/physics/thrust.coax`](../physics/thrust.coax
 `orbit_burn_step` in [`metaverse-engine/physics/orbit.coax`](../physics/orbit.coax) model
 thrust and mass only; [`metaverse/stars.coax`](../../metaverse/stars.coax) draws
 the Sun's disc and corona but carries no radiative flux. The momentum ledger
-in [`metaverse-engine/physics/rigid.coax`](../physics/rigid.coax) (`Ledger`, `ledger_add`,
+in [`metaverse-engine/physics/sim/rigid.coax`](../physics/sim/rigid.coax) (`Ledger`, `ledger_add`,
 `ledger_error`) is the pattern this chapter's energy ledger follows.
 
 ## What it builds

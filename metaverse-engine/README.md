@@ -175,7 +175,8 @@ The engine modules that were in `metaverse/` moved here in one scripted commit
 | `physics/stand.coax`, `world/terrain.coax`, `physics/throw.coax`, `anim/flock.coax` | Floors to stand on; heightfield ground, paths and followers; thrown and carried things; a following flock |
 | `core/sticks.coax` | The touch controls: move stick, look finger, pinch, tap, the hotbar's slot |
 | `anim/figure.coax`, `anim/motion.coax`, `anim/skin.coax` | Soft figures, keyframed motions, skinned clips |
-| `physics/rigid.coax`, `physics/contact.coax`, `physics/gravity.coax`, `physics/thrust.coax`, `physics/vehicle.coax`, `physics/orbit.coax` | Rigid bodies, contacts, gravity fields, thrusters, wheeled vehicles, orbits |
+| `core/math-d.coax` | Vectors and quaternions in f64 (`D2`, `D3`, `DQ`), which orbits, the space camera, water and the simulation package share |
+| `physics/sim/rigid.coax`, `physics/sim/contact.coax`, `physics/gravity.coax`, `physics/thrust.coax`, `physics/vehicle.coax`, `physics/orbit.coax` | Rigid bodies, contacts, gravity fields, thrusters, wheeled vehicles, orbits |
 | `render/particles.coax`, `render/particle-motion.coax` | Particle emitters and their stateless motion |
 | `core/command.coax` | Selection, groups and order queues for commanding units |
 

@@ -19,7 +19,7 @@
 // made, the deterministic part of its cost. CPU only, f64; device kernels are
 // not built yet.
 //   coax/bin/coax test --library metaverse-engine/physics/sim/broad.coax
-#load "../rigid.coax";
+#load "../../core/math-d.coax";
 
 BROAD_BODIES :: 128;
 BROAD_PAIRS :: 8128;   // 128 * 127 / 2: every pair of a full set fits

@@ -1,7 +1,7 @@
 // The browser's existing pixel-budget/quality cap expressed once for native
 // effects. Dimensions are physical pixels; scale is pixels per logical point.
 #module "metaverse.engine.render.host.surface";
-#load "../physics/rigid.coax";
+#load "../core/math-d.coax";
 #authority;
 RenderHostSurface :: struct {valid:bool;width:int;height:int;scale:f32;}
 #test "host surface names preserve the browser's quality selection" {

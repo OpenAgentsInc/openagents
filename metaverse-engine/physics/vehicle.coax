@@ -1,4 +1,4 @@
-// A wheeled vehicle on metaverse-engine/physics/rigid.coax and metaverse-engine/physics/contact.coax
+// A wheeled vehicle on metaverse-engine/physics/sim/rigid.coax and metaverse-engine/physics/sim/contact.coax
 // (docs/metaverse/space.md): one rigid body (its chassis), four wheels as
 // suspension rays from mounts on the chassis, and tyres that grip.
 //
@@ -26,7 +26,7 @@
 // chassis box against the same planes.
 //   coax/bin/coax test --library metaverse-engine/physics/vehicle.coax
 
-#load "contact.coax";
+#load "sim/contact.coax";
 
 WHEELS :: 4;
 DOUBLE_JUMP_WINDOW :: 1.25;

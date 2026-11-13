@@ -16,7 +16,7 @@
 // outside it is a refusal of the build, not a clamp. CPU only, f64; device
 // kernels are not built yet.
 //   coax/bin/coax test --library metaverse-engine/physics/sim/particles.coax
-#load "../rigid.coax";
+#load "../../core/math-d.coax";
 #load "../../core/rand.coax";
 
 PSTORE :: 512;          // particles

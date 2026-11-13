@@ -2,7 +2,7 @@
 
 > **Status: unimplemented — design draft.** Today
 > [`metaverse-engine/physics/vehicle.coax`](../physics/vehicle.coax) drives Orbit League's
-> cars: one rigid body from [`metaverse-engine/physics/rigid.coax`](../physics/rigid.coax),
+> cars: one rigid body from [`metaverse-engine/physics/sim/rigid.coax`](../physics/sim/rigid.coax),
 > four suspension rays, tyres inside the friction circle, sticky wheels,
 > jumps and dodges, against a list of planes. It is a game-layer module
 > that only Orbit League loads. This chapter plans a vehicle controller on
@@ -65,8 +65,8 @@ and the same replay, so a car race replays exactly.
   `#test` checks that a roadster settles level, reaches top speed, steers,
   brakes, jumps, dodges, drifts, sticks to a wall when fast and falls off
   when slow, and that the same inputs give the same path bit for bit.
-- [metaverse-engine/physics/contact.coax](../physics/contact.coax) and
-  [metaverse-engine/physics/rigid.coax](../physics/rigid.coax): the chassis box against planes,
+- [metaverse-engine/physics/sim/contact.coax](../physics/sim/contact.coax) and
+  [metaverse-engine/physics/sim/rigid.coax](../physics/sim/rigid.coax): the chassis box against planes,
   and the rigid body.
 - [docs/metaverse/space.md](../../docs/metaverse/space.md): the space primitives
   table that lists the vehicle beside gravity, thrust and orbits.

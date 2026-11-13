@@ -3,7 +3,7 @@
 // the camera, the HUD, the clips and the frame. The game's rules, its match
 // state and the room's wire are orbitleague-game.coax, which the room server
 // loads without the page (#13347); the physics is the engine's space primitives
-// (docs/metaverse/space.md): metaverse-engine/physics/vehicle.coax drives the cars, metaverse-engine/physics/contact.coax
+// (docs/metaverse/space.md): metaverse-engine/physics/vehicle.coax drives the cars, metaverse-engine/physics/sim/contact.coax
 // answers every touch, metaverse-engine/physics/gravity.coax says which way is down, and
 // metaverse-engine/physics/thrust.coax burns the boost.
 //

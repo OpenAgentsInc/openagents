@@ -35,7 +35,7 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 | A follow, orbit or free camera | The Metaverse Engine's cameras | `metaverse-engine/cam/follow.coax`, `metaverse-engine/physics/orbit.coax`, `metaverse-engine/cam/camera.coax`, `metaverse-engine/cam/` |
 | Characters, rigs, faces, poses, materials | The Metaverse Engine's character | `metaverse-engine/character/`, `metaverse-engine/character/character-appearance.coax` |
 | Ground, terrain, heights, ground rays | The Metaverse Engine's terrain | `metaverse-engine/world/terrain.coax`, `metaverse-engine/world/terrain-tile.coax`, `metaverse-engine/physics/ground-query.coax` |
-| Collision, contact, queries | Metaverse Engine | `metaverse-engine/physics/collide.coax`, `metaverse-engine/physics/contact.coax`, `metaverse-engine/physics/query.coax` |
+| Collision, contact, queries | Metaverse Engine | `metaverse-engine/physics/collide.coax`, `metaverse-engine/physics/sim/contact.coax`, `metaverse-engine/physics/query.coax` |
 | Scattering things, grass, props | Metaverse Engine | `metaverse-engine/world/scatter.coax`, `metaverse-engine/render/` |
 | Rendering, lighting, shadows, quality tiers | The Metaverse Engine's renderer and governor | `metaverse-engine/render/`, `metaverse-engine/core/quality.coax`, `metaverse-engine/core/frame-pacing.coax` |
 | Multiplayer: transport, replication, prediction, rewind | The Metaverse Engine's netcode | `metaverse-engine/net/` |

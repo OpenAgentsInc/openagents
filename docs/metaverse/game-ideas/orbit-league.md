@@ -77,7 +77,7 @@ each pixel, so none of them alias or turn to moire at any distance.
 
 | Need | What we have | Where |
 |---|---|---|
-| Rigid bodies in f64 with quaternions | Newton for the centre of mass, Euler's equations, RK4 rotation, sleeping | `metaverse-engine/physics/rigid.coax` |
+| Rigid bodies in f64 with quaternions | Newton for the centre of mass, Euler's equations, RK4 rotation, sleeping | `metaverse-engine/physics/sim/rigid.coax` |
 | A ball that flies, bounces and rolls | Thrown balls on terrain, knocking scenery | `metaverse-engine/physics/throw.coax` |
 | Cameras that blend shots | Overview, dolly and free orbit as blended shots | `metaverse-engine/cam/camera.coax` |
 | Boost trails, sparks, goal explosions | Particle emitters drawn in one instanced pass | `metaverse-engine/render/particles.coax`, `metaverse-engine/render/particle-motion.coax` |
@@ -88,7 +88,7 @@ each pixel, so none of them alias or turn to moire at any distance.
 
 ## What the engine needs
 
-1. **Contacts for rigid bodies** (`metaverse-engine/physics/rigid.coax`): sphere-against-box,
+1. **Contacts for rigid bodies** (`metaverse-engine/physics/sim/rigid.coax`): sphere-against-box,
    box-against-box (the car as an oriented box), sphere-against-mesh (the
    arena), with friction and restitution. Swept tests for the ball at
    speed, so it never passes through the goal frame. Dead Gears already

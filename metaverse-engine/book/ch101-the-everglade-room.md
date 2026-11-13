@@ -24,7 +24,8 @@ chapters 86 to 100, at the scale it runs.
 <!-- source: everglade/server/seat.coax room-size -->
 ```jai
 EG_ROOMS :: 4;                  // simulated rooms at once (64 players): the directory gives a shard 2 (verse.room_shards.rooms_cap), a 150-seat zone 1 (docs/decisions/0007)
-EG_SEATS :: 16;
+EG_SEATS :: 16;                 // a room's seats unless its zone declares more (eg_zone_use): the wire's WIRE_SEATS, and the seats a room holds in its own record
+EG_ZONE_SEATS :: WIRE_ZONE_SEATS;   // the most a zone declares (docs/decisions/0003-150-a-zone.md, #13275): what a seat-keyed table has room for
 EG_HZ :: 30;
 ```
 

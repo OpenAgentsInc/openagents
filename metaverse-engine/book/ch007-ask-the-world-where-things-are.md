@@ -146,6 +146,9 @@ Colliders :: struct {
   // Semantic selections can contain no base surface. The compatibility
   // default still supplies the realm's flat ground when it has no mesh.
   ground_enabled: bool = true;
+  // An index over the boxes and capsules (query-near.coax), or none: with one, a query asks only
+  // the colliders near it, and answers as it would without.
+  near: [] QueryNear;
 }
 ```
 
@@ -191,6 +194,7 @@ query_base_ground :: (c: Colliders, x: f32, z: f32) -> QueryGround #effects(all)
 // less than `reach` away (a walker's radius), or a floor (within QUERY_FLOOR_PAD of its edge).
 // A surface only as high as one already found doesn't replace it.
 query_ground :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryGround #effects(all) {
+  if c.near.count > 0 { return query_near_ground(c, x, z, below, reach); }
   out := query_base_ground(c, x, z);
   for i: 0..<query_boxes(c) {
     b := query_box(c, i);
@@ -359,6 +363,7 @@ query_select_entry :: (prior: QuerySelection, e: QueryEntry, shape: QueryShape, 
   return query_select(prior, QueryHit.{hit = e.hit, t = e.t, normal = e.normal, shape = shape, index = index}, f64(e.t));
 }
 query_ray :: (c: Colliders, o: WorldPoint, d: WorldPoint, far: f32) -> QueryHit #effects(all) {
+  if c.near.count > 0 { return query_near_ray(c, o, d, far); }
   best: QuerySelection;
   if !query_point_finite(o) || !query_point_finite(d) || !query_finite(far) || !(world_dot(d, d) > 0) { return QueryHit.{status = QueryStatus.invalid}; }
   if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryHit.{status = QueryStatus.capacity}; }
@@ -402,6 +407,7 @@ QueryOverlapResult :: struct { status: QueryStatus; count: int; }
 // then boxes, then capsules, each by index. It writes as many as fit in `out` and returns how
 // many there are.
 query_overlap_checked :: (c: Colliders, centre: WorldPoint, r: f32, out: [] QueryId) -> QueryOverlapResult #effects(all) {
+  if c.near.count > 0 { return query_near_overlap(c, centre, r, out); }
   n := 0;
   if !query_point_finite(centre) || !query_finite(r) || !(r > 0) { return QueryOverlapResult.{status = QueryStatus.invalid}; }
   if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryOverlapResult.{status = QueryStatus.capacity}; }
@@ -490,6 +496,7 @@ query_sooner :: (a: QueryEntry, b: QueryEntry) -> QueryEntry #effects(all) {
   return b;
 }
 query_sweep :: (c: Colliders, from: WorldPoint, r: f32, by: WorldPoint) -> QueryHit #effects(all) {
+  if c.near.count > 0 { return query_near_sweep(c, from, r, by); }
   best: QuerySelection;
   if !query_point_finite(from) || !query_point_finite(by) || !query_finite(r) || !(r > 0) { return QueryHit.{status = QueryStatus.invalid}; }
   if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryHit.{status = QueryStatus.capacity}; }

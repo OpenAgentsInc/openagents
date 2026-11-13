@@ -19,10 +19,238 @@
 // The attitude multiplies by exp(dt w / 2) on the right (w is in the body
 // frame) and renormalizes, so |q| = 1 holds to rounding. Every profile is
 // f64 on the CPU; device kernels and f32 profiles are not built yet.
-// metaverse-engine/physics/rigid.coax is the independent reference: it rotates torque-free
-// bodies by RK4 with the angular momentum held fixed.
+// The one-body integrator below (rigid_step, once metaverse-engine/physics/rigid.coax) is the
+// independent reference: it rotates torque-free bodies by RK4 with the angular momentum held fixed.
 //   coax/bin/coax test --library metaverse-engine/physics/sim/rigid.coax
-#load "../rigid.coax";
+#load "../../core/math-d.coax";
+
+// ---- one body at a time (the first rigid-body module, metaverse-engine/physics/rigid.coax, moved here
+// whole in #13279: the code and its numbers are unchanged). A port of the previous engine's
+// `crates/physics`: `body.rs` (Newton for the centre of mass, Euler's equations about the principal
+// axes, quaternion attitude and the torque-free RK4 `rotate`), `World::step` without contacts or
+// joints, island sleep (a body sleeps once it has rested for SLEEP_TIME while something holds it up;
+// with no contacts that is only `supported`, which still water sets), and `ledger.rs` (momentum
+// bookkeeping against named external terms). Read the old code with
+// `git show 0b401561a0^:crates/physics/src/{body,world,ledger}.rs`. Water, the vehicles, thrusters,
+// gravity and Demolish step their bodies with it; the batched Rigid_Set below checks itself against
+// its RK4 attitude. Every body is dynamic and has one collider at its centre; contacts are
+// contact.coax beside this file. Units are metres, seconds, kilograms and radians; +Y is up.
+
+SLEEP_LINEAR :: 0.01;   // m/s: slower than this counts as at rest
+SLEEP_ANGULAR :: 0.02;  // rad/s
+SLEEP_TIME :: 0.5;      // s at rest, held up, before a body sleeps
+
+// A rigid body. `omega` is in the body frame, as in the old crate.
+RigidBody :: struct {
+  mass: f64;
+  inertia: D3;          // principal moments, kg m^2
+  pos: D3;
+  vel: D3;
+  orientation: DQ;
+  omega: D3;
+  force: D3;            // accumulated for the next step, then cleared
+  torque: D3;
+  sleeping: bool;
+  sleep_time: f64;
+  supported: bool;      // held up by something fixed for this step's sleep test
+}
+
+// The bodies and the clock.
+RigidWorld :: struct {
+  dt: f64;
+  tick: u64;
+  bodies: [] RigidBody;
+}
+
+rigid_body :: (mass: f64, inertia: D3, pos: D3, orientation: DQ) -> RigidBody {
+  b: RigidBody;
+  b.mass = mass;
+  b.inertia = inertia;
+  b.pos = pos;
+  b.orientation = orientation;
+  return b;
+}
+
+rigid_world :: (dt: f64, bodies: [] RigidBody) -> RigidWorld {
+  return RigidWorld.{dt = dt, tick = 0, bodies = bodies};
+}
+
+// A solid box's principal moments.
+rigid_box_inertia :: (mass: f64, size: D3) -> D3 {
+  s := d3_mul(size, size);
+  return d3_scale(d3(s.y + s.z, s.x + s.z, s.x + s.y), mass / 12.0);
+}
+
+rigid_omega_world :: (b: RigidBody) -> D3 { return dq_rotate(b.orientation, b.omega); }
+rigid_angular_momentum :: (b: RigidBody) -> D3 { return dq_rotate(b.orientation, d3_mul(b.inertia, b.omega)); }
+
+rigid_wake :: (b: RigidBody) -> RigidBody {
+  next := b;
+  next.sleeping = false;
+  next.sleep_time = 0.0;
+  return next;
+}
+
+rigid_angular_impulse :: (b: RigidBody, impulse: D3) -> RigidBody {
+  next := rigid_wake(b);
+  next.omega = d3_add(next.omega, d3_div(dq_rotate(dq_conj(next.orientation), impulse), next.inertia));
+  return next;
+}
+
+rigid_moving :: (b: RigidBody) -> bool {
+  return d3_len(b.vel) >= SLEEP_LINEAR || d3_len(rigid_omega_world(b)) >= SLEEP_ANGULAR;
+}
+
+// Torque-free rotation over dt: the attitude follows the angular momentum,
+// held fixed, by RK4 on the quaternion, and omega is read back from it.
+rigid_rotate :: (b: RigidBody, dt: f64) -> RigidBody {
+  if d3_eq(b.omega, D3_ZERO) { return b; }
+  momentum := rigid_angular_momentum(b);
+  q0 := b.orientation;
+  k1 := rotate_rate(q0, momentum, b.inertia);
+  k2 := rotate_rate(dq_axpy(q0, k1, dt / 2.0), momentum, b.inertia);
+  k3 := rotate_rate(dq_axpy(q0, k2, dt / 2.0), momentum, b.inertia);
+  k4 := rotate_rate(dq_axpy(q0, k3, dt), momentum, b.inertia);
+  sum := dq_axpy(dq_axpy(dq_axpy(k1, k2, 2.0), k3, 2.0), k4, 1.0);
+  next := b;
+  next.orientation = dq_unit(dq_axpy(q0, sum, dt / 6.0));
+  next.omega = d3_div(dq_rotate(dq_conj(next.orientation), momentum), b.inertia);
+  return next;
+}
+
+dq_axpy :: (a: DQ, b: DQ, k: f64) -> DQ { return dq(a.x + b.x * k, a.y + b.y * k, a.z + b.z * k, a.w + b.w * k); }
+
+rotate_rate :: (q: DQ, momentum: D3, inertia: D3) -> DQ {
+  w := d3_div(dq_rotate(dq_conj(q), momentum), inertia);
+  r := dq_mul(q, dq(w.x, w.y, w.z, 0.0));
+  return dq(r.x * 0.5, r.y * 0.5, r.z * 0.5, r.w * 0.5);
+}
+
+// One step of dt under uniform gravity: forces, torques and gravity change
+// the velocities (and the accumulators clear), positions advance by
+// semi-implicit Euler and attitude by rigid_rotate, then sleep.
+rigid_step :: (w: RigidWorld, gravity: D3) -> RigidWorld {
+  dt := w.dt;
+  for i: 0..<w.bodies.count {
+    b := w.bodies[i];
+    // An owner that set a sleeper moving has woken it.
+    if b.sleeping && (!d3_eq(b.vel, D3_ZERO) || !d3_eq(b.omega, D3_ZERO)) { b = rigid_wake(b); }
+    if !b.sleeping {
+      inverse := ifx b.mass > 0.0 then 1.0 / b.mass else 0.0;
+      b.vel = d3_add(b.vel, d3_scale(d3_add(gravity, d3_scale(b.force, inverse)), dt));
+      if !d3_eq(b.torque, D3_ZERO) { b = rigid_angular_impulse(b, d3_scale(b.torque, dt)); }
+    }
+    b.force = D3_ZERO;
+    b.torque = D3_ZERO;
+    if !b.sleeping {
+      b.pos = d3_add(b.pos, d3_scale(b.vel, dt));
+      b = rigid_rotate(b, dt);
+    }
+    // Sleep: each body is its own island, held up only when supported.
+    if !b.sleeping {
+      b.sleep_time = ifx rigid_moving(b) then 0.0 else b.sleep_time + dt;
+      if b.supported && b.sleep_time >= SLEEP_TIME {
+        b.vel = D3_ZERO;
+        b.omega = D3_ZERO;
+        b.sleeping = true;
+      }
+    }
+    b.supported = false;
+    w.bodies[i] = b;
+  }
+  next := w;
+  next.tick = w.tick + 1;
+  return next;
+}
+
+// Momentum: linear, and angular about an origin.
+Momentum :: struct { linear: D3; angular: D3; }
+
+momentum_of :: (b: RigidBody, origin: D3) -> Momentum {
+  linear := d3_scale(b.vel, b.mass);
+  return Momentum.{linear = linear, angular = d3_add(d3_cross(d3_sub(b.pos, origin), linear), rigid_angular_momentum(b))};
+}
+
+momentum_impulse :: (impulse: D3, at: D3, origin: D3) -> Momentum {
+  return Momentum.{linear = impulse, angular = d3_cross(d3_sub(at, origin), impulse)};
+}
+
+momentum_add :: (a: Momentum, b: Momentum) -> Momentum {
+  return Momentum.{linear = d3_add(a.linear, b.linear), angular = d3_add(a.angular, b.angular)};
+}
+
+world_momentum :: (w: RigidWorld, origin: D3) -> Momentum {
+  sum: Momentum;
+  for b: w.bodies { sum = momentum_add(sum, momentum_of(b, origin)); }
+  return sum;
+}
+
+// The named external terms a ledger keeps. The old ledger took any name in
+// a map; Coax has no maps yet, so the terms are this enum's.
+Term :: enum u8 { buoyancy; drag; gravity; }
+TERMS :: 3;
+
+term_name :: (t: Term) -> string {
+  if t == Term.buoyancy { return "water.buoyancy"; }
+  if t == Term.drag { return "water.drag"; }
+  return "gravity";
+}
+
+Ledger :: struct {
+  origin: D3;
+  start: Momentum;
+  external: [TERMS] Momentum;
+  entered: [TERMS] bool;        // whether a term was ever added
+  throughput: [2] f64;          // total linear and angular momentum moved
+}
+
+LedgerError :: struct { linear: f64; angular: f64; }
+
+ledger_new :: (origin: D3, start: Momentum) -> Ledger {
+  l: Ledger;
+  l.origin = origin;
+  l.start = start;
+  return l;
+}
+
+ledger_add :: (l: Ledger, t: Term, m: Momentum) -> Ledger {
+  next := l;
+  k := cast(int) t;
+  next.external[k] = momentum_add(next.external[k], m);
+  next.entered[k] = true;
+  next.throughput[0] += d3_len(m.linear);
+  next.throughput[1] += d3_len(m.angular);
+  return next;
+}
+
+ledger_add_impulse :: (l: Ledger, t: Term, impulse: D3, at: D3) -> Ledger {
+  return ledger_add(l, t, momentum_impulse(impulse, at, l.origin));
+}
+
+// The ledger without one term, to show that leaving it out shows.
+ledger_without :: (l: Ledger, t: Term) -> Ledger {
+  next := l;
+  k := cast(int) t;
+  next.external[k] = Momentum.{};
+  next.entered[k] = false;
+  return next;
+}
+
+// The residual against the start plus every term, relative to the larger
+// of the momentum then and now and the momentum the terms moved.
+ledger_error :: (l: Ledger, now: Momentum) -> LedgerError {
+  total := l.start;
+  for m: l.external { total = momentum_add(total, m); }
+  rl := d3_len(d3_sub(now.linear, total.linear));
+  ra := d3_len(d3_sub(now.angular, total.angular));
+  sl := fmax(fmax(fmax(d3_len(l.start.linear), d3_len(now.linear)), l.throughput[0]), 0.000000000001);
+  sa := fmax(fmax(fmax(d3_len(l.start.angular), d3_len(now.angular)), l.throughput[1]), 0.000000000001);
+  return LedgerError.{linear = rl / sl, angular = ra / sa};
+}
+
+// Checks.
+
+// ---- many bodies at once (book chapter 18)
 
 RIGID_BODIES :: 64;
 
@@ -277,4 +505,54 @@ rigid_flip_interval :: (inertia: D3, w: D3) -> f64 {
   #assert abs(small.x - sin(0.00001)) < 1e-20 && abs(big.x - sin(0.0002)) < 1e-19 && abs(dq_len(small) - 1.0) < 1e-15;
   x := rigid_solve(d3(2.0, 1.0, 0.0), d3(0.0, 3.0, 1.0), d3(1.0, 0.0, 4.0), d3(4.0, 9.0, 13.0));
   #assert abs(x.x - 1.0) < 1e-14 && abs(x.y - 2.0) < 1e-14 && abs(x.z - 3.0) < 1e-14;
+}
+
+// ---- the one-body integrator's checks
+#test "a tumbling body keeps its angular momentum and a falling one gains m g t" {
+  store: [2] RigidBody;
+  store[0] = rigid_body(180.0, rigid_box_inertia(180.0, d3(1.2, 2.0, 4.0)), d3(3.0, 1.0, -2.0), DQ.{});
+  store[0].vel = d3(0.4, -0.1, 0.25);
+  store[0].omega = d3(0.3, 0.05, -0.2);
+  store[1] = rigid_body(2.0, rigid_box_inertia(2.0, d3(0.2, 0.2, 0.2)), D3_ZERO, DQ.{});
+  w := rigid_world(1.0 / 120.0, store[..]);
+  origin := d3(1.0, -2.0, 3.0);
+  start := momentum_of(store[0], origin);
+  for s: 0..<600 {
+    store[1].force = d3(0.0, 0.0, 0.0);
+    w = rigid_step(w, D3_ZERO);
+  }
+  now := momentum_of(store[0], origin);
+  #assert d3_dist(now.angular, start.angular) < 0.00000000001 * d3_len(start.angular);
+  #assert d3_dist(now.linear, start.linear) < 0.000000000001;
+  #assert w.tick == 600;
+  // Gravity: v = g t, and the ledger balances with it as a term.
+  fall: [1] RigidBody;
+  fall[0] = rigid_body(3.0, D3.{x = 1.0, y = 1.0, z = 1.0}, D3_ZERO, DQ.{});
+  f := rigid_world(0.01, fall[..]);
+  l := ledger_new(origin, world_momentum(f, origin));
+  for s: 0..<100 {
+    l = ledger_add_impulse(l, Term.gravity, d3(0.0, -9.81 * 3.0 * 0.01, 0.0), fall[0].pos);
+    f = rigid_step(f, d3(0.0, -9.81, 0.0));
+  }
+  #assert near_d(fall[0].vel.y, -9.81, 0.000000000001);
+  e := ledger_error(l, world_momentum(f, origin));
+  #assert e.linear < 0.000000000001 && e.angular < 0.000000000001;
+  #assert ledger_error(ledger_without(l, Term.gravity), world_momentum(f, origin)).linear > 0.5;
+  #assert term_name(Term.buoyancy) == "water.buoyancy" && term_name(Term.drag) == "water.drag";
+}
+
+#test "a supported body at rest sleeps after SLEEP_TIME and an unsupported one never does" {
+  store: [2] RigidBody;
+  store[0] = rigid_body(1.0, d3(1.0, 1.0, 1.0), D3_ZERO, DQ.{});
+  store[1] = rigid_body(1.0, d3(1.0, 1.0, 1.0), d3(5.0, 0.0, 0.0), DQ.{});
+  w := rigid_world(0.01, store[..]);
+  for s: 0..<49 { store[0].supported = true; w = rigid_step(w, D3_ZERO); }
+  #assert !store[0].sleeping;
+  store[0].supported = true;
+  w = rigid_step(w, D3_ZERO);
+  #assert store[0].sleeping && !store[1].sleeping;
+  // Set moving, it wakes.
+  store[0].vel = d3(1.0, 0.0, 0.0);
+  w = rigid_step(w, D3_ZERO);
+  #assert !store[0].sleeping && store[0].pos.x > 0.0;
 }

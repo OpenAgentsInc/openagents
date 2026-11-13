@@ -13,7 +13,7 @@
 // the same rocket equation.
 //   coax/bin/coax test metaverse-engine/physics/orbit.coax --library --steps 2000000000
 
-#load "rigid.coax";
+#load "../core/math-d.coax";
 
 AU :: 149597870700.0;               // m
 GM_SUN :: 132712440018000000000.0;  // m^3/s^2 (DE440)
@@ -31,7 +31,7 @@ State :: struct { r: D3; v: D3; }
 
 orbit_state_of :: (r: D3, v: D3) -> State { return State.{r = r, v = v}; }
 
-// atan2 over atan_d (metaverse-engine/physics/rigid.coax): there is no atan intrinsic.
+// atan2 over atan_d (metaverse-engine/core/math-d.coax): there is no atan intrinsic.
 atan2_d :: (y: f64, x: f64) -> f64 {
   if x > 0.0 { return atan_d(y / x); }
   if x < 0.0 {

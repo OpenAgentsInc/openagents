@@ -22,7 +22,7 @@
 //   modifier is +0: a minute), at least 30 s; out of breath, an Exhaustion
 //   level every 6 s; the sixth defeats, and you come to on the nearer bank.
 //   Breathing again removes them; breath refills over 6 s.
-// - Floats: ducks and lily pads, rigid bodies (metaverse-engine/physics/rigid.coax) on
+// - Floats: ducks and lily pads, rigid bodies (metaverse-engine/physics/sim/rigid.coax) on
 //   water_apply's buoyancy and drag; a duck paddles back to its stretch of
 //   the glade against the current, a lily pad is held by its stem.
 //

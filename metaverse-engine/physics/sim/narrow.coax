@@ -23,13 +23,13 @@
 //                               linear motion
 //
 // The normal points from b toward a, the way to push a out, as in
-// metaverse-engine/physics/contact.coax. distance is signed: negative is the depth of overlap.
+// metaverse-engine/physics/sim/contact.coax. distance is signed: negative is the depth of overlap.
 // Every pair is put in a canonical order first (by position, then kind), so
 // swapping a and b negates the normal and leaves everything else the same
 // bits. CPU only, f64. Signed distance fields, MPR, triangle meshes,
 // heightfields and device kernels are not built yet.
 //   coax/bin/coax test --library metaverse-engine/physics/sim/narrow.coax
-#load "../contact.coax";
+#load "contact.coax";
 #load "../../core/rand.coax";
 
 NARROW_HULL :: 32;
@@ -673,7 +673,7 @@ test_same :: (m: Manifold, n: Manifold) -> bool {
   #assert deep > 50;
 }
 
-#test "spheres and boxes agree with metaverse-engine/physics/contact.coax" #steps 200000000 {
+#test "spheres and boxes agree with metaverse-engine/physics/sim/contact.coax" #steps 200000000 {
   for k: 0..<100 {
     ca := d3(test_unit(5, 8 * k) * 2.0, test_unit(5, 8 * k + 1) * 2.0, test_unit(5, 8 * k + 2) * 2.0);
     cb := d3(test_unit(5, 8 * k + 3) * 2.0, test_unit(5, 8 * k + 4) * 2.0, test_unit(5, 8 * k + 5) * 2.0);

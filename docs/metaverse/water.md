@@ -42,7 +42,7 @@ and tests. It covers what the specification's "Coupling with
 - **Ledger terms.** Each force is a `Push` under `water.buoyancy` or
   `water.drag`; `water_record` enters them into a momentum `Ledger`.
 
-[`metaverse-engine/physics/rigid.coax`](../../metaverse-engine/physics/rigid.coax) holds the rigid bodies water
+[`metaverse-engine/physics/sim/rigid.coax`](../../metaverse-engine/physics/sim/rigid.coax) holds the rigid bodies water
 pushes on: the old `body.rs`, `World::step` without contacts, sleep with
 support, and `ledger.rs`.
 
@@ -52,7 +52,7 @@ them with:
 
 ```sh
 coax/bin/coax test --library metaverse/water.coax --steps 500000000
-coax/bin/coax test --library metaverse-engine/physics/rigid.coax
+coax/bin/coax test --library metaverse-engine/physics/sim/rigid.coax
 ```
 
 ### Differences from the Rust W1

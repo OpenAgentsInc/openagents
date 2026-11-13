@@ -1,0 +1,140 @@
+// Vectors and quaternions in f64 (D2, D3, DQ, as glam's), and the few functions they need that have
+// no intrinsic (atan, acos). They came out of the first rigid-body module
+// (metaverse-engine/physics/rigid.coax, retired in #13279), which every f64 module loaded for them:
+// orbits, the space camera, water, the simulation package. The bodies themselves are
+// metaverse-engine/physics/sim/rigid.coax.
+//   coax/bin/coax test --library metaverse-engine/core/math-d.coax
+
+D2 :: struct { x: f64; y: f64; }
+D3 :: struct { x: f64; y: f64; z: f64; }
+DQ :: struct { x: f64; y: f64; z: f64; w: f64 = 1.0; }
+
+PI_D :: 3.141592653589793;
+TAU_D :: 6.283185307179586;
+
+d2 :: (x: f64, y: f64) -> D2 { return D2.{x = x, y = y}; }
+d2_add :: (a: D2, b: D2) -> D2 { return d2(a.x + b.x, a.y + b.y); }
+d2_sub :: (a: D2, b: D2) -> D2 { return d2(a.x - b.x, a.y - b.y); }
+d2_scale :: (a: D2, k: f64) -> D2 { return d2(a.x * k, a.y * k); }
+d2_dot :: (a: D2, b: D2) -> f64 { return a.x * b.x + a.y * b.y; }
+d2_len2 :: (a: D2) -> f64 { return a.x * a.x + a.y * a.y; }
+d2_len :: (a: D2) -> f64 { return sqrt(a.x * a.x + a.y * a.y); }
+d2_dist :: (a: D2, b: D2) -> f64 { return d2_len(d2_sub(a, b)); }
+d2_dist2 :: (a: D2, b: D2) -> f64 { return d2_len2(d2_sub(a, b)); }
+d2_lerp :: (a: D2, b: D2, t: f64) -> D2 { return d2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t); }
+d2_min :: (a: D2, b: D2) -> D2 { return d2(fmin(a.x, b.x), fmin(a.y, b.y)); }
+d2_max :: (a: D2, b: D2) -> D2 { return d2(fmax(a.x, b.x), fmax(a.y, b.y)); }
+// a over its length, or `otherwise` when it has none (glam's normalize_or).
+d2_unit_or :: (a: D2, otherwise: D2) -> D2 {
+  l := d2_len(a);
+  if !(l > 0.0) || !is_finite(1.0 / l) { return otherwise; }
+  return d2_scale(a, 1.0 / l);
+}
+
+d3 :: (x: f64, y: f64, z: f64) -> D3 { return D3.{x = x, y = y, z = z}; }
+D3_ZERO :: #run d3(0.0, 0.0, 0.0);
+D3_X :: #run d3(1.0, 0.0, 0.0);
+D3_Y :: #run d3(0.0, 1.0, 0.0);
+D3_Z :: #run d3(0.0, 0.0, 1.0);
+d3_add :: (a: D3, b: D3) -> D3 { return d3(a.x + b.x, a.y + b.y, a.z + b.z); }
+d3_sub :: (a: D3, b: D3) -> D3 { return d3(a.x - b.x, a.y - b.y, a.z - b.z); }
+d3_scale :: (a: D3, k: f64) -> D3 { return d3(a.x * k, a.y * k, a.z * k); }
+d3_mul :: (a: D3, b: D3) -> D3 { return d3(a.x * b.x, a.y * b.y, a.z * b.z); }
+d3_div :: (a: D3, b: D3) -> D3 { return d3(a.x / b.x, a.y / b.y, a.z / b.z); }
+d3_neg :: (a: D3) -> D3 { return d3(-a.x, -a.y, -a.z); }
+d3_dot :: (a: D3, b: D3) -> f64 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+d3_cross :: (a: D3, b: D3) -> D3 { return d3(a.y * b.z - b.y * a.z, a.z * b.x - b.z * a.x, a.x * b.y - b.x * a.y); }
+d3_len2 :: (a: D3) -> f64 { return d3_dot(a, a); }
+d3_len :: (a: D3) -> f64 { return sqrt(d3_dot(a, a)); }
+d3_dist :: (a: D3, b: D3) -> f64 { return d3_len(d3_sub(a, b)); }
+d3_eq :: (a: D3, b: D3) -> bool { return a.x == b.x && a.y == b.y && a.z == b.z; }
+d3_unit :: (a: D3) -> D3 { return d3_scale(a, 1.0 / d3_len(a)); }
+d3_unit_or :: (a: D3, otherwise: D3) -> D3 {
+  l := d3_len(a);
+  if !(l > 0.0) || !is_finite(1.0 / l) { return otherwise; }
+  return d3_scale(a, 1.0 / l);
+}
+d3_finite :: (a: D3) -> bool { return is_finite(a.x) && is_finite(a.y) && is_finite(a.z); }
+
+fmin :: (a: f64, b: f64) -> f64 { if a < b { return a; } return b; }
+fmax :: (a: f64, b: f64) -> f64 { if a > b { return a; } return b; }
+fclamp :: (a: f64, low: f64, high: f64) -> f64 { return fmin(high, fmax(low, a)); }
+is_finite :: (x: f64) -> bool { return x == x && x - x == 0.0; }
+
+// atan, to about 1e-16: two reductions bring |t| under tan(PI/12), where
+// sixteen terms of the series suffice.
+atan_d :: (t: f64) -> f64 {
+  if t < 0.0 { return -atan_d(-t); }
+  if t > 1.0 { return PI_D / 2.0 - atan_d(1.0 / t); }
+  if t > 0.2679491924311227 {
+    r3 := 1.7320508075688772;
+    return PI_D / 6.0 + atan_d((t * r3 - 1.0) / (r3 + t));
+  }
+  s := t * t;
+  sum := 0.0;
+  term := t;
+  for k: 0..<16 {
+    sign := ifx k % 2 == 0 then 1.0 else -1.0;
+    sum += sign * term / f64(2 * k + 1);
+    term *= s;
+  }
+  return sum;
+}
+
+// acos on [-1, 1], clamped; there is no acos intrinsic.
+acos_d :: (c: f64) -> f64 {
+  x := fclamp(c, -1.0, 1.0);
+  if x <= -1.0 { return PI_D; }
+  return 2.0 * atan_d(sqrt((1.0 - x) / (1.0 + x)));
+}
+
+// The angle between two vectors, as glam's angle_between.
+d3_angle :: (a: D3, b: D3) -> f64 {
+  return acos_d(d3_dot(a, b) / sqrt(d3_len2(a) * d3_len2(b)));
+}
+
+// Quaternions, Hamilton's product, as glam's DQuat.
+dq :: (x: f64, y: f64, z: f64, w: f64) -> DQ { return DQ.{x = x, y = y, z = z, w = w}; }
+dq_mul :: (a: DQ, b: DQ) -> DQ {
+  return dq(a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+            a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+            a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+            a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z);
+}
+dq_conj :: (q: DQ) -> DQ { return dq(-q.x, -q.y, -q.z, q.w); }
+dq_len :: (q: DQ) -> f64 { return sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w); }
+dq_unit :: (q: DQ) -> DQ { k := 1.0 / dq_len(q); return dq(q.x * k, q.y * k, q.z * k, q.w * k); }
+dq_rotate :: (q: DQ, v: D3) -> D3 {
+  b := d3(q.x, q.y, q.z);
+  b2 := d3_dot(b, b);
+  return d3_add(d3_add(d3_scale(v, q.w * q.w - b2), d3_scale(b, d3_dot(v, b) * 2.0)), d3_scale(d3_cross(b, v), q.w * 2.0));
+}
+dq_x :: (angle: f64) -> DQ { return dq(sin(angle * 0.5), 0.0, 0.0, cos(angle * 0.5)); }
+dq_y :: (angle: f64) -> DQ { return dq(0.0, sin(angle * 0.5), 0.0, cos(angle * 0.5)); }
+dq_z :: (angle: f64) -> DQ { return dq(0.0, 0.0, sin(angle * 0.5), cos(angle * 0.5)); }
+// Rotations about x, then y, then z, as glam's from_euler(EulerRot::XYZ).
+dq_euler_xyz :: (a: f64, b: f64, c: f64) -> DQ { return dq_mul(dq_mul(dq_x(a), dq_y(b)), dq_z(c)); }
+
+near_d :: (a: f64, b: f64, tolerance: f64) -> bool { return abs(a - b) <= tolerance; }
+
+#forall "acos and atan agree with cos and tan" k: -100..<101 {
+  c := f64(k) / 100.0;
+  a := acos_d(c);
+  #assert a >= 0.0 && a <= PI_D;
+  #assert near_d(cos(a), c, 0.000000000000005);
+  t := f64(k) / 7.0;
+  #assert near_d(tan(atan_d(t)), t, 0.00000000000001 * fmax(1.0, t * t));
+}
+
+#test "quaternions rotate as glam's" {
+  q := dq_x(PI_D / 2.0);
+  v := dq_rotate(q, D3_Y);
+  #assert near_d(v.x, 0.0, 0.000000000000001) && near_d(v.y, 0.0, 0.000000000000001) && near_d(v.z, 1.0, 0.000000000000001);
+  e := dq_euler_xyz(0.3, -1.2, 0.7);
+  a := dq_rotate(e, d3(0.2, 0.5, -0.9));
+  b := dq_rotate(dq_x(0.3), dq_rotate(dq_y(-1.2), dq_rotate(dq_z(0.7), d3(0.2, 0.5, -0.9))));
+  #assert d3_dist(a, b) < 0.000000000000002;
+  back := dq_rotate(dq_conj(e), a);
+  #assert d3_dist(back, d3(0.2, 0.5, -0.9)) < 0.000000000000002;
+  #assert near_d(d3_angle(D3_X, d3(1.0, 1.0, 0.0)), PI_D / 4.0, 0.000000000000002);
+}

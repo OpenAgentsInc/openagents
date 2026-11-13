@@ -1,4 +1,4 @@
-// Contacts for metaverse-engine/physics/rigid.coax bodies (docs/metaverse/space.md): finding where
+// Contacts for metaverse-engine/physics/sim/rigid.coax bodies (docs/metaverse/space.md): finding where
 // two shapes touch, and the impulse that answers it, in f64.
 //
 // Shapes: a sphere (a centre and a radius), an oriented box (a body's pose
@@ -15,7 +15,7 @@
 // overlap past SLOP. A body with mass 0 is static (it never moves).
 // Forces and impulses at a point (rigid_force_at, rigid_impulse_at) are here
 // too: metaverse-engine/physics/vehicle.coax and metaverse-engine/physics/thrust.coax push bodies with them.
-//   coax/bin/coax test --library metaverse-engine/physics/contact.coax
+//   coax/bin/coax test --library metaverse-engine/physics/sim/contact.coax
 
 #load "rigid.coax";
 

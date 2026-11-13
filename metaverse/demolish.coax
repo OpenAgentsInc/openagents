@@ -30,7 +30,7 @@
 //   and it lands on what still stands, so a roof whose walls went on one side
 //   sags onto the other and slides off. It breaks into chunks when it leans
 //   past 62 degrees (a roof 50), strikes something hard, or has fallen 6 s.
-// - Physics: bodies are metaverse-engine/physics/rigid.coax's, stepped at a fixed 60 Hz, with
+// - Physics: bodies are metaverse-engine/physics/sim/rigid.coax's, stepped at a fixed 60 Hz, with
 //   box contacts by impulses at the corners (restitution, Coulomb friction)
 //   against the ground, the pieces still standing (a roof by its slopes),
 //   and each other (a chunk's corners in another's box, both ways, found on a
@@ -68,7 +68,7 @@
 //   coax/bin/coax test --library metaverse/demolish.coax --steps 2000000000
 
 #load "../metaverse-engine/core/points.coax";
-#load "../metaverse-engine/physics/rigid.coax";
+#load "../metaverse-engine/physics/sim/rigid.coax";
 #load "../metaverse-engine/world/terrain.coax";
 #load "../metaverse-engine/physics/stand.coax";
 #load "../metaverse-engine/core/loop.coax";   // the steps are the Metaverse Engine's one clock's

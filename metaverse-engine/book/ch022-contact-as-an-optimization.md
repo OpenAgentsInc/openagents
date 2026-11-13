@@ -1,7 +1,7 @@
 # 22. Contact as an optimization
 
 > **Status: unimplemented — design draft.** The OpenAgents Metaverse Engine resolves contacts by
-> sequential impulses ([`metaverse-engine/physics/contact.coax`](../physics/contact.coax)).
+> sequential impulses ([`metaverse-engine/physics/sim/contact.coax`](../physics/sim/contact.coax)).
 > This chapter plans the constraint solver an articulated robot needs:
 > contacts, joint limits and friction solved together as one convex
 > problem. Nothing here runs yet.

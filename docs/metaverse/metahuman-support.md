@@ -342,7 +342,7 @@ All paths below are at `853417f290`, the Nuke's parent. Restore them with
 | Asset identity | `metaverse-engine/core/assets.coax`: content-addressed packs admitted whole or refused | A private pack is admitted by digest |
 | Frame budgets | `metaverse-engine/core/budget.coax` | Every LOD and crowd decision is checked against it |
 | Figures | `metaverse-engine/anim/figure.coax`: rounded-bone figures and gaits for soft-shape realms | The fallback, and the shape of the skeleton plan |
-| Rigid bodies | `metaverse-engine/physics/rigid.coax` | Skeletons collapsing on death |
+| Rigid bodies | `metaverse-engine/physics/sim/rigid.coax` | Skeletons collapsing on death |
 | Painterly style | `metaverse/style.coax`, [art-styles.md](art-styles.md) §10, §11, §14 | The character shading rules for 5E Lab |
 | Asset protocol | `openagents.verse.asset.v1` `PrivateAsset`, `PrivatePack` (with `rig`, `clips` and `forms`), `PrivatePlacements` and `PrivateUrlRequest` ([§10.17](openagents-verse-protocol.md)) | The schema is already specified |
 | Live infrastructure | Bucket `gs://openagentsgemini-verse-private-assets` and Cloud Run `verse-assets` (both checked as present on 2026-11-02) | Reuse them, with a Coax client in place of the Rust one |
@@ -1069,7 +1069,7 @@ asset:
 - **Undead motion.** Skeletons get their own idle and walk (stiffer, with
   a jaw rattle), and use the shared cast, melee and hit clips.
 - **Death.** Skeletons have no death saves. At 0 hit points they collapse:
-  each bone becomes an `metaverse-engine/physics/rigid.coax` body with the bone's last
+  each bone becomes an `metaverse-engine/physics/sim/rigid.coax` body with the bone's last
   velocity and settles into a pile. This is presentation only. The battle
   marks the Skeleton dead.
 

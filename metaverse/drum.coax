@@ -7,7 +7,7 @@
 // floor when it is upside down at the top.
 //
 // The curve is given to the engine as planes, the way metaverse-engine/physics/vehicle.coax and
-// metaverse-engine/physics/contact.coax already take a flat arena: drum_planes(d, pos) is the
+// metaverse-engine/physics/sim/contact.coax already take a flat arena: drum_planes(d, pos) is the
 // tangent plane under pos (the rim's nearest point) and the two end walls.
 // For a car or a ball a few metres across inside a drum tens of metres
 // round, the tangent plane is within millimetres of the curve under it.
