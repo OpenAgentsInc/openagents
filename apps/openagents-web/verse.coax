@@ -948,8 +948,8 @@ orb_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32) -> bool {
 
 // ---- the landing
 
-TITLE :: "ENTER THE VERSE";
-TITLE_1 :: "ENTER"; TITLE_2 :: "THE VERSE";
+TITLE :: "ENTER THE METAVERSE";
+TITLE_1 :: "ENTER"; TITLE_2 :: "THE METAVERSE";
 EYEBROW :: "A HAUNTED HOUSE PLAYTEST";
 LEDE :: "Explore our haunted house. Can you make it scarier?";
 LEDE_1 :: "Explore our haunted house.";
@@ -1093,7 +1093,7 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
   k := s[0].dpr; d := k; w := s[0].width; h := s[0].height; cx := w * 0.5;
   vertices := at;
   phone := s[0].touch || w < 640 * k;
-  vertices = write(d, out, vertices, "THE VERSE", 16 * k, 16 * k + 13 * k, 9 * k, WIDE * 0.6, space_for(WIDE * 0.6), white(k, 0.95), false, false);
+  vertices = write(d, out, vertices, "THE METAVERSE", 16 * k, 16 * k + 13 * k, 9 * k, WIDE * 0.6, space_for(WIDE * 0.6), white(k, 0.95), false, false);
   // who you are, top right: the email given, else a guest who can log in; a press opens /login
   who := ifx s[0].kept_n > 0 then kept_text(s) else "GUEST · LOG IN";
   wcap := 8 * k;
@@ -1338,7 +1338,7 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
     poke(s[..], t[..], x, y, POINTER_UP, 1, 7);
     #assert s[0].action == ACT_VOICE && cast(string) s[0].outbox[0..<s[0].out_n] == "end" && !s[0].guide_held;
     take_action(s[..]);
-    verse_message(s[..], t[..], MSG_VOICE, "replying|The Verse is worlds you walk into. The Haunted House is the first one, and it wants to be scarier.");
+    verse_message(s[..], t[..], MSG_VOICE, "replying|The Metaverse is worlds you walk into. The Haunted House is the first one, and it wants to be scarier.");
     #assert guide_label(s[..]) != "LISTENING" && s[0].guide_text_n > 40;
     out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
     n := verse_frame(s[..], t[..], out[..], u[..], w * 2, h * 2, 2, 0, true);

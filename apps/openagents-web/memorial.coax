@@ -434,7 +434,7 @@ memorial_frame :: (s: [] Memorial, out: [] f32, u: [] f32, width: f32, height: f
   y += 18 * d;
   v = press_button(s, out, v, Box.{x0 = l.x0, y0 = y, x1 = l.x1, y1 = y + bh}, "LEAVE A NOTE IN THE GARDEN", B_NOTE, 0, d, small);
   y += bh + 22 * d;
-  v = put_center(out, v, "A MEMORIAL IN HECATE'S CEMETERY, ON THE VERSE", cx, y, small * 0.85, ink(d, INK_LABEL));
+  v = put_center(out, v, "A MEMORIAL IN HECATE'S CEMETERY, ON THE METAVERSE", cx, y, small * 0.85, ink(d, INK_LABEL));
   y += 30 * d;
   s[0].content = y + s[0].scroll;
   // a photo open large, over everything: a tap closes it

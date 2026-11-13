@@ -319,7 +319,7 @@ static void memorial_page(const request *q, PGconn *db, const char *slug) {
   if (*born || *died) snprintf(dates, sizeof dates, "%s%s%s. ", born, *died ? " to " : "", died);
   if (found) snprintf(title, sizeof title, "%s, in Hecate's Cemetery", name);
   else snprintf(title, sizeof title, "A memorial in Hecate's Cemetery");
-  snprintf(desc, sizeof desc, "%s%s", found ? dates : "", found && *line ? line : "A memorial in the moonlit garden of Planetary Villa, on the Verse.");
+  snprintf(desc, sizeof desc, "%s%s", found ? dates : "", found && *line ? line : "A memorial in the moonlit garden of Planetary Villa, on the OpenAgents Metaverse.");
   snprintf(url, sizeof url, "%s/memorial/%s", origin(), ok ? slug : "");
   buf b = {NULL, 0, 0};
   char head[4096];

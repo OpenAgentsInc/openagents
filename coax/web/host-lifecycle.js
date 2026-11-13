@@ -1,7 +1,7 @@
 // Firm reason: 1 (browser SDK: scalar projection of Coax lifecycle and frame offers).
 export function makeHostLifecycle(x){
   if(x?.coaxial_host_contract_version?.()!==1||!x.coaxial_host_lifecycle_version)return null;
-  if(x.coaxial_host_lifecycle_version()!==1)throw Error('unsupported Aethyr host lifecycle contract');
+  if(x.coaxial_host_lifecycle_version()!==1)throw Error('unsupported Metaverse Engine host lifecycle contract');
   return {
     reset:()=>x.coaxial_host_lifecycle_reset(),
     event:(kind,nowUs,arg=0)=>Number(x.coaxial_host_lifecycle_event(kind,BigInt(nowUs),BigInt(arg))),

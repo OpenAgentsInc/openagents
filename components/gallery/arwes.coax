@@ -196,7 +196,7 @@ gl_arwes :: (r: [] GlArwes, sh: [] Sheet, m: TextMeasure, x: f32, y: f32, w: f32
   ix := x + 20; iw := w - 40; h: f32 = 20;
   tw := sheet_text(sh, m, -1, ix, y + h, s.title.line, s.title.face, s.ink, "ARWES");
   h += s.title.line;
-  lead := "Every ARWES port, drawn by the paint layer in the Verse skin: frames, backgrounds, the illuminator, text, motion, styles, theme, bleeps and timers.";
+  lead := "Every ARWES port, drawn by the paint layer in the Metaverse skin: frames, backgrounds, the illuminator, text, motion, styles, theme, bleeps and timers.";
   lines: [8] TextLine; no_runs: [1] MdRun;
   nl := text_wrap(m, uiskin_faces(s), lead, no_runs[0..<0], iw, lines[..]);
   for k: 0..<nl { lw := sheet_text(sh, m, -1, ix, y + h, s.body.line, s.body.face, s.muted, cast(string) lead[lines[k].from..<lines[k].to]); h += s.body.line; }

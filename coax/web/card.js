@@ -82,7 +82,7 @@ export function compose(frame, title, line) {
   const sans = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
   const small = frame ? top + 36 : 110;
   g.fillStyle = "rgba(255,255,255,0.7)"; g.font = `400 15px ${sans}`;
-  spaced(g, "OPENAGENTS  /  VERSE", 62, small, 2.5);
+  spaced(g, "OPENAGENTS  /  METAVERSE", 62, small, 2.5);
   g.textAlign = "right"; spaced(g, "OPENAGENTS.COM", W - 62, small, 2.5, true); g.textAlign = "left";
   // the name: thin capitals drawn as outlines, the line-art look
   let size = 58;

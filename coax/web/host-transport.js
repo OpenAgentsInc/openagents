@@ -4,7 +4,7 @@
 export function makeHostTransport(x,memory) {
   const version=x?.coaxial_host_contract_version?.();
   if (version===undefined || version===0) return null; // pinned/pre-contract face
-  if (version!==1 || x.coaxial_host_transport_version?.()!==1) throw Error('unsupported Aethyr host transport contract');
+  if (version!==1 || x.coaxial_host_transport_version?.()!==1) throw Error('unsupported Metaverse Engine host transport contract');
   const owner = id => ({id, generation: x.coaxial_host_owner(1), engine: x.coaxial_host_owner(2)});
   const args = o => [o.id, o.generation, o.engine];
   const delivery = accepted => accepted ? {kind:Number(x.coaxial_host_delivery(0)), bytes:Number(x.coaxial_host_delivery(1)), failure:!!x.coaxial_host_delivery(2)} : null;

@@ -36,7 +36,7 @@ GL_TERM_ROW :: 18.0;        // a terminal row on the page
 GL_HIT_BUTTON :: 10; GL_HIT_TOGGLE :: 11; GL_HIT_SLIDER :: 12; GL_HIT_TAB :: 13; GL_HIT_ROW :: 14;
 
 GL_MD :: "Markdown is **one component**: `kit/markdown.coax` paints a [parsed document](components/core/markdown.coax) in *any* skin.\n\n- [x] parsed once, in `core/`\n- [ ] wrapped once, in `layout/`\n  - measured in pixels or in cells\n\n> The component asks its skin for a panel. It doesn't draw one.\n\n```rust\nfn paint(sheet: &mut Sheet, skin: &Skin) {\n    sheet.fill(skin.surface); // a role\n}\n```\n\n| Target | Measure | Backend |\n|:--|:-:|--:|\n| the web | pixels | `gpu.coax` |\n| a terminal | cells | `terminal.coax` |";
-GL_ABOUT :: [4] string.["Zeron Dark: the chat's look.", "Iron and gold: Everglade and the Workshop.", "The Verse's instruments: grey lines, cyan.", "Cells: the same components in a terminal."];
+GL_ABOUT :: [4] string.["Zeron Dark: the chat's look.", "Iron and gold: Everglade and the Workshop.", "The Metaverse's instruments: grey lines, cyan.", "Cells: the same components in a terminal."];
 GL_TABS :: [3] string.["Chat", "Files", "Runs"];
 GL_ROWS :: [3] string.["Fix the tool group header", "Draft the release notes", "Port the wrapper"];
 

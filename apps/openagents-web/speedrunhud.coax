@@ -730,7 +730,7 @@ ring_edges :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32, start: f32) -> i
 
 st_realms :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32) -> int {
   v := sr_frame(s, out, at, SrBox.{x = 40, y = 140, width = 1264, height = 750}, rmp(t, 0, 0.8), 16, -1, 0.72, 22);
-  v = sr_header(s, out, v, 76, 170, 1192, "THE VERSE", rmp(t, 0.2, 0.5), "CONNECTED WORLDS", 9);
+  v = sr_header(s, out, v, 76, 170, 1192, "THE METAVERSE", rmp(t, 0.2, 0.5), "CONNECTED WORLDS", 9);
   v = ring_edges(s, out, v, t, 1.2);
   pa: [1] Path;
   for i: 0..<8 {
@@ -768,7 +768,7 @@ st_realms :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32) -> int {
 
 st_identity :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32, dur: f32) -> int {
   v := sr_frame(s, out, at, SrBox.{x = 40, y = 140, width = 1264, height = 750}, rmp(t, 0, 0.3), 16, -1, 0.72, 22);
-  v = sr_header(s, out, v, 76, 170, 1192, "THE VERSE", rmp(t, 0.1, 0.5), "", 10);
+  v = sr_header(s, out, v, 76, 170, 1192, "THE METAVERSE", rmp(t, 0.1, 0.5), "", 10);
   v = ring_edges(s, out, v, t, -1);
   for i: 0..<8 {
     q := ring_pos(i);

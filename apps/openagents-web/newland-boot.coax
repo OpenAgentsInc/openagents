@@ -181,7 +181,7 @@ boot_frame :: (out: [] f32, n: int, uniforms: [] f32, b: [] LandBoot, t: f32, wi
     faint := dimmed(ink(p, INK_FAINT), light * f);
     v = rule(out, v, x0 + arm, y0, x1, y0, faint, faint.light); v = rule(out, v, x1, y0, x1, y1 - arm * 0.6, faint, faint.light);
     v = rule(out, v, x1 - arm, y1, x0, y1, faint, faint.light); v = rule(out, v, x0, y1, x0, y0 + arm * 0.6, faint, faint.light);
-    v = put(out, v, "VERSE OS", x0 + 18 * d, y0 + 26 * d, 9 * d, dimmed(chrome(ink(p, INK_BRIGHT)), light * f));
+    v = put(out, v, "METAVERSE OS", x0 + 18 * d, y0 + 26 * d, 9 * d, dimmed(chrome(ink(p, INK_BRIGHT)), light * f));
   }
   // the lines, typed in: label, value, and what became of it
   shown := boot_shown(b[0].n, t);

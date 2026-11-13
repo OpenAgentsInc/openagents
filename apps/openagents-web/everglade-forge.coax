@@ -188,7 +188,7 @@ forge_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   hb := Box.{x0 = g, y0 = g, x1 = g + pw, y1 = g + 58 * k};
   plate(s, u, hb, 0.8, 0);
   n = fg_frame(s, out, n, hb, verse_hud_cut(1) * k, 1, true);
-  n = fg_text(s, out, n, "AETHYRFORGE", hb.x0 + 16 * k, hb.y0 + 26 * k, 12 * k, fg_grey(k, 0.97, 0));
+  n = fg_text(s, out, n, "REALM EDITOR", hb.x0 + 16 * k, hb.y0 + 26 * k, 12 * k, fg_grey(k, 0.97, 0));
   // the realm it edits: Everglade, Everglade 5E or a fork's name (everglade-fork.coax fork_title)
   said_b: [96] u8;
   said_n := fk_put(said_b[..], 0, fork_title(s));

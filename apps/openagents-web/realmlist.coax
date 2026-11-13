@@ -663,7 +663,7 @@ header :: (out: [] f32, at: int, l: Layout, p: Pen, sort: int, hot: int, make: b
   v = put(out, v, "WORLDS", x, ty, 26 * d, white);
   if l.wide {
     tx := x + text_width("WORLDS", 26 * d) + 22 * d;
-    v = put_fit(out, v, "WORLDS ON THE VERSE YOU PLAY IN THE BROWSER", tx, ty - 4 * d, 8 * d, white, l.chips[0].x0 - tx - 30 * d);
+    v = put_fit(out, v, "WORLDS ON THE METAVERSE YOU PLAY IN THE BROWSER", tx, ty - 4 * d, 8 * d, white, l.chips[0].x0 - tx - 30 * d);
   } else {
     v = put_fit(out, v, "WORLDS YOU PLAY IN THE BROWSER", x, ty + 22 * d, 7.5 * d, white, right - x);
   }

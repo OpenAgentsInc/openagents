@@ -156,7 +156,7 @@ demo_grid :: (out:[]f32,at:int,b:HudBox,p:HdPen,t:f32,selected:int)->int {
   v:=at;
   for i:-12..<13 {f:=cast(f32)i;v=demo_grid_line(out,v,b,f,-12,0,f,12,0,t,p,1,0.2);v=demo_grid_line(out,v,b,-12,f,0,12,f,0,t,p,1,0.2);}
   xs:=[5]f32.[-4,3,-1,5,-5];zs:=[5]f32.[-3,-4,4,3,3];
-  names:=[5]string.["COAX / COMPILER","AETHYR / ENGINE","PSIONIC / COMPUTE","VERSE / WORLDS","NOSTR / RELAY"];
+  names:=[5]string.["COAX / COMPILER","METAVERSE / ENGINE","PSIONIC / COMPUTE","METAVERSE / REALMS","NOSTR / RELAY"];
   for i:0..<5 {
     x:=xs[i];z:=zs[i];sel:=i==selected;
     for j:0..<4 {
@@ -182,7 +182,7 @@ demo_grid :: (out:[]f32,at:int,b:HudBox,p:HdPen,t:f32,selected:int)->int {
 demo_header :: (s:[]ProjectsState,out:[]f32,at:int)->int {
   p:=HdPen.{d=s[0].d,cyan=s[0].cyan,top=0,bottom=s[0].height};w:=s[0].width;v:=at;
   v=hd_diamond(out,v,29,29,4,p,2);
-  v=hd_text(out,v,ifx w<400 then "AETHYR" else ifx w<700 then "AETHYR / HUD LAB" else "OPENAGENTS / AETHYR",43,33,10,p,0);
+  v=hd_text(out,v,ifx w<400 then "METAVERSE" else ifx w<700 then "METAVERSE / HUD LAB" else "OPENAGENTS / METAVERSE ENGINE",43,33,10,p,0);
   v=hd_text(out,v,ifx w<700 then "HUD / FIELD SYSTEMS" else "HUD / COMPONENT SYSTEM",24,76,ifx w<700 then 18.0f32 else 26.0f32,p,0);
   v=hd_text(out,v,ifx w<700 then "EXPANSE + ARWES / COAX NATIVE" else "EXPANSE + ARWES     /     43 SPECIMENS     /     COAX + WEBGPU     /     SYNTHETIC DEMO",24,96,8,p,1);
   small:=w<700;bw:=ifx small then 62.0f32 else 104.0f32;
@@ -239,7 +239,7 @@ demo_scene :: (s:[]ProjectsState,out:[]f32,u:[]f32,at:int,p:HdPen)->int {
     else if i==0 && s[0].scene==3 {v=demo_systems(s,out,v,content,p);}
     else if i==0 && s[0].scene==4 {v=demo_comms(s,out,v,content,p);}
     else if s[0].scene==1 && i==2 {v=demo_contacts(s,out,v,content,p);}
-    else if s[0].scene==4 && i==3 {v=hd_message(out,v,content,p,HdMessage.{channel="04 / DEMO TRANSMISSION",title="AETHYR OPERATIONS",line1=ifx s[0].command==0 then "Awaiting your command." else "Command received locally.",line2="No remote action is sent.",footer=ifx s[0].command==0 then "UNREAD / LOCAL" else "READ / LOCAL"});}
+    else if s[0].scene==4 && i==3 {v=hd_message(out,v,content,p,HdMessage.{channel="04 / DEMO TRANSMISSION",title="METAVERSE OPERATIONS",line1=ifx s[0].command==0 then "Awaiting your command." else "Command received locally.",line2="No remote action is sent.",footer=ifx s[0].command==0 then "UNREAD / LOCAL" else "READ / LOCAL"});}
     else if s[0].scene==4 && i==4 {v=demo_commands(s,out,v,content,p);}
     else {v=hd_component(out,v,kinds[start+i],content,p,s[0].time,value);}
     foot:=demo_box(b.x+18,b.y+b.height-52,b.width-36,36);
@@ -249,7 +249,7 @@ demo_scene :: (s:[]ProjectsState,out:[]f32,u:[]f32,at:int,p:HdPen)->int {
       v=demo_button(s,out,v,first,11,ifx s[0].route then "DISARM ROUTE" else "ARM DEMO ROUTE",p,s[0].route);
       v=demo_button(s,out,v,second,9,"NEXT CONTACT",p,false);
     } else if i==0 {
-      v=demo_button(s,out,v,foot,9,ifx s[0].contact==0 then "SELECT / COAX" else ifx s[0].contact==1 then "SELECT / AETHYR" else "SELECT / PSIONIC",p,false);
+      v=demo_button(s,out,v,foot,9,ifx s[0].contact==0 then "SELECT / COAX" else ifx s[0].contact==1 then "SELECT / METAVERSE" else "SELECT / PSIONIC",p,false);
     }
     if i==2 {v=demo_button(s,out,v,foot,ifx s[0].scene==2 then 12 else 9,ifx s[0].scene==2 then (ifx s[0].range==0 then "RANGE / 1X" else ifx s[0].range==1 then "RANGE / 2X" else "RANGE / 4X") else ifx s[0].contact==0 then "CONTACT 01 / NEXT" else ifx s[0].contact==1 then "CONTACT 02 / NEXT" else "CONTACT 03 / NEXT",p,false);}
     if i==4 && s[0].scene!=2 && s[0].scene!=4 {v=demo_button(s,out,v,foot,10,ifx s[0].acknowledged then "ACKNOWLEDGED / REOPEN" else "ACKNOWLEDGE DEMO EVENT",p,s[0].acknowledged);}
@@ -259,7 +259,7 @@ demo_scene :: (s:[]ProjectsState,out:[]f32,u:[]f32,at:int,p:HdPen)->int {
 }
 
 demo_contacts :: (s:[]ProjectsState,out:[]f32,at:int,b:HudBox,p:HdPen)->int {
-  labels:=[3]string.["COAX / COMPILER","AETHYR / ENGINE","PSIONIC / COMPUTE"];
+  labels:=[3]string.["COAX / COMPILER","METAVERSE / ENGINE","PSIONIC / COMPUTE"];
   ranges:=[3]string.["0.24 KM","1.80 KM","2.84 KM"];rows:[3]HdRow;
   for i:0..<3 {rows[i]=HdRow.{label=labels[i],value=ranges[i],status=ifx s[0].contact==i then 2 else 1};}
   return hd_rows(out,at,rows[..],b,p);
@@ -270,7 +270,7 @@ demo_flight :: (s:[]ProjectsState,out:[]f32,at:int,b:HudBox,p:HdPen)->int {
   for i:0..<3 {
     a:=cast(f32)i*1.8+0.6;r:=reach*(0.35+0.2*cast(f32)i)/(1+cast(f32)s[0].range*0.22);
     q:=hud_arc_point(cx,cy,r,r*0.39,a);v=hd_diamond(out,v,q.x,q.y,5,p,ifx i==s[0].contact then 2 else 1);
-    labels:=[3]string.["COAX / 01","AETHYR / 02","PSIONIC / 03"];
+    labels:=[3]string.["COAX / 01","METAVERSE / 02","PSIONIC / 03"];
     v=hd_text(out,v,labels[i],q.x+12,q.y-9,8,p,ifx i==s[0].contact then 2 else 1);
     if s[0].route {v=hd_line(out,v,cx,cy,q.x,q.y,p,2,0.7);}
   }
@@ -295,7 +295,7 @@ demo_systems :: (s:[]ProjectsState,out:[]f32,at:int,b:HudBox,p:HdPen)->int {
   return hd_text(out,v,"SUBSYSTEM MATRIX / SELECTED ROW FOLLOWS CONTACT",b.x+6,b.y+b.height-3,7,p,1);
 }
 demo_comms :: (s:[]ProjectsState,out:[]f32,at:int,b:HudBox,p:HdPen)->int {
-  names:=[3]string.["COAX / COMPILER","AETHYR / ENGINE","PSIONIC / COMPUTE"];
+  names:=[3]string.["COAX / COMPILER","METAVERSE / ENGINE","PSIONIC / COMPUTE"];
   card:=demo_box(b.x,b.y,b.width,demo_min(150,b.height*0.34));
   v:=hd_message(out,at,card,p,HdMessage.{channel="CHANNEL 04 / LOCAL SIMULATION",title=names[s[0].contact],line1="Link established. Survey packet ready.",line2="All actions stay in this demonstration.",footer="SESSION / LOCAL"});
   if b.height<280 {return v;}
@@ -327,7 +327,7 @@ demo_footer :: (s:[]ProjectsState,out:[]f32,at:int)->int {
   v=hd_line(out,v,24,y,s[0].width-24,y,p,1,0.35);
   hint:=ifx s[0].width<700 then "1-6 SCENES / TAB + ENTER / SCROLL" else "1-6 SCENES    TAB + ENTER SELECT    M ACCENT    SPACE FREEZE    ESC CLOSE    SCROLL TO EXPLORE";
   v=hd_text_fit(out,v,hint,24,y+22,7,s[0].width-48,p,1);
-  if s[0].width>=1100 {v=hd_text(out,v,"AETHYR / HUD LAB 001",s[0].width-210,y+22,8,p,0);}
+  if s[0].width>=1100 {v=hd_text(out,v,"METAVERSE / HUD LAB 001",s[0].width-210,y+22,8,p,0);}
   if s[0].scroll_max>0 {
     x:=s[0].width-10;top:=180.0f32+demo_body_offset(s[0].width);range:=s[0].height-244-demo_body_offset(s[0].width);
     v=hd_line(out,v,x,top,x,top+range,p,1,0.2);

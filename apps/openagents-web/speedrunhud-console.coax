@@ -241,7 +241,7 @@ STAGE_LOG :: [100] string.[
   "> CREATION  SOLVED", "DISTRIBUTION  UNSOLVED", "DEPLOYMENT  UNSOLVED", "PRODUCTION  UNSOLVED", "AT SCALE  UNSOLVED",
   "> SOLVED CENTRALLY", "GAMERS", "INDIE GAME DEVS", "OPENAGENTS PLATFORM", "",
   "> CONNECTED WORLDS", "8 WORLDS", "GROUPS  2^8 = 256", "ONE PLATFORM", "",
-  "> THE VERSE", "ONE PORTABLE IDENTITY", "ONE WALLET", "21,000 SATS", "",
+  "> THE METAVERSE", "ONE PORTABLE IDENTITY", "ONE WALLET", "21,000 SATS", "",
   "> OPEN SOURCE", "BITCOIN · LIGHTNING", "NOSTR  OPEN PROTOCOL", "PLUGGABLE · EXTENSIBLE", "ONE BRAND",
   "> BITCOIN  2011", "NOSTR  2021", "OPENAGENTS  2023", "OPENAGENTS.COM  2023", "C CORP",
   "> D&D RULE SET", "FIREBALL  LEVEL 3", "DAMAGE  8D6 FIRE", "3D WORLD", "",
@@ -251,7 +251,7 @@ STAGE_LOG :: [100] string.[
   "> COPILOTS", "AUTOPILOTS", "RECEIPTS", "SKILL CALLS", "SIMULATED",
   "> EVERGLADE", "", "", "", "",
   "> THE GRID", "", "", "", "",
-  "> THE VERSE", "", "", "", ""
+  "> THE METAVERSE", "", "", "", ""
 ];
 
 // Which stages' numbers are made up (a SIMULATED chip).
@@ -341,7 +341,7 @@ chrome :: (s: [] SpeedrunHud, out: [] f32, at: int, stage: int, t: f32, dur: f32
 frame_place :: (stage: int) -> string {
   if stage == S_FRAME_METEOR { return "EVERGLADE"; }
   if stage == S_FRAME_GRID { return "THE GRID"; }
-  return "THE VERSE";
+  return "THE METAVERSE";
 }
 
 frame_overlay :: (s: [] SpeedrunHud, out: [] f32, at: int, stage: int, t: f32, dur: f32) -> int {

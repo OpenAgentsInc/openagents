@@ -2371,7 +2371,7 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   title := cast(string) buf[0..<tn];
   sub := ifx !s[0].spec_ready then (ifx s[0].spec_failed then "THIS WORLD ISN'T HERE" else "OPENING THE WORLD")
          else ifx s[0].owner && s[0].from_n > 0 then "YOUR FORK" else ifx s[0].owner then "YOUR WORLD"
-         else ifx s[0].from_n > 0 then "A FORK ON THE VERSE" else ifx s[0].slug_n == 0 then "A WORLD SOMEONE BUILT" else "A WORLD ON THE VERSE";
+         else ifx s[0].from_n > 0 then "A FORK ON THE METAVERSE" else ifx s[0].slug_n == 0 then "A WORLD SOMEONE BUILT" else "A WORLD ON THE METAVERSE";
   bw := 104 * k;
   // the owner's: which version visitors see, and whether yours differs (book chapter 54)
   lb: [48] u8; ln := live_line(s, lb[..]); live := cast(string) lb[0..<ln];

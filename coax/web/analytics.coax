@@ -581,7 +581,7 @@ track_tally_send :: (t: [] Track) #export_c #effects(all) {
 
 // What the playtest's pages say about saving, where they say it (Settings,
 // Privacy on main's pages).
-TRACK_DISCLOSURE :: "We save what you do here, including what you say and type, with an anonymous id. It helps the Verse understand more.";
+TRACK_DISCLOSURE :: "We save what you do here, including what you say and type, with an anonymous id. It helps the Metaverse understand more.";
 
 #test "a page's facts start a session and a page view; events batch into the playtest's shape" {
   t: [1] Track;

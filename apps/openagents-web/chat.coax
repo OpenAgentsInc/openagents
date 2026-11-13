@@ -42,8 +42,8 @@ WC_TYPED :: 1; WC_SHOWN :: 602;
 WC_KEPT :: 4;              // host.js: what this browser kept for the page (the skin's name), once an engine loads
 WC_NAVIGATE :: 1; WC_COPY :: 2; WC_KEEP :: 4;
 // The skins Theme offers (components/skin/all.coax, by id), and what each looks like.
-WC_SKIN_NAMES :: [4] string.["Zeron", "Everglade", "Verse", "Terminal"];
-WC_SKIN_DESCS :: [4] string.["Dark and quiet, as OpenAgents for desktop draws it", "Iron, bronze and gold, as in Everglade", "Grey glass with a cyan edge, as in the Verse", "Monospace type on black, as in a terminal"];
+WC_SKIN_NAMES :: [4] string.["Zeron", "Everglade", "Metaverse", "Terminal"];
+WC_SKIN_DESCS :: [4] string.["Dark and quiet, as OpenAgents for desktop draws it", "Iron, bronze and gold, as in Everglade", "Grey glass with a cyan edge, as in the Metaverse", "Monospace type on black, as in a terminal"];
 WC_BUSY :: 2.0;            // seconds between reads while a turn waits or runs
 WC_REFRESH :: 30.0;        // else
 POST_SEND :: 1; POST_MODEL :: 2; POST_STOP :: 3; POST_KEY :: 4; POST_KEY_REMOVE :: 5; POST_TAB :: 6;

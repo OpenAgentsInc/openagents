@@ -360,7 +360,7 @@ og_card :: (out: [] f32, at: int, s: [] OgState, r: int, p: Pen, uniforms: [] f3
     pic := Box.{x0 = 0, y0 = 0, x1 = W, y1 = 456 * u};
     og_media_add(s, cast(string) buf[0..<n], pic);
     v = rule(out, v, 0, pic.y1, W, pic.y1, white, 0.35 * p.fade);
-    v = put(out, v, "OPENAGENTS  /  VERSE", x, pic.y1 + 34 * u, 9 * u, dim);
+    v = put(out, v, "OPENAGENTS  /  METAVERSE", x, pic.y1 + 34 * u, 9 * u, dim);
     v = put_right(out, v, "OPENAGENTS.COM", right, pic.y1 + 34 * u, 9 * u, host);
     v = put_fit(out, v, title, x, pic.y1 + 88 * u, 36 * u, white, w);
     v = put_fit(out, v, desc, x, pic.y1 + 132 * u, 12 * u, line, w);

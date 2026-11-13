@@ -296,7 +296,7 @@ canyon_frame :: (s:[]ValleyCanyon,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #exp
   n=hd_text_fit(out,n,ifx canyon_ready(s) then (ifx s[0].solo==2 then "ORIGINAL SOURCE / 1,999,990 TRIANGLES" else "ORIGINAL SOURCE / 999,995 TRIANGLES") else ifx s[0].failed then "PRIVATE SOURCE PACK MISSING OR REFUSED" else "LOADING ORIGINAL SOURCE PACK",20,94,11,w/d-40,pen,1);
   n=hd_text_fit(out,n,"ANCIENT WORLD / L0 X0 Y0 / INSTANCE 0 + 1",20,116,10,w/d-40,pen,0);
   n=hd_text_fit(out,n,"ORIGINAL 4K ALBEDO + ROUGHNESS / SOURCE POSES",20,h/d-142,10,w/d-40,pen,0);
-  n=hd_text_fit(out,n,ifx s[0].walking then "ECHO SOURCE MESH + 24 CLIPS / COAX CONTROLLER PORT" else "AETHYR STUDIO LIGHTING / ORIGINAL SOURCE POSES",20,h/d-120,10,w/d-40,pen,1);
+  n=hd_text_fit(out,n,ifx s[0].walking then "ECHO SOURCE MESH + 24 CLIPS / COAX CONTROLLER PORT" else "METAVERSE ENGINE STUDIO LIGHTING / ORIGINAL SOURCE POSES",20,h/d-120,10,w/d-40,pen,1);
   n=hd_text(out,n,[5]string.["VIEW / PBR","VIEW / ALBEDO","VIEW / NORMALS","VIEW / ROUGHNESS","VIEW / VERTEX PAINT"][s[0].mode],20,h/d-98,11,pen,0);
   for k:0..<2 {b:=HudBox.{x=16+cast(f32)k*w/d*0.5,y=h/d-82,width=w/d*0.5-32,height=44};n=hd_panel(out,n,b,pen,false);n=hd_text_fit(out,n,ifx k==0 then "V / VIEW" else ifx s[0].solo==2 then "I / BOTH" else ifx s[0].solo==0 then "I / INSTANCE 0" else "I / INSTANCE 1",b.x+8,b.y+28,11,b.width-16,pen,0);}
   n=hd_text_fit(out,n,ifx s[0].walking then "WASD MOVE / DRAG LOOK / SPACE JUMP / C INSPECT / H FACE / O ORBIT" else "DRAG ORBIT / WHEEL ZOOM / O WALK / R RESET",20,h/d-16,10,w/d-40,pen,0);
