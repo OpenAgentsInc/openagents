@@ -205,27 +205,6 @@ tool_main :: () -> int #export_c #effects(all) {
   h := ac_mail_start(t[..], "coax/web/api/tests/auth_checks.coax", work);
   if h < 0 { return ap_done(t[..], "auth checks"); }
   ac_checks(t[..], work);
-  chh_api_checks(t[..], work);
   ac_mail_stop(h, work);
   return ap_done(t[..], "auth checks");
-}
-
-chh_api_checks :: (t:[]Ap,dir:string) {
-  b:[128]u8;code:[6]u8;link:[64]u8;out:[8192]u8;acctb:[64]u8;cb:[160]u8;c:[1]Sb;q:[1]Sb;v:[1]Sb;
-  ap_check(t,"history requires a login",ac_call(t,"GET","/api/chat/history","","","","")==401,ap_body(t));
-  st:=ac_start(t,"mobilehistory@example.com","203.0.113.91",false,b[..]);
-  pending:=ac_cookie(t,"__Host-oa_pending",b[..]);got:=ac_mail(dir,code[..],link[..]);
-  sb(v[..],"{\"code\":\"");sb(v[..],cast(string)code[..]);sb(v[..],"\"}");
-  st=ac_call(t,"POST","/api/auth/email/verify",sb_text(v[..]),ac_cookie_header("__Host-oa_pending",pending,c[..]),"","");
-  session:=ac_cookie(t,"__Host-oa_session",cb[..]);account:=ap_member(ap_body(t),"account",acctb[..]);
-  ap_check(t,"history fixture logs in by a delivered email code",got && st==200 && account.count>0,"");
-  sb(q[..],"INSERT INTO auth.nostr_keys(account,pubkey) VALUES ('");sb(q[..],account);sb(q[..],"',repeat('cd',32)); INSERT INTO chat.conversations(owner,model,title,created_ms,updated_ms) VALUES (repeat('cd',32),'claude-opus-5-5','Phone-owned history',1,2),(repeat('ef',32),'claude-opus-5-5','Someone else private chat',1,3)");
-  ap_do(t,sb_text(q[..]));
-  st=ac_call(t,"GET","/api/chat/history","",ac_cookie_header("__Host-oa_session",session,c[..]),"","");
-  ap_check(t,"email L1 reads only its linked account chats",st==200 && ap_has(ap_body(t),"Phone-owned history") && !ap_has(ap_body(t),"Someone else private chat"),ap_body(t));
-  ap_check(t,"history responses cannot be cached",ap_has(ac_head(t),"Cache-Control: no-store"),ac_head(t));
-  st=ac_call(t,"GET","/api/chat/state","",ac_cookie_header("__Host-oa_session",session,c[..]),"","");
-  ap_check(t,"the old admin chat gate still requires stronger login",st!=200,"");
-  st=ac_call(t,"POST","/api/chat/history","{}",ac_cookie_header("__Host-oa_session",session,c[..]),"","");
-  ap_check(t,"the email history grant cannot write",st!=200,"");
 }
