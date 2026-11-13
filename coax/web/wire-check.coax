@@ -470,7 +470,7 @@ wc_owner_has :: (owner: string, codec: string) -> bool {
   if owner == "quests" { return wc_under(codec, "everglade/model/"); }
   if owner == "room-session" { return (wc_under(codec, "metaverse-engine/session/") && !wc_under(codec, "metaverse-engine/session/ledger.coax")) || wc_under(codec, "metaverse-engine/net/") || wc_under(codec, "coax/web/room/")
     // the session wire and the link input: the two files of everglade/shared/ the room and the page both load (#13346)
-    || codec == "everglade/shared/everglade-wire.coax" || codec == "everglade/shared/everglade-link-wire.coax"; }
+    || codec == "everglade/shared/everglade-wire.coax" || codec == "everglade/shared/everglade-link-wire.coax" || codec == "everglade/shared/wire-table.coax"; }
   if owner == "realm-authoring" { return wc_under(codec, "metaverse-engine/editor/") || wc_under(codec, "apps/metaverse-engine-desktop/") || wc_starts(codec, "apps/openagents-web/worldbuilder") || wc_under(codec, "coax/web/api/worldbuilder.c") || wc_under(codec, "coax/web/api/realms.c"); }
   if owner == "identity" { return wc_starts(codec, "coax/web/api/auth") || codec == "coax/web/api/agent-wire.coax"; }   // the account's agents and devices (contexts.txt)
   if owner == "payments" { return wc_under(codec, "pay/") || wc_under(codec, "coax/lib/pay/") || wc_under(codec, "coax/lib/bitcoin/") || wc_under(codec, "coax/lib/lightning/") || wc_under(codec, "coax/lib/lnaddr/")

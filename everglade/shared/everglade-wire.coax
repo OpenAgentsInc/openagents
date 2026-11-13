@@ -102,6 +102,7 @@
 #load "../../metaverse-engine/net/row.coax";
 #load "../../metaverse-engine/net/spawn.coax";    // reliable spawn and despawn (#13178)
 #load "../../metaverse-engine/net/budget.coax";   // priority and the order rows go in (#13178)
+#load "wire-table.coax";   // the binary wire: one table of every frame and entry, and its one encoder (#13278)
 
 WIRE_F_OOB :: 4;      // a D's F bit: out of band, a WebTransport seat's outcomes on a reliable stream (coax/web/room/room-wt.coax)
 WIRE_VERSION :: 7;   // 7: familiars are rows, their answers and the Healer's Kit's e entries, their requests E kinds (#13276, #13245); 6: Everglade II's monsters and guard are rows, their blows e entries (#13276); 5: authoritative forest rows; 4: I's THETA in 0.1 mrad (WIRE_FINE)
@@ -2158,4 +2159,92 @@ wire_test_row :: (h: [] WireHist, q: int, t: int) -> WireS {
   // wrapped to -pi..pi
   n = wire_put_in(buf[..], 0, WireIn.{seq = 4, theta = 6.2831853 + 0.5});
   #assert cast(string) buf[0..<n] == "I 4 0 0 0 0 5000 0 0";
+}
+
+// ---- the binary wire's table against these writers (#13278)
+
+// A writer's text is written as its row in the table says: it turns into its binary frame, not into
+// the table's catch-all, and comes back byte for byte.
+wire_test_tabled :: (t: string) -> bool {
+  b: [4200] u8; tabled: [1] bool;
+  n := wt_bin_told(t, b[..], tabled[..]);
+  return n > 0 && tabled[0] && wt_test_round(t, 0);
+}
+#test "binary wire: the table's row layout is this file's, and every writer here writes what its row says" {
+  #assert WT_SF == WIRE_SF && WT_BASES == WIRE_BASES && WT_RUNS == WIRE_PACK_RUNS && WT_BACK_BITS == WIRE_PACK_BACK && WT_D_G == WIRE_PACK_GROUP && WT_B64 == WIRE_B64;
+  for g: 0..<WT_RUNS + 1 { #assert WT_RUN_AT[g] == WIRE_PACK_RUN_AT[g]; }
+  #assert WT_ROW_FIELDS[WS_X] == "x@cm" && WT_ROW_FIELDS[WS_YAW] == "yaw@crad" && WT_ROW_FIELDS[WS_CARRY] == "carry@0.1ms" && WT_ROW_FIELDS[WS_WARP] == "warp" && WT_ROW_FIELDS[WS_OWNER] == "owner@target";
+  b: [512] u8; n := 0;
+  n = wire_put_hello(b[..], 0, WireHello.{look = "ranger.2.1.0", kind = "druid", flags = 10, name = "Ash Wood"}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_hello(b[..], 0, WireHello.{look = "", kind = "", flags = 0, name = ""}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_pins(b[..], 0, WirePins.{}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_in(b[..], 0, WireIn.{seq = 41, ky = 100, theta = -1.5708, b = 1, heard = 900}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_cast(b[..], 0, WireCast.{seq = 42, slot = 2, ax = 4, ay = 1.5, az = -7}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_cast(b[..], 0, WireCast.{seq = 42, slot = 2, ax = 4, ay = 1.5, az = -7, tgt = 2003, mode = 3}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_cast(b[..], 0, WireCast.{seq = 42, slot = 2, ax = 4, ay = 1.5, az = -7, tgt = 2003, view = 30000}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_use(b[..], 0, WireUse.{seq = 43, kind = WE_MOUNT, id = 1}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_rebuild(b[..], 0, 44); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_rest(b[..], 0, 45); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_rest_ask(b[..], 0, WireRestAsk.{seq = 41, req = 2}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_rest_state(b[..], 0, WireRestState.{seq = 0, code = WIRE_REST_SLEEP, dice = 3}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  k: WireKit; k.n = 3; k.v[1] = wire_kit_v(2, true);
+  n = wire_put_kit(b[..], 0, k); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_text(b[..], wire_text(b[..], wire_put_blocks(b[..], 0), "p-aa"), "p-bb"); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_text(b[..], wire_put_blocks(b[..], 0), ""); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_world(b[..], 0, WireWorld.{tick = 900, seed = 12345, day = 600000, weather = 2}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_n(b[..], 0, WireN.{ss = 3, id = "p-aa", look = "ranger.2.1.0", kind = "druid", flags = 2, name = "Ash Wood"}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_n(b[..], 0, WireN.{ss = 149, id = "-", look = "ranger.0.0.0", kind = "druid", flags = 0, name = "-"}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_x(b[..], 0, WIRE_ID_MADE + WIRE_MOUNT_EID + 1); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_cast_e(b[..], 0, WireCastE.{ss = 3, slot = 2, ax = 4, ay = 1.5, az = -7, seed = 12345}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_cast_e(b[..], 0, WireCastE.{ss = 3, slot = 2, ax = 4, ay = 1.5, az = -7, seed = 12345, mode = 2}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_hit(b[..], 0, WireHit.{who = 1002, by = 2970003, amt = 7, kind = 1}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_heal(b[..], 0, 1002, 5); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_die(b[..], 0, 1002); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_stop(b[..], 0, 3, 2, "range"); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_break(b[..], 0, 12, 4, 1.5, -7); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_burn(b[..], 0, 12, true); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_rebuilt(b[..], 0); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_town(b[..], 0); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_outcomes(b[..], 0, 4); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_missed(b[..], 0, 3); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_link(b[..], 0, WireLink.{rate = 15000, used = 4210, dropped = 3, every = 2}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_at(b[..], 0, WireAt.{x = 12.345, y = -0.5, z = -120.004, yaw = 3.5}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_rested(b[..], 0, 3); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_edit(b[..], 0, 4); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_wanted(b[..], 0, 5, 2); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_go(b[..], 0, "pair-e2-7"); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_travel(b[..], 0, 46, "pair-e2-7"); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_refused(b[..], 0, 12, "range"); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_xp(b[..], 0, WireGain.{ss = 3, v = 70}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_level(b[..], 0, WireGain.{ss = 2, v = 4}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  for what: 0..<5 { n = wire_put_own(b[..], 0, what, WireOwn.{ss = 2, a = 4107, b = 3, c = 2}); #assert wire_test_tabled(cast(string) b[0..<n]); }
+  n = wire_put_rc(b[..], 0, WireRc.{id = 9, ax = 4, ay = 1.5, az = 7, seed = 12345}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_rc(b[..], 0, WireRc.{id = 77, ax = 4, ay = 1.5, az = 7, seed = 12345, from = true, fx = 9, fy = 1.5, fz = 7}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_wm(b[..], 0, WireWm.{kind = 2, caster = 5, foe = 1, ax = 1, ay = 2, az = -3, bx = 4, by = 0.5, bz = 6, flight = 800, life = 1200}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_mend(b[..], 0, 12); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_pburn(b[..], 0, WirePlaced.{i = 3, on = 1}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_pgone(b[..], 0, 4); #assert wire_test_tabled(cast(string) b[0..<n]);
+  g := WireRaid.{kind = 1, phase = 2, wave = 3, waves = 5, secs = 40, left = 6, standing = 7, slain = 8, square = 9, wards = 2, arch = 1, folk = 11, levels = 1, cap = 6};
+  n = wire_put_raid(b[..], 0, g); #assert wire_test_tabled(cast(string) b[0..<n]);
+  g.players_said = true; g.players = 4; n = wire_put_raid(b[..], 0, g); #assert wire_test_tabled(cast(string) b[0..<n]);
+  g.siege = true; g.front = 500; n = wire_put_raid(b[..], 0, g); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_you(b[..], 0, WireYou.{ss = 2, level = 3, xp = 900, cap = 2700, lo = 900, hi = 2700}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_you(b[..], 0, WireYou.{ss = 2, level = 3, xp = 900, cap = 2700, lo = 900, hi = 2700, rest_said = true, rest = 1}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_change(b[..], 0, WireChange.{look = "ranger.1.2.3", kind = "srd-fighter-6"}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_admin(b[..], 0, WireAdmin.{verb = WIRE_X_AT, x = 5000, z = -40000, yaw = 0}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_admin(b[..], 0, WireAdmin.{verb = WIRE_X_GUARD, arg = "off"}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_admin(b[..], 0, WireAdmin.{verb = WIRE_X_HEAL}); #assert wire_test_tabled(cast(string) b[0..<n]);
+  // rows, plain and packed, and a whole D of them
+  base: [WIRE_SF] s32; now: [WIRE_SF] s32;
+  wire_s_pack(WireS.{id = 7, kind = WK_PLAYER, x = 12.34, y = 1, z = -56.78, yaw = 1.5, vx = 3.2, hp = 20, max = 20, life = 5, carry = 0.0123}, now[..]);
+  n = wire_put_s(b[..], 0, 7, 0, base[..], now[..]); #assert wire_test_tabled(cast(string) b[0..<n]);
+  n = wire_put_s_packed(b[..], 0, WIRE_ID_MADE + WIRE_MON_EID + 3, 5, base[..], now[..], (1 << WIRE_SF) - 1); #assert n > 0 && wire_test_tabled(cast(string) b[0..<n]);
+  row := wt_row_of_text(cast(string) b[0..<n]); back := wire_read_row(cast(string) b[0..<n]);
+  #assert row.ok && back.ok && row.id == back.id && row.back == back.back && row.mask == back.mask;
+  for q: 0..<WIRE_SF { #assert row.d[q] == back.d[q]; }
+  d: [512] u8; m := wire_put_d(d[..], 0, WireD.{tick = 900, ack = 41, f = 2, part = 1});
+  for i: 0..<n { d[m + i] = b[i]; } m += n; m = wire_sep(d[..], m); for i: 0..<n { d[m + i] = b[i]; } m += n;
+  m = wire_put_x(d[..], wire_sep(d[..], m), 7);
+  #assert wire_test_tabled(cast(string) d[0..<m]);
+  bin: [512] u8; bn := wt_bin(cast(string) d[0..<m], bin[..]); #assert bn > 0 && bn * 4 < m * 3;   // under three quarters of the text
 }

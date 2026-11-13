@@ -1,0 +1,793 @@
+// Everglade's binary wire, version 8 (#13278): one table of every frame and entry, and the one
+// encoder and decoder that read it. Profile proto/verse/everglade-session-v8.json and its golden
+// bytes are written from this table (coax/web/room/wire8-profile.coax); doc
+// docs/protocol/everglade-session-v8.md.
+//
+// A frame is a WebSocket binary message (or a WebTransport datagram or stream record): one opcode
+// byte, 128 + the kind's row in WT below, then the kind's fields as bits, the highest bit first,
+// padded with zero bits to a whole byte. No text frame starts with a byte of 128 or more, so a
+// reader tells the two wires apart by a frame's first byte.
+//
+// Every field is a whole number in the unit the table names (cm, cm/s, centiradians, 0.1 mrad, ms,
+// ticks): the same numbers wire 7 wrote in decimal, so the room decides from the same values and a
+// page's prediction runs on the same inputs. The table states each field's unit and its bits.
+//   uG   a whole number, 0 or more: groups of G bits, the lowest first, each followed by one bit
+//        that says whether another group follows
+//   iG   a whole number of either sign: zig-zagged (0, -1, 1, -2 ... as 0, 1, 2, 3 ...), then as uG
+//   bG   G bits, 0 to 2^G - 1
+//   w    a word: its length as u5, zero bits to the next whole byte, then its bytes
+//   n    a name, a record's last field, spaces kept: as a word
+//   t    a number or a word: one bit (0 a number, as i7; 1 a word), then it
+//   ?    one bit: 1 when the fields after it are said, 0 when the record ends here
+//   *F   the rest of the record is F again and again: their count as u4, then each
+// The state frame D is its header (tick, ack, flags, part), zero bits to a whole byte, then its
+// entries, each its length (one byte under 128, else two: 128 + the high bits, then the low byte)
+// and its bytes, which are a frame of their own (an opcode and fields). Rows go as one entry, a
+// run: for each row a 1 bit and the row, then a 0 bit.
+// A row: its entity's id as u8, BACK as b4, the mask of the fields that changed in two levels
+// (which of five runs of fields changed, then each changed run's own bits), then each changed
+// field's change as i4. The fields and their units are WT_ROW_FIELDS.
+//
+// Wire 7's text is the other form of the same table: wt_bin turns a text frame into its binary
+// frame and wt_text turns it back, byte for byte, for any text at all (a frame the table has no
+// row for, or one that is not written as its row says, goes as WT_ANY: its words, or its bytes).
+// A room serves a page on wire 7 through these two (everglade/server/wire-prev.coax).
+//   coax/bin/coax test everglade/shared/wire-table.coax
+
+WT_VERSION :: 8;    // the wire version these frames are (everglade-wire.coax WIRE_VERSION, once the room and the pages speak it)
+WT_BIN :: 128;      // a binary frame's first byte is its opcode: WT_BIN + its kind
+WT_SF :: 23;        // a row's fields (everglade-wire.coax WIRE_SF)
+WT_BASES :: 16;     // BACK is under this (WIRE_BASES)
+WT_RUNS :: 5; WT_RUN_AT :: [6] int.[0, 5, 8, 13, 18, WT_SF];   // the mask's runs of fields (WIRE_PACK_RUN_AT)
+WT_ID_G :: 8; WT_D_G :: 4; WT_BACK_BITS :: 4;   // a row's id's groups, a change's groups, BACK's bits
+WT_INT_DIGITS :: 15;   // a number the table carries has at most this many digits; a longer one goes as a word
+WT_B64 :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+// Who writes a kind: the room as a frame, the room as an entry of D, a page.
+WT_ROOM :: 1; WT_ENTRY :: 2; WT_PAGE :: 3;
+WtKind :: struct { head: string; spec: string; who: int; ex: string; note: string; }
+
+// The kinds a writer or reader names in code. A kind's number is its row and never changes; a kind
+// that goes keeps its row.
+WT_ANY :: 0; WT_D :: 1; WT_ROWS :: 2; WT_ROW :: 3; WT_X :: 4; WT_W :: 5; WT_R :: 6; WT_N :: 10; WT_WANTED :: 11;
+WT_LINK :: 14; WT_OUTCOMES :: 15; WT_P :: 47; WT_H :: 48; WT_I :: 49; WT_J1 :: 50; WT_C :: 51; WT_E :: 52;
+WT_KINDS :: 63;
+WT :: [WT_KINDS] WtKind.[
+  WtKind.{head = "", spec = "", who = 0, ex = "q 1 two -3", note = "a frame the table has no row for: one bit, 0 its words (their count as u4, each as t), 1 its bytes as a word"},
+  WtKind.{head = "D", spec = "tick:u7@tick ack:u7@seq f:b3@bits part:u3", who = WT_ROOM, ex = "D 900 41 0 0 x 7;o 3", note = "state at TICK; ACK the last input stepped; F 1 a snapshot, 2 more of this tick follows, 4 out of band; then the entries"},
+  WtKind.{head = "S", spec = "", who = WT_ENTRY, ex = "SBQCEIA", note = "a run of rows (wire 7: one S entry each)"},
+  WtKind.{head = "s", spec = "", who = WT_ENTRY, ex = "s 5 0 3 2 -40", note = "one row, as wire 7's plain s wrote it: the same bits as a row of a run"},
+  WtKind.{head = "x", spec = "id:u8@id", who = WT_ENTRY, ex = "x 1170301", note = "an entity gone, or out of your view"},
+  WtKind.{head = "W", spec = "tick:u7@tick hz:u6@hz seed:i8 day:u8@ms weather:u3 budget:u7@bytes", who = WT_ROOM, ex = "W 900 30 12345 600000 2 1000", note = "the world header"},
+  WtKind.{head = "r", spec = "seq:u7@seq reason:w", who = WT_ROOM, ex = "r 12 range", note = "an intent refused"},
+  WtKind.{head = "g", spec = "code:w", who = WT_ROOM, ex = "g pair-e2-7", note = "your travel was taken: join the instance CODE"},
+  WtKind.{head = "z", spec = "seq:u7@seq code:u4 dice:u4", who = WT_ROOM, ex = "z 0 3 3", note = "your rest as the rules hold it"},
+  WtKind.{head = "b", spec = "n:u5 *v:u4", who = WT_ROOM, ex = "b 3 0 7 200", note = "your bar's counts and effects, slot by slot"},
+  WtKind.{head = "n", spec = "ss:u8@seat id:w look:w kind:w flags:u4@bits name:n", who = WT_ENTRY, ex = "n 3 p-aa ranger.2.1.0 druid 2 Ash Wood", note = "who a seat is"},
+  WtKind.{head = "w", spec = "ss:u8@seat level:u3", who = WT_ENTRY, ex = "w 5 2", note = "a seat's WANTED level"},
+  WtKind.{head = "v", spec = "ss:u8@seat level:u5 xp:u8@xp cap:u8@xp lo:u8@xp hi:u8@xp ? rest:u1", who = WT_ENTRY, ex = "v 2 3 900 2700 900 2700 1", note = "your level and XP"},
+  WtKind.{head = "g", spec = "kind:i3 phase:i3 wave:i4 waves:i4 secs:i6@s left:i5 standing:i5 slain:i5 square:i5 wards:i3 arch:i3 outcome:i3 folk:i5 levels:i4 cap:i4 ? players:i5 ? front:i7@cm town:i4 capc:i4 capt:i4", who = WT_ENTRY, ex = "g 1 2 3 5 40 6 7 8 9 2 1 0 11 1 6 4 500 2 1 3", note = "a raid's state"},
+  WtKind.{head = "k", spec = "rate:u8@bytes/s used:u8@bytes/s dropped:u5@rows every:u2@ticks", who = WT_ENTRY, ex = "k 15000 4210 3 2", note = "your link, once a second"},
+  WtKind.{head = "o", spec = "n:u7", who = WT_ENTRY, ex = "o 4", note = "the outcomes the room has sent this seat"},
+  WtKind.{head = "e cast", spec = "ss:u8@seat slot:u4 ax:i8@cm ay:i8@cm az:i8@cm seed:i8 ? mode:u4", who = WT_ENTRY, ex = "e cast 3 2 400 150 -700 12345", note = "a cast the room took"},
+  WtKind.{head = "e hit", spec = "who:i7@target by:i7@target amt:i6@hp kind:i4", who = WT_ENTRY, ex = "e hit 1002 2970003 7 1", note = "damage"},
+  WtKind.{head = "e heal", spec = "who:i7@target amt:i6@hp", who = WT_ENTRY, ex = "e heal 1002 5", note = "healing"},
+  WtKind.{head = "e die", spec = "who:i7@target", who = WT_ENTRY, ex = "e die 1002", note = "a death"},
+  WtKind.{head = "e break", spec = "pc:i7 ix:i8@cm iy:i8@cm iz:i8@cm", who = WT_ENTRY, ex = "e break 12 400 150 -700", note = "a piece of the town broken"},
+  WtKind.{head = "e burn", spec = "pc:i7 on:u1", who = WT_ENTRY, ex = "e burn 12 1", note = "a piece alight or out"},
+  WtKind.{head = "e rebuild", spec = "", who = WT_ENTRY, ex = "e rebuild", note = "the town rebuilt"},
+  WtKind.{head = "e edit", spec = "version:u7", who = WT_ENTRY, ex = "e edit 4", note = "the city's edits at VERSION"},
+  WtKind.{head = "e stop", spec = "ss:u8@seat slot:u4 why:w", who = WT_ENTRY, ex = "e stop 3 2 range", note = "a cast ended before its strike"},
+  WtKind.{head = "e xp", spec = "ss:u8@seat amount:i7@xp", who = WT_ENTRY, ex = "e xp 3 70", note = "XP a seat earned"},
+  WtKind.{head = "e level", spec = "ss:u8@seat level:u5", who = WT_ENTRY, ex = "e level 2 4", note = "a seat's level went up"},
+  WtKind.{head = "e quest", spec = "ss:u8@seat quest:u7@id stage:u5", who = WT_ENTRY, ex = "e quest 3 1 8", note = "a quest's stage"},
+  WtKind.{head = "e item", spec = "ss:u8@seat item:u8@id kind:u7@id slot:u4", who = WT_ENTRY, ex = "e item 2 4107 3 2", note = "an item in the bag"},
+  WtKind.{head = "e coin", spec = "ss:u8@seat coin:i8", who = WT_ENTRY, ex = "e coin 0 1250", note = "the coin a seat holds"},
+  WtKind.{head = "e say", spec = "ss:u8@seat dialogue:u7@id", who = WT_ENTRY, ex = "e say 15 2", note = "a dialogue line told"},
+  WtKind.{head = "e loot", spec = "ss:u8@seat kind:u7@id", who = WT_ENTRY, ex = "e loot 1 3", note = "an item dropped for a seat"},
+  WtKind.{head = "e rc", spec = "id:u8@id k:u4 ax:i8@cm ay:i8@cm az:i8@cm seed:i8 ? fx:i8@cm fy:i8@cm fz:i8@cm", who = WT_ENTRY, ex = "e rc 77 0 400 150 700 12345 900 150 700", note = "a raid creature's cast"},
+  WtKind.{head = "e wm", spec = "kind:u4 caster:i7 foe:i7 ax:i8@cm ay:i8@cm az:i8@cm bx:i8@cm by:i8@cm bz:i8@cm flight:u8@ms life:u8@ms", who = WT_ENTRY, ex = "e wm 2 5 1 100 200 -300 400 50 600 800 1200", note = "a guard's spell in flight"},
+  WtKind.{head = "e mend", spec = "code:i7", who = WT_ENTRY, ex = "e mend 12", note = "a Repair stood pieces up"},
+  WtKind.{head = "e pburn", spec = "i:u7 on:u1", who = WT_ENTRY, ex = "e pburn 3 1", note = "a placed thing alight or out"},
+  WtKind.{head = "e pgone", spec = "i:u7", who = WT_ENTRY, ex = "e pgone 4", note = "a placed thing burnt through"},
+  WtKind.{head = "e town", spec = "", who = WT_ENTRY, ex = "e town", note = "the town's pieces sent again have all come"},
+  WtKind.{head = "e rest", spec = "seat:u8@seat", who = WT_ENTRY, ex = "e rest 3", note = "a seat rested"},
+  WtKind.{head = "e mon", spec = "tick:u7@tick kind:u3 m:u4 seat:i6@seat amount:u6@hp ? fx:i8@cm fz:i8@cm tx:i8@cm tz:i8@cm fly:u8@ms", who = WT_ENTRY, ex = "e mon 90 3 10 0 0 500 -30000 520 -31000 700", note = "what a monster did or took"},
+  WtKind.{head = "e guard", spec = "tick:u7@tick kind:u3 seat:i6@seat amount:u6@hp", who = WT_ENTRY, ex = "e guard 90 1 2 5", note = "what the guard did or took"},
+  WtKind.{head = "e fam", spec = "seq:u7@seq order:u3 form:u5", who = WT_ENTRY, ex = "e fam 41 0 3", note = "a familiar request done"},
+  WtKind.{head = "e fam-cast", spec = "seq:u7@seq status:u2", who = WT_ENTRY, ex = "e fam-cast 41 2", note = "the Wizard's Find Familiar cast"},
+  WtKind.{head = "e kit", spec = "seq:u7@seq left:u4", who = WT_ENTRY, ex = "e kit 9 4", note = "the Healer's Kit used"},
+  WtKind.{head = "e ride", spec = "seq:u7@seq code:u4 mount:i3", who = WT_ENTRY, ex = "e ride 5000001 0 1", note = "riding's answer"},
+  WtKind.{head = "a", spec = "tick:u7@tick id:u7@id seat:i6@seat seq:u7@seq fx:i8@mm fy:i8@mm fz:i8@mm vx:i8@mm/s vy:i8@mm/s vz:i8@mm/s st:u7@thousandths age:u6@ms", who = WT_ENTRY, ex = "a 900 7 2 41 1000 1500 -2000 30000 4000 -50 800 33", note = "a projectile left a seat's hand"},
+  WtKind.{head = "d", spec = "tick:u7@tick id:u7@id kind:u2 x:i8@mm y:i8@mm z:i8@mm dx:i8@thousandths dy:i8@thousandths dz:i8@thousandths body:i7@id", who = WT_ENTRY, ex = "d 930 7 1 5000 0 -9000 0 -1000 0 -1", note = "a projectile ended"},
+  WtKind.{head = "P", spec = "engine:u5 rules:u5 content:u7", who = WT_PAGE, ex = "P 1 1 1", note = "the build this page is, before its hello"},
+  WtKind.{head = "H", spec = "version:u4 look:w kind:w flags:u4@bits name:n", who = WT_PAGE, ex = "H 8 ranger.2.1.0 druid 2 Ash Wood", note = "hello"},
+  WtKind.{head = "I", spec = "seq:u7@seq kx:i4@percent ky:i4@percent px:i4@percent py:i4@percent theta:i8@0.1mrad b:u5@bits heard:u7@tick", who = WT_PAGE, ex = "I 41 0 100 0 0 -15708 1 900", note = "one step's input"},
+  WtKind.{head = "J1", spec = "seq:u7@seq kx:i4@percent ky:i4@percent px:i4@percent py:i4@percent theta:i8@0.1mrad b:u5@bits heard:u7@tick", who = WT_PAGE, ex = "J1 41 0 100 0 0 -15708 33 900", note = "one step's input with the Link bits"},
+  WtKind.{head = "C", spec = "seq:u7@seq slot:u4 ax:i8@cm ay:i8@cm az:i8@cm tgt:i7@target ? mode:u4 ? view:u8@ms", who = WT_PAGE, ex = "C 42 2 400 150 -700 2003 0 30000", note = "a cast"},
+  WtKind.{head = "E", spec = "seq:u7@seq kind:u5 id:i7", who = WT_PAGE, ex = "E 43 20 1", note = "interact"},
+  WtKind.{head = "R", spec = "seq:u7@seq", who = WT_PAGE, ex = "R 44", note = "ask for the rebuild"},
+  WtKind.{head = "L", spec = "seq:u7@seq", who = WT_PAGE, ex = "L 45", note = "Everglade's whole-heal rest"},
+  WtKind.{head = "Z", spec = "seq:u7@seq req:u3", who = WT_PAGE, ex = "Z 41 2", note = "an Everglade II rest request"},
+  WtKind.{head = "V", spec = "look:w kind:w", who = WT_PAGE, ex = "V ranger.1.2.3 srd-fighter-6", note = "Change character"},
+  WtKind.{head = "X", spec = "verb:w *arg:t", who = WT_PAGE, ex = "X at 5000 -40000 0", note = "a local room's admin line"},
+  WtKind.{head = "K", spec = "*pid:w", who = WT_PAGE, ex = "K p-aa p-bb", note = "the players you block"},
+  WtKind.{head = "T", spec = "seq:u7@seq code:w", who = WT_PAGE, ex = "T 46 pair-e2-7", note = "go to the instance CODE"},
+  WtKind.{head = "O", spec = "n:u7", who = WT_PAGE, ex = "O 3", note = "the page heard fewer outcomes than an o said"},
+  WtKind.{head = "A", spec = "x:i8@cm y:i8@cm z:i8@cm yaw:i8@crad", who = WT_PAGE, ex = "A 1235 -50 -12000 -278", note = "where you stand as you sit again"},
+  WtKind.{head = "F", spec = "seq:u7@seq fx:i8@mm fy:i8@mm fz:i8@mm tx:i8@mm ty:i8@mm tz:i8@mm st:u7@thousandths view:u8@ms", who = WT_PAGE, ex = "F 42 1000 1500 -2000 9000 1200 -30000 800 30000", note = "a projectile's launch"}
+];
+// A row's fields in order, each with its unit: what one unit of the whole number is (the precision).
+WT_ROW_FIELDS :: [WT_SF] string.["kind", "x@cm", "y@cm", "z@cm", "yaw@crad", "vx@cm/s", "vy@cm/s", "vz@cm/s", "g@bits", "clip", "hp@hp", "max@hp", "cond@bits",
+                                 "owner@target", "p1", "p2", "temp@hp", "form", "carry@0.1ms", "t0@tick", "dur@ticks", "life", "warp"];
+
+// ---- bits
+
+// A writer: the next bit's place in the bytes, ok until the bytes run out.
+WtW :: struct { bit: int; ok: bool = true; }
+// A reader: the next bit's place and the bit past the last, ok until a bit is missing or bad.
+WtR :: struct { bit: int; end: int; ok: bool = true; }
+wt_w :: (at: int) -> WtW { return WtW.{bit = at * 8}; }
+wt_r :: (t: string, at: int) -> WtR { return WtR.{bit = at * 8, end = t.count * 8, ok = at <= t.count}; }
+// The bytes written so far, the last one whole.
+wt_end :: (w: [] WtW) -> int { return (w[0].bit + 7) / 8; }
+// v's low k bits, the highest first. A byte is cleared as its first bit is written.
+wt_put :: (w: [] WtW, out: [] u8, v: int, k: int) {
+  left := k;
+  while left > 0 {
+    byte := w[0].bit / 8; used := w[0].bit % 8;
+    if byte >= out.count { w[0].ok = false; return; }
+    if used == 0 { out[byte] = 0; }
+    room := 8 - used; take := ifx left < room then left else room;
+    chunk := (v >> (left - take)) & ((1 << take) - 1);
+    out[byte] = out[byte] | cast(u8) (chunk << (room - take));
+    w[0].bit += take; left -= take;
+  }
+}
+wt_put_u :: (w: [] WtW, out: [] u8, v: int, g: int) {
+  x := ifx v < 0 then 0 else v; more := true;
+  while more { wt_put(w, out, x & ((1 << g) - 1), g); x = x >> g; more = x != 0; wt_put(w, out, ifx more then 1 else 0, 1); }
+}
+wt_zig :: (v: int) -> int { return ifx v >= 0 then v * 2 else -v * 2 - 1; }
+wt_unzig :: (z: int) -> int { return ifx z % 2 == 0 then z / 2 else -(z + 1) / 2; }
+wt_put_i :: (w: [] WtW, out: [] u8, v: int, g: int) { wt_put_u(w, out, wt_zig(v), g); }
+// Zero bits to the next whole byte.
+wt_put_pad :: (w: [] WtW, out: [] u8) { if w[0].bit % 8 != 0 { wt_put(w, out, 0, 8 - w[0].bit % 8); } }
+wt_put_str :: (w: [] WtW, out: [] u8, s: string) {
+  wt_put_u(w, out, s.count, 5); wt_put_pad(w, out);
+  at := w[0].bit / 8;
+  if at + s.count > out.count { w[0].ok = false; return; }
+  for ch, i: s { out[at + i] = ch; }
+  w[0].bit += s.count * 8;
+}
+wt_get :: (r: [] WtR, t: string, k: int) -> int {
+  if !r[0].ok || r[0].bit + k > r[0].end { r[0].ok = false; return 0; }
+  v := 0; left := k;
+  while left > 0 {
+    byte := r[0].bit / 8; used := r[0].bit % 8;
+    room := 8 - used; take := ifx left < room then left else room;
+    v = (v << take) | ((cast(int) t[byte] >> (room - take)) & ((1 << take) - 1));
+    r[0].bit += take; left -= take;
+  }
+  return v;
+}
+wt_get_u :: (r: [] WtR, t: string, g: int) -> int {
+  v := 0; shift := 0;
+  while r[0].ok {
+    if shift + g > 56 { r[0].ok = false; return 0; }   // past any number the table carries
+    v += wt_get(r, t, g) << shift; shift += g;
+    if wt_get(r, t, 1) == 0 { break; }
+  }
+  return ifx r[0].ok then v else 0;
+}
+wt_get_i :: (r: [] WtR, t: string, g: int) -> int { return wt_unzig(wt_get_u(r, t, g)); }
+// The pad's bits, which a writer leaves zero.
+wt_get_pad :: (r: [] WtR, t: string) { if r[0].bit % 8 != 0 { if wt_get(r, t, 8 - r[0].bit % 8) != 0 { r[0].ok = false; } } }
+// A word's bytes, a view of the frame's.
+wt_get_str :: (r: [] WtR, t: string) -> string {
+  n := wt_get_u(r, t, 5); wt_get_pad(r, t);
+  at := r[0].bit / 8;
+  if !r[0].ok || n < 0 || r[0].bit + n * 8 > r[0].end { r[0].ok = false; return t[0..<0]; }
+  r[0].bit += n * 8;
+  return t[at..<at + n];
+}
+// Nothing left but the last byte's zero bits: a frame read whole.
+wt_done :: (r: [] WtR, t: string) -> bool { wt_get_pad(r, t); return r[0].ok && r[0].bit == r[0].end; }
+
+// ---- the table's fields
+
+// One field of a kind's spec: its name, its type's letter (u i b w n t ?), its bits, its unit, whether it
+// repeats to the record's end, and where the next field starts. ok false: the spec ended.
+WtF :: struct { ok: bool; name: string; ty: u8; g: int; unit: string; rep: bool; next: int; }
+wt_field :: (spec: string, from: int) -> WtF {
+  f: WtF; i := from;
+  while i < spec.count && spec[i] == ' ' { i += 1; }
+  if i >= spec.count { return f; }
+  f.ok = true;
+  if spec[i] == '?' { f.ty = '?'; f.next = i + 1; return f; }
+  if spec[i] == '*' { f.rep = true; i += 1; }
+  a := i; while i < spec.count && spec[i] != ':' { i += 1; }
+  f.name = spec[a..<i]; i += 1;
+  if i < spec.count { f.ty = spec[i]; i += 1; }
+  while i < spec.count && spec[i] >= '0' && spec[i] <= '9' { f.g = f.g * 10 + cast(int) (spec[i] - '0'); i += 1; }
+  if i < spec.count && spec[i] == '@' { i += 1; a = i; while i < spec.count && spec[i] != ' ' { i += 1; } f.unit = spec[a..<i]; }
+  f.next = i;
+  return f;
+}
+// A text token past one space at `at`: its bytes a..<b. ok false: no space there, or nothing after it.
+WtTok :: struct { ok: bool; a: int; b: int; }
+wt_tok :: (t: string, at: int) -> WtTok {
+  if at >= t.count || t[at] != ' ' { return WtTok.{}; }
+  e := at + 1; while e < t.count && t[e] != ' ' { e += 1; }
+  return WtTok.{ok = e > at + 1, a = at + 1, b = e};
+}
+// A number as the table carries it: "0", or digits with no leading zero, an optional minus (never
+// "-0"), WT_INT_DIGITS digits at most. Anything else is a word.
+WtInt :: struct { ok: bool; v: int; }
+wt_int :: (s: string) -> WtInt {
+  neg := s.count > 0 && s[0] == '-'; a := ifx neg then 1 else 0;
+  if s.count == a || s.count - a > WT_INT_DIGITS || (s[a] == '0' && (s.count - a > 1 || neg)) { return WtInt.{}; }
+  v := 0;
+  for i: a..<s.count { if s[i] < '0' || s[i] > '9' { return WtInt.{}; } v = v * 10 + cast(int) (s[i] - '0'); }
+  return WtInt.{ok = true, v = ifx neg then -v else v};
+}
+wt_text_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for ch, i: s { out[at + i] = ch; }
+  return at + s.count;
+}
+wt_text_int :: (out: [] u8, at: int, v: int) -> int {
+  d: [20] u8; c := 0; x := ifx v < 0 then -v else v;
+  while true { d[c] = cast(u8) (48 + x % 10); c += 1; x /= 10; if x == 0 || c >= 20 { break; } }
+  n := at;
+  if n < 0 || n + c + 1 > out.count { return -1; }
+  if v < 0 { out[n] = '-'; n += 1; }
+  while c > 0 { c -= 1; out[n] = d[c]; n += 1; }
+  return n;
+}
+// One token as field f's bits. False when the token is not what f carries.
+wt_bin_tok :: (w: [] WtW, out: [] u8, f: WtF, s: string) -> bool {
+  if f.ty == 'w' { wt_put_str(w, out, s); return true; }
+  v := wt_int(s);
+  if f.ty == 't' {
+    wt_put(w, out, ifx v.ok then 0 else 1, 1);
+    if v.ok { wt_put_i(w, out, v.v, 7); } else { wt_put_str(w, out, s); }
+    return true;
+  }
+  if !v.ok { return false; }
+  if f.ty == 'i' { wt_put_i(w, out, v.v, f.g); return true; }
+  if v.v < 0 { return false; }
+  if f.ty == 'u' { wt_put_u(w, out, v.v, f.g); return true; }
+  if f.ty == 'b' && v.v < (1 << f.g) { wt_put(w, out, v.v, f.g); return true; }
+  return false;
+}
+// Field f's bits as a token, after a space unless it is a frame's first word. The text's end, -1 when
+// it does not fit or the bits are bad.
+wt_text_tok :: (r: [] WtR, t: string, f: WtF, out: [] u8, at: int) -> int { return wt_text_word(r, t, f, out, at, true); }
+wt_text_word :: (r: [] WtR, t: string, f: WtF, out: [] u8, at: int, space: bool) -> int {
+  n := ifx space then wt_text_put(out, at, " ") else at;
+  if n < 0 { return -1; }
+  ty := f.ty;
+  if ty == 't' { ty = ifx wt_get(r, t, 1) == 0 then 'j' else 'w'; }
+  if ty == 'w' || ty == 'n' { s := wt_get_str(r, t); return ifx r[0].ok then wt_text_put(out, n, s) else -1; }
+  v := ifx ty == 'j' then wt_get_i(r, t, 7) else ifx ty == 'i' then wt_get_i(r, t, f.g) else ifx ty == 'u' then wt_get_u(r, t, f.g) else wt_get(r, t, f.g);
+  return ifx r[0].ok then wt_text_int(out, n, v) else -1;
+}
+// The text t, past its head at p, as kind k's fields. False when t is not written as k's row says:
+// the writer's bits are then to be thrown away.
+wt_bin_fields :: (k: int, t: string, p0: int, w: [] WtW, out: [] u8) -> bool {
+  spec := WT[k].spec; at := 0; p := p0;
+  while true {
+    f := wt_field(spec, at);
+    if !f.ok { break; }
+    at = f.next;
+    if f.ty == '?' {
+      wt_put(w, out, ifx p < t.count then 1 else 0, 1);
+      if p >= t.count { return w[0].ok; }
+      continue;
+    }
+    if f.ty == 'n' {
+      if p + 1 >= t.count || t[p] != ' ' { return false; }
+      wt_put_str(w, out, t[p + 1..<t.count]); p = t.count;
+      continue;
+    }
+    if f.rep {
+      c := 0; q := p;
+      while q < t.count { tk := wt_tok(t, q); if !tk.ok { return false; } c += 1; q = tk.b; }
+      wt_put_u(w, out, c, 4);
+      while p < t.count { tk := wt_tok(t, p); if !wt_bin_tok(w, out, f, t[tk.a..<tk.b]) { return false; } p = tk.b; }
+      continue;
+    }
+    tk := wt_tok(t, p);
+    if !tk.ok || !wt_bin_tok(w, out, f, t[tk.a..<tk.b]) { return false; }
+    p = tk.b;
+  }
+  return p == t.count && w[0].ok;
+}
+// Kind k's fields at r as text after its head. The text's end, -1 when it does not fit or the bits are bad.
+wt_text_fields :: (k: int, t: string, r: [] WtR, out: [] u8, at0: int) -> int {
+  spec := WT[k].spec; at := 0; n := at0;
+  while n >= 0 {
+    f := wt_field(spec, at);
+    if !f.ok { break; }
+    at = f.next;
+    if f.ty == '?' { if wt_get(r, t, 1) == 0 { break; } continue; }
+    if f.rep {
+      c := wt_get_u(r, t, 4);
+      for i: 0..<c { if n < 0 || !r[0].ok { return -1; } n = wt_text_tok(r, t, f, out, n); }
+      continue;
+    }
+    n = wt_text_tok(r, t, f, out, n);
+  }
+  return ifx r[0].ok then n else -1;
+}
+
+// ---- rows
+
+// A row as it goes: its id, BACK, the mask of the fields that changed and each one's change.
+WtRow :: struct { ok: bool; id: int; back: int; mask: int; d: [WT_SF] int; }
+wt_put_mask :: (w: [] WtW, out: [] u8, mask: int) {
+  runs := 0;
+  for g: 0..<WT_RUNS { a := WT_RUN_AT[g]; k := WT_RUN_AT[g + 1] - a; if ((mask >> a) & ((1 << k) - 1)) != 0 { runs |= 1 << g; } }
+  wt_put(w, out, runs, WT_RUNS);
+  for g: 0..<WT_RUNS { if (runs & (1 << g)) != 0 { a := WT_RUN_AT[g]; k := WT_RUN_AT[g + 1] - a; wt_put(w, out, (mask >> a) & ((1 << k) - 1), k); } }
+}
+wt_get_mask :: (r: [] WtR, t: string) -> int {
+  runs := wt_get(r, t, WT_RUNS); mask := 0;
+  for g: 0..<WT_RUNS {
+    if (runs & (1 << g)) == 0 { continue; }
+    a := WT_RUN_AT[g]; k := WT_RUN_AT[g + 1] - a; b := wt_get(r, t, k);
+    if b == 0 { r[0].ok = false; }   // a run said changed with none of its fields: not a row this writes
+    mask |= b << a;
+  }
+  return mask;
+}
+// The row `now` against `base`, its masked fields only: the bits at w.
+wt_row_put :: (w: [] WtW, out: [] u8, id: int, back: int, mask: int, base: [] s32, now: [] s32) {
+  wt_put_u(w, out, id, WT_ID_G); wt_put(w, out, back, WT_BACK_BITS); wt_put_mask(w, out, mask);
+  for q: 0..<WT_SF { if (mask & (1 << q)) != 0 { wt_put_i(w, out, cast(int) now[q] - cast(int) base[q], WT_D_G); } }
+}
+wt_row_put_d :: (w: [] WtW, out: [] u8, row: WtRow) {
+  wt_put_u(w, out, row.id, WT_ID_G); wt_put(w, out, row.back, WT_BACK_BITS); wt_put_mask(w, out, row.mask);
+  for q: 0..<WT_SF { if (row.mask & (1 << q)) != 0 { wt_put_i(w, out, row.d[q], WT_D_G); } }
+}
+wt_row_get :: (r: [] WtR, t: string) -> WtRow {
+  o: WtRow;
+  o.id = wt_get_u(r, t, WT_ID_G); o.back = wt_get(r, t, WT_BACK_BITS); o.mask = wt_get_mask(r, t);
+  for q: 0..<WT_SF { if (o.mask & (1 << q)) != 0 { o.d[q] = wt_get_i(r, t, WT_D_G); } }
+  o.ok = r[0].ok;
+  return o;
+}
+// Wire 7's packed row, "S" and its bits six to a character of WT_B64 (id in groups of 5).
+wt_b64_value :: (c: u8) -> int {
+  if c >= 'A' && c <= 'Z' { return cast(int) (c - 'A'); } if c >= 'a' && c <= 'z' { return cast(int) (c - 'a') + 26; }
+  if c >= '0' && c <= '9' { return cast(int) (c - '0') + 52; } if c == '-' { return 62; } if c == '_' { return 63; }
+  return -1;
+}
+WtB6 :: struct { at: int; acc: int; n: int; ok: bool = true; }
+wt_b6_get :: (w: [] WtB6, t: string, k: int) -> int {
+  v := 0;
+  for i: 0..<k {
+    if w[0].n == 0 {
+      c := ifx w[0].at < t.count then wt_b64_value(t[w[0].at]) else -1;
+      if c < 0 { w[0].ok = false; return 0; }
+      w[0].acc = c; w[0].n = 6; w[0].at += 1;
+    }
+    w[0].n -= 1; v = v * 2 + ((w[0].acc >> w[0].n) & 1);
+  }
+  return v;
+}
+wt_b6_get_u :: (w: [] WtB6, t: string, g: int) -> int {
+  v := 0; shift := 0;
+  while w[0].ok {
+    if shift > 40 { w[0].ok = false; return 0; }
+    v += wt_b6_get(w, t, g) << shift; shift += g;
+    if wt_b6_get(w, t, 1) == 0 { break; }
+  }
+  return v;
+}
+wt_b6_put :: (w: [] WtB6, out: [] u8, v: int, k: int) {
+  for i: 0..<k {
+    w[0].acc = w[0].acc * 2 + ((v >> (k - 1 - i)) & 1); w[0].n += 1;
+    if w[0].n == 6 { if w[0].at >= 0 && w[0].at < out.count { out[w[0].at] = WT_B64[w[0].acc]; } else { w[0].ok = false; } w[0].at += 1; w[0].acc = 0; w[0].n = 0; }
+  }
+}
+wt_b6_put_u :: (w: [] WtB6, out: [] u8, v: int, g: int) {
+  x := ifx v < 0 then 0 else v; more := true;
+  while more { wt_b6_put(w, out, x & ((1 << g) - 1), g); x = x >> g; more = x != 0; wt_b6_put(w, out, ifx more then 1 else 0, 1); }
+}
+// A row read from wire 7's text, "S..." or "s ID BACK MASK V ...".
+wt_row_of_text :: (t: string) -> WtRow {
+  o: WtRow;
+  if t.count < 2 { return o; }
+  if t[0] == 'S' {
+    w: [1] WtB6; w[0].at = 1;
+    o.id = wt_b6_get_u(w[..], t, 5); o.back = wt_b6_get(w[..], t, WT_BACK_BITS);
+    runs := wt_b6_get(w[..], t, WT_RUNS);
+    for g: 0..<WT_RUNS {
+      if (runs & (1 << g)) == 0 { continue; }
+      a := WT_RUN_AT[g]; k := WT_RUN_AT[g + 1] - a; b := wt_b6_get(w[..], t, k);
+      if b == 0 { w[0].ok = false; }
+      o.mask |= b << a;
+    }
+    for q: 0..<WT_SF { if (o.mask & (1 << q)) != 0 { o.d[q] = wt_unzig(wt_b6_get_u(w[..], t, WT_D_G)); } }
+    o.ok = w[0].ok && w[0].at == t.count && (w[0].acc & ((1 << w[0].n) - 1)) == 0;
+    return o;
+  }
+  if t[0] != 's' { return o; }
+  p := 1; v: [3] int;
+  for i: 0..<3 { tk := wt_tok(t, p); if !tk.ok { return o; } x := wt_int(t[tk.a..<tk.b]); if !x.ok { return o; } v[i] = x.v; p = tk.b; }
+  o.id = v[0]; o.back = v[1]; o.mask = v[2];
+  if o.id < 0 || o.back < 0 || o.back >= WT_BASES || o.mask < 0 || o.mask >= (1 << WT_SF) { return o; }
+  for q: 0..<WT_SF {
+    if (o.mask & (1 << q)) == 0 { continue; }
+    tk := wt_tok(t, p); if !tk.ok { return o; }
+    x := wt_int(t[tk.a..<tk.b]); if !x.ok || x.v > 4294967295 || x.v < -4294967295 { return o; }
+    o.d[q] = x.v; p = tk.b;
+  }
+  o.ok = p == t.count;
+  return o;
+}
+// A row as wire 7's text, packed ("S...") or plain. The text's end, -1 when it does not fit.
+wt_row_text :: (row: WtRow, packed: bool, out: [] u8, at: int) -> int {
+  if packed {
+    if at < 0 || at >= out.count { return -1; }
+    out[at] = 'S';
+    w: [1] WtB6; w[0].at = at + 1;
+    wt_b6_put_u(w[..], out, row.id, 5); wt_b6_put(w[..], out, row.back, WT_BACK_BITS);
+    runs := 0;
+    for g: 0..<WT_RUNS { a := WT_RUN_AT[g]; k := WT_RUN_AT[g + 1] - a; if ((row.mask >> a) & ((1 << k) - 1)) != 0 { runs |= 1 << g; } }
+    wt_b6_put(w[..], out, runs, WT_RUNS);
+    for g: 0..<WT_RUNS { if (runs & (1 << g)) != 0 { a := WT_RUN_AT[g]; k := WT_RUN_AT[g + 1] - a; wt_b6_put(w[..], out, (row.mask >> a) & ((1 << k) - 1), k); } }
+    for q: 0..<WT_SF { if (row.mask & (1 << q)) != 0 { wt_b6_put_u(w[..], out, wt_zig(row.d[q]), WT_D_G); } }
+    if w[0].n > 0 { wt_b6_put(w[..], out, 0, 6 - w[0].n); }
+    return ifx w[0].ok then w[0].at else -1;
+  }
+  n := wt_text_put(out, at, "s");
+  for v: [3] int.[row.id, row.back, row.mask] { if n >= 0 { n = wt_text_put(out, n, " "); } if n >= 0 { n = wt_text_int(out, n, v); } }
+  for q: 0..<WT_SF { if (row.mask & (1 << q)) != 0 { if n >= 0 { n = wt_text_put(out, n, " "); } if n >= 0 { n = wt_text_int(out, n, row.d[q]); } } }
+  return n;
+}
+
+// ---- frames and entries
+
+wt_is_bin :: (t: string) -> bool { return t.count > 0 && t[0] >= WT_BIN; }
+// The kind of a binary frame or entry, -1 none.
+wt_kind :: (t: string) -> int { return ifx t.count > 0 && t[0] >= WT_BIN && cast(int) t[0] - WT_BIN < WT_KINDS then cast(int) t[0] - WT_BIN else -1; }
+wt_head_is :: (t: string, head: string) -> bool {
+  return head.count > 0 && t.count >= head.count && t[0] == head[0] && t[0..<head.count] == head && (t.count == head.count || t[head.count] == ' ');
+}
+// The kind whose head a text frame or entry has, -1 none (the first of two kinds with one head: g).
+wt_kind_of_text :: (t: string) -> int {
+  for k: WT_X..<WT_KINDS { if wt_head_is(t, WT[k].head) { return k; } }
+  return -1;
+}
+// An entry's length before it: one byte under 128, else two.
+wt_len_put :: (out: [] u8, at: int, n: int) -> int {
+  if n < 0 || n >= 32768 || at < 0 || at + 2 > out.count { return -1; }
+  if n < 128 { out[at] = cast(u8) n; return at + 1; }
+  out[at] = cast(u8) (128 + n / 256); out[at + 1] = cast(u8) (n % 256);
+  return at + 2;
+}
+// The entry at `at` of a D's bytes: its bytes a..<b. ok false: none, or it runs past the frame.
+WtEnt :: struct { ok: bool; a: int; b: int; }
+wt_ent :: (t: string, at: int) -> WtEnt {
+  if at < 0 || at >= t.count { return WtEnt.{}; }
+  n := cast(int) t[at]; a := at + 1;
+  if n >= 128 { if at + 1 >= t.count { return WtEnt.{}; } n = (n - 128) * 256 + cast(int) t[at + 1]; a = at + 2; }
+  return WtEnt.{ok = n > 0 && a + n <= t.count, a = a, b = a + n};
+}
+// A D's header as it is written and read. at: where its entries start.
+WtD :: struct { ok: bool; tick: int; ack: int; f: int; part: int; at: int; }
+wt_d_put :: (out: [] u8, at: int, tick: int, ack: int, f: int, part: int) -> int {
+  if at < 0 || at >= out.count { return -1; }
+  out[at] = cast(u8) (WT_BIN + WT_D);
+  w: [1] WtW; w[0] = wt_w(at + 1);
+  wt_put_u(w[..], out, tick, 7); wt_put_u(w[..], out, ack, 7); wt_put(w[..], out, f & 7, 3); wt_put_u(w[..], out, part, 3);
+  wt_put_pad(w[..], out);
+  return ifx w[0].ok then wt_end(w[..]) else -1;
+}
+wt_d_get :: (t: string) -> WtD {
+  d: WtD;
+  if wt_kind(t) != WT_D { return d; }
+  r: [1] WtR; r[0] = wt_r(t, 1);
+  d.tick = wt_get_u(r[..], t, 7); d.ack = wt_get_u(r[..], t, 7); d.f = wt_get(r[..], t, 3); d.part = wt_get_u(r[..], t, 3);
+  wt_get_pad(r[..], t);
+  d.ok = r[0].ok; d.at = r[0].bit / 8;
+  return d;
+}
+// One step's input, the frame a page writes most: the same bits as its row (the check below holds them together).
+WtIn :: struct { ok: bool; seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: int; heard: int; }
+wt_in_put :: (out: [] u8, at: int, kind: int, i: WtIn) -> int {
+  if at < 0 || at >= out.count { return -1; }
+  out[at] = cast(u8) (WT_BIN + kind);
+  w: [1] WtW; w[0] = wt_w(at + 1);
+  wt_put_u(w[..], out, i.seq, 7); wt_put_i(w[..], out, i.kx, 4); wt_put_i(w[..], out, i.ky, 4); wt_put_i(w[..], out, i.px, 4); wt_put_i(w[..], out, i.py, 4);
+  wt_put_i(w[..], out, i.theta, 8); wt_put_u(w[..], out, i.b, 5); wt_put_u(w[..], out, i.heard, 7);
+  return ifx w[0].ok then wt_end(w[..]) else -1;
+}
+wt_in_get :: (t: string) -> WtIn {
+  i: WtIn; r: [1] WtR; r[0] = wt_r(t, 1);
+  i.seq = wt_get_u(r[..], t, 7); i.kx = wt_get_i(r[..], t, 4); i.ky = wt_get_i(r[..], t, 4); i.px = wt_get_i(r[..], t, 4); i.py = wt_get_i(r[..], t, 4);
+  i.theta = wt_get_i(r[..], t, 8); i.b = wt_get_u(r[..], t, 5); i.heard = wt_get_u(r[..], t, 7);
+  i.ok = wt_done(r[..], t);
+  return i;
+}
+
+// A text frame's words, when it is nothing but words one space apart; else its bytes.
+wt_bin_any :: (t: string, out: [] u8, at: int) -> int {
+  out[at] = cast(u8) (WT_BIN + WT_ANY);
+  w: [1] WtW; w[0] = wt_w(at + 1);
+  words := t.count > 0 && t[0] != ' '; c := 0; p := 0;
+  if words {
+    e := 0; while e < t.count && t[e] != ' ' { e += 1; }
+    c = 1; p = e;
+    while p < t.count { tk := wt_tok(t, p); if !tk.ok { words = false; break; } c += 1; p = tk.b; }
+  }
+  f := WtF.{ok = true, ty = 't'};
+  if words {
+    wt_put(w[..], out, 0, 1); wt_put_u(w[..], out, c, 4);
+    e := 0; while e < t.count && t[e] != ' ' { e += 1; }
+    _ := wt_bin_tok(w[..], out, f, t[0..<e]); p = e;
+    while p < t.count { tk := wt_tok(t, p); _2 := wt_bin_tok(w[..], out, f, t[tk.a..<tk.b]); p = tk.b; }
+  } else {
+    wt_put(w[..], out, 1, 1); wt_put_u(w[..], out, t.count, 7); wt_put_pad(w[..], out);
+    b := w[0].bit / 8;
+    if b + t.count > out.count { return -1; }
+    for ch, i: t { out[b + i] = ch; }
+    w[0].bit += t.count * 8;
+  }
+  return ifx w[0].ok then wt_end(w[..]) else -1;
+}
+wt_text_any :: (t: string, out: [] u8, at: int) -> int {
+  r: [1] WtR; r[0] = wt_r(t, 1); n := at;
+  if wt_get(r[..], t, 1) == 0 {
+    c := wt_get_u(r[..], t, 4); f := WtF.{ok = true, ty = 't'};
+    if c < 1 { return -1; }
+    for i: 0..<c {
+      if n < 0 || !r[0].ok { return -1; }
+      n = wt_text_word(r[..], t, f, out, n, i > 0);
+    }
+    return ifx n >= 0 && wt_done(r[..], t) then n else -1;
+  }
+  c := wt_get_u(r[..], t, 7); wt_get_pad(r[..], t);
+  b := r[0].bit / 8;
+  if !r[0].ok || b + c != t.count { return -1; }
+  return wt_text_put(out, n, t[b..<b + c]);
+}
+// A text entry (anything but a D) as its binary frame at `at`. The bytes' end, -1 when out is too small.
+// tabled, when given, is set false when the entry went as WT_ANY: the table has no row it is written as.
+wt_bin_entry :: (t: string, out: [] u8, at: int, tabled: [] bool) -> int {
+  if at < 0 || at + 2 > out.count { return -1; }
+  if t.count > 1 && (t[0] == 'S' || (t[0] == 's' && t[1] == ' ')) {
+    row := wt_row_of_text(t);
+    if row.ok {
+      w: [1] WtW; w[0] = wt_w(at + 1);
+      if t[0] == 'S' { out[at] = cast(u8) (WT_BIN + WT_ROWS); wt_put(w[..], out, 1, 1); wt_row_put_d(w[..], out, row); wt_put(w[..], out, 0, 1); }
+      else { out[at] = cast(u8) (WT_BIN + WT_ROW); wt_row_put_d(w[..], out, row); }
+      return ifx w[0].ok then wt_end(w[..]) else -1;
+    }
+  }
+  for k: WT_X..<WT_KINDS {
+    if !wt_head_is(t, WT[k].head) { continue; }
+    out[at] = cast(u8) (WT_BIN + k);
+    w: [1] WtW; w[0] = wt_w(at + 1);
+    if wt_bin_fields(k, t, WT[k].head.count, w[..], out) { return wt_end(w[..]); }
+    if !w[0].ok { return -1; }
+  }
+  if tabled.count > 0 { tabled[0] = false; }
+  return wt_bin_any(t, out, at);
+}
+// A binary entry as wire 7's text at `at`. The text's end, -1 when it is no entry or out is too small.
+// A run of rows comes out as its S entries, ';' apart.
+wt_text_entry :: (t: string, out: [] u8, at: int) -> int {
+  k := wt_kind(t);
+  if k < 0 || k == WT_D { return -1; }
+  if k == WT_ANY { return wt_text_any(t, out, at); }
+  r: [1] WtR; r[0] = wt_r(t, 1);
+  if k == WT_ROWS {
+    n := at; first := true;
+    while wt_get(r[..], t, 1) == 1 {
+      row := wt_row_get(r[..], t);
+      if !row.ok { return -1; }
+      if !first { n = wt_text_put(out, n, ";"); }
+      if n >= 0 { n = wt_row_text(row, true, out, n); }
+      if n < 0 { return -1; }
+      first = false;
+    }
+    return ifx !first && wt_done(r[..], t) then n else -1;
+  }
+  if k == WT_ROW {
+    row := wt_row_get(r[..], t);
+    return ifx row.ok && wt_done(r[..], t) then wt_row_text(row, false, out, at) else -1;
+  }
+  n := wt_text_put(out, at, WT[k].head);
+  if n >= 0 { n = wt_text_fields(k, t, r[..], out, n); }
+  return ifx n >= 0 && wt_done(r[..], t) then n else -1;
+}
+// A text frame as its binary frame. The bytes' count, -1 when out is too small. A D's entries are
+// turned each in its place; its S entries next to each other become one run.
+wt_bin :: (t: string, out: [] u8) -> int {
+  none: [1] bool;
+  return wt_bin_told(t, out, none[0..<0]);
+}
+wt_bin_told :: (t: string, out: [] u8, tabled: [] bool) -> int {
+  if tabled.count > 0 { tabled[0] = true; }
+  if !wt_head_is(t, "D") { return wt_bin_entry(t, out, 0, tabled); }
+  // "D TICK ACK F PART " and then entries, none of them empty
+  p := 1; v: [4] int; ok := true;
+  for i: 0..<4 { tk := wt_tok(t, p); x := ifx tk.ok then wt_int(t[tk.a..<tk.b]) else WtInt.{}; if !x.ok || x.v < 0 { ok = false; break; } v[i] = x.v; p = tk.b; }
+  if !ok || p >= t.count || t[p] != ' ' || v[2] > 7 || (p + 1 < t.count && (t[p + 1] == ';' || t[t.count - 1] == ';')) { return wt_bin_entry(t, out, 0, tabled); }
+  for i: p + 2..<t.count { if t[i] == ';' && t[i - 1] == ';' { return wt_bin_entry(t, out, 0, tabled); } }
+  n := wt_d_put(out, 0, v[0], v[1], v[2], v[3]);
+  a := p + 1;
+  run: [1] WtW; run_at := -1;   // the run of rows being written, and where its length's two bytes are
+  while n >= 0 && a < t.count {
+    b := a; while b < t.count && t[b] != ';' { b += 1; }
+    en := t[a..<b];
+    row := ifx en[0] == 'S' then wt_row_of_text(en) else WtRow.{};
+    if row.ok {
+      if run_at < 0 {
+        if n + 3 > out.count { return -1; }
+        run_at = n; out[n + 2] = cast(u8) (WT_BIN + WT_ROWS); run[0] = wt_w(n + 3);
+      }
+      wt_put(run[..], out, 1, 1); wt_row_put_d(run[..], out, row);
+    } else {
+      if run_at >= 0 { n = wt_run_end(run[..], out, run_at); run_at = -1; if n < 0 { return -1; } }
+      // the entry after a byte for its length; moved a byte on when it needs two
+      m := wt_bin_entry(en, out, n + 1, tabled);
+      if m < 0 { return -1; }
+      size := m - (n + 1);
+      if size >= 128 {
+        if m + 1 > out.count { return -1; }
+        i := m; while i > n + 1 { out[i] = out[i - 1]; i -= 1; }
+        m += 1;
+      }
+      if wt_len_put(out, n, size) < 0 { return -1; }
+      n = m;
+    }
+    a = b + 1;
+  }
+  if run_at >= 0 && n >= 0 { n = wt_run_end(run[..], out, run_at); }
+  return n;
+}
+// A run of rows closed: its last bit, and its length in the two bytes kept before it. The bytes' end.
+wt_run_end :: (run: [] WtW, out: [] u8, run_at: int) -> int {
+  wt_put(run, out, 0, 1);
+  if !run[0].ok { return -1; }
+  end := wt_end(run); size := end - (run_at + 2);
+  if size >= 32768 { return -1; }
+  out[run_at] = cast(u8) (128 + size / 256); out[run_at + 1] = cast(u8) (size % 256);
+  return end;
+}
+// A binary frame as wire 7's text. The text's count, -1 when it is no frame or out is too small.
+wt_text :: (t: string, out: [] u8) -> int {
+  if wt_kind(t) != WT_D { return wt_text_entry(t, out, 0); }
+  d := wt_d_get(t);
+  if !d.ok { return -1; }
+  n := wt_text_put(out, 0, "D");
+  for v: [4] int.[d.tick, d.ack, d.f, d.part] { if n >= 0 { n = wt_text_put(out, n, " "); } if n >= 0 { n = wt_text_int(out, n, v); } }
+  if n >= 0 { n = wt_text_put(out, n, " "); }
+  at := d.at; first := true;
+  while n >= 0 && at < t.count {
+    e := wt_ent(t, at);
+    if !e.ok { return -1; }
+    if !first { n = wt_text_put(out, n, ";"); }
+    if n >= 0 { n = wt_text_entry(t[e.a..<e.b], out, n); }
+    first = false; at = e.b;
+  }
+  return n;
+}
+
+// ---- checks
+
+wt_test_same :: (a: string, b: string) -> bool { return a == b; }
+// Text to binary and back is the text again, and the binary frame is `bytes` long (0: any).
+wt_test_round :: (t: string, bytes: int) -> bool {
+  b: [4200] u8; back: [4200] u8;
+  n := wt_bin(t, b[..]);
+  if n < 1 || b[0] < WT_BIN || (bytes > 0 && n != bytes) { return false; }
+  m := wt_text(cast(string) b[0..<n], back[..]);
+  return m == t.count && cast(string) back[0..<m] == t;
+}
+#test "wire table: every kind's opcode is its row, its example is written as its row says and comes back byte for byte" {
+  #assert WT.count == WT_KINDS && WT[WT_I].head == "I" && WT[WT_J1].head == "J1" && WT[WT_H].head == "H" && WT[WT_P].head == "P" && WT[WT_C].head == "C" && WT[WT_E].head == "E";
+  #assert WT[WT_X].head == "x" && WT[WT_W].head == "W" && WT[WT_R].head == "r" && WT[WT_N].head == "n" && WT[WT_WANTED].head == "w" && WT[WT_LINK].head == "k" && WT[WT_OUTCOMES].head == "o";
+  for k: 0..<WT_KINDS {
+    b: [512] u8; tabled: [1] bool;
+    n := wt_bin_told(WT[k].ex, b[..], tabled[..]);
+    #assert n > 0 && cast(int) b[0] == WT_BIN + k && tabled[0] == (k != WT_ANY) && wt_test_round(WT[k].ex, 0);
+    #assert WT[k].who >= 0 && WT[k].who <= WT_PAGE && WT[k].note.count > 0;
+    // a spec's fields all parse: a name, a known type, bits where the type has them
+    at := 0;
+    while true {
+      f := wt_field(WT[k].spec, at); if !f.ok { break; } at = f.next;
+      known := f.ty == '?' || f.ty == 'w' || f.ty == 'n' || f.ty == 't' || ((f.ty == 'u' || f.ty == 'i' || f.ty == 'b') && f.g >= 1 && f.g <= 8);
+      #assert known && (f.ty == '?' || f.name.count > 0);
+    }
+  }
+}
+// wt_test_hex: the bytes b as lower-case hex equal h.
+wt_test_hex :: (b: string, h: string) -> bool {
+  d := "0123456789abcdef";
+  if h.count != b.count * 2 { return false; }
+  for i: 0..<b.count { x := cast(int) b[i]; if h[i * 2] != d[x / 16] || h[i * 2 + 1] != d[x % 16] { return false; } }
+  return true;
+}
+#test "wire table: golden bytes" {
+  b: [64] u8;
+  // one step's input: 11 bytes where wire 7's text is 27
+  n := wt_bin("I 41 0 100 0 0 -15708 1 900", b[..]); #assert wt_test_hex(cast(string) b[0..<n], "b1520470005bde81048700");
+  n = wt_bin("x 7", b[..]); #assert wt_test_hex(cast(string) b[0..<n], "840700");
+  n = wt_bin("e town", b[..]); #assert wt_test_hex(cast(string) b[0..<n], "a5");
+  n = wt_bin("e hit 1002 1003 7 1", b[..]); #assert wt_test_hex(cast(string) b[0..<n], "91a91ead1e3840");
+  n = wt_bin("D 900 41 0 0 x 7;o 3", b[..]); #assert wt_test_hex(cast(string) b[0..<n], "81090e520003840700028f06");
+  d := wt_d_get(cast(string) b[0..<n]); #assert d.ok && d.tick == 900 && d.ack == 41 && d.f == 0 && d.part == 0 && d.at == 5;
+  e := wt_ent(cast(string) b[0..<n], d.at); #assert e.ok && e.a == 6 && e.b == 9 && wt_kind(cast(string) b[e.a..<e.b]) == WT_X;
+  e = wt_ent(cast(string) b[0..<n], e.b); #assert e.ok && e.b == n && wt_kind(cast(string) b[e.a..<e.b]) == WT_OUTCOMES;
+  #assert !wt_ent(cast(string) b[0..<n], n).ok && !wt_ent(cast(string) b[0..<n - 1], 9).ok;
+  #assert wt_d_put(b[..], 0, 900, 41, 0, 0) == 5 && wt_test_hex(cast(string) b[0..<5], "81090e5200");
+}
+#test "wire table: the input's own writer and reader are its row's bits" {
+  b: [64] u8; g: [64] u8;
+  for t: [4] string.["I 41 0 100 0 0 -15708 1 900", "I 0 0 0 0 0 0 0 0", "I 108000 -100 100 -71 71 31416 31 215999", "J1 7 3 -4 5 -6 -31416 511 1"] {
+    n := wt_bin(t, g[..]);
+    i := wt_in_get(cast(string) g[0..<n]);
+    #assert i.ok && wt_in_put(b[..], 0, wt_kind(cast(string) g[0..<n]), i) == n && cast(string) b[0..<n] == cast(string) g[0..<n];
+  }
+  i := wt_in_get(cast(string) g[0..<3]); #assert !i.ok;
+}
+#test "wire table: text comes back byte for byte, written as its row says or not" {
+  for t: [30] string.[
+    "C 42 2 400 150 -700 2003", "C 42 2 400 150 -700 -1 3", "C 42 2 400 150 -700 2003 0 30000", "H 8 ranger.2.1.0 druid 2 -", "H 8 a b 0 Ash  Wood ",
+    "K -", "K", "X heal", "X guard off", "X at 5000 -40000 0", "b 0", "b 3 0 7 200", "g 1 2 3 5 40 6 7 8 9 2 1 0 11 1 6", "g 1 2 3 5 40 6 7 8 9 2 1 0 11 1 6 4",
+    "g pair-e2-7", "v 2 3 900 2700 900 2700", "e mon 90 2 3 -1 4", "e cast 3 2 400 150 -700 12345 2", "e rc 9 0 400 150 700 12345", "r 0 version",
+    "n 3 - ranger.0.0.0 druid 0 -", "e stop 3 2 range", "W 900 30 -5 0 0 1000", "T 46 pair-e2-7", "e ride 8 6 -1", "e fam-cast 41 2", "e rebuild", "A 1235 -50 -12000 -278",
+    "s 5 0 3 2 -40", "s 200003 15 8388607 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 -23"] {
+    b: [512] u8; tabled: [1] bool;
+    n := wt_bin_told(t, b[..], tabled[..]);
+    #assert tabled[0] && wt_test_round(t, 0);
+  }
+  // not written as a row says: carried whole, and told
+  for t: [16] string.["I 1 2", "I 41 0 100 0 0 -15708 1 900 7", "I 041 0 100 0 0 -15708 1 900", "I 41 0 100 0 0 -15708 -1 900", "E 1  2 3", "E 1 2 3 ", " E 1 2 3", "", "q", "zz top 1 -0 007 1234567890123456",
+                        "e nosuch 1 2", "e", "x -4", "D 1 2 9 0 x 3", "D 1 2 0 0 x 3;;x 4", "s 5 16 1 2"] {
+    b: [512] u8; tabled: [1] bool;
+    n := wt_bin_told(t, b[..], tabled[..]);
+    #assert !tabled[0] && cast(int) b[0] == WT_BIN + WT_ANY && wt_test_round(t, 0);
+  }
+  // a D with nothing in it, and one whose entry the table has no row for
+  #assert wt_test_round("D 900 41 1 0 ", 5) && wt_test_round("D 900 41 0 2 e nosuch 4;x 9", 0);
+}
+#test "wire table: a D's rows next to each other are one run, and come back as wire 7's S entries" {
+  base: [WT_SF] s32; now: [WT_SF] s32;
+  now[1] = 1234; now[3] = -5678; now[10] = 20; now[21] = 1;
+  row := WtRow.{ok = true, id = 7, back = 3, mask = (1 << 1) | (1 << 3) | (1 << 10) | (1 << 21)};
+  for q: 0..<WT_SF { row.d[q] = cast(int) now[q]; }
+  s: [64] u8; sn := wt_row_text(row, true, s[..], 0);
+  back := wt_row_of_text(cast(string) s[0..<sn]); #assert back.ok && back.id == 7 && back.back == 3 && back.mask == row.mask && back.d[3] == -5678;
+  // the same row's bits by the room's writer and by the text's
+  w: [1] WtW; a: [64] u8; c: [64] u8; w[0] = wt_w(0); wt_row_put(w[..], a[..], 7, 3, row.mask, base[..], now[..]); an := wt_end(w[..]);
+  w[0] = wt_w(0); wt_row_put_d(w[..], c[..], back); #assert wt_end(w[..]) == an && cast(string) a[0..<an] == cast(string) c[0..<an];
+  // D x;S;S;o: the two rows are one entry
+  t: [256] u8; n := wt_text_put(t[..], 0, "D 5 1 0 0 x 3;");
+  n = wt_text_put(t[..], n, cast(string) s[0..<sn]); n = wt_text_put(t[..], n, ";"); n = wt_text_put(t[..], n, cast(string) s[0..<sn]); n = wt_text_put(t[..], n, ";o 2");
+  b: [256] u8; bn := wt_bin(cast(string) t[0..<n], b[..]);
+  d := wt_d_get(cast(string) b[0..<bn]); #assert d.ok;
+  kinds: [4] int; kn := 0; at := d.at;
+  while at < bn { e := wt_ent(cast(string) b[0..<bn], at); #assert e.ok && kn < 4; kinds[kn] = wt_kind(cast(string) b[e.a..<e.b]); kn += 1; at = e.b; }
+  #assert kn == 3 && kinds[0] == WT_X && kinds[1] == WT_ROWS && kinds[2] == WT_OUTCOMES;
+  #assert wt_test_round(cast(string) t[0..<n], 0) && bn < n;
+  // a row whose text is not a row's (a spare bit set, a character short) is carried whole
+  bad: [64] u8; for i: 0..<sn { bad[i] = s[i]; } bad[sn] = 'B';
+  #assert !wt_row_of_text(cast(string) bad[0..<sn + 1]).ok && !wt_row_of_text(cast(string) s[0..<sn - 1]).ok && wt_test_round(cast(string) bad[0..<sn + 1], 0);
+}
+#test "wire table: a reader refuses bits cut short, bits left over and a pad that is not zero" {
+  b: [64] u8; o: [64] u8;
+  n := wt_bin("e hit 1002 1003 7 1", b[..]);
+  #assert wt_text(cast(string) b[0..<n], o[..]) == 19 && wt_text(cast(string) b[0..<n - 1], o[..]) < 0;
+  b[n] = 0; #assert wt_text(cast(string) b[0..<n + 1], o[..]) < 0;
+  b[n - 1] = b[n - 1] | 1; #assert wt_text(cast(string) b[0..<n], o[..]) < 0;
+  #assert wt_text("", o[..]) < 0 && wt_text("I 1", o[..]) < 0 && wt_text(cast(string) b[0..<1], o[..]) < 0;
+  // a text too long for the bytes it is given
+  small: [4] u8; #assert wt_bin("e hit 1002 1003 7 1", small[..]) < 0 && wt_text(cast(string) b[0..<0], small[..]) < 0;
+}
