@@ -478,7 +478,20 @@ and the HUD between the media layers are all `passes.coax`'s order.
 - C hosts: [`core/frame-plan-walk.h`](core/frame-plan-walk.h) checks the whole plan, then calls the
   host back once an operation (`begin`, `end`, `draw`, `copy`, `rect`, `compute`, `media`). A
   malformed or newer plan gives -1 and no call. The numbers are [`frame-plan.h`](frame-plan.h)'s,
-  which `frame-plan.coax` writes:
+  which `frame-plan.coax` writes.
+- The Mac and iPhone: `apple/PageHost.m` asks through `engine_core_plan` and maps the callbacks to
+  Metal (`planBegin`, `planDraw`, `planRect`, `planEnd`). Its word has the scene, the shadow map and
+  its tiles, the post pass, the particles and the media layers; it has no grass, water, character
+  pass, instance cull or particle sort, so the engine's plan holds none. `AETHYR_PLAN=off` draws a
+  page that has a plan in the host's own order, and `AETHYR_PAGE_TIMES=1` says which order a frame
+  took and how many operations. Compare the two with the Mac app's offscreen frame:
+
+```sh
+Everglade --shot plan.png --scene 1 --at 8
+AETHYR_PLAN=off Everglade --shot own.png --scene 1 --at 8    # the same bytes
+```
+
+The header and the walk's check:
 
 ```sh
 coax/web/tool.sh metaverse-engine/tools/frame-plan-header.coax > metaverse-engine/host/frame-plan.h

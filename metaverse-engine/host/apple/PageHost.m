@@ -104,6 +104,9 @@ typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // ki
  NSMutableArray<PHEvent *> *events; NSString *playerKey, *playerId, *playerAccount;
  NSMutableDictionary<NSNumber *, NSValue *> *fingers; NSMutableDictionary<NSNumber *, NSNumber *> *fingerDown;   // a touch's start and the time it began, by its number
  int width, height; float dpr; CGSize points; int quality; double opened; BOOL closed;
+ // the frame being walked from its plan (planBegin and the rest, below): the command buffer, the open pass and what the frame has
+ id<MTLCommandBuffer> planCmd; id<MTLRenderCommandEncoder> planE;
+ struct { const uint32_t *list, *shadowList; uint32_t hud, depth; BOOL post, scene, flatDepth, sparks; } pf;
 }
 - (void)push:(int)kind bytes:(NSData *)bytes owner:(id)owner closes:(BOOL)closes;
 - (void)socket:(NSURLSessionWebSocketTask *)task event:(int)event bytes:(NSData *)bytes;
@@ -895,6 +898,100 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
   else if (first <= indices && n <= indices - first) [e drawIndexedPrimitives:MTLPrimitiveTypeTriangle indexCount:n indexType:MTLIndexTypeUInt32 indexBuffer:indexBuffer indexBufferOffset:(NSUInteger)first * 4 instanceCount:instances baseVertex:0 baseInstance:base];
  }
 }
+// ---- the frame plan's walk (metaverse-engine/host/core/frame-plan-walk.h calls these in the engine's order, #13303).
+// What this host maps: a target to its texture, a pass to its pipeline, depth state and bindings.
+- (id<MTLTexture>)planTarget:(uint32_t)t {
+ switch (t) {
+  case ENGINE_FP_TARGET_SCREEN: return screen; case ENGINE_FP_TARGET_LIGHT: return light; case ENGINE_FP_TARGET_AUX: return aux;
+  case ENGINE_FP_TARGET_SCENE_DEPTH: return depth; case ENGINE_FP_TARGET_SHADOW_MAP: return shadowMap;
+  case ENGINE_FP_TARGET_Q0: return q0; case ENGINE_FP_TARGET_Q1: return q1; case ENGINE_FP_TARGET_E0: return e0; case ENGINE_FP_TARGET_E1: return e1;
+ }
+ return nil;
+}
+- (void)planBegin:(const engine_fp_op *)op {
+ BOOL keep = (op->flags & ENGINE_FP_FLAG_KEEP) != 0;
+ MTLRenderPassDescriptor *pd = [MTLRenderPassDescriptor new];
+ uint32_t colours[2] = {op->colour0, op->colour1};
+ for (int i = 0, at = 0; i < 2; i++) if (colours[i] != ENGINE_FP_TARGET_NONE) {
+  pd.colorAttachments[at].texture = [self planTarget:colours[i]]; pd.colorAttachments[at].loadAction = keep ? MTLLoadActionLoad : MTLLoadActionClear;
+  pd.colorAttachments[at].clearColor = MTLClearColorMake(0, 0, 0, 1); pd.colorAttachments[at].storeAction = MTLStoreActionStore; at++;
+ }
+ if (op->depth != ENGINE_FP_TARGET_NONE) {
+  // the key light's map is always kept for the scene to read; the scene's depth only when the plan says a later pass reads it
+  pd.depthAttachment.texture = [self planTarget:op->depth]; pd.depthAttachment.loadAction = keep ? MTLLoadActionLoad : MTLLoadActionClear; pd.depthAttachment.clearDepth = 1;
+  pd.depthAttachment.storeAction = op->depth == ENGINE_FP_TARGET_SHADOW_MAP || (op->flags & ENGINE_FP_FLAG_STORE_DEPTH) ? MTLStoreActionStore : MTLStoreActionDontCare;
+ }
+ planE = [planCmd renderCommandEncoderWithDescriptor:pd]; pf.depth = op->depth; pf.sparks = NO;
+}
+- (void)planEnd { [planE endEncoding]; planE = nil; }
+- (void)planRect:(BOOL)scissor x:(uint32_t)rx y:(uint32_t)ry w:(uint32_t)rw h:(uint32_t)rh {
+ id<MTLTexture> into = pf.depth == ENGINE_FP_TARGET_SHADOW_MAP ? shadowMap : screen;
+ if (!scissor) [planE setViewport:rw ? (MTLViewport){rx, ry, rw, rh, 0, 1} : (MTLViewport){0, 0, into.width, into.height, 0, 1}];
+ else if (rw > 0 && rh > 0 && rx + rw <= into.width && ry + rh <= into.height) [planE setScissorRect:(MTLScissorRect){rx, ry, rw, rh}];
+}
+- (void)planDraw:(const engine_fp_op *)op {
+ id<MTLRenderCommandEncoder> e = planE; BOOL post = pf.post;
+ PHTarget lit[2] = {{MTLPixelFormatRGBA16Float}, {MTLPixelFormatRGBA16Float}}, flat[1] = {{MTLPixelFormatBGRA8Unorm}};
+ switch (op->pass) {
+  case ENGINE_FP_PASS_SHADOW_CLEAR: {
+   if (!clearPipe) { MTLRenderPipelineDescriptor *cd = [MTLRenderPipelineDescriptor new]; cd.vertexFunction = [glue newFunctionWithName:@"ph_clear_vs"]; cd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float; clearPipe = [device newRenderPipelineStateWithDescriptor:cd error:nil]; }
+   [e setRenderPipelineState:clearPipe]; [e setDepthStencilState:depthAlways]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:op->count];
+  } break;
+  case ENGINE_FP_PASS_SHADOW: {
+   PHPipe *sh = [self pipe:@"shadow" role:@"shadow" targets:NULL count:0 depth:YES];
+   if (sh) { [self bind:sh to:e]; [e setDepthStencilState:depthLess]; [e setDepthBias:op->bias slopeScale:op->slope clamp:0];
+    [self drawList:e words:op->source == ENGINE_FP_SOURCE_SHADOW_RECORDS ? pf.shadowList : pf.list count:op->count]; }
+  } break;
+  case ENGINE_FP_PASS_BACKGROUND: {
+   PHPipe *bg = [self pipe:post ? @"bg-lit" : @"bg" role:@"bg" targets:post ? lit : flat count:post ? 2 : 1 depth:pf.scene];
+   if (bg) { [self bind:bg to:e]; if (pf.scene) [e setDepthStencilState:depthAlways]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:op->count]; }
+  } break;
+  case ENGINE_FP_PASS_SCENE: {
+   PHPipe *sc = [self pipe:post ? @"scene-lit" : @"scene" role:@"scene" targets:post ? lit : flat count:post ? 2 : 1 depth:YES];
+   if (sc) { [self bind:sc to:e]; [e setDepthStencilState:depthLess]; [self drawList:e words:pf.list count:op->count]; }
+  } break;
+  case ENGINE_FP_PASS_PARTICLE_OVER: case ENGINE_FP_PASS_PARTICLE: {
+   // the particles' bytes go up with the first of their draws; smoke lies over what is behind and takes that much of the
+   // light's bloom share, then the particles that add
+   if (!pf.sparks) { size_t bytes = MIN((size_t)x.particle_bytes(state), particleBuffer.length) & ~(size_t)3; if (bytes) { memcpy(particleBuffer.contents, (void *)x.particles(state), bytes); pf.sparks = YES; } }
+   if (!pf.sparks) break;
+   BOOL over = op->pass == ENGINE_FP_PASS_PARTICLE_OVER;
+   PHTarget smoke[2] = {{post ? MTLPixelFormatRGBA16Float : MTLPixelFormatBGRA8Unorm, YES, MTLBlendFactorOne, MTLBlendFactorOneMinusSourceAlpha, MTLBlendFactorZero, MTLBlendFactorOneMinusSourceAlpha}, {MTLPixelFormatRGBA16Float, NO, 0, 0, 0, 0, YES}};
+   PHTarget added[2] = {{post ? MTLPixelFormatRGBA16Float : MTLPixelFormatBGRA8Unorm, YES, MTLBlendFactorOne, MTLBlendFactorOne, MTLBlendFactorOne, MTLBlendFactorOne}, {MTLPixelFormatRGBA16Float, NO, 0, 0, 0, 0, YES}};
+   PHPipe *pp = [self pipe:over ? @"particle_over" : @"particle" role:over ? @"particle_over" : @"particle" targets:over ? smoke : added count:post ? 2 : 1 depth:YES];
+   if (pp) { [self bind:pp to:e]; [e setDepthStencilState:depthRead]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:op->count instanceCount:op->instances]; }
+  } break;
+  case ENGINE_FP_PASS_BLOOM: {
+   PHTarget one[1] = {{MTLPixelFormatRGBA16Float}};
+   PHPipe *bloom = [self pipe:@"bloom" role:@"bloom" targets:one count:1 depth:NO];
+   bloomSource = [self planTarget:op->from]; for (int k = 0; k < 4; k++) bloomStep[k] = (float)op->step[k];
+   if (bloom) { [self bind:bloom to:e]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:op->count]; }
+  } break;
+  case ENGINE_FP_PASS_POST: {
+   PHPipe *po = [self pipe:@"post" role:@"post" targets:flat count:1 depth:NO];
+   if (po) { [self bind:po to:e]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:op->count]; }
+  } break;
+  case ENGINE_FP_PASS_HUD: {
+   // straight alpha over the world for a realm that asks; else the strokes' glow, which never doubles where they meet.
+   // Without a post pass the strokes share the scene's pass, whose depth they neither test nor write.
+   BOOL alpha = x.fx_alpha_v1 && x.fx_alpha_v1() == 1; uint32_t most = MIN(op->count, pf.hud);
+   PHTarget stroke[1] = {{MTLPixelFormatBGRA8Unorm, YES, alpha ? MTLBlendFactorSourceAlpha : MTLBlendFactorOne, alpha ? MTLBlendFactorOneMinusSourceAlpha : MTLBlendFactorOne, MTLBlendFactorOne, alpha ? MTLBlendFactorOneMinusSourceAlpha : MTLBlendFactorOne}};
+   PHPipe *fx = most ? [self pipe:alpha ? @"fx-alpha" : @"fx-max" role:@"fx" targets:stroke count:1 depth:pf.flatDepth] : nil;
+   if (fx) {
+    [self bind:fx to:e]; if (pf.flatDepth) { if (!depthClear) { MTLDepthStencilDescriptor *dd = [MTLDepthStencilDescriptor new]; dd.depthCompareFunction = MTLCompareFunctionAlways; depthClear = [device newDepthStencilStateWithDescriptor:dd]; } [e setDepthStencilState:depthClear]; }
+    [e setVertexBuffer:fxBuffer offset:0 atIndex:30]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:most];
+   }
+  } break;
+  default: break;   // a pass this host said it has no pipeline for: the engine's plan never holds one
+ }
+}
+static void phPlanBegin(void *s, const engine_fp_op *op) { [(__bridge AEPageHost *)s planBegin:op]; }
+static void phPlanEnd(void *s) { [(__bridge AEPageHost *)s planEnd]; }
+static void phPlanDraw(void *s, const engine_fp_op *op, uint32_t item) { (void)item; [(__bridge AEPageHost *)s planDraw:op]; }
+static void phPlanCopy(void *s, uint32_t from, uint32_t to) { (void)s; (void)from; (void)to; }   // the water's copies: this host has no water pass
+static void phPlanRect(void *s, int scissor, uint32_t rx, uint32_t ry, uint32_t rw, uint32_t rh) { [(__bridge AEPageHost *)s planRect:scissor != 0 x:rx y:ry w:rw h:rh]; }
+static void phPlanCompute(void *s, uint32_t kind, uint32_t runs) { (void)s; (void)kind; (void)runs; }   // the cull and the sort: not asked for
+static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHost *)s; if (!h->pf.flatDepth) [h drawMedia:h->planE over:after != 0 format:MTLPixelFormatBGRA8Unorm]; }
 - (id<MTLTexture>)frame:(CGSize)size scale:(CGFloat)scale dt:(float)dt wait:(BOOL)wait {
  if (closed) return screen;
  phCurrent = self;
@@ -943,18 +1040,47 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  PHPipe *shadowPipe = shadowShader ? [self pipe:@"shadow" role:@"shadow" targets:NULL count:0 depth:YES] : nil;
 
  // The shadow map: the atlas the realm's Coax lays out in tiles (metaverse-engine/render/cascades.coax), or one 2048 square.
+ // Its size and the engine's tile events come before the frame's order is asked for: open the tiles once the atlas is
+ // new or the engine has none; a tile with nothing to draw it with is empty again.
+ int aw = 0, ah = 0, tile = -1; BOOL tiles = NO;
  if (shadowPipe) {
-  int aw = x.shadow_atlas_v1 && x.shadow_v1 && x.shadow_event_v1 ? (int)x.shadow_atlas_v1(state, config.touch ? 1 : 0, 0) : 0, ah = aw ? (int)x.shadow_atlas_v1(state, config.touch ? 1 : 0, 1) : 0;
-  BOOL tiles = aw > 0 && ah > 0 && aw <= 8192 && ah <= 8192;
+  aw = x.shadow_atlas_v1 && x.shadow_v1 && x.shadow_event_v1 ? (int)x.shadow_atlas_v1(state, config.touch ? 1 : 0, 0) : 0; ah = aw ? (int)x.shadow_atlas_v1(state, config.touch ? 1 : 0, 1) : 0;
+  tiles = aw > 0 && ah > 0 && aw <= 8192 && ah <= 8192;
   if (!tiles) aw = ah = config.touch ? 1024 : 2048;
   if (!shadowMap || (int)shadowMap.width != aw || (int)shadowMap.height != ah || shadowTiles != tiles) { shadowMap = [self target:MTLPixelFormatDepth32Float width:aw height:ah]; shadowTiles = tiles; shadowFresh = tiles; }
+  if (tiles) {
+   if (shadowFresh || x.shadow_v1(state, 6) <= 0) { x.shadow_event_v1(state, 0, 0); shadowFresh = NO; }
+   tile = x.shadow_v1(state, 0);
+   if (tile >= 0 && !shadowDraws) { x.shadow_event_v1(state, 2, 0); tile = -1; }
+  }
+ }
+ BOOL post = scene && [self shader:@"post"] && [self shader:@"bloom"];
+ BOOL flatDepth = scene && !post;
+ PHTarget flat[1] = {{MTLPixelFormatBGRA8Unorm}};
+ // The frame's order is the engine's (metaverse-engine/render/passes.coax, GitHub #13303): a page whose face has
+ // coaxial_frame_plan_v1 is drawn by the one C walk (host/core/frame-plan-walk.h) calling planBegin, planDraw and the
+ // rest below, which map a pass to its Metal pipeline, depth state and bindings and decide no order. This host's word
+ // says what it has: no grass, water, character pass, instance cull or particle sort. AETHYR_PLAN=off draws a page
+ // that has a plan in the order below, to compare.
+ BOOL planned = NO; int planOps = -1;
+ if (x.frame_plan_v1 && !(getenv("AETHYR_PLAN") && !strcmp(getenv("AETHYR_PLAN"), "off"))) {
+  BOOL sparkly = scene && particleBuffer && [self shader:@"particle"];
+  uint32_t bits = (scene ? ENGINE_FP_HOST_SCENE | ENGINE_FP_HOST_SCENE_READY : 0) | (shadowPipe ? ENGINE_FP_HOST_SHADOW : 0) | (post ? ENGINE_FP_HOST_POST : 0)
+   | (sparkly ? ENGINE_FP_HOST_PARTICLES | ENGINE_FP_HOST_PARTICLES_READY : 0) | (sparkly && [self shader:@"particle_over"] ? ENGINE_FP_HOST_PARTICLE_OVER : 0)
+   | (!flatDepth ? ENGINE_FP_HOST_MEDIA : 0) | (shadowPipe && tiles ? ENGINE_FP_HOST_TILES : 0);
+  EngineCoreFace face = {0}; face.frame_plan_v1 = x.frame_plan_v1;
+  engine_fp_host walk = {(__bridge void *)self, phPlanBegin, phPlanEnd, phPlanDraw, phPlanCopy, phPlanRect, phPlanCompute, phPlanMedia};
+  uint32_t words[ENGINE_CORE_PLAN_WORDS];
+  planCmd = cmd; planE = nil; pf.list = list; pf.shadowList = shadowList; pf.hud = n; pf.post = post; pf.scene = scene; pf.flatDepth = flatDepth; pf.sparks = NO; pf.depth = 0;
+  planOps = engine_core_plan(&face, state, bits, words, &walk); planned = planOps > 0;
+  planCmd = nil; planE = nil;
+ }
+ // ---- this host's own order, for a page whose face has no plan yet (pages move one at a time, #13303)
+ if (!planned) {
+ if (shadowPipe) {
   MTLRenderPassDescriptor *pd = [MTLRenderPassDescriptor new]; pd.depthAttachment.texture = shadowMap; pd.depthAttachment.storeAction = MTLStoreActionStore;
   if (tiles) {
-   // open the tiles once the atlas is new or the engine has none; then at most the one tile it names, cleared, into its rect
-   if (shadowFresh || x.shadow_v1(state, 6) <= 0) { x.shadow_event_v1(state, 0, 0); shadowFresh = NO; }
-   int tile = x.shadow_v1(state, 0);
-   if (tile >= 0 && !shadowDraws) x.shadow_event_v1(state, 2, 0);
-   else if (tile >= 0) {
+   if (tile >= 0) {
     pd.depthAttachment.loadAction = MTLLoadActionLoad;
     id<MTLRenderCommandEncoder> e = [cmd renderCommandEncoderWithDescriptor:pd];
     int clears = x.shadow_v1(state, 7), count = x.shadow_v1(state, 6);
@@ -982,14 +1108,12 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  }
 
  // The world: the background, the scene's draws, the particles, into the light and its second target.
- BOOL post = scene && [self shader:@"post"] && [self shader:@"bloom"];
  MTLRenderPassDescriptor *pd = [MTLRenderPassDescriptor new];
  for (int i = 0; i < (post ? 2 : 1); i++) {
   pd.colorAttachments[i].texture = post ? (i ? aux : light) : screen; pd.colorAttachments[i].loadAction = MTLLoadActionClear;
   pd.colorAttachments[i].clearColor = MTLClearColorMake(0, 0, 0, 1); pd.colorAttachments[i].storeAction = MTLStoreActionStore;
  }
  if (scene) { pd.depthAttachment.texture = depth; pd.depthAttachment.loadAction = MTLLoadActionClear; pd.depthAttachment.clearDepth = 1; pd.depthAttachment.storeAction = post ? MTLStoreActionStore : MTLStoreActionDontCare; }
- PHTarget flat[1] = {{MTLPixelFormatBGRA8Unorm}};
  id<MTLRenderCommandEncoder> e = [cmd renderCommandEncoderWithDescriptor:pd];
  PHPipe *bg = [self pipe:post ? @"bg-lit" : @"bg" role:@"bg" targets:post ? lit : flat count:post ? 2 : 1 depth:scene];
  if (bg) { [self bind:bg to:e]; if (scene) [e setDepthStencilState:depthAlways]; [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3]; }
@@ -1033,7 +1157,6 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  }
  // The pictures under the strokes, the HUD's strokes, then the pictures drawn over them. Without a
  // post pass the strokes share the scene's pass, whose depth they neither test nor write.
- BOOL flatDepth = scene && !post;
  if (!flatDepth) [self drawMedia:e over:NO format:MTLPixelFormatBGRA8Unorm];
  if (n) {
   BOOL alpha = x.fx_alpha_v1 && x.fx_alpha_v1() == 1;
@@ -1047,13 +1170,14 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  }
  if (!flatDepth) [self drawMedia:e over:YES format:MTLPixelFormatBGRA8Unorm];
  [e endEncoding];
+ }
  double t2 = CACurrentMediaTime();
  [cmd commit]; last = cmd;
  if (wait) { [cmd waitUntilCompleted]; last = nil; }
  if (getenv("AETHYR_PAGE_TIMES")) {   // a developer's look at where a frame's time goes
   static double face, encode, gpu; static int frames;
   face += t1 - t0; encode += t2 - t1; if (wait) gpu += cmd.GPUEndTime - cmd.GPUStartTime;
-  if (++frames == 120) { fprintf(stderr, "page host: %dx%d face %.2f ms, uploads and encoding %.2f ms, GPU %.2f ms a frame\n", width, height, face / frames * 1000, encode / frames * 1000, gpu / frames * 1000); face = encode = gpu = 0; frames = 0; }
+  if (++frames == 120) { fprintf(stderr, "page host: %dx%d face %.2f ms, uploads and encoding %.2f ms, GPU %.2f ms a frame; the frame's order: %s (%d operations)\n", width, height, face / frames * 1000, encode / frames * 1000, gpu / frames * 1000, planned ? "the engine's plan" : "this host's own", planOps); face = encode = gpu = 0; frames = 0; }
  }
  [self mediaSay];
  return screen;
