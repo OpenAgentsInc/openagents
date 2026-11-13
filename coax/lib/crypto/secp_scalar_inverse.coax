@@ -7,7 +7,9 @@
 //
 // The loop's length and branches depend on a: it is for verification and
 // other public data only. Signing keeps sc_inverse.
+// coax test coax/lib/crypto/secp_scalar_inverse.coax --library
 #load "secp_scalar.coax";
+#load "secp_modinv.coax";
 #load "secp_scalar_inverse-checks.coax" #test;
 #authority;
 // A number below 2^256, least significant limb first.
@@ -85,12 +87,34 @@ sw_mul_low :: (a: Sw, b: Sw) -> Sw #effects(all) {
   w := sw_mul_wide(a, b);
   return Sw.{n=[4] u64.[w[0], w[1], w[2], w[3]]};
 }
+// Public-data product using 2^256 = 2^256 - n (mod n). Each fold reduces
+// the high half's width by at least 127 bits. The last value is below
+// 2^256 < 2n, so normalization subtracts n at most once.
+sc_mul_vartime :: (a: ScScalar, b: ScScalar) -> ScScalar #effects(all) {
+  w := sw_mul_wide(sw_from_scalar(a), sw_from_scalar(b));
+  fold := Sw.{n=[4] u64.[0x402DA1732FC9BEBF,0x4551231950B75FC4,1,0]};
+  while (w[4] | w[5] | w[6] | w[7]) != 0 {
+    high := Sw.{n=[4] u64.[w[4],w[5],w[6],w[7]]};
+    low := Sw.{n=[4] u64.[w[0],w[1],w[2],w[3]]};
+    w = sw_add_product_low(sw_mul_wide(high, fold), low);
+  }
+  return sc_normalize(sw_to_scalar(Sw.{n=[4] u64.[w[0],w[1],w[2],w[3]]}));
+}
+// Add the low 256 bits to a full product, modulo 2^512. This helper's
+// full-domain contract makes carry propagation independently checkable.
+sw_add_product_low :: (product: [8] u64, low: Sw) -> [8] u64 #effects(all) {
+  p := product; sum := sw_add(Sw.{n=[4] u64.[p[0],p[1],p[2],p[3]]}, low);
+  for i: 0..<4 { p[i] = sum.value.n[i]; }
+  carry := sum.carry;
+  for i: 4..<8 { before := p[i]; p[i] = add_wrap(before, carry); carry = ifx p[i] < before then cast(u64) 1 else 0; }
+  return p;
+}
 sw_is_one :: (a: Sw) -> bool #effects(all) { return a.n[0] == 1 && (a.n[1] | a.n[2] | a.n[3]) == 0; }
 // 1/a mod n. ok is false, and the value zero, for a = 0 mod n. Throughout,
 // x1·a = u and x2·a = v (mod n): halving u halves x1, and subtracting v
 // from u subtracts x2 from x1. gcd(a, n) = 1, so u or v reaches 1, and its
 // x is the inverse.
-sc_inverse_vartime :: (a: ScScalar) -> ScInverse #effects(all) {
+sc_inverse_binary_vartime :: (a: ScScalar) -> ScInverse #effects(all) {
   reduced := sc_normalize(a);
   if sc_is_zero(reduced) { return ScInverse.{}; }
   u := sw_from_scalar(reduced); v := sw_n(); x1: Sw; x1.n[0] = 1; x2: Sw;
@@ -102,4 +126,10 @@ sc_inverse_vartime :: (a: ScScalar) -> ScInverse #effects(all) {
     else { v = sw_sub(v, u).value; x2 = sw_sub_mod(x2, x1); }
   }
   return ScInverse.{value=sw_to_scalar(ifx sw_is_one(u) then x1 else x2),ok=true};
+}
+// The 62-step matrix update is shared by scalar and field inverses.
+sc_inverse_vartime :: (a: ScScalar) -> ScInverse #effects(all) {
+  x := sw_from_scalar(sc_normalize(a));
+  got := mi_inverse_vartime(mi_from_words(x.n), mi_modulus(mi_from_words(sw_n().n)));
+  return ScInverse.{value=sw_to_scalar(Sw.{n=mi_to_words(got.value)}),ok=got.ok};
 }

@@ -6,3 +6,32 @@
 #load "../../lib/crypto/schnorr.coax";
 #load "../../lib/crypto/ecdsa_sign.coax";
 #load "../../lib/crypto/schnorr_sign.coax";
+
+// Public inverse timings isolate arithmetic from point multiplication.
+bench_inverse :: (input:[]u8,out:[]u8,mode:int) -> bool #export_c #effects(all) {
+  if mode<2 {
+    a:=fe_load_vartime(input);if !a.ok {return false;}
+    value:=ifx mode==0 then fe_inverse_vartime(a.value) else fe_inverse_chain(a.value);
+    return fe_store(value,out);
+  }
+  a:=sc_load(input);if !a.ok {return false;}
+  value:=ifx mode==2 then sc_inverse_vartime(a.value) else sc_inverse_binary_vartime(a.value);
+  return value.ok && sc_store(value.value,out);
+}
+// Optional public phases isolate field arithmetic from the verifier's MSM.
+bench_phase :: (input:[]u8,key:[]u8,signature:[]u8,out:[]u8,mode:int) -> bool #export_c #effects(all) {
+  if mode==0 {p:=fg_lift_x_vartime(key);return p.ok && fe_store(p.value.x,out);}
+  if mode==1 {c:=sv_challenge_vartime(input,key,signature[0..<32]);return c.ok && sc_store(c.value,out);}
+  if mode==5 || mode==7 || mode==8 {
+    p:=fg_lift_x_vartime(key);if !p.ok {return false;}
+    if mode==7 {table:=fg_odd_table(p.value);return fe_store(table.z,out);}
+    if mode==8 {point:=fg_from_affine(p.value);for i:0..<129 {point=fg_double(point);}return fe_store(point.x,out);}
+    scalar:=sc_load(signature[32..<64]);challenge:=sv_challenge_vartime(input,key,signature[0..<32]);
+    return scalar.ok && challenge.ok && fe_store(fg_ecmult_vartime(scalar.value,p.value,sc_negate(challenge.value)).x,out);
+  }
+  a:=fe_load_vartime(input);if !a.ok {return false;}
+  if mode==6 {return fe_store(fg_to_affine_vartime(Fgej.{x=a.value,y=a.value,z=a.value}).x,out);}
+  if mode==2 {return fe_store(fe_mul(a.value,a.value),out);}
+  if mode==3 {return fe_store(fe_sqr(a.value),out);}
+  return fe_store(fe_sqrt_vartime(a.value).value,out);
+}

@@ -136,7 +136,7 @@ fr_share_at_vartime :: (ids: [] int, points: [] SgPoint, x: int) -> SgPoint #eff
     }
     inv := sc_inverse(den);
     #assert inv.ok;
-    q = sg_add(q, ecmult_vartime(sc_small(0), points[i], sc_mul(num, inv.value)).value).value;
+    q = sg_add(q, fg_ecmult_point_vartime(sc_small(0), points[i], sc_mul(num, inv.value)).value).value;
   }
   return q;
 }
@@ -198,7 +198,7 @@ fr_tweaks_vartime :: (thresh_pk: [] u8, tweaks: [] u8, xonly: [] bool) -> FrTwea
     g := ifx xonly[i] then ms_parity_vartime(k.q) else sc_small(1);
     t := sc_load(tweaks[32*i..<32*i+32]);
     if !t.ok { return FrTweak.{code=FR_TWEAK_RANGE}; }
-    q := ecmult_vartime(t.value, k.q, g).value;
+    q := fg_ecmult_point_vartime(t.value, k.q, g).value;
     if !ms_finite_vartime(q) { return FrTweak.{code=FR_TWEAK_INFINITY}; }
     k = FrTweak.{code=FR_OK, q=q, gacc=sc_mul(g, k.gacc), tacc=sc_add(t.value, sc_mul(g, k.tacc))};
   }
@@ -366,7 +366,7 @@ fr_session_vartime :: (s: FrSigners, aggnonce: [] u8, tweaks: [] u8, xonly: [] b
   r1 := ms_cpoint_ext_vartime(aggnonce[0..<33]);
   r2 := ms_cpoint_ext_vartime(aggnonce[33..<66]);
   if !r1.ok || !r2.ok { x.code = FR_BAD_AGGNONCE; return x; }
-  r := sg_add(r1.value, ecmult_vartime(sc_small(0), r2.value, x.b).value).value;
+  r := sg_add(r1.value, fg_ecmult_point_vartime(sc_small(0), r2.value, x.b).value).value;
   x.r = ifx ms_finite_vartime(r) then r else sg_generator();
   ms_xbytes_vartime(x.r, rx[..]);
   ms_tag(w[..], "BIP0340/challenge"); ms_add(w[..], rx[..]); ms_add(w[..], qx[..]); ms_add(w[..], msg);
@@ -420,13 +420,13 @@ fr_partial_verify_session_vartime :: (psig: [] u8, signer_id: int, pubnonce: [] 
   r1 := ms_cpoint_vartime(pubnonce[0..<33]);
   r2 := ms_cpoint_vartime(pubnonce[33..<66]);
   if !r1.ok || !r2.ok { return fr_fail(FR_INVALID, -1); }
-  re := sg_add(r1.value, ecmult_vartime(sc_small(0), r2.value, x.b).value).value;
+  re := sg_add(r1.value, fg_ecmult_point_vartime(sc_small(0), r2.value, x.b).value).value;
   if ms_odd_vartime(x.r) { re = sg_negate(re).value; }
   p := ms_cpoint_vartime(pubshare);
   if !p.ok { return fr_fail(FR_INVALID, -1); }
   if fr_position(ids, signer_id) < 0 { return fr_fail(FR_ID_MISSING, -1); }
   c := sc_mul(sc_mul(x.e, fr_lambda_vartime(ids, signer_id)), sc_mul(ms_parity_vartime(x.q), x.gacc));
-  lhs := ecmult_vartime(s.value, p.value, sc_negate(c)).value;
+  lhs := fg_ecmult_point_vartime(s.value, p.value, sc_negate(c)).value;
   return ifx sg_equal_mask(lhs, re) == CB_MAX64 then fr_ok() else fr_fail(FR_INVALID, -1);
 }
 // PartialSigVerify: the partial signature of the signer at position i,
@@ -639,7 +639,7 @@ fr_dkg_point_vartime :: (commit: [] u8, j: int) -> SgPoint #effects(all) {
   for k: 0..<commit.count/33 {
     c := ms_cpoint_vartime(commit[33*k..<33*k+33]);
     #assert c.ok;
-    q = sg_add(q, ecmult_vartime(sc_small(0), c.value, x).value).value;
+    q = sg_add(q, fg_ecmult_point_vartime(sc_small(0), c.value, x).value).value;
     x = sc_mul(x, fr_scalar(j + 1));
   }
   return q;

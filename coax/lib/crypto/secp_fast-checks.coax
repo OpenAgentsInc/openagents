@@ -6,6 +6,43 @@
 #load "secp_fe-checks.coax";
 #load "secp_encode.coax";
 
+#test "fixed negations respect their advertised limb bounds and generator identity" {
+  zero: Fe; p := fg_negative_product(zero); x := fg_negative_x(zero);
+  for i: 0..<5 {
+    limb := ifx i == 4 then FE_M48 else FE_M52;
+    #assert p.n[i] <= 4 * limb && x.n[i] <= 14 * limb;
+  }
+  #assert fe_is_zero_vartime(fe_add(fet_max(1),fg_negative_product(fet_max(1))));
+  #assert fe_is_zero_vartime(fe_add(fet_max(6),fg_negative_x(fet_max(6))));
+  #assert fgt_same(fg_from_affine(fg_generator()),sg_generator());
+}
+
+#forall "direct generator addition equals separate coordinate scaling" seed: 0..<8, flags: 0..<4 #steps 2000000000 {
+  negative := (flags & 1) != 0; endo := (flags & 2) != 0;
+  p := fgt_affine(fgt_multiple(seed + 1, 2).reference); table: [1] FgTable; table[0] = fg_odd_table(p);
+  a := fg_from_affine(table[0].entry[seed]); digit := 2 * seed + 1;
+  direct := fg_add_generator(a, table[..], digit, negative, endo);
+  old := fg_add_affine(a, fg_g_entry(table[..], digit, negative, endo));
+  direct.z = fe_mul(direct.z, table[0].z); old.z = fe_mul(old.z, table[0].z);
+  #assert sg_equal_mask(fgt_reference(direct), fgt_reference(old)) == CB_MAX64;
+}
+
+#forall "Jacobian addition covers distinct, equal, opposite and infinite public points" left: 0..<5, right: 0..<5 #steps 2000000000 {
+  a := fgt_multiple(left, left + 11); b := fgt_multiple(right, right + 23);
+  #assert fgt_same(fg_add_jacobian(a.fast, b.fast), sg_add_valid(a.reference, b.reference));
+  #assert fgt_same(fg_add_jacobian(a.fast, fgt_negate(b.fast)), sg_add_valid(a.reference, sg_negate(b.reference).value));
+}
+
+#forall "public point adapter preserves validation, infinity and the old multiplication" seed: 0..<12 #steps 2000000000 {
+  p := fgt_multiple(seed, seed + 1).reference;
+  a := fgt_scalar(seed, 5); b := fgt_scalar(seed, 7);
+  if seed < 3 { a = sc_small(cast(u32) seed); b = sc_small(cast(u32) (2 - seed)); }
+  old := ecmult_vartime(a, p, b); fast := fg_ecmult_point_vartime(a, p, b);
+  #assert old.ok == fast.ok && sg_equal_mask(old.value, fast.value) == CB_MAX64;
+  invalid: SgPoint;
+  #assert !fg_ecmult_point_vartime(a, invalid, b).ok;
+}
+
 // A fast-path point as the reference's point.
 fgt_reference :: (a: Fgej) -> SgPoint {
   if a.infinity { return sg_infinity(); }
@@ -103,7 +140,7 @@ fgt_abs :: (d: int) -> int { return ifx d < 0 then -d else d; }
     #assert !lifted.infinity && fgt_same(lifted, b.reference) && fe_equal_vartime(lifted.z, fe_one());
   }
 }
-#forall "a wNAF stands for its number, with odd, bounded, spaced digits" seed: 0..<24, w: 2..<9 #steps 2000000000 {
+#forall "a wNAF stands for its number, with odd, bounded, spaced digits" seed: 0..<24, w: 2..<11 #steps 2000000000 {
   k := fgt_half(seed, 4);
   if seed == 0 { k = ScScalar.{}; }
   if seed == 1 { for i: 0..<4 { k.limbs[i] = 4294967295; } }
@@ -113,7 +150,7 @@ fgt_abs :: (d: int) -> int { return ifx d < 0 then -d else d; }
   recoded := fg_wnaf_vartime(words.n[0], words.n[1], w);
   #assert fgt_wnaf_is(recoded, k);
   wrong := recoded; wrong.digits[seed] += 2; #assert !fgt_wnaf_is(wrong, k);
-  last := -9; top := 0;
+  last := -w; top := 0;
   for i: 0..<FG_BITS {
     d := recoded.digits[i];
     if d == 0 { continue; }
@@ -125,7 +162,7 @@ fgt_abs :: (d: int) -> int { return ifx d < 0 then -d else d; }
   if seed == 2 { #assert top == 1 && recoded.digits[0] == 1; }
   if seed == 3 { #assert top == 128 && recoded.digits[127] == 1; }
 }
-#forall "each bit recodes to itself at every width" bit: 0..<128, w: 2..<9 #steps 2000000000 {
+#forall "each bit recodes to itself at every width" bit: 0..<128, w: 2..<11 #steps 2000000000 {
   lo := ifx bit < 64 then cast(u64) 1 << bit else cast(u64) 0; hi := ifx bit < 64 then cast(u64) 0 else cast(u64) 1 << (bit - 64);
   recoded := fg_wnaf_vartime(lo, hi, w);
   for i: 0..<FG_BITS { #assert recoded.digits[i] == (ifx i == bit then 1 else 0); }

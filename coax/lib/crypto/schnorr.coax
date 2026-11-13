@@ -1,12 +1,38 @@
 // Public BIP-340 verification. Variable-time throughout: never pass secrets.
 // Prepared records and mathematical helper results are internal data, NOT
 // verified authority. Only the complete byte-view entry performs verification.
+// coax test coax/lib/crypto/schnorr.coax --library
 #load "secp_fast.coax";
 #load "sha256.coax";
 #load "../../tests/nostr/schnorr_checks.coax";
 #authority;
 SV_MAX_MESSAGE :: 1048576;
 SV_TAG_HASH :: #run S_hash("BIP0340/challenge");
+// SHA-256 after the complete tag-hash || tag-hash block (BIP-340).
+// Checked against the ordinary streaming path below; no compile-time hash.
+sv_challenge_state :: () -> Sha256Work #effects(all) {
+  return Sha256Work.{h=[8] u32.[0x9cecba11,0x23925381,0x11679112,0xd1627e0f,0x97c87550,0x003cc765,0x90f61164,0x33e9b66a],total=64,phase=SHA_ACTIVE};
+}
+#forall "challenge midstate equals the full tagged hash across padding boundaries" length: 0..<8 {
+  sizes := [8] int.[0,1,31,32,55,56,64,129];
+  input: [129] u8; key: [32] u8; r: [32] u8;
+  for i: 0..<129 { input[i] = cast(u8) i; }
+  for i: 0..<32 { key[i] = cast(u8) (i + 32); r[i] = cast(u8) (255 - i); }
+  full: [112] u8; tag: [32] u8; digest: [32] u8;
+  h := S_hash("BIP0340/challenge");
+  #assert sha256_emit(h.words[..], tag[..]) == SHA_OK && sha256_init(full[..]) == SHA_OK;
+  #assert sha256_update_checked(full[..], tag[..], false) == SHA_OK;
+  #assert sha256_update_checked(full[..], tag[..], false) == SHA_OK;
+  expected := sha256_unpack(full[..]); actual := sv_challenge_state();
+  #assert expected.total == actual.total && expected.phase == actual.phase && actual.used == 0;
+  for i: 0..<8 { #assert expected.h[i] == actual.h[i]; }
+  #assert sha256_update_checked(full[..], r[..], false) == SHA_OK;
+  #assert sha256_update_checked(full[..], key[..], false) == SHA_OK;
+  #assert sha256_update_checked(full[..], input[0..<sizes[length]], false) == SHA_OK;
+  #assert sha256_final_checked(full[..], digest[..], false) == SHA_OK;
+  got := sv_challenge_vartime(input[0..<sizes[length]], key[..], r[..]);
+  #assert got.ok && sc_equal(got.value, sc_reduce_bytes(digest[..]).value);
+}
 SvPrepared :: struct { s: ScScalar; negative_e: ScScalar; point: SgPoint; r: SecpField; ready: bool; }
 
 sv_lengths_vartime :: (message_count: int,public_count: int,signature_count: int) -> bool #effects(all) {
@@ -16,11 +42,8 @@ sv_lengths_vartime :: (message_count: int,public_count: int,signature_count: int
 // The local state, tag hash and output cannot overlap caller-owned inputs.
 sv_challenge_vartime :: (message: [] u8,public_key: [] u8,r: [] u8) -> ScLoad #effects(all) {
   if r.count != 32 || !sv_lengths_vartime(message.count,public_key.count,64) { return ScLoad.{}; }
-  digest := SV_TAG_HASH; tag: [32] u8; out: [32] u8; state: [112] u8;
-  status := sha256_emit(digest.words[..],tag[..]); if status != SHA_OK { return ScLoad.{}; }
-  status = sha256_init(state[..]); if status != SHA_OK { return ScLoad.{}; }
-  status = sha256_update_checked(state[..],tag[..],false); if status != SHA_OK { return ScLoad.{}; }
-  status = sha256_update_checked(state[..],tag[..],false); if status != SHA_OK { return ScLoad.{}; }
+  out: [32] u8; state: [112] u8;
+  status := sha256_pack(sv_challenge_state(),state[..]); if status != SHA_OK { return ScLoad.{}; }
   status = sha256_update_checked(state[..],r,false); if status != SHA_OK { return ScLoad.{}; }
   status = sha256_update_checked(state[..],public_key,false); if status != SHA_OK { return ScLoad.{}; }
   status = sha256_update_checked(state[..],message,false); if status != SHA_OK { return ScLoad.{}; }

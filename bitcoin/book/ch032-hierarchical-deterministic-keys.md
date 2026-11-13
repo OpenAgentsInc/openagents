@@ -333,7 +333,7 @@ variable-time multiplication:
 hdk_add_point :: (il: [] u8, key: [] u8, out: [] u8) -> int #effects(all) {
   t := sc_load(il); k := se_decode(key);
   if !t.ok || !k.ok { return BIP32_INVALID_KEY; }
-  p := ecmult_vartime(t.value, k.value, sc_small(1));
+  p := fg_ecmult_point_vartime(t.value, k.value, sc_small(1));
   if se_encode(p.value, SE_COMPRESSED, out) != SE_COMPRESSED { return BIP32_INVALID_KEY; }
   return 33;
 }

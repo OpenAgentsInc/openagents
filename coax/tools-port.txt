@@ -220,11 +220,9 @@ coax/tests/nostr/schnorr_prepare_wasm.cjs
 coax/tests/nostr/schnorr_scalar.py
 coax/tests/nostr/schnorr_scalar_wasm.cjs
 coax/tests/nostr/schnorr_self_verify.py
-coax/tests/nostr/schnorr_self_verify_secret_probe.sh
 coax/tests/nostr/schnorr_self_verify_timing.py
 coax/tests/nostr/schnorr_self_verify_wasm.cjs
 coax/tests/nostr/schnorr_sign.py
-coax/tests/nostr/schnorr_sign_secret_probe.sh
 coax/tests/nostr/schnorr_sign_wasm.cjs
 coax/tests/nostr/schnorr_support.py
 coax/tests/nostr/schnorr_wasm.cjs

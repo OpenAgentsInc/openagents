@@ -7,6 +7,7 @@
 //
 // Every procedure branches and indexes on its inputs. They are for public
 // data only: signing, key generation and ECDH keep their fixed-work paths.
+// coax test coax/lib/crypto/secp_fast.coax --library
 #load "secp_glv.coax";
 #load "secp_fe.coax";
 #load "secp_scalar_inverse.coax";
@@ -85,6 +86,27 @@ fg_add_affine :: (a: Fgej, b: Fge) -> Fgej #effects(all) {
   r.z = fe_mul(a.z, h);
   return r;
 }
+// Full Jacobian addition for batch accumulators whose tables have distinct
+// denominators. The public exceptional cases are the same as affine add.
+// These fixed negations expose the limb bounds required by the following
+// products: product inputs have magnitude 1, Jacobian X has magnitude 6.
+fg_negative_product :: (a: Fe) -> Fe #effects(all) { return fe_negate(a, 1); }
+fg_negative_x :: (a: Fe) -> Fe #effects(all) { return fe_negate(a, 6); }
+fg_generator :: () -> Fge #effects(all) { return fg_g_point(0); }
+fg_add_jacobian :: (a: Fgej, b: Fgej) -> Fgej #effects(all) {
+  if a.infinity { return b; }
+  if b.infinity { return a; }
+  z1 := fe_sqr(a.z); z2 := fe_sqr(b.z);
+  u1 := fe_mul(a.x, z2); u2 := fe_mul(b.x, z1);
+  s1 := fe_mul(a.y, fe_mul(b.z, z2)); s2 := fe_mul(b.y, fe_mul(a.z, z1));
+  h := fe_add(fg_negative_product(u1), u2); i := fe_add(fg_negative_product(s2), s1);
+  if fe_is_zero_vartime(h) {
+    if fe_is_zero_vartime(i) { return fg_double(a); }
+    return fg_infinity();
+  }
+  r := fg_add_finish(u1, s1, h, i); r.z = fe_mul(fe_mul(a.z, b.z), h);
+  return r;
+}
 // The affine point, with both coordinates below p. a must not be infinity.
 fg_to_affine_vartime :: (a: Fgej) -> Fge #effects(all) {
   zi := fe_inverse_vartime(a.z); zi2 := fe_sqr(zi);
@@ -148,7 +170,7 @@ fg_split_vartime :: (k: ScScalar) -> FgSplit #effects(all) {
   r1 := sw_sub(sw_sub(x, sw_mul_low(c1, fg_a1())).value, sw_mul_low(c2, fg_a2())).value;
   return FgSplit.{r1=r1,r2=r2};
 }
-// The width-w wNAF of hi·2^64 + lo; w is from 2 to 8. Each nonzero digit is
+// The width-w wNAF of hi·2^64 + lo; w is from 2 to 10. Each nonzero digit is
 // odd, below 2^(w-1) in absolute value, and followed by at least w - 1
 // zeros. A window is read where the low bit differs from the carry; a
 // window of 2^(w-1) or more becomes negative and carries one into the next.
@@ -220,6 +242,23 @@ fg_g_entry :: (table: [] FgTable, digit: int, negative: bool, lambda: bool) -> F
   e := Fge.{x=fe_mul(g.x, ifx lambda then table[0].z2b else table[0].z2),y=fe_mul(g.y, table[0].z3)};
   return fg_signed(e, d.negative != negative);
 }
+// Add G directly with the table's denominator. Combining a.z and table.z
+// before squaring saves a product compared with separately scaling both
+// affine G coordinates (gej_add_zinv_var's shared-denominator idea).
+fg_add_generator :: (a: Fgej, table: [] FgTable, digit: int, negative: bool, lambda: bool) -> Fgej #effects(all) {
+  if a.infinity { return fg_from_affine(fg_g_entry(table, digit, negative, lambda)); }
+  d := fg_digit(digit); g := fg_signed(fg_g_point(d.index), d.negative != negative);
+  az := fe_mul(a.z, table[0].z); az2 := fe_sqr(az);
+  xscale := az2;
+  if lambda { xscale = fe_mul(xscale, fg_beta()); }
+  u2 := fe_mul(g.x, xscale); s2 := fe_mul(fe_mul(g.y, az2), az);
+  h := fe_add(fg_negative_x(a.x), u2); i := fe_add(fg_negative_product(s2), a.y);
+  if fe_is_zero_vartime(h) {
+    if fe_is_zero_vartime(i) { return fg_double(a); }
+    return fg_infinity();
+  }
+  r := fg_add_finish(a.x, a.y, h, i); r.z = fe_mul(a.z, h); return r;
+}
 // P's entry for a digit: λ·(x, y) = (β·x, y) on the scaled curve too.
 fg_p_entry :: (table: [] FgTable, digit: int, negative: bool, lambda: bool) -> Fge #effects(all) {
   d := fg_digit(digit); e := table[0].entry[d.index];
@@ -236,8 +275,8 @@ fg_strauss_vartime :: (g1: FgHalf, g2: FgHalf, p1: FgHalf, p2: FgHalf, table: []
   for round: 0..<FG_BITS {
     bit := FG_BITS - 1 - round;
     r = fg_double(r);
-    if g1.wnaf.digits[bit] != 0 { r = fg_add_affine(r, fg_g_entry(table, g1.wnaf.digits[bit], g1.negative, false)); }
-    if g2.wnaf.digits[bit] != 0 { r = fg_add_affine(r, fg_g_entry(table, g2.wnaf.digits[bit], g2.negative, true)); }
+    if g1.wnaf.digits[bit] != 0 { r = fg_add_generator(r, table, g1.wnaf.digits[bit], g1.negative, false); }
+    if g2.wnaf.digits[bit] != 0 { r = fg_add_generator(r, table, g2.wnaf.digits[bit], g2.negative, true); }
     if p1.wnaf.digits[bit] != 0 { r = fg_add_affine(r, fg_p_entry(table, p1.wnaf.digits[bit], p1.negative, false)); }
     if p2.wnaf.digits[bit] != 0 { r = fg_add_affine(r, fg_p_entry(table, p2.wnaf.digits[bit], p2.negative, true)); }
   }
@@ -253,6 +292,29 @@ fg_ecmult_vartime :: (a: ScScalar, point: Fge, b: ScScalar) -> Fgej #effects(all
   table: [1] FgTable; table[0] = fg_odd_table(point);
   return fg_strauss_vartime(fg_half_vartime(sa.r1, FG_G_WINDOW), fg_half_vartime(sa.r2, FG_G_WINDOW),
                             fg_half_vartime(sb.r1, FG_P_WINDOW), fg_half_vartime(sb.r2, FG_P_WINDOW), table[..]);
+}
+
+// Public adapters preserve chapter 15's checked point contract. Conversion
+// keeps projective coordinates; only the input needs one affine inverse.
+fg_from_field_vartime :: (a: SecpField) -> Fe #effects(all) {
+  bytes: [32] u8; stored := sf_store(a, bytes[..]);
+  return fe_load_vartime(bytes[..]).value;
+}
+fg_to_field_vartime :: (a: Fe) -> SecpField #effects(all) {
+  bytes: [32] u8; stored := fe_store(a, bytes[..]);
+  return sf_load(bytes[..]).value;
+}
+fg_to_point_vartime :: (a: Fgej) -> SgPoint #effects(all) {
+  if a.infinity { return sg_infinity(); }
+  return SgPoint.{x=fg_to_field_vartime(a.x),y=fg_to_field_vartime(a.y),z=fg_to_field_vartime(a.z)};
+}
+fg_ecmult_point_vartime :: (a: ScScalar, point: SgPoint, b: ScScalar) -> SgResult #effects(all) {
+  if sg_valid_mask(point) != CB_MAX64 { return SgResult.{value=sg_infinity()}; }
+  fast := Fgej.{x=fg_from_field_vartime(point.x),y=fg_from_field_vartime(point.y),z=fg_from_field_vartime(point.z)};
+  if fe_is_zero_vartime(fast.z) {
+    return SgResult.{value=fg_to_point_vartime(fg_ecmult_vartime(a, fg_generator(), ScScalar.{})),ok=true};
+  }
+  return SgResult.{value=fg_to_point_vartime(fg_ecmult_vartime(a, fg_to_affine_vartime(fast), b)),ok=true};
 }
 
 // ---- what the verifiers ask of the result

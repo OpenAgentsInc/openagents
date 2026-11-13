@@ -97,6 +97,7 @@
 // nip42.coax loads the client relay.coax, whose names are rl_.
 #import "Basic";
 #load "relay_store.coax";
+#run_steps 250000000; // shared field certificates plus relay policies (#13454)
 #load "../../coax/lib/nostr/nip42-event.coax";
 #load "relay_route.coax";
 #load "relay_rate.coax";

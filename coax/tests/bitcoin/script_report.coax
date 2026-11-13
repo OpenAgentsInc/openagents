@@ -2,6 +2,7 @@
 // coax/tests/bitcoin/script.py: it reads one spending transaction, runs
 // VerifyScript for one of its inputs and returns the result, or computes
 // one signature hash. No parsing or policy lives here.
+#run_steps 250000000;
 #load "../../lib/bitcoin/script.coax";
 
 SR_INS :: 64;       // the most inputs and outputs a case may have

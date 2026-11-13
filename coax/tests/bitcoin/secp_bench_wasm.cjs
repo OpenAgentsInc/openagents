@@ -7,6 +7,10 @@
 //   node secp_bench_wasm.cjs MODULE FIXTURE
 const fs = require('node:fs');
 const { WASI } = require('node:wasi');
+const cpuTime = !!process.env.SECP_BENCH_CPU_TIME;
+const cpuUsage = process.threadCpuUsage?.bind(process) ?? process.cpuUsage.bind(process);
+const now = cpuTime ? () => { const t = cpuUsage(); return t.user + t.system; }
+                    : () => Number(process.hrtime.bigint()) / 1000;
 (async () => {
   const memory = new WebAssembly.Memory({initial: 64, maximum: 1024});
   const wasi = new WASI({version: 'preview1', args: [], env: {}});
@@ -25,13 +29,17 @@ const { WASI } = require('node:wasi');
       if (fn(at(i, 0), at(i, key), at(i, sig)) !== 0) throw new Error(`${name} ${i}: a changed signature accepted`);
       view[at(i, sig) + 40] ^= 1;
     }
+    // Let tiered compilation settle before timing; background compiler CPU
+    // belongs to startup, not to a steady-state verification call.
+    for (let warm = 0; warm < 2048; warm++) { const i = warm % count; fn(at(i, 0), at(i, key), at(i, sig)); }
     let best = Infinity;
     for (let pass = 0; pass < 5; pass++) {
-      const start = process.hrtime.bigint();
+      const start = now();
       for (let i = 0; i < count; i++) fn(at(i, 0), at(i, key), at(i, sig));
-      best = Math.min(best, Number(process.hrtime.bigint() - start) / 1000 / count);
+      best = Math.min(best, (now() - start) / count);
     }
     console.log(`${name.padEnd(16)} ${best.toFixed(2).padStart(10)}`);
   }
+  if (cpuTime) console.log(`clock: ${process.threadCpuUsage ? 'thread' : 'process'} CPU time`);
   console.log(`wasm32-wasip1 in Node ${process.version}; module ${fs.statSync(process.argv[2]).size} bytes`);
 })().catch(e => { process.stderr.write(String(e.stack || e) + '\n'); process.exitCode = 1; });

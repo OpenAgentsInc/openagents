@@ -18,6 +18,8 @@
 # on the same keys and signatures; libsecp256k1 is not built for Wasm here.
 # `0 agree COUNT` times nothing: it compares both libraries' decisions on
 # COUNT more seeded cases, most of them changed signatures, keys and hashes.
+# SECP_BENCH_CPU_TIME=1 measures process CPU time, excluding time preempted
+# by other jobs on a shared build host. Default measurements use wall time.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd -P)"
 root="$(cd "$here/../../.." && pwd -P)"
@@ -35,11 +37,13 @@ cc="${COAX_CC:-/usr/bin/cc}"
 COAX_CC="$cc" "$root/coax/bin/coax" lib "$here/secp_bench.coax" "${mode[@]}" -o "$out/secp_bench.o"
 "$cc" -std=c11 -O2 -I"$out" -I"$oracle/source/include" "$here/secp_bench.c" "$out/secp_bench.o" "$lib" -lm -o "$out/secp_bench"
 echo "build: $label; compiler: $("$cc" --version | head -1); machine: $(uname -sm)"
+[[ -z "${SECP_BENCH_CPU_TIME:-}" ]] || echo "clock: process CPU time"
 if [[ "${1:-}" == --wasm ]]; then
   # The same C for wasm32, timed in Node on the native program's signatures.
   source "$root/coax/web/toolchain.sh"
   "$out/secp_bench" 0 dump > "$out/fixture.txt"
-  "$root/coax/bin/coax" c "$here/secp_bench.coax" --library "${mode[@]}" > "$out/secp_bench_wasm_lib.c"
+  c_mode=(); [[ "$label" != release ]] || c_mode=(--release)
+  "$root/coax/bin/coax" c "$here/secp_bench.coax" --library ${c_mode[@]+"${c_mode[@]}"} > "$out/secp_bench_wasm_lib.c"
   "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" \
     -std=c11 -O2 -I"$out" -mexec-model=reactor "$out/secp_bench_wasm_lib.c" "$here/secp_bench_wasm.c" \
     -Wl,--import-memory,--export-memory,--export=__heap_base,--max-memory=67108864,-z,stack-size=1048576,--gc-sections \

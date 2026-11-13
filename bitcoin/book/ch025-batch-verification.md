@@ -182,11 +182,13 @@ once, at compile time.
 // One point of the sum and its scalar: odd multiples P, 3P, .., 15P and
 // λ times each, and the scalar split into two signed halves of about 128
 // bits, each as a width-5 wNAF (chapter 77).
-SbTerm :: struct { table: [8] SgPoint; lambda: [8] SgPoint; h1: GlvHalf; h2: GlvHalf; w1: SmWnaf; w2: SmWnaf; }
+SbTerm :: struct { table: [8] Fgej; lambda: [8] Fgej; h1: GlvHalf; h2: GlvHalf; w1: SmWnaf; w2: SmWnaf; }
 SbCount :: struct { value: SgPoint; doubles: int; additions: int; }
 sb_term :: (terms: [] SbTerm, j: int, point: SgPoint, k: ScScalar, c: [] SbCount) #effects(all) {
-  terms[j].table = glv_odd_table_vartime(point);
-  terms[j].lambda = glv_lambda_table(terms[j].table);
+  first := Fgej.{x=fg_from_field_vartime(point.x),y=fg_from_field_vartime(point.y),z=fg_from_field_vartime(point.z)};
+  twice := fg_double(first); terms[j].table[0] = first;
+  for i: 1..<8 { terms[j].table[i] = fg_add_jacobian(terms[j].table[i - 1], twice); }
+  for i: 0..<8 { terms[j].lambda[i] = terms[j].table[i]; terms[j].lambda[i].x = fe_mul(terms[j].lambda[i].x, fg_beta()); }
   // The table costs one doubling and seven additions.
   c[0].doubles += 1; c[0].additions += 7;
   s := glv_split_vartime(k);
@@ -195,10 +197,12 @@ sb_term :: (terms: [] SbTerm, j: int, point: SgPoint, k: ScScalar, c: [] SbCount
   terms[j].w2 = sm_wnaf_vartime(terms[j].h2.value, SM_P_WINDOW);
 }
 // ±|d|·T for a nonzero digit d of a half whose sign is given.
-sb_pick :: (entry: SgPoint, digit: int, negative: bool) -> SgPoint #effects(all) {
+// With a zero digit the entry is unchanged; the caller omits that entry.
+// A negated y has magnitude at most five, the bound used by the fast sums.
+sb_pick :: (entry: Fgej, digit: int, negative: bool) -> Fgej #effects(all) {
   d := ifx negative then -digit else digit;
   r := entry;
-  if d < 0 { r.y = sf_negate(r.y); }
+  if d < 0 { r.y = fe_negate(r.y, 4); }
   return r;
 }
 sb_index :: (digit: int) -> int #effects(all) { return ((ifx digit < 0 then -digit else digit) - 1) / 2; }
@@ -213,22 +217,24 @@ sb_multiply :: (g: ScScalar, terms: [] SbTerm, count: int, c: [] SbCount) #effec
     l := sm_joint_length_vartime(terms[j].w1, terms[j].w2);
     if l > length { length = l; }
   }
-  r := sg_infinity();
+  gt: [8] Fgej; gl: [8] Fgej;
+  for i: 0..<8 { gt[i] = fg_from_affine(fg_g_point(i)); gl[i] = gt[i]; gl[i].x = fe_mul(gl[i].x, fg_beta()); }
+  r := fg_infinity();
   for round: 0..<length {
     bit := length-1-round;
-    if round > 0 { r = sg_double_valid(r); c[0].doubles += 1; }
+    if round > 0 { r = fg_double(r); c[0].doubles += 1; }
     d := wg1.digits[bit];
-    if d != 0 { r = sg_add_valid(r, sb_pick(GLV_G_TABLE[sb_index(d)], d, g1.negative)); c[0].additions += 1; }
+    if d != 0 { r = fg_add_jacobian(r, sb_pick(gt[sb_index(d)], d, g1.negative)); c[0].additions += 1; }
     d = wg2.digits[bit];
-    if d != 0 { r = sg_add_valid(r, sb_pick(GLV_G_LAMBDA_TABLE[sb_index(d)], d, g2.negative)); c[0].additions += 1; }
+    if d != 0 { r = fg_add_jacobian(r, sb_pick(gl[sb_index(d)], d, g2.negative)); c[0].additions += 1; }
     for j: 0..<count {
       d = terms[j].w1.digits[bit];
-      if d != 0 { r = sg_add_valid(r, sb_pick(terms[j].table[sb_index(d)], d, terms[j].h1.negative)); c[0].additions += 1; }
+      if d != 0 { r = fg_add_jacobian(r, sb_pick(terms[j].table[sb_index(d)], d, terms[j].h1.negative)); c[0].additions += 1; }
       d = terms[j].w2.digits[bit];
-      if d != 0 { r = sg_add_valid(r, sb_pick(terms[j].lambda[sb_index(d)], d, terms[j].h2.negative)); c[0].additions += 1; }
+      if d != 0 { r = fg_add_jacobian(r, sb_pick(terms[j].lambda[sb_index(d)], d, terms[j].h2.negative)); c[0].additions += 1; }
     }
   }
-  c[0].value = r;
+  c[0].value = fg_to_point_vartime(r);
 }
 ```
 

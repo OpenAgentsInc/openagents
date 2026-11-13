@@ -1,15 +1,17 @@
-// The secp256k1 field for public data, p = 2^256 - 2^32 - 977, in five
+// The secp256k1 field, p = 2^256 - 2^32 - 977, in five
 // little-endian 52-bit limbs (the top limb has 48 bits). Sums and
 // differences are not reduced; each procedure states the magnitude it
 // accepts and returns. A value has magnitude m when limbs 0 to 3 are at
 // most 2m(2^52 - 1) and limb 4 is at most 2m(2^48 - 1). Multiplication and
 // squaring accept magnitude 8 and return magnitude 1.
 //
-// Everything here branches on its inputs: it is for verification and other
-// public data only. Secret data stays on secp_field.coax, whose ten 26-bit
-// limbs are also the reference these procedures are checked against
-// (secp_fe-checks.coax).
+// The public normalization, decoding and variable-time inverse branch on
+// their inputs. One generated schedule has statically separate public and
+// fixed-work carries; secret kernels use only the fixed-work entry points
+// through secp_fe_ct.coax's masked normalization adapter.
+// secp_field.coax's ten 26-bit limbs remain the independent reference.
 #load "bytes.coax";
+#load "secp_modinv.coax";
 #load "secp_fe-checks.coax" #test;
 #authority;
 FE_M52 :: cast(u64) 0xFFFFFFFFFFFFF;
@@ -19,6 +21,7 @@ FE_R1 :: cast(u64) 0x1000003D1;       // 2^256 mod p
 FE_R :: cast(u64) 0x1000003D10;       // 2^260 mod p
 Fe :: struct { n: [5] u64; }
 FeResult :: struct { value: Fe; ok: bool; }
+FE_PUBLIC :: false; FE_SECRET :: true;
 // Small values. These and the other values of this path are procedures,
 // not constants: a constant's literal is evaluated in every compile that
 // loads the file and spends its compile-time steps, and several consumers
@@ -28,15 +31,29 @@ fe_one :: () -> Fe #effects(all) { return fe_small(1); }
 
 // ---- 128-bit sums, as mul_wide's two halves
 // a + b. No sum in this file reaches 2^128.
-fw_add :: (a: CoaxU64Product, b: CoaxU64Product) -> CoaxU64Product #effects(all) {
-  lo := add_wrap(a.lo, b.lo);
-  return CoaxU64Product.{hi=add_wrap(add_wrap(a.hi, b.hi), ifx lo < b.lo then cast(u64) 1 else 0),lo=lo};
+fw_add :: (a:CoaxU64Product,b:CoaxU64Product) -> CoaxU64Product #inline #effects(all) {
+  lo:=add_wrap(a.lo,b.lo);
+  carry:=((a.lo & b.lo)|((a.lo | b.lo)&(lo^CB_MAX64)))>>63;
+  return CoaxU64Product.{hi=add_wrap(add_wrap(a.hi,b.hi),carry),lo=lo};
 }
 // acc + x·y.
-fw_mac :: (acc: CoaxU64Product, x: u64, y: u64) -> CoaxU64Product #effects(all) { return fw_add(acc, mul_wide(x, y)); }
+fw_mac :: (acc: CoaxU64Product, x: u64, y: u64) -> CoaxU64Product #inline #effects(all) { return fw_add(acc, mul_wide(x, y)); }
+// Public carries may use a comparison. Static generated entry points keep
+// this path out of secret products; no runtime arithmetic-profile switch.
+fw_add_vartime :: (a:CoaxU64Product,b:CoaxU64Product) -> CoaxU64Product #effects(all) {
+  lo:=add_wrap(a.lo,b.lo);
+  return CoaxU64Product.{lo=lo,hi=add_wrap(add_wrap(a.hi,b.hi),ifx lo<b.lo then cast(u64)1 else 0)};
+}
+fw_mac_vartime :: (acc:CoaxU64Product,x:u64,y:u64) -> CoaxU64Product #effects(all) {return fw_add_vartime(acc,mul_wide(x,y));}
 // a >> 52.
-fw_shr52 :: (a: CoaxU64Product) -> CoaxU64Product #effects(all) {
+fw_shr52 :: (a: CoaxU64Product) -> CoaxU64Product #inline #effects(all) {
   return CoaxU64Product.{hi=a.hi >> 52,lo=(a.lo >> 52) | (a.hi << 12)};
+}
+
+// Numeric storage lets secret callers erase the authored wide buffers.
+// Pair temporaries and by-value compiler copies still need target review.
+fw_erase :: (words: [] u64, erase: bool) #inline #effects(all) {
+  if erase { secure_zero(words); #assert crypto_zeroed(words); }
 }
 
 // ---- multiplication
@@ -54,55 +71,28 @@ fw_shr52 :: (a: CoaxU64Product) -> CoaxU64Product #effects(all) {
 // above bit 48 stands at 2^256 = FE_R1 (mod p) and goes to limbs 0 and 1.
 // The limbs are then below 2^64, and one more such step leaves limbs 0 to
 // 3 below 2^52 + 2^49 and limb 4 below 2^48 + 2^12.
-fe_reduce :: (t: [9] CoaxU64Product) -> Fe #inline #effects(all) {
-  c0 := fw_mac(t[0], t[5].lo & FE_M52, FE_R);
-  c1 := fw_mac(t[1], (t[6].lo & FE_M52) + fw_shr52(t[5]).lo, FE_R);
-  c2 := fw_mac(t[2], (t[7].lo & FE_M52) + fw_shr52(t[6]).lo, FE_R);
-  c3 := fw_mac(t[3], (t[8].lo & FE_M52) + fw_shr52(t[7]).lo, FE_R);
-  c4 := fw_mac(t[4], fw_shr52(t[8]).lo, FE_R);
-  f := mul_wide((c4.lo >> 48) | (c4.hi << 16), FE_R1);         // (c4 >> 48)·FE_R1, below 2^101
-  f.hi = add_wrap(f.hi, mul_wrap(c4.hi >> 48, FE_R1));
-  r0 := (c0.lo & FE_M52) + (f.lo & FE_M52);
-  r1 := (c1.lo & FE_M52) + fw_shr52(c0).lo + fw_shr52(f).lo;
-  r2 := (c2.lo & FE_M52) + fw_shr52(c1).lo;
-  r3 := (c3.lo & FE_M52) + fw_shr52(c2).lo;
-  r4 := (c4.lo & FE_M48) + fw_shr52(c3).lo;
-  return Fe.{n=[5] u64.[(r0 & FE_M52) + (r4 >> 48) * FE_R1, (r1 & FE_M52) + (r0 >> 52), (r2 & FE_M52) + (r1 >> 52),
-                        (r3 & FE_M52) + (r2 >> 52), (r4 & FE_M48) + (r3 >> 52)]};
+// The straight-line value form keeps public products in registers. Secret
+// callers retain their columns in one numeric workspace and erase it after
+// copying the result. Pair temporaries/by-value copies remain target gates.
+#load "secp_fe_columns.coax";
+fe_reduce :: (t:[]const u64) -> Fe #inline #effects(all) {
+  #assert t.count==18;
+  return fe_reduce_value([9]CoaxU64Product.[CoaxU64Product.{lo=t[0],hi=t[1]},CoaxU64Product.{lo=t[2],hi=t[3]},CoaxU64Product.{lo=t[4],hi=t[5]},CoaxU64Product.{lo=t[6],hi=t[7]},CoaxU64Product.{lo=t[8],hi=t[9]},CoaxU64Product.{lo=t[10],hi=t[11]},CoaxU64Product.{lo=t[12],hi=t[13]},CoaxU64Product.{lo=t[14],hi=t[15]},CoaxU64Product.{lo=t[16],hi=t[17]}]);
 }
+fe_copy_into :: (a:Fe,out:[]u64) #inline #effects(all) {
+  #assert out.count==5;for i:0..<5 {out[i]=a.n[i];}
+}
+fe_reduce_into :: (t:[]const u64,out:[]u64) #inline #effects(all) {fe_copy_into(fe_reduce(t),out);}
 // a·b mod p. Both operands have magnitude at most 8; the result has
 // magnitude 1. #inline: a point operation is a chain of products and
 // squares, and a call for each would copy five limbs in and out of memory
 // between them; inlined, verification is about a quarter faster.
-fe_mul :: (a: Fe, b: Fe) -> Fe #inline #effects(all) {
-  t: [9] CoaxU64Product;
-  t[0] = mul_wide(a.n[0], b.n[0]);
-  t[1] = fw_mac(mul_wide(a.n[0], b.n[1]), a.n[1], b.n[0]);
-  t[2] = fw_mac(fw_mac(mul_wide(a.n[0], b.n[2]), a.n[1], b.n[1]), a.n[2], b.n[0]);
-  t[3] = fw_mac(fw_mac(fw_mac(mul_wide(a.n[0], b.n[3]), a.n[1], b.n[2]), a.n[2], b.n[1]), a.n[3], b.n[0]);
-  t[4] = fw_mac(fw_mac(fw_mac(fw_mac(mul_wide(a.n[0], b.n[4]), a.n[1], b.n[3]), a.n[2], b.n[2]), a.n[3], b.n[1]), a.n[4], b.n[0]);
-  t[5] = fw_mac(fw_mac(fw_mac(mul_wide(a.n[1], b.n[4]), a.n[2], b.n[3]), a.n[3], b.n[2]), a.n[4], b.n[1]);
-  t[6] = fw_mac(fw_mac(mul_wide(a.n[2], b.n[4]), a.n[3], b.n[3]), a.n[4], b.n[2]);
-  t[7] = fw_mac(mul_wide(a.n[3], b.n[4]), a.n[4], b.n[3]);
-  t[8] = mul_wide(a.n[4], b.n[4]);
-  return fe_reduce(t);
+fe_mul_kernel :: (a: Fe, b: Fe, erase: bool) -> Fe #inline #effects(all) {
+  work:[18]u64; defer {fw_erase(work[..],erase);#assert !erase || crypto_zeroed(work[..]);}
+  fe_columns(a.n[..],b.n[..],work[..]);return fe_reduce(work[..]);
 }
 // a² mod p, with each cross product taken once on a doubled limb. The
 // operand has magnitude at most 8; the result has magnitude 1.
-fe_sqr :: (a: Fe) -> Fe #inline #effects(all) {
-  a0 := a.n[0] << 1; a1 := a.n[1] << 1; a2 := a.n[2] << 1; a3 := a.n[3] << 1;
-  t: [9] CoaxU64Product;
-  t[0] = mul_wide(a.n[0], a.n[0]);
-  t[1] = mul_wide(a0, a.n[1]);
-  t[2] = fw_mac(mul_wide(a0, a.n[2]), a.n[1], a.n[1]);
-  t[3] = fw_mac(mul_wide(a0, a.n[3]), a1, a.n[2]);
-  t[4] = fw_mac(fw_mac(mul_wide(a0, a.n[4]), a1, a.n[3]), a.n[2], a.n[2]);
-  t[5] = fw_mac(mul_wide(a1, a.n[4]), a2, a.n[3]);
-  t[6] = fw_mac(mul_wide(a2, a.n[4]), a.n[3], a.n[3]);
-  t[7] = mul_wide(a3, a.n[4]);
-  t[8] = mul_wide(a.n[4], a.n[4]);
-  return fe_reduce(t);
-}
 fe_sqr_n :: (a: Fe, count: int) -> Fe #effects(all) {
   r := a;
   for i: 0..<count { r = fe_sqr(r); }
@@ -111,17 +101,17 @@ fe_sqr_n :: (a: Fe, count: int) -> Fe #effects(all) {
 
 // ---- sums
 // a + b, limb by limb. The magnitudes add.
-fe_add :: (a: Fe, b: Fe) -> Fe #effects(all) {
+fe_add :: (a: Fe, b: Fe) -> Fe #inline #effects(all) {
   return Fe.{n=[5] u64.[a.n[0] + b.n[0], a.n[1] + b.n[1], a.n[2] + b.n[2], a.n[3] + b.n[3], a.n[4] + b.n[4]]};
 }
 // -a, as 2(m+1)·p - a limb by limb, for an a of magnitude at most m. The
 // result has magnitude m + 1.
-fe_negate :: (a: Fe, m: u64) -> Fe #effects(all) {
+fe_negate :: (a: Fe, m: u64) -> Fe #inline #effects(all) {
   k := 2 * (m + 1);
   return Fe.{n=[5] u64.[FE_P0 * k - a.n[0], FE_M52 * k - a.n[1], FE_M52 * k - a.n[2], FE_M52 * k - a.n[3], FE_M48 * k - a.n[4]]};
 }
 // k·a for a small k. The magnitude is multiplied by k.
-fe_scale :: (a: Fe, k: u64) -> Fe #effects(all) {
+fe_scale :: (a: Fe, k: u64) -> Fe #inline #effects(all) {
   return Fe.{n=[5] u64.[a.n[0] * k, a.n[1] * k, a.n[2] * k, a.n[3] * k, a.n[4] * k]};
 }
 
@@ -129,14 +119,18 @@ fe_scale :: (a: Fe, k: u64) -> Fe #effects(all) {
 // The same value with magnitude 1: what stands above bit 256 folds into
 // limb 0 as FE_R1 times it, and every limb is carried once. For any
 // magnitude up to 32.
-fe_weak :: (a: Fe) -> Fe #effects(all) {
-  r: Fe;
-  t := a.n[0] + (a.n[4] >> 48) * FE_R1; r.n[0] = t & FE_M52;
-  t = a.n[1] + (t >> 52); r.n[1] = t & FE_M52;
-  t = a.n[2] + (t >> 52); r.n[2] = t & FE_M52;
-  t = a.n[3] + (t >> 52); r.n[3] = t & FE_M52;
-  r.n[4] = (a.n[4] & FE_M48) + (t >> 52);
-  return r;
+fe_weak :: (a: Fe) -> Fe #effects(all) { return fe_weak_kernel(a,FE_PUBLIC); }
+fe_weak_into :: (a: [] const u64, out: [] u64) #inline #effects(all) {
+  #assert a.count==5; #assert out.count==5;
+  t := a[0] + (a[4] >> 48) * FE_R1; out[0] = t & FE_M52;
+  t = a[1] + (t >> 52); out[1] = t & FE_M52;
+  t = a[2] + (t >> 52); out[2] = t & FE_M52;
+  t = a[3] + (t >> 52); out[3] = t & FE_M52;
+  out[4] = (a[4] & FE_M48) + (t >> 52);
+}
+fe_weak_kernel :: (a: Fe, erase: bool) -> Fe #inline #effects(all) {
+  r:Fe; defer {fw_erase(r.n[..],erase);#assert !erase || crypto_zeroed(r.n[..]);}
+  fe_weak_into(a.n[..],r.n[..]); return r;
 }
 // The value below p, with every limb in range. After fe_weak the value is
 // below 2p, so p comes off at most once: adding FE_R1 and dropping bit 256
@@ -166,6 +160,11 @@ fe_equal_vartime :: (a: Fe, b: Fe) -> bool #effects(all) {
 fe_is_odd :: (a: Fe) -> bool #effects(all) { return (a.n[0] & 1) != 0; }
 
 // ---- bytes
+// Four little-endian words, with no normalization or data-dependent work.
+fe_from_words :: (w: [4] u64) -> Fe #effects(all) {
+  return Fe.{n=[5] u64.[w[0] & FE_M52, ((w[0] >> 52) | (w[1] << 12)) & FE_M52, ((w[1] >> 40) | (w[2] << 24)) & FE_M52,
+    ((w[2] >> 28) | (w[3] << 36)) & FE_M52, w[3] >> 16]};
+}
 // 32 big-endian bytes as a field value. ok is false, and the value zero,
 // when there are not 32 bytes or the number is p or more.
 fe_load_vartime :: (bytes: [] u8) -> FeResult #effects(all) {
@@ -173,8 +172,7 @@ fe_load_vartime :: (bytes: [] u8) -> FeResult #effects(all) {
   if bytes.count != 32 { return r; }
   w0 := cb_load_be64(bytes, 24).value; w1 := cb_load_be64(bytes, 16).value;
   w2 := cb_load_be64(bytes, 8).value; w3 := cb_load_be64(bytes, 0).value;
-  v := Fe.{n=[5] u64.[w0 & FE_M52, ((w0 >> 52) | (w1 << 12)) & FE_M52, ((w1 >> 40) | (w2 << 24)) & FE_M52,
-                      ((w2 >> 28) | (w3 << 36)) & FE_M52, w3 >> 16]};
+  v := fe_from_words([4] u64.[w0,w1,w2,w3]);
   if v.n[4] == FE_M48 && (v.n[1] & v.n[2] & v.n[3]) == FE_M52 && v.n[0] >= FE_P0 { return r; }
   r.value = v; r.ok = true; return r;
 }
@@ -212,12 +210,23 @@ fe_chain :: (a: Fe) -> FeChain #effects(all) {
 // 1/a = a^(p-2), by Fermat; zero for a = 0. p - 2 is 223 ones, a zero, 22
 // ones, then 0000101101 in binary. The operand has magnitude at most 8;
 // the result has magnitude 1.
-fe_inverse_vartime :: (a: Fe) -> Fe #effects(all) {
+fe_inverse_chain :: (a: Fe) -> Fe #effects(all) {
   c := fe_chain(a);
   t := fe_mul(fe_sqr_n(c.x223, 23), c.x22);
   t = fe_mul(fe_sqr_n(t, 5), a);
   t = fe_mul(fe_sqr_n(t, 3), c.x2);
   return fe_mul(fe_sqr_n(t, 2), a);
+}
+// Public inverse by the same 62-bit divsteps as the scalar path. The
+// fixed Fermat chain above remains the independent field reference.
+fe_inverse_vartime :: (a: Fe) -> Fe #effects(all) {
+  r := fe_normalize(a);
+  w := [4] u64.[r.n[0] | (r.n[1] << 52), (r.n[1] >> 12) | (r.n[2] << 40),
+                 (r.n[2] >> 24) | (r.n[3] << 28), (r.n[3] >> 36) | (r.n[4] << 16)];
+  p := mi_from_words([4] u64.[0xFFFFFFFEFFFFFC2F,CB_MAX64,CB_MAX64,CB_MAX64]);
+  inverse := mi_inverse_vartime(mi_from_words(w), mi_modulus(p));
+  v := mi_to_words(inverse.value);
+  return fe_from_words(v);
 }
 // A square root of a, a^((p+1)/4), when a has one: p = 3 (mod 4). ok is
 // false, and the value zero, when a is not a square. (p+1)/4 is 223 ones, a

@@ -30,7 +30,7 @@
 // the website log-in, the CLI and the Nostr code, and call these.
 #load "sha512.coax";
 #load "secp_mult_const.coax";
-#load "secp_mult.coax";
+#load "secp_fast.coax";
 #load "secp_encode.coax";
 #load "../bitcoin/hash160.coax";
 #load "../bitcoin/base58.coax";
@@ -196,7 +196,7 @@ hdk_ckd_priv_ct :: (index: int, work: [] u8) -> int #effects(all) {
 hdk_add_point :: (il: [] u8, key: [] u8, out: [] u8) -> int #effects(all) {
   t := sc_load(il); k := se_decode(key);
   if !t.ok || !k.ok { return BIP32_INVALID_KEY; }
-  p := ecmult_vartime(t.value, k.value, sc_small(1));
+  p := fg_ecmult_point_vartime(t.value, k.value, sc_small(1));
   if se_encode(p.value, SE_COMPRESSED, out) != SE_COMPRESSED { return BIP32_INVALID_KEY; }
   return 33;
 }

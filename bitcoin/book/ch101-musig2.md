@@ -247,7 +247,7 @@ ms_key_agg_vartime :: (keys: [] u8) -> MsKeyAgg #effects(all) {
     p := ms_cpoint_vartime(keys[33*i..<33*i+33]);
     if !p.ok { return MsKeyAgg.{code=MS_BAD_PUBKEY, signer=i}; }
     a := ms_coeff_vartime(keys, l[..], second, keys[33*i..<33*i+33]);
-    q = sg_add(q, ecmult_vartime(sc_small(0), p.value, a).value).value;
+    q = sg_add(q, fg_ecmult_point_vartime(sc_small(0), p.value, a).value).value;
   }
   // Q is infinity only with negligible probability (BIP-327 asserts it).
   #assert ms_finite_vartime(q);
@@ -282,7 +282,7 @@ ms_tweak_vartime :: (k: MsKeyAgg, tweak: [] u8, xonly: bool) -> MsKeyAgg #effect
   g := ifx xonly then ms_parity_vartime(k.q) else sc_small(1);
   t := sc_load(tweak);
   if !t.ok { return MsKeyAgg.{code=MS_TWEAK_RANGE, signer=-1}; }
-  q := ecmult_vartime(t.value, k.q, g).value;
+  q := fg_ecmult_point_vartime(t.value, k.q, g).value;
   if !ms_finite_vartime(q) { return MsKeyAgg.{code=MS_TWEAK_INFINITY, signer=-1}; }
   return MsKeyAgg.{code=MS_OK, signer=-1, q=q, gacc=sc_mul(g, k.gacc), tacc=sc_add(t.value, sc_mul(g, k.tacc))};
 }
@@ -494,7 +494,7 @@ ms_session_vartime :: (aggnonce: [] u8, keys: [] u8, tweaks: [] u8, xonly: [] bo
   r1 := ms_cpoint_ext_vartime(aggnonce[0..<33]);
   r2 := ms_cpoint_ext_vartime(aggnonce[33..<66]);
   if !r1.ok || !r2.ok { x.code = MS_BAD_AGGNONCE; return x; }
-  r := sg_add(r1.value, ecmult_vartime(sc_small(0), r2.value, x.b).value).value;
+  r := sg_add(r1.value, fg_ecmult_point_vartime(sc_small(0), r2.value, x.b).value).value;
   x.r = ifx ms_finite_vartime(r) then r else sg_generator();
   ms_xbytes_vartime(x.r, rx[..]);
   ms_tag(w[..], "BIP0340/challenge"); ms_add(w[..], rx[..]); ms_add(w[..], qx[..]); ms_add(w[..], msg);
@@ -577,7 +577,7 @@ ms_partial_verify_session_vartime :: (psig: [] u8, pubnonce: [] u8, pk: [] u8, x
   r1 := ms_cpoint_vartime(pubnonce[0..<33]);
   r2 := ms_cpoint_vartime(pubnonce[33..<66]);
   if !r1.ok || !r2.ok { return ms_fail(MS_BAD_PUBNONCE, -1); }
-  re := sg_add(r1.value, ecmult_vartime(sc_small(0), r2.value, x.b).value).value;
+  re := sg_add(r1.value, fg_ecmult_point_vartime(sc_small(0), r2.value, x.b).value).value;
   if ms_odd_vartime(x.r) { re = sg_negate(re).value; }
   p := ms_cpoint_vartime(pk);
   if !p.ok { return ms_fail(MS_BAD_PUBKEY, -1); }
@@ -585,7 +585,7 @@ ms_partial_verify_session_vartime :: (psig: [] u8, pubnonce: [] u8, pk: [] u8, x
   if !a.ok { return ms_fail(MS_NOT_SIGNER, -1); }
   c := sc_mul(sc_mul(x.e, a.value), sc_mul(ms_parity_vartime(x.q), x.gacc));
   // s G - c P, compared with Re.
-  lhs := ecmult_vartime(s.value, p.value, sc_negate(c)).value;
+  lhs := fg_ecmult_point_vartime(s.value, p.value, sc_negate(c)).value;
   return ifx sg_equal_mask(lhs, re) == CB_MAX64 then ms_ok() else ms_fail(MS_INVALID, -1);
 }
 // PartialSigVerify: signer i's partial signature, from everyone's public

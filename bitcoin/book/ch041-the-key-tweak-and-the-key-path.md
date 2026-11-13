@@ -95,7 +95,7 @@ taproot_add_tweak_vartime :: (internal: [] u8, t: [] u8, output: [] u8) -> int #
   if !p.ok { return AD_BAD_KEY; }
   tweak := sc_load(t);
   if !tweak.ok { return AD_BAD_TWEAK; }
-  q := ecmult_vartime(tweak.value, p.value, sc_small(1));   // tG + 1P
+  q := fg_ecmult_point_vartime(tweak.value, p.value, sc_small(1));   // tG + 1P
   c: [33] u8;
   if se_encode(q.value, SE_COMPRESSED, c[..]) != SE_COMPRESSED { return AD_BAD_TWEAK; }
   for i: 0..<32 { output[i] = c[1 + i]; }

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 2 (independent target oracle: Valgrind secret-flow and positive control).
 # ctgrind-style secret-flow probe of the compiled fixed-work self-verifier
 # (#89db): checked and release generated C, a valid and an invalid
 # candidate, each under memcheck with the candidate undefined. The release
@@ -20,7 +21,8 @@ for mode in checked release; do
   for args in "" "x invalid"; do
     out="$("$vg/bin/valgrind" --tool=memcheck --error-exitcode=9 --track-origins=yes -q "$d/$mode" $args 2>"$d/err")" && rc=0 || rc=$?
     n="$(grep -c 'depends on uninitialised\|Use of uninitialised' "$d/err" || true)"
-    if [[ $mode == checked ]]; then
+    if [[ $rc -ne 0 && $rc -ne 9 ]]; then fail=1;echo "FAIL $mode ${args:-valid}: Valgrind could not run the probe";cat "$d/err";
+    elif [[ $mode == checked ]]; then
       other="$(grep -A1 'depends on uninitialised\|Use of uninitialised' "$d/err" | grep ' at ' | grep -v -c 'coax_add_u64\|coax_sub_u64\|coax_index\|cb_span\|cb_load_word32\|ssv_load_scalar' || true)"
       echo "note $mode ${args:-valid}: $out, $n checked-mode trap reports ($other outside the checked-arithmetic and bounds traps)"
       [[ $other -eq 0 ]] || { fail=1;head -30 "$d/err"; }

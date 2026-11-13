@@ -173,9 +173,9 @@ er_recover_vartime :: (hash: [] u8, signature: [] u8, id: int) -> ErResult {
   big_r := se_decode(x[..]);                             // lift_x and the parity (chapter 17)
   if !big_r.ok { return ErResult.{code=ER_NO_POINT}; }
   z := sc_reduce_bytes(hash).value;                      // a hash at least n is reduced
-  rinv := sc_inverse(scalars.r).value;
+  rinv := sc_inverse_vartime(scalars.r).value;
   u1 := sc_negate(sc_mul(z, rinv)); u2 := sc_mul(scalars.s, rinv);
-  q := ecmult_vartime(u1, big_r.value, u2);              // u1·G + u2·R (chapter 16)
+  q := fg_ecmult_point_vartime(u1, big_r.value, u2);              // u1·G + u2·R (chapter 16)
   if sg_to_affine(q.value).value.infinity != 0 { return ErResult.{code=ER_INFINITY}; }
   return ErResult.{key=q.value};
 }

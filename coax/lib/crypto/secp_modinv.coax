@@ -1,0 +1,140 @@
+// Variable-time inversion for PUBLIC data. Bernstein–Yang divsteps, 62 at
+// once, following libsecp256k1 v0.8.0 src/modinv64_impl.h (MIT):
+// Copyright (c) 2020 Peter Dettman. The MIT license is retained at
+// ../../tests/vectors/upstream/secp256k1/COPYING.
+// Signed 128-bit sums use mul_wide and explicit two's-complement halves;
+// no host extension, signed overflow or handwritten host arithmetic.
+// coax test coax/lib/crypto/secp_modinv.coax --library
+#load "bytes.coax";
+#load "secp_modinv-checks.coax" #test;
+#authority;
+MI_MASK :: cast(u64) 0x3fffffffffffffff;
+MiNumber :: struct { n: [5] int; }
+MiModulus :: struct { value: MiNumber; inverse: u64; }
+MiMatrix :: struct { u: int; v: int; q: int; r: int; eta: int; rounds: int; }
+MiPair :: struct { f: MiNumber; g: MiNumber; }
+MiResult :: struct { value: MiNumber; ok: bool; batches: int; rounds: int; }
+
+mi_from_words :: (w: [4] u64) -> MiNumber #effects(all) {
+  return MiNumber.{n=[5] int.[cast(int) (w[0] & MI_MASK),cast(int) (((w[0] >> 62) | (w[1] << 2)) & MI_MASK),
+    cast(int) (((w[1] >> 60) | (w[2] << 4)) & MI_MASK),cast(int) (((w[2] >> 58) | (w[3] << 6)) & MI_MASK),cast(int) (w[3] >> 56)]};
+}
+mi_to_words :: (a: MiNumber) -> [4] u64 #effects(all) {
+  return [4] u64.[cast(u64) a.n[0] | (cast(u64) a.n[1] << 62), (cast(u64) a.n[1] >> 2) | (cast(u64) a.n[2] << 60),
+    (cast(u64) a.n[2] >> 4) | (cast(u64) a.n[3] << 58), (cast(u64) a.n[3] >> 6) | (cast(u64) a.n[4] << 56)];
+}
+mi_modulus :: (m: MiNumber) -> MiModulus #effects(all) {
+  inv := cast(u64) 1;
+  inv = mi_inverse_step(cast(u64) m.n[0], inv);
+  inv = mi_inverse_step(cast(u64) m.n[0], inv);
+  inv = mi_inverse_step(cast(u64) m.n[0], inv);
+  inv = mi_inverse_step(cast(u64) m.n[0], inv);
+  inv = mi_inverse_step(cast(u64) m.n[0], inv);
+  inv = mi_inverse_step(cast(u64) m.n[0], inv);
+  return MiModulus.{value=m,inverse=inv & MI_MASK};
+}
+mi_inverse_step :: (odd: u64, inverse: u64) -> u64 #inline #effects(all) {
+  return mul_wrap(inverse, sub_wrap(cast(u64) 2, mul_wrap(odd, inverse)));
+}
+mi_product :: (a: int, b: int) -> CoaxU64Product #inline #effects(all) {
+  x := cast,trunc(u64) a; y := cast,trunc(u64) b; p := mul_wide(x, y);
+  if a < 0 { p.hi = sub_wrap(p.hi, y); }
+  if b < 0 { p.hi = sub_wrap(p.hi, x); }
+  return p;
+}
+mi_add :: (a: CoaxU64Product, b: CoaxU64Product) -> CoaxU64Product #inline #effects(all) {
+  lo := add_wrap(a.lo, b.lo);
+  return CoaxU64Product.{lo=lo,hi=add_wrap(add_wrap(a.hi, b.hi),ifx lo < a.lo then cast(u64) 1 else 0)};
+}
+mi_shr62 :: (a: CoaxU64Product) -> CoaxU64Product #inline #effects(all) {
+  return CoaxU64Product.{lo=(a.lo >> 62) | (a.hi << 2),hi=cast,trunc(u64) (cast,trunc(int) a.hi >> 62)};
+}
+// Nonzero input, with a sentinel supplied by the caller. Chunked public
+// tests avoid requiring a target-specific trailing-zero instruction.
+mi_zeros :: (word: u64) -> int #inline #effects(all) {
+  x := word; n := 0;
+  for shift: [6] int.[32,16,8,4,2,1] {
+    mask := (cast(u64) 1 << shift) - 1;
+    if (x & mask) == 0 { x >>= shift; n += shift; }
+  }
+  return n;
+}
+mi_steps :: (eta: int, f0: int, g0: int) -> MiMatrix #effects(all) {
+  u := cast(u64) 1; v: u64; q: u64; r := cast(u64) 1;
+  f := cast,trunc(u64) f0; g := cast,trunc(u64) g0; left := 62; e := eta; rounds := 0;
+  while true {
+    rounds += 1;
+    zeros := mi_zeros(g | (CB_MAX64 << left));
+    g >>= zeros; u <<= zeros; v <<= zeros; e -= zeros; left -= zeros;
+    if left == 0 { break; }
+    swapped := e < 0;
+    if swapped {
+      e = -e; t := f; f = g; g = sub_wrap(cast(u64) 0, t);
+      t = u; u = q; q = sub_wrap(cast(u64) 0, t);
+      t = v; v = r; r = sub_wrap(cast(u64) 0, t);
+    }
+    // min(left, e+1), using the sign of their bounded difference. The
+    // operands are in [-744, 745], so the subtraction cannot overflow.
+    candidate := e + 1; choose_left := (left - candidate) >> 63;
+    limit := (left & choose_left) | (candidate & (choose_left ^ -1));
+    m := (CB_MAX64 >> (64 - limit)) & (ifx swapped then cast(u64) 63 else 15);
+    // An odd f is its own inverse mod 8; one Newton step gives six
+    // correct bits, enough for either branch's cancellation mask.
+    inverse := mi_inverse_step(f, f);
+    w := mul_wrap(sub_wrap(cast(u64) 0, inverse), g) & m;
+    g = add_wrap(g, mul_wrap(f, w)); q = add_wrap(q, mul_wrap(u, w)); r = add_wrap(r, mul_wrap(v, w));
+  }
+  return MiMatrix.{u=cast,trunc(int) u,v=cast,trunc(int) v,q=cast,trunc(int) q,r=cast,trunc(int) r,eta=e,rounds=rounds};
+}
+// (u*a + v*b + correction*modulus)/2^62. The low limb is exactly
+// divisible; four lower output limbs are nonnegative and the top is signed.
+mi_row :: (a: MiNumber, b: MiNumber, u: int, v: int) -> [5] CoaxU64Product #inline #effects(all) {
+  row: [5] CoaxU64Product;
+  for i: 0..<5 { row[i] = mi_add(mi_product(u, a.n[i]), mi_product(v, b.n[i])); }
+  return row;
+}
+mi_shift_row :: (row: [5] CoaxU64Product) -> MiNumber #inline #effects(all) {
+  c := row[0];
+  c = mi_shr62(c); out: MiNumber;
+  for i: 1..<5 {
+    c = mi_add(c, row[i]);
+    out.n[i - 1] = cast(int) (c.lo & MI_MASK); c = mi_shr62(c);
+  }
+  out.n[4] = cast,trunc(int) c.lo; return out;
+}
+mi_update_de :: (d: MiNumber, e: MiNumber, t: MiMatrix, m: MiModulus) -> MiPair #effects(all) {
+  md: int; me: int;
+  if d.n[4] < 0 { md = t.u; me = t.q; }
+  if e.n[4] < 0 { md += t.v; me += t.r; }
+  cd := mi_add(mi_product(t.u, d.n[0]), mi_product(t.v, e.n[0]));
+  ce := mi_add(mi_product(t.q, d.n[0]), mi_product(t.r, e.n[0]));
+  md -= cast(int) (add_wrap(mul_wrap(m.inverse, cd.lo), cast,trunc(u64) md) & MI_MASK);
+  me -= cast(int) (add_wrap(mul_wrap(m.inverse, ce.lo), cast,trunc(u64) me) & MI_MASK);
+  dr := mi_row(d, e, t.u, t.v); er := mi_row(d, e, t.q, t.r);
+  for i: 0..<5 { dr[i] = mi_add(dr[i], mi_product(m.value.n[i], md)); er[i] = mi_add(er[i], mi_product(m.value.n[i], me)); }
+  return MiPair.{f=mi_shift_row(dr),g=mi_shift_row(er)};
+}
+mi_normalize :: (a: MiNumber, negative: bool, m: MiNumber) -> MiNumber #effects(all) {
+  r := a;
+  if r.n[4] < 0 { for i: 0..<5 { r.n[i] += m.n[i]; } }
+  if negative { for i: 0..<5 { r.n[i] = -r.n[i]; } }
+  for i: 0..<4 { r.n[i + 1] += r.n[i] >> 62; r.n[i] = cast(int) (cast,trunc(u64) r.n[i] & MI_MASK); }
+  if r.n[4] < 0 { for i: 0..<5 { r.n[i] += m.n[i]; } }
+  for i: 0..<4 { r.n[i + 1] += r.n[i] >> 62; r.n[i] = cast(int) (cast,trunc(u64) r.n[i] & MI_MASK); }
+  return r;
+}
+mi_zero :: (a: MiNumber) -> bool #effects(all) { return (a.n[0] | a.n[1] | a.n[2] | a.n[3] | a.n[4]) == 0; }
+// x is canonical below the odd prime modulus. Zero has no inverse. The
+// bound is 12 batches for either secp256k1 prime (at most 744 divsteps).
+mi_inverse_vartime :: (x: MiNumber, m: MiModulus) -> MiResult #effects(all) {
+  d: MiNumber; e: MiNumber; e.n[0] = 1; f := m.value; g := x; eta := -1; batches := 0; rounds := 0;
+  if mi_zero(g) { return MiResult.{}; }
+  while true {
+    batches += 1;
+    t := mi_steps(eta, f.n[0], g.n[0]); eta = t.eta; rounds += t.rounds;
+    de := mi_update_de(d, e, t, m); d = de.f; e = de.g;
+    nf := mi_shift_row(mi_row(f, g, t.u, t.v)); ng := mi_shift_row(mi_row(f, g, t.q, t.r)); f = nf; g = ng;
+    if mi_zero(g) { return MiResult.{value=mi_normalize(d, f.n[4] < 0, m.value),ok=true,batches=batches,rounds=rounds}; }
+  }
+  return MiResult.{}; // required by Coax's conservative loop return analysis
+}

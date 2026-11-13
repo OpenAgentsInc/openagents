@@ -1,0 +1,6 @@
+agreement: 1536 decisions equal libsecp256k1's
+microseconds           Coax    libsecp    ratio
+ECDSA verify         100.26      38.24     2.62
+BIP-340 verify        83.75      38.74     2.16
+ECDSA sign           615.68      24.27    25.37
+BIP-340 sign        2999.28      36.27    82.69

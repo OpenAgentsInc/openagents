@@ -244,8 +244,10 @@ metahumanlab 290000
 # A made realm follows its world and runs its scripts (metaverse/edit/realm-page.coax, the frame and result codecs, #13496): 696,860 bytes measured on macOS; about 5% room.
 myrealm 740000
 newland 1180000
-nip01 90000
-nip-guide 130000
+# #13454: width-10 public G table (packed eight-word coordinates) and 62-bit divsteps; 105,571 bytes measured 2026-11-13, about 4% room.
+nip01 110000
+# #13454: the same width-10 G table and divsteps; 140,685 bytes measured 2026-11-13, about 5% room.
+nip-guide 148000
 og 60000
 # /oneshot: 273,171 measured 2026-11-08 after the engine's spell access and prepared-spell checks (7f7d7302e5, 31a30eb2dd); about 5% room
 # The SRD engine's class features through level 6 (Wild Shape 5271a52711 +6,251, knockout and Healer's Kit
@@ -259,7 +261,8 @@ orbitleague 300000
 private 280000
 project 2400000
 projects 110000
-pylon 110000
+# #13454: width-10 G table and public divsteps; 117,297 bytes measured 2026-11-13, about 5% room.
+pylon 124000
 # The Haunted House links its renderer carrier again (carriers/realm.coax loads metaverse/haunt.coax, #13513): 584,383 bytes measured on Linux; about 5% room.
 realm 615000
 speedrunhud 120000
@@ -267,7 +270,8 @@ splash 90000
 splatlab 120000
 stair 290000
 # /status: the homepage Grid plus the pipeline diagram (#13102): 68,828 bytes measured 2026-11-09; about 9% room
-status 75000
+# Shared secp follow-ups (#13454): measured release output includes the wider public G table and shared secret field; about 5% room.
+status 80000
 # /login: the homepage Grid, the login screens, passkeys (#13215) and the phone app's QR (coax/lib/qr, about 12 KB) (#13204): 70,576 bytes measured 2026-11-11; about 10% room
 login 78000
 # /settings/security: login.coax's helpers plus the ways in, passkeys (#13215), recovery and the re-auth prompt (#13212, #13213): 78,110 bytes measured 2026-11-11; about 10% room
@@ -322,7 +326,8 @@ valleylab 160000
 # The depth-of-field lens uniforms and the spell orbit camera (M): 101,258 bytes.
 # Rock hulls in aethyr walk/collide/query (7afe501d33): 104,986 bytes; about 5% room
 # The walker moves on the broadphase and notes each push's reach (collide_move with Colliders.near, #13279): 113,000 bytes.
-valleycanyon 117000
+# Shared secp follow-ups (#13454): measured release output includes the wider public G table and shared secret field; about 5% room.
+valleycanyon 125000
 # The character pass's runtime beside a world (Echo's idle body and face, pack admission, the SceneLights block): 41,715 bytes.
 # Her idle life (metaverse-engine/character/idle.coax: blinks, glances, breath) and her placement from the world's stage (#12987): 47,788 bytes.
 # Her motion when a world moves her (#12996): the locomotion graph at the world's pace, TF0290's shot
@@ -335,7 +340,8 @@ character-host 70000
 # Keep the shared canyon code's Slay replay control and face-view hero lighting.
 # Spatial source companions, bounded tree admission and independent exact-range cuts add ~4.3 KiB.
 # The walker moves on the broadphase and notes each push's reach (collide_move with Colliders.near, #13279): 153,290 bytes.
-valleyworld 157000
+# Shared secp follow-ups (#13454): measured release output includes the wider public G table and shared secret field; about 5% room.
+valleyworld 167000
 # #12921: buffered V2 frame input adds checked per-step control state.
 # Linux measured garden 286741, villa 524872, fairy 660104, realm 517429 bytes; about 5% room.
 # Optional socket-owned room timing and clock intervals; 21,910 release bytes.
@@ -382,7 +388,8 @@ painted 200000
 # With the solar, charger, mesa, train and room kits a pieces row may name (metaverse-engine/kit/props.coax,
 # kit_train, kit_mesa, #13485): 598,185 bytes measured 2026-11-13 on a Linux build host; about 3.5% room.
 # With the crew kit's modelled face and hair (#13490): 633,556 bytes measured 2026-11-13 on a Linux build host; about 3% room.
-splice-bots 652000
+# Shared secp follow-ups (#13454): measured release output includes the wider public G table and shared secret field; about 5% room.
+splice-bots 750000
 # /worlds on the frames set drawn by the browser (worlds-web.coax, beside the side): 91,057 bytes measured
 # 2026-11-13 on a Mac, about 9% room. It replaces realmlist (70,076 bytes and its 16,279-byte shader).
 worlds-web 100000

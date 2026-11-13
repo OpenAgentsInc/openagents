@@ -2,6 +2,7 @@
 // secp_bench.sh builds and runs it. libsecp256k1 makes the keys and
 // signatures; both libraries must then decide every signature the same way,
 // valid and with one bit changed, before any time is reported. Test-only.
+#define _POSIX_C_SOURCE 200809L
 #include "secp_bench.h"
 #include "secp256k1.h"
 #include "secp256k1_extrakeys.h"
@@ -16,8 +17,9 @@
 static uint8_t secret[N + 1][32], hash[N + 1][32], pub33[N + 1][33], xonly[N + 1][32], ecdsa[N + 1][64], schnorr[N + 1][64], aux[N + 1][32];
 static secp256k1_context *ctx;
 static uint64_t seed = 0x13450;
+static clockid_t bench_clock = CLOCK_MONOTONIC;
 static uint8_t next_byte(void) { seed = seed * 6364136223846793005ULL + 1442695040888963407ULL; return (uint8_t)(seed >> 56); }
-static double now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e6 + t.tv_nsec / 1e3; }
+static double now(void) { struct timespec t; clock_gettime(bench_clock, &t); return t.tv_sec * 1e6 + t.tv_nsec / 1e3; }
 static coax_v_u8 v(uint8_t *p, int64_t n) { return (coax_v_u8){p, n}; }
 
 static int ref_ecdsa(int i, const uint8_t *sig) {
@@ -33,6 +35,20 @@ static int ref_schnorr(int i, const uint8_t *sig) {
 }
 static int coax_ecdsa(int i, const uint8_t *sig) { return ecdsa_verify_vartime(v(hash[i], 32), v(pub33[i], 33), v((uint8_t *)sig, 64), 1); }
 static int coax_schnorr(int i, const uint8_t *sig) { return schnorr_verify_vartime(v(hash[i], 32), v(xonly[i], 32), v((uint8_t *)sig, 64)); }
+static int phase_call(int i, int mode) { uint8_t out[32]; return bench_phase(v(hash[i],32),v(xonly[i],32),v(schnorr[i],64),v(out,32),mode); }
+static int phase0(int i,const uint8_t *s) { (void)s; return phase_call(i,0); }
+static int phase1(int i,const uint8_t *s) { (void)s; return phase_call(i,1); }
+static int phase2(int i,const uint8_t *s) { (void)s; return phase_call(i,2); }
+static int phase3(int i,const uint8_t *s) { (void)s; return phase_call(i,3); }
+static int phase4(int i,const uint8_t *s) { (void)s; return phase_call(i,4); }
+static int phase5(int i,const uint8_t *s) { (void)s; return phase_call(i,5); }
+static int phase6(int i,const uint8_t *s) { (void)s; return phase_call(i,6); }
+static int phase7(int i,const uint8_t *s) { (void)s; return phase_call(i,7); }
+static int phase8(int i,const uint8_t *s) { (void)s; return phase_call(i,8); }
+static int inverse0(int i, const uint8_t *unused) { uint8_t out[32]; (void)unused; return bench_inverse(v(hash[i],32),v(out,32),0); }
+static int inverse1(int i, const uint8_t *unused) { uint8_t out[32]; (void)unused; return bench_inverse(v(hash[i],32),v(out,32),1); }
+static int inverse2(int i, const uint8_t *unused) { uint8_t out[32]; (void)unused; return bench_inverse(v(hash[i],32),v(out,32),2); }
+static int inverse3(int i, const uint8_t *unused) { uint8_t out[32]; (void)unused; return bench_inverse(v(hash[i],32),v(out,32),3); }
 static int ref_ecdsa_sign(int i, const uint8_t *unused) {
   secp256k1_ecdsa_signature s; uint8_t out[64]; (void)unused;
   if (!secp256k1_ecdsa_sign(ctx, &s, hash[i], secret[i], NULL, NULL)) return 0;
@@ -71,6 +87,7 @@ static double rate(int (*f)(int, const uint8_t *), uint8_t (*sig)[64], int count
 static void hexline(const uint8_t *b, int n) { for (int i = 0; i < n; i++) printf("%02x", b[i]); printf("\n"); }
 static void row(const char *name, double coax, double ref) { printf("%-16s %10.2f %10.2f %8.2f\n", name, coax, ref, coax / ref); }
 int main(int argc, char **argv) {
+  if (getenv("SECP_BENCH_CPU_TIME")) bench_clock = CLOCK_PROCESS_CPUTIME_ID;
   int sign_count = argc > 1 ? atoi(argv[1]) : N;
   ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
   for (int i = 0; i < N; i++) {
@@ -84,6 +101,16 @@ int main(int argc, char **argv) {
     if (!secp256k1_schnorrsig_sign32(ctx, schnorr[i], hash[i], &pair, aux[i])) return 2;
   }
   // `secp_bench N dump` prints the keys and signatures for secp_bench_wasm.cjs.
+  if (argc > 2 && !strcmp(argv[2], "phases")) {
+    printf("lift %.3f; challenge %.3f; mul %.3f; square %.3f; sqrt %.3f us\n",rate(phase0,NULL,N),rate(phase1,NULL,N),rate(phase2,NULL,N),rate(phase3,NULL,N),rate(phase4,NULL,N));
+    printf("msm %.3f; affine %.3f; table %.3f; doubles %.3f us\n",rate(phase5,NULL,N),rate(phase6,NULL,N),rate(phase7,NULL,N),rate(phase8,NULL,N));
+    return 0;
+  }
+  if (argc > 2 && !strcmp(argv[2], "inverses")) {
+    printf("field inverse: divsteps %.2f us; chain %.2f us\n", rate(inverse0,NULL,N),rate(inverse1,NULL,N));
+    printf("scalar inverse: divsteps %.2f us; binary %.2f us\n", rate(inverse2,NULL,N),rate(inverse3,NULL,N));
+    return 0;
+  }
   if (argc > 2 && !strcmp(argv[2], "dump")) {
     for (int i = 0; i < N; i++) {
       hexline(hash[i], 32); hexline(pub33[i], 33); hexline(xonly[i], 32); hexline(ecdsa[i], 64); hexline(schnorr[i], 64);

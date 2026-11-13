@@ -1,0 +1,114 @@
+// Fixed-work adapter for the secret kernels' existing canonical Sf32 API.
+// The product uses the shared 5x52 arithmetic, not a second field kernel.
+// Normalization and conversion have no data-dependent branch or lookup.
+// Source arithmetic properties do not replace the existing target/erasure
+// approval gates for production secrets.
+// coax test coax/lib/crypto/secp_fe_ct.coax --library
+#load "secp_fe.coax";
+#load "secp_field32.coax";
+#authority;
+
+#forall "fixed normalization equals the public normalization at every magnitude" seed: 0..<32, magnitude: 1..<9 #steps 2000000000 {
+  a := fet_pair(seed, 31).fast;
+  a = fe_add(a, fet_p_times(cast(u64) magnitude));
+  x := fc_normalize(a); y := fe_normalize(a);
+  for i: 0..<5 { #assert x.n[i] == y.n[i]; }
+}
+#forall "fixed subtraction preserves every bit above and below p" bit: 0..<257 {
+  p := Fe.{n=[5] u64.[FE_P0,FE_M52,FE_M52,FE_M52,FE_M48]};
+  one: Fe; one.n[bit / 52] = cast(u64) 1 << (bit % 52);
+  a := fe_add(p, one); x := fc_normalize(a); y := fe_normalize(a);
+  for i: 0..<5 { #assert x.n[i] == y.n[i]; }
+}
+#forall "normalization carries independent unreduced limbs" limb: 0..<5, magnitude: 1..<33 {
+  a := Fe.{n=[5] u64.[FE_P0,FE_M52,FE_M52,FE_M52,FE_M48]};
+  a.n[limb] *= cast(u64) magnitude;
+  x := fc_normalize(a); y := fe_normalize(a);
+  for i: 0..<5 { #assert x.n[i] == y.n[i]; }
+}
+#test "fixed normalization covers p, p-1, p+1 and 2^256-1" {
+  p := Fe.{n=[5] u64.[FE_P0,FE_M52,FE_M52,FE_M52,FE_M48]};
+  #assert fc_normalize(p).n[0] == 0;
+  below := p; below.n[0] -= 1; #assert fc_normalize(below).n[0] == FE_P0 - 1;
+  above := p; above.n[0] += 1; #assert fc_normalize(above).n[0] == 1;
+  above.n[0] = FE_M52; #assert fc_normalize(above).n[0] == FE_R1 - 1;
+}
+#test "the product normalizes exact noncanonical multiples of p" {
+  one:Sf32;one.limb[0]=1;zero:Sf32;
+  #assert sf32_equal(fc_mul32(SF32_P,one),zero) && sf32_equal(fc_mul32(one,SF32_P),zero);
+  above:=SF32_P;above.limb[0]+=1;#assert sf32_equal(fc_mul32(above,one),one);
+  below:=SF32_P;below.limb[0]-=1;#assert sf32_equal(fc_mul32(below,below),one);
+}
+#forall "fixed-work squares equal the independent field product" seed:0..<64 #steps 2000000000 {
+  raw:=fet_bytes(seed,51);a:Sf32;for i:0..<8 {a.limb[i]=cb_load_be32(raw[..],4*i).value;}
+  #assert sf32_equal(fc_square32(a),sf32_mul(a,a));
+  #assert sf32_equal(fc_square32(SF32_P),Sf32.{});
+}
+#forall "fixed wide products equal the independent 8x32 reference" seed: 0..<64 #steps 2000000000 {
+  a: Sf32; b: Sf32;
+  x := fet_bytes(seed, 40); y := fet_bytes(seed, 41);
+  for i: 0..<8 { a.limb[i] = cb_load_be32(x[..], i * 4).value; b.limb[i] = cb_load_be32(y[..], i * 4).value; }
+  if seed < 8 { a.limb[seed] = 4294967295; b.limb[seed] = 4294967295; }
+  #assert sf32_equal(fc_mul32(a, b), sf32_mul(a, b));
+  canonical := sf32_canonical(a);
+  #assert sf32_equal(fc_to32(fc_from32(canonical)), canonical);
+}
+fc_normalize :: (a: Fe) -> Fe #effects(all) {
+  work:[15]u64;defer {secure_zero(work[..]);#assert crypto_zeroed(work[..]);}
+  fc_normalize_into(a.n[..],work[0..<5],work[5..<10],work[10..<15]);
+  return Fe.{n=[5]u64.[work[10],work[11],work[12],work[13],work[14]]};
+}
+fc_from32 :: (a: Sf32) -> Fe #effects(all) {
+  r:Fe;defer {secure_zero(r.n[..]);#assert crypto_zeroed(r.n[..]);}
+  fc_decode32(a,r.n[..]);return r;
+}
+fc_to32 :: (a: Fe) -> Sf32 #effects(all) {
+  r:=fc_normalize(a);defer {secure_zero(r.n[..]);#assert crypto_zeroed(r.n[..]);}
+  return fc_encode32(r.n[..]);
+}
+// One caller-owned numeric workspace covers conversions, product columns,
+// reduction and masked normalization. Erase it once after the result copy.
+fc_mul32 :: (a: Sf32, b: Sf32) -> Sf32 #inline #effects(all) {
+  work:[43]u64; defer {secure_zero(work[..]);#assert crypto_zeroed(work[..]);}
+  fc_decode32(a,work[0..<5]);fc_decode32(b,work[5..<10]);
+  fe_columns(work[0..<5],work[5..<10],work[10..<28]);
+  fe_reduce_into(work[10..<28],work[38..<43]);
+  fc_normalize_into(work[38..<43],work[28..<33],work[33..<38],work[38..<43]);
+  return fc_encode32(work[38..<43]);
+}
+fc_decode32 :: (a:Sf32,out:[]u64) #inline #effects(all) {
+  #assert out.count==5;
+  w0:=cast(u64)a.limb[0] | (cast(u64)a.limb[1]<<32);
+  w1:=cast(u64)a.limb[2] | (cast(u64)a.limb[3]<<32);
+  w2:=cast(u64)a.limb[4] | (cast(u64)a.limb[5]<<32);
+  w3:=cast(u64)a.limb[6] | (cast(u64)a.limb[7]<<32);
+  out[0]=w0 & FE_M52;out[1]=((w0>>52)|(w1<<12)) & FE_M52;
+  out[2]=((w1>>40)|(w2<<24)) & FE_M52;out[3]=((w2>>28)|(w3<<36)) & FE_M52;out[4]=w3>>16;
+}
+fc_normalize_into :: (a:[]const u64,r:[]u64,sub:[]u64,out:[]u64) #inline #effects(all) {
+  #assert a.count==5; #assert r.count==5; #assert sub.count==5; #assert out.count==5;
+  fe_weak_into(a,r);
+  t:=r[0]+FE_R1;sub[0]=t & FE_M52;
+  t=r[1]+(t>>52);sub[1]=t & FE_M52;
+  t=r[2]+(t>>52);sub[2]=t & FE_M52;
+  t=r[3]+(t>>52);sub[3]=t & FE_M52;
+  t=r[4]+(t>>52);sub[4]=t & FE_M48;
+  mask:=cb_mask(t>>48);
+  for i:0..<5 {out[i]=cb_ct_select64(mask,sub[i],r[i]);}
+}
+fc_encode32 :: (a:[]const u64) -> Sf32 #inline #effects(all) {
+  #assert a.count==5;
+  w0:=a[0] | (a[1]<<52);w1:=(a[1]>>12)|(a[2]<<40);
+  w2:=(a[2]>>24)|(a[3]<<28);w3:=(a[3]>>36)|(a[4]<<16);
+  return Sf32.{limb=[8]u32.[cast,trunc(u32)w0,cast,trunc(u32)(w0>>32),cast,trunc(u32)w1,cast,trunc(u32)(w1>>32),
+    cast,trunc(u32)w2,cast,trunc(u32)(w2>>32),cast,trunc(u32)w3,cast,trunc(u32)(w3>>32)]};
+}
+
+fc_square32 :: (a:Sf32) -> Sf32 #inline #effects(all) {
+  work:[38]u64;defer {secure_zero(work[..]);#assert crypto_zeroed(work[..]);}
+  fc_decode32(a,work[0..<5]);
+  fe_square_columns(work[0..<5],work[5..<23]);
+  fe_reduce_into(work[5..<23],work[33..<38]);
+  fc_normalize_into(work[33..<38],work[23..<28],work[28..<33],work[33..<38]);
+  return fc_encode32(work[33..<38]);
+}

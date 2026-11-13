@@ -1,0 +1,65 @@
+// Public 62-bit divsteps checked independently by small modular arithmetic;
+// secp_scalar_inverse-checks and secp_fe-checks cover the two 256-bit primes.
+#load "../../tests/bitcoin/secp_modinv_matrices.coax";
+#load "../../tests/bitcoin/secp_modinv_values.coax";
+
+#forall "intermediate modular representatives match upstream" row: 0..<128 {
+  v := mi_oracle_updates()[row]; got := mi_update_de(v.d, v.e, v.t, v.m);
+  for i: 0..<5 { #assert got.f.n[i] == v.expected.f.n[i] && got.g.n[i] == v.expected.g.n[i]; }
+}
+#forall "inverse batch counts and final representatives match upstream" row: 0..<16 {
+  v := mi_oracle_inverses()[row]; got := mi_inverse_vartime(v.input, v.modulus);
+  #assert got.ok && got.batches == v.batches && got.rounds == v.rounds;
+  for i: 0..<5 { #assert got.value.n[i] == v.expected.n[i]; }
+}
+
+#forall "transition matrices match the pinned upstream implementation" row: 0..<80 {
+  v := mi_oracle_matrices()[row]; t := mi_steps(v.eta, v.f, v.g);
+  #assert t.u == v.expected.u && t.v == v.expected.v && t.q == v.expected.q && t.r == v.expected.r && t.eta == v.expected.eta && t.rounds == v.expected.rounds;
+}
+#forall "both 256-bit prime inverses equal independent integer pow vectors" row: 0..<128 #steps 2000000000 {
+  v := mi_oracle_values()[row]; m := mi_modulus(mi_from_words(v.modulus));
+  #assert (mul_wrap(cast(u64) m.value.n[0], m.inverse) & MI_MASK) == 1;
+  #assert m.inverse <= MI_MASK;
+  got := mi_inverse_vartime(mi_from_words(v.input), m); words := mi_to_words(got.value);
+  #assert got.ok == v.nonzero;
+  for i: 0..<4 { #assert words[i] == v.expected[i]; }
+}
+#forall "the normalizer accepts its entire signed range" which: 0..<4, value: -61..<31, negative: bool {
+  p := [4] int.[3,7,17,31][which];
+  if value > -2 * p && value < p {
+    m: MiNumber; m.n[0] = p; a: MiNumber; a.n[0] = cast(int) (cast,trunc(u64) value & MI_MASK);
+    if value < 0 { for i: 1..<4 { a.n[i] = cast(int) MI_MASK; } a.n[4] = -1; }
+    got := mi_normalize(a, negative, m); wanted := ifx negative then -value else value;
+    #assert got.n[0] == ((wanted % p) + p) % p;
+    for i: 1..<5 { #assert got.n[i] == 0; }
+  }
+}
+#forall "conversions preserve every bit of every word" word: 0..<4, bit: 0..<64 {
+  w: [4] u64; w[word] = cast(u64) 1 << bit; back := mi_to_words(mi_from_words(w));
+  for i: 0..<4 { #assert back[i] == w[i]; }
+}
+#forall "zero counting includes every nonzero word width" bit: 0..<64 { #assert mi_zeros(cast(u64) 1 << bit) == bit; }
+#forall "small odd prime inverses agree with ordinary integer multiplication" which: 0..<4, value: 0..<31 {
+  primes := [4] int.[3,7,17,31]; p := primes[which];
+  m: MiNumber; m.n[0] = p; x: MiNumber; x.n[0] = value % p;
+  got := mi_inverse_vartime(x, mi_modulus(m));
+  #assert got.ok == (x.n[0] != 0);
+  if got.ok { #assert got.value.n[0] >= 0 && got.value.n[0] < p && (got.value.n[0] * x.n[0]) % p == 1; }
+  else { for i: 0..<5 { #assert got.value.n[i] == 0; } }
+}
+#test "signed double-word arithmetic preserves both signs and a 128-bit carry" {
+  a := mi_product(-3, 7); #assert cast,trunc(int) a.lo == -21 && a.hi == CB_MAX64;
+  b := mi_product(-3, -7); #assert b.lo == 21 && b.hi == 0;
+  c := mi_add(a, b); #assert c.lo == 0 && c.hi == 0;
+  c = mi_product(1 << 61, 8); #assert c.lo == 0 && c.hi == 1;
+  c = mi_shr62(c); #assert c.lo == 4 && c.hi == 0;
+  c = mi_shr62(mi_product(-(1 << 61), 8)); #assert cast,trunc(int) c.lo == -4 && c.hi == CB_MAX64;
+  c = mi_shr62(CoaxU64Product.{hi=cast(u64) 1 << 62}); #assert c.hi == 1 && c.lo == 0;
+  #assert mi_zeros(0x1000000000000000) == 60 && mi_zeros(1) == 0 && mi_zeros(2) == 1;
+}
+#test "conversion includes every bit of four full words" {
+  w := [4] u64.[0x0123456789abcdef,0xfedcba9876543210,0x1020304050607080,0xffffffffffffffff];
+  back := mi_to_words(mi_from_words(w));
+  for i: 0..<4 { #assert back[i] == w[i]; }
+}

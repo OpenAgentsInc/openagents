@@ -3,6 +3,33 @@
 // same numbers, on seeded values, on every pair of limbs at the largest
 // admitted magnitude, and at the edges of p.
 // Checks: coax test coax/lib/crypto/secp_fe.coax --library
+
+#test "wide-buffer cleanup follows its public profile flag" {
+  words: [18] u64; for i: 0..<18 { words[i] = cast(u64) (i + 1); }
+  fw_erase(words[..],false); for i: 0..<18 { #assert words[i] == cast(u64) (i + 1); }
+  fw_erase(words[..],true); #assert crypto_zeroed(words[..]);
+}
+#forall "wide carries are fixed work at every bit" bit:0..<64 {
+  a:=CoaxU64Product.{lo=CB_MAX64,hi=CB_MAX64};b:=CoaxU64Product.{lo=cast(u64)1<<bit};
+  r:=fw_add(a,b);pub:=fw_add_vartime(a,b);#assert r.lo==pub.lo && r.hi==pub.hi;
+  #assert r.hi==0 && r.lo==(cast(u64)1<<bit)-1;
+  a.lo=0;r=fw_add(a,b);pub=fw_add_vartime(a,b);#assert r.lo==pub.lo && r.hi==pub.hi;#assert r.hi==CB_MAX64 && r.lo==b.lo;
+}
+#forall "secret cleanup preserves field products and carries" seed: 0..<16 {
+  a := fet_pair(seed, 7).fast; b := fet_pair(seed, 8).fast;
+  #assert fe_equal_vartime(fe_mul_kernel(a,b,true),fe_mul(a,b));
+  #assert fe_equal_vartime(fe_weak_kernel(a,true),fe_weak(a));
+  columns:[18]u64;fe_columns(a.n[..],b.n[..],columns[..]);
+  #assert fe_equal_vartime(fe_reduce(columns[..]),fe_mul(a,b));
+  square:[18]u64;fe_square_columns(a.n[..],square[..]);#assert fe_equal_vartime(fe_reduce(square[..]),fe_sqr(a));
+  copied:Fe;fe_reduce_into(columns[..],copied.n[..]);
+  #assert fe_equal_vartime(copied,fe_mul(a,b));
+  fe_copy_into(a,copied.n[..]);for i:0..<5 {#assert copied.n[i]==a.n[i];}
+}
+#forall "public divsteps inverse equals the fixed field chain" seed: 0..<80 #steps 2000000000 {
+  a := fet_pair(seed, 17).fast;
+  #assert fe_equal_vartime(fe_inverse_vartime(a), fe_inverse_chain(a));
+}
 #load "secp_field.coax";
 
 // 32 seeded bytes: splitmix64 on (seed, stream).
@@ -95,6 +122,8 @@ fet_small_reference :: (v: u64) -> SecpField { r: SecpField; r.limb[0] = v; retu
   a := fet_max(m); b := fet_max(k);
   product := fe_mul(a, b);
   #assert fet_same(product, sf_multiply(fet_reference(a), fet_reference(b)));
+  #assert fe_equal_vartime(fe_mul_kernel(a,b,true),product);
+  square:[18]u64;fe_square_columns(a.n[..],square[..]);#assert fe_equal_vartime(fe_reduce(square[..]),fe_sqr(a));
   #assert fet_same(fe_sqr(a), sf_square(fet_reference(a)));
   // The result has magnitude 1.
   for i: 0..<4 { #assert product.n[i] <= 2 * FE_M52; }

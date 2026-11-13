@@ -1,0 +1,2 @@
+mutation scope: unit coax/lib/crypto/secp_fe_columns.coax (its procedures; every check retained)
+404 mutants, 404 killed, 0 survived

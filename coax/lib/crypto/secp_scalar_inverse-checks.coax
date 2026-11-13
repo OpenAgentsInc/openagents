@@ -3,6 +3,27 @@
 // exponentiation gives, and multiply back to 1.
 // Checks: coax test coax/lib/crypto/secp_scalar_inverse.coax --library
 
+#forall "a public product folds every isolated high bit" bit: 0..<256, word: 0..<4 {
+  a: ScScalar; a.limbs[bit / 32] = cast(u32) 1 << (bit % 32);
+  b: ScScalar; b.limbs[2 * word + 1] = 0x80000000;
+  #assert sc_equal(sc_mul_vartime(a,b), sc_mul(a,b));
+}
+#forall "a wide sum's carry stops in every high limb" stop: 4..<9 {
+  p: [8] u64; for i: 0..<stop { p[i] = CB_MAX64; }
+  low: Sw; low.n[0] = 1; got := sw_add_product_low(p,low);
+  for i: 0..<8 { #assert got[i] == (ifx i == stop then cast(u64) 1 else 0); }
+}
+
+#forall "wide public scalar products agree with Montgomery reduction" seed: 0..<40 #steps 2000000000 {
+  a := swt_scalar(seed); b := swt_scalar(seed + 1000);
+  if seed < 8 { a = ScScalar.{}; a.limbs[seed] = 4294967295; }
+  if seed == 8 { a = sc_negate(sc_small(1)); b = a; }
+  if seed == 9 { a = SC_N; }
+  if seed == 10 { for i: 0..<8 { a.limbs[i] = 4294967295; b.limbs[i] = 4294967295; } }
+  got := sc_mul_vartime(a, b);
+  #assert !sc_overflow(got) && sc_equal(got, sc_mul(a, b));
+}
+
 // A seeded scalar: splitmix64 words, reduced mod n.
 swt_scalar :: (seed: int) -> ScScalar {
   r: ScScalar; state := mul_wrap(cast(u64) (seed + 1), 0x9E3779B97F4A7C15);
@@ -23,6 +44,8 @@ swt_scalar :: (seed: int) -> ScScalar {
   if seed == 12 { for i: 0..<8 { a.limbs[i] = 4294967295; } }                       // 2^256 - 1, above n
   if seed == 13 { a = SC_N; a.limbs[0] += 1; }                                      // n + 1
   inverse := sc_inverse_vartime(a);
+  binary := sc_inverse_binary_vartime(a);
+  #assert binary.ok == inverse.ok && sc_equal(binary.value, inverse.value);
   #assert inverse.ok && !sc_overflow(inverse.value);
   #assert sc_equal(sc_mul(inverse.value, a), sc_small(1));
   if seed % 4 == 0 { reference := sc_inverse(a); #assert reference.ok && sc_equal(reference.value, inverse.value); }
@@ -32,6 +55,7 @@ swt_scalar :: (seed: int) -> ScScalar {
 #test "zero and n have no inverse" #steps 2000000000 {
   r := sc_inverse_vartime(ScScalar.{}); #assert !r.ok && sc_is_zero(r.value);
   r = sc_inverse_vartime(SC_N); #assert !r.ok && sc_is_zero(r.value);
+  #assert !sc_inverse_binary_vartime(ScScalar.{}).ok && !sc_inverse_binary_vartime(SC_N).ok;
 }
 #test "four-limb sums, differences and halves carry across every limb" #steps 2000000000 {
   for i: 0..<8 { #assert SC_N.limbs[i] == sw_to_scalar(sw_n()).limbs[i]; }

@@ -19,6 +19,7 @@
 // Scripts, stacks and transactions are public, so everything runs in
 // variable time and every procedure that decides ends in _vartime
 // (Bitcoin chapter 3).
+#run_steps 250000000; // shared field certificates plus the script and signature tables (#13454)
 #load "tx.coax";
 #load "der.coax";
 #load "hash160.coax";

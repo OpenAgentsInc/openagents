@@ -1,0 +1,4 @@
+ECDSA verify         187.50
+BIP-340 verify       203.07
+clock: thread CPU time
+wasm32-wasip1 in Node v24.22.2; module 83944 bytes

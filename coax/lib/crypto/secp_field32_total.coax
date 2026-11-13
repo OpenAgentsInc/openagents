@@ -2,6 +2,7 @@
 // All Sf32 bit patterns are accepted. The existing checked helpers remain
 // available unchanged; group operations supply canonical operands.
 #load "secp_field32.coax";
+#load "secp_fe_ct.coax";
 #authority;
 
 #test "total reducers accept noncanonical full-width inputs" {
@@ -68,18 +69,8 @@ sf32_add_total :: (a:Sf32,b:Sf32)->Sf32 #effects(all) {
   folded:=sf32_fold_total(r,carry);defer {secure_zero(folded.value.limb[..]);#assert crypto_zeroed(folded.value.limb[..]);}folded=sf32_fold_total(folded.value,folded.carry&1);
   return sf32_canonical_total(folded.value);
 }
-sf32_mul_total :: (a:Sf32,b:Sf32)->Sf32 #effects(all) {
-  product:[16]u32;defer {secure_zero(product[..]);#assert crypto_zeroed(product[..]);}
-  for i:0..<8 {
-    carry:u64;
-    for j:0..<8 {wide:=mul_wrap(cast(u64)a.limb[i],cast(u64)b.limb[j])+cast(u64)product[i+j]+carry;product[i+j]=cast,trunc(u32)(wide);carry=wide>>32;}
-    product[i+8]=cast,trunc(u32)carry;
-  }
-  r:Sf32;defer {secure_zero(r.limb[..]);#assert crypto_zeroed(r.limb[..]);}carry:u64;previous:u64;
-  for i:0..<8 {
-    high:=cast(u64)product[i+8];wide:=cast(u64)product[i]+mul_wrap(high,977)+previous+carry;
-    r.limb[i]=cast,trunc(u32)(wide);carry=wide>>32;previous=high;
-  }
-  top:=previous+carry;folded:=sf32_fold_total(r,top);defer {secure_zero(folded.value.limb[..]);#assert crypto_zeroed(folded.value.limb[..]);}folded=sf32_fold_total(folded.value,folded.carry&1);
-  return sf32_canonical_total(folded.value);
-}
+// Preserve the full-domain Sf32 interface while sharing the 5x52 product.
+sf32_mul_total :: (a:Sf32,b:Sf32)->Sf32 #effects(all) { return fc_mul32(a,b); }
+
+// Squaring shares the field schedule but takes each cross product once.
+sf32_square_total :: (a:Sf32) -> Sf32 #effects(all) {return fc_square32(a);}

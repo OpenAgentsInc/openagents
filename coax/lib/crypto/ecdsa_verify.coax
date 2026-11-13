@@ -183,7 +183,7 @@ ev_prepare_vartime :: (hash: [] u8, point: SgPoint, signature: [] u8, low_s: boo
   if low_s && ev_high_s_vartime(scalars.s) { return result; }
   z := sc_reduce_bytes(hash).value;                  // a hash at least n is reduced
   w := sc_inverse_vartime(scalars.s).value;          // s is nonzero, so w exists
-  return EvPrepared.{u1=sc_mul(z,w),u2=sc_mul(scalars.r,w),point=point,r=scalars.r,ready=true};
+  return EvPrepared.{u1=sc_mul_vartime(z,w),u2=sc_mul_vartime(scalars.r,w),point=point,r=scalars.r,ready=true};
 }
 // book:end prepare
 // book:begin matches
