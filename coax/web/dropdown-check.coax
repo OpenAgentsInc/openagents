@@ -1,0 +1,78 @@
+// Every select a page shows opens a menu you can see (the kit's k_select_begin, components/kit/frames.coax).
+// In headless Chrome it opens a page, presses each select on it (and in the page the app shell holds in its
+// frame), and fails when the menu is missing, has no size, is hidden, reaches past the window's edge, or is
+// covered at its rows, or when the select itself is gone once pressed. A press on a named button first opens
+// a pane (the editor's Agent, whose model picker sits at the window's bottom edge).
+//   coax/web/tool.sh dropdown-check URL [WxH] [BUTTON,BUTTON...]
+//   coax/web/tool.sh dropdown-check "http://127.0.0.1:9538/worlds/splice-bots?edit" 2400x1500 agent
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+// The page's half: an async script that answers {"n": selects pressed, "bad": [what failed]}. __PRE__ is the
+// JSON list of buttons to press first.
+DC_JS :: "(async () => { const wait = (ms) => new Promise((r) => setTimeout(r, ms)); const docs = () => { const out = [document]; for (const f of document.querySelectorAll(\"iframe\")) { try { if (f.contentDocument?.body) out.push(f.contentDocument); } catch {} } return out; }; for (let i = 0; i < 150 && !docs().some((d) => d.querySelector(\"button.sel\")); i++) await wait(200); for (const id of __PRE__) { for (const d of docs()) { const b = d.getElementById(id); if (b) { b.click(); break; } } await wait(1500); } const bad = []; let n = 0; for (const d of docs()) { const win = d.defaultView; for (const id of [...d.querySelectorAll(\"button.sel\")].map((b) => b.id)) { let b = d.getElementById(id); const r0 = b.getBoundingClientRect(); if (r0.width < 1 || r0.height < 1 || win.getComputedStyle(b).visibility !== \"visible\") continue; b.click(); await wait(700); n++; b = d.getElementById(id); const m = d.getElementById(id + \".menu\"); if (!b || b.getBoundingClientRect().width < 1) bad.push(`${id}: the select is gone once pressed`); if (!m) { bad.push(`${id}: no menu once pressed`); continue; } const r = m.getBoundingClientRect(), cs = win.getComputedStyle(m); const at = `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)} in ${win.innerWidth}x${win.innerHeight}`; if (r.width < 1 || r.height < 1) bad.push(`${id}: its menu has no size (${at})`); else if (cs.display === \"none\" || cs.visibility !== \"visible\" || Number(cs.opacity) < 0.5) bad.push(`${id}: its menu is hidden`); else if (r.left < -0.5 || r.top < -0.5 || r.right > win.innerWidth + 0.5 || r.bottom > win.innerHeight + 0.5) bad.push(`${id}: its menu reaches past the window (${at})`); else { const rows = [...m.querySelectorAll(\".row\")]; if (!rows.length) bad.push(`${id}: its menu has no rows`); for (const row of rows) { const q = row.getBoundingClientRect(), hit = d.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2); if (!hit || !m.contains(hit)) { bad.push(`${id}: its row ${row.id} is covered by ${hit ? hit.id || hit.className : \"nothing\"}`); break; } } } if (d.getElementById(id)?.getAttribute(\"aria-expanded\") === \"true\") { d.getElementById(id).click(); await wait(400); } } } return JSON.stringify({ n, bad }); })()";
+
+dc_put :: (out: [] u8, at: int, t: string) -> int { n := at; for c: t { if n < out.count { out[n] = c; n += 1; } } return n; }
+// DC_JS with its __PRE__ replaced by the buttons named (BUTTON,BUTTON...) as a JSON list.
+dc_script :: (pre: string, out: [] u8) -> string {
+  list: [1024] u8; m := dc_put(list[..], 0, "[");
+  start := 0;
+  for k: 0..<pre.count + 1 {
+    if k == pre.count || pre[k] == ',' {
+      if k > start { if m > 1 { m = dc_put(list[..], m, ","); } m = dc_put(list[..], m, "\""); m = dc_put(list[..], m, pre[start..<k]); m = dc_put(list[..], m, "\""); }
+      start = k + 1;
+    }
+  }
+  m = dc_put(list[..], m, "]");
+  key := "__PRE__"; js := DC_JS; n := 0; i := 0;
+  while i < js.count {
+    if i + key.count <= js.count && js[i..<i + key.count] == key { n = dc_put(out, n, cast(string) list[0..<m]); i += key.count; }
+    else { if n < out.count { out[n] = js[i]; n += 1; } i += 1; }
+  }
+  return cast(string) out[0..<n];
+}
+#test "the buttons named go into the script as a list" {
+  b: [8192] u8;
+  s := dc_script("agent,more", b[..]);
+  #assert dc_contains(s, "for (const id of [\"agent\",\"more\"])") && !dc_contains(s, "__PRE__");
+  s2 := dc_script("", b[..]);
+  #assert dc_contains(s2, "for (const id of [])");
+}
+dc_contains :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+dc_size :: (t: string, w: [] int, h: [] int) -> bool {
+  x := -1; for c, k: t { if c == 'x' { x = k; } }
+  if x <= 0 { return false; }
+  a := 0; b := 0;
+  for c: t[0..<x] { if c < '0' || c > '9' { return false; } a = a * 10 + cast(int) (c - '0'); }
+  for c: t[x + 1..<t.count] { if c < '0' || c > '9' { return false; } b = b * 10 + cast(int) (c - '0'); }
+  w[0] = a; h[0] = b; return a > 0 && b > 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { print("usage: dropdown-check URL [WxH] [BUTTON,BUTTON...]\n"); return 2; }
+  w: [1] int; h: [1] int; w[0] = 1440; h[0] = 900;
+  if args_count(a[..]) > 1 && !dc_size(args_at(a[..], 1), w[..], h[..]) { print("dropdown-check: a size is WxH (2400x1500)\n"); return 2; }
+  pre := ifx args_count(a[..]) > 2 then args_at(a[..], 2) else "";
+  c: [1] Cdp;
+  if !cdp_launch(c[..], w[0], h[0], "dropdown-check-") { tool_err("dropdown-check: "); tool_errln(cdp_error(c[..])); return 2; }
+  defer { cdp_close(c[..]); }
+  bytes: [4096] u8; o: [1] Jo;
+  jo_start(o[..], bytes[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], args_at(a[..], 0)); jo_end(o[..]);
+  if cdp_call(c[..], "Page.navigate", jo_text(o[..]), 30000) < 0 { tool_err("dropdown-check: "); tool_errln(cdp_error(c[..])); return 2; }
+  js: [16384] u8;
+  v := cdp_evaluate(c[..], dc_script(pre, js[..]));
+  if v < 0 { tool_err("dropdown-check: the page did not answer: "); tool_errln(cdp_error(c[..])); return 1; }
+  out: [16384] u8; n := jv_str(cdp_doc(c[..]), v, out[..]);
+  said := cast(string) out[0..<maxx(n, 0)];
+  print("%\n", said);
+  if dc_contains(said, "\"n\":0,") { print("FAIL dropdown-check: no select was pressed on %\n", args_at(a[..], 0)); return 1; }
+  if !dc_contains(said, "\"bad\":[]") { print("FAIL dropdown-check: a select's menu is not on the screen\n"); return 1; }
+  print("PASS every select on % opens a menu inside the window\n", args_at(a[..], 0));
+  return 0;
+}
+maxx :: (a: int, b: int) -> int { return ifx a > b then a else b; }

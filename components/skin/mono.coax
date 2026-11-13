@@ -413,6 +413,9 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   // in the foot the conversation reads down one edge: what you said is on the left too
   n = mc(out, n, ".slot .msg-user{align-self:flex-start}");
   n = mc(out, n, ".pane .menu.pop{bottom:auto;top:calc(100% + 10px)}.pane-r .menu.pop{left:auto;right:0}");
+  // except in the foot, at the window's bottom edge: there a menu opening down is off the screen, so it opens up
+  // over the pane's edge, past the conversation it is in (which clips its own thread)
+  n = mc(out, n, ".pane.pane-bm .menu.pop{top:auto;bottom:calc(100% + 10px)}.slot .chat:has(.sel[aria-expanded=true]){overflow:visible}");
   // an open select's menu shows whole, over what is round the pane: the pane's body does not cut it while it is open.
   // In the wide pane it opens over the pane itself.
   n = mc(out, n, ".pane-b:has(.sel[aria-expanded=true]){overflow:visible}.pane-w .menu.pop{left:0;right:auto}");
@@ -564,7 +567,7 @@ mono_held_css :: (out: [] u8, at: int) -> int {
   #assert n > 12000 && n < 30000;
   // and the dock's
   m := mono_dock_css(css[..], n);
-  #assert m > n + 800 && m < 34000;   // 32,0xx with the side's folds (k_fold, 2026-11-13)
+  #assert m > n + 800 && m < 34400;   // 34,0xx with the foot pane's menus opening up (2026-11-13)
   n = m;
   // every #rgb or #rrggbb in it is a grey: its channels are equal
   i := 0; greys := 0;
