@@ -98,7 +98,8 @@ wl_get :: (t: [] WlLocal, query: string) -> int {
   lane := wr_lane(wl_query(query, "lane"));
   join := wr_join(sent, mine[0], mine[1], mine[2], mine[3], r[R_LIVE] > 0, r[R_LIVE_PINS], r[R_LIVE_PINS + 1], r[R_LIVE_PINS + 2], r[R_LIVE_PINS + 3],
                   r[R_PREV] > 0, r[R_PREV_PINS], r[R_PREV_PINS + 1], r[R_PREV_PINS + 2], r[R_PREV_PINS + 3]);
-  verdict := wr_read(wr_loads(wl_id(t)), lane, join);
+  // the worlds this tool keeps are hand-built ones, whose kind is their own ID (world-policy.coax, #13422)
+  verdict := wr_read(wr_loads(wl_id(t), wl_id(t)), lane, join);
   if verdict != WR_OK { return wl_refuse(t, wr_status(verdict), wr_words(verdict), -1); }
   if wr_is_dev(lane) { ok := splice_world_pins(here[..]); return wl_state(t, lane, r[R_DEV], here[..], wl_doc(t, ".dev"), ""); }
   if wr_previous(join) { return wl_state(t, lane, r[R_PREV], r[R_PREV_PINS..<R_PREV_PINS + 4], wl_doc(t, ".prev"), ""); }
@@ -121,7 +122,7 @@ wl_post :: (t: [] WlLocal, body: string, dry: bool) -> int {
   r := t[0].row[..]; head: [3] int; here: [4] int; n: [7] int; why: [240] u8;
   batch_ok := wr_batch(body, head[..]);
   what := head[1];
-  verdict := wr_write(true, true, true, wr_authored(wl_id(t), what), batch_ok, what, head[0], r[R_DEV], r[R_DONE], r[R_STEPS]);
+  verdict := wr_write(true, true, true, wr_authored(wl_id(t), wl_id(t), what), batch_ok, what, head[0], r[R_DEV], r[R_DONE], r[R_STEPS]);
   if verdict != WR_OK { return wl_refuse(t, wr_status(verdict), wr_words(verdict), -1); }
   now := cxproc_wall_us() / 1000; seq := now;   // a line's place is its order here; the number only has to rise
   if !splice_world_pins(here[..]) { return wl_refuse(t, 500, "not read", -1); }
