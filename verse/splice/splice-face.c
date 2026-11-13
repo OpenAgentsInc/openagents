@@ -27,8 +27,9 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_Splice) * 1000003u + offsetof(coax_t_Splice, world_n) * 13u + 0x53504c43u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_Splice); }
-// Splice's state declares no defaults: the zeroed memory the host hands it is its start.
-EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { (void)state; }
+// A new state's declared defaults (coax_default_T, from the compiler). The host calls this first,
+// and again on a code reload that changes the state's layout, before it carries the old fields over.
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_Splice(splice_state(state)); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_splice_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_splice_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_splice_uniform_floats(); }

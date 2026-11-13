@@ -52,6 +52,7 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 | JSON, protobuf, base64, Unicode, regex | Coax formats | `coax/lib/json/`, `coax/lib/proto/`, `coax/lib/text/` |
 | HTTP, sockets, processes, files, time | Coax system | `coax/lib/net/`, `coax/lib/sys/`, `coax/lib/clock.coax` |
 | Browser storage | The host's byte storage | `coax/web/STORAGE.md` |
+| A page's state layout: a field's offset, size and type by path; what a code reload keeps | The build's field table (`coax layout`), which `coax drive` reads and a dev module carries | `build/.drive/APP.layout`, `coax/web/drive.coax`, `coax/web/state-keep.js` |
 | A model call (Gemini, embeddings) | The API's Vertex client | `coax/web/api/inference.c`, `coax/lib/systemone/` |
 | A decision (classify, route, rank) | The Decisions API | `coax/lib/systemone/` |
 | Agents: engines, transcripts, tiers | Coax agent | `coax/lib/agent/` |

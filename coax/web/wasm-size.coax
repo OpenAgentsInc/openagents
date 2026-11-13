@@ -22,6 +22,11 @@
 //     OUT.wasm is IN.wasm without its "name" custom section (the bytes wasm-opt writes without -g),
 //     and OUT.syms has one "INDEX NAME" line a function. host.js fetches the .syms only after a trap,
 //     to turn the stack's wasm-function[INDEX] into names. Exit 1 when IN.wasm has no names.
+//   coax/web/tool.sh wasm-size state IN.wasm LAYOUT OUT.wasm
+//     OUT.wasm is IN.wasm with LAYOUT (the state's field table, as `coax layout` prints it) in a
+//     "coaxial.state" custom section, replacing one already there (#13411). wasm.sh adds it to a
+//     development module; host.js reads it on an engine swap to carry the state field by field
+//     (coax/web/state-keep.js). A release module has none.
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
@@ -456,6 +461,81 @@ ws_symbols :: (a: [] Args) -> int {
   return 0;
 }
 
+// ---- the state's field table, carried by a development module (#13411) ------
+WS_STATE_SECTION :: "coaxial.state";
+// n as an unsigned LEB128 into out; how many bytes (0 when it doesn't fit).
+ws_put_leb :: (n: int, out: [] u8) -> int {
+  v := n; k := 0;
+  while true {
+    if k >= out.count { return 0; }
+    b := v & 127; v = v >> 7;
+    out[k] = cast(u8) (ifx v > 0 then b | 128 else b); k += 1;
+    if v == 0 { return k; }
+  }
+  return 0;
+}
+// m without any "coaxial.state" section, then one holding `table`, into out (its length).
+// -1 when m is not a module or the result doesn't fit.
+ws_state :: (m: string, table: string, out: [] u8) -> int {
+  if m.count < 8 || m[0] != 0 || m[1..<4] != "asm" || out.count < 8 { return -1; }
+  for i: 0..<8 { out[i] = m[i]; }
+  on := 8; at: [1] int; at[0] = 8;
+  while at[0] < m.count {
+    from := at[0];
+    id := cast(int) m[at[0]]; at[0] += 1;
+    slen := ws_leb(m, at[..]);
+    if slen < 0 || at[0] + slen > m.count { return -1; }
+    end := at[0] + slen;
+    p: [1] int; p[0] = at[0];
+    ours := false;
+    if id == 0 {
+      nl := ws_leb(m, p[..]);
+      ours = nl == WS_STATE_SECTION.count && p[0] + nl <= end && m[p[0]..<p[0] + nl] == WS_STATE_SECTION;
+    }
+    if !ours {
+      if on + end - from > out.count { return -1; }
+      for i: from..<end { out[on + i - from] = m[i]; }
+      on += end - from;
+    }
+    at[0] = end;
+  }
+  d: [10] u8;
+  body := 1 + WS_STATE_SECTION.count + table.count;   // the name's length (one byte), the name, the table
+  dn := ws_put_leb(body, d[..]);
+  if dn == 0 || on + 1 + dn + body > out.count { return -1; }
+  out[on] = 0; on += 1;
+  for i: 0..<dn { out[on + i] = d[i]; } on += dn;
+  out[on] = cast(u8) WS_STATE_SECTION.count; on += 1;
+  for c, i: WS_STATE_SECTION { out[on + i] = c; } on += WS_STATE_SECTION.count;
+  for c, i: table { out[on + i] = c; } on += table.count;
+  return on;
+}
+#test "state: the table is the module's last section, once, and its length reads back" {
+  m := [11] u8.[0, 0x61, 0x73, 0x6d, 1, 0, 0, 0,  1, 1, 0];   // a header and an empty type section
+  out: [512] u8; again: [512] u8;
+  n := ws_state(cast(string) m[..], "S  size 8  align 8\n", out[..]);
+  #assert n == 11 + 2 + 14 + 19 && cast(string) out[0..<11] == cast(string) m[..];
+  #assert out[11] == 0 && out[12] == 33 && out[13] == 13 && cast(string) out[14..<27] == "coaxial.state" && cast(string) out[27..<n] == "S  size 8  align 8\n";
+  // a second table replaces the first; a table past 127 bytes takes a two-byte length
+  long: [200] u8; for i: 0..<200 { long[i] = 'x'; }
+  k := ws_state(cast(string) out[0..<n], cast(string) long[..], again[..]);
+  at: [1] int; at[0] = 12;
+  #assert k == 11 + 3 + 14 + 200 && again[11] == 0 && ws_leb(cast(string) again[0..<k], at[..]) == 214 && at[0] == 14;
+  #assert ws_state(cast(string) again[0..<k], "", out[..]) == 11 + 2 + 14;
+  #assert ws_state("", "t", out[..]) == -1 && ws_state(cast(string) m[..], "t", out[0..<20]) == -1 && ws_state(cast(string) m[0..<10], "t", out[..]) == -1;
+  d: [2] u8; #assert ws_put_leb(0, d[..]) == 1 && d[0] == 0 && ws_put_leb(300, d[..]) == 2 && d[0] == 0xac && d[1] == 2 && ws_put_leb(70000, d[..]) == 0;
+}
+ws_state_verb :: (a: [] Args) -> int {
+  m: [WS_FILE] u8; out: [WS_FILE] u8; t: [WS_FILE / 4] u8;
+  mn := fs_read(args_at(a, 1), m[..]); tn := fs_read(args_at(a, 2), t[..]);
+  if mn < 8 { tool_err("wasm-size: can't read the module "); tool_errln(args_at(a, 1)); return 2; }
+  if tn <= 0 { tool_err("wasm-size: can't read the state's layout "); tool_errln(args_at(a, 2)); return 2; }
+  n := ws_state(cast(string) m[0..<mn], cast(string) t[0..<tn], out[..]);
+  if n < 0 { tool_err("wasm-size: not a wasm module, or it doesn't fit with its state's layout: "); tool_errln(args_at(a, 1)); return 2; }
+  if !fs_write(args_at(a, 3), cast(string) out[0..<n]) { tool_errln("wasm-size: can't write the module"); return 2; }
+  return 0;
+}
+
 // ---- size budgets (apps/openagents-web/wasm-budgets.txt) --------------------
 
 // n in decimal, into out.
@@ -640,6 +720,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if ok && verb == "budgets" && args_count(a[..]) >= 3 { return ws_budgets(a[..]); }
   if ok && verb == "budget" && args_count(a[..]) == 4 { return ws_budget(a[..]); }
   if ok && verb == "symbols" && args_count(a[..]) == 4 { return ws_symbols(a[..]); }
-  tool_errln("usage: wasm-size sources UNIT.coax... | wasm-size exports UNIT.coax... | wasm-size report FILE.wasm [N] | wasm-size budgets BUDGETS SCRIPT... | wasm-size budget BUDGETS NAME FILE.wasm | wasm-size symbols IN.wasm OUT.wasm OUT.syms");
+  if ok && verb == "state" && args_count(a[..]) == 4 { return ws_state_verb(a[..]); }
+  tool_errln("usage: wasm-size sources UNIT.coax... | wasm-size exports UNIT.coax... | wasm-size report FILE.wasm [N] | wasm-size budgets BUDGETS SCRIPT... | wasm-size budget BUDGETS NAME FILE.wasm | wasm-size symbols IN.wasm OUT.wasm OUT.syms | wasm-size state IN.wasm LAYOUT OUT.wasm");
   return 2;
 }

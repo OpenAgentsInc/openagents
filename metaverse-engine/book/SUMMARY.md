@@ -116,7 +116,7 @@
 **XI. Shipping realms**
 
 - [81. Save and come back](ch081-save-and-come-back.md) — partly implemented
-- [82. Change code while it runs](ch082-change-code-while-it-runs.md) — design draft
+- [82. Change code while it runs](ch082-change-code-while-it-runs.md) — partly implemented
 - [83. Inspect and profile a running realm](ch083-inspect-and-profile-a-running-realm.md) — partly implemented
 - [84. One realm on every host](ch084-one-realm-on-every-host.md) — partly implemented
 - [85. Everyone can play](ch085-everyone-can-play.md) — partly implemented

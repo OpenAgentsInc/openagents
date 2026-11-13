@@ -1,0 +1,29 @@
+Vec  size 8  align 4
+       0     4  y: f32
+       4     4  x: f32
+Item  size 8  align 4
+       0     4  id: s32
+       4     1  n: u8
+       5     3  (padding)
+Inner  size 24  align 8
+       0     4  tag: [4] u8
+       4     8  pos: Vec
+      12     4  (padding)
+      16     8  hp: int
+Game  size 96  align 8
+       0     4  grid: [2] [2] u8
+       4     4  (padding)
+       8     8  gone: int
+      16    24  inner: [1] Inner
+      40    24  items: [3] Item
+      64    16  name: string
+      80     1  mode: Mode
+      81     3  (padding)
+      84     4  score: s32
+      88     4  heat: f32
+      92     1  ready: bool
+      93     3  (padding)
+Mode  enum u8  size 1
+  idle = 0
+  walk = 1
+  run = 2

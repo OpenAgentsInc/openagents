@@ -1,0 +1,18 @@
+Vec :: struct { x: f32; y: f32; }
+Mode :: enum u8 { idle; walk; run; }
+Item :: struct { id: s32; n: u8; }
+Inner :: struct { hp: int; mp: int = 9; pos: Vec; tag: [4] u8; }
+Game :: struct {
+  ready: bool;
+  shield: f32 = 2.5;
+  heat: f32;
+  score: s32;
+  mode: Mode;
+  items: [3] Item;
+  inner: [1] Inner;
+  name: string;
+  gone: int;
+  grid: [2] [2] u8;
+  lives: int = 3;
+}
+use :: (g: [] Game) -> bool #export_c #effects(all) { return g[0].name.count > 0; }

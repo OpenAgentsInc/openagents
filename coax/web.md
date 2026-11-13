@@ -239,7 +239,7 @@ regression is `coax/web/tool.sh serve-build-check` after building `serve.sh`.
 | Data (world layout, HUD layout, `home.textproto`, tuning) | Re-encoded, pushed, the engine re-admits it through the same checks as at load | under 50 ms |
 | Shader (`.wgsl` or Coax shader subset) | Re-emitted, `createShaderModule`, pipeline swapped at the next frame | under 100 ms |
 | Engine logic (`.coax`) | `coax lib` → clang wasm32 → pushed; the host instantiates it against the same memory and swaps at a frame boundary | under 300 ms |
-| Layout change (a state struct changed) | Same as logic, but the layout fingerprint differs: the subsystem migrates if a migration is declared, otherwise resets just that subsystem | under 500 ms, state kept where declared |
+| Layout change (a state struct changed) | Same as logic, then the host carries the state into the new layout field by field, by name (`coax/web/state-keep.js`; a development module carries its state's field table). A new field starts from its default, and the dev note names the new and dropped fields | under 500 ms, state kept |
 
 The budgets come from measurements, not hope: about 10 ms for `coax c`, about
 90 ms for clang on the Grid, the Metaverse Engine 57 ms leaf rebuild, plus
@@ -250,9 +250,14 @@ verify in phase W1, not claims.
 memory, swapping code means:
 
 1. Compile the candidate module while the old one keeps running.
-2. Check its exported layout fingerprints against the live regions.
+2. Compare its state's field table with the running module's (a release
+   module has none; its layout fingerprint is compared instead).
 3. At a frame boundary, in one JavaScript turn, point the host's calls at
-   the new exports. Nothing to copy for matching layouts.
+   the new exports. Nothing to copy for matching layouts. For a changed
+   layout, the state starts from its defaults and takes every field both
+   layouts name ([the Metaverse Engine book, chapter
+   82](../metaverse-engine/book/ch082-change-code-while-it-runs.md) has the
+   rules).
 4. A failed compile, a failed check or a trap in the first frame keeps the
    old module running and shows the error in the HUD with the original
    `.coax` location. A newer request always beats an older one.

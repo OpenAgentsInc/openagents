@@ -470,7 +470,8 @@ drive_files() {
 }
 drive_layout() {
   if ! (cd "$repo" && "$coax_driver" layout "$coax_file" --library > "$drive_dir/$module.layout.tmp.$$" 2> /dev/null && mv -f "$drive_dir/$module.layout.tmp.$$" "$drive_dir/$module.layout"); then
-    rm -f "$drive_dir/$module.layout.tmp.$$"; echo "wasm.sh: $module: no state layout for coax drive" >&2
+    # an older build's layout would name other offsets: none is better (the dev module below carries it)
+    rm -f "$drive_dir/$module.layout.tmp.$$" "$drive_dir/$module.layout"; echo "wasm.sh: $module: no state layout for coax drive" >&2
   fi
 }
 drive_sources() {
@@ -615,6 +616,16 @@ fi
 # costliest declarations (coax --timings), and the machine and its load.
 # COAXIAL_WASM_TIMES=0 keeps the line quiet; the report is still written.
 wait "$drive_job" || true   # its step is in the report
+# A development module carries its state's field table, the layout just written, in a
+# "coaxial.state" custom section (#13411): on an engine swap host.js carries the running state into
+# the new module's layout field by field (coax/web/state-keep.js) instead of starting it over.
+# The module cache above holds the linked bytes without it. A release module has none: production
+# loads code only at page load.
+state_layout="$(dirname "$out")/.drive/$module.layout"
+if [[ "$mode" == dev && "${COAXIAL_DRIVE:-1}" != 0 && -s "$state_layout" ]]; then
+  if (cd "$repo" && "$repo/coax/web/tool.sh" wasm-size state "$work/output.wasm" "$state_layout" "$work/tabled.wasm"); then mv "$work/tabled.wasm" "$work/output.wasm"
+  else rm -f "$work/tabled.wasm"; echo "wasm.sh: $module: no state table in the module (a swap that changes its state's layout starts the state over)" >&2; fi
+fi
 report="${COAXIAL_WASM_REPORT:-$work_root/$(basename "$out" .wasm).timings.json}"
 seconds() { printf '%d.%06d' $(( $1 / 1000000 )) $(( $1 % 1000000 )); }
 {

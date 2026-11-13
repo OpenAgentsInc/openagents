@@ -71,8 +71,8 @@ marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
 
-The registry records 14 implemented chapters, 55 partly implemented chapters
-and 33 design drafts. An implemented chapter is
+The registry records 14 implemented chapters, 56 partly implemented chapters
+and 32 design drafts. An implemented chapter is
 qualified for its named profile; it does not imply that every realm adopted
 it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
@@ -300,7 +300,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [81. Save and come back](ch081-save-and-come-back.md) | Partly implemented: native C (the AESV container and its two slots) | One save layer over today's `AESV` container with a CRC-32 and two slots: only declared fields are saved, older schemas migrate forward, a newer schema is refused, and conflicts found by revision, never by clock time. |
-| [82. Change code while it runs](ch082-change-code-while-it-runs.md) | Unimplemented: design draft | Live iteration in four tiers (data, shaders, logic, layout changes) with a save-to-frame target for each; layout fingerprints decide whether to swap, migrate or reset, a broken edit keeps the old module running, and production never loads code. |
+| [82. Change code while it runs](ch082-change-code-while-it-runs.md) | Partly implemented: browser Wasm on the dev server (a code reload carries the state field by field) | Live iteration in four tiers (data, shaders, logic, layout changes) with a save-to-frame target for each. A development module carries its state's field table, and a swap keeps every field both layouts name, converts a widened number, and starts the rest from their defaults; a broken edit keeps the old module running, and production never loads code. |
 | [83. Inspect and profile a running realm](ch083-inspect-and-profile-a-running-realm.md) | Partly implemented: native C and headless Chrome (one 60 FPS rule for every realm; frame reports) | The same frame report, overlay, probes and goldens for every realm, the 60 FPS rule (95th percentile under 17.5 ms, no frame over 33 ms) extended to every listed realm, separate from chapter 37's physics measurements. |
 | [84. One realm on every host](ch084-one-realm-on-every-host.md) | Partly implemented: shared lifecycle policy and versioned host overview | Overview of current code and its remaining scope; follow the linked implementation chapters. |
 | [85. Everyone can play](ch085-everyone-can-play.md) | Partly implemented: shared settings and browser accessibility | Overview of current code and its remaining scope; follow the linked implementation chapters. |

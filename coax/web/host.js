@@ -7,7 +7,8 @@
 //
 // An app is `/build/APP.wasm` (Coax compiled through C to wasm32) and
 // `/APP.wgsl`. The wasm exports a scalar C face:
-//   coaxial_layout()          state layout fingerprint
+//   coaxial_layout()          state layout fingerprint (a development module also carries the state's
+//                             field table, which a code reload uses to keep the state: state-keep.js)
 //   coaxial_state_size()      bytes of state the host keeps
 //   coaxial_state_init(state) a fresh state's struct defaults (the face's, from coax_default_T; every face has it)
 //   coaxial_max_vertices(), coaxial_vertex_floats(), coaxial_uniform_floats()
@@ -243,6 +244,7 @@
 
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
 import { fastEditBoundary } from "./fast-edit.js";
+import { stateTable, planState, applyState, stateNote } from "./state-keep.js";
 import { startDrops } from "./drop.js";
 import { startUploads } from "./uploads.js";
 import { startDocs } from "./docs.js";
@@ -475,6 +477,7 @@ function importedMemoryPages(bytes) {
   return 0;
 }
 
+let stateSaid = ""; // what the last engine swap did with the state, for the swap's dev note
 async function loadEngine(bytes, generation) {
   await Promise.all([audioRetirement,packRetirement]);if(generation!==wanted)return false;
   if (dev) globalThis.coaxial.renderLifecyclePhase="engine-await-render";
@@ -503,6 +506,12 @@ async function loadEngine(bytes, generation) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= Object.create(null))[imp.name] ||= wasiStub(imp.module, imp.name);
   }
+  // The state's field table (a development module carries it: state-keep.js). When this module and
+  // the running one both have one, the running state's bytes are copied out now: instantiating
+  // writes the new module's data into the shared memory, and a larger module's can reach the state.
+  const table = stateTable(module);
+  stateSaid = "";
+  const carried = previousEngine?.table && table && arena?.stateSize ? new Uint8Array(memory.buffer, arena.state, arena.stateSize).slice() : null;
   if (dev) globalThis.coaxial.renderLifecyclePhase="engine-instantiate";
   const instance = await WebAssembly.instantiate(module, imports);
   globalThis.coaxial.fastEdit?.stop();
@@ -548,16 +557,31 @@ async function loadEngine(bytes, generation) {
     arena = { base, stateCap, state: base, vertices: base + stateCap, uniforms: base + stateCap + maxVertices * floats * 4, floats, maxVertices, uniformFloats, layout: -1 };
     if (gpu) makeBuffers();
   }
-  if (arena.layout !== layout) {
+  // A swap keeps the state. With both field tables: where the state's layout is unchanged it stays
+  // as it is; else the new state starts from its defaults and takes every field both layouts have,
+  // by name (state-keep.js has the rules), and the dev note names what was added and dropped.
+  // Without them (a release module), the layout fingerprint decides: the same keeps, another starts over.
+  let keep = null;
+  try { if (carried && !(table === previousEngine.table && arena.layout === layout)) keep = planState(previousEngine.table, carried.length, table, stateSize); }
+  catch (error) { console.error(`coaxial: ${app}: the state's field tables don't read (${error.message})`); }
+  if (keep && !(keep.same && arena.layout === layout)) {
+    new Uint8Array(memory.buffer, arena.state, arena.stateCap).fill(0);
+    x.coaxial_state_init(arena.state);
+    applyState(keep, carried, memory.buffer, arena.state);
+    arena.layout = layout;
+    stateSaid = stateNote(keep);
+    globalThis.coaxial.stateKept = { note: stateSaid, root: keep.root, kept: keep.kept, added: keep.added, dropped: keep.dropped, reset: keep.reset, resized: keep.resized, pointers: keep.pointers };
+    say(`${app}: ${stateSaid}`);
+  } else if (arena.layout !== layout) {
     new Uint8Array(memory.buffer, arena.state, arena.stateCap).fill(0); // the state's shape changed: start it over
     x.coaxial_state_init(arena.state); // its struct defaults, as native (the face calls the compiler's coax_default_T)
-    if (previousEngine) say(`state layout changed: ${app} starts over`);
+    if (previousEngine) { stateSaid = "state layout changed: it starts over"; say(`state layout changed: ${app} starts over`); }
     arena.layout = layout;
   }
   x.coaxial_page?.(arena.state, Number((script && script.dataset.page) || 0));
   if (golden) x.coaxial_golden?.(1);
   x.coaxial_quality?.(arena.state, golden ? 0 : quality);
-  engine = { exports: x, layout };
+  engine = { exports: x, layout, table };
   if(reconnectAfterEngine){reconnectAfterEngine=false;send(612,"1");}
   engineBytes = bytes;
   arena.stateSize = stateSize;
@@ -4079,7 +4103,7 @@ function live() {
     if (m.kind === "wasm") {
       const generation = beginEngine();
       try {
-        if (await fetchEngine(generation)) say(`${app} rebuilt in ${m.ms} ms, swapped in ${Math.round(performance.now() - t0)} ms`);
+        if (await fetchEngine(generation)) say(`${app} rebuilt in ${m.ms} ms, swapped in ${Math.round(performance.now() - t0)} ms${stateSaid && `\n${stateSaid}`}`);
       } catch (e) { say(`${app}: ${e.message}`, true); }
     }
   };
