@@ -39,7 +39,8 @@ undo was hand-rolled and had no redo, while Aethyrforge's edit log had both.
 | Scattering things, grass, props | Aethyr | `aethyr/world/scatter.coax`, `aethyr/render/` |
 | Rendering, lighting, shadows, quality tiers | Aethyr's renderer and governor | `aethyr/render/`, `aethyr/core/quality.coax`, `aethyr/core/frame-pacing.coax` |
 | Multiplayer: transport, replication, prediction, rewind | Aethyr's netcode | `aethyr/net/` |
-| Steering and pathfinding | Aethyr | `aethyr/ai/`, `aethyr/world/nav/` |
+| Steering and pathfinding | Aethyr: the steering service, and the navigation cells built from colliders ([how](verse/navigation.md)) | `aethyr/ai/`, `aethyr/world/nav/`, `everglade/shared/nav.coax` |
+| A world in cells: which cells load, simulate and draw round the players | Aethyr's cell controller, and Everglade's manifest ([how](verse/one-world.md)) | `aethyr/world/cells.coax`, `everglade/world/zone.coax` |
 | The Grid | The Grid and its session | `verse/grid.coax`, `verse/gridwalk.coax` |
 | 3D models | The asset registry | `assets/registry/` (read its README) |
 | Hashes, signatures, encryption | Coax crypto | `coax/lib/crypto/` |

@@ -180,6 +180,10 @@ host_packs=$!
 # Everglade II's first takes this tree's planting into its catalog (verse/tools/assets/
 # everglade2_plant.coax, #13150), so the page reads the woods instead of planting them for 1.8 s.
 vpk3s() {
+  # Before Everglade II's pack is written, its zone is checked (everglade/model/tools/zone-cells.coax, #13280,
+  # #13281): the committed manifest of cells is what this land's colliders build, every spawn and named
+  # point can be walked to, and a creature walks the named points' routes on the navigation cells.
+  "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/zone-cells.coax" --check "$here/../../everglade/world/zone-cells.coax" "$here/../../everglade/content/everglade.content" > /dev/null
   for vpk3 in "$here"/realms/everglade2/assets/everglade2.vpk3; do
     planted="$here/build/$(basename "${vpk3%.vpk3}")-planted.pack"
     "$here/../../coax/web/tool.sh" "$here/../../verse/tools/assets/everglade2_plant.coax" "${vpk3%.vpk3}.pack" "$planted" > /dev/null

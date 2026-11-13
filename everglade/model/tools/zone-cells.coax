@@ -1,0 +1,163 @@
+// Everglade's zone manifest and its pack-time navigation check (GitHub #13280, #13281; docs/verse/navigation.md).
+// Builds every cell's navigation page from the colliders the players' step uses
+// (everglade/shared/nav.coax), then:
+//   - refuses the zone unless every named point (verse/everglade2/points.coax), every content
+//     point and every spawn's point (everglade/content/everglade.content) can be walked to from
+//     the spawn: a named point at its own place, a content point somewhere within its radius;
+//   - walks a creature on the pages, by the steering service the room's creatures use
+//     (aethyr/ai/steer-cells.coax), from the spawn to each named point in turn and back to the
+//     spawn, and refuses the zone when a walk doesn't arrive or leaves open ground: the route walk
+//     test's rule, for creatures. It prints each walk and what a tick of it cost;
+//   - writes (--write) or compares (--check) everglade/world/zone-cells.coax: each cell with ground
+//     a creature can reach, its page's digest and its open samples. A room that builds a cell
+//     admits it only at this digest (aethyr/world/cells.coax cell_complete).
+// Run it after any change to the land, the planting, a rock's hull, the camp or where one may stand:
+//   coax/web/tool.sh everglade/model/tools/zone-cells.coax --write everglade/world/zone-cells.coax everglade/content/everglade.content
+//   coax/web/tool.sh everglade/model/tools/zone-cells.coax --check everglade/world/zone-cells.coax everglade/content/everglade.content
+// tool.sh: release
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../content.coax";
+#load "../../shared/nav.coax";
+#load "../../../aethyr/ai/steer-cells.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+
+ZC_OUT :: 16384;
+ZcCell :: struct { cx: int; cz: int; digest: int; open: int; reached: int; }
+
+// How many of page p's samples the last reach marked.
+zc_marked :: (mark: [] u32, p: int) -> int {
+  c := 0;
+  for w: 0..<NAV_CELL_WORDS { v := mark[p * NAV_CELL_WORDS + w]; while v != 0 { c += cast(int) (v & 1); v = v >> 1; } }
+  return c;
+}
+// Whether a reached sample lies within r metres of (x, z): asked at every sample of the square round it.
+zc_near :: (n: [] NavCells, mark: [] u32, x: f32, z: f32, r: f32) -> bool {
+  if nav_cells_reached(n, mark, x, z) { return true; }
+  steps := cast(int) (r / f32(NAV_CELL_STEP));
+  for j: -steps..<steps + 1 { for i: -steps..<steps + 1 {
+    dx := f32(i) * f32(NAV_CELL_STEP); dz := f32(j) * f32(NAV_CELL_STEP);
+    if dx * dx + dz * dz <= r * r && nav_cells_reached(n, mark, x + dx, z + dz) { return true; }
+  } }
+  return false;
+}
+
+// The reached sample nearest (x, z) within r metres: [x, z, 1], or [x, z, 0] with none.
+zc_spot :: (n: [] NavCells, mark: [] u32, x: f32, z: f32, r: f32) -> [3] f32 {
+  steps := cast(int) (r / f32(NAV_CELL_STEP)); best := [3] f32.[x, z, 0]; bd := r * r + 1;
+  for j: -steps..<steps + 1 { for i: -steps..<steps + 1 {
+    s := nav_cells_at(n, x + f32(i) * f32(NAV_CELL_STEP), z + f32(j) * f32(NAV_CELL_STEP));
+    if s.page < 0 { continue; }
+    qx := nav_cells_x(n[0].page[s.page].cx, s.i); qz := nav_cells_x(n[0].page[s.page].cz, s.j); d := (qx - x) * (qx - x) + (qz - z) * (qz - z);
+    if d < bd && d <= r * r && nav_cells_reached(n, mark, qx, qz) { bd = d; best = [3] f32.[qx, qz, 1]; }
+  } }
+  return best;
+}
+// A walk's cost: its ticks, the nanoseconds they took in all and the slowest one's, and the long ways planned.
+ZcCost :: struct { ticks: int; ns: int; worst: int; }
+// Walks a creature from a to b at a wolf's run (9 m/s), a room's tick at a time. The metres it went, or -1
+// when it didn't arrive in three times the straight walk's ticks (and 10 s), or stood off open ground.
+zc_walk :: (n: [] NavCells, w: [] NavWindow, l: [] NavLong, ax: f32, az: f32, bx: f32, bz: f32, cost: [] ZcCost) -> f32 {
+  a: [1] NavAgent; gd: [1] NavGuide; none: [1] f32; a[0] = nav_agent(ax, az, 5); t := NavTune.{speed = 9, body = f32(E2N_BODY)};
+  dt := 1.0f32 / 30; went: f32 = 0;
+  most := cast(int) (nav_len(bx - ax, bz - az) / (9 * dt)) * 3 + 300;
+  for k: 0..<most {
+    px := a[0].x; pz := a[0].z; t0 := proc_now_ns();
+    s := nav_cells_go(a[..], gd[..], t, n, w, l, bx, bz, dt, none[0..<0], -1);
+    took := proc_now_ns() - t0; cost[0].ticks += 1; cost[0].ns += took; if took > cost[0].worst { cost[0].worst = took; }
+    if !nav_cells_open(n, a[0].x, a[0].z) { return -1; }
+    went += nav_len(a[0].x - px, a[0].z - pz);
+    if nav_len(a[0].x - bx, a[0].z - bz) < 0.05 { return went; }
+  }
+  return -1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 3 || (args_at(a[..], 0) != "--write" && args_at(a[..], 0) != "--check") {
+    tool_errln("usage: zone-cells --write|--check everglade/world/zone-cells.coax everglade/content/everglade.content"); return 2;
+  }
+  raw: [CT_BODY] u8; rn := fs_read(args_at(a[..], 2), raw[..]);
+  d: [1] ContentDoc;
+  if rn <= 0 || !ct_read(d[..], cast(string) raw[0..<rn]) || !ec_ok(d[..]) { print("zone cells: % is not Everglade's content tables\n", args_at(a[..], 2)); return 1; }
+  g: [1] E2MoveGround; e2mg_plant(g[..]);
+  n: [1] NavCells; cells: [NAV_PAGES] ZcCell; cn := 0; faults := 0;
+  for cz: E2N_CZ0..<E2N_CZ1 + 1 { for cx: E2N_CX0..<E2N_CX1 + 1 {
+    if !e2n_cell_stands(cx, cz) { continue; }
+    // the planting a room's own build of this cell reads fits its store, with room for one more planting cell each time
+    pr := e2n_planting(cx, cz); pieces := 0;
+    for j: pr[2]..<pr[3] + 1 { for i: pr[0]..<pr[1] + 1 {
+      if i < 0 || j < 0 || i >= E2_CELLS_X || j >= E2_CELLS_Z { continue; }
+      if pieces > E2N_ITEMS - E2N_ITEMS_SPARE { print("zone cells: the planting round cell (%, %) is more than the % pieces a room's build holds (everglade/shared/nav.coax E2N_ITEMS)\n", cx, cz, E2N_ITEMS - E2N_ITEMS_SPARE); return 1; }
+      pieces += g[0].first[j * E2_CELLS_X + i + 1] - g[0].first[j * E2_CELLS_X + i];
+    } }
+    p := e2n_page(g[..], n[..], cx, cz);
+    if p < 0 { print("zone cells: more cells with ground than the % pages a room holds\n", NAV_PAGES); return 1; }
+    cells[p] = ZcCell.{cx = cx, cz = cz, digest = nav_cells_digest(n[..], p)};
+    for w: 0..<NAV_CELL_WORDS { v := n[0].page[p].open[w]; while v != 0 { cells[p].open += cast(int) (v & 1); v = v >> 1; } }
+    cn += 1;
+  } }
+  mark: [NAV_PAGES * NAV_CELL_WORDS] u32; queue: [NAV_PAGES * NAV_PAGE_SAMPLES] s32;
+  reached := nav_cells_reach(n[..], f32(E2_SPAWN_X), f32(E2_SPAWN_Z), mark[..], queue[..]);
+  if reached <= 0 { print("zone cells: the spawn is not on open ground\n"); return 1; }
+  open := 0;
+  for p: 0..<cn { cells[p].reached = zc_marked(mark[..], p); open += cells[p].open; }
+  // every named point, at its own place (a path point's x is across from the path's middle)
+  names := E2_POINT_NAME; at := E2_POINT_AT;
+  for i: 0..<E2_POINTS {
+    z := at[i * MAP_POINT_FLOATS + 2]; x := at[i * MAP_POINT_FLOATS] + ifx i == 0 then 0.0f32 else e2_road_x(z);
+    if !zc_near(n[..], mark[..], x, z, 1) { print("zone cells: the named point '%' at (%, %) can't be walked to from the spawn\n", names[i], x, z); faults += 1; }
+  }
+  // every content point, somewhere within its radius; a spawn's point is one of them
+  for r: 0..<ct_rows(d[..], EC_POINT) {
+    x := f32(ct_get(d[..], EC_POINT, r, EC_POINT_X)) / 100; z := f32(ct_get(d[..], EC_POINT, r, EC_POINT_Z)) / 100; rad := f32(ct_get(d[..], EC_POINT, r, EC_POINT_R)) / 100;
+    if !zc_near(n[..], mark[..], x, z, rad) { print("zone cells: the content point '%' (%, %; % m) has no ground a creature can walk to\n", ct_str(d[..], EC_POINT, r, EC_NAME), x, z, rad); faults += 1; }
+  }
+  for r: 0..<ct_rows(d[..], EC_SPAWN) {
+    if ct_find(d[..], EC_POINT, ct_get(d[..], EC_SPAWN, r, EC_SPAWN_POINT)) < 0 { print("zone cells: spawn % names no point\n", ct_get(d[..], EC_SPAWN, r, 0)); faults += 1; }
+  }
+  if faults > 0 { return 1; }
+  // the walks: spawn to each named point in turn, and back to the spawn from the last
+  w: [1] NavWindow; l: [1] NavLong; cost: [1] ZcCost; from := [2] f32.[f32(E2_SPAWN_X), f32(E2_SPAWN_Z)]; walked: f32 = 0; straight: f32 = 0;
+  for i: 1..<E2_POINTS + 1 {
+    q := i % E2_POINTS; z := at[q * MAP_POINT_FLOATS + 2]; x := at[q * MAP_POINT_FLOATS] + ifx q == 0 then 0.0f32 else e2_road_x(z);
+    to := zc_spot(n[..], mark[..], x, z, 1);
+    went := zc_walk(n[..], w[..], l[..], from[0], from[1], to[0], to[1], cost[..]);
+    if went < 0 { print("zone cells: a creature can't walk from (%, %) to the named point '%' at (%, %)\n", from[0], from[1], names[q], to[0], to[1]); faults += 1; }
+    else { walked += went; straight += nav_len(to[0] - from[0], to[1] - from[1]); }
+    from = [2] f32.[to[0], to[1]];
+  }
+  if faults > 0 { return 1; }
+  print("zone cells: % walks between the named points: % m walked for % m straight, % ticks, % long ways planned; a tick % ns on average, % at most\n",
+    E2_POINTS, cast(int) walked, cast(int) straight, cost[0].ticks, l[0].plans, cost[0].ns / cost[0].ticks, cost[0].worst);
+  // the manifest: the cells a creature can reach, in the build's order (south to north, west to east)
+  out: [ZC_OUT] u8; o := 0; listed := 0;
+  for p: 0..<cn { if cells[p].reached > 0 { listed += 1; } }
+  o = ct_put(out[..], o, "// GENERATED by everglade/model/tools/zone-cells.coax: do not edit. Everglade's cells: each cell with ground a\n");
+  o = ct_put(out[..], o, "// creature can walk to from the spawn, its navigation page's digest (everglade/shared/nav.coax), its open\n");
+  o = ct_put(out[..], o, "// samples and how many of them are reached. Write it again after a change to the land or its colliders:\n");
+  o = ct_put(out[..], o, "//   coax/web/tool.sh everglade/model/tools/zone-cells.coax --write everglade/world/zone-cells.coax everglade/content/everglade.content\n");
+  o = ct_put(out[..], o, "E2ZCell :: struct { cx: int; cz: int; digest: int; open: int; reached: int; }\n");
+  o = ct_put(out[..], o, "E2Z_CELLS :: "); o = ct_put_int(out[..], o, listed); o = ct_put(out[..], o, ";\n");
+  o = ct_put(out[..], o, "E2Z_REACHED :: "); o = ct_put_int(out[..], o, reached); o = ct_put(out[..], o, ";   // samples a creature can walk to from the spawn\n");
+  o = ct_put(out[..], o, "E2Z_CELL :: [E2Z_CELLS] E2ZCell.[\n");
+  k := 0;
+  for p: 0..<cn {
+    if cells[p].reached == 0 { continue; }
+    o = ct_put(out[..], o, "  E2ZCell.{cx = "); o = ct_put_int(out[..], o, cells[p].cx); o = ct_put(out[..], o, ", cz = "); o = ct_put_int(out[..], o, cells[p].cz);
+    o = ct_put(out[..], o, ", digest = "); o = ct_put_int(out[..], o, cells[p].digest); o = ct_put(out[..], o, ", open = "); o = ct_put_int(out[..], o, cells[p].open);
+    o = ct_put(out[..], o, ", reached = "); o = ct_put_int(out[..], o, cells[p].reached); k += 1;
+    o = ct_put(out[..], o, ifx k < listed then "},\n" else "}\n");
+  }
+  o = ct_put(out[..], o, "];\n");
+  if o >= ZC_OUT { print("zone cells: the manifest is longer than its buffer\n"); return 1; }
+  print("zone cells: % cells with ground, % listed; % open samples, % reached from the spawn (% cut off); % named points, % content points and % spawns reachable\n",
+    cn, listed, open, reached, open - reached, E2_POINTS, ct_rows(d[..], EC_POINT), ct_rows(d[..], EC_SPAWN));
+  path := args_at(a[..], 1);
+  if args_at(a[..], 0) == "--write" { if !fs_write(path, cast(string) out[0..<o]) { print("zone cells: can't write %\n", path); return 1; } return 0; }
+  have: [ZC_OUT] u8; hn := fs_read(path, have[..]);
+  if hn != o || cast(string) have[0..<ifx hn > 0 then hn else 0] != cast(string) out[0..<o] { print("zone cells: % is not what the land builds now: write it again (--write)\n", path); return 1; }
+  return 0;
+}

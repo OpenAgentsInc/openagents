@@ -228,7 +228,10 @@ e2g_fight :: (v: [] RmServer, k: int, g: [] E2Guard, on: int, tx: f32, tz: f32, 
     if nav_wants_window(a[0]) {
       w := g[0].win[..];
       nav_window_place(w, t, a[0]);
-      for c: 0..<nav_window_cells(w) { p := nav_window_spot(w, c); w[0].walk[c] = e2_may_stand(p[0], p[1]); }
+      // his window is the room's navigation cells where it holds them (everglade/server/nav.coax, #13281): the ground a
+      // creature stands on, clear of every trunk and rock; where it holds none, where one may stand
+      if e2nv_awake(v, k, g[0].x, g[0].z) { filled := nav_cells_window(v[0].nav[0].pages[..], w); }
+      else { for c: 0..<nav_window_cells(w) { p := nav_window_spot(w, c); w[0].walk[c] = e2_may_stand(p[0], p[1]); } }
       nav_plan(a, t, w);
     } else { nav_direct(a, t); }
   }

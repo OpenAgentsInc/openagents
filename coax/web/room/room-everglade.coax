@@ -38,3 +38,4 @@
 #load "../../../everglade/server/send.coax";
 #load "../../../everglade/server/progress.coax";
 #load "../../../everglade/server/room-checks.coax" #test;
+#load "../../../everglade/server/nav-checks.coax" #test;   // the room's cells and navigation (#13280, #13281)

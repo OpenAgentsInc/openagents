@@ -289,6 +289,9 @@ room() {
   step room-webtransport coax/web/room/wt-check.sh 9441 || status=1
   step encounter-ttk coax/web/tool.sh coax/web/room/encounter-sim.coax --check docs/dnd/encounter-ttk.md || status=1
   step bot-bars coax/web/tool.sh coax/web/room/encounter-sim.coax --check-bars coax/web/room/bot-bars.coax || status=1   # the bots' bars are the classes' (#13296)
+  # the zone's cells (#13280, #13281): the committed manifest is what the land builds now, every spawn and named point
+  # can be walked to, and a creature walks the named points' routes on the navigation cells
+  step zone-cells coax/web/tool.sh everglade/model/tools/zone-cells.coax --check everglade/world/zone-cells.coax everglade/content/everglade.content || status=1
   step room-fuzz coax/web/room/fuzz/fuzz.sh slice "${OA_FUZZ_SLICE:-60}" || status=1   # the wire and framing fuzzers, a minute each (#13283)
   [[ -z "${1:-}" ]] || e2_gate "$1" || status=1
 }

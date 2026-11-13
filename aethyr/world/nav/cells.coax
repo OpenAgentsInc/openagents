@@ -1,0 +1,250 @@
+// Navigation data by cell (GitHub #13281, AAA P2.8; book chapter 76; docs/verse/navigation.md):
+// where a creature may stand, kept one page a world cell (aethyr/world/cells.coax, CELL_SIZE metres
+// a side) and paged in and out with it. A page is NAV_CELL_SIDE by NAV_CELL_SIDE samples,
+// NAV_CELL_STEP metres apart, one bit each: open where a body of the realm's creature radius
+// stands clear of every collider the players' own step uses (cells-colliders.coax closes them).
+// Sample (i, j) of cell (cx, cz) is the point (cx * 64 + (i + 0.5) / 2, cz * 64 + (j + 0.5) / 2).
+// A point in no resident page is closed: nobody walks onto ground that isn't loaded.
+//
+// One level (the decision is recorded in docs/verse/navigation.md, "Grid or mesh"): the samples,
+// searched by grid.coax in a 20 m window (aethyr/ai/steer.coax) and, for a way the window can't
+// see, over 64 m about the creature (aethyr/ai/steer-cells.coax). A page is built a block at a time,
+// NAV_BLOCK by NAV_BLOCK samples (2 m).
+//
+// What moves: an obstacle (a shut door, a placed piece) is a circle or a turned box laid over the
+// pages, by its own id. nav_cells_block and nav_cells_unblock change it and raise the revision,
+// so whoever planned on the old revision plans again. A page's own bits never change after it is
+// built, so its digest is its content's.
+//
+// The last word on a creature's step is nav_cells_keep: the step, or its slide along one axis, or
+// where it stood. A creature that only ever moves by it never stands on a closed sample.
+//   coax/bin/coax test aethyr/world/nav/cells.coax --library
+//   coax/bin/coax mutate aethyr/world/nav/cells.coax --library --root-only
+#module "aethyr.nav.cells";
+#authority;
+#load "grid.coax";
+#load "../cells.coax";
+
+// book:begin nav-cells
+NAV_CELL_SIDE :: 128;        // samples along a page's side
+NAV_CELL_STEP :: 0.5;        // metres between samples: CELL_SIZE / NAV_CELL_SIDE
+NAV_CELL_WORDS :: 512;       // NAV_CELL_SIDE * NAV_CELL_SIDE / 32
+NAV_BLOCK :: 4;              // samples along a block's side: 2 m, what a build writes at once
+NAV_BLOCK_SIDE :: 32;        // blocks along a page's side
+NAV_PAGES :: 48;             // pages resident at once: CELL_RESIDENT
+NAV_OBSTACLES :: 64;         // doors and placed pieces at once
+NAV_LINE_STEP :: 0.125;      // metres between a line's samples: a quarter of a sample
+NAV_TURN_SLACK :: 0.0009765625;   // 2^-10: how far from 1 a turn's cosine and sine, squared and summed, may be
+
+NavPage :: struct {
+  used: bool; cx: int; cz: int;
+  open: [NAV_CELL_WORDS] u32;      // bit i of word j * 4 + i / 32: sample (i, j)
+}
+// An obstacle: a circle of radius hx (round), or a box of half extents hx across and hz deep
+// turned by its yaw (c its cosine, s its sine), about (x, z).
+NavObstacle :: struct { on: bool; id: int; round: bool; x: f32; z: f32; hx: f32; hz: f32; c: f32 = 1; s: f32; }
+NavCells :: struct {
+  page: [NAV_PAGES] NavPage;
+  obstacle: [NAV_OBSTACLES] NavObstacle; obstacles: int;   // the first `obstacles` are in use
+  revision: int;                   // raised by every page added or dropped and every obstacle change
+}
+// A sample: its page (-1 none), and its column and row there.
+NavSample :: struct { page: int = -1; i: int; j: int; }
+// book:end nav-cells
+
+nav_cells_real :: (a: f32) -> bool #effects(all) { return a == a && a < 1000000.0 && a > -1000000.0; }
+
+// The page of cell (cx, cz), or -1.
+nav_cells_page :: (n: [] NavCells, cx: int, cz: int) -> int #effects(all) {
+  for p: 0..<NAV_PAGES { if n[0].page[p].used && n[0].page[p].cx == cx && n[0].page[p].cz == cz { return p; } }
+  return -1;
+}
+nav_cells_pages :: (n: [] NavCells) -> int #effects(all) { c := 0; for p: 0..<NAV_PAGES { if n[0].page[p].used { c += 1; } } return c; }
+// A new page for cell (cx, cz), every sample closed: its number, or -1 when the cell has one
+// already or no page is free.
+nav_cells_add :: (n: [] NavCells, cx: int, cz: int) -> int #effects(all) {
+  if nav_cells_page(n, cx, cz) >= 0 { return -1; }
+  for p: 0..<NAV_PAGES {
+    if n[0].page[p].used { continue; }
+    n[0].page[p] = NavPage.{used = true, cx = cx, cz = cz};
+    n[0].revision += 1;
+    return p;
+  }
+  return -1;
+}
+// The cell's page is given up. Whether it had one.
+nav_cells_drop :: (n: [] NavCells, cx: int, cz: int) -> bool #effects(all) {
+  p := nav_cells_page(n, cx, cz);
+  if p < 0 { return false; }
+  n[0].page[p] = NavPage.{};
+  n[0].revision += 1;
+  return true;
+}
+
+// book:begin nav-sample
+// Sample (i, j) of page p's own bit.
+nav_cells_bit :: (n: [] NavCells, p: int, i: int, j: int) -> bool #effects(all) {
+  if p < 0 || p >= NAV_PAGES || i < 0 || j < 0 || i >= NAV_CELL_SIDE || j >= NAV_CELL_SIDE { return false; }
+  return (n[0].page[p].open[j * 4 + i / 32] >> cast(u32) (i % 32)) & 1 == 1;
+}
+// Opens or closes sample (i, j) of page p.
+nav_cells_set :: (n: [] NavCells, p: int, i: int, j: int, open: bool) #effects(all) {
+  if p < 0 || p >= NAV_PAGES || !n[0].page[p].used || i < 0 || j < 0 || i >= NAV_CELL_SIDE || j >= NAV_CELL_SIDE { return; }
+  w := j * 4 + i / 32; bit := cast(u32) 1 << cast(u32) (i % 32);
+  if open { n[0].page[p].open[w] |= bit; } else { n[0].page[p].open[w] &= bit ^ 0xFFFFFFFF; }
+}
+// The sample holding (x, z): its page is -1 where no resident page has it (or it isn't a number).
+nav_cells_at :: (n: [] NavCells, x: f32, z: f32) -> NavSample #effects(all) {
+  out: NavSample;
+  if !nav_cells_real(x) || !nav_cells_real(z) { return out; }
+  cx := cell_key(f64(x)); cz := cell_key(f64(z));
+  out.i = cast(int) floor((f64(x) - f64(cx) * CELL_SIZE) / NAV_CELL_STEP);
+  out.j = cast(int) floor((f64(z) - f64(cz) * CELL_SIZE) / NAV_CELL_STEP);
+  out.page = nav_cells_page(n, cx, cz);
+  return out;
+}
+// Sample (i, j) of cell (cx, cz): its middle.
+nav_cells_x :: (cx: int, i: int) -> f32 #effects(all) { return cast(f32) (f64(cx) * CELL_SIZE + (f64(i) + 0.5) * NAV_CELL_STEP); }
+// book:end nav-sample
+
+// ---- obstacles
+
+// The obstacles in use are the first `obstacles` of the store, in no order. Obstacle `id`'s place, or -1.
+nav_cells_obstacle :: (n: [] NavCells, id: int) -> int #effects(all) {
+  for o: 0..<n[0].obstacles { if n[0].obstacle[o].id == id { return o; } }
+  return -1;
+}
+nav_cells_obstacles :: (n: [] NavCells) -> int #effects(all) { return n[0].obstacles; }
+// Whether the shape can be used: numbers, a size above zero, and a turn that is a unit vector.
+nav_cells_shape_ok :: (s: NavObstacle) -> bool #effects(all) {
+  if !nav_cells_real(s.x) || !nav_cells_real(s.z) || !(s.hx > 0) || !(s.hx <= CELL_SIZE) { return false; }
+  if s.round { return true; }
+  return s.hz > 0 && s.hz <= CELL_SIZE && abs(s.c * s.c + s.s * s.s - 1) < f32(NAV_TURN_SLACK);
+}
+// Lays obstacle `id` down as `shape` (its id and on are set here), or moves it when it is down
+// already. False, with nothing changed, for a shape that can't be used or when all are in use.
+nav_cells_block :: (n: [] NavCells, id: int, shape: NavObstacle) -> bool #effects(all) {
+  if !nav_cells_shape_ok(shape) { return false; }
+  o := nav_cells_obstacle(n, id);
+  if o < 0 {
+    if n[0].obstacles >= NAV_OBSTACLES { return false; }
+    o = n[0].obstacles; n[0].obstacles += 1;
+  }
+  n[0].obstacle[o] = shape; n[0].obstacle[o].on = true; n[0].obstacle[o].id = id;
+  n[0].revision += 1;
+  return true;
+}
+// Takes obstacle `id` up (a door opens): the last in use takes its place. Whether it was down.
+nav_cells_unblock :: (n: [] NavCells, id: int) -> bool #effects(all) {
+  o := nav_cells_obstacle(n, id);
+  if o < 0 { return false; }
+  n[0].obstacles -= 1;
+  n[0].obstacle[o] = n[0].obstacle[n[0].obstacles];
+  n[0].obstacle[n[0].obstacles] = NavObstacle.{};
+  n[0].revision += 1;
+  return true;
+}
+// Whether (x, z) is within `pad` of an obstacle's shape.
+nav_cells_under :: (s: NavObstacle, x: f32, z: f32, pad: f32) -> bool #effects(all) {
+  dx := x - s.x; dz := z - s.z;
+  if s.round { r := s.hx + pad; return dx * dx + dz * dz < r * r; }
+  // the box's own across (c, -s) and deep (s, c), as a placed piece turns
+  a := dx * s.c - dz * s.s; b := dx * s.s + dz * s.c;
+  return abs(a) < s.hx + pad && abs(b) < s.hz + pad;
+}
+nav_cells_blocked :: (n: [] NavCells, x: f32, z: f32) -> bool #effects(all) {
+  for o: 0..<n[0].obstacles { if nav_cells_under(n[0].obstacle[o], x, z, 0) { return true; } }
+  return false;
+}
+
+// ---- the questions a step asks
+
+// book:begin nav-open
+// Whether a creature may stand at (x, z): its sample's bit, in a resident page, under no obstacle.
+nav_cells_open :: (n: [] NavCells, x: f32, z: f32) -> bool #effects(all) {
+  s := nav_cells_at(n, x, z);
+  return nav_cells_bit(n, s.page, s.i, s.j) && !nav_cells_blocked(n, x, z);
+}
+// The steps a line of `length` metres is sampled in: each NAV_LINE_STEP or shorter, never none.
+nav_cells_line_steps :: (length: f32) -> int #effects(all) { return cast(int) (length / f32(NAV_LINE_STEP)) + 1; }
+// Whether a straight walk from a to b stays open, sampled every NAV_LINE_STEP metres and at both ends.
+nav_cells_line :: (n: [] NavCells, ax: f32, az: f32, bx: f32, bz: f32) -> bool #effects(all) {
+  dx := bx - ax; dz := bz - az;
+  steps := nav_cells_line_steps(sqrt(dx * dx + dz * dz));
+  for k: 0..<steps + 1 {
+    f := f32(k) / f32(steps);
+    if !nav_cells_open(n, ax + dx * f, az + dz * f) { return false; }
+  }
+  return true;
+}
+// Where a step from (fx, fz) that ended at (x, z) leaves a creature: there, or slid along the axis
+// that is open, or where it started.
+nav_cells_keep :: (n: [] NavCells, x: f32, z: f32, fx: f32, fz: f32) -> [2] f32 #effects(all) {
+  if nav_cells_open(n, x, z) { return [2] f32.[x, z]; }
+  if nav_cells_open(n, x, fz) { return [2] f32.[x, fz]; }
+  if nav_cells_open(n, fx, z) { return [2] f32.[fx, z]; }
+  return [2] f32.[fx, fz];
+}
+// book:end nav-open
+
+// book:begin nav-fill
+// Fills a search grid's walk from the samples: a grid cell is walkable where its middle is open.
+// The count of walkable cells, or -1 for a grid that can't be used or storage too short.
+nav_cells_fill :: (n: [] NavCells, g: NavGrid, walk: [] bool) -> int #effects(all) {
+  if !nav_grid_ok(g) || walk.count < nav_grid_cells(g) { return -1; }
+  open := 0;
+  for c: 0..<nav_grid_cells(g) {
+    walk[c] = nav_cells_open(n, nav_grid_centre_x(g, c), nav_grid_centre_z(g, c));
+    if walk[c] { open += 1; }
+  }
+  return open;
+}
+// book:end nav-fill
+
+// ---- what a pack step checks: everything a creature can reach from one place
+
+// book:begin nav-reach
+NAV_PAGE_SAMPLES :: 16384;   // NAV_CELL_SIDE squared
+// Marks every sample a creature can walk to from (x, z) by steps east, west, north and south over
+// open samples, across pages. `mark` is one bit a sample (NAV_PAGES * NAV_CELL_WORDS words) and
+// `queue` the search's own (NAV_PAGES * NAV_PAGE_SAMPLES numbers). The samples reached; 0 when it
+// starts on a closed one, -1 for storage too short.
+nav_cells_reach :: (n: [] NavCells, x: f32, z: f32, mark: [] u32, queue: [] s32) -> int #effects(all) {
+  if mark.count < NAV_PAGES * NAV_CELL_WORDS || queue.count < NAV_PAGES * NAV_PAGE_SAMPLES { return -1; }
+  for w: 0..<NAV_PAGES * NAV_CELL_WORDS { mark[w] = 0; }
+  if !nav_cells_open(n, x, z) { return 0; }
+  s := nav_cells_at(n, x, z);
+  head := 0; tail := 1; queue[0] = cast(s32) (s.page * NAV_PAGE_SAMPLES + s.j * NAV_CELL_SIDE + s.i);
+  mark[s.page * NAV_CELL_WORDS + s.j * 4 + s.i / 32] |= cast(u32) 1 << cast(u32) (s.i % 32);
+  while head < tail {
+    at := cast(int) queue[head]; head += 1;
+    p := at / NAV_PAGE_SAMPLES; i := at % NAV_CELL_SIDE; j := (at / NAV_CELL_SIDE) % NAV_CELL_SIDE;
+    px := nav_cells_x(n[0].page[p].cx, i); pz := nav_cells_x(n[0].page[p].cz, j);
+    for k: 0..<4 {
+      qx := px + f32(NAV_GRID_DX[k]) * f32(NAV_CELL_STEP); qz := pz + f32(NAV_GRID_DZ[k]) * f32(NAV_CELL_STEP);
+      if !nav_cells_open(n, qx, qz) { continue; }
+      t := nav_cells_at(n, qx, qz);
+      w := t.page * NAV_CELL_WORDS + t.j * 4 + t.i / 32; bit := cast(u32) 1 << cast(u32) (t.i % 32);
+      if mark[w] & bit != 0 { continue; }
+      mark[w] |= bit;
+      queue[tail] = cast(s32) (t.page * NAV_PAGE_SAMPLES + t.j * NAV_CELL_SIDE + t.i); tail += 1;
+    }
+  }
+  return tail;
+}
+// Whether the last nav_cells_reach on `mark` got to (x, z).
+nav_cells_reached :: (n: [] NavCells, mark: [] u32, x: f32, z: f32) -> bool #effects(all) {
+  s := nav_cells_at(n, x, z);
+  if s.page < 0 || mark.count < NAV_PAGES * NAV_CELL_WORDS { return false; }
+  return (mark[s.page * NAV_CELL_WORDS + s.j * 4 + s.i / 32] >> cast(u32) (s.i % 32)) & 1 == 1;
+}
+// book:end nav-reach
+
+// A page's content as one number: its cell and every sample. 0 for no page.
+nav_cells_digest :: (n: [] NavCells, p: int) -> int #effects(all) {
+  if p < 0 || p >= NAV_PAGES || !n[0].page[p].used { return 0; }
+  h := replay_mix(replay_mix(2166136261, n[0].page[p].cx), n[0].page[p].cz);
+  for w: 0..<NAV_CELL_WORDS { h = replay_mix(h, cast(int) n[0].page[p].open[w]); }
+  return h + 1;   // never 0: a manifest's digest (cells.coax cell_manifest_ok)
+}
+#load "cells-checks.coax" #test;

@@ -60,8 +60,125 @@ Experimental, it runs on the page's frame.
 
 - The Everglade II path guard fights on it in the room (`e2g_fight`). His leash stays his own:
   `E2G_LEASH` from where he was struck, then back to his walk.
+- The Everglade II wolves and goblins move on the navigation cells (`e2mo_move` through `e2nv_go`).
+  Their notice, circling, blows and leash stay their own. The guard's window is filled from the
+  cells while he fights.
 - The Experimental monsters chase, circle and leash on it (`hostile_steer`). The dungeon's doorway
   graph supplies their waypoints between rooms.
+
+## Navigation cells
+
+A creature that moves by the world's navigation cells never needs the zone's own stand test. The
+data is built from the colliders the players' step uses, one page for each 64 m world cell
+([one world](one-world.md)). Issue:
+[#13281](https://github.com/OpenAgentsInc/openagents/issues/13281).
+
+| Layer | What it owns | Where |
+| --- | --- | --- |
+| Engine | A page: 128 by 128 samples, 0.5 m apart, one bit each. Open and closed, a straight walk, the step's last word (`nav_cells_keep`), obstacles (a shut door, a placed piece), what can be reached from a place, a page's digest | `aethyr/world/nav/cells.coax` |
+| Engine | A block of a page built from capsules and hulls: a sample opens where a body of the creature's radius stands clear of them all | `aethyr/world/nav/cells-colliders.coax` |
+| Engine | A creature's tick on the cells: the long way, the window, the step and the last word | `aethyr/ai/steer-cells.coax` (`nav_cells_go`) |
+| Game | Everglade's pages, from `e2_may_stand` and `e2m_world`, the same calls a player's step makes | `everglade/shared/nav.coax` |
+| Game | The zone's manifest: each cell, its page's digest and its open samples | `everglade/world/zone-cells.coax`, written by `everglade/model/tools/zone-cells.coax` |
+| Room | Which cells a room holds, the page builder, the monsters' steps, a room's own obstacles, the counts | `everglade/server/nav.coax` |
+
+### How a creature goes to a point
+
+Each tick, the realm says where the creature wants to be and how fast. `nav_cells_go` does the
+rest:
+
+1. When a plan is due (every half second, when a step was refused, or when an obstacle changed),
+   it checks the straight walk on the samples. If that is shut and the point is more than 8 m
+   away, it plans the long way: one search of every sample within 32 m that the creature can walk
+   to, then a waypoint 8 m along the way to the sample nearest its goal.
+2. It lays the service's 20 m window on the samples and plans in it toward the waypoint or the
+   point.
+3. It takes the service's step, and `nav_cells_keep` has the last word: the step, a slide along
+   one axis, or no step. A creature never ends a tick on a closed sample.
+
+Where no way is open, it comes as near as the samples allow and stands there.
+
+In a room, three more rules hold (`everglade/server/nav.coax`):
+
+- A page is built when a creature first needs it: the cells within 32 m of a creature about to
+  move. A host also builds ahead in spare ticks, a slice each tick. Until its pages are in, the
+  creature stands.
+- A creature on closed ground (a piece laid over it) walks straight to the nearest open ground
+  within 3 m.
+- A monster on its way home with no way there is put home after 20 s.
+
+### Doors and placed pieces
+
+An obstacle is a circle or a turned box laid over the pages by its ID. A room lays one with
+`rm_e2_nav_block` and takes it up with `rm_e2_nav_unblock`. The room adds the creature's radius.
+Each change raises the cells' revision, so every creature of that room plans again on its next
+tick. Obstacles are a room's own: two rooms on one server share pages, not doors.
+
+### At pack time
+
+Run the manifest tool after any change to the land, the planting, a rock's hull, the camp or
+`e2_may_stand`:
+
+```sh
+coax/web/tool.sh everglade/model/tools/zone-cells.coax --write everglade/world/zone-cells.coax everglade/content/everglade.content
+```
+
+It builds every cell's page and refuses the zone when any of these holds:
+
+- A named point (`verse/everglade2/points.coax`) can't be walked to from the spawn.
+- A content point (`everglade/content/everglade.content`) has no reachable ground within its
+  radius, or a spawn names no point.
+- A creature walked by `nav_cells_go` from the spawn to each named point in turn, and back,
+  doesn't arrive or leaves open ground. This is the route walk test's rule, for creatures.
+
+`--check` compares the committed manifest with what the land builds now. A room keeps a page only
+at the manifest's digest, so a stale manifest shows as refused pages and creatures that stand
+still, never as creatures on the wrong ground.
+
+### What a room counts
+
+The room's vitals report these totals, and the soak fails a run where either of the first two is
+above 0 ([soak](../deployment/soak.md)):
+
+| Line | Meaning |
+| --- | --- |
+| `navigation creature ticks off the cells` | A monster ended a tick off the cells' open ground. Checked for every monster on every tick |
+| `navigation creatures found inside a collider` | A creature's middle was inside a trunk, a rock or a prop, or off the ground a player may stand on. One creature is checked each tick, in turn, against the host's own planting. The guard is checked here too |
+| `navigation collider looks` | How many of those checks ran |
+| `navigation pages kept`, `pages refused` | Pages built and kept at the manifest's digest, and pages that came out at another digest and were dropped |
+| `navigation creature ticks slept` | Monster ticks skipped because the monster's cell wasn't simulating |
+| `navigation pages built` | Pages the server has built |
+
+## Grid or mesh
+
+**Decision (2026-11-12, #13281):** creatures path on the 0.5 m sample grid, with two searches of
+that one grid: the 20 m window and a 64 m search about the creature. No navigation mesh, and no
+coarser level.
+
+The measured case is Everglade's zone: 21 cells, 84,770 open samples, of which 84,657 can be
+reached from the spawn. The manifest tool walks a creature at 9 m/s from the spawn to each of the
+9 named points in turn and back (`zone-cells.coax`, on a Mac under load):
+
+| Design | Result |
+| --- | --- |
+| The 20 m window alone | Fails. It presses on a wall whose gap is out of the window's sight (`aethyr/ai/steer-cells-checks.coax`) |
+| The window, plus a long way planned on 2 m blocks (a block open when any of its 16 samples is) | Fails 2 of 9 walks. Two blocks that both hold open samples aren't always joined, so a waypoint could be out of reach. A creature walked back and forth by z -72 on the path for 482 m without arriving |
+| The window, plus a long way searched on the samples within 32 m | Passes 9 of 9: 1,376 m walked for 1,306 m straight. The walk back from the far clearing is 470 m. A tick costs 40 µs on average. The slowest, one with a long-way search, costs 1.4 ms |
+
+Why not a mesh now:
+
+- The sample grid is exact for the colliders it was built from, and a page is 2 KiB. A mesh needs
+  a builder, a point-location structure and a funnel, none of which exist here.
+- A long-way search is 16,384 cells at most and runs only when the straight walk is shut, at most
+  twice a second for each creature.
+
+When to revisit:
+
+- A zone where a creature must find a way round something more than 32 m deep. The search heads
+  for the reachable sample nearest the goal, so a deeper pocket can hold it. The pack-time walks
+  catch this for the named points.
+- Creatures of very different sizes. A page is built for one radius (0.4 m in Everglade).
+- A room where long-way searches show in the tick's p99.
 
 ## Checks
 
@@ -75,6 +192,19 @@ Experimental, it runs on the page's frame.
 - The leash takes it home, where it waits until the target comes back within the leash.
 
 `aethyr/ai/steer-colliders.coax` checks the same doorway with the window filled from colliders.
+
+The navigation cells' checks:
+
+- `aethyr/world/nav/cells.coax`, `cells-colliders.coax` and `aethyr/ai/steer-cells.coax`: pages,
+  obstacles, reach, the build from colliders, a walk round a trunk, a gap out of the window's
+  sight, and a door that shuts and opens. `coax mutate --root-only` leaves no survivor in any of
+  the three.
+- `everglade/shared/nav.coax`: a page's open samples are clear of every collider a player's step
+  meets.
+- `everglade/server/nav-checks.coax` (in the room's suite, `--only "e2 nav"`): a page is built on
+  first need and kept only at the manifest's digest, a slice a tick on a host; a wolf chases a
+  player round a trunk; a gate across the path sends the pack through its gap and, shut, holds
+  them; a piece laid over a wolf sends it out; a monster whose cell sleeps is home and whole.
 The guard and the monsters have their own checks in their files.
 
 ## Limits

@@ -82,6 +82,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     e2_rest_start(v,q); egb_enable_familiars(rules);   // Everglade II's rests are the shared rules' (everglade/server/rest.coax)
     v[0].eg[q].guard[0] = E2Guard.{};
     v[0].eg[q].monsters[0] = E2Monsters.{};
+    e2_nav_start(v, q);   // its cells, every one absent until a seat is placed (everglade/server/nav.coax)
     v[0].eg[q].arrows[0] = E2Arrows.{};
     ev_fresh(v, q);   // its XP, rises and rests (progress.coax)
     v[0].eg[q].initialized=true;

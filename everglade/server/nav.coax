@@ -1,0 +1,358 @@
+// An Everglade room's cells and its creatures' navigation (GitHub #13280, #13281; docs/verse/one-world.md,
+// docs/verse/navigation.md). The room is the authority: it keeps each cell's level in the engine's
+// cell controller (aethyr/world/cells.coax, the zone's manifest from everglade/world/zone.coax),
+// stepped each tick on every placed seat. A creature steps only while its cell simulates, and moves
+// only by the cells' navigation pages (aethyr/world/nav/cells.coax through aethyr/ai/steer-cells.coax):
+// round a trunk, through a gap, never onto a closed sample.
+//
+// A cell has nothing to fetch in a room: the controller's load is answered at once, and a cell's
+// level is its distance to the nearest seat. Its navigation page is built when a creature first
+// needs it (e2nv_need: the cells within 32 m of a creature about to move), from the players'
+// colliders (everglade/shared/nav.coax), a slice a tick: first the planting round the cell
+// (E2NV_PLANT_SLICE planting cells a tick, or none when the host handed the room its whole planting,
+// rm_e2_land), then its blocks (E2NV_BLOCK_SLICE a tick). A creature whose pages aren't in yet stands
+// until they are. A host's room also builds ahead in its spare slices: every cell it holds resident,
+// in the manifest's order. The land is the same in every room, so the server keeps one store of
+// pages for all its rooms, and one cell world they step in by turns: a room keeps only its own
+// cells' levels and requests, and its own obstacles (doors, placed pieces), which are laid over the
+// pages while it ticks (e2nv_enter, e2nv_leave). A page is kept only at the manifest's digest: one
+// that came out otherwise is dropped, counted, and never built again, and no creature moves on its
+// cell. The store holds NAV_PAGES pages and never gives one up: Everglade's cells all fit.
+//
+// A check's room (eg_test_clock sets v[0].nav[0].whole) builds a page whole in the tick it is
+// needed and builds nothing ahead, so a check that puts a player down and ticks sees a creature
+// move that tick, and a check with no creature on the move builds nothing. A host's room never does.
+//
+// What it counts, a total since the room opened (rm_e2_nav_count): creature ticks off the cells'
+// open ground (every creature that moves by them, every tick), creature looks that found one inside
+// a collider or off the ground one may stand on (one creature a tick, by turns, against the host's
+// own planting), pages kept and refused, and creature ticks slept.
+//   coax test --library coax/web/room/room.coax --steps 4000000000 --only "e2 nav"
+#load "../shared/nav.coax";
+#load "../world/zone.coax";
+#load "../../aethyr/ai/steer-cells.coax";
+
+E2NV_OBSTACLES :: 16;      // doors and placed pieces a room lays at once
+E2NV_OUT :: 3.0;           // m: how far a creature on closed ground looks for open ground to step out to
+E2NV_NEED :: 32.0;         // m each way of a creature: the pages its long way is searched on (NAV_LONG_SIDE samples)
+E2NV_PLANT_SLICE :: 3;     // planting cells planted a tick
+E2NV_BLOCK_SLICE :: 128;   // blocks built a tick
+E2NV_CREATURES :: 13;      // E2M_N monsters and the guard
+E2NV_GUARD :: 12;          // the guard's place among them
+E2NV_OFF :: 0; E2NV_INSIDE :: 1; E2NV_ADMITTED :: 2; E2NV_REFUSED :: 3; E2NV_SLEPT :: 4; E2NV_LOOKS :: 5; E2NV_COUNTS :: 6;
+
+// The server's page builder: one cell at a time, for whichever room asked first.
+E2NavBuild :: struct {
+  on: bool; cx: int; cz: int; page: int = -1;     // the page being built, in the server's store
+  failed: bool;                                   // the planting round it didn't fit
+  cell: int;                                      // the next planting cell to look at (row order)
+  i0: int; i1: int; j0: int; j1: int;             // the planting cells round the world cell
+  planted: int;                                   // pieces planted so far
+  block: int;                                     // blocks built so far
+  items: [E2N_ITEMS * E2_ITEM_FLOATS] f32; kinds: [E2N_ITEMS] u8; first: [E2_CELLS_X * E2_CELLS_Z + 1] int;
+  bodies: [E2_NEAR_BODIES * 7] f32; hulls: [E2_HULL_ROOM] f32;
+}
+// What every room of the server shares: the pages built so far, the one cell world its rooms step
+// in by turns, the builder, and the plans' storage.
+E2NavShared :: struct {
+  pages: [1] NavCells;
+  world: [1] CellWorld; ready: bool;   // ready: the manifest is in
+  build: [1] E2NavBuild;
+  window: [1] NavWindow; far: [1] NavLong;
+  whole: bool;               // a check's room: pages built whole when needed, and none ahead
+  bad: [E2Z_CELLS] bool;     // cells whose page came out at another digest than the manifest's: never built again
+  next: int = -1;            // the cell a creature is waiting on: the builder's next, before any it builds ahead
+  built: int;                // pages built since the server started
+  totals: [E2NV_COUNTS] int; // every room's counts, a total since the server started
+}
+// One room's cells (each cell's level and its load's request, as the controller keeps them), its
+// obstacles, and its creatures' navigation.
+E2RoomNav :: struct {
+  on: bool;
+  level: [E2Z_CELLS] int; request: [E2Z_CELLS] int; requests: int;
+  obstacle: [E2NV_OBSTACLES] NavObstacle; obstacles: int; changes: int;   // changes: how often its obstacles changed
+  agent: [E2NV_CREATURES] NavAgent; guide: [E2NV_CREATURES] NavGuide;
+  turn: int;                 // whose turn it is to be looked at against the colliders
+  counts: [E2NV_COUNTS] int;
+  first_x: f32; first_z: f32; first_who: int = -1;   // the first creature found off the cells or inside a collider
+}
+
+e2nv_room :: (v: [] RmServer, k: int) -> [] E2RoomNav { return v[0].eg[k].nav[..]; }
+// One more of count `which`, in room k's numbers and the server's.
+e2nv_count :: (v: [] RmServer, k: int, which: int) { v[0].eg[k].nav[0].counts[which] += 1; v[0].nav[0].totals[which] += 1; }
+// The room opens: every cell absent, no obstacle.
+e2_nav_start :: (v: [] RmServer, k: int) {
+  nv := e2nv_room(v, k);
+  nv[0] = E2RoomNav.{};
+  nv[0].on = true;
+}
+// Room k's turn in the server's cell world and on its pages: its cells' levels and requests go in,
+// and its obstacles are laid over the pages. The pages' revision is the room's own: the pages
+// built so far and its obstacles' changes.
+e2nv_enter :: (v: [] RmServer, k: int) {
+  nv := e2nv_room(v, k); sh := v[0].nav[..]; w := sh[0].world[..];
+  if !nv[0].on { e2_nav_start(v, k); }
+  if !sh[0].ready { e2z_manifest(w); sh[0].ready = true; }
+  for i: 0..<E2Z_CELLS { w[0].cells[i].level = nv[0].level[i]; w[0].cells[i].request = nv[0].request[i]; }
+  w[0].requests = nv[0].requests;
+  for o: 0..<NAV_OBSTACLES { sh[0].pages[0].obstacle[o] = ifx o < nv[0].obstacles then nv[0].obstacle[o] else NavObstacle.{}; }
+  sh[0].pages[0].obstacles = nv[0].obstacles;
+  sh[0].pages[0].revision = sh[0].built * 1048576 + nv[0].changes;
+}
+// Its turn ends: what the controller did to its cells is the room's again.
+e2nv_leave :: (v: [] RmServer, k: int) {
+  nv := e2nv_room(v, k); sh := v[0].nav[..]; w := sh[0].world[..];
+  for i: 0..<E2Z_CELLS { nv[0].level[i] = w[0].cells[i].level; nv[0].request[i] = w[0].cells[i].request; }
+  nv[0].requests = w[0].requests;
+}
+
+// ---- the builder
+
+// Starts on cell (cx, cz)'s page in the server's store. False when the store has no room.
+e2nv_build_start :: (v: [] RmServer, cx: int, cz: int) -> bool {
+  sh := v[0].nav[..]; b := sh[0].build[..];
+  p := nav_cells_add(sh[0].pages[..], cx, cz);
+  if p < 0 { return false; }
+  b[0].on = true; b[0].cx = cx; b[0].cz = cz; b[0].page = p; b[0].failed = false; b[0].cell = 0; b[0].planted = 0; b[0].block = 0;
+  r := e2n_planting(cx, cz); b[0].i0 = r[0]; b[0].i1 = r[1]; b[0].j0 = r[2]; b[0].j1 = r[3];
+  return true;
+}
+// Whether the host handed the room its whole planting: then the builder plants nothing of its own.
+e2nv_has_land :: (v: [] RmServer) -> bool { return v[0].e2land.count > 0 && v[0].e2land[0].done; }
+// One slice of the build: planting cells, then blocks. True when the page is whole (or failed).
+e2nv_build_slice :: (v: [] RmServer) -> bool {
+  sh := v[0].nav[..]; b := sh[0].build[..];
+  if !b[0].on { return true; }
+  last := E2_CELLS_X * E2_CELLS_Z;
+  if !e2nv_has_land(v) && b[0].cell < last {
+    done := 0;
+    while b[0].cell < last && done < E2NV_PLANT_SLICE {
+      c := b[0].cell; i := c % E2_CELLS_X; j := c / E2_CELLS_X;
+      b[0].first[c] = b[0].planted;
+      if i >= b[0].i0 && i <= b[0].i1 && j >= b[0].j0 && j <= b[0].j1 {
+        if b[0].planted > E2N_ITEMS - E2N_ITEMS_SPARE { b[0].failed = true; }
+        else { b[0].planted = e2_plant_cell(b[0].items[..], b[0].kinds[..], b[0].planted, i, j); done += 1; }
+      }
+      b[0].cell += 1;
+    }
+    b[0].first[last] = b[0].planted;
+    if b[0].failed { return true; }
+    if b[0].cell < last { return false; }
+    if done > 0 { return false; }   // the planting's last slice was this tick's work
+  }
+  if b[0].failed { return true; }
+  for q: 0..<E2NV_BLOCK_SLICE {
+    if b[0].block >= E2N_BLOCKS { break; }
+    opened := 0;
+    if e2nv_has_land(v) { opened = e2n_block(v[0].e2land, sh[0].pages[..], b[0].page, b[0].block); }
+    else { opened = e2n_block_from(b[0].items[..], b[0].kinds[..], b[0].first[..], true, b[0].bodies[..], b[0].hulls[..], sh[0].pages[..], b[0].page, b[0].block); }
+    b[0].block += 1;
+  }
+  return b[0].block >= E2N_BLOCKS;
+}
+// The build ends: its page stays in the server's store when it is the manifest's (its digest the
+// cell's), and goes when it isn't or the planting didn't fit; such a cell is not built again.
+// Counted in room k's numbers, whose tick ended it.
+e2nv_build_end :: (v: [] RmServer, k: int) {
+  sh := v[0].nav[..]; b := sh[0].build[..];
+  i := cell_find(sh[0].world[..], b[0].cx, b[0].cz);
+  ok := !b[0].failed && i >= 0 && i < E2Z_CELLS && nav_cells_digest(sh[0].pages[..], b[0].page) == sh[0].world[0].manifest[i].digest;
+  if ok { sh[0].built += 1; e2nv_count(v, k, E2NV_ADMITTED); }
+  else { dropped := nav_cells_drop(sh[0].pages[..], b[0].cx, b[0].cz); e2nv_count(v, k, E2NV_REFUSED); if i >= 0 && i < E2Z_CELLS { sh[0].bad[i] = true; } }
+  b[0].on = false; b[0].page = -1;
+}
+// The server's finished page for cell (cx, cz), or -1 (none yet, or still being built).
+e2nv_built :: (v: [] RmServer, cx: int, cz: int) -> int {
+  sh := v[0].nav[..];
+  p := nav_cells_page(sh[0].pages[..], cx, cz);
+  if p >= 0 && sh[0].build[0].on && sh[0].build[0].page == p { return -1; }
+  return p;
+}
+
+// ---- the room's tick: its cells
+
+// The room's cells step on its placed seats. A cell has nothing to fetch here, so each load is
+// answered at once, at the manifest's digest. Between e2nv_enter and e2nv_leave.
+e2nv_cells_step :: (v: [] RmServer, k: int) {
+  w := v[0].nav[0].world[..];
+  at: [EG_SEATS * 2] f64; n := 0;
+  for s: 0..<EG_SEATS {
+    st := v[0].eg[k].seat[s..<s + 1];
+    if !st[0].live || !st[0].placed { continue; }
+    at[n * 2] = f64(st[0].pose.x); at[n * 2 + 1] = f64(st[0].pose.z); n += 1;
+  }
+  // the controller asks a few loads a step: stepped again until it asks none, every cell its rings want is in this tick
+  for round: 0..<E2Z_CELLS + 1 {
+    step := cell_step_from(w, at[0..<n * 2], e2z_room_rings());
+    for q: 0..<step.asked_n { i := step.asked[q]; answered := cell_complete(w, cell_answer(w[0].cells[i].request, 1, i, w[0].manifest[i].digest, false)); }
+    if step.asked_n == 0 { break; }
+  }
+}
+// Whether manifest cell i's page is in the server's store, whole.
+e2nv_ready :: (v: [] RmServer, i: int) -> bool {
+  sh := v[0].nav[..];
+  return i >= 0 && i < E2Z_CELLS && e2nv_built(v, sh[0].world[0].manifest[i].cx, sh[0].world[0].manifest[i].cz) >= 0;
+}
+// Manifest cell i's page is wanted: the builder takes it when it is free (a check's room builds it
+// whole, now). True when the page is in.
+e2nv_want :: (v: [] RmServer, k: int, i: int) -> bool {
+  sh := v[0].nav[..];
+  if i < 0 || i >= E2Z_CELLS || sh[0].bad[i] { return false; }
+  if e2nv_ready(v, i) { return true; }
+  if sh[0].whole && sh[0].build[0].on { while !e2nv_build_slice(v) { } e2nv_build_end(v, k); }   // another's, finished first
+  if sh[0].build[0].on { if sh[0].next < 0 { sh[0].next = i; } return false; }   // the builder is on another: this one is its next
+  if !e2nv_build_start(v, sh[0].world[0].manifest[i].cx, sh[0].world[0].manifest[i].cz) { return false; }
+  if sh[0].next == i { sh[0].next = -1; }
+  if !sh[0].whole { return false; }
+  while !e2nv_build_slice(v) { }
+  e2nv_build_end(v, k);
+  return e2nv_ready(v, i);
+}
+// The pages a creature at (x, z) moves on: those of the cells within E2NV_NEED of it, each way, that
+// the room holds and the manifest lists. Each is asked for; true when they are all in.
+e2nv_need :: (v: [] RmServer, k: int, x: f32, z: f32) -> bool {
+  nv := e2nv_room(v, k); w := v[0].nav[0].world[..];
+  all := true;
+  for corner: 0..<4 {
+    cx := cell_key(f64(x) + (ifx corner % 2 == 0 then -E2NV_NEED else E2NV_NEED)); cz := cell_key(f64(z) + (ifx corner / 2 == 0 then -E2NV_NEED else E2NV_NEED));
+    i := cell_find(w, cx, cz);
+    if i < 0 || i >= E2Z_CELLS || nv[0].level[i] < CELL_RESIDENT_LEVEL { continue; }
+    if !e2nv_want(v, k, i) { all = false; }
+  }
+  return all;
+}
+// The tick's cells, before the creatures step: the controller's step, and a host's builder: a
+// slice of the page it is on, or, when it is free, a start on the first cell the room holds
+// that has no page yet. Its obstacles stay laid over the pages for its creatures' steps, which
+// follow in the same tick.
+e2_nav_tick :: (v: [] RmServer, k: int) {
+  nv := e2nv_room(v, k); sh := v[0].nav[..];
+  e2nv_enter(v, k);
+  e2nv_cells_step(v, k);
+  e2nv_leave(v, k);
+  if sh[0].whole { return; }
+  if sh[0].build[0].on { if e2nv_build_slice(v) { e2nv_build_end(v, k); } return; }
+  if sh[0].next >= 0 { waited := sh[0].next; sh[0].next = -1; started := e2nv_want(v, k, waited); return; }
+  for i: 0..<E2Z_CELLS {
+    if nv[0].level[i] >= CELL_RESIDENT_LEVEL && !sh[0].bad[i] && !e2nv_ready(v, i) { started := e2nv_want(v, k, i); return; }
+  }
+}
+
+// ---- what a creature asks (in its room's tick, after e2_nav_tick)
+
+// Whether a creature at (x, z) steps this tick: its cell simulates (a player near, its page admitted).
+e2nv_awake :: (v: [] RmServer, k: int, x: f32, z: f32) -> bool {
+  nv := e2nv_room(v, k); w := v[0].nav[0].world[..];
+  i := cell_of(w, f64(x), f64(z));
+  return i >= 0 && i < E2Z_CELLS && nv[0].level[i] >= CELL_SIMULATE_LEVEL;
+}
+// Whether a creature may stand at (x, z) in room k: on the page of a cell the room holds, open, under
+// none of its obstacles. No page yet is nowhere to stand.
+e2nv_open :: (v: [] RmServer, k: int, x: f32, z: f32) -> bool {
+  nv := e2nv_room(v, k); sh := v[0].nav[..];
+  i := cell_of(sh[0].world[..], f64(x), f64(z));
+  return i >= 0 && i < E2Z_CELLS && nv[0].level[i] >= CELL_RESIDENT_LEVEL && e2nv_ready(v, i) && nav_cells_open(sh[0].pages[..], x, z);
+}
+// Whether the page under (x, z) is in: only then can a creature there be said to stand on it or off it.
+e2nv_paged :: (v: [] RmServer, x: f32, z: f32) -> bool { return e2nv_ready(v, cell_of(v[0].nav[0].world[..], f64(x), f64(z))); }
+// The open ground nearest (x, z) in room k, looked for sample by sample out to `reach` metres: [x, z, 1],
+// or [x, z, 0] when there is none that near. (x, z) itself when a creature may stand there.
+e2nv_near_open :: (v: [] RmServer, k: int, x: f32, z: f32, reach: f32) -> [3] f32 {
+  if e2nv_open(v, k, x, z) { return [3] f32.[x, z, 1]; }
+  steps := cast(int) (reach / f32(NAV_CELL_STEP)); best := [3] f32.[x, z, 0]; bd := reach * reach + 1;
+  for j: -steps..<steps + 1 { for i: -steps..<steps + 1 {
+    qx := x + f32(i) * f32(NAV_CELL_STEP); qz := z + f32(j) * f32(NAV_CELL_STEP); d := (qx - x) * (qx - x) + (qz - z) * (qz - z);
+    if d < bd && d <= reach * reach && e2nv_open(v, k, qx, qz) { bd = d; best = [3] f32.[qx, qz, 1]; }
+  } }
+  return best;
+}
+// Creature `who` (a monster's number, or E2NV_GUARD) at (x, z) takes one tick's step toward
+// (tx, tz) at `speed`, on the cells: where it stands after, and the way it went ([x, z, dx, dz]).
+e2nv_go :: (v: [] RmServer, k: int, who: int, x: f32, z: f32, tx: f32, tz: f32, speed: f32, dt: f32) -> [4] f32 {
+  nv := e2nv_room(v, k); sh := v[0].nav[..];
+  a := nv[0].agent[who..<who + 1];
+  // its pages aren't all in yet: it stands until they are
+  if !e2nv_need(v, k, x, z) { return [4] f32.[x, z, 0, 0]; }
+  // moved by another hand since its last step (a respawn, home again): it starts afresh from here
+  if a[0].x != x || a[0].z != z { a[0] = nav_agent(x, z, who * 31 + 7); nv[0].guide[who] = NavGuide.{}; }
+  // on ground a creature can't stand on (a piece laid over it, a blow that threw it): it makes straight for the
+  // open ground nearest it, and stays where it is when there is none within E2NV_OUT
+  if !e2nv_open(v, k, x, z) {
+    out := e2nv_near_open(v, k, x, z, f32(E2NV_OUT));
+    if out[2] != 1 { return [4] f32.[x, z, 0, 0]; }
+    q := nav_toward(x, z, out[0], out[1], speed * dt);
+    a[0].x = q[0]; a[0].z = q[1];
+    return [4] f32.[q[0], q[1], q[0] - x, q[1] - z];
+  }
+  none: [1] f32;
+  t := NavTune.{speed = speed, body = f32(E2N_BODY)};
+  s := nav_cells_go(a, nv[0].guide[who..<who + 1], t, sh[0].pages[..], sh[0].window[..], sh[0].far[..], tx, tz, dt, none[0..<0], -1);
+  // the room's last word: never onto a cell it doesn't hold
+  if !e2nv_open(v, k, s.x, s.z) { a[0].x = x; a[0].z = z; return [4] f32.[x, z, 0, 0]; }
+  return [4] f32.[s.x, s.z, s.x - x, s.z - z];
+}
+// Looks at where a creature stands, after it stepped: against the cells (`on_cells`: every tick, for a
+// creature that moves only by them), and, when its turn comes, against the colliders themselves (the host's
+// planting, when it gave one).
+e2nv_look :: (v: [] RmServer, k: int, who: int, x: f32, z: f32, on_cells: bool) {
+  nv := e2nv_room(v, k);
+  off := on_cells && e2nv_paged(v, x, z) && !e2nv_open(v, k, x, z);
+  inside := false;
+  if nv[0].turn % E2NV_CREATURES == who && e2nv_has_land(v) { e2nv_count(v, k, E2NV_LOOKS); inside = e2n_inside(v[0].e2land, x, z); }
+  if off { e2nv_count(v, k, E2NV_OFF); }
+  if inside { e2nv_count(v, k, E2NV_INSIDE); }
+  if (off || inside) && nv[0].first_who < 0 { nv[0].first_who = who; nv[0].first_x = x; nv[0].first_z = z; }
+}
+// The tick's looks are done: the next creature's turn.
+e2nv_looked :: (v: [] RmServer, k: int) { nv := e2nv_room(v, k); nv[0].turn += 1; }
+
+// ---- doors and placed pieces: a room's own obstacles on the cells
+
+// Lays obstacle `id` down in room k: a circle of radius hx (round), or a box hx across and hz deep
+// turned by yaw. Every creature of the room plans again. False for a shape that can't be used, or
+// when the room has E2NV_OBSTACLES down already.
+rm_e2_nav_block :: (v: [] RmServer, k: int, id: int, round: bool, x: f32, z: f32, hx: f32, hz: f32, yaw: f32) -> bool #export_c #effects(all) {
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return false; }
+  nv := e2nv_room(v, k); n := v[0].nav[0].pages[..];
+  e2nv_enter(v, k);
+  // a creature's own radius is added, so its body stays clear of the piece as it does of a trunk
+  r := f32(E2N_BODY);
+  ok := hx > 0 && (round || hz > 0) && (nav_cells_obstacle(n, id) >= 0 || nv[0].obstacles < E2NV_OBSTACLES) && nav_cells_block(n, id, NavObstacle.{round = round, x = x, z = z, hx = hx + r, hz = hz + r, c = cos(yaw), s = sin(yaw)});
+  if ok { e2nv_obstacles_keep(v, k); }
+  return ok;
+}
+// Takes it up (a door opens, a piece is removed). Whether it was down.
+rm_e2_nav_unblock :: (v: [] RmServer, k: int, id: int) -> bool #export_c #effects(all) {
+  if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return false; }
+  e2nv_enter(v, k);
+  ok := nav_cells_unblock(v[0].nav[0].pages[..], id);
+  if ok { e2nv_obstacles_keep(v, k); }
+  return ok;
+}
+// The obstacles on the pages are room k's from now on, and its creatures plan again.
+e2nv_obstacles_keep :: (v: [] RmServer, k: int) {
+  nv := e2nv_room(v, k); n := v[0].nav[0].pages[..];
+  nv[0].obstacles = n[0].obstacles;
+  for o: 0..<E2NV_OBSTACLES { nv[0].obstacle[o] = n[0].obstacle[o]; }
+  nv[0].changes += 1;
+}
+// Room k's navigation numbers (E2NV_*: 0 creature ticks off the cells, 1 looks that found one
+// inside a collider, 2 pages its ticks built and kept, 3 pages refused, 4 creature ticks slept, 5 looks), a total
+// since it opened.
+rm_e2_nav_count :: (v: [] RmServer, k: int, which: int) -> int #export_c #effects(all) {
+  if k < 0 || k >= EG_ROOMS || which < 0 || which >= E2NV_COUNTS { return 0; }
+  return e2nv_room(v, k)[0].counts[which];
+}
+// The same for every room, a total since the server started; which == E2NV_COUNTS: the pages it has built.
+rm_e2_nav_total :: (v: [] RmServer, which: int) -> int #export_c #effects(all) {
+  if which == E2NV_COUNTS { return v[0].nav[0].built; }
+  if which < 0 || which > E2NV_COUNTS { return 0; }
+  return v[0].nav[0].totals[which];
+}
+// The cells room k holds: resident, or simulating.
+rm_e2_nav_cells :: (v: [] RmServer, k: int, simulating: bool) -> int #export_c #effects(all) {
+  if k < 0 || k >= EG_ROOMS { return 0; }
+  nv := e2nv_room(v, k); n := 0;
+  for i: 0..<E2Z_CELLS { if nv[0].level[i] >= (ifx simulating then CELL_SIMULATE_LEVEL else CELL_RESIDENT_LEVEL) { n += 1; } }
+  return n;
+}

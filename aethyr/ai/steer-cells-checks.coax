@@ -1,0 +1,193 @@
+// The checks of aethyr/ai/steer-cells.coax (written first), and the worlds they walk in.
+
+SC_T_DT :: 0.033333335;   // a room's tick: 1/30 s
+
+// Two pages side by side, open, with a wall across both along z = 30..32 m.
+sc_t_wall :: (n: [] NavCells) #effects(all) {
+  n[0] = NavCells.{};
+  a := nav_cells_add(n, 0, 0); b := nav_cells_add(n, 1, 0);
+  nc_t_rect(n, a, 0, 0, 127, 59); nc_t_rect(n, a, 0, 64, 127, 127);
+  nc_t_rect(n, b, 0, 0, 127, 59); nc_t_rect(n, b, 0, 64, 127, 127);
+}
+// What a walk came to: whether it arrived, its ticks, how far it went, how far east and west of
+// its start it strayed, whether it ever left an open sample, and whether it ever had a waypoint.
+ScWalk :: struct { there: bool; ticks: int; went: f32; east: f32; west: f32; closed: bool; guided: bool; }
+// Walks a creature from (x, z) to (gx, gz) for at most `ticks`, by nav_cells_go.
+sc_t_walk :: (n: [] NavCells, x: f32, z: f32, gx: f32, gz: f32, ticks: int) -> ScWalk #effects(all) {
+  w: [1] NavWindow; l: [1] NavLong; a: [1] NavAgent; gd: [1] NavGuide; none: [1] f32;
+  a[0] = nav_agent(x, z, 3); t := NavTune.{speed = 4.5};
+  out: ScWalk;
+  for k: 0..<ticks {
+    px := a[0].x; pz := a[0].z;
+    s := nav_cells_go(a[..], gd[..], t, n, w[..], l[..], gx, gz, f32(SC_T_DT), none[0..<0], -1);
+    if s.x != a[0].x || s.z != a[0].z || !nav_cells_open(n, a[0].x, a[0].z) { out.closed = true; }
+    out.went += nav_len(a[0].x - px, a[0].z - pz); out.ticks = k + 1;
+    if a[0].x - x > out.east { out.east = a[0].x - x; } if x - a[0].x > out.west { out.west = x - a[0].x; }
+    if gd[0].on { out.guided = true; }
+    if nav_len(a[0].x - gx, a[0].z - gz) < 0.05 { out.there = true; return out; }
+  }
+  return out;
+}
+
+#test "steer cells: the long way's grid is the search's largest, a sample a cell" {
+  #assert NAV_LONG_CELLS == NAV_LONG_SIDE * NAV_LONG_SIDE && NAV_LONG_CELLS == NAV_GRID_MOST && NAV_LONG_SIDE == NAV_CELL_SIDE;
+  #assert NAV_LONG_AHEAD == 16 && NAV_LONG_NEAR == 8 && f64(NAV_LONG_AHEAD) * NAV_CELL_STEP == NAV_LONG_NEAR;
+}
+#test "steer cells: a creature walks round a trunk, never through it" #steps 4000000000 {
+  n: [1] NavCells; p := nav_cells_add(n[..], 0, 0); nc_t_rect(n[..], p, 0, 0, 127, 127);
+  // a trunk a metre round at (20, 20), as a creature's radius closes it: the samples within 1.4 m
+  for j: 34..<46 { for i: 34..<46 { dx := nav_cells_x(0, i) - 20; dz := nav_cells_x(0, j) - 20; if dx * dx + dz * dz < 1.4 * 1.4 { nav_cells_set(n[..], p, i, j, false); } } }
+  #assert !nav_cells_line(n[..], 20, 14, 20, 26);
+  r := sc_t_walk(n[..], 20, 14, 20, 26, 300);
+  #assert r.there && !r.closed && r.guided && r.went > 12 && r.went < 13 && (r.east > 1.2 || r.west > 1.2) && r.east < 2.5 && r.west < 2.5 && r.ticks < 90;
+  // a goal nearer than the long way's start is the window's alone
+  near := sc_t_walk(n[..], 20, 16, 20, 23.75, 300);
+  #assert near.there && !near.closed && !near.guided && near.went > 7.75 && near.went < 9 && near.ticks < 65;
+  // with nothing in the way it walks straight there, at its speed
+  s := sc_t_walk(n[..], 30, 14, 30, 26, 300);
+  #assert s.there && !s.closed && !s.guided && s.went > 11.99 && s.went < 12.01 && s.east == 0 && s.west == 0 && s.ticks == 80;
+  // and as far as it is sent: home is where it stands, so no leash of the service's turns it back
+  // (a leash would slow it to its walk home's pace from 30 m on: 334 ticks is the whole way at its run)
+  long_z := sc_t_walk(n[..], 40, 5, 40, 55, 340); long_x := sc_t_walk(n[..], 5, 50, 55, 50, 340);
+  #assert long_z.there && long_z.went > 49.9 && long_z.went < 50.1 && long_z.ticks == 334 && long_x.there && long_x.east > 49.9 && long_x.went < 50.1 && long_x.ticks == 334;
+}
+#test "steer cells: a gap out of the window's sight is found by the long way, and a shut door sends it round or holds it" #steps 4000000000 {
+  // two gaps in the wall: x 50..54 m (page 0's samples 100..107) and x 92..96 m (page 1's 56..63)
+  n: [1] NavCells; sc_t_wall(n[..]); nc_t_rect(n[..], 0, 100, 60, 107, 63); nc_t_rect(n[..], 1, 56, 60, 63, 63);
+  // from (70, 20) to (70, 40), right across the wall: the west gap is the nearer, 16 m off
+  r := sc_t_walk(n[..], 70, 20, 70, 40, 900);
+  #assert r.there && !r.closed && r.guided && r.west > 15.5 && r.west < 20.5 && r.east == 0 && r.went > 37 && r.went < 43 && r.ticks < 290;
+  // the window alone, with no long way, never finds either: it presses on the wall under its goal
+  w: [1] NavWindow; a: [1] NavAgent; none: [1] f32; a[0] = nav_agent(70, 20, 3); t := NavTune.{speed = 4.5}; strayed: f32 = 0;
+  for k: 0..<600 {
+    due := nav_think(a[..], t, 70, 40, f32(SC_T_DT));
+    if due { nav_window_place(w[..], t, a[0]); filled := nav_cells_window(n[..], w[..]); nav_plan(a[..], t, w[..]); }
+    s := nav_move(a[..], t, false, f32(SC_T_DT), none[0..<0], -1);
+    spot := nav_cells_keep(n[..], s.x, s.z, a[0].x, a[0].z); nav_moved(a[..], s, spot[0], spot[1]);
+    if abs(a[0].x - 70) > strayed { strayed = abs(a[0].x - 70); }
+  }
+  #assert a[0].z < 30 && strayed < 12;
+  // a goal 8 m off or nearer is the window's alone, though the long way has a waypoint for it: 8 m exactly, and 7.5
+  l8: [1] NavLong; #assert nav_long_plan(n[..], l8[..], 62, 27, 62, 35).on;
+  for near: [2] f32.[27, 27.5] {
+    w8: [1] NavWindow; a8: [1] NavAgent; g8: [1] NavGuide; a8[0] = nav_agent(62, near, 3); l8[0].plans = 0;
+    s8 := nav_cells_go(a8[..], g8[..], t, n[..], w8[..], l8[..], 62, 35, f32(SC_T_DT), none[0..<0], -1);
+    #assert !g8[0].on && l8[0].plans == 0 && a8[0].route == NavRoute.path;
+  }
+  a9: [1] NavAgent; g9: [1] NavGuide; w9: [1] NavWindow; a9[0] = nav_agent(62, 26.9, 3);
+  s9 := nav_cells_go(a9[..], g9[..], t, n[..], w9[..], l8[..], 62, 35, f32(SC_T_DT), none[0..<0], -1); #assert g9[0].on && g9[0].way && l8[0].plans == 1;
+  // a door shut in the west gap: it goes east
+  #assert nav_cells_block(n[..], 1, NavObstacle.{x = 52, z = 31, hx = 2.2, hz = 1.2});
+  east := sc_t_walk(n[..], 70, 20, 70, 40, 900);
+  #assert east.there && !east.closed && east.guided && east.east > 21.5 && east.east < 26.5 && east.west == 0 && east.went > 48 && east.went < 55;
+  // both shut: no way; it comes to the wall under its goal, as near as it can, and stands on open ground there
+  #assert nav_cells_block(n[..], 2, NavObstacle.{x = 94, z = 31, hx = 2.2, hz = 1.2});
+  shut := sc_t_walk(n[..], 70, 20, 70, 40, 300);
+  #assert !shut.there && !shut.closed && shut.east < 1 && shut.west < 1 && shut.went > 9 && shut.went < 10.5;
+}
+#test "steer cells: a door that shuts or opens is planned on at the next tick" #steps 4000000000 {
+  // one gap, x 30..34 m (page 0's samples 60..67)
+  n: [1] NavCells; sc_t_wall(n[..]); nc_t_rect(n[..], 0, 60, 60, 67, 63);
+  w: [1] NavWindow; l: [1] NavLong; a: [1] NavAgent; gd: [1] NavGuide; none: [1] f32;
+  a[0] = nav_agent(10, 20, 3); t := NavTune.{speed = 4.5};
+  for k: 0..<60 { s := nav_cells_go(a[..], gd[..], t, n[..], w[..], l[..], 10, 40, f32(SC_T_DT), none[0..<0], -1); }
+  #assert gd[0].on && gd[0].way && gd[0].revision == n[0].revision && a[0].x > 15 && l[0].plans == 4;
+  // the door shuts: the very next tick plans again, and finds no way to its goal: it heads for the wall under it
+  plans := l[0].plans;
+  #assert nav_cells_block(n[..], 1, NavObstacle.{x = 32, z = 31, hx = 2.2, hz = 1.2});
+  s := nav_cells_go(a[..], gd[..], t, n[..], w[..], l[..], 10, 40, f32(SC_T_DT), none[0..<0], -1);
+  #assert gd[0].on && !gd[0].way && gd[0].revision == n[0].revision && l[0].plans == plans + 1 && gd[0].z > 28;
+  // and it opens: the next tick has the way again
+  #assert nav_cells_unblock(n[..], 1);
+  s = nav_cells_go(a[..], gd[..], t, n[..], w[..], l[..], 10, 40, f32(SC_T_DT), none[0..<0], -1);
+  #assert gd[0].on && gd[0].way && l[0].plans == plans + 2;
+  // with no change, the plans keep to the service's own pace: one each half second
+  for k: 0..<30 { s = nav_cells_go(a[..], gd[..], t, n[..], w[..], l[..], 10, 40, f32(SC_T_DT), none[0..<0], -1); }
+  #assert l[0].plans >= plans + 3 && l[0].plans <= plans + 4;
+}
+#test "steer cells: the long way's waypoint is sixteen samples down it, toward the goal's own sample or the one nearest it" #steps 4000000000 {
+  n: [1] NavCells; sc_t_wall(n[..]); nc_t_rect(n[..], 0, 60, 60, 67, 63);
+  l: [1] NavLong;
+  g := nav_long_plan(n[..], l[..], 10, 20, 10, 40);
+  #assert g.on && g.way && g.revision == n[0].revision && l[0].plans == 1 && nav_cells_open(n[..], g.x, g.z);
+  // the grid: 64 m about the creature, on the samples' lattice
+  #assert l[0].grid.nx == NAV_LONG_SIDE && l[0].grid.nz == NAV_LONG_SIDE && l[0].grid.cell == 0.5 && l[0].grid.x0 == -22 && l[0].grid.z0 == -12;
+  // 8 m east along the wall's north side, toward the gap
+  #assert g.x == 18.25 && g.z == 20.25;
+  // a goal sixteen samples off or nearer has no waypoint; seventeen has, sixteen along
+  open: [1] NavCells; for c: 0..<2 { p := nav_cells_add(open[..], c, 0); nc_t_rect(open[..], p, 0, 0, 127, 127); }
+  #assert !nav_long_plan(open[..], l[..], 21.25, 21.25, 29.25, 21.25).on && nav_long_plan(open[..], l[..], 21.25, 21.25, 29.25, 21.25).way && !nav_long_plan(open[..], l[..], 21.25, 21.25, 21.25, 21.25).on;
+  far := nav_long_plan(open[..], l[..], 21.25, 21.25, 29.75, 21.25); #assert far.on && far.way && far.x == 29.25 && far.z == 21.25;
+  back := nav_long_plan(open[..], l[..], 31.25, 21.25, 21.25, 21.25); #assert back.on && back.x == 23.25 && back.z == 21.25;
+  down := nav_long_plan(open[..], l[..], 21.25, 21.25, 21.25, 41.25); #assert down.on && down.x == 21.25 && down.z == 29.25;
+  diag := nav_long_plan(open[..], l[..], 21.25, 21.25, 41.25, 41.25); #assert diag.on && diag.way && diag.x == 29.25 && diag.z == 29.25;
+  // a goal on closed ground, or off the pages: no way to it, and the sample nearest it is headed for
+  wall := nav_long_plan(n[..], l[..], 10, 10, 10, 31); #assert wall.on && !wall.way && wall.x == 10.25 && wall.z == 18.25;
+  off := nav_long_plan(n[..], l[..], 10, 20, 10, 80); #assert off.on && !off.way && off.x == 18.25 && off.z == 20.25;
+  // a goal further than the grid reaches is headed for all the same
+  away := nav_long_plan(open[..], l[..], 1.25, 1.25, 100.25, 1.25); #assert away.on && !away.way && away.x == 9.25 && away.z == 1.25 && l[0].grid.x0 == -30.5 && l[0].grid.z0 == -30.5;
+  // the sample it heads for is the plan's own: the goal's, at the grid's very first cell too
+  corner := nav_long_plan(open[..], l[..], 40.25, 40.25, 8.75, 8.75); #assert corner.on && corner.way && l[0].head == 0 && l[0].grid.x0 == 8.5 && corner.x == 32.25 && corner.z == 32.25;
+  // past that corner, off the grid: the first cell is the nearest reached, and is headed for
+  past := nav_long_plan(open[..], l[..], 40.25, 40.25, 0.25, 0.25); #assert past.on && !past.way && l[0].head == 0 && past.x == 32.25 && past.z == 32.25;
+  // of reached samples as near the goal, the first in row order: a goal on the corner four samples share, two of them closed
+  four: [1] NavCells; fp := nav_cells_add(four[..], 0, 0); nc_t_rect(four[..], fp, 0, 0, 127, 127);
+  for j: 56..<64 { for i: 56..<64 { nav_cells_set(four[..], fp, i, j, false); } }   // a closed square, x and z 28..32 ...
+  nav_cells_set(four[..], fp, 60, 59, true); nav_cells_set(four[..], fp, 59, 60, true);   // ... with two open samples by its middle, each joined to the open ground
+  for q: 56..<59 { nav_cells_set(four[..], fp, 60, q, true); nav_cells_set(four[..], fp, q, 60, true); }
+  tie := nav_long_plan(four[..], l[..], 20.25, 20.25, 30, 30);
+  #assert tie.on && !tie.way && l[0].grid.x0 == -11.5 && l[0].head == 82 * 128 + 83 && l[0].cost[82 * 128 + 83] == l[0].cost[83 * 128 + 82] && l[0].cost[83 * 128 + 82] < f32(NAV_GRID_FAR);
+  // a start on closed ground, off the pages, or that is not a place has no long way; only the last is no plan
+  l[0].plans = 0;
+  #assert !nav_long_plan(n[..], l[..], 10, 31, 10, 20).on && !nav_long_plan(n[..], l[..], 10, 31, 10, 20).way && !nav_long_plan(n[..], l[..], 10, 80, 10, 20).on && l[0].plans == 3 && l[0].head == -1;
+  #assert !nav_long_plan(n[..], l[..], 0.0f32 / 0.0f32, 20, 10, 40).on && !nav_long_plan(n[..], l[..], 10, 0.0f32 / 0.0f32, 10, 40).on && l[0].plans == 3;
+  // the gap shut: the far side is not reached, and the plan is the revision it was made on
+  #assert nav_cells_block(n[..], 1, NavObstacle.{x = 32, z = 31, hx = 2.2, hz = 1.2}) && !nav_long_plan(n[..], l[..], 10, 20, 10, 40).way && nav_long_plan(n[..], l[..], 10, 20, 10, 40).revision == n[0].revision;
+  // the grid's corner is on the samples' lattice wherever the creature stands: to the nearest half metre
+  snap := nav_long_plan(open[..], l[..], 40.3, 40.3, 60.25, 40.25); #assert snap.on && l[0].grid.x0 == 8.5 && l[0].grid.z0 == 8.5 && snap.x == 48.25 && snap.z == 40.25;
+  snap = nav_long_plan(open[..], l[..], 40.2, 40.76, 60.25, 40.25); #assert snap.on && l[0].grid.x0 == 8 && l[0].grid.z0 == 9;
+  // the window is laid on the lattice too: its corner to the nearest half metre
+  w: [1] NavWindow; w[0].grid = NavGrid.{nx = 4, nz = 4, cell = 0.5, x0 = 10.3, z0 = 7.74};
+  #assert nav_cells_window(open[..], w[..]) == 16 && w[0].grid.x0 == 10.5 && w[0].grid.z0 == 7.5;
+  w[0].grid.x0 = 10.2; w[0].grid.z0 = 7.76; #assert nav_cells_window(open[..], w[..]) == 16 && w[0].grid.x0 == 10 && w[0].grid.z0 == 8;
+}
+#test "steer cells: the step it reports is where it stands: one the cells refuse leaves it where it was" #steps 4000000000 {
+  n: [1] NavCells; p := nav_cells_add(n[..], 0, 0); nc_t_rect(n[..], p, 0, 0, 127, 127);
+  w: [1] NavWindow; l: [1] NavLong; a: [1] NavAgent; gd: [1] NavGuide; none: [1] f32;
+  a[0] = nav_agent(10.3, 10.25, 3); t := NavTune.{speed = 4.5};
+  s := nav_cells_go(a[..], gd[..], t, n[..], w[..], l[..], 30, 10.25, f32(SC_T_DT), none[0..<0], -1);
+  #assert s.x > 10.44 && s.x < 10.46 && s.z == 10.25 && a[0].x == s.x && a[0].z == s.z && s.face_x == 1 && s.face_z == 0;
+  // the ground ahead closes under it with no word to the planner (the samples x 10.5 to 11, z 9.5 to 11): its
+  // next step, straight on, is refused, and it is reported where it stood
+  for j: 19..<22 { nav_cells_set(n[..], p, 21, j, false); }
+  held := nav_cells_go(a[..], gd[..], t, n[..], w[..], l[..], 30, 10.25, f32(SC_T_DT), none[0..<0], -1);
+  #assert held.x == s.x && held.z == s.z && a[0].x == s.x && a[0].z == s.z;
+  // the same going north: the samples z 30.5 to 31 close ahead of a creature at z 30.3
+  b: [1] NavAgent; gb: [1] NavGuide; b[0] = nav_agent(30.25, 30.3, 3);
+  sb := nav_cells_go(b[..], gb[..], t, n[..], w[..], l[..], 30.25, 50, f32(SC_T_DT), none[0..<0], -1);
+  #assert sb.z > 30.44 && sb.z < 30.46 && sb.x == 30.25 && b[0].z == sb.z;
+  for i: 59..<62 { nav_cells_set(n[..], p, i, 61, false); }
+  hb := nav_cells_go(b[..], gb[..], t, n[..], w[..], l[..], 30.25, 50, f32(SC_T_DT), none[0..<0], -1);
+  #assert hb.x == sb.x && hb.z == sb.z && b[0].x == sb.x && b[0].z == sb.z;
+}
+#test "steer cells: a goal on closed ground or off the pages leaves it on open ground" #steps 4000000000 {
+  n: [1] NavCells; p := nav_cells_add(n[..], 0, 0); nc_t_rect(n[..], p, 0, 0, 127, 127);
+  for j: 34..<46 { for i: 34..<46 { nav_cells_set(n[..], p, i, j, false); } }
+  // into the middle of a closed square: it comes to its edge and stays out
+  r := sc_t_walk(n[..], 20, 10, 20, 20, 300);
+  #assert !r.there && !r.closed && r.went > 6.5 && r.went < 8.5;
+  // standing as near as it can come, it faces where it would go: toward a goal north of it, across zero
+  m: [1] NavCells; north := nav_cells_add(m[..], 0, 0); south := nav_cells_add(m[..], 0, -1); nc_t_rect(m[..], north, 0, 0, 127, 127); nc_t_rect(m[..], south, 0, 0, 127, 127);
+  for i: 0..<16 { for j: 0..<7 { nav_cells_set(m[..], north, i, j, false); } for j: 125..<128 { nav_cells_set(m[..], south, i, j, false); } }
+  w2: [1] NavWindow; l2: [1] NavLong; a2: [1] NavAgent; g2: [1] NavGuide; none2: [1] f32; a2[0] = nav_agent(2, -8, 3); t2 := NavTune.{speed = 4.5};
+  last: NavStep;
+  for q: 0..<120 { last = nav_cells_go(a2[..], g2[..], t2, m[..], w2[..], l2[..], 1.75, 0.25, f32(SC_T_DT), none2[0..<0], -1); }
+  #assert a2[0].route == NavRoute.stuck && last.mode == NavMode.stand && last.x == a2[0].x && last.z == a2[0].z && a2[0].z < -1.5 && a2[0].z > -2.5 && last.face_z > 0.95 && abs(last.face_x) < 0.3;
+  // off the page's east edge: it comes to the edge
+  e := sc_t_walk(n[..], 50, 50, 80, 50, 300);
+  #assert !e.there && !e.closed && e.east > 13.5 && e.east < 14;
+  // the window is the cells': its open cells counted
+  w: [1] NavWindow; a := nav_agent(20, 14, 1); t := NavTune.{}; a.tx = 20; a.tz = 26;
+  nav_window_place(w[..], t, a);
+  #assert nav_cells_window(n[..], w[..]) == 1600 - 144 && !w[0].walk[nav_grid_cell_at(w[0].grid, 20.1, 20.1)] && w[0].walk[nav_grid_cell_at(w[0].grid, 20.1, 14.1)];
+}

@@ -197,6 +197,7 @@ EgRoom :: struct {
   familiar_reactions: [EG_SEATS] E2StepReactions;
   guard: [1] E2Guard;   // Everglade II's path guard (everglade/server/guard.coax)
   monsters: [1] E2Monsters;      // Everglade II's wolves and goblins (everglade/server/creatures.coax)
+  nav: [1] E2RoomNav;            // its cells and its creatures' navigation (everglade/server/nav.coax, #13280, #13281)
   arrows: [1] E2Arrows;          // Everglade II's arrows in the air (everglade/server/arrows.coax)
   tk: [EG_SEATS] Ticket;         // who each seat's ticket says its player is, kept while the seat is held (#12792)
   hurts: [1] HbBatch;   // one whole-tick world damage snapshot per seat, dealt after heals

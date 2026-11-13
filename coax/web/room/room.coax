@@ -119,6 +119,7 @@ RmServer :: struct {
   st: RmStats;                           // refusals and rejoins, for the room view (room-stats.coax)
   trv: RmTravels;                        // journeys from one room to another in flight (room-travel.coax)
   e2land: [] E2MoveGround;               // Everglade II's planting, room-world.c's (everglade/server/arrows.coax rm_e2_land)
+  nav: [1] E2NavShared;                  // the navigation pages every Everglade room shares, and their builder (everglade/server/nav.coax, #13281)
   dice_pool: [1] RsDice;                 // where each room's rules' dice come from: the host's OS random key (rm_dice_key, #13258); never on the wire
 }
 

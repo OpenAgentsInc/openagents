@@ -13,12 +13,14 @@
 //                run measured nothing
 //   blind        fewer than half the room's windows could be read
 //   lost         at the end fewer than nine in ten of the most ever seated were still seated
+//   astray       a creature stood off the navigation cells' open ground, or was found inside a
+//                collider (the room's own count, everglade/server/nav.coax, #13281): one is a failure
 // A failing run names every reason; the nightly files them as an issue (coax/remote/after.sh).
 #authority;
 #load "../api/service-policy.coax";
 
-SK_EMPTY :: 1; SK_SLOW_TICK :: 2; SK_LEAK :: 4; SK_CHECKPOINT :: 8; SK_TICKET :: 16; SK_VERSION :: 32; SK_BLIND :: 64; SK_LOST :: 128;
-SK_BITS :: 8;
+SK_EMPTY :: 1; SK_SLOW_TICK :: 2; SK_LEAK :: 4; SK_CHECKPOINT :: 8; SK_TICKET :: 16; SK_VERSION :: 32; SK_BLIND :: 64; SK_LOST :: 128; SK_ASTRAY :: 256;
+SK_BITS :: 9;
 SK_SLOW_WINDOWS :: 2;
 SK_LEAK_KB :: 65536;
 SK_KEPT_PERCENT :: 90;
@@ -27,11 +29,14 @@ SK_KEPT_PERCENT :: 90;
 // windows with a tick p99 over the target; unsaved_windows: windows with a checkpoint unsaved past
 // the target; memory_early_kb and memory_late_kb: the medians of the second and last quarters
 // (-1: not read); ticket_p95_ms: -1 when no ticket was asked of an API; version_refused: hellos the
-// room refused for their build; windows_read of windows_due: the room's windows the run could read.
+// room refused for their build; windows_read of windows_due: the room's windows the run could read;
+// astray: creature ticks off the navigation cells plus looks that found a creature inside a collider, the
+// room's totals at the run's end (-1: not read).
 SkFacts :: struct {
   seated_most: int; seated_end: int; slow_windows: int; unsaved_windows: int;
   memory_early_kb: int = -1; memory_late_kb: int = -1; ticket_p95_ms: int = -1;
   version_refused: int; windows_read: int; windows_due: int;
+  astray: int = -1;
 }
 
 #test "a run that held: everyone seated, quick ticks, flat memory, saved checkpoints, quick tickets" {
@@ -70,6 +75,10 @@ SkFacts :: struct {
   #assert sk_verdict(f) == 0;
   f = ok; f.windows_due = 0; f.windows_read = 0;   // a run too short for a window is not blind
   #assert sk_verdict(f) == 0;
+  f = ok; f.astray = 1;   // one creature astray, once
+  #assert sk_verdict(f) == SK_ASTRAY;
+  f.astray = 0;
+  #assert sk_verdict(f) == 0;
   f = ok; f.seated_end = 86;   // 86 of 96 is under nine in ten
   #assert sk_verdict(f) == SK_LOST;
   f.seated_end = 87;
@@ -96,14 +105,14 @@ SkFacts :: struct {
 }
 #test "each reason has its word, and the words of a verdict are a comma apart" {
   #assert sk_word(SK_EMPTY) == "empty" && sk_word(SK_SLOW_TICK) == "slow-tick" && sk_word(SK_LEAK) == "leak" && sk_word(SK_CHECKPOINT) == "checkpoint";
-  #assert sk_word(SK_TICKET) == "ticket" && sk_word(SK_VERSION) == "version" && sk_word(SK_BLIND) == "blind" && sk_word(SK_LOST) == "lost";
-  #assert sk_word(0) == "" && sk_word(3) == "" && sk_word(256) == "";
-  #assert sk_bits() == 8;
+  #assert sk_word(SK_TICKET) == "ticket" && sk_word(SK_VERSION) == "version" && sk_word(SK_BLIND) == "blind" && sk_word(SK_LOST) == "lost" && sk_word(SK_ASTRAY) == "astray";
+  #assert sk_word(0) == "" && sk_word(3) == "" && sk_word(512) == "";
+  #assert sk_bits() == 9;
   b: [96] u8;
   #assert sk_words(0, b[..]) == "" && sk_words(SK_LEAK, b[..]) == "leak" && sk_words(SK_SLOW_TICK + SK_LEAK + SK_LOST, b[..]) == "slow-tick,leak,lost";
-  #assert sk_words(255, b[..]) == "empty,slow-tick,leak,checkpoint,ticket,version,blind,lost";
+  #assert sk_words(511, b[..]) == "empty,slow-tick,leak,checkpoint,ticket,version,blind,lost,astray" && sk_words(SK_ASTRAY, b[..]) == "astray";
   #assert sk_words(SK_SLOW_TICK + SK_LEAK, b[0..<10]) == "" && sk_words(SK_SLOW_TICK + SK_LEAK, b[0..<13]) == "" && sk_words(SK_SLOW_TICK + SK_LEAK, b[0..<14]) == "slow-tick,leak";
-  #assert sk_words(256 + SK_LEAK, b[..]) == "leak" && sk_words(256, b[..]) == "";   // a bit past the last is no reason
+  #assert sk_words(512 + SK_LEAK, b[..]) == "leak" && sk_words(512, b[..]) == "";   // a bit past the last is no reason
   #assert sk_words(SK_LEAK, b[0..<4]) == "leak" && sk_words(SK_LEAK, b[0..<3]) == "";
 }
 
@@ -124,6 +133,7 @@ sk_verdict :: (f: SkFacts) -> int #effects(all) {
   if f.version_refused > 0 { bits += SK_VERSION; }
   if f.windows_read * 2 < f.windows_due { bits += SK_BLIND; }
   if f.seated_end * 100 < f.seated_most * SK_KEPT_PERCENT { bits += SK_LOST; }
+  if f.astray > 0 { bits += SK_ASTRAY; }   // not read (-1) is no creature astray
   return bits;
 }
 sk_bits :: () -> int #effects(all) { return SK_BITS; }
@@ -136,6 +146,7 @@ sk_word :: (bit: int) -> string #effects(all) {
   if bit == SK_VERSION { return "version"; }
   if bit == SK_BLIND { return "blind"; }
   if bit == SK_LOST { return "lost"; }
+  if bit == SK_ASTRAY { return "astray"; }
   return "";
 }
 // The verdict's words, a comma apart, into out ("" when it holds, or when they don't fit).

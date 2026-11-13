@@ -22,6 +22,7 @@
 // one; an arrow loosed with its flight; a fall) through the creature frames' codec, creature-wire.coax
 // (proto/verse/everglade2-combat-v2.json). The pages draw them (everglade/client/creatures.coax).
 #load "creature-wire.coax";   // e mon: the one codec the page reads their events with (#13246, #13276)
+#load "nav.coax";   // the room's cells and the way a creature walks on them (#13280, #13281)
 
 // The way (dx, dz) points, in radians as atan2(dx, dz) (within a few thousandths: a creature's facing).
 e2_heading :: (dx: f32, dz: f32) -> f32 {
@@ -58,6 +59,8 @@ E2M_CORPSE_S :: 8.0;        // s a fallen monster lies
 E2M_RESPAWN_S :: 180.0;     // s from its fall to the next at home
 E2M_RESPAWN_DEV_S :: 25.0;  // in a --dev room (room-dev.coax), so a check can see it
 E2M_UNSEEN :: 45.0;         // m: no player this near its home when one appears
+E2M_HOME_REACH :: 3.0;      // m: how far a home moves to stand on ground a creature can (everglade/server/nav.coax)
+E2M_HOME_S :: 20.0;         // s on its way home after which it is simply there: no way home is a wait, not a monster lost
 E2M_XP :: [2] int.[50, 50]; // SRD XP: Wolf (CR 1/4) 50, Goblin Warrior (CR 1/4) 50
 E2M_SHOTS :: 8;
 E2M_FORM :: 1;              // its form in the rules' list (EGB_FORM_WOLF): never a raider's
@@ -78,6 +81,8 @@ E2Mon :: struct {
   hurt_by: int;              // the seats that hurt it (one bit each): its XP's share
   hit_t: int = -100000; hit_seat: int = -1;   // when it last struck at a player, and whom (the guard's word)
   ray: int = -1; ray_seat: int = -1; seen: bool;   // this tick's line-of-sight question (rm_eg_sights)
+  way_x: f32; way_z: f32;    // the way its last step went (0, 0: it stood): what it faces as it walks
+  home_t: int;               // the tick it turned for home (0: it isn't on its way)
 }
 E2Shot :: struct { live: bool; m: int; seat: int; tx: f32; tz: f32; land: int; }
 E2Monsters :: struct { mon: [E2M_N] E2Mon; shots: [E2M_SHOTS] E2Shot; started: bool; }
@@ -196,16 +201,25 @@ e2mo_up :: (v: [] RmServer, k: int, m: int) -> bool {
   return bt[0].wild && bt[0].id == mo[0].id && !c[0].dead && c[0].hp > 0;
 }
 
-// A step of dt toward (tx, tz) at speed, stopping `stop` short, never north past the leash line nor
-// where no one stands but the woods' edge. The distance moved.
-e2mo_move :: (mo: [] E2Mon, tx: f32, tz: f32, speed: f32, dt: f32, stop: f32) -> f32 {
+// A step of dt toward (tx, tz) at speed, stopping `stop` short, on the room's navigation cells
+// (everglade/server/nav.coax e2nv_go): round a trunk or a rock and through a gap, never onto ground a
+// creature can't stand on, and never north past the leash line. The distance moved; mo[0].way_x and
+// way_z are the way it went.
+e2mo_move :: (v: [] RmServer, k: int, m: int, tx: f32, tz: f32, speed: f32, dt: f32, stop: f32) -> f32 {
+  mo := e2mo_room(v, k)[0].mon[m..<m + 1];
+  mo[0].way_x = 0; mo[0].way_z = 0;
   dx := tx - mo[0].x; dz := tz - mo[0].z; d := sqrt(dx * dx + dz * dz);
   if d <= stop + 0.001 { return 0; }
-  st := speed * dt; if st > d - stop { st = d - stop; }
-  nx := mo[0].x + dx / d * st; nz := mo[0].z + dz / d * st;
-  if nz > f32(E2M_LEASH_Z) + 4 && nz > mo[0].z { return 0; }
-  mo[0].x = nx; mo[0].z = nz;
-  return st;
+  // where it is going: the point `stop` short of the target, on the line from it
+  s := e2nv_go(v, k, m, mo[0].x, mo[0].z, tx - dx / d * stop, tz - dz / d * stop, speed, dt);
+  if s[1] > f32(E2M_LEASH_Z) + 4 && s[1] > mo[0].z { return 0; }
+  mo[0].x = s[0]; mo[0].z = s[1]; mo[0].way_x = s[2]; mo[0].way_z = s[3];
+  return sqrt(s[2] * s[2] + s[3] * s[3]);
+}
+// The way monster mo faces as it walks: the way its last step went, or toward (tx, tz) when it stood.
+e2mo_way :: (mo: [] E2Mon, tx: f32, tz: f32) -> f32 {
+  if mo[0].way_x * mo[0].way_x + mo[0].way_z * mo[0].way_z > 0.000001 { return e2_heading(mo[0].way_x, mo[0].way_z); }
+  return e2_heading(tx - mo[0].x, tz - mo[0].z);
 }
 // The yaw stays within a half turn of 0: a wolf circling its quarry turns one way lap after lap, and a
 // yaw that grew with each lap would pass what a row's YAW carries (everglade/client/net.coax).
@@ -226,6 +240,13 @@ e2mo_rouse :: (v: [] RmServer, k: int, group: int, s: int) {
   }
 }
 e2mo_home_again :: (mo: [] E2Mon) { mo[0].state = E2M_RETURN; mo[0].foe = -1; mo[0].act = 0; }
+// Monster m is at home, whole again, as an MMO's monster is: its place, its Hit Points and its conditions.
+e2mo_rest_home :: (v: [] RmServer, k: int, m: int) {
+  mo := e2mo_room(v, k)[0].mon[m..<m + 1]; b := v[0].eg[k].rules[0].b[..]; i := e2mo_creature(mo[0]);
+  mo[0].x = mo[0].hx; mo[0].z = mo[0].hz; mo[0].yaw = mo[0].hyaw;
+  b[0].c[i].hp = b[0].c[i].hp_max; b[0].c[i].cond = 0; b[0].c[i].temp = 0;
+  mo[0].state = E2M_IDLE; mo[0].hurt_by = 0; mo[0].act = 0; mo[0].foe = -1; mo[0].home_t = 0;
+}
 
 // ---- the tick (before the rules' step): spawns, notices, chases, blows and arrows
 e2_monsters_tick :: (v: [] RmServer, k: int) {
@@ -246,12 +267,28 @@ e2_monsters_tick :: (v: [] RmServer, k: int) {
     }
     // its slot taken by another creature (a check, the rules' own placing): gone, back in time
     if mo[0].q < 0 || !r[0].beasts[mo[0].q].wild || r[0].beasts[mo[0].q].id != mo[0].id { mo[0].state = E2M_GONE; mo[0].q = -1; mo[0].down_t = t; continue; }
-    e2mo_step(v, k, m, t, dt);
+    // its cell asleep (no player within the room's simulate ring, or its page not in yet): it doesn't step; one
+    // out after a quarry is home again, whole, as one that walked home is
+    if !e2nv_awake(v, k, mo[0].x, mo[0].z) {
+      e2nv_count(v, k, E2NV_SLEPT);
+      if mo[0].state != E2M_IDLE { e2mo_rest_home(v, k, m); }
+    } else {
+      // a home the land's rule put within a trunk's or a rock's clearance moves to the open ground nearest it, once
+      // its cell's page is in: the monster with it when it is at home
+      if e2nv_paged(v, mo[0].hx, mo[0].hz) && !e2nv_open(v, k, mo[0].hx, mo[0].hz) {
+        at := e2nv_near_open(v, k, mo[0].hx, mo[0].hz, f32(E2M_HOME_REACH));
+        if at[2] == 1 { if mo[0].state == E2M_IDLE { mo[0].x = at[0]; mo[0].z = at[1]; } mo[0].hx = at[0]; mo[0].hz = at[1]; }
+      }
+      e2mo_step(v, k, m, t, dt); e2nv_look(v, k, m, mo[0].x, mo[0].z, true);
+    }
     bt := r[0].beasts[mo[0].q..<mo[0].q + 1]; i := EGB_BEAST0 + mo[0].q;
     bt[0].x = mo[0].x; bt[0].z = mo[0].z; bt[0].yaw = mo[0].yaw;
     b[0].c[i].x = egb_sq(mo[0].x); b[0].c[i].y = egb_z_cell(r, mo[0].z);
   }
   ms[0].started = true;
+  // the guard is looked at with them, against the colliders: he walks by the players' own rule of where one may stand
+  gd := v[0].eg[k].guard[..]; if gd[0].q >= 0 { e2nv_look(v, k, E2NV_GUARD, gd[0].x, gd[0].z, false); }
+  e2nv_looked(v, k);
   e2mo_arrows(v, k, t);
 }
 // Whether a placed player stands within E2M_UNSEEN m of (x, z).
@@ -273,13 +310,11 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
     if mo[0].state == E2M_IDLE { mo[0].yaw = e2mo_turn(mo[0].yaw, mo[0].hyaw, 2, dt); return; }
   }
   if mo[0].state == E2M_RETURN {
-    went := e2mo_move(mo, mo[0].hx, mo[0].hz, run, dt, 0);
-    if went > 0 { mo[0].yaw = e2mo_turn(mo[0].yaw, e2_heading(mo[0].hx - mo[0].x, mo[0].hz - mo[0].z), 8, dt); }
-    if e2mo_dist(mo[0].x, mo[0].z, mo[0].hx, mo[0].hz) < 0.05 {
-      // whole again at home, as an MMO's monster is: its Hit Points and its conditions
-      b[0].c[i].hp = b[0].c[i].hp_max; b[0].c[i].cond = 0; b[0].c[i].temp = 0;
-      mo[0].state = E2M_IDLE; mo[0].hurt_by = 0; mo[0].act = 0;
-    }
+    if mo[0].home_t == 0 { mo[0].home_t = t; }
+    if t - mo[0].home_t > e2mo_hz(f32(E2M_HOME_S)) { e2mo_rest_home(v, k, m); return; }
+    went := e2mo_move(v, k, m, mo[0].hx, mo[0].hz, run, dt, 0);
+    if went > 0 { mo[0].yaw = e2mo_turn(mo[0].yaw, e2mo_way(mo, mo[0].hx, mo[0].hz), 8, dt); }
+    if e2mo_dist(mo[0].x, mo[0].z, mo[0].hx, mo[0].hz) < 0.05 { yaw := mo[0].yaw; e2mo_rest_home(v, k, m); mo[0].yaw = yaw; }
     return;
   }
   foe := mo[0].foe;
@@ -311,7 +346,7 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
   if mo[0].state == E2M_ESCAPE {
     // Nimble Escape: a Disengage, back from the one who closed on it
     ax := mo[0].x - p.x; az := mo[0].z - p.z; l := sqrt(ax * ax + az * az) + 0.001;
-    _ := e2mo_move(mo, mo[0].x + ax / l * 3, mo[0].z + az / l * 3, run, dt, 0);
+    _ := e2mo_move(v, k, m, mo[0].x + ax / l * 3, mo[0].z + az / l * 3, run, dt, 0);
     mo[0].yaw = e2mo_turn(mo[0].yaw, face, 10, dt);
     if t >= mo[0].escape_t { mo[0].state = E2M_CHASE; }
     return;
@@ -326,7 +361,7 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
       if ready && mo[0].seen { mo[0].act = E2M_ACT_SHOT; mo[0].act_t = t; }
       return;
     }
-    _ := e2mo_move(mo, p.x, p.z, run, dt, f32(E2M_BOW) - 2);
+    _ := e2mo_move(v, k, m, p.x, p.z, run, dt, f32(E2M_BOW) - 2);
     mo[0].yaw = e2mo_turn(mo[0].yaw, face, 8, dt);
     return;
   }
@@ -336,10 +371,10 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
     near := ifx ready then 1.2f32 else f32(E2M_RING);
     tx := p.x + sin(mo[0].orbit) * near; tz := p.z + cos(mo[0].orbit) * near;
     speed := ifx gap > f32(E2M_RING) + 1.5 || ready then run else f32(E2M_CIRCLE);
-    went := e2mo_move(mo, tx, tz, speed, dt, 0.1);
-    mo[0].yaw = e2mo_turn(mo[0].yaw, ifx ready || went < 0.01 then face else e2_heading(tx - mo[0].x, tz - mo[0].z), 10, dt);
+    went := e2mo_move(v, k, m, tx, tz, speed, dt, 0.1);
+    mo[0].yaw = e2mo_turn(mo[0].yaw, ifx ready || went < 0.01 then face else e2mo_way(mo, tx, tz), 10, dt);
   } else {
-    _ := e2mo_move(mo, p.x, p.z, run, dt, f32(E2M_REACH) * 0.75);
+    _ := e2mo_move(v, k, m, p.x, p.z, run, dt, f32(E2M_REACH) * 0.75);
     mo[0].yaw = e2mo_turn(mo[0].yaw, face, 8, dt);
   }
   if ready && gap <= f32(E2M_REACH) { mo[0].act = E2M_ACT_BLOW; mo[0].act_t = t; }

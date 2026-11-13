@@ -1,0 +1,204 @@
+// The checks of an Everglade room's cells and navigation (everglade/server/nav.coax, #13280, #13281).
+//   coax test --library coax/web/room/room.coax --steps 4000000000 --only "e2 nav"
+
+#test "e2 nav: a room holds the cells round its players, and builds a cell's page when a creature first needs it" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-nav-cells"); #assert k >= 0;
+  nv := v[0].eg[k].nav[..]; sh := v[0].nav[..];
+  // the seat stands in the glade: the cells within the rings are held, and no page is built for a room with no creature on the move
+  #assert nv[0].on && sh[0].ready && sh[0].whole && sh[0].built == 0 && nav_cells_pages(sh[0].pages[..]) == 0;
+  #assert rm_e2_nav_cells(v[..], k, true) >= 6 && rm_e2_nav_cells(v[..], k, true) < rm_e2_nav_cells(v[..], k, false) && rm_e2_nav_cells(v[..], k, false) < E2Z_CELLS;
+  #assert e2nv_awake(v[..], k, 0, 0) && e2nv_awake(v[..], k, 0, -60) && !e2nv_awake(v[..], k, e2_road_x(-470), -470) && !e2nv_awake(v[..], k, 0, 500);
+  // no page yet is nowhere to stand, and nowhere to be found off
+  #assert !e2nv_open(v[..], k, 0, 0) && !e2nv_paged(v[..], 0, 0);
+  // a creature by the glade's middle needs the four cells that meet there: each built whole, kept at the manifest's digest
+  #assert e2nv_need(v[..], k, 0, 0) && sh[0].built == 4 && nv[0].counts[E2NV_ADMITTED] == 4 && nv[0].counts[E2NV_REFUSED] == 0 && nav_cells_pages(sh[0].pages[..]) == 4;
+  cells := E2Z_CELL;
+  for i: 0..<E2Z_CELLS {
+    p := nav_cells_page(sh[0].pages[..], cells[i].cx, cells[i].cz);
+    #assert (p >= 0) == (cells[i].cx >= -1 && cells[i].cx <= 0 && cells[i].cz >= -1 && cells[i].cz <= 0);
+    if p >= 0 { #assert nav_cells_digest(sh[0].pages[..], p) == cells[i].digest && e2nv_ready(v[..], i); }
+  }
+  #assert e2nv_open(v[..], k, 0, 0) && e2nv_paged(v[..], 0, 0) && !e2nv_open(v[..], k, 0, 40) && e2nv_need(v[..], k, 0, 0) && sh[0].built == 4;
+  // one further down the path needs the cells within 32 m of it; one in a cell the room doesn't hold needs none, and has nowhere to stand
+  #assert e2nv_need(v[..], k, 20, -96) && sh[0].built == 6 && e2nv_ready(v[..], cell_of(sh[0].world[..], 20, -96)) && e2nv_ready(v[..], cell_of(sh[0].world[..], -12, -96));
+  #assert e2nv_need(v[..], k, e2_road_x(-470), -470) && sh[0].built == 6 && !e2nv_open(v[..], k, e2_road_x(-470), -470) && nv[0].counts[E2NV_REFUSED] == 0;
+}
+// A check's ticks with the seat held at (x, z).
+e2nt_ticks :: (v: [] RmServer, k: int, x: f32, z: f32, n: int) { for q: 0..<n { e2mt_at(v, k, x, z); e2mt_tick(v, k); } }
+
+#test "e2 nav: a host's room builds a page a slice a tick, ahead of need, and keeps it only at the manifest's digest" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-nav-slices"); #assert k >= 0;
+  nv := v[0].eg[k].nav[..]; sh := v[0].nav[..];
+  // a host's room: nothing built whole. The manifest's second cell is given a digest its page won't have
+  sh[0].whole = false; second := -1; n := 0;
+  for i: 0..<E2Z_CELLS { if nv[0].level[i] >= CELL_RESIDENT_LEVEL { if n == 1 { second = i; } n += 1; } }
+  #assert n >= 8 && second >= 0;
+  sh[0].world[0].manifest[second].digest += 1;
+  first := -1; most := 0; ticks := 0;
+  while ticks < 400 && sh[0].built < 2 {
+    before := sh[0].build[0].block;
+    e2_nav_tick(v[..], k); ticks += 1;
+    // never more than a slice in one tick
+    if sh[0].build[0].on && sh[0].build[0].block - before > most { most = sh[0].build[0].block - before; }
+    #assert sh[0].build[0].block - before <= E2NV_BLOCK_SLICE || !sh[0].build[0].on;
+    if first < 0 && sh[0].built == 1 { first = ticks; }
+  }
+  // the first page: its planting in slices, then 1,024 blocks 128 a tick: no sooner than 9 ticks, within 30
+  #assert first >= 9 && first <= 30 && most == E2NV_BLOCK_SLICE && sh[0].built == 2 && ticks < 100;
+  // the second came out at another digest than the manifest's: refused, dropped, never built again, nowhere to stand
+  cells := E2Z_CELL;
+  #assert nv[0].counts[E2NV_REFUSED] == 1 && sh[0].bad[second] && nav_cells_page(sh[0].pages[..], cells[second].cx, cells[second].cz) == -1 && !e2nv_ready(v[..], second) && !e2nv_want(v[..], k, second);
+  // the rest of what the room holds is built in the manifest's order, each kept at its digest
+  while ticks < 1200 && sh[0].built < n - 1 { e2_nav_tick(v[..], k); ticks += 1; }
+  #assert sh[0].built == n - 1 && nv[0].counts[E2NV_REFUSED] == 1 && nv[0].counts[E2NV_ADMITTED] == n - 1 && !sh[0].build[0].on;
+  for i: 0..<E2Z_CELLS {
+    p := nav_cells_page(sh[0].pages[..], cells[i].cx, cells[i].cz);
+    #assert (p >= 0) == (nv[0].level[i] >= CELL_RESIDENT_LEVEL && i != second);
+    if p >= 0 { #assert nav_cells_digest(sh[0].pages[..], p) == cells[i].digest; }
+  }
+  for q: 0..<20 { e2_nav_tick(v[..], k); } #assert sh[0].built == n - 1 && !sh[0].build[0].on;
+  // a creature's need comes before what is built ahead: with the builder on one cell, the cell a creature waits on is its next
+  sh[0] = E2NavShared.{}; e2_nav_start(v[..], k); e2_nav_tick(v[..], k); e2_nav_tick(v[..], k);
+  #assert sh[0].build[0].on && sh[0].next == -1;
+  wanted := cell_of(sh[0].world[..], -0.5, -0.5); on := cell_find(sh[0].world[..], sh[0].build[0].cx, sh[0].build[0].cz);
+  #assert wanted >= 0 && wanted != on && !e2nv_need(v[..], k, 20, 20) && sh[0].next == wanted;
+  while ticks < 2400 && sh[0].built < 1 { e2_nav_tick(v[..], k); ticks += 1; }
+  e2_nav_tick(v[..], k);
+  #assert sh[0].build[0].on && cell_find(sh[0].world[..], sh[0].build[0].cx, sh[0].build[0].cz) == wanted && sh[0].next == -1;
+}
+#test "e2 nav: every monster's home is ground a creature stands on, and one whose cell sleeps is home and whole" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-nav-homes"); #assert k >= 0;
+  ms := v[0].eg[k].monsters[..]; nv := v[0].eg[k].nav[..]; b := v[0].eg[k].rules[0].b[..];
+  for q: 0..<3 { e2mt_tick(v[..], k); }
+  // from the glade no monster's cell simulates: they sleep at home, and none has stepped
+  #assert nv[0].counts[E2NV_SLEPT] >= E2M_N && nv[0].counts[E2NV_OFF] == 0;
+  for m: 0..<E2M_N { #assert !e2nv_awake(v[..], k, ms[0].mon[m].x, ms[0].mon[m].z) || ms[0].mon[m].z > -190; }
+  // each home, with a player by it, is open ground on its cell's page: the land's own place for it, or the
+  // open ground nearest that when a trunk's or a rock's clearance covers it
+  moved := 0;
+  for m: 0..<E2M_N {
+    h := e2mo_home(m); e2nt_ticks(v[..], k, e2_road_x(h[1] + 30), h[1] + 30, 1);
+    #assert e2nv_need(v[..], k, h[0], h[1]); e2nt_ticks(v[..], k, e2_road_x(h[1] + 30), h[1] + 30, 1);
+    mo := ms[0].mon[m];
+    #assert e2nv_awake(v[..], k, mo.hx, mo.hz) && e2nv_open(v[..], k, mo.hx, mo.hz) && mo.x == mo.hx && mo.z == mo.hz && e2mo_dist(mo.hx, mo.hz, h[0], h[1]) <= f32(E2M_HOME_REACH);
+    if mo.hx != h[0] || mo.hz != h[1] { moved += 1; }
+  }
+  #assert moved < E2M_N / 2 && nv[0].counts[E2NV_OFF] == 0;
+  // a wolf roused and run 20 m from home; its player gone to the glade, its cell sleeps: it is home, whole, idle
+  w := ms[0].mon[5]; px := e2_road_x(w.hz - 12); pz := w.hz - 12;
+  e2nt_ticks(v[..], k, px, pz, 1); e2_monster_struck(v[..], k, 0, EGB_BEAST0 + w.q, 3);
+  e2nt_ticks(v[..], k, px, pz, 30);
+  i := EGB_BEAST0 + ms[0].mon[5].q; b[0].c[i].hp = 5;
+  #assert ms[0].mon[5].state == E2M_CHASE && e2mo_dist(ms[0].mon[5].x, ms[0].mon[5].z, w.hx, w.hz) > 4 && nv[0].counts[E2NV_OFF] == 0;
+  slept := nv[0].counts[E2NV_SLEPT];
+  e2nt_ticks(v[..], k, 0, 0, 2);
+  #assert ms[0].mon[5].state == E2M_IDLE && ms[0].mon[5].x == w.hx && ms[0].mon[5].z == w.hz && ms[0].mon[5].foe == -1 && b[0].c[i].hp == b[0].c[i].hp_max && nv[0].counts[E2NV_SLEPT] > slept;
+}
+#test "e2 nav: a wolf chases a player round a trunk, never through it" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-nav-trunk"); #assert k >= 0;
+  ms := v[0].eg[k].monsters[..]; nv := v[0].eg[k].nav[..]; sh := v[0].nav[..];
+  v[0].eg[k].rules[0].b[0].c[EGB_SEAT].hp = 500; v[0].eg[k].rules[0].b[0].c[EGB_SEAT].hp_max = 500;   // it outlasts the pack's bites
+  e2nt_ticks(v[..], k, e2_road_x(ms[0].mon[0].hz + 40), ms[0].mon[0].hz + 40, 2);
+  w := ms[0].mon[0];
+  #assert e2nv_awake(v[..], k, w.hx, w.hz) && e2nv_need(v[..], k, w.hx, w.hz) && nv[0].counts[E2NV_REFUSED] == 0;
+  // a place 12 m from the wolf's home where a player may stand and the straight walk from the wolf is shut by a trunk or a rock
+  found := false; px: f32 = 0; pz: f32 = 0;
+  for a: 0..<48 {
+    ang := f32(a) * 0.1308997; x := w.hx + sin(ang) * 12; z := w.hz + cos(ang) * 12;
+    if found || !e2nv_open(v[..], k, x, z) || nav_cells_line(sh[0].pages[..], w.hx, w.hz, x, z) { continue; }
+    // shut by something a creature walks round, not by the woods' edge: a little either side, the walk is open
+    if !nav_cells_line(sh[0].pages[..], w.hx, w.hz, w.hx + sin(ang + 0.35) * 12, w.hz + cos(ang + 0.35) * 12) && !nav_cells_line(sh[0].pages[..], w.hx, w.hz, w.hx + sin(ang - 0.35) * 12, w.hz + cos(ang - 0.35) * 12) { continue; }
+    found = true; px = x; pz = z;
+  }
+  #assert found;
+  // the player stands there; the pack notices and comes, and a wolf closes to bite
+  bit := false; went: f32 = 0; lx := w.hx; lz := w.hz;
+  for q: 0..<240 {
+    e2nt_ticks(v[..], k, px, pz, 1);
+    for m: 0..<3 {
+      mo := ms[0].mon[m];
+      #assert e2nv_open(v[..], k, mo.x, mo.z);
+      if mo.act == E2M_ACT_BLOW && e2mo_dist(mo.x, mo.z, px, pz) <= f32(E2M_REACH) + 0.6 { bit = true; }
+    }
+    went += e2mo_dist(ms[0].mon[0].x, ms[0].mon[0].z, lx, lz); lx = ms[0].mon[0].x; lz = ms[0].mon[0].z;
+  }
+  #assert bit; #assert ms[0].mon[0].state == E2M_CHASE; #assert went > 12.2; #assert nv[0].counts[E2NV_OFF] == 0;
+}
+#test "e2 nav: a gate laid across the path sends the pack through its gap, and shut, holds them" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-nav-gate"); #assert k >= 0;
+  ms := v[0].eg[k].monsters[..]; nv := v[0].eg[k].nav[..]; sh := v[0].nav[..];
+  // the third pack's first wolf, 7 m east of the path's middle; the player stands 12 m south of its home, and
+  // a gate crosses the path between them, its gap on the path's middle
+  e2nt_ticks(v[..], k, e2_road_x(-250), -250, 2);
+  w := ms[0].mon[5]; gz := w.hz - 6; gx := e2_road_x(gz); px := w.hx; pz := w.hz - 12;
+  v[0].eg[k].rules[0].b[0].c[EGB_SEAT].hp = 500; v[0].eg[k].rules[0].b[0].c[EGB_SEAT].hp_max = 500;   // it outlasts the pack's bites
+  #assert e2nv_need(v[..], k, w.hx, w.hz) && e2nv_open(v[..], k, px, pz) && e2nv_open(v[..], k, gx, gz) && w.hx - gx > 4;
+  // two pieces 13 m long either side of a 2.4 m gap on the path's middle
+  #assert rm_e2_nav_block(v[..], k, 1, false, gx - 7.7, gz, 6.5, 0.3, 0) && rm_e2_nav_block(v[..], k, 2, false, gx + 7.7, gz, 6.5, 0.3, 0) && nv[0].obstacles == 2 && nv[0].changes == 2;
+  #assert !rm_e2_nav_block(v[..], k, 3, false, gx, gz, 0, 0.3, 0) && !rm_e2_nav_block(v[..], k, 3, false, gx, gz, 1, 0, 0) && !rm_e2_nav_block(v[..], -1, 3, false, gx, gz, 1, 1, 0) && !rm_e2_nav_unblock(v[..], k, 9) && nv[0].obstacles == 2 && nv[0].changes == 2;
+  e2nt_ticks(v[..], k, px, pz + 60, 1);
+  #assert !e2nv_open(v[..], k, gx - 3, gz) && !e2nv_open(v[..], k, gx + 3, gz) && e2nv_open(v[..], k, gx, gz) && !e2nv_open(v[..], k, gx - 1.5, gz) && e2nv_open(v[..], k, gx - 3, gz + 2);
+  #assert !nav_cells_line(sh[0].pages[..], ms[0].mon[5].hx, ms[0].mon[5].hz, px, pz);
+  through := 0; bit := false;
+  for q: 0..<120 {
+    was: [3] f32; for m: 5..<8 { was[m - 5] = ms[0].mon[m].z; }
+    e2nt_ticks(v[..], k, px, pz, 1);
+    for m: 5..<8 {
+      mo := ms[0].mon[m];
+      #assert e2nv_open(v[..], k, mo.x, mo.z);
+      // crossing the gate's line, it is in the gap
+      if (was[m - 5] > gz) != (mo.z > gz) { #assert abs(mo.x - gx) < 0.9; through += 1; }
+      if mo.act == E2M_ACT_BLOW && e2mo_dist(mo.x, mo.z, px, pz) <= f32(E2M_REACH) + 0.6 { bit = true; }
+    }
+  }
+  #assert ms[0].mon[5].state == E2M_CHASE; #assert through >= 1; #assert bit; #assert nv[0].counts[E2NV_OFF] == 0; #assert v[0].nav[0].far[0].plans > 0;
+  // the gap shut by a third piece, and the pack sent home: none comes through to a player beyond it
+  e2nt_ticks(v[..], k, 0, 0, 3);
+  for m: 5..<8 { #assert ms[0].mon[m].state == E2M_IDLE && ms[0].mon[m].z > gz; }
+  #assert rm_e2_nav_block(v[..], k, 3, true, gx, gz, 1.4, 0, 0) && nv[0].obstacles == 3;
+  for q: 0..<60 {
+    e2nt_ticks(v[..], k, px, pz, 1);
+    for m: 5..<8 { #assert e2nv_open(v[..], k, ms[0].mon[m].x, ms[0].mon[m].z) && ms[0].mon[m].z > gz; }
+  }
+  #assert ms[0].mon[5].state == E2M_CHASE;
+  #assert nv[0].counts[E2NV_OFF] == 0;
+  // a second room has none of this room's pieces: its own obstacles are its own
+  #assert rm_e2_nav_unblock(v[..], k, 3) && nv[0].obstacles == 2 && rm_e2_nav_unblock(v[..], k, 1) && rm_e2_nav_unblock(v[..], k, 2) && nv[0].obstacles == 0 && nv[0].changes == 6;
+  e2nt_ticks(v[..], k, px, pz + 60, 1); #assert e2nv_open(v[..], k, gx - 3, gz);
+}
+#test "e2 nav: a piece laid over a creature sends it out to open ground, and a room lays so many pieces" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-nav-piece"); #assert k >= 0;
+  ms := v[0].eg[k].monsters[..]; nv := v[0].eg[k].nav[..];
+  e2nt_ticks(v[..], k, e2_road_x(-250), -250, 2);
+  gz := ms[0].mon[5].hz - 6; gx := e2_road_x(gz);
+  #assert e2nv_need(v[..], k, ms[0].mon[5].hx, ms[0].mon[5].hz); e2nt_ticks(v[..], k, e2_road_x(-250), -250, 1);
+  // a piece laid over a wolf: it is on closed ground, and steps out to the open ground nearest it
+  wolf := ms[0].mon[5..<6]; #assert wolf[0].state == E2M_IDLE && e2nv_open(v[..], k, wolf[0].x, wolf[0].z);
+  #assert rm_e2_nav_block(v[..], k, 50, true, wolf[0].x + 0.3, wolf[0].z, 0.8, 0, 0) && !e2nv_open(v[..], k, wolf[0].x, wolf[0].z);
+  from := [2] f32.[wolf[0].x, wolf[0].z];
+  for q: 0..<12 { s := e2nv_go(v[..], k, 5, wolf[0].x, wolf[0].z, wolf[0].x, wolf[0].z - 20, 9, 1.0f32 / 30); wolf[0].x = s[0]; wolf[0].z = s[1]; }
+  #assert e2nv_open(v[..], k, wolf[0].x, wolf[0].z) && e2mo_dist(wolf[0].x, wolf[0].z, from[0], from[1]) > 0.5 && rm_e2_nav_unblock(v[..], k, 50);
+  // a room lays E2NV_OBSTACLES at most
+  for o: 0..<E2NV_OBSTACLES { #assert rm_e2_nav_block(v[..], k, 100 + o, true, gx, gz + f32(o), 0.5, 0, 0); }
+  #assert !rm_e2_nav_block(v[..], k, 999, true, gx, gz, 0.5, 0, 0) && rm_e2_nav_block(v[..], k, 100, true, gx + 1, gz, 0.5, 0, 0) && nv[0].obstacles == E2NV_OBSTACLES;
+}
+#test "e2 nav: a monster with no way home is home once its time is out" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-nav-home"); #assert k >= 0;
+  ms := v[0].eg[k].monsters[..]; nv := v[0].eg[k].nav[..];
+  e2nt_ticks(v[..], k, e2_road_x(-250), -250, 2);
+  w := ms[0].mon[5]; gz := w.hz - 6; gx := e2_road_x(gz); px := w.hx; pz := w.hz - 12;
+  #assert e2nv_need(v[..], k, w.hx, w.hz);
+  // a gate across the path south of the pack, shut from edge to edge, and a fallen player beyond it (no one's quarry)
+  #assert rm_e2_nav_block(v[..], k, 1, false, gx - 7.7, gz, 6.5, 0.3, 0) && rm_e2_nav_block(v[..], k, 2, false, gx + 7.7, gz, 6.5, 0.3, 0) && rm_e2_nav_block(v[..], k, 3, true, gx, gz, 1.4, 0, 0);
+  v[0].eg[k].rules[0].b[0].c[EGB_SEAT].hp = 0; v[0].eg[k].rules[0].b[0].c[EGB_SEAT].dead = true;
+  e2nt_ticks(v[..], k, px, pz, 2);
+  // the wolf stands beyond the gate, on its way home: it has no way
+  #assert e2nv_open(v[..], k, px, pz);
+  mo := ms[0].mon[5..<6]; mo[0].x = px; mo[0].z = pz; e2mo_home_again(mo);
+  for q: 0..<60 { e2nt_ticks(v[..], k, px, pz, 1); }
+  #assert mo[0].state == E2M_RETURN && mo[0].z < gz && mo[0].home_t > 0 && e2nv_open(v[..], k, mo[0].x, mo[0].z);
+  for q: 0..<e2mo_hz(f32(E2M_HOME_S)) - 60 { e2nt_ticks(v[..], k, px, pz, 1); }
+  #assert mo[0].state == E2M_RETURN;
+  e2nt_ticks(v[..], k, px, pz, 2);
+  #assert mo[0].state == E2M_IDLE && mo[0].x == mo[0].hx && mo[0].z == mo[0].hz && mo[0].home_t == 0 && nv[0].counts[E2NV_OFF] == 0;
+}

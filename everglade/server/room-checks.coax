@@ -7,6 +7,7 @@
 // The checks' server clock a tick (1/EG_HZ s) on from the last, as the host's is each tick.
 eg_test_clock :: (v: [] RmServer) {
   if v[0].eg_test_ticks == 0 { v[0].eg_test_t0 = v[0].mono_ms; }
+  v[0].nav[0].whole = true;   // a check's room builds a cell's navigation page whole in the tick it is asked (everglade/server/nav.coax)
   v[0].eg_test_ticks += 1;
   rm_clock(v, v[0].eg_test_t0 + (v[0].eg_test_ticks * 1000 + EG_HZ - 1) / EG_HZ, v[0].wall_ms);
 }

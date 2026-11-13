@@ -172,6 +172,7 @@ apps/openagents-ios/build.sh                # the app, for the simulator
 coax/web/serve.sh apps/openagents-web       # the website with hot reload: http://127.0.0.1:8800/
 coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/openagents-web/*.wgsl match their Coax (build.sh writes them; commit them)
 coax/web/tool.sh everglade-parity           # no Everglade zone carries its own copy of a shared feature (everglade/features.coax, #13075)
+coax/web/tool.sh everglade/model/tools/zone-cells.coax --check everglade/world/zone-cells.coax everglade/content/everglade.content  # Everglade's cells and navigation are what the land builds, every spawn and named point is reachable (--write after a change to the land or a collider; docs/verse/navigation.md, #13281)
 coax/web/tool.sh components-check           # the component system's layers, no looks in a component, one Markdown parser (components/spec.md, #13153)
 coax/web/tool.sh layer-check                # no load from aethyr/ up into verse/, apps/, everglade/ or coax/web/, none from everglade/ into apps/, no plain load of a tests/ file by product code (a module loads its checks with `#load "FILE" #test;`, #13383); no engine module without a product consumer or a line in aethyr/consumers.txt (#13272); the allowlist only shrinks (aethyr/README.md "Layers", #13264)
 coax/web/tool.sh prepush --replay COMMIT    # would the pre-push check refuse COMMIT? (--replay-check: the historical clobbers, #13265)

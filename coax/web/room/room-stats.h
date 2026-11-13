@@ -253,6 +253,10 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   static const char *save_names[28]={"checkpoint pending","checkpoint flying","checkpoint posts","checkpoint retries","checkpoint failures","checkpoint applied","checkpoint duplicates","checkpoint late receipts","checkpoint capacity refusals","checkpoint stale owner refusals","checkpoint resident","checkpoint accepted","checkpoint capture age ms most","checkpoint receipt age ms most","checkpoint paused rooms","checkpoint finalizing","legacy save pending","legacy save flying","legacy save posts","legacy save retries","legacy save failures","legacy save applied","legacy save duplicates","legacy stale owner refusals","legacy save abandoned","legacy save evicted","owner generation most","owner ticket refusals"};
   for(int q=0;q<28;q++)st_line(o,"%s=%lld",save_names[q],(long long)saves[q]);
   st_line(o,"checkpoint unsaved age ms most=%lld",(long long)rm_st_unsaved_ms(v));   /* the checkpoint service level (#13297) */
+  /* the rooms' navigation (everglade/server/nav.coax, #13281): creature ticks off the cells' open ground, looks that
+     found a creature inside a collider (against the host's own planting), and the cells' pages */
+  static const char *nav_names[7]={"creature ticks off the cells","creatures found inside a collider","pages kept","pages refused","creature ticks slept","collider looks","pages built"};
+  for(int q=0;q<7;q++)st_line(o,"navigation %s=%lld",nav_names[q],(long long)rm_e2_nav_total(v,q));
   st_line(o,"checkpoint active loss bound ms=30000");st_line(o,"checkpoint healthy recovery target ms=60000");
   st_line(o,"capacity draining=%d",server->drain?1:0);
   int64_t capacity[6];rm_st_capacity(v,(coax_v_s64){capacity,6});

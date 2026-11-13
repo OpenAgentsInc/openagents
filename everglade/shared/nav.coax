@@ -1,0 +1,96 @@
+// Everglade's navigation, built from the colliders the players' own step uses (GitHub #13281, AAA
+// P2.8; docs/verse/navigation.md): one page a world cell (aethyr/world/nav/cells.coax), each block
+// of it from what everglade/shared/move.coax hands a player's step at that block's middle: where
+// one may stand (e2_may_stand), and the trunks, the rocks' hulls and the camp's props round it
+// (e2m_world). So a creature's ground is the players' ground less a creature's own radius, and a
+// change to a collider changes both. Game-wide: the room (everglade/server/nav.coax) builds a
+// cell's page when the cell loads; the zone's manifest tool (everglade/world/tools/zone-cells.coax)
+// builds every one, pins its digest and checks that every spawn and named point can be reached.
+//   COAX_NATIVE_CHECKS=1 coax/bin/coax test --library everglade/shared/nav.coax
+#load "move.coax";
+#load "../../aethyr/world/nav/cells-colliders.coax";
+
+E2N_BODY :: 0.4;          // m: a creature's radius, a wolf's shoulders and a goblin's alike
+E2N_BLOCKS :: 1024;       // blocks a page: NAV_BLOCK_SIDE squared
+// The planting one page's build reads, when a room plants it itself (everglade/server/nav.coax): kit pieces at most,
+// and the room kept for one more planting cell. The manifest tool refuses a zone with a cell that needs more.
+E2N_ITEMS :: 5120; E2N_ITEMS_SPARE :: 256;
+
+// Builds block `b` (row order, 0 to E2N_BLOCKS - 1) of page p from a planting's colliders (its
+// items, kinds and first as e2_plant fills them; `bodies` and `hulls` are the step's own scratch):
+// the samples it opened, or -1 for a page or a block that isn't one.
+e2n_block_from :: (items: [] f32, kinds: [] u8, first: [] int, planted: bool, bodies: [] f32, hulls: [] f32, n: [] NavCells, p: int, b: int) -> int #effects(all) {
+  if p < 0 || p >= NAV_PAGES || !n[0].page[p].used || b < 0 || b >= E2N_BLOCKS { return -1; }
+  bi := b % NAV_BLOCK_SIDE; bj := b / NAV_BLOCK_SIDE;
+  cx := n[0].page[p].cx; cz := n[0].page[p].cz;
+  stand: [NAV_BLOCK * NAV_BLOCK] bool; any := false;
+  for k: 0..<NAV_BLOCK * NAV_BLOCK {
+    stand[k] = e2_may_stand(nav_cells_x(cx, bi * NAV_BLOCK + k % NAV_BLOCK), nav_cells_x(cz, bj * NAV_BLOCK + k / NAV_BLOCK));
+    if stand[k] { any = true; }
+  }
+  if !any { return nav_cells_build_block(n, p, bi, bj, stand[..], f32(E2N_BODY), bodies[0..<0], hulls[0..<0]); }
+  w := e2m_world(items, kinds, first, planted, bodies, hulls, e2n_block_x(cx, bi), e2n_block_x(cz, bj));
+  return nav_cells_build_block(n, p, bi, bj, stand[..], f32(E2N_BODY), bodies[0..<w.bodies * 7], hulls[0..<w.hulls]);
+}
+// The planting cells a step's world reads for any block of cell (cx, cz): its own and the ring round them
+// (e2m_world), as [i0, i1, j0, j1] of plant.coax's cells, which may run past the planting's edge.
+e2n_planting :: (cx: int, cz: int) -> [4] int #effects(all) {
+  x0 := e2n_block_x(cx, 0); x1 := e2n_block_x(cx, NAV_BLOCK_SIDE - 1); z0 := e2n_block_x(cz, 0); z1 := e2n_block_x(cz, NAV_BLOCK_SIDE - 1);
+  return [4] int.[cast(int) floor((x0 - f32(E2_CELL_X0)) / f32(E2_CELL)) - 1, cast(int) floor((x1 - f32(E2_CELL_X0)) / f32(E2_CELL)) + 1,
+                  cast(int) floor((f32(E2_CELL_Z0) - z1) / f32(E2_CELL)) - 1, cast(int) floor((f32(E2_CELL_Z0) - z0) / f32(E2_CELL)) + 1];
+}
+// A block's middle along one axis: between its second and third samples.
+e2n_block_x :: (c: int, b: int) -> f32 #effects(all) { return nav_cells_x(c, b * NAV_BLOCK + 1) + f32(NAV_CELL_STEP) / 2; }
+// The same from the room's whole planting (room-world.c's ground).
+e2n_block :: (g: [] E2MoveGround, n: [] NavCells, p: int, b: int) -> int #export_c #effects(all) {
+  return e2n_block_from(g[0].items[..], g[0].kinds[..], g[0].first[..], g[0].done, g[0].bodies[..], g[0].hulls[..], n, p, b);
+}
+// A whole page for cell (cx, cz), at once (the manifest tool and the checks; a room builds a page
+// a few blocks a tick): its number, or -1 when the store has no room or the cell has one.
+e2n_page :: (g: [] E2MoveGround, n: [] NavCells, cx: int, cz: int) -> int #effects(all) {
+  p := nav_cells_add(n, cx, cz);
+  if p < 0 { return -1; }
+  for b: 0..<E2N_BLOCKS { opened := e2n_block(g, n, p, b); }
+  return p;
+}
+// Whether a creature's middle at (x, z) is inside a collider or off the ground one may stand on:
+// what the room counts each tick, and a bot run holds at 0.
+e2n_inside :: (g: [] E2MoveGround, x: f32, z: f32) -> bool #export_c #effects(all) {
+  if !e2_may_stand(x, z) { return true; }
+  w := e2m_world(g[0].items[..], g[0].kinds[..], g[0].first[..], g[0].done, g[0].bodies[..], g[0].hulls[..], x, z);
+  return !nav_body_clear(x, z, 0, g[0].bodies[0..<w.bodies * 7], g[0].hulls[0..<w.hulls]);
+}
+// Whether the land has ground to stand on in cell (cx, cz): asked every 2 m, at each block's middle sample.
+e2n_cell_stands :: (cx: int, cz: int) -> bool #effects(all) {
+  for b: 0..<E2N_BLOCKS {
+    if e2_may_stand(nav_cells_x(cx, (b % NAV_BLOCK_SIDE) * NAV_BLOCK + 1), nav_cells_x(cz, (b / NAV_BLOCK_SIDE) * NAV_BLOCK + 1)) { return true; }
+  }
+  return false;
+}
+// The land's cells, west to east and south to north: E2_WEST to E2_EAST, E2_FAR to E2_BACK.
+E2N_CX0 :: -4; E2N_CX1 :: 3; E2N_CZ0 :: -10; E2N_CZ1 :: 1;
+#test "everglade nav: the land's cells cover it from edge to edge" {
+  #assert f64(E2N_CX0) * CELL_SIZE <= E2_WEST && f64(E2N_CX1 + 1) * CELL_SIZE >= E2_EAST && f64(E2N_CZ0) * CELL_SIZE <= E2_FAR && f64(E2N_CZ1 + 1) * CELL_SIZE >= E2_BACK;
+  #assert E2N_BLOCKS == NAV_BLOCK_SIDE * NAV_BLOCK_SIDE;
+}
+#test "everglade nav: a page's open samples are clear of every collider the players' step meets, and its closed ones are not all woods" #steps 4000000000 #traversal 1073741824 {
+  g: [1] E2MoveGround; e2mg_plant(g[..]);
+  n: [1] NavCells;
+  // the cell south of the glade, where the path leaves it: woods, trunks, rocks and the path
+  p := e2n_page(g[..], n[..], 0, -1); #assert p == 0 && e2n_page(g[..], n[..], 0, -1) == -1;
+  open := 0; among := 0;
+  for j: 0..<NAV_CELL_SIDE { for i: 0..<NAV_CELL_SIDE {
+    x := nav_cells_x(0, i); z := nav_cells_x(-1, j);
+    if nav_cells_bit(n[..], p, i, j) {
+      open += 1;
+      // every seventh open sample, against the colliders themselves: its middle is on standing ground, inside nothing
+      if open % 7 == 0 { #assert !e2n_inside(g[..], x, z) && e2_may_stand(x, z); }
+    } else if e2_may_stand(x, z) { among += 1; }   // closed by a trunk's, a rock's or a prop's clearance, on ground one may stand on
+  } }
+  #assert open > 3000 && among > 100 && among < open;
+  // a trunk's middle is inside it, and so is the deep woods
+  t := e2_trunk(0, 5, -9, 0.7, 0.8); #assert e2n_inside(g[..], 0, 40) && !e2n_inside(g[..], 0, 0);
+  // a block or a page that isn't one
+  #assert e2n_block(g[..], n[..], p, -1) == -1 && e2n_block(g[..], n[..], p, E2N_BLOCKS) == -1 && e2n_block(g[..], n[..], 1, 0) == -1 && e2n_block(g[..], n[..], -1, 0) == -1 && e2n_block(g[..], n[..], NAV_PAGES, 0) == -1;
+  #assert e2n_cell_stands(0, 0) && e2n_cell_stands(0, -1) && !e2n_cell_stands(3, 1) && !e2n_cell_stands(-4, -10);
+}

@@ -1,0 +1,53 @@
+// Everglade as one world of cells (GitHub #13280, AAA P2.7; docs/verse/one-world.md): the zone's
+// manifest for the engine's cell controller (aethyr/world/cells.coax). The glade, the forest path,
+// the city's clearing and the far clearing are cells of one manifest, 64 m a side, each listed with
+// the digest of its navigation page (zone-cells.coax, written by
+// everglade/model/tools/zone-cells.coax from the land's own colliders). The room pages a cell's
+// navigation and steps its creatures by this manifest (everglade/server/nav.coax); the page is to
+// hold the same one (docs/verse/one-world.md, "What is left"). Nothing here is a place's own: a new
+// stretch of the world is more rows of the manifest.
+//   coax/bin/coax test --library everglade/world/zone.coax
+#load "../../aethyr/world/cells.coax";
+#load "zone-cells.coax";
+
+// A room's rings: a cell's creatures step while a player is within E2Z_SIMULATE of it, and the room
+// holds it (its navigation page may be built) within E2Z_LOAD.
+E2Z_SIMULATE :: 160.0; E2Z_LOAD :: 256.0;
+e2z_room_rings :: () -> CellRings #effects(all) { return CellRings.{draw = 96, simulate = E2Z_SIMULATE, load = E2Z_LOAD, hysteresis = 8, resident = CELL_RESIDENT, loads = CELL_LOADS}; }
+// A page's rings are the engine's own: drawn within 96 m, stepped within 160, resident within 256.
+e2z_page_rings :: () -> CellRings #effects(all) { return CellRings.{}; }
+
+// The zone's manifest into a cell world, every cell absent.
+e2z_manifest :: (w: [] CellWorld) #effects(all) {
+  w[0] = CellWorld.{};
+  cells := E2Z_CELL;
+  for i: 0..<E2Z_CELLS { w[0].manifest[i] = CellEntry.{cx = cells[i].cx, cz = cells[i].cz, digest = cells[i].digest}; }
+  w[0].n = E2Z_CELLS;
+}
+
+#test "everglade zone: the manifest is one the cell controller takes, and its rings are admitted" {
+  w: [1] CellWorld; e2z_manifest(w[..]);
+  #assert w[0].n == E2Z_CELLS && cell_manifest_ok(w[..]) && E2Z_CELLS >= 2 && E2Z_CELLS <= CELL_RESIDENT && cell_rings_ok(e2z_room_rings()) && cell_rings_ok(e2z_page_rings());
+  cells := E2Z_CELL; reached := 0;
+  for i: 0..<E2Z_CELLS { #assert cells[i].open > 0 && cells[i].reached > 0 && cells[i].reached <= cells[i].open && cells[i].open <= 16384; reached += cells[i].reached; }
+  #assert reached == E2Z_REACHED;
+}
+#test "everglade zone: the glade and the forest path are neighbouring cells of one world" {
+  w: [1] CellWorld; e2z_manifest(w[..]);
+  glade := cell_of(w[..], 0.5, 0.5); south := cell_of(w[..], 0.5, -0.5); path := cell_of(w[..], 0.5, -70);
+  #assert glade >= 0 && south >= 0 && path >= 0 && glade != south && south != path;
+  out: [8] int; n := cell_neighbours(w[..], south, out[..]);
+  near_glade := false; near_path := false;
+  for k: 0..<n { if out[k] == glade { near_glade = true; } if out[k] == path { near_path = true; } }
+  #assert near_glade && near_path;
+  // a player in the glade: its cells and the path's first load and simulate, in one world, with no load between them
+  rings := e2z_page_rings();
+  for step: 0..<E2Z_CELLS + 4 {
+    s := cell_step_rings(w[..], 0, 0, rings);
+    for k: 0..<s.asked_n { i := s.asked[k]; v := cell_complete(w[..], cell_answer(w[0].cells[i].request, 1, i, w[0].manifest[i].digest, false)); }
+  }
+  #assert cell_draws(w[..], glade) && cell_draws(w[..], south) && cell_simulates(w[..], path) && cell_may_enter(w[..], 0, -60) && cell_may_enter(w[..], 0, -120);
+  // every cell within the load ring is resident, inside the budget; the far clearing's are not asked for
+  far := cell_of(w[..], -10, -470);
+  #assert far >= 0 && w[0].cells[far].level == CELL_ABSENT && cell_resident_count(w[..]) <= CELL_RESIDENT && cell_loading_count(w[..]) == 0;
+}

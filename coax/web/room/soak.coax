@@ -18,6 +18,10 @@
 //     played three times for a minute by 16 bots: as built (must hold), with a seeded slow tick
 //     (OA_ROOM_FAULT_TICK_US: must fail slow-tick) and with a seeded leak (OA_ROOM_FAULT_LEAK_KB:
 //     must fail leak). Exits 0 when all three verdicts are those.
+//   coax/web/tool.sh coax/web/room/soak.coax local ROOM_BIN SECONDS [PORT] [PLAYERS]
+//     A --dev room of ROOM_BIN on this machine, played by PLAYERS bots (16) for SECONDS, with the same
+//     verdict: the 30-minute run a change to the room's creatures is held to (`local BIN 1800`,
+//     docs/verse/navigation.md).
 //   coax/web/tool.sh coax/web/room/soak.coax publish FILE ORIGIN
 //     Posts FILE's record to ORIGIN's API (POST /api/playtest/capacity-record), signed as a room's
 //     `capacity` write with OA_ROOM_WRITE_KEY or OA_ROOM_TICKET_KEY from the environment.
@@ -47,6 +51,9 @@ SoRun :: struct {
   seated: [SO_ROOMS] int; seated_most: int; seated_end: int; ack_p95: int = -1; bytes: int;
   ask: [CF_HIST] int; api: [CF_HIST] int;
   rejoined: int; kills: int; version_refused: int; finished: bool;
+  // the room's navigation totals, as its last window had them (-1: not read): creature ticks off the cells, creatures
+  // found inside a collider, and the looks that could have found one (everglade/server/nav.coax, #13281)
+  nav_off: int = -1; nav_inside: int = -1; nav_looks: int = -1;
 }
 
 // The number after "\nKEY=" in a report (or at its start), times `scale`, rounded; -1 when the
@@ -99,6 +106,8 @@ so_window :: (r: [] SoRun, text: string) {
   r[0].p50[k] = so_value(text, "tick p50 ms", 1000); r[0].p95[k] = so_value(text, "tick p95 ms", 1000); r[0].p99[k] = p99;
   r[0].mem[k] = so_value(text, "process resident kb", 1); r[0].unsaved[k] = so_value(text, "checkpoint unsaved age ms most", 1);
   r[0].refused[k] = so_value(text, "transport refused frames a second", 10);
+  r[0].nav_off = so_value(text, "navigation creature ticks off the cells", 1); r[0].nav_inside = so_value(text, "navigation creatures found inside a collider", 1);
+  r[0].nav_looks = so_value(text, "navigation collider looks", 1);
 }
 #test "a window is counted once, however often it is read" {
   r: [1] SoRun;
@@ -107,6 +116,11 @@ so_window :: (r: [] SoRun, text: string) {
   so_window(r[..], "no window yet\n");
   so_window(r[..], "tick p99 ms=12.5\nprocess resident kb=120\ncheckpoint unsaved age ms most=16000\ntransport refused frames a second=1.5\n");
   #assert r[0].n == 2 && r[0].p99[0] == 3010 && r[0].p99[1] == 12500 && r[0].mem[1] == 120 && r[0].unsaved[0] == -1 && r[0].unsaved[1] == 16000;
+  #assert r[0].nav_off == -1 && r[0].nav_inside == -1 && so_facts(r[..], 60, true).astray == -1;
+  so_window(r[..], "tick p99 ms=2.5\nnavigation creature ticks off the cells=2\nnavigation creatures found inside a collider=1\nnavigation collider looks=900\n");
+  #assert r[0].nav_off == 2 && r[0].nav_inside == 1 && r[0].nav_looks == 900 && so_facts(r[..], 60, true).astray == 3;
+  so_window(r[..], "tick p99 ms=2.6\nnavigation creature ticks off the cells=0\nnavigation creatures found inside a collider=0\nnavigation collider looks=950\n");
+  #assert so_facts(r[..], 60, true).astray == 0 && r[0].n == 4;
   #assert r[0].refused[0] == -1 && r[0].refused[1] == 15;
 }
 // A line of the bots: a room's window (B), its totals (F).
@@ -152,6 +166,7 @@ so_facts :: (r: [] SoRun, seconds: int, direct: bool) -> SkFacts {
   f.memory_early_kb = so_median(r[0].mem[..], n / 4, n / 2); f.memory_late_kb = so_median(r[0].mem[..], n - n / 4, n);
   f.ticket_p95_ms = ifx direct then -1 else cf_quantile(r[0].ask[..], 950);
   f.windows_read = n; f.windows_due = ifx seconds > 40 then (seconds - 30) / 10 else 0;
+  f.astray = ifx r[0].nav_off < 0 || r[0].nav_inside < 0 then -1 else r[0].nav_off + r[0].nav_inside;
   return f;
 }
 #test "a run's facts: the slow and unsaved windows counted, memory by quarters, the windows due" {
@@ -243,11 +258,36 @@ so_run :: (o: SoOpts, bits: [] int) -> int {
   print("%", rec);
   if o.out.count > 0 && !fs_write(o.out, rec) { tool_err("soak: cannot write "); tool_errln(o.out); return 2; }
   wb: [96] u8;
+  print("soak: navigation: % creature ticks off the cells, % of % looks found a creature inside a collider (-1: not read)\n", r[0].nav_off, r[0].nav_inside, r[0].nav_looks);
   if bits[0] == 0 { print("soak: holds: % seated for % s over % windows\n", r[0].seated_most, o.seconds, r[0].n); return 0; }
   print("soak: fails: %\n", sk_words(bits[0], wb[..]));
   return 1;
 }
 
+// A --dev room of `bin` on `port` (with `env` set for it, "" none), played by `players` bots for `seconds`:
+// so_run's answer (0 holds, 1 fails, 2 it could not run), and bits[0] its verdict.
+so_local :: (bin: string, port: int, env: string, players: int, seconds: int, reconnect: int, bits: [] int) -> int {
+  pb: [16] u8; ps := cast(string) pb[0..<rs_int(pb[..], 0, port)];
+  h := proc_new();
+  ok := proc_arg(h, bin) && proc_arg(h, "--port") && proc_arg(h, ps) && proc_arg(h, "--dev") && proc_arg(h, "coax/web/room/dev") &&
+        proc_env(h, "OA_ROOM_TICKET_KEY=local-development-room-ticket-key-not-a-secret") && proc_quiet(h);
+  if env.count > 0 { ok = ok && proc_env(h, env); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); tool_errln("soak: the room did not start"); return 2; }
+  ob: [128] u8; vb: [128] u8;
+  o := SoOpts.{players = players, seconds = seconds, env = "local", commit = "0000000", realm = "pair-e2-soak", reconnect = reconnect, travel = 0, direct = true,
+                  key_env = "OA_ROOM_TICKET_KEY=local-development-room-ticket-key-not-a-secret"};
+  o.origin = cast(string) ob[0..<rs_int(ob[..], rs_put(ob[..], 0, "ws://localhost:"), port)];
+  o.vitals = cast(string) vb[0..<rs_put(vb[..], rs_int(vb[..], rs_put(vb[..], 0, "http://127.0.0.1:"), port), "/api/room/vitals")];
+  // the room's health first
+  w: [1] HttpWork; body: [4096] u8; none: [1] string; up := false;
+  hu: [128] u8; hurl := cast(string) hu[0..<rs_put(hu[..], rs_int(hu[..], rs_put(hu[..], 0, "http://127.0.0.1:"), port), "/health")];
+  for q: 0..<100 { if !up { g := http_do(w[..], "GET", hurl, none[0..<0], "", 1000, 0, body[..]); if g.error == HTTP_OK && g.code == 200 { up = true; } else { proc_sleep(100); } } }
+  st := 2;
+  if up { st = so_run(o, bits); }
+  kl := proc_kill(h, PROC_SIGTERM); wt := proc_wait(h, 10000); if wt == PROC_RUNNING { kl = proc_kill(h, PROC_SIGKILL); wt = proc_wait(h, 2000); }
+  rl := proc_release(h);
+  return st;
+}
 // `self-check ROOM_BIN [PORT]`: a local room three times: as built, with a slow tick, with a leak.
 so_self :: (bin: string, port: int) -> int {
   names := [3] string.["as built", "a seeded slow tick", "a seeded leak"];
@@ -255,25 +295,8 @@ so_self :: (bin: string, port: int) -> int {
   want := [3] int.[0, SK_SLOW_TICK, SK_LEAK];
   failed := 0;
   for k: 0..<3 {
-    pb: [16] u8; ps := cast(string) pb[0..<rs_int(pb[..], 0, port + k)];
-    h := proc_new();
-    ok := proc_arg(h, bin) && proc_arg(h, "--port") && proc_arg(h, ps) && proc_arg(h, "--dev") && proc_arg(h, "coax/web/room/dev") &&
-          proc_env(h, "OA_ROOM_TICKET_KEY=local-development-room-ticket-key-not-a-secret") && proc_quiet(h);
-    if envs[k].count > 0 { ok = ok && proc_env(h, envs[k]); }
-    if !ok || proc_start(h) != 0 { r := proc_release(h); tool_errln("soak: the room did not start"); return 2; }
-    ob: [128] u8; vb: [128] u8;
-    o := SoOpts.{players = 16, seconds = 60, env = "local", commit = "0000000", realm = "pair-e2-soak", reconnect = 20, travel = 0, direct = true,
-                    key_env = "OA_ROOM_TICKET_KEY=local-development-room-ticket-key-not-a-secret"};
-    o.origin = cast(string) ob[0..<rs_int(ob[..], rs_put(ob[..], 0, "ws://localhost:"), port + k)];
-    o.vitals = cast(string) vb[0..<rs_put(vb[..], rs_int(vb[..], rs_put(vb[..], 0, "http://127.0.0.1:"), port + k), "/api/room/vitals")];
-    // the room's health first
-    w: [1] HttpWork; body: [4096] u8; none: [1] string; up := false;
-    hu: [128] u8; hurl := cast(string) hu[0..<rs_put(hu[..], rs_int(hu[..], rs_put(hu[..], 0, "http://127.0.0.1:"), port + k), "/health")];
-    for q: 0..<100 { if !up { g := http_do(w[..], "GET", hurl, none[0..<0], "", 1000, 0, body[..]); if g.error == HTTP_OK && g.code == 200 { up = true; } else { proc_sleep(100); } } }
-    bits: [1] int; st := 2;
-    if up { st = so_run(o, bits[..]); }
-    kl := proc_kill(h, PROC_SIGTERM); wt := proc_wait(h, 10000); if wt == PROC_RUNNING { kl = proc_kill(h, PROC_SIGKILL); wt = proc_wait(h, 2000); }
-    rl := proc_release(h);
+    bits: [1] int; st := so_local(bin, port + k, envs[k], 16, 60, 20, bits[..]);
+    if st == 2 && bits[0] == 0 { tool_errln("soak: the local room could not be played"); }
     // the fault's own failure and no other of the room's (lost or blind would be the harness's)
     good := st != 2 && (ifx want[k] == 0 then bits[0] == 0 else (bits[0] & want[k]) != 0);
     print("soak self-check: %: % (verdict bits %, wanted %)\n", names[k], ifx good then "ok" else "FAIL", bits[0], want[k]);
@@ -298,11 +321,15 @@ so_publish :: (file: string, origin: string) -> int {
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh coax/web/room/soak.coax run --origin URL --vitals URL --players N --seconds S [--out FILE] | self-check ROOM_BIN [PORT] | publish FILE ORIGIN"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh coax/web/room/soak.coax run --origin URL --vitals URL --players N --seconds S [--out FILE] | self-check ROOM_BIN [PORT] | local ROOM_BIN SECONDS [PORT] [PLAYERS] | publish FILE ORIGIN"); return 2; }
   cmd := args_at(a[..], 0);
   if cmd == "self-check" && args_count(a[..]) >= 2 { return so_self(args_at(a[..], 1), ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 2)) else 28470); }
+  if cmd == "local" && args_count(a[..]) >= 3 {
+    bits: [1] int;
+    return so_local(args_at(a[..], 1), ifx args_count(a[..]) > 3 then rs_num(args_at(a[..], 3)) else 28480, "", ifx args_count(a[..]) > 4 then rs_num(args_at(a[..], 4)) else 16, rs_num(args_at(a[..], 2)), 300, bits[..]);
+  }
   if cmd == "publish" && args_count(a[..]) == 3 { return so_publish(args_at(a[..], 1), args_at(a[..], 2)); }
-  if cmd != "run" { tool_errln("soak: run, self-check or publish"); return 2; }
+  if cmd != "run" { tool_errln("soak: run, self-check, local or publish"); return 2; }
   o := SoOpts.{};
   o.origin = args_value(a[..], "--origin", ""); o.vitals = args_value(a[..], "--vitals", "");
   o.players = rs_num(args_value(a[..], "--players", "96")); o.seconds = rs_num(args_value(a[..], "--seconds", "7200"));

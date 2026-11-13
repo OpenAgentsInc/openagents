@@ -5,6 +5,8 @@
     "everglade/server/arrows.coax",
     "everglade/server/rest.coax",
     "everglade/server/battle.coax",
+    "everglade/server/nav.coax",
+    "everglade/server/nav-checks.coax",
     "coax/web/room/room-everglade.coax",
     "coax/web/room/room-fleet.coax",
     "coax/web/room/room-games.coax",
