@@ -135,10 +135,14 @@ to tow him, and Sniper's charger charges him back up. A foe Digger fights strike
 - **The drill mech.** It waits in an empty section (landmark 91, else beside the boss wall). E beside
   it swaps Digger's core in: its lenses turn Digger's amber and it follows you; Digger's body waits
   dark. E at the blocked hallway (the boss wall) has it drill through; nothing else breaks it.
-- **The raider mech.** On the desert route it keeps watch (landmark 92, else near the rail stop),
-  hunts you within 16 m and gives up past 20 m. F within 2.6 m stuns it for 6 s. E at Sniper while
-  it is near starts a battle with Sniper fielded (and Digger to swap in, once built).
-- **The boss.** A dinosaur-shaped bot glowing blue. Its battle begins when you are in its chamber
+- **The raider mech.** It keeps watch beside the drive's second leg (landmark 92, else 12 m off the
+  route a third of the way from the rail stop to the garage). When Sniper passes within 16 m it gives
+  chase at 16 m/s: faster than Sniper's cruise, slower than its top speed, so holding W outruns it
+  (20 m behind, it gives up for the drive). Beside Sniper it claws it every 1.3 s. E while it is
+  within 12 m starts a battle with Sniper fielded; in the battle Sniper drives at its slow speed and
+  1 to 4 are its cards. 12 m before the garage it turns back. On foot nothing hunts you.
+- **The boss.** A dinosaur-shaped bot glowing blue. Its collider is a body in the engine's World that
+  moves with it (`sl_body_to`, layer.coax). Its battle begins when you are in its chamber
   with the mech. Phase one: its arm sweeps. Below half health, phase two: it winds up, charges and
   is dazed after. Its three weak points open while it reels from a stunning hit, is dazed, or has no
   health left; stun all three with F (each stays down 12 s) and it powers down, drops its banned core,

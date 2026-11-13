@@ -11,9 +11,9 @@ The run follows the Splice Bots game design document, Tier 1 and Tier 2.
 1. **Title.** Click to play.
 2. **Dome village, dawn.** Walk out through the scanner gate: "HEAT: COOL. PASS."
 3. **Rail drive, day.** The rover follows the rail; W and S change its speed. Halfway a sensor
-   ping stops it. Walk to the marker: the Digger picks up the Battery, and you board again. A raider
-   mech hunts you there: run until it gives up, stun it with F, or press E at the rover to get into
-   Sniper and battle it.
+   ping stops it. Walk to the marker: the Digger picks up the Battery, and you board again. On the
+   way on, a raider mech gives chase: hold W to outrun it, or press E to battle it from Sniper with
+   keys 1 to 4.
 4. **Day mine.** The Digger follows you from the start and picks up every part within his
    sensor's range: the Drill Arm, the Treads and the MOVE and DRILL cards. A better sensor in the
    scrap room doubles his range.
@@ -66,13 +66,14 @@ slots: press I and click a slot to drop what is in it.
 - Hold **Left Shift** to sneak: slower, and Imperial robots sense you from half as far.
 - **Q** steps onto the hoverboard and off it. Hold **Ctrl**, or double-tap **W**, to ride very fast.
 - **E** interacts: boards the rover, takes the core, goes through a door, tows a powered-down Digger.
+  On the drive, while a raider mech chases the rover, **E** battles it from the rover; hold **W** to outrun it.
 - **Tab** opens and closes the edit bay, inside the rover only.
 - In the edit bay, drag or click a part or card to place it. Keys also work: **1, 2, 3** cards,
   **4, 5, 6** parts, **C** clears the strip, **Enter** is SPLICE, **X** is SPLICE CORE.
 - **I** opens the inventory. Click a slot to drop it.
 - **Left click** points the Digger at what is under the crosshair: he digs it, picks it up or
   attacks it.
-- **F** stuns a robot within 2 m, the raider mech, or a weak point of the banned bot.
+- **F** stuns a robot within 2 m, or a weak point of the banned bot.
 - **1, 2, 3, 4** are a bot's battle moves; in a battle **E** swaps Digger's core into your other bot.
 - **M** shows the deep-garage map.
 - **Esc** pauses and lists the controls.

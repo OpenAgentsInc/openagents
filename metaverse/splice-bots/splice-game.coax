@@ -529,6 +529,7 @@ g_step :: (g: [] SpGame, dt: f32) {
   if fr_front(g) { if g[0].mode == M_CREW { g[0].fr[0].turn += dt * 0.35; } return; }
   if g[0].msg_t > 0 { g[0].msg_t -= dt; if g[0].msg_t <= 0 { g[0].msg = MSG_NONE; } }
   if g[0].flash > 0 { g[0].flash = hi(0, g[0].flash - dt * 1.6); }
+  if g[0].hit_cool > 0 { g[0].hit_cool = hi(0, g[0].hit_cool - dt); }   // the hit cooldown counts down everywhere: the mine, the desert, the drive
   if g[0].mode == M_BANNER { g[0].banner_t -= dt; if g[0].banner_t <= 0 { g_respawn(g); g[0].mode = M_PLAY; } return; }
   sb_end_step(g, dt);   // SCENE RESTORED, then the mission's teaser
   if g[0].mode == M_MEMORY { g[0].mem_t += dt; if g[0].mem_t >= T_MEMORY { g[0].mode = M_RESTORED; g_event(g, EV_RESTORED); } return; }
@@ -536,12 +537,14 @@ g_step :: (g: [] SpGame, dt: f32) {
   if g[0].mode == M_RIDE {
     // the rover follows the rail; W and S change its speed; the sensor ping stops it halfway
     want := ifx g[0].fwd then T_RAIL_FAST else ifx g[0].back then T_RAIL_SLOW else T_RAIL_SPEED;
+    want = sb_ride_pace(g, want);   // a battle with the raider mech holds Sniper to its slow speed (splice-battle.coax)
     g[0].rail_v += clamp(want - g[0].rail_v, -8 * dt, 8 * dt);
     g[0].rail_s += g[0].rail_v * dt;
     if !g[0].pinged && g[0].rail_s >= T_RAIL_PING {
       g[0].rail_s = T_RAIL_PING; g[0].pinged = true; g[0].mode = M_PLAY; g_say(g, MSG_PING);
       c := rail_at(g, T_RAIL_PING); g[0].px = c.x + 2.6; g[0].pz = c.z; g[0].yaw = PI * 0.5; g[0].pitch = 0;
     }
+    sb_ride(g, dt);   // the raider mech's chase, and a battle with it from Sniper (splice-battle.coax)
     if g[0].rail_s >= T_RAIL { g_enter_mine(g); }
     return;
   }
@@ -556,7 +559,6 @@ g_step :: (g: [] SpGame, dt: f32) {
   g_move(g, dt);
   sb_step(g, dt);   // battles, the drill mech, the raider mech and the boss (splice-battle.coax)
   if g[0].zone == Z_RAIL { d_post(g, dt); g_bot(g, dt); return; }
-  if g[0].hit_cool > 0 { g[0].hit_cool -= dt; }
   if g[0].rubble_gone && g[0].phase == PH_DUSK && g[0].pz < g[0].at.rubble_z - 1 { g[0].phase = PH_NIGHT; }   // into the passage: night
   g_beats(g);   // and where the world's beats table moves the day on (flow.coax)
   // Sniper keeps what you carry: at zero you are back with what you had when you last left it
@@ -683,6 +685,7 @@ g_use :: (g: [] SpGame) {
 // A key the page uses returns true (the browser then keeps it from scrolling or moving focus).
 g_key :: (g: [] SpGame, key: int, down: bool) -> bool {
   if fr_front(g) { return down && fr_key(g, key); }   // the title, creation and credits screens (front.coax)
+  if sb_ride_key(g, key, down) { return true; }   // on the drive: E battles the raider mech, 1 to 4 are Sniper's cards (splice-battle.coax)
   mine := d_key(g, key, down);   // the Director's keys first: Shift, Ctrl, Q, I, M, Esc, 1 to 4 (director.coax)
   if mine >= 0 { return mine == 1; }
   if key == 'w' || key == 'W' || key == -6 { g[0].fwd = down; return true; }
@@ -955,7 +958,7 @@ g_live :: (g: [] SpGame, buf: [] u32, p: [] Pen) {
       at := v3(pick_x(g, H_BATTERY), 0.75 + sin(t * 2.2) * 0.12, pick_z(g, H_BATTERY));
       kit_pen(p, 72, MAT_SKIN, t3(1.0, 0.72, 0.30)); box(buf, p, frame_at(at, t * 1.2), 0.26, 0.34, 0.2);
     }
-    if g[0].mode == M_RIDE { return; }
+    if g[0].mode == M_RIDE { sb_live(g, buf, p); return; }   // the raider mech on the drive
     if g[0].bot { cast_digger(buf, p, frame_at(v3(g[0].bot_x, 0, g[0].bot_z), g[0].bot_yaw), 0.85, 190, d_tint(g, CAST_AMBER()), true, true, true, 0, cast_colour()); }
   }
   // the smuggler
@@ -1948,23 +1951,18 @@ g_play_run :: (g: [] SpGame) -> int {
   if !(g[0].mode == M_PLAY && g[0].rail_s == T_RAIL_PING) { return 4; }
   if !(g_key(g, 'w', false)) { return 5; }
   if !(g_key(g, 'e', true) && g[0].mode == M_PLAY) { return 6; }   // no boarding without what the sensor found
-  // Digger picks up what his sensor finds: she only walks near it
+  // Digger picks up what his sensor finds: she only walks near it. On foot at the stop nothing hunts her
   g[0].px = pick_x(g, H_BATTERY); g[0].pz = pick_z(g, H_BATTERY) - 1;
-  // the raider mech hears the ping and comes for her: F stuns it as it closes in
-  for i: 0..<200 {
-    g_step(g, 0.02);
-    if g[0].bt[0].rm_stun <= 0 && dist2(g[0].px, g[0].pz, g[0].bt[0].rm_x, g[0].bt[0].rm_z) < SB_RM_STUN_RANGE - 0.1 { _ = g_key(g, 'f', true); }
-    if g[0].have[H_BATTERY] { break; }
-  }
-  if !(g[0].have[H_BATTERY] && g[0].hearts == T_HEARTS) { return 7; }
+  for i: 0..<200 { g_step(g, 0.02); if g[0].have[H_BATTERY] { break; } }
+  if !(g[0].have[H_BATTERY] && g[0].hearts == T_HEARTS && !g[0].bt[0].rm_hunt) { return 7; }
   c := rail_at(g, T_RAIL_PING); g[0].px = c.x + 2.6; g[0].pz = c.z;
-  // the raider mech hunts her: she gets into Sniper and battles it with Sniper's cards, keys 1 to 3
-  for i: 0..<800 { s := sb_sniper_at(g); if g[0].bt[0].rm_hunt && dist2(g[0].bt[0].rm_x, g[0].bt[0].rm_z, s.x, s.z) < SB_SNIPER_REACH - 1 { break; } g_step(g, 0.02); }
-  if !(g[0].bt[0].rm_hunt) { return 42; }
+  if !(g_key(g, 'e', true) && g[0].mode == M_RIDE) { return 8; }
+  // the drive: a raider mech gives chase, and she battles it from Sniper with Sniper's cards, keys 1 to 3
+  for i: 0..<1000 { if sb_can_battle_rm(g) { break; } g_step(g, 0.02); }
+  if !(g[0].bt[0].rm_hunt && g[0].mode == M_RIDE && g[0].msg == SBM_HUNT) { return 42; }
   if !(g_key(g, 'e', true) && sb_fighting(g) && sb_fielded(g) == SB_SNIPER) { return 43; }
   for i: 0..<2000 { if g[0].bt[0].rm_down { break; } _ = g_key(g, '1' + i % 3, true); g_step(g, 0.02); }
-  if !(g[0].bt[0].rm_down && !sb_fighting(g) && g[0].scrap == 1) { return 44; }
-  if !(g_key(g, 'e', true) && g[0].mode == M_RIDE) { return 8; }
+  if !(g[0].bt[0].rm_down && !sb_fighting(g) && g[0].scrap == 1 && g[0].mode == M_RIDE) { return 44; }
   for i: 0..<1000 { g_step(g, 0.02); }
   if !(g[0].zone == Z_MINE && g[0].mode == M_PLAY && g[0].pz == g[0].at.start_z) { return 9; }
   // the day mine: four pickups, then the edit bay
@@ -2109,34 +2107,106 @@ FlowTest :: struct { o: [4] [CT_BODY] u8; }
   g[0].px = t[0].mech_x + 2; g[0].pz = t[0].mech_z;
   #assert g_key(g[..], 'e', true) && !t[0].mech_core && !sb_holds_digger(g[..]);
 }
-#test "the raider mech hunts you on the desert route: run and it gives up, F stuns it, and Sniper battles it with cards on keys 1 to 4" #steps 60000000 {
+// The drive's second leg, just short of where the raider mech keeps watch, Sniper at its cruising speed.
+sb_drive_check :: (g: [] SpGame) {
+  g_stage(g, 3);
+  g[0].pinged = true; g[0].have[H_BATTERY] = true; g[0].taken[H_BATTERY] = true;
+  g[0].rail_s = sb_rm_watch_s() - 30; g[0].rail_v = T_RAIL_SPEED;
+}
+#test "the raider mech gives chase on the drive: top speed outruns it, beside Sniper it claws it, near the garage it turns back, and E battles it from Sniper with cards on keys 1 to 4" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
+  t := g[0].bt[..];
+  // on foot at the rail stop it only keeps watch
   g_stage(g[..], 4); g[0].mode = M_PLAY;
+  for i: 0..<100 { g_step(g[..], 0.02); }
+  #assert !t[0].rm_hunt;
+  // on the drive it gives chase once Sniper passes its watch
+  sb_drive_check(g[..]);
+  #assert !t[0].rm_hunt && g[0].mode == M_RIDE;
+  for i: 0..<400 { g_step(g[..], 0.02); if t[0].rm_hunt { break; } }
+  #assert t[0].rm_hunt && g[0].msg == SBM_HUNT && g[0].mode == M_RIDE && sb_objective(g[..]) == "Outrun the raider mech (W), or battle it (E).";
+  // top speed (W) outruns it: 20 m behind it gives up, and it does not come back this drive
+  #assert g_key(g[..], 'w', true);
+  for i: 0..<600 { g_step(g[..], 0.02); if !t[0].rm_hunt { break; } }
+  #assert !t[0].rm_hunt && t[0].rm_gone && !t[0].rm_down && g[0].msg == SBM_RM_GONE;
+  _ := g_key(g[..], 'w', false);
+  for i: 0..<100 { g_step(g[..], 0.02); }
+  #assert !t[0].rm_hunt;
+  // at cruising speed it catches up, runs beside Sniper and claws it
+  sb_drive_check(g[..]);
+  most := t[0].bots[SB_SNIPER].vit.most;
+  for i: 0..<600 { g_step(g[..], 0.02); if t[0].bots[SB_SNIPER].vit.hp < most { break; } }
+  b := sb_beside(g[..], g[0].rail_s, SB_RM_SIDE);
+  #assert t[0].rm_hunt && t[0].bots[SB_SNIPER].vit.hp == most - cast(f32) sb_card(SBC_CLAW, SB_RAIDER).power && dist2(t[0].rm_x, t[0].rm_z, b.x, b.z) < 1;
+  #assert sb_can_battle_rm(g[..]) && sb_prompt(g[..]).text == "Battle the raider mech from Sniper";
+  // E while it is near: a battle, Sniper fielded with its three cards, and Sniper slows to its slow speed
+  #assert g_key(g[..], 'e', true) && sb_fighting(g[..]) && t[0].kind == SBF_DESERT && sb_fielded(g[..]) == SB_SNIPER && g[0].mode == M_RIDE;
+  t[0].think = 100;   // the raider mech holds its moves while this check reads Sniper's
+  #assert sb_prompt(g[..]).text == "Battle moves" && sb_prompt(g[..]).key == "1-4";   // not W and S: the battle holds Sniper's speed
+  for i: 0..<100 { g_step(g[..], 0.02); }
+  #assert abs(g[0].rail_v - T_RAIL_SLOW) < 0.01 && dist2(t[0].rm_x, t[0].rm_z, sb_sniper_at(g[..]).x, sb_sniper_at(g[..]).z) < SB_RM_SIDE + 0.5;
+  // keys 1 to 4 on the drive are Sniper's cards
+  hp := sb_rec(g[..], SB_RAIDER).vit.hp; ch := sb_rec(g[..], SB_SNIPER).charge;
+  #assert g_key(g[..], '2', true);
+  #assert sb_rec(g[..], SB_RAIDER).vit.hp == hp - 3 && sb_rec(g[..], SB_SNIPER).charge == ch - 12;   // ARM: 3 damage, 12 charge
+  #assert g_key(g[..], '2', true) && sb_rec(g[..], SB_RAIDER).vit.hp == hp - 3;                     // cooling: nothing
+  #assert g_key(g[..], '4', true) && g[0].msg == SBM_REFUSED && t[0].refusal == cast(int) BbVerdict.no_card;   // Sniper holds three cards
+  t[0].think = SB_THINK;   // and fights back from here
+  for i: 0..<1500 { if t[0].rm_down { break; } _ = g_key(g[..], '1' + i % 3, true); g_step(g[..], 0.02); }
+  #assert t[0].rm_down && !sb_fighting(g[..]) && g[0].scrap == 1 && g[0].msg == SBM_RM_DOWN && g[0].mode == M_RIDE;
+  #assert sb_rec(g[..], SB_SNIPER).vit.hp < most - 3;   // it fought back
+  // near the garage a chase still on turns back, and a battle on ends
+  sb_drive_check(g[..]);
+  g[0].rail_s = sb_rm_quit_s() - 3; r := sb_beside(g[..], g[0].rail_s, SB_RM_SIDE); t[0].rm_x = r.x; t[0].rm_z = r.z; t[0].rm_hunt = true;
+  #assert g_key(g[..], 'e', true) && sb_fighting(g[..]);
+  for i: 0..<200 { g_step(g[..], 0.02); if !t[0].rm_hunt { break; } }
+  #assert !t[0].rm_hunt && !sb_fighting(g[..]) && g[0].msg == SBM_RM_GONE;
+  for i: 0..<300 { g_step(g[..], 0.02); }
+  #assert g[0].zone == Z_MINE && !sb_fighting(g[..]);
+}
+#test "the boss's collider moves with the boss: a walker is pushed out of it where it stands, and not where it started" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 10);
   t := g[0].bt[..];
   g_step(g[..], 0.02);
-  #assert t[0].rm_hunt && g[0].msg == SBM_HUNT;
-  // F within reach stuns it: it holds still
-  g[0].px = t[0].rm_x + 1.5; g[0].pz = t[0].rm_z;
-  #assert g_key(g[..], 'f', true) && t[0].rm_stun > 0;
-  x := t[0].rm_x; for i: 0..<50 { g_step(g[..], 0.02); } #assert t[0].rm_x == x;
-  // far away it gives up
-  g[0].px = t[0].rm_x + 24; g_step(g[..], 0.02); g_step(g[..], 0.02);
-  t[0].rm_stun = 0; g_step(g[..], 0.02);
-  #assert !t[0].rm_hunt;
-  // E at Sniper while it is near: a battle, Sniper fielded with its three cards
-  c := rail_at(g[..], T_RAIL_PING); g[0].px = c.x + 2.6; g[0].pz = c.z;
-  t[0].rm_x = c.x + 5; t[0].rm_z = c.z + 3; t[0].rm_hunt = true;
-  #assert g_key(g[..], 'e', true) && sb_fighting(g[..]) && t[0].kind == SBF_DESERT && sb_fielded(g[..]) == SB_SNIPER;
-  // the Director takes keys 1 to 4 and hands each press to the battle once (sb_keys, each step)
-  #assert g_key(g[..], '2', true); sb_keys(g[..]);
-  #assert sb_rec(g[..], SB_RAIDER).vit.hp == 13 && sb_rec(g[..], SB_SNIPER).charge == 68;   // ARM: 3 damage, 12 charge
-  #assert g_key(g[..], '2', true); sb_keys(g[..]);
-  #assert sb_rec(g[..], SB_RAIDER).vit.hp == 13;                                         // cooling: nothing
-  #assert g_key(g[..], '4', true); sb_keys(g[..]);
-  #assert g[0].msg == SBM_REFUSED && t[0].refusal == cast(int) BbVerdict.no_card;      // Sniper holds three cards
-  for i: 0..<1500 { if t[0].rm_down { break; } _ = g_key(g[..], '1' + i % 3, true); g_step(g[..], 0.02); }
-  #assert t[0].rm_down && !sb_fighting(g[..]) && g[0].scrap == 1 && g[0].msg == SBM_RM_DOWN;
-  #assert sb_rec(g[..], SB_SNIPER).vit.hp < sb_rec(g[..], SB_SNIPER).vit.most;   // it fought back
+  #assert t[0].kind == SBF_BOSS && g[0].ws[0].boss >= 0;
+  // where it starts: the collider holds a walker off it
+  g[0].px = g[0].at.boss_x + 0.5; g[0].pz = g[0].at.boss_z; g_collide(g[..]);
+  #assert dist2(g[0].px, g[0].pz, t[0].dino_x, t[0].dino_z) >= 2.1 - 0.001;
+  // it moves (here, put across the chamber; a charge or a step does the same): the collider is where it stands
+  t[0].dino_x = 4.5; t[0].dino_z = -69; t[0].think = 10; t[0].mech_x = 4.5; t[0].mech_z = -64.6;
+  g_step(g[..], 0.02);
+  w := sl_world(g[..]); s := g[0].ws[0].boss;
+  #assert world_f(w, WF_X, s) == t[0].dino_x && world_f(w, WF_Z, s) == t[0].dino_z;
+  g[0].px = t[0].dino_x - 0.4; g[0].pz = t[0].dino_z + 0.3; g_collide(g[..]);
+  #assert dist2(g[0].px, g[0].pz, t[0].dino_x, t[0].dino_z) >= 2.1 - 0.001;
+  // and where it started a walker stands free
+  g[0].px = g[0].at.boss_x; g[0].pz = g[0].at.boss_z + 0.2; g_collide(g[..]);
+  #assert g[0].px == g[0].at.boss_x && g[0].pz == g[0].at.boss_z + 0.2;
+  // a charge carries the collider along with it
+  t[0].half = true; t[0].wind = 0; t[0].rush = SB_CHARGE_TIME; t[0].rush_dx = -1; t[0].rush_dz = 0; t[0].rush_hit = true;
+  x0 := t[0].dino_x; g_step(g[..], 0.02); g_step(g[..], 0.02);
+  #assert t[0].dino_x < x0 && world_f(w, WF_X, s) == t[0].dino_x && world_f(w, WF_Z, s) == t[0].dino_z;
+  // back at the checkpoint after a loss: it is home, and so is its collider
+  sb_respawn(g[..]);
+  #assert world_f(w, WF_X, s) == g[0].at.boss_x && world_f(w, WF_Z, s) == g[0].at.boss_z;
+}
+#test "the hit cooldown counts down everywhere: on foot in the mine, on foot on the desert route, and on the drive" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  for k: 0..<3 {
+    if k == 0 { g_stage(g[..], 5); }
+    if k == 1 { g_stage(g[..], 4); g[0].mode = M_PLAY; }
+    if k == 2 { g_stage(g[..], 3); }
+    hearts := g[0].hearts;
+    g_hurt(g[..]);
+    #assert g[0].hearts == hearts - 1 && g[0].hit_cool == T_HIT_COOL;
+    g_hurt(g[..]);
+    #assert g[0].hearts == hearts - 1;   // within the cooldown a second hit does nothing
+    for i: 0..<cast(int) (T_HIT_COOL / 0.02) + 2 { g_step(g[..], 0.02); }
+    #assert g[0].hit_cool == 0;
+    g_hurt(g[..]);
+    #assert g[0].hearts == hearts - 2;   // after it, a hit lands again
+  }
 }
 #test "the boss: phase one sweeps, phase two charges below half health and is dazed after; its weak points open only while it reels; three stuns power it down and night falls" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
@@ -2197,10 +2267,10 @@ FlowTest :: struct { o: [4] [CT_BODY] u8; }
   for i: 0..<100 { g_step(g[..], 0.02); }
   #assert !t[0].bots[SB_SNIPER].vit.down && t[0].bots[SB_SNIPER].vit.hp == 24 && g[0].msg == SBM_REPAIR;
 }
-#test "the battles' own stills: 20 is Sniper battling the raider mech, 21 the boss in phase two" #steps 60000000 {
+#test "the battles' own stills: 20 is Sniper battling the raider mech on the drive, 21 the boss in phase two" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
   g_stage(g[..], 20);
-  #assert g[0].zone == Z_RAIL && sb_fighting(g[..]) && g[0].bt[0].kind == SBF_DESERT && sb_fielded(g[..]) == SB_SNIPER;
+  #assert g[0].zone == Z_RAIL && g[0].mode == M_RIDE && g[0].phase == PH_DUSK && sb_fighting(g[..]) && g[0].bt[0].kind == SBF_DESERT && sb_fielded(g[..]) == SB_SNIPER;
   g_stage(g[..], 21);
   #assert !sb_fighting(g[..]) && g[0].wall_gone;
   for i: 0..<5 { g_step(g[..], 0.02); }

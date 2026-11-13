@@ -56,6 +56,7 @@ SlWorld :: struct {
   reach: f32;      // the furthest any collider reaches from where it stands: a question looks this much further
   refused: int;    // spawns the World had no slot for
   crowded: int;    // questions that met more than SL_NEAR entities
+  boss: int = -1;  // the banned bot's slot: a body that moves (sl_body_to)
 }
 SlLayer :: struct {
   st: [1] EditorSceneState;
@@ -138,12 +139,22 @@ sl_build :: (g: [] SpGame) {
   for i: 0..<g[0].wall_n { o := i * 5; sl_box(g, SK_WALL, i, g[0].walls[o], g[0].walls[o + 1], g[0].walls[o + 2], g[0].walls[o + 3], g[0].walls[o + 4]); }
   sl_box(g, SK_RUBBLE, 0, -3, 3, g[0].at.rubble_z - 1, g[0].at.rubble_z + 1, 0);
   sl_box(g, SK_BOSS_WALL, 0, -4, 4, g[0].at.wall_z - 1, g[0].at.wall_z + 1, 0);
-  _ = sl_round(g, SK_BOSS, 0, g[0].at.boss_x, 0, g[0].at.boss_z, 0, SH_ALONG_Z, 2.1 - T_RADIUS, 0, 0);
+  g[0].ws[0].boss = sl_round(g, SK_BOSS, 0, g[0].at.boss_x, 0, g[0].at.boss_z, 0, SH_ALONG_Z, 2.1 - T_RADIUS, 0, 0);
   c := rail_at(g, T_RAIL_PING);
   sl_box(g, SK_WALL, -1, c.x - 1.5, c.x + 1.5, c.z - 2.4, c.z + 2.4, 0);
   _ = world_commit(w);
   g[0].layer[0].built = -1;
   sl_sync(g);
+}
+// A body that moves (the banned bot, splice-battle.coax): its transform and its shape's middle go where it
+// stands, and the World's commit puts it in the index there, so a walker is pushed out of it where it is drawn.
+sl_body_to :: (g: [] SpGame, s: int, x: f32, z: f32, yaw: f32) {
+  w := sl_world(g);
+  if s < 0 || s >= SL_CAP || world_at(w, s) == ENTITY_NONE { return; }
+  if sl_f(g, WF_X, s) == x && sl_f(g, WF_Z, s) == z && sl_f(g, WF_YAW, s) == yaw { return; }
+  _ := world_set_f(w, WF_X, s, x); _ = world_set_f(w, WF_Z, s, z); _ = world_set_f(w, WF_YAW, s, yaw);
+  g[0].ws[0].ox[s] = x; g[0].ws[0].oz[s] = z;
+  _ = world_commit(w);
 }
 // The World's placed pieces are the layer's items, in ID order: built again whenever the layer's
 // revision is not the one they were built from.
