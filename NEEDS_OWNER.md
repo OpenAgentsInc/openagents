@@ -2,7 +2,8 @@
 
 ## Existing Bitcoin balance in Coax Native (2026-11-13)
 
-Install OpenAgents 1.0.0 **1069** from Owner TestFlight once it is processed.
+Install OpenAgents 1.0.0 **1069** from Owner TestFlight. Apple reports VALID /
+IN_BETA_TESTING and Owner assignment is verified.
 Open **More → Bitcoin balance**, wait for Spark, and check the sats against
 the balance you saw in the earlier app. Try **Refresh balance** and close
 the side panel. This reads the same saved mainnet wallet; the balance is
@@ -12,10 +13,16 @@ replace the seed to troubleshoot this view.
 
 The simulator checked the UI using an explicit fixture, and the pinned SDK
 synced an empty throwaway wallet with background work/automatic claims off.
+An additional locally signed simulator test populated only its own absent
+Keychain item with temporary test entropy, read through `wallet.balance`,
+and verified the entropy stayed unchanged. Its temporary data was removed.
 The owner's real balance has not been read by the development tests; its
 on-phone display is the remaining acceptance check. No book chapter changes.
 
 ## Coax Native starter on TestFlight (2026-11-13)
+
+For current phone acceptance use build **1069** and the entry above. The
+1068 instructions below record the original same-binary OTA demonstration.
 
 Install OpenAgents 1.0.0 build **1068** from the existing Owner TestFlight
 group. Apple reports VALID / IN_BETA_TESTING and group assignment is verified.

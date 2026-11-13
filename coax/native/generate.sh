@@ -10,5 +10,3 @@ coax/web/tool.sh coax/native/runtime.coax apps/openagents-ios/Generated/runtime.
 coax/web/wasm.sh coax/native/starter/app.coax coax/native/starter/face.c apps/openagents-ios/Starter/build/app.wasm
 coax/web/wasm.sh apps/openagents-ios/extras/app.coax coax/native/starter/face.c apps/openagents-ios/Starter/build/extras.wasm
 coax/web/tool.sh coax/native/prepare.coax "$@"
-cp apps/openagents-ios/extras/index.html apps/openagents-ios/Starter/index.html
-cp apps/openagents-ios/extras/host.js apps/openagents-ios/Starter/extras.js

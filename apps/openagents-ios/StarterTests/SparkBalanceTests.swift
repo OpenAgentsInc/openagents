@@ -31,6 +31,39 @@ final class SparkBalanceTests:XCTestCase {
 
 /// Opt-in SDK/mainnet check. Never touches the seed Keychain item or money.
 final class SparkBalanceLiveTests:XCTestCase {
+    @MainActor func testExistingKeychainBalanceBridgeKeepsSeed() async throws {
+        // This test runs only in our dedicated simulator. Never replace an
+        // existing item or cache, even if someone selects it on another device.
+        #if !targetEnvironment(simulator)
+        throw XCTSkip("Dedicated simulator only")
+        #else
+        switch WalletKeychain.readSeed() {
+        case .notFound:break
+        case .unavailable(let code):throw XCTSkip("Simulator Keychain status \(code)")
+        default:throw XCTSkip("An existing wallet is left alone")
+        }
+        let directory=try SparkConnection.directory(folder:"spark-mainnet")
+        guard !FileManager.default.fileExists(atPath:directory.path) else {throw XCTSkip("An existing SDK directory is left alone")}
+        var bytes=[UInt8](repeating:0,count:16)
+        guard SecRandomCopyBytes(kSecRandomDefault,bytes.count,&bytes)==errSecSuccess else {return XCTFail("Test entropy unavailable")}
+        let entropy=Data(bytes)
+        let query:[String:Any]=[kSecClass as String:kSecClassGenericPassword,kSecAttrService as String:"com.openagents.app.spark",kSecAttrAccount as String:"seed-v1",kSecAttrSynchronizable as String:false]
+        var item=query;item[kSecAttrAccessible as String]=kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly;item[kSecValueData as String]=entropy
+        guard SecItemAdd(item as CFDictionary,nil)==errSecSuccess else {return XCTFail("Test Keychain setup failed")}
+        defer {
+            if case .found(let kept)=WalletKeychain.readSeed(),kept==entropy {_ = SecItemDelete(query as CFDictionary)}
+            try? FileManager.default.removeItem(at:directory)
+        }
+        let host=NativeHost(updates:try NativeUpdates())
+        let reply=try await host.call("wallet.balance",[:]) as? [String:String]
+        let record=try XCTUnwrap(reply?["record"]).data(using:.utf8)!
+        let object=try JSONSerialization.jsonObject(with:record) as! [String:Any]
+        XCTAssertEqual(object["schema"] as? String,"openagents.wallet.balance.v1")
+        XCTAssertEqual(object["status"] as? Int,1);XCTAssertEqual(object["sats"] as? Int,0)
+        guard case .found(let kept)=WalletKeychain.readSeed() else {return XCTFail("The saved test wallet disappeared")}
+        XCTAssertTrue(kept==entropy,"The seed must remain unchanged")
+        #endif
+    }
     func testEmptyThrowawayWalletReadOnly() async {
         let folder="spark-readonly-test-"+UUID().uuidString
         guard let dir=try? SparkConnection.directory(folder:folder) else {return XCTFail("Test storage unavailable")}

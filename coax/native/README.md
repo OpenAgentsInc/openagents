@@ -70,12 +70,14 @@ Build only changed Wasm, then prepare resources. For example:
 ```sh
 coax/remote/remote.sh run -- coax/web/wasm.sh coax/native/starter/app.coax \
   coax/native/starter/face.c apps/openagents-ios/Starter/build/app.wasm
+coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-ios/extras/app.coax \
+  coax/native/starter/face.c apps/openagents-ios/Starter/build/extras.wasm
 coax/web/tool.sh coax/native/prepare.coax
 mkdir -p /tmp/native-release
 coax/web/tool.sh coax/native/package.coax apps/openagents-ios/Starter \
   com.openagents.app "$(cat apps/openagents-ios/Generated/runtime.txt)" 1 \
-  /tmp/native-release/manifest.json index.html native.js coaxial/dom-host.js \
-  coaxial/shell.js build/app.wasm build/zeron/Geist.ttf \
+  /tmp/native-release/manifest.json index.html native.js extras.js coaxial/dom-host.js \
+  coaxial/shell.js build/app.wasm build/extras.wasm build/zeron/Geist.ttf \
   build/zeron/Geist-Medium.ttf build/zeron/Geist-SemiBold.ttf build/zeron/GeistMono.ttf
 coax/web/tool.sh coax/native/publish.coax apps/openagents-ios/Starter \
   /tmp/native-release/manifest.json /tmp/native-release/latest.cnu \

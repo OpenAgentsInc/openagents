@@ -1,8 +1,10 @@
 # Lightning
 
-*Notes from 2026-10-27. Since 2026-10-28 `apps/openagents-ios` sends and
-receives through `Wallet/SparkHost.swift` and `pay/wallet.coax`, steps 1
-and 2 of the order of work in [coax-integration.md](coax-integration.md).*
+*The earlier iOS wallet sent and received through `Wallet/SparkHost.swift`
+and `pay/wallet.coax`. The Coax Native replacement's build 1069 restores
+only **More → Bitcoin balance**, with the same saved mainnet wallet. Its
+read-only adapter uses the pinned Swift SDK and leaves the payment screens
+excluded. See [the iOS guide](../../apps/openagents-ios/README.md).*
 
 **Decision: the first wallet is Breez's Spark SDK, on mainnet, inside the
 iOS app.** Swift talks to the SDK. Coax holds the payment rules and is
