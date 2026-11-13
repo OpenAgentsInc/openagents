@@ -1,3 +1,4 @@
+# Firm reason: 2 (an independent oracle: the same kernels in C, C++ and Rust, built and timed beside Coax's for the Episode 296 comparison)
 import subprocess,time,sys,os
 C=os.environ.get('COAX','coax/bin/coax')  # run from the folder bench-gen.py wrote into
 def t(cmd,n=3):

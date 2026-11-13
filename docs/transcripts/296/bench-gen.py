@@ -1,3 +1,4 @@
+# Firm reason: 2 (an independent oracle: the same kernels in C, C++ and Rust, built and timed beside Coax's for the Episode 296 comparison)
 import sys
 # ---- runtime kernels
 open('k.coax','w').write('''#import "Basic";

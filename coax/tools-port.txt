@@ -14,7 +14,6 @@
 # moved: aethyr/forge/ -> metaverse-engine/editor/
 # moved: aethyr/ -> metaverse-engine/
 # base: 0c2f9f4cdaff0e9f392a334a288537c452921185
-apps/openagents-desktop/build.sh
 apps/openagents-desktop/zeron/fixtures/fixture.py
 apps/openagents-desktop/zeron/fixtures/psionic.py
 apps/openagents-ios/build.sh
