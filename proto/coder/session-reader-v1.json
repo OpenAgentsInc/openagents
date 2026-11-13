@@ -1,0 +1,151 @@
+{
+ "identity": "coder-session-reader-v1",
+ "schema_id": "coder.session-reader.v1",
+ "check": "coax/web/tool.sh coax/lib/agent/observe/session-reader-goldens.coax proto/coder/session-reader-v1.json",
+ "schema": "proto/openagents/coder/session_reader/v1/reader.proto",
+ "codec": "coax/lib/agent/observe/claude-history.coax",
+ "doc": "docs/protocol/coder-session-reader-v1.md",
+ "captured": "2026-11-13: what `coder session-read` of this tree printed in a throwaway home that held the three transcripts below (written for this fixture in Claude Code's record format: a conversation with tool calls and results, a short one, and one with a compaction summary, an unknown record and an image).",
+ "transcripts": [
+  {
+   "session_id": "3f2a9c10-1111-4222-8333-444455556666",
+   "path": "/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/3f2a9c10-1111-4222-8333-444455556666.jsonl",
+   "lines": [
+    "{\"type\":\"user\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000001\",\"parentUuid\":null,\"sessionId\":\"3f2a9c10-1111-4222-8333-444455556666\",\"timestamp\":\"2026-11-13T15:01:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"main\",\"message\":{\"role\":\"user\",\"content\":\"Make `make test` pass, then say what was wrong.\"}}",
+    "{\"type\":\"assistant\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000002\",\"parentUuid\":\"3f2a9c10-0000-4000-8000-000000000001\",\"sessionId\":\"3f2a9c10-1111-4222-8333-444455556666\",\"timestamp\":\"2026-11-13T15:02:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"main\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"I'll run the tests first.\"},{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"Bash\",\"input\":{\"command\":\"make test\"}}],\"id\":\"msg_0002\"}}",
+    "{\"type\":\"user\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000003\",\"parentUuid\":\"3f2a9c10-0000-4000-8000-000000000002\",\"sessionId\":\"3f2a9c10-1111-4222-8333-444455556666\",\"timestamp\":\"2026-11-13T15:03:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"main\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_01\",\"content\":\"FAIL case 3: want 6, got 9\\nmake: *** [test] Error 1\",\"is_error\":true}]}}",
+    "{\"type\":\"assistant\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000004\",\"parentUuid\":\"3f2a9c10-0000-4000-8000-000000000003\",\"sessionId\":\"3f2a9c10-1111-4222-8333-444455556666\",\"timestamp\":\"2026-11-13T15:04:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"main\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"The loop in sum.c reads one element past the array.\"},{\"type\":\"tool_use\",\"id\":\"toolu_02\",\"name\":\"Edit\",\"input\":{\"file_path\":\"sum.c\",\"old_string\":\"i <= n\",\"new_string\":\"i < n\"}}],\"id\":\"msg_0004\"}}",
+    "{\"type\":\"user\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000005\",\"parentUuid\":\"3f2a9c10-0000-4000-8000-000000000004\",\"sessionId\":\"3f2a9c10-1111-4222-8333-444455556666\",\"timestamp\":\"2026-11-13T15:05:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"main\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_02\",\"content\":[{\"type\":\"text\",\"text\":\"The file sum.c has been updated.\"}]}]}}",
+    "{\"type\":\"assistant\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000006\",\"parentUuid\":\"3f2a9c10-0000-4000-8000-000000000005\",\"sessionId\":\"3f2a9c10-1111-4222-8333-444455556666\",\"timestamp\":\"2026-11-13T15:06:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"main\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Fixed: the loop bound was `i <= n`. `make test` passes now.\"}],\"id\":\"msg_0006\"}}",
+    "{\"type\":\"user\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000007\",\"parentUuid\":\"3f2a9c10-0000-4000-8000-000000000006\",\"sessionId\":\"3f2a9c10-1111-4222-8333-444455556666\",\"timestamp\":\"2026-11-13T15:07:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"main\",\"message\":{\"role\":\"user\",\"content\":\"Thanks. Commit it with a short message.\"}}",
+    "{\"type\":\"ai-title\",\"aiTitle\":\"Fix the failing sum test\",\"sessionId\":\"3f2a9c10-1111-4222-8333-444455556666\"}"
+   ]
+  },
+  {
+   "session_id": "3f2a9c10-7777-4888-8999-aaaabbbbcccc",
+   "path": "/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/3f2a9c10-7777-4888-8999-aaaabbbbcccc.jsonl",
+   "lines": [
+    "{\"type\":\"user\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000001\",\"parentUuid\":null,\"sessionId\":\"3f2a9c10-7777-4888-8999-aaaabbbbcccc\",\"timestamp\":\"2026-11-13T15:01:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"main\",\"message\":{\"role\":\"user\",\"content\":\"Rename sum() to total() everywhere.\"}}",
+    "{\"type\":\"assistant\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000002\",\"parentUuid\":\"3f2a9c10-0000-4000-8000-000000000001\",\"sessionId\":\"3f2a9c10-7777-4888-8999-aaaabbbbcccc\",\"timestamp\":\"2026-11-13T15:02:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"main\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Renamed in sum.c and its two callers.\"}],\"id\":\"msg_0002\"}}",
+    "{\"type\":\"ai-title\",\"aiTitle\":\"Rename the helper\",\"sessionId\":\"3f2a9c10-7777-4888-8999-aaaabbbbcccc\"}"
+   ]
+  },
+  {
+   "session_id": "9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff",
+   "path": "/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff.jsonl",
+   "lines": [
+    "{\"type\":\"user\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000001\",\"parentUuid\":null,\"sessionId\":\"9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff\",\"timestamp\":\"2026-11-13T16:01:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"docs\",\"message\":{\"role\":\"user\",\"content\":\"Write the release notes.\"}}",
+    "{\"type\":\"assistant\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000002\",\"parentUuid\":\"9b1d2e3f-0000-4000-8000-000000000001\",\"sessionId\":\"9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff\",\"timestamp\":\"2026-11-13T16:02:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"docs\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Drafted the notes in NOTES.md.\"}]}}",
+    "{\"type\":\"user\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000003\",\"parentUuid\":\"9b1d2e3f-0000-4000-8000-000000000002\",\"sessionId\":\"9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff\",\"timestamp\":\"2026-11-13T16:03:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"docs\",\"message\":{\"role\":\"user\",\"content\":\"This session is being continued from a previous conversation. Summary: the user asked for release notes; NOTES.md holds a draft of three sections; the changelog still needs dates.\"},\"isCompactSummary\":true}",
+    "{\"type\":\"brand-new-record\",\"sessionId\":\"9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff\"}",
+    "{\"type\":\"user\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000005\",\"parentUuid\":\"9b1d2e3f-0000-4000-8000-000000000003\",\"sessionId\":\"9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff\",\"timestamp\":\"2026-11-13T16:05:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"docs\",\"message\":{\"role\":\"user\",\"content\":\"Add the dates.\"}}",
+    "{\"type\":\"assistant\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000006\",\"parentUuid\":\"9b1d2e3f-0000-4000-8000-000000000005\",\"sessionId\":\"9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff\",\"timestamp\":\"2026-11-13T16:06:00.000Z\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"gitBranch\":\"docs\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Added the dates to each section.\"},{\"type\":\"image\",\"source\":{\"type\":\"base64\",\"data\":\"AAAA\"}}]}}",
+    "{\"type\":\"custom-title\",\"customTitle\":\"Release notes\",\"sessionId\":\"9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff\"}"
+   ]
+  }
+ ],
+ "goldens": [
+  {
+   "name": "coder session-read list",
+   "kind": "sessions",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"sessions\":[{\"session_id\":\"9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff.jsonl\",\"title\":\"Release notes\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"docs\",\"updated_at_ns\":1794501200000000000},{\"session_id\":\"3f2a9c10-7777-4888-8999-aaaabbbbcccc\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/3f2a9c10-7777-4888-8999-aaaabbbbcccc.jsonl\",\"title\":\"Rename the helper\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"main\",\"updated_at_ns\":1794500600000000000},{\"session_id\":\"3f2a9c10-1111-4222-8333-444455556666\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/3f2a9c10-1111-4222-8333-444455556666.jsonl\",\"title\":\"Fix the failing sum test\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"main\",\"updated_at_ns\":1794500000000000000}],\"warnings\":[]}"
+  },
+  {
+   "name": "coder session-read show 3f2a9c10-1111-4222-8333-444455556666",
+   "kind": "conversation",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"session_id\":\"3f2a9c10-1111-4222-8333-444455556666\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/3f2a9c10-1111-4222-8333-444455556666.jsonl\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"main\",\"title\":\"Fix the failing sum test\",\"created_at\":\"2026-11-13T15:01:00.000Z\",\"updated_at\":\"2026-11-13T15:07:00.000Z\",\"last_user_request\":\"Thanks. Commit it with a short message.\",\"last_assistant_action\":\"Fixed: the loop bound was `i <= n`. `make test` passes now.\",\"context_available\":false,\"view\":\"conversation\",\"total_turns\":7,\"start\":0,\"end\":7,\"next_before\":null,\"turns\":[{\"role\":\"user\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000001\",\"text\":\"Make `make test` pass, then say what was wrong.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true},{\"role\":\"assistant\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000002\",\"text\":\"I'll run the tests first.\",\"tool_calls\":[{\"id\":\"toolu_01\",\"name\":\"Bash\",\"input\":\"{\\\"command\\\":\\\"make test\\\"}\",\"inert\":true}],\"tool_results\":[],\"inert\":true},{\"role\":\"user\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000003\",\"text\":\"\",\"tool_calls\":[],\"tool_results\":[{\"tool_use_id\":\"toolu_01\",\"content\":\"FAIL case 3: want 6, got 9\\nmake: *** [test] Error 1\",\"unavailable\":false,\"is_error\":true,\"inert\":true}],\"inert\":true},{\"role\":\"assistant\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000004\",\"text\":\"The loop in sum.c reads one element past the array.\",\"tool_calls\":[{\"id\":\"toolu_02\",\"name\":\"Edit\",\"input\":\"{\\\"file_path\\\":\\\"sum.c\\\",\\\"old_string\\\":\\\"i <= n\\\",\\\"new_string\\\":\\\"i < n\\\"}\",\"inert\":true}],\"tool_results\":[],\"inert\":true},{\"role\":\"user\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000005\",\"text\":\"\",\"tool_calls\":[],\"tool_results\":[{\"tool_use_id\":\"toolu_02\",\"content\":\"The file sum.c has been updated.\",\"unavailable\":false,\"is_error\":false,\"inert\":true}],\"inert\":true},{\"role\":\"assistant\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000006\",\"text\":\"Fixed: the loop bound was `i <= n`. `make test` passes now.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true},{\"role\":\"user\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000007\",\"text\":\"Thanks. Commit it with a short message.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true}],\"warnings\":[]}",
+   "session_id": "3f2a9c10-1111-4222-8333-444455556666",
+   "max_turns": 64,
+   "before": 0,
+   "max_tool_chars": 300
+  },
+  {
+   "name": "coder session-read show 3f2a9c10-1111-4222-8333-444455556666 --max-turns 2",
+   "kind": "conversation",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"session_id\":\"3f2a9c10-1111-4222-8333-444455556666\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/3f2a9c10-1111-4222-8333-444455556666.jsonl\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"main\",\"title\":\"Fix the failing sum test\",\"created_at\":\"2026-11-13T15:01:00.000Z\",\"updated_at\":\"2026-11-13T15:07:00.000Z\",\"last_user_request\":\"Thanks. Commit it with a short message.\",\"last_assistant_action\":\"Fixed: the loop bound was `i <= n`. `make test` passes now.\",\"context_available\":false,\"view\":\"conversation\",\"total_turns\":7,\"start\":5,\"end\":7,\"next_before\":5,\"turns\":[{\"role\":\"assistant\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000006\",\"text\":\"Fixed: the loop bound was `i <= n`. `make test` passes now.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true},{\"role\":\"user\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000007\",\"text\":\"Thanks. Commit it with a short message.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true}],\"warnings\":[]}",
+   "session_id": "3f2a9c10-1111-4222-8333-444455556666",
+   "max_turns": 2,
+   "before": 0,
+   "max_tool_chars": 300
+  },
+  {
+   "name": "coder session-read show 3f2a9c10-1111-4222-8333-444455556666 --max-turns 2 --before 4 --max-tool-chars 12",
+   "kind": "conversation",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"session_id\":\"3f2a9c10-1111-4222-8333-444455556666\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/3f2a9c10-1111-4222-8333-444455556666.jsonl\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"main\",\"title\":\"Fix the failing sum test\",\"created_at\":\"2026-11-13T15:01:00.000Z\",\"updated_at\":\"2026-11-13T15:07:00.000Z\",\"last_user_request\":\"Thanks. Commit it with a short message.\",\"last_assistant_action\":\"Fixed: the loop bound was `i <= n`. `make test` passes now.\",\"context_available\":false,\"view\":\"conversation\",\"total_turns\":7,\"start\":2,\"end\":4,\"next_before\":2,\"turns\":[{\"role\":\"user\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000003\",\"text\":\"\",\"tool_calls\":[],\"tool_results\":[{\"tool_use_id\":\"toolu_01\",\"content\":\"FAIL case 3:\",\"unavailable\":false,\"is_error\":true,\"inert\":true}],\"inert\":true},{\"role\":\"assistant\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000004\",\"text\":\"The loop in sum.c reads one element past the array.\",\"tool_calls\":[{\"id\":\"toolu_02\",\"name\":\"Edit\",\"input\":\"{\\\"file_path\\\"\",\"inert\":true}],\"tool_results\":[],\"inert\":true}],\"warnings\":[{\"code\":\"content_truncated\",\"count\":4}]}",
+   "session_id": "3f2a9c10-1111-4222-8333-444455556666",
+   "max_turns": 2,
+   "before": 4,
+   "max_tool_chars": 12
+  },
+  {
+   "name": "coder session-read show rename",
+   "kind": "conversation",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"session_id\":\"3f2a9c10-7777-4888-8999-aaaabbbbcccc\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/3f2a9c10-7777-4888-8999-aaaabbbbcccc.jsonl\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"main\",\"title\":\"Rename the helper\",\"created_at\":\"2026-11-13T15:01:00.000Z\",\"updated_at\":\"2026-11-13T15:02:00.000Z\",\"last_user_request\":\"Rename sum() to total() everywhere.\",\"last_assistant_action\":\"Renamed in sum.c and its two callers.\",\"context_available\":false,\"view\":\"conversation\",\"total_turns\":2,\"start\":0,\"end\":2,\"next_before\":null,\"turns\":[{\"role\":\"user\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000001\",\"text\":\"Rename sum() to total() everywhere.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true},{\"role\":\"assistant\",\"uuid\":\"3f2a9c10-0000-4000-8000-000000000002\",\"text\":\"Renamed in sum.c and its two callers.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true}],\"warnings\":[]}",
+   "session_id": "3f2a9c10-7777-4888-8999-aaaabbbbcccc",
+   "max_turns": 64,
+   "before": 0,
+   "max_tool_chars": 300
+  },
+  {
+   "name": "coder session-read show latest",
+   "kind": "conversation",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"session_id\":\"9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff.jsonl\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"docs\",\"title\":\"Release notes\",\"created_at\":\"2026-11-13T16:01:00.000Z\",\"updated_at\":\"2026-11-13T16:06:00.000Z\",\"last_user_request\":\"Add the dates.\",\"last_assistant_action\":\"Added the dates to each section.\\n[image content unavailable]\",\"context_available\":true,\"view\":\"conversation\",\"total_turns\":4,\"start\":0,\"end\":4,\"next_before\":null,\"turns\":[{\"role\":\"user\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000001\",\"text\":\"Write the release notes.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true},{\"role\":\"assistant\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000002\",\"text\":\"Drafted the notes in NOTES.md.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true},{\"role\":\"user\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000005\",\"text\":\"Add the dates.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true},{\"role\":\"assistant\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000006\",\"text\":\"Added the dates to each section.\\n[image content unavailable]\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true}],\"warnings\":[{\"code\":\"unknown_records\",\"count\":1},{\"code\":\"output_unavailable\",\"count\":1}]}",
+   "session_id": "9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff",
+   "max_turns": 64,
+   "before": 0,
+   "max_tool_chars": 300
+  },
+  {
+   "name": "coder session-read show 9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff",
+   "kind": "conversation",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"session_id\":\"9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff.jsonl\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"docs\",\"title\":\"Release notes\",\"created_at\":\"2026-11-13T16:01:00.000Z\",\"updated_at\":\"2026-11-13T16:06:00.000Z\",\"last_user_request\":\"Add the dates.\",\"last_assistant_action\":\"Added the dates to each section.\\n[image content unavailable]\",\"context_available\":true,\"view\":\"conversation\",\"total_turns\":4,\"start\":0,\"end\":4,\"next_before\":null,\"turns\":[{\"role\":\"user\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000001\",\"text\":\"Write the release notes.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true},{\"role\":\"assistant\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000002\",\"text\":\"Drafted the notes in NOTES.md.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true},{\"role\":\"user\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000005\",\"text\":\"Add the dates.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true},{\"role\":\"assistant\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000006\",\"text\":\"Added the dates to each section.\\n[image content unavailable]\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true}],\"warnings\":[{\"code\":\"unknown_records\",\"count\":1},{\"code\":\"output_unavailable\",\"count\":1}]}",
+   "session_id": "9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff",
+   "max_turns": 64,
+   "before": 0,
+   "max_tool_chars": 300
+  },
+  {
+   "name": "coder session-read context 9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff",
+   "kind": "context",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"session_id\":\"9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff.jsonl\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"docs\",\"title\":\"Release notes\",\"created_at\":\"2026-11-13T16:01:00.000Z\",\"updated_at\":\"2026-11-13T16:06:00.000Z\",\"last_user_request\":\"Add the dates.\",\"last_assistant_action\":\"Added the dates to each section.\\n[image content unavailable]\",\"context_available\":true,\"view\":\"compaction_context\",\"total_turns\":1,\"start\":0,\"end\":1,\"next_before\":null,\"turns\":[{\"role\":\"context\",\"kind\":\"compaction_summary\",\"uuid\":\"9b1d2e3f-0000-4000-8000-000000000003\",\"part\":0,\"parts\":1,\"text\":\"This session is being continued from a previous conversation. Summary: the user asked for release notes; NOTES.md holds a draft of three sections; the changelog still needs dates.\",\"tool_calls\":[],\"tool_results\":[],\"inert\":true}],\"warnings\":[{\"code\":\"unknown_records\",\"count\":1},{\"code\":\"output_unavailable\",\"count\":1}]}",
+   "session_id": "9b1d2e3f-aaaa-4bbb-8ccc-ddddeeeeffff",
+   "max_turns": 64,
+   "before": 0,
+   "max_tool_chars": 300
+  },
+  {
+   "name": "coder session-read context 3f2a9c10-1111-4222-8333-444455556666",
+   "kind": "context",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"session_id\":\"3f2a9c10-1111-4222-8333-444455556666\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/3f2a9c10-1111-4222-8333-444455556666.jsonl\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"main\",\"title\":\"Fix the failing sum test\",\"created_at\":\"2026-11-13T15:01:00.000Z\",\"updated_at\":\"2026-11-13T15:07:00.000Z\",\"last_user_request\":\"Thanks. Commit it with a short message.\",\"last_assistant_action\":\"Fixed: the loop bound was `i <= n`. `make test` passes now.\",\"context_available\":false,\"view\":\"compaction_context\",\"total_turns\":0,\"start\":0,\"end\":0,\"next_before\":null,\"turns\":[],\"warnings\":[]}",
+   "session_id": "3f2a9c10-1111-4222-8333-444455556666",
+   "max_turns": 64,
+   "before": 0,
+   "max_tool_chars": 300
+  },
+  {
+   "name": "coder session-read show the",
+   "kind": "ambiguous",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"inert\":true,\"error\":\"ambiguous_reference\",\"matches\":[{\"session_id\":\"3f2a9c10-7777-4888-8999-aaaabbbbcccc\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/3f2a9c10-7777-4888-8999-aaaabbbbcccc.jsonl\",\"title\":\"Rename the helper\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"main\",\"updated_at_ns\":1794500600000000000},{\"session_id\":\"3f2a9c10-1111-4222-8333-444455556666\",\"path\":\"/private/tmp/claude-501/sp3/home/.claude/projects/-private-tmp-claude-501-sp3-home-proj/3f2a9c10-1111-4222-8333-444455556666.jsonl\",\"title\":\"Fix the failing sum test\",\"cwd\":\"/private/tmp/claude-501/sp3/home/proj\",\"branch\":\"main\",\"updated_at_ns\":1794500000000000000}]}"
+  },
+  {
+   "name": "coder session-read show 00000000-0000-4000-8000-000000000000",
+   "kind": "refusal",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"error\":\"not_found\",\"message\":\"No transcript for that native session ID.\"}"
+  },
+  {
+   "name": "coder session-read show nothing-like-this",
+   "kind": "refusal",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"error\":\"not_found\",\"message\":\"No matching Claude conversation for this working directory.\"}"
+  },
+  {
+   "name": "coder session-read show 3f2a9c10-1111-4222-8333-444455556666 --before 99",
+   "kind": "refusal_code",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"error\":\"invalid_before\"}"
+  },
+  {
+   "name": "coder session-read list --cwd /nowhere",
+   "kind": "sessions",
+   "body": "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"sessions\":[],\"warnings\":[]}"
+  }
+ ]
+}

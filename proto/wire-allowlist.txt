@@ -11,13 +11,9 @@
 #   shape NAME     a shape that is not compliant yet: a pending row's id, or one with no row
 
 # Area 1: Coder, Microcoder, Golemancy
-shape coder.session-reader.v1  # C10, wave 2: the session-reader envelope (#13250)
 shape coder-json-output  # C8, wave 2: --json and --stream-json output (#13250)
 shape chat-page-lines  # C9, wave 2: the /chat page lines Z C S U T (#13250)
 shape microcoder-worker-lines  # C11, wave 2: ready, reply, attempt, command, view, ask, ended, embedding, journal, task, answer (#13250)
-shape microcoder-journal-ajr1  # C11, wave 2: the hash-chained binary journal; a profile and a golden (#13250)
-shape microcoder-prompt-prefix  # C11, wave 2: the prompt state and action schema; a golden for the prefix (#13250)
-shape consent-and-memory-ledgers  # C12, wave 2: hash-chained JSON lines; goldens (#13250)
 shape external-format-fixtures  # C13, wave 2: every external row gets a fixture (#13250)
 shape nip98-events-in-c  # C14, wave 2: runner.c builds NIP-98 events by hand; use coax/lib/nostr (#13250)
 shape systemone-request-json  # the System One request JSON in coax/lib/systemone/request.coax is hand-written; pin it with the contract's fixtures (#13250)

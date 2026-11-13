@@ -1,0 +1,169 @@
+// Hold Microcoder's prompt profile (proto/coder/microcoder-prompt-v1.json, Protocol C11, GitHub
+// #13250) to the code that builds every step's request: the system prompt (loop.coax MC_SYSTEM),
+// the answer schema (action.coax MC_SCHEMA, sent as next_action) and the state (state.coax
+// mc_state_json). The model is their only reader, and Vertex's cache serves a request's prefix
+// only while it is byte for byte the last request's, so a changed byte here is a changed price.
+//
+// The profile holds the system prompt, the schema and the state after each step of one fixed
+// session (the steps below). This program plays the session through state.coax and requires each
+// state's exact bytes; it requires each state to start with the one before it up to the end of
+// its steps; and it reads each of the profile's replies through mc_action_parse.
+//   coax/web/tool.sh coax/lib/microcoder/prompt-profile.coax proto/coder/microcoder-prompt-v1.json
+//   coax/web/tool.sh coax/lib/microcoder/prompt-profile.coax --write > proto/coder/microcoder-prompt-v1.json
+// --write prints the profile from the code: use it only for a change to the prompt that is meant,
+// and say in the commit what it costs the cache.
+#import "Basic";
+#load "loop.coax";
+#load "../json/json.coax";
+#load "../sys/tool.coax";
+#load "../sys/args.coax";
+#load "../sys/fs.coax";
+
+PP_FILE :: 1048576;
+PP_PATH :: "proto/coder/microcoder-prompt-v1.json";
+PP_CHECK :: "coax/web/tool.sh coax/lib/microcoder/prompt-profile.coax proto/coder/microcoder-prompt-v1.json";
+PP_STEPS :: 6;
+PP_ENVIRONMENT :: "{\"os\":\"macOS 26\",\"cwd\":\"/tmp/demo\",\"shell\":\"zsh\",\"command_seconds\":30}";
+PP_TASK :: "Make `make test` pass, then say what was wrong.";
+PP_ROUTE :: "{\"route\":\"code\",\"local_work\":0.92}";
+// What a model answered, one a kind of step: each must read as an action.
+PP_REPLIES :: [3] string.[
+  "{\"rationale\":\"see what fails\",\"edits\":[],\"commands\":[\"make test\"],\"view\":[\"Makefile\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}",
+  "{\"rationale\":\"fix the off-by-one\",\"edits\":[{\"path\":\"sum.c\",\"old\":\"i <= n\",\"new\":\"i < n\"}],\"commands\":[\"make test\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}",
+  "{\"rationale\":\"done\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"The loop in sum.c read one element past the array. `make test` passes now.\",\"ask\":\"none\"}"];
+
+PpWork :: struct { b: [1] McStateBuffers; out: [MC_PROMPT_BYTES] u8; prev: [MC_PROMPT_BYTES] u8; file: [PP_FILE] u8; made: [PP_FILE] u8; }
+
+// Step i of the fixed session, written into the state.
+pp_step :: (st: [] McState, i: int) {
+  if i == 0 {
+    mc_action_begin(st, "see what fails");
+    mc_action_command(st, "make test", 2, false, "cc -o sum sum.c\n./sum < cases.txt\nFAIL case 3: want 6, got 9\nmake: *** [test] Error 1\n");
+    mc_file(st, "Makefile", true, "test: sum\n\t./sum < cases.txt\nsum: sum.c\n\tcc -o sum sum.c\n");
+    mc_action_end(st);
+  } else if i == 1 {
+    mc_action_begin(st, "read the source");
+    mc_file(st, "sum.c", true, "#include <stdio.h>\nint sum(const int *v, int n) {\n  int s = 0;\n  for (int i = 0; i <= n; i++) s += v[i];\n  return s;\n}\n");
+    mc_file(st, "notes.md", false, "");
+    mc_action_end(st);
+    mc_note(st, "the loop bound looks wrong");
+  } else if i == 2 {
+    mc_action_begin(st, "an edit that does not match");
+    mc_action_edit(st, "sum.c", false, "old appears 0 times");
+    mc_action_end(st);
+  } else if i == 3 {
+    mc_action_begin(st, "fix the off-by-one");
+    mc_action_edit(st, "sum.c", true, "");
+    mc_action_command(st, "make test", 0, false, "cc -o sum sum.c\n./sum < cases.txt\nok 5 cases\n");
+    mc_action_end(st);
+  } else if i == 4 {
+    mc_action_begin(st, "a command that is refused, and one that runs long");
+    mc_action_refused(st, "rm -rf /", "refused: it would delete outside the workspace");
+    mc_action_command(st, "sleep 60", -1, true, "");
+    mc_action_end(st);
+  } else {
+    mc_action_begin(st, "check the tree is clean: \"quotes\", a tab\tand café");
+    mc_action_command(st, "git status --short", 0, false, " M sum.c\n");
+    mc_action_end(st);
+  }
+}
+// Where a state's steps end: the byte before the "]" that closes "actions" when it has steps, the
+// whole of it up to there. Everything before it must begin the next state.
+pp_stable :: (j: string) -> int {
+  mark := "\"actions\":[";
+  at := -1;
+  for i: 0..<j.count - mark.count + 1 { if j[i..<i + mark.count] == mark { at = i + mark.count; } }
+  if at < 0 { return 0; }
+  depth := 1; in := false; e := at;
+  while e < j.count && depth > 0 {
+    c := j[e];
+    if in { if c == '\\' { e += 1; } else if c == '"' { in = false; } }
+    else if c == '"' { in = true; } else if c == '[' || c == '{' { depth += 1; } else if c == ']' || c == '}' { depth -= 1; }
+    e += 1;
+  }
+  return e - 1;
+}
+
+// The profile from the code, into o.
+pp_make :: (w: [] PpWork, o: [] Jo) -> bool {
+  st: [1] McState;
+  mc_state_init(st[..], w[0].b[..], PP_ENVIRONMENT, PP_TASK, PP_ROUTE);
+  jo_obj(o);
+  jo_key(o, "identity"); jo_str(o, "microcoder-prompt-v1");
+  jo_key(o, "check"); jo_str(o, PP_CHECK);
+  jo_key(o, "codec"); jo_str(o, "coax/lib/microcoder/state.coax");
+  jo_key(o, "doc"); jo_str(o, "docs/protocol/microcoder-prompt-v1.md");
+  jo_key(o, "scope"); jo_str(o, "What Microcoder sends the model each step: the system prompt, the answer schema and the state. The request's start must stay the same bytes from step to step for the model's prompt cache");
+  jo_key(o, "goldens"); jo_str(o, "Written by prompt-profile.coax --write from the code: a record of the bytes a model was sent for one fixed session of six steps, the state after each. The model is the only reader");
+  jo_key(o, "system"); jo_str(o, MC_SYSTEM);
+  jo_key(o, "schema_name"); jo_str(o, MC_SCHEMA_NAME);
+  jo_key(o, "schema"); jo_str(o, MC_SCHEMA);
+  jo_key(o, "environment"); jo_str(o, PP_ENVIRONMENT);
+  jo_key(o, "task"); jo_str(o, PP_TASK);
+  jo_key(o, "route"); jo_str(o, PP_ROUTE);
+  jo_key(o, "states"); jo_arr(o);
+  jo_str(o, mc_state_json(st[..], w[0].out[..]));
+  for i: 0..<PP_STEPS { pp_step(st[..], i); jo_str(o, mc_state_json(st[..], w[0].out[..])); }
+  jo_end(o);
+  jo_key(o, "replies"); jo_arr(o);
+  for r: PP_REPLIES { jo_str(o, r); }
+  jo_end(o);
+  jo_end(o);
+  return !o[0].bad;
+}
+
+pp_check :: (w: [] PpWork, text: string, path: string) -> bool {
+  file := PP_PATH;
+  if path.count < file.count || path[path.count - file.count..<path.count] != file { print("identity: not the file's name\n"); return false; }
+  // every member, byte for byte, is what the code gives now
+  o: [1] Jo; jo_start(o[..], w[0].made[..]);
+  if !pp_make(w, o[..]) { print("the profile does not fit\n"); return false; }
+  made := jo_text(o[..]);
+  body := text;
+  if body.count > 0 && body[body.count - 1] == '\n' { body = body[0..<body.count - 1]; }
+  if made != body {
+    at := 0;
+    while at < made.count && at < body.count && made[at] == body[at] { at += 1; }
+    print("the code gives other bytes from byte % of the profile (a changed prompt, schema or state: see --write)\n", at);
+    return false;
+  }
+  // each state begins with the one before it, up to the end of that one's steps
+  st: [1] McState; pn := 0;
+  mc_state_init(st[..], w[0].b[..], PP_ENVIRONMENT, PP_TASK, PP_ROUTE);
+  for i: 0..<PP_STEPS + 1 {
+    if i > 0 { pp_step(st[..], i - 1); }
+    j := mc_state_json(st[..], w[0].out[..]);
+    if !json_valid(j) { print("state %: not JSON\n", i); return false; }
+    if i > 0 && (pn > j.count || cast(string) w[0].prev[0..<pn] != cast(string) j[0..<pn]) { print("state %: does not begin with the state before it\n", i); return false; }
+    pn = pp_stable(j);
+    for k: 0..<pn { w[0].prev[k] = j[k]; }
+    print("ok    state % (% bytes, % kept by the next)\n", i, j.count, pn);
+  }
+  if !json_valid(MC_SCHEMA) { print("schema: not JSON\n"); return false; }
+  ab: [4096] u8; ar: [1] ClArena; a: [1] McAction;
+  for r, i: PP_REPLIES {
+    ar[0] = ClArena.{buf = ab[..]};
+    why := mc_action_parse(ar[..], r, a[..]);
+    if why != "" { print("reply %: %\n", i, why); return false; }
+  }
+  print("ok    % replies read as actions\n", PP_REPLIES.count);
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: prompt-profile PROFILE.json | prompt-profile --write"); return 2; }
+  work: [1] PpWork; w := work[..];
+  if args_at(a[..], 0) == "--write" {
+    o: [1] Jo; jo_start(o[..], w[0].made[..]);
+    if !pp_make(w, o[..]) { tool_errln("prompt-profile: the profile does not fit"); return 1; }
+    print("%\n", jo_text(o[..]));
+    return 0;
+  }
+  path := args_at(a[..], 0);
+  n := fs_read(path, w[0].file[..]);
+  if n <= 0 { tool_errln("prompt-profile: cannot read the profile"); return 2; }
+  if !pp_check(w, cast(string) w[0].file[0..<n], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

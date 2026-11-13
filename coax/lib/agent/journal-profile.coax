@@ -1,0 +1,134 @@
+// Hold Microcoder's journal profile (proto/coder/microcoder-journal-ajr1.json, Protocol C11, GitHub
+// #13250) to the one codec that writes and reads a frame: coax/lib/agent/journal.coax. The profile's
+// frames were made with Python's hashlib, not with this codec. For each, aj_prepare gives exactly
+// its bytes from its values and the chain's state, aj_read gives the values back and the next
+// state, and aj_commit moves the chain on. Every "refused" frame is refused by aj_read. The layout
+// numbers are the codec's.
+//   coax/web/tool.sh coax/lib/agent/journal-profile.coax proto/coder/microcoder-journal-ajr1.json
+//   coax/web/tool.sh coax/lib/agent/journal-profile.coax --file ~/.openagents/coder/sessions/worker-US.ajr
+// --file walks a journal a worker wrote: every frame reads, chains to the one before and is written
+// back by aj_prepare to the same bytes; it prints how many frames and of which kinds.
+#import "Basic";
+#load "journal.coax";
+#load "../json/json.coax";
+#load "../sys/tool.coax";
+#load "../sys/args.coax";
+#load "../sys/fs.coax";
+
+JP_FILE :: 1048576;
+JP_FRAME :: AJ_OVERHEAD + AJ_PAYLOAD;
+JP_PATH :: "proto/coder/microcoder-journal-ajr1.json";
+JP_KINDS :: [11] string.["context", "model_chunk", "model_intent", "model_reply", "model_end", "command_intent", "view_intent", "tool_output", "tool_end", "stop", "decision"];
+
+jp_nibble :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  return -1;
+}
+// A JSON string of lowercase hex into out: its bytes, or -1.
+jp_hex :: (d: Jv, at: int, out: [] u8) -> int {
+  raw := jv_raw(d, at);   // a string's text, between its quotes
+  if jv_kind(d, at) != JV_STRING || raw.count % 2 != 0 || raw.count / 2 > out.count { return -1; }
+  n := raw.count / 2;
+  for i: 0..<n {
+    hi := jp_nibble(raw[2 * i]); lo := jp_nibble(raw[2 * i + 1]);
+    if hi < 0 || lo < 0 { return -1; }
+    out[i] = cast(u8) (hi * 16 + lo);
+  }
+  return n;
+}
+jp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+jp_kind :: (name: string) -> int {
+  for i: 0..<JP_KINDS.count { if JP_KINDS[i] == name { return i; } }
+  return -1;
+}
+
+// One "frames" entry against the chain's state: the next state, failed when the entry does not hold.
+jp_frame :: (d: Jv, row: int, state: AjState) -> AjState {
+  bad := AjState.{failed = true};
+  kb: [32] u8; want: [4096] u8; payload: [2048] u8; prev: [32] u8; head: [32] u8; out: [4096] u8;
+  kind := jp_kind(jp_str(d, jv_get(d, row, "kind"), kb[..]));
+  wn := jp_hex(d, jv_get(d, row, "frame"), want[..]); pn := jp_hex(d, jv_get(d, row, "payload"), payload[..]);
+  if kind < 0 || wn < 0 || pn < 0 || jp_hex(d, jv_get(d, row, "previous"), prev[..]) != 32 || jp_hex(d, jv_get(d, row, "head"), head[..]) != 32 { return bad; }
+  if jv_int(d, jv_get(d, row, "sequence"), -1) != state.sequence || !aj_same(prev, state.head) { return bad; }
+  group := jv_int(d, jv_get(d, row, "group"), -1);
+  p := aj_prepare(state, cast(AjKind) cast(u8) kind, group, cast(string) payload[0..<pn], out[..], false);
+  if !p.ok || p.count != wn { return bad; }
+  for i: 0..<wn { if out[i] != want[i] { return bad; } }
+  r := aj_read(state, want[0..<wn]);
+  if !r.ok || cast(int) cast(u8) r.kind != kind || r.group != group || r.at != AJ_HEADER || r.count != pn || r.consumed != wn || !aj_same(r.after.head, head) { return bad; }
+  for i: 0..<pn { if want[r.at + i] != payload[i] { return bad; } }
+  return aj_commit(state, want[0..<wn], true);
+}
+
+jp_check :: (d: Jv, path: string) -> bool {
+  tb: [256] u8;
+  if jv_kind(d, 0) != JV_OBJECT || jp_str(d, jv_get(d, 0, "identity"), tb[..]) != "microcoder-journal-ajr1" { print("identity\n"); return false; }
+  file := JP_PATH;
+  if path.count < file.count || path[path.count - file.count..<path.count] != file { print("identity: not the file's name\n"); return false; }
+  if jp_str(d, jv_get(d, 0, "check"), tb[..]) != "coax/web/tool.sh coax/lib/agent/journal-profile.coax proto/coder/microcoder-journal-ajr1.json" { print("check: not this program\n"); return false; }
+  if jp_str(d, jv_get(d, 0, "codec"), tb[..]) != "coax/lib/agent/journal.coax" { print("codec\n"); return false; }
+  if jv_int(d, jv_get(d, 0, "header"), -1) != AJ_HEADER || jv_int(d, jv_get(d, 0, "overhead"), -1) != AJ_OVERHEAD || jv_int(d, jv_get(d, 0, "max_payload"), -1) != AJ_PAYLOAD { print("layout numbers\n"); return false; }
+  kinds := jv_get(d, 0, "kinds");
+  if jv_kind(d, kinds) != JV_ARRAY || jv_len(d, kinds) != JP_KINDS.count || cast(int) cast(u8) AjKind.decision != JP_KINDS.count - 1 { print("kinds\n"); return false; }
+  for i: 0..<JP_KINDS.count { if jp_str(d, jv_at(d, kinds, i), tb[..]) != JP_KINDS[i] { print("kinds: %\n", i); return false; } }
+  frames := jv_get(d, 0, "frames");
+  if jv_kind(d, frames) != JV_ARRAY || jv_len(d, frames) < JP_KINDS.count { print("frames: one a kind at least\n"); return false; }
+  seen: [11] bool; state: AjState;
+  for i: 0..<jv_len(d, frames) {
+    row := jv_at(d, frames, i);
+    state = jp_frame(d, row, state);
+    if state.failed { print("frame %: the codec does not give these bytes, or does not read them back\n", i); return false; }
+    k := jp_kind(jp_str(d, jv_get(d, row, "kind"), tb[..])); seen[k] = true;
+    print("ok    frame % %\n", i, JP_KINDS[k]);
+  }
+  for i: 0..<JP_KINDS.count { if !seen[i] { print("frames: none of kind %\n", JP_KINDS[i]); return false; } }
+  bad := jv_get(d, 0, "refused");
+  if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 3 { print("refused: three at least\n"); return false; }
+  first: AjState; b: [4096] u8;
+  for i: 0..<jv_len(d, bad) {
+    n := jp_hex(d, jv_get(d, jv_at(d, bad, i), "frame"), b[..]);
+    if n < 0 || aj_read(first, b[0..<n]).ok || !aj_commit(first, b[0..<n], true).failed { print("refused %: taken (%)\n", i, jp_str(d, jv_get(d, jv_at(d, bad, i), "why"), tb[..])); return false; }
+  }
+  print("ok    % refused\n", jv_len(d, bad));
+  return true;
+}
+
+// A journal file a worker wrote: every frame, from the start of the chain.
+jp_file :: (path: string) -> int {
+  size := fs_size(path);
+  if size < 0 { print("%: not there\n", path); return 2; }
+  state: AjState; at := 0; n := 0; counts: [11] int;
+  buf: [JP_FRAME] u8; out: [JP_FRAME] u8;
+  while at < size {
+    got := fs_read_at(path, at, buf[..]);
+    if got < AJ_OVERHEAD { print("%: % bytes after frame % are no frame\n", path, size - at, n); return 1; }
+    r := aj_read(state, buf[0..<got]);
+    if !r.ok { print("%: frame % at byte % does not read\n", path, n, at); return 1; }
+    p := aj_prepare(state, r.kind, r.group, cast(string) buf[r.at..<r.at + r.count], out[..], false);
+    if !p.ok || p.count != r.consumed { print("%: frame % is not written back\n", path, n); return 1; }
+    for i: 0..<p.count { if out[i] != buf[i] { print("%: frame % is written back as other bytes\n", path, n); return 1; } }
+    counts[cast(int) cast(u8) r.kind] += 1;
+    state = r.after; at += r.consumed; n += 1;
+  }
+  print("%: % frames, % bytes, read and written back to the same bytes:", path, n, size);
+  for i: 0..<JP_KINDS.count { if counts[i] > 0 { print(" % %", counts[i], JP_KINDS[i]); } }
+  print("\n");
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || (args_count(a[..]) != 1 && !(args_count(a[..]) == 2 && args_at(a[..], 0) == "--file")) { tool_errln("usage: journal-profile PROFILE.json | journal-profile --file JOURNAL.ajr"); return 2; }
+  if args_count(a[..]) == 2 { return jp_file(args_at(a[..], 1)); }
+  path := args_at(a[..], 0);
+  text: [JP_FILE] u8; n := fs_read(path, text[..]);
+  nodes: [4096] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("journal-profile: cannot parse JSON"); return 2; }
+  if !jp_check(d[0], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

@@ -1,0 +1,138 @@
+syntax = "proto3";
+package openagents.coder.session_reader.v1;
+
+// coder.session-reader.v1: what `coder session-read`, the coder_session_read
+// tool and `coder mcp` answer about another tool's conversations
+// (docs/protocol/coder-session-reader-v1.md). Read-only: every reply and every
+// turn says inert, because the text is history to read, never instructions.
+// One writer, coax/lib/agent/observe/claude-history.coax (profile
+// coder-session-reader); json_name is the key on the wire, and members are
+// always written, in field order. A reply is one of Sessions, Conversation,
+// Context, Ambiguous, Refusal or RefusalCode.
+message SessionRow {
+  string session_id = 1 [json_name = "session_id"];
+  string path = 2 [json_name = "path"]; // the transcript file
+  string title = 3 [json_name = "title"];
+  string cwd = 4 [json_name = "cwd"];
+  string branch = 5 [json_name = "branch"];
+  int64 updated_at_ns = 6 [json_name = "updated_at_ns"]; // the file's modification time
+}
+message Warning {
+  string code = 1 [json_name = "code"];
+  int64 count = 2 [json_name = "count"]; // records it applies to
+}
+// A list's one warning: discovery_limit, when the scan stopped early.
+message ListWarning {
+  string code = 1 [json_name = "code"];
+}
+// `session-read list`: newest first.
+message Sessions {
+  string schema = 1 [json_name = "schema"]; // coder.session-reader.v1
+  string source = 2 [json_name = "source"]; // claude
+  bool inert = 3 [json_name = "inert"]; // true
+  repeated SessionRow sessions = 4 [json_name = "sessions"];
+  repeated ListWarning warnings = 5 [json_name = "warnings"];
+}
+message ToolCall {
+  string id = 1 [json_name = "id"];
+  string name = 2 [json_name = "name"];
+  string input = 3 [json_name = "input"]; // the call's input as JSON text, cut to --max-tool-chars
+  bool inert = 4 [json_name = "inert"]; // true
+}
+message ToolResult {
+  string tool_use_id = 1 [json_name = "tool_use_id"];
+  string content = 2 [json_name = "content"]; // cut to --max-tool-chars
+  bool unavailable = 3 [json_name = "unavailable"]; // the output was stored or summarized elsewhere
+  bool is_error = 4 [json_name = "is_error"];
+  bool inert = 5 [json_name = "inert"]; // true
+}
+// One turn of a conversation: role is user or assistant.
+message Turn {
+  string role = 1 [json_name = "role"];
+  string uuid = 2 [json_name = "uuid"];
+  string text = 3 [json_name = "text"];
+  repeated ToolCall tool_calls = 4 [json_name = "tool_calls"];
+  repeated ToolResult tool_results = 5 [json_name = "tool_results"];
+  bool inert = 6 [json_name = "inert"]; // true
+}
+// One part of a compaction summary: role context, kind compaction_summary.
+// A long summary is `parts` turns of 2,048 bytes at most.
+message ContextTurn {
+  string role = 1 [json_name = "role"];
+  string kind = 2 [json_name = "kind"];
+  string uuid = 3 [json_name = "uuid"];
+  int64 part = 4 [json_name = "part"];
+  int64 parts = 5 [json_name = "parts"];
+  string text = 6 [json_name = "text"];
+  repeated ToolCall tool_calls = 7 [json_name = "tool_calls"]; // empty
+  repeated ToolResult tool_results = 8 [json_name = "tool_results"]; // empty
+  bool inert = 9 [json_name = "inert"]; // true
+}
+// `session-read show`: one page of turns, oldest first, ending at `end`.
+message Conversation {
+  string schema = 1 [json_name = "schema"];
+  string source = 2 [json_name = "source"];
+  bool inert = 3 [json_name = "inert"];
+  string session_id = 4 [json_name = "session_id"];
+  string path = 5 [json_name = "path"];
+  string cwd = 6 [json_name = "cwd"];
+  string branch = 7 [json_name = "branch"];
+  string title = 8 [json_name = "title"];
+  string created_at = 9 [json_name = "created_at"];
+  string updated_at = 10 [json_name = "updated_at"];
+  string last_user_request = 11 [json_name = "last_user_request"];
+  string last_assistant_action = 12 [json_name = "last_assistant_action"];
+  bool context_available = 13 [json_name = "context_available"]; // the session has a compaction summary
+  string view = 14 [json_name = "view"]; // conversation
+  int64 total_turns = 15 [json_name = "total_turns"];
+  int64 start = 16 [json_name = "start"];
+  int64 end = 17 [json_name = "end"];
+  optional int64 next_before = 18 [json_name = "next_before"]; // --before for the page before this one; null when this is the first
+  repeated Turn turns = 19 [json_name = "turns"];
+  repeated Warning warnings = 20 [json_name = "warnings"];
+}
+// `session-read context`: the same page of a session's compaction summaries.
+message Context {
+  string schema = 1 [json_name = "schema"];
+  string source = 2 [json_name = "source"];
+  bool inert = 3 [json_name = "inert"];
+  string session_id = 4 [json_name = "session_id"];
+  string path = 5 [json_name = "path"];
+  string cwd = 6 [json_name = "cwd"];
+  string branch = 7 [json_name = "branch"];
+  string title = 8 [json_name = "title"];
+  string created_at = 9 [json_name = "created_at"];
+  string updated_at = 10 [json_name = "updated_at"];
+  string last_user_request = 11 [json_name = "last_user_request"];
+  string last_assistant_action = 12 [json_name = "last_assistant_action"];
+  bool context_available = 13 [json_name = "context_available"]; // the session has a compaction summary
+  string view = 14 [json_name = "view"]; // compaction_context
+  int64 total_turns = 15 [json_name = "total_turns"];
+  int64 start = 16 [json_name = "start"];
+  int64 end = 17 [json_name = "end"];
+  optional int64 next_before = 18 [json_name = "next_before"]; // --before for the page before this one; null when this is the first
+  repeated ContextTurn turns = 19 [json_name = "turns"];
+  repeated Warning warnings = 20 [json_name = "warnings"];
+}
+// More than one conversation matched the reference.
+message Ambiguous {
+  string schema = 1 [json_name = "schema"];
+  bool inert = 2 [json_name = "inert"];
+  string error = 3 [json_name = "error"]; // ambiguous_reference
+  repeated SessionRow matches = 4 [json_name = "matches"];
+}
+// A refusal with its words.
+message Refusal {
+  string schema = 1 [json_name = "schema"];
+  string source = 2 [json_name = "source"];
+  bool inert = 3 [json_name = "inert"];
+  string error = 4 [json_name = "error"];
+  string message = 5 [json_name = "message"];
+}
+// A refusal that is its code alone: context_limit, invalid_before.
+message RefusalCode {
+  string schema = 1 [json_name = "schema"];
+  string source = 2 [json_name = "source"];
+  bool inert = 3 [json_name = "inert"];
+  string error = 4 [json_name = "error"];
+}

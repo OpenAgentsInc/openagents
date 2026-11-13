@@ -205,6 +205,9 @@
       "openagents/cli/dictation/v1/event.proto",
       "openagents/cli/dictation/v1/stream.proto",
       "openagents/cli/local/v1/inventory.proto"
+    ],
+    "coder-session-reader": [
+      "openagents/coder/session_reader/v1/reader.proto"
     ]
   },
   "profile_namespaces": {
@@ -371,6 +374,9 @@
     "cli-local": [
       "openagents.cli.dictation.v1",
       "openagents.cli.local.v1"
+    ],
+    "coder-session-reader": [
+      "openagents.coder.session_reader.v1"
     ]
   }
 }

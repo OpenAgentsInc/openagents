@@ -1,0 +1,136 @@
+// The session reader's goldens (compliance plan step C10, GitHub #13250):
+// proto/coder/session-reader-v1.json holds replies `coder session-read` printed, with the
+// transcripts it read. For each reply this check
+//   - holds its keys to the json_names of its message in proto/descriptors/coder-session-reader.pb:
+//     each field once, in field order, in every nested object too;
+//   - for a conversation or a context page, reads the fixture's transcript through the one writer
+//     (claude-history.coax: csr_parse, csr_select, csr_show_mode) and requires the reply's exact bytes;
+//   - for a refusal, writes it again with csr_error; for a list or an ambiguous reference, requires
+//     the writer's opening.
+// The readers of these replies are models and MCP clients, so no reader of ours is held here.
+//   coax/web/tool.sh coax/lib/agent/observe/session-reader-goldens.coax proto/coder/session-reader-v1.json
+#import "Basic";
+#load "claude-history.coax";
+#load "../../proto/importer.coax";
+#load "../../proto/golden-keys.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+SG_DESCRIPTOR :: "proto/descriptors/coder-session-reader.pb";
+SG_N :: 6;
+SG_KINDS :: [SG_N] string.["sessions", "conversation", "context", "ambiguous", "refusal", "refusal_code"];
+SG_MESSAGES :: [SG_N] string.[".openagents.coder.session_reader.v1.Sessions", ".openagents.coder.session_reader.v1.Conversation", ".openagents.coder.session_reader.v1.Context",
+                              ".openagents.coder.session_reader.v1.Ambiguous", ".openagents.coder.session_reader.v1.Refusal", ".openagents.coder.session_reader.v1.RefusalCode"];
+SG_BODY :: 65536;
+SG_TRANSCRIPT :: 262144;
+SgWork :: struct {
+  file: [1048576] u8; nodes: [32768] JvNode; body_nodes: [4096] JvNode; name: [256] u8; kind: [64] u8; sid: [160] u8; path: [2100] u8;
+  body: [SG_BODY] u8; back: [SG_BODY] u8; transcript: [SG_TRANSCRIPT] u8; line: [65536] u8; code: [128] u8; words: [1024] u8;
+}
+sg_message :: (kind: string) -> string {
+  kinds := SG_KINDS; messages := SG_MESSAGES;
+  for k: 0..<SG_N { if kinds[k] == kind { return messages[k]; } }
+  return "";
+}
+sg_starts :: (s: string, head: string) -> bool { return s.count >= head.count && s[0..<head.count] == head; }
+// The fixture's transcript for a session, as the file's text: its length in w.transcript, -1 none.
+sg_transcript :: (d: Jv, sid: string, w: [] SgWork) -> int {
+  list := jv_get(d, 0, "transcripts"); ib: [160] u8;
+  for i: 0..<jv_len(d, list) {
+    t := jv_at(d, list, i);
+    k := jv_str(d, jv_get(d, t, "session_id"), ib[..]);
+    if k < 0 || cast(string) ib[0..<k] != sid { continue; }
+    pn := jv_str(d, jv_get(d, t, "path"), w[0].path[..]);
+    if pn < 0 { return -1; }
+    lines := jv_get(d, t, "lines"); n := 0;
+    for j: 0..<jv_len(d, lines) {
+      m := jv_str(d, jv_at(d, lines, j), w[0].line[..]);
+      if m < 0 || n + m + 1 > SG_TRANSCRIPT { return -1; }
+      for q: 0..<m { w[0].transcript[n + q] = w[0].line[q]; }
+      n += m; w[0].transcript[n] = 10; n += 1;
+    }
+    w[0].path[pn] = 0; w[0].sid[0] = cast(u8) pn;   // the path's length rides in sid[0] for the caller
+    return n;
+  }
+  return -1;
+}
+// One golden's faults: "" when it holds.
+sg_golden :: (st: [] D_State, d: Jv, item: int, kind: string, body: string, w: [] SgWork) -> string {
+  why := pk_text_keys(st, sg_message(kind), body, true, false, w[0].body_nodes[..]);
+  if why != "" { return why; }
+  if kind == "sessions" {
+    n := csr_sessions_open(w[0].back[..]);
+    return ifx n > 0 && sg_starts(body, cast(string) w[0].back[0..<n]) then "" else "it does not start with the writer's opening";
+  }
+  if kind == "ambiguous" {
+    n := csr_ambiguous_open(w[0].back[..]);
+    return ifx n > 0 && sg_starts(body, cast(string) w[0].back[0..<n]) then "" else "it does not start with the writer's opening";
+  }
+  if kind == "refusal" {
+    b: [1] Jv;
+    if !jv_parse(b[..], body, w[0].body_nodes[..]) { return "not JSON"; }
+    cn := jv_str(b[0], jv_get(b[0], 0, "error"), w[0].code[..]); mn := jv_str(b[0], jv_get(b[0], 0, "message"), w[0].words[..]);
+    if cn < 0 || mn < 0 { return "no error or message"; }
+    return ifx csr_error(cast(string) w[0].code[0..<cn], cast(string) w[0].words[0..<mn], w[0].back[..]) == body then "" else "written again by csr_error, it is not the same bytes";
+  }
+  if kind == "refusal_code" { return ""; }
+  // a page: the transcript through the writer
+  ib: [160] u8; k := jv_str(d, jv_get(d, item, "session_id"), ib[..]);
+  if k < 0 { return "no session_id"; }
+  sid := cast(string) ib[0..<k];
+  tn := sg_transcript(d, sid, w);
+  if tn < 0 { return "the fixture has no transcript for its session"; }
+  pn := cast(int) w[0].sid[0];
+  g: [1] CsrGraph; csr_parse(g[..], cast(string) w[0].transcript[0..<tn]);
+  if g[0].warnings[2] > 0 || g[0].warnings[3] > 0 { return "the transcript is past the reader's budget"; }
+  csr_select(g[..]);
+  made := csr_show_mode(g[..], sid, cast(string) w[0].path[0..<pn], jv_int(d, jv_get(d, item, "max_turns"), -1), jv_int(d, jv_get(d, item, "before"), -1), jv_int(d, jv_get(d, item, "max_tool_chars"), -1), kind == "context", w[0].back[..]);
+  return ifx made == body then "" else "the writer gives other bytes for the fixture's transcript";
+}
+
+sg_check :: (text: string, st: [] D_State, w: [] SgWork) -> int {
+  j: [1] Jv;
+  if !jv_parse(j[..], text, w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0];
+  goldens := jv_get(d, 0, "goldens");
+  if jv_kind(d, goldens) != JV_ARRAY || jv_len(d, goldens) == 0 { print("FAIL  no goldens\n"); return 1; }
+  bad := 0; seen: [SG_N] bool;
+  for i: 0..<jv_len(d, goldens) {
+    item := jv_at(d, goldens, i);
+    name := cast(string) w[0].name[0..<jv_str(d, jv_get(d, item, "name"), w[0].name[..])];
+    kind := cast(string) w[0].kind[0..<jv_str(d, jv_get(d, item, "kind"), w[0].kind[..])];
+    bn := jv_str(d, jv_get(d, item, "body"), w[0].body[..]);
+    if bn <= 0 || sg_message(kind) == "" { print("FAIL  % : no body, or no kind %\n", name, kind); bad += 1; continue; }
+    kinds := SG_KINDS; for k: 0..<SG_N { if kinds[k] == kind { seen[k] = true; } }
+    why := sg_golden(st, d, item, kind, cast(string) w[0].body[0..<bn], w);
+    if why != "" { print("FAIL  % (%): %\n", name, kind, why); bad += 1; } else { print("ok    % (%)\n", name, kind); }
+  }
+  kinds := SG_KINDS;
+  for k: 0..<SG_N { if !seen[k] { print("FAIL  no golden of kind %\n", kinds[k]); bad += 1; } }
+  print("%\n", ifx bad == 0 then "session reader goldens hold" else "session reader goldens fail");
+  return ifx bad == 0 then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) || args_count(args[..]) != 1 { tool_errln("usage: session-reader-goldens FIXTURE.json"); return 2; }
+  pb: [65536] u8;
+  pn := fs_read(SG_DESCRIPTOR, pb[..]);
+  if pn <= 0 { tool_errln("session-reader-goldens: cannot read the descriptor"); return 2; }
+  g: [1] PkDescriptor;
+  err := pk_load(g[..], cast(string) pb[0..<pn]);
+  if err != "" { print("FAIL  descriptor: %\n", err); return 1; }
+  st := g[0].state[..];
+  w: [1] SgWork;
+  // the checks bite: a key the message lacks, a member missing, members out of order
+  if pk_text_keys(st, sg_message("refusal"), "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"error\":\"not_found\",\"words\":\"x\"}", true, false, w[0].body_nodes[..]) == "" ||
+     pk_text_keys(st, sg_message("refusal"), "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"error\":\"not_found\"}", true, false, w[0].body_nodes[..]) == "" ||
+     pk_text_keys(st, sg_message("refusal"), "{\"schema\":\"coder.session-reader.v1\",\"inert\":true,\"source\":\"claude\",\"error\":\"not_found\",\"message\":\"x\"}", true, false, w[0].body_nodes[..]) == "" ||
+     pk_text_keys(st, sg_message("refusal"), "{\"schema\":\"coder.session-reader.v1\",\"source\":\"claude\",\"inert\":true,\"error\":\"not_found\",\"message\":\"x\"}", true, false, w[0].body_nodes[..]) != "" {
+    print("FAIL  the check takes a body it should refuse, or refuses one it should take\n"); return 1;
+  }
+  n := fs_read(args_at(args[..], 0), w[0].file[..]);
+  if n <= 0 { tool_errln("session-reader-goldens: cannot read the fixture"); return 2; }
+  return sg_check(cast(string) w[0].file[0..<n], st, w[..]);
+}

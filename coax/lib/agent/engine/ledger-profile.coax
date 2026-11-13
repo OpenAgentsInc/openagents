@@ -1,0 +1,107 @@
+// Hold the consent ledger's and the memory log's fixtures (proto/coder/consent-memory-ledgers-v1.json,
+// Protocol C12, GitHub #13250) to their codecs: consent-gate.coax (gt_line, gt_unline) and
+// memory-log.coax (mem_line, mem_unline). The fixture's ledgers are files the Coder CLI wrote
+// (coder consent grant and revoke, a gated send and a refused one; coder remember, revise and
+// forget). For each, every line reads through the codec and is written back to the same bytes,
+// and the whole chain replays (cs_replay) or verifies (mm_verify). Every "refused" line is refused.
+//   coax/web/tool.sh coax/lib/agent/engine/ledger-profile.coax proto/coder/consent-memory-ledgers-v1.json
+//   coax/web/tool.sh coax/lib/agent/engine/ledger-profile.coax --gate LEDGER TEXT
+// --gate sends TEXT through the gate on System One with the ledger at LEDGER, as Coder does before a
+// task leaves the machine: it appends the send or the refusal and says which. It sends nothing.
+#import "Basic";
+#load "memory-log.coax";
+#load "../../json/json.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+LP_FILE :: 262144;
+LP_PATH :: "proto/coder/consent-memory-ledgers-v1.json";
+LP_CHECK :: "coax/web/tool.sh coax/lib/agent/engine/ledger-profile.coax proto/coder/consent-memory-ledgers-v1.json";
+LP_EVENTS :: 64;
+LpWork :: struct { file: [LP_FILE] u8; line: [8192] u8; back: [8192] u8; gs: [1] GtStore; mev: [LP_EVENTS] MmEvent; mbytes: [65536] u8; facts: [LP_EVENTS] MmFact; }
+
+lp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+// One consent ledger: its lines in order.
+lp_consent :: (w: [] LpWork, d: Jv, lines: int) -> bool {
+  src := CsLedger.{events = w[0].gs[0].src[..], grants = w[0].gs[0].grants[0..<0]};
+  to: [1] CsLedger; to[0] = CsLedger.{events = w[0].gs[0].events[..], grants = w[0].gs[0].grants[..]};
+  for i: 0..<jv_len(d, lines) {
+    line := lp_str(d, jv_at(d, lines, i), w[0].line[..]);
+    if line.count == 0 || !gt_unline(line, src.events[src.count..<src.count + 1]) { print("  line %: does not read\n", i); return false; }
+    n := gt_line(src.events[src.count], w[0].back[..]);
+    if n < 1 || cast(string) w[0].back[0..<n - 1] != line { print("  line %: written back as other bytes\n", i); return false; }
+    src.count += 1;
+  }
+  v := cs_replay(src, to[..]);
+  if v.why != CsWhy.ok { print("  the chain does not replay at event %\n", v.index); return false; }
+  return true;
+}
+// One memory log: its lines in order.
+lp_memory :: (w: [] LpWork, d: Jv, lines: int) -> bool {
+  g: [1] MmLog; g[0] = MmLog.{events = w[0].mev[..], bytes = w[0].mbytes[..]};
+  for i: 0..<jv_len(d, lines) {
+    line := lp_str(d, jv_at(d, lines, i), w[0].line[..]);
+    if line.count == 0 || !mem_unline(g[..], line) { print("  line %: does not read\n", i); return false; }
+    n := mem_line(g[0], i, w[0].back[..]);
+    if n < 1 || cast(string) w[0].back[0..<n - 1] != line { print("  line %: written back as other bytes\n", i); return false; }
+  }
+  v := mm_verify(g[0]);
+  if v.status != MmStatus.ok { print("  the chain does not verify at event %\n", v.index); return false; }
+  t: [1] MmTable; t[0] = MmTable.{facts = w[0].facts[..]};
+  r := mm_replay(g[0], t[..]);
+  if r.status != MmStatus.ok { print("  the log does not replay at event %\n", r.index); return false; }
+  return true;
+}
+
+lp_check :: (w: [] LpWork, d: Jv, path: string) -> bool {
+  tb: [256] u8;
+  if jv_kind(d, 0) != JV_OBJECT || lp_str(d, jv_get(d, 0, "identity"), tb[..]) != "consent-memory-ledgers-v1" { print("identity\n"); return false; }
+  file := LP_PATH;
+  if path.count < file.count || path[path.count - file.count..<path.count] != file { print("identity: not the file's name\n"); return false; }
+  if lp_str(d, jv_get(d, 0, "check"), tb[..]) != LP_CHECK { print("check: not this program\n"); return false; }
+  for kind: 0..<2 {
+    name := ifx kind == 0 then "consent" else "memory";
+    list := jv_get(d, 0, name);
+    if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) < 1 { print("%: no ledgers\n", name); return false; }
+    for i: 0..<jv_len(d, list) {
+      lines := jv_get(d, jv_at(d, list, i), "lines");
+      if jv_kind(d, lines) != JV_ARRAY || jv_len(d, lines) < 1 || jv_len(d, lines) > LP_EVENTS { print("% %: lines\n", name, i); return false; }
+      ok := ifx kind == 0 then lp_consent(w, d, lines) else lp_memory(w, d, lines);
+      if !ok { print("% %: fails\n", name, i); return false; }
+      print("ok    % % (% lines): %\n", name, i, jv_len(d, lines), lp_str(d, jv_get(d, jv_at(d, list, i), "what"), tb[..]));
+    }
+    bad := jv_get(d, jv_get(d, 0, "refused"), name);
+    if jv_kind(d, bad) != JV_ARRAY || jv_len(d, bad) < 3 { print("refused %: three lines at least\n", name); return false; }
+    for i: 0..<jv_len(d, bad) {
+      line := lp_str(d, jv_at(d, bad, i), w[0].line[..]);
+      e: [1] CsEvent; g: [1] MmLog; g[0] = MmLog.{events = w[0].mev[..], bytes = w[0].mbytes[..]};
+      taken := ifx kind == 0 then gt_unline(line, e[..]) else mem_unline(g[..], line);
+      if taken { print("refused % %: taken\n", name, i); return false; }
+    }
+    print("ok    % refused % lines\n", name, jv_len(d, bad));
+  }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || !(args_count(a[..]) == 1 || (args_count(a[..]) == 3 && args_at(a[..], 0) == "--gate")) { tool_errln("usage: ledger-profile PROFILE.json | ledger-profile --gate LEDGER TEXT"); return 2; }
+  if args_count(a[..]) == 3 {
+    why: [400] u8; nwhy: [1] int;
+    if cg_session_to_so(args_at(a[..], 1), args_at(a[..], 2), "the task", why[..], nwhy[..]) { print("sent under a grant; the send is in the ledger\n"); return 0; }
+    print("refused: %\n", cast(string) why[0..<nwhy[0]]);
+    return 1;
+  }
+  work: [1] LpWork; w := work[..];
+  path := args_at(a[..], 0);
+  n := fs_read(path, w[0].file[..]);
+  nodes: [2048] JvNode; d: [1] Jv;
+  if n <= 0 || !jv_parse(d[..], cast(string) w[0].file[0..<n], nodes[..]) { tool_errln("ledger-profile: cannot parse JSON"); return 2; }
+  if !lp_check(w, d[0], path) { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

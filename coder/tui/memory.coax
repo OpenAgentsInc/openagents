@@ -20,6 +20,7 @@
 //   ~/.openagents/coder/memory/vectors.jsonl  one vector a live fact, keyed by its event's digest
 
 #load "../../psionic/lib/harness/memory.coax";
+#load "../../coax/lib/agent/engine/memory-log.coax";   // the log's one codec: mem_line and mem_unline (Protocol C12, #13250)
 #load "../../coax/lib/nostr/json-f64.coax";
 
 MEM_EVENTS :: 512;
@@ -34,10 +35,6 @@ MEM_USER :: 1;
 MemStore :: struct { events: [MEM_EVENTS] MmEvent; bytes: [MEM_BYTES] u8; facts: [MEM_EVENTS] MmFact; }
 
 // mem_hex, mem_unhex, mem_d32, mem_s and mem_i: coax/lib/agent/engine/consent-gate.coax (the consent ledger reads the same way).
-mem_op_name :: (o: MmOp) -> string { return ifx o == MmOp.remember then "remember" else ifx o == MmOp.revise then "revise" else "forget"; }
-mem_scope_name :: (s: MmScope) -> string { return ifx s == MmScope.session then "session" else ifx s == MmScope.user then "user" else "project"; }
-mem_reason_name :: (r: MmReason) -> string { return ifx r == MmReason.none then "none" else ifx r == MmReason.correction then "correction" else ifx r == MmReason.update then "update" else "resolve"; }
-
 mem_status_name :: (s: MmStatus) -> string {
   names := [13] string.["ok", "capacity", "shape", "reason", "source", "same", "missing", "sequence", "link", "content", "digest", "redacted", "exposed"];
   return names[cast(int) s];
@@ -82,55 +79,6 @@ mem_origin :: (f: MmFact, sbuf: [] u8) -> int {
 }
 
 mem_origin_name :: (o: int) -> string { return ifx o == MEM_ORIGIN_HELD then "held" else ifx o == MEM_ORIGIN_CHANGED then "changed" else ifx o == MEM_ORIGIN_GONE then "gone" else "none"; }
-
-// One event as a line of events.jsonl.
-mem_line :: (g: MmLog, i: int, out: [] u8) -> int {
-  e := g.events[i]; at := mm_at(g, i);
-  n := json_raw(out, 0, "{\"sequence\":"); n = json_write_int(out, n, e.sequence);
-  n = json_raw(out, n, ",\"op\":\""); n = json_raw(out, n, mem_op_name(e.op));
-  n = json_raw(out, n, "\",\"scope\":\""); n = json_raw(out, n, mem_scope_name(e.scope));
-  n = json_raw(out, n, "\",\"owner\":"); n = json_write_int(out, n, e.owner);
-  n = json_raw(out, n, ",\"reason\":\""); n = json_raw(out, n, mem_reason_name(e.reason));
-  n = json_raw(out, n, "\",\"source\":\""); n = json_raw(out, n, ifx e.source == MmSource.event then "event" else "cite");
-  n = json_raw(out, n, "\",\"origin\":\""); n = mem_hex(out, n, cast(string) e.origin[..]);
-  n = json_raw(out, n, "\",\"from\":"); n = json_write_int(out, n, e.from);
-  n = json_raw(out, n, ",\"to\":"); n = json_write_int(out, n, e.to);
-  n = json_raw(out, n, ",\"start\":"); n = json_write_int(out, n, e.start);
-  n = json_raw(out, n, ",\"until\":"); n = json_write_int(out, n, e.until);
-  n = json_raw(out, n, ",\"keys\":"); n = json_write_int(out, n, e.keys);
-  n = json_raw(out, n, ",\"texts\":"); n = json_write_int(out, n, e.texts);
-  n = json_raw(out, n, ",\"ids\":"); n = json_write_int(out, n, e.ids);
-  n = json_raw(out, n, ifx e.redacted then ",\"redacted\":true" else ",\"redacted\":false");
-  n = json_raw(out, n, ",\"content\":\""); n = mem_hex(out, n, cast(string) e.content[..]);
-  n = json_raw(out, n, "\",\"previous\":\""); n = mem_hex(out, n, cast(string) e.previous[..]);
-  n = json_raw(out, n, "\",\"digest\":\""); n = mem_hex(out, n, cast(string) e.digest[..]);
-  n = json_raw(out, n, "\",\"bytes\":\""); n = mem_hex(out, n, cast(string) g.bytes[at..<at + e.keys + e.texts + e.ids]);
-  n = json_raw(out, n, "\",\"key\":"); n = json_write_string(out, n, cast(string) g.bytes[at..<at + e.keys]);   // for reading; not loaded
-  return json_raw(out, n, "}\n");
-}
-
-// Reads one line back into event index of g; false when it does not parse.
-mem_unline :: (g: [] MmLog, line: string) -> bool {
-  ok: [1] bool; ok[0] = true;
-  e: MmEvent;
-  e.sequence = mem_i(line, "sequence", ok[..]);
-  op := mem_s(line, "op"); sc := mem_s(line, "scope"); rs := mem_s(line, "reason"); so := mem_s(line, "source");
-  if op == "remember" { e.op = MmOp.remember; } else if op == "revise" { e.op = MmOp.revise; } else if op == "forget" { e.op = MmOp.forget; } else { return false; }
-  if sc == "session" { e.scope = MmScope.session; } else if sc == "user" { e.scope = MmScope.user; } else if sc == "project" { e.scope = MmScope.project; } else { return false; }
-  if rs == "none" { e.reason = MmReason.none; } else if rs == "correction" { e.reason = MmReason.correction; } else if rs == "update" { e.reason = MmReason.update; } else if rs == "resolve" { e.reason = MmReason.resolve; } else { return false; }
-  if so == "event" { e.source = MmSource.event; } else if so == "cite" { e.source = MmSource.cite; } else { return false; }
-  e.owner = mem_i(line, "owner", ok[..]); e.from = mem_i(line, "from", ok[..]); e.to = mem_i(line, "to", ok[..]);
-  e.start = mem_i(line, "start", ok[..]); e.until = mem_i(line, "until", ok[..]);
-  e.keys = mem_i(line, "keys", ok[..]); e.texts = mem_i(line, "texts", ok[..]); e.ids = mem_i(line, "ids", ok[..]);
-  rd := cl_bool(line, "redacted"); e.redacted = rd.ok && rd.value;
-  e.origin = mem_d32(mem_s(line, "origin"), ok[..]); e.content = mem_d32(mem_s(line, "content"), ok[..]);
-  e.previous = mem_d32(mem_s(line, "previous"), ok[..]); e.digest = mem_d32(mem_s(line, "digest"), ok[..]);
-  if !ok[0] || !rd.ok || g[0].count >= g[0].events.count { return false; }
-  end := mem_unhex(mem_s(line, "bytes"), g[0].bytes, g[0].used);
-  if end < 0 || end - g[0].used != e.keys + e.texts + e.ids { return false; }
-  g[0].events[g[0].count] = e; g[0].count += 1; g[0].used = end;
-  return true;
-}
 
 // Reads the log file into g; "" when it read, else why not. A missing file is an empty log.
 mem_load :: (path: string, g: [] MmLog, file: [] u8) -> string {
