@@ -1,7 +1,8 @@
 # Crash reports
 
 A crash in a room or a page produces a report with a stack of Coax functions.
-Reports with the same stack land in one bucket, and a new bucket raises an
+A crash in the iPhone or Mac app produces a report with a stack of offsets
+into the app's binary. Reports with the same stack land in one bucket, and a new bucket raises an
 alert through the service alerts ([service levels](service-levels.md)). No
 outside crash service is used (#13298).
 
@@ -103,8 +104,78 @@ line number needs the module's DWARF, which no release keeps yet: the
 sidecar is not measured yet (#13379); the report already carries
 what it resolves.
 
-Native app crash logs (MetricKit, `ApplicationExitInfo`) are not built
-(#13379 part 1).
+## The iPhone and Mac apps
+
+The system keeps a diagnostic of each crash and hands it to the app on a
+later launch (MetricKit). The app sends it only after you say yes.
+
+1. `apps/shared/host/apple/CrashReports.swift` listens for the diagnostics
+   in both apps. For each crash it writes a dump and keeps it in a folder of
+   its own: `Application Support/crash` on the iPhone,
+   `~/.openagents/desktop/crash` on the Mac. At most 8 dumps wait.
+2. The first dump raises one question, "OpenAgents quit unexpectedly", with
+   **Send** and **Don't Send**. The answer is kept in the file `consent`.
+   After **Don't Send** the app drops every dump and keeps no more. Delete
+   the file to be asked again.
+3. After **Send**, the app posts each dump to `POST /api/playtest/app-crash`.
+   The route needs no login, because an app can crash before one. It takes
+   16 KB at most and 6 posts a minute from one address.
+4. `room-crash.coax` (`crash_app_report`) makes the report from the dump, and
+   the API keeps it by bucket like a room's.
+
+A dump holds the app's version and build, the system's version, the signal,
+the termination reason, and the crashed thread's frames. It holds no account,
+no device name and nothing typed or said.
+
+An app's report is crash report v3 (`proto/verse/crash-report-v3.json`):
+
+```
+crash 3
+t 1762990000000
+source app
+app ios
+os iPhone OS 18.1 (22B83)
+release 1.4 (212)
+build 70b89f2716343580a69557cdb41d7743
+kind SIGSEGV
+msg Namespace SIGNAL, Code 11 Segmentation fault: 11
+f libswiftCore.dylib +0x1b24
+f OpenAgents +0x285b8
+f OpenAgents +0x1000
+sig SIGSEGV|OpenAgents+0x285b8|OpenAgents+0x1000
+```
+
+- `t` is the end of the day MetricKit reported the crash in. MetricKit gives
+  no closer time.
+- `build` is the UUID of the app's own binary. It names the dSYM that
+  resolves the app's frames.
+- Each `f` line is a binary and the frame's offset in it. No frame has a
+  name: MetricKit gives none.
+- `sig` is the kind and the three innermost frames in the app's own binary.
+  Offsets change with every build, so one bug in two builds lands in two
+  buckets.
+
+Resolve a frame in the app's own binary on a Mac with Xcode:
+
+```sh
+coax/web/symbols.sh app-frame 70b89f2716343580a69557cdb41d7743 285b8
+```
+
+`apps/openagents-ios/release.sh` keeps each TestFlight build's dSYMs
+(`coax/web/symbols.sh app ARCHIVE`). The Mac app's development build has no
+dSYM, so its frames stay offsets.
+
+Limits, stated so no one assumes more:
+
+- Not seen on a device. `apps/shared/host/apple/crash-reports-check.sh`
+  checks the dump against a diagnostic in MetricKit's documented shape, and
+  the API suite checks the route. A real diagnostic needs a TestFlight build
+  and a crash on a phone; it arrives up to a day later.
+- Whether the system hands diagnostics to the Mac's ad hoc signed
+  development build is not known.
+- A Mac check that launches the app sets `OA_CRASH_REPORTS_OFF=1`, so the
+  question can't stop it. `--shot` runs never start the reporter.
+- Android (`ApplicationExitInfo`) is not built.
 
 ## Alerts
 
@@ -114,6 +185,7 @@ Native app crash logs (MetricKit, `ApplicationExitInfo`) are not built
 | --- | --- | --- |
 | `crash:BUCKET` | A room's bucket got a report in the last hour. One alert for each bucket | Read the report at `/api/playtest/crashes`. If a release did it, roll back with `coax/web/room/vm-deploy.sh rollback` |
 | `crash:page` | A page crash that no automated browser sent arrived in the last hour. One alert for all pages, because anyone can post a page's event | Read the report at `/api/playtest/crashes` |
+| `crash:app` | An app's crash report arrived in the last hour. One alert for both apps, because anyone can post a dump | Read the report at `/api/playtest/crashes`, then resolve its frames with `coax/web/symbols.sh app-frame` |
 
 They follow the same path as every service alert: production mails the owner,
 and staging reaches only the log, `/status` and the agents' inbox.
@@ -127,6 +199,7 @@ While a `crash:` alert is open on production, the green-main watcher
 
 - `crash:BUCKET` covers that room bucket.
 - `crash:page` covers every page bucket heard in the last hour.
+- `crash:app` covers every app bucket heard in the last hour.
 
 The issue's title is `Production crash (bucket XXXXXXXXXXXX): SIGNATURE`, and its
 body is the bucket's newest report from `GET /api/playtest/crashes`.
@@ -153,6 +226,7 @@ API and GitHub.
 | A room binary's debug file | `gs://openagentsgemini-oa-symbols/room/BUILDID.debug.gz` | 180 days |
 | A page module's function names | `build/NAME.HASH.wasm.syms` on the site | While that release is live |
 | The same names | `gs://openagentsgemini-oa-symbols/wasm/NAME.HASH.wasm.syms.gz` | 180 days |
+| An app build's dSYM | `gs://openagentsgemini-oa-symbols/app/UUID.dSYM.zip` | 180 days |
 
 `vm-deploy.sh deploy --staging` uploads the room's debug file, and
 `deploy.sh` uploads each release's page names. Neither can stop a deploy.

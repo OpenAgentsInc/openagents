@@ -184,7 +184,8 @@ int stk_room_write_c(const char *masters, const char *signer, const char *purpos
 int crash_report_check_c(const char *body, size_t n);
 size_t crash_report_field_c(const char *body, size_t n, const char *key, char *out, size_t cap);
 size_t crash_page_report_c(long long t, const char *page, const char *release, const char *msg, const char *trap, const char *frames, char *out, size_t cap);
-// A room's shard (1 to 99), 0 for a page's report, -1 when body is not a v1 report.
+size_t crash_app_report_c(const char *dump, size_t n, char *out, size_t cap);
+// A room's shard (1 to 99), 0 for a page's or an app's report, -1 when body is not a report.
 int crash_report_check_c(const char *body, size_t n) {
   if (!body || n > 8192) return -1;
   return (int)crash_report_check((coax_string){body, (int64_t)n});
@@ -200,6 +201,14 @@ size_t crash_report_field_c(const char *body, size_t n, const char *key, char *o
 size_t crash_page_report_c(long long t, const char *page, const char *release, const char *msg, const char *trap, const char *frames, char *out, size_t cap) {
   if (cap < 8193) return 0;
   coax_string r = crash_page_report(t, stk_text(page), stk_text(release), stk_text(msg), stk_text(trap), stk_text(frames), (coax_v_u8){(uint8_t *)out, 8192});
+  if (r.count <= 0 || r.count > 8192) { out[0] = 0; return 0; }
+  out[r.count] = 0;
+  return (size_t)r.count;
+}
+// An app's report (v3, #13379) from the dump it posted into out (cap at least 8193), its length; 0 when the dump is not one.
+size_t crash_app_report_c(const char *dump, size_t n, char *out, size_t cap) {
+  if (!dump || cap < 8193 || n > 32768) return 0;
+  coax_string r = crash_app_report((coax_string){dump, (int64_t)n}, (coax_v_u8){(uint8_t *)out, 8192});
   if (r.count <= 0 || r.count > 8192) { out[0] = 0; return 0; }
   out[r.count] = 0;
   return (size_t)r.count;

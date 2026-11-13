@@ -26,6 +26,8 @@ targets:
       - path: ../shared/host/apple/DeviceKey.swift
       # The login (#13206, #13229), shared with the Mac app.
       - path: ../shared/host/apple/AppAuth.swift
+      # Crash logs (#13379), shared with the Mac app.
+      - path: ../shared/host/apple/CrashReports.swift
       - path: Generated/Home.c
         compilerFlags: "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
       - path: Generated/Player.c

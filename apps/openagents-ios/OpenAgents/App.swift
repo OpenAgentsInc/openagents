@@ -6,6 +6,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         NoticePush.start()
+        // Crash logs (#13379): the system's diagnostic of an earlier crash, sent only after a yes. Never in a test run.
+        if !NoticePush.off, let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            CrashReports.start(app: "ios", folder: support.appendingPathComponent("crash", isDirectory: true), origin: AppAuth.defaultOrigin)
+        }
         return true
     }
     func application(_ application: UIApplication, configurationForConnecting session: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {

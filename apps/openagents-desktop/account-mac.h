@@ -30,3 +30,6 @@ int32_t oa_account_logged_in(void);
 int32_t oa_account_title(char *out, int32_t cap);
 /* coax drive's `account state | key | logout | refresh | security`, without a sheet: the answer's length. */
 int32_t oa_account_drive(const char *request, char *out, int32_t cap);
+/* CrashReports.swift (apps/shared/host/apple/, #13379): listens for the system's crash diagnostics and
+   sends an earlier crash's dump once the person has said yes. */
+void oa_crash_reports_start(void);

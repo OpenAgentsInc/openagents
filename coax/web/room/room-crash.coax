@@ -7,12 +7,16 @@
 // A report is lines of printable ASCII, each "KEY VALUE", in this order:
 //   crash 1                  a room's report; "crash 2" a page's (v2, #13379,
 //                            proto/verse/crash-report-v2.json: its frames carry their code offsets)
+//                            "crash 3" an app's (v3, #13379, proto/verse/crash-report-v3.json)
 //   t MS                     when it crashed, Unix ms
-//   source room|page
+//   source room|page|app
 //   shard N                  room: the shard, 1 to 99
 //   page NAME                page: the module
-//   release NAME             the room's release, or the page's module file
-//   build HEX                room: the binary's build ID, which names its symbols
+//   app ios|mac              app: which app
+//   os TEXT                  app: the system's version
+//   release NAME             the room's release, the page's module file, or the app's "VERSION (BUILD)"
+//   build HEX                room: the binary's build ID, which names its symbols; app: the UUID of the
+//                            app's own binary (32 hex digits, which names its dSYM), 0 when no frame is in it
 //   kind WHAT                the signal's name (SIGSEGV, SIGABRT...), or "trap" for a page
 //   at HEX                   room: the address the signal names
 //   trap TEXT                a Coax trap's own line, "PATH:LINE: WHAT"
@@ -21,12 +25,21 @@
 //                            page) or "+0xOFFSET", the frame's byte offset in the module's file (a v2 page:
 //                            what a DWARF sidecar or wasm-objdump resolves to a line after the fact);
 //                            "f ? +0xOFFSET" for an address with no name, "f ? -" outside the binary
+//                            an app's frame is "f BINARY +0xOFFSET": the binary and the frame's offset
+//                            in it, as MetricKit gives them; its dSYM names it after the fact
 //   tick MS US PLAYERS       room: the last ticks before it, oldest first
 //   sig KIND|NAME|NAME|NAME  the bucket's signature: the kind and the three innermost Coax functions
+//                            (an app's: the three innermost frames in its own binary, each BINARY+0xOFFSET)
 //
 // The handler's dump (room-crash.c writes it with async-signal-safe calls only; nothing else reads it):
 //   dump 1 / t MS / signal N / addr HEX / build HEX / release NAME / shard N / err TEXT /
 //   a HEXOFFSET or "a -" a frame / tick MS US PLAYERS
+//
+// An app's dump (apps/shared/host/apple/CrashReports.swift writes it from MetricKit's crash diagnostic and
+// posts it to POST /api/playtest/app-crash; crash_app_report makes the report from it):
+//   appdump 1 / t MS / app ios|mac / os TEXT / version TEXT / buildno TEXT / exe NAME (the app's own
+//   binary) / signal N / exception N / reason TEXT / a UUID OFFSET BINARY (a frame, innermost first: the
+//   binary's UUID with or without dashes in either case, the offset in decimal, the binary's name)
 #load "room-write.coax";   // rw_put and rw_int
 
 CR_BODY :: 8192;      // a report at most
@@ -252,34 +265,40 @@ crash_page_report_v :: (version: int, t: int, page: string, release: string, msg
   return cast(string) out[0..<n];
 }
 
-// Whether body is a report: a room's shard (1 to 99), 0 for a page's, -1 when it is not one. A room's is
-// v1; a page's is v1 or v2, and a v2 frame is one word, or a word and its "+0xOFFSET".
+// Whether body is a report: a room's shard (1 to 99), 0 for a page's or an app's, -1 when it is not one.
+// A room's is v1; a page's is v1 or v2, and a v2 frame is one word, or a word and its "+0xOFFSET"; an
+// app's is v3, and each of its frames is a word and its "+0xOFFSET".
 crash_report_check :: (body: string) -> int #export_c #effects(all) {
   if body.count < 16 || body.count > CR_BODY || body[body.count - 1] != '\n' { return -1; }
   at: [1] int;
   head := cr_line(body, at[..]);
-  v2 := head == "crash 2";
-  if head != "crash 1" && !v2 { return -1; }
+  v2 := head == "crash 2"; v3 := head == "crash 3";
+  if head != "crash 1" && !v2 && !v3 { return -1; }
   l := cr_line(body, at[..]);
   if !cr_is(l, "t") || cr_num(cr_val(l, "t")) < 0 { return -1; }
   l = cr_line(body, at[..]);
-  room := l == "source room";
-  if !room && l != "source page" { return -1; }
-  if room && v2 { return -1; }
+  room := l == "source room"; app := l == "source app";
+  if !room && !app && l != "source page" { return -1; }
+  if (room && (v2 || v3)) || app != v3 { return -1; }
   shard := 0; seen := 0; frames := 0; ticks := 0; done := false;
   while at[0] < body.count {
     l = cr_line(body, at[..]);
     if done || l.count > CR_LINE || !cr_printable(l) { return -1; }
     bit := 0;
     if cr_is(l, "shard") { bit = 1; shard = cr_num(cr_val(l, "shard")); if !room || shard < 1 || shard > 99 { return -1; } }
-    else if cr_is(l, "page") { bit = 2; if room { return -1; } }
+    else if cr_is(l, "page") { bit = 2; if room || app { return -1; } }
     else if cr_is(l, "release") { bit = 4; }
     else if cr_is(l, "build") { bit = 8; if !cr_hex(cr_val(l, "build"), 64) { return -1; } }
     else if cr_is(l, "kind") { bit = 16; }
-    else if cr_is(l, "at") { bit = 32; if !cr_hex(cr_val(l, "at"), 16) { return -1; } }
-    else if cr_is(l, "trap") { bit = 64; }
+    else if cr_is(l, "at") { bit = 32; if app || !cr_hex(cr_val(l, "at"), 16) { return -1; } }
+    else if cr_is(l, "trap") { bit = 64; if app { return -1; } }
     else if cr_is(l, "msg") { bit = 128; }
-    else if cr_is(l, "f") { frames += 1; if frames > CR_FRAMES || (v2 && !cr_frame_v2(cr_val(l, "f"))) { return -1; } }
+    else if cr_is(l, "app") { bit = 512; if !app || (cr_val(l, "app") != "ios" && cr_val(l, "app") != "mac") { return -1; } }
+    else if cr_is(l, "os") { bit = 1024; if !app { return -1; } }
+    else if cr_is(l, "f") {
+      frames += 1;
+      if frames > CR_FRAMES || (v2 && !cr_frame_v2(cr_val(l, "f"))) || (v3 && !cr_frame_v3(cr_val(l, "f"))) { return -1; }
+    }
     else if cr_is(l, "tick") { ticks += 1; if !room || ticks > CR_TICKS || !cr_tick(cr_val(l, "tick")) { return -1; } }
     else if cr_is(l, "sig") { bit = 256; done = true; }
     else { return -1; }
@@ -288,12 +307,19 @@ crash_report_check :: (body: string) -> int #export_c #effects(all) {
   }
   if !done || (seen & 16) == 0 { return -1; }
   if room { return ifx (seen & 9) == 9 then shard else -1; }
+  if app { return ifx (seen & 520) == 520 then 0 else -1; }
   return ifx (seen & 2) != 0 then 0 else -1;
 }
-// A report's version by its first line: 1, 2, or -1 (crash_report_check says whether it is a report).
+// A report's version by its first line: 1, 2, 3, or -1 (crash_report_check says whether it is a report).
 crash_report_version :: (body: string) -> int #export_c #effects(all) {
   at: [1] int; head := cr_line(body, at[..]);
-  return ifx head == "crash 1" then 1 else ifx head == "crash 2" then 2 else -1;
+  return ifx head == "crash 1" then 1 else ifx head == "crash 2" then 2 else ifx head == "crash 3" then 3 else -1;
+}
+// A v3 app frame's value: BINARY and " +0xOFFSET".
+cr_frame_v3 :: (v: string) -> bool #effects(all) {
+  spaces := 0;
+  for i: 0..<v.count { if v[i] == ' ' { spaces += 1; } }
+  return spaces == 1 && cr_frame_off(v) > 0;
 }
 // A v2 page frame's value: NAME, or NAME and " +0xOFFSET".
 cr_frame_v2 :: (v: string) -> bool #effects(all) {
@@ -313,6 +339,139 @@ crash_report_field :: (body: string, key: string, out: [] u8) -> string #export_
     return cast(string) out[0..<v.count];
   }
   return "";
+}
+
+// ---- an app's report (v3, #13379)
+
+// Apple's signal numbers (they are not Linux's: SIGBUS is 10 and SIGSYS 12).
+cr_signal_apple :: (n: int) -> string #effects(all) {
+  if n == 4 { return "SIGILL"; }
+  if n == 5 { return "SIGTRAP"; }
+  if n == 6 { return "SIGABRT"; }
+  if n == 8 { return "SIGFPE"; }
+  if n == 9 { return "SIGKILL"; }
+  if n == 10 { return "SIGBUS"; }
+  if n == 11 { return "SIGSEGV"; }
+  if n == 12 { return "SIGSYS"; }
+  return "SIGNAL";
+}
+// v in lowercase hex into out at n, no leading zeros. -1 when v is negative or it does not fit.
+cr_put_hex :: (out: [] u8, n: int, v: int) -> int #effects(all) {
+  if n < 0 || v < 0 { return -1; }
+  digits := 1; x := v;
+  while x >= 16 { x = x / 16; digits += 1; }
+  if n + digits > out.count { return -1; }
+  x = v;
+  for i: 0..<digits {
+    d := x % 16; x = x / 16;
+    c := ifx d < 10 then 48 + d else 87 + d;
+    out[n + digits - 1 - i] = cast(u8) c;
+  }
+  return n + digits;
+}
+// A UUID's 32 hex digits in lowercase into out at n (dashes dropped, either case read). -1 when s is not one.
+cr_put_uuid :: (out: [] u8, n: int, s: string) -> int #effects(all) {
+  if n < 0 || n + 32 > out.count { return -1; }
+  k := 0;
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '-' { continue; }
+    if c >= 'A' && c <= 'F' { c = c - 'A' + 'a'; }
+    if k >= 32 || !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return -1; }
+    out[n + k] = c; k += 1;
+  }
+  return ifx k == 32 then n + 32 else -1;
+}
+// A frame's "UUID OFFSET BINARY" from the dump: where its second and third words start, or false.
+cr_app_frame :: (v: string, cuts: [] int) -> bool #effects(all) {
+  a := -1; b := -1;
+  for i: 0..<v.count { if v[i] == ' ' { if a < 0 { a = i; } else { b = i; break; } } }
+  if a < 1 || b < a + 2 || b + 1 >= v.count { return false; }
+  cuts[0] = a; cuts[1] = b;
+  return true;
+}
+// Whether the name written at out[at..<at + ln] is `exe` as cr_text writes it (spaces and bars as '?').
+cr_same_name :: (out: [] u8, at: int, ln: int, exe: string) -> bool #effects(all) {
+  if ln != exe.count || ln < 1 { return false; }
+  for i: 0..<ln {
+    c := exe[i];
+    if c < 32 || c > 126 || c == ' ' || c == '|' { c = '?'; }
+    if out[at + i] != c { return false; }
+  }
+  return true;
+}
+// An app's report from its dump (the lines an app posts: see the top of this file), into out (CR_BODY
+// bytes or more). "" when the dump is not one, names no app or the report does not fit. The signature is
+// the kind and the three innermost frames in the app's own binary, each "BINARY+0xOFFSET" (the three
+// innermost of any binary when none is the app's): offsets, so one bug in two builds has two buckets
+// until the build's dSYM names its frames (coax/web/symbols.sh app-frame).
+crash_app_report :: (dump: string, out: [] u8) -> string #export_c #effects(all) {
+  at: [1] int;
+  if dump.count > 4 * CR_BODY || cr_line(dump, at[..]) != "appdump 1" { return ""; }
+  t := cr_dump(dump, "t"); app := cr_dump(dump, "app"); exe := cr_dump(dump, "exe");
+  if cr_num(t) < 0 || (app != "ios" && app != "mac") { return ""; }
+  signal := cr_num(cr_dump(dump, "signal"));
+  kind := ifx signal >= 1 && signal <= 64 then cr_signal_apple(signal) else ifx cr_num(cr_dump(dump, "exception")) >= 0 then "EXC" else "crash";
+  n := rw_put(out, 0, "crash 3\n");
+  n = cr_kv(out, n, "t", t); n = rw_put(out, n, "source app\n"); n = cr_kv(out, n, "app", app);
+  if cr_dump(dump, "os") != "" { n = cr_kv(out, n, "os", cr_dump(dump, "os")); }
+  n = rw_put(out, n, "release "); n = cr_text(out, n, ifx cr_dump(dump, "version") == "" then "?" else cr_dump(dump, "version"), 80, false);
+  if cr_dump(dump, "buildno") != "" { n = rw_put(out, n, " ("); n = cr_text(out, n, cr_dump(dump, "buildno"), 40, false); n = rw_put(out, n, ")"); }
+  n = rw_put(out, n, "\nbuild ");
+  // the build: the UUID of the first frame in the app's own binary
+  p: [1] int; p[0] = at[0]; cuts: [2] int; uuid := "";
+  while p[0] < dump.count && uuid == "" {
+    l := cr_line(dump, p[..]);
+    if !cr_is(l, "a") || !cr_app_frame(cr_val(l, "a"), cuts[..]) { continue; }
+    v := cr_val(l, "a");
+    if exe != "" && v[cuts[1] + 1..<v.count] == exe { uuid = v[0..<cuts[0]]; }
+  }
+  b := cr_put_uuid(out, n, uuid);
+  n = ifx b < 0 then rw_put(out, n, "0") else b;
+  n = rw_put(out, n, "\n");
+  n = cr_kv(out, n, "kind", kind);
+  if cr_dump(dump, "reason") != "" { n = cr_kv(out, n, "msg", cr_dump(dump, "reason")); }
+  // the frames, and where each one's name and offset were written
+  f_at: [CR_FRAMES] int; f_ln: [CR_FRAMES] int; o_at: [CR_FRAMES] int; o_ln: [CR_FRAMES] int; own: [CR_FRAMES] bool;
+  frames := 0; owned := 0; p[0] = at[0];
+  while p[0] < dump.count && frames < CR_FRAMES && n >= 0 {
+    l := cr_line(dump, p[..]);
+    if !cr_is(l, "a") || !cr_app_frame(cr_val(l, "a"), cuts[..]) { continue; }
+    v := cr_val(l, "a");
+    off := cr_num(v[cuts[0] + 1..<cuts[1]]);
+    if off < 0 { continue; }
+    n = rw_put(out, n, "f ");
+    f_at[frames] = n;
+    n = cr_text(out, n, v[cuts[1] + 1..<v.count], CR_NAME, true);
+    if n < 0 { break; }
+    f_ln[frames] = n - f_at[frames];
+    n = rw_put(out, n, " ");
+    o_at[frames] = n;
+    n = rw_put(out, n, "+0x"); n = cr_put_hex(out, n, off);
+    if n < 0 { break; }
+    o_ln[frames] = n - o_at[frames];
+    own[frames] = cr_same_name(out, f_at[frames], f_ln[frames], exe);
+    if own[frames] { owned += 1; }
+    n = rw_put(out, n, "\n");
+    frames += 1;
+  }
+  n = rw_put(out, n, "sig "); n = rw_put(out, n, kind);
+  named := 0;
+  for i: 0..<frames {
+    if named >= CR_SIG || n < 0 { break; }
+    if owned > 0 && !own[i] { continue; }
+    n = rw_put(out, n, "|");
+    if n < 0 || n + f_ln[i] + o_ln[i] > out.count { n = -1; break; }
+    for j: 0..<f_ln[i] { out[n + j] = out[f_at[i] + j]; }
+    n += f_ln[i];
+    for j: 0..<o_ln[i] { out[n + j] = out[o_at[i] + j]; }
+    n += o_ln[i];
+    named += 1;
+  }
+  if named == 0 { n = rw_put(out, n, "|"); n = cr_text(out, n, ifx cr_dump(dump, "reason") == "" then "?" else cr_dump(dump, "reason"), 120, true); }
+  n = rw_put(out, n, "\n");
+  if n < 0 || n > CR_BODY { return ""; }
+  return cast(string) out[0..<n];
 }
 
 // ---- checks (proto/verse/crash-report-v1.json holds the same reports, checked by crash-profile.coax)
@@ -400,8 +559,69 @@ CR_T_PAGE2 :: "crash 2\nt 1762990000000\nsource page\npage everglade2\nrelease e
   #assert crash_report_check("crash 1\nt 1\nsource page\npage p\nkind trap\nf a x.coax:1\nsig trap|a\n") == 0;      // v1 said nothing of a page's frame
   #assert crash_report_check("crash 2\nt 1\nsource room\nshard 1\nbuild 0\nkind SIGSEGV\nsig SIGSEGV|?\n") == -1;
   #assert crash_report_check("crash 3\nt 1\nsource page\npage p\nkind trap\nsig trap|?\n") == -1;
-  #assert crash_report_version(CR_T_PAGE2) == 2 && crash_report_version(CR_T_PAGE) == 1 && crash_report_version(CR_T_ROOM) == 1 && crash_report_version("crash 3\n") == -1 && crash_report_version("") == -1;
+  #assert crash_report_version(CR_T_PAGE2) == 2 && crash_report_version(CR_T_PAGE) == 1 && crash_report_version(CR_T_ROOM) == 1 && crash_report_version("crash 3\n") == 3 && crash_report_version("crash 4\n") == -1 && crash_report_version("") == -1;
   #assert cr_frame_v2("a") && cr_frame_v2("a +0x1") && !cr_frame_v2("a b") && !cr_frame_v2("a b +0x1");
+}
+CR_T_APPDUMP :: "appdump 1\nt 1762990000000\napp ios\nos iPhone OS 18.1 (22B83)\nversion 1.4\nbuildno 212\nexe OpenAgents\nsignal 11\nexception 1\nreason Namespace SIGNAL, Code 11 Segmentation fault: 11\na 5F0C2A9E-7B1D-4C3A-8E6F-001122334455 6948 libswiftCore.dylib\na 70B89F27-1634-3580-A695-57CDB41D7743 165304 OpenAgents\na 70B89F27-1634-3580-A695-57CDB41D7743 4096 OpenAgents\na 0a1b2c3d4e5f60718293a4b5c6d7e8f9 24 dyld\n";
+CR_T_APP :: "crash 3\nt 1762990000000\nsource app\napp ios\nos iPhone OS 18.1 (22B83)\nrelease 1.4 (212)\nbuild 70b89f2716343580a69557cdb41d7743\nkind SIGSEGV\nmsg Namespace SIGNAL, Code 11 Segmentation fault: 11\nf libswiftCore.dylib +0x1b24\nf OpenAgents +0x285b8\nf OpenAgents +0x1000\nf dyld +0x18\nsig SIGSEGV|OpenAgents+0x285b8|OpenAgents+0x1000\n";
+
+#test "crash report v3: an app's dump makes its report; the signature is the frames in the app's own binary (#13379)" {
+  o: [CR_BODY] u8; f: [128] u8;
+  r := crash_app_report(CR_T_APPDUMP, o[..]);
+  #assert r == CR_T_APP && crash_report_check(r) == 0 && crash_report_version(r) == 3;
+  #assert crash_report_field(r, "source", f[..]) == "app" && crash_report_field(r, "sig", f[..]) == "SIGSEGV|OpenAgents+0x285b8|OpenAgents+0x1000";
+  #assert crash_report_field(r, "release", f[..]) == "1.4 (212)" && crash_report_field(r, "build", f[..]) == "70b89f2716343580a69557cdb41d7743";
+  // no frame in the app's own binary: build 0, and the signature is the three innermost of any binary
+  r = crash_app_report("appdump 1\nt 7\napp mac\nexe OpenAgents\nexception 1\na 0a1b2c3d4e5f60718293a4b5c6d7e8f9 0 a b\na 0a1b2c3d4e5f60718293a4b5c6d7e8f9 255 libc|x\na x 16 c\na x 17 d\n", o[..]);
+  #assert r == "crash 3\nt 7\nsource app\napp mac\nrelease ?\nbuild 0\nkind EXC\nf a?b +0x0\nf libc?x +0xff\nf c +0x10\nf d +0x11\nsig EXC|a?b+0x0|libc?x+0xff|c+0x10\n";
+  #assert crash_report_check(r) == 0;
+  // the least an app leaves: no frames, no signal; a frame that is not one is skipped; the app's UUID that is not one is build 0
+  r = crash_app_report("appdump 1\nt 7\napp mac\n", o[..]);
+  #assert r == "crash 3\nt 7\nsource app\napp mac\nrelease ?\nbuild 0\nkind crash\nsig crash|?\n" && crash_report_check(r) == 0;
+  r = crash_app_report("appdump 1\nt 7\napp mac\nexe E\nversion 2\nsignal 6\nreason abort() called\na nouuid 10 E\na two words\na u x E\na u 1\na  1 E\n", o[..]);
+  #assert r == "crash 3\nt 7\nsource app\napp mac\nrelease 2\nbuild 0\nkind SIGABRT\nmsg abort() called\nf E +0xa\nsig SIGABRT|E+0xa\n" && crash_report_check(r) == 0;
+  r = crash_app_report("appdump 1\nt 7\napp ios\nsignal 99\nreason why not\n", o[..]);
+  #assert r == "crash 3\nt 7\nsource app\napp ios\nrelease ?\nbuild 0\nkind crash\nmsg why not\nsig crash|why?not\n";
+  // not a dump, no app, another app, no time, too small
+  #assert crash_app_report("", o[..]) == "" && crash_app_report("appdump 2\nt 7\napp mac\n", o[..]) == "" && crash_app_report("dump 1\nt 7\napp mac\n", o[..]) == "";
+  #assert crash_app_report("appdump 1\nt 7\n", o[..]) == "" && crash_app_report("appdump 1\nt 7\napp android\n", o[..]) == "" && crash_app_report("appdump 1\nt x\napp mac\n", o[..]) == "";
+  #assert crash_app_report("appdump 1\nt 7\napp mac\n", o[0..<40]) == "";
+  // frames are capped
+  d: [4096] u8; n := rw_put(d[..], 0, "appdump 1\nt 5\napp ios\nexe E\n");
+  for i: 0..<30 { n = rw_put(d[..], n, "a 0a1b2c3d4e5f60718293a4b5c6d7e8f9 16 E\n"); }
+  r = crash_app_report(cast(string) d[0..<n], o[..]);
+  frames := 0; at: [1] int;
+  while at[0] < r.count { l := cr_line(r, at[..]); if cr_is(l, "f") { frames += 1; } }
+  #assert frames == CR_FRAMES && crash_report_check(r) == 0 && crash_report_field(r, "sig", f[..]) == "crash|E+0x10|E+0x10|E+0x10";
+  #assert cr_signal_apple(4) == "SIGILL" && cr_signal_apple(5) == "SIGTRAP" && cr_signal_apple(6) == "SIGABRT" && cr_signal_apple(8) == "SIGFPE" && cr_signal_apple(9) == "SIGKILL";
+  #assert cr_signal_apple(10) == "SIGBUS" && cr_signal_apple(11) == "SIGSEGV" && cr_signal_apple(12) == "SIGSYS" && cr_signal_apple(7) == "SIGNAL";
+  h: [8] u8;
+  #assert cr_put_hex(h[..], 0, 0) == 1 && h[0] == '0' && cr_put_hex(h[..], 0, 255) == 2 && h[0] == 'f' && h[1] == 'f' && cr_put_hex(h[..], 0, 16) == 2 && h[0] == '1' && h[1] == '0';
+  #assert cr_put_hex(h[..], 0, -1) == -1 && cr_put_hex(h[..], -1, 1) == -1 && cr_put_hex(h[..], 7, 16) == -1 && cr_put_hex(h[..], 0, 4294967295) == 8 && cr_put_hex(h[..], 0, 4294967296) == -1;
+  u: [32] u8;
+  #assert cr_put_uuid(u[..], 0, "70B89F27-1634-3580-A695-57CDB41D7743") == 32 && cast(string) u[..] == "70b89f2716343580a69557cdb41d7743";
+  #assert cr_put_uuid(u[..], 0, "70b89f2716343580a69557cdb41d774") == -1 && cr_put_uuid(u[..], 0, "70b89f2716343580a69557cdb41d77433") == -1 && cr_put_uuid(u[..], 0, "70b89f2716343580a69557cdb41d774g") == -1 && cr_put_uuid(u[..], 1, "70b89f2716343580a69557cdb41d7743") == -1;
+}
+#test "crash report v3: the check takes an app's report and only as v3" {
+  #assert crash_report_check(CR_T_APP) == 0;
+  bad := [12] string.[
+    "crash 3\nt 1\nsource page\npage p\nkind trap\nsig trap|?\n",                       // v3 is an app's
+    "crash 3\nt 1\nsource room\nshard 1\nbuild 0\nkind K\nsig K|?\n",
+    "crash 1\nt 1\nsource app\napp ios\nbuild 0\nkind K\nsig K|?\n",                    // an app's is v3
+    "crash 2\nt 1\nsource app\napp ios\nbuild 0\nkind K\nsig K|?\n",
+    "crash 3\nt 1\nsource app\nbuild 0\nkind K\nsig K|?\n",                             // no app
+    "crash 3\nt 1\nsource app\napp ios\nkind K\nsig K|?\n",                             // no build
+    "crash 3\nt 1\nsource app\napp android\nbuild 0\nkind K\nsig K|?\n",
+    "crash 3\nt 1\nsource app\napp ios\nbuild 0\nkind K\nf OpenAgents\nsig K|?\n",     // a frame with no offset
+    "crash 3\nt 1\nsource app\napp ios\nbuild 0\nkind K\nf a b +0x1\nsig K|?\n",
+    "crash 3\nt 1\nsource app\napp ios\nbuild 0\nkind K\npage p\nsig K|?\n",
+    "crash 3\nt 1\nsource app\napp ios\nbuild 0\nkind K\ntrap x\nsig K|?\n",
+    "crash 3\nt 1\nsource app\napp ios\nbuild 0\nkind K\nat 0\nsig K|?\n"];
+  for b: bad { #assert crash_report_check(b) == -1; }
+  #assert crash_report_check("crash 1\nt 1\nsource page\npage p\napp ios\nkind trap\nsig trap|?\n") == -1;   // a page names no app
+  #assert crash_report_check("crash 1\nt 1\nsource room\nshard 1\nbuild 0\nos x\nkind K\nsig K|?\n") == -1;
+  #assert crash_report_check("crash 3\nt 1\nsource app\napp mac\nos macOS 15.1\nrelease 1 (2)\nbuild 0\nkind K\nmsg m\nf E +0x1\nsig K|E+0x1\n") == 0;
+  #assert cr_frame_v3("E +0x1") && !cr_frame_v3("E") && !cr_frame_v3("a b +0x1") && !cr_frame_v3("E +0xG");
 }
 #test "crash report: the check refuses what is not a v1 report" {
   #assert crash_report_check(CR_T_ROOM) == 1 && crash_report_check(CR_T_PAGE) == 0;

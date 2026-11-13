@@ -1,10 +1,11 @@
-// Crash report v1's and v2's fixtures (#13298, #13379, coax/web/room/room-crash.coax, docs/deployment/crash-reports.md):
+// Crash report v1's, v2's and v3's fixtures (#13298, #13379, coax/web/room/room-crash.coax, docs/deployment/crash-reports.md):
 //   coax/web/tool.sh coax/web/room/crash-profile.coax proto/verse/crash-report-v1.json
 //   coax/web/tool.sh coax/web/room/crash-profile.coax proto/verse/crash-report-v2.json
+//   coax/web/tool.sh coax/web/room/crash-profile.coax proto/verse/crash-report-v3.json
 // The file's version is the reports' own: v1's page reports are built as v1 was published, and a body of
 // another version is refused by a profile whatever the codec says of it.
 // Every room's dump and names make the file's report through the codec, every page's event makes its
-// report, each report checks as its source, shard and signature, and every refused body is refused.
+// report, every app's dump makes its report (v3), each report checks as its source, shard and signature, and every refused body is refused.
 #import "Basic";
 #load "room-crash.coax";
 #load "../../lib/sys/tool.coax";
@@ -26,7 +27,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if n < 1 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("crash-profile: not JSON"); return 2; }
   pb: [64] u8;
   ver := jv_int(d[0], jv_get(d[0], 0, "version"), -1);
-  if cp_text(d[0], 0, "profile", pb[..]) != "openagents.crash-report" || ver < 1 || ver > 2 { tool_errln("crash-profile: not the v1 or v2 profile"); return 1; }
+  if cp_text(d[0], 0, "profile", pb[..]) != "openagents.crash-report" || ver < 1 || ver > 3 { tool_errln("crash-profile: not the v1, v2 or v3 profile"); return 1; }
   failed := 0;
   rooms := jv_get(d[0], 0, "rooms");
   for i: 0..<jv_len(d[0], rooms) {
@@ -41,6 +42,7 @@ tool_main :: () -> int #export_c #effects(all) {
   for i: 0..<jv_len(d[0], pages) {
     row := jv_at(d[0], pages, i); tb: [6][CR_BODY] u8; o: [CR_BODY] u8; f: [256] u8;
     want := cp_text(d[0], row, "report", tb[5][..]);
+    if ver > 2 { tool_errln("crash-profile: v3 has no page reports"); failed += 1; continue; }
     got := crash_page_report_v(ver, jv_int(d[0], jv_get(d[0], row, "t"), -1), cp_text(d[0], row, "page", tb[0][..]), cp_text(d[0], row, "release", tb[1][..]),
                              cp_text(d[0], row, "msg", tb[2][..]), cp_text(d[0], row, "trap", tb[3][..]), cp_text(d[0], row, "frames", tb[4][..]), o[..]);
     ok := got == want && want != "" && crash_report_check(want) == 0 && crash_report_version(want) == ver;
@@ -49,6 +51,15 @@ tool_main :: () -> int #export_c #effects(all) {
     ok = ok && crash_report_field(want, "sig", f[..]) == cp_text(d[0], row, "sig", tb[0][..]) && crash_report_field(want, "source", f[..]) == "page";
     if !ok { tool_err("crash-profile: a page's report is not the file's: "); tool_errln(cp_text(d[0], row, "why", tb[0][..])); failed += 1; }
   }
+  apps := jv_get(d[0], 0, "apps");
+  for i: 0..<jv_len(d[0], apps) {
+    row := jv_at(d[0], apps, i); tb: [3][CR_BODY] u8; o: [CR_BODY] u8; f: [256] u8;
+    want := cp_text(d[0], row, "report", tb[1][..]);
+    got := crash_app_report(cp_text(d[0], row, "dump", tb[0][..]), o[..]);
+    ok := got == want && want != "" && ver == 3 && crash_report_version(want) == 3 && crash_report_check(want) == 0;
+    ok = ok && crash_report_field(want, "sig", f[..]) == cp_text(d[0], row, "sig", tb[2][..]) && crash_report_field(want, "source", f[..]) == "app";
+    if !ok { tool_err("crash-profile: an app's report is not the file's: "); tool_errln(cp_text(d[0], row, "why", tb[0][..])); failed += 1; }
+  }
   refused := jv_get(d[0], 0, "refused");
   for i: 0..<jv_len(d[0], refused) {
     row := jv_at(d[0], refused, i); tb: [2][CR_BODY] u8;
@@ -56,6 +67,6 @@ tool_main :: () -> int #export_c #effects(all) {
     if crash_report_check(body) != -1 && crash_report_version(body) == ver { tool_err("crash-profile: taken, though refused: "); tool_errln(cp_text(d[0], row, "why", tb[1][..])); failed += 1; }
   }
   if failed > 0 { print("crash report v%: % fixture(s) failed\n", ver, failed); return 1; }
-  print("crash report v%: % room reports and % page reports as the file says, % refused\n", ver, jv_len(d[0], rooms), jv_len(d[0], pages), jv_len(d[0], refused));
+  print("crash report v%: % room reports, % page reports and % app reports as the file says, % refused\n", ver, jv_len(d[0], rooms), jv_len(d[0], pages), jv_len(d[0], apps), jv_len(d[0], refused));
   return 0;
 }

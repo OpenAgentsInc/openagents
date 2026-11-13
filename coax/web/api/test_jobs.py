@@ -208,10 +208,34 @@ check("crashes: the buckets, each with its newest report, for anyone",
       got.get(room_bucket, {}).get("newest") == room_crash and got[room_bucket]["shard"] == 97 and got[room_bucket]["build"] == "5f0c2a9e"
       and got.get(page_bucket, {}).get("reports") == 2 and "f page_crash_test +0x2b7e1\nf frame\n" in got[page_bucket]["newest"]
       and got[page_bucket]["newest"].startswith("crash 2\n"), b)   # v2: each frame with its code offset (#13379)
+# a native app's crash (#13379): the dump the app wrote from MetricKit's diagnostic, with no login; the
+# codec makes crash report v3 from it, and the apps share one alert as the pages do
+app_dump = ("appdump 1\nt %d\napp ios\nos iPhone OS 18.1 (22B83)\nversion 1.4\nbuildno 212\nexe OpenAgents\nsignal 11\nexception 1\n"
+            "reason Namespace SIGNAL, Code 11 Segmentation fault: 11\na 5F0C2A9E-7B1D-4C3A-8E6F-001122334455 6948 libswiftCore.dylib\n"
+            "a 70B89F27-1634-3580-A695-57CDB41D7743 165304 OpenAgents\na 70B89F27-1634-3580-A695-57CDB41D7743 4096 OpenAgents\n") % now_ms
+app_post = lambda body: call("POST", "/api/playtest/app-crash", body, {"Content-Type": "text/plain"})
+app_bucket = _hashlib.md5(b"app SIGSEGV|OpenAgents+0x285b8|OpenAgents+0x1000").hexdigest()
+s, b, _ = app_post(app_dump.encode())
+check("app-crash: an app's dump, with no login, is kept as its report in the bucket of its signature", s == 200 and json.loads(b) == {"kept": True, "bucket": app_bucket}, (s, b))
+check("app-crash: the same dump again is kept once", app_post(app_dump.encode())[0] == 200
+      and sql("SELECT reports FROM verse.crash_buckets WHERE bucket = '%s'" % app_bucket) == "1")
+check("app-crash: a body that is no dump is refused, and so is a report itself", app_post(b"crash 3\nt 1\nsource app\napp ios\nbuild 0\nkind K\nsig K|?\n")[0] == 400)
+check("app-crash: more than 16 KB is refused", app_post(b"appdump 1\nt 1\napp ios\n" + b"a 0 1 x\n" * 2100)[0] == 413)
+check("app-crash: only a POST", call("GET", "/api/playtest/app-crash")[0] == 405)
+s, b = job("/api/jobs/service-watch", "good.token")
+opened = {a["key"]: a for a in b.get("result", {}).get("sync", {}).get("opened", [])} if s == 200 else {}
+check("service-watch: an app's crash opens the apps' one alert",
+      opened.get("crash:app", {}).get("title") == "an app crashed: SIGSEGV|OpenAgents+0x285b8|OpenAgents+0x1000 (1 bucket in the last hour)", (s, b))
+s, b, _ = call("GET", "/api/playtest/crashes")
+got = {k["bucket"]: k for k in json.loads(b).get("buckets", [])} if s == 200 else {}
+check("crashes: an app's bucket with its report: v3, the app binary's UUID as its build, each frame a binary and its offset",
+      got.get(app_bucket, {}).get("source") == "app" and got[app_bucket]["build"] == "70b89f2716343580a69557cdb41d7743" and got[app_bucket]["release"] == "1.4 (212)"
+      and got[app_bucket]["newest"].startswith("crash 3\n") and "f libswiftCore.dylib +0x1b24\nf OpenAgents +0x285b8\n" in got[app_bucket]["newest"], b)
+check("app-crash: one address posts 6 a minute", 429 in [app_post(b"junk %d\n" % i)[0] for i in range(14)])
 sql("UPDATE verse.crash_buckets SET last_ms = last_ms - 3600000, live_ms = live_ms - 3600000")
 s, b = job("/api/jobs/service-watch", "good.token")
 resolved = sorted(a["key"] for a in b.get("result", {}).get("sync", {}).get("resolved", [])) if s == 200 else []
-check("service-watch: an hour after the newest report the crash alerts resolve", resolved == sorted(["crash:" + room_bucket[:8], "crash:page"]), (s, b))
+check("service-watch: an hour after the newest report the crash alerts resolve", resolved == sorted(["crash:" + room_bucket[:8], "crash:page", "crash:app"]), (s, b))
 sql("DELETE FROM verse.crash_buckets")
 
 # Capacity records (#13296, docs/deployment/soak.md): the soak posts a night's record signed as a

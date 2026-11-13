@@ -1,0 +1,172 @@
+{
+  "profile": "openagents.crash-report",
+  "version": 3,
+  "spec": "docs/deployment/crash-reports.md",
+  "codec": "coax/web/room/room-crash.coax",
+  "check": "coax/web/tool.sh coax/web/room/crash-profile.coax proto/verse/crash-report-v3.json",
+  "note": "Crash report v3 (#13379) is a native app's report: the iPhone and Mac apps' crashes as MetricKit hands them over on a later launch. The app posts a dump (below) to POST /api/playtest/app-crash, and the API makes the report from it with the codec and keeps it by bucket like every other report. Its frames carry no names: a frame is the binary and the frame's offset in it, `f BINARY +0xOFFSET`, and the `build` line is the UUID of the app's own binary, which names the dSYM that resolves its frames (coax/web/symbols.sh app-frame). The signature is the kind and the three innermost frames in the app's own binary, each BINARY+0xOFFSET (the three innermost of any binary when none is the app's). Offsets change with every build, so one bug in two builds lands in two buckets. A room's report stays v1 and a page's v2; `source app` is only ever v3.",
+  "dump": {
+    "first": "appdump 1",
+    "lines": [
+      {
+        "key": "t",
+        "value": "the end of the day MetricKit reported the crash in, Unix ms",
+        "when": "always"
+      },
+      {
+        "key": "app",
+        "value": "ios or mac",
+        "when": "always"
+      },
+      {
+        "key": "os",
+        "value": "the system's version as MetricKit names it",
+        "when": "when given"
+      },
+      {
+        "key": "version",
+        "value": "the app's version",
+        "when": "when given"
+      },
+      {
+        "key": "buildno",
+        "value": "the app's build number",
+        "when": "when given"
+      },
+      {
+        "key": "exe",
+        "value": "the name of the app's own binary",
+        "when": "always"
+      },
+      {
+        "key": "signal",
+        "value": "the signal's number (Apple's numbering)",
+        "when": "when given"
+      },
+      {
+        "key": "exception",
+        "value": "the Mach exception's type",
+        "when": "when given"
+      },
+      {
+        "key": "reason",
+        "value": "the termination reason",
+        "when": "when given"
+      },
+      {
+        "key": "a",
+        "value": "UUID OFFSET BINARY: a frame of the crashed thread, innermost first; the binary's UUID (dashes and either case allowed), the offset into the binary in decimal, the binary's name",
+        "when": "each frame"
+      }
+    ]
+  },
+  "lines": [
+    {
+      "key": "crash",
+      "value": "3",
+      "when": "always, first"
+    },
+    {
+      "key": "t",
+      "value": "when it crashed, Unix ms",
+      "when": "always, second"
+    },
+    {
+      "key": "source",
+      "value": "app",
+      "when": "always, third"
+    },
+    {
+      "key": "app",
+      "value": "ios or mac",
+      "when": "always"
+    },
+    {
+      "key": "os",
+      "value": "the system's version",
+      "when": "when the dump has one"
+    },
+    {
+      "key": "release",
+      "value": "VERSION (BUILD), the app's version and build number; ? when unknown",
+      "when": "always"
+    },
+    {
+      "key": "build",
+      "value": "the UUID of the app's own binary, 32 lowercase hex digits; 0 when no frame is in it",
+      "when": "always"
+    },
+    {
+      "key": "kind",
+      "value": "the signal's name (SIGSEGV, SIGABRT...), EXC for a Mach exception with no signal, else crash",
+      "when": "always"
+    },
+    {
+      "key": "msg",
+      "value": "the termination reason",
+      "when": "when the dump has one"
+    },
+    {
+      "key": "f",
+      "value": "BINARY +0xOFFSET (the offset into the binary, lowercase hex); innermost first, at most 24",
+      "when": "each frame"
+    },
+    {
+      "key": "sig",
+      "value": "KIND|BINARY+0xOFFSET, up to three: the innermost frames in the app's own binary, or of any binary when none is; KIND|TEXT when there is no frame",
+      "when": "always, last"
+    }
+  ],
+  "rooms": [],
+  "pages": [],
+  "apps": [
+    {
+      "why": "a segmentation fault in the iPhone app: two frames in its own binary under a system library's",
+      "dump": "appdump 1\nt 1762990000000\napp ios\nos iPhone OS 18.1 (22B83)\nversion 1.4\nbuildno 212\nexe OpenAgents\nsignal 11\nexception 1\nreason Namespace SIGNAL, Code 11 Segmentation fault: 11\na 5F0C2A9E-7B1D-4C3A-8E6F-001122334455 6948 libswiftCore.dylib\na 70B89F27-1634-3580-A695-57CDB41D7743 165304 OpenAgents\na 70B89F27-1634-3580-A695-57CDB41D7743 4096 OpenAgents\na 0a1b2c3d4e5f60718293a4b5c6d7e8f9 24 dyld\n",
+      "report": "crash 3\nt 1762990000000\nsource app\napp ios\nos iPhone OS 18.1 (22B83)\nrelease 1.4 (212)\nbuild 70b89f2716343580a69557cdb41d7743\nkind SIGSEGV\nmsg Namespace SIGNAL, Code 11 Segmentation fault: 11\nf libswiftCore.dylib +0x1b24\nf OpenAgents +0x285b8\nf OpenAgents +0x1000\nf dyld +0x18\nsig SIGSEGV|OpenAgents+0x285b8|OpenAgents+0x1000\n",
+      "sig": "SIGSEGV|OpenAgents+0x285b8|OpenAgents+0x1000"
+    },
+    {
+      "why": "the least an app leaves: no frames and no signal",
+      "dump": "appdump 1\nt 7\napp mac\n",
+      "report": "crash 3\nt 7\nsource app\napp mac\nrelease ?\nbuild 0\nkind crash\nsig crash|?\n",
+      "sig": "crash|?"
+    },
+    {
+      "why": "no frame in the app's own binary: build 0 and the innermost frames of any binary",
+      "dump": "appdump 1\nt 7\napp mac\nos macOS 15.1 (24B83)\nversion 0.3\nexe OpenAgents\nexception 1\na 0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9 255 libsystem_kernel.dylib\n",
+      "report": "crash 3\nt 7\nsource app\napp mac\nos macOS 15.1 (24B83)\nrelease 0.3\nbuild 0\nkind EXC\nf libsystem_kernel.dylib +0xff\nsig EXC|libsystem_kernel.dylib+0xff\n",
+      "sig": "EXC|libsystem_kernel.dylib+0xff"
+    }
+  ],
+  "refused": [
+    {
+      "why": "a page's report is never v3",
+      "body": "crash 3\nt 1\nsource page\npage p\nkind trap\nsig trap|?\n"
+    },
+    {
+      "why": "a room's report is never v3",
+      "body": "crash 3\nt 1\nsource room\nshard 1\nbuild 0\nkind SIGSEGV\nsig SIGSEGV|?\n"
+    },
+    {
+      "why": "no app line",
+      "body": "crash 3\nt 1\nsource app\nbuild 0\nkind K\nsig K|?\n"
+    },
+    {
+      "why": "no build line",
+      "body": "crash 3\nt 1\nsource app\napp ios\nkind K\nsig K|?\n"
+    },
+    {
+      "why": "an app we don't have",
+      "body": "crash 3\nt 1\nsource app\napp android\nbuild 0\nkind K\nsig K|?\n"
+    },
+    {
+      "why": "a frame with no offset",
+      "body": "crash 3\nt 1\nsource app\napp ios\nbuild 0\nkind K\nf OpenAgents\nsig K|?\n"
+    },
+    {
+      "why": "a room's line in an app's report",
+      "body": "crash 3\nt 1\nsource app\napp ios\nbuild 0\nkind K\ntick 1 2 3\nsig K|?\n"
+    }
+  ]
+}

@@ -81,6 +81,7 @@
 		9B72B16D20FCCB863A22AF4B /* haunt-layer22.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 9AE44FED01ADF77410F4FD26 /* haunt-layer22.jpg */; };
 		9C0AF6CE296A8B39C6C153CF /* Home.pb in Resources */ = {isa = PBXBuildFile; fileRef = A8590DE7BE9F641F9A440194 /* Home.pb */; };
 		9E6A509AF86952ABEE9A15A8 /* Haunt.indices in Resources */ = {isa = PBXBuildFile; fileRef = E89FB258FB2F619B8111905A /* Haunt.indices */; };
+		9EED5DD2800A579F6A8A3F63 /* CrashReports.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01E2A14F3ED8ADBAAEB6C1A /* CrashReports.swift */; };
 		A007E91AC2431354B09B57F2 /* cast-layer12.jpg in Resources */ = {isa = PBXBuildFile; fileRef = B39219FCD634F147CEECDE36 /* cast-layer12.jpg */; };
 		A203994108226A5200DF11E6 /* WalletUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED5025FC8A374A284612812 /* WalletUITests.swift */; };
 		A20413F0FFC11E920FDE5682 /* haunt-thunder.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = C44F943A8802BF3449385B8F /* haunt-thunder.mp3 */; };
@@ -266,6 +267,7 @@
 		D3D607A7C86F793A71BBD7F4 /* BuyScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuyScreen.swift; sourceTree = "<group>"; };
 		D51B7CDE8E484F58DDB2D8EE /* PhoneTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneTurn.swift; sourceTree = "<group>"; };
 		DC6C49C69E0079F4626B3B80 /* haunt-boo.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-boo.mp3"; sourceTree = "<group>"; };
+		E01E2A14F3ED8ADBAAEB6C1A /* CrashReports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReports.swift; sourceTree = "<group>"; };
 		E4D57E9776762973386F3D8E /* haunt-step_stone_2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_stone_2.mp3"; sourceTree = "<group>"; };
 		E63041B894166B46A3E46D9D /* haunt-step_stone_1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_stone_1.mp3"; sourceTree = "<group>"; };
 		E824C093116E047A24374032 /* NostrSign.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NostrSign.h; sourceTree = "<group>"; };
@@ -374,7 +376,7 @@
 				0003C41E79E3C2F240E09456 /* voice.c */,
 			);
 			name = platform;
-			path = ../../verse/platform;
+			path = ../../metaverse/platform;
 			sourceTree = "<group>";
 		};
 		3A9C812E2B5DC80E1443A532 /* Fixtures */ = {
@@ -425,6 +427,7 @@
 			isa = PBXGroup;
 			children = (
 				BF0AAC9508FA4369A9715A69 /* AppAuth.swift */,
+				E01E2A14F3ED8ADBAAEB6C1A /* CrashReports.swift */,
 				9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */,
 			);
 			name = apple;
@@ -788,6 +791,7 @@
 				B6E9C67AAD7759EDBB58A904 /* BuyScreen.swift in Sources */,
 				9B64E81CED3EE607C7477FCD /* Camera.c in Sources */,
 				167FF29401030EEEBAF05EF9 /* Cast.c in Sources */,
+				9EED5DD2800A579F6A8A3F63 /* CrashReports.swift in Sources */,
 				D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */,
 				07D8E60384FD1648FCC9CB66 /* EngineHotbar.swift in Sources */,
 				35A3B13C150F78FD4C9E753E /* Grid.c in Sources */,
@@ -893,7 +897,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/Generated",
-					"$(SRCROOT)/../../verse/platform",
+					"$(SRCROOT)/../../metaverse/platform",
 				);
 				INFOPLIST_FILE = OpenAgents/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
@@ -924,7 +928,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/Generated",
-					"$(SRCROOT)/../../verse/platform",
+					"$(SRCROOT)/../../metaverse/platform",
 				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -945,7 +949,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/Generated",
-					"$(SRCROOT)/../../verse/platform",
+					"$(SRCROOT)/../../metaverse/platform",
 				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1030,7 +1034,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/Generated",
-					"$(SRCROOT)/../../verse/platform",
+					"$(SRCROOT)/../../metaverse/platform",
 				);
 				INFOPLIST_FILE = OpenAgents/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;

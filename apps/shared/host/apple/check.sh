@@ -25,6 +25,7 @@ step openagents-mac "$repo/apps/openagents-desktop/build.sh"
 step openagents-mac-account "$repo/apps/openagents-desktop/tests/account-check.sh"
 step openagents-mac-signing "$repo/apps/openagents-desktop/tests/sign-check.sh"
 step device-key "$here/device-key-check.sh"
+step crash-reports "$here/crash-reports-check.sh"
 cd "$repo/apps/openagents-ios"
 step openagents-iphone-generate ./generate.sh
 step openagents-iphone-project xcodegen generate

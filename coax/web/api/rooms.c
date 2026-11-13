@@ -6,6 +6,8 @@
 //                                         with the shard's write key or the seat-ticket key (room_write_signed, #13260)
 //   POST /api/playtest/room-crash         a shard's report of its last crash (coax/web/room/room-crash.coax,
 //                                         #13298), signed as its `crash` write; kept by bucket (service.c crash_keep)
+//   POST /api/playtest/app-crash          a native app's crash dump (crash report v3, #13379): no login, 16 KB
+//                                         at most, 6 a minute an address; kept by bucket as its report
 //   GET  /api/playtest/crashes            the crash buckets heard in 30 days, each with its newest report
 //   POST /api/playtest/capacity-record    a night's capacity record (soak-record.coax, #13296),
 //                                         signed as a room's `capacity` write; one kept a day and environment
@@ -301,6 +303,28 @@ static void crash(const request *q, PGconn *db) {
   api_json(q->fd, 200, out);
 }
 
+// A native app's crash (#13379, docs/deployment/crash-reports.md): the dump the iPhone or Mac app wrote
+// from MetricKit's crash diagnostic (apps/shared/host/apple/CrashReports.swift). The codec makes crash
+// report v3 from it, and the report is kept by bucket; the minute's service watch raises `crash:app`.
+// No login: an app can crash before one. So it is small (APP_CRASH_MAX) and slow (APP_CRASH_A_MINUTE
+// an address), and nothing an app says is trusted beyond being a report.
+#define APP_CRASH_MAX 16384
+#define APP_CRASH_A_MINUTE 6
+size_t crash_app_report_c(const char *dump, size_t n, char *out, size_t cap);
+static void app_crash(const request *q, PGconn *db) {
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a crash dump\"}"); return; }
+  if (q->body_len == 0 || q->body_len > APP_CRASH_MAX) { api_json(q->fd, 413, "{\"error\":\"a crash dump is 16 KB at most\"}"); return; }
+  char ip[128]; auth_visitor(q, ip);
+  if (!api_limit(db, "app-crash", ip, APP_CRASH_A_MINUTE, NULL)) { api_respond(q->fd, 429, "application/json", "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21); return; }
+  static char body[8193];
+  size_t n = crash_app_report_c(q->body, q->body_len, body, sizeof body);
+  if (!n) { api_json(q->fd, 400, "{\"error\":\"not an app's crash dump\"}"); return; }
+  char bucket[33], out[96];
+  if (!crash_keep(db, body, n, false, bucket)) { api_json(q->fd, 500, "{\"error\":\"not kept\"}"); return; }
+  snprintf(out, sizeof out, "{\"kept\":true,\"bucket\":\"%s\"}", bucket);
+  api_json(q->fd, 200, out);
+}
+
 // GET /api/playtest/crashes: the crash buckets heard in 30 days and each one's newest report, for anyone
 // (verse.crash_list builds the list; the reports are the codec's text as kept).
 static void crashes(const request *q, PGconn *db) {
@@ -450,6 +474,7 @@ bool rooms_route(const request *q, PGconn *db, const char *rest) {
   if (!strcmp(rest, "room-directory")) { report(q, db); return true; }
   if (!strcmp(rest, "room-stats")) { stats(q, db); return true; }
   if (!strcmp(rest, "room-crash")) { crash(q, db); return true; }
+  if (!strcmp(rest, "app-crash")) { app_crash(q, db); return true; }
   if (!strcmp(rest, "crashes")) { crashes(q, db); return true; }
   if (!strcmp(rest, "capacity-record")) { capacity_put(q, db); return true; }
   if (!strcmp(rest, "capacity")) { capacity_get(q, db); return true; }

@@ -11511,9 +11511,10 @@ CREATE FUNCTION verse.crash_facts(now_ms bigint, window_ms bigint) RETURNS TABLE
   LEFT JOIN LATERAL (SELECT r.shard, r.release FROM verse.crash_reports r WHERE r.bucket = k.bucket ORDER BY r.id DESC LIMIT 1) n ON true
   WHERE k.source = 'room' AND k.last_ms > now_ms - window_ms
   UNION ALL
-  SELECT '', 'page', coalesce((SELECT k.sig FROM verse.crash_buckets k WHERE k.source = 'page' AND k.live_ms IS NOT NULL ORDER BY k.live_ms DESC LIMIT 1), ''),
-         (SELECT CASE WHEN max(k.live_ms) IS NULL THEN -1 ELSE greatest(now_ms - max(k.live_ms), 0) END FROM verse.crash_buckets k WHERE k.source = 'page'), NULL, '',
-         (SELECT count(*) FROM verse.crash_buckets k WHERE k.source = 'page' AND k.live_ms > now_ms - window_ms)::int
+  SELECT '', s.source, coalesce((SELECT k.sig FROM verse.crash_buckets k WHERE k.source = s.source AND k.live_ms IS NOT NULL ORDER BY k.live_ms DESC LIMIT 1), ''),
+         (SELECT CASE WHEN max(k.live_ms) IS NULL THEN -1 ELSE greatest(now_ms - max(k.live_ms), 0) END FROM verse.crash_buckets k WHERE k.source = s.source), NULL, '',
+         (SELECT count(*) FROM verse.crash_buckets k WHERE k.source = s.source AND k.live_ms > now_ms - window_ms)::int
+  FROM (VALUES ('page'), ('app')) s (source)
   ORDER BY 2 DESC, 1 $$;
 
 
@@ -21547,7 +21548,7 @@ CREATE TABLE verse.crash_buckets (
     last_ms bigint NOT NULL,
     live_ms bigint,
     reports bigint DEFAULT 0 NOT NULL,
-    CONSTRAINT crash_buckets_source_check CHECK ((source = ANY (ARRAY['room'::text, 'page'::text])))
+    CONSTRAINT crash_buckets_source_check CHECK ((source = ANY (ARRAY['room'::text, 'page'::text, 'app'::text])))
 );
 
 

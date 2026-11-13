@@ -99,7 +99,7 @@ static int crash_fold(PGconn *db) {
   return kept;
 }
 // The crash alerts into the array service_sync reads (service-wire.coax writes each): one a room
-// bucket, one for the pages. False when the array could not hold one.
+// bucket, one for the pages and one for the apps (#13379). False when the array could not hold one.
 static bool crash_alerts(PGconn *db, long long now, sbuf *want) {
   char ns[24], ws[24];
   snprintf(ns, sizeof ns, "%lld", now); snprintf(ws, sizeof ws, "%lld", (long long)sv_crash_window());
@@ -109,14 +109,14 @@ static bool crash_alerts(PGconn *db, long long now, sbuf *want) {
   bool held = true;
   for (int i = 0; i < PQntuples(r); i++) {
     if (!sv_crash_alert(atoll(PQgetvalue(r, i, 3)))) continue;
-    bool room_s = !strcmp(PQgetvalue(r, i, 1), "room");
-    coax_string what = sv_crash_text(room_s ? 0 : 1), todo = sv_crash_do();
+    bool room_s = !strcmp(PQgetvalue(r, i, 1), "room"), app_s = !strcmp(PQgetvalue(r, i, 1), "app");
+    coax_string what = sv_crash_text(room_s ? 0 : app_s ? 2 : 1), todo = sv_crash_do();
     char key[48], title[512];
     if (room_s) {
       snprintf(key, sizeof key, "crash:%.8s", PQgetvalue(r, i, 0));
       snprintf(title, sizeof title, "shard %d: %.*s: %.200s (release %.80s)", atoi(PQgetvalue(r, i, 4)), (int)what.count, what.data, PQgetvalue(r, i, 2), PQgetvalue(r, i, 5));
     } else {
-      snprintf(key, sizeof key, "crash:page");
+      snprintf(key, sizeof key, app_s ? "crash:app" : "crash:page");
       snprintf(title, sizeof title, "%.*s: %.200s (%d bucket%s in the last hour)", (int)what.count, what.data, PQgetvalue(r, i, 2), atoi(PQgetvalue(r, i, 6)), atoi(PQgetvalue(r, i, 6)) == 1 ? "" : "s");
     }
     held = held && W(want, strlen(title) + (size_t)todo.count + 160, svw_wanted_write(cs(key), 0, cs(title), todo, (int64_t)want->n, ROOM(want)));
@@ -161,7 +161,7 @@ char *service_watch(PGconn *db, const char *day) {
     held = held && W(&want, (size_t)(what.count + todo.count) + 160, svw_wanted_write(cs("db-connections"), 0, what, todo, (int64_t)want.n, ROOM(&want)));
   }
   crash_fold(db);                                  // the pages' crash events of the last minute, as reports (#13298)
-  held = held && crash_alerts(db, now, &want);     // a room's bucket, the pages' one
+  held = held && crash_alerts(db, now, &want);     // a room's bucket, the pages' one, the apps' one
   if (!held || !W(&want, 2, svw_wanted_end((int64_t)want.n, ROOM(&want)))) return NULL;
   const char *sv[2] = {ns, want.p};
   r = PQexecParams(db, "SELECT verse.service_sync($1::bigint, $2::jsonb)", 2, NULL, sv, NULL, NULL, 0);

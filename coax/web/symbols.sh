@@ -9,6 +9,8 @@
 #   room/BUILDID.debug.gz         a room binary's debug file (objcopy --only-keep-debug), named by its
 #                                 build ID (vm-deploy.sh symbols)
 #   room/releases/NAME            that release's build ID
+#   app/UUID.dSYM.zip             a native app binary's dSYM, named by the binary's UUID in lowercase hex
+#                                 with no dashes: the `build` line of an app's crash report (#13379)
 #
 #   coax/web/symbols.sh bucket                    make the bucket and its 180-day rule (idempotent)
 #   coax/web/symbols.sh pages SITE_DIR            keep every *.wasm.syms under a staged site (deploy.sh)
@@ -17,6 +19,11 @@
 #                                                 wasm-function[INDEX] frames
 #   coax/web/symbols.sh room-put BUILDID DEBUG.gz RELEASE    keep a room's debug file (vm-deploy.sh)
 #   coax/web/symbols.sh room-get BUILDID OUT.gz   fetch it (vm-deploy.sh resolve)
+#   coax/web/symbols.sh app DSYM...               keep an app build's dSYMs (a .dSYM folder each, or an
+#                                                 .xcarchive: every dSYM in it), one object a UUID
+#   coax/web/symbols.sh app-frame UUID OFFSET...  an app frame's function, file and line: UUID is the
+#                                                 report's build line, OFFSET the hex after "+0x" of a
+#                                                 frame in the app's own binary (a Mac with Xcode)
 set -euo pipefail
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
 project=openagentsgemini region=us-central1 bucket="gs://openagentsgemini-oa-symbols"
@@ -59,5 +66,35 @@ case "${1:-}" in
     id="${2:?usage: symbols.sh room-get BUILDID OUT.gz}"; out="${3:?}"
     [[ "$id" =~ ^[0-9a-f]{8,64}$ ]] || { echo "symbols: a build ID in hex" >&2; exit 2; }
     gs cp "$bucket/room/$id.debug.gz" "$out" >/dev/null 2>&1 || { echo "symbols: no debug file kept for build $id" >&2; exit 1; } ;;
-  *) sed -n '2,19p' "$0" >&2; exit 2 ;;
+  app)
+    shift; (( $# > 0 )) || { echo "usage: symbols.sh app DSYM_OR_XCARCHIVE..." >&2; exit 2; }
+    work="$(mktemp -d)"; trap 'rm -rf "${work:?}"' EXIT
+    n=0
+    while IFS= read -r d; do
+      # dwarfdump --uuid: "UUID: 70B89F27-1634-3580-A695-57CDB41D7743 (arm64) PATH", one line an architecture
+      while read -r _ uuid _; do
+        id="$(printf '%s' "$uuid" | tr -d - | tr 'A-F' 'a-f')"
+        [[ "$id" =~ ^[0-9a-f]{32}$ ]] || continue
+        (cd "$(dirname "$d")" && zip -q -r -X "$work/$id.dSYM.zip" "$(basename "$d")")
+        gs cp "$work/$id.dSYM.zip" "$bucket/app/$id.dSYM.zip" >/dev/null 2>&1
+        rm -f "$work/$id.dSYM.zip"; n=$((n + 1))
+        echo "symbols: $(basename "$d") kept as $bucket/app/$id.dSYM.zip"
+      done < <(xcrun dwarfdump --uuid "$d")
+    done < <(for a in "$@"; do if [[ "$a" == *.dSYM ]]; then printf '%s\n' "${a%/}"; else find "$a" -name '*.dSYM' -type d; fi; done | sort)
+    (( n > 0 )) || { echo "symbols: no dSYM found" >&2; exit 1; } ;;
+  app-frame)
+    id="${2:?usage: symbols.sh app-frame UUID OFFSET...}"; shift 2
+    [[ "$id" =~ ^[0-9a-f]{32}$ ]] || { echo "symbols: the report's build line, 32 hex digits" >&2; exit 2; }
+    work="$(mktemp -d)"; trap 'rm -rf "${work:?}"' EXIT
+    gs cp "$bucket/app/$id.dSYM.zip" "$work/d.zip" >/dev/null 2>&1 || { echo "symbols: no dSYM kept for build $id" >&2; exit 1; }
+    unzip -q "$work/d.zip" -d "$work/d"
+    dwarf="$(find "$work/d" -path '*/Contents/Resources/DWARF/*' -type f | head -1)"
+    [[ -n "$dwarf" ]] || { echo "symbols: the kept dSYM holds no DWARF file" >&2; exit 1; }
+    # The slice whose UUID this is, then each offset from the start of the binary's text.
+    arch="$(xcrun dwarfdump --uuid "$dwarf" | tr -d - | tr 'A-F' 'a-f' | awk -v id="$id" '$2 == id { gsub(/[()]/, "", $3); print $3 }')"
+    for off in "$@"; do
+      [[ "${off#0x}" =~ ^[0-9a-f]{1,16}$ ]] || { echo "symbols: an offset in hex: $off" >&2; exit 2; }
+      xcrun atos ${arch:+-arch "$arch"} -o "$dwarf" -offset "0x${off#0x}"
+    done ;;
+  *) sed -n '2,27p' "$0" >&2; exit 2 ;;
 esac

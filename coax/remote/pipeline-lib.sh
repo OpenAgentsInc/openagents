@@ -163,7 +163,7 @@ pl_service_watch() {
 
 # Production's crash buckets as GitHub issues (#13379, docs/deployment/crash-reports.md): while a
 # `crash:` alert is open on production, each bucket it covers (a room's own alert `crash:BUCKET8`;
-# every page bucket heard in the last hour under `crash:page`) gets one issue with its newest report
+# every page bucket heard in the last hour under `crash:page`, every app bucket under `crash:app`) gets one issue with its newest report
 # from GET /api/playtest/crashes. A bucket never gets two: an open issue naming the bucket is looked
 # for first, and when GitHub can't be asked nothing is filed until it can. A bucket handled is
 # remembered in OA_PIPELINE_DIR/crash-issues (bucket TAB issue) so GitHub is asked once; an alert
@@ -177,7 +177,7 @@ pl_crash_issues() {   # origin, the open alerts (key TAB title lines), the file 
   touch "$mem"
   while IFS=$'\t' read -r b src sig reports; do
     [[ "$b" =~ ^[0-9a-f]{32}$ ]] || continue
-    if [[ "$src" == room ]]; then key="crash:${b:0:8}"; else key="crash:page"; fi
+    if [[ "$src" == room ]]; then key="crash:${b:0:8}"; elif [[ "$src" == app ]]; then key="crash:app"; else key="crash:page"; fi
     cut -f1 <<< "$open" | grep -qxF -- "$key" || continue
     if ! cut -f1 "$was" 2> /dev/null | grep -qxF -- "$key"; then   # the alert opened this minute
       grep -v "^$b	" "$mem" > "$mem.new" || true; mv "$mem.new" "$mem"

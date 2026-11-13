@@ -30,9 +30,10 @@ cflags=(-O2 -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$here" -I"$repo/a
 /usr/bin/clang -std=gnu11 "${cflags[@]}" -DS_hash=oa_lab_S_hash -DS_hex=oa_lab_S_hex -c "$work/c/lab-sign.c" -o "$work/c/lab-sign-all.o"
 # It carries its own copy of the hashes the app's unit also exports: only its one entry point stays visible (objcopy on Linux).
 ld -r "$work/c/lab-sign-all.o" -exported_symbol _coaxial_lab_nip98 -exported_symbol '_coaxial_account_*' -o "$work/c/lab-sign.o"
-# The account's login (Account.swift): the iPhone app's AppAuth.swift and DeviceKey.swift, one Swift object.
+# The account's login (Account.swift): the iPhone app's AppAuth.swift and DeviceKey.swift, and the apps' crash logs
+# (CrashReports.swift, #13379), one Swift object.
 xcrun -sdk macosx swiftc -O ${swift_defs[@]+"${swift_defs[@]}"} -suppress-warnings -parse-as-library -wmo -module-name OpenAgentsAccount -import-objc-header "$here/account-mac.h" -emit-object \
-  "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" -o "$work/c/account.o"
+  "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$repo/apps/shared/host/apple/CrashReports.swift" -o "$work/c/account.o"
 swiftlib="$(xcrun -sdk macosx --show-sdk-path)/usr/lib/swift"
 # Dictation: Psionic's resident Parakeet (built when its inputs changed), and the shared controller with the host's rules as on Linux.
 COAX="$coax" "$repo/coax/web/tool.sh" "$here/dictation-build.coax" "$repo" "$work/c/parakeet" > /dev/null
@@ -49,7 +50,7 @@ done
   "$repo/apps/openagents-cli/dictate-native.c" "$repo/coax/platform/process-native.c" "$repo/coax/platform/store-file-native.c" \
   "$work/c/zeron.o" "$work/c/lab-sign.o" "$work/c/account.o" "${objc[@]}" "$repo/psionic/build/parakeet/libpsionic-parakeet.a" \
   -framework AppKit -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO -framework UniformTypeIdentifiers \
-  -framework AVFoundation -framework CoreAudio -framework AudioToolbox -framework Foundation -framework CryptoKit -framework Security -framework UserNotifications \
+  -framework AVFoundation -framework CoreAudio -framework AudioToolbox -framework Foundation -framework CryptoKit -framework Security -framework UserNotifications -framework MetricKit \
   -L"$swiftlib" -Wl,-rpath,/usr/lib/swift -lpthread -lm -o "$app/Contents/MacOS/OpenAgents.new"
 mv "$app/Contents/MacOS/OpenAgents.new" "$app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$app/Contents/Info.plist"

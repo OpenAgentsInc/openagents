@@ -296,6 +296,7 @@ int main(int argc, char **argv) {
   ui_menus(host, menus, MENU_ITEMS);
   account_host = host;
   if (!shot) oa_account_start(account_changed);   // who is logged in, asked once at launch
+  if (!shot && !getenv("OA_CRASH_REPORTS_OFF")) oa_crash_reports_start();   // an earlier crash's log, sent after a yes (#13379); checks that launch the app turn it off
 #endif
   if (!oa_chat_start(a, host)) return 1;
 #ifdef __APPLE__

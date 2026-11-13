@@ -1,0 +1,48 @@
+{
+  "version": "1.0.0",
+  "callStackTree": {
+    "callStackPerThread": true,
+    "callStacks": [
+      {
+        "threadAttributed": false,
+        "callStackRootFrames": [
+          {"binaryUUID": "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9", "offsetIntoBinaryTextSegment": 512, "sampleCount": 1, "binaryName": "libsystem_kernel.dylib", "address": 7170766264}
+        ]
+      },
+      {
+        "threadAttributed": true,
+        "callStackRootFrames": [
+          {
+            "binaryUUID": "5F0C2A9E-7B1D-4C3A-8E6F-001122334455", "offsetIntoBinaryTextSegment": 6948, "sampleCount": 1, "binaryName": "libswiftCore.dylib", "address": 6795285796,
+            "subFrames": [
+              {
+                "binaryUUID": "70B89F27-1634-3580-A695-57CDB41D7743", "offsetIntoBinaryTextSegment": 165304, "sampleCount": 1, "binaryName": "OpenAgents", "address": 4334408120,
+                "subFrames": [
+                  {
+                    "binaryUUID": "70B89F27-1634-3580-A695-57CDB41D7743", "offsetIntoBinaryTextSegment": 4096, "sampleCount": 1, "binaryName": "OpenAgents", "address": 4334246912,
+                    "subFrames": [
+                      {"binaryUUID": "0a1b2c3d4e5f60718293a4b5c6d7e8f9", "offsetIntoBinaryTextSegment": 24, "sampleCount": 1, "binaryName": "dyld", "address": 6795285796}
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "diagnosticMetaData": {
+    "appBuildVersion": "212",
+    "appVersion": "1.4",
+    "regionFormat": "US",
+    "exceptionType": 1,
+    "osVersion": "iPhone OS 18.1 (22B83)",
+    "deviceType": "iPhone17,1",
+    "bundleIdentifier": "com.openagents.app",
+    "exceptionCode": 0,
+    "signal": 11,
+    "terminationReason": "Namespace SIGNAL, Code 11 Segmentation fault: 11",
+    "platformArchitecture": "arm64e"
+  }
+}
