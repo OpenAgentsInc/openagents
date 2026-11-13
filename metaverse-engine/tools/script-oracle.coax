@@ -1,0 +1,145 @@
+// The interpreter against a real WebAssembly engine (GitHub #13467): builds the torture script
+// (metaverse-engine/script/examples/torture.coax) with coax/web/script.sh, runs a fixed sequence of
+// handler calls through the host (sh_load, sh_call) over a fixed frame, and prints for each call the
+// thing's state record as hex and the commands it queued. Then it runs the independent oracle,
+// metaverse-engine/tests/script-oracle.mjs, which instantiates the same module in Node's V8 with
+// WebAssembly.instantiate, answers the same imports by the same rules and makes the same calls, and
+// compares the two outputs byte for byte. The script stores no NaN, so no NaN's bits are compared.
+//
+// Each call must be kept and stay under the call budget: a call the host undoes would differ from V8
+// for a reason that is not the interpreter's.
+//
+// Usage, at the repository root (Node 22 or later on PATH, or NODE=/path/to/node):
+//   coax/web/tool.sh metaverse-engine/tools/script-oracle.coax [--ticks N] [--print]
+// Exit 0 when both engines print the same lines, 1 when they differ (the first difference is printed),
+// 2 when the script does not build or Node does not run.
+#import "Basic";
+#load "../script/manifest.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+SO_SOURCE :: "metaverse-engine/script/examples/torture.coax";
+SO_ORACLE :: "metaverse-engine/tests/script-oracle.mjs";
+SO_THINGS :: 3;
+SO_OUT :: 4194304;
+SoWork :: struct {
+  s: [2] ScriptSlot; run: [1] ScriptRun; f: [1] ScriptFrame;
+  wasm: [WM_BYTES + 1] u8;
+  ours: [SO_OUT] u8; ours_n: int; theirs: [SO_OUT] u8; err: [65536] u8; build: [65536] u8;
+  peak: int; calls: int;
+}
+
+so_put :: (w: [] SoWork, s: string) { for c: s { if w[0].ours_n < SO_OUT { w[0].ours[w[0].ours_n] = c; w[0].ours_n += 1; } } }
+so_hex :: (w: [] SoWork, v: u64, digits: int) {
+  hex := "0123456789abcdef"; ch: [1] u8;
+  for i: 0..<digits { ch[0] = hex[cast(int) ((v >> cast(u64) ((digits - 1 - i) * 4)) & 15)]; so_put(w, cast(string) ch[..]); }
+}
+so_f32 :: (v: f32) -> u64 { return cast(u64) f32_bits(v); }
+
+// The frame of tick t: the same rules as the oracle's (script-oracle.mjs, frameOf).
+//   thing i (0, 1, 2): id 101 + i, x = 3i + t/2, z = -2i, speed 1.5 + i, health 10 - i
+//   dt = (t % 4 + 1) / 8, time = t / 4, world[k] = 1.5k
+so_frame :: (f: [] ScriptFrame, t: int) {
+  f[0] = ScriptFrame.{tick = t, seed = 2026, dt = cast(f32) (t % 4 + 1) / 8.0, time = cast(f32) t / 4.0, day = 0.5, n_things = SO_THINGS};
+  for k: 0..<SH_WORLD { f[0].world[k] = cast(f32) k * 1.5; }
+  for i: 0..<SO_THINGS {
+    f[0].things[i] = ScriptThing.{id = cast(u64) (101 + i), kind = 1, team = 0, script = 0, alive = true,
+      x = cast(f32) (3 * i) + cast(f32) t / 2.0, y = 0.0, z = cast(f32) (-2 * i), speed = 1.5 + cast(f32) i, health = 10.0 - cast(f32) i};
+  }
+}
+// One call, then its line: tick, handler, thing, the state's bytes, the commands.
+so_call :: (w: [] SoWork, t: int, handler: int, thing: int, other: u64, amount: u64) -> bool {
+  s := w[0].s[0..<1];
+  w[0].run[0].fuel = SH_TICK_FUEL; w[0].run[0].n_commands = 0; w[0].run[0].n_diags = 0; w[0].run[0].calls = 0; w[0].run[0].failed = 0;
+  me := cast(u64) (101 + thing);
+  if !sh_call(s, w[0].run[..], w[0].f[..], 0, handler, me, thing, other, amount) {
+    d := w[0].run[0].diags[0];
+    print("script-oracle: tick % handler % thing % was not kept: % (status %, line %, % instructions)\n", t, RH_NAMES[handler], me, SD_NAMES[d.code], WI_STATUS_NAMES[d.status], d.line, d.used);
+    return false;
+  }
+  w[0].calls += 1;
+  if s[0].peak > w[0].peak { w[0].peak = s[0].peak; }
+  so_hex(w, cast(u64) t, 4); so_put(w, " "); so_put(w, RH_NAMES[handler]); so_put(w, " "); so_hex(w, me, 16); so_put(w, " ");
+  base := s[0].state_at + thing * s[0].state_size;
+  for i: 0..<s[0].state_size { so_hex(w, cast(u64) wi_peek(s[0].vm[..], base + i), 2); }
+  for i: 0..<w[0].run[0].n_commands {
+    k := w[0].run[0].commands[i];
+    so_put(w, " "); so_hex(w, cast(u64) k.op, 2); so_put(w, ":"); so_hex(w, k.thing, 16); so_put(w, ":"); so_hex(w, k.target, 16); so_put(w, ":");
+    so_hex(w, cast(u64) (cast,trunc(u32) cast(int) k.i), 8); so_put(w, ":");
+    so_hex(w, so_f32(k.a), 8); so_put(w, ":"); so_hex(w, so_f32(k.b), 8); so_put(w, ":"); so_hex(w, so_f32(k.c), 8);
+  }
+  so_put(w, "\n");
+  return true;
+}
+// The calls of tick t: every thing's tick, and on some ticks a hit, a timer and an enter
+// (script-oracle.mjs, callsOf, makes the same ones in the same order).
+so_tick :: (w: [] SoWork, t: int) -> bool {
+  so_frame(w[0].f[..], t);
+  for i: 0..<SO_THINGS { if !so_call(w, t, RH_TICK, i, 0, 0) { return false; } }
+  if t % 3 == 1 && !so_call(w, t, RH_HIT, 0, 102, so_f32(cast(f32) t / 2.0)) { return false; }
+  if t % 4 == 2 && !so_call(w, t, RH_TIMER, 1, 0, cast(u64) (t % 4)) { return false; }
+  if t % 5 == 3 && !so_call(w, t, RH_ENTER, 2, 101, 0) { return false; }
+  return true;
+}
+
+so_first_difference :: (a: string, b: string) {
+  line := 1; start := 0;
+  for i: 0..<(ifx a.count < b.count then a.count else b.count) {
+    if a[i] != b[i] {
+      end_a := i; while end_a < a.count && a[end_a] != '\n' { end_a += 1; }
+      end_b := i; while end_b < b.count && b[end_b] != '\n' { end_b += 1; }
+      print("script-oracle: line % differs\n  ours: %\n  V8:   %\n", line, a[start..<end_a], b[start..<end_b]);
+      return;
+    }
+    if a[i] == '\n' { line += 1; start = i + 1; }
+  }
+  print("script-oracle: one output ends early: ours % bytes, V8 % bytes\n", a.count, b.count);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("usage: coax/web/tool.sh metaverse-engine/tools/script-oracle.coax [--ticks N] [--print]"); return 2; }
+  ticks := 256;
+  ticks_text := args_value(a[..], "--ticks", "");
+  if ticks_text != "" { ticks = args_whole(ticks_text); if ticks < 1 || ticks > 10000 { tool_errln("script-oracle: --ticks takes 1 to 10000"); return 2; } }
+  work: [1] SoWork; w := work[..];
+  tmp: [1024] u8; dir := fs_temp("script-oracle-", tmp[..]);
+  if dir == "" { tool_errln("script-oracle: no temporary directory"); return 2; }
+  code := so_run(w, a[..], dir, ticks);
+  p: [1200] u8; j: [1200] u8;
+  gone := fs_remove(fs_join(dir, "torture.wasm", p[..])); gone = fs_remove(fs_join(dir, "torture.json", j[..])); gone = fs_remove(dir);
+  return code;
+}
+so_run :: (w: [] SoWork, a: [] Args, dir: string, ticks: int) -> int {
+  build := [5] string.["coax/web/script.sh", SO_SOURCE, "--out", dir, "--quiet"];
+  r := proc_run(build[..], 300000, w[0].build[..], w[0].err[..]);
+  if r.started != 0 || r.status != 0 { tool_errln("script-oracle: the torture script did not build:"); tool_errln(cast(string) w[0].err[0..<r.err_n]); tool_errln(cast(string) w[0].build[0..<r.out_n]); return 2; }
+  p: [1200] u8; wasm := fs_join(dir, "torture.wasm", p[..]);
+  n := fs_read(wasm, w[0].wasm[..]);
+  if n < 8 || n > WM_BYTES { tool_errln("script-oracle: the module did not read"); return 2; }
+  if sh_load(w[0].s[0..<1], w[0].s[1..<2], w[0].wasm[0..<n], ScriptLayout.{}) != 0 { tool_errln("script-oracle: the module did not load"); return 2; }
+  for t: 0..<ticks { if !so_tick(w, t) { return 1; } }
+  envbuf: [1024] u8; node := proc_getenv("NODE", envbuf[..]);
+  if node == "" { node = "node"; }
+  nb: [32] u8; count := so_decimal(ticks, nb[..]);
+  oracle := [4] string.[node, SO_ORACLE, wasm, count];
+  o := proc_run(oracle[..], 300000, w[0].theirs[..], w[0].err[..]);
+  if o.started != 0 || o.status != 0 { tool_errln("script-oracle: the V8 oracle did not run:"); tool_errln(cast(string) w[0].err[0..<o.err_n]); return 2; }
+  if o.cut { tool_errln("script-oracle: the V8 oracle's output did not fit"); return 2; }
+  // proc_run joins lines with newlines and drops the last; ours ends each line with one.
+  ours := cast(string) w[0].ours[0..<w[0].ours_n];
+  if ours.count > 0 { ours = ours[0..<ours.count - 1]; }
+  theirs := cast(string) w[0].theirs[0..<o.out_n];
+  if args_has(a, "--print") { print("%\n", ours); }
+  if ours != theirs { so_first_difference(ours, theirs); return 1; }
+  print("script-oracle: % calls over % ticks, the same state bytes and commands in our interpreter and V8 (% bytes of output; the most one call spent: % of % instructions)\n", w[0].calls, ticks, ours.count, w[0].peak, SH_CALL_FUEL);
+  return 0;
+}
+so_decimal :: (v: int, out: [] u8) -> string {
+  n := 0; x := v; digits: [20] u8;
+  if x <= 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  while x > 0 { digits[n] = cast(u8) ('0' + x % 10); x = x / 10; n += 1; }
+  for i: 0..<n { out[i] = digits[n - 1 - i]; }
+  return cast(string) out[0..<n];
+}

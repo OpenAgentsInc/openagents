@@ -228,6 +228,8 @@ Kept current as stages land (#13467). The contract as built is
 | A world's script rows (`ID\|NAME\|HASH\|FOR` in a content table) | built | `metaverse-engine/script/rows.coax`, Splice's `scripts` table |
 | Splice's raider and Imperial robot as scripts | built | `metaverse/splice/scripts/`, `metaverse/splice/scripts.coax` |
 | The plan world and the scripted world play the same | proven natively | `coax/web/tool.sh metaverse/splice/tools/script-play.coax` |
+| A fuzzer of the check, the interpreter, the host and the codecs | built | `metaverse-engine/tools/script-fuzz.coax` |
+| The interpreter against V8, on a compiled torture script | built | `metaverse-engine/tools/script-oracle.coax`, `metaverse-engine/tests/script-oracle.mjs`, `metaverse-engine/script/examples/torture.coax` |
 
 Where the build differs from the proposal:
 

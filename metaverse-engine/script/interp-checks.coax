@@ -257,3 +257,108 @@ ik_out :: (vm: [] WiVm, size: int) -> u64 {
   nested := [5] u8.[65, 1, 16, WB_HELPER, 11];
   #assert ik_plain(k[..], m[..], vm[..], push[0..<1499], 0, 100000) == WI_DONE || vm[0].status == WI_TRAP_MALFORMED;
 }
+// One instruction on constants: out(8 bytes) = OP(a) or OP(a, b), where a and b are constants of kind
+// 0 i32, 1 i64, 2 f32 or 3 f64 (bits), -1 for none. The result is stored with i64.store, so an i32 or
+// f32 result reads back as its 32 bits. The expected values are WebAssembly 1.0's (and V8's).
+IkCase :: struct { ka: int; a: u64; kb: int; b: u64; op: int; status: int; want: u64; }
+ik_const :: (code: [] u8, out: [] WbOut, kind: int, v: u64) {
+  if kind == 0 { wb_u8(code, out, 65); wb_sleb(code, out, cast(int) (cast,trunc(s32) v)); }
+  else if kind == 1 { wb_u8(code, out, 66); wb_sleb(code, out, cast,trunc(int) v); }
+  else if kind >= 2 {
+    wb_u8(code, out, ifx kind == 2 then 67 else 68);
+    for i: 0..<(ifx kind == 2 then 4 else 8) { wb_u8(code, out, cast(int) ((v >> cast(u64) (i * 8)) & 255)); }
+  }
+}
+ik_case :: (k: [] IkModule, m: [] WmModule, vm: [] WiVm, c: IkCase) -> bool {
+  code: [48] u8; out: [1] WbOut;
+  wb_u8(code[..], out[..], 65); wb_sleb(code[..], out[..], IK_OUT);
+  ik_const(code[..], out[..], c.ka, c.a); ik_const(code[..], out[..], c.kb, c.b);
+  wb_u8(code[..], out[..], c.op);
+  if c.op == 63 || c.op == 64 { wb_u8(code[..], out[..], 0); }
+  wb_u8(code[..], out[..], 55); wb_u8(code[..], out[..], 3); wb_u8(code[..], out[..], 0); wb_u8(code[..], out[..], 11);
+  status := ik_plain(k, m, vm, code[0..<out[0].n], 0, 100);
+  return status == c.status && (status != WI_DONE || ik_out(vm, 8) == c.want);
+}
+IK_EDGES :: [60] IkCase.[
+  // rotations by more than the width, and by a negative count
+  IkCase.{ka = 1, a = 9223372036854775809, kb = 1, b = 1, op = 137, want = 3},
+  IkCase.{ka = 1, a = 9223372036854775809, kb = 1, b = 65, op = 137, want = 3},
+  IkCase.{ka = 1, a = 1, kb = 1, b = 1, op = 138, want = 9223372036854775808},
+  IkCase.{ka = 1, a = 81985529216486895, kb = 1, b = 4, op = 137, want = 1311768467463790320},
+  IkCase.{ka = 1, a = 81985529216486895, kb = 1, b = 18446744073709551612, op = 138, want = 1311768467463790320},
+  IkCase.{ka = 0, a = 1, kb = 0, b = 1, op = 120, want = 2147483648},
+  IkCase.{ka = 0, a = 2147483648, kb = 0, b = 33, op = 119, want = 1},
+  // counts: clz, ctz, popcnt on 32 and 64 bits
+  IkCase.{ka = 0, a = 0, kb = -1, op = 103, want = 32},
+  IkCase.{ka = 0, a = 65536, kb = -1, op = 103, want = 15},
+  IkCase.{ka = 0, a = 2147483648, kb = -1, op = 104, want = 31},
+  IkCase.{ka = 0, a = 0, kb = -1, op = 104, want = 32},
+  IkCase.{ka = 0, a = 4294967295, kb = -1, op = 105, want = 32},
+  IkCase.{ka = 1, a = 0, kb = -1, op = 121, want = 64},
+  IkCase.{ka = 1, a = 9223372036854775808, kb = -1, op = 122, want = 63},
+  IkCase.{ka = 1, a = 18446744073709551615, kb = -1, op = 123, want = 64},
+  // shifts take the count modulo the width
+  IkCase.{ka = 0, a = 1, kb = 0, b = 32, op = 116, want = 1},
+  IkCase.{ka = 1, a = 9223372036854775808, kb = 1, b = 64, op = 135, want = 9223372036854775808},
+  IkCase.{ka = 1, a = 9223372036854775808, kb = 1, b = 63, op = 135, want = 18446744073709551615},
+  IkCase.{ka = 1, a = 9223372036854775808, kb = 1, b = 127, op = 136, want = 1},
+  // sign extension, 0xc0 to 0xc4: only the low bits count
+  IkCase.{ka = 0, a = 305419904, kb = -1, op = 192, want = 4294967168},
+  IkCase.{ka = 0, a = 127, kb = -1, op = 192, want = 127},
+  IkCase.{ka = 0, a = 32768, kb = -1, op = 193, want = 4294934528},
+  IkCase.{ka = 1, a = 128, kb = -1, op = 194, want = 18446744073709551488},
+  IkCase.{ka = 1, a = 1311768464867753984, kb = -1, op = 195, want = 18446744073709518848},
+  IkCase.{ka = 1, a = 2147483648, kb = -1, op = 196, want = 18446744071562067968},
+  IkCase.{ka = 1, a = 18446744071562067967, kb = -1, op = 196, want = 2147483647},
+  // the least i32 by -1: a divide trap, and a remainder of 0
+  IkCase.{ka = 0, a = 2147483648, kb = 0, b = 4294967295, op = 109, status = WI_TRAP_DIVIDE},
+  IkCase.{ka = 0, a = 2147483648, kb = 0, b = 4294967295, op = 111, want = 0},
+  // f64.nearest: ties to even, the sign of zero kept, and numbers already whole
+  IkCase.{ka = 3, a = 4612811918334230528, kb = -1, op = 158, want = 4611686018427387904},
+  IkCase.{ka = 3, a = 4615063718147915776, kb = -1, op = 158, want = 4616189618054758400},
+  IkCase.{ka = 3, a = 13836183955189006336, kb = -1, op = 158, want = 13835058055282163712},
+  IkCase.{ka = 3, a = 13826050856027422720, kb = -1, op = 158, want = 9223372036854775808},
+  IkCase.{ka = 3, a = 4602678819172646911, kb = -1, op = 158, want = 0},
+  IkCase.{ka = 3, a = 4841369599423283201, kb = -1, op = 158, want = 4841369599423283201},
+  // trunc, ceil and floor keep the sign of a zero result
+  IkCase.{ka = 2, a = 3217031168, kb = -1, op = 143, want = 3212836864},
+  IkCase.{ka = 2, a = 3204448256, kb = -1, op = 143, want = 2147483648},
+  IkCase.{ka = 2, a = 3204448256, kb = -1, op = 141, want = 2147483648},
+  IkCase.{ka = 2, a = 1067030938, kb = -1, op = 141, want = 1073741824},
+  IkCase.{ka = 2, a = 1076677837, kb = -1, op = 143, want = 1073741824},
+  IkCase.{ka = 3, a = 13826050856027422720, kb = -1, op = 157, want = 9223372036854775808},
+  IkCase.{ka = 3, a = 13826050856027422720, kb = -1, op = 155, want = 9223372036854775808},
+  IkCase.{ka = 2, a = 2147483648, kb = -1, op = 142, want = 2147483648},
+  // float to integer at the edges of each range
+  IkCase.{ka = 3, a = 13829653735729319117, kb = -1, op = 177, want = 0},
+  IkCase.{ka = 2, a = 3212836864, kb = -1, op = 169, status = WI_TRAP_CONVERT},
+  IkCase.{ka = 3, a = 14114281232179134464, kb = -1, op = 176, want = 9223372036854775808},
+  IkCase.{ka = 3, a = 4890909195324358656, kb = -1, op = 176, status = WI_TRAP_CONVERT},
+  IkCase.{ka = 3, a = 13970166044105166029, kb = -1, op = 170, want = 2147483648},
+  IkCase.{ka = 3, a = 4746794007248083354, kb = -1, op = 170, want = 2147483647},
+  IkCase.{ka = 3, a = 4751297606875663565, kb = -1, op = 171, want = 4294967295},
+  // 64-bit integers to f32 round once (through f64 they would round twice), and to f64
+  IkCase.{ka = 1, a = 9223372586610589697, kb = -1, op = 181, want = 1593835521},
+  IkCase.{ka = 1, a = 9007199791611905, kb = -1, op = 180, want = 1509949441},
+  IkCase.{ka = 1, a = 13835057780404256767, kb = -1, op = 180, want = 3732930561},
+  IkCase.{ka = 1, a = 18446743523953737727, kb = -1, op = 181, want = 1602224127},
+  IkCase.{ka = 1, a = 18446744073709551615, kb = -1, op = 186, want = 4895412794951729152},
+  // f64 to f32 at the top of the range and below the least denormal
+  IkCase.{ka = 3, a = 5183643170835005439, kb = -1, op = 182, want = 2139095039},
+  IkCase.{ka = 3, a = 5183643170835005440, kb = -1, op = 182, want = 2139095040},
+  IkCase.{ka = 3, a = 3918770277926589793, kb = -1, op = 182, want = 0},
+  // memory.size is the module's one page; memory.grow by any pages fails with -1, by none answers the size
+  IkCase.{ka = -1, kb = -1, op = 63, want = 1},
+  IkCase.{ka = 0, a = 1, kb = -1, op = 64, want = 4294967295},
+  IkCase.{ka = 0, a = 0, kb = -1, op = 64, want = 1}
+];
+#test "edge cases of single instructions agree with WebAssembly 1.0" #steps 400000000 {
+  k: [1] IkModule; m: [1] WmModule; vm: [1] WiVm;
+  bad := -1; for c, i: IK_EDGES { if bad < 0 && !ik_case(k[..], m[..], vm[..], c) { bad = i; } }
+  #assert bad == -1;
+  // select picks its second operand on a zero condition, whatever the operands' kind
+  choose := [16] u8.[65, 192, 0, 66, 33, 68, 0, 0, 0, 0, 0, 0, 240, 63, 65, 0];
+  sel: [20] u8; for v, i: choose { sel[i] = v; } sel[16] = 27; sel[17] = 55; sel[18] = 3; sel[19] = 0;
+  whole: [21] u8; for v, i: sel { whole[i] = v; } whole[20] = 11;
+  #assert ik_plain(k[..], m[..], vm[..], whole[..], 0, 100) == WI_DONE && ik_out(vm[..], 8) == 4607182418800017408;
+}

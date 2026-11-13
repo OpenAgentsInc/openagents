@@ -639,10 +639,11 @@ wi_run :: (b: [] u8, m: [] WmModule, jump: [] s32, vm: [] WiVm) -> int {
       if sp >= WI_STACK { return wi_stop(vm, WI_TRAP_STACK); }
       vm[0].stack[sp] = cast(u64) (vm[0].mem_n / WM_PAGE); vm[0].sp = sp + 1;
     } else if op == 64 {
-      // memory.grow: a script's memory never grows; the answer is -1.
+      // memory.grow: a script's memory never grows; the answer is -1, or for growth by no pages the
+      // size, as every engine answers it (WebAssembly lets a grow fail; growing by nothing does not).
       vm[0].pc += 1;
       if sp - 1 < floor_at { return wi_stop(vm, WI_TRAP_MALFORMED); }
-      vm[0].stack[sp - 1] = WI_LOW;
+      vm[0].stack[sp - 1] = ifx (vm[0].stack[sp - 1] & WI_LOW) == 0 then cast(u64) (vm[0].mem_n / WM_PAGE) else WI_LOW;
     } else if op == 0 {
       return wi_stop(vm, WI_TRAP_UNREACHABLE);
     } else if op != 1 {

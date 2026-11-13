@@ -39,6 +39,11 @@ The check does not type-check operands. The interpreter owns the value stack
 and the memory and checks both on every step, so a module that confuses
 types computes nonsense inside its own memory and nowhere else.
 
+For a module with sound types, every instruction gives the result
+WebAssembly 1.0 gives, with two choices the standard allows: a NaN result
+is the canonical quiet NaN, and `memory.grow` by one or more pages answers
+-1 (growth by none answers the size), so a script's memory never grows.
+
 A refusal names one of: `too-big`, `not-wasm`, `section`, `malformed`,
 `limit`, `signature`, `import`, `memory`, `export`, `instruction`, `global`,
 `data`, `no-handler`, and the byte it is about.

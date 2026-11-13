@@ -518,11 +518,12 @@ fz_command_ok :: (w: [] FzWork, k: ScriptCommand) -> bool {
   if op == SA_MOVE && k.c < 0.0 { fz_fail(w, "a move has a negative speed"); return false; }
   return true;
 }
-fz_slot_ok :: (w: [] FzWork, s: [] ScriptSlot) {
+fz_slot_ok :: (w: [] FzWork, s: [] ScriptSlot, tick: bool) {
   vm := s[0].vm[..];
   if vm[0].open || vm[0].n_dirty != 0 { fz_fail(w, "a transaction is left open after a call"); }
   if vm[0].status == WI_IMPORT { fz_fail(w, "a call is left stopped at an import"); }
-  if s[0].peak < 0 || s[0].peak > SH_CALL_FUEL || s[0].spent < 0 || s[0].spent > SH_TICK_FUEL { fz_fail(w, "spent or peak is out of range"); }
+  if s[0].peak < 0 || s[0].peak > SH_CALL_FUEL { fz_fail(w, "a call spent more than its budget"); }
+  if s[0].spent < 0 || (tick && s[0].spent > SH_TICK_FUEL) { fz_fail(w, "a script spent more than the tick's budget"); }
   if s[0].loaded && !s[0].off && s[0].strikes >= SH_STRIKES { fz_fail(w, "a script with three strikes is still on"); }
   for i: 0..<WM_SLOTS * SH_TIMERS { t := s[0].timers[i]; if t != t || t < 0.0 { fz_fail(w, "a timer is NaN or negative"); } }
 }
@@ -574,7 +575,7 @@ fz_one_tick :: (r: [] FzRng, w: [] FzWork, tick: int, scripts: int) {
   w[0].stats.ticks += 1;
   if was_off && scripts == 1 && w[0].run[0].calls != 0 { fz_fail(w, "a script that is off ran"); }
   fz_run_ok(w, w[0].run[..], w[0].f[..], scripts);
-  for si: 0..<scripts { fz_slot_ok(w, w[0].s[si..<si + 1]); }
+  for si: 0..<scripts { fz_slot_ok(w, w[0].s[si..<si + 1], true); }
   fz_count(w, w[0].run[..]);
   if fz_chance(r, 10) {
     n := sr_write(w[0].run[..], w[0].result_bytes[..]);
@@ -603,7 +604,7 @@ fz_direct_call :: (r: [] FzRng, w: [] FzWork, tick: int) {
   w[0].f[0].tick = tick;
   kept := sh_call(s, w[0].run[..], w[0].f[..], 0, handler, me, slot, fz_id(r), fz_f32_bits(r));
   w[0].stats.shadow += 1;
-  fz_slot_ok(w, s);
+  fz_slot_ok(w, s, false);
   if w[0].run[0].fuel < 0 { fz_fail(w, "a direct call took the tick's budget below zero"); }
   if !kept {
     if !fz_mem_same(w, vm) { fz_fail(w, "a call that was not kept changed the memory or a global"); }

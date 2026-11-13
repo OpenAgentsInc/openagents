@@ -8224,7 +8224,18 @@ neither depends on the other.
   imports.
 - **No trap ends the process.** The check, the interpreter
   (`metaverse-engine/script/interp.coax`) and the host bound every index
-  before they use it. A refusal and a trap are values.
+  before they use it. A refusal and a trap are values. The fuzzer
+  (`metaverse-engine/tools/script-fuzz.coax`) runs damaged and generated
+  modules, damaged frame and result bytes and damaged manifests through
+  all of them, and a Coax trap there is a failure.
+- **The interpreter computes what WebAssembly computes.** For a module the
+  check passes and whose operand types are sound, every instruction gives
+  the result WebAssembly 1.0 gives, except that a NaN result is the
+  canonical quiet NaN and `memory.grow` by one or more pages answers -1
+  (growth by none answers the size). The oracle
+  (`metaverse-engine/tools/script-oracle.coax`) runs a compiled torture
+  script in our interpreter and in V8 and compares every state byte and
+  command.
 - **The API is one table.** `api.coax` (what a script loads) and
   `docs/protocol/realm-script-api.md` are generated from the table; a row
   keeps its number, name and signature, and new rows go at the end.
@@ -8234,7 +8245,10 @@ Checks: `coax/tests/run.sh --only script_profile` (the policy's 65 checks,
 `coax/bin/coax test metaverse-engine/script/wasm.coax --library`;
 `coax/bin/coax test metaverse-engine/script/interp.coax --library`;
 `coax/web/tool.sh metaverse-engine/tools/script-api.coax --check`;
-`coax/web/tool.sh metaverse-engine/tools/script-profile.coax proto/world/script-v1.json`.
+`coax/web/tool.sh metaverse-engine/tools/script-profile.coax proto/world/script-v1.json`;
+`coax/web/tool.sh metaverse-engine/tools/script-fuzz.coax --smoke` (20,000
+rounds; longer runs take `--seed N --rounds N --corpus DIR`);
+`coax/web/tool.sh metaverse-engine/tools/script-oracle.coax` (needs Node).
 
 ## A script's handler call is a transaction with a budget, and its failure is a typed diagnostic
 
@@ -8266,7 +8280,10 @@ Checks: `coax/bin/coax test metaverse-engine/script/host.coax --library`
 off", "a world's scripts share one budget a tick ...", "the module's own
 trap names its line ...", "reads answer from the frame ... and a seeded
 draw"); the profile's `result_hex` fixture, which pins the commands and the
-instructions spent for a pinned module over a pinned frame.
+instructions spent for a pinned module over a pinned frame; the fuzzer
+(`metaverse-engine/tools/script-fuzz.coax`), which after every call that is
+not kept compares the script's memory, globals, timers and the tick's
+commands with a copy taken before it.
 
 ## A realm script writes running state only, and only its own thing
 

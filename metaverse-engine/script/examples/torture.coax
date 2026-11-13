@@ -1,0 +1,121 @@
+// A torture script for the interpreter (GitHub #13467): each handler mixes its thing's state with a
+// bounded amount of integer and float work, so that a run of it compares our interpreter (interp.coax)
+// with a real WebAssembly engine instruction by instruction
+// (coax/web/tool.sh metaverse-engine/tools/script-oracle.coax). It has no gameplay. The work covers
+// wrapping and checked arithmetic on 32 and 64 bits, signed and unsigned division and remainder with
+// guarded divisors, shifts and rotations, casts between widths and between integers and floats, f32 and
+// f64 arithmetic, sqrt, floor, sin, cos and abs, fixed arrays in the state, loops and nested calls.
+// Every float it stores or passes on is finite, and every division and cast is guarded, so no call traps
+// and no NaN reaches the state. Each call stays under the call budget (SH_CALL_FUEL).
+//   coax/web/script.sh metaverse-engine/script/examples/torture.coax --out DIR
+#script "torture";
+#load "../api.coax";
+
+Mix :: struct #persisted {
+  h: u64;            // the running hash
+  k: [4] u32;
+  s: [4] s64;
+  f: [4] f32;
+  d: [2] f64;
+  n: s32;            // calls so far
+  t: s32;            // the last timer
+}
+
+TT_PRIME :: cast(u64) 11400714819323198485;
+TT_ROUNDS :: 14;
+
+// A 64-bit mix: xor, rotation, a wrapping multiply and shifts.
+tt_mix :: (h: u64, v: u64) -> u64 {
+  x := rotl(h ^ v, 27);
+  x = mul_wrap(x, TT_PRIME);
+  return x ^ (x >> 31) ^ (x << 7);
+}
+// 32-bit lanes: wrapping add, sub and mul, rotations, unsigned division by an odd divisor.
+tt_lane :: (a: u32, b: u32) -> u32 {
+  x := add_wrap(a, rotr(b, 5));
+  x = mul_wrap(x, cast(u32) 2654435761);
+  x = sub_wrap(x, b >> 3);
+  return x ^ (x / (b | 1)) ^ (x % ((a >> 7) | 3));
+}
+// Signed 64-bit division and remainder with a divisor that is never 0 or -1.
+tt_div :: (s: s64, h: u64) -> s64 {
+  d := cast(s64) (h & 2047) - 1024;
+  if d == 0 || d == -1 { d = 7; }
+  q := s / d; r := s % d;
+  return q + r * 3;
+}
+// Signed 32-bit work through casts, shifts and comparisons.
+tt_s32 :: (h: u64) -> s32 {
+  a := cast,trunc(s32) h; b := cast,trunc(s32) (h >> 32);
+  c := (a >> 3) ^ cast,trunc(s32) (cast,trunc(u32) b << 2);
+  if b != 0 && b != -1 { c = c ^ (a / b) ^ (a % b); }
+  if c < 0 { c = c ^ 1431655765; }
+  return c;
+}
+// A float to an integer and back, inside the range where the cast is defined.
+tt_trunc :: (x: f64) -> s64 {
+  if !(x > -1.0e15 && x < 1.0e15) { return 3; }
+  return cast(s64) x;
+}
+tt_finite32 :: (x: f32) -> f32 { if !(x > -1.0e6 && x < 1.0e6) { return 0.5; } return x; }
+tt_finite64 :: (x: f64) -> f64 { if !(x > -1.0e12 && x < 1.0e12) { return 0.25; } return x; }
+// f32 steps: arithmetic with one rounding each, sqrt, floor, abs, and a trip through f64.
+tt_f32 :: (f: f32, h: u64) -> f32 {
+  g := cast(f32) (h & 65535) / 4096.0 - 8.0;
+  x := f * 0.75 + g;
+  x = x - floor(x * 0.5) * 1.25;
+  x = x + sqrt(abs(x) + 1.0);
+  y := cast(f64) x * 1.0000001;
+  return tt_finite32(cast(f32) y - g / 3.0);
+}
+// f64 steps: sin, cos, sqrt, division, floor and a float that becomes an integer.
+tt_f64 :: (d: f64, e: f64, h: u64) -> f64 {
+  a := cast(f64) (h >> 44) / 1048576.0;
+  x := sin(d * 0.5 + a) * 3.0 + cos(e - a) * 2.0;
+  x = x + sqrt(abs(d) + 0.5) / (1.0 + abs(e));
+  x = x + cast(f64) (tt_trunc(e * 1000.0) % 997) / 997.0;
+  return tt_finite64(x - floor(x / 7.0) * 7.0 + d * 0.001);
+}
+// One round over the whole state: every lane and every array.
+tt_round :: (m: [] Mix, v: u64, i: int) {
+  h := tt_mix(m[0].h, add_wrap(v, cast(u64) i));
+  j := i % 4;
+  m[0].k[j] = tt_lane(m[0].k[j], cast,trunc(u32) h);
+  m[0].s[j] = tt_div(m[0].s[j] ^ cast,trunc(s64) h, h >> 8) + cast(s64) tt_s32(h);
+  m[0].f[j] = tt_f32(m[0].f[j], h);
+  m[0].d[j % 2] = tt_f64(m[0].d[j % 2], cast(f64) m[0].f[j], h);
+  // Unsigned 64-bit division and remainder, a shift by a varying count, and a comparison chain.
+  u := add_wrap(h / ((h >> 40) | 1), h % ((h >> 20) | 5));
+  u = u ^ (h >> (h & 63)) ^ (h << ((h >> 6) & 63));
+  if cast,trunc(s64) u < m[0].s[(j + 1) % 4] { u = add_wrap(u, 1); } else if u > h { u = sub_wrap(u, 3); }
+  // Widths: u32 to u64, s32 to s64 (sign-extended), s64 to s32 (wrapped), u64 to f32 and f64.
+  w := add_wrap(cast(u64) m[0].k[j], cast,trunc(u64) cast(s64) tt_s32(u));
+  big := cast(f64) (u >> 11) + cast(f64) cast(f32) (w & 16777215);
+  m[0].h = tt_mix(h ^ w, cast,trunc(u64) tt_trunc(big / 65536.0));
+}
+
+on_tick :: (me: u64, mind: [] Mix, dt: f32) #export_c #effects(reads, writes, traps) {
+  v := me ^ (cast(u64) f32_bits(dt) << 17) ^ cast,trunc(u64) cast(s64) sa_count();
+  x := sa_x(me); z := sa_z(me);
+  v = v ^ cast(u64) f32_bits(x) ^ (cast(u64) f32_bits(sa_time()) << 32);
+  for i: 0..<TT_ROUNDS { tt_round(mind, v, i); }
+  mind[0].n += 1;
+  // Commands: a var and a move, from the state, each finite.
+  sa_set_var(me, mind[0].n % 4, mind[0].f[cast(int) (mind[0].h & 3)]);
+  sa_move(me, x + tt_finite32(cast(f32) mind[0].d[0]), z - mind[0].f[1] * 0.5, sa_speed(me) * 2.0);
+  if (mind[0].h & 7) == 1 { sa_timer(me, cast(s32) (mind[0].h >> 62), 0.5); }
+}
+on_hit :: (me: u64, mind: [] Mix, other: u64, amount: f32) #export_c #effects(reads, writes, traps) {
+  v := other ^ cast(u64) f32_bits(amount) ^ cast(u64) f32_bits(sa_health(me));
+  for i: 0..<3 { tt_round(mind, v, i + 10); }
+  mind[0].f[3] = tt_finite32(mind[0].f[3] + amount * sa_world(2));
+  sa_set_var(me, 3, mind[0].f[3]);
+}
+on_timer :: (me: u64, mind: [] Mix, timer: s32) #export_c #effects(reads, writes, traps) {
+  mind[0].t = timer;
+  tt_round(mind, cast,trunc(u64) cast(s64) timer, 20);
+}
+on_enter :: (me: u64, mind: [] Mix, other: u64) #export_c #effects(reads, writes, traps) {
+  for i: 0..<2 { tt_round(mind, mul_wrap(other, 3), i + 30); }
+  sa_set_var(me, 0, cast(f32) (mind[0].k[0] & 255));
+}
