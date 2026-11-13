@@ -168,16 +168,16 @@ check("voice edit: under the realm's catalogue as enums",
       and props["direction"]["enum"][0] == "here" and props["building"]["enum"][:2] == ["unnamed", "inn"] and "temple" in props["building"]["enum"]
       and props["all"]["type"] == "boolean" and props["name"]["type"] == "string" and "Old Tam" in props["who"]["enum"], schema)
 here = os.path.dirname(os.path.abspath(__file__))
-edits_coax = open(os.path.join(here, "../../../verse/everglade/edits.coax")).read()
+edits_coax = open(os.path.join(here, "../../../everglade/world/edits.coax")).read()
 named = re.search(r'EG_EDIT_NAME :: \[(\d+)\] string\.\[([^\]]*)\]', edits_coax)
 if named:   # the page's names, in the contract's order
     coax_items = re.findall(r'"([^"]*)"', named.group(2))
-    check("voice edit: the server's things are the page's (verse/everglade/edits.coax EG_EDIT_NAME)", coax_items == props["item"]["enum"][:34], coax_items)
+    check("voice edit: the server's things are the page's (everglade/world/edits.coax EG_EDIT_NAME)", coax_items == props["item"]["enum"][:34], coax_items)
 else:       # until the page's names land: its first five labels
     coax_items = re.findall(r'"([^"]*)"', re.search(r'EG_EDIT_LABEL :: \[5\] string\.\[([^\]]*)\]', edits_coax).group(1))
-    check("voice edit: the server's things are the page's (verse/everglade/edits.coax)", [x.lower() for x in coax_items] == props["item"]["enum"][:5], coax_items)
-coax_people = re.findall(r'"([^"]*)"', re.search(r'EG_PERSON :: \[[A-Z_0-9]+\] string\.\[([^\]]*)\]', open(os.path.join(here, "../../../verse/everglade/people-words.coax")).read()).group(1))
-check("voice edit: the server's people are the page's (verse/everglade/people-words.coax), after nobody", props["who"]["enum"] == ["nobody"] + coax_people, coax_people)
+    check("voice edit: the server's things are the page's (everglade/world/edits.coax)", [x.lower() for x in coax_items] == props["item"]["enum"][:5], coax_items)
+coax_people = re.findall(r'"([^"]*)"', re.search(r'EG_PERSON :: \[[A-Z_0-9]+\] string\.\[([^\]]*)\]', open(os.path.join(here, "../../../everglade/npc/people-words.coax")).read()).group(1))
+check("voice edit: the server's people are the page's (everglade/npc/people-words.coax), after nobody", props["who"]["enum"] == ["nobody"] + coax_people, coax_people)
 order = ["edit", "item", "name", "count", "arrange", "onto", "colour", "size", "direction", "metres", "turn", "all", "who", "building", "row", "on", "panel", "reply"]
 check("voice edit: every field is answered, edit and item first, then name", schema["required"] == order and schema["propertyOrdering"] == order, schema)
 prompt = sent["systemInstruction"]["parts"][0]["text"]

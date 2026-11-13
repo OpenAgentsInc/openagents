@@ -1,5 +1,5 @@
 // Operator probe admission only; never grants a game action or model trust.
-#load "../../../verse/everglade/guard-guide.coax"; // qualified duplicate-aware JSON readers
+#load "../../../everglade/npc/guard-guide.coax"; // qualified duplicate-aware JSON readers
 #authority;
 CP_ORIGIN :: "https://openagents.com";
 CP_URL :: "https://openagents.com/api/v1/systemone";

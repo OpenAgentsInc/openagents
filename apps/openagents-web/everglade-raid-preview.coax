@@ -4,7 +4,7 @@
 // (everglade-events.coax hands each to everglade_raider, #12740, #12908):
 //   - what it is told: each person of the raid where they stand, how fast they go, whether they are
 //     casting or striking and whether they have fallen (everglade_raider);
-//   - everyone is a body on the town's own rig and clips (verse/everglade/people-rig.coax): idle,
+//   - everyone is a body on the town's own rig and clips (everglade/scene/people-rig.coax): idle,
 //     walk, run, spell, slash, and the fall (PEOPLE_DIE) when they die, held where they fell, then
 //     sinking away. The cult hooded and robed by kind: a Cultist's robe blood red, a Fanatic's black,
 //     a Warlock's violet, its casting hand alight; Darian taller, in black, with a staff. The cult's

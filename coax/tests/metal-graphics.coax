@@ -9,8 +9,8 @@ MG_PAIRS :: [11]MgPair.[
   MgPair.{v="eg_scene_vs",f="eg_scene_fs"},MgPair.{v="eg_grass_vs",f="eg_grass_fs"},
   MgPair.{v="eg_water_vs",f="eg_water_transmit_fs"},MgPair.{v="eg_water_vs",f="eg_water_emit_fs"},
   MgPair.{v="eg_bg_vs",f="eg_bloom_fs"},MgPair.{v="eg_bg_vs",f="eg_post_fs"},MgPair.{v="eg_fx_vs",f="eg_fx_fs"},
-  MgPair.{v="egfx_particle_over_vs",f="egfx_particle_over_fs",file="verse/everglade/gpu-fx.coax"},
-  MgPair.{v="egfx_particle_vs",f="egfx_particle_fs",file="verse/everglade/gpu-fx.coax"}];
+  MgPair.{v="egfx_particle_over_vs",f="egfx_particle_over_fs",file="everglade/client/gpu/gpu-fx.coax"},
+  MgPair.{v="egfx_particle_vs",f="egfx_particle_fs",file="everglade/client/gpu/gpu-fx.coax"}];
 #test "graphics qualification names every pass, including both water and particle layers" {
   #assert MG_PAIRS.count==11 && mg_base(MG_PAIRS[4].f)=="water_transmit_fs" && mg_base(MG_PAIRS[5].f)=="water_emit_fs";
   #assert mg_base(MG_PAIRS[9].f)=="particle_over_fs" && mg_base(MG_PAIRS[10].f)=="particle_fs";

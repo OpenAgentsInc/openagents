@@ -6,7 +6,7 @@
 // glade's own (verse/character-glade.coax): the same hills, path and autumn.
 #load "../../verse/character-glade.coax";
 #load "points.coax";   // E2_CLEAR_Z, the spawn and the named points the scripted checks read (#13078)
-#load "../../verse/everglade/clearing.coax";   // Everglade's clearings and streams (#13093): this file only places them
+#load "clearing.coax";   // Everglade's clearings and streams (#13093): this file only places them
 
 E2_CLEAR_R :: 34.0;    // its radius: open meadow inside, the woods' edge round it
 E2_FAR :: -640.0;      // where the land stops (behind the wooded rise past the clearing)
@@ -183,7 +183,7 @@ e2_forest :: (x:f32,z:f32)->f32 {
 E2_GLADE_OPEN :: 17.0;
 e2_wooded :: (x:f32,z:f32)->f32 {return cg_ramp(f32(E2_GLADE_OPEN),f32(E2_GLADE_OPEN)+7,sqrt(x*x+z*z));}
 // The path's end clearing's middle (on the path), and how far into open ground (x, z) is: 1 in either
-// clearing, 0 in the woods, the edges ragged (verse/everglade/clearing.coax clearing_open).
+// clearing, 0 in the woods, the edges ragged (everglade/world/clearing.coax clearing_open).
 e2_clear_x :: ()->f32 {return e2_road_x(E2_CLEAR_Z);}
 e2_clearing :: (x:f32,z:f32)->f32 {
  dx:=x-e2_clear_x();dz:=z-E2_CLEAR_Z;r:=sqrt(dx*dx+dz*dz);

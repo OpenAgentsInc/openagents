@@ -53,7 +53,7 @@ wm_stale :: (into: string) {
 wm_site :: (check: bool) -> int {
   t: WmTally;
   t = wm_tally(t, wm_module("verse/everglade/gpu.coax", "apps/openagents-web/everglade.wgsl", "verse/everglade/gpu.module", check), "apps/openagents-web/everglade.wgsl");
-  t = wm_tally(t, wm_module("verse/everglade/gpu-fx.coax", "apps/openagents-web/everglade-fx.wgsl", "verse/everglade/gpu-fx.module", check), "apps/openagents-web/everglade-fx.wgsl");
+  t = wm_tally(t, wm_module("everglade/client/gpu/gpu-fx.coax", "apps/openagents-web/everglade-fx.wgsl", "verse/everglade/gpu-fx.module", check), "apps/openagents-web/everglade-fx.wgsl");
   for g: 0..<WM_GPU.count {
     gpu := WM_GPU[g];
     l: [1] FsList;

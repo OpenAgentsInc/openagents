@@ -4,7 +4,7 @@ Corpus `guard-editorial-v1` was authored before observing live model outputs.
 Its frozen [label manifest](../../fixtures/guard-evaluation-labels-v1.jsonl) has
 SHA-256 `099bf141d90a6b85dd2666e7797682054efbcfa9263f3966ebc9f01e8c647141`.
 Case identities, masks, request bytes, response admission and metrics are owned
-by `verse/everglade/guard-evaluation*.coax`. No label is sent to the model.
+by `everglade/npc/guard-evaluation*.coax`. No label is sent to the model.
 
 The first 16 cases exhaust four time categories crossed with four weather
 categories, ordered `case = day * 4 + weather`. They all describe the same calm,
@@ -92,14 +92,14 @@ bounded probes instead of escalating retries or bypassing normal quotas.
 Focused authority checks:
 
 ```shell
-coax/bin/coax test verse/everglade/guard-evaluation.coax --library
-coax/bin/coax mutate verse/everglade/guard-evaluation.coax --root-only --jobs 4
-coax/bin/coax test verse/everglade/guard-evaluation-wire.coax --library
-coax/bin/coax mutate verse/everglade/guard-evaluation-wire.coax --root-only --jobs 4
-coax/bin/coax test verse/everglade/guard-latency.coax --library
-coax/bin/coax mutate verse/everglade/guard-latency.coax --root-only --jobs 4
-coax/bin/coax test verse/everglade/guard-latency.coax --library
-coax/bin/coax mutate verse/everglade/guard-latency.coax --root-only --jobs 4
+coax/bin/coax test everglade/npc/guard-evaluation.coax --library
+coax/bin/coax mutate everglade/npc/guard-evaluation.coax --root-only --jobs 4
+coax/bin/coax test everglade/npc/guard-evaluation-wire.coax --library
+coax/bin/coax mutate everglade/npc/guard-evaluation-wire.coax --root-only --jobs 4
+coax/bin/coax test everglade/npc/guard-latency.coax --library
+coax/bin/coax mutate everglade/npc/guard-latency.coax --root-only --jobs 4
+coax/bin/coax test everglade/npc/guard-latency.coax --library
+coax/bin/coax mutate everglade/npc/guard-latency.coax --root-only --jobs 4
 ```
 
 An optional offline preparation probe measures every categorical prompt using

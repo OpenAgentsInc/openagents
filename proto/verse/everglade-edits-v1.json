@@ -1,7 +1,7 @@
 {
  "identity": "everglade-edits-v1",
- "check": "coax/web/tool.sh verse/everglade/edits-profile.coax proto/verse/everglade-edits-v1.json",
- "codec": "verse/everglade/edits.coax",
+ "check": "coax/web/tool.sh everglade/world/edits-profile.coax proto/verse/everglade-edits-v1.json",
+ "codec": "everglade/world/edits.coax",
  "doc": "docs/protocol/everglade-edits-v1.md",
  "scope": "What an admin adds to Everglade's designed city: the list as text, stored as the string doc.edits of the realm's published world (verse.published) and sent in POST and GET /api/playtest/world/everglade",
  "head": "eg-edit 1\n",

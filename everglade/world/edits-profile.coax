@@ -6,7 +6,7 @@
 //   - each "malformed" text is refused, and a refused list leaves the one held as it was;
 //   - the publish body is eg_edits_body's, and each answer reads as eg_edits_answer's version and list;
 //   - the head, the counts and the limits are the codec's.
-// Usage: coax/web/tool.sh verse/everglade/edits-profile.coax proto/verse/everglade-edits-v1.json
+// Usage: coax/web/tool.sh everglade/world/edits-profile.coax proto/verse/everglade-edits-v1.json
 #import "Basic";
 #load "edits.coax";
 #load "../../coax/lib/json/json.coax";
@@ -61,7 +61,7 @@ edp_check :: (raw: string) -> bool #effects(all) {
   if !jv_parse(doc[..], raw, nodes[..]) { return edp_fail("not JSON", ""); }
   d := doc[0];
   tb: [EDP_BUF] u8; rb: [EDP_BUF] u8; out: [EDP_BUF] u8;
-  if edp_str(d, jv_get(d, 0, "identity"), tb[..]) != "everglade-edits-v1" || edp_str(d, jv_get(d, 0, "codec"), tb[..]) != "verse/everglade/edits.coax" { return edp_fail("identity or codec", ""); }
+  if edp_str(d, jv_get(d, 0, "identity"), tb[..]) != "everglade-edits-v1" || edp_str(d, jv_get(d, 0, "codec"), tb[..]) != "everglade/world/edits.coax" { return edp_fail("identity or codec", ""); }
   if edp_str(d, jv_get(d, 0, "head"), tb[..]) != EG_EDIT_HEAD { return edp_fail("head", ""); }
   if jv_int(d, jv_get(d, 0, "kinds"), -1) != EG_EDIT_ITEMS || jv_int(d, jv_get(d, 0, "max_things"), -1) != EG_EDIT_MAX ||
      jv_int(d, jv_get(d, 0, "buildings"), -1) != EG_BUILDINGS || jv_int(d, jv_get(d, 0, "spots"), -1) != EG_SPOTS { return edp_fail("kinds, max_things, buildings or spots", ""); }

@@ -241,7 +241,7 @@ shader (`person_dye`), so a guard's tunic is crimson, the astronomer's deep
 indigo with a silver plait, without another texture.
 
 They move with seven clips of the Universal Animation Library 1 and 2,
-retargeted to the two bodies (`verse/everglade/people-rig.coax`): idle,
+retargeted to the two bodies (`everglade/scene/people-rig.coax`): idle,
 walk, talk, a nod, folded arms, a raised lantern and a spell idle. Alone,
 they shift their weight and glance about; within 4 m they turn to face you
 and look at you (the neck and head turned through `skin_turn` in
@@ -891,7 +891,7 @@ WAITING"). The planner is `gemini-2.5-flash` with its thinking off
 `verse.voice_edits.ms_taken` keeps the time both took. One at a time
 means one with the model, so the next sentence goes the moment the last
 is answered. The page does the edit
-(`verse/everglade/edits.coax`, `apps/openagents-web/everglade-voice.coax`):
+(`everglade/world/edits.coax`, `apps/openagents-web/everglade-voice.coax`):
 a row starts clear of you (your radius, a margin and half the thing) and
 goes further out where it doesn't fit, saying how many didn't; it refuses
 a place in a building, the woods or another thing; and publishes the edits as
@@ -931,7 +931,7 @@ gives the selector these edits, each under the schema, no words matched:
 - Something not in the catalogue or the city is said plainly, never
   swapped for another: I CAN'T MAKE A DRAGON, NO PIECE CALLED BOB.
 
-The catalogue (`verse/everglade/edits.coax` EG_EDIT_NAME, the server's in
+The catalogue (`everglade/world/edits.coax` EG_EDIT_NAME, the server's in
 the same order) is 34 things: crate, barrel, bench, fence, stall, pumpkin,
 sack, apple crate, carrots, pot, bucket, lantern, cart, vase, table, chair,
 stool, anvil, cauldron, training dummy, weapon rack, banner, coins, sign,

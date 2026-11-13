@@ -1,4 +1,4 @@
-// Fire on an admin's placed things (verse/everglade/edits.coax EgThing; drawn by everglade-items.coax),
+// Fire on an admin's placed things (everglade/world/edits.coax EgThing; drawn by everglade-items.coax),
 // loaded by everglade-spells.coax after everglade-fire.coax. What is wood or cloth burns, as the town's
 // own pieces do (everglade-fire.coax fi_fuel): crates, barrels, benches, fences, stalls, carts, tables,
 // chairs, stools, the dummy, banners, bags and the rest of the kit's wooden things. Stone, iron and
@@ -32,7 +32,7 @@ PlacedFire :: struct {
 }
 pf_of :: (s: [] Everglade) -> [] PlacedFire { return s[0].sp.pf[..]; }
 
-// Whether thing t burns: the placed kinds of wood, cloth and straw (verse/everglade/edits.coax
+// Whether thing t burns: the placed kinds of wood, cloth and straw (everglade/world/edits.coax
 // EG_EDIT_LABEL's order): crate, barrel, bench, fence, stall, sack, apple crate, bucket, cart, table,
 // chair, stool, training dummy, weapon rack, banner, sign, hay pile, house and shed. Not the pumpkin,
 // the carrots, a pot, the lantern, a vase, the anvil, the cauldron, the coins, what grows, stone.

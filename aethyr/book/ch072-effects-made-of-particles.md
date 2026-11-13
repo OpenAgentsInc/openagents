@@ -25,7 +25,7 @@
 > [`aethyr/fx/gpu-puff.coax`](../../aethyr/fx/gpu-puff.coax) draws them on
 > a traced page (a pinhole camera from the uniforms, soft against the
 > ground it traces, no depth buffer) with Everglade's own shading, loaded
-> from [`verse/everglade/gpu-fx.coax`](../../verse/everglade/gpu-fx.coax),
+> from [`everglade/client/gpu/gpu-fx.coax`](../../everglade/client/gpu/gpu-fx.coax),
 > which is unchanged. 5E Lab's glade is the first user: every spell, blow
 > and death in its battles is a recipe, picked by
 > [`aethyr/fx/battle.coax`](../../aethyr/fx/battle.coax) `fxe_event` in each
@@ -97,7 +97,7 @@ and capped by a budget.
   in its room, and fireflies blink.
 - [apps/openagents-web/gpu/particles.coax](../../apps/openagents-web/gpu/particles.coax):
   the instanced draw, the source of `particles.wgsl`.
-- [verse/everglade/gpu-fx.coax](../../verse/everglade/gpu-fx.coax) and
+- [everglade/client/gpu/gpu-fx.coax](../../everglade/client/gpu/gpu-fx.coax) and
   [apps/openagents-web/everglade-spells.coax](../../apps/openagents-web/everglade-spells.coax):
   spell fire and smoke in two passes.
 

@@ -1,6 +1,6 @@
 // Coax owns command selection, corpus identities, request bytes and evaluation.
 // The companion C file provides only argv/stdin/stdout effects and main entry.
-#load "../../../verse/everglade/guard-evaluation-wire.coax";
+#load "../../../everglade/npc/guard-evaluation-wire.coax";
 gt_argc :: ()->int #foreign #effects(all);
 gt_arg_len :: (index:int)->int #foreign #effects(all);
 gt_arg_byte :: (index:int,offset:int)->int #foreign #effects(all);

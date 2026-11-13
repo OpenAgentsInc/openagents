@@ -1,7 +1,7 @@
 // Offline preparation probe: original tokenizer data only, no model or network.
 #import "Basic";
 #load "token-capacity-policy.coax";
-#load "../../../verse/everglade/guard-decision.coax";
+#load "../../../everglade/npc/guard-decision.coax";
 #load "../../lib/serve-request.coax";
 #load "../../lib/decision-prepare.coax";
 

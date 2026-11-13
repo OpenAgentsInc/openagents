@@ -26,7 +26,7 @@ case "$realm" in
   everglade)
     pack="$web/realms/everglade/assets/everglade.pack"
     [[ -f "$pack" ]] || { echo "check.sh: no $pack (verse/tools/pack_realm.py builds it)" >&2; exit 1; }
-    libraries=("$a/move/player.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax")
+    libraries=("$a/move/player.coax" "$m/grid.coax" "$m/everglade/river.coax" "$root/everglade/npc/guard-guide-policy.coax")
     given=(--pack "$pack" --facts "$here/everglade.facts"); there="--pack everglade.pack --facts everglade.facts"
     steps=(--frames 240 --every 30 --golden --extra 9000 --keys 10:-6:1,40:-4:1,80:-4:0,150:-6:0,160:32:1,162:32:0) ;;
   stair)

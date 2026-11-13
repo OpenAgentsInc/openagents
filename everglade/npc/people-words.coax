@@ -3,8 +3,8 @@
 // server (coax/web/api/npc-personas.coax, which loads it too) read the same constants, so the persona
 // the server gives the model and the one the page shows can't drift. A page sends only a person's id
 // (verse/talk-id.coax of their name); the server looks them up here.
-//   coax/bin/coax test verse/everglade/people-words.coax --library
-#load "../talk-id.coax";
+//   coax/bin/coax test everglade/npc/people-words.coax --library
+#load "../../verse/talk-id.coax";
 
 EG_PEOPLE :: 28;   // plan.coax's EG_SPOTS (people.coax checks the two agree)
 EG_WORLD :: "Everglade";

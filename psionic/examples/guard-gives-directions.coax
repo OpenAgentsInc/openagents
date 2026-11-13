@@ -1,6 +1,6 @@
 #import "Basic";
-#load "../../verse/everglade/guard-guide-game.coax";
-#load "../../verse/everglade/guard-guide-session.coax";
+#load "../../everglade/npc/guard-guide-game.coax";
+#load "../../everglade/npc/guard-guide-session.coax";
 
 // Only authored facts, synthetic response bytes and monotonic sample times.
 // Creating an effect does not execute HTTP. No model or game is contacted.

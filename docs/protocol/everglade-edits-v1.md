@@ -3,7 +3,7 @@
 What an admin adds to Everglade's designed city: placed things, hidden
 buildings and people taken away. The list is text. Profile:
 [`everglade-edits-v1.json`](../../proto/verse/everglade-edits-v1.json).
-Codec: `verse/everglade/edits.coax`.
+Codec: `everglade/world/edits.coax`.
 
 The list is the string `doc.edits` of the realm's published world. An admin's
 page sends it with `POST /api/playtest/world/everglade` as
@@ -43,7 +43,7 @@ The room doesn't parse the list. It only notes that one came
 Check the profile with:
 
 ```sh
-coax/web/tool.sh verse/everglade/edits-profile.coax proto/verse/everglade-edits-v1.json
+coax/web/tool.sh everglade/world/edits-profile.coax proto/verse/everglade-edits-v1.json
 ```
 
 A change to a line's fields is `eg-edit 2`, read beside this one.

@@ -54,7 +54,7 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "E2Plate _plates remote_plate REMOTE_PLATE PLATE_NEAR _plate_seen =Label _labels =labels draw_names np_named name_point name_hidden md_plate nameplate name_plate",
     files = "nameplate"},
   EfFeature.{name = "spell-effects", title = "spell effects", required = true, issue = 13086,
-    owners = "aethyr/fx/ everglade/client/class-look.coax verse/everglade/gpu-fx.coax",
+    owners = "aethyr/fx/ everglade/client/class-look.coax everglade/client/gpu/gpu-fx.coax",
     marks = "sp_fx SpPuff SpMeteor FX_FIRE =FX_BOLT sp_glow sp_shards sp_bolt_jag =spell_col fx_spot fx_col fx_attacks fx_cause fx_event MOCK_FX fx_feat lw_fx lw_spell_col =Fx =add_fx draw_fx net_draw_ wl_draw",
     files = ""},
   EfFeature.{name = "camera", title = "camera", required = true, issue = 13087,

@@ -5,7 +5,7 @@
 // nothing moves between frames, so the same clock and causes give the same frame on every client.
 //
 // A puff is three rows of four floats (FX_PUFF_FLOATS), the layout Everglade's spells already draw
-// (verse/everglade/gpu-fx.coax, everglade-spells.coax sp_fx):
+// (everglade/client/gpu/gpu-fx.coax, everglade-spells.coax sp_fx):
 //   at.xyz, size (its radius, m)
 //   colour.rgb, heat (fire: 0 to 1, how white its heart is; smoke: how opaque; a glow: how white its core)
 //   axis.xyz (a streak's half-length along its flight, m; zero for a round puff; fire: x is how much

@@ -397,7 +397,7 @@ tasks (native-gpu.json) come after the port.
   `verse/everglade/gpu.module`), and the hand-written WGSL is gone. The
   pass check lowers the same Coax to SPIR-V (`int-hash` now swaps the hash
   in the Coax and writes the module from it), so the browser and the 4080
-  draw from one file. The particles follow: `verse/everglade/gpu-fx.coax`
+  draw from one file. The particles follow: `everglade/client/gpu/gpu-fx.coax`
   (`look` and `near` `#flat`) with `gpu-fx.bindings` (everglade's
   uniforms read up to the eye, 7 vec4fs) and `gpu-fx.module` writes
   `everglade-fx.wgsl`, and the pass check lowers it directly, so nothing

@@ -11,7 +11,7 @@
 # Seeded when the check landed: aethyr-up 57, everglade-up 7, tests 126.
 
 # The engine loads from a realm, a page or the game
-aethyr-up aethyr/fx/gpu-puff.coax -> verse/everglade/gpu-fx.coax
+aethyr-up aethyr/fx/gpu-puff.coax -> everglade/client/gpu/gpu-fx.coax  # its target moved from verse/everglade/ to everglade/client/gpu/; the load itself is as old (#13269)
 aethyr-up aethyr/net/latency.coax -> everglade/shared/everglade-wire.coax  # its target moved from apps/openagents-web/ to everglade/shared/; the load itself is as old (#13346)
 aethyr-up rules/srd/contact-health-probes.coax -> verse/experimental-hostiles.coax  # its file moved from aethyr/rules/srd/ to rules/srd/; the load itself is as old (#13270)
 aethyr-up rules/srd/hostile-permission-probes.coax -> verse/experimental-hostiles.coax  # its file moved from aethyr/rules/srd/ to rules/srd/; the load itself is as old (#13270)
@@ -78,3 +78,4 @@ context everglade/client/class-feel.coax -> rules/srd/condition-bearing.coax  # 
 context everglade/client/client.coax -> rules/srd/condition-display.coax  # Everglade's client moved into everglade/client/ (world): it shows the SRD's conditions (#13268)
 context everglade/client/bag.coax -> everglade/model/content.coax  # Everglade's page words your quests and items from the content tables, which Everglade's rules for them read (EC_*, eq_next, ec_slot): the page shows the record, the room and the ledger decide it (#13381)
 context coax/lib/media/media.coax -> aethyr/ui/font.coax  # the stroke font moved from apps/openagents-web/ to the engine's UI, beside draw.coax; the load is as old (#13268)
+context apps/aethyrforge-desktop/scene-policy.coax -> everglade/world/edits.coax  # the editor's scene policy reads Everglade's edit codec, which moved from verse/everglade/ into the world context; the load is as old (#13269)

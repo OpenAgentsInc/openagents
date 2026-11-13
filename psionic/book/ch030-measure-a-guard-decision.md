@@ -12,7 +12,7 @@ The corpus is `guard-editorial-v1`, authored before the first live request.
 Its [label manifest](../fixtures/guard-evaluation-labels-v1.jsonl) has SHA-256
 `099bf141d90a6b85dd2666e7797682054efbcfa9263f3966ebc9f01e8c647141`.
 The executable source is
-[`guard-evaluation.coax`](../../verse/everglade/guard-evaluation.coax).
+[`guard-evaluation.coax`](../../everglade/npc/guard-evaluation.coax).
 
 Sixteen eligible cases cross four time categories with four weather categories.
 Their index is `day * 4 + weather`. Each request uses the product's exact
@@ -70,7 +70,7 @@ usable because its option was sensible. An early 503 is an on-time refusal,
 not a covered answer. Missing cases remain missing; a duplicate case refuses
 the aggregate instead of improving its denominator.
 
-<!-- source: verse/everglade/guard-evaluation.coax score -->
+<!-- source: everglade/npc/guard-evaluation.coax score -->
 ```jai
 gev_evaluate :: (index:int,status:string,body:string,elapsed_ms:int)->GeResult #export_c #effects(all) {
     c:=gev_case(index);if !c.valid {return GeResult.{};}
@@ -94,7 +94,7 @@ cannot grant game authority.
 
 ## Three clocks and one terminal outcome
 
-[`guard-metrics.coax`](../../verse/everglade/guard-metrics.coax) owns a six-entry
+[`guard-metrics.coax`](../../everglade/npc/guard-metrics.coax) owns a six-entry
 local ledger, matching the visit's attempt cap. Each entry contains a local
 sequence, monotonic times and an enum outcome. It stores no request/answer
 content, user text or remote identity. A duplicate or late callback cannot

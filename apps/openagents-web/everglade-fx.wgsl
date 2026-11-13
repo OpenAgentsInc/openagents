@@ -1,4 +1,4 @@
-// ---- generated: verse/everglade/gpu-fx.coax (the module) by coax wgsl; do not edit
+// ---- generated: everglade/client/gpu/gpu-fx.coax (the module) by coax wgsl; do not edit
 struct coax_t8 {
   x: vec4f,
   y: vec4f,

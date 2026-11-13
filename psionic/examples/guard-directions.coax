@@ -1,5 +1,5 @@
 #import "Basic";
-#load "../../verse/everglade/guard-guide.coax";
+#load "../../everglade/npc/guard-guide.coax";
 #load "../lib/game/decision.coax";
 
 // Synthetic response and timestamps only. No model request or game mutation.

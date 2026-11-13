@@ -1,8 +1,8 @@
 # Directions from current game facts
 
-[guard-guide-game.coax](../../../verse/everglade/guard-guide-game.coax) is an
+[guard-guide-game.coax](../../../everglade/npc/guard-guide-game.coax) is an
 independent `#authority` root. Its data-only
-[GgpFacts](../../../verse/everglade/guard-guide-game-types.coax) carries the
+[GgpFacts](../../../everglade/npc/guard-guide-game-types.coax) carries the
 current followed quest and local eligibility facts. It does not load the GG
 implementation, walk quest history, compute geometry or perform effects.
 
@@ -35,7 +35,7 @@ these facts from game state, including armed spell UI and other active edit UI.
 A route also requires `world_known`, present target/destination, no arrival,
 and an untouched route. Since 2026-10-31 the page fills `edit_count`,
 `hidden` and `altered_geometry` with only what touches the route the tip
-describes (`verse/everglade/guide-route.coax`): placed things and hidden plan
+describes (`everglade/npc/guide-route.coax`): placed things and hidden plan
 buildings whose footprints reach the walked strip, live spell walls/stones
 across it, and broken pieces or rubble on it; `gone` (removed people) is 0,
 since Bram and a quest giver are checked as actors. All must be zero; the
@@ -77,8 +77,8 @@ result with a successful `eg_edits_answer` using
 containing invalid edit text is still refused by that second independent read.
 
 ```shell
-coax/bin/coax test verse/everglade/guard-guide-game.coax --library
-coax/bin/coax mutate verse/everglade/guard-guide-game.coax --root-only --jobs 6
+coax/bin/coax test everglade/npc/guard-guide-game.coax --library
+coax/bin/coax mutate everglade/npc/guard-guide-game.coax --root-only --jobs 6
 psionic/tests/guard-guide/check-game.sh /tmp/guard-guide-game-native
 ```
 

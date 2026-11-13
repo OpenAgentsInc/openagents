@@ -373,7 +373,7 @@ the costs a search lowers.
   Separation between characters and a rule for two characters meeting in a
   narrow street are not built.
 - **Changes in the world.** Everglade's guide checks whether an edit, a
-  spell's wall or rubble touches a route (`verse/everglade/guide-route.coax`).
+  spell's wall or rubble touches a route (`everglade/npc/guide-route.coax`).
   Marking the cells and links an edit covers, so only routes over them
   replan ([chapter 52](ch052-edit-a-realm-in-place.md)), is not built.
 - **Stuck consumers.** The actor profile reports STUCK and retries on authored
@@ -400,7 +400,7 @@ the costs a search lowers.
   heads, and to the reactor.
 - [verse/everglade/plan.coax](../../verse/everglade/plan.coax),
   [routines.coax](../../verse/everglade/routines.coax) and
-  [guide-route.coax](../../verse/everglade/guide-route.coax): Everglade's
+  [guide-route.coax](../../everglade/npc/guide-route.coax): Everglade's
   street graph, daily walks at `FOLK_WALK` (1.2 m/s), and the route a
   guard's directions describe.
 - [apps/openagents-web/villaguide.coax](../../apps/openagents-web/villaguide.coax):

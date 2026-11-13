@@ -17,7 +17,7 @@ CC_KIT_MESH :: [5]int.[0,3,2,1,4];               // greataxe, the Fighter's grea
 CC_KIT_SCALE :: [5]f32.[0.6,0.55,0.45,0.33,0.78];   // about 1.3 m, 1.5 m, 1.05 m, 0.75 m and (the bow, tip to tip) 1.55 m long
 CC_KIT_GRIP :: [5]f32.[-0.36,0.05,0.0,0.0,0.0];    // where the (lower) right fist closes: the greataxe and greatsword low on the grip, a sword mid-grip; the bow's left fist at its middle
 CC_KIT_TWO :: [5]bool.[true,true,false,false,false];  // held in both hands: the left fist up the haft, as the owned two-handed clips place it
-CC_KIT_HOLD :: [5]int.[0,3,0,0,0];               // a two-hander's first owned clip (verse/everglade/two-hand-rig.coax): the axe's, the sword's
+CC_KIT_HOLD :: [5]int.[0,3,0,0,0];               // a two-hander's first owned clip (everglade/scene/two-hand-rig.coax): the axe's, the sword's
 CC_KIT_BOW :: 4;
 CC_BOW_GRIP_X :: -0.127;   // source units from the bow's middle (as packed) to its grip, across the limbs
 // First person (aethyr/cam/firstperson.coax): zoomed all the way in (the wheel's nearest, 0.65 m) the

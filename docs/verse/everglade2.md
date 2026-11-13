@@ -57,7 +57,7 @@ share:
   back into them to the south. It is 4.4 m wide and 0.55 m deep, shallow enough to wade, with open
   banks you may walk along (`e2_by_brook`).
 - Both clearings and the brook are placed with Everglade's shared clearing module
-  (`verse/everglade/clearing.coax`): `clearing_open` (the ragged open ground), `clearing_floor`
+  (`everglade/world/clearing.coax`): `clearing_open` (the ragged open ground), `clearing_floor`
   (the ground levelled in), `clearing_ring` (the band of trees past the edge), and `stream_x`,
   `stream_dist`, `stream_bed` and `stream_keep` (the channel, its banks, and where trees may
   stand). `forest.coax` only says where they lie. `e2_clearing` is the larger of the two

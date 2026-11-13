@@ -1,5 +1,5 @@
 // Opt-in shadow consumer: proposals are counted, never rendered or applied.
-#load "../../verse/everglade/guard-types.coax";
+#load "../../everglade/npc/guard-types.coax";
 #load "../../verse/everglade/captain.coax";
 // The guard captain's plan (verse/everglade/captain.coax) is asked while you are wanted; its state
 // is the face's (as the ambient session is). The "+captain" hash rehearses it locally (for clips),

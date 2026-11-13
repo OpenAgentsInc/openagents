@@ -447,8 +447,8 @@ would change Everglade's companion, so it is left as it is (see below).
   feature.
 - [verse/everglade/watch.coax](../../verse/everglade/watch.coax): the town
   watch, crimes, sight and hearing, wanted state and SRD 5.2.1 guards.
-- [verse/everglade/guard-decision.coax](../../verse/everglade/guard-decision.coax)
-  and [guard-types.coax](../../verse/everglade/guard-types.coax): the
+- [everglade/npc/guard-decision.coax](../../everglade/npc/guard-decision.coax)
+  and [guard-types.coax](../../everglade/npc/guard-types.coax): the
   cosmetic guard decision, its observation (`GaObservation`) and effects.
 - [docs/research/game-engine-systems.md](../../docs/research/game-engine-systems.md),
   section 37: the perception, knowledge and decision inventory.

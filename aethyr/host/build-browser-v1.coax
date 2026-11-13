@@ -7,7 +7,7 @@ tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: build-browser-v1 PREPARED_ROOT ORIGINAL_COMPILER NEW_OUT");return 2;}
  root:=args_at(a[..],0);compiler:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 1;}paths:[12][4096]u8;
  argv:[11]string;argv[0]="bash";argv[1]=fs_join(root,"coax/web/wasm.sh",paths[0][..]);argv[2]=fs_join(root,"apps/openagents-web/everglade5e.coax",paths[1][..]);argv[3]=fs_join(root,"aethyr/host/tests/everglade-v1-face.c",paths[2][..]);argv[4]=fs_join(out,"everglade5e.wasm",paths[3][..]);
- for file,i:[5]string.["everglade/shared/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax"] {argv[5+i]=fs_join(root,file,paths[4+i][..]);}
+ for file,i:[5]string.["everglade/shared/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax"] {argv[5+i]=fs_join(root,file,paths[4+i][..]);}
  env:[5]string;buffers:[2][8192]u8;o:[1]Jo;jo_start(o[..],buffers[0][..]);jo_put(o[..],"COAX=");jo_put(o[..],compiler);env[0]=jo_text(o[..]);env[1]="COAX_JOBS=1";env[2]="COAX_CHECK_JOBS=1";env[3]="COAXIAL_RENDER=1";jo_start(o[..],buffers[1][..]);jo_put(o[..],"COAXIAL_ADMITTED_DIR=");jo_put(o[..],fs_join(out,"emission",paths[9][..]));env[4]=jo_text(o[..]);
  stdout:[1048576]u8;stderr:[1048576]u8;r:=rtq_command(argv[0..<10],env[..],proc_now_ms()+840000,out,"build",stdout[..],stderr[..]);return ifx rtq_ok(r) then 0 else 1;
 }

@@ -9,7 +9,7 @@
 //   coax/bin/coax test --library verse/everglade/people.coax --steps 2000000000   (plan.coax's open-ground check ~714M)
 
 #load "plan.coax";
-#load "people-words.coax";   // who they are, as words (the server reads the same)
+#load "../../everglade/npc/people-words.coax";   // who they are, as words (the server reads the same)
 #load "../../aethyr/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
 
 eg_is_cat :: (i: int) -> bool { return i >= 0 && i < EG_SPOTS && EG_SPOT_CAT[i]; }

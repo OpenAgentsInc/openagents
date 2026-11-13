@@ -2,7 +2,7 @@
 """A clip-only rig: a pack manifest's clips retargeted onto the people's two skeletons and written as
 a Coax rig (people.rig_coax), with no parts.
 
-  python3 verse/tools/clip_rig.py verse/packs/everglade-two-hand.json verse/everglade/two-hand-rig.coax TWOHAND
+  python3 verse/tools/clip_rig.py verse/packs/everglade-two-hand.json everglade/scene/two-hand-rig.coax TWOHAND
 
 The manifest names "libraries" (the first gives the library rest the clips' pelvis moves are taken
 from), "clips" ({name, library, clip}) and the "skeletons" (male, female), as

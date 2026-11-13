@@ -186,7 +186,7 @@ The shared modules are `aethyr/fx/` (`puff.coax` recipes, `abilities.coax`;
 `spell-light.coax`, each spell's colour; `battle.coax`, which effect each SRD
 battle event starts; `flat.coax`, a cause drawn from above),
 `class-look.coax` (`xc_look_of`, `xc_look_start`: which recipe a kit cast
-starts) and `verse/everglade/gpu-fx.coax`.
+starts) and `everglade/client/gpu/gpu-fx.coax`.
 
 | Zone | Where |
 | --- | --- |

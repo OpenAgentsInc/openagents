@@ -22,7 +22,7 @@ A Metaverse realm at https://openagents.com/worlds/metahuman-lab, not listed on 
 
 ## How it is made
 
-- `apps/openagents-web/metahumanlab.coax` is the world: the camera, the clips and the body. `aethyr/anim/skin.coax` plays the clips on the rig in `verse/everglade/people-rig.coax`, and `aethyr/cam/shot.coax` makes the camera's orbit.
+- `apps/openagents-web/metahumanlab.coax` is the world: the camera, the clips and the body. `aethyr/anim/skin.coax` plays the clips on the rig in `everglade/scene/people-rig.coax`, and `aethyr/cam/shot.coax` makes the camera's orbit.
 - `aethyr/anim/mannequin.coax` names the joints and maps another body's joint names onto them, so a body built on the same hierarchy can use this skeleton and its clips.
 - `metahumanlab-face.c` binds the world for the browser, and `metahumanlab.wgsl` (from `gpu/metahumanlab.coax`) traces the floor and the figure for each pixel and lights them.
 - `docs/verse/metahuman-support.md` is the plan this world starts.

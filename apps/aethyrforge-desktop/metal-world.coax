@@ -3,4 +3,4 @@
 
 // Movement, model-decision recording and the producer share one C symbol owner.
 #load "../../everglade/shared/everglade-step.coax" as movement;
-#load "../../verse/everglade/guard-guide-policy.coax" as guard_policy;
+#load "../../everglade/npc/guard-guide-policy.coax" as guard_policy;

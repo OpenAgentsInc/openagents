@@ -4,7 +4,7 @@
 #load "../../../coax/lib/sys/fs.coax";
 #load "../guard-live/token-capacity-policy.coax";
 #load "token-policy.coax";
-#load "../../../verse/everglade/guard-guide-eval-wire.coax";
+#load "../../../everglade/npc/guard-guide-eval-wire.coax";
 #load "../../lib/serve-request.coax";
 #load "../../lib/decision-prepare.coax";
 tool_main :: ()->int #export_c #effects(all) {

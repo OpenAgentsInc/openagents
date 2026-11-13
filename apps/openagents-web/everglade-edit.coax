@@ -8,7 +8,7 @@
 // arrows), turns it (R), resizes it (+ and -) or deletes it (Delete); one on
 // a person or a cat of the city picks them, and DELETE takes them away; Esc
 // lets go. A change that would put a thing past the edge, in the woods, in a
-// building or in another thing is refused (verse/everglade/edits.coax).
+// building or in another thing is refused (everglade/world/edits.coax).
 //
 // Edits made here and by voice (everglade-voice.coax) are one list with one
 // undo and redo. The list is published as Everglade's world a moment after

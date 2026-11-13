@@ -21,7 +21,7 @@ mb_check_runner :: ()->bool {
 }
 mb_unit :: (root:string,work:string,compiler:string,name:string)->bool {
  names:=[13]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","fixture","AppKitInput","HostNetwork","entropy-policy","AudioFixture"];
- sources:=[13]string.["apps/aethyrforge-desktop/metal-world.coax","everglade/shared/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-images.coax","aethyr/host/fixture.coax","aethyr/host/appkit-input.coax","aethyr/host/native-socket.coax","coax/lib/crypto/entropy.coax","aethyr/host/audio-fixture.coax"];
+ sources:=[13]string.["apps/aethyrforge-desktop/metal-world.coax","everglade/shared/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","aethyr/render/native-images.coax","aethyr/host/fixture.coax","aethyr/host/appkit-input.coax","aethyr/host/native-socket.coax","coax/lib/crypto/entropy.coax","aethyr/host/audio-fixture.coax"];
  found:=-1;for n,i:names {if n==name {found=i;}}if found<0 {return false;}
  text:[256]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".h");paths:[5][4096]u8;header:=fs_join(work,jo_text(o[..]),paths[0][..]);
  o[0]=Jo.{};jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".c");code:=fs_join(work,jo_text(o[..]),paths[1][..]);

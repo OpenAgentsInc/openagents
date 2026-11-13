@@ -2363,7 +2363,7 @@
     },
     {
       "pass_id": "particle_over",
-      "source": "verse/everglade/gpu-fx.coax",
+      "source": "everglade/client/gpu/gpu-fx.coax",
       "vertex": "egfx_particle_over_vs",
       "fragment": "egfx_particle_over_fs",
       "wgsl_vertex": "particle_over_vs",
@@ -2398,7 +2398,7 @@
     },
     {
       "pass_id": "particle",
-      "source": "verse/everglade/gpu-fx.coax",
+      "source": "everglade/client/gpu/gpu-fx.coax",
       "vertex": "egfx_particle_vs",
       "fragment": "egfx_particle_fs",
       "wgsl_vertex": "particle_vs",
@@ -3750,7 +3750,7 @@
     "verse/everglade/gpu.coax": "1ee5486e07d851e2bc29c6d95afa5f0996550b75849c6a31f0b8adf2bec6d184",
     "verse/everglade/gpu.module": "bfab57518f3f98254fd11f702534d385bdf296c6f00e0bde642633190f001db3",
     "verse/everglade/gpu.bindings": "6d8dbfed3d1dfd5e6b0afbafca5423dbf85005ed69bf1d98bda42cf07f6f1530",
-    "verse/everglade/gpu-fx.coax": "fbdf179aa591086eb1a612e7cfd22d0b56c6b0bd083d4698d7ce52a6be199333",
+    "everglade/client/gpu/gpu-fx.coax": "fbdf179aa591086eb1a612e7cfd22d0b56c6b0bd083d4698d7ce52a6be199333",
     "verse/everglade/gpu-fx.module": "8b176923d0c7d685c688920904f352f30869d67424e965ef882cc8ab5d6649e9",
     "verse/everglade/gpu-fx.bindings": "b17ceaef68bf999a2f891390fb5a915b12c1ea682cd310b0db8a3844a86b367a",
     "apps/openagents-web/everglade.wgsl": "12dce0734ca3be0cecdc41039961c4863444e9a5c57df6849ab2fe4996319be6",

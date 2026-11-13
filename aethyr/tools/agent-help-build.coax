@@ -7,7 +7,7 @@
 #load "../anim/cut-document.coax";
 #load "../render/capture-profile.coax";
 #load "../character/character-appearance.coax" as appearance;
-#load "../../verse/everglade/edits.coax";
+#load "../../everglade/world/edits.coax";
 
 HelpText :: struct {data:[131072]u8;n:int;bad:bool;}
 HelpBuild :: struct {first:[4]HelpText;rows:[1]HelpText;count:int;}

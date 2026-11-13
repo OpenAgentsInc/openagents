@@ -265,7 +265,7 @@ An ID says which declaration; a revision says whether it may have changed.
 it loads). Revisions are module-scoped and conservative: editing any member,
 even a comment, changes every declaration's revision in that module, while
 their IDs stay. Everglade's page and its guard policy are compiled
-separately and both load `verse/everglade/guard-types.coax`, which claims
+separately and both load `everglade/npc/guard-types.coax`, which claims
 `verse.everglade.guard_types`; both report the same IDs and revisions for
 `GaObservation`, `GaInput` and `GaEffect`.
 

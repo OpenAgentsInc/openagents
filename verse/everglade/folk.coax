@@ -3,7 +3,7 @@
 // Modular Character Outfits - Fantasy parts in the realm's pack (a body's
 // outfit, a head, a hairstyle, maybe a beard or a hood; verse/tools/people.py
 // rebinds every part onto one of two skeletons), and plays the Universal
-// Animation Library's clips through verse/everglade/people-rig.coax.
+// Animation Library's clips through everglade/scene/people-rig.coax.
 // Who wears what, their skin, hair and dye are here, a row a spot of
 // plan.coax; what they say is people.coax's. The cats are not here: they
 // are drawn apart, as cats.
@@ -26,7 +26,7 @@
 //   coax/bin/coax test --library verse/everglade/folk.coax --steps 2000000000
 
 #load "plan.coax";
-#load "people-rig.coax";
+#load "../../everglade/scene/people-rig.coax";
 #load "routines.coax";
 
 // The pack's parts, in PEOPLE_PART_NAME's order.

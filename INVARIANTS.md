@@ -5974,7 +5974,7 @@ Actual public/cookie scope and remaining quality gates are recorded in
 
 
 The separate `everglade-directions-v1` candidate in
-`verse/everglade/guard-guide.coax` requires an explicit authored help intent,
+`everglade/npc/guard-guide.coax` requires an explicit authored help intent,
 a current unmet goal, eligible gameplay and a known available route. It selects
 only fixed authored tips. Its decoder pins the checkpoint/provider and complete
 choice contract; semantic admission rejects a route for another goal, expired

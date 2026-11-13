@@ -336,7 +336,7 @@ All paths below are at `853417f290`, the Nuke's parent. Restore them with
 | Piece | Where | Reuse |
 | --- | --- | --- |
 | Skinned clip playback | `aethyr/anim/skin.coax`: 96 joints, rest pose and inverse binds, translation lerp and rotation slerp, a 0.22 s smoothstep cross-fade, gaits that advance with distance, and palettes written as three rows of four | The body animation core. Its joint limit has to rise, and it needs layers. |
-| Part rebinding and clips | `verse/tools/people.py`, `verse/everglade/people-rig.coax`: Quaternius CC0 parts rebound onto 65-joint male and female skeletons, with 12 clips (idle, walk, talk, nod, fold, lantern, spell, slash, run, die, knock, cower) | This is the retarget method. The joint names match the MetaHuman body's main skeleton, so the clips retarget by name. |
+| Part rebinding and clips | `verse/tools/people.py`, `everglade/scene/people-rig.coax`: Quaternius CC0 parts rebound onto 65-joint male and female skeletons, with 12 clips (idle, walk, talk, nod, fold, lantern, spell, slash, run, die, knock, cower) | This is the retarget method. The joint names match the MetaHuman body's main skeleton, so the clips retarget by name. |
 | GPU skinning | `verse/everglade/gpu.coax`: a 24-byte vertex pulled from a storage buffer, four joints and weights, per-person pose blocks with tint rows after the joints | The vertex path for crowds |
 | Pack format | `verse/tools/pack_realm.py` (VPK1): `C` lines for skinned characters, licence per entry, budget, style checks | Extend it for a human pack, or write a sibling compiler |
 | Asset identity | `aethyr/core/assets.coax`: content-addressed packs admitted whole or refused | A private pack is admitted by digest |
@@ -673,7 +673,7 @@ It holds no MetaHuman asset and draws with none.
 ### Built
 
 - **The figure.** One human figure on a studio floor. Its skeleton and clips
-  are the CC0 people rig (`verse/everglade/people-rig.coax`: the Quaternius
+  are the CC0 people rig (`everglade/scene/people-rig.coax`: the Quaternius
   male and female skeletons, 65 joints, and the Universal Animation
   Library's 12 clips), played by `aethyr/anim/skin.coax`. Its body is a building
   block written in `apps/openagents-web/metahumanlab.coax`: 25 capsules, one

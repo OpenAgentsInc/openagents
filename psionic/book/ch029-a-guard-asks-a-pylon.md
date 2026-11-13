@@ -23,7 +23,7 @@ permission. The request contains a short authored statement about the currently
 calm living guard, the nearby peaceful living player, and bounded time/weather
 categories. It contains no conversation, private history or hidden information.
 
-<!-- source: verse/everglade/guard-decision.coax request -->
+<!-- source: everglade/npc/guard-decision.coax request -->
 ```jai
 ga_request :: (out:[]u8,o:GaObservation)->int #effects(all) {
   days:=[4]string.["night","morning","afternoon","evening"];weather:=[4]string.["clear","cloudy","rain","storm"];
@@ -63,7 +63,7 @@ A reply callback stages an enum. Only a later simulation boundary may consume
 it against current context and eligibility. Merely receiving a valid HTTP200
 cannot count an application in that callback.
 
-<!-- source: verse/everglade/guard-decision.coax frame -->
+<!-- source: everglade/npc/guard-decision.coax frame -->
 ```jai
 ga_frame :: (s:[]GaSession,o:GaObservation,generation:int,revision:int,now_ms:int) #effects(all) {
   c:=GdContext.{epoch=s[0].epoch,actor=0,generation=generation,revision=revision*16+o.day*4+o.weather,policy=1,options=1};
@@ -97,10 +97,10 @@ seconds, beyond the eight-second request lease.
 
 ## Keep policy in a separate Coax library
 
-[`guard-decision.coax`](../../verse/everglade/guard-decision.coax) is an
+[`guard-decision.coax`](../../everglade/npc/guard-decision.coax) is an
 independently checked `#authority` library. The page adapter exports only
 observations and local lifecycle metadata through
-[`guard-types.coax`](../../verse/everglade/guard-types.coax). The C face forwards
+[`guard-types.coax`](../../everglade/npc/guard-types.coax). The C face forwards
 that data to the policy, then forwards the policy's URL/body/flags/remaining
 milliseconds to the generic HTTP effect. A fixed C-owned policy arena holds
 state; C does not choose the action or admission rule.
@@ -142,10 +142,10 @@ without granting an action.
 Focused checks avoid real models and the unchanged world/crypto suites:
 
 ```shell
-coax/bin/coax test verse/everglade/guard-decision.coax --library
-coax/bin/coax mutate verse/everglade/guard-decision.coax --root-only --jobs 4
+coax/bin/coax test everglade/npc/guard-decision.coax --library
+coax/bin/coax mutate everglade/npc/guard-decision.coax --root-only --jobs 4
 verse/test_guard_ai.sh
-coax/web/wasm.sh apps/openagents-web/everglade.coax apps/openagents-web/everglade-face.c /tmp/everglade.wasm aethyr/move/player.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-decision.coax
+coax/web/wasm.sh apps/openagents-web/everglade.coax apps/openagents-web/everglade-face.c /tmp/everglade.wasm aethyr/move/player.coax verse/grid.coax verse/everglade/river.coax everglade/npc/guard-decision.coax
 EVERGLADE_GUARD_WASM=/tmp/everglade.wasm bun test coax/web/everglade-guard.test.ts
 ```
 

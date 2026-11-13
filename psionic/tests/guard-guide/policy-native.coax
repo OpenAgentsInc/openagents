@@ -1,7 +1,7 @@
 // Native compiler/ABI check only; no model, service or product effects.
 #import "Basic";
 #load "../../../coax/lib/sys/tool.coax";
-#load "../../../verse/everglade/guard-guide.coax";
+#load "../../../everglade/npc/guard-guide.coax";
 
 #test "the native driver has an independently expected development smoke case" {#assert guide_native_check(1);}
 guide_native_check :: (count:int)->bool {

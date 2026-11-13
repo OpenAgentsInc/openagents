@@ -663,7 +663,7 @@ record transfer in both directions.
 - [decision-trace.coax](../core/decision-trace.coax) binds each accepted model
   choice to all six local ticket identities, sequence, deadline and application
   time in a `REPLAY_MODEL` envelope. The
-  [guard adapters](../../verse/everglade/guard-replay.coax) run the actual
+  [guard adapters](../../everglade/npc/guard-replay.coax) run the actual
   ambient/directions policy on a private copy, record before publication,
   and refuse effects when the trace is full. They keep authored local lines
   independent of the shadow model. Replay stages the recorded choice, runs

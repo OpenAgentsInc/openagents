@@ -10,7 +10,7 @@ a useful one. Its quiet/greeting/weather cohort gave the model no pressing
 reason to speak. Here we start with a concrete, low-pressure need: a traveller
 explicitly asks a guard for directions to a current destination.
 
-The candidate is [`everglade-directions-v1`](../../verse/everglade/guard-guide.coax).
+The candidate is [`everglade-directions-v1`](../../everglade/npc/guard-guide.coax).
 It chooses among five fixed authored tips: quiet, the commons quest board,
 the East Gate, the North Trail and the West Gate. It cannot generate dialogue
 or change movement, quests, crime, combat or rewards. Directions remains an
@@ -27,7 +27,7 @@ ruins, or through the West Gate to the river crossing. Each returns to the
 quest board on the commons. The current HUD objective provides a bounded
 destination category.
 
-The [observation schema](../../verse/everglade/guard-guide-types.coax) carries
+The [observation schema](../../everglade/npc/guard-guide-types.coax) carries
 only that current goal and a few local facts: an explicit Directions request,
 an eligible guard/player, a known available route, whether the traveller has
 already arrived, and whether a guide tip is already visible or cooling down.

@@ -1,5 +1,5 @@
 // Tool admission/recording only. This does not grant a game action.
-#load "../../../verse/everglade/guard-evaluation.coax";
+#load "../../../everglade/npc/guard-evaluation.coax";
 #authority;
 GP_PROVIDER :: "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7";
 #test "only a finite contiguous eligible cohort may issue live requests" {

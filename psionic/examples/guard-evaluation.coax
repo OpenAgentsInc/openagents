@@ -1,5 +1,5 @@
 #import "Basic";
-#load "../../verse/everglade/guard-evaluation.coax";
+#load "../../everglade/npc/guard-evaluation.coax";
 
 // Synthetic decoder fixture only: no model, network, player outcome or
 // calibration measurement. Editorial preferences are fixed before live calls.

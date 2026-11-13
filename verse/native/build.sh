@@ -67,7 +67,7 @@ fi
 units_too=(); faces_too=()   # Coax units kept by their own names, and C faces of their own
 case "$realm" in
   everglade) app="$web/everglade.coax"; face="$web/everglade-face.c"
-    libraries=("$root/aethyr/move/player.coax" "$root/verse/grid.coax" "$root/verse/everglade/river.coax" "$root/verse/everglade/guard-guide-policy.coax") ;;
+    libraries=("$root/aethyr/move/player.coax" "$root/verse/grid.coax" "$root/verse/everglade/river.coax" "$root/everglade/npc/guard-guide-policy.coax") ;;
   stair) app="$web/stair.coax"; face="$web/stair-face.c"; libraries=() ;;
   # a flat realm (belt, waterlab, orbitleague): its module and face, its libraries #loaded
   # the Grid (/realms/the-grid, the homepage's module): its session (verse/gridwalk.coax, which

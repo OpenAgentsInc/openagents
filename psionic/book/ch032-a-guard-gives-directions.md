@@ -20,7 +20,7 @@ Directions is a separate interaction from `talk_to`. It neither opens character
 chat nor submits player speech. The
 [page](../../apps/openagents-web/everglade-guide.coax) observes the single visible
 followed objective and its current stage. The
-[projection policy](../../verse/everglade/guard-guide-game.coax) maps those facts
+[projection policy](../../everglade/npc/guard-guide-game.coax) maps those facts
 to the existing authored routes:
 
 | Visible objective | Current stage | Local tip |
@@ -47,7 +47,7 @@ A route must also be known in the current world. Both the outer successful world
 response and the page's document parser must agree that the world was read.
 Unknown, malformed or failed loads refuse. The route is the one the tip
 describes: from Bram along the plan's streets and trails (shortest by length)
-to the named place ([guide-route.coax](../../verse/everglade/guide-route.coax)).
+to the named place ([guide-route.coax](../../everglade/npc/guide-route.coax)).
 Only what touches that walked strip refuses directions: a placed thing or hidden
 building whose footprint reaches it, a live spell wall or stone across it, or a
 broken piece or its rubble on it. Edits elsewhere keep the tip, so the published
@@ -56,9 +56,9 @@ refuses it. Seeing a destination object alone does not prove a reachable route.
 
 ## Put the local line before the network
 
-The [session policy](../../verse/everglade/guard-guide-session.coax) composes the
+The [session policy](../../everglade/npc/guard-guide-session.coax) composes the
 existing Gg semantic contract with the Gd request ticket. Its
-[data-only contract](../../verse/everglade/guard-guide-session-types.coax) returns
+[data-only contract](../../everglade/npc/guard-guide-session-types.coax) returns
 a `GgsView` for drawing and a separate `GgsEffect` for HTTP. The displayed action
 always comes from `gg_baseline`, never from a remote callback.
 
@@ -174,7 +174,7 @@ The real Wasm face uses two phases within the same frame:
 3. Coax finishes the HUD from that current view before the frame returns.
 
 C does not decide the route or interpret model probabilities. The
-[aggregate policy](../../verse/everglade/guard-guide-policy.coax) loads old ambient
+[aggregate policy](../../everglade/npc/guard-guide-policy.coax) loads old ambient
 policy, Gg/Gd/Gm and the new projection/session once, so their shared exports have
 one linked owner. The large page imports only data types; its pure VM checks do
 not pull every authority policy into a game-rendering check.

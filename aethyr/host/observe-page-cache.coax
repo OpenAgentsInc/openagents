@@ -37,7 +37,7 @@ tool_main::()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..])||args_count(a[..])<3 {tool_errln("usage: observe-page-cache COMPILER_SHA256 CACHE_DIRECTORY EMPTY_OUTPUT_DIRECTORY [--unit SOURCE.coax --no-run-steps]");return 2;}
   compiler:=args_at(a[..],0);cache:=args_at(a[..],1);dir:=args_at(a[..],2);files:[1]FsList;deadline:=proc_now_ms()+780000;
   if compiler.count!=64||!fs_mkdir(dir)||fs_list(dir,files[..])!=0{return 2;}
-  units:=[6]string.["apps/openagents-web/carriers/everglade5e.coax","everglade/shared/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax"];
+  units:=[6]string.["apps/openagents-web/carriers/everglade5e.coax","everglade/shared/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax"];
   bases:=[6]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules"];
   single:=args_value(a[..],"--unit","");if single!=""{units[0]=single;bases[0]=opc_header(single);if bases[0]==""{return 2;}}
   carrier:[65536]u8;carrier_n:=0;

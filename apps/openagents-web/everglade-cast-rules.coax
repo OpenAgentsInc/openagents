@@ -24,7 +24,7 @@ CR_REPAIR_MOVE :: 0.6;     // m you may shift on its bar
 // What a Repair names: a group of the town's pieces (a building, a house, a 16 m cell of the palisade or
 // the streets: everglade-spells.coax sp_group), or an admin's placed thing i as CR_REPAIR_PLACED0 + i.
 CR_REPAIR_PLACED0 :: 100000;
-CR_PLACED_MAX :: 64;       // an admin's placed things at most (verse/everglade/edits.coax EG_EDIT_MAX)
+CR_PLACED_MAX :: 64;       // an admin's placed things at most (everglade/world/edits.coax EG_EDIT_MAX)
 // book:end cast-rules
 
 // Ticks of cast bar for bar slot `slot` at `hz`: Everglade's four's (slots 0 to 3), else 0.

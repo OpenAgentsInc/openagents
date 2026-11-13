@@ -283,7 +283,7 @@ timed garden "$here/../../coax/web/wasm.sh" "$here/garden.coax" "$here/garden-fa
 garden=$!
 # /worlds/everglade-classic (Everglade before the SRD 5e rules; everglade.coax is also the city everglade5e.coax loads): the forest city's blockout (verse/everglade/plan.coax), with the player, thumbs and its river (verse/everglade/river.coax).
 old timed everglade "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
-  "$here/../../everglade/shared/everglade-step.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$m/grid.coax" "$m/everglade/river.coax" "$here/../../everglade/npc/guard-guide-policy.coax" &
 everglade=$!
 # /worlds/5e-mmo: the SRD 5e battle in Everglade (fivemmo.coax on everglade.coax), the battle its own unit.
 old timed fivemmo "$here/../../coax/web/wasm.sh" "$here/fivemmo.coax" "$here/fivemmo-face.c" "$here/build/fivemmo.wasm" \
@@ -291,7 +291,7 @@ old timed fivemmo "$here/../../coax/web/wasm.sh" "$here/fivemmo.coax" "$here/fiv
 fivemmo=$!
 # /worlds/everglade (since #12710; /worlds/everglade-5e redirects): Everglade on the SRD 5e engine (everglade5e.coax on everglade.coax), the rules their own unit.
 old timed everglade5e "$here/../../coax/web/wasm.sh" "$here/everglade5e.coax" "$here/everglade5e-face.c" "$here/build/everglade5e.wasm" \
-  "$here/../../everglade/shared/everglade-step.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-guide-policy.coax" "$here/everglade5e-rules.coax" &
+  "$here/../../everglade/shared/everglade-step.coax" "$m/grid.coax" "$m/everglade/river.coax" "$here/../../everglade/npc/guard-guide-policy.coax" "$here/everglade5e-rules.coax" &
 everglade5e=$!
 # Everglade's offline room (#12784): the room server's simulation, built to wasm for the local host (coax/web/room-worker.js).
 timed everglade-room "$here/../../coax/web/tool.sh" "$here/../../coax/web/room/worker.coax" "$here/build/everglade-room.wasm" &

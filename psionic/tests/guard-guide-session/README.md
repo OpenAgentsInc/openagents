@@ -1,6 +1,6 @@
 # Directions session checks
 
-`verse/everglade/guard-guide-session.coax` owns the explicit Directions
+`everglade/npc/guard-guide-session.coax` owns the explicit Directions
 interaction. Its displayed action always comes from the fixed local goal-to-tip
 rule. Elephant responses are shadow observations and never select the displayed
 line. The data-only page contract is `guard-guide-session-types.coax`; the policy
@@ -60,8 +60,8 @@ not a visibility signal: `ggs_view(...).visible` and its zero-when-hidden
 Run only this changed slice:
 
 ```shell
-coax/bin/coax test verse/everglade/guard-guide-session.coax
-coax/bin/coax mutate verse/everglade/guard-guide-session.coax --root-only --jobs 4
+coax/bin/coax test everglade/npc/guard-guide-session.coax
+coax/bin/coax mutate everglade/npc/guard-guide-session.coax --root-only --jobs 4
 psionic/tests/guard-guide-session/check-native.sh /tmp/guard-guide-session-native
 ```
 

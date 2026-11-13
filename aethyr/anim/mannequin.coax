@@ -1,5 +1,5 @@
 // The Unreal mannequin's body joints by name, in the order the Metaverse Engine's people rig keeps them
-// (verse/everglade/people-rig.coax: the Quaternius CC0 Modular Character Outfits' 65 joints,
+// (everglade/scene/people-rig.coax: the Quaternius CC0 Modular Character Outfits' 65 joints,
 // whose names are the mannequin's). A body from another source binds to the same rig by name:
 // mannequin_fold takes one of its joint names and gives the joint here that carries it, so a pack
 // compiler keeps this skeleton and folds the rest into it (docs/verse/metahuman-support.md, "Body

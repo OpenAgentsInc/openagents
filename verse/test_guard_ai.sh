@@ -10,9 +10,9 @@ for mode in debug release sanitized; do
   if [[ "$mode" == sanitized ]]; then flags=(-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer);fi
   source_c="$work/guard-$mode.c"
   if [[ "$mode" == sanitized ]]; then source_c="$work/guard-debug.c";else
-    coax/bin/coax c verse/everglade/guard-decision.coax --library --header "$work/Guard-decision.h" ${emit[@]+"${emit[@]}"} > "$source_c"
+    coax/bin/coax c everglade/npc/guard-decision.coax --library --header "$work/Guard-decision.h" ${emit[@]+"${emit[@]}"} > "$source_c"
   fi
-  "${CC:-cc}" -std=c11 "${flags[@]}" -ffp-contract=off -fno-fast-math -I "$work" "$source_c" verse/everglade/guard-native.c -lm -o "$work/test"
+  "${CC:-cc}" -std=c11 "${flags[@]}" -ffp-contract=off -fno-fast-math -I "$work" "$source_c" everglade/npc/guard-native.c -lm -o "$work/test"
   "$work/test"
   printf 'guard %s passed\n' "$mode"
 done

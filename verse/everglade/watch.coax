@@ -41,7 +41,7 @@
 
 #load "plan.coax";
 #load "routines.coax";
-#load "people-rig.coax";
+#load "../../everglade/scene/people-rig.coax";
 #load "../rules/srd5-combat.coax";
 #load "../../aethyr/physics/stand.coax";
 #load "../../everglade/shared/everglade-handles.coax";

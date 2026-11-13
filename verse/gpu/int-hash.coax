@@ -50,7 +50,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if !fs_mkdir(out) && fs_kind(out)<=0 {tool_errln("int-hash: cannot make OUT_DIR");return 1;}
     if !ih_live_source(out,"verse/style.coax","verse/","style.coax")
        || !ih_live_source(out,"verse/everglade/gpu.coax","verse/everglade/","gpu.coax")
-       || !ih_live_source(out,"verse/everglade/gpu-fx.coax","verse/everglade/","gpu-fx.coax") {return 1;}
+       || !ih_live_source(out,"everglade/client/gpu/gpu-fx.coax","verse/everglade/","gpu-fx.coax") {return 1;}
     if !ih_live_emit(out,"gpu.coax","everglade.wgsl","verse/everglade/gpu.module")
        || !ih_live_emit(out,"gpu-fx.coax","everglade-fx.wgsl","verse/everglade/gpu-fx.module") {return 1;}
     print("int-hash: live source copy % (no hash or wave substitution)\n",out);return 0;

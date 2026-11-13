@@ -5,7 +5,7 @@ META_CLIPS :: 12;
 // studio floor with a skeleton driving it.
 //
 // The figure is public and holds no MetaHuman asset. Its skeleton and clips are the CC0 Quaternius
-// people rig (verse/everglade/people-rig.coax: the Modular Character Outfits' male and female
+// people rig (everglade/scene/people-rig.coax: the Modular Character Outfits' male and female
 // skeletons and the Universal Animation Library's twelve clips), played by aethyr/anim/skin.coax. Its
 // body is drawn here: a capsule per bone, posed from the same joints, on the Unreal mannequin's
 // joint names (aethyr/anim/mannequin.coax). A private MetaHuman pack binds to those joints by name
@@ -19,7 +19,7 @@ META_CLIPS :: 12;
 
 #load "../../aethyr/ui/font.coax";
 #load "../../aethyr/core/loop.coax";
-#load "../../verse/everglade/people-rig.coax";   // the CC0 skeletons and clips (it loads aethyr/anim/skin.coax)
+#load "../../everglade/scene/people-rig.coax";   // the CC0 skeletons and clips (it loads aethyr/anim/skin.coax)
 #load "../../aethyr/anim/mannequin.coax";
 #load "../../aethyr/cam/shot.coax" as ash;   // the camera's orbit is Aethyr's (book chapter 10)
 #load "../../aethyr/core/space.coax" as asp;

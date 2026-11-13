@@ -79,10 +79,10 @@ The first frozen measurement is 237/237/237/236/238 full tokens, with prefixes
 Focused checks, without broad imported mutation or whole-model CPU inference:
 
 ```shell
-coax/bin/coax test verse/everglade/guard-guide-eval.coax
-coax/bin/coax mutate verse/everglade/guard-guide-eval.coax --root-only --jobs 6
-coax/bin/coax test verse/everglade/guard-guide-eval-wire.coax
-coax/bin/coax mutate verse/everglade/guard-guide-eval-wire.coax --root-only --jobs 6
+coax/bin/coax test everglade/npc/guard-guide-eval.coax
+coax/bin/coax mutate everglade/npc/guard-guide-eval.coax --root-only --jobs 6
+coax/bin/coax test everglade/npc/guard-guide-eval-wire.coax
+coax/bin/coax mutate everglade/npc/guard-guide-eval-wire.coax --root-only --jobs 6
 coax/bin/coax mutate psionic/tests/guard-guide/token-policy.coax --root-only --jobs 4
 psionic/tests/guard-guide/check-evaluation.sh /tmp/guard-guide-evaluation-check
 ```

@@ -6,7 +6,7 @@
 // entries (apps/openagents-web/gpu/fivelab-fx.coax, .module, .bindings).
 //
 // The look is Everglade's own: the billows' churn, fire's painted bands and white heart, smoke lit
-// from above, a glow's hot core in its halo, all from verse/everglade/gpu-fx.coax, which this loads
+// from above, a glow's hot core in its halo, all from everglade/client/gpu/gpu-fx.coax, which this loads
 // and leaves as it is. Only the camera and what hides a puff are a traced page's:
 //  - the camera is a pinhole, read from the page's uniforms (floats): size 0 (width, height),
 //    time 2, eye 16 (xyz, then the focal length in px), forward 20 (xyz, then the image centre's
@@ -14,7 +14,7 @@
 //  - with no depth buffer, a puff fades where it meets the ground (y = 0), which the shader traces
 //    for its own pixel, so a billow rolling over the grass never ends in a hard line. Nothing else
 //    hides a puff: the figures and trees don't. Effects stay small round the figures for that.
-#load "../../verse/everglade/gpu-fx.coax";
+#load "../../everglade/client/gpu/gpu-fx.coax";
 
 // The clip position of world point w through the pinhole: x and y as the bg_fs ray for that pixel
 // would have them, w its distance along forward (behind the eye: clipped).

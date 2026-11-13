@@ -1,7 +1,7 @@
 // Typed local scene admission and atomic placement. The existing Everglade
 // document, catalogue, footprint checks and collision consumers stay shared.
 #authority;
-#load "../../verse/everglade/edits.coax";
+#load "../../everglade/world/edits.coax";
 #load "../../coax/lib/json/json.coax";
 #load "scene-session.coax";   // aethyrforge.scene-session.v1, the app's session file: its one codec (#13244)
 ForgeSceneCommand :: struct {op:int;item:int=-1;count:int=1;stack:bool;size:int=100;located:bool;x:int;z:int;group:int;dx:int;dz:int;}

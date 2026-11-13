@@ -1,7 +1,7 @@
 // 5E Lab's figures (fivelab.coax): the Quaternius people Everglade's NPCs are made of (the
 // Universal Base Characters and the Modular Character Outfits - Fantasy parts in Everglade's pack,
 // rebound by verse/tools/people.py onto two skeletons, CC0), dressed by class, played by the
-// Universal Animation Library's clips (verse/everglade/people-rig.coax, aethyr/anim/skin.coax).
+// Universal Animation Library's clips (everglade/scene/people-rig.coax, aethyr/anim/skin.coax).
 //
 // Two hundred and more figures at once, so nothing is posed per figure on the CPU: bd_bake samples
 // each clip once, 30 frames a second, into one store of skinning matrices (three rows of four a
@@ -21,7 +21,7 @@
 
 #module "openagents.fivelab.bodies";
 
-#load "../../verse/everglade/people-rig.coax";
+#load "people-rig.coax";
 // Player mode's camera (fivelab.coax lab_chase_step): Everglade's follow camera, aethyr/cam/camera.coax's free
 // orbit. It loads here, not in fivelab.coax, as it shares points.coax with the figures' skin.
 #load "../../aethyr/cam/camera.coax";
@@ -41,9 +41,9 @@ BD_RECORDS :: 54912;      // instances at most: 16384 skeletons of three parts, 
 BD_REC_FLOATS :: 24;      // everglade/scene/gpu/fivelab.coax FivelabObj: six vec4s
 BD_FPS :: 30.0;
 // The clips baked, as people-rig.coax numbers them, and their frames (each its seconds at 30 a second).
-#load "../../verse/everglade/preview-rig.coax";
+#load "preview-rig.coax";
 #load "preview-clips.coax";
-#load "../../verse/everglade/two-hand-rig.coax";   // the owned two-handed weapon clips (verse/tools/assets/two_hand_clips.py)
+#load "two-hand-rig.coax";   // the owned two-handed weapon clips (verse/tools/assets/two_hand_clips.py)
 #load "../../aethyr/action/bow-pose.coax";   // the archer's keyed draw (docs/verse/bow-combat.md), baked as clip BD_BOW
 #load "../../aethyr/action/ride-pose.coax";  // a rider's legs astride (everglade/docs/mounts-spec.md), baked as clip BD_RIDE
 BD_CLIPS :: 10;
@@ -52,7 +52,7 @@ BD_CLIP :: [10] int.[PEOPLE_IDLE, PEOPLE_WALK, PEOPLE_RUN, PEOPLE_SLASH, PEOPLE_
 BD_FRAMES :: [10] int.[75, 40, 28, 46, 63, 25, 72, 40, 75, 38];
 BD_FIRST :: [10] int.[0, 75, 115, 143, 189, 252, 277, 349, 389, 464];
 BD_BASE_TOTAL :: 502;
-// The owned two-handed clips (verse/everglade/two-hand-rig.coax), baked always after the previews, at
+// The owned two-handed clips (everglade/scene/two-hand-rig.coax), baked always after the previews, at
 // 30 a second: clip BD_OWN + k is TWOHAND clip k.
 BD_GAP_SLACK :: 0.10;      // metres the gap between a two-hander's fists may stray from its authored spacing on the game's bodies
 BD_OWN_IMPACT :: 0.46;    // the share of an owned cleave at its impact (two_hand_clips.py IMPACT: 0.55 s of 1.2)

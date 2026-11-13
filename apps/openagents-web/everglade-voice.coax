@@ -10,7 +10,7 @@
 // nearest placed thing, or undo; or, when what was said is no edit (a
 // question, small talk), a short answer to it, shown and spoken back
 // ("chat", migrations/0056_voice_edit_chat.sql). Nothing here reads the words: only that
-// typed answer, held again to verse/everglade/edits.coax. The edit is done in
+// typed answer, held again to everglade/world/edits.coax. The edit is done in
 // front of you (or takes away the things or people it names: a whole row
 // for "these crates"), the list published as Everglade's world (an admin's
 // write, checked on the server), and what was done is shown and spoken back
@@ -21,7 +21,7 @@
 // realms.json "voice" (data-voice) names the voice route, and the page facts'
 // voice= line says so; the server's /api/auth/me says A|1 for an admin.
 
-#load "../../verse/everglade/edits.coax";
+#load "../../everglade/world/edits.coax";
 #load "../../verse/edit/edit.coax";   // the board, SETTINGS and the cards every realm has (docs/verse/realm-edit.md)
 #load "everglade-edit.coax";
 
@@ -885,7 +885,7 @@ edit_rotate :: (s: [] Everglade, kind: int, all: bool, degrees: f32) {
   edit_changed(s, "Turned by voice");
 }
 
-// Takes away what a removal names (verse/everglade/edits.coax eg_remove_pick):
+// Takes away what a removal names (everglade/world/edits.coax eg_remove_pick):
 // kind EG_PICK_* or -1, who a spot or -1, all for "these", "those", "clear this".
 edit_remove :: (s: [] Everglade, kind: int, who: int, all: bool) {
   take := eg_remove_pick(s[0].ev.edits, s[0].feet.x, s[0].feet.z, kind, who, all);

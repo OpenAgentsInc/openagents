@@ -1,8 +1,8 @@
 // The page supplies current facts and draws ONLY the local rule's view. Policy
 // is separately linked; the C face hands off between world update and HUD draw.
-#load "../../verse/everglade/guard-guide-game-types.coax";
-#load "../../verse/everglade/guard-guide-session-types.coax";
-#load "../../verse/everglade/guide-route.coax";
+#load "../../everglade/npc/guard-guide-game-types.coax";
+#load "../../everglade/npc/guard-guide-session-types.coax";
+#load "../../everglade/npc/guide-route.coax";
 EgGuideInput :: struct {
   facts:GgpFacts;epoch:int;generation:int;world_revision:int;
   configured:bool;suspended:bool;blocked:bool;boundary:bool;asked:bool;

@@ -12,7 +12,7 @@
 //   stream_dist the metres across to it (round at its two ends), stream_bed the ground with its
 //   channel and banks cut in, and stream_keep where trees and rocks may stand (0 on the water and its
 //   banks). The water's own body, its look and its swimmers are verse/everglade/river.coax's.
-//   coax/bin/coax test --library verse/everglade/clearing.coax
+//   coax/bin/coax test --library everglade/world/clearing.coax
 
 Clearing :: struct {
   cx: f32; cz: f32;   // its middle

@@ -5,8 +5,8 @@
 #load "browser-policy.coax";
 #load "browser-observation.coax";
 #load "../../../coax/lib/net/cdp.coax";
-#load "../../../verse/everglade/guard-guide.coax";
-#load "../../../verse/everglade/guard-guide-fixtures.coax";
+#load "../../../everglade/npc/guard-guide.coax";
+#load "../../../everglade/npc/guard-guide-fixtures.coax";
 #load "../../../coax/lib/crypto/sha256.coax";
 #load "../../../coax/lib/json/json.coax";
 

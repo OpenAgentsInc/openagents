@@ -166,7 +166,7 @@
   "people": {
     "texture_size": 256,
     "licence": "quaternius-standard-characters",
-    "rig": "verse/everglade/people-rig.coax",
+    "rig": "everglade/scene/people-rig.coax",
     "prefix": "PEOPLE",
     "quality": 80,
     "skeletons": {
