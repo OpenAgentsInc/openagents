@@ -102,7 +102,7 @@ Watchtower have it. A made realm (`myrealm`) follows its world itself, with the 
 Everglade's page does not: its board belongs with its own world (#13477).
 
 The layer's own FEATURES and SETTINGS panes, and the routes they post to, are still there. They
-go when placing a thing is an edit too (#13478, steps 3 and 5).
+go when placing a thing is an edit too (#13506).
 
 Spoken and typed commands about the editing screen go to `redit_heard(ed, word, row, on, pane,
 out)` (migration 0104's `switch` and `show` edits): it switches one of the realm's rows by its id,
