@@ -237,9 +237,17 @@ OA_NPC_URL="http://127.0.0.1:$NPC_PORT/model" OA_NPC_TOKEN=test-token OA_NPC_DAI
 OA_ANIME_URL="http://127.0.0.1:$ANIME_PORT/model" OA_ANIME_TIMEOUT_MS=500 \
   OA_BUILD_SHA=1111111111111111111111111111111111111111 OA_RELEASE_ID=123e4567-e89b-42d3-a456-426614174000 K_SERVICE=oa-api-staging K_REVISION=oa-api-staging-00002-new \
   OA_ROOM_CHECKPOINTS=1 OA_API_ORIGIN="$api_origin" "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
-for _ in $(seq 50); do curl -s "http://127.0.0.1:$api_port/api/playtest/health" >/dev/null && break; sleep 0.1; done
+# The API listens once its migrations are in, and on a busy host they take longer than any fixed wait
+# (5 s was not enough, #13376): wait for its answer for as long as its process lives. Ten minutes with
+# the process there and no answer is a hung API, and the run says so.
+api_up=0
+for _ in $(seq 6000); do
+  curl -s -m 2 "http://127.0.0.1:$api_port/api/playtest/health" >/dev/null && { api_up=1; break; }
+  kill -0 "$api_pid" 2>/dev/null || break
+  sleep 0.1
+done
 # The answer came from this run's server, not from another run's that took the port first.
-kill -0 "$api_pid" 2>/dev/null || { echo "test.sh: the API didn't start" >&2; cat "$work/api.log"; exit 1; }
+(( api_up )) && kill -0 "$api_pid" 2>/dev/null || { echo "test.sh: the API didn't start" >&2; cat "$work/api.log"; exit 1; }
 # The migrations (#13301, migrations/README.md): one number each, none edited once landed, and
 # schema.sql the schema the API's own runner just made (dumped before any check writes to it).
 if [[ $serve == 0 && -x "$cli_coax" ]] && runs checks; then
