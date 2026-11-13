@@ -991,14 +991,15 @@ static void email_start(const request *q, PGconn *db, const char *body) {
   if (!ok) api_log("auth: email start: %s", PQerrorMessage(db));
   PQclear(r);
   if (!ok) { refuse(q, 500, "That didn't work. Try again."); return; }
-  // One message: the code, and the link for the same browser. Short, plain.
+  // One message: the code, and the link for the same browser. Short, plain. The code is six digits
+  // unbroken, so a double click or a tap selects all of it (owner, 2026-11-13).
   char message[2400], to[600], url[400];
   json_esc(email, to, sizeof to);
   snprintf(url, sizeof url, "%s/login/email#t=%s", origin(), link_token);
   snprintf(message, sizeof message,
-           "{\"to\":\"%s\",\"subject\":\"Your OpenAgents code: %.3s %.3s\",\"idempotency_key\":\"login-%s\","
-           "\"text\":\"Your code is %.3s %.3s.\\n\\nOr open this link in the same browser:\\n%s\\n\\nIt works for 10 minutes. If you didn't ask for it, ignore this email.\\n\"}",
-           to, code, code + 3, id, code, code + 3, url);
+           "{\"to\":\"%s\",\"subject\":\"Your OpenAgents code: %.6s\",\"idempotency_key\":\"login-%s\","
+           "\"text\":\"Your code is %.6s.\\n\\nOr open this link in the same browser:\\n%s\\n\\nIt works for 10 minutes. If you didn't ask for it, ignore this email.\\n\"}",
+           to, code, id, code, url);
   char sent_id[128], err[300];
   int s = email_send(db, message, sent_id, err, sizeof err);
   memset(message, 0, sizeof message); memset(code, 0, sizeof code); memset(link_token, 0, sizeof link_token);
@@ -1135,8 +1136,8 @@ static void email_link(const request *q, PGconn *db, const char *body) {
     PQclear(r);
     char code[7], json[200], lines[200];
     code_of(t, code);
-    snprintf(json, sizeof json, "{\"state\":\"elsewhere\",\"code\":\"%.3s %.3s\",\"error\":\"Type this code in the window where you asked: %.3s %.3s\"}", code, code + 3, code, code + 3);
-    snprintf(lines, sizeof lines, "state elsewhere\ncode %.3s %.3s\n", code, code + 3);
+    snprintf(json, sizeof json, "{\"state\":\"elsewhere\",\"code\":\"%.6s\",\"error\":\"Type this code in the window where you asked: %.6s\"}", code, code);
+    snprintf(lines, sizeof lines, "state elsewhere\ncode %.6s\n", code);
     answer(q, 409, NULL, json, lines);
     return;
   }

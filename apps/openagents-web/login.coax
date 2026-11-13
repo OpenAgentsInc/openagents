@@ -68,7 +68,7 @@ Lg :: struct {
   email: [256] u8; email_n: int; code: [8] u8; code_n: int;
   error: [300] u8; error_n: int;
   sent_to: [256] u8; sent_n: int; tries: int; left: f32;   // the code: where it went, tries and seconds left
-  elsewhere: [8] u8; elsewhere_n: int;                      // "123 456"
+  elsewhere: [8] u8; elsewhere_n: int;                      // "123456"
   token: [80] u8; token_n: int;                             // the link's t
   challenge: [80] u8; challenge_n: int; nurl: [300] u8; nurl_n: int;
   has_key: int = -1;                                        // -1 not heard yet, 0 none, 1 an extension
@@ -755,7 +755,7 @@ lg_field :: (s: [] Lg, out: [] f32, at: int, p: Pen, hint: string, still: bool) 
   tx := b.x0 + 14; base := (b.y0 + b.y1) * 0.5 + 5.5; room := (b.x1 - b.x0 - 28) * d;
   shown: [16] u8; text := cast(string) s[0].email[0..<s[0].email_n];
   if s[0].screen == LG_CODE {
-    n := 0; for i: 0..<s[0].code_n { if i == 3 { shown[n] = ' '; n += 1; } shown[n] = s[0].code[i]; n += 1; }
+    n := 0; for i: 0..<s[0].code_n { shown[n] = s[0].code[i]; n += 1; }   // six digits unbroken, as the email shows them
     text = cast(string) shown[0..<n];
   }
   white := lg_text(p, INK_WHITE); cap: f32 = ifx s[0].screen == LG_CODE then 13.0f32 else 10.0f32;
@@ -835,7 +835,7 @@ lg_body :: (s: [] Lg, out: [] f32, at: int, p: Pen, still: bool) -> int {
     else { v = lg_para(out, v, LG_ON_PHONE, x, y, w, 7.8, lg_text(p, INK_DIM), d, below[..]); }
   }
   if sc == LG_CODE {
-    v = lg_field(s, out, v, p, "123 456", still);
+    v = lg_field(s, out, v, p, "123456", still);
     v = lg_button(s, out, v, p, H_MAIN, ifx s[0].req == REQ_VERIFY then "CHECKING" else "LOG IN", true);
     m := s[0].hits[H_MAIN].y1;
     if s[0].left > 0 {
@@ -1132,8 +1132,8 @@ lg_error_of :: (s: [] Lg) -> string { return cast(string) s[0].error[0..<s[0].er
   #assert s[0].req == REQ_LINK && lg_url(s[..]) == "/api/auth/email/link?as=lines" && s[0].action == LG_ACT_HASH && s[0].out_n == 0;
   lg_done(s[..]); lg_hash(s[..], "");   // the cleared hash changes nothing
   #assert s[0].req == REQ_LINK && s[0].screen == LG_LINK;
-  lg_reply(s[..], 0, "409\nstate elsewhere\ncode 123 456\n");
-  #assert s[0].screen == LG_ELSEWHERE && cast(string) s[0].elsewhere[0..<s[0].elsewhere_n] == "123 456";
+  lg_reply(s[..], 0, "409\nstate elsewhere\ncode 123456\n");
+  #assert s[0].screen == LG_ELSEWHERE && cast(string) s[0].elsewhere[0..<s[0].elsewhere_n] == "123456";
   t: [1] Lg; lg_new(t[..], LG_PAGE_LINK); lg_hash(t[..], cast(string) h[0..<n]);
   lg_reply(t[..], 0, "200\nstate logged-in\naccount acct_x\nnew 0\n");
   #assert t[0].screen == LG_DONE && lg_out(t[..]) == "/";

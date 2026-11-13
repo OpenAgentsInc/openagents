@@ -65,7 +65,7 @@ A guest key is never an authenticator.
 3. The browser that asked holds a pending-login cookie
    (`__Host-oa_pending`, 10 minutes). The link and the code complete only
    in that browser. Opened on another device, the link says "Type this
-   code in the window where you asked: 482 913". This stops a phisher who
+   code in the window where you asked: 482913". This stops a phisher who
    starts a login with your address from receiving your session when you
    click.
 4. Typing the code (or opening the link) in the same browser logs you in
