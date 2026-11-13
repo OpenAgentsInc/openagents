@@ -12,7 +12,7 @@
 //   earns    the XP and levels the room grants it (e xp, e level): each grant is a monster it helped
 //            fell (kills)
 //   quests   where it first stood (the glade, by the Warden) it asks to talk to each of the Warden's
-//            dialogues every few seconds (E SEQ 6 ID), and counts what the room tells its seat of its own
+//            dialogues (E SEQ 6 ID) the moment it is back there, and every few seconds while it stays, and counts what the room tells its seat of its own
 //            character (e say, e quest, e loot, e item, e coin: room-items.coax): lines heard, quest stages
 //            gained, drops, items now held and worn, coin. It wears what it is given (E SEQ 7 ID). So a run
 //            proves the loop a player plays: take the quest, kill, loot through the ledger, hand in, reward once
@@ -24,7 +24,9 @@
 // A process holds at most 16 sockets (CXSOCK_MAX), so `run` starts one `room` process for every 16 bots.
 //
 //   coax/web/tool.sh coax/web/room/bots.coax run ORIGIN PLAYERS SECONDS [--realm pair-e2-soak]
-//        [--direct] [--zone] [--reconnect 900] [--travel 600] [--window 60] [--stamp N]
+//        [--direct] [--zone] [--reconnect 900] [--travel 600] [--window 60] [--patrol 330] [--stamp N]
+//     --patrol M: how far down the path a bot goes before it turns back (330: past all three wolf
+//     packs; 195: past the first pack's one Wolf only, which a level 1 bot survives)
 //     ORIGIN: the API's (https://staging.openagents.com), or with --direct a room's
 //     (ws://localhost:8830; tickets signed with OA_ROOM_TICKET_KEY when the environment has it).
 //     Prints each room process's lines as they come, "B ROOM {json}" a window and "F ROOM {json}" at
@@ -66,7 +68,7 @@ BT_QUESTS :: 8; BT_ITEMS :: 32;
 BT_TALK_MS :: 3000;           // between its asks to talk
 BT_TALK_NEAR :: 4.0;          // m from where it first stood: near enough the Warden to be heard (the content tables' point)
 BT_DIALOGUES :: 2;            // the Warden's dialogues it asks for, 1 on
-BT_PATROL :: 330.0;           // m down the path from where it first stood (past the third wolf pack: the content tables' spawns), then back
+BT_PATROL :: 330;             // m down the path from where it first stood (past the third wolf pack: the content tables' spawns), then back; --patrol M
 
 Bot :: struct {
   state: int; until: int;
@@ -86,7 +88,7 @@ Bot :: struct {
   d_at: int; d_tick: int; down: bool;
   travel_seq: int;
   sit_fails: int;               // sockets that would not open, in a row: three and the bot is out (BT_OUT)
-  talk_t: int; talk_i: int;     // when it next asks the Warden, and which dialogue
+  talk_t: int;                  // when it next asks the Warden (0: the moment it is by him)
   stage: [BT_QUESTS] int;       // its quests' stages as the room last said them (quest ID - 1)
   coin: int;                    // its coin as the room last said it
   item: [BT_ITEMS] int; item_kind: [BT_ITEMS] int; item_slot: [BT_ITEMS] int; item_n: int;   // the items it holds, by instance: each one's kind (its content ID) and the slot it is worn in (0 none)
@@ -318,7 +320,7 @@ bt_wearable :: (kind: int) -> bool { d: [1] ContentDoc; return ct_read(d[..], EC
   #assert s[0].stalls == 1 && s[0].dropped == 2;
 }
 
-BtOpts :: struct { origin: string; realm: string; direct: bool; reconnect: int; travel: int; window: int; rooms: int; stamp: int; until: int; zone: bool; }   // until: when the run ends (no reconnect or travel begins in its last 30 s)
+BtOpts :: struct { origin: string; realm: string; direct: bool; reconnect: int; travel: int; window: int; rooms: int; stamp: int; until: int; zone: bool; patrol: int = 330; }   // until: when the run ends (no reconnect or travel begins in its last 30 s)
 
 // The socket's URL for instance `code` with ticket t (the API's answer `body`), into out.
 bt_url :: (o: BtOpts, body: string, code: string, ticket: string, out: [] u8) -> string {
@@ -430,6 +432,8 @@ bt_play :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: 
   m: [256] u8;
   due := b[0].t0 + (i * 7) % 33 + b[0].steps * 1000 / 30;
   foe := bt_foe(b, now);
+  // a monster past the end of its patrol is not gone after: a short patrol keeps a bot to the packs it can win
+  if foe >= 0 && b[0].placed && f32(b[0].mons.row[foe].z) / 100 < b[0].z0 - f32(o.patrol) - 5 { foe = -1; }
   if now >= due {
     b[0].steps += 1;
     wx: f32 = 0; wz: f32 = 0; ahead := 0; run := 0;
@@ -440,7 +444,7 @@ bt_play :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: 
         ahead = ifx wx * wx + wz * wz > BT_REACH * BT_REACH then 100 else 0;
       } else {
         // down the path past the wolf packs and back at a run, each bot a little to one side of its middle
-        if b[0].z < b[0].z0 - BT_PATROL { b[0].dir = 1; }
+        if b[0].z < b[0].z0 - f32(o.patrol) { b[0].dir = 1; }
         if b[0].z > b[0].z0 + 2 { b[0].dir = -1; }
         tz := b[0].z + b[0].dir * 8;
         wx = rs_road_x(tz) + (f32(i % 5) - 2) * 0.8 - b[0].x; wz = tz - b[0].z;
@@ -467,13 +471,16 @@ bt_play :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: 
     b[0].next_t = now + 1000;
   }
   // by the Warden (where it first stood): it asks for each of his dialogues in turn, and wears what it holds unworn
+  // (away from him the wait is over, so it asks the moment it is back)
+  by_warden := b[0].placed && (b[0].z - b[0].z0) * (b[0].z - b[0].z0) < f32(BT_TALK_NEAR) * f32(BT_TALK_NEAR);
+  if !by_warden { b[0].talk_t = 0; }
   if now >= b[0].talk_t && b[0].placed && !b[0].down && b[0].seat >= 0 {
     b[0].talk_t = now + BT_TALK_MS;
-    dz := b[0].z - b[0].z0;
-    if dz * dz < f32(BT_TALK_NEAR) * f32(BT_TALK_NEAR) {
-      b[0].seq += 1; b[0].talk_i = b[0].talk_i % BT_DIALOGUES + 1;
-      n := wire_put_use(m[..], 0, WireUse.{seq = b[0].seq, kind = 6, id = b[0].talk_i});
-      _ := relay_conn_send(c, cast(string) m[0..<n]);
+    if by_warden {
+      for d: 1..<BT_DIALOGUES + 1 {
+        b[0].seq += 1; n := wire_put_use(m[..], 0, WireUse.{seq = b[0].seq, kind = 6, id = d});
+        _ := relay_conn_send(c, cast(string) m[0..<n]);
+      }
     }
     for q: 0..<b[0].item_n { if b[0].item_slot[q] == 0 && bt_wearable(b[0].item_kind[q]) {
       b[0].seq += 1; n := wire_put_use(m[..], 0, WireUse.{seq = b[0].seq, kind = 7, id = b[0].item[q]});
@@ -774,6 +781,7 @@ bt_opts :: (a: [] Args) -> BtOpts {
   o.reconnect = rs_num(args_value(a, "--reconnect", "900"));
   o.travel = rs_num(args_value(a, "--travel", "600"));
   o.window = rs_num(args_value(a, "--window", "60"));
+  o.patrol = rs_num(args_value(a, "--patrol", "330"));
   o.rooms = rs_num(args_value(a, "--rooms", "1"));
   o.stamp = rs_num(args_value(a, "--stamp", "0"));
   if o.window < 5 { o.window = 5; }
@@ -797,13 +805,14 @@ tool_main :: () -> int #export_c #effects(all) {
     if players < 1 || seconds < 10 { tool_errln("bots: PLAYERS >= 1, SECONDS >= 10"); return 2; }
     if o.stamp == 0 { o.stamp = rs_stamp(); }
     // the options a room process reads, as given (the stamp fixed for all of them)
-    opts: [16] string; n := 0; rm: [64] u8; rc: [16] u8; tv: [16] u8; wn: [16] u8; st: [16] u8;
+    opts: [16] string; n := 0; rm: [64] u8; rc: [16] u8; tv: [16] u8; wn: [16] u8; st: [16] u8; pt: [16] u8;
     opts[n] = "--realm"; n += 1; opts[n] = o.realm; n += 1;
     if o.direct { opts[n] = "--direct"; n += 1; }
     if o.zone { opts[n] = "--zone"; n += 1; }
     opts[n] = "--reconnect"; n += 1; opts[n] = cast(string) rc[0..<rs_int(rc[..], 0, o.reconnect)]; n += 1;
     opts[n] = "--travel"; n += 1; opts[n] = cast(string) tv[0..<rs_int(tv[..], 0, o.travel)]; n += 1;
     opts[n] = "--window"; n += 1; opts[n] = cast(string) wn[0..<rs_int(wn[..], 0, o.window)]; n += 1;
+    opts[n] = "--patrol"; n += 1; opts[n] = cast(string) pt[0..<rs_int(pt[..], 0, o.patrol)]; n += 1;
     opts[n] = "--stamp"; n += 1; opts[n] = cast(string) st[0..<rs_int(st[..], 0, o.stamp)]; n += 1;
     return bt_run(o, players, seconds, opts[0..<n]);
   }

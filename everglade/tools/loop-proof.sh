@@ -21,7 +21,7 @@ port=0
 for n in 1 2 3 4 5 6 7 8; do port=$(( 20000 + RANDOM % 20000 )); curl -s -m 1 -o /dev/null "http://127.0.0.1:$port/" 2> /dev/null || break; done
 OA_ROOM_TICKET_KEY="$key" "$work/room" --port "$port" --dev "$root/coax/web/room/dev" > "$work/room.log" 2>&1 & pid=$!
 for n in $(seq 1 100); do curl -fs "http://127.0.0.1:$port/health" > /dev/null 2>&1 && break; read -r -t 0.1 < /dev/zero || true; done
-OA_ROOM_TICKET_KEY="$key" coax/web/tool.sh coax/web/room/bots.coax run "ws://localhost:$port" "$players" "$secs" --direct --zone --realm pair-e2-loop > "$work/bots.log" 2>&1
+OA_ROOM_TICKET_KEY="$key" coax/web/tool.sh coax/web/room/bots.coax run "ws://localhost:$port" "$players" "$secs" --direct --zone --realm pair-e2-loop --patrol 195 --reconnect 0 --travel 0 > "$work/bots.log" 2>&1
 grep -m 3 -i "content" "$work/room.log" | sed 's/^/room: /'
 totals="$(grep '^bots ' "$work/bots.log" | tail -1)"
 [[ -n "$totals" ]] || { tail -20 "$work/bots.log"; echo "loop-proof: the bots printed no totals"; exit 1; }
