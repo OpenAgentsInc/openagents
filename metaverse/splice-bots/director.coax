@@ -454,7 +454,8 @@ d_map :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   lx := 1e9f32; hx := -1e9f32; lz := 1e9f32; hz := -1e9f32;
   for i: 0..<g[0].wall_n { o := i * 5; if g[0].walls[o + 4] <= 0 && (g[0].walls[o + 1] - g[0].walls[o] > 30 || g[0].walls[o + 3] - g[0].walls[o + 2] > 30) { continue; } lx = lo(lx, g[0].walls[o]); hx = hi(hx, g[0].walls[o + 1]); lz = lo(lz, g[0].walls[o + 2]); hz = hi(hz, g[0].walls[o + 3]); }
   if hx <= lx || hz <= lz { return n; }
-  bh := q.h - 200 * k; sc := lo(bh / (hz - lz), (q.w * 0.6) / (hx - lx)); mw := (hx - lx) * sc; mh := (hz - lz) * sc;
+  // between the HUD panels: clear of the top bars and the bottom cards and objective
+  bh := q.h - 400 * k; bw := hi(q.w * 0.3, lo(q.w * 0.6, q.w - 960 * k)); sc := lo(bh / (hz - lz), bw / (hx - lx)); mw := (hx - lx) * sc; mh := (hz - lz) * sc;
   x0 := q.w * 0.5 - mw * 0.5; y0 := q.h * 0.5 - mh * 0.5 + 16 * k;
   ui_panel(g, u, x0 - 30 * k, y0 - 70 * k, x0 + mw + 30 * k, y0 + mh + 50 * k, paper, 0.98);
   n = ui_box(out, n, x0 - 30 * k, y0 - 70 * k, x0 + mw + 30 * k, y0 + mh + 50 * k, 3 * k, ink);
@@ -508,10 +509,10 @@ d_pause_screen :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int 
 d_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, at: int) -> int {
   n := at; d := g[0].dr[0];
   g[0].dr[0].sw = q.w; g[0].dr[0].sh = q.h;
-  n = d_plates(g, out, q, n);
+  if !d.paused && !d.bag && !d.map { n = d_plates(g, out, q, n); }   // under an open window the bars would show through
   // the crosshair Digger is pointed with
   if g[0].mode == M_PLAY && !d.paused && !d.bag && !d.map && g[0].bot {
-    k := q.k; cx := q.w * 0.5; cy := q.h * 0.5; c := ifx d_pointed(g).kind != DP_NONE then HEAT() else PAPER();
+    k := q.k; cx := q.w * 0.5; cy := q.h * 0.5; c := ifx d_pointed(g).kind != DP_NONE then HEAT() else INK();
     n = ui_seg(out, n, cx - 9 * k, cy, cx - 3 * k, cy, 1.2 * k, c, 0.9); n = ui_seg(out, n, cx + 3 * k, cy, cx + 9 * k, cy, 1.2 * k, c, 0.9);
     n = ui_seg(out, n, cx, cy - 9 * k, cx, cy - 3 * k, 1.2 * k, c, 0.9); n = ui_seg(out, n, cx, cy + 3 * k, cx, cy + 9 * k, 1.2 * k, c, 0.9);
   }

@@ -1369,7 +1369,7 @@ objective :: (g: [] SpGame) -> string {
   if g[0].have[H_PLUS] { return "Splice DRILL+ in the rover."; }
   if g[0].rubble_gone { return "Find the blue glow."; }
   if g[0].have[H_ARM] && g[0].have[H_TREADS] && g[0].have[H_BATTERY] && g[0].have[H_MOVE] && g[0].have[H_DRILL] { return "Splice the Digger at the rover."; }
-  return "Scavenge the mine: Digger picks up parts and cards near him.";
+  return "Walk near parts: Digger takes them.";
 }
 
 g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
@@ -1443,6 +1443,7 @@ g_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui) -> int {
   else if g[0].zone == Z_RAIL && near_rover(g, T_USE_RANGE) { prompt = "Board the rover"; }
   else if g_portal(g) >= 0 { prompt = prt_name(g[0].c[0].portals[..], g_portal(g)); }
   else if d_in_rover(g) { prompt = "Open the edit bay"; key = "TAB"; }
+  if g[0].dr[0].bag || g[0].dr[0].map { prompt = ""; }   // an open window covers the prompt
   if prompt != "" {
     extra := ifx reach >= 0 then pick_name(reach) else "";
     cw := cap_w(key, 26 * k); pw0 := ui_w(F_MONO, prompt, 10.5 * k);
