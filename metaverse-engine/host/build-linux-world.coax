@@ -46,7 +46,7 @@ tool_main :: ()->int #export_c #effects(all) {
  // The owning Coax package tool writes this header before the SDK build.
  if !rtq_input_add(inputs[..],fs_join(out,"RenderIdentity.h",paths[12][..])) {return 1;}
  transport:=fs_join(out,"world-transport.c",paths[45][..]);if !fs_write(transport,"// Firm reason: 5 (thin scalar projection of the owning Coax transport).\n#define HOST_TRANSPORT_HEADER <RenderHost.h>\n#include \"host-transport-face.c\"\n")||!rtq_input_add(inputs[..],transport) {return 1;}
- n=0;for flag:[14]string.["nice","-n15","gcc","-std=gnu11","-O2","-ffp-contract=off","-fno-fast-math","-DCOAXIAL_NATIVE_ADDRESS","-DCOAXIAL_DYNAMIC_FACE","-DAETHYR_WAYLAND_INPUT_V1","-DAETHYR_WAYLAND_TEXT_V1","-ffunction-sections","-fdata-sections","-Wl,--gc-sections"] {argv[n]=flag;n+=1;}
+ n=0;for flag:[14]string.["nice","-n15","gcc","-std=gnu11","-O2","-ffp-contract=off","-fno-fast-math","-DCOAXIAL_NATIVE_ADDRESS","-DCOAXIAL_DYNAMIC_FACE","-DENGINE_WAYLAND_INPUT_V1","-DENGINE_WAYLAND_TEXT_V1","-ffunction-sections","-fdata-sections","-Wl,--gc-sections"] {argv[n]=flag;n+=1;}
  argv[n]="-Wl,--no-as-needed";n+=1;
  if sanitize {argv[n]="-fsanitize=address,undefined";argv[n+1]="-fno-omit-frame-pointer";argv[n+2]="-O1";n+=3;}
  for dir:[10]string.[render,shell,network,out,fs_join(root,"metaverse/native",paths[13][..]),fs_join(root,"metaverse/gpu",paths[14][..]),fs_join(root,"metaverse/kms",paths[15][..]),fs_join(root,"coax/platform",paths[16][..]),fs_join(root,"coax/web",paths[46][..]),fs_join(root,"metaverse-engine/render/tests",paths[47][..])] {argv[n]="-I";argv[n+1]=dir;n+=2;}
