@@ -102,9 +102,10 @@ a Stunning Strike. Faerie Fire's outline is a record a caster, so two casters'
 outlines on one creature end separately.
 
 Everglade's content table `ability` (`everglade/content/everglade.content`)
-is still empty. Its 83 rows, one for each ability the bars hold by content ID,
-go in with the next content revision: the tables' revision is a session's
-content pin (#13381), so it changes only at a room release, with the page.
+has 83 rows since revision 2, one for each ability the bars hold by content
+ID. The tables' revision is a session's content pin (#13381). A room on
+revision 2 still seats a page on revision 1 for one release
+([the previous pins](../protocol/everglade-previous-pins.md), #13408).
 
 ## Checks
 
