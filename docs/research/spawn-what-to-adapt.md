@@ -40,8 +40,8 @@ should not adopt for Everglade.
 2. **N1 next**, with P5.3: one set of codes for agents, the editor and
    alerts.
 3. **N6 inside P2.6**, before P2.7 adds terrain tile seams.
-4. **N3 before E3 ships save and rollback**; **N4 before E12 opens to
-   others.**
+4. **N3 before E3 ships save and rollback.** N4 is won't do: realm code is
+   ours or a reviewed pull request.
 5. **N5** whenever the editor shell (E4) lands.
 
 ## Where we stand on each Spawn idea
@@ -57,7 +57,7 @@ should not adopt for Everglade.
 | A world as a constrained, learnable vocabulary (YAML objects + behaviour scripts) | Content tables (`aethyr.content.v1`), typed edits and Coax for rules. Same idea, stricter types | **Have it.** Keep Coax for rules; don't add YAML |
 | Three kinds of state: authored, running, durable | All three exist (content tables and edits; the World and E2's state keeping; the character record, P4.1 #13290, and the item ledger, P4.2 #13291 and DDD.7 #13318, all closed) but no rule says an authored rollback never touches durable data | **Adapt now** as an invariant (N3) |
 | Three kinds of authority: content, simulation, durability | Server-authoritative simulation (AAA P0); admin writes for content; the ledger for durability. Not written per realm | **Adapt now**, inside N3 |
-| The game in a separate origin (`play.spawn.co`), sandboxed, cross-origin isolated | Pages are cross-origin isolated (COOP/COEP in `serve.c`) but served from the site's own origin | **Adapt soon:** required before anyone's realm code runs for other people (E12) (N4) |
+| The game in a separate origin (`play.spawn.co`), sandboxed, cross-origin isolated | Pages are cross-origin isolated (COOP/COEP in `serve.c`) but served from the site's own origin | **Won't do for now:** realm code is ours or a reviewed pull request, so nobody else's code runs on the site (N4) |
 | Git as a world's source of truth; publish moves a ref; an update applies to sessions now or at next session | Code is in the monorepo; worlds will be documents with revisions (E3); a publish pins the build (0107); rooms accept the previous pins for one release (#13408, closed) but production was split for 11 minutes on 2026-11-12 (#13397), and main is now two wire versions ahead of production (#13398); one release moves API, rooms and page in order (P5.5 #13299, closed) | **Adapt the policy, not Git:** each world gets a `dev` and a `live` revision, and an update says "now" or "next session". Added to E3 |
 | Content-addressed assets, CDN, direct upload for large files | Packs are content-named (`pack.coax`, `publish.coax`) | **Adapt with E11:** a signed direct upload to storage, so big files skip the API |
 | Workers: simulation, transport, rendering, jobs, shader compile, texture decode | The offline room runs in a Web Worker; GPU device loss is handled (`host.js` `deviceLost`); otherwise one thread | **Soon, measured first:** move pack parsing and texture decode off the frame (with P6.2 #13304, one pack reader on every platform), then decide on a render worker |
@@ -118,7 +118,9 @@ Each is an issue on project 22 (#13429-#13434).
 
 ## Adapt soon
 
-- **N4 (#13432). Realms that run others' code are served from their own origin.** This
+- **N4 (#13432). Won't do (owner, 2026-11-13).** Realm code is ours, or a reviewed
+  pull request to this repo, so no one else's code runs on the site. The
+  original item: realms that run others' code are served from their own origin. This
   is a sandboxed frame on a separate origin, keeping cross-origin isolation.
   The site, the editor shell and the chat talk to it only by typed messages.
   It is required before E12 (code from the browser) opens to anyone but the

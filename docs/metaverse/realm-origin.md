@@ -5,6 +5,12 @@ From the Spawn analysis ([what to adapt](../research/spawn-what-to-adapt.md),
 N4). It is required before code from the browser (E12, #13421) opens to
 anyone but the owner.
 
+**Status: shelved (owner, 2026-11-13).** Realm code is written by us, or
+submitted as a pull request to this repo and reviewed before it ships. Nobody
+else's code runs on the site, so no second origin is deployed and none is
+planned. The code below stays in the tree unused. Bring this back only if
+unreviewed code is ever allowed to run for visitors.
+
 ## The rule
 
 A realm that runs someone else's code is never served from the site's
