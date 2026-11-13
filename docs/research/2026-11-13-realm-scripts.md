@@ -231,7 +231,8 @@ Kept current as stages land (#13467). The contract as built is
 | A world's script rows (`ID\|NAME\|HASH\|FOR` in a content table) | built | `metaverse-engine/script/rows.coax`, Splice's `scripts` table |
 | Splice's raider and Imperial robot as scripts | built | `metaverse/splice-bots/scripts/`, `metaverse/splice-bots/scripts.coax` |
 | The page's script module and its loader | built | `apps/openagents-web/script-host.coax`, `metaverse-engine/script/loader.coax`, `coax/web/host.js` "A realm's scripts" |
-| The room's script unit | built, not yet called by a room game | `coax/web/room/room-scripts.coax` |
+| The room's script unit | built | `coax/web/room/room-scripts.coax` |
+| A room runs a world's scripts: Everglade's monsters, under the per-tick budget, each call a transaction | built; the shipped release names no scripts | `everglade/server/scripts.coax`, `coax/web/room/room-host.c` `scripts_load` (`OA_ROOM_SCRIPTS`), `everglade/scripts/wary-wolf.coax` |
 | Page and room agree step for step | proven | `coax/web/tool.sh coax/web/room/room-scripts-check.coax` |
 | The plan world and the scripted world play the same | proven natively | `coax/web/tool.sh metaverse/splice-bots/tools/script-play.coax` |
 | A fuzzer of the check, the interpreter, the host and the codecs | built | `metaverse-engine/tools/script-fuzz.coax` |
@@ -264,11 +265,17 @@ Where the build differs from the proposal:
   for that step. The raider's and the robot's scripts are in the tree, built
   and checked against the plan's behaviour; a world turns them on with a
   script row.
-- **No room game runs scripts yet.** The room's unit is the same host, and
-  the agreement check runs it natively beside the page's module. The one
-  world with script rows, Splice, simulates on its page, so no room's tick
-  calls the unit. A room game that simulates a world with script rows links
-  it and calls `rsc_tick` between its steps.
+- **Everglade's room is the first room that runs scripts.** Splice
+  simulates on its page; Everglade's monsters are the room's, so the room
+  runs their scripts (`everglade/server/scripts.coax`), once a tick before
+  its monsters step, with the room's unit and the same budget. A release
+  names them in a `scripts` table the host reads at start with each module
+  (`OA_ROOM_SCRIPTS`: `scripts.content`, `HASH.wasm`, `HASH.json`), apart
+  from Everglade's content tables, so their shape and pins do not change.
+  The engine caps each word: a walk no faster than the monster's run, never
+  onto safe ground or past its leash; a strike only as the rules' own blow
+  on its quarry. The shipped release names none, and the room then asks for
+  no script memory.
 - **A script's word arrives one step later.** The host runs between steps,
   so a scripted foe reacts to the frame after the step before. In the check
   the scripted foes stay within 0.11 m of their plan twins.

@@ -9,10 +9,9 @@
 // undone; calls past the tick's are skipped and said once. Nothing a script does can stop the room: a trap
 // is a status, and every call is a transaction.
 //
-// No room game names a script yet: the one world with script rows, Splice, simulates on its page
-// (metaverse-engine/editor/authority.coax). This unit is what such a game links, and
-// coax/web/room/room-scripts-check.coax runs it beside the page's module to hold the two to the same
-// answers, instruction for instruction.
+// Everglade's rooms link it for their monsters (everglade/server/scripts.coax); Splice simulates on its
+// page (metaverse-engine/editor/authority.coax). coax/web/room/room-scripts-check.coax runs this unit
+// beside the page's module to hold the two to the same answers, instruction for instruction.
 //   coax/bin/coax test coax/web/room/room-scripts.coax --library
 #load "../../../metaverse-engine/script/world.coax";
 

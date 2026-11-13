@@ -1,0 +1,204 @@
+// Everglade's creatures on realm scripts, in the room (GitHub #13467; docs/protocol/realm-script-v1.md,
+// docs/protocol/realm-script-api.md). The room is the authority for Everglade's monsters, so the room runs
+// their scripts: the same module check, interpreter and host a page runs (coax/web/room/room-scripts.coax,
+// metaverse-engine/script/world.coax), under the same budget, SH_CALL_FUEL instructions a handler call and
+// SH_TICK_FUEL for all of a room's scripts in one tick, each call a transaction.
+//
+// Which scripts. A release names them in the rows of a `scripts` content table (ID|NAME|HASH|FOR,
+// metaverse-engine/script/rows.coax): "kind K" drives every monster whose creature has look K (0 wolf,
+// 1 goblin), "who N" drives monster N - 1. The host reads the table and each module at start
+// (room-host.c scripts_load: OA_ROOM_SCRIPTS names a directory with scripts.content, HASH.wasm and
+// HASH.json, the module and its manifest). A module whose bytes are not the hash its row names, or that
+// the module check refuses, is not loaded. With no directory, no rows or no module, nothing changes:
+// every monster runs its own behavior (creatures.coax), and the room asks for no memory for scripts.
+//
+// What a script sees, each tick, from the room's state after the tick before:
+//   each placed seat   id EGS_SEAT + seat, kind EGS_KIND_PLAYER, team 0, its Hit Points
+//   each monster up    id EGS_MON + its number, kind its look, team 1; speed: its run; its Hit Points;
+//                      goal: its quarry while it chases, home while it is home or on its way there;
+//                      notice: how far it notices; point 0: its home. Its four running numbers are the
+//                      script's own (sa_set_var), cleared when a new one stands.
+//   events             on_hit when a seat's cast harms a monster (other: the seat, amount: the harm)
+//   time               the room's tick over EG_HZ; day: the server's day (room-sky.coax), 0 to 1
+// What the room does with a script's word for a monster, in that tick's step:
+//   sa_move     it walks toward the point, on the room's navigation cells, no faster than its run. A point
+//               on the glade's safe ground or past its leash from home is refused: it stands
+//   sa_stop     it stands
+//   sa_face     it turns to the yaw
+//   sa_strike   on a seat that is its quarry: when its blow is ready and the seat within reach, it turns on
+//               the seat and begins its blow, which lands by the rules' strike after its tell, as any
+//   sa_set_var  the running number, for the script's next tick
+//   sa_say, sa_emit   nothing: Everglade's creatures have no authored lines or realm events yet
+// A monster whose script said nothing this tick, that is mid-blow or that runs home on its leash, does what
+// its behavior says (e2mo_step). A script never writes a seat, a character or the ledger: the API has no
+// call that could (realm-script-api.md), and the only harm a script asks for is the rules' own strike.
+//   coax/bin/coax test coax/web/room/room.coax --only "e2 scripts"
+#load "../../coax/web/room/room-scripts.coax";
+#load "../../metaverse-engine/script/rows.coax";
+
+EGS_SEAT :: 1; EGS_MON :: 1000;   // a seat's and a monster's script ids
+EGS_KIND_PLAYER :: 200;           // a seat's kind, past every creature look
+EGS_HITS :: 32;                   // casts that harm a monster one tick can report
+EgsWord :: struct { tick: int = -1; move: bool; x: f32; z: f32; speed: f32; face: bool; yaw: f32; strike: int = -1; }
+EgsHit :: struct { m: int; s: int; amount: int; }
+// One room's scripts: the host's memory (rm_scripts_use), made only when a release names scripts.
+EgScripts :: struct {
+  rs: [1] RoomScripts;
+  word: [E2M_N] EgsWord;
+  vars: [E2M_N] [SH_VARS] f32; life: [E2M_N] int;
+  hits: [EGS_HITS] EgsHit; hit_n: int;
+  f: [1] ScriptFrame; run: [1] ScriptRun;
+  frame: [SF_BYTES] u8; out: [SR_BYTES] u8;
+}
+// The rows the release names, shared by every room.
+EgsRows :: struct { rows: [SH_SCRIPTS] ScriptRow; n: int; loaded: int; }
+
+egs_on :: (v: [] RmServer, k: int) -> bool { return k >= 0 && k < v[0].scr.count && v[0].scr_rows.loaded > 0; }
+
+// ---- start (room-host.c scripts_load)
+// The release's script rows, from a content document holding a `scripts` table. How many rows (0 to
+// SH_SCRIPTS), or -1 when the document or a row does not read: then nothing runs.
+rm_scripts_rows :: (v: [] RmServer, text: string) -> int #export_c #effects(all) {
+  v[0].scr_rows = EgsRows.{};
+  d: [1] ContentDoc; bad: [2] int;
+  if !ct_read(d[..], text) { return -1; }
+  n := srw_scan(d[..], v[0].scr_rows.rows[..], bad[..]);
+  if n < 0 { return -1; }
+  v[0].scr_rows.n = n;
+  return n;
+}
+// How many rooms' memory the host gives (rm_scripts_use).
+rm_scripts_rooms :: () -> int #export_c #effects(computes) { return EG_ROOMS; }
+// Row i's module hash into out (64 bytes): what the host reads as HASH.wasm and HASH.json.
+rm_scripts_hash :: (v: [] RmServer, i: int, out: [] u8) -> bool #export_c #effects(all) {
+  if i < 0 || i >= v[0].scr_rows.n || out.count < 64 { return false; }
+  for c, j: v[0].scr_rows.rows[i].hash { out[j] = c; }
+  return true;
+}
+// The memory each room's scripts run in: one for each of the first s.count rooms (the host gives
+// EG_ROOMS), the host's, at their declared defaults.
+rm_scripts_use :: (v: [] RmServer, s: [] EgScripts) -> bool #export_c #effects(all) {
+  if s.count < 1 || s.count > EG_ROOMS { return false; }
+  v[0].scr = s;
+  return true;
+}
+// Row i's module, with its manifest (realm.script.v1), into every room. 0 when it runs; SD_REFUSED or
+// SD_FACE when the module check refused it; -1 when there is no memory, the manifest does not read or the
+// bytes are not the hash the row names.
+rm_scripts_load :: (v: [] RmServer, i: int, bytes: [] u8, manifest: string) -> int #export_c #effects(all) {
+  if i < 0 || i >= v[0].scr_rows.n || v[0].scr.count < 1 { return -1; }
+  mf: [1] ScriptManifest;
+  if !sm_read(manifest, mf[..]) { return -1; }
+  row := v[0].scr_rows.rows[i]; hex: [64] u8;
+  if !S_hex(S_hash(cast(string) bytes), hex[..]) || cast(string) hex[..] != cast(string) row.hash[..] { return -1; }
+  for k: 0..<v[0].scr.count {
+    code := sw_load_laid(v[0].scr[k].rs[0].w[..], row.slot, cast(string) row.name[0..<row.name_n], bytes, mf[0].layout);
+    if code != 0 { return code; }
+  }
+  v[0].scr_rows.loaded += 1;
+  return 0;
+}
+// Room k's script status (world.script-status.v1) into out: its length, 0 for none.
+rm_scripts_status :: (v: [] RmServer, k: int, out: [] u8) -> int #export_c #effects(all) {
+  if !egs_on(v, k) { return 0; }
+  return rsc_status(v[0].scr[k].rs[..], out);
+}
+
+// ---- each tick
+// A seat's cast harmed monster m by `amount` (creatures.coax e2_monster_struck): the next frame's on_hit.
+egs_hit :: (v: [] RmServer, k: int, m: int, s: int, amount: int) {
+  if !egs_on(v, k) || m < 0 || m >= E2M_N { return; }
+  sc := v[0].scr[k..<k + 1];
+  if sc[0].hit_n >= EGS_HITS { return; }
+  sc[0].hits[sc[0].hit_n] = EgsHit.{m = m, s = s, amount = amount}; sc[0].hit_n += 1;
+}
+// The frame of room k as it stands, into sc[0].f.
+egs_frame :: (v: [] RmServer, k: int, sc: [] EgScripts) {
+  t := v[0].eg[k].tick; b := v[0].eg[k].rules[0].b[..]; ms := e2mo_room(v, k);
+  f := sc[0].f[..];
+  f[0] = ScriptFrame.{tick = t, seed = v[0].eg[k].seed, dt = 1.0f32 / f32(EG_HZ), time = f32(t) / f32(EG_HZ), day = f32(eg_sky_day(v[0].wall_ms)) / f32(WIRE_DAY_MS)};
+  n := 0;
+  for s: 0..<eg_cap(v, k) {
+    st := v[0].eg[k].seat[s];
+    if !st.live || !st.placed || n >= SH_THINGS - E2M_N { continue; }
+    c := b[0].c[EGB_SEAT + s];
+    f[0].things[n] = ScriptThing.{id = cast(u64) (EGS_SEAT + s), kind = EGS_KIND_PLAYER, team = 0, alive = !c.dead && c.hp > 0,
+                                  x = st.pose.x, y = st.pose.y, z = st.pose.z, facing = st.pose.yaw, health = f32(c.hp)};
+    n += 1;
+  }
+  rows := v[0].scr_rows.rows[0..<v[0].scr_rows.n];
+  for m: 0..<E2M_N {
+    mo := ms[0].mon[m];
+    if mo.life != sc[0].life[m] { sc[0].life[m] = mo.life; for j: 0..<SH_VARS { sc[0].vars[m][j] = 0; } sc[0].word[m] = EgsWord.{}; }
+    if !e2mo_up(v, k, m) || !e2nv_awake(v, k, mo.x, mo.z) { continue; }
+    tp := e2mo_tpl(v, mo); c := b[0].c[e2mo_creature(v, k, mo)];
+    th := ScriptThing.{id = cast(u64) (EGS_MON + m), kind = cast(s32) mo.kind, team = 1, script = cast(s32) srw_pick(rows, mo.kind, m + 1), alive = true,
+                       x = mo.x, z = mo.z, facing = mo.yaw, speed = tp.run, health = f32(c.hp),
+                       goal_x = mo.hx, goal_z = mo.hz, goal_speed = ifx mo.state == E2M_RETURN then tp.run else 0.0f32, notice = tp.notice, plan_on = 0};
+    if mo.state == E2M_CHASE && mo.foe >= 0 && mo.foe < eg_cap(v, k) {
+      p := v[0].eg[k].seat[mo.foe].pose; th.goal_x = p.x; th.goal_z = p.z; th.goal_speed = tp.run;
+    }
+    th.px[0] = mo.hx; th.pz[0] = mo.hz;
+    for j: 0..<SH_VARS { th.vars[j] = sc[0].vars[m][j]; }
+    f[0].things[n] = th; n += 1;
+  }
+  f[0].n_things = n;
+  for h: 0..<sc[0].hit_n {
+    if h >= SH_EVENTS { break; }
+    hit := sc[0].hits[h];
+    f[0].events[h] = ScriptEvent.{handler = RH_HIT, thing = cast(u64) (EGS_MON + hit.m), other = cast(u64) (EGS_SEAT + hit.s), amount = f32(hit.amount)};
+    f[0].n_events = h + 1;
+  }
+  sc[0].hit_n = 0;
+}
+// Room k's scripts, once a tick before its monsters step (creatures.coax e2_monsters_tick): the frame in,
+// each monster's word for this tick out.
+egs_tick :: (v: [] RmServer, k: int) {
+  if !egs_on(v, k) { return; }
+  sc := v[0].scr[k..<k + 1]; t := v[0].eg[k].tick;
+  egs_frame(v, k, sc);
+  fn := sf_write(sc[0].f[..], sc[0].frame[..]);
+  rn := ifx fn > 0 then rsc_tick(sc[0].rs[..], sc[0].frame[0..<fn], sc[0].out[..]) else 0;
+  if rn <= 0 || !sr_read(sc[0].out[0..<rn], sc[0].run[..]) { return; }
+  r := sc[0].run[..];
+  for i: 0..<r[0].n_commands {
+    c := r[0].commands[i];
+    if c.thing < cast(u64) EGS_MON || c.thing >= cast(u64) (EGS_MON + E2M_N) { continue; }
+    m := cast(int) c.thing - EGS_MON; w := sc[0].word[m..<m + 1];
+    if w[0].tick != t { w[0] = EgsWord.{tick = t}; }
+    if c.op == SA_MOVE { w[0].move = true; w[0].x = c.a; w[0].z = c.b; w[0].speed = c.c; }
+    else if c.op == SA_STOP { w[0].move = false; w[0].speed = 0; }
+    else if c.op == SA_FACE { w[0].face = true; w[0].yaw = c.a; }
+    else if c.op == SA_SET_VAR && c.i >= 0 && c.i < SH_VARS { sc[0].vars[m][c.i] = c.a; }
+    else if c.op == SA_STRIKE && c.target >= cast(u64) EGS_SEAT && c.target < cast(u64) (EGS_SEAT + eg_cap(v, k)) { w[0].strike = cast(int) c.target - EGS_SEAT; }
+  }
+}
+// Monster m's step by its script's word for tick t: true when the word was taken, false when the monster
+// does what its behavior says (no word, a blow under way, or on its way home).
+egs_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) -> bool {
+  if !egs_on(v, k) || m < 0 || m >= E2M_N { return false; }   // the patrol (E2M_PATROL) is the guard's, not a script's
+  w := v[0].scr[k].word[m];
+  mo := e2mo_room(v, k)[0].mon[m..<m + 1];
+  if w.tick != t || mo[0].act != 0 || mo[0].state == E2M_RETURN { return false; }
+  tp := e2mo_tpl(v, mo[0]);
+  if w.move {
+    far := e2mo_dist(w.x, w.z, mo[0].hx, mo[0].hz) > tp.leash;
+    if !e2mo_safe(w.x, w.z) && !far {
+      speed := ifx w.speed < tp.run then w.speed else tp.run;
+      went := e2mo_move(v, k, m, w.x, w.z, speed, dt, 0);
+      if went > 0 && !w.face { mo[0].yaw = e2mo_turn(mo[0].yaw, e2mo_way(mo, w.x, w.z), 8, dt); }
+    }
+  }
+  if w.face { mo[0].yaw = e2mo_turn(mo[0].yaw, e2mo_wrap(w.yaw), 10, dt); }
+  s := w.strike;
+  if s >= 0 && E2M_STYLE[tp.style].fights && e2mo_quarry(v, k, s) {
+    p := v[0].eg[k].seat[s].pose; i := e2mo_creature(v, k, mo[0]);
+    ready := t >= mo[0].ready && rs_can_act(v[0].eg[k].rules[0].b[0].c[i]);
+    if ready && e2mo_dist(mo[0].x, mo[0].z, p.x, p.z) <= f32(E2M_REACH) {
+      e2th_taunt(mo, s); mo[0].foe = s; mo[0].state = E2M_CHASE; mo[0].act = E2M_ACT_BLOW; mo[0].act_t = t;
+    }
+  }
+  return true;
+}
+
+#load "scripts-checks.coax" #test;

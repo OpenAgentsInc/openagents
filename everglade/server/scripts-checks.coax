@@ -1,0 +1,96 @@
+// The room's realm-script checks (#13467; everglade/server/scripts.coax), loaded with #test by it. The
+// modules are made by metaverse-engine/script/wasm-make.coax: one tick handler each, written as bytes.
+//   coax/bin/coax test coax/web/room/room.coax --only "e2 scripts"
+
+EGSC_HEAD :: "aethyr.content.v1 scripts 1\nreach 4000\ntable scripts id name:text hash:text for:text\n";
+// f32.const v at out[at]: the next byte's place.
+egsc_f32 :: (out: [] u8, at: int, v: f32) -> int {
+  out[at] = 67; bits := cast(u64) f32_bits(v);
+  for i: 0..<4 { out[at + 1 + i] = cast(u8) ((bits >> cast(u64) (i * 8)) & 255); }
+  return at + 5;
+}
+EgscMod :: struct { b: [2048] u8; n: int; s: [2] ScriptSlot; text: [SM_TEXT] u8; doc: [512] u8; }
+// A module of the given API rows and tick body, its manifest and a scripts table with one row driving
+// `target` (`who 1`, `kind 0`): the table's text, or "" when the module did not load.
+egsc_make :: (m: [] EgscMod, rows: [] int, tick: [] u8, name: string, target: string, manifest: [] string) -> string {
+  echo := WB_ECHO;
+  m[0].n = wb_module(m[0].b[..], rows, tick, 0, echo[..]);
+  if m[0].n < 0 || sh_load(m[0].s[0..<1], m[0].s[1..<2], m[0].b[0..<m[0].n], ScriptLayout.{}) != 0 { return ""; }
+  manifest[0] = sm_write(sm_of(m[0].s[0..<1], name, ScriptLayout.{}), m[0].text[..]);
+  hex: [64] u8;
+  if manifest[0] == "" || !S_hex(S_hash(cast(string) m[0].b[0..<m[0].n]), hex[..]) { return ""; }
+  n := ct_put(m[0].doc[..], 0, EGSC_HEAD); n = ct_put(m[0].doc[..], n, "1|"); n = ct_put(m[0].doc[..], n, name); n = ct_put(m[0].doc[..], n, "|");
+  n = ct_put(m[0].doc[..], n, cast(string) hex[..]); n = ct_put(m[0].doc[..], n, "|"); n = ct_put(m[0].doc[..], n, target); n = ct_put(m[0].doc[..], n, "\n");
+  return cast(string) m[0].doc[0..<n];
+}
+egsc_use :: (v: [] RmServer, m: [] EgscMod, doc: string, manifest: string) -> int {
+  if rm_scripts_rows(v, doc) != 1 { return -2; }
+  return rm_scripts_load(v, 0, m[0].b[0..<m[0].n], manifest);
+}
+
+#test "e2 scripts: with no scripts named the room asks for no memory, and a table that does not read names none" {
+  v: [1] RmServer;
+  #assert !egs_on(v[..], 0) && rm_scripts_rows(v[..], "aethyr.content.v1 x 1\nreach 4000\ntable zone id name:text\n1|Gate\n") == 0;
+  #assert rm_scripts_rows(v[..], "not a table") == -1;
+  #assert rm_scripts_rows(v[..], "aethyr.content.v1 x 1\nreach 4000\ntable scripts id name:text hash:text for:text\n1|Bad Name|00|kind 0\n") == -1 && v[0].scr_rows.n == 0;
+  scr: [1] EgScripts;
+  #assert !rm_scripts_use(v[..], scr[0..<0]) && rm_scripts_use(v[..], scr[..]) && !egs_on(v[..], 0);   // memory, but nothing loaded
+}
+#test "e2 scripts: a script walks a wolf where it says and keeps it from its chase; its strike is the rules' blow; a call past its budget is undone and the wolf does as its behavior says" #steps 9000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := e2mt_room(v[..], "pair-e2-scripts"); #assert k == 0;
+  scr: [1] EgScripts; #assert rm_scripts_use(v[..], scr[..]);
+  ms := v[0].eg[k].monsters[..]; b := v[0].eg[k].rules[0].b[..];
+  b[0].c[EGB_SEAT].hp = 400; b[0].c[EGB_SEAT].hp_max = 400; b[0].c[EGB_SEAT].ac = 2;
+  for q: 0..<3 { e2mt_tick(v[..], k); }
+  w := ms[0].mon[0]; #assert w.state == E2M_IDLE && w.kind == E2M_WOLF;
+  m: [1] EgscMod; mf: [1] string;
+  // 1. a walker: sa_move(me, home + 4 m east, home, fast). The seat stands 6 m off: its behavior would chase.
+  code: [64] u8; n := 0;
+  code[0] = 32; code[1] = 0; n = egsc_f32(code[..], 2, w.hx + 4); n = egsc_f32(code[..], n, w.hz); n = egsc_f32(code[..], n, 99);
+  code[n] = 16; code[n + 1] = 0; code[n + 2] = 11; n += 3;
+  moves := [1] int.[SA_MOVE];
+  doc := egsc_make(m[..], moves[..], code[0..<n], "walker", "who 1", mf[..]);
+  #assert doc != "";
+  #assert rm_scripts_rows(v[..], doc) == 1;
+  #assert rm_scripts_load(v[..], 0, m[0].b[0..<m[0].n], mf[0]) == 0;
+  #assert egs_on(v[..], k);
+  // its bytes are the hash its row names, or it does not load
+  keep: [512] u8; kn := ct_put(keep[..], 0, doc);
+  for q: 0..<EG_HZ * 4 { e2mt_at(v[..], k, w.hx, w.hz - 6); e2mt_tick(v[..], k); }
+  wolf := ms[0].mon[0];
+  #assert e2mo_dist(wolf.x, wolf.z, w.hx + 4, w.hz) < 1.0 && wolf.state == E2M_IDLE && b[0].c[EGB_SEAT].hp == 400;
+  st: [SW_STATUS] u8; sn := rm_scripts_status(v[..], k, st[..]); ss: [1] ScriptStatus;
+  #assert sn > 0 && sw_status_read(cast(string) st[0..<sn], ss[..]) && ss[0].n == 1 && ss[0].rows[0].calls >= EG_HZ * 4 && ss[0].rows[0].failures == 0 && ss[0].rows[0].things == 1;
+  #assert ss[0].tick_fuel == SH_TICK_FUEL && ss[0].call_fuel == SH_CALL_FUEL && ss[0].rows[0].peak < SH_CALL_FUEL;
+  // a point on the glade's safe ground is refused: the wolf stands
+  code[0] = 32; code[1] = 0; n = egsc_f32(code[..], 2, w.hx); n = egsc_f32(code[..], n, -20); n = egsc_f32(code[..], n, 99);
+  code[n] = 16; code[n + 1] = 0; code[n + 2] = 11; n += 3;
+  doc = egsc_make(m[..], moves[..], code[0..<n], "glade", "kind 0", mf[..]);
+  #assert doc != "" && egsc_use(v[..], m[..], doc, mf[0]) == 0;
+  at := ms[0].mon[0];
+  for q: 0..<EG_HZ { e2mt_at(v[..], k, w.hx, w.hz - 6); e2mt_tick(v[..], k); }
+  #assert e2mo_dist(ms[0].mon[0].x, ms[0].mon[0].z, at.x, at.z) < 0.05 && ms[0].mon[0].state == E2M_IDLE;
+  // 2. a striker: sa_strike(me, seat 0). Beside the seat, its blow begins and lands by the rules
+  strikes := [1] int.[SA_STRIKE];
+  hit := [7] u8.[32, 0, 66, 1, 16, 0, 11];   // sa_strike(me, 1)
+  doc = egsc_make(m[..], strikes[..], hit[..], "striker", "who 1", mf[..]);
+  #assert doc != "" && egsc_use(v[..], m[..], doc, mf[0]) == 0;
+  blow := false;
+  for q: 0..<EG_HZ * 3 {
+    e2mt_at(v[..], k, ms[0].mon[0].x + 1, ms[0].mon[0].z); e2mt_tick(v[..], k);
+    if ms[0].mon[0].act == E2M_ACT_BLOW { blow = true; }
+  }
+  #assert blow && b[0].c[EGB_SEAT].hp < 400;
+  // 3. a script that never ends: each call is undone, said, and the wolf does as its behavior says (it chases)
+  stops := [1] int.[SA_STOP];
+  forever := [10] u8.[32, 0, 16, 0, 3, 64, 12, 0, 11, 11];   // sa_stop(me), then a loop that never ends
+  doc = egsc_make(m[..], stops[..], forever[..], "stuck", "who 1", mf[..]);
+  #assert doc != "" && egsc_use(v[..], m[..], doc, mf[0]) == 0;
+  e2mt_at(v[..], k, ms[0].mon[0].x + 5, ms[0].mon[0].z); e2mt_tick(v[..], k);
+  #assert scr[0].run[0].failed == 1 && scr[0].run[0].n_commands == 0 && scr[0].run[0].diags[0].code == SD_OVER_BUDGET && scr[0].word[0].tick != v[0].eg[k].tick;
+  chased := false;
+  for q: 0..<EG_HZ * 2 { e2mt_tick(v[..], k); if ms[0].mon[0].state == E2M_CHASE { chased = true; } }
+  #assert chased;
+  // a module that is not the hash its row names is not loaded
+  #assert rm_scripts_rows(v[..], cast(string) keep[0..<kn]) == 1 && rm_scripts_load(v[..], 0, m[0].b[0..<m[0].n], mf[0]) == -1;
+}

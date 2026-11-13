@@ -499,6 +499,7 @@ e2mo_rest_home :: (v: [] RmServer, k: int, m: int) {
 e2_monsters_tick :: (v: [] RmServer, k: int) {
   ms := e2mo_room(v, k); r := v[0].eg[k].rules[..]; b := r[0].b[..];
   t := v[0].eg[k].tick; dt := 1.0f32 / f32(EG_HZ);
+  egs_tick(v, k);   // the room's realm scripts say their word for this tick (scripts.coax, #13467)
   for m: 0..<E2M_ALL {
     mo := ms[0].mon[m..<m + 1];
     if mo[0].state == E2M_GONE {
@@ -529,7 +530,8 @@ e2_monsters_tick :: (v: [] RmServer, k: int) {
         at := e2nv_near_open(v, k, mo[0].hx, mo[0].hz, f32(E2M_HOME_REACH));
         if at[2] == 1 { if mo[0].state == E2M_IDLE { mo[0].x = at[0]; mo[0].z = at[1]; } mo[0].hx = at[0]; mo[0].hz = at[1]; }
       }
-      e2mo_step(v, k, m, t, dt); e2nv_look(v, k, m, mo[0].x, mo[0].z, true);
+      if !egs_step(v, k, m, t, dt) { e2mo_step(v, k, m, t, dt); }   // a script's word, else its behavior
+      e2nv_look(v, k, m, mo[0].x, mo[0].z, true);
     }
     bt := r[0].beasts[mo[0].q..<mo[0].q + 1]; i := egb0(v, k) + mo[0].q;
     bt[0].x = mo[0].x; bt[0].z = mo[0].z; bt[0].yaw = mo[0].yaw; if walks { bt[0].moving = mo[0].moved; }
@@ -736,6 +738,7 @@ e2_monster_struck :: (v: [] RmServer, k: int, s: int, i: int, hp_before: int) {
     if mo[0].state != E2M_RETURN { e2th_add(mo, s, rs_max(hp_before - hp, 1)); }
     if mo[0].state == E2M_IDLE && e2mo_quarry(v, k, s) { e2mo_rouse(v, k, mo[0].group, s); }
     e2mo_tell(v, k, 2, m, s, rs_max(hp_before - hp, 0), mo[0].x, mo[0].z);
+    if hp_before > hp { egs_hit(v, k, m, s, hp_before - hp); }   // the scripts' on_hit (scripts.coax)
     return;
   }
 }

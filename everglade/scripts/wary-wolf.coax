@@ -1,0 +1,29 @@
+// A wary wolf, as a realm script the room runs (GitHub #13467; everglade/server/scripts.coax): once it has
+// lost half its Hit Points it breaks off and runs for home, away from whoever hurt it, for a few seconds;
+// otherwise it says nothing and the wolf hunts as its behavior says (creatures.coax).
+//   coax/web/script.sh everglade/scripts/wary-wolf.coax --out DIR
+// A release turns it on with a row of its scripts table: 1|wary-wolf|HASH|kind 0 (every wolf).
+#script "wary-wolf";
+#load "../../metaverse-engine/script/api.coax";
+
+RUN_FOR :: 4.0f32;     // seconds it runs once it breaks off
+Mind :: struct #persisted { full: f32; running: f32; from: u64; }
+
+on_tick :: (me: u64, mind: [] Mind, dt: f32) #export_c #effects(reads, writes, traps) {
+  hp := sa_health(me);
+  if hp > mind[0].full { mind[0].full = hp; }
+  if mind[0].running <= 0.0 { return; }
+  mind[0].running -= dt;
+  // home is its first point; it runs past it, away from the one that hurt it
+  hx := sa_point_x(me, 0); hz := sa_point_z(me, 0);
+  if mind[0].from != 0 && sa_alive(mind[0].from) {
+    dx := sa_x(me) - sa_x(mind[0].from); dz := sa_z(me) - sa_z(mind[0].from);
+    hx += dx * 0.25; hz += dz * 0.25;
+  }
+  sa_move(me, hx, hz, sa_speed(me));
+}
+on_hit :: (me: u64, mind: [] Mind, other: u64, amount: f32) #export_c #effects(reads, writes, traps) {
+  if mind[0].full > 0.0 && sa_health(me) * 2.0 <= mind[0].full && mind[0].running <= 0.0 {
+    mind[0].running = RUN_FOR; mind[0].from = other;
+  }
+}

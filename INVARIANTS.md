@@ -8308,6 +8308,23 @@ no call fails); `coax/bin/coax test metaverse/splice-bots/content.coax --library
 ("a script row names a module by its hash and whom it drives ...", "tables
 saved before ... the scripts table came ...").
 
+In Everglade's rooms (`everglade/server/scripts.coax`) the room is the
+authority for the monsters, so the room runs their scripts, by the same host
+under the same budget. A monster whose script said nothing this tick, that is
+mid-blow, or that runs home on its leash does what its behavior says
+(`creatures.coax` `e2mo_step`). The engine caps every word: a walk no faster
+than the monster's run, never onto the glade's safe ground and never past its
+leash from home; a strike only on a seat that is its quarry, within reach,
+when its blow is ready, and then as the rules' own blow after its tell. A
+release with no scripts table, no row or no module that loads asks for no
+script memory and runs every monster as before.
+
+Checks: `coax/bin/coax test coax/web/room/room.coax --only "e2 scripts"` (a
+script walks a wolf where it says and keeps it from its chase; a point on
+safe ground is refused; its strike is the rules' blow; a call past its
+budget is undone and the wolf chases by its behavior; a module that is not
+its row's hash does not load).
+
 ## Attachments are private and never reach a player or a pack
 
 A world's attachments and its project's (#13468;

@@ -997,6 +997,44 @@ static void content_load(void) {
   printf("room: content tables revision %lld loaded from %s\n", (long long)rm_content_rev(view()), path);
   if (rm_content_was(view()) > 0) printf("room: pages on content tables revision %lld are seated too, and play by those tables (the release before's)\n", (long long)rm_content_was(view()));
 }
+/* Everglade's realm scripts (everglade/server/scripts.coax, #13467), read once at start: OA_ROOM_SCRIPTS names a
+   directory holding scripts.content (a content document whose `scripts` table names each script by its module's
+   hash) and, for each row, HASH.wasm (the module) and HASH.json (its manifest, realm.script.v1). The module
+   check runs on each module as it loads, and a module whose bytes are not its row's hash is not loaded. A world
+   never waits on a script: with no directory, a table that does not read, or a module missing or refused, the
+   room runs its monsters' own behavior, says so, and asks for no memory for scripts. */
+static long scripts_file(const char *dir, const char *name, char *out, size_t cap) {
+  char path[1200]; snprintf(path, sizeof path, "%s/%s", dir, name);
+  FILE *f = fopen(path, "rb");
+  if (!f) return -1;
+  size_t n = fread(out, 1, cap, f);
+  int more = n == cap && fgetc(f) != EOF;
+  fclose(f);
+  return more ? -1 : (long)n;
+}
+static void scripts_load(void) {
+  static char text[65537], wasm[65537], manifest[8193];
+  const char *dir = getenv("OA_ROOM_SCRIPTS");
+  if (!dir || !*dir) return;
+  long n = scripts_file(dir, "scripts.content", text, sizeof text - 1);
+  int64_t rows = n > 0 ? rm_scripts_rows(view(), (coax_string){text, (int64_t)n}) : -1;
+  if (rows < 0) { fprintf(stderr, "room: OA_ROOM_SCRIPTS=%s holds no scripts table that reads (scripts.content): no realm scripts\n", dir); return; }
+  if (rows == 0) { printf("room: no realm scripts named\n"); return; }
+  coax_t_EgScripts *mem = malloc(sizeof *mem * (int)rm_scripts_rooms());
+  if (!mem) { fprintf(stderr, "room: no memory for realm scripts: none run\n"); return; }
+  for (int k = 0; k < (int)rm_scripts_rooms(); k++) coax_default_t_EgScripts(&mem[k]);
+  if (!rm_scripts_use(view(), (coax_v_t_EgScripts){mem, (int)rm_scripts_rooms()})) { free(mem); return; }
+  for (int64_t i = 0; i < rows; i++) {
+    char hash[65] = {0}, name[80];
+    if (!rm_scripts_hash(view(), i, (coax_v_u8){(uint8_t *)hash, 64})) continue;
+    snprintf(name, sizeof name, "%s.wasm", hash); long wn = scripts_file(dir, name, wasm, sizeof wasm - 1);
+    snprintf(name, sizeof name, "%s.json", hash); long mn = scripts_file(dir, name, manifest, sizeof manifest - 1);
+    int64_t code = wn > 0 && mn > 0 ? rm_scripts_load(view(), i, (coax_v_u8){(uint8_t *)wasm, wn}, (coax_string){manifest, (int64_t)mn}) : -1;
+    if (code == 0) printf("room: realm script %s runs\n", hash);
+    else fprintf(stderr, "room: realm script %s does not run (%s): its monsters do as their behavior says\n", hash,
+                 wn <= 0 || mn <= 0 ? "no module or manifest" : code > 0 ? "the module check refused it" : "not its hash, or a manifest that does not read");
+  }
+}
 static void checkpoint_post(void) {
   const char *dev_url=getenv("OA_ROOM_CHECKPOINT_URL");
   /* --dev with no API: the stand-in's store answers, as production's API does (#13057) */
@@ -1231,6 +1269,7 @@ int main(int argc, char **argv) {
   const char *must = getenv("OA_ROOM_TICKET_REQUIRED");   /* "0": a join without a ticket sits with no id (while pages roll out) */
   bool required = !(must && !strcmp(must, "0"));
   content_load();   /* the content tables: loot, quests, dialogue, points (#13294) */
+  scripts_load();   /* the monsters' realm scripts, when the release names them (#13467) */
   /* which shard of the instance directory this is (oa-room 1, oa-room-K K: room-directory.coax) */
   const char *shard = getenv("OA_ROOM_SHARD");
   if (shard && *shard) rm_shard(view(), atoi(shard));

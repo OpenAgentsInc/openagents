@@ -39,6 +39,7 @@
 #load "../../../everglade/server/wire-prev.coax";   // the previous wire's writers, for one release (#13398)
 #load "../../../everglade/server/pins-prev.coax";   // the previous pins, for one release (#13408)
 #load "../../../everglade/server/progress.coax";
+#load "../../../everglade/server/scripts.coax";   // the monsters' realm scripts (#13467)
 #load "../../../everglade/server/room-checks.coax" #test;
 #load "../../../everglade/server/nav-checks.coax" #test;   // the room's cells and navigation (#13280, #13281)
 #load "../../../everglade/server/zone-checks.coax" #test;   // a zone's storage: a room's seats as a view, 150 in one zone (#13275)
