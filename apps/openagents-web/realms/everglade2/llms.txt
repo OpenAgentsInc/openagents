@@ -103,6 +103,7 @@ The rows of `proto/registry.json` whose codec or files are this realm's (under `
 | `crash-report-v2` | profile | room-session | `proto/verse/crash-report-v2.json` |
 | `crash-report-v3` | profile | room-session | `proto/verse/crash-report-v3.json` |
 | `capacity-record-v1` | profile | toolchain | `proto/verse/capacity-record-v1.json` |
+| `script.frame.v1` | profile | engine | `proto/world/script-v1.json` |
 | `asset-pack-v2` | profile | realm-authoring | `proto/verse/asset-pack-v2.json` |
 | `rig-pack-v1` | profile | engine | `proto/aethyr/rig-pack-v1.json` |
 | `everglade-edits-v1` | profile | world | `proto/verse/everglade-edits-v1.json` |
@@ -193,4 +194,4 @@ table ability id name:text
 128|Rage
 ```
 
-reference sha256: 3d4e379dd1d45293139f7fa75bba074820426e3b88824c8a456d03d8a6f7cbe1
+reference sha256: 128cad6851422fa1a7555f36c33f182cf26d19892d28c0e4e7182228acf2ab3b

@@ -8280,7 +8280,17 @@ rounds; longer runs take `--seed N --rounds N --corpus DIR`);
   the frame's time, a seeded draw), so the same frames give the same
   commands and spend the same instructions on the page and in a room.
 
-Checks: `coax/bin/coax test metaverse-engine/script/host.coax --library`
+- **Page and room, step for step.** The page's script module
+  (`apps/openagents-web/script-host.coax`) and the room's unit
+  (`coax/web/room/room-scripts.coax`) are the same Coax over the same bytes.
+  The room's tick declares `#effects(reads, writes, traps)`: the compiler
+  refuses a clock, I/O or a native call anywhere under it.
+
+Checks: `coax/web/tool.sh coax/web/room/room-scripts-check.coax` (Splice's
+foes on their scripts for 900 ticks through the room's unit natively and
+through the page's module under Node: the results are the same bytes, so
+the same commands, diagnostics, calls and budget left, every tick);
+`coax/bin/coax test metaverse-engine/script/host.coax --library`
 ("a call that never ends loses that call; three in a row switch the script
 off", "a world's scripts share one budget a tick ...", "the module's own
 trap names its line ...", "reads answer from the frame ... and a seeded

@@ -1,0 +1,61 @@
+// The room's side of realm scripts (GitHub #13467, docs/protocol/realm-script-v1.md): a world's scripts
+// run natively, by the same module check, interpreter and host the page's script module holds
+// (metaverse-engine/script/world.coax), over the same bytes. A room game that simulates a world with
+// script rows keeps one RoomScripts, loads each module it fetched by hash, and each tick hands it the
+// frame its world fills and applies the result's commands, as a page does between its steps.
+//
+// The budget is the room's to enforce and is the same as the page's: SH_CALL_FUEL instructions a handler
+// call and SH_TICK_FUEL for all of a world's scripts in one tick (frame.coax). A call past its budget is
+// undone; calls past the tick's are skipped and said once. Nothing a script does can stop the room: a trap
+// is a status, and every call is a transaction.
+//
+// No room game names a script yet: the one world with script rows, Splice, simulates on its page
+// (metaverse-engine/editor/authority.coax). This unit is what such a game links, and
+// coax/web/room/room-scripts-check.coax runs it beside the page's module to hold the two to the same
+// answers, instruction for instruction.
+//   coax/bin/coax test coax/web/room/room-scripts.coax --library
+#load "../../../metaverse-engine/script/world.coax";
+
+RoomScripts :: struct { w: [1] ScriptWorld; ticks: int; calls: int; failed: int; spent: int; }
+
+// Loads a module the room fetched into place `at`, with its manifest's state fields. 0 when it runs.
+// (Its effects are open because the hash it names the module by wipes its working words; a tick's are not.)
+rsc_load :: (r: [] RoomScripts, at: int, name: string, bytes: [] u8, fields: string) -> int #export_c #effects(all) {
+  if r.count == 0 { return -1; }
+  return sw_load(r[0].w[..], at, name, bytes, fields);
+}
+// One tick: the world's frame in, the result out. The result's length; 0 when the bytes are no frame.
+rsc_tick :: (r: [] RoomScripts, frame: [] u8, out: [] u8) -> int #export_c #effects(reads, writes, traps) {
+  if r.count == 0 { return 0; }
+  n := sw_tick(r[0].w[..], frame, out);
+  if n <= 0 { return 0; }
+  r[0].ticks += 1; r[0].calls += r[0].w[0].run[0].calls; r[0].failed += r[0].w[0].run[0].failed;
+  r[0].spent += SH_TICK_FUEL - r[0].w[0].run[0].fuel;
+  return n;
+}
+// The world's script status (world.script-status.v1) into out: its length.
+rsc_status :: (r: [] RoomScripts, out: [] u8) -> int #export_c #effects(reads, writes, traps) {
+  if r.count == 0 { return 0; }
+  return sw_status(r[0].w[..], out).count;
+}
+// The tick budget, for a room that shows it.
+rsc_tick_fuel :: () -> int #export_c #effects(computes) { return SH_TICK_FUEL; }
+
+#test "a room loads a module, runs a tick within the budget and counts what it spent" #steps 900000000 {
+  r: [1] RoomScripts; b: [2048] u8; f: [1] ScriptFrame; frame: [SF_BYTES] u8; out: [SR_BYTES] u8; run: [1] ScriptRun;
+  rows := [1] int.[SA_STOP]; echo := WB_ECHO;
+  forever := [10] u8.[32, 0, 16, 0, 3, 64, 12, 0, 11, 11];   // sa_stop(me), then a loop that never ends
+  n := wb_module(b[..], rows[..], forever[..], 0, echo[..]);
+  #assert rsc_load(r[..], 0, "stuck", b[0..<n], "") == 0 && rsc_tick_fuel() == SH_TICK_FUEL;
+  f[0] = ScriptFrame.{tick = 1, dt = 0.5, n_things = 2};
+  f[0].things[0] = ScriptThing.{id = 5, script = 0, alive = true};
+  f[0].things[1] = ScriptThing.{id = 6, script = 0, alive = true};
+  fn := sf_write(f[..], frame[..]);
+  rn := rsc_tick(r[..], frame[0..<fn], out[..]);
+  // Both calls ran out of budget: each was undone (no stop command), each is a diagnostic, and the room goes on.
+  #assert rn > 0 && sr_read(out[0..<rn], run[..]) && run[0].n_commands == 0 && run[0].failed == 2 && run[0].diags[0].code == SD_OVER_BUDGET;
+  #assert r[0].ticks == 1 && r[0].calls == 2 && r[0].failed == 2 && r[0].spent == 2 * SH_CALL_FUEL;
+  #assert rsc_tick(r[..], frame[0..<fn - 1], out[..]) == 0 && r[0].ticks == 1;
+  status: [SW_STATUS] u8;
+  #assert rsc_status(r[..], status[..]) > 0;
+}

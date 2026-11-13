@@ -28,4 +28,10 @@ EXPORT("scripts_tick") uint32_t scripts_tick(uint32_t state, uint32_t n) {
   if (n > sizeof in) return 0;
   return (uint32_t)coaxial_scripts_tick(at(state), (coax_v_u8){in, (int64_t)n}, (coax_v_u8){out, sizeof out});
 }
+/* A module handed over directly: `in` holds its name, then its bytes, then its state fields. The host's code (0: running). */
+EXPORT("scripts_try") int32_t scripts_try(uint32_t state, int32_t place, uint32_t name_n, uint32_t bytes_n, uint32_t fields_n) {
+  if (name_n > sizeof in || bytes_n > sizeof in - name_n || fields_n > sizeof in - name_n - bytes_n) return -1;
+  return (int32_t)coaxial_scripts_try(at(state), place, (coax_string){(const char *)in, (int64_t)name_n}, (coax_v_u8){in + name_n, (int64_t)bytes_n},
+                                      (coax_string){(const char *)in + name_n + bytes_n, (int64_t)fields_n});
+}
 EXPORT("scripts_status") uint32_t scripts_status(uint32_t state) { return (uint32_t)coaxial_scripts_status(at(state), (coax_v_u8){out, sizeof out}); }

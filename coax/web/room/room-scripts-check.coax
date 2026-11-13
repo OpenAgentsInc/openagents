@@ -1,0 +1,119 @@
+// Page and room agree step for step (GitHub #13467). This check runs Splice's foes on their scripts
+// natively through the room's script unit (room-scripts.coax), keeping every frame and every result, then
+// runs the same modules and the same frames through the page's script module (script-host.wasm) under
+// Node, and compares the results byte for byte. A result holds each tick's commands, its diagnostics, the
+// calls made and the instruction budget left, so equal bytes mean the page and the room made the same
+// calls, spent the same instructions and said the same things, every tick.
+// Run at the repository root (it builds the two scripts and the page's module into a temporary folder):
+//   coax/web/tool.sh coax/web/room/room-scripts-check.coax [--steps N] [--keep DIR]
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/proc.coax";
+#load "../../lib/sys/fs.coax";
+#load "room-scripts.coax";
+#load "../../../metaverse/splice/splice-game.coax";
+
+RSK_DT :: 0.02f32;
+RskWork :: struct {
+  g: [1] SpGame; r: [1] RoomScripts; f: [1] ScriptFrame; run: [1] ScriptRun;
+  frame: [SF_BYTES + 4] u8; result: [SR_BYTES + 4] u8; wasm: [WM_BYTES] u8; json: [SM_TEXT] u8; tables: [CT_BODY] u8;
+  out: [65536] u8; err: [65536] u8; page: [16777216] u8; native: [16777216] u8;
+}
+rsk_cat :: (out: [] u8, a: string, b: string) -> string {
+  n := 0;
+  for c: a { if n < out.count { out[n] = c; n += 1; } }
+  for c: b { if n < out.count { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+rsk_run :: (k: [] RskWork, argv: [] string, what: string) -> bool {
+  r := proc_run(argv, 600000, k[0].out[..], k[0].err[..]);
+  if r.started == 0 && r.status == 0 { return true; }
+  tool_err("room-scripts-check: "); tool_err(what); tool_errln(" failed:"); tool_errln(cast(string) k[0].out[0..<r.out_n]); tool_errln(cast(string) k[0].err[0..<r.err_n]);
+  return false;
+}
+// Builds a script into dir, loads it into the room's place `at` and adds its line to modules.txt.
+rsk_load :: (k: [] RskWork, dir: string, source: string, name: string, at: int, hash: [] u8) -> bool {
+  argv := [4] string.["coax/web/script.sh", source, "--out", dir];
+  if !rsk_run(k, argv[..], "the script build") { return false; }
+  a: [1200] u8; b: [1200] u8; stem: [1100] u8; line: [4096] u8;
+  base := rsk_cat(stem[..], rsk_cat(a[..], dir, "/"), name);
+  n := fs_read(rsk_cat(a[..], base, ".wasm"), k[0].wasm[..]); jn := fs_read(rsk_cat(b[..], base, ".json"), k[0].json[..]);
+  mf: [1] ScriptManifest; nodes: [512] JvNode; d: [1] Jv;
+  if n < 8 || jn < 1 || !sm_read(cast(string) k[0].json[0..<jn], mf[..]) || !jv_parse(d[..], cast(string) k[0].json[0..<jn], nodes[..]) { tool_errln("room-scripts-check: a built module did not read"); return false; }
+  fields := jv_raw(d[0], jv_path(d[0], 0, "state.fields"));
+  if rsc_load(k[0].r[..], at, name, k[0].wasm[0..<n], fields) != 0 { tool_errln("room-scripts-check: the room refused a built module"); return false; }
+  for c, i: mf[0].hash { hash[i] = c; }
+  ln := ct_put_int(line[..], 0, at); ln = ct_put(line[..], ln, " "); ln = ct_put(line[..], ln, name); ln = ct_put(line[..], ln, " "); ln = ct_put(line[..], ln, name); ln = ct_put(line[..], ln, ".wasm ");
+  ln = ct_put(line[..], ln, fields); ln = ct_put(line[..], ln, "\n");
+  return fs_append(rsk_cat(a[..], dir, "/modules.txt"), cast(string) line[0..<ln]);
+}
+rsk_u32 :: (out: [] u8, v: int) { for i: 0..<4 { out[i] = cast(u8) ((v >> (i * 8)) & 255); } }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("usage: room-scripts-check.coax [--steps N] [--keep DIR]"); return 2; }
+  steps := args_whole(args_value(a[..], "--steps", "900"));
+  if steps < 10 || steps > 20000 { tool_errln("room-scripts-check: --steps is 10 to 20000"); return 2; }
+  work: [1] RskWork; k := work[..];
+  tmp: [1024] u8; keep := args_value(a[..], "--keep", "");
+  dir := ifx keep.count > 0 then keep else fs_temp("room-scripts-", tmp[..]);
+  if dir == "" { tool_errln("room-scripts-check: no temporary directory"); return 2; }
+  p: [6] [1200] u8;
+  modules := rsk_cat(p[0][..], dir, "/modules.txt"); frames := rsk_cat(p[1][..], dir, "/frames.bin"); page := rsk_cat(p[2][..], dir, "/page.bin"); host := rsk_cat(p[3][..], dir, "/script-host.wasm");
+  cleared := fs_write(modules, "") && fs_write(frames, "");
+  hashes: [2] [64] u8;
+  if !cleared || !rsk_load(k, dir, "metaverse/splice/scripts/raider.coax", "splice-raider", 0, hashes[0][..]) || !rsk_load(k, dir, "metaverse/splice/scripts/imperial.coax", "splice-imperial", 1, hashes[1][..]) { return 1; }
+  build := [4] string.["coax/web/wasm.sh", "apps/openagents-web/script-host.coax", "apps/openagents-web/script-host-face.c", host];
+  if !rsk_run(k, build[..], "the page module's build") { return 1; }
+  // Splice with a script row for each kind of foe.
+  head := "table scripts id name:text hash:text for:text\n"; rows: [512] u8; n := 0;
+  n = ct_put(rows[..], n, head);
+  n = ct_put(rows[..], n, "1|splice-raider|"); n = ct_put(rows[..], n, cast(string) hashes[0][..]); n = ct_put(rows[..], n, "|kind 1\n");
+  n = ct_put(rows[..], n, "2|splice-imperial|"); n = ct_put(rows[..], n, cast(string) hashes[1][..]); n = ct_put(rows[..], n, "|kind 2\n");
+  at := sc_at(SC_SHIPPED, head);
+  tn := ct_put(k[0].tables[..], 0, SC_SHIPPED[0..<at]); tn = ct_put(k[0].tables[..], tn, cast(string) rows[0..<n]); tn = ct_put(k[0].tables[..], tn, SC_SHIPPED[at + head.count..<SC_SHIPPED.count]);
+  g := k[0].g[..];
+  g_stage(g, 8);
+  if at < 0 || !sc_load(g[0].c[..], cast(string) k[0].tables[0..<tn]) || g[0].c[0].script_n != 2 { tool_errln("room-scripts-check: the tables with the script rows did not load"); return 1; }
+  g[0].heat = 0;
+  // The run: the player walks a slow circle through the robots' patrols and the raiders' floor, strikes now
+  // and then, and leaves the mine for the last fifth.
+  native_n := 0; calls := 0; spent := 0; commands := 0;
+  for step: 0..<steps {
+    turn := cast(f32) step * 0.01;
+    g[0].px = 1.0 + cos(turn) * 9.0; g[0].pz = -50.0 + sin(turn) * 5.0;
+    if step * 5 > steps * 4 { g[0].px = 9.0; g[0].pz = 0.0; }
+    if step % 97 == 40 { hit := g_key(g, 'f', true); up := g_key(g, 'f', false); }
+    g[0].hearts = T_HEARTS;   // the run is about the foes: the player is not cut down
+    g_step(g, RSK_DT);
+    sps_frame(g, k[0].f[..], RSK_DT);
+    fn := sf_write(k[0].f[..], k[0].frame[4..<k[0].frame.count]);
+    rn := ifx fn > 0 then rsc_tick(k[0].r[..], k[0].frame[4..<4 + fn], k[0].result[..]) else 0;
+    if rn <= 0 || !sr_read(k[0].result[0..<rn], k[0].run[..]) || native_n + 4 + rn > k[0].native.count { tool_errln("room-scripts-check: the room's tick gave no result"); return 1; }
+    rsk_u32(k[0].frame[0..<4], fn);
+    if !fs_append(frames, cast(string) k[0].frame[0..<4 + fn]) { tool_errln("room-scripts-check: cannot write the frames"); return 1; }
+    rsk_u32(k[0].native[native_n..<native_n + 4], rn);
+    for i: 0..<rn { k[0].native[native_n + 4 + i] = k[0].result[i]; }
+    native_n += 4 + rn;
+    calls += k[0].run[0].calls; spent += SH_TICK_FUEL - k[0].run[0].fuel; commands += k[0].run[0].n_commands;
+    sps_apply(g, k[0].run[..]);
+  }
+  node := [3] string.["node", "coax/web/room/room-scripts-page.mjs", dir];
+  if !rsk_run(k, node[..], "the page's module under Node") { return 1; }
+  page_n := fs_read(page, k[0].page[..]);
+  same := page_n == native_n;
+  first := -1;
+  if same { for i: 0..<native_n { if k[0].page[i] != k[0].native[i] { same = false; first = i; break; } } }
+  print("room-scripts-check: % ticks, % script calls, % commands, % instructions spent (% a tick at most allowed)\n", steps, calls, commands, spent, SH_TICK_FUEL);
+  if !same {
+    print("room-scripts-check: FAILED: the page's results (% bytes) are not the room's (% bytes); first difference at byte %\n", page_n, native_n, first);
+    return 1;
+  }
+  print("room-scripts-check: the page's module and the room's unit gave the same % bytes of results: the same commands, diagnostics, calls and budget left, every tick\n", native_n);
+  if keep.count == 0 {
+    names := [8] string.["/modules.txt", "/frames.bin", "/page.bin", "/script-host.wasm", "/splice-raider.wasm", "/splice-raider.json", "/splice-imperial.wasm", "/splice-imperial.json"]; pb: [1200] u8;
+    for name: names { gone := fs_remove(rsk_cat(pb[..], dir, name)); }
+    gone := fs_remove(dir);
+  }
+  return 0;
+}
