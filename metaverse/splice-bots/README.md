@@ -71,6 +71,13 @@ store after the placed pieces' meshes, once a character; each frame draws one po
 instance at the smuggler's place. The smuggler's gameplay is unchanged: the same circle, speed
 and stride.
 
+Space jumps. The jump is the engine's (`metaverse-engine/move/jump.coax`, the walker's own rules: a
+7.5 m/s press from the ground, 24 m/s^2 down, about 1.1 m high). It lands you on the ground or on
+the top of a placed piece (`sl_floors`, asked as the walker asks for the floor under you); a piece
+whose top is under your feet lets you over it, and walking off its edge drops you. In the air the
+figure holds the walk's widest stride, since the rig has no jump clip. On the hoverboard Space
+hops the board, and in the menus and the edit bay it still picks.
+
 A run is kept from the mine's gate: each second in the mine the checkpoint's inventory and what
 is open (the rubble, the boss wall, the banned bot, the core) is written as `splice.run.v1` when
 it changed. CONTINUE puts you back at the checkpoint with them. SCENE RESTORED and a new run let

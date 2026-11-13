@@ -92,6 +92,7 @@ issue that will. A module nobody adopts by the end of the AAA program
 | `physics/collision-profiles.coax` | Explicit supported realm identities and their collision profiles; unknown identities refuse |
 | `move/walk.coax` | The fixed-step walking controller and camera-state adapters; declared locomotion tuning; an ephemeral trace of the actual paid steps; `metaverse-engine/move/player.coax` retains its C facade |
 | `move/locomotion.coax` | Finite, bounded walking and grounded-route tuning, separate from capsule collision profiles |
+| `move/jump.coax` | The jump's rules on their own: a press from the ground lifts you at the profile's jump speed, gravity brings you down, you land on the floor under you. `walk.coax` steps with them; a realm that moves you across its own way (Splice Bots) keeps a `Jump` and gives it the floor under you each frame |
 | `move/flight.coax` | The walker's per-step flight hook: a realm's `FlightProfile` (Fairy Forest's is on) sets the vertical speed of each step in the air: a wing beat, the held climb, the glide, the ceiling and the dive |
 | `move/walk-frame.coax` | Shared post-step targets and velocity records, with no C exports or persistent clock |
 | `move/follower.coax` | Grounded route followers and fetch on the realm's paid steps: checked terrain, declared tuning, strict directions, atomic refusal and previous-pose drawing, with no second clock |

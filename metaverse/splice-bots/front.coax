@@ -346,9 +346,11 @@ fr_player :: (g: [] SpGame, d: [] SpLayerDraw, pieces: [] u32, places: [] u32, d
     f[0].posed_doc = f[0].doc_gen; f[0].posed_mesh = d[0].mesh_gen; f[0].posed_gray = g[0].gray;
   }
   if f[0].posed_n < 1 || (at + 1) * 4 > draws.count || (d[0].place_n + 1) * SD_ROW > places.count { return at; }
-  pose := ifx crew then 0 else lo_int(cp_pose_of(g[0].stride, FR_POSES), f[0].posed_n - 1);
+  // in the air on a jump the figure holds the stride's widest pose, a leap (the rig has no jump clip)
+  stride := ifx g_airborne(g) then PI * 0.5f32 else g[0].stride;
+  pose := ifx crew then 0 else lo_int(cp_pose_of(stride, FR_POSES), f[0].posed_n - 1);
   x := g[0].px; z := g[0].pz; yaw := g[0].yaw;
-  y := ifx g[0].zone == Z_MINE then ground_y(g, x, z) else 0.0f32;
+  y := g_feet_y(g);
   if g_riding(g) { y += board_lift(g[0].board[0]) + 0.075; }   // on the hoverboard's deck (#13485)
   if crew { s := fr_stand(g); x = s.x; z = s.z; y = 0; yaw = PI + f[0].turn; }
   o := d[0].place_n * SD_ROW;

@@ -40,6 +40,7 @@ the inventory you had when you last stood there. Heat cools only by the rover or
 
 - **W, A, S, D** move; the **mouse** looks (click to hold the pointer, Escape frees it). The left
   and right arrows also turn.
+- **Space** jumps: over a low piece, or onto its top. On the hoverboard it hops the board.
 - **E** picks up, boards the rover, and opens the edit bay.
 - **TAB** opens and closes the edit bay at the rover or the stash crate.
 - In the edit bay, drag or click a part or card to place it. Keys also work: **1, 2, 3** cards,

@@ -86,7 +86,7 @@ sy_slot :: (g: [] SpGame, kind: int, row: int) -> int {
 
 sy_you :: (w: [] Why, g: [] SpGame, pg: SyPage) {
   why_pass(w, WHY_STATE); why_pass(w, WHY_SPAWNED);
-  y := ifx g[0].zone == Z_MINE then ground_y(g, g[0].px, g[0].pz) else 0.0f32;
+  y := g_feet_y(g);
   sy_view(w, g, pg, v3(g[0].px, y + 1, g[0].pz));
   sy_live(w, g, pg, TK_SMUGGLER, false);
   why_skip(w, WHY_ASSET);          // drawn from the cast's shapes each frame: nothing to load
@@ -174,7 +174,7 @@ sy_caps :: (g: [] SpGame, d: [] SpLayerDraw, pg: SyPage, out: [] u8) -> string {
 // ids are the ones `why` takes.
 sy_list :: (g: [] SpGame, v: [] Drive) {
   if !v[0].on { return; }
-  y := ifx g[0].zone == Z_MINE then ground_y(g, g[0].px, g[0].pz) else 0.0f32;
+  y := g_feet_y(g);
   drv_add(v, DRV_PLAYER, "you", -1, "Smuggler", g[0].px, y, g[0].pz, g[0].hearts, T_HEARTS, false);
   if g[0].zone != Z_MINE { return; }
   for i: 0..<FOES {

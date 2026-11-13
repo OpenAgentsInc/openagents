@@ -1,0 +1,155 @@
+// The jump, on its own: a press from the ground lifts you at the locomotion profile's jump speed,
+// gravity brings you down, and you land on the floor under you; standing, you ease onto it. These
+// are the walker's own rules (metaverse-engine/move/walk.coax body_step_fixed calls jump_take,
+// jump_settle and jump_rise), so a realm that moves you across in its own way still jumps the
+// engine's jump: it keeps a Jump, presses it with jump_press, gives it the floor under you each
+// frame (the ground, or a piece's top: metaverse-engine/physics/query.coax query_ground_checked)
+// and draws your feet at jump_feet. The fixed step is the engine's one clock (core/loop.coax).
+//   coax/bin/coax test metaverse-engine/move/jump.coax
+#module "metaverse.engine.jump";
+#load "../core/input.coax";
+#load "../core/loop.coax";
+#load "locomotion.coax";
+#load "../core/quality.coax";   // quality_lo, quality_hi
+#authority;
+
+// A step's press: whether one was waiting, and the vertical speed and footing it leaves.
+JumpTake :: struct { presses: InputPress; pressed: bool; vy: f32; on_ground: bool; }
+// A step takes one waiting press; from the ground it jumps.
+jump_take :: (loc: LocomotionProfile, presses: InputPress, vy: f32, on_ground: bool) -> JumpTake #effects(all) {
+  t := input_take(presses);
+  out := JumpTake.{presses = t.edge, pressed = t.pressed, vy = vy, on_ground = on_ground};
+  if t.pressed && on_ground { out.vy = loc.jump_speed; out.on_ground = false; }
+  return out;
+}
+// The height and vertical speed after the floor and gravity, and whether gravity pulled.
+JumpFall :: struct { y: f32; vy: f32; on_ground: bool; falls: bool; }
+// Within ride_height over the floor and not rising: standing eases onto it, and a fall that reaches
+// it this step lands on it. Otherwise gravity pulls.
+jump_settle :: (loc: LocomotionProfile, y: f32, vy: f32, on_ground: bool, ground: f32, dt: f32) -> JumpFall #effects(all) {
+  out := JumpFall.{y = y, vy = vy, on_ground = on_ground, falls = true};
+  above := y - ground;
+  if above <= loc.ride_height && vy <= 0 {
+    if on_ground {
+      out.vy = 0;
+      out.y += (ground - y) * quality_lo(1, loc.step_smooth * dt);
+      out.falls = false;
+    } else if above + vy * dt <= 0 {
+      out.vy = 0;
+      out.y = ground;
+      out.on_ground = true;
+      out.falls = false;
+    }
+  }
+  if out.falls {
+    out.vy -= loc.gravity * dt;
+    out.on_ground = false;
+  }
+  return out;
+}
+// The step's height: moved by `vertical` m/s, never further under the floor than sink_limit.
+jump_rise :: (loc: LocomotionProfile, y: f32, vertical: f32, ground: f32, dt: f32) -> f32 #effects(all) {
+  return quality_hi(y + vertical * dt, ground - loc.sink_limit);
+}
+
+// ---- A jump kept by a realm that moves you across itself
+Jump :: struct {
+  y: f32; prev_y: f32;     // feet, after the last step and before it
+  vy: f32;
+  on_ground: bool = true;
+  presses: InputPress;     // Space and the like: each press is taken by the first step after it
+  clock: FrameClock;       // the engine's fixed step (1/64 s)
+}
+jump_place :: (y: f32) -> Jump #effects(all) { return Jump.{y = y, prev_y = y}; }
+// The jump control held now (once a frame, or on each key event): a rise is a press.
+jump_press :: (j: Jump, down: bool) -> Jump #effects(all) { next := j; next.presses = input_level(j.presses, down); return next; }
+// One fixed step over a floor at `ground`.
+jump_step :: (j: Jump, loc: LocomotionProfile, ground: f32, dt: f32) -> Jump #effects(all) {
+  next := j; next.prev_y = j.y;
+  t := jump_take(loc, j.presses, j.vy, j.on_ground);
+  next.presses = t.presses;
+  s := jump_settle(loc, j.y, t.vy, t.on_ground, ground, dt);
+  next.vy = s.vy; next.on_ground = s.on_ground;
+  next.y = jump_rise(loc, s.y, s.vy, ground, dt);
+  return next;
+}
+// A frame's time on the engine's clock: the steps that are due, over the floor under you this frame.
+jump_advance :: (j: Jump, loc: LocomotionProfile, ground: f32, frame: f32) -> Jump #effects(all) {
+  next := j;
+  next.clock = loop_accept(j.clock, cast(f64) frame);
+  n := loop_due(next.clock);
+  for i: 0..<n { next = jump_step(next, loc, ground, cast(f32) loop_step(next.clock)); }
+  next.clock = loop_ran(next.clock);
+  return next;
+}
+// Feet as drawn: between the last two steps, by how far the clock is into the next.
+jump_feet :: (j: Jump) -> f32 #effects(all) { return loop_mix(j.prev_y, j.y, loop_alpha(j.clock)); }
+// In the air: rising, falling, or off a ledge.
+jump_airborne :: (j: Jump) -> bool #effects(all) { return !j.on_ground; }
+
+#test "a press from the ground goes up 1.17 m and lands back in about 0.63 s; holding it never jumps again" {
+  loc: LocomotionProfile;
+  j := jump_press(jump_place(0), true);
+  #assert j.presses.waiting == 1 && j.on_ground;
+  peak := 0.0f32; air := 0;
+  for i: 0..<64 { j = jump_step(j, loc, 0, 1.0f32 / 64); peak = ifx j.y > peak then j.y else peak; if !j.on_ground { air += 1; } }
+  #assert peak > 1.1 && peak < 1.24 && air >= 38 && air <= 42 && j.on_ground && j.y == 0 && j.vy == 0;
+  #assert j.presses.taken == 1 && j.presses.waiting == 0 && !jump_airborne(j);
+  j = jump_press(j, true);   // still held: no second press
+  #assert j.presses.waiting == 0;
+  j = jump_press(jump_press(j, false), true);
+  #assert j.presses.waiting == 1;
+}
+#test "a press in the air is taken and does nothing; a fall lands on a higher floor; standing eases onto a lower one" {
+  loc: LocomotionProfile;
+  j := jump_press(jump_place(0), true);
+  for i: 0..<10 { j = jump_step(j, loc, 0, 1.0f32 / 64); }
+  vy := j.vy;
+  j = jump_press(jump_press(j, false), true);
+  j = jump_step(j, loc, 0, 1.0f32 / 64);
+  #assert jump_airborne(j) && j.vy < vy && j.presses.waiting == 0 && j.presses.taken == 2;
+  // over a box's top at 0.85 m: it comes down onto it, not through it
+  for i: 0..<64 { j = jump_step(j, loc, 0.85, 1.0f32 / 64); }
+  #assert j.on_ground && j.y == 0.85f32;
+  // off its edge, the ground is a metre down: more than ride_height, so it falls, and lands
+  j = jump_step(j, loc, -0.15, 1.0f32 / 64);
+  #assert !j.on_ground && j.vy < 0;
+  for i: 0..<64 { j = jump_step(j, loc, -0.15, 1.0f32 / 64); }
+  #assert j.on_ground && j.y == -0.15f32;
+  // a step down of 0.2 m (within ride_height): eased onto, not fallen to
+  s := jump_step(j, loc, -0.35, 1.0f32 / 64);
+  #assert s.on_ground && s.y < -0.15 && s.y > -0.35 && s.vy == 0;
+  // never further under the floor than sink_limit
+  #assert jump_rise(loc, 0.01, -50, 0, 1.0f32 / 64) == -loc.sink_limit;
+}
+#test "each rule at its edge: a press leaves the ground, ride_height still stands, a fall that just reaches the floor lands, a step keeps the height before it" {
+  loc: LocomotionProfile;
+  t := jump_take(loc, input_press(InputPress.{}), 0, true);
+  #assert t.pressed && t.vy == loc.jump_speed && !t.on_ground;
+  a := jump_take(loc, input_press(InputPress.{}), -1, false);   // in the air: taken, nothing more
+  #assert a.pressed && a.vy == -1 && !a.on_ground;
+  // standing exactly ride_height over the floor, sinking a little: eased onto it, speed stopped
+  s := jump_settle(loc, 0.4, -0.5, true, 0, 1.0f32 / 64);
+  #assert !s.falls && s.on_ground && s.vy == 0 && s.y < 0.4 && s.y > 0;
+  // a fall that reaches the floor exactly this step lands
+  l := jump_settle(loc, 0.25, -16, false, 0, 1.0f32 / 64);
+  #assert !l.falls && l.on_ground && l.y == 0 && l.vy == 0;
+  // a step: the height before it is kept for drawing
+  j := jump_press(jump_place(0), true);
+  j = jump_step(j, loc, 0, 1.0f32 / 64);
+  y1 := j.y;
+  j = jump_step(j, loc, 0, 1.0f32 / 64);
+  #assert j.prev_y == y1 && j.y > y1;
+}
+#test "a frame runs the steps due on the engine's clock, and the feet are drawn between the last two" {
+  loc: LocomotionProfile;
+  j := jump_press(jump_place(0), true);
+  a := jump_advance(j, loc, 0, 0.011);    // under a step: nothing yet, the press waits
+  #assert a.clock.ticks == 0 && a.presses.waiting == 1 && a.y == 0;
+  a = jump_advance(a, loc, 0, 0.011);     // past one step: it jumps
+  #assert a.clock.ticks == 1 && a.presses.taken == 1 && a.y > 0 && a.prev_y == 0;
+  f := jump_feet(a);
+  #assert f >= a.prev_y && f <= a.y;
+  b := jump_advance(j, loc, 0, 1.0f32 / 32);   // two steps in one frame jump once
+  #assert b.clock.ticks == 2 && b.presses.taken == 1 && !b.on_ground;
+}
