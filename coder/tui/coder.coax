@@ -97,7 +97,6 @@ cd_local_agents :: (json: bool) -> int {
 }
 
 cxterm_keys :: (on: int) -> int #foreign #effects(all);
-cxproc_sleep_ms :: (ms: int) -> int #foreign #effects(all);
 cxterm_size :: () -> int #foreign #effects(all);
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
@@ -2389,8 +2388,6 @@ cd_cmd_route :: (task: string, json: bool) -> int {
 }
 
 cxproc_pid_alive :: (pid: int) -> int #foreign #effects(all);
-cxproc_detach :: (h: int) -> int #foreign #effects(all);
-cxproc_quiet :: (h: int) -> int #foreign #effects(all);
 cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign #effects(all);
 
 cd_atoi :: (s: string) -> int { v := 0; for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); } return v; }

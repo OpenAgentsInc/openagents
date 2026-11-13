@@ -12,19 +12,61 @@
 // The old NextAction without freeze_tests and expand. mc_action_parse holds
 // a reply to the schema and to its meaning: finished and ask: question each
 // need a reply.
+//
+// A run that asks for it (docs/coder/microcoder.md, "Compiler questions and
+// working memory"; GitHub #13444, #13445) gets more members, and mc_schema
+// writes the schema that has them. Off, the schema is MC_SCHEMA and a reply
+// is read exactly as before.
+//   with the compiler:  "questions": ["defines NAME", "check FILE", ...]   up to 16
+//                       and on each edit "seen" (the hash the model read, "" for none)
+//                       and "name" ("" or a declaration to replace whole)
+//   with the memory:    "notes": ["a finding to keep", "PATH:A-B a finding about those lines"]   up to 8
 
 #load "state.coax";
 
 MC_SCHEMA_NAME :: "next_action";
 MC_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"rationale\":{\"type\":\"string\"},\"edits\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"old\":{\"type\":\"string\"},\"new\":{\"type\":\"string\"}},\"required\":[\"path\",\"old\",\"new\"],\"additionalProperties\":false}},\"commands\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"view\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"finished\":{\"type\":\"boolean\"},\"reply\":{\"type\":\"string\"},\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]}},\"required\":[\"rationale\",\"edits\",\"commands\",\"view\",\"finished\",\"reply\",\"ask\"],\"additionalProperties\":false}";
 
+// The schema with every added member: what mc_schema writes with both modes on.
+MC_SCHEMA_AWARE :: "{\"type\":\"object\",\"properties\":{\"rationale\":{\"type\":\"string\"},\"notes\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"edits\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"old\":{\"type\":\"string\"},\"new\":{\"type\":\"string\"},\"seen\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"}},\"required\":[\"path\",\"old\",\"new\",\"seen\",\"name\"],\"additionalProperties\":false}},\"questions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"commands\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"view\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"finished\":{\"type\":\"boolean\"},\"reply\":{\"type\":\"string\"},\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]}},\"required\":[\"rationale\",\"notes\",\"edits\",\"questions\",\"commands\",\"view\",\"finished\",\"reply\",\"ask\"],\"additionalProperties\":false}";
+
 MC_MAX_COMMANDS :: 32;
 MC_MAX_VIEWS :: 16;
 MC_MAX_EDITS :: 16;
+MC_MAX_QUESTIONS :: 16;
+MC_MAX_NOTES :: 8;
+
+// The schema for a run: MC_SCHEMA, with questions and each edit's seen and name when intel is
+// on, and notes when memory is on. Into out; "" when it doesn't fit. Each member is where the
+// step uses it: notes (what the last results taught) first, then edits, questions, commands, view.
+mc_schema :: (out: [] u8, intel: bool, memory: bool) -> string {
+  str := "{\"type\":\"string\"}"; list := "{\"type\":\"array\",\"items\":{\"type\":\"string\"}}";
+  n := json_raw(out, 0, "{\"type\":\"object\",\"properties\":{\"rationale\":"); n = json_raw(out, n, str);
+  if memory { n = json_raw(out, n, ",\"notes\":"); n = json_raw(out, n, list); }
+  n = json_raw(out, n, ",\"edits\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"path\":"); n = json_raw(out, n, str);
+  n = json_raw(out, n, ",\"old\":"); n = json_raw(out, n, str); n = json_raw(out, n, ",\"new\":"); n = json_raw(out, n, str);
+  if intel { n = json_raw(out, n, ",\"seen\":"); n = json_raw(out, n, str); n = json_raw(out, n, ",\"name\":"); n = json_raw(out, n, str); }
+  n = json_raw(out, n, "},\"required\":[\"path\",\"old\",\"new\"");
+  if intel { n = json_raw(out, n, ",\"seen\",\"name\""); }
+  n = json_raw(out, n, "],\"additionalProperties\":false}}");
+  if intel { n = json_raw(out, n, ",\"questions\":"); n = json_raw(out, n, list); }
+  n = json_raw(out, n, ",\"commands\":"); n = json_raw(out, n, list); n = json_raw(out, n, ",\"view\":"); n = json_raw(out, n, list);
+  n = json_raw(out, n, ",\"finished\":{\"type\":\"boolean\"},\"reply\":"); n = json_raw(out, n, str);
+  n = json_raw(out, n, ",\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]}},\"required\":[\"rationale\"");
+  if memory { n = json_raw(out, n, ",\"notes\""); }
+  n = json_raw(out, n, ",\"edits\"");
+  if intel { n = json_raw(out, n, ",\"questions\""); }
+  n = json_raw(out, n, ",\"commands\",\"view\",\"finished\",\"reply\",\"ask\"],\"additionalProperties\":false}");
+  if n < 0 { return ""; }
+  return cast(string) out[0..<n];
+}
 
 // An exact edit (GitHub #13231): old, which must appear in path exactly once, becomes new; an
 // empty old writes new as the whole file. Applied by the loop's tools, not a shell, so no quoting.
-McEdit :: struct { path: string; old: string; text: string; }   // text: the "new" field
+// With the compiler's mode on, an edit may be tied to what the model read: seen is the hash a
+// view or a show gave (12 hex digits or more; "" for none), and name, when not "", is a
+// declaration in path that text replaces whole (old is then not used).
+McEdit :: struct { path: string; old: string; text: string; seen: string; name: string; }   // text: the "new" field
 
 McAction :: struct {
   rationale: string;
@@ -34,17 +76,23 @@ McAction :: struct {
   finished: bool;
   reply: string;
   asks: bool;                    // ask: question
+  questions: [MC_MAX_QUESTIONS] string; nq: int;   // compiler questions (read only with more)
+  notes: [MC_MAX_NOTES] string; nn: int;           // findings to keep (read only with more)
 }
 
 // The reply as an action, its strings decoded into ar (they live as long as
 // text and ar). What's wrong with it, or "".
-mc_action_parse :: (ar: [] ClArena, text: string, a: [] McAction) -> string {
+mc_action_parse :: (ar: [] ClArena, text: string, a: [] McAction) -> string { return mc_action_parse_as(ar, text, a, false); }
+// The same; with more, the reply's questions, notes and each edit's seen and name are read too
+// (each may be missing: a gateway without strict schemas leaves members out).
+mc_action_parse_as :: (ar: [] ClArena, text: string, a: [] McAction, more: bool) -> string {
   a[0] = McAction.{};
   if !json_valid(text) { return "the reply is not JSON"; }
   if !cl_valid(text, "s:rationale a:commands s:commands.* a:view s:view.* b:finished s:reply s:ask=none|question") {
     return "the reply does not match the next_action schema";
   }
   if !cl_valid(text, "?a:edits ?o:edits.* ?s:edits.*.path ?s:edits.*.old ?s:edits.*.new") { return "the reply's edits do not match the next_action schema"; }
+  if more && !cl_valid(text, "?a:questions ?s:questions.* ?a:notes ?s:notes.* ?s:edits.*.seen ?s:edits.*.name") { return "the reply's questions, notes or an edit's seen or name do not match the next_action schema"; }
   a[0].rationale = cl_str(ar, text, "rationale");
   eds := cl_raw(text, "edits");
   ne := ifx eds.count > 0 then cl_count(eds) else 0;
@@ -52,9 +100,22 @@ mc_action_parse :: (ar: [] ClArena, text: string, a: [] McAction) -> string {
   for i: 0..<ne {
     e := cl_json(eds, cl_item(eds, i));
     a[0].edits[i] = McEdit.{path = cl_str(ar, e, "path"), old = cl_str(ar, e, "old"), text = cl_str(ar, e, "new")};
+    if more { a[0].edits[i].seen = cl_str(ar, e, "seen"); a[0].edits[i].name = cl_str(ar, e, "name"); }
     if a[0].edits[i].path.count == 0 { return "an edit has no path"; }
   }
   a[0].ne = ne;
+  if more {
+    qs := cl_raw(text, "questions");
+    nq := ifx qs.count > 0 then cl_count(qs) else 0;
+    if nq > MC_MAX_QUESTIONS { return "the reply has more than 16 questions"; }
+    for i: 0..<nq { a[0].questions[i] = cl_text(ar, qs, cl_item(qs, i)); if a[0].questions[i].count == 0 { return "a question is empty"; } }
+    a[0].nq = nq;
+    ns := cl_raw(text, "notes");
+    nn := ifx ns.count > 0 then cl_count(ns) else 0;
+    if nn > MC_MAX_NOTES { return "the reply has more than 8 notes"; }
+    for i: 0..<nn { a[0].notes[i] = cl_text(ar, ns, cl_item(ns, i)); if a[0].notes[i].count == 0 { return "a note is empty"; } }
+    a[0].nn = nn;
+  }
   cmds := cl_raw(text, "commands");
   nc := cl_count(cmds);
   if nc > MC_MAX_COMMANDS { return "the reply has more than 32 commands"; }
@@ -75,7 +136,111 @@ mc_action_parse :: (ar: [] ClArena, text: string, a: [] McAction) -> string {
   return "";
 }
 
+// A compiler question, one line: the word that says what is asked, then one or two arguments.
+//   defines NAME        uses NAME [FILE]     exports FILE     show NAME [FILE]     check FILE
+//   explain CODE        vocab NAME           effects FILE [PROC]                   depends FILE
+MC_Q_DEFINES :: 0; MC_Q_USES :: 1; MC_Q_EXPORTS :: 2; MC_Q_SHOW :: 3; MC_Q_CHECK :: 4;
+MC_Q_EXPLAIN :: 5; MC_Q_VOCAB :: 6; MC_Q_EFFECTS :: 7; MC_Q_DEPENDS :: 8;
+MC_Q_OPS :: [9] string.["defines", "uses", "exports", "show", "check", "explain", "vocab", "effects", "depends"];
+MC_Q_MOST :: [9] int.[1, 2, 1, 2, 1, 1, 1, 2, 1];       // arguments each takes at most (each takes one at least)
+MC_Q_FORMS :: "defines NAME, uses NAME [FILE], exports FILE, show NAME [FILE], check FILE, explain CODE, vocab NAME, effects FILE [PROC], depends FILE";
+
+// op: MC_Q_*, or -1 with why. a and b are parts of q.
+McQuestion :: struct { op: int = -1; a: string; b: string; why: string; }
+mc_question :: (q: string) -> McQuestion {
+  w: [4] string; n := 0; i := 0;
+  while i < q.count {
+    while i < q.count && (q[i] == ' ' || q[i] == 9) { i += 1; }
+    e := i;
+    while e < q.count && q[e] != ' ' && q[e] != 9 { e += 1; }
+    if e > i { if n < 4 { w[n] = cast(string) q[i..<e]; } n += 1; }
+    i = e;
+  }
+  r := McQuestion.{};
+  if n == 0 { r.why = "an empty question"; return r; }
+  for o, k: MC_Q_OPS { if o == w[0] { r.op = k; } }
+  if r.op < 0 { r.why = "no such question"; return r; }
+  if n < 2 { r.op = -1; r.why = "the question names nothing"; return r; }
+  if n - 1 > MC_Q_MOST[r.op] { r.op = -1; r.why = "the question has too many words"; return r; }
+  r.a = w[1];
+  if n > 2 { r.b = w[2]; }
+  return r;
+}
+
 // ---------------------------------------------------------------- checks
+
+#test "the schema a run sends: MC_SCHEMA with nothing on, the added members with each mode" {
+  b: [4096] u8;
+  #assert mc_schema(b[..], false, false) == MC_SCHEMA;
+  #assert mc_schema(b[..], true, true) == MC_SCHEMA_AWARE && json_valid(MC_SCHEMA_AWARE);
+  s := mc_schema(b[..], true, false);
+  #assert json_valid(s) && cl_raw(s, "properties.questions").count > 0 && cl_raw(s, "properties.notes").count == 0 && cl_raw(s, "properties.edits.items.properties.seen").count > 0;
+  #assert cl_count(cl_raw(s, "required")) == 8 && cl_count(cl_raw(s, "properties.edits.items.required")) == 5;
+  s = mc_schema(b[..], false, true);
+  #assert json_valid(s) && cl_raw(s, "properties.questions").count == 0 && cl_raw(s, "properties.notes").count > 0 && cl_raw(s, "properties.edits.items.properties.seen").count == 0;
+  #assert cl_count(cl_raw(s, "required")) == 8 && cl_count(cl_raw(s, "properties.edits.items.required")) == 3;
+  #assert mc_schema(b[0..<100], true, true) == "";
+}
+
+#test "with more, questions, notes and an edit's seen and name parse; without, they are not read" {
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  a: [1] McAction;
+  whole := "{\"rationale\":\"fix\",\"notes\":[\"shapes.coax:4-4 area multiplies w by h\",\"a guess\"],\"edits\":[{\"path\":\"shapes.coax\",\"old\":\"\",\"new\":\"area :: () {}\",\"seen\":\"0123456789ab\",\"name\":\"area\"},{\"path\":\"a.txt\",\"old\":\"x\",\"new\":\"y\",\"seen\":\"\",\"name\":\"\"}],\"questions\":[\"defines area\",\"check shapes.coax\"],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  why := mc_action_parse_as(ar[..], whole, a[..], true);
+  #assert why == "" && a[0].nq == 2 && a[0].questions[0] == "defines area" && a[0].questions[1] == "check shapes.coax" && a[0].nn == 2 && a[0].notes[1] == "a guess";
+  #assert a[0].ne == 2 && a[0].edits[0].seen == "0123456789ab" && a[0].edits[0].name == "area" && a[0].edits[1].seen == "" && a[0].edits[1].name == "" && a[0].edits[1].text == "y";
+  // the same reply read the old way: an action, with none of them
+  why = mc_action_parse(ar[..], whole, a[..]);
+  #assert why == "" && a[0].nq == 0 && a[0].nn == 0 && a[0].ne == 2 && a[0].edits[0].seen == "" && a[0].edits[0].name == "";
+  // a reply without the added members is still an action
+  why = mc_action_parse_as(ar[..], "{\"rationale\":\"x\",\"edits\":[{\"path\":\"a\",\"old\":\"b\",\"new\":\"c\"}],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}", a[..], true);
+  #assert why == "" && a[0].nq == 0 && a[0].nn == 0 && a[0].ne == 1 && a[0].edits[0].seen == "";
+}
+
+#test "with more, bad questions and notes are refused with a reason" {
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  a: [1] McAction;
+  head := "{\"rationale\":\"x\",\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\",";
+  b: [2048] u8;
+  n := json_raw(b[..], 0, head); n = json_raw(b[..], n, "\"questions\":[1]}");
+  #assert mc_action_parse_as(ar[..], cast(string) b[0..<n], a[..], true) == "the reply's questions, notes or an edit's seen or name do not match the next_action schema";
+  #assert mc_action_parse(ar[..], cast(string) b[0..<n], a[..]) == "";          // not read without more
+  n = json_raw(b[..], 0, head); n = json_raw(b[..], n, "\"notes\":\"one\"}");
+  #assert mc_action_parse_as(ar[..], cast(string) b[0..<n], a[..], true) != "";
+  n = json_raw(b[..], 0, head); n = json_raw(b[..], n, "\"edits\":[{\"path\":\"a\",\"old\":\"\",\"new\":\"\",\"seen\":7}]}");
+  #assert mc_action_parse_as(ar[..], cast(string) b[0..<n], a[..], true) != "";
+  n = json_raw(b[..], 0, head); n = json_raw(b[..], n, "\"questions\":[\"defines a\",\"\"]}");
+  #assert mc_action_parse_as(ar[..], cast(string) b[0..<n], a[..], true) == "a question is empty";
+  n = json_raw(b[..], 0, head); n = json_raw(b[..], n, "\"notes\":[\"\"]}");
+  #assert mc_action_parse_as(ar[..], cast(string) b[0..<n], a[..], true) == "a note is empty";
+  n = json_raw(b[..], 0, head); n = json_raw(b[..], n, "\"questions\":[");
+  for i: 0..<17 { n = json_raw(b[..], n, ifx i > 0 then ",\"vocab a\"" else "\"vocab a\""); }
+  n = json_raw(b[..], n, "]}");
+  #assert mc_action_parse_as(ar[..], cast(string) b[0..<n], a[..], true) == "the reply has more than 16 questions";
+  n = json_raw(b[..], 0, head); n = json_raw(b[..], n, "\"notes\":[");
+  for i: 0..<9 { n = json_raw(b[..], n, ifx i > 0 then ",\"n\"" else "\"n\""); }
+  n = json_raw(b[..], n, "]}");
+  #assert mc_action_parse_as(ar[..], cast(string) b[0..<n], a[..], true) == "the reply has more than 8 notes";
+}
+
+#test "a question is a word and one or two arguments; anything else says why" {
+  q := mc_question("defines area");
+  #assert q.op == MC_Q_DEFINES && q.a == "area" && q.b == "" && q.why == "";
+  q = mc_question("  uses   area \t shapes.coax ");
+  #assert q.op == MC_Q_USES && q.a == "area" && q.b == "shapes.coax";
+  q = mc_question("effects main.coax timed");
+  #assert q.op == MC_Q_EFFECTS && q.a == "main.coax" && q.b == "timed";
+  #assert mc_question("show area").op == MC_Q_SHOW && mc_question("show area shapes.coax").b == "shapes.coax" && mc_question("exports a.coax").op == MC_Q_EXPORTS;
+  #assert mc_question("check a.coax").op == MC_Q_CHECK && mc_question("explain E0325").op == MC_Q_EXPLAIN && mc_question("vocab rp_put").op == MC_Q_VOCAB && mc_question("depends a.coax").op == MC_Q_DEPENDS && mc_question("effects a.coax").op == MC_Q_EFFECTS;
+  q = mc_question("where is area");
+  #assert q.op == -1 && q.why == "no such question";
+  q = mc_question("defines");
+  #assert q.op == -1 && q.why == "the question names nothing";
+  q = mc_question("defines a b");
+  #assert q.op == -1 && q.why == "the question has too many words";
+  #assert mc_question("uses a b c").op == -1 && mc_question("").why == "an empty question" && mc_question("   ").op == -1;
+  #assert MC_Q_OPS.count == MC_Q_MOST.count;
+}
 
 #test "the schema is JSON, and a plain answer parses as finished with no commands" {
   #assert json_valid(MC_SCHEMA);

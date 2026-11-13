@@ -2,7 +2,6 @@
 // instead of a credentialed provider. Commands and views are real effects.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
-cxproc_sleep_ms :: (ms:int)->int #foreign #effects(all);
 #load "../../coax/lib/microcoder/run.coax";
 
 jl_response :: (path:string,action:string) {

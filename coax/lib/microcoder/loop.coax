@@ -36,6 +36,7 @@ MC_WAIT :: 0;                    // keep feeding events
 MC_TOOLS :: 1;                   // run mc_pending's commands and views, then mc_tools_done
 MC_AGAIN :: 2;                   // send mc_request again: the next step
 MC_ENDED :: 3;                   // the run is over: mc_ending, mc_reply
+MC_FINISH :: 4;                  // a run with the memory: the model says finished; answer with mc_finish_accept or mc_finish_refuse
 
 MC_COMMAND_DEFAULT :: 30;        // seconds a command gets when its owner names no limit (the system prompt says so)
 MC_BAD_LIMIT :: 3;
@@ -43,6 +44,14 @@ MC_IDLE_LIMIT :: 3;
 MC_LOCAL_WORK_MIN :: 0.5;
 
 MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, earlier (older steps, compacted: their edits, commands with exit codes and the start and end of each output, and the files they viewed by size; view a file again to see it), actions (the recent steps in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory; each is killed after environment.command_seconds, or after 30 seconds when that is not given; a long output is cut to its head and tail, and when it is saved whole the cut line names the file, which you can view by range), then view (each entry PATH, or PATH:A-B for lines A to B; shown as numbered lines, the first 300 or the range asked for, with a line saying which lines are left and how to ask for them). An applied edit's result shows its new text with line numbers, as the file is now; a failed edit's shows the file's nearest lines. Do everything you can in each turn; you see all the results in the next.\n- One step's results take at most about 32 KB of your state: what doesn't fit is held back, and its result says so and how to get it, so ask for what you need rather than everything at once. Your state has room for about 140 KB of recent results. When it fills, the older steps are compacted: a compacted step keeps its rationale, its commands with the start and end of each output, and only the names of the files it viewed. So search before you read (git grep -n, with -C for context), view the lines you need (FILE:A-B, with the numbers a search or an earlier view gave) rather than a whole large file, and write what you will need later (the path, the line, the text) in that step's rationale, which stays. Do not view or run the same thing again to remember it. When a task has many places to change, change each one as you find it rather than reading everything first.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish. A git commit's result carries last_check: how the last test or check you ran before it ended, or that none ran since your last edit.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
+
+// What a run's system prompt gains with each mode (mc_aware; docs/coder/microcoder.md, "Compiler
+// questions and working memory"; GitHub #13444, #13445). They go after MC_SYSTEM, so a run
+// with neither sends MC_SYSTEM and nothing else.
+MC_AWARE_INTEL :: "\n- The Coax compiler answers questions about .coax files. questions is a list of up to 16, each one line: defines NAME (where NAME is declared: kind, file, lines), uses NAME [FILE] (every use, with the procedure or check it is written in; FILE says which declaration you mean when several files declare the name), exports FILE (what a file declares), show NAME [FILE] (one declaration's lines numbered, with their hash), check FILE (the file's diagnostics; a part of a larger unit is checked through the file that loads it), explain CODE (what a diagnostic code such as E0325 means), vocab NAME (what a library name or keyword is), effects FILE [PROC] (what a procedure may do, with a call path to each effect), depends FILE (the declarations it uses from other files). The compiler's answers are certain where a search is a guess: ask it before you search for a symbol, and show a declaration you can name rather than view its file. Each answer is a result named \"ask: ...\", with exit 0, bounded, and it says how many records it left out. A result that starts \"no answer:\" (exit 1) means the compiler could not answer: use git grep and view for that question.\n- Hashes tie an edit to what you read. A view ends with a line that gives the file's hash, and show gives a declaration's. In an edit, seen is the hash you read (its 12 hex digits), or \"\" for none. When seen is given and the file is no longer what you read, the edit is refused as stale: nothing is written, and its result gives the hash as it is now and the nearest lines. Read them and edit again. To replace a whole declaration, set name to its name, path to its file, seen to the hash show gave (or the file's), old to \"\" and new to the declaration's whole new text; otherwise name is \"\". An applied edit of a .coax file returns the file's new hash and its check: fix what the check reports before you go on.\n- In one turn the order is: edits, then questions, then commands, then view. So a check FILE question sees that turn's edits.";
+MC_AWARE_MEMORY :: "\n- You have a working memory. What you view, edit and run is recorded in it as you go. Your state shows it as memory: findings (your notes that are still current), changed (every edit so far and the lines it wrote) and open (what still stops you finishing). It is never compacted. notes is a list of up to 8 findings to keep, each one line; start a note with PATH:A-B and a space when it is about those lines of a file, and it stays current until that file changes. Write a note when you learn something you will need later, rather than viewing the file again. A view of lines you already had, unchanged, starts with a line that says so and since which step.\n- A check the task names (a command it quotes in backticks) has passed only when its latest run exited 0 after your last edit. finished true before that is refused, with what is open: run the check again, then finish. If it can't pass, say why in reply.";
+
+MC_FINISH_REFUSALS :: 2;         // times a finish is refused before it stands
 
 mc_ending_name :: (e: int) -> string {
   if e == MC_END_FINISHED { return "finished"; }
@@ -60,6 +69,8 @@ McLoopBuffers :: struct {
   raw: [32768] u8;
   arena: [32768] u8;
   norm: [32768] u8;              // a text reply's action, rewritten whole
+  system: [16384] u8;            // the system prompt and schema of a run with a mode on (mc_aware)
+  schema: [4096] u8;
 }
 
 McLoop :: struct {
@@ -79,13 +90,33 @@ McLoop :: struct {
   why: string;                   // no_capacity: the gateways' last reason
   reply: string;                 // finished or asked: what the user sees
   check: [1] McLastCheck;        // the last test or check run, for a commit's result (commit.coax)
+  system: string;                // what every request of the run sends: MC_SYSTEM and MC_SCHEMA, or mc_aware's
+  schema: string;
+  intel: bool;                   // the action's questions, and each edit's seen and name, are read
+  memory: bool;                  // the action's notes are read, and a finish is held for the owner (MC_FINISH)
+  finish_refused: int;           // finishes the owner refused
 }
 
 // The state's buffers and the loop's are separate (sb, b), each live as long as the loop.
 mc_init :: (l: [] McLoop, sb: [] McStateBuffers, b: [] McLoopBuffers, environment: string, task: string, route: string, local_work: f64) {
-  l[0] = McLoop.{prompt = b[0].prompt[..], raw = b[0].raw[..], norm = b[0].norm[..], local_work = local_work};
+  l[0] = McLoop.{prompt = b[0].prompt[..], raw = b[0].raw[..], norm = b[0].norm[..], local_work = local_work, system = MC_SYSTEM, schema = MC_SCHEMA};
   l[0].ar[0] = ClArena.{buf = b[0].arena[..]};
   mc_state_init(l[0].st[..], sb, environment, task, route);
+}
+
+// Turns on, for a loop mc_init set up, the compiler's members (intel) and the memory's
+// (memory): the request's schema gains them and its system prompt gains a section for each.
+// With neither, nothing changes. False when they don't fit b (they do).
+mc_aware :: (l: [] McLoop, b: [] McLoopBuffers, intel: bool, memory: bool) -> bool {
+  if !intel && !memory { return true; }
+  n := json_raw(b[0].system[..], 0, MC_SYSTEM);
+  if intel { n = json_raw(b[0].system[..], n, MC_AWARE_INTEL); }
+  if memory { n = json_raw(b[0].system[..], n, MC_AWARE_MEMORY); }
+  schema := mc_schema(b[0].schema[..], intel, memory);
+  if n < 0 || schema.count == 0 { return false; }
+  l[0].system = cast(string) b[0].system[0..<n]; l[0].schema = schema;
+  l[0].intel = intel; l[0].memory = memory;
+  return true;
 }
 
 // The next step's request: the system prompt, the state as JSON, the strict
@@ -99,9 +130,11 @@ MC_REQUEST_ROOM :: 12288;
 mc_request :: (l: [] McLoop) -> GwRequest {
   l[0].nr = 0; l[0].got_text = false;
   state := mc_state_json(l[0].st[..], l[0].prompt);
+  // a run with a mode on sends a longer system prompt and schema (the schema's quotes are escaped)
+  room := MC_REQUEST_ROOM + (l[0].system.count - MC_SYSTEM.count) + 2 * (l[0].schema.count - MC_SCHEMA.count);
   // too long to send (escaped once more inside the request's JSON): the earliest steps leave
   for guard: 0..<16 {
-    if state.count > 0 && mc_escaped_size(state) + MC_REQUEST_ROOM <= MC_REQUEST_MAX { break; }
+    if state.count > 0 && mc_escaped_size(state) + room <= MC_REQUEST_MAX { break; }
     if l[0].st[0].nacts == 0 { break; }
     kept := l[0].st[0].nlog;
     mc_log_drop(l[0].st[..], kept / 2);
@@ -109,7 +142,7 @@ mc_request :: (l: [] McLoop) -> GwRequest {
     state = mc_state_json(l[0].st[..], l[0].prompt);
   }
   l[0].msgs[0] = GwMessage.{role = "user", text = state};
-  return GwRequest.{system = MC_SYSTEM, messages = l[0].msgs[..], schema = MC_SCHEMA, schema_name = MC_SCHEMA_NAME, schema_hint = MC_TEXT_REMINDER};
+  return GwRequest.{system = l[0].system, messages = l[0].msgs[..], schema = l[0].schema, schema_name = MC_SCHEMA_NAME, schema_hint = MC_TEXT_REMINDER};
 }
 
 mc_end :: (l: [] McLoop, ending: int) -> int { l[0].ending = ending; return MC_ENDED; }
@@ -148,7 +181,13 @@ mc_bad :: (l: [] McLoop, why: string) -> int {
 // A whole reply: checked, then acted on.
 mc_take :: (l: [] McLoop, text: string) -> int {
   l[0].ar[0].at = 0; l[0].ar[0].full = false;
-  why := mc_action_parse(l[0].ar[..], text, l[0].pending[..]);
+  more := l[0].intel || l[0].memory;
+  why := mc_action_parse_as(l[0].ar[..], text, l[0].pending[..], more);
+  if why.count > 0 && more {
+    // an action whose added members are wrong is refused whole: read as text it would lose them, and its edits
+    l[0].ar[0].at = 0; l[0].ar[0].full = false;
+    if mc_action_parse(l[0].ar[..], text, l[0].pending[..]).count == 0 { return mc_bad(l, why); }
+  }
   if why.count > 0 {
     // a gateway without strict schemas answers in text: read the action out of it
     l[0].ar[0].at = 0; l[0].ar[0].full = false;
@@ -159,11 +198,16 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   l[0].bad = 0;
   // a finish that carries edits, commands or views is a working step: they are run, not
   // dropped, and the run finishes in a turn of its own, once it has seen their results
-  if l[0].pending[0].finished && (l[0].pending[0].nc > 0 || l[0].pending[0].ne > 0 || l[0].pending[0].nv > 0) { l[0].pending[0].finished = false; }
+  // a mode's members are read only with that mode on
+  if more && !l[0].intel { l[0].pending[0].nq = 0; for i: 0..<l[0].pending[0].ne { l[0].pending[0].edits[i].seen = ""; l[0].pending[0].edits[i].name = ""; } }
+  if more && !l[0].memory { l[0].pending[0].nn = 0; }
+  if l[0].pending[0].finished && (l[0].pending[0].nc > 0 || l[0].pending[0].ne > 0 || l[0].pending[0].nv > 0 || l[0].pending[0].nq > 0) { l[0].pending[0].finished = false; }
   a := l[0].pending[0];
+  // with the memory the owner decides a finish (the finish rule): the step is open for its notes
+  if a.finished && l[0].memory { mc_action_begin(l[0].st[..], a.rationale); return MC_FINISH; }
   if a.finished { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_FINISHED); }
   if a.asks { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_ASKED); }
-  if a.nc == 0 && a.nv == 0 && a.ne == 0 {
+  if a.nc == 0 && a.nv == 0 && a.ne == 0 && a.nq == 0 && a.nn == 0 {
     mc_record_bare(l);
     l[0].idle += 1;
     if l[0].idle >= MC_IDLE_LIMIT { return mc_end(l, MC_END_IDLE); }
@@ -176,9 +220,26 @@ mc_take :: (l: [] McLoop, text: string) -> int {
     for i: 0..<a.nc { mc_action_refused(l[0].st[..], a.commands[i], "this request is not local work: answer without commands"); }
     mc_note(l[0].st[..], "Your commands were refused: this request is not local work. Answer from what you know.");
     l[0].pending[0].nc = 0; l[0].pending[0].ne = 0;
-    if a.nv == 0 { mc_action_end(l[0].st[..]); return MC_AGAIN; }
+    if a.nv == 0 && a.nq == 0 && a.nn == 0 { mc_action_end(l[0].st[..]); return MC_AGAIN; }
   }
   return MC_TOOLS;
+}
+
+// The owner's answer to MC_FINISH. Accepted, the run ends finished with the reply.
+mc_finish_accept :: (l: [] McLoop) -> int {
+  l[0].reply = l[0].pending[0].reply;
+  mc_action_end(l[0].st[..]);
+  return mc_end(l, MC_END_FINISHED);
+}
+// Refused, why is a note for the next step and the run goes on (MC_AGAIN). A finish is refused
+// MC_FINISH_REFUSALS times at most: after that it stands, and this accepts it.
+mc_finish_refuse :: (l: [] McLoop, why: string) -> int {
+  if l[0].finish_refused >= MC_FINISH_REFUSALS { return mc_finish_accept(l); }
+  l[0].finish_refused += 1;
+  l[0].pending[0].finished = false;
+  mc_action_end(l[0].st[..]);
+  mc_note(l[0].st[..], why);
+  return MC_AGAIN;
 }
 
 // The seeded first step (GitHub #13325): before the first call, the loop's owner looks up what
@@ -456,6 +517,111 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   s: [1] McScript; s[0].replies = replies[..];
   mc_script_run(l[..], s[..]);
   #assert l[0].ending == MC_END_FINISHED && l[0].reply == "4" && s[0].calls == 1 && s[0].nran == 0 && l[0].steps == 1;
+}
+
+#test "with no mode on the request is the old one, and a reply's questions and notes are not read" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "hi", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], false, false) && !l[0].intel && !l[0].memory;
+  req := mc_request(l[..]);
+  #assert req.system == MC_SYSTEM && req.schema == MC_SCHEMA && req.schema_name == MC_SCHEMA_NAME && req.schema_hint == MC_TEXT_REMINDER;
+  #assert req.messages[0].text == "{\"environment\":{},\"task\":\"hi\",\"route\":{},\"actions\":[],\"notes\":\"\"}";
+  // questions and notes alone are no work: the step is idle, as a reply without them is
+  r := mc_take(l[..], "{\"rationale\":\"ask\",\"notes\":[\"n\"],\"edits\":[],\"questions\":[\"defines area\"],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+  #assert r == MC_AGAIN && l[0].idle == 1 && l[0].pending[0].nq == 0 && l[0].pending[0].nn == 0;
+  // and a finish is not held
+  r = mc_take(l[..], "{\"rationale\":\"done\",\"notes\":[],\"edits\":[],\"questions\":[\"defines area\"],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"hi\",\"ask\":\"none\"}");
+  #assert r == MC_ENDED && l[0].ending == MC_END_FINISHED && l[0].reply == "hi" && l[0].finish_refused == 0;
+}
+
+#test "a mode adds its section to the system prompt and its members to the schema, after what a plain run sends" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "hi", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], true, true);
+  req := mc_request(l[..]);
+  #assert req.schema == MC_SCHEMA_AWARE && req.system.count == MC_SYSTEM.count + MC_AWARE_INTEL.count + MC_AWARE_MEMORY.count && cast(string) req.system[0..<MC_SYSTEM.count] == MC_SYSTEM;
+  #assert ps_count(req.system, "The Coax compiler answers questions") == 1 && ps_count(req.system, "You have a working memory.") == 1;
+  #assert ps_count(req.system, MC_Q_FORMS) == 0 && ps_count(MC_AWARE_INTEL, "the order is: edits, then questions, then commands, then view") == 1;
+  for o: MC_Q_OPS { #assert ps_count(MC_AWARE_INTEL, o) >= 1; }
+  #assert ps_count(MC_AWARE_INTEL, "up to 16") == 1 && MC_MAX_QUESTIONS == 16 && ps_count(MC_AWARE_MEMORY, "up to 8") == 1 && MC_MAX_NOTES == 8;
+  // the state has no memory key until the owner sets one
+  #assert req.messages[0].text == "{\"environment\":{},\"task\":\"hi\",\"route\":{},\"actions\":[],\"notes\":\"\"}";
+  mc_init(l[..], sb[..], lb[..], "{}", "hi", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], true, false);
+  req = mc_request(l[..]);
+  #assert ps_count(req.system, "The Coax compiler answers questions") == 1 && ps_count(req.system, "working memory") == 0 && ps_count(req.schema, "questions") == 2 && ps_count(req.schema, "notes") == 0;
+  mc_init(l[..], sb[..], lb[..], "{}", "hi", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], false, true);
+  req = mc_request(l[..]);
+  #assert ps_count(req.system, "The Coax compiler") == 0 && ps_count(req.system, "You have a working memory.") == 1 && ps_count(req.schema, "questions") == 0 && ps_count(req.schema, "notes") == 2;
+  // mc_init again: a new run is plain until asked
+  mc_init(l[..], sb[..], lb[..], "{}", "hi", "{}", 1.0);
+  req = mc_request(l[..]);
+  #assert req.system == MC_SYSTEM && req.schema == MC_SCHEMA;
+}
+
+#test "with the compiler's mode questions are work for the owner; with the memory's, notes are; each alone leaves the other unread" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  step := "{\"rationale\":\"ask\",\"notes\":[\"a.coax:1-2 a finding\"],\"edits\":[{\"path\":\"a.coax\",\"old\":\"x\",\"new\":\"y\",\"seen\":\"0123456789ab\",\"name\":\"\"}],\"questions\":[\"defines area\",\"check a.coax\"],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}";
+  only_q := "{\"rationale\":\"ask\",\"notes\":[],\"edits\":[],\"questions\":[\"defines area\"],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}";
+  only_n := "{\"rationale\":\"keep\",\"notes\":[\"a finding\"],\"edits\":[],\"questions\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  mc_init(l[..], sb[..], lb[..], "{}", "fix", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], true, true);
+  #assert mc_take(l[..], step) == MC_TOOLS;
+  a := mc_pending(l[..]);
+  #assert a.nq == 2 && a.questions[1] == "check a.coax" && a.nn == 1 && a.ne == 1 && a.edits[0].seen == "0123456789ab" && !a.finished;
+  #assert mc_tools_done(l[..]) == MC_AGAIN;
+  // a finish that carries only questions is a working step; notes alone are one too
+  #assert mc_take(l[..], only_q) == MC_TOOLS && !mc_pending(l[..]).finished && mc_tools_done(l[..]) == MC_AGAIN;
+  #assert mc_take(l[..], only_n) == MC_TOOLS && mc_pending(l[..]).nn == 1 && mc_tools_done(l[..]) == MC_AGAIN && l[0].idle == 0;
+  // the compiler alone: notes are not read
+  mc_init(l[..], sb[..], lb[..], "{}", "fix", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], true, false);
+  #assert mc_take(l[..], only_n) == MC_AGAIN && l[0].idle == 1;
+  #assert mc_take(l[..], step) == MC_TOOLS && mc_pending(l[..]).nn == 0 && mc_pending(l[..]).nq == 2 && mc_pending(l[..]).edits[0].seen == "0123456789ab";
+  // the memory alone: questions and an edit's hash are not read
+  mc_init(l[..], sb[..], lb[..], "{}", "fix", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], false, true);
+  #assert mc_take(l[..], step) == MC_TOOLS && mc_pending(l[..]).nn == 1 && mc_pending(l[..]).nq == 0 && mc_pending(l[..]).edits[0].seen == "";
+  // under local_work 0.5 an edit is refused, and the questions still go to the owner
+  mc_init(l[..], sb[..], lb[..], "{}", "fix", "{}", 0.1);
+  #assert mc_aware(l[..], lb[..], true, false);
+  #assert mc_take(l[..], step) == MC_TOOLS && mc_pending(l[..]).ne == 0 && mc_pending(l[..]).nq == 2;
+}
+
+#test "an action whose added members are wrong is a bad reply, not an action without them" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "fix", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], true, true);
+  r := mc_take(l[..], "{\"rationale\":\"x\",\"notes\":[\"\"],\"edits\":[{\"path\":\"a\",\"old\":\"b\",\"new\":\"c\",\"seen\":\"\",\"name\":\"\"}],\"questions\":[],\"commands\":[\"ls\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+  #assert r == MC_AGAIN && l[0].bad == 1 && ps_count(cast(string) l[0].st[0].notes[0..<l[0].st[0].nn], "Your last reply was refused: a note is empty") == 1;
+  // a reply in prose is still read as text
+  #assert mc_take(l[..], "I'll look: {\"rationale\": \"look\", \"commands\": \"ls\"}") == MC_TOOLS && l[0].bad == 0 && mc_pending(l[..]).nc == 1;
+}
+
+#test "with the memory a finish is held for the owner: refused twice with a note, then it stands; accepted, the run ends" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  done := "{\"rationale\":\"done\",\"notes\":[\"the check passes\"],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"Fixed.\",\"ask\":\"none\"}";
+  mc_init(l[..], sb[..], lb[..], "{}", "fix it; run `sh t.sh`", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], false, true);
+  #assert mc_take(l[..], done) == MC_FINISH && l[0].ending == MC_END_NONE && l[0].reply == "" && l[0].st[0].open >= 0 && mc_pending(l[..]).nn == 1;
+  #assert mc_finish_refuse(l[..], "finished was refused (1 of at most 2): Open: check sh t.sh") == MC_AGAIN && l[0].finish_refused == 1 && l[0].ending == MC_END_NONE && l[0].st[0].open < 0;
+  j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
+  ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert json_valid(j) && cl_str(ar[..], j, "notes") == "finished was refused (1 of at most 2): Open: check sh t.sh\n" && cl_str(ar[..], j, "actions.0.rationale") == "done" && l[0].idle == 0;
+  #assert mc_take(l[..], done) == MC_FINISH && mc_finish_refuse(l[..], "again") == MC_AGAIN && l[0].finish_refused == 2;
+  // the third finish stands, whatever the owner says
+  #assert mc_take(l[..], done) == MC_FINISH && mc_finish_refuse(l[..], "never") == MC_ENDED && l[0].ending == MC_END_FINISHED && l[0].reply == "Fixed." && l[0].finish_refused == MC_FINISH_REFUSALS;
+  #assert ps_count(cast(string) l[0].st[0].notes[0..<l[0].st[0].nn], "never") == 0 && l[0].steps == 3;
+  // accepted at once
+  mc_init(l[..], sb[..], lb[..], "{}", "hi", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], true, true);
+  #assert mc_take(l[..], done) == MC_FINISH && mc_finish_accept(l[..]) == MC_ENDED && l[0].ending == MC_END_FINISHED && l[0].reply == "Fixed." && l[0].finish_refused == 0 && l[0].st[0].open < 0;
+  // ask: question is not held
+  mc_init(l[..], sb[..], lb[..], "{}", "hi", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], false, true);
+  #assert mc_take(l[..], "{\"rationale\":\"unclear\",\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"Which file?\",\"ask\":\"question\"}") == MC_ENDED && l[0].ending == MC_END_ASKED;
+  #assert ps_count(MC_AWARE_MEMORY, "finished true before that is refused") == 1;
 }
 
 #test "three replies in a row that fail the schema end the run as bad_replies, each refusal noted for the next step" {
