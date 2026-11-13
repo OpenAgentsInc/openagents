@@ -3020,6 +3020,34 @@ rs_test_saves :: (b: [] RsBattle, seq: int, sp: int, to: [] int) -> int {
   #assert b[0].guards == 0;
 }
 
+// A zone's battle (#13275, #13285): the zone gives the rules its creature table with rs_use, sized by
+// its caps (150 seats, 96 creatures, a familiar a seat: 396), and RS_MAX stays the size of the room a
+// small battle has of its own. Nothing in a cast, an attack, a lasting effect or a turn counts to RS_MAX.
+#test "a battle in a zone's room (150 seats, 96 creatures, a familiar a seat): creatures past the rules' own 216 cast, strike, are struck and bear effects as any other" {
+  room: [396] RsCreature; occ: [80 * 80] int;
+  b: [1] RsBattle; rs_use(b[..], room[..], occ[..]); b[0].w = 80; b[0].h = 80; b[0].dice[0].fixed = true;
+  for i: 0..<150 { _ := rs_add(b[..], rs_fighter("", 0, 1), i % 75, i / 75); }           // the seats, 0 to 149
+  for i: 0..<96 { _ := rs_add(b[..], rs_skeleton("", 2), 4 + i % 48, 30 + i / 48); }     // the zone's creatures, 150 to 245
+  for i: 0..<149 { _ := rs_add(b[..], rs_fighter("", 0, 1), i % 75, 70 + i / 75); }      // the familiars' slots, 246 to 394
+  w := rs_add(b[..], rs_wizard("", 0, 5), 20, 24);                                       // the last slot casts
+  #assert w == 395 && b[0].n == 396 && rs_room_for(b[..]) == 396 && b[0].c.count == 396 && RS_MAX == 216;
+  #assert rs_add(b[..], rs_fighter("", 0, 1), 79, 79) == -1 && b[0].n == 396;   // the zone's cap is the table's
+  // creature 395's Fireball at creatures 216 to 245 (the second row's first thirty): each takes it; those out of it don't
+  for i: 150..<246 { b[0].c[i].hp = 200; b[0].c[i].hp_max = 200; }
+  rs_fresh(b[..], w);
+  #assert rs_at(b[..], 22, 31) == 216 && rs_cast(b[..], w, SP_FIREBALL, 3, 22, 31, -1) && b[0].c[w].slots[3] == 1;
+  #assert b[0].c[216].hp < 200 && b[0].c[217].hp < 200 && b[0].c[220].hp < 200 && b[0].c[168].hp < 200 && b[0].c[245].hp == 200 && b[0].c[150].hp == 200 && b[0].c[w].hp == b[0].c[w].hp_max;
+  // creature 394 strikes creature 245, and 245 strikes back: both past the rules' own room
+  f := 394; t := 245;
+  rs_place(b[..], f, 51, 32); #assert rs_at(b[..], 51, 32) == f && rs_at(b[..], 51, 31) == t;
+  rs_fresh(b[..], f); b[0].c[t].ac = 1; #assert rs_attack(b[..], f, t, false, -1) && b[0].c[t].hp < 200;
+  rs_fresh(b[..], t); b[0].c[f].ac = 1; fh := b[0].c[f].hp; #assert rs_attack(b[..], t, f, false, -1) && b[0].c[f].hp < fh;
+  // a lasting effect on creature 300 (an Aura's record, ability-record.coax), and the turn of each
+  #assert rs_aura_grant(b[..], 300, EF_SACRED) && rs_aura_on(b[0].c[300], EF_SACRED, b[0].clock) && !rs_aura_on(b[0].c[299], EF_SACRED, b[0].clock) && b[0].c[300].eff[0].kind == EF_SACRED;
+  rs_start_turn(b[..], 300); #assert b[0].who == 300; rs_end_turn(b[..], 300);
+  rs_start_turn(b[..], w); #assert b[0].who == w && b[0].turn.move_left > 0; rs_end_turn(b[..], w);
+}
+
 #test "Call Lightning: a 3d10 bolt within 5 feet of a point, and a Magic action for another while it lasts" {
   b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].state = 19;
   d := rs_add(b[..], rs_druid("Rowan", 0, 5), 1, 3);
