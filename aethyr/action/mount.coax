@@ -52,6 +52,7 @@ Mount :: struct {
   speed: f32; phase: f32;       // along its heading (negative backing), its gait's cycles
   clip: int;                    // MOUNT_IDLE, MOUNT_WALK or MOUNT_GALLOP
   state: int; since: f32;
+  since_tick: int;              // `since` on a fixed-tick clock (mount_begin_tick): a room counts ticks, and a float of seconds loses them over a long day
   rider: int = -1;              // who rides (or mounts or dismounts) it, -1 none
   from_x: f32; from_z: f32;     // where the rider stood as they began to mount, or steps down to
   blocked: bool;                // the last step met a wall
@@ -175,6 +176,42 @@ mount_seated :: (m: Mount, t: MountTune, now: f32) -> f32 {
 mount_settle :: (m: [] Mount, t: MountTune, now: f32) {
   if m[0].state == MOUNT_MOUNTING && now - m[0].since >= t.mount_s { m[0].state = MOUNT_RIDDEN; m[0].since = now; }
   if m[0].state == MOUNT_DISMOUNTING && now - m[0].since >= t.dismount_s { m[0].state = MOUNT_FREE; m[0].since = now; m[0].rider = -1; }
+}
+// ---- the same on a fixed-tick clock. A room steps `hz` times a second and counts its ticks as an
+// integer; the page that predicts it counts the same ticks. mount_step takes dt = 1 / hz as it is. Only
+// the transitions read a clock, so only they have a tick form: they last a whole number of ticks
+// (mount_ticks), the same on the room and on every page.
+// How many ticks `seconds` lasts at `hz` a second: to the nearest, at least one.
+mount_ticks :: (seconds: f32, hz: int) -> int {
+  n := cast(int) floor(seconds * f32(hz) + 0.5);
+  return ifx n < 1 then 1 else n;
+}
+// Who at (x, z) begins to mount it at `tick`; false if they can't (mount_begin's rule).
+mount_begin_tick :: (m: [] Mount, t: MountTune, who: int, x: f32, z: f32, tick: int) -> bool {
+  if !mount_begin(m, t, who, x, z, 0) { return false; }
+  m[0].since_tick = tick;
+  return true;
+}
+// The rider begins to get down at `tick`; false (still riding) where mount_dismount says so.
+mount_dismount_tick :: (m: [] Mount, t: MountTune, tick: int, walls: [] f32, n: int) -> bool {
+  if !mount_dismount(m, t, 0, walls, n) { return false; }
+  m[0].since_tick = tick;
+  return true;
+}
+// The transitions' ends at `tick`: seated mount_ticks(mount_s) ticks after the mount began, off (free,
+// the rider at from) mount_ticks(dismount_s) after the dismount did. True when this call ended one.
+mount_settle_tick :: (m: [] Mount, t: MountTune, tick: int, hz: int) -> bool {
+  if m[0].state == MOUNT_MOUNTING && tick - m[0].since_tick >= mount_ticks(t.mount_s, hz) { m[0].state = MOUNT_RIDDEN; m[0].since_tick = tick; return true; }
+  if m[0].state == MOUNT_DISMOUNTING && tick - m[0].since_tick >= mount_ticks(t.dismount_s, hz) { m[0].state = MOUNT_FREE; m[0].since_tick = tick; m[0].rider = -1; return true; }
+  return false;
+}
+// mount_seated at `tick` and `part` of the way to the next (0 to 1: a page draws between ticks).
+mount_seated_tick :: (m: Mount, t: MountTune, tick: int, part: f32, hz: int) -> f32 {
+  if m.state == MOUNT_RIDDEN { return 1; }
+  gone := f32(tick - m.since_tick) + mt_clamp(part, 0, 1);
+  if m.state == MOUNT_MOUNTING { u := mt_clamp(gone / f32(mount_ticks(t.mount_s, hz)), 0, 1); return u * u * (3 - 2 * u); }
+  if m.state == MOUNT_DISMOUNTING { u := mt_clamp(gone / f32(mount_ticks(t.dismount_s, hz)), 0, 1); return 1 - u * u * (3 - 2 * u); }
+  return 0;
 }
 // The top speed the input asks for.
 // In the air on a jump.
@@ -525,4 +562,33 @@ mt_fly :: (m: [] Mount, t: MountTune, p: WingProfile, i: MountIn, steps: int, wa
   mount_step_wings(high[..], t, p, MountIn.{jump = true}, 0, f32(MT_DT), none[..], 0);
   mt_fly(high[..], t, p, MountIn.{forward = 1, climb = true}, 64 * 4, w[..], 1);
   #assert high[0].z > 10 && high[0].wing.y > 3;
+}
+#test "mount: on a tick clock a mount lasts mount_ticks, a dismount the same, and a late tick still ends them" {
+  t := MountTune.{}; m: [1] Mount; m[0] = mount_place(0, 0, 0);
+  #assert mount_ticks(0.6, 30) == 18 && mount_ticks(0.5, 30) == 15 && mount_ticks(0.6, 60) == 36 && mount_ticks(0.001, 30) == 1 && mount_ticks(0.05, 30) == 2;
+  // out of reach: nothing begins, and the clock is not taken
+  #assert !mount_begin_tick(m[..], t, 3, 9, 0, 1000) && m[0].state == MOUNT_FREE && m[0].since_tick == 0 && m[0].rider == -1;
+  #assert mount_begin_tick(m[..], t, 3, 1.5, 0, 1000) && m[0].state == MOUNT_MOUNTING && m[0].since_tick == 1000 && m[0].rider == 3 && m[0].from_x == 1.5;
+  #assert !mount_begin_tick(m[..], t, 4, 1.5, 0, 1001) && m[0].rider == 3 && m[0].since_tick == 1000;   // taken
+  #assert mount_seated_tick(m[0], t, 1000, 0, 30) == 0 && mount_seated_tick(m[0], t, 1009, 0, 30) == 0.5;
+  #assert mount_seated_tick(m[0], t, 1008, 1, 30) == 0.5 && mount_seated_tick(m[0], t, 1008, 9, 30) == 0.5 && mount_seated_tick(m[0], t, 1009, -4, 30) == 0.5;   // a part past either end is the end
+  #assert mount_seated_tick(m[0], t, 1004, 0.5, 30) > 0.1 && mount_seated_tick(m[0], t, 1004, 0.5, 30) < 0.2 && mount_seated_tick(m[0], t, 1040, 0, 30) == 1;
+  #assert !mount_settle_tick(m[..], t, 1017, 30) && m[0].state == MOUNT_MOUNTING && m[0].since_tick == 1000;
+  #assert mount_settle_tick(m[..], t, 1018, 30) && mount_ridden(m[0]) && m[0].since_tick == 1018 && m[0].rider == 3;
+  #assert !mount_settle_tick(m[..], t, 5000, 30) && mount_ridden(m[0]) && mount_seated_tick(m[0], t, 5000, 0, 30) == 1;
+  // riding: the step is the engine's, a thirtieth of a second a tick
+  none: [6] f32;
+  for i: 0..<30 { mount_step(m[..], t, MountIn.{forward = 1}, 1.0 / 30.0, none[..], 0); }
+  #assert m[0].z > 2.4 && m[0].z < 3.5 && m[0].speed == t.walk;
+  // a wall on both sides: no dismount, and the clock is not taken
+  box := [12] f32.[0.4, 0, -50, 3, 3, 50, -3, 0, -50, -0.4, 3, 50];
+  #assert !mount_dismount_tick(m[..], t, 1100, box[..], 2) && mount_ridden(m[0]) && m[0].since_tick == 1018;
+  #assert mount_dismount_tick(m[..], t, 1100, none[..], 0) && m[0].state == MOUNT_DISMOUNTING && m[0].since_tick == 1100 && m[0].speed == 0;
+  #assert mount_seated_tick(m[0], t, 1100, 0, 30) == 1 && mount_seated_tick(m[0], t, 1107, 0.5, 30) == 0.5 && mount_seated_tick(m[0], t, 1115, 0, 30) == 0;
+  #assert !mount_settle_tick(m[..], t, 1114, 30) && m[0].rider == 3;
+  #assert mount_settle_tick(m[..], t, 1200, 30) && m[0].state == MOUNT_FREE && m[0].rider == -1 && m[0].since_tick == 1200;
+  #assert mount_seated_tick(m[0], t, 1200, 0, 30) == 0 && !mount_settle_tick(m[..], t, 1300, 30);
+  // the float clock is untouched by the tick forms
+  f: [1] Mount; f[0] = mount_place(0, 0, 0);
+  #assert mount_begin(f[..], t, 1, 1.5, 0, 7.5) && f[0].since == 7.5 && f[0].since_tick == 0;
 }
