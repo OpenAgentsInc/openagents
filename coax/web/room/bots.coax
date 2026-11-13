@@ -489,10 +489,10 @@ bt_play :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: 
     bar: [BT_BAR] SpEntry; nb := bt_bar(i % RS_CL_N, b[0].level, bar[..]);
     plan: [BT_BAR * 3] int;
     hurt := b[0].max > 0 && b[0].hp * 2 < b[0].max;
-    np := sp_plan(bar[..], nb, hurt, b[0].used[..], false, foe < 0 || b[0].mons.row[foe].kind == 1, plan[..]);   // creatures.coax E2M_GOBLIN: a Humanoid
+    np := sp_plan(bar[..], nb, hurt, b[0].used[..], false, foe < 0 || b[0].mons.row[foe].kind == 1, false, plan[..]);   // creatures.coax E2M_GOBLIN: a Humanoid; a bot is not told its slots
     // with no foe near, only what it presses on itself
     own := 0;
-    for q: 0..<nb { if hurt && (bar[q].role & SP_HEAL) != 0 { own += 1; } if (bar[q].role & SP_BUFF) != 0 && !b[0].used[q] { own += 1; } }
+    for q: 0..<nb { if hurt && (bar[q].role & SP_HEAL) != 0 { own += 1; } if sp_buffs(bar[q], b[0].used[q], false) { own += 1; } }
     near := false; fx := b[0].x; fz := b[0].z;
     if foe >= 0 { r := b[0].mons.row[foe]; fx = f32(r.x) / 100; fz = f32(r.z) / 100; dx := fx - b[0].x; dz := fz - b[0].z; near = dx * dx + dz * dz < 18 * 18; }
     count := ifx near then np else (ifx own < np then own else np);

@@ -5,10 +5,14 @@
 // rules and the bots from the table the simulator writes (bot-bars.coax).
 //
 // Each time the room would take a cast: below half its Hit Points, a heal on itself; else, once a
-// fight, each buff on itself; else its harmful abilities, levelled spells highest first, then the
+// fight, each buff on itself (one that bars its spells only when it has no slot left); else its harmful abilities, levelled spells highest first, then the
 // rest in its bar's order, at the nearest foe (a Concentration spell not while it concentrates, nor
 // a spell for Humanoids at a foe that isn't one). The first the room takes is its press.
-SP_OTHER :: 0; SP_HEAL :: 1; SP_BUFF :: 2; SP_HARM :: 4;
+// A buff that bars its own spells while it lasts (Wild Shape, Rage: wild-shape.coax
+// rs_casting_barred) is SP_FORM too: the player takes it only with no spell slot left to cast with.
+// A Druid that took a Beast's form first ended its fights with four in five of its slots unspent
+// and lost them (#13284).
+SP_OTHER :: 0; SP_HEAL :: 1; SP_BUFF :: 2; SP_HARM :: 4; SP_FORM :: 8;
 // slot: the wire's bar slot; role: SP_* bits (an ability can heal and harm); lvl: a levelled spell's level, 0 for the rest;
 // conc: a Concentration spell; humanoid: a spell for Humanoids only.
 SpEntry :: struct { slot: int; role: int; lvl: int; conc: bool; humanoid: bool; }
@@ -22,12 +26,12 @@ SpEntry :: struct { slot: int; role: int; lvl: int; conc: bool; humanoid: bool; 
   bar[4] = SpEntry.{slot = 14, role = SP_HARM, lvl = 3};
   bar[5] = SpEntry.{slot = 15, role = SP_OTHER};
   used: [6] bool; out: [6] int;
-  n := sp_plan(bar[..], 6, true, used[..], false, true, out[..]);
+  n := sp_plan(bar[..], 6, true, used[..], false, true, false, out[..]);
   #assert n == 5 && out[0] == 1 && out[1] == 2 && out[2] == 4 && out[3] == 3 && out[4] == 0;
-  n = sp_plan(bar[..], 6, false, used[..], false, true, out[..]);
+  n = sp_plan(bar[..], 6, false, used[..], false, true, false, out[..]);
   #assert n == 4 && out[0] == 2 && out[1] == 4 && out[2] == 3 && out[3] == 0;
   used[2] = true;
-  n = sp_plan(bar[..], 6, false, used[..], false, true, out[..]);
+  n = sp_plan(bar[..], 6, false, used[..], false, true, false, out[..]);
   #assert n == 3 && out[0] == 4 && out[1] == 3 && out[2] == 0;
 }
 #test "a Concentration spell waits while it concentrates, and a spell for Humanoids is not for a Beast" {
@@ -37,29 +41,55 @@ SpEntry :: struct { slot: int; role: int; lvl: int; conc: bool; humanoid: bool; 
   bar[2] = SpEntry.{slot = 3, role = SP_HARM, lvl = 9};
   bar[3] = SpEntry.{slot = 4, role = SP_HARM, lvl = 2};
   used: [4] bool; out: [4] int;
-  n := sp_plan(bar[..], 4, false, used[..], false, true, out[..]);
+  n := sp_plan(bar[..], 4, false, used[..], false, true, false, out[..]);
   #assert n == 4 && out[0] == 2 && out[1] == 0 && out[2] == 1 && out[3] == 3;
-  n = sp_plan(bar[..], 4, false, used[..], true, true, out[..]);
+  n = sp_plan(bar[..], 4, false, used[..], true, true, false, out[..]);
   #assert n == 3 && out[0] == 2 && out[1] == 1 && out[2] == 3;
-  n = sp_plan(bar[..], 4, false, used[..], false, false, out[..]);
+  n = sp_plan(bar[..], 4, false, used[..], false, false, false, out[..]);
   #assert n == 3 && out[0] == 2 && out[1] == 0 && out[2] == 3;
   // an ability that heals and harms is a heal when hurt and harm besides
   both: [1] SpEntry; both[0] = SpEntry.{slot = 9, role = SP_HEAL + SP_HARM};
-  #assert sp_plan(both[..], 1, true, used[..], false, true, out[..]) == 2 && out[0] == 0 && out[1] == 0;
-  #assert sp_plan(both[..], 1, false, used[..], false, true, out[..]) == 1;
+  #assert sp_plan(both[..], 1, true, used[..], false, true, false, out[..]) == 2 && out[0] == 0 && out[1] == 0;
+  #assert sp_plan(both[..], 1, false, used[..], false, true, false, out[..]) == 1;
   // a plan never writes past the room it is given, and an empty bar is no plan
   two: [2] int;
-  #assert sp_plan(bar[..], 4, false, used[..], false, true, two[..]) == 2 && two[0] == 2 && two[1] == 0;
-  #assert sp_plan(bar[..], 0, true, used[..], false, true, out[..]) == 0;
+  #assert sp_plan(bar[..], 4, false, used[..], false, true, false, two[..]) == 2 && two[0] == 2 && two[1] == 0;
+  #assert sp_plan(bar[..], 0, true, used[..], false, true, false, out[..]) == 0;
+}
+
+// Whether entry e is a buff the player presses now: not pressed yet this fight, and one that bars its
+// spells only when it has no slot left (slots: it has a spell slot to cast with).
+sp_buffs :: (e: SpEntry, used: bool, slots: bool) -> bool {
+  if (e.role & SP_BUFF) == 0 || used { return false; }
+  return (e.role & SP_FORM) == 0 || !slots;
+}
+#test "a form that bars its spells waits until no slot is left; any other buff does not" {
+  bar: [4] SpEntry;
+  bar[0] = SpEntry.{slot = 1, role = SP_BUFF + SP_FORM};
+  bar[1] = SpEntry.{slot = 2, role = SP_BUFF};
+  bar[2] = SpEntry.{slot = 3, role = SP_HARM, lvl = 1};
+  bar[3] = SpEntry.{slot = 4, role = SP_HARM};
+  used: [4] bool; out: [4] int;
+  // with a slot: the buff, then its spell, then the rest; the form is not planned
+  #assert sp_plan(bar[..], 4, false, used[..], false, true, true, out[..]) == 3 && out[0] == 1 && out[1] == 2 && out[2] == 3;
+  // with none: the form is a buff like the other, in the bar's order
+  #assert sp_plan(bar[..], 4, false, used[..], false, true, false, out[..]) == 4 && out[0] == 0 && out[1] == 1 && out[2] == 2 && out[3] == 3;
+  used[0] = true;
+  #assert sp_plan(bar[..], 4, false, used[..], false, true, false, out[..]) == 3 && out[0] == 1;
+  #assert sp_buffs(bar[1], false, true) && sp_buffs(bar[1], false, false) && !sp_buffs(bar[1], true, false) && !sp_buffs(bar[2], false, false);
+  #assert !sp_buffs(bar[0], false, true) && sp_buffs(bar[0], false, false) && !sp_buffs(bar[0], true, false);
+  // a form that is not a buff is nothing
+  #assert !sp_buffs(SpEntry.{role = SP_FORM}, false, false) && !sp_buffs(SpEntry.{role = SP_FORM + SP_HARM}, false, false);
 }
 
 // The bar's entries to try, in order, as indices into bar: how many were written to out.
 // hurt: below half its Hit Points; used: the buffs pressed this fight; concentrating: it holds a
-// Concentration spell; foe_humanoid: the nearest foe is a Humanoid (true when there is none).
-sp_plan :: (bar: [] SpEntry, n: int, hurt: bool, used: [] bool, concentrating: bool, foe_humanoid: bool, out: [] int) -> int {
+// Concentration spell; foe_humanoid: the nearest foe is a Humanoid (true when there is none);
+// slots: it has a spell slot left (false when the player can't know: it takes a form as any buff).
+sp_plan :: (bar: [] SpEntry, n: int, hurt: bool, used: [] bool, concentrating: bool, foe_humanoid: bool, slots: bool, out: [] int) -> int {
   k := 0;
   for i: 0..<n { if hurt && (bar[i].role & SP_HEAL) != 0 && k < out.count { out[k] = i; k += 1; } }
-  for i: 0..<n { if (bar[i].role & SP_BUFF) != 0 && !used[i] && k < out.count { out[k] = i; k += 1; } }
+  for i: 0..<n { if sp_buffs(bar[i], used[i], slots) && k < out.count { out[k] = i; k += 1; } }
   for lv: 0..<10 {
     for i: 0..<n {
       a := bar[i];

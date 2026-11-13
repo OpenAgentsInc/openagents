@@ -10,8 +10,8 @@
 // packs along the path (one Wolf, two Wolves). The player stands on the
 // path near them and doesn't move; the wolves notice and come, and the guard turns on the player's first
 // blow. The scripted player, every ES_RETRY ticks (the room takes what its turn's pace allows): below half its Hit Points,
-// a heal on itself; else, once a fight, each buff on itself (Rage, Innate Sorcery, Wild Shape, a levelled
-// spell on itself); else its harmful abilities, levelled spells highest first, then the rest in its bar's
+// a heal on itself; else, once a fight, each buff on itself (Rage, Innate Sorcery, a levelled spell on
+// itself; Wild Shape only with no spell slot left, for a Beast can't cast); else its harmful abilities, levelled spells highest first, then the rest in its bar's
 // order, at the nearest foe (a Concentration spell not while it concentrates, nor a spell for
 // Humanoids at a Beast). The first the room takes
 // is its press. A fight ends when every foe is down (a win), the player is at 0 Hit Points (a down), or
@@ -57,6 +57,8 @@ es_buff :: (a: FbAb) -> bool {
   if a.kind == FB_RAGE || a.kind == FB_INNATE || a.kind == FB_WILD || a.kind == FB_SURGE { return true; }
   return a.kind == FB_SPELL && a.tg == FB_SELF && a.lvl > 0 && !es_heals(a);
 }
+// A buff that bars its user's spells while it lasts (wild-shape.coax rs_casting_barred): Wild Shape, Rage.
+es_form :: (a: FbAb) -> bool { return a.kind == FB_WILD || a.kind == FB_RAGE; }
 // Whether the player presses a for harm: not a help, not a check or move, never Zone of Truth.
 es_harms :: (a: FbAb) -> bool {
   if egb_helps(a) { return false; }
@@ -68,7 +70,7 @@ es_harms :: (a: FbAb) -> bool {
 // class's catalogue), what it is for, a levelled spell's level, and the two rules a spell can carry.
 es_entry :: (c: int, a: FbAb, cat_i: int) -> SpEntry {
   e := SpEntry.{slot = ifx cat_i >= 0 then xk_slot(c, cat_i) else -1};
-  e.role = (ifx es_heals(a) then SP_HEAL else 0) + (ifx es_buff(a) then SP_BUFF else 0) + (ifx es_harms(a) then SP_HARM else 0);
+  e.role = (ifx es_heals(a) then SP_HEAL else 0) + (ifx es_buff(a) then SP_BUFF else 0) + (ifx es_harms(a) then SP_HARM else 0) + (ifx es_form(a) then SP_FORM else 0);
   if a.kind == FB_SPELL {
     e.lvl = a.lvl;
     e.conc = rs_spell(a.sp).concentration; e.humanoid = rs_spell(a.sp).humanoid_only;
@@ -209,10 +211,11 @@ es_fight :: (v: [] RmServer, enc: int, c: int, level: int, seed: int, trace: boo
       hurt := b[0].c[me].hp * 2 < b[0].c[me].hp_max;
       // the scripted player's order (script-player.coax); the first the room takes is its press
       plan: [XC_SLOTS * 3] int;
-      np := sp_plan(sb[..], nb, hurt, used[..], b[0].c[me].conc >= 0, near < 0 || b[0].c[near].humanoid, plan[..]);
+      slots := false; for l: 1..<10 { if b[0].c[me].slots[l] > 0 { slots = true; } }
+      np := sp_plan(sb[..], nb, hurt, used[..], b[0].c[me].conc >= 0, near < 0 || b[0].c[near].humanoid, slots, plan[..]);
       // a plan's order is heals (when hurt), then buffs, then harm: which part entry q is in
       nh := 0; nf := 0;
-      for i: 0..<nb { if hurt && (sb[i].role & SP_HEAL) != 0 { nh += 1; } if (sb[i].role & SP_BUFF) != 0 && !used[i] { nf += 1; } }
+      for i: 0..<nb { if hurt && (sb[i].role & SP_HEAL) != 0 { nh += 1; } if sp_buffs(sb[i], used[i], slots) { nf += 1; } }
       for q: 0..<np {
         i := plan[q];
         if took || at[i] < 0 { continue; }
