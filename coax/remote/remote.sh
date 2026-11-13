@@ -1,28 +1,32 @@
 #!/usr/bin/env bash
 # Firm reason: 5. Runs a heavy command on a remote build host instead of this
 # computer (docs/metaverse/remote-builds.md, #13077): gcloud, ssh, git and tar,
-# and the Mac's build slots (~/.openagents/build-slots/heavy.sh) when no host
-# can take the job.
+# and the Mac's build slots (~/.openagents/build-slots/heavy.sh) with --local.
 #
-#   coax/remote/remote.sh run [--local] [--no-fallback] -- CMD [ARGS...]
+#   coax/remote/remote.sh run [--local] -- CMD [ARGS...]
 #                              run CMD from this directory of this checkout on a
 #                              host: the checkout's commit and its uncommitted
 #                              changes (untracked files too) go there, and the
-#                              files CMD writes come back
-#   coax/remote/remote.sh run --commit REV [--out DIR] [--no-fallback] -- CMD ...
+#                              files CMD writes come back. With no host it stops
+#                              (exit 97) with one line naming the cause and the
+#                              fix; it runs on this computer only with --local
+#                              (#13472). --no-fallback is accepted and changes nothing.
+#   coax/remote/remote.sh run --commit REV [--out DIR] -- CMD ...
 #                              run CMD from the root of commit REV instead (the
 #                              green-main pipeline's checks): no snapshot, and
 #                              the files CMD writes go to DIR (or nowhere)
 #   coax/remote/remote.sh up      start (or create) a host and wait until it is ready
-#   coax/remote/remote.sh status  hosts, free slots, and spend
-#   coax/remote/remote.sh cost    spend over the last 24 hours and 30 days, from the ledger
+#   coax/remote/remote.sh status  hosts, free slots, spend, and "the pool is on" or "the pool is off: CAUSE"
+#   coax/remote/remote.sh cost    spend over the last 24 hours and 30 days, from the ledgers' host-hours
 #   coax/remote/remote.sh down    stop every host (the disks, and their caches, stay)
 #   coax/remote/remote.sh delete  delete every host and its disk
 #
 # Settings (environment):
-#   OA_REMOTE=0                  never use a host: run on this computer's slots
-#   OA_REMOTE_DAILY_USD          the most the hosts may cost over 24 hours (default 100)
-#   OA_REMOTE_MAX_HOSTS          hosts at once (default 16)
+#   OA_REMOTE=0                  never use a host: run on this computer's slots (as --local)
+#   OA_REMOTE_DAILY_USD          the most the hosts may cost over 24 hours (default: what
+#                                OA_REMOTE_MAX_HOSTS hosts cost running all day, so the host
+#                                count is the one control)
+#   OA_REMOTE_MAX_HOSTS          hosts at once (default 6)
 #   OA_REMOTE_MACHINE            machine type (default c3d-highcpu-30, spot)
 #   OA_REMOTE_IDLE_MINUTES       a host stops itself after this long idle (default 15)
 #   OA_REMOTE_SLOTS              jobs at once on one host (default 3)
@@ -42,7 +46,6 @@ export LC_ALL=C
 here="$(cd "$(dirname "$0")" && pwd -P)"
 project="${OA_REMOTE_PROJECT:-openagentsgemini}"
 state="${OA_REMOTE_STATE:-$HOME/.openagents/remote}"
-daily="${OA_REMOTE_DAILY_USD:-150}"   # 75 until 2026-11-13, raised for the day: the cap had every host off and no head of main was being checked. Put back to 75.
 max_hosts="${OA_REMOTE_MAX_HOSTS:-6}"
 machine="${OA_REMOTE_MACHINE:-c3d-highcpu-30}"
 idle="${OA_REMOTE_IDLE_MINUTES:-15}"
@@ -61,6 +64,9 @@ case "$machine" in
   *) rate="${OA_REMOTE_USD_PER_HOUR:?OA_REMOTE_USD_PER_HOUR: no list price for $machine}" ;;
 esac
 rate="${OA_REMOTE_USD_PER_HOUR:-$rate}"
+# The cap follows the pool (#13472): every host running all day, so it can't
+# trip before the pool is really spent; the host count is the control.
+daily="${OA_REMOTE_DAILY_USD:-$(awk -v h="$max_hosts" -v r="$rate" 'BEGIN { printf "%.2f", h * r * 24 }')}"
 mkdir -p "$state"; chmod 700 "$state"
 key="$state/ssh_ed25519"; known="$state/known_hosts"; ledger="$state/ledger.tsv"
 [[ -f "$key" ]] || ssh-keygen -q -t ed25519 -N '' -C coax-remote -f "$key"
@@ -68,9 +74,12 @@ say() { echo "remote: $*" >&2; }
 now() { date +%s; }
 
 # The ledger: one line per host start or creation and per job, "time kind host
-# seconds usd note". Spend is estimated from it, high rather than low: every
-# job is billed at the whole host's price for its wall time on this computer,
-# and every start adds the idle minutes before the host stops itself.
+# seconds usd note". Spend is the time each host was up (#13472): each job's
+# wall time, then the idle minutes before the host stops itself, merged per
+# host across every machine's jobs, so three jobs side by side on one host are
+# one host-hour, not three, and an idle tail another job cut short is not
+# charged. A creation adds its setup. The usd column is each line's own
+# figure, kept for reading; spent() doesn't sum it.
 record() {   # kind host seconds note: one ledger line, its cost the seconds at the host's rate
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(now)" "$1" "$2" "$3" "$(awk -v s="$3" -v r="$rate" 'BEGIN { printf "%.4f", s / 3600 * r }')" "$4" >> "$ledger"
 }
@@ -79,25 +88,48 @@ record() {   # kind host seconds note: one ledger line, its cost the seconds at 
 # every 5 minutes and in the background, so spent() counts every machine's
 # jobs (OA_REMOTE_SHARED_LEDGERS=0: this ledger alone).
 shared_ledgers="${OA_REMOTE_SHARED_LEDGERS:-gs://openagentsgemini-coax-build-cache/pipeline/ledgers}"
-ledger_id="$(hostname -s 2> /dev/null || hostname)-$(printf '%s' "$state" | shasum -a 256 | cut -c1-8)"
+# Each machine's ledger id is made once and kept in the state folder: a Mac's
+# hostname changes with its network, and each new name left another copy of
+# the same ledger in the bucket, counted again (#13472).
+if [[ -s "$state/machine-id" ]]; then ledger_id="$(cat "$state/machine-id")"
+else
+  ledger_id="$(hostname -s 2> /dev/null || hostname)-$(printf '%s' "$state" | shasum -a 256 | cut -c1-8)"
+  echo "$ledger_id" > "$state/machine-id"
+fi
 ledger_sync() {
   [[ "$shared_ledgers" != 0 ]] && command -v gcloud > /dev/null || return 0
   mkdir -p "$state/ledgers"
   [[ ! -f "$state/ledgers/.synced" ]] || (( $(now) - $(cat "$state/ledgers/.synced") >= 300 )) || return 0
   now > "$state/ledgers/.synced"
   ( [[ ! -f "$ledger" ]] || timeout 60 gcloud storage cp -q "$ledger" "$shared_ledgers/$ledger_id.tsv"
-    mkdir -p "$state/ledgers/all" && timeout 60 gcloud storage rsync -q "$shared_ledgers" "$state/ledgers/all"
+    mkdir -p "$state/ledgers/all" && timeout 60 gcloud storage rsync -q --delete-unmatched-destination-objects "$shared_ledgers" "$state/ledgers/all"
   ) < /dev/null > /dev/null 2>&1 7>&- 8>&- 9>&- &
 }
-spent() {   # seconds: the estimated spend over that window, on every machine
+spent() {   # seconds: the spend over that window, on every machine
+  local h; h="$(host_hours "$1")"
+  awk -v h="$h" -v r="$rate" 'BEGIN { printf "%.2f", h * r }'
+}
+host_hours() {   # seconds: the hours hosts were up over that window, every machine's ledger
   ledger_sync
-  local others=() f
+  local others=() f t; t=$(now)
   for f in "$state/ledgers/all/"*.tsv; do [[ ! -f "$f" || "$(basename "$f" .tsv)" == "$ledger_id" ]] || others+=("$f"); done
   [[ -f "$ledger" || ${#others[@]} -gt 0 ]] || { echo 0; return; }
-  cat ${ledger:+"$ledger"} ${others[@]+"${others[@]}"} 2> /dev/null |
-    awk -F'\t' -v since="$(( $(now) - $1 ))" '$1 >= since { s += $5 } END { printf "%.2f", s }'
+  # sort -u: a line in two copies of one ledger counts once.
+  cat ${ledger:+"$ledger"} ${others[@]+"${others[@]}"} 2> /dev/null | sort -u |
+    awk -F'\t' -v since="$(( t - $1 ))" -v now="$t" -v tail="$(( idle * 60 ))" '
+      $2 == "job" { s = $1 - $4; e = $1 + tail }
+      $2 == "create" { s = $1; e = $1 + $4 }
+      $2 == "job" || $2 == "create" { if (s < since) s = since; if (e > now) e = now; if (e > s) printf "%s\t%d\t%d\n", $3, s, e }' |
+    sort -t "$(printf '\t')" -k1,1 -k2,2n |
+    awk -F'\t' '
+      $1 != h { if (h != "") sum += e - s; h = $1; s = $2; e = $3; next }
+      $2 > e { sum += e - s; s = $2; e = $3; next }
+      $3 > e { e = $3 }
+      END { if (h != "") sum += e - s; printf "%.2f", sum / 3600 }'
 }
 under_budget() { awk -v s="$(spent 86400)" -v d="$daily" 'BEGIN { exit !(s < d) }'; }
+# Why no host can be had, and the fix: one line (#13472).
+pool_off_cap() { echo "the pool is off: the cap: the hosts cost about \$$(spent 86400) over 24 hours and OA_REMOTE_DAILY_USD is \$$daily. Fix: coax/remote/remote.sh status, then wait or raise OA_REMOTE_DAILY_USD; or run here with --local"; }
 
 lock() {   # FILE CMD...: CMD under an exclusive lock
   if command -v flock > /dev/null; then flock "$@"; else lockf -k "$@"; fi
@@ -167,7 +199,7 @@ acquire() {
   done <<< "$list"
   [[ -z "$avoided" ]] || { echo "$avoided"; return 0; }
   if ! under_budget; then
-    say "the hosts cost about \$$(spent 86400) over 24 hours, the most OA_REMOTE_DAILY_USD allows is \$$daily: starting none"
+    say "$(pool_off_cap)"
     [[ -n "$best" ]] && { echo "$best"; return 0; }
     return 1
   fi
@@ -175,14 +207,13 @@ acquire() {
     read -r name zone <<< "$stopped"
     say "starting $name in $zone"
     if gcloud compute instances start "$name" --zone "$zone" --project "$project" > /dev/null 2>&1; then
-      record start "$name" "$(( idle * 60 ))" "idle minutes after the last job"
+      record start "$name" 0 "started (its time is its jobs' and their idle minutes)"
       ip="$(wait_ready "$name" "$zone")" && { echo "$name $ip"; return 0; }
     fi
     say "could not start $name (spot capacity?)"
   elif (( count < max_hosts )); then
     name="oa-build-$((count + 1))"
     if zone="$(create "$name")"; then
-      record start "$name" "$(( idle * 60 ))" "idle minutes after the last job"
       say "waiting for $name's first boot (Nix, Bun and the clone; about 10 minutes)"
       ip="$(wait_ready "$name" "$zone")" && { echo "$name $ip"; return 0; }
     fi
@@ -227,27 +258,26 @@ cleanup() {
 }
 
 run() {
-  local fallback=1 force_local=0 at_commit="" out_dir=""
+  local force_local=0 at_commit="" out_dir=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --local) force_local=1; shift ;;
-      --no-fallback) fallback=0; shift ;;
+      --no-fallback) shift ;;   # the only way now (#13472)
       --commit) at_commit="$2"; shift 2 ;;
       --out) out_dir="$2"; shift 2 ;;
       --) shift; break ;;
       *) break ;;
     esac
   done
-  [[ $# -gt 0 ]] || { echo "usage: remote.sh run [--local] [--no-fallback] -- CMD [ARGS...]" >&2; exit 2; }
-  if [[ -n "$at_commit" ]]; then
-    # A commit's own files only run on a host: the Mac's slots would need a
-    # checkout of it, so no fallback.
-    fallback=0
-  elif [[ "$force_local" == 1 || "${OA_REMOTE:-}" == 0 ]]; then local_run "" "$@"; fi
-  fail() {   # why CMD...: the Mac's slots run CMD (or, with --no-fallback, exit 97)
+  [[ $# -gt 0 ]] || { echo "usage: remote.sh run [--local] -- CMD [ARGS...]" >&2; exit 2; }
+  # This computer runs the command only when asked (#13472): a commit's own
+  # files only run on a host (the Mac's slots would need a checkout of it).
+  if [[ -z "$at_commit" ]] && [[ "$force_local" == 1 || "${OA_REMOTE:-}" == 0 ]]; then local_run "" "$@"; fi
+  fail() {   # why CMD...: one line, the cause and the fix, and exit 97; never this computer
     local why="$1"; shift
-    cleanup   # local_run execs: the traps go with this shell
-    if [[ "$fallback" == 1 ]]; then local_run "$why" "$@"; else say "$why"; exit 97; fi
+    cleanup
+    say "$why"
+    exit 97
   }
   local root rel started
   started=$(now)
@@ -279,7 +309,7 @@ run() {
     global="$(git -C "$root" config --path core.excludesFile 2> /dev/null)" || global="${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
     { [[ ! -f "$global" ]] || cat "$global"; echo; echo 'build-remote/'; } > "$tmp/exclude"
     big="$(cd "$root" && git -c core.excludesFile="$tmp/exclude" ls-files -o --exclude-standard -z | xargs -0 du -k 2> /dev/null | awk '{ s += $1 } END { print s * 1024 }')"
-    (( big < 200000000 )) || fail "untracked files hold $((big / 1000000)) MB (more than 200 MB): too much to send" "$@"
+    (( big < 200000000 )) || fail "untracked files hold $((big / 1000000)) MB (more than 200 MB): too much to send. Fix: remove or ignore them; or run here with --local" "$@"
     cp "$(git -C "$root" rev-parse --path-format=absolute --git-path index)" "$tmp/index" 2> /dev/null
     tree="$(cd "$root" && GIT_INDEX_FILE="$tmp/index" git -c core.excludesFile="$tmp/exclude" add -A . && GIT_INDEX_FILE="$tmp/index" git write-tree)" || fail "could not snapshot the checkout" "$@"
     commit="$(cd "$root" && GIT_AUTHOR_NAME=remote GIT_AUTHOR_EMAIL=remote@localhost GIT_COMMITTER_NAME=remote GIT_COMMITTER_EMAIL=remote@localhost \
@@ -323,19 +353,19 @@ run() {
   { printf 'key=%q\ncommit=%q\nrelcwd=%q\nshared_token=%q\n' "$job" "$commit" "$rel" "$shared_token"
     printf 'argv=('; printf '%q ' "${argv[@]}"; printf ')\n'
     printf 'env_vars=('; [[ ${#env_vars[@]} -eq 0 ]] || printf '%q ' "${env_vars[@]}"; printf ')\n'; } > "$tmp/spec"
-  under_budget || fail "the hosts cost about \$$(spent 86400) over 24 hours (OA_REMOTE_DAILY_USD is \$$daily)" "$@"
+  under_budget || fail "$(pool_off_cap)" "$@"
   local host name ip inbox="$job.$$" sent attempt=1 nowait status
   # nixpkgs.rev: the toolchain revision host-job.sh pins the host's nixpkgs to (#13256).
   cp "$here/host-job.sh" "$here/shared-cache.sh" "$here/nixpkgs.rev" "$tmp/"
   # A host whose slots filled since it was picked sends the job back (96), and
   # the hosts are asked again until one has a free slot.
   while true; do
-    if [[ -n "${OA_REMOTE_HOST:-}" ]]; then host="$(named_host "$OA_REMOTE_HOST")" || fail "$OA_REMOTE_HOST isn't running" "$@"
+    if [[ -n "${OA_REMOTE_HOST:-}" ]]; then host="$(named_host "$OA_REMOTE_HOST")" || fail "$OA_REMOTE_HOST isn't running. Fix: unset OA_REMOTE_HOST, or coax/remote/remote.sh status" "$@"
     elif (( attempt == 1 )); then host="$(cached_host || lock "$state/acquire.lock" "$0" _acquire)"
-    else host="$(lock "$state/acquire.lock" "$0" _acquire)"; fi || fail "no build host could take the job" "$@"
+    else host="$(lock "$state/acquire.lock" "$0" _acquire)"; fi || fail "the pool is off: no build host could start or be made (spot capacity, or gcloud). Fix: coax/remote/remote.sh status and coax/remote/remote.sh up; or run here with --local" "$@"
     read -r name ip <<< "$host"; [[ -n "${OA_REMOTE_HOST:-}" ]] || echo "$name $ip" > "$state/host"
     (cd "$tmp" && COPYFILE_DISABLE=1 tar --no-xattrs -cf - spec bundle host-job.sh shared-cache.sh nixpkgs.rev) | ssh_to "$name" "$ip" "mkdir -p ~/inbox/$inbox && tar --warning=no-unknown-keyword -xf - -C ~/inbox/$inbox && touch ~/busy" \
-      || fail "could not send the job to $name" "$@"
+      || fail "could not send the job to $name. Fix: coax/remote/remote.sh status; run it again" "$@"
     sent=$(now)
     # Every host full: look again every 10 s for the first slot any host frees,
     # for up to OA_REMOTE_WAIT seconds (default 1800), then wait on this host.
@@ -367,7 +397,7 @@ run() {
   done
   if [[ $status == 255 || $status == 97 ]]; then
     record job "$name" "$(( $(now) - started ))" "failed to run: $*"
-    fail "$name could not run the job (ssh status $status)" "$@"
+    fail "$name could not run the job (ssh status $status). Fix: run it again (another host may take it); coax/remote/remote.sh status" "$@"
   fi
   # The files the command wrote, into this checkout.
   local dest="$root"
@@ -393,13 +423,14 @@ case "${1:-}" in
       free="-"; [[ "$status" == RUNNING && -n "$ip" ]] && free="$(free_slots "$name" "$ip")"
       echo "$name $zone $status ${ip:--} free slots: $free"
     done
-    echo "about \$$(spent 86400) over the last 24 hours (the most: \$$daily), \$$(spent 2592000) over 30 days; disks \$20 a month each" ;;
-  cost) echo "about \$$(spent 86400) over the last 24 hours (the most: \$$daily), \$$(spent 2592000) over 30 days" ;;
+    echo "about \$$(spent 86400) over the last 24 hours ($(host_hours 86400) host-hours; the most: \$$daily), \$$(spent 2592000) over 30 days; disks \$20 a month each"
+    if under_budget; then echo "the pool is on: up to $max_hosts hosts (a stopped host starts for the next job)"; else pool_off_cap; fi ;;
+  cost) echo "about \$$(spent 86400) over the last 24 hours ($(host_hours 86400) host-hours; the most: \$$daily), \$$(spent 2592000) over 30 days" ;;
   down) hosts | while read -r name zone status ip; do
           [[ "$status" == RUNNING ]] && gcloud compute instances stop "$name" --zone "$zone" --project "$project" --async --quiet > /dev/null && echo "stopping $name"
         done; rm -f "$state/host" ;;
   delete) hosts | while read -r name zone status ip; do
             gcloud compute instances delete "$name" --zone "$zone" --project "$project" --quiet > /dev/null && echo "deleted $name"
           done; rm -f "$state/host" ;;
-  *) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

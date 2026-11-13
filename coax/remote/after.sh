@@ -659,7 +659,11 @@ record_run() {   # head kind status started jobs
 # (the jobs that passed are kept), OA_AFTER_UNFINISHED (3) times. Then it is
 # reported, and H waits half an hour or for a new head.
 unfinished() {   # head kind started jobs why
-  local dir="$results/$1" n cost
+  local dir="$results/$1" n cost off title
+  # remote.sh's own line when the pool is off (#13472): it names the cause
+  # (the cap, or no host could start) and the fix, so the issue says that.
+  off="$(cat "$dir"/*/out "$dir"/*.out "$dir"/bisect-*/*/out 2> /dev/null | sed -n 's/^remote: \(the pool is off: .*\)/\1/p' | tail -1)"
+  [[ -z "$off" ]] || set -- "$1" "$2" "$3" "$4" "${off%%. Fix:*}"
   n=$(( $(cat "$dir/tries" 2> /dev/null || echo 0) + 1 )); echo "$n" > "$dir/tries"
   cost="$(record_run "$1" "$2" unfinished "$3" "$4")"
   if (( n < max_unfinished )); then
@@ -669,8 +673,12 @@ unfinished() {   # head kind started jobs why
   fi
   echo unfinished > "$dir/status"; date +%s > "$results/last-unfinished"
   pl_say "after: $5 on ${1:0:10}, $n times; it is tried again in half an hour or on a new head ($cost)"
-  pl_alarm unfinished "the hosts could not finish the check of ${1:0:10}" "$5 on ${1:0:10}, $n times in a row, so \`$pl_green\` has not moved. The pipeline tries this head again in half an hour, and a new head at once.
-
+  title="the hosts could not finish the check of ${1:0:10}"
+  [[ -z "$off" ]] || title="${5%%: the hosts cost*}: no check of ${1:0:10} could run"
+  pl_alarm unfinished "$title" "$5 on ${1:0:10}, $n times in a row, so \`$pl_green\` has not moved. The pipeline tries this head again in half an hour, and a new head at once.
+${off:+
+remote.sh: $off
+}
 Each job's status and seconds (97: the hosts could not run it):
 
 \`\`\`

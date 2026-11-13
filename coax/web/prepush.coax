@@ -469,6 +469,30 @@ pp_free_host :: (status: string) -> bool {
   }
   return false;
 }
+// The rest of the last line of text that starts with prefix, up to ". Fix:" ("" when none): remote.sh's
+// "the pool is off: CAUSE" from its status, or its "remote: ..." line from a job that could not run (#13472).
+pp_last_after :: (text: string, prefix: string) -> string {
+  i := 0; found := "";
+  while i < text.count {
+    j := i;
+    while j < text.count && text[j] != '\n' { j += 1; }
+    if j - i >= prefix.count && cast(string) text[i..<i + prefix.count] == prefix {
+      e := j; fx := ". Fix:";
+      for k: i + prefix.count..<j {
+        if k + fx.count <= j && cast(string) text[k..<k + fx.count] == fx { e = k; break; }
+      }
+      found = cast(string) text[i + prefix.count..<e];
+    }
+    i = j + 1;
+  }
+  return found;
+}
+#test "remote.sh's pool line and a job's own line" {
+  st := "oa-build-1 us-central1-a TERMINATED - free slots: -\nabout $40 over the last 24 hours\nthe pool is off: the cap: the hosts cost about $40. Fix: coax/remote/remote.sh status\n";
+  #assert pp_last_after(st, "the pool is off: ") == "the cap: the hosts cost about $40";
+  #assert pp_last_after("the pool is on: up to 6 hosts\n", "the pool is off: ") == "" && pp_last_after("", "remote: ") == "";
+  #assert pp_last_after("remote: one\nx\nremote: no host could start. Fix: up", "remote: ") == "no host could start";
+}
 // The suites of `tool.sh suites --since BASE --list` output ("PATH  BUDGET ...") that the push
 // changed itself, joined with commas into out.
 pp_touched_suites :: (list: string, changed: string, out: [] u8) -> string {
@@ -561,7 +585,7 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   }
   if !ok { print("prepush: note: a check could not start\n"); }
   suites_buf: [65536] u8; suites := "";
-  remote_started := false; remote_skip := "";
+  remote_started := false; remote_skip := ""; pool_off := "";
   while proc_now_ms() < deadline {
     busy := false;
     for k: 0..<PP_JOBS { pp_poll(jobs[k..<k + 1]); busy = busy || jobs[k].running; }
@@ -571,7 +595,10 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
       else {
         suites = pp_touched_suites(pp_text(jobs[4..<4 + 1]), changed, suites_buf[..]);
         if suites.count == 0 { remote_skip = "the push changes no suite"; }
-        else if !pp_free_host(pp_text(jobs[5..<5 + 1])) { remote_skip = "no build host has a free slot (coax/remote/remote.sh status)"; }
+        else if !pp_free_host(pp_text(jobs[5..<5 + 1])) {
+          pool_off = pp_last_after(pp_text(jobs[5..<5 + 1]), "the pool is off: ");
+          remote_skip = ifx pool_off.count > 0 then "the pool is off" else "no build host is running with a free slot (idle hosts stop after 15 minutes; coax/remote/remote.sh up starts one; coax/remote/remote.sh status)";
+        }
         else {
           // the pushed commit itself on the host, its files left there (check.sh only, as AGENTS.md says)
           ra := [8] string.["coax/remote/remote.sh", "run", "--no-fallback", "--commit", commit, "--", "coax/remote/check.sh", "only"];
@@ -595,7 +622,11 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
     secs := (jobs[k].ms + 500) / 1000;
     if jobs[k].timed_out { print("prepush: % skipped: still running at the % s limit (OA_PREPUSH_SECONDS); the after-landing check runs it\n", name, seconds); continue; }
     if k == 4 { if s != 0 { print("prepush: suites --list failed (status %); coax test skipped\n", s); } continue; }
-    if k == 6 && s == 97 { print("prepush: coax test skipped: no build host could take it (% s)\n", secs); continue; }
+    if k == 6 && s == 97 {
+      why := pp_last_after(pp_text(jobs[k..<k + 1]), "remote: ");
+      if why.count == 0 { why = "no build host could take it"; }
+      print("prepush: coax test skipped: % (% s; coax/remote/remote.sh status)\n", why, secs); continue;
+    }
     if s == 0 { print("prepush: % passed (% s)\n", name, secs); continue; }
     excused := red.count > 0 && pp_has(red, name);
     if k == 6 { excused = false; }
@@ -607,7 +638,8 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
       print("prepush: % could not run (status %); not counted:\n", name, s); pp_tail(pp_text(jobs[k..<k + 1]), 4);
     }
   }
-  if tests && remote_skip.count > 0 { print("prepush: coax test skipped: %\n", remote_skip); }
+  if tests && pool_off.count > 0 { print("prepush: coax test skipped: the pool is off: % (coax/remote/remote.sh status)\n", pool_off); }
+  else if tests && remote_skip.count > 0 { print("prepush: coax test skipped: %\n", remote_skip); }
   if tests && remote_started && suites.count > 0 { print("prepush: coax test ran %\n", suites); }
   print("prepush: checks took % s\n", (proc_now_ms() - t0 + 500) / 1000);
   return ifx failed == 0 then 0 else 1;

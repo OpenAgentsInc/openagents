@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Firm reason: 5. The check that a remote.sh call leaves nothing behind (#13181): no
 # scratch folder, no ref, nothing new in the checkout, whether the call ends
-# normally, fails, falls back to this computer or is interrupted (INT, TERM, HUP),
+# normally, fails, runs here with --local or is interrupted (INT, TERM, HUP),
 # and with calls side by side, each removing only its own. It also checks that the
 # snapshot leaves out build-remote/ and that a TMPDIR inside the checkout is not
-# used. No host, no network: a scratch checkout, a fake gcloud, OA_REMOTE_DRY_RUN.
+# used, and the meter (#13472): host-hours merged per host, a ledger in two
+# copies counted once, the cap from the pool, a machine id that outlives the
+# hostname, and no run on this computer unless asked. No host, no network: a
+# scratch checkout, a fake gcloud, OA_REMOTE_DRY_RUN.
 #   coax/remote/test-remote.sh        exit 0 when every case passes
 set -uo pipefail
 set -m   # background calls get their own process groups and keep SIGINT (a script's & ignores it)
@@ -25,8 +28,8 @@ echo new > "$repo/a/untracked.txt"
 echo junk > "$repo/build-remote/oa-remote.x/bundle"; echo junk > "$repo/a/build-remote/old/bundle"
 # The state folder with a key already made, a fake gcloud that waits until it is
 # stopped, and a HOME with no build slots (the fallback runs the command itself).
-export OA_REMOTE_STATE="$w/state" COAX_SHARED_CACHE=0 HOME="$w/home" OA_REMOTE_DAILY_USD=100
-unset OA_REMOTE OA_REMOTE_HOST OA_REMOTE_DRY_RUN CLOUDSDK_CONFIG
+export OA_REMOTE_STATE="$w/state" COAX_SHARED_CACHE=0 HOME="$w/home" OA_REMOTE_DAILY_USD=100 OA_REMOTE_SHARED_LEDGERS=0
+unset OA_REMOTE OA_REMOTE_HOST OA_REMOTE_DRY_RUN CLOUDSDK_CONFIG OA_REMOTE_MAX_HOSTS OA_REMOTE_USD_PER_HOUR OA_REMOTE_IDLE_MINUTES
 mkdir -p "$OA_REMOTE_STATE" "$HOME" "$w/bin" "$w/pids"
 : > "$OA_REMOTE_STATE/ssh_ed25519"; : > "$OA_REMOTE_STATE/ssh_ed25519.pub"
 cat > "$w/bin/gcloud" <<'EOF'
@@ -57,13 +60,18 @@ if [[ $s == 0 && -n "$tree" ]]; then
 else bad "dry run: status $s: $out"; fi
 clean "a dry run"
 
-# 2. Failure, with and without the fallback.
+# 2. Failure: never this computer unless asked (#13472).
 OA_REMOTE_DAILY_USD=0 call run --no-fallback -- true > /dev/null 2>&1; s=$?
 [[ $s == 97 ]] && ok "over budget with --no-fallback exits 97" || bad "over budget with --no-fallback: status $s"
 clean "a failed call"
-OA_REMOTE_DAILY_USD=0 call run -- true > /dev/null 2>&1; s=$?
-[[ $s == 0 ]] && ok "over budget falls back to this computer" || bad "the fallback: status $s"
-clean "a call that fell back"
+out="$(OA_REMOTE_DAILY_USD=0 call run -- touch "$w/ran-here" 2>&1)"; s=$?
+[[ $s == 97 && ! -e "$w/ran-here" ]] && ok "over budget stops with 97 and doesn't run here" || bad "over budget without --local: status $s"
+[[ "$(wc -l <<< "$out" | tr -d ' ')" == 1 ]] && grep -q '^remote: the pool is off: the cap: .*Fix: coax/remote/remote.sh status' <<< "$out" \
+  && ok "it says so in one line, with the cause and the fix" || bad "the line: $out"
+clean "a call that stopped"
+OA_REMOTE_DAILY_USD=0 call run --local -- touch "$w/ran-here" > /dev/null 2>&1; s=$?
+[[ $s == 0 && -e "$w/ran-here" ]] && ok "--local runs it here" || bad "--local: status $s"
+clean "a call run here"
 
 # 3. Interrupted while it waits for a host: the scratch folder goes with it.
 interrupt() {   # signal status
@@ -105,6 +113,26 @@ out="$(cd "$repo/a" && OA_REMOTE_DRY_RUN=1 TMPDIR="$repo/build-remote/tmp" bash 
 [[ $s == 0 && -z "$(ls -A "$repo/build-remote/tmp")" ]] && ok "a TMPDIR inside the checkout is not used" || bad "TMPDIR inside the checkout: status $s, left $(ls -A "$repo/build-remote/tmp")"
 rmdir "$repo/build-remote/tmp"
 clean "a TMPDIR inside the checkout"
+
+# 6. The meter (#13472). With 1 USD an hour and 15 idle minutes, at time T:
+# two overlapping jobs on host a ([T-1600, T-100] and [T-1500, T] with their
+# idle tails) are 1,600 s; a job on b long ago in the window is 3,600 s plus
+# its 900 s tail; b's start is not charged; c's creation 200 s ago is 200 s
+# (its setup runs past now); a job older than a day is not counted; and the
+# same line in a stale copy of the ledger counts once. 6,300 s: 1.75 hours.
+T=$(date +%s); m="$w/meter"; mkdir -p "$m/ledgers/all"
+{ printf '%s\tjob\ta\t600\t0.1\tx\n' $((T - 1000)); printf '%s\tjob\ta\t600\t0.1\ty\n' $((T - 900))
+  printf '%s\tstart\tb\t900\t0.1\ts\n' $((T - 53700)); printf '%s\tjob\tb\t3600\t0.3\tz\n' $((T - 50000))
+  printf '%s\tcreate\tc\t900\t0.1\tc\n' $((T - 200)); printf '%s\tjob\ta\t100\t0.1\told\n' $((T - 90000)); } > "$m/ledger.tsv"
+echo this-machine > "$m/machine-id"
+cp "$m/ledger.tsv" "$m/ledgers/all/old-hostname-1234.tsv"; cp "$m/ledger.tsv" "$m/ledgers/all/this-machine.tsv"
+out="$(env -u OA_REMOTE_DAILY_USD OA_REMOTE_STATE="$m" OA_REMOTE_USD_PER_HOUR=1 OA_REMOTE_MACHINE=x OA_REMOTE_MAX_HOSTS=2 bash "$repo/coax/remote/remote.sh" cost 2>&1)"
+grep -q '^about \$1\.75 over the last 24 hours (1\.75 host-hours' <<< "$out" \
+  && ok "host-hours merged per host, a stale copy counted once, no phantom tails" || bad "the meter: $out"
+grep -q 'the most: \$48\.00)' <<< "$out" && ok "the cap follows the pool: 2 hosts × \$1 × 24" || bad "the cap: $out"
+# The machine id is kept: a new hostname doesn't make a new ledger name.
+[[ "$(cat "$OA_REMOTE_STATE/machine-id" 2> /dev/null)" == "$(hostname -s 2> /dev/null || hostname)-"* ]] && ok "the first call keeps a machine id" || bad "no machine id: $(cat "$OA_REMOTE_STATE/machine-id" 2> /dev/null)"
+[[ "$(cat "$m/machine-id")" == this-machine ]] && ok "a kept machine id is used as it is" || bad "the machine id changed"
 
 if (( fails )); then echo "test-remote.sh: $fails failed"; exit 1; fi
 echo "test-remote.sh: every case passed"

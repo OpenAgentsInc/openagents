@@ -17,7 +17,7 @@
 #   8. the toolchain moved under a host (the check can't judge: 97) until the slot's compiler is
 #      installed again: green, main-green moves, nothing on the red list
 #   9. a job that fails with empty output (a full host) once: green, nothing on the red list
-#  10. a host that can never run the check: unfinished, main-green stays, nothing on the red list;
+#  10. a host that can never run the check (the pool is off: the cap): unfinished, main-green stays, nothing on the red list, and the alarm names the cause;
 #      once it can, green
 #  11. a check that fails on one host and passes on another (#13327): not the commit's; nothing filed
 #  12. a full run that finds a culprit the fast runs passed: main-green goes back to just before
@@ -66,7 +66,7 @@ if [[ "${OA_REMOTE_FRESH_COMPILER:-0}" != 1 ]]; then
   has toolchain-moved && { echo "check $1: not judged (97): the host's compiler doesn't match this tree"; exit 97; }
   has host-full && exit 1
 fi
-has host-broken && { echo "remote: no build host could take the job"; exit 97; }
+has host-broken && { echo "remote: the pool is off: the cap: the hosts cost about \$40.00 over 24 hours and OA_REMOTE_DAILY_USD is \$39.60. Fix: coax/remote/remote.sh status"; exit 97; }
 # one-bad-host: the job fails on oa-bad (where it goes first), passes anywhere else
 if has one-bad-host; then
   h=oa-bad; [[ "${OA_REMOTE_AVOID:-}" != oa-bad ]] || h=oa-good
@@ -166,8 +166,9 @@ rm -f "$w/repo/host-full"
 
 # 10
 touch "$w/repo/host-broken"; echo 'eleven :: 11;' >> "$w/repo/lib/a.coax"; push agent-hb "a change no host can check"; c10="$(g rev-parse HEAD)"
-s="$(run)"
+s="$(OA_AFTER_UNFINISHED=1 run)"
 [[ "$s" == unfinished && "$(open_count)" == "$before" ]] && green_is "$c9" && ok "10: a host that can't run the check leaves the head unjudged; main-green stays; nothing filed" || { bad "10: status $s, open $(open_count)"; cat "$w/run.log"; }
+grep -q "the pool is off: the cap: no check of ${c10:0:10} could run" "$w/pl/ALARM" && ok "10: the alarm names the cause: the pool is off: the cap" || { bad "10: the alarm: $(cat "$w/pl/ALARM" 2> /dev/null)"; }
 rm -f "$w/repo/host-broken"; push agent-hb "the hosts are back"; c10b="$(g rev-parse HEAD)"
 s="$(run)"; [[ "$s" == green ]] && green_is "$c10b" && ok "10: once a host can, green" || { bad "10 after: status $s"; cat "$w/run.log"; }
 

@@ -126,8 +126,9 @@ Heavy commands (wasm.sh, build.sh, `coax test` of a big unit, test suites)
 run on a remote build host, not the Mac: prefix them with
 `coax/remote/remote.sh run --` (or set `OA_HEAVY_REMOTE=1` for heavy.sh). It
 sends the checkout's commit and uncommitted changes, streams the output, and
-brings the written files back; with no host it runs on the Mac's slots
-(docs/metaverse/remote-builds.md).
+brings the written files back. With no host it stops with one line naming the
+cause and the fix (`remote.sh status`); it runs on the Mac only with
+`--local` (docs/metaverse/remote-builds.md).
 
 The API suite (`coax/web/api/test.sh`: Postgres, ASan, every route) is one of
 them. Never run it on the Mac; run it on a host, whole or in two parts side

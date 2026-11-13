@@ -5,15 +5,16 @@ Code: `coax/remote/remote.sh` (the caller), `coax/remote/host-job.sh` (one job
 on a host), `coax/remote/host-startup.sh` (a host's startup script).
 
 Heavy Coax work runs on a build host in Google Cloud instead of the Mac. The
-Mac's two build slots (`~/.openagents/build-slots/heavy.sh`) stay as the
-fallback.
+Mac's two build slots (`~/.openagents/build-slots/heavy.sh`) run a job only
+when the caller asks with `--local` (#13472).
 
 ```sh
 coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-web/fivelab.coax \
   apps/openagents-web/fivelab-face.c apps/openagents-web/build/fivelab.wasm \
   apps/openagents-web/everglade-step.coax metaverse-engine/core/sticks.coax
 coax/remote/remote.sh run -- coax/bin/coax test apps/openagents-web/fivelab.coax
-coax/remote/remote.sh status        # hosts, free slots, spend
+coax/remote/remote.sh status        # hosts, free slots, spend, and whether the pool is on
+coax/remote/remote.sh run --local -- CMD   # on this computer's slots, on purpose
 ```
 
 Or keep calling `heavy.sh` and set `OA_HEAVY_REMOTE=1`: heavy.sh then sends
@@ -39,7 +40,7 @@ seconds on the Mac.
    directory in the checkout, and the `COAX_*` and `COAXIAL_*` settings
    (except those that name paths on the Mac). An argument that names the
    checkout's absolute path names the host's tree instead. Untracked files
-   over 200 MB in all stay home: the job runs on the Mac.
+   over 200 MB in all stay home: the call stops and says so.
 3. **Run.** The host takes one of three job slots (a `flock`), checks the
    snapshot out in that slot's worktree of its clone, and installs the
    compiler for the tree's compiler sources with `coax/build.sh`: the
@@ -58,8 +59,8 @@ seconds on the Mac.
 `remote.sh run --commit REV --out DIR -- CMD` runs CMD from the root of commit
 REV instead of a snapshot: the green-main pipeline's checks
 ([green-main-pipeline.md](green-main-pipeline.md)) use it to check exact
-commits. The files CMD writes go to DIR. Such a job never falls back to the
-Mac.
+commits. The files CMD writes go to DIR. Such a job never runs on the Mac,
+even with `--local`.
 
 When the picked host's slots filled after it was picked, the host sends the job
 back, and `remote.sh` asks the hosts again every 10 seconds until one has a
@@ -436,17 +437,28 @@ disks.
 
 ## When the Mac runs the job
 
-`remote.sh run` runs the command through `heavy.sh` (or directly, with no
-heavy.sh) when:
+Only when the caller asks (#13472). `remote.sh run` runs the command through
+`heavy.sh` (or directly, with no heavy.sh) when `--local` or `OA_REMOTE=0` is
+given, and never otherwise. Until 2026-11-13 a tripped spend cap or a host
+that could not start moved every agent's builds onto the Mac without a word
+(docs/audits/2026-11-13-build-hosts.md).
 
-- `OA_REMOTE=0` or `--local` is given;
+When no host can take the job, the call exits 97 with one line that names the
+cause and the fix:
+
+- the spend over 24 hours has reached the cap: `remote: the pool is off: the
+  cap: ...`;
+- no host is running, none can start (spot capacity) and none can be made:
+  `remote: the pool is off: no build host could start or be made ...`;
 - the snapshot can't be made or is too big;
-- the spend estimate over 24 hours has reached `OA_REMOTE_DAILY_USD`;
-- no host is running, none can start (spot capacity), and none can be made;
 - the host can't run the job (SSH fails, the checkout or the compiler build
-  fails: exit 97).
+  fails).
 
-`--no-fallback` exits 97 in those cases instead.
+`--no-fallback` is still accepted and changes nothing. `remote.sh status`
+ends with `the pool is on` or `the pool is off: CAUSE`. The pre-push check
+prints that cause when it skips `coax test`, and the after-landing watcher's
+issue is titled with it (`the pool is off: the cap: no check of ...`) instead
+of "the hosts could not finish".
 
 ## What a call leaves behind
 
@@ -491,12 +503,30 @@ List prices, us-central1, from the Cloud Billing catalog on 2026-11-09:
 | 200 GB pd-balanced disk, running or stopped | $20 a month a host |
 | Same machine on demand (not used) | $1.12 an hour |
 
-`remote.sh` keeps a ledger, `~/.openagents/remote/ledger.tsv`: each job's
-wall time on the Mac at the host's whole price, each start plus its 15 idle
-minutes, and each creation as 15 minutes of setup. Concurrent jobs are each
-counted at the whole price, so the estimate errs high. `remote.sh cost`
-sums it. The default cap is $75 over 24 hours (raised from $15 to $50 by the owner on 2026-11-09; the pool was cut to 6 hosts on 2026-11-12; raised to $75 that day when nine agents and the pipeline reached $46 by mid-afternoon and a refused pool stalls releases) (`OA_REMOTE_DAILY_USD`); at
-the cap no host starts and jobs run on the Mac.
+`remote.sh` keeps a ledger, `~/.openagents/remote/ledger.tsv`: one line per
+job (its wall time on the caller), per host start and per creation. Each
+machine's ledger goes to `gs://openagentsgemini-coax-build-cache/pipeline/ledgers/ID.tsv`
+and comes back to the others, so every machine counts every job. The ID is
+made once and kept in `~/.openagents/remote/machine-id`: a Mac's hostname
+changes with its network, and each new name used to add another copy of the
+same ledger (#13472). A line in two copies counts once.
+
+Spend is host-hours at the list price (#13472). Each job's interval, plus the
+15 idle minutes before its host stops itself, is merged per host across every
+machine's jobs, so three jobs side by side on one host are one host-hour, and
+an idle tail that another job cut short is not charged. A creation adds its 15
+minutes of setup; a start adds nothing of its own. `remote.sh cost` and
+`status` print the dollars and the host-hours.
+
+Until 2026-11-13 the meter charged each job the whole host and each start 15
+idle minutes, and counted the Mac's ledger twice: it reported $85.57 for a
+day that cost at most about $25, and the $75 cap switched every host off.
+
+The cap follows the pool: by default `OA_REMOTE_MAX_HOSTS` hosts running all
+day at the list price, $39.60 for six hosts. It can't trip before the pool is
+really spent, so the host count is the one control. `OA_REMOTE_DAILY_USD`
+sets a lower cap; at the cap no host starts and `remote.sh run` stops with
+`the pool is off: the cap`.
 
 Expected: with eight agents at 10 heavy jobs a day each, about 10 host-hours a
 day, about $80 a month for one host's compute plus $20 for its disk. The cap
