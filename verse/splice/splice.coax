@@ -329,7 +329,7 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
     if kind == 611 { g[0].px = cast(f32) sp_whole(body, 0) / 100; g[0].pz = cast(f32) sp_whole(body, 1) / 100; }
     i := sp_whole(body, 0);
     if kind == 612 && i >= 0 && i < FOES { g[0].px = g[0].fx[i] + 1; g[0].pz = g[0].fz[i]; }
-    if kind == 613 && i >= 0 && i < 3 { w := weak_at(i); g[0].px = w.x; g[0].pz = w.z + 0.1; g_collide(g); }
+    if kind == 613 && i >= 0 && i < 3 { w := weak_at(g, i); g[0].px = w.x; g[0].pz = w.z + 0.1; g_collide(g); }
     return;
   }
   if kind != 600 || s.count < 1 { return; }

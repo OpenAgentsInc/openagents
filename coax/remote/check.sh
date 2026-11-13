@@ -253,6 +253,8 @@ reports() {
   step after-gates coax/remote/test-after.sh || status=1
   step release-rules coax/web/room/test-vm-deploy.sh || status=1   # a promotion pins its build; a release holds staging (#13398)
   step everglade-parity coax/web/tool.sh everglade-parity || status=1
+  # Splice's page is built with its content tables' own bytes (#13404)
+  step splice-content coax/web/tool.sh verse/splice/tools/content-check.coax verse/splice/content/splice.content --check || status=1
   step wire-check coax/web/tool.sh wire-check || status=1
   step layer-check coax/web/tool.sh layer-check || status=1
   migrations
@@ -467,6 +469,7 @@ reports_since() {
   if grep -qv '\.md$' "$out/changed"; then
     step tools-check coax/web/tool.sh tools-check || status=1
     step everglade-parity coax/web/tool.sh everglade-parity || status=1
+    step splice-content coax/web/tool.sh verse/splice/tools/content-check.coax verse/splice/content/splice.content --check || status=1
     # every wire shape registered (proto/registry.json, #13236); the allowlist against the base's copy
     step wire-check coax/web/tool.sh wire-check --base "$arg" || status=1
     # no load up the layers (aethyr/README.md "Layers", #13264); the allowlist against the base's copy

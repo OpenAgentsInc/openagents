@@ -15,13 +15,13 @@
 ceil :: (x: f64) -> f64 #foreign #effects(all);   // libm's, for the PNG writer (coax/lib/image/pillow.coax)
 
 SX_SHOTS :: 6;
-sx_shot :: (i: int) -> ExCam {
-  if i == 0 { return ExCam.{eye = v3(ROVER_X - 3, 3.2, ROVER_Z + 15), at = v3(ROVER_X - 3, 1.8, ROVER_Z - 2), fov = 0.7}; }    // the rover at the mine
+sx_shot :: (g: [] SpGame, i: int) -> ExCam {
+  if i == 0 { return ExCam.{eye = v3(g[0].at.rover_x - 3, 3.2, g[0].at.rover_z + 15), at = v3(g[0].at.rover_x - 3, 1.8, g[0].at.rover_z - 2), fov = 0.7}; }    // the rover at the mine
   if i == 1 { return ExCam.{eye = v3(0, 3.5, 14), at = v3(0, 1.5, -10), fov = 0.82}; }                                      // the mine mouth
-  if i == 2 { return ExCam.{eye = v3(0, 2.6, -16), at = v3(0, 1.5, RUBBLE_Z), fov = 0.82}; }                                // the tunnel
+  if i == 2 { return ExCam.{eye = v3(0, 2.6, -16), at = v3(0, 1.5, g[0].at.rubble_z), fov = 0.82}; }                                // the tunnel
   if i == 3 { return ExCam.{eye = v3(9, 5, -43), at = v3(-9, 1, -55), fov = 0.82}; }                                        // the party hall
-  if i == 4 { return ExCam.{eye = v3(0, 4, WALL_Z - 1.5), at = v3(BOSS_X, 2, BOSS_Z - 4), fov = 0.82}; }                    // the boss chamber
-  return ExCam.{eye = v3(VIL_X + 14, 6, VIL_Z + 18), at = v3(VIL_X, 2, VIL_Z), fov = 0.82};                                 // the dome village
+  if i == 4 { return ExCam.{eye = v3(0, 4, g[0].at.wall_z - 1.5), at = v3(g[0].at.boss_x, 2, g[0].at.boss_z - 4), fov = 0.82}; }                    // the boss chamber
+  return ExCam.{eye = v3(g[0].at.vil_x + 14, 6, g[0].at.vil_z + 18), at = v3(g[0].at.vil_x, 2, g[0].at.vil_z), fov = 0.82};                                 // the dome village
 }
 sx_shot_name :: (i: int) -> string { names := [SX_SHOTS] string.["rover", "mine-mouth", "tunnel", "party-hall", "boss-chamber", "village"]; return names[i]; }
 sx_mat_name :: (m: int) -> string { names := [11] string.["world", "skin", "hair", "glow", "flat", "floor", "made", "ink", "smoke", "window", "cloth"]; return ifx m >= 0 && m < 11 then names[m] else "unknown"; }
@@ -157,31 +157,31 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_key(j, "boxes"); jo_arr(j);
   for i: 0..<g[0].wall_n { k := i * 5; jo_obj(j); ex_num(j, "x0", g[0].walls[k]); ex_num(j, "x1", g[0].walls[k + 1]); ex_num(j, "z0", g[0].walls[k + 2]); ex_num(j, "z1", g[0].walls[k + 3]); ex_num(j, "height", g[0].walls[k + 4]); jo_end(j); }
   jo_end(j);
-  jo_key(j, "deck"); jo_obj(j); ex_num(j, "x", DECK_X); ex_num(j, "x_far", 20); ex_num(j, "z0", DECK_Z0); ex_num(j, "z1", DECK_Z1); ex_num(j, "y", DECK_Y); ex_num(j, "ramp", RAMP); ex_num(j, "ramp_run", 3); jo_end(j);
+  jo_key(j, "deck"); jo_obj(j); ex_num(j, "x", g[0].at.deck_x); ex_num(j, "x_far", 20); ex_num(j, "z0", g[0].at.deck_z0); ex_num(j, "z1", g[0].at.deck_z1); ex_num(j, "y", DECK_Y); ex_num(j, "ramp", RAMP); ex_num(j, "ramp_run", 3); jo_end(j);
   ex_num(j, "player_radius", T_RADIUS);
   jo_end(j);
 
   jo_key(j, "placements"); jo_arr(j);
-  sx_place(j, "start", "mine-start", START_X, 0, START_Z);
-  sx_place(j, "start", "village-start", VIL_X, 0, VIL_Z - 3);
-  sx_place(j, "rover", "rover", ROVER_X, 0, ROVER_Z);
-  sx_place(j, "checkpoint", "post", POST_X, 0, POST_Z);
-  sx_place(j, "crate", "stash-crate", CRATE_X, 0, CRATE_Z);
-  sx_place(j, "rubble", "rubble", 0, 0, RUBBLE_Z);
-  sx_place(j, "boss-wall", "boss-wall", 0, 0, WALL_Z);
-  sx_place(j, "boss", "boss", BOSS_X, 0, BOSS_Z);
-  for i: 0..<3 { p := weak_at(i); sx_place(j, "weak-point", sx_file_name("weak-", i, "", name[..]), p.x, p.y, p.z); }
-  sx_place(j, "stage", "edit-bay", BAY_X, 0, BAY_Z);
-  sx_place(j, "stage", "memory", MEM_X, 0, MEM_Z);
-  sx_place(j, "village", "village", VIL_X, 0, VIL_Z);
-  sx_place(j, "scanner", "scanner-gate", VIL_X, 0, SCAN_Z);
-  for i: 0..<PICKS { sx_place(j, "pickup", sx_pick_name(i), pick_x(i), 0, pick_z(i)); }
+  sx_place(j, "start", "mine-start", g[0].at.start_x, 0, g[0].at.start_z);
+  sx_place(j, "start", "village-start", g[0].at.vil_x, 0, g[0].at.vil_z - 3);
+  sx_place(j, "rover", "rover", g[0].at.rover_x, 0, g[0].at.rover_z);
+  sx_place(j, "checkpoint", "post", g[0].at.post_x, 0, g[0].at.post_z);
+  sx_place(j, "crate", "stash-crate", g[0].at.crate_x, 0, g[0].at.crate_z);
+  sx_place(j, "rubble", "rubble", 0, 0, g[0].at.rubble_z);
+  sx_place(j, "boss-wall", "boss-wall", 0, 0, g[0].at.wall_z);
+  sx_place(j, "boss", "boss", g[0].at.boss_x, 0, g[0].at.boss_z);
+  for i: 0..<3 { p := weak_at(g[..], i); sx_place(j, "weak-point", sx_file_name("weak-", i, "", name[..]), p.x, p.y, p.z); }
+  sx_place(j, "stage", "edit-bay", g[0].at.bay_x, 0, g[0].at.bay_z);
+  sx_place(j, "stage", "memory", g[0].at.mem_x, 0, g[0].at.mem_z);
+  sx_place(j, "village", "village", g[0].at.vil_x, 0, g[0].at.vil_z);
+  sx_place(j, "scanner", "scanner-gate", g[0].at.vil_x, 0, g[0].at.scan_z);
+  for i: 0..<PICKS { sx_place(j, "pickup", sx_pick_name(i), pick_x(g[..], i), 0, pick_z(g[..], i)); }
   for i: 0..<FOES {
     kind := ifx i < F_RAIDERS then "raider" else "imperial";
-    sx_place(j, kind, sx_file_name(ifx i < F_RAIDERS then "raider-" else "imperial-", i, "-a", name[..]), foe_ax(i), 0, foe_az(i));
-    sx_place(j, kind, sx_file_name(ifx i < F_RAIDERS then "raider-" else "imperial-", i, "-b", name[..]), foe_bx(i), 0, foe_bz(i));
+    sx_place(j, kind, sx_file_name(ifx i < F_RAIDERS then "raider-" else "imperial-", i, "-a", name[..]), foe_ax(g[..], i), 0, foe_az(g[..], i));
+    sx_place(j, kind, sx_file_name(ifx i < F_RAIDERS then "raider-" else "imperial-", i, "-b", name[..]), foe_bx(g[..], i), 0, foe_bz(g[..], i));
   }
-  for i: 0..<7 { p := rail_at(cast(f32) i * 50); sx_place(j, "rail", sx_file_name("rail-", i, "", name[..]), p.x, p.y, p.z); }
+  for i: 0..<7 { p := rail_at(g[..], cast(f32) i * 50); sx_place(j, "rail", sx_file_name("rail-", i, "", name[..]), p.x, p.y, p.z); }
   jo_end(j);
 
   jo_key(j, "tuning"); jo_obj(j);
@@ -257,7 +257,7 @@ tool_main :: () -> int #export_c #effects(all) {
   ex_str(j, "about", "the static world from each camera, flat vertex colour, both faces drawn, no shading or sky; fov is the vertical angle in radians");
   jo_key(j, "list"); jo_arr(j);
   for i: 0..<SX_SHOTS {
-    c := sx_shot(i); file := sx_file_name("shots/shot-", i, ".png", name[..]);
+    c := sx_shot(g[..], i); file := sx_file_name("shots/shot-", i, ".png", name[..]);
     covered := ex_shot(world[..], vertices, c, dir, file);
     if covered < 0 { print("splice-export: could not write %\n", file); return 1; }
     jo_obj(j); ex_str(j, "name", sx_shot_name(i)); ex_str(j, "file", file); ex_point(j, "eye", c.eye); ex_point(j, "at", c.at); ex_num(j, "fov", c.fov); ex_int(j, "covered_pixels", covered); jo_end(j);

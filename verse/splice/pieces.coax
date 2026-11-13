@@ -1,0 +1,88 @@
+// Splice's placeable pieces (GitHub #13404; docs/audits/2026-11-12-chat-and-world-building.md,
+// slice 0): which engine kit piece a row of the `pieces` content table draws, and how big it is on
+// the ground. The kit pieces stay engine code (aethyr/kit/); a row names one, its size and its
+// look, and this file writes that kind's cel mesh once, standing at the origin and facing +z. The
+// page keeps the mesh on the GPU and draws each placed piece as an instance with its own
+// transform (layer.coax, gpu/splice.coax).
+//
+// A piece's footprint is measured from the triangles it writes (sp_piece_measure): how far its
+// body reaches to each side and ahead, up to a walker's height. The table's footprint must be
+// that measurement, so a collider is never wider than what you see (the checks in layer-checks.coax).
+//   coax/bin/coax test verse/splice/pieces.coax --library
+#load "../../aethyr/kit/land.coax";
+
+// The kit pieces a row may name, by the `kit` column's word.
+PK_ROVER :: 0; PK_CRAB :: 1; PK_WALKER :: 2; PK_SPIDER :: 3; PK_BEAST :: 4; PK_TANK :: 5; PK_MECH :: 6; PK_ROBOT :: 7;
+PK_TURBINE :: 8; PK_DIGGER :: 9; PK_FIGURE :: 10; PK_PALM :: 11; PK_DOME :: 12; PK_CRATE :: 13; PK_KITS :: 14;
+PK_NAME :: [PK_KITS] string.["rover", "crab", "walker", "spider", "beast", "tank", "mech", "robot", "turbine", "digger", "figure", "palm", "dome_house", "crate"];
+// The kit a word names, or -1.
+pk_of :: (kit: string) -> int {
+  for k: 0..<PK_KITS { if PK_NAME[k] == kit { return k; } }
+  return -1;
+}
+
+PIECE_OBJ :: 180;        // the first object number a placed piece's mesh uses (the ink pass tells objects apart)
+PIECE_BODY :: 2.0f32;    // m: a walker's height and a little; what stands lower than this is the footprint
+PIECE_VERTS :: 24000;    // vertices one kind's mesh may take
+
+// A colour as the content tables keep it: red, green and blue bytes in one number.
+sp_tint :: (rgb: int) -> KitTint { return kit_tint(cast(f32) ((rgb >> 16) & 255) / 255, cast(f32) ((rgb >> 8) & 255) / 255, cast(f32) (rgb & 255) / 255); }
+
+// One kind's mesh: kit piece `kit` at size s, in the look's three colours and the game's ink,
+// standing at the origin and facing +z. Machines stand still (no stride, no spin).
+sp_piece_write :: (buf: [] u32, p: [] Pen, kit: int, s: f32, a: KitTint, b: KitTint, c: KitTint, ink: KitTint) {
+  f := frame_at(v3(0, 0, 0), 0); o := PIECE_OBJ;
+  if kit == PK_ROVER { kit_rover(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_CRAB { kit_crab(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_WALKER { kit_walker(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_SPIDER { kit_spider(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_BEAST { kit_beast(buf, p, f, s, o, a, ink, b, true); }
+  else if kit == PK_TANK { kit_tank(buf, p, f, s, o, a, ink, c); }
+  else if kit == PK_MECH { kit_mech(buf, p, f, s, o, a, b, ink, c); }
+  else if kit == PK_ROBOT { kit_robot(buf, p, f, s, o, a, b, c, ink, 0.62); }
+  else if kit == PK_TURBINE { kit_turbine(buf, p, f, s, o, a, b, 0.4); }
+  else if kit == PK_DIGGER { kit_digger(buf, p, f, s, o, a, ink, b, c, true, true, true, 0); }
+  else if kit == PK_FIGURE { kit_figure(buf, p, f, s, o, a, b, ink, c, 0); }
+  else if kit == PK_PALM { kit_palm(buf, p, f, s, o, a, b); }
+  else if kit == PK_DOME { kit_dome_house(buf, p, f, o, a, b, 6 * s, 5 * s); }
+  else if kit == PK_CRATE { kit_crate(buf, p, f, o, a, ink, c, s); }
+}
+
+// What a mesh covers: how far its body (the part under PIECE_BODY) reaches to each side (hx) and
+// ahead or behind (hz), how tall the whole of it is, and how many vertices it took.
+SpFoot :: struct { hx: f32; hz: f32; top: f32; n: int; over: bool; }
+sp_mesh_foot :: (buf: [] u32, n: int) -> SpFoot {
+  m := SpFoot.{n = n};
+  for i: 0..<n {
+    o := i * VERTEX_WORDS;
+    x := f32_from_bits(buf[o]); y := f32_from_bits(buf[o + 1]); z := f32_from_bits(buf[o + 2]);
+    m.top = hi(m.top, y);
+    if y > PIECE_BODY { continue; }
+    m.hx = hi(m.hx, abs(x)); m.hz = hi(m.hz, abs(z));
+  }
+  return m;
+}
+SpMeshScratch :: struct { v: [PIECE_VERTS * VERTEX_WORDS] u32; }
+sp_piece_measure :: (w: [] SpMeshScratch, kit: int, s: f32) -> SpFoot {
+  pen := [1] Pen.[Pen.{}];
+  t := kit_tint(0.5, 0.5, 0.5);
+  sp_piece_write(w[0].v[..], pen[..], kit, s, t, t, t, t);
+  m := sp_mesh_foot(w[0].v[..], pen[0].n);
+  m.over = pen[0].over;
+  return m;
+}
+
+#test "every kit word names its kit, and no other word does" {
+  for k: 0..<PK_KITS { #assert pk_of(PK_NAME[k]) == k; }
+  #assert pk_of("") == -1 && pk_of("Rover") == -1 && pk_of("dome") == -1;
+  t := sp_tint(0xEDE0C2);
+  #assert abs(t.r - 0.929) < 0.001 && abs(t.g - 0.878) < 0.001 && abs(t.b - 0.761) < 0.001;
+}
+#test "every kit writes a mesh that fits, stands on the ground and is twice as big at twice the size" {
+  w: [1] SpMeshScratch;
+  for k: 0..<PK_KITS {
+    one := sp_piece_measure(w[..], k, 0.5); two := sp_piece_measure(w[..], k, 0.25);
+    #assert !one.over && one.n >= 3 && one.n % 3 == 0 && one.hx > 0 && one.hz > 0 && one.top > 0;
+    #assert abs(one.top - two.top * 2) < 0.02;
+  }
+}
