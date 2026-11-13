@@ -4,7 +4,7 @@
 //   `openagents models ls --json`, `models verify ... --json`  Models, the installed checkpoints
 // Each is one compact JSON object, every member written always, in the message's field order.
 // The writers: coax/lib/agent/observe/processes.coax (la_json) and apps/openagents-cli/models.coax.
-// The reader: the Metaverse Engine's setup (apps/aethyrforge-desktop/setup.coax). A reader refuses
+// The reader: the Metaverse Engine's setup (apps/metaverse-engine-desktop/setup.coax). A reader refuses
 // a report whole when it is no object, its schema is another's or its list is not a list.
 // proto/coder/local-inventory-v1.json holds reports as the CLI printed them; coax/lib/local/local-goldens.coax
 // reads each through this file and writes it back for the same bytes.

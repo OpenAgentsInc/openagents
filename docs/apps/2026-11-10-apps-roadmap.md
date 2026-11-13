@@ -13,7 +13,7 @@ app use the same agent code.
 | --- | --- | --- |
 | `apps/openagents-web` | Browser (WebGPU) | The main product. `/chat` is drawn with the shared Zeron components |
 | `apps/openagents-desktop` | Mac only | Chat with Claude Code, Codex, Psionic and the Lab. Swift host on AppKit and Metal |
-| `apps/aethyrforge-desktop` | Mac, Linux | The only app with a native Linux window (Wayland and Vulkan) |
+| `apps/metaverse-engine-desktop` | Mac, Linux | The only app with a native Linux window (Wayland and Vulkan) |
 | `apps/everglade-desktop` | Mac only | Runs the web's realms natively through the OpenAgents Metaverse Engine's Metal page host |
 | `apps/everglade-mobile` | iOS, Android | Experimental |
 | `apps/openagents-ios` | iOS | Home, wallet, voice |
@@ -147,7 +147,7 @@ Today the same job is done several ways:
 | `coax/lib/agent/claude`, `coax/lib/agent/codex` | The SDKs: transport, control protocol, messages | The shared base. Keep |
 | `coax/lib/agent/engine/` (moved 2026-11-10 from `apps/openagents-desktop/zeron/`, about 4,700 lines) | Sessions, parts, tool chips, approvals, routing | The shared engine layer over the SDKs; the desktop app is its first user |
 | `coder/tui/` (`coder.coax`, `codex.coax`, `session.coax`) | Coder's terminal: the same engines, its own session log | On the shared engines (2026-11-10, Claude Code; 2026-11-11, Codex, Cursor, Microcoder and Antigravity); its own session log |
-| `apps/aethyrforge-desktop/chat.coax` | The Forge's chat | Runs Coder as a child and reads its JSONL |
+| `apps/metaverse-engine-desktop/chat.coax` | The Forge's chat | Runs Coder as a child and reads its JSONL |
 | `apps/everglade-desktop/next.coax`, `tiers.coax` | Next issue, and Golemancy's issue rating | On the shared Claude engine with their own options (2026-11-10) |
 | `apps/everglade-desktop/golems.coax`, `os/verse-agents.coax`, `coax/lib/agent/observe/processes.coax` | Which agents are working on this machine | One walker, `coax/lib/agent/observe/transcripts.coax` (2026-11-10); the third lists processes |
 | `coax/web/agent/chat.coax`, `turn.coax` | `/chat` and the project agent on the server | On the shared Claude engine; the wire is written from the record (2026-11-10) |

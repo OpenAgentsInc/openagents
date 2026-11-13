@@ -208,8 +208,8 @@ The rest of this section is proposed, and follows from repository rules:
 | A chat on your own Claude Code login | `apps/openagents-desktop/zeron/claude.coax` | Mac. Install and login notices, model list from the CLI, access levels, Allow/Deny |
 | Agents that talk to each other | `apps/openagents-desktop/zeron/room.coax` | `agents_list`, `ask_agent`, `tell_agent`, `room_read`; loops refused |
 | Host contract | [`metaverse-engine/host/README.md`](../../metaverse-engine/host/README.md) | `aethyr-host-v1`: WebGPU, Vulkan and Metal run the same realm |
-| Mac native realm host | `apps/aethyrforge-desktop/` (`MetalRealm.m`, `metal-*.coax`) | Everglade at 120 Hz on Metal, with the native room |
-| Linux native host | `apps/aethyrforge-desktop/linux-native*.coax`, `coax/platform/wayland-native.c` | Wayland and Vulkan, **Bitcoin Lab only**. US keyboard only; no clipboard, IME or microphone |
+| Mac native realm host | `apps/metaverse-engine-desktop/` (`MetalRealm.m`, `metal-*.coax`) | Everglade at 120 Hz on Metal, with the native room |
+| Linux native host | `apps/metaverse-engine-desktop/linux-native*.coax`, `coax/platform/wayland-native.c` | Wayland and Vulkan, **Bitcoin Lab only**. US keyboard only; no clipboard, IME or microphone |
 | Windows host | none | **Missing** |
 | Local room | `coax/web/room/` (`--native-local`, one seat `everglade/local-1`) | Runs offline on Mac |
 | `coax drive` | `metaverse-engine/agent/drive.coax`, `coax/web/drive.coax` (#13095) | An agent sees a realm by id and asks for world operations (`walk-to`, `face`, `use`, `mount`) |
@@ -217,9 +217,9 @@ The rest of this section is proposed, and follows from repository rules:
 | Golemancy in the game | [`golem-bench.coax`](../world/golem-bench.coax), [`pansopher.coax`](../world/pansopher.coax) | The bench's window and the trainer's talk. The craft isn't built |
 | Golemancy design | [golemancy-profession-spec.md](golemancy-profession-spec.md) | Name decided; the rest is a proposal |
 
-`apps/aethyrforge-desktop/` is the developer's editing tool. This app is the
+`apps/metaverse-engine-desktop/` is the developer's editing tool. This app is the
 player's. The two share the native hosts and nothing else. The shared host
-code moves out of `apps/aethyrforge-desktop/` into `metaverse-engine/host/` as this app
+code moves out of `apps/metaverse-engine-desktop/` into `metaverse-engine/host/` as this app
 takes it up, so neither app copies the other.
 
 ## 3. The app

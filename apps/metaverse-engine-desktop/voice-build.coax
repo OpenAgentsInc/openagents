@@ -23,7 +23,7 @@ fv_run :: (argv: [] string, out: [] u8, deadline: int) -> int {
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args; if !args_load(a[..]) || args_count(a[..]) != 1 { return 2; }
   root := args_at(a[..], 0); p: [1] FvPaths;
-  work := fv_path(p[..], root, "apps/aethyrforge-desktop/build/voice");
+  work := fv_path(p[..], root, "apps/metaverse-engine-desktop/build/voice");
   if !fs_mkdir(work) { return 1; }
   cb: [4096] u8; compiler := proc_getenv("COAX", cb[..]);
   if compiler == "" { compiler = fv_path(p[..], root, "coax/bin/coax"); }
@@ -34,7 +34,7 @@ tool_main :: () -> int #export_c #effects(all) {
   names := [6] string.["VoiceEngine", "VoiceWire", "VoiceFloor", "VoiceMeter", "VoiceAsr", "VoiceReply"];
   newest := fs_mtime_ns(compiler); stamp := fs_mtime_ns(archive); if stamp > newest { newest = stamp; }
   for source: sources { b: [4096] u8; t := fs_mtime_ns(fs_join(root, source, b[..])); if t > newest { newest = t; } }
-  for source: [15] string.["metaverse/platform/voice.c", "metaverse/platform/voice.h", "metaverse/voice-host/host.c", "metaverse/voice-host/ws.c", "metaverse/voice-host/ws.h", "metaverse/voice-host/wav.c", "metaverse/voice-host/wav.h", "metaverse/voice-host/speech.c", "metaverse/voice-host/speech.h", "coax/web/voice/voice-web.c", "coax/web/voice/build.sh", "apps/aethyrforge-desktop/voice-build.coax", "metaverse/asr-cut.coax", "proto/descriptors/voice.pb", "psionic/platform/psionic-parakeet.h"] {
+  for source: [15] string.["metaverse/platform/voice.c", "metaverse/platform/voice.h", "metaverse/voice-host/host.c", "metaverse/voice-host/ws.c", "metaverse/voice-host/ws.h", "metaverse/voice-host/wav.c", "metaverse/voice-host/wav.h", "metaverse/voice-host/speech.c", "metaverse/voice-host/speech.h", "coax/web/voice/voice-web.c", "coax/web/voice/build.sh", "apps/metaverse-engine-desktop/voice-build.coax", "metaverse/asr-cut.coax", "proto/descriptors/voice.pb", "psionic/platform/psionic-parakeet.h"] {
     b: [4096] u8; t := fs_mtime_ns(fs_join(root, source, b[..])); if t > newest { newest = t; }
   }
   host := fv_path(p[..], work, "voice-host"); wasm := fv_path(p[..], work, "voice.wasm");

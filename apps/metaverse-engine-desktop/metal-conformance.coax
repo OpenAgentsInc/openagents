@@ -69,7 +69,7 @@ tool_main :: ()->int #export_c #effects(all) {
   while proc_now_ms()<deadline {if cdp_get(probe[..],9170,"/health",health[..])>0 {ready=true;break;}proc_sleep(50);}
   if !ready {tool_errln("Host fixture server did not become ready.");return 1;}
  }
- sdk_path:[4096]u8;sdk:=args_value(a[..],"--sdk",fs_join(root,"apps/aethyrforge-desktop/build/metal",sdk_path[..]));
+ sdk_path:[4096]u8;sdk:=args_value(a[..],"--sdk",fs_join(root,"apps/metaverse-engine-desktop/build/metal",sdk_path[..]));
  run:=[5]string.[fs_join(sdk,"HostEffects",paths[2][..]),res,fs_join(sdk,"libfixture.dylib",paths[3][..]),plan,result];out:[1048576]u8;err:[65536]u8;r:=proc_run(run[..],60000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
  if lifecycle {if !mc_lifecycle_check(result) {tool_errln("Actual native lifecycle/clock observations differ; raw receipt retained.");return 1;}print("Actual Metal lifecycle: six exact admitted frame clocks; negative/backward/hidden offers refused, focus/shown composed, first/resume dt zero.\n");return 0;}
  if reconnect {raw:[65536]u8;nodes:[4096]JvNode;d:[1]Jv;rows:[9][8]int;n:=fs_read(result,raw[..]);if n<1||!jv_parse(d[..],cast(string)raw[0..<n],nodes[..])||hcr_rows(d[0],jv_get(d[0],0,"events"),rows[..])!=9||!hlr_reconnect_rows(rows[..],jv_int(d[0],jv_get(d[0],0,"dropped"),-1)){return 1;}print("Actual Metal local reconnect: exact physical ?re=1 peer route and all nine callback rows pass.\n");return 0;}

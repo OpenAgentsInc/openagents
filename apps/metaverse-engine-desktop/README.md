@@ -16,7 +16,7 @@ SPIR-V, the OpenAgents Metaverse Engine's native Vulkan pass host and the shared
 There is no browser, page server or JavaScript in the Linux runtime.
 
 ```sh
-apps/aethyrforge-desktop/build.sh --open
+apps/metaverse-engine-desktop/build.sh --open
 # Later, use the Aethyrforge desktop launcher, or:
 ~/.openagents/bin/aethyrforge
 ```
@@ -54,10 +54,10 @@ existing legacy pass host, without claiming canonical renderer adoption.
 Focused checks:
 
 ```sh
-coax/bin/coax test apps/aethyrforge-desktop/linux-native.coax --only 'native Aethyrforge'
+coax/bin/coax test apps/metaverse-engine-desktop/linux-native.coax --only 'native Aethyrforge'
 # A fresh directory isolates the session log, router and ledger from the owner's:
 CODER_HOME=/tmp/aethyrforge-coder-check AETHYRFORGE_ENGINE=echo \
-  coax/web/tool.sh apps/aethyrforge-desktop/linux-native-check.coax
+  coax/web/tool.sh apps/metaverse-engine-desktop/linux-native-check.coax
 # Actual offscreen Vulkan; --keys opens the real Coax composer:
 ~/.openagents/bin/aethyrforge-native ~/.openagents/aethyrforge/native-linux - \
   --headless 90 --size 1440x900 --keys 2:-2:1,3:-2:0
@@ -118,7 +118,7 @@ and are quantiles of individual ticks over each second.
 Run both with one command after building the app:
 
 ```sh
-coax/web/tool.sh apps/aethyrforge-desktop/offline-check.coax \
+coax/web/tool.sh apps/metaverse-engine-desktop/offline-check.coax \
   "$PWD/apps/aethyrforge-desktop/build/Aethyrforge.app" /tmp/forge-offline
 ```
 
@@ -127,7 +127,7 @@ The simulation comparison uses the existing drift harness and tolerances:
 
 ```sh
 coax/build.sh
-apps/aethyrforge-desktop/build.sh --open
+apps/metaverse-engine-desktop/build.sh --open
 ```
 
 The build tool is Coax. It builds the local stack when its source closure is newer,
@@ -217,7 +217,7 @@ For a real, visible WKWebView timing capture, quit the app first, then run:
 ```sh
 ~/.openagents/aethyrforge/Aethyrforge.app/Contents/MacOS/Aethyrforge \
   --frame-profile /tmp/aethyrforge-frames.json
-coax/web/tool.sh apps/aethyrforge-desktop/frame-profile.coax /tmp/aethyrforge-frames.json
+coax/web/tool.sh apps/metaverse-engine-desktop/frame-profile.coax /tmp/aethyrforge-frames.json
 ```
 
 After scene readiness and a three-second warmup, this writes six five-second
@@ -331,7 +331,7 @@ checks setup/status, reload, minimize, hide and resume:
 
 ```sh
 mkdir -p /tmp/aethyrforge-setup-profile
-apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge \
+apps/metaverse-engine-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge \
   --setup-profile /tmp/aethyrforge-setup-profile/result.json
 ```
 
@@ -348,7 +348,7 @@ the actual Everglade mix before the test's zero-gain sink:
 
 ```sh
 mkdir -p /tmp/aethyrforge-audio
-apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge \
+apps/metaverse-engine-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge \
   --audio-smoke /tmp/aethyrforge-audio/result.json
 ```
 
@@ -465,8 +465,8 @@ Run it again in the same directory to check the saved world survives reopening:
 
 ```sh
 mkdir -p /tmp/aethyrforge-smoke
-apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --smoke-test /tmp/aethyrforge-smoke/first.json
-apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --smoke-test /tmp/aethyrforge-smoke/reopened.json
+apps/metaverse-engine-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --smoke-test /tmp/aethyrforge-smoke/first.json
+apps/metaverse-engine-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --smoke-test /tmp/aethyrforge-smoke/reopened.json
 ```
 
 The setup smoke check exercises the real bundled CLI, process inventory and
@@ -477,8 +477,8 @@ refresh. It uses an isolated world beside its report:
 
 ```sh
 mkdir -p /tmp/aethyrforge-setup
-apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --setup-smoke /tmp/aethyrforge-setup/first.json
-apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --setup-smoke /tmp/aethyrforge-setup/reopened.json
+apps/metaverse-engine-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --setup-smoke /tmp/aethyrforge-setup/first.json
+apps/metaverse-engine-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --setup-smoke /tmp/aethyrforge-setup/reopened.json
 ```
 
 Reports include the first-frame time and child PIDs; matching PNGs show the frame.
@@ -585,11 +585,11 @@ and bounds refuse unchanged; neighbours and group membership stay intact.
 See [scene commands v2](../../docs/protocol/aethyrforge-scene-v2.md).
 
 ```sh
-coax/bin/coax test apps/aethyrforge-desktop/scene-policy.coax
-coax/bin/coax test apps/aethyrforge-desktop/scene-collision-checks.coax
+coax/bin/coax test apps/metaverse-engine-desktop/scene-policy.coax
+coax/bin/coax test apps/metaverse-engine-desktop/scene-collision-checks.coax
 mkdir -p /tmp/aethyrforge-scene
-apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --scene-smoke /tmp/aethyrforge-scene/result.json
-apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --scene-smoke /tmp/aethyrforge-scene/reopened.json --scene-reopen
+apps/metaverse-engine-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --scene-smoke /tmp/aethyrforge-scene/result.json
+apps/metaverse-engine-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --scene-smoke /tmp/aethyrforge-scene/reopened.json --scene-reopen
 ```
 
 The chat smoke uses the native composer and real packaged/shared CLI without
@@ -622,7 +622,7 @@ seconds on 2026-11-04). All 27 presentation mutants were killed:
 
 ```sh
 mkdir -p /tmp/aethyrforge-input
-apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge \
+apps/metaverse-engine-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge \
   --input-smoke /tmp/aethyrforge-input/result.json
 ```
 
@@ -664,7 +664,7 @@ It stops all three servers:
 
 ```sh
 mkdir -p /tmp/aethyrforge-voice
-apps/aethyrforge-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --voice-smoke /tmp/aethyrforge-voice/voice.json
+apps/metaverse-engine-desktop/build/Aethyrforge.app/Contents/MacOS/Aethyrforge --voice-smoke /tmp/aethyrforge-voice/voice.json
 ```
 
 Verified on 2026-11-04: the recorded “Hello Foreman…” final reached Elephant

@@ -1,7 +1,7 @@
 # Linux socket worker effects
 
 Linux and Metal compile the same portable
-`apps/aethyrforge-desktop/MetalSockets.c` worker implementation.
+`apps/metaverse-engine-desktop/MetalSockets.c` worker implementation.
 `metaverse/native/host-sockets.c` projects the realm's current Coax transport
 owner into that SDK. It supplies no WebSocket parser, queue-size policy or
 reconnect policy. Protocol, retained-payload leases, command admission and

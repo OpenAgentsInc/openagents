@@ -13,9 +13,9 @@ tool_main :: ()->int #export_c #effects(all) {
  root:=args_at(a[..],0);sdk:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 1;}paths:[8][4096]u8;program:=fs_join(sdk,"MetalAudioMemory",paths[0][..]);report:=fs_join(out,"receipt.json",paths[1][..]);
  if !args_has(a[..],"--existing") {
   if !args_has(a[..],"--prepared") {cmd:[40]string;n:=0;
-   for v:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[2][..])] {cmd[n]=v;n+=1;}
+   for v:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/metaverse-engine-desktop/metal-host.h",paths[2][..])] {cmd[n]=v;n+=1;}
    if args_has(a[..],"--sanitize") {cmd[n]="-sanitize=address";n+=1;}
-   for name,i:[2]string.["apps/aethyrforge-desktop/Sources/MetalAudio.swift","apps/aethyrforge-desktop/tests/MetalAudioMemory.swift"] {cmd[n]=fs_join(root,name,paths[3+i][..]);n+=1;}
+   for name,i:[2]string.["apps/metaverse-engine-desktop/Sources/MetalAudio.swift","apps/metaverse-engine-desktop/tests/MetalAudioMemory.swift"] {cmd[n]=fs_join(root,name,paths[3+i][..]);n+=1;}
    for name,i:[3]string.["MetalRealm.o","MetalRender.o","RenderTexture.o"] {cmd[n]=fs_join(sdk,name,paths[5+i][..]);n+=1;}
    cmd[n]="-Xlinker";cmd[n+1]="-export_dynamic";n+=2;
    for name:[6]string.["AVFoundation","Foundation","Metal","QuartzCore","ImageIO","CoreGraphics"] {cmd[n]="-framework";cmd[n+1]=name;n+=2;}cmd[n]="-o";cmd[n+1]=program;n+=2;if !mam_run(cmd[0..<n]) {return 1;}

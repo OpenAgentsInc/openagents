@@ -23,15 +23,15 @@ fgn_emit :: (args:[]string,path:string,deadline:int)->bool {
   r:=proc_release(h);return ok && status==0 && fs_write(path,cast(string)out[0..<n]);
 }
 fgl_build :: (a:[]Args)->int {
-  if args_count(a)<1 || args_count(a)>2 || (args_count(a)==2 && args_at(a,1)!="--open") {tool_errln("usage: apps/aethyrforge-desktop/build.sh [--open]");return 2;}
+  if args_count(a)<1 || args_count(a)>2 || (args_count(a)==2 && args_at(a,1)!="--open") {tool_errln("usage: apps/metaverse-engine-desktop/build.sh [--open]");return 2;}
   root:=args_at(a,0);env:[4096]u8;deadline:=proc_now_ms()+840000;p:[1]AfPaths;
   if proc_getenv("FGL_NATIVE_BUILD",env[..])!="1" {
     h:=proc_new();for arg:[14]string.["nix-shell","-p","gcc","pkg-config","libdrm","vulkan-headers","vulkan-loader","vulkan-validation-layers","wayland","wayland-scanner","wayland-protocols","--run","exec \"$FGL_BUILD_ENTRY\" ${FGL_OPEN:+\"$FGL_OPEN\"}",""] {if arg!="" {ok:=proc_arg(h,arg);}}
-    b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],"FGL_BUILD_ENTRY=");jo_put(o[..],af_path(p[..],root,"apps/aethyrforge-desktop/build.sh"));ok:=proc_env(h,jo_text(o[..]));
+    b:[8192]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_put(o[..],"FGL_BUILD_ENTRY=");jo_put(o[..],af_path(p[..],root,"apps/metaverse-engine-desktop/build.sh"));ok:=proc_env(h,jo_text(o[..]));
     ok=ok && proc_env(h,"FGL_NATIVE_BUILD=1");if args_count(a)==2 {ok=ok && proc_env(h,"FGL_OPEN=--open");}else {ok=ok && proc_unset(h,"FGL_OPEN");}
     if !ok || proc_start(h)!=0 {r:=proc_release(h);return 1;}return ifx af_finish(h,deadline) then 0 else 1;
   }
-  here:=af_path(p[..],root,"apps/aethyrforge-desktop");work:=af_path(p[..],here,"build/native-linux");spec:=af_path(p[..],work,"spec");wl:=af_path(p[..],work,"wl");
+  here:=af_path(p[..],root,"apps/metaverse-engine-desktop");work:=af_path(p[..],here,"build/native-linux");spec:=af_path(p[..],work,"spec");wl:=af_path(p[..],work,"wl");
   if !fs_mkdir(spec) || !fs_mkdir(wl) {return 1;}out:[16777216]u8;
   print("Building native Aethyrforge: Bitcoin Lab and its chat, Wayland + Vulkan…\n");
   api_build:=[2]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"bitcoin/lab/build.coax")];if !fgn_cmd(api_build[..],deadline) {return 1;}
@@ -67,7 +67,7 @@ fgl_build :: (a:[]Args)->int {
   flagsbuf:[8192]u8;for i:0..<n {flagsbuf[i]=out[i];}sdkflags:=cast(string)flagsbuf[0..<n];
   h:=proc_new();for arg:[14]string.["cc","-std=gnu11","-O2","-no-pie","-ffp-contract=off","-fno-fast-math","-ffunction-sections","-fdata-sections","-Wl,--gc-sections","-w","-I",work,"-I",wl] {ok:=proc_arg(h,arg);}
   for inc:[3]string.["metaverse/native","metaverse/gpu","metaverse/kms"] {ok:=proc_arg(h,"-I") && proc_arg(h,af_path(p[..],root,inc));}
-  for src:[14]string.["apps/aethyrforge-desktop/linux-native-face.c","metaverse/native/realm-host.c","metaverse/gpu/vk-realm.c","metaverse/gpu/vk-spec.c","metaverse/gpu/vks.c","metaverse/gpu/vkc.c","metaverse/gpu/vkp.c","metaverse/gpu/vkd.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/agent-signer-none.c","os/verse-panel.coax","os/verse-hands.coax","linux-native.c"] {
+  for src:[14]string.["apps/metaverse-engine-desktop/linux-native-face.c","metaverse/native/realm-host.c","metaverse/gpu/vk-realm.c","metaverse/gpu/vk-spec.c","metaverse/gpu/vks.c","metaverse/gpu/vkc.c","metaverse/gpu/vkp.c","metaverse/gpu/vkd.c","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/agent-signer-none.c","os/verse-panel.coax","os/verse-hands.coax","linux-native.c"] {
     if src=="" {continue;}path:=af_path(p[..],root,src);
     if src=="linux-native.c" {path=af_path(p[..],work,src);}
     if src=="os/verse-panel.coax" || src=="os/verse-hands.coax" {

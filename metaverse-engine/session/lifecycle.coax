@@ -8,7 +8,7 @@
 //   device is taken unless the page is leaving). No network-change event is reported yet: the
 //   socket's own close stands for it. Everglade's page runs hidden and shown through this profile
 //   (everglade-net.coax net_life): a long suspension replaces its socket at once.
-// - Linux native face (apps/aethyrforge-desktop/linux-native-face.c): reports frames and input; it
+// - Linux native face (apps/metaverse-engine-desktop/linux-native-face.c): reports frames and input; it
 //   reports none of these lifecycle events yet.
 // - Mac Metal host: not built yet (#12867, #12868).
 //

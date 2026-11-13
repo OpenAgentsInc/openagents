@@ -24,6 +24,6 @@ tool_main :: ()->int #export_c #effects(all) {
   if i==7 {maf_command(o[..],"-stop-me");maf_render(o[..],maf_path(dir,"stop-tail",paths[2][..]),16);}
  }
  jo_end(o[..]);jo_end(o[..]);input:=fs_join(dir,"plan.json",paths[3][..]);report:=fs_join(dir,"audio.json",paths[4][..]);if o[0].bad || !fs_write(input,jo_text(o[..])) {return 1;}
- run:=[5]string.[fs_join(root,"apps/aethyrforge-desktop/build/metal/MetalAudioEffects",paths[5][..]),res,fs_join(res,"metal/libeverglade.dylib",paths[6][..]),input,report];out:[65536]u8;err:[65536]u8;r:=proc_run(run[..],120000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
+ run:=[5]string.[fs_join(root,"apps/metaverse-engine-desktop/build/metal/MetalAudioEffects",paths[5][..]),res,fs_join(res,"metal/libeverglade.dylib",paths[6][..]),input,report];out:[65536]u8;err:[65536]u8;r:=proc_run(run[..],120000,out[..],err[..]);if r.started!=0 || r.status!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return 1;}
  print("Frozen48kHz interleaved PCM and nine aligned native carrier cases:%\n",report);return 0;
 }

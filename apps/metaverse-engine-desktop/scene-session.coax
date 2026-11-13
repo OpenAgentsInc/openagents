@@ -3,7 +3,7 @@
 // fgc_scene_session) and `aethyrforge scene` reads (scene-cli.coax) to reach the app's local API and
 // the player's position. The one codec: fs_session_put writes it, fs_session reads it. Profile
 // proto/aethyrforge/scene-session-v1.schema.json; its check runs both:
-//   coax/web/tool.sh apps/aethyrforge-desktop/scene-session-profile.coax proto/aethyrforge/scene-session-v1.schema.json
+//   coax/web/tool.sh apps/metaverse-engine-desktop/scene-session-profile.coax proto/aethyrforge/scene-session-v1.schema.json
 #authority;
 #load "../../coax/lib/json/json.coax";
 FS_SESSION_SCHEMA :: "aethyrforge.scene-session.v1";

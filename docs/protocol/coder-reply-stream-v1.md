@@ -41,7 +41,7 @@ The separate [native IPC schema](../../proto/coder/voice-input-v1.schema.json)
 binds a Parakeet final transcript to one native microphone-grant ticket.
 Only the current local top-level page may send it. Native foreground/world
 readiness, one-shot finality, cancellation and the 16 KiB Coder prompt bound
-gate dispatch in `apps/aethyrforge-desktop/voice-coder.coax` (`#authority`).
+gate dispatch in `apps/metaverse-engine-desktop/voice-coder.coax` (`#authority`).
 Partials, stale/duplicate finals, canceled captures and blank input start no
 turn. Busy Coder turns are retained, with a visible rejection message rather
 than an implicit stop or a queue. Typed drafts are preserved. Accepted final

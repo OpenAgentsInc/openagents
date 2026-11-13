@@ -12,9 +12,9 @@ ma_command :: (o:[]Jo,line:string) {ma_op(o,"command");ma_string(o,"line",line);
 ma_render :: (o:[]Jo,path:string,blocks:int) {ma_op(o,"render");ma_string(o,"file",path);jo_key(o,"blocks");jo_int(o,blocks);jo_end(o);}
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<3 {tool_errln("usage: metal-audio ROOT RESOURCES NEW_OUTPUT [--prepare-only] [--default --sdk DIR --producer DYLIB]");return 2;}
- root:=args_at(a[..],0);res:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir) {return 1;}paths:[12][4096]u8;work:=args_value(a[..],"--sdk",fs_join(root,"apps/aethyrforge-desktop/build/metal",paths[0][..]));
- argv:[40]string;n:=0;for v:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[1][..])] {argv[n]=v;n+=1;}
- argv[n]=fs_join(root,"apps/aethyrforge-desktop/Sources/MetalAudio.swift",paths[2][..]);argv[n+1]=fs_join(root,"apps/aethyrforge-desktop/tests/MetalAudioEffects.swift",paths[3][..]);n+=2;
+ root:=args_at(a[..],0);res:=args_at(a[..],1);dir:=args_at(a[..],2);if !fs_mkdir(dir) {return 1;}paths:[12][4096]u8;work:=args_value(a[..],"--sdk",fs_join(root,"apps/metaverse-engine-desktop/build/metal",paths[0][..]));
+ argv:[40]string;n:=0;for v:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/metaverse-engine-desktop/metal-host.h",paths[1][..])] {argv[n]=v;n+=1;}
+ argv[n]=fs_join(root,"apps/metaverse-engine-desktop/Sources/MetalAudio.swift",paths[2][..]);argv[n+1]=fs_join(root,"apps/metaverse-engine-desktop/tests/MetalAudioEffects.swift",paths[3][..]);n+=2;
  for name,i:[3]string.["MetalRealm.o","MetalRender.o","RenderTexture.o"] {argv[n]=fs_join(work,name,paths[4+i][..]);n+=1;}
  for v:[2]string.["-Xlinker","-export_dynamic"] {argv[n]=v;n+=1;}
  for f:[6]string.["AVFoundation","Foundation","Metal","QuartzCore","ImageIO","CoreGraphics"] {argv[n]="-framework";argv[n+1]=f;n+=2;}

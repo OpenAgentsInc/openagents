@@ -4870,7 +4870,7 @@ WebSocket binary message, encoded and decoded only by the generated Coax codec
 
 The Metaverse Engine for Mac preflights OS microphone authorization in visible foreground
 setup, or at foreground launch for an existing setup receipt. Its
-`apps/aethyrforge-desktop/microphone.coax` authority requests only an undetermined
+`apps/metaverse-engine-desktop/microphone.coax` authority requests only an undetermined
 grant, never from automated background checks or while another request is pending.
 Setup opens no microphone stream. After consent, `voice-ready.coax` separately
 admits resident Parakeet and local transport preparation for a visible local
@@ -6165,7 +6165,7 @@ none live after close.
 
 ## The Metaverse Engine pauses the world view after its first rendered frame
 
-`apps/aethyrforge-desktop/world-visibility.coax` admits the first real rendered
+`apps/metaverse-engine-desktop/world-visibility.coax` admits the first real rendered
 frame even with setup open, then pauses the world's loop while setup/status
 covers it or its window is hidden, minimized or occluded. The browser host
 cancels the animation callback and suspends realm audio; socket delivery and

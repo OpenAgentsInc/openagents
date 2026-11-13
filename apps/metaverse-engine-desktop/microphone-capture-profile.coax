@@ -1,7 +1,7 @@
 // Checks proto/coder/microphone-capture-v1.schema.json against
 // postMessage({schema:'aethyrforge.microphone-capture.v1', ...}) literals in Sources/app.m.
 //
-//   coax/web/tool.sh apps/aethyrforge-desktop/microphone-capture-profile.coax proto/coder/microphone-capture-v1.schema.json
+//   coax/web/tool.sh apps/metaverse-engine-desktop/microphone-capture-profile.coax proto/coder/microphone-capture-v1.schema.json
 #import "Basic";
 #load "../../coax/lib/json/json.coax";
 #load "../../coax/lib/sys/tool.coax";
@@ -10,7 +10,7 @@
 MCP_SCHEMA_FILE :: 65536;
 MCP_APP_FILE :: 262144;
 MCP_NODES :: 1024;
-MCP_APP_PATH :: "apps/aethyrforge-desktop/Sources/app.m";
+MCP_APP_PATH :: "apps/metaverse-engine-desktop/Sources/app.m";
 MCP_NEEDLE :: "postMessage({schema:'";
 
 mcp_str :: (d: Jv, obj: int, key: string) -> string {

@@ -208,7 +208,7 @@ What the realms don't do yet:
    host on Vulkan (`metaverse/native/realm-host.c` is the start).
 2. **A carrier and catalog profile** for both, when the web's Everglade II
    moves to the shared renderer. The page host then gives way to the realm
-   host (`apps/aethyrforge-desktop/MetalRealm.m`).
+   host (`apps/metaverse-engine-desktop/MetalRealm.m`).
 
 ## 5. Adding a world
 

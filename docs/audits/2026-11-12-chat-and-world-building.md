@@ -128,7 +128,7 @@ deterministic placement. Missing: a document anyone besides the page can reach.
 a good second target once the tool shape exists, and it should stay
 admin-only.
 
-### 4. Aethyrforge desktop (`apps/aethyrforge-desktop/`)
+### 4. Aethyrforge desktop (`apps/metaverse-engine-desktop/`)
 
 - **The app:** a native Mac (AppKit and Metal) and Linux (Wayland and Vulkan)
   app around the Everglade 5e engine, with a local room and Parakeet voice.

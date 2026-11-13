@@ -15,7 +15,7 @@ of_valid :: (worker:bool,workers:int,frames:int,messages:int,samples:int)->bool 
 }
 tool_main :: ()->int #export_c #effects(all) {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {
-    tool_errln("usage: coax/web/tool.sh apps/aethyrforge-desktop/offline-check.coax APP OUT_DIR");return 2;
+    tool_errln("usage: coax/web/tool.sh apps/metaverse-engine-desktop/offline-check.coax APP OUT_DIR");return 2;
   }
   app:=args_at(a[..],0);dir:=args_at(a[..],1);
   if !fs_mkdir(dir) {return 1;}

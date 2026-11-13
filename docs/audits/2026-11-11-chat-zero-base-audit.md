@@ -479,7 +479,7 @@ cost under each answer.
 | `/chat` (`apps/openagents-web/chat.coax`) | `components/zeron` | oa-api, the hosted runner | Live, admins |
 | Desktop (`apps/openagents-desktop/zeron/`: `screen` 1,486, `desk` 1,362, `claude`, `modes`, `room`, `settings`, `store`) | `components/zeron` | Local engines in `coax/lib/agent/engine/` (Claude, Codex, Psionic, Lab) | Builds on Linux and the shared Mac host |
 | Project agent panel (`apps/openagents-web/private.coax`, `/projects/SLUG`) | Hand-rolled | `/api/talk`, runner `turn.coax` | Live. Has diff cards, Stop and Undo turn |
-| Aethyrforge (`apps/aethyrforge-desktop/chat.coax`, `Sources/chat.m`) | Hand-rolled HUD feed and AppKit text | The shared turn runner, in process | Linux checked |
+| Aethyrforge (`apps/metaverse-engine-desktop/chat.coax`, `Sources/chat.m`) | Hand-rolled HUD feed and AppKit text | The shared turn runner, in process | Linux checked |
 | Coder's terminal (`coder/tui/`, `coax/lib/tui/`) | `core/markdown`, `core/edit`, `backend/terminal`, its own palettes | Shared engines | Live |
 | WorldBuilder's box (`worldbuilder.coax`) | `kit/controls`, `core/edit` | `/api/worldbuilder/act` | Moved onto the kit; #13226 open |
 | Verse room chat (`room.coax`) | Each realm's HUD | `/api/playtest/chat/<room>` | Live; unrelated to the agent |

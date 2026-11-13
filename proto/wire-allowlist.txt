@@ -13,7 +13,7 @@
 # Area 1: Coder, Microcoder, Golemancy
 shape coder.session-reader.v1  # C10, wave 2: the session-reader envelope (#13250)
 id coder.session-reader.v1 coder/tui/session-reader.coax  # a second writer file; C10, wave 2 (#13250)
-id coder.router.v1 apps/aethyrforge-desktop/chat.coax  # Aethyrforge writes router.json's default; wave 2, with the spec's name clash (#13250)
+id coder.router.v1 apps/metaverse-engine-desktop/chat.coax  # Aethyrforge writes router.json's default; wave 2, with the spec's name clash (#13250)
 shape coder-json-output  # C8, wave 2: --json and --stream-json output (#13250)
 shape chat-page-lines  # C9, wave 2: the /chat page lines Z C S U T (#13250)
 shape microcoder-worker-lines  # C11, wave 2: ready, reply, attempt, command, view, ask, ended, embedding, journal, task, answer (#13250)

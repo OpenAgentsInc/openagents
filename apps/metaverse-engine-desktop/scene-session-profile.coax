@@ -2,7 +2,7 @@
 // fixture's fields written by fs_session_put give exactly its wire, which fs_session at its now_ms
 // takes (with its api and position) or refuses as the fixture says; every malformed session is
 // refused; and the schema's id and freshness are the codec's.
-//   coax/web/tool.sh apps/aethyrforge-desktop/scene-session-profile.coax proto/aethyrforge/scene-session-v1.schema.json
+//   coax/web/tool.sh apps/metaverse-engine-desktop/scene-session-profile.coax proto/aethyrforge/scene-session-v1.schema.json
 #import "Basic";
 #load "scene-session.coax";
 #load "../../coax/lib/sys/tool.coax";
@@ -10,7 +10,7 @@
 
 SSP_FILE :: 32768;
 SSP_PATH :: "proto/aethyrforge/scene-session-v1.schema.json";
-SSP_CHECK :: "coax/web/tool.sh apps/aethyrforge-desktop/scene-session-profile.coax proto/aethyrforge/scene-session-v1.schema.json";
+SSP_CHECK :: "coax/web/tool.sh apps/metaverse-engine-desktop/scene-session-profile.coax proto/aethyrforge/scene-session-v1.schema.json";
 SSP_NONE :: -999999999;
 
 ssp_str :: (d: Jv, at: int, out: [] u8) -> string {
@@ -39,7 +39,7 @@ ssp_fixture :: (d: Jv, fx: int) -> bool {
 ssp_check :: (d: Jv, path: string) -> bool {
   tb: [512] u8;
   if path.count < SSP_PATH.count || path[path.count - SSP_PATH.count..<path.count] != SSP_PATH { print("not %\n", SSP_PATH); return false; }
-  if ssp_str(d, jv_get(d, 0, "check"), tb[..]) != SSP_CHECK || ssp_str(d, jv_get(d, 0, "codec"), tb[..]) != "apps/aethyrforge-desktop/scene-session.coax" { print("check, codec\n"); return false; }
+  if ssp_str(d, jv_get(d, 0, "check"), tb[..]) != SSP_CHECK || ssp_str(d, jv_get(d, 0, "codec"), tb[..]) != "apps/metaverse-engine-desktop/scene-session.coax" { print("check, codec\n"); return false; }
   if ssp_str(d, jv_get(d, jv_get(d, jv_get(d, 0, "properties"), "schema"), "const"), tb[..]) != FS_SESSION_SCHEMA { print("schema const\n"); return false; }
   if jv_int(d, jv_get(d, 0, "fresh_ms"), -1) != FS_SESSION_FRESH_MS { print("fresh_ms\n"); return false; }
   fixtures := jv_get(d, 0, "fixtures");

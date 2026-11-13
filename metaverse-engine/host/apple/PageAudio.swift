@@ -1,6 +1,6 @@
 // Firm reason: 6 (AVFoundation and CoreAudio: a page's sound through the Apple audio host).
 // A page's sound (metaverse-engine/host/README.md, Audio), for the page host on Apple (page-host.h). It is
-// the Apple audio host the Metaverse Engine desktop app plays its realm with (apps/aethyrforge-desktop/Sources/
+// the Apple audio host the Metaverse Engine desktop app plays its realm with (apps/metaverse-engine-desktop/Sources/
 // MetalAudio.swift, ForgeMetalAudio): the shared Coax interpreter (metaverse-engine/host/native-audio.coax:
 // host-pcm, the session, the bank, the memory tickets, the decoders) behind audio-host.h, and an
 // AVAudioEngine source node that copies its 1024-frame blocks to the device. This file only hands

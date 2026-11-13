@@ -21,7 +21,7 @@ mb_check_runner :: ()->bool {
 }
 mb_unit :: (root:string,work:string,compiler:string,name:string)->bool {
  names:=[13]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","fixture","AppKitInput","HostNetwork","entropy-policy","AudioFixture"];
- sources:=[13]string.["apps/aethyrforge-desktop/metal-world.coax","everglade/shared/everglade-step.coax","metaverse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","metaverse-engine/render/native-images.coax","metaverse-engine/host/fixture.coax","metaverse-engine/host/appkit-input.coax","metaverse-engine/host/native-socket.coax","coax/lib/crypto/entropy.coax","metaverse-engine/host/audio-fixture.coax"];
+ sources:=[13]string.["apps/metaverse-engine-desktop/metal-world.coax","everglade/shared/everglade-step.coax","metaverse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/metaverse-engine-desktop/metal-render.coax","metaverse-engine/render/native-images.coax","metaverse-engine/host/fixture.coax","metaverse-engine/host/appkit-input.coax","metaverse-engine/host/native-socket.coax","coax/lib/crypto/entropy.coax","metaverse-engine/host/audio-fixture.coax"];
  found:=-1;for n,i:names {if n==name {found=i;}}if found<0 {return false;}
  text:[256]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".h");paths:[5][4096]u8;header:=fs_join(work,jo_text(o[..]),paths[0][..]);
  o[0]=Jo.{};jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".c");code:=fs_join(work,jo_text(o[..]),paths[1][..]);
@@ -48,12 +48,12 @@ mb_producer :: (root:string,work:string,face:string,primary:string,sanitize:bool
 }
 mb_sdk :: (root:string,work:string,sanitize:bool)->bool {
  paths:[2][4096]u8;out:[1048576]u8;
- cc:=[12]string.["/usr/bin/clang","-fobjc-arc","-O2","-ffp-contract=off","-fno-fast-math",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-c",fs_join(root,"apps/aethyrforge-desktop/MetalRealm.m",paths[0][..]),"-o",fs_join(work,"MetalRealm.o",paths[1][..])];
+ cc:=[12]string.["/usr/bin/clang","-fobjc-arc","-O2","-ffp-contract=off","-fno-fast-math",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-c",fs_join(root,"apps/metaverse-engine-desktop/MetalRealm.m",paths[0][..]),"-o",fs_join(work,"MetalRealm.o",paths[1][..])];
  return mb_run(cc[..],out[..])>=0;
 }
 mb_socket_sdk :: (root:string,work:string,sanitize:bool)->bool {
  paths:[4][4096]u8;out:[1048576]u8;
- for source,i:[7]string.["HostNetwork.c","entropy-policy.c","apps/aethyrforge-desktop/MetalSockets.c","coax/platform/socket-native.c","coax/platform/tls-native.c","coax/platform/entropy-native.c","coax/platform/entropy-foreign.c"] {
+ for source,i:[7]string.["HostNetwork.c","entropy-policy.c","apps/metaverse-engine-desktop/MetalSockets.c","coax/platform/socket-native.c","coax/platform/tls-native.c","coax/platform/entropy-native.c","coax/platform/entropy-foreign.c"] {
   object:=[7]string.["HostNetwork.o","entropy-policy.o","MetalSockets.o","socket-native.o","tls-native.o","entropy-native.o","entropy-foreign.o"];
   cmd:=[16]string.["/usr/bin/clang","-std=gnu11","-O2","-ffp-contract=off","-fno-fast-math","-fblocks",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-I",fs_join(root,"coax/platform",paths[0][..]),"-c",fs_join(ifx i<2 then work else root,source,paths[1][..]),"-o",fs_join(work,object[i],paths[2][..]),"-Wno-unused-function"];
   if mb_run(cmd[..],out[..])<0 {return false;}
@@ -61,9 +61,9 @@ mb_socket_sdk :: (root:string,work:string,sanitize:bool)->bool {
 }
 mb_socket_probe :: (root:string,work:string,sanitize:bool)->bool {
  paths:[11][4096]u8;out:[1048576]u8;cmd:[40]string;n:=0;
- for arg:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-sockets.h",paths[0][..])] {cmd[n]=arg;n+=1;}
+ for arg:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/metaverse-engine-desktop/metal-sockets.h",paths[0][..])] {cmd[n]=arg;n+=1;}
  if sanitize {cmd[n]="-sanitize=address";n+=1;}
- cmd[n]=fs_join(root,"apps/aethyrforge-desktop/tests/MetalSocketEffects.swift",paths[1][..]);n+=1;
+ cmd[n]=fs_join(root,"apps/metaverse-engine-desktop/tests/MetalSocketEffects.swift",paths[1][..]);n+=1;
  for object,i:[7]string.["HostNetwork.o","entropy-policy.o","MetalSockets.o","socket-native.o","tls-native.o","entropy-native.o","entropy-foreign.o"] {cmd[n]=fs_join(work,object,paths[2+i][..]);n+=1;}
  for name:[3]string.["Network","Security","CoreFoundation"] {cmd[n]="-framework";cmd[n+1]=name;n+=2;}
  cmd[n]="-o";cmd[n+1]=fs_join(work,"MetalSocketEffects",paths[9][..]);n+=2;return mb_run(cmd[0..<n],out[..])>=0;
@@ -107,10 +107,10 @@ mb_fixture :: (root:string,work:string,sanitize:bool)->bool {
 }
 mb_conformance :: (root:string,work:string,sanitize:bool)->bool {
  paths:[8][4096]u8;out:[1048576]u8;cmd:[40]string;n:=0;
- for s:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[0][..])] {cmd[n]=s;n+=1;}
+ for s:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/metaverse-engine-desktop/metal-host.h",paths[0][..])] {cmd[n]=s;n+=1;}
  if sanitize {cmd[n]="-sanitize=address";n+=1;}
- cmd[n]=fs_join(root,"apps/aethyrforge-desktop/tests/MetalConformance.swift",paths[1][..]);n+=1;
- cmd[n]=fs_join(root,"apps/aethyrforge-desktop/Sources/MetalNetwork.swift",paths[2][..]);n+=1;
+ cmd[n]=fs_join(root,"apps/metaverse-engine-desktop/tests/MetalConformance.swift",paths[1][..]);n+=1;
+ cmd[n]=fs_join(root,"apps/metaverse-engine-desktop/Sources/MetalNetwork.swift",paths[2][..]);n+=1;
  for name,i:[3]string.["MetalRealm.o","MetalRender.o","RenderTexture.o"] {cmd[n]=fs_join(work,name,paths[3+i][..]);n+=1;}
  for s:[2]string.["-Xlinker","-export_dynamic"] {cmd[n]=s;n+=1;}
  for name:[5]string.["Foundation","Metal","QuartzCore","ImageIO","CoreGraphics"] {cmd[n]="-framework";cmd[n+1]=name;n+=2;}
@@ -118,12 +118,12 @@ mb_conformance :: (root:string,work:string,sanitize:bool)->bool {
 }
 mb_audio_packet :: (root:string,work:string,sanitize:bool)->bool {
  paths:[8][4096]u8;out:[1048576]u8;
- cc:=[12]string.["/usr/bin/clang","-std=c11","-O2","-DCOAXIAL_NATIVE_ADDRESS",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-c",fs_join(root,"apps/aethyrforge-desktop/tests/metal-audio-packet-face.c",paths[0][..]),"-o",fs_join(work,"packet-face.o",paths[1][..]),"-Wno-unused-function"];
+ cc:=[12]string.["/usr/bin/clang","-std=c11","-O2","-DCOAXIAL_NATIVE_ADDRESS",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-c",fs_join(root,"apps/metaverse-engine-desktop/tests/metal-audio-packet-face.c",paths[0][..]),"-o",fs_join(work,"packet-face.o",paths[1][..]),"-Wno-unused-function"];
  if mb_run(cc[..],out[..])<0 {return false;}
  link:=[8]string.["/usr/bin/clang","-dynamiclib","-Wl,-undefined,dynamic_lookup",fs_join(work,"fixture.o",paths[0][..]),fs_join(work,"packet-face.o",paths[1][..]),"-o",fs_join(work,"libpacketfixture.dylib",paths[2][..]),ifx sanitize then "-fsanitize=address" else "-g0"];
  if mb_run(link[..],out[..])<0 {return false;}
- cmd:[32]string;n:=0;for arg:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[0][..])] {cmd[n]=arg;n+=1;}
- if sanitize {cmd[n]="-sanitize=address";n+=1;}cmd[n]=fs_join(root,"apps/aethyrforge-desktop/tests/MetalAudioPacket.swift",paths[1][..]);n+=1;
+ cmd:[32]string;n:=0;for arg:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/metaverse-engine-desktop/metal-host.h",paths[0][..])] {cmd[n]=arg;n+=1;}
+ if sanitize {cmd[n]="-sanitize=address";n+=1;}cmd[n]=fs_join(root,"apps/metaverse-engine-desktop/tests/MetalAudioPacket.swift",paths[1][..]);n+=1;
  for object,i:[3]string.["MetalRealm.o","MetalRender.o","RenderTexture.o"] {cmd[n]=fs_join(work,object,paths[2+i][..]);n+=1;}
  for arg:[2]string.["-Xlinker","-export_dynamic"] {cmd[n]=arg;n+=1;}
  for name:[5]string.["Foundation","Metal","QuartzCore","ImageIO","CoreGraphics"] {cmd[n]="-framework";cmd[n+1]=name;n+=2;}
@@ -131,9 +131,9 @@ mb_audio_packet :: (root:string,work:string,sanitize:bool)->bool {
 }
 mb_audio_session :: (root:string,work:string,sanitize:bool)->bool {
  paths:[7][4096]u8;out:[1048576]u8;cmd:[40]string;n:=0;
- for arg:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[0][..])] {cmd[n]=arg;n+=1;}
+ for arg:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/metaverse-engine-desktop/metal-host.h",paths[0][..])] {cmd[n]=arg;n+=1;}
  if sanitize {cmd[n]="-sanitize=address";n+=1;}
- for source,i:[2]string.["apps/aethyrforge-desktop/Sources/MetalAudio.swift","apps/aethyrforge-desktop/tests/MetalAudioSession.swift"] {cmd[n]=fs_join(root,source,paths[1+i][..]);n+=1;}
+ for source,i:[2]string.["apps/metaverse-engine-desktop/Sources/MetalAudio.swift","apps/metaverse-engine-desktop/tests/MetalAudioSession.swift"] {cmd[n]=fs_join(root,source,paths[1+i][..]);n+=1;}
  for object,i:[3]string.["MetalRealm.o","MetalRender.o","RenderTexture.o"] {cmd[n]=fs_join(work,object,paths[3+i][..]);n+=1;}
  cmd[n]="-Xlinker";cmd[n+1]="-export_dynamic";n+=2;
  for framework:[6]string.["AVFoundation","Foundation","Metal","QuartzCore","ImageIO","CoreGraphics"] {cmd[n]="-framework";cmd[n+1]=framework;n+=2;}
@@ -143,12 +143,12 @@ mb_media_span :: (root:string,work:string,sanitize:bool)->bool {
  paths:[10][4096]u8;out:[1048576]u8;
  for missing:0..<2 {
   face:=fs_join(work,ifx missing==0 then "media-span-face.o" else "media-span-no-cap-face.o",paths[0][..]);
-  cc:=[14]string.["/usr/bin/clang","-std=c11","-O2","-DCOAXIAL_NATIVE_ADDRESS",ifx missing==0 then "-g0" else "-DCOAXIAL_MEDIA_NO_CAPACITY",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-c",fs_join(root,"apps/aethyrforge-desktop/tests/metal-media-packet-face.c",paths[1][..]),"-o",face,"-Wno-unused-function","-Wno-unused-variable"];
+  cc:=[14]string.["/usr/bin/clang","-std=c11","-O2","-DCOAXIAL_NATIVE_ADDRESS",ifx missing==0 then "-g0" else "-DCOAXIAL_MEDIA_NO_CAPACITY",ifx sanitize then "-fsanitize=address" else "-g0","-I",work,"-c",fs_join(root,"apps/metaverse-engine-desktop/tests/metal-media-packet-face.c",paths[1][..]),"-o",face,"-Wno-unused-function","-Wno-unused-variable"];
   if mb_run(cc[..],out[..])<0{return false;}
   link:=[9]string.["/usr/bin/clang","-dynamiclib","-Wl,-undefined,dynamic_lookup",fs_join(work,"fixture.o",paths[2][..]),face,"-o",fs_join(work,ifx missing==0 then "libmediafixture.dylib" else "libmediafixture-no-cap.dylib",paths[3][..]),"-lm",ifx sanitize then "-fsanitize=address" else "-g0"];if mb_run(link[..],out[..])<0{return false;}
  }
- cmd:[32]string;n:=0;for arg:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[0][..])]{cmd[n]=arg;n+=1;}
- if sanitize{cmd[n]="-sanitize=address";n+=1;}cmd[n]=fs_join(root,"apps/aethyrforge-desktop/tests/MetalMediaSpan.swift",paths[1][..]);n+=1;
+ cmd:[32]string;n:=0;for arg:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/metaverse-engine-desktop/metal-host.h",paths[0][..])]{cmd[n]=arg;n+=1;}
+ if sanitize{cmd[n]="-sanitize=address";n+=1;}cmd[n]=fs_join(root,"apps/metaverse-engine-desktop/tests/MetalMediaSpan.swift",paths[1][..]);n+=1;
  for object,i:[3]string.["MetalRealm.o","MetalRender.o","RenderTexture.o"]{cmd[n]=fs_join(work,object,paths[2+i][..]);n+=1;}for arg:[2]string.["-Xlinker","-export_dynamic"]{cmd[n]=arg;n+=1;}
  for name:[5]string.["Foundation","Metal","QuartzCore","ImageIO","CoreGraphics"]{cmd[n]="-framework";cmd[n+1]=name;n+=2;}cmd[n]="-o";cmd[n+1]=fs_join(work,"MetalMediaSpan",paths[5][..]);n+=2;return mb_run(cmd[0..<n],out[..])>=0;
 }
@@ -160,9 +160,9 @@ mb_action_packet :: (root:string,work:string,sanitize:bool)->bool {
   if mb_run(cc[..],out[..])<0{return false;}
   link:=[9]string.["/usr/bin/clang","-dynamiclib","-Wl,-undefined,dynamic_lookup",mode,fs_join(work,"action-fixture.o",paths[2][..]),face,"-o",fs_join(work,ifx missing==0 then "libactionfixture.dylib" else "libactionfixture-no-cap.dylib",paths[3][..]),"-lm"];if mb_run(link[..],out[..])<0{return false;}
  }
- cmd:[36]string;n:=0;for s:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[0][..])]{cmd[n]=s;n+=1;}
+ cmd:[36]string;n:=0;for s:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/metaverse-engine-desktop/metal-host.h",paths[0][..])]{cmd[n]=s;n+=1;}
  if sanitize{cmd[n]="-sanitize=address";n+=1;}
- cmd[n]=fs_join(root,"apps/aethyrforge-desktop/tests/MetalActionPacket.swift",paths[1][..]);n+=1;
+ cmd[n]=fs_join(root,"apps/metaverse-engine-desktop/tests/MetalActionPacket.swift",paths[1][..]);n+=1;
  for object,i:[3]string.["MetalRealm.o","MetalRender.o","RenderTexture.o"]{cmd[n]=fs_join(work,object,paths[2+i][..]);n+=1;}cmd[n]="-Xlinker";cmd[n+1]="-export_dynamic";n+=2;
  for name:[5]string.["Foundation","Metal","QuartzCore","ImageIO","CoreGraphics"]{cmd[n]="-framework";cmd[n+1]=name;n+=2;}cmd[n]="-o";cmd[n+1]=fs_join(work,"MetalActionPacket",paths[5][..]);n+=2;return mb_run(cmd[0..<n],out[..])>=0;
 }
@@ -172,10 +172,10 @@ mb_action_core :: (root:string,work:string,sanitize:bool)->bool {
   text:[128]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".c");source:=fs_join(work,jo_text(o[..]),paths[0][..]);jo_start(o[..],text[..]);jo_put(o[..],name);jo_put(o[..],".o");object:=fs_join(work,jo_text(o[..]),paths[1][..]);
   cc:=[13]string.["/usr/bin/clang","-std=c11","-O1","-ffp-contract=off","-fno-fast-math",mode,"-fno-omit-frame-pointer","-Wno-unused-function","-Wno-unused-variable","-c",source,"-o",object];if mb_run(cc[..],out[..])<0{return false;}
  }
- cc:=[13]string.["/usr/bin/clang","-fobjc-arc","-O1","-ffp-contract=off","-fno-fast-math",mode,"-fno-omit-frame-pointer","-I",work,"-c",fs_join(root,"apps/aethyrforge-desktop/MetalRealm.m",paths[0][..]),"-o",fs_join(work,"MetalRealm.o",paths[1][..])];return mb_run(cc[..],out[..])>=0;
+ cc:=[13]string.["/usr/bin/clang","-fobjc-arc","-O1","-ffp-contract=off","-fno-fast-math",mode,"-fno-omit-frame-pointer","-I",work,"-c",fs_join(root,"apps/metaverse-engine-desktop/MetalRealm.m",paths[0][..]),"-o",fs_join(work,"MetalRealm.o",paths[1][..])];return mb_run(cc[..],out[..])>=0;
 }
 mb_action_capacity :: (root:string,work:string)->bool {
- paths:[6][4096]u8;out:[1048576]u8;cmd:[32]string;n:=0;for s:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[0][..])]{cmd[n]=s;n+=1;}cmd[n]=fs_join(root,"apps/aethyrforge-desktop/tests/MetalActionCapacity.swift",paths[1][..]);n+=1;
+ paths:[6][4096]u8;out:[1048576]u8;cmd:[32]string;n:=0;for s:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/metaverse-engine-desktop/metal-host.h",paths[0][..])]{cmd[n]=s;n+=1;}cmd[n]=fs_join(root,"apps/metaverse-engine-desktop/tests/MetalActionCapacity.swift",paths[1][..]);n+=1;
  for object,i:[3]string.["MetalRealm.o","MetalRender.o","RenderTexture.o"]{cmd[n]=fs_join(work,object,paths[2+i][..]);n+=1;}cmd[n]="-Xlinker";cmd[n+1]="-export_dynamic";n+=2;for name:[5]string.["Foundation","Metal","QuartzCore","ImageIO","CoreGraphics"]{cmd[n]="-framework";cmd[n+1]=name;n+=2;}cmd[n]="-o";cmd[n+1]=fs_join(work,"MetalActionCapacity",paths[5][..]);n+=2;return mb_run(cmd[0..<n],out[..])>=0;
 }
 mb_audio_fixture :: (root:string,work:string,sanitize:bool)->bool {
@@ -189,9 +189,9 @@ mb_audio_fixture :: (root:string,work:string,sanitize:bool)->bool {
 }
 mb_effects :: (root:string,work:string,sanitize:bool)->bool {
  paths:[7][4096]u8;out:[1048576]u8;cmd:[32]string;n:=0;
- for s:[7]string.["xcrun","swiftc","-O","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[0][..])] {cmd[n]=s;n+=1;}
+ for s:[7]string.["xcrun","swiftc","-O","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/metaverse-engine-desktop/metal-host.h",paths[0][..])] {cmd[n]=s;n+=1;}
  if sanitize {cmd[n]="-sanitize=address";n+=1;}
- cmd[n]=fs_join(root,"apps/aethyrforge-desktop/tests/MetalEffects.swift",paths[1][..]);n+=1;
+ cmd[n]=fs_join(root,"apps/metaverse-engine-desktop/tests/MetalEffects.swift",paths[1][..]);n+=1;
  for name,i:[3]string.["MetalRealm.o","MetalRender.o","RenderTexture.o"] {cmd[n]=fs_join(work,name,paths[2+i][..]);n+=1;}
  for s:[2]string.["-Xlinker","-export_dynamic"] {cmd[n]=s;n+=1;}
  for name:[5]string.["Foundation","Metal","QuartzCore","ImageIO","CoreGraphics"] {cmd[n]="-framework";cmd[n+1]=name;n+=2;}
@@ -199,8 +199,8 @@ mb_effects :: (root:string,work:string,sanitize:bool)->bool {
 }
 mb_appkit :: (root:string,work:string)->bool {
  paths:[12][4096]u8;out:[1048576]u8;cmd:[48]string;n:=0;
- for s:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/aethyrforge-desktop/metal-host.h",paths[0][..])] {cmd[n]=s;n+=1;}
- for source,i:[4]string.["apps/aethyrforge-desktop/tests/MetalAppKitInputs.swift","apps/aethyrforge-desktop/Sources/MetalWorld.swift","apps/aethyrforge-desktop/Sources/MetalNetwork.swift","apps/aethyrforge-desktop/Sources/MetalAudio.swift"] {cmd[n]=fs_join(root,source,paths[1+i][..]);n+=1;}
+ for s:[8]string.["xcrun","swiftc","-O","-parse-as-library","-target","arm64-apple-macos26.0","-import-objc-header",fs_join(root,"apps/metaverse-engine-desktop/metal-host.h",paths[0][..])] {cmd[n]=s;n+=1;}
+ for source,i:[4]string.["apps/metaverse-engine-desktop/tests/MetalAppKitInputs.swift","apps/metaverse-engine-desktop/Sources/MetalWorld.swift","apps/metaverse-engine-desktop/Sources/MetalNetwork.swift","apps/metaverse-engine-desktop/Sources/MetalAudio.swift"] {cmd[n]=fs_join(root,source,paths[1+i][..]);n+=1;}
  for object,i:[4]string.["MetalRealm.o","MetalRender.o","RenderTexture.o","AppKitInput.o"] {cmd[n]=fs_join(work,object,paths[5+i][..]);n+=1;}
  for s:[2]string.["-Xlinker","-export_dynamic"] {cmd[n]=s;n+=1;}
  for framework:[6]string.["AppKit","QuartzCore","AVFoundation","Metal","ImageIO","CoreGraphics"] {cmd[n]="-framework";cmd[n+1]=framework;n+=2;}
@@ -247,7 +247,7 @@ mb_manifest :: (work:string)->bool {
 }
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 {tool_errln("usage: metal-build ROOT UNIT|shaders [--coax COMPILER] [--out DIRECTORY]");return 2;}
- root:=args_at(a[..],0);task:=args_at(a[..],1);paths:[2][4096]u8;work:=args_value(a[..],"--out",fs_join(root,"apps/aethyrforge-desktop/build/metal",paths[0][..]));
+ root:=args_at(a[..],0);task:=args_at(a[..],1);paths:[2][4096]u8;work:=args_value(a[..],"--out",fs_join(root,"apps/metaverse-engine-desktop/build/metal",paths[0][..]));
  compiler:=args_value(a[..],"--coax",fs_join(root,"coax/bin/coax",paths[1][..]));if !fs_mkdir(work) {return 1;}
  face_path:[4096]u8;face:=args_value(a[..],"--face",fs_join(root,"apps/openagents-web/everglade5e-face.c",face_path[..]));
  primary_path:[4096]u8;primary:=args_value(a[..],"--producer-object",fs_join(work,"everglade5e.o",primary_path[..]));

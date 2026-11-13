@@ -9,14 +9,14 @@ ms_run :: (argv:[]string)->bool {out:[1048576]u8;err:[1048576]u8;r:=proc_run(arg
 tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 {tool_errln("usage: metal-shell ROOT STAGED_APP [--sdk DIRECTORY]");return 2;}
  root:=args_at(a[..],0);app:=args_at(a[..],1);paths:[64][4096]u8;p:=0;argv:[96]string;n:=0;
- sdk_path:[4096]u8;sdk:=args_value(a[..],"--sdk",fs_join(root,"apps/aethyrforge-desktop/build/metal",sdk_path[..]));
- shell:=fs_join(root,"apps/aethyrforge-desktop/build/shell",paths[p][..]);p+=1;if !fs_mkdir(shell) {return 1;}
- objects:=fs_join(root,"apps/aethyrforge-desktop/build",paths[p][..]);p+=1;binary:=fs_join(app,"Contents/MacOS/Aethyrforge",paths[p][..]);p+=1;
+ sdk_path:[4096]u8;sdk:=args_value(a[..],"--sdk",fs_join(root,"apps/metaverse-engine-desktop/build/metal",sdk_path[..]));
+ shell:=fs_join(root,"apps/metaverse-engine-desktop/build/shell",paths[p][..]);p+=1;if !fs_mkdir(shell) {return 1;}
+ objects:=fs_join(root,"apps/metaverse-engine-desktop/build",paths[p][..]);p+=1;binary:=fs_join(app,"Contents/MacOS/Aethyrforge",paths[p][..]);p+=1;
  for step:0..<SL_UNITS+1 {sl_paths:[32][4096]u8;n=sl_step(root,objects,sdk,shell,binary,step,argv[..],sl_paths[..]);if n==0 || !ms_run(argv[0..<n]) {return 1;}}
  for name:[4]string.["render","assets","libeverglade.dylib","libnetwork.dylib"] {
   from:=fs_join(sdk,name,paths[p][..]);p+=1;metal:=fs_join(app,"Contents/Resources/metal",paths[p][..]);p+=1;to:=fs_join(metal,name,paths[p][..]);p+=1;
   cp:=[3]string.["ditto",from,to];if !ms_run(cp[..]) {return 1;}
  }
- cp:=[3]string.["ditto",fs_join(root,"apps/aethyrforge-desktop/metal-voice.html",paths[p][..]),fs_join(app,"Contents/Resources/web/metal-voice.html",paths[p+1][..])];if !ms_run(cp[..]) {return 1;}
+ cp:=[3]string.["ditto",fs_join(root,"apps/metaverse-engine-desktop/metal-voice.html",paths[p][..]),fs_join(app,"Contents/Resources/web/metal-voice.html",paths[p+1][..])];if !ms_run(cp[..]) {return 1;}
  sign:=[5]string.["codesign","--force","--sign","-",app];return ifx ms_run(sign[..]) then 0 else 1;
 }

@@ -1,7 +1,7 @@
 // Checks proto/coder/voice-input-v1.schema.json against voice-coder.coax: fv_message reads each
 // example as it says, and fv_page_script, the page's writer, posts the schema id with both kinds.
 //
-//   coax/web/tool.sh apps/aethyrforge-desktop/voice-coder-profile.coax proto/coder/voice-input-v1.schema.json
+//   coax/web/tool.sh apps/metaverse-engine-desktop/voice-coder-profile.coax proto/coder/voice-input-v1.schema.json
 #import "Basic";
 #load "voice-coder.coax";
 #load "../../coax/lib/sys/tool.coax";

@@ -1,7 +1,7 @@
 // Checks proto/aethyrforge/scene-command-v1.schema.json and
 // proto/aethyrforge/scene-command-v2.schema.json against scene-policy.coax and
 // scene-resize.coax.
-// Usage: coax/web/tool.sh apps/aethyrforge-desktop/scene-command-profile.coax proto/aethyrforge/scene-command-v1.schema.json
+// Usage: coax/web/tool.sh apps/metaverse-engine-desktop/scene-command-profile.coax proto/aethyrforge/scene-command-v1.schema.json
 #import "Basic";
 #load "scene-resize.coax";
 #load "../../coax/lib/sys/tool.coax";

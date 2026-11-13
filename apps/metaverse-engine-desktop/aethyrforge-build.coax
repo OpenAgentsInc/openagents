@@ -104,7 +104,7 @@ af_native_stamp :: (root:string,source:string,deadline:int)->int {
 af_native :: (root:string,here:string,work:string,coax:string,out:[]u8,deadline:int)->bool {
  paths:[8][4096]u8;metal:=fs_join(work,"metal",paths[0][..]);if !fs_mkdir(metal) {return false;}
  names:=[11]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules","MetalRender","RenderTexture","AppKitInput","HostNetwork","entropy-policy"];
- sources:=[11]string.["apps/aethyrforge-desktop/metal-world.coax","everglade/shared/everglade-step.coax","metaverse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/aethyrforge-desktop/metal-render.coax","metaverse-engine/render/native-images.coax","metaverse-engine/host/appkit-input.coax","metaverse-engine/host/native-socket.coax","coax/lib/crypto/entropy.coax"];
+ sources:=[11]string.["apps/metaverse-engine-desktop/metal-world.coax","everglade/shared/everglade-step.coax","metaverse/grid.coax","everglade/legacy/v1/river.coax","everglade/npc/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax","apps/metaverse-engine-desktop/metal-render.coax","metaverse-engine/render/native-images.coax","metaverse-engine/host/appkit-input.coax","metaverse-engine/host/native-socket.coax","coax/lib/crypto/entropy.coax"];
  compiler_stamp:=fs_mtime_ns(coax);producer_stamp:=0;
  for name,i:names {stamp:=af_native_stamp(root,sources[i],deadline);if stamp<0 {return false;}if compiler_stamp>stamp {stamp=compiler_stamp;}
   text:[128]u8;j:[1]Jo;jo_start(j[..],text[..]);jo_put(j[..],name);jo_put(j[..],".o");object:=fs_join(metal,jo_text(j[..]),paths[1][..]);
@@ -120,7 +120,7 @@ af_native :: (root:string,here:string,work:string,coax:string,out:[]u8,deadline:
  if fs_mtime_ns(fs_join(metal,"libnetwork.dylib",paths[1][..]))<network_stamp {cmd:=[4]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"socket-library"];if af_run(cmd[..],out,deadline)<0 {return false;}}
  shader_stamp:=af_newest(fs_join(root,"metaverse/gpu",paths[1][..]));for dir:[2]string.["metaverse-engine/render","apps/openagents-web"] {stamp:=af_newest(fs_join(root,dir,paths[1][..]));if stamp>shader_stamp {shader_stamp=stamp;}}
  if fs_mtime_ns(fs_join(metal,"render/metal.json",paths[1][..]))<shader_stamp {env:[4096]u8;graphics:=proc_getenv("COAX_GRAPHICS",env[..]);if graphics=="" {tool_errln("Metal shader products need a graphics-qualified compiler: set COAX_GRAPHICS to its executable, then resume build.sh. The cached tool compiler is never replaced.");return false;}cmd:=[6]string.[fs_join(root,"coax/web/tool.sh",paths[2][..]),fs_join(here,"metal-build.coax",paths[3][..]),root,"shaders","--coax",graphics];if af_run(cmd[..],out,deadline)<0 {return false;}}
- pack:=fs_join(root,"apps/openagents-web/realms/everglade/assets/everglade.pack",paths[1][..]);asset_stamp:=af_native_stamp(root,"apps/aethyrforge-desktop/metal-assets.coax",deadline);if fs_mtime_ns(pack)>asset_stamp {asset_stamp=fs_mtime_ns(pack);}
+ pack:=fs_join(root,"apps/openagents-web/realms/everglade/assets/everglade.pack",paths[1][..]);asset_stamp:=af_native_stamp(root,"apps/metaverse-engine-desktop/metal-assets.coax",deadline);if fs_mtime_ns(pack)>asset_stamp {asset_stamp=fs_mtime_ns(pack);}
  if fs_mtime_ns(fs_join(metal,"assets/textures.config",paths[2][..]))<asset_stamp {cmd:=[5]string.[fs_join(root,"coax/web/tool.sh",paths[3][..]),fs_join(here,"metal-assets.coax",paths[4][..]),root,pack,fs_join(metal,"assets",paths[5][..])];if af_run(cmd[..],out,deadline)<0 {return false;}}
  return true;
 }
@@ -128,10 +128,10 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if tool_os()==TOOL_LINUX {if !args_load(a[..]) {return 2;}return fgl_build(a[..]);}
   if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 || (args_count(a[..]) == 2 && args_at(a[..], 1) != "--open") {
-    tool_errln("usage: apps/aethyrforge-desktop/build.sh [--open]"); return 2;
+    tool_errln("usage: apps/metaverse-engine-desktop/build.sh [--open]"); return 2;
   }
   root := args_at(a[..], 0); p: [1] AfPaths;
-  here := af_path(p[..], root, "apps/aethyrforge-desktop");
+  here := af_path(p[..], root, "apps/metaverse-engine-desktop");
   work := af_path(p[..], here, "build"); app := af_path(p[..], work, "Aethyrforge.app");
   res := af_path(p[..], app, "Contents/Resources"); mac := af_path(p[..], app, "Contents/MacOS");
   if !fs_mkdir(res) || !fs_mkdir(mac) { return 1; }
@@ -296,7 +296,7 @@ tool_main :: () -> int #export_c #effects(all) {
   hash_buf:[64]u8; for i:0..<64 {hash_buf[i]=out[i];} hash:=cast(string)hash_buf[..];
   for name:[3]string.["coder","mcworker","scene-cli"] {
     src_buf:[128]u8; sn:=0;
-    for c:(ifx name=="scene-cli" then "apps/aethyrforge-desktop/" else "coder/tui/") {src_buf[sn]=c;sn+=1;} for c:name {src_buf[sn]=c;sn+=1;}
+    for c:(ifx name=="scene-cli" then "apps/metaverse-engine-desktop/" else "coder/tui/") {src_buf[sn]=c;sn+=1;} for c:name {src_buf[sn]=c;sn+=1;}
     for c:".coax" {src_buf[sn]=c;sn+=1;}
     cmd:=[3]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,cast(string)src_buf[0..<sn]),ifx name=="scene-cli" then "--help" else "--version"];
     child:=af_start(cmd[..]); if child<0 {return 1;} closed:=proc_close_stdin(child);

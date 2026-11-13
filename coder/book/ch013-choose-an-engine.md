@@ -169,7 +169,7 @@ decided effort. No absent or cooled-down engine can become eligible from a
 model answer. New local/Pylon routing records identify `coder.route.v2` and its
 source/model profile; the legacy record and System One wire are unchanged.
 See [the proto](../../proto/openagents/coder/route/v2/route.proto) and
-[desktop instructions](../../apps/aethyrforge-desktop/README.md).
+[desktop instructions](../../apps/metaverse-engine-desktop/README.md).
 
 Finite live probes distinguished a typo (Codex/low) from a multi-service
 refactor (Claude/high/Opus). Native automatic first/follow-up chats preserved

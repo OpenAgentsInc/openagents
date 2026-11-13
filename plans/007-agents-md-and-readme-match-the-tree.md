@@ -48,7 +48,7 @@ Tracked areas with no row, and what each is (verified against the tree):
 | `coder/` | 143 | Coder, the coding agent: `book/` (*Coder: Coding Agents From Scratch*), `plugins/`, `tests/` and `tui/`. Check: `python3 psionic/tests/book.py --book coder`. |
 | `everglade/` | 34 | Everglade, the MMORPG on the D&D 5E SRD: `book/`, `docs/` (the Housewright, Golemancy and mounts specs), `world/`, `hud/` and `features.coax`. Most of its game code is still in `apps/openagents-web/` and `metaverse/`. Check: `coax/web/tool.sh everglade-parity`. |
 | `apps/openagents-desktop/` | 88 | The macOS desktop app in Coax, with `build.sh` and `check.sh`. Design: `docs/desktop/coax-desktop.md`. |
-| `apps/aethyrforge-desktop/` | 113 | Metaverse Engine desktop (experimental): the native realm builder. It has its own `README.md`. |
+| `apps/metaverse-engine-desktop/` | 113 | Metaverse Engine desktop (experimental): the native realm builder. It has its own `README.md`. |
 | `apps/shared/` | 50 | Coax shared between apps: dictation (`dictation*.coax`) and the Zeron UI library (`zeron/`). |
 | `tools/` | 133 | `coax-nostr/` (guard, fuzz and audit harnesses for the Nostr and cryptography libraries) and `coax-unicode/tables.py`. Not to be confused with `metaverse/tools/`. |
 | `bench/` | 2 | Recorded voice benchmark results (`bench/voice/`). |
@@ -152,7 +152,7 @@ Nothing here needs a compiler or the network.
 
 In the table under `## What is here`, add one row for each of the eight
 paths in "Current state", using the description given there. Put
-`apps/openagents-desktop/`, `apps/aethyrforge-desktop/` and `apps/shared/`
+`apps/openagents-desktop/`, `apps/metaverse-engine-desktop/` and `apps/shared/`
 directly after the `apps/openagents-cli/` row. Put `bitcoin/` directly after
 `nostr/`. Put `coder/`, `everglade/`, `tools/` and `bench/` at the end.
 Match the existing rows' format: the path in backticks, then one cell of
@@ -163,7 +163,7 @@ that each file or directory the description names exists. Drop any that do
 not.
 
 **Verify**:
-`for p in bitcoin coder everglade apps/openagents-desktop apps/aethyrforge-desktop apps/shared tools bench; do grep -q "^| \`$p/\`" AGENTS.md || echo "missing $p"; done`
+`for p in bitcoin coder everglade apps/openagents-desktop apps/metaverse-engine-desktop apps/shared tools bench; do grep -q "^| \`$p/\`" AGENTS.md || echo "missing $p"; done`
 prints nothing.
 
 ### Step 2: Fix the README

@@ -22,7 +22,7 @@ lands changes, and routes world edits, tuning and code changes.
 
 ## Current build
 
-`apps/aethyrforge-desktop/` now contains the AppKit/WKWebView shell, its Coax
+`apps/metaverse-engine-desktop/` now contains the AppKit/WKWebView shell, its Coax
 entry-point rules and Coax build tool. It bundles the website's existing
 `everglade5e.wasm`, shaders, pack and browser host, the native room, a static
 page server, the voice Wasm and a local Parakeet voice host. This is the same
@@ -336,7 +336,7 @@ page server, the voice Wasm and a local Parakeet voice host. This is the same
 
 The remaining sections describe the target behavior. They do not imply every voice
 acceptance criteria already pass. Build and native smoke-check instructions are
-in [the app README](../../apps/aethyrforge-desktop/README.md).
+in [the app README](../../apps/metaverse-engine-desktop/README.md).
 
 Shell/save checkpoint (`d1f14ec560`): both native smoke launches drew a WebGPU scene in 4.92 s
 and 5.07 s. A keyboard placement followed by DONE saved local version 23; reopening
@@ -406,7 +406,7 @@ panes, PUBLISH and REVERT. No mode switches.
 
 | Part | What it does | Where it lives |
 |---|---|---|
-| App shell | An AppKit window, the menu, the mic and Space key, and the processes below. | `apps/aethyrforge-desktop/` (Swift host, Coax logic, like `apps/openagents-desktop/`) |
+| App shell | An AppKit window, the menu, the mic and Space key, and the processes below. | `apps/metaverse-engine-desktop/` (Swift host, Coax logic, like `apps/openagents-desktop/`) |
 | World view | The same Everglade build as the site, drawn with WebGPU in a WKWebView. | The page from `apps/openagents-web/build.sh`, loaded from the local server |
 | Local room | The room server in `--dev` mode: the local player is the admin, it saves the world document, and every page reloads it. | `coax/web/room/bin/room --dev DIR` (a38754d290) |
 | Local page server | It serves the built page and passes `/api/` to the room. | `coax/web/serve.sh --static --api PORT` |
@@ -509,11 +509,11 @@ Because it is a real local room, you can test edits as players do:
 ## Build and run
 
 ```sh
-apps/aethyrforge-desktop/build.sh --open
+apps/metaverse-engine-desktop/build.sh --open
 ```
 
 It builds the Everglade page and room when their source trees are newer, builds
-the app at `apps/aethyrforge-desktop/build/Aethyrforge.app`, and opens a complete
+the app at `apps/metaverse-engine-desktop/build/Aethyrforge.app`, and opens a complete
 copy at `~/.openagents/aethyrforge/Aethyrforge.app`. That copy runs without the
 checkout. The app picks free local ports for the room and page server on each
 start, and stops both when it quits. The local world directory also contains
