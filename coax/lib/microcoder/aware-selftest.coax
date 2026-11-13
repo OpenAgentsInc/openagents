@@ -320,6 +320,35 @@ as_child :: (dir: string, coax: string) -> int {
   line = mc_aw_report(aw, l, rep[..]);
   as_check(m, ending == MC_END_FINISHED && l[0].reply == "three" && l[0].finish_refused == 2 && as_has(line, "\"unproven\":[") && as_has(line, "\"file shapes.coax: fewer checks (#test, #forall) than when the run started; put them back: 1 then, 0 now\"]}}"), "E: after two refusals the finish stands, and the report's unproven names the weakened file for a person", line);
 
+  // ---- F: a run that reads for 12 steps and changes nothing is told once to make its first edit
+  ok = true;
+  for i: 0..<13 { ok = ok && as_reply(m, replies, "{\"rationale\":\"read\",\"notes\":[],\"edits\":[],\"questions\":[],\"commands\":[],\"view\":[\"shapes.coax\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}"); }
+  ok = ok && as_reply(m, replies, "{\"rationale\":\"done\",\"notes\":[],\"edits\":[],\"questions\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"read\",\"ask\":\"none\"}") && jf_context(journal[..], "run F");
+  fb: [FS_PATH_MAX] u8; memf := fs_join(dir, "mem-f", fb[..]);
+  why = as_begin(m, "Read shapes.coax.", false, true, coax, memf, cwd);
+  ending = as_drive(m, journal[..], cwd, false);
+  notes = as_str(m, as_state(m), "notes");
+  first := ps_find(notes, "You have taken 12 steps and changed nothing.");
+  as_check(m, ok && why == "" && ending == MC_END_FINISHED && first >= 0 && ps_find(cast(string) notes[first + 10..<notes.count], "You have taken 12 steps") < 0 && aw[0].nudged, "F: twelve steps with no change bring one note to make the first edit", notes);
+
+  // ---- G: two edits of one file in one action both name the hash read before the action; an 8-digit hash is too short
+  gtext := "alpha\nbeta\ngamma\n";
+  gp: [FS_PATH_MAX] u8; ok = fs_write(fs_join(cwd, "g.txt", gp[..]), gtext);
+  ghb: [IX_HASH] u8; gh := ix_hash12(ix_hash(gtext, ghb[..]));
+  gb: [2048] u8;
+  gn := json_raw(gb[..], 0, "{\"rationale\":\"two edits\",\"notes\":[],\"edits\":[{\"path\":\"g.txt\",\"old\":\"alpha\",\"new\":\"ALPHA\",\"seen\":\""); gn = json_raw(gb[..], gn, gh);
+  gn = json_raw(gb[..], gn, "\",\"name\":\"\"},{\"path\":\"g.txt\",\"old\":\"gamma\",\"new\":\"GAMMA\",\"seen\":\""); gn = json_raw(gb[..], gn, gh);
+  gn = json_raw(gb[..], gn, "\",\"name\":\"\"},{\"path\":\"g.txt\",\"old\":\"beta\",\"new\":\"BETA\",\"seen\":\""); gn = json_raw(gb[..], gn, cast(string) gh[0..<8]);
+  gn = json_raw(gb[..], gn, "\",\"name\":\"\"}],\"questions\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+  ok = ok && gn > 0 && as_reply(m, replies, cast(string) gb[0..<gn]);
+  ok = ok && as_reply(m, replies, AS_DONE) && jf_context(journal[..], "run G");
+  why = as_begin(m, "Capitalise g.txt.", true, false, coax, mem, cwd);
+  ending = as_drive(m, journal[..], cwd, false);
+  j = as_state(m);
+  g3 := as_field(m, j, 0, 2, "failed");
+  as_check(m, ok && why == "" && ending == MC_END_FINISHED && as_file(m, cwd, "g.txt") == "ALPHA\nbeta\nGAMMA\n" && aw[0].stale_edits == 1, "G: a second edit of a file in the same action, naming the hash read before it, applies", as_file(m, cwd, "g.txt"));
+  as_check(m, as_has(g3, "too short: seen needs the hash's first 12 hex digits"), "G: a hash of 8 digits is refused as too short, with the hash to give", g3);
+
   print("aware selftest: % passed, % failed\n", m[0].pass, m[0].fail);
   if m[0].fail == 0 { print("aware selftest: ok\n"); return 0; }
   return 1;

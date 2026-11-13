@@ -262,7 +262,7 @@ mc_run_call :: (r: [] McRun) {
   if r[0].journal.count>0 && !np_budget(true,r[0].l[0].steps,cxproc_now_ms(),r[0].deadline) {
     r[0].l[0].ending=MC_END_FAILED;r[0].l[0].why=mc_run_limit(MC_LIMIT_CALL,r[0].l[0].steps,cxproc_now_ms(),r[0].deadline);return;
   }
-  if r[0].aw.count > 0 && r[0].aw[0].memory { mc_aw_render(r[0].aw, r[0].l[..]); }     // the state's memory key, as the store is now
+  if r[0].aw.count > 0 && r[0].aw[0].memory { mc_aw_render(r[0].aw, r[0].l[..]); x := mc_aw_nudge(r[0].aw, r[0].l[..]); }     // the state's memory key, as the store is now; a long read with no edit is told to edit
   req := mc_request(r[0].l[..]);
   if r[0].effort.count > 0 { req.effort = r[0].effort; }
   mc_rs_reset(r[0].rs[..]);
@@ -464,7 +464,7 @@ mc_run_edit_aware :: (r: [] McRun, out: [] McRunEvent, k: int, i: int) -> int {
   if !mc_run_intent(r, AjKind.command_intent, label) { return mc_run_failed(r, out, k); }
   later := false;
   for j: i + 1..<a.ne { if a.edits[j].path == e.path { later = true; } }
-  x := mc_aw_edit(r[0].aw, e, !later, mc_run_left(r), r[0].tb[..]);
+  x := mc_aw_edit(r[0].aw, e, !later, mc_run_left(r), mc_run_step(r), r[0].tb[..]);
   why := mc_aw_edit_why(r[0].aw, x);
   if r[0].journal.count > 0 && (!jf_output(r[0].journal, ifx x.ok then "applied" else why) || !jf_result(r[0].journal, ifx x.ok then "exit=0 timed_out=false" else "exit=1 timed_out=false")) { return mc_run_failed(r, out, k); }
   mc_edited_shown(r[0].l[..], e.path, x.ok, why, x.from, x.to, mc_aw_edit_shown(r[0].aw, x));
