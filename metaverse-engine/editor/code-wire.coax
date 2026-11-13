@@ -1,0 +1,305 @@
+// A realm's code from the browser, on the dev server only (GitHub #13421, the browser editor's
+// E12; docs/editor/2026-11-12-browser-editor.md, docs/protocol/realm-code-v1.md). This file is
+// the one codec of realm.code.v1 (proto/world/code-v1.json holds the bytes) and the one rule for
+// which files a page may open: its own realm's sources, and nothing else.
+//
+// The editor shell on a page the dev server serves asks (a POST to RC_URL):
+//   realm.code.v1 list PAGE                 the realm's source files
+//   realm.code.v1 read PAGE PATH            one file's text
+//   realm.code.v1 save PAGE PATH BYTES      then a line end and BYTES bytes: the file's new text
+// and the dev server answers:
+//   realm.code.v1 files PAGE N              then N lines, each `f PATH BYTES`: a file and its size
+//   realm.code.v1 file PATH BYTES           then a line end and the file's BYTES bytes
+//   realm.code.v1 saved PATH 0              the file was written and the compiler's check found nothing
+//   realm.code.v1 errors PATH BYTES         the file was written; then a line end and the compiler's
+//                                           words (RC_ERRORS bytes at most), BYTES of them
+//   realm.code.v1 refused 0 WORDS           nothing was read or written, and why, to the line's end
+// PAGE is the page's module (a-z, 0-9 and -, a letter first, RC_PAGE bytes at most). PATH is the
+// file from the repository's root (rc_path_ok): under metaverse/PAGE/, its parts letters, digits,
+// '.', '_' and '-' with no part that starts with a dot, ending .coax or .wgsl, RC_PATH bytes at
+// most. No other path is ever read or written. A deployed page has no such route.
+//   coax/bin/coax test metaverse-engine/editor/code-wire.coax --library
+#load "../content/tables.coax";
+
+RC_SCHEMA :: "realm.code.v1";
+RC_URL :: "/coaxial/code";
+RC_PAGE :: 32;         // bytes in a page's name
+RC_PATH :: 160;        // bytes in a file's path
+RC_FILES :: 96;        // files a list holds
+RC_TEXT :: 196608;     // bytes of a file the editor opens and saves (192 KB)
+RC_ERRORS :: 4096;     // bytes of the compiler's words an answer carries
+RC_HEAD :: 256;        // bytes the first line of an ask or an answer may take
+RC_LIST :: 0; RC_READ :: 1; RC_SAVE :: 2;                                    // what is asked
+RC_FILES_ARE :: 0; RC_FILE :: 1; RC_SAVED :: 2; RC_ERRORS_ARE :: 3; RC_REFUSED :: 4;   // what is answered
+RC_ASKS :: [3] string.["list", "read", "save"];
+RC_ANSWERS :: [5] string.["files", "file", "saved", "errors", "refused"];
+
+// An ask as read: `text` is a save's new text. The strings are parts of the bytes read.
+RcAsk :: struct { ok: bool; op: int; page: string; path: string; text: string; }
+// An answer as read: `name` is the page (files) or the path; `n` the files or the bytes; `rest`
+// the lines, the text or the words after the first line.
+RcAnswer :: struct { ok: bool; what: int; name: string; n: int; rest: string; }
+RcFile :: struct { ok: bool; path: string; bytes: int; next: int; }
+
+rc_page_ok :: (page: string) -> bool #export_c #effects(all) {
+  if page.count < 1 || page.count > RC_PAGE || page[0] < 'a' || page[0] > 'z' { return false; }
+  for b: page { if !((b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '-') { return false; } }
+  return true;
+}
+rc_ends :: (s: string, tail: string) -> bool { return s.count > tail.count && cast(string) s[s.count - tail.count..<s.count] == tail; }
+// The realm's folder, from the repository's root, with its closing slash: metaverse/PAGE/.
+rc_folder :: (page: string, out: [] u8) -> string {
+  n := ct_put(out, 0, "metaverse/"); n = ct_put(out, n, page); n = ct_put(out, n, "/");
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// Whether a path is one of this page's own realm sources by its name alone (the dev server also
+// holds it to the module's source list and to a plain file that is where its name says).
+rc_path_ok :: (page: string, path: string) -> bool #export_c #effects(all) {
+  buf: [RC_PAGE + 16] u8;
+  if !rc_page_ok(page) || path.count > RC_PATH { return false; }
+  folder := rc_folder(page, buf[..]);
+  if folder.count == 0 || path.count <= folder.count || cast(string) path[0..<folder.count] != folder { return false; }
+  if !rc_ends(path, ".coax") && !rc_ends(path, ".wgsl") { return false; }
+  start := true;   // at the first byte of a part
+  for b: path {
+    if b == '/' { if start { return false; } start = true; continue; }
+    if start && b == '.' { return false; }
+    if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '.' || b == '_' || b == '-') { return false; }
+    start = false;
+  }
+  return !start;
+}
+// The source the compiler checks when a file is saved: the realm's module, or its shaders' module
+// for a file under gpu/ (a part is checked as its module loads it, never alone). "" for a file
+// the compiler does not read (.wgsl).
+rc_root :: (page: string, path: string, out: [] u8) -> string #effects(all) {
+  if !rc_path_ok(page, path) || !rc_ends(path, ".coax") { return ""; }
+  n := ct_put(out, 0, "metaverse/"); n = ct_put(out, n, page);
+  gpu := n + 5 <= path.count && cast(string) path[n..<n + 5] == "/gpu/";
+  n = ct_put(out, n, ifx gpu then "/gpu/" else "/"); n = ct_put(out, n, page); n = ct_put(out, n, ".coax");
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// The same for C (the dev server): the root's bytes into out, their count, 0 for none.
+realm_code_root :: (page: string, path: string, out: [] u8) -> int #export_c #effects(all) { return rc_root(page, path, out).count; }
+// The limits, for C: 0 the bytes of a file, 1 the bytes of the compiler's words, 2 the files in a list.
+realm_code_limit :: (which: int) -> int #export_c #effects(all) { return ifx which == 0 then RC_TEXT else ifx which == 1 then RC_ERRORS else ifx which == 2 then RC_FILES else 0; }
+
+// ---- writing
+
+// An ask's bytes: "" when it is not one or does not fit.
+rc_ask :: (op: int, page: string, path: string, text: string, out: [] u8) -> string #effects(all) {
+  if op < RC_LIST || op > RC_SAVE || !rc_page_ok(page) || (op != RC_LIST && !rc_path_ok(page, path)) || (op == RC_SAVE && text.count > RC_TEXT) { return ""; }
+  asks := RC_ASKS;
+  n := ct_put(out, 0, RC_SCHEMA); n = ct_put(out, n, " "); n = ct_put(out, n, asks[op]); n = ct_put(out, n, " "); n = ct_put(out, n, page);
+  if op != RC_LIST { n = ct_put(out, n, " "); n = ct_put(out, n, path); }
+  if op == RC_SAVE { n = ct_put(out, n, " "); n = ct_put_int(out, n, text.count); }
+  n = ct_put(out, n, "\n");
+  if op == RC_SAVE { n = ct_put(out, n, text); }
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+// An answer's first line, at n: the place after it. What follows it (files' lines, a file's text,
+// the compiler's words) the writer puts after. A refusal's words are on the line itself.
+rc_head :: (out: [] u8, at: int, what: int, name: string, n: int) -> int #effects(all) {
+  if what < RC_FILES_ARE || what > RC_REFUSED { return out.count + 1; }
+  answers := RC_ANSWERS;
+  m := ct_put(out, at, RC_SCHEMA); m = ct_put(out, m, " "); m = ct_put(out, m, answers[what]); m = ct_put(out, m, " ");
+  if what == RC_REFUSED { m = ct_put(out, m, "0 "); m = ct_put(out, m, name); return ct_put(out, m, "\n"); }
+  m = ct_put(out, m, name); m = ct_put(out, m, " "); m = ct_put_int(out, m, n);
+  return ct_put(out, m, "\n");
+}
+rc_file_line :: (out: [] u8, at: int, path: string, bytes: int) -> int #effects(all) {
+  m := ct_put(out, at, "f "); m = ct_put(out, m, path); m = ct_put(out, m, " "); m = ct_put_int(out, m, bytes);
+  return ct_put(out, m, "\n");
+}
+// The same two for C: the bytes written at out[0], 0 when they do not fit.
+realm_code_head :: (what: int, name: string, n: int, out: [] u8) -> int #export_c #effects(all) {
+  m := rc_head(out, 0, what, name, n);
+  return ifx m > out.count then 0 else m;
+}
+realm_code_file_line :: (path: string, bytes: int, out: [] u8) -> int #export_c #effects(all) {
+  m := rc_file_line(out, 0, path, bytes);
+  return ifx m > out.count then 0 else m;
+}
+
+// ---- reading
+
+// The first line's words: the place of the k-th space-parted word of line, as a string ("" past the last).
+rc_word :: (line: string, k: int) -> string {
+  at := 0; word := 0;
+  while at <= line.count {
+    to := at;
+    while to < line.count && line[to] != ' ' { to += 1; }
+    if word == k { return cast(string) line[at..<to]; }
+    at = to + 1; word += 1;
+  }
+  return "";
+}
+rc_words :: (line: string) -> int { n := 1; for b: line { if b == ' ' { n += 1; } } return n; }
+rc_line_end :: (body: string) -> int {
+  for i: 0..<body.count { if body[i] == '\n' { return i; } if i >= RC_HEAD { return -1; } }
+  return -1;
+}
+// A whole number as its writer writes it: no sign, no leading zero but zero itself.
+rc_count :: (s: string) -> int {
+  if s.count == 0 || s.count > 9 || (s.count > 1 && s[0] == '0') { return -1; }
+  v := ct_num(s);
+  return ifx v.ok && v.v >= 0 then v.v else -1;
+}
+rc_ask_read :: (body: string) -> RcAsk #export_c #effects(all) {
+  no: RcAsk;
+  end := rc_line_end(body);
+  if end < 0 { return no; }
+  line := cast(string) body[0..<end]; rest := cast(string) body[end + 1..<body.count];
+  words := rc_words(line); asks := RC_ASKS;
+  if rc_word(line, 0) != RC_SCHEMA || words < 3 { return no; }
+  a := RcAsk.{page = rc_word(line, 2), op = -1};
+  for name, k: asks { if rc_word(line, 1) == name { a.op = k; } }
+  if a.op < 0 || !rc_page_ok(a.page) || words != 3 + a.op { return no; }
+  if a.op == RC_LIST { a.ok = rest.count == 0; return ifx a.ok then a else no; }
+  a.path = rc_word(line, 3);
+  if !rc_path_ok(a.page, a.path) { return no; }
+  if a.op == RC_READ { a.ok = rest.count == 0; return ifx a.ok then a else no; }
+  n := rc_count(rc_word(line, 4));
+  if n < 0 || n > RC_TEXT || n != rest.count { return no; }
+  for b: rest { if b == 0 { return no; } }   // a source is text
+  a.text = rest; a.ok = true;
+  return a;
+}
+rc_answer_read :: (body: string) -> RcAnswer #effects(all) {
+  no: RcAnswer;
+  end := rc_line_end(body);
+  if end < 0 { return no; }
+  line := cast(string) body[0..<end]; rest := cast(string) body[end + 1..<body.count];
+  answers := RC_ANSWERS;
+  if rc_word(line, 0) != RC_SCHEMA || rc_words(line) < 4 { return no; }
+  a := RcAnswer.{what = -1, rest = rest};
+  for name, k: answers { if rc_word(line, 1) == name { a.what = k; } }
+  if a.what < 0 { return no; }
+  if a.what == RC_REFUSED {
+    // the words are the line after "realm.code.v1 refused 0 "
+    lead := RC_SCHEMA.count + 11;
+    if rc_word(line, 2) != "0" || line.count <= lead || rest.count != 0 { return no; }
+    a.name = cast(string) line[lead..<line.count]; a.ok = true;
+    return a;
+  }
+  if rc_words(line) != 4 { return no; }
+  a.name = rc_word(line, 2); a.n = rc_count(rc_word(line, 3));
+  if a.n < 0 { return no; }
+  if a.what == RC_FILES_ARE {
+    if !rc_page_ok(a.name) || a.n > RC_FILES { return no; }
+    at := 0;
+    for k: 0..<a.n { f := rc_file_at(a.name, rest, at); if !f.ok { return no; } at = f.next; }
+    if at != rest.count { return no; }
+  } else {
+    if a.name.count == 0 || a.name.count > RC_PATH { return no; }
+    if a.what == RC_FILE && (a.n > RC_TEXT || a.n != rest.count) { return no; }
+    if a.what == RC_SAVED && (a.n != 0 || rest.count != 0) { return no; }
+    if a.what == RC_ERRORS_ARE && (a.n < 1 || a.n > RC_ERRORS || a.n != rest.count) { return no; }
+  }
+  a.ok = true;
+  return a;
+}
+// The file whose line begins at `at` in a files answer's lines, and where the next begins.
+rc_file_at :: (page: string, lines: string, at: int) -> RcFile #effects(all) {
+  no: RcFile;
+  if at < 0 || at >= lines.count { return no; }
+  to := at;
+  while to < lines.count && lines[to] != '\n' { to += 1; }
+  if to >= lines.count { return no; }
+  line := cast(string) lines[at..<to];
+  if rc_words(line) != 3 || rc_word(line, 0) != "f" { return no; }
+  f := RcFile.{path = rc_word(line, 1), bytes = rc_count(rc_word(line, 2)), next = to + 1};
+  f.ok = rc_path_ok(page, f.path) && f.bytes >= 0;
+  return ifx f.ok then f else no;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a page's own realm sources are the only paths: nothing above, beside or hidden, and only Coax and WGSL" {
+  yes := [5] string.["metaverse/splice/walk.coax", "metaverse/splice/gpu/splice.coax", "metaverse/splice/content/shipped.coax", "metaverse/splice/a_b-c.9.wgsl", "metaverse/splice/A.coax"];
+  for p: yes { #assert rc_path_ok("splice", p); }
+  no := [22] string.["", "walk.coax", "/metaverse/splice/walk.coax", "metaverse/splice/../orbit/orbit.coax", "metaverse/splice/./walk.coax", "metaverse/splice//walk.coax",
+    "metaverse/splice/.hidden.coax", "metaverse/splice/.git/x.coax", "metaverse/orbit/orbit.coax", "metaverse/splice-two/walk.coax", "metaverse/splice", "metaverse/splice/",
+    "metaverse/splice/splice-face.c", "metaverse/splice/README.md", "metaverse/splice/walk.coax/", "metaverse/splice/walk coax.coax", "metaverse/splice/w\\x.coax",
+    "metaverse/splice/walk.coax\n", "metaverse/splice/~x.coax", "metaverse/splice/.coax", "metaverse/splice/x/.wgsl", "Metaverse/splice/walk.coax"];
+  for p: no { #assert !rc_path_ok("splice", p); }
+  #assert !rc_path_ok("orbit", "metaverse/splice/walk.coax") && !rc_path_ok("", "metaverse//walk.coax") && !rc_path_ok("..", "metaverse/../walk.coax") && !rc_path_ok("Splice", "metaverse/Splice/walk.coax");
+  #assert rc_page_ok("splice") && rc_page_ok("everglade-2") && !rc_page_ok("2a") && !rc_page_ok("a/b") && !rc_page_ok("a.b") && !rc_page_ok("abcdefghijklmnopqrstuvwxyzabcdefg");
+  long: [RC_PATH + 8] u8; n := ct_put(long[..], 0, "metaverse/splice/");
+  while n < RC_PATH - 5 { long[n] = 'a'; n += 1; }
+  n = ct_put(long[..], n, ".coax");
+  #assert n == RC_PATH && rc_path_ok("splice", cast(string) long[0..<n]);
+  long[20] = 'b'; m := ct_put(long[..], RC_PATH - 5, "a.coax");
+  #assert m == RC_PATH + 1 && !rc_path_ok("splice", cast(string) long[0..<m]);
+}
+
+#test "a saved file is checked as its module loads it: the realm's module, the shaders' for a file under gpu/, none for WGSL" {
+  out: [RC_PATH] u8;
+  #assert rc_root("splice", "metaverse/splice/walk.coax", out[..]) == "metaverse/splice/splice.coax" && rc_root("splice", "metaverse/splice/splice.coax", out[..]) == "metaverse/splice/splice.coax";
+  #assert rc_root("splice", "metaverse/splice/content/shipped.coax", out[..]) == "metaverse/splice/splice.coax" && rc_root("splice", "metaverse/splice/gpu/splice.coax", out[..]) == "metaverse/splice/gpu/splice.coax";
+  #assert rc_root("splice", "metaverse/splice/gpu/sky.coax", out[..]) == "metaverse/splice/gpu/splice.coax" && rc_root("splice", "metaverse/splice/gpuzzle.coax", out[..]) == "metaverse/splice/splice.coax";
+  #assert rc_root("splice", "metaverse/splice/sky.wgsl", out[..]) == "" && rc_root("splice", "metaverse/orbit/orbit.coax", out[..]) == "" && rc_root("splice", "metaverse/splice/walk.coax", out[0..<8]) == "";
+  #assert realm_code_root("splice", "metaverse/splice/walk.coax", out[..]) == 28 && realm_code_root("splice", "../x.coax", out[..]) == 0;
+  #assert realm_code_limit(0) == RC_TEXT && realm_code_limit(1) == RC_ERRORS && realm_code_limit(2) == RC_FILES && realm_code_limit(3) == 0 && realm_code_limit(-1) == 0;
+}
+
+#test "an ask writes and reads back as it was: list, read, and save with its text; any other bytes are refused" {
+  out: [RC_HEAD + 64] u8;
+  l := rc_ask(RC_LIST, "splice", "", "", out[..]);
+  #assert l == "realm.code.v1 list splice\n";
+  a := rc_ask_read(l);
+  #assert a.ok && a.op == RC_LIST && a.page == "splice" && a.path.count == 0;
+  r := rc_ask(RC_READ, "splice", "metaverse/splice/walk.coax", "", out[..]);
+  #assert r == "realm.code.v1 read splice metaverse/splice/walk.coax\n";
+  a = rc_ask_read(r);
+  #assert a.ok && a.op == RC_READ && a.path == "metaverse/splice/walk.coax" && a.text.count == 0;
+  s := rc_ask(RC_SAVE, "splice", "metaverse/splice/walk.coax", "x :: 1;\n// two\n", out[..]);
+  #assert s == "realm.code.v1 save splice metaverse/splice/walk.coax 15\nx :: 1;\n// two\n";
+  a = rc_ask_read(s);
+  #assert a.ok && a.op == RC_SAVE && a.path == "metaverse/splice/walk.coax" && a.text == "x :: 1;\n// two\n";
+  e := rc_ask(RC_SAVE, "splice", "metaverse/splice/walk.coax", "", out[..]);
+  #assert e == "realm.code.v1 save splice metaverse/splice/walk.coax 0\n" && rc_ask_read(e).ok && rc_ask_read(e).text.count == 0;
+  // what is not an ask
+  #assert rc_ask(RC_READ, "splice", "metaverse/orbit/orbit.coax", "", out[..]) == "" && rc_ask(RC_SAVE, "splice", "../x.coax", "x", out[..]) == "" && rc_ask(3, "splice", "", "", out[..]) == "" && rc_ask(-1, "splice", "", "", out[..]) == "";
+  #assert rc_ask(RC_LIST, "Splice", "", "", out[..]) == "" && rc_ask(RC_READ, "splice", "metaverse/splice/walk.coax", "", out[0..<20]) == "";
+  bad := [14] string.["", "realm.code.v1 list splice", "realm.code.v2 list splice\n", "realm.code.v1 list splice\nmore", "realm.code.v1 list splice x\n", "realm.code.v1 drop splice\n",
+    "realm.code.v1 read splice metaverse/orbit/orbit.coax\n", "realm.code.v1 read splice metaverse/splice/../x.coax\n", "realm.code.v1 read splice\n",
+    "realm.code.v1 save splice metaverse/splice/walk.coax 3\nab", "realm.code.v1 save splice metaverse/splice/walk.coax 03\nabc", "realm.code.v1 save splice metaverse/splice/walk.coax -1\n",
+    "realm.code.v1 save splice metaverse/splice/walk.coax 3\na\0b", "realm.code.v1  list splice\n"];
+  for b: bad { #assert !rc_ask_read(b).ok; }
+}
+
+#test "an answer writes and reads back: the files with their sizes, a file's text, saved, the compiler's words, a refusal in words" {
+  out: [1024] u8;
+  n := rc_head(out[..], 0, RC_FILES_ARE, "splice", 2);
+  n = rc_file_line(out[..], n, "metaverse/splice/splice.coax", 46171);
+  n = rc_file_line(out[..], n, "metaverse/splice/gpu/splice.coax", 900);
+  files := cast(string) out[0..<n];
+  #assert files == "realm.code.v1 files splice 2\nf metaverse/splice/splice.coax 46171\nf metaverse/splice/gpu/splice.coax 900\n";
+  a := rc_answer_read(files);
+  #assert a.ok && a.what == RC_FILES_ARE && a.name == "splice" && a.n == 2;
+  f := rc_file_at(a.name, a.rest, 0);
+  #assert f.ok && f.path == "metaverse/splice/splice.coax" && f.bytes == 46171;
+  g := rc_file_at(a.name, a.rest, f.next);
+  #assert g.ok && g.path == "metaverse/splice/gpu/splice.coax" && g.bytes == 900 && g.next == a.rest.count && !rc_file_at(a.name, a.rest, g.next).ok;
+  two: [256] u8;
+  m := rc_head(two[..], 0, RC_FILE, "metaverse/splice/walk.coax", 8); m = ct_put(two[..], m, "x :: 1;\n");
+  b := rc_answer_read(cast(string) two[0..<m]);
+  #assert b.ok && b.what == RC_FILE && b.name == "metaverse/splice/walk.coax" && b.rest == "x :: 1;\n";
+  m = rc_head(two[..], 0, RC_SAVED, "metaverse/splice/walk.coax", 0);
+  #assert cast(string) two[0..<m] == "realm.code.v1 saved metaverse/splice/walk.coax 0\n" && rc_answer_read(cast(string) two[0..<m]).what == RC_SAVED && rc_answer_read(cast(string) two[0..<m]).ok;
+  m = rc_head(two[..], 0, RC_ERRORS_ARE, "metaverse/splice/walk.coax", 5); m = ct_put(two[..], m, "E0302");
+  c := rc_answer_read(cast(string) two[0..<m]);
+  #assert c.ok && c.what == RC_ERRORS_ARE && c.rest == "E0302" && c.n == 5;
+  m = rc_head(two[..], 0, RC_REFUSED, "That file is not one of this realm's.", 0);
+  #assert cast(string) two[0..<m] == "realm.code.v1 refused 0 That file is not one of this realm's.\n";
+  r := rc_answer_read(cast(string) two[0..<m]);
+  #assert r.ok && r.what == RC_REFUSED && r.name == "That file is not one of this realm's.";
+  #assert realm_code_head(RC_SAVED, "metaverse/splice/walk.coax", 0, two[..]) == 49 && realm_code_head(RC_SAVED, "metaverse/splice/walk.coax", 0, two[0..<10]) == 0 && realm_code_head(9, "x", 0, two[..]) == 0;
+  #assert realm_code_file_line("metaverse/splice/walk.coax", 12, two[..]) == 32 && realm_code_file_line("metaverse/splice/walk.coax", 12, two[0..<4]) == 0;
+  bad := [13] string.["", "realm.code.v1 files splice 1\n", "realm.code.v1 files splice 1\nf metaverse/orbit/orbit.coax 1\n", "realm.code.v1 files splice 0\nf metaverse/splice/walk.coax 1\n",
+    "realm.code.v1 files splice 1\nf metaverse/splice/walk.coax 1", "realm.code.v1 file metaverse/splice/walk.coax 3\nab", "realm.code.v1 saved metaverse/splice/walk.coax 1\n",
+    "realm.code.v1 saved metaverse/splice/walk.coax 0\nx", "realm.code.v1 errors metaverse/splice/walk.coax 0\n", "realm.code.v1 refused 0 \n", "realm.code.v1 refused 1 words\n",
+    "realm.code.v2 saved metaverse/splice/walk.coax 0\n", "realm.code.v1 gone metaverse/splice/walk.coax 0\n"];
+  for x: bad { #assert !rc_answer_read(x).ok; }
+}

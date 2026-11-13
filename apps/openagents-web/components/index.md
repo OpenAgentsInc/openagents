@@ -10,11 +10,12 @@ Every component, working:
 - **Field and composer**: real text fields. Enter sends; Shift and Enter makes a line.
 - **Conversation**: your message in a dim frame, a tool call as a row that opens onto what was sent and what came back, and the agent's answer as plain Markdown with no frame.
 - **Code block**: its language and Copy in a strip, then the code.
+- **Code field**: code to edit, in the code face, with no wrapping. Enter makes a line and Tab indents.
 - **Notice**: an error, or a request for approval with Allow and Deny.
 - **Row**: a conversation in a list. The current one is bright over an underline.
 - **Menu**: rows in a panel.
 - **World card**: a world as a conversation shows it: its name, what it holds, and a link that opens its editor.
-- **Dock**: panes round something that still shows: a strip of actions, a list, the picked thing's fields and facts, and a foot. The editor that `?edit` opens over a world is built from it.
+- **Dock**: panes round something that still shows: a strip of actions, a list, the picked thing's fields and facts, and a foot. A wide right pane holds a file of code. The editor that `?edit` opens over a world is built from it.
 - **Header and text**: the title types in.
 
 Under a finger every control is at least 44 px either way. With a mouse they keep their smaller desktop sizes.

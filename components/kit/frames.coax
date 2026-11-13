@@ -153,6 +153,18 @@ k_field :: (t: [] Tree, u: [] Ui, id: string, placeholder: string, label: string
   tr_close(t);
   return f;
 }
+// Code field: many lines of code to edit, in the code face, as tall as the skin says and scrolling
+// both ways. Enter makes a line and Tab indents; nothing is sent by a key (a button beside it saves).
+// `lang` names what it holds ("coax"; "" is text). Answers the field's node (its id is `id`).
+k_code_field :: (t: [] Tree, u: [] Ui, id: string, lang: string, label: string) -> int {
+  ida: [UI_ID] u8;
+  i := k_frame(t, u, tr_cat(ida[..], id, ".frame"), TG_DIV, "field code-in", MF_FIELD);
+  f := tr_open(t, id, TG_TEXTAREA, "");
+  tr_attr(t, f, AT_LABEL, label); tr_attr(t, f, AT_LANG, ifx lang.count > 0 then lang else "text");
+  tr_close(t);
+  tr_close(t);
+  return f;
+}
 // Composer: the field a message is written in, over a row with Send on the right. The field is one line
 // tall and grows with what is typed, to the skin's most (MONO_FIELD_LINES), then scrolls. Between
 // k_composer_begin and k_composer_end the caller adds what sits on the row's left (a note, a menu, an icon
@@ -531,6 +543,17 @@ k_menu :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
   pre := tr_find(t, "m.b2.pre");
   #assert t[0].nodes[pre].tag == TG_PRE && tr_text_of(t, pre) == "ls" && tr_text_of(t, tr_find(t, "m.b2.lang")) == "sh";
   #assert t[0].depth == 0 && t[0].lost == 0;
+}
+
+#test "a code field is a framed field that names its language and has no placeholder" {
+  ts: [1] Tree; t := ts[..]; us: [1] Ui; u := us[..];
+  ui_begin(u, 0, true); tr_begin(t);
+  f := k_code_field(t, u, "src", "coax", "The file's text");
+  g := k_code_field(t, u, "notes", "", "Notes");
+  ui_end(u);
+  #assert t[0].lost == 0 && t[0].depth == 0 && f == tr_find(t, "src") && t[0].nodes[f].tag == TG_TEXTAREA;
+  #assert tr_class(t, tr_find(t, "src.frame")) == "field code-in" && tr_attr_of(t, f, AT_LANG) == "coax" && tr_attr_of(t, f, AT_LABEL) == "The file's text";
+  #assert tr_attr_of(t, g, AT_LANG) == "text" && !tr_has(t, f, AT_PLACEHOLDER) && !tr_has(t, f, AT_ROWS);
 }
 
 #test "a tool call opens onto what it sent and what came back; a current row is framed" {

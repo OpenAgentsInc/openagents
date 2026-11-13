@@ -8,7 +8,8 @@
 #load "frames.coax";
 
 DK_TOP :: 0; DK_LEFT :: 1; DK_RIGHT :: 2; DK_BOTTOM :: 3;
-DK_SIDES :: [4] string.["pane pane-t", "pane pane-l", "pane pane-r", "pane pane-bm"];
+DK_WIDE :: 4;          // the right side, wide: a pane that holds a file of code
+DK_SIDES :: [5] string.["pane pane-t", "pane pane-l", "pane pane-r", "pane pane-bm", "pane pane-r pane-w"];
 
 // Dock: opens the layer. `over`: it lies over the whole window, and what is under it shows and
 // takes the pointer wherever no pane is; else it stands in the page where it is put, as tall as
@@ -16,11 +17,11 @@ DK_SIDES :: [4] string.["pane pane-t", "pane pane-l", "pane pane-r", "pane pane-
 k_dock :: (t: [] Tree, id: string, over: bool) -> int { return tr_open(t, id, TG_DIV, ifx over then "dock dock-over" else "dock"); }
 // Pane: a panel on a side of the dock, with its title when it has one. The top pane is a strip:
 // its controls stand in a row. A side pane's content scrolls inside it, and the bottom pane lies
-// across the foot. Close it with k_pane_end.
+// across the foot. A wide pane is a right pane the dock gives more room. Close it with k_pane_end.
 k_pane :: (t: [] Tree, u: [] Ui, id: string, side: int, title: string) -> int {
   ida: [UI_ID] u8; idb: [UI_ID] u8;
   sides := DK_SIDES;
-  i := k_frame(t, u, id, TG_SECTION, sides[ifx side < 0 || side > 3 then 0 else side], MF_PANEL);
+  i := k_frame(t, u, id, TG_SECTION, sides[ifx side < 0 || side > DK_WIDE then 0 else side], MF_PANEL);
   if title.count > 0 {
     tr_attr(t, i, AT_LABEL, title);
     h := tr_leaf(t, tr_cat(ida[..], id, ".h"), TG_H2, "sec-h", title);
@@ -96,6 +97,10 @@ DkTest :: struct { t: [1] Tree; u: [1] Ui; }
   #assert tr_class(t, g) == "prop" && tr_text_of(t, tr_find(t, "kit.n")) == "Kit" && tr_text_of(t, tr_find(t, "kit.v")) == "rover";
   tr_begin(t);
   d = k_dock(t, "dock", false);
+  w := k_pane(t, u, "code", DK_WIDE, "Code");
+  k_pane_end(t);
+  x := k_pane(t, u, "odd", 9, "");
+  k_pane_end(t);
   tr_close(t);
-  #assert tr_class(t, d) == "dock";
+  #assert tr_class(t, d) == "dock" && tr_class(t, w) == "pane pane-r pane-w" && tr_class(t, x) == "pane pane-t" && t[0].depth == 0;
 }

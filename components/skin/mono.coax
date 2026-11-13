@@ -137,6 +137,8 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, "textarea::placeholder{color:var(--ink-faint)}");
   n = mc(out, n, ".field{padding:10px 12px;max-width:420px;width:100%;--frame-bg:transparent}");
   n = mc(out, n, ".field:focus-within{--frame-line:var(--line-bright);--frame-deco:var(--line-bright)}");
+  // a code field: the code face, no wrapping, a set height that scrolls both ways
+  n = mc(out, n, ".code-in{max-width:none}.code-in textarea{font:13px/1.55 var(--mono);white-space:pre;overflow:auto;field-sizing:fixed;height:min(46vh,480px);max-height:none;tab-size:2}");
   n = mc(out, n, ".composer{padding:14px 16px 10px;display:flex;flex-direction:column;gap:8px;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
   n = mc(out, n, ".composer:focus-within{--frame-line:var(--line);--frame-deco:var(--line-bright)}");
   n = mc(out, n, ".composer-r{display:flex;align-items:center;gap:6px}.composer-r>.btn{margin-left:auto}");
@@ -336,6 +338,8 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".pane-t{grid-column:1/-1;padding:8px 12px}.pane-t>.pane-b{flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;overflow:visible}");
   // a side pane is as tall as what it holds, to the dock's height, so what is under the dock shows below it
   n = mc(out, n, ".pane-l{grid-column:1;grid-row:2}.pane-r{grid-column:3;grid-row:2}.pane-l,.pane-r{align-self:start;max-height:100%}");
+  // a wide right pane (a file of code): the dock's right column is as wide as it needs
+  n = mc(out, n, ".dock:has(.pane-w){grid-template-columns:minmax(0,280px) minmax(0,1fr) minmax(0,min(720px,54vw))}");
   n = mc(out, n, ".pane .list{width:100%}.pane .card{padding:12px;gap:10px}.pane .notice{padding:10px 12px}.pane-t .meta{margin-left:auto}");
   // the foot: a pane across the bottom, as tall as the skin says; put away, it takes no room. What fills its slot
   // (the chat's conversation) is as tall as the pane, with its own list of sessions left out; a page that hides its
@@ -351,7 +355,7 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   // a long menu is two columns, and a very long one three, so its last row is still on the screen
   n = mc(out, n, ".pane .menu.pop:has(>.row:nth-of-type(10)){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:min(560px,calc(100vw - 48px))}");
   n = mc(out, n, ".pane .menu.pop:has(>.row:nth-of-type(25)){grid-template-columns:repeat(3,minmax(0,1fr));width:min(820px,calc(100vw - 48px))}");
-  n = mc(out, n, "@media (max-width:760px){.dock{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pane-l,.pane-r{max-height:38vh;align-self:start}.pane-r{grid-column:2}}");
+  n = mc(out, n, "@media (max-width:760px){.dock,.dock:has(.pane-w){grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pane-l,.pane-r{max-height:38vh;align-self:start}.pane-r{grid-column:2}.pane-w{grid-column:1/-1}}");
   // under a finger a prop's field is a whole target too (#13448)
   n = mc(out, n, "@media (pointer:coarse){.prop{grid-template-columns:minmax(0,76px) minmax(44px,1fr)}.prop .field{padding:0}.prop .field input{padding:11px 10px}}");
   return n;

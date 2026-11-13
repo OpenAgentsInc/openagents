@@ -274,6 +274,12 @@ each module began to read its sources (`.live/NAME.started`). After the
 whole build, a listed source saved later than that is built again, by its
 module alone. A page file saved during the build reloads the tabs.
 
+The editor's Code pane saves a realm's source through the dev server
+(`POST /coaxial/code`, `realm.code.v1`, #13421;
+[the shape](../docs/protocol/realm-code-v1.md)). The save is a write to a
+watched source, so the same watch builds it and the same messages swap it
+in. Check: `coax/web/tool.sh code-route-check`.
+
 Dev builds split the generated C into 16 parts with an object cache per
 part, so a one-file edit recompiles one part. Checks:
 `coax/web/tool.sh serve-live-check` (12 cases against a fixture app, 301

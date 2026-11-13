@@ -1,0 +1,110 @@
+// Checks proto/world/code-v1.json against metaverse-engine/editor/code-wire.coax, the one codec of
+// a realm's code on the dev server (GitHub #13421): each pinned ask and answer reads as what the
+// profile says of it and writes back the same bytes; each rejected body does not; each path is
+// the realm's own or not, as the profile says; a saved file is checked through the root it names;
+// the limits and the address are the module's; the profile names itself, its version and this check.
+// Usage: coax/web/tool.sh metaverse-engine/tools/code-profile.coax proto/world/code-v1.json
+#import "Basic";
+#load "../editor/code-wire.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+CDP_CHECK :: "coax/web/tool.sh metaverse-engine/tools/code-profile.coax proto/world/code-v1.json";
+CDP_BYTES :: 4096;
+CdpWork :: struct { wire: [CDP_BYTES] u8; out: [CDP_BYTES] u8; a: [CDP_BYTES] u8; b: [CDP_BYTES] u8; c: [CDP_BYTES] u8; nodes: [1024] JvNode; }
+cdp_str :: (d: Jv, at: int, out: [] u8) -> string {
+  n := jv_str(d, at, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+cdp_lim :: (d: Jv, name: string) -> int { return jv_int(d, jv_get(d, jv_get(d, 0, "limits"), name), -1); }
+cdp_named :: (names: [] const string, word: string) -> int { for name, k: names { if name == word { return k; } } return -1; }
+cdp_asks :: (d: Jv, w: [] CdpWork) -> bool {
+  list := jv_get(d, 0, "asks"); ops := RC_ASKS; seen := 0;
+  if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) < 4 { return false; }
+  for i: 0..<jv_len(d, list) {
+    one := jv_at(d, list, i);
+    wire := cdp_str(d, jv_get(d, one, "wire"), w[0].wire[..]);
+    op := cdp_named(ops[..], cdp_str(d, jv_get(d, one, "op"), w[0].a[..]));
+    page := cdp_str(d, jv_get(d, one, "page"), w[0].a[..]); path := cdp_str(d, jv_get(d, one, "path"), w[0].b[..]); text := cdp_str(d, jv_get(d, one, "text"), w[0].c[..]);
+    r := rc_ask_read(wire);
+    if wire.count == 0 || op < 0 || !r.ok || r.op != op || r.page != page || r.path != path || r.text != text { return false; }
+    if rc_ask(op, page, path, text, w[0].out[..]) != wire { return false; }
+    seen |= 1 << op;
+  }
+  return seen == 7;
+}
+cdp_answers :: (d: Jv, w: [] CdpWork) -> bool {
+  list := jv_get(d, 0, "answers"); kinds := RC_ANSWERS; seen := 0;
+  if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) < 5 { return false; }
+  for i: 0..<jv_len(d, list) {
+    one := jv_at(d, list, i);
+    wire := cdp_str(d, jv_get(d, one, "wire"), w[0].wire[..]);
+    what := cdp_named(kinds[..], cdp_str(d, jv_get(d, one, "what"), w[0].a[..]));
+    name := cdp_str(d, jv_get(d, one, "name"), w[0].a[..]); rest := cdp_str(d, jv_get(d, one, "rest"), w[0].b[..]);
+    r := rc_answer_read(wire);
+    if wire.count == 0 || what < 0 || !r.ok || r.what != what || r.name != name || r.n != jv_int(d, jv_get(d, one, "n"), -1) || r.rest != rest { return false; }
+    n := rc_head(w[0].out[..], 0, what, name, r.n); n = ct_put(w[0].out[..], n, rest);
+    if n > CDP_BYTES || cast(string) w[0].out[0..<n] != wire { return false; }
+    // a files answer's lines are the codec's own
+    if what == RC_FILES_ARE {
+      files := jv_get(d, one, "files"); at := 0; m := 0;
+      if jv_len(d, files) != r.n { return false; }
+      for k: 0..<r.n {
+        f := rc_file_at(name, rest, at); row := jv_at(d, files, k);
+        if !f.ok || f.path != cdp_str(d, jv_at(d, row, 0), w[0].c[..]) || f.bytes != jv_int(d, jv_at(d, row, 1), -1) { return false; }
+        m = rc_file_line(w[0].out[..], m, f.path, f.bytes); at = f.next;
+      }
+      if m > CDP_BYTES || cast(string) w[0].out[0..<m] != rest { return false; }
+    }
+    seen |= 1 << what;
+  }
+  return seen == 31;
+}
+// Every body of a list is refused: by the ask's reader, or the answer's.
+cdp_rejects :: (d: Jv, list: int, answers: bool, w: [] CdpWork) -> bool {
+  if jv_kind(d, list) != JV_ARRAY || jv_len(d, list) < 8 { return false; }
+  for i: 0..<jv_len(d, list) {
+    n := jv_str(d, jv_at(d, list, i), w[0].wire[..]);
+    if n < 0 { return false; }
+    body := cast(string) w[0].wire[0..<n];
+    if answers && rc_answer_read(body).ok { return false; }
+    if !answers && rc_ask_read(body).ok { return false; }
+  }
+  return true;
+}
+cdp_paths :: (d: Jv, w: [] CdpWork) -> bool {
+  paths := jv_get(d, 0, "paths");
+  page := cdp_str(d, jv_get(d, paths, "page"), w[0].a[..]);
+  own := jv_get(d, paths, "own"); not := jv_get(d, paths, "not_own"); roots := jv_get(d, paths, "roots");
+  if !rc_page_ok(page) || jv_len(d, own) < 3 || jv_len(d, not) < 10 || jv_len(d, roots) < 3 { return false; }
+  for i: 0..<jv_len(d, own) { if !rc_path_ok(page, cdp_str(d, jv_at(d, own, i), w[0].b[..])) { return false; } }
+  for i: 0..<jv_len(d, not) { if rc_path_ok(page, cdp_str(d, jv_at(d, not, i), w[0].b[..])) { return false; } }
+  for i: 0..<jv_len(d, roots) {
+    row := jv_at(d, roots, i);
+    if rc_root(page, cdp_str(d, jv_at(d, row, 0), w[0].b[..]), w[0].out[..]) != cdp_str(d, jv_at(d, row, 1), w[0].c[..]) { return false; }
+  }
+  return true;
+}
+cdp_check :: (profile_json: string, w: [] CdpWork) -> bool #effects(all) {
+  da: [1] Jv; nb: [128] u8; cb: [256] u8;
+  if !jv_parse(da[..], profile_json, w[0].nodes[..]) { return false; }
+  d := da[0];
+  if cdp_str(d, jv_get(d, 0, "profile"), nb[..]) != "realm-code-v1" || jv_int(d, jv_get(d, 0, "version"), 0) != 1 || cdp_str(d, jv_get(d, 0, "check"), cb[..]) != CDP_CHECK { return false; }
+  if cdp_str(d, jv_get(d, 0, "schema"), nb[..]) != RC_SCHEMA || cdp_str(d, jv_get(d, 0, "url"), nb[..]) != RC_URL { return false; }
+  if cdp_lim(d, "page_bytes") != RC_PAGE || cdp_lim(d, "path_bytes") != RC_PATH || cdp_lim(d, "files") != RC_FILES || cdp_lim(d, "text_bytes") != RC_TEXT || cdp_lim(d, "errors_bytes") != RC_ERRORS { return false; }
+  return cdp_asks(d, w) && cdp_answers(d, w) && cdp_paths(d, w) && cdp_rejects(d, jv_get(d, 0, "rejected_asks"), false, w) && cdp_rejects(d, jv_get(d, 0, "rejected_answers"), true, w);
+}
+#test "code profile tool refuses a profile that is not one" { w: [1] CdpWork; #assert !cdp_check("{}", w[..]) && !cdp_check("bad", w[..]); }
+
+CdpMain :: struct { w: [1] CdpWork; raw: [65536] u8; }
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; h: [1] CdpMain;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: code-profile FILE.json"); return 2; }
+  n := fs_read(args_at(a[..], 0), h[0].raw[..]);
+  if n <= 0 { tool_errln("code-profile: cannot read JSON"); return 2; }
+  if !cdp_check(cast(string) h[0].raw[0..<n], h[0].w[..]) { print("realm-code-v1: profile fails\n"); return 1; }
+  print("realm-code-v1: profile holds\n");
+  return 0;
+}

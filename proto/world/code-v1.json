@@ -1,0 +1,206 @@
+{
+ "profile": "realm-code-v1",
+ "version": 1,
+ "title": "A realm's code from the browser, on the dev server only v1 (realm.code.v1)",
+ "check": "coax/web/tool.sh metaverse-engine/tools/code-profile.coax proto/world/code-v1.json",
+ "spec": "docs/protocol/realm-code-v1.md",
+ "schema": "realm.code.v1",
+ "url": "/coaxial/code",
+ "about": "What the editor shell on a page the dev server serves asks that server, and what it answers (GitHub #13421): the realm's own source files, one file's text, and a save that is answered with the compiler's check. Only coax/web/serve.c while it watches answers it; --static, the API and the realm origin have no such route. A path is the page's own realm source or it is refused.",
+ "limits": {
+  "page_bytes": 32,
+  "path_bytes": 160,
+  "files": 96,
+  "text_bytes": 196608,
+  "errors_bytes": 4096
+ },
+ "lines": [
+  "realm.code.v1 list PAGE",
+  "realm.code.v1 read PAGE PATH",
+  "realm.code.v1 save PAGE PATH BYTES, a line end, then BYTES bytes of text",
+  "realm.code.v1 files PAGE N, then N lines: f PATH BYTES",
+  "realm.code.v1 file PATH BYTES, a line end, then BYTES bytes of text",
+  "realm.code.v1 saved PATH 0",
+  "realm.code.v1 errors PATH BYTES, a line end, then BYTES bytes of the compiler's words",
+  "realm.code.v1 refused 0 WORDS"
+ ],
+ "asks": [
+  {
+   "wire": "realm.code.v1 list splice\n",
+   "op": "list",
+   "page": "splice",
+   "path": "",
+   "text": ""
+  },
+  {
+   "wire": "realm.code.v1 read splice metaverse/splice/walk.coax\n",
+   "op": "read",
+   "page": "splice",
+   "path": "metaverse/splice/walk.coax",
+   "text": ""
+  },
+  {
+   "wire": "realm.code.v1 save splice metaverse/splice/walk.coax 15\nx :: 1;\n// two\n",
+   "op": "save",
+   "page": "splice",
+   "path": "metaverse/splice/walk.coax",
+   "text": "x :: 1;\n// two\n"
+  },
+  {
+   "wire": "realm.code.v1 save splice metaverse/splice/gpu/splice.coax 0\n",
+   "op": "save",
+   "page": "splice",
+   "path": "metaverse/splice/gpu/splice.coax",
+   "text": ""
+  }
+ ],
+ "answers": [
+  {
+   "wire": "realm.code.v1 files splice 3\nf metaverse/splice/gpu/splice.coax 7400\nf metaverse/splice/splice.coax 46171\nf metaverse/splice/walk.coax 9438\n",
+   "what": "files",
+   "name": "splice",
+   "n": 3,
+   "rest": "f metaverse/splice/gpu/splice.coax 7400\nf metaverse/splice/splice.coax 46171\nf metaverse/splice/walk.coax 9438\n",
+   "files": [
+    [
+     "metaverse/splice/gpu/splice.coax",
+     7400
+    ],
+    [
+     "metaverse/splice/splice.coax",
+     46171
+    ],
+    [
+     "metaverse/splice/walk.coax",
+     9438
+    ]
+   ]
+  },
+  {
+   "wire": "realm.code.v1 files orbit 0\n",
+   "what": "files",
+   "name": "orbit",
+   "n": 0,
+   "rest": "",
+   "files": []
+  },
+  {
+   "wire": "realm.code.v1 file metaverse/splice/walk.coax 9\nx :: 1;\n\n",
+   "what": "file",
+   "name": "metaverse/splice/walk.coax",
+   "n": 9,
+   "rest": "x :: 1;\n\n"
+  },
+  {
+   "wire": "realm.code.v1 saved metaverse/splice/walk.coax 0\n",
+   "what": "saved",
+   "name": "metaverse/splice/walk.coax",
+   "n": 0,
+   "rest": ""
+  },
+  {
+   "wire": "realm.code.v1 errors metaverse/splice/walk.coax 97\nmetaverse/splice/walk.coax:1:6: error[E0201]: expected an expression, found ';'\n  x :: ;\n       ^",
+   "what": "errors",
+   "name": "metaverse/splice/walk.coax",
+   "n": 97,
+   "rest": "metaverse/splice/walk.coax:1:6: error[E0201]: expected an expression, found ';'\n  x :: ;\n       ^"
+  },
+  {
+   "wire": "realm.code.v1 refused 0 That file is not one of this realm's.\n",
+   "what": "refused",
+   "name": "That file is not one of this realm's.",
+   "n": 0,
+   "rest": ""
+  }
+ ],
+ "paths": {
+  "page": "splice",
+  "own": [
+   "metaverse/splice/splice.coax",
+   "metaverse/splice/walk.coax",
+   "metaverse/splice/gpu/splice.coax",
+   "metaverse/splice/content/shipped.coax",
+   "metaverse/splice/sky.wgsl"
+  ],
+  "not_own": [
+   "",
+   "walk.coax",
+   "/etc/hosts",
+   "/metaverse/splice/walk.coax",
+   "metaverse/splice/../orbit/orbit.coax",
+   "metaverse/splice/./walk.coax",
+   "metaverse/splice//walk.coax",
+   "metaverse/splice/.hidden.coax",
+   "metaverse/splice/.git/x.coax",
+   "metaverse/orbit/orbit.coax",
+   "metaverse/splice-two/walk.coax",
+   "metaverse/splice/",
+   "metaverse/splice/splice-face.c",
+   "metaverse/splice/README.md",
+   "metaverse/splice/walk coax.coax",
+   "metaverse/splice/walk.coax\n",
+   "Metaverse/splice/walk.coax",
+   "apps/openagents-web/build.sh",
+   "coax/web/serve.c"
+  ],
+  "roots": [
+   [
+    "metaverse/splice/walk.coax",
+    "metaverse/splice/splice.coax"
+   ],
+   [
+    "metaverse/splice/content/shipped.coax",
+    "metaverse/splice/splice.coax"
+   ],
+   [
+    "metaverse/splice/gpu/splice.coax",
+    "metaverse/splice/gpu/splice.coax"
+   ],
+   [
+    "metaverse/splice/gpu/sky.coax",
+    "metaverse/splice/gpu/splice.coax"
+   ],
+   [
+    "metaverse/splice/sky.wgsl",
+    ""
+   ],
+   [
+    "metaverse/orbit/orbit.coax",
+    ""
+   ]
+  ]
+ },
+ "rejected_asks": [
+  "",
+  "realm.code.v1 list splice",
+  "realm.code.v2 list splice\n",
+  "realm.code.v1 list splice\nmore",
+  "realm.code.v1 list splice x\n",
+  "realm.code.v1 drop splice\n",
+  "realm.code.v1 list Splice\n",
+  "realm.code.v1 read splice metaverse/orbit/orbit.coax\n",
+  "realm.code.v1 read splice metaverse/splice/../x.coax\n",
+  "realm.code.v1 read splice /etc/hosts\n",
+  "realm.code.v1 read splice\n",
+  "realm.code.v1 save splice metaverse/splice/walk.coax 3\nab",
+  "realm.code.v1 save splice metaverse/splice/walk.coax 03\nabc",
+  "realm.code.v1 save splice metaverse/splice/walk.coax -1\n",
+  "realm.code.v1 save splice metaverse/splice/walk.coax 3\na\u0000b",
+  "realm.code.v1  list splice\n"
+ ],
+ "rejected_answers": [
+  "",
+  "realm.code.v1 files splice 1\n",
+  "realm.code.v1 files splice 1\nf metaverse/orbit/orbit.coax 1\n",
+  "realm.code.v1 files splice 0\nf metaverse/splice/walk.coax 1\n",
+  "realm.code.v1 files splice 1\nf metaverse/splice/walk.coax 1",
+  "realm.code.v1 file metaverse/splice/walk.coax 3\nab",
+  "realm.code.v1 saved metaverse/splice/walk.coax 1\n",
+  "realm.code.v1 saved metaverse/splice/walk.coax 0\nx",
+  "realm.code.v1 errors metaverse/splice/walk.coax 0\n",
+  "realm.code.v1 refused 0 \n",
+  "realm.code.v1 refused 1 words\n",
+  "realm.code.v2 saved metaverse/splice/walk.coax 0\n",
+  "realm.code.v1 gone metaverse/splice/walk.coax 0\n"
+ ]
+}

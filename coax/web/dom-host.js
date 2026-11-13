@@ -81,6 +81,7 @@ function apply(at, length) {
       el.setAttribute(key, value);
       if (key === "data-frame") frameOf(el);
       if (key === "autofocus") queueMicrotask(() => el.focus());
+      if (key === "data-lang" && el.tagName === "TEXTAREA") { el.spellcheck = false; el.wrap = "off"; el.autocapitalize = "off"; }   // a code field (k_code_field)
     } else if (op === 7) {                           // unattr
       const el = els[u16()], key = str();
       el.removeAttribute(key);
@@ -114,7 +115,7 @@ function apply(at, length) {
 
 // A field as tall as its text, where the browser can't do it itself (CSS field-sizing). The most is the stylesheet's.
 const grows = CSS.supports("field-sizing", "content");
-function fit(el) { if (!grows && el.tagName === "TEXTAREA") { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } }
+function fit(el) { if (!grows && el.tagName === "TEXTAREA" && !el.dataset.lang) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } }
 
 function clear() { root.replaceChildren(); els = []; for (const el of [...frames.keys()]) unframe(el); }
 
@@ -238,6 +239,13 @@ async function start() {
   });
   root.addEventListener("input", (e) => { const slot = slotOf(e.target, "textarea[data-slot],input[data-slot]"); if (slot >= 0) { fit(e.target); send(2, slot, e.target.value); } });
   root.addEventListener("keydown", (e) => {
+    // a code field (k_code_field): Enter makes a line, as the browser has it, and Tab indents two spaces
+    if (e.target.dataset?.lang && e.target.tagName === "TEXTAREA") {
+      if (e.key !== "Tab" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return;
+      e.preventDefault(); e.target.setRangeText("  ", e.target.selectionStart, e.target.selectionEnd, "end");
+      send(2, Number(e.target.dataset.slot), e.target.value);
+      return;
+    }
     if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
     const slot = slotOf(e.target, "textarea[data-slot],input[data-slot]");
     if (slot >= 0) { e.preventDefault(); send(2, slot, e.target.value); send(3, slot); }

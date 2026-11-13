@@ -29,6 +29,7 @@ TG_NAMES :: [30] string.["div", "span", "button", "textarea", "a", "h1", "h2", "
 // Attributes, and their names in the browser. AT_FRAME is set by tr_frame.
 AT_HREF :: 0; AT_LABEL :: 1; AT_PLACEHOLDER :: 2; AT_ROLE :: 3; AT_HIDDEN :: 4; AT_EXPANDED :: 5; AT_PRESSED :: 6;
 AT_DISABLED :: 7; AT_STATE :: 8; AT_FRAME :: 9; AT_CURRENT :: 10; AT_ROWS :: 11; AT_LANG :: 12; AT_LIVE :: 13;
+// AT_LANG on a field: it holds code in that language (k_code_field), so Enter makes a line and Tab indents.
 AT_FOCUS :: 14;      // the field the page opens with the caret in
 AT_TITLE :: 15;      // what shows when the pointer rests on it
 AT_TYPE :: 16;       // an input's kind

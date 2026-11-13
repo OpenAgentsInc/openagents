@@ -8060,6 +8060,38 @@ its lips, the ground query on a 1/8 m lattice both ways, sunk and moving
 spheres; it fails on a wall and on a spike), and `ground-contact.coax`'s own
 (367 mutants, 0 survivors).
 
+## A realm's code is edited from the browser only on the dev server, and only its own sources
+
+The editor's Code pane (E12, #13421;
+[docs/protocol/realm-code-v1.md](docs/protocol/realm-code-v1.md)) reads and
+writes source files through one route, `POST /coaxial/code` on `coax serve`
+while it watches. Owner decision, 2026-11-13: realm code is ours, or arrives
+as a pull request. No path lets a visitor's code run for anyone.
+
+- **The dev server only.** `--static` (a deployed page's server), the API and
+  the realm origin have no such route. The route answers only this computer's
+  own page: the browser must say the request is same-origin
+  (`Sec-Fetch-Site`), and the `Host` must be a loopback name.
+- **The realm's own sources only.** A path is under `metaverse/PAGE/`, ends
+  `.coax` or `.wgsl`, and has no part that starts with a dot
+  (`metaverse-engine/editor/code-wire.coax`, `rc_path_ok`: the one rule, which
+  the shell and the server both load). The server also holds it to a file the
+  page's module or shaders were built from, and to a plain file that is where
+  its name says. Any other path is refused, and nothing is read or written.
+- **No pane on a deployed page.** The shell shows the Code button only after
+  the page's host says the dev server serves the page and that server lists
+  the realm's files. A deployed page's host never says so.
+- **A failed build changes nothing that runs.** A save is written and
+  answered with the compiler's check. The last good engine keeps running
+  until a build succeeds.
+
+Checks: `coax/web/tool.sh code-route-check` (a fixture repository: the list,
+a read, a save, each refusal, `--static` and the realm origin);
+`coax/bin/coax test metaverse-engine/editor/code-wire.coax --library`;
+`coax/bin/coax test metaverse-engine/editor/shell.coax --library` ("code is
+there only where the host says the dev server serves the page ...");
+`coax/web/tool.sh metaverse-engine/tools/code-profile.coax proto/world/code-v1.json`.
+
 ## A realm that runs someone else's code has no origin, and speaks only typed messages
 
 Such a realm is served from the realm origin, never the site's, in a frame

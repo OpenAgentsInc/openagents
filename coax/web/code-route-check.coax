@@ -1,0 +1,205 @@
+// A realm's code from the browser is the dev server's alone, and only the page's own realm
+// sources (GitHub #13421, the editor's E12; INVARIANTS.md): a physical check of coax/web/serve.c's
+// POST /coaxial/code with a fixture repository in a temporary folder and a stand-in compiler. No
+// browser, and nothing in this checkout is read or written. Every ask and answer goes through the
+// one codec (metaverse-engine/editor/code-wire.coax).
+// Build serve.sh first, then: coax/web/tool.sh code-route-check [SERVE_BINARY]
+// It covers, each with a line:
+//   the list is the module's own sources under the realm's folder: not another realm's file, not
+//   a link, not a file the module was not built from;
+//   a listed file is read byte for byte, and a save writes exactly the bytes sent;
+//   a save answers with the compiler's check: saved, or its words, and the file is written either way;
+//   a path above or beside the realm, a link, and an unlisted file are refused, and none is touched;
+//   a request that is not this computer's own page (no same-origin word, another Host) is refused;
+//   a watching server answers only POST there; --static has no such route; nor has the realm origin.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/net/socket_foreign.coax";
+#load "../lib/net/ws.coax";
+#load "../../metaverse-engine/editor/code-wire.coax";
+
+CR_BODY :: 65536;
+CrWork :: struct { got: [CR_BODY] u8; ask: [CR_BODY] u8; file: [CR_BODY] u8; }
+
+cr_connect :: (port: int) -> int {
+  for ch: "127.0.0.1" { if cxsock_host_push(cast(int) ch) != 0 { return -1; } }
+  return cxsock_connect(port, 500);
+}
+// One request: the whole answer, or "". `site` is the browser's Sec-Fetch-Site word ("" for none).
+cr_send :: (port: int, method: string, host: string, site: string, body: string, out: [] u8) -> string {
+  h := cr_connect(port); if h < 0 { return ""; }
+  q: [1024] u8; n := ws_put(q[..], 0, method); n = ws_put(q[..], n, " /coaxial/code HTTP/1.1\r\nHost: "); n = ws_put(q[..], n, host);
+  if site.count > 0 { n = ws_put(q[..], n, "\r\nSec-Fetch-Site: "); n = ws_put(q[..], n, site); }
+  n = ws_put(q[..], n, "\r\nContent-Length: "); n = ws_digits(q[..], n, body.count); n = ws_put(q[..], n, "\r\nConnection: close\r\n\r\n");
+  ok := true;
+  for i: 0..<n { if cxsock_write(h, cast(int) q[i]) != 0 { ok = false; } }
+  for b: body { if cxsock_write(h, cast(int) b) != 0 { ok = false; } }
+  ok = ok && cxsock_flush(h, 2000) == 0;
+  used := 0; end := proc_now_ms() + 8000;
+  while ok && proc_now_ms() < end && used < out.count {
+    k := cxsock_read(h, end - proc_now_ms());
+    if k == -1 { break; }
+    if k == -2 { continue; }
+    if k < 0 { ok = false; break; }
+    for i: 0..<k { if used < out.count { out[used] = cast,trunc(u8) cxsock_byte(h, i); used += 1; } }
+  }
+  closed := cxsock_close(h);
+  return ifx ok then cast(string) out[0..<used] else "";
+}
+cr_status :: (answer: string) -> int {
+  if answer.count < 12 || !ws_starts(answer, "HTTP/1.1 ") { return 0; }
+  return cast(int) (answer[9] - '0') * 100 + cast(int) (answer[10] - '0') * 10 + cast(int) (answer[11] - '0');
+}
+cr_body :: (answer: string) -> string {
+  for i: 0..<answer.count - 3 { if answer[i..<i + 4] == "\r\n\r\n" { return cast(string) answer[i + 4..<answer.count]; } }
+  return "";
+}
+cr_check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok    %\n", what); return 0; }
+  print("  FAIL  %\n", what); return 1;
+}
+cr_path :: (dir: string, rest: string, out: [] u8) -> string {
+  n := ws_put(out, 0, dir); n = ws_put(out, n, "/"); n = ws_put(out, n, rest);
+  return cast(string) out[0..<n];
+}
+cr_file :: (dir: string, rest: string, w: [] CrWork) -> string {
+  p: [1200] u8;
+  n := fs_read(cr_path(dir, rest, p[..]), w[0].file[..]);
+  return ifx n < 0 then "?" else cast(string) w[0].file[0..<n];
+}
+// The codec's ask, posted as this computer's own page posts it: the status and the answer as read.
+CrGot :: struct { status: int; a: RcAnswer; }
+cr_ask :: (port: int, host: string, w: [] CrWork, op: int, page: string, path: string, text: string) -> CrGot {
+  ask := rc_ask(op, page, path, text, w[0].ask[..]);
+  got := cr_send(port, "POST", host, "same-origin", ask, w[0].got[..]);
+  return CrGot.{status = cr_status(got), a = rc_answer_read(cr_body(got))};
+}
+cr_serve :: (serve: string, app: string, host_dir: string, address: string, how: string, realm: string) -> int {
+  h := proc_new(); ok := true;
+  argv := [7] string.[serve, app, "--listen", address, "--host-dir", host_dir, how];
+  for x: argv { ok = ok && proc_arg(h, x); }
+  if how == "--build" { ok = ok && proc_arg(h, "true"); }
+  if realm.count > 0 { ok = ok && proc_arg(h, "--realm-host") && proc_arg(h, realm); }
+  ok = ok && proc_quiet(h) && proc_start(h) == 0;
+  return ifx ok then h else -1;
+}
+cr_up :: (port: int, host: string, w: [] CrWork) -> bool {
+  end := proc_now_ms() + 5000;
+  while proc_now_ms() < end { if cr_send(port, "GET", host, "", "", w[0].got[..]).count > 0 { return true; } proc_sleep(20); }
+  return false;
+}
+cr_stop :: (h: int) { killed := proc_kill(h, 15); waited := proc_wait(h, 2000); released := proc_release(h); }
+cr_port :: () -> int { l := cxsock_listen(0); if l < 0 { return -1; } port := cxsock_port(l); closed := cxsock_close(l); return port; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args; loaded := args_load(args[..]);
+  serve_rel := ifx loaded && args_count(args[..]) > 0 then args_at(args[..], 0) else "coax/web/build/serve";
+  if fs_kind(serve_rel) != FS_FILE { tool_errln("code-route-check: no dev server at coax/web/build/serve (coax/web/serve.sh builds it)"); return 2; }
+  sb: [1200] u8; serve := fs_realpath(serve_rel, sb[..]);
+  temp: [1024] u8; made := fs_temp("coax-code-route-", temp[..]); if made == "" { return 2; }
+  rb: [1100] u8; dir := fs_realpath(made, rb[..]);
+  ws: [1] CrWork; w := ws[..];
+  p: [1200] u8; p2: [1200] u8; out: [256] u8; err: [256] u8;
+  // the fixture: a repository with a realm, another realm, and a compiler that refuses the word BROKEN
+  folders := [8] string.["coax", "coax/web", "coax/bin", "apps", "apps/web", "apps/web/build", "apps/web/build/.drive", "metaverse"];
+  ok := true;
+  for f: folders { ok = ok && fs_mkdir(cr_path(dir, f, p[..])); }
+  ok = ok && fs_mkdir(cr_path(dir, "metaverse/splice", p[..])) && fs_mkdir(cr_path(dir, "metaverse/orbit", p[..]));
+  ok = ok && fs_write(cr_path(dir, "metaverse/splice/splice.coax", p[..]), "#load \"walk.coax\";\n");
+  ok = ok && fs_write(cr_path(dir, "metaverse/splice/walk.coax", p[..]), "speed :: 4;\n");
+  ok = ok && fs_write(cr_path(dir, "metaverse/splice/secret.coax", p[..]), "not the module's\n");
+  ok = ok && fs_write(cr_path(dir, "metaverse/splice/notes.md", p[..]), "notes\n");
+  ok = ok && fs_write(cr_path(dir, "metaverse/orbit/orbit.coax", p[..]), "another realm's\n");
+  ok = ok && fs_write(cr_path(dir, "coax/bin/coax", p[..]), "#!/bin/sh\nif grep -rq BROKEN metaverse/splice; then echo \"metaverse/splice/walk.coax:1:1: error[E0000]: the word is broken\"; exit 1; fi\nexit 0\n");
+  mode := [3] string.["/bin/chmod", "755", cr_path(dir, "coax/bin/coax", p[..])];
+  ok = ok && proc_run(mode[..], 2000, out[..], err[..]).status == 0;
+  link := [4] string.["/bin/ln", "-s", cr_path(dir, "metaverse/orbit/orbit.coax", p[..]), cr_path(dir, "metaverse/splice/link.coax", p2[..])];
+  ok = ok && proc_run(link[..], 2000, out[..], err[..]).status == 0;
+  hash := "0000000000000000000000000000000000000000000000000000000000000000  ";
+  list: [2048] u8; n := 0;
+  listed := [6] string.["metaverse/orbit/orbit.coax", "metaverse/splice/link.coax", "metaverse/splice/notes.md", "metaverse/splice/splice.coax", "metaverse/splice/walk.coax", "metaverse/splice/gone.coax"];
+  for f: listed { n = ws_put(list[..], n, hash); n = ws_put(list[..], n, f); n = ws_put(list[..], n, "\n"); }
+  ok = ok && fs_write(cr_path(dir, "apps/web/build/.drive/splice.sources", p[..]), cast(string) list[0..<n]);
+  if !ok { tool_errln("code-route-check: the fixture could not be made"); return 2; }
+  ab: [1200] u8; hb: [1200] u8;
+  app := cr_path(dir, "apps/web", ab[..]); host_dir := cr_path(dir, "coax/web", hb[..]);
+  failed := 0;
+
+  // ---- the watching server
+  port := cr_port(); if port < 0 { return 2; }
+  ad: [64] u8; an := ws_put(ad[..], 0, "127.0.0.1:"); an = ws_digits(ad[..], an, port); address := cast(string) ad[0..<an];
+  lh: [64] u8; ln := ws_put(lh[..], 0, "localhost:"); ln = ws_digits(lh[..], ln, port); local := cast(string) lh[0..<ln];
+  h := cr_serve(serve, app, host_dir, address, "--build", "");
+  if h < 0 || !cr_up(port, address, w) { tool_errln("code-route-check: the dev server did not start"); return 2; }
+  g := cr_ask(port, address, w, RC_LIST, "splice", "", "");
+  f0 := rc_file_at("splice", g.a.rest, 0); f1 := rc_file_at("splice", g.a.rest, f0.next);
+  failed += cr_check(g.status == 200 && g.a.ok && g.a.what == RC_FILES_ARE && g.a.n == 2 && f0.path == "metaverse/splice/splice.coax" && f1.path == "metaverse/splice/walk.coax" && f1.bytes == 12,
+    "the list is the module's own sources under the realm's folder: no other realm's file, no link, no file that is not Coax or WGSL, none that is gone");
+  g = cr_ask(port, address, w, RC_LIST, "orbit", "", "");
+  failed += cr_check(g.status == 200 && g.a.ok && g.a.n == 0, "a page with no source list has no files");
+  g = cr_ask(port, local, w, RC_READ, "splice", "metaverse/splice/walk.coax", "");
+  failed += cr_check(g.status == 200 && g.a.ok && g.a.what == RC_FILE && g.a.rest == "speed :: 4;\n", "a listed file is read byte for byte (and localhost is this computer too)");
+  g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/walk.coax", "speed :: 5;\n// faster\n");
+  failed += cr_check(g.status == 200 && g.a.ok && g.a.what == RC_SAVED && g.a.name == "metaverse/splice/walk.coax" && cr_file(dir, "metaverse/splice/walk.coax", w) == "speed :: 5;\n// faster\n",
+    "a save writes exactly the bytes sent and answers saved when the compiler finds nothing");
+  g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/walk.coax", "speed :: BROKEN;\n");
+  failed += cr_check(g.status == 200 && g.a.ok && g.a.what == RC_ERRORS_ARE && g.a.rest == "metaverse/splice/walk.coax:1:1: error[E0000]: the word is broken" && cr_file(dir, "metaverse/splice/walk.coax", w) == "speed :: BROKEN;\n",
+    "a save the compiler refuses is written and answers with the compiler's words");
+  g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/walk.coax", "");
+  failed += cr_check(g.status == 200 && g.a.what == RC_SAVED && cr_file(dir, "metaverse/splice/walk.coax", w) == "", "an empty file is a file");
+  // what is not the realm's own listed source
+  g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/secret.coax", "written\n");
+  failed += cr_check(g.status == 404 && g.a.ok && g.a.what == RC_REFUSED && cr_file(dir, "metaverse/splice/secret.coax", w) == "not the module's\n", "a file the module was not built from is refused and untouched");
+  g = cr_ask(port, address, w, RC_READ, "splice", "metaverse/splice/secret.coax", "");
+  failed += cr_check(g.status == 404 && g.a.what == RC_REFUSED, "and is not read");
+  g = cr_ask(port, address, w, RC_SAVE, "splice", "metaverse/splice/link.coax", "written\n");
+  failed += cr_check(g.status == 404 && g.a.what == RC_REFUSED && cr_file(dir, "metaverse/orbit/orbit.coax", w) == "another realm's\n", "a link out of the realm is refused, and what it leads to is untouched");
+  g = cr_ask(port, address, w, RC_READ, "splice", "metaverse/splice/link.coax", "");
+  failed += cr_check(g.status == 404 && g.a.what == RC_REFUSED, "and is not read");
+  // paths the codec will not write as an ask, sent as bytes
+  raw := [5] string.["realm.code.v1 read splice metaverse/splice/../orbit/orbit.coax\n", "realm.code.v1 read splice metaverse/orbit/orbit.coax\n", "realm.code.v1 read splice /etc/hosts\n",
+    "realm.code.v1 save splice metaverse/splice/../orbit/orbit.coax 2\nx\n", "realm.code.v1 read orbit metaverse/orbit/orbit.coax\n"];
+  what := [4] string.["a path that climbs out of the realm is refused", "another realm's path is refused", "a path from the root of the disk is refused", "a save that climbs out of the realm is refused"];
+  for k: 0..<4 {
+    got := cr_send(port, "POST", address, "same-origin", raw[k], w[0].got[..]);
+    failed += cr_check(cr_status(got) == 400 && rc_answer_read(cr_body(got)).what == RC_REFUSED, what[k]);
+  }
+  got := cr_send(port, "POST", address, "same-origin", raw[4], w[0].got[..]);
+  failed += cr_check(cr_status(got) == 404 && cr_file(dir, "metaverse/orbit/orbit.coax", w) == "another realm's\n", "another realm's file is not this page's even by its own page's name, with no source list for it");
+  // who may ask
+  list_ask := "realm.code.v1 list splice\n";
+  failed += cr_check(cr_status(cr_send(port, "POST", address, "", list_ask, w[0].got[..])) == 403, "a request that does not say it is same-origin is refused");
+  failed += cr_check(cr_status(cr_send(port, "POST", address, "cross-site", list_ask, w[0].got[..])) == 403 && cr_status(cr_send(port, "POST", address, "same-site", list_ask, w[0].got[..])) == 403, "another site's request is refused");
+  failed += cr_check(cr_status(cr_send(port, "POST", "evil.example", "same-origin", list_ask, w[0].got[..])) == 403 && cr_status(cr_send(port, "POST", "127.0.0.1.evil.example", "same-origin", list_ask, w[0].got[..])) == 403, "a Host that is not this computer is refused");
+  failed += cr_check(cr_status(cr_send(port, "GET", address, "same-origin", "", w[0].got[..])) == 404, "the route answers only a POST");
+  cr_stop(h);
+
+  // ---- --static (a deployed page's server) has no such route, and the realm origin neither
+  ok = fs_write(cr_path(dir, "metaverse/splice/walk.coax", p[..]), "speed :: 4;\n");
+  port = cr_port(); if port < 0 { return 2; }
+  an = ws_put(ad[..], 0, "127.0.0.1:"); an = ws_digits(ad[..], an, port); address = cast(string) ad[0..<an];
+  ln = ws_put(lh[..], 0, "localhost:"); ln = ws_digits(lh[..], ln, port); local = cast(string) lh[0..<ln];
+  h = cr_serve(serve, app, host_dir, address, "--static", "");
+  if h < 0 || !cr_up(port, address, w) { tool_errln("code-route-check: the static server did not start"); return 2; }
+  save := rc_ask(RC_SAVE, "splice", "metaverse/splice/walk.coax", "written\n", w[0].ask[..]);
+  s1 := cr_status(cr_send(port, "POST", address, "same-origin", save, w[0].got[..]));
+  s2 := cr_status(cr_send(port, "POST", address, "same-origin", list_ask, w[0].got[..]));
+  failed += cr_check(s1 == 405 && s2 == 405 && cr_file(dir, "metaverse/splice/walk.coax", w) == "speed :: 4;\n", "--static has no code route: a save and a list are refused and nothing is written");
+  cr_stop(h);
+  port = cr_port(); if port < 0 { return 2; }
+  an = ws_put(ad[..], 0, "127.0.0.1:"); an = ws_digits(ad[..], an, port); address = cast(string) ad[0..<an];
+  ln = ws_put(lh[..], 0, "localhost:"); ln = ws_digits(lh[..], ln, port); local = cast(string) lh[0..<ln];
+  h = cr_serve(serve, app, host_dir, address, "--build", local);
+  if h < 0 || !cr_up(port, address, w) { tool_errln("code-route-check: the server with a realm origin did not start"); return 2; }
+  s1 = cr_status(cr_send(port, "POST", local, "same-origin", save, w[0].got[..]));
+  failed += cr_check(s1 == 404 && cr_file(dir, "metaverse/splice/walk.coax", w) == "speed :: 4;\n", "the realm origin has no code route");
+  cr_stop(h);
+
+  rm := [3] string.["/bin/rm", "-rf", dir];
+  if ws_starts(dir, "/") && dir.count > 16 { cleared := proc_run(rm[..], 5000, out[..], err[..]); }
+  print("code-route-check: % failed\n", failed);
+  return ifx failed == 0 then 0 else 1;
+}

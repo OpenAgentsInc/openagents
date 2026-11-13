@@ -46,7 +46,8 @@ kit 125000
 # the browser backend, the world edit codec and the editor model's: 103,413 bytes measured 2026-11-13 on a Mac; about 8% room.
 # With the viewport's strip (E8, #13417: tool, grid, Add, fly, pause, step, simulate): 106,452 bytes measured 2026-11-13 on a Mac; about 11% room.
 # With groups, templates and counts (E5, #13414: the placement planner's template codec, the group's card, Add's templates) and content cells as fields (E10, #13419): 119,716 bytes measured 2026-11-13 on a Mac; about 11% room.
-editor-shell 135000
+# With the Code pane (E12, #13421: the realm.code.v1 codec, the files' select, the code field, Save and the compiler's words): 136,884 bytes measured 2026-11-13 on a Linux build host; about 11% room.
+editor-shell 152000
 agents 120000
 # the shared host ABI every renderer carrier exports kept growing on 11-05 (#12869): 81,594 measured at 882146be65; about 5% room (#12922)
 connect-pylon 86000

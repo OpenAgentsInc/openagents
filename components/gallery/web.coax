@@ -100,6 +100,10 @@ wg_build :: (s: [] WebPage) {
   cb := k_code(t, u, "code.1", "coax", WG_CODE);
   tr_close(t);
 
+  sec = wg_section(t, "code-fields", "Code field", "Code to edit: the code face, no wrapping, a set height that scrolls both ways. Enter makes a line and Tab indents. The editor's Code pane is built from it.");
+  cf := k_code_field(t, u, "code.edit", "coax", "Code to edit");
+  tr_close(t);
+
   sec = wg_section(t, "notices", "Notice", "Between two lines, bright. It says its kind in words, since there is no red to say it.");
   n1 := k_notice(t, u, "notice.error", "Error", "The runner didn't answer. Your message is back in the composer.");
   tr_close(t);

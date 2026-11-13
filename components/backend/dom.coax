@@ -132,6 +132,17 @@ dm_value :: (d: [] Dom, id: string, text: string) {
   for c: text { if d[0].value_n < DM_VALUE { d[0].value[d[0].value_n] = c; d[0].value_n += 1; d[0].value_len[k] += 1; } }
   d[0].values += 1;
 }
+// Sets what a field holds when that is more than dm_value keeps (a file of code): the command is
+// written after the flush that has just been made, straight from the caller's text, and the answer is
+// the bytes to apply now (the flush's and this). -1 when the field is not on the page; the flush's
+// own bytes stand. A text that does not fit marks the overflow, as any command does.
+dm_value_after :: (d: [] Dom, id: string, text: string) -> int {
+  slot := dm_find(d, id);
+  if slot < 0 { return -1; }
+  if d[0].out_n + text.count + 7 > DM_OUT { d[0].overflow = true; return 0; }
+  dm_u8(d, DC_VALUE); dm_u16(d, slot); dm_str(d, text); d[0].sent += 1;
+  return d[0].out_n;
+}
 // Puts the caret in a node (a field, once a choice has been made elsewhere). The next flush sends it.
 dm_focus :: (d: [] Dom, id: string) {
   d[0].focus_id_n = 0;
@@ -382,6 +393,27 @@ dm_test_u32 :: (d: [] Dom, i: int) -> int {
   dm_reset(d);
   n = dm_flush(d, t, sets[..]);
   #assert dm_test_count(d, n, DC_MAKE) == 2;
+}
+
+#test "a long value goes after a flush, whole, to a field that is on the page; one that is not there, or does not fit, writes nothing" {
+  ts: [1] Tree; t := ts[..]; ds: [1] Dom; d := ds[..];
+  sets: [1] AfSettings; sets[0] = af_settings(3);
+  tr_begin(t);
+  a := tr_open(t, "page", TG_MAIN, "page");
+  f := tr_leaf(t, "src", TG_TEXTAREA, "", "");
+  tr_close(t);
+  n := dm_flush(d, t, sets[..]);
+  long: [DM_VALUE * 3] u8;
+  for i: 0..<long.count { long[i] = cast(u8) ('a' + i % 26); }
+  m := dm_value_after(d, "src", cast(string) long[..]);
+  #assert n > 0 && m == n + 7 + long.count && dm_test_count(d, m, DC_VALUE) == 1 && dm_test_count(d, m, DC_MAKE) == 2 && !d[0].overflow;
+  #assert d[0].out[n] == DC_VALUE && dm_test_u32(d, n + 3) == long.count && d[0].out[n + 7] == 'a' && d[0].out[m - 1] == long[long.count - 1];
+  #assert dm_value_after(d, "gone", "x") == -1 && d[0].out_n == m;
+  // a still page: the value alone
+  n = dm_flush(d, t, sets[..]);
+  #assert n == 0 && dm_value_after(d, "src", "x :: 1;") == 14;
+  d[0].out_n = DM_OUT - 8;
+  #assert dm_value_after(d, "src", "xy") == 0 && d[0].overflow && d[0].out_n == DM_OUT - 8;
 }
 
 #test "fixed-point values are in 64ths, two's complement" {

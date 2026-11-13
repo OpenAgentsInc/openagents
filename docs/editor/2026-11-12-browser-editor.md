@@ -48,7 +48,7 @@ keeps its state.
 | Gizmos, outliner, inspector, fly camera, snapping, asset browser, play/simulate | **Missing** | — |
 | In-world editors | **Four, separate.** Everglade admin EDIT, the realm edit layer and agent pane, WorldBuilder (with a terrain brush, browser save only), Splice's layer (fixture only) | `everglade-edit.coax`, `metaverse/edit/`, `worldbuilder*.coax`, `metaverse/splice/layer*.coax` |
 | Programmatic building | **Exists for worlds with an ID (E6, #13415).** The edit verbs are rows of `REALM_COMMANDS`: `realm world`, `world-place`, `world-move` and the rest, each also a `realm_*` MCP tool and a `coax drive` verb. There is no second `world_*` family. Every row has an effect and an approval rule, and answers one result shape | `apps/openagents-cli/commands.coax`, `realm-world.coax`, `metaverse-engine/editor/op-result.coax`, `coax/web/drive.coax` |
-| Code changes from a browser | **Missing.** Coax compiles to C, then clang builds Wasm on a machine with the toolchain. A paired Coder has one; a browser doesn't | `coax/web/wasm.sh` |
+| Code changes from a browser | **Exists on the dev server** (E12, #13421): the editor's Code pane opens and saves the realm's own sources, and the dev server checks and rebuilds them. A deployed page has no such path | `coax/web/serve.c`, `metaverse-engine/editor/code-wire.coax` |
 | Agents in `/chat` | **Exists.** Claude Code, Codex, Antigravity and Microcoder through the local Coder | `apps/openagents-web/chat-web.coax`, `coder/tui/mcp_http.coax` |
 | UI components | **Exist.** The frames set (frame, text, button, field, select, card, row, header, menu, notice, composer, tool call, code block), skinned by `mono.coax`, drawn by the browser through `dom.coax`: real text, Find, selection and screen readers | `components/kit/frames.coax`, `components/skin/mono.coax`, `components/backend/dom.coax` |
 | Retained rendering | **Splice's layer only.** Shared retained rendering is P6.1 (#13303) | `metaverse/splice/layer-draw.coax` |
@@ -213,6 +213,45 @@ not a flat folder scan.
   field from `components/core/edit.coax`). Saving sends it to the paired Coder,
   which compiles it with the resident compiler; the live channel swaps it in.
   Without a Coder, a hosted build seat does the same (later).
+- **As built (E12, #13421):** code from the browser is for the owner and
+  admins, on the dev server only (owner decision, 2026-11-13: realm code is
+  ours, or arrives as a pull request). The shell has a Code button and a Code
+  pane only when the page's host says the dev server serves the page and that
+  server lists the realm's files. A deployed page has neither, and its server
+  has no such route.
+  - **The route.** `POST /coaxial/code` on `coax serve` while it watches
+    (`realm.code.v1`, [the shape](../protocol/realm-code-v1.md)). It lists,
+    reads and writes the page's own realm sources: the Coax and WGSL files
+    under `metaverse/PAGE/` that the page's module or its shaders were built
+    from. It refuses every other path, a link, another site and another
+    machine.
+  - **The pane.** A select of the realm's files, the open file in a code field
+    (`k_code_field`, new in the kit and shown on `/components`), and Save. The
+    pane is a wide right pane of the dock (`DK_WIDE`). The field is the
+    browser's own text area, as every field of the frames set is on the
+    browser backend; `components/core/edit.coax` is the edit buffer for
+    surfaces the GPU draws, and is not used here.
+  - **Save and compile.** A save writes the file and answers with
+    `coax check` of the module the file is part of. On Splice the answer came
+    in 110 ms with errors and 684 ms without. Errors show as a notice with the
+    compiler's words in a code block. The dev server's watch then builds the
+    module and the live channel swaps the engine with its state kept (E1,
+    E2): 1.9 s from Save to the new engine on Splice. A failed build keeps
+    the last good engine running.
+  - **Shaders.** `metaverse/splice/gpu/splice.coax`, the Coax that writes
+    Splice's WGSL, is in the list. Saving it writes the WGSL again and the
+    live channel swaps the shaders.
+  - **Not built:** the paired Coder for a deployed page, and a hosted build
+    seat for people without a Coder. The realm origin (#13432) is not wired
+    in.
+  - Checks: `coax/web/tool.sh code-route-check`, the shell's and the codec's
+    own checks, and `proto/world/code-v1.json`.
+  - Proved in headless Chrome on the dev server
+    ([picture](shots/2026-11-13-e12-code-pane.png)): a changed line of
+    `splice-game.coax` was live 876 ms after Save with the player where they
+    stood and the world's revision unchanged; a compile error showed in the
+    pane in 104 ms and the last good build kept running; a changed shader
+    constant in `gpu/splice.coax` was swapped in 453 ms after Save.
 
 ### Programmatic building
 
@@ -256,7 +295,7 @@ is slice 3, E4 is slice 4 and E9 is slices 5-6.
 | E9 | The agent strip: the `/chat` conversation inside the editor, with `world_*` tools, the selection and "here" | #13418 |
 | E10 | Content tables edited in the browser, and a content revision applied live | #13419 |
 | E11 | Asset import: drop glTF, PNG or audio, pack it with a licence, browse it, swap it live | #13420 |
-| E12 | Code from the browser: edit a realm's Coax, compile on the paired Coder, swap it live | #13421 |
+| E12 | Code from the browser, owner and admin only: edit a realm's Coax on the dev server, check it on save, swap it live | #13421 |
 | E13 | The four editors move onto the shell: Everglade EDIT, WorldBuilder, the realm edit layer and Splice | #13422 |
 | E14 | Acceptance: a real-input run of the editor in real Chrome, on a laptop and a phone | #13423 |
 

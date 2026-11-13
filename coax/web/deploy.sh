@@ -237,6 +237,8 @@ if $server; then
   "$here/../bin/coax" c "$here/site-routes.coax" --library --header "$stage/image/server/site-routes.h" > "$stage/image/server/site-routes.c"
   # serve.c answers the realm origin by these rules (--realm-host, #13432)
   "$here/../bin/coax" c "$here/realm-origin.coax" --library --header "$stage/image/server/realm-origin.h" > "$stage/image/server/realm-origin.c"
+  # serve.c names the dev server's code route's codec (#13421); --static never answers that route
+  "$here/../bin/coax" c "$here/../../metaverse-engine/editor/code-wire.coax" --library --header "$stage/image/server/code-wire.h" > "$stage/image/server/code-wire.c"
   sed -i.bak 's#"../../metaverse/voice-host/ws.h"#"ws.h"#' "$stage/image/server/serve.c" && rm -f "$stage/image/server/serve.c.bak"
   cp "$here/Dockerfile" "$stage/image/"
   image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/coaxial-serve:$(date +%Y%m%d-%H%M%S)"

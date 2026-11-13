@@ -3790,7 +3790,8 @@ function player() {
 // that the browser draws over the canvas (dom-host.js), on a page whose app tells what its world
 // holds (coaxial_edit_model, editor.model.v1). This host only carries bytes between the two: the
 // model to the shell whenever the app's changes (coaxial_edit_rev), and the shell's actions to the
-// app as messages of the kind the shell names (520 a batch of edits, 521 a selection). It decides nothing
+// app as messages of the kind the shell names (520 a batch of edits, 521 a selection), and on the dev server
+// the word that the realm's code can be opened here (event 9, #13421). It decides nothing
 // but whether to open: on a deployed page, only for an admin (the viewer's lines), since the server lets
 // nobody else write a world.
 const EDITOR = "editor-shell";
@@ -3859,6 +3860,15 @@ function editorCarry(shell, x) {
   shell.still = agentMode;
   // ?edit=agent: the page was opened for the agent (a world's card on /chat), so the foot is open from the start
   if (!shell.told) { shell.told = true; if (new URLSearchParams(location.search).get("edit") === "agent") { shell.exports().dom_event(shell.state(), 7, 0, 0); shell.ask(); } }
+  // Code (E12, #13421): on the dev server's page the shell is told the page's module (event 9), and asks that
+  // server for the realm's own sources. A deployed page's shell is never told, so it has no Code pane.
+  if (dev && !shell.codeTold) {
+    shell.codeTold = true;
+    const sx = shell.exports(), name = new TextEncoder().encode(app);
+    new Uint8Array(shell.memory().buffer, sx.dom_inbox(shell.state()), name.length).set(name);
+    sx.dom_event(shell.state(), 9, 0, name.length);
+    shell.ask();
+  }
   const rev = x.coaxial_edit_rev(arena.state);
   if (rev !== editorRev || editorFor !== engine) {
     editorRev = rev; editorFor = engine;
