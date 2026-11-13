@@ -1506,6 +1506,55 @@ holds game items only, never money. Checks: `metaverse-engine/session/ledger.coa
 `coax/web/api/tests/room_checks.coax` items and item ops, and
 `coax/web/room/room-items.coax` (1,000 fault-injected plays).
 
+## Authoring never writes durable state
+
+A realm has three kinds of state. **Authored** state is what a maker wrote:
+the realm document and its edit log (`metaverse-engine/editor/edit.coax`),
+content tables and their revisions (`metaverse-engine/content/tables.coax`).
+**Running** state is what a session holds while it plays: the World
+(`metaverse-engine/core/world.coax`) and a page's state, which a code reload
+keeps field by field (`coax/web/state-keep.js`). **Durable** state outlives
+every session and belongs to a player: the character record
+(`verse.characters`, #13290) and the item ledger (`verse.items`,
+`verse.inventories`, `verse.item_ops`, #13291, #13318).
+
+An authoring operation (an edit, undo, redo, a content rollback, a world's
+save or load, a publish) writes authored state and may replace running state
+with what it authored. It never writes the character record or the ledger:
+rolling a realm back gives no item back and takes no XP away. Durable state
+changes only through its own routes (the two entries above). The rule is a
+table, `state_op_writes` in `metaverse-engine/editor/authority.coax`
+(`#authority`, zero surviving mutants).
+
+The proof for the code is `coax/web/tool.sh layer-check`'s `durable` gate,
+which runs before every push and has no allowlist:
+
+- The contexts that hold authored and running state (`realm-authoring`,
+  `engine`, `splice`, `realm-tools`, `realm-seat` in `contexts.txt`) reach
+  neither `characters` nor `items` through "may load" lists, directly or
+  through another context. Product code that can't load the record's or the
+  ledger's module can't call it.
+- No line of `metaverse-engine/layer-allowlist.txt` excuses a load from one
+  of them into either.
+- No non-Coax source they own (`coax/web/api/realms.c`, `worldbuilder.c`, the
+  hosts) names a durable table, the rules' generated headers or `room_items`.
+
+A page can't write durable state at all: only a room-key-signed post reaches
+the ledger. So the world's save and load routes (#13412) land under this
+gate.
+
+Each realm declares who decides each kind (`realm_authority`, same file;
+[docs/architecture/state-and-authority.md](docs/architecture/state-and-authority.md)):
+
+| Realm | Content | Simulation | Durability |
+| --- | --- | --- | --- |
+| Splice | The owner and admins | The page | Nothing durable |
+| Everglade | Admins | The room | The ledger |
+
+A realm with no row has declared nothing, and `realm_op_may_write` refuses
+every write for it. A new realm with a durable store adds its row, and its
+statement in its README, in the same change (#13431).
+
 ## Every moderator action is logged before it is done, and the log is never edited
 
 A ban, a mute, a kick and a moderator's look or move have one set of rules

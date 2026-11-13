@@ -23,6 +23,11 @@
 // apps/openagents-web/everglade-*.coax or apps/openagents-web/everglade5e*.coax. v1's room builds
 // frozen from everglade/server/legacy/v1.sh's pin; Everglade II's room is everglade/server/ and the
 // shared code both sides load is everglade/shared/.
+// And one more with no allowlist (#13431; INVARIANTS.md "Authoring never writes durable state"): the
+// contexts that author or run a world (LC_AUTHORING: the edit log and its undo, content tables and their
+// rollback, the World and its save and load) reach neither durable context (LC_DURABLE: the character
+// record and the item ledger) through contexts.txt's "may load" lists, no allowlist line excuses a load
+// from one into the other, and no non-Coax file they own names a durable table or its rules' header.
 // Support code is a test, check, tool, example or book file, which may load what it exercises:
 //   a path with a folder named tests, test, tools, examples, book, fixtures, fuzz or lab;
 //   a file named test_X, test-X, check-X, check.E, checks.E, X_test.E, X-test.E, X-check.E,
@@ -716,6 +721,93 @@ lc_evidence_names :: (line: string, evidence: string) -> bool {
   return cut < p.count && lc_has(evidence, cast(string) p[cut..<p.count]);
 }
 
+// ---- authoring never writes durable state (#13431)
+
+// The contexts that hold authored state (the realm document, the edit log, content tables) and running
+// state (the World, a page's state), and the two that hold durable state.
+LC_AUTHORING :: [5] string.["realm-authoring", "engine", "splice", "realm-tools", "realm-seat"];
+LC_DURABLE :: [2] string.["characters", "items"];
+// What a non-Coax file would name to write durable state: the tables (coax/web/api/schema.sql), the
+// rules' generated headers and the ledger's route.
+LC_DURABLE_NAMES :: [8] string.["verse.characters", "verse.character_", "verse.inventories", "verse.items", "verse.item_", "item-policy.generated.h", "character-policy.generated.h", "room_items("];
+lc_slug_in :: (slug: string, set: [] const string) -> bool { for s: set { if s == slug { return true; } } return false; }
+lc_ctx_named :: (m: LcCtxMap, slug: string) -> int { for c: 0..<m.n { if m.ctxs[c].slug == slug { return c; } } return -1; }
+// The durable context that context a reaches through "may load" lists (its own, then theirs), or -1.
+lc_reaches_durable :: (m: LcCtxMap, a: int) -> int {
+  seen: [LC_MAX_CTX] bool; todo: [LC_MAX_CTX] int; n := 0; q := 0;
+  if a < 0 || a >= m.n { return -1; }
+  seen[a] = true; todo[0] = a; n = 1;
+  while q < n {
+    c := todo[q]; q += 1;
+    for k: 0..<m.ctxs[c].n_may {
+      b := lc_ctx_named(m, m.ctxs[c].may[k]);
+      if b < 0 || seen[b] { continue; }
+      if lc_slug_in(m.ctxs[b].slug, LC_DURABLE[..]) { return b; }
+      seen[b] = true; todo[n] = b; n += 1;
+    }
+  }
+  return -1;
+}
+// contexts.txt: every authoring and durable context is there (a rename must not blind this), and no
+// authoring context reaches a durable one. How many failures.
+lc_durable_contexts :: (m: LcCtxMap, run: LcRun) -> int {
+  bad := 0;
+  for s: LC_DURABLE { if lc_ctx_named(m, s) < 0 { bad += 1; if !run.quiet { print("FAIL durable: % has no context \"%\"; the durable contexts are named in LC_DURABLE (#13431)\n", LC_CONTEXTS, s); } } }
+  for s: LC_AUTHORING {
+    a := lc_ctx_named(m, s);
+    if a < 0 { bad += 1; if !run.quiet { print("FAIL durable: % has no context \"%\"; the authoring contexts are named in LC_AUTHORING (#13431)\n", LC_CONTEXTS, s); } continue; }
+    d := lc_reaches_durable(m, a);
+    if d >= 0 { bad += 1; if !run.quiet { print("FAIL durable: context % may load its way to % in %. Undo, content rollback and a world's load never write the character record or the item ledger (INVARIANTS.md, \"Authoring never writes durable state\"); no allowlist line excuses this.\n", s, m.ctxs[d].slug, LC_CONTEXTS); } }
+  }
+  return bad;
+}
+// The allowlist: no "context FROM -> TO" line from an authoring context's file into a durable one's.
+lc_durable_allow :: (allow: string, m: LcCtxMap, run: LcRun) -> int {
+  bad := 0; i := 0;
+  while i < allow.count {
+    j := i;
+    while j < allow.count && allow[j] != '\n' { j += 1; }
+    entry := lc_entry(cast(string) allow[i..<j]); i = j + 1;
+    if lc_word(entry, 0) != "context" || lc_word(entry, 2) != "->" { continue; }
+    a := lc_context_of(m, lc_word(entry, 1)); b := lc_context_of(m, lc_word(entry, 3));
+    if a < 0 || b < 0 { continue; }
+    if lc_slug_in(m.ctxs[a].slug, LC_AUTHORING[..]) && lc_slug_in(m.ctxs[b].slug, LC_DURABLE[..]) {
+      bad += 1;
+      if !run.quiet { print("FAIL durable: % excuses a load from % (%) into % (%). No line may: authoring never writes durable state (#13431).\n", LC_ALLOW, lc_word(entry, 1), m.ctxs[a].slug, lc_word(entry, 3), m.ctxs[b].slug); }
+    }
+  }
+  return bad;
+}
+// Whether a path is a source file the text gate reads (Coax is judged by its loads; documents are not code).
+lc_durable_source :: (path: string) -> bool {
+  ends := [9] string.[".c", ".h", ".m", ".js", ".ts", ".sql", ".swift", ".sh", ".py"];
+  for e: ends { if path.count > e.count && cast(string) path[path.count - e.count..<path.count] == e { return true; } }
+  return false;
+}
+// The first durable name a source's text holds, or "".
+lc_durable_name :: (src: string) -> string {
+  for n: LC_DURABLE_NAMES { if lc_has(src, n) { return n; } }
+  return "";
+}
+// Every tracked non-Coax source an authoring context owns (`files`: git ls-files, a path a line). How many name durable state.
+lc_durable_files :: (files: string, m: LcCtxMap, body: [] u8, run: LcRun, checked: [] int) -> int {
+  bad := 0; i := 0;
+  while i < files.count {
+    j := i;
+    while j < files.count && files[j] != '\n' { j += 1; }
+    path := cast(string) files[i..<j]; i = j + 1;
+    if !lc_durable_source(path) { continue; }
+    c := lc_context_of(m, path);
+    if c < 0 || !lc_slug_in(m.ctxs[c].slug, LC_AUTHORING[..]) { continue; }
+    n := fs_read(path, body);
+    if n < 0 { continue; }
+    checked[0] += 1;
+    name := lc_durable_name(cast(string) body[0..<n]);
+    if name.count > 0 { bad += 1; if !run.quiet { print("FAIL durable: % (context %) names %. Authoring never writes durable state: the character record and the item ledger change only through their own routes (INVARIANTS.md; #13431).\n", path, m.ctxs[c].slug, name); } }
+  }
+  return bad;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) { tool_errln("usage: coax/web/tool.sh layer-check [--base REV] [--consumers]"); return 2; }
@@ -798,6 +890,15 @@ tool_main :: () -> int #export_c #effects(all) {
   bad += lc_judge_models_fs(models, body[..], run, found[..], model_checked[..]);
   room_v1 := lc_room_v1(loads, LC_ROOM, run);
   bad += room_v1;
+  // authoring never writes durable state (#13431)
+  durable_checked: [1] int; durable := lc_durable_contexts(ctxs, run) + lc_durable_allow(allow, ctxs, run);
+  {
+    lf := [2] string.["git", "ls-files"];
+    fl := proc_run(lf[..], 60000, loads_buf[..], err[..]);   // the loads were judged above; their buffer is free
+    if fl.started != 0 || fl.status != 0 || fl.cut { tool_errln("layer-check: git ls-files failed"); return 2; }
+    durable += lc_durable_files(cast(string) loads_buf[0..<fl.out_n], ctxs, body[..], run, durable_checked[..]);
+  }
+  bad += durable;
   bad += lc_judge_consumers(mods[..], n, consumed[..], cons, run, cons_counts[..], cons_used[..]);
   for k: 0..<lc_line_count(cons) {
     line := lc_nth_line(cons, k);
@@ -834,6 +935,7 @@ tool_main :: () -> int #export_c #effects(all) {
     }
   }
 
+  print("layer-check: durable % (none allowed): % authoring contexts reach neither % nor %, and % of their non-Coax sources name no durable table\n", durable, LC_AUTHORING.count, LC_DURABLE[0], LC_DURABLE[1], durable_checked[0]);
   total := found[1] + found[2] + found[3] + found[4];
   print("layer-check: aethyr-up %, everglade-up %, tests %, context %, model-effects % (of % in %), total % loads across the layers (each needs a line in %), room-v1 % (none allowed), no-consumer modules: % with no line (none allowed), % adopted, % the book's, % built by name, % a pipeline's (%), % failed\n", found[1], found[2], found[3], found[4], found[LC_MODEL_EFFECTS], model_checked[0], LC_MODELS, total, LC_ALLOW, room_v1, cons_counts[0], cons_counts[1], cons_counts[2], cons_counts[3], cons_counts[4], LC_CONSUMERS, bad);
   return ifx bad == 0 then 0 else 1;
@@ -987,6 +1089,28 @@ LC_T_ALLOW :: "# seed\naethyr-up metaverse-engine/net/latency.coax -> everglade/
   u4: [8] bool; f4: [LC_RULES] int;
   #assert lc_judge_with_contexts("metaverse-engine/session/tests/t.coax:1:#load \"../../../coax/lib/bitcoin/tx.coax\";\n", "", "", ctxs, u4[..], LC_T_QUIET, f4[..]) == 0;
   #assert !lc_parse_contexts("engine folders: metaverse-engine/ may load: nope\n").ok && !lc_parse_contexts("engine metaverse-engine/\n").ok;
+}
+#test "durable: an authoring context that may load its way to the character record or the ledger fails" {
+  good := "engine folders: metaverse-engine/ may load: toolchain\ncharacters folders: everglade/model/ may load: items engine\nitems folders: metaverse-engine/session/ledger.coax may load: characters engine\nrealm-authoring folders: metaverse-engine/editor/ coax/web/api/realms.c may load: engine chat toolchain\nchat folders: components/zeron/ may load: toolchain\nsplice folders: metaverse/splice/ may load: engine realm-authoring\nrealm-tools folders: metaverse/tools/ may load: engine\nrealm-seat folders: coax/lib/media/realm_seat.coax may load: realm-authoring\ntoolchain folders: coax/ may load:\n";
+  m := lc_parse_contexts(good);
+  #assert m.ok && lc_durable_contexts(m, LC_T_QUIET) == 0;
+  #assert lc_reaches_durable(m, lc_ctx_named(m, "realm-authoring")) < 0 && lc_reaches_durable(m, lc_ctx_named(m, "characters")) == lc_ctx_named(m, "items");
+  #assert lc_reaches_durable(m, -1) < 0 && lc_reaches_durable(m, m.n) < 0;
+  // directly
+  direct := lc_parse_contexts("engine folders: metaverse-engine/ may load: toolchain\ncharacters folders: everglade/model/ may load: engine\nitems folders: metaverse-engine/session/ledger.coax may load: engine\nrealm-authoring folders: metaverse-engine/editor/ may load: engine items\nsplice folders: metaverse/splice/ may load: engine\nrealm-tools folders: metaverse/tools/ may load: engine\nrealm-seat folders: coax/lib/media/realm_seat.coax may load: engine\ntoolchain folders: coax/ may load:\n");
+  #assert direct.ok && lc_durable_contexts(direct, LC_T_QUIET) == 1;
+  // through another context (splice -> chat -> characters), and for each authoring context that does
+  through := lc_parse_contexts("engine folders: metaverse-engine/ may load: toolchain\ncharacters folders: everglade/model/ may load: engine\nitems folders: metaverse-engine/session/ledger.coax may load: engine\nrealm-authoring folders: metaverse-engine/editor/ may load: engine chat\nchat folders: components/zeron/ may load: characters\nsplice folders: metaverse/splice/ may load: realm-authoring\nrealm-tools folders: metaverse/tools/ may load: engine\nrealm-seat folders: coax/lib/media/realm_seat.coax may load: engine\ntoolchain folders: coax/ may load:\n");
+  #assert through.ok && lc_durable_contexts(through, LC_T_QUIET) == 2;
+  // a renamed or missing context is a failure, not a pass: 2 durable and 5 authoring names
+  #assert lc_durable_contexts(lc_parse_contexts("toolchain folders: coax/ may load:\n"), LC_T_QUIET) == 7;
+  // the allowlist can't excuse the load either
+  #assert lc_durable_allow("# seed\ncontext metaverse-engine/editor/edit.coax -> metaverse-engine/session/ledger.coax  # why (#13431)\ncontext metaverse-engine/editor/doc.coax -> everglade/model/character.coax\n", m, LC_T_QUIET) == 2;
+  #assert lc_durable_allow("context metaverse-engine/editor/edit.coax -> components/zeron/a.coax\ncontext everglade/model/character.coax -> metaverse-engine/session/ledger.coax\ntests metaverse-engine/editor/edit.coax -> metaverse-engine/session/ledger.coax\n", m, LC_T_QUIET) == 0;
+  // the text gate: which files it reads and what it finds
+  #assert lc_durable_source("coax/web/api/realms.c") && lc_durable_source("a/b.sql") && !lc_durable_source("a/b.coax") && !lc_durable_source("a/README.md") && !lc_durable_source(".c");
+  #assert lc_durable_name("UPDATE verse.characters SET body") == "verse.characters" && lc_durable_name("INSERT INTO verse.item_ops") == "verse.item_" && lc_durable_name("room_items(q)") == "room_items(";
+  #assert lc_durable_name("#include \"item-policy.generated.h\"") == "item-policy.generated.h" && lc_durable_name("SELECT * FROM verse.realm_docs; -- the items of a realm") == "";
 }
 #test "model-effects: a listed file with #effects(all) fails, one with narrow effects passes" {
   found: [LC_RULES] int;

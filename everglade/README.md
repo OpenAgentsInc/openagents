@@ -21,6 +21,20 @@ Everglade's code is moving into this folder from `apps/openagents-web/`. The
 land, planting, ground and light are in [world/](world/). For what moves and when, see
 [Where Everglade's code lives](book/README.md#where-everglades-code-lives).
 
+## State and authority
+
+Everglade's row in `metaverse-engine/editor/authority.coax` (#13431,
+[what the kinds are](../docs/architecture/state-and-authority.md)):
+
+| Kind | Who decides |
+| --- | --- |
+| Content (the land, content tables, edits) | The site's admins |
+| Simulation (combat, movement, loot, travel) | The room, on the server; a page predicts and is corrected |
+| Durability (the character record, items, coin, quests) | The item ledger and the character record |
+
+An undo, a content rollback or a world load never writes a character's record
+or the ledger (INVARIANTS.md, "Authoring never writes durable state").
+
 Zones only wire shared features. [features.coax](features.coax) lists each
 feature, the shared modules that own it and the features each zone uses;
 `coax/web/tool.sh everglade-parity` fails on a new zone-local copy. See

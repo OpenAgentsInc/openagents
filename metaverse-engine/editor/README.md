@@ -21,6 +21,11 @@ The product spec, what is on screen and what to build, is
   admitted into a realm's assets by content (`#authority`). Book chapter 53.
   `coax/bin/coax test metaverse-engine/editor/pack.coax --library`
   `coax/web/tool.sh metaverse-engine/tools/pack-check.coax PACK...` (the committed packs, written again)
+- `authority.coax`: the three kinds of state (authored, running, durable), which operation may
+  write which, and who decides each in a realm (`#authority`; INVARIANTS.md, "Authoring never
+  writes durable state"; #13431). An edit, undo, content rollback or world load never writes the
+  character record or the item ledger.
+  `coax/bin/coax test metaverse-engine/editor/authority.coax --library`
 
 The page side lives in `apps/openagents-web/` (`builder.coax` today, `myrealm.coax` as the
 canvas) and the shared edit layer in `metaverse/edit/edit.coax`.

@@ -1,0 +1,136 @@
+// Three kinds of state, and who decides each in a realm (GitHub #13431; INVARIANTS.md, "Authoring
+// never writes durable state"; docs/architecture/state-and-authority.md).
+//
+//   authored  what a maker wrote: the realm document and its edit log (edit.coax), content tables
+//             (../content/tables.coax) and their revisions
+//   running   what a session holds while it plays: the World (../core/world.coax) and a page's state,
+//             which a code reload keeps field by field (coax/web/state-keep.js)
+//   durable   what outlives every session and belongs to a player: the character record
+//             (everglade/model/character.coax) and the item ledger (../session/ledger.coax)
+//
+// An authoring operation (an edit, undo, redo, a content rollback, a world's save or load, a
+// publish) writes authored state, and may replace running state with what it authored. It never
+// writes durable state. state_op_writes is that rule as a table; coax/web/tool.sh layer-check's
+// "durable" gate is its proof for the code: the contexts that hold these operations can't load the
+// two that hold durable state.
+//
+// Each realm declares who decides each kind (realm_authority). A realm with no row has declared
+// nothing: the editor and the API refuse to treat it as having a durable store.
+//   coax/bin/coax test metaverse-engine/editor/authority.coax --library
+//   coax/bin/coax mutate metaverse-engine/editor/authority.coax
+
+#module "metaverse.engine.authority";
+#authority;
+
+STATE_AUTHORED :: 1; STATE_RUNNING :: 2; STATE_DURABLE :: 4;
+
+// The operations that write state, in three groups: authoring, running, durable.
+OP_EDIT :: 0; OP_UNDO :: 1; OP_REDO :: 2; OP_CONTENT_ROLLBACK :: 3; OP_WORLD_SAVE :: 4; OP_WORLD_LOAD :: 5; OP_PUBLISH :: 6;
+OP_CODE_RELOAD :: 7; OP_SIM_STEP :: 8;
+OP_LEDGER :: 9; OP_CHARACTER :: 10;
+OP_COUNT :: 11;
+
+state_op_name :: (op: int) -> string #effects() {
+  if op == OP_EDIT { return "edit"; }
+  if op == OP_UNDO { return "undo"; }
+  if op == OP_REDO { return "redo"; }
+  if op == OP_CONTENT_ROLLBACK { return "content-rollback"; }
+  if op == OP_WORLD_SAVE { return "world-save"; }
+  if op == OP_WORLD_LOAD { return "world-load"; }
+  if op == OP_PUBLISH { return "publish"; }
+  if op == OP_CODE_RELOAD { return "code-reload"; }
+  if op == OP_SIM_STEP { return "sim-step"; }
+  if op == OP_LEDGER { return "ledger"; }
+  if op == OP_CHARACTER { return "character"; }
+  return "";
+}
+// The kinds of state an operation may write, as a mask of STATE_*; 0 for no such operation.
+// A save and a publish read the running World and write only what is authored. A code reload and
+// a simulation step write only what is running. Only the ledger's and the character record's own
+// operations write durable state, and they write nothing else.
+state_op_writes :: (op: int) -> int #effects() {
+  if (op >= OP_EDIT && op <= OP_CONTENT_ROLLBACK) || op == OP_WORLD_LOAD { return STATE_AUTHORED | STATE_RUNNING; }
+  if op == OP_WORLD_SAVE || op == OP_PUBLISH { return STATE_AUTHORED; }
+  if op == OP_CODE_RELOAD || op == OP_SIM_STEP { return STATE_RUNNING; }
+  if op == OP_LEDGER || op == OP_CHARACTER { return STATE_DURABLE; }
+  return 0;
+}
+state_op_may_write :: (op: int, kind: int) -> bool #effects() {
+  return (kind == STATE_AUTHORED || kind == STATE_RUNNING || kind == STATE_DURABLE) && (state_op_writes(op) & kind) != 0;
+}
+
+// Who decides each kind of state in a realm. realm is "" when the realm has declared nothing.
+//   content     who may change authored state: "owner-admins" (the realm's owner and the site's admins) or "admins"
+//   simulation  what decides running state: "page" (the player's own page) or "room" (the server's room)
+//   durability  what holds durable state: "none" or "ledger" (the character record and the item ledger)
+RealmAuthority :: struct { realm: string; content: string; simulation: string; durability: string; }
+
+REALM_AUTHORITY_REALMS :: [2] string.["splice", "everglade"];
+
+realm_authority :: (realm: string) -> RealmAuthority #effects(reads) {
+  if realm == "splice" { return RealmAuthority.{realm = "splice", content = "owner-admins", simulation = "page", durability = "none"}; }
+  if realm == "everglade" { return RealmAuthority.{realm = "everglade", content = "admins", simulation = "room", durability = "ledger"}; }
+  none: RealmAuthority;
+  return none;
+}
+// Whether an operation may write a kind of state in a realm: the operation's own rule, and durable
+// state only where the realm declares a store for it. A realm with no row writes nothing here.
+realm_op_may_write :: (realm: string, op: int, kind: int) -> bool #effects(reads) {
+  a := realm_authority(realm);
+  if a.realm.count == 0 || !state_op_may_write(op, kind) { return false; }
+  if kind == STATE_DURABLE { return a.durability == "ledger"; }
+  return true;
+}
+// A realm's row as one line, "REALM|CONTENT|SIMULATION|DURABILITY\n", into out; "" for no row or no room.
+realm_authority_line :: (realm: string, out: [] u8) -> string #effects(reads, writes, traps) {
+  a := realm_authority(realm);
+  if a.realm.count == 0 { return ""; }
+  parts := [8] string.[a.realm, "|", a.content, "|", a.simulation, "|", a.durability, "\n"];
+  need := 0;
+  for p: parts { need += p.count; }
+  if need > out.count { return ""; }
+  n := 0;
+  for p: parts { for c: p { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+#test "no authoring operation writes durable state; durable operations write nothing else" {
+  for op: OP_EDIT..<OP_CODE_RELOAD { #assert !state_op_may_write(op, STATE_DURABLE) && state_op_may_write(op, STATE_AUTHORED); }
+  #assert !state_op_may_write(OP_CODE_RELOAD, STATE_DURABLE) && !state_op_may_write(OP_SIM_STEP, STATE_DURABLE);
+  #assert state_op_writes(OP_LEDGER) == STATE_DURABLE && state_op_writes(OP_CHARACTER) == STATE_DURABLE;
+  for op: 0..<OP_COUNT { #assert state_op_name(op).count > 0 && state_op_writes(op) != 0; }
+}
+#test "each operation's kinds, one by one" {
+  both := STATE_AUTHORED | STATE_RUNNING;
+  #assert state_op_writes(OP_EDIT) == both && state_op_writes(OP_UNDO) == both && state_op_writes(OP_REDO) == both;
+  #assert state_op_writes(OP_CONTENT_ROLLBACK) == both && state_op_writes(OP_WORLD_LOAD) == both;
+  #assert state_op_writes(OP_WORLD_SAVE) == STATE_AUTHORED && state_op_writes(OP_PUBLISH) == STATE_AUTHORED;
+  #assert state_op_writes(OP_CODE_RELOAD) == STATE_RUNNING && state_op_writes(OP_SIM_STEP) == STATE_RUNNING;
+  #assert state_op_writes(-1) == 0 && state_op_writes(OP_COUNT) == 0 && state_op_name(-1) == "" && state_op_name(OP_COUNT) == "";
+  #assert !state_op_may_write(OP_WORLD_SAVE, STATE_RUNNING) && state_op_may_write(OP_WORLD_LOAD, STATE_RUNNING) && !state_op_may_write(OP_SIM_STEP, STATE_AUTHORED);
+  // a kind is one of the three, never a mask or nothing
+  #assert !state_op_may_write(OP_EDIT, both) && !state_op_may_write(OP_EDIT, 0) && !state_op_may_write(OP_LEDGER, 7) && !state_op_may_write(OP_EDIT, 8);
+  names := [11] string.["edit", "undo", "redo", "content-rollback", "world-save", "world-load", "publish", "code-reload", "sim-step", "ledger", "character"];
+  for op: 0..<OP_COUNT { #assert state_op_name(op) == names[op]; }
+}
+#test "Splice and Everglade declare who decides; another realm has declared nothing" {
+  s := realm_authority("splice"); e := realm_authority("everglade");
+  #assert s.realm == "splice" && s.content == "owner-admins" && s.simulation == "page" && s.durability == "none";
+  #assert e.realm == "everglade" && e.content == "admins" && e.simulation == "room" && e.durability == "ledger";
+  #assert realm_authority("").realm == "" && realm_authority("Splice").realm == "" && realm_authority("my-realm").durability == "";
+  out: [64] u8; small: [16] u8; exact: [30] u8;
+  #assert realm_authority_line("splice", out[..]) == "splice|owner-admins|page|none\n";
+  #assert realm_authority_line("everglade", out[..]) == "everglade|admins|room|ledger\n";
+  #assert realm_authority_line("everglade", exact[0..<29]) == "everglade|admins|room|ledger\n" && realm_authority_line("everglade", exact[0..<28]) == "";
+  #assert realm_authority_line("splice", small[..]) == "" && realm_authority_line("nowhere", out[..]) == "";
+  for r: REALM_AUTHORITY_REALMS { #assert realm_authority(r).realm == r; }
+}
+#test "durable state is written only by its own operations, and only where a realm declares a store" {
+  #assert realm_op_may_write("everglade", OP_LEDGER, STATE_DURABLE) && realm_op_may_write("everglade", OP_CHARACTER, STATE_DURABLE);
+  #assert !realm_op_may_write("splice", OP_LEDGER, STATE_DURABLE) && !realm_op_may_write("splice", OP_CHARACTER, STATE_DURABLE);
+  for op: OP_EDIT..<OP_LEDGER { #assert !realm_op_may_write("everglade", op, STATE_DURABLE) && !realm_op_may_write("splice", op, STATE_DURABLE); }
+  #assert realm_op_may_write("splice", OP_UNDO, STATE_AUTHORED) && realm_op_may_write("splice", OP_WORLD_LOAD, STATE_RUNNING) && realm_op_may_write("everglade", OP_SIM_STEP, STATE_RUNNING);
+  #assert !realm_op_may_write("splice", OP_WORLD_SAVE, STATE_RUNNING) && !realm_op_may_write("everglade", OP_LEDGER, STATE_AUTHORED);
+  // no row: nothing is written through this table
+  #assert !realm_op_may_write("my-realm", OP_EDIT, STATE_AUTHORED) && !realm_op_may_write("", OP_LEDGER, STATE_DURABLE);
+}

@@ -31,6 +31,20 @@ coax/web/tool.sh metaverse/splice/tools/content-check.coax metaverse/splice/cont
 coax/remote/remote.sh run -- coax/remote/check.sh module splice   # the module builds inside its budget
 ```
 
+## State and authority
+
+Splice's row in `metaverse-engine/editor/authority.coax` (#13431,
+[what the kinds are](../../docs/architecture/state-and-authority.md)):
+
+| Kind | Who decides |
+| --- | --- |
+| Content (the content tables, the edit layer) | The realm's owner and the site's admins |
+| Simulation (the run in progress) | The player's own page; no server checks it |
+| Durability | Nothing durable: a run is over when the page closes |
+
+An undo, a content rollback or a layer load changes the content and the run in
+progress, and nothing else.
+
 ## Edit layer
 
 You can place things in Splice without changing its code. A placed piece is data: a row of a
