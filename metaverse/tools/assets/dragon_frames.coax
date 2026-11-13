@@ -1,0 +1,118 @@
+// The red dragon's 75 baked frames as Everglade II's streamed file (#13519; the format and its one
+// codec are everglade/client/dragon-frames.coax, profile everglade2-dragon-frames-v1). dragon_bake.py writes
+// FRAMES_DIR/dragon-K.bin (a u32 corner count, an f32 clip length, then per corner x y z, a face
+// normal and an sRGB colour with a flag byte). Every frame has the same corners; corners that share
+// a place in every frame and a colour are one vertex, so the file holds the corners once as vertex
+// numbers and each frame's vertices (a quarter of the corners: 1,277 for 4,890). Everglade II ships the file at
+// apps/openagents-web/realms/everglade2/assets/dragon.frames, baked at ratio 0.5:
+//   Blender -b --python metaverse/tools/assets/dragon_bake.py -- assets/metaverse/beasts/dragon.gltf FRAMES_DIR 0.5
+//   coax/web/tool.sh metaverse/tools/assets/dragon_frames.coax FRAMES_DIR apps/openagents-web/realms/everglade2/assets/dragon.frames
+// It also holds the format to its profile (GitHub #13304's shared check, format-profile-lib.coax):
+// proto/verse/everglade2-dragon-frames-v1.json pins one fixture's bytes and the damage the reader refuses.
+//   coax/web/tool.sh metaverse/tools/assets/dragon_frames.coax --profile proto/verse/everglade2-dragon-frames-v1.json
+//   coax/web/tool.sh metaverse/tools/assets/dragon_frames.coax --profile write   (the fixture as hex, for the profile)
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../humans/ph_core.coax";
+#load "../humans/ph_gltf.coax";
+#load "../../../everglade/client/dragon-frames.coax";
+#load "../../../metaverse-engine/tools/format-profile-lib.coax";
+
+DF_BAKED :: 28;   // dragon_bake.py's bytes a corner
+DF_TABLE :: 16384;  // the vertex table's slots (a power of two over EDF_CORNERS_MAX)
+
+DF_ID :: "everglade2-dragon-frames-v1";
+
+// The profile's fixture: two triangles sharing an edge, six corners over four vertices; frame k's
+// vertices a quarter metre further along x than frame k - 1's, each a colour of its own.
+DF_FIX_CORNERS :: [6] int.[0, 1, 2, 2, 1, 3];
+df_build :: (f:[]FpFixture)->bool {
+  f[0].wn=0; f[0].n=edf_bytes(6,4);
+  for i:0..<f[0].n { f[0].bytes[i]=0; }
+  if edf_head_put(f[0].bytes[..],6,4)!=EDF_HEAD { return false; }
+  for k:0..<6 { if !edf_corner_put(f[0].bytes[..],6,k,DF_FIX_CORNERS[k]) { return false; } }
+  for k:0..<DR_TOTAL { for v:0..<4 {
+    x:=f32(k)*0.25;
+    if !edf_vertex_put(f[0].bytes[..],6,4,k,v,x+f32(v%2),f32(v/2),1.5,edf_colour(v*60,k,255-k)) { return false; }
+  } }
+  return true;
+}
+df_admits :: (f:[]FpFixture)->bool {
+  v:[FP_MAX/4]f32; n:=f[0].n/4;
+  for i:0..<n { v[i]=f32_from_bits(cast(u32)gl_u32(f[0].bytes[..],i*4)); }
+  h:=edf_read(v[0..<n],f[0].n); return h.ok && h.corners==6 && h.vertices==4;
+}
+#test "the profile's fixture is two triangles over four vertices the reader admits, and one word less is not" {
+  f:[1]FpFixture; #assert df_build(f[..]) && f[0].n==4864 && df_admits(f[..]);
+  f[0].n=4860; #assert !df_admits(f[..]);
+}
+df_profile :: (path:string)->int {
+  f:[1]FpFixture;
+  if path=="write" { if !df_build(f[..]) { return 2; } fp_print(f[..]); return 0; }
+  text:[65536]u8; n:=fs_read(path,text[..]); nodes:[2048]JvNode; d:[1]Jv; t:[256]u8;
+  if n<=0 || !jv_parse(d[..],cast(string)text[0..<n],nodes[..]) { print("FAIL %: cannot parse the profile\n",path); return 1; }
+  why:="";
+  if fp_str(d[0],jv_get(d[0],0,"identity"),t[..])!=DF_ID { why="its identity is not this format's"; }
+  else if !df_build(f[..]) { why="the codec's writer gave no fixture"; }
+  else { why=fp_fixture(d[0],f[..]); }
+  if why=="" && !df_admits(f[..]) { why="the codec's reader refuses its fixture"; }
+  if why=="" && fp_refusals(d[0])<3 { why="it names fewer than three refusals"; }
+  for i:0..<fp_refusals(d[0]) {
+    if why!="" { break; }
+    _=df_build(f[..]); why=fp_refuse(d[0],i,f[..]);
+    if why=="" && df_admits(f[..]) { why="the codec's reader admits a fixture the profile says it refuses"; }
+  }
+  if why!="" { print("FAIL %: %\n",path,why); return 1; }
+  print("%: profile holds\n",path); return 0;
+}
+
+// Corner v's place in frame k (baked files `b`, each `stride` bytes) and its colour are corner w's.
+df_same :: (b:[]u8,stride:int,v:int,w:int)->bool {
+  for k:0..<DR_TOTAL {
+    a:=k*stride+8+v*DF_BAKED; c:=k*stride+8+w*DF_BAKED;
+    for q:0..<12 { if b[a+q]!=b[c+q] { return false; } }
+  }
+  for q:24..<27 { if b[8+v*DF_BAKED+q]!=b[8+w*DF_BAKED+q] { return false; } }
+  return true;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args; if !args_load(args[..]) || args_count(args[..])!=2 { tool_errln("usage: dragon_frames.coax FRAMES_DIR OUT.frames | --profile PROFILE.json|write"); return 2; }
+  if args_at(args[..],0)=="--profile" { return df_profile(args_at(args[..],1)); }
+  frames:=args_at(args[..],0); output:=args_at(args[..],1);
+  stride:=8+EDF_CORNERS_MAX*DF_BAKED;
+  b:[DR_TOTAL*(8+EDF_CORNERS_MAX*DF_BAKED)]u8; corners:=0;
+  for k:0..<DR_TOTAL {
+    pb:[4096]u8; s:[1]Sb; s[0]=sb(pb[..]);
+    sb_put(s[..],frames); sb_put(s[..],"/dragon-"); sb_int(s[..],k); sb_put(s[..],".bin");
+    n:=fs_read(sb_text(s[..]),b[k*stride..<(k+1)*stride]);
+    if n<8 { tool_errln("missing baked dragon frame"); return 1; }
+    count:=gl_u32(b[..],k*stride);
+    if k==0 { corners=count; }
+    if count!=corners || n!=8+count*DF_BAKED { tool_errln("a baked frame's corners differ from the first's (bake every frame from one simplified mesh)"); return 1; }
+  }
+  // corners that are one vertex in every frame share it
+  slot:[DF_TABLE]int; vertex:[EDF_CORNERS_MAX]int; first:[EDF_CORNERS_MAX]int; vertices:=0;
+  for v:0..<corners {
+    hash:=0;
+    for k:0..<DR_TOTAL { at:=k*stride+8+v*DF_BAKED; for q:0..<12 { hash=(hash*33+int(b[at+q]))%DF_TABLE; } }
+    for q:24..<27 { hash=(hash*33+int(b[8+v*DF_BAKED+q]))%DF_TABLE; }
+    while slot[hash]!=0 && !df_same(b[..],stride,v,first[slot[hash]-1]) { hash=(hash+1)%DF_TABLE; }
+    if slot[hash]==0 { first[vertices]=v; vertices+=1; slot[hash]=vertices; }
+    vertex[v]=slot[hash]-1;
+  }
+  out:[EDF_HEAD+EDF_CORNERS_MAX*4+DR_TOTAL*EDF_CORNERS_MAX*EDF_VERTEX]u8; size:=edf_bytes(corners,vertices);
+  for i:0..<size { out[i]=0; }
+  if edf_head_put(out[..],corners,vertices)!=EDF_HEAD { tool_errln("the frames' corners aren't whole triangles within the budget"); return 1; }
+  for v:0..<corners { if !edf_corner_put(out[..],corners,v,vertex[v]) { return 1; } }
+  for k:0..<DR_TOTAL { for i:0..<vertices {
+    at:=k*stride+8+first[i]*DF_BAKED; p:[3]f32;
+    for q:0..<3 { p[q]=f32_from_bits(cast(u32)gl_u32(b[..],at+q*4)); }
+    c:=8+first[i]*DF_BAKED+24; colour:=edf_colour(int(b[c]),int(b[c+1]),int(b[c+2]));
+    if !edf_vertex_ok(p[0],p[1],p[2],colour) { tool_errln("a baked vertex is out of reach"); return 1; }
+    if !edf_vertex_put(out[..],corners,vertices,k,i,p[0],p[1],p[2],colour) { return 1; }
+  } }
+  if !fs_write(output,cast(string)out[0..<size]) { tool_errln("can't write the frames file"); return 1; }
+  print("dragon frames: % frames of % corners over % vertices, % bytes\n",DR_TOTAL,corners,vertices,size);
+  return 0;
+}

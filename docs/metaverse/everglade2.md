@@ -229,6 +229,41 @@ coax/web/tool.sh metaverse/tools/assets/character_glade_pack.coax --append-horse
 coax/web/tool.sh metaverse-engine/tools/pack-seal.coax /tmp/e2-horse.pack "$P"
 ```
 
+The red dragon's 75 frames don't fit there too (#13519). As pack meshes they are
+about 26 MB at full detail and 4.5 MB at half their triangles. With the ground by
+cell the paged image is 61,668,900 bytes, which leaves the reader about 4.2 MB. Moving pack entries later doesn't help, because the reader still
+holds the whole image. A second vertex store doesn't help either: Everglade II's
+passes already use all eight storage buffers a WebGPU device must allow. So the
+frames go in a file of their own beside the pack,
+`realms/everglade2/assets/dragon.frames` (EDF1, profile
+`everglade2-dragon-frames-v1`, codec `everglade/client/dragon-frames.coax`):
+
+- The page lists it as a data asset after the pack and marks it optional
+  (`coaxial_asset_optional_v1`). The world never waits for it.
+- When it comes, the page copies it into its baked-clips store, past the
+  people's bakes. If `edf_read` admits it, the dragon is drawn and can be
+  mounted. The store goes to the GPU again once.
+- The page's own memory is near its 64 MiB too, so the frames share what they
+  can. Every frame has the same triangles over the same vertices, so the file
+  holds the corners once as vertex numbers, then each frame's vertices.
+- Each frame is drawn in order with no index buffer (record mode 23,
+  `e2_dragon_vs`). A vertex is its place and its colour, and a corner's normal
+  is its triangle's.
+
+The file is the dragon at half its triangles: 1,630 a frame over 1,277
+vertices, 1,552,000 bytes. Every corner of the bake reads back exactly. Until
+it comes, and on a host that doesn't fetch it, the dragon isn't drawn and can't
+be mounted. A bake with other counts changes `EDF_CORNERS` and `EDF_VERTICES`,
+since the page keeps room for exactly that file. To bake it again:
+
+```sh
+D="$A/cache/dragon-web"
+$B --background --factory-startup --disable-autoexec --python-exit-code 1 \
+  --python metaverse/tools/assets/dragon_bake.py -- assets/metaverse/beasts/dragon.gltf "$D" 0.5
+coax/web/tool.sh metaverse/tools/assets/dragon_frames.coax "$D" \
+  apps/openagents-web/realms/everglade2/assets/dragon.frames
+```
+
 Both the zone pages and Everglade II answer `coax drive why horse-0` (and
 `dragon-1`). Missing frames are named as an asset failure. A quarter metre probe
 along the mount's current forward/backing direction names the first stopping

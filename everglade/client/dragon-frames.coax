@@ -1,0 +1,173 @@
+#module "everglade.dragonframes";
+// The red dragon's frames as one streamed file (#13519; profile everglade2-dragon-frames-v1,
+// proto/verse/everglade2-dragon-frames-v1.json): the one codec. Everglade II's pack is read in the
+// browser by a reader whose 64 MiB holds the whole pack image, and the image is near that, so the
+// dragon's 75 frames can't go in the pack. They go in this file beside it, which the page fetches
+// after its world is up (a data asset it marks optional: the scene never waits for it), copies into
+// its baked-clips store and draws without an index buffer (everglade/client/ride-view.coax).
+// The page's own memory is near its 64 MiB too, so the frames share what they can: every frame has
+// the same triangles over the same vertices (the bake simplifies the bind mesh once, before any clip
+// deforms it: metaverse/tools/assets/dragon_bake.py RATIO), so the file holds the triangles' corners
+// once, as vertex numbers, and then each frame's vertices.
+//
+// The file, little endian, in 4-byte words:
+//   header, 32 bytes: "EDF1", the version (u32, 1), the frames (u32, DR_TOTAL), the corners a frame
+//     (u32, a multiple of 3, at most EDF_CORNERS_MAX), the vertices a frame (u32, 3 to the corners),
+//     three zero words
+//   the corners: each its vertex's number (an f32 whole number below the vertices), three a
+//     triangle, then zeros to a multiple of four
+//   then frame after frame (everglade/dragon-clips.coax's order), each its vertices: x, y, z (f32,
+//     metres in the dragon's own unscaled frame, as dragon_bake.py writes them and the glade pack's
+//     glade/dragonK meshes hold them) and its colour (f32, the whole number r * 65536 + g * 256 + b
+//     of its sRGB bytes).
+// Every number is an f32, so the page reads the file as floats and a shader as whole vec4s. A
+// corner's flat normal is its triangle's, which the shader takes from the triangle's corners.
+// Written by metaverse/tools/assets/dragon_frames.coax; read by the page (everglade/client/ride-view.coax).
+//   coax/bin/coax test everglade/client/dragon-frames.coax
+#load "../dragon-clips.coax";
+
+EDF_MAGIC :: 0x31464445;          // "EDF1" as a little-endian u32
+EDF_VERSION :: 1;
+EDF_HEAD :: 32;                   // header bytes
+EDF_HEAD_FLOATS :: 8;
+EDF_VERTEX :: 16;                 // bytes a vertex: x, y, z and the colour, four f32
+EDF_CORNERS_MAX :: 12288;         // the model's 4,000-triangle budget, three corners each (dragon_pack.coax's)
+EDF_REACH :: 64.0;                // m: no vertex of the unscaled model is this far from its origin (its frames span 22.6 m)
+// Everglade II's file (dragon_bake.py ratio 0.5): 1,630 triangles a frame over 1,277 vertices, 1,552,000 bytes.
+EDF_CORNERS :: 4890;
+EDF_VERTICES :: 1277;
+EDF_FLOATS :: EDF_HEAD_FLOATS + (EDF_CORNERS + 3) / 4 * 4 + DR_TOTAL * EDF_VERTICES * 4;   // its floats: edf_floats(EDF_CORNERS, EDF_VERTICES)
+
+EdfHead :: struct { ok: bool; frames: int; corners: int; vertices: int; }
+
+// The corners' floats, zeros to a multiple of four.
+edf_index_floats :: (corners: int) -> int { return (corners + 3) / 4 * 4; }
+// Where the corners and the first frame's vertices start, in floats from the file's start.
+edf_corners_at :: () -> int { return EDF_HEAD_FLOATS; }
+edf_vertices_at :: (corners: int) -> int { return EDF_HEAD_FLOATS + edf_index_floats(corners); }
+// A file's floats and bytes.
+edf_floats :: (corners: int, vertices: int) -> int { return edf_vertices_at(corners) + DR_TOTAL * vertices * 4; }
+edf_bytes :: (corners: int, vertices: int) -> int { return edf_floats(corners, vertices) * 4; }
+edf_shape_ok :: (corners: int, vertices: int) -> bool {
+  return corners > 0 && corners % 3 == 0 && corners <= EDF_CORNERS_MAX && vertices >= 3 && vertices <= corners;
+}
+
+// The header from its eight words and the file's whole byte count: ok when it is this version's,
+// with DR_TOTAL frames of whole triangles within the budget, and the file holds exactly them.
+edf_head :: (w: [] u32, bytes: int) -> EdfHead {
+  if w.count < EDF_HEAD_FLOATS { return EdfHead.{}; }
+  frames := cast(int) w[2]; corners := cast(int) w[3]; vertices := cast(int) w[4];
+  if w[0] != cast(u32) EDF_MAGIC || w[1] != cast(u32) EDF_VERSION || frames != DR_TOTAL { return EdfHead.{}; }
+  if w[5] != 0 || w[6] != 0 || w[7] != 0 || !edf_shape_ok(corners, vertices) { return EdfHead.{}; }
+  if bytes != edf_bytes(corners, vertices) { return EdfHead.{}; }
+  return EdfHead.{ok = true, frames = frames, corners = corners, vertices = vertices};
+}
+edf_put32 :: (out: [] u8, at: int, v: u32) { for b: 0..<4 { out[at + b] = cast(u8) ((v >> cast(u32) (b * 8)) & 255); } }
+// The header's 32 bytes into out at 0. Its length, or 0 when the shape isn't one.
+edf_head_put :: (out: [] u8, corners: int, vertices: int) -> int {
+  if out.count < EDF_HEAD || !edf_shape_ok(corners, vertices) { return 0; }
+  w := [8] u32.[cast(u32) EDF_MAGIC, cast(u32) EDF_VERSION, cast(u32) DR_TOTAL, cast(u32) corners, cast(u32) vertices, 0, 0, 0];
+  for i: 0..<8 { edf_put32(out, i * 4, w[i]); }
+  return EDF_HEAD;
+}
+// A colour as the file's word: its three sRGB bytes as one whole number, which an f32 holds exactly.
+edf_colour :: (r: int, g: int, b: int) -> f32 {
+  if r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 { return -1; }
+  return f32(r * 65536 + g * 256 + b);
+}
+// Corner k's vertex number into out (`corners` a frame).
+edf_corner_put :: (out: [] u8, corners: int, k: int, vertex: int) -> bool {
+  at := (EDF_HEAD_FLOATS + k) * 4;
+  if k < 0 || k >= corners || vertex < 0 || at + 4 > out.count { return false; }
+  edf_put32(out, at, f32_bits(f32(vertex)));
+  return true;
+}
+// Frame f's vertex v into out: its four floats.
+edf_vertex_put :: (out: [] u8, corners: int, vertices: int, f: int, v: int, x: f32, y: f32, z: f32, colour: f32) -> bool {
+  at := (edf_vertices_at(corners) + (f * vertices + v) * 4) * 4;
+  if f < 0 || f >= DR_TOTAL || v < 0 || v >= vertices || at + EDF_VERTEX > out.count { return false; }
+  q := [4] f32.[x, y, z, colour];
+  for i: 0..<4 { edf_put32(out, at + i * 4, f32_bits(q[i])); }
+  return true;
+}
+// Whether one vertex (four floats) is the file's: a place within EDF_REACH of the origin, and a
+// colour that is a whole number of 24 bits.
+edf_vertex_ok :: (x: f32, y: f32, z: f32, colour: f32) -> bool {
+  r := f32(EDF_REACH);
+  if !(x >= -r && x <= r) || !(y >= -r && y <= r) || !(z >= -r && z <= r) { return false; }
+  if !(colour >= 0 && colour <= 16777215) { return false; }
+  return f32(cast(int) colour) == colour;
+}
+// The reader: a whole file (`bytes` long) as the page holds it, its words as floats. Its header,
+// ok only when the header is this version's, every corner names a vertex, the padding is zero and
+// every vertex is the file's; the page draws nothing from a file it refuses.
+edf_read :: (v: [] f32, bytes: int) -> EdfHead {
+  if v.count < EDF_HEAD_FLOATS { return EdfHead.{}; }
+  w: [EDF_HEAD_FLOATS] u32; for i: 0..<EDF_HEAD_FLOATS { w[i] = f32_bits(v[i]); }
+  h := edf_head(w[..], bytes);
+  if !h.ok || v.count < edf_floats(h.corners, h.vertices) { return EdfHead.{}; }
+  for k: 0..<edf_index_floats(h.corners) {
+    c := v[EDF_HEAD_FLOATS + k];
+    if k >= h.corners { if f32_bits(c) != 0 { return EdfHead.{}; } continue; }
+    if !(c >= 0 && c < f32(h.vertices)) || f32(cast(int) c) != c { return EdfHead.{}; }
+  }
+  at := edf_vertices_at(h.corners);
+  for q: 0..<DR_TOTAL * h.vertices {
+    if !edf_vertex_ok(v[at + q * 4], v[at + q * 4 + 1], v[at + q * 4 + 2], v[at + q * 4 + 3]) { return EdfHead.{}; }
+  }
+  return h;
+}
+
+// The pinned bytes (proto/verse/everglade2-dragon-frames-v1.json "header_hex"): Everglade II's header.
+EDF_HEADER_HEX :: "45444631010000004b0000001a130000fd040000000000000000000000000000";
+
+edf_hex :: (b: [] const u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<b.count { out[i * 2] = digits[cast(int) (b[i] >> 4)]; out[i * 2 + 1] = digits[cast(int) (b[i] & 15)]; }
+  return cast(string) out[0..<b.count * 2];
+}
+edf_words :: (b: [] u8, w: [] u32) { for i: 0..<w.count { w[i] = 0; for k: 0..<4 { w[i] = w[i] | (cast(u32) b[i * 4 + k] << cast(u32) (k * 8)); } } }
+
+#test "dragon frames: the header writes its pinned bytes and reads back; a file of any other shape is refused" {
+  h: [EDF_HEAD] u8; hx: [EDF_HEAD * 2] u8; w: [8] u32; bytes := edf_bytes(EDF_CORNERS, EDF_VERTICES);
+  #assert bytes == 1552000 && EDF_FLOATS * 4 == bytes && edf_head_put(h[..], EDF_CORNERS, EDF_VERTICES) == EDF_HEAD && edf_hex(h[..], hx[..]) == EDF_HEADER_HEX;
+  edf_words(h[..], w[..]);
+  g := edf_head(w[..], bytes);
+  #assert g.ok && g.frames == DR_TOTAL && g.corners == EDF_CORNERS && g.vertices == EDF_VERTICES;
+  #assert !edf_head(w[..], bytes - 4).ok && !edf_head(w[..], bytes + 16).ok && !edf_head(w[0..<7], bytes).ok;
+  for i: 0..<8 {
+    keep := w[i]; w[i] = w[i] + 1;
+    #assert !edf_head(w[..], bytes).ok;   // another magic, version, frame count, corner count, vertex count, or a word that should be zero
+    w[i] = keep;
+  }
+  w[3] = 4891; #assert !edf_head(w[..], edf_bytes(4891, EDF_VERTICES)).ok;   // not whole triangles
+  w[3] = 3; w[4] = 3; #assert edf_head(w[..], edf_bytes(3, 3)).ok && edf_bytes(3, 3) == 32 + 16 + 75 * 3 * 16;
+  w[4] = 4; #assert !edf_head(w[..], edf_bytes(3, 4)).ok;   // more vertices than corners
+  w[4] = 2; #assert !edf_head(w[..], edf_bytes(3, 2)).ok;
+  w[3] = EDF_CORNERS_MAX; w[4] = 3; #assert edf_head(w[..], edf_bytes(EDF_CORNERS_MAX, 3)).ok;
+  w[3] = EDF_CORNERS_MAX + 3; #assert !edf_head(w[..], edf_bytes(EDF_CORNERS_MAX + 3, 3)).ok;
+  #assert edf_head_put(h[..], 4891, 3) == 0 && edf_head_put(h[..], 0, 0) == 0 && edf_head_put(h[..], 3, 4) == 0 && edf_head_put(h[0..<31], 3, 3) == 0;
+}
+#test "dragon frames: a vertex's place is within reach and its colour a whole 24-bit number; the reader holds every corner and vertex to it" {
+  c := edf_colour(196, 30, 22);
+  #assert c == 12852758 && edf_colour(255, 255, 255) == 16777215 && edf_colour(0, 0, 0) == 0 && edf_colour(256, 0, 0) == -1 && edf_colour(0, -1, 0) == -1 && edf_colour(0, 0, 256) == -1;
+  #assert edf_vertex_ok(1.5, -2, 3.25, c) && edf_vertex_ok(64, -64, 0, 16777215) && edf_vertex_ok(0, 0, 0, 0);
+  #assert !edf_vertex_ok(64.01, 0, 0, 0) && !edf_vertex_ok(0, -64.01, 0, 0) && !edf_vertex_ok(0, 0, 64.01, 0) && !edf_vertex_ok(0, 0, 0, -1) && !edf_vertex_ok(0, 0, 0, 16777216) && !edf_vertex_ok(0, 0, 0, 0.5);
+  nan := f32_from_bits(0x7fc00000); #assert !edf_vertex_ok(nan, 0, 0, 0) && !edf_vertex_ok(0, nan, 0, 0) && !edf_vertex_ok(0, 0, nan, 0) && !edf_vertex_ok(0, 0, 0, nan);
+  // one triangle over three vertices a frame
+  b: [32 + 16 + 75 * 3 * 16] u8; n := edf_bytes(3, 3);
+  #assert edf_head_put(b[..], 3, 3) == EDF_HEAD && edf_corner_put(b[..], 3, 0, 2) && edf_corner_put(b[..], 3, 1, 0) && edf_corner_put(b[..], 3, 2, 1);
+  #assert !edf_corner_put(b[..], 3, 3, 0) && !edf_corner_put(b[..], 3, 0, -1);
+  for f: 0..<DR_TOTAL { for v: 0..<3 { #assert edf_vertex_put(b[..], 3, 3, f, v, f32(f) * 0.25, f32(v), 1.5, c); } }
+  #assert !edf_vertex_put(b[..], 3, 3, DR_TOTAL, 0, 0, 0, 0, 0) && !edf_vertex_put(b[..], 3, 3, 0, 3, 0, 0, 0, 0);
+  #assert b[32] == 0 && b[35] == 0x40 && b[39] == 0 && b[47] == 0;   // corner 0 is vertex 2 (2.0f: 0x40000000); the padding is zero
+  v: [(32 + 16 + 75 * 3 * 16) / 4] f32; ww: [(32 + 16 + 75 * 3 * 16) / 4] u32; edf_words(b[..], ww[..]); for i: 0..<v.count { v[i] = f32_from_bits(ww[i]); }
+  r := edf_read(v[..], n); #assert r.ok && r.corners == 3 && r.vertices == 3 && v[edf_vertices_at(3) + (74 * 3 + 1) * 4 + 1] == 1;
+  #assert !edf_read(v[0..<v.count - 1], n).ok && !edf_read(v[..], n - 4).ok;
+  v[8] = 3; #assert !edf_read(v[..], n).ok;      // a corner past the vertices
+  v[8] = 1.5; #assert !edf_read(v[..], n).ok;    // a corner that isn't a whole number
+  v[8] = 2; v[11] = 1; #assert !edf_read(v[..], n).ok;   // padding that isn't zero
+  v[11] = 0; v[v.count - 1] = 0.5; #assert !edf_read(v[..], n).ok;   // the last vertex's colour
+  v[v.count - 1] = c; v[v.count - 3] = 100; #assert !edf_read(v[..], n).ok;   // out of reach
+  v[v.count - 3] = 1; #assert edf_read(v[..], n).ok;
+}

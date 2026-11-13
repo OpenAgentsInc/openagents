@@ -146,7 +146,7 @@
         "style": "painterly", "clock": "fixed:0.5",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
         "ui_font_src": "/realms/everglade2/assets/fonts/Spectral-Medium.ttf", "ui_font_family": "EvergladeSpectral", "ui_title_font_src": "/realms/everglade2/assets/fonts/Cinzel.ttf", "ui_title_font_family": "EvergladeCinzel", "ui_title_font_weight": "600",
-        "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3", "particles:/everglade2-fx.wgsl", "sounds:/realms/everglade/sfx/"]
+        "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3", "data:/realms/everglade2/assets/dragon.frames", "particles:/everglade2-fx.wgsl", "sounds:/realms/everglade/sfx/"]
       } },
     { "id": "fairy", "name": "FAIRY FOREST", "kind": "open", "listed": false, "orbit": { "r": 0.3, "a": 0.9, "size": 0.028 },
       "realm": {
@@ -428,7 +428,7 @@
         "module": "everglade2", "slot": "everglade2", "arrival": "portal",
         "ui_font_src": "/realms/everglade2/assets/fonts/Spectral-Medium.ttf", "ui_font_family": "EvergladeSpectral", "ui_title_font_src": "/realms/everglade2/assets/fonts/Cinzel.ttf", "ui_title_font_family": "EvergladeCinzel", "ui_title_font_weight": "600",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3", "particles:/everglade2-fx.wgsl", "sounds:/realms/everglade/sfx/"]
+        "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3", "data:/realms/everglade2/assets/dragon.frames", "particles:/everglade2-fx.wgsl", "sounds:/realms/everglade/sfx/"]
       } },
     { "id": "everglade2", "name": "EVERGLADE II", "kind": "open", "listed": false, "orbit": { "r": 0.44, "a": 2.2, "size": 0.02 },
       "realm": {
@@ -438,7 +438,7 @@
         "module": "everglade2", "slot": "everglade2",
         "ui_font_src": "/realms/everglade2/assets/fonts/Spectral-Medium.ttf", "ui_font_family": "EvergladeSpectral", "ui_title_font_src": "/realms/everglade2/assets/fonts/Cinzel.ttf", "ui_title_font_family": "EvergladeCinzel", "ui_title_font_weight": "600",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3", "cull:/everglade2-cull.wgsl", "particles:/everglade2-fx.wgsl", "sounds:/realms/everglade/sfx/"],
+        "assets": ["pack:/realms/everglade2/assets/everglade2.vpk3", "data:/realms/everglade2/assets/dragon.frames", "cull:/everglade2-cull.wgsl", "particles:/everglade2-fx.wgsl", "sounds:/realms/everglade/sfx/"],
         "domain": {
           "host": "everglade.world", "title": "Everglade", "tagline": "A D&D MMORPG in your browser. Make your hero and walk in.",
           "description": "An MMORPG on the D&D 5E SRD, faithful to its rules, with real-time combat. Make your hero and play with other people, free in your browser.",

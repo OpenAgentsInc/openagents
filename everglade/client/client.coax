@@ -118,7 +118,7 @@ E2 :: struct {
   move_bodies: [E2_NEAR_BODIES * 7] f32;
   move_hulls: [E2_HULL_ROOM] f32;   // the rocks' hulls round you this step (everglade/shared/move.coax e2m_world)
   rig_packed: bool;                      // the bake's rig came from the pack's rig entry (probe 179)
-  bake: [figs.BD_BAKE_FLOATS] f32;
+  bake: [figs.BD_BAKE_FLOATS + E2RV_DRAGON_FLOATS] f32;   // the people's clips, then the dragon's streamed frames (ride-view.coax)
   orbit: figs.Orbit; look_yaw: f32; look_pitch: f32;
   ride_back: f32;                                     // metres the riding camera has added to the orbit (figs.cam_chase_seat)
   ml: [1] mlook.Mouselook;   // mouselook (metaverse-engine/cam/mouselook.coax): in the world, not Character Create's studio

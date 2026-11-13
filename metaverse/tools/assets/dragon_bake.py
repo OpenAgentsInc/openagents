@@ -2,7 +2,11 @@
 """Bake Shapechange's dragon (assets/metaverse/beasts/dragon.gltf, CC0) into portable frame records.
 
     Blender -b --factory-startup --disable-autoexec --python metaverse/tools/assets/dragon_bake.py -- \
-        assets/metaverse/beasts/dragon.gltf OUT_DIR
+        assets/metaverse/beasts/dragon.gltf OUT_DIR [RATIO]
+
+RATIO (0 to 1, default 1) simplifies the bind mesh to that share of its triangles before any clip
+deforms it, as horse_bake.py does for the web horse: every frame keeps one topology. Everglade II's
+streamed frames (metaverse/tools/assets/dragon_frames.coax, #13519) are baked at 0.5.
 
 The clips and their frame counts are everglade/dragon-clips.coax's (DR_CLIP_NAME, DR_FRAMES,
 DR_LOOPS), read from that file so the two never disagree. A loop's frame i is i/n of the way round
@@ -19,6 +23,8 @@ from pathlib import Path
 
 args = sys.argv[sys.argv.index('--') + 1:]
 source, output = Path(args[0]), Path(args[1])
+ratio = float(args[2]) if len(args) == 3 else 1.0
+if not 0 < ratio <= 1: raise ValueError("dragon ratio must be in (0, 1]")
 output.mkdir(parents=True, exist_ok=True)
 clips_src = (Path(__file__).resolve().parents[3] / 'everglade' / 'dragon-clips.coax').read_text()
 def table(name, kind):
@@ -36,6 +42,14 @@ bpy.ops.import_scene.gltf(filepath=str(source))
 arm = next(o for o in bpy.context.scene.objects if o.type == 'ARMATURE')
 arm.animation_data_create()
 meshes = [o for o in bpy.context.scene.objects if o.type == 'MESH' and o.parent == arm]   # not the importer's bone shapes
+if ratio < 1:
+    for obj in meshes:
+        bpy.context.view_layer.objects.active = obj
+        modifier = obj.modifiers.new(name='Web dragon', type='DECIMATE')
+        modifier.ratio = ratio
+        # Apply in bind space, before the armature deforms each frame.
+        bpy.ops.object.modifier_move_up(modifier=modifier.name)
+        bpy.ops.object.modifier_apply(modifier=modifier.name)
 def colour(mat):
     node = mat.node_tree.nodes.get('Principled BSDF') if mat.node_tree else None
     rgb = node.inputs['Base Color'].default_value[:3] if node else mat.diffuse_color[:3]

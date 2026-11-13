@@ -125,11 +125,53 @@ e2_prop_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fivelab
  #assert abs(o.world.x-10)<0.0001 && abs(o.world.y-2.5)<0.0001 && abs(o.world.z+6)<0.0001 && abs(o.normal.z+1)<0.0001;
  #assert o.slice==14 && o.uv.x==0.25 && o.uv.y==0.75 && abs(o.tint.x-0.25f32)<0.01 && o.tint.y==1 && o.local.x==10 && o.who==3;
 }
+// The dragon's streamed frames (#13519, everglade/client/dragon-frames.coax) in the baked-clips store,
+// past the people's bakes (everglade/client/ride-view.coax E2RV_DRAGON_AT: everglade/scene/bodies.coax
+// BD_BAKE_FLOATS / 4, then the file's two header vec4s): first the corners, each its vertex's number,
+// four a vec4; then each frame's vertices, a vec4 each (x, y, z and the colour).
+E2_DRAGON_CORNERS :: 1613432;
+e2_dragon_corner :: (bake:[]V4,c:int)->int {
+ q:=bake[E2_DRAGON_CORNERS+c/4];k:=c%4;
+ return cast(int)(ifx k==0 then q.x else ifx k==1 then q.y else ifx k==2 then q.z else q.w);
+}
+// 23: a streamed dragon frame, drawn in order with no index buffer: id is the corner, and the record's
+// b.w its frame's first vertex (a vec4 of the store). A vertex's colour is r * 65536 + g * 256 + b; a
+// corner's flat normal is its triangle's, the three corners round it. Placed as mode 19 places the
+// pack's frames (character-glade.coax cg_environment_vs: a, and the columns c, e, f), and shaded as
+// Everglade II's baked models are (kind 9: its colour, sRGB).
+e2_dragon_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,bake:[]V4)->FivelabS {
+ c:=cast(int)id;t0:=c-c%3;base:=cast(int)m.b.w;
+ q:=bake[base+e2_dragon_corner(bake,c)];a0:=bake[base+e2_dragon_corner(bake,t0)];a1:=bake[base+e2_dragon_corner(bake,t0+1)];a2:=bake[base+e2_dragon_corner(bake,t0+2)];
+ n:=cross3(sub3(v3(a1.x,a1.y,a1.z),v3(a0.x,a0.y,a0.z)),sub3(v3(a2.x,a2.y,a2.z),v3(a0.x,a0.y,a0.z)));
+ n=ifx length3(n)>0.0000001f32 then normalize3(n) else v3(0,1,0);
+ cx:=v3(m.c.x,m.c.y,m.c.z);ey:=v3(m.e.x,m.e.y,m.e.z);fz:=v3(m.f.x,m.f.y,m.f.z);
+ p:=add3(v3(m.a.x,m.a.y,m.a.z),add3(add3(scale3(cx,q.x),scale3(ey,q.y)),scale3(fz,q.z)));
+ rgb:=q.w;r:=floor(rgb/65536.0f32);g:=floor((rgb-r*65536.0f32)/256.0f32);b:=rgb-r*65536.0f32-g*256.0f32;
+ o:FivelabS;o.pos=fivelab_project(p,u);o.world=p;o.normal=normalize3(add3(add3(scale3(cx,n.x),scale3(ey,n.y)),scale3(fz,n.z)));
+ o.uv=v2(0.5f32,0.5f32);o.slice=cast(u32)0;o.tint=v3(r/255.0f32,g/255.0f32,b/255.0f32);o.dye=v4(0,0,0,12.0f32);
+ o.local=v3(9.0f32,0.0f32,0.0f32);o.who=instance;
+ return o;
+}
+#test "a streamed dragon corner: its vertex by number, placed by its record's columns, lit by its triangle's normal, coloured from its whole number" {
+ bake:[E2_DRAGON_CORNERS+8]V4;
+ bake[E2_DRAGON_CORNERS]=v4(2,0,1,3);bake[E2_DRAGON_CORNERS+1]=v4(3,3,0,0);   // two triangles: 2 0 1, and 3 3 3 (a degenerate one)
+ w:=E2_DRAGON_CORNERS+2;   // the frame's vertices
+ bake[w]=v4(1,0,0,0);bake[w+1]=v4(0,1,0,0);bake[w+2]=v4(0,0,0,255.0f32*65536.0f32+128.0f32*256.0f32+64.0f32);bake[w+3]=v4(2,0,0,0);
+ m:FivelabObj;m.a=v4(10,2,-5,0);m.b=v4(0,0,0,cast(f32)w);m.c=v4(0,0,-2,0);m.e=v4(0,2,0,0);m.f=v4(2,0,0,0);m.d=v4(0,0,0,23);u:[208]f32;u[0]=1280;u[1]=720;
+ #assert e2_dragon_corner(bake[..],0)==2 && e2_dragon_corner(bake[..],2)==1 && e2_dragon_corner(bake[..],3)==3 && e2_dragon_corner(bake[..],5)==3;
+ // corner 1 is vertex 0, (1, 0, 0): x is the record's c (turned to -Z, scaled 2), so 2 m behind a
+ o:=e2_dragon_vs(1,4,m,u[..],bake[..]);
+ #assert abs(o.world.x-10)<0.0001 && abs(o.world.y-2)<0.0001 && abs(o.world.z+7)<0.0001 && o.who==4 && o.local.x==9 && o.dye.w==12;
+ // its triangle (0,0,0) (1,0,0) (0,1,0) faces +Z in the model, which the record turns to +X
+ #assert abs(o.normal.x-1)<0.0001 && abs(o.normal.y)<0.0001 && abs(o.normal.z)<0.0001;
+ o=e2_dragon_vs(0,4,m,u[..],bake[..]);#assert abs(o.tint.x-1)<0.0001 && abs(o.tint.y-128.0f32/255.0f32)<0.0001 && abs(o.tint.z-64.0f32/255.0f32)<0.0001;
+ o=e2_dragon_vs(4,4,m,u[..],bake[..]);#assert abs(o.normal.y-1)<0.0001 && abs(o.world.z+9)<0.0001;
+}
 everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]u32,items:[]V4,ground:[]V4)->FivelabS {
  if (instance>=cast(u32)E2_TILE_BASE) {return e2_tile_vs(id,instance,u,objects,ground);}
  if (instance>=cast(u32)E2_FIELD_BASE) {return e2_field_vs(id,instance,u,vertices);}
  if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst,items);}
- if (instance<cast(u32)65536) {mp:=objects[cast(int)instance];if (mp.d.w>20.5f32 && mp.d.w<21.5f32) {return e2_prop_vs(id,instance,mp,u,vertices);}}
+ if (instance<cast(u32)65536) {mp:=objects[cast(int)instance];if (mp.d.w>20.5f32 && mp.d.w<21.5f32) {return e2_prop_vs(id,instance,mp,u,vertices);}if (mp.d.w>22.5f32 && mp.d.w<23.5f32) {return e2_dragon_vs(id,instance,mp,u,bake);}}
  o:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);
  // a monster's frame (18) or a held weapon (19, everglade/server/creatures.coax, everglade/client/guard.coax):
  // its record's f.w is the share of its pixels the dither drops as it thins in or out

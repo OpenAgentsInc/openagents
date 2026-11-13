@@ -299,8 +299,16 @@ EXPORT("coaxial_frame_plan_v1") uint32_t coaxial_frame_plan_v1(cx_face_addr stat
   return (uint32_t)e2_frame_plan(at(state), features, (int64_t)width, (int64_t)height, hud_n, cull_n, (coax_v_u32){(uint32_t *)(uintptr_t)out, cap});
 }
 // ---- the pack's catalog; the draws and the separate shadow list over the three stores
+/* Asset 4 is the dragon's frames (realms.json's data asset after the pack's four parts, #13519): they
+   don't fit the pack's reader beside the world, so they come after it, optional (the world never waits
+   for them), straight into the baked-clips store past the bakes (everglade/client/ride-view.coax
+   e2_dragon_frames), and the store goes to the GPU again. */
+#define DRAGON_ASSET 4
+static uint32_t dragon_room(void) { return (uint32_t)e2_dragon_room() * 4u; }
+EXPORT("coaxial_asset_optional_v1") uint32_t coaxial_asset_optional_v1(int32_t i) { return i == DRAGON_ASSET; }
 EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr state, int32_t i, uint32_t bytes) {
-  (void)state; return i == 0 && bytes <= sizeof catalog ? (cx_face_addr)(uintptr_t)catalog : 0u;
+  if (i == DRAGON_ASSET) return bytes <= dragon_room() ? (cx_face_addr)(uintptr_t)&e2_at(state)->bake.e[e2_dragon_at()] : 0u;
+  return i == 0 && bytes <= sizeof catalog ? (cx_face_addr)(uintptr_t)catalog : 0u;
 }
 /* the pack's rig entry (kind 7), handed over before the catalog: the bake reads it */
 EXPORT("coaxial_pack_rig") cx_face_addr coaxial_pack_rig(cx_face_addr state, uint32_t bytes) { (void)state; return bytes <= sizeof rig_file ? (cx_face_addr)(uintptr_t)rig_file : 0u; }
@@ -309,8 +317,9 @@ EXPORT("coaxial_pack_rig_ready") void coaxial_pack_rig_ready(cx_face_addr state,
 /* the same for a native host (metaverse-engine/host/README.md: coaxial_rig_v1, #13508) */
 EXPORT("coaxial_rig_v1") cx_face_addr coaxial_rig_v1(cx_face_addr state, uint32_t bytes) { return coaxial_pack_rig(state, bytes); }
 EXPORT("coaxial_rig_ready_v1") void coaxial_rig_ready_v1(cx_face_addr state, uint32_t bytes) { coaxial_pack_rig_ready(state, bytes); }
-EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr state, int32_t i) { (void)state; return i == 0 ? (uint32_t)sizeof catalog : 0u; }
+EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr state, int32_t i) { (void)state; return i == 0 ? (uint32_t)sizeof catalog : i == DRAGON_ASSET ? dragon_room() : 0u; }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
+  if (i == DRAGON_ASSET) { if (bytes > 0 && bytes <= dragon_room()) (void)e2_dragon_frames(at(state), (int64_t)bytes); return; }
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) e2_catalog(at(state), (coax_string){(const char *)catalog, bytes}, (coax_v_u8){ground_record, sizeof ground_record}, (coax_v_u8){catalog_rest, sizeof catalog_rest});
   else if (i == 0) e2_plant_due(at(state));   /* no catalog: the woods are planted here */
 }
@@ -400,7 +409,8 @@ EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(cx_face_addr state, i
   if (k == 4) return (uint32_t)sizeof(((coax_t_E2 *)0)->eg.e[0].gpu.e);
   uint32_t n = (uint32_t)e2_inst_bytes(at(state)); return n ? n : 4u;
 }
-EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr state, int32_t k) { return k == 1 ? baked : k == 3 ? (uint32_t)e2_at(state)->mats_v : k == 4 ? (uint32_t)e2_at(state)->eg.e[0].gpu_v : k == 5 ? (uint32_t)e2_items_version(at(state)) : frames; }
+/* store 1 goes again when the people's clips are baked and when the dragon's frames come */
+EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr state, int32_t k) { return k == 1 ? baked + (uint32_t)e2_at(state)->rv.e[0].streamed : k == 3 ? (uint32_t)e2_at(state)->mats_v : k == 4 ? (uint32_t)e2_at(state)->eg.e[0].gpu_v : k == 5 ? (uint32_t)e2_items_version(at(state)) : frames; }
 
 /* The host's keyboard field over Character Create's NAME while it takes keys (host.js placeField). */
 static float field_box[4];

@@ -122,6 +122,7 @@ EgMounts :: struct {
   kind: [EG_MOUNTS] int;     // EG_HORSE or EG_DRAGON, a mount
   clip_was: [EG_MOUNTS] int; clip_at: [EG_MOUNTS] f32;   // a dragon's clip and when it began, for its frames
   dfirst: [DR_TOTAL] int; dcount: [DR_TOTAL] int; dword: [DR_TOTAL] int; dframes: int;   // the pack's glade/dragon frames
+  dstream: int;              // the corners a frame of streamed dragon frames (eg_dragon_streamed), 0 the pack's
   aloft_at: f32 = -100;      // when a dismount in the air was refused
   breath_at: f32 = -100;     // when the dragon you ride last breathed fire (its torrent pours on a moment: the zone's)
   land: bool;                // X pressed on the dragon in the air: it comes down to land (eg_ride_land)
@@ -150,14 +151,15 @@ eg_whole_at :: (t: string, from: int) -> int {
 // The pack's catalog: "C glade/horseN FIRST COUNT SOURCE WORD 0 0" a frame.
 eg_mounts_catalog :: (m: [] EgMounts, text: string) {
   m[0].frames = 0; for i: 0..<EG_HORSE_FRAMES { m[0].count[i] = 0; }
-  m[0].dframes = 0; for i: 0..<DR_TOTAL { m[0].dcount[i] = 0; }
+  streamed := m[0].dstream > 0;   // streamed frames came first: the pack's catalog leaves them be
+  if !streamed { m[0].dframes = 0; for i: 0..<DR_TOTAL { m[0].dcount[i] = 0; } }
   at := 0;
   while at < text.count {
     e := at; while e < text.count && text[e] != '\n' { e += 1; }
     row := text[at..<e]; at = e + 1;
     horse := row.count >= 16 && row[0..<13] == "C glade/horse";
     dragon := row.count >= 17 && row[0..<14] == "C glade/dragon";
-    if !horse && !dragon { continue; }
+    if !horse && (!dragon || streamed) { continue; }
     ne := eg_word_end(row, 2); i := eg_whole_at(row[0..<ne], ifx horse then 13 else 14);
     if i < 0 || i >= (ifx horse then EG_HORSE_FRAMES else DR_TOTAL) { continue; }
     p := ne; first := eg_whole_at(row, p); p = eg_word_end(row, p + 1); count := eg_whole_at(row, p);
@@ -174,6 +176,15 @@ eg_mounts_catalog :: (m: [] EgMounts, text: string) {
 }
 eg_mounts_ready :: (m: EgMounts) -> bool { return m.frames == EG_HORSE_FRAMES; }
 eg_dragon_ready :: (m: EgMounts) -> bool { return m.dframes == DR_TOTAL; }
+// The dragon's frames from a file beside the pack (Everglade II's, everglade/client/dragon-frames.coax,
+// #13519): every frame the same `corners`, drawn in order with no index buffer, over its own
+// vertices: frame k's start at `word` + k * `stride` (the record's word, as a pack frame's vertex
+// word). They stand in for any the pack's catalog names, before or after it.
+eg_dragon_streamed :: (m: [] EgMounts, corners: int, word: int, stride: int) {
+  if corners <= 0 || corners % 3 != 0 || word < 0 || stride <= 0 { return; }
+  m[0].dstream = corners; m[0].dframes = DR_TOTAL;
+  for i: 0..<DR_TOTAL { m[0].dfirst[i] = 0; m[0].dcount[i] = corners; m[0].dword[i] = word + i * stride; }
+}
 // A zone places a horse at (x, z) facing `face`; its index, or -1 when the zone has its EG_MOUNTS.
 eg_mount_add :: (m: [] EgMounts, x: f32, z: f32, face: f32) -> int {
   if m[0].n >= EG_MOUNTS { return -1; }
@@ -357,7 +368,8 @@ eg_dragon_pitch :: (h: Mount) -> f32 {
   return mt_clamp(h.wing.vy * 0.05, f32(EG_DRAGON_DIVE_PITCH), f32(EG_DRAGON_CLIMB_PITCH));
 }
 // Dragon k as a placed mesh record (the shared mode 19: its feet, and its turned, pitched and scaled
-// axes) and its frame's draw at `now`.
+// axes) and its frame's draw at `now`. Streamed frames (eg_dragon_streamed) take mode 23, the same
+// placement read from the frames' corners (everglade/client/gpu/everglade2.coax e2_dragon_vs).
 eg_dragon_record :: (m: EgMounts, k: int, now: f32, out: [] f32, rec: int) -> EgHorseDraw {
   at := rec * 24;
   if at + 24 > out.count || !eg_dragon_ready(m) { return EgHorseDraw.{}; }
@@ -374,7 +386,7 @@ eg_dragon_record :: (m: EgMounts, k: int, now: f32, out: [] f32, rec: int) -> Eg
     lx := ax[j * 3]; ly := ax[j * 3 + 1]; lz := ax[j * 3 + 2];
     out[at + base[j]] = (lx * cy + lz * sy) * sc; out[at + base[j] + 1] = ly * sc; out[at + base[j] + 2] = (-lx * sy + lz * cy) * sc;
   }
-  out[at] = h.x; out[at + 1] = h.wing.y; out[at + 2] = h.z; out[at + 7] = f32(m.dword[f]); out[at + 15] = 19;
+  out[at] = h.x; out[at + 1] = h.wing.y; out[at + 2] = h.z; out[at + 7] = f32(m.dword[f]); out[at + 15] = ifx m.dstream > 0 then 23 else 19;
   return EgHorseDraw.{first = m.dfirst[f], count = m.dcount[f]};
 }
 
@@ -497,6 +509,11 @@ EG_TEST_CATALOG :: "C glade/environment 9 12 250 100 8 0\nC glade/horse0 300 60 
   m: [1] EgMounts; eg_mounts_catalog(m[..], "C glade/horse0 300 60 247 100 0 0\nC glade/dragon0 5000 90 246 200 0 0\nC glade/dragon74 9000 93 246 200 0 0\n");
   #assert m[0].frames == 1 && m[0].dframes == 2 && m[0].dfirst[74] == 9000 && m[0].dcount[0] == 90 && m[0].dword[74] == 200 && !eg_dragon_ready(m[0]);
   for i: 0..<DR_TOTAL { m[0].dcount[i] = 3; } m[0].dframes = DR_TOTAL; #assert eg_dragon_ready(m[0]);
+  // streamed frames (#13519): every frame its run of corners, and a catalog after them leaves them be
+  eg_dragon_streamed(m[..], 4, 100, 7); eg_dragon_streamed(m[..], 30, -1, 7); eg_dragon_streamed(m[..], 30, 100, 0); #assert m[0].dstream == 0;
+  eg_dragon_streamed(m[..], 30, 100, 7); #assert eg_dragon_ready(m[0]) && m[0].dstream == 30 && m[0].dfirst[74] == 0 && m[0].dcount[74] == 30 && m[0].dword[0] == 100 && m[0].dword[74] == 100 + 74 * 7;
+  eg_mounts_catalog(m[..], "C glade/dragon0 9000 90 246 200 0 0\nC glade/horse0 300 60 247 100 0 0\n");
+  #assert eg_dragon_ready(m[0]) && m[0].dfirst[0] == 0 && m[0].dcount[0] == 30 && m[0].dword[0] == 100 && m[0].frames == 1;
 }
 #test "the red dragon: mounted in reach, Space takes off, it outflies a gallop, nobody gets off aloft, X lands, and it stays where you leave it" #steps 400000000 {
   m: [1] EgMounts; none: [6] f32; g: f32 = 2;
@@ -529,11 +546,14 @@ EG_TEST_CATALOG :: "C glade/environment 9 12 250 100 8 0\nC glade/horse0 300 60 
   #assert m[0].mounts[0].x == x && m[0].mounts[0].z == z && m[0].mounts[0].wing.y == g;
 }
 #test "the dragon's record: its feet, its axes turned to its heading and leaning into a turn, and its clip's frame" {
-  m: [1] EgMounts; _ := eg_dragon_add(m[..], 3, 4, 1.5707964, 1);
+  m: [2] EgMounts; _ := eg_dragon_add(m[..], 3, 4, 1.5707964, 1);
   for i: 0..<DR_TOTAL { m[0].dfirst[i] = 1000 + i * 10; m[0].dcount[i] = 9; m[0].dword[i] = 5; } m[0].dframes = DR_TOTAL;
   out: [48] f32; d := eg_dragon_record(m[0], 0, 0, out[..], 1);
   // standing for its rider: the saddled stand's first frame; its z axis (ahead) turned to +X
   #assert d.first == 1000 + dr_first(DR_IDLE_SADDLED) * 10 && d.count == 9 && out[24] == 3 && out[25] == 1 && out[26] == 4 && out[39] == 19 && out[31] == 5;
+  // streamed frames: the same placement in mode 23, the frame's first corner its first
+  m[1] = m[0]; eg_dragon_streamed(m[1..<2], 30, 1000, 20); d = eg_dragon_record(m[1], 0, 0, out[..], 1);
+  #assert d.first == 0 && d.count == 30 && out[24] == 3 && out[39] == 23 && out[31] == f32(1000 + dr_first(DR_IDLE_SADDLED) * 20) && abs(out[44] - 1) < 0.0001;
   #assert abs(out[44] - 1) < 0.0001 && abs(out[46]) < 0.0001 && abs(out[41] - 1) < 0.0001;
   // a left turn in the air: it turns level under its upright rider (no lean, no bank clip); climbing,
   // its nose comes up and the seat swings back with it

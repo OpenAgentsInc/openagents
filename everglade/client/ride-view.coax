@@ -3,15 +3,38 @@
 // a jitter buffer behind (net.coax's entities). The horse and the dragon are drawn from the pack's
 // frames with Everglade's own mount records (everglade/mounts.coax eg_horse_record, eg_dragon_record),
 // and a rider's body is carried from where they stood to the saddle and back (eg_saddle).
-// A kind whose frames the pack does not hold is not drawn and cannot be mounted from this page.
+// A kind whose frames the page does not hold is not drawn and cannot be mounted from this page. The
+// dragon's frames don't fit the pack's reader beside the world (#13519): they come in a file of their
+// own after the world is up (everglade/client/dragon-frames.coax), and the dragon is drawn and can be
+// mounted from then on.
 //   coax/bin/coax test --library everglade/client/client.coax --only riding
 #load "../mounts.coax" as egm;
+#load "dragon-frames.coax" as edf;
 
 E2RV_HIP :: 0.91;   // m a standing body's pelvis is over its feet (everglade/zone-mounts.coax xh_hip's)
 E2RideView :: struct {
   eg: [1] egm.EgMounts;                   // the mounts as drawn this frame, and the pack's frames
   phase: [WIRE_MOUNTS] f32; lx: [WIRE_MOUNTS] f32; lz: [WIRE_MOUNTS] f32;   // another's gait, by the ground it covered
   drawn: int; presses: int;               // what the checks read
+  streamed: int;                          // dragon frame files admitted (the baked-clips store's version moves with it)
+}
+// The dragon's frames file lands in the baked-clips store past the bakes (E2.bake): its header in the
+// two vec4s at E2RV_DRAGON_AT, then its corners and its frames' vertices, which the shader reads from
+// there (everglade/client/gpu/everglade2.coax E2_DRAGON_CORNERS, e2_dragon_vs). The store's room is
+// the shipped file's (edf.EDF_FLOATS): a bigger one doesn't fit and is not taken.
+E2RV_DRAGON_AT :: figs.BD_BAKE_FLOATS;
+E2RV_DRAGON_FLOATS :: edf.EDF_FLOATS;
+// Where the face copies the file and how much room it has, in floats (everglade2-face.c coaxial_asset 4).
+e2_dragon_at :: () -> int #export_c #effects(all) { return E2RV_DRAGON_AT; }
+e2_dragon_room :: () -> int #export_c #effects(all) { return E2RV_DRAGON_FLOATS; }
+// The face has copied the file (`bytes` long) to e2_dragon_at: admitted, the dragon is drawn from it
+// and can be mounted. A file the codec refuses leaves the dragon as it was.
+e2_dragon_frames :: (s: [] E2, bytes: int) -> bool #export_c #effects(all) {
+  h := edf.edf_read(s[0].bake[E2RV_DRAGON_AT..<E2RV_DRAGON_AT + E2RV_DRAGON_FLOATS], bytes);
+  if !h.ok { return false; }
+  // each frame's vertex word: its first vec4 in the store
+  egm.eg_dragon_streamed(s[0].rv[0].eg[..], h.corners, (E2RV_DRAGON_AT + edf.edf_vertices_at(h.corners)) / 4, h.vertices); s[0].rv[0].streamed += 1;
+  return true;
 }
 E2RvFeet :: struct { on: bool; x: f32; y: f32; z: f32; face: f32; seat: int; seated: f32; }   // seat: the saddle's fit (figs.BD_SEAT_HORSE, BD_SEAT_DRAGON); seated: how far into the saddle, 0 to 1
 
@@ -184,7 +207,9 @@ e2rv_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
     if dx * dx + dz * dz > 160 * 160 { continue; }
     g := ifx kind == MK_DRAGON then egm.eg_dragon_record(v[0].eg[0], k, s[0].clock, out, d.rec) else egm.eg_horse_record(v[0].eg[0], k, e2g_y(s[0].eg[..], h.x, h.z), out, d.rec);
     if g.count <= 0 { continue; }
-    d.n = e2_draw(s[0].draws[..], d.n, g.first, g.count, d.rec, 1); d.sn = e2_draw(s[0].shadow[..], d.sn, g.first, g.count, d.rec, 1);
+    // streamed dragon frames have no index buffer: the base's top bit draws its corners in order
+    base := ifx kind == MK_DRAGON && v[0].eg[0].dstream > 0 then d.rec + 0x80000000 else d.rec;
+    d.n = e2_draw(s[0].draws[..], d.n, g.first, g.count, base, 1); d.sn = e2_draw(s[0].shadow[..], d.sn, g.first, g.count, base, 1);
     d.rec += 1; v[0].drawn += 1;
   }
   return d;
@@ -238,4 +263,38 @@ e2rv_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {
   #assert e2rv_pointer(s[..], (box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2, 0) && n[0].pipe[0].n == 1 && n[0].ride[0].m[0].m[0].state == MOUNT_DISMOUNTING;
   #assert e2rv_offer(s[..]) == E2RV_NONE && e2rv_prompt_text(s[..]) == "";
   sent = e2n_test_sent(n); #assert sent[sent.count - 5..<sent.count] == " 21 0";
+}
+#test "riding on the client: the dragon's frames file lands past the bakes; admitted, the dragon is drawn from it in order" #steps 6000000000 {
+  s: [1] E2; n := s[0].net[..]; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].seat = 2;
+  room: [1] E2Mounts; e2ml_lay(room[..]);
+  for k: 0..<2 { e2n_test_row(n, 100, egm_row(room[0], k)); }
+  #assert e2_dragon_at() == figs.BD_BAKE_FLOATS && e2_dragon_at() % 4 == 0 && s[0].bake.count == e2_dragon_at() + e2_dragon_room();
+  // the shader reads the corners from the vec4 after the header's two (everglade2.coax E2_DRAGON_CORNERS)
+  #assert e2_dragon_at() / 4 + 2 == 1613432 && e2_dragon_room() == edf.EDF_FLOATS;
+  cat: [4096] u8; c := 0;
+  for f: 0..<egm.EG_HORSE_FRAMES {
+    c = wire_put(cat[..], c, "C glade/horse");
+    if f >= 10 { cat[c] = cast(u8) (48 + f / 10); c += 1; } cat[c] = cast(u8) (48 + f % 10); c += 1;
+    c = wire_int(cat[..], c, 300 + f * 60); c = wire_put(cat[..], c, " 60 247 100 0 0\n");
+  }
+  e2rv_catalog(s[..], cast(string) cat[0..<c]); #assert e2rv_ready(s[..], MK_HORSE) && !e2rv_ready(s[..], MK_DRAGON);
+  // one triangle over three vertices a frame: a file one word off is refused, and the dragon is still not drawn
+  v := s[0].bake[e2_dragon_at()..<s[0].bake.count];
+  w := [8] u32.[cast(u32) edf.EDF_MAGIC, 1, cast(u32) DR_TOTAL, 3, 3, 0, 0, 0];
+  for i: 0..<8 { v[i] = f32_from_bits(w[i]); }
+  v[8] = 0; v[9] = 1; v[10] = 2;
+  bytes := edf.edf_bytes(3, 3); at := edf.edf_vertices_at(3);
+  #assert !e2_dragon_frames(s[..], bytes + 4) && !e2rv_ready(s[..], MK_DRAGON) && s[0].rv[0].streamed == 0;
+  v[at + 3] = -1;   // a colour below 0
+  #assert !e2_dragon_frames(s[..], bytes) && !e2rv_ready(s[..], MK_DRAGON); v[at + 3] = 0;
+  #assert e2_dragon_frames(s[..], bytes) && e2rv_ready(s[..], MK_DRAGON) && e2rv_ready(s[..], MK_HORSE) && s[0].rv[0].streamed == 1;
+  // the horse from the pack, indexed; the dragon in mode 23, its three corners in order over its frame's vertices
+  d := e2rv_draw(s[..], E2Drawn.{}, 0.016);
+  #assert d.rec == 2 && d.n == 2 && d.sn == 2 && s[0].records[15] == 18 && s[0].records[24 + 15] == 23;
+  #assert s[0].draws[2] == 0 && s[0].draws[4 + 2] == 0x80000001 && s[0].draws[4] == 0 && s[0].draws[4 + 1] == 3;
+  word := s[0].records[24 + 7]; first := f32((e2_dragon_at() + at) / 4);
+  #assert word >= first && word < first + f32(DR_TOTAL * 3) && (word - first) - 3 * floor((word - first) / 3) == 0;
+  #assert s[0].shadow[4 + 2] == 0x80000001 && s[0].records[24] == -9 && s[0].records[26] == 6;
+  // the pack's catalog again (a reload): the streamed frames stay
+  e2rv_catalog(s[..], cast(string) cat[0..<c]); #assert e2rv_ready(s[..], MK_DRAGON);
 }

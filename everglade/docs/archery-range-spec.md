@@ -263,8 +263,11 @@ library and one is open at a time.
   seat. Keeping it means a new character record version and its migration.
 - **RESET clears the tally only.** It does not walk you back to the line, and
   the panel has no FOOT, HORSE or DRAGON buttons yet (section 6).
-- **No dragon frames in the pack.** The horse's frames are there; the dragon's
-  do not fit the browser's arena beside the range's mesh.
+- **The dragon's frames are not in the pack.** They don't fit the browser's
+  pack reader beside the world, so they come in a file of their own after the
+  world is up (#13519, [Everglade II](../../docs/metaverse/everglade2.md)).
+  The browser draws the dragon from it. The desktop and phone apps don't fetch
+  the file yet, so they don't draw the dragon.
 - **Experimental has no module of its own.** It and the Druid's meadow still
   build into `fivelab` with the 5E Lab and Character Create, on the zone.
 - **Fire Breath** is in `everglade/zone-ride.coax` now. **The film stages**
