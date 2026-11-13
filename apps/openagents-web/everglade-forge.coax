@@ -1,6 +1,6 @@
 // Aethyrforge in Everglade (docs/verse/aethyrforge.md): what an admin's EDIT opens. Everglade's own
 // HUD goes (the name, MAP, the chat, HP, the hints, the spell bar, the hotbar and the feature list),
-// and the forge's panels come up in the Verse's HUD look (verse/hud/frame.coax: a faint outline with
+// and the forge's panels come up in the Verse's HUD look (aethyr/ui/hud-frame.coax: a faint outline with
 // two 45° cuts, bright L brackets, greys and one blue):
 //   top left    AETHYRFORGE, the realm and that it is live
 //   under it    CHANGES: the realm's last edits and the engine updates that touch this realm, newest
@@ -17,7 +17,7 @@
 // On a local server (127.0.0.1 or localhost) ?forge opens it with no login, to look at; nothing is
 // written then, since every write is an admin's and the server checks it.
 
-#load "../../verse/hud/frame.coax";
+#load "../../aethyr/ui/hud-frame.coax";
 
 FG_ALL :: 0; FG_REALM :: 1; FG_ENGINE :: 2;
 FG_FILTER_WORDS :: [3] string.["ALL", "WORLD", "ENGINE"];

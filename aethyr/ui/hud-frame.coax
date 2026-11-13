@@ -1,9 +1,9 @@
-// The HUD frame both the new landing (apps/openagents-web/newland.coax
+// The HUD frame (moved from verse/hud/frame.coax, #13303: the engine's HUD library draws it) both the new landing (apps/openagents-web/newland.coax
 // frame and button) and the iOS app (SignInScreens.swift HudFrame) draw:
 // a faint outline with 45° cuts on the top-right and bottom-left corners,
 // bright L brackets on the other two, and the four greys and the one blue
 // they are inked in. Coordinates are y-down, as a screen's.
-#load "types.coax";
+#load "hud-types.coax";
 
 HUD_GREY_WHITE :: 0.94; HUD_GREY_LIGHT :: 0.78; HUD_GREY_MID :: 0.6; HUD_GREY_DIM :: 0.42;
 HUD_ACCENT_R :: 0.216; HUD_ACCENT_G :: 0.851; HUD_ACCENT_B :: 0.851;   // Arwes's hsl(180, 68.07%, 53.33%)

@@ -16,8 +16,6 @@ aethyr-up aethyr/net/latency.coax -> everglade/shared/everglade-wire.coax  # its
 aethyr-up rules/srd/contact-health-probes.coax -> verse/experimental-hostiles.coax  # its file moved from aethyr/rules/srd/ to rules/srd/; the load itself is as old (#13270)
 aethyr-up rules/srd/hostile-permission-probes.coax -> verse/experimental-hostiles.coax  # its file moved from aethyr/rules/srd/ to rules/srd/; the load itself is as old (#13270)
 aethyr-up aethyr/state/fixture.coax -> apps/openagents-web/save.coax
-aethyr-up aethyr/ui/draw.coax -> verse/hud/frame.coax
-aethyr-up aethyr/world/day.coax -> verse/style-preset.coax
 
 # The game loads from the web app
 

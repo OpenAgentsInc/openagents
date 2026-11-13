@@ -1,6 +1,6 @@
 // The day adapter for the environment resolver (lighting plan Phase 1 step 4, GitHub #13064;
 // docs/verse/lighting/README.md). It is not a second clock: it reads the simulation tick through the
-// clock modes verse/style-preset.coax already has (fixed, cycle and real: StyleClock,
+// clock modes aethyr/world/style-clock.coax already has (fixed, cycle and real: StyleClock,
 // verse_style_clock, verse_style_clock_at) and the room server's day (coax/web/room/room-sky.coax:
 // W's TICK, HZ and DAY), and gives the EnvironmentState day that aethyr/world/environment.coax
 // env_resolve takes.
@@ -29,7 +29,7 @@
 #module "aethyr.world.day";
 #authority;
 #load "environment.coax" as env;
-#load "../../verse/style-preset.coax";
+#load "style-clock.coax";
 
 DAY_VERSION :: 1;
 DAY_REAL_SECONDS :: 86400.0;

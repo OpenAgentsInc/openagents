@@ -5,7 +5,7 @@
 > state and an action, drawn, tapped and focused from the same rectangles.
 > It refuses an interactive element without a label, moves focus in reading
 > order, traps it in a dialog and never moves it to nothing. The hotbar
-> layout (`verse/hud.coax`) and frame (`verse/hud/frame.coax`) remain shared
+> layout (`verse/hud.coax`) and frame (`aethyr/ui/hud-frame.coax`) remain shared
 > Coax, and [aethyr/ui/hud.coax](../ui/hud.coax) and
 > [aethyr/ui/draw.coax](../ui/draw.coax) hold the rectangles and the
 > eighteen drawing components. No realm builds its HUD as a tree yet, and the
@@ -42,7 +42,7 @@ slot_i.y = height − bottom − size − 12
 `verse_hud_slot` in [verse/hud.coax](../../verse/hud.coax) is this layout.
 The HUD frame is a faint outline with 45° cuts on two corners and bright L
 brackets on the other two, its arm at most a quarter of the box's width
-([verse/hud/frame.coax](../../verse/hud/frame.coax)).
+([aethyr/ui/hud-frame.coax](../ui/hud-frame.coax)).
 
 ## The UI tree
 
@@ -333,7 +333,7 @@ coax/bin/coax test aethyr/ui/hud.coax --library
 - [verse/hud.coax](../../verse/hud.coax): the `verse.hud` module,
   `verse_hud_slot`, with checks that the hotbar fits a 320-point phone above
   the home indicator and that slots stay separate in landscape.
-- [verse/hud/frame.coax](../../verse/hud/frame.coax): the frame's points,
+- [aethyr/ui/hud-frame.coax](../ui/hud-frame.coax): the frame's points,
   arms, cuts and greys, shared by the web landing and the iOS app.
 - [aethyr/ui/hud.coax](../ui/hud.coax): logical screen rectangles,
   half-open hit areas, labelled/enabled controls, keyboard focus traversal,

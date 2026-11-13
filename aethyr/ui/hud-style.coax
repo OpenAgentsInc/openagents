@@ -1,6 +1,6 @@
 // HUD styles: how a realm's HUD looks, apart from what it shows. A realm picks one style
 // (hud_style_named, from its config) and draws every HUD part through it. Two styles exist:
-//  - SCIFI: the Metaverse's instrument look (verse/hud/frame.coax, aethyr/ui/draw.coax and the Arwes
+//  - SCIFI: the Metaverse's instrument look (aethyr/ui/hud-frame.coax, aethyr/ui/draw.coax and the Arwes
 //    frames in aethyr/ui/arwes-frames.coax): grey and cyan glow lines, cut corners, thin bars.
 //    The realms that use it keep their own drawing code; these tokens name its values.
 //  - FANTASY: dark iron and bronze frames, warm gold type, parchment, rounded corners with
@@ -239,7 +239,7 @@ hud_panel :: (l: [] HudList, t: HudTokens, b: HudPrim, k: f32) {
     }
     return;
   }
-  // SCIFI: dim glass and an outline whose two opposite corners are cut (verse/hud/frame.coax's panel)
+  // SCIFI: dim glass and an outline whose two opposite corners are cut (aethyr/ui/hud-frame.coax's panel)
   hud_fill(l[..], b, 0, t.frame_dark, t.frame_dark);
   c := t.radius * k; w := t.line * k; e := t.frame_light;
   hud_line(l[..], b.x0 + c, b.y0, b.x1, b.y0, w, e); hud_line(l[..], b.x1, b.y0, b.x1, b.y1 - c, w, e);

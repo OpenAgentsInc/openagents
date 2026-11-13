@@ -3,7 +3,7 @@
 // Demo labels and numbers describe synthetic instrumentation, not live work.
 // coax/bin/coax test aethyr/ui/draw.coax --library
 #load "hud.coax";
-#load "../../verse/hud/frame.coax";
+#load "hud-frame.coax";
 #load "font.coax";
 
 VERTEX_FLOATS :: 12;

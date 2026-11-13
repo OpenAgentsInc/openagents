@@ -13,7 +13,7 @@
 #load "realms.coax";
 #load "galaxy.coax";
 #load "../../aethyr/anim/figure.coax";
-#load "../../verse/hud/frame.coax";
+#load "../../aethyr/ui/hud-frame.coax";
 #load "newland-network.coax";
 #load "newland-xp.coax";
 #load "../../coax/web/analytics.coax";
@@ -320,7 +320,7 @@ Pen :: struct { d: f32; fade: f32; time: f32; still: bool; phone: bool; }
 // PROJECT's hover and the live and online dots. BITCOIN orange is for Bitcoin
 // payments only, and nothing here pays yet. newland.wgsl and
 // new-land/index.html name the same tokens.
-// The greys, the blue and the frame are verse/hud/frame.coax's, which the
+// The greys, the blue and the frame are aethyr/ui/hud-frame.coax's, which the
 // iOS app draws its screens from too.
 GREY_WHITE :: HUD_GREY_WHITE; GREY_LIGHT :: HUD_GREY_LIGHT; GREY_MID :: HUD_GREY_MID; GREY_DIM :: HUD_GREY_DIM;
 ACCENT_R :: HUD_ACCENT_R; ACCENT_G :: HUD_ACCENT_G; ACCENT_B :: HUD_ACCENT_B;

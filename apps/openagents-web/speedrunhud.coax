@@ -5,7 +5,7 @@
 //
 // The look is the homepage's: the Grid floor drawn in strokes under a slow
 // camera (a pan, a zoom and a turn over the stage), and the industrial vector
-// HUD on top in screen space: verse/hud/frame.coax's frames (cut corners,
+// HUD on top in screen space: aethyr/ui/hud-frame.coax's frames (cut corners,
 // bright L brackets), the four greys and the Arwes cyan accent, glass panel
 // fills (gpu/speedrunhud.coax) and Filament text (font.coax). Bitcoin orange
 // marks Bitcoin and the pipeline's unsolved stages, as the design asks.
@@ -30,7 +30,7 @@
 //   &at=MS          start that many milliseconds into the stage (stills)
 //   coax/bin/coax test apps/openagents-web/speedrunhud.coax
 
-#load "../../aethyr/ui/draw.coax";   // the HUD library: hd_* instruments, lit, font.coax and verse/hud/frame.coax
+#load "../../aethyr/ui/draw.coax";   // the HUD library: hd_* instruments, lit, font.coax and aethyr/ui/hud-frame.coax
 #load "speedrunhud-console.coax";   // the console round each stage, and the overlays for footage
 #load "speedrunhud-storm.coax";     // the payment storm (Lightning and Wavelength, simulated)
 #load "speedrunhud-ep200.coax";     // Episode 200: Reed's law and coalitions, the fleet
@@ -410,7 +410,7 @@ sr_text :: (s: [] SpeedrunHud, out: [] f32, at: int, text: string, x: f32, y: f3
 
 // ---- the HUD's parts
 
-// A frame (verse/hud/frame.coax) that assembles at p: its outline draws in
+// A frame (aethyr/ui/hud-frame.coax) that assembles at p: its outline draws in
 // along its length, its glass fades in, then its brackets flicker on.
 sr_frame :: (s: [] SpeedrunHud, out: [] f32, at: int, b: SrBox, p: f32, cut: f32, accent: int, fill: f32, arm: f32) -> int {
   if p <= 0 { return at; }
