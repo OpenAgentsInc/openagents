@@ -207,6 +207,9 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, "@media (max-width:760px){.side{display:none}.chat:has(.side){margin-left:auto}}");
   n = mc(out, n, "@media (max-width:600px){.page{padding:20px 16px 64px;gap:36px}.list,.menu{width:100%}.msg-user{max-width:88%}}");
   n = mc(out, n, "@media (prefers-reduced-motion:reduce){*{transition:none!important}}");
+  // under a finger every control is at least 44 px either way; with a mouse nothing changes (#13448)
+  n = mc(out, n, "@media (pointer:coarse){.btn,.lk{min-height:44px;min-width:44px}.lk{display:inline-flex;align-items:center;justify-content:center}.sel{height:44px;min-width:44px}.ib{width:44px;height:44px}.tool-h{min-height:44px;align-items:center}");
+  n = mc(out, n, ".row{min-height:44px;justify-content:center}.field{padding:0}.field textarea,.field input{box-sizing:border-box;min-height:44px;padding:11px 12px}.composer textarea{box-sizing:border-box;min-height:44px;padding:9px 0}}");
   return n;
 }
 
@@ -349,6 +352,8 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".pane .menu.pop:has(>.row:nth-of-type(10)){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:min(560px,calc(100vw - 48px))}");
   n = mc(out, n, ".pane .menu.pop:has(>.row:nth-of-type(25)){grid-template-columns:repeat(3,minmax(0,1fr));width:min(820px,calc(100vw - 48px))}");
   n = mc(out, n, "@media (max-width:760px){.dock{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pane-l,.pane-r{max-height:38vh;align-self:start}.pane-r{grid-column:2}}");
+  // under a finger a prop's field is a whole target too (#13448)
+  n = mc(out, n, "@media (pointer:coarse){.prop{grid-template-columns:minmax(0,76px) minmax(44px,1fr)}.prop .field{padding:0}.prop .field input{padding:11px 10px}}");
   return n;
 }
 

@@ -40,7 +40,7 @@ PP_PATHS :: 65536;         // files one commit changes
 PP_WINDOW_S :: 86400;      // how far back a change counts as newer work: 24 hours
 PP_SHOW :: 12;             // findings printed per commit
 PP_PUSH :: 512;            // commits judged per push
-PP_JOBS :: 9;
+PP_JOBS :: 10;
 PP_HOW :: "docs/metaverse/green-main-pipeline.md, \"The pre-push check\"";
 PP_REFUSE :: 3;
 PP_ZERO :: "0000000000000000000000000000000000000000";
@@ -501,6 +501,13 @@ pp_only_docs :: (changed: string) -> bool {
   return true;
 }
 
+// Whether the push changes the page driver (coax drive, its browser side or the browser protocol under it).
+pp_drives :: (changed: string) -> bool { return pp_has(changed, "coax/web/drive") || pp_has(changed, "coax/lib/net/cdp"); }
+#test "the drive hit check runs for a push that changes the driver, and for no other" {
+  #assert pp_drives("docs/a.md\ncoax/web/drive-dom.coax\n") && pp_drives("coax/web/drive.coax\n") && pp_drives("coax/lib/net/cdp.coax\n");
+  #assert !pp_drives("coax/web/host.js\nmetaverse/splice/world.coax\n") && !pp_drives("");
+}
+
 // The checks for a push whose merge base with main is base and whose changes are `changed`;
 // Which checks run (PP_RUN_* bits). wire-check reads the tree's compiler (registry rows name
 // coax/bin/coax), and the suites need it too, so a checkout without one (a fresh worktree before
@@ -531,6 +538,9 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   sk := [3] string.["bun", "test", "coax/web/state-keep.test.ts"];
   // each realm's reference for agents is what its sources write now (coax/web/agent-reference.coax, #13430)
   ar := [3] string.["coax/web/tool.sh", "agent-reference", "--check"];
+  // what receives a tap (coax/web/drive-hit-check.coax, #13448): headless Chrome on a fixture page, two seconds,
+  // when the push changes the driver. Without a browser it cannot run and is not counted.
+  dh := [2] string.["coax/web/tool.sh", "drive-hit-check"];
   tests := true;
   hb: [64] u8;
   if proc_getenv("OA_PREPUSH_TESTS", hb[..]) == "0" { tests = false; print("prepush: OA_PREPUSH_TESTS=0: no coax test\n"); }
@@ -543,6 +553,7 @@ pp_checks :: (base: string, commit: string, changed: string, seconds: int, red: 
   ok = pp_start(jobs[3..<4], "layer-check", lc[..], none) && ok;
   ok = pp_start(jobs[7..<8], "state-keep", sk[..], none) && ok;
   if has_compiler { ok = pp_start(jobs[8..<9], "agent-reference", ar[..], none) && ok; }
+  if has_compiler && pp_drives(changed) { ok = pp_start(jobs[9..<10], "drive-hit-check", dh[..], none) && ok; }
   tests = (run & PP_RUN_SUITES) != 0;
   if tests {
     ok = pp_start(jobs[4..<5], "suites --list", sl[..], none) && ok;

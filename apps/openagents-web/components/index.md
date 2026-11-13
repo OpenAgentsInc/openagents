@@ -17,6 +17,8 @@ Every component, working:
 - **Dock**: panes round something that still shows: a strip of actions, a list, the picked thing's fields and facts, and a foot. The editor that `?edit` opens over a world is built from it.
 - **Header and text**: the title types in.
 
+Under a finger every control is at least 44 px either way. With a mouse they keep their smaller desktop sizes.
+
 **Replay the entrance** enters everything again. If your system asks for reduced motion, nothing animates.
 
 ## How it is built

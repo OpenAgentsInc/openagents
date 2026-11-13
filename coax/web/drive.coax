@@ -53,6 +53,7 @@
 //   screenshot OUT.png            the page as it is
 //   logs                          the page's console and errors since the last `logs`
 //   prefer color-scheme dark|light | prefer reduced-motion reduce|no-preference | prefer size WxH
+//   prefer pointer coarse|fine    a finger or a mouse: the page's touch rules hold or not
 //   perf                          frames drawn in one second, and the world loop's counters
 // The agent clock (GitHub #13096, docs/metaverse/agent-clock.md): the page opens in agent mode (?agent,
 // coax/web/host.js), where simulation time moves only when `clock` or a world operation steps it; the
@@ -741,7 +742,14 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
       if cdp_call(s[0].c[..], "Emulation.setEmulatedMedia", jo_text(j[..]), CDP_CALL_MS) < 0 { dv_s(out, cdp_error(s[0].c[..])); return false; }
       dv_s(out, k); dv_s(out, " "); dv_s(out, v); return true;
     }
-    dv_s(out, "prefer takes color-scheme dark|light, reduced-motion reduce|no-preference or size WxH"); return false;
+    if k == "pointer" && (v == "coarse" || v == "fine") {
+      // a finger or a mouse: with touch on, the page's (pointer: coarse) rules hold, as on a phone (#13448)
+      p: [128] u8; j: [1] Jo; jo_start(j[..], p[..]);
+      jo_obj(j[..]); jo_key(j[..], "enabled"); jo_bool(j[..], v == "coarse"); jo_end(j[..]);
+      if cdp_call(s[0].c[..], "Emulation.setTouchEmulationEnabled", jo_text(j[..]), CDP_CALL_MS) < 0 { dv_s(out, cdp_error(s[0].c[..])); return false; }
+      dv_s(out, k); dv_s(out, " "); dv_s(out, v); return true;
+    }
+    dv_s(out, "prefer takes color-scheme dark|light, reduced-motion reduce|no-preference, pointer coarse|fine or size WxH"); return false;
   }
   dv_s(out, "unknown operation '"); dv_s(out, w0); dv_s(out, "': tree, layout, state, why, hit, taps, tap, drag, type, walk-to, face, use, mount, stop, status, clock, screenshot, logs, prefer, perf");
   return false;

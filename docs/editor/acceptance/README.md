@@ -56,12 +56,14 @@ edit showed after 2,300 to 2,800 ms of the agent's clock.
 - **Real Chrome and a real phone.** This run is headless Chrome. The pass with
   a hand on a mouse and a finger on a phone is the owner's step in
   `NEEDS_OWNER.md`.
-- **Tap sizes.** `taps` on the editor reports the kit's buttons (33 px), its
-  selects and icon buttons (28 px) and its fields (22 px) as under 44 px.
-  Those are the kit's and are tracked on their own. Run it with:
+- **Tap sizes under a mouse.** Under a finger every control of the kit is at
+  least 44 px either way (`@media (pointer: coarse)` in the mono skin,
+  #13448); with a mouse the kit keeps its desktop sizes. Check a phone with:
 
   ```sh
   coax/web/tool.sh drive web apps/openagents-web /worlds/splice \
     --query "edit&stage=5" --size 390x844 --live http://127.0.0.1:9538 \
-    "clock +1500" taps
+    "prefer pointer coarse" "clock +1500" taps
   ```
+
+  It answers `0 under 44 px`.

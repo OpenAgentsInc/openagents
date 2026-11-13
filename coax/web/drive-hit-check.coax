@@ -8,7 +8,7 @@
 #load "drive-dom.coax";
 
 // 800 px wide; everything stands in the top 420 px, inside a headless window's page. `send` is the button a person means to press; `scrim` covers the whole window above it.
-HC_PAGE :: "<!doctype html><html><head><style>body{margin:0;font:16px sans-serif}button,a,input{position:absolute;margin:0;padding:0;border:0}#send{left:100px;top:100px;width:120px;height:48px}#scrim{position:fixed;left:0;top:0;width:800px;height:200px;background:rgba(0,0,0,.4)}#close{left:700px;top:20px;width:24px;height:24px}#help{left:400px;top:260px;width:100px;height:60px}#more{left:480px;top:290px;width:100px;height:60px}#name{left:100px;top:360px;width:200px;height:50px}#ghost{left:600px;top:360px;width:60px;height:60px;pointer-events:none}p{position:absolute;left:100px;top:220px;margin:0}</style></head><body><button id=\"send\">Send</button><input id=\"name\" aria-label=\"Name\"><button id=\"help\">Help</button><button id=\"more\">More</button><p>Read <a id=\"audit\" href=\"#a\" style=\"position:static\">the audit</a> first.</p><div id=\"ghost\">x</div><div id=\"scrim\"><button id=\"close\">x</button></div></body></html>";
+HC_PAGE :: "<!doctype html><html><head><style>body{margin:0;font:16px sans-serif}button,a,input{position:absolute;margin:0;padding:0;border:0}#send{left:100px;top:100px;width:120px;height:48px}#scrim{position:fixed;left:0;top:0;width:800px;height:200px;background:rgba(0,0,0,.4)}#close{left:700px;top:20px;width:24px;height:24px}#help{left:400px;top:260px;width:100px;height:60px}#more{left:480px;top:290px;width:100px;height:60px}#name{left:100px;top:360px;width:200px;height:50px}#ghost{left:600px;top:360px;width:60px;height:60px;pointer-events:none}p{position:absolute;left:100px;top:220px;margin:0}</style></head><body><button id=\"send\">Send</button><input id=\"name\" aria-label=\"Name\"><button id=\"help\">Help</button><button id=\"more\">More</button><p>Read <a id=\"audit\" href=\"#a\" style=\"position:static\">the audit</a> first.</p><div id=\"ghost\">x</div><main style=\"position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap\"><a id=\"about\" href=\"#about\" style=\"position:static\">About this page</a></main><div id=\"scrim\"><button id=\"close\">x</button></div></body></html>";
 
 hc_has :: (s: string, part: string) -> bool { return dd_has(s, part); }
 hc_fail :: (what: string, got: string) -> bool { print("FAIL %:\n%\n", what, got); return false; }
@@ -61,6 +61,8 @@ tool_main :: () -> int #export_c #effects(all) {
   want := [5] string.["covered send by scrim\n", "small close 24x24\n", "overlap help and more\n", "taps: 6 targets, 1 under 44 px, 1 covered, 1 overlaps; 1 links in a line of words not judged small\n", "covered help by more\n"];
   for i: 0..<4 { if !hc_has(t, want[i]) { ok = hc_fail(want[i], t); } }
   if hc_has(t, "small audit") || hc_has(t, "small send") || hc_has(t, "covered close") || hc_has(t, "covered more") { ok = hc_fail("only the fixture's own faults are found", t); }
+  // the link kept for readers only, clipped away whole, is no tap target: not counted, small or covered
+  if hc_has(t, "about") { ok = hc_fail("a link nobody can tap is not a tap target", t); }
   // Help's middle (450, 290) is its own: More starts at 480
   if hc_has(t, want[4]) { ok = hc_fail("a button whose middle is clear is not covered", t); }
 
