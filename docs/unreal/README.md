@@ -12,6 +12,7 @@ the Model Context Protocol (MCP) tools that ship inside it. Written 2026-11-11.
 | [web-games-in-the-verse.md](web-games-in-the-verse.md) | Hosting web-built (Wasm) Unreal games as guest worlds in the OpenAgents Metaverse: the creator's workflow, hosting, the bridge, legal, the PoC plan and owner decisions |
 | [2026-11-12-splice-unreal-vs-aethyr-session-audit.md](2026-11-12-splice-unreal-vs-aethyr-session-audit.md) | Why two agent sessions building the same game came out so different in Unreal and in the Metaverse Engine, with rules for the next Unreal session |
 | [2026-11-12-aethyr-to-unreal-exporter-spec.md](2026-11-12-aethyr-to-unreal-exporter-spec.md) | Specification for the minimal exporter that turns a Metaverse Engine game (Splice first) into an Unreal project: glTF world, a JSON manifest, and the compiled rules behind a bridge plugin |
+| [2026-11-12-splice-download-size.md](2026-11-12-splice-download-size.md) | What a first visit downloads for Splice as an Aethyr page (443 KB) and as the Unreal web export (72.7 MB), file by file |
 
 ## Summary
 
