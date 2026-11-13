@@ -14,6 +14,8 @@
 // arrives; one at a time (a new one ends the last).
 IMPORT("dom_stream") void dom_stream(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len);
 IMPORT("dom_stream_stop") void dom_stream_stop(void);
+// A setting kept in this browser (Settings, This machine), given back as event 12 when the page starts.
+IMPORT("dom_keep") void dom_keep(uint32_t at, uint32_t len);
 
 static coax_v_t_ChatWeb at(uint32_t state) { return (coax_v_t_ChatWeb){(coax_t_ChatWeb *)(uintptr_t)state, 1}; }
 static coax_t_ChatWeb *raw(uint32_t state) { return (coax_t_ChatWeb *)(uintptr_t)state; }
@@ -22,6 +24,8 @@ static coax_t_ChatWeb *raw(uint32_t state) { return (coax_t_ChatWeb *)(uintptr_t
 static void asks(uint32_t state) {
   coax_t_ChatWeb *s = raw(state);
   if (coaxial_chatweb_stop(at(state))) dom_stream_stop();
+  int64_t kept = coaxial_chatweb_keep_len(at(state));
+  if (kept > 0) { dom_keep((uint32_t)(uintptr_t)s->keep.e, (uint32_t)kept); coaxial_chatweb_keep_done(at(state)); }
   if (coaxial_chatweb_asking(at(state))) {   // a POST of its body, or a GET when it has none
     int64_t n = coaxial_chatweb_ask(at(state));
     dom_stream((uint32_t)(uintptr_t)s->door.e, (uint32_t)s->door_n, (uint32_t)(uintptr_t)s->request.e, (uint32_t)(n < 0 ? 0 : n));

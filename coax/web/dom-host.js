@@ -17,6 +17,9 @@
 // Each address is its own copy of this host, so a page may hold several. A module may also keep
 // actions for the page that opened it (dom_act_kind, dom_act, dom_act_len, dom_act_done): the page
 // reads them through coaxialDoms[app] and is told of each event by its `after`.
+// A module that imports dom_keep(at, len) keeps one short text in this browser (localStorage
+// coaxial.dom.<app>.kept, at most 4 KB: a setting, never a secret), and is given it back as event 12
+// as it starts. Storage can be refused, so it is only a convenience.
 const named = new URL(import.meta.url).searchParams;
 const script = named.has("app") ? null : document.querySelector("script[data-app]");
 const app = named.get("app") || script.dataset.app;
@@ -296,7 +299,9 @@ async function start() {
   const response = await fetch(`/build/${app}.wasm`, { cache: location.hostname === "127.0.0.1" || location.hostname === "localhost" ? "no-store" : "default" });
   const module = await WebAssembly.compile(await response.arrayBuffer());
   memory = new WebAssembly.Memory({ initial: 256, maximum: 1024 });
-  const imports = { env: { memory, dom_stream: streamOpen, dom_stream_stop: streamStop, dom_file_send: fileSend, dom_file_step: fileStep } };
+  const keptKey = `coaxial.dom.${app}.kept`;
+  const keep = (at, len) => { if (len > 4096) return; try { localStorage.setItem(keptKey, text.decode(new Uint8Array(memory.buffer, at, len))); } catch { /* refused: kept for this visit only */ } };
+  const imports = { env: { memory, dom_stream: streamOpen, dom_stream_stop: streamStop, dom_file_send: fileSend, dom_file_step: fileStep, dom_keep: keep } };
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= {})[imp.name] ||= imp.name === "fd_write"
@@ -315,6 +320,10 @@ async function start() {
   memory.grow(Math.ceil((size + 64) / 65536));
   x.coaxial_state_init(state);
   root.replaceChildren();
+  if (WebAssembly.Module.imports(module).some((i) => i.name === "dom_keep")) {
+    let kept = ""; try { kept = localStorage.getItem(keptKey) || ""; } catch { /* refused */ }
+    send(12, 0, kept);
+  }
   root.addEventListener("click", (e) => {
     const drop = e.target.closest?.('button[data-drop]:not([data-drop=""])');
     if (drop && root.contains(drop)) { pick(drop); return; }   // a drop target that names what it takes: a press opens the picker

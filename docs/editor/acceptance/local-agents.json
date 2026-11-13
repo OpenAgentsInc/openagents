@@ -1,0 +1,1 @@
+{"agents":[{"engine":"claude","ready":true,"why":""},{"engine":"codex","ready":false,"why":"Codex isn't logged in here. Run codex login in a terminal."},{"engine":"antigravity","ready":false,"why":"Antigravity isn't installed here."},{"engine":"micro","ready":true,"why":""}]}

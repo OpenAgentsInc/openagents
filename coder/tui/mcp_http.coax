@@ -188,7 +188,42 @@ cd_local_sessions :: (now_us: int, out: [] u8, ok: [] bool) -> string {
   return cast(string) out[0..<n];
 }
 // Whether target is one of the local routes.
-cd_local_route :: (path: string) -> bool { return path == "/sessions" || path == "/log" || path == "/run" || path == "/send" || path == "/stop" || path == "/claude" || path == "/import"; }
+cd_local_route :: (path: string) -> bool { return path == "/sessions" || path == "/log" || path == "/run" || path == "/send" || path == "/stop" || path == "/claude" || path == "/import" || path == "/agents"; }
+// The agents on this machine a page may offer (#13465), in the page's order (Claude Code, Codex, Antigravity,
+// Microcoder): {"agents":[{"engine":E,"ready":true|false,"why":TEXT},...]}. Ready: its program is here and,
+// for Claude Code and Codex, a login it can use without a browser (an API key, or the login its CLI keeps).
+// Nothing is started to find out, so nothing opens a sign-in.
+cd_local_ready :: (out: [] u8) -> string {
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  kb: [16] u8; pb: [1200] u8; fb: [1048576] u8;
+  claude := agr_on_path("claude");
+  claude_in := cl_getenv("ANTHROPIC_API_KEY", kb[..]).count > 0;
+  if claude && !claude_in && home.count > 0 {
+    k := fs_read(fs_join(home, ".claude.json", pb[..]), fb[..]);
+    claude_in = k > 0 && cd_local_has(cast(string) fb[0..<k], "\"oauthAccount\"");
+  }
+  codex := agr_on_path("codex");
+  cb: [1200] u8; codex_in := home.count > 0 && fs_exists(fs_join(home, ".codex/auth.json", cb[..]));
+  agy := ca_agy_installed();
+  ready := [4] bool.[claude && claude_in, codex && codex_in, agy, true];
+  why := [4] string.[ifx !claude then "Claude Code isn't installed here. Install it from claude.com/code." else "Claude Code isn't logged in here. Run claude in a terminal and log in.",
+    ifx !codex then "Codex isn't installed here. Install it with npm install -g @openai/codex." else "Codex isn't logged in here. Run codex login in a terminal.",
+    "Antigravity isn't installed here.", ""];
+  return cd_local_ready_json(ready[..], why[..], out);
+}
+// The /agents answer for what cd_local_ready found; pure, for the tests.
+cd_local_ready_json :: (ready: [] bool, why: [] string, out: [] u8) -> string {
+  engines := [4] string.["claude", "codex", "antigravity", "micro"];
+  n := cd_cat(out, 0, "{\"agents\":[");
+  for i: 0..<4 {
+    if i > 0 { n = cd_cat(out, n, ","); }
+    n = cd_cat(out, n, "{\"engine\":\""); n = cd_cat(out, n, engines[i]); n = cd_cat(out, n, "\",\"ready\":");
+    n = cd_cat(out, n, ifx ready[i] then "true" else "false"); n = cd_cat(out, n, ",\"why\":\"");
+    n = cd_cat(out, n, ifx ready[i] then "" else why[i]); n = cd_cat(out, n, "\"}");
+  }
+  n = cd_cat(out, n, "]}");
+  return cast(string) out[0..<n];
+}
 // The Claude Code conversations open now in this folder: each running `claude` keeps
 // CLAUDE_DIR/sessions/PID.json with the conversation it has open, its folder and whether it is busy,
 // and removes it when it exits. A file whose process is gone is left over from a crash and skipped.
@@ -261,11 +296,12 @@ cd_local_reply :: (head: string, body: string, out: [] u8) -> CdHttpReply {
   target := cd_http_word(head, 1); verb := cd_http_word(head, 0);
   q := 0; while q < target.count && target[q] != '?' { q += 1; }
   path := cast(string) target[0..<q];
-  get := path == "/sessions" || path == "/log" || path == "/claude";
+  get := path == "/sessions" || path == "/log" || path == "/claude" || path == "/agents";
   if verb != (ifx get then "GET" else "POST") { r.status = 405; return r; }
   ok: [1] bool; a: [12] string; na := 0;
   ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   if path == "/sessions" { r.body = cd_local_sessions(cxproc_wall_us(), out, ok[..]); r.status = ifx ok[0] then 200 else 500; return r; }
+  if path == "/agents" { r.body = cd_local_ready(out); r.status = 200; return r; }
   if path == "/claude" {
     cb: [1100] u8; here := fs_cwd(cb[..]);
     a[0] = "session-read"; a[1] = "list"; a[2] = "--cwd"; a[3] = here;
@@ -486,7 +522,7 @@ cd_cmd_mcp_http :: (port: int) -> int {
   #assert cd_local_ref_ok("7fe255eb-ec54-4f77-b7b3-64252ee8d7ff") && !cd_local_ref_ok("7fe255eb") && !cd_local_ref_ok("7fe255eb-ec54-4f77-b7b3-64252ee8d7fg") && !cd_local_ref_ok("7FE255EB-ec54-4f77-b7b3-64252ee8d7ff");
   #assert cd_local_id_ok("20261110-152212-593") && !cd_local_id_ok("") && !cd_local_id_ok("a") && !cd_local_id_ok("1/2") && !cd_local_id_ok("1.2");
   #assert cd_local_query("/log?id=7&after=30", "id") == "7" && cd_local_query("/log?id=7&after=30", "after") == "30" && cd_local_query("/log?id=7", "after") == "" && cd_local_query("/log", "id") == "" && cd_local_query("/log?xid=7", "id") == "";
-  #assert cd_local_route("/log") && cd_local_route("/sessions") && cd_local_route("/run") && cd_local_route("/send") && cd_local_route("/stop") && !cd_local_route("/mcp") && !cd_local_route("/");
+  #assert cd_local_route("/agents") && cd_local_route("/log") && cd_local_route("/sessions") && cd_local_route("/run") && cd_local_route("/send") && cd_local_route("/stop") && !cd_local_route("/mcp") && !cd_local_route("/");
 }
 
 #test "a log is read in complete lines: from a byte, or its last chunk" {
@@ -505,4 +541,15 @@ cd_cmd_mcp_http :: (port: int) -> int {
   #assert s.at == 0 && s.end == 0;
   s = cd_local_lines("ab\n", false);
   #assert s.at == 0 && s.end == 3;
+}
+
+#test "the agents on this machine: each of the page's four, ready or why not, and a GET only" {
+  out: [8192] u8;
+  ready := [4] bool.[true, false, false, true];
+  why := [4] string.["no", "Codex isn't logged in here.", "Antigravity isn't installed here.", ""];
+  b := cd_local_ready_json(ready[..], why[..], out[..]);
+  #assert b == "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"},{\"engine\":\"codex\",\"ready\":false,\"why\":\"Codex isn't logged in here.\"},{\"engine\":\"antigravity\",\"ready\":false,\"why\":\"Antigravity isn't installed here.\"},{\"engine\":\"micro\",\"ready\":true,\"why\":\"\"}]}";
+  #assert cd_local_route("/agents");
+  #assert cd_local_reply("POST /agents HTTP/1.1\r\nX-Coder-Local: 1", "", out[..]).status == 405;
+  #assert cd_local_reply("GET /agents HTTP/1.1", "", out[..]).status == 403;
 }

@@ -71,6 +71,10 @@ swaps
 # ---- the same kind of edits through an agent: the /chat conversation in the editor's foot.
 # The model's answers are scripted (the dev server has no model). After the answer everything is the real
 # path: the plan, the shell's batch, the world's route and its rules.
+# Coder on this machine is scripted too (#13465): no sessions yet, and a Claude Code that is ready
+answer /local/sessions docs/editor/acceptance/local-sessions.json
+answer /local/claude docs/editor/acceptance/local-claude.json
+answer /local/agents docs/editor/acceptance/local-agents.json
 tap agent
 # a turn's edits are one batch: a revision for each edit, and one step to undo
 answer /api/chat/complete docs/editor/acceptance/agent-place.json
@@ -95,6 +99,19 @@ type composer what stands by the bay?
 type composer key Enter
 clock +1500
 clock until page.f.rev == 15 within 500
+# the agents on this machine: the menu lists Claude Code beside us (Gemini), and the conversation switches to it
+# and back (a tap on a row that isn't there fails the run)
+tap agent=OpenAgents
+clock +300
+tap agent=Claude Code
+clock +300
+tap agent=Claude Code
+clock +300
+tap agent=OpenAgents
+clock +300
+tap model=Gemini 3.8 Flash
+clock +300
+tap model=Gemini 3.8 Flash
 tap agent
 # the run kept its state: the player has not moved from where stage 5 put them
 where

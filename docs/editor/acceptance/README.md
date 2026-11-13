@@ -13,6 +13,14 @@ not hold.
    coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9538
    ```
 
+   This one command also starts the local API behind the server (#13463):
+   its own Postgres, you as its admin with no login step, and Gemini on a
+   Google token that refreshes itself (the service account's gcloud config
+   when the machine has it, else your gcloud login, else openagents.com on
+   your `openagents` login; `docs/chat.md` has the details). So the agent in
+   the editor's foot (`/worlds/splice?edit=agent`) answers with a real model.
+   `--api PORT` uses an API you started yourself instead.
+
    Started like this it builds the whole site first. In a worktree whose
    pages are already built (`coax/remote/pages.sh`), skip that with
    `--build true` after building Splice and the site's shaders once in
@@ -42,7 +50,7 @@ not hold.
      --ops docs/editor/acceptance/editor-run.ops
    ```
 
-The run exits 0 when every step holds: 86 operations, about a minute. It
+The run exits 0 when every step holds: 100 operations, about a minute. It
 leaves two pictures in `apps/openagents-web/build/`: `editor-run.png` and
 `editor-run-phone.png`.
 
@@ -70,8 +78,8 @@ must be one revision; a stroke must be one undo step. It leaves
 written against every edit showed in the frame it was made in: the page
 checks its own world, so nothing waits on a server.
 
-It does not check the chat line (the dev server has no model behind it) or a
-phone's size: the driver's change of size mid-run garbles the page's own text,
+It does not check the chat line against the real model (the run scripts the
+model's answers, below) or a phone's size: the driver's change of size mid-run garbles the page's own text,
 so take that picture from a fresh load at 390x844.
 
 ## What it checks
@@ -92,6 +100,7 @@ so take that picture from a fresh load at 390x844.
 | Move and remove through the agent | One turn, one batch. |
 | Undo through the agent | One step takes the whole turn back. |
 | Talk to the agent | Nothing changes. |
+| Switch to an agent on this machine | Coder's answers are scripted (`local-agents.json`: Claude Code ready). The Agent menu lists Claude Code beside us, the conversation switches to it, and back to Gemini (#13465). |
 | Where the player stands | The run kept its state: the player has not moved. |
 | What a tap reaches | The shell's button over the canvas, and the world where no pane is. |
 | A phone's size | The strip wraps and the panes stand side by side above the world. |
@@ -108,16 +117,19 @@ agent's clock.
 
 ## What it does not check
 
-- **The model.** The dev server has no model, so the agent's four answers are
-  scripted: `answer /api/chat/complete FILE` gives the page the bytes of
+- **The model.** The run doesn't depend on a model, so the agent's four
+  answers are scripted, though the dev server has Gemini behind it: `answer /api/chat/complete FILE` gives the page the bytes of
   `agent-place.json`, `agent-change.json`, `agent-undo.json` and
   `agent-talk.json` in place of the model's. Everything after the answer is
   the real path: the chat reads it under the world tools' schema, the shell
   makes the plan one batch, the page sends it and the world's rules answer.
-  A turn against the real model is for staging, after a deploy.
+  To try a real turn, open `/worlds/splice?edit=agent` on the same server and
+  send a message.
 - **An agent on your own computer.** The run does not start Claude Code or
-  Codex. Their edits are the realm commands the first steps use (`place`),
-  which is the path their `realm_world` tools take.
+  Codex: Coder's answers (`/local/sessions`, `/local/claude` and
+  `/local/agents`) are scripted, so the run checks the menu and the switch,
+  not a turn. Their edits are the realm commands the first steps use
+  (`place`), which is the path their `realm_world` tools take.
 - **Real Chrome and a real phone.** This run is headless Chrome. The pass with
   a hand on a mouse and a finger on a phone is the owner's step in
   `NEEDS_OWNER.md`.

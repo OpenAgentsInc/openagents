@@ -154,6 +154,11 @@ not a flat folder scan.
   host, so it is the same conversation, components and agents as `/chat`.
   `?edit=agent` opens the editor with the foot open. A local agent's edits
   through the realm commands show in the open editor as any outside edit does.
+  On a dev server the one command (`coax/web/serve.sh apps/openagents-web`)
+  starts the local API and Coder's local side, so the foot answers with
+  Gemini and, when Claude Code is ready on the machine, lists it beside
+  Gemini with no setup (#13463, #13465). Settings, This machine, turns the
+  local agents off or on for this browser.
   The rest ([the shapes](../protocol/world-turn-v1.md)):
   - Each turn carries the world, the selection and "here". The shell tells
     the conversation (`world.turn.v1`) whenever they change. An agent that

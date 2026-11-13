@@ -104,6 +104,7 @@ CF_NONE :: 0; CF_ACCOUNT :: 1; CF_KEY :: 2; CF_UNKEY :: 3; CF_COMPLETE :: 4; CF_
 CF_LIST :: 8; CF_LOG :: 9; CF_RUN :: 10; CF_LSEND :: 11; CF_LSTOP :: 12; CF_CLAUDE :: 13; CF_IMPORT :: 14;
 CF_PLAN :: 15;          // a hosted turn in the editor: the model's typed answer, talk or a plan of world tools (turn.coax wp_schema)
 CF_CARD :: 16;          // a world's card, read from the world's own route
+CF_AGENTS :: 17;        // which agents on this machine are ready (Coder's /agents, #13465)
 CW_PLAN_ASK :: 24576;   // bytes of the conversation sent with a turn in the editor (the world goes with it)
 CW_CL :: 8;            // Claude Code conversations listed beside the chat
 CW_CL_EVERY :: 5.0;    // seconds between reads of them
@@ -121,6 +122,9 @@ CW_CLICK :: 1; CW_INPUT :: 2; CW_SUBMIT :: 3; CW_PIECE :: 4; CW_END :: 5;
 // From the page this conversation sits in, when that is the editor (coax/web/host.js): the world it has open, as a
 // world.turn.v1 in the inbox. Every turn after carries it.
 CW_WORLD :: 8;
+// What this browser kept for the page (dom-host.js dom_keep), as it starts: "local=off" when the agents on this
+// machine were turned off here (Settings, This machine, #13465).
+CW_KEPT :: 12;
 CW_PLANNED :: 8;       // an action for the page that opened this conversation: a world.plan.v1 for its editor
 
 ChatWeb :: struct {
@@ -152,6 +156,11 @@ ChatWeb :: struct {
   tools: [CW_TOOLS] u8; tools_n: int; ntools: int;   // its tools so far, a line each
   meta: [CW_MESSAGES] [CW_META] u8; meta_n: [CW_MESSAGES] int;   // the line under each answer: who wrote it
   local: int;                        // Coder on this machine: 0 not asked yet, 1 it answers, -1 it doesn't
+  local_off: bool;                   // the agents on this machine are turned off in this browser (kept by the host)
+  keep: [16] u8; keep_n: int;        // a setting for the host to keep in this browser, until it has
+  agents_asked: bool;                // Coder was asked which of its agents are ready
+  aready: [4] int;                   // each one: 0 not known (offered), 1 ready, -1 not (aword says why; not offered)
+  aword: [4] [CW_META * 2] u8; aword_n: [4] int;
   ns: int; sid: [CW_SESS] [24] u8; sid_n: [CW_SESS] int;   // its sessions, newest first
   seng: [CW_SESS] [12] u8; seng_n: [CW_SESS] int; srun: [CW_SESS] bool;
   stask: [CW_SESS] [96] u8; stask_n: [CW_SESS] int;
@@ -260,7 +269,7 @@ cw_connected :: (s: [] ChatWeb) -> bool { return s[0].claude != CA_NONE && !s[0]
 cw_model :: (s: [] ChatWeb) -> int {
   m := s[0].model;
   if m < 0 || m >= CW_MODELS { return 0; }
-  if cw_local_model(m) && s[0].local != 1 { return 0; }
+  if cw_local_model(m) && (s[0].local != 1 || s[0].local_off || s[0].aready[m - CW_HOSTED] < 0) { return 0; }
   return ifx cw_claude_model(m) && !cw_connected(s) then 0 else m;
 }
 // The agent the next message goes to: 0 OpenAgents, else the local agent's place + 1.
@@ -321,6 +330,38 @@ cw_side :: (s: [] ChatWeb) {
   }
   tr_close(t);
 }
+// Settings, This machine (#13465): whether Coder on this computer answers, which of its agents can, the one command
+// that starts it when it doesn't, and the switch that turns the agents on this machine on or off in this browser.
+cw_machine_card :: (s: [] ChatWeb) {
+  t := s[0].tree[..]; u := s[0].ui[..];
+  card := k_card(t, u, "machine", "This machine");
+  agents := CW_AGENT_NAMES; buf: [UI_ID] u8;
+  if s[0].local_off { m := tr_leaf(t, "machine.status", TG_P, "set-n", "The agents on this computer are off in this browser. The menu offers our models only."); }
+  else if s[0].local == 1 {
+    m := tr_leaf(t, "machine.status", TG_P, "set-n", "Coder answers on this computer. Choose its agents in the agent menu beside the model.");
+    for a: 1..<CW_AGENTS {
+      st := s[0].aready[a - 1];
+      line := ifx st > 0 then "Ready" else ifx st < 0 then cast(string) s[0].aword[a - 1][0..<s[0].aword_n[a - 1]] else "";
+      lb: [CW_META * 3] u8;
+      n := cw_put(lb[..], 0, agents[a]);
+      if st != 0 { n = cw_put(lb[..], n, ": "); n = cw_put(lb[..], n, ifx line.count > 0 then line else "not ready"); }
+      r := tr_leaf(t, tr_join(buf[..], "machine.agent.", a), TG_P, "set-n", cast(string) lb[0..<n]);
+    }
+  } else if s[0].local < 0 {
+    m := tr_leaf(t, "machine.status", TG_P, "set-n", "Coder isn't answering on this computer. On a dev server, coax/web/serve.sh apps/openagents-web starts it with the page.");
+  }
+  row := tr_open(t, "machine.row", TG_DIV, "rowf");
+  b := k_button(t, u, "machine.switch", ifx s[0].local_off then "Turn on" else "Turn off", BS_PLAIN);
+  tr_close(t);
+  tr_close(t);
+}
+// Turns the agents on this machine on or off in this browser, and asks the host to keep it.
+cw_machine_switch :: (s: [] ChatWeb, off: bool) {
+  s[0].local_off = off;
+  s[0].keep_n = cw_put(s[0].keep[..], 0, ifx off then "local=off" else "local=on");
+  if off { s[0].amenu = false; }
+  else if s[0].local < 0 { s[0].local = 0; }   // asked again
+}
 cw_settings_card :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
   set := tr_open(t, "settings.view", TG_DIV, "settings");
@@ -348,6 +389,7 @@ cw_settings_card :: (s: [] ChatWeb) {
     if s[0].note_n > 0 { m := tr_leaf(t, "claude.note", TG_P, "set-n", cast(string) s[0].note[0..<s[0].note_n]); tr_attr(t, m, AT_ROLE, "status"); }
   }
   tr_close(t);
+  cw_machine_card(s);
   back := tr_open(t, "settings.foot", TG_DIV, "rowf");
   bb := k_button(t, u, "settings.back", "Back to the chat", BS_PLAIN);
   tr_close(t);
@@ -439,7 +481,7 @@ cw_build :: (s: [] ChatWeb) {
   tr_begin(t);
   s[0].marking = false;
   page := tr_open(t, "chat", TG_MAIN, "chat");
-  if s[0].local == 1 { cw_side(s); }
+  if s[0].local == 1 && !s[0].local_off { cw_side(s); }
   if s[0].view == CW_SETTINGS { cw_settings_card(s); }
   else if s[0].count > 0 || s[0].lrun || s[0].error_n > 0 { cw_transcript(s); }   // an error shows in a new chat too
   if s[0].wwire_n > 0 && s[0].view == CW_CHAT {
@@ -463,9 +505,10 @@ cw_build :: (s: [] ChatWeb) {
   agent := cw_agent(s);
   buf: [UI_ID] u8;
   // the agent, where there is more than one to choose: Coder on this machine adds its four
-  if s[0].local == 1 {
+  if s[0].local == 1 && !s[0].local_off {
     k_select_begin(t, u, "agent", agents[agent], "Agent", s[0].amenu);
-    if s[0].amenu { for a: 0..<CW_AGENTS { r := k_row(t, u, tr_join(buf[..], "agent.", a), agents[a], "", a == agent); } }
+    // only the agents that can answer: one Coder says isn't ready here has no row
+    if s[0].amenu { for a: 0..<CW_AGENTS { if a > 0 && s[0].aready[a - 1] < 0 { continue; } r := k_row(t, u, tr_join(buf[..], "agent.", a), agents[a], "", a == agent); } }
     k_select_end(t, s[0].amenu);
   }
   // its model
@@ -485,7 +528,7 @@ cw_build :: (s: [] ChatWeb) {
   stoppable := s[0].live && !s[0].stopping;
   // a session on this machine that is running: Stop, unless something is typed (it becomes its next turn)
   if s[0].lrun && !s[0].live { k_composer_end(t, u, "composer", ifx cw_has_words(s) then "Send" else "Stop", true); }
-  else { k_composer_end(t, u, "composer", ifx s[0].live then "Stop" else "Send", stoppable || (!s[0].live && cw_has_words(s) && (s[0].flight == CF_NONE || s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT))); }
+  else { k_composer_end(t, u, "composer", ifx s[0].live then "Stop" else "Send", stoppable || (!s[0].live && cw_has_words(s) && (s[0].flight == CF_NONE || s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT || s[0].flight == CF_AGENTS))); }
   tr_close(t);
 }
 
@@ -581,6 +624,19 @@ cw_list_read :: (s: [] ChatWeb, body: string) {
   s[0].ns = n;
 }
 // This folder's Claude Code conversations as Coder lists them ({"sessions": [{session_id, title, ...}]}, newest first).
+// Which of the four agents on this machine are ready (Coder's /agents: {"agents":[{engine, ready, why}...]}, in
+// CW_AGENT_NAMES' order after OpenAgents).
+cw_agents_read :: (s: [] ChatWeb, body: string) {
+  ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
+  path: [64] u8; part: [40] u8;
+  for i: 0..<4 {
+    ar[0].at = 0; ar[0].full = false;
+    ready := cl_raw(body, tr_cat(path[..], tr_join(part[..], "agents.", i), ".ready"));
+    if ready.count == 0 { continue; }
+    s[0].aready[i] = ifx ready == "true" then 1 else -1;
+    s[0].aword_n[i] = cw_put(s[0].aword[i][..], 0, cl_str(ar[..], body, tr_cat(path[..], tr_join(part[..], "agents.", i), ".why")));
+  }
+}
 cw_claude_read :: (s: [] ChatWeb, body: string) {
   ar: [1] ClArena; ar[0].buf = s[0].scratch[..];
   path: [64] u8; part: [40] u8;
@@ -749,7 +805,7 @@ cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
 // and the chosen model is asked. Nothing is taken while an answer is coming or another request is out.
 cw_send :: (s: [] ChatWeb) {
   if s[0].live || !cw_has_words(s) { return; }
-  if s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT || s[0].flight == CF_ACCOUNT { s[0].send_due = true; return; }   // a background read is out (the account's, as the page opens, is one): the message goes when it is back
+  if s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT || s[0].flight == CF_ACCOUNT || s[0].flight == CF_AGENTS { s[0].send_due = true; return; }   // a background read is out (the account's, as the page opens, is one): the message goes when it is back
   if s[0].flight != CF_NONE { return; }
   s[0].send_due = false;
   lo := 0; hi := s[0].draft_n;
@@ -975,6 +1031,8 @@ cw_end :: (s: [] ChatWeb, status: int) {
     c := cl_int(body, "c"); turn := cl_int(body, "turn");
     if !c.ok || !turn.ok { cw_fail(s, 0); return; }
     s[0].conv = c.value; s[0].turn = turn.value; s[0].asked_at = s[0].time;
+  } else if kind == CF_AGENTS {
+    if status == 200 { cw_agents_read(s, body); }
   } else if kind == CF_LIST {
     if status == 200 { s[0].local = 1; cw_list_read(s, body); }
     else if s[0].local == 0 { s[0].local = -1; }
@@ -1018,7 +1076,7 @@ cw_end :: (s: [] ChatWeb, status: int) {
     s[0].watching = again; s[0].watch_at = s[0].time;
     if !again { s[0].model = CW_HOSTED; s[0].csize = 0; }   // a message here goes on in Claude Code
   }
-  if s[0].send_due && (kind == CF_LIST || kind == CF_LOG || kind == CF_CLAUDE || kind == CF_IMPORT || kind == CF_ACCOUNT) { cw_send(s); } else if kind == CF_TURN {
+  if s[0].send_due && (kind == CF_LIST || kind == CF_LOG || kind == CF_CLAUDE || kind == CF_IMPORT || kind == CF_ACCOUNT || kind == CF_AGENTS) { cw_send(s); } else if kind == CF_TURN {
     if status == 200 { cw_turn_read(s, body); }
     else if status != 0 { cw_fail(s, status); s[0].turn = 0; }   // with no answer at all, it is read again
   }
@@ -1039,7 +1097,7 @@ cw_tick :: (s: [] ChatWeb) {
     if cw_go(s, CF_CARD, cast(string) url[0..<n], "") { s[0].card_due_n = 0; }
     return;
   }
-  if s[0].local == 1 && !s[0].live {
+  if s[0].local == 1 && !s[0].local_off && !s[0].live {
     // Coder on this machine: Stop once, the shown session's log while it runs, and the sessions now and then
     url: [96] u8; num: [24] u8;
     if s[0].import_due > 0 && s[0].import_due <= s[0].nc {
@@ -1069,8 +1127,10 @@ cw_tick :: (s: [] ChatWeb) {
     }
     if !s[0].cl_asked || s[0].time - s[0].cl_at >= CW_CL_EVERY { if cw_go(s, CF_CLAUDE, "/local/claude", "") { s[0].cl_at = s[0].time; s[0].cl_asked = true; } return; }
     if s[0].time - s[0].list_at >= CW_LIST_EVERY { if cw_go(s, CF_LIST, "/local/sessions", "") { s[0].list_at = s[0].time; } return; }
+    // which agents are ready, once Settings or the agent menu shows them
+    if !s[0].agents_asked && (s[0].view == CW_SETTINGS || s[0].amenu) { if cw_go(s, CF_AGENTS, "/local/agents", "") { s[0].agents_asked = true; } return; }
   }
-  if s[0].local == 0 && s[0].known_asked && !s[0].live && s[0].time > 0.2 { if cw_go(s, CF_LIST, "/local/sessions", "") { s[0].list_at = s[0].time; } return; }
+  if s[0].local == 0 && !s[0].local_off && s[0].known_asked && !s[0].live && s[0].time > 0.2 { if cw_go(s, CF_LIST, "/local/sessions", "") { s[0].list_at = s[0].time; } return; }
   if !s[0].live || s[0].turn <= 0 { return; }
   url: [96] u8; num: [24] u8;
   if s[0].stopping && !s[0].stop_sent && s[0].conv > 0 {
@@ -1133,6 +1193,11 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     s[0].dirty = true; return;
   }
   if kind == CW_END { cw_end(s, slot); s[0].dirty = true; return; }
+  if kind == CW_KEPT {
+    n := ifx length < 0 || length > CW_INBOX then 0 else length;
+    s[0].local_off = cast(string) s[0].inbox[0..<n] == "local=off";
+    s[0].dirty = true; return;
+  }
   if kind == CW_WORLD {
     // bytes that are not a turn mean no world: the next turn goes without one
     n := ifx length < 0 || length > WT_BYTES then 0 else length;
@@ -1187,11 +1252,12 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     if s[0].view == CW_SETTINGS { again := cw_go(s, CF_ACCOUNT, "/api/chat/account", ""); }   // the account as it is now (a login since the page opened)
   }
   else if kind == CW_CLICK && id == "settings.back" { s[0].view = CW_CHAT; }
+  else if kind == CW_CLICK && id == "machine.switch" { cw_machine_switch(s, !s[0].local_off); }
   else if kind == CW_CLICK && id == "model" { s[0].menu = !s[0].menu; s[0].amenu = false; }
   else if kind == CW_CLICK && id == "agent" { s[0].amenu = !s[0].amenu; s[0].menu = false; }
   else if kind == CW_CLICK && cw_index(id, "agent.") >= 0 {
     a := cw_index(id, "agent.");
-    if a < CW_AGENTS && s[0].local == 1 {
+    if a < CW_AGENTS && s[0].local == 1 && !s[0].local_off && (a == 0 || s[0].aready[a - 1] >= 0) {
       if cw_agent(s) == 0 { s[0].hosted = cw_model(s); }
       s[0].model = ifx a == 0 then s[0].hosted else CW_HOSTED + a - 1;
     }
@@ -1248,6 +1314,9 @@ coaxial_chatweb_asked :: (s: [] ChatWeb) #export_c #effects(all) {
 coaxial_chatweb_act_kind :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].planned_n > 0 then CW_PLANNED else 0; }
 coaxial_chatweb_act_len :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].planned_n else 0; }
 coaxial_chatweb_act_done :: (s: [] ChatWeb) #export_c #effects(all) { if s.count > 0 { s[0].planned_n = 0; } }
+// A setting for the host to keep in this browser (dom-host.js dom_keep): its bytes at `keep`, and its taking.
+coaxial_chatweb_keep_len :: (s: [] ChatWeb) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].keep_n else 0; }
+coaxial_chatweb_keep_done :: (s: [] ChatWeb) #export_c #effects(all) { if s.count > 0 { s[0].keep_n = 0; } }
 // Whether the host is to end the stream, read once.
 coaxial_chatweb_stop :: (s: [] ChatWeb) -> bool #export_c #effects(all) {
   if s.count < 1 || !s[0].stop { return false; }
@@ -1614,6 +1683,45 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
   cw_test_press(m, "agent"); b = coaxial_chatweb_frame(m, 0.016, true); cw_test_press(m, "agent.0");
   #assert m[0].model == 2 && cw_agent(m) == 0;
   #assert cw_number("s.12", "s.") == 12 && cw_number("s.0", "s.") == 0 && cw_number("s.", "s.") == -1 && cw_number("s.1x", "s.") == -1 && cw_number("side.new", "s.") == -1 && cw_number("s.1234", "s.") == -1;
+}
+
+CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"},{\"engine\":\"codex\",\"ready\":false,\"why\":\"Codex isn't installed here.\"},{\"engine\":\"antigravity\",\"ready\":false,\"why\":\"\"},{\"engine\":\"micro\",\"ready\":true,\"why\":\"\"}]}";
+
+#test "Settings, This machine: Coder's agents ready or why not, only ready ones in the menu, and a switch this browser keeps" {
+  ts: [1] CwTest; s := ts[0].s[..];
+  cw_test_local(s, CW_T_SESSIONS);
+  t := s[0].tree[..];
+  cw_test_press(s, "settings");
+  if coaxial_chatweb_asking(s) { cw_test_answer(s, 200, "{\"claude\":null}"); }
+  for i: 0..<6 { b := coaxial_chatweb_frame(s, 0.016, true); if coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/agents" { cw_test_answer(s, 200, CW_T_AGENTS); } else if coaxial_chatweb_asking(s) { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS); } }
+  #assert s[0].agents_asked && s[0].aready[0] == 1 && s[0].aready[1] == -1 && s[0].aready[2] == -1 && s[0].aready[3] == 1;
+  #assert tr_find(t, "machine") >= 0 && tr_text_of(t, tr_find(t, "machine.agent.1")) == "Claude Code: Ready" && tr_text_of(t, tr_find(t, "machine.agent.2")) == "Codex: Codex isn't installed here.";
+  #assert tr_text_of(t, tr_find(t, "machine.agent.3")) == "Antigravity: not ready" && tr_text_of(t, tr_find(t, "machine.switch.l")) == "Turn off";
+  // the menu: OpenAgents, Claude Code and Microcoder; no dead rows
+  cw_test_press(s, "settings.back"); cw_test_press(s, "agent"); b := coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "agent.0") >= 0 && tr_find(t, "agent.1") >= 0 && tr_find(t, "agent.2") < 0 && tr_find(t, "agent.3") < 0 && tr_find(t, "agent.4") >= 0;
+  cw_test_press(s, "agent.1"); #assert cw_agent(s) == 1;
+  cw_test_press(s, "agent"); b = coaxial_chatweb_frame(s, 0.016, true); cw_test_press(s, "agent.0"); #assert cw_agent(s) == 0;
+  cw_test_press(s, "agent"); b = coaxial_chatweb_frame(s, 0.016, true); cw_test_press(s, "agent.2"); #assert cw_agent(s) == 0 && s[0].amenu;   // not ready: no row to press
+  // off: kept for this browser, the menu is ours only, nothing asks Coder
+  cw_test_press(s, "agent.1"); #assert cw_agent(s) == 1;
+  cw_test_press(s, "settings"); if coaxial_chatweb_asking(s) { cw_test_answer(s, 200, "{\"claude\":null}"); }
+  b = coaxial_chatweb_frame(s, 0.016, true);
+  #assert tr_find(t, "machine.switch") >= 0 && cw_agent(s) == 1;
+  cw_test_press(s, "machine.switch");
+  #assert s[0].local_off && coaxial_chatweb_keep_len(s) == 9 && cast(string) s[0].keep[0..<9] == "local=off" && cw_agent(s) == 0;
+  coaxial_chatweb_keep_done(s);
+  for i: 0..<80 { b = coaxial_chatweb_frame(s, 0.1, true); #assert !coaxial_chatweb_asking(s) || cw_test_door(s)[0..<7] != "/local/"; }
+  #assert tr_text_of(t, tr_find(t, "machine.switch.l")) == "Turn on" && tr_find(t, "agent") < 0 && tr_find(t, "side") < 0;
+  cw_test_press(s, "machine.switch");
+  #assert !s[0].local_off && cast(string) s[0].keep[0..<s[0].keep_n] == "local=on";
+  // a browser that kept "off" starts with the agents off, and never asks Coder
+  tk: [1] CwTest; k := tk[0].s[..];
+  w := "local=off"; for i: 0..<w.count { k[0].inbox[i] = w[i]; }
+  coaxial_chatweb_event(k, CW_KEPT, 0, w.count);
+  cw_test_open(k, "{\"claude\":null}");
+  for i: 0..<20 { b = coaxial_chatweb_frame(k, 0.1, true); #assert !coaxial_chatweb_asking(k); }
+  #assert k[0].local_off && k[0].local == 0;
 }
 
 #test "a message to an agent on this machine starts a Coder session, and its log fills the transcript" {
