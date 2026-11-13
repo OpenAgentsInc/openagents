@@ -1,8 +1,9 @@
 # Metaverse water
 
 Water is being ported from the previous Rust engine to Coax in the phases
-of its specification, [verse/everglade/previous/water.md](../../verse/everglade/previous/water.md)
-(copied from `0b401561a0^`; see its phased plan). Done: W1 (the physics),
+of its specification, `verse/everglade/previous/water.md`
+(copied from `0b401561a0^`, and out of the tree since #13269: read it with
+`git show 124b6985e0:verse/everglade/previous/water.md`; see its phased plan). Done: W1 (the physics),
 W2 (the shader, on the Coax WebGPU renderer), W3 adapted to today's
 Everglade (its river, ponds, weir, rowboats, swimming and floats), W6
 (ripples, rowing, wakes, spray, mist and the weir's falling sheet, debris

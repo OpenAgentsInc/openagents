@@ -11,8 +11,10 @@ https://openagents.com/realms). The order of the work after
 this is in [realms-port.md](realms-port.md).
 Multiplayer (up to 16 players in a room, each seeing the others, and one shared town) is
 specified in [2026-11-03-everglade-multiplayer-spec.md](2026-11-03-everglade-multiplayer-spec.md).
-The previous Everglade, on the Rust engine, is kept for parity in
-[`verse/everglade/previous/`](../../verse/everglade/previous/README.md): its map and specifications.
+The previous Everglade, on the Rust engine, was kept for parity in
+`verse/everglade/previous/`: its map and specifications. That folder left the
+tree in #13269. Read a file from it with
+`git show 124b6985e0:verse/everglade/previous/NAME` (`README.md` lists them).
 
 Everglade is a conventional MMORPG hub in the woods: where players gather,
 get quests and set out from. It is the same for everyone and players can't
@@ -361,7 +363,7 @@ as grey boxes at full size, built on the realm host
 ## You: the Ranger (eg-ranger)
 
 You walk Everglade as the character you were in the previous Everglade (the
-Rust engine's, removed in the Nuke; [previous/](../../verse/everglade/previous/README.md)):
+Rust engine's, removed in the Nuke; `verse/everglade/previous/`, see above):
 the hooded green **Ranger**, Quaternius's Universal male Ranger, the
 character the owner calls the Ranger Druid. It is taken whole, byte for
 byte, from that engine's last pinned Everglade pack

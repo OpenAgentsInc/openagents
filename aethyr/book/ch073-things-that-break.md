@@ -4,7 +4,7 @@
 > [`verse/demolish.coax`](../../verse/demolish.coax) breaks Everglade's town:
 > kit pieces with hit points fracture, topple, fall on each other, sleep as
 > rubble and grow back. It ports the previous Rust engine's demolition
-> ([destructible-buildings.md](../../verse/everglade/previous/destructible-buildings.md))
+> (`verse/everglade/previous/destructible-buildings.md`, out of the tree since #13269)
 > and runs only in Everglade. This chapter plans destruction as a Metaverse Engine
 > module over Part IV's rigid bodies and contact. Nothing in `aethyr/` runs
 > yet.
@@ -71,7 +71,8 @@ they have to agree on identity, timing, authority and lifetime.
 
 - [verse/demolish.coax](../../verse/demolish.coax): fracture, throw,
   structure, physics, budgets, regrowth and water, with 18 `#test` checks.
-- [verse/everglade/previous/destructible-buildings.md](../../verse/everglade/previous/destructible-buildings.md):
+- `verse/everglade/previous/destructible-buildings.md` (removed in #13269;
+  read it with `git show 124b6985e0:verse/everglade/previous/destructible-buildings.md`):
   the original design, its networking decision and its delivery plan
   (D0–D3).
 - [aethyr/physics/stand.coax](../physics/stand.coax): the top of each standing
