@@ -1,0 +1,305 @@
+// Sealing a pack (GitHub #13304): the last step of every pack build. The asset tools under
+// metaverse/tools/ append to a pack in a working form the admission (pack.coax's pack_read)
+// refuses: more than 48 entries under the VPK1 magic, a ten-digit "bytes" line, sources numbered
+// by each tool's own constant (250, 253, 245, ...), a budget line an earlier tool wrote, and
+// whatever bytes were in the buffer between entries. pack_seal writes the same pack as the format
+// has it, through the one writer (pack_write, pack_write_v2), and keeps it only if pack_read
+// admits it:
+//   the catalog's "budget" and "bytes" lines state the header's budget and the pack's size plainly
+//   the sources are numbered 0, 1, ... in the order their L lines stand; every M, C, T, S and D
+//     line and every entry's licence byte follows
+//   after a renumbered source's L line comes "was NEW OLD", a line the format leaves to the realm
+//   every entry starts where the one before ends on a 4-byte boundary, zeros between
+//   VPK2 when the pack has more than 48 entries, else VPK1
+// A pack pack_read admits seals to itself, byte for byte.
+//
+// The working form comes back with pack_seal(working = true): the old source numbers from the
+// "was" lines, the ten-digit "bytes" line and the VPK1 magic the append tools patch and test for.
+// So an append is: working form, the tool, seal. Sealing a working form gives the sealed pack again.
+//
+// Names here (locals too) start with `pack_seal` or `ps_`.
+//   coax/bin/coax test metaverse-engine/editor/pack-seal.coax --library
+//   coax/web/tool.sh metaverse-engine/tools/pack-seal.coax IN.pack OUT.pack
+
+#module "aethyr.forge.pack_seal";
+#load "pack.coax";
+
+PACK_SEAL_DIGITS :: 10;   // the working form's "bytes" line: ten digits, zero padded
+PACK_SEAL_SOURCES :: 256; // a licence byte's values
+
+// s at out[at]: where the next byte goes, or -1 when out can't hold it (or at is already -1).
+pack_seal_put :: (out: [] u8, at: int, s: string) -> int #effects(all) {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for ps_c, ps_k: s { out[at + ps_k] = ps_c; }
+  return at + s.count;
+}
+// v in decimal at out[at], zero padded to `width` digits (0: written plainly).
+pack_seal_num :: (out: [] u8, at: int, v: int, width: int) -> int #effects(all) {
+  if at < 0 || v < 0 { return -1; }
+  ps_d: [20] u8; ps_n := 0; ps_v := v;
+  while ps_n == 0 || ps_v > 0 { ps_d[ps_n] = cast,trunc(u8) (48 + ps_v % 10); ps_v = ps_v / 10; ps_n += 1; }
+  while ps_n < width { ps_d[ps_n] = '0'; ps_n += 1; }
+  if at + ps_n > out.count { return -1; }
+  for ps_k: 0..<ps_n { out[at + ps_k] = ps_d[ps_n - 1 - ps_k]; }
+  return at + ps_n;
+}
+// A line with its i-th field (fields split by single spaces, as pack_field splits them) written as
+// the number v; a line with no such field is written as it is.
+pack_seal_field :: (line: string, i: int, v: int, out: [] u8, at: int) -> int #effects(all) {
+  ps_start := 0; ps_f := 0; ps_w := at;
+  for ps_k: 0..<line.count + 1 {
+    if ps_k == line.count || line[ps_k] == ' ' {
+      if ps_f == i { ps_w = pack_seal_num(out, ps_w, v, 0); } else { ps_w = pack_seal_put(out, ps_w, line[ps_start..<ps_k]); }
+      if ps_k < line.count { ps_w = pack_seal_put(out, ps_w, " "); }
+      ps_f += 1; ps_start = ps_k + 1;
+    }
+  }
+  return ps_w;
+}
+// Which field of a catalog line names a source: L's own number, a mesh's or character's source,
+// a layer's, a sound's, a data layer's. -1 for a line the format leaves to the realm.
+pack_seal_source_field :: (what: string) -> int #effects(all) {
+  if what == "L" { return 1; }
+  if what == "M" || what == "C" { return 4; }
+  if what == "T" || what == "D" { return 3; }
+  if what == "S" { return 2; }
+  return -1;
+}
+// The end of the line that starts at `at`.
+pack_seal_line_end :: (t: string, at: int) -> int #effects(all) {
+  ps_e := at;
+  while ps_e < t.count && t[ps_e] != '\n' { ps_e += 1; }
+  return ps_e;
+}
+// The source numbers a catalog's lines give, as map[from] = to (-1: not a source): sealing, each L
+// line's number to its place in order; for the working form, each number to the one its "was" line
+// records (itself without one). Sealing, map[PACK_SEAL_SOURCES + to] is the number that source had
+// in the working form: its own, or the one a "was" line already records. The number of sources, or
+// -1 when one is declared twice, isn't a licence byte's value, or a "was" line names none.
+pack_seal_map :: (t: string, working: bool, map: [] int) -> int #effects(all) {
+  for ps_k: 0..<PACK_SEAL_SOURCES * 2 { map[ps_k] = -1; }
+  ps_n := 0; ps_at := 0;
+  while ps_at < t.count {
+    ps_e := pack_seal_line_end(t, ps_at);
+    ps_line := t[ps_at..<ps_e]; ps_at = ps_e + 1;
+    ps_what := pack_field(ps_line, 0);
+    if ps_what == "L" {
+      ps_k := pack_number(pack_field(ps_line, 1));
+      if ps_k < 0 || ps_k >= PACK_MANY { return -1; }
+      if working { if map[ps_k] < 0 { map[ps_k] = ps_k; } }
+      else { if map[ps_k] >= 0 { return -1; } map[ps_k] = ps_n; map[PACK_SEAL_SOURCES + ps_n] = ps_k; }
+      ps_n += 1;
+    }
+    if ps_what == "was" {
+      ps_new := pack_number(pack_field(ps_line, 1)); ps_old := pack_number(pack_field(ps_line, 2));
+      if ps_new < 0 || ps_new >= PACK_MANY || ps_old < 0 || ps_old >= PACK_MANY { return -1; }
+      if working { map[ps_new] = ps_old; }
+      else { if map[ps_new] < 0 { return -1; } map[PACK_SEAL_SOURCES + map[ps_new]] = ps_old; }
+    }
+  }
+  return ps_n;
+}
+// The catalog written again into out: its length, -1 when out can't hold it, -2 when a line names
+// a source no L line declares.
+pack_seal_catalog :: (t: string, map: [] int, working: bool, budget: int, bytes: int, out: [] u8) -> int #effects(all) {
+  ps_w := 0; ps_at := 0;
+  while ps_at < t.count {
+    ps_e := pack_seal_line_end(t, ps_at);
+    ps_line := t[ps_at..<ps_e]; ps_at = ps_e + 1;
+    ps_what := pack_field(ps_line, 0);
+    if ps_what == "was" { continue; }
+    ps_i := pack_seal_source_field(ps_what);
+    if ps_what == "bytes" {
+      ps_w = pack_seal_put(out, ps_w, "bytes ");
+      ps_w = pack_seal_num(out, ps_w, bytes, ifx working then PACK_SEAL_DIGITS else 0);
+    } else if ps_what == "budget" {
+      ps_w = pack_seal_put(out, ps_w, "budget ");
+      ps_w = pack_seal_num(out, ps_w, budget, 0);
+    } else if ps_i < 0 {
+      ps_w = pack_seal_put(out, ps_w, ps_line);
+    } else {
+      ps_from := pack_number(pack_field(ps_line, ps_i));
+      if ps_from < 0 || ps_from >= PACK_MANY || map[ps_from] < 0 { return -2; }
+      ps_w = pack_seal_field(ps_line, ps_i, map[ps_from], out, ps_w);
+      if ps_what == "L" && !working && map[PACK_SEAL_SOURCES + map[ps_from]] != map[ps_from] {
+        ps_w = pack_seal_put(out, ps_w, "\nwas ");
+        ps_w = pack_seal_num(out, ps_w, map[ps_from], 0);
+        ps_w = pack_seal_put(out, ps_w, " ");
+        ps_w = pack_seal_num(out, ps_w, map[PACK_SEAL_SOURCES + map[ps_from]], 0);
+      }
+    }
+    ps_w = pack_seal_put(out, ps_w, "\n");
+    if ps_w < 0 { return -1; }
+  }
+  return ps_w;
+}
+
+// Seal p into out (or write its working form): the bytes written, or -1 with r's why and entry.
+// `cat` is work for the catalog. Sealed, out is a pack pack_read admitted, and r is that read.
+pack_seal :: (p: string, working: bool, cat: [] u8, out: [] u8, r: [] PackRead) -> int #effects(all) {
+  ps_t: [1] PackTable;
+  if !pack_table(p, p.count, ps_t[..]) { ps_no := pack_why(r, ps_t[0].why, -1); return -1; }
+  ps_count := ps_t[0].count;
+  if ps_count < 3 || ps_count > PACK_READ_MAX { ps_no := pack_why(r, "a malformed header", -1); return -1; }
+  ps_first := ps_t[0].entries[0];
+  if ps_first.kind != PACK_CATALOG { ps_no := pack_why(r, "an entry out of order", 0); return -1; }
+  ps_text := p[ps_first.at..<ps_first.at + ps_first.n];
+  ps_map: [PACK_SEAL_SOURCES * 2] int;
+  if pack_seal_map(ps_text, working, ps_map[..]) < 0 { ps_no := pack_why(r, "a source out of order", 0); return -1; }
+  ps_s: [PACK_READ_MAX] PackSource;
+  ps_rest := PACK_HEADER + PACK_ENTRY * ps_count;   // the pack's bytes without its catalog
+  for ps_k: 1..<ps_count {
+    ps_e := ps_t[0].entries[ps_k];
+    ps_lic := ps_e.licence;
+    if ps_k >= 3 {
+      if ps_lic >= PACK_MANY || ps_map[ps_lic] < 0 { ps_no := pack_why(r, "an asset without a declared licence", ps_k); return -1; }
+      ps_lic = ps_map[ps_lic];
+    }
+    ps_s[ps_k] = PackSource.{kind = ps_e.kind, licence = ps_lic, name = ps_e.name, data = p[ps_e.at..<ps_e.at + ps_e.n]};
+    ps_rest += pack_pad(ps_e.n);
+  }
+  // The catalog states the pack's size, and its own length is part of that: settle the two.
+  ps_budget := pack_u32(p, 12);
+  ps_bytes := p.count; ps_n := 0; ps_settled := false;
+  for ps_try: 0..<4 {
+    ps_n = pack_seal_catalog(ps_text, ps_map[..], working, ps_budget, ps_bytes, cat);
+    if ps_n == -2 { ps_no := pack_why(r, "a mesh without a declared licence", 0); return -1; }
+    if ps_n < 0 { ps_no := pack_why(r, "a catalog longer than its buffer", 0); return -1; }
+    if ps_rest + pack_pad(ps_n) == ps_bytes { ps_settled = true; break; }
+    ps_bytes = ps_rest + pack_pad(ps_n);
+  }
+  if !ps_settled { ps_no := pack_why(r, "a catalog that misstates the pack", 0); return -1; }
+  ps_s[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = ps_first.name, data = cast(string) cat[0..<ps_n]};
+  ps_wide := working || ps_count > PACK_MAX;
+  ps_w := pack_write_version(ps_s[0..<ps_count], ps_budget, out, ps_wide);
+  if ps_w < 0 { ps_no := pack_why(r, "a pack longer than its buffer", -1); return -1; }
+  if working {
+    out[3] = '1';
+    r[0] = PackRead.{ok = true, count = ps_count, bytes = ps_w, budget = ps_budget};
+    return ps_w;
+  }
+  if !pack_read(cast(string) out[0..<ps_w], r) { return -1; }
+  return ps_w;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Checks. The working pack an append tool leaves: VPK1, a ten-digit size, a second source numbered
+// 250, and bytes the tool never cleared after the vertices, the layer and the sound.
+PACK_SEAL_TEST_CATALOG :: "pack tiny\nbudget 33\nbytes 0000000000\nL 0 Kit|CC0|u\nL 250 Sounds|CC0|u\n\nM Crate 0 3 0 -0.5\nC glade/x 0 3 250 0 0 0\nI 7 250\nT 0 layer3.jpg 0\nS door 250\n";
+PACK_SEAL_TEST_SEALED :: "L 0 Kit|CC0|u\nL 1 Sounds|CC0|u\nwas 1 250\n\nM Crate 0 3 0 -0.5\nC glade/x 0 3 1 0 0 0\nI 7 250\nT 0 layer3.jpg 0\nS door 1\n";
+
+pack_seal_test_working :: (out: [] u8) -> string #effects(all) {
+  ps_s: [5] PackSource; pack_test_sources(PACK_SEAL_TEST_CATALOG, ps_s[..]);
+  ps_s[4].licence = 250;
+  ps_w := pack_write(ps_s[..], 600, out);
+  for ps_k: 0..<ps_w - 2 { if cast(string) out[ps_k..<ps_k + 2] == "vv" && out[ps_k + 2] == 0 { out[ps_k + 2] = 0x81; out[ps_k + 3] = 0xc1; } }
+  out[ps_w - 1] = 0x7f;
+  return cast(string) out[0..<ps_w];
+}
+pack_seal_test_ends :: (s: string, tail: string) -> bool #effects(all) {
+  return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail;
+}
+
+#test "numbers, fields and the lines that name a source" {
+  b: [32] u8;
+  #assert pack_seal_num(b[..], 0, 0, 0) == 1 && b[0] == '0';
+  #assert pack_seal_num(b[..], 1, 9051, 0) == 5 && cast(string) b[0..<5] == "09051";
+  #assert pack_seal_num(b[..], 0, 512, 10) == 10 && cast(string) b[0..<10] == "0000000512";
+  #assert pack_seal_num(b[..], 30, 512, 0) == -1 && pack_seal_num(b[..], -1, 5, 0) == -1 && pack_seal_num(b[..], 0, -5, 0) == -1;
+  #assert pack_seal_put(b[..], 29, "abc") == 32 && pack_seal_put(b[..], 30, "abc") == -1 && pack_seal_put(b[..], -1, "") == -1;
+  n := pack_seal_field("C glade/x 0 3 250 0 0", 4, 7, b[..], 0);
+  #assert cast(string) b[0..<n] == "C glade/x 0 3 7 0 0";
+  n = pack_seal_field("L 250 Kit of parts|CC0", 1, 3, b[..], 0);
+  #assert cast(string) b[0..<n] == "L 3 Kit of parts|CC0";
+  n = pack_seal_field("S door 9", 2, 10, b[..], 0);
+  #assert cast(string) b[0..<n] == "S door 10";
+  n = pack_seal_field("T 0", 3, 10, b[..], 0);
+  #assert cast(string) b[0..<n] == "T 0";
+  #assert pack_seal_field("S door 9", 2, 10, b[..], 25) == -1;
+  #assert pack_seal_source_field("L") == 1 && pack_seal_source_field("M") == 4 && pack_seal_source_field("C") == 4 && pack_seal_source_field("T") == 3;
+  #assert pack_seal_source_field("D") == 3 && pack_seal_source_field("S") == 2 && pack_seal_source_field("G") == -1 && pack_seal_source_field("") == -1;
+}
+
+#test "a working pack seals to a pack the admission takes" {
+  wb: [700] u8; w := pack_seal_test_working(wb[..]);
+  r: [1] PackRead;
+  #assert !pack_read(w, r[..]);
+  cat: [400] u8; ob: [700] u8;
+  n := pack_seal(w, false, cat[..], ob[..], r[..]);
+  #assert n > 0 && r[0].ok && r[0].bytes == n && r[0].count == 5 && r[0].sources == 2 && r[0].budget == 600;
+  p := cast(string) ob[0..<n];
+  #assert p[0..<4] == "VPK1" && r[0].entries[4].licence == 1 && r[0].entries[3].licence == 0;
+  c := pack_bytes(p, r[..], 0);
+  hb: [64] u8; h := pack_seal_put(hb[..], 0, "pack tiny\nbudget 600\nbytes "); h = pack_seal_num(hb[..], h, n, 0); h = pack_seal_put(hb[..], h, "\n");
+  #assert c[0..<h] == cast(string) hb[0..<h] && pack_seal_test_ends(c, PACK_SEAL_TEST_SEALED) && c.count == h + PACK_SEAL_TEST_SEALED.count;
+  #assert pack_bytes(p, r[..], 1) == "vvvvvv" && pack_bytes(p, r[..], 3) == "JPEG!" && pack_bytes(p, r[..], 4) == "mp3";
+  // A sealed pack seals to itself.
+  ob2: [700] u8; r2: [1] PackRead;
+  n2 := pack_seal(p, false, cat[..], ob2[..], r2[..]);
+  #assert n2 == n && cast(string) ob2[0..<n2] == p;
+}
+
+#test "the working form comes back, and seals to the same pack" {
+  wb: [700] u8; w := pack_seal_test_working(wb[..]);
+  cat: [400] u8; ob: [700] u8; r: [1] PackRead;
+  n := pack_seal(w, false, cat[..], ob[..], r[..]);
+  p := cast(string) ob[0..<n];
+  kb: [700] u8;
+  k := pack_seal(p, true, cat[..], kb[..], r[..]);
+  #assert k > 0 && r[0].ok;
+  q := cast(string) kb[0..<k];
+  t: [1] PackTable;
+  #assert q[0..<4] == "VPK1" && pack_table(q, q.count, t[..]) && t[0].count == 5 && t[0].entries[4].licence == 250 && t[0].entries[3].licence == 0;
+  c := q[t[0].entries[0].at..<t[0].entries[0].at + t[0].entries[0].n];
+  hb: [64] u8; h := pack_seal_put(hb[..], 0, "pack tiny\nbudget 600\nbytes "); h = pack_seal_num(hb[..], h, k, 10); h = pack_seal_put(hb[..], h, "\n");
+  #assert c[0..<h] == cast(string) hb[0..<h];
+  #assert pack_seal_test_ends(c, "L 0 Kit|CC0|u\nL 250 Sounds|CC0|u\n\nM Crate 0 3 0 -0.5\nC glade/x 0 3 250 0 0 0\nI 7 250\nT 0 layer3.jpg 0\nS door 250\n");
+  sb: [700] u8;
+  s := pack_seal(q, false, cat[..], sb[..], r[..]);
+  #assert s == n && cast(string) sb[0..<s] == p;
+}
+
+#test "a pack the admission already takes seals to itself; more than 48 entries are VPK2" {
+  b: [600] u8; p := pack_test(600, b[..]);
+  cat: [400] u8; ob: [600] u8; r: [1] PackRead;
+  n := pack_seal(p, false, cat[..], ob[..], r[..]);
+  #assert n == p.count && cast(string) ob[0..<n] == p;
+  // 3 + 47 layers under VPK1, each a line the catalog owes.
+  s: [50] PackSource; tb: [2000] u8; names: [50] [8] u8;
+  t := pack_seal_put(tb[..], 0, "budget 9000\nbytes 0000000000\nL 0 Kit|CC0|u\n");
+  for k: 3..<50 {
+    t = pack_seal_put(tb[..], t, "T "); t = pack_seal_num(tb[..], t, k - 3, 0); t = pack_seal_put(tb[..], t, " x 0\n");
+    e := pack_seal_put(names[k][..], 0, "l"); e = pack_seal_num(names[k][..], e, k, 0);
+    s[k] = PackSource.{kind = PACK_LAYER, licence = 0, name = cast(string) names[k][0..<e], data = "abc"};
+  }
+  s[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = cast(string) tb[0..<t]};
+  s[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = "vvvv"};
+  s[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = "iiii"};
+  wb: [5000] u8; w := pack_write_v2(s[..], 9000, wb[..]);
+  #assert w > 0;
+  wb[3] = '1';
+  big: [2000] u8; sb: [5000] u8;
+  #assert !pack_read(cast(string) wb[0..<w], r[..]);
+  n = pack_seal(cast(string) wb[0..<w], false, big[..], sb[..], r[..]);
+  #assert n > 0 && r[0].ok && r[0].count == 50 && cast(string) sb[0..<4] == "VPK2";
+}
+
+#test "what can't be sealed is refused with why" {
+  wb: [700] u8; w := pack_seal_test_working(wb[..]);
+  cat: [400] u8; ob: [700] u8; r: [1] PackRead; c2: [700] u8;
+  // not a pack; too small a buffer for the catalog or the pack
+  #assert pack_seal("VPK9", false, cat[..], ob[..], r[..]) == -1 && r[0].why == "not a VPK1 pack";
+  #assert pack_seal(w, false, cat[0..<40], ob[..], r[..]) == -1 && r[0].why == "a catalog longer than its buffer";
+  #assert pack_seal(w, false, cat[..], ob[0..<300], r[..]) == -1 && r[0].why == "a pack longer than its buffer";
+  // an entry whose licence byte no L line declares
+  t: [1] PackTable; #assert pack_table(w, w.count, t[..]);
+  p := pack_test_poke(w, PACK_HEADER + PACK_ENTRY * 3 + 1, 9, c2[..]);
+  #assert pack_seal(p, false, cat[..], ob[..], r[..]) == -1 && r[0].why == "an asset without a declared licence" && r[0].entry == 3;
+  // a catalog line naming a source no L line declares (the C line's 250 as 251)
+  at := t[0].entries[0].at;
+  for k: 0..<t[0].entries[0].n - 8 { if w[at + k..<at + k + 8] == "3 250 0 " { p = pack_test_poke(w, at + k + 4, '1', c2[..]); } }
+  #assert pack_seal(p, false, cat[..], ob[..], r[..]) == -1 && r[0].why == "a mesh without a declared licence";
+  // a source declared twice
+  for k: 0..<t[0].entries[0].n - 6 { if w[at + k..<at + k + 6] == "L 250 " { p = pack_test_poke(w, at + k + 2, '0', c2[..]); c2[at + k + 3] = ' '; c2[at + k + 4] = ' '; } }
+  #assert pack_seal(p, false, cat[..], ob[..], r[..]) == -1 && r[0].why == "a source out of order";
+}

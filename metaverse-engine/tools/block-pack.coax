@@ -34,7 +34,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
 
-BP_MAX :: 67108864;
+BP_MAX :: 134217728;   // a pack, and its block build, at most (Everglade II is 61 MB as a pack and 100 MB as BC7 blocks)
 BP_SIDE :: 2048;       // the largest layer read
 BP_CHAIN :: 22369624;  // a 2048 square's RGBA8 chain
 BP_WORK :: 33554432;   // decode work for a layer up to BP_SIDE
@@ -104,7 +104,7 @@ bp_ramp_layer :: (format: int, out: []u8) -> int {
 
 BpState :: struct {
   input: [BP_MAX] u8; image: [BP_MAX] u8; payload: [BP_MAX] u8; file: [BP_MAX] u8; back: [BP_MAX] u8;
-  work: [BP_WORK] u8; chain: [BP_CHAIN] u8; base: [BP_SIDE * BP_SIDE * 4] u8; catalog: [1048576] u8; scratch: [PPK_PAGE_MAX + 65536] u8;
+  work: [BP_WORK] u8; chain: [BP_CHAIN] u8; base: [BP_SIDE * BP_SIDE * 4] u8; catalog: [8388608] u8; scratch: [PPK_PAGE_MAX + 65536] u8;
 }
 bp_put :: (s: string, out: []u8, n: int) -> int { if n < 0 || n + s.count > out.count { return -1; } for c, k: s { out[n + k] = c; } return n + s.count; }
 // The catalog with its budget and bytes lines saying budget and size (each line kept in place).

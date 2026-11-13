@@ -1,0 +1,47 @@
+// Seal a pack: the last step of every pack build (metaverse-engine/editor/pack-seal.coax, GitHub
+// #13304). The asset tools under metaverse/tools/ leave a working form the admission refuses; this
+// writes the pack as the format has it, through the one writer, and keeps it only when pack_read
+// (metaverse-engine/editor/pack.coax) admits it.
+//   coax/web/tool.sh metaverse-engine/tools/pack-seal.coax IN.pack OUT.pack             seal
+//   coax/web/tool.sh metaverse-engine/tools/pack-seal.coax --working IN.pack OUT.pack   the form the append tools read
+//   coax/web/tool.sh metaverse-engine/tools/pack-seal.coax --check PACK...              is each admitted as it is
+// A gzipped pack is inflated first (gzip -dc). Exit 1 when a pack is refused, with why and the entry.
+// tool.sh: release
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../editor/pack-seal.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+PACK_SEAL_FILE :: 536870912;     // a pack's bytes at most here (the largest budget a pack states, 512 MiB)
+PACK_SEAL_CATALOG :: 33554432;   // its catalog's
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: pack-seal [--working] IN.pack OUT.pack | --check PACK..."); return 2; }
+  in: [PACK_SEAL_FILE] u8; r: [1] PackRead;
+  if args_at(a[..], 0) == "--check" {
+    bad := 0;
+    for i: 1..<args_count(a[..]) {
+      path := args_at(a[..], i);
+      n := fs_read(path, in[..]);
+      if n < 0 { print("FAIL %: can't read it (missing, or over % bytes)\n", path, PACK_SEAL_FILE); bad += 1; continue; }
+      if !pack_read(cast(string) in[0..<n], r[..]) { print("FAIL %: refused: % (entry %)\n", path, r[0].why, r[0].entry); bad += 1; continue; }
+      print("%: admitted: % bytes of a %-byte budget, % entries, % sources\n", path, r[0].bytes, r[0].budget, r[0].count, r[0].sources);
+    }
+    return ifx bad == 0 then 0 else 1;
+  }
+  working := args_at(a[..], 0) == "--working";
+  if args_count(a[..]) != (ifx working then 3 else 2) { tool_errln("usage: pack-seal [--working] IN.pack OUT.pack | --check PACK..."); return 2; }
+  from := args_at(a[..], ifx working then 1 else 0); to := args_at(a[..], ifx working then 2 else 1);
+  n := fs_read(from, in[..]);
+  if n < 0 { print("FAIL %: can't read it (missing, or over % bytes)\n", from, PACK_SEAL_FILE); return 1; }
+  out: [PACK_SEAL_FILE] u8; cat: [PACK_SEAL_CATALOG] u8;
+  w := pack_seal(cast(string) in[0..<n], working, cat[..], out[..], r[..]);
+  if w < 0 { print("FAIL %: refused: % (entry %)\n", from, r[0].why, r[0].entry); return 1; }
+  if !fs_write(to, cast(string) out[0..<w]) { print("FAIL %: can't write it\n", to); return 1; }
+  if working { print("%: the working form, % bytes, % entries\n", to, w, r[0].count); }
+  else { print("%: sealed and admitted: % bytes of a %-byte budget, % entries, % sources\n", to, r[0].bytes, r[0].budget, r[0].count, r[0].sources); }
+  return 0;
+}

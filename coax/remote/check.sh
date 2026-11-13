@@ -30,6 +30,7 @@
 #   coax/remote/check.sh reports          tools-check, test-remote.sh, test-after.sh, test-vm-deploy.sh, everglade-parity, wire-check, layer-check,
 #                                         the native apps' realms (metaverse/native/app-realms.coax, #13389),
 #                                         packs paged by cell (metaverse-engine/host/check-pack-cells.coax, #13304),
+#                                         the apps' packs admitted (metaverse-engine/tools/pack-seal.coax --check, #13304),
 #                                         the API's migration numbers, hashes and schema.sql, the pre-push replay, the committed
 #                                         shaders, realm pages and changelog page against
 #                                         their sources, and every realm's link-preview card
@@ -265,6 +266,7 @@ reports() {
   visuals
   generated
   pack_reader_c
+  packs_admitted
   frame_plan_h
   frame_plan_walk
   app_realms
@@ -291,6 +293,12 @@ generated() {
 # metaverse/native/realm-host.c take no Coax step. Committed, so it is compared with its source here.
 pack_reader_c() {
   step pack-reader-c bash -c 'coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library | cmp -s - metaverse/native/pack-table-gen.h || { echo "metaverse/native/pack-table-gen.h is not what the compiler writes for metaverse-engine/host/pack-table-face.coax. From the repository root: coax/bin/coax c metaverse-engine/host/pack-table-face.coax --library > metaverse/native/pack-table-gen.h, then commit it."; exit 1; }' || status=1
+}
+# The packs the Mac and iPhone apps ship are packs the admission takes as they are (#13304): Everglade
+# II's, and Experimental's once inflated. A pack tool that leaves its working form fails here; the
+# last step of a pack build is metaverse-engine/tools/pack-seal.coax.
+packs_admitted() {
+  step packs-admitted bash -c 'set -e; t="$(mktemp -d)"; gzip -dc apps/openagents-web/realms/everglade-experimental/assets/glade.pack.gz > "$t/glade.pack"; r=0; coax/web/tool.sh metaverse-engine/tools/pack-seal.coax --check apps/openagents-web/realms/everglade2/assets/everglade2.pack "$t/glade.pack" || r=1; rm -f "$t/glade.pack"; rmdir "$t"; exit $r' || status=1
 }
 # The frame plan's numbers for C hosts (#13303): metaverse-engine/host/frame-plan.h is what metaverse-engine/render/frame-plan.coax
 # writes. Committed, because a host's build takes no Coax step for it; compared with its source here.

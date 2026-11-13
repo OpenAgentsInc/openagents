@@ -3,7 +3,8 @@
 // takes the woods from them instead of planting for 1.8 s on its first frame. apps/openagents-web/
 // build.sh runs it on the tracked everglade2.pack before page-pack writes the .vpk3, so the lines
 // are always this tree's planting. Any P lines IN already holds are replaced. The rest of the pack
-// is copied byte for byte; each entry keeps its row, at its new offset.
+// is copied byte for byte; each entry keeps its row, at its new offset. The pack written is sealed
+// (metaverse-engine/editor/pack-seal.coax, #13304): the admission's pack_read took it, or nothing is written.
 // Run: coax/web/tool.sh metaverse/tools/assets/everglade2_plant.coax IN.pack OUT.pack
 // tool.sh: release
 // tool.sh: stack-gib 8
@@ -12,9 +13,11 @@
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/sys/args.coax";
 #load "../../../everglade/world/plant.coax";
+#load "../../../metaverse-engine/editor/pack-seal.coax";
 
 E2PP_MAX :: 67108864;
 E2PP_VPK1 :: 0x314b5056;
+E2PP_VPK2 :: 0x324b5056;
 e2pp_u32 :: (b:[]u8,at:int)->int {return cast(int)b[at]|(cast(int)b[at+1]<<8)|(cast(int)b[at+2]<<16)|(cast(int)b[at+3]<<24);}
 e2pp_put :: (b:[]u8,at:int,v:int) {for k:0..<4 {b[at+k]=cast(u8)((v>>(k*8))&255);}}
 // The catalog without its P lines into out: the length, or -1 when out is too small.
@@ -32,9 +35,9 @@ e2pp_strip :: (cat:string,out:[]u8)->int {
  return n;
 }
 // IN's pack with the catalog's body replaced by body into out (each entry 4-byte aligned, as the pack
-// tools write them) and its fixed-width "bytes " line set to the new size: the size, -1 refused.
+// tools write them): the size, -1 refused. Its "bytes" line is the seal's to state.
 e2pp_rewrite :: (pack:[]u8,body:string,out:[]u8)->int {
- if pack.count<32 || e2pp_u32(pack,0)!=E2PP_VPK1 {return -1;}
+ if pack.count<32 || (e2pp_u32(pack,0)!=E2PP_VPK1 && e2pp_u32(pack,0)!=E2PP_VPK2) {return -1;}
  ne:=e2pp_u32(pack,4);table:=e2pp_u32(pack,16);
  if ne<1 || table<32 || table+ne*48>pack.count {return -1;}
  at:=table+ne*48;if at>out.count {return -1;}
@@ -50,9 +53,6 @@ e2pp_rewrite :: (pack:[]u8,body:string,out:[]u8)->int {
  }
  if cat_row<0 || at>out.count {return -1;}
  e2pp_put(out,8,at);
- cs:=e2pp_u32(out,cat_row+4);cn:=e2pp_u32(out,cat_row+8);found:=false;
- for k:cs..<cs+cn-16 {if cast(string)out[k..<k+6]=="bytes " {v:=at;for j:0..<10 {out[k+15-j]=cast(u8)(48+v%10);v/=10;}found=true;break;}}
- if !found {return -1;}
  return at;
 }
 #test "a pack's catalog takes the P lines; its other entries and their order stay" {
@@ -67,7 +67,9 @@ e2pp_rewrite :: (pack:[]u8,body:string,out:[]u8)->int {
  #assert e2pp_u32(o[..],8)==n && o[32]==1 && o[80]==2;
  vo:=e2pp_u32(o[..],84);#assert e2pp_u32(o[..],88)==4 && vo%4==0 && o[vo]==200 && o[vo+3]==203 && vo+4==n;
  co:=e2pp_u32(o[..],36);cl:=e2pp_u32(o[..],40);c2:=cast(string)o[co..<co+cl];
- v:=0;for j:6..<16 {v=v*10+int(c2[j]-'0');}#assert v==n;
+ #assert c2[0..<17]=="bytes 0000000000\n";
+ e2pp_put(o[..],0,E2PP_VPK2);#assert e2pp_rewrite(o[0..<n],cast(string)sb[0..<sn],p[..])==n;
+ e2pp_put(o[..],0,0x334b5056);#assert e2pp_rewrite(o[0..<n],cast(string)sb[0..<sn],p[..])== -1;e2pp_put(o[..],0,E2PP_VPK1);
  #assert c2[cl-7..<cl]=="P QUJD\n";
  // not a pack, or one without a catalog
  #assert e2pp_rewrite(o[0..<16],"",p[..])== -1;
@@ -86,6 +88,9 @@ tool_main :: ()->int #export_c #effects(all) {
  ln:=e2p_lines(items[..],kinds[..],first[..],n,body[bn..<body.count]);if ln<0 {tool_errln("everglade2 plant: the lines overflow");return 1;}
  at:=e2pp_rewrite(pack[0..<size],cast(string)body[0..<bn+ln],out[..]);
  if at<0 {tool_errln("everglade2 plant: the pack is refused, or it grows past 64 MiB");return 1;}
- if !fs_write(args_at(args[..],1),cast(string)out[0..<at]) {return 1;}
- print("Everglade2 planting: % pieces, % bytes of P lines; the pack % bytes\n",n,ln,at);return 0;
+ sealed:[E2PP_MAX]u8;catalog:[20971520]u8;read:[1]PackRead;
+ sn:=pack_seal(cast(string)out[0..<at],false,catalog[..],sealed[..],read[..]);
+ if sn<0 {tool_err("everglade2 plant: the planted pack isn't one the admission takes: ");tool_errln(read[0].why);return 1;}
+ if !fs_write(args_at(args[..],1),cast(string)sealed[0..<sn]) {return 1;}
+ print("Everglade2 planting: % pieces, % bytes of P lines; the pack % bytes, sealed\n",n,ln,sn);return 0;
 }

@@ -161,6 +161,24 @@ in the clearing, and that trees crowd the path.
   cards in three with bark on the lower half; and one crown card in three with bark on the
   trunk only.
 
+The tracked pack is sealed: `pack_read` in `metaverse-engine/editor/pack.coax` admits it as it
+is, and `coax/remote/check.sh reports` fails when it doesn't (`packs-admitted`). The tools below
+append to a working form the admission refuses (the `VPK1` magic over 48 entries, a ten-digit
+`bytes` line, each tool's own source numbers). So every append has three steps: take the working
+form, run the tool on it, and seal the result. Sealing numbers the sources 0, 1, ... in the order
+their `L` lines stand and records each old number in a `was NEW OLD` line, which the working form
+reads back.
+
+```sh
+P=apps/openagents-web/realms/everglade2/assets/everglade2.pack
+coax/web/tool.sh metaverse-engine/tools/pack-seal.coax --working "$P" /tmp/everglade2-working.pack
+# ... run the append tools below on /tmp/everglade2-working.pack ...
+coax/web/tool.sh metaverse-engine/tools/pack-seal.coax /tmp/everglade2-working.pack "$P"
+```
+
+`everglade2_plant.coax` (the web build's planting step) reads the sealed pack and seals what it
+writes. Experimental's `glade.pack.gz` is sealed the same way (inflate it, seal, `gzip -n -6`).
+
 Build it from the repository root:
 
 ```sh
