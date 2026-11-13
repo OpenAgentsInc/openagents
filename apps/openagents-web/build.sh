@@ -414,9 +414,11 @@ COAXIAL_RUN_STEPS=60000000 old timed coax-lab-walk "$here/../../coax/web/wasm.sh
   "$here/../../everglade/shared/everglade-step.coax" "$a/core/sticks.coax" &
 coax_lab_walk=$!
 # /worlds/valley-lab/cull (unlisted): the GPU cull's lab (#13008), its residency and its fixture.
-timed cullstream "$here/../../coax/web/wasm.sh" "$here/cullstream.coax" "$here/cullstream-face.c" "$here/build/cullstream.wasm" &
+# An engine fixture, in the old set (#13269): coax/web/cull-check.coax needs COAXIAL_PAGES=all or the
+# module built by name (coax/remote/check.sh module cullstream) and the fixture tool run by hand.
+old timed cullstream "$here/../../coax/web/wasm.sh" "$here/cullstream.coax" "$here/cullstream-face.c" "$here/build/cullstream.wasm" &
 cullstream=$!
-timed cull-fixture in_repo coax/web/tool.sh metaverse-engine/tools/cull-fixture.coax "$here/build" > /dev/null &
+old timed cull-fixture in_repo coax/web/tool.sh metaverse-engine/tools/cull-fixture.coax "$here/build" > /dev/null &
 cullfixture=$!
 # /worlds/everglade2 (unlisted): Everglade v2, the glade, one path through the woods and a clearing (docs/metaverse/everglade2.md).
 timed everglade2 "$here/../../coax/web/wasm.sh" "$here/../../everglade/client/client.coax" "$here/everglade2-face.c" "$here/build/everglade2.wasm" \
@@ -468,8 +470,9 @@ timed pylon "$here/../../coax/web/wasm.sh" "$here/pylon.coax" "$here/pylon-face.
 pylon=$!
 # Keep the public join command identical to the tested source, never a fork.
 cmp -s "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh" || cp "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh"
-# Engine-owned declared-state adoption and host-conformance fixture (#12991).
-COAXIAL_RUN_STEPS=250000000 timed state-lab "$here/../../coax/web/wasm.sh" "$here/../../metaverse-engine/state/fixture.coax" "$here/state-lab-face.c" "$here/build/state-lab.wasm" &
+# Engine-owned declared-state adoption and host-conformance fixture (#12991). In the old set (#13269):
+# its page and metaverse-engine/state/tests/oracle.py read a module built by name (check.sh module state-lab).
+COAXIAL_RUN_STEPS=250000000 old timed state-lab "$here/../../coax/web/wasm.sh" "$here/../../metaverse-engine/state/fixture.coax" "$here/state-lab-face.c" "$here/build/state-lab.wasm" &
 state_lab=$!
 # /worlds: every world you can play, as kit entries beside the site's side (worlds-web.coax, drawn by the
 # browser through coax/web/dom-host.js; its rows in realms/list.coax, written by realms.ts).

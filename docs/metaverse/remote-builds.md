@@ -215,13 +215,16 @@ saved; the report line of each job does.
 
 ### The default build and the old set
 
-`apps/openagents-web/build.sh` makes the pages of what is live. Seventeen
+`apps/openagents-web/build.sh` makes the pages of what is live. Nineteen
 modules are the old set (#13269): v1 Everglade (`everglade`, `fivemmo`,
-`everglade5e`), Experimental and the 5E Lab (`fivelab`), and the lab pages
+`everglade5e`), Experimental and the 5E Lab (`fivelab`), the lab pages
 (`animationlab`, `animelab`, `audiolab`, `bitcoin-lab`, `bitcoin-lab-walk`,
 `coax-lab-walk`, `metahumanlab`, `nostr-lab-walk`, `ocarinalab`, `portallab`,
-`splatlab`, `valleylab`, `waterlab`). Their lines in `build.sh` start with `old`, and they
-build only under `COAXIAL_PAGES=all`.
+`splatlab`, `valleylab`, `waterlab`) and two engine fixtures (`cullstream`
+with its fixture tool step, and `state-lab`). Their lines in `build.sh` start
+with `old`, and they build only under `COAXIAL_PAGES=all`. The actor fixture
+(`actor-lab`) is still in the default build until #13427 decides whether the
+actor runtime stays.
 
 - A release sets `COAXIAL_PAGES=all` (`coax/web/deploy.sh`,
   `coax/remote/pages.sh`), so what ships is every page, as before.
