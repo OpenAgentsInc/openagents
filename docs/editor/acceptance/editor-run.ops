@@ -52,19 +52,19 @@ tap file=splice-game.coax
 # one constant, saved: the engine swaps and the run keeps its state; then back, so the file is as it was found
 swap code.text T_HIT_COOL :: 1.0f32 => T_HIT_COOL :: 1.5f32
 tap code.save
-swaps until wasm >= 1 within 4000
+swaps until wasm >= 1 within 30000
 swap code.text T_HIT_COOL :: 1.5f32 => T_HIT_COOL :: 1.0f32
 tap code.save
-swaps until wasm >= 2 within 4000
+swaps until wasm >= 2 within 30000
 # a shader: the Coax that writes Splice's WGSL
 tap file
 tap file=gpu/splice.coax
 swap code.text pow(face,0.85f32) => pow(face,0.80f32)
 tap code.save
-swaps until wgsl >= 1 within 4000
+swaps until wgsl >= 1 within 30000
 swap code.text pow(face,0.80f32) => pow(face,0.85f32)
 tap code.save
-swaps until wgsl >= 2 within 4000
+swaps until wgsl >= 2 within 30000
 # the world came through the four swaps: the same revision, the same two pieces
 clock until page.f.rev == 9 within 500
 clock until game.layer.st.n == 2 within 500

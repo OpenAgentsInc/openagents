@@ -50,6 +50,7 @@ es_build_actors :: (s: [] EdShell) {
   t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..]; buf: [UI_ID] u8;
   if m[0].na == 0 { return; }
   head := k_header(t, u, "actors.head", "Actors");
+  tr_close(t);   // the header holds only its title: left open, the list and the panes after it would stand inside it
   list := tr_open(t, "actors.list", TG_NAV, "list");
   tr_attr(t, list, AT_LABEL, "Actors in the world");
   when := es_plan_when(m); dn := ES_DO_NAME; ld := NPL_DO;

@@ -33,6 +33,8 @@ es_test_cell :: (h: [] EsTest, rev: int, out: [] u8) -> string {
   h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..]; o: [160] u8;
   es_test_actors(h[..], 5, "dusk", 0); es_test_frames(h[..], 1);
   #assert tr_find(t, "clock") > 0 && tr_find(t, "actors.list") > 0 && tr_find(t, "actor.1") > 0 && tr_find(t, "actor.6") > 0 && tr_find(t, "plan.card") < 0;
+  // the Actors header is closed: the list and the Selected pane are not inside it, and the Selected pane stands beside the things
+  #assert t[0].nodes[tr_find(t, "actors.list")].parent != tr_find(t, "actors.head") && t[0].nodes[tr_find(t, "one")].parent == t[0].nodes[tr_find(t, "things")].parent;
   // the time of day: a cell edit of the clock table's row 1; the one it is changes nothing
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "clock"), 0); es_test_frames(h[..], 1);
   #assert s[0].open == ES_OPEN_CLOCK && tr_find(t, "clock.1") > 0;

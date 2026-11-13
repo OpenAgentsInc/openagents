@@ -37,10 +37,15 @@ not hold.
    The first steps use the command line, so build it too:
    `apps/openagents-cli/build.sh`.
 
-2. Start from an empty world. Stop the server, delete the files named
-   `splice.*` in `apps/openagents-web/build/.worlds/`, and start it again.
-   Wait about a minute after the server says `engine rebuilt`: until then it
-   can miss a source the Code pane saves (#13464).
+2. Start from an empty world: stop the server and start it again. The world
+   is kept in the local API's Postgres, which each start makes new, so a
+   second run on the same server finds the first run's pieces and fails.
+   (With `--api PORT` the world is in that API's database instead. With
+   `OA_SERVE_NO_API=1` it is in the files named `splice.*` in
+   `apps/openagents-web/build/.worlds/`: delete them.) Wait until the server
+   has built every page, about two minutes after it says `engine rebuilt` on
+   a busy machine: until then it can miss a source the Code pane saves
+   (#13464), and a page it is still building does not follow its world.
 
 3. Run the pass:
 
@@ -99,7 +104,7 @@ model's answers, below.
 | Edit a content row | The kind's name changes in place, with no reload. |
 | Remove | The piece is gone, one revision. |
 | Undo, then Redo | The piece comes back, then goes again. |
-| Change a line of game code | In the Code pane, one constant of `splice-game.coax` is changed and saved. The engine swaps within 4 s (the step says how long it took; the bar is 2 s), and again when it is put back. |
+| Change a line of game code | In the Code pane, one constant of `splice-game.coax` is changed and saved. The engine swaps, and again when it is put back. The run waits up to 30 s for each, since a rebuild takes 10 s or more on a busy machine; the step says how long it took, and the bar on an idle machine is 2 s. |
 | Change a shader | The same in `gpu/splice.coax`, the Coax that writes Splice's WGSL. The shaders swap, twice. |
 | The world after four swaps | The same revision and the same pieces: the run kept its state. The agent's turns that follow show at once (#13457). |
 | Place through the agent | In the conversation in the editor's foot, a turn places two crates: one batch, a revision for each. |
