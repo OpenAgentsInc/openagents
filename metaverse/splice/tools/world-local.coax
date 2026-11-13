@@ -133,13 +133,16 @@ wl_post :: (t: [] WlLocal, body: string, dry: bool) -> int {
     if wr_keeps(has_live, here[0], here[1], here[2], here[3], r[R_LIVE_PINS], r[R_LIVE_PINS + 1], r[R_LIVE_PINS + 2], r[R_LIVE_PINS + 3]) {
       kept := wl_doc(t, ".live");
       if !fs_write(wl_path(t, ".prev", -1, ""), kept) { return wl_refuse(t, 500, "not saved", -1); }
-      if !fs_write(wl_path(t, ".prev.tables", -1, ""), wl_tables(t, ".live.tables")) { return wl_refuse(t, 500, "not saved", -1); }
+      // the tables first: wl_tables and wl_path share t's path buffer, so a path made first would be overwritten
+      lt := wl_tables(t, ".live.tables");
+      if !fs_write(wl_path(t, ".prev.tables", -1, ""), lt) { return wl_refuse(t, 500, "not saved", -1); }
       r[R_PREV] = r[R_LIVE]; for k: 0..<4 { r[R_PREV_PINS + k] = r[R_LIVE_PINS + k]; }
     }
     doc := wl_doc(t, ".dev");
     r[R_LIVE] += 1; r[R_FROM] = r[R_DEV]; r[R_WHEN] = when; for k: 0..<4 { r[R_LIVE_PINS + k] = here[k]; }
     en := wr_published(seq, wl_id(t), r[R_LIVE], r[R_DEV], when, here[0], here[1], here[2], here[3], now, t[0].step[..]);
-    if !fs_write(wl_path(t, ".live.tables", -1, ""), wl_tables(t, ".dev.tables")) { return wl_refuse(t, 500, "not saved", -1); }
+    dt := wl_tables(t, ".dev.tables");
+    if !fs_write(wl_path(t, ".live.tables", -1, ""), dt) { return wl_refuse(t, 500, "not saved", -1); }
     doc = wl_doc(t, ".dev");
     if en < 0 || !fs_write(wl_path(t, ".live", -1, ""), doc) || !fs_append(wl_path(t, ".live.events", -1, ""), cast(string) t[0].step[0..<en]) || !fs_append(wl_path(t, ".live.events", -1, ""), "\n") || !wl_row_write(t) {
       return wl_refuse(t, 500, "not saved", -1);
