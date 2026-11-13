@@ -1,4 +1,4 @@
-// Everglade II's grass field (docs/verse/everglade2.md): blade grass on all of the open ground and the
+// Everglade II's grass field (docs/metaverse/everglade2.md): blade grass on all of the open ground and the
 // woods' floor, placed on the GPU (everglade/client/gpu/everglade2.coax e2_field_vs). Every tuft
 // belongs to one fine cell (0.5 m) of a grid fixed to the land, and its place, turn, height and
 // mesh come from that cell's hash alone, never from where you stand.

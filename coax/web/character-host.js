@@ -1,5 +1,5 @@
 // Firm reason: 1 (browser glue: fetch, WebCrypto, image decode and WebGPU for the character pass; admission, playback and lighting are Coax).
-// The character pass (docs/verse/2026-11-06-native-hero-characters.md, Design 3; R1, #12985): a
+// The character pass (docs/metaverse/2026-11-06-native-hero-characters.md, Design 3; R1, #12985): a
 // world that places a detailed character exports coaxial_character_v1(state), the address of its
 // SceneLights block (metaverse-engine/render/scene-lights.coax) or 0, and the name of the character's pack.
 // Only then does the host load the character runtime (build/character-host.wasm, from

@@ -1,5 +1,5 @@
 // vk-frame: one realm frame drawn on the GPU through Vulkan, headless
-// (docs/verse/native-gpu.md, phase G2), against the CPU frame of
+// (docs/metaverse/native-gpu.md, phase G2), against the CPU frame of
 // metaverse/kms --headless. The realm steps as kms.c's headless mode steps it
 // (1/60 s a frame, space at frame 20); the GPU draws the full-screen pass
 // (`coax spirv --fill`) and then the stroke triangles added one plus one

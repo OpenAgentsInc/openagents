@@ -1,6 +1,6 @@
 // The resident browser: one headless Chrome per checkout that stays up between
 // `coax/web/tool.sh shot`, `clip` and `drive` calls, so a call pays for its page, not for a
-// browser (GitHub #13139; docs/verse/fast-shots.md). No window opens and no sound plays.
+// browser (GitHub #13139; docs/metaverse/fast-shots.md). No window opens and no sound plays.
 //
 //   c: [1] Cdp;
 //   r: [1] Rs;

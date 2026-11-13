@@ -1,4 +1,4 @@
-// Everglade v2, openagents.com/worlds/everglade2 (docs/verse/everglade2.md): Character Create's glade,
+// Everglade v2, openagents.com/worlds/everglade2 (docs/metaverse/everglade2.md): Character Create's glade,
 // one winding path out of it through dense woods, and a clearing at the path's end. You walk your own
 // character (the one Character Create saved) on Everglade's controller and follow camera. Nothing
 // else: no town, gate, people or HUD.
@@ -46,7 +46,7 @@
 #load "../../metaverse-engine/action/bow.coax" as bow;   // the Ranger's Longbow, drawn with the right button
 #load "../../metaverse-engine/action/archery.coax" as arch;   // the archer's frame: the draw eases, comes due and shows on the body (engine)
 #load "../longbow.coax";   // Everglade's Longbow: its sounds (game)
-#load "class-feel.coax";        // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
+#load "class-feel.coax";        // every action's feel and the SRD conditions as a bearing (docs/metaverse/action-pipeline.md, #13072)
 #load "cast-pose.coax";        // a cast's body clip and the bow's aim pose: Experimental's
 #load "mouse.coax";  // the mouse buttons: the left casts, a Ranger's right draws
 #load "../shared/archery.coax";   // this zone's ground and bodies for an arrow, the room's too (#13157)
@@ -198,7 +198,7 @@ e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effe
 }
 // The woods from the catalog's P lines (everglade/world/plant.coax e2p_from_catalog, written by
 // build.sh), when they read back whole and the spot check finds this tree's planting in them; else
-// the next frame plants them here, as every frame-one did before (docs/verse/fast-loads.md).
+// the next frame plants them here, as every frame-one did before (docs/metaverse/fast-loads.md).
 e2_take_planting :: (s: [] E2, whole: string) {
   if s[0].plant_done { return; }
   pn := e2p_from_catalog(whole, s[0].items[..], s[0].kinds[..], s[0].first[..]);
@@ -1926,7 +1926,7 @@ e2_fall :: (a: [] figs.BdAnim, b: DeedBearing, now: f32) {
 // A blow's number over (x, y, z) from source (0 the guard struck, 1 his blows, 2 + M monster M's): the
 // room's own amount (metaverse-engine/action/floats.coax: red when you took it, "miss" when it missed, a
 // critical hit larger), so the number is the Hit Points you lost.
-// It is the present of an accepted action (metaverse-engine/action/deed.coax deed_show, docs/verse/action-pipeline.md):
+// It is the present of an accepted action (metaverse-engine/action/deed.coax deed_show, docs/metaverse/action-pipeline.md):
 // feel is the action's (class-feel.coax), and only a result the show plays puts a number up.
 e2_float :: (s: [] E2, feel: DeedFeel, source: int, x: f32, y: f32, z: f32, kind: int, crit: bool, amount: int) -> DeedShow {
   show := deed_show(feel, ifx amount > 0 then DeedResult.hit else DeedResult.miss);

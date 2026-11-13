@@ -1,11 +1,11 @@
-// fairy's shaders, the source of apps/openagents-web/fairy.wgsl (docs/verse/native-gpu.md, G6):
+// fairy's shaders, the source of apps/openagents-web/fairy.wgsl (docs/metaverse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (fairy.module,
 // fairy.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../metaverse-engine/render/noise.coax";
 #load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../metaverse/style.coax";
 
-// Fairy Forest's passes in the flat style, faceted (docs/verse/art-styles.md, Flat and Flat: facets):
+// Fairy Forest's passes in the flat style, faceted (docs/metaverse/art-styles.md, Flat and Flat: facets):
 // a plain sky over a soft horizon band, the scene flat-shaded low poly (every face one tone from its
 // own normal, round shapes coarse and cut) with soft translucent shadows, the stream and the lakes in
 // flat bands, then a post pass that draws a crisp light line along each shape's outline and blooms

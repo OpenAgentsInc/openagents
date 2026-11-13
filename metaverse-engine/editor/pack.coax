@@ -2,7 +2,7 @@
 // refused, written byte for byte as metaverse/tools/pack_realm.py writes it, and admitted into a
 // realm's assets (chapter 16, metaverse-engine/core/assets.coax) by content.
 //
-// The format is pack_realm.py's (its header; docs/verse/realm-host.md, "Asset packs"), little endian:
+// The format is pack_realm.py's (its header; docs/metaverse/realm-host.md, "Asset packs"), little endian:
 //   header, 32 bytes: "VPK1", entry count, file bytes, budget bytes, table offset (32), data offset, 0, 0
 //   entries, 48 bytes each: kind, licence, 0 (u16), offset, bytes, 0, a name in 32 zero-padded bytes
 //   data, each entry from a 4-byte boundary, in table order, zeros between

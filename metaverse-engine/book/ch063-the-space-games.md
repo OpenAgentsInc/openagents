@@ -3,7 +3,7 @@
 > **Status: unimplemented — design draft.** Orbit League and Belt 2200 run
 > today on their own code at `/realms/orbit-league` and `/realms/belt-2200`,
 > over the space primitives already in `metaverse/`
-> ([docs/verse/space.md](../../docs/verse/space.md)). This chapter plans
+> ([docs/metaverse/space.md](../../docs/metaverse/space.md)). This chapter plans
 > rebuilding both only from the OpenAgents Metaverse Engine's earlier chapters. Nothing here runs yet.
 
 Two games share the OpenAgents Metaverse's space layer. Orbit League is rocket roadsters
@@ -75,11 +75,11 @@ delta-v, propellant and time are computed, not invented.
   [stars.coax](../../metaverse/stars.coax);
   [belt-lockstep.coax](../../apps/openagents-web/belt-lockstep.coax) and
   [belt-net.coax](../../apps/openagents-web/belt-net.coax) for two players.
-- The modules' checks in [space.md](../../docs/verse/space.md) (a dropped
+- The modules' checks in [space.md](../../docs/metaverse/space.md) (a dropped
   ball returns to e² of its height, a 100 m drum spun for 1 g, Tsiolkovsky
   to 0.1%); the games' checks at `--steps 2000000000`.
 - Makers: Orbit League is Topher's and Belt 2200 Ted's
-  ([makers.md](../../docs/verse/makers.md)).
+  ([makers.md](../../docs/metaverse/makers.md)).
 
 ## What it builds
 

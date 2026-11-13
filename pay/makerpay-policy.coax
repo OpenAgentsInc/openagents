@@ -1,5 +1,5 @@
 // Paying a maker (docs/auth/lightning-addresses.md, "Paying makers' own
-// addresses"; docs/verse/makers.md; owner decision D6; GitHub #13210). A tip
+// addresses"; docs/metaverse/makers.md; owner decision D6; GitHub #13210). A tip
 // or an upgrade purchase goes from the player's wallet straight to the
 // maker's own Lightning Address. It never enters our wallet. makers.c
 // gathers the facts (the rows, the maker's answer, what the player's wallet

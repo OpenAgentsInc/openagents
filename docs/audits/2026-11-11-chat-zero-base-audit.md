@@ -517,7 +517,7 @@ What the other documents ask of chat:
 ## 10. Coaxial on the web, and what Exact does instead
 
 Added 2026-11-11 after reading `coax/web.md`, `coax/web/HTTP.md`,
-`coax/start-here.md`, `docs/verse/agent-clock.md`, the header of
+`coax/start-here.md`, `docs/metaverse/agent-clock.md`, the header of
 `coax/web/drive.coax`, and all of
 [docs/research/exact/](../research/exact/README.md) (five files). I also read
 the description and file list of Exact's chat template in the reference
@@ -767,7 +767,7 @@ and they come first.
 Added 2026-11-11 on the owner's direction: don't carry the previous chat
 components over, and give the chat a black-and-white ARWES look with a few
 components. For this I read our port (`metaverse-engine/ui/arwes-*.coax`, its
-[porting report](../verse/2026-11-01-arwes-coax.md) and
+[porting report](../metaverse/2026-11-01-arwes-coax.md) and
 `metaverse-engine/ui/arwes/SOURCES.md`) and the upstream source in
 `projects/repos/arwes` at the same commit our port pins (`bdbaa03`).
 

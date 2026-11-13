@@ -1,4 +1,4 @@
-// Lighting Phase 1 baseline (GitHub #13061, docs/verse/lighting/README.md Phase 1): pinned frames
+// Lighting Phase 1 baseline (GitHub #13061, docs/metaverse/lighting/README.md Phase 1): pinned frames
 // and numerical probes of Character Create's glade, Everglade II and Everglade Experimental, and
 // the identity check every later lighting step runs against them.
 //   coax/web/tool.sh coax/web/lighting-baseline.coax OUTDIR [--base URL | --serve PORT] [--only NAME,...]

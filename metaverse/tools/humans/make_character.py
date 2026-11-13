@@ -1,7 +1,7 @@
 # Firm reason: 1 (Unreal Engine's Python API: Creator's character, rig service and exporters run only inside Unreal Editor)
 """Makes a private human character in Unreal's character creator with no clicks: from a preset, a
 look recipe (characters/NAME.json), the cloud face rig, the texture download and the exports
-that pack_human.coax reads (docs/verse/2026-11-04-speaking-characters.md, "Making the mayor").
+that pack_human.coax reads (docs/metaverse/2026-11-04-speaking-characters.md, "Making the mayor").
 
 Runs inside Unreal Editor 5.8, headless, on a private project outside the repository (never one
 open in the editor):

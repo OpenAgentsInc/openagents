@@ -45,8 +45,8 @@ Unreal is at most an offline export tool.
 
 ## Binding rules
 
-These rules come from the pre-Nuke `docs/verse/private-assets.md` and
-`docs/verse/draconia/metahuman-study.md` (both at `853417f290`, the Nuke's
+These rules come from the pre-Nuke `docs/metaverse/private-assets.md` and
+`docs/metaverse/draconia/metahuman-study.md` (both at `853417f290`, the Nuke's
 parent), from the current protocol spec
 ([§10.17](openagents-verse-protocol.md)), and from the owner. They apply to
 every phase below.
@@ -254,7 +254,7 @@ All paths below are at `853417f290`, the Nuke's parent. Restore them with
 
 | Commit | Date | What it added |
 | --- | --- | --- |
-| `0cfdcec775` | 2026-10-13 | The pipeline. `scripts/unreal/draconia_metahuman.py` authors the character headless. `export_textures.py` exports its textures. `dna_dump.cpp` and `build_dna_dump.sh` read DNA through OpenRigLogic. `scripts/blender/metahuman_import.py` builds the glb. It also added `docs/verse/private-assets.md` (the MetaHuman section) and `docs/verse/draconia/metahuman-study.md`. |
+| `0cfdcec775` | 2026-10-13 | The pipeline. `scripts/unreal/draconia_metahuman.py` authors the character headless. `export_textures.py` exports its textures. `dna_dump.cpp` and `build_dna_dump.sh` read DNA through OpenRigLogic. `scripts/blender/metahuman_import.py` builds the glb. It also added `docs/metaverse/private-assets.md` (the MetaHuman section) and `docs/metaverse/draconia/metahuman-study.md`. |
 | `8ce0e6d4ec` | 2026-10-13 | RigLogic joint outputs read as deltas, which fixed the zeroed pose. Expression control files (`scripts/unreal/expressions/{neutral,smile,speak}.txt`). `render_reference.py`, a UE 5.8 scene capture used as the quality reference. |
 | `12e096eb26` | 2026-10-13 | `fit_face.py`: Creator's `fit_state_to_target_vertices` fits our own head into MetaHuman's identity space (1,397 coefficients). The fit is matched by UV and aligned to a median error of 1.4 mm. |
 | `ad3ff69d18` | 2026-10-14 | `draconia_rebuild.py`, run headless on a copy of the project: fit, skin, eyes, `request_auto_rigging(JOINTS_AND_BLEND_SHAPES)` (782 blend shapes, 870 joints), texture download, then DNA, DCC, geometry and material exports. Also `landmarks.py` (MetaHuman's face tracker as a metric), `skin_tone_probe.py` and `dna_dump --joints`. |
@@ -627,7 +627,7 @@ levels coarser.
 | Upload | `metaverse/tools/humans/upload_packs.coax` (built, owner-run) | Public. It names no asset. |
 | Packs, DNA, maps, grooms, impostor atlases | `~/.openagents/verse/private-build/`, `gs://openagentsgemini-verse-private-assets/packs/` | **Private** |
 | Placements and reader grants | `~/.openagents/verse/private-assets.json`, the manifest's `readers` | **Private** |
-| Rules | Restore `docs/verse/private-assets.md` from `853417f290` with its MetaHuman section | Public |
+| Rules | Restore `docs/metaverse/private-assets.md` from `853417f290` with its MetaHuman section | Public |
 
 ## Phased plan
 
@@ -636,7 +636,7 @@ No phase commits an asset.
 
 0. **Policy and licence.** The owner reads the Epic licence page while
    logged in and answers the four open questions above. Restore
-   `docs/verse/private-assets.md` (it was deleted in the Nuke) and update
+   `docs/metaverse/private-assets.md` (it was deleted in the Nuke) and update
    it for the Coax runtime. Name the `no_training` handling for goldens and
    traces. **Gate:** the owner has given written answers to the four
    questions.

@@ -1,4 +1,4 @@
-// oa-seat: one hosted seat in a running realm (docs/verse/realm-seat.md slice 5, #12655), on the
+// oa-seat: one hosted seat in a running realm (docs/metaverse/realm-seat.md slice 5, #12655), on the
 // project agents' runner (runner.c, seat-runner.c). The runner starts one per seat oa-api opened
 // (coax/web/api/seats.c) and speaks JSON lines with it over its stdin and stdout:
 //

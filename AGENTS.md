@@ -26,7 +26,7 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 | `os/` | Metaverse OS ([spec](docs/os/2026-11-02-verse-os.md)), which CoderOS becomes: the machine's programs in Coax (the compositor, desk, camera and hands, recording, CPU limits, the update agent, and the Metaverse OS session: `verse-session.coax` with `verse-boot`, `verse-agents`, `verse-panel`, `verse-hands` and the `#authority` `verse-pylon-policy`), and `os/nix/`, the NixOS modules, the realms package and the image (owner-approved 2026-11-02: the one place Nix lives here) |
 | `proto/` | The protocol's protobuf schemas, descriptors, vendor schemas and checks |
 | `docs/protocol/` | The OpenAgents Protocol spec, the contract for every surface |
-| `docs/verification/`, `docs/lightning/`, `docs/verse/`, `docs/voice/` | Verification plan, the Breez Spark wallet plan, the Metaverse and the Metaverse Engine, the Coax-native voice proposal |
+| `docs/verification/`, `docs/lightning/`, `docs/metaverse/`, `docs/voice/` | Verification plan, the Breez Spark wallet plan, the Metaverse and the Metaverse Engine, the Coax-native voice proposal |
 | `nostr/` | Nostr: `nips/` (official, external and OpenAgents NIPs, pinned) and `book/`, *Nostr From Scratch*, which builds every primitive, the client, the relay and every NIP in Coax (implemented chapters cite the existing `coax/lib/crypto/`, `coax/lib/nostr/` and `coax/lib/net/` code; check with `python3 psionic/tests/book.py --book nostr`; epic #12612) |
 
 ## Shared asset library
@@ -89,7 +89,7 @@ Character Create's frozen save keys. Do not add new app-private source copies.
   --enable-unsafe-webgpu --use-angle=metal`) in your own driver. Never open a
   window or take focus on the owner's screen, and never play sound on it:
   headless Chrome still plays a page's audio unless it is muted.
-- **Take pictures the fast way** ([docs/verse/fast-shots.md](docs/verse/fast-shots.md)).
+- **Take pictures the fast way** ([docs/metaverse/fast-shots.md](docs/metaverse/fast-shots.md)).
   `shot`, `clip` and `drive` share one headless browser per checkout, so
   don't start your own. Pass `--keep` on every shot of a build after the
   first: the page stays loaded, and a script plus a picture takes about a
@@ -127,11 +127,11 @@ run on a remote build host, not the Mac: prefix them with
 `coax/remote/remote.sh run --` (or set `OA_HEAVY_REMOTE=1` for heavy.sh). It
 sends the checkout's commit and uncommitted changes, streams the output, and
 brings the written files back; with no host it runs on the Mac's slots
-(docs/verse/remote-builds.md).
+(docs/metaverse/remote-builds.md).
 
 The API suite (`coax/web/api/test.sh`: Postgres, ASan, every route) is one of
 them. Never run it on the Mac; run it on a host, whole or in two parts side
-by side (docs/verse/remote-builds.md, "The API suite"):
+by side (docs/metaverse/remote-builds.md, "The API suite"):
 
 ```sh
 coax/remote/remote.sh run -- coax/web/api/test.sh            # the whole suite, about 16 minutes
@@ -172,15 +172,15 @@ apps/openagents-ios/build.sh                # the app, for the simulator
 coax/web/serve.sh apps/openagents-web       # the website with hot reload: http://127.0.0.1:8800/
 coax/web/tool.sh coax/web/wgsl-module.coax --site --check  # committed apps/openagents-web/*.wgsl match their Coax (build.sh writes them; commit them)
 coax/web/tool.sh everglade-parity           # no Everglade zone carries its own copy of a shared feature (everglade/features.coax, #13075)
-coax/web/tool.sh everglade/model/tools/zone-cells.coax --check everglade/world/zone-cells.coax everglade/content/everglade.content  # Everglade's cells and navigation are what the land builds, every spawn and named point is reachable (--write after a change to the land or a collider; docs/verse/navigation.md, #13281)
+coax/web/tool.sh everglade/model/tools/zone-cells.coax --check everglade/world/zone-cells.coax everglade/content/everglade.content  # Everglade's cells and navigation are what the land builds, every spawn and named point is reachable (--write after a change to the land or a collider; docs/metaverse/navigation.md, #13281)
 coax/web/tool.sh components-check           # the component system's layers, no looks in a component, one Markdown parser (components/spec.md, #13153)
 coax/web/tool.sh everglade2-drift --page ORIGIN --room PORT  # Everglade II's page against a local room through a shaped network: your corrections and the others as drawn, against bounds (metaverse-engine/net/README.md "The drift check", #13277; a Mac with a GPU, after coax/web/room/local.coax --static)
 coax/web/tool.sh layer-check                # no load from metaverse-engine/ up into metaverse/, apps/, everglade/ or coax/web/, none from everglade/ into apps/, no plain load of a tests/ file or of a checks file beside a module (`X-checks.coax`) by product code (a module loads its checks with `#load "FILE" #test;`, #13383); no engine module without a product consumer or a line in metaverse-engine/consumers.txt (#13272); the allowlist only shrinks (metaverse-engine/README.md "Layers", #13264)
 coax/web/tool.sh prepush --replay COMMIT    # would the pre-push check refuse COMMIT? (--replay-check: the historical clobbers, #13265)
 coax/web/tool.sh wire-check                 # every wire shape is in proto/registry.json with one codec; the allowlist only shrinks (proto/README.md, #13236)
-coax/web/tool.sh shot URL OUT.png 1280x720 --keep --eval JS  # a picture of a page; --keep reuses the loaded page (docs/verse/fast-shots.md)
+coax/web/tool.sh shot URL OUT.png 1280x720 --keep --eval JS  # a picture of a page; --keep reuses the loaded page (docs/metaverse/fast-shots.md)
 coax/web/tool.sh shot --compare A.png B.png  # how much two pictures differ
-coax/web/tool.sh shot URL OUT.png --eval "JSON.stringify(coaxial.loadMarks())"  # where a page's load time went (docs/verse/fast-loads.md)
+coax/web/tool.sh shot URL OUT.png --eval "JSON.stringify(coaxial.loadMarks())"  # where a page's load time went (docs/metaverse/fast-loads.md)
 ```
 
 Wait for a long command without polling. Run it in the foreground with a long
@@ -261,7 +261,7 @@ tests for what you touched, not everything.
 - End commit messages with a `Co-Authored-By` line for the model that
   wrote them, and an `Agent: <id>` line with your agent ID (the one your
   brief gives you), so a failure on `main` reaches the agent that caused it
-  ([docs/verse/green-main-pipeline.md](docs/verse/green-main-pipeline.md)).
+  ([docs/metaverse/green-main-pipeline.md](docs/metaverse/green-main-pipeline.md)).
 - A pre-push check runs on every push to `main` (it is not a queue: about
   10 to 20 seconds, never more than two minutes). It refuses a commit that
   undoes another agent's work of the last 24 hours (a tree written from a
@@ -273,7 +273,7 @@ tests for what you touched, not everything.
   commit; when you mean to delete or restore another agent's file, name the
   file (or its folder/, or the commit you undo) in the message. Emergency
   only: `OA_PREPUSH_BYPASS="why" git push ...`, which is logged. Never use
-  `--no-verify` ([the pre-push check](docs/verse/green-main-pipeline.md#the-pre-push-check)).
+  `--no-verify` ([the pre-push check](docs/metaverse/green-main-pipeline.md#the-pre-push-check)).
 - `coax/remote/after.sh state` shows whether `main` is green: `main`,
   `main-green` (the newest head that passed the after-landing check), the last
   runs and the red list. When `main-green` is behind and you need a base that
@@ -284,7 +284,7 @@ tests for what you touched, not everything.
   commit that must add a line also says why in a trailer,
   `Rebaseline: NAME: why`. A head worse than production in Everglade II's
   room pair (`check.sh e2`) is red too
-  ([the comparing gates](docs/verse/green-main-pipeline.md#the-comparing-gates)).
+  ([the comparing gates](docs/metaverse/green-main-pipeline.md#the-comparing-gates)).
 - Before you investigate a failure on `main`, check the red list (in that
   output). A failure listed there is already owned. When an entry names your
   commit, fixing it comes before new work: a culprit still failing 30 minutes

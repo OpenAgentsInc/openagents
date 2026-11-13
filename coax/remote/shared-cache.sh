@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason: 5. The build cache every host shares (docs/verse/remote-builds.md,
+# Firm reason: 5. The build cache every host shares (docs/metaverse/remote-builds.md,
 # #13119): curl to Cloud Storage's XML API, python3 and openssl to mint a token,
 # gcloud for the reports. One bucket, gs://openagentsgemini-coax-build-cache,
 # behind each host's disk caches: wasm.sh's unit cache (~/.cache/coax-wasm) and

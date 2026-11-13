@@ -70,5 +70,5 @@ focus and stage weather/time are retained metadata. S1–S6 use authored hard
 cuts; the reusable player also supports incoming fades. A6 supplies the
 finished render styles; A8 supplies the publishable performance.
 
-The [A5 profile](../../../docs/verse/anim-scenes-v1.md) defines file selection,
+The [A5 profile](../../../docs/metaverse/anim-scenes-v1.md) defines file selection,
 transport and audio bounds, diagnostics and the supported transitions.

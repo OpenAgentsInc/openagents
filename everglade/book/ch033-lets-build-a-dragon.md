@@ -243,7 +243,7 @@ A dragon in Everglade Experimental is a mount as the horse is. You mount it,
 sit at its `saddle` bone and fly it with the same `wing_step`. Your request to
 mount, to fly or to breathe goes through the deed pipeline like any other
 action: the world asks the rules first, then acts, then shows the result
-([`docs/verse/action-pipeline.md`](../../docs/verse/action-pipeline.md)). Fire
+([`docs/metaverse/action-pipeline.md`](../../docs/metaverse/action-pipeline.md)). Fire
 Breath from the saddle is the same `rs_fire_breath_on`. The rider aims, and the
 mount's creature breathes. [`everglade/docs/mounts-spec.md`](../docs/mounts-spec.md)
 has the SRD's mounted-combat rules that the mounts follow.

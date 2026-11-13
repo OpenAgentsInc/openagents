@@ -57,7 +57,7 @@ FairyLook :: struct {
   made: bool;        // made in the maker (else the first visit opens it)
 }
 
-// ---- a fairy bought from a maker (ev-asset-upgrades, docs/verse/makers.md "Fairy upgrades"): its
+// ---- a fairy bought from a maker (ev-asset-upgrades, docs/metaverse/makers.md "Fairy upgrades"): its
 // look code is the nine parts as digits and, optionally, seven colours of six hex digits that no
 // choice in the maker gives: the hair, the bodice, the skirt, the gloves and under-skirt, and the
 // three wing pairs. migrations/0077_fairy_upgrades.sql (makers.look_of) checks the same.

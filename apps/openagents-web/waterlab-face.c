@@ -1,7 +1,7 @@
 // The water lab's C face for the browser (coax/web/host.js): scalar Wasm
 // exports over waterlab.coax. The host keeps one Waterlab; this file decides
 // nothing. No assets, no scene: waterlab.wgsl's bg_fs traces the sky and the
-// beach and surface_vs draws the clipmap sea from the uniforms waterlab_frame writes (docs/verse/water.md, "The water lab").
+// beach and surface_vs draws the clipmap sea from the uniforms waterlab_frame writes (docs/metaverse/water.md, "The water lab").
 #include "waterlab.h"
 #include <stdbool.h>
 #include <stddef.h>

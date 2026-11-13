@@ -1,4 +1,4 @@
-// Contacts for metaverse-engine/physics/rigid.coax bodies (docs/verse/space.md): finding where
+// Contacts for metaverse-engine/physics/rigid.coax bodies (docs/metaverse/space.md): finding where
 // two shapes touch, and the impulse that answers it, in f64.
 //
 // Shapes: a sphere (a centre and a radius), an oriented box (a body's pose

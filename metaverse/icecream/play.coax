@@ -57,7 +57,7 @@ Particle :: struct { pos: V3; vel: V3; age: f32; life: f32; size: f32; kind: Par
 Options :: struct {
   seed: u64; has_seed: bool;
   bot: bool; calm: bool; arm: bool; free_roam: bool; first_person: bool; cone: bool; no_farts: bool;
-  // the realm's board (docs/verse/realm-edit.md), from the next house: no minions, no weapons to earn
+  // the realm's board (docs/metaverse/realm-edit.md), from the next house: no minions, no weapons to earn
   // or spear puzzle, no backrooms
   no_minions: bool; no_weapons: bool; no_backrooms: bool;
   trace: bool; trace_at: u64;
@@ -248,7 +248,7 @@ options_of :: (text: string) -> Options {
 
 // ---- the run's life (world.cpp newRun, startPlaying)
 
-// The realm's board (docs/verse/realm-edit.md) over a house's tuning.
+// The realm's board (docs/metaverse/realm-edit.md) over a house's tuning.
 board_tuning :: (o: Options, t: Tuning) -> Tuning {
   tuned := t;
   if o.no_minions { tuned = tuning_change(tuned, "minion_count", 0); tuned = tuning_change(tuned, "minion_growth", 0); }
@@ -635,7 +635,7 @@ finished :: (p: [] Play, g: [] Game) {
     if s > 0 && (p[0].best[d] <= 0 || s < p[0].best[d]) { p[0].best[d] = s; p[0].new_best = true; p[0].save_want = true; }
   }
 }
-// ---- the save (the realm's slot, docs/verse/realm-host.md section 3): world.cpp's
+// ---- the save (the realm's slot, docs/metaverse/realm-host.md section 3): world.cpp's
 // settings line, whether the tour was seen, and the best escape a difficulty, as
 // f32 bits. A text without the first line isn't ours and is ignored.
 SAVE_TAG :: "icecream-save 1";

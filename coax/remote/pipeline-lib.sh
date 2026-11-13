@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5. Settings and helpers shared by the green-main pipeline's
-# scripts (docs/verse/green-main-pipeline.md, #13102): submit.sh,
+# scripts (docs/metaverse/green-main-pipeline.md, #13102): submit.sh,
 # integrate.sh and after.sh source it. Git, gh and the files under the
 # pipeline's directory.
 #
@@ -271,7 +271,7 @@ $3" > /dev/null 2>&1 || pl_say "could not comment on #$n"
   else
     url="$(gh issue create --repo "$pl_repo" --title "Green-main pipeline needs attention: $2" --body "$3
 
-Reported by \`coax/remote/after.sh\` (docs/verse/green-main-pipeline.md). \`coax/remote/after.sh state\` shows the pipeline now. This issue closes itself when \`$pl_green\` next moves." 2> /dev/null)" &&
+Reported by \`coax/remote/after.sh\` (docs/metaverse/green-main-pipeline.md). \`coax/remote/after.sh state\` shows the pipeline now. This issue closes itself when \`$pl_green\` next moves." 2> /dev/null)" &&
       echo "${url##*/}" > "$pl_dir/alarm-issue" || pl_say "could not open an issue for the alarm"
   fi
 }

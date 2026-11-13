@@ -1,4 +1,4 @@
-// A realm on the GPU (docs/verse/native-gpu.md, G2): its two passes from
+// A realm on the GPU (docs/metaverse/native-gpu.md, G2): its two passes from
 // `coax spirv` (the fill and the strokes), stepped on wall time, and the
 // frame intervals a host reports. A window (vk-window.c) and a display
 // session (vk-display.c) present it.

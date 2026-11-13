@@ -257,7 +257,7 @@ title screen.
 ### 3.3 Logging in to Everglade
 
 Play uses the existing Everglade log in and room tickets
-([multiplayer spec](../../docs/verse/2026-11-03-everglade-multiplayer-spec.md)).
+([multiplayer spec](../../docs/metaverse/2026-11-03-everglade-multiplayer-spec.md)).
 The desktop app adds no new account system. The Workshop asks for no
 OpenAgents account.
 

@@ -32,7 +32,7 @@ feels; it's a vibes call.
 Aethyr is already ours. The Verse's player controller, third-person camera and
 character cast were ported from **aethyr-cpp**, the C++ engine behind the
 first playtest. Its Cloud Run service and load balancer (`aethyr-demo`, see
-docs/verse/playtest-cutover.md) still exist. So Aethyr is not a fresh
+docs/metaverse/playtest-cutover.md) still exist. So Aethyr is not a fresh
 invention: the Coax engine would be its successor, carrying the name forward.
 
 ## The candidates
@@ -130,7 +130,7 @@ Aethyr."
 Applied 2026-10-31:
 
 - #12609 and the Verse "Engine core" milestone titles;
-- `docs/verse/engine-core.md`, and the module folder, root `metaverse-engine/`;
+- `docs/metaverse/engine-core.md`, and the module folder, root `metaverse-engine/`;
 - the [Aethyr book](../../metaverse-engine/book/README.md) (`metaverse-engine/book/`), which
   builds the engine from scratch and took the Psionic book's physics-engine
   and spacecraft parts;

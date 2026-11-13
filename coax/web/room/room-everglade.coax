@@ -6,7 +6,7 @@
 #load "../../../rules/srd/condition-display.coax";   // the conditions' words, icons and clocks, every zone's (#13082)
 #load "../../../everglade/shared/cast-rules.coax";   // Everglade II's casts: each Character Create class's kit (#13058, eg_e2_cast)
 // The room server's Everglade rooms: the server is the authority (spec
-// docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.1 and 3.6; GitHub #12705).
+// docs/metaverse/2026-11-03-everglade-multiplayer-spec.md sections 3.1 and 3.6; GitHub #12705).
 // An everglade relay room (room-relay.coax, game "everglade") relays nothing: its seats' frames are
 // intents for the room's simulation here, which runs at EG_HZ, and each seat hears the world from it.
 // The frames are everglade/shared/everglade-wire.coax's (version 3), read and written by its code,

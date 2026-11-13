@@ -425,7 +425,7 @@ would change Everglade's companion, so it is left as it is (see below).
   arbitrary realm decision code remains separate work.
 - **Hosted choices.** Actor Lab composes the existing expiring catalogue gate
   and accepted-event replay. Hosted transport and Everglade's live policy retain
-  [their own qualification](../../docs/verse/pylon-guard-decisions.md).
+  [their own qualification](../../docs/metaverse/pylon-guard-decisions.md).
 - **Remaining sleep consumers.** The actor profile reserves scan/sense/search/
   action work and applies declared sampling/culling. Moving the flock and other
   realm/animation consumers onto those budgets remains.

@@ -20,7 +20,7 @@ payment through the whole stack.
 - It is small. One enum, one job, one payment.
 - Play never depends on it. If the Pylon is slow or absent, the guard
   follows his deterministic rule. That is already the design in
-  [Pylon decisions in Everglade](../../verse/pylon-guard-decisions.md).
+  [Pylon decisions in Everglade](../../metaverse/pylon-guard-decisions.md).
 - It exercises every step of [the argument](../README.md#the-argument):
   bounded, deterministic, checkable, payable and ownable.
 

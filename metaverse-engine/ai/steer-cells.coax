@@ -1,4 +1,4 @@
-// The steering service on the world's navigation cells (GitHub #13281; docs/verse/navigation.md):
+// The steering service on the world's navigation cells (GitHub #13281; docs/metaverse/navigation.md):
 // a creature goes to a point by the way the cells allow. Its window (metaverse-engine/ai/steer.coax) is filled
 // from the samples (metaverse-engine/world/nav/cells.coax), so it walks round a trunk and through a gap; when
 // the straight walk is shut and the point is more than NAV_LONG_NEAR metres off, the long way is

@@ -1,7 +1,7 @@
 // The API's Spark wallet (NIP-X402 openagents:spark-receiver:1): the one
 // process that imports the Breez Spark SDK on the server, the way
 // SparkHost.swift is the only file that does on iOS. It receives, and since
-// ev-maker-tips (docs/verse/makers.md) it pays one thing: a realm maker's
+// ev-maker-tips (docs/metaverse/makers.md) it pays one thing: a realm maker's
 // Lightning address, a payout makers.c asked for. inference.c and makers.c ask
 // it, over HTTP on Cloud Run with IAM-only access, for these and nothing else:
 //

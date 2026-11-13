@@ -24,4 +24,4 @@ land, planting, ground and light are in [world/](world/). For what moves and whe
 Zones only wire shared features. [features.coax](features.coax) lists each
 feature, the shared modules that own it and the features each zone uses;
 `coax/web/tool.sh everglade-parity` fails on a new zone-local copy. See
-[Everglade feature parity](../docs/verse/everglade-feature-parity.md).
+[Everglade feature parity](../docs/metaverse/everglade-feature-parity.md).

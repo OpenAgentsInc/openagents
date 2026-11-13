@@ -457,7 +457,7 @@ The vegetation module's 92 root mutants and the sky module's 54 are killed.
 - [apps/openagents-web/myrealm-shapes.coax](../../apps/openagents-web/myrealm-shapes.coax)
   and [myrealm-site.coax](../../apps/openagents-web/myrealm-site.coax):
   made-realm composition, and a site laid out round a middle.
-- [docs/verse/realm-builder.md](../../docs/verse/realm-builder.md),
+- [docs/metaverse/realm-builder.md](../../docs/metaverse/realm-builder.md),
   "Composition": the placement rules for made realms.
 
 ## Acceptance checks and oracles

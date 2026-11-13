@@ -259,7 +259,7 @@ wrote it, the names the server's undo log uses.
 
 ## Where the rest lives today
 
-- [docs/verse/realm-builder.md](../../docs/verse/realm-builder.md): the
+- [docs/metaverse/realm-builder.md](../../docs/metaverse/realm-builder.md): the
   builder's flow (setup questions, prompt, board, toggles, MAKE IT), the
   catalogue (`verse.builder_catalogue()` in
   `coax/web/api/migrations/0048_realm_builder.sql`, extended by 0097's

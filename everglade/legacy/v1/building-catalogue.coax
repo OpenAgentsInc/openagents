@@ -32,7 +32,7 @@ EG_DOORWAY :: 1.9;      // the gap a doorway leaves in a wall
 EG_INN :: 0; EG_STORE :: 1; EG_SMITHY :: 2; EG_ALCHEMIST :: 3; EG_FIGHTERS :: 4; EG_RANGERS :: 5;
 EG_MAGES :: 6; EG_TEMPLE :: 7; EG_OBSERVATORY :: 8; EG_STABLES :: 9; EG_HOUSES :: 10;
 
-// ---- wave 1's districts past the old town (docs/verse/everglade.md, "The districts"): the map's
+// ---- wave 1's districts past the old town (docs/metaverse/everglade.md, "The districts"): the map's
 // landmarks and the houses and shops on their streets, built from the same kit as the old town's.
 // Each is a box, the spot just outside its door on the street, its name ("" for a plain house or
 // workshop) and whether its walls are stone. They are shut: their doors open (everglade-doors.coax)

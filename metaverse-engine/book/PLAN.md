@@ -223,7 +223,7 @@ NASA's [rocket equation](https://www1.grc.nasa.gov/beginners-guide-to-aeronautic
 [artificial gravity](https://ntrs.nasa.gov/citations/19740010644) and
 [hypervelocity shielding](https://hvit.jsc.nasa.gov/shield-development/).
 
-The starting point already runs in `metaverse/` ([space primitives](../../docs/verse/space.md)):
+The starting point already runs in `metaverse/` ([space primitives](../../docs/metaverse/space.md)):
 f64 rigid bodies, swept contacts, gravity fields including a spinning drum,
 thrusters with tanks, two-body Kepler orbits, a J2000 mean-element ephemeris,
 spheres of influence and patched conics, Lambert and Hohmann transfers, RK4

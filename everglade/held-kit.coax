@@ -1,5 +1,5 @@
 // The weapon in your hand (#13025, #13079): every class's kit on the body that holds it, and the
-// Ranger's Longbow carried and drawn (docs/verse/bow-combat.md): its attach basis in the bow fist
+// Ranger's Longbow carried and drawn (docs/metaverse/bow-combat.md): its attach basis in the bow fist
 // (bow_basis drawn, bow_carry_basis carried), its string bent to the draw hand's fingers, the
 // nocked arrow, and the draw's pose over what the body was doing (held_bow_layer). Game-wide:
 // Character Create, Everglade Experimental, Everglade II and the Archery Range all hold a kit

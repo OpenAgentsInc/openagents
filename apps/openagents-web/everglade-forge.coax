@@ -1,4 +1,4 @@
-// Aethyrforge in Everglade (docs/verse/aethyrforge.md): what an admin's EDIT opens. Everglade's own
+// Aethyrforge in Everglade (docs/metaverse/aethyrforge.md): what an admin's EDIT opens. Everglade's own
 // HUD goes (the name, MAP, the chat, HP, the hints, the spell bar, the hotbar and the feature list),
 // and the forge's panels come up in the Verse's HUD look (metaverse-engine/ui/hud-frame.coax: a faint outline with
 // two 45° cuts, bright L brackets, greys and one blue):

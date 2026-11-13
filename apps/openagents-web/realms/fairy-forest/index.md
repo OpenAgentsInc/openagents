@@ -28,7 +28,7 @@ Press E by a creature, or click or tap it (TALK on a phone), to talk to it. Type
 
 ## The look
 
-The flat style (`docs/verse/art-styles.md`, Flat): flat-shaded low poly in a cosy pastel palette of olive and lime, cattail orange, pale mint, lavender and cream, three flat tones of light a shape, flat translucent shadows, a flat sky over a soft horizon band, no grass, the stream in flat bands with a cream shore line, and the lakes in a few flat tones by depth with light bands along the shore and slow ripple lines. The shading functions and the palette are `metaverse/style.coax`; the layout, creatures and the restore loop are `metaverse/fairy-forest/forest.coax` and `metaverse/fairy-forest/park.coax`, and the stream and pond are `metaverse/fairy-forest/stream.coax`.
+The flat style (`docs/metaverse/art-styles.md`, Flat): flat-shaded low poly in a cosy pastel palette of olive and lime, cattail orange, pale mint, lavender and cream, three flat tones of light a shape, flat translucent shadows, a flat sky over a soft horizon band, no grass, the stream in flat bands with a cream shore line, and the lakes in a few flat tones by depth with light bands along the shore and slow ripple lines. The shading functions and the palette are `metaverse/style.coax`; the layout, creatures and the restore loop are `metaverse/fairy-forest/forest.coax` and `metaverse/fairy-forest/park.coax`, and the stream and pond are `metaverse/fairy-forest/stream.coax`.
 
 ## Saving
 

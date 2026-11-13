@@ -279,7 +279,7 @@ static void health(int fd) {
   api_json(fd, 200, json);
 }
 
-// The old playtest's shared links (pt-cutover-plan, docs/verse/playtest-cutover.md):
+// The old playtest's shared links (pt-cutover-plan, docs/metaverse/playtest-cutover.md):
 // playtest.openagents.com/haunt.html?visit=ID reaches here rewritten to
 // /api/playtest/old-link and moves for good to that world on the realm page,
 // whose hash names it; a link with no world opens the Haunted House.

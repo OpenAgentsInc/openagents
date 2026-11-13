@@ -70,7 +70,7 @@ Contents:
 
 ## 1. Requirements
 
-The [performance plan](../docs/verse/engine.md) provides the engine context.
+The [performance plan](../docs/metaverse/engine.md) provides the engine context.
 These are requirements and evaluation criteria, not measured compiler claims.
 
 | Requirement | Concrete test |

@@ -170,7 +170,7 @@ branches with their written prerequisites and acceptance criteria.
 | 3. Establish bounded physical worlds | 17–22, 31, 35–37 | A rigid/articulated contact scene imports, resets, batches and replays with measured resource use and a real Psionic controller/environment consumer. |
 | 4. Broaden simulation and large worlds | 23–34, 38–50, 70–81 | Additional solvers, coupling, gradients, sensors, streaming and spacecraft fidelity qualify their own numerical/reference profiles. Genesis-scale scope remains a substantial later milestone. |
 
-The [native GPU record](../verse/native-gpu.md) already documents generated Coax
+The [native GPU record](../metaverse/native-gpu.md) already documents generated Coax
 shaders. The remaining rendering milestone is shared frame/pass/binding
 admission and independent references, not repeating that port. The
 [migration chapter](../../metaverse-engine/book/ch064-every-realm-runs-on-aethyr.md) records

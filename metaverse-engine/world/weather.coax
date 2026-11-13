@@ -1,5 +1,5 @@
 // The weather adapter for the environment resolver (lighting plan Phase 1 step 4, GitHub #13064;
-// docs/verse/lighting/README.md). It is not a second weather: it reads metaverse-engine/world/water-weather.coax, the
+// docs/metaverse/lighting/README.md). It is not a second weather: it reads metaverse-engine/world/water-weather.coax, the
 // schedule every Everglade client, late joiner and replay already shares (weather_sample,
 // weather_sample_at, weather_ground), into a versioned WeatherCondition, and applies Everglade's
 // existing weather light (apps/openagents-web/everglade.coax weather_frame: the key dims and the

@@ -13,7 +13,7 @@
 // Red Dragon's speeds: Speed 40 ft, Fly 80 ft. Space takes off, beats and climbs, Shift dives, X lands;
 // nobody gets off in the air ("Land first").
 //
-// Mounting and getting off are deeds (metaverse-engine/action/deed.coax, docs/verse/action-pipeline.md): each
+// Mounting and getting off are deeds (metaverse-engine/action/deed.coax, docs/metaverse/action-pipeline.md): each
 // declares its feel (eg_mount_feel), a press asks with your bearing (your SRD conditions: nobody
 // mounts unconscious, paralyzed or grappled), the mount rules act, and only a yes presents (show).
 //   coax/bin/coax test everglade/mounts.coax --library

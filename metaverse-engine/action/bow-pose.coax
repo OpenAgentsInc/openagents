@@ -1,5 +1,5 @@
 // The archer's pose: a bow drawn on a skinned rig (metaverse-engine/anim/skin.coax), as keyed poses a realm bakes
-// once and blends by draw strength (docs/verse/bow-combat.md). No library has bow clips for the
+// once and blends by draw strength (docs/metaverse/bow-combat.md). No library has bow clips for the
 // Universal Animation Library's rig, so the pose is made here, on top of whatever stance the rig
 // stands in:
 //   the chest turns the bow shoulder toward the aim (BOW_POSE_TWIST) and the head turns back to it;

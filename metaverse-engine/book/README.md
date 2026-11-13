@@ -6,7 +6,7 @@ physics, streaming, networking, the realm format, and the tools that create
 and edit realms. It is written in
 [Coax](../../coax/book/README.md); the model engine beside them is
 [Psionic](../../psionic/book/README.md). The name and its history are in
-[engine-name.md](../../docs/verse/engine-name.md).
+[engine-name.md](../../docs/metaverse/engine-name.md).
 
 This book builds the engine from scratch, starting with the smallest
 primitive, one clock and one fixed step. Each chapter adds one working piece

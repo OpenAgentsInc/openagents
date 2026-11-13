@@ -6,7 +6,7 @@
 // (a log, a column). The ones always shown go first, then the rest nearest first; a name over one
 // already placed lifts up a line at a time (up to lifts), or with fold on gives way and adds to the
 // count on the one over it ("WARLOCK +3") while its bar stays. The realm then draws each placed plate
-// in its HUD style (Everglade: everglade/hud/parts.coax eg_plates). docs/verse/hud-styles.md.
+// in its HUD style (Everglade: everglade/hud/parts.coax eg_plates). docs/metaverse/hud-styles.md.
 //   coax/bin/coax test metaverse-engine/ui/hud-plates.coax --library
 
 HUD_PLATES :: 256;        // plates a frame (one past the last is counted, not placed)

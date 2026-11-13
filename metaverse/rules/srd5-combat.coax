@@ -2,7 +2,7 @@
 // 4.0), beside metaverse/rules/srd5.coax's dice, spells and objects: a stat
 // block's armor class, hit points, Dexterity save, and one melee attack (its
 // bonus to hit and its damage dice), and the attack roll itself. As the
-// combat model (`0b401561a0^:docs/verse/combat-model.md`) translates them:
+// combat model (`0b401561a0^:docs/metaverse/combat-model.md`) translates them:
 // real time, no turns; a d20 plus the attack bonus against the target's AC
 // decides a hit, a natural 20 always hits and crits (its damage dice rolled
 // twice), a natural 1 always misses; a creature in a spell's area makes the

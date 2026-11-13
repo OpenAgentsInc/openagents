@@ -3,7 +3,7 @@
 // This unit only places it, hands it the nearest player and draws the frame the game layer names on
 // the land, as a moved-mesh record (charactercreator.coax familiar_record).
 //
-// ?stage=cat is the cat's shot (docs/verse/clips.md): it sits in the glade's light and looks at the
+// ?stage=cat is the cat's shot (docs/metaverse/clips.md): it sits in the glade's light and looks at the
 // camera, which sits low at its eye level, where its turned head looks (egcat.EG_CAT_LOOK off its
 // body's facing, so the sit shows in three-quarter view), and closes in slowly over ten seconds. A
 // staged shot opens no room.

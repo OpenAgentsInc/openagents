@@ -46,4 +46,4 @@ To lay an overlay over a shot, record `frame_grid` the same way and pass it to `
 - `gpu/speedrunhud.coax` holds the shaders, including the system sans that the library's small text uses.
 - `speedrunhud-face.c` is the browser face.
 
-The clip recorder is described in [docs/verse/clips.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/clips.md).
+The clip recorder is described in [docs/metaverse/clips.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/metaverse/clips.md).

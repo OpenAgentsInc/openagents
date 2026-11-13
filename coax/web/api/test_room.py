@@ -102,7 +102,7 @@ check("nor does the homepage", [o["id"] for o in room_call("GET", PAIR_ROOM)[1][
 check("a pair's GET sees its pair", sorted(o["id"] for o in json.loads(call("GET", PAIR_ROOM, None, {"X-Verse-Player": pa["key"], "X-Verse-Automation": "pair-ff-1"})[1])["others"]) == sorted([person["id"], pa["id"], pb["id"]]))
 check("a GET joins nobody",room_call("GET", "/api/playtest/presence/nobody-here") == (200, {"others": [], "count": 0}))
 
-# A made realm's room and an agent's seat in it (0108; docs/verse/realm-seat.md slice 4). A seat's
+# A made realm's room and an agent's seat in it (0108; docs/metaverse/realm-seat.md slice 4). A seat's
 # presence is signed (NIP-98): everyone sees it, {"agent": true} and its account's name; its own page
 # (named in "page") doesn't. An unsigned "seat" mark is plain automation. A private realm's room is
 # 404 to all but its owner and site admins.

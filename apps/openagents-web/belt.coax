@@ -1,9 +1,9 @@
 // Belt 2200, openagents.com/worlds/belt-2200: the first playable of the hard
-// sci-fi RTS (docs/verse/game-ideas/belt-2200.md). This file is the game's
+// sci-fi RTS (docs/metaverse/game-ideas/belt-2200.md). This file is the game's
 // rules and its drawing only; the space is the engine's: metaverse-engine/physics/orbit.coax
 // (Kepler orbits, the ephemeris, Lambert transfers, the rocket equation),
 // metaverse-engine/cam/spacecam.coax (the floating origin and twelve decades of zoom) and
-// metaverse/stars.coax (the sky, in belt.wgsl). docs/verse/space.md lists them.
+// metaverse/stars.coax (the sky, in belt.wgsl). docs/metaverse/space.md lists them.
 //
 // You run the Free Belt's Hearth Station at Ceres and three ships. Select a
 // ship (tap, click, or drag a box on a desktop), pick where it goes (tap a
@@ -72,7 +72,7 @@ FAST_R :: 0.76f32; FAST_G :: 0.6f32; FAST_B :: 1.0f32;
 LOW_R :: 1.0f32; LOW_G :: 0.42f32; LOW_B :: 0.52f32;
 PLUME_R :: 0.78f32; PLUME_G :: 0.9f32; PLUME_B :: 1.0f32;
 TIP_R :: 1.0f32; TIP_G :: 0.55f32; TIP_B :: 0.12f32;   // ui.coax's orange: a tip is Bitcoin
-MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.js, docs/verse/makers.md)
+MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.js, docs/metaverse/makers.md)
 MAKER_BYTES :: 160;  // its 40 characters of UTF-8
 
 FREE_BELT :: 0; MARS_UNION :: 1; TERRAN :: 2;
@@ -2904,7 +2904,7 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   return d[0].n;
 }
 
-// ---- staged moments (?stage=NAME, docs/verse/clips.md): a fixed scene to record a clip of.
+// ---- staged moments (?stage=NAME, docs/metaverse/clips.md): a fixed scene to record a clip of.
 // A staged page never reads or writes the player's save (autosave and HOST_KEPT skip it), and
 // without the parameter nothing here runs.
 //   highlight: LANTERN braking hard into Saturn just outside the rings, its drive burning against

@@ -1,4 +1,4 @@
-// A flat realm's passes against the browser (docs/verse/native-gpu.md, realms-native): a realm
+// A flat realm's passes against the browser (docs/metaverse/native-gpu.md, realms-native): a realm
 // with no scene (no pack, no scene_fs), drawn as host.js draws one: bg_fs over the screen, then
 // the frame's own vertices (the strokes) through fx_vs and fx_fs, the larger of each colour
 // kept (blend max). Its frame comes from the browser's wasm (metaverse/native/wasm-run.coax: golden,

@@ -1,4 +1,4 @@
-// A drum arena (docs/verse/space.md, Orbit League's ol-drum-arena): the
+// A drum arena (docs/metaverse/space.md, Orbit League's ol-drum-arena): the
 // inside of a cylinder as the drivable surface, the floor curving up into
 // the walls and over into the ceiling, closed by two flat end walls with a
 // goal mouth in each. Everything here is in the drum's own rotating frame:

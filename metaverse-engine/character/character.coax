@@ -1,4 +1,4 @@
-// The Metaverse Engine's character runtime (GitHub #12986, docs/verse/2026-11-06-native-hero-characters.md,
+// The Metaverse Engine's character runtime (GitHub #12986, docs/metaverse/2026-11-06-native-hero-characters.md,
 // Design 1): one Character record a world spawns from an admitted pack, steps on its fixed step
 // and reads back as a skinning palette and morph weights for the GPU. Echo was its first user, in
 // Valley Lab; any world can host a character the same way:

@@ -15,7 +15,7 @@
 #load "../../metaverse-engine/core/space.coax" as world;
 #load "charactercreator-font.coax";
 #load "../hud/fonts.coax";   // Everglade's HUD faces: Spectral to read, Cinzel for names and places
-#load "../../metaverse-engine/ui/hud-menu.coax";   // the engine's HUD style layer (hud-style.coax) and widgets; Everglade draws in FANTASY (docs/verse/hud-styles.md)
+#load "../../metaverse-engine/ui/hud-menu.coax";   // the engine's HUD style layer (hud-style.coax) and widgets; Everglade draws in FANTASY (docs/metaverse/hud-styles.md)
 #load "../hud/parts.coax";   // Everglade's HUD parts in that style (the game's, every zone's)
 #load "../hud/screens.coax";   // Everglade's plain HUD parts: the clip list, health, the boxes (#13083)
 #load "../hud/numbers.coax";   // Everglade's damage numbers, every zone's (#13080)

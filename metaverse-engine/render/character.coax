@@ -1,5 +1,5 @@
 // A detailed character's shading and the character pass (coax/web/host.js, the "character pass"
-// section; docs/verse/2026-11-06-native-hero-characters.md, Design 3). Two users:
+// section; docs/metaverse/2026-11-06-native-hero-characters.md, Design 3). Two users:
 //  - Valley Lab's page shader (apps/openagents-web/gpu/valleycanyon.coax) loads it and shades Echo
 //    with the TF0290 rig, as before;
 //  - the character pass draws Echo in any world through ch_character_vs/fs (strands included) and

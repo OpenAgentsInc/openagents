@@ -1,5 +1,5 @@
 // Cluster culling on the GPU (GitHub #13008, Valley Lab step 6), learned from Solstice's
-// shaders/vg/cull.wgsl (docs/verse/2026-11-07-solstice-comparison.md). These procedures are the
+// shaders/vg/cull.wgsl (docs/metaverse/2026-11-07-solstice-comparison.md). These procedures are the
 // compute and draw entries of apps/openagents-web/gpu/cull.coax and gpu/cull-draw.coax, which
 // `coax wgsl` writes as WGSL; here they run on the CPU, one invocation at a time, for the checks.
 //

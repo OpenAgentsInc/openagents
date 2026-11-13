@@ -1,5 +1,5 @@
 // vk-display: a realm straight on the screen with Vulkan, no desktop
-// (docs/verse/native-gpu.md, G2: the boot session). It takes DRM master on
+// (docs/metaverse/native-gpu.md, G2: the boot session). It takes DRM master on
 // the card, hands the connected connector to Vulkan (VK_EXT_acquire_drm_display),
 // and presents through VK_KHR_display in FIFO at the mode's rate: the same
 // offscreen pipeline as vk-window (vkr.h, vkp.h). Keys come from evdev,

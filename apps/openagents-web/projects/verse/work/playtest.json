@@ -64,10 +64,10 @@
         "playtest",
         "docs"
       ],
-      "body": "Read the aethyr-cpp repo (~/work/aethyr-cpp, OpenAgentsInc/aethyr-cpp): the pinned playtest flow is frozen/kiki/ (frozen/kiki.pin), and the live demo runs its demo/kiki-* tag (the worktree ~/work/aethyr-demo is that checkout; read, never edit it): README 'The web root', docs/environments.md, docs/kiki-playtest-2026-10-25.md, docs/owner-decisions.md, tools/serve.py and every tool it imports, tools/analytics.py, web/analytics.js, web/kiki pages, frozen/kiki. Write docs/verse/playtest-port.md: each page and what it does, each /api endpoint with request and response, each recorded event and field, each stored file and bucket, the Cloud Run, load balancer, DNS and certificate setup, and what in openagents already covers it (/realm/haunted-house). Split or add queue tasks where this inventory finds work the queue misses.",
+      "body": "Read the aethyr-cpp repo (~/work/aethyr-cpp, OpenAgentsInc/aethyr-cpp): the pinned playtest flow is frozen/kiki/ (frozen/kiki.pin), and the live demo runs its demo/kiki-* tag (the worktree ~/work/aethyr-demo is that checkout; read, never edit it): README 'The web root', docs/environments.md, docs/kiki-playtest-2026-10-25.md, docs/owner-decisions.md, tools/serve.py and every tool it imports, tools/analytics.py, web/analytics.js, web/kiki pages, frozen/kiki. Write docs/metaverse/playtest-port.md: each page and what it does, each /api endpoint with request and response, each recorded event and field, each stored file and bucket, the Cloud Run, load balancer, DNS and certificate setup, and what in openagents already covers it (/realm/haunted-house). Split or add queue tasks where this inventory finds work the queue misses.",
       "files": [],
       "acceptance": [
-        "docs/verse/playtest-port.md lists every page, endpoint, event and stored file with its source path",
+        "docs/metaverse/playtest-port.md lists every page, endpoint, event and stored file with its source path",
         "Every gap found is a task on this project"
       ],
       "blocked_by": [],
@@ -510,7 +510,7 @@
         "analytics",
         "release"
       ],
-      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. coax/web/release.sh plays /realm/haunted-house on staging in headless Chrome (coax/web/shot.ts style driver, never a visible window) and refuses to promote a build that stops sending any contract event (session-start, page-view, world-enter, load-engine, area, objective, quest, click, world-leave). The dashboard gains a Health card: per surface, last event, last hour and day, and contract events missing. INVARIANTS.md: 'Analytics never lose visibility'.",
+      "body": "Reference: docs/metaverse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. coax/web/release.sh plays /realm/haunted-house on staging in headless Chrome (coax/web/shot.ts style driver, never a visible window) and refuses to promote a build that stops sending any contract event (session-start, page-view, world-enter, load-engine, area, objective, quest, click, world-leave). The dashboard gains a Health card: per surface, last event, last hour and day, and contract events missing. INVARIANTS.md: 'Analytics never lose visibility'.",
       "files": [
         "coax/web/release.sh",
         "coax/web/api/"
@@ -535,7 +535,7 @@
         "realtime",
         "planetary-villa"
       ],
-      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port room presence and chat (/api/chat/<room>, /api/presence/<room>, web/chat.js): players in the same realm see each other and a room chat, drawn in Coax with the realm's plate style. Bounded rooms and messages; guests included.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-presence, hc-chat.",
+      "body": "Reference: docs/metaverse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port room presence and chat (/api/chat/<room>, /api/presence/<room>, web/chat.js): players in the same realm see each other and a room chat, drawn in Coax with the realm's plate style. Bounded rooms and messages; guests included.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): hc-presence, hc-chat.",
       "files": [
         "apps/openagents-web/realm.coax",
         "coax/web/api/"
@@ -559,7 +559,7 @@
         "playtest",
         "planetary-villa"
       ],
-      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port planet setup and the player's planet as realms (/api/award, /api/planets*, web/planet-setup.js): award, create and open a player's realm. The galaxy task only shows them; this makes them. Legacy /api/planets* paths keep answering.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): pv-galaxy-entry.",
+      "body": "Reference: docs/metaverse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port planet setup and the player's planet as realms (/api/award, /api/planets*, web/planet-setup.js): award, create and open a player's realm. The galaxy task only shows them; this makes them. Legacy /api/planets* paths keep answering.\n\nNeeded by Planetary Villa (https://openagents.com/projects/planetary-villa): pv-galaxy-entry.",
       "files": [
         "apps/openagents-web/",
         "coax/web/api/"
@@ -583,7 +583,7 @@
       "labels": [
         "playtest"
       ],
-      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port offered changes and the edit log (/api/change/*, /api/log/<id>, web/changes.js): a visitor proposes an edit to another player's world, the owner accepts or declines, every edit is logged. No settlement or sats.",
+      "body": "Reference: docs/metaverse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port offered changes and the edit log (/api/change/*, /api/log/<id>, web/changes.js): a visitor proposes an edit to another player's world, the owner accepts or declines, every edit is logged. No settlement or sats.",
       "files": [
         "apps/openagents-web/realm.coax",
         "coax/web/api/"
@@ -607,7 +607,7 @@
         "playtest",
         "voice"
       ],
-      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port the playtest's voice bot and voice prompts (voice, voice-on) onto the Coax voice engine (metaverse/voice*.coax), after the first switch as coax/web.md decides. Text chat keeps working without it.",
+      "body": "Reference: docs/metaverse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Port the playtest's voice bot and voice prompts (voice, voice-on) onto the Coax voice engine (metaverse/voice*.coax), after the first switch as coax/web.md decides. Text chat keeps working without it.",
       "files": [
         "apps/openagents-web/",
         "metaverse/voice-host/"
@@ -632,7 +632,7 @@
         "playtest",
         "identity"
       ],
-      "body": "Reference: docs/verse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Once the Coax project's phone sign-in lands (web-sign-in-page, server-nip98-session), a playtest session and its saves attach to the signed-in Nostr pubkey; guests stay first-class and can claim their guest saves on sign-in. The playtest used Google, GitHub and email; openagents.com uses Nostr only, never WorkOS. The analytics schema already has the column.",
+      "body": "Reference: docs/metaverse/playtest-port.md (the inventory) and ~/work/aethyr-cpp (frozen/kiki/); ~/work/aethyr-demo is read-only. Once the Coax project's phone sign-in lands (web-sign-in-page, server-nip98-session), a playtest session and its saves attach to the signed-in Nostr pubkey; guests stay first-class and can claim their guest saves on sign-in. The playtest used Google, GitHub and email; openagents.com uses Nostr only, never WorkOS. The analytics schema already has the column.",
       "files": [
         "coax/web/api/"
       ],

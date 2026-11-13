@@ -1,5 +1,5 @@
 // The fixture realm (openagents.com/worlds/fixture): the realm host's test
-// world (docs/verse/realm-host.md). It is a realm like any other: its own
+// world (docs/metaverse/realm-host.md). It is a realm like any other: its own
 // module (this file and fixture-face.c), its own page written from
 // realms.json (unlisted: the /worlds list leaves it out), its own save slot and its own asset pack. A lamp stands on a
 // round floor ringed with kit pieces from the pack; you move it (WASD or the
@@ -12,7 +12,7 @@
 // Plates and words are verse.coax's look; fixture.wgsl draws the plates and
 // the pack's meshes, lit by the lamp.
 //
-// The style fixture (docs/verse/art-styles.md, Judging "looks painterly"):
+// The style fixture (docs/metaverse/art-styles.md, Judging "looks painterly"):
 // opened with ?style=painterly it draws a fixed test scene in that style's
 // preset instead, at the page's clock (?clock=T; noon without one): a sphere
 // and a cube, a blob tree, a patch of grass, a pond, a standing figure, and

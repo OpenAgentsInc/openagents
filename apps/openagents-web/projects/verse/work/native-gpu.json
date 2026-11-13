@@ -5,7 +5,7 @@
     "slug": "verse-native-gpu",
     "title": "Native GPU Metaverse: Coax everything",
     "body": "The Metaverse as a native desktop app on the GPU, with Coax writing all of it, shaders included: no browser, no WGSL, no outside shader toolchain. Owner decision 2026-10-30.",
-    "spec": "docs/verse/native-gpu.md",
+    "spec": "docs/metaverse/native-gpu.md",
     "labels": [
       "engine",
       "native-gpu"
@@ -47,7 +47,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "metaverse/gpu/spirv.coax: append SPIR-V instructions to a [] u32, hand out ids, fill the header's bound, refuse (never truncate) a module that doesn't fit. The first module is a compute kernel (a grade with a disc) with the same pixel computed on the CPU in Coax for the host's check. No outside shader compiler.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "metaverse/gpu/spirv.coax: append SPIR-V instructions to a [] u32, hand out ids, fill the header's bound, refuse (never truncate) a module that doesn't fit. The first module is a compute kernel (a grade with a disc) with the same pixel computed on the CPU in Coax for the host's check. No outside shader compiler.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/"
       ],
@@ -67,7 +67,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "metaverse/gpu/vk.c: a C host that creates a Vulkan device with no display, builds the shader module from vg_grade_module's words, dispatches over an image, reads the buffer back and compares every pixel with vg_grade_pixel. Runs with the Khronos validation layers on when they are present (a test aid only).\n\nPlan: docs/verse/native-gpu.md",
+      "body": "metaverse/gpu/vk.c: a C host that creates a Vulkan device with no display, builds the shader module from vg_grade_module's words, dispatches over an image, reads the buffer back and compares every pixel with vg_grade_pixel. Runs with the Khronos validation layers on when they are present (a test aid only).\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/"
       ],
@@ -90,7 +90,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "The subset coax metal accepts (scalar f32/bool, locals, if/else, return, choices, calls without recursion, the math intrinsics through GLSL.std.450) lowered to SPIR-V functions. The lowering is Coax in coax/lib/compiler/, using the writer; the C++ driver only hands over the checked tree and writes the words, as for coax cuda. Refusals name what is outside the subset.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "The subset coax metal accepts (scalar f32/bool, locals, if/else, return, choices, calls without recursion, the math intrinsics through GLSL.std.450) lowered to SPIR-V functions. The lowering is Coax in coax/lib/compiler/, using the writer; the C++ driver only hands over the checked tree and writes the words, as for coax cuda. Refusals name what is outside the subset.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "coax/lib/compiler/",
         "coax/src/",
@@ -115,7 +115,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "Vertex and fragment entry points in the SPIR-V lowering (inputs, outputs, builtins), and a host path that renders a full-screen pass and an instanced stroke pass into an offscreen image and reads it back.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "Vertex and fragment entry points in the SPIR-V lowering (inputs, outputs, builtins), and a host path that renders a full-screen pass and an instanced stroke pass into an offscreen image and reads it back.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/",
         "coax/lib/compiler/"
@@ -138,7 +138,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "A Wayland surface and swapchain in the C host (xdg-shell, full screen and windowed, resize), presenting the offscreen pipeline's frames; keyboard and pointer from the seat.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "A Wayland surface and swapchain in the C host (xdg-shell, full screen and windowed, resize), presenting the offscreen pipeline's frames; keyboard and pointer from the seat.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/"
       ],
@@ -160,7 +160,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "The same host presenting with VK_KHR_display and input from evdev, as a CoderOS session that boots into the Metaverse with no desktop. Proved on a screen nobody is using.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "The same host presenting with VK_KHR_display and input from evdev, as a CoderOS session that boots into the Metaverse with no desktop. Proved on a screen nobody is using.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/"
       ],
@@ -182,7 +182,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "Vertex and uniform buffers, textures and samplers, asset packs from disk, frame pacing, input, audio and the inbox/outbox of the realm faces, so a realm's -face.c runs natively.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "Vertex and uniform buffers, textures and samplers, asset packs from disk, frame pacing, input, audio and the inbox/outbox of the realm faces, so a realm's -face.c runs natively.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/"
       ],
@@ -204,7 +204,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "Vector types or a checked vector library, texture sampling intrinsics and GPU resource declarations (spec section 15), in the spec, grammar and checker, each with checks and refusals, lowered by coax spirv and coax metal.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "Vector types or a checked vector library, texture sampling intrinsics and GPU resource declarations (spec section 15), in the spec, grammar and checker, each with checks and refusals, lowered by coax spirv and coax metal.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "coax/"
       ],
@@ -227,7 +227,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "everglade.wgsl's world shading (ground, water, foliage, characters, sky, fog) rewritten as Coax procedures, pass by pass, drawn by the Vulkan realm host.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "everglade.wgsl's world shading (ground, water, foliage, characters, sky, fog) rewritten as Coax procedures, pass by pass, drawn by the Vulkan realm host.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -251,7 +251,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "everglade-fx.wgsl (spells, rain, particles, HUD strokes) as Coax procedures on the Vulkan host.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "everglade-fx.wgsl (spells, rain, particles, HUD strokes) as Coax procedures on the Vulkan host.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -273,7 +273,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "The whole realm natively: input, audio, the character chat and world list over the network (sockets and the approved TLS), the saved place, at 60 fps on the 4080.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "The whole realm natively: input, audio, the character chat and world list over the network (sockets and the approved TLS), the saved place, at 60 fps on the 4080.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/",
         "apps/openagents-web/"
@@ -296,7 +296,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "WGSL from the same checked Coax as SPIR-V and Metal, replacing coax/web/wgsl.py, so the web build draws with the Coax light.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "WGSL from the same checked Coax as SPIR-V and Metal, replacing coax/web/wgsl.py, so the web build draws with the Coax light.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "coax/",
         "coax/web/"
@@ -319,7 +319,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "Move the remaining realms' WGSL into Coax light files, realm by realm; split into one task per realm when started.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "Move the remaining realms' WGSL into Coax light files, realm by realm; split into one task per realm when started.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -343,7 +343,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "Ray queries on the RT cores (VK_KHR_ray_query, acceleration structures built by the host from the realm's geometry) for sharp-to-soft shadows and water reflections, written in Coax and lowered by coax spirv.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "Ray queries on the RT cores (VK_KHR_ray_query, acceleration structures built by the host from the realm's geometry) for sharp-to-soft shadows and water reflections, written in Coax and lowered by coax spirv.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/",
         "coax/lib/compiler/",
@@ -367,7 +367,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "Cooperative-matrix shaders written in Coax for a ray-tracing denoiser and a temporal upscaler (render lower, show sharp at full resolution), sharing kernels with Psionic where they fit.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "Cooperative-matrix shaders written in Coax for a ray-tracing denoiser and a temporal upscaler (render lower, show sharp at full resolution), sharing kernels with Psionic where they fit.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/",
         "psionic/"
@@ -390,7 +390,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "Task and mesh shader entry points in coax spirv and a meshlet path in the host, so forests and towns draw many times the geometry at the same frame time.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "Task and mesh shader entry points in coax spirv and a meshlet path in the host, so forests and towns draw many times the geometry at the same frame time.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/",
         "coax/lib/compiler/"
@@ -412,7 +412,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "Descriptor indexing so a scene binds thousands of textures and materials at once.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "Descriptor indexing so a scene binds thousands of textures and materials at once.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/"
       ],
@@ -433,7 +433,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "Asset packs streamed from disk into the 16 GB of video memory as you move, with budgets and eviction.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "Asset packs streamed from disk into the 16 GB of video memory as you move, with budgets and eviction.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/"
       ],
@@ -454,7 +454,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "A second queue for physics, particles and water simulation running while the frame draws.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "A second queue for physics, particles and water simulation running while the frame draws.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/"
       ],
@@ -475,7 +475,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "HDR swapchains where the display supports them, VRR and high refresh, and frame pacing owned by the host.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "HDR swapchains where the display supports them, VRR and high refresh, and frame pacing owned by the host.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/"
       ],
@@ -496,7 +496,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "Coax jobs (spec section 12) on native threads for simulation and animation, deterministic across worker counts.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "Coax jobs (spec section 12) on native threads for simulation and animation, deterministic across worker counts.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "coax/",
         "metaverse/"
@@ -519,7 +519,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "A model's output written into a GPU buffer the renderer reads (characters' speech, animation or hand tracking), with no copy and no network hop.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "A model's output written into a GPU buffer the renderer reads (characters' speech, animation or hand tracking), with no copy and no network hop.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/",
         "psionic/"
@@ -541,7 +541,7 @@
         "engine",
         "native-gpu"
       ],
-      "body": "The same realm host contract over Metal on macOS, from coax metal, so realms run natively on Macs.\n\nPlan: docs/verse/native-gpu.md",
+      "body": "The same realm host contract over Metal on macOS, from coax metal, so realms run natively on Macs.\n\nPlan: docs/metaverse/native-gpu.md",
       "files": [
         "metaverse/gpu/",
         "apps/"

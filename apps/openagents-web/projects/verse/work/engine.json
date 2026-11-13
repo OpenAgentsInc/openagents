@@ -314,13 +314,13 @@
       "files": [
         "metaverse/water.coax",
         "metaverse-engine/physics/rigid.coax",
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "The old crate's water tests are ported as #test checks with the same scenes and expected values",
         "coax/bin/coax test --library metaverse/water.coax --steps 500000000 passes",
         "coax/bin/coax test --library metaverse-engine/physics/rigid.coax passes",
-        "docs/verse/water.md says what W1 covers and what is next"
+        "docs/metaverse/water.md says what W1 covers and what is next"
       ],
       "blocked_by": [],
       "blocks": []
@@ -340,7 +340,7 @@
         "metaverse/water-look.coax",
         "apps/openagents-web/everglade.wgsl",
         "coax/web/host.js",
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "The shader's Gerstner displacement matches metaverse/water.coax's water_at_rest within a millimetre (a #test on the CPU mirror)",
@@ -369,8 +369,8 @@
         "everglade/legacy/v1/river.coax",
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade-face.c",
-        "docs/verse/everglade.md",
-        "docs/verse/water.md"
+        "docs/metaverse/everglade.md",
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "coax test passes on plan.coax, the river and everglade.coax",
@@ -398,7 +398,7 @@
         "metaverse/water-look.coax",
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade.wgsl",
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "Ripples spread and fade (#test)",
@@ -423,7 +423,7 @@
       "body": "From phase W7 of verse-water (#c278), only the caustics: the light the surface focuses onto what lies under the water, drawn on Everglade's river bed and banks (and later the fountain's basin) in the key's light and shadow, fading with depth. The rest of W7 (fog, the split waterline, distortion, sun shafts, motes, underwater audio) stays for later.",
       "files": [
         "apps/openagents-web/everglade.wgsl",
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "Caustics drift on the river's bed in the shallows at /realms/everglade#river",
@@ -449,8 +449,8 @@
       "files": [
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade.wgsl",
-        "docs/verse/water.md",
-        "docs/verse/everglade.md"
+        "docs/metaverse/water.md",
+        "docs/metaverse/everglade.md"
       ],
       "acceptance": [
         "coax test passes on everglade.coax",
@@ -478,7 +478,7 @@
         "metaverse/water.coax",
         "metaverse/water-look.coax",
         "apps/openagents-web/everglade.wgsl",
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "The old W4 tests ported as #test checks",
@@ -504,7 +504,7 @@
         "coax/web/host.js",
         "apps/openagents-web/everglade.wgsl",
         "metaverse/water-look.coax",
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "The bed bends through the surface and things standing in the water get a foam line from the depth",
@@ -533,7 +533,7 @@
         "everglade/legacy/v1/river.coax",
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade.wgsl",
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "A swimmer leaves a Kelvin wake and a foam trail",
@@ -562,7 +562,7 @@
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade-face.c",
         "apps/openagents-web/everglade.wgsl",
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "coax test passes on plan.coax, river.coax and everglade.coax",
@@ -588,7 +588,7 @@
       "files": [
         "apps/openagents-web/everglade.wgsl",
         "metaverse/water-look.coax",
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "Diving in Everglade shows the underwater look on desktop and phone inside the frame budget"
@@ -614,7 +614,7 @@
         "everglade/legacy/v1/river.coax",
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade.wgsl",
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "Each spell's water effect works in Everglade as the table says",
@@ -641,7 +641,7 @@
         "metaverse/water.coax",
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade.wgsl",
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "Rain falls on the schedule with ripples and puddles on desktop and phone"
@@ -666,7 +666,7 @@
         "metaverse/water.coax",
         "metaverse/water-look.coax",
         "apps/openagents-web/everglade.wgsl",
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "A coastal test scene draws the ocean to the horizon inside the frame budget"
@@ -689,11 +689,11 @@
       ],
       "body": "Phase W11 of verse-water (#c278): per-tier GPU and CPU timings on desktop and phones, budgets set from the measurements, device runs recorded in NEEDS_OWNER.md.",
       "files": [
-        "docs/verse/water.md"
+        "docs/metaverse/water.md"
       ],
       "acceptance": [
         "Timings recorded per tier",
-        "Budgets in docs/verse/water.md set from them"
+        "Budgets in docs/metaverse/water.md set from them"
       ],
       "blocked_by": [
         "verse-water-w7",

@@ -1,4 +1,4 @@
-// The shader library (docs/verse/native-gpu.md, G4): what a shader written
+// The shader library (docs/metaverse/native-gpu.md, G4): what a shader written
 // in Coax works with. Vectors and a 4x4 matrix are structs of f32, so a
 // shader is ordinary checked Coax that runs on the CPU, with #test checks,
 // and `coax spirv --vertex V --fragment F` lowers the same procedures to

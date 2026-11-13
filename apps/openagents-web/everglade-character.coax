@@ -1,5 +1,5 @@
 // A detailed character in Everglade through the host's character pass (coax/web/host.js, the
-// "character pass" section; docs/verse/2026-11-06-native-hero-characters.md, R1 and R3): ?stage=echo
+// "character pass" section; docs/metaverse/2026-11-06-native-hero-characters.md, R1 and R3): ?stage=echo
 // places Echo a metre to your right on the commons (everglade-raid-preview.coax rp_facts), and
 // each frame this fills her SceneLights block (metaverse-engine/render/scene-lights.coax) from the town's own
 // camera, key light, sky, haze, lamps, weather and shadow map, as the town's shaders read them

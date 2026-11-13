@@ -3,7 +3,7 @@
 // answer (metaverse-engine/physics/visibility.coax vis_line, settled by vis_settle so it doesn't flicker at a wall's
 // edge); this file turns a body into the service's target and the settled answer into a share shown,
 // fading in and out over HUD_SIGHT_FADE s. A realm supplies its colliders and its land's heights;
-// it never walks its own line. docs/verse/hud-styles.md, docs/verse/visibility-service.md.
+// it never walks its own line. docs/metaverse/hud-styles.md, docs/metaverse/visibility-service.md.
 //   coax/bin/coax test metaverse-engine/ui/hud-sight.coax --library
 #load "../physics/visibility.coax";
 

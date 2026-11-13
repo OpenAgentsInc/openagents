@@ -1,5 +1,5 @@
 // Environment regions, version 1 (lighting plan Phase 1 step 3, GitHub #13063;
-// docs/verse/lighting/README.md). Where a realm's light varies by place: the map default, sphere,
+// docs/metaverse/lighting/README.md). Where a realm's light varies by place: the map default, sphere,
 // box and polygon-with-height (prism) regions over metaverse-engine/world/environment.coax's records, their
 // transition bands, priorities and stable-id tie breaking, a fixed spatial index, and the resolver
 // that blends the region profiles at a world position into one ResolvedEnvironment.

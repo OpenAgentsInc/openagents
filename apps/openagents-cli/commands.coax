@@ -657,7 +657,7 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool #effects(all) {
 
 CliCommand :: struct { domain: string = "realm"; verb: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; }
 // The seat rows (route "seat") drive one realm open in headless Chrome on this computer, as a
-// visitor (apps/openagents-cli/realm-play.coax, docs/verse/realm-seat.md).
+// visitor (apps/openagents-cli/realm-play.coax, docs/metaverse/realm-seat.md).
 REALM_COMMANDS :: [37] CliCommand.[
   CliCommand.{verb="list",method="GET",route="/mine",help="your realms"},
   CliCommand.{verb="show",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page"},

@@ -7,7 +7,7 @@
 > into `apps/openagents-web/realms/everglade2/domain/`. The page side is in
 > `everglade/client/create.coax` and `everglade/client/client.coax`. The load balancer's routes
 > are set by hand and written down in
-> [`docs/verse/everglade-domain.md`](../../docs/verse/everglade-domain.md).
+> [`docs/metaverse/everglade-domain.md`](../../docs/metaverse/everglade-domain.md).
 > Not built yet: the release smoke and golden for the domain, and
 > `lb.sh everglade-domain`.
 
@@ -126,7 +126,7 @@ through to the catch-all rule and got Everglade's 404 page. The bar showed its
 slots with no pictures.
 
 The fix adds the `/worlds/5e-mmo/` rewrite to the matcher (priority 155), and
-`docs/verse/everglade-domain.md` now lists every live route. The doc states
+`docs/metaverse/everglade-domain.md` now lists every live route. The doc states
 the rule: a new `/worlds/<x>/` path that `/play` loads needs its own rewrite.
 
 What checks it today, and what doesn't yet:

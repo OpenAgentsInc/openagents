@@ -1,8 +1,8 @@
 // The water lab (openagents.com/worlds/waterlab): the water system's test
-// scene (docs/verse/water.md), for what has no home in Everglade. An
+// scene (docs/metaverse/water.md), for what has no home in Everglade. An
 // unlisted realm with no assets: waterlab.wgsl's bg_fs traces a sea to the
 // horizon breaking on a sloping beach, in the painted water look (the
-// Everglade river's preset, docs/verse/art-styles.md 12), under a hazy sky.
+// Everglade river's preset, docs/metaverse/art-styles.md 12), under a hazy sky.
 //
 // W4, the spectral sea (metaverse/water-spectrum.coax): a JONSWAP sea with
 // directional spreading synthesized by the CPU FFT each frame on the water's

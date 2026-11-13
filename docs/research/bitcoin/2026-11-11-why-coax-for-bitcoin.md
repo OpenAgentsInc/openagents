@@ -803,7 +803,7 @@ reproducible crash and reorder schedules (audit P7).
   construction: a program can't reach a real disk around it.
 
 **Simulation host: effort.** M. The existing agent clock
-([agent-clock](../../verse/agent-clock.md)) is the same idea for pages.
+([agent-clock](../../metaverse/agent-clock.md)) is the same idea for pages.
 
 ### 6.6 State machines and `coax diff`
 

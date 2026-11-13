@@ -1,4 +1,4 @@
-// Seats in running realms (docs/verse/realm-seat.md, #12655): an agent's place in a made realm,
+// Seats in running realms (docs/metaverse/realm-seat.md, #12655): an agent's place in a made realm,
 // opened by its account. seat-policy.coax (#authority) decides who may open one and how long it
 // lives; migrations/0110_realm_seats.sql keeps them; this file moves the facts in and the answers
 // out, and for a hosted seat talks to the runner that holds its page.

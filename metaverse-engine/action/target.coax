@@ -1,4 +1,4 @@
-// Static targets (docs/verse/bow-combat.md, Targets): round faces that stand in a world and that a
+// Static targets (docs/metaverse/bow-combat.md, Targets): round faces that stand in a world and that a
 // projectile strikes. Any realm may stand some: an archery butt, a mark on a wall, a gong. Nothing
 // here scores, rolls or draws; a realm's rules decide what a strike is worth (Everglade's range:
 // everglade/range/score.coax). This module owns

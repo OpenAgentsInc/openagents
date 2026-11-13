@@ -1,4 +1,4 @@
-// The sans atlas a native host draws text with (docs/verse/native-gpu.md, realms-native): the
+// The sans atlas a native host draws text with (docs/metaverse/native-gpu.md, realms-native): the
 // atlas coax/web/host.js draws in the browser for a page whose shader declares sans_atlas
 // (sansAtlas: the printable ASCII and SANS_EXTRA, 16 to a row in cells of 96 pixels, white in
 // SANS_FONT, five levels each half the last), drawn the same way by headless Chrome and kept as

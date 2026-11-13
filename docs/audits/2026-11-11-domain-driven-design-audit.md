@@ -218,7 +218,7 @@ rough, they include comments).
 
 | Word | Meanings found | Evidence |
 | --- | --- | --- |
-| **room** (7,003) | (a) one simulated instance of up to 16 seats; (b) the shard's URL path; (c) the room server binary | `EG_ROOMS :: 16; // simulated rooms at once` (`room-everglade.coax:56`); `/api/room/s1/` is a shard (`docs/verse/everglade-domain.md`, matcher table) |
+| **room** (7,003) | (a) one simulated instance of up to 16 seats; (b) the shard's URL path; (c) the room server binary | `EG_ROOMS :: 16; // simulated rooms at once` (`room-everglade.coax:56`); `/api/room/s1/` is a shard (`docs/metaverse/everglade-domain.md`, matcher table) |
 | **instance** (848) | The same thing as (a) above | SQL `verse.room_instances`, "which oa-room shard holds each instance" (`0115_room_directory.sql:1-2`) |
 | **zone** (845) | (a) a named place in a realm (books glossary); (b) a separately built Wasm page (`everglade/features.coax:66-81`, `EfZone` with `paths` and `entries`); (c) the AAA audit's server unit, "150 players in one zone process" (G4); (d) a GCP zone (G11) | Four meanings, two in the same audit |
 | **seat** (2,987) | (a) a player's place in a room (`SeatId`); (b) an agent's place in a made realm | `seats.c:1-2`, "an agent's place in a made realm", SQL `verse.seats` (`0110_realm_seats.sql`) |
@@ -231,7 +231,7 @@ rough, they include comments).
 | **profile** | Wire profile (`proto/verse/*.json`), world combat profile (`world-profile.coax`), timing profile, character checkpoint profile 2 and 3, execution profile, `coax.compat.v1` profile, a book chapter's profile | Seven meanings |
 | **engine** | Aethyr; the SRD rules' `engine.coax` ("The SRD 5.2.1 rules engine", line 1); a Coder engine (books glossary) | |
 | **Verse** | "the engine and the world/product layer" (`proto/README.md`, line 6) versus "the world that Aethyr runs" (`docs/books/glossary.md:16`) | Direct contradiction |
-| **Everglade** | v1 (`everglade.wasm`), Everglade II (`everglade-ii`, `everglade2`, the `.e2` flag, 61 `e2` words in `room-everglade.coax`), the game as a whole, and `everglade.world` | `docs/verse/everglade-domain.md` is about the **web domain**, not DDD |
+| **Everglade** | v1 (`everglade.wasm`), Everglade II (`everglade-ii`, `everglade2`, the `.e2` flag, 61 `e2` words in `room-everglade.coax`), the game as a whole, and `everglade.world` | `docs/metaverse/everglade-domain.md` is about the **web domain**, not DDD |
 | **receipt** | Signed proof of work or payment (books glossary); a checkpoint write's exact acknowledgement (AAA "Receipts are exact") | |
 
 The books already have a shared glossary (`docs/books/glossary.md`, 79 lines,
@@ -638,7 +638,7 @@ Acceptance notes to add to existing issues, not new issues:
 4. Is Golemancy a context of its own or a view over Coder? This audit treats
    it as an ACL over Coder.
 5. Does `everglade.world` as a web domain need its own entry? It is a
-   hostname, not a DDD domain; `docs/verse/everglade-domain.md` could be
+   hostname, not a DDD domain; `docs/metaverse/everglade-domain.md` could be
    renamed `everglade-hostname.md` to avoid the word.
 
 ## What this audit did not check

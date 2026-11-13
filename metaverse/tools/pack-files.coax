@@ -1,6 +1,6 @@
-// A realm's separate assets as one asset pack (docs/verse/native-gpu.md, realms-native): the
+// A realm's separate assets as one asset pack (docs/metaverse/native-gpu.md, realms-native): the
 // Haunted House and the sandbox name their data, storage, index and layers as separate files
-// (realms.json), which a page loads as the four assets a pack stands for (docs/verse/realm-host.md,
+// (realms.json), which a page loads as the four assets a pack stands for (docs/metaverse/realm-host.md,
 // "Asset packs": 0 the data, 1 the storage, 2 the indices, 3 the layers). A native host and
 // metaverse/native/wasm-run.coax read packs (--pack), so this writes those files as one, in their
 // order: the catalog entry the data's bytes, then the vertices, the indices and each layer.

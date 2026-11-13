@@ -3,7 +3,7 @@
 # chat.coax, chat-micro.coax for /chat's Gemini turns, and seat.coax,
 # compiled to C by deploy.sh before the build), with
 # the claude CLI the engines drive, git and ssh with GitHub's host keys pinned,
-# and Chromium for hosted seats' headless pages (docs/verse/realm-seat.md). No
+# and Chromium for hosted seats' headless pages (docs/metaverse/realm-seat.md). No
 # shell tools reach the model. The image also holds /chat's checkout of the
 # public repository (docs/chat.md), made by the runner itself at build time, so
 # a cold start fetches only what main changed since the deploy.

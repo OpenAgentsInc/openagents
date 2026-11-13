@@ -1,5 +1,5 @@
 // The flyover benchmark (GitHub #13017, learned from Solstice's `viewer --flyover`:
-// docs/verse/2026-11-07-solstice-comparison.md): a realm's camera flown along a keyed path in
+// docs/metaverse/2026-11-07-solstice-comparison.md): a realm's camera flown along a keyed path in
 // headless Chrome, the time of every frame and a screenshot each second. A walk (realm-perf.coax)
 // never reaches a realm's worst views, and a still camera hides what moving costs (shadows redrawn,
 // detail streamed in); a flyover crosses them the same way on every run, so two builds compare, and

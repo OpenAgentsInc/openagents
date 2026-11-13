@@ -4,7 +4,7 @@
 // bar (GitHub #13147): a press on your own portrait plate opens them, as a menu hung under it. Plain
 // facts in, words out: a zone fills EgBarFacts from what its room said, draws them with the engine's
 // widgets (metaverse-engine/ui/hud-menu.coax hud_menu_draw, hud_tip) and sends what a press asks.
-// The room decides every request. docs/verse/hud-styles.md.
+// The room decides every request. docs/metaverse/hud-styles.md.
 
 // What the menus offer: only what the room has said. rest holds the rest requests (RS_REST_*,
 // rules/srd/rest-control.coax) the room allows now.

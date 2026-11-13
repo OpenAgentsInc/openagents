@@ -1,5 +1,5 @@
 // The developer's light views (lighting plan Phase 1 step 7 and verification rule 4, GitHub #13067;
-// docs/verse/lighting/README.md). A painterly page that opens with ?light=VIEW (developer-only,
+// docs/metaverse/lighting/README.md). A painterly page that opens with ?light=VIEW (developer-only,
 // off by default: no view without the query) shows one of:
 //   ambient    the sky and ground ambient each surface receives, without its albedo
 //   direct     the key light each surface receives (colour x n.l x visibility), without its albedo

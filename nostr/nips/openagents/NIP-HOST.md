@@ -1033,7 +1033,7 @@ as 64 lowercase hex characters, and returns `verse_private`:
 `{placements}`, the owner's private Metaverse placements file
 (`openagents.verse.private-placements.v1`, at most 65,536 bytes) as the
 host's Metaverse home holds it, or `null` when it holds none
-([Private assets](../../../docs/verse/private-assets.md#phones)). The host
+([Private assets](../../../docs/metaverse/private-assets.md#phones)). The host
 notes the world key so its owner can grant it; the answer grants nothing,
 because only an asset's manifest names who may load its pack. A host
 without a Metaverse home refuses it as `unsupported`, and a placements file it
@@ -1151,7 +1151,7 @@ exact approved pending handoff under the epoch lock and delivers after releasing
 it; an already admitted unknown outcome remains unknown across restart.
 
 The `studio.*` operations carry the
-[Agent Studio](../../../docs/verse/agent-studio.md#the-client-is-a-view): the
+[Agent Studio](../../../docs/metaverse/agent-studio.md#the-client-is-a-view): the
 host's studio coordinator is the source of truth, and a device sends
 intents and draws what the host answers. The wire types are
 `coder_access::studio`. A studio task, goal, or decision identity is 1 to

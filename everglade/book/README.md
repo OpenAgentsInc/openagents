@@ -100,18 +100,18 @@ Everglade started as prototypes, each built to answer one question:
   bench. New systems, such as hostiles, a dungeon, imported characters and
   action combat, prove themselves there before they move into the world.
 - **Character Create**
-  ([`docs/verse/character-creator.md`](../../docs/verse/character-creator.md))
+  ([`docs/metaverse/character-creator.md`](../../docs/metaverse/character-creator.md))
   is the glade where you make your hero. Its look and light come from one
   reference image: a Quaternius forest scene with warm autumn light through the
   canopy
   ([reference light](../../docs/verification/character-glade-reference-light-2026-11-07/)).
 
 The glade became the starting point for the final version, **Everglade II**
-([`docs/verse/everglade2.md`](../../docs/verse/everglade2.md)). It is rebuilt
+([`docs/metaverse/everglade2.md`](../../docs/metaverse/everglade2.md)). It is rebuilt
 from scratch outward from the glade, one piece at a time (#13023): the glade,
 one path through dense woods, a clearing and next a city. The glade's light is
 now the default for every realm in that art style
-([`docs/verse/lighting/README.md`](../../docs/verse/lighting/README.md)).
+([`docs/metaverse/lighting/README.md`](../../docs/metaverse/lighting/README.md)).
 
 ## The flow of the book
 
@@ -290,7 +290,7 @@ everglade/
   world/        the land, planting, ground and light
   game/         the page and its units (from apps/openagents-web/everglade2*.coax)
   tools/        the asset pack and capture tools
-  docs/         design notes (from docs/verse/everglade*.md)
+  docs/         design notes (from docs/metaverse/everglade*.md)
 ```
 
 The line between the engine and the game:

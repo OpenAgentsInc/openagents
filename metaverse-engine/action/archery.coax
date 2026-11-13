@@ -1,4 +1,4 @@
-// Archery (docs/verse/bow-combat.md): one archer's bow against a world. metaverse-engine/action/bow.coax is
+// Archery (docs/metaverse/bow-combat.md): one archer's bow against a world. metaverse-engine/action/bow.coax is
 // the draw and the arrows' arcs; metaverse-engine/action/target.coax the faces an arrow sticks in. This module
 // is what a realm does with them each frame, so every realm's bow aims, flies and lands the same way:
 //

@@ -1,5 +1,5 @@
 // Hold the Stair, openagents.com/worlds/hold-the-stair: a popping tower
-// defense on the SRD 5e rules (docs/verse/game-ideas/hold-the-stair.md).
+// defense on the SRD 5e rules (docs/metaverse/game-ideas/hold-the-stair.md).
 // Bubble-beasts climb a winding stair from the cellar door to the top of the
 // wizard's tower; you place a party beside it with gold. Each defender rolls
 // a real d20 against a beast's armor class on its turn (metaverse/rules/
@@ -303,7 +303,7 @@ LONG_PRESS :: 0.45;
 INK_R :: 0.86; INK_G :: 0.88; INK_B :: 0.92;
 GOLD_R :: 1.0; GOLD_G :: 0.8; GOLD_B :: 0.35;
 TIP_R :: 1.0; TIP_G :: 0.55; TIP_B :: 0.12;   // ui.coax's orange: Bitcoin's, for TIP alone
-MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.js, docs/verse/makers.md)
+MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.js, docs/metaverse/makers.md)
 MAKER_BYTES :: 160;  // its 40 characters of UTF-8
 
 Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
@@ -1705,7 +1705,7 @@ query_is :: (url: string, key: string, value: string) -> bool {
   }
   return false;
 }
-// A staged moment for clips (?stage=highlight, docs/verse/clips.md): the last wave against
+// A staged moment for clips (?stage=highlight, docs/metaverse/clips.md): the last wave against
 // a full party at level 3, the stair crowded and every class firing.
 // The free tile beside the stair nearest a point part of the way up it.
 // Some defender has a level the gold buys.
@@ -3130,13 +3130,13 @@ placed_at :: (s: [] Stair, c: int, cls: int, lv: int) -> int {
   #assert !s[0].shown[B_MAP];
 }
 
-// What each layer pops into, from the design (docs/verse/game-ideas/hold-the-stair.md), for its test.
+// What each layer pops into, from the design (docs/metaverse/game-ideas/hold-the-stair.md), for its test.
 LAYER_INTO :: [32] int.[-1, -1, -1, -1,  MOTE, MOTE, -1, -1,  WISP, WISP, -1, -1,  GLIMMER, WISP, -1, -1,
   GLIMMER, GLIMMER, -1, -1,  EMBER, EMBER, -1, -1,  FROSTLING, FROSTLING, -1, -1,  IRONSKIN, IRONSKIN, IRONSKIN, IRONSKIN];
 #test "all eight bubble-beasts: each pops into what the design says, fire does nothing to an ember nor cold to a frostling, an ironskin halves a weapon's damage, a hulk regenerates" {
   s: [1] Stair;
   stair_start(s[..]);
-  // what each pops into (docs/verse/game-ideas/hold-the-stair.md)
+  // what each pops into (docs/metaverse/game-ideas/hold-the-stair.md)
   for l: 0..<LAYERS {
     #assert s[0].ct[0].inner_a[l] == LAYER_INTO[l * 4] && s[0].ct[0].inner_b[l] == LAYER_INTO[l * 4 + 1] && s[0].ct[0].inner_c[l] == LAYER_INTO[l * 4 + 2] && s[0].ct[0].inner_d[l] == LAYER_INTO[l * 4 + 3];
     // and a layer's lives are its own and its insides'

@@ -6,7 +6,7 @@
 // allowed to touch, the hand that grips it. overlap_side checks which side of an item faces the body,
 // such as a carried bow's string toward the leg, not away from it. The realm owns the posing (its rig, its clips, how it
 // places the item); this module owns only the geometry, so every realm's check reads the same.
-// docs/verse/visibility-service.md describes it with the visibility service.
+// docs/metaverse/visibility-service.md describes it with the visibility service.
 //   coax/bin/coax test metaverse-engine/action/attach-overlap.coax --library
 //   coax/bin/coax mutate metaverse-engine/action/attach-overlap.coax --library
 

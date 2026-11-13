@@ -1,4 +1,4 @@
-// Speaking characters (docs/verse/2026-11-04-speaking-characters.md): the pieces that are pure
+// Speaking characters (docs/metaverse/2026-11-04-speaking-characters.md): the pieces that are pure
 // functions, shared by the speak tool (coax/web/speak.coax) and MetaHuman Lab's speaking stage
 // (apps/openagents-web/metahumanlab.coax, ?stage=speak).
 //

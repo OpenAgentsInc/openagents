@@ -256,7 +256,7 @@ ld_owner :: (file: string) -> int {
     for p: pages { if starts(rest, p) { return 4; } }
     if starts(rest, "textkeys") { return 4; }
   }
-  if starts(file, "coax/web/goldens/") || starts(file, "docs/verse/") { return 4; }
+  if starts(file, "coax/web/goldens/") || starts(file, "docs/metaverse/") { return 4; }
   if starts(file, "coax/") || starts(file, "metaverse/") { return 0; }   // the language and the Verse engine
   if starts(file, "psionic/") || starts(file, "crates/psionic/") || starts(file, "docs/psionic/") { return 1; }
   if starts(file, "apps/openagents-desktop/") { return 2; }

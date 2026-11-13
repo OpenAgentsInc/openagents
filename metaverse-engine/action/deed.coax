@@ -1,4 +1,4 @@
-// Deeds (docs/verse/action-pipeline.md, GitHub #13072): one pipeline for every action of every class
+// Deeds (docs/metaverse/action-pipeline.md, GitHub #13072): one pipeline for every action of every class
 // and monster. Ask, act, present: a press asks whether its actor can act now (deed_ask), the
 // authority resolves it (a room, or a realm's local rules) and the realm hands its answer back
 // (deed_answer), and only an accepted answer presents (deed_show). Nothing animates, sounds or emits

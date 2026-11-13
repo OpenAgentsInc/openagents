@@ -1,7 +1,7 @@
 # 96. Casts and combat under latency
 
 > **Status: partly implemented.** The rules are written in
-> [the cast rules spec](../../docs/verse/2026-11-04-everglade-cast-rules.md)
+> [the cast rules spec](../../docs/metaverse/2026-11-04-everglade-cast-rules.md)
 > and built (#12790, commit 67b59c14e2): oa-room checks range and line of
 > sight at a cast's start and at its release, waits at most half a second
 > for the inputs sent before a cast, stops a bar whose target falls or whose

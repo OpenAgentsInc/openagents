@@ -2,7 +2,7 @@
 // Part 2): the 3D models someone dropped, placed on an empty floor so the
 // project has somewhere to walk on day one. When the owner publishes a drop,
 // the API (coax/web/api/drops.c) packs the drop's models into one asset pack
-// (the realm host's VPK1, docs/verse/realm-host.md) and writes a page at
+// (the realm host's VPK1, docs/metaverse/realm-host.md) and writes a page at
 // /projects/<slug>/realm that opens this module on it. /worlds/drop is the
 // same realm on the fixture's pack, so every build names this module's files
 // and the release walk checks it.
@@ -245,7 +245,7 @@ realm_cursor :: (s: [] DropRealm) -> int #export_c #effects(all) { return ifx s[
 realm_action :: (s: [] DropRealm) -> int #export_c #effects(all) { a := s[0].action; s[0].action = 0; return a; }
 realm_action_done :: (s: [] DropRealm) #export_c #effects(all) { s[0].out_n = 0; }
 
-// ---- the pack's catalog (docs/verse/realm-host.md): a line each
+// ---- the pack's catalog (docs/metaverse/realm-host.md): a line each
 
 realm_catalog :: (s: [] DropRealm, text: string) #export_c #effects(all) {
   if !s[0].started { realm_reset(s); }

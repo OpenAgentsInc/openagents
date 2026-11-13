@@ -230,7 +230,7 @@ changes need a separate reviewed amendment before implementation.
    field copy.
 3. **Clients send intent, never results.** Commands carry intent and aim.
    They never carry trusted position, damage, rolls, cost, rewards or XP.
-   Results come from the authority that owns them (`docs/verse/engine/architecture.md`,
+   Results come from the authority that owns them (`docs/metaverse/engine/architecture.md`,
    `combat-model.md`).
 4. **Signed and content-addressed bytes keep their exact form.** Nostr event
    IDs are computed over NIP-01 JSON. Release, channel and signature
@@ -2589,7 +2589,7 @@ until answered.
 
 **Metaverse documentation.** The Metaverse README, status and runtime contract:
 
-- `docs/verse/README.md`, `status.md`, `runtime-contract.json`
+- `docs/metaverse/README.md`, `status.md`, `runtime-contract.json`
 
 Worlds, zones and networking:
 

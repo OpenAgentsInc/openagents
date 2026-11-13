@@ -1,4 +1,4 @@
-// myrealm's shaders, the source of apps/openagents-web/myrealm.wgsl (docs/verse/native-gpu.md, G6):
+// myrealm's shaders, the source of apps/openagents-web/myrealm.wgsl (docs/metaverse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (myrealm.module,
 // myrealm.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../metaverse-engine/render/sampling.coax";
@@ -11,7 +11,7 @@
 // it has some, lit by the sun and, after dark, the lamp you carry; the plates over both), the pack's
 // meshes (scene_vs, scene_fs: lit by the same sun and lamp, fading into the haze) and the strokes
 // over all of it. Low poly keeps this file's own sky and light. A painterly or flat realm reads its
-// style block (metaverse/style-preset.coax, at its time of day; docs/verse/art-styles.md): painterly
+// style block (metaverse/style-preset.coax, at its time of day; docs/metaverse/art-styles.md): painterly
 // in soft toon bands with cool shadows, a rim, haze, a painted sky with clouds and a tone curve;
 // flat in three hard tones of a few flat colours, a flat sky and one soft fade (the style
 // functions are metaverse/style.coax's, generated below by build.sh). Forked from droprealm.wgsl;

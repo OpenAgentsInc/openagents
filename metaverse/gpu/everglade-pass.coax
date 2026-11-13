@@ -1,5 +1,5 @@
 // One of Everglade's passes, ported to Coax, against the browser (G5,
-// docs/verse/native-gpu.md). A frame comes from the browser's wasm
+// docs/metaverse/native-gpu.md). A frame comes from the browser's wasm
 // (metaverse/native/wasm-run.coax: the pack, page facts, golden mode, clock 0, 90
 // frames): its uniforms, stores and draw list, with the pack's vertices,
 // indices and layer images. Everglade's Coax (apps/openagents-web/gpu/everglade-v1/gpu.coax) and

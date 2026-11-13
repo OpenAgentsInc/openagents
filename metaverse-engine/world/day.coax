@@ -1,5 +1,5 @@
 // The day adapter for the environment resolver (lighting plan Phase 1 step 4, GitHub #13064;
-// docs/verse/lighting/README.md). It is not a second clock: it reads the simulation tick through the
+// docs/metaverse/lighting/README.md). It is not a second clock: it reads the simulation tick through the
 // clock modes metaverse-engine/world/style-clock.coax already has (fixed, cycle and real: StyleClock,
 // verse_style_clock, verse_style_clock_at) and the room server's day (coax/web/room/room-sky.coax:
 // W's TICK, HZ and DAY), and gives the EnvironmentState day that metaverse-engine/world/environment.coax

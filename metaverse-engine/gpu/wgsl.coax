@@ -1,4 +1,4 @@
-// WGSL's vocabulary in Coax (docs/verse/native-gpu.md, G5): what a shader
+// WGSL's vocabulary in Coax (docs/metaverse/native-gpu.md, G5): what a shader
 // translated from WGSL by coax/web/wgsl-coax.coax calls beyond the shader
 // library (shader.coax): integer vectors, the builtins Coax has no
 // instruction for (atan2, tanh, exp2, round, the unpacks...), WGSL's

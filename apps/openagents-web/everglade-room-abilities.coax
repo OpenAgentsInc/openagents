@@ -1,4 +1,4 @@
-// The room's hotbar abilities (GitHub #12718, #12733; spec docs/verse/2026-11-03-everglade-multiplayer-spec.md
+// The room's hotbar abilities (GitHub #12718, #12733; spec docs/metaverse/2026-11-03-everglade-multiplayer-spec.md
 // section 3.1). Every seat casts with its own copy of the abilities' state (EgRaSeat: Reverse Gravity,
 // the walls, Gust, Telekinesis, the tentacles, frost, tide, the grove's and the circle's spells), run
 // by the page's own code (everglade-abilities.coax and the files it loads) with that seat as "you", as

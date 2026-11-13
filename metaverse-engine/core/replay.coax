@@ -1,4 +1,4 @@
-// The Metaverse Engine's recording and replay (the Metaverse Engine core, GitHub #12609, docs/verse/engine-core.md):
+// The Metaverse Engine's recording and replay (the Metaverse Engine core, GitHub #12609, docs/metaverse/engine-core.md):
 // a session is its constructed state's digest, a seed and the external events it accepted,
 // each in one envelope. Replaying the record gives the same state at every step.
 //

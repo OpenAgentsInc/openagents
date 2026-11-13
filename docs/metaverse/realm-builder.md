@@ -66,7 +66,7 @@ and takes them into it.
    medium river, a lake as a frozen pond, and whole places the realm's name already says
    (cyberpunk city street, candy land, harbour town), which the judge counts as drawn.
    MAKE IT puts each on the realm's feature list as a waiting ask
-   (`docs/verse/realm-edit.md`, "What you asked for"), where an agent can build it.
+   (`docs/metaverse/realm-edit.md`, "What you asked for"), where an agent can build it.
    OR DROP A DESIGN DOCUMENT (`coax/web/docs.js`, action 31) sends a .md, .txt, .pdf or .docx to
    `POST /api/playtest/realms/plan/doc?as=lines {name, data, setup}` (migrations/0080): the server
    takes its text out (a .docx's `word/document.xml`, inflated; a PDF the model reads itself) and

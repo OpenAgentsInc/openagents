@@ -25,7 +25,7 @@ import "openagents/options/v1alpha1/json.proto";
 // the goldens check reads and writes them through it as well.
 //
 // The names follow the Verse chapter's doc.v1 sketch where they fit
-// (docs/verse/openagents-verse-protocol.md, section 10.3): a document, its
+// (docs/metaverse/openagents-verse-protocol.md, section 10.3): a document, its
 // revision, its placed things. A made realm's document is older than that
 // sketch and keeps its own keys; doc.v1 remains the target for every world.
 

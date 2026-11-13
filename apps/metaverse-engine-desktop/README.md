@@ -437,7 +437,7 @@ records the permission/preparation boundary.
 
 Local gpt-oss interpretation, full voice-edit acceptance, typed world edits,
 remote publish/revert and bots are future milestones in the
-[desktop spec](../../docs/verse/2026-11-04-aethyrforge-desktop.md).
+[desktop spec](../../docs/metaverse/2026-11-04-aethyrforge-desktop.md).
 
 On this Mac, the original world directory is moved from Application Support on
 the first upgraded launch, without replacing an existing destination. Models are

@@ -277,7 +277,7 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
     "  CASE WHEN i = 1 THEN e.page = 'galaxy' AND e.p->>'label' = 'villa' ELSE e.page = 'hecates-cemetery' END "
     "GROUP BY i, label ORDER BY i", 4, f);
   // Every realm and the app, one card each (migrations/0069_analytics_realm_actions.sql,
-  // docs/verse/analytics-events.md): how far visits got, then what people did most.
+  // docs/metaverse/analytics-events.md): how far visits got, then what people did most.
   // A 'tally' event's properties are counts; every other action counts once.
   // Same filter as the rest: the team and automation are left out.
   section(o, db, "REALMS", "w", "REALM|VISITS|LOADED|IN THE WORLD|DID SOMETHING|MEDIAN MINUTES|IN THE APP", KEPT
@@ -634,7 +634,7 @@ static void rooms(const request *q, PGconn *db) {
   free(o.p);
 }
 
-// The hosts this site also serves (docs/verse/everglade-domain.md), whose browsers a team link may mark.
+// The hosts this site also serves (docs/metaverse/everglade-domain.md), whose browsers a team link may mark.
 static bool team_host(const char *h) {
   static const char *hosts[] = {"everglade.world", "www.everglade.world", "staging.everglade.world", NULL};
   for (int i = 0; hosts[i]; i++) if (!strcmp(h, hosts[i])) return true;

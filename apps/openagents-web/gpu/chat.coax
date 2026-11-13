@@ -1,4 +1,4 @@
-// chat's shaders, the source of apps/openagents-web/chat.wgsl (docs/verse/native-gpu.md, G6):
+// chat's shaders, the source of apps/openagents-web/chat.wgsl (docs/metaverse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (chat.module,
 // chat.bindings beside it). The shader itself is the component system's:
 // components/backend/gpu-shader.coax (components/spec.md, GitHub #13153).

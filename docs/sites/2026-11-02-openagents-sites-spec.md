@@ -2,8 +2,8 @@
 
 Status: spec, 2026-11-02. Nothing in this doc is built unless a line says
 **built**. It replaces the retired 2026 Sites program (below) and builds on
-the OpenAgents Metaverse Engine's realm builder ([realm-builder.md](../verse/realm-builder.md),
-[realm-edit.md](../verse/realm-edit.md)) and the `openagents` CLI
+the OpenAgents Metaverse Engine's realm builder ([realm-builder.md](../metaverse/realm-builder.md),
+[realm-edit.md](../metaverse/realm-edit.md)) and the `openagents` CLI
 ([2026-11-01-openagents-cli-v1.md](../cli/2026-11-01-openagents-cli-v1.md)).
 
 ## What you get

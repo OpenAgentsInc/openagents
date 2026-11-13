@@ -1,4 +1,4 @@
-// Watertight page residency (GitHub #12999, learned from Solstice, docs/verse/2026-11-07-solstice-comparison.md).
+// Watertight page residency (GitHub #12999, learned from Solstice, docs/metaverse/2026-11-07-solstice-comparison.md).
 // Decides which geometry pages are on the GPU; it never touches the GPU, so all of it is checked here.
 //
 // A page lists the pages holding its clusters' parents, always at lower ids (a set's parents come

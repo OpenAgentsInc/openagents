@@ -21,7 +21,7 @@ How a change reaches production, and where things stand. The page at https://ope
 
 ## Built, not switched on
 
-The green-main pipeline ([design](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/green-main-pipeline.md)): submit, queue, an integrator that checks branches in parallel and lands the passing ones in order, a full check after landing, main-green, and releases from main-green. A failure is traced to its commit and filed for that commit's agent.
+The green-main pipeline ([design](https://github.com/OpenAgentsInc/openagents/blob/main/docs/metaverse/green-main-pipeline.md)): submit, queue, an integrator that checks branches in parallel and lands the passing ones in order, a full check after landing, main-green, and releases from main-green. A failure is traced to its commit and filed for that commit's agent.
 
 ## Recent commits
 

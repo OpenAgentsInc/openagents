@@ -1,4 +1,4 @@
-// The Speedrun HUD's shaders, the source of apps/openagents-web/speedrunhud.wgsl (docs/verse/native-gpu.md, G6):
+// The Speedrun HUD's shaders, the source of apps/openagents-web/speedrunhud.wgsl (docs/metaverse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (speedrunhud.module,
 // speedrunhud.bindings beside it). The nebula, the glass and the strokes are newland's (gpu/newland.coax).
 #load "../../../metaverse-engine/gpu/wgsl.coax";

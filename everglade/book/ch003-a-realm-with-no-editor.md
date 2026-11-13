@@ -62,7 +62,7 @@ coax/web/tool.sh coax/web/wgsl-module.coax everglade/client/gpu/everglade2.coax 
 
 The pack changes less often. Its build command, and the step that adds the
 characters' material maps, are in
-[`docs/verse/everglade2.md`](../../docs/verse/everglade2.md#the-pack).
+[`docs/metaverse/everglade2.md`](../../docs/metaverse/everglade2.md#the-pack).
 
 ### Serve
 

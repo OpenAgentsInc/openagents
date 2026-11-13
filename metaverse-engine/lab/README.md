@@ -126,7 +126,7 @@ states that limit. Metrics and checksums still include every body.
 
 ## Results and checks
 
-The [2026-11-06 results](../../docs/verse/physics-lab-2026-11-06.md) include
+The [2026-11-06 results](../../docs/metaverse/physics-lab-2026-11-06.md) include
 all eighteen rows, energy samples, checksums, captures, failure receipts
 and source/build identities. They show a repeatable Metaverse Engine result alongside
 substantial settling, stack and performance gaps.

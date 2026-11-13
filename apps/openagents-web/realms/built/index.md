@@ -15,7 +15,7 @@ Every world made at https://openagents.com/worlds/new opens here: `/worlds/<slug
 
 - `apps/openagents-web/myrealm.coax` is the world, `myrealm-face.c` binds it, `myrealm.wgsl` draws it, on the fixture world's pack (`realms/fixture/assets/fixture.pack`).
 - The world's spec is `GET /api/playtest/realms/<slug>` (`coax/web/api/realms.c`, `migrations/0048_realm_builder.sql`). The features are laid out from the slug, so everyone sees the same world.
-- The full spec: `docs/verse/realm-builder.md`.
+- The full spec: `docs/metaverse/realm-builder.md`.
 
 ## Make your own world
 

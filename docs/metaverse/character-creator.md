@@ -15,7 +15,7 @@ The studio and the run are Coax in `everglade/client/create.coax`,
 loaded into `everglade/client/client.coax`. The wardrobe's choices and record are
 `charactercreator.coax`'s (`Creator`, `change`, `value`, `save`), with the class
 added to the record (`CC3`). The glade is Everglade II's own
-(`docs/verse/everglade2.md`).
+(`docs/metaverse/everglade2.md`).
 
 ## Through the portal from the lander at /newlander
 

@@ -180,7 +180,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
   closes as the draw builds; a full draw takes 0.8 s, and you slow to a walk
   while drawn (`experimental-combat.coax:907-1060`,
   `metaverse-engine/action/bow.coax:24`, `metaverse-engine/action/bow.coax:65`,
-  `docs/verse/bow-combat.md`). The arrow is a real projectile, and the SRD
+  `docs/metaverse/bow-combat.md`). The arrow is a real projectile, and the SRD
   Longbow Attack decides the hit, with Disadvantage past 150 feet
   (`rules/srd/battle.coax:1589`).
 - **The pose.** An IK draw pose blended by draw strength
@@ -230,7 +230,7 @@ timing, stance swap, feedback) as long as the SRD still decides each outcome.
 | Action points for dailies | None | **Skip.** Use the SRD's own limited resources (higher slots, Action Surge) instead of a second meter | No SRD equivalent |
 | Stance switch, melee and ranged twins | Ranger holds both weapons; Attack is always the bow (`experimental-combat.coax:1121`) | **Adopt.** One key swaps Longbow and Shortsword; Attack's slot becomes the melee swing | Weapon swap as part of the Attack action (equip or stow one weapon per attack) |
 | Four-hit melee combo | Fighter swing is one blow per press | **Adapt.** Combo length equals the attacks the Attack action allows: one, then two with Extra Attack | Extra Attack (Ranger level 5) |
-| Charged aimed shot | Draw strength sets speed only (`docs/verse/bow-combat.md`) | **Adapt.** Full draw gives range and accuracy. No extra damage | Longbow damage 1d8 + Dex; Archery +2 to hit |
+| Charged aimed shot | Draw strength sets speed only (`docs/metaverse/bow-combat.md`) | **Adapt.** Full draw gives range and accuracy. No extra damage | Longbow damage 1d8 + Dex; Archery +2 to hit |
 | Split Shot cone | None for the Ranger | **Skip** at levels 1–6. Revisit with a SRD option that hits several foes | No such SRD Ranger feature at 1–6 |
 | Root encounter power | Entangle on the bar (`class-kit.coax:42`) | **Adopt** its feel: a telegraphed ground circle you place | Entangle (Restrained, Strength save) |
 | Leap-back power | Dash forward only | **Adapt.** Dash plus Disengage as a backward hop | Disengage; Dash |

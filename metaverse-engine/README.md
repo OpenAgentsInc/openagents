@@ -12,7 +12,7 @@ the module lands.
 
 Each primitive is a module with its own checks and, where it decides
 behaviour, zero surviving mutants. One short section per primitive is in
-[docs/verse/engine-core.md](../docs/verse/engine-core.md).
+[docs/metaverse/engine-core.md](../docs/metaverse/engine-core.md).
 
 The bounded [resource-cost streaming consumer](world/README.md) uses shared
 owners on browser and native hosts. Its [adapter/memory inventory](host/stream-adoption.md)
@@ -72,7 +72,7 @@ issue that will. A module nobody adopts by the end of the AAA program
 | `core/spatial.coax` | The uniform spatial grid (#13178, moved from `net/grid.coax`): the slots within a radius of a point without a scan, on the realm's own storage. The World's index, and under `net/grid.coax` the room's interest grid |
 | `core/slot-set.coax` | A set of slots (#13275): one bit a slot in a column of words, on the realm's own storage. A room keeps who a seat blocks, who it cannot see this tick and who hurt a creature in one, so no record's shape holds the seats' number |
 | `physics/query.coax` | One set of colliders a realm (flat/heightfield ground, boxes, capsules, floors) and four queries over it: ground, ray, overlap and sweep; the step height, steep slope and floor pad defined once |
-| `physics/visibility.coax` | The visibility service (#13073): whether a point sees a target, for name plates, health bars, damage numbers, targeting and monster sight. `vis_line` tests the colliders through `query_clear` and a terrain profile the realm samples; `vis_depth` tests a read-back depth image; `vis_settle` holds the answer against flicker. [Design](../docs/verse/visibility-service.md) |
+| `physics/visibility.coax` | The visibility service (#13073): whether a point sees a target, for name plates, health bars, damage numbers, targeting and monster sight. `vis_line` tests the colliders through `query_clear` and a terrain profile the realm samples; `vis_depth` tests a read-back depth image; `vis_settle` holds the answer against flicker. [Design](../docs/metaverse/visibility-service.md) |
 | `physics/query-filter.coax`, `physics/query-scene.coax`, `physics/query-fluid.coax` | Semantic queries: stable collider IDs/generations, checked entity references, category and role selection, separate physical surfaces, atomic overlap/volume results and bounded flat/heightfield fluids with holes. [The shared journey](examples/query-world.coax) uses the existing capsule, camera and AI kernels; [qualification and remaining adapters](../docs/verification/aethyr-query-12989/README.md) |
 | `physics/ground.coax` | Checked sampling of actual rounded mesh triangles, metre inputs and exact stored vertices; shared with legacy terrain |
 | `physics/ground-query.coax` | Bounded exact cell traversal for terrain rays, with explicit exhausted-work refusal |
@@ -117,14 +117,14 @@ issue that will. A module nobody adopts by the end of the AAA program
 | `cam/` | [Camera modes, attention and hand-back](cam/README.md): parameterized follow modes with inheritance and volume selection, the centred look-up with a ground-clamped eye, one attention query for lock-on/talk/look/action with hold and grace, two-subject framing, cinematic entry and hand-back by outcome; Everglade II's follow camera and its Character Create run, and Everglade Experimental's save-spell aim, use them (#12994) |
 | `core/replay.coax` | Recording and replay: one envelope for every accepted external event, a gate that refuses duplicate, stale and unknown events, a digest every step, and replays that make no remote calls |
 | `core/rand.coax` | Random streams: a draw is a pure function of seed, stream and counter |
-| `world/cells.coax` | A world in 64 m cells streamed by interest: resident, simulate and draw rings with hysteresis, loads nearest first inside budgets, admission by digest, for one player or a room of many (`cell_step_from`); the floating origin (book chapter 38; [one world](../docs/verse/one-world.md)) |
-| `world/nav/cells.coax`, `world/nav/cells-colliders.coax` | Navigation by cell: a page of 128 by 128 samples for each world cell, built from the capsules and hulls a player's step meets; open, line, the step's last word, obstacles (doors, placed pieces), reach and a page's digest ([navigation](../docs/verse/navigation.md)) |
+| `world/cells.coax` | A world in 64 m cells streamed by interest: resident, simulate and draw rings with hysteresis, loads nearest first inside budgets, admission by digest, for one player or a room of many (`cell_step_from`); the floating origin (book chapter 38; [one world](../docs/metaverse/one-world.md)) |
+| `world/nav/cells.coax`, `world/nav/cells-colliders.coax` | Navigation by cell: a page of 128 by 128 samples for each world cell, built from the capsules and hulls a player's step meets; open, line, the step's last word, obstacles (doors, placed pieces), reach and a page's digest ([navigation](../docs/metaverse/navigation.md)) |
 | `ai/steer-cells.coax` | A creature's tick on the navigation cells: the long way searched on the samples within 32 m, the steering service's window, and `nav_cells_keep` as the last word (`nav_cells_go`) |
 | `world/scatter.coax` | Scatter from a seed: things on a jittered grid of world cells, each cell's draws keyed by its layer, version and grid coordinates, kept clear of keep-outs (book chapter 80) |
 | `ai/stimulus.coax` | What a creature senses and knows: sight through `query_ray`, sound and touch as typed stimuli stamped by tick, and a bounded memory that forgets and counts what it refuses (book chapter 75) |
 | `ai/pilot.coax` | Bounded external actor actions as typed `Intent`s and `ReplayEvent` envelopes; the Metaverse OS WoW adapter consumes it, without claiming replay of WoW's simulation (book chapter 75) |
 | `talk/` | [Bounded native conversation profile](talk/README.md): authored fallback, UTF-8 request/reply admission, ticketed outcomes, tick deadlines and an owned answer record replayed without send intentions; realm and service adoption remain (book chapter 77) |
-| `character/` | [The character runtime](../docs/verse/engine-core.md#characters-aethyrcharacter): a world's pack table (an ECH1 rig and its EFC1 face, sizes under declared maximums) and one `Character` record each, spawned, placed, stepped on the fixed step (locomotion graph, a looped idle clip or a held body; face clips and an idle face cycle) and despawned; it writes the skinning palette, morph weights and capsules the GPU reads. `idle.coax` adds blinks, saccades and breathing. Valley Lab's Echo runs on it (`coax/bin/coax test metaverse-engine/character/checks.coax`) |
+| `character/` | [The character runtime](../docs/metaverse/engine-core.md#characters-aethyrcharacter): a world's pack table (an ECH1 rig and its EFC1 face, sizes under declared maximums) and one `Character` record each, spawned, placed, stepped on the fixed step (locomotion graph, a looped idle clip or a held body; face clips and an idle face cycle) and despawned; it writes the skinning palette, morph weights and capsules the GPU reads. `idle.coax` adds blinks, saccades and breathing. Valley Lab's Echo runs on it (`coax/bin/coax test metaverse-engine/character/checks.coax`) |
 | `core/frame-report.coax` | A realm's frames, measured: frame statistics and the 60 FPS rule every realm is held to (`coax/web/realm-perf.coax` judges each case by it), and one frame's report by stage (book chapter 83) |
 | `audio/voice.coax` | Spoken requests (HOLD TO TALK): a press is a question on the replay gate, the voice host's final transcript its answer, applied once, only in its epoch; duplicates, answers after a cancel and unasked answers are refused, and the record replays every heard request with no recognizer (`examples/hold-to-talk.coax`; local recognition is resident Parakeet, `docs/voice/dev.md`) |
 | `core/math.coax` | Sine, cosine and powers with the same bits natively and in the browser, for simulation steps |
@@ -207,7 +207,7 @@ share the same catalogue, schema admission and one-component edit writer.
 Native version file effects live in `tools/anim-direction-store.coax`; browser
 session/effect bindings remain in `metaverse/animlab/`. The former realm project,
 scene and check paths are compatibility loaders. See the
-[directing profile](../docs/verse/anim-directing-v1.md).
+[directing profile](../docs/metaverse/anim-directing-v1.md).
 
 The component readers' shared closed-key lists live in `anim/field-catalog.coax`.
 Those exact lists also generate CLI authoring help; regenerate with

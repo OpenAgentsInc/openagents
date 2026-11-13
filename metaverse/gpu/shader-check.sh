@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The G4 check (docs/verse/native-gpu.md): metaverse/gpu/shaders/quad.coax through
+# The G4 check (docs/metaverse/native-gpu.md): metaverse/gpu/shaders/quad.coax through
 # `coax spirv --vertex/--fragment`, drawn on HOST's GPU with its bindings,
 # against the same procedures built for the CPU, under the validation layers.
 #   metaverse/gpu/shader-check.sh HOST [W H]

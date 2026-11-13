@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build vk-check and vk-kernel (docs/verse/native-gpu.md): Coax to C, then
+# Build vk-check and vk-kernel (docs/metaverse/native-gpu.md): Coax to C, then
 # cc with the Vulkan loader.
 #   metaverse/gpu/build.sh [OUT_DIR]                    generate C (if coax is here) and build
 #   VERSE_GPU_GEN_ONLY=1 metaverse/gpu/build.sh OUT_DIR  generate C only, for a box without coax

@@ -95,7 +95,7 @@ client, host, worker, relay, wallet, game or agent from `proto/` and this
 document alone, without depending on a retired implementation language.
 
 The 3D subtree, `openagents.verse.*`, has its own chapter: Chapter V,
-[`docs/verse/openagents-verse-protocol.md`](../verse/openagents-verse-protocol.md).
+[`docs/metaverse/openagents-verse-protocol.md`](../metaverse/openagents-verse-protocol.md).
 This document states the rules that chapter follows and places it in the
 tree. It does not repeat the chapter's 28 package sketches.
 
@@ -4416,7 +4416,7 @@ environment, host bridges, the Gym building, terminals, media,
 telemetry, economy views, games and Space. That is 28 packages.
 
 The full chapter is
-[`docs/verse/openagents-verse-protocol.md`](../verse/openagents-verse-protocol.md).
+[`docs/metaverse/openagents-verse-protocol.md`](../metaverse/openagents-verse-protocol.md).
 It follows this document's principles (§3), options (§6), limits and
 encodings (§7) and Nostr rules (§11). Where the chapter's §4 sketches the
 whole tree, this document's §4 replaces that sketch. Chapter V's own build
@@ -4940,7 +4940,7 @@ retain their wire encodings until separately reviewed migrations pass.
 - `docs/payments/agent-payments.md` (Bitcoin-only rule, 2026-10-09)
 - `docs/cloud/`, `docs/protocol/` (NIP coverage, ledgers, fixtures)
 - `docs/metareal/merge.md` (naming: the Metaverse, Metareal tools, Metareal)
-- `docs/verse/openagents-verse-protocol.md` (Chapter V)
+- `docs/metaverse/openagents-verse-protocol.md` (Chapter V)
 - `Verse source archive` `third_party/openagents-engine-proto`
 - Repository-wide inventory of `openagents.*.vN` identifiers, 2026-10-27
   (2,368 distinct)

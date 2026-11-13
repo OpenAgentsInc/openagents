@@ -23,4 +23,4 @@ VIEW or DETAIL. The same canonical native and Wasm mesh hashes are checked.
 All art here is generated from original Coax source under Apache-2.0. No
 Unreal assets are used. No cluster LOD, geometry paging, scene streaming or
 encounter is implemented yet. The roadmap is
-`docs/verse/2026-11-05-valley-lab.md` in the repository.
+`docs/metaverse/2026-11-05-valley-lab.md` in the repository.

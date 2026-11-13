@@ -1,5 +1,5 @@
 // Everglade's HUD parts, drawn in the realm's HUD style (EG_HUD, FANTASY: metaverse-engine/ui/hud-style.coax,
-// docs/verse/hud-styles.md): the unit frames (your portrait plate and your target's frame, their
+// docs/metaverse/hud-styles.md): the unit frames (your portrait plate and your target's frame, their
 // health bars with a damage trail), the action bar's tray and a slot's cooldown sweep, the map ring
 // top right with the place and the time of day, the plates over creatures, damage numbers, a place's
 // banner and the frame rate's plaque. Plain data in, vertices out: Everglade II and Everglade

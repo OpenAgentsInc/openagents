@@ -28,7 +28,7 @@
 // session /login makes); nobody, and the page goes to /login#next=<this page and its code>, so the
 // code stays in a fragment and never reaches a server log. /login comes back here once logged in.
 //
-// /worlds/<slug>/claim#code=... is page 4 (ev-claim-realm, docs/verse/makers.md): a maker's
+// /worlds/<slug>/claim#code=... is page 4 (ev-claim-realm, docs/metaverse/makers.md): a maker's
 // one-time claim link. It takes a display name and a Lightning address and posts them with the
 // code to oa-api (/api/playtest/makers/<slug>/claim).
 //
@@ -87,7 +87,7 @@ POST_DLOOK :: 19;          // page 7: /api/auth/device/look {code}
 POST_DAPPROVE :: 20;       // page 7: /api/auth/device/approve {code}
 H_DAPPROVE :: 51;          // page 7: APPROVE
 PV_MACHINE :: 64;          // a computer's name, as the server keeps it
-// page 5: a tip for a realm's maker (docs/verse/makers.md, #13210): pick the sats, pay the maker's own invoice from
+// page 5: a tip for a realm's maker (docs/metaverse/makers.md, #13210): pick the sats, pay the maker's own invoice from
 // your wallet, see it confirmed. PAID only when the maker's wallet service says it arrived or the paying wallet
 // reports the preimage; a tip nobody can confirm is SENT FROM YOUR WALLET.
 POST_TIP :: 16; POST_TIP_CHECK :: 17; ASK_MAKER :: 4;

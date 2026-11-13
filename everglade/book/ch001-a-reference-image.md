@@ -38,7 +38,7 @@ The numbers taken from the picture live in three places:
 | Ground colour and autumn | `everglade/world/forest.coax` | `e2_autumn`, `e2_gold` |
 | Density and scale | `everglade/world/plant.coax`, `everglade/world/forest.coax` | `E2_TREE_STEP`, `e2_forest`, `E2_CLEAR_R` |
 
-The [lighting plan](../../docs/verse/lighting/README.md) records the owner's
+The [lighting plan](../../docs/metaverse/lighting/README.md) records the owner's
 direction: the Character Create glade is the look, and every realm in the art
 style starts from its light.
 

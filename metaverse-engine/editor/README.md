@@ -2,7 +2,7 @@
 
 The Metaverse Engine's realm editor: the engine-side code that edits a realm document.
 The product spec, what is on screen and what to build, is
-[docs/verse/aethyrforge.md](../../docs/verse/aethyrforge.md).
+[docs/metaverse/aethyrforge.md](../../docs/metaverse/aethyrforge.md).
 
 - `edit.coax`: typed edits to a made realm's document, every revision path in one log:
   moves, turns, sizes and removals of entities, and slot edits for rows, tools, setup,

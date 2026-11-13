@@ -1,6 +1,6 @@
 // Players, guests, saves and published worlds for the Verse playtest
 // (pt-player-endpoints): the demo's player and world routes (aethyr-cpp
-// tools/serve.py, docs/verse/playtest-port.md section 3) under
+// tools/serve.py, docs/metaverse/playtest-port.md section 3) under
 // /api/playtest/. The rules live in SQL (migrations/0004_verse_players.sql,
 // verse.api); this file reads who is asking and hands the request over.
 //
@@ -1500,7 +1500,7 @@ bool player_route(const request *q) {
     memcpy(npub, ev.pubkey, sizeof npub);
     site = admin_is(npub);
   } else if (site_session(q, db)) site = true;
-  // A hand-built realm's owner or one of its admins (verse.realm_rights, docs/verse/realm-edit.md)
+  // A hand-built realm's owner or one of its admins (verse.realm_rights, docs/metaverse/realm-edit.md)
   // publishes that realm's world, and puts it back, as the site does: for that world's routes only.
   if (!site && key[0] && !strncmp(rest, "world/", 6)) {
     char id[80]; size_t i = 0;

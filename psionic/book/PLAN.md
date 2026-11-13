@@ -234,7 +234,7 @@ Part XXII.
 | [31. Directions on request](ch031-directions-on-request.md) — runnable: 9/5 finite live smoke, matching the local rule; local-first page integration is delivered in 32 | Explicit authored Directions intent, five frozen route contexts, current-goal semantics and a perfect finite local reference. Separate raw model choice, admission and quiet fallback; qualify fresh live evidence before any player-facing model behavior. |
 | [32. A guard gives directions](ch032-a-guard-gives-directions.md) — implemented: 37/26 actual-Wasm page checks; shadow off by default | Separate Directions/Find Work interaction, immediate local rule and optional authenticated Elephant shadow. Current-frame world, actor, goal and intent gates; cancellation and refusal preserve local help. |
 
-The [Everglade guard delivery plan](../../docs/verse/pylon-guard-decisions.md)
+The [Everglade guard delivery plan](../../docs/metaverse/pylon-guard-decisions.md)
 sequences warm routing, the shared client, game integration and reliability
 qualification. It brings narrow client/failure-handling and evaluation work
 forward from 174/175/179 and 215–217/222 without requiring those whole chapters.

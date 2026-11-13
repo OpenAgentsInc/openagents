@@ -1,5 +1,5 @@
 // The character runtime the host runs beside a world (coax/web/host.js, the "character pass"
-// section; docs/verse/2026-11-06-native-hero-characters.md, Design 3). A world that places a
+// section; docs/metaverse/2026-11-06-native-hero-characters.md, Design 3). A world that places a
 // character asks for her pack by name (coaxial_character_pack_v1); the host loads this module and
 // the pack only then, so a world's own wasm and memory carry none of it (Everglade's wasm has about
 // 150 KB of its budget left, and Echo's rig, face and catalog take about 46 MB of memory). Each

@@ -48,7 +48,7 @@ The current city:
 
 - `everglade/legacy/v1/plan.coax`: the layout. Metres, +z north, **+x west**,
   the fountain at the origin (`plan.coax:7-9`).
-- `docs/verse/everglade.md`: the plan in words; `docs/verse/everglade-map.svg`
+- `docs/metaverse/everglade.md`: the plan in words; `docs/metaverse/everglade-map.svg`
   is drawn from `plan.coax` by `everglade/legacy/v1/map.py`.
 - `apps/openagents-web/realms/everglade/index.md`: the player-facing page.
 - `everglade/legacy/v1/river.coax`, `people.coax`, `quests.coax`.
@@ -80,10 +80,10 @@ previous map's names but stand in the woods outside the walls.
 | | Previous map | Previous build | Now |
 | --- | --- | --- | --- |
 | Units on the source | Pixels; a scale bar of 240 px labelled "ten minutes on foot" (`everglade-map.svg:13856-13858`) | Metres | Metres |
-| Whole world | 2400 × 1720 px sheet | Zone about 510 m across (`previous/everglade.md:331`) | Ground 208 m square, 200 m walkable (`plan.coax:20-23`; `docs/verse/everglade.md:45`) |
-| Town | Outer ring road about 1,950 px east to west (x 233 to 2187) | Flat clearing 272 m across inside a tree ring about 300 m across (`previous/everglade.md:331-335`) | Palisade 127 m east to west, 115 m north to south (`plan.coax:41-50`; `docs/verse/everglade.md:46`) |
-| Longest street | Main Street, north radial | Main Street about 200 m (`previous/everglade.md:552`) | Inn Street 44 m; Guild Row 52 m (`docs/verse/everglade.md:66, 75`) |
-| Walking | Ten minutes on the scale bar | — | 3.5 m/s walk, city half a minute across (`docs/verse/everglade.md:50-53`) |
+| Whole world | 2400 × 1720 px sheet | Zone about 510 m across (`previous/everglade.md:331`) | Ground 208 m square, 200 m walkable (`plan.coax:20-23`; `docs/metaverse/everglade.md:45`) |
+| Town | Outer ring road about 1,950 px east to west (x 233 to 2187) | Flat clearing 272 m across inside a tree ring about 300 m across (`previous/everglade.md:331-335`) | Palisade 127 m east to west, 115 m north to south (`plan.coax:41-50`; `docs/metaverse/everglade.md:46`) |
+| Longest street | Main Street, north radial | Main Street about 200 m (`previous/everglade.md:552`) | Inn Street 44 m; Guild Row 52 m (`docs/metaverse/everglade.md:66, 75`) |
+| Walking | Ten minutes on the scale bar | — | 3.5 m/s walk, city half a minute across (`docs/metaverse/everglade.md:50-53`) |
 
 The map's scale bar does not match its own drawing: at a walk of 1.4 m/s,
 ten minutes is about 840 m, which would make the town about 7 km across.
@@ -159,7 +159,7 @@ the densest district, long terraces on parallel lanes. Hearth Road runs
 north-west through it (label at (315, 541)).
 
 **Now.** Six houses, 8 to 10 m a side (`EG_BUILDING` entries 10 to 15,
-`plan.coax:62-63`; `docs/verse/everglade.md:86`), spread round the
+`plan.coax:62-63`; `docs/metaverse/everglade.md:86`), spread round the
 streets. No terraces, no gardens, no residential district.
 
 ### Lantern Quarter
@@ -170,7 +170,7 @@ the round Music Hall at (319, 1037) (r 26 px). Lantern Road runs west out
 of it (label at (222, 1147)).
 
 **Now.** The inn (16 × 14 m, two storeys, `plan.coax:60`;
-`docs/verse/everglade.md:68`) is the only gathering hall. No music hall,
+`docs/metaverse/everglade.md:68`) is the only gathering hall. No music hall,
 pubs or meeting halls.
 
 ### Brownstone Row
@@ -404,18 +404,18 @@ plan and the realm; **L** a week or more, new buildings or systems;
   (`EG_SPOT`, `plan.coax:162-189`; `everglade/legacy/v1/people.coax`).
 - Hills inside and round the town (`metaverse-engine/world/terrain.coax`).
 - The 5e spell bar, destruction and the watch
-  (`docs/verse/everglade.md:574-799`), and admin edit mode
-  (`docs/verse/everglade.md:800-916`).
+  (`docs/metaverse/everglade.md:574-799`), and admin edit mode
+  (`docs/metaverse/everglade.md:800-916`).
 
 ## Recommended build order
 
 The current plan is a deliberate medieval hub ("keeps its commons,
 fountain, observatory and market stalls and drops the workshop and the
-Agent Studio", `docs/verse/everglade.md:20-23`). The steps below bring the
+Agent Studio", `docs/metaverse/everglade.md:20-23`). The steps below bring the
 map's form and places to it in the medieval kits. They keep the palisade
 and the quest places unless the owner decides to open the city. Each step
 ends with `coax/bin/coax test --library everglade/legacy/v1/plan.coax` and
-`python3 everglade/legacy/v1/map.py docs/verse/everglade-map.svg`.
+`python3 everglade/legacy/v1/map.py docs/metaverse/everglade-map.svg`.
 
 1. **Grow the world (XL).** Raise the ground and the walk bound so a
    300 m town fits with woods round it: `EG_CELLS`, `EG_EDGE`, `EG_BOUND`,
@@ -426,7 +426,7 @@ ends with `coax/bin/coax test --library everglade/legacy/v1/plan.coax` and
    places, clearings and spots out with the edge. Touches `plan.coax`,
    `apps/openagents-web/everglade.coax` (forest planting and
    `plant_thicket`), `everglade/legacy/v1/river.coax`, `map.py`,
-   `docs/verse/everglade.md` (Scale, Walking times). Check the frame rate on
+   `docs/metaverse/everglade.md` (Scale, Walking times). Check the frame rate on
    a phone before going on.
 2. **Re-lay the roads (M).** Replace the four-street grid with the
    Commons Loop, an outer ring, six roundabout nodes and the six named
@@ -448,7 +448,7 @@ ends with `coax/bin/coax test --library everglade/legacy/v1/plan.coax` and
    on Brownstone Row, to Thinking Pond in the south-west. Touches
    `everglade_carve_river` and the river constants (`plan.coax:306-390`),
    `everglade/legacy/v1/river.coax` (a curved river body), `EG_BRIDGE`, and the
-   water docs (`docs/verse/water.md`).
+   water docs (`docs/metaverse/water.md`).
 5. **Place the district landmarks (L).** One building each, as walk-in
    boxes: Market Hall (Main Street), the Music Hall (Lantern Quarter, the
    round footprint needs a round-wall builder in `building()`,
@@ -490,4 +490,4 @@ ends with `coax/bin/coax test --library everglade/legacy/v1/plan.coax` and
   districts, or rename the districts to medieval trades?
 - The target size: the previous build's 272 m clearing, or a smaller
   town that keeps the hub "half a minute across"
-  (`docs/verse/everglade.md:50-53`)?
+  (`docs/metaverse/everglade.md:50-53`)?

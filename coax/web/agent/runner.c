@@ -872,7 +872,7 @@ static void respond(int fd, int status, const char *body) {
   if (write(fd, head, (size_t)n) < 0 || write(fd, body, strlen(body)) < 0) say("write failed");
 }
 #include "chat-runner.c"   // the general mode, for /chat
-#include "seat-runner.c"   // hosted seats in running realms (docs/verse/realm-seat.md)
+#include "seat-runner.c"   // hosted seats in running realms (docs/metaverse/realm-seat.md)
 
 static void serve(int fd) {
   char req[32768]; size_t n = 0;

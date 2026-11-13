@@ -25,4 +25,4 @@ A Metaverse realm at https://openagents.com/worlds/metahuman-lab, not listed on 
 - `apps/openagents-web/metahumanlab.coax` is the world: the camera, the clips and the body. `metaverse-engine/anim/skin.coax` plays the clips on the rig in `everglade/scene/people-rig.coax`, and `metaverse-engine/cam/shot.coax` makes the camera's orbit.
 - `metaverse-engine/anim/mannequin.coax` names the joints and maps another body's joint names onto them, so a body built on the same hierarchy can use this skeleton and its clips.
 - `metahumanlab-face.c` binds the world for the browser, and `metahumanlab.wgsl` (from `gpu/metahumanlab.coax`) traces the floor and the figure for each pixel and lights them.
-- `docs/verse/metahuman-support.md` is the plan this world starts.
+- `docs/metaverse/metahuman-support.md` is the plan this world starts.

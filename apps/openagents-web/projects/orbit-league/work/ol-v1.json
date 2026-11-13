@@ -9,7 +9,7 @@
       "orbit-league",
       "verse"
     ],
-    "spec": "docs/verse/game-ideas/orbit-league.md"
+    "spec": "docs/metaverse/game-ideas/orbit-league.md"
   },
   "milestones": [
     {
@@ -231,7 +231,7 @@
       "title": "The drum arena: a curved floor that becomes the walls and ceiling",
       "size": "L",
       "labels": [],
-      "body": "The inside of a drum as the drivable surface and collision mesh, drawn in the flat or ink style (docs/verse/art-styles.md), with goals at each end.",
+      "body": "The inside of a drum as the drivable surface and collision mesh, drawn in the flat or ink style (docs/metaverse/art-styles.md), with goals at each end.",
       "files": [
         "apps/openagents-web/realms/orbit-league/"
       ],

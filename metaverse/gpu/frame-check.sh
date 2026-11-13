@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The G2 exit check (docs/verse/native-gpu.md): a Star Catcher frame drawn on
+# The G2 exit check (docs/metaverse/native-gpu.md): a Star Catcher frame drawn on
 # the GPU (a full-screen pass for the sky and a stroke pass, both from
 # metaverse/kms/starcatch-light.coax through `coax spirv`) against the CPU frame
 # of metaverse/kms --headless, within 1/255 a channel, validation clean.

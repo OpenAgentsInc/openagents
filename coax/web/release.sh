@@ -50,7 +50,7 @@
 # as it is when it gets the lock, and does nothing if production already has it.
 #
 # main-green is the newest commit of main that passed the green-main
-# pipeline's full check (coax/remote/after.sh, docs/verse/green-main-pipeline.md),
+# pipeline's full check (coax/remote/after.sh, docs/metaverse/green-main-pipeline.md),
 # so a fresh failure on main never blocks a release. With no main-green on the
 # remote, the default is origin/main.
 set -euo pipefail

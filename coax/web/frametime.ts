@@ -1,5 +1,5 @@
 // GPU time per frame (a timestamp query on every render pass) and the frames' spacing, in headless
-// Chrome, for a page's water and the like (docs/verse/water.md, W11):
+// Chrome, for a page's water and the like (docs/metaverse/water.md, W11):
 //   bun coax/web/frametime.ts URL [WxH] [DPR] [SECONDS] [--phone] [--eval JS] [--before JS] [--skip PASSES] [--vsync]
 // Frames run unthrottled unless --vsync. --phone emulates a touch phone; --eval runs JS (an async
 // IIFE) before measuring; --before runs JS before the page's own scripts (e.g. a fetch stand-in); --skip drops the draws of the numbered passes (0 first) to cost them.

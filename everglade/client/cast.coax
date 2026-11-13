@@ -7,7 +7,7 @@
 // shared rules; this page predicts presentation. A bolt flies to its range and fizzles, a blow swings at the air,
 // an area opens ahead.
 //
-// A press asks first (metaverse-engine/action/deed.coax, docs/verse/action-pipeline.md, #13072): your bearing
+// A press asks first (metaverse-engine/action/deed.coax, docs/metaverse/action-pipeline.md, #13072): your bearing
 // (the SRD conditions on the room's row of you) must let you act, the slot must not be cooling down,
 // what the room's rules hold of it must not be spent (b, everglade/client/net.coax e2n_slot), and every
 // ability declares its feel (class-feel.coax). When this page's own answer is yes it plays at once

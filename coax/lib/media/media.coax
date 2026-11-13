@@ -156,7 +156,7 @@ media_shot :: (c: [] Cdp, url: string, out: string, wh: ArgsSize, o: MediaShotOp
 // muxes in, so the sound is in step with the frames. The callers are coax/web/clip.coax
 // (`coax/web/tool.sh clip`) and the CLI's `openagents labs clip`.
 // A page stages its own moments from its URL (?stage=NAME): see
-// docs/verse/clips.md.
+// docs/metaverse/clips.md.
 
 // Loads the page in clip mode, waits until it draws, runs the script and the
 // skip, and writes each frame as a PNG. "" when it worked, else what failed.

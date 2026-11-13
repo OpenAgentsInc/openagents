@@ -1,4 +1,4 @@
-// Navigation data by cell (GitHub #13281, AAA P2.8; book chapter 76; docs/verse/navigation.md):
+// Navigation data by cell (GitHub #13281, AAA P2.8; book chapter 76; docs/metaverse/navigation.md):
 // where a creature may stand, kept one page a world cell (metaverse-engine/world/cells.coax, CELL_SIZE metres
 // a side) and paged in and out with it. A page is NAV_CELL_SIDE by NAV_CELL_SIDE samples,
 // NAV_CELL_STEP metres apart, one bit each: open where a body of the realm's creature radius
@@ -6,7 +6,7 @@
 // Sample (i, j) of cell (cx, cz) is the point (cx * 64 + (i + 0.5) / 2, cz * 64 + (j + 0.5) / 2).
 // A point in no resident page is closed: nobody walks onto ground that isn't loaded.
 //
-// One level (the decision is recorded in docs/verse/navigation.md, "Grid or mesh"): the samples,
+// One level (the decision is recorded in docs/metaverse/navigation.md, "Grid or mesh"): the samples,
 // searched by grid.coax in a 20 m window (metaverse-engine/ai/steer.coax) and, for a way the window can't
 // see, over 64 m about the creature (metaverse-engine/ai/steer-cells.coax). A page is built a block at a time,
 // NAV_BLOCK by NAV_BLOCK samples (2 m).

@@ -1,5 +1,5 @@
 // Firm reason: 1 (browser glue: fetch, DecompressionStream and a Web Worker around a pack's bytes; Coax still admits them)
-// A realm's whole pack as bytes, without holding the page's thread (docs/verse/fast-loads.md, #13141).
+// A realm's whole pack as bytes, without holding the page's thread (docs/metaverse/fast-loads.md, #13141).
 // The page used to download a pack, join its chunks, unzip the copy and copy the answer, all on its
 // own thread and only after the GPU was up. Here the download is unzipped as it arrives, straight
 // into one buffer of the pack's stated size, in a worker (pack-worker.js) that hands the buffer

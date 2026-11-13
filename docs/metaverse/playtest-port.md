@@ -294,7 +294,7 @@ analytics until `pt-capture`.
    used Google, GitHub and email sign-in; openagents.com uses Nostr, never
    WorkOS). The analytics schema already has the column.
 
-The switch-over plan and its rehearsal: `docs/verse/playtest-cutover.md`.
+The switch-over plan and its rehearsal: `docs/metaverse/playtest-cutover.md`.
 
 ## 7. The playtest redesign (Kiki's notes, milestone `pt-redesign`)
 

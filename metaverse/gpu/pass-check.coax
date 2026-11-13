@@ -1,4 +1,4 @@
-// Passes of a shader ported to Coax against the browser (docs/verse/native-gpu.md,
+// Passes of a shader ported to Coax against the browser (docs/metaverse/native-gpu.md,
 // G5). DIR holds a spec (metaverse/gpu/vk-passes.c documents its directives) and
 // every file it names: the WGSL, the Coax passes' SPIR-V from `coax spirv`
 // with their bindings, buffers, the index buffer and the draw list. Headless

@@ -85,7 +85,7 @@ fills, about 1000 pixels tall, waits, and takes it as a JPEG.
 - `wait=MS` sets how long the page runs before it's taken. The default is 6000
   ms. Realms that load large worlds need 8000 to 9000 ms.
 - `?stage=NAME` asks a realm for a staged moment, such as `?stage=highlight`
-  (see `docs/verse/clips.md`). `&card=1` leaves the HUD out on the realms that
+  (see `docs/metaverse/clips.md`). `&card=1` leaves the HUD out on the realms that
   support it.
 - For a 3x2 grid of live realms, set `grid 3x2` and add six `scene` lines.
 

@@ -1,4 +1,4 @@
-// A seat in a running realm (docs/verse/realm-seat.md, #12655): who may open one and how long it
+// A seat in a running realm (docs/metaverse/realm-seat.md, #12655): who may open one and how long it
 // lives. seats.c gathers the facts (how many other seats are open on the site, whether the caller
 // is an account, whether the seat is hosted and has a runner, when it was last kept) and SQL does
 // what this file decides; the host decides nothing.

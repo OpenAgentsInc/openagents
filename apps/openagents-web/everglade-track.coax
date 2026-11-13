@@ -1,4 +1,4 @@
-// What a player does in Everglade, as analytics.coax events (docs/verse/analytics-events.md):
+// What a player does in Everglade, as analytics.coax events (docs/metaverse/analytics-events.md):
 // the face keeps one EgSeen and calls everglade_track once a frame after the city's frame,
 // and this compares the city with last frame. Places entered once a visit (visit), walking
 // milestones (walk), WANTED level changes (wanted), a talk begun (talk), a quest's step

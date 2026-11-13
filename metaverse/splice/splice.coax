@@ -1,5 +1,5 @@
 // Splice, openagents.com/worlds/splice (unlisted): robots and machines on Mars and stranger worlds,
-// drawn in the anime style (docs/verse/art-styles.md, Anime: cel bands, coloured ink, a vivid sky).
+// drawn in the anime style (docs/metaverse/art-styles.md, Anime: cel bands, coloured ink, a vivid sky).
 //
 // Everything that draws is the Metaverse Engine's: the cel mesh writers (metaverse-engine/render/cel-mesh.coax), the
 // machine and land kits (metaverse-engine/kit/machines.coax, metaverse-engine/kit/land.coax), Anime Lab's uniform

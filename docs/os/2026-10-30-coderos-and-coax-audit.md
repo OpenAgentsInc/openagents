@@ -254,7 +254,7 @@ compiler and the examples have not been run on Linux yet.
 
 - **Step 3, the engine as the session: done.** All 16 realms run natively
   on the 4080 over Vulkan, with shaders written in Coax, and travel works
-  between them (docs/verse/native-gpu.md; release 2a94f5fab2). The owner's
+  between them (docs/metaverse/native-gpu.md; release 2a94f5fab2). The owner's
   play-through is in NEEDS_OWNER.md, and the Chromium kiosk stays until it
   passes.
 - **Step 1: not started.** It waits on decision 1 below. `coderos-hosts`

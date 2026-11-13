@@ -1,5 +1,5 @@
 // WGSL compiled by headless Chrome's WebGPU (its own compiler, Tint), for the WGSL
-// coax wgsl writes (docs/verse/native-gpu.md, G6) and the modules around it: each
+// coax wgsl writes (docs/metaverse/native-gpu.md, G6) and the modules around it: each
 // FILE's errors and warnings, as Chrome reports them, or "ok". It exits 1 when any
 // file has an error. A file that is only functions (a generated block) compiles
 // as it is: WGSL lets a module have no entry points.

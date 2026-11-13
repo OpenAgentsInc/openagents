@@ -29,7 +29,7 @@ bins/coder-android/host/app/google-services.json
 /plugins/*/evals/results/
 
 # Licensed Verse content never enters the repository
-# (docs/verse/private-assets.md); builds belong under
+# (docs/metaverse/private-assets.md); builds belong under
 # ~/.openagents/verse/private-build/.
 /private-assets/
 *.private.vtp

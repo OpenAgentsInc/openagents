@@ -12,7 +12,7 @@ in the world at once, keep playing while code, shaders, content and assets
 reload live, and build a game programmatically.
 
 There is no separate "Forge" product (owner, 2026-11-12). The editor is part
-of the Metaverse Engine. The older Aethyrforge spec (`docs/verse/aethyrforge.md`)
+of the Metaverse Engine. The older Aethyrforge spec (`docs/metaverse/aethyrforge.md`)
 is superseded where it differs from this one.
 
 ## The editor in one paragraph
@@ -39,7 +39,7 @@ keeps its state.
 | Rebuild time | **Good.** A one-line edit is running in about 2.5 s (resident and incremental compiler, #13138, #13142); a dev engine build takes 118-135 ms; type errors show in 0.63 s | `coax/book/ch46-resident-compilation.md` |
 | State across a code reload | **Good on the dev server (#13411).** A development module carries its state's field table. A reload that changes the state's layout keeps every field both layouts name, starts new fields from their defaults and names the new and dropped fields in the dev note. Not built: declared migrations (a renamed field) and a rollback when the first frame traps | `coax/web/state-keep.js`, `host.js` `loadEngine`, `metaverse-engine/book/ch082-change-code-while-it-runs.md` |
 | One function swapped live | **Experiment.** `door_ease` only, 900 ms from edit to running | `coax/web/fast-edit.*` |
-| Agents drive and see | **Exists, no edits.** `coax drive`: `tree`, `state`, `tap`, `type`, `walk-to`, `use`, `clock`, `screenshot`, `logs`, `perf`. It serves `--static`, so it has no live channel, and it has no edit verbs | `coax/web/drive.coax`, `docs/verse/agent-clock.md` |
+| Agents drive and see | **Exists, no edits.** `coax drive`: `tree`, `state`, `tap`, `type`, `walk-to`, `use`, `clock`, `screenshot`, `logs`, `perf`. It serves `--static`, so it has no live channel, and it has no edit verbs | `coax/web/drive.coax`, `docs/metaverse/agent-clock.md` |
 | The scene model | **Partial.** Aethyr's World (entities, columns, systems, spatial index) is used only by Splice's edit layer. No save or load of a World, no prefabs | `metaverse-engine/core/world.coax` |
 | Typed edits, undo and redo | **Exists** | `metaverse-engine/editor/edit.coax` |
 | Content tables | **Exists, CLI only.** The editor isn't reachable from a page; the page doesn't load the tables yet (#13381) | `metaverse-engine/content/tables.coax`, `metaverse-engine/editor/content-edit.coax` |

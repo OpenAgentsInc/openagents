@@ -1,4 +1,4 @@
-// 5E Lab's film stages (fivelab.coax loads this file; docs/verse/clips.md, #13118): ?stage=NAME sets up a
+// 5E Lab's film stages (fivelab.coax loads this file; docs/metaverse/clips.md, #13118): ?stage=NAME sets up a
 // big battle for a clip, owns the camera and the light, and draws no panel, log, slider, label or
 // key line, only the painterly field. Each runs on whole game steps (FILM_HZ a second), so
 // coax/web/clip.coax records the same shot every run.

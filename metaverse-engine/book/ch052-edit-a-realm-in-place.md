@@ -515,7 +515,7 @@ shortened to PUT HERE.
 - Moving figures and animals.
 
 The older edit layer is documented in
-[docs/verse/realm-edit.md](../../docs/verse/realm-edit.md): who may edit
+[docs/metaverse/realm-edit.md](../../docs/metaverse/realm-edit.md): who may edit
 (`verse.edit_role`, `0050_realm_edit.sql`), its routes and how DELETE cleans
 up, with the shared layer in [metaverse/edit/edit.coax](../../metaverse/edit/edit.coax).
 

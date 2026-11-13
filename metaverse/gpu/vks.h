@@ -1,4 +1,4 @@
-// Scene pipelines (docs/verse/native-gpu.md, G4 and the scene host): a
+// Scene pipelines (docs/metaverse/native-gpu.md, G4 and the scene host): a
 // module from `coax spirv --vertex V --fragment F` drawn with its bindings
 // (storage buffers, textures, samplers at set 0, in the order the lowering
 // reports them) into color targets of any format and an optional depth

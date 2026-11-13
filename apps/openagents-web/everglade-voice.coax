@@ -22,7 +22,7 @@
 // voice= line says so; the server's /api/auth/me says A|1 for an admin.
 
 #load "../../everglade/world/edits.coax";
-#load "../../metaverse/edit/edit.coax";   // the board, SETTINGS and the cards every realm has (docs/verse/realm-edit.md)
+#load "../../metaverse/edit/edit.coax";   // the board, SETTINGS and the cards every realm has (docs/metaverse/realm-edit.md)
 #load "everglade-edit.coax";
 
 MSG_VOICE :: 50;          // voice.js: "phase|caption"

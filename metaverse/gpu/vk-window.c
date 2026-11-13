@@ -1,5 +1,5 @@
 // vk-window: a realm in a Vulkan window on Wayland, the desktop app's path
-// (docs/verse/native-gpu.md, G2). The realm steps on wall time; each frame
+// (docs/metaverse/native-gpu.md, G2). The realm steps on wall time; each frame
 // it draws the offscreen pipeline (vkc_target: `coax spirv --fill`, then
 // `--stroke` added one plus one, into RGBA f32) and blits it to the
 // swapchain image, presented in FIFO at the display's rate. Keys come from

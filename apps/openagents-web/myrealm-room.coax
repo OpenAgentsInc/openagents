@@ -1,4 +1,4 @@
-// A made realm's room (docs/verse/realm-seat.md slice 4, #12655): the page posts where you are
+// A made realm's room (docs/metaverse/realm-seat.md slice 4, #12655): the page posts where you are
 // about every second to /api/playtest/presence/made-<slug> (coax/web/api/room.c; migrations 0014,
 // 0069, 0108) and draws who else is here, each a figure with its name over it. An agent's seat
 // (`openagents realm play`, whose holder posts the seat's presence signed with its account's key)

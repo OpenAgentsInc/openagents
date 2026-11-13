@@ -1,4 +1,4 @@
-// YOUR AGENT (docs/verse/realm-seat.md "The agent pane"; docs/verse/aethyrforge.md, the YOUR AGENT tab):
+// YOUR AGENT (docs/metaverse/realm-seat.md "The agent pane"; docs/metaverse/aethyrforge.md, the YOUR AGENT tab):
 // the realm's owner starts a hosted seat in it from the page, sends it verbs and watches what it sees.
 // The server holds the seat: POST /api/playtest/seats {slug, hosted: true} opens it on the runner,
 // the same path `openagents realm play --hosted` takes (coax/web/api/seats.c); each verb is POST

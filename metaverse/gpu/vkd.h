@@ -1,4 +1,4 @@
-// The screen with no desktop (docs/verse/native-gpu.md, G2): DRM master on the card with a
+// The screen with no desktop (docs/metaverse/native-gpu.md, G2): DRM master on the card with a
 // connected connector, the connector handed to Vulkan (VK_EXT_acquire_drm_display), its
 // preferred mode and a plane that shows on it, as a VK_KHR_display surface. vk-display.c and
 // vk-realm.c present on it; the caller switched to a free VT first (display.sh does).

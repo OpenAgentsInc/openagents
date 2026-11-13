@@ -1,4 +1,4 @@
-// What the page's frame reads of the world's cells (GitHub #13280; docs/verse/one-world.md): each
+// What the page's frame reads of the world's cells (GitHub #13280; docs/metaverse/one-world.md): each
 // cell's level, each planting cell's owner and the readout, as plain numbers. The controller that
 // writes them is everglade/client/cells.coax. It is a unit of its own in the page's build, beside
 // the walker's step (everglade/client/everglade-step.coax): the engine's cell controller loads the

@@ -5,7 +5,7 @@
 // (metaverse-engine/editor/pack.coax: the full admission, the catalog, the writer) loads this file for the
 // layout, so the format is stated once.
 //
-// The format (metaverse/tools/pack_realm.py's; docs/verse/realm-host.md, "Asset packs"), little endian:
+// The format (metaverse/tools/pack_realm.py's; docs/metaverse/realm-host.md, "Asset packs"), little endian:
 //   header, 32 bytes: "VPK1" (or "VPK2"), entry count, file bytes, budget bytes, table offset, data offset, 0, 0
 //   entries, 48 bytes each: kind, licence, 0 (u16), offset, bytes, 0, a name in 32 zero-padded bytes
 //

@@ -1,4 +1,4 @@
-// Everglade's HUD faces (metaverse-engine/ui/hud-style.coax FANTASY, docs/verse/hud-styles.md): their advance
+// Everglade's HUD faces (metaverse-engine/ui/hud-style.coax FANTASY, docs/metaverse/hud-styles.md): their advance
 // widths for ASCII 32..126 in thousandths of an em, as the browser measures them at the weight the
 // host's atlas draws (coax/web/host.js loadPageFont, sansAtlas). Both are SIL Open Font License 1.1;
 // the font files and their licences are in realms/everglade2/assets/fonts/.

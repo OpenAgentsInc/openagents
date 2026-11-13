@@ -1,4 +1,4 @@
-// Build your own realm (realm-builder; docs/verse/realm-builder.md): the board from a prompt, the
+// Build your own realm (realm-builder; docs/metaverse/realm-builder.md): the board from a prompt, the
 // realm made from what was checked, its page written into the site's bucket (no deploy), the
 // owner's settings and the cards for what others propose. Every rule is SQL's
 // (migrations/0048_realm_builder.sql); this file reads who asks and does the model's and the
@@ -24,7 +24,7 @@
 //   POST /api/playtest/realms/<slug>/visibility {visibility}   -> 200 {slug, visibility, was, page}; 400, 403, 404 (0099:
 //        private|unlisted|public; its owner when access.gate admits them, or a site admin. A private realm is 404 on every
 //        route under its slug to all but its owner and site admins, and has no page in the site bucket.)
-// FORK (migrations/0075_realm_forks.sql, docs/verse/realm-fork.md): any built-in realm with rule sets, or a fork.
+// FORK (migrations/0075_realm_forks.sql, docs/metaverse/realm-fork.md): any built-in realm with rule sets, or a fork.
 //   GET  /api/playtest/realms/<slug>/fork              -> text/plain: base, title, fork, from, maker, name, owner, published, rule ID 0|1 LABEL
 //   POST /api/playtest/realms/<slug>/fork {rules, name?}   -> 200 {slug, path, name, base, from, rules, page}; 400, 401, 404, 429
 //   POST /api/playtest/realms/<fork>/publish {published?, description?}   -> 200 {published, description}; 403, 404
@@ -486,7 +486,7 @@ static void make(const request *q, PGconn *db, const char *key) {
   free(answer); free(slug);
 }
 
-// ---- FORK (migrations/0075_realm_forks.sql, docs/verse/realm-fork.md): GET what the pane shows;
+// ---- FORK (migrations/0075_realm_forks.sql, docs/metaverse/realm-fork.md): GET what the pane shows;
 // POST makes a made realm whose base is this one's, with the rules chosen, and writes its page as
 // MAKE IT does (?as=lines answers "slug S", "path P", "page 0|1").
 static void fork_realm(const request *q, PGconn *db, const char *slug, const char *key, const char *admin, bool post) {

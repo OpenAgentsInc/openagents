@@ -4,7 +4,7 @@
 // the W1 commit; later phases grew the same files), with its tests as the
 // checks below, so it is provably the same physics. The specification is
 // verse/everglade/previous/water.md ("Coupling with `crates/physics`" and
-// its W1 status); docs/verse/water.md says what is here and what is next.
+// its W1 status); docs/metaverse/water.md says what is here and what is next.
 //
 // - WaterBody: a pond, river, waterfall, ocean, pool, puddle or marsh, as
 //   an outline (a polygon, a river Course with widths, or everywhere), a

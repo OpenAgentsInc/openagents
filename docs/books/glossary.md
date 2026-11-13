@@ -86,7 +86,7 @@ that already touches the file (#13267 to #13269, #13280).
 | Deed | One action an actor asks to take: ask, act, present. | The Metaverse Engine 102 |
 | Bearing | How a body holds itself and what it may do, from its conditions. | The Metaverse Engine 102 |
 | SRD | The D&D 5E System Reference Document 5.2.1, licensed CC BY 4.0. | Everglade Part V |
-| Maker | The person a realm's tips go to. | [docs/verse/makers.md](../verse/makers.md) |
+| Maker | The person a realm's tips go to. | [docs/metaverse/makers.md](../metaverse/makers.md) |
 | Fork | Your own copy of a realm, with a record of where it came from. | The Metaverse Engine 55 |
 
 ## Models and agents

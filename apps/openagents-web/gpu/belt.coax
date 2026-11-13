@@ -1,4 +1,4 @@
-// belt's shaders, the source of apps/openagents-web/belt.wgsl (docs/verse/native-gpu.md, G6):
+// belt's shaders, the source of apps/openagents-web/belt.wgsl (docs/metaverse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (belt.module,
 // belt.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../metaverse-engine/render/noise.coax";

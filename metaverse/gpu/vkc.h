@@ -1,4 +1,4 @@
-// A headless Vulkan device for the GPU checks (docs/verse/native-gpu.md):
+// A headless Vulkan device for the GPU checks (docs/metaverse/native-gpu.md):
 // no surface, no display, no VT and no DRM master. Failures exit with a message.
 // With VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation (and the layer on the
 // layer path) validation messages are printed and counted; the layers are a

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5. The startup script of a remote build host (oa-build-N,
-# docs/verse/remote-builds.md): apt, useradd, the Nix and Bun installers,
+# docs/metaverse/remote-builds.md): apt, useradd, the Nix and Bun installers,
 # git and poweroff. It runs as root from the instance metadata at every boot.
 #
 # First boot: the user coax, Nix (the Wasm toolchain comes from nixpkgs,

@@ -41,11 +41,11 @@ uses the authored snapshot.
 
 ### Today
 
-The [Animation Lab plan](../../verse/2026-11-06-animation-lab.md) runs A0
+The [Animation Lab plan](../../metaverse/2026-11-06-animation-lab.md) runs A0
 to A8. A6 (finished styles) and A8 (the publishable scene) are pending.
 
 - **Documents.** `anim.rig/clip/performance/pose/scene/cut.v1`, with packs
-  named by hash (`docs/verse/anim-documents-v1.md`).
+  named by hash (`docs/metaverse/anim-documents-v1.md`).
 - **Rigs.** Up to 512 joints, 8 influences per vertex, 256 sparse morphs,
   the ARKit face map, and the FRG1 DNA face block (`metaverse-engine/anim/facerig.coax`).
 - **Layers.** base, override, additive, face and fix-up, with masks
@@ -134,8 +134,8 @@ model (ours is a superset), and glTF-clip-only animation.
 
 ### Today
 
-From `docs/verse/everglade.md`, `apps/openagents-web/gpu/everglade-v1/gpu.coax` and
-`gpu-fx.coax`, and the art audit in `docs/verse/art-styles.md`.
+From `docs/metaverse/everglade.md`, `apps/openagents-web/gpu/everglade-v1/gpu.coax` and
+`gpu-fx.coax`, and the art audit in `docs/metaverse/art-styles.md`.
 
 - **Look.** A painterly style: three toon bands, a cool shadow band,
   hemisphere ambient, a warm rim and a baked sky-visibility grid.
@@ -233,7 +233,7 @@ shafts are areas where Everglade is ahead of vork.
 
 ### Today
 
-From `docs/verse/character-creator.md`,
+From `docs/metaverse/character-creator.md`,
 `apps/openagents-web/gpu/charactercreator.coax`, `gpu/character-glade*.coax`
 and `metaverse-engine/character/character-appearance.coax`.
 

@@ -20,7 +20,7 @@ test("a shared file (host.js, the compiler) may change every page", () => {
 test("data, docs and the release tools change no page", () => {
   expect(affected(["apps/openagents-web/projects/openagents-desktop/work/v1.json", "apps/openagents-web/projects/coax/index.md",
     "coax/web/project/QUEUE.md", "coax/web/release.sh", "coax/web/project/snapshot.ts", "coax/README.md", "coax/tests/x.coax",
-    "docs/verse/art-styles.md", "apps/openagents-web/realms/everglade/index.md"], p)).toEqual([])
+    "docs/metaverse/art-styles.md", "apps/openagents-web/realms/everglade/index.md"], p)).toEqual([])
 })
 
 test("a page's own inputs change it and not the others", () => {

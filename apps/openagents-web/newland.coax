@@ -17,7 +17,7 @@
 #load "newland-network.coax";
 #load "newland-xp.coax";
 #load "../../coax/web/analytics.coax";
-#load "../../metaverse/edit/edit.coax";   // the Grid's EDIT and its feature list (docs/verse/realm-edit.md)
+#load "../../metaverse/edit/edit.coax";   // the Grid's EDIT and its feature list (docs/metaverse/realm-edit.md)
 #load "newland-walkers.coax";
 #load "newland-portal.coax";   // Everglade's portal and "Create your character": the way into Character Create
 #load "newland-walk.coax";   // the Grid, /worlds/the-grid: this scene, walked (data-page 1)

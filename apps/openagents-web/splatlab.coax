@@ -1,6 +1,6 @@
 // Splat Lab, openagents.com/worlds/splat-lab (unlisted): a bench for 3D Gaussian splats in the
 // Verse's own WebGPU renderer, and what they could do for Everglade and the raid that burns it
-// (docs/verse/2026-11-03-splat-lab.md has the findings).
+// (docs/metaverse/2026-11-03-splat-lab.md has the findings).
 //
 // Five scenes, each a key or a button:
 //   1 FIRE    a pyre: flames, smoke and embers made of thirty thousand animated Gaussians.

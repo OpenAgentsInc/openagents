@@ -1,5 +1,5 @@
 // Everglade's time of day and weather on the room server (GitHub #12709; spec
-// docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.10 and 6.7). The server owns the
+// docs/metaverse/2026-11-03-everglade-multiplayer-spec.md sections 3.10 and 6.7). The server owns the
 // room's sky: its day is WIRE_DAY_MS long and turns on the server's wall clock, and its weather is
 // metaverse-engine/world/water-weather.coax's temperate schedule on WIRE_WEATHER_SEED at the server's world tick. A
 // seat hears both in W when it sits (room-everglade.coax eg_join), and every seat hears W again when

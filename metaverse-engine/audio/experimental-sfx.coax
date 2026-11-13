@@ -16,7 +16,7 @@ XSFX_GREMLIN_HURT :: 14; XSFX_GREMLIN_DEATH :: 15;
 // the monsters' ranged attacks (everglade/zone-combat.coax xc_shots_step): the release, the flight
 // past you and the impact, for an arrow and for a thrown rock
 XSFX_BOW :: 16; XSFX_ARROW_WHIZ :: 17; XSFX_ARROW_HIT :: 18; XSFX_HURL :: 19; XSFX_ROCK_HIT :: 20;
-// the bow's own (docs/verse/bow-combat.md): the draw's creak, an arrow into a creature, and one into grass
+// the bow's own (docs/metaverse/bow-combat.md): the draw's creak, an arrow into a creature, and one into grass
 XSFX_BOW_DRAW :: 21; XSFX_ARROW_FLESH :: 22; XSFX_ARROW_GRASS :: 23;
 // the build site's (build-sfx.coax): XSFX_BUILD + BSFX_*, a part landing in each material
 XSFX_BUILD :: 24;

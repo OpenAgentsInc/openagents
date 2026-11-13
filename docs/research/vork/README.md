@@ -24,7 +24,7 @@ Owner decision, 2026-11-07: film mode is approved (see the film note's
 
 - **Build a desktop film renderer, but as a profile of the Metaverse Engine, not a second
   engine.** All 16 realms already run natively on Vulkan (G0–G6,
-  `docs/verse/native-gpu.md`), the Mac Metal host runs Everglade at 120 Hz,
+  `docs/metaverse/native-gpu.md`), the Mac Metal host runs Everglade at 120 Hz,
   and `metaverse/gpu/vk-realm.c --headless` already writes float frames. Every
   movie today is a screenshot of the real-time WebGPU frame in headless
   Chrome (`coax/web/clip.coax`, `metaverse-engine/tools/anim-scene-play.coax`). The
@@ -44,7 +44,7 @@ Owner decision, 2026-11-07: film mode is approved (see the film note's
   fits the existing rules.
 - **Do not adopt vork itself.** Its licence forbids redistributing modified
   copies and hosted use. Slang is an outside shader toolchain, which
-  `docs/verse/native-gpu.md` rules out. Its preparation pipelines are
+  `docs/metaverse/native-gpu.md` rules out. Its preparation pipelines are
   Python. Read it for design, don't copy its code.
 
 ## Licence notes

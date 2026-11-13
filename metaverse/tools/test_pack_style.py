@@ -1,4 +1,4 @@
-"""The painterly texture rules of pack_realm.py (docs/verse/art-styles.md, 10).
+"""The painterly texture rules of pack_realm.py (docs/metaverse/art-styles.md, 10).
 Tooling only, never shipped.
 
     python3 metaverse/tools/test_pack_style.py

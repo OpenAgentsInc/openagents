@@ -291,8 +291,8 @@ remove is a row in `access.admin_audit`.
 ## The realm domain (the Metaverse Engine)
 
 Every verb maps to one route under `/api/playtest/realms`. What each route
-does is in [realm-builder.md](../verse/realm-builder.md) and
-[realm-edit.md](../verse/realm-edit.md); the concepts are in the Metaverse Engine book,
+does is in [realm-builder.md](../metaverse/realm-builder.md) and
+[realm-edit.md](../metaverse/realm-edit.md); the concepts are in the Metaverse Engine book,
 chapters 51 to 55 and 82.
 
 ### Make a realm
@@ -332,7 +332,7 @@ nothing is written or cached.
 
 A seat puts an agent in a running realm as a visitor: it walks with the
 realm's own controls, talks to its characters, and reads what's near from the
-page's probe, not from pixels ([realm-seat.md](../verse/realm-seat.md)). The
+page's probe, not from pixels ([realm-seat.md](../metaverse/realm-seat.md)). The
 verbs are rows of the command table, so each is also an MCP tool
 (`realm_play`, `realm_look`, ...) and a line of `openagents skill realm`.
 
@@ -565,7 +565,7 @@ Each one ships when its server surface exists:
 | Domain | What | Waits on |
 | --- | --- | --- |
 | `wallet` | balance, receive, send, Lightning address (Spark) | [the Spark wallet](../lightning/README.md) |
-| `maker` | claim a realm, set a Lightning address, list upgrades, see tips | [makers](../verse/makers.md) routes taking NIP-98 |
+| `maker` | claim a realm, set a Lightning address, list upgrades, see tips | [makers](../metaverse/makers.md) routes taking NIP-98 |
 | `project` | the `/projects` queue as signed Nostr events: list, claim, plan, done | the port of `coax/web/project/*.ts` |
 | `nostr` | sign, publish, query relays | `coax/lib/nostr` client, relay pool |
 | `pylon` | link a Pylon to the account, see its jobs and XP | [connect a Pylon](../connect-a-pylon.md) |

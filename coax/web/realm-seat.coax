@@ -1,4 +1,4 @@
-// A seat in a running realm, for an agent (docs/verse/realm-seat.md, #12637, slice 2): opens a made
+// A seat in a running realm, for an agent (docs/metaverse/realm-seat.md, #12637, slice 2): opens a made
 // realm in headless Chrome, runs typed actions from a file, one JSON object a line, and prints one
 // observation a line after each. The seat itself is coax/lib/media/realm_seat.coax, which lists the
 // actions; `openagents realm play` keeps one open between commands.

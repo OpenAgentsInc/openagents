@@ -1,4 +1,4 @@
-// Listed upgrades (ev-asset-upgrades, docs/verse/makers.md "Fairy upgrades"): someone makes a
+// Listed upgrades (ev-asset-upgrades, docs/metaverse/makers.md "Fairy upgrades"): someone makes a
 // better fairy and lists it; an admin approves it; UPGRADE, beside your fairy, opens the top three
 // (GET /api/playtest/upgrades/fairy, coax/web/api/makers.c). TRY puts one on you while the pane is
 // open; BUY pays its price in sats from your wallet straight to its maker (the maker's own invoice, as

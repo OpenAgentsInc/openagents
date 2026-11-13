@@ -68,7 +68,7 @@ Not goals, for now:
 - Running arbitrary commands against the repository. Checks are a named,
   allowlisted set, run on our build hosts (see [Checks](#checks)).
 - Pushing to `main` directly. A change is submitted to the land queue
-  (`docs/verse/green-main-pipeline.md`), which checks it on the head it
+  (`docs/metaverse/green-main-pipeline.md`), which checks it on the head it
   lands on. A person approves a queued change from an agent before it
   lands.
 - Replacing a local checkout for Coder on your own machine.

@@ -1,7 +1,7 @@
 // The shader subset for `coax spirv --vertex V --fragment F`: a checked
 // tree (the ordinary rules, not the Metal profile) lowered to a SPIR-V 1.3
 // module with a Vertex entry point `vs` and a Fragment entry point `fs`
-// (docs/verse/native-gpu.md, G4). Native code observes the checked tree
+// (docs/metaverse/native-gpu.md, G4). Native code observes the checked tree
 // and hands it here as words (tree code v2/v3); this file decides every
 // instruction, refuses what it cannot lower, and native code writes the
 // words it returns.

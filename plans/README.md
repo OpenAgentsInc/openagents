@@ -98,7 +98,7 @@ Options for the owner, not problems.
    (`docs/transcripts/293-show-notes.md`). A design plan would define part
    order and how each form grows.
 2. **Named `?stage=` setups for Everglade II and Experimental.**
-   `docs/verse/clips.md` says every realm should grow a `highlight` stage
+   `docs/metaverse/clips.md` says every realm should grow a `highlight` stage
    and a few named ones. They make repeatable video shots cheap.
 3. **Close the payment step.** Psionic chapter 238 stops at a payment
    intent and Nostr chapter 82 lists paid receipts as not built

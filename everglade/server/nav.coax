@@ -1,5 +1,5 @@
-// An Everglade room's cells and its creatures' navigation (GitHub #13280, #13281; docs/verse/one-world.md,
-// docs/verse/navigation.md). The room is the authority: it keeps each cell's level in the engine's
+// An Everglade room's cells and its creatures' navigation (GitHub #13280, #13281; docs/metaverse/one-world.md,
+// docs/metaverse/navigation.md). The room is the authority: it keeps each cell's level in the engine's
 // cell controller (metaverse-engine/world/cells.coax, the zone's manifest from everglade/world/zone.coax),
 // stepped each tick on every placed seat. A creature steps only while its cell simulates, and moves
 // only by the cells' navigation pages (metaverse-engine/world/nav/cells.coax through metaverse-engine/ai/steer-cells.coax):

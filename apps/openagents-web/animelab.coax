@@ -1,11 +1,11 @@
 // Anime Lab, openagents.com/worlds/anime-lab (unlisted): direct an anime with
-// your voice (docs/verse/anime-lab.md). ?stage=direct plays the demo: a
+// your voice (docs/metaverse/anime-lab.md). ?stage=direct plays the demo: a
 // simulated directing session, each spoken line heard (partial words, then
 // final), turned by the director into typed directions over the catalogue
 // (metaverse/anime/director.coax: the decision model's answers are recorded in
 // the session as the typed selector returns them, with their confidences),
 // and the scene playing them (metaverse/anime/stage.coax) in the anime style's
-// action variant (docs/verse/art-styles.md, Anime): the courtyard of
+// action variant (docs/metaverse/art-styles.md, Anime): the courtyard of
 // Skyreach Academy at dusk, our own cliff-top school of magic. One line asks
 // for something that isn't in stock, an ink dragon, and it draws in: ink
 // strokes sketch it, flat colour floods in, then shading, labelled DRAWING

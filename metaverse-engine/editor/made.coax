@@ -157,7 +157,7 @@ forge_fork_body :: (with_rules: bool, rules: [] string, name: string, buf: [] u8
   return ifx o[0].bad then -1 else o[0].n;
 }
 
-// ---- a built-in realm's fork pane (docs/verse/realm-fork.md): fork info and a fork's publish
+// ---- a built-in realm's fork pane (docs/metaverse/realm-fork.md): fork info and a fork's publish
 FORGE_FORK_TEXT :: 200;    // a title, a maker or a name, at most
 FORGE_FORK_LABEL :: 96;    // a rule's label, at most
 // GET .../<slug>/fork, text a line each (SQL's verse.fork_info):

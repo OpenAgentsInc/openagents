@@ -1,4 +1,4 @@
-// The bow in an Everglade zone (docs/verse/bow-combat.md), game-wide: Everglade Experimental and the
+// The bow in an Everglade zone (docs/metaverse/bow-combat.md), game-wide: Everglade Experimental and the
 // Archery Range shoot through this one file. The archer is the engine's (metaverse-engine/action/archery.coax:
 // the draw's frame, the sight line, each arrow's flight, the reticle) and the Longbow is the game's
 // (longbow.coax: the hand, the mouse buttons, the sounds, the dust). Here is what only a zone knows:
@@ -6,7 +6,7 @@
 // attack an arrow that reaches one makes (xc_bow_strike), with the draw and the loose wired to them.
 // A fragment of zone.coax's module (it loads this). Its checks are the combat's:
 //   COAX_NATIVE_CHECKS=1 coax/bin/coax test --library everglade/zone.coax --only "experimental combat"
-// ---- the bow (docs/verse/bow-combat.md): hold to draw, let go to loose. A Ranger holds a Longbow
+// ---- the bow (docs/metaverse/bow-combat.md): hold to draw, let go to loose. A Ranger holds a Longbow
 // (class-kit.coax xc_kit). Hold the right mouse button (or the bow's slot, on a phone: drag to aim)
 // and the aim comes in: a crosshair, the camera over your shoulder, you turn to face where it looks
 // and walk (metaverse-engine/action/bow.coax bow_aim, read by charactercreator.coax camera and fivelab.coax

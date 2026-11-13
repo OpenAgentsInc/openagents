@@ -1,4 +1,4 @@
-// The realm editor's YOUR COMPUTER pane (openagents#12642; docs/verse/realm-edit.md "Your computer"):
+// The realm editor's YOUR COMPUTER pane (openagents#12642; docs/metaverse/realm-edit.md "Your computer"):
 // the person's own Coder, on their own computer, builds the realm. This is the pane's state and
 // nothing else: no key, no crypto, no socket. The realm's face owns the wire (metaverse/edit/computer-wire
 // and apps/openagents-web/computer-face.h): it asks rc_next_op what to send, sends it to the computer

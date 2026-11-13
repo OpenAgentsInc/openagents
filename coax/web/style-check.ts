@@ -1,4 +1,4 @@
-// The style check (docs/verse/art-styles.md, 15. Judging "looks painterly"): every realm of a style
+// The style check (docs/metaverse/art-styles.md, 15. Judging "looks painterly"): every realm of a style
 // shot headless at its named views (realms.json `style_views`, hashes such as "road") at noon, dusk
 // and night, at 1440x900 and 390x844, measured (style-measures.ts), and laid out beside the style
 // fixture in coax/web/style/style-<slug>.png for the owner's and Kiki's judgment.

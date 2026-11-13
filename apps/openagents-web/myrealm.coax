@@ -1,4 +1,4 @@
-// A realm someone built (docs/verse/realm-builder.md): /worlds/<slug>, made at /worlds/new from one
+// A realm someone built (docs/metaverse/realm-builder.md): /worlds/<slug>, made at /worlds/new from one
 // prompt and the features its maker checked. The page's data-text is the realm's slug (the page the
 // API writes, migrations/0048_realm_builder.sql builder_page); /worlds/built is this module's own
 // page, which opens the realm after its # (/worlds/built#moonlit-marsh) or, with none, a small
@@ -46,7 +46,7 @@
 #load "../../metaverse-engine/editor/change.coax";   // a placed thing's body (edits.proto)
 #load "../../metaverse-engine/editor/doc.coax";   // the realm document and its edits (metaverse-engine/editor/edit.coax): a move, undo, the bodies and replies (realm.proto)
 #load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
-#load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
+#load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/metaverse/art-styles.md)
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
 #load "myrealm-a11y.coax";   // the page's controls as real ones (host.js mirrors them): keyboard and screen reader
@@ -2168,7 +2168,7 @@ realm_probe :: (s: [] MyRealm, f: int) -> int #export_c #effects(all) {
   if f == 14 { return ifx busy(s) then 1 else 0; }
   if f == 15 { return s[0].forge_status; }
   if f == 16 { return s[0].forge_what; }
-  // the scene, for an agent's seat (docs/verse/realm-seat.md): facing in hundredths of a degree,
+  // the scene, for an agent's seat (docs/metaverse/realm-seat.md): facing in hundredths of a degree,
   // the camera, how many entities and characters there are, the talk and the tools on
   if f == 17 { return cast(int) (s[0].yaw * 18000.0f32 / pc.PI + (ifx s[0].yaw < 0 then -0.5f32 else 0.5f32)); }
   if f == 18 { return s[0].camera; }

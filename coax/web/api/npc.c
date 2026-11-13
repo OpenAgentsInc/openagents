@@ -400,7 +400,7 @@ bool voice_edit_route(const request *q) {
   const char *o = getenv("OA_API_ORIGIN");
   if (api_header(q, "Origin", from, sizeof from) && strcmp(from, o && *o ? o : "https://openagents.com")) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
   int denied = admin_who(q, db, who);
-  // Else the realm's owner or one of its admins (verse.realm_rights, docs/verse/realm-edit.md), by
+  // Else the realm's owner or one of its admins (verse.realm_rights, docs/metaverse/realm-edit.md), by
   // the X-Verse-Player key; their edits are paced and counted under the key's hash, never the key.
   char key[160];
   if (denied && api_header(q, "X-Verse-Player", key, sizeof key) && key[0]) {

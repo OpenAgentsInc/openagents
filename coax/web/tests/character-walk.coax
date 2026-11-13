@@ -1,5 +1,5 @@
 // Character Create -> USE IN EVERGLADE -> the walk -> Everglade, in headless Chrome
-// (docs/verse/character-creator.md, "The road to Everglade").
+// (docs/metaverse/character-creator.md, "The road to Everglade").
 //   coax/web/tool.sh coax/web/tests/character-walk.coax URL
 //     Real time: the saved character walks for 30 s while Everglade opens out of sight, the page
 //     hands over in place, Everglade admits a seat with the same appearance and no character

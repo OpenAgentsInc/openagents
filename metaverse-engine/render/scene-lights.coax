@@ -1,5 +1,5 @@
 // SceneLights: the block a world fills each frame for the character pass (coax/web/host.js, the
-// "character pass" section; docs/verse/2026-11-06-native-hero-characters.md, Design 3 and 4). The
+// "character pass" section; docs/metaverse/2026-11-06-native-hero-characters.md, Design 3 and 4). The
 // character shader (metaverse-engine/render/character.coax) reads it as its uniform block, so a detailed
 // character is lit by the world's own key light, sky, lamps, haze and weather, drawn through the
 // world's own camera into the world's depth buffer, and cast into and read from the world's shadow

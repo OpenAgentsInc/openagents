@@ -16,7 +16,7 @@ things until they change, helping people, building a home and a community,
 making your own character, and making things to share with friends. This
 page puts as much of that as fits sensibly into one realm.
 
-Style: **flat** since October 30 ([art-styles.md](../../docs/verse/art-styles.md),
+Style: **flat** since October 30 ([art-styles.md](../../docs/metaverse/art-styles.md),
 "Flat"), faceted low poly in the `FLAT_FAIRY` palette since October 31 (muted
 pastels, a plain sky, crisp white edges, feathered wings; "Flat: facets").
 
@@ -291,7 +291,7 @@ OpenAgents Metaverse, and Fairy Forest is where they are tried first.
   ACCEPT and DECLINE. Nothing changes the world until the owner accepts.
 
 Built (ff-panes): in Fairy Forest's EDIT, the board is the shared edit
-layer's (metaverse/edit/edit.coax, docs/verse/realm-edit.md), as are the
+layer's (metaverse/edit/edit.coax, docs/metaverse/realm-edit.md), as are the
 settings and the cards. Coming to a creature with EDIT open brings up its
 LORE; QUEST turns it into the form (ask, three steps, reward) and SAVE QUEST
 makes the quest. The creature knows its lore when you talk to it, and gives

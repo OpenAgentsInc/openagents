@@ -122,7 +122,7 @@ coax/bin/coax test --library metaverse/water-look.coax --steps 500000000
 
 The old W3 put ponds, a weir and rowboats in an older Everglade. Today's
 Everglade has one 4 m river along x = 88, crossed by the river trail's
-bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
+bridge, so W3 is that river (docs/metaverse/everglade.md, "The river"):
 
 - `everglade/legacy/v1/plan.coax` carves its bed: a level that falls south and
   stays 0.2 m under the lowest ground beside it, a V 2.2 m deep at the

@@ -1,5 +1,5 @@
 // The Speedrun HUD's console (speedrunhud.coax loads this): every stage reads
-// as an Expanse-style console (docs/verse/2026-11-01-hud-library.md), one
+// as an Expanse-style console (docs/metaverse/2026-11-01-hud-library.md), one
 // primary view in the middle and instruments round it:
 //   - the top band: the brand and the stage's number, a heading tape off the
 //     camera's own heading under a curved arc, the stage clock, a status chip

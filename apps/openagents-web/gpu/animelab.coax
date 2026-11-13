@@ -1,8 +1,8 @@
-// Anime Lab's shaders (animelab.coax, docs/verse/anime-lab.md): build.sh writes
+// Anime Lab's shaders (animelab.coax, docs/metaverse/anime-lab.md): build.sh writes
 // apps/openagents-web/animelab.wgsl from this with coax/web/wgsl-module.coax
 // (animelab.module and animelab.bindings beside it). No WGSL is written by hand.
 //
-// The look is the anime style's (docs/verse/art-styles.md, Anime), every
+// The look is the anime style's (docs/metaverse/art-styles.md, Anime), every
 // number from its preset block (metaverse/style-preset.coax verse_style_at, the
 // action variant), every shading step one of metaverse/style.coax's
 // verse_style_anime_* functions:

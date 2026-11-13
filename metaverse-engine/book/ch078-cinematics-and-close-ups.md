@@ -273,7 +273,7 @@ Connect a validated saved realm replay to the browser recorder, including its
 initial state, seed, accepted external events and camera direction. Then
 render it twice and compare every decoded frame, with a sidecar bound to that
 record's identity. General timeline controls, orbit and dolly paths, slow
-motion and reframing remain in [the clip plan](../../docs/verse/clips.md).
+motion and reframing remain in [the clip plan](../../docs/metaverse/clips.md).
 The chapter remains partly implemented until that replay-to-pixel path is
 qualified. The native camera take and staged page captures keep their
 separate evidence.

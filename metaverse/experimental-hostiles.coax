@@ -7,7 +7,7 @@
 #load "../metaverse-engine/world/building.coax" as building;
 #load "rules/srd5-combat.coax";
 #load "hostile-contact.coax";
-#load "../metaverse-engine/ai/steer.coax";   // the engine's NPC navigation and steering (#13074, docs/verse/navigation.md)
+#load "../metaverse-engine/ai/steer.coax";   // the engine's NPC navigation and steering (#13074, docs/metaverse/navigation.md)
 #load "../metaverse-engine/action/floats.coax" as hfl;   // the numbers over you as a blow lands (everglade/hud/numbers.coax draws them)
 
 // dead: felled (everglade/zone-combat.coax, #13025), at `died` on the creator's clock; held: restrained, it strikes but can't move;

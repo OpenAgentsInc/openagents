@@ -1,4 +1,4 @@
-// Refuses a staged release that carries a private pack (docs/verse/metahuman-support.md).
+// Refuses a staged release that carries a private pack (docs/metaverse/metahuman-support.md).
 // deploy.sh runs it on the staged site before anything is uploaded:
 //   coax/web/tool.sh private-guard STAGE_DIR
 // A MetaHuman pack reaches visitors only through the broker (coax/web/api/verse_packs.c), a session

@@ -1,4 +1,4 @@
-// WGSL from the shader subset's checked tree (docs/verse/native-gpu.md, G6), for
+// WGSL from the shader subset's checked tree (docs/metaverse/native-gpu.md, G6), for
 // `coax wgsl FILE --functions A,B`: the same tree code v2/v3 that lib/compiler/shader.coax
 // lowers to SPIR-V, written as WGSL functions the web's hand-written modules call
 // (what coax/web/wgsl.py made from `coax metal`'s C). Native code observes the

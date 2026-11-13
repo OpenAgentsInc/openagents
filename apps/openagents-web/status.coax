@@ -1,5 +1,5 @@
 // /status: how a change reaches production, drawn on the homepage's Grid
-// (docs/verse/status-page.md). The Grid, text, frames and buttons are
+// (docs/metaverse/status-page.md). The Grid, text, frames and buttons are
 // newland.coax's. Two texts feed it, both through the host's existing
 // messages: the snapshot the build wrote into the page (message 2,
 // coax/web/status-data.coax), main's newest commits from GitHub's public

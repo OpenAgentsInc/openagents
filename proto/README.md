@@ -7,7 +7,7 @@ engine, and **the Metaverse** is the world it runs: the set of realms on the ope
 web ([glossary](../docs/books/glossary.md)).
 
 - [Protocol specification and implementation plan](../docs/protocol/openagents-protocol-spec.md)
-- [Metaverse protocol chapter](../docs/verse/openagents-verse-protocol.md)
+- [Metaverse protocol chapter](../docs/metaverse/openagents-verse-protocol.md)
 - [Coax language and compiler](../coax/README.md)
 - [Engine names and ID migration](migrations/README.md)
 - [Registry of wire shapes](registry.json), checked by `coax/web/tool.sh wire-check`

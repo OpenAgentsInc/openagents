@@ -12,7 +12,7 @@ adapted portions. The original project is not a runtime dependency.
 
 This record inventories all ten vanilla/core package families and all
 23 package entry indexes. Every family is classified in the
-[porting report](../../../docs/verse/2026-11-01-arwes-coax.md).
+[porting report](../../../docs/metaverse/2026-11-01-arwes-coax.md).
 The tables below pin all 72 non-test, non-index TypeScript source
 files under those ten core `src/` trees, plus the 23 package entry indexes,
 license, README and standalone package metadata (98 files total).

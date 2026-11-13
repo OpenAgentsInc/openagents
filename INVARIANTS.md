@@ -886,7 +886,7 @@ probabilities do not assert empirical calibration. The route returns timing
 intent but does not mutate a stage or schedule a take. Checks:
 `coax/web/api/tests/anime_direct.coax` against the native API and PostgreSQL,
 the two authorities' mutation gates, and the finite render-profile checks.
-Contract: `docs/verse/2026-11-02-anime-director-api.md`.
+Contract: `docs/metaverse/2026-11-02-anime-director-api.md`.
 
 Recorded `anime.v1` takes enter through `metaverse/anime/take.coax`
 (`#authority`): bounded JSON, catalogue fields, exact thousandth confidence,
@@ -908,7 +908,7 @@ declared frame budget is unchanged; transport buffers carry the full document
 and cache keys include the full URL.
 Checks: `metaverse/anime/take-checks.coax`, the two authorities' mutation gates,
 `apps/openagents-web/animelab-take-checks.coax`, and the headless
-`coax/web/anime-take-probe.coax`. Format: `docs/verse/anime-takes-v1.md`.
+`coax/web/anime-take-probe.coax`. Format: `docs/metaverse/anime-takes-v1.md`.
 
 The Anime CLI holds a complete director reply before appending a written line.
 It reuses the API's probability holder and the take's catalogue gate; one bad
@@ -1394,7 +1394,7 @@ chain. Its receipt follows a synchronous WAL commit with fsync enabled; only
 `applied` or `duplicate` acknowledge the capture. Legacy vitals receipts do not
 acknowledge checkpoint fields. No room producer or ticket restore uses this
 receiver yet; it supplies no new live crash-loss guarantee. The remaining
-integration gates are in `docs/verse/character-checkpoints-v1.md`.
+integration gates are in `docs/metaverse/character-checkpoints-v1.md`.
 
 Character resume profile 2 (#12838, `docs/protocol/character-checkpoint-v2.md`)
 is additive: checkpoint v1 and legacy gameplay tickets keep their identity.
@@ -5721,7 +5721,7 @@ Allowed HTML, none of it visible to a WebGPU visitor:
 
 One exception, an owner decision (2026-11-08: "standard mmorpg landing page
 then right into the game world"): a realm's own domain
-(docs/verse/everglade-domain.md) has a front door and a 404 page in plain HTML
+(docs/metaverse/everglade-domain.md) has a front door and a 404 page in plain HTML
 and CSS, `realms/<slug>/domain/index.html` and `404.html`, written by
 `realms.ts` from the realm's `domain` block. They hold the domain's wordmark,
 tagline, PLAY NOW, features, screenshots and a footer, and draw no part of a
@@ -5969,7 +5969,7 @@ in a separately linked Coax policy library. It is off by default; opt-in shadow
 mode records enums and changes no patrol, combat, dialogue or replicated state.
 Golden/clip/background and revoked local contexts cannot initiate/apply a guard
 proposal. Guests, quota failures and missing Pylons preserve ordinary play.
-See `docs/verse/pylon-guard-decisions.md` for limits and remaining rollout gates.
+See `docs/metaverse/pylon-guard-decisions.md` for limits and remaining rollout gates.
 
 Shadow measurements keep a fixed six-entry, local-only ledger with one callback
 sample and one terminal outcome per known sequence. Duplicate/unknown inputs
@@ -6362,7 +6362,7 @@ not reproduce Havok margins, filters, continuous sweeps or the original slope
 rules. One cylinder remains omitted. The source 256 MiB Wasm memory declaration,
 256 MiB GPU storage ceiling and dynamic four-GiB resident budget cover retained
 encoded source, source geometry and every mipmapped texture layer. See
-`docs/verse/2026-11-06-ocarina-lab.md` for reconstruction and verification evidence.
+`docs/metaverse/2026-11-06-ocarina-lab.md` for reconstruction and verification evidence.
 
 During play the controller owns planar translation. The sampled carrier's X/Z
 transport is removed after pose blending, including inspector-to-play blends;
@@ -6463,7 +6463,7 @@ Undo validates its parent and restores that exact bundle. Browser history is
 bounded to 16 session edits of one JSON component, 32 KiB on each side.
 Explicit voice activation, final-transcript deduplication, cancellation and
 HTTP response ownership prevent repeated or late replies from creating edits.
-See `docs/verse/anim-directing-v1.md` and its A7 verification record.
+See `docs/metaverse/anim-directing-v1.md` and its A7 verification record.
 
 ## Character Studio renderer identity
 
@@ -6473,7 +6473,7 @@ legacy consumer. Its Quaternius wardrobe uses
 the existing people palette and draw format; this adds no shared/native renderer
 qualification. Unknown slug/producer pairs continue to refuse. The appearance
 save contains only versioned choices, never pack addresses or renderer state.
-See `docs/verse/character-creator.md`. A validated shared Character Create profile
+See `docs/metaverse/character-creator.md`. A validated shared Character Create profile
 completes the appearance choice: Everglade must not automatically open its old
 Ranger picker or hold the room socket for another Enter press. Profile/ticket
 load order and the local arrival route obey this; invalid records do not bypass
@@ -6554,7 +6554,7 @@ Headless real WebGPU checks cover both graphs, desktop/phone allocation and
 numeric color/lighting readback. The image-derived sky
 and remixed cliff retain explicit provenance; no original scene recovery,
 pixel equality or shared/native renderer qualification is inferred.
-See `docs/verse/character-glade.md` and
+See `docs/metaverse/character-glade.md` and
 `docs/verification/character-glade-source-parity-2026-11-06/`.
 
 ## Everglade's private Link experiment is reversible and keeps room authority
@@ -6573,7 +6573,7 @@ ordinary I input retains its published meaning. Room collision and combat rules
 still apply. This is Lab-port parity, not a claim of fully recovered native
 controller physics. VPK2 carries the 60 original texture maps without vertex
 colour baking; VPK1's 48-entry bound and the registry's 64-slot bound remain.
-See `docs/verse/2026-11-06-everglade-link-experiment.md` and
+See `docs/metaverse/2026-11-06-everglade-link-experiment.md` and
 `docs/protocol/everglade-link-input-v1.md` for fidelity, controls and rollback.
 
 ## Native character detail keeps CPU draws and GPU coverage coherent
@@ -6597,7 +6597,7 @@ raster (`coax/web/everglade-echo-proof.coax`, zero mutation survivors). A missin
 character or smaller raster cannot qualify a fast empty scene. Requested hero
 loads are awaited; terminal load failure refuses promptly. R4's historical
 timing and complete head-frame review are in
-`docs/verse/2026-11-06-native-hero-characters.md`.
+`docs/metaverse/2026-11-06-native-hero-characters.md`.
 
 
 Everglade 5E's optional grass-range v1 draws preserve original instance IDs.

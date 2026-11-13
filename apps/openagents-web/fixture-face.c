@@ -1,7 +1,7 @@
 // The fixture realm's C face for the browser (coax/web/host.js): scalar
 // Wasm exports over fixture.coax. The host keeps one Fixture; this file
 // decides nothing. It is the smallest realm module the realm host takes
-// (docs/verse/realm-host.md): layout and sizes, the frame, keys, the pointer,
+// (docs/metaverse/realm-host.md): layout and sizes, the frame, keys, the pointer,
 // the inbox (the slot's save, the page facts, the pack's progress), actions
 // (keep, go), the pack's catalog (asset 0) and the scene drawn from it.
 #include "fixture.h"

@@ -1,5 +1,5 @@
 // Presenting a vkc_target to a Vulkan surface, a window's or a display's
-// (docs/verse/native-gpu.md, G2): a FIFO swapchain, one frame in flight.
+// (docs/metaverse/native-gpu.md, G2): a FIFO swapchain, one frame in flight.
 // Each frame the target's passes draw offscreen and the image is blitted to
 // the swapchain image; with `shoot` set, that frame's presented image is also
 // copied into `shot` (its pixels as the swapchain holds them).

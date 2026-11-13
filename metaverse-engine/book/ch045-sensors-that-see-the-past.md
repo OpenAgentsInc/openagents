@@ -58,7 +58,7 @@ Belt 2200's tactical combat (`Tac`, `TacUnit`, `tac_step`,
 [`apps/openagents-web/belt-tactical.coax`](../../apps/openagents-web/belt-tactical.coax))
 targets and leads from current positions. [`metaverse-engine/physics/orbit.coax`](../physics/orbit.coax)
 gives geometric states only. Psionic's game-decision path
-([`docs/verse/pylon-guard-decisions.md`](../../docs/verse/pylon-guard-decisions.md))
+([`docs/metaverse/pylon-guard-decisions.md`](../../docs/metaverse/pylon-guard-decisions.md))
 already passes typed context rather than raw state to a model, the pattern
 this chapter generalizes.
 

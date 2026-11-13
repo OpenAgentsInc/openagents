@@ -8,7 +8,7 @@ The sixth tab adds **25 ARWES specimens**, making 43 in total. Nine source
 frame families, all 31 easing curves, lifecycle/child timing, sequence and
 decipher text, patterned backgrounds, pointer lighting, theme/style arithmetic
 and a silent cue-state model are adapted to the same Coax/WebGPU system.
-The [source report](../../../../docs/verse/2026-11-01-arwes-coax.md) inventories
+The [source report](../../../../docs/metaverse/2026-11-01-arwes-coax.md) inventories
 all upstream packages; the [ledger and MIT notice](../../../../metaverse-engine/ui/arwes/SOURCES.md)
 retain the exact revision and source hashes. No upstream scripts or runtime
 packages are installed.

@@ -231,7 +231,7 @@ with its three edits, stays as it was.
 ## Rules a base declares
 
 Everglade is the one base with rules today
-([docs/verse/realm-fork.md](../../docs/verse/realm-fork.md)).
+([docs/metaverse/realm-fork.md](../../docs/metaverse/realm-fork.md)).
 `verse.fork_bases.rules`
 ([0075_realm_forks.sql](../../coax/web/api/migrations/0075_realm_forks.sql))
 lists what Everglade's code really switches: `night`, `waves`, `nodestroy`

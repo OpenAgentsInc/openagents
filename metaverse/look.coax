@@ -21,7 +21,7 @@ verse_outline_strength :: (cut:f32,glow:f32)->f32 #export_c #effects(all) {
 }
 // Ink: the light under an edge of that weight, darkened toward black.
 verse_outline_ink :: (light:f32,edge:f32)->f32 #export_c #effects(all) {return light*(1.0f32-0.82f32*lk_min(1.0f32,lk_max(0.0f32,edge)));}
-// Under painterly (docs/verse/art-styles.md, 9) an outline is only ever a
+// Under painterly (docs/metaverse/art-styles.md, 9) an outline is only ever a
 // pale edge brighter than the surface it borders: no ink. Its weight is
 // capped at `cap` (the preset's outline_max, never past 0.35) and fades
 // with the haze's share there, so far edges go with the far world.

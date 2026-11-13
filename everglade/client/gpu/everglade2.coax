@@ -1,4 +1,4 @@
-// Everglade v2's passes (docs/verse/everglade2.md): Character Create's glade light and materials on
+// Everglade v2's passes (docs/metaverse/everglade2.md): Character Create's glade light and materials on
 // Everglade v2's land (everglade/world/forest.coax), the woods' kit pieces drawn instanced from the
 // page's visible-piece store (everglade/client/client.coax), and a key-light shadow map that
 // follows the player.

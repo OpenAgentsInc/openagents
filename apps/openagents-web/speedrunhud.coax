@@ -1,6 +1,6 @@
 // The Speedrun HUD, openagents.com/demos/speedrun-hud?stage=NAME: staged,
 // deterministic HUD diagrams over the Grid, for headless recording into the
-// Speedrun pitch video (docs/verse/clips.md). Each stage is a function of its
+// Speedrun pitch video (docs/metaverse/clips.md). Each stage is a function of its
 // own time t from 0, so a clip of it is the same every time.
 //
 // The look is the homepage's: the Grid floor drawn in strokes under a slow

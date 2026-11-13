@@ -37,7 +37,7 @@ coax/remote/pages.sh origin/main                     # main's built pages from t
 
 To drive pages headless, take main's pages with `coax/remote/pages.sh` and
 rebuild only the modules you changed (`remote.sh run -- coax/web/wasm.sh ...`)
-instead of a full `build.sh` ([remote-builds.md](../../docs/verse/remote-builds.md#one-page-build-per-commit)).
+instead of a full `build.sh` ([remote-builds.md](../../docs/metaverse/remote-builds.md#one-page-build-per-commit)).
 
 A suite's header names how it runs: `coax test FILE --steps N` (and
 `--library`) in its first lines. A suite whose checks need more than the
@@ -73,9 +73,9 @@ and four example scenes, extending the Grid's shared monochrome frame with
 navigation, engineering, tactical and communications instruments. Its fixtures
 are synthetic. Build it with
 `coax/web/tool.sh apps/openagents-web/demos/hud/build.coax`; its focused dev
-server runs on port 8815. The [visual study](../../docs/verse/2026-11-01-hud-library.md)
+server runs on port 8815. The [visual study](../../docs/metaverse/2026-11-01-hud-library.md)
 records the Expanse image analysis and the Metaverse Engine/Coax book boundaries.
-The sixth tab adds [ARWES ports](../../docs/verse/2026-11-01-arwes-coax.md):
+The sixth tab adds [ARWES ports](../../docs/metaverse/2026-11-01-arwes-coax.md):
 nine frame families, 31 easing curves, lifecycle/text animation, backgrounds,
 pointer lighting, style/theme arithmetic and a silent cue model, with pinned
 source hashes and the upstream MIT notice.

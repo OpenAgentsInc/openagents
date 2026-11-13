@@ -452,7 +452,7 @@ each pack's last lines are shown; the tool prints every entry.)
 
 ## What exists beside it
 
-- [docs/verse/realm-host.md](../../docs/verse/realm-host.md), "Asset packs":
+- [docs/metaverse/realm-host.md](../../docs/metaverse/realm-host.md), "Asset packs":
   manifests in [metaverse/packs/](../../metaverse/packs/everglade.json), the
   compiler [metaverse/tools/pack_realm.py](../../metaverse/tools/pack_realm.py)
   (format in its header), `realms/<slug>/licences.md`, message 605 progress

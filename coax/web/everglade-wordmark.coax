@@ -1,4 +1,4 @@
-// The EVERGLADE wordmark on everglade.world (docs/verse/everglade-domain.md): the word drawn in
+// The EVERGLADE wordmark on everglade.world (docs/metaverse/everglade-domain.md): the word drawn in
 // Character Create's own font, CharacterCreateARKaiC (realms/character-creator/assets/arkai_c.ttf,
 // 15 MB), as one small SVG of its outlines, so the front door shows it at the first paint without
 // loading the font. The glyphs' quadratic arcs are kept as SVG Q commands, in font units.

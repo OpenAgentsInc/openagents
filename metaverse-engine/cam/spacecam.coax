@@ -1,4 +1,4 @@
-// A camera for space (docs/verse/space.md): a floating origin in f64, so a
+// A camera for space (docs/metaverse/space.md): a floating origin in f64, so a
 // ship a hundred metres long and the orbit of Jupiter are drawn by the same
 // camera without jitter. Every position stays in f64 metres; the camera
 // subtracts its own centre in f64 first and only then scales to pixels, so

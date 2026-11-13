@@ -1,4 +1,4 @@
-// How the cult fights a siege (spec docs/verse/2026-11-03-everglade-world-events.md, section 4.3;
+// How the cult fights a siege (spec docs/metaverse/2026-11-03-everglade-world-events.md, section 4.3;
 // #12740): the tactics the room server's raid (everglade5e-room-raid.coax, offline on the local
 // host too) follows. Pure functions of where things are, in metres:
 //   - squads: the raiders come in squads of RT_SQUAD, and each member has its own place in its

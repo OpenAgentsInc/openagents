@@ -1,4 +1,4 @@
-// Everglade II's rock colliders from the rocks' own meshes (docs/verse/everglade2.md): for each Stylized
+// Everglade II's rock colliders from the rocks' own meshes (docs/metaverse/everglade2.md): for each Stylized
 // Nature rock the page plants or the glade composes, its convex hull, as the vertices and outward face
 // planes metaverse-engine/physics/query.coax's hulls take. The hull's vertices are the mesh's own: the mesh's farthest
 // vertex along each of a fixed set of directions round it (every 22.5 degrees round, from under it to

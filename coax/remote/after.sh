@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5. The green-main pipeline's after-landing check
-# (docs/verse/green-main-pipeline.md, #13102): git, gh, jq and
+# (docs/metaverse/green-main-pipeline.md, #13102): git, gh, jq and
 # coax/remote/remote.sh. The checks run on the remote build hosts.
 #
 #   coax/remote/after.sh [--once]   one run on the newest head of main, unless one
@@ -107,7 +107,7 @@ source "$here/counts.sh"
 parts="${OA_AFTER_PARTS:-6}"
 module_parts="${OA_AFTER_MODULE_PARTS:-3}"
 fast_parts="${OA_AFTER_FAST_PARTS:-3}"
-api_parts="${OA_AFTER_API_PARTS:-2}"   # coax/web/api/test.sh --part: see docs/verse/remote-builds.md, "The API suite"
+api_parts="${OA_AFTER_API_PARTS:-2}"   # coax/web/api/test.sh --part: see docs/metaverse/remote-builds.md, "The API suite"
 gap="${OA_AFTER_GAP:-10800}"   # a full run costs about $0.30 of host time (2026-11-09)
 fast_gap="${OA_AFTER_FAST_GAP:-0}"
 retries="${OA_AFTER_RETRIES:-2}"
@@ -139,7 +139,7 @@ watcher_health() {
   if (( age < 300 )); then echo "watcher     running$where, seen $age s ago"; return 0; fi
   # A watcher on another machine that went quiet can't say so itself: the
   # machine that sees it does (the log, ALARM and the one GitHub issue).
-  [[ -z "$where" ]] || (( age < 900 )) || pl_alarm "quiet-$at" "the watcher$where has not been seen for $(( age / 60 )) minutes" "The green-main watcher$where last wrote its heartbeat at $(pl_date "$at" '%Y-%m-%d %H:%M %Z'), so no head is checked and \`$pl_green\` does not move. Check it there: \`systemctl --user status com.openagents.green-main\` and \`~/.openagents/pipeline/logs/after.out\` (docs/verse/green-main-pipeline.md)." > /dev/null 2>&1
+  [[ -z "$where" ]] || (( age < 900 )) || pl_alarm "quiet-$at" "the watcher$where has not been seen for $(( age / 60 )) minutes" "The green-main watcher$where last wrote its heartbeat at $(pl_date "$at" '%Y-%m-%d %H:%M %Z'), so no head is checked and \`$pl_green\` does not move. Check it there: \`systemctl --user status com.openagents.green-main\` and \`~/.openagents/pipeline/logs/after.out\` (docs/metaverse/green-main-pipeline.md)." > /dev/null 2>&1
   echo "watcher     NOT RUNNING$where$( (( at == 0 )) || echo " since $(pl_date "$at" '%Y-%m-%d %H:%M')"): no head is checked and $pl_green does not move. $([[ -n "$where" ]] && echo "Check it there: systemctl --user status $label" || echo "Start it: coax/remote/after.sh install")"
   return 1
 }
@@ -190,7 +190,7 @@ flaky_add() {   # head item: a flaky failure, its entry opened (with an owner an
   fi
   owner="$(flaky_owner "$2")"
   if [[ "$pl_issues" == 1 ]]; then
-    url="$(gh issue create --repo "$pl_repo" --title "Flaky check: $key" --body "The after-landing check \`$2\` failed at ${1:0:10} and passed when run again on the same commit, so it has no culprit (docs/verse/green-main-pipeline.md, \"Flaky checks\").
+    url="$(gh issue create --repo "$pl_repo" --title "Flaky check: $key" --body "The after-landing check \`$2\` failed at ${1:0:10} and passed when run again on the same commit, so it has no culprit (docs/metaverse/green-main-pipeline.md, \"Flaky checks\").
 
 Owner: \`$owner\` (the agent of the last commit that changed the check's file; \`pipeline\` when it has none). Make the check deterministic, or say here why it can't be. The entry counts as a failure in \`coax/remote/after.sh state\` $flaky_days days after it opened; it leaves the flaky list when this issue is closed." 2> /dev/null)" && issue="${url##*/}"
   fi
@@ -301,7 +301,7 @@ case "${1:-}" in
       mkdir -p "$(dirname "$unit")"
       cat > "$unit" <<EOF
 [Unit]
-Description=Green-main pipeline watcher (coax/remote/after.sh --watch, docs/verse/green-main-pipeline.md)
+Description=Green-main pipeline watcher (coax/remote/after.sh --watch, docs/metaverse/green-main-pipeline.md)
 After=network-online.target
 
 [Service]
@@ -525,7 +525,7 @@ file_issue() {   # check culprit agent outfile → issue number ("" when none)
   subject="$(git log -1 --format=%s "$culprit")"
   body="The after-landing check \`$check\` fails on \`$pl_main\` since ${culprit:0:10} (\"$subject\"), by agent \`$agent\`.
 
-Bisected between \`$pl_green\` and the head by \`coax/remote/after.sh\` (docs/verse/green-main-pipeline.md).
+Bisected between \`$pl_green\` and the head by \`coax/remote/after.sh\` (docs/metaverse/green-main-pipeline.md).
 
 Output (last 60 lines):
 
@@ -890,7 +890,7 @@ $(awk -F'\t' -v i="$issue" '$3 == i { print "- `" $2 "`" }' "$dir/fixed.tsv" | h
       issue=""
       if [[ "$pl_issues" == 1 ]]; then
         local url body
-        body="The after-landing check (\`coax/remote/after.sh\`, docs/verse/green-main-pipeline.md) found ${#new[@]} failing check(s) on \`$pl_main\` at ${head:0:10} with no passing head before it to bisect against, so there is no culprit. \`$pl_green\` is set at the first head where every check passes.
+        body="The after-landing check (\`coax/remote/after.sh\`, docs/metaverse/green-main-pipeline.md) found ${#new[@]} failing check(s) on \`$pl_main\` at ${head:0:10} with no passing head before it to bisect against, so there is no culprit. \`$pl_green\` is set at the first head where every check passes.
 
 $(printf -- '- \`%s\`\n' "${new[@]}" | head -n 200)
 

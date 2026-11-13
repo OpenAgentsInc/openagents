@@ -12,12 +12,12 @@
 // --room advances a local room on the same fixed clock as the page.
 // --audio records the page's own sound in step with the frames (host.js renders the
 // lines its frames sent, offline) and muxes it in as AAC; with --frames, DIR keeps it as audio.wav.
-// The browser is the checkout's resident one (coax/web/resident.coax, docs/verse/fast-shots.md),
+// The browser is the checkout's resident one (coax/web/resident.coax, docs/metaverse/fast-shots.md),
 // so a clip does not start a browser; the page still loads in a new, empty browser context.
 // --keep records on from where the last clip of this URL left its page (no load) when its
 // files have not changed on the server. --fresh starts a browser for this clip alone, as
 // before. --times prints where the time went on stderr.
-// A page stages its own moments from its URL (?stage=NAME): see docs/verse/clips.md.
+// A page stages its own moments from its URL (?stage=NAME): see docs/metaverse/clips.md.
 // The recording is coax/lib/media/media.coax, which `openagents labs clip` uses too.
 #import "Basic";
 #load "resident.coax";

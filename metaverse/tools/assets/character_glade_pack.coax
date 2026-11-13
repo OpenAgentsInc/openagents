@@ -313,7 +313,7 @@ gp_showcase_at :: (w:[]Gp,g:[]Gltf,object_path:string,source:string,name:string,
 // Ranger's or Rogue's shortsword), Sword_Golden (a Paladin's longsword) and Sword_big (a Fighter's greatsword),
 // from the showcase's Ultimate RPG rows. Each is meshed in its own space, the blade up +Y and centred
 // on X and Z, at its source size, marked 115.4375: the runtime sets its grip, scale and the hand's pose (flag 19).
-// Bow_Wooden (a Ranger's longbow, docs/verse/bow-combat.md) is the fifth, its limbs up +Y, without its
+// Bow_Wooden (a Ranger's longbow, docs/metaverse/bow-combat.md) is the fifth, its limbs up +Y, without its
 // string, which is the sixth alone (its White material) in the same space, so the runtime can bend it
 // to the draw hand; the seventh is an Arrow (head +Y), the one on the string while drawn.
 GP_WEAPONS :: [7]string.["Axe_Double","Sword","Sword_Golden","Sword_big","Bow_Wooden","Bow_Wooden","Arrow"];

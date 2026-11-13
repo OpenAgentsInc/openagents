@@ -393,9 +393,9 @@ OpenAgents account.
 | Ask a project's agent (one turn = one commit, with UNDO TURN) | [Project agent](../../docs/project-agent.md) | Spec (draft) |
 | Read a project's queue | [Projects](../../docs/protocol/2026-10-28-projects.md) | Read path exists |
 | Start a Coder task | [Coder book](../../coder/book/README.md) | No hosted entry point yet |
-| Check your Pylons | [Pylon guard decisions](../../docs/verse/pylon-guard-decisions.md) | Online list exists; per-owner view proposed |
-| Make or edit a realm | [Realm builder](../../docs/verse/realm-builder.md), [realm edit](../../docs/verse/realm-edit.md) | Exists |
-| Tip a maker in Lightning | [Makers](../../docs/verse/makers.md) | Exists |
+| Check your Pylons | [Pylon guard decisions](../../docs/metaverse/pylon-guard-decisions.md) | Online list exists; per-owner view proposed |
+| Make or edit a realm | [Realm builder](../../docs/metaverse/realm-builder.md), [realm edit](../../docs/metaverse/realm-edit.md) | Exists |
+| Tip a maker in Lightning | [Makers](../../docs/metaverse/makers.md) | Exists |
 | Post a signed Nostr note | NIP-98 and Nostr signing | Proposed |
 
 Phase 3 would start with the read-only rows and one write row (ask a project's
@@ -414,7 +414,7 @@ agent).
 ```
 
 - **The room server** is the authority in the world
-  ([multiplayer spec §3.1](../../docs/verse/2026-11-03-everglade-multiplayer-spec.md)).
+  ([multiplayer spec §3.1](../../docs/metaverse/2026-11-03-everglade-multiplayer-spec.md)).
   It creates *pending* orders only, holds no user secrets and can't approve.
 - **The OpenAgents API** is the authority outside it: account, linked
   identities ([realm invites and auth](../../docs/auth/2026-10-31-realm-invites-and-auth.md)),
@@ -567,12 +567,12 @@ MMOs (summarized in our own words; fan wikis are marked):
 - EVE Online, [EVE Industry: All you want to know](https://www.eveonline.com/news/view/eve-industry-all-you-want-to-know).
 - RuneScape Wiki, [Player-owned port](https://runescape.wiki/w/Player-owned_port).
 
-Repository: [Everglade multiplayer spec](../../docs/verse/2026-11-03-everglade-multiplayer-spec.md),
+Repository: [Everglade multiplayer spec](../../docs/metaverse/2026-11-03-everglade-multiplayer-spec.md),
 [realm invites and auth](../../docs/auth/2026-10-31-realm-invites-and-auth.md),
 [project agent](../../docs/project-agent.md),
 [projects](../../docs/protocol/2026-10-28-projects.md),
 [Lightning](../../docs/lightning/README.md),
-[makers](../../docs/verse/makers.md),
+[makers](../../docs/metaverse/makers.md),
 [SRD compliance ledger](../../docs/dnd/srd-compliance-ledger.md),
 [chapter 18, Turns become time](../book/ch018-turns-become-time.md).
 

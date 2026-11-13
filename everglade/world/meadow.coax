@@ -1,4 +1,4 @@
-// Everglade's open meadow (docs/verse/everglade2.md): the look of open ground with no trees on it,
+// Everglade's open meadow (docs/metaverse/everglade2.md): the look of open ground with no trees on it,
 // shared by Everglade II's clearing and the druid's field at /druid. It says where a meadow is open,
 // which understory pieces stand on it, how thick its grass grows and what its ground is made of.
 // It takes the ground's height and the places to try from its caller, and draws nothing itself:

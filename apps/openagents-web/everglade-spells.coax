@@ -46,7 +46,7 @@
 
 #load "../../metaverse/rules/srd5.coax";
 #load "../../metaverse/demolish.coax";
-#load "../../metaverse-engine/action/deed.coax";   // ask, act, present: a cast plays only once the room takes it (docs/verse/action-pipeline.md, #13072)
+#load "../../metaverse-engine/action/deed.coax";   // ask, act, present: a cast plays only once the room takes it (docs/metaverse/action-pipeline.md, #13072)
 #load "../../metaverse/water-spells.coax";
 #load "everglade-hotbar.coax";
 #load "everglade-arrange.coax";

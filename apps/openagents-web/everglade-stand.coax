@@ -128,7 +128,7 @@ eg_stand_room :: (s: [] Everglade, r: OrbitRay) -> f32 {
   return r.far;
 }
 
-// ?stage=roof (docs/verse/clips.md): you start 3 m over the temple's roof, on its west slope 3 m from
+// ?stage=roof (docs/metaverse/clips.md): you start 3 m over the temple's roof, on its west slope 3 m from
 // its ridge, facing along it, and come down on it.
 eg_stage :: (s: [] Everglade, url: string) {
   if !eg_query_is(url, "stage", "roof") { return; }

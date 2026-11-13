@@ -260,7 +260,7 @@ signature proves who released the leaderboard, not that its evidence is
 correct or independently reproduced; a relay storing the event certifies
 nothing. `crates/nostr` (`gym_results`) builds and checks the event,
 `gym-leaderboard sign` signs and writes it, and the client in
-`gym_leaderboard::client` verifies it (`docs/verse/gym-leaderboard.md`).
+`gym_leaderboard::client` verifies it (`docs/metaverse/gym-leaderboard.md`).
 
 ## Extension evaluation profile
 

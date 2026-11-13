@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason: 5. The green-main pipeline's integrator (docs/verse/green-main-pipeline.md,
+# Firm reason: 5. The green-main pipeline's integrator (docs/metaverse/green-main-pipeline.md,
 # #13102): git, gh and coax/remote/remote.sh. Its own work is light; the checks
 # run on the remote build hosts.
 #

@@ -1,4 +1,4 @@
-// Everglade II's movement world (docs/verse/everglade2.md, docs/verse/2026-11-07-everglade-multiplayer-audit.md):
+// Everglade II's movement world (docs/metaverse/everglade2.md, docs/metaverse/2026-11-07-everglade-multiplayer-audit.md):
 // where you may stand, the trunks and rocks that stop you, and Everglade II's pace. The page
 // (everglade/client/client.coax, everglade2-face.c) and the room server (coax/web/room/room-world.c, its
 // Everglade II rooms) both #load this file and step the same controller (everglade-step.coax) on it,

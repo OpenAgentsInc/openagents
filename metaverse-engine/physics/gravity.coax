@@ -1,4 +1,4 @@
-// Gravity as a field (docs/verse/space.md): every controller asks
+// Gravity as a field (docs/metaverse/space.md): every controller asks
 // gravity_at(field, pos) for the acceleration where it is, instead of a
 // constant. A field is one of
 //   none      zero-g: free fall, a station whose spin has stopped

@@ -37,9 +37,9 @@ The after-action report says how long the shift ran, how many steps the intruder
 ## How it is made
 
 - `apps/openagents-web/watchtower.coax` is the range: the network, the intruder's planning, your responders, the triad, the drawing and the checks that play it (`coax test`). `watchtower-face.c` binds it for the browser and `watchtower.wgsl` (from `gpu/watchtower.coax`) draws the grid, the panels' glass and the alarm light.
-- Its owner's EDIT board switches the triad and the ordinary traffic in the log on and off (`docs/verse/realm-edit.md`).
+- Its owner's EDIT board switches the triad and the ordinary traffic in the log on and off (`docs/metaverse/realm-edit.md`).
 - The thinking behind it is in `docs/research/cybersecurity/README.md`.
-- The page is written from `realms.json` by `coax/web/realms.ts` (`docs/verse/realm-host.md`).
+- The page is written from `realms.json` by `coax/web/realms.ts` (`docs/metaverse/realm-host.md`).
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
 ## Make your own world

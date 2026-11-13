@@ -1,5 +1,5 @@
 #load "../../everglade/shared/everglade-link-wire.coax";
-// Everglade's network client (docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.6 to
+// Everglade's network client (docs/metaverse/2026-11-03-everglade-multiplayer-spec.md sections 3.6 to
 // 3.10 and 6; GitHub #12706 and #12708), loaded by everglade.coax. The room server owns the shared
 // world (owner, 2026-11-03): every player, creature, zone, spell's cast, hit and break is the
 // server's, and this page draws them. It sends intents: its input every step (I), its casts (C), its

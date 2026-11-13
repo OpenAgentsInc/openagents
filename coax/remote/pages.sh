@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5. One page build per commit, shared by every agent and the
-# release (docs/verse/remote-builds.md, #13119): git, gcloud, tar and
+# release (docs/metaverse/remote-builds.md, #13119): git, gcloud, tar and
 # coax/remote/remote.sh.
 #
 #   coax/remote/pages.sh COMMIT [DIR]   COMMIT's built pages into DIR (default this checkout's

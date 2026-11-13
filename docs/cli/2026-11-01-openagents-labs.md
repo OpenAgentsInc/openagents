@@ -80,7 +80,7 @@ A function belongs when all of these hold:
 | Function | Verdict | Reason |
 | --- | --- | --- |
 | Shots of a page or realm at desktop and phone sizes | **In** (`labs shot`) | `coax/web/shot.coax` works today on any URL. Makers want a picture of their realm; agents need it to see what they did |
-| Clips of a realm, staged or simulated | **In** (`labs clip`) | `coax/web/clip.coax` records at fixed game time, so the same stage gives the same clip. `?stage=NAME` is already the contract (`docs/verse/clips.md`) |
+| Clips of a realm, staged or simulated | **In** (`labs clip`) | `coax/web/clip.coax` records at fixed game time, so the same stage gives the same clip. `?stage=NAME` is already the contract (`docs/metaverse/clips.md`) |
 | Slide decks from scenes | **In** (`labs deck`) | `coax/web/deck.coax` and `docs/web/decks.md`. Makers already pitch realms with it |
 | Cut lists rendered to video | **In** (`labs cut`) | This is Video Lab's core, minus the chat. The `cut.v1` fields are known; `ffmpeg` does the encoding, as `clip` and `transcribe` already rely on it |
 | Stills and strips from a video | **In** (`labs frames`) | Video Lab's `frame`. One ffmpeg call per time; what an agent uses to "look closely" |
@@ -112,7 +112,7 @@ Labs keeps the pre-Nuke loop and drops the server.
   the line and the reason in plain words, exits 1, and makes nothing. This is
   Video Lab's `inspect`, run every time.
 - **Every output gets a label.** Beside `OUT` Labs writes `OUT.json`, the
-  label `docs/verse/clips.md` already asks for:
+  label `docs/metaverse/clips.md` already asks for:
 
   ```json
   {"kind": "clip", "source": "staged", "url": "https://openagents.com/realms/belt-2200?stage=highlight",
@@ -157,7 +157,7 @@ an ALB1 bundle and a receipt. The default output is a new directory under
 paths outside `~/.openagents/` are refused. glTF reads directly; FBX uses
 headless Blender; BVH declares its own clock; Live Link Face CSV uses an
 explicit 30/60 fps timecode clock. Bounded Unreal body imports use a trusted
-compiled SDK plugin. See [profiles and current limits](../verse/anim-imports-v1.md),
+compiled SDK plugin. See [profiles and current limits](../metaverse/anim-imports-v1.md),
 including the unmet exact Echo/Slay re-import qualification.
 
 ### `labs anim retarget`
@@ -176,7 +176,7 @@ hash-named binary, `report.json` and `receipt.json`.
 Rotational anchors use rest correction, and root displacement scales by
 leg length. Unpaired target joints keep local rest and appear in the
 report. Folded helpers cannot retain independent motion through a 65-slot
-mannequin; the [Animation Lab spec](../verse/2026-11-06-animation-lab.md)
+mannequin; the [Animation Lab spec](../metaverse/2026-11-06-animation-lab.md)
 states the mapping and measurement limits.
 
 ### `labs anim play` and `labs anim check`
@@ -199,7 +199,7 @@ capture profile is 960 × 540, the cut's frame rate, at most 60 seconds.
 Existing outputs are refused. Check writes one JSON object with continuity,
 face, joint, capsule, foot-contact and determinism diagnostics.
 
-See [scene and audio formats, bounds and diagnostic models](../verse/anim-scenes-v1.md).
+See [scene and audio formats, bounds and diagnostic models](../metaverse/anim-scenes-v1.md).
 
 ### `labs anime`
 
@@ -221,7 +221,7 @@ places, last directed action/emotion, camera framing, and up to eight recent
 executable user answers. This is selector context, not a physical observation
 of a running page. The complete public answer passes the same catalogue,
 probability and render-support holders as the API before it can enter the
-[recorded take](../verse/anime-takes-v1.md). The CLI prints the words, held
+[recorded take](../metaverse/anime-takes-v1.md). The CLI prints the words, held
 answers and their confidence dispositions. It performs no word matching,
 speech recognition or asset generation.
 

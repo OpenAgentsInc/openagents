@@ -49,7 +49,7 @@ Microcoder through your Coder, plus the hosted chat) can build worlds.
 
 ### 1. Made realms: Aethyrforge on the web (`/realms/new`, `/realms/SLUG`)
 
-- **Spec:** `docs/verse/aethyrforge.md`, the MVP spec for one `/forge` screen.
+- **Spec:** `docs/metaverse/aethyrforge.md`, the MVP spec for one `/forge` screen.
   The pieces exist, but the single screen does not.
 - **Making a realm:** `builder.coax` has setup questions, a prompt and a board
   of catalogue features. `POST /api/playtest/realms/plan` (Gemini under a

@@ -1,5 +1,5 @@
 // realms.ts's checks on the table: the tagged table passes, and each style, zone and
-// clock refusal (docs/verse/art-styles.md, The style field) is a refusal.
+// clock refusal (docs/metaverse/art-styles.md, The style field) is a refusal.
 //   bun test coax/web/realms.test.ts
 import { expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
@@ -119,7 +119,7 @@ test("refuses a painterly realm whose WGSL has no style block", () => {
   writeFileSync(join(site, `${module}.wgsl`), "// no block\n")
   expect(check((r) => { r.style = "lowpoly"; r.zones = [{ id: "glade", style: "painterly" }] }, { site, styleBlock: true })).toThrow(/partly painterly/)
 })
-// anime (docs/verse/art-styles.md, Anime): a style with variants, named by the realm or a zone
+// anime (docs/metaverse/art-styles.md, Anime): a style with variants, named by the realm or a zone
 test("takes an anime realm with or without a variant, and anime zones with their own", () => {
   const packs = mkdtempSync(join(tmpdir(), "realms-packs-"))
   const opts = { styleBlock: false, packs }

@@ -6,7 +6,7 @@
 > [`everglade/hud/parts.coax`](../../everglade/hud/parts.coax),
 > and its renderer is in
 > [`everglade/scene/charactercreator.coax`](../scene/charactercreator.coax).
-> [HUD styles](../../docs/verse/hud-styles.md) is the reference.
+> [HUD styles](../../docs/metaverse/hud-styles.md) is the reference.
 > This appendix names functions and has no source listings yet.
 
 This appendix answers the player's question: "Why does Everglade's screen look

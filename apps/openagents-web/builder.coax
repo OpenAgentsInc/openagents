@@ -1,4 +1,4 @@
-// Build your own realm (openagents.com/worlds/new; docs/verse/realm-builder.md): the step after the
+// Build your own realm (openagents.com/worlds/new; docs/metaverse/realm-builder.md): the step after the
 // Haunted House. Tap TALK, say the world you want, tap again to send (the microphone is open only
 // while TALK is on: coax/web/voice.js, the voice host's speech to text), or type it. The words
 // go to the server's typed planner (POST /api/playtest/realms/plan, migrations/0048_realm_builder.sql),

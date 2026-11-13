@@ -1,4 +1,4 @@
-// The style check's measures (docs/verse/art-styles.md, 15. Judging "looks painterly"), over a shot's
+// The style check's measures (docs/metaverse/art-styles.md, 15. Judging "looks painterly"), over a shot's
 // pixels: pure functions, so each is tested on synthetic images (style-measures.test.ts) and
 // style-check.ts runs them on a realm's views. PNG in and out without a dependency.
 import { inflateSync, deflateSync } from "node:zlib"

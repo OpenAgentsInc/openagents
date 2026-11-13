@@ -85,7 +85,7 @@ There are no dice. Where the arrow goes is the bow's physics alone.
 
 ## 4. The bow
 
-The bow is bow combat's ([`docs/verse/bow-combat.md`](../../docs/verse/bow-combat.md)),
+The bow is bow combat's ([`docs/metaverse/bow-combat.md`](../../docs/metaverse/bow-combat.md)),
 unchanged: the same controls, crosshair, over-the-shoulder camera, draw
 pose, bow model, string, arrows and sounds as Everglade Experimental.
 

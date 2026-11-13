@@ -192,7 +192,7 @@ This is the part that matters most for Everglade II.
 | Shadows | One map 68 m across, centred on the player and snapped in world xz to 2 m steps. Its y follows the terrain height. Only pieces within 40 m cast, all at LOD 1. The OpenAgents Metaverse Engine has light-space texel-snapped cascades (`metaverse-engine/render/cascades.coax`), but Everglade II doesn't use them. | `apps/openagents-web/everglade2.coax:28,562-564,648-652`, `apps/openagents-web/gpu/everglade2.coax:90-116` |
 | AA | No temporal AA. DPR 2. | |
 | Quality | A governor steps the resolution and costs down and up with hysteresis. | `metaverse-engine/core/quality.coax` |
-| Measurement | `frametime.ts`: per-pass GPU timestamps in headless Chrome. `perf.ts`: p95 must stay at or under 17.5 ms and no frame may exceed 33 ms, at four Everglade v1 places. Everglade II: about 16 ms at the glade and 17 ms at the clearing, at 2400x1400. | `coax/web/frametime.ts`, `coax/web/perf.ts`, `docs/verse/everglade2.md` |
+| Measurement | `frametime.ts`: per-pass GPU timestamps in headless Chrome. `perf.ts`: p95 must stay at or under 17.5 ms and no frame may exceed 33 ms, at four Everglade v1 places. Everglade II: about 16 ms at the glade and 17 ms at the clearing, at 2400x1400. | `coax/web/frametime.ts`, `coax/web/perf.ts`, `docs/metaverse/everglade2.md` |
 
 The grass is already in good shape: it is world-locked and nested, and it only thins. The trees,
 the understory cutoffs, the grass's outer edge and the shadow map are where the pops come from.

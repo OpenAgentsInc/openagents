@@ -29,7 +29,7 @@ CODE` for a diagnostic, [LIBRARIES.md](LIBRARIES.md) for shared code, and the
    ```
 
    A small tool file (`coax/bin/coax test coax/web/vocab.coax`) is fine on
-   the Mac. See [remote builds](../docs/verse/remote-builds.md).
+   the Mac. See [remote builds](../docs/metaverse/remote-builds.md).
 5. **Get the built pages, then serve.** `coax/remote/pages.sh origin/main`
    puts main's built pages (every module and render package) into your
    worktree in about 10 seconds; a fresh worktree has none, and a page without
@@ -43,7 +43,7 @@ CODE` for a diagnostic, [LIBRARIES.md](LIBRARIES.md) for shared code, and the
    `coax/web/tool.sh shot URL OUT.png [WxH] [WAIT_MS] [--eval JS] [--keep]`.
    Pass `--keep` on every shot of a build after the first: the page stays
    loaded in the checkout's resident browser, and a shot takes about a second
-   ([fast shots](../docs/verse/fast-shots.md)). Never open a visible
+   ([fast shots](../docs/metaverse/fast-shots.md)). Never open a visible
    browser; set `BROWSER=/usr/bin/true` for anything that might.
 7. **Mutate what decides.** `coax/remote/remote.sh run -- coax/bin/coax
    mutate FILE` on every `#authority` file you changed, with zero survivors.
@@ -87,7 +87,7 @@ then the operations.
 | `use ABILITY on ID` | Uses an ability on an entity, through the same deed a player's input makes |
 | `mount ID` | Mounts a mount |
 
-The driver opens the page in agent mode ([the agent clock](../docs/verse/agent-clock.md)):
+The driver opens the page in agent mode ([the agent clock](../docs/metaverse/agent-clock.md)):
 nothing moves between two operations, and the page and the offline room
 step together. `clock +MS` steps the clock, `clock settle` steps until
 nothing is scheduled, and `clock until PATH OP VALUE within MS` steps until
@@ -133,7 +133,7 @@ Each is symptom, cause and fix.
    was not rebuilt, or the worktree started from a broken `main`. Rebuild
    what the message names, rebuild the module, and start worktrees from
    `origin/main` (from `main-green` once the green-main pipeline lands,
-   [green-main-pipeline.md](../docs/verse/green-main-pipeline.md)). The
+   [green-main-pipeline.md](../docs/metaverse/green-main-pipeline.md)). The
    driver refuses a build older than its sources.
 4. **A check passes but the feature fails for a player.** The check covered
    one piece, or a headless run that differs from the real flow (an iframe

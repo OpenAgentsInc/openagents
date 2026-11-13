@@ -2,7 +2,7 @@
 # Firm reason: 5 (a thin wrapper: git-lfs's pre-push, then the Coax pre-push check through
 # coax/web/tool.sh; every rule lives in coax/web/prepush.coax).
 # Installed once per clone: git config core.hooksPath coax/remote/hooks
-# (docs/verse/green-main-pipeline.md, "The pre-push check", #13265).
+# (docs/metaverse/green-main-pipeline.md, "The pre-push check", #13265).
 # Emergency bypass, logged in ~/.openagents/prepush-bypass.log: OA_PREPUSH_BYPASS="why" git push ...
 # prepush.coax exits 3 to refuse; any other failure (it couldn't build or run) lets the push go
 # with a warning, so a broken tool never stops every agent.

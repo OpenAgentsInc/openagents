@@ -1,5 +1,5 @@
 // YOUR COMPUTER, played in headless Chrome (no window opens) against a local relay and a real
-// `coder host` (openagents#12642; docs/verse/realm-edit.md "Your computer"). The page is the made
+// `coder host` (openagents#12642; docs/metaverse/realm-edit.md "Your computer"). The page is the made
 // realm pine-forest from staging, opened at a localhost origin granted Local Network Access (FL_LNA),
 // whose requests DevTools interception sends on to staging, with two answers swapped in:
 // the realm module is the one built from this checkout, and the realm's spec says we own it. Every other

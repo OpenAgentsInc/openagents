@@ -1,4 +1,4 @@
-// og's shaders, the source of apps/openagents-web/og.wgsl (docs/verse/native-gpu.md, G6):
+// og's shaders, the source of apps/openagents-web/og.wgsl (docs/metaverse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (og.module,
 // og.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../metaverse-engine/gpu/wgsl.coax";

@@ -4,7 +4,7 @@
 //    frames in metaverse-engine/ui/arwes-frames.coax): grey and cyan glow lines, cut corners, thin bars.
 //    The realms that use it keep their own drawing code; these tokens name its values.
 //  - FANTASY: dark iron and bronze frames, warm gold type, parchment, rounded corners with
-//    diamond studs, framed segmented bars, recessed slots and a gold banner (docs/verse/hud-styles.md).
+//    diamond studs, framed segmented bars, recessed slots and a gold banner (docs/metaverse/hud-styles.md).
 // A style is tokens (HudTokens: palette, faces, line weights, corner and ornament treatment, bar,
 // slot, banner and damage-number styles) plus drawers that turn a HUD part into primitives
 // (HudPrim: filled rounded boxes, rings, lines, pie sweeps and soft shadows) in screen points,

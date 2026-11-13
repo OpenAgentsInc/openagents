@@ -26,4 +26,4 @@ coax/web/tool.sh clip "http://127.0.0.1:8800/demos/grid-crowd?stage=crowd" ~/Des
 
 ## How it is made
 
-`apps/openagents-web/gridcrowd.coax` holds the stage, the crowd, the camera and the draws; `gpu/gridcrowd.coax` the shaders; `gridcrowd-face.c` poses the players with `metaverse/cast.coax`. The clip recorder is described in [docs/verse/clips.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/clips.md).
+`apps/openagents-web/gridcrowd.coax` holds the stage, the crowd, the camera and the draws; `gpu/gridcrowd.coax` the shaders; `gridcrowd-face.c` poses the players with `metaverse/cast.coax`. The clip recorder is described in [docs/metaverse/clips.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/metaverse/clips.md).

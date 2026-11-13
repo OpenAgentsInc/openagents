@@ -1,4 +1,4 @@
-// Passes of a ported shader natively (docs/verse/native-gpu.md, G5), from a
+// Passes of a ported shader natively (docs/metaverse/native-gpu.md, G5), from a
 // spec metaverse/gpu/everglade-pass.coax writes; metaverse/gpu/golden/pass.js draws
 // the same spec in the browser. The spec, a directive a line (`wgsl FILE`,
 // the browser's WGSL, is skipped here):

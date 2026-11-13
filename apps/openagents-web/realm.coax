@@ -26,7 +26,7 @@
 #load "place.coax";
 #load "world.coax";
 #load "room.coax";
-#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/metaverse/realm-edit.md)
 #load "access.coax";                 // who may make a realm: BUILD YOUR OWN REALM hides on make 0
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/talk/wire.coax";   // the NPC ask's one codec (E4, #13247)
@@ -1486,7 +1486,7 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
     // the hotbar, what a click does now, and the prompt for what you face
     vertices = draw_hotbar(r, v, out, vertices);
     if v.pieces && v.selected.count == 0 { vertices = hud_button(r, out, vertices, BTN_PIECE, piece_box(r), "MAKE A SET PIECE", ifx phone(r) then "" else "P", false); }
-    // the house done: on to building your own realm (docs/verse/realm-builder.md)
+    // the house done: on to building your own realm (docs/metaverse/realm-builder.md)
     if v.quest >= QUEST_STEPS && v.selected.count == 0 && !access_hides_make(r[0].acc[..]) { vertices = hud_button(r, out, vertices, BTN_OWN, piece_box(r), "BUILD YOUR OWN WORLD", "", true); }
     hint := hint_line(r, v);
     if hint.count > 0 {

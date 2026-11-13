@@ -1,5 +1,5 @@
 // Everglade's world events and levels on the page (epic #12737; spec
-// docs/verse/2026-11-03-everglade-world-events.md). Loaded by everglade-net.coax. The room server runs
+// docs/metaverse/2026-11-03-everglade-world-events.md). Loaded by everglade-net.coax. The room server runs
 // them (coax/web/room/room-events.coax); this page shows what it hears:
 //   g KIND PHASE WAVE WAVES SECS LEFT STANDING SLAIN SQUARE WARDS ARCH OUTCOME FOLK LEVELS CAP
 //     PLAYERS FRONT TOWN CULTCAP TOWNCAP

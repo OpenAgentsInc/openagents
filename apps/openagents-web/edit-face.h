@@ -1,4 +1,4 @@
-// The shared edit layer's face hook (metaverse/edit/edit.coax; docs/verse/realm-edit.md): a realm's C
+// The shared edit layer's face hook (metaverse/edit/edit.coax; docs/metaverse/realm-edit.md): a realm's C
 // face includes this after its generated header and calls, with a view of its RealmEdit:
 //   edit_face_drain(e)               in its drain: sends the layer's one request (coaxial_http)
 //   edit_face_message(e, kind, text) first in coaxial_message: true when it was the layer's

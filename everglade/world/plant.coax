@@ -1,4 +1,4 @@
-// Everglade v2's planting (docs/verse/everglade2.md): which Stylized Nature kit pieces stand where
+// Everglade v2's planting (docs/metaverse/everglade2.md): which Stylized Nature kit pieces stand where
 // in the woods round the path and the clearing, as a pure function of the land
 // (everglade/world/forest.coax). The pack tool (metaverse/tools/assets/everglade2_pack.coax) packs
 // the pieces named here; the page (everglade/client/client.coax) plants them at load and
@@ -93,7 +93,7 @@ e2_plant_rows :: (out:[]f32,kinds:[]u8,first:[]int,rows:u64)->int {
  for j:0..<E2_CELLS_Z {for i:0..<E2_CELLS_X {c:=j*E2_CELLS_X+i;first[c]=n;if ((rows>>cast(u64)j)&1)!=0 {n=e2_plant_cell(out,kinds,n,i,j);}}}
  first[E2_CELLS_X*E2_CELLS_Z]=n;return n;
 }
-// ---- the planting baked into the pack (docs/verse/fast-loads.md, #13150)
+// ---- the planting baked into the pack (docs/metaverse/fast-loads.md, #13150)
 // e2_plant takes 1.8 s of a page's first frame, so build.sh plants once and writes the answer into
 // the pack's catalog as P lines (metaverse/tools/assets/everglade2_plant.coax): base64 of a record of
 // "E2P1", the count, the cells, then first[] (u32 each), the pieces' floats (their bits, u32 each)

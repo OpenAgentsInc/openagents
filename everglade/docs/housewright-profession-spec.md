@@ -200,7 +200,7 @@ the structure off the wet ground, raise the frame that carries the load,
 close the walls, cover the roof, then fit out the inside. A lighter tier
 skips the steps it doesn't need. Everglade Experimental shows every tier
 frozen at every stage in its housewright showcase
-([docs/verse/everglade-experimental.md](../../docs/verse/everglade-experimental.md)).
+([docs/metaverse/everglade-experimental.md](../../docs/metaverse/everglade-experimental.md)).
 
 ### The stages of the branch lean-to
 

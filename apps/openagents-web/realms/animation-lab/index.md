@@ -44,7 +44,7 @@ for example `#retarget?rig=echo&clip=jog_fwd&to=mannequin`.
 
 Run `openagents labs anim import SOURCE --rig NAME` to import a glTF/FBX,
 BVH, ARKit CSV or supported Unreal body source. See the
-[import profiles and limits](/docs/verse/anim-imports-v1.md). Expose the output
+[import profiles and limits](/docs/metaverse/anim-imports-v1.md). Expose the output
 `library.bundle` through the private alias below, tap **PRIVATE**, then
 **CLIP**. A deep link such as `#clip?rig=NAME` selects the imported rig.
 
@@ -98,7 +98,7 @@ scene or cut with headless muted Chrome and muxes audio after the Metaverse
 frames. `openagents labs anim check FILE` reports continuity, face ranges,
 joint/capsule screening, planted-foot travel and determinism as JSON.
 JSON inputs use an adjacent `project.json`; an ALP1 bundle carries the whole
-admitted project. See the [A5 scene profile](/docs/verse/anim-scenes-v1.md)
+admitted project. See the [A5 scene profile](/docs/metaverse/anim-scenes-v1.md)
 and the original Guardian staging recipe in `metaverse/animlab/guardian/`.
 
 For local playback, expose an ALP1 file as `TOKEN.bundle` in the private web

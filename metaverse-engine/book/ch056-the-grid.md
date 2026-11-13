@@ -301,7 +301,7 @@ push, changed, is caught at the step where that frame's input is first read.
   ([registry.coax](../render/registry.coax)). A lost GPU device keeps its
   session ([gpu-recovery.coax](../../coax/web/gpu-recovery.coax)).
 - Its edit rows (walkers, names) are in
-  [realm-edit.md](../../docs/verse/realm-edit.md).
+  [realm-edit.md](../../docs/metaverse/realm-edit.md).
 
 ## Still to do
 

@@ -1,4 +1,4 @@
-// The G4 check (docs/verse/native-gpu.md): metaverse/gpu/shaders/quad.coax drawn
+// The G4 check (docs/metaverse/native-gpu.md): metaverse/gpu/shaders/quad.coax drawn
 // on the GPU from `coax spirv --vertex quad_vs --fragment quad_fs`, with a
 // storage buffer of colors, the uniforms, a texture and a sampler bound,
 // against quad_fs run on the CPU at every pixel's center.

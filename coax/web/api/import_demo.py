@@ -13,7 +13,7 @@ or brought up to date (added), what the database now holds from the demo
 itself and keeps (kept); it exits 1 unless source = held + kept everywhere.
 
 The demo's layout (aethyr-cpp tools/serve.py and tools/analytics.py at
-demo/kiki-2026-10-28d; docs/verse/playtest-port.md): namespace "" (the Kiki
+demo/kiki-2026-10-28d; docs/metaverse/playtest-port.md): namespace "" (the Kiki
 landing, space 'kiki') at the top, namespace "dev" (main's pages, the Haunted
 House among them, space 'dev') under dev/. players.json is shared.
 """

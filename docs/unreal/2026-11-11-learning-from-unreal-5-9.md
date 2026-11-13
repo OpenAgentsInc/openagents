@@ -22,7 +22,7 @@ Sources read for this note (all on `origin/main` unless named):
 - The Metaverse Engine book (`metaverse-engine/book/`, especially chapters 11, 13, 14, 38, 53,
   72, 80, 83, 84, 86–102 and Appendix A), `metaverse-engine/README.md`,
   `metaverse-engine/render/README.md` and the module tree.
-- The Verse (`docs/verse/`, especially the Solstice comparison, the lighting
+- The Verse (`docs/metaverse/`, especially the Solstice comparison, the lighting
   plan, the action pipeline and texture formats), Everglade (`everglade/`,
   `everglade/book/`), the netcode audits
   (`docs/audits/2026-11-10-everglade-multiplayer-audit.md`,
@@ -170,7 +170,7 @@ split for indirect occlusion and sun visibility (`render/painterly.coax`,
 `paint_irradiance`), contact shading from normal and depth
 (`render/contact-shade.coax`), height haze and cloud shadows. Lighting
 phase 5 plans "indirect visibility and interior transitions"
-(`docs/verse/lighting/README.md`).
+(`docs/metaverse/lighting/README.md`).
 
 **The gap.** No bounce light, so interiors and forest floors rely on
 authored ambient and regions (`world/environment-region.coax`).
@@ -464,7 +464,7 @@ problems.
 
 **What the Metaverse Engine has.**
 - The action pipeline, ask, act, present (`metaverse-engine/action/deed.coax`,
-  `docs/verse/action-pipeline.md`).
+  `docs/metaverse/action-pipeline.md`).
 - Predicted casts with rollback by request number, a 1.5 s timeout and a
   late yes (audit #13157).
 - Effects as state and events as cues (chapter 94).
@@ -543,7 +543,7 @@ a Physics Lab and space-game concern, not a launch one.
   (`metaverse-engine/character/fix.coax`).
 - An Unreal export plugin of our own (`metaverse-engine/tools/unreal-echo-sdk/`) and
   an Unreal source plan reader (`metaverse-engine/anim/unreal-source.coax`).
-- MetaHuman support (`docs/verse/metahuman-support.md`).
+- MetaHuman support (`docs/metaverse/metahuman-support.md`).
 
 **The gap.** Locomotion picks clips by state, so starts, stops and
 pivots blend generically. There's no trajectory-aware selection.
@@ -791,7 +791,7 @@ agent context the way MCP tool search does.
 - An offline room in a Worker (chapter 95).
 - Phones as first-class targets (`metaverse-engine/core/quality.coax`).
 - Compressed-texture detection (`coax/web/host.js`) and texture tiers
-  (`docs/verse/2026-11-07-texture-formats.md`).
+  (`docs/metaverse/2026-11-07-texture-formats.md`).
 - Native Metal and Vulkan hosts (`render/metal-host.coax`,
   `host/build-vulkan.coax`).
 
@@ -907,7 +907,7 @@ code.**
   by line into Coax; copy constant tables, packed bit layouts or file
   formats verbatim; feed UE source to a model as training data; ship Epic
   sample content (Lyra, the Valley of the Ancient sample, Epic's MetaHuman
-  assets) in Metaverse Engine realms. `docs/verse/2026-11-05-valley-lab.md` already
+  assets) in Metaverse Engine realms. `docs/metaverse/2026-11-05-valley-lab.md` already
   says "Do not copy Epic sample" assets; that rule stands.
 - **Third-party code inside the UE tree** (Dawn, Tint, Emscripten) has its
   own permissive licences. If we want any of it, we take it from its
@@ -965,7 +965,7 @@ Acceptance:
 - Round-trip checks for every field kind; out-of-range values refuse.
   `#authority`, zero survivors.
 - Bytes per seat per second at the raid workload
-  (`docs/verse/2026-11-05-everglade-capacity-workloads.md`) drop by at
+  (`docs/metaverse/2026-11-05-everglade-capacity-workloads.md`) drop by at
   least half against text, as measured by `net/stats.coax`.
 - Old pages are refused with a version error, not misread.
 
@@ -1055,7 +1055,7 @@ room turns them on or off. Replication carries the active set, and content
 is admitted per layer.
 
 Acceptance:
-- Everglade's world events (`docs/verse/2026-11-03-everglade-world-events.md`)
+- Everglade's world events (`docs/metaverse/2026-11-03-everglade-world-events.md`)
   move from code paths to layers.
 - A layer turned on mid-session shows on every seat within one interest
   update.

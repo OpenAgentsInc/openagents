@@ -1,4 +1,4 @@
-// Everglade II's planting into its pack (docs/verse/fast-loads.md, #13150): IN.pack's catalog with
+// Everglade II's planting into its pack (docs/metaverse/fast-loads.md, #13150): IN.pack's catalog with
 // the woods e2_plant plants (everglade/world/plant.coax) as P lines, written to OUT.pack. The page
 // takes the woods from them instead of planting for 1.8 s on its first frame. apps/openagents-web/
 // build.sh runs it on the tracked everglade2.pack before page-pack writes the .vpk3, so the lines

@@ -75,7 +75,7 @@ RaidPreview :: struct {
 // ?raid=preview (and &cine=1): you by the commons facing the South Gate, the raid to come.
 rp_facts :: (s: [] Everglade, url: string) {
   if eg_query_is(url,"from","grid") {s[0].orbit=verse_orbit_start(s[0].feet,f32(PI));}
-  // a staged shot of Darian and his staff (docs/verse/clips.md), in the preview or a room
+  // a staged shot of Darian and his staff (docs/metaverse/clips.md), in the preview or a room
   if eg_query_is(url, "stage", "darian") { s[0].rp.stage = 4; }
   if eg_query_is(url, "stage", "darian-15") { s[0].rp.stage = 15; }
   if eg_query_is(url, "stage", "front") { s[0].rp.stage = -1; }   // the siege's front from above the South Gate (#12860)

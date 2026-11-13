@@ -1,4 +1,4 @@
-// Orbits in f64, the engine's space primitive (docs/verse/space.md): two-body
+// Orbits in f64, the engine's space primitive (docs/metaverse/space.md): two-body
 // Kepler motion (elements to and from state vectors, Kepler's equation for
 // elliptic and hyperbolic orbits), an ephemeris of the solar system's bodies
 // from J2000 mean elements, spheres of influence for patched conics, a
@@ -9,7 +9,7 @@
 // ecliptic of J2000: +X toward the vernal equinox, +Z the ecliptic's north.
 // Time is seconds since J2000 (TDB); ORBIT_2200 is 1 January 2200.
 // Ported in spirit from Lagrange 2's `verse-lagrange` orbit crate
-// (`git show 0b401561a0^:docs/verse/lagrange-2.md`): DE440 GM values and
+// (`git show 0b401561a0^:docs/metaverse/lagrange-2.md`): DE440 GM values and
 // the same rocket equation.
 //   coax/bin/coax test metaverse-engine/physics/orbit.coax --library --steps 2000000000
 

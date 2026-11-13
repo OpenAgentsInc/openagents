@@ -1,5 +1,5 @@
 // openagents realm play / look / go / say / use / bye / leave: a seat in a running realm
-// (docs/verse/realm-seat.md, #12637). The verbs are the "seat" rows of REALM_COMMANDS
+// (docs/metaverse/realm-seat.md, #12637). The verbs are the "seat" rows of REALM_COMMANDS
 // (commands.coax), so help, the skill and the MCP tools come from the same rows.
 //
 // `realm play SLUG` starts a seat: this program again, detached (`openagents seat-hold`), holding
@@ -441,7 +441,7 @@ seat_reply :: (h: int, text: string) {
   ok = ok && cxsock_write(h, 10) == 0 && cxsock_flush(h, 5000) == 0;
 }
 
-// The seat's presence in the realm's room (docs/verse/realm-seat.md slice 4, migrations/0108):
+// The seat's presence in the realm's room (docs/metaverse/realm-seat.md slice 4, migrations/0108):
 // signed with the profile's key, so others in the realm see an agent with its account's name and
 // an AGENT tag. Posted when the seat opens, after each action and every SEAT_PRESENCE_MS between
 // them; {"gone": true} when it closes. False when the server won't have it (no key: 401 or 403; a

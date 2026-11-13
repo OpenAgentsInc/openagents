@@ -2199,7 +2199,7 @@ rg_keep :: (t: [] Ap, text: string) -> string {
   for c: text { t[0].env[t[0].env_n] = c; t[0].env_n += 1; }
   return cast(string) t[0].env[a..<t[0].env_n];
 }
-// Region failover rehearsed on this machine (#12853; spec docs/verse/region-recovery.md; contract
+// Region failover rehearsed on this machine (#12853; spec docs/metaverse/region-recovery.md; contract
 // metaverse-engine/session/region.coax). The harness's database is region A's primary. Then:
 //   1. region B's replica: a streaming copy of A (pg_basebackup), behind by the replication lag;
 //   2. a partition: B loses A's stream, while A's API keeps taking a room's writes (the loss window);

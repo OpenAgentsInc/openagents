@@ -12,7 +12,7 @@ work already went into the code they replace.
 
 It builds on three earlier documents and doesn't repeat them:
 
-- [MMO architecture gap analysis](../verse/2026-11-04-aethyr-verse-mmo-gap-analysis.md)
+- [MMO architecture gap analysis](../metaverse/2026-11-04-aethyr-verse-mmo-gap-analysis.md)
   (gaps G1 to G10, 2026-11-04)
 - [Everglade multiplayer audit](2026-11-10-everglade-multiplayer-audit.md)
   (netcode measured, 2026-11-10)
@@ -544,12 +544,12 @@ service, behind a canary.
 
 **Evidence.** About 2,600 commits reached `main` in ten days, up to 415 in a
 day. Nothing checks a commit before it lands; the integrator is "built and
-optional" (`docs/verse/green-main-pipeline.md`, checked). `main-green` runs
+optional" (`docs/metaverse/green-main-pipeline.md`, checked). `main-green` runs
 hours behind with three of five recent runs red. Two commits built on stale
 bases deleted other agents' work and had to be restored. Goldens, 60 FPS and
 the pair check are reports, not gates, and the 60 FPS check targets v1, not
 Everglade II. 39 files of 600 lines or more have two or fewer tests. Forty
-`clamp` definitions. `docs/verse` holds 93 documents and no single
+`clamp` definitions. `docs/metaverse` holds 93 documents and no single
 architecture page or decision log.
 
 **AAA practice.** Nothing reaches the mainline without a pre-submit build and

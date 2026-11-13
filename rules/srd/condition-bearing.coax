@@ -1,4 +1,4 @@
-// SRD 5.2.1 conditions as a body's bearing (metaverse-engine/action/deed.coax, docs/verse/action-pipeline.md,
+// SRD 5.2.1 conditions as a body's bearing (metaverse-engine/action/deed.coax, docs/metaverse/action-pipeline.md,
 // GitHub #13072): one pose for the body, one set of locks for the input and the bar, so a creature at
 // 0 Hit Points lies down, moves nothing and casts nothing, all at once, in every realm. Its loader
 // loads the SRD engine (engine.coax or battle.coax) first. The checks are

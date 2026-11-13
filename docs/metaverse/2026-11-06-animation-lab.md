@@ -46,11 +46,11 @@ Draconia, The Guardian").
 | Slay face | `metaverse/valley/slay-shot.coax`, `slay-shot-play.coax` (#12962) | Slay's facial clips on Echo, with a fixed source-shot view |
 | Anime director | `metaverse/anime/director.coax`, `take.coax`, `stage.coax`, `coax/web/api/anime-director-policy.coax` | Words to typed directions with confidence; `.take` files (`anime.v1`); timeline grammar |
 | Labs CLI | `apps/openagents-cli/labs.coax`, `docs/cli/2026-11-01-openagents-labs.md` | `labs shot`, `clip`, `frames`, `cut`, `compare`, `anime` |
-| Private packs | `docs/verse/private-assets.md`, `docs/verse/metahuman-support.md` | Licensed data stays out of git, addressed by SHA-256, resolved owner-locally |
+| Private packs | `docs/metaverse/private-assets.md`, `docs/metaverse/metahuman-support.md` | Licensed data stays out of git, addressed by SHA-256, resolved owner-locally |
 
 Before the Nuke (`git show 0b401561a0^:<path>`):
 
-- `docs/verse/draconia/`: the Draconia plan, its character build (Blender on
+- `docs/metaverse/draconia/`: the Draconia plan, its character build (Blender on
   the 65-joint rig; hair chains, blend shapes, cloth as bone chains), the
   night-courtyard world, the MetaHuman pipeline (UE Python, DNA with 782
   blend-shape channels and 870 joints) and 20 parity rounds against a
@@ -163,7 +163,7 @@ the mannequin, plus face curves.
 | glTF and FBX | glTF reads directly; FBX uses headless Blender, then the same reader |
 | BVH mocap | Read directly; retarget by name |
 | Phone face capture | ARKit curves (Live Link Face CSV) straight into face curves |
-| MetaHuman | The existing pipeline (`docs/verse/metahuman-support.md`), DNA through `metaverse-engine/anim/facerig.coax` |
+| MetaHuman | The existing pipeline (`docs/metaverse/metahuman-support.md`), DNA through `metaverse-engine/anim/facerig.coax` |
 | Hand keys | Poses from the pose library, set at times |
 
 Every import writes a receipt (source, export settings, counts, hashes) and

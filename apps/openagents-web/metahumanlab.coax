@@ -1,7 +1,7 @@
 // MetaHuman Lab retains its established twelve-clip selector.
 META_CLIPS :: 12;
 // MetaHuman Lab, openagents.com/worlds/metahuman-lab (unlisted): the bench where Aethyr's human
-// runtime is built (docs/verse/metahuman-support.md, phases 0 and 1). One figure stands on a lit
+// runtime is built (docs/metaverse/metahuman-support.md, phases 0 and 1). One figure stands on a lit
 // studio floor with a skeleton driving it.
 //
 // The figure is public and holds no MetaHuman asset. Its skeleton and clips are the CC0 Quaternius

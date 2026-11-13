@@ -1,9 +1,9 @@
-// Orbit League (docs/verse/game-ideas/orbit-league.md): electric roadsters
+// Orbit League (docs/metaverse/game-ideas/orbit-league.md): electric roadsters
 // playing ball in a glass arena in orbit. This file is the page: the controls,
 // the camera, the HUD, the clips and the frame. The game's rules, its match
 // state and the room's wire are orbitleague-game.coax, which the room server
 // loads without the page (#13347); the physics is the engine's space primitives
-// (docs/verse/space.md): metaverse-engine/physics/vehicle.coax drives the cars, metaverse-engine/physics/contact.coax
+// (docs/metaverse/space.md): metaverse-engine/physics/vehicle.coax drives the cars, metaverse-engine/physics/contact.coax
 // answers every touch, metaverse-engine/physics/gravity.coax says which way is down, and
 // metaverse-engine/physics/thrust.coax burns the boost.
 //
@@ -13,7 +13,7 @@
 // comes back. W/S (or the arrows) drive, A/D steer, Space jumps (twice),
 // Shift boosts, C is ball cam, Escape goes to /worlds. On a phone
 // the left thumb steers and drives; JUMP and BOOST are on the right.
-// ?stage=highlight plays a staged goal for clips (docs/verse/clips.md).
+// ?stage=highlight plays a staged goal for clips (docs/metaverse/clips.md).
 // ?arena=drum (or PLAY IN THE DRUM when a match ends) plays inside a spinning drum
 // (metaverse/drum.coax): the floor curves up into the walls and over into the
 // ceiling, the spin holds you to all of it, and the goals sit at the foot of

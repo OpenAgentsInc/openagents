@@ -1,4 +1,4 @@
-// Everglade's feature parity across its zones (#13075, docs/verse/everglade-feature-parity.md).
+// Everglade's feature parity across its zones (#13075, docs/metaverse/everglade-feature-parity.md).
 // The owner's rule (2026-11-09): a feature is engine-wide (metaverse-engine/) or game-wide (the Everglade
 // layer), and a zone only wires it in. everglade/features.coax is the manifest: each feature, the
 // shared modules that own it, the definitions and file names that mark an implementation of it, and

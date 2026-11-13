@@ -132,7 +132,7 @@
   "admission": "eg_admit (coax/web/room/room-everglade.coax): a hello whose version is below min or above version, or a P whose pins differ, is refused with r 0 version",
   "unsupported": [
     "H 1, the wire before version 3: refused like any other version below min",
-    "the realm.v1 chamber messages of docs/verse/openagents-verse-protocol.md (ActorAppear, ActorUpdate, SpatialDelta, transfer): not spoken by Everglade rooms",
+    "the realm.v1 chamber messages of docs/metaverse/openagents-verse-protocol.md (ActorAppear, ActorUpdate, SpatialDelta, transfer): not spoken by Everglade rooms",
     "protobuf framing: this profile is text frames only",
     "the relay's m SEAT TEXT: other games' rooms relay a player's frames as they were sent; an Everglade room reads them and relays none"
   ]

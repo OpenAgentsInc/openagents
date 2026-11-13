@@ -20,7 +20,7 @@
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
 #load "../../metaverse/deadgears/rules.coax";
-#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/metaverse/realm-edit.md)
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/move/walk.coax" as pc;   // the controller every walkable realm shares (#6d99)
 #load "../../metaverse-engine/physics/collision-profiles.coax" as walk_profiles;

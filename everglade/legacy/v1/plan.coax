@@ -1,7 +1,7 @@
 // Everglade, the forest city, as a blockout: the ground, the palisade and
 // every building, stall and landmark as a box, the streets and the trails
 // out as a path graph, and where each character stands. The plan in words
-// is docs/verse/everglade.md; its map (docs/verse/everglade-map.svg) is
+// is docs/metaverse/everglade.md; its map (docs/metaverse/everglade-map.svg) is
 // drawn from these numbers by everglade/legacy/v1/map.py.
 //
 // Metres, z north and x west, the fountain at the origin: the engine's
@@ -19,7 +19,7 @@
 #load "glade-zone.coax";   // the glade south of the South Gate, Character Create's (#13018)
 #load "points.coax";       // the spawn and the named points the scripted checks read (#13078)
 
-// Wave 1 of the map's expansion (docs/verse/2026-11-03-everglade-map-gap-analysis.md): the world
+// Wave 1 of the map's expansion (docs/metaverse/2026-11-03-everglade-map-gap-analysis.md): the world
 // grew from 208 m to 352 m a side, as the previous engine's first expansion grew its glade into a
 // town about 272 m across. The old walled town is the middle; the open town (everglade_in_town)
 // runs 140 m out from the fountain, round at the corners, and the woods ring it to the edge.
@@ -306,7 +306,7 @@ everglade_meet_glade :: (heights: [] f32) {
   }
 }
 
-// ---- the ponds (docs/verse/water.md, W3: the previous Everglade's four, verse/everglade/previous/water.md
+// ---- the ponds (docs/metaverse/water.md, W3: the previous Everglade's four, verse/everglade/previous/water.md
 // "Owner decisions" 1): each a bowl carved into the ground off a trail, in its own clearing, its water a
 // metaverse/water.coax pond body at a still level (everglade/legacy/v1/river.coax). The level is 0.25 m under
 // the lowest ground 5 m past its rim; the bed falls from 0.25 m over the level at the rim to the pond's
@@ -380,7 +380,7 @@ everglade_in_pond :: (x: f32, z: f32, pad: f32) -> bool {
   return false;
 }
 
-// ---- the river (docs/verse/water.md W3): a channel carved along x = 88
+// ---- the river (docs/metaverse/water.md W3): a channel carved along x = 88
 // from the north edge to the south, its water one metaverse/water.coax river
 // body (everglade/legacy/v1/river.coax). Its level falls from north to south,
 // never rising and always 0.2 m under the lowest ground it runs through,

@@ -349,12 +349,12 @@ coax/bin/coax test metaverse-engine/ui/hud.coax --library
   engineering and communications scenes. Their explicit local actions
   demonstrate shared drawn/hit boxes, focus, contact selection, route/range
   previews, event acknowledgment and command feedback. The
-  [reference study and reuse contract](../../docs/verse/2026-11-01-hud-library.md)
+  [reference study and reuse contract](../../docs/metaverse/2026-11-01-hud-library.md)
   distinguish these foundations from the full UI tree planned here.
 - The [ARWES Coax ports](../ui/arwes/SOURCES.md): all nine frame families,
   31 easing curves, lifecycle and child timing, text reveal/decipher, typed
   theme/style patterns, backgrounds, pointer lighting and a silent cue model.
-  The [porting report](../../docs/verse/2026-11-01-arwes-coax.md) records exact
+  The [porting report](../../docs/metaverse/2026-11-01-arwes-coax.md) records exact
   sources, the MIT notice and the boundary between reusable algorithms and
   DOM/framework/audio effects owned by hosts.
 - [metaverse/light.coax](../../metaverse/light.coax): the slot and bar shading

@@ -1,4 +1,4 @@
-// Orbit League's game without its page (docs/verse/game-ideas/orbit-league.md): the numbers, the
+// Orbit League's game without its page (docs/metaverse/game-ideas/orbit-league.md): the numbers, the
 // match's state, the arenas, the match and its kickoffs, the bot, one physics step, the sparks a
 // goal throws, and the room's wire on the frozen profile (a car's report, the room's state, and
 // how a page takes that state). orbitleague.coax, the page, loads it and adds the controls, the
@@ -129,7 +129,7 @@ HOST_KEPT :: 4;          // host.js: what this realm kept in this browser (your 
 ACT_KEEP :: 4;           // host.js: keep the outbox's text in this realm's slot
 // ol-paint: a car's paint is a colour (0 the team's own, then these) + 8 x a decal
 PAINT_COLOURS :: 8; PAINT_DECALS :: 4;
-MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.js, docs/verse/makers.md)
+MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.js, docs/metaverse/makers.md)
 MAKER_BYTES :: 160;  // its 40 characters of UTF-8
 BTN_BACK :: 0; BTN_JUMP :: 1; BTN_BOOST :: 2; BTN_CAM :: 3; BTN_AGAIN :: 4; BTN_ARENA :: 5; BTN_MODE :: 6; BTN_QUICK :: 7; BTN_CLIP :: 8; BTN_PAINT :: 9; BTN_PCOL :: 10; BTN_PDEC :: 11; BTN_PDONE :: 12; BUTTONS :: 13;
 
@@ -736,7 +736,7 @@ you_drive :: (s: [] OrbitLeague) -> Drive {
   return out;
 }
 
-// ---- staged moments (?stage=NAME, docs/verse/clips.md): a seeded scene that
+// ---- staged moments (?stage=NAME, docs/metaverse/clips.md): a seeded scene that
 // plays the same way every time, for a clip
 
 STAGE_NONE :: 0; STAGE_HIGHLIGHT :: 1;

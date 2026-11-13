@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5. Runs a heavy command on a remote build host instead of this
-# computer (docs/verse/remote-builds.md, #13077): gcloud, ssh, git and tar,
+# computer (docs/metaverse/remote-builds.md, #13077): gcloud, ssh, git and tar,
 # and the Mac's build slots (~/.openagents/build-slots/heavy.sh) when no host
 # can take the job.
 #

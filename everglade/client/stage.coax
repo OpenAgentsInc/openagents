@@ -1,4 +1,4 @@
-// Everglade II's staged shots (?stage=NAME, docs/verse/clips.md): the forest path and the city's
+// Everglade II's staged shots (?stage=NAME, docs/metaverse/clips.md): the forest path and the city's
 // empty clearing, each its own camera on the Metaverse Engine's camera track (metaverse-engine/cam/track.coax) with the HUD
 // off, in late afternoon light. The keys are laid on the land's own functions (everglade/world/
 // forest.coax: e2_road_x, e2_height, e2_city), so a shot keeps to the path and the clearing as the land

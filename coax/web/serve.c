@@ -186,7 +186,7 @@ static bool resolve(const char *url, char *out, size_t cap) {
   if (!strcmp(path, "/")) return snprintf(out, cap, "%s/index.html", app_dir) < (int)cap;
   if (!strncmp(path, "/coaxial/", 9)) return snprintf(out, cap, "%s/%s", host_dir, path + 9) < (int)cap;
   // /private/* (watching only, never --static): private builds outside the repo, such as a MetaHuman
-  // pack (docs/verse/metahuman-support.md), from ~/.openagents/verse/private-build/web/. A deploy never
+  // pack (docs/metaverse/metahuman-support.md), from ~/.openagents/verse/private-build/web/. A deploy never
   // has them: the host asks for one only on a local address (coax/web/host.js "private:").
   if (!strncmp(path, "/private/", 9)) {
     const char *home = getenv("HOME");

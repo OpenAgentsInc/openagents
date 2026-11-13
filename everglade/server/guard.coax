@@ -41,7 +41,7 @@ E2G_AIM :: 1.6;
 E2G_DEFEND :: 12.0;         // m: a monster that strikes a player this near him is his foe             // m: a cast aimed this near him is aimed at him
 E2G_BLOW_S :: 0.7;          // s between his turn's attacks as the pages see and hear them
 E2G_FORM :: 21;             // E5RR_FORM_RAID + RS_NPC_GUARD: the guard's look
-// How he fights, on the engine's steering service (metaverse-engine/ai/steer.coax, docs/verse/navigation.md):
+// How he fights, on the engine's steering service (metaverse-engine/ai/steer.coax, docs/metaverse/navigation.md):
 // after his foe at a run, aimed where they will be; round them within his reach once there, changing
 // his side every few seconds; never deeper into a player than E2G_CLEAR; round what he can't stand on.
 // His leash is his own (E2G_LEASH from where he was struck, then his walk), so the service's is off.

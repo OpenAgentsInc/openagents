@@ -72,7 +72,7 @@ icecream_tick :: (g: *IceCream, a: Actions, step: u64) {
   fixtures are present).
 - [icecream.coax](../../apps/openagents-web/icecream.coax): the HUD in Coax.
 - Edit rows: minions, weapons, backrooms
-  ([realm-edit.md](../../docs/verse/realm-edit.md)).
+  ([realm-edit.md](../../docs/metaverse/realm-edit.md)).
 
 Its loop, input mapping and camera are its own and match no other realm's.
 

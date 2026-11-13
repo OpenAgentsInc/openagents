@@ -1,5 +1,5 @@
 // A page's frame rate around a scripted moment (a destroy in Everglade), in headless Chrome with a
-// phone's screen and, optionally, a slower CPU: docs/verse/2026-11-03-adaptive-graphics-quality.md.
+// phone's screen and, optionally, a slower CPU: docs/metaverse/2026-11-03-adaptive-graphics-quality.md.
 //   coax/web/tool.sh destroy-fps URL --eval JS [--size 390x844] [--dpr 3] [--touch] [--cpu 4] [--wait 3000] [--shot OUT.png] [--before JS] [--profile OUT.json]
 // The page is opened at WxH CSS pixels with DPR device pixels each (a touch phone's when W is under
 // 600 or with --touch, as a phone held sideways), the CPU slowed DPR times by Chrome's own throttle (--cpu 1 is the machine's speed), and once

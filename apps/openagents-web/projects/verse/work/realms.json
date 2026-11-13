@@ -5,7 +5,7 @@
     "slug": "realms-port",
     "title": "Port the realms: Ice Cream Man, Dead Gears, Everglade",
     "body": "Bring the demo's other worlds to openagents.com in Coax, each opening from the galaxy, and build Everglade, the forest city.",
-    "spec": "docs/verse/realms-port.md",
+    "spec": "docs/metaverse/realms-port.md",
     "labels": [
       "realms"
     ]
@@ -64,7 +64,7 @@
         "realms",
         "web"
       ],
-      "body": "Today /realm/haunted-house is the only realm page. Make the realm page take a realm id so /realm/<slug> loads that realm's world module, assets, HUD and save slot, and the galaxy opens each realm from its orbit. The Haunted House keeps working unchanged.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Today /realm/haunted-house is the only realm page. Make the realm page take a realm id so /realm/<slug> loads that realm's world module, assets, HUD and save slot, and the galaxy opens each realm from its orbit. The Haunted House keeps working unchanged.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/realm.coax",
         "apps/openagents-web/verse.coax"
@@ -94,7 +94,7 @@
         "realms",
         "assets"
       ],
-      "body": "A pack format and compiler for realm art: meshes, textures and sounds from CC0 kits (Quaternius Stylized Nature, Medieval Village, Fantasy Props, in ~/work/aethyr-cpp) compiled to compact packs the page streams on entry, with a size budget per realm and licences recorded. See the demo's tools/split_assets.py and the old Everglade pack compiler at 0b401561a0^:crates/verse-zone-everglade.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "A pack format and compiler for realm art: meshes, textures and sounds from CC0 kits (Quaternius Stylized Nature, Medieval Village, Fantasy Props, in ~/work/aethyr-cpp) compiled to compact packs the page streams on entry, with a size budget per realm and licences recorded. See the demo's tools/split_assets.py and the old Everglade pack compiler at 0b401561a0^:crates/verse-zone-everglade.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "metaverse/",
         "apps/openagents-web/"
@@ -117,7 +117,7 @@
         "realms",
         "release"
       ],
-      "body": "Extend coax/web/goldens.ts so every live realm is opened from the galaxy, starts, draws and matches its golden on staging, and starts and draws on production.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Extend coax/web/goldens.ts so every live realm is opened from the galaxy, starts, draws and matches its golden on staging, and starts and draws on production.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "coax/web/goldens.ts"
       ],
@@ -167,7 +167,7 @@
         "realms",
         "ice-cream-man"
       ],
-      "body": "Port the game's rules (src/icecream/rules.cpp and rules.h in ~/work/aethyr-demo (read only), itself a step-for-step port of OpenAgents' Rust game in third_party/icecream) to Coax, deterministic and seeded. Check it against the Rust build's recorded input traces (tools/icecream-trace) frame by frame.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Port the game's rules (src/icecream/rules.cpp and rules.h in ~/work/aethyr-demo (read only), itself a step-for-step port of OpenAgents' Rust game in third_party/icecream) to Coax, deterministic and seeded. Check it against the Rust build's recorded input traces (tools/icecream-trace) frame by frame.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -190,7 +190,7 @@
         "realms",
         "ice-cream-man"
       ],
-      "body": "Port src/icecream/mesh.cpp: the seeded house, rooms, furniture and models, drawn by the Metaverse renderer.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Port src/icecream/mesh.cpp: the seeded house, rooms, furniture and models, drawn by the Metaverse renderer.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -214,7 +214,7 @@
         "realms",
         "ice-cream-man"
       ],
-      "body": "Port src/icecream/world.cpp and camera.cpp: the shared player controller, the game's camera, interactions and the play loop driving the Coax rules.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Port src/icecream/world.cpp and camera.cpp: the shared player controller, the game's camera, interactions and the play loop driving the Coax rules.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -240,7 +240,7 @@
         "realms",
         "ice-cream-man"
       ],
-      "body": "Time, the hot bar, prompts and the end card, drawn in Coax in the house's fantasy button style.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Time, the hot bar, prompts and the end card, drawn in Coax in the house's fantasy button style.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -265,7 +265,7 @@
         "realms",
         "ice-cream-man"
       ],
-      "body": "/realm/ice-cream-man, its galaxy orbit, saves, analytics events, the share card and its golden; then a side-by-side with the demo for the owner's parity sign-off.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "/realm/ice-cream-man, its galaxy orbit, saves, analytics events, the share card and its golden; then a side-by-side with the demo for the owner's parity sign-off.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -289,7 +289,7 @@
         "realms",
         "dead-gears"
       ],
-      "body": "Port the engine ECS Dead Gears runs on (src/ecs/ and docs/ecs.md in ~/work/aethyr-demo (read only)): entities, components and deterministic systems, with per-system timing.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Port the engine ECS Dead Gears runs on (src/ecs/ and docs/ecs.md in ~/work/aethyr-demo (read only)): entities, components and deterministic systems, with per-system timing.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -312,7 +312,7 @@
         "realms",
         "dead-gears"
       ],
-      "body": "Port src/dead_gears_rules.cpp: the cutter, Sever/Head/Core modes, reload, cover, Lift/Throw with telekinetic power, Stun, three waves, repairs at the reactor, and the swept collisions (#19, #80).\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Port src/dead_gears_rules.cpp: the cutter, Sever/Head/Core modes, reload, cover, Lift/Throw with telekinetic power, Stun, three waves, repairs at the reactor, and the swept collisions (#19, #80).\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -337,7 +337,7 @@
         "realms",
         "dead-gears"
       ],
-      "body": "Port src/dead_gears.cpp's original ship geometry into the realm's static scene, with cover, cargo, bolts and the reactor.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Port src/dead_gears.cpp's original ship geometry into the realm's static scene, with cover, cargo, bolts and the reactor.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -362,7 +362,7 @@
         "realms",
         "dead-gears"
       ],
-      "body": "The procedural box figures for engineers and creatures, limbs that sever, heads that keep crawling, and the support engineer who walks over to repair.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "The procedural box figures for engineers and creatures, limbs that sever, heads that keep crawling, and the support engineer who walks over to repair.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -388,7 +388,7 @@
         "realms",
         "dead-gears"
       ],
-      "body": "Keyboard (WASD, F fire, R reload, C cover, E repair, Q mode, G lift/throw, T stun, Esc pause) and touch buttons, the HUD, pause and backgrounding freeze, Again.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Keyboard (WASD, F fire, R reload, C cover, E repair, Q mode, G lift/throw, T stun, Esc pause) and touch buttons, the HUD, pause and backgrounding freeze, Again.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -412,7 +412,7 @@
         "realms",
         "dead-gears"
       ],
-      "body": "Each wave later in the day (afternoon, golden hour, dusk), sun through the roof lattice, wall strips, lamps, alarms, muzzle flash and bolts as lights.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Each wave later in the day (afternoon, golden hour, dusk), sun through the roof lattice, wall strips, lamps, alarms, muzzle flash and bolts as lights.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -437,7 +437,7 @@
         "realms",
         "dead-gears"
       ],
-      "body": "/realm/dead-gears with saves at each wave and repair, analytics, share card, galaxy orbit and golden.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "/realm/dead-gears with saves at each wave and repair, analytics, share card, galaxy orbit and golden.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -462,7 +462,7 @@
         "realms",
         "everglade"
       ],
-      "body": "The forest city from docs/realms.md in ~/work/aethyr-demo (read only) and the old Everglade doc and map (0b401561a0^:docs/verse/everglade.md, everglade-map.svg): gate and palisade, commons with fountain, quest board and crier, market, inn, guild halls, temple and observatory, paths out. A blockout realm you can walk, with the map checked in.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "The forest city from docs/realms.md in ~/work/aethyr-demo (read only) and the old Everglade doc and map (0b401561a0^:docs/metaverse/everglade.md, everglade-map.svg): gate and palisade, commons with fountain, quest board and crier, market, inn, guild halls, temple and observatory, paths out. A blockout realm you can walk, with the map checked in.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -488,7 +488,7 @@
         "realms",
         "everglade"
       ],
-      "body": "Terrain, walkable paths and a forest ring built on the engine's terrain and foliage.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Terrain, walkable paths and a forest ring built on the engine's terrain and foliage.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -514,7 +514,7 @@
         "realms",
         "everglade"
       ],
-      "body": "Gate and walls, the commons, market stalls, smithy, alchemist, general store, the inn with its common room, the guild halls, the temple and the observatory, from the Medieval Village and Fantasy Props kits.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Gate and walls, the commons, market stalls, smithy, alchemist, general store, the inn with its common room, the guild halls, the temple and the observatory, from the Medieval Village and Fantasy Props kits.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -541,7 +541,7 @@
         "realms",
         "everglade"
       ],
-      "body": "The city's characters, cats among them, on the character chat with memory: shopkeepers, the crier, guild masters. They remember a returning player.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "The city's characters, cats among them, on the character chat with memory: shopkeepers, the crier, guild masters. They remember a returning player.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -566,7 +566,7 @@
         "realms",
         "everglade"
       ],
-      "body": "A quest system (data an agent can write), the quest board, and three starter quests out to the deep wood, the ruins and the river crossing; one quest earns the bird companion.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "A quest system (data an agent can write), the quest board, and three starter quests out to the deep wood, the ruins and the river crossing; one quest earns the bird companion.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -592,7 +592,7 @@
         "realms",
         "everglade"
       ],
-      "body": "A flock that follows you, trailing ribbons, earned from a quest.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "A flock that follows you, trailing ribbons, earned from a quest.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -615,7 +615,7 @@
         "realms",
         "everglade"
       ],
-      "body": "Parity with the previous Everglade, starting with the character: the player is the old engine's skinned Universal male Ranger (`player/male-ranger` in its last pinned pack, `0b401561a0^:assets/verse/everglade/a82df378…vtp`): the same mesh parts, textures, skeleton and clips (idle, walk, run, jump, backpedal, both strafes and the two-handed chop), picked from the current controller's state as the old `Motion::of` did, gaits advancing by distance travelled, blended 0.22 s in joint space. The controller (`metaverse-engine/move/player.coax`) and camera (`metaverse-engine/cam/camera.coax`) are unchanged; only the figure drawn changes. GPU-skinned from the pack as the Grid's robots are.\n\nPlan: `docs/verse/everglade.md`, the player section.",
+      "body": "Parity with the previous Everglade, starting with the character: the player is the old engine's skinned Universal male Ranger (`player/male-ranger` in its last pinned pack, `0b401561a0^:assets/verse/everglade/a82df378…vtp`): the same mesh parts, textures, skeleton and clips (idle, walk, run, jump, backpedal, both strafes and the two-handed chop), picked from the current controller's state as the old `Motion::of` did, gaits advancing by distance travelled, blended 0.22 s in joint space. The controller (`metaverse-engine/move/player.coax`) and camera (`metaverse-engine/cam/camera.coax`) are unchanged; only the figure drawn changes. GPU-skinned from the pack as the Grid's robots are.\n\nPlan: `docs/metaverse/everglade.md`, the player section.",
       "files": [
         "metaverse/tools/pack_realm.py",
         "metaverse/packs/everglade.json",
@@ -645,7 +645,7 @@
         "realms",
         "everglade"
       ],
-      "body": "/realm/everglade, the galaxy orbit, analytics, share card and golden. Everglade is the same for everyone; players can't edit it (admins can: eg-edit).\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "/realm/everglade, the galaxy orbit, analytics, share card and golden. Everglade is the same for everyone; players can't edit it (admins can: eg-edit).\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -672,12 +672,12 @@
         "everglade",
         "admin"
       ],
-      "body": "The owner: \"I am the owner of Everglade, so why do I not have edit mode here? Whenever a user is an admin, they need to have edit mode.\" An admin (a key in coax/web/api/admins.conf, logged in at /login or signing NIP-98) gets the Haunted House's edit mode in Everglade: B or EDIT, a hotbar of things to place, the picked thing's row (LEFT RIGHT AWAY NEAR TURN BIGGER SMALLER DELETE), UNDO, REDO, DONE, and ORIGINAL to go back to the designed city. The edits are the realm's published world on the server (/api/playtest/world/everglade), checked there: only an admin writes them; everyone sees them, nobody else gets edit mode. Each edit is held to the plan (not in a wall, the woods or out of the world) and DONE walks the city again (plan.coax reachability) and warns the admin of anything blocked. Then every other realm without edit mode, or a recorded reason it has none.\n\nPlan: `docs/verse/everglade.md`.",
+      "body": "The owner: \"I am the owner of Everglade, so why do I not have edit mode here? Whenever a user is an admin, they need to have edit mode.\" An admin (a key in coax/web/api/admins.conf, logged in at /login or signing NIP-98) gets the Haunted House's edit mode in Everglade: B or EDIT, a hotbar of things to place, the picked thing's row (LEFT RIGHT AWAY NEAR TURN BIGGER SMALLER DELETE), UNDO, REDO, DONE, and ORIGINAL to go back to the designed city. The edits are the realm's published world on the server (/api/playtest/world/everglade), checked there: only an admin writes them; everyone sees them, nobody else gets edit mode. Each edit is held to the plan (not in a wall, the woods or out of the world) and DONE walks the city again (plan.coax reachability) and warns the admin of anything blocked. Then every other realm without edit mode, or a recorded reason it has none.\n\nPlan: `docs/metaverse/everglade.md`.",
       "files": [
         "apps/openagents-web/",
         "everglade/legacy/v1/",
         "coax/web/api/",
-        "docs/verse/"
+        "docs/metaverse/"
       ],
       "acceptance": [
         "An admin sees EDIT in Everglade and places, moves, turns, resizes and removes things; UNDO, REDO, DONE and ORIGINAL work",
@@ -698,11 +698,11 @@
         "realms",
         "admin"
       ],
-      "body": "The owner's rule (eg-edit): whenever a user is an admin, they have edit mode. The Grid has none yet: its art is one baked scene (thegrid.wgsl draws the pack's faces and lines; store 0 is the robots) with no kit of pieces to place. Give it a small kit (the stations' crates, boards, lamps from the demo's art) drawn as instances, then Everglade's edit mode (apps/openagents-web/everglade-edit.coax): EDIT for an admin only (/api/auth/me A|1), the hotbar, pick, move, turn, resize, delete, UNDO, REDO, ORIGINAL, DONE, published as /api/playtest/world/the-grid and checked on the server.\n\nPlan: `docs/verse/realm-host.md` (Edit mode for admins).",
+      "body": "The owner's rule (eg-edit): whenever a user is an admin, they have edit mode. The Grid has none yet: its art is one baked scene (thegrid.wgsl draws the pack's faces and lines; store 0 is the robots) with no kit of pieces to place. Give it a small kit (the stations' crates, boards, lamps from the demo's art) drawn as instances, then Everglade's edit mode (apps/openagents-web/everglade-edit.coax): EDIT for an admin only (/api/auth/me A|1), the hotbar, pick, move, turn, resize, delete, UNDO, REDO, ORIGINAL, DONE, published as /api/playtest/world/the-grid and checked on the server.\n\nPlan: `docs/metaverse/realm-host.md` (Edit mode for admins).",
       "files": [
         "apps/openagents-web/",
         "coax/web/api/",
-        "docs/verse/"
+        "docs/metaverse/"
       ],
       "acceptance": [
         "An admin sees EDIT in the Grid and places, moves, turns, resizes and removes pieces; UNDO, REDO, DONE and ORIGINAL work",
@@ -721,11 +721,11 @@
         "admin",
         "planetary-villa"
       ],
-      "body": "The owner's rule (eg-edit): whenever a user is an admin, they have edit mode. Hecate's Cemetery is Kiki's world (Planetary Villa); visitors already pick flowers and place vases (villaplay.coax). Ask Kiki what an admin may move (plots, hedges, cypresses, the fountain, the field's things), then bring Everglade's edit mode (apps/openagents-web/everglade-edit.coax): EDIT for an admin only, published as /api/playtest/world/hecates-cemetery and checked on the server.\n\nPlan: `docs/verse/realm-host.md` (Edit mode for admins).",
+      "body": "The owner's rule (eg-edit): whenever a user is an admin, they have edit mode. Hecate's Cemetery is Kiki's world (Planetary Villa); visitors already pick flowers and place vases (villaplay.coax). Ask Kiki what an admin may move (plots, hedges, cypresses, the fountain, the field's things), then bring Everglade's edit mode (apps/openagents-web/everglade-edit.coax): EDIT for an admin only, published as /api/playtest/world/hecates-cemetery and checked on the server.\n\nPlan: `docs/metaverse/realm-host.md` (Edit mode for admins).",
       "files": [
         "apps/openagents-web/",
         "coax/web/api/",
-        "docs/verse/"
+        "docs/metaverse/"
       ],
       "acceptance": [
         "Kiki has said what an admin may move",
@@ -742,7 +742,7 @@
       "labels": [
         "realms"
       ],
-      "body": "Port the demo's Sandbox (web/sandbox.html in ~/work/aethyr-demo (read only)): open ground where every edit tool works, one shared published Sandbox, and one-sentence set pieces chosen by a typed planner.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Port the demo's Sandbox (web/sandbox.html in ~/work/aethyr-demo (read only)): open ground where every edit tool works, one shared published Sandbox, and one-sentence set pieces chosen by a typed planner.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -767,7 +767,7 @@
         "sandbox",
         "server"
       ],
-      "body": "In the Sandbox a visitor types one sentence (\"a flock of birds follows me\", \"a ring of blue lanterns\") and the world gets that set piece. No keyword matching: the sentence goes to a server endpoint (POST /api/playtest/sandbox/piece) where Gemini on Vertex picks one piece from a fixed typed catalogue (a flock of birds that follows you, a ring of lanterns, a grove of trees, a pond) and its bounded parameters (count, kind, colour, size), checked against the catalogue on the server and again on the page. A seeded generator in Coax lays the piece out in front of you; it is one undo step and one publish in the Sandbox's build and publish model, and the Sandbox's own engine (metaverse/haunt.coax) draws it, the flock flying round whoever is walking.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "In the Sandbox a visitor types one sentence (\"a flock of birds follows me\", \"a ring of blue lanterns\") and the world gets that set piece. No keyword matching: the sentence goes to a server endpoint (POST /api/playtest/sandbox/piece) where Gemini on Vertex picks one piece from a fixed typed catalogue (a flock of birds that follows you, a ring of lanterns, a grove of trees, a pond) and its bounded parameters (count, kind, colour, size), checked against the catalogue on the server and again on the page. A seeded generator in Coax lays the piece out in front of you; it is one undo step and one publish in the Sandbox's build and publish model, and the Sandbox's own engine (metaverse/haunt.coax) draws it, the flock flying round whoever is walking.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "metaverse/setpiece.coax",
         "metaverse/haunt.coax",
@@ -795,7 +795,7 @@
         "realms",
         "sandbox"
       ],
-      "body": "The Sandbox went live at /realms/sandbox unlisted (rl-sandbox: \"unlisted on the galaxy until launch\") and no task launched it, so the galaxy never shows it without ?realms=all. Launch it the way dg-launch did: listed true in realms.json, realms.coax regenerated by coax/web/realms.ts, its planet clear of its neighbours, the galaxy and landing goldens approved from staging, and a release.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "The Sandbox went live at /realms/sandbox unlisted (rl-sandbox: \"unlisted on the galaxy until launch\") and no task launched it, so the galaxy never shows it without ?realms=all. Launch it the way dg-launch did: listed true in realms.json, realms.coax regenerated by coax/web/realms.ts, its planet clear of its neighbours, the galaxy and landing goldens approved from staging, and a release.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/realms.json",
         "apps/openagents-web/realms.coax",
@@ -817,7 +817,7 @@
       "labels": [
         "realms"
       ],
-      "body": "Port the demo's Grid world (src/grid_world.cpp, web/grid.js in ~/work/aethyr-demo (read only)).\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Port the demo's Grid world (src/grid_world.cpp, web/grid.js in ~/work/aethyr-demo (read only)).\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -838,7 +838,7 @@
       "labels": [
         "realms"
       ],
-      "body": "Port the demo's Medieval Town, or fold it into Everglade if Everglade covers it; decide in the task.\n\nPlan: `docs/verse/realms-port.md`.",
+      "body": "Port the demo's Medieval Town, or fold it into Everglade if Everglade covers it; decide in the task.\n\nPlan: `docs/metaverse/realms-port.md`.",
       "files": [
         "apps/openagents-web/",
         "metaverse/"
@@ -1071,7 +1071,7 @@
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade-face.c",
         "apps/openagents-web/everglade.wgsl",
-        "docs/verse/everglade.md"
+        "docs/metaverse/everglade.md"
       ],
       "acceptance": [
         "Keys 1 to 4 pick, a click casts; on a phone a tap on a slot then a tap on the ground casts",
@@ -1101,7 +1101,7 @@
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade-face.c",
         "apps/openagents-web/everglade.wgsl",
-        "docs/verse/everglade.md",
+        "docs/metaverse/everglade.md",
         "metaverse/demolish.coax"
       ],
       "acceptance": [
@@ -1129,11 +1129,11 @@
       ],
       "body": "Verify on production, headless: cast at a house, it collapses, and the frame rate holds. Shots of the hotbar, a meteor swarm hitting a house, lightning, the collapse and the debris.",
       "files": [
-        "docs/verse/everglade.md"
+        "docs/metaverse/everglade.md"
       ],
       "acceptance": [
         "Headless production shots of a house collapsing under both spells",
-        "Frame times during a collapse recorded in docs/verse/everglade.md"
+        "Frame times during a collapse recorded in docs/metaverse/everglade.md"
       ],
       "blocked_by": [
         "eg-spells",
@@ -1159,7 +1159,7 @@
         "apps/openagents-web/everglade.coax",
         "apps/openagents-web/everglade.wgsl",
         "metaverse/packs/everglade.json",
-        "docs/verse/everglade.md"
+        "docs/metaverse/everglade.md"
       ],
       "acceptance": [
         "Production shots of several NPCs as dressed, posed characters",
@@ -1423,7 +1423,7 @@
         "realms",
         "everglade"
       ],
-      "body": "A town watch of 12 (the six patrols and six new guards on beats) in crimson with sword and shield. A spell on a building or a person is a crime: guards who see or hear it turn on you (WANTED), run you down and fight by the SRD (metaverse/rules/srd5-combat.coax). Townsfolk flee, cower or fight back, can be knocked down or killed; R and the dawn stand them up. You have SRD HP, can die (YOU DIED) and come back at the Road In. Per page, still in goldens. Docs: docs/verse/everglade.md, The watch.",
+      "body": "A town watch of 12 (the six patrols and six new guards on beats) in crimson with sword and shield. A spell on a building or a person is a crime: guards who see or hear it turn on you (WANTED), run you down and fight by the SRD (metaverse/rules/srd5-combat.coax). Townsfolk flee, cower or fight back, can be knocked down or killed; R and the dawn stand them up. You have SRD HP, can die (YOU DIED) and come back at the Road In. Per page, still in goldens. Docs: docs/metaverse/everglade.md, The watch.",
       "files": [
         "everglade/legacy/v1/watch.coax",
         "metaverse/rules/srd5-combat.coax",

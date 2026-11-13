@@ -85,7 +85,7 @@ Everglade. The tasks are in the Metaverse project under "Port the realms"
 | --- | --- |
 | Ice Cream Man | `~/work/aethyr-demo`: `src/icecream/*` and `third_party/icecream` (the Rust original), plus `tools/icecream-trace` |
 | Dead Gears | `~/work/aethyr-demo`: `src/dead_gears*.cpp`, `src/ecs/` and `docs/ecs.md` |
-| Everglade | `~/work/aethyr-demo/docs/realms.md`, plus the old OpenAgents Everglade at `0b401561a0^:docs/verse/everglade.md`, its map and `crates/verse-zone-everglade` |
+| Everglade | `~/work/aethyr-demo/docs/realms.md`, plus the old OpenAgents Everglade at `0b401561a0^:docs/metaverse/everglade.md`, its map and `crates/verse-zone-everglade` |
 | Sandbox, Grid | `~/work/aethyr-demo`: `web/sandbox.html` and `src/grid_world.cpp` |
 
 All three kits are CC0, in `~/work/aethyr-cpp`: Quaternius Stylized Nature,

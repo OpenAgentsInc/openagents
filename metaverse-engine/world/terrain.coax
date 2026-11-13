@@ -212,7 +212,7 @@ verse_terrain_normal :: (g: Ground, heights: [] f32, x: f32, z: f32) -> Point #e
   return v3(normal.x, normal.y, normal.z);
 }
 
-// The painterly ground's normal (docs/verse/art-styles.md, 1): the height
+// The painterly ground's normal (docs/metaverse/art-styles.md, 1): the height
 // field's slope taken over 3 cells (1.5 each side), so the triangles' facets
 // don't show in the light bands. Exact on a plane; continuous across cells.
 verse_terrain_normal_smooth :: (g: Ground, heights: [] f32, x: f32, z: f32) -> Point #export_c #effects(all) {

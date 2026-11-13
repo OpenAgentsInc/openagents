@@ -1,4 +1,4 @@
-// Other players' bodies (#12707; docs/verse/2026-11-03-everglade-multiplayer-spec.md 3.8 and 5.1 to
+// Other players' bodies (#12707; docs/metaverse/2026-11-03-everglade-multiplayer-spec.md 3.8 and 5.1 to
 // 5.3). Everyone else in the room is drawn from the server's player entities (everglade-net.coax,
 // #12706: each seat's state a jitter buffer behind the server's clock, its velocity and flags, the
 // look, class and FLAGS of its hello), read into a RemoteBody each (remote_bodies), as what they are:

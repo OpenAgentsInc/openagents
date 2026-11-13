@@ -1,4 +1,4 @@
-// Everglade v2, piece 1 (GitHub #13023, docs/verse/everglade2.md): the land round Character
+// Everglade v2, piece 1 (GitHub #13023, docs/metaverse/everglade2.md): the land round Character
 // Create's glade and the long path out of it. Every function here is a pure function of position,
 // so the pack's ground (metaverse/tools/assets/everglade2_pack.coax), the planting
 // (everglade/world/plant.coax), the walk (everglade/client/client.coax) and the shader

@@ -227,7 +227,7 @@ the session's start, the engine loaded, the world entered, alive every
 `track_walk` and `track_tally`. No words and no personal data are recorded.
 The ingest keeps at most 16 short properties an event, 50 events a batch
 and 5,000 a session
-([analytics-events.md](../../docs/verse/analytics-events.md)).
+([analytics-events.md](../../docs/metaverse/analytics-events.md)).
 
 ## One frame's stages
 
@@ -426,7 +426,7 @@ holds.
 - [coax/web/state-defaults.coax](../../coax/web/state-defaults.coax): every
   engine's state from its defaults in the browser.
 - [metaverse-engine/render/registry.coax](../render/registry.coax): the GPU ledger.
-- [docs/verse/analytics-events.md](../../docs/verse/analytics-events.md):
+- [docs/metaverse/analytics-events.md](../../docs/metaverse/analytics-events.md):
   what each realm records.
 - [coax/DEBUGGING.md](../../coax/DEBUGGING.md): native debugging and the
   compiler's timings.

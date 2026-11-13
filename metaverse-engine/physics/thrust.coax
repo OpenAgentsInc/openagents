@@ -1,4 +1,4 @@
-// Thrusters and RCS for metaverse-engine/physics/rigid.coax bodies (docs/verse/space.md): a
+// Thrusters and RCS for metaverse-engine/physics/rigid.coax bodies (docs/metaverse/space.md): a
 // force at a point of the body along a direction, both in the body's frame,
 // fed from a tank. Ships, jet packs and a car's boost all use it.
 //

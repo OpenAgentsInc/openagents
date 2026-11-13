@@ -1,5 +1,5 @@
 // Everglade's Longbow, for every zone (Experimental, Everglade II, the Archery Range): how the
-// Ranger's bow feels on the engine's archery (metaverse-engine/action/archery.coax, docs/verse/bow-combat.md).
+// Ranger's bow feels on the engine's archery (metaverse-engine/action/archery.coax, docs/metaverse/bow-combat.md).
 // The engine owns the draw, the sight line, the arrows' flight and what they meet. This file is the
 // game's own numbers and sounds:
 //

@@ -9,7 +9,7 @@
 //     only a local room takes: --dev and bound to 127.0.0.1 (everglade/server/admin.coax).
 // Open it: coax/web/tool.sh coax/web/room/local.coax --room 8950 --page 8949 --static --no-build, a
 // dev build of everglade2.wasm, then http://127.0.0.1:8949/worlds/everglade2?admin&relay=ws://localhost:8950
-// (docs/verse/everglade2.md "Admin mode"). Backquote (`) shows and hides the panel; it starts shown.
+// (docs/metaverse/everglade2.md "Admin mode"). Backquote (`) shows and hides the panel; it starts shown.
 //
 // The panel is Everglade Experimental's left column: ANIMATIONS (charactercreator.coax dev_panel, any
 // clip on your character), CLASSES, LEVEL 1 to 6 and REST (class-menu.coax); then the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason: 5. One job on a remote build host (docs/verse/remote-builds.md):
+# Firm reason: 5. One job on a remote build host (docs/metaverse/remote-builds.md):
 # git, flock, coax/build.sh, the command, find and tar. remote.sh sends this
 # file with every job, so the host always runs the caller's
 # version of it.

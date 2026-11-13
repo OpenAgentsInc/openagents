@@ -1,4 +1,4 @@
-// Region failover under one owner (GitHub #12853; spec docs/verse/region-recovery.md). One region is
+// Region failover under one owner (GitHub #12853; spec docs/metaverse/region-recovery.md). One region is
 // the primary at a time: its store takes every write, and a replica in another region applies the
 // primary's log in order, behind by the replication lag. This is disaster recovery, not active-active
 // play: a battle runs in one region, and a character is never simulated in two.

@@ -186,4 +186,4 @@ failover, or what players enjoy. Latency percentiles need their sample counts;
 nearest-rank p95 is simply the maximum with sixteen or fewer samples. Broader
 activation still needs judged player outcomes and a measured useful advantage.
 Keep the local quiet fallback and ambient mode disabled until that evidence
-supports promotion in the [delivery plan](../../docs/verse/pylon-guard-decisions.md).
+supports promotion in the [delivery plan](../../docs/metaverse/pylon-guard-decisions.md).

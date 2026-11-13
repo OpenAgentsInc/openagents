@@ -86,7 +86,7 @@ room build for a codec of about 40 messages that changes rarely.
 - The wire before version 3 (`H 1`). Rooms seat it on the old wire only until
   2026-11-12, then refuse it.
 - The `realm.v1` chamber messages in
-  [openagents-verse-protocol.md](../verse/openagents-verse-protocol.md)
+  [openagents-verse-protocol.md](../metaverse/openagents-verse-protocol.md)
   (`ActorAppear`, `ActorUpdate`, `SpatialDelta`, transfer). Everglade rooms
   don't speak them.
 - Protobuf framing. This profile is text frames only.

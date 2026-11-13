@@ -1,5 +1,5 @@
 // Firm reason: 1 (browser host: the glue between the page's DOM, WebGPU, audio or workers and Coax's wasm)
-// A design document dropped on a realm (docs/verse/realm-edit.md, "From a document"): the app asks
+// A design document dropped on a realm (docs/metaverse/realm-edit.md, "From a document"): the app asks
 // with action 31, its text this site's URL ("/api/...") and, after a line break, a JSON object of
 // fields to send with it (the builder's setup). The browser's file picker opens for .md, .txt, .pdf
 // and .docx; the file picked is sent whole, {name, data (base64), ...fields}, with the playtest

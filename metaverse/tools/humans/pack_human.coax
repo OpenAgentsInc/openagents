@@ -1,4 +1,4 @@
-// MetaHuman Lab's human pack (docs/verse/metahuman-support.md, "MetaHuman Lab"): one skinned
+// MetaHuman Lab's human pack (docs/metaverse/metahuman-support.md, "MetaHuman Lab"): one skinned
 // human, its meshes, skin weights on the 65-joint people rig and its texture maps, compiled into
 // one VPK1 file (metaverse/tools/pack_realm.py has the container) that the lab's page loads with
 // `private:human` (coax/web/host.js). Offline tooling; never shipped or run by a page.

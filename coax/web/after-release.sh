@@ -44,7 +44,7 @@ put "$work/journey" JOURNEY
 
 # Everglade II's two-browser pair on production (#13266): the browser half of the pair check.
 # The main-green pipeline gates on its protocol half (check.sh e2) on the build hosts, which can't
-# draw Everglade II (docs/verse/green-main-pipeline.md, "Everglade II against production").
+# draw Everglade II (docs/metaverse/green-main-pipeline.md, "Everglade II against production").
 ( cd "$tree" && limit 600 coax/web/tool.sh everglade2-latency "$site/worlds/character-creator" --trials 4 ) > "$work/pair" 2>&1 ||
   echo "after: the Everglade II pair failed" >> "$work/pair"
 put "$work/pair" PAIR

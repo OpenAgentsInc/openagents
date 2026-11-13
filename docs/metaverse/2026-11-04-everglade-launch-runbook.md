@@ -7,7 +7,7 @@ launch with real players. It covers the deploy order, the capacity change for
 #12717, the production checks to run after each step, the rollback for each
 step, and the steps only the owner can do.
 
-Epic: #12718. Spec: `docs/verse/2026-11-03-everglade-multiplayer-spec.md`.
+Epic: #12718. Spec: `docs/metaverse/2026-11-03-everglade-multiplayer-spec.md`.
 All times are Chicago time.
 
 ## Before you start
@@ -671,7 +671,7 @@ takes effect without a room server deploy. Ship it as a migration, the way
 ```sql
 -- Everglade instances on oa-room shards (#12717): three instances a shard. After the shared-seat
 -- copy and the stall's owed ticks (6a846432d2), a shard ticks three full rooms well under the
--- 33 ms frame (gate: docs/verse/2026-11-04-everglade-launch-runbook.md, step 4). Six shards then
+-- 33 ms frame (gate: docs/metaverse/2026-11-04-everglade-launch-runbook.md, step 4). Six shards then
 -- hold 18 instances (288 players). Placement reads rooms_cap each pick. Safe to run twice.
 UPDATE verse.room_shards SET rooms_cap = 3 WHERE shard BETWEEN 1 AND 6 AND rooms_cap = 2;
 ```

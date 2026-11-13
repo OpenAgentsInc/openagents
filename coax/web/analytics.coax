@@ -1,5 +1,5 @@
 // What people do on openagents.com, recorded the way the playtest records it
-// (aethyr-cpp tools/analytics.py and web/analytics.js; docs/verse/playtest-port.md
+// (aethyr-cpp tools/analytics.py and web/analytics.js; docs/metaverse/playtest-port.md
 // lists every event and field). Every Coaxial page loads this file and keeps
 // one Track: the page decides what happened, this file writes it as the
 // playtest's events, batches them and hands each batch to its C face, which
@@ -478,7 +478,7 @@ track_pointer :: (t: [] Track, x: f32, y: f32, phase: int, kind: int, label: str
 }
 
 // ---- what people do in a realm (every realm's face and module calls these;
-// docs/verse/analytics-events.md lists each realm's events). No words: a
+// docs/metaverse/analytics-events.md lists each realm's events). No words: a
 // chat is its length, an id is the game's own name for a thing.
 
 // The world's name on an event, when the page shows one.

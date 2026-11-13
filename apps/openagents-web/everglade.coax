@@ -1,6 +1,6 @@
 // Everglade, openagents.com/worlds/everglade: the forest city as a grey-box
 // blockout you walk, in a forest of kit trees. The layout is everglade/legacy/v1/plan.coax's (the plan in
-// words is docs/verse/everglade.md): the palisade and its four gates, the
+// words is docs/metaverse/everglade.md): the palisade and its four gates, the
 // commons with its fountain and quest board, the market, the inn, the guild
 // halls, the temple and the observatory, the stables on the road in, the
 // trails out to the deep wood, the ruins, the crypt and the river crossing,
@@ -88,8 +88,8 @@
 #load "everglade-net.coax";
 #load "everglade-status.coax";   // what holds or marks each body: one state every status is drawn from (#12776)
 #load "everglade-move.coax";   // the movement step the page and the room server share (with everglade-step.coax)
-#load "everglade-fork.coax";   // FORK, and a fork's rules (docs/verse/realm-fork.md)
-#load "everglade-forge.coax";   // EDIT opens Aethyrforge's panels (docs/verse/aethyrforge.md)
+#load "everglade-fork.coax";   // FORK, and a fork's rules (docs/metaverse/realm-fork.md)
+#load "everglade-forge.coax";   // EDIT opens Aethyrforge's panels (docs/metaverse/aethyrforge.md)
 #load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (metaverse-engine/physics/stand.coax)
 #load "everglade-track.coax";   // what players do, for analytics.coax
 #load "everglade-quality.coax";   // the graphics quality: tier, governor, knobs (metaverse-engine/core/quality.coax)
@@ -206,7 +206,7 @@ PROFILE_BASIN :: 0; PROFILE_COLUMN :: 1;
 LOOK_CARVED :: 9;
 LOOK_PLANKS :: 11;        // a deck of planks (everglade.wgsl planks): boards, gaps, staggered ends, grain
 LOOK_WOOD :: 12;          // sawn timber: grain and a tone per piece         // carved stone: coursed blocks, weathered, wet and mossy at the waterline
-// The fountain on the commons (docs/verse/water.md, "The fountain"): its pool's level over the
+// The fountain on the commons (docs/metaverse/water.md, "The fountain"): its pool's level over the
 // ground, and the water's instances after the river's patches (everglade.wgsl fountain_vertex).
 FOUNTAIN_POOL :: 0.62;
 FOUNTAIN_INSTANCES :: 32;
@@ -1328,7 +1328,7 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
   // "road+paint": the view, drawn without the world's names (art-styles.md 15: the style check measures
   // the painting; the names are text like the HUD's plates, and a phone's narrow canvas makes them a big share)
   if hash.count > 6 && hash[hash.count - 6..<hash.count] == "+paint" { s[0].paint_only = true; everglade_hash(s, hash[0..<hash.count - 6]); return; }
-  // "gate+float+captain": a staged hunt (docs/verse/everglade.md, the guard captain): you levitating,
+  // "gate+float+captain": a staged hunt (docs/metaverse/everglade.md, the guard captain): you levitating,
   // the nearest guards after you, and the captain's plan rehearsed in the page (no request leaves it)
   if hash.count > 8 && hash[hash.count - 8..<hash.count] == "+captain" { s[0].guard_ai.cap_rehearse = true; s[0].guard_ai.stage_hunt = true; everglade_hash(s, hash[0..<hash.count - 8]); return; }
   // "gate+warlock": you play the Warlock (everglade-warlock.coax), as CHARACTER: WARLOCK does
@@ -1360,7 +1360,7 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c #effects(all) {
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     return;
   }
-  // in the river just north of the bridge, facing its piles (the water's views: docs/verse/water.md)
+  // in the river just north of the bridge, facing its piles (the water's views: docs/metaverse/water.md)
   if hash == "river-wade" {
     s[0].spawn = v3(88, 0, -1.5); s[0].spawn_face = yaw_of(0, -1);
     s[0].feet = v3(88, ground_at(s, 88, -1.5), -1.5);
@@ -2072,7 +2072,7 @@ city :: (s: [] Everglade, u: [] f32) {
       shape(s, SHAPE_BOX, LOOK_STONE, v3(x, (top + bed) / 2, wz), (f32(k % 3) - 1) * 0.12, 0, 0.82, top - bed, 0.7, 0.5, 0.52, 0.48);
     }
   }
-  if redit_row_on(s[0].ev.ed[..], "floats") { river_floats(s); }   // the realm's board (docs/verse/realm-edit.md)
+  if redit_row_on(s[0].ev.ed[..], "floats") { river_floats(s); }   // the realm's board (docs/metaverse/realm-edit.md)
 }
 
 // The river's floats: a duck a body and a head, a lily pad a green disc
@@ -2152,7 +2152,7 @@ boat_oar_blade :: (s: [] Everglade, at: Point, out: Point) {
 }
 
 // ---- the town, laid once from the plan out of the Medieval Village and
-// Fantasy Props kits (docs/verse/everglade.md, "Kit pieces").
+// Fantasy Props kits (docs/metaverse/everglade.md, "Kit pieces").
 
 OBSERVATORY_STOREYS :: 4;
 // How many storeys of wall a building has: the towers by their height,

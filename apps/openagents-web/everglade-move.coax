@@ -1,4 +1,4 @@
-// Everglade's movement step, the world's half (docs/verse/2026-11-03-everglade-multiplayer-spec.md
+// Everglade's movement step, the world's half (docs/metaverse/2026-11-03-everglade-multiplayer-spec.md
 // section 3.1, the shared movement module; GitHub #12706): what the C faces did round the controller,
 // moved into Coax. The page runs it on your input to move you at once, and the room server runs the
 // same step on the same input for your seat, so the page's prediction and the server agree (section

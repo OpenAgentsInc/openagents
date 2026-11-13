@@ -2,7 +2,7 @@
 
 > **Status: unimplemented — design draft.** Today water is a complete
 > private system in `metaverse/`: phases W1–W11 of
-> [docs/verse/water.md](../../docs/verse/water.md) are done in
+> [docs/metaverse/water.md](../../docs/metaverse/water.md) are done in
 > [`metaverse/water.coax`](../../metaverse/water.coax) and its sibling modules, and
 > Everglade and the water lab (`/realms/waterlab`) use them. No other realm
 > can load water through the OpenAgents Metaverse Engine. This chapter plans water as a Metaverse Engine
@@ -83,7 +83,7 @@ module that any realm declares, instead of code that belongs to Everglade.
   from [chapter 7](ch007-ask-the-world-where-things-are.md), not completion
   of the waves, force ledger or rendering requirements in this chapter.
 
-- [docs/verse/water.md](../../docs/verse/water.md): phases W1–W11, each with
+- [docs/metaverse/water.md](../../docs/metaverse/water.md): phases W1–W11, each with
   its port notes and differences from the previous Rust engine.
 - [metaverse/water.coax](../../metaverse/water.coax) and
   [metaverse-engine/physics/rigid.coax](../physics/rigid.coax): the W1 physics, with all

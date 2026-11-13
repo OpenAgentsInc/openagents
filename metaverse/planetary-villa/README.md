@@ -17,7 +17,7 @@ expansion this session focuses on.
 - **Look:** a simple stylized, almost low-poly art style. Everything is lit by
   moonlight, so it's not very bright, with some outlines and garden paths.
   Drawn in the Metaverse's flat style since October 30, Kiki's choice over
-  painterly (`docs/verse/art-styles.md`, "Flat").
+  painterly (`docs/metaverse/art-styles.md`, "Flat").
 - **The moon:** it doesn't move in the sky. Its phase is the real moon's phase
   right now.
 - **Make your pet:** you upload data about your pet: a late pet, or a new one.

@@ -1,4 +1,4 @@
-// The Metaverse Engine's one frame loop (the Metaverse Engine core, GitHub #12609, docs/verse/engine-core.md):
+// The Metaverse Engine's one frame loop (the Metaverse Engine core, GitHub #12609, docs/metaverse/engine-core.md):
 // simulation advances in fixed steps, drawing interpolates between the last two, and one
 // FrameClock owns time. A realm feeds it each frame's time once; the FrameClock says how many steps
 // to run and how far the frame is between the last two of them.

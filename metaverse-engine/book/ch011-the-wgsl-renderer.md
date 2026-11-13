@@ -700,6 +700,6 @@ and [metaverse-engine/gpu/wgsl.coax](../gpu/wgsl.coax), Coax's
 [GPU chapter](../../coax/book/ch17-gpu.md), and Psionic’s [compute subset](../../psionic/book/ch037-a-coax-compute-subset.md)
 provide the checked shader operations and target lowering. Coax’s R9
 target interfaces and R10 browser slice supply the host boundaries.
-The earlier [native GPU record](../../docs/verse/native-gpu.md) explains
+The earlier [native GPU record](../../docs/metaverse/native-gpu.md) explains
 G0–G6; it is historical evidence for the shader migration, not a receipt
 for this chapter's new shared renderer.

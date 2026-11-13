@@ -1,4 +1,4 @@
-// Everglade's feel table (docs/verse/action-pipeline.md, GitHub #13072): every class ability on every
+// Everglade's feel table (docs/metaverse/action-pipeline.md, GitHub #13072): every class ability on every
 // bar at every level, and every monster action Everglade fields, declares its animation, its effect,
 // its sound and how the body moves (metaverse-engine/action/deed.coax DeedFeel). A realm plays an action only
 // once its rules accept it (deed_answer), and only what its feel declares (deed_show); the check below
@@ -30,7 +30,7 @@ xf_moves :: (a: FbAb) -> bool { return a.kind == FB_DASH || a.kind == FB_CDASH |
 xf_feel :: (klass: int, a: FbAb) -> DeedFeel {
   f: DeedFeel;
   m := xc_aim_for(a, xk_weapon(klass));
-  // a Ranger's Attack is the Longbow (docs/verse/bow-combat.md): the kit says so, not its melee weapon
+  // a Ranger's Attack is the Longbow (docs/metaverse/bow-combat.md): the kit says so, not its melee weapon
   shoot := a.kind == FB_SHOOT || (a.kind == FB_ATTACK && (m.kind == XC_AIM_BOLT || xc_kit(klass) == XC_KIT_BOW));
   if xf_moves(a) { f.anim = XF_ANIM_RUN; f.move = DeedMove.dash; }
   else if shoot { f.anim = XF_ANIM_SHOOT; f.move = DeedMove.plant; }

@@ -1,4 +1,4 @@
-// A cast's line of sight in Everglade (GitHub #12790; spec docs/verse/2026-11-04-everglade-cast-rules.md
+// A cast's line of sight in Everglade (GitHub #12790; spec docs/metaverse/2026-11-04-everglade-cast-rules.md
 // section 2): from the caster's eyes to just short of the aim, the town's standing pieces and the ground
 // in the way. The room server asks it of its world (coax/web/room/room-world.c world_sight) at a cast's
 // start and its release; the page asks it of its own before it sends a cast, so a cast it can see is

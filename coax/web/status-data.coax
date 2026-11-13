@@ -1,4 +1,4 @@
-// /status's snapshot (docs/verse/status-page.md): what this checkout's commit,
+// /status's snapshot (docs/metaverse/status-page.md): what this checkout's commit,
 // main's history, the green-main pipeline's refs and the build hosts' ledger
 // say now, written into the page (apps/openagents-web/status/index.html, as
 // the text status.coax reads) and its Markdown twin. A release runs it, so
@@ -140,7 +140,7 @@ tool_main :: ()->int #export_c #effects(all) {
   sd_add(md[..],"- Queue: ");sd_num(md[..],queue);sd_add(md[..]," waiting, ");sd_num(md[..],rejected);sd_add(md[..]," sent back. Red list: ");sd_num(md[..],red);sd_add(md[..],".\n");
   sd_add(md[..],"- Build hosts: ");sd_num(md[..],hosts);sd_add(md[..]," with ");sd_num(md[..],slots);sd_add(md[..]," job slots each; ");sd_num(md[..],led.jobs);sd_add(md[..]," jobs in 24 hours.\n\n");
   sd_add(md[..],"## Live now\n\n1. Builders work in a worktree from main.\n2. They check the units they touched on the build hosts.\n3. They rebase and push main.\n4. `coax/web/release.sh` builds main once.\n5. Staging gets the build: smoke checks, and every page starts.\n6. Production gets the same files and is checked again. A release stops only for a check that fails on staging and passes on production.\n\n");
-  sd_add(md[..],"## Built, not switched on\n\nThe green-main pipeline ([design](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/green-main-pipeline.md)): submit, queue, an integrator that checks branches in parallel and lands the passing ones in order, a full check after landing, main-green, and releases from main-green. A failure is traced to its commit and filed for that commit's agent.\n\n## Recent commits\n\n");
+  sd_add(md[..],"## Built, not switched on\n\nThe green-main pipeline ([design](https://github.com/OpenAgentsInc/openagents/blob/main/docs/metaverse/green-main-pipeline.md)): submit, queue, an integrator that checks branches in parallel and lands the passing ones in order, a full check after landing, main-green, and releases from main-green. A failure is traced to its commit and filed for that commit's agent.\n\n## Recent commits\n\n");
   at=0;
   while at<commits.count {
     end:=at;while end<commits.count && commits[end]!=10 {end+=1;}

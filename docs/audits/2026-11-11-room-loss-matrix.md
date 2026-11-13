@@ -158,7 +158,7 @@ The pass bar, 16 trials each:
   again: WT 231 ms, WebSocket 216 ms. That is under a tick apart (noise,
   per the trials note above), and both are inside 2 RTT.
 - `E2N_WT_DEFAULT` is now on, for a shard's own endpoint
-  (`docs/verse/webtransport-server.md`).
+  (`docs/metaverse/webtransport-server.md`).
 
 ## What the first table said
 

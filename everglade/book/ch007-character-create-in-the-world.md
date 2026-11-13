@@ -5,7 +5,7 @@
 > loaded into `everglade/client/client.coax`. The wardrobe's choices and record are in
 > `charactercreator.coax`. Other agents are editing both files now, so this
 > chapter names functions and has no source listings. See
-> [`docs/verse/character-creator.md`](../../docs/verse/character-creator.md).
+> [`docs/metaverse/character-creator.md`](../../docs/metaverse/character-creator.md).
 
 This chapter answers the player's question: "Where do I go after I make my
 hero?"

@@ -1,5 +1,5 @@
 // light-cpu: the C build of a Coax procedure over the rows vk-kernel ran,
-// compared with what the GPU wrote (docs/verse/native-gpu.md, phase G1).
+// compared with what the GPU wrote (docs/metaverse/native-gpu.md, phase G1).
 //   light-cpu NAME IN.f32 GPU.f32
 // NAME is an #export_c procedure of the file light-table.h was made from
 // (light-check.sh writes it). Prints the rows, the largest error and the

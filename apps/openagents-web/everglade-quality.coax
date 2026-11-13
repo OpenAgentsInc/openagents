@@ -1,4 +1,4 @@
-// Everglade's graphics quality (docs/verse/2026-11-03-adaptive-graphics-quality.md): the realm's
+// Everglade's graphics quality (docs/metaverse/2026-11-03-adaptive-graphics-quality.md): the realm's
 // side of metaverse-engine/core/quality.coax. The page's facts start it (the device, ?quality= in the URL, and
 // the tier this browser kept, host.js verse.quality); each frame's length runs its governor
 // (everglade_quality_frame, from the face); and the knobs it is at set the spells' debris and

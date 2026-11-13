@@ -93,10 +93,10 @@ small model or sign and verify a Nostr event), see
   (`cast.coax`). A thin C and Swift layer owns storage and
   the GPU. The same name covers the world and experience the engine runs:
   the Metaverse, made of realms
-  ([Metaverse protocol](docs/verse/openagents-verse-protocol.md),
-  [engine notes](docs/verse/engine.md)). It is web-first, so a realm is a
+  ([Metaverse protocol](docs/metaverse/openagents-verse-protocol.md),
+  [engine notes](docs/metaverse/engine.md)). It is web-first, so a realm is a
   link you can drop anywhere, and it is moving onto native GPUs too
-  ([native GPU plan](docs/verse/native-gpu.md)). The engine is the **OpenAgents Metaverse Engine**
+  ([native GPU plan](docs/metaverse/native-gpu.md)). The engine is the **OpenAgents Metaverse Engine**
   ([`metaverse-engine/`](metaverse-engine/)); its [book](metaverse-engine/book/README.md) builds it from
   its smallest primitives, one checked piece per chapter.
 - **The OpenAgents Protocol**
@@ -125,20 +125,20 @@ small model or sign and verify a Nostr event), see
   - Realms ([`/realms`](https://openagents.com/realms)) include:
     - [Everglade](https://openagents.com/realms/everglade), a D&D-rules
       town (SRD 5.2.1 spells) whose buildings break and burn and whose
-      guards chase you down ([notes](docs/verse/everglade.md));
+      guards chase you down ([notes](docs/metaverse/everglade.md));
     - Fairy Forest, built from a friend's game idea;
     - Dead Gears, Ice Cream Man, the Haunted House and Hecate's Cemetery;
     - Orbit League, Belt 2200 and Hold the Stair, pitched by the audience
-      of Episode 290 ([design documents](docs/verse/game-ideas/README.md)).
+      of Episode 290 ([design documents](docs/metaverse/game-ideas/README.md)).
   - [`/realms/new`](https://openagents.com/realms/new) makes a realm from
-    what you say or type ([the realm builder](docs/verse/realm-builder.md)), and
-    you edit it by voice ([realm edit](docs/verse/realm-edit.md)). FORK
+    what you say or type ([the realm builder](docs/metaverse/realm-builder.md)), and
+    you edit it by voice ([realm edit](docs/metaverse/realm-edit.md)). FORK
     makes your own copy of any realm with your own rules
-    ([fork](docs/verse/realm-fork.md)).
+    ([fork](docs/metaverse/realm-fork.md)).
   - Makers get paid: a maker claims their realm with a Nostr key and a
     Lightning address, players tip them, and makers list upgrades, such as
     a better fairy, that players buy in one tap
-    ([makers](docs/verse/makers.md)).
+    ([makers](docs/metaverse/makers.md)).
   - To build a realm with Claude Code, clone the repo one level deep
     (`git clone --depth 1`), point your agent at
     [`metaverse/SKILL.md`](metaverse/SKILL.md), and open a pull request.
@@ -166,7 +166,7 @@ small model or sign and verify a Nostr event), see
   models on **Psionic**, our machine-learning framework
   ([book](psionic/book/README.md), being ported from Rust into Coax). Everglade's
   guards are the first game NPCs to ask Pylons for decisions
-  ([guard decisions](docs/verse/pylon-guard-decisions.md)).
+  ([guard decisions](docs/metaverse/pylon-guard-decisions.md)).
 
 ## What's next
 

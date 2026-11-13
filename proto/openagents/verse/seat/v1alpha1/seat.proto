@@ -4,7 +4,7 @@ package openagents.verse.seat.v1alpha1;
 import "openagents/options/v1alpha1/options.proto";
 
 // A seat in a running realm (compliance plan step E11, GitHub #13250;
-// docs/verse/realm-seat.md): an agent's place in a made realm, opened by its
+// docs/metaverse/realm-seat.md): an agent's place in a made realm, opened by its
 // account. coax/web/api/seats.c serves the routes; migration 0110 keeps the
 // seats. coax/lib/media/seat-wire.coax is the one writer and reader of every
 // body here; proto/verse/realm-seat-v1alpha1.json pins the bytes, checked

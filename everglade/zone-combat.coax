@@ -49,7 +49,7 @@
 #load "../rules/srd/press-budget.coax";
 #load "shared/class-kit.coax";   // the class kits, their aim and sounds, shared with Everglade II and its room (#13058)
 #load "client/class-look.coax";  // their looks, the spells' colours and the bar's boxes, shared with Everglade II
-#load "client/class-feel.coax";   // every action's feel and the SRD conditions as a bearing (docs/verse/action-pipeline.md, #13072)
+#load "client/class-feel.coax";   // every action's feel and the SRD conditions as a bearing (docs/metaverse/action-pipeline.md, #13072)
 #load "client/cast-pose.coax";   // a cast's body clip and the bow's aim pose, shared with Everglade II
 #load "client/class-menu.coax";  // the CLASSES column, shared with Everglade II's local admin mode
 #load "dash.coax";   // Everglade's Dash (game): the SRD Dash spent as the engine's sprint
@@ -68,7 +68,7 @@
 #load "../metaverse-engine/action/bow.coax" as bow;
 #load "../metaverse-engine/action/archery.coax" as arch;   // the archer: the sight line, the flight, what an arrow meets (engine)
 #load "longbow.coax";   // Everglade's Longbow: where the arrow leaves, its sounds and dust (game)
-#load "../metaverse-engine/cam/reticle.coax" as reticle;   // the one centred reticle, shared with the mouselook camera       // the draw and the arrows, yours and the Goblins' (docs/verse/bow-combat.md)
+#load "../metaverse-engine/cam/reticle.coax" as reticle;   // the one centred reticle, shared with the mouselook camera       // the draw and the arrows, yours and the Goblins' (docs/metaverse/bow-combat.md)
 
 XC_FOES :: hostile.HS_N;      // the village's six and the dungeon's (metaverse/experimental-hostiles.coax)
 XC_SIDE :: 48; XC_MID :: 24;   // the engine's grid round you, squares (73 m a side)
@@ -126,7 +126,7 @@ XcCombat :: struct {
   whiffs: int;                      // bolts that flew to their range and blows that met no one
   releasing: bool;                  // an arrow or a swung blow landing: it resolves though you fell first (#13120)
   fizzle: int = -1; fizzle_at: f32 = -100;   // the slot whose spell found no one ahead, and when (its icon flashes)
-  deeds: [1] DeedBar;   // the bar's asks and the rules' answers (metaverse-engine/action/deed.coax, docs/verse/action-pipeline.md, #13072)
+  deeds: [1] DeedBar;   // the bar's asks and the rules' answers (metaverse-engine/action/deed.coax, docs/metaverse/action-pipeline.md, #13072)
   seeded: bool;                     // the dice mixed with the clock at the first press, so each visit rolls its own
   knockout: bool;                   // KNOCK OUT: your melee blows leave a monster at 1 HP and Unconscious (SRD p.17)
   pend: int = -1;                   // a blow swinging: its slot (xc_swing_step), -1 none
@@ -145,7 +145,7 @@ XcCombat :: struct {
   studied: [XC_FOES] bool;          // Study recalled it: its AC shows on the target line
   calm: [XC_FOES] bool;             // Influence: it complied and stands down until you harm it
   glide_x: f32; glide_z: f32; glide_until: f32 = -1;   // a readied move carrying you to (glide_x, glide_z)
-  // the bow (docs/verse/bow-combat.md): the engine's archer (metaverse-engine/action/archery.coax): your draw,
+  // the bow (docs/metaverse/bow-combat.md): the engine's archer (metaverse-engine/action/archery.coax): your draw,
   // every arrow in the air or stuck (yours and the monsters'), the zone's static targets, a finger
   // drawing on the bow's slot and the counts of your own arrows; then each monster shot's arrow (its
   // pool slot + 1, 0 none) and what the rules said of yours
@@ -2773,7 +2773,7 @@ xc_thunderwave_diagonal :: (turn: int) -> bool #effects(all) {
   #assert xc_foe(9).ac==15 && hostile.hostile_shot(xdungeon.DG_KIND_IMP)==0 && hostile.hostile_shot(xdungeon.DG_KIND_GREMLIN)>24;
 }
 
-// ---- the bow's checks (docs/verse/bow-combat.md)
+// ---- the bow's checks (docs/metaverse/bow-combat.md)
 // A Ranger at the spawn facing +z, the camera behind and above, looking along `fwd`.
 xc_test_bow :: (s: [] EgZone, fwd: [3] f32) {
   xc_test_lab(s, FB_CL_RANGER, 0);

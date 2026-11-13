@@ -1,4 +1,4 @@
-// Hosted seats (docs/verse/realm-seat.md slice 5, #12655), included in runner.c: oa-api opens a seat
+// Hosted seats (docs/metaverse/realm-seat.md slice 5, #12655), included in runner.c: oa-api opens a seat
 // (coax/web/api/seats.c, its limits coax/web/api/seat-policy.coax) and asks this runner to hold its
 // page, for agents with no Chrome of their own. Each seat is an oa-seat process (seat.coax: the
 // seat engine and its headless Chrome) speaking JSON lines on its stdin and stdout.

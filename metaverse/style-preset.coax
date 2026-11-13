@@ -1,4 +1,4 @@
-// The art styles' presets (docs/verse/art-styles.md, Presets): every number a
+// The art styles' presets (docs/metaverse/art-styles.md, Presets): every number a
 // style gives, as one record a realm reads with verse_style_preset(style,
 // tier) and evaluates at its clock with verse_style_at(preset, clock, out),
 // which fills the STYLE_FLOATS uniform block (32 vec4f) its WGSL reads. The
@@ -244,7 +244,7 @@ flat_key :: (palette: int, i: int) -> StyleKey {
   return k;
 }
 
-/** Flat (docs/verse/art-styles.md, Flat) in `palette` (FLAT_CEMETERY, FLAT_GARDEN, FLAT_FAIRY) for `tier`:
+/** Flat (docs/metaverse/art-styles.md, Flat) in `palette` (FLAT_CEMETERY, FLAT_GARDEN, FLAT_FAIRY) for `tier`:
  *  three hard tones, no specular, no rim and no outline, a flat sky and a flat translucent
  *  shadow, no post pass but a little bloom on what glows. The realm's palette is its own. */
 verse_style_flat :: (palette: int, tier: int) -> StylePreset {
@@ -380,7 +380,7 @@ anime_key :: (variant: int, i: int) -> StyleKey {
   return sk_glow(k, 1.00, 0.48, 0.22, 1.00, 0.74, 0.60, 2.1, 0.35);
 }
 
-/** Anime (docs/verse/art-styles.md, Anime) in `variant` (ANIME_PASTORAL, ANIME_ACTION, ANIME_DUSK, ANIME_NEON)
+/** Anime (docs/metaverse/art-styles.md, Anime) in `variant` (ANIME_PASTORAL, ANIME_ACTION, ANIME_DUSK, ANIME_NEON)
  *  for `tier`: two hard cel tones and a highlight spot, a cool shadow tone at a set share of the lit
  *  value, coloured ink lines thinning with distance, a thin hard rim, a vivid gradient sky with flat
  *  cumulus, an aerial fade, bloom and a vignette. Not ok, variant -1, for an unknown variant. */
@@ -719,7 +719,7 @@ verse_style_compat_profile :: (p: StylePreset) -> StyleEnvironment {
   return e;
 }
 
-/** `p` lit as Character Create's glade (docs/verse/character-glade-lighting.md, the owner,
+/** `p` lit as Character Create's glade (docs/metaverse/character-glade-lighting.md, the owner,
  *  November 7: "rebuild everglade itself to use that lighting and foliage from character create").
  *  Ocarina's smooth light in place of hard cel bands; Ore's noon sun, 4500 K under a 6500 K white
  *  balance (metaverse-engine/render/light.coax verse_style_balanced: 1, .856, .750); thin clear air near the

@@ -19,7 +19,7 @@ over: "What do I keep, and what do I throw away?"
 
 ## Everglade v1: a whole town in a browser
 
-Everglade v1 ([`docs/verse/everglade.md`](../../docs/verse/everglade.md)) has a
+Everglade v1 ([`docs/metaverse/everglade.md`](../../docs/metaverse/everglade.md)) has a
 gate, walls, townspeople, a raid and SRD combat, and a room that every player
 shares. It showed that all of that runs in a browser tab.
 
@@ -45,7 +45,7 @@ so v1 keeps its speeds. v1 stays frozen.
 ## Everglade Experimental: the test bench
 
 Everglade Experimental
-([`docs/verse/everglade-experimental.md`](../../docs/verse/everglade-experimental.md))
+([`docs/metaverse/everglade-experimental.md`](../../docs/metaverse/everglade-experimental.md))
 is where new systems prove themselves first: hostiles, a dungeon, imported
 characters and action combat.
 
@@ -69,7 +69,7 @@ What Experimental taught by failing:
 
 ## Character Create: the glade
 
-Character Create ([`docs/verse/character-creator.md`](../../docs/verse/character-creator.md))
+Character Create ([`docs/metaverse/character-creator.md`](../../docs/metaverse/character-creator.md))
 is a wardrobe for the Quaternius people in a sunlit glade. You pick one of the
 twelve SRD classes there.
 

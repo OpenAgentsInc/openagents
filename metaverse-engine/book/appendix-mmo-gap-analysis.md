@@ -58,7 +58,7 @@ named. Paths are relative to the repository root.
 | Send queues (8) | Bounded by bytes (`OUT_MAX` 256 KB, then closed), not by age. | Yes: a slow phone collects stale positions. | #12783 |
 | Interest (7) | Every player sent to every seat; one 120 m radius for the rest, scanned per seat; no hysteresis; blocks hidden by the page after it receives them. | Yes: privacy, and edge churn in a raid. | #12789 |
 | Replication (8) | Per-kind rules; full snapshots on join; no acknowledged baselines; teleports not marked. | Yes. | #12783 |
-| Prediction and latency (10) | Prediction, replay and eased corrections done (chapter 90); the camera follows the controls (#12777). Cast rules written and built: range and sight at start and release, heals before harm, a refusal as a reason icon ([spec](../../docs/verse/2026-11-04-everglade-cast-rules.md)). | Yes. Done. | #12790 (closed) |
+| Prediction and latency (10) | Prediction, replay and eased corrections done (chapter 90); the camera follows the controls (#12777). Cast rules written and built: range and sight at start and release, heals before harm, a refusal as a reason icon ([spec](../../docs/metaverse/2026-11-04-everglade-cast-rules.md)). | Yes. Done. | #12790 (closed) |
 | Crowds (11) | Up to 60 raiders; per-tick caps on events (96), raider casts (32) and downs (32), each counted when it drops work. No target caps. Estimated 1.1 Mbit/s per seat at full visibility (chapter 92). | Yes: the raid is the crowd. | #12783, #12791 |
 | Partitioning and transfer (12) | One process owns each room. The directory keeps the last report for a room, with no generation (`migrations/0115_room_directory.sql`). | Only during a deploy's overlap. | #12797 |
 | Persistence consistency (13) | Displayed positions: in memory, lossy, fine. Encounter state: lost on restart. HP and XP: newer-wins and larger-XP merges, safe to repeat, but posts can be lost. WANTED: written by the page. | Yes, for the lost and client-written rows. | #12793, #12794, #12797 |
@@ -80,7 +80,7 @@ named. Paths are relative to the repository root.
   for browser support to be verified first. Newest-state replication and
   age-bounded queues (#12783) limit the cost of a stall instead.
   Measured and modelled in the
-  [WebTransport evaluation](../../docs/verse/2026-11-05-aethyr-webtransport-evaluation.md)
+  [WebTransport evaluation](../../docs/metaverse/2026-11-05-aethyr-webtransport-evaluation.md)
   (#12858): no-go for now, with the conditions that would change it.
 - **A login queue with positions.** At 192 seats, a rate limit and a
   jittered retry that says how many are waiting cover the launch (#12796).

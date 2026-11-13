@@ -75,7 +75,7 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
     for (const [name, path] of [["nip-index-phone", "/nip"], ["nip-44-phone", "/nip/44"], ["nip-49-phone", "/nip/49"]])
       byAddress[name] = { path, lit: 0.004, settle: 1500, blocks: 4, module: "nip-guide", size: [390, 844] }
   }
-  // The style fixture (docs/verse/art-styles.md): the fixture realm in the painterly preset at each clock key.
+  // The style fixture (docs/metaverse/art-styles.md): the fixture realm in the painterly preset at each clock key.
   for (const c of ["0", "0.25", "0.5", "0.75"])
     byAddress[`fixture-painterly-${c}`] = { path: `/worlds/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }
   // and on a phone (390x844 css px: the phone tier, art-styles.md 14) at each clock key

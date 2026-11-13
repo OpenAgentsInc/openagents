@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Star Catcher straight on HOST's screen with Vulkan, no desktop
 # (metaverse/gpu/vk-display.c), the G2 boot-session check
-# (docs/verse/native-gpu.md). It takes the screen, so run it when nobody is
+# (docs/metaverse/native-gpu.md). It takes the screen, so run it when nobody is
 # using it.
 #   metaverse/gpu/display.sh HOST [vk-display options: --seconds N --demo --shot-at S]
 #   VERSE_DISPLAY_ESCAPE=S   also press Escape (a virtual keyboard) after S seconds

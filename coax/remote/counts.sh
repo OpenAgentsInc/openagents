@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5. The allowlist counts of the green-main pipeline
-# (docs/verse/green-main-pipeline.md, "The allowlist counts", #13266): git show
+# (docs/metaverse/green-main-pipeline.md, "The allowlist counts", #13266): git show
 # and awk over five files at a commit, so after.sh reads them with no host and
 # no build.
 #

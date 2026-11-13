@@ -1,5 +1,5 @@
 // vk-check: Coax-built SPIR-V on the GPU through Vulkan, with no display
-// (docs/verse/native-gpu.md, phase G0). It asks metaverse/gpu/spirv.coax for
+// (docs/metaverse/native-gpu.md, phase G0). It asks metaverse/gpu/spirv.coax for
 // the grade module's words, runs it over a w by h image as a compute
 // dispatch, reads the pixels back and compares each with the same pixel
 // computed by Coax on the CPU (vg_grade_pixel). It takes no screen, VT or

@@ -44,7 +44,7 @@ BD_FPS :: 30.0;
 #load "preview-rig.coax";
 #load "preview-clips.coax";
 #load "two-hand-rig.coax";   // the owned two-handed weapon clips (metaverse/tools/assets/two_hand_clips.py)
-#load "../../metaverse-engine/action/bow-pose.coax";   // the archer's keyed draw (docs/verse/bow-combat.md), baked as clip BD_BOW
+#load "../../metaverse-engine/action/bow-pose.coax";   // the archer's keyed draw (docs/metaverse/bow-combat.md), baked as clip BD_BOW
 #load "../../metaverse-engine/action/ride-pose.coax";  // a rider's legs astride (everglade/docs/mounts-spec.md), baked as clip BD_RIDE
 BD_CLIPS :: 10;
 BD_IDLE :: 0; BD_WALK :: 1; BD_RUN :: 2; BD_SLASH :: 3; BD_SPELL :: 4; BD_KNOCK :: 5; BD_DIE :: 6; BD_JUMP_START :: 7; BD_JUMP_LOOP :: 8; BD_JUMP_LAND :: 9;

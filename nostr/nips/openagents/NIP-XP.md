@@ -20,7 +20,7 @@ XP is evidence of verified accepted work. It is never a balance: it can't
 be spent, transferred, sold, or converted into sats, compute credits, or
 any permission. It is awarded once per accepted outcome, never per token,
 command, commit, run, or unit of time. These are the rules of the
-[Metaverse economy](../../../docs/verse/gdd.md#economy) and of the
+[Metaverse economy](../../../docs/metaverse/gdd.md#economy) and of the
 [Minecraft guild design](../../../docs/minecraft/economy.md#xp-and-winning);
 this NIP is their transport.
 

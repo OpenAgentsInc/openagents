@@ -55,7 +55,7 @@ them, and every engine improvement reaches all of them at once.
   [myrealm-things.coax](../../apps/openagents-web/myrealm-things.coax), drawn
   by `myrealm.wgsl` with [metaverse/style-preset.coax](../../metaverse/style-preset.coax).
 - The catalogue, cameras and palettes in
-  [realm-builder.md](../../docs/verse/realm-builder.md); figures from
+  [realm-builder.md](../../docs/metaverse/realm-builder.md); figures from
   [metaverse-engine/anim/figure.coax](../anim/figure.coax).
 - Talk through the character chat Everglade's people use
   (`POST /api/playtest/npc/ask`), refused for visitors with TALK off.

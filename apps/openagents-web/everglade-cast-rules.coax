@@ -1,5 +1,5 @@
 // Everglade's cast rules under latency (GitHub #12790, epic #12718; spec
-// docs/verse/2026-11-04-everglade-cast-rules.md). The numbers and the small pure rules both sides use:
+// docs/metaverse/2026-11-04-everglade-cast-rules.md). The numbers and the small pure rules both sides use:
 // v1's room server resolved casts with them, and the page predicts with
 // them (everglade-net.coax, everglade-spells.coax). Reach, sight and the refusal words are Everglade's
 // shared cast limits (everglade/shared/cast-limits.coax, which the room loads alone); the rest here,

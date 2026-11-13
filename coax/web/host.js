@@ -100,7 +100,7 @@
 //       browser, localStorage), now (Date.now()), nav (ms since the navigation), url, ref, ua, lang,
 //       tz, sw, sh, vw, vh, dpr, coarse, touch, gpu, hidden, clip, webdriver, fcp, dcl, player and account (the
 //       playtest player's public id and account, "" none; never its key), voice (the page's data-voice route, "" none), ruleset (data-ruleset: realms.json "ruleset", "" none),
-//       fork (data-fork: a fork's slug on its page, docs/verse/realm-fork.md; "" none), rules (data-rules: its rule ids, a comma between),
+//       fork (data-fork: a fork's slug on its page, docs/metaverse/realm-fork.md; "" none), rules (data-rules: its rule ids, a comma between),
 //       style (the realm's art style, data-style: lowpoly, painterly, photoreal, flat or anime; "" not a realm),
 //       variant (an anime realm's, data-variant: pastoral, action, dusk or neon; the URL's ?variant= sets it; no
 //       line on a page without either), zone.<id> (a zone's style, data-zones "id:style ...") and zone.<id>.variant
@@ -134,11 +134,11 @@
 //   sound:NAME=URL a sound the app plays by name;  loop:URL  one that loops from the first touch or key
 //   sounds:/DIR/  a directory of sounds the app plays by name, DIR/NAME.ogg each, fetched when first
 //                 named (metaverse-engine/audio/mix.coax's lines; NAME lowercase letters, digits and dashes)
-//   pack:URL      a realm's asset pack (metaverse/tools/pack_realm.py, docs/verse/realm-host.md): one file,
+//   pack:URL      a realm's asset pack (metaverse/tools/pack_realm.py, docs/metaverse/realm-host.md): one file,
 //                 streamed, that stands for four assets in its place, its catalog (data), vertices
 //                 (storage), indices (index) and texture layers (layers), and adds its sounds by name.
 //                 While it streams the app hears message 605, "LOADED TOTAL" bytes. One pack a page.
-//   private:NAME  a private pack (a MetaHuman's, docs/verse/metahuman-support.md) that never ships as a
+//   private:NAME  a private pack (a MetaHuman's, docs/metaverse/metahuman-support.md) that never ships as a
 //                 file: on openagents.com (and its subdomains) always, a session from the broker
 //                 (POST /api/verse/packs/NAME, coax/web/api/verse_packs.c) whose bytes are opened in
 //                 privatePack; on a local address only when its URL asks (/private/NAME.pack from
@@ -214,7 +214,7 @@
 //                             the emitters' memory, copied each frame to that storage buffer
 //   coaxial_particle_instances(state)  quads to draw (6 vertices each)
 //   coaxial_particle_version(state)  optional: the emitters are copied only when this number changes
-// Sorting, optionally (Splat Lab's Gaussian splats, docs/verse/2026-11-03-splat-lab.md): a particles
+// Sorting, optionally (Splat Lab's Gaussian splats, docs/metaverse/2026-11-03-splat-lab.md): a particles
 // module with sort_vs, key_fs and sort_fs, on a page whose app exports coaxial_sort, gets its quads
 // in an order the GPU sorts before they draw. coaxial_sort(state) points at f32s: the sort texture's
 // width and height (texels: one a particle, a power of two in all), how many passes, whether to run
@@ -279,7 +279,7 @@ const app = (script && script.dataset.app) || "app";
 const wasmUrl = (script && script.dataset.wasm) || `/build/${app}.wasm`;
 const wgslUrl = (script && script.dataset.wgsl) || `/${app}.wgsl`;
 const renderUrl = script?.dataset.render || "";
-// A realm page (docs/verse/realm-host.md) names its realm (data-realm) and the
+// A realm page (docs/metaverse/realm-host.md) names its realm (data-realm) and the
 // save slot it keeps under (data-slot); data-slot-was is a slot it used
 // before, read once when its own is empty, so a renamed slot keeps its save.
 const realmId = (script && script.dataset.realm) || "";
@@ -293,7 +293,7 @@ const dev = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 // The crash test (coaxial.trapNextFrame, #13298): a real trap in the next frame, in development and on staging only.
 const crashTest = dev || location.hostname.startsWith("staging.");
 const probe = dev && new URLSearchParams(location.search).has("probe"); // tests: read the frame back
-// Agent mode (?agent, in development; coax drive opens every page so: docs/verse/agent-clock.md, #13096).
+// Agent mode (?agent, in development; coax drive opens every page so: docs/metaverse/agent-clock.md, #13096).
 // Simulation time moves only when the agent's clock steps it (coaxial.agent.step): the page draws
 // fixed frames as a clip does (clip mode below), and the local room (room-worker.js) ticks on the
 // same clock. The session is pinned: the seed, epoch, locale and time zone of metaverse-engine/agent/pin.coax,
@@ -365,7 +365,7 @@ let engineInstalling = false;
 let arena = null;    // { state, vertices, uniforms, floats, uniformFloats, maxVertices }
 let gpu = null;      // { device, context, format, bindGroup, uniformBuffer, vertexBuffer, bg, fx }
 let wanted = 0;      // the newest requested engine; an older finished build never replaces it
-// Where a fresh load's time goes (docs/verse/fast-loads.md): [name, ms since the page began], in
+// Where a fresh load's time goes (docs/metaverse/fast-loads.md): [name, ms since the page began], in
 // the order they happened. coaxial.loadMarks() reads them:
 //   coax/web/tool.sh shot URL OUT.png 1280x720 --eval "JSON.stringify(coaxial.loadMarks())"
 const loadMarks = [];
@@ -388,7 +388,7 @@ const goldenScene = firstPacks.size > 0 || firstAssets.some((a) => a.kind === "i
 const loading = startLoading({ realm: realmId, assets: firstAssets.length + firstPacks.size,
   textured: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "layers"),
   scene: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "index"), golden });
-// A claimed realm's maker (ev-claim-realm, docs/verse/makers.md): their name, from oa-api, as message
+// A claimed realm's maker (ev-claim-realm, docs/metaverse/makers.md): their name, from oa-api, as message
 // MAKER_KIND for the realm to draw ("Made by <name>" and TIP, in Coax); nothing when unclaimed, offline or in a golden shot.
 // Only a realm with a tip page asks (data-maker, coax/web/realms.ts): the rest have no maker to find.
 const MAKER_KIND = 608;
@@ -982,7 +982,7 @@ function kept(store, key) {
   try { const v = store.getItem(key); if (v) return [v, false]; const n = randomId(); store.setItem(key, n); return [n, true]; }
   catch { return [randomId(), true]; }   // storage refused (a private window): this page only
 }
-// The realm's style, zones and clock (docs/verse/art-styles.md, The style field).
+// The realm's style, zones and clock (docs/metaverse/art-styles.md, The style field).
 function styleFacts() {
   const d = script?.dataset || {}, out = { style: d.style || "" };
   for (const z of (d.zones || "").split(/\s+/)) { const [id, st, v] = z.split(":"); if (id && st) out[`zone.${id}`] = st; if (id && st && v) out[`zone.${id}.variant`] = v; }
@@ -1278,7 +1278,7 @@ async function loadPageFont() {
   if (!response.ok) throw Error(`UI font HTTP ${response.status}`);
   const font = new FontFace(family, await response.arrayBuffer());
   await font.load();document.fonts.add(font);pageFontFamily = JSON.stringify(family);
-  // A HUD style's title face (metaverse-engine/ui/hud-style.coax, docs/verse/hud-styles.md): data-ui-title-font-src,
+  // A HUD style's title face (metaverse-engine/ui/hud-style.coax, docs/metaverse/hud-styles.md): data-ui-title-font-src,
   // -family and -weight. The atlas then holds two faces in one set of cells: the reading face in red, the
   // title face in green; only a realm whose strokes ask for a channel (everglade/scene/gpu/fivelab.coax fivelab_hud_fs) has one.
   const titleSource = script?.dataset.uiTitleFontSrc, titleFamily = script?.dataset.uiTitleFontFamily;
@@ -1463,7 +1463,7 @@ async function loadShadersOnce() {
   // A traced scene whose bg_fs writes @builtin(frag_depth) puts its depth in the buffer, so what
   // draws after it (grass) hides behind what it traced.
   const bgDepth = depthed && /@builtin\(frag_depth\)/.test(code) ? { depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "always" } } : flat;
-  // Grass (docs/verse/art-styles.md 8), when the WGSL has grass_vs and grass_fs: coaxial_grass_instances(state)
+  // Grass (docs/metaverse/art-styles.md 8), when the WGSL has grass_vs and grass_fs: coaxial_grass_instances(state)
   // blades of one triangle each, instanced from their cells' hashes (no buffer), drawn after bg_fs with bg's groups.
   const grassy = scene && /fn\s+grass_vs\b/.test(code) && !!engine?.exports.coaxial_grass_instances;
   const [bg, fx, sc, sh, bl, po, ca, gr, su, sa, st] = await Promise.all([
@@ -1553,7 +1553,7 @@ async function loadShadersOnce() {
 // Water, when the WGSL has water_vs, water_transmit_fs and water_emit_fs: the app's last
 // coaxial_water_draws(state) draws are water, drawn after the scene in two halves each, depth-tested
 // and not written: the first multiplies what lies behind by its colour (per-channel transmittance),
-// the second adds its own (docs/verse/water.md).
+// the second adds its own (docs/metaverse/water.md).
 async function waterPipelines(module, groups, post) {
   const { device, format } = gpu;
   const keep = { operation: "add", srcFactor: "zero", dstFactor: "one" };
@@ -1570,7 +1570,7 @@ async function waterPipelines(module, groups, post) {
     half("water_emit_fs", { operation: "add", srcFactor: "one", dstFactor: "one" })]);
 }
 
-// W5 (docs/verse/water.md): a page whose WGSL declares water_scene (and draws through the post pass)
+// W5 (docs/metaverse/water.md): a page whose WGSL declares water_scene (and draws through the post pass)
 // has the scene's light and depth copied after the scene and before the water, read at @group(3):
 // binding 0 the light (rgba16float, linear), binding 1 the depth. Refraction, contact foam and soft
 // edges read them; the water's own triangles are not in them.
@@ -3805,7 +3805,7 @@ function after(gesture, tap = false) {
     call("coaxial_action_done");
     // A Lightning invoice goes to a wallet. One in this browser (WebLN: the app's own wallet, an
     // extension) pays it here and reports the preimage, which the page hears as message 615 and
-    // sends on as proof (docs/verse/makers.md); with none, or when it declines, the device's wallet opens.
+    // sends on as proof (docs/metaverse/makers.md); with none, or when it declines, the device's wallet opens.
     if (code === 1 && /^lightning:ln[a-z0-9]+$/i.test(text) && typeof globalThis.webln?.sendPayment === "function") {
       Promise.resolve(globalThis.webln.enable?.()).then(() => globalThis.webln.sendPayment(text.slice(10)))
         .then((paid) => { const pre = String(paid?.preimage ?? "").toLowerCase(); if (/^[0-9a-f]{64}$/.test(pre)) send(615, pre); })

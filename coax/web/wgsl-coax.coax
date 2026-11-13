@@ -1,4 +1,4 @@
-// WGSL to Coax (docs/verse/native-gpu.md, G5 and G6): translates a realm's
+// WGSL to Coax (docs/metaverse/native-gpu.md, G5 and G6): translates a realm's
 // hand-written WGSL into Coax shader procedures over the shader library
 // (metaverse-engine/gpu/shader.coax and metaverse-engine/gpu/wgsl.coax), so `coax spirv` lowers
 // them and #test checks run them on the CPU.

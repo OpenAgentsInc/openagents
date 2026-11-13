@@ -1,4 +1,4 @@
-// A realm's maker (ev-claim-realm, docs/verse/makers.md): who made a realm, and the Lightning
+// A realm's maker (ev-claim-realm, docs/metaverse/makers.md): who made a realm, and the Lightning
 // address its tips go to. Every rule is SQL's (migrations/0072_realm_makers.sql); this file reads
 // who asks.
 //
@@ -12,7 +12,7 @@
 //   POST /api/admin/makers/<realm>/code        an admin (cookie or NIP-98): a new one-time code
 //                                              -> 200 {realm, code, link}; the code is never logged or kept
 //
-// Tips (docs/verse/makers.md; owner decision D6, #13210): Bitcoin over Lightning, from the player's
+// Tips (docs/metaverse/makers.md; owner decision D6, #13210): Bitcoin over Lightning, from the player's
 // wallet straight to the maker's own Lightning Address. Nothing of the player's enters our wallet.
 //   POST /api/playtest/makers/<realm>/tip {sats}        -> 200 {invoice, payment_hash, sats, expires, confirm, to}: the
 //                                                         maker's own invoice, asked by our server (the player's
@@ -469,7 +469,7 @@ bool makers_route(const request *q) {
 }
 
 
-// ---- listed upgrades (ev-asset-upgrades, migrations/0077_fairy_upgrades.sql, docs/verse/makers.md)
+// ---- listed upgrades (ev-asset-upgrades, migrations/0077_fairy_upgrades.sql, docs/metaverse/makers.md)
 //   GET  /api/playtest/upgrades/fairy             -> 200 {top: the three approved fairies, wearing, pending (an admin's), admin}
 //   POST /api/playtest/upgrades/fairy {name, by, look, sats, lightning}   a logged-in maker lists one; it waits for an admin
 //   POST /api/playtest/upgrades/<id>/buy {pay: "sats", reports?}   -> 200 {invoice, payment_hash, sats, expires, confirm}: the

@@ -1,4 +1,4 @@
-// The Metaverse Engine's entities (the Metaverse Engine core, GitHub #12609, docs/verse/engine-core.md): who a
+// The Metaverse Engine's entities (the Metaverse Engine core, GitHub #12609, docs/metaverse/engine-core.md): who a
 // thing in a realm is, and when it is born and dies. It generalizes Dead Gears' entity system
 // (metaverse/deadgears/ecs.coax) with two identities and deferred spawns.
 //

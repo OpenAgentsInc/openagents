@@ -113,7 +113,7 @@ each pixel, so none of them alias or turn to moire at any distance.
    from that. Ice Cream Man's trace and replay tools are the pattern.
 7. **A curved arena mesh**: the inside of a drum as the drivable surface
    and the collision mesh, drawn in the flat or ink style
-   (`docs/verse/art-styles.md`).
+   (`docs/metaverse/art-styles.md`).
 
 ## Milestones
 

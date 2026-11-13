@@ -149,7 +149,7 @@ Measured on fivelab (294 units, 9.7 MB of source, 1,319 checks) on a 30-core
 build host, as the first compile after the edit, by turns with the compiler
 before this change: 4.6 s before and 2.5 s now for a comment or a changed
 line of a body, and 2.3 s before and 0.63 s now for a type error in a body.
-`docs/verse/remote-builds.md` has the tables.
+`docs/metaverse/remote-builds.md` has the tables.
 
 What a resident does not do yet: the parser's tree, the checker's typed
 graph and the emitted C are made again for the whole program on every

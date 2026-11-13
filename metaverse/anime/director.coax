@@ -1,4 +1,4 @@
-// Anime Lab's director (docs/verse/anime-lab.md): spoken lines become typed
+// Anime Lab's director (docs/metaverse/anime-lab.md): spoken lines become typed
 // directions over a fixed catalogue, and the directions become a timeline
 // the stage plays while it is written. Pure: no drawing, no network, no
 // clock of its own. The live voice path (A4) and the demo's simulated

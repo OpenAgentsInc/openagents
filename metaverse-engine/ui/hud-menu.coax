@@ -5,7 +5,7 @@
 // renderer draws both. Rows wrap to the page's width, so nothing overlaps at any width; on a phone
 // the realm passes a 44 px row for a finger (hud_row_h). Text always fits its box: a menu grows
 // taller before its columns get narrower than their labels, and a tip wraps and sizes its plaque to
-// its lines. docs/verse/hud-styles.md.
+// its lines. docs/metaverse/hud-styles.md.
 //   coax/bin/coax test metaverse-engine/ui/hud-menu.coax --library
 #load "hud-style.coax";
 #load "hud-sight.coax";   // what floats over a body shows while the body does

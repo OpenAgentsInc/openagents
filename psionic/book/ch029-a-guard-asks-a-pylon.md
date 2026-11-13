@@ -10,7 +10,7 @@ first gate guard. The first implementation is **shadow only**. It can ask a
 Pylon for a harmless option and count whether that proposal passes the current
 local gate. It does not display a line or change any game behavior.
 
-The [delivery plan](../../docs/verse/pylon-guard-decisions.md) places this before
+The [delivery plan](../../docs/metaverse/pylon-guard-decisions.md) places this before
 other game controllers. A courtesy line can fail quietly while we measure the
 service. Walking, patrol, alarms, spells, wanted state, combat and rewards keep
 their existing local rules. Belt is a later consumer.

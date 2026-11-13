@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Star Catcher in a Vulkan window on HOST's Wayland desktop (metaverse/gpu/vk-window.c),
-# the G2 desktop-app check (docs/verse/native-gpu.md). It opens a window on
+# the G2 desktop-app check (docs/metaverse/native-gpu.md). It opens a window on
 # that desktop, so run it when the person at that screen wants one.
 #   metaverse/gpu/window.sh HOST [vk-window options: --fullscreen --seconds N --scale K --size WxH]
 # WAYLAND_DISPLAY on HOST defaults to the compositor on the screen

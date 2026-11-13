@@ -1,5 +1,5 @@
 #load "../metaverse-engine/render/noise.coax";
-// The sky behind space (docs/verse/space.md): a starfield and the Sun, as
+// The sky behind space (docs/metaverse/space.md): a starfield and the Sun, as
 // light per pixel, for any space realm's background pass. Scalar f32 only,
 // so coax wgsl turns these into WGSL and Metal (as metaverse/light.coax):
 //   coax/web/tool.sh coax/web/wgsl-block.coax metaverse/stars.coax verse_starfield verse_sun_disc verse_sun_corona --into APP.wgsl

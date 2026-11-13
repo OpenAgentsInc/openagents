@@ -40,7 +40,7 @@ const rows = readFileSync(join(site, "og/pages.txt"), "utf8").split("\n").filter
 const realms: Record<string, any> = Object.fromEntries(JSON.parse(readFileSync(join(app, "realms.json"), "utf8")).worlds
   .filter((w: any) => w.realm).map((w: any) => [w.realm.slug, w.realm]))
 // How each realm's still is taken: its best moment, without the HUD. A staged moment
-// (?stage=highlight, docs/verse/clips.md) is stepped `skip` seconds of game time in; ?card=1 asks
+// (?stage=highlight, docs/metaverse/clips.md) is stepped `skip` seconds of game time in; ?card=1 asks
 // the game to leave its HUD out. A realm without it is shot big (its HUD small at the edges)
 // and cropped to [x, y, w, h] clear of it. Anything not listed: golden mode at 1680x638.
 // `path`: the page to shoot when the realm's own page isn't its world (fivelab picks its page by

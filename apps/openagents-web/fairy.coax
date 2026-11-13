@@ -1,6 +1,6 @@
 // Fairy Forest, openagents.com/worlds/fairy-forest: the first crack of the
 // realm metaverse/fairy-forest/README.md proposes, in the painterly style
-// (docs/verse/art-styles.md). You are a newly woken fairy in a valley that
+// (docs/metaverse/art-styles.md). You are a newly woken fairy in a valley that
 // has faded to grey. Press E (BLOOM on a phone) at a faded patch of flowers
 // and colour spreads out from it again. Three of the forest's creatures
 // each have one trouble, that their glade has faded; bloom a glade's
@@ -17,7 +17,7 @@
 // orbit (metaverse-engine/cam/camera.coax); every Space press is one wing beat up, with no
 // limit, holding it beats on and climbs, and letting go glides down (the face does the flight).
 //
-// The look (fairy.wgsl, the flat style of docs/verse/art-styles.md): three
+// The look (fairy.wgsl, the flat style of docs/metaverse/art-styles.md): three
 // flat tones (two for characters) in the realm's palette, flat translucent
 // shadows, a flat sky over a horizon band, the stream and the lakes in flat
 // bands, no grass, and a post pass that blooms only what glows. Everything is
@@ -36,7 +36,7 @@
 #load "../../metaverse/fairy-forest/park.coax";   // the park: Central Park at a quarter of its size
 #load "../../metaverse/fairy-forest/talk.coax";
 #load "place-orbit.coax";
-#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/metaverse/realm-edit.md)
 #load "fairyroom.coax";
 #load "fairyquest.coax";   // lore and quests from edit mode's panes
 #load "../../metaverse/fairy-forest/life.coax";

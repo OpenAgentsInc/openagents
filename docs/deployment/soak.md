@@ -54,7 +54,7 @@ A run fails when any of these holds:
 | `version` | The room refused a bot's build, so the run measured nothing |
 | `blind` | Fewer than half the room's windows could be read |
 | `lost` | At the end, fewer than nine in ten of the most ever seated were still seated |
-| `astray` | A creature stood off the navigation cells' open ground, or was found inside a collider. The room counts both ([navigation](../verse/navigation.md#what-a-room-counts)) |
+| `astray` | A creature stood off the navigation cells' open ground, or was found inside a collider. The room counts both ([navigation](../metaverse/navigation.md#what-a-room-counts)) |
 
 The targets are the service levels' ([service levels](service-levels.md)).
 

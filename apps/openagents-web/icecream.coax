@@ -12,7 +12,7 @@
 #load "../../metaverse-engine/ui/font.coax";
 #load "ui.coax";
 #load "../../coax/web/analytics.coax";
-#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/metaverse/realm-edit.md)
 #load "../../metaverse-engine/core/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0

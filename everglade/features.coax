@@ -1,4 +1,4 @@
-// Everglade's feature manifest (#13075, docs/verse/everglade-feature-parity.md). The owner's rule
+// Everglade's feature manifest (#13075, docs/metaverse/everglade-feature-parity.md). The owner's rule
 // (2026-11-09): no one-off zone code. A feature is engine-wide (metaverse-engine/) or game-wide (the Everglade
 // layer), and a zone only wires it in. coax/web/everglade-parity.coax reads this file and fails when
 // a zone defines its own copy of a feature listed here, declares a feature it doesn't load, or lacks

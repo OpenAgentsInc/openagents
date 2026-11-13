@@ -1,4 +1,4 @@
-// Speaking characters for videos (docs/verse/2026-11-04-speaking-characters.md): a cue sheet and a
+// Speaking characters for videos (docs/metaverse/2026-11-04-speaking-characters.md): a cue sheet and a
 // video in, the video out with each line voiced and a talking portrait panel over it.
 //   coax/web/tool.sh speak CUES OUT.mp4 [--video FILE] [--cast FILE] [--server URL]
 //       [--allow-fallback] [--revoice N] [--no-open]
@@ -22,7 +22,7 @@
 //              line's words burned in one by one. Also OUT.srt and OUT.json (each line's times).
 // Everything this makes holds MetaHuman renders: the cache (~/.openagents/verse/private-build/
 // speak/) and the output's folder get a NO-TRAINING.txt, and neither ever goes into git, a golden,
-// a dataset, an eval or a public trace (docs/verse/metahuman-support.md, binding rules).
+// a dataset, an eval or a public trace (docs/metaverse/metahuman-support.md, binding rules).
 // curl, gcloud, ffmpeg and the dev server are programs this runs, as clip.coax runs Chrome; the
 // logic (requests, parsing, alignment, the filter graph, the text) is here.
 #import "Basic";
@@ -44,7 +44,7 @@ TTS_URL :: "https://texttospeech.googleapis.com/v1/text:synthesize";
 STT_URL :: "https://speech.googleapis.com/v1/speech:recognize";
 GCLOUD_CONFIG :: "/Users/christopherdavid/work/.secrets/gcloud-sa-config";
 GCP_PROJECT :: "openagentsgemini";
-NO_TRAINING :: "MetaHuman renders: never used to train or improve AI models, never in git, goldens, datasets, evals or public traces (docs/verse/metahuman-support.md, binding rules).\n";
+NO_TRAINING :: "MetaHuman renders: never used to train or improve AI models, never in git, goldens, datasets, evals or public traces (docs/metaverse/metahuman-support.md, binding rules).\n";
 
 WAV_MAX :: 1 << 23;
 ENV_MAX :: 6000;              // 10 ms frames: a minute

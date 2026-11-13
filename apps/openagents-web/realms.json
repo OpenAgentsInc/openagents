@@ -1,6 +1,6 @@
 {
   "v": "openagents.realms.v1",
-  "about": "Every world on the galaxy and every realm page. coax/web/realms.ts writes realms.coax (the galaxy's table) and realms/<slug>/index.html from it. docs/verse/realm-host.md is the contract.",
+  "about": "Every world on the galaxy and every realm page. coax/web/realms.ts writes realms.coax (the galaxy's table) and realms/<slug>/index.html from it. docs/metaverse/realm-host.md is the contract.",
   "worlds": [
     { "id": "oa", "name": "OPENAGENTS", "kind": "locked", "orbit": { "r": 0, "a": 0, "size": 0.075 } },
     { "id": "house", "name": "HAUNTED HOUSE", "kind": "open", "orbit": { "r": 0.15, "a": 0, "size": 0.028 },

@@ -6,7 +6,7 @@
 // The C of each unit is kept under the SHA-256 of the compiler and the unit's #load closure
 // (COAXIAL_WASM_CACHE, default ~/.cache/coax-wasm; empty for none), so a build whose sources didn't
 // change compiles no Coax. On a build host the hosts' shared store sits behind that cache, and one
-// host compiles a key at a time (wk_shared, docs/verse/remote-builds.md).
+// host compiles a key at a time (wk_shared, docs/metaverse/remote-builds.md).
 // COAXIAL_MODE=dev links at -O1 without LTO, as wasm.sh does.
 // COAX_ROOM_KEEP_C=DIR retains these same C/header units and their compiler/key
 // manifest for native qualification. COAX_ROOM_C_ONLY=1 stops after retention.

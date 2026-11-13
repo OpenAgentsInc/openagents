@@ -1,4 +1,4 @@
-// The Metaverse Engine's follow camera (the Metaverse Engine core, GitHub #12609, docs/verse/engine-core.md,
+// The Metaverse Engine's follow camera (the Metaverse Engine core, GitHub #12609, docs/metaverse/engine-core.md,
 // book chapter 10): the orbit behind a walker that every realm uses. Its state is a `Follow`:
 // the turn and tilt the look input sets, the distance the zoom sets, the spring-followed point
 // it looks at, and how far out it is shown. One call a step tracks the walker (`follow_track`);

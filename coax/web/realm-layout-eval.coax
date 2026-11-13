@@ -1,4 +1,4 @@
-// The realm builder's layout eval (#12610; docs/verse/realm-builder.md, "Layout eval"). It asks
+// The realm builder's layout eval (#12610; docs/metaverse/realm-builder.md, "Layout eval"). It asks
 // whether a made realm is the place that was asked for: walls round a courtyard, the fountain in
 // its middle, a path to it, a dock on the lake. The prompts and what each asks for are
 // coax/web/api/eval_layout.tsv: a tuning set (tune) and a held-out set (held) that is never tuned on.

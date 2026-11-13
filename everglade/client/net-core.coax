@@ -1,4 +1,4 @@
-// The room client's Everglade half (GitHub #13054; docs/verse/2026-11-07-everglade-multiplayer-audit.md):
+// The room client's Everglade half (GitHub #13054; docs/metaverse/2026-11-07-everglade-multiplayer-audit.md):
 // what Everglade's page (everglade-net.coax) and Everglade II's (everglade/client/net.coax) both keep of the
 // room's world. How it is drawn is the engine's (#13277): the interpolation buffer, its clock and the
 // easing of corrections are metaverse-engine/net/interp.coax, and your inputs' re-run and your actions' ledger are

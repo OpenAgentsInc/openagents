@@ -25,7 +25,7 @@ RoomState :: struct {
   id: [ROOM_OTHERS * ROOM_ID] u8; id_n: [ROOM_OTHERS] int;
   name: [ROOM_OTHERS * ROOM_NAME] u8; name_n: [ROOM_OTHERS] int;
   look: [ROOM_OTHERS * ROOM_LOOK] u8; look_n: [ROOM_OTHERS] int;   // "": none
-  agent: [ROOM_OTHERS] bool;      // an agent's seat (docs/verse/realm-seat.md; migrations/0108): the server's "agent": true
+  agent: [ROOM_OTHERS] bool;      // an agent's seat (docs/metaverse/realm-seat.md; migrations/0108): the server's "agent": true
   to: [ROOM_OTHERS * 4] f32;      // found_at each is: x, y, z, yaw
   at: [ROOM_OTHERS * 4] f32;      // found_at each is drawn, easing towards it
   lines: int;                     // in the ring, up to ROOM_LINES

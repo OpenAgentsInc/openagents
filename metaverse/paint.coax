@@ -1,4 +1,4 @@
-// The painterly look's shading functions (docs/verse/art-styles.md,
+// The painterly look's shading functions (docs/metaverse/art-styles.md,
 // Painterly), as plain f32 functions a realm's WGSL calls through
 // coax wgsl, as metaverse/look.coax's outlines are. One source for every
 // painterly realm (Fairy Forest used them first, before it was drawn flat);

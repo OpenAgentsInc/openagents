@@ -1,4 +1,4 @@
-// A page's whole WGSL module from Coax (docs/verse/native-gpu.md, G6): `coax wgsl` writes
+// A page's whole WGSL module from Coax (docs/metaverse/native-gpu.md, G6): `coax wgsl` writes
 // the vertex and fragment entries named, everything they call, their structs and their
 // bindings (lib/compiler/wgsl.coax), and this writes them to OUT under one header line.
 // The bindings file gives each resource its group and binding as the page's host.js

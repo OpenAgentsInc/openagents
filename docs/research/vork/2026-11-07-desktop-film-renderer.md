@@ -18,8 +18,8 @@ Every movie we make is a screenshot of the real-time frame.
 
 | Path | How it works | Ceiling |
 | --- | --- | --- |
-| Gameplay clips (`coax/web/clip.coax`, `docs/verse/clips.md`) | Headless Chrome with WebGPU; `host.js` clip mode steps one fixed game step a frame; PNGs; ffmpeg | The live WebGPU shaders at the live quality rung, 8-bit PNG |
-| Animation Lab films (`metaverse-engine/tools/anim-scene-play.coax`, `docs/verse/anim-scenes-v1.md`) | Headless muted Chrome over CDP at 960×540; `animFrame(frame,fps)` then a screenshot; per-frame RGBA hashes; ffmpeg H.264 and AAC; at most 60 s a call | Neutral inspection shading (Lambert plus ambient, no shadows); 1.62 s per film second (A5) |
+| Gameplay clips (`coax/web/clip.coax`, `docs/metaverse/clips.md`) | Headless Chrome with WebGPU; `host.js` clip mode steps one fixed game step a frame; PNGs; ffmpeg | The live WebGPU shaders at the live quality rung, 8-bit PNG |
+| Animation Lab films (`metaverse-engine/tools/anim-scene-play.coax`, `docs/metaverse/anim-scenes-v1.md`) | Headless muted Chrome over CDP at 960×540; `animFrame(frame,fps)` then a screenshot; per-frame RGBA hashes; ffmpeg H.264 and AAC; at most 60 s a call | Neutral inspection shading (Lambert plus ambient, no shadows); 1.62 s per film second (A5) |
 | Echo in Everglade (`coax/web/everglade-echo-frames.coax`) | 1920×1080 at 24 fps from the live page | Live pass; the 60 FPS gate is currently missed (#12984) |
 | Raid promo (`?raid=preview&cine=1`, `apps/openagents-web/everglade-raid-preview.coax`) | Keyed camera flight, captured as a clip | Same as gameplay clips |
 
@@ -43,7 +43,7 @@ This is why a desktop flow is cheap for us, and why it should reuse the
 engine.
 
 - **All 16 realms run natively on Vulkan** (release `2a94f5fab2`,
-  2026-10-31; `docs/verse/native-gpu.md`), with every 90th frame identical
+  2026-10-31; `docs/metaverse/native-gpu.md`), with every 90th frame identical
   to `vk-passes` and Everglade at 60 FPS on the RTX 4080.
 - **Coax writes the SPIR-V.** `coax/lib/compiler/spirv.coax` lowers the
   checked tree, and the C++ driver only writes the words. The same Coax
@@ -110,7 +110,7 @@ replays from the start or from a checkpoint to seek. We have it already.
 
 ## What not to take
 
-- **Slang, or any outside shader toolchain.** `docs/verse/native-gpu.md`
+- **Slang, or any outside shader toolchain.** `docs/metaverse/native-gpu.md`
   rules out glslang, naga, tint, Dawn and wgpu, and the same reasoning
   covers Slang. Our film shaders are Coax procedures with `#test` checks,
   emitted as SPIR-V and Metal.

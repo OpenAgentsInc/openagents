@@ -29,7 +29,7 @@ The lifecycle contract's client and room sides are adopted in Everglade.
 That fact does not establish every platform event on every native face.
 The versioned host adapters and their evidence are documented in
 [`metaverse-engine/host/`](../host/README.md) and
-[`docs/verse/native-gpu.md`](../../docs/verse/native-gpu.md).
+[`docs/metaverse/native-gpu.md`](../../docs/metaverse/native-gpu.md).
 The Mac host is selected explicitly with `--world metal`; WebKit remains
 the desktop default pending complete three-host service migration.
 

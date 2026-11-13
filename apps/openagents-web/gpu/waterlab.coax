@@ -1,4 +1,4 @@
-// waterlab's shaders, the source of apps/openagents-web/waterlab.wgsl (docs/verse/native-gpu.md, G6):
+// waterlab's shaders, the source of apps/openagents-web/waterlab.wgsl (docs/metaverse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (waterlab.module,
 // waterlab.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../metaverse-engine/render/noise.coax";
@@ -7,8 +7,8 @@
 
 // The water lab (waterlab.coax): one traced pass. A sea to the horizon on
 // the spectral tiles waterlab.coax packs into the uniforms each frame
-// (metaverse/water-spectrum.coax, phase W4 of docs/verse/water.md), breaking on
-// a sloping beach, in the painted water look of docs/verse/art-styles.md 12
+// (metaverse/water-spectrum.coax, phase W4 of docs/metaverse/water.md), breaking on
+// a sloping beach, in the painted water look of docs/metaverse/art-styles.md 12
 // (Everglade's river preset): depth bands, the painted sky in Schlick's
 // Fresnel on a calmer normal, sparkles near the sun's reflection, white
 // paint for whitecaps, surf and the waterline, and the hazy, cyan-green air

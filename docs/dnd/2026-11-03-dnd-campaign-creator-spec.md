@@ -65,17 +65,17 @@ and "Session recap", never "event", "authority", "replay" or "seed".
 | The 12 classes to level 6 | `battle.coax`, one SRD subclass each (Land Druid, Evoker, Fiend Warlock, Draconic Sorcerer, Lore Bard, Life Cleric, Champion, Devotion Paladin, Hunter, Thief, Berserker, Open Hand) | Character sheets and player turns for levels 1 to 6 |
 | The time adapter | [README.md, "The time adapter"](README.md#3-the-time-adapter-one-rule-set-two-clocks) | **SRD rounds** for the Table, **action combat** for a live 3D fight or a persistent world |
 | 5E Lab | `apps/openagents-web/fivelab.coax`, [realms/5e-lab/index.md](../../apps/openagents-web/realms/5e-lab/index.md) | The two views of a fight (the flat grid and the 3D glade), the CHARACTERS panel, condition marks on figures, the dice log, Player mode and its class hotbar on keys 1 to 9 |
-| Everglade | `apps/openagents-web/everglade-*.coax`, [docs/verse/everglade.md](../verse/everglade.md) | A shared world with a town, guards that escalate, a crypt "a dungeon later", and the destruction hotbar. The base for a persistent campaign world |
-| Hold the Stair | [game-ideas/hold-the-stair.md](../verse/game-ideas/hold-the-stair.md) | A second world on the same rules, and lockstep play over the relay |
-| Realms and their editing | [realm-host.md](../verse/realm-host.md), [realm-edit.md](../verse/realm-edit.md), [aethyrforge.md](../verse/aethyrforge.md), book ch051–ch055 | A campaign's 3D locations are realms: made from a sentence, edited in place, published with a link and forked |
-| Agents in a realm | [realm-seat.md](../verse/realm-seat.md) | An AI player or an AI GM takes a seat with the same verbs a person uses |
+| Everglade | `apps/openagents-web/everglade-*.coax`, [docs/metaverse/everglade.md](../metaverse/everglade.md) | A shared world with a town, guards that escalate, a crypt "a dungeon later", and the destruction hotbar. The base for a persistent campaign world |
+| Hold the Stair | [game-ideas/hold-the-stair.md](../metaverse/game-ideas/hold-the-stair.md) | A second world on the same rules, and lockstep play over the relay |
+| Realms and their editing | [realm-host.md](../metaverse/realm-host.md), [realm-edit.md](../metaverse/realm-edit.md), [aethyrforge.md](../metaverse/aethyrforge.md), book ch051–ch055 | A campaign's 3D locations are realms: made from a sentence, edited in place, published with a link and forked |
+| Agents in a realm | [realm-seat.md](../metaverse/realm-seat.md) | An AI player or an AI GM takes a seat with the same verbs a person uses |
 | Characters who talk | `coax/web/api/npc.c`, book ch077 | Improvised NPCs that answer in voice or text |
 | Voice | book ch069, `metaverse-engine/audio/voice.coax` | Hold to talk; the GM speaks to the copilot, a player casts by name |
 | Sound | book ch065–ch068 | Music and ambience from numbers, a sequencer and a mixer |
 | Effects | book ch072 (design draft), `metaverse-engine/render/particles.coax` | Spell effects, fog, torchlight and weather in 3D scenes |
 | Rooms and shared state | book ch049–ch050, `coax/web/room/` | Who is at the table, and the same session state on every screen |
 | Saves | book ch081, `metaverse-engine/state/save.coax` | A character and a campaign that persist between sessions |
-| Dice on the wire | `verse.rules.v1` `DiceReveal` in [openagents-verse-protocol.md](../verse/openagents-verse-protocol.md) | A roll's expression, faces and total, revealed after it resolves |
+| Dice on the wire | `verse.rules.v1` `DiceReveal` in [openagents-verse-protocol.md](../metaverse/openagents-verse-protocol.md) | A roll's expression, faces and total, revealed after it resolves |
 
 ## Who uses it
 
@@ -445,7 +445,7 @@ from the campaign. The GM chooses how it reaches the table:
 
 For solo play, one-shots, or a group without a GM, an AI GM can run a
 session. It uses the same verbs as a human GM, through a seat
-([realm-seat.md](../verse/realm-seat.md)): show a scene, voice an NPC, start
+([realm-seat.md](../metaverse/realm-seat.md)): show a scene, voice an NPC, start
 combat, roll for monsters, send a handout.
 
 - The AI GM runs on the same rules engine. It cannot change a roll or a
@@ -463,7 +463,7 @@ combat, roll for monsters, send a handout.
 - The copilot and the AI GM **propose**; the GM **accepts**. Every change
   the copilot makes to the campaign or the live session comes as a card with
   **Accept** and **Decline**, the same pattern realm editing uses
-  ([realm-edit.md](../verse/realm-edit.md)). A GM can turn on "accept small
+  ([realm-edit.md](../metaverse/realm-edit.md)). A GM can turn on "accept small
   things automatically" for names and descriptions, never for changes to
   creatures, loot, clocks or anything players see.
 - Rolls and rules results come from the engine, not from a model. A model

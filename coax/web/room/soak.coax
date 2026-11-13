@@ -21,7 +21,7 @@
 //   coax/web/tool.sh coax/web/room/soak.coax local ROOM_BIN SECONDS [PORT] [PLAYERS]
 //     A --dev room of ROOM_BIN on this machine, played by PLAYERS bots (16) for SECONDS, with the same
 //     verdict: the 30-minute run a change to the room's creatures is held to (`local BIN 1800`,
-//     docs/verse/navigation.md).
+//     docs/metaverse/navigation.md).
 //   coax/web/tool.sh coax/web/room/soak.coax publish FILE ORIGIN
 //     Posts FILE's record to ORIGIN's API (POST /api/playtest/capacity-record), signed as a room's
 //     `capacity` write with OA_ROOM_WRITE_KEY or OA_ROOM_TICKET_KEY from the environment.

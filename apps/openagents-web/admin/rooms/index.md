@@ -7,4 +7,4 @@ The Everglade rooms' vitals, for each room server (shard) that reported in the l
 - **Bytes:** bytes and messages a second, out and in, by message type.
 - **Seats:** each seat's room, queue, relevant entities, input to acknowledgement and round trip.
 
-Admins only, with the same login as [Analytics](/admin/analytics). Anyone else sees nothing. What to watch during a raid, and the alarm thresholds, are in [the launch runbook](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/2026-11-04-everglade-launch-runbook.md).
+Admins only, with the same login as [Analytics](/admin/analytics). Anyone else sees nothing. What to watch during a raid, and the alarm thresholds, are in [the launch runbook](https://github.com/OpenAgentsInc/openagents/blob/main/docs/metaverse/2026-11-04-everglade-launch-runbook.md).

@@ -1,4 +1,4 @@
-# The cast of speaking characters (docs/verse/2026-11-04-speaking-characters.md): names, voices,
+# The cast of speaking characters (docs/metaverse/2026-11-04-speaking-characters.md): names, voices,
 # framing and look. A pack is named only by an ID; the owner-local
 # ~/.openagents/verse/private-build/speak/packs.txt resolves it ("ID PACK"), so no digest, path
 # or placement of a MetaHuman is in git. coax/web/tool.sh speak reads this file.

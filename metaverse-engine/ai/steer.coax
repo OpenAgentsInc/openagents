@@ -1,4 +1,4 @@
-// How a creature goes after someone (docs/verse/navigation.md, #13074): the engine's navigation
+// How a creature goes after someone (docs/metaverse/navigation.md, #13074): the engine's navigation
 // and steering service for every NPC (a guard, a monster, a companion), in the room on its tick
 // and in a page on its frame alike. One NavAgent a creature, one NavTune a kind, and one
 // NavWindow any number of creatures share, one plan at a time.

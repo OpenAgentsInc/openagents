@@ -1,4 +1,4 @@
-"""A realm's asset pack (docs/verse/realm-host.md, "Asset packs"): kit art
+"""A realm's asset pack (docs/metaverse/realm-host.md, "Asset packs"): kit art
 compiled into one file the realm page streams on entry. Offline tooling;
 never shipped or run by a page.
 
@@ -43,7 +43,7 @@ The catalog is text, a line each:
 A pack names its art style (manifest "style": lowpoly, painterly or
 photoreal; none is lowpoly) and the catalog says it first: "style NAME".
 A painterly pack's layers must pass the style's texture rules
-(docs/verse/art-styles.md, 10. Textures and packs): at most 512 texels a
+(docs/metaverse/art-styles.md, 10. Textures and packs): at most 512 texels a
 side (256 when the manifest names no texture_size), no normal, roughness or
 detail maps, fine-detail energy at most 0.035 (the RMS of the luminance less
 its own 4x-down-then-up copy over opaque texels, sRGB 0..1), and mean HSV
@@ -59,7 +59,7 @@ was.
 Vertices are the Haunted House's (realm.wgsl): 48 bytes, position, normal,
 uv, colour with its layer in the alpha byte, then 12 bytes; the layer is the
 pack's own (0 first). The 12 are zero but on a canopy's vertices, where the
-first 4 are its blob (docs/verse/art-styles.md, 7. Foliage): the direction
+first 4 are its blob (docs/metaverse/art-styles.md, 7. Foliage): the direction
 from the canopy's centre (the middle of its bounds) as three signed bytes
 (n * 127; over the half sizes squared for an ellipsoid, then normalized),
 and its share of the tree's height (y over the leaves' top, 255ths), which

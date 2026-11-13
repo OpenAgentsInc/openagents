@@ -1,5 +1,5 @@
 // The frame's resolved environment for a painterly page (lighting plan Phase 1 step 6, GitHub #13066;
-// docs/verse/lighting/README.md). Each frame a page asks for the environment at its camera
+// docs/metaverse/lighting/README.md). Each frame a page asks for the environment at its camera
 // (env_resolve_camera over its admitted set and region index, at the day its clock reads) and writes
 // it through env_gpu_pack into its frame uniforms at `at`; its shaders read that block
 // (metaverse-engine/render/painterly.coax paint_env_*, PAINT_ENV_U) instead of constants.

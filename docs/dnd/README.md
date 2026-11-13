@@ -183,7 +183,7 @@ clocks:
 - **Turn-based:** initiative order and one creature's turn at a time. For
   tabletop-style worlds and a future table mode.
 - **Real time:** Everglade and Hold the Stair. The previous engine's combat
-  model (`0b401561a0^:docs/verse/combat-model.md`) is the base:
+  model (`0b401561a0^:docs/metaverse/combat-model.md`) is the base:
   - A round is 6 s of the world's clock.
   - Each creature has an action budget that refills every 6 s: one action,
     one Bonus Action, one Reaction.

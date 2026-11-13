@@ -22,7 +22,7 @@ change it, so quests and characters can rely on it. Only an admin can,
 in edit mode or by voice (below), and every change is kept as the realm's
 published edits. The brief is the
 Everglade section of `~/work/aethyr-demo/docs/realms.md`; the shape and the
-paper map come from the old OpenAgents Everglade (`0b401561a0^:docs/verse/everglade.md`),
+paper map come from the old OpenAgents Everglade (`0b401561a0^:docs/metaverse/everglade.md`),
 a glade around a commons grown into a small town. This plan keeps its
 commons, fountain, observatory and market stalls and drops the workshop and
 the Agent Studio (they can come later as one building).
@@ -37,7 +37,7 @@ then run the checks and the map:
 
 ```sh
 coax/bin/coax test --library everglade/legacy/v1/plan.coax --steps 200000000
-python3 everglade/legacy/v1/map.py docs/verse/everglade-map.svg
+python3 everglade/legacy/v1/map.py docs/metaverse/everglade-map.svg
 python3 everglade/legacy/v1/map.py --times
 ```
 
@@ -77,7 +77,7 @@ python3 everglade/legacy/v1/map.py --times
 | **The palisade** | Round the city | 4.5 m walls, four gates | Keeps the city a place; every way out is a gate. |
 | **Inn Street** | South Gate to the commons | 3 m street, 44 m | The way in: the inn and houses. |
 | **The inn** | Inn Street, east side | 16 × 14 m, two storeys | The common room with a hearth, rooms upstairs; where parties meet. The innkeeper and the inn's cat. |
-| **The commons** | The middle | paved, 32 m across | The fountain (6.6 m across: a carved basin and a column with an upper bowl whose water falls in eight streams, docs/verse/water.md "The fountain"), the quest board and the town crier; the ring street round it. The errand cat waits by the fountain. |
+| **The commons** | The middle | paved, 32 m across | The fountain (6.6 m across: a carved basin and a column with an upper bowl whose water falls in eight streams, docs/metaverse/water.md "The fountain"), the quest board and the town crier; the ring street round it. The errand cat waits by the fountain. |
 | **The market** | West of the commons, on Market Street | paved, 26 m across | Six stalls in two rows either side of the street (3 × 2 m each), three sellers. |
 | **General store** | The market's north side | 12 × 10 m | Supplies; the shopkeeper. |
 | **Smithy** | North-west of the market, by the West Gate | 12 × 10 m | Arms and tools; the smith. |
@@ -169,7 +169,7 @@ meshes. Where a kit has no piece, the line says what is assembled instead.
 | Forest and trails | SN `CommonTree_1/3/4` (+ `_Leaves`), `Pine_1/4/5`, `TwistedTree_2/4/5`, `Bush_Common`, `Fern_1`, `Grass_*`, `Clover_*`, `Flower_*`, `Mushroom_Common`, `Plant_1/7`, `Rock_Medium_1..3`. |
 | Ruins | SN `Rock_Medium_*`; MV `Prop_Brick1..4`, `Wall_UnevenBrick_Straight` broken off, `Wall_Arch`; FP `Vase_Rubble_Medium`. |
 | Crypt | MV `Wall_UnevenBrick_Door_Round`, `DoorFrame_Round_Brick`, `Door_4_Round`; SN `DeadTree_1..3`, `Rock_Medium_*`. |
-| River crossing | The bridge is MV `Floor_WoodDark` boards (4 across by 7 along) and `Prop_WoodenFence_Single` rails, 4 lengths a side (everglade.coax `bridge`), over the engine's timber (`city`: the deck's plank slab, `LOOK_PLANKS`, four beams under it, two rows of three piles under cap beams, `LOOK_WOOD`; its posts and bars stand in for the rails until the pack is in). The rails stop you on the deck, and the piles stop a swimmer under it (everglade.coax `everglade_walls_on`, `everglade_bodies_on`); SN `Rock_Medium_*` on the banks; water drawn by the engine (the water system, docs/verse/water.md). |
+| River crossing | The bridge is MV `Floor_WoodDark` boards (4 across by 7 along) and `Prop_WoodenFence_Single` rails, 4 lengths a side (everglade.coax `bridge`), over the engine's timber (`city`: the deck's plank slab, `LOOK_PLANKS`, four beams under it, two rows of three piles under cap beams, `LOOK_WOOD`; its posts and bars stand in for the rails until the pack is in). The rails stop you on the deck, and the piles stop a swimmer under it (everglade.coax `everglade_walls_on`, `everglade_bodies_on`); SN `Rock_Medium_*` on the banks; water drawn by the engine (the water system, docs/metaverse/water.md). |
 | Characters | You are the previous Everglade's Ranger (below, "You: the Ranger"); the people are Quaternius Universal Base Characters dressed in the Fantasy outfits' `Peasant` and `Ranger` (below, "How the people look"); the cats are aethyr's `Custom_Cat`, sitting. |
 
 ## Where characters stand
@@ -562,7 +562,7 @@ Each building is put together from its footprint in `plan.coax`, in
 
 ## The river (W3 of the water system)
 
-The river is one body of the water system (docs/verse/water.md, W1 to W3
+The river is one body of the water system (docs/metaverse/water.md, W1 to W3
 and W6's ripples), drawn by its shader and read by the swimmer:
 
 - **Its bed:** `everglade_carve_river` in `plan.coax` cuts it into the
@@ -607,7 +607,7 @@ and W6's ripples), drawn by its shader and read by the swimmer:
 - **Spells on the water:** they strike its surface and raise a splash and
   steam, not scorch; a bolt runs 6 m through the water to you unless you
   are in a boat; what breaks over it falls in, wood floating off on the
-  current (docs/verse/water.md, W6 and W8).
+  current (docs/metaverse/water.md, W6 and W8).
 
 ## What's next
 
@@ -958,7 +958,7 @@ state, so the pieces' caps (EDIT_CAPS, 1,432 in all) are kept lean.
 
 ## The light (November 7: Character Create's glade light)
 
-Everglade is lit as Character Create's glade (docs/verse/character-glade-lighting.md), at the
+Everglade is lit as Character Create's glade (docs/metaverse/character-glade-lighting.md), at the
 owner's request to rebuild it with that lighting and foliage:
 
 - `verse_style_glade_light` (metaverse/style-preset.coax), applied after `verse_style_no_outlines`:
@@ -1064,7 +1064,7 @@ coax/web/tool.sh flyover http://127.0.0.1:8870 --out coax/web/build/flyover-afte
 Character Create and Everglade are one zone. Character Create's Nature glade is a
 region of Everglade's world south of the South Gate, and `/worlds/character-creator`
 is Everglade's own page started there in Character Create's mode
-(docs/verse/character-creator.md). One page, one Wasm world, one renderer and one
+(docs/metaverse/character-creator.md). One page, one Wasm world, one renderer and one
 clock: you walk from the creator's clearing up the road, through the gate and into
 the Commons with your own keys, and nothing loads on the way.
 

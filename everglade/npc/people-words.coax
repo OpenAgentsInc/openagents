@@ -90,7 +90,7 @@ EG_GREET :: [EG_PEOPLE] string.[
   "Want a boat? The pond's calm this morning."
 ];
 
-// What every one of them knows of the city (docs/verse/everglade.md).
+// What every one of them knows of the city (docs/metaverse/everglade.md).
 EG_CITY :: "Everglade is a city in a forest. Its old town stands inside a log palisade with four gates; the South Gate faces the road in, past the stables. In the middle of the old town is the commons with its fountain and the quest board. East of it is the market with its stalls and the general store; west, on Inn Street, the inn; north-west, Guild Row with the fighters' and rangers' halls and the smithy and the alchemist; north-east, the mages' tower; north, the temple and, beyond it, the observatory. Outside the palisade the Commons Loop runs all the way round the old town. South of it is the Great Lawn with the Reed and Lantern Ponds and the boathouse. North, Main Street has its shops and the Market Hall, with Stoop Lane off it. East, on Foundry Road, is the Foundry; north-east, on Studio Road, the Makers' Quarter; south-east, on Library Way, the Scholars' Quarter with the Stacks and the Old College. Across the bridge over the river, Lantern Road runs to the Lantern Quarter with its Music Hall, and to Brownstone Row. Trails lead out through the woods to the deep wood, the ruins, the crypt and the far ponds.";
 
 // What the person at spot i does: their role, or for a cat (no role of their own) a cat's.

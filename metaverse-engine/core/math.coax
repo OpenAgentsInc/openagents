@@ -1,4 +1,4 @@
-// The Metaverse Engine's strict math (the Metaverse Engine core, GitHub #12609, docs/verse/engine-core.md):
+// The Metaverse Engine's strict math (the Metaverse Engine core, GitHub #12609, docs/metaverse/engine-core.md):
 // sine, cosine and powers computed the same way on every host. Coax's sin, cos and pow call
 // the host's C library: macOS's libm natively and wasi-libc in the browser. They differ in the
 // last bit for some inputs, so a walk drawn natively and in the browser parted after 105 steps

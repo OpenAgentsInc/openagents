@@ -12,7 +12,7 @@
 // A target is one point or a vertical run of up to VIS_POINTS points, such as a body from its
 // knees to its head. A target is visible when any of its points is. vis_settle holds a shown or
 // hidden answer for a stated number of answers, so a plate doesn't flicker at a wall's edge.
-// Nothing here changes the colliders. docs/verse/visibility-service.md describes the design.
+// Nothing here changes the colliders. docs/metaverse/visibility-service.md describes the design.
 //   coax/bin/coax test metaverse-engine/physics/visibility.coax --library
 //   coax/bin/coax mutate metaverse-engine/physics/visibility.coax --library
 

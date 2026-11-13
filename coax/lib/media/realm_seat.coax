@@ -1,4 +1,4 @@
-// A seat in a running realm, for an agent (docs/verse/realm-seat.md, #12637): a made realm open in
+// A seat in a running realm, for an agent (docs/metaverse/realm-seat.md, #12637): a made realm open in
 // headless Chrome, driven only through the controls a visitor has, and read through the page's
 // probe (apps/openagents-web/myrealm.coax realm_probe) and the realm's spec route, never from pixels.
 // coax/web/realm-seat.coax (a tool that runs an action file) and the CLI's `openagents realm play`
@@ -233,7 +233,7 @@ seat_drag :: (c: [] Cdp, x: f32, y: f32, dx: f32, dy: f32) -> bool {
   return seat_mouse(c, "mouseReleased", x + dx, y + dy);
 }
 
-// The probe's numbers, in one evaluation: the page's fields as a JSON array (docs/verse/realm-seat.md).
+// The probe's numbers, in one evaluation: the page's fields as a JSON array (docs/metaverse/realm-seat.md).
 SEAT_SCENE_JS :: "(() => { const c = globalThis.coaxial; if (!c || !c.ready || c.guardProbe(0) !== 1 || c.guardProbe(64) <= 0) return ''; const g = (f) => c.guardProbe(f), ents = [], people = [], bytes = []; for (let e = 0; e < g(64) && e < 96; e++) ents.push([g(1400 + e), g(1000 + 2 * e), g(1001 + 2 * e)]); for (let p = 0; p < g(65) && p < 4; p++) people.push([g(1700 + 2 * p), g(1701 + 2 * p)]); for (let i = 0; i < 400; i++) { const b = g(3000 + i); if (b < 0) break; bytes.push(b); } return JSON.stringify({x: g(10), z: g(11), yaw: g(17), pitch: g(19), cam: g(18), tools: g(69), talk: g(66), wait: g(67), lines: g(68), busy: g(14), others: Math.max(g(70), 0), agents: Math.max(g(71), 0), ents, people, answer: new TextDecoder().decode(Uint8Array.from(bytes))}); })()";
 
 // Reads the page into s; false when the realm isn't laid out yet.
@@ -526,7 +526,7 @@ seat_observation :: (s: [] Seat, op: string, ok: bool, out: [] SeatBuf) {
   }
   seat_put(o, "]}");
 }
-// ---- the seat's presence (docs/verse/realm-seat.md slice 4; migrations/0108): the holder posts it,
+// ---- the seat's presence (docs/metaverse/realm-seat.md slice 4; migrations/0108): the holder posts it,
 // signed with the CLI's key, so others in the realm see an agent with its account's name
 
 seat_presence_path :: (s: [] Seat, out: [] SeatBuf) -> string {

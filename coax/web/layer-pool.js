@@ -1,7 +1,7 @@
 // Firm reason: 1 (browser glue: Web Workers that decode and resize a pack's texture layers off the page's thread)
 // A pack's colour and data layers each decode to a bitmap and resize to every mip level. Chrome
 // does that work on the thread that asks, about 30 ms a layer, so 93 layers held the page's thread
-// for 3 s (docs/verse/fast-loads.md, #13141). The pool asks from workers instead, several layers at
+// for 3 s (docs/metaverse/fast-loads.md, #13141). The pool asks from workers instead, several layers at
 // once. A worker makes the same calls with the same options as the page did, so the pixels are the
 // same. Without workers, or when one fails, the page's thread does the layer itself.
 

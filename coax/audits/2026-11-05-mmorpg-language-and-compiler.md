@@ -515,7 +515,7 @@ libraries and host effects, not in a new language-level world-cell keyword.
 WebSocket framing and interest policies already exist. Alternate datagram
 transport, compression, baseline windows, adjacent-region authority and
 cross-region handoff are protocol/engine decisions. Reuse the existing
-[WebTransport evaluation](../../docs/verse/2026-11-05-aethyr-webtransport-evaluation.md)
+[WebTransport evaluation](../../docs/metaverse/2026-11-05-aethyr-webtransport-evaluation.md)
 before assuming a compiler feature can remove TCP head-of-line blocking.
 
 Acceptance: disconnect while loading a cell, transferring a character and

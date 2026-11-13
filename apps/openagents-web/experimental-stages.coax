@@ -1,6 +1,6 @@
 // Everglade Experimental's film stages on a mount (?ride=, ?stage=dragonback, horseback, dragon-fire,
 // horse-archer), in fivelab.coax's module: the keys a player would hold and a camera that follows,
-// for clips (docs/verse/clips.md). Riding itself is the zone's (everglade/zone-ride.coax).
+// for clips (docs/metaverse/clips.md). Riding itself is the zone's (everglade/zone-ride.coax).
 //   coax/bin/coax test --library apps/openagents-web/fivelab.coax --only "stage"
 // A local page's ?ride= (lab_dev_cell), for looking at riding headless: 1 puts you in the saddle, 2
 // gallops (W and Shift held), 3 draws the bow in the saddle (a Ranger: add ?class=). Once.

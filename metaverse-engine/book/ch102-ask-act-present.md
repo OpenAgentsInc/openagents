@@ -8,7 +8,7 @@
 > [everglade/client/class-feel.coax](../../everglade/client/class-feel.coax).
 > Everglade II, Everglade Experimental and Everglade v1's aimed spells wire
 > their presses to it. The design note is
-> [docs/verse/action-pipeline.md](../../docs/verse/action-pipeline.md).
+> [docs/metaverse/action-pipeline.md](../../docs/metaverse/action-pipeline.md).
 > Not built yet: every zone's HUD parts, damage numbers, spell effects and
 > class bars on shared modules (#13079 to #13088), and a runnable example in
 > `metaverse-engine/examples/`. This chapter names procedures and has no source

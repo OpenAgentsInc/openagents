@@ -311,7 +311,7 @@ only the first-tip bonus and an admin's gift. The rules are
 same `lnurl.coax` rules as forward mode. A maker's `name@openagents.com`
 address is read from our own rows and its forward target is asked, exactly
 as its callback would. The threat list and the limits are in
-[makers](../verse/makers.md#threats-and-their-checks).
+[makers](../metaverse/makers.md#threats-and-their-checks).
 
 ## Agents
 

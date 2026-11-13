@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Moves playtest.openagents.com to openagents.com, and back (pt-cutover-plan,
-# docs/verse/playtest-cutover.md). Only the URL map of the playtest's own load
+# docs/metaverse/playtest-cutover.md). Only the URL map of the playtest's own load
 # balancer changes: its IP, DNS, certificate, backend and the Cloud Run
 # service aethyr-demo stay as they are, so going back is one import.
 #

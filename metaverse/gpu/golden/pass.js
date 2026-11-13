@@ -1,6 +1,6 @@
 // Firm reason: 1 (it runs in the browser and talks to WebGPU)
 // Passes of Everglade's WGSL drawn by the browser's WebGPU, for the native
-// port's per-pass check (docs/verse/native-gpu.md, G5). metaverse/gpu/pass-check.coax
+// port's per-pass check (docs/metaverse/native-gpu.md, G5). metaverse/gpu/pass-check.coax
 // serves a directory with this page and the spec's files, and calls these over
 // the Chrome DevTools protocol; metaverse/gpu/vk-passes.c draws the same spec natively
 // (its header documents the directives). Here `wgsl FILE` names the WGSL, and

@@ -21,7 +21,7 @@
 // compact JSON. Then OUT is printed.
 //
 // The browser is the checkout's resident one (coax/web/resident.coax,
-// docs/verse/fast-shots.md): it stays up for 3 minutes after the last call, so a
+// docs/metaverse/fast-shots.md): it stays up for 3 minutes after the last call, so a
 // call does not start a browser. Each call still loads its page in a new, empty
 // browser context. --keep uses the page the last call left as it stands (its
 // world where the last script left it) when it is this URL and its files have

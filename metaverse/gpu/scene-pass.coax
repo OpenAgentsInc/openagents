@@ -1,4 +1,4 @@
-// A scene realm's frame against the browser (docs/verse/native-gpu.md, realms-native): a realm
+// A scene realm's frame against the browser (docs/metaverse/native-gpu.md, realms-native): a realm
 // whose module draws a scene (coaxial_draws: Dead Gears, Ice Cream Man, Hecate's Cemetery), drawn
 // as host.js draws one. Its frame comes from the browser's wasm (metaverse/native/wasm-run.coax: golden,
 // clock 0, the 90th frame at 320x180), built with the libraries the site's build links it with

@@ -4,7 +4,7 @@
 // two side by side. Input goes to the HUD first (its buttons, the stick's
 // ring), then to the run; each frame the run's facts go to the HUD. Store 0
 // is the house and its models, store 1 the objects placed this frame
-// (docs/verse/realm-host.md). Action 4 keeps the save in the realm's slot,
+// (docs/metaverse/realm-host.md). Action 4 keeps the save in the realm's slot,
 // message 4 brings it back; action 30 hands the page a round's trace.
 #include "icecream.h"
 #include "Scene.h"

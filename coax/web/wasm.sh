@@ -174,7 +174,7 @@ if [[ -n "$cache" ]]; then
   flags_sum="$({ tool_id "$clang"; printf '%s\n' "${cflags[@]}"; } | shasum -a 256 | cut -c1-16)"
   find "$cache" -maxdepth 1 -type f -mtime +14 -delete 2> /dev/null || true
 fi
-# The shared tier (#13119, docs/verse/remote-builds.md): a Cloud Storage bucket
+# The shared tier (#13119, docs/metaverse/remote-builds.md): a Cloud Storage bucket
 # behind this disk cache, under the same keys (wasm/KEY.c, .h, .notes, .o,
 # .wasm). A lookup reads this disk first, then the bucket (and keeps what it
 # fetched here); a compile writes through to both. It is on when the job has a

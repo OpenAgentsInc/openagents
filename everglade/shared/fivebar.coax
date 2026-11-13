@@ -39,7 +39,7 @@ FB_HIDE :: RS_AB_HIDE; FB_GRAPPLE :: RS_AB_GRAPPLE; FB_SHOVE :: RS_AB_SHOVE; FB_
 // Search, Study and Influence (p.176) on one slot, its option the action; a Ritual (pp.104-105) of
 // the ritual spell the creature may cast so (fb_ritual_spell): begun, kept going, then cast
 FB_SKILL :: RS_AB_SKILL; FB_RITUAL :: RS_AB_RITUAL;
-FB_SHOOT :: RS_AB_SHOOT;       // the Attack action with your ranged weapon (rs_shoot): a bow's arrow on the creature it reached (docs/verse/bow-combat.md)
+FB_SHOOT :: RS_AB_SHOOT;       // the Attack action with your ranged weapon (rs_shoot): a bow's arrow on the creature it reached (docs/metaverse/bow-combat.md)
 // Shapechange (rules/srd/shapechange.coax): into the stat block `opt` (MON_*) with a 9th-level slot, or
 // back; and a dragon's own actions in that form (dragon-actions.coax): Fire Breath at the square (tx, ty)'s
 // way, Tail Sweep, Wing Buffet and Frightful Roar

@@ -59,7 +59,7 @@ another environment's realms.
 
 ## What exists today
 
-- [docs/verse/realm-host.md](../../docs/verse/realm-host.md): the table
+- [docs/metaverse/realm-host.md](../../docs/metaverse/realm-host.md): the table
   entry (`id`, `kind`, `orbit`, `realm.slug`, `module`, `slot`, `assets`,
   `golden`, `style`, `clock`), the required hand-written `index.md`,
   `bun coax/web/realms.ts --check` and `coax/web/realms.test.ts`.
@@ -69,7 +69,7 @@ another environment's realms.
 - Made realms: `POST /api/playtest/realms` writes `realms/<slug>`,
   `index.html`, `index.md` and `realms/made-slugs.txt` into the bucket
   (`drops_site_write`); `upload.py` never removes a listed one
-  ([realm-builder.md](../../docs/verse/realm-builder.md), "Releases").
+  ([realm-builder.md](../../docs/metaverse/realm-builder.md), "Releases").
 - A made realm's owner publishes a revision:
   `POST /api/playtest/realms/<slug>/publish {"rev": N, "listed": true|false}`.
   The server refuses a revision that is not the current one with `409` and
@@ -89,11 +89,11 @@ another environment's realms.
 - Realms made or forked by a tool (the `verse-automation` cookie or the
   `X-Verse-Automation` header) are unlisted from the start.
 - Forks stay `noindex` until their owner publishes
-  ([realm-fork.md](../../docs/verse/realm-fork.md)).
+  ([realm-fork.md](../../docs/metaverse/realm-fork.md)).
 - Goldens in [coax/web/goldens/](../../coax/web/goldens/everglade.png),
   [golden-check.sh](../../coax/web/golden-check.sh) naming the commit that
   changed a page, and [perf.ts](../../coax/web/perf.ts) for frame times.
-- Makers and tips ([makers.md](../../docs/verse/makers.md)): a one-time
+- Makers and tips ([makers.md](../../docs/metaverse/makers.md)): a one-time
   claim code, a Lightning address, "MADE BY NAME · TIP" drawn in Coax.
 - An agent publishes a hand-built realm by pull request
   ([metaverse/SKILL.md](../../metaverse/SKILL.md)); the template is
@@ -489,4 +489,4 @@ A published realm has an owner and, when claimed, a maker who is paid.
 - Tips to a maker's Lightning address:
   [Nostr chapter 71](../../nostr/book/ch071-lightning-zaps-and-goals.md) and
   [Bitcoin chapter 114](../../bitcoin/book/ch114-invoices.md). The product
-  flow is in [Realm makers](../../docs/verse/makers.md).
+  flow is in [Realm makers](../../docs/metaverse/makers.md).

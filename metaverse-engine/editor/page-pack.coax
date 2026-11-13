@@ -1,5 +1,5 @@
 // Range-addressable packs, VPK3 (GitHub #13001, learned from Solstice:
-// docs/verse/2026-11-07-solstice-comparison.md). A VPK3 file carries an image, usually a VPK1
+// docs/metaverse/2026-11-07-solstice-comparison.md). A VPK3 file carries an image, usually a VPK1
 // pack byte for byte, as pages a browser fetches with HTTP Range, each deflated on its own and
 // each named by the SHA-256 of its decoded bytes. A small manifest lists the pages; its own SHA-256
 // is in the header beside the image's. A client admits each page here, by content, as it arrives

@@ -5,7 +5,7 @@
     "slug": "realm-builder",
     "title": "Build your own realm",
     "body": "After the Haunted House, a visitor builds their own realm from one voice prompt: the agent answers with a short board of features, the visitor checks the ones they want, and the realm is made from only those and published without a deploy. The owner decides everything visitors get, and accepts or declines what others propose (Kiki's notes, October 29).",
-    "spec": "docs/verse/realm-builder.md",
+    "spec": "docs/metaverse/realm-builder.md",
     "labels": [
       "realm-builder"
     ]

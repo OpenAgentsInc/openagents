@@ -201,7 +201,7 @@ the immutable copies remain in `objects/`.
 revisions used by Character Create's 3D meadow. Scene placements and terrain
 are Coax source, with separate runtime-pack and shader source hashes. This
 scene declaration is `oa-scene-v1`; it does not change the mesh-definition or
-runtime pack contracts. See `docs/verse/character-glade.md` for regeneration.
+runtime pack contracts. See `docs/metaverse/character-glade.md` for regeneration.
 
 ## Universal animation libraries
 

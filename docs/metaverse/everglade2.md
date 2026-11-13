@@ -16,7 +16,7 @@ next player joins another.
 
 Character Create (`/worlds/character-creator`) is a place in this world: its studio stands in the
 glade, and USE IN EVERGLADE runs you out of the glade and down the path, then hands you the keys
-(`everglade/client/create.coax`, `docs/verse/character-creator.md`).
+(`everglade/client/create.coax`, `docs/metaverse/character-creator.md`).
 
 The studio shows a class pane beside the wardrobe. On a desktop it is a glass panel at the right
 of the screen. On a phone it is two narrow columns in the sky on either side of your character. It

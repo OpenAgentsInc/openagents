@@ -19,7 +19,7 @@
 // guard's sight for WANTED_LOSE seconds, or dead, you are wanted no more,
 // and the watch walk back to their beats.
 //
-// The fight (the combat model, `0b401561a0^:docs/verse/combat-model.md`:
+// The fight (the combat model, `0b401561a0^:docs/metaverse/combat-model.md`:
 // real time, dice behind the scenes): a guard in reach swings every
 // SWING_EVERY seconds, its blow landing STRIKE_AT into the swing as an SRD
 // attack roll against your AC (15, a 5th-level Ranger's), 1d6 + 1 on a hit.

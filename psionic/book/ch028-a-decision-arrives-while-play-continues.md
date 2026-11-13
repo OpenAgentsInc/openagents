@@ -8,7 +8,7 @@ fallen, the player may have left, or a newer decision may have replaced it.
 This chapter builds the small shared consumer in
 [`game/decision.coax`](../lib/game/decision.coax). It owns one outstanding
 local ticket and no network, model or game state. Its answer is an admitted
-enum or a refusal. The [Everglade plan](../../docs/verse/pylon-guard-decisions.md)
+enum or a refusal. The [Everglade plan](../../docs/metaverse/pylon-guard-decisions.md)
 uses that gate for an optional authored courtesy line. Ordinary patrol and
 combat continue when the model is absent.
 

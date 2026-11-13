@@ -1,4 +1,4 @@
-// vk-realm: a realm drawn every frame natively by its own shaders (docs/verse/native-gpu.md,
+// vk-realm: a realm drawn every frame natively by its own shaders (docs/metaverse/native-gpu.md,
 // gpu-realm-host): its Coax built with gcc (metaverse/native/realm-host.h, the face host.js
 // drives) and the passes host.js draws, as the spec everglade-pass --emit writes (the live
 // WGSL lowered by coax spirv, the layers decoded in Coax), kept on the GPU (vk-spec.h). Each

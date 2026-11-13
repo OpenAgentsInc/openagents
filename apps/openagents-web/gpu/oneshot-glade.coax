@@ -10,7 +10,7 @@
 
 // bg_fs draws one of two views of the battle, as the page picks (V):
 //  - flat: the bare grid of 5-foot squares, every fourth line brighter;
-//  - glade: the same battle in 3D, in the painterly look Everglade has (docs/verse/art-styles.md):
+//  - glade: the same battle in 3D, in the painterly look Everglade has (docs/metaverse/art-styles.md):
 //    a grass clearing ringed with trees under a hazy sky, the grid painted faintly on the grass,
 //    the druids standing on their squares, the spells' areas on the ground. It traces each pixel
 //    against the scene's few shapes (spheres and capsules, analytically) and lights it with the

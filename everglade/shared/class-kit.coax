@@ -255,7 +255,7 @@ xk_zone_area :: (z: RsZone) -> aa.AreaAim {
 }
 // The weapon a class holds (charactercreator.coax CC_KITS), as close to its SRD starting weapon as the
 // Ultimate RPG kit has: the Barbarian's greataxe, the Fighter's greatsword, the Paladin's longsword, the Rogue's
-// shortsword and the Ranger's longbow (SRD 5.2.1 p.58: a Longbow and a quiver; docs/verse/bow-combat.md). The Monk fights unarmed and the casters hold none: -1.
+// shortsword and the Ranger's longbow (SRD 5.2.1 p.58: a Longbow and a quiver; docs/metaverse/bow-combat.md). The Monk fights unarmed and the casters hold none: -1.
 XC_KIT_BOW :: 4;   // charactercreator.coax CC_KITS: the longbow, in the left hand
 xc_kit :: (c: int) -> int {
   if c == FB_CL_BARBARIAN { return 0; }

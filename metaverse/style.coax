@@ -1,4 +1,4 @@
-// The art styles' shading functions (docs/verse/art-styles.md), as plain f32
+// The art styles' shading functions (docs/metaverse/art-styles.md), as plain f32
 // functions the realms' WGSL calls. coax wgsl emits them into a
 // realm's WGSL between "// ---- generated: metaverse/style.coax" markers, the
 // way metaverse/look.coax's outlines are. The numbers they take come from the

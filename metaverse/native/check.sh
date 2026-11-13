@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A realm natively against the browser's wasm (G3, docs/verse/native-gpu.md):
+# A realm natively against the browser's wasm (G3, docs/metaverse/native-gpu.md):
 # the same Coax and face built both ways, run through the same steps (Everglade:
 # a walk, a turn and a jump; Hold the Stair: a wave started, a defender picked,
 # fast; the clock fixed; Everglade in golden mode). Every frame's vertices,

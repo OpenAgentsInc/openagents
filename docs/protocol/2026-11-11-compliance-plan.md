@@ -411,5 +411,5 @@ Spec:
 
 Books: C1 and C3 update the Coder book chapters that describe the log and the streams (`coder/book/ch002`, `ch016`); C5 updates
 `docs/chat.md`; E2 to E5 update the Everglade multiplayer spec
-(`docs/verse/2026-11-03-everglade-multiplayer-spec.md`); the OpenAgents book's
+(`docs/metaverse/2026-11-03-everglade-multiplayer-spec.md`); the OpenAgents book's
 chapters 46 to 48 link `proto/` in S1.

@@ -1,4 +1,4 @@
-// Spoken requests into a realm (GitHub #12669, docs/verse/aethyrforge.md's HOLD TO TALK):
+// Spoken requests into a realm (GitHub #12669, docs/metaverse/aethyrforge.md's HOLD TO TALK):
 // a hold is a question the realm asks (replay_ask on REPLAY_MODEL), and the voice host's
 // final transcript for that hold is its answer, offered through the Metaverse Engine's one event gate
 // (metaverse-engine/core/replay.coax). So a transcript is admitted at most once, only for the hold that asked

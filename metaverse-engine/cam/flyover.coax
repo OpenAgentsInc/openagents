@@ -1,6 +1,6 @@
 // A flyover: a camera path written as text, flown through smoothly, for benchmarks that cross a
 // realm's heaviest views (GitHub #13017, learned from Solstice's `viewer --flyover`:
-// docs/verse/2026-11-07-solstice-comparison.md). A walk never reaches the worst view; a flyover
+// docs/metaverse/2026-11-07-solstice-comparison.md). A walk never reaches the worst view; a flyover
 // does, the same way on every run, so frame times and screenshots compare.
 //
 // The text fits in a URL query (?fly=...): keys separated by '~', each seven numbers separated by

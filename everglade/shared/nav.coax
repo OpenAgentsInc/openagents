@@ -1,5 +1,5 @@
 // Everglade's navigation, built from the colliders the players' own step uses (GitHub #13281, AAA
-// P2.8; docs/verse/navigation.md): one page a world cell (metaverse-engine/world/nav/cells.coax), each block
+// P2.8; docs/metaverse/navigation.md): one page a world cell (metaverse-engine/world/nav/cells.coax), each block
 // of it from what everglade/shared/move.coax hands a player's step at that block's middle: where
 // one may stand (e2_may_stand), and the trunks, the rocks' hulls and the camp's props round it
 // (e2m_world). So a creature's ground is the players' ground less a creature's own radius, and a

@@ -1,5 +1,5 @@
 // Puts private human packs where openagents.com's broker serves them (coax/web/api/verse_packs.c,
-// docs/verse/metahuman-support.md, "Sending packs to browsers"). Owner-run, on the machine that builds
+// docs/metaverse/metahuman-support.md, "Sending packs to browsers"). Owner-run, on the machine that builds
 // them; nothing here goes in git and nothing secret is printed.
 //
 //   coax/web/tool.sh metaverse/tools/humans/upload_packs.coax                  every pack in ~/.openagents/verse/private-build/web/

@@ -1,4 +1,4 @@
-// Everglade's frame time with Echo on screen (docs/verse/2026-11-06-native-hero-characters.md, R4;
+// Everglade's frame time with Echo on screen (docs/metaverse/2026-11-06-native-hero-characters.md, R4;
 // GitHub #12988): the page in real time in headless Chrome, its frames timed by the host's frame
 // trace (coax/web/host.js coaxialFrameTrace: each frame's start, whether it was drawn or held back
 // because the GPU had frames in flight, the CPU's part of it), judged by the 60 FPS rule (metaverse-engine/core/frame-report.coax: more than 30 frames, the

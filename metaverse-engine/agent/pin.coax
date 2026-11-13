@@ -1,4 +1,4 @@
-// The agent session's pin (GitHub #13096; docs/verse/agent-clock.md): the one seed, epoch, locale and
+// The agent session's pin (GitHub #13096; docs/metaverse/agent-clock.md): the one seed, epoch, locale and
 // time zone every agent session runs under, on every host, so two runs of the same operations see the
 // same world. The driver (coax/web/drive.coax) hands these to the host before the page loads; the
 // web host (coax/web/host.js agent mode, coax/web/room-worker.js) answers Date, Math.random,

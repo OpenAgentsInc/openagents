@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The browser's math natively (docs/verse/native-gpu.md): wasi-libc's libm is musl's, and glibc's
+# The browser's math natively (docs/metaverse/native-gpu.md): wasi-libc's libm is musl's, and glibc's
 # sinf, cosf, powf ... differ from it in the last bit, which a realm's simulation compounds (the
 # villa's walkers, a few hundredths off after ten seconds). This takes musl's transcendental
 # functions and their helpers out of the host's musl libc.a into DIR/musl-math.o's objects and

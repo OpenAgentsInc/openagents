@@ -139,7 +139,7 @@ bool room_route(const request *q) {
     if (c) { c += strlen("verse-automation="); size_t i = 0; while (c[i] && c[i] != ';' && c[i] != ' ' && i + 1 < sizeof mark) { mark[i] = c[i]; i++; } mark[i] = 0; }
   }
   api_header(q, "User-Agent", ua, sizeof ua);
-  // A seat (openagents realm play, docs/verse/realm-seat.md): its presence is signed with the CLI's
+  // A seat (openagents realm play, docs/metaverse/realm-seat.md): its presence is signed with the CLI's
   // key (NIP-98), which is its account's (caller-policy.coax); it acts with that account's player key
   // and SQL marks its row agent (0108). Forged, unbound or replayed: 401, never the player key.
   char signer[65] = "";

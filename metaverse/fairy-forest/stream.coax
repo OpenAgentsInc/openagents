@@ -1,4 +1,4 @@
-// Fairy Forest's stream and pond on the water system (docs/verse/water.md):
+// Fairy Forest's stream and pond on the water system (docs/metaverse/water.md):
 // one metaverse/water.coax river body along the course the page gives (a
 // Catmull-Rom spline through its control points, wide where the pond is),
 // at one level, drawn by fairy.wgsl from the baked nodes in the painted

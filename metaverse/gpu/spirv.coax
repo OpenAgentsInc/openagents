@@ -1,4 +1,4 @@
-// SPIR-V from Coax (docs/verse/native-gpu.md, phase G0): a writer for the
+// SPIR-V from Coax (docs/metaverse/native-gpu.md, phase G0): a writer for the
 // binary form Vulkan takes, and the first module built with it. The host
 // (metaverse/gpu/vk.c) asks for the words and hands them to the driver; no
 // outside shader compiler is involved.

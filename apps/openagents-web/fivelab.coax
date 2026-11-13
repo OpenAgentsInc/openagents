@@ -44,7 +44,7 @@
 #load "../../everglade/shared/everglade-move-types.coax";   // what fivelab-face.c hands Everglade's movement step (everglade-step.coax)
 #load "fivelab-warlock.coax";   // Player mode's level 17 Warlock: its spells, their looks, its Zombies
 #load "fivelab-siege.coax";
-#load "fivelab-film.coax";   // ?stage=armies, siege, horde: film stages for clips (docs/verse/clips.md)
+#load "fivelab-film.coax";   // ?stage=armies, siege, horde: film stages for clips (docs/metaverse/clips.md)
 #load "../../everglade/sound.coax" as exsound;
 #load "../../metaverse/experimental-comparison.coax" as compare;
 #load "../../metaverse/experimental-biomes.coax" as biomes;

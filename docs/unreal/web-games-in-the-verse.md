@@ -68,7 +68,7 @@ run it (section 5).
 
 ### How it differs from a Metaverse Engine realm
 
-| | Metaverse Engine realm ([realm-host.md](../verse/realm-host.md)) | Unreal guest game |
+| | Metaverse Engine realm ([realm-host.md](../metaverse/realm-host.md)) | Unreal guest game |
 |---|---|---|
 | Code | Coax compiled to a small wasm module per realm, in our repo | The creator's C++ and Blueprints, compiled by UBT and emscripten 6.0.10, outside our repo |
 | Size | The fixture is 55 KB; packs have budgets of a few MB | About 70 MB on the first visit (DesertBlow, Development) |
@@ -92,7 +92,7 @@ Choose a Metaverse Engine realm when the world must open on a phone over a slow 
 live in our rooms with Everglade's players, run natively in our apps, or be
 built by our agents in Coax. That's every first-party world. Draconia and every MetaHuman
 scene render in the Metaverse, never in Unreal
-([metahuman-support.md](../verse/metahuman-support.md)).
+([metahuman-support.md](../metaverse/metahuman-support.md)).
 
 ## 2. The creator's workflow
 
@@ -349,7 +349,7 @@ game is offline".
 | Piece | Choice |
 |---|---|
 | Bucket | `openagentsgemini-verse-guest`: one bucket for every guest game, with each game under `g/<slug>/<version>/` |
-| Front | A new backend bucket with Cloud CDN, on the existing load balancer, with a host matcher for the guest domain. `everglade.world` already uses this pattern (`docs/verse/everglade-domain.md`). |
+| Front | A new backend bucket with Cloud CDN, on the existing load balancer, with a host matcher for the guest domain. `everglade.world` already uses this pattern (`docs/metaverse/everglade-domain.md`). |
 | Domain | A **separate registrable domain** for guest games (decision O1). A subdomain of openagents.com is the wrong choice: it would be same-site with our pages. |
 | Streaming | Epic's loader reads the IoStore containers with HTTP Range requests and caches whole files in its service worker. GCS answers Range requests with 206. |
 
@@ -522,7 +522,7 @@ A player who isn't logged in plays as a guest, and `who()` returns `null`.
 An Everglade character can appear in a UE game:
 
 - **Format.** Characters come from the Quaternius humans and the Fantasy
-  Source wardrobe, all CC0 1.0 (`docs/verse/character-creator.md`). We publish
+  Source wardrobe, all CC0 1.0 (`docs/metaverse/character-creator.md`). We publish
   a **character pack for Unreal**: the base bodies, heads, hair and the 76
   garments as FBX for UE's import pipeline, plus glTF, and a short mapping of
   the appearance record (`aethyr.player.appearance.v1`) to mesh names and
@@ -535,7 +535,7 @@ An Everglade character can appear in a UE game:
   and the game puts them together. No mesh is fetched at run time.
 - **Licence.** CC0 lets anyone use it, so a creator needs nothing from us. We
   never put MetaHuman characters such as Draconia in the pack.
-  [metahuman-support.md](../verse/metahuman-support.md) and the
+  [metahuman-support.md](../metaverse/metahuman-support.md) and the
   private-pipeline rule apply.
 
 ### 4.3 Returning to the Grid
@@ -596,7 +596,7 @@ declared. These are cosmetic records, never money.
 | None | Single-player. Presence and achievements come through the bridge. | $0 | **The default** |
 | The creator's own server | The game runs UE netcode through Epic's `ws_relay.py` to a server the creator runs. Our CSP must allow their `wss://` relay. | $0 to us | Allowed when listed, after review |
 | A UE dedicated server we host | A Linux UE server build plus a WSS relay on an e2-standard-2, like Everglade's room VM | About $55-60 a month per always-on VM. Most games need a fleet with match-making. | Only by decision O5, with a budget per game |
-| Our room service | The game speaks our room protocol through the bridge instead of UE replication | Shared with the rooms we already run | Not now. It means writing UE-side code against [openagents-verse-protocol.md](../verse/openagents-verse-protocol.md) and loses UE's replication, prediction and GAS. |
+| Our room service | The game speaks our room protocol through the bridge instead of UE replication | Shared with the rooms we already run | Not now. It means writing UE-side code against [openagents-verse-protocol.md](../metaverse/openagents-verse-protocol.md) and loses UE's replication, prediction and GAS. |
 
 Epic's relay forwards UDP to any address it allows, so we'd harden it before
 hosting one: only TLS, an origin allowlist (the guest domain), and a single
@@ -680,7 +680,7 @@ that earns money** (decision O7).
 | AI training | Licensed Technology may not be used as input to train generative AI, and MetaHuman may not be used to build AI databases. **Guest builds and their files stay out of every training, Gym or dataset pipeline**, alongside the MetaHuman rule we already follow. | ConductAtlas: "Prohibition on Using Licensed Technology as Generative AI Training Input", "Prohibition on Using MetaHuman for AI Database Building" |
 | Epic template and sample content | Epic Content, such as the Mannequin and LevelPrototyping in DesertBlow, may ship cooked inside a UE product. Not as raw assets, and not in another engine. | The UE EULA's Epic Content terms (not read first-hand); the "Examples May Be Distributed" clause |
 | Fab and Megascans | The Fab Standard License allows use in any engine. It covers the finished product, not the source assets. It has a Personal tier (under $100k gross revenue in the last 12 months) and a Professional tier. Megascans claimed from Quixel or Bridge under the old Epic Content License are limited to Unreal, which a UE game is. | [Fab licences and pricing](https://dev.epicgames.com/documentation/fab/licenses-and-pricing-in-fab), [CG Channel](https://www.cgchannel.com/?p=179945), [Epic forum](https://forums.unrealengine.com/t/megascans-update-march-2025/2419561) |
-| MetaHuman | The EULA treats MetaHumans as Non-Engine Products. Raw assets can't be redistributed, and MetaHumans can't be used for AI training. **We refuse MetaHuman content in guest builds entirely**, so we never host a MetaHuman inside a downloadable `.ucas`. | Our rule ([metahuman-support.md](../verse/metahuman-support.md)) |
+| MetaHuman | The EULA treats MetaHumans as Non-Engine Products. Raw assets can't be redistributed, and MetaHumans can't be used for AI training. **We refuse MetaHuman content in guest builds entirely**, so we never host a MetaHuman inside a downloadable `.ucas`. | Our rule ([metahuman-support.md](../metaverse/metahuman-support.md)) |
 
 **What the creator accepts at submission:**
 
@@ -759,14 +759,14 @@ none are filed yet.
   `~/Library/Logs/Unreal Engine/LocalBuildLogs/Log.txt` (2026-11-11
   12:34-12:36 CST, `BUILD SUCCESSFUL`).
 - Our code:
-  - `docs/verse/realm-host.md`;
+  - `docs/metaverse/realm-host.md`;
   - `apps/openagents-web/realms.json`;
   - `coax/web/serve.c`, `coax/web/cdn.sh` and `coax/web/api/lb.sh`;
   - `metaverse-engine/host/apple/PageHost.m` and `apps/everglade-mobile/README.md`;
   - `apps/openagents-ios/OpenAgents/WebGridViewController.swift`;
   - `docs/auth/2026-10-31-realm-invites-and-auth.md`;
   - `docs/audits/2026-11-11-room-loss-matrix.md`;
-  - `docs/verse/character-creator.md` and `docs/verse/everglade-domain.md`.
+  - `docs/metaverse/character-creator.md` and `docs/metaverse/everglade-domain.md`.
 - Web:
   - [Cloud CDN pricing](https://cloud.google.com/cdn/pricing);
   - [Holori: g2-standard-4](https://calculator.holori.com/gcp/vm/g2-standard-4);

@@ -48,7 +48,7 @@ message MadeReply {
   repeated string rules = 8 [json_name = "rules", (openagents.options.v1alpha1.max_count) = 16];
 }
 
-// A built-in realm's fork pane (docs/verse/realm-fork.md).
+// A built-in realm's fork pane (docs/metaverse/realm-fork.md).
 //
 //   GET  /api/playtest/realms/<slug>/fork      text a line each, SQL's:
 //        base SLUG, title TITLE, fork 0|1, from SLUG|NAME (a fork only),

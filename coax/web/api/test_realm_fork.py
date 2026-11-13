@@ -1,4 +1,4 @@
-# FORK on a realm (ev-fork-realm; realms.c, migrations/0075_realm_forks.sql, docs/verse/realm-fork.md):
+# FORK on a realm (ev-fork-realm; realms.c, migrations/0075_realm_forks.sql, docs/metaverse/realm-fork.md):
 # anyone forks Everglade with rule sets its code implements; the fork is a made realm at its own
 # address whose page loads Everglade's module with the fork's slug and rules, credits and links what
 # it forks; the original never changes. Its owner edits it (switch, revise by voice through a fake

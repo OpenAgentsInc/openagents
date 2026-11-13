@@ -66,7 +66,7 @@ runs.
 The Metaverse Engine's planned local interpreter is gpt-oss-20b
 (`apps/metaverse-engine-desktop/README.md`). The interpreter turns a spoken
 request into a typed edit: world data, tuning or code
-(`docs/verse/2026-11-04-aethyrforge-conductor.md`).
+(`docs/metaverse/2026-11-04-aethyrforge-conductor.md`).
 
 | | gpt-oss-20b | TwIL-8B / Granite 4.2 8B |
 | --- | --- | --- |

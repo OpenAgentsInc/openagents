@@ -39,8 +39,8 @@ undo was hand-rolled and had no redo, while the OpenAgents Metaverse Engine's ed
 | Scattering things, grass, props | Metaverse Engine | `metaverse-engine/world/scatter.coax`, `metaverse-engine/render/` |
 | Rendering, lighting, shadows, quality tiers | The Metaverse Engine's renderer and governor | `metaverse-engine/render/`, `metaverse-engine/core/quality.coax`, `metaverse-engine/core/frame-pacing.coax` |
 | Multiplayer: transport, replication, prediction, rewind | The Metaverse Engine's netcode | `metaverse-engine/net/` |
-| Steering and pathfinding | The Metaverse Engine: the steering service, and the navigation cells built from colliders ([how](verse/navigation.md)) | `metaverse-engine/ai/`, `metaverse-engine/world/nav/`, `everglade/shared/nav.coax` |
-| A world in cells: which cells load, simulate and draw round the players | The Metaverse Engine's cell controller, and Everglade's manifest ([how](verse/one-world.md)) | `metaverse-engine/world/cells.coax`, `everglade/world/zone.coax` |
+| Steering and pathfinding | The Metaverse Engine: the steering service, and the navigation cells built from colliders ([how](metaverse/navigation.md)) | `metaverse-engine/ai/`, `metaverse-engine/world/nav/`, `everglade/shared/nav.coax` |
+| A world in cells: which cells load, simulate and draw round the players | The Metaverse Engine's cell controller, and Everglade's manifest ([how](metaverse/one-world.md)) | `metaverse-engine/world/cells.coax`, `everglade/world/zone.coax` |
 | The Grid | The Grid and its session | `metaverse/grid.coax`, `metaverse/gridwalk.coax` |
 | 3D models | The asset registry | `assets/registry/` (read its README) |
 | Hashes, signatures, encryption | Coax crypto | `coax/lib/crypto/` |

@@ -18,4 +18,4 @@ At https://openagents.com/worlds/new, the step after the Haunted House. You say 
 - `apps/openagents-web/builder.coax` is the page, `builder-face.c` binds it, `builder.wgsl` draws it.
 - The words go to `POST /api/playtest/realms/plan` (`coax/web/api/realms.c`, `migrations/0048_realm_builder.sql`, `0049_realm_builder_setup.sql`): Gemini answers in a fixed schema, and the server keeps only features from its catalogue of what the engine builds today and writes each row's words itself.
 - MAKE IT is `POST /api/playtest/realms` with the plan and the checks. The server writes the world's page to the site with no deploy.
-- The full spec: `docs/verse/realm-builder.md`.
+- The full spec: `docs/metaverse/realm-builder.md`.

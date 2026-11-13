@@ -1,4 +1,4 @@
-// orbitleague's shaders, the source of apps/openagents-web/orbitleague.wgsl (docs/verse/native-gpu.md, G6):
+// orbitleague's shaders, the source of apps/openagents-web/orbitleague.wgsl (docs/metaverse/native-gpu.md, G6):
 // build.sh writes that module from this with coax/web/wgsl-module.coax (orbitleague.module,
 // orbitleague.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
 #load "../../../metaverse-engine/render/noise.coax";
@@ -9,7 +9,7 @@
 // world per pixel (the arena's floor and glass, the goal frames and nets,
 // the ball, both roadsters, the boost flames, the station's ribs and the
 // space round it: stars, a ringed planet, a moon and the sun), in the flat
-// style with ink lines (docs/verse/art-styles.md), with the HUD's plates
+// style with ink lines (docs/metaverse/art-styles.md), with the HUD's plates
 // over it; fx draws the HUD's strokes and text. Every place and size comes
 // from orbitleague.coax.
 //

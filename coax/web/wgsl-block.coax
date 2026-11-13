@@ -1,4 +1,4 @@
-// A page's WGSL block from Coax (docs/verse/native-gpu.md, G6): `coax wgsl` writes the
+// A page's WGSL block from Coax (docs/metaverse/native-gpu.md, G6): `coax wgsl` writes the
 // functions named, with everything they call, and this puts them in F between
 // "// ---- generated: FILE.coax (NAMES)" and "// ---- end generated", in place of
 // the block that is there. The hand-written WGSL around it calls the named functions.

@@ -1,5 +1,5 @@
 // The realm host's one table (apps/openagents-web/realms.json) into what
-// the site builds from it (docs/verse/realm-host.md):
+// the site builds from it (docs/metaverse/realm-host.md):
 //
 //   apps/openagents-web/realms.coax           the galaxy's worlds (verse.coax loads it)
 //   apps/openagents-web/realms/<slug>/index.html  each realm's page: its module, assets and save slot
@@ -54,7 +54,7 @@ const KINDS = { locked: 0, open: 1, soon: 2 } as const
 // golden: what the release walk (goldens.ts) asks of the realm's page: the least share of
 // its pixels lit, how long it settles before its shot, how many 8 px blocks may differ.
 export type Golden = { lit: number; settle: number; blocks: number }
-// style: the realm's art style (docs/verse/art-styles.md); style_views: the hashes the style check shoots it at (style-check.ts); zones: parts of it drawn in another;
+// style: the realm's art style (docs/metaverse/art-styles.md); style_views: the hashes the style check shoots it at (style-check.ts); zones: parts of it drawn in another;
 // clock: how its time of day runs (cycle, fixed:T with T 0 midnight to 1, or real: the visitor's time).
 export const STYLES = ["lowpoly", "painterly", "photoreal", "flat", "anime"] as const
 export type Style = (typeof STYLES)[number]
@@ -72,7 +72,7 @@ export type Zone = { id: string; style?: Style; variant?: AnimeVariant }
 // place_of: the realm this page opens a place in (Character Create, at Everglade's glade, #13018): one
 // world, so the page is that realm's, its module, slot and room; only its address and its first place differ.
 export type Realm = { slug: string; short?: string; place_of?: string; title: string; description: string; share?: string; alt: string; module: string; page?: number; slot: string; slot_was?: string; ui_font_src?: string; ui_font_family?: string; ui_title_font_src?: string; ui_title_font_family?: string; ui_title_font_weight?: string; ui_title_font_scale?: number; voice?: string; project_asset?: string; ruleset?: string; uploads?: string; timing?: boolean; arrival?: "portal"; domain?: Domain; card?: string; added?: string; line?: string; style: Style; variant?: AnimeVariant; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
-// domain: the realm on a domain of its own (docs/verse/everglade-domain.md): a front door at the
+// domain: the realm on a domain of its own (docs/metaverse/everglade-domain.md): a front door at the
 // domain's / (realms/<slug>/domain/index.html, an MMORPG landing page in plain HTML, an owner
 // decision 2026-11-08), /play (the realm's page under the domain's name) and a 404. Its pictures,
 // icon and wordmark (coax/web/everglade-wordmark.coax) and index.md sit beside them, made by hand.
@@ -210,7 +210,7 @@ export function coax(list: World[]): string {
     `PLANET_SIZE :: ${col("f32", (w) => num(w.orbit.size))};`,
     `PLANET_LISTED :: ${col("bool", (w) => String(w.listed !== false))};`,
     `PLANET_PATH :: ${col("string", (w) => lit(w.realm ? `/worlds/${w.realm.slug}` : ""))};`,
-    "// Its art style (docs/verse/art-styles.md; a world without a realm is lowpoly) and its clock.",
+    "// Its art style (docs/metaverse/art-styles.md; a world without a realm is lowpoly) and its clock.",
     "PLANET_LOWPOLY :: 0; PLANET_PAINTERLY :: 1; PLANET_PHOTOREAL :: 2; PLANET_FLAT :: 3; PLANET_ANIME :: 4;   // metaverse/style-preset.coax STYLE_*",
     `PLANET_STYLE :: ${col("int", (w) => `PLANET_${(w.realm?.style ?? "lowpoly").toUpperCase()}`)};`,
     `PLANET_CLOCK :: ${col("string", (w) => lit(w.realm?.clock ?? ""))};`,
@@ -325,7 +325,7 @@ export function page(r: Realm, isListed = true): string {
   const slot = ` data-realm="${r.place_of ?? r.slug}" data-slot="${r.slot}"` + (r.slot_was ? ` data-slot-was="${r.slot_was}"` : "")
     + (r.page ? ` data-page="${r.page}"` : "")
     + (r.ui_font_src ? ` data-ui-font-src="${esc(r.ui_font_src)}" data-ui-font-family="${esc(r.ui_font_family ?? "RealmUIFont")}"` : "")
-    // a HUD style's title face (docs/verse/hud-styles.md): the atlas's second face, beside the reading face
+    // a HUD style's title face (docs/metaverse/hud-styles.md): the atlas's second face, beside the reading face
     + (r.ui_font_src && r.ui_title_font_src ? ` data-ui-title-font-src="${esc(r.ui_title_font_src)}" data-ui-title-font-family="${esc(r.ui_title_font_family ?? "RealmUITitleFont")}" data-ui-title-font-weight="${esc(r.ui_title_font_weight ?? "400")}"` + (r.ui_title_font_scale ? ` data-ui-title-font-scale="${esc(String(r.ui_title_font_scale))}"` : "") : "")
     + (r.voice ? ` data-voice="${r.voice}"` : "")
     + (r.ruleset ? ` data-ruleset="${r.ruleset}"` : "")
@@ -388,7 +388,7 @@ ${r.project_asset ? projectScript(r.module, r.project_asset) : ""}</body>
 `
 }
 
-// ---- A realm's own domain (docs/verse/everglade-domain.md) ----
+// ---- A realm's own domain (docs/metaverse/everglade-domain.md) ----
 // What sits beside the generated pages, made by hand: the Markdown twin, the icon, the wordmark,
 // the hero (wide and phone) and the link-preview card.
 export const DOMAIN_HAND = ["index.md", "icon.svg", "wordmark.svg", "hero.jpg", "hero-phone.jpg", "card.jpg"]

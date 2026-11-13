@@ -24,7 +24,7 @@ their stage of the rename lands.
 
 | Part | Where | State |
 |---|---|---|
-| Setup questions, prompt, board of features, MAKE IT | `/realms/new`, `apps/openagents-web/builder.coax` (1,930 lines), docs/verse/realm-builder.md | Live. Invite only (`GET /api/playtest/access` says `make 0` for the public). |
+| Setup questions, prompt, board of features, MAKE IT | `/realms/new`, `apps/openagents-web/builder.coax` (1,930 lines), docs/metaverse/realm-builder.md | Live. Invite only (`GET /api/playtest/access` says `make 0` for the public). |
 | The planner | `POST /api/playtest/realms/plan`, migrations 0048-0097 | Gemini under a schema built from the catalogue; 1-2 s a board; scored by `eval-builder.sh` (99% of asked things covered, 76% drawn as asked). |
 | The catalogue | `verse.builder_catalogue()` | 20 features: land, buildings, water, trees, plants, lanterns, flocks, props, characters, houses, herds, mist, dwellings, village, enclosure, centre, layout, path, tools; 4 cameras, 3 styles, 6 grounds, 4 times, 4 palettes. |
 | The made realm | `/realms/<slug>`, `myrealm.coax` (3,858 lines + shapes, site, things) | Live. Reads its spec once a second for its owner, so any edit shows within a second (4a0ba95164). |

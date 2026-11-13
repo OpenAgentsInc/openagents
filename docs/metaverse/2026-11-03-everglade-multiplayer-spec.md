@@ -19,7 +19,7 @@ module is deprecated (section 12).
 
 Related reading:
 
-- [docs/verse/everglade.md](everglade.md), the realm's design.
+- [docs/metaverse/everglade.md](everglade.md), the realm's design.
 - [Metaverse Engine book chapter 49, rooms and presence](../../metaverse-engine/book/ch049-rooms-and-presence.md)
   and [chapter 50, shared state over the network](../../metaverse-engine/book/ch050-shared-state-over-the-network.md).
 - [The Metaverse protocol](openagents-verse-protocol.md), sections 6.3, 10.6
@@ -1073,6 +1073,6 @@ chapters are next revised.
   authoritative tick. This spec uses a 30 Hz server tick and 15 Hz
   state frames with interest; the tick profile in `sim.v1` should say so. Section 10.8's `realm.v1` remains the
   target wire; the text frames in section 3.6 are its bootstrap.
-- **`docs/verse/everglade.md`.** "Hostility is your page's alone" (line 789)
+- **`docs/metaverse/everglade.md`.** "Hostility is your page's alone" (line 789)
   and "nothing broken is saved or shared" (line 661) become untrue when the
   room simulation ships; update them then.

@@ -8,7 +8,7 @@
 > maintain the index.
 >
 > **Drift check (run first)**:
-> `git diff --stat 76084e17a9..HEAD -- coax/web/api/makers.c coax/web/api/spark/wallet.cjs coax/web/api/test_makers_tips.py coax/web/api/test_upgrades.py docs/verse/makers.md`
+> `git diff --stat 76084e17a9..HEAD -- coax/web/api/makers.c coax/web/api/spark/wallet.cjs coax/web/api/test_makers_tips.py coax/web/api/test_upgrades.py docs/metaverse/makers.md`
 > If any of these changed, compare the "Current state" excerpts against the
 > live code. On a mismatch, STOP.
 
@@ -46,7 +46,7 @@ Files:
 - `coax/web/api/migrations/0073_maker_tips.sql`: `makers.tip_terms` and
   `makers.payout_next`.
 - `coax/web/api/migrations/0077_fairy_upgrades.sql`: `makers.listing_new`.
-- `docs/verse/makers.md`: the product description, which names these
+- `docs/metaverse/makers.md`: the product description, which names these
   settings.
 
 The limits the API accepts, `coax/web/api/makers.c:216` and `:479`:
@@ -121,7 +121,7 @@ subset fails with a `NameError`.
 - `coax/web/api/makers.c` (two default strings and the header comment)
 - `coax/web/api/test_makers_tips.py` (append checks at the end)
 - `coax/web/api/test_upgrades.py` (append one check at the end)
-- `docs/verse/makers.md` (the stated limits, if it states them)
+- `docs/metaverse/makers.md` (the stated limits, if it states them)
 - `plans/README.md` (status row only)
 
 **Out of scope**:
@@ -192,11 +192,11 @@ In `coax/web/api/makers.c`:
 
 ### Step 3: Update the product doc
 
-Run `grep -n '100,000\|100000' docs/verse/makers.md`. For each line that
+Run `grep -n '100,000\|100000' docs/metaverse/makers.md`. For each line that
 states the tip or price maximum, change it to the new number. If the command
 prints nothing, make no change to that file.
 
-**Verify**: `grep -n '100,000\|100000' docs/verse/makers.md` prints nothing.
+**Verify**: `grep -n '100,000\|100000' docs/metaverse/makers.md` prints nothing.
 
 ### Step 4: Run the suite
 

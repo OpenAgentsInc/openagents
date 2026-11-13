@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The G1 exit check (docs/verse/native-gpu.md): every #export_c procedure of
+# The G1 exit check (docs/metaverse/native-gpu.md): every #export_c procedure of
 # metaverse/light.coax on the GPU, through `coax spirv --kernel`, against its C
 # build over the same rows of arguments.
 #   metaverse/gpu/light-check.sh HOST    generate here, build and run on HOST over ssh

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason: 5. One check of the green-main pipeline (docs/verse/green-main-pipeline.md,
+# Firm reason: 5. One check of the green-main pipeline (docs/metaverse/green-main-pipeline.md,
 # #13102), run from the root of the commit under check, on a remote build host
 # (integrate.sh and after.sh send it with remote.sh run --commit). A thin
 # wrapper: git, coax/web/tool.sh suites, coax/tests/run.sh, the web build and
@@ -323,7 +323,7 @@ room() {
   if [[ -n "${OA_FUZZ_SLICE:-}" ]]; then step room-fuzz coax/web/room/fuzz/fuzz.sh slice "$OA_FUZZ_SLICE" || status=1; fi
   [[ -z "${1:-}" ]] || e2_gate "$1" || status=1
 }
-# Everglade II against production (#13266, docs/verse/green-main-pipeline.md "Everglade II against
+# Everglade II against production (#13266, docs/metaverse/green-main-pipeline.md "Everglade II against
 # production"): two bots (load.coax everglade2: the real socket protocol, a hello, inputs at 30 Hz, a
 # cast every 5 s, pings) in one Everglade II room of a local room server, for OA_E2_SECONDS (10),
 # OA_E2_ROUNDS (3) times on this commit's room and production's commit PROD's, in turn on this host.

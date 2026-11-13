@@ -1,5 +1,5 @@
 // Everglade II's environment set (lighting plan Phase 1 step 5, GitHub #13065;
-// docs/verse/lighting/README.md). The realm's light, as metaverse-engine/world/environment.coax records that
+// docs/metaverse/lighting/README.md). The realm's light, as metaverse-engine/world/environment.coax records that
 // metaverse-engine/world/environment-region.coax admits whole (env_region_index_replace) and resolves by
 // place. Every profile here is the glade's (env_glade_profile, the painterly default) or a small
 // delta on it: the film, exposure, saturation, sky, clouds and the haze's shape stay the glade's.

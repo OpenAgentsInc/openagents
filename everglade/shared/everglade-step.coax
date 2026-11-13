@@ -7,7 +7,7 @@
 //   p  = eg_step_advance(p, w, bodies, walls, floors, frame)   the rowboat's seat, or the controller's advance
 //   b  := everglade_move_after(s, w, b0, eg_step_body(p), dt)   lifts, currents, the city's edge, the clip's speed
 //   p  = eg_step_put(p, b)
-// docs/verse/2026-11-03-everglade-multiplayer-spec.md section 3.1 (the shared movement module), #12706.
+// docs/metaverse/2026-11-03-everglade-multiplayer-spec.md section 3.1 (the shared movement module), #12706.
 // The unit carries metaverse-engine/move/player.coax's C surface too (the faces' verse_player_*), in place of
 // player.coax's own unit, so the controller is in one unit.
 #module "everglade.step";

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5. Hands a finished branch to the green-main pipeline's
-# integrator instead of pushing main (docs/verse/green-main-pipeline.md,
+# integrator instead of pushing main (docs/metaverse/green-main-pipeline.md,
 # #13102): git only.
 #
 #   coax/remote/submit.sh [--agent ID] [--topic NAME]

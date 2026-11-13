@@ -272,7 +272,7 @@ zone_rest_motion :: (s:[] EgZone,origin:EgBody,body:EgBody,walking:bool,jumping:
     observed:=rs_rest_observe_motion(s[0].xc[0].b[..],0,walked,jumped,settled);
   }
 }
-// A drawn bow turns you to face where the camera looks, as far as its aim has come in (docs/verse/bow-combat.md).
+// A drawn bow turns you to face where the camera looks, as far as its aim has come in (docs/metaverse/bow-combat.md).
 // Mouselook faces you the same way, as far as its fade has come: A and D strafe, S backpedals.
 zone_aim_face :: (s:[] EgZone,face:f32)->f32 {
   a:=s[0].creator[0].aim; look:=s[0].creator[0].ml[0].shown; if look>a { a=look; } if a<=0 { return face; }
@@ -603,7 +603,7 @@ zone_pointer :: (s: [] EgZone, x: f32, y: f32, phase: int, kind: int, id: int) -
 // Optional browser mouse-button input. Existing pointer ABI and all other routes stay unchanged.
 zone_pointer_buttons :: (s:[] EgZone,x:f32,y:f32,phase:int,kind:int,id:int,button:int)->bool #export_c #effects(all) {
   if phase == 0 { s[0].creator[0].ml[0].touch = kind != 0; }
-  // the bow (docs/verse/bow-combat.md): the right button held draws and its release looses; the left
+  // the bow (docs/metaverse/bow-combat.md): the right button held draws and its release looses; the left
   // button while drawing lets it down. The drag still turns the camera, which is the aim.
   if s[0].creator[0].on && kind==0 && s[0].creator[0].experimental {
     act:=eg_bow_button(button,phase,s[0].xc[0].ar[0]);   // Everglade's Longbow on the mouse (everglade/longbow.coax)

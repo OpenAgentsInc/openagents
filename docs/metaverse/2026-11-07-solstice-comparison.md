@@ -115,7 +115,7 @@ once and serves ranges from memory, so nothing breaks. Each response's
 Range and `--throttle-mbps`.
 
 **For us:** Everglade's pack is 9.0 MB, fetched whole before play
-(`docs/verse/everglade.md`), and it will grow. A range-addressable version
+(`docs/metaverse/everglade.md`), and it will grow. A range-addressable version
 of VPK1 fits our model better than theirs. The manifest would carry each
 page's SHA-256 `AssetId`, so every range is checked on arrival under the
 existing `assets.coax` admission. That is stronger than an ETag. The steps:

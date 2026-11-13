@@ -1,5 +1,5 @@
 // Everglade's wire: the frames between a player's page (everglade-net.coax) and the room server that
-// owns the shared world (coax/web/room/, GitHub #12705; docs/verse/2026-11-03-everglade-multiplayer-spec.md
+// owns the shared world (coax/web/room/, GitHub #12705; docs/metaverse/2026-11-03-everglade-multiplayer-spec.md
 // section 3.6). One file both sides #load, so the contract is checked code, not prose. It depends on
 // nothing else. Version 3: one replication model for every entity (#12783).
 //

@@ -1,4 +1,4 @@
-// Everglade's zone manifest and its pack-time navigation check (GitHub #13280, #13281; docs/verse/navigation.md).
+// Everglade's zone manifest and its pack-time navigation check (GitHub #13280, #13281; docs/metaverse/navigation.md).
 // Builds every cell's navigation page from the colliders the players' step uses
 // (everglade/shared/nav.coax), then:
 //   - refuses the zone unless every named point (everglade/world/points.coax), every content

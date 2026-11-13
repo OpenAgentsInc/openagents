@@ -1,5 +1,5 @@
 // The pre-push check (GitHub #13265; audit docs/audits/2026-11-11-everglade-aethyr-aaa-audit.md, G12;
-// docs/verse/green-main-pipeline.md, "The pre-push check"). Git runs it before every push through
+// docs/metaverse/green-main-pipeline.md, "The pre-push check"). Git runs it before every push through
 // coax/remote/hooks/pre-push (core.hooksPath, set once per clone). For each ref pushed to main:
 //   1. stale snapshot   refuse a commit whose tree undoes newer work on main: it deletes a file,
 //                       or puts back a file's older version wholesale, that another agent's commit
@@ -41,7 +41,7 @@ PP_WINDOW_S :: 86400;      // how far back a change counts as newer work: 24 hou
 PP_SHOW :: 12;             // findings printed per commit
 PP_PUSH :: 512;            // commits judged per push
 PP_JOBS :: 8;
-PP_HOW :: "docs/verse/green-main-pipeline.md, \"The pre-push check\"";
+PP_HOW :: "docs/metaverse/green-main-pipeline.md, \"The pre-push check\"";
 PP_REFUSE :: 3;
 PP_ZERO :: "0000000000000000000000000000000000000000";
 

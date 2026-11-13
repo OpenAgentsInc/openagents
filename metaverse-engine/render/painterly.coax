@@ -1,5 +1,5 @@
 // The painterly default's evaluation (lighting plan Phase 1 step 0, GitHub #13060;
-// docs/verse/lighting/README.md). Character Create's glade is the look every painterly realm gets
+// docs/metaverse/lighting/README.md). Character Create's glade is the look every painterly realm gets
 // when it authors nothing: its key light, hemisphere ambient with separate indirect-occlusion and
 // sun-visibility terms, height air with a clear near field and a forward-scatter lobe, cyan sky with
 // drifting cloud shadows, and the film response and saturation lift it is presented through.

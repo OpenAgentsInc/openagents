@@ -1,5 +1,5 @@
 // A general cluster DAG (GitHub #13015, learned from Solstice's builder:
-// docs/verse/2026-11-07-solstice-comparison.md). Any indexed triangle mesh becomes clusters of at
+// docs/metaverse/2026-11-07-solstice-comparison.md). Any indexed triangle mesh becomes clusters of at
 // most 128 triangles, then, round by round: neighbouring clusters are grouped (at most four), each
 // group is simplified to about half with its border locked, and the result is split into new
 // clusters. Grouping changes every round, so a border locked in one round is simplified in a

@@ -6,7 +6,7 @@
 > `POST /api/playtest/sandbox/piece` in
 > [`coax/web/api/npc.c`](../../coax/web/api/npc.c)) make one piece from one
 > sentence. The OpenAgents Metaverse Engine's board
-> ([realm-builder.md](../../docs/verse/realm-builder.md)) makes a whole realm
+> ([realm-builder.md](../../docs/metaverse/realm-builder.md)) makes a whole realm
 > from a prompt, from the catalogue in migration `0048_realm_builder.sql`.
 > They keep separate catalogues and checks. This chapter plans one catalogue
 > and one selector path for both. Nothing in `metaverse-engine/` runs yet.
@@ -80,7 +80,7 @@ builds that path.
   `verse.piece_catalogue()` and the record of every sentence.
 - [coax/web/api/migrations/0048_realm_builder.sql](../../coax/web/api/migrations/0048_realm_builder.sql):
   `verse.builder_catalogue()`.
-- [docs/verse/realm-builder.md](../../docs/verse/realm-builder.md): the
+- [docs/metaverse/realm-builder.md](../../docs/metaverse/realm-builder.md): the
   board, setup, asked and wanted lines, and limits.
 
 ## What it builds

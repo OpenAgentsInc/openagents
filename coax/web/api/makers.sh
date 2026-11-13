@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The admin's side of realm makers (makers.c, docs/verse/makers.md), on this machine: signs a
+# The admin's side of realm makers (makers.c, docs/metaverse/makers.md), on this machine: signs a
 # NIP-98 request with the admin's key (admin.sh's signer and key) and prints the answer.
 #
 #   makers.sh code [--staging] REALM     a new one-time claim code; prints the claim link

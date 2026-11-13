@@ -8,7 +8,7 @@ description: Make a new Metaverse realm (a world at openagents.com/realms/<slug>
 A realm is a page at `https://openagents.com/realms/<slug>` that runs one
 Coax module, compiled to WebAssembly and drawn with WebGPU. You add four
 things and one table row; a generator writes the page. Nothing else in the
-site changes. The full contract is `docs/verse/realm-host.md`; this file is
+site changes. The full contract is `docs/metaverse/realm-host.md`; this file is
 the short path.
 
 ## 1. Get the code
@@ -188,12 +188,12 @@ and lists it on [/realms](https://openagents.com/realms).
 ## After it ships
 
 The realm's maker can be named and tipped in Bitcoin: the team sends a
-one-time claim link (`docs/verse/makers.md`).
+one-time claim link (`docs/metaverse/makers.md`).
 
 ## Asks waiting on code
 
 Every realm's edit mode keeps the list of what its owner asked for
-(`docs/verse/realm-edit.md`, "What you asked for"). An ask the realm's code can't do yet is NOT
+(`docs/metaverse/realm-edit.md`, "What you asked for"). An ask the realm's code can't do yet is NOT
 APPLIED and waits for someone to build it. To work one, as an agent with a site admin key:
 
 1. Read the list: `GET https://openagents.com/api/playtest/realms/<slug>/asks`, signed with NIP-98

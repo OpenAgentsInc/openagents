@@ -1,7 +1,7 @@
 // The SRD 5e ruleset (System Reference Document 5.2.1, CC BY 4.0), the one a
 // realm opts into with realms.json "ruleset": "srd5" (the page facts' ruleset=
 // line). A realm without a ruleset loads none of this and casts nothing.
-// Everglade opts in (docs/verse/everglade.md, Spells and destruction).
+// Everglade opts in (docs/metaverse/everglade.md, Spells and destruction).
 //
 // What is here, as the previous Rust engine had it (`0b401561a0^:
 // crates/verse-world/src/spells/dice.rs`, `crates/verse-zone-everglade/src/

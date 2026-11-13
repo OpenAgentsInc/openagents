@@ -27,7 +27,7 @@
 //   logs                          the page's console and errors since the last `logs`
 //   prefer color-scheme dark|light | prefer reduced-motion reduce|no-preference | prefer size WxH
 //   perf                          frames drawn in one second, and the world loop's counters
-// The agent clock (GitHub #13096, docs/verse/agent-clock.md): the page opens in agent mode (?agent,
+// The agent clock (GitHub #13096, docs/metaverse/agent-clock.md): the page opens in agent mode (?agent,
 // coax/web/host.js), where simulation time moves only when `clock` or a world operation steps it; the
 // page and its offline room (coax/web/room-worker.js) step together, and the session is pinned to the
 // seed, epoch, locale and time zone of metaverse-engine/agent/pin.coax. --real-time opens the page as a player's

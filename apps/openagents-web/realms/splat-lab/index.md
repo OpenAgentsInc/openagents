@@ -29,7 +29,7 @@ The readout at the top shows the frame rate, the number of splats, and, when you
 - `gpu/splatlab-fx.coax` makes each animated splat from its index and the time, sorts all of them with a bitonic sort in fragment passes, and projects each 3D Gaussian to a 2D ellipse on the screen.
 - `gpu/splatlab.coax` draws the night sky, the meshes, the bloom and the final picture.
 - `coax/web/host.js` runs the sort's passes before the frame (see its "Sorting" notes).
-- [docs/verse/2026-11-03-splat-lab.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verse/2026-11-03-splat-lab.md) has the findings: what works, what it costs, and how splats could come to Everglade for the raid.
+- [docs/metaverse/2026-11-03-splat-lab.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/metaverse/2026-11-03-splat-lab.md) has the findings: what works, what it costs, and how splats could come to Everglade for the raid.
 
 ## Credits
 

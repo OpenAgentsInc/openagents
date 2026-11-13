@@ -52,7 +52,7 @@ Milestones, in order:
 - 10-28 15:25 CDT #c630 claude-analytics-1 planned 1 of 6 done (The playtest service: Coax/C on Cloud Run, Cloud SQL behind it)
 - 10-28 15:24 CDT #c630 claimed by claude-analytics-1 (The playtest service: Coax/C on Cloud Run, Cloud SQL behind it)
 - 10-28 15:24 CDT #febd released by claude-analytics-1 (Inventory the playtest: every page, endpoint, event and file)
-- 10-28 15:24 CDT #febd claude-analytics-1: docs/verse/playtest-port.md in 120354ad13 (analytics first). Live demo is demo/kiki-2026-10-28d (55a0f3b); ~/work/aethyr-demo is a day behind at 27d. Gaps for the taskmaster to add (doc section 6): pt-analytics-contract (journey check in release.sh + Health card), pt-presence-chat, pt-planets, pt-change-offers, pt-voice, pt-accounts (Nostr sign-in tie-in). Left open until they are tasks: only the taskmaster edits the work file. pt-server-skeleton and pt-capture can start now. (Inventory the playtest: every page, endpoint, event and file)
+- 10-28 15:24 CDT #febd claude-analytics-1: docs/metaverse/playtest-port.md in 120354ad13 (analytics first). Live demo is demo/kiki-2026-10-28d (55a0f3b); ~/work/aethyr-demo is a day behind at 27d. Gaps for the taskmaster to add (doc section 6): pt-analytics-contract (journey check in release.sh + Health card), pt-presence-chat, pt-planets, pt-change-offers, pt-voice, pt-accounts (Nostr sign-in tie-in). Left open until they are tasks: only the taskmaster edits the work file. pt-server-skeleton and pt-capture can start now. (Inventory the playtest: every page, endpoint, event and file)
 - 10-28 15:24 CDT #febd claude-analytics-1 planned 6 of 7 done (Inventory the playtest: every page, endpoint, event and file)
 - 10-28 15:17 CDT #7e98 claimed by claude-haunt-1 (The Haunted House quest and tutorial on the web)
 - 10-28 15:12 CDT #febd claimed by claude-analytics-1 (Inventory the playtest: every page, endpoint, event and file)
@@ -103,19 +103,19 @@ Plan (6 of 7 done, updated 10-28 15:24 CDT by claude-analytics-1):
 - [x] Read the web/kiki pages, frozen/kiki and the demo worktree
 - [x] Read the bucket layout, Cloud Run, LB, DNS, cert setup
 - [x] Map what openagents already covers (/realm/haunted-house)
-- [x] Write docs/verse/playtest-port.md, analytics first
+- [x] Write docs/metaverse/playtest-port.md, analytics first
 - [ ] **now:** Add queue notes or tasks for gaps found
 
-Read the aethyr-cpp repo (~/work/aethyr-cpp, OpenAgentsInc/aethyr-cpp): the pinned playtest flow is frozen/kiki/ (frozen/kiki.pin), and the live demo runs its demo/kiki-* tag (the worktree ~/work/aethyr-demo is that checkout; read, never edit it): README 'The web root', docs/environments.md, docs/kiki-playtest-2026-10-25.md, docs/owner-decisions.md, tools/serve.py and every tool it imports, tools/analytics.py, web/analytics.js, web/kiki pages, frozen/kiki. Write docs/verse/playtest-port.md: each page and what it does, each /api endpoint with request and response, each recorded event and field, each stored file and bucket, the Cloud Run, load balancer, DNS and certificate setup, and what in openagents already covers it (/realm/haunted-house). Split or add queue tasks where this inventory finds work the queue misses.
+Read the aethyr-cpp repo (~/work/aethyr-cpp, OpenAgentsInc/aethyr-cpp): the pinned playtest flow is frozen/kiki/ (frozen/kiki.pin), and the live demo runs its demo/kiki-* tag (the worktree ~/work/aethyr-demo is that checkout; read, never edit it): README 'The web root', docs/environments.md, docs/kiki-playtest-2026-10-25.md, docs/owner-decisions.md, tools/serve.py and every tool it imports, tools/analytics.py, web/analytics.js, web/kiki pages, frozen/kiki. Write docs/metaverse/playtest-port.md: each page and what it does, each /api endpoint with request and response, each recorded event and field, each stored file and bucket, the Cloud Run, load balancer, DNS and certificate setup, and what in openagents already covers it (/realm/haunted-house). Split or add queue tasks where this inventory finds work the queue misses.
 
 ## Acceptance
 
-- docs/verse/playtest-port.md lists every page, endpoint, event and stored file with its source path
+- docs/metaverse/playtest-port.md lists every page, endpoint, event and stored file with its source path
 - Every gap found is a task on this project
 
 Notes:
 
-- 10-28 15:24 CDT claude-analytics-1: docs/verse/playtest-port.md in 120354ad13 (analytics first). Live demo is demo/kiki-2026-10-28d (55a0f3b); ~/work/aethyr-demo is a day behind at 27d. Gaps for the taskmaster to add (doc section 6): pt-analytics-contract (journey check in release.sh + Health card), pt-presence-chat, pt-planets, pt-change-offers, pt-voice, pt-accounts (Nostr sign-in tie-in). Left open until they are tasks: only the taskmaster edits the work file. pt-server-skeleton and pt-capture can start now.
+- 10-28 15:24 CDT claude-analytics-1: docs/metaverse/playtest-port.md in 120354ad13 (analytics first). Live demo is demo/kiki-2026-10-28d (55a0f3b); ~/work/aethyr-demo is a day behind at 27d. Gaps for the taskmaster to add (doc section 6): pt-analytics-contract (journey check in release.sh + Health card), pt-presence-chat, pt-planets, pt-change-offers, pt-voice, pt-accounts (Nostr sign-in tie-in). Left open until they are tasks: only the taskmaster edits the work file. pt-server-skeleton and pt-capture can start now.
 
 ### #1886 Pinned demo releases: one exact build until the owner moves it
 

@@ -1,4 +1,4 @@
-// Private human packs for every visitor (docs/verse/metahuman-support.md, "Sending packs to
+// Private human packs for every visitor (docs/metaverse/metahuman-support.md, "Sending packs to
 // browsers"): MetaHuman Lab's figure is shown on openagents.com, and its pack is never a file
 // anyone can save and pass on. The pack is a compiled runtime format (VPK1, pack_human.coax), never
 // DNA or source meshes. metaverse/tools/humans/upload_packs.coax gzips it, encrypts it with a key of its

@@ -348,7 +348,7 @@ and a playtest recording can become a test.
 
 Stale-build refusal (item 1) also covers stale bases: the driver refuses a
 build older than its sources, and worktrees start from `main-green`
-([../../verse/green-main-pipeline.md](../../verse/green-main-pipeline.md)).
+([../../metaverse/green-main-pipeline.md](../../metaverse/green-main-pipeline.md)).
 
 Headless runs still don't prove behaviour that differs in a real browser,
 such as zone hand-offs. Keep a real-Chrome check for those.

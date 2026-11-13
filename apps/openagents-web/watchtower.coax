@@ -15,7 +15,7 @@
 
 #load "../../metaverse-engine/ui/font.coax";
 #load "../../coax/web/analytics.coax";
-#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../metaverse/edit/edit.coax";   // EDIT for its owner and admins (docs/metaverse/realm-edit.md)
 #load "../../metaverse-engine/core/loop.coax";   // the fixed steps: Aethyr's one clock (metaverse-engine/book ch001)
 
 VERTEX_FLOATS :: 16;

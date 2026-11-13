@@ -1,5 +1,5 @@
 // A wheeled vehicle on metaverse-engine/physics/rigid.coax and metaverse-engine/physics/contact.coax
-// (docs/verse/space.md): one rigid body (its chassis), four wheels as
+// (docs/metaverse/space.md): one rigid body (its chassis), four wheels as
 // suspension rays from mounts on the chassis, and tyres that grip.
 //
 // Each step, each wheel casts down the chassis's own -Y to the nearest

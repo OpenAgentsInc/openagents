@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Realms drawn natively on HOST's GPU by metaverse/gpu/vk-realm.c (docs/verse/native-gpu.md,
+# Realms drawn natively on HOST's GPU by metaverse/gpu/vk-realm.c (docs/metaverse/native-gpu.md,
 # gpu-realm-host), and travel between them: each realm's Coax as C (metaverse/native/build.sh), its
 # live spec with its modules (and Everglade's layers decoded in Coax), built there with gcc, each
 # in a directory of its own. REALM is one or more, the first where play starts: everglade (the

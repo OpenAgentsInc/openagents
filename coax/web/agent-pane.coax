@@ -1,5 +1,5 @@
 // YOUR AGENT, played in headless Chrome (no window opens, no sound plays) against a local oa-api and
-// a stand-in runner (openagents#12655; docs/verse/realm-seat.md "The agent pane"). The page is the
+// a stand-in runner (openagents#12655; docs/metaverse/realm-seat.md "The agent pane"). The page is the
 // made realm's page this checkout builds, on one local origin with the API (coax/web/local-origin.coax),
 // so the page sends its own session cookie (__Host-oa_session, auth.c) and Origin with every seat request, as the
 // site's page does on openagents.com.

@@ -68,7 +68,7 @@ and the same replay, so a car race replays exactly.
 - [metaverse-engine/physics/contact.coax](../physics/contact.coax) and
   [metaverse-engine/physics/rigid.coax](../physics/rigid.coax): the chassis box against planes,
   and the rigid body.
-- [docs/verse/space.md](../../docs/verse/space.md): the space primitives
+- [docs/metaverse/space.md](../../docs/metaverse/space.md): the space primitives
   table that lists the vehicle beside gravity, thrust and orbits.
 
 ## What it builds
