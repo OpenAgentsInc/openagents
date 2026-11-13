@@ -26,6 +26,14 @@
 # never stop a release; more of them always do, page by page. After the promote
 # the same two checks run on production; a new failure rolls back.
 #
+# One more check can stop a release, because a release that fails it strands every Everglade
+# player (#13387): the page's wire version against the rooms that run now (release-set page-wire,
+# its rule in release-set-policy.coax). A room refuses a page whose version it does not speak, the
+# page says to reload, and the reload is the same page. So a page ahead of its rooms' wire never
+# ships here; it ships with its rooms, as one release set (coax/web/tool.sh release-set ship,
+# docs/deployment/release-set.md). The check reads the rooms while the build starts, so a release
+# whose wire did not change waits for nothing.
+#
 # The Everglade drift check is v1's and runs on the frozen tree (everglade/server/legacy/v1.sh drift,
 # docs/decisions/0005): no release runs it.
 #
@@ -169,6 +177,33 @@ echo "release $commit ($(git -C "$tree" log -1 --format=%s | cut -c1-70))"
 
 t=$(now); compiler "$tree" || exit 1; lap compiler "$t"
 
+# The page's wire against the rooms it will meet (#13387): staging's for --staging-only, production's
+# otherwise. Asked now, in the background, and answered before anything is put on staging.
+wire_of() { { git -C "$repo" show "$1:everglade/shared/everglade-wire.coax" 2>/dev/null || true; } | sed -n 's/^WIRE_VERSION :: \([0-9][0-9]*\);.*/\1/p' | head -1; }
+wire_page="$(wire_of "$full")"; wire_was=""
+[[ -z "$passed_commit" ]] || wire_was="$(wire_of "$passed_commit")"
+wire_out="$(mktemp)"; wire_job=""
+if ! $build_only; then
+  (cd "$tree" && COAX="$tree/coax/bin/coax" coax/web/tool.sh release-set page-wire $($prod || echo --staging) --was "${wire_was:-0}") > "$wire_out" 2>&1 &
+  wire_job=$!
+fi
+# wire_gate: the answer. 1 is the rule's refusal. Any other failure (the tool did not build or run)
+# stops only a release whose wire differs from the page production runs: the same wire changes
+# nothing a room could refuse.
+wire_gate() {
+  local status=0
+  wait "$wire_job" || status=$?
+  if [[ $status -eq 0 ]]; then cat "$wire_out"; return 0; fi
+  cat "$wire_out" >&2
+  if [[ $status -eq 1 ]]; then
+    echo "release $commit: STOPPED. the page is ahead of its rooms' wire version; nothing was put on staging or production" >&2; return 1
+  fi
+  if [[ -n "$wire_page" && "$wire_page" == "$wire_was" ]]; then
+    echo "  report     the wire check did not run (status $status); the page speaks wire $wire_page, as production's page does (not stopping)"; return 0
+  fi
+  echo "release $commit: STOPPED. the wire check did not run (status $status), and the page speaks wire ${wire_page:-unread} where production's speaks ${wire_was:-unread}; nothing was put on staging or production" >&2; return 1
+}
+
 # The hosts' build of this commit, if the shared store has it: the build then
 # makes only what it lacks (COAXIAL_PREBUILT). Without one, the nearest
 # ancestor's build (#13154): only its build/ folder, and only when the compiler's
@@ -232,6 +267,8 @@ compiler_env COAX_RELEASE_COMPILER="$tree/coax/bin/coax" "$tree/scripts/coax-rel
   echo "  report     committed .wgsl drift from their Coax (not stopping): $(tail -1 "$reports/wgsl")"
 "$tree/coax/web/check-visuals.sh" "$tree/apps/openagents-web" > "$reports/visuals" 2>&1 ||
   echo "  report     check-visuals fails (not stopping): $(head -1 "$reports/visuals")"
+
+t=$(now); wire_gate || exit 1; lap wire "$t"
 
 # What production fails today, measured while staging builds.
 base="$(mktemp -d)"

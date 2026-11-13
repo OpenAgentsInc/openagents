@@ -19,6 +19,7 @@
 //     --seed-tick-us N (with --staging): the new room is a seeded bad build, every tick N us longer:
 //     the canary must stop it (the release's own check). --skip-api, --skip-page: that part is taken
 //     as moved (a release that changes only the rooms).
+//     A page whose wire version a live shard does not speak ships only this way, with its rooms.
 //     It writes the set's record (its version, what each part ran before and after, which parts
 //     moved) under OA_PIPELINE_DIR/release-sets/ENV/, and prints it. Exits 0 when all three moved,
 //     1 when it stopped (the record says where).
@@ -29,6 +30,13 @@
 //     Migrations stay: an API release keeps its schema changes readable by the revision before it.
 //   coax/web/tool.sh release-set status [--staging]
 //     The three parts' builds, the shards' pins, and whether they are one set.
+//   coax/web/tool.sh release-set page-wire [--staging] [--was N] [--wire N]
+//     Whether this checkout's page may ship beside the rooms that run now (#13387): every live shard
+//     read must speak the page's wire version. coax/web/release.sh runs it before it puts a page
+//     anywhere. --was N: the version the page before it speaks, which decides when no shard can be
+//     read (the same version ships; another does not). --wire N asks about another version than this
+//     checkout's (a question only: release.sh never passes it). Exits 0 when the page may ship, 1
+//     when it may not (each shard that does not speak it is named, with both versions).
 // tool.sh: tls
 // tool.sh: run-steps 250000000
 #import "Basic";
@@ -153,8 +161,8 @@ rl_value :: (text: string, key: string, scale: int) -> int {
 rl_pins :: (text: string, p: [] RsPins) -> bool {
   l := rl_line(text, "build", ' ');
   if l.count == 0 { return false; }
-  v: [3] int; keys := [3] string.["engine=", "rules=", "content="];
-  for q: 0..<3 {
+  v: [5] int; keys := [4] string.["engine=", "rules=", "content=", "wire="];
+  for q: 0..<4 {
     at := -1;
     for i: 0..<l.count - keys[q].count + 1 { if at < 0 && l[i..<i + keys[q].count] == keys[q] && (i == 0 || l[i - 1] == ' ') { at = i + keys[q].count; } }
     if at < 0 { return false; }
@@ -162,8 +170,15 @@ rl_pins :: (text: string, p: [] RsPins) -> bool {
     while at < l.count && l[at] >= '0' && l[at] <= '9' { n = n * 10 + cast(int) (l[at] - '0'); at += 1; any = true; }
     if !any { return false; }
     v[q] = n;
+    if q < 3 { continue; }
+    // wire=A-B: the versions the shard speaks
+    if at >= l.count || l[at] != '-' { return false; }
+    at += 1; n = 0; any = false;
+    while at < l.count && l[at] >= '0' && l[at] <= '9' { n = n * 10 + cast(int) (l[at] - '0'); at += 1; any = true; }
+    if !any { return false; }
+    v[4] = n;
   }
-  p[0] = RsPins.{engine = v[0], rules = v[1], content = v[2]};
+  p[0] = RsPins.{engine = v[0], rules = v[1], content = v[2], wire_lo = v[3], wire_hi = v[4]};
   return true;
 }
 #test "a room's report: its numbers and its pins" {
@@ -171,8 +186,11 @@ rl_pins :: (text: string, p: [] RsPins) -> bool {
   p: [1] RsPins;
   #assert rl_value(r, "tick p95 ms", 1000) == 2970 && rl_value(r, "transport refused frames a second", 10) == 15 && rl_value(r, "players", 1) == 3 && rl_value(r, "none", 1) == -1;
   #assert rl_value("x=1.2345\n", "x", 1000) == 1234 && rl_value("x=abc\n", "x", 1) == -1 && rl_value("x=7\n", "x", 1000) == 7000;
-  #assert rl_pins(r, p[..]) && p[0].engine == 4 && p[0].rules == 9 && p[0].content == 3;
+  #assert rl_pins(r, p[..]) && p[0].engine == 4 && p[0].rules == 9 && p[0].content == 3 && p[0].wire_lo == 5 && p[0].wire_hi == 5;
+  #assert rl_pins("build engine=4 rules=9 content=3 wire=5-12 schema=2\n", p[..]) && p[0].wire_lo == 5 && p[0].wire_hi == 12;
   #assert !rl_pins("shard=1\n", p[..]) && !rl_pins("build engine=4 rules=9\n", p[..]) && !rl_pins("build engine= rules=9 content=3\n", p[..]);
+  // a report with no wire range, or half of one, is not read: its shard is not counted as speaking anything
+  #assert !rl_pins("build engine=4 rules=9 content=3 schema=2\n", p[..]) && !rl_pins("build engine=4 rules=9 content=3 wire=5 schema=2\n", p[..]) && !rl_pins("build engine=4 rules=9 content=3 wire=5- schema=2\n", p[..]) && !rl_pins("build engine=4 rules=9 content=3 wire=-5\n", p[..]);
 }
 // The rooms' releases as vm-deploy.sh releases prints them, into out.
 rl_releases :: (out: [] u8) -> string {
@@ -400,13 +418,13 @@ rl_ship :: (a: [] Args) -> int {
   if !rs_may(RS_PAGE, moved) { return 2; }
   if args_has(a, "--skip-page") { print("  page: skipped (taken as moved)\n"); }
   else {
-    mine := WirePins.{}; page := RsPins.{engine = mine.engine, rules = mine.rules, content = mine.content};
+    mine := WirePins.{}; page := RsPins.{engine = mine.engine, rules = mine.rules, content = mine.content, wire_lo = WIRE_VERSION, wire_hi = WIRE_VERSION};
     live := 0; matching := 0; body: [32768] u8;
     for q: 1..<e.shards + 1 {
       p: [1] RsPins;
       if !rl_pins(rl_vitals(e, q, body[..]), p[..]) { continue; }
       live += 1;
-      if rs_pins_match(page, p[0]) { matching += 1; } else { print("  page: shard % runs engine % rules % content %; the page is % % %\n", q, p[0].engine, p[0].rules, p[0].content, page.engine, page.rules, page.content); }
+      if rs_pins_match(page, p[0]) { matching += 1; } else { print("  page: shard % runs engine % rules % content % and speaks wire % to %; the page is % % % and speaks wire %\n", q, p[0].engine, p[0].rules, p[0].content, p[0].wire_lo, p[0].wire_hi, page.engine, page.rules, page.content, page.wire_hi); }
     }
     if !rs_pins_ship(matching, live) {
       print("release set %: STOPPED at the page: % of % live shards run the page's build. The page would strand their players; the API and the rooms stay\n", version, matching, live);
@@ -513,21 +531,53 @@ rl_status :: (a: [] Args) -> int {
     p: [1] RsPins;
     if !rl_pins(rl_vitals(e, q, vb[..]), p[..]) { print("shard % unread\n", q); continue; }
     live += 1;
-    note := ifx rs_pins_match(RsPins.{engine = mine.engine, rules = mine.rules, content = mine.content}, p[0]) then "" else " (not this checkout's page)";
-    print("shard % engine % rules % content %", q, p[0].engine, p[0].rules, p[0].content); print("%\n", note);
+    note := ifx rs_pins_match(RsPins.{engine = mine.engine, rules = mine.rules, content = mine.content, wire_lo = WIRE_VERSION, wire_hi = WIRE_VERSION}, p[0]) then "" else " (not this checkout's page)";
+    print("shard % engine % rules % content % wire %-%", q, p[0].engine, p[0].rules, p[0].content, p[0].wire_lo, p[0].wire_hi); print("%\n", note);
   }
   one := has && rel.count >= 10 && build.count == 40 && cast(string) api[0].build[0..<10] == rel[0..<10] && build[0..<10] == rel[0..<10];
   print("%\n", ifx one then "one set: the API, the rooms and the page run the same commit" else "not one set: the three parts run different commits");
   return ifx one then 0 else 1;
 }
 
+// ---- the page's wire against the rooms that run now (#13387)
+// A shard's report is asked for up to three times, a second apart: one lost answer is not "no room".
+rl_page_wire :: (a: [] Args) -> int {
+  e := rl_env(args_has(a, "--staging"));
+  page := WIRE_VERSION;
+  asked := args_value(a, "--wire", "");
+  if asked.count > 0 { page = sr_num(asked).v; if page <= 0 { tool_errln("release-set: --wire N, a wire version"); return 2; } }
+  was := 0; before := args_value(a, "--was", "");
+  if before.count > 0 { was = sr_num(before).v; if was < 0 { was = 0; } }
+  live := 0; speaking := 0; body: [32768] u8;
+  for q: 1..<e.shards + 1 {
+    p: [1] RsPins; read := false;
+    for round: 0..<3 {
+      if rl_pins(rl_vitals(e, q, body[..]), p[..]) { read = true; break; }
+      if round < 2 { proc_sleep(1000); }
+    }
+    if !read { continue; }
+    live += 1;
+    if rs_wire_speaks(page, p[0].wire_lo, p[0].wire_hi) { speaking += 1; }
+    else { print("  wire: %'s shard % speaks wire % to %; the page speaks wire %\n", e.name, q, p[0].wire_lo, p[0].wire_hi, page); }
+  }
+  if rs_wire_ship(speaking, live, page, was) {
+    if live > 0 { print("  wire: the page speaks wire %, and so do %'s % live shard(s)\n", page, e.name, live); }
+    else { print("  wire: no % shard could be read; the page speaks wire %, as the page before it does\n", e.name, page); }
+    return 0;
+  }
+  if live > 0 { print("page-wire: REFUSED. The page speaks wire % and % of %'s % live shard(s) do. Their players would be told to reload and be refused again. Ship it with its rooms: coax/web/tool.sh release-set ship%\n", page, speaking, e.name, live, ifx e.staging then " --staging" else ""); }
+  else { print("page-wire: REFUSED. No % shard could be read, and the page speaks wire % where the page before it speaks %. Ship it with its rooms: coax/web/tool.sh release-set ship%\n", e.name, page, was, ifx e.staging then " --staging" else ""); }
+  return 1;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh release-set ship|rollback|status [--staging] ..."); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh release-set ship|rollback|status|page-wire [--staging] ..."); return 2; }
   cmd := args_at(a[..], 0);
   if cmd == "ship" { return rl_ship(a[..]); }
   if cmd == "rollback" { return rl_rollback(a[..]); }
   if cmd == "status" { return rl_status(a[..]); }
-  tool_errln("release-set: ship, rollback or status");
+  if cmd == "page-wire" { return rl_page_wire(a[..]); }
+  tool_errln("release-set: ship, rollback, status or page-wire");
   return 2;
 }

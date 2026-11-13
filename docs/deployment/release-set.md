@@ -21,12 +21,50 @@ only after the ones before it:
 | The API | `coax/web/api/deploy.sh` (staging, then production). Skipped when the API already runs the commit | The deploy fails, or the API's health names another build |
 | The rooms, on staging | The protocol bots play staging's shard as it is. `coax/web/room/vm-deploy.sh deploy --staging` puts the new room there. The bots play it again | The canary fails (below). Staging goes back to its room |
 | The rooms, in production | `vm-deploy.sh canary K` puts the new room on one shard. Its windows are read beside the other shards' for the canary's time. Then `vm-deploy.sh deploy` moves the rest | The canary fails. The canary shard goes back; the other shards never moved |
-| The page | `coax/web/release.sh --ref COMMIT` | A live shard's pins (engine, rules, world) are not the page's. A page ahead of its rooms strands every player (#13163) |
+| The page | `coax/web/release.sh --ref COMMIT` | A live shard's pins (engine, rules, world) are not the page's, or the shard does not speak the page's wire version. A page ahead of its rooms strands every player (#13163, #13387) |
 
 The set's version is the commit and the time, for example
 `1afd85d5a2.1794518372`. The record of a set (its version, what each part ran
 before and after, which parts moved, where it stopped) is written under the
 pipeline's folder: `~/.openagents/pipeline/release-sets/ENV/VERSION.txt`.
+
+### A page never ships ahead of its rooms' wire
+
+A room speaks a range of wire versions and reports it (`wire=A-B` on the
+`build` line of its vitals). A room refuses a page whose version is outside
+that range. The page then tells the player to reload, and the reload gets the
+same page and the same refusal, so nobody can play until the rooms move.
+
+So a change that raises `WIRE_VERSION` ships only as a release set, the rooms
+before the page. Two checks hold that rule (#13387):
+
+- `release-set ship` releases the page only when every live shard speaks the
+  page's wire version (and runs its pins).
+- `coax/web/release.sh`, the page's release by itself, asks the same question
+  before it puts anything on staging or production. It reads staging's shard
+  for `--staging-only` and production's shards otherwise. When a shard does
+  not speak the page's version, the release stops and names each shard with
+  both versions.
+
+```sh
+coax/web/tool.sh release-set page-wire             # this checkout's page against production's rooms
+coax/web/tool.sh release-set page-wire --staging   # against staging's room
+```
+
+The command exits 0 when the page may ship and 1 when it may not. It changes
+nothing.
+
+| Case | Result |
+| --- | --- |
+| Every live shard read speaks the page's version | The page ships |
+| A live shard read does not speak it | The release stops |
+| No shard can be read, and the page speaks the version production's page speaks | The page ships: the release changes nothing a room could refuse |
+| No shard can be read, and the page speaks another version | The release stops |
+
+A release whose wire version did not change is never stopped by this check.
+`release.sh` asks the rooms while the build starts, so the check adds no wait.
+The rule is `rs_wire_speaks` and `rs_wire_ship` in
+`coax/web/release-set-policy.coax`.
 
 ### The canary
 

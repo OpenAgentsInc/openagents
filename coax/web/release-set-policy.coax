@@ -4,7 +4,13 @@
 //   the order     which part moves next, and that a part moves only when the ones before it have
 //   the pins      the page ships only when every live shard runs the page's build: its engine, its
 //                 rules, its world (the wire's P; a room refuses a page whose pins differ, so a page
-//                 ahead of its rooms strands every player: #13163)
+//                 ahead of its rooms strands every player: #13163), and speaks the page's wire
+//                 version
+//   the wire      a page never ships ahead of its rooms' wire (#13387): a room refuses a hello whose
+//                 version is outside the range it speaks, the page says to reload, and the reload is
+//                 the same page. Every live shard read must speak the page's version. With no shard
+//                 read, the page ships only when its version is the one the page before it spoke:
+//                 that release changes nothing a room could refuse
 //   the canary    one shard takes the new room first, and is compared with the others (in
 //                 production: the shards still on the old release, over the same minutes; on
 //                 staging, which has one shard: the same shard just before, under the same bots).
@@ -38,7 +44,9 @@ RS_CHECKPOINT_MS :: 15000;
 // seated (bots); unsaved_ms: its oldest unsaved checkpoint (-1 not read); windows: windows read;
 // crashes: crash buckets naming its release; version_refused: hellos it refused for their build.
 RsShard :: struct { tick_p50_us: int = -1; tick_p95_us: int = -1; ticks_ds: int = -1; refused_ds: int = -1; seated: int; unsaved_ms: int = -1; windows: int; crashes: int; version_refused: int; }
-RsPins :: struct { engine: int; rules: int; content: int; }
+// A build's pins. wire_lo..wire_hi: the wire versions a shard speaks (its report's wire=A-B); a
+// page's are both its one version.
+RsPins :: struct { engine: int; rules: int; content: int; wire_lo: int; wire_hi: int; }
 
 #test "the order: the API, then the rooms, then the page, and nothing after" {
   #assert rs_next(0) == RS_API && rs_next(1) == RS_ROOMS && rs_next(3) == RS_PAGE && rs_next(7) == RS_DONE;
@@ -56,6 +64,22 @@ RsPins :: struct { engine: int; rules: int; content: int; }
   #assert !rs_pins_match(p, RsPins.{engine = 5, rules = 9, content = 3}) && !rs_pins_match(p, RsPins.{engine = 4, rules = 8, content = 3}) && !rs_pins_match(p, RsPins.{engine = 4, rules = 9, content = 4});
   // every live shard must match, and with no live shard read nothing ships
   #assert rs_pins_ship(3, 3) && rs_pins_ship(1, 1) && !rs_pins_ship(2, 3) && !rs_pins_ship(0, 0) && !rs_pins_ship(4, 3) && !rs_pins_ship(0, 1);
+  // and the shard must speak the page's wire version
+  p.wire_lo = 6; p.wire_hi = 6;
+  #assert rs_pins_match(p, RsPins.{engine = 4, rules = 9, content = 3, wire_lo = 6, wire_hi = 6}) && rs_pins_match(p, RsPins.{engine = 4, rules = 9, content = 3, wire_lo = 5, wire_hi = 7});
+  #assert !rs_pins_match(p, RsPins.{engine = 4, rules = 9, content = 3, wire_lo = 5, wire_hi = 5}) && !rs_pins_match(p, RsPins.{engine = 4, rules = 9, content = 3, wire_lo = 7, wire_hi = 8});
+  #assert !rs_pins_match(p, RsPins.{engine = 5, rules = 9, content = 3, wire_lo = 6, wire_hi = 6});
+}
+#test "the wire: a page never ships ahead of its rooms" {
+  // a shard speaks the versions lo..hi, both ends in
+  #assert rs_wire_speaks(5, 5, 5) && rs_wire_speaks(5, 4, 6) && rs_wire_speaks(4, 4, 6) && rs_wire_speaks(6, 4, 6);
+  #assert !rs_wire_speaks(6, 5, 5) && !rs_wire_speaks(4, 5, 5) && !rs_wire_speaks(3, 4, 6) && !rs_wire_speaks(7, 4, 6);
+  // every live shard read must speak the page's version, whatever the page before spoke
+  #assert rs_wire_ship(6, 6, 6, 5) && rs_wire_ship(1, 1, 5, 5) && !rs_wire_ship(5, 6, 6, 6) && !rs_wire_ship(0, 1, 5, 5) && !rs_wire_ship(0, 6, 6, 5);
+  // no shard read: only a page whose version the page before it spoke; an unread page before (0) is no match
+  #assert rs_wire_ship(0, 0, 5, 5) && !rs_wire_ship(0, 0, 6, 5) && !rs_wire_ship(0, 0, 5, 6) && !rs_wire_ship(0, 0, 6, 0);
+  // a count past the shards read is no reading
+  #assert !rs_wire_ship(2, 1, 5, 5) && !rs_wire_ship(1, 0, 6, 5);
 }
 #test "the canary holds when it does what the others do, or better" {
   o := RsShard.{tick_p95_us = 600, refused_ds = 4, seated = 32, unsaved_ms = 5000, windows = 30};
@@ -197,7 +221,15 @@ rs_part :: (part: int) -> string #effects(all) {
   return "";
 }
 rs_pins_match :: (page: RsPins, shard: RsPins) -> bool #effects(all) {
-  return page.engine == shard.engine && page.rules == shard.rules && page.content == shard.content;
+  return page.engine == shard.engine && page.rules == shard.rules && page.content == shard.content && rs_wire_speaks(page.wire_hi, shard.wire_lo, shard.wire_hi);
+}
+// Whether a shard that speaks the wire versions lo..hi speaks the page's.
+rs_wire_speaks :: (page: int, lo: int, hi: int) -> bool #effects(all) { return page >= lo && page <= hi; }
+// Whether a page that speaks `page` may ship: `speaking` of the `live` shards read speak it, all of
+// them. With none read, only when the page before it (`was`; 0 unread) spoke the same version.
+rs_wire_ship :: (speaking: int, live: int, page: int, was: int) -> bool #effects(all) {
+  if live > 0 { return speaking == live; }
+  return speaking == 0 && page == was;
 }
 // Whether the page may ship: `matching` of the `live` shards read run its build, all of them, and one at least.
 rs_pins_ship :: (matching: int, live: int) -> bool #effects(all) { return live > 0 && matching == live; }
