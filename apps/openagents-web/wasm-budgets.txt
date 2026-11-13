@@ -82,7 +82,7 @@ script-host 88000
 # the shared host ABI every renderer carrier exports kept growing on 11-05 (#12869): 81,594 measured at 882146be65; about 5% room (#12922)
 connect-pylon 86000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 451,253 measured; about 5% room
-deadgears 490000
+deadgears 520000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 168,145 before, 180,101 after; about 5% room
 droprealm 190000
 # everglade.coax (the base world everglade5e and fivemmo build on): 1,813,705 measured 2026-11-04 after the day's room work (#12794, #12862, #12877, #12887); about 5% room
@@ -234,13 +234,13 @@ fixture 210000
 # The walker moves on the broadphase and notes each push's reach (collide_move with Colliders.near, #13279): 302,932 bytes.
 garden 307000
 gridcrowd 60000
-icecream 510000
+icecream 550000
 memorial 60000
 # The jump clips in everglade/scene/people-rig.coax (da98ab3915): 273,378 bytes measured; about 5% headroom.
 metahumanlab 290000
 # A made realm follows its world and runs its scripts (metaverse/edit/realm-page.coax, the frame and result codecs, #13496): 696,860 bytes measured on macOS; about 5% room.
 myrealm 740000
-newland 1150000
+newland 1180000
 nip01 90000
 nip-guide 130000
 og 60000
@@ -278,10 +278,15 @@ lightning 88000
 wallet 62000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 215,662 measured; about 5% room
 verse 230000
-villa 550000
+# The realm pages whose board the editor shell edits (#13478) follow their realm's world through the edit layer
+# (metaverse/edit/realm-page.coax on world-follow.coax and shell-model.coax): about 22,000 bytes a page. Measured
+# 2026-11-13 on a Linux release build (coderos-4080): villa 559,790, icecream 531,293, deadgears 503,138, watchtower
+# 326,785, newland 1,154,250; each of these lines raised to leave 2 to 4% room. realm (455,776), fairy (663,511) and
+# myrealm (696,658) grew inside the room they had.
+villa 580000
 voice 190000
 # the host ABI every renderer carrier exports grew about 11 KB on 11-05 (#12869: transport, HTTP and sockets 3b02a1b75b, e6d471d805; lifecycle 259490d9f5; presentation 0f1bb416be): 293,263 measured; about 5% room
-watchtower 310000
+watchtower 340000
 waterlab 190000
 # The acknowledged three-phase block/transaction recording adds 156 KiB of data.
 # Snapshot admission, bounded HTTP pages, source controls and graph paging add

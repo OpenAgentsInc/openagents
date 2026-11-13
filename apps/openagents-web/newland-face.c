@@ -10,6 +10,7 @@
 #include "Gridwalk.h"
 #include <stddef.h>
 #include "analytics-face.h"
+#define EDIT_FACE_WORLD   /* the editor shell edits this realm's board (#13478) */
 #include "edit-face.h"   /* the Grid's EDIT and feature list: its one request, its answers */
 #include "newland-reader-bridge.h"
 
@@ -18,6 +19,7 @@
 static coax_t_LandState *state_at(uint32_t state) { return (coax_t_LandState *)(uintptr_t)state; }
 static coax_v_t_LandState view(uint32_t state) { return (coax_v_t_LandState){state_at(state), 1}; }
 static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){state_at(state)->ed.e, 1}; }
+EDIT_FACE_SHELL(ed(state))   /* what the editor shell is told of this realm's world (#13478) */
 static unsigned char inbox[1048576];
 static uint32_t golden_mode;
 static coax_t_Track track_state;

@@ -55,7 +55,8 @@ one-a-player-every-2-seconds pace. No words are matched anywhere: the model pick
 - drawing: `redit_hud(ed, out, at, anchor)` draws EDIT in the box the realm gives and the open pane
   under it; the realm draws `plate_box[0..<plate_n]` with its own `plate`;
 - actions: `redit_take_action(ed, outbox)` first in the realm's action (push to talk);
-- the C face: `edit-face.h` (`edit_face_drain`, `edit_face_message`).
+- the C face: `edit-face.h` (`edit_face_drain`, `edit_face_message`, and `EDIT_FACE_SHELL` for the
+  editor shell, below).
 
 The realm reads `redit_row_on(ed, "robots")` where its code draws the thing, `redit_tool(ed,
 "map")` for a visitor's tool, `placed_*` for what was accepted, and `redit_changed(ed)` when the
@@ -64,6 +65,44 @@ server's answer changed it.
 An owner's or admin's page reads the spec again every second (`REDIT_WATCH`), so a row switched
 from the CLI (`openagents realm switch SLUG ROW off`), Coder or another tab shows up in about a
 second. An unchanged spec changes nothing (`redit_same_spec`).
+
+## The editor shell on a realm's page
+
+A realm's board and settings are also a world (`/api/worlds/SLUG`, kind `realm`;
+[world-edit-v1.md](../protocol/world-edit-v1.md), "A realm's world"). The page of a realm opened
+with `?edit` by someone who may edit it shows the editor shell
+(`metaverse-engine/editor/shell.coax`) over the realm (#13478):
+
+- The layer follows the realm's world on the dev lane, its only lane
+  (`metaverse/edit/realm-page.coax`, the module a made realm uses too, on
+  `metaverse-engine/editor/world-follow.coax`): the world's state, then its content tables, then its
+  events once a second. Any event, or a new spec, reads the state and the tables again. Requests carry the player's
+  key (HTTP flag 8), since a maker with no account is known to a realm's world only by it.
+- It tells the shell the board and the tools as two lists of switches (`editor.model.v1`:
+  `atonce`, `list rows on Features`, `list tools on Tools visitors get`, a `sw` line each row).
+- A press on a switch in the shell comes back as message 520, a `world.edit.v1` batch with one
+  `cell` edit. The layer sends it as the page's own write. The realm's own SQL carries it out, so
+  the refusals are the ones `/switch` gives, and the step can be undone and redone from the shell.
+- The realm's code still reads `redit_row_on` and `redit_tool` from the spec, which the page reads
+  again every second, so a switch made in the shell shows in the realm within about a second.
+- The shell also shows the world's scripts table. A made realm runs those scripts; the other realm
+  pages do not run them yet.
+
+A page whose visitor may not edit, or that was not opened with `?edit`, asks the world for
+nothing. The host opens the shell only when the page says the visitor may edit
+(`coaxial_edit_own`), which is the role the realm's server gave in the spec. On the dev server
+the host opens it for anyone, and the layer still follows the world only for an owner or admin. The world's server
+decides every write again.
+
+A realm's face adds one line, `EDIT_FACE_SHELL(ed(state))` (`edit-face.h`), which exports
+`coaxial_edit_rev`, `coaxial_edit_model`, `coaxial_edit_model_len` and `coaxial_edit_own`.
+`edit_face_drain` sends the world's one request beside the layer's. Dead Gears, Fairy Forest, Ice
+Cream Man, The Grid (`newland`), Haunted House (`realm`), Hecate's Cemetery (`villa`) and
+Watchtower have it. A made realm (`myrealm`) follows its world itself, with the same module.
+Everglade's page does not: its board belongs with its own world (#13477).
+
+The layer's own FEATURES and SETTINGS panes, and the routes they post to, are still there. They
+go when placing a thing is an edit too (#13478, steps 3 and 5).
 
 Spoken and typed commands about the editing screen go to `redit_heard(ed, word, row, on, pane,
 out)` (migration 0104's `switch` and `show` edits): it switches one of the realm's rows by its id,

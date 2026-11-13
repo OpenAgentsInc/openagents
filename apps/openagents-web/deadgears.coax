@@ -461,7 +461,7 @@ restore :: (s: [] DeadGears, text: string) -> bool {
 
 deadgears_message :: (s: [] DeadGears, kind: int, text: string) #export_c #effects(all) {
   started(s);
-  if redit_message(s[0].ed[..], kind, text) { return; }
+  if redit_message_shell(s[0].ed[..], kind, text) { return; }   // the editor shell edits this realm's board (#13478)
   if kind == MSG_KEPT { ok := restore(s, text); return; }
   if kind == HOST_PAGE {
     s[0].facts = true;
@@ -2821,7 +2821,7 @@ won_through_the_controls :: (phone_size: bool) -> bool {
 // The frame budget (metaverse-engine/core/budget.coax, book chapter 16): what one frame of Dead Gears may use.
 // The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
 // The bytes grew by 24 KB for the mutants' second flow field (#12854).
-DEADGEARS_BUDGET :: FrameBudget.{steps = 8, vertices = 7000, draws = 0, bytes = 2514944};
+DEADGEARS_BUDGET :: FrameBudget.{steps = 8, vertices = 7000, draws = 0, bytes = 2576384};   // + 61,440 for the realm's world in the edit layer (realm-page.coax, #13478)
 
 // Its opening: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.

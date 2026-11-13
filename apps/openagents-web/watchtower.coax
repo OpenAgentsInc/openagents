@@ -1449,7 +1449,7 @@ watch_pointer :: (s: [] Watch, x: f32, y: f32, phase: int, kind: int, id: int) -
 watch_cursor :: (s: [] Watch) -> int #export_c #effects(all) { return 0; }
 watch_message :: (s: [] Watch, kind: int, t: string) #export_c #effects(all) {
   watch_start(s);
-  if redit_message(s[0].ed[..], kind, t) { return; }
+  if redit_message_shell(s[0].ed[..], kind, t) { return; }   // the editor shell edits this realm's board (#13478)
   tr := track_message(s[0].track[..], kind, t);
   if kind != HOST_PAGE { return; }
   track_world(s[0].track[..], "watchtower");

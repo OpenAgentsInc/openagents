@@ -84,7 +84,7 @@ SIT_ROW :: "201|Rock|pack/rock|1000|1|50|25|200";
   f[0].status = WFS_FOLLOWING; f[0].rev = 4;
   #assert !spw_import_kind(p[..], "mesh rock 500 250") && !spw_import_kind(p[..], "sound rock 500 250 2000") && !spw_import_kind(p[..], "mesh rock 0 250 2000") && !spw_import_kind(p[..], "mesh a.b 500 250 2000") && f[0].body_n == 0;
   #assert spw_import_kind(p[..], "mesh rock 500 250 2000");
-  e: [WE_BATCH] WorldEdit; b := we_batch_read(cast(string) f[0].body[0..<f[0].body_n], e[..]);
+  e: [WE_BATCH] WorldEdit; b := we_batch_read(cast(string) p[0].batch[0..<f[0].body_n], e[..]);
   #assert b.ok && b.rev == 4 && b.n == 1 && e[0].op == WE_CELL && e[0].id == 201 && cast(string) e[0].table[0..<e[0].table_n] == "pieces" && cast(string) e[0].name[0..<e[0].name_n] == "*" && cast(string) e[0].text[0..<e[0].text_n] == "201|rock|pack/rock|1000|1|50|25|200";
   #assert !spw_import_kind(p[..], "mesh post 100 100 4000") && f[0].refused_n > 0;
 }

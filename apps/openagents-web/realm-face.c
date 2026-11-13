@@ -49,6 +49,7 @@
 #include "Particles.h"
 #include "Setpiece.h"
 #include "analytics-face.h"
+#define EDIT_FACE_WORLD   /* the editor shell edits this realm's board (#13478) */
 #include "edit-face.h"
 #include <math.h>
 #include <stdbool.h>
@@ -209,6 +210,7 @@ static void room_say(coax_string typed);
 
 static coax_v_t_Realm realm_of(void) { return (coax_v_t_Realm){&realm, 1}; }
 static coax_v_t_RealmEdit ed(void) { return (coax_v_t_RealmEdit){realm.ed.e, 1}; }
+EDIT_FACE_SHELL(ed())   /* what the editor shell is told of this realm's world (#13478) */
 static coax_t_HauntPoint point(coax_t_Vec3 v) { return (coax_t_HauntPoint){v.x, v.y, v.z}; }
 static coax_string text(const char *t) { return (coax_string){t, (int64_t)strlen(t)}; }
 static void toast(const char *t) { house.toast = text(t); house.toast_until = now + 3.5; }

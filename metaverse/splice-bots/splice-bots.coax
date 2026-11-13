@@ -376,7 +376,7 @@ splice_fact :: (s: [] Splice, k: int) -> int #export_c #effects(all) {
 // host's id for its answer (world-follow.coax).
 splice_req_wants :: (s: [] Splice) -> bool #export_c #effects(all) { return s.count > 0 && s[0].follow == 2 && wf_wants(s[0].page[0].f[..]); }
 splice_req_url :: (s: [] Splice) -> string #export_c #effects(all) { return wf_url(s[0].page[0].f[..]); }
-splice_req_body :: (s: [] Splice) -> string #export_c #effects(all) { return wf_body(s[0].page[0].f[..]); }
+splice_req_body :: (s: [] Splice) -> string #export_c #effects(all) { return wf_body(s[0].page[0].f[..], s[0].page[0].batch[..]); }
 splice_req_flags :: (s: [] Splice) -> int #export_c #effects(all) { return wf_flags(s[0].page[0].f[..]); }
 splice_req_sent :: (s: [] Splice, id: int) #export_c #effects(all) { wf_sent(s[0].page[0].f[..], id); }
 // A new engine started on this state (the host calls the face's coaxial_page at each load): the

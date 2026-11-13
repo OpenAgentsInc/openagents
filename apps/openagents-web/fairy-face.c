@@ -53,6 +53,7 @@
 #define EXPORT(name) __attribute__((export_name(name)))
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
 IMPORT("coaxial_http") int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags);
+#define EDIT_FACE_WORLD   /* the editor shell edits this realm's board (#13478) */
 #include "edit-face.h"
 
 static coax_t_Player player;
@@ -92,6 +93,7 @@ static uint32_t player_n;          // the minted player's record while the host 
 static coax_t_Fairy *fairy(uint32_t state) { return (coax_t_Fairy *)(uintptr_t)state; }
 static coax_v_t_Fairy at(uint32_t state) { return (coax_v_t_Fairy){fairy(state), 1}; }
 static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){fairy(state)->ed.e, 1}; }
+EDIT_FACE_SHELL(ed(state))   /* what the editor shell is told of this realm's world (#13478) */
 static int32_t edit_kind;   /* the edit layer's push to talk, waiting for the host */
 #include "place-face.h"
 static void start(uint32_t state) {

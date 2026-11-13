@@ -9,6 +9,7 @@
 #include "icecream.h"
 #include "Scene.h"
 #include "analytics-face.h"
+#define EDIT_FACE_WORLD   /* the editor shell edits this realm's board (#13478) */
 #include "edit-face.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -33,6 +34,7 @@ static coax_v_t_IceScene scene_at(uint32_t state) {
   return s;
 }
 static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){state_at(state)->hud.ed.e, 1}; }
+EDIT_FACE_SHELL(ed(state))   /* what the editor shell is told of this realm's world (#13478) */
 // The board's rows are the run's options: minions and weapons change the house being played at
 // once, backrooms the next house (metaverse/icecream/play.coax board_now).
 static void edit_options(uint32_t state) {

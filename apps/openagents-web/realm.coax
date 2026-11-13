@@ -346,7 +346,7 @@ realm_close_text :: (r: [] Realm) #export_c #effects(all) { r[0].typing = false;
 realm_wants_text :: (r: [] Realm) -> bool #export_c #effects(all) { return r[0].typing || redit_typing(r[0].ed[..]); }
 // The edit layer's, for the face: a row of its board, and its push to talk handed to the host's outbox.
 realm_row_on :: (r: [] Realm, key: string) -> bool #export_c #effects(all) { return redit_row_on(r[0].ed[..], key); }
-realm_edit_message :: (r: [] Realm, kind: int, text: string) -> bool #export_c #effects(all) { return redit_message(r[0].ed[..], kind, text); }
+realm_edit_message :: (r: [] Realm, kind: int, text: string) -> bool #export_c #effects(all) { return redit_message_shell(r[0].ed[..], kind, text); }   // the editor shell edits this realm's board (#13478)
 // Who may make a realm (access.coax): the face asks once and hands the answer back.
 realm_access_wants :: (r: [] Realm) -> bool #export_c #effects(all) { return access_wants(r[0].acc[..]); }
 realm_access_sent :: (r: [] Realm, id: int) #export_c #effects(all) { access_sent(r[0].acc[..], id); }

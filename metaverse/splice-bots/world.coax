@@ -449,6 +449,7 @@ SPW_INBOX :: 131072;   // bytes one answer may be: the page's inbox (splice-face
 // What a page keeps to follow the world: its place (world-follow.coax) and room to read an answer.
 SpwPage :: struct {
   f: [1] WorldFollow; k: [1] SpwScratch; doc: [SPW_DOC] u8; did: [64] u8; scratch: [SPW_INBOX] u8; loads: int;
+  batch: [WE_BATCH_BODY] u8;   // the follower's room for a batch on its way (world-follow.coax wf_post)
   // what the editor shell is told (shell-model.coax, GitHub #13416): the selected piece's number on the
   // wire (0: none), the revision this page's last write made, and the model with what it was made from
   ct: [1] SpwTables;   // the world's content tables as this page has them (the shipped ones until the world's are read)
@@ -652,7 +653,7 @@ spv_frame_foe :: (g: [] SpGame, vp: [] Viewport, seen: VpView, i: int) {
 // The shell's batch (world.edit.v1), sent as this page's own write. False while one is in flight.
 spw_shell_batch :: (p: [] SpwPage, body: string) -> bool {
   f := p[0].f[..];
-  if wf_post(f, body) { return true; }
+  if wf_post(f, p[0].batch[..], body) { return true; }
   f[0].refused_n = em_copy(f[0].refused[..], "The last change is still on its way. Try again."); f[0].refused_status = 1;
   return false;
 }
@@ -703,7 +704,7 @@ spw_import_kind :: (p: [] SpwPage, body: string) -> bool {
   e[0] = WorldEdit.{ok = true, op = WE_CELL, id = ct_num(ct_part(row, '|', 0)).v};
   e[0].table_n = ct_copy(e[0].table[..], SPW_KINDS); e[0].name_n = ct_copy(e[0].name[..], "*"); e[0].text_n = ct_copy(e[0].text[..], row);
   out: [WE_LINE + 200] u8;
-  if wf_post(f, we_batch_write(ifx f[0].rev < 0 then 0 else f[0].rev, WB_APPLY, e[..], 1, out[..])) { return true; }
+  if wf_post(f, p[0].batch[..], we_batch_write(ifx f[0].rev < 0 then 0 else f[0].rev, WB_APPLY, e[..], 1, out[..])) { return true; }
   f[0].refused_n = em_copy(f[0].refused[..], "The mesh is in the pack, but the last change is still on its way. Import it again to make it a kind."); f[0].refused_status = 1;
   return false;
 }

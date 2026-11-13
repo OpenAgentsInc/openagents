@@ -475,3 +475,56 @@ heard_trip :: (e: [] RealmEdit, t: f32, url: string, p_body: string, reply: stri
   #assert heard_trip(e[..], 3, "/api/playtest/realm/moonlit-marsh/edit", "{\"sentence\":\"open the settings\"}", "200\n{\"edit\": \"show\", \"panel\": \"settings\"}");
   #assert e[0].pane == REDIT_SETTINGS;
 }
+
+// The realm's world for the editor shell (realm-page.coax, #13478), stepped as a face that opts in steps it
+// (edit-face.h, EDIT_FACE_WORLD): the layer's step, then the world's; a message is offered to the world first.
+wstep :: (e: [] RealmEdit, time: f32) { redit_step(e, time, 1440, 900, 1); redit_world_step(e); }
+wmsg :: (e: [] RealmEdit, kind: int, text: string) -> bool { return redit_world_message(e, kind, text) || redit_message(e, kind, text); }
+#test "an owner's page the host asks for the editor follows the realm's world and tells the shell its board; a visitor's asks nothing" {
+  e: [1] RealmEdit;
+  redit_start(e[..], "moonlit-marsh");
+  wstep(e[..], 0);
+  // the host asks whether this visitor may edit (the page was opened with ?edit). Before the server says who this
+  // is, nothing is asked of the world, and the host is told nobody may edit
+  #assert !redit_edit_own(e[..]) && !redit_world_wants(e[..]) && redit_edit_model(e[..]) == "";
+  #assert answer(e[..], 3, MADE) && redit_may(e[..]) && redit_edit_own(e[..]);
+  wstep(e[..], 0.016);
+  #assert redit_world_wants(e[..]) && redit_world_url(e[..]) == "/api/worlds/moonlit-marsh?lane=dev" && (redit_world_flags(e[..]) & TRACK_KEY) != 0 && redit_world_body(e[..]) == "";
+  redit_world_sent(e[..], 6);
+  st: [512] u8; n := ct_put(st[..], 0, "200\n");
+  made := we_state_write(WorldState.{lane = WL_DEV, rev = 2, dev = 2, undo = 1}, "moonlit-marsh", "", "", st[n..<st.count]);
+  // an answer that is the world's is the layer's; one for another request is not
+  #assert made.count > 0 && !wmsg(e[..], HTTP_KIND + 5, "200\n{}") && wmsg(e[..], HTTP_KIND + 6, cast(string) st[0..<n + made.count]);
+  wstep(e[..], 0.032);
+  #assert redit_world_wants(e[..]) && redit_world_url(e[..]) == "/api/worlds/moonlit-marsh/content?lane=dev";
+  redit_world_sent(e[..], 7);
+  #assert wmsg(e[..], HTTP_KIND + 7, "200\naethyr.content.v1 realm 1\nreach 1\ntable rows id key:text on:int label:text\n1|water|1|Large pond\n2|props:wagon|0|A wagon\ntable tools id name:text on:int\n1|build|0\n2|fly|1\n");
+  #assert redit_edit_model(e[..]) == "editor.model.v1 moonlit-marsh dev 2 1 0 0\ncols\natonce\nlist rows on Features\nsw 1 1 Large pond\nsw 2 0 A wagon\nlist tools on Tools visitors get\nsw 1 0 build\nsw 2 1 fly\n";
+  rev := redit_edit_rev(e[..]); #assert rev > 0 && redit_edit_rev(e[..]) == rev;   // it moves only when the model does
+  // the shell's batch (message 520) is the page's own write
+  batch := "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"cell\",\"table\":\"rows\",\"row\":2,\"col\":\"on\",\"v\":\"1\"}]}";
+  #assert wmsg(e[..], REDIT_MSG_BATCH, batch);
+  wstep(e[..], 0.048);
+  #assert redit_world_wants(e[..]) && redit_world_url(e[..]) == "/api/worlds/moonlit-marsh" && redit_world_body(e[..]) == batch && (redit_world_flags(e[..]) & HTTP_POST) != 0;
+  // a visitor's page, and an owner's without ?edit, ask the world for nothing and take no batch
+  v: [1] RealmEdit;
+  redit_start(v[..], "the-grid");
+  wstep(v[..], 0);
+  #assert answer(v[..], 3, VISITOR) && !redit_may(v[..]) && !redit_edit_own(v[..]);
+  for k: 1..<100 { wstep(v[..], cast(f32) k * 0.05); }
+  #assert !redit_world_wants(v[..]) && redit_edit_model(v[..]) == "" && !wmsg(v[..], REDIT_MSG_BATCH, batch);
+  o: [1] RealmEdit;
+  // an owner's page the host never asks (no ?edit) asks the world for nothing
+  redit_start(o[..], "moonlit-marsh");
+  wstep(o[..], 0);
+  #assert answer(o[..], 3, MADE) && redit_may(o[..]);
+  for k: 1..<100 { wstep(o[..], cast(f32) k * 0.05); }
+  #assert !redit_world_wants(o[..]) && !o[0].world[0].on && !wmsg(o[..], REDIT_MSG_BATCH, batch);
+  // a realm whose face does not opt in never steps the world: the layer alone asks it nothing and leaves the shell's batch alone
+  n2: [1] RealmEdit;
+  redit_start(n2[..], "moonlit-marsh");
+  redit_step(n2[..], 0, 1440, 900, 1);
+  #assert answer(n2[..], 3, MADE) && redit_may(n2[..]);
+  for k: 1..<100 { redit_step(n2[..], cast(f32) k * 0.05, 1440, 900, 1); }
+  #assert !redit_world_wants(n2[..]) && !n2[0].world[0].on && !redit_message(n2[..], REDIT_MSG_BATCH, batch);
+}

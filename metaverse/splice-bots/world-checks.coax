@@ -246,7 +246,7 @@ SptShell :: struct { m: [1] EdModel; scratch: [EM_BYTES] u8; name: [EM_NAME] u8;
   #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].sel == 0;
   // the shell's batch goes as this page's own write; while it is in flight a second is said, not sent
   move := "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"set\",\"id\":2,\"col\":\"x\",\"v\":300}]}";
-  #assert spw_shell_batch(p, move) && wf_body(f) == "" && f[0].body_n == move.count;
+  #assert spw_shell_batch(p, move) && wf_body(f, p[0].batch[..]) == "" && f[0].body_n == move.count;
   #assert !spw_shell_batch(p, move) && em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].no_n > 0;
   // the write stood: its answer says one step can be undone, and its event moves the piece in the model
   did := "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"move\",\"id\":2,\"x\":300,\"y\":0,\"z\":150}]}";
@@ -313,7 +313,7 @@ SptView :: struct { vp: [1] Viewport; w: [1] SpvWork; }
   #assert vp_dragging(vp) && moved.ok && moved.x0 != m.x0;
   spv_pointer(g, p, vp, w, v, at.x + 60, at.y, 2);
   e: [WE_BATCH] WorldEdit;
-  sent := we_batch_read(cast(string) f[0].body[0..<f[0].body_n], e[..]);
+  sent := we_batch_read(cast(string) p[0].batch[0..<f[0].body_n], e[..]);
   #assert sent.ok && sent.rev == 2 && sent.what == WB_APPLY && sent.n == 1 && e[0].op == WE_MOVE && e[0].id == 2 && e[0].x != 280 && e[0].x % 50 == 0 && e[0].z == 150;
   // a cancel sends nothing, and a tool that holds nothing looks around when the camera flies
   f[0].body_n = 0;
@@ -486,7 +486,7 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
   #assert !spw_plan_add(g, p, vw[0].w[..], PlaceView.{}, 117, 3);
   p[0].here = true; p[0].here_x = 700; p[0].here_z = 150;
   #assert spw_plan_add(g, p, vw[0].w[..], PlaceView.{}, 117, 3) && !spw_plan_add(g, p, vw[0].w[..], PlaceView.{}, 999, 3);
-  sent := we_batch_read(cast(string) f[0].body[0..<f[0].body_n], e[..]);
+  sent := we_batch_read(cast(string) p[0].batch[0..<f[0].body_n], e[..]);
   #assert sent.ok && sent.rev == 2 && sent.n == 3 && e[0].op == WE_SPAWN && e[0].kind == 117 && e[2].kind == 117 && e[0].id == 0;
   #assert (e[0].x != e[1].x || e[0].z != e[1].z) && (e[1].x != e[2].x || e[1].z != e[2].z) && e[0].x > 300 && e[0].x < 1100 && e[0].z > -250 && e[0].z < 550;
   f[0].body_n = 0;
@@ -497,7 +497,7 @@ spt_cell :: (out: [] u8, rev: int, table: string, row: int, col: string, value: 
   #assert b.status == SPB_OK && spt_round(x[..], 1.1, spt_events(x[..], yard, 3)) == WFQ_EVENTS && f[0].rev == 3 && g[0].layer[0].st[0].n == 3;
   p[0].here_x = 17500; p[0].here_z = -7450;
   #assert spw_plan_add(g, p, vw[0].w[..], PlaceView.{}, 117, 3);
-  planned := cast(string) k[0].keep[0..<ct_copy(k[0].keep[..], cast(string) f[0].body[0..<f[0].body_n])];
+  planned := cast(string) k[0].keep[0..<ct_copy(k[0].keep[..], cast(string) p[0].batch[0..<f[0].body_n])];
   b = spw_batch(t[0].g[..], t[0].x[..], with, planned, true, t[0].third[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
   #assert b.status == SPB_OK && b.edits == 3 && t[0].g[0].layer[0].st[0].n == 6;
   f[0].body_n = 0;

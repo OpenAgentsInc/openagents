@@ -93,6 +93,13 @@ A page's module exports three calls and takes the two messages:
 Splice Bots is the first page (`metaverse/splice-bots/world.coax`, `spw_model`). WorldBuilder is the
 second (`apps/openagents-web/worldbuilder-world.coax`, `wbe_model`).
 
+A made realm (`apps/openagents-web/myrealm.coax`) and the realm pages that load the edit layer
+(`metaverse/edit/edit.coax`, #13478) are the third. Both follow the realm's world with
+`metaverse/edit/realm-page.coax` (`rp_model`): `atonce`, the scripts table, and the board and the
+tools as lists of switches. They export `coaxial_edit_own(state)` (below), which answers 1 once the
+realm's server has said this visitor is its owner or an admin; the host asks again every frame until
+it does.
+
 Two more calls are for a page whose world is the visitor's own, kept in their browser
 (WorldBuilder, #13422):
 

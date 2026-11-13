@@ -48,6 +48,7 @@
 #load "computer.coax";
 #load "../../coax/lib/media/realm_seat_wire.coax";   // a seat's bodies (seat.proto): one writer and reader
 #load "agent.coax";
+#load "realm-page.coax";   // the realm's world: followed by an editor's page, told to the editor shell (#13478)
 
 REDIT_ROWS :: 16; REDIT_KEY :: 32; REDIT_LABEL :: 48;
 REDIT_TOOLS :: 6; REDIT_CARDS :: 8; REDIT_WHO :: 16; REDIT_THING :: 16;
@@ -76,6 +77,7 @@ REDIT_ARMED_S :: 4.0f32;   // DELETE, tapped once, reads SURE? this long
 RF_LORE :: 0; RF_ASK :: 1; RF_STEP :: 2; RF_REWARD :: 5; RF_N :: 6;
 REDIT_LORES :: 12; REDIT_QUESTS :: 12; REDIT_DRAFT :: 400; REDIT_PART :: 160;
 REDIT_MSG_TEXT :: 1; REDIT_MSG_VOICE :: 50; REDIT_FACTS :: 600;
+REDIT_MSG_BATCH :: 520;   // the editor shell's world.edit.v1 batch (metaverse-engine/editor/shell.coax ES_BATCH)
 REDIT_ACT_VOICE :: 7; REDIT_ACT_VOICE_TO :: 8; REDIT_ACT_VOICE_SAY :: 9;
 REDIT_HTTP_FRAME :: 32;   // coax/web/HTTP.md: the next frame drawn goes with the JSON body as its "image"
 REDIT_REPLY :: 300; REDIT_REPLY_S :: 10.0f32;   // a reply (the server keeps 300 characters), shown this long
@@ -145,6 +147,10 @@ RealmEdit :: struct {
   hear: [REDIT_TYPED] u8; hear_n: int; hear_due: int; asking: bool;
   reply: [REDIT_REPLY] u8; reply_n: int; reply_at: f32; say_due: bool;
   to_selector: bool; hear_typing: bool; hears: bool;
+  // the realm's world, for someone who may edit and opened the page with ?edit (realm-page.coax, #13478):
+  // shell_asked, the host asked for the editor; world_at, the layer's clock at the world's last step;
+  // world_version, the spec's version the world was read at (a board changed by any road is read again)
+  world: [1] RealmPage; shell_asked: bool; world_at: f32; world_version: int;
 }
 
 // ---- small helpers of its own (a realm's names stay its own)
@@ -915,6 +921,51 @@ redit_step :: (e: [] RealmEdit, time: f32, width: f32, height: f32, dpr: f32) {
   if e[0].computer { rc_step_time(e[0].pc[..], time); }
   redit_next(e);
 }
+
+// ---- the realm's world, for a face that opts in (apps/openagents-web/edit-face.h, EDIT_FACE_WORLD): its
+// step, its messages, its one request, and what the editor shell is told (docs/protocol/editor-model-v1.md),
+// all from the realm's page in its world (realm-page.coax), which My Realm also holds. The host opens the shell
+// for whoever may edit. Nothing above calls these, so a realm whose face does not opt in (Everglade, whose
+// board belongs with its own world, #13477; My Realm, which follows its world itself) asks its world nothing.
+// A frame's turn, on the layer's clock: the world is opened only for a visitor who may edit, on a page the host
+// asked for the editor (opened with ?edit).
+redit_world_step :: (e: [] RealmEdit) #export_c #effects(all) {
+  w := e[0].world[..];
+  dt := e[0].time - e[0].world_at; e[0].world_at = e[0].time;
+  if !w[0].on {
+    if !e[0].shell_asked || !redit_may(e) || e[0].slug_n == 0 || !rp_open(w, cast(string) e[0].slug[0..<e[0].slug_n]) { return; }
+    e[0].world_version = e[0].version;
+  }
+  // the spec was read again (a revise, a row deleted, the CLI): so are the world's state and tables
+  if e[0].version != e[0].world_version { e[0].world_version = e[0].version; wf_reopen(w[0].f[..]); }
+  rp_step(w, ifx dt < 0 then 0 else (ifx dt > 0.25 then 0.25 else dt));
+}
+// A message for the page: the world's answers, and the editor shell's batches (message 520), which are the
+// page's own writes. True when it was the world's.
+redit_world_message :: (e: [] RealmEdit, kind: int, text: string) -> bool #export_c #effects(all) {
+  if kind >= HTTP_KIND && kind < HTTP_KIND + 8 { return rp_answer(e[0].world[..], kind - HTTP_KIND, text); }
+  if kind == RP_BATCH_KIND && e[0].world[0].on { _ := rp_batch(e[0].world[..], text); return true; }
+  return false;
+}
+// A message for a realm whose board the editor shell edits: the world's first, then the layer's own. Such a
+// realm hands its messages here where another hands them to redit_message.
+redit_message_shell :: (e: [] RealmEdit, kind: int, text: string) -> bool #export_c #effects(all) {
+  if redit_world_message(e, kind, text) { return true; }
+  return redit_message(e, kind, text);
+}
+redit_world_wants :: (e: [] RealmEdit) -> bool #export_c #effects(all) { return rp_wants(e[0].world[..]); }
+redit_world_url :: (e: [] RealmEdit) -> string #export_c #effects(all) { return rp_url(e[0].world[..]); }
+redit_world_body :: (e: [] RealmEdit) -> string #export_c #effects(all) { return rp_body(e[0].world[..]); }
+// the player's key goes with every request: a maker with no account is known to the realm's world only by it
+redit_world_flags :: (e: [] RealmEdit) -> int #export_c #effects(all) { return rp_flags(e[0].world[..]) | TRACK_KEY; }
+redit_world_sent :: (e: [] RealmEdit, id: int) #export_c #effects(all) { rp_sent(e[0].world[..], id); }
+// The host asks these only on a page opened with ?edit (coax/web/host.js editorOpen, editorCarry): being asked is
+// how the layer knows the editor is wanted. The model is "" until the world was opened.
+redit_edit_rev :: (e: [] RealmEdit) -> int #export_c #effects(all) { e[0].shell_asked = true; return rp_rev(e[0].world[..]); }
+redit_edit_model :: (e: [] RealmEdit) -> string #export_c #effects(all) { return ifx e[0].world[0].on then rp_model(e[0].world[..]) else ""; }
+// Whether the shell opens over this page: the realm's server said this visitor may edit it (its owner, its
+// admins and the site's). The host asks again until it does (coax/web/host.js, coaxial_edit_own).
+redit_edit_own :: (e: [] RealmEdit) -> bool #export_c #effects(all) { e[0].shell_asked = true; return redit_may(e); }
 
 // ---- input: 0 not this layer's, 1 used, 2 typed text the host should send (the realm does nothing with it)
 

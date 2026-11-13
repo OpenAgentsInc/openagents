@@ -42,7 +42,8 @@ WorldFollow :: struct {
   want: int; flying: int; host_id: int = -1;
   late: [WF_LATE] int; late_id: [WF_LATE] int; late_n: int;   // requests given up on (what each asked, the host's id): their answers are still taken
   url: [WF_URL] u8; url_n: int;
-  body: [WE_BATCH_BODY] u8; body_n: int;       // a batch waiting to be sent, or in flight
+  body_n: int;                // bytes of a batch waiting to be sent, or in flight. The page keeps the bytes (wf_post's
+                              // store): a world's batch may be 65,536 bytes, and a realm's board never sends one that long
   since: f32; wait: f32;
   hold: f32;                  // seconds the document is not asked for again, after an answer that was none
   nudged: bool; refetch: bool;
@@ -63,10 +64,11 @@ wf_open :: (f: [] WorldFollow, id: string, lane: int, pins: WorldPins) -> bool {
 wf_reopen :: (f: [] WorldFollow) { if f[0].status != WFS_OFF { f[0].refetch = true; f[0].reopened += 1; } }
 // The dev server says world `id` was written.
 wf_nudge :: (f: [] WorldFollow, id: string) { if f[0].status != WFS_OFF && id == wf_id(f) { f[0].nudged = true; } }
-// A batch to send (the page's own edits, an undo, a publish): false when one is still waiting or it is too long.
-wf_post :: (f: [] WorldFollow, body: string) -> bool {
-  if f[0].status == WFS_OFF || f[0].body_n > 0 || body.count == 0 || body.count > f[0].body.count { return false; }
-  for i: 0..<body.count { f[0].body[i] = body[i]; }
+// A batch to send (the page's own edits, an undo, a publish), copied into `store`, which the page keeps for
+// this follower and hands to wf_body: false when one is still waiting or it is longer than the store.
+wf_post :: (f: [] WorldFollow, store: [] u8, body: string) -> bool {
+  if f[0].status == WFS_OFF || f[0].body_n > 0 || body.count == 0 || body.count > store.count { return false; }
+  for i: 0..<body.count { store[i] = body[i]; }
   f[0].body_n = body.count;
   f[0].refused_n = 0; f[0].refused_edit = -1; f[0].refused_status = 0;
   return true;
@@ -118,7 +120,7 @@ wf_step :: (f: [] WorldFollow, dt: f32) {
 // What the face sends now, if anything.
 wf_wants :: (f: [] WorldFollow) -> bool { return f[0].want != WFQ_NONE && f[0].url_n > 0; }
 wf_url :: (f: [] WorldFollow) -> string { return cast(string) f[0].url[0..<f[0].url_n]; }
-wf_body :: (f: [] WorldFollow) -> string { return ifx f[0].want == WFQ_POST then cast(string) f[0].body[0..<f[0].body_n] else ""; }
+wf_body :: (f: [] WorldFollow, store: [] u8) -> string { return ifx f[0].want == WFQ_POST && f[0].body_n <= store.count then cast(string) store[0..<f[0].body_n] else ""; }
 wf_flags :: (f: [] WorldFollow) -> int { return ifx f[0].want == WFQ_POST then WF_HTTP_POST | WF_HTTP_WANTED else WF_HTTP_WANTED; }
 // The face sent it: the host's id for the answer (below 0: the host could not take it now).
 wf_sent :: (f: [] WorldFollow, host_id: int) {
@@ -193,11 +195,12 @@ wf_refused :: (f: [] WorldFollow) -> string { return cast(string) f[0].refused[0
 wf_line :: (body: string, k: int) -> string { return ct_part(body, '\n', k); }
 
 #test "world follow: a page reads the document, then asks for events on its clock, and at once when nudged" {
+  store: [2048] u8;   // the page's room for a batch on its way
   f := [1] WorldFollow.[WorldFollow.{}]; pins := WorldPins.{engine = 1, rules = 1, content = 2, wire = 1};
   wf_step(f[..], 1); #assert !wf_wants(f[..]) && f[0].status == WFS_OFF;
   #assert !wf_open(f[..], "Splice", WL_DEV, pins) && !wf_open(f[..], "splice", 2, pins) && wf_open(f[..], "splice", WL_DEV, pins);
   wf_step(f[..], 0.016);
-  #assert wf_wants(f[..]) && wf_url(f[..]) == "/api/worlds/splice?lane=dev" && wf_flags(f[..]) == WF_HTTP_WANTED && wf_body(f[..]) == "";
+  #assert wf_wants(f[..]) && wf_url(f[..]) == "/api/worlds/splice?lane=dev" && wf_flags(f[..]) == WF_HTTP_WANTED && wf_body(f[..], store[..]) == "";
   wf_sent(f[..], 3); #assert !wf_wants(f[..]) && f[0].flying == WFQ_DOC && f[0].sent == 1;
   wf_step(f[..], 0.5); #assert !wf_wants(f[..]);   // one request at a time
   #assert wf_answer(f[..], 4, "200\n{}").what == WFQ_NONE && f[0].flying == WFQ_DOC;   // another request's answer
@@ -224,6 +227,7 @@ wf_line :: (body: string, k: int) -> string { return ct_part(body, '\n', k); }
   wf_sent(f[..], 2); a = wf_answer(f[..], 2, "garbage"); #assert a.what == WFQ_EVENTS && a.status == 0 && a.body == "";
 }
 #test "world follow: a request given up on is asked again, and its answer is still taken when it comes first (#13475)" {
+  store: [2048] u8;   // the page's room for a batch on its way
   f := [1] WorldFollow.[WorldFollow.{}]; pins := WorldPins.{engine = 1, rules = 1, content = 2, wire = 1};
   #assert wf_open(f[..], "splice", WL_DEV, pins);
   wf_step(f[..], 0.016); wf_sent(f[..], 3);
@@ -244,7 +248,7 @@ wf_line :: (body: string, k: int) -> string { return ct_part(body, '\n', k); }
   #assert wf_open(f[..], "splice", WL_DEV, pins);
   f[0].refetch = false; f[0].status = WFS_FOLLOWING; f[0].since = WF_POLL;
   wf_step(f[..], 0.016); #assert f[0].want == WFQ_EVENTS; wf_sent(f[..], 1);
-  #assert wf_post(f[..], "BATCH");
+  #assert wf_post(f[..], store[..], "BATCH");
   wf_step(f[..], WF_RETRY * 5);
   #assert f[0].late_n == 1 && f[0].late[0] == WFQ_EVENTS && f[0].late_id[0] == 1 && f[0].want == WFQ_POST;
   wf_sent(f[..], 4);
@@ -306,35 +310,38 @@ wf_line :: (body: string, k: int) -> string { return ct_part(body, '\n', k); }
   wf_step(f[..], WF_RETRY); #assert wf_wants(f[..]);
 }
 #test "world follow: a write goes first, one at a time; a refusal's words are kept; nothing is written on the live lane" {
+  store: [2048] u8;   // the page's room for a batch on its way
   f := [1] WorldFollow.[WorldFollow.{}]; pins := WorldPins.{engine = 1, rules = 1, content = 2, wire = 1};
-  #assert !wf_post(f[..], WE_UNDO_FIXTURE) && wf_open(f[..], "splice", WL_DEV, pins);
+  #assert !wf_post(f[..], store[..], WE_UNDO_FIXTURE) && wf_open(f[..], "splice", WL_DEV, pins);
   wf_step(f[..], 0.016); wf_sent(f[..], 0); a := wf_answer(f[..], 0, "200\n{}"); wf_loaded(f[..], WorldState.{rev = 7, dev = 7});
-  #assert wf_post(f[..], WE_UNDO_FIXTURE) && !wf_post(f[..], WE_UNDO_FIXTURE) && !wf_post(f[..], "");
+  #assert !wf_post(f[..], store[0..<4], WE_UNDO_FIXTURE);   // longer than the page's room for it
+  #assert wf_post(f[..], store[..], WE_UNDO_FIXTURE) && !wf_post(f[..], store[..], WE_UNDO_FIXTURE) && !wf_post(f[..], store[..], "");
   wf_step(f[..], 0.016);
-  #assert wf_wants(f[..]) && f[0].want == WFQ_POST && wf_url(f[..]) == "/api/worlds/splice" && wf_body(f[..]) == WE_UNDO_FIXTURE && wf_flags(f[..]) == 5;
+  #assert wf_wants(f[..]) && f[0].want == WFQ_POST && wf_url(f[..]) == "/api/worlds/splice" && wf_body(f[..], store[..]) == WE_UNDO_FIXTURE && wf_flags(f[..]) == 5;
   wf_sent(f[..], 2); a = wf_answer(f[..], 2, "422\n{\"error\":\"nothing to undo\"}");
   #assert a.what == WFQ_POST;
   wf_posted(f[..], a);
   #assert f[0].body_n == 0 && wf_refused(f[..]) == "nothing to undo" && f[0].refused_status == 422 && f[0].refused_edit == -1 && !f[0].nudged;
-  #assert wf_post(f[..], WE_UNDO_FIXTURE) && wf_refused(f[..]) == "";
+  #assert wf_post(f[..], store[..], WE_UNDO_FIXTURE) && wf_refused(f[..]) == "";
   wf_step(f[..], 0.016); wf_sent(f[..], 2); a = wf_answer(f[..], 2, "200\n{}"); wf_posted(f[..], a);
   #assert f[0].nudged && wf_refused(f[..]) == "";
   wf_step(f[..], 0.016); #assert f[0].want == WFQ_EVENTS;   // the batch as taken comes back as events, asked for at once
   wf_sent(f[..], 1); a = wf_answer(f[..], 1, "200\n");
-  #assert wf_post(f[..], WE_UNDO_FIXTURE);
+  #assert wf_post(f[..], store[..], WE_UNDO_FIXTURE);
   wf_step(f[..], 0.016); wf_sent(f[..], 2); a = wf_answer(f[..], 2, "422\n{\"error\":\"in the kept-clear zone 'Scanner gate'\",\"edit\":1}"); wf_posted(f[..], a);
   #assert wf_refused(f[..]) == "in the kept-clear zone 'Scanner gate'" && f[0].refused_edit == 1;
-  #assert wf_post(f[..], WE_UNDO_FIXTURE);
+  #assert wf_post(f[..], store[..], WE_UNDO_FIXTURE);
   wf_step(f[..], 0.016); wf_sent(f[..], 2); a = wf_answer(f[..], 2, "409\n{\"error\":\"stale\"}"); wf_posted(f[..], a);
   #assert f[0].nudged && f[0].refused_status == 409;
   // a live page never writes
   #assert wf_open(f[..], "splice", WL_LIVE, pins);
   wf_step(f[..], 0.016); wf_sent(f[..], 0); a = wf_answer(f[..], 0, "200\n{}"); wf_loaded(f[..], WorldState.{rev = 1, live = 1});
-  #assert wf_post(f[..], WE_UNDO_FIXTURE);
+  #assert wf_post(f[..], store[..], WE_UNDO_FIXTURE);
   wf_step(f[..], 0.016); #assert f[0].want != WFQ_POST;
 }
 
 #test "a realm that reads the world's own tables asks for them after each document, before any event; one that does not never asks" {
+  store: [2048] u8;   // the page's room for a batch on its way
   f := [1] WorldFollow.[WorldFollow.{}];
   #assert wf_open(f[..], "splice", WL_DEV, WorldPins.{engine = 1, rules = 1, content = 1, wire = 1});
   f[0].tables = true;
@@ -343,7 +350,7 @@ wf_line :: (body: string, k: int) -> string { return ct_part(body, '\n', k); }
   wf_sent(f[..], 1); a := wf_answer(f[..], 1, "200\nx");
   wf_loaded(f[..], WorldState.{rev = 3, dev = 3});
   wf_step(f[..], 5);
-  #assert f[0].want == WFQ_TABLES && wf_url(f[..]) == "/api/worlds/splice/content?lane=dev" && wf_body(f[..]) == "" && wf_flags(f[..]) == WF_HTTP_WANTED;
+  #assert f[0].want == WFQ_TABLES && wf_url(f[..]) == "/api/worlds/splice/content?lane=dev" && wf_body(f[..], store[..]) == "" && wf_flags(f[..]) == WF_HTTP_WANTED;
   wf_sent(f[..], 2); a = wf_answer(f[..], 2, "200\ntables");
   #assert a.what == WFQ_TABLES && a.status == 200 && a.body == "tables";
   wf_tabled(f[..]);

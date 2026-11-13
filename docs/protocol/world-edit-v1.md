@@ -186,6 +186,10 @@ on the realm routes. A realm hidden from the caller is no world to them.
   live is answered with dev, and a publish is refused, since a switch reaches
   everyone at once.
 
+A realm's page follows this world when someone who may edit it opens the page with `?edit`
+(`metaverse/edit/realm-page.coax`, #13478), and the editor shell shows the board and the tools as lists of
+switches ([editor-model-v1.md](editor-model-v1.md): `atonce`, `list`, `sw`).
+
 ## The server checks with the page's code
 
 The API links the world's own Coax and runs it on every batch: Splice Bots' check

@@ -216,7 +216,7 @@ coaxial_walk_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int,
 wk_plates :: (e: [] RealmEdit) -> int { return ifx e[0].plate_n < EDIT_PANELS then e[0].plate_n else EDIT_PANELS; }
 // The Grid's edit layer, for the face: typing is on; a message is the layer's (it takes it).
 coaxial_walk_wants_text :: (s: [] LandState) -> bool #export_c #effects(all) { return s.count > 0 && redit_typing(s[0].ed[..]); }
-coaxial_walk_edit_message :: (s: [] LandState, kind: int, text: string) -> bool #export_c #effects(all) { return s.count > 0 && redit_message(s[0].ed[..], kind, text); }
+coaxial_walk_edit_message :: (s: [] LandState, kind: int, text: string) -> bool #export_c #effects(all) { return s.count > 0 && redit_message_shell(s[0].ed[..], kind, text); }   // the editor shell edits this realm's board (#13478)
 coaxial_walk_cursor :: (s: [] LandState) -> int #export_c #effects(all) {
   if s.count < 1 || s[0].touch || !s[0].pointed || s[0].wk[0].drag_on { return 0; }
   x := s[0].px; y := s[0].py;

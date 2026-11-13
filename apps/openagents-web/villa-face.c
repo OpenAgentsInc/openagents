@@ -37,6 +37,7 @@ int64_t vf_motion_named(figs_view f, coax_string name);
 #define EXPORT(name) __attribute__((export_name(name)))
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
 IMPORT("coaxial_http") int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags);
+#define EDIT_FACE_WORLD   /* the editor shell edits this realm's board (#13478) */
 #include "edit-face.h"
 #define PLAYER_URL "/api/playtest/player"
 #define RIG_WHY "rig must be animal: this is for a dog"
@@ -78,6 +79,7 @@ static figs_view fv(void) { return (figs_view){figs, 1}; }
 static coax_t_Villa *villa(uint32_t state) { return (coax_t_Villa *)(uintptr_t)state; }
 static coax_v_t_Villa at(uint32_t state) { return (coax_v_t_Villa){villa(state), 1}; }
 static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){villa(state)->ed.e, 1}; }
+EDIT_FACE_SHELL(ed(state))   /* what the editor shell is told of this realm's world (#13478) */
 
 // You: a slight shadow of a person. The dog: a dog of the usual build, its
 // coat pale so it glows white (villa.coax draws it so).
