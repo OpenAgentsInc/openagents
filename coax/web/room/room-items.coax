@@ -606,56 +606,76 @@ ri_test_heard :: (v: [] RmServer, k: int, text: string) -> bool {
 // wear, with the API down, answering twice, losing answers, and answering late across a room's restart;
 // then log out, the room killed, and log in. Nothing is lost and nothing is doubled, and the ledger
 // reconciles to nothing.
-ri_test_play :: (seed: int) -> bool {
-  v: [1] RmServer; st: [1] RiStore; ob: [IO_ANSWER] u8;
+// v and st come as their declarations leave them (ri_test_plays, below).
+ri_test_play :: (v: [] RmServer, st: [] RiStore, seed: int) -> bool {
+  ob: [IO_ANSWER] u8;
   wall := 1762190000000 + seed * 100000; rng := seed * 7919 + 17; kills := 0; restarts := 0;
   late := ItemOp.{}; late_due := false;
-  ri_test_init(v[..], wall); seat := SeatId.{value = 0};
-  c := ri_open(v[..], 0, 0, "p-a", 7);
+  ri_test_init(v, wall); seat := SeatId.{value = 0};
+  c := ri_open(v, 0, 0, "p-a", 7);
   for step: 0..<2400 {
-    wall += 1100; rm_clock(v[..], 1000 + step * 1100, wall);
+    wall += 1100; rm_clock(v, 1000 + step * 1100, wall);
     rec := v[0].itm.c[0].rec; stage := char_stage(rec, 1);
     cloak := 0; for b: 0..<rec.bag_n { if v[0].itm.c[0].kinds[b] == 3 { cloak = rec.bag[b]; } }
     done := stage == 9 && cloak > 0 && rec.worn[1] == cloak;
-    if done && rm_items_pending(v[..]) == 0 && !late_due { break; }
+    if done && rm_items_pending(v) == 0 && !late_due { break; }
     // the player's next act, from what the server has told it; only when nothing of its is waiting
-    if v[0].itm.c[0].synced && rm_items_pending(v[..]) == 0 {
-      if stage == 0 || stage == 7 { _ := ri_say(v[..], 0, seat, 1); }
-      else if stage < 7 && kills < 24 { ri_kill(v[..], 0, seat, 0); kills += 1; }
-      else if stage == 9 && cloak > 0 && rec.worn[1] != cloak { _ := ri_wear(v[..], 0, seat, cloak); }
+    if v[0].itm.c[0].synced && rm_items_pending(v) == 0 {
+      if stage == 0 || stage == 7 { _ := ri_say(v, 0, seat, 1); }
+      else if stage < 7 && kills < 24 { ri_kill(v, 0, seat, 0); kills += 1; }
+      else if stage == 9 && cloak > 0 && rec.worn[1] != cloak { _ := ri_wear(v, 0, seat, cloak); }
     }
     // an old room's post that the API only now takes
-    if late_due && rng % 3 == 0 { _ := ri_store_answer(st[..], late, wall, ob[..]); late_due = false; }
-    if rm_items_due(v[..]) == 0 { continue; }
+    if late_due && rng % 3 == 0 { _ := ri_store_answer(st, late, wall, ob[..]); late_due = false; }
+    if rm_items_due(v) == 0 { continue; }
     rng = rng * 48271 % 2147483647; fault := rng / 1000 % 10;
     op := v[0].itm.box[v[0].itm.fly_i].op; request := v[0].itm.request;
-    if fault == 0 { rm_items_answer(v[..], request, 0, ""); }                                          // the API is down
-    else if fault == 1 { rm_items_answer(v[..], request, 502, "bad gateway"); }
-    else if fault == 2 { _ := ri_store_answer(st[..], op, wall, ob[..]); rm_items_answer(v[..], request, 0, ""); }   // taken, the answer lost
+    if fault == 0 { rm_items_answer(v, request, 0, ""); }                                          // the API is down
+    else if fault == 1 { rm_items_answer(v, request, 502, "bad gateway"); }
+    else if fault == 2 { _ := ri_store_answer(st, op, wall, ob[..]); rm_items_answer(v, request, 0, ""); }   // taken, the answer lost
     else if fault == 3 {                                                                               // answered twice
-      body := ri_store_answer(st[..], op, wall, ob[..]);
-      rm_items_answer(v[..], request, 200, body); rm_items_answer(v[..], request, 200, body);
+      body := ri_store_answer(st, op, wall, ob[..]);
+      rm_items_answer(v, request, 200, body); rm_items_answer(v, request, 200, body);
     } else if fault == 4 && restarts < 3 {                                                             // the room dies with the post in flight
       late = op; late_due = true; restarts += 1;
-      ri_test_init(v[..], wall); c = ri_open(v[..], 0, 0, "p-a", 7);
-    } else { rm_items_answer(v[..], request, 200, ri_store_answer(st[..], op, wall, ob[..])); }
+      ri_test_init(v, wall); c = ri_open(v, 0, 0, "p-a", 7);
+    } else { rm_items_answer(v, request, 200, ri_store_answer(st, op, wall, ob[..])); }
   }
-  if late_due { _ := ri_store_answer(st[..], late, wall, ob[..]); }
+  if late_due { _ := ri_store_answer(st, late, wall, ob[..]); }
   // log out, the room killed, log in: the record is the store's
-  ri_left(v[..], 0, seat); ri_test_init(v[..], wall + 5000); c = ri_open(v[..], 0, 0, "p-a", 7); ri_test_drain(v[..], st[..]);
-  rec := v[0].itm.c[0].rec; pelts := ri_test_items(st[..], 1);
+  ri_left(v, 0, seat); ri_test_init(v, wall + 5000); c = ri_open(v, 0, 0, "p-a", 7); ri_test_drain(v, st);
+  rec := v[0].itm.c[0].rec; pelts := ri_test_items(st, 1);
   cloak := 0; for b: 0..<rec.bag_n { if v[0].itm.c[0].kinds[b] == 3 { cloak = rec.bag[b]; } }
   if !v[0].itm.c[0].synced || char_stage(rec, 1) != 9 || rec.coin != 25 || rec.xp != 100 { return false; }           // the quest and its reward, once
-  if ri_test_items(st[..], 3) != 1 || cloak == 0 || rec.worn[1] != cloak { return false; }                             // one cloak, worn
-  if ri_test_wrote(st[..], LOP_CONSUME) != 2 || ri_test_wrote(st[..], LOP_GRANT) != pelts + 2 + 1 { return false; }   // every pelt granted is in the bag or was brought
+  if ri_test_items(st, 3) != 1 || cloak == 0 || rec.worn[1] != cloak { return false; }                             // one cloak, worn
+  if ri_test_wrote(st, LOP_CONSUME) != 2 || ri_test_wrote(st, LOP_GRANT) != pelts + 2 + 1 { return false; }   // every pelt granted is in the bag or was brought
   if pelts + 2 > kills || rec.bag_n != pelts + 1 { return false; }                                                    // never more drops than kills
   return ledger_reconcile(st[0].l[..], st[0].l[0].out_n);
 }
-#test "items: 1,000 fault-injected plays: nothing lost, nothing doubled, and the ledger reconciles" #steps 400000000000 {
-  bad := -1;
-  for seed: 0..<1000 { if !ri_test_play(seed) { bad = seed; break; } }
-  #assert bad == -1;
+// The 1,000 plays (#13385, #13386). They pass only as native code: three of them use the evaluator's
+// whole traversal budget. One native check may run COAX_CHECK_SECONDS (120 s) of wall time, and a
+// check over it fails in the evaluator. Declaring a server costs about 45 ms of writing memory, and
+// one check of 1,000 plays that each declared their own took 48 s on an idle build host and over
+// 120 s beside other suites. So a play starts from a copy of one declared server (a tenth of the
+// cost), and the plays are ten checks of 100 seeds, which run side by side.
+ri_test_plays :: (first: int) -> int {
+  fresh: [1] RmServer; fresh_st: [1] RiStore; v: [1] RmServer; st: [1] RiStore;
+  for seed: first..<first + 100 {
+    v[0] = fresh[0]; st[0] = fresh_st[0];
+    if !ri_test_play(v[..], st[..], seed) { return seed; }
+  }
+  return -1;
 }
+#test "items: 1,000 fault-injected plays, seeds 0 to 99: nothing lost, nothing doubled, and the ledger reconciles" #steps 40000000000 { #assert ri_test_plays(0) == -1; }
+#test "items: 1,000 fault-injected plays, seeds 100 to 199: nothing lost, nothing doubled, and the ledger reconciles" #steps 40000000000 { #assert ri_test_plays(100) == -1; }
+#test "items: 1,000 fault-injected plays, seeds 200 to 299: nothing lost, nothing doubled, and the ledger reconciles" #steps 40000000000 { #assert ri_test_plays(200) == -1; }
+#test "items: 1,000 fault-injected plays, seeds 300 to 399: nothing lost, nothing doubled, and the ledger reconciles" #steps 40000000000 { #assert ri_test_plays(300) == -1; }
+#test "items: 1,000 fault-injected plays, seeds 400 to 499: nothing lost, nothing doubled, and the ledger reconciles" #steps 40000000000 { #assert ri_test_plays(400) == -1; }
+#test "items: 1,000 fault-injected plays, seeds 500 to 599: nothing lost, nothing doubled, and the ledger reconciles" #steps 40000000000 { #assert ri_test_plays(500) == -1; }
+#test "items: 1,000 fault-injected plays, seeds 600 to 699: nothing lost, nothing doubled, and the ledger reconciles" #steps 40000000000 { #assert ri_test_plays(600) == -1; }
+#test "items: 1,000 fault-injected plays, seeds 700 to 799: nothing lost, nothing doubled, and the ledger reconciles" #steps 40000000000 { #assert ri_test_plays(700) == -1; }
+#test "items: 1,000 fault-injected plays, seeds 800 to 899: nothing lost, nothing doubled, and the ledger reconciles" #steps 40000000000 { #assert ri_test_plays(800) == -1; }
+#test "items: 1,000 fault-injected plays, seeds 900 to 999: nothing lost, nothing doubled, and the ledger reconciles" #steps 40000000000 { #assert ri_test_plays(900) == -1; }
 #test "items: a seated player's frames only ask: a talk far from its speaker, an item not held and an empty slot change nothing; the room's own kill counts" #steps 4000000000 {
   v: [1] RmServer; ck_test_init(v[..]); #assert rm_content_load(v[..], EC_FIXTURE);
   k := ck_test_join(v[..], 0, 7, CharacterCapture.{}); ck_test_place(v[..], k);
