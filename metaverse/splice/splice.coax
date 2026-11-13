@@ -374,6 +374,9 @@ splice_req_url :: (s: [] Splice) -> string #export_c #effects(all) { return wf_u
 splice_req_body :: (s: [] Splice) -> string #export_c #effects(all) { return wf_body(s[0].page[0].f[..]); }
 splice_req_flags :: (s: [] Splice) -> int #export_c #effects(all) { return wf_flags(s[0].page[0].f[..]); }
 splice_req_sent :: (s: [] Splice, id: int) #export_c #effects(all) { wf_sent(s[0].page[0].f[..], id); }
+// A new engine started on this state (the host calls the face's coaxial_page at each load): the
+// request the old engine had out is asked again at once (#13457).
+splice_engine_started :: (s: [] Splice) #export_c #effects(all) { if s.count > 0 { wf_engine_started(s[0].page[0].f[..]); } }
 // What the editor shell is told (world.coax spw_model, editor.model.v1), and a count that changes when it does.
 splice_edit_model :: (s: [] Splice) -> string #export_c #effects(all) { return ifx s.count > 0 && s[0].follow == 2 then spw_model(s[0].game[..], s[0].page[..]) else ""; }
 splice_edit_rev :: (s: [] Splice) -> int #export_c #effects(all) {

@@ -47,6 +47,10 @@ static void world_request(uint32_t state) {
   splice_req_sent(at(state), coaxial_http((uint32_t)(uintptr_t)url.data, (uint32_t)url.count, (uint32_t)(uintptr_t)body.data, (uint32_t)body.count, (int32_t)splice_req_flags(at(state))));
 }
 
+// The host calls this as each engine starts, after the state is kept (coax/web/host.js loadEngine):
+// on a code reload it dropped the old engine's requests, so the one the world had out is asked again.
+EXPORT("coaxial_page") void coaxial_page(uint32_t state, int32_t page) { (void)page; splice_engine_started(at(state)); }
+
 // A fact of the page for a headless check (coaxial.fieldProbe): its place in the world, and from 100 the run's.
 // The editor shell's model of this page's world (coax/web/host.js carries it to the shell on ?edit).
 EXPORT("coaxial_edit_rev") int32_t coaxial_edit_rev(uint32_t state) { return (int32_t)splice_edit_rev(at(state)); }

@@ -117,6 +117,14 @@ wf_sent :: (f: [] WorldFollow, host_id: int) {
   if host_id >= 0 { f[0].flying = f[0].want; f[0].host_id = host_id; f[0].wait = 0; f[0].sent += 1; }
   f[0].want = WFQ_NONE;
 }
+// A new engine started on this state (a code reload on the dev server keeps the state, #13457): the
+// host dropped every request the old engine had out, so the one out now gets no answer. It is
+// asked again at once, not after WF_RETRY * 5 seconds; an events request is asked as nudged.
+wf_engine_started :: (f: [] WorldFollow) {
+  if f[0].flying == WFQ_NONE { return; }
+  if f[0].flying == WFQ_EVENTS { f[0].nudged = true; }
+  f[0].flying = WFQ_NONE; f[0].host_id = -1; f[0].wait = 0;
+}
 // An answer from the host: what it answers (WFQ_NONE when it is not this follower's), its status
 // and its body. The request is no longer out.
 WfAnswer :: struct { what: int; status: int; body: string; }
@@ -210,6 +218,16 @@ wf_line :: (body: string, k: int) -> string { return ct_part(body, '\n', k); }
   for i: 0..<9 { wf_step(f[..], 1); #assert !wf_wants(f[..]); }
   wf_step(f[..], 1.5); #assert wf_wants(f[..]) && f[0].flying == WFQ_NONE;
   #assert wf_answer(f[..], 5, "200\n{}").what == WFQ_NONE;   // the old answer, should it come, is nobody's
+  // a new engine on this state: the request the old one had out is asked again in the next frame
+  wf_sent(f[..], 7); wf_step(f[..], 0.016); #assert !wf_wants(f[..]) && f[0].flying == WFQ_DOC;
+  wf_engine_started(f[..]); #assert f[0].flying == WFQ_NONE && f[0].host_id == -1;
+  wf_step(f[..], 0.016); #assert wf_wants(f[..]) && f[0].want == WFQ_DOC;
+  #assert wf_answer(f[..], 7, "200\n{}").what == WFQ_NONE;
+  wf_engine_started(f[..]); #assert f[0].want == WFQ_DOC;   // nothing out: nothing changes
+  wf_sent(f[..], 8); a = wf_answer(f[..], 8, "200\n{}"); wf_loaded(f[..], WorldState.{rev = 3, live = 3});
+  wf_step(f[..], WF_POLL_LIVE); wf_sent(f[..], 9); #assert f[0].flying == WFQ_EVENTS;
+  wf_engine_started(f[..]); wf_step(f[..], 0.016);
+  #assert wf_wants(f[..]) && f[0].want == WFQ_EVENTS && wf_url(f[..]) == "/api/worlds/splice/events?lane=live&after=3";
   // 409: the build reads neither revision; the page stops asking
   wf_sent(f[..], 6); a = wf_answer(f[..], 6, "409\n{}"); wf_not_loaded(f[..], a.status);
   #assert f[0].status == WFS_RELOAD;
