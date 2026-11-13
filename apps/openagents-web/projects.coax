@@ -514,7 +514,7 @@ draw_list :: (out: [] f32, at: int, l: Layout, p: Pen, table: string, viewer: st
     y := l.rows_top + 30 * d; x := b.x0 + 26 * d; w := box_w(b) - 52 * d;
     if m == FILTER_MINE && !signed_in(viewer) {
       v = put_fit(out, v, "LOG IN TO SEE YOUR PROJECTS", x, y, 10 * d, white, w);
-      v = put_wrapped(out, v, "LOG IN AT OPENAGENTS.COM/LOGIN WITH THE PHONE APP. ALL SHOWS EVERY PUBLIC PROJECT.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
+      v = put_wrapped(out, v, "LOG IN AT OPENAGENTS.COM/LOGIN WITH YOUR EMAIL. ALL SHOWS EVERY PUBLIC PROJECT.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
     } else if m == FILTER_MINE {
       v = put_fit(out, v, "NONE OF THESE ARE YOURS YET", x, y, 10 * d, white, w);
       v = put_wrapped(out, v, "ALL SHOWS EVERY PROJECT YOU CAN SEE.", x, y + 22 * d, 7 * d, dim, w, 13 * d, 3);
