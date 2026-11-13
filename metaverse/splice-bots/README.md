@@ -80,9 +80,10 @@ whose top is under your feet lets you over it, and walking off its edge drops yo
 figure holds the walk's widest stride, since the rig has no jump clip. On the hoverboard Space
 hops the board, and in the menus and the edit bay it still picks.
 
-A run is kept from the mine's gate: each second in the mine the checkpoint's inventory and what
-is open (the rubble, the boss wall, the banned bot, the core) is written as `splice.run.v1` when
-it changed. CONTINUE puts you back at the checkpoint with them. SCENE RESTORED and a new run let
+Sniper, the rover, is the checkpoint (#13505): standing by it keeps what you carry. Each second in
+the mine the checkpoint's inventory and what is open (the rubble, the boss wall, the banned bot, the
+core) is written as `splice.run.v1` when it changed. CONTINUE puts you back beside Sniper with them
+(at night once the boss is down). SCENE RESTORED and a new run let
 it go.
 
 ## Controls
@@ -111,7 +112,9 @@ sensor that lies in the scrap room); you can't choose, so you make room in the i
 can't fit stays where it is. What you drop he leaves until you have walked away from it. Hardware
 spliced into him and cards on his strip are his, not yours.
 
-Heat never cools below 25 for each banned piece with you (DRILL+, the core), and an Imperial robot
+Heat cools 5 a second at Sniper and nowhere else (not at the stash crate), each banned piece is +25,
+and 100 brings the Emperor's sweep. Heat never cools below 25 for each banned piece with you (DRILL+,
+the core), and an Imperial robot
 senses you from its plan's distance plus 0.07 m for each point of Heat; sneaking halves that.
 
 Everyone has a health bar: yours top left (your hearts), Digger's under it and over him, and one

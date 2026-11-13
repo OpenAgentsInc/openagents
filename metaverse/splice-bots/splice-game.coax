@@ -260,7 +260,7 @@ g_keep :: (g: [] SpGame) {
   for i: 0..<3 { g[0].save.slot[i] = g[0].slot[i]; g[0].save.strip[i] = g[0].strip[i]; }
   g[0].save.strip_n = g[0].strip_n; g[0].save.scrap = g[0].scrap; g[0].save.cells = g[0].cells;
 }
-// Back at the checkpoint outside the mine, with the inventory you had there: what was picked up
+// Back at Sniper, the rover, which is the checkpoint (#13505), with the inventory you had when you last left it: what was picked up
 // since is lost and lies where it was.
 g_respawn :: (g: [] SpGame) {
   // beside Sniper, the rover: the checkpoint
@@ -573,8 +573,8 @@ g_step :: (g: [] SpGame, dt: f32) {
   g_beats(g);   // and where the world's beats table moves the day on (flow.coax)
   // Sniper keeps what you carry: at zero you are back with what you had when you last left it
   if near_rover(g, T_SAVE_RANGE) { g_keep(g); }
-  // Heat cools only by the rover or the stash crate; at the top the Emperor's sweep comes
-  if g[0].heat > 0 && (near_rover(g, T_COOL_RANGE) || near_crate(g, T_COOL_RANGE)) { g[0].heat = hi(0, g[0].heat - T_HEAT_COOL * dt); }
+  // Heat cools only at Sniper, the rover (5 a second, #13505); at the top (100) the Emperor's sweep comes
+  if g[0].heat > 0 && near_rover(g, T_COOL_RANGE) { g[0].heat = hi(0, g[0].heat - T_HEAT_COOL * dt); }
   if g[0].heat >= T_HEAT_MAX { g[0].mode = M_BANNER; g[0].banner = B_SWEEP; g[0].banner_t = T_BANNER; return; }
   // the party: each foe keeps its plan for the time of day (content.coax plans, metaverse-engine/ai/plan.coax).
   // As shipped, raiders dance where they stand and fight only if you hit them; Imperial robots patrol,
@@ -2025,9 +2025,9 @@ g_play_run :: (g: [] SpGame) -> int {
   g[0].px = pick_x(g, PICK_PLUS) + 1; g[0].pz = pick_z(g, PICK_PLUS) + 1;
   for i: 0..<200 { g_step(g, 0.02); if g[0].have[H_PLUS] { break; } }
   if !(g[0].have[H_PLUS] && g[0].heat == T_HEAT_PIECE) { return 24; }   // the one banned piece: +25 Heat
-  g[0].px = g[0].at.crate_x + 2; g[0].pz = g[0].at.crate_z;
-  for i: 0..<100 { g_step(g, 0.02); }
-  if !(g[0].heat < 35) { return 25; }                       // Heat cools at the crate, to the banned piece's floor
+  g[0].heat = 40; g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z;
+  for i: 0..<200 { g_step(g, 0.02); }
+  if !(abs(g[0].heat - T_HEAT_PIECE) < 0.01) { return 25; }   // Heat cools at Sniper, to the banned piece's floor
   g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z; g_step(g, 0.02);
   if !(g_key(g, -15, true) && g[0].mode == M_BAY) { return 26; }   // the edit bay is in Sniper
   if !(g_key(g, 'c', true)) { return 27; } if !(g_key(g, '1', true)) { return 28; } if !(g_key(g, '3', true)) { return 29; } if !(g_key(g, -2, true)) { return 30; }
@@ -2065,6 +2065,49 @@ g_play_run :: (g: [] SpGame) -> int {
   if !(g_key(g, 'r', true)) { return 40; }
   if !(g[0].mode == M_PLAY && g[0].zone == Z_VILLAGE && !g[0].rubble_gone && g[0].hearts == T_HEARTS) { return 41; }
   return 0;
+}
+// Checkpoint and repair (#13505): Sniper is the checkpoint. Standing by it keeps what she carries; at
+// zero she is back beside it with that, and banned pieces picked up since are lost. Heat cools 5 a
+// second at Sniper and nowhere else, each banned piece is +25 and holds Heat up, and 100 is the top.
+// Digger at zero powers down and Sniper's charger repairs him.
+#test "checkpoint and repair: Sniper keeps her inventory, a respawn is beside it without the banned pieces picked up since, Heat cools 5 a second only there, and Sniper's charger repairs Digger" #steps 400000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 7);   // in the mine at dusk with Digger, his parts and cards
+  #assert T_HEAT_COOL == 5 && T_HEAT_PIECE == 25 && T_HEAT_MAX == 100;
+  // at Sniper: what she carries is kept
+  g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z; g_step(g[..], 0.02);
+  #assert !g[0].save.have[H_PLUS];
+  // out in the garage she picks up the DRILL+ (+25 Heat); it doesn't cool away from Sniper, not even at the stash crate
+  g[0].px = pick_x(g[..], PICK_PLUS) + 1; g[0].pz = pick_z(g[..], PICK_PLUS) + 1;
+  for i: 0..<200 { g_step(g[..], 0.02); if g[0].have[H_PLUS] { break; } }
+  #assert g[0].have[H_PLUS] && g[0].heat == T_HEAT_PIECE;
+  g[0].heat = 60; g[0].px = g[0].at.crate_x + 2; g[0].pz = g[0].at.crate_z;
+  for i: 0..<50 { g_step(g[..], 0.02); }
+  #assert g[0].heat == 60;
+  // at Sniper it cools 5 a second, down to the piece's 25
+  g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z;
+  for i: 0..<100 { g_step(g[..], 0.02); }
+  #assert abs(g[0].heat - 50) < 0.2;
+  for i: 0..<500 { g_step(g[..], 0.02); }
+  #assert abs(g[0].heat - T_HEAT_PIECE) < 0.01 && g[0].save.have[H_PLUS];   // kept: it was with her at Sniper
+  // a second banned piece picked up away from Sniper (the core) is lost at zero; the kept DRILL+ isn't
+  g[0].px = 0; g[0].pz = -100; g_step(g[..], 0.02);
+  g[0].have[H_CORE] = true; g[0].core_taken = true; g_step(g[..], 0.02);
+  #assert g[0].heat >= 2 * T_HEAT_PIECE;
+  g[0].hearts = 0; g_respawn(g[..]);
+  #assert dist2(g[0].px, g[0].pz, g[0].at.rover_x, g[0].at.rover_z) < T_SAVE_RANGE && g[0].have[H_PLUS] && !g[0].have[H_CORE] && !g[0].core_taken && g[0].hearts == T_HEARTS;
+  // Heat at the top: the sweep, and back at Sniper
+  g[0].px = 0; g[0].pz = -100; g[0].heat = T_HEAT_MAX; g_step(g[..], 0.02);
+  #assert g[0].mode == M_BANNER && g[0].banner == B_SWEEP;
+  for i: 0..<400 { g_step(g[..], 0.02); if g[0].mode == M_PLAY { break; } }
+  #assert g[0].mode == M_PLAY && dist2(g[0].px, g[0].pz, g[0].at.rover_x, g[0].at.rover_z) < T_SAVE_RANGE;
+  // Digger at zero powers down where he is; towed to Sniper, its charger repairs him
+  g[0].px = 0; g[0].pz = -60; g_bot_home(g[..]); g_step(g[..], 0.02);
+  d_bot_hurt(g[..], T_DIGGER_HP);
+  #assert d_down(g[..]);
+  g[0].bot_x = g[0].at.rover_x - 2; g[0].bot_z = g[0].at.rover_z; g[0].px = g[0].at.rover_x - 3; g[0].pz = g[0].at.rover_z + 1;
+  for i: 0..<400 { g_step(g[..], 0.02); if !d_down(g[..]) { break; } }
+  #assert !d_down(g[..]);
 }
 // The night return (#13505): after the boss, back to Sniper on foot, the long way round the field's
 // edge under the rim, past the bays, or the shortcut across the field through the rave, where the

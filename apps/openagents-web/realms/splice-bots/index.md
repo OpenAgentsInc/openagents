@@ -54,7 +54,7 @@ to Sniper's charger with **E**, and stand by the rover for a moment to repair Sn
 You, the Digger and every foe have a health bar. At zero health or 100 Heat you are back at the
 rover with the inventory you had when you last left it; banned pieces picked up since are lost.
 At zero the Digger powers down: press E beside him to tow him to the rover, whose charger fixes
-him. Heat cools by the rover or the stash crate, but never below 25 for each banned piece with
+him. Heat cools by 5 a second at the rover and nowhere else, but never below 25 for each banned piece with
 you, and the more Heat you have, the farther Imperial robots sense you. Your inventory has six
 slots: press I and click a slot to drop what is in it.
 

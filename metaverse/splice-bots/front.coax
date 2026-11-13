@@ -139,6 +139,7 @@ fr_continue :: (g: [] SpGame) {
   g[0].save = r.save;
   g[0].rubble_gone = r.open[0]; g[0].wall_gone = r.open[1]; g[0].boss_down = r.open[2]; g[0].core_taken = r.open[3];
   if g[0].rubble_gone { g[0].phase = PH_DUSK; }
+  if g[0].boss_down { g[0].phase = PH_NIGHT; }   // after the boss it is night (#13505)
   g_respawn(g);
   g[0].mode = M_PLAY; g[0].look_free = false;
 }
