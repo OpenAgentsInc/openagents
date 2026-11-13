@@ -17,7 +17,15 @@
 
 EV_DEMO_FLAG :: 64;             // the hello's FLAGS bit: an admin plays Everglade's own character, the demo
 EV_XP_MAX :: 9999999;
-EV_RISE_S :: 10;                // s a fallen player lies before standing again, whole, where they fell
+// A player at 0 Hit Points (SRD 5.2.1 pp.17-18, "Dropping to 0 Hit Points"): Unconscious, and the rules
+// roll a Death Saving Throw on each of its turns (rules/srd/battle-turn.coax) until three successes
+// (Stable) or three failures (dead). Until then an ally may heal it, or stabilise it with the Healer's
+// Kit (aid.coax). The room never cuts the saves short. Once they are settled and no help came, the
+// player wakes whole at the spawn, the glade, where no monster comes (creatures.coax E2M_SAFE_Z): a
+// player alone always gets back up, and never beside the pack that dropped them.
+EV_WAKE_S :: 10;                // s a player lies dead or Stable, alone, before waking at the spawn
+EV_HELP_S :: 60;                // s it lies while an ally who is up stands within EV_HELP_M (Revivify's minute, SRD p.164)
+EV_HELP_M :: 30.0;              // m: an ally this near can still reach it
 EV_CALM_S :: 30;                // s since a seat last cast or lost Hit Points before it may take a Long Rest
 
 // The dial (spec 8.2), clamped to its range as it is heard.
@@ -27,7 +35,9 @@ EvRoom :: struct {
   earned: [EG_ZONE_SEATS] bool;             // the seats that earned XP here
   xp: [EG_ZONE_SEATS] int;
   demo: [EG_ZONE_SEATS] bool;               // an admin asked for Everglade's own character (EV_DEMO_FLAG)
-  down: [EG_ZONE_SEATS] int;                // each seat: the seconds it has lain dead (ev_rise)
+  down: [EG_ZONE_SEATS] int;                // each seat: the seconds it has lain dead or Stable (ev_rise)
+  wake: [EG_ZONE_SEATS] bool;               // each seat: it wakes at the spawn on the room's next tick (ev_wake_take)
+  wakes: int;                               // the players this room has woken at the spawn
   fought: [EG_ZONE_SEATS] int;              // each seat: the tick + 1 it last cast or lost Hit Points (0 never), for the Long Rest
   hp_was: [EG_ZONE_SEATS] int;              // its Hit Points at the last second (ev_calm)
 }
@@ -103,21 +113,46 @@ ev_tick :: (v: [] RmServer, k: int) {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return; }
   if v[0].eg[k].tick % EG_HZ == 0 { ev_rise(v, k); ev_calm(v, k); }
 }
-// Once a second: a player down (dead, or at 0 Hit Points) EV_RISE_S stands again where they fell,
-// with all their Hit Points (as a page on its own stands you up after YOU DIED).
+// Whether an ally of seat s who is up stands within EV_HELP_M of it: one who could heal or revive it.
+ev_help_near :: (v: [] RmServer, k: int, s: int) -> bool {
+  b := v[0].eg[k].rules[0].b[..]; me := v[0].eg[k].seat[s].pose;
+  for o: 0..<eg_cap(v, k) {
+    if o == s || !v[0].eg[k].seat[o].live || !v[0].eg[k].seat[o].placed || !v[0].eg[k].rules[0].live[o] { continue; }
+    c := b[0].c[EGB_SEAT + o]; p := v[0].eg[k].seat[o].pose;
+    if c.dead || c.hp <= 0 { continue; }
+    dx := p.x - me.x; dz := p.z - me.z;
+    if dx * dx + dz * dz <= f32(EV_HELP_M) * f32(EV_HELP_M) { return true; }
+  }
+  return false;
+}
+// Once a second: a player whose Death Saving Throws are settled (dead, or Stable at 0 Hit Points) and
+// whom no one helped in EV_WAKE_S (EV_HELP_S with an ally near) wakes whole at the spawn. A player
+// still dying is left to its saves.
 ev_rise :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
   b := v[0].eg[k].rules[0].b[..];
   for s: 0..<eg_cap(v, k) {
     i := EGB_SEAT + s;
-    if !v[0].eg[k].seat[s].live || !v[0].eg[k].rules[0].live[s] || (!b[0].c[i].dead && b[0].c[i].hp > 0) { e[0].down[s] = 0; continue; }
+    settled := b[0].c[i].dead || (b[0].c[i].hp <= 0 && b[0].c[i].stable);
+    if !v[0].eg[k].seat[s].live || !v[0].eg[k].rules[0].live[s] || !settled { e[0].down[s] = 0; continue; }
     e[0].down[s] += 1;
-    if e[0].down[s] < EV_RISE_S { continue; }
+    if e[0].down[s] < (ifx ev_help_near(v, k, s) then EV_HELP_S else EV_WAKE_S) { continue; }
     e[0].down[s] = 0;
     b[0].c[i].hp = b[0].c[i].hp_max; b[0].c[i].temp = 0; b[0].c[i].dead = false; b[0].c[i].cond = 0;
     b[0].c[i].death_ok = 0; b[0].c[i].death_fail = 0; b[0].c[i].stable = false;
+    e[0].wake[s] = true; e[0].wakes += 1; e[0].hp_was[s] = b[0].c[i].hp;
   }
 }
+// Seat s's waking, once: where the host puts it (x, z, facing), as it puts a new player (admin.coax
+// rm_e2_admin_warp hands it to room-tick.c, which places the body and says so with a step of seq 0).
+ev_wake_take :: (v: [] RmServer, k: int, s: int, out: [] f32) -> bool {
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= eg_cap(v, k) || out.count < 3 || !v[0].ev[k].wake[s] { return false; }
+  v[0].ev[k].wake[s] = false;
+  out[0] = f32(E2_SPAWN_X); out[1] = f32(E2_SPAWN_Z); out[2] = f32(E2_SPAWN_FACE);
+  return true;
+}
+// The players room k has woken at the spawn (the room's stats and the loop proof read it).
+rm_ev_wakes :: (v: [] RmServer, k: int) -> int #export_c #effects(all) { return ifx k >= 0 && k < EG_ROOMS then v[0].ev[k].wakes else 0; }
 // ---- the Long Rest (#12801). SRD 5.2.1's eight hours of no fighting, taken at the inn's hearth. A
 // seat may take it out of combat: EV_CALM_S since it last cast or lost Hit Points. The server checks
 // on the ask (input.coax e2_heard_old_rest).
@@ -176,17 +211,20 @@ ev_long_rest :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   #assert v[0].ev[k].xp[0] == EV_XP_MAX && ev_xp_of(v[..], k, SeatId.{value = 0}) == EV_XP_MAX;
   #assert ev_xp_of(v[..], -1, SeatId.{value = 0}) == 0 && ev_xp_of(v[..], k, SeatId.{value = EG_SEATS}) == 0;
 }
-#test "progress: the hello's demo flag; a fallen seat rises whole after EV_RISE_S; a Long Rest waits EV_CALM_S after harm" #steps 4000000000 {
+#test "progress: the hello's demo flag; a dead seat alone wakes whole at the spawn after EV_WAKE_S; a Long Rest waits EV_CALM_S after harm" #steps 4000000000 {
   v: [1] RmServer; k := rc_test_room(v[..], "pair-e2-rise", 1, false);
   ev_hello(v[..], k, SeatId.{value = 0}, EV_DEMO_FLAG | 1); #assert v[0].ev[k].demo[0];
   ev_hello(v[..], k, SeatId.{value = 0}, 1); #assert !v[0].ev[k].demo[0];
   b := v[0].eg[k].rules[0].b[..]; i := EGB_SEAT;
   b[0].c[i].hp = 0; b[0].c[i].dead = true; b[0].c[i].cond = 1; b[0].c[i].death_fail = 2;
-  for q: 0..<EV_RISE_S - 1 { ev_rise(v[..], k); }
-  #assert b[0].c[i].dead && v[0].ev[k].down[0] == EV_RISE_S - 1;
+  for q: 0..<EV_WAKE_S - 1 { ev_rise(v[..], k); }
+  #assert b[0].c[i].dead && v[0].ev[k].down[0] == EV_WAKE_S - 1 && !v[0].ev[k].wake[0];
   #assert !ev_rest_ok(v[..], k, SeatId.{value = 0});
   ev_rise(v[..], k);
   #assert !b[0].c[i].dead && b[0].c[i].hp == b[0].c[i].hp_max && b[0].c[i].cond == 0 && b[0].c[i].death_fail == 0 && v[0].ev[k].down[0] == 0;
+  // it wakes at the spawn, once: the host is handed the place as it is handed a moderator's move
+  at: [3] f32; #assert v[0].ev[k].wake[0] && rm_ev_wakes(v[..], k) == 1 && rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, at[..]) && at[0] == f32(E2_SPAWN_X) && at[1] == f32(E2_SPAWN_Z);
+  #assert !rm_e2_admin_warp(v[..], k, SeatId.{value = 0}, at[..]) && !ev_wake_take(v[..], k, -1, at[..]) && !ev_wake_take(v[..], k, 0, at[0..<2]);
   ev_rise(v[..], k); #assert v[0].ev[k].down[0] == 0;
   ev_calm(v[..], k); #assert v[0].ev[k].hp_was[0] == b[0].c[i].hp_max && v[0].ev[k].fought[0] == 0;
   #assert ev_rest_ok(v[..], k, SeatId.{value = 0});
@@ -199,4 +237,49 @@ ev_long_rest :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   #assert b[0].c[i].hp == b[0].c[i].hp_max && b[0].c[i].cond == 0 && b[0].c[i].slots[1] == b[0].c[i].slots_max[1] && v[0].ev[k].hp_was[0] == b[0].c[i].hp_max;
   #assert !ev_rest_ok(v[..], k, SeatId.{value = EG_SEATS}) && !ev_rest_ok(v[..], k, SeatId.{value = 1});
   ev_fresh(v[..], k); #assert v[0].ev[k].xp[0] == 0 && v[0].ev[k].down[0] == 0;
+}
+#test "progress: a dying seat is left to its Death Saving Throws; a Stable one wakes as a dead one does; an ally near gives it EV_HELP_S" #steps 4000000000 {
+  v: [1] RmServer; k := rc_test_room(v[..], "pair-e2-down", 2, false);
+  b := v[0].eg[k].rules[0].b[..]; i := EGB_SEAT; at: [3] f32;
+  st := v[0].eg[k].seat[..]; st[0].placed = true; st[1].placed = true; st[0].pose.x = 0; st[0].pose.z = -200; st[1].pose.x = 0; st[1].pose.z = -200 + f32(EV_HELP_M) + 1;
+  // dying: 0 Hit Points, neither Stable nor dead. However long it lies, the room does not stand it up
+  b[0].c[i].hp = 0; b[0].c[i].dead = false; b[0].c[i].stable = false; b[0].c[i].death_ok = 2; b[0].c[i].death_fail = 2;
+  for q: 0..<EV_HELP_S * 3 { ev_rise(v[..], k); }
+  #assert b[0].c[i].hp == 0 && b[0].c[i].death_ok == 2 && b[0].c[i].death_fail == 2 && v[0].ev[k].down[0] == 0 && !v[0].ev[k].wake[0] && !ev_help_near(v[..], k, 0);
+  // Stable, the ally out of reach: EV_WAKE_S, then whole and waking
+  b[0].c[i].stable = true; b[0].c[i].death_ok = 0; b[0].c[i].death_fail = 0;
+  for q: 0..<EV_WAKE_S - 1 { ev_rise(v[..], k); } #assert b[0].c[i].hp == 0 && !v[0].ev[k].wake[0];
+  ev_rise(v[..], k); #assert b[0].c[i].hp == b[0].c[i].hp_max && !b[0].c[i].stable && v[0].ev[k].wake[0] && ev_wake_take(v[..], k, 0, at[..]) && rm_ev_wakes(v[..], k) == 1;
+  // dead with an ally who is up within reach: the ally's minute (a Revivify, a heal); the count starts when it settles
+  st[1].pose.z = -200 + f32(EV_HELP_M) - 1; b[0].c[i].hp = 0; b[0].c[i].dead = true;
+  #assert ev_help_near(v[..], k, 0) && !ev_help_near(v[..], k, 1);   // the fallen one helps no one
+  for q: 0..<EV_HELP_S - 1 { ev_rise(v[..], k); } #assert b[0].c[i].dead && !v[0].ev[k].wake[0] && v[0].ev[k].down[0] == EV_HELP_S - 1;
+  ev_rise(v[..], k); #assert !b[0].c[i].dead && v[0].ev[k].wake[0] && rm_ev_wakes(v[..], k) == 2;
+  // an ally who is down too, unplaced, or gone is no help
+  b[0].c[i].hp = 0; b[0].c[i].dead = true; b[0].c[i + 1].hp = 0; #assert !ev_help_near(v[..], k, 0);
+  b[0].c[i + 1].hp = 5; st[1].placed = false; #assert !ev_help_near(v[..], k, 0); st[1].placed = true; #assert ev_help_near(v[..], k, 0);
+  // healed before the count is out: no waking, and the count starts again
+  for q: 0..<3 { ev_rise(v[..], k); } b[0].c[i].dead = false; b[0].c[i].hp = 4; ev_rise(v[..], k); #assert v[0].ev[k].down[0] == 0 && rm_ev_wakes(v[..], k) == 2;
+  #assert rm_ev_wakes(v[..], -1) == 0 && rm_ev_wakes(v[..], EG_ROOMS) == 0;
+}
+#test "progress: the room rolls a dying seat's Death Saving Throws on its own turns; settled, the seat wakes whole at the spawn EV_WAKE_S later" #steps 4000000000 {
+  v: [1] RmServer; k := rc_test_room(v[..], "pair-e2-saves", 1, false);
+  b := v[0].eg[k].rules[0].b[..]; i := EGB_SEAT;
+  eg_test_tick(v[..], k);
+  b[0].c[i].hp = 0; b[0].c[i].cond = b[0].c[i].cond | RS_UNCONSCIOUS;
+  settled := -1; woke := -1; rolled := false;
+  for q: 0..<90 * EG_HZ {
+    if woke >= 0 { break; }
+    eg_test_tick(v[..], k);
+    if b[0].c[i].death_ok + b[0].c[i].death_fail > 0 { rolled = true; }
+    if settled < 0 && (b[0].c[i].dead || b[0].c[i].stable) { settled = q; }
+    if b[0].c[i].hp > 0 { woke = q; }
+  }
+  // five saves at most, one a 6 s round: settled within 31 s, by the rules' own rolls
+  #assert woke >= 0 && (rolled || settled >= 0);
+  if rm_ev_wakes(v[..], k) == 0 { #assert b[0].c[i].hp == 1 && settled < 0; }   // a natural 20: up with 1 Hit Point where it lay
+  else {
+    #assert settled >= 0 && settled < 31 * EG_HZ && b[0].c[i].hp == b[0].c[i].hp_max && !b[0].c[i].dead && !b[0].c[i].stable && v[0].ev[k].wake[0];
+    #assert woke - settled >= (EV_WAKE_S - 1) * EG_HZ && woke - settled <= (EV_WAKE_S + 1) * EG_HZ;
+  }
 }

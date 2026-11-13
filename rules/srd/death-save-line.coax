@@ -25,12 +25,14 @@ rs_death_saves :: (hp: int, dead: bool, word: int) -> RsDeathSaves {
   if v.down && (word & RS_DEATH_SAID) != 0 { v.ok = word & 3; v.fail = (word >> 2) & 3; v.stable = (word & 16) != 0; }
   return v;
 }
-// The plain line a realm shows while you are down or dead (empty when you are neither).
+// The plain line a realm shows while you are down or dead (empty when you are neither). Once the saves
+// are settled a room wakes you where you first stood unless an ally heals you first (Everglade:
+// everglade/server/progress.coax ev_rise), so the line says so.
 rs_death_line :: (v: RsDeathSaves, out: [] u8) -> int {
-  if v.dead { return rs_death_put(out, 0, "You are dead"); }
+  if v.dead { return rs_death_put(out, 0, "You are dead · you wake where you began"); }
   if !v.down { return 0; }
   n := rs_death_put(out, 0, "You are down");
-  if v.stable { return rs_death_put(out, n, " · stable until healed"); }
+  if v.stable { return rs_death_put(out, n, " · stable · you wake where you began"); }
   n = rs_death_put(out, n, " · death saves: ");
   n = rs_death_digit(out, n, v.ok); n = rs_death_put(out, n, " saved, ");
   n = rs_death_digit(out, n, v.fail); n = rs_death_put(out, n, " failed");
@@ -46,7 +48,7 @@ rs_death_digit :: (out: [] u8, at: int, d: int) -> int { if at >= out.count { re
   #assert rs_death_saves(0, false, 0).ok == 0 && rs_death_saves(5, false, w).ok == 0;
   out: [64] u8; n := rs_death_line(d, out[..]);
   #assert cast(string) out[0..<n] == "You are down · death saves: 2 saved, 1 failed";
-  c.stable = true; n = rs_death_line(rs_death_saves(0, false, rs_death_word(c)), out[..]); #assert cast(string) out[0..<n] == "You are down · stable until healed";
-  n = rs_death_line(rs_death_saves(0, true, 0), out[..]); #assert cast(string) out[0..<n] == "You are dead";
+  c.stable = true; n = rs_death_line(rs_death_saves(0, false, rs_death_word(c)), out[..]); #assert cast(string) out[0..<n] == "You are down · stable · you wake where you began";
+  n = rs_death_line(rs_death_saves(0, true, 0), out[..]); #assert cast(string) out[0..<n] == "You are dead · you wake where you began";
   #assert rs_death_line(rs_death_saves(3, false, 0), out[..]) == 0;
 }

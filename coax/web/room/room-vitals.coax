@@ -587,7 +587,7 @@ rv_test_back :: (v: [] RmServer, key: string, pid: string, admin: bool, hello: s
   // an admin's demo character (the hello's FLAGS 64): Everglade's own, whole, unless it left hurt (the #12883 report: 52 of 57)
   c = rv_test_back(v[..], key, "p-0000000000000003", true, "H 6 ranger.1.0.0 druid 64 -", 52, false);
   #assert c.hp == 52 && c.hp_max == 57;
-  // down at 0 stays down, and dead stays dead (the room stands them up after EV_RISE_S, ev_rise)
+  // down at 0 stays down, and dead stays dead (the room wakes them at the spawn once their death saves settle, ev_rise)
   c = rv_test_back(v[..], key, "p-0000000000000004", false, "H 6 ranger.0.0.0 druid 0 -", 0, false);
   #assert c.hp == 0 && !c.dead;
   c = rv_test_back(v[..], key, "p-0000000000000005", false, "H 6 ranger.0.0.0 warlock 0 -", 0, true);
