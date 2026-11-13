@@ -26,12 +26,12 @@ static void wt_stream_frame(int i, int ch, const uint8_t *text, size_t n) {
   if (n > 65535) { wt_oversize++; return; }
   if (!c->wt_stream[ch]) {
     int64_t id = wt_open_stream(wts, wt_sid(i), false);
-    if (id < 0) { c->doomed = true; return; }
+    if (id < 0) { doom(i); return; }
     c->wt_stream[ch] = id + 1;
   }
   uint8_t head[2] = {(uint8_t)(n >> 8), (uint8_t)n};
-  if (wt_stream_send(wts, wt_sid(i), c->wt_stream[ch] - 1, head, 2, false) || wt_stream_send(wts, wt_sid(i), c->wt_stream[ch] - 1, text, n, false)) { c->doomed = true; return; }
-  if (wt_stream_waiting(wts, wt_sid(i)) > OUT_MAX) { c->doomed = true; slow_closed++; }
+  if (wt_stream_send(wts, wt_sid(i), c->wt_stream[ch] - 1, head, 2, false) || wt_stream_send(wts, wt_sid(i), c->wt_stream[ch] - 1, text, n, false)) { doom(i); return; }
+  if (wt_stream_waiting(wts, wt_sid(i)) > OUT_MAX) { doom(i); slow_closed++; }
 }
 /* Frame text to WebTransport conn i, on its channel. */
 static void wt_out(int i, const uint8_t *text, size_t n) {
@@ -58,7 +58,7 @@ static bool wt_session(void *user, int sid, const char *path, const char *author
   coax_string r = {req, rn};
   if (!rm_work_request_ready(r, rooms_warmed)) { wt_refused++; return false; }
   int slot = -1;
-  for (int i = 0; i < CONNS; i++) if (conns[i].fd < 0) { slot = i; break; }
+  slot = conn_take();
   if (slot < 0) { rm_st_refuse_more(view(), 0); wt_refused++; return false; }
   int fd = dup(wt_fd(wts));   /* a real descriptor, so every conns[].fd >= 0 test holds; never polled */
   if (fd < 0) { wt_refused++; return false; }
@@ -70,6 +70,7 @@ static bool wt_session(void *user, int sid, const char *path, const char *author
     return false;
   }
   wt_conn_of[sid] = slot + 1;
+  live_add(slot);
   st_joined(slot, now_us());
   printf("room: WebTransport session %d is conn %d\n", sid, slot);
   return true;
@@ -81,7 +82,7 @@ static void wt_datagram(void *user, int sid, const uint8_t *data, size_t n) {
   conns[i].heard = now_ms();
   st_frame_in(data, n, n);
   rm_wt_heard(view(), i, (coax_string){(const char *)data, (int64_t)n});
-  if (rm_relay_kicked(view(), i)) conns[i].doomed = true;
+  if (rm_relay_kicked(view(), i)) doom(i);
 }
 /* The page's reliable frames: its first stream's bytes, length-first (another stream of its is closed). */
 static void wt_stream_in(void *user, int sid, int64_t stream, const uint8_t *data, size_t n, bool fin) {
@@ -92,16 +93,16 @@ static void wt_stream_in(void *user, int sid, int64_t stream, const uint8_t *dat
   if (!c->wt_in) c->wt_in = stream + 1;
   if (c->wt_in != stream + 1) return;
   c->heard = now_ms();
-  if (c->n + n > IN_CAP) { c->doomed = true; return; }
+  if (c->n + n > IN_CAP) { doom(i); return; }
   memcpy(c->in + c->n, data, n); c->n += n;
   size_t at = 0, off = 0, len = 0;
   int r;
   while ((r = wt_frame_next(c->in, c->n, at, 4096, &off, &len)) != 0) {
-    if (r < 0) { c->doomed = true; return; }
+    if (r < 0) { doom(i); return; }
     st_frame_in(c->in + off, len, len + 2);
     rm_wt_reliable(view(), i, (coax_string){(const char *)c->in + off, (int64_t)len});
     at = off + len;
-    if (rm_relay_kicked(view(), i)) { c->doomed = true; return; }
+    if (rm_relay_kicked(view(), i)) { doom(i); return; }
   }
   memmove(c->in, c->in + at, c->n - at); c->n -= at;
 }
@@ -109,7 +110,7 @@ static void wt_closed(void *user, int sid) {
   (void)user;
   int i = wt_conn_of[sid] - 1;
   wt_conn_of[sid] = 0;
-  if (i >= 0 && conns[i].wt == sid + 1) { conns[i].wt_gone = true; conns[i].doomed = true; }
+  if (i >= 0 && conns[i].wt == sid + 1) { conns[i].wt_gone = true; doom(i); }
 }
 /* Before shut(i) forgets conn i: its session ends (when it hasn't), and it is no longer WebTransport. */
 static void wt_forget(int i) {
@@ -123,8 +124,9 @@ static void wt_forget(int i) {
 /* A new tick's state is coming: what of the last still waits is stale (counted). */
 static void wt_tick_begin(void) {
   if (!wts) return;
-  for (int j = 0; j < CONNS; j++) {
-    if (conns[j].fd < 0 || !conns[j].wt) continue;
+  for (int q = 0; q < live_n; q++) {
+    int j = live[q];
+    if (!conns[j].wt) continue;
     conns[j].wt_stale += wt_drop_waiting(wts, wt_sid(j));
     for (int a = 0; a < conns[j].wt_agains; a++) if (wt_send_datagram(wts, wt_sid(j), conns[j].wt_again[a], conns[j].wt_again_n[a]) == 0) conns[j].wt_dg++;
     conns[j].wt_agains = 0;
@@ -134,8 +136,9 @@ static void wt_tick_begin(void) {
 /* Each second: every session's count of stale drops, datagrams waiting and lost, on its session stream. */
 static void wt_note(void) {
   if (!wts) return;
-  for (int j = 0; j < CONNS; j++) {
-    if (conns[j].fd < 0 || !conns[j].wt || conns[j].doomed) continue;
+  for (int q = 0; q < live_n; q++) {
+    int j = live[q];
+    if (!conns[j].wt || conns[j].doomed) continue;
     char t[96]; int64_t lost = wt_session_lost(wts, wt_sid(j));
     int n = snprintf(t, sizeof t, "nq %lld %d %lld", (long long)conns[j].wt_stale, wt_datagrams_waiting(wts, wt_sid(j)), (long long)(lost < 0 ? 0 : lost));
     if (n > 0 && (size_t)n < sizeof t) wt_stream_frame(j, WT_SESSION_STREAM, (const uint8_t *)t, (size_t)n);

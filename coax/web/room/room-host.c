@@ -22,8 +22,14 @@
    one whose waiting bytes pass OUT_MAX, or whose oldest waiting byte is OUT_AGE_MS old, is closed.
    Each everglade tick the room hears how much each socket still has waiting (rm_conn_waiting), and
    a socket behind gets no new rows that tick: a row is superseded by the next, so it waits for the
-   page to catch up instead of queueing state already out of date (#12783). */
+   page to catch up instead of queueing state already out of date (#12783).
+   The loop waits on a kernel readiness set (room-wait.h) and walks only the open connections (live[]),
+   the ones to close (doom) and the free slots from the lowest: a wake costs what happened, not the
+   table's size (#13275, #13384). */
 #define _POSIX_C_SOURCE 200809L
+#ifdef __APPLE__
+#define _DARWIN_C_SOURCE 1   /* kqueue beside the POSIX names (room-wait.h) */
+#endif
 #include "room.h"
 #ifdef COAX_FAST_EDIT_ENABLED
 #include "fast-edit-native.h"
@@ -32,6 +38,7 @@
 #include "room-crash.h"   /* crash capture: the handlers, the dump, the last crash at the next start (#13298) */
 #include "ws.h"
 #include "wt.h"
+#include "room-wait.h"   /* the wait on the sockets: epoll or kqueue (#13275, #13384) */
 #include <arpa/inet.h>
 #include <curl/curl.h>   /* the posters' HTTPS client, one kept handle a lane (#13300) */
 #include <errno.h>
@@ -61,13 +68,39 @@ typedef struct {
   int fd; bool ws; size_t n; uint8_t in[IN_CAP]; int64_t heard;
   uint8_t *out; size_t on, ocap;   // bytes waiting to go out (sent as the socket takes them)
   int64_t since;                   // when out last went from empty to waiting (ms), 0 empty
-  bool doomed;                     // to close once the frame being sent is out to everyone
+  bool doomed;                     // to close once the frame being sent is out to everyone (doom)
+  bool out_on;                     // the wait set watches it for room to write (its output waited at the last pump)
   // a WebTransport session's (room-wt.c, #13176): its id + 1 (0 a WebSocket), whether it already ended,
   // its streams by channel (id + 1), the page's stream (id + 1), datagrams sent, and state dropped stale
   int wt; bool wt_gone; int64_t wt_stream[5]; int64_t wt_in, wt_dg, wt_stale;
   uint8_t wt_again[4][256]; uint16_t wt_again_n[4]; int wt_agains;   /* hastened frames to send once more as datagrams next tick (room-wt.c) */
 } conn;
 static conn conns[CONNS];
+/* The open connections in ascending order (every walk of the table is a walk of these), the lowest slot
+   that may be free, and the connections to close at the next reap. */
+#define WAIT_LISTEN (-1)   /* the wait set's tags: a connection's slot, the listener, WebTransport's one UDP socket */
+#define WAIT_WT (-2)
+static wait_set waits;
+static int live[CONNS], live_n, free_low;
+static int doomed_q[CONNS], doomed_n; static bool doomed_more;
+static void doom(int i) {
+  if (conns[i].doomed) return;
+  conns[i].doomed = true;
+  if (doomed_n < CONNS) doomed_q[doomed_n++] = i; else doomed_more = true;
+}
+static int conn_take(void) {
+  for (int i = free_low; i < CONNS; i++) if (conns[i].fd < 0) { free_low = i; return i; }
+  return -1;
+}
+static void live_add(int i) {
+  int k = live_n++;
+  while (k > 0 && live[k - 1] > i) { live[k] = live[k - 1]; k--; }
+  live[k] = i;
+}
+static void live_drop(int i) {
+  for (int k = 0; k < live_n; k++) if (live[k] == i) { memmove(live + k, live + k + 1, (size_t)(live_n - k - 1) * sizeof live[0]); live_n--; break; }
+  if (i < free_low) free_low = i;
+}
 static coax_t_RmServer *server;
 static int64_t slow_closed, out_peak;
 static coax_v_t_RmServer view(void) { return (coax_v_t_RmServer){server, 1}; }
@@ -266,6 +299,8 @@ static bool pump(int i) {
   }
   if (done) { memmove(c->out, c->out + done, c->on - done); c->on -= done; }
   if (!c->on) { c->since = 0; if (st_c[i].burst == 2) st_drained(i, now_us()); }
+  /* watched for room to write only while output waits */
+  if (!c->wt && (c->on > 0) != c->out_on && wait_out(&waits, c->fd, i, c->on > 0)) c->out_on = c->on > 0;
   return true;
 }
 // n bytes onto i's output, sent as far as the socket takes them now. Past OUT_MAX, or on a failed
@@ -273,19 +308,19 @@ static bool pump(int i) {
 static bool put_out(int i, const void *p, size_t n) {
   conn *c = &conns[i];
   if (c->fd < 0 || c->doomed) return false;
-  if (c->on + n > OUT_MAX) { c->doomed = true; slow_closed++; return false; }
+  if (c->on + n > OUT_MAX) { doom(i); slow_closed++; return false; }
   if (c->on + n > c->ocap) {
     size_t cap = c->ocap ? c->ocap : 8192;
     while (cap < c->on + n) cap *= 2;
     uint8_t *grown = realloc(c->out, cap);
-    if (!grown) { c->doomed = true; return false; }
+    if (!grown) { doom(i); return false; }
     c->out = grown; c->ocap = cap;
   }
   if (!c->on) c->since = now_ms();
   st_put(i, n);
   memcpy(c->out + c->on, p, n); c->on += n;
   if ((int64_t)c->on > out_peak) out_peak = (int64_t)c->on;
-  if (!pump_held && !pump(i)) c->doomed = true;
+  if (!pump_held && !pump(i)) doom(i);
   return true;
 }
 /* Every connection's held output sent: the everglade tick holds its frames (pump_held) and sends each
@@ -294,10 +329,11 @@ static bool put_out(int i, const void *p, size_t n) {
 static void pump_all(void) {
   pump_held = false;
   int64_t now = now_ms();
-  for (int j = 0; j < CONNS; j++) {
-    if (conns[j].fd < 0 || conns[j].doomed || !conns[j].on) continue;
-    if (!pump(j)) { conns[j].doomed = true; continue; }
-    if (conns[j].on && now - conns[j].since >= OUT_AGE_MS) { conns[j].doomed = true; slow_closed++; }
+  for (int q = 0; q < live_n; q++) {
+    int j = live[q];
+    if (conns[j].doomed || !conns[j].on) continue;
+    if (!pump(j)) { doom(j); continue; }
+    if (conns[j].on && now - conns[j].since >= OUT_AGE_MS) { doom(j); slow_closed++; }
   }
 }
 static void wt_out(int i, const uint8_t *text, size_t n);   /* room-wt.c */
@@ -318,7 +354,7 @@ static void relay_flush(void) {
     size_t k = ws_build(out, sizeof out, WS_TEXT, server->rout.e, (size_t)len, false);
     if (!k) continue;
     int to = 0, last = -1;
-    for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && conns[j].ws && rm_relay_to(view(), j)) { if(conns[j].wt){wt_out(j,server->rout.e,(size_t)len);to++;last=j;continue;} if(put_out(j,out,k)){to++;last=j;}else{fo_refused((coax_v_t_FrameObserved){server->st.frames.e,1},(int64_t)k);} }
+    for (int q = 0; q < live_n; q++) if (conns[live[q]].ws && rm_relay_to(view(), live[q])) { int j = live[q]; if(conns[j].wt){wt_out(j,server->rout.e,(size_t)len);to++;last=j;continue;} if(put_out(j,out,k)){to++;last=j;}else{fo_refused((coax_v_t_FrameObserved){server->st.frames.e,1},(int64_t)k);} }
     /* counted by type (room-stats.h); a D frame (one seat's) with no more parts ends a joiner's first snapshot */
     int64_t t0 = now_us();
     int f = st_frame_out(server->rout.e, (size_t)len, to, k);
@@ -367,10 +403,11 @@ static void fault_step(void) {
     (void)kept;
   }
 }
+static int64_t tick_parts[PARTS];   /* the last tick's time by part (slow_tick) */
 static void everglade_tick(void) {
   int64_t was[PARTS]; memcpy(was, part_us, sizeof was);
   pump_held = true;
-  for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && conns[j].ws) rm_conn_waiting(view(), j, (int64_t)conns[j].on);
+  for (int q = 0; q < live_n; q++) if (conns[live[q]].ws) rm_conn_waiting(view(), live[q], (int64_t)conns[live[q]].on);
   wt_tick_begin();   /* a WebTransport session's state of the last tick, still waiting, is stale */
   for (int k = 0; k < WORLD_ROOMS; k++) {
     if (!everglade_room_tick(k)) continue;
@@ -398,13 +435,44 @@ static void everglade_tick(void) {
   st_hist_add(&st_work[STW_FOLK], d[PART_TOWN] + d[PART_PEOPLE]);
   st_hist_add(&st_work[STW_WRITE], d[PART_WRITE]);
   st_hist_add(&st_work[STW_SEND], d[PART_SEND]);
+  memcpy(tick_parts, d, sizeof tick_parts);
   int64_t ms = now_ms();
-  for (int j = 0; j < CONNS; j++) {
-    if (conns[j].fd < 0 || !conns[j].on) continue;
+  for (int q = 0; q < live_n; q++) {
+    int j = live[q];
+    if (!conns[j].on) continue;
     if ((int64_t)conns[j].on > st_c[j].q_bytes) st_c[j].q_bytes = (int64_t)conns[j].on;
     if (conns[j].since && ms - conns[j].since > st_c[j].q_ms) st_c[j].q_ms = ms - conns[j].since;
   }
   st_cost_us += now_us() - ts;
+}
+/* A tick over the service level (10 ms, docs/deployment/service-levels.md) says where its time went
+   (#13384): its wall time beside the CPU time this thread got, its parts, and how often the kernel
+   took the thread off the CPU (not asked) or the thread waited (asked) while it ran. A slow tick whose
+   CPU time is short was not running: the machine was busy with something else. One line a second at
+   most, the worst since the last, with how many were slow. */
+#define SLOW_TICK_US 10000
+static int64_t slow_cpu0, slow_sw0[2];
+static int64_t cpu_us(void) { struct timespec t; clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t); return (int64_t)t.tv_sec * 1000000 + t.tv_nsec / 1000; }
+static void slow_begin(void) {
+  struct rusage u; getrusage(RUSAGE_SELF, &u);
+  slow_cpu0 = cpu_us(); slow_sw0[0] = u.ru_nivcsw; slow_sw0[1] = u.ru_nvcsw;
+}
+static void slow_tick(int64_t dt) {
+  static int64_t said_at, n, worst, w_cpu, w_sw[2], w_parts[PARTS];
+  if (dt >= SLOW_TICK_US) {
+    n++;
+    if (dt > worst) {
+      struct rusage u; getrusage(RUSAGE_SELF, &u);
+      worst = dt; w_cpu = cpu_us() - slow_cpu0; w_sw[0] = u.ru_nivcsw - slow_sw0[0]; w_sw[1] = u.ru_nvcsw - slow_sw0[1];
+      memcpy(w_parts, tick_parts, sizeof w_parts);
+    }
+  }
+  int64_t now = now_ms();
+  if (!n || now - said_at < 1000) return;
+  printf("room: slow ticks %lld, the worst %.2f ms with %.2f ms on the CPU, taken off it %lld times and waited %lld:", (long long)n, worst / 1000.0, w_cpu / 1000.0, (long long)w_sw[0], (long long)w_sw[1]);
+  for (int q = 0; q < PARTS; q++) if (w_parts[q]) printf(" %s %.2f", part_name[q], w_parts[q] / 1000.0);
+  printf(" ms, %lld players\n", (long long)rm_players(view()));
+  said_at = now; n = worst = 0;
 }
 static void reap(void);
 static void shut(int i) {
@@ -413,16 +481,21 @@ static void shut(int i) {
   if (was) rm_left(view(), i);
   if(was)st_discarded_bytes+=(int64_t)conns[i].on;
   wt_forget(i);
-  close(conns[i].fd);
+  close(conns[i].fd);   /* and it leaves the wait set */
   free(conns[i].out);
   conns[i] = (conn){.fd = -1};
+  live_drop(i);
   if (was) relay_flush();
 }
 // Closes every doomed connection (each close may queue an "l SEAT" that dooms another).
 static void reap(void) {
-  for (bool again = true; again;) {
-    again = false;
-    for (int i = 0; i < CONNS; i++) if (conns[i].fd >= 0 && conns[i].doomed) { shut(i); again = true; }
+  while (doomed_n || doomed_more) {
+    int batch[CONNS], n = doomed_n;
+    memcpy(batch, doomed_q, (size_t)n * sizeof batch[0]); doomed_n = 0;
+    if (doomed_more) { doomed_more = false; n = 0; for (int q = 0; q < live_n; q++) if (conns[live[q]].doomed) batch[n++] = live[q]; }
+    /* lowest first, as the table was walked */
+    for (int a = 1; a < n; a++) { int v = batch[a], b = a; while (b > 0 && batch[b - 1] > v) { batch[b] = batch[b - 1]; b--; } batch[b] = v; }
+    for (int a = 0; a < n; a++) if (conns[batch[a]].fd >= 0 && conns[batch[a]].doomed) shut(batch[a]);
   }
 }
 /* "METHOD /api/room/sN/REST" for a shard N (1 to 3 digits); rest begins with '/' and ends with ' '. */
@@ -625,7 +698,7 @@ static void frames(int i) {
     ws_frame f;
     int r = ws_parse(c->in, c->n, 4096, &f);
     if (r == 0) return;
-    if (r < 0) { c->doomed = true; return; }
+    if (r < 0) { doom(i); return; }
     if (f.opcode == WS_TEXT) {
       st_frame_in(f.payload, f.length,f.consumed);
       uint8_t trace[256];coax_string text={(const char *)f.payload,(int64_t)f.length};
@@ -633,15 +706,15 @@ static void frames(int i) {
       if(observed>=0)latency_out(i,trace,observed);
       else{int64_t tail=rm_lt_tail(view(),i);rm_heard(view(),i,text);rm_lt_received(view(),i,tail,received);}
       relay_flush();
-      if (rm_relay_kicked(view(), i)) { c->doomed = true; return; }
+      if (rm_relay_kicked(view(), i)) { doom(i); return; }
     } else if (f.opcode == WS_PING) {
       uint8_t out[160]; size_t k = ws_build(out, sizeof out, WS_PONG, f.payload, f.length, false);
-      if (!k) { c->doomed = true; return; }
+      if (!k) { doom(i); return; }
       put_out(i, out, k);
     } else if (f.opcode == WS_CLOSE) {
       uint8_t out[8]; size_t k = ws_build(out, sizeof out, WS_CLOSE, (const uint8_t *)"\x03\xe8", 2, false);
       if (k) put_out(i, out, k);
-      c->doomed = true; return;
+      doom(i); return;
     }
     memmove(c->in, c->in + f.consumed, c->n - f.consumed); c->n -= f.consumed;
   }
@@ -938,7 +1011,7 @@ static void poster_hear(void) {
     else if(lane==POST_CONTROL&&ok){
       rm_control(view(),body);
       if(server->ctl.edit_known&&server->ctl.edit!=edit_asked){edit_asked=server->ctl.edit;bg_world_changed(background());}
-      for(int i=0;i<CONNS;i++)if(conns[i].fd>=0&&rm_relay_kicked(view(),i))conns[i].doomed=true;
+      for(int q=0;q<live_n;q++)if(rm_relay_kicked(view(),live[q]))doom(live[q]);
     }
   }
   /* what an answer told the pages (r 0 elsewhere to a fenced seat, #12834; g CODE to a traveller whose
@@ -966,8 +1039,9 @@ static void directory_post(void) {
 /* Once a second, off the tick: each seat's relevant entities, and its socket's round trip (room-stats.h). */
 static void stats_sample(void) {
   int64_t t0 = now_us(), ks[2];
-  for (int i = 0; i < CONNS; i++) {
-    if (conns[i].fd < 0 || !conns[i].ws || !rm_st_conn(view(), i, (coax_v_s64){ks, 2})) continue;
+  for (int q = 0; q < live_n; q++) {
+    int i = live[q];
+    if (!conns[i].ws || !rm_st_conn(view(), i, (coax_v_s64){ks, 2})) continue;
     st_c[i].relevant = (int)rm_st_relevant(view(), ks[0], (coax_t_SeatId){ ks[1]});
     st_c[i].rtt_ms = conns[i].wt ? wt_rtt(i) : st_rtt(conns[i].fd);
     int64_t w[4];
@@ -1156,10 +1230,12 @@ int main(int argc, char **argv) {
   if (bind(lfd, (struct sockaddr *)&a, sizeof a) || listen(lfd, 512)) { perror("room: listen"); return 1; }
   fcntl(lfd, F_SETFL, O_NONBLOCK); fcntl(lfd, F_SETFD, FD_CLOEXEC);
   for (int i = 0; i < CONNS; i++) conns[i].fd = -1;
+  if (!wait_open(&waits) || !wait_add(&waits, lfd, WAIT_LISTEN)) { perror("room: the wait set"); return 1; }
   printf("room: listening on %s:%d\n", address, port);
   if (wt_cert && *wt_cert && wt_key && *wt_key) {
     const char *wp = getenv("OA_ROOM_WT_PORT");
     if (!wt_start(address, wp && *wp ? atoi(wp) : port, wt_cert, wt_key)) return 1;
+    if (!wait_add(&waits, wt_fd(wts), WAIT_WT)) { perror("room: the wait set"); return 1; }
   }
   const double tick = 1000.0 / 60.0;
   double next = (double)now_ms();
@@ -1188,59 +1264,62 @@ int main(int argc, char **argv) {
         return rm_checkpoint_clean(view()) ? 0 : 1;
       }
     }
-    struct pollfd fds[CONNS + 2]; int map[CONNS + 2], n = 0;
-    fds[n] = (struct pollfd){lfd, POLLIN, 0}; map[n++] = -1;
-    for (int i = 0; i < CONNS; i++) if (conns[i].fd >= 0 && !conns[i].wt) { fds[n] = (struct pollfd){conns[i].fd, (short)(POLLIN | (conns[i].on ? POLLOUT : 0)), 0}; map[n++] = i; }
-    if (wts) { fds[n] = (struct pollfd){wt_fd(wts), POLLIN, 0}; map[n++] = -2; }
     int wait = (int)(next - (double)now_ms());
     if (wts) { int wto = wt_timeout_ms(wts); if (wto < wait) wait = wto; }
-    if (poll(fds, (nfds_t)n, wait > 0 ? wait : 0) < 0 && errno != EINTR) { perror("room: poll"); return 1; }
+    wait_event evs[WAIT_BATCH];
+    int n = wait_for(&waits, evs, WAIT_BATCH, wait);
+    if (n < 0) { perror("room: wait"); return 1; }
     int64_t now = now_ms();
     clock_in();
     for (int k = 0; k < n; k++) {
-      if (map[k] >= 0 && (fds[k].revents & POLLOUT) && conns[map[k]].fd >= 0 && !pump(map[k])) conns[map[k]].doomed = true;
-      if (!(fds[k].revents & (POLLIN | POLLHUP | POLLERR))) continue;
-      if (map[k] == -2) { wt_read(wts); relay_flush(); continue; }   /* WebTransport: every datagram waiting (room-wt.c) */
-      if (map[k] < 0) {
+      int i = evs[k].tag;
+      if (i >= 0 && evs[k].out) { if (conns[i].fd >= 0 && !conns[i].wt && !pump(i)) doom(i); }
+      if (!evs[k].in) continue;
+      if (i == WAIT_WT) { wt_read(wts); relay_flush(); continue; }   /* WebTransport: every datagram waiting (room-wt.c) */
+      if (i == WAIT_LISTEN) {
         for (;;) {
           int fd = accept(lfd, NULL, NULL);
           if (fd < 0) break;
-          int slot = -1;
-          for (int i = 0; i < CONNS; i++) if (conns[i].fd < 0) { slot = i; break; }
+          int slot = conn_take();
           if (slot < 0) { close(fd); rm_st_refuse_more(view(), 0); continue; }
           fcntl(fd, F_SETFL, O_NONBLOCK); fcntl(fd, F_SETFD, FD_CLOEXEC);   /* never a vitals curl's */
           setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+          if (!wait_add(&waits, fd, slot)) { close(fd); rm_st_refuse_more(view(), 0); continue; }
           conns[slot] = (conn){.fd = fd, .heard = now};
+          live_add(slot);
         }
         continue;
       }
-      int i = map[k]; conn *c = &conns[i];
+      if (i < 0 || i >= CONNS) continue;
+      conn *c = &conns[i];
       int64_t t_in = now_us();
-      if (c->fd < 0 || c->doomed) continue;
+      if (c->fd < 0 || c->doomed || c->wt) continue;
       ssize_t r = recv(c->fd, c->in + c->n, IN_CAP - c->n, 0);
-      if (r <= 0) { if (r < 0 && (errno == EAGAIN || errno == EINTR)) continue; c->doomed = true; continue; }
+      if (r <= 0) { if (r < 0 && (errno == EAGAIN || errno == EINTR)) continue; doom(i); continue; }
       c->n += (size_t)r; c->heard = now;
       if (!c->ws) opening(i);
       if (c->fd >= 0 && c->ws) frames(i);
-      if (c->fd >= 0 && c->n >= IN_CAP) c->doomed = true;
+      if (c->fd >= 0 && c->n >= IN_CAP) doom(i);
       if (r > 0 && conns[i].ws) fan_add(now_us() - t_in);
     }
     /* silent 20 s, or kicked: a player's silent socket their new one replaced (rl_replace_stale) says
-       nothing more, so no frame of its own will doom it; nor may it wait on the API's next control reply */
-    for (int i = 0; i < CONNS; i++) if (conns[i].fd >= 0 && (now - conns[i].heard > 20000 || (conns[i].ws && rm_relay_kicked(view(), i)))) conns[i].doomed = true;
+       nothing more, so no frame of its own will doom it; nor may it wait on the API's next control reply.
+       Asked once a beat, of the open connections (a socket that speaks is asked at each frame, frames) */
+    if ((double)now >= next) for (int q = 0; q < live_n; q++) { int i = live[q]; if (now - conns[i].heard > 20000 || (conns[i].ws && rm_relay_kicked(view(), i))) doom(i); }
     reap();
     if ((double)now >= next) {
       clock_in();
       int64_t t_tick = now_us();
       /* each realm steps when its profile says (room.coax rm_profile: 0 the games on their own paths, room-games.coax; 1 Everglade) */
       if (rm_realm_due(view(), 0, ticks)) rm_tick(view());
-      if (rm_realm_due(view(), 1, ticks)) { everglade_tick(); fault_step(); int64_t dt = now_us() - t_tick; tick_add(dt); st_hist_add(&st_work[STW_ALL], dt); st_ticks++; st_tick_us += dt; crash_tick(wall_ms(), dt, rm_players(view())); }
-      for (int i = 0; i < CONNS; i++) {
-        if (conns[i].fd < 0 || !conns[i].ws || conns[i].wt) continue;
+      if (rm_realm_due(view(), 1, ticks)) { slow_begin(); everglade_tick(); fault_step(); int64_t dt = now_us() - t_tick; slow_tick(dt); tick_add(dt); st_hist_add(&st_work[STW_ALL], dt); st_ticks++; st_tick_us += dt; crash_tick(wall_ms(), dt, rm_players(view())); }
+      for (int q = 0; q < live_n; q++) {
+        int i = live[q];
+        if (!conns[i].ws || conns[i].wt) continue;
         int64_t len = rm_state(view(), i);
         if (len <= 0) continue;
         uint8_t out[2100]; size_t k = ws_build(out, sizeof out, WS_TEXT, server->out.e, (size_t)len, false);
-        if (!k) conns[i].doomed = true; else put_out(i, out, k);
+        if (!k) doom(i); else put_out(i, out, k);
       }
       reap();
       ticks++;

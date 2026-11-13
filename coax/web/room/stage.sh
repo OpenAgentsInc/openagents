@@ -27,7 +27,7 @@ for u in everglade/shared/everglade-step.coax; do
   n="$(basename "$u" .coax)"
   "$coax" c "$u" --library --debug-info --header "$out/src/$n.h" | lines > "$out/src/$n.c"
 done
-cp "$here/room-host.c" "$here/room-tick.c" "$here/room-crash.c" "$here/room-crash.h" "$here/room-stats.h" "$here/room-world.c" "$here/room-world.h" "$here/room-math.c" verse/voice-host/ws.c verse/voice-host/ws.h "$here/compile.sh" "$out/src/"
+cp "$here/room-host.c" "$here/room-tick.c" "$here/room-crash.c" "$here/room-crash.h" "$here/room-stats.h" "$here/room-wait.h" "$here/room-world.c" "$here/room-world.h" "$here/room-math.c" verse/voice-host/ws.c verse/voice-host/ws.h "$here/compile.sh" "$out/src/"
 cp "$here/room-wt.c" "$here/wt.c" "$here/wt.h" "$out/src/"; cp -R "$here/third_party" "$out/src/third_party"   # WebTransport (#13176)
 cp -R coax/web/compat "$out/compat"
 # the content tables the room loads at start (#13294, room-host.c content_load): beside the binary on a VM, /usr/share/everglade/ in the image
