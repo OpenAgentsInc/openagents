@@ -88,6 +88,8 @@ service (a different, older product that keeps its name in history), the
 | `aethyr/` | `metaverse-engine/` | The engine, its book, tests and tools |
 | `aethyr/forge/` | `metaverse-engine/editor/` | Stays in the engine folder: `host/`, `world/`, `content/` and `tools/` load it |
 | `verse/` | `metaverse/` | The realms and their content |
+| `verse/everglade2/` | Stays until it moves to `everglade/world/` | Everglade II's live world. AAA P1.2 (#13268) moves it, so this rename does not move it twice |
+| `verse/everglade/` | Stays until it is split or retired | Everglade v1 and pieces still in use (guard AI, rigs, edits). AAA P1.3 (#13269) |
 | `apps/aethyrforge-desktop/` | `apps/metaverse-engine-desktop/` | The desktop app |
 | `docs/verse/` | `docs/metaverse/` | |
 | `apps/openagents-web/verse*`, `gpu/verse.*`, `carriers/verse.coax` | `metaverse*` | Page sources |
@@ -193,6 +195,21 @@ moves in this rename.
 | `rules/` | The SRD 5.2.1 combat rules, used by Everglade and other worlds | Maybe. World code without a book; the Everglade book covers it |
 | `scripts/` | Repository scripts | No |
 | `tools/` | Two standalone Coax tools (`coax-nostr`, `coax-unicode`) | Maybe. They could sit under `coax/` and `nostr/` |
+
+## Text that still says the old names, and why
+
+Found while changing UI text (stage 2b). Each needs more than a text edit.
+
+| Where | What it says | Why it stays for now | Changes when |
+| --- | --- | --- | --- |
+| `coax/web/api/schema.sql`, served realm pages (lines near 9915, 9949, 10075, 10265, 10275, 12660, 12842) | "A world built on the Verse.", the share text, the page title "a realm on the Verse", `og:image:alt`, "A fork of … on the Verse" | Text served from SQL functions. Changing it is a new migration, and `test_realm_builder.py`, `test_realm_fork.py` and three client fixtures pin it | A migration that replaces the functions' text, with the tests, lands with the next API deploy |
+| `coax/web/api/schema.sql` model prompts, `coax/web/agent/chat.coax` lines 150 and 152 | NPC and chat-agent prompts that say "the Verse" | Prompts are agent behaviour, which this rename must not change without an evaluation | A prompt change with its own check of the answers |
+| `apps/openagents-web/verse/og-verse.jpg` | "ENTER THE VERSE" and "OPENAGENTS.COM/VERSE" drawn into the picture | A picture; `og-card.py` needs a page shot to redraw it | The card is redrawn after the web release that shows the new landing title |
+| `coax/web/goldens/landing.png`, `goldens/linux/landing.png` | The old landing title | Goldens are re-recorded from staging | The next staging release (`bun coax/web/goldens.ts … --only landing --update`) |
+| `aethyr/ui/arwes-paint.coax` line 205 | Draws "AETHYR / ONLINE" in the HUD lab | Asserted by two checks; a drawn string | The symbol stage |
+| The macOS app name in `coax/web/voice.js` line 233 ("Microphone → Aethyrforge") | The installed app's name in System Settings | Must match the installed app | The app's display name changes |
+| The relay's copy of the project ("Verse") | `/projects` and the project pages read the relay | Needs `openagents project publish` with the project keys | The owner or the coordinator publishes the project |
+| "the old Rust Verse engine" in three comments | Names the pre-reset engine | History | Never |
 
 ## Stages
 
