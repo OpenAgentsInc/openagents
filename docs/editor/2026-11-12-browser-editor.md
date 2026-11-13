@@ -311,7 +311,7 @@ not a flat folder scan.
      hash and the host fetches the pack by that hash and swaps it in.
 
   **Proved** in two halves. The API's half runs on a build host
-  (`coax/web/api/tests/world_checks.coax`, 19 checks named "assets: ...",
+  (`coax/web/api/tests/world_checks.coax`, 18 checks named "assets: ...",
   with a fake bucket that keeps each object as a file): who may open an
   upload, the refusals before any upload, the object checked against its
   name and deleted when it is wrong, the import, the pack by lane, a
