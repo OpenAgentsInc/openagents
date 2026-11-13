@@ -36,6 +36,29 @@ wc_zone_row :: (g: [] SpGame, id: int) -> int {
   }
   #assert sl_all_ok(g[..]).why == SL_OK;
 }
+// Why the fixture has no row for the boss chamber (#13442): no ground beside it takes a piece. Every half
+// metre for 14 m round its middle, the smallest piece (a small crate) either is refused or stands more
+// than a metre from the zone. If the mine is ever opened up there, this fails and the fixture gets its row.
+#test "no spot within a metre of the boss chamber takes even the smallest piece: rock and the boss wall are all that is beside it" #steps 400000000 {
+  g := [1] SpGame.[SpGame.{}];
+  wc_blank(g[..]);
+  c := g[0].c[..];
+  zr := wc_zone_row(g[..], 29);
+  #assert zr >= 0 && sc_piece(c, 117) >= 0;
+  zn := c[0].kept[zr];
+  beside := 0; open := 0;
+  for xi: -28..<29 {
+    for zi: -28..<29 {
+      x := xi * 50; z := -7250 + zi * 50;
+      if sl_check(g[..], 117, sc_m(x), sc_m(z), 0, -1).why != SL_OK { continue; }
+      open += 1;
+      f := sl_foot(g[..], sc_piece(c, 117), sc_m(x), sc_m(z), 0);
+      gap := sl_seg_box(f, zn.x, zn.z, zn.hx, zn.hz) - f.r - zn.r;
+      if gap >= 0 && gap <= 1.0 { beside += 1; }
+    }
+  }
+  #assert beside == 0 && open > 0;   // open: the scan does reach ground a piece may stand on (north of the boss wall)
+}
 #test "the whole run plays with the fixture layer in, a piece beside every kept-clear zone" #steps 400000000 {
   g := [1] SpGame.[SpGame.{}];
   wc_blank(g[..]);

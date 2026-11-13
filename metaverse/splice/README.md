@@ -166,6 +166,13 @@ page ignores `?layer=fixture`.
 
 ### Not built yet
 
-Slice 0 is the layer itself. A saved world document, the API, the command line and the chat pane
-are the later slices of [the plan](../../docs/audits/2026-11-12-chat-and-world-building.md). The
-Unreal host draws no placed pieces yet.
+The saved world, its API, the command line and the editor with the conversation in its foot are
+built: see [the browser editor](../../docs/editor/2026-11-12-browser-editor.md).
+
+- The Unreal host draws no placed pieces. It loads no edit layer, and its bridge draws stores 0
+  and 1 only (`splice-ue-face.c`).
+- The boss chamber has no piece beside it in the fixture, because no ground beside it takes one:
+  rock and the boss wall are all that is there. A check holds that (`walk-checks.coax`).
+- A turned piece's round parts (a machine's balls and masts) turn their facets with the piece,
+  because a kind's mesh is written once and each piece is an instance of it. The shape and the
+  middle are the same either way.
