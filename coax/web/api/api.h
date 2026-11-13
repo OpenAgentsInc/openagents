@@ -105,6 +105,8 @@ long api_spark(const char *path, const char *json, long timeout_s, char **out);
 // An identity token for a sibling Cloud Run service whose URL is aud (inference.c), or the token in the
 // environment variable given_env when it is set (tests).
 bool api_id_token(const char *aud, const char *given_env, char *out, size_t cap);
+// The same with url's origin (scheme and host) as the audience.
+bool api_id_token_for_url(const char *url, const char *given_env, char *out, size_t cap);
 // The model (npc.c): its generateContent answer into *body (malloc'd, or NULL), the HTTP status (0 unreached).
 long npc_ask_model(const char *url_env, const char *model, const char *request, char **body);
 long npc_ask_model_twice(const char *url_env, const char *model, const char *request, long timeout_ms, char **body);

@@ -69,28 +69,6 @@ static size_t wtake(char *data, size_t size, size_t n, void *user) {
   memcpy(p + b->n, data, k); b->p = p; b->n += k; b->p[b->n] = 0;
   return k;
 }
-static bool id_token(const char *url, char *out, size_t cap) {
-  const char *given = getenv("OA_AGENT_WAKE_TOKEN");
-  if (given && *given) { snprintf(out, cap, "%s", given); return true; }
-  char audience[512], meta[700];
-  const char *host = strstr(url, "://");
-  size_t k = host ? (size_t)(host + 3 - url) + strcspn(host + 3, "/") : strlen(url);
-  snprintf(audience, sizeof audience, "%.*s", (int)k, url);
-  snprintf(meta, sizeof meta, "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=%s", audience);
-  CURL *h = curl_easy_init();
-  if (!h) return false;
-  wbuf b = {0};
-  struct curl_slist *hd = curl_slist_append(NULL, "Metadata-Flavor: Google");
-  curl_easy_setopt(h, CURLOPT_URL, meta);
-  curl_easy_setopt(h, CURLOPT_HTTPHEADER, hd);
-  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, wtake);
-  curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
-  curl_easy_setopt(h, CURLOPT_TIMEOUT, 5L);
-  bool ok = curl_easy_perform(h) == CURLE_OK && b.p && b.n + 1 < cap;
-  if (ok) snprintf(out, cap, "%s", b.p);
-  curl_slist_free_all(hd); curl_easy_cleanup(h); free(b.p);
-  return ok;
-}
 // POSTs body to the runner's path (beside its /wake). Its status, and its answer in *out.
 static long to_runner(const char *path, const char *body, long timeout, wbuf *out) {
   const char *wake = getenv("OA_AGENT_WAKE_URL"), *given = getenv("OA_CHAT_RUNNER_URL");
@@ -102,7 +80,7 @@ static long to_runner(const char *path, const char *body, long timeout, wbuf *ou
     size_t base = slash && slash > strstr(wake, "://") + 2 ? (size_t)(slash - wake) : strlen(wake);
     snprintf(url, sizeof url, "%.*s%s", (int)base, wake, path);
   }
-  if (!id_token(url, tok, sizeof tok)) { api_log("chat: no token for the runner"); return 0; }
+  if (!api_id_token_for_url(url, "OA_AGENT_WAKE_TOKEN", tok, sizeof tok)) { api_log("chat: no token for the runner"); return 0; }
   snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
   CURL *h = curl_easy_init();
   if (!h) return 0;

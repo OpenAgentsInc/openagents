@@ -147,11 +147,22 @@ bool api_id_token(const char *aud, const char *given_env, char *out, size_t cap)
   curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, take);
   curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
   curl_easy_setopt(h, CURLOPT_TIMEOUT, 5L);
+  curl_easy_setopt(h, CURLOPT_PROXY, "");
   long status = 0;
   bool ok = curl_easy_perform(h) == CURLE_OK && (curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status), status == 200) && b.p && b.n < cap;
   if (ok) snprintf(out, cap, "%s", b.p);
   curl_slist_free_all(hd); curl_easy_cleanup(h); free(b.p);
   return ok;
+}
+// The same token with url's origin (scheme and host, no path) as the audience: the runner (chat.c,
+// private.c, seats.c) and the mesh fleet (mesh.c) are called this way.
+bool api_id_token_for_url(const char *url, const char *given_env, char *out, size_t cap) {
+  char origin[1025];
+  const char *host = strstr(url, "://");
+  size_t k = host ? (size_t)(host + 3 - url) + strcspn(host + 3, "/") : strlen(url);
+  if (k >= sizeof origin) return false;
+  memcpy(origin, url, k); origin[k] = 0;
+  return api_id_token(origin, given_env, out, cap);
 }
 
 // ---- our Spark wallet (OA_SPARK_URL): POST path with json, or GET with none.

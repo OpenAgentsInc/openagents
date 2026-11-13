@@ -96,30 +96,11 @@ static bool runner_base(char *out, size_t cap) {
   memcpy(out, wake, n); out[n] = 0;
   return true;
 }
-static bool runner_token(const char *base, char *out, size_t cap) {
-  const char *given = getenv("OA_AGENT_WAKE_TOKEN");
-  if (given && *given) { snprintf(out, cap, "%s", given); return true; }
-  char meta[800];
-  snprintf(meta, sizeof meta, "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=%s", base);
-  CURL *h = curl_easy_init();
-  if (!h) return false;
-  sbuf b = {0};
-  struct curl_slist *hd = curl_slist_append(NULL, "Metadata-Flavor: Google");
-  curl_easy_setopt(h, CURLOPT_URL, meta);
-  curl_easy_setopt(h, CURLOPT_HTTPHEADER, hd);
-  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, stake);
-  curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
-  curl_easy_setopt(h, CURLOPT_TIMEOUT, 5L);
-  bool ok = curl_easy_perform(h) == CURLE_OK && b.p && b.n + 1 < cap;
-  if (ok) snprintf(out, cap, "%s", b.p);
-  curl_slist_free_all(hd); curl_easy_cleanup(h); free(b.p);
-  return ok;
-}
 // POST base+path with a JSON body: the status (0 unreached); the answer in *out (freed by the caller).
 static long runner_post(const char *path, const char *json, long timeout_s, char **out) {
   *out = NULL;
   char base[600], url[800], tok[4096], auth[4200];
-  if (!runner_base(base, sizeof base) || !runner_token(base, tok, sizeof tok)) return 0;
+  if (!runner_base(base, sizeof base) || !api_id_token(base, "OA_AGENT_WAKE_TOKEN", tok, sizeof tok)) return 0;
   snprintf(url, sizeof url, "%s%s", base, path);
   snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
   CURL *h = curl_easy_init();

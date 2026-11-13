@@ -82,22 +82,7 @@ static size_t receive(void *p, size_t size, size_t count, void *ctx) {
 static bool iam_token(const char *url, char out[4096]) {
   out[0] = 0;
   if (strncmp(url, "https://", 8)) return true;
-  const char *end = strchr(url + 8, '/'); size_t n = end ? (size_t)(end - url) : strlen(url);
-  char audience[1025]; if (n >= sizeof audience) return false;
-  memcpy(audience, url, n); audience[n] = 0;
-  CURL *h = curl_easy_init(); if (!h) return false;
-  char *escaped = curl_easy_escape(h, audience, 0); char meta[4300];
-  if (!escaped) { curl_easy_cleanup(h); return false; }
-  snprintf(meta, sizeof meta, "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=%s", escaped);
-  curl_free(escaped); bytes b = {0};
-  struct curl_slist *headers = curl_slist_append(NULL, "Metadata-Flavor: Google");
-  curl_easy_setopt(h, CURLOPT_URL, meta); curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, receive); curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
-  curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, 3000L); curl_easy_setopt(h, CURLOPT_PROXY, "");
-  long status = 0; CURLcode rc = curl_easy_perform(h); curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
-  bool ok = rc == CURLE_OK && status == 200 && b.count > 0 && b.count < 4096;
-  if (ok) memcpy(out, b.data, b.count + 1);
-  free(b.data); curl_slist_free_all(headers); curl_easy_cleanup(h); return ok;
+  return api_id_token_for_url(url, NULL, out, 4096);
 }
 // One POST of n bytes to url with an optional extra header; the reply goes into b.
 static CURLcode post(const char *url, const char *body, size_t n, const char *header, bytes *b, long *http) {

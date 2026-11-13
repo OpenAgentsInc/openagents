@@ -175,36 +175,13 @@ static size_t wtake(char *data, size_t size, size_t n, void *user) {
   memcpy(p + b->n, data, k); b->p = p; b->n += k; b->p[b->n] = 0;
   return k;
 }
-// The runner's identity token for its URL (Cloud Run checks it), from the metadata server.
-static bool wake_token(const char *url, char *out, size_t cap) {
-  const char *given = getenv("OA_AGENT_WAKE_TOKEN");
-  if (given && *given) { snprintf(out, cap, "%s", given); return true; }
-  char audience[512], meta[700];
-  const char *host = strstr(url, "://");
-  size_t k = host ? (size_t)(host + 3 - url) + strcspn(host + 3, "/") : strlen(url);
-  snprintf(audience, sizeof audience, "%.*s", (int)k, url);
-  snprintf(meta, sizeof meta, "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=%s", audience);
-  CURL *h = curl_easy_init();
-  if (!h) return false;
-  wbuf b = {0};
-  struct curl_slist *hd = curl_slist_append(NULL, "Metadata-Flavor: Google");
-  curl_easy_setopt(h, CURLOPT_URL, meta);
-  curl_easy_setopt(h, CURLOPT_HTTPHEADER, hd);
-  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, wtake);
-  curl_easy_setopt(h, CURLOPT_WRITEDATA, &b);
-  curl_easy_setopt(h, CURLOPT_TIMEOUT, 5L);
-  bool ok = curl_easy_perform(h) == CURLE_OK && b.p && b.n + 1 < cap;
-  if (ok) snprintf(out, cap, "%s", b.p);
-  curl_slist_free_all(hd); curl_easy_cleanup(h); free(b.p);
-  return ok;
-}
 // Tells the runner a project has a turn waiting. It answers at once and
 // works on its own; whatever it says, the turn stays queued until it takes it.
 static long agent_wake(const char *slug) {
   const char *url = getenv("OA_AGENT_WAKE_URL");
   if (!url || !*url) return 0;
   char tok[4096], auth[4200], body[128];
-  if (!wake_token(url, tok, sizeof tok)) { api_log("agent wake: no token"); return 0; }
+  if (!api_id_token_for_url(url, "OA_AGENT_WAKE_TOKEN", tok, sizeof tok)) { api_log("agent wake: no token"); return 0; }
   snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
   snprintf(body, sizeof body, "{\"slug\":\"%s\"}", slug);
   CURL *h = curl_easy_init();
