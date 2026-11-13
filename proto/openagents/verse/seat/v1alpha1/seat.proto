@@ -1,0 +1,90 @@
+syntax = "proto3";
+package openagents.verse.seat.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// A seat in a running realm (compliance plan step E11, GitHub #13250;
+// docs/verse/realm-seat.md): an agent's place in a made realm, opened by its
+// account. coax/web/api/seats.c serves the routes; migration 0110 keeps the
+// seats. coax/lib/media/seat-wire.coax is the one writer and reader of every
+// body here; proto/verse/realm-seat-v1alpha1.json pins the bytes, checked
+// through the codec (coax/web/api/seat-wire-goldens.coax) and through the
+// running API (coax/web/api/test_room.py).
+//
+//   POST /api/playtest/seats             OpenRequest -> Grant
+//   GET  /api/playtest/seats             SeatsReply
+//   POST /api/playtest/seats/<id>/keep   Kept
+//   POST /api/playtest/seats/<id>/close  Closed
+// For a hosted seat the API asks the runner that holds its page
+// (coax/web/agent/seat-runner.c):
+//   POST /seat/open    RunnerOpen
+//   POST /seat/close   RunnerClose
+// A refusal is the API's ErrorReply (openagents/api/v1alpha1/error.proto).
+//
+// The server builds Grant and SeatsReply in SQL and answers jsonb's text:
+// keys by length, then by bytes, with ", " and ": " between items. The fields
+// below are in that order. What seats.c writes itself (Kept, Closed,
+// RunnerClose, and RunnerOpen around the grant) is compact. json_name is the
+// key on the wire.
+
+// POST /api/playtest/seats: the made realm to sit in. `hosted` true asks for
+// a seat whose page the runner holds; left out, the caller holds the page.
+message OpenRequest {
+  optional string slug = 1 [json_name = "slug", (openagents.options.v1alpha1.max_bytes) = 48];
+  optional bool hosted = 2 [json_name = "hosted"];
+}
+
+// The seat's own player, minted for the account when the seat opens. The key
+// works only while the seat is open. A hosted seat's key goes to the runner
+// and is left out of what the caller gets.
+message Player {
+  optional string id = 1 [json_name = "id", (openagents.options.v1alpha1.max_bytes) = 64];
+  optional string key = 2 [json_name = "key", (openagents.options.v1alpha1.max_bytes) = 128];
+}
+
+// 200 from POST /api/playtest/seats: the seat. `until` is the Unix time in
+// milliseconds when it closes if it is not kept.
+message Grant {
+  optional int64 id = 1 [json_name = "id"];
+  optional string slug = 2 [json_name = "slug", (openagents.options.v1alpha1.max_bytes) = 48];
+  optional int64 until = 3 [json_name = "until"];
+  optional bool hosted = 4 [json_name = "hosted"];
+  optional Player player = 5 [json_name = "player"];
+}
+
+// One of the account's open seats.
+message Seat {
+  optional int64 id = 1 [json_name = "id"];
+  optional string slug = 2 [json_name = "slug", (openagents.options.v1alpha1.max_bytes) = 48];
+  optional bool hosted = 3 [json_name = "hosted"];
+  optional int64 kept_ms = 4 [json_name = "kept_ms"];
+  optional int64 opened_ms = 5 [json_name = "opened_ms"];
+}
+
+// GET /api/playtest/seats: the account's open seats, newest first; none is
+// {"seats": []}.
+message SeatsReply {
+  repeated Seat seats = 1 [json_name = "seats"];
+}
+
+// 200 from .../keep: {"kept":true}.
+message Kept {
+  optional bool kept = 1 [json_name = "kept"];
+}
+
+// 200 from .../close, and from the runner's /seat/close: {"closed":true}.
+message Closed {
+  optional bool closed = 1 [json_name = "closed"];
+}
+
+// The API to the runner, POST /seat/open: the grant with its key, as SQL
+// wrote it, and the site the seat's page loads from.
+message RunnerOpen {
+  optional Grant seat = 1 [json_name = "seat"];
+  optional string origin = 2 [json_name = "origin"];
+}
+
+// The API to the runner, POST /seat/close: {"id":7}.
+message RunnerClose {
+  optional int64 id = 1 [json_name = "id"];
+}

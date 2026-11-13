@@ -1,0 +1,238 @@
+// The goldens of a seat's bodies (Protocol E11, GitHub #13250): proto/verse/realm-seat-v1alpha1.json
+// holds what POST and GET /api/playtest/seats, .../keep and .../close answer, what a caller sends to
+// open a seat and what the API sends the runner, byte for byte as a running API answered them. For
+// each one this check
+//   - writes it from its values through coax/lib/media/realm_seat_wire.coax (a refusal, kept,
+//     closed and the runner's two bodies through seat-wire.coax, the writers seats.c calls), and
+//     requires the same bytes;
+//   - holds its keys to the json_names of its message in
+//     proto/openagents/verse/seat/v1alpha1/seat.proto (a refusal to the API's ErrorReply), every
+//     field once and in field order where the body always carries them all;
+//   - reads it back through the codec and writes it again from what was read, for the same bytes;
+//     a refusal also goes through the JSON mapper.
+// With --read FILE it does the last two for bodies a running API answered: FILE is
+// {"bodies": [{"name", "kind", "body"}]} (coax/web/api/test_room.py writes it).
+//
+//   coax/web/tool.sh coax/web/api/seat-wire-goldens.coax [proto/verse/realm-seat-v1alpha1.json]
+//   coax/web/tool.sh coax/web/api/seat-wire-goldens.coax --read FILE
+#import "Basic";
+#import_proto "../../../proto/descriptors/api-routes.pb" as AR;
+#load "seat-wire.coax";
+#load "../../lib/proto/json.coax";
+#load "../../lib/proto/importer.coax";
+#load "../../lib/proto/golden-keys.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/args.coax";
+#load "../../lib/sys/fs.coax";
+
+TG_FIXTURE :: "proto/verse/realm-seat-v1alpha1.json";
+TG_DESCRIPTOR :: "proto/descriptors/api-routes.pb";
+TG_BODY :: 8192;
+TG_SEATS :: 16;
+TG_N :: 9;
+TG_WRITERS :: [TG_N] string.["error", "open", "grant", "none", "seats", "kept", "closed", "runner-open", "runner-close"];
+TG_MESSAGES :: [TG_N] string.[".openagents.api.v1alpha1.ErrorReply", ".openagents.verse.seat.v1alpha1.OpenRequest",
+                              ".openagents.verse.seat.v1alpha1.Grant", ".openagents.verse.seat.v1alpha1.Grant",
+                              ".openagents.verse.seat.v1alpha1.SeatsReply", ".openagents.verse.seat.v1alpha1.Kept",
+                              ".openagents.verse.seat.v1alpha1.Closed", ".openagents.verse.seat.v1alpha1.RunnerOpen",
+                              ".openagents.verse.seat.v1alpha1.RunnerClose"];
+// Whether a body of the kind always carries every field of its message, in field order (a
+// request may leave hosted out, and a hosted seat's grant has no key).
+TG_EXACT :: [TG_N] bool.[true, false, false, false, true, true, true, false, true];
+
+TgText :: struct { b: [TG_BODY] u8; n: int; }
+tg_s :: (d: Jv, at: int, key: string, t: [] TgText) -> string {
+  t[0].n = jv_str(d, jv_get(d, at, key), t[0].b[..]);
+  return ifx t[0].n < 0 then "" else cast(string) t[0].b[0..<t[0].n];
+}
+tg_i :: (d: Jv, at: int, key: string) -> int { return jv_int(d, jv_get(d, at, key), -1); }
+tg_b :: (d: Jv, at: int, key: string) -> bool { return jv_kind(d, jv_get(d, at, key)) == JV_TRUE; }
+tg_kind :: (kind: string) -> int {
+  writers := TG_WRITERS;
+  for k: 0..<TG_N { if writers[k] == kind { return k; } }
+  return -1;
+}
+// v in digits.
+tg_digits :: (v: int, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_int(o[..], v);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+// A golden written from its values (the writers' arguments): its length in out, or -1.
+tg_write :: (writer: string, d: Jv, v: int, out: [] u8) -> int {
+  a: [1] TgText; b: [1] TgText; c: [1] TgText;
+  if writer == "error" { return stw_error_write(tg_s(d, v, "text", a[..]), out); }
+  if writer == "open" { return seatw_open_body(tg_s(d, v, "slug", a[..]), tg_b(d, v, "hosted"), out); }
+  if writer == "grant" {
+    g: [1] SeatwGrant;
+    if !seatw_grant_of(g[..], tg_i(d, v, "id"), tg_s(d, v, "slug", a[..]), tg_i(d, v, "until"), tg_b(d, v, "hosted"), tg_s(d, v, "player_id", b[..]), tg_s(d, v, "key", c[..])) { return -1; }
+    return seatw_grant_json(g[..], out);
+  }
+  if writer == "none" { return stw_grant_none_write(out); }
+  if writer == "seats" {
+    rows: [TG_SEATS] SeatwSeat;
+    list := jv_get(d, v, "seats"); n := jv_len(d, list);
+    if jv_kind(d, list) != JV_ARRAY || n > TG_SEATS { return -1; }
+    for i: 0..<n {
+      s := jv_at(d, list, i);
+      rows[i] = seatw_seat_of(tg_i(d, s, "id"), tg_s(d, s, "slug", a[..]), tg_b(d, s, "hosted"), tg_i(d, s, "kept_ms"), tg_i(d, s, "opened_ms"));
+      if rows[i].slug_n == 0 { return -1; }
+    }
+    return seatw_seats_json(rows[0..<n], out);
+  }
+  if writer == "kept" { return stw_kept_write(out); }
+  if writer == "closed" { return stw_closed_write(out); }
+  if writer == "runner-open" { return stw_runner_open_write(tg_s(d, v, "seat", a[..]), tg_s(d, v, "origin", b[..]), out); }
+  if writer == "runner-close" { return stw_runner_close_write(tg_s(d, v, "id", a[..]), out); }
+  return -1;
+}
+
+// A body read back through the codec and written again from what was read: its length, or -1.
+tg_rewrite :: (kind: string, body: string, nodes: [] JvNode, out: [] u8) -> int {
+  if kind == "error" {
+    j: [1] Jv; a: [1] TgText;
+    if !jv_parse(j[..], body, nodes) || jv_kind(j[0], 0) != JV_OBJECT || jv_kind(j[0], jv_get(j[0], 0, "error")) != JV_STRING { return -1; }
+    return stw_error_write(tg_s(j[0], 0, "error", a[..]), out);
+  }
+  if kind == "open" {
+    r: [1] SeatwOpen;
+    if !seatw_read_open(body, r[..]) { return -1; }
+    return seatw_open_body(seatw_open_slug(r[..]), r[0].hosted, out);
+  }
+  if kind == "grant" {
+    g: [1] SeatwGrant;
+    if !seatw_read_grant(body, g[..]) { return -1; }
+    return seatw_grant_json(g[..], out);
+  }
+  if kind == "none" { return ifx body == "{}" then stw_grant_none_write(out) else -1; }
+  if kind == "seats" {
+    rows: [TG_SEATS] SeatwSeat;
+    n := seatw_read_seats(body, rows[..]);
+    if n < 0 { return -1; }
+    return seatw_seats_json(rows[0..<n], out);
+  }
+  if kind == "kept" { return ifx seatw_read_kept(body) then stw_kept_write(out) else -1; }
+  if kind == "closed" { return ifx seatw_read_closed(body) then stw_closed_write(out) else -1; }
+  if kind == "runner-open" {
+    g: [1] SeatwGrant; ob: [SEATW_ORIGIN] u8; sb: [1024] u8;
+    on := seatw_read_runner_open(body, g[..], ob[..]);
+    if on < 0 { return -1; }
+    sn := seatw_grant_json(g[..], sb[..]);
+    if sn < 0 { return -1; }
+    return stw_runner_open_write(cast(string) sb[0..<sn], cast(string) ob[0..<on], out);
+  }
+  if kind == "runner-close" {
+    id := seatw_read_id(body); t: [24] u8;
+    if id < 0 { return -1; }
+    return stw_runner_close_write(tg_digits(id, t[..]), out);
+  }
+  return -1;
+}
+// Whether the JSON mapper reads a refusal and writes it back byte for byte. Run only by the
+// tool: the mapper's alias check does not run at compile time, where #test runs.
+tg_mapper :: (body: string) -> bool {
+  nodes: [512] JvNode; wire: [4096] u8; out: [4096] u8;
+  m := AR_ErrorReply_from_json(body, nodes[..], wire[..]); if m.error != 0 { return false; }
+  v := AR_ErrorReply_to_json(m, out[..]); return v.error == 0 && cast(string) v.wire == body;
+}
+// A body's faults against the descriptor and the codec: "" when it holds.
+tg_body :: (st: [] D_State, kind: string, body: string, nodes: [] JvNode, out: [] u8) -> string {
+  k := tg_kind(kind);
+  if k < 0 { return "no such kind"; }
+  messages := TG_MESSAGES; exact := TG_EXACT;
+  why := pk_text_keys(st, messages[k], body, exact[k], false, nodes);
+  if why != "" { return why; }
+  n := tg_rewrite(kind, body, nodes, out);
+  if n < 0 || cast(string) out[0..<n] != body { return "read back and written through the codec, it is not the same bytes"; }
+  if kind == "error" && !tg_mapper(body) { return "the JSON mapper does not write it back byte for byte"; }
+  return "";
+}
+
+TgWork :: struct { nodes: [16384] JvNode; body_nodes: [2048] JvNode; name: [256] u8; writer: [64] u8; body: [TG_BODY] u8; out: [TG_BODY] u8; back: [TG_BODY] u8; }
+tg_check :: (text: string, st: [] D_State, w: [] TgWork) -> int {
+  j: [1] Jv;
+  if !jv_parse(j[..], text, w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the fixture\n"); return 1; }
+  d := j[0];
+  goldens := jv_get(d, 0, "goldens");
+  if jv_kind(d, goldens) != JV_ARRAY || jv_len(d, goldens) == 0 { print("FAIL  no goldens\n"); return 1; }
+  writers := TG_WRITERS; seen: [TG_N] bool; bad := 0;
+  for i: 0..<jv_len(d, goldens) {
+    item := jv_at(d, goldens, i);
+    name := cast(string) w[0].name[0..<jv_str(d, jv_get(d, item, "name"), w[0].name[..])];
+    writer := cast(string) w[0].writer[0..<jv_str(d, jv_get(d, item, "writer"), w[0].writer[..])];
+    bn := jv_str(d, jv_get(d, item, "body"), w[0].body[..]);
+    want := ifx bn < 0 then "" else cast(string) w[0].body[0..<bn];
+    k := tg_kind(writer);
+    if k < 0 || bn < 0 { print("FAIL  % : no writer % or no body\n", name, writer); bad += 1; continue; }
+    seen[k] = true;
+    n := tg_write(writer, d, jv_get(d, item, "values"), w[0].out[..]);
+    got := ifx n < 0 then "" else cast(string) w[0].out[0..<n];
+    if n < 0 || got != want { print("FAIL  % (%):\n  want: %\n  got:  %\n", name, writer, want, got); bad += 1; continue; }
+    why := tg_body(st, writer, want, w[0].body_nodes[..], w[0].back[..]);
+    if why != "" { print("FAIL  % (%): %\n", name, writer, why); bad += 1; } else { print("ok    % (%)\n", name, writer); }
+  }
+  for q: 0..<TG_N { if !seen[q] { print("FAIL  writer % has no golden\n", writers[q]); bad += 1; } }
+  print("%\n", ifx bad == 0 then "seat goldens hold" else "seat goldens fail");
+  return ifx bad == 0 then 0 else 1;
+}
+// The bodies a running API answered: each one's keys and its way back through the codec.
+tg_read :: (text: string, st: [] D_State, w: [] TgWork) -> int {
+  j: [1] Jv;
+  if !jv_parse(j[..], text, w[0].nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { print("FAIL  cannot parse the bodies\n"); return 1; }
+  d := j[0];
+  bodies := jv_get(d, 0, "bodies");
+  if jv_kind(d, bodies) != JV_ARRAY || jv_len(d, bodies) == 0 { print("FAIL  no bodies\n"); return 1; }
+  bad := 0;
+  for i: 0..<jv_len(d, bodies) {
+    item := jv_at(d, bodies, i);
+    name := cast(string) w[0].name[0..<jv_str(d, jv_get(d, item, "name"), w[0].name[..])];
+    kind := cast(string) w[0].writer[0..<jv_str(d, jv_get(d, item, "kind"), w[0].writer[..])];
+    bn := jv_str(d, jv_get(d, item, "body"), w[0].body[..]);
+    if bn < 0 { print("FAIL  % : no body\n", name); bad += 1; continue; }
+    why := tg_body(st, kind, cast(string) w[0].body[0..<bn], w[0].body_nodes[..], w[0].back[..]);
+    if why != "" { print("FAIL  % (%): %\n", name, kind, why); bad += 1; } else { print("ok    % (%)\n", name, kind); }
+  }
+  print("%\n", ifx bad == 0 then "the API's seat bodies hold" else "the API's seat bodies fail");
+  return ifx bad == 0 then 0 else 1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  loaded := args_load(args[..]);
+  pb: [65536] u8;
+  pn := fs_read(TG_DESCRIPTOR, pb[..]);
+  if pn <= 0 { tool_errln("seat-wire-goldens: cannot read the descriptor"); return 2; }
+  g: [1] PkDescriptor;
+  err := pk_load(g[..], cast(string) pb[0..<pn]);
+  if err != "" { print("FAIL  descriptor: %\n", err); return 1; }
+  st := g[0].state[..];
+  w: [1] TgWork;
+  // the checks bite: a key the message lacks, a spaced refusal, a compact grant, a grant with a
+  // key of another message, a seat with a member missing, members out of order, kept that is
+  // not true, and a runner's close with its id quoted
+  if tg_body(st, "error", "{\"eror\":\"x\"}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "error", "{\"error\": \"x\"}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "grant", "{\"id\":7,\"slug\":\"g\",\"until\":9,\"hosted\":false,\"player\":{\"id\":\"p-1\",\"key\":\"k\"}}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "grant", "{\"id\": 7, \"slug\": \"g\", \"until\": 9, \"hosted\": false, \"player\": {\"id\": \"p-1\", \"key\": \"k\"}, \"kept_ms\": 1}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "grant", "{\"id\": 7, \"slug\": \"g\", \"until\": 9, \"hosted\": false, \"player\": {\"id\": \"p-1\", \"name\": \"k\"}}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "seats", "{\"seats\": [{\"id\": 7, \"slug\": \"g\", \"hosted\": false, \"kept_ms\": 2}]}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "seats", "{\"seats\": [{\"id\": 7, \"slug\": \"g\", \"hosted\": false, \"opened_ms\": 1, \"kept_ms\": 2}]}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "kept", "{\"kept\":false}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "closed", "{\"kept\":true}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "open", "{\"slug\":\"g\",\"hosted\":false}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "runner-open", "{\"seat\":{\"id\": 7, \"slug\": \"g\", \"until\": 9, \"hosted\": true, \"player\": {\"id\": \"p-1\", \"key\": \"k\"}}, \"origin\":\"https://a.b\"}", w[0].body_nodes[..], w[0].back[..]) == "" ||
+     tg_body(st, "runner-close", "{\"id\":\"7\"}", w[0].body_nodes[..], w[0].back[..]) == "" {
+    print("FAIL  the check takes a body it should refuse\n"); return 1;
+  }
+  buf: [262144] u8;
+  if loaded && args_has(args[..], "--read") {
+    path := args_at(args[..], args_find(args[..], "--read") + 1);
+    n := ifx path == "" then 0 else fs_read(path, buf[..]);
+    if n <= 0 { tool_errln("usage: seat-wire-goldens --read FILE ({\"bodies\": [{\"name\", \"kind\", \"body\"}]})"); return 2; }
+    return tg_read(cast(string) buf[0..<n], st, w[..]);
+  }
+  path := ifx loaded && args_count(args[..]) >= 1 then args_at(args[..], 0) else TG_FIXTURE;
+  n := fs_read(path, buf[..]);
+  if n <= 0 { tool_errln("seat-wire-goldens: cannot read the fixture"); return 2; }
+  return tg_check(cast(string) buf[0..<n], st, w[..]);
+}

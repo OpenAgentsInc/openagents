@@ -1,0 +1,307 @@
+{
+  "profile": "api-routes",
+  "packages": [
+    "openagents.verse.seat.v1alpha1",
+    "openagents.api.v1alpha1"
+  ],
+  "description": "Golden bodies of a seat in a running realm (E11, #13250; the feature is #12655): what coax/web/api/seats.c reads and answers on /api/playtest/seats and what it sends the runner that holds a hosted seat's page. `from` says where a body's bytes came from. api: a running API answered them in coax/web/api/test.sh (test_room.py with SEAT_CAPTURE), on a throwaway database whose players and keys ended with the run; the same test answers each one again on every run and requires these bytes, but for the values a run decides (ids, times, the player and its key, the API's port). caller: the request the CLI and the realm's page send. source: a refusal or a failure the suite does not reach, as seats.c names it. The grant and the list are SQL's (migration 0110), answered as jsonb's text: keys by length, then by bytes, with ', ' and ': ' between items. What seats.c writes itself is compact.",
+  "check": "coax/web/tool.sh coax/web/api/seat-wire-goldens.coax proto/verse/realm-seat-v1alpha1.json",
+  "messages": {
+    "error": "openagents.api.v1alpha1.ErrorReply",
+    "open": "openagents.verse.seat.v1alpha1.OpenRequest",
+    "grant": "openagents.verse.seat.v1alpha1.Grant",
+    "none": "openagents.verse.seat.v1alpha1.Grant (no member: a hosted seat's grant that could not be shown without its key)",
+    "seats": "openagents.verse.seat.v1alpha1.SeatsReply",
+    "kept": "openagents.verse.seat.v1alpha1.Kept",
+    "closed": "openagents.verse.seat.v1alpha1.Closed",
+    "runner-open": "openagents.verse.seat.v1alpha1.RunnerOpen",
+    "runner-close": "openagents.verse.seat.v1alpha1.RunnerClose"
+  },
+  "goldens": [
+    {
+      "name": "open",
+      "writer": "open",
+      "from": "caller",
+      "values": {
+        "slug": "seat-green",
+        "hosted": false
+      },
+      "body": "{\"slug\":\"seat-green\"}"
+    },
+    {
+      "name": "open-hosted",
+      "writer": "open",
+      "from": "caller",
+      "values": {
+        "slug": "seat-green",
+        "hosted": true
+      },
+      "body": "{\"slug\":\"seat-green\",\"hosted\":true}"
+    },
+    {
+      "name": "grant",
+      "writer": "grant",
+      "from": "api",
+      "values": {
+        "id": 1,
+        "slug": "seat-green",
+        "until": 1794529771064,
+        "hosted": false,
+        "player_id": "p-df59a63030454dd5",
+        "key": "841a144444b94edc8f94c6a7201b4605a3270faf3240485f9cbfdf3b2a5d3998"
+      },
+      "body": "{\"id\": 1, \"slug\": \"seat-green\", \"until\": 1794529771064, \"hosted\": false, \"player\": {\"id\": \"p-df59a63030454dd5\", \"key\": \"841a144444b94edc8f94c6a7201b4605a3270faf3240485f9cbfdf3b2a5d3998\"}}"
+    },
+    {
+      "name": "grant-hosted",
+      "writer": "grant",
+      "from": "api",
+      "values": {
+        "id": 13,
+        "slug": "seat-green",
+        "until": 1794529774049,
+        "hosted": true,
+        "player_id": "p-39282038a6f549c3",
+        "key": ""
+      },
+      "body": "{\"id\": 13, \"slug\": \"seat-green\", \"until\": 1794529774049, \"hosted\": true, \"player\": {\"id\": \"p-39282038a6f549c3\"}}"
+    },
+    {
+      "name": "grant-none",
+      "writer": "none",
+      "from": "source",
+      "values": {},
+      "body": "{}"
+    },
+    {
+      "name": "seats",
+      "writer": "seats",
+      "from": "api",
+      "values": {
+        "seats": [
+          {
+            "id": 2,
+            "slug": "seat-mine",
+            "hosted": false,
+            "kept_ms": 1794529171247,
+            "opened_ms": 1794529171247
+          }
+        ]
+      },
+      "body": "{\"seats\": [{\"id\": 2, \"slug\": \"seat-mine\", \"hosted\": false, \"kept_ms\": 1794529171247, \"opened_ms\": 1794529171247}]}"
+    },
+    {
+      "name": "seats-none",
+      "writer": "seats",
+      "from": "api",
+      "values": {
+        "seats": []
+      },
+      "body": "{\"seats\": []}"
+    },
+    {
+      "name": "kept",
+      "writer": "kept",
+      "from": "api",
+      "values": {},
+      "body": "{\"kept\":true}"
+    },
+    {
+      "name": "closed",
+      "writer": "closed",
+      "from": "api",
+      "values": {},
+      "body": "{\"closed\":true}"
+    },
+    {
+      "name": "runner-open",
+      "writer": "runner-open",
+      "from": "api",
+      "values": {
+        "seat": "{\"id\": 13, \"slug\": \"seat-green\", \"until\": 1794529774049, \"hosted\": true, \"player\": {\"id\": \"p-39282038a6f549c3\", \"key\": \"360f179deed6453ab6a3eb8c3221e0a0df4a8fbd314646a6ac232feadfc33893\"}}",
+        "origin": "http://127.0.0.1:7078"
+      },
+      "body": "{\"seat\":{\"id\": 13, \"slug\": \"seat-green\", \"until\": 1794529774049, \"hosted\": true, \"player\": {\"id\": \"p-39282038a6f549c3\", \"key\": \"360f179deed6453ab6a3eb8c3221e0a0df4a8fbd314646a6ac232feadfc33893\"}},\"origin\":\"http://127.0.0.1:7078\"}"
+    },
+    {
+      "name": "runner-close",
+      "writer": "runner-close",
+      "from": "api",
+      "values": {
+        "id": "13"
+      },
+      "body": "{\"id\":13}"
+    },
+    {
+      "name": "refused-unsigned",
+      "writer": "error",
+      "from": "api",
+      "values": {
+        "text": "sign the request (NIP-98): a seat is an account's"
+      },
+      "body": "{\"error\":\"sign the request (NIP-98): a seat is an account's\"}"
+    },
+    {
+      "name": "refused-no-realm",
+      "writer": "error",
+      "from": "api",
+      "values": {
+        "text": "no such realm"
+      },
+      "body": "{\"error\":\"no such realm\"}"
+    },
+    {
+      "name": "refused-slug",
+      "writer": "error",
+      "from": "api",
+      "values": {
+        "text": "slug: a made realm's address"
+      },
+      "body": "{\"error\":\"slug: a made realm's address\"}"
+    },
+    {
+      "name": "refused-path",
+      "writer": "error",
+      "from": "api",
+      "values": {
+        "text": "not found"
+      },
+      "body": "{\"error\":\"not found\"}"
+    },
+    {
+      "name": "refused-method",
+      "writer": "error",
+      "from": "api",
+      "values": {
+        "text": "GET or POST"
+      },
+      "body": "{\"error\":\"GET or POST\"}"
+    },
+    {
+      "name": "refused-no-seat",
+      "writer": "error",
+      "from": "api",
+      "values": {
+        "text": "no such open seat"
+      },
+      "body": "{\"error\":\"no such open seat\"}"
+    },
+    {
+      "name": "refused-full",
+      "writer": "error",
+      "from": "api",
+      "values": {
+        "text": "the site's seats are full (8 at once): try again in a few minutes"
+      },
+      "body": "{\"error\":\"the site's seats are full (8 at once): try again in a few minutes\"}"
+    },
+    {
+      "name": "refused-action",
+      "writer": "error",
+      "from": "api",
+      "values": {
+        "text": "an action is one JSON object"
+      },
+      "body": "{\"error\":\"an action is one JSON object\"}"
+    },
+    {
+      "name": "refused-no-hosted-seat",
+      "writer": "error",
+      "from": "api",
+      "values": {
+        "text": "no such open hosted seat"
+      },
+      "body": "{\"error\":\"no such open hosted seat\"}"
+    },
+    {
+      "name": "refused-cross-site",
+      "writer": "error",
+      "from": "api",
+      "values": {
+        "text": "cross-site"
+      },
+      "body": "{\"error\":\"cross-site\"}"
+    },
+    {
+      "name": "refused-runner",
+      "writer": "error",
+      "from": "api",
+      "values": {
+        "text": "the runner didn't open the seat: try again"
+      },
+      "body": "{\"error\":\"the runner didn't open the seat: try again\"}"
+    },
+    {
+      "name": "refused-no-runner",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "hosted seats aren't running here"
+      },
+      "body": "{\"error\":\"hosted seats aren't running here\"}"
+    },
+    {
+      "name": "failed-memory",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "memory"
+      },
+      "body": "{\"error\":\"memory\"}"
+    },
+    {
+      "name": "failed-not-opened",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "not opened"
+      },
+      "body": "{\"error\":\"not opened\"}"
+    },
+    {
+      "name": "failed-not-done",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "not done"
+      },
+      "body": "{\"error\":\"not done\"}"
+    },
+    {
+      "name": "failed-runner-gone",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "the seat is gone from the runner"
+      },
+      "body": "{\"error\":\"the seat is gone from the runner\"}"
+    },
+    {
+      "name": "failed-runner-silent",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "the runner didn't answer"
+      },
+      "body": "{\"error\":\"the runner didn't answer\"}"
+    },
+    {
+      "name": "failed-no-database",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "no database"
+      },
+      "body": "{\"error\":\"no database\"}"
+    },
+    {
+      "name": "failed-not-read",
+      "writer": "error",
+      "from": "source",
+      "values": {
+        "text": "not read"
+      },
+      "body": "{\"error\":\"not read\"}"
+    }
+  ]
+}

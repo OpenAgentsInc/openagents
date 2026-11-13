@@ -18,6 +18,7 @@
 // identity token (OA_AGENT_WAKE_TOKEN in tests). The seat's key goes to the runner and to no one else.
 #include "api.h"
 #include "seat-policy.generated.h"
+#include "seat-wire.generated.h"
 #include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,12 +48,17 @@ static bool run(PGconn *db, const char *sql) {
   PQclear(r);
   return ok;
 }
-static void refuse(const request *q, int64_t code) {
-  coax_string why = sp_refusal_text(code);
+// The bytes this file writes itself go through seat-wire.coax (seat-wire.generated.c): a refusal
+// (the API's ErrorReply), kept, closed, and the two bodies the runner is sent. The grant, the list
+// and the action handed to the runner are SQL's.
+static coax_string cs(const char *s) { return (coax_string){s, (int64_t)strlen(s)}; }
+static void say(int fd, int status, int64_t n, char *out) { out[n < 0 ? 0 : n] = 0; api_json(fd, status, out); }
+static void fail_text(int fd, int status, coax_string why) {
   char out[200];
-  snprintf(out, sizeof out, "{\"error\":\"%.*s\"}", (int)why.count, why.data);
-  api_json(q->fd, (int)sp_status(code), out);
+  say(fd, status, stw_error_write(why, (coax_v_u8){(uint8_t *)out, sizeof out - 1}), out);
 }
+static void fail(int fd, int status, const char *why) { fail_text(fd, status, cs(why)); }
+static void refuse(const request *q, int64_t code) { fail_text(q->fd, (int)sp_status(code), sp_refusal_text(code)); }
 
 // Closes every open seat seat-policy.coax says is no longer live (sp_live): called before a seat
 // opens and on every made realm's presence post (room.c), so an idle seat's key dies within a
@@ -136,7 +142,7 @@ static long runner_post(const char *path, const char *json, long timeout_s, char
 // ---- the routes
 static void open_seat(const request *q, PGconn *db, const char *signer, const char *acct, const char *key) {
   char *body = body_text(q);
-  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  if (!body) { fail(q->fd, 503, "memory"); return; }
   const char *bv[1] = {body};
   char *slug = one(db, "SELECT CASE WHEN jsonb_typeof(b->'slug') = 'string' AND b->>'slug' ~ '^[a-z0-9-]{1,48}$' THEN b->>'slug' END "
                        "FROM (SELECT $1::jsonb b) x", 1, bv);
@@ -144,11 +150,11 @@ static void open_seat(const request *q, PGconn *db, const char *signer, const ch
   free(body);
   bool hosted = hosted_s && !strcmp(hosted_s, "true");
   free(hosted_s);
-  if (!slug) { api_json(q->fd, 400, "{\"error\":\"slug: a made realm's address\"}"); return; }
+  if (!slug) { fail(q->fd, 400, "slug: a made realm's address"); return; }
   bool admin = admin_is(signer);
   char base[600];
   bool runner = runner_base(base, sizeof base);
-  if (!run(db, "BEGIN") || !run(db, "SELECT pg_advisory_xact_lock(7731027)")) { free(slug); run(db, "ROLLBACK"); api_json(q->fd, 500, "{\"error\":\"not opened\"}"); return; }
+  if (!run(db, "BEGIN") || !run(db, "SELECT pg_advisory_xact_lock(7731027)")) { free(slug); run(db, "ROLLBACK"); fail(q->fd, 500, "not opened"); return; }
   seats_sweep(db);
   const char *fv[4] = {acct, key, slug, admin ? "true" : "false"};
   char *facts = one(db, "SELECT (f->>'others') || ' ' || (f->>'seen') FROM verse.seat_facts($1, $2, $3, $4::boolean) f", 4, fv);
@@ -160,14 +166,15 @@ static void open_seat(const request *q, PGconn *db, const char *signer, const ch
   const char *ov[6] = {acct, signer, slug, admin ? "true" : "false", hosted ? "true" : "false", until};
   char *opened = one(db, "SELECT verse.seat_open($1, $2, $3, $4::boolean, $5::boolean, $6::bigint)::text", 6, ov);
   free(slug);
-  if (!opened || !run(db, "COMMIT")) { free(opened); run(db, "ROLLBACK"); api_json(q->fd, 500, "{\"error\":\"not opened\"}"); return; }
+  if (!opened || !run(db, "COMMIT")) { free(opened); run(db, "ROLLBACK"); fail(q->fd, 500, "not opened"); return; }
   if (hosted) {
     // the runner starts the seat's Chrome with its key; the seat closes again when it can't
     size_t n = strlen(opened) + 600;
     char *msg = malloc(n), *answer = NULL;
-    if (!msg) { free(opened); api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
-    snprintf(msg, n, "{\"seat\":%s,\"origin\":\"%s\"}", opened, site_origin());
-    long status = runner_post("/seat/open", msg, 120L, &answer);
+    if (!msg) { free(opened); fail(q->fd, 503, "memory"); return; }
+    int64_t mn = stw_runner_open_write(cs(opened), cs(site_origin()), (coax_v_u8){(uint8_t *)msg, (int64_t)n - 1});
+    msg[mn < 0 ? 0 : mn] = 0;
+    long status = mn < 0 ? 0 : runner_post("/seat/open", msg, 120L, &answer);
     free(msg);
     if (status != 200) {
       const char *iv[2] = {"", acct};
@@ -176,13 +183,14 @@ static void open_seat(const request *q, PGconn *db, const char *signer, const ch
       char *closed = one(db, "SELECT verse.seat_close($1::bigint, $2)::text", 2, iv);
       free(closed); free(id); free(answer); free(opened);
       api_log("seats: the runner didn't open a hosted seat (%ld)", status);
-      api_json(q->fd, 502, "{\"error\":\"the runner didn't open the seat: try again\"}");
+      fail(q->fd, 502, "the runner didn't open the seat: try again");
       return;
     }
     free(answer);
     // a hosted seat's key stays with the runner: the caller gets the seat without it
     char *shown = one(db, "SELECT ($1::jsonb #- '{player,key}')::text", 1, (const char *const[]){opened});
-    api_json(q->fd, 200, shown ? shown : "{}");
+    if (shown) api_json(q->fd, 200, shown);
+    else { char none[8]; say(q->fd, 200, stw_grant_none_write((coax_v_u8){(uint8_t *)none, sizeof none - 1}), none); }
     free(shown); free(opened);
     return;
   }
@@ -199,27 +207,33 @@ static void seat_op(const request *q, PGconn *db, const char *acct, const char *
     int s = status ? atoi(status) : 500;
     free(status);
     if (closing && s == 200 && hosted && !strcmp(hosted, "true")) {
-      char msg[64], *answer = NULL; snprintf(msg, sizeof msg, "{\"id\":%s}", id);
-      long st = runner_post("/seat/close", msg, 30L, &answer);
+      char msg[64], *answer = NULL;
+      int64_t mn = stw_runner_close_write(cs(id), (coax_v_u8){(uint8_t *)msg, sizeof msg - 1});
+      msg[mn < 0 ? 0 : mn] = 0;
+      long st = mn < 0 ? 0 : runner_post("/seat/close", msg, 30L, &answer);
       free(answer);
       if (st != 200) api_log("seats: the runner didn't close seat %s (%ld)", id, st);
     }
     free(hosted);
-    api_json(q->fd, s, s == 200 ? (closing ? "{\"closed\":true}" : "{\"kept\":true}") : s == 404 ? "{\"error\":\"no such open seat\"}" : "{\"error\":\"not done\"}");
+    if (s == 200) {
+      char out[32];
+      coax_v_u8 to = {(uint8_t *)out, sizeof out - 1};
+      say(q->fd, 200, closing ? stw_closed_write(to) : stw_kept_write(to), out);
+    } else fail(q->fd, s, s == 404 ? "no such open seat" : "not done");
     return;
   }
   if (!strcmp(op, "act")) {
     char *hosted = one(db, "SELECT hosted::text FROM verse.seat_mine($1::bigint, $2) WHERE id IS NOT NULL", 2, v);
     bool is_hosted = hosted && !strcmp(hosted, "true");
     free(hosted);
-    if (!is_hosted) { api_json(q->fd, 404, "{\"error\":\"no such open hosted seat\"}"); return; }
+    if (!is_hosted) { fail(q->fd, 404, "no such open hosted seat"); return; }
     char *body = body_text(q);
-    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+    if (!body) { fail(q->fd, 503, "memory"); return; }
     const char *bv[2] = {body, id};
     // the action as one JSON object, its id the seat's
     char *msg = one(db, "SELECT jsonb_build_object('id', $2::bigint, 'action', $1::jsonb)::text WHERE jsonb_typeof($1::jsonb) = 'object' AND length($1::text) <= 8192", 2, bv);
     free(body);
-    if (!msg) { api_json(q->fd, 400, "{\"error\":\"an action is one JSON object\"}"); return; }
+    if (!msg) { fail(q->fd, 400, "an action is one JSON object"); return; }
     char *answer = NULL;
     long st = runner_post("/seat/act", msg, 150L, &answer);
     free(msg);
@@ -227,11 +241,11 @@ static void seat_op(const request *q, PGconn *db, const char *acct, const char *
       char *kept = one(db, "SELECT verse.seat_keep($1::bigint, $2)::text", 2, v);
       free(kept);
       api_json(q->fd, 200, answer);
-    } else api_json(q->fd, st == 404 ? 404 : 502, st == 404 ? "{\"error\":\"the seat is gone from the runner\"}" : "{\"error\":\"the runner didn't answer\"}");
+    } else fail(q->fd, st == 404 ? 404 : 502, st == 404 ? "the seat is gone from the runner" : "the runner didn't answer");
     free(answer);
     return;
   }
-  api_json(q->fd, 404, "{\"error\":\"not found\"}");
+  fail(q->fd, 404, "not found");
 }
 
 bool seats_route(const request *q) {
@@ -239,11 +253,11 @@ bool seats_route(const request *q) {
   size_t rl = sizeof root - 1;
   if (strncmp(q->path, root, rl) || (q->path[rl] && q->path[rl] != '/')) return false;
   PGconn *db = api_db();
-  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  if (!db) { fail(q->fd, 503, "no database"); return true; }
   bool post = !strcmp(q->method, "POST");
-  if (!post && strcmp(q->method, "GET")) { api_json(q->fd, 405, "{\"error\":\"GET or POST\"}"); return true; }
+  if (!post && strcmp(q->method, "GET")) { fail(q->fd, 405, "GET or POST"); return true; }
   char from[256];
-  if (post && api_header(q, "Origin", from, sizeof from) && strcmp(from, site_origin())) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
+  if (post && api_header(q, "Origin", from, sizeof from) && strcmp(from, site_origin())) { fail(q->fd, 403, "cross-site"); return true; }
   // a seat is an account's: a signed caller (caller-policy.coax), or, unsigned, this site's own page
   // logged in (a session of ours, auth.c; a POST only with this site's Origin); never the player key
   char signer[65] = "", key[160] = "";
@@ -257,14 +271,14 @@ bool seats_route(const request *q) {
   }
   const char *pv[1] = {signer};
   char *acct = one(db, "SELECT auth.account_of($1)", 1, pv);
-  if (!acct || !access_caller_key(db, signer, key)) { free(acct); api_json(q->fd, 500, "{\"error\":\"not read\"}"); return true; }
+  if (!acct || !access_caller_key(db, signer, key)) { free(acct); fail(q->fd, 500, "not read"); return true; }
   const char *rest = q->path + rl;
   if (!*rest) {
     if (post) open_seat(q, db, signer, acct, key);
     else {
       const char *v[1] = {acct};
       char *mine = one(db, "SELECT jsonb_build_object('seats', verse.seats_mine($1))::text", 1, v);
-      api_json(q->fd, mine ? 200 : 500, mine ? mine : "{\"error\":\"not read\"}");
+      if (mine) api_json(q->fd, 200, mine); else fail(q->fd, 500, "not read");
       free(mine);
     }
     free(acct);
@@ -272,7 +286,7 @@ bool seats_route(const request *q) {
   }
   // /<id>/<op>
   char id[24] = "", op[16] = "";
-  if (!post || sscanf(rest, "/%20[0-9]/%15[a-z]", id, op) != 2) { free(acct); api_json(q->fd, 404, "{\"error\":\"not found\"}"); return true; }
+  if (!post || sscanf(rest, "/%20[0-9]/%15[a-z]", id, op) != 2) { free(acct); fail(q->fd, 404, "not found"); return true; }
   seat_op(q, db, acct, id, op);
   free(acct);
   return true;

@@ -162,8 +162,65 @@ check("a site admin's seat is in it", seat_post(SR, {}, os.environ["ADMIN_KEY"])
 import http.server, threading
 
 
-def signed_call(method, path, body, keyfile, headers=None):
-    raw = json.dumps(body).encode() if body is not None else None
+# The bodies seats.c reads and answers are coax/lib/media/realm_seat_wire.coax's (Protocol E11,
+# #13250): proto/verse/realm-seat-v1alpha1.json holds them as this API answered them, byte for byte.
+# A call below that names a golden (saw=NAME) sends the codec's bytes and keeps the answer;
+# seat_held() then requires each kept body to be its golden's bytes, but for the values a run
+# decides (ids, times, the player and its key, this API's port), and runs every one through
+# coax/web/api/seat-wire-goldens.coax --read, which holds its keys to seat.proto and reads and
+# writes it back through the codec for the same bytes. SEAT_CAPTURE=FILE writes what the API
+# answered to FILE instead: the way the fixture's bodies were taken.
+import re
+SEAT_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+SEAT_FIXTURE = os.path.join(SEAT_REPO, "proto", "verse", "realm-seat-v1alpha1.json")
+seat_goldens = {g["name"]: g for g in json.load(open(SEAT_FIXTURE))["goldens"]} if os.path.exists(SEAT_FIXTURE) else {}
+seat_seen = []   # (golden's name, the body's bytes)
+
+
+def seat_saw(name, raw):
+    seat_seen.append((name, raw.decode() if isinstance(raw, bytes) else raw))
+
+
+def seat_shape(text):
+    """A body with the values a run decides made the same: only those differ between two runs."""
+    text = re.sub(r'"(id|until|kept_ms|opened_ms)": ?[0-9]+', lambda m: m.group(0)[:m.group(0).index(":") + 1] + "N", text)
+    text = re.sub(r'"id": "p-[^"]*"', '"id": "P"', text)
+    text = re.sub(r'"key": "[^"]*"', '"key": "K"', text)
+    return re.sub(r'"origin":"http://127\.0\.0\.1:[0-9]+"', '"origin":"O"', text)
+
+
+def seat_sent(name, body):
+    """The request body the codec writes for these values: the golden's bytes."""
+    raw = json.dumps(body, separators=(",", ":"))
+    if seat_goldens and name:
+        check(f"seats: the request sent is the golden {name}", seat_goldens.get(name, {}).get("body") == raw, raw)
+    return raw.encode()
+
+
+def seat_held():
+    if os.environ.get("SEAT_CAPTURE"):
+        json.dump([{"name": n, "body": b} for n, b in seat_seen], open(os.environ["SEAT_CAPTURE"], "w"), indent=1)
+        return
+    bodies = []
+    for name, raw in seat_seen:
+        g = seat_goldens.get(name)
+        check(f"seats: the API's bytes are the golden {name}", g is not None and seat_shape(raw) == seat_shape(g["body"]), (raw, g and g["body"]))
+        if g is not None:
+            bodies.append({"name": name, "kind": g["writer"], "body": raw})
+    answered = {n for n, _ in seat_seen}
+    missed = sorted(n for n, g in seat_goldens.items() if g.get("from") == "api" and n not in answered)
+    check("seats: every golden taken from the API was answered again", not missed, missed)
+    f = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+    json.dump({"bodies": bodies}, f)
+    f.close()
+    r = subprocess.run([os.path.join(SEAT_REPO, "coax", "web", "tool.sh"), "coax/web/api/seat-wire-goldens.coax", "--read", f.name],
+                       cwd=SEAT_REPO, capture_output=True, text=True, timeout=1200)
+    os.unlink(f.name)
+    check("seats: each body's keys are seat.proto's and the codec writes it back byte for byte", r.returncode == 0 and len(bodies) > 0, (r.stdout[-1200:], r.stderr[-800:]))
+
+
+def signed_call(method, path, body, keyfile, headers=None, saw=None, sent=None):
+    raw = (seat_sent(sent, body) if sent else json.dumps(body).encode()) if body is not None else None
     sig_args = [os.environ["SIGN"], "--key", keyfile, method, API + path]
     if raw is not None:
         f = tempfile.NamedTemporaryFile(delete=False)
@@ -173,6 +230,8 @@ def signed_call(method, path, body, keyfile, headers=None):
     sig = subprocess.run(sig_args, capture_output=True, text=True, check=True).stdout.strip()
     h = {"Content-Type": "application/json", "Authorization": "Nostr " + sig, **(headers or {})}
     status, out, _ = call(method, path, raw, h)
+    if saw:
+        seat_saw(saw, out)
     try:
         return status, json.loads(out)
     except ValueError:
@@ -190,19 +249,25 @@ other_acct = sql(f"select auth.account_of('{pubkey_of(OK_)}')")
 sql(f"insert into verse.worlds (id, owner_account, created_ms) values ('made-seat-mine', '{other_acct}', verse.now_ms())")
 sql("insert into verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms, visibility) "
     "values ('seat-mine', 'made-seat-mine', 'M', 'lowpoly', 'meadow', 'day', '{}', '{}', verse.now_ms(), 'private')")
-check("a seat is an account's: unsigned is refused",
-      call("POST", SEATS, b'{"slug":"seat-green"}', {"Content-Type": "application/json", "X-Verse-Player": visitor["key"]})[0] == 401)
-status, s1 = signed_call("POST", SEATS, {"slug": "seat-green"}, OK_)
+unsigned = call("POST", SEATS, b'{"slug":"seat-green"}', {"Content-Type": "application/json", "X-Verse-Player": visitor["key"]})
+seat_saw("refused-unsigned", unsigned[1])
+check("a seat is an account's: unsigned is refused", unsigned[0] == 401)
+status, s1 = signed_call("POST", SEATS, {"slug": "seat-green"}, OK_, saw="grant", sent="open")
 check("an account opens a seat and gets its own player key", status == 200 and s1["slug"] == "seat-green" and len(s1["player"]["key"]) >= 20
       and s1["player"]["id"].startswith("p-") and s1["hosted"] is False, s1)
 check("the seat's player is the account's", sql(f"select account from verse.players where id = '{s1['player']['id']}'") == other_acct)
-check("a realm it can't see opens no seat", signed_call("POST", SEATS, {"slug": "seat-secret"}, OK_)[0] == 404
+check("a realm it can't see opens no seat", signed_call("POST", SEATS, {"slug": "seat-secret"}, OK_, saw="refused-no-realm")[0] == 404
       and signed_call("POST", SEATS, {"slug": "no-such-realm"}, OK_)[0] == 404
-      and signed_call("POST", SEATS, {"slug": "Bad Slug"}, OK_)[0] == 400)
+      and signed_call("POST", SEATS, {"slug": "Bad Slug"}, OK_, saw="refused-slug")[0] == 400)
+check("a seat's routes are GET and POST, and its paths /<id>/keep, /close and /act",
+      call("PUT", SEATS, b"{}", {"Content-Type": "application/json"})[0] == 405
+      and signed_call("POST", f"{SEATS}/1/sit", {}, OK_, saw="refused-path")[0] == 404
+      and signed_call("GET", f"{SEATS}/1/keep", None, OK_)[0] == 404)
+seat_saw("refused-method", call("PUT", SEATS, b"{}", {"Content-Type": "application/json"})[1])
 status, s2 = signed_call("POST", SEATS, {"slug": "seat-mine"}, OK_)
 check("its own private realm opens to it", status == 200, s2)
 check("one seat an account: the newer closed the older, and its key is dead",
-      [x["id"] for x in signed_call("GET", SEATS, None, OK_)[1]["seats"]] == [s2["id"]]
+      [x["id"] for x in signed_call("GET", SEATS, None, OK_, saw="seats")[1]["seats"]] == [s2["id"]]
       and room_call("POST", "/api/playtest/presence/" + GR, {}, s1["player"]["key"])[0] == 403)
 sees = lambda key, slug: room_call("POST", "/api/playtest/presence/made-" + slug, {}, key)[0] == 200 and sql(f"select verse.realm_hidden('{slug}', '{key}', false)::text") == "false"
 check("the seat's key sees its account's private realm, a visitor's doesn't",
@@ -214,8 +279,8 @@ check("but a private realm's room stays its owner's", status == 404, sw)
 status, sa = signed_call("POST", SEATS, {"slug": "seat-secret"}, AK_)
 check("a site admin's seat opens a private realm, and its key sees it", status == 200
       and sees(sa["player"]["key"], "seat-secret"), sa)
-check("keep: the account's open seat only", signed_call("POST", f"{SEATS}/{s2['id']}/keep", {}, OK_)[0] == 200
-      and signed_call("POST", f"{SEATS}/{s2['id']}/keep", {}, AK_)[0] == 404
+check("keep: the account's open seat only", signed_call("POST", f"{SEATS}/{s2['id']}/keep", {}, OK_, saw="kept")[0] == 200
+      and signed_call("POST", f"{SEATS}/{s2['id']}/keep", {}, AK_, saw="refused-no-seat")[0] == 404
       and signed_call("POST", f"{SEATS}/{s1['id']}/keep", {}, OK_)[0] == 404)
 sql(f"update verse.seats set kept_ms = verse.now_ms() - 600000 where id = {sa['id']}")
 room_call("POST", "/api/playtest/presence/" + GR, {}, visitor["key"])   # a made realm's presence closes idle seats
@@ -224,7 +289,7 @@ check("a seat not kept for 10 minutes is closed, its key dead", sql(f"select clo
 sql(f"update verse.seats set kept_ms = verse.now_ms() - 595000 where id = {s2['id']}")
 room_call("POST", "/api/playtest/presence/" + GR, {}, visitor["key"])
 check("one kept under 10 minutes ago is open", sql(f"select (closed_ms is null)::text from verse.seats where id = {s2['id']}") == "true")
-check("closed by its account, its key dead", signed_call("POST", f"{SEATS}/{s2['id']}/close", {}, OK_)[0] == 200
+check("closed by its account, its key dead", signed_call("POST", f"{SEATS}/{s2['id']}/close", {}, OK_, saw="closed")[0] == 200
       and not sees(s2["player"]["key"], "seat-mine")
       and time.sleep(1.1) is None and signed_call("POST", f"{SEATS}/{s2['id']}/close", {}, OK_)[0] == 404)
 # at most 8 a site: seven other accounts' seats, then the eighth opens and a ninth account's is refused
@@ -233,19 +298,23 @@ for i in range(7):
     sql(f"select verse.seat_open('n-seatfill{i}', 'fill', 'seat-green', false, false, 0)")
 check("an eighth seat opens", signed_call("POST", SEATS, {"slug": "seat-green"}, OK_)[0] == 200)
 check("a ninth account's is refused: the site's seats are full",
-      signed_call("POST", SEATS, {"slug": "seat-green"}, AK_) == (429, {"error": "the site's seats are full (8 at once): try again in a few minutes"}))
+      signed_call("POST", SEATS, {"slug": "seat-green"}, AK_, saw="refused-full") == (429, {"error": "the site's seats are full (8 at once): try again in a few minutes"}))
 time.sleep(1.1)
 check("the account with a seat may open again (it replaces its own)", signed_call("POST", SEATS, {"slug": "seat-green"}, OK_)[0] == 200)
 sql("update verse.seats set closed_ms = verse.now_ms() where closed_ms is null")
+check("an account with no open seat has none", signed_call("GET", SEATS, None, AK_, saw="seats-none") == (200, {"seats": []}))
 
 # A hosted seat: oa-api asks the runner (a stand-in on WAKE_PORT) to open it with its key, sends
 # actions there, and tells it when the seat closes. The caller never sees the hosted seat's key.
 runner_seen = []
+runner_raw = []   # (path, the body's bytes as the API sent them)
 
 
 class FakeRunner(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+        sent = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        runner_raw.append((self.path, sent))
+        body = json.loads(sent or b"{}")
         runner_seen.append((self.path, body, self.headers.get("Authorization")))
         out = {"/seat/open": {"open": True}, "/seat/close": {"closed": True},
                "/seat/act": {"op": body.get("action", {}).get("op"), "ok": True, "result": "looked"}}.get(self.path)
@@ -263,25 +332,31 @@ class FakeRunner(http.server.BaseHTTPRequestHandler):
 if os.environ.get("WAKE_PORT"):
     fake = http.server.ThreadingHTTPServer(("127.0.0.1", int(os.environ["WAKE_PORT"])), FakeRunner)
     threading.Thread(target=fake.serve_forever, daemon=True).start()
-    status, h1 = signed_call("POST", SEATS, {"slug": "seat-green", "hosted": True}, OK_)
+    status, h1 = signed_call("POST", SEATS, {"slug": "seat-green", "hosted": True}, OK_, saw="grant-hosted", sent="open-hosted")
     opened = [b for p, b, _ in runner_seen if p == "/seat/open"]
     check("a hosted seat opens on the runner, with its key; the caller gets it without the key", status == 200 and h1["hosted"] is True
           and "key" not in h1["player"] and opened and opened[0]["seat"]["player"]["key"] and opened[0]["seat"]["id"] == h1["id"]
           and opened[0]["origin"].startswith("http"), (h1, runner_seen))
-    status, ob = signed_call("POST", f"{SEATS}/{h1['id']}/act", {"op": "look", "turn": 90}, OK_)
+    status, ob = signed_call("POST", f"{SEATS}/{h1['id']}/act", {"op": "look", "turn": 90}, OK_, saw="act-reply" if os.environ.get("SEAT_CAPTURE") else None)
     acts = [b for p, b, _ in runner_seen if p == "/seat/act"]
     check("its actions go to the runner and come back", status == 200 and ob["result"] == "looked" and acts[-1] == {"id": h1["id"], "action": {"op": "look", "turn": 90}}, ob)
-    check("an action is one JSON object", signed_call("POST", f"{SEATS}/{h1['id']}/act", [1], OK_)[0] == 400)
-    check("another account can't act in it", signed_call("POST", f"{SEATS}/{h1['id']}/act", {"op": "look"}, AK_)[0] == 404)
+    check("an action is one JSON object", signed_call("POST", f"{SEATS}/{h1['id']}/act", [1], OK_, saw="refused-action")[0] == 400)
+    check("another account can't act in it", signed_call("POST", f"{SEATS}/{h1['id']}/act", {"op": "look"}, AK_, saw="refused-no-hosted-seat")[0] == 404)
     check("closing it tells the runner", signed_call("POST", f"{SEATS}/{h1['id']}/close", {}, OK_)[0] == 200
           and [b for p, b, _ in runner_seen if p == "/seat/close"] == [{"id": h1["id"]}])
+    seat_saw("runner-open", [b for p, b in runner_raw if p == "/seat/open"][0])
+    seat_saw("runner-close", [b for p, b in runner_raw if p == "/seat/close"][0])
+    if os.environ.get("SEAT_CAPTURE"):
+        seat_saw("runner-act", [b for p, b in runner_raw if p == "/seat/act"][0])
     # The YOUR AGENT pane (verse/edit/agent.coax): the realm's own page, logged in on this site, opens,
     # acts in and closes a hosted seat with its session; another site's page and the player key can't.
     site_cookie = login_cookie(pubkey_of(OK_))
     on_page = {"Content-Type": "application/json", "Cookie": site_cookie, "Origin": API}
 
-    def page_call(path, body, headers=on_page):
+    def page_call(path, body, headers=on_page, saw=None):
         status, out, _ = call("POST", path, json.dumps(body).encode(), headers)
+        if saw:
+            seat_saw(saw, out)
         try:
             return status, json.loads(out)
         except ValueError:
@@ -292,7 +367,7 @@ if os.environ.get("WAKE_PORT"):
     status, ob = page_call(f"{SEATS}/{h3['id']}/act", {"op": "look", "turn": -90})
     check("the page's verbs reach the seat", status == 200 and ob["result"] == "looked"
           and [b for p, b, _ in runner_seen if p == "/seat/act"][-1] == {"id": h3["id"], "action": {"op": "look", "turn": -90}}, ob)
-    check("the session on another site's page is refused", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {**on_page, "Origin": "https://elsewhere.example"})[0] == 403)
+    check("the session on another site's page is refused", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {**on_page, "Origin": "https://elsewhere.example"}, saw="refused-cross-site")[0] == 403)
     check("a POST without this site's Origin isn't the session's", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {"Content-Type": "application/json", "Cookie": site_cookie})[0] == 401)
     check("the player key is no account here", page_call(SEATS, {"slug": "seat-green", "hosted": True}, {"Content-Type": "application/json", "Origin": API, "X-Verse-Player": visitor["key"]})[0] == 401)
     unknown = page_call(SEATS, {"slug": "seat-green", "hosted": True}, {**on_page, "Cookie": login_cookie(os.urandom(32).hex())[:-8] + "AAAAAAAA"})
@@ -301,9 +376,10 @@ if os.environ.get("WAKE_PORT"):
           and [b for p, b, _ in runner_seen if p == "/seat/close"][-1] == {"id": h3["id"]})
     fake.shutdown(); fake.server_close()
     time.sleep(1.1)   # a NIP-98 signature is good once: the same request needs the next second
-    status, h2 = signed_call("POST", SEATS, {"slug": "seat-green", "hosted": True}, OK_)
+    status, h2 = signed_call("POST", SEATS, {"slug": "seat-green", "hosted": True}, OK_, saw="refused-runner")
     check("no runner answering: no hosted seat, and nothing left open", status == 502
           and sql(f"select count(*) from verse.seats where closed_ms is null and account = '{other_acct}'") == "0", h2)
+seat_held()
 
 # The runner's side (coax/web/agent/seat-runner.c), with a stand-in oa-seat that answers each line:
 # a seat opens with its key on the stand-in's stdin (never in its arguments or the runner's log),

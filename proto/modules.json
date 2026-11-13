@@ -195,7 +195,8 @@
     ],
     "api-routes": [
       "openagents/api/v1alpha1/error.proto",
-      "openagents/ops/service/v1alpha1/service.proto"
+      "openagents/ops/service/v1alpha1/service.proto",
+      "openagents/verse/seat/v1alpha1/seat.proto"
     ]
   },
   "profile_namespaces": {
@@ -353,7 +354,8 @@
     "api-routes": [
       "openagents.api.v1alpha1",
       "openagents.ops.service.v1alpha1",
-      "openagents.options.v1alpha1"
+      "openagents.options.v1alpha1",
+      "openagents.verse.seat.v1alpha1"
     ]
   }
 }

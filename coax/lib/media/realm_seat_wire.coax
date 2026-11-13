@@ -1,0 +1,335 @@
+// A seat's bodies on the wire, one codec (compliance plan step E11, GitHub #13250;
+// proto/openagents/verse/seat/v1alpha1/seat.proto, profile api-routes): what coax/web/api/seats.c
+// reads and answers, and what it sends the runner that holds a hosted seat's page.
+//   POST /api/playtest/seats             seatw_open_body -> a Grant (seatw_read_grant)
+//   GET  /api/playtest/seats             SeatsReply (seatw_read_seats)
+//   POST /api/playtest/seats/<id>/keep   {"kept":true}
+//   POST /api/playtest/seats/<id>/close  {"closed":true}
+//   the API to the runner                /seat/open  {"seat":GRANT,"origin":"..."}
+//                                        /seat/close {"id":7}
+// The server builds a Grant and a SeatsReply in SQL and answers jsonb's text: keys by length, then
+// by bytes, with ", " and ": " between items. The writers here give those bytes; what seats.c
+// writes itself is compact. proto/verse/realm-seat-v1alpha1.json holds the bytes, checked through
+// this file by coax/web/api/seat-wire-goldens.coax and on a running API by
+// coax/web/api/test_room.py. seats.c calls the writers through coax/web/api/seat-wire.coax. A
+// writer returns the body's length, or -1 when it does not fit or a value is not one it writes;
+// a reader refuses a body whole when a member is missing or of another kind.
+//   coax/bin/coax test coax/lib/media/realm_seat_wire.coax --library
+#load "../json/json.coax";
+
+SEATW_SLUG :: 48;      // a made realm's slug, ^[a-z0-9-]{1,48}$ (seats.c)
+SEATW_PID :: 64;       // a player's id
+SEATW_KEY :: 200;      // a player's key (the server's are 20 to 128 bytes)
+SEATW_ORIGIN :: 256;   // the site a hosted seat's page loads from
+SEATW_MOST :: 9007199254740991;   // an id or a time in milliseconds, at most
+
+seatw_slug_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > SEATW_SLUG { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+seatw_digits :: (s: string) -> bool {
+  if s.count < 1 || s.count > 20 { return false; }
+  for c: s { if c < '0' || c > '9' { return false; } }
+  return true;
+}
+seatw_len :: (o: [] Jo) -> int { return ifx o[0].bad then -1 else o[0].n; }
+// A whole number member from 0 to SEATW_MOST, or -1.
+seatw_whole :: (j: Jv, at: int, key: string) -> int {
+  v := jv_int(j, jv_get(j, at, key), -1);
+  return ifx v < 0 || v > SEATW_MOST then -1 else v;
+}
+// A true or false member: 1 or 0, or -1 for anything else.
+seatw_flag :: (j: Jv, at: int, key: string) -> int {
+  k := jv_kind(j, jv_get(j, at, key));
+  return ifx k == JV_TRUE then 1 else ifx k == JV_FALSE then 0 else -1;
+}
+
+// ---- POST /api/playtest/seats: the request
+
+// {"slug":"village-green"}, or for a seat the runner holds {"slug":"village-green","hosted":true}.
+seatw_open_body :: (slug: string, hosted: bool, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_put(o[..], "{\"slug\":"); jo_quoted(o[..], slug);
+  jo_put(o[..], ifx hosted then ",\"hosted\":true}" else "}");
+  return seatw_len(o[..]);
+}
+// What an open body asks: ok false when it is no object or its slug is not a made realm's address;
+// hosted only when it is exactly true (anything else is a seat the caller holds, as the server reads it).
+SeatwOpen :: struct { ok: bool; hosted: bool; slug: [SEATW_SLUG] u8; slug_n: int; }
+seatw_open_slug :: (r: [] SeatwOpen) -> string { return cast(string) r[0].slug[0..<r[0].slug_n]; }
+seatw_read_open :: (body: string, r: [] SeatwOpen) -> bool {
+  r[0] = SeatwOpen.{};
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  n := jv_str(d[0], jv_get(d[0], 0, "slug"), r[0].slug[..]);
+  if n < 0 || !seatw_slug_ok(cast(string) r[0].slug[0..<n]) { return false; }
+  r[0].slug_n = n; r[0].hosted = seatw_flag(d[0], 0, "hosted") == 1; r[0].ok = true;
+  return true;
+}
+
+// ---- the grant
+
+// key_n 0: no key (a hosted seat's stays with the runner).
+SeatwGrant :: struct {
+  id: int; until: int; hosted: bool;
+  slug: [SEATW_SLUG] u8; slug_n: int; pid: [SEATW_PID] u8; pid_n: int; key: [SEATW_KEY] u8; key_n: int;
+}
+seatw_grant_slug :: (g: [] SeatwGrant) -> string { return cast(string) g[0].slug[0..<g[0].slug_n]; }
+seatw_grant_pid :: (g: [] SeatwGrant) -> string { return cast(string) g[0].pid[0..<g[0].pid_n]; }
+seatw_grant_key :: (g: [] SeatwGrant) -> string { return cast(string) g[0].key[0..<g[0].key_n]; }
+// A grant from its values: false when one does not fit or is not a grant's.
+seatw_grant_of :: (g: [] SeatwGrant, id: int, slug: string, until: int, hosted: bool, pid: string, key: string) -> bool {
+  g[0] = SeatwGrant.{};
+  if id < 1 || id > SEATW_MOST || until < 0 || until > SEATW_MOST || !seatw_slug_ok(slug) { return false; }
+  if pid.count < 1 || pid.count > SEATW_PID || key.count > SEATW_KEY { return false; }
+  for i: 0..<slug.count { g[0].slug[i] = slug[i]; } g[0].slug_n = slug.count;
+  for i: 0..<pid.count { g[0].pid[i] = pid[i]; } g[0].pid_n = pid.count;
+  for i: 0..<key.count { g[0].key[i] = key[i]; } g[0].key_n = key.count;
+  g[0].id = id; g[0].until = until; g[0].hosted = hosted;
+  return true;
+}
+// {"id": 7, "slug": "g", "until": 9, "hosted": false, "player": {"id": "p-1a", "key": "K"}}; with
+// no key the player is {"id": "p-1a"}.
+seatw_grant_json :: (g: [] SeatwGrant, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_put(o[..], "{\"id\": "); jo_int(o[..], g[0].id);
+  jo_put(o[..], ", \"slug\": "); jo_quoted(o[..], seatw_grant_slug(g));
+  jo_put(o[..], ", \"until\": "); jo_int(o[..], g[0].until);
+  jo_put(o[..], ifx g[0].hosted then ", \"hosted\": true" else ", \"hosted\": false");
+  jo_put(o[..], ", \"player\": {\"id\": "); jo_quoted(o[..], seatw_grant_pid(g));
+  if g[0].key_n > 0 { jo_put(o[..], ", \"key\": "); jo_quoted(o[..], seatw_grant_key(g)); }
+  jo_put(o[..], "}}");
+  return seatw_len(o[..]);
+}
+// {}: what a hosted seat's caller is answered when its grant could not be shown without its key.
+seatw_grant_none :: (out: [] u8) -> int { o: [1] Jo; jo_start(o[..], out); jo_put(o[..], "{}"); return seatw_len(o[..]); }
+// The grant in the object at `at`.
+seatw_grant_at :: (j: Jv, at: int, g: [] SeatwGrant) -> bool {
+  g[0] = SeatwGrant.{};
+  if jv_kind(j, at) != JV_OBJECT { return false; }
+  p := jv_get(j, at, "player");
+  id := seatw_whole(j, at, "id"); until := seatw_whole(j, at, "until"); hosted := seatw_flag(j, at, "hosted");
+  sn := jv_str(j, jv_get(j, at, "slug"), g[0].slug[..]);
+  pn := jv_str(j, jv_get(j, p, "id"), g[0].pid[..]);
+  kn := 0;
+  if jv_get(j, p, "key") >= 0 { kn = jv_str(j, jv_get(j, p, "key"), g[0].key[..]); }
+  if jv_kind(j, p) != JV_OBJECT || id < 1 || until < 0 || hosted < 0 || sn < 0 || pn < 1 || kn < 0 { g[0] = SeatwGrant.{}; return false; }
+  if !seatw_slug_ok(cast(string) g[0].slug[0..<sn]) { g[0] = SeatwGrant.{}; return false; }
+  g[0].id = id; g[0].until = until; g[0].hosted = hosted == 1; g[0].slug_n = sn; g[0].pid_n = pn; g[0].key_n = kn;
+  return true;
+}
+seatw_read_grant :: (body: string, g: [] SeatwGrant) -> bool {
+  g[0] = SeatwGrant.{};
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) { return false; }
+  return seatw_grant_at(d[0], 0, g);
+}
+
+// ---- GET /api/playtest/seats
+
+SeatwSeat :: struct { id: int; hosted: bool; kept_ms: int; opened_ms: int; slug: [SEATW_SLUG] u8; slug_n: int; }
+seatw_seat_slug :: (s: [] SeatwSeat) -> string { return cast(string) s[0].slug[0..<s[0].slug_n]; }
+seatw_seat_of :: (id: int, slug: string, hosted: bool, kept_ms: int, opened_ms: int) -> SeatwSeat {
+  s: SeatwSeat;
+  if !seatw_slug_ok(slug) { return s; }
+  for i: 0..<slug.count { s.slug[i] = slug[i]; } s.slug_n = slug.count;
+  s.id = id; s.hosted = hosted; s.kept_ms = kept_ms; s.opened_ms = opened_ms;
+  return s;
+}
+// {"seats": [{"id": 7, "slug": "g", "hosted": false, "kept_ms": 2, "opened_ms": 1}]}; none is {"seats": []}.
+seatw_seats_json :: (rows: [] SeatwSeat, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_put(o[..], "{\"seats\": [");
+  for i: 0..<rows.count {
+    s := rows[i..<i + 1];
+    if i > 0 { jo_put(o[..], ", "); }
+    jo_put(o[..], "{\"id\": "); jo_int(o[..], s[0].id);
+    jo_put(o[..], ", \"slug\": "); jo_quoted(o[..], seatw_seat_slug(s));
+    jo_put(o[..], ifx s[0].hosted then ", \"hosted\": true" else ", \"hosted\": false");
+    jo_put(o[..], ", \"kept_ms\": "); jo_int(o[..], s[0].kept_ms);
+    jo_put(o[..], ", \"opened_ms\": "); jo_int(o[..], s[0].opened_ms);
+    jo_put(o[..], "}");
+  }
+  jo_put(o[..], "]}");
+  return seatw_len(o[..]);
+}
+// The seats of a SeatsReply into rows: how many, or -1 when the body isn't one or they don't fit.
+seatw_read_seats :: (body: string, rows: [] SeatwSeat) -> int {
+  nodes: [512] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return -1; }
+  j := d[0];
+  list := jv_get(j, 0, "seats");
+  if jv_kind(j, list) != JV_ARRAY || jv_len(j, list) > rows.count { return -1; }
+  for i: 0..<jv_len(j, list) {
+    e := jv_at(j, list, i);
+    s: [1] SeatwSeat;
+    s[0].id = seatw_whole(j, e, "id"); s[0].kept_ms = seatw_whole(j, e, "kept_ms"); s[0].opened_ms = seatw_whole(j, e, "opened_ms");
+    hosted := seatw_flag(j, e, "hosted");
+    s[0].slug_n = jv_str(j, jv_get(j, e, "slug"), s[0].slug[..]);
+    if jv_kind(j, e) != JV_OBJECT || s[0].id < 1 || s[0].kept_ms < 0 || s[0].opened_ms < 0 || hosted < 0 || s[0].slug_n < 0 { return -1; }
+    if !seatw_slug_ok(seatw_seat_slug(s[..])) { return -1; }
+    s[0].hosted = hosted == 1;
+    rows[i] = s[0];
+  }
+  return jv_len(j, list);
+}
+
+// ---- keep and close
+
+// {"kept":true}
+seatw_kept :: (out: [] u8) -> int { o: [1] Jo; jo_start(o[..], out); jo_put(o[..], "{\"kept\":true}"); return seatw_len(o[..]); }
+// {"closed":true}
+seatw_closed :: (out: [] u8) -> int { o: [1] Jo; jo_start(o[..], out); jo_put(o[..], "{\"closed\":true}"); return seatw_len(o[..]); }
+// Whether a body is an object whose member `key` is true.
+seatw_read_done :: (body: string, key: string) -> bool {
+  nodes: [16] JvNode; d: [1] Jv;
+  return jv_parse(d[..], body, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT && seatw_flag(d[0], 0, key) == 1;
+}
+seatw_read_kept :: (body: string) -> bool { return seatw_read_done(body, "kept"); }
+seatw_read_closed :: (body: string) -> bool { return seatw_read_done(body, "closed"); }
+
+// ---- the API to the runner
+
+// {"seat":GRANT,"origin":"https://openagents.com"}: seat is the grant as SQL wrote it (an object,
+// carried as it came), origin the site the seat's page loads from.
+seatw_runner_open :: (seat: string, origin: string, out: [] u8) -> int {
+  if seat.count < 2 || seat[0] != '{' || seat[seat.count - 1] != '}' { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_put(o[..], "{\"seat\":"); jo_put(o[..], seat);
+  jo_put(o[..], ",\"origin\":"); jo_quoted(o[..], origin); jo_put(o[..], "}");
+  return seatw_len(o[..]);
+}
+// A runner's open body read: the grant into g and the origin into origin; the origin's length, or
+// -1 when the body isn't one.
+seatw_read_runner_open :: (body: string, g: [] SeatwGrant, origin: [] u8) -> int {
+  g[0] = SeatwGrant.{};
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return -1; }
+  n := jv_str(d[0], jv_get(d[0], 0, "origin"), origin);
+  if n < 1 || !seatw_grant_at(d[0], jv_get(d[0], 0, "seat"), g) { g[0] = SeatwGrant.{}; return -1; }
+  return n;
+}
+// {"id":7}: id is the seat's id in digits, as the route's path carried it.
+seatw_runner_close :: (id: string, out: [] u8) -> int {
+  if !seatw_digits(id) { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_put(o[..], "{\"id\":"); jo_put(o[..], id); jo_put(o[..], "}");
+  return seatw_len(o[..]);
+}
+// The seat's id in a {"id":7} body, or -1.
+seatw_read_id :: (body: string) -> int {
+  nodes: [16] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return -1; }
+  id := seatw_whole(d[0], 0, "id");
+  return ifx id < 1 then -1 else id;
+}
+
+#test "the open body, and what the server reads in one" {
+  b: [128] u8; r: [1] SeatwOpen;
+  n := seatw_open_body("village-green", false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"slug\":\"village-green\"}";
+  #assert seatw_read_open(cast(string) b[0..<n], r[..]) && r[0].ok && seatw_open_slug(r[..]) == "village-green" && !r[0].hosted;
+  n = seatw_open_body("village-green", true, b[..]);
+  #assert cast(string) b[0..<n] == "{\"slug\":\"village-green\",\"hosted\":true}" && seatw_open_body("village-green", true, b[0..<n - 1]) == -1;
+  #assert seatw_read_open(cast(string) b[0..<n], r[..]) && r[0].hosted;
+  n = seatw_open_body("a\"b", false, b[..]);
+  #assert cast(string) b[0..<n] == "{\"slug\":\"a\\\"b\"}";
+  #assert seatw_read_open("{\"slug\":\"g\",\"hosted\":\"true\"}", r[..]) && !r[0].hosted && seatw_read_open("{\"slug\":\"g\",\"hosted\":1}", r[..]) && !r[0].hosted;
+  #assert seatw_read_open("{\"slug\":\"g\",\"hosted\":false}", r[..]) && !r[0].hosted;
+  #assert !seatw_read_open("{\"slug\":\"Bad Slug\"}", r[..]) && !r[0].ok && r[0].slug_n == 0;
+  #assert !seatw_read_open("{\"slug\":7}", r[..]) && !seatw_read_open("{}", r[..]) && !seatw_read_open("[]", r[..]) && !seatw_read_open("", r[..]) && !seatw_read_open("{\"slug\":\"\"}", r[..]);
+  #assert seatw_slug_ok("a") && seatw_slug_ok("a-0-z9") && !seatw_slug_ok("") && !seatw_slug_ok("A") && !seatw_slug_ok("a_b") && !seatw_slug_ok("a b") && !seatw_slug_ok("a{") && !seatw_slug_ok("a/") && !seatw_slug_ok("a`") && !seatw_slug_ok("a:");
+  #assert seatw_slug_ok("123456789012345678901234567890123456789012345678") && !seatw_slug_ok("1234567890123456789012345678901234567890123456789");
+}
+#test "a grant as jsonb spells it, with its key and without" {
+  b: [512] u8; g: [1] SeatwGrant; h: [1] SeatwGrant;
+  #assert seatw_grant_of(g[..], 7, "seat-green", 1762190600123, false, "p-1a2b", "k0123456789abcdefghij");
+  n := seatw_grant_json(g[..], b[..]);
+  want := "{\"id\": 7, \"slug\": \"seat-green\", \"until\": 1762190600123, \"hosted\": false, \"player\": {\"id\": \"p-1a2b\", \"key\": \"k0123456789abcdefghij\"}}";
+  #assert cast(string) b[0..<n] == want && seatw_grant_json(g[..], b[0..<n - 1]) == -1;
+  #assert seatw_read_grant(want, h[..]) && h[0].id == 7 && h[0].until == 1762190600123 && !h[0].hosted;
+  #assert seatw_grant_slug(h[..]) == "seat-green" && seatw_grant_pid(h[..]) == "p-1a2b" && seatw_grant_key(h[..]) == "k0123456789abcdefghij";
+  #assert seatw_grant_of(g[..], 8, "g", 0, true, "p-1", "");
+  n = seatw_grant_json(g[..], b[..]);
+  want = "{\"id\": 8, \"slug\": \"g\", \"until\": 0, \"hosted\": true, \"player\": {\"id\": \"p-1\"}}";
+  #assert cast(string) b[0..<n] == want;
+  #assert seatw_read_grant(want, h[..]) && h[0].id == 8 && h[0].hosted && h[0].key_n == 0 && h[0].until == 0;
+  n = seatw_grant_none(b[..]);
+  #assert cast(string) b[0..<n] == "{}" && seatw_grant_none(b[0..<1]) == -1 && !seatw_read_grant("{}", h[..]);
+  // compact, and in another order, it reads the same
+  #assert seatw_read_grant("{\"player\":{\"key\":\"k\",\"id\":\"p-2\"},\"hosted\":false,\"until\":5,\"slug\":\"s\",\"id\":9}", h[..]) && h[0].id == 9 && seatw_grant_key(h[..]) == "k" && h[0].until == 5;
+  #assert !seatw_grant_of(g[..], 0, "g", 0, true, "p-1", "") && g[0].slug_n == 0 && !seatw_grant_of(g[..], 1, "G", 0, true, "p-1", "");
+  #assert !seatw_grant_of(g[..], 1, "g", -1, true, "p-1", "") && !seatw_grant_of(g[..], 1, "g", 0, true, "", "");
+  #assert seatw_grant_of(g[..], SEATW_MOST, "g", SEATW_MOST, true, "p-1", "") && !seatw_grant_of(g[..], SEATW_MOST + 1, "g", 0, true, "p-1", "") && !seatw_grant_of(g[..], 1, "g", SEATW_MOST + 1, true, "p-1", "");
+}
+#test "a grant with a member missing or of another kind is refused whole" {
+  h: [1] SeatwGrant;
+  #assert !seatw_read_grant("{\"error\":\"no such realm\"}", h[..]) && h[0].id == 0 && !seatw_read_grant("nope", h[..]) && !seatw_read_grant("[]", h[..]) && !seatw_read_grant("", h[..]);
+  #assert !seatw_read_grant("{\"id\": 0, \"slug\": \"g\", \"until\": 0, \"hosted\": true, \"player\": {\"id\": \"p-1\"}}", h[..]);
+  #assert !seatw_read_grant("{\"id\": \"7\", \"slug\": \"g\", \"until\": 0, \"hosted\": true, \"player\": {\"id\": \"p-1\"}}", h[..]);
+  #assert !seatw_read_grant("{\"id\": 7, \"until\": 0, \"hosted\": true, \"player\": {\"id\": \"p-1\"}}", h[..]);
+  #assert !seatw_read_grant("{\"id\": 7, \"slug\": \"G\", \"until\": 0, \"hosted\": true, \"player\": {\"id\": \"p-1\"}}", h[..]);
+  #assert !seatw_read_grant("{\"id\": 7, \"slug\": \"g\", \"hosted\": true, \"player\": {\"id\": \"p-1\"}}", h[..]);
+  #assert !seatw_read_grant("{\"id\": 7, \"slug\": \"g\", \"until\": -1, \"hosted\": true, \"player\": {\"id\": \"p-1\"}}", h[..]);
+  #assert !seatw_read_grant("{\"id\": 7, \"slug\": \"g\", \"until\": 0, \"player\": {\"id\": \"p-1\"}}", h[..]);
+  #assert !seatw_read_grant("{\"id\": 7, \"slug\": \"g\", \"until\": 0, \"hosted\": 1, \"player\": {\"id\": \"p-1\"}}", h[..]);
+  #assert !seatw_read_grant("{\"id\": 7, \"slug\": \"g\", \"until\": 0, \"hosted\": true}", h[..]);
+  #assert !seatw_read_grant("{\"id\": 7, \"slug\": \"g\", \"until\": 0, \"hosted\": true, \"player\": \"p-1\"}", h[..]);
+  #assert !seatw_read_grant("{\"id\": 7, \"slug\": \"g\", \"until\": 0, \"hosted\": true, \"player\": {}}", h[..]);
+  #assert !seatw_read_grant("{\"id\": 7, \"slug\": \"g\", \"until\": 0, \"hosted\": true, \"player\": {\"id\": \"\"}}", h[..]);
+  #assert !seatw_read_grant("{\"id\": 7, \"slug\": \"g\", \"until\": 0, \"hosted\": true, \"player\": {\"id\": \"p-1\", \"key\": 5}}", h[..]) && h[0].pid_n == 0 && h[0].slug_n == 0;
+  #assert seatw_read_grant("{\"id\": 1, \"slug\": \"g\", \"until\": 0, \"hosted\": true, \"player\": {\"id\": \"p\", \"key\": \"\"}}", h[..]) && h[0].key_n == 0 && h[0].id == 1;
+}
+#test "the account's seats, newest first, and none" {
+  b: [512] u8; rows: [3] SeatwSeat; back: [3] SeatwSeat;
+  rows[0] = seatw_seat_of(9, "seat-mine", true, 1762190000456, 1762190000123);
+  rows[1] = seatw_seat_of(7, "g", false, 2, 1);
+  n := seatw_seats_json(rows[0..<2], b[..]);
+  want := "{\"seats\": [{\"id\": 9, \"slug\": \"seat-mine\", \"hosted\": true, \"kept_ms\": 1762190000456, \"opened_ms\": 1762190000123}, {\"id\": 7, \"slug\": \"g\", \"hosted\": false, \"kept_ms\": 2, \"opened_ms\": 1}]}";
+  #assert cast(string) b[0..<n] == want && seatw_seats_json(rows[0..<2], b[0..<n - 1]) == -1;
+  #assert seatw_read_seats(want, back[..]) == 2 && back[0].id == 9 && back[0].hosted && back[0].kept_ms == 1762190000456 && back[0].opened_ms == 1762190000123;
+  #assert seatw_seat_slug(back[0..<1]) == "seat-mine" && back[1].id == 7 && !back[1].hosted && back[1].kept_ms == 2 && back[1].opened_ms == 1 && seatw_seat_slug(back[1..<2]) == "g";
+  n = seatw_seats_json(rows[0..<0], b[..]);
+  #assert cast(string) b[0..<n] == "{\"seats\": []}" && seatw_read_seats("{\"seats\": []}", back[..]) == 0;
+  #assert seatw_read_seats(want, back[0..<1]) == -1 && seatw_read_seats(want, back[0..<2]) == 2;
+  #assert seatw_read_seats("{\"seats\": {}}", back[..]) == -1 && seatw_read_seats("{}", back[..]) == -1 && seatw_read_seats("[]", back[..]) == -1 && seatw_read_seats("", back[..]) == -1;
+  #assert seatw_read_seats("{\"seats\": [7]}", back[..]) == -1;
+  #assert seatw_read_seats("{\"seats\": [{\"id\": 0, \"slug\": \"g\", \"hosted\": false, \"kept_ms\": 2, \"opened_ms\": 1}]}", back[..]) == -1;
+  #assert seatw_read_seats("{\"seats\": [{\"id\": 7, \"slug\": \"G\", \"hosted\": false, \"kept_ms\": 2, \"opened_ms\": 1}]}", back[..]) == -1;
+  #assert seatw_read_seats("{\"seats\": [{\"id\": 7, \"hosted\": false, \"kept_ms\": 2, \"opened_ms\": 1}]}", back[..]) == -1;
+  #assert seatw_read_seats("{\"seats\": [{\"id\": 7, \"slug\": \"g\", \"kept_ms\": 2, \"opened_ms\": 1}]}", back[..]) == -1;
+  #assert seatw_read_seats("{\"seats\": [{\"id\": 7, \"slug\": \"g\", \"hosted\": false, \"opened_ms\": 1}]}", back[..]) == -1;
+  #assert seatw_read_seats("{\"seats\": [{\"id\": 7, \"slug\": \"g\", \"hosted\": false, \"kept_ms\": 2}]}", back[..]) == -1;
+  #assert seatw_read_seats("{\"seats\": [{\"id\": 7, \"slug\": \"g\", \"hosted\": false, \"kept_ms\": 0, \"opened_ms\": 0}]}", back[..]) == 1 && back[0].kept_ms == 0;
+  bad := seatw_seat_of(1, "Bad", false, 0, 0);
+  #assert bad.slug_n == 0 && bad.id == 0;
+}
+#test "kept and closed" {
+  b: [32] u8;
+  n := seatw_kept(b[..]);
+  #assert cast(string) b[0..<n] == "{\"kept\":true}" && seatw_kept(b[0..<n - 1]) == -1 && seatw_read_kept("{\"kept\":true}") && !seatw_read_closed("{\"kept\":true}");
+  n = seatw_closed(b[..]);
+  #assert cast(string) b[0..<n] == "{\"closed\":true}" && seatw_closed(b[0..<n - 1]) == -1 && seatw_read_closed("{\"closed\":true}") && !seatw_read_kept("{\"closed\":true}");
+  #assert !seatw_read_kept("{\"kept\":false}") && !seatw_read_kept("{\"kept\":1}") && !seatw_read_kept("[true]") && !seatw_read_kept("") && !seatw_read_kept("{\"error\":\"no such open seat\"}");
+}
+#test "what the API sends the runner: the grant as it came with the origin, and a seat's id" {
+  b: [512] u8; g: [1] SeatwGrant; ob: [SEATW_ORIGIN] u8;
+  seat := "{\"id\": 7, \"slug\": \"seat-green\", \"until\": 1762190600123, \"hosted\": true, \"player\": {\"id\": \"p-1a2b\", \"key\": \"k0123456789abcdefghij\"}}";
+  n := seatw_runner_open(seat, "https://openagents.com", b[..]);
+  want := "{\"seat\":{\"id\": 7, \"slug\": \"seat-green\", \"until\": 1762190600123, \"hosted\": true, \"player\": {\"id\": \"p-1a2b\", \"key\": \"k0123456789abcdefghij\"}},\"origin\":\"https://openagents.com\"}";
+  #assert cast(string) b[0..<n] == want && seatw_runner_open(seat, "https://openagents.com", b[0..<n - 1]) == -1;
+  on := seatw_read_runner_open(want, g[..], ob[..]);
+  #assert on == 22 && cast(string) ob[0..<on] == "https://openagents.com" && g[0].id == 7 && g[0].hosted && seatw_grant_key(g[..]) == "k0123456789abcdefghij" && seatw_grant_slug(g[..]) == "seat-green";
+  #assert seatw_runner_open("", "o", b[..]) == -1 && seatw_runner_open("}", "o", b[..]) == -1 && seatw_runner_open("[]", "o", b[..]) == -1 && seatw_runner_open("{\"id\": 7", "o", b[..]) == -1 && seatw_runner_open("x}", "o", b[..]) == -1;
+  #assert seatw_read_runner_open("{\"seat\":{\"id\": 7},\"origin\":\"https://a.b\"}", g[..], ob[..]) == -1 && g[0].id == 0;
+  #assert seatw_read_runner_open("{\"seat\":", g[..], ob[..]) == -1 && seatw_read_runner_open("[]", g[..], ob[..]) == -1;
+  #assert seatw_read_runner_open("{\"seat\":{\"id\": 7, \"slug\": \"g\", \"until\": 0, \"hosted\": true, \"player\": {\"id\": \"p-1\"}}}", g[..], ob[..]) == -1 && g[0].id == 0;
+  #assert seatw_read_runner_open("{\"seat\":{\"id\": 7, \"slug\": \"g\", \"until\": 0, \"hosted\": true, \"player\": {\"id\": \"p-1\"}},\"origin\":\"\"}", g[..], ob[..]) == -1 && g[0].id == 0;
+  n = seatw_runner_close("7", b[..]);
+  #assert cast(string) b[0..<n] == "{\"id\":7}" && seatw_runner_close("7", b[0..<n - 1]) == -1 && seatw_read_id("{\"id\":7}") == 7;
+  n = seatw_runner_close("12345678901234567890", b[..]);
+  #assert cast(string) b[0..<n] == "{\"id\":12345678901234567890}" && seatw_runner_close("123456789012345678901", b[..]) == -1;
+  #assert seatw_runner_close("", b[..]) == -1 && seatw_runner_close("7a", b[..]) == -1 && seatw_runner_close("-7", b[..]) == -1 && seatw_runner_close("/", b[..]) == -1 && seatw_runner_close(":", b[..]) == -1;
+  #assert seatw_read_id("{\"id\":0}") == -1 && seatw_read_id("{\"id\":\"7\"}") == -1 && seatw_read_id("{}") == -1 && seatw_read_id("[7]") == -1 && seatw_read_id("") == -1 && seatw_read_id("{\"id\": 42}") == 42;
+}
