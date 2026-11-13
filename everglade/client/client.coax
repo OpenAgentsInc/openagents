@@ -97,7 +97,8 @@ E2 :: struct {
   // fourth store; mats_n the records admitted, 0 when the pack's table was refused (no maps)
   mats: [cmat.CM_MAX * cmat.CM_FLOATS] f32; mat_table: [cmat.CM_MAX] cmat.CharMaterial; mats_n: int; mats_v: int;
   film: bool; maps_off: bool;   // ?film, ?maps=0 (e2_material_facts)
-  inst: [E2_VISIBLE * E2_ITEM_FLOATS] f32; inst_n: int;
+  inst: [E2_VISIBLE] u32; inst_n: int;   // the pieces drawn this frame, a word each: its row of items and its fade code (everglade2.coax e2_vis_word)
+  rec_n: int;                            // the records this frame wrote (the span the host uploads)
   fly: trk.CamTrack; fly_from: f32;   // #fly=PATH: the flyover benchmark flies the camera (e2_hash)
   draws: [E2_DRAWS * 4] u32; draw_n: int;
   shadow: [E2_DRAWS * 4] u32; shadow_n: int;
@@ -1472,6 +1473,10 @@ e2_field :: (s: [] E2, d: [] u32, n0: int) -> int {
   }
   return n;
 }
+// A drawn piece's word (everglade/client/gpu/everglade2.coax e2_vis_word, repeated here as E2_KIT_BASE is):
+// its row of items in the low 24 bits, its fade code above.
+e2_vis_word :: (row: int, code: int) -> u32 { return cast(u32) row | (cast(u32) code << 24); }
+e2_vis_row :: (w: u32) -> int { return cast(int) (w & 0x00FFFFFF); }
 // Each visible piece into its (kit, level) bucket's run of the instance store; one draw a bucket.
 // `casting` lists the pieces for the shadow tile drawn this frame instead (e2_cast_reach).
 // Every piece keeps its one place, turn and size at every distance: distance only picks its level
@@ -1528,8 +1533,7 @@ e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {
         for e: 0..<looks.n {
           b := kit * E2_LODS + looks.lod[e];
           if s[0].kit_count[b] <= 0 { continue; }
-          if pass == 1 { at := (start[b] + counts[b]) * E2_ITEM_FLOATS; for k: 0..<E2_ITEM_FLOATS { s[0].inst[at + k] = s[0].items[o + k]; }
-            s[0].inst[at + 7] += 4 * f32(looks.code[e]); }
+          if pass == 1 { s[0].inst[start[b] + counts[b]] = e2_vis_word(q, looks.code[e]); }
           counts[b] += 1;
         }
       }
@@ -1616,30 +1620,22 @@ e2_test_view :: (s: [] E2, d: [] u32, m: f32) -> int {
   for b: 0..<E2_BUCKETS { s[0].kit_first[b] = b; s[0].kit_count[b] = 1; }
   d: [E2_DRAWS * 4] u32;
   // A, then a metre on, then 30 m on and back to A
-  na := e2_test_view(s[..], d[..], 150); an := s[0].inst_n; a: [E2_VISIBLE * E2_ITEM_FLOATS] f32;
-  for k: 0..<an * E2_ITEM_FLOATS { a[k] = s[0].inst[k]; }
+  na := e2_test_view(s[..], d[..], 150); an := s[0].inst_n; a: [E2_VISIBLE] u32;
+  for k: 0..<an { a[k] = s[0].inst[k]; }
   walk := [7]f32.[151, 160, 170, 180, 170, 160, 152];
   for step: 0..<7 {
     m := walk[step];
     n := e2_test_view(s[..], d[..], m);
-    // every drawn piece is a planted one exactly (place, turn, size, tint), only its fade added
-    for i: 0..<s[0].inst_n { if i % 5 != step % 5 { continue; } o := i * E2_ITEM_FLOATS; x := s[0].inst[o]; z := s[0].inst[o + 2];
-      ci := cast(int) floor((x - f32(E2_CELL_X0)) / f32(E2_CELL)); cj := cast(int) floor((f32(E2_CELL_Z0) - z) / f32(E2_CELL));
-      found := false;
-      for dc: 0..<9 { ii := ci + dc % 3 - 1; jj := cj + dc / 3 - 1; if ii < 0 || jj < 0 || ii >= E2_CELLS_X || jj >= E2_CELLS_Z { continue; } c := jj * E2_CELLS_X + ii;
-      for q: s[0].first[c]..<s[0].first[c + 1] { p := q * E2_ITEM_FLOATS; same := true;
-        for k: 0..<7 { if s[0].items[p + k] != s[0].inst[o + k] { same = false; } }
-        w := s[0].inst[o + 7] - s[0].items[p + 7]; kk := floor(w / 4 + 0.5); if same && kk >= 0 && kk < 128 && abs(w - 4 * kk) < 0.001 { found = true; } } }
-      #assert found;
-    }
+    // every drawn piece is a planted one exactly (its row of items, never a copy), only its fade beside it
+    for i: 0..<s[0].inst_n { w := s[0].inst[i]; #assert e2_vis_row(w) < s[0].planted && (w >> 24) < 128; }
   }
   nb := e2_test_view(s[..], d[..], 150);
   #assert nb == na && s[0].inst_n == an && an > 1000;
-  for k: 0..<an * E2_ITEM_FLOATS { #assert s[0].inst[k] == a[k]; }
+  for k: 0..<an { #assert s[0].inst[k] == a[k]; }
 }
 e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   c := s[0].creator[0]; b := s[0].bodies[..];
-  s[0].draw_n = 0; s[0].shadow_n = 0; s[0].inst_n = 0;
+  s[0].draw_n = 0; s[0].shadow_n = 0; s[0].inst_n = 0; s[0].rec_n = 0;
   if !b[0].ready || !cc.catalog_ready(c) || c.glade_count <= 0 { return 0; }
   n := 0; sn := 0;
   // record 0 the glade, 1 to 3 its grass (their base instance (record + 1) << 16: cg_instanced_vs)
@@ -1685,7 +1681,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   d = e2gd_draw(s, d, bdt);          // the path's guard (everglade/client/guard.coax)
   d = e2mn_draw(s, d, bdt);          // the wolves and the goblins (everglade/client/creatures.coax)
   d = e2rv_draw(s, d, bdt);          // the zone's mounts (everglade/client/ride-view.coax)
-  rec = d.rec; n = d.n; sn = d.sn;
+  rec = d.rec; n = d.n; sn = d.sn; s[0].rec_n = rec;
   n = e2_pieces(s, s[0].draws[..], n, false);
   n = e2_field(s, s[0].draws[..], n);
   sn = e2_pieces(s, s[0].shadow[..], sn, true);
@@ -1709,8 +1705,21 @@ e2_frame_plan :: (s: [] E2, features: u32, w: int, h: int, hud: int, runs: int, 
   }
   return frame_plan_page(features, c, x, out);
 }
-e2_record_bytes :: (s: [] E2) -> int #export_c #effects(all) { return E2_RECORDS * 24 * 4; }
-e2_inst_bytes :: (s: [] E2) -> int #export_c #effects(all) { return s[0].inst_n * E2_ITEM_FLOATS * 4; }
+// What a frame sends the GPU of the scene (the retained scene, #13303): the records this frame wrote
+// (a record past them is drawn by nothing), one word a piece drawn, and the planted pieces' rows
+// once, when they are planted (e2_items_version moves only then).
+e2_record_bytes :: (s: [] E2) -> int #export_c #effects(all) { n := ifx s[0].rec_n > E2_RECORDS then E2_RECORDS else s[0].rec_n; return n * 24 * 4; }
+e2_inst_bytes :: (s: [] E2) -> int #export_c #effects(all) { return s[0].inst_n * 4; }
+e2_items_bytes :: (s: [] E2) -> int #export_c #effects(all) { return ifx s[0].plant_done then s[0].planted * E2_ITEM_FLOATS * 4 else 0; }
+e2_items_version :: (s: [] E2) -> int #export_c #effects(all) { return ifx s[0].plant_done then 1 + s[0].plant_route else 0; }
+#test "the retained scene: a frame's upload is its records and a word a piece; the rows go once" {
+  s: [1] E2;
+  #assert e2_items_bytes(s[..]) == 0 && e2_items_version(s[..]) == 0 && e2_record_bytes(s[..]) == 0 && e2_inst_bytes(s[..]) == 0;
+  s[0].planted = 1000; s[0].plant_done = true; s[0].plant_route = 1; s[0].rec_n = 40; s[0].inst_n = 5190;
+  #assert e2_items_bytes(s[..]) == 32000 && e2_items_version(s[..]) == 2;
+  #assert e2_record_bytes(s[..]) == 3840 && e2_inst_bytes(s[..]) == 20760;
+  s[0].rec_n = E2_RECORDS + 9; #assert e2_record_bytes(s[..]) == E2_RECORDS * 96;
+}
 // The host action this frame (everglade2-face.c coaxial_action): its code, its bytes; done clears it.
 e2_action :: (s: [] E2) -> int #export_c #effects(all) { return s[0].action; }
 e2_action_done :: (s: [] E2) #export_c #effects(all) { s[0].action = 0; s[0].out_n = 0; }

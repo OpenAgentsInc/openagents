@@ -443,6 +443,15 @@ metaverse-engine/host/core/platforms.sh /tmp/host-core-platforms   # the Mac, th
 with no window: `"$ANDROID_HOME/emulator/emulator" -avd NAME -no-window -no-audio -no-boot-anim -read-only`).
 The Linux run is the first command, on a build host (`coax/remote/check.sh reports`, step `host-core`).
 
+### The retained scene
+
+Everglade II keeps its scene on the GPU (GitHub #13303): the pack's vertices and indices, and every
+planted piece's row (place, turn, size, tint; store 5, copied once when the woods are planted). A
+frame sends one word a piece drawn, its row and its fade code (store 2, `e2_vis_word`), and only the
+records it wrote. The kit stage reads `items[inst[instance - base]]`; the instance cull copies words,
+not rows, and takes the rows' store from `coaxial_cull_v1` field 8. `coaxial.storeUploads()` says
+what a frame sent each store. At 60 m up the path that is 19.6 KB a frame, where it was 150.8 KB.
+
 ### The frame plan
 
 A page's engine may export `uint32_t coaxial_frame_plan_v1(state, uint32_t features, uint32_t *out, uint32_t cap)`

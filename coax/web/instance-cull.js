@@ -13,8 +13,10 @@
 // coaxial_cull_v1(state, field): 0 the runs this frame, 1 the uniforms (100 floats: the matrix,
 // the eye, the runs, the regions; the pyramid's words are filled here), 2 the runs' words (first
 // piece, pieces, pieces before, kit piece), 3 each kit piece's first index and index count, 4 the
-// kit pieces, 5 the store the pieces are in, 6 their base instance, 7 each run's draw-list index.
-// The store is three regions on the GPU (the face's coaxial_store_cap): the page's, then the two
+// kit pieces, 5 the store the pieces are in, 6 their base instance, 7 each run's draw-list index,
+// 8 the store their rows are in. A piece in store 5 is one word (its row of store 8 and its fade
+// code): the rows stay on the GPU and a phase copies words, not rows (the retained scene, #13303).
+// Store 5 is three regions on the GPU (the face's coaxial_store_cap): the page's, then the two
 // phases'. The pass needs "indirect-first-instance"; without it the page draws everything itself.
 const U_FLOATS = 100, LEVELS = 12, CHUNKS = 1024, ARGS = 10;
 const groupsOf = (n) => Math.ceil(n / 64);
@@ -75,7 +77,7 @@ class InstanceCull {
   }
   want(x, state, memory, scene, depth, w, h) {
     this.active = null; this.staged = null;
-    if (this.off || !scene.index || !scene.vertices || !scene.store) return null;
+    if (this.off || !scene.index || !scene.vertices || !scene.store || !scene.items) return null;
     const runs = x.coaxial_cull_v1(state, 0);
     if (runs <= 0) return null;
     const d = this.device, q = d.queue, S = GPUBufferUsage;
@@ -95,7 +97,7 @@ class InstanceCull {
       this.flags = d.createBuffer({ size: this.flagCap * 4, usage: S.STORAGE });
       this.read.buffer?.destroy(); this.read.buffer = null; this.groups = null;
     }
-    if (this.groups?.store !== scene.store) this.groups = null;
+    if (this.groups?.store !== scene.store || this.groups?.items !== scene.items) this.groups = null;
     if (!this.boxes) {
       this.boxes = d.createBuffer({ size: kits * 16, usage: S.STORAGE | S.COPY_DST });
       this.bounds = d.createBuffer({ size: kits * 16, usage: S.STORAGE | S.COPY_SRC | S.COPY_DST });
@@ -113,8 +115,8 @@ class InstanceCull {
     q.writeBuffer(this.args, 0, args);
     q.writeBuffer(this.tally, 0, new Uint32Array(4));
     if (!this.groups) {
-      const set = [[0, this.u], [1, scene.store], [2, this.runsBuf], [3, this.boxes], [4, this.args], [5, this.flags], [6, this.tally], [7, this.hiz]];
-      this.groups = { store: scene.store, one: this.group(this.pipes.one, set), two: this.group(this.pipes.two, set),
+      const set = [[0, this.u], [1, scene.store], [2, this.runsBuf], [3, this.boxes], [4, this.args], [5, this.flags], [6, this.tally], [7, this.hiz], [14, scene.items]];
+      this.groups = { store: scene.store, items: scene.items, one: this.group(this.pipes.one, set), two: this.group(this.pipes.two, set),
         depth: this.group(this.pipes.hizDepth, [[0, this.u], [7, this.hiz], [8, this.depthView]]),
         down: this.levels.map((_, l) => (l === 0 ? null : this.group(this.pipes.hizDown, [[0, this.u], [9, this.hz[l]], [7, this.hiz]]))) };
     }

@@ -162,13 +162,14 @@ fn coax_at_u(i: i32) -> f32 {
 @group(1) @binding(0) var<storage, read> vertices: array<u32>;
 @group(1) @binding(1) var<storage, read> objects: array<coax_t9>;
 @group(1) @binding(2) var<storage, read> bake: array<vec4f>;
-@group(1) @binding(3) var<storage, read> inst: array<vec4f>;
+@group(1) @binding(3) var<storage, read> inst: array<u32>;
+@group(1) @binding(6) var<storage, read> items: array<vec4f>;
 @group(0) @binding(1) var<storage, read> frame: array<f32>;
-@group(1) @binding(6) var sheets: texture_2d_array<f32>;
-@group(1) @binding(7) var sheet: sampler;
+@group(1) @binding(7) var sheets: texture_2d_array<f32>;
+@group(1) @binding(8) var sheet: sampler;
 @group(1) @binding(4) var<storage, read> mats: array<vec4f>;
 @group(1) @binding(5) var<storage, read> ground: array<vec4f>;
-@group(1) @binding(8) var data: texture_2d_array<f32>;
+@group(1) @binding(9) var data: texture_2d_array<f32>;
 @group(2) @binding(0) var shadow_map: texture_depth_2d;
 @group(2) @binding(1) var shadow_cmp: sampler_comparison;
 @group(1) @binding(0) var bloom_src: texture_2d<f32>;
@@ -632,9 +633,11 @@ fn coax_p_e2_field_vs(p_id: u32, p_instance: u32) -> coax_t15 {
 fn coax_p_e2_kit_vs(p_id: u32, p_instance: u32) -> coax_t15 {
   var l_id: u32 = p_id;
   var l_instance: u32 = p_instance;
-  var l_k: i32;
-  l_k = i32((l_instance - 1048576u));
-  return coax_p_e2_kit_place(l_id, inst[(l_k * 2i)], inst[((l_k * 2i) + 1i)]);
+  var l_w: u32;
+  var l_q: i32;
+  l_w = inst[i32((l_instance - 1048576u))];
+  l_q = coax_p_e2_vis_row(l_w);
+  return coax_p_e2_kit_place(l_id, items[(l_q * 2i)], coax_p_e2_vis_c(items[((l_q * 2i) + 1i)], l_w));
 }
 fn coax_p_e2_prop_vs(p_id: u32, p_instance: u32, p_m: coax_t9) -> coax_t15 {
   var l_id: u32 = p_id;
@@ -1864,6 +1867,15 @@ fn coax_p_e2_kit_place(p_id: u32, p_a: vec4f, p_c: vec4f) -> coax_t15 {
     l_o.f7 = coax_p_v3(0x1.000000p1f, l_height, 0x1.000000p0f);
   }
   return l_o;
+}
+fn coax_p_e2_vis_row(p_w: u32) -> i32 {
+  var l_w: u32 = p_w;
+  return i32((l_w & 16777215u));
+}
+fn coax_p_e2_vis_c(p_c: vec4f, p_w: u32) -> vec4f {
+  var l_c: vec4f = p_c;
+  var l_w: u32 = p_w;
+  return coax_p_v4(l_c.x, l_c.y, l_c.z, (l_c.w + (0x1.000000p2f * f32((l_w >> u32(24u))))));
 }
 fn coax_p_wg_u32_f(p_x: f32) -> u32 {
   var l_x: f32 = p_x;

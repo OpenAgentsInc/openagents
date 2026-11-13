@@ -17,7 +17,8 @@ fn coax_at_u(i: i32) -> f32 {
 @group(0) @binding(11) var<storage, read> indices: array<u32>;
 @group(0) @binding(12) var<storage, read> vertices: array<u32>;
 @group(0) @binding(13) var<storage, read_write> bounds: array<atomic<u32>>;
-@group(0) @binding(1) var<storage, read_write> inst: array<vec4f>;
+@group(0) @binding(1) var<storage, read_write> inst: array<u32>;
+@group(0) @binding(14) var<storage, read> items: array<vec4f>;
 @group(0) @binding(2) var<storage, read> runs: array<u32>;
 @group(0) @binding(3) var<storage, read> boxes: array<u32>;
 @group(0) @binding(4) var<storage, read_write> args: array<atomic<u32>>;
@@ -65,6 +66,7 @@ fn coax_p_e2q_cull_one(p_t: u32) {
   var l_t: u32 = p_t;
   var l_run: i32;
   var l_k: i32;
+  var l_q: i32;
   var l_e: coax_t10;
   if ((i32(l_t) >= i32(coax_at_u(i32(93i)))))
   {
@@ -72,7 +74,8 @@ fn coax_p_e2q_cull_one(p_t: u32) {
   }
   l_run = coax_p_e2q_run(l_t);
   l_k = i32(((runs[((l_run * 4i) + 0i)] + l_t) - runs[((l_run * 4i) + 2i)]));
-  l_e = coax_p_e2q_box(inst[(l_k * 2i)], inst[((l_k * 2i) + 1i)], i32(runs[((l_run * 4i) + 3i)]));
+  l_q = coax_p_e2q_row(inst[l_k]);
+  l_e = coax_p_e2q_box(items[(l_q * 2i)], items[((l_q * 2i) + 1i)], i32(runs[((l_run * 4i) + 3i)]));
   if (coax_p_cl_outside(l_e.x, l_e.y))
   {
     flags[i32(l_t)] = 0u;
@@ -92,6 +95,7 @@ fn coax_p_e2q_cull_two(p_t: u32) {
   var l_t: u32 = p_t;
   var l_run: i32;
   var l_k: i32;
+  var l_q: i32;
   var l_e: coax_t10;
   if (((i32(l_t) >= i32(coax_at_u(i32(93i)))) || (flags[i32(l_t)] != 2u)))
   {
@@ -99,7 +103,8 @@ fn coax_p_e2q_cull_two(p_t: u32) {
   }
   l_run = coax_p_e2q_run(l_t);
   l_k = i32(((runs[((l_run * 4i) + 0i)] + l_t) - runs[((l_run * 4i) + 2i)]));
-  l_e = coax_p_e2q_box(inst[(l_k * 2i)], inst[((l_k * 2i) + 1i)], i32(runs[((l_run * 4i) + 3i)]));
+  l_q = coax_p_e2q_row(inst[l_k]);
+  l_e = coax_p_e2q_box(items[(l_q * 2i)], items[((l_q * 2i) + 1i)], i32(runs[((l_run * 4i) + 3i)]));
   if (coax_p_cl_hidden(l_e.x, l_e.y))
   {
     flags[i32(l_t)] = 4u;
@@ -223,6 +228,10 @@ fn coax_p_e2q_run(p_t: u32) -> i32 {
     }
   }
   return l_lo;
+}
+fn coax_p_e2q_row(p_w: u32) -> i32 {
+  var l_w: u32 = p_w;
+  return i32((l_w & 16777215u));
 }
 fn coax_p_e2q_box(p_a: vec4f, p_c: vec4f, p_b: i32) -> coax_t10 {
   var l_a: vec4f = p_a;
@@ -369,8 +378,7 @@ fn coax_p_e2q_put(p_k: i32, p_run: i32, p_region: i32, p_draw: i32) {
   var l_o: i32;
   l_slot = atomicAdd(&args[(((l_run * 10i) + l_draw) + 1i)], 1u);
   l_o = ((i32(coax_at_u(i32(l_region))) + i32(runs[((l_run * 4i) + 0i)])) + i32(l_slot));
-  inst[(l_o * 2i)] = inst[(l_k * 2i)];
-  inst[((l_o * 2i) + 1i)] = inst[((l_k * 2i) + 1i)];
+  inst[l_o] = inst[l_k];
 }
 fn coax_p_cl_clampi(p_x: i32, p_low: i32, p_high: i32) -> i32 {
   var l_x: i32 = p_x;

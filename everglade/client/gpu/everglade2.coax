@@ -9,7 +9,7 @@
 #load "../../../metaverse-engine/render/character-material.coax";   // the characters' material record's shading (#13012)
 Everglade2Bg :: struct {c:V4;aux:V4;depth:f32 #depth;}
 Everglade2Lit :: struct {c:V4;aux:V4;}
-E2_KIT_BASE :: 1048576;   // a base instance at or past this draws kit pieces: inst[2 (instance - base)]
+E2_KIT_BASE :: 1048576;   // a base instance at or past this draws kit pieces: items' row inst[instance - base] names
 everglade2_bg_vs :: (id:u32,instance:u32)->V4 {return fivelab_bg_vs(id,instance);}
 everglade2_bg_fs :: (pos:V4,u:[]f32,frame:[]f32)->Everglade2Bg {
  rd:=normalize3(add3(wg_at3(u,20),add3(scale3(wg_at3(u,24),(pos.x-u[23])/u[19]),scale3(wg_at3(u,28),(u[27]-pos.y)/u[19]))));
@@ -37,8 +37,20 @@ e2_dither_keep :: (pixel:V2,fade:f32)->bool {
 }
 // One vertex of a kit piece: the pack's template at the origin (u[48] its first vertex word), placed
 // by its instance (x y z yaw, vertical and horizontal scale, tint).
-e2_kit_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,inst:[]V4)->FivelabS {
- k:=cast(int)(instance-cast(u32)E2_KIT_BASE);return e2_kit_place(id,inst[k*2],inst[k*2+1],u,vertices);
+// The retained scene (#13303): every planted piece's row stays on the GPU in `items` (written once);
+// a frame sends `inst`, one word a piece drawn: its row (the low 24 bits) and its fade code above.
+E2_VIS_ROW :: 0x00FFFFFF;
+e2_vis_word :: (row:int,code:int)->u32 {return cast(u32)row|(cast(u32)code<<24);}
+e2_vis_row :: (w:u32)->int {return cast(int)(w&cast(u32)E2_VIS_ROW);}
+// The row's second half as the stage reads it: the tint's w plus four times the fade code (e2_inst_fade).
+e2_vis_c :: (c:V4,w:u32)->V4 {return v4(c.x,c.y,c.z,c.w+4.0f32*cast(f32)(w>>24));}
+#test "a visible word holds its row and its fade code; the code lands in the tint's fours" {
+ w:=e2_vis_word(169999,127);#assert e2_vis_row(w)==169999 && (w>>24)==127;
+ c:=e2_vis_c(v4(1,2,3,2.25f32),w);#assert c.x==1 && c.z==3 && c.w==2.25f32+508.0f32 && e2_inst_fade(c)== -63.0f32/64.0f32;
+ #assert e2_vis_c(v4(0,0,0,1.5f32),e2_vis_word(7,0)).w==1.5f32 && e2_vis_row(e2_vis_word(0,65))==0;
+}
+e2_kit_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,inst:[]u32,items:[]V4)->FivelabS {
+ w:=inst[cast(int)(instance-cast(u32)E2_KIT_BASE)];q:=e2_vis_row(w);return e2_kit_place(id,items[q*2],e2_vis_c(items[q*2+1],w),u,vertices);
 }
 // One vertex of a kit piece placed at a (x y z yaw) with c (vertical and horizontal scale, tint).
 e2_kit_place :: (id:u32,a:V4,c:V4,u:[]f32,vertices:[]u32)->FivelabS {
@@ -113,9 +125,9 @@ e2_prop_vs :: (id:u32,instance:u32,m:FivelabObj,u:[]f32,vertices:[]u32)->Fivelab
  #assert abs(o.world.x-10)<0.0001 && abs(o.world.y-2.5)<0.0001 && abs(o.world.z+6)<0.0001 && abs(o.normal.z+1)<0.0001;
  #assert o.slice==14 && o.uv.x==0.25 && o.uv.y==0.75 && abs(o.tint.x-0.25f32)<0.01 && o.tint.y==1 && o.local.x==10 && o.who==3;
 }
-everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]V4)->FivelabS {
+everglade2_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]u32,items:[]V4)->FivelabS {
  if (instance>=cast(u32)E2_FIELD_BASE) {return e2_field_vs(id,instance,u,vertices);}
- if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst);}
+ if (instance>=cast(u32)E2_KIT_BASE) {return e2_kit_vs(id,instance,u,vertices,inst,items);}
  if (instance<cast(u32)65536) {mp:=objects[cast(int)instance];if (mp.d.w>20.5f32 && mp.d.w<21.5f32) {return e2_prop_vs(id,instance,mp,u,vertices);}}
  o:=fivelab_scene_vs(id,instance,u,vertices,objects,bake);
  // a monster's frame (18) or a held weapon (19, everglade/server/creatures.coax, everglade/client/guard.coax):
@@ -192,11 +204,11 @@ e2_body_fade :: (s:FivelabS,objects:[]FivelabObj)->f32 {
  if (s.dye.w>11.5f32) {return 0;}
  w:=objects[cast(int)s.who].f.w;return ifx w>2.0005f32 && w<3.0f32 then w-2.0f32 else 0.0f32;
 }
-everglade2_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]V4)->E2Shadow {
+everglade2_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]FivelabObj,bake:[]V4,inst:[]u32,items:[]V4)->E2Shadow {
  o:E2Shadow;o.pos=v4(0,0,-2,1);
  k:=cast(int)u[E2_U_CASCADE+1];
  if (u[10]<1.5f32 || u[E2_U_CASCADE]<0.5f32 || k<0 || k>3) {return o;}
- s:=everglade2_scene_vs(id,instance,u,vertices,objects,bake,inst);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {return o;}
+ s:=everglade2_scene_vs(id,instance,u,vertices,objects,bake,inst,items);if (s.dye.w>11.5f32 && s.local.x<0.5f32) {return o;}
  q:=e2_casc_place(s.world,u,k);o.pos=e2_casc_clip(q,u,k);o.edge=v2(q.x,q.y);o.uv=s.uv;o.slice=s.slice;o.fade=e2_body_fade(s,objects);return o;
 }
 everglade2_shadow_fs :: (s:E2Shadow,sheets:Tex2DArray,sheet:Sampler) {

@@ -3096,6 +3096,8 @@ function planCompare(a, b) {
   planStats.differing++;
   planStats.first ||= { frame: planStats.checked, at, builtin: a.slice(Math.max(0, at - 2), at + 3), plan: b.slice(Math.max(0, at - 2), at + 3), lengths: [a.length, b.length] };
 }
+// The bytes the scene's stores were sent: each store's on the last frame, and every frame's together.
+const storeUploads = { frames: 0, total: 0, last: new Array(16).fill(0) };
 function draw(now) {
   if (engineInstalling || !engine || !gpu?.bg || recovering) return;
   releaseWaiting();   // once this frame, which draws the state as the loss found it, is done
@@ -3157,11 +3159,13 @@ function draw(now) {
   // Optional shadow-list v1: Coax selects each pass; older producers retain their shared list.
   const separateShadow = !!(x.coaxial_shadow_draws_v1 && x.coaxial_shadow_draw_count_v1);
   const shadowDraws = gpu.scene && gpu.sceneGroup && separateShadow ? x.coaxial_shadow_draw_count_v1(arena.state) : draws;
+  // what this frame sends the scene's stores (coaxial.storeUploads(): the retained scene's measure, #13303)
+  storeUploads.frames++; storeUploads.last.fill(0);
   if (draws || shadowDraws) gpu.stores.forEach((buffer, k) => {
     const version = x.coaxial_store_version?.(arena.state, k);
     if (version !== undefined && gpu.storeVersions[k] === version) return;
     const bytes = Math.min(x.coaxial_store_bytes(arena.state, k), buffer.size) & ~3;
-    if (bytes) { device.queue.writeBuffer(buffer, 0, memory.buffer, x.coaxial_store(arena.state, k), bytes); gpu.storeVersions[k] = version; }
+    if (bytes) { device.queue.writeBuffer(buffer, 0, memory.buffer, x.coaxial_store(arena.state, k), bytes); gpu.storeVersions[k] = version; storeUploads.last[k] = bytes; storeUploads.total += bytes; }
   });
   if ((gpu.scene || gpu.surface) && (!gpu.depth || gpu.depth.width !== w || gpu.depth.height !== h || !!gpu.post !== !!gpu.postGroup
       || (gpu.post && !!gpu.waterCopy !== !!gpu.waterCopyGroup))) {
@@ -3176,7 +3180,7 @@ function draw(now) {
   const passTimer = passTimerFor(device);
   // the instance cull's first phase (instance-cull.js), staged here and encoded before every pass; null when it culls nothing
   const culled = gpu.cull && draws && gpu.depth && x.coaxial_cull_v1 ? gpu.cull.want(x, arena.state, memory,
-    { index: gpu.index, vertices: assets.find((a) => a.kind === "storage")?.buffer, store: gpu.stores?.[x.coaxial_cull_v1(arena.state, 5)] }, gpu.depth, w, h) : null;
+    { index: gpu.index, vertices: assets.find((a) => a.kind === "storage")?.buffer, store: gpu.stores?.[x.coaxial_cull_v1(arena.state, 5)], items: gpu.stores?.[x.coaxial_cull_v1(arena.state, 8)] }, gpu.depth, w, h) : null;
   const list = draws ? new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), draws * 4) : null;
   const shadowList = separateShadow && shadowDraws ? new Uint32Array(memory.buffer, x.coaxial_shadow_draws_v1(arena.state), shadowDraws * 4) : list;
   const wet = draws && gpu.waterTransmit && x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(arena.state), draws) : 0;
@@ -3728,7 +3732,7 @@ function send(kind, text = "") {
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => loadMarks.map((row) => row.slice()), facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
   roomTrace:()=>({active:sockets.flatMap(ws=>ws?.__roomTrace?[ws.__roomTrace.snapshot()]:[]),retired:roomTraceRetired.map(x=>x.snapshot()),error:globalThis.coaxial.roomTraceError||null}),
-  framePlan: () => ({ ...planStats }), setWorldPaused, worldLoop: () => ({paused:worldPaused,frames:worldFrames,submissions:worldSubmissions,shadowTiles:shadowTilesDrawn,socketFrames,pending:gpu?.device.__coaxialFrames||0}),
+  framePlan: () => ({ ...planStats }), storeUploads: () => ({ frames: storeUploads.frames, total: storeUploads.total, last: storeUploads.last.slice(0, gpu?.stores?.length || 0) }), setWorldPaused, worldLoop: () => ({paused:worldPaused,frames:worldFrames,submissions:worldSubmissions,shadowTiles:shadowTilesDrawn,socketFrames,pending:gpu?.device.__coaxialFrames||0}),
   takeFrameTrace: () => frameTrace?.splice(0) ?? [], takePassTimes: () => passTimes?.splice(0) ?? [],
   // the instance cull (instance-cull.js): on or off for this page, and its latest counts when the pass timer is on
   cull: (on) => { if (gpu?.cull) gpu.cull.off = !on; return !!gpu?.cull && !gpu.cull.off; },

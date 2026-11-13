@@ -309,22 +309,25 @@ EXPORT("coaxial_shadow_v1") int32_t coaxial_shadow_v1(cx_face_addr state, int32_
 EXPORT("coaxial_shadow_event_v1") void coaxial_shadow_event_v1(cx_face_addr state, int32_t kind, int32_t arg) { e2_shadow_event(at(state), kind, arg); }
 EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(cx_face_addr state) { return (uint32_t)e2_layers_side(at(state)); }
 /* store 4: the ground's material table and baked AO (everglade/world/ground.coax e2g_gpu, #13052) */
-EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 5; }
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 6; }
 /* the pack's data layers (normal and ORM maps) bound after the colour layers' sampler (host.js) */
 EXPORT("coaxial_data_layers_v1") uint32_t coaxial_data_layers_v1(void) { return 1; }
 EXPORT("coaxial_frame_store_cap") uint32_t coaxial_frame_store_cap(void) { return (uint32_t)sizeof(((coax_t_E2 *)0)->frame.e); }
 EXPORT("coaxial_frame_store") cx_face_addr coaxial_frame_store(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2_at(state)->frame.e; }
 EXPORT("coaxial_frame_store_bytes") uint32_t coaxial_frame_store_bytes(cx_face_addr state) { (void)state; return (uint32_t)sizeof(((coax_t_E2 *)0)->frame.e); }
-/* the kit store is three regions on the GPU: the page's picked pieces, then the cull's two
-   phases' survivors (everglade/client/gpu/everglade2-cull.coax E2Q_OUT1, E2Q_OUT2) */
+/* The retained scene (#13303). Store 2 is the pieces drawn, a word each (their row of store 5 and
+   fade code), in three regions on the GPU: the page's picked pieces, then the cull's two phases'
+   survivors (everglade/client/gpu/everglade2-cull.coax E2Q_OUT1, E2Q_OUT2). Store 5 is every planted
+   piece's row, copied once (its version moves only when the woods are planted). */
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) {
   if (k == 4) return (uint32_t)sizeof(((coax_t_E2 *)0)->eg.e[0].gpu.e);
+  if (k == 5) return (uint32_t)sizeof(((coax_t_E2 *)0)->items.e);
   return k == 0 ? (uint32_t)sizeof(((coax_t_E2 *)0)->records.e) : k == 1 ? (uint32_t)sizeof(((coax_t_E2 *)0)->bake.e) : k == 3 ? (uint32_t)sizeof(((coax_t_E2 *)0)->mats.e) : 3u * (uint32_t)sizeof(((coax_t_E2 *)0)->inst.e);
 }
 /* The instance cull's block (host.js "Instance culling"): field 0 the runs this frame, 1 the
    uniforms (100 floats), 2 the runs' words (4 each), 3 each kit piece's first index and index
-   count, 4 the kit pieces, 5 the store the pieces are in, 6 their base instance, 7 each run's
-   index in the draw list. */
+   count, 4 the kit pieces, 5 the store the pieces' words are in, 6 their base instance, 7 each
+   run's index in the draw list, 8 the store their rows are in. */
 EXPORT("coaxial_cull_v1") int32_t coaxial_cull_v1(cx_face_addr state, int32_t field) {
   (void)state;
 #if defined(COAXIAL_NATIVE_ADDRESS)
@@ -342,21 +345,24 @@ EXPORT("coaxial_cull_v1") int32_t coaxial_cull_v1(cx_face_addr state, int32_t fi
     case 5: return 2;
     case 6: return 1048576;   /* everglade/client/client.coax E2_KIT_BASE */
     case 7: return (int32_t)(uintptr_t)cull_draws;
+    case 8: return 5;
   }
   return -1;
 }
 EXPORT("coaxial_store") cx_face_addr coaxial_store(cx_face_addr state, int32_t k) {
   if (k == 4) return (cx_face_addr)(uintptr_t)e2_at(state)->eg.e[0].gpu.e;
+  if (k == 5) return (cx_face_addr)(uintptr_t)e2_at(state)->items.e;
   return k == 0 ? (cx_face_addr)(uintptr_t)e2_at(state)->records.e : k == 1 ? (cx_face_addr)(uintptr_t)e2_at(state)->bake.e : k == 3 ? (cx_face_addr)(uintptr_t)e2_at(state)->mats.e : (cx_face_addr)(uintptr_t)e2_at(state)->inst.e;
 }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(cx_face_addr state, int32_t k) {
-  if (k == 0) return (uint32_t)e2_record_bytes(at(state));
+  if (k == 0) { uint32_t r = (uint32_t)e2_record_bytes(at(state)); return r ? r : 96u; }
+  if (k == 5) return (uint32_t)e2_items_bytes(at(state));
   if (k == 1) return (uint32_t)sizeof(((coax_t_E2 *)0)->bake.e);
   if (k == 3) return (uint32_t)sizeof(((coax_t_E2 *)0)->mats.e);
   if (k == 4) return (uint32_t)sizeof(((coax_t_E2 *)0)->eg.e[0].gpu.e);
-  uint32_t n = (uint32_t)e2_inst_bytes(at(state)); return n ? n : 32u;
+  uint32_t n = (uint32_t)e2_inst_bytes(at(state)); return n ? n : 4u;
 }
-EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr state, int32_t k) { return k == 1 ? baked : k == 3 ? (uint32_t)e2_at(state)->mats_v : k == 4 ? (uint32_t)e2_at(state)->eg.e[0].gpu_v : frames; }
+EXPORT("coaxial_store_version") uint32_t coaxial_store_version(cx_face_addr state, int32_t k) { return k == 1 ? baked : k == 3 ? (uint32_t)e2_at(state)->mats_v : k == 4 ? (uint32_t)e2_at(state)->eg.e[0].gpu_v : k == 5 ? (uint32_t)e2_items_version(at(state)) : frames; }
 
 /* The host's keyboard field over Character Create's NAME while it takes keys (host.js placeField). */
 static float field_box[4];
