@@ -62,6 +62,7 @@
 #load "room-items.coax";   // loot, quests and what is worn: the room's ledger operations (#13291, #13292)
 #load "background-budget.coax";
 #load "room-travel.coax";   // a player's travel between two rooms (#12850)
+#load "tests/travel-combat.coax" #test;   // what a fight left on a character crosses with it (#13282)
 #load "native-local-policy.coax";
 #load "room-directory.coax";
 #load "../../../everglade/shared/player-name.coax";   // a chosen name's shape, as the API's (the dev stand-in's player/name)

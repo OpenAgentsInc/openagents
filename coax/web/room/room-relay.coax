@@ -221,8 +221,8 @@ RL_STALE_MS :: 3000;      // a socket of a joiner's own silent this long is thei
 // The seat player pid takes back in everglade room r, or -1: the one held for them, else that of their
 // socket silent RL_STALE_MS, which is marked kicked (the host closes it; its close leaves the seat be,
 // rl_left). Their other silent sockets are kicked too, and their seats go as a kicked socket's do.
-// With an owner generation (#12834), a socket of theirs still talking whose ticket is older gives
-// way too (a second tab takes over), and is told "elsewhere", so its page stops rejoining.
+// With an owner generation (#12834), a socket of theirs still talking whose ticket is older, or the
+// same ticket, gives way too (a second tab takes over), and is told "elsewhere", so its page stops rejoining.
 rl_take_back :: (v: [] RmServer, r: int, pid: string, owner: int) -> int {
   k := eg_room_at(v, r);
   if k < 0 { return -1; }
@@ -232,7 +232,9 @@ rl_take_back :: (v: [] RmServer, r: int, pid: string, owner: int) -> int {
     c := v[0].conns[i];
     if !c.live || c.relay != r || c.kicked || !c.ticket.ok || cast(string) c.ticket.pid[0..<c.ticket.pid_n] != pid { continue; }
     if c.seat < 0 || c.seat >= eg_cap(v, k) { continue; }
-    older := owner > 0 && c.ticket.owner > 0 && c.ticket.owner < owner;
+    // (the same generation is the same ticket shown again: one seat, never a second body built from
+    // one capture, #13282)
+    older := owner > 0 && c.ticket.owner > 0 && c.ticket.owner <= owner;
     silent := v[0].mono_ms - v[0].eg[k].seat[c.seat].heard_ms >= RL_STALE_MS;
     if !silent && !older { continue; }
     if !silent { rl_elsewhere(v, i); }

@@ -5,6 +5,13 @@ cc_fixture :: ()->CharacterCapture {
 }
 // A profile 3 fixture's rest: every field at its high.
 cc_rest_fixture :: ()->CharacterRest { r:=CharacterRest.{on=true}; for i:0..<CC_REST{r.n[i]=CC_REST_HIGH[i];} return r; }
+// A combat fixture: a turn half spent, a held spell, and `auras` effects (the first two distinct, the rest Hexes).
+cc_combat_fixture :: (auras:int)->CharacterCombat {
+  g:=CharacterCombat.{on=true,n=CC_COMBAT_HEAD+auras*CC_AURA};head:=[5]int.[30,9,4,ifx auras>1 then 12 else 0,ifx auras>1 then 600000000 else 0];for i:0..<5{g.v[i]=head[i];}
+  one:=[8]int.[1,8,0,0,42000000,3,13,0];two:=[8]int.[11,0,1,12,600000000,0,0,1];
+  for a:0..<auras{for i:0..<8{g.v[5+a*8+i]=ifx a==0 then one[i] else ifx a==1 then two[i] else ifx i==0 then 5 else ifx i==4 then 1000+a else 0;}}
+  return g;
+}
 // Where pat first starts in s, or -1.
 cc_find :: (s:string,pat:string)->int { for i:0..<s.count-pat.count+1{if s[i..<i+pat.count]==pat{return i;}} return -1; }
 // s[0..<cut] then tail, into out.

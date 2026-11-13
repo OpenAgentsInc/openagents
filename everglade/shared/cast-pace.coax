@@ -58,6 +58,48 @@ xp_took :: (p: XpPace, parts: int, spent: int, gives: int, t: int, late: int) ->
   return o;
 }
 // What a seat's turn shows spent.
+// A seat's turn carried to another room's clock (#13282), beside its lasting effects (rules/srd/
+// aura-carry.coax): the ticks until its turn's beat ends, the parts it has spent of it, and the ticks
+// since its last press (XP_FREE_GAP at most: past that no press waits on it).
+XP_CARRY :: 3;
+XP_CARRY_HIGH :: [3] int.[XP_BEAT + XP_LATE, 15, XP_FREE_GAP];
+xp_carry_field :: (q: int, n: int) -> bool #effects(all) { return q >= 0 && q < XP_CARRY && n >= 0 && n <= XP_CARRY_HIGH[q]; }
+xp_carry_out :: (p: XpPace, t: int) -> [XP_CARRY] int #effects(all) {
+  return [3] int.[rs_min(rs_max(p.next - t, 0), XP_BEAT + XP_LATE), p.spent & 15, rs_min(rs_max(t - p.last, 0), XP_FREE_GAP)];
+}
+// The turn those numbers are at tick t of another clock; a number out of its range is no turn at all.
+xp_carry_in :: (w: [XP_CARRY] int, t: int) -> XpPace #effects(all) {
+  for q: 0..<XP_CARRY { if !xp_carry_field(q, w[q]) { return XpPace.{}; } }
+  return XpPace.{next = t + w[0], spent = w[1], last = t - w[2]};
+}
+#test "cast pace: a turn half spent crosses to another clock with the same waits" {
+  p := xp_took(XpPace.{}, XP_ACTION + XP_SLOT, XP_ACTION + XP_SLOT, 0, 1000, XP_LATE);
+  w := xp_carry_out(p, 1010); #assert w[0] == 35 && w[1] == 9 && w[2] == 10;
+  q := xp_carry_in(w, 77);
+  #assert q.next == 112 && q.spent == 9 && q.last == 67;
+  for d: 0..<60 {
+    #assert xp_wait(q, XP_ACTION, 77 + d, XP_LATE) == xp_wait(p, XP_ACTION, 1010 + d, XP_LATE);
+    #assert xp_wait(q, XP_BONUS, 77 + d, XP_LATE) == xp_wait(p, XP_BONUS, 1010 + d, XP_LATE);
+    #assert xp_wait(q, 0, 77 + d, XP_LATE) == xp_wait(p, 0, 1010 + d, XP_LATE);
+    #assert xp_opens(q, XP_ACTION, 77 + d, XP_LATE) == xp_opens(p, XP_ACTION, 1010 + d, XP_LATE);
+  }
+  #assert xp_wait(p, XP_ACTION, 1010, XP_LATE) == 20 && xp_wait(p, 0, 1010, XP_LATE) == 5;
+  // a turn long over, and one never taken: nothing waits, and the numbers stay in their ranges
+  w = xp_carry_out(p, 5000); #assert w[0] == 0 && w[1] == 9 && w[2] == XP_FREE_GAP;
+  w = xp_carry_out(XpPace.{}, 0); #assert w[0] == 0 && w[1] == 0 && w[2] == XP_FREE_GAP;
+  n := xp_carry_in(w, 500); #assert n.next == 500 && n.last == 485 && xp_wait(n, XP_ACTION, 500, XP_LATE) == 0 && xp_wait(n, 0, 500, XP_LATE) == 0;
+  w = xp_carry_out(XpPace.{next = 2000, spent = 31, last = 1500}, 1000); #assert w[0] == XP_BEAT + XP_LATE && w[1] == 15 && w[2] == 0;
+  w = xp_carry_out(XpPace.{next = 1001, spent = 0, last = 999}, 1000); #assert w[0] == 1 && w[2] == 1;
+  w = xp_carry_out(XpPace.{next = 1000, spent = 0, last = 1000 - XP_FREE_GAP - 1}, 1000); #assert w[0] == 0 && w[2] == XP_FREE_GAP;
+  highs := [3] int.[60, 15, 15];
+  for i: 0..<3 {
+    #assert XP_CARRY_HIGH[i] == highs[i] && xp_carry_field(i, 0) && xp_carry_field(i, highs[i]) && !xp_carry_field(i, -1) && !xp_carry_field(i, highs[i] + 1);
+    bad := [3] int.[1, 1, 1]; bad[i] = highs[i] + 1; z := xp_carry_in(bad, 50); #assert z.next == XP_NEVER && z.spent == 0 && z.last == XP_NEVER;
+    bad[i] = -1; z = xp_carry_in(bad, 50); #assert z.next == XP_NEVER && z.last == XP_NEVER;
+    bad[i] = highs[i]; z = xp_carry_in(bad, 50); #assert z.next == 50 + bad[0] && z.spent == bad[1] && z.last == 50 - bad[2];
+  }
+  #assert !xp_carry_field(-1, 0) && !xp_carry_field(3, 0) && XP_CARRY == 3;
+}
 xp_spent :: (action: bool, bonus: bool, slot_spent: bool) -> int #effects(all) {
   return (ifx action then XP_ACTION else 0) + (ifx bonus then XP_BONUS else 0) + (ifx slot_spent then XP_SLOT else 0);
 }

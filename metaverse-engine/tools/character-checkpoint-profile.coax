@@ -76,7 +76,18 @@ ccp_fixture :: (d: Jv, fx: int, ver: int) -> bool #effects(all) {
       }
       want_rest.more = true;
     }
-  } else if jv_get(d, v, "rest") >= 0 || jv_get(d, v, "uses") >= 0 {
+    ga := jv_get(d, v, "combat");
+    if ga >= 0 {
+      if jv_kind(d, ga) != JV_ARRAY || !cc_combat_count(jv_len(d, ga)) { return false; }
+      want_rest.combat.n = jv_len(d, ga);
+      for i: 0..<want_rest.combat.n {
+        n := jv_int(d, jv_at(d, ga, i), CCP_SENTINEL);
+        if n == CCP_SENTINEL { return false; }
+        want_rest.combat.v[i] = n;
+      }
+      want_rest.combat.on = true;
+    }
+  } else if jv_get(d, v, "rest") >= 0 || jv_get(d, v, "uses") >= 0 || jv_get(d, v, "combat") >= 0 {
     return false;
   }
 
@@ -105,6 +116,8 @@ ccp_fixture :: (d: Jv, fx: int, ver: int) -> bool #effects(all) {
     if want_rest.more {
       for i: 0..<CC_MORE { if got_rest.uses[i] != want_rest.uses[i] { return false; } }
     }
+    if got_rest.combat.on != want_rest.combat.on || got_rest.combat.n != want_rest.combat.n { return false; }
+    for i: 0..<want_rest.combat.n { if got_rest.combat.v[i] != want_rest.combat.v[i] { return false; } }
     as2_node := jv_get(d, fx, "stored_v2");
     if as2_node >= 0 {
       as2_want := ccp_str(d, as2_node, tbuf[..]);

@@ -285,7 +285,12 @@ e2rt_land :: (v: [] RmServer, k: int) { for q: 0..<90 { eg_test_tick(v, k); } }
   // this API refuses profile 3: the retry and every later capture are profile 2
   #assert rm_checkpoint_due(v[..]) > 0 && cc_read(cast(string) v[0].ck.out[0..<v[0].ck.out_n], true).n[0] == 3;
   rm_checkpoint_answer(v[..], v[0].ck.request, 400, "{\"error\":\"bad checkpoint\"}");
-  #assert v[0].ck.two_only && v[0].ck.two_falls == 1;
+  // (first without `combat`, for an API from before it, #13282: still profile 3, the rest kept)
+  #assert v[0].ck.plain && v[0].ck.plain_falls == 1 && !v[0].ck.two_only && v[0].ck.two_falls == 0;
+  rm_clock(v[..], v[0].ck.retry_at, 1762190000000 + 3600500); #assert rm_checkpoint_due(v[..]) > 0;
+  bare := cast(string) v[0].ck.out[0..<v[0].ck.out_n]; #assert cc_read(bare, true).n[0] == 3 && cc_rest(bare, true).on && !cc_rest(bare, true).combat.on && cc_find(bare, "combat") < 0;
+  rm_checkpoint_answer(v[..], v[0].ck.request, 400, "{\"error\":\"bad checkpoint\"}");
+  #assert v[0].ck.two_only && v[0].ck.two_falls == 1 && v[0].ck.plain_falls == 1;
   rm_clock(v[..], v[0].ck.retry_at, 1762190000000 + 3601000); #assert rm_checkpoint_due(v[..]) > 0;
   two := cast(string) v[0].ck.out[0..<v[0].ck.out_n]; #assert cc_read(two, true).ok && cc_read(two, true).n[0] == 2 && !cc_rest(two, true).on;
   e2rt_ack(v[..]); #assert !rm_checkpoint_paused(v[..], kw); e2rt_land(v[..], kw);

@@ -1,0 +1,105 @@
+// #13282: what a fight left on a character crosses between zone owners with it, once.
+// A poison from nobody here with `us` ticks left, and a turn's Action spent 10 ticks ago.
+trc_poison :: (v: [] RmServer, k: int, us: int) {
+  b := v[0].eg[k].rules[0].b[..];
+  _ := rs_effect_add(b[0].c[EGB_SEAT..<EGB_SEAT + 1], RsEffect.{kind = EF_COND, cond = RS_POISONED, by = -1, spell = -1, until = b[0].clock + us, save = -1});
+  v[0].eg[k].seat[0].pace = xp_took(XpPace.{}, XP_ACTION, XP_ACTION, 0, v[0].eg[k].tick - 10, XP_LATE);
+}
+// The poison records on room k's live seats, the ticks the first has left, and the live seats.
+trc_poisons :: (v: [] RmServer, k: int) -> int {
+  n := 0;
+  for s: 0..<eg_cap(v, k) { if !v[0].eg[k].seat[s].live { continue; } c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + s]; for e: c.eff { if e.kind == EF_COND && e.cond == RS_POISONED { n += 1; } } }
+  return n;
+}
+trc_left :: (v: [] RmServer, k: int) -> int {
+  for s: 0..<eg_cap(v, k) { if !v[0].eg[k].seat[s].live { continue; } c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + s]; for e: c.eff { if e.kind == EF_COND && e.cond == RS_POISONED { return e.until - v[0].eg[k].rules[0].b[0].clock; } } }
+  return -1;
+}
+trc_seats :: (v: [] RmServer, k: int) -> int { n := 0; for s: 0..<eg_cap(v, k) { if v[0].eg[k].seat[s].live { n += 1; } } return n; }
+trc_vitals :: (v: [] RmServer) { rm_vitals_flush(v); if rm_vitals_due(v) > 0 { rm_vitals_local(v); } }
+trc_start :: (v: [] RmServer, owner: int, us: int) -> int {
+  ck_test_init(v); k := e2rt_ck_join(v, 0, owner, CharacterCapture.{}, CharacterRest.{});
+  if k < 0 || rm_checkpoint_due(v) <= 0 { return -1; }
+  e2rt_ack(v); e2rt_land(v, k); trc_poison(v, k, us); return k;
+}
+
+#test "travel: a poisoned character with its turn half spent crosses and arrives poisoned with the same waits (#13282)" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; k := trc_start(v[..], 7, 6000000); #assert k >= 0;
+  t := v[0].eg[k].tick; pace := v[0].eg[k].seat[0].pace;
+  wait_a := xp_wait(pace, XP_ACTION, t, XP_LATE); wait_f := xp_wait(pace, 0, t, XP_LATE); left := trc_left(v[..], k);
+  #assert wait_a == 20 && wait_f == 5 && left == 6000000 && trc_poisons(v[..], k) == 1;
+  box: [65536] u8; _ := rl_heard_by(v[..], 0, box[..]);
+  rm_heard(v[..], 0, "T 1 pair-e2-b"); #assert eg_travelling(v[..], k, SeatId.{value = 0}) && rm_checkpoint_due(v[..]) > 0;
+  body := cast(string) v[0].ck.out[0..<v[0].ck.out_n]; cap := cc_read(body, true); rest := cc_rest(body, true); g := rest.combat;
+  #assert cap.ok && cap.n[0] == 3 && g.on && g.n == 13 && g.v[0] == wait_a + XP_LATE && g.v[1] == XP_ACTION && g.v[2] == 10 && g.v[3] == 0 && g.v[4] == 0;
+  want := [8] int.[EF_COND, RS_POISONED, 0, 0, left, 0, 0, 0]; for q: 0..<8 { #assert g.v[5 + q] == want[q]; }
+  // the source's world runs on while the journey waits for its receipt; the page is not sent before it
+  e2rt_land(v[..], k); #assert trc_left(v[..], k) < left && !eg_test_has(rl_heard_by(v[..], 0, box[..]), "g ") && rm_travel_stat(v[..], 1) == 0;
+  trc_vitals(v[..]); e2rt_ack(v[..]); #assert rm_travel_stat(v[..], 1) == 1 && eg_test_has(rl_heard_by(v[..], 0, box[..]), "g pair-e2-b");
+  // the destination, another process: the same poison with the ticks it had, the same waits on its own clock
+  ck_test_init(v[..]); kd := e2rt_ck_join(v[..], 0, 8, cap, rest); #assert kd >= 0;
+  hero := v[0].eg[kd].rules[0].b[0].c[EGB_SEAT]; td := v[0].eg[kd].tick; there := v[0].eg[kd].seat[0].pace;
+  #assert trc_poisons(v[..], kd) == 1 && (hero.cond & RS_POISONED) != 0 && trc_left(v[..], kd) == left && hero.conc == -1;
+  #assert xp_wait(there, XP_ACTION, td, XP_LATE) == wait_a && xp_wait(there, 0, td, XP_LATE) == wait_f && there.spent == XP_ACTION;
+  // and it ends there when those ticks have run, not before
+  #assert rm_checkpoint_due(v[..]) > 0; e2rt_ack(v[..]);
+  for q: 0..<5 * 30 - 2 { eg_test_tick(v[..], kd); } #assert trc_poisons(v[..], kd) == 1;
+  for q: 0..<2 * 30 + 4 { eg_test_tick(v[..], kd); }
+  #assert trc_poisons(v[..], kd) == 0 && (v[0].eg[kd].rules[0].b[0].c[EGB_SEAT].cond & RS_POISONED) == 0;
+}
+#test "travel faults: the old owner dies mid-transfer, the new owner refuses, the record arrives twice: one owner, nothing lost or doubled (#13282)" #steps 4000000000 #traversal 268435456 {
+  v: [1] RmServer; k := trc_start(v[..], 7, 30000000); #assert k >= 0; box: [65536] u8;
+  // the capture the API last kept: the poison as it is now
+  ck_capture_as(v[..], k, SeatId.{value = 0}, true); #assert rm_checkpoint_due(v[..]) > 0;
+  kept := cast(string) v[0].ck.out[0..<v[0].ck.out_n]; cap_a := cc_read(kept, true); rest_a := cc_rest(kept, true); left_a := trc_left(v[..], k);
+  e2rt_ack(v[..]); #assert rest_a.combat.on && rest_a.combat.v[9] == left_a;
+  // 1. the old owner dies mid-transfer: its journey's capture is posted and never kept. No page is
+  //    sent anywhere on an unkept capture, so the character is where the API's last capture has it.
+  for q: 0..<30 { eg_test_tick(v[..], k); }
+  _ := rl_heard_by(v[..], 0, box[..]);
+  rm_heard(v[..], 0, "T 1 pair-e2-b"); #assert eg_travelling(v[..], k, SeatId.{value = 0}) && rm_checkpoint_due(v[..]) > 0;
+  #assert cc_rest(cast(string) v[0].ck.out[0..<v[0].ck.out_n], true).combat.v[9] < left_a;
+  #assert rm_travel_stat(v[..], 1) == 0 && !eg_test_has(rl_heard_by(v[..], 0, box[..]), "g ");
+  // had it lived to hear of that write after the next owner's ticket, it is fenced: its slot ends, and no page is sent
+  fb: [256] u8; rm_checkpoint_answer(v[..], v[0].ck.request, 200, ck_test_receipt(v[..], "fenced", fb[..]));
+  #assert v[0].ck.fenced == 1 && rm_checkpoint_pending(v[..]) == 0 && rm_travel_stat(v[..], 1) == 0 && !eg_test_has(rl_heard_by(v[..], 0, box[..]), "g ");
+  // the next owner (generation 8, a new process) builds it from the kept capture: poisoned once, with the ticks kept
+  ck_test_init(v[..]); kw := e2rt_ck_join(v[..], 0, 8, cap_a, rest_a); #assert kw >= 0;
+  #assert trc_seats(v[..], kw) == 1 && trc_poisons(v[..], kw) == 1 && trc_left(v[..], kw) == left_a;
+  #assert rm_checkpoint_due(v[..]) > 0; e2rt_ack(v[..]); e2rt_land(v[..], kw);
+  // 2. the new owner refuses. A full destination on this server refuses the reservation: the
+  //    character plays on where it is, with what it had
+  r: [512] u8; t: [256] u8;
+  #assert rm_join(v[..], 1, rl_test_owned(r[..], t[..], CK_TEST_KEY, "p-c0ffeec0ffeec0ff", "pair-e2-b", 2, v[0].wall_ms)) == 0;
+  v[0].relays[v[0].conns[1].relay].seats = 1;
+  before := trc_left(v[..], kw); pace := v[0].eg[kw].seat[0].pace;
+  rm_heard(v[..], 0, "T 1 pair-e2-b");
+  #assert !eg_travelling(v[..], kw, SeatId.{value = 0}) && rm_travel_stat(v[..], 2) == 1 && trc_seats(v[..], kw) == 1 && trc_poisons(v[..], kw) == 1 && trc_left(v[..], kw) == before;
+  #assert v[0].eg[kw].seat[0].pace.next == pace.next && v[0].eg[kw].seat[0].pace.spent == pace.spent;
+  //    A destination in another process whose build is not the capture's (its content pin differs)
+  //    refuses the hello: nothing is laid there
+  _ = rl_heard_by(v[..], 0, box[..]);
+  rm_heard(v[..], 0, "T 2 pair-e2-c"); #assert rm_checkpoint_due(v[..]) > 0;
+  sent := cast(string) v[0].ck.out[0..<v[0].ck.out_n]; cap_c := cc_read(sent, true); rest_c := cc_rest(sent, true); left_c := rest_c.combat.v[9];
+  trc_vitals(v[..]); e2rt_ack(v[..]); #assert rm_travel_stat(v[..], 1) == 1 && eg_test_has(rl_heard_by(v[..], 0, box[..]), "g pair-e2-c") && left_c < left_a && left_c > 0;
+  other := cap_c; other.n[8] += 1;
+  ck_test_init(v[..]); kr := e2rt_ck_join(v[..], 0, 9, other, rest_c);
+  #assert v[0].conns[0].kicked && (kr < 0 || trc_poisons(v[..], kr) == 0);
+  rm_left(v[..], 0);
+  //    so the page joins again as after any drop (generation 10, the capture the API kept): one seat, one poison, its ticks
+  kb := e2rt_ck_join(v[..], 1, 10, cap_c, rest_c); #assert kb >= 0;
+  #assert trc_seats(v[..], kb) == 1 && trc_poisons(v[..], kb) == 1 && trc_left(v[..], kb) == left_c;
+  // 3. the record arrives twice: the same ticket on a second socket, and its hello said again
+  _ = e2rt_ck_join(v[..], 2, 10, cap_c, rest_c);
+  #assert trc_seats(v[..], kb) == 1; #assert trc_poisons(v[..], kb) == 1; #assert trc_left(v[..], kb) == left_c;
+  rm_heard(v[..], 2, "H 6 ranger.0.0.0 srd-fighter 0 Ash"); rm_heard(v[..], 1, "H 6 ranger.0.0.0 srd-fighter 0 Ash");
+  #assert trc_seats(v[..], kb) == 1 && trc_poisons(v[..], kb) == 1 && trc_left(v[..], kb) == left_c;
+}
+// The room's capture and the engine's codec agree on a `combat` list's shape and every range (#13282).
+#test "checkpoint: the codec's combat ranges are the rules' and the turn's" {
+  #assert CC_COMBAT_HEAD == XP_CARRY + RS_AURAS_HEAD && CC_AURA == RS_AURA_CARRY && CC_AURAS == RS_EFFECTS && CC_COMBAT == XP_CARRY + RS_AURAS_CARRY;
+  for q: 0..<XP_CARRY { #assert CC_COMBAT_HIGH[q] == XP_CARRY_HIGH[q]; }
+  #assert CC_COMBAT_HIGH[3] == RS_AURA_SPELL && CC_COMBAT_HIGH[4] == RS_AURA_LEFT;
+  for q: 0..<RS_AURA_CARRY { #assert CC_AURA_HIGH[q] == RS_AURA_HIGH[q]; }
+  #assert ck_combat_clock(0) && !ck_combat_clock(1) && ck_combat_clock(2) && !ck_combat_clock(3) && ck_combat_clock(4) && !ck_combat_clock(5) && ck_combat_clock(9) && !ck_combat_clock(13) && ck_combat_clock(17);
+}

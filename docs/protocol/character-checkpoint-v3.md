@@ -37,9 +37,46 @@ in the rules' order (`RS_USES` 11 to 13): Uncanny Metabolism, Magical Cunning
 and Faithful Steed. A room writes `uses` with every profile 3 body. A body
 without it, from an older room, still reads, and those three uses start full.
 
-A profile 2 body never has `rest` or `uses`. A profile 3 body always has
-`rest`. The ingress body has 22 members, or 23 with `uses`. The stored body has
-21, or 22 with `uses`.
+A profile 3 body may also have `combat` (#13282): what a fight left on the
+character, so that it crosses between zone owners and comes back after a
+restart. It is an array of 5 numbers, then 8 for each lasting effect, with at
+most 16 effects (5 + 8k numbers, 133 at most).
+
+| Index | Meaning | High |
+| ---: | --- | ---: |
+| 0 | Room ticks (30 a second) until its turn's beat ends | 60 |
+| 1 | The parts of the turn it has spent: 1 Action, 2 Bonus Action, 8 a slot's spell | 15 |
+| 2 | Room ticks since its last press | 15 |
+| 3 | 1 + the spell it concentrates on (0: none) | 1000 |
+| 4 | That spell's ticks left (0: no clock ends it) | 2592000000000 |
+
+Each effect, in the order the body holds them:
+
+| Offset | Meaning | High |
+| ---: | --- | ---: |
+| 0 | The Aura's kind (the rules' `EF_*`), 1 at least | 40 |
+| 1 | Its `cond`: a condition mask, or the kind's own number | 2147483647 |
+| 2 | 1 when the character is its own source, 0 when its source stayed behind | 1 |
+| 3 | 1 + its spell (0: none) | 1000 |
+| 4 | Its ticks left (0: no clock ends it) | 2592000000000 |
+| 5 | 1 + the ability of the save it repeats (0: none) | 6 |
+| 6 | That save's DC | 99 |
+| 7 | 1 when the character's own turn's end ends it | 1 |
+
+An effect's and a spell's tick is a microsecond of the battle's clock. The
+effects a room leaves out are the ones that belong to the world left behind: a
+zone's hold, a readied response, a helper's distraction, a command still to
+obey, natural sleep (the rest carries it) and a failed Influence. The spell the
+character concentrates on goes only when one of its own carried effects is that
+spell's. `rules/srd/aura-carry.coax` owns these rules; the turn's three numbers
+are `everglade/shared/cast-pace.coax`'s.
+
+A profile 2 body never has `rest`, `uses` or `combat`. A profile 3 body always
+has `rest`. The ingress body has 22 members, and one more for each of `uses`
+and `combat` it has. The stored body has one fewer.
+
+The fullest body (every number at its high, 16 effects) is under 2,048 bytes,
+also as the store returns it, with a space after every `:` and `,`.
 
 ## Exchange
 
@@ -68,6 +105,23 @@ treats a stored body that has it as no capture.
 
 A room lays a body's `uses` on the restored body, each at most that body's
 own maximum, whether or not its rest fits.
+
+A room lays a body's `combat` on the restored body first, all or none
+(`rs_auras_in`): the effects against its own battle clock, then the turn
+against its own tick. A list the rules refuse (a kind that does not carry, more
+effects than the body has room for, a Concentration none of its effects is
+held by) leaves the body with no effect and a fresh turn. The same ticket shown
+twice takes the one seat over; it never builds a second body from one capture.
+
+A room writes `combat` exactly as it stands when a journey to another room
+starts and when the room shuts down. Between those, a character is not written
+again only because an effect's clock ran, so a restore after a crash may give
+an effect back the ticks it had when the character last changed.
+
+An API from before `combat` answers 400 to a body that has it. The room then
+writes profile 3 without `combat` (`plain`), and only if that is refused too
+does it fall back to profile 2. A ticket for a page that asks profile 2 gets
+the body without `rest`, `uses` and `combat`.
 
 A room lays a profile 3 rest on the restored body with `rs_carry_in`, all or
 none, after profile 2's restore. Offline time earns no rest: an open rest

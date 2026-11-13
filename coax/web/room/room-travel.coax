@@ -22,9 +22,11 @@
 // shard). To a room on this server the character also keeps what the rules count down or spend:
 // its Temporary Hit Points, spell slots and limited uses (when its build there is the same), and the
 // wait until its next Repair, captured at the cutover and laid on its new seat once its hello has
-// built it there (trv_carry). Conditions, auras and zones are the source room's world's and end there,
-// as when a player leaves; a cast on its bar stops (step 2). To another shard's room these go as on any
-// join: the destination's build, full.
+// built it there (trv_carry). Its turn, its Concentration and its lasting effects (a poison, a Hex,
+// a Rage) go in the capture the journey waits on, to any room on any shard: the ticks each had left,
+// laid on the new body once (room-checkpoint.coax ck_combat, rules/srd/aura-carry.coax; #13282).
+// Zones, a readied response and a spell held on someone else are the source room's world's and end
+// there, as when a player leaves; a cast on its bar stops (step 2).
 // Recovery. Every step before the destination's join is undone by time: a page that never leaves
 // (it crashed, or its close was lost) gets its commands back after TRAVEL_MS, and the reservation
 // lapses. A page that left and can't sit at CODE (full, or its room gone) joins again as on any
@@ -131,7 +133,7 @@ eg_heard_travel :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { sea
   // 2. prepare: the cutover, and what the destination starts from
   v[0].eg[k].seat[seat].travel_until = v[0].mono_ms + TRAVEL_MS;
   trv_capture(v, slot, k, seat_id);
-  ck_capture(v, k, seat_id);   // a zone change is saved before the journey goes (#13184)
+  ck_capture_as(v, k, seat_id, true);   // a zone change is saved before the journey goes (#13184), its effects' clocks as they are now (#13282)
   rv_note_seat(v, k, seat_id); v[0].vit.flush = true;
   i := rv_find(v, pid);
   v[0].trv.t[slot].rev = ifx i >= 0 then v[0].vit.v[i].rev else 0;

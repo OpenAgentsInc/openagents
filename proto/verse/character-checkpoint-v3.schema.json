@@ -418,6 +418,49 @@
         }
       ],
       "description": "optional: the limited-use counts after profile 2's 11; absent in an older room's body"
+    },
+    "combat": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 133,
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60,
+          "description": "ticks until its turn's beat ends"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15,
+          "description": "the parts of the turn it has spent, bits (1 Action, 2 Bonus Action, 8 a slot's spell)"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15,
+          "description": "ticks since its last press, 15 at most"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "1 + the spell it concentrates on, 0 none"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2592000000000,
+          "description": "that spell's ticks left, 0 when no clock ends it"
+        }
+      ],
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2592000000000
+      },
+      "description": "optional (#13282): what a fight left on the character. Five numbers, then eight for each lasting effect, 16 effects at most (so 5 + 8k numbers): the Aura's kind (1 to 40), its cond (to 2147483647), 1 when the character is its own source, 1 + its spell (0 none, to 1000), its ticks left (0: no clock ends it; to 2592000000000), 1 + the save it repeats (0 none, to 6), that save's DC (to 99), 1 when the character's own turn's end ends it. A tick is a microsecond of the battle's clock; the turn's ticks are the room's, 30 a second. Absent in an older room's body."
     }
   },
   "allOf": [
@@ -471,6 +514,62 @@
       "state": [0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
       "rest": [1,120000,4,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
       "uses": [1,0,99]
+    },
+    {
+      "ingress": true,
+      "wire": "{\"v\":3,\"owner\":12,\"process\":42,\"rev\":9,\"at\":1762190050000,\"sent\":1762190050500,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":18,\"max\":20,\"xp\":1200,\"wanted\":0,\"x_mm\":500,\"y_mm\":0,\"z_mm\":250,\"yaw_mrad\":-314,\"pid\":\"hero-1\",\"room\":\"dawn\",\"dead\":false,\"state\":[0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"rest\":[1,120000,4,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"uses\":[1,0,99],\"combat\":[30,9,4,12,600000000,1,8,0,0,42000000,3,13,0,11,0,1,12,600000000,0,0,1]}",
+      "v": 3,
+      "owner": 12,
+      "process": 42,
+      "rev": 9,
+      "at": 1762190050000,
+      "sent": 1762190050500,
+      "engine": 1,
+      "rules": 1,
+      "content": 1,
+      "hp": 18,
+      "max": 20,
+      "xp": 1200,
+      "wanted": 0,
+      "x_mm": 500,
+      "y_mm": 0,
+      "z_mm": 250,
+      "yaw_mrad": -314,
+      "pid": "hero-1",
+      "room": "dawn",
+      "dead": false,
+      "state": [0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      "rest": [1,120000,4,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      "uses": [1,0,99],
+      "combat": [30,9,4,12,600000000,1,8,0,0,42000000,3,13,0,11,0,1,12,600000000,0,0,1]
+    },
+    {
+      "ingress": false,
+      "wire": "{\"v\":3,\"owner\":12,\"process\":42,\"rev\":9,\"at\":1762190050000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":18,\"max\":20,\"xp\":1200,\"wanted\":0,\"x_mm\":500,\"y_mm\":0,\"z_mm\":250,\"yaw_mrad\":-314,\"pid\":\"hero-1\",\"room\":\"dawn\",\"dead\":false,\"state\":[0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"rest\":[1,120000,4,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"uses\":[1,0,99],\"combat\":[30,9,4,12,600000000,1,8,0,0,42000000,3,13,0,11,0,1,12,600000000,0,0,1]}",
+      "stored_v2": "{\"v\":2,\"owner\":12,\"process\":42,\"rev\":9,\"at\":1762190050000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":18,\"max\":20,\"xp\":1200,\"wanted\":0,\"x_mm\":500,\"y_mm\":0,\"z_mm\":250,\"yaw_mrad\":-314,\"pid\":\"hero-1\",\"room\":\"dawn\",\"dead\":false,\"state\":[0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
+      "v": 3,
+      "owner": 12,
+      "process": 42,
+      "rev": 9,
+      "at": 1762190050000,
+      "engine": 1,
+      "rules": 1,
+      "content": 1,
+      "hp": 18,
+      "max": 20,
+      "xp": 1200,
+      "wanted": 0,
+      "x_mm": 500,
+      "y_mm": 0,
+      "z_mm": 250,
+      "yaw_mrad": -314,
+      "pid": "hero-1",
+      "room": "dawn",
+      "dead": false,
+      "state": [0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      "rest": [1,120000,4,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      "uses": [1,0,99],
+      "combat": [30,9,4,12,600000000,1,8,0,0,42000000,3,13,0,11,0,1,12,600000000,0,0,1]
     }
   ],
   "rejected": [
@@ -480,6 +579,11 @@
     "{\"v\":3,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"sent\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":0,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"p-a\",\"room\":\"pair-a\",\"dead\":true,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],\"rest\":[3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}",
     "{\"v\":3,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"sent\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":0,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"p-a\",\"room\":\"pair-a\",\"dead\":true,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],\"rest\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"uses\":[1,2]}",
     "{\"v\":3,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"sent\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":0,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"p-a\",\"room\":\"pair-a\",\"dead\":true,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],\"rest\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"uses\":[1,0,100]}",
-    {"now": 1762190200000, "wire": "{\"v\":3,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"sent\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":0,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"p-a\",\"room\":\"pair-a\",\"dead\":true,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],\"rest\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}"}
+    {"now": 1762190200000, "wire": "{\"v\":3,\"owner\":7,\"process\":101,\"rev\":3,\"at\":1762190000000,\"sent\":1762190000000,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":0,\"max\":20,\"xp\":350,\"wanted\":2,\"x_mm\":-1234,\"y_mm\":200,\"z_mm\":-9876,\"yaw_mrad\":1234,\"pid\":\"p-a\",\"room\":\"pair-a\",\"dead\":true,\"state\":[1,0,4,50,2,6,0,2,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],\"rest\":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}"},
+    "{\"v\":3,\"owner\":12,\"process\":42,\"rev\":9,\"at\":1762190050000,\"sent\":1762190050500,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":18,\"max\":20,\"xp\":1200,\"wanted\":0,\"x_mm\":500,\"y_mm\":0,\"z_mm\":250,\"yaw_mrad\":-314,\"pid\":\"hero-1\",\"room\":\"dawn\",\"dead\":false,\"state\":[0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"rest\":[1,120000,4,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"uses\":[1,0,99],\"combat\":[0,0,0,0]}",
+    "{\"v\":3,\"owner\":12,\"process\":42,\"rev\":9,\"at\":1762190050000,\"sent\":1762190050500,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":18,\"max\":20,\"xp\":1200,\"wanted\":0,\"x_mm\":500,\"y_mm\":0,\"z_mm\":250,\"yaw_mrad\":-314,\"pid\":\"hero-1\",\"room\":\"dawn\",\"dead\":false,\"state\":[0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"rest\":[1,120000,4,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"uses\":[1,0,99],\"combat\":[0,0,0,0,0,1]}",
+    "{\"v\":3,\"owner\":12,\"process\":42,\"rev\":9,\"at\":1762190050000,\"sent\":1762190050500,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":18,\"max\":20,\"xp\":1200,\"wanted\":0,\"x_mm\":500,\"y_mm\":0,\"z_mm\":250,\"yaw_mrad\":-314,\"pid\":\"hero-1\",\"room\":\"dawn\",\"dead\":false,\"state\":[0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"rest\":[1,120000,4,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"uses\":[1,0,99],\"combat\":[61,0,0,0,0]}",
+    "{\"v\":3,\"owner\":12,\"process\":42,\"rev\":9,\"at\":1762190050000,\"sent\":1762190050500,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":18,\"max\":20,\"xp\":1200,\"wanted\":0,\"x_mm\":500,\"y_mm\":0,\"z_mm\":250,\"yaw_mrad\":-314,\"pid\":\"hero-1\",\"room\":\"dawn\",\"dead\":false,\"state\":[0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"rest\":[1,120000,4,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"uses\":[1,0,99],\"combat\":[0,0,0,0,0,41,0,0,0,0,0,0,0]}",
+    "{\"v\":3,\"owner\":12,\"process\":42,\"rev\":9,\"at\":1762190050000,\"sent\":1762190050500,\"engine\":1,\"rules\":1,\"content\":1,\"hp\":18,\"max\":20,\"xp\":1200,\"wanted\":0,\"x_mm\":500,\"y_mm\":0,\"z_mm\":250,\"yaw_mrad\":-314,\"pid\":\"hero-1\",\"room\":\"dawn\",\"dead\":false,\"state\":[0,1,12,0,0,3,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"rest\":[1,120000,4,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],\"uses\":[1,0,99],\"combat\":7}"
   ]
 }

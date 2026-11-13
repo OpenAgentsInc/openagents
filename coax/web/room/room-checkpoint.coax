@@ -19,6 +19,7 @@ RmCheckpoints :: struct {
   cursor:int;rev:int;last:int;
   fly:bool;waiting:bool;fly_i:int;fly_capture:CharacterCapture;fly_rest:CharacterRest;fly_mono:int;
   two_only:bool;two_falls:int;   // profile 3 refused by this API (400 or 5xx): profile 2 from then on (#13046)
+  plain:bool;plain_falls:int;    // a body with `combat` refused by this API: profile 3 without it from then on, before any fall to 2 (#13282)
   request:int;sent_mono:int;retry_at:int;tries:int;
   out:[CC_BODY]u8;out_n:int;mac:[64]u8;
   posts:int;retries:int;applied:int;duplicates:int;failures:int;late:int;refused:int;fenced:int;
@@ -133,7 +134,12 @@ ck_slot_seat :: (v:[]RmServer,k:int, s_id: SeatId)->int {
 // tick, and another player's join captures nobody else. A capture equal to the seat's last one is no new
 // revision, so it is no write: an idle player writes nothing. So each player writes at most once per
 // CF_EVERY plus once per event of their own, and one post is in flight per process.
-ck_capture :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
+ck_capture :: (v:[]RmServer,k:int, s_id: SeatId) { ck_capture_as(v,k,s_id,false); }
+// exact: a capture a destination is about to read (a journey's, a room's last): the clocks of what a
+// fight left on the character count as a change too. A periodic capture does not write a character
+// again only because an effect's clock ran (ck_same), so a restore after a crash may give an effect
+// back the ticks it had when the character last changed.
+ck_capture_as :: (v:[]RmServer,k:int, s_id: SeatId, exact:bool) { s := s_id.value;
   if v[0].ck.finalizing{return;}
   i:=ck_slot_seat(v,k, s_id);if i<0{return;}st:=v[0].eg[k].seat[s];if !st.placed||!st.checkpoint_hello{return;}
   tk:=eg_ticket(v,k, s_id);if v[0].ck.slot[i].owner!=tk.owner{return;}
@@ -147,8 +153,10 @@ ck_capture :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   for q:0..<10{c.state[6+q]=hero.slots[q];}for q:0..<CK_USES{c.state[16+q]=hero.uses[q];}
   // Everglade II also carries the seat's rest (profile 3)
   rest:=CharacterRest.{};if rs_carry_out(v[0].eg[k].rules[0].b[..],EGB_SEAT+s,rest.n[..]){rest.on=true;c.n[0]=3;rest.more=true;for q:0..<CC_MORE{rest.uses[q]=hero.uses[CK_USES+q];}}
+  // and what a fight left on it (#13282): its turn, its Concentration and its lasting effects
+  if rest.on&&!v[0].ck.plain{rest.combat=ck_combat(v,k,s_id);}
   e:=v[0].ck.slot[i];
-  if e.latest.ok&&ck_same(e.latest,e.latest_rest,c,rest){
+  if e.latest.ok&&ck_same(e.latest,e.latest_rest,c,rest,exact){
     // unchanged: when the accepted capture is this one, it still describes the character now, so the
     // loss bound (CF_BOUND) counts from now; nothing is unsaved
     if e.accepted&&e.latest.n[3]<=e.acked{v[0].ck.slot[i].accepted_mono=v[0].mono_ms;}
@@ -158,7 +166,22 @@ ck_capture :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   v[0].ck.slot[i].latest=c;v[0].ck.slot[i].latest_rest=rest;v[0].ck.slot[i].capture_mono=v[0].mono_ms;
 }
 // Whether two captures hold the same character: all but the revision and the capture and send times.
-ck_same :: (a:CharacterCapture,ar:CharacterRest,b:CharacterCapture,br:CharacterRest)->bool {
+// Seat s's turn, Concentration and lasting effects as a capture's `combat` (the turn's three numbers,
+// then rules/srd/aura-carry.coax's list); off when the rules give none.
+ck_combat :: (v:[]RmServer,k:int, s_id: SeatId)->CharacterCombat { s := s_id.value;
+  g:=CharacterCombat.{};w:=xp_carry_out(v[0].eg[k].seat[s].pace,v[0].eg[k].tick);for q:0..<XP_CARRY{g.v[q]=w[q];}
+  a:[RS_AURAS_CARRY]int;n:=rs_auras_out(v[0].eg[k].rules[0].b[..],EGB_SEAT+s,a[..]);if n<RS_AURAS_HEAD{return CharacterCombat.{};}
+  for q:0..<n{g.v[XP_CARRY+q]=a[q];}g.n=XP_CARRY+n;g.on=true;return g;
+}
+// Lay a capture's `combat` on seat s's fresh body, all or none (the rules refuse a list that does not fit it).
+ck_combat_back :: (v:[]RmServer,k:int, s_id: SeatId, g:CharacterCombat)->bool { s := s_id.value;
+  if !g.on||g.n<XP_CARRY+RS_AURAS_HEAD||g.n>CC_COMBAT{return false;}
+  a:=g.v;if !rs_auras_in(v[0].eg[k].rules[0].b[..],EGB_SEAT+s,a[XP_CARRY..<g.n]){return false;}
+  w:=[3]int.[g.v[0],g.v[1],g.v[2]];v[0].eg[k].seat[s].pace=xp_carry_in(w,v[0].eg[k].tick);return true;
+}
+// Whether number q of a `combat` list is a clock's count (it changes with every tick while it runs).
+ck_combat_clock :: (q:int)->bool {return q==0||q==2||q==4||(q>=CC_COMBAT_HEAD&&(q-CC_COMBAT_HEAD)%CC_AURA==4);}
+ck_same :: (a:CharacterCapture,ar:CharacterRest,b:CharacterCapture,br:CharacterRest,exact:bool)->bool {
   for q:0..<17{if q>=3&&q<=5{continue;}if a.n[q]!=b.n[q]{return false;}}
   if a.dead!=b.dead||a.pid_n!=b.pid_n||a.room_n!=b.room_n{return false;}
   for q:0..<a.room_n{if a.room[q]!=b.room[q]{return false;}}
@@ -166,11 +189,15 @@ ck_same :: (a:CharacterCapture,ar:CharacterRest,b:CharacterCapture,br:CharacterR
   if ar.on!=br.on||ar.more!=br.more{return false;}
   for q:0..<CC_REST{if ar.n[q]!=br.n[q]{return false;}}
   for q:0..<CC_MORE{if ar.uses[q]!=br.uses[q]{return false;}}
+  if ar.combat.on!=br.combat.on||ar.combat.n!=br.combat.n{return false;}
+  for q:0..<ar.combat.n{if (exact||!ck_combat_clock(q))&&ar.combat.v[q]!=br.combat.v[q]{return false;}}
   return true;
 }
 ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   tk:=eg_ticket(v,k, s_id);c:=tk.capture;if tk.schema!=2||!c.ok{return;}
   hero:=v[0].eg[k].rules[0].b[0].c[EGB_SEAT+s..<EGB_SEAT+s+1];
+  // what a fight left on it, first: Aid raises the maximum its Hit Points are then held to (#13282)
+  if c.n[0]==3&&tk.rest.combat.on{_:=ck_combat_back(v,k,s_id,tk.rest.combat);}
   hero[0].hp=rs_min(c.n[9],hero[0].hp_max);hero[0].dead=c.dead;hero[0].temp=c.state[2];
   for q:0..<10{hero[0].slots[q]=rs_min(c.state[6+q],hero[0].slots_max[q]);}for q:0..<CK_USES{hero[0].uses[q]=rs_min(c.state[16+q],hero[0].uses_max[q]);}
   v[0].eg[k].seat[s].last_cast=v[0].eg[k].tick-(EG_CAST_GAP-c.state[4]);v[0].ev[k].down[s]=c.state[5];
@@ -213,7 +240,11 @@ ck_pause :: (v:[]RmServer,k:int) {
 rm_checkpoint_flush :: (v:[]RmServer) #export_c #effects(all) {
   for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<eg_cap(v, k){if v[0].eg[k].seat[s].live{ck_capture(v,k, SeatId.{value = s});}}}
 }
-rm_checkpoint_finish :: (v:[]RmServer) #export_c #effects(all) {rm_checkpoint_flush(v);v[0].ck.finalizing=true;}
+// A room's last captures are exact: the next process reads them.
+rm_checkpoint_finish :: (v:[]RmServer) #export_c #effects(all) {
+  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<eg_cap(v, k){if v[0].eg[k].seat[s].live{ck_capture_as(v,k, SeatId.{value = s},true);}}}
+  v[0].ck.finalizing=true;
+}
 rm_checkpoint_clean :: (v:[]RmServer)->bool #export_c #effects(all) {return rm_checkpoint_pending(v)==0&&!v[0].ck.fly;}
 rm_checkpoint_pending :: (v:[]RmServer)->int #export_c #effects(all) {
   n:=0;for i:0..<CF_CAP{e:=v[0].ck.slot[i..<i+1];if e[0].live&&e[0].latest.ok&&e[0].latest.n[3]>e[0].acked{n+=1;}}return n;
@@ -231,7 +262,7 @@ rm_checkpoint_due :: (v:[]RmServer)->int #export_c #effects(all) {
       v[0].ck.fly=true;v[0].ck.fly_i=i;v[0].ck.fly_capture=e[0].held_capture;v[0].ck.fly_rest=e[0].held_rest;v[0].ck.fly_mono=e[0].held_mono;v[0].ck.cursor=(i+1)%CF_CAP;break;}
   }
   if !v[0].ck.fly{return 0;}c:=v[0].ck.fly_capture;c.n[5]=rs_max(v[0].wall_ms,c.n[4]);
-  if v[0].ck.two_only{c.n[0]=2;}body:=cc_write_rest(c,v[0].ck.fly_rest,v[0].ck.out[..]);
+  if v[0].ck.two_only{c.n[0]=2;}fr:=v[0].ck.fly_rest;if v[0].ck.plain{fr.combat=CharacterCombat.{};}body:=cc_write_rest(c,fr,v[0].ck.out[..]);
   if body.count==0||!checkpoint2_input(body,c.n[5])||!rm_write_mac(v,"checkpoint",body,v[0].ck.mac[..]){return 0;}
   v[0].ck.request+=1;v[0].ck.waiting=true;v[0].ck.sent_mono=v[0].mono_ms;v[0].ck.out_n=body.count;v[0].ck.posts+=1;if v[0].ck.tries>0{v[0].ck.retries+=1;}return body.count;
 }
@@ -243,7 +274,10 @@ rm_checkpoint_answer :: (v:[]RmServer,request:int,status:int,body:string) #expor
   name:=room_report_checkpoint_status(got[..]);version:=got[0].v;owner:=got[0].owner;process:=got[0].process;rev:=got[0].rev;accepted:=got[0].accepted_at;
   if !valid||!cf_ack(version,name,OwnerGeneration.{value=owner},process,rev,accepted,OwnerGeneration.{value=f.n[1]},f.n[2],f.n[3]){
     if valid&&cf_fenced(version,name,OwnerGeneration.{value=owner},process,rev,OwnerGeneration.{value=f.n[1]},f.n[2],f.n[3]){v[0].ck.fenced+=1;pid:=f.pid;_:=rl_owner_drop(v,cast(string)pid[0..<f.pid_n],owner+1,-1);i:=v[0].ck.fly_i;if v[0].ck.slot[i].owner==owner{v[0].ck.slot[i].live=false;}v[0].ck.fly=false;v[0].ck.waiting=false;return;}
-    if !v[0].ck.two_only&&f.n[0]==3&&(status==400||status>=500){v[0].ck.two_only=true;v[0].ck.two_falls+=1;}
+    // an API from before `combat` refuses a body that has it: profile 3 without it, then profile 2
+    if !v[0].ck.two_only&&f.n[0]==3&&(status==400||status>=500){
+      if v[0].ck.fly_rest.combat.on&&!v[0].ck.plain{v[0].ck.plain=true;v[0].ck.plain_falls+=1;}else{v[0].ck.two_only=true;v[0].ck.two_falls+=1;}
+    }
     ck_failed(v);return;
   }
   i:=v[0].ck.fly_i;if v[0].ck.slot[i].owner==owner{v[0].ck.slot[i].acked=rev;v[0].ck.slot[i].accepted=true;v[0].ck.slot[i].accepted_mono=v[0].ck.fly_mono;v[0].ck.slot[i].receipt_mono=v[0].mono_ms;v[0].ck.slot[i].accepted_at=accepted;v[0].ck.slot[i].accepted_process=process;v[0].ck.slot[i].accepted_capture_wall=f.n[4];v[0].ck.slot[i].held=false;}
