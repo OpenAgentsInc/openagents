@@ -1,9 +1,11 @@
-// The VRG1 profile against its one codec (GitHub #13306): proto/aethyr/rig-pack-v1.json states the
-// layout's numbers and holds a file as hex; this tool holds them to metaverse-engine/anim/rig-pack.coax.
+// The VRG1 profiles against their one codec (GitHub #13306): proto/aethyr/rig-pack-v1.json and
+// rig-pack-v2.json (version 2: rotation keys as 16-bit components) each state a version's layout
+// and hold a file as hex; this tool holds them to metaverse-engine/anim/rig-pack.coax.
 // The fixture is admitted, each set's row is what the profile says, every part read through the
 // codec and written again by its writer gives the fixture's bytes, and every refused file is refused.
 //   coax/web/tool.sh metaverse-engine/tools/rig-pack-profile.coax proto/aethyr/rig-pack-v1.json
-//   coax/web/tool.sh metaverse-engine/tools/rig-pack-profile.coax sample     (a fixture's bytes, as hex)
+//   coax/web/tool.sh metaverse-engine/tools/rig-pack-profile.coax proto/aethyr/rig-pack-v2.json
+//   coax/web/tool.sh metaverse-engine/tools/rig-pack-profile.coax sample 1|2     (a version's fixture, as hex)
 // tool.sh: release
 #import "Basic";
 #load "../anim/rig-pack.coax";
@@ -29,7 +31,7 @@ rpp_str :: (d: Jv, at: int, out: [] u8) -> string { n := jv_str(d, at, out); ret
 rpp_copy :: (from: [] u8, s: VrgSet, out: [] u8, to: VrgSet) -> bool {
   ints: [RPP_WORDS] int; floats: [RPP_WORDS] f32;
   for part: 0..<VRG_PARTS {
-    n := vrg_words(s, part);
+    n := vrg_values(s, part);
     if n > RPP_WORDS { return false; }
     if vrg_whole(part) { if !vrg_ints(from, s, part, ints[0..<n]) || !vrg_put_ints(out, to, part, ints[0..<n]) { return false; } }
     else { if !vrg_floats(from, s, part, floats[0..<n]) || !vrg_put_floats(out, to, part, floats[0..<n]) { return false; } }
@@ -37,20 +39,22 @@ rpp_copy :: (from: [] u8, s: VrgSet, out: [] u8, to: VrgSet) -> bool {
   return true;
 }
 // The sample the fixture was written from: "a" (2 joints, 1 clip, 2 and 3 keys) and "b-2" (1 joint,
-// 2 clips, 0 and 1 keys), floats a ramp by quarters, each track the whole of its keys.
-rpp_sample :: (out: [] u8) -> int {
+// 2 clips, 0 and 1 keys), floats a ramp by quarters, each track the whole of its keys. In version 2
+// a rotation key's four components are whole 16-bit steps, (7919 w) mod 65535 - 32767 over 32767.
+rpp_sample :: (out: [] u8, version: int) -> int {
   names := [2] string.["a", "b-2"]; counts := [8] int.[2, 1, 2, 3, 1, 2, 0, 1];
-  at := vrg_begin(out, 2); ints: [RPP_WORDS] int; floats: [RPP_WORDS] f32;
+  at := vrg_begin(out, 2, version); ints: [RPP_WORDS] int; floats: [RPP_WORDS] f32;
   for k: 0..<2 {
     s := vrg_set(out, k, names[k], counts[k * 4], counts[k * 4 + 1], counts[k * 4 + 2], counts[k * 4 + 3], at);
     if s.joints == 0 { return -1; }
     for part: 0..<VRG_PARTS {
-      n := vrg_words(s, part);
+      n := vrg_values(s, part);
       if vrg_whole(part) {
         for w: 0..<n { ints[w] = ifx part == VRG_PARENT then w - 1 else (ifx w % 2 == 0 then 0 else (ifx part == VRG_TRACK_T then s.keys_t else s.keys_r)); }
         if !vrg_put_ints(out, s, part, ints[0..<n]) { return -1; }
       } else {
         for w: 0..<n { floats[w] = cast(f32) (part + k * 16) + cast(f32) w * 0.25; }
+        if part == VRG_KEYS_R && s.quant { for w: 0..<n { if w % 5 != 0 { floats[w] = cast(f32) ((7919 * w) % 65535 - 32767) / 32767.0; } } }
         if !vrg_put_floats(out, s, part, floats[0..<n]) { return -1; }
       }
     }
@@ -61,15 +65,18 @@ rpp_sample :: (out: [] u8) -> int {
 }
 rpp_profile :: (d: Jv) -> bool {
   t: [256] u8; h: [RPP_BYTES * 2] u8; raw: [RPP_BYTES] u8; mine: [RPP_BYTES] u8;
-  if rpp_str(d, jv_get(d, 0, "identity"), t[..]) != "rig-pack-v1" || rpp_str(d, jv_get(d, 0, "magic"), t[..]) != "VRG1" || rpp_str(d, jv_get(d, 0, "byte_order"), t[..]) != "little endian" { return false; }
-  if jv_int(d, jv_get(d, 0, "version"), -1) != 1 || jv_int(d, jv_get(d, 0, "header_bytes"), -1) != VRG_HEADER || jv_int(d, jv_get(d, 0, "row_bytes"), -1) != VRG_ROW || jv_int(d, jv_get(d, 0, "name_bytes"), -1) != VRG_NAME { return false; }
+  version := jv_int(d, jv_get(d, 0, "version"), -1);
+  if version != 1 && version != 2 { return false; }
+  if rpp_str(d, jv_get(d, 0, "identity"), t[..]) != (ifx version == 2 then "rig-pack-v2" else "rig-pack-v1") || rpp_str(d, jv_get(d, 0, "magic"), t[..]) != "VRG1" || rpp_str(d, jv_get(d, 0, "byte_order"), t[..]) != "little endian" { return false; }
+  if jv_int(d, jv_get(d, 0, "rotation_key_words"), -1) != vrg_words(VrgSet.{keys_r = 1, quant = version == 2}, VRG_KEYS_R) || (version == 2 && jv_int(d, jv_get(d, 0, "component_scale"), -1) != VRG_Q) { return false; }
+  if jv_int(d, jv_get(d, 0, "header_bytes"), -1) != VRG_HEADER || jv_int(d, jv_get(d, 0, "row_bytes"), -1) != VRG_ROW || jv_int(d, jv_get(d, 0, "name_bytes"), -1) != VRG_NAME { return false; }
   if jv_int(d, jv_get(d, 0, "sets_max"), -1) != VRG_SETS || jv_int(d, jv_get(d, 0, "joints_max"), -1) != VRG_JOINTS || jv_int(d, jv_get(d, 0, "clips_max"), -1) != VRG_CLIPS || jv_int(d, jv_get(d, 0, "smallest_file_bytes"), -1) != VRG_MIN || jv_int(d, jv_get(d, 0, "pack_entry_kind"), -1) != 7 { return false; }
   // the parts, in file order, each with its words for the profile's example counts
-  parts := jv_get(d, 0, "parts"); ex := VrgSet.{joints = 65, clips = 15, keys_t = 233, keys_r = 6770};
+  parts := jv_get(d, 0, "parts"); ex := VrgSet.{joints = 65, clips = 15, keys_t = 233, keys_r = 6770, quant = version == 2};
   if jv_len(d, parts) != VRG_PARTS { return false; }
   for p: 0..<VRG_PARTS {
     row := jv_at(d, parts, p);
-    if jv_int(d, jv_get(d, row, "part"), -1) != p || jv_int(d, jv_get(d, row, "words_for_65_joints_15_clips_233_and_6770_keys"), -1) != vrg_words(ex, p) || (rpp_str(d, jv_get(d, row, "type"), t[..]) == "u32") != vrg_whole(p) { return false; }
+    if jv_int(d, jv_get(d, row, "part"), -1) != p || jv_int(d, jv_get(d, row, "words_for_65_joints_15_clips_233_and_6770_keys"), -1) != vrg_words(ex, p) || (rpp_str(d, jv_get(d, row, "type"), t[..]) == "u32") != vrg_whole(p) || jv_int(d, jv_get(d, row, "values_for_65_joints_15_clips_233_and_6770_keys"), vrg_words(ex, p)) != vrg_values(ex, p) { return false; }
   }
   fx := jv_get(d, 0, "fixtures");
   if jv_len(d, fx) < 1 { return false; }
@@ -78,7 +85,7 @@ rpp_profile :: (d: Jv) -> bool {
     n := rpp_unhex(rpp_str(d, jv_get(d, row, "hex"), h[..]), raw[..]);
     if n <= 0 { return false; }
     f := raw[0..<n]; sets := jv_get(d, row, "sets"); count := jv_len(d, sets);
-    if vrg_valid(f) != count || count < 1 || vrg_begin(mine[..], count) == 0 { return false; }
+    if vrg_valid(f) != count || count < 1 || cast(int) scan_u32(f, 4) != version || vrg_begin(mine[..], count, version) == 0 { return false; }
     for k: 0..<count {
       srow := jv_at(d, sets, k); s := vrg_find(f, rpp_str(d, jv_get(d, srow, "name"), t[..]));
       if s.joints == 0 || s.joints != jv_int(d, jv_get(d, srow, "joints"), -1) || s.clips != jv_int(d, jv_get(d, srow, "clips"), -1) || s.keys_t != jv_int(d, jv_get(d, srow, "translation_keys"), -1)
@@ -89,7 +96,7 @@ rpp_profile :: (d: Jv) -> bool {
     vrg_end(mine[..], n);
     if cast(string) mine[0..<n] != cast(string) f { return false; }
     // and the sample this tool writes is the first fixture
-    if i == 0 { m := rpp_sample(mine[..]); if m != n || cast(string) mine[0..<m] != cast(string) f { return false; } }
+    if i == 0 { m := rpp_sample(mine[..], version); if m != n || cast(string) mine[0..<m] != cast(string) f { return false; } }
   }
   refused := jv_get(d, 0, "refused_hex");
   if jv_len(d, refused) < 3 { return false; }
@@ -101,9 +108,9 @@ rpp_profile :: (d: Jv) -> bool {
 }
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: rig-pack-profile FILE.json | sample"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 || (args_count(a[..]) == 2) != (args_at(a[..], 0) == "sample") { tool_errln("usage: rig-pack-profile FILE.json | sample 1|2"); return 2; }
   if args_at(a[..], 0) == "sample" {
-    out: [RPP_BYTES] u8; n := rpp_sample(out[..]);
+    out: [RPP_BYTES] u8; n := rpp_sample(out[..], ifx args_at(a[..], 1) == "2" then 2 else 1);
     if n < 0 { return 1; }
     digits := "0123456789abcdef"; hex: [RPP_BYTES * 2] u8;
     for k: 0..<n { hex[2 * k] = digits[cast(int) out[k] >> 4]; hex[2 * k + 1] = digits[cast(int) out[k] & 15]; }
@@ -112,6 +119,6 @@ tool_main :: () -> int #export_c #effects(all) {
   text: [65536] u8; n := fs_read(args_at(a[..], 0), text[..]);
   nodes: [2048] JvNode; d: [1] Jv;
   if n <= 0 || !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { tool_errln("rig-pack-profile: cannot parse the profile"); return 2; }
-  if !rpp_profile(d[0]) { print("rig-pack-v1: profile fails\n"); return 1; }
-  print("rig-pack-v1: profile holds\n"); return 0;
+  if !rpp_profile(d[0]) { print("%: profile fails\n", args_at(a[..], 0)); return 1; }
+  print("%: profile holds\n", args_at(a[..], 0)); return 0;
 }

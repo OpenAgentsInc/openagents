@@ -5,8 +5,8 @@
 // the rotation keys. A pack carries the file as its rig entry (kind 7, PACK_RIG), so a page reads
 // its rigs from the pack it already loads and the generated rig procedures can go.
 //
-// The bytes, little endian, every field a 4-byte word (proto/metaverse-engine/rig-pack-v1.json):
-//   header, 32 bytes: "VRG1", version (1), sets (1 to 8), the file's bytes, 0, 0, 0, 0
+// The bytes, little endian, every field a 4-byte word (proto/aethyr/rig-pack-v1.json):
+//   header, 32 bytes: "VRG1", version (1 or 2), sets (1 to 8), the file's bytes, 0, 0, 0, 0
 //   a row a set, 48 bytes: its name in 16 zero-padded bytes (1 to 15 of a-z, 0-9 and '-'),
 //     joints, clips, translation keys a body, rotation keys, offset, bytes, 0, 0
 //   a set's words, in this order (VRG_PARENT ... VRG_KEYS_R):
@@ -17,6 +17,12 @@
 //     translation tracks, rotation tracks     (first key, keys) a clip and joint
 //     translation keys of body 0, of body 1   4 floats a key: seconds, x, y, z
 //     rotation keys                           5 floats a key: seconds, x, y, z, w
+// Version 2 (proto/aethyr/rig-pack-v2.json) differs in the rotation keys alone. A key is 3 words:
+// seconds as a float, then x and y, then z and w, each a signed 16-bit whole number c (low half
+// first) that reads as c / 32767. So a component in -1 to 1 comes back within 1 / 65534 (0.0000153)
+// of what was written (0.0000154 with a float's rounding), the key's time exactly, and a key is 12 bytes in place of 20. -32768 is not
+// written and is refused. vrg_floats gives a version 2 key as the same five floats, so a reader
+// does not know which version it was handed.
 // Sets follow the rows with no gap, in row order, and the last ends the file. A file is read whole
 // or refused (vrg_valid): every size is exact, every float is finite, every track lies inside its
 // keys and no two sets share a name. A set has 1 to 256 joints and 1 to 256 clips. vrg_ints and vrg_floats copy one part of a set into an array
@@ -41,7 +47,9 @@ VRG_DURATION :: 5; VRG_DISTANCE :: 6; VRG_TRACK_T :: 7; VRG_TRACK_R :: 8;
 VRG_KEYS_T_0 :: 9; VRG_KEYS_T_1 :: 10; VRG_KEYS_R :: 11; VRG_PARTS :: 12;
 
 // One set as its row states it: its words are b[at..<at + n]. joints is 0 for no set.
-VrgSet :: struct { joints: int; clips: int; keys_t: int; keys_r: int; at: int; n: int; }
+// quant: the rotation keys are version 2's 16-bit components.
+VrgSet :: struct { joints: int; clips: int; keys_t: int; keys_r: int; at: int; n: int; quant: bool; }
+VRG_Q :: 32767;            // a version 2 component c reads as c / VRG_Q
 
 // The words of a part; -1 for a part there is not.
 vrg_words :: (s: VrgSet, part: int) -> int #effects(all) {
@@ -51,8 +59,20 @@ vrg_words :: (s: VrgSet, part: int) -> int #effects(all) {
   if part == VRG_DURATION || part == VRG_DISTANCE { return s.clips; }
   if part == VRG_TRACK_T || part == VRG_TRACK_R { return s.clips * s.joints * 2; }
   if part == VRG_KEYS_T_0 || part == VRG_KEYS_T_1 { return s.keys_t * 4; }
-  if part == VRG_KEYS_R { return s.keys_r * 5; }
+  if part == VRG_KEYS_R { return s.keys_r * (ifx s.quant then 3 else 5); }
   return -1;
+}
+// The numbers a part reads into: its words, but five floats a rotation key in either version.
+vrg_values :: (s: VrgSet, part: int) -> int #effects(all) { return ifx part == VRG_KEYS_R then s.keys_r * 5 else vrg_words(s, part); }
+// A 16-bit half of a word as the component it holds, and a component as its 16 bits.
+vrg_unq :: (h: u32) -> f32 #effects(all) {
+  c := cast(int) (h & 0xffff);
+  if c >= 32768 { c -= 65536; }
+  return cast(f32) c / cast(f32) VRG_Q;
+}
+vrg_q :: (v: f32) -> u32 #effects(all) {
+  c := cast(int) (v * cast(f32) VRG_Q + 32767.5) - VRG_Q;   // the nearest whole number, a half up
+  return cast(u32) (c + 65536) & 0xffff;
 }
 // Where a part starts in the file.
 vrg_at :: (s: VrgSet, part: int) -> int #effects(all) {
@@ -91,7 +111,7 @@ vrg_same_name :: (b: [] u8, a: int, c: int) -> bool #effects(all) {
 vrg_row :: (b: [] u8, k: int) -> VrgSet #effects(all) {
   r := VRG_HEADER + VRG_ROW * k + VRG_NAME;
   return VrgSet.{joints = cast(int) scan_u32(b, r), clips = cast(int) scan_u32(b, r + 4), keys_t = cast(int) scan_u32(b, r + 8),
-                 keys_r = cast(int) scan_u32(b, r + 12), at = cast(int) scan_u32(b, r + 16), n = cast(int) scan_u32(b, r + 20)};
+                 keys_r = cast(int) scan_u32(b, r + 12), at = cast(int) scan_u32(b, r + 16), n = cast(int) scan_u32(b, r + 20), quant = scan_u32(b, 4) == 2};
 }
 vrg_finite :: (b: [] u8, at: int) -> bool #effects(all) { return (scan_u32(b, at) & 0x7f800000) != 0x7f800000; }
 // A set's words: parents first, floats finite, tracks inside their keys.
@@ -106,6 +126,11 @@ vrg_set_ok :: (b: [] u8, s: VrgSet) -> bool #effects(all) {
         first := cast(int) scan_u32(b, at + t * 8); count := cast(int) scan_u32(b, at + t * 8 + 4);
         if count > keys - first { return false; }
       }
+    } else if part == VRG_KEYS_R && s.quant {
+      for k: 0..<s.keys_r {
+        if !vrg_finite(b, at + k * 12) { return false; }
+        for h: 0..<4 { if b[at + k * 12 + 4 + h * 2] == 0 && b[at + k * 12 + 5 + h * 2] == 0x80 { return false; } }
+      }
     } else {
       for w: 0..<n { if !vrg_finite(b, at + w * 4) { return false; } }
     }
@@ -118,7 +143,7 @@ vrg_rows_fit :: (bytes: int, sets: int) -> bool #effects(all) { return sets <= V
 // The sets a file holds: 0 when the file is refused.
 vrg_valid :: (b: [] u8) -> int #effects(all) {
   if b.count < VRG_MIN { return 0; }
-  if scan_u32(b, 0) != VRG_MAGIC || scan_u32(b, 4) != 1 || cast(int) scan_u32(b, 12) != b.count { return 0; }
+  if scan_u32(b, 0) != VRG_MAGIC || (scan_u32(b, 4) != 1 && scan_u32(b, 4) != 2) || cast(int) scan_u32(b, 12) != b.count { return 0; }
   for k: 16..<VRG_HEADER { if b[k] != 0 { return 0; } }
   sets := cast(int) scan_u32(b, 8);
   if !vrg_rows_fit(b.count, sets) { return 0; }
@@ -149,24 +174,34 @@ vrg_ints :: (b: [] u8, s: VrgSet, part: int, out: [] int) -> bool #effects(all) 
 }
 // A float part of a set into out, which is exactly its size.
 vrg_floats :: (b: [] u8, s: VrgSet, part: int, out: [] f32) -> bool #effects(all) {
-  if s.joints == 0 || vrg_whole(part) || out.count != vrg_words(s, part) { return false; }
+  if s.joints == 0 || vrg_whole(part) || out.count != vrg_values(s, part) { return false; }
   at := vrg_at(s, part);
+  if part == VRG_KEYS_R && s.quant {
+    for k: 0..<s.keys_r {
+      xy := scan_u32(b, at + k * 12 + 4); zw := scan_u32(b, at + k * 12 + 8);
+      out[k * 5] = scan_float(b, at + k * 12);
+      out[k * 5 + 1] = vrg_unq(xy); out[k * 5 + 2] = vrg_unq(xy >> 16); out[k * 5 + 3] = vrg_unq(zw); out[k * 5 + 4] = vrg_unq(zw >> 16);
+    }
+    return true;
+  }
   for w: 0..<out.count { out[w] = scan_float(b, at + w * 4); }
   return true;
 }
 
 // ---- the writer (the rig tool's; everglade/model/tools/rig-pack.coax)
-// The header and zeroed rows for `sets` sets into out: where the first set's words start, 0 refused.
-vrg_begin :: (out: [] u8, sets: int) -> int #effects(all) {
+// The header and zeroed rows for `sets` sets of a file of `version` (1 or 2) into out: where the
+// first set's words start, 0 refused.
+vrg_begin :: (out: [] u8, sets: int, version: int) -> int #effects(all) {
   at := VRG_HEADER + VRG_ROW * sets;
-  if sets < 1 || sets > VRG_SETS || out.count < at { return 0; }
+  if sets < 1 || sets > VRG_SETS || out.count < at || version < 1 || version > 2 { return 0; }
   for k: 12..<at { out[k] = 0; }
-  scan_put(out, 0, VRG_MAGIC); scan_put(out, 4, 1); scan_put(out, 8, cast(u32) sets);
+  scan_put(out, 0, VRG_MAGIC); scan_put(out, 4, cast(u32) version); scan_put(out, 8, cast(u32) sets);
   return at;
 }
-// Row k: the set `name` with these counts, its words from `at`. The set as written (joints 0 refused).
+// Row k: the set `name` with these counts, its words from `at`, in the version vrg_begin wrote.
+// The set as written (joints 0 refused).
 vrg_set :: (out: [] u8, k: int, name: string, joints: int, clips: int, keys_t: int, keys_r: int, at: int) -> VrgSet #effects(all) {
-  s := VrgSet.{joints = joints, clips = clips, keys_t = keys_t, keys_r = keys_r, at = at};
+  s := VrgSet.{joints = joints, clips = clips, keys_t = keys_t, keys_r = keys_r, at = at, quant = scan_u32(out, 4) == 2};
   if !vrg_counts_ok(s) || name.count < 1 || name.count >= VRG_NAME { return VrgSet.{}; }
   s.n = vrg_bytes(s);
   if s.n > out.count - at { return VrgSet.{}; }
@@ -184,8 +219,18 @@ vrg_put_ints :: (out: [] u8, s: VrgSet, part: int, v: [] int) -> bool #effects(a
   return true;
 }
 vrg_put_floats :: (out: [] u8, s: VrgSet, part: int, v: [] f32) -> bool #effects(all) {
-  if s.joints == 0 || vrg_whole(part) || v.count != vrg_words(s, part) { return false; }
+  if s.joints == 0 || vrg_whole(part) || v.count != vrg_values(s, part) { return false; }
   at := vrg_at(s, part);
+  if part == VRG_KEYS_R && s.quant {
+    // a version 2 key: a component outside -1 to 1 has no 16 bits, so the part is refused
+    for w: 0..<v.count { if w % 5 != 0 && !(v[w] >= -1 && v[w] <= 1) { return false; } }
+    for k: 0..<s.keys_r {
+      scan_put(out, at + k * 12, f32_bits(v[k * 5]));
+      scan_put(out, at + k * 12 + 4, vrg_q(v[k * 5 + 1]) | (vrg_q(v[k * 5 + 2]) << 16));
+      scan_put(out, at + k * 12 + 8, vrg_q(v[k * 5 + 3]) | (vrg_q(v[k * 5 + 4]) << 16));
+    }
+    return true;
+  }
   for w: 0..<v.count { scan_put(out, at + w * 4, f32_bits(v[w])); }
   return true;
 }

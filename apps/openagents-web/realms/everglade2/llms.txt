@@ -107,6 +107,7 @@ The rows of `proto/registry.json` whose codec or files are this realm's (under `
 | `script.frame.v1` | profile | engine | `proto/world/script-v1.json` |
 | `asset-pack-v2` | profile | realm-authoring | `proto/verse/asset-pack-v2.json` |
 | `rig-pack-v1` | profile | engine | `proto/aethyr/rig-pack-v1.json` |
+| `rig-pack-v2` | profile | engine | `proto/aethyr/rig-pack-v2.json` |
 | `everglade-edits-v1` | profile | world | `proto/verse/everglade-edits-v1.json` |
 | `openagents.voice.v1alpha1` | proto | room-session | `proto/openagents/voice/v1alpha1/voice.proto#Frame` |
 
@@ -195,4 +196,4 @@ table ability id name:text
 128|Rage
 ```
 
-reference sha256: c29739f64b4ece788d3b796dfc7179924c80f3f2fe1e6c8828240895b90c86d3
+reference sha256: 10691bf35ae09597806a91e7932b8017526ef59c779c49cf26715e0863b4637f

@@ -16,6 +16,8 @@
   "clips_max": 256,
   "smallest_file_bytes": 260,
   "pack_entry_kind": 7,
+  "rotation_key_words": 5,
+  "next": "rig-pack-v2 (proto/aethyr/rig-pack-v2.json): version 2, the same layout with a rotation key in 3 words; the codec reads both",
   "rules": [
     "the rows follow the header; the sets follow the rows with no gap, in row order, and the last ends the file",
     "a set's bytes are exactly its parts' words, four bytes a word",
