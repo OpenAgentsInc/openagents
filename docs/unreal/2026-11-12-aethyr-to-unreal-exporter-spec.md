@@ -151,14 +151,16 @@ A native Coax tool, per the tools rule (`coax/tools-in-coax.md`).
 |---|---|
 | `aethyr/export/glb-write.coax` | Writes glTF binary from cel vertices. Generic. |
 | `aethyr/export/bundle.coax` | Writes the manifest and the folder. Generic. |
-| `apps/openagents-web/splice-export.coax` | Loads the game, calls `g_layout` and `g_world`, lists placements and tuning. Per game. |
-| `aethyr/tools/unreal-export.coax` | The command. |
+| `apps/openagents-web/splice-export.coax` | The command. Loads the game, calls `g_reset` and `g_world`, lists placements and tuning. Per game. |
+| `aethyr/export/raster.coax` | Draws the reference shots in software. Generic. |
+| `aethyr/tools/unreal-export-check.coax` | Reads a bundle back with Aethyr's own glTF reader. |
+| `aethyr/tools/unreal-import.coax` | Stages, builds and runs the Unreal import, and returns its verdict. |
 
 The per-game file sits beside the game because the engine may not load from
 `apps/` (`aethyr/layer-allowlist.txt`).
 
 ```
-coax/bin/coax run aethyr/tools/unreal-export.coax -- splice OUT_DIR
+coax/web/tool.sh apps/openagents-web/splice-export.coax OUT_DIR
 ```
 
 Rules for the tool:
@@ -332,6 +334,40 @@ Facts from the run:
   each frame is compared with the Aethyr frame from the same camera. This
   step checks geometry and colour only: silhouette overlap of at least 98
   percent.
+
+**Step 1 result, 2026-11-12: done.** Commands are in
+`aethyr/export/unreal/README.md`.
+
+| Check | Result |
+|---|---|
+| Two exports | Byte-identical |
+| Read back with `aethyr/anim`'s glTF reader | 58 meshes, 22,798 triangles, 18,618 vertices (welded from 68,394), hash and bounds match |
+| Importer counts against the manifest | 58 meshes, 22,798 triangles, 30 collision boxes, 50 markers, 2 font faces, 49 tuning numbers |
+| Every vertex position and colour against `world.glb` | All match |
+| Material compile errors | None |
+| Six reference shots | 100 percent of pixels agree on five, 99.98 on the sixth; mean colour difference at most 0.24 of 255 |
+| Second import | Same report, byte for byte; a file outside `Generated/` is untouched |
+| A manifest that disagrees with the world | The import exits 1 and names the mesh |
+
+What changed from the plan:
+
+- **The reference shots are drawn in software**, from the same vertex stream
+  the page draws, not by the page. That removes the anime shading, the sky
+  and the post pass from the comparison, which is what step 1 measures.
+- **No string table.** The hosted interface draws its own text (step 2), so
+  nothing in Unreal reads the strings yet.
+- **The tuning and placement lists live in `splice-export.coax`**, not in new
+  tables inside the game file. A constant added to the game is not exported
+  until it is listed there.
+- **The command is `apps/openagents-web/splice-export.coax`**, beside the
+  game, because the engine may not load from `apps/`.
+- **Collision is `AethyrCollisionBox` actors**, a box component set to block
+  everything, not brush volumes.
+- **Nanite is turned off on import.** Unreal's importer turns it on, and the
+  rendered mesh was then a 13,542-triangle fallback. The importer's own
+  count check caught this.
+- **Unreal stores the vertex colours as linear bytes**, which confirms the
+  item step 0 left open.
 
 **Step 2. Hosted rules. This is the minimal exporter.**
 
