@@ -1020,7 +1020,9 @@ CD_FIRST_MAX :: 16384;       // a CLI's first message, as before the shared engi
 // Realms as tools: the openagents CLI's MCP server (`openagents mcp`, apps/openagents-cli/mcp.coax),
 // so a Claude Code session in Coder makes and edits realms with the CLI's own checks and key. Its
 // binary is this checkout's build (the `openagents` shell function is not a program Claude Code
-// can start). Off with CODER_REALM_TOOLS=0, or when the CLI isn't built.
+// can start). Off with CODER_REALM_TOOLS=0, or when the CLI isn't built. CODER_REALM_ORIGIN (a dev
+// server's http://127.0.0.1:PORT, set by coax/web/serve.sh) points them at that server's worlds,
+// the ones its open editor shows; without it they use the openagents login's site (#13466).
 cd_claude_realm_tools :: (a: [] App) -> string {
   eb: [8] u8; if cl_getenv("CODER_REALM_TOOLS", eb[..]) == "0" { return ""; }
   rb: [1024] u8; repo := cl_getenv("CODER_REPO", rb[..]);
@@ -1030,7 +1032,11 @@ cd_claude_realm_tools :: (a: [] App) -> string {
   if !fs_exists(exe) { return ""; }
   for c: exe { if c == '"' || c == '\\' || c < 32 { return ""; } }
   out := a[0].realm_mcp[..];
-  n := cd_cat(out, 0, "{\"openagents\":{\"command\":\""); n = cd_cat(out, n, exe); n = cd_cat(out, n, "\",\"args\":[\"mcp\"]}}");
+  ob: [256] u8; origin := cl_getenv("CODER_REALM_ORIGIN", ob[..]);
+  for c: origin { if c == '"' || c == '\\' || c < 32 { origin = ""; break; } }
+  n := cd_cat(out, 0, "{\"openagents\":{\"command\":\""); n = cd_cat(out, n, exe); n = cd_cat(out, n, "\",\"args\":[\"mcp\"");
+  if origin.count > 0 { n = cd_cat(out, n, ",\"--origin\",\""); n = cd_cat(out, n, origin); n = cd_cat(out, n, "\""); }
+  n = cd_cat(out, n, "]}}");
   return ifx n < out.count then cast(string) out[0..<n] else "";
 }
 

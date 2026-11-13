@@ -42,7 +42,8 @@ OA_WORLD_FILES_DIR="$(cd "$1" && pwd -P)/build/.worlds" OA_SERVE_PORT_FILE="$por
 # never opens a browser sign-in from here: an agent with no login shows as not ready (Settings, This machine).
 if [[ -z "${OA_SERVE_NO_CODER:-}" ]]; then
   echo "serve: starting Coder's local side for the agents on this machine"
-  (cd "$here/../.." && BROWSER=/usr/bin/true exec "$here/../../coder/tui/coder.sh" mcp --http 0) > "$coder_log" 2>&1 & coder_pid=$!
+  # its realm tools (openagents mcp) edit this server's worlds, the ones the open editor shows (#13466)
+  (cd "$here/../.." && BROWSER=/usr/bin/true CODER_REALM_ORIGIN="http://$listen" exec "$here/../../coder/tui/coder.sh" mcp --http 0) > "$coder_log" 2>&1 & coder_pid=$!
 fi
 while [[ ! -s "$port_file" ]]; do
   kill -0 "$api_pid" 2>/dev/null || { echo "serve: the local API didn't start (above); OA_SERVE_NO_API=1 serves the pages without it" >&2; exit 1; }

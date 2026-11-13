@@ -133,6 +133,17 @@ rw_row :: (table: string, id: int) -> string #effects(all) {
   }
   return "";
 }
+// The words for a write the site refused to this login.
+rw_not_permitted :: (origin: string, out: [] u8) -> string #effects(all) {
+  n := forge_put(out, 0, "this openagents login can't write to this world on "); n = forge_put(out, n, origin);
+  n = forge_put(out, n, ": only an admin's login can (openagents login). A dev server (coax/web/serve.sh) takes edits from this computer with no login");
+  return ifx n < 0 then "log in as an admin" else cast(string) out[0..<n];
+}
+#test "a refused write names the site and what can write" {
+  b: [512] u8;
+  #assert rw_not_permitted("https://openagents.com", b[..]) == "this openagents login can't write to this world on https://openagents.com: only an admin's login can (openagents login). A dev server (coax/web/serve.sh) takes edits from this computer with no login";
+  t: [8] u8; #assert rw_not_permitted("https://openagents.com", t[..]) == "log in as an admin";
+}
 // Whether a content document's text already holds a cell edit's value: the row's cell under the
 // edit's column (the whole row for "*").
 rw_holds :: (content: string, edit: WorldEdit) -> bool #effects(all) {
@@ -292,9 +303,11 @@ rw_show :: (a: [] Args, r: [] Rep, profile: string, slug: string, w: [] RwWork) 
   // the lane's own content tables: dev's as they are edited, live's as they were published (#13419)
   cres := api_call(a, profile, "GET", rw_path(slug, ifx lane == "dev" then "/content?lane=dev" else "/content", w[0].path[..]), "", w[0].content[..]);
   content := ifx api_ok(cres) then cast(string) w[0].content[0..<cres.n] else "";
-  pb: [160] u8; lb: [200] u8; bb: [64] u8;
+  pb: [160] u8; lb: [480] u8; bb: [64] u8;
   bn := 0; for k: 0..<4 { if k > 0 { bn = forge_put(bb[..],bn,"."); } bn = forge_put_int(bb[..],bn,st.build[k]); }
-  ln := forge_put(lb[..],0,rw_page(slug, pb[..])); ln = forge_put(lb[..],ln,"/llms.txt");
+  // the reference on the origin this read, so an agent fetches the dev server's page and not production's (#13466)
+  ob: [256] u8; origin := acct_origin(a, profile, ob[..]);
+  ln := forge_put(lb[..],0,origin); ln = forge_put(lb[..],ln,rw_page(slug, pb[..])); ln = forge_put(lb[..],ln,"/llms.txt");
   rep_str(r, "world", slug); rep_str(r, "lane", lane); rep_int(r, "rev", st.rev); rep_int(r, "dev", st.dev); rep_int(r, "live", st.live);
   rep_str(r, "build", cast(string) bb[0..<bn]); rep_int(r, "undo", st.undo); rep_int(r, "redo", st.redo);
   rep_str(r, "page", rw_page(slug, pb[..])); rep_str(r, "reference", cast(string) lb[0..<ln]);
@@ -401,6 +414,8 @@ rw_write :: (a: [] Args, r: [] Rep, profile: string, verb: string, slug: string,
     refusal := we_refusal_read(answer, w[0].words[..]);
     words.words = ifx refusal.ok then cast(string) w[0].words[0..<refusal.words_n] else api_why(answer, w[0].words[..]);
     out.edit = refusal.edit;
+    // a login that can't write: say whose site and what can (a local agent's tools use the person's login there)
+    if out.code == ORC_NOT_PERMITTED { ob: [512] u8; words.words = rw_not_permitted(acct_origin(a, profile, ob[..]), w[0].words[..]); }
     if out.code == ORC_EDIT_REFUSED && (words.words == "nothing to undo" || words.words == "nothing to redo" || words.words == "nothing to change" || words.words == "live is already this revision") { out.code = ORC_NOTHING; out.retry = false; }
   } else { words.words = "the request was sent and no answer came: it may have been saved. Read the world (realm world) before you repeat it"; }
   shot := rc_option(a, verb, "--shot", "");
