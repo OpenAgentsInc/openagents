@@ -56,6 +56,8 @@
 //                                 (a tap, a type or a swap on one of the page's own elements waits up to 4 s of real
 //                                 time for it to be there: a pane that is opening, a file still being read)
 //   swap ID OLD => NEW            the first OLD in the field ID becomes NEW, as a person's edit (a line in the Code pane)
+//   text ID                       what the page's element ID says, as a person reads it: a pane's whole text, scrolled
+//                                 or not (the editor's agent transcript, a file's preview)
 //   drop ID FILE                  the file at the absolute path FILE dragged from the desktop and dropped on the page's own
 //                                 element ID (a drop target, k_drop), as the browser's own drag and drop: the bytes never pass
 //                                 through the driver (#13468)
@@ -726,8 +728,8 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   }
   if s[0].dom {
     if w0 == "tree" || w0 == "layout" { js: [16384] u8; dv_s(out, dv_eval(s, dd_tree_js(js[..]))); return true; }
-    if w0 != "tap" && w0 != "type" && w0 != "swap" && w0 != "answer" && w0 != "screenshot" && w0 != "logs" && w0 != "prefer" && w0 != "drop" {
-      dv_s(out, "this page is drawn by the browser and has no world: it takes tree, hit X Y, taps, tap ID, type ID TEXT, swap, answer, drop ID FILE, screenshot, logs and prefer"); return false;
+    if w0 != "tap" && w0 != "type" && w0 != "swap" && w0 != "answer" && w0 != "screenshot" && w0 != "logs" && w0 != "prefer" && w0 != "drop" && w0 != "text" {
+      dv_s(out, "this page is drawn by the browser and has no world: it takes tree, hit X Y, taps, tap ID, type ID TEXT, text ID, swap, answer, drop ID FILE, screenshot, logs and prefer"); return false;
     }
   }
   if w0 == "tree" || w0 == "layout" || w0 == "status" || w0 == "target" || w0 == "why" { dv_s(out, dv_send(s, op)); return true; }
@@ -751,6 +753,11 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     return true;
   }
   if w0 == "state" { return dv_state(s, dv_word(op, 1), out); }
+  if w0 == "text" {
+    tj: [600] u8; js := dd_text_js(dv_word(op, 1), tj[..]);
+    if js.count == 0 { dv_s(out, "text takes the id of one of the page's elements"); return false; }
+    t := dv_eval(s, js); dv_s(out, t); return !dv_starts(t, "no element");
+  }
   if w0 == "drop" {
     id := dv_word(op, 1); path := dv_rest(op, 2);
     if id.count == 0 || path.count < 2 || path[0] != '/' || fs_size(path) < 0 { dv_s(out, "drop takes the id of one of the page's elements and the absolute path of a file"); return false; }

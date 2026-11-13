@@ -80,6 +80,15 @@ dd_target_js :: (id: string, out: [] u8) -> string {
   n = dd_put(out, n, DD_TARGET_TAIL);
   return cast(string) out[0..<n];
 }
+// The text script for an id: what the page's element of that id says, as a person reads it (its innerText:
+// a pane's whole transcript, scrolled or not), or why there is none.
+dd_text_js :: (id: string, out: [] u8) -> string {
+  if id.count == 0 || id.count > 200 { return ""; }
+  for c: id { if c == '"' || c == '\\' || c < 32 { return ""; } }
+  n := dd_put(out, 0, "(() => { const e = document.getElementById(\""); n = dd_put(out, n, id);
+  n = dd_put(out, n, "\"); if (!e) return 'no element with that id on the page (tree lists them)'; return e.innerText || '(it says nothing)'; })()");
+  return cast(string) out[0..<n];
+}
 // The target script for a row named by what it says: "file=splice-game.coax" is the element whose id
 // starts with "file." and whose own words are exactly that text (a list's row, whatever its place).
 DD_NAMED_TAIL :: "; const e = [...document.querySelectorAll('[id]')].find((x) => x.id.startsWith(P + '.') && x.textContent.trim() === W); if (!e) return 'no element under that id says that (tree lists them)'; e.scrollIntoView({ block: 'nearest', inline: 'nearest' }); const r = e.getBoundingClientRect(); if (!(r.width > 0 && r.height > 0)) return 'that element does not show'; return Math.round(r.left + r.width / 2) + ' ' + Math.round(r.top + r.height / 2); })()";
@@ -163,6 +172,10 @@ dd_has :: (s: string, part: string) -> bool {
   #assert dd_has(dd_answer_js("/api/chat/complete", "\"{}\"", b[..]), "said[\"/api/chat/complete\"] = \"{}\"; globalThis.fetch") && dd_answer_js("api", "\"{}\"", b[..]) == "" && dd_answer_js("/a?b", "\"{}\"", b[..]) == "";
   #assert dd_target_js("", b[..]) == "" && dd_target_js("a\"b", b[..]) == "" && dd_target_js("a\\b", b[..]) == "" && dd_target_js("a\nb", b[..]) == "";
   #assert dd_px("0") == 0 && dd_px("1280") == 1280 && dd_px("-1") == -1 && dd_px("") == -1 && dd_px("123456") == -1 && dd_px("1.5") == -1;
+}
+#test "the text script names the element and refuses an id that would break out of its quotes" {
+  b: [600] u8;
+  #assert dd_has(dd_text_js("agent.log", b[..]), "document.getElementById(\"agent.log\")") && dd_text_js("a\"b", b[..]) == "" && dd_text_js("", b[..]) == "";
 }
 #test "who answers a hit: the page's element, the engine's HUD under a canvas, or both" {
   o: [1024] u8;
