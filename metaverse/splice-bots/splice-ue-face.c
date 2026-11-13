@@ -5,6 +5,16 @@
 #include "Animelab-style.h"
 #include "aethyr_host.h"
 #include <stdbool.h>
+#include <string.h>
+// The world as the jam build plays it, baked in by splice-export WORLD_DIR: the live lane's
+// document as the API answers it, and its content tables. With it the face answers the page's
+// requests itself (no server, no network), and the world opens at the first frame.
+#if defined(__has_include)
+#if __has_include("aethyr_world.h")
+#include "aethyr_world.h"
+#define AETHYR_WORLD_BAKED 1
+#endif
+#endif
 
 #define WORLD_WORDS (150000u * 6u)   /* splice-bots.coax SP_WORLD_WORDS × VERTEX_WORDS */
 #define LIVE_WORDS (150000u * 6u)
@@ -25,8 +35,37 @@ static uint32_t frames;
 static coax_v_t_Splice at(void *state) { return (coax_v_t_Splice){(coax_t_Splice *)state, 1}; }
 
 size_t aethyr_state_size(void) { return sizeof(coax_t_Splice); }
-// Splice's state declares no defaults: zeroed memory is its start.
-void aethyr_state_init(void *state) { (void)state; }
+// A new state's declared defaults (coax_default_T, as splice-face.c gives the browser's): zeroed
+// memory is not its start (the editor's clock, the world's revisions are -1). A baked world: the
+// page's facts name the live site, so it follows the world `splice-bots` on its live lane.
+void aethyr_state_init(void *state) {
+  coax_default_t_Splice((coax_t_Splice *)state);
+#ifdef AETHYR_WORLD_BAKED
+  static const char page[] = "https://openagents.com/worlds/splice-bots";
+  splice_message(at(state), 600, (coax_string){page, (int64_t)(sizeof page - 1)});
+#endif
+}
+#ifdef AETHYR_WORLD_BAKED
+// The page's request answered from the baked world, as the API would: the document, the content
+// tables, and no events (nothing is published after it). Host id 7, answered at once.
+static char baked_answer[sizeof AETHYR_WORLD_STATE + sizeof AETHYR_WORLD_TABLES + 16];
+static void baked_requests(void *state) {
+  for (int k = 0; k < 4 && splice_req_wants(at(state)); k++) {
+    coax_string u = splice_req_url(at(state));
+    const char *body = AETHYR_WORLD_STATE; size_t n = sizeof AETHYR_WORLD_STATE - 1;
+    int is_events = 0, is_content = 0;
+    for (int64_t i = 0; i + 8 <= u.count; i++) {
+      if (!memcmp(u.data + i, "/events?", 8)) is_events = 1;
+      if (i + 9 <= u.count && !memcmp(u.data + i, "/content?", 9)) is_content = 1;
+    }
+    if (is_events) { body = ""; n = 0; }
+    if (is_content) { body = AETHYR_WORLD_TABLES; n = sizeof AETHYR_WORLD_TABLES - 1; }
+    memcpy(baked_answer, "200\n", 4); memcpy(baked_answer + 4, body, n);
+    splice_req_sent(at(state), 7);
+    splice_message(at(state), 512 + 7, (coax_string){baked_answer, (int64_t)(n + 4)});
+  }
+}
+#endif
 uint32_t aethyr_max_vertices(void) { return (uint32_t)coaxial_splice_max_vertices(); }
 uint32_t aethyr_vertex_floats(void) { return (uint32_t)coaxial_splice_vertex_floats(); }
 uint32_t aethyr_uniform_floats(void) { return (uint32_t)coaxial_splice_uniform_floats(); }
@@ -40,6 +79,9 @@ uint32_t aethyr_frame(void *state, float *vertices, float *uniforms, float width
                            (coax_v_u32){world, WORLD_WORDS}, (coax_v_u32){live, LIVE_WORDS},
                            (coax_v_u32){pieces, PIECE_WORDS}, (coax_v_u32){places, PLACE_WORDS}, (coax_v_f32){style, 128}, (coax_v_u8){imports, 0});
   frames += 1;
+#ifdef AETHYR_WORLD_BAKED
+  baked_requests(state);
+#endif
   return n < 0 ? 0u : (uint32_t)n;
 }
 

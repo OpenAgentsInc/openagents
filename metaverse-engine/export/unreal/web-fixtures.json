@@ -79,6 +79,36 @@
         "--input",
         "3:shot=colour;4:key=g;7:shot=gray;9:key=g;12:shot=colour-again"
       ]
+    },
+    "splice-play": {
+      "about": "Splice Bots slice 1: the bundle's scripted run played on screen by the game itself at 1440x900, 16 frames a tick, from the title to SCENE RESTORED: AETHYR_PLAY done.",
+      "args": "-log {harness} -AethyrPlay -AethyrPlaySpeed=16",
+      "stop_after_ready": 90,
+      "stop_after": 0,
+      "timeout": 500,
+      "page": [
+        "--viewport",
+        "1440x900",
+        "--input-anchor",
+        "READY",
+        "--input",
+        "5:shot=farm;20:shot=garage;40:shot=boss;80:shot=restored"
+      ]
+    },
+    "splice-keys": {
+      "about": "Splice Bots slice 1 with real keys at 1440x900: a click on the title, Enter (NEW RUN), Enter (USE THIS CHARACTER), W held across the solar farm, Q for the board, I and M open and shut, Esc pauses; AETHYR_STATE reaches mode 1.",
+      "args": "-log {harness}",
+      "stop_after_ready": 40,
+      "stop_after": 0,
+      "timeout": 400,
+      "page": [
+        "--viewport",
+        "1440x900",
+        "--input-anchor",
+        "READY",
+        "--input",
+        "3:shot=title;4:click=720,450;5:key=Enter;7:key=Enter;9:shot=farm;10:down=w;16:up=w;17:shot=walked;18:key=q;19:down=w;23:up=w;24:shot=board;25:key=q;26:key=i;27:shot=bag;28:key=i;29:key=m;30:shot=map;31:key=m;32:key=Escape;33:shot=pause"
+      ]
     }
   }
 }

@@ -90,7 +90,10 @@ namespace
 			{EKeys::W, 'w'}, {EKeys::A, 'a'}, {EKeys::S, 's'}, {EKeys::D, 'd'}, {EKeys::E, 'e'}, {EKeys::F, 'f'}, {EKeys::G, 'g'},
 			{EKeys::C, 'c'}, {EKeys::X, 'x'}, {EKeys::R, 'r'}, {EKeys::One, '1'}, {EKeys::Two, '2'}, {EKeys::Three, '3'},
 			{EKeys::Four, '4'}, {EKeys::Five, '5'}, {EKeys::Six, '6'}, {EKeys::SpaceBar, ' '}, {EKeys::Enter, -2},
-			{EKeys::Left, -4}, {EKeys::Right, -5}, {EKeys::Up, -6}, {EKeys::Down, -7}, {EKeys::Tab, -15}};
+			{EKeys::Left, -4}, {EKeys::Right, -5}, {EKeys::Up, -6}, {EKeys::Down, -7}, {EKeys::Tab, -15},
+			// the slice's key map (metaverse/splice-bots/README.md, Controls), coded as the browser host codes them (coax/web/host.js KEYS)
+			{EKeys::Q, 'q'}, {EKeys::I, 'i'}, {EKeys::M, 'm'}, {EKeys::Escape, -1}, {EKeys::BackSpace, -3},
+			{EKeys::LeftShift, -13}, {EKeys::RightShift, -13}, {EKeys::LeftControl, -14}, {EKeys::RightControl, -14}};
 		return Codes;
 	}
 }

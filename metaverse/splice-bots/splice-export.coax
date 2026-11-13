@@ -53,6 +53,23 @@ sx_emit :: (unit: string, dir: string, c_name: string, h_name: string, work: [] 
   return r.started == 0 && r.status == 0 && !r.cut && r.out_n > 0 && fs_write(fs_join(rules, c_name, p2[..]), cast(string) work[0..<r.out_n]);
 }
 
+sx_put :: (out: [] u8, n: int, s: string) -> int { if n < 0 || n + s.count > out.count { return -1; } for i: 0..<s.count { out[n + i] = s[i]; } return n + s.count; }
+// `text` as a C string constant NAME at out[n..]: pieces of at most 2,000 characters (a compiler's
+// limit on one literal), each quote, backslash and line end escaped. The new end, or -1 when it does not fit.
+sx_c_string :: (out: [] u8, at: int, name: string, text: string) -> int {
+  n := at;
+  n = sx_put(out, n, "static const char "); n = sx_put(out, n, name); n = sx_put(out, n, "[] =\n  \"");
+  piece := 0;
+  for c: text {
+    if n < 0 || n + 8 > out.count { return -1; }
+    if piece >= 2000 { n = sx_put(out, n, "\"\n  \""); piece = 0; }
+    if c == '\n' { n = sx_put(out, n, "\\n"); piece += 2; continue; }
+    if c == '"' || c == '\\' { out[n] = '\\'; n += 1; piece += 1; }
+    if c != '\r' { out[n] = c; n += 1; piece += 1; }
+  }
+  return sx_put(out, n, "\";\n");
+}
+
 // ---- the moving things, each kind and variant as its own mesh in its own space
 SX_BAKE :: 22;
 SxBake :: struct { kind: int; variant: int; stage: int; name: string; }
@@ -80,6 +97,7 @@ sx_bake :: (b: SxBake, live: [] u32, baked: [] u32, at: int) -> int #effects(all
   g: [1] SpGame; g_stage(g[..], b.stage);
   if b.kind == TK_DIGGER && b.variant == 1 { g[0].have[H_PLUS] = true; }
   if b.variant == 1 && (b.kind == TK_RAIDER || b.kind == TK_IMPERIAL) { for i: 0..<FOES { g[0].fhost[i] = true; } }
+  if b.kind == TK_BOSS { g[0].wall_gone = true; }   // the boss stands past the hallway: drawn once it is open
   if b.kind == TK_BOSS && b.variant == 1 { g[0].boss_down = true; }
   pen: [1] Pen; g_live(g[..], live, pen[..]);
   for k: 0..<g[0].thing_n {
@@ -118,12 +136,20 @@ sx_bake_you :: (b: SxBake, pieces: [] u32, baked: [] u32, at: int) -> int #effec
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) != 1 { print("usage: splice-export NEW_DIR   (run from the repository root)\n"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 { print("usage: splice-export NEW_DIR [WORLD_DIR]   (run from the repository root)\n"); return 2; }
   dir := args_at(a[..], 0);
+  world_dir := ifx args_count(a[..]) == 2 then args_at(a[..], 1) else "";
   if fs_exists(dir) { print("splice-export: % exists; give a folder that does not\n", dir); return 1; }
 
   // the game's own world: reset (which lays out the walls), then the world's triangles
   g: [1] SpGame; g_reset(g[..]);
+  // a baked world's content tables are the world's: its walls, places and placements as the page draws them with them
+  wt: [1] SpwTables; tables: [65536] u8; wtn := 0;
+  if world_dir != "" {
+    p0: [4096] u8;
+    wtn = fs_read(fs_join(world_dir, "splice-bots.live.tables", p0[..]), tables[..]);
+    if wtn < 1 || !spw_tables_open(g[..], wt[..], cast(string) tables[0..<wtn]) { print("splice-export: % has no splice-bots.live.tables this build reads\n", world_dir); return 1; }
+  }
   world: [150000 * VERTEX_WORDS] u32; pen: [1] Pen;   // the page's store: splice-bots.coax SP_WORLD_WORDS vertices
   g_world(g[..], world[..], pen[..]);
   if pen[0].over || pen[0].n < 3 { print("splice-export: the world did not fit its store\n"); return 1; }
@@ -297,6 +323,25 @@ tool_main :: () -> int #export_c #effects(all) {
   if !sx_copy("metaverse/splice-bots/splice-ue-face.c", dir, "splice-ue-face.c", work[..]) || !sx_copy("metaverse-engine/export/unreal/aethyr_host.h", dir, "aethyr_host.h", work[..]) ||
      !sx_copy("metaverse-engine/export/unreal/aethyr_script.c", dir, "aethyr_script.c", work[..]) || !sx_copy("metaverse/splice-bots/splice-run.aescript", dir, "run.aescript", work[..]) {
     print("splice-export: could not copy the host interface into rules/\n"); return 1;
+  }
+  // the world as the jam build plays it, with no server (WORLD_DIR, a dev server's build/.worlds): the live
+  // lane's document as the API answers it, and its content tables. The face answers the page's requests from them.
+  if world_dir != "" {
+    doc: [131072] u8; state: [262144] u8; text: [524288] u8;
+    p0: [4096] u8; p2: [4096] u8;
+    dn := fs_read(fs_join(world_dir, "splice-bots.live", p0[..]), doc[..]);
+    if dn < 1 { print("splice-export: % has no splice-bots.live\n", world_dir); return 1; }
+    pins := spw_pins(g[..]);
+    v := WorldState.{lane = WL_LIVE, rev = 1, dev = 1, live = 1, when = 0};
+    v.build[0] = pins.engine; v.build[1] = pins.rules; v.build[2] = pins.content; v.build[3] = pins.wire;
+    st := we_state_write(v, SPW_ID, cast(string) doc[0..<dn], "", state[..]);
+    if st.count == 0 { print("splice-export: the world's document did not make a state\n"); return 1; }
+    n := 0;
+    head := "/* Generated by splice-export: the world `splice-bots` as its live lane answers, for a host with no server. */\n";
+    for c: head { text[n] = c; n += 1; }
+    n = sx_c_string(text[..], n, "AETHYR_WORLD_STATE", st);
+    n = sx_c_string(text[..], n, "AETHYR_WORLD_TABLES", cast(string) tables[0..<wtn]);
+    if n < 0 || !fs_write(fs_join(fs_join(dir, "rules", p0[..]), "aethyr_world.h", p2[..]), cast(string) text[0..<n]) { print("splice-export: could not write the world header\n"); return 1; }
   }
   {
     // the script as a C string, for a host with no files (the web build)

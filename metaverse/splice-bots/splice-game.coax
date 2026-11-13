@@ -313,6 +313,8 @@ g_begin :: (g: [] SpGame) {
   if k < 0 { return; }
   s := g[0].c[0].starts[k];
   g[0].zone = Z_MINE; g[0].phase = s.when; g_go(g, sc_m(s.x), sc_m(s.z), s.yaw);
+  // a world that starts past the rail starts with the rail's Battery: the edit bay needs it for Digger's cut
+  g[0].have[H_BATTERY] = true; g[0].taken[H_BATTERY] = true;
   g_foes(g); g_keep(g);
 }
 // Stand at (x, z) metres facing `deg` degrees, the Digger beside you.
@@ -2216,6 +2218,7 @@ FlowTest :: struct { o: [4] [CT_BODY] u8; }
   #assert g[0].mode == M_TITLE;
   g_begin(g[..]);   // NEW RUN on the title (front.coax)
   #assert g[0].mode == M_PLAY && g[0].zone == Z_MINE && g[0].phase == PH_DAY && g[0].px == 15 && g[0].pz == 35 && abs(g[0].yaw - PI) < 0.001;
+  #assert g[0].have[H_BATTERY] && g[0].taken[H_BATTERY];   // past the rail, with the rail's Battery: the edit bay can build Digger's cut
   // walking into the mine mouth by day: dusk; and it stays dusk
   g[0].px = 0; g[0].pz = -6; g_step(g[..], 0.02);
   #assert g[0].phase == PH_DUSK;
@@ -2235,7 +2238,7 @@ FlowTest :: struct { o: [4] [CT_BODY] u8; }
   // a world with no rows plays as it always did: the dome village at dawn
   g2 := [1] SpGame.[SpGame.{}];
   g_stage(g2[..], 0);
-  #assert g_key(g2[..], -2, true) && g2[0].zone == Z_VILLAGE && g2[0].phase == PH_DAWN && g_portal(g2[..]) == -1;
+  #assert g_key(g2[..], -2, true) && g2[0].zone == Z_VILLAGE && g2[0].phase == PH_DAWN && g_portal(g2[..]) == -1 && !g2[0].have[H_BATTERY];
 }
 #test "dragging a card onto a timeline slot places it there" {
   g := [1] SpGame.[SpGame.{}];

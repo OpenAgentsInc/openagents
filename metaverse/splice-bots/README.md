@@ -349,6 +349,40 @@ requests (`aethyr_request`):
 A host that draws you itself hides the smuggler (`aethyr_thing_hide`), and the page then does not
 draw your character.
 
+#### The jam build
+
+The jam entry is an Unreal web build (UE 5.9's Wasm target) of slice 1 with the world `splice-bots`
+baked in, so it plays with no server: `splice-export.coax NEW_DIR WORLD_DIR` writes the world's live
+document and content tables into `rules/aethyr_world.h`, and `splice-ue-face.c` answers the page's
+world requests from them. `splice-run.aescript` plays slice 1 from the title to SCENE RESTORED (the farm,
+the edit bay, the drive, the rubble, the garage, the drill mech, the boss, the core); the export runs it
+natively and the import checks Unreal prints the same lines.
+
+One command does the whole build, from the repository root of a checkout of `origin/main`:
+
+```sh
+git fetch origin && git worktree add /Users/christopherdavid/work/oa-splice-final origin/main
+cd /Users/christopherdavid/work/oa-splice-final && coax/build.sh
+W=$(mktemp -d) && cp /Users/christopherdavid/work/oa-editor3/apps/openagents-web/build/.worlds/splice-bots.live{,.tables} "$W"/
+metaverse/splice-bots/tools/jam-build.sh "$W" ~/UnrealProjects/out-slice1/final
+```
+
+`WORLD_DIR` is the owner's world as published: the dev server's `build/.worlds` (read from disk;
+the server is not asked). The script exports, imports into `~/UnrealProjects/SpliceSlice1`, plays the
+scripted run inside Unreal, packages the web build into `OUT/web`, plays the run in headless Chrome at
+1440x900 (fixture `splice-play` in `metaverse-engine/export/unreal/web-fixtures.json`) and zips it as
+`OUT/SpliceBots_Splicebots.zip`, refusing one of 1 GB or more. About 15 minutes on a quiet Mac.
+
+- `~/UnrealProjects/SpliceExport` is the earlier Tier 1-2 build, kept as it was (its web build is in
+  `Saved/WasmOut`). `SpliceSlice1` is its copy for slice 1; its `Config/DefaultEngine.ini` names the
+  page (Splice Bots) and its only splash image, `Build/Wasm/Branding/splash.png`, is the Unreal Engine logo.
+- The import's fidelity checks fail on a few welded vertices of the far mesas and the boss-chamber
+  reference shot since the garage moved the world out to 2.9 km. The script accepts those two and no other.
+- Real keys: fixture `splice-keys` clicks the title, starts a run and walks the farm with W, Q, I, M and Esc.
+- The game has no sound, so the cover's click unlocks nothing.
+- No Windows build: this Mac has no Windows toolchain or Win64 engine binaries, and Unreal does not
+  cross-compile Win64 from macOS.
+
 ### Not built yet
 
 The saved world, its API, the command line and the editor with the conversation in its foot are
