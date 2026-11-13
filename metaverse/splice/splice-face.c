@@ -15,7 +15,7 @@ static coax_v_t_Splice at(uint32_t state) { return (coax_v_t_Splice){splice_stat
 #define LIVE_WORDS (150000u * 6u)
 static uint32_t world[WORLD_WORDS];
 static uint32_t live[LIVE_WORDS];
-#define PIECE_WORDS ((40000u + 10u * 30000u) * 6u)    /* layer-draw.coax SD_PIECE_WORDS: every kind of placed piece's mesh, written once, then the player's ten walk poses */
+#define PIECE_WORDS ((80000u + 10u * 30000u) * 6u)    /* layer-draw.coax SD_PIECE_WORDS: every kind of placed piece's mesh, written once (SD_KIND_VERTS), then the player's ten walk poses */
 #define PLACE_WORDS (65u * 8u)        /* layer-draw.coax SD_PLACE_WORDS: a row a placed piece, and the player's */
 static uint32_t pieces[PIECE_WORDS];
 static uint32_t places[PLACE_WORDS];

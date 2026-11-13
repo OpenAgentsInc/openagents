@@ -13,13 +13,15 @@
 // its `kit` is "pack/NAME", NAME a mesh the editor imported (metaverse-engine/editor/pack-import.coax).
 // Its mesh is the pack's triangles at the row's size, each vertex's own colour tinted by the look's
 // first colour, and its footprint is the mesh's bounds.
-#load "../../metaverse-engine/kit/land.coax";
+#load "../../metaverse-engine/kit/props.coax";
 #load "../../metaverse-engine/editor/pack-import-read.coax";
 
 // The kit pieces a row may name, by the `kit` column's word.
 PK_ROVER :: 0; PK_CRAB :: 1; PK_WALKER :: 2; PK_SPIDER :: 3; PK_BEAST :: 4; PK_TANK :: 5; PK_MECH :: 6; PK_ROBOT :: 7;
-PK_TURBINE :: 8; PK_DIGGER :: 9; PK_FIGURE :: 10; PK_PALM :: 11; PK_DOME :: 12; PK_CRATE :: 13; PK_KITS :: 14;
-PK_NAME :: [PK_KITS] string.["rover", "crab", "walker", "spider", "beast", "tank", "mech", "robot", "turbine", "digger", "figure", "palm", "dome_house", "crate"];
+PK_TURBINE :: 8; PK_DIGGER :: 9; PK_FIGURE :: 10; PK_PALM :: 11; PK_DOME :: 12; PK_CRATE :: 13;
+PK_SOLAR :: 14; PK_CHARGER :: 15; PK_MESA :: 16; PK_TRAIN :: 17; PK_BUNK :: 18; PK_DESK :: 19; PK_ARM :: 20; PK_WINDOW :: 21; PK_SOFA :: 22; PK_KITS :: 23;
+PK_NAME :: [PK_KITS] string.["rover", "crab", "walker", "spider", "beast", "tank", "mech", "robot", "turbine", "digger", "figure", "palm", "dome_house", "crate",
+                             "solar", "charger", "mesa", "train", "bunk", "desk", "arm", "window", "sofa"];
 PK_MESH :: PK_KITS;   // not a kit: a mesh of the world's import pack
 PK_PACK :: "pack/";
 // The mesh a word names ("pack/NAME"), or "": a name is 1 to 24 letters, digits, - and _ (pack-import-policy.coax pip_name).
@@ -45,7 +47,10 @@ sp_tint :: (rgb: int) -> KitTint { return kit_tint(cast(f32) ((rgb >> 16) & 255)
 
 // One kind's mesh: kit piece `kit` at size s, in the look's three colours and the game's ink,
 // standing on frame f, its objects numbered from o. Machines stand still (no stride, no spin).
-// The layer writes each kind once at the origin, facing +z (PIECE_ORIGIN).
+// The layer writes each kind once at the origin, facing +z (PIECE_ORIGIN). The look's colours go
+// to a kit as its main surface (a), its accent (b) and its light (c); solar panels' glass is a and
+// their frame b, and a sofa's cover is b and its cushion a, so one cream-and-orange look dresses a
+// rover's room.
 sp_piece_write :: (buf: [] u32, p: [] Pen, kit: int, s: f32, f: Frame, o: int, a: KitTint, b: KitTint, c: KitTint, ink: KitTint) {
   if kit == PK_ROVER { kit_rover(buf, p, f, s, o, a, b, ink); }
   else if kit == PK_CRAB { kit_crab(buf, p, f, s, o, a, b, ink); }
@@ -61,6 +66,15 @@ sp_piece_write :: (buf: [] u32, p: [] Pen, kit: int, s: f32, f: Frame, o: int, a
   else if kit == PK_PALM { kit_palm(buf, p, f, s, o, a, b); }
   else if kit == PK_DOME { kit_dome_house(buf, p, f, o, a, b, 6 * s, 5 * s); }
   else if kit == PK_CRATE { kit_crate(buf, p, f, o, a, ink, c, s); }
+  else if kit == PK_SOLAR { kit_solar(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_CHARGER { kit_charger(buf, p, f, s, o, a, b, c, ink); }
+  else if kit == PK_MESA { kit_mesa(buf, p, f, s, o, a, b); }
+  else if kit == PK_TRAIN { kit_train(buf, p, f, s, o, a, b, c, ink); }
+  else if kit == PK_BUNK { kit_bunk(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_DESK { kit_desk(buf, p, f, s, o, a, b, c, ink); }
+  else if kit == PK_ARM { kit_arm(buf, p, f, s, o, a, b, c, ink); }
+  else if kit == PK_WINDOW { kit_window(buf, p, f, s, o, a, b, ink); }
+  else if kit == PK_SOFA { kit_sofa(buf, p, f, s, o, b, a, ink); }
 }
 
 // ---- a mesh of the world's import pack
@@ -146,7 +160,7 @@ sp_piece_measure :: (w: [] SpMeshScratch, kit: int, s: f32) -> SpFoot {
 
 #test "every kit word names its kit, and no other word does" {
   for k: 0..<PK_KITS { #assert pk_of(PK_NAME[k]) == k; }
-  #assert pk_of("") == -1 && pk_of("Rover") == -1 && pk_of("dome") == -1;
+  #assert pk_of("") == -1 && pk_of("Rover") == -1 && pk_of("dome") == -1 && pk_of("solar") == PK_SOLAR && pk_of("sofa") == PK_SOFA && pk_of("trains") == -1;
   t := sp_tint(0xEDE0C2);
   #assert abs(t.r - 0.929) < 0.001 && abs(t.g - 0.878) < 0.001 && abs(t.b - 0.761) < 0.001;
 }
@@ -157,4 +171,12 @@ sp_piece_measure :: (w: [] SpMeshScratch, kit: int, s: f32) -> SpFoot {
     #assert !one.over && one.n >= 3 && one.n % 3 == 0 && one.hx > 0 && one.hz > 0 && one.top > 0;
     #assert abs(one.top - two.top * 2) < 0.02;
   }
+}
+// The rover train and a mesa are big pieces: at the sizes a scene gives them they still fit a
+// kind's mesh, and their footprint is what stands under 2 m.
+#test "a mesa 20 m tall and a rover train twice its size still fit a kind's mesh" {
+  w: [1] SpMeshScratch;
+  mesa := sp_piece_measure(w[..], PK_MESA, 2); train := sp_piece_measure(w[..], PK_TRAIN, 2);
+  #assert !mesa.over && mesa.top > 20 && mesa.hx > 14 && !train.over && train.hz > 17 && train.top > 7;
+  for k: PK_SOLAR..<PK_KITS { #assert !sp_piece_measure(w[..], k, 1).over; }
 }

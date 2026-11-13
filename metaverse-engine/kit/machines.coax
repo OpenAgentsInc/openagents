@@ -295,6 +295,130 @@ kit_figure :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, cloak: KitTin
   tube(buf, p, kit_at(f, 0, 1.76 * s, 0), 0.16 * s, 0.4 * s, 0.4 * s, 0.1 * s, 0.1 * s, 12, true);
 }
 
+// A prism along the frame's z from z0 to z1: its cross-section runs from x b0 to b1 at y0 and from
+// t0 to t1 at y1 (b0 < b1, t0 < t1), so its sides slope as armour plates do. Six faces, normals out.
+kit_prism :: (buf: [] u32, p: [] Pen, f: Frame, b0: f32, b1: f32, t0: f32, t1: f32, y0: f32, y1: f32, z0: f32, z1: f32) {
+  a := fp(f, b0, y0, z1); b := fp(f, b1, y0, z1); c := fp(f, t1, y1, z1); d := fp(f, t0, y1, z1);
+  a2 := fp(f, b0, y0, z0); b2 := fp(f, b1, y0, z0); c2 := fp(f, t1, y1, z0); d2 := fp(f, t0, y1, z0);
+  quad(buf, p, a, b, c, d);       // +z
+  quad(buf, p, b2, a2, d2, c2);   // -z
+  quad(buf, p, d, c, c2, d2);     // top
+  quad(buf, p, a2, b2, b, a);     // bottom
+  quad(buf, p, b, b2, c2, c);     // +x side
+  quad(buf, p, a, d, d2, a2);     // -x side
+}
+
+// One car of the rover train, from zb (its back) to zf (its front), on two track units. The cab
+// car has a wedge nose with a dark windshield, headlights and a mast; the last car a rear hatch
+// open on a lowered ramp. Every car has angled roof plates, side armour, an orange diagonal stripe
+// and a glow strip down each side.
+kit_train_car :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, zb: f32, zf: f32, cab: bool, last: bool, body: KitTint, stripe: KitTint, glow: KitTint, dark: KitTint) {
+  zc := (zb + zf) * 0.5; hz := (zf - zb) * 0.5;
+  // two track units: a belt with round ends and three road wheels on its outer face
+  tl := hz - 0.55;
+  for side: 0..<2 {
+    sx := ifx side == 0 then -1.0f32 else 1.0f32;
+    x := sx * 0.96;
+    kit_pen(p, obj, MAT_CLOTH, dark);
+    box(buf, p, kit_at(f, x * s, 0.4 * s, zc * s), 0.27 * s, 0.4 * s, tl * s);
+    limb(buf, p, fp(f, (x - 0.27) * s, 0.4 * s, (zc + tl) * s), fp(f, (x + 0.27) * s, 0.4 * s, (zc + tl) * s), 0.4 * s, 0.4 * s, fd(f, 0, 1, 0), 8);
+    limb(buf, p, fp(f, (x - 0.27) * s, 0.4 * s, (zc - tl) * s), fp(f, (x + 0.27) * s, 0.4 * s, (zc - tl) * s), 0.4 * s, 0.4 * s, fd(f, 0, 1, 0), 8);
+    kit_pen(p, obj + 1, MAT_SKIN, body);
+    for w: 0..<3 {
+      wz := zc + (cast(f32) w - 1) * tl;
+      limb(buf, p, fp(f, (x + sx * 0.27) * s, 0.4 * s, wz * s), fp(f, (x + sx * 0.31) * s, 0.4 * s, wz * s), 0.2 * s, 0.2 * s, fd(f, 0, 1, 0), 6);
+    }
+  }
+  // the body, and its roof of angled plates
+  kit_pen(p, obj + 2, MAT_SKIN, body);
+  if cab {
+    box(buf, p, kit_at(f, 0, 1.225 * s, zc * s), 1.2 * s, 0.475 * s, hz * s);
+    // the wedge: in g, x runs back along the car (-z) and z across it, so its -x face slopes up and back
+    g := frame_turn(f, 1, PI * 0.5);
+    kit_prism(buf, p, g, -(zf - 0.1) * s, -zb * s, -(zf - 1.05) * s, -zb * s, 1.7 * s, 2.45 * s, -1.2 * s, 1.2 * s);
+    kit_prism(buf, p, f, -1.2 * s, 1.2 * s, -0.85 * s, 0.85 * s, 2.45 * s, 2.85 * s, zb * s, (zf - 0.95) * s);
+    kit_pen(p, obj + 3, MAT_WINDOW, dark);
+    w0 := fp(f, 0, 1.72 * s, (zf - 0.08) * s); w1 := fp(f, 0, 2.43 * s, (zf - 1.03) * s);
+    box(buf, p, frame_move(frame_along(w0, w1, fd(f, 1, 0, 0)), times(add(w0, w1), 0.5)), 1.05 * s, length(sub(w1, w0)) * 0.5, 0.03 * s);
+    // a nose plate sloping from the tracks up to the body, and the headlights
+    kit_pen(p, obj + 4, MAT_FLAT, stripe);
+    n0 := fp(f, 0, 0.8 * s, (zf + 0.42) * s); n1 := fp(f, 0, 1.5 * s, (zf + 0.03) * s);
+    box(buf, p, frame_move(frame_along(n0, n1, fd(f, 1, 0, 0)), times(add(n0, n1), 0.5)), 1.1 * s, length(sub(n1, n0)) * 0.5, 0.05 * s);
+    kit_pen(p, obj + 5, MAT_GLOW, glow);
+    box(buf, p, kit_at(f, -0.8 * s, 1.62 * s, (zf + 0.01) * s), 0.18 * s, 0.06 * s, 0.02 * s);
+    box(buf, p, kit_at(f, 0.8 * s, 1.62 * s, (zf + 0.01) * s), 0.18 * s, 0.06 * s, 0.02 * s);
+    // the mast: a pole with a crossbar and a light on top
+    kit_pen(p, obj + 3, MAT_CLOTH, dark);
+    tube(buf, p, kit_at(f, 0.55 * s, 2.85 * s, (zb + 0.7) * s), 0.8 * s, 0.045 * s, 0.045 * s, 0.03 * s, 0.03 * s, 6, true);
+    box(buf, p, kit_at(f, 0.55 * s, 3.4 * s, (zb + 0.7) * s), 0.22 * s, 0.025 * s, 0.025 * s);
+    kit_pen(p, obj + 5, MAT_GLOW, glow);
+    ball(buf, p, fp(f, 0.55 * s, 3.7 * s, (zb + 0.7) * s), 0.08 * s, 8);
+  } else {
+    box(buf, p, kit_at(f, 0, 1.6 * s, zc * s), 1.2 * s, 0.85 * s, hz * s);
+    kit_prism(buf, p, f, -1.2 * s, 1.2 * s, -0.85 * s, 0.85 * s, 2.45 * s, 2.85 * s, zb * s, zf * s);
+    kit_pen(p, obj + 3, MAT_WINDOW, dark);
+    box(buf, p, kit_at(f, -1.215 * s, 2.05 * s, (zc - 0.5 * hz) * s), 0.02 * s, 0.18 * s, 0.35 * s);
+    box(buf, p, kit_at(f, 1.215 * s, 2.05 * s, (zc - 0.5 * hz) * s), 0.02 * s, 0.18 * s, 0.35 * s);
+  }
+  // side armour over the tracks, the stripe and the glow strips
+  kit_pen(p, obj + 1, MAT_SKIN, body);
+  box(buf, p, kit_at(f, -1.22 * s, 0.98 * s, zc * s), 0.03 * s, 0.2 * s, (hz - 0.1) * s);
+  box(buf, p, kit_at(f, 1.22 * s, 0.98 * s, zc * s), 0.03 * s, 0.2 * s, (hz - 0.1) * s);
+  kit_pen(p, obj + 4, MAT_FLAT, stripe);
+  right := frame_turn(kit_at(f, 1.255 * s, 0, zc * s), 1, PI * 0.5);    // its x runs back along the car
+  left := frame_turn(kit_at(f, -1.255 * s, 0, zc * s), 1, -PI * 0.5);   // its x runs ahead
+  dash(buf, p, right, 0.55 * hz * s, 0.85 * s, -0.35 * hz * s, 2.4 * s, 0.42 * s, 0.42 * s);
+  dash(buf, p, left, -0.55 * hz * s, 0.85 * s, 0.35 * hz * s, 2.4 * s, 0.42 * s, 0.42 * s);
+  kit_pen(p, obj + 5, MAT_GLOW, glow);
+  box(buf, p, kit_at(f, -1.255 * s, 1.24 * s, zc * s), 0.012 * s, 0.035 * s, (hz - 0.2) * s);
+  box(buf, p, kit_at(f, 1.255 * s, 1.24 * s, zc * s), 0.012 * s, 0.035 * s, (hz - 0.2) * s);
+  if last {
+    // the rear hatch, open: a dark doorway in an orange frame, its ramp down to the ground
+    kit_pen(p, obj + 3, MAT_WINDOW, dark);
+    box(buf, p, kit_at(f, 0, 1.6 * s, (zb - 0.01) * s), 0.75 * s, 0.75 * s, 0.02 * s);
+    kit_pen(p, obj + 4, MAT_FLAT, stripe);
+    box(buf, p, kit_at(f, 0, 2.4 * s, (zb - 0.03) * s), 0.87 * s, 0.06 * s, 0.03 * s);
+    box(buf, p, kit_at(f, -0.81 * s, 1.6 * s, (zb - 0.03) * s), 0.06 * s, 0.8 * s, 0.03 * s);
+    box(buf, p, kit_at(f, 0.81 * s, 1.6 * s, (zb - 0.03) * s), 0.06 * s, 0.8 * s, 0.03 * s);
+    r0 := fp(f, 0, 0.84 * s, (zb - 0.04) * s); r1 := fp(f, 0, 0.04 * s, (zb - 1.45) * s);
+    ramp := frame_move(frame_along(r0, r1, fd(f, 1, 0, 0)), times(add(r0, r1), 0.5));
+    half := length(sub(r1, r0)) * 0.5;
+    kit_pen(p, obj + 6, MAT_SKIN, body);
+    box(buf, p, ramp, 0.72 * s, half, 0.04 * s);
+    kit_pen(p, obj + 3, MAT_CLOTH, dark);
+    for k: 0..<4 {
+      t := (cast(f32) k - 1.5) * 0.45 * half;
+      box(buf, p, kit_at(ramp, 0, t, 0.05 * s), 0.68 * s, 0.025 * s, 0.015 * s);
+    }
+  }
+}
+
+// The rover train: a long tracked desert rover of four cars joined by dark accordion couplers,
+// facing the frame's z: a wedge-nosed cab car ahead, then box cars, the last with its rear hatch
+// open on a lowered ramp. Cream armour (body), an orange stripe (stripe), glow strips and lights
+// (glow), dark treads, windows and couplers (dark). 18 m long, 2.85 m to its roofs and 3.8 m to the
+// mast's light at s 1.
+TRAIN_CAB :: 4.0f32; TRAIN_CAR :: 3.4f32; TRAIN_GAP :: 0.5f32; TRAIN_CARS :: 3;   // m at s 1: the cab, a box car, a coupler, how many box cars
+kit_train :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, body: KitTint, stripe: KitTint, glow: KitTint, dark: KitTint) {
+  long := TRAIN_CAB + cast(f32) TRAIN_CARS * (TRAIN_CAR + TRAIN_GAP);
+  zf := long * 0.5 + 0.7;   // so the nose plate and the ramp's foot reach about as far either way
+  for k: 0..<TRAIN_CARS + 1 {
+    l := ifx k == 0 then TRAIN_CAB else TRAIN_CAR;
+    zb := zf - l;
+    kit_train_car(buf, p, f, s, obj, zb, zf, k == 0, k == TRAIN_CARS, body, stripe, glow, dark);
+    if k < TRAIN_CARS {
+      // the coupler: bellows folds, alternately wide and narrow
+      kit_pen(p, obj + 7, MAT_CLOTH, dark);
+      for i: 0..<5 {
+        z := zb - TRAIN_GAP * (cast(f32) i + 0.5) / 5;
+        w := ifx i % 2 == 0 then 0.95f32 else 0.8f32;
+        box(buf, p, kit_at(f, 0, 1.6 * s, z * s), w * s, (w - 0.1) * s, TRAIN_GAP * 0.1 * s);
+      }
+    }
+    zf = zb - TRAIN_GAP;
+  }
+}
+
 #test "a robot is written inside its store, at the scale it is given, and stops when full" {
   buf: [200000] u32;
   pen := [1] Pen.[Pen.{}];

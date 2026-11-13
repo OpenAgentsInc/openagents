@@ -359,7 +359,9 @@ painted 200000
 # body, head, wardrobe and document modules (metaverse-engine/kit/crew-*.coax, the same ones /worlds/crew runs), plus the
 # screen format, the title, creation and credits screens and the kept run: 551,750 bytes measured 2026-11-13 on a
 # Linux build host; about 3% room.
-splice 570000
+# With the solar, charger, mesa, train and room kits a pieces row may name (metaverse-engine/kit/props.coax,
+# kit_train, kit_mesa, #13485): 598,185 bytes measured 2026-11-13 on a Linux build host; about 3.5% room.
+splice 620000
 # /worlds on the frames set drawn by the browser (worlds-web.coax, beside the side): 91,057 bytes measured
 # 2026-11-13 on a Mac, about 9% room. It replaces realmlist (70,076 bytes and its 16,279-byte shader).
 worlds-web 100000

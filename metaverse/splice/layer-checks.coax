@@ -181,6 +181,18 @@ lc_old_collide :: (g: [] SpGame, x: f32, z: f32) -> Point {
   }
 }
 
+// A designer adds kinds through the tables: the piece store's share for kinds holds the shipped
+// kinds and one more kind of every kit at size 1 (#13485), so a scene of new kinds draws them all
+// and the player's walk poses still fit after them.
+#test "the piece store holds every shipped kind and one of each kit beside them" {
+  c: [1] SpContent; w: [1] SpMeshScratch;
+  #assert sc_load(c[..], SC_SHIPPED);
+  n := 0;
+  for r: 0..<c[0].piece_n { n += sp_piece_measure(w[..], c[0].pieces[r].kit, c[0].pieces[r].scale).n; }
+  for k: 0..<PK_KITS { n += sp_piece_measure(w[..], k, 1).n; }
+  #assert n <= SD_KIND_VERTS && SD_KIND_VERTS * VERTEX_WORDS < SD_PIECE_WORDS;
+}
+
 // ---- the layer's draw (layer-draw.coax)
 LcDraw :: struct { d: [1] SpLayerDraw; pieces: [SD_PIECE_WORDS] u32; places: [SD_PLACE_WORDS] u32; direct: [PIECE_VERTS * VERTEX_WORDS] u32; draws: [4 * (2 + SC_PIECE_MAX)] u32; }
 #test "each kind's mesh is written once, and an edit writes rows only: a kind's instances are one draw" {

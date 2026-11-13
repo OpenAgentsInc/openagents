@@ -1,0 +1,355 @@
+// Cel props: a row of solar panels, a charging post and the furniture of a rover's room (a loft
+// bunk, a desk, a workbench arm, a wall with a window and a sofa), built with the cel mesh writers
+// (metaverse-engine/render/cel-mesh.coax) like the other kits. Each is written from a Frame and a
+// scale in the colours it is handed, standing on the ground and facing the frame's z, its parts
+// numbered from the `obj` it is given (at most obj + 7) so ink separates them. Nothing here draws
+// or decides; it only writes triangles. Splice's pieces (metaverse/splice/pieces.coax) name them.
+//   coax/bin/coax test --library metaverse-engine/kit/props.coax
+#load "land.coax";
+
+// A row of five solar panels on short legs, tilted up toward the sky ahead (+z): dark glassy
+// panels with cell lines in a thin frame, each 2 m wide and 1.2 m deep, on a post ahead and a
+// taller one behind, joined by two rails. 10.5 m long and 1.35 m tall at s 1.
+SOLAR_PANELS :: 5; SOLAR_PITCH :: 2.1f32; SOLAR_TILT :: 0.45f32;
+kit_solar :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, glass: KitTint, frame: KitTint, dark: KitTint) {
+  y := 1.05f32; c := cos(SOLAR_TILT); sn := sin(SOLAR_TILT);
+  // the rails, just under the panels' front and back: (0, -0.08, +-0.45) of a panel's frame
+  fy := y - 0.08 * c - 0.45 * sn; fz := -0.08 * sn + 0.45 * c;
+  by := y - 0.08 * c + 0.45 * sn; bz := -0.08 * sn - 0.45 * c;
+  half := cast(f32) SOLAR_PANELS * SOLAR_PITCH * 0.5;
+  kit_pen(p, obj, MAT_CLOTH, dark);
+  box(buf, p, kit_at(f, 0, fy * s, fz * s), half * s, 0.04 * s, 0.04 * s);
+  box(buf, p, kit_at(f, 0, by * s, bz * s), half * s, 0.04 * s, 0.04 * s);
+  for i: 0..<SOLAR_PANELS {
+    x := (cast(f32) i - cast(f32) (SOLAR_PANELS - 1) * 0.5) * SOLAR_PITCH;
+    kit_pen(p, obj, MAT_CLOTH, dark);
+    box(buf, p, kit_at(f, x * s, fy * 0.5 * s, fz * s), 0.04 * s, fy * 0.5 * s, 0.04 * s);
+    box(buf, p, kit_at(f, x * s, by * 0.5 * s, bz * s), 0.04 * s, by * 0.5 * s, 0.04 * s);
+    box(buf, p, kit_at(f, x * s, 0.02 * s, fz * s), 0.12 * s, 0.02 * s, 0.1 * s);
+    box(buf, p, kit_at(f, x * s, 0.02 * s, bz * s), 0.12 * s, 0.02 * s, 0.1 * s);
+    g := frame_turn(kit_at(f, x * s, y * s, 0), 0, SOLAR_TILT);
+    kit_pen(p, obj + 1, MAT_FLAT, frame);
+    box(buf, p, g, 1.0 * s, 0.03 * s, 0.6 * s);
+    kit_pen(p, obj + 2, MAT_WINDOW, glass);
+    box(buf, p, kit_at(g, 0, 0.02 * s, 0), 0.96 * s, 0.02 * s, 0.56 * s);
+    kit_pen(p, obj + 3, MAT_FLAT, frame);
+    for j: 0..<3 { box(buf, p, kit_at(g, (cast(f32) j - 1) * 0.32 * s, 0.042 * s, 0), 0.008 * s, 0.004 * s, 0.56 * s); }
+    box(buf, p, kit_at(g, 0, 0.042 * s, 0), 0.96 * s, 0.004 * s, 0.008 * s);
+  }
+}
+
+// A charging post: a plinth, a tall body with a screen and a glow strip, a cap with a light on top,
+// and a cable from an outlet low on its side, looping down near the ground and up to its plug hung
+// in a holster. 2.6 m tall at s 1.
+kit_charger :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, body: KitTint, accent: KitTint, glow: KitTint, dark: KitTint) {
+  kit_pen(p, obj, MAT_CLOTH, dark);
+  box(buf, p, kit_at(f, 0, 0.08 * s, 0), 0.42 * s, 0.08 * s, 0.34 * s);
+  kit_pen(p, obj + 1, MAT_SKIN, body);
+  box(buf, p, kit_at(f, 0, 1.2 * s, 0), 0.28 * s, 1.04 * s, 0.2 * s);
+  kit_pen(p, obj + 2, MAT_FLAT, accent);
+  box(buf, p, kit_at(f, 0, 2.32 * s, 0), 0.34 * s, 0.08 * s, 0.26 * s);
+  box(buf, p, kit_at(f, 0, 0.45 * s, 0.205 * s), 0.24 * s, 0.05 * s, 0.01 * s);
+  kit_pen(p, obj + 3, MAT_WINDOW, dark);
+  box(buf, p, kit_at(f, 0, 1.62 * s, 0.205 * s), 0.2 * s, 0.24 * s, 0.012 * s);
+  box(buf, p, kit_at(f, 0.31 * s, 1.2 * s, 0.05 * s), 0.04 * s, 0.13 * s, 0.08 * s);
+  kit_pen(p, obj + 4, MAT_GLOW, glow);
+  ball(buf, p, fp(f, 0, 2.52 * s, 0), 0.12 * s, 10);
+  box(buf, p, kit_at(f, 0, 0.98 * s, 0.212 * s), 0.025 * s, 0.3 * s, 0.006 * s);
+  box(buf, p, kit_at(f, 0, 1.7 * s, 0.22 * s), 0.12 * s, 0.015 * s, 0.004 * s);
+  box(buf, p, kit_at(f, -0.03 * s, 1.58 * s, 0.22 * s), 0.09 * s, 0.015 * s, 0.004 * s);
+  box(buf, p, kit_at(f, 0.02 * s, 1.5 * s, 0.22 * s), 0.1 * s, 0.015 * s, 0.004 * s);
+  // the cable: from the outlet to the plug, sagging near the ground between
+  kit_pen(p, obj + 5, MAT_CLOTH, dark);
+  a := v3(0.3, 0.9, -0.05); b := v3(0.36, 1.1, 0.05); n := 10;
+  prev := fp(f, a.x * s, a.y * s, a.z * s);
+  for i: 1..<n + 1 {
+    t := cast(f32) i / cast(f32) n; u := sin(PI * t);
+    q := add(add(a, times(sub(b, a), t)), v3(0.28 * u, -0.85 * u, 0.22 * u));
+    at := fp(f, q.x * s, q.y * s, q.z * s);
+    limb(buf, p, prev, at, 0.025 * s, 0.025 * s, fd(f, 0, 0, 1), 6);
+    prev = at;
+  }
+  box(buf, p, kit_at(f, 0.37 * s, 1.16 * s, 0.05 * s), 0.035 * s, 0.07 * s, 0.035 * s);
+}
+
+// A loft bunk: a cream frame on four posts with an orange mattress and a pillow on a deck 1.5 m up,
+// a guard rail along its open side (+x) with a gap where a ladder leans on it up to the bed, and
+// two drawers under it. 2 m long, 1 m wide and 1.96 m tall at s 1.
+kit_bunk :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, frame: KitTint, mattress: KitTint, dark: KitTint) {
+  kit_pen(p, obj, MAT_SKIN, frame);
+  for i: 0..<4 {
+    sx := ifx i % 2 == 0 then -1.0f32 else 1.0f32;
+    sz := ifx i < 2 then -1.0f32 else 1.0f32;
+    box(buf, p, kit_at(f, sx * 0.47 * s, 0.98 * s, sz * 0.97 * s), 0.035 * s, 0.98 * s, 0.035 * s);
+  }
+  box(buf, p, kit_at(f, 0, 1.45 * s, 0), 0.5 * s, 0.05 * s, 1.0 * s);
+  box(buf, p, kit_at(f, 0, 1.7 * s, -0.975 * s), 0.47 * s, 0.2 * s, 0.02 * s);
+  box(buf, p, kit_at(f, 0, 1.7 * s, 0.975 * s), 0.47 * s, 0.2 * s, 0.02 * s);
+  box(buf, p, kit_at(f, -0.48 * s, 1.7 * s, 0), 0.02 * s, 0.2 * s, 0.95 * s);
+  // drawers under the deck, their fronts to the open side
+  kit_pen(p, obj + 1, MAT_SKIN, frame);
+  box(buf, p, kit_at(f, -0.05 * s, 0.3 * s, 0), 0.4 * s, 0.3 * s, 0.9 * s);
+  kit_pen(p, obj + 4, MAT_CLOTH, dark);
+  box(buf, p, kit_at(f, 0.36 * s, 0.32 * s, -0.45 * s), 0.01 * s, 0.025 * s, 0.12 * s);
+  box(buf, p, kit_at(f, 0.36 * s, 0.32 * s, 0.45 * s), 0.01 * s, 0.025 * s, 0.12 * s);
+  box(buf, p, kit_at(f, 0.36 * s, 0.3 * s, 0), 0.008 * s, 0.28 * s, 0.01 * s);
+  kit_pen(p, obj + 2, MAT_CLOTH, mattress);
+  box(buf, p, kit_at(f, 0, 1.6 * s, 0), 0.45 * s, 0.1 * s, 0.94 * s);
+  kit_pen(p, obj + 3, MAT_CLOTH, frame);
+  ellipsoid(buf, p, kit_at(f, 0, 1.76 * s, -0.72 * s), 0.32 * s, 0.07 * s, 0.17 * s, 10, 5, 0);
+  // the guard rail, open from z 0.35 to the foot for the ladder
+  kit_pen(p, obj + 4, MAT_CLOTH, dark);
+  box(buf, p, kit_at(f, 0.48 * s, 1.92 * s, -0.31 * s), 0.02 * s, 0.02 * s, 0.66 * s);
+  box(buf, p, kit_at(f, 0.48 * s, 1.71 * s, 0.35 * s), 0.02 * s, 0.21 * s, 0.02 * s);
+  // the ladder, leaning from the floor on the rail
+  for r: 0..<2 {
+    z := ifx r == 0 then 0.48f32 else 0.84f32;
+    limb(buf, p, fp(f, 0.95 * s, 0, z * s), fp(f, 0.5 * s, 1.9 * s, z * s), 0.025 * s, 0.025 * s, fd(f, 0, 0, 1), 6);
+  }
+  for k: 1..<7 {
+    t := cast(f32) k / 6.5;
+    x := 0.95 - 0.45 * t; y := 1.9 * t;
+    limb(buf, p, fp(f, x * s, y * s, 0.48 * s), fp(f, x * s, y * s, 0.84 * s), 0.018 * s, 0.018 * s, fd(f, 0, 1, 0), 6);
+  }
+}
+
+// Strokes round a rectangle on a frame's x-y plane, w wide: a box drawn in lines.
+kit_rect_lines :: (buf: [] u32, p: [] Pen, f: Frame, x0: f32, y0: f32, x1: f32, y1: f32, w: f32) {
+  dash(buf, p, f, x0, y0, x1, y0, w, w); dash(buf, p, f, x1, y0, x1, y1, w, w);
+  dash(buf, p, f, x1, y1, x0, y1, w, w); dash(buf, p, f, x0, y1, x0, y0, w, w);
+}
+
+// A long desk: a top on a panel leg and a drawer pedestal, a monitor showing a robot's schematic, a
+// laptop, an arched desk lamp and an office chair pulled up ahead of it (+z). 2.4 m wide and 1.35 m
+// tall at s 1.
+kit_desk :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, wood: KitTint, accent: KitTint, glow: KitTint, dark: KitTint) {
+  kit_pen(p, obj, MAT_SKIN, wood);
+  box(buf, p, kit_at(f, 0, 0.74 * s, 0), 1.2 * s, 0.025 * s, 0.36 * s);
+  box(buf, p, kit_at(f, -1.15 * s, 0.36 * s, 0), 0.025 * s, 0.36 * s, 0.34 * s);
+  box(buf, p, kit_at(f, 0.85 * s, 0.36 * s, 0), 0.3 * s, 0.36 * s, 0.34 * s);
+  kit_pen(p, obj + 1, MAT_SKIN, wood);
+  for d: 0..<3 { box(buf, p, kit_at(f, 0.85 * s, (0.14 + cast(f32) d * 0.22) * s, 0.345 * s), 0.27 * s, 0.1 * s, 0.01 * s); }
+  kit_pen(p, obj + 2, MAT_FLAT, accent);
+  for d: 0..<3 { box(buf, p, kit_at(f, 0.85 * s, (0.19 + cast(f32) d * 0.22) * s, 0.36 * s), 0.08 * s, 0.012 * s, 0.01 * s); }
+  // the monitor on its stand, the schematic on its face
+  kit_pen(p, obj + 3, MAT_CLOTH, dark);
+  box(buf, p, kit_at(f, -0.3 * s, 0.775 * s, -0.17 * s), 0.12 * s, 0.01 * s, 0.08 * s);
+  box(buf, p, kit_at(f, -0.3 * s, 0.86 * s, -0.19 * s), 0.025 * s, 0.09 * s, 0.015 * s);
+  box(buf, p, kit_at(f, -0.3 * s, 1.13 * s, -0.15 * s), 0.36 * s, 0.22 * s, 0.025 * s);
+  kit_pen(p, obj + 4, MAT_WINDOW, dark);
+  box(buf, p, kit_at(f, -0.3 * s, 1.13 * s, -0.122 * s), 0.33 * s, 0.19 * s, 0.003 * s);
+  kit_pen(p, obj + 5, MAT_GLOW, glow);
+  sf := kit_at(f, -0.3 * s, 1.13 * s, -0.117 * s);
+  lw := 0.008 * s;
+  kit_rect_lines(buf, p, sf, -0.05 * s, 0.08 * s, 0.05 * s, 0.15 * s, lw);     // head
+  kit_rect_lines(buf, p, sf, -0.07 * s, -0.05 * s, 0.07 * s, 0.06 * s, lw);    // body
+  dash(buf, p, sf, 0, 0.15 * s, 0, 0.18 * s, lw, lw);                            // antenna
+  dash(buf, p, sf, -0.07 * s, 0.04 * s, -0.14 * s, -0.04 * s, lw, lw);          // arms
+  dash(buf, p, sf, 0.07 * s, 0.04 * s, 0.14 * s, -0.04 * s, lw, lw);
+  dash(buf, p, sf, -0.04 * s, -0.05 * s, -0.05 * s, -0.15 * s, lw, lw);         // legs
+  dash(buf, p, sf, 0.04 * s, -0.05 * s, 0.05 * s, -0.15 * s, lw, lw);
+  dash(buf, p, sf, 0.17 * s, 0.12 * s, 0.29 * s, 0.12 * s, lw, lw);             // the sheet's notes
+  dash(buf, p, sf, 0.17 * s, 0.08 * s, 0.26 * s, 0.08 * s, lw, lw);
+  dash(buf, p, sf, 0.17 * s, -0.12 * s, 0.29 * s, -0.12 * s, lw, lw);
+  // the laptop, its lid tipped back
+  kit_pen(p, obj + 3, MAT_CLOTH, dark);
+  box(buf, p, kit_at(f, 0.35 * s, 0.773 * s, 0.05 * s), 0.17 * s, 0.008 * s, 0.12 * s);
+  lid := frame_turn(kit_at(f, 0.35 * s, 0.78 * s, -0.07 * s), 0, -0.3);
+  box(buf, p, kit_at(lid, 0, 0.12 * s, 0), 0.17 * s, 0.12 * s, 0.006 * s);
+  kit_pen(p, obj + 5, MAT_GLOW, glow);
+  box(buf, p, kit_at(lid, 0, 0.125 * s, 0.007 * s), 0.15 * s, 0.1 * s, 0.002 * s);
+  // the lamp: a base, an arched arm and a shade over a bulb
+  kit_pen(p, obj + 6, MAT_CLOTH, dark);
+  tube(buf, p, kit_at(f, -0.95 * s, 0.765 * s, -0.2 * s), 0.03 * s, 0.1 * s, 0.1 * s, 0.08 * s, 0.08 * s, 10, true);
+  l0 := v3(-0.95, 0.79, -0.2); l1 := v3(-0.95, 1.45, -0.12); l2 := v3(-0.68, 1.22, 0.02);
+  prev := fp(f, l0.x * s, l0.y * s, l0.z * s);
+  for i: 1..<7 {
+    t := cast(f32) i / 6;
+    q := add(add(times(l0, (1 - t) * (1 - t)), times(l1, 2 * t * (1 - t))), times(l2, t * t));
+    at := fp(f, q.x * s, q.y * s, q.z * s);
+    limb(buf, p, prev, at, 0.015 * s, 0.015 * s, fd(f, 0, 0, 1), 6);
+    prev = at;
+  }
+  kit_pen(p, obj + 2, MAT_FLAT, accent);
+  tube(buf, p, kit_at(f, -0.68 * s, 1.08 * s, 0.02 * s), 0.14 * s, 0.1 * s, 0.1 * s, 0.03 * s, 0.03 * s, 10, true);
+  kit_pen(p, obj + 5, MAT_GLOW, glow);
+  ball(buf, p, fp(f, -0.68 * s, 1.1 * s, 0.02 * s), 0.04 * s, 8);
+  // the chair, its back away from the desk
+  cz := 0.75f32;
+  kit_pen(p, obj + 6, MAT_CLOTH, dark);
+  for i: 0..<5 {
+    a := cast(f32) i * TAU / 5;
+    foot := fp(f, cos(a) * 0.3 * s, 0.04 * s, (cz + sin(a) * 0.3) * s);
+    limb(buf, p, fp(f, 0, 0.08 * s, cz * s), foot, 0.02 * s, 0.02 * s, fd(f, 0, 1, 0), 6);
+    ball(buf, p, add(foot, fd(f, 0, -0.005 * s, 0)), 0.035 * s, 6);
+  }
+  tube(buf, p, kit_at(f, 0, 0.06 * s, cz * s), 0.4 * s, 0.03 * s, 0.03 * s, 0.03 * s, 0.03 * s, 8, true);
+  box(buf, p, kit_at(f, 0, 0.6 * s, (cz + 0.2) * s), 0.03 * s, 0.12 * s, 0.02 * s);
+  kit_pen(p, obj + 7, MAT_CLOTH, accent);
+  box(buf, p, kit_at(f, 0, 0.5 * s, cz * s), 0.24 * s, 0.05 * s, 0.24 * s);
+  box(buf, p, kit_at(f, 0, 0.88 * s, (cz + 0.23) * s), 0.22 * s, 0.24 * s, 0.04 * s);
+}
+
+// A workbench with a small robot arm on it: a bench with a shelf, a turret base with a light, two
+// arm segments with banded joints, and a drill for a hand pointing down at a part on the bench.
+// 1.4 m wide and 1.64 m tall at s 1.
+kit_arm :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, body: KitTint, accent: KitTint, glow: KitTint, dark: KitTint) {
+  kit_pen(p, obj, MAT_SKIN, body);
+  box(buf, p, kit_at(f, 0, 0.78 * s, 0), 0.7 * s, 0.03 * s, 0.4 * s);
+  box(buf, p, kit_at(f, 0, 0.2 * s, 0), 0.66 * s, 0.015 * s, 0.36 * s);
+  kit_pen(p, obj + 1, MAT_CLOTH, dark);
+  for i: 0..<4 {
+    sx := ifx i % 2 == 0 then -1.0f32 else 1.0f32;
+    sz := ifx i < 2 then -1.0f32 else 1.0f32;
+    box(buf, p, kit_at(f, sx * 0.64 * s, 0.375 * s, sz * 0.34 * s), 0.03 * s, 0.375 * s, 0.03 * s);
+  }
+  tube(buf, p, kit_at(f, -0.2 * s, 0.81 * s, 0), 0.08 * s, 0.2 * s, 0.2 * s, 0.18 * s, 0.18 * s, 12, true);
+  shoulder := fp(f, -0.2 * s, 1.02 * s, 0); elbow := fp(f, -0.15 * s, 1.55 * s, 0.05 * s); wrist := fp(f, 0.3 * s, 1.35 * s, 0.08 * s);
+  kit_pen(p, obj + 2, MAT_SKIN, body);
+  box(buf, p, kit_at(f, -0.2 * s, 0.97 * s, 0), 0.12 * s, 0.08 * s, 0.12 * s);
+  limb(buf, p, shoulder, elbow, 0.07 * s, 0.06 * s, fd(f, 0, 0, 1), 8);
+  limb(buf, p, elbow, wrist, 0.06 * s, 0.05 * s, fd(f, 0, 0, 1), 8);
+  kit_pen(p, obj + 3, MAT_FLAT, accent);
+  ball(buf, p, shoulder, 0.1 * s, 10);
+  ball(buf, p, elbow, 0.085 * s, 10);
+  ball(buf, p, wrist, 0.065 * s, 8);
+  box(buf, p, kit_at(f, 0.3 * s, 0.84 * s, 0.08 * s), 0.1 * s, 0.03 * s, 0.1 * s);
+  // the drill: a chuck and a bit tapering to its point
+  kit_pen(p, obj + 4, MAT_CLOTH, dark);
+  limb(buf, p, fp(f, 0.3 * s, 1.33 * s, 0.08 * s), fp(f, 0.3 * s, 1.2 * s, 0.08 * s), 0.05 * s, 0.045 * s, fd(f, 1, 0, 0), 8);
+  limb(buf, p, fp(f, 0.3 * s, 1.2 * s, 0.08 * s), fp(f, 0.3 * s, 0.93 * s, 0.08 * s), 0.02 * s, 0.002 * s, fd(f, 1, 0, 0), 6);
+  kit_pen(p, obj + 5, MAT_GLOW, glow);
+  ball(buf, p, fp(f, -0.2 * s, 0.98 * s, 0.125 * s), 0.03 * s, 8);
+  box(buf, p, kit_at(f, -0.2 * s, 0.85 * s, 0.2 * s), 0.05 * s, 0.012 * s, 0.006 * s);
+}
+
+// An inside wall panel with a big rounded window: cream wall round an open window (what is beyond
+// shows through it) in an orange trim with a deep sill, a dark baseboard and two panel seams.
+// 3 m wide, 2.6 m tall and 0.14 m thick at s 1; the opening 2 m wide and 1.4 m tall, its corners
+// rounded 0.4 m.
+WINDOW_W :: 1.5f32; WINDOW_H :: 2.6f32; WINDOW_T :: 0.07f32;       // the wall's half width, height and half thickness
+WINDOW_X :: 1.0f32; WINDOW_Y0 :: 0.75f32; WINDOW_Y1 :: 2.15f32; WINDOW_R :: 0.4f32; WINDOW_ROWS :: 12;   // the opening
+// The opening's half width at height y (unit size).
+kit_window_half :: (y: f32) -> f32 {
+  my := (WINDOW_Y0 + WINDOW_Y1) * 0.5; hy := (WINDOW_Y1 - WINDOW_Y0) * 0.5;
+  e := hi(0, abs(y - my) - (hy - WINDOW_R));
+  return WINDOW_X - WINDOW_R + sqrt(hi(0, WINDOW_R * WINDOW_R - e * e));
+}
+kit_window :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, wall: KitTint, trim: KitTint, dark: KitTint) {
+  W := WINDOW_W; T := WINDOW_T;
+  kit_pen(p, obj, MAT_WORLD, wall);
+  box(buf, p, kit_at(f, 0, WINDOW_Y0 * 0.5 * s, 0), W * s, WINDOW_Y0 * 0.5 * s, T * s);
+  box(buf, p, kit_at(f, 0, (WINDOW_Y1 + WINDOW_H) * 0.5 * s, 0), W * s, (WINDOW_H - WINDOW_Y1) * 0.5 * s, T * s);
+  dy := (WINDOW_Y1 - WINDOW_Y0) / cast(f32) WINDOW_ROWS;
+  for i: 0..<WINDOW_ROWS {
+    y := WINDOW_Y0 + (cast(f32) i + 0.5) * dy;
+    w := kit_window_half(y);
+    kit_pen(p, obj, MAT_WORLD, wall);
+    box(buf, p, kit_at(f, -(W + w) * 0.5 * s, y * s, 0), (W - w) * 0.5 * s, dy * 0.5 * s, T * s);
+    box(buf, p, kit_at(f, (W + w) * 0.5 * s, y * s, 0), (W - w) * 0.5 * s, dy * 0.5 * s, T * s);
+    kit_pen(p, obj + 1, MAT_FLAT, trim);
+    box(buf, p, kit_at(f, -(w + 0.02) * s, y * s, 0), 0.03 * s, dy * 0.5 * s, (T + 0.02) * s);
+    box(buf, p, kit_at(f, (w + 0.02) * s, y * s, 0), 0.03 * s, dy * 0.5 * s, (T + 0.02) * s);
+  }
+  kit_pen(p, obj + 1, MAT_FLAT, trim);
+  box(buf, p, kit_at(f, 0, (WINDOW_Y1 + 0.02) * s, 0), (WINDOW_X - WINDOW_R + 0.05) * s, 0.03 * s, (T + 0.02) * s);
+  kit_pen(p, obj + 2, MAT_FLAT, trim);
+  box(buf, p, kit_at(f, 0, (WINDOW_Y0 - 0.035) * s, 0.05 * s), (WINDOW_X - 0.1) * s, 0.035 * s, (T + 0.08) * s);
+  kit_pen(p, obj + 3, MAT_CLOTH, dark);
+  box(buf, p, kit_at(f, 0, 0.06 * s, 0), W * s, 0.06 * s, (T + 0.01) * s);
+  for side: 0..<2 {
+    sx := ifx side == 0 then -1.0f32 else 1.0f32;
+    box(buf, p, kit_at(f, sx * 1.3 * s, 1.36 * s, 0), 0.006 * s, 1.24 * s, (T + 0.004) * s);
+  }
+}
+
+// A sofa: a low base on short legs, two seat cushions, a back and two arms in its cover, and a
+// throw cushion leaning in one corner. 2 m wide and 0.92 m tall at s 1, facing ahead (+z).
+kit_sofa :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, obj: int, cover: KitTint, cushion: KitTint, dark: KitTint) {
+  kit_pen(p, obj, MAT_CLOTH, dark);
+  for i: 0..<4 {
+    sx := ifx i % 2 == 0 then -1.0f32 else 1.0f32;
+    sz := ifx i < 2 then -1.0f32 else 1.0f32;
+    box(buf, p, kit_at(f, sx * 0.9 * s, 0.05 * s, sz * 0.36 * s), 0.04 * s, 0.05 * s, 0.04 * s);
+  }
+  kit_pen(p, obj + 1, MAT_CLOTH, cover);
+  box(buf, p, kit_at(f, 0, 0.25 * s, 0.02 * s), 0.85 * s, 0.15 * s, 0.42 * s);
+  box(buf, p, kit_at(f, 0, 0.62 * s, -0.33 * s), 0.85 * s, 0.3 * s, 0.12 * s);
+  box(buf, p, kit_at(f, -0.92 * s, 0.4 * s, 0), 0.1 * s, 0.3 * s, 0.45 * s);
+  box(buf, p, kit_at(f, 0.92 * s, 0.4 * s, 0), 0.1 * s, 0.3 * s, 0.45 * s);
+  kit_pen(p, obj + 2, MAT_CLOTH, cover);
+  box(buf, p, kit_at(f, -0.42 * s, 0.46 * s, 0.07 * s), 0.41 * s, 0.07 * s, 0.35 * s);
+  kit_pen(p, obj + 3, MAT_CLOTH, cover);
+  box(buf, p, kit_at(f, 0.42 * s, 0.46 * s, 0.07 * s), 0.41 * s, 0.07 * s, 0.35 * s);
+  kit_pen(p, obj + 4, MAT_CLOTH, cushion);
+  g := frame_turn(frame_turn(kit_at(f, -0.58 * s, 0.7 * s, -0.12 * s), 0, -0.35), 2, 0.15);
+  ellipsoid(buf, p, g, 0.2 * s, 0.18 * s, 0.06 * s, 10, 5, 0);
+}
+
+// The lowest and highest a mesh reaches, and how far it reaches to each side and ahead.
+KitReach :: struct { low: f32; top: f32; hx: f32; hz: f32; }
+kit_reach :: (buf: [] u32, n: int) -> KitReach {
+  r := KitReach.{low = 1000000, top = -1000000};
+  for i: 0..<n {
+    o := i * VERTEX_WORDS;
+    x := f32_from_bits(buf[o]); y := f32_from_bits(buf[o + 1]); z := f32_from_bits(buf[o + 2]);
+    r.low = lo(r.low, y); r.top = hi(r.top, y); r.hx = hi(r.hx, abs(x)); r.hz = hi(r.hz, abs(z));
+  }
+  return r;
+}
+
+PROP_KINDS :: 9;
+// Writes prop k (0 solar ... 8 train) at size s, all in mid gray.
+kit_prop_write :: (buf: [] u32, p: [] Pen, k: int, s: f32) {
+  f := frame_at(v3(0, 0, 0), 0); t := kit_tint(0.5, 0.5, 0.5);
+  if k == 0 { kit_solar(buf, p, f, s, 40, t, t, t); }
+  else if k == 1 { kit_charger(buf, p, f, s, 40, t, t, t, t); }
+  else if k == 2 { kit_bunk(buf, p, f, s, 40, t, t, t); }
+  else if k == 3 { kit_desk(buf, p, f, s, 40, t, t, t, t); }
+  else if k == 4 { kit_arm(buf, p, f, s, 40, t, t, t, t); }
+  else if k == 5 { kit_window(buf, p, f, s, 40, t, t, t); }
+  else if k == 6 { kit_sofa(buf, p, f, s, 40, t, t, t); }
+  else if k == 7 { kit_mesa(buf, p, f, s, 40, t, t); }
+  else { kit_train(buf, p, f, s, 40, t, t, t, t); }
+}
+
+#test "every prop stands on the ground, as big as it says, in whole triangles that fit a kind's mesh" {
+  buf: [24000 * VERTEX_WORDS] u32;
+  // the size each says at s 1: how far it reaches to the side and ahead, and its height
+  want := [PROP_KINDS * 3] f32.[5.25, 0.55, 1.34,  0.63, 0.34, 2.64,  0.97, 1.0, 1.96,  1.2, 1.07, 1.35,  0.7, 0.4, 1.64,
+                                1.5, 0.2, 2.6,  1.02, 0.45, 0.92,  7.75, 6.15, 10.75,  1.27, 9.0, 3.78];
+  for k: 0..<PROP_KINDS {
+    pen := [1] Pen.[Pen.{}];
+    kit_prop_write(buf[..], pen[..], k, 1);
+    r := kit_reach(buf[..], pen[0].n);
+    #assert !pen[0].over && pen[0].n >= 3 && pen[0].n % 3 == 0;
+    #assert r.low > -0.06 && r.low < 0.05;
+    #assert abs(r.hx - want[k * 3]) < want[k * 3] * 0.1 && abs(r.hz - want[k * 3 + 1]) < want[k * 3 + 1] * 0.15 && abs(r.top - want[k * 3 + 2]) < want[k * 3 + 2] * 0.05;
+  }
+}
+#test "a prop is twice as big at twice the size, and the same at the same size" {
+  a: [24000 * VERTEX_WORDS] u32; b: [24000 * VERTEX_WORDS] u32;
+  for k: 0..<PROP_KINDS {
+    pa := [1] Pen.[Pen.{}]; pb := [1] Pen.[Pen.{}];
+    kit_prop_write(a[..], pa[..], k, 2); kit_prop_write(b[..], pb[..], k, 1);
+    #assert pa[0].n == pb[0].n;
+    for i: 0..<pa[0].n {
+      o := i * VERTEX_WORDS;
+      for c: 0..<3 { #assert abs(f32_from_bits(a[o + c]) - 2 * f32_from_bits(b[o + c])) < 0.001; }
+    }
+    pc := [1] Pen.[Pen.{}];
+    kit_prop_write(a[..], pc[..], k, 1);
+    for i: 0..<pc[0].n * VERTEX_WORDS { #assert a[i] == b[i]; }
+  }
+}
+#test "the window is open: no part of the wall lies inside its opening, and its corners are round" {
+  buf: [24000 * VERTEX_WORDS] u32;
+  pen := [1] Pen.[Pen.{}];
+  kit_window(buf[..], pen[..], frame_at(v3(0, 0, 0), 0), 1, 40, kit_tint(1, 1, 1), kit_tint(1, 0.5, 0), kit_tint(0, 0, 0));
+  for i: 0..<pen[0].n {
+    o := i * VERTEX_WORDS;
+    x := f32_from_bits(buf[o]); y := f32_from_bits(buf[o + 1]);
+    #assert !(abs(x) < WINDOW_X - WINDOW_R && y > WINDOW_Y0 + 0.01 && y < WINDOW_Y1 - 0.01);
+  }
+  #assert abs(kit_window_half(1.45) - WINDOW_X) < 0.001 && kit_window_half(WINDOW_Y0 + 0.02) < WINDOW_X - 0.15;
+}

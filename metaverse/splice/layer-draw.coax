@@ -6,7 +6,8 @@
 //   coax/bin/coax test metaverse/splice/splice-game.coax
 SD_ROW :: 8;            // words a placed piece: x, y, z, 0, cos turn, sin turn, 0, 0 (f32 bits)
 SD_BASE :: 2;           // a placed piece's instance number is SD_BASE + its row: 0 and 1 are the world's and the live store's
-SD_PIECE_WORDS :: (40000 + FR_POSES * CW_BUDGET) * VERTEX_WORDS;   // the piece store: every kind's mesh, then the player's walk poses (front.coax)
+SD_PIECE_WORDS :: (SD_KIND_VERTS + FR_POSES * CW_BUDGET) * VERTEX_WORDS;   // the piece store: every kind's mesh, then the player's walk poses (front.coax)
+SD_KIND_VERTS :: 80000;   // the kinds' meshes' share of it: the shipped kinds take about 24,000 vertices, one of each kit at size 1 about 20,000 more (#13485)
 SD_PLACE_WORDS :: (SL_ITEMS + 1) * SD_ROW;   // the place store: a row a placed piece, and the player's
 
 SpLayerDraw :: struct {
