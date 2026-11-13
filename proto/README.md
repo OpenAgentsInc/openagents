@@ -149,7 +149,7 @@ Owning contexts (`owner` slugs, from [`docs/architecture/contexts.md`](../docs/a
 | `realm-authoring` | Realm authoring | `metaverse-engine/editor/`, `apps/metaverse-engine-desktop/`, `apps/openagents-web/worldbuilder*`, `coax/web/api/worldbuilder.c`, `coax/web/api/realms.c` |
 | `identity` | Identity and auth | `coax/web/api/auth*`, `coax/web/api/agent-wire.coax` |
 | `payments` | Payments and wallet | `pay/`, `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/`, `coax/lib/nostr/vault-wallet.coax` |
-| `coder` | Coder and agents | `coder/`, `coax/lib/agent/`, `coax/lib/microcoder/`, `coax/lib/gateway/`, `coax/lib/repo/`, `coax/web/repo/`, `coax/web/agent/` |
+| `coder` | Coder and agents | `coder/`, `coax/lib/agent/`, `coax/lib/boat/`, `coax/lib/boat/`, `coax/lib/microcoder/`, `coax/lib/gateway/`, `coax/lib/repo/`, `coax/web/repo/`, `coax/web/agent/` |
 | `chat` | Chat | `components/zeron/`, `apps/openagents-web/chat.coax`, `coax/web/api/chat.c` |
 | `projects` | Projects | `coax/web/api/private.c`, `coax/web/api/drops.c`, `coax/web/project/` |
 | `nostr` | Nostr | `nostr/`, `coax/lib/nostr/` |

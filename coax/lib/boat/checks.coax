@@ -1,0 +1,460 @@
+// The boat SDK's checks (GitHub #13474, stage 1), run against a fake: every
+// answer below is a whole HTTP response the client reads as if curl had
+// printed it, and nothing is sent. Loaded by boat.coax with #test.
+//   coax/bin/coax test --library coax/lib/boat/boat.coax
+//
+// Where the fixtures come from. GET_404, UNAUTHORIZED, MACHINE_NOT_RUNNING,
+// SSH_ARCHIVED and SAVE_LIMIT are boat's own bodies, ported from the old Rust
+// SDK's redacted captures (git show 853417f290:crates/boat/fixtures/observed/),
+// and RATE is one with its details trimmed. The rest follow boat's OpenAPI
+// file (docs.boat.dev/openapi/boat-v1.yaml, 2026-11-13) with the stage 0
+// values (docs/cloud/boat-devbox.md): box bx_fwh3xnws, large, the template
+// oa-devbox-20261113, the box_20 plan. IPs are documentation addresses; no
+// key or token appears here.
+
+BT_FX_LIMITS :: "HTTP/2 200\r\ncontent-type: application/json\r\nratelimit: \"ip\";r=9999;t=60\r\n\r\n{\"ok\":true,\"type\":\"limits.info\",\"accessTier\":\"standard\",\"blockedReason\":null,\"canStart\":true,\"checkoutRequired\":false,\"startBlockedReason\":null,\"activeSandboxes\":0,\"activeStates\":[\"provisioned\",\"cloning\",\"ready\",\"idle\",\"running\"],\"maxActiveSandboxes\":100,\"maxCreationRequestsPerMinute\":12,\"maxCreationRequestsPerDay\":200,\"starts\":{\"unlimited\":false,\"minute\":{\"limit\":12,\"used\":0,\"remaining\":12},\"hour\":{\"limit\":60,\"used\":1,\"remaining\":59},\"day\":{\"limit\":200,\"used\":4,\"remaining\":196}},\"sandboxPlanKey\":\"box_20\",\"sandboxPlanDollars\":20,\"subscriptionQuotaSeconds\":2000016,\"subscriptionRemainingSeconds\":1993104,\"billingStatus\":\"active\",\"machineTypes\":[\"small\",\"default\",\"large\"],\"wallet\":{\"balanceDollars\":-1.38}}";
+BT_FX_CREATE :: "HTTP/2 202\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"sandbox.created\",\"status\":\"provisioning\",\"ttlSeconds\":43200,\"sandbox\":{\"id\":\"bx_fwh3xnws\",\"name\":\"oa-devbox-1\",\"state\":\"provisioning\",\"error\":null,\"type\":\"large\",\"vcpu\":8,\"memoryGB\":16,\"billingMultiplier\":2,\"machineProvider\":\"baremetal\",\"url\":null,\"ip\":null,\"sshEndpoint\":null,\"createdAt\":\"2026-11-13T15:02:11.204Z\",\"updatedAt\":\"2026-11-13T15:02:13.090Z\",\"archiveAfter\":\"2026-11-14T03:02:11.204Z\",\"ttlSeconds\":43200,\"desktopAvailable\":true,\"snapshotAvailable\":true,\"environment\":\"oa-devbox\",\"environmentVersion\":3,\"stoppedAt\":null}}";
+BT_FX_GET_READY :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"sandbox.info\",\"sandbox\":{\"id\":\"bx_fwh3xnws\",\"name\":\"oa-devbox-1\",\"state\":\"ready\",\"error\":null,\"type\":\"large\",\"vcpu\":8,\"memoryGB\":16,\"billingMultiplier\":2,\"machineProvider\":\"baremetal\",\"url\":null,\"ip\":\"203.0.113.17\",\"sshEndpoint\":\"user@203.0.113.17\",\"createdAt\":\"2026-11-13T15:02:11.204Z\",\"updatedAt\":\"2026-11-13T15:02:13.090Z\",\"archiveAfter\":\"2026-11-14T03:02:11.204Z\",\"ttlSeconds\":43200,\"desktopAvailable\":true,\"snapshotAvailable\":true,\"environment\":\"oa-devbox\",\"environmentVersion\":3,\"stoppedAt\":null}}";
+BT_FX_GET_ARCHIVING :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"sandbox.info\",\"sandbox\":{\"id\":\"bx_fwh3xnws\",\"name\":\"oa-devbox-1\",\"state\":\"archiving\",\"error\":null,\"type\":\"large\",\"vcpu\":8,\"memoryGB\":16,\"billingMultiplier\":2,\"machineProvider\":\"baremetal\",\"url\":null,\"ip\":null,\"sshEndpoint\":null,\"createdAt\":\"2026-11-13T15:02:11.204Z\",\"updatedAt\":\"2026-11-13T15:02:13.090Z\",\"archiveAfter\":\"2026-11-14T03:02:11.204Z\",\"ttlSeconds\":43200,\"desktopAvailable\":true,\"snapshotAvailable\":true,\"environment\":\"oa-devbox\",\"environmentVersion\":3,\"stoppedAt\":null}}";
+BT_FX_GET_404 :: "HTTP/2 404\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":404,\"code\":\"not_found\",\"message\":\"not_found\",\"error\":{\"code\":\"not_found\",\"message\":\"not_found\",\"status\":404,\"details\":{\"error\":\"not_found\"}},\"requestId\":\"req_a322cc73a1b549da9edd7ca0f9cb3f01\"}";
+BT_FX_LIST :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"sandbox.list\",\"sandboxes\":[{\"id\":\"bx_fwh3xnws\",\"name\":\"oa-devbox-1\",\"state\":\"ready\",\"error\":null,\"type\":\"large\",\"vcpu\":8,\"memoryGB\":16,\"billingMultiplier\":2,\"machineProvider\":\"baremetal\",\"url\":null,\"ip\":\"203.0.113.17\",\"sshEndpoint\":\"user@203.0.113.17\",\"createdAt\":\"2026-11-13T15:02:11.204Z\",\"updatedAt\":\"2026-11-13T15:02:13.090Z\",\"archiveAfter\":\"2026-11-14T03:02:11.204Z\",\"ttlSeconds\":43200,\"desktopAvailable\":true,\"snapshotAvailable\":true,\"environment\":\"oa-devbox\",\"environmentVersion\":3,\"stoppedAt\":null},{\"id\":\"bx_sg2zeu8d\",\"name\":\"Box 2026-09-05 18:49\",\"state\":\"archived\",\"error\":null,\"type\":\"default\",\"vcpu\":4,\"memoryGB\":8,\"billingMultiplier\":2,\"machineProvider\":\"baremetal\",\"url\":null,\"ip\":null,\"sshEndpoint\":null,\"createdAt\":\"2026-11-13T15:02:11.204Z\",\"updatedAt\":\"2026-11-13T15:02:13.090Z\",\"archiveAfter\":\"2026-11-14T03:02:11.204Z\",\"ttlSeconds\":null,\"desktopAvailable\":true,\"snapshotAvailable\":true,\"environment\":\"base\",\"environmentVersion\":3,\"stoppedAt\":\"2026-09-05T18:49:30.530Z\"},{\"id\":\"not-an-id\",\"state\":\"ready\"}],\"pageInfo\":{\"nextCursor\":\"c_2\",\"hasMore\":true,\"limit\":100}}";
+BT_FX_STOP :: "HTTP/2 202\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"sandbox.stopping\",\"id\":\"bx_fwh3xnws\",\"status\":\"archiving\",\"operation\":{\"id\":\"stop_7k2m\",\"status\":\"pending\",\"requestedAt\":\"2026-11-13T16:00:00.000Z\",\"lastAttemptAt\":null,\"error\":null,\"endedAt\":null},\"statusUrl\":\"/api/v1/sandboxes/bx_fwh3xnws/stops/stop_7k2m\"}";
+BT_FX_RESUME_STOPPING :: "HTTP/2 409\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":409,\"code\":\"sandbox_stopping\",\"message\":\"Sandbox is stopping. Retry in a few seconds.\",\"error\":{\"code\":\"sandbox_stopping\",\"message\":\"Sandbox is stopping. Retry in a few seconds.\",\"status\":409,\"details\":{\"error\":\"sandbox_stopping\"}},\"requestId\":\"req_0c3f1e5a9b7d4e21a6f08c2d4b6e8a10\"}";
+BT_FX_RESUME :: "HTTP/2 202\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"sandbox.resuming\",\"id\":\"bx_fwh3xnws\",\"status\":\"provisioning\",\"sandbox\":{\"id\":\"bx_fwh3xnws\",\"name\":\"oa-devbox-1\",\"state\":\"provisioning\",\"error\":null,\"type\":\"large\",\"vcpu\":8,\"memoryGB\":16,\"billingMultiplier\":2,\"machineProvider\":\"baremetal\",\"url\":null,\"ip\":null,\"sshEndpoint\":null,\"createdAt\":\"2026-11-13T15:02:11.204Z\",\"updatedAt\":\"2026-11-13T15:02:13.090Z\",\"archiveAfter\":\"2026-11-14T03:02:11.204Z\",\"ttlSeconds\":43200,\"desktopAvailable\":true,\"snapshotAvailable\":true,\"environment\":\"oa-devbox\",\"environmentVersion\":3,\"stoppedAt\":null}}";
+BT_FX_RATE :: "HTTP/2 429\r\ncontent-type: application/json\r\nretry-after: 3600\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":429,\"code\":\"rate_limited\",\"message\":\"Rate limit hit: 150 box starts per day (create, fork and resume each count as one start).\",\"error\":{\"code\":\"rate_limited\",\"message\":\"Rate limit hit: 150 box starts per day (create, fork and resume each count as one start).\",\"status\":429,\"details\":{\"error\":\"rate_limited\",\"window\":\"day\",\"limit\":150,\"starts\":{\"minute\":{\"limit\":10,\"used\":0,\"remaining\":10},\"day\":{\"limit\":150,\"used\":150,\"remaining\":0}}}},\"requestId\":\"req_aff7ae485aaa4082aedd6a4a6bfd1b8d\"}";
+BT_FX_PAY :: "HTTP/2 402\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":402,\"code\":\"billing_required\",\"message\":\"Add a payment method to keep starting sandboxes.\",\"error\":{\"code\":\"billing_required\",\"message\":\"Add a payment method to keep starting sandboxes.\",\"status\":402,\"details\":{\"error\":\"billing_required\",\"billingUrl\":\"[REDACTED_billingUrl]\"}},\"requestId\":\"req_5b1d2c3e4f5a6b7c8d9e0f1a2b3c4d5e\"}";
+BT_FX_IP_LIMIT :: "HTTP/2 429\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":429,\"code\":\"IP_RATE_LIMIT_EXCEEDED\",\"message\":\"Too many requests\",\"error\":{\"code\":\"IP_RATE_LIMIT_EXCEEDED\",\"message\":\"Too many requests\",\"status\":429,\"details\":{\"error\":\"IP_RATE_LIMIT_EXCEEDED\"}},\"requestId\":\"req_9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d\",\"retryAfter\":17}";
+BT_FX_NO_MACHINE :: "HTTP/2 503\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":503,\"code\":\"no_ready_machine\",\"message\":\"No machine is ready\",\"error\":{\"code\":\"no_ready_machine\",\"message\":\"No machine is ready\",\"status\":503,\"details\":{\"error\":\"no_ready_machine\"}},\"requestId\":\"req_1f2e3d4c5b6a79881726354453627180\",\"retryAfterSeconds\":5}";
+BT_FX_UNAUTHORIZED :: "HTTP/2 401\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":401,\"code\":\"unauthorized\",\"message\":\"unauthorized\",\"error\":{\"code\":\"unauthorized\",\"message\":\"unauthorized\",\"status\":401,\"details\":{\"error\":\"unauthorized\"}},\"requestId\":\"req_438b00c8dacb44fb85bcaa02a64755c5\"}";
+BT_FX_MACHINE_NOT_RUNNING :: "HTTP/2 409\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":409,\"code\":\"machine_not_running\",\"message\":\"Box machine is not running.\",\"error\":{\"code\":\"machine_not_running\",\"message\":\"Box machine is not running.\",\"status\":409,\"details\":{\"error\":\"machine_not_running\",\"message\":\"Box machine is not running.\"}},\"requestId\":\"req_906f1e27aedd4e2d8da336cf8c749b3c\"}";
+BT_FX_SSH_ARCHIVED :: "HTTP/2 400\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":400,\"code\":\"machine_not_running\",\"message\":\"Box machine is not running yet.\",\"error\":{\"code\":\"machine_not_running\",\"message\":\"Box machine is not running yet.\",\"status\":400,\"details\":{\"success\":false,\"error\":\"machine_not_running\",\"message\":\"Box machine is not running yet.\"}},\"requestId\":\"req_b3d9252522fc4659b18f56c854fa1dea\"}";
+BT_FX_STARTING :: "HTTP/2 409\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":409,\"code\":\"sandbox_starting\",\"message\":\"Sandbox is still starting.\",\"error\":{\"code\":\"sandbox_starting\",\"message\":\"Sandbox is still starting.\",\"status\":409,\"details\":{\"error\":\"sandbox_starting\"}},\"requestId\":\"req_2a3b4c5d6e7f8091a2b3c4d5e6f70812\"}";
+BT_FX_EXPIRED :: "HTTP/2 409\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":409,\"code\":\"snapshot_data_expired\",\"message\":\"The stopped disk of this sandbox expired.\",\"error\":{\"code\":\"snapshot_data_expired\",\"message\":\"The stopped disk of this sandbox expired.\",\"status\":409,\"details\":{\"error\":\"snapshot_data_expired\"}},\"requestId\":\"req_3b4c5d6e7f8091a2b3c4d5e6f7081923\"}";
+BT_FX_RESTORING :: "HTTP/2 502\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":502,\"code\":\"sandbox_direct_failed\",\"message\":\"sandbox_restoring\",\"error\":{\"code\":\"sandbox_direct_failed\",\"status\":502,\"details\":{\"retryable\":true,\"message\":\"sandbox_restoring\"}},\"requestId\":\"req_4c5d6e7f8091a2b3c4d5e6f708192a34\"}";
+BT_FX_DIRECT_FAILED :: "HTTP/2 502\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":502,\"code\":\"sandbox_direct_failed\",\"message\":\"connection reset\",\"error\":{\"code\":\"sandbox_direct_failed\",\"status\":502,\"details\":{\"retryable\":false,\"message\":\"connection reset\"}},\"requestId\":\"req_5d6e7f8091a2b3c4d5e6f708192a3b45\"}";
+BT_FX_CMD :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"command.result\",\"success\":true,\"commandId\":\"cmd_8h2k\",\"exitCode\":0,\"signal\":null,\"oomKilled\":false,\"stdout\":\"hi\\nLinux oa-devbox-1 6.8.0\\n\",\"stderr\":\"\",\"stdoutTruncated\":false,\"stderrTruncated\":false,\"timedOut\":false,\"cwd\":\"/home/user\",\"startedAt\":\"2026-11-13T16:01:00.000Z\",\"finishedAt\":\"2026-11-13T16:01:00.040Z\"}";
+BT_FX_CMD_TIMEOUT :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"command.result\",\"success\":false,\"commandId\":\"cmd_8h2m\",\"exitCode\":null,\"signal\":\"SIGKILL\",\"stdout\":\"building...\\n\",\"stderr\":\"\",\"stdoutTruncated\":false,\"stderrTruncated\":true,\"timedOut\":true}";
+BT_FX_STARTED :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"command.started\",\"success\":true,\"commandId\":\"cmd_9q4x\",\"processId\":4242,\"pid\":91234,\"command\":\"coax/build.sh\",\"cwd\":\"/home/user/oa\",\"startedAt\":\"2026-11-13T16:02:00.000Z\",\"logPath\":\"/home/user/.boat/logs/4242.out\",\"errLogPath\":\"/home/user/.boat/logs/4242.err\"}";
+BT_FX_STATUS :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"command.status\",\"success\":true,\"processId\":4242,\"pid\":91234,\"status\":\"running\",\"known\":true,\"running\":true,\"exitCode\":null,\"stdout\":\"\",\"stderr\":\"\",\"stdoutOffset\":0,\"stderrOffset\":0,\"stdoutNextOffset\":12,\"stderrNextOffset\":3,\"more\":false}";
+BT_FX_KILL :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"command.stopped\",\"processId\":4242,\"running\":false,\"signaled\":true}";
+BT_FX_ATTACH_1 :: "HTTP/2 200\r\ncontent-type: application/x-ndjson\r\n\r\n{\"type\":\"attached\",\"processId\":4242,\"stdoutOffset\":0,\"stderrOffset\":0}\n{\"type\":\"stdout\",\"data\":\"hello\\n\",\"nextOffset\":6}\n{\"type\":\"heartbeat\"}\n{\"type\":\"stderr\",\"data\":\"warn\\n\",\"nextOffset\":5}\n{\"type\":\"reconnect\",\"stdoutOffset\":6,\"stderrOffset\":5}\n";
+BT_FX_ATTACH_2 :: "HTTP/2 200\r\ncontent-type: application/x-ndjson\r\n\r\n{\"type\":\"attached\",\"processId\":4242,\"stdoutOffset\":6,\"stderrOffset\":5}\n{\"type\":\"stdout\",\"data\":\"world\\n\",\"nextOffset\":12}\n{\"type\":\"exit\",\"status\":\"exited\",\"exitCode\":0,\"signal\":null,\"stdoutOffset\":12,\"stderrOffset\":5}\n";
+BT_FX_STREAM :: "HTTP/2 200\r\ncontent-type: application/x-ndjson\r\n\r\n{\"type\":\"started\",\"commandId\":\"cmd_s1\"}\n{\"type\":\"stdout\",\"data\":\"1\\n\"}\n{\"type\":\"stdout\",\"data\":\"2\\n\"}\n{\"type\":\"exit\",\"exitCode\":3,\"success\":false,\"timedOut\":false}\n";
+BT_FX_STREAM_ERROR :: "HTTP/2 200\r\ncontent-type: application/x-ndjson\r\n\r\n{\"type\":\"error\",\"error\":\"sandbox_direct_failed\",\"message\":\"sandbox_restoring\",\"retryable\":true}\n";
+BT_FX_WRITE :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"file.written\",\"success\":true,\"path\":\"/home/user/.oa-turn.json\",\"encoding\":\"utf8\",\"size\":17}";
+BT_FX_READ :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"file.read\",\"success\":true,\"path\":\"/home/user/a b.txt\",\"encoding\":\"utf8\",\"size\":6,\"content\":\"line\\n\\u00e9\"}";
+BT_FX_SAVE :: "HTTP/2 202\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"savedSnapshot.saving\",\"status\":\"saving\",\"snapshot\":{\"name\":\"oa-devbox-20261114\",\"status\":\"saving\",\"sourceSandboxId\":\"bx_fwh3xnws\",\"type\":\"large\",\"createdAt\":\"2026-11-14T06:00:00.000Z\"}}";
+BT_FX_SAVED_LIST :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"savedSnapshot.list\",\"snapshots\":[{\"name\":\"oa-devbox-20261113\",\"status\":\"ready\",\"sourceSandboxId\":\"bx_fwh3xnws\",\"snapshotId\":\"snap_1\",\"type\":\"large\",\"sizeBytes\":5261334937,\"createdAt\":\"2026-11-13T15:40:00.000Z\"},{\"name\":\"oa-devbox-20261114\",\"status\":\"saving\",\"sourceSandboxId\":\"bx_fwh3xnws\",\"createdAt\":\"2026-11-14T06:00:00.000Z\"}],\"allowance\":{\"included\":10,\"used\":2}}";
+BT_FX_SAVE_LIMIT :: "HTTP/2 409\r\ncontent-type: application/json\r\n\r\n{\"ok\":false,\"type\":\"sandbox.error\",\"status\":409,\"code\":\"named_snapshot_limit\",\"message\":\"You can keep up to 10 named snapshots.\",\"error\":{\"code\":\"named_snapshot_limit\",\"message\":\"You can keep up to 10 named snapshots.\",\"status\":409,\"details\":{\"error\":\"named_snapshot_limit\"}},\"requestId\":\"req_9b847e2849fd41e48ef5578d373ba84e\"}";
+BT_FX_SSH :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"success\":true,\"machineIp\":\"203.0.113.17\",\"sshUser\":\"user\",\"sshEndpoint\":\"user@203.0.113.17\",\"hostKey\":\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleHostKeyOnlyForChecks\"}";
+BT_FX_USAGE :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"sandbox.usage\",\"sandboxId\":\"bx_fwh3xnws\",\"sandboxType\":\"large\",\"billingMultiplier\":2,\"since\":\"2026-11-13T00:00:00.000Z\",\"until\":\"2026-11-13T16:00:00.000Z\",\"seconds\":3456,\"dollars\":0.06912,\"secondsPerDollar\":50000,\"running\":true}";
+BT_FX_ENVS :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"environment.list\",\"environments\":[{\"id\":\"env_base\",\"name\":\"base\",\"isDefault\":true,\"envContents\":\"\",\"secretFiles\":[]},{\"id\":\"env_7c1q\",\"name\":\"oa-devbox\",\"isDefault\":false,\"envContents\":\"CLAUDE_CODE_OAUTH_TOKEN=NOT-A-REAL-TOKEN-CHECKS-ONLY\\n\",\"secretFiles\":[]}]}";
+BT_FX_ENV_SET :: "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"success\":true,\"versionId\":\"envv_4\",\"versionNumber\":4}";
+BT_FX_DELETE :: "HTTP/2 202\r\ncontent-type: application/json\r\n\r\n{\"ok\":true,\"type\":\"sandbox.deleting\",\"operation\":{\"id\":\"del_1\",\"status\":\"pending\"}}";
+BT_FX_NOT_JSON :: "HTTP/2 502 \r\ncontent-type: text/html\r\n\r\n<html>Bad gateway</html>";
+BT_FX_OK_NOT_JSON :: "HTTP/2 200 \r\ncontent-type: text/html\r\n\r\n<html>hi</html>";
+
+BtCheck :: struct {
+  out: [65536] u8;
+  arena: [65536] u8;
+  log: [16384] u8;
+  ar: [1] ClArena;
+  fake: [1] BtFake;
+}
+
+bt_check_init :: (k: [] BtCheck, answers: [] string) -> BoatClient {
+  k[0].ar[0] = ClArena.{buf = k[0].arena[..]};
+  k[0].fake[0] = BtFake.{answers = answers, log = k[0].log[..]};
+  return BoatClient.{base = "http://127.0.0.1:8790/api/v1", fake = k[0].fake[..]};
+}
+
+bt_check_get :: (c: BoatClient, k: [] BtCheck) -> BtError { k[0].ar[0].at = 0; return bt_get(c, "bx_fwh3xnws", k[0].out[..], k[0].ar[..]).error; }
+
+bt_check_log :: (k: [] BtCheck) -> string { return cast(string) k[0].log[0..<k[0].fake[0].nlog]; }
+
+bt_has :: (s: string, part: string) -> bool {
+  if part.count == 0 { return true; }
+  i := 0;
+  while i + part.count <= s.count { if cast(string) s[i..<i + part.count] == part { return true; } i += 1; }
+  return false;
+}
+
+#test "names: sandbox ids are bx_ and boat's 8 letters; names go into paths plain" {
+  #assert bt_id_ok("bx_fwh3xnws") && bt_id_ok("bx_sg2zeu8d") && bt_id_ok("bx_23456789") && bt_id_ok("bx_zzzzzzzz");
+  #assert !bt_id_ok("bx_fwh3xnw") && !bt_id_ok("bx_fwh3xnwss") && !bt_id_ok("bx-fwh3xnws") && !bt_id_ok("ax_fwh3xnws") && !bt_id_ok("by_fwh3xnws") && !bt_id_ok("bx.fwh3xnws");
+  #assert !bt_id_ok("bx_fwh3xnwl") && !bt_id_ok("bx_fwh3xnwo") && !bt_id_ok("bx_fwh3xnwi") && !bt_id_ok("bx_fwh3xnw1") && !bt_id_ok("bx_fwh3xnw0") && !bt_id_ok("bx_FWH3XNWS") && !bt_id_ok("bx_fwh3xn/s");
+  #assert bt_name_ok("oa-devbox-20261113") && bt_name_ok("a") && bt_name_ok("CLAUDE_CODE_OAUTH_TOKEN") && bt_name_ok("v1.2");
+  #assert !bt_name_ok("") && !bt_name_ok("-x") && !bt_name_ok(".x") && !bt_name_ok("a/b") && !bt_name_ok("a b") && !bt_name_ok("a?b");
+  #assert bt_name_ok("0123456789012345678901234567890123456789012345678901234567890123") && !bt_name_ok("01234567890123456789012345678901234567890123456789012345678901234");
+  #assert bt_type_ok("small") && bt_type_ok("default") && bt_type_ok("large") && bt_type_ok("xlarge") && !bt_type_ok("huge") && !bt_type_ok("");
+}
+
+#test "create: from, type, environment and a TTL; noEnv when no environment; never env" {
+  b: [512] u8;
+  #assert bt_create_body(b[..], BtCreate.{from = "oa-devbox-20261113", environment = "oa-devbox", name = "oa-devbox-2", ttl_s = 43200}).text == "{\"type\":\"large\",\"from\":\"oa-devbox-20261113\",\"name\":\"oa-devbox-2\",\"environment\":\"oa-devbox\",\"ttlSeconds\":43200}";
+  #assert bt_create_body(b[..], BtCreate.{type = "small"}).text == "{\"type\":\"small\",\"noEnv\":true}";
+  #assert bt_create_body(b[..], BtCreate.{ttl_s = 0}).text == "{\"type\":\"large\",\"noEnv\":true,\"ttlSeconds\":null}";
+  #assert bt_create_body(b[..], BtCreate.{type = "huge"}).problem == "the type is small, default, large or xlarge";
+  #assert bt_create_body(b[..], BtCreate.{from = "a b"}).text == "" && bt_create_body(b[..], BtCreate.{environment = "x\"y"}).text == "" && bt_create_body(b[..], BtCreate.{name = "/"}).text == "";
+  small: [20] u8;
+  #assert bt_create_body(small[..], BtCreate.{}).problem == "the request does not fit its buffer";
+}
+
+#test "resume, stop, update: the bodies boat takes" {
+  b: [256] u8;
+  #assert bt_resume_body(b[..], BtResume.{}).text == "{\"failFast\":true}";
+  #assert bt_resume_body(b[..], BtResume.{type = "large", environment = "oa-devbox", ttl_s = 3600}).text == "{\"failFast\":true,\"type\":\"large\",\"environment\":\"oa-devbox\",\"ttlSeconds\":3600}";
+  #assert bt_resume_body(b[..], BtResume.{type = "tiny"}).text == "" && bt_resume_body(b[..], BtResume.{environment = "a b"}).text == "";
+  #assert bt_stop_body(b[..], false).text == "{}" && bt_stop_body(b[..], true).text == "{\"force\":true}";
+  #assert bt_update_body(b[..], "", 28800).text == "{\"ttlSeconds\":28800}";
+  #assert bt_update_body(b[..], "box-2", 0).text == "{\"name\":\"box-2\",\"ttlSeconds\":null}";
+  #assert bt_update_body(b[..], "box-2", -1).text == "{\"name\":\"box-2\"}";
+  #assert bt_update_body(b[..], "", -1).problem == "nothing to change" && bt_update_body(b[..], "a b", 5).text == "";
+}
+
+#test "commands: synchronous within 600 s, streamed, detached with no timeout" {
+  b: [512] u8;
+  #assert bt_command_body(b[..], "echo hi && uname -a", "", 0, BtMode.sync).text == "{\"command\":\"echo hi && uname -a\"}";
+  #assert bt_command_body(b[..], "npm test", "/home/user/oa", 600, BtMode.stream).text == "{\"command\":\"npm test\",\"cwd\":\"/home/user/oa\",\"timeoutSeconds\":600,\"stream\":true}";
+  #assert bt_command_body(b[..], "coax/build.sh", "/home/user/oa", 0, BtMode.detached).text == "{\"command\":\"coax/build.sh\",\"cwd\":\"/home/user/oa\",\"detached\":true}";
+  #assert bt_command_body(b[..], "x", "", 601, BtMode.sync).problem == "a command's timeout is 1 to 600 seconds; run longer work detached";
+  #assert bt_command_body(b[..], "x", "", -1, BtMode.sync).text == "";
+  #assert bt_command_body(b[..], "x", "", 60, BtMode.detached).problem == "a detached command takes no timeout";
+  #assert bt_command_body(b[..], "", "", 0, BtMode.sync).problem == "no command";
+  #assert bt_command_body(b[..], "say \"hi\"\n", "", 1, BtMode.sync).text == "{\"command\":\"say \\\"hi\\\"\\n\",\"timeoutSeconds\":1}";
+}
+
+#test "files, saved snapshots, SSH keys, environments and their variables" {
+  b: [512] u8;
+  #assert bt_file_body(b[..], "/home/user/t.json", "{\"a\":1}", false).text == "{\"path\":\"/home/user/t.json\",\"content\":\"{\\\"a\\\":1}\"}";
+  #assert bt_file_body(b[..], "/x", "aGk=", true).text == "{\"path\":\"/x\",\"content\":\"aGk=\",\"encoding\":\"base64\"}";
+  #assert bt_file_body(b[..], "x", "", false).problem == "a file path is absolute" && bt_file_body(b[..], "", "", false).text == "";
+  #assert bt_save_body(b[..], "bx_fwh3xnws", "oa-devbox-20261114").text == "{\"sandboxId\":\"bx_fwh3xnws\",\"name\":\"oa-devbox-20261114\"}";
+  #assert bt_save_body(b[..], "bx_nope", "a").text == "" && bt_save_body(b[..], "bx_fwh3xnws", "a b").text == "";
+  #assert bt_sshkey_body(b[..], "ssh-ed25519 AAAAC3Nza oa@mac").text == "{\"key\":\"ssh-ed25519 AAAAC3Nza oa@mac\"}";
+  #assert bt_sshkey_body(b[..], "ecdsa-sha2-nistp256 AAAA").text == "{\"key\":\"ecdsa-sha2-nistp256 AAAA\"}";
+  #assert bt_sshkey_body(b[..], "-----BEGIN OPENSSH PRIVATE KEY-----").problem == "not an OpenSSH public key";
+  #assert bt_sshkey_body(b[..], "ssh-ed25519 AAAA\nssh-rsa B").problem == "a public key is one line" && bt_sshkey_body(b[..], "ssh-ed2").text == "";
+  #assert bt_env_body(b[..], "oa-devbox").text == "{\"name\":\"oa-devbox\"}" && bt_env_body(b[..], "a b").text == "";
+  #assert bt_var_body(b[..], "v\"1").text == "{\"value\":\"v\\\"1\"}" && bt_var_body(b[..], "").text == "";
+}
+
+#test "paths: ids, process ids, attach offsets, list filters, usage, files, names" {
+  b: [512] u8;
+  #assert bt_sandbox_path(b[..], "bx_fwh3xnws", "") == "/sandboxes/bx_fwh3xnws";
+  #assert bt_sandbox_path(b[..], "bx_fwh3xnws", "/stop") == "/sandboxes/bx_fwh3xnws/stop";
+  #assert bt_sandbox_path(b[..], "../limits", "") == "";
+  #assert bt_process_path(b[..], "bx_fwh3xnws", 4242, "") == "/sandboxes/bx_fwh3xnws/commands/4242" && bt_process_path(b[..], "bx_fwh3xnws", 0, "") == "";
+  #assert bt_attach_path(b[..], "bx_fwh3xnws", 4242, BtCursor.{stdout = 6, stderr = 5}) == "/sandboxes/bx_fwh3xnws/commands/4242/stream?stdoutOffset=6&stderrOffset=5";
+  #assert bt_attach_path(b[..], "bx_fwh3xnws", 4242, BtCursor.{stdout = -1}) == "" && bt_attach_path(b[..], "bx_x", 1, BtCursor.{}) == "";
+  #assert bt_list_path(b[..], "", "", "", 0) == "/sandboxes?limit=100";
+  #assert bt_list_path(b[..], "ready", "oa-devbox", "c_2", 200) == "/sandboxes?limit=200&state=ready&namePrefix=oa-devbox&cursor=c_2";
+  #assert bt_list_path(b[..], "ready&x=1", "", "", 0) == "" && bt_list_path(b[..], "", "", "", 201) == "" && bt_list_path(b[..], "", "", "", -1) == "";
+  #assert bt_usage_path(b[..], "bx_fwh3xnws", "2026-11-13T00:00:00.000Z") == "/sandboxes/bx_fwh3xnws/usage?since=2026-11-13T00:00:00.000Z";
+  #assert bt_usage_path(b[..], "bx_fwh3xnws", "") == "/sandboxes/bx_fwh3xnws/usage" && bt_usage_path(b[..], "bx_fwh3xnws", "a b") == "";
+  #assert bt_file_path(b[..], "bx_fwh3xnws", "/home/user/a b&c=é.txt") == "/sandboxes/bx_fwh3xnws/files?path=/home/user/a%20b%26c%3D%C3%A9.txt";
+  #assert bt_file_path(b[..], "bx_fwh3xnws", "rel") == "" && bt_file_path(b[..], "bx_q", "/x") == "";
+  #assert bt_named_path(b[..], "/saved-snapshots/", "oa-devbox-20261113", "") == "/saved-snapshots/oa-devbox-20261113" && bt_named_path(b[..], "/saved-snapshots/", "../x", "") == "";
+}
+
+#test "the client: hosted boat only with BOAT_HOSTED=1, http only on loopback" {
+  #assert bt_host_of("https://boat.dev/api/v1") == "boat.dev" && bt_host_of("http://127.0.0.1:8790/api/v1") == "127.0.0.1" && bt_host_of("http://[::1]:80/x") == "[::1]" && bt_host_of("ftp://x") == "";
+  #assert bt_client_problem(BoatClient.{}) == "hosted boat is opt-in: set BOAT_HOSTED=1";
+  #assert bt_client_problem(BoatClient.{hosted = true}) == "";
+  #assert bt_client_problem(BoatClient.{base = "https://api.boat.dev/v1"}) == "hosted boat is opt-in: set BOAT_HOSTED=1";
+  #assert bt_client_problem(BoatClient.{base = "https://ascii.dev/api/box/v1"}) == "hosted boat is opt-in: set BOAT_HOSTED=1";
+  #assert bt_client_problem(BoatClient.{base = "https://boat.openagents.com/api/v1"}) == "";
+  #assert bt_client_problem(BoatClient.{base = "https://notboat.dev/v1"}) == "";
+  #assert bt_client_problem(BoatClient.{base = "http://boat.internal/v1"}) == "plain http only on loopback";
+  #assert bt_client_problem(BoatClient.{base = "http://localhost:9/v1"}) == "" && bt_client_problem(BoatClient.{base = "http://[::1]:9/v1"}) == "";
+  #assert bt_client_problem(BoatClient.{base = "https://x/v1?k=1"}) == "the base URL holds a character it can't";
+  #assert bt_client_problem(BoatClient.{base = "https://x/v 1"}) != "" && bt_client_problem(BoatClient.{base = ""}) == "no base URL" && bt_client_problem(BoatClient.{base = "boat.dev"}) == "the base URL is not http(s)://HOST/...";
+  #assert bt_client_problem(BoatClient.{base = "https://x/v1", key_env = "A B"}) == "key_env must be a plain variable name";
+  k: [1] BtCheck; answers: [1] string;
+  c := bt_check_init(k[..], answers[0..<0]);
+  c.base = "https://boat.dev/api/v1";
+  r := bt_limits(c, k[0].out[..], k[0].ar[..]);
+  #assert r.error.kind == BtErrKind.config && bt_check_log(k[..]) == "";
+}
+
+#test "limits: starts left, boxes running, the plan" {
+  k: [1] BtCheck; answers := [1] string.[BT_FX_LIMITS];
+  c := bt_check_init(k[..], answers[..]);
+  r := bt_limits(c, k[0].out[..], k[0].ar[..]);
+  #assert !bt_failed(r.error) && r.status == 200 && bt_check_log(k[..]) == "GET /limits\n";
+  l := bt_read_limits(k[0].ar[..], r.body);
+  #assert l.ok && l.can_start && l.active == 0 && l.max_active == 100 && l.plan == "box_20" && l.billing == "active";
+  #assert l.minute.remaining == 12 && l.hour.used == 1 && l.day.limit == 200 && l.day.remaining == 196 && l.included_left_s == 1993104 && l.blocked == "";
+  #assert !bt_read_limits(k[0].ar[..], "{}").ok;
+}
+
+#test "create, then wait: provisioning, then ready; the idempotency key goes as a header" {
+  k: [1] BtCheck; answers := [3] string.[BT_FX_CREATE, BT_FX_GET_ARCHIVING, BT_FX_GET_READY];
+  c := bt_check_init(k[..], answers[..]);
+  r := bt_create(c, BtCreate.{from = "oa-devbox-20261113", environment = "oa-devbox", ttl_s = 43200}, "6f9619ff-8b86", k[0].out[..], k[0].ar[..]);
+  #assert !bt_failed(r.error) && r.status == 202;
+  s := bt_read_sandbox(k[0].ar[..], r.body);
+  #assert s.ok && s.id == "bx_fwh3xnws" && s.state == "provisioning" && !bt_up(s) && s.type == "large" && s.vcpu == 8 && s.memory_gb == 16 && s.environment == "oa-devbox" && s.ttl_s == 43200 && s.ip == "";
+  w := bt_wait_up(c, s.id, 10, k[0].out[..], k[0].ar[..]);
+  #assert !bt_failed(w.error) && w.polls == 2 && bt_up(w.sandbox) && w.sandbox.ip == "203.0.113.17" && w.sandbox.ssh == "user@203.0.113.17" && w.sandbox.archive_after == "2026-11-14T03:02:11.204Z";
+  #assert bt_check_log(k[..]) == "POST /sandboxes [Idempotency-Key] {\"type\":\"large\",\"from\":\"oa-devbox-20261113\",\"environment\":\"oa-devbox\",\"ttlSeconds\":43200}\nGET /sandboxes/bx_fwh3xnws\nGET /sandboxes/bx_fwh3xnws\n";
+  r = bt_create(c, BtCreate.{}, "a b", k[0].out[..], k[0].ar[..]);
+  #assert r.error.kind == BtErrKind.config;
+}
+
+#test "wait: a box that never comes up, one that breaks, one that is gone" {
+  k: [1] BtCheck; answers := [3] string.[BT_FX_GET_ARCHIVING, BT_FX_GET_ARCHIVING, BT_FX_GET_ARCHIVING];
+  c := bt_check_init(k[..], answers[..]);
+  w := bt_wait_up(c, "bx_fwh3xnws", 4, k[0].out[..], k[0].ar[..]);
+  #assert w.error.kind == BtErrKind.deadline && w.polls == 2 && bt_down(w.sandbox);
+  k2: [1] BtCheck; a2 := [1] string.[BT_FX_GET_404];
+  c2 := bt_check_init(k2[..], a2[..]);
+  w = bt_wait_up(c2, "bx_fwh3xnws", 60, k2[0].out[..], k2[0].ar[..]);
+  #assert w.error.kind == BtErrKind.not_found && w.polls == 1 && w.error.request_id == "req_a322cc73a1b549da9edd7ca0f9cb3f01";
+  k3: [1] BtCheck; a3 := [1] string.["HTTP/2 200 \r\n\r\n{\"ok\":true,\"type\":\"sandbox.info\",\"sandbox\":{\"id\":\"bx_fwh3xnws\",\"state\":\"error\",\"error\":\"boot failed\"}}"];
+  c3 := bt_check_init(k3[..], a3[..]);
+  w = bt_wait_up(c3, "bx_fwh3xnws", 60, k3[0].out[..], k3[0].ar[..]);
+  #assert w.error.kind == BtErrKind.not_running && w.error.code == "error" && bt_broken(w.sandbox) && w.sandbox.error == "boot failed";
+  k4: [1] BtCheck; a4 := [2] string.[BT_FX_NO_MACHINE, BT_FX_GET_READY];
+  c4 := bt_check_init(k4[..], a4[..]);
+  w = bt_wait_up(c4, "bx_fwh3xnws", 60, k4[0].out[..], k4[0].ar[..]);
+  #assert !bt_failed(w.error) && w.polls == 2;
+  k5: [1] BtCheck; a5 := [1] string.["HTTP/2 200 \r\n\r\n{\"ok\":true}"];
+  c5 := bt_check_init(k5[..], a5[..]);
+  w = bt_wait_up(c5, "bx_fwh3xnws", 60, k5[0].out[..], k5[0].ar[..]);
+  #assert w.error.kind == BtErrKind.decode;
+}
+
+#test "list: a page of boxes and the cursor of the next" {
+  k: [1] BtCheck; answers := [1] string.[BT_FX_LIST];
+  c := bt_check_init(k[..], answers[..]);
+  r := bt_list(c, "", "oa-devbox", "", k[0].out[..], k[0].ar[..]);
+  out: [8] BtSandbox;
+  n := bt_read_list(k[0].ar[..], r.body, out[..]);
+  #assert n == 2 && out[0].id == "bx_fwh3xnws" && bt_up(out[0]) && out[1].state == "archived" && bt_down(out[1]) && out[1].ttl_s == -1 && out[1].stopped == "2026-09-05T18:49:30.530Z";
+  #assert bt_next_cursor(k[0].ar[..], r.body) == "c_2" && bt_check_log(k[..]) == "GET /sandboxes?limit=100&namePrefix=oa-devbox\n";
+  one: [1] BtSandbox;
+  #assert bt_read_list(k[0].ar[..], r.body, one[..]) == 1 && bt_read_list(k[0].ar[..], "{}", one[..]) == -1;
+  #assert bt_next_cursor(k[0].ar[..], "{\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"c_3\"}}") == "";
+}
+
+#test "stop answers while the box is still archiving; a resume then is refused as stopping, and retried" {
+  k: [1] BtCheck; answers := [3] string.[BT_FX_STOP, BT_FX_RESUME_STOPPING, BT_FX_RESUME];
+  c := bt_check_init(k[..], answers[..]);
+  r := bt_stop(c, "bx_fwh3xnws", false, k[0].out[..], k[0].ar[..]);
+  a := bt_read_action(k[0].ar[..], r.body);
+  #assert !bt_failed(r.error) && a.status == "archiving" && a.stop_id == "stop_7k2m" && a.stop_status == "pending";
+  r = bt_resume(c, "bx_fwh3xnws", BtResume.{ttl_s = 43200}, k[0].out[..], k[0].ar[..]);
+  #assert r.error.kind == BtErrKind.stopping && r.error.retryable && r.error.code == "sandbox_stopping" && r.status == 409;
+  r = bt_resume(c, "bx_fwh3xnws", BtResume.{ttl_s = 43200}, k[0].out[..], k[0].ar[..]);
+  #assert !bt_failed(r.error) && bt_read_sandbox(k[0].ar[..], r.body).state == "provisioning";
+  #assert bt_check_log(k[..]) == "POST /sandboxes/bx_fwh3xnws/stop {}\nPOST /sandboxes/bx_fwh3xnws/resume {\"failFast\":true,\"ttlSeconds\":43200}\nPOST /sandboxes/bx_fwh3xnws/resume {\"failFast\":true,\"ttlSeconds\":43200}\n";
+  r = bt_stop(c, "nope", false, k[0].out[..], k[0].ar[..]);
+  #assert r.error.kind == BtErrKind.config;
+  r = bt_resume(c, "bx_fwh3xnws", BtResume.{type = "huge"}, k[0].out[..], k[0].ar[..]);
+  #assert r.error.kind == BtErrKind.config && r.error.why == "the type is small, default, large or xlarge";
+}
+
+#test "every error kind, from boat's bodies: code, request id, wait, retryable" {
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  k: [1] BtCheck;
+  fx := [16] string.[BT_FX_GET_404, BT_FX_RATE, BT_FX_PAY, BT_FX_IP_LIMIT, BT_FX_NO_MACHINE, BT_FX_UNAUTHORIZED, BT_FX_MACHINE_NOT_RUNNING, BT_FX_SSH_ARCHIVED,
+                     BT_FX_STARTING, BT_FX_EXPIRED, BT_FX_RESTORING, BT_FX_DIRECT_FAILED, BT_FX_SAVE_LIMIT, BT_FX_NOT_JSON, BT_FX_OK_NOT_JSON, BT_FX_RESUME_STOPPING];
+  c := bt_check_init(k[..], fx[..]);
+  e: BtError;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.not_found && e.status == 404 && e.code == "not_found" && !e.retryable;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.rate_limited && e.retry_after_s == 3600 && e.retryable && e.code == "rate_limited" && e.request_id == "req_aff7ae485aaa4082aedd6a4a6bfd1b8d";
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.payment_required && e.code == "billing_required" && !e.retryable;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.rate_limited && e.retry_after_s == 17 && e.code == "IP_RATE_LIMIT_EXCEEDED";
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.unavailable && e.retry_after_s == 5 && e.retryable;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.unauthorized && e.status == 401;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.not_running && e.status == 409 && !e.retryable;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.not_running && e.status == 400;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.starting && e.retryable;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.snapshot_expired && !e.retryable;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.restoring && e.retryable && e.status == 502;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.may_be_running && !e.retryable;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.http && e.code == "named_snapshot_limit" && e.status == 409;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.server && e.status == 502 && e.code == "";
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.decode && e.status == 200;
+  e = bt_check_get(c, k[..]); #assert e.kind == BtErrKind.stopping;
+  // what the kinds are called, and the ones the bodies above don't reach
+  #assert bt_kind_name(BtErrKind.none) == "none" && bt_kind_name(BtErrKind.may_be_running) == "may_be_running" && bt_kind_name(BtErrKind.http) == "http" && bt_kind_name(BtErrKind.provider_not_configured) == "provider_not_configured";
+  #assert bt_error(ar[..], 409, "{\"code\":\"provider_not_configured\"}", 0).kind == BtErrKind.provider_not_configured;
+  #assert bt_error(ar[..], 409, "{\"error\":{\"code\":\"idempotency_in_progress\"}}", 0).kind == BtErrKind.stopping;
+  #assert bt_error(ar[..], 413, "{\"code\":\"file_too_large\"}", 0).kind == BtErrKind.too_large;
+  #assert bt_error(ar[..], 500, "{\"code\":\"http_500\"}", 0).kind == BtErrKind.server && bt_error(ar[..], 403, "{}", 0).kind == BtErrKind.unauthorized;
+  #assert bt_error(ar[..], 400, "{\"code\":\"invalid_json\"}", 0).kind == BtErrKind.http && bt_error(ar[..], 0, "", 0).kind == BtErrKind.transport;
+  #assert !bt_failed(bt_error(ar[..], 204, "", 0)) && !bt_failed(bt_error(ar[..], 200, "{\"ok\":true}", 0)) && bt_error(ar[..], 200, "{\"ok\":false}", 0).kind == BtErrKind.decode;
+}
+
+#test "transport: no answer left in the fake reads as unreachable; an answer too big for its buffer is too_large" {
+  k: [1] BtCheck; answers: [1] string;
+  c := bt_check_init(k[..], answers[0..<0]);
+  r := bt_get(c, "bx_fwh3xnws", k[0].out[..], k[0].ar[..]);
+  #assert r.error.kind == BtErrKind.transport && r.status == 0 && r.error.why == "the host is unreachable";
+  k2: [1] BtCheck; a2 := [1] string.[BT_FX_LIST];
+  c2 := bt_check_init(k2[..], a2[..]);
+  tiny: [40] u8;
+  r = bt_get(c2, "bx_fwh3xnws", tiny[..], k2[0].ar[..]);
+  #assert r.error.kind == BtErrKind.too_large && r.status == 200;
+  r = bt_get(c2, "../x", tiny[..], k2[0].ar[..]);
+  #assert r.error.kind == BtErrKind.config && r.error.why == "the request names no valid path (a bad id or name?)";
+}
+
+#test "a synchronous command: its output; one past its timeout is killed" {
+  k: [1] BtCheck; answers := [3] string.[BT_FX_CMD, BT_FX_CMD_TIMEOUT, BT_FX_MACHINE_NOT_RUNNING];
+  c := bt_check_init(k[..], answers[..]);
+  r := bt_run(c, "bx_fwh3xnws", "echo hi && uname -a", "", 30, k[0].out[..], k[0].ar[..]);
+  m := bt_read_command(k[0].ar[..], r.body);
+  #assert m.ok && m.success && m.exit_code == 0 && m.stdout == "hi\nLinux oa-devbox-1 6.8.0\n" && m.stderr == "" && !m.timed_out && !m.truncated && m.command_id == "cmd_8h2k";
+  r = bt_run(c, "bx_fwh3xnws", "coax/build.sh", "/home/user/oa", 600, k[0].out[..], k[0].ar[..]);
+  m = bt_read_command(k[0].ar[..], r.body);
+  #assert m.ok && !m.success && m.timed_out && m.exit_code == -1 && m.truncated;
+  r = bt_run(c, "bx_fwh3xnws", "true", "", 5, k[0].out[..], k[0].ar[..]);
+  #assert r.error.kind == BtErrKind.not_running;
+  r = bt_run(c, "bx_fwh3xnws", "true", "", 900, k[0].out[..], k[0].ar[..]);
+  #assert r.error.kind == BtErrKind.config;
+  #assert bt_check_log(k[..]) == "POST /sandboxes/bx_fwh3xnws/commands {\"command\":\"echo hi && uname -a\",\"timeoutSeconds\":30}\nPOST /sandboxes/bx_fwh3xnws/commands {\"command\":\"coax/build.sh\",\"cwd\":\"/home/user/oa\",\"timeoutSeconds\":600}\nPOST /sandboxes/bx_fwh3xnws/commands {\"command\":\"true\",\"timeoutSeconds\":5}\n";
+}
+
+#test "detached: start, attach, reconnect from the stored cursor, every byte once, then status and kill" {
+  k: [1] BtCheck; answers := [5] string.[BT_FX_STARTED, BT_FX_ATTACH_1, BT_FX_ATTACH_2, BT_FX_STATUS, BT_FX_KILL];
+  c := bt_check_init(k[..], answers[..]);
+  r := bt_detach(c, "bx_fwh3xnws", "coax/build.sh", "/home/user/oa", k[0].out[..], k[0].ar[..]);
+  s := bt_read_started(k[0].ar[..], r.body);
+  #assert s.ok && s.pid == 4242 && s.command_id == "cmd_9q4x";
+  f: [1] BtFollow; line: [4096] u8;
+  got: [64] u8; ng := 0; kinds: [16] BtFrameKind; nk := 0;
+  at := BtCursor.{};
+  for round: 0..<3 {
+    e := bt_attach(c, f[..], "bx_fwh3xnws", s.pid, at, line[..]);
+    #assert !bt_failed(e);
+    for guard: 0..<20 {
+      nx := bt_frame_next(f[..], k[0].ar[..], 0);
+      if !nx.got { break; }
+      kinds[nk] = nx.frame.kind; nk += 1;
+      if nx.frame.kind == BtFrameKind.stdout { for ch: nx.frame.data { got[ng] = ch; ng += 1; } }
+    }
+    at = f[0].at;
+    if kinds[nk - 1] == BtFrameKind.exit { break; }
+  }
+  #assert cast(string) got[0..<ng] == "hello\nworld\n" && at.stdout == 12 && at.stderr == 5 && nk == 8;
+  #assert kinds[0] == BtFrameKind.attached && kinds[2] == BtFrameKind.heartbeat && kinds[3] == BtFrameKind.stderr && kinds[4] == BtFrameKind.reconnect && kinds[7] == BtFrameKind.exit;
+  r = bt_status(c, "bx_fwh3xnws", s.pid, k[0].out[..], k[0].ar[..]);
+  st := bt_read_status(k[0].ar[..], r.body);
+  #assert st.ok && st.running && st.status == "running" && st.exit_code == -1 && st.next.stdout == 12 && st.next.stderr == 3;
+  r = bt_kill(c, "bx_fwh3xnws", s.pid, k[0].out[..], k[0].ar[..]);
+  #assert !bt_failed(r.error);
+  #assert bt_check_log(k[..]) == "POST /sandboxes/bx_fwh3xnws/commands {\"command\":\"coax/build.sh\",\"cwd\":\"/home/user/oa\",\"detached\":true}\nGET /sandboxes/bx_fwh3xnws/commands/4242/stream?stdoutOffset=0&stderrOffset=0\nGET /sandboxes/bx_fwh3xnws/commands/4242/stream?stdoutOffset=6&stderrOffset=5\nGET /sandboxes/bx_fwh3xnws/commands/4242\nDELETE /sandboxes/bx_fwh3xnws/commands/4242\n";
+}
+
+#test "a streamed command: started, output, exit; a refused open and a cut stream say why" {
+  k: [1] BtCheck; answers := [4] string.[BT_FX_STREAM, BT_FX_STREAM_ERROR, BT_FX_MACHINE_NOT_RUNNING, "HTTP/2 200 \r\n\r\n{\"type\":\"stdout\",\"data\":\"x\"}\n"];
+  c := bt_check_init(k[..], answers[..]);
+  f: [1] BtFollow; line: [4096] u8;
+  #assert !bt_failed(bt_stream(c, f[..], "bx_fwh3xnws", "seq 2; exit 3", "", 60, line[..]));
+  fr := bt_frame_next(f[..], k[0].ar[..], 0);     // a frame's strings live until the next line
+  #assert fr.got && fr.frame.kind == BtFrameKind.started && fr.frame.command_id == "cmd_s1";
+  fr = bt_frame_next(f[..], k[0].ar[..], 0); #assert fr.got && fr.frame.kind == BtFrameKind.stdout && fr.frame.data == "1\n";
+  fr = bt_frame_next(f[..], k[0].ar[..], 0); #assert fr.got && fr.frame.data == "2\n";
+  fr = bt_frame_next(f[..], k[0].ar[..], 0);
+  #assert fr.got && fr.frame.kind == BtFrameKind.exit && fr.frame.exit_code == 3 && bt_frame_last(fr.frame) && f[0].done && !bt_failed(f[0].error);
+  #assert !bt_frame_next(f[..], k[0].ar[..], 0).got;
+  #assert !bt_failed(bt_stream(c, f[..], "bx_fwh3xnws", "true", "", 5, line[..]));
+  nx := bt_frame_next(f[..], k[0].ar[..], 0);
+  #assert nx.got && nx.frame.kind == BtFrameKind.error && nx.frame.retryable && nx.frame.error == "sandbox_direct_failed" && f[0].done;
+  #assert !bt_failed(bt_stream(c, f[..], "bx_fwh3xnws", "true", "", 5, line[..]));
+  nx = bt_frame_next(f[..], k[0].ar[..], 0);
+  #assert !nx.got && f[0].done && f[0].error.kind == BtErrKind.not_running && f[0].error.code == "machine_not_running";
+  #assert !bt_failed(bt_stream(c, f[..], "bx_fwh3xnws", "true", "", 5, line[..]));
+  nx = bt_frame_next(f[..], k[0].ar[..], 0);
+  #assert nx.got && nx.frame.data == "x";
+  nx = bt_frame_next(f[..], k[0].ar[..], 0);
+  #assert !nx.got && f[0].error.kind == BtErrKind.decode;
+  #assert bt_stream(c, f[..], "bx_fwh3xnws", "", "", 5, line[..]).kind == BtErrKind.config && f[0].done;
+  #assert bt_read_frame(k[0].ar[..], "not json").kind == BtFrameKind.bad && bt_frame_last(bt_read_frame(k[0].ar[..], "{\"type\":\"what\"}"));
+}
+
+#test "the cursor moves with each chunk and takes the offsets a frame names" {
+  ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  c := BtCursor.{stdout = 3, stderr = 4};
+  #assert bt_advance(c, bt_read_frame(ar[..], "{\"type\":\"stdout\",\"data\":\"ab\",\"nextOffset\":5}")).stdout == 5;
+  #assert bt_advance(c, bt_read_frame(ar[..], "{\"type\":\"stderr\",\"data\":\"ab\",\"nextOffset\":9}")).stderr == 9;
+  #assert bt_advance(c, bt_read_frame(ar[..], "{\"type\":\"stdout\",\"data\":\"ab\"}")).stdout == 3;
+  #assert bt_advance(c, bt_read_frame(ar[..], "{\"type\":\"heartbeat\",\"stdoutOffset\":99}")).stdout == 3;
+  e := bt_advance(c, bt_read_frame(ar[..], "{\"type\":\"error\",\"error\":\"x\",\"stdoutOffset\":7,\"stderrOffset\":8}"));
+  #assert e.stdout == 7 && e.stderr == 8;
+  #assert bt_advance(c, bt_read_frame(ar[..], "{\"type\":\"attached\",\"stdoutOffset\":1}")).stderr == 4;
+}
+
+#test "files: write one, read one back by an escaped path" {
+  k: [1] BtCheck; answers := [2] string.[BT_FX_WRITE, BT_FX_READ];
+  c := bt_check_init(k[..], answers[..]);
+  r := bt_write_file(c, "bx_fwh3xnws", "/home/user/.oa-turn.json", "{\"turn\":1}", false, k[0].out[..], k[0].ar[..]);
+  #assert !bt_failed(r.error);
+  r = bt_read_file_at(c, "bx_fwh3xnws", "/home/user/a b.txt", k[0].out[..], k[0].ar[..]);
+  f := bt_read_file(k[0].ar[..], r.body);
+  #assert f.ok && f.size == 6 && f.content == "line\né" && !f.base64 && f.path == "/home/user/a b.txt";
+  #assert bt_check_log(k[..]) == "PUT /sandboxes/bx_fwh3xnws/files {\"path\":\"/home/user/.oa-turn.json\",\"content\":\"{\\\"turn\\\":1}\"}\nGET /sandboxes/bx_fwh3xnws/files?path=/home/user/a%20b.txt\n";
+  #assert bt_write_file(c, "bx_fwh3xnws", "rel", "", false, k[0].out[..], k[0].ar[..]).error.kind == BtErrKind.config;
+}
+
+#test "saved snapshots: save, list, get, delete; the plan's limit is a refusal" {
+  k: [1] BtCheck; answers := [5] string.[BT_FX_SAVE, BT_FX_SAVED_LIST, BT_FX_SAVE_LIMIT, BT_FX_GET_404, "HTTP/2 200 \r\n\r\n{\"ok\":true,\"type\":\"savedSnapshot.deleted\",\"name\":\"oa-devbox-20261113\",\"status\":\"deleted\"}"];
+  c := bt_check_init(k[..], answers[..]);
+  r := bt_save(c, "bx_fwh3xnws", "oa-devbox-20261114", k[0].out[..], k[0].ar[..]);
+  sv := bt_read_saved(k[0].ar[..], r.body);
+  #assert !bt_failed(r.error) && sv.ok && sv.status == "saving" && sv.source == "bx_fwh3xnws" && sv.name == "oa-devbox-20261114";
+  r = bt_saved(c, "oa-devbox-", k[0].out[..], k[0].ar[..]);
+  l: [4] BtSaved;
+  n := bt_read_saved_list(k[0].ar[..], r.body, l[..]);
+  #assert n == 2 && l[0].status == "ready" && l[0].size_bytes == 5261334937 && l[1].status == "saving" && l[0].created == "2026-11-13T15:40:00.000Z";
+  #assert bt_read_saved_list(k[0].ar[..], "{}", l[..]) == -1;
+  r = bt_save(c, "bx_fwh3xnws", "oa-devbox-20261115", k[0].out[..], k[0].ar[..]);
+  #assert r.error.code == "named_snapshot_limit";
+  r = bt_saved_get(c, "nope", k[0].out[..], k[0].ar[..]);
+  #assert r.error.kind == BtErrKind.not_found;
+  r = bt_saved_delete(c, "oa-devbox-20261113", k[0].out[..], k[0].ar[..]);
+  #assert !bt_failed(r.error);
+  #assert bt_check_log(k[..]) == "POST /saved-snapshots {\"sandboxId\":\"bx_fwh3xnws\",\"name\":\"oa-devbox-20261114\"}\nGET /saved-snapshots?namePrefix=oa-devbox-\nPOST /saved-snapshots {\"sandboxId\":\"bx_fwh3xnws\",\"name\":\"oa-devbox-20261115\"}\nGET /saved-snapshots/nope\nDELETE /saved-snapshots/oa-devbox-20261113\n";
+  #assert bt_saved(c, "a b", k[0].out[..], k[0].ar[..]).error.kind == BtErrKind.config && bt_save(c, "bx_x", "a", k[0].out[..], k[0].ar[..]).error.kind == BtErrKind.config;
+}
+
+#test "SSH: register a key, learn where the box is now; usage in whole millicents; delete confirms by header" {
+  k: [1] BtCheck; answers := [4] string.[BT_FX_SSH, BT_FX_SSH_ARCHIVED, BT_FX_USAGE, BT_FX_DELETE];
+  c := bt_check_init(k[..], answers[..]);
+  r := bt_sshkey(c, "bx_fwh3xnws", "ssh-ed25519 AAAAC3Nza oa@mac", k[0].out[..], k[0].ar[..]);
+  s := bt_read_ssh(k[0].ar[..], r.body);
+  #assert s.ok && s.user == "user" && s.ip == "203.0.113.17" && s.endpoint == "user@203.0.113.17" && s.host_key == "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleHostKeyOnlyForChecks";
+  r = bt_sshkey(c, "bx_fwh3xnws", "ssh-ed25519 AAAAC3Nza oa@mac", k[0].out[..], k[0].ar[..]);
+  #assert r.error.kind == BtErrKind.not_running;
+  #assert bt_sshkey(c, "bx_fwh3xnws", "nope", k[0].out[..], k[0].ar[..]).error.kind == BtErrKind.config;
+  r = bt_usage(c, "bx_fwh3xnws", "2026-11-13T00:00:00.000Z", k[0].out[..], k[0].ar[..]);
+  u := bt_read_usage(k[0].ar[..], r.body);
+  #assert u.ok && u.seconds == 3456 && u.millicents == 6912 && u.running && u.type == "large";
+  #assert !bt_read_usage(k[0].ar[..], "{\"seconds\":1}").ok;
+  r = bt_delete(c, "bx_fwh3xnws", k[0].out[..], k[0].ar[..]);
+  #assert !bt_failed(r.error) && r.status == 202;
+  #assert bt_delete(c, "bx_x", k[0].out[..], k[0].ar[..]).error.kind == BtErrKind.config;
+  #assert bt_check_log(k[..]) == "POST /sandboxes/bx_fwh3xnws/sshkey {\"key\":\"ssh-ed25519 AAAAC3Nza oa@mac\"}\nPOST /sandboxes/bx_fwh3xnws/sshkey {\"key\":\"ssh-ed25519 AAAAC3Nza oa@mac\"}\nGET /sandboxes/bx_fwh3xnws/usage?since=2026-11-13T00:00:00.000Z\nDELETE /sandboxes/bx_fwh3xnws [X-Ascii-Confirm-Delete]\n";
+}
+
+#test "environments: listed without their contents; a variable's value only in the body" {
+  k: [1] BtCheck; answers := [3] string.[BT_FX_ENVS, BT_FX_ENV_SET, BT_FX_ENV_SET];
+  c := bt_check_init(k[..], answers[..]);
+  r := bt_envs(c, k[0].out[..], k[0].ar[..]);
+  e: [4] BtEnv;
+  n := bt_read_envs(k[0].ar[..], r.body, e[..]);
+  #assert n == 2 && e[0].name == "base" && e[0].is_default && e[1].name == "oa-devbox" && e[1].id == "env_7c1q" && !e[1].is_default;
+  #assert !bt_has(cast(string) k[0].arena[0..<k[0].ar[0].at], "NOT-A-REAL-TOKEN");
+  r = bt_env_set(c, "env_7c1q", "GH_TOKEN", "NOT-A-REAL-SECRET", k[0].out[..], k[0].ar[..]);
+  #assert !bt_failed(r.error);
+  r = bt_env_create(c, "oa-devbox-2", k[0].out[..], k[0].ar[..]);
+  #assert bt_check_log(k[..]) == "GET /environments\nPUT /environments/env_7c1q/vars/GH_TOKEN {\"value\":\"NOT-A-REAL-SECRET\"}\nPOST /environments {\"name\":\"oa-devbox-2\"}\n";
+  #assert bt_env_set(c, "env_7c1q", "A B", "v", k[0].out[..], k[0].ar[..]).error.kind == BtErrKind.config;
+  #assert bt_env_set(c, "e/x", "A", "v", k[0].out[..], k[0].ar[..]).error.kind == BtErrKind.config;
+  #assert bt_env_set(c, "env_7c1q", "A", "", k[0].out[..], k[0].ar[..]).error.kind == BtErrKind.config;
+  #assert bt_env_create(c, "a b", k[0].out[..], k[0].ar[..]).error.kind == BtErrKind.config;
+  #assert bt_read_envs(k[0].ar[..], "{}", e[..]) == -1;
+}

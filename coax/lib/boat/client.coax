@@ -1,0 +1,233 @@
+// The boat client: requests to boat's v1 API on the gateway's curl
+// transport (coax/lib/gateway/transport.coax), synchronous or as an NDJSON
+// stream read line by line without blocking. GitHub #13474, stage 1.
+//
+// The key never passes through an argument or a log: curl reads it from the
+// variable key_env (--variable) and expands it into the Authorization header
+// itself; a key from a file (key_value) goes into that variable in curl's
+// environment only.
+//
+// Hosted boat is opt-in: a base on boat.dev (or the old ascii.dev) is
+// refused unless the client says hosted, which bt_client_env sets only from
+// BOAT_HOSTED=1. Plain http is refused except on loopback, and curl follows
+// no redirect. BOAT_API_BASE switches the whole SDK to another Boat-shaped
+// service (stage 6, the exit plan) without changing a call.
+//
+// For checks, a client with a fake answers from canned HTTP responses and
+// records each request it would have sent; nothing leaves the process.
+
+#load "wire.coax";
+#load "../gateway/transport.coax";
+
+BtFake :: struct {
+  answers: [] string;    // whole responses: status line, headers, blank line, body
+  next: int;
+  log: [] u8;            // "METHOD PATH [HEADER NAMES] BODY\n" per request
+  nlog: int;
+}
+
+BoatClient :: struct {
+  base: string = BT_BASE;
+  key_env: string = BT_KEY_ENV;
+  key_value: string;     // "" when key_env is in this process's environment
+  hosted: bool;          // may reach boat.dev: only from BOAT_HOSTED=1
+  max_time_s: int = 120;
+  connect_timeout_s: int = 10;
+  curl: string = "curl";
+  fake: [] BtFake;       // non-empty: answer from it, send nothing
+}
+
+// The base URL's host, between the scheme and the first '/', ':' or end.
+bt_host_of :: (base: string) -> string {
+  i := 0;
+  if base.count >= 8 && cast(string) base[0..<8] == "https://" { i = 8; }
+  else if base.count >= 7 && cast(string) base[0..<7] == "http://" { i = 7; }
+  else { return ""; }
+  j := i;
+  if j < base.count && base[j] == '[' { while j < base.count && base[j] != ']' { j += 1; } if j < base.count { j += 1; } return cast(string) base[i..<j]; }
+  while j < base.count && base[j] != '/' && base[j] != ':' { j += 1; }
+  return cast(string) base[i..<j];
+}
+
+bt_ends_with :: (s: string, tail: string) -> bool {
+  return s.count >= tail.count && cast(string) s[s.count - tail.count..<s.count] == tail;
+}
+
+bt_loopback :: (host: string) -> bool { return host == "127.0.0.1" || host == "localhost" || host == "[::1]"; }
+
+// Boat's own hosts, which only an opted-in client may reach.
+bt_hosted_host :: (host: string) -> bool {
+  return host == "boat.dev" || bt_ends_with(host, ".boat.dev") || host == "ascii.dev" || bt_ends_with(host, ".ascii.dev");
+}
+
+// "" when the client may send, else why not.
+bt_client_problem :: (c: BoatClient) -> string {
+  if c.base.count == 0 { return "no base URL"; }
+  for ch: c.base { if ch <= ' ' || ch == '"' || ch == '?' || ch == '#' || ch == '\\' || ch > 126 { return "the base URL holds a character it can't"; } }
+  host := bt_host_of(c.base);
+  if host.count == 0 { return "the base URL is not http(s)://HOST/..."; }
+  if cast(string) c.base[0..<5] == "http:" && !bt_loopback(host) { return "plain http only on loopback"; }
+  if bt_hosted_host(host) && !c.hosted { return "hosted boat is opt-in: set BOAT_HOSTED=1"; }
+  if c.fake.count == 0 && !gw_name_ok(c.key_env) { return "key_env must be a plain variable name"; }
+  return "";
+}
+
+// The client from the environment: BOAT_API_BASE (default boat.dev's v1),
+// BOAT_HOSTED=1, the key in BOAT_API_KEY. base_buf holds the base.
+bt_client_env :: (base_buf: [] u8) -> BoatClient {
+  c: BoatClient;
+  b := cl_getenv("BOAT_API_BASE", base_buf);
+  if b.count > 0 {
+    n := b.count;
+    while n > 0 && base_buf[n - 1] == '/' { n -= 1; }
+    c.base = cast(string) base_buf[0..<n];
+  }
+  hb: [8] u8;
+  c.hosted = cl_getenv("BOAT_HOSTED", hb[..]) == "1";
+  return c;
+}
+
+// ---- one exchange, read line by line
+
+BT_IDLE :: 0;
+BT_LINE :: 1;
+BT_END :: 2;
+
+BtStream :: struct {
+  st: [1] GwStream;
+  fake: bool;
+  text: string; pos: int;          // the fake's response
+  status: int;
+  in_headers: bool;
+  ended: bool;
+  exit: int;                       // curl's exit status once ended (0 is a whole response)
+  retry_after_s: int;              // the Retry-After header
+}
+
+BtLine :: struct { kind: int; text: string; }
+
+bt_fake_log :: (f: [] BtFake, s: string) {
+  for ch: s { if f[0].nlog < f[0].log.count { f[0].log[f[0].nlog] = ch; f[0].nlog += 1; } }
+}
+
+// Sends the request. headers are whole "Name: value" lines. A config error
+// (kind config) when nothing was sent.
+bt_open :: (c: BoatClient, method: string, path: string, body: string, headers: [] string, accept: string, s: [] BtStream) -> BtError {
+  s[0] = BtStream.{in_headers = true, exit = -1};
+  why := bt_client_problem(c);
+  if why.count > 0 { s[0].ended = true; return bt_err(BtErrKind.config, why); }
+  if path.count == 0 || path[0] != '/' { s[0].ended = true; return bt_err(BtErrKind.config, "the request names no valid path (a bad id or name?)"); }
+  if c.fake.count > 0 {
+    f := c.fake;
+    bt_fake_log(f, method); bt_fake_log(f, " "); bt_fake_log(f, path);
+    for h: headers {
+      bt_fake_log(f, " [");
+      k := 0; while k < h.count && h[k] != ':' { k += 1; }
+      bt_fake_log(f, cast(string) h[0..<k]); bt_fake_log(f, "]");
+    }
+    if body.count > 0 { bt_fake_log(f, " "); bt_fake_log(f, body); }
+    bt_fake_log(f, "\n");
+    if f[0].next >= f[0].answers.count { s[0].ended = true; s[0].exit = 7; return BtError.{}; }
+    s[0].fake = true; s[0].text = f[0].answers[f[0].next]; f[0].next += 1;
+    return BtError.{};
+  }
+  ub: [2048] u8;
+  u := json_raw(ub[..], json_raw(ub[..], 0, c.base), path);
+  if u < 0 { s[0].ended = true; return bt_err(BtErrKind.config, "the URL is too long"); }
+  g := GwClient.{url = cast(string) ub[0..<u], key_env = c.key_env, key_value = c.key_value, curl = c.curl,
+                 connect_timeout_s = c.connect_timeout_s, max_time_s = c.max_time_s, method = method, accept = accept};
+  e := gw_start(g, body, headers, s[0].st[..]);
+  if e.count > 0 { s[0].ended = true; return bt_err(BtErrKind.config, e); }
+  s[0].st[0].headers = true;
+  return BtError.{};
+}
+
+// The fake's next line of its response, as gw_poll would give it.
+bt_fake_line :: (s: [] BtStream, line: [] u8) -> GwRead {
+  t := s[0].text;
+  if s[0].pos >= t.count { s[0].exit = 0; return GwRead.{kind = GW_END}; }
+  i := s[0].pos;
+  while i < t.count && t[i] != '\n' { i += 1; }
+  e := i;
+  if e > s[0].pos && t[e - 1] == '\r' { e -= 1; }
+  k := e - s[0].pos; if k > line.count { k = line.count; }
+  for j: 0..<k { line[j] = t[s[0].pos + j]; }
+  s[0].pos = i + 1;
+  text := cast(string) line[0..<k];
+  if s[0].in_headers {
+    st := gw_status_of(text);
+    if st > 0 { s[0].status = st; return GwRead.{kind = GW_IDLE}; }
+    if k == 0 { s[0].in_headers = false; return GwRead.{kind = GW_IDLE}; }
+    return GwRead.{kind = GW_HEADER, text = text};
+  }
+  return GwRead.{kind = GW_LINE, text = text};
+}
+
+// The next body line (BT_LINE), BT_IDLE when none has come yet, or BT_END
+// when the response is over (s[0].status and s[0].exit then hold).
+bt_next :: (s: [] BtStream, line: [] u8) -> BtLine { return bt_next_wait(s, line, 0); }
+
+// bt_next, waiting up to wait_ms for a line.
+bt_next_wait :: (s: [] BtStream, line: [] u8, wait_ms: int) -> BtLine {
+  if s[0].ended { return BtLine.{kind = BT_END}; }
+  for guard: 0..<64 {
+    r: GwRead;
+    if s[0].fake { r = bt_fake_line(s, line); } else { r = gw_poll_wait(s[0].st[..], line, ifx guard == 0 then wait_ms else 0); s[0].status = s[0].st[0].status; }
+    if r.kind == GW_IDLE { if s[0].fake { continue; } return BtLine.{kind = BT_IDLE}; }
+    if r.kind == GW_END {
+      s[0].ended = true;
+      if !s[0].fake { s[0].exit = s[0].st[0].exit; gw_close(s[0].st[..]); }
+      return BtLine.{kind = BT_END};
+    }
+    if r.kind == GW_HEADER {
+      v := gw_header_value(r.text, "Retry-After");
+      if v.count > 0 { j := json_int(v); if j.ok && j.value > 0 { s[0].retry_after_s = j.value; } }
+      continue;
+    }
+    return BtLine.{kind = BT_LINE, text = r.text};
+  }
+  return BtLine.{kind = BT_IDLE};
+}
+
+// Ends the exchange; a stream still open is cut (curl is killed).
+bt_close :: (s: [] BtStream) {
+  if !s[0].fake && s[0].st[0].h >= 0 { gw_close(s[0].st[..]); }
+  s[0].ended = true;
+}
+
+// What a finished stream's transport says, when no HTTP status came.
+bt_transport_error :: (s: [] BtStream) -> BtError {
+  if s[0].exit == 28 { return bt_err(BtErrKind.deadline, "the request timed out"); }
+  if s[0].exit == 6 || s[0].exit == 7 { return bt_err(BtErrKind.transport, "the host is unreachable"); }
+  return bt_err(BtErrKind.transport, "no answer came");
+}
+
+// ---- a synchronous call
+
+BtResp :: struct {
+  status: int;
+  body: string;          // in the caller's out
+  error: BtError;        // kind none on a 2xx
+}
+
+// Sends one request and reads the whole answer into out.
+bt_call :: (c: BoatClient, method: string, path: string, body: string, headers: [] string, out: [] u8, ar: [] ClArena) -> BtResp {
+  s: [1] BtStream;
+  e := bt_open(c, method, path, body, headers, "application/json", s[..]);
+  if bt_failed(e) { return BtResp.{error = e}; }
+  line: [65536] u8;
+  n := 0; lines := 0; full := false;
+  for guard: 0..<100000000 {
+    l := bt_next_wait(s[..], line[..], 1000);
+    if l.kind == BT_END { break; }
+    if l.kind == BT_IDLE { continue; }
+    if lines > 0 { if n < out.count { out[n] = '\n'; n += 1; } else { full = true; } }
+    for ch: l.text { if n < out.count { out[n] = ch; n += 1; } else { full = true; } }
+    lines += 1;
+  }
+  r := BtResp.{status = s[0].status, body = cast(string) out[0..<n]};
+  if full { bt_close(s[..]); r.error = bt_err(BtErrKind.too_large, "the answer does not fit its buffer"); r.error.status = r.status; return r; }
+  if r.status == 0 { r.error = bt_transport_error(s[..]); return r; }
+  r.error = bt_error(ar, r.status, r.body, s[0].retry_after_s);
+  return r;
+}

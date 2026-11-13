@@ -36,6 +36,8 @@ GwClient :: struct {
   curl: string = "curl";         // found on PATH; needs curl 8.3 or later (--variable)
   connect_timeout_s: int = 5;
   max_time_s: int = 300;
+  method: string = "POST";       // GET and DELETE send no body (boat's API, coax/lib/boat/)
+  accept: string = "text/event-stream";
 }
 
 GwStream :: struct {
@@ -106,7 +108,10 @@ gw_start :: (c: GwClient, body: string, headers: [] string, st: [] GwStream) -> 
     if cxproc_getenv() <= 0 { return "the API key is not set"; }
   }
   for ch: c.key_value { if ch < 33 || ch > 126 { return "the API key holds a character a header cannot"; } }
-  if body.count == 0 { return "no request body"; }
+  if c.method != "POST" && c.method != "GET" && c.method != "PUT" && c.method != "PATCH" && c.method != "DELETE" { return "the method is not one of POST, GET, PUT, PATCH, DELETE"; }
+  bodied := c.method != "GET" && c.method != "DELETE";
+  if bodied && body.count == 0 { return "no request body"; }
+  if !bodied && body.count > 0 { return "a GET or DELETE carries no body"; }
   h := cxproc_new();
   if h < 0 { return "no process slot is free"; }
   rcb: [1024] u8; record := cl_getenv("GW_RECORD", rcb[..]);
@@ -122,11 +127,12 @@ gw_start :: (c: GwClient, body: string, headers: [] string, st: [] GwStream) -> 
     if c.scheme.count > 0 { ok = ok && gw_part(h, CL_FIELD_ARG, c.scheme) && gw_part(h, CL_FIELD_ARG, " "); }
     ok = ok && gw_part(h, CL_FIELD_ARG, "{{") && gw_part(h, CL_FIELD_ARG, c.key_env) && gw_arg(h, "}}");
   }
-  ok = ok && gw_arg(h, "-H") && gw_arg(h, "Content-Type: application/json");
-  ok = ok && gw_arg(h, "-H") && gw_arg(h, "Accept: text/event-stream");
+  if c.method != "POST" { ok = ok && gw_arg(h, "-X") && gw_arg(h, c.method); }
+  if bodied { ok = ok && gw_arg(h, "-H") && gw_arg(h, "Content-Type: application/json"); }
+  ok = ok && gw_arg(h, "-H") && gw_part(h, CL_FIELD_ARG, "Accept: ") && gw_arg(h, c.accept);
   ok = ok && gw_arg(h, "-H") && gw_arg(h, "Expect:");
   for x: headers { ok = ok && gw_arg(h, "-H") && gw_arg(h, x); }
-  ok = ok && gw_arg(h, "--data-binary") && gw_arg(h, "@-");
+  if bodied { ok = ok && gw_arg(h, "--data-binary") && gw_arg(h, "@-"); }
   ok = ok && gw_arg(h, "--") && gw_arg(h, c.url);
   if c.key_value.count > 0 {
     ok = ok && gw_part(h, CL_FIELD_ENV, c.key_env) && gw_part(h, CL_FIELD_ENV, "=") && gw_part(h, CL_FIELD_ENV, c.key_value) && cxproc_end(h, CL_FIELD_ENV) == 0;
@@ -155,10 +161,14 @@ gw_status_of :: (line: string) -> int {
 // GW_IDLE when nothing has come yet, or GW_END once curl is done. The
 // status line and headers are read here and never returned; an interim
 // "100 Continue" block is skipped.
-gw_poll :: (st: [] GwStream, line: [] u8) -> GwRead {
+gw_poll :: (st: [] GwStream, line: [] u8) -> GwRead { return gw_poll_wait(st, line, 0); }
+
+// gw_poll, waiting up to wait_ms for a line before it answers GW_IDLE: a
+// caller with nothing else to do blocks here rather than spinning.
+gw_poll_wait :: (st: [] GwStream, line: [] u8, wait_ms: int) -> GwRead {
   if st[0].h < 0 || st[0].ended { return GwRead.{kind = GW_END}; }
   for guard: 0..<64 {
-    n := cxproc_read_line(st[0].h, 0);
+    n := cxproc_read_line(st[0].h, ifx guard == 0 then wait_ms else 0);
     if n == CL_TIMEOUT { return GwRead.{kind = GW_IDLE}; }
     if n == CL_TOO_LONG { continue; }
     if n < 0 {

@@ -1,0 +1,345 @@
+// The Coax SDK for boat (GitHub #13474, stage 1): sandboxes, commands,
+// files, saved snapshots, SSH keys, usage, limits and environments, each a
+// call on the client (client.coax) that returns its answer and a typed
+// BtError, with readers in the codec (wire.coax). Read README.md first.
+//
+//   bb: [512] u8; c := bt_client_env(bb[..]);          // BOAT_API_BASE, BOAT_HOSTED=1, BOAT_API_KEY
+//   out: [262144] u8; ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+//   r := bt_create(c, BtCreate.{from = "oa-devbox-20261113", environment = "oa-devbox"}, "", out[..], ar[..]);
+//   if bt_failed(r.error) { ... r.error.kind, r.error.code, r.error.retry_after_s ... }
+//   s := bt_read_sandbox(ar[..], r.body);
+//   w := bt_wait_up(c, s.id, 120, out[..], ar[..]);      // until ready, idle or running
+//
+// Two facts the calls model: a stop returns while the box is still
+// `archiving` (a resume then gets the same machine back), and a synchronous
+// command dies at its timeout (600 s at most), so longer work runs detached
+// and is followed with an attach stream from a stored cursor.
+
+#load "client.coax";
+
+// ---- account
+
+// GET /limits: starts left, boxes running, the plan. Read with bt_read_limits.
+bt_limits :: (c: BoatClient, out: [] u8, ar: [] ClArena) -> BtResp {
+  none: [1] string;
+  return bt_call(c, "GET", "/limits", "", none[0..<0], out, ar);
+}
+
+// ---- sandboxes
+
+// POST /sandboxes. idem is an Idempotency-Key ("" for none): with one, a
+// retry after a lost answer returns the same box rather than a second.
+bt_create :: (c: BoatClient, r: BtCreate, idem: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  bb: [2048] u8;
+  b := bt_create_body(bb[..], r);
+  if b.text.count == 0 { return BtResp.{error = bt_err(BtErrKind.config, b.problem)}; }
+  hb: [160] u8; hs: [1] string; nh := 0;
+  if idem.count > 0 {
+    if !bt_query_ok(idem) || idem.count > 100 { return BtResp.{error = bt_err(BtErrKind.config, "an idempotency key is plain characters, at most 100")}; }
+    k := json_raw(hb[..], json_raw(hb[..], 0, "Idempotency-Key: "), idem);
+    hs[0] = cast(string) hb[0..<k]; nh = 1;
+  }
+  return bt_call(c, "POST", "/sandboxes", b.text, hs[0..<nh], out, ar);
+}
+
+bt_get :: (c: BoatClient, id: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  return bt_call(c, "GET", bt_sandbox_path(pb[..], id, ""), "", none[0..<0], out, ar);
+}
+
+// GET /sandboxes, one page. Read with bt_read_list and bt_next_cursor.
+bt_list :: (c: BoatClient, state: string, name_prefix: string, cursor: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  return bt_call(c, "GET", bt_list_path(pb[..], state, name_prefix, cursor, 0), "", none[0..<0], out, ar);
+}
+
+// POST /sandboxes/{id}/stop. It answers while the box is still archiving.
+bt_stop :: (c: BoatClient, id: string, force: bool, out: [] u8, ar: [] ClArena) -> BtResp {
+  pb: [BT_PATH_MAX] u8; bb: [32] u8; none: [1] string;
+  return bt_call(c, "POST", bt_sandbox_path(pb[..], id, "/stop"), bt_stop_body(bb[..], force).text, none[0..<0], out, ar);
+}
+
+// POST /sandboxes/{id}/resume.
+bt_resume :: (c: BoatClient, id: string, r: BtResume, out: [] u8, ar: [] ClArena) -> BtResp {
+  bb: [512] u8;
+  b := bt_resume_body(bb[..], r);
+  if b.text.count == 0 { return BtResp.{error = bt_err(BtErrKind.config, b.problem)}; }
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  return bt_call(c, "POST", bt_sandbox_path(pb[..], id, "/resume"), b.text, none[0..<0], out, ar);
+}
+
+// PATCH /sandboxes/{id}: set the auto-stop to ttl_s from now (boat extend).
+bt_set_ttl :: (c: BoatClient, id: string, ttl_s: int, out: [] u8, ar: [] ClArena) -> BtResp {
+  bb: [128] u8;
+  b := bt_update_body(bb[..], "", ttl_s);
+  if b.text.count == 0 { return BtResp.{error = bt_err(BtErrKind.config, b.problem)}; }
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  return bt_call(c, "PATCH", bt_sandbox_path(pb[..], id, ""), b.text, none[0..<0], out, ar);
+}
+
+// DELETE /sandboxes/{id}: the box and its snapshots, for good. Boat wants
+// the id again in a confirmation header.
+bt_delete :: (c: BoatClient, id: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  if !bt_id_ok(id) { return BtResp.{error = bt_err(BtErrKind.config, "not a sandbox id")}; }
+  pb: [BT_PATH_MAX] u8; hb: [64] u8; hs: [1] string;
+  k := json_raw(hb[..], json_raw(hb[..], 0, "X-Ascii-Confirm-Delete: "), id);
+  hs[0] = cast(string) hb[0..<k];
+  return bt_call(c, "DELETE", bt_sandbox_path(pb[..], id, ""), "", hs[..], out, ar);
+}
+
+// GET /sandboxes/{id}/usage since an ISO time ("" for boat's window). Read with bt_read_usage.
+bt_usage :: (c: BoatClient, id: string, since: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  return bt_call(c, "GET", bt_usage_path(pb[..], id, since), "", none[0..<0], out, ar);
+}
+
+// A pause between polls: a child `sleep`, so no clock binding is declared
+// twice in a program that also has its own. Nothing waits in a fake.
+bt_pause :: (c: BoatClient, seconds: int) {
+  if c.fake.count > 0 || seconds <= 0 { return; }
+  h := cxproc_new();
+  if h < 0 { return; }
+  nb: [24] u8; n := json_write_int(nb[..], 0, seconds);
+  if cl_push(h, CL_FIELD_ARG, "sleep") && cl_push(h, CL_FIELD_ARG, cast(string) nb[0..<n]) && cxproc_spawn(h) == 0 {
+    x := cxproc_close_stdin(h); w := cxproc_wait(h, seconds * 1000 + 2000);
+  }
+  y := cxproc_release(h);
+}
+
+BtWait :: struct {
+  sandbox: BtSandbox;    // the last state read
+  polls: int;
+  error: BtError;        // deadline when it never came up; decode when the box went to error
+}
+
+// Polls GET /sandboxes/{id} every 2 s until the box is up (ready, idle or
+// running), for at most timeout_s. A broken box (error, cancelled) or a
+// refused read ends it at once.
+bt_wait_up :: (c: BoatClient, id_in: string, timeout_s: int, out: [] u8, ar: [] ClArena) -> BtWait {
+  w: BtWait;
+  ib: [16] u8;     // id_in may live in out, which each poll overwrites
+  if !bt_id_ok(id_in) { w.error = bt_err(BtErrKind.config, "not a sandbox id"); return w; }
+  for ch, i: id_in { ib[i] = ch; }
+  id := cast(string) ib[0..<id_in.count];
+  polls := ifx timeout_s <= 2 then 1 else timeout_s / 2;
+  for i: 0..<polls {
+    ar[0].at = 0; ar[0].full = false;
+    r := bt_get(c, id, out, ar);
+    w.polls += 1;
+    if bt_failed(r.error) && !r.error.retryable { w.error = r.error; return w; }
+    if !bt_failed(r.error) {
+      w.sandbox = bt_read_sandbox(ar, r.body);
+      if !w.sandbox.ok { w.error = bt_err(BtErrKind.decode, "sandbox.info without a sandbox"); return w; }
+      if bt_up(w.sandbox) { return w; }
+      if bt_broken(w.sandbox) { w.error = bt_err(BtErrKind.not_running, "the box went to error"); w.error.code = w.sandbox.state; return w; }
+    }
+    if i + 1 < polls { bt_pause(c, 2); }
+  }
+  w.error = bt_err(BtErrKind.deadline, "the box did not come up in time");
+  return w;
+}
+
+// ---- commands
+
+// POST /sandboxes/{id}/commands, synchronous: the whole result, after at
+// most timeout_s (1 to 600). Read with bt_read_command.
+bt_run :: (c: BoatClient, id: string, command: string, cwd: string, timeout_s: int, out: [] u8, ar: [] ClArena) -> BtResp {
+  bb: [65536] u8;
+  b := bt_command_body(bb[..], command, cwd, timeout_s, BtMode.sync);
+  if b.text.count == 0 { return BtResp.{error = bt_err(BtErrKind.config, b.problem)}; }
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  cc := c; if timeout_s + 30 > cc.max_time_s { cc.max_time_s = timeout_s + 30; }
+  return bt_call(cc, "POST", bt_sandbox_path(pb[..], id, "/commands"), b.text, none[0..<0], out, ar);
+}
+
+// POST /sandboxes/{id}/commands, detached: it answers at once with the
+// process id. Read with bt_read_started, then follow with bt_attach.
+bt_detach :: (c: BoatClient, id: string, command: string, cwd: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  bb: [65536] u8;
+  b := bt_command_body(bb[..], command, cwd, 0, BtMode.detached);
+  if b.text.count == 0 { return BtResp.{error = bt_err(BtErrKind.config, b.problem)}; }
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  return bt_call(c, "POST", bt_sandbox_path(pb[..], id, "/commands"), b.text, none[0..<0], out, ar);
+}
+
+// A command's output as NDJSON frames: a streamed command, or an attach
+// to a detached one. Open, then read frames with bt_frame_next.
+BtFollow :: struct {
+  s: [1] BtStream;
+  line: [] u8;
+  at: BtCursor;          // attach: where the next open starts; store it
+  error: BtError;        // a refusal of the open (the status and body came as lines)
+  done: bool;
+  errb: [4096] u8;       // a refusal's body, which error borrows from
+  ne: int;
+}
+
+bt_follow_open :: (c: BoatClient, f: [] BtFollow, method: string, path: string, body: string, line: [] u8) -> BtError {
+  at := f[0].at;
+  f[0] = BtFollow.{line = line, at = at};
+  none: [1] string;
+  cc := c; cc.max_time_s = 900;   // boat ends an attach at 10 minutes with reconnect
+  e := bt_open(cc, method, path, body, none[0..<0], "application/x-ndjson", f[0].s[..]);
+  if bt_failed(e) { f[0].error = e; f[0].done = true; }
+  return e;
+}
+
+// POST /sandboxes/{id}/commands with stream: true, for at most timeout_s.
+bt_stream :: (c: BoatClient, f: [] BtFollow, id: string, command: string, cwd: string, timeout_s: int, line: [] u8) -> BtError {
+  bb: [65536] u8;
+  b := bt_command_body(bb[..], command, cwd, timeout_s, BtMode.stream);
+  if b.text.count == 0 { f[0].done = true; f[0].error = bt_err(BtErrKind.config, b.problem); return f[0].error; }
+  pb: [BT_PATH_MAX] u8;
+  f[0].at = BtCursor.{};
+  return bt_follow_open(c, f, "POST", bt_sandbox_path(pb[..], id, "/commands"), b.text, line);
+}
+
+// GET /sandboxes/{id}/commands/{pid}/stream from the cursor at: every byte
+// after it, once. After a reconnect frame (10 minutes), call it again with
+// f[0].at, which bt_frame_next keeps.
+bt_attach :: (c: BoatClient, f: [] BtFollow, id: string, pid: int, at: BtCursor, line: [] u8) -> BtError {
+  pb: [BT_PATH_MAX] u8;
+  p := bt_attach_path(pb[..], id, pid, at);
+  f[0].at = at;
+  return bt_follow_open(c, f, "GET", p, "", line);
+}
+
+// The next frame (kind bad with ok false when none is there yet: check
+// got), waiting up to wait_ms. When the stream ends with no last frame, or
+// the open was refused, f[0].done is set and f[0].error says why.
+BtNext :: struct { got: bool; frame: BtFrame; }
+
+bt_frame_next :: (f: [] BtFollow, ar: [] ClArena, wait_ms: int) -> BtNext {
+  if f[0].done { return BtNext.{}; }
+  for guard: 0..<100000 {
+    l := bt_next_wait(f[0].s[..], f[0].line, wait_ms);
+    if l.kind == BT_IDLE { return BtNext.{}; }
+    st := f[0].s[0].status;
+    if l.kind == BT_END {
+      f[0].done = true;
+      if st == 0 { f[0].error = bt_transport_error(f[0].s[..]); }
+      else if st >= 300 { f[0].error = bt_error(ar, st, cast(string) f[0].errb[0..<f[0].ne], f[0].s[0].retry_after_s); }
+      else { f[0].error = bt_err(BtErrKind.decode, "the stream ended before its last frame"); }
+      return BtNext.{};
+    }
+    if st >= 300 {     // a refusal: its body comes as lines, gather it
+      for ch: l.text { if f[0].ne < f[0].errb.count { f[0].errb[f[0].ne] = ch; f[0].ne += 1; } }
+      continue;
+    }
+    if l.text.count == 0 { continue; }
+    fr := bt_read_frame(ar, l.text);
+    f[0].at = bt_advance(f[0].at, fr);
+    if bt_frame_last(fr) { f[0].done = true; bt_close(f[0].s[..]); }
+    return BtNext.{got = true, frame = fr};
+  }
+  return BtNext.{};
+}
+
+bt_follow_close :: (f: [] BtFollow) { bt_close(f[0].s[..]); f[0].done = true; }
+
+// GET /sandboxes/{id}/commands/{pid}. Read with bt_read_status.
+bt_status :: (c: BoatClient, id: string, pid: int, out: [] u8, ar: [] ClArena) -> BtResp {
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  return bt_call(c, "GET", bt_process_path(pb[..], id, pid, ""), "", none[0..<0], out, ar);
+}
+
+// DELETE /sandboxes/{id}/commands/{pid}: stops the command and its whole process tree.
+bt_kill :: (c: BoatClient, id: string, pid: int, out: [] u8, ar: [] ClArena) -> BtResp {
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  return bt_call(c, "DELETE", bt_process_path(pb[..], id, pid, ""), "", none[0..<0], out, ar);
+}
+
+// ---- files
+
+bt_write_file :: (c: BoatClient, id: string, path: string, content: string, base64: bool, out: [] u8, ar: [] ClArena) -> BtResp {
+  bb: [BT_FILE_MAX + 4096] u8;
+  b := bt_file_body(bb[..], path, content, base64);
+  if b.text.count == 0 { return BtResp.{error = bt_err(BtErrKind.config, b.problem)}; }
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  return bt_call(c, "PUT", bt_sandbox_path(pb[..], id, "/files"), b.text, none[0..<0], out, ar);
+}
+
+// Read with bt_read_file.
+bt_read_file_at :: (c: BoatClient, id: string, path: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  pb: [BT_PATH_MAX * 3] u8; none: [1] string;
+  return bt_call(c, "GET", bt_file_path(pb[..], id, path), "", none[0..<0], out, ar);
+}
+
+// ---- saved snapshots (templates)
+
+// POST /saved-snapshots: save the box's disk under name (a stopped or a
+// running box). Read with bt_read_saved; it is ready when status is.
+bt_save :: (c: BoatClient, id: string, name: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  bb: [256] u8;
+  b := bt_save_body(bb[..], id, name);
+  if b.text.count == 0 { return BtResp.{error = bt_err(BtErrKind.config, b.problem)}; }
+  none: [1] string;
+  return bt_call(c, "POST", "/saved-snapshots", b.text, none[0..<0], out, ar);
+}
+
+// GET /saved-snapshots?namePrefix=... Read with bt_read_saved_list.
+bt_saved :: (c: BoatClient, name_prefix: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  if !bt_query_ok(name_prefix) { return BtResp.{error = bt_err(BtErrKind.config, "a name prefix is plain characters")}; }
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  n := json_raw(pb[..], 0, "/saved-snapshots");
+  if name_prefix.count > 0 { n = json_raw(pb[..], n, "?namePrefix="); n = json_raw(pb[..], n, name_prefix); }
+  return bt_call(c, "GET", ifx n < 0 then "" else cast(string) pb[0..<n], "", none[0..<0], out, ar);
+}
+
+bt_saved_get :: (c: BoatClient, name: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  return bt_call(c, "GET", bt_named_path(pb[..], "/saved-snapshots/", name, ""), "", none[0..<0], out, ar);
+}
+
+bt_saved_delete :: (c: BoatClient, name: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  return bt_call(c, "DELETE", bt_named_path(pb[..], "/saved-snapshots/", name, ""), "", none[0..<0], out, ar);
+}
+
+// ---- access
+
+// POST /sandboxes/{id}/sshkey: lets key in, and says where to reach the box
+// now (the address is new after every resume). Read with bt_read_ssh.
+bt_sshkey :: (c: BoatClient, id: string, key: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  bb: [4096] u8;
+  b := bt_sshkey_body(bb[..], key);
+  if b.text.count == 0 { return BtResp.{error = bt_err(BtErrKind.config, b.problem)}; }
+  pb: [BT_PATH_MAX] u8; none: [1] string;
+  return bt_call(c, "POST", bt_sandbox_path(pb[..], id, "/sshkey"), b.text, none[0..<0], out, ar);
+}
+
+// ---- environments: how a box gets its secrets
+
+// GET /environments. Read with bt_read_envs (never their contents).
+bt_envs :: (c: BoatClient, out: [] u8, ar: [] ClArena) -> BtResp {
+  none: [1] string;
+  return bt_call(c, "GET", "/environments", "", none[0..<0], out, ar);
+}
+
+bt_env_create :: (c: BoatClient, name: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  bb: [256] u8;
+  b := bt_env_body(bb[..], name);
+  if b.text.count == 0 { return BtResp.{error = bt_err(BtErrKind.config, b.problem)}; }
+  none: [1] string;
+  return bt_call(c, "POST", "/environments", b.text, none[0..<0], out, ar);
+}
+
+// PUT /environments/{env}/vars/{key}. value goes in the body only.
+bt_env_set :: (c: BoatClient, env_id: string, key: string, value: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  if !bt_name_ok(env_id) { return BtResp.{error = bt_err(BtErrKind.config, "not an environment id")}; }
+  bb: [16384] u8;
+  b := bt_var_body(bb[..], value);
+  if b.text.count == 0 { return BtResp.{error = bt_err(BtErrKind.config, b.problem)}; }
+  kb: [BT_PATH_MAX] u8; pb: [BT_PATH_MAX] u8; none: [1] string;
+  pre := bt_named_path(kb[..], "/environments/", env_id, "/vars/");
+  return bt_call(c, "PUT", bt_named_path(pb[..], pre, key, ""), b.text, none[0..<0], out, ar);
+}
+
+bt_env_unset :: (c: BoatClient, env_id: string, key: string, out: [] u8, ar: [] ClArena) -> BtResp {
+  if !bt_name_ok(env_id) { return BtResp.{error = bt_err(BtErrKind.config, "not an environment id")}; }
+  kb: [BT_PATH_MAX] u8; pb: [BT_PATH_MAX] u8; none: [1] string;
+  pre := bt_named_path(kb[..], "/environments/", env_id, "/vars/");
+  return bt_call(c, "DELETE", bt_named_path(pb[..], pre, key, ""), "", none[0..<0], out, ar);
+}
+
+#load "checks.coax" #test;

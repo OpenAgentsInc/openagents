@@ -1,0 +1,682 @@
+// Boat's v1 HTTP API (https://boat.dev/api/v1, docs.boat.dev/openapi/boat-v1.yaml,
+// read 2026-11-13, sha256 dde41dbe...): the one codec for its bodies
+// (proto/registry.json, boat.v1). This file writes every request body and
+// path the SDK sends, refusing before any byte leaves what boat would refuse
+// or what must never be sent (a secret in a path or an argument, a per-box
+// `env`), and reads every answer into our own records (BtSandbox, BtLimits,
+// BtCommand, BtFrame ...) and errors (BtError). It sends nothing; the client
+// is client.coax, the calls are boat.coax. GitHub #13474, stage 1.
+//
+// Strings in a record are borrowed: from the body they came from, or from
+// the caller's ClArena when they held escapes. Keep both alive while you
+// read the record.
+//
+// What the SDK never reads: an environment's `envContents` and secret
+// files (they hold the tokens), and an error's `message` (vendor text; we
+// keep its code, status, request id and wait).
+
+#load "../agent/claude/transport.coax";
+
+BT_BASE :: "https://boat.dev/api/v1";
+BT_KEY_ENV :: "BOAT_API_KEY";
+BT_PATH_MAX :: 1024;
+
+// ---- names boat accepts
+
+// A sandbox id: bx_ and 8 of boat's 31 letters and digits.
+bt_id_ok :: (id: string) -> bool {
+  if id.count != 11 || id[0] != 'b' || id[1] != 'x' || id[2] != '_' { return false; }
+  for i: 3..<11 {
+    c := id[i];
+    ok := (c >= '2' && c <= '9') || (c >= 'a' && c <= 'z' && c != 'i' && c != 'l' && c != 'o');
+    if !ok { return false; }
+  }
+  return true;
+}
+
+// A name for a sandbox, a saved snapshot or an environment, or a variable's
+// key: letters, digits, '-', '_' and '.', 1 to 64, not starting with '-'
+// or '.'. Goes into a path unescaped.
+bt_name_ok :: (s: string) -> bool {
+  if s.count == 0 || s.count > 64 || s[0] == '-' || s[0] == '.' { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; } }
+  return true;
+}
+
+// A size boat sells. xlarge needs the $100 plan; policy.coax decides which we use.
+bt_type_ok :: (t: string) -> bool { return t == "small" || t == "default" || t == "large" || t == "xlarge"; }
+
+// ---- request bodies
+
+BtBody :: struct {
+  text: string;      // "" when it failed
+  problem: string;   // why, when it failed
+}
+
+bt_body_of :: (out: [] u8, n: int) -> BtBody {
+  if n < 0 { return BtBody.{problem = "the request does not fit its buffer"}; }
+  return BtBody.{text = cast(string) out[0..<n]};
+}
+bt_refuse :: (why: string) -> BtBody { return BtBody.{problem = why}; }
+
+// TTL in seconds: > 0 auto-stops after that long; 0 sends null (no auto-stop,
+// which policy.coax refuses); < 0 leaves the field out (boat's default, 1 hour).
+bt_put_ttl :: (out: [] u8, at: int, ttl_s: int) -> int {
+  if ttl_s < 0 { return at; }
+  n := json_raw(out, at, ",\"ttlSeconds\":");
+  if ttl_s == 0 { return json_raw(out, n, "null"); }
+  return json_write_int(out, n, ttl_s);
+}
+
+BtCreate :: struct {
+  from: string;          // a saved snapshot's name; "" for boat's base image
+  type: string = "large";
+  environment: string;   // the environment that passes the box its secrets; "" passes none (noEnv)
+  name: string;
+  ttl_s: int = -1;
+}
+
+// POST /sandboxes. There is no `env` field on purpose: a saved snapshot
+// copies per-sandbox env to every box made from it, so secrets travel only
+// in a named environment (docs/cloud/boat-devbox.md).
+bt_create_body :: (out: [] u8, r: BtCreate) -> BtBody {
+  if !bt_type_ok(r.type) { return bt_refuse("the type is small, default, large or xlarge"); }
+  if r.from.count > 0 && !bt_name_ok(r.from) { return bt_refuse("from names a saved snapshot: letters, digits, - _ ."); }
+  if r.environment.count > 0 && !bt_name_ok(r.environment) { return bt_refuse("environment takes a plain name"); }
+  if r.name.count > 0 && !bt_name_ok(r.name) { return bt_refuse("name takes a plain name"); }
+  n := json_raw(out, 0, "{\"type\":"); n = json_write_string(out, n, r.type);
+  if r.from.count > 0 { n = json_raw(out, n, ",\"from\":"); n = json_write_string(out, n, r.from); }
+  if r.name.count > 0 { n = json_raw(out, n, ",\"name\":"); n = json_write_string(out, n, r.name); }
+  if r.environment.count > 0 { n = json_raw(out, n, ",\"environment\":"); n = json_write_string(out, n, r.environment); }
+  else { n = json_raw(out, n, ",\"noEnv\":true"); }
+  n = bt_put_ttl(out, n, r.ttl_s);
+  return bt_body_of(out, json_raw(out, n, "}"));
+}
+
+BtResume :: struct {
+  type: string;          // "" keeps the size it had
+  environment: string;   // "" keeps the environment it had
+  ttl_s: int = -1;
+}
+
+// POST /sandboxes/{id}/resume.
+bt_resume_body :: (out: [] u8, r: BtResume) -> BtBody {
+  if r.type.count > 0 && !bt_type_ok(r.type) { return bt_refuse("the type is small, default, large or xlarge"); }
+  if r.environment.count > 0 && !bt_name_ok(r.environment) { return bt_refuse("environment takes a plain name"); }
+  n := json_raw(out, 0, "{\"failFast\":true");
+  if r.type.count > 0 { n = json_raw(out, n, ",\"type\":"); n = json_write_string(out, n, r.type); }
+  if r.environment.count > 0 { n = json_raw(out, n, ",\"environment\":"); n = json_write_string(out, n, r.environment); }
+  n = bt_put_ttl(out, n, r.ttl_s);
+  return bt_body_of(out, json_raw(out, n, "}"));
+}
+
+// POST /sandboxes/{id}/stop.
+bt_stop_body :: (out: [] u8, force: bool) -> BtBody {
+  return bt_body_of(out, json_raw(out, 0, ifx force then "{\"force\":true}" else "{}"));
+}
+
+// PATCH /sandboxes/{id}: the auto-stop (from now) and the name.
+bt_update_body :: (out: [] u8, name: string, ttl_s: int) -> BtBody {
+  if name.count > 0 && !bt_name_ok(name) { return bt_refuse("name takes a plain name"); }
+  if name.count == 0 && ttl_s < 0 { return bt_refuse("nothing to change"); }
+  n := json_raw(out, 0, "{");
+  if name.count > 0 { n = json_raw(out, n, "\"name\":"); n = json_write_string(out, n, name); }
+  if ttl_s >= 0 {
+    if name.count > 0 { n = json_raw(out, n, ","); }
+    n = json_raw(out, n, "\"ttlSeconds\":");
+    n = ifx ttl_s == 0 then json_raw(out, n, "null") else json_write_int(out, n, ttl_s);
+  }
+  return bt_body_of(out, json_raw(out, n, "}"));
+}
+
+BtMode :: enum u8 { sync; stream; detached; }
+
+BT_SYNC_TIMEOUT_MAX :: 600;   // boat kills a synchronous command after this; longer work runs detached
+
+// POST /sandboxes/{id}/commands. A synchronous or streamed command runs at
+// most timeout_s (1 to 600; 0 is boat's 30); a detached one has no limit.
+bt_command_body :: (out: [] u8, command: string, cwd: string, timeout_s: int, mode: BtMode) -> BtBody {
+  if command.count == 0 { return bt_refuse("no command"); }
+  if timeout_s < 0 || timeout_s > BT_SYNC_TIMEOUT_MAX { return bt_refuse("a command's timeout is 1 to 600 seconds; run longer work detached"); }
+  if mode == BtMode.detached && timeout_s > 0 { return bt_refuse("a detached command takes no timeout"); }
+  n := json_raw(out, 0, "{\"command\":"); n = json_write_string(out, n, command);
+  if cwd.count > 0 { n = json_raw(out, n, ",\"cwd\":"); n = json_write_string(out, n, cwd); }
+  if timeout_s > 0 { n = json_raw(out, n, ",\"timeoutSeconds\":"); n = json_write_int(out, n, timeout_s); }
+  if mode == BtMode.stream { n = json_raw(out, n, ",\"stream\":true"); }
+  if mode == BtMode.detached { n = json_raw(out, n, ",\"detached\":true"); }
+  return bt_body_of(out, json_raw(out, n, "}"));
+}
+
+BT_FILE_MAX :: 5242880;   // boat refuses a file read or write over 5 MiB (413 file_too_large)
+
+// PUT /sandboxes/{id}/files: content as UTF-8, or already base64 when base64 is set.
+bt_file_body :: (out: [] u8, path: string, content: string, base64: bool) -> BtBody {
+  if path.count == 0 || path[0] != '/' { return bt_refuse("a file path is absolute"); }
+  if content.count > BT_FILE_MAX { return bt_refuse("a file is at most 5 MiB"); }
+  n := json_raw(out, 0, "{\"path\":"); n = json_write_string(out, n, path);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, content);
+  if base64 { n = json_raw(out, n, ",\"encoding\":\"base64\""); }
+  return bt_body_of(out, json_raw(out, n, "}"));
+}
+
+// POST /saved-snapshots.
+bt_save_body :: (out: [] u8, sandbox: string, name: string) -> BtBody {
+  if !bt_id_ok(sandbox) { return bt_refuse("not a sandbox id"); }
+  if !bt_name_ok(name) { return bt_refuse("a saved snapshot's name: letters, digits, - _ ."); }
+  n := json_raw(out, 0, "{\"sandboxId\":"); n = json_write_string(out, n, sandbox);
+  n = json_raw(out, n, ",\"name\":"); n = json_write_string(out, n, name);
+  return bt_body_of(out, json_raw(out, n, "}"));
+}
+
+// POST /sandboxes/{id}/sshkey: one OpenSSH public key line.
+bt_sshkey_body :: (out: [] u8, key: string) -> BtBody {
+  if !(key.count > 12 && (cast(string) key[0..<4] == "ssh-" || cast(string) key[0..<6] == "ecdsa-")) { return bt_refuse("not an OpenSSH public key"); }
+  for c: key { if c == '\n' || c == '\r' || c == 0 { return bt_refuse("a public key is one line"); } }
+  n := json_raw(out, 0, "{\"key\":"); n = json_write_string(out, n, key);
+  return bt_body_of(out, json_raw(out, n, "}"));
+}
+
+// POST /environments.
+bt_env_body :: (out: [] u8, name: string) -> BtBody {
+  if !bt_name_ok(name) { return bt_refuse("an environment's name: letters, digits, - _ ."); }
+  n := json_raw(out, 0, "{\"name\":"); n = json_write_string(out, n, name);
+  return bt_body_of(out, json_raw(out, n, "}"));
+}
+
+// PUT /environments/{id}/vars/{key}: the value travels in the body, never
+// in the path, an argument or a log.
+bt_var_body :: (out: [] u8, value: string) -> BtBody {
+  if value.count == 0 { return bt_refuse("an empty value; remove the variable instead"); }
+  n := json_raw(out, 0, "{\"value\":"); n = json_write_string(out, n, value);
+  return bt_body_of(out, json_raw(out, n, "}"));
+}
+
+// ---- paths
+
+// "/sandboxes/ID" + suffix (suffix "" or "/stop", "/commands" ...), or "" when id is not one.
+bt_sandbox_path :: (out: [] u8, id: string, suffix: string) -> string {
+  if !bt_id_ok(id) { return ""; }
+  n := json_raw(out, 0, "/sandboxes/"); n = json_raw(out, n, id); n = json_raw(out, n, suffix);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// "/sandboxes/ID/commands/PID" + suffix.
+bt_process_path :: (out: [] u8, id: string, pid: int, suffix: string) -> string {
+  if !bt_id_ok(id) || pid <= 0 { return ""; }
+  n := json_raw(out, 0, "/sandboxes/"); n = json_raw(out, n, id); n = json_raw(out, n, "/commands/");
+  n = json_write_int(out, n, pid); n = json_raw(out, n, suffix);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// Where an attach stream reads from: a byte offset in each of stdout and
+// stderr. Store it; reconnecting from it gives every byte exactly once.
+BtCursor :: struct { stdout: int; stderr: int; }
+
+bt_attach_path :: (out: [] u8, id: string, pid: int, at: BtCursor) -> string {
+  if at.stdout < 0 || at.stderr < 0 { return ""; }
+  b: [BT_PATH_MAX] u8;
+  p := bt_process_path(b[..], id, pid, "/stream");
+  if p.count == 0 { return ""; }
+  n := json_raw(out, 0, p); n = json_raw(out, n, "?stdoutOffset="); n = json_write_int(out, n, at.stdout);
+  n = json_raw(out, n, "&stderrOffset="); n = json_write_int(out, n, at.stderr);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// A query value made of plain characters only (an id, a name, a cursor, a
+// date); "" when it holds anything else.
+bt_query_ok :: (s: string) -> bool {
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == ':') { return false; } }
+  return true;
+}
+
+// GET /sandboxes with its filters ("" leaves one out).
+bt_list_path :: (out: [] u8, state: string, name_prefix: string, cursor: string, limit: int) -> string {
+  if !bt_query_ok(state) || !bt_query_ok(name_prefix) || !bt_query_ok(cursor) || limit < 0 || limit > 200 { return ""; }
+  n := json_raw(out, 0, "/sandboxes?limit="); n = json_write_int(out, n, ifx limit == 0 then 100 else limit);
+  if state.count > 0 { n = json_raw(out, n, "&state="); n = json_raw(out, n, state); }
+  if name_prefix.count > 0 { n = json_raw(out, n, "&namePrefix="); n = json_raw(out, n, name_prefix); }
+  if cursor.count > 0 { n = json_raw(out, n, "&cursor="); n = json_raw(out, n, cursor); }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// GET /sandboxes/{id}/usage?since=... (an ISO time; "" for boat's default window).
+bt_usage_path :: (out: [] u8, id: string, since: string) -> string {
+  if !bt_query_ok(since) { return ""; }
+  b: [BT_PATH_MAX] u8;
+  p := bt_sandbox_path(b[..], id, "/usage");
+  if p.count == 0 { return ""; }
+  n := json_raw(out, 0, p);
+  if since.count > 0 { n = json_raw(out, n, "?since="); n = json_raw(out, n, since); }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// GET /sandboxes/{id}/files?path=... A file path is percent-encoded.
+bt_file_path :: (out: [] u8, id: string, path: string) -> string {
+  if path.count == 0 || path[0] != '/' { return ""; }
+  b: [BT_PATH_MAX] u8;
+  p := bt_sandbox_path(b[..], id, "/files?path=");
+  if p.count == 0 { return ""; }
+  n := json_raw(out, 0, p);
+  hex := "0123456789ABCDEF";
+  for c: path {
+    if n < 0 { return ""; }
+    plain := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~' || c == '/';
+    if plain { if n >= out.count { return ""; } out[n] = c; n += 1; continue; }
+    if n + 3 > out.count { return ""; }
+    out[n] = '%'; out[n + 1] = hex[c >> 4]; out[n + 2] = hex[c & 15]; n += 3;
+  }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// "/saved-snapshots/NAME", "/environments/ID/vars/KEY" and the like: a
+// prefix, a plain name, a suffix.
+bt_named_path :: (out: [] u8, prefix: string, name: string, suffix: string) -> string {
+  if !bt_name_ok(name) { return ""; }
+  n := json_raw(out, 0, prefix); n = json_raw(out, n, name); n = json_raw(out, n, suffix);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// ---- errors
+
+BtErrKind :: enum u8 {
+  none;
+  config;                    // the client or the request is wrong before sending (no key, a bad id, hosted not opted in)
+  transport;                 // no answer: curl failed, the host is unreachable
+  decode;                    // an answer that is not boat's shape
+  too_large;                 // the answer does not fit the caller's buffer; or 413
+  deadline;                  // the wait ran out (wait for ready, a command's timeout)
+  http;                      // any other refusal: see status and code
+  not_found;                 // 404
+  unauthorized;              // 401, 403
+  rate_limited;              // 429: a start limit or the IP limit; retry_after_s says when
+  payment_required;          // 402: the plan and the wallet are used up
+  starting;                  // 409 sandbox_starting: still starting after 60 s; retry
+  stopping;                  // 409 sandbox_stopping, sandbox_resuming, sandbox_securing: wait, then retry
+  not_running;               // 409 machine_not_running, sandbox_not_ready: resume it first
+  snapshot_expired;          // 409 snapshot_data_expired: the stopped disk is gone
+  provider_not_configured;   // 409 provider_not_configured
+  restoring;                 // 502 sandbox_direct_failed, sandbox_restoring: did not run; retry in 1 to 3 s
+  may_be_running;            // 502 sandbox_direct_failed otherwise: a command may have run; check before sending again
+  unavailable;               // 503 no_ready_machine, out_of_capacity ...: retry after retry_after_s
+  server;                    // other 5xx
+}
+
+BtError :: struct {
+  kind: BtErrKind;
+  status: int;               // HTTP status; 0 when none came
+  code: string;              // boat's code ("rate_limited"), borrowed
+  request_id: string;        // boat's requestId, for support
+  retry_after_s: int;        // from Retry-After, retryAfter or retryAfterSeconds; 0 when none
+  retryable: bool;           // error.details.retryable, or what the kind implies
+  why: string;               // ours, for config, transport, decode and deadline
+}
+
+bt_err :: (kind: BtErrKind, why: string) -> BtError { return BtError.{kind = kind, why = why}; }
+
+bt_failed :: (e: BtError) -> bool { return e.kind != BtErrKind.none; }
+
+// What an error is called in a line for a person: the kind's name.
+bt_kind_name :: (k: BtErrKind) -> string {
+  return ifx k == BtErrKind.none then "none"
+    else ifx k == BtErrKind.config then "config"
+    else ifx k == BtErrKind.transport then "transport"
+    else ifx k == BtErrKind.decode then "decode"
+    else ifx k == BtErrKind.too_large then "too_large"
+    else ifx k == BtErrKind.deadline then "deadline"
+    else ifx k == BtErrKind.not_found then "not_found"
+    else ifx k == BtErrKind.unauthorized then "unauthorized"
+    else ifx k == BtErrKind.rate_limited then "rate_limited"
+    else ifx k == BtErrKind.payment_required then "payment_required"
+    else ifx k == BtErrKind.starting then "starting"
+    else ifx k == BtErrKind.stopping then "stopping"
+    else ifx k == BtErrKind.not_running then "not_running"
+    else ifx k == BtErrKind.snapshot_expired then "snapshot_expired"
+    else ifx k == BtErrKind.provider_not_configured then "provider_not_configured"
+    else ifx k == BtErrKind.restoring then "restoring"
+    else ifx k == BtErrKind.may_be_running then "may_be_running"
+    else ifx k == BtErrKind.unavailable then "unavailable"
+    else ifx k == BtErrKind.server then "server" else "http";
+}
+
+bt_int_at :: (text: string, path: string, fallback: int) -> int {
+  v := cl_int(text, path);
+  return ifx v.ok then v.value else fallback;
+}
+
+// The error a finished exchange is: kind none for a 2xx with ok not false.
+// retry_after_s is the Retry-After header's value (0 when none came).
+bt_error :: (ar: [] ClArena, status: int, body: string, retry_after_s: int) -> BtError {
+  e := BtError.{status = status, retry_after_s = retry_after_s};
+  if status >= 200 && status < 300 {
+    okb := cl_bool(body, "ok");
+    if body.count > 0 && cl_root(body).ok && !(okb.ok && !okb.value) { return e; }
+    if body.count == 0 { return e; }
+    e.kind = BtErrKind.decode; e.why = "a 2xx answer that is not boat's envelope";
+    return e;
+  }
+  if status == 0 { e.kind = BtErrKind.transport; e.why = "no answer came"; return e; }
+  code := cl_str(ar, body, "code");
+  if code.count == 0 { code = cl_str(ar, body, "error.code"); }
+  e.code = code;
+  e.request_id = cl_str(ar, body, "requestId");
+  if e.retry_after_s == 0 { e.retry_after_s = bt_int_at(body, "retryAfterSeconds", bt_int_at(body, "retryAfter", 0)); }
+  detail := cl_bool(body, "error.details.retryable");
+  msg := cl_str(ar, body, "message");
+  if msg.count == 0 { msg = cl_str(ar, body, "error.details.message"); }
+  e.kind = BtErrKind.http;
+  if status == 401 || status == 403 { e.kind = BtErrKind.unauthorized; }
+  else if status == 402 { e.kind = BtErrKind.payment_required; }
+  else if code == "machine_not_running" || code == "sandbox_not_ready" { e.kind = BtErrKind.not_running; }   // 400 on sshkey and desktop, 409 on commands
+  else if status == 404 { e.kind = BtErrKind.not_found; }
+  else if status == 413 { e.kind = BtErrKind.too_large; }
+  else if status == 429 { e.kind = BtErrKind.rate_limited; e.retryable = true; }
+  else if status == 409 {
+    if code == "sandbox_starting" { e.kind = BtErrKind.starting; e.retryable = true; }
+    else if code == "sandbox_stopping" || code == "sandbox_resuming" || code == "sandbox_securing" || code == "idempotency_in_progress" { e.kind = BtErrKind.stopping; e.retryable = true; }
+    else if code == "snapshot_data_expired" { e.kind = BtErrKind.snapshot_expired; }
+    else if code == "provider_not_configured" { e.kind = BtErrKind.provider_not_configured; }
+  }
+  else if status == 502 && code == "sandbox_direct_failed" {
+    if msg == "sandbox_restoring" { e.kind = BtErrKind.restoring; e.retryable = true; }
+    else { e.kind = BtErrKind.may_be_running; e.retryable = detail.ok && detail.value; }
+  }
+  else if status == 503 { e.kind = BtErrKind.unavailable; e.retryable = true; }
+  else if status >= 500 { e.kind = BtErrKind.server; }
+  return e;
+}
+
+// ---- records
+
+BtSandbox :: struct {
+  id: string; name: string;
+  state: string;         // provisioning ... ready, idle, running, archiving, archived, error
+  type: string; vcpu: int; memory_gb: int;
+  ip: string; ssh: string;        // sshEndpoint ("user@host" or "host:port"), "" while stopped
+  environment: string;
+  ttl_s: int;            // -1 when none (no auto-stop) or not given
+  archive_after: string; // when it auto-stops
+  created: string; stopped: string;
+  error: string;
+  ok: bool;              // the record held an id and a state
+}
+
+// The box accepts commands and SSH now.
+bt_up :: (s: BtSandbox) -> bool { return s.state == "ready" || s.state == "idle" || s.state == "running"; }
+// The box is stopped, or stopping (a resume now gets the same machine back).
+bt_down :: (s: BtSandbox) -> bool { return s.state == "archived" || s.state == "archiving"; }
+// A state that ends a wait for ready badly.
+bt_broken :: (s: BtSandbox) -> bool { return s.state == "error" || s.state == "cancelled"; }
+
+bt_sandbox_of :: (ar: [] ClArena, obj: string) -> BtSandbox {
+  s: BtSandbox;
+  s.id = cl_str(ar, obj, "id"); s.name = cl_str(ar, obj, "name"); s.state = cl_str(ar, obj, "state");
+  s.type = cl_str(ar, obj, "type");
+  s.vcpu = bt_int_at(obj, "vcpu", 0); s.memory_gb = bt_int_at(obj, "memoryGB", 0);
+  s.ip = cl_str(ar, obj, "ip"); s.ssh = cl_str(ar, obj, "sshEndpoint");
+  s.environment = cl_str(ar, obj, "environment");
+  s.ttl_s = bt_int_at(obj, "ttlSeconds", -1);
+  s.archive_after = cl_str(ar, obj, "archiveAfter");
+  s.created = cl_str(ar, obj, "createdAt"); s.stopped = cl_str(ar, obj, "stoppedAt");
+  s.error = cl_str(ar, obj, "error");
+  s.ok = bt_id_ok(s.id) && s.state.count > 0;
+  return s;
+}
+
+// sandbox.info, sandbox.created, and an action that carries its sandbox.
+bt_read_sandbox :: (ar: [] ClArena, body: string) -> BtSandbox { return bt_sandbox_of(ar, cl_raw(body, "sandbox")); }
+
+// sandbox.list: up to out.count sandboxes; the count read, -1 when the body is not a list.
+bt_read_list :: (ar: [] ClArena, body: string, out: [] BtSandbox) -> int {
+  arr := cl_raw(body, "sandboxes");
+  n := cl_count(arr);
+  if n < 0 { return -1; }
+  k := 0;
+  for i: 0..<n {
+    if k >= out.count { break; }
+    s := bt_sandbox_of(ar, cl_json(arr, cl_item(arr, i)));
+    if s.ok { out[k] = s; k += 1; }
+  }
+  return k;
+}
+
+// The cursor of the next page, or "" when this was the last.
+bt_next_cursor :: (ar: [] ClArena, body: string) -> string {
+  more := cl_bool(body, "pageInfo.hasMore");
+  if !(more.ok && more.value) { return ""; }
+  return cl_str(ar, body, "pageInfo.nextCursor");
+}
+
+// A stop or resume answer: its status and, for a stop, its operation's id.
+BtAction :: struct { status: string; stop_id: string; stop_status: string; }
+
+bt_read_action :: (ar: [] ClArena, body: string) -> BtAction {
+  a := BtAction.{status = cl_str(ar, body, "status")};
+  a.stop_id = cl_str(ar, body, "operation.id");
+  if a.stop_id.count == 0 { a.stop_id = cl_str(ar, body, "stop.id"); }
+  a.stop_status = cl_str(ar, body, "operation.status");
+  if a.stop_status.count == 0 { a.stop_status = cl_str(ar, body, "stop.status"); }
+  return a;
+}
+
+BtWindow :: struct { limit: int; used: int; remaining: int; }
+
+BtLimits :: struct {
+  can_start: bool;
+  active: int; max_active: int;
+  minute: BtWindow; hour: BtWindow; day: BtWindow;     // starts
+  plan: string;                // sandboxPlanKey, e.g. box_20
+  billing: string;             // billingStatus
+  included_left_s: int;        // subscriptionRemainingSeconds, in default-size seconds
+  blocked: string;             // startBlockedReason
+  ok: bool;
+}
+
+bt_window_of :: (body: string, path: string) -> BtWindow {
+  w := cl_raw(body, path);
+  return BtWindow.{limit = bt_int_at(w, "limit", 0), used = bt_int_at(w, "used", 0), remaining = bt_int_at(w, "remaining", 0)};
+}
+
+bt_read_limits :: (ar: [] ClArena, body: string) -> BtLimits {
+  l: BtLimits;
+  cs := cl_bool(body, "canStart");
+  l.can_start = cs.ok && cs.value;
+  l.active = bt_int_at(body, "activeSandboxes", -1); l.max_active = bt_int_at(body, "maxActiveSandboxes", -1);
+  l.minute = bt_window_of(body, "starts.minute"); l.hour = bt_window_of(body, "starts.hour"); l.day = bt_window_of(body, "starts.day");
+  l.plan = cl_str(ar, body, "sandboxPlanKey"); l.billing = cl_str(ar, body, "billingStatus");
+  l.included_left_s = bt_int_at(body, "subscriptionRemainingSeconds", 0);
+  l.blocked = cl_str(ar, body, "startBlockedReason");
+  l.ok = cs.ok && l.active >= 0 && l.max_active >= 0;
+  return l;
+}
+
+// A synchronous command's result.
+BtCommand :: struct {
+  ok: bool;                  // the body was a command result
+  exit_code: int;            // -1 when it has none (killed by a signal, timed out)
+  success: bool; timed_out: bool;
+  stdout: string; stderr: string;
+  truncated: bool;
+  command_id: string;
+}
+
+bt_read_command :: (ar: [] ClArena, body: string) -> BtCommand {
+  c: BtCommand;
+  s := cl_bool(body, "success");
+  c.ok = s.ok; c.success = s.ok && s.value;
+  c.exit_code = bt_int_at(body, "exitCode", -1);
+  t := cl_bool(body, "timedOut"); c.timed_out = t.ok && t.value;
+  c.stdout = cl_str(ar, body, "stdout"); c.stderr = cl_str(ar, body, "stderr");
+  a := cl_bool(body, "stdoutTruncated"); b := cl_bool(body, "stderrTruncated");
+  c.truncated = (a.ok && a.value) || (b.ok && b.value);
+  c.command_id = cl_str(ar, body, "commandId");
+  return c;
+}
+
+// A detached command, started: its process id is what attach, status and kill take.
+BtStarted :: struct { pid: int; command_id: string; ok: bool; }
+
+bt_read_started :: (ar: [] ClArena, body: string) -> BtStarted {
+  s := BtStarted.{pid = bt_int_at(body, "processId", 0), command_id = cl_str(ar, body, "commandId")};
+  s.ok = s.pid > 0;
+  return s;
+}
+
+// GET /sandboxes/{id}/commands/{pid}.
+BtStatus :: struct {
+  status: string;            // running, exited, lost
+  running: bool;
+  exit_code: int;            // -1 while running or when none
+  next: BtCursor;            // stdoutNextOffset, stderrNextOffset
+  ok: bool;
+}
+
+bt_read_status :: (ar: [] ClArena, body: string) -> BtStatus {
+  s := BtStatus.{status = cl_str(ar, body, "status"), exit_code = bt_int_at(body, "exitCode", -1)};
+  r := cl_bool(body, "running"); s.running = r.ok && r.value;
+  s.next = BtCursor.{stdout = bt_int_at(body, "stdoutNextOffset", 0), stderr = bt_int_at(body, "stderrNextOffset", 0)};
+  s.ok = s.status.count > 0;
+  return s;
+}
+
+// One NDJSON line of a streamed command (started, stdout, stderr, exit,
+// error) or of an attach stream (attached, stdout, stderr, heartbeat, exit,
+// reconnect, error).
+BtFrameKind :: enum u8 { bad; started; attached; stdout; stderr; heartbeat; exit; reconnect; error; }
+
+BtFrame :: struct {
+  kind: BtFrameKind;
+  data: string;              // stdout, stderr: the chunk
+  next: int;                 // stdout, stderr on attach: nextOffset for that stream; -1 when not given
+  at: BtCursor;              // attached, exit, reconnect, error: the offsets; -1 each when not given
+  exit_code: int;            // exit: -1 when none
+  status: string;            // exit on attach: exited or lost
+  error: string;             // error: boat's code
+  retryable: bool;           // error: the command provably never ran
+  command_id: string;        // started
+}
+
+// The stream is over after this frame (reconnect means: open it again from frame.at).
+bt_frame_last :: (f: BtFrame) -> bool { return f.kind == BtFrameKind.exit || f.kind == BtFrameKind.reconnect || f.kind == BtFrameKind.error || f.kind == BtFrameKind.bad; }
+
+bt_read_frame :: (ar: [] ClArena, line: string) -> BtFrame {
+  f := BtFrame.{next = -1, exit_code = -1, at = BtCursor.{stdout = -1, stderr = -1}};
+  if !cl_root(line).ok { return f; }
+  t := cl_str(ar, line, "type");
+  f.kind = ifx t == "started" then BtFrameKind.started
+    else ifx t == "attached" then BtFrameKind.attached
+    else ifx t == "stdout" then BtFrameKind.stdout
+    else ifx t == "stderr" then BtFrameKind.stderr
+    else ifx t == "heartbeat" then BtFrameKind.heartbeat
+    else ifx t == "exit" then BtFrameKind.exit
+    else ifx t == "reconnect" then BtFrameKind.reconnect
+    else ifx t == "error" then BtFrameKind.error else BtFrameKind.bad;
+  f.data = cl_str(ar, line, "data");
+  f.next = bt_int_at(line, "nextOffset", -1);
+  f.at = BtCursor.{stdout = bt_int_at(line, "stdoutOffset", -1), stderr = bt_int_at(line, "stderrOffset", -1)};
+  f.exit_code = bt_int_at(line, "exitCode", -1);
+  f.status = cl_str(ar, line, "status");
+  f.error = cl_str(ar, line, "error");
+  r := cl_bool(line, "retryable"); f.retryable = r.ok && r.value;
+  f.command_id = cl_str(ar, line, "commandId");
+  return f;
+}
+
+// The cursor after frame f: a chunk moves its stream to nextOffset; attached,
+// exit, reconnect and error name both offsets.
+bt_advance :: (at: BtCursor, f: BtFrame) -> BtCursor {
+  c := at;
+  if f.kind == BtFrameKind.stdout && f.next >= 0 { c.stdout = f.next; }
+  if f.kind == BtFrameKind.stderr && f.next >= 0 { c.stderr = f.next; }
+  if f.kind == BtFrameKind.attached || f.kind == BtFrameKind.exit || f.kind == BtFrameKind.reconnect || f.kind == BtFrameKind.error {
+    if f.at.stdout >= 0 { c.stdout = f.at.stdout; }
+    if f.at.stderr >= 0 { c.stderr = f.at.stderr; }
+  }
+  return c;
+}
+
+BtFile :: struct { path: string; content: string; base64: bool; size: int; ok: bool; }
+
+bt_read_file :: (ar: [] ClArena, body: string) -> BtFile {
+  f := BtFile.{path = cl_str(ar, body, "path"), content = cl_str(ar, body, "content"), size = bt_int_at(body, "size", -1)};
+  f.base64 = cl_str(ar, body, "encoding") == "base64";
+  f.ok = f.size >= 0;
+  return f;
+}
+
+BtSaved :: struct {
+  name: string;
+  status: string;        // saving, ready, failed
+  source: string;        // sourceSandboxId
+  size_bytes: int;
+  created: string;
+  ok: bool;
+}
+
+bt_saved_of :: (ar: [] ClArena, obj: string) -> BtSaved {
+  s := BtSaved.{name = cl_str(ar, obj, "name"), status = cl_str(ar, obj, "status"), source = cl_str(ar, obj, "sourceSandboxId")};
+  s.size_bytes = bt_int_at(obj, "sizeBytes", 0); s.created = cl_str(ar, obj, "createdAt");
+  s.ok = s.name.count > 0 && s.status.count > 0;
+  return s;
+}
+
+// savedSnapshot.saving and savedSnapshot.info carry it under snapshot.
+bt_read_saved :: (ar: [] ClArena, body: string) -> BtSaved { return bt_saved_of(ar, cl_raw(body, "snapshot")); }
+
+bt_read_saved_list :: (ar: [] ClArena, body: string, out: [] BtSaved) -> int {
+  arr := cl_raw(body, "snapshots");
+  n := cl_count(arr);
+  if n < 0 { return -1; }
+  k := 0;
+  for i: 0..<n {
+    if k >= out.count { break; }
+    s := bt_saved_of(ar, cl_json(arr, cl_item(arr, i)));
+    if s.ok { out[k] = s; k += 1; }
+  }
+  return k;
+}
+
+// What an SSH entry needs after each resume: the address changes every time.
+BtSsh :: struct { user: string; endpoint: string; ip: string; host_key: string; ok: bool; }
+
+bt_read_ssh :: (ar: [] ClArena, body: string) -> BtSsh {
+  s := BtSsh.{user = cl_str(ar, body, "sshUser"), endpoint = cl_str(ar, body, "sshEndpoint"), ip = cl_str(ar, body, "machineIp"), host_key = cl_str(ar, body, "hostKey")};
+  s.ok = s.user.count > 0 && (s.ip.count > 0 || s.endpoint.count > 0);
+  return s;
+}
+
+BtUsage :: struct {
+  seconds: int;
+  millicents: int;       // dollars * 100000, rounded; whole numbers so policy can add them
+  type: string;
+  running: bool;
+  ok: bool;
+}
+
+bt_read_usage :: (ar: [] ClArena, body: string) -> BtUsage {
+  u := BtUsage.{seconds = bt_int_at(body, "seconds", -1), type = cl_str(ar, body, "sandboxType")};
+  d := cl_num(body, "dollars");
+  if d.ok { u.millicents = cast(int) (d.value * 100000.0 + 0.5); }
+  r := cl_bool(body, "running"); u.running = r.ok && r.value;
+  u.ok = u.seconds >= 0 && d.ok;
+  return u;
+}
+
+// An environment, without its contents: the SDK never reads envContents or
+// secret files, so a token can't reach a log through it.
+BtEnv :: struct { id: string; name: string; is_default: bool; ok: bool; }
+
+bt_read_envs :: (ar: [] ClArena, body: string, out: [] BtEnv) -> int {
+  arr := cl_raw(body, "environments");
+  n := cl_count(arr);
+  if n < 0 { return -1; }
+  k := 0;
+  for i: 0..<n {
+    if k >= out.count { break; }
+    obj := cl_json(arr, cl_item(arr, i));
+    e := BtEnv.{id = cl_str(ar, obj, "id"), name = cl_str(ar, obj, "name")};
+    d := cl_bool(obj, "isDefault"); e.is_default = d.ok && d.value;
+    e.ok = e.id.count > 0 && e.name.count > 0;
+    if e.ok { out[k] = e; k += 1; }
+  }
+  return k;
+}
