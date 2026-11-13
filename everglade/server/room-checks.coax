@@ -835,3 +835,68 @@ e2pt_slot :: (klass: int, level: int, kind: int, sp: int) -> int {
   for q: 0..<EG_HZ * 60 { rc_test_tick(v[..], k, true); }
   #assert b[0].c[EGB_SEAT].slots[3] == slots - 1;
 }
+
+// ---- the binary wire at the room's edge (#13278)
+
+// One frame said to the room as its binary frame (wire-table.coax).
+eg_test_say_bin :: (v: [] RmServer, conn: int, text: string) {
+  b: [1100] u8; n := wt_bin(text, b[..]);
+  if n > 0 { rm_heard(v, conn, cast(string) b[0..<n]); }
+}
+#test "binary wire: a page whose hello says so is written binary and reads as a text page beside it does" #steps 4000000000 #traversal 1073741824 {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  path := "GET /api/room/relay/everglade/pair-e2-bin HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 0, path) == 0 && rm_join(v[..], 1, path) == 1;
+  k := eg_room_at(v[..], v[0].conns[0].relay); #assert k >= 0;
+  h: [64] u8; hn := wire_put_hello(h[..], 0, WireHello.{look = "ranger.0.0.0", kind = "srd-fighter", flags = WIRE_HELLO_PACKED, name = "-"});
+  rm_heard(v[..], 0, cast(string) h[0..<hn]);            // conn 0: text
+  hn = wire_put_hello(h[..], 0, WireHello.{look = "ranger.0.0.0", kind = "srd-fighter", flags = WIRE_HELLO_PACKED | WIRE_HELLO_BINARY, name = "-"});
+  rm_heard(v[..], 1, cast(string) h[0..<hn]);            // conn 1: its hello, in text, says it speaks binary
+  #assert !v[0].conns[0].bin && v[0].conns[1].bin && v[0].eg[k].seat[1].hello && v[0].eg[k].seat[1].rep[0].packed;
+  m: [2] WireMirror; said: [2] int; bytes: [2] int; refused: [2] bool; frames: [2] int;
+  ib: [96] u8;
+  for t: 0..<60 {
+    v[0].mono_ms += 33; v[0].wall_ms += 33;
+    for c: 0..<2 {
+      // each walks its own way, and says what it heard; at tick 20 each asks for what no room has
+      n := wire_put_in(ib[..], 0, WireIn.{seq = t + 1, ky = ifx c == 0 then 100 else -100, theta = 0.5, b = WB_RUN, heard = said[c]});
+      if c == 0 { rm_heard(v[..], 0, cast(string) ib[0..<n]); } else { eg_test_say_bin(v[..], 1, cast(string) ib[0..<n]); }
+      if t == 20 { if c == 0 { rm_heard(v[..], 0, "E 500 2 3"); } else { eg_test_say_bin(v[..], 1, "E 500 2 3"); } }
+    }
+    eg_test_tick(v[..], k);
+    while true {
+      got := rm_relay_next(v[..]);
+      if got == 0 { break; }
+      f := cast(string) v[0].rout[0..<got];
+      for c: 0..<2 {
+        if !v[0].rto[c] { continue; }
+        frames[c] += 1; bytes[c] += got;
+        relays := f[0] == 'y' || f[0] == 'j' || f[0] == 'l';
+        // conn 1 hears binary and nothing else of the session; conn 0 hears text
+        if c == 1 && !relays && t > 0 { #assert wt_is_bin(f); }
+        if c == 0 { #assert !wt_is_bin(f); }
+        tb: [RELAY_FRAME * 2] u8; tn := ifx wt_is_bin(f) then wt_text(f, tb[..]) else wt_text_put(tb[..], 0, f);
+        #assert tn > 0;
+        tx := cast(string) tb[0..<tn];
+        if wire_is(tx, "D") { d := wire_mirror_frame(m[c..<c + 1], tx); #assert d.tick >= 0; said[c] = m[c].heard; }
+        if tx == "r 500 unbuilt" { refused[c] = true; }
+      }
+    }
+  }
+  #assert refused[0] && refused[1] && frames[0] > 50 && frames[1] > 50;
+  #assert v[0].st.wire_any == 0 && v[0].st.wire_bad == 0;
+  // both pages hold both players, the same rows
+  for id: 0..<2 {
+    a := wire_mirror_of(m[0..<1], id); b := wire_mirror_of(m[1..<2], id);
+    #assert a.id == id && b.id == id && a.x == b.x && a.z == b.z && a.yaw == b.yaw && a.hp == b.hp && a.max == b.max && a.life == b.life && a.kind == WK_PLAYER;
+  }
+  #assert m[0].bad == 0 && m[1].bad == 0 && m[0].heard > 40 && m[1].heard > 40;
+  // the binary page was sent fewer bytes for the same state
+  #assert bytes[1] < bytes[0];
+  // bytes that are no frame are counted and dropped; the seat plays on
+  junk := [3] u8.[cast(u8) (WT_BIN + WT_I), 255, 255];
+  rm_heard(v[..], 1, cast(string) junk[..]); #assert v[0].st.wire_bad == 1 && !v[0].conns[1].kicked;
+  // a hello without the flag on the same socket: written text from here on
+  hn = wire_put_hello(h[..], 0, WireHello.{look = "ranger.0.0.0", kind = "srd-fighter", flags = WIRE_HELLO_PACKED, name = "-"});
+  rm_heard(v[..], 1, cast(string) h[0..<hn]); #assert !v[0].conns[1].bin;
+}

@@ -1,7 +1,11 @@
-// Everglade's binary wire, version 8 (#13278): one table of every frame and entry, and the one
-// encoder and decoder that read it. Profile proto/verse/everglade-session-v8.json and its golden
-// bytes are written from this table (coax/web/room/wire8-profile.coax); doc
-// docs/protocol/everglade-session-v8.md.
+// Everglade's binary wire (#13278): one table of every frame and entry, and the one encoder and
+// decoder that read it. Profile proto/verse/everglade-session-binary-v1.json and its golden bytes
+// are written from this table (coax/web/room/wire-table-profile.coax); doc
+// docs/protocol/everglade-session-binary-v1.md.
+//
+// It is negotiated in the hello: a page that sets WT_HELLO_BINARY in its hello's FLAGS is written
+// these frames from then on, and writes them. The hello, and the P and A before it, stay text, so
+// a room of any build reads them and refuses a page it cannot seat in words that page reads.
 //
 // A frame is a WebSocket binary message (or a WebTransport datagram or stream record): one opcode
 // byte, 128 + the kind's row in WT below, then the kind's fields as bits, the highest bit first,
@@ -31,10 +35,12 @@
 // Wire 7's text is the other form of the same table: wt_bin turns a text frame into its binary
 // frame and wt_text turns it back, byte for byte, for any text at all (a frame the table has no
 // row for, or one that is not written as its row says, goes as WT_ANY: its words, or its bytes).
-// A room serves a page on wire 7 through these two (everglade/server/wire-prev.coax).
+// A page that does not set the flag is written and read as text, as before.
 //   coax/bin/coax test everglade/shared/wire-table.coax
 
-WT_VERSION :: 8;    // the wire version these frames are (everglade-wire.coax WIRE_VERSION, once the room and the pages speak it)
+// A hello's FLAGS bit that says its page reads and writes these frames (everglade-wire.coax WIRE_HELLO_BINARY). The
+// hello itself, and the P and A before it, are text, so a room of any build reads them and can refuse the page.
+WT_HELLO_BINARY :: 16;
 WT_BIN :: 128;      // a binary frame's first byte is its opcode: WT_BIN + its kind
 WT_SF :: 23;        // a row's fields (everglade-wire.coax WIRE_SF)
 WT_BASES :: 16;     // BACK is under this (WIRE_BASES)
@@ -101,7 +107,7 @@ WT :: [WT_KINDS] WtKind.[
   WtKind.{head = "a", spec = "tick:u7@tick id:u7@id seat:i6@seat seq:u7@seq fx:i8@mm fy:i8@mm fz:i8@mm vx:i8@mm/s vy:i8@mm/s vz:i8@mm/s st:u7@thousandths age:u6@ms", who = WT_ENTRY, ex = "a 900 7 2 41 1000 1500 -2000 30000 4000 -50 800 33", note = "a projectile left a seat's hand"},
   WtKind.{head = "d", spec = "tick:u7@tick id:u7@id kind:u2 x:i8@mm y:i8@mm z:i8@mm dx:i8@thousandths dy:i8@thousandths dz:i8@thousandths body:i7@id", who = WT_ENTRY, ex = "d 930 7 1 5000 0 -9000 0 -1000 0 -1", note = "a projectile ended"},
   WtKind.{head = "P", spec = "engine:u5 rules:u5 content:u7", who = WT_PAGE, ex = "P 1 1 1", note = "the build this page is, before its hello"},
-  WtKind.{head = "H", spec = "version:u4 look:w kind:w flags:u4@bits name:n", who = WT_PAGE, ex = "H 8 ranger.2.1.0 druid 2 Ash Wood", note = "hello"},
+  WtKind.{head = "H", spec = "version:u4 look:w kind:w flags:u4@bits name:n", who = WT_PAGE, ex = "H 7 ranger.2.1.0 druid 18 Ash Wood", note = "hello"},
   WtKind.{head = "I", spec = "seq:u7@seq kx:i4@percent ky:i4@percent px:i4@percent py:i4@percent theta:i8@0.1mrad b:u5@bits heard:u7@tick", who = WT_PAGE, ex = "I 41 0 100 0 0 -15708 1 900", note = "one step's input"},
   WtKind.{head = "J1", spec = "seq:u7@seq kx:i4@percent ky:i4@percent px:i4@percent py:i4@percent theta:i8@0.1mrad b:u5@bits heard:u7@tick", who = WT_PAGE, ex = "J1 41 0 100 0 0 -15708 33 900", note = "one step's input with the Link bits"},
   WtKind.{head = "C", spec = "seq:u7@seq slot:u4 ax:i8@cm ay:i8@cm az:i8@cm tgt:i7@target ? mode:u4 ? view:u8@ms", who = WT_PAGE, ex = "C 42 2 400 150 -700 2003 0 30000", note = "a cast"},
@@ -452,6 +458,9 @@ wt_row_text :: (row: WtRow, packed: bool, out: [] u8, at: int) -> int {
 // ---- frames and entries
 
 wt_is_bin :: (t: string) -> bool { return t.count > 0 && t[0] >= WT_BIN; }
+// Whether a text frame stays text on a socket that speaks binary: the relay's own frames (y, j, l, m, t:
+// room-relay-v2) and the latency observation (@1) are other protocols on the same socket.
+wt_stays_text :: (t: string) -> bool { return t.count > 0 && (t[0] == 'y' || t[0] == 'j' || t[0] == 'l' || t[0] == 'm' || t[0] == 't' || t[0] == '@'); }
 // The kind of a binary frame or entry, -1 none.
 wt_kind :: (t: string) -> int { return ifx t.count > 0 && t[0] >= WT_BIN && cast(int) t[0] - WT_BIN < WT_KINDS then cast(int) t[0] - WT_BIN else -1; }
 wt_head_is :: (t: string, head: string) -> bool {
@@ -739,7 +748,7 @@ wt_test_hex :: (b: string, h: string) -> bool {
 }
 #test "wire table: text comes back byte for byte, written as its row says or not" {
   for t: [30] string.[
-    "C 42 2 400 150 -700 2003", "C 42 2 400 150 -700 -1 3", "C 42 2 400 150 -700 2003 0 30000", "H 8 ranger.2.1.0 druid 2 -", "H 8 a b 0 Ash  Wood ",
+    "C 42 2 400 150 -700 2003", "C 42 2 400 150 -700 -1 3", "C 42 2 400 150 -700 2003 0 30000", "H 7 ranger.2.1.0 druid 2 -", "H 7 a b 0 Ash  Wood ",
     "K -", "K", "X heal", "X guard off", "X at 5000 -40000 0", "b 0", "b 3 0 7 200", "g 1 2 3 5 40 6 7 8 9 2 1 0 11 1 6", "g 1 2 3 5 40 6 7 8 9 2 1 0 11 1 6 4",
     "g pair-e2-7", "v 2 3 900 2700 900 2700", "e mon 90 2 3 -1 4", "e cast 3 2 400 150 -700 12345 2", "e rc 9 0 400 150 700 12345", "r 0 version",
     "n 3 - ranger.0.0.0 druid 0 -", "e stop 3 2 range", "W 900 30 -5 0 0 1000", "T 46 pair-e2-7", "e ride 8 6 -1", "e fam-cast 41 2", "e rebuild", "A 1235 -50 -12000 -278",

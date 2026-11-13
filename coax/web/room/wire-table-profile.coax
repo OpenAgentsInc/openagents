@@ -1,0 +1,144 @@
+// The binary wire's profile, written from its table (#13278): proto/verse/everglade-session-binary-v1.json
+// is every kind's opcode, head, fields (name, type, bits, unit), an example in wire 7's text and that
+// example's bytes in hex, all from everglade/shared/wire-table.coax's WT and its one encoder. Nothing
+// in the file is written by hand.
+//   coax/web/tool.sh coax/web/room/wire-table-profile.coax proto/verse/everglade-session-binary-v1.json
+//     Prints "PROFILE: profile holds" (exit 0) when the file is what the table writes now, byte for
+//     byte, and every hex in it reads back as its text; else what differs and "profile fails" (exit 1).
+//   coax/web/tool.sh coax/web/room/wire-table-profile.coax proto/verse/everglade-session-binary-v1.json --write
+//     Writes the file from the table.
+//   coax/web/tool.sh coax/web/room/wire-table-profile.coax --hex TEXT
+//     Prints a text frame's bytes in hex.
+//   coax/web/tool.sh coax/web/room/wire-table-profile.coax --lines FILE
+//     Each line of FILE as a text frame: prints those the table has no row for (they go as kind 0).
+#import "Basic";
+#load "../../../everglade/shared/wire-table.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+
+WP_FILE :: 131072;
+WP_ID :: "everglade-session-binary-v1";
+// More golden frames than each kind's example: the shapes a row can take.
+WP_GOLDEN :: [14] string.[
+  "I 0 0 0 0 0 0 0 0", "I 108000 -100 100 -71 71 31416 31 215999", "C 42 2 400 150 -700 2003", "C 42 2 400 150 -700 -1 3",
+  "D 900 41 1 0 ", "D 900 41 0 0 x 7;o 3", "D 901 41 2 1 SBQCEIA;SBQCEIA;e hit 1002 1003 7 1", "K -", "X heal", "b 0",
+  "g 1 2 3 5 40 6 7 8 9 2 1 0 11 1 6", "v 2 3 900 2700 900 2700", "e mon 90 2 3 -1 4", "H 7 ranger.0.0.0 srd-fighter 26 -"];
+
+WpOut :: struct { b: [WP_FILE] u8; n: int; }
+wp_s :: (o: [] WpOut, s: string) { for ch: s { if o[0].n < WP_FILE { o[0].b[o[0].n] = ch; o[0].n += 1; } } }
+wp_int :: (o: [] WpOut, v: int) { d: [24] u8; n := wt_text_int(d[..], 0, v); wp_s(o, cast(string) d[0..<n]); }
+// A JSON string: quotes and backslashes escaped (the table holds no control characters).
+wp_q :: (o: [] WpOut, s: string) {
+  wp_s(o, "\"");
+  for i: 0..<s.count { if s[i] == '"' || s[i] == '\\' { wp_s(o, "\\"); } wp_s(o, s[i..<i + 1]); }
+  wp_s(o, "\"");
+}
+wp_hex :: (o: [] WpOut, t: string) {
+  b: [4200] u8; n := wt_bin(t, b[..]); h := "0123456789abcdef";
+  wp_s(o, "\"");
+  for i: 0..<n { x := cast(int) b[i]; wp_s(o, h[x / 16..<x / 16 + 1]); wp_s(o, h[x % 16..<x % 16 + 1]); }
+  wp_s(o, "\"");
+}
+wp_fields :: (o: [] WpOut, spec: string) {
+  at := 0; first := true;
+  wp_s(o, "[");
+  while true {
+    f := wt_field(spec, at);
+    if !f.ok { break; }
+    at = f.next;
+    if !first { wp_s(o, ", "); }
+    first = false;
+    if f.ty == '?' { wp_s(o, "{\"type\": \"?\"}"); continue; }
+    wp_s(o, "{\"name\": "); wp_q(o, f.name); wp_s(o, ", \"type\": "); ty: [1] u8; ty[0] = f.ty; wp_q(o, cast(string) ty[0..<1]);
+    if f.g > 0 { wp_s(o, ", \"bits\": "); wp_int(o, f.g); }
+    if f.unit.count > 0 { wp_s(o, ", \"unit\": "); wp_q(o, f.unit); }
+    if f.rep { wp_s(o, ", \"repeats\": true"); }
+    wp_s(o, "}");
+  }
+  wp_s(o, "]");
+}
+wp_write :: (o: [] WpOut, file: string) {
+  wp_s(o, "{\n  \"identity\": \""); wp_s(o, WP_ID); wp_s(o, "\",\n");
+  wp_s(o, "  \"check\": \"coax/web/tool.sh coax/web/room/wire-table-profile.coax "); wp_s(o, file); wp_s(o, "\",\n");
+  wp_s(o, "  \"spec\": \"docs/protocol/everglade-session-binary-v1.md\",\n  \"codec\": \"everglade/shared/wire-table.coax\",\n");
+  wp_s(o, "  \"generated\": \"by the check with --write, from the codec's table WT; do not edit\",\n");
+  wp_s(o, "  \"text\": \"everglade-session-v7, the same table as text (wt_bin, wt_text)\",\n  \"hello_flag\": "); wp_int(o, WT_HELLO_BINARY); wp_s(o, ",\n");
+  wp_s(o, "  \"frame\": \"one opcode byte, 128 + kind, then the kind's fields as bits, the highest first, zero bits to a whole byte\",\n");
+  wp_s(o, "  \"types\": {\"u\": \"a whole number 0 or more: groups of `bits` bits, the lowest first, each followed by a bit that says another follows\", ");
+  wp_s(o, "\"i\": \"either sign: zig-zagged, then as u\", \"b\": \"`bits` bits\", \"w\": \"a word: its length as u5, zero bits to a whole byte, its bytes\", ");
+  wp_s(o, "\"n\": \"a name, spaces kept: as a word\", \"t\": \"one bit, 0 a number as i7, 1 a word\", \"?\": \"one bit: 1 when the fields after it are said\"},\n");
+  wp_s(o, "  \"entry\": \"in D, after its header and zero bits to a whole byte: each entry's length (one byte under 128, else 128 + the high bits and the low byte), then its bytes, a frame of their own\",\n");
+  wp_s(o, "  \"row\": {\"id\": \"u"); wp_int(o, WT_ID_G); wp_s(o, "\", \"back\": \"b"); wp_int(o, WT_BACK_BITS); wp_s(o, "\", \"change\": \"i"); wp_int(o, WT_D_G);
+  wp_s(o, "\", \"mask\": \"b5 which runs of fields changed, then each changed run's bits\", \"runs\": [");
+  for g: 0..<WT_RUNS + 1 { if g > 0 { wp_s(o, ", "); } wp_int(o, WT_RUN_AT[g]); }
+  wp_s(o, "], \"run\": \"kind 2: for each row a 1 bit and the row, then a 0 bit\",\n    \"fields\": [");
+  for q: 0..<WT_SF {
+    f := WT_ROW_FIELDS[q]; a := 0; while a < f.count && f[a] != '@' { a += 1; }
+    if q > 0 { wp_s(o, ", "); }
+    wp_s(o, "{\"name\": "); wp_q(o, f[0..<a]);
+    if a < f.count { wp_s(o, ", \"unit\": "); wp_q(o, f[a + 1..<f.count]); }
+    wp_s(o, "}");
+  }
+  wp_s(o, "]},\n  \"kinds\": [\n");
+  for k: 0..<WT_KINDS {
+    wp_s(o, "    {\"kind\": "); wp_int(o, k); wp_s(o, ", \"op\": "); wp_int(o, WT_BIN + k);
+    wp_s(o, ", \"head\": "); wp_q(o, WT[k].head);
+    wp_s(o, ", \"who\": "); wp_q(o, ifx WT[k].who == WT_ROOM then "room" else ifx WT[k].who == WT_ENTRY then "entry" else ifx WT[k].who == WT_PAGE then "page" else "any");
+    wp_s(o, ",\n     \"fields\": "); wp_fields(o, WT[k].spec);
+    wp_s(o, ",\n     \"text\": "); wp_q(o, WT[k].ex); wp_s(o, ", \"hex\": "); wp_hex(o, WT[k].ex);
+    wp_s(o, ",\n     \"note\": "); wp_q(o, WT[k].note); wp_s(o, "}");
+    wp_s(o, ifx k + 1 < WT_KINDS then ",\n" else "\n");
+  }
+  wp_s(o, "  ],\n  \"golden\": [\n");
+  for i: 0..<WP_GOLDEN.count {
+    wp_s(o, "    {\"text\": "); wp_q(o, WP_GOLDEN[i]); wp_s(o, ", \"hex\": "); wp_hex(o, WP_GOLDEN[i]); wp_s(o, "}");
+    wp_s(o, ifx i + 1 < WP_GOLDEN.count then ",\n" else "\n");
+  }
+  wp_s(o, "  ]\n}\n");
+}
+// Every example and golden: its bytes are a binary frame that reads back as the text.
+wp_round :: () -> bool {
+  ok := true;
+  for k: 0..<WT_KINDS { if !wt_test_round(WT[k].ex, 0) { print("kind %: its example does not come back\n", k); ok = false; } }
+  for i: 0..<WP_GOLDEN.count { if !wt_test_round(WP_GOLDEN[i], 0) { print("golden %: does not come back\n", i); ok = false; } }
+  return ok;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 { tool_errln("usage: wire-table-profile PROFILE.json [--write] | --hex TEXT"); return 2; }
+  o: [1] WpOut;
+  if args_at(a[..], 0) == "--hex" {
+    if args_count(a[..]) != 2 { return 2; }
+    wp_hex(o[..], args_at(a[..], 1)); print("%\n", cast(string) o[0].b[0..<o[0].n]);
+    return 0;
+  }
+  if args_at(a[..], 0) == "--lines" {
+    // each line of a file as a text frame: prints those the table has no row for, and any that do not come back
+    if args_count(a[..]) != 2 { return 2; }
+    lt: [WP_FILE] u8; ln := fs_read(args_at(a[..], 1), lt[..]); at := 0; bad := 0; all := 0;
+    while at < ln {
+      e := at; while e < ln && lt[e] != 10 { e += 1; }
+      t := cast(string) lt[at..<e]; b: [4200] u8; tabled: [1] bool;
+      _ := wt_bin_told(t, b[..], tabled[..]); all += 1;
+      if !wt_test_round(t, 0) { print("LOST %\n", t); bad += 1; } else if !tabled[0] { print("any  %\n", t); bad += 1; }
+      at = e + 1;
+    }
+    print("% lines, % not tabled or lost\n", all, bad);
+    return ifx bad == 0 then 0 else 1;
+  }
+  path := args_at(a[..], 0);
+  wp_write(o[..], path);
+  if o[0].n >= WP_FILE { tool_errln("wire-table-profile: the profile is larger than WP_FILE"); return 2; }
+  if args_count(a[..]) == 2 {
+    if args_at(a[..], 1) != "--write" || !fs_write(path, cast(string) o[0].b[0..<o[0].n]) { tool_errln("wire-table-profile: cannot write"); return 2; }
+    print("%: written\n", path);
+    return 0;
+  }
+  text: [WP_FILE] u8; n := fs_read(path, text[..]);
+  if n <= 0 { tool_errln("wire-table-profile: cannot read the profile"); return 2; }
+  same := n == o[0].n && cast(string) text[0..<n] == cast(string) o[0].b[0..<o[0].n];
+  if !same { print("the file is not what the table writes now: run with --write and review the change\n"); }
+  if !same || !wp_round() { print("%: profile fails\n", path); return 1; }
+  print("%: profile holds\n", path);
+  return 0;
+}

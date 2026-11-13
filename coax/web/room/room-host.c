@@ -346,21 +346,28 @@ static void latency_out(int i,const uint8_t *text,int64_t n) {
   if(k&&put_out(i,out,k))st_frame_out(text,(size_t)n,1,k);
   else if(k)fo_refused((coax_v_t_FrameObserved){server->st.frames.e,1},(int64_t)k);
 }
-// The relay's frames (room-relay.coax), each onto the output of the connections it names.
+// The room's frames (room-relay.coax), each a record of the out buffer for one connection with its
+// WebSocket header already before it (#13278): the record's bytes go onto that connection's output as
+// they are. No frame is built here, and no connection but the record's own is looked at.
 static void relay_flush(void) {
-  int64_t len;
-  static uint8_t out[4300];
-  while ((len = rm_relay_next(view())) > 0) {
-    size_t k = ws_build(out, sizeof out, WS_TEXT, server->rout.e, (size_t)len, false);
-    if (!k) continue;
-    int to = 0, last = -1;
-    for (int q = 0; q < live_n; q++) if (conns[live[q]].ws && rm_relay_to(view(), live[q])) { int j = live[q]; if(conns[j].wt){wt_out(j,server->rout.e,(size_t)len);to++;last=j;continue;} if(put_out(j,out,k)){to++;last=j;}else{fo_refused((coax_v_t_FrameObserved){server->st.frames.e,1},(int64_t)k);} }
+  int64_t r;
+  while ((r = rm_out_next(view())) >= 0) {
+    const uint8_t *rec = server->ob.e + r;
+    int j = (int)rec[0] | ((int)rec[1] << 8);
+    size_t hs = rec[3], len = (size_t)rec[4] | ((size_t)rec[5] << 8) | ((size_t)rec[6] << 16);
+    const uint8_t *text = rec + 12;
+    size_t k = hs + len;
+    if (j < 0 || j >= CONNS || conns[j].fd < 0 || !conns[j].ws) continue;
+    int to = 0;
+    if (conns[j].wt) { wt_out(j, text, len); to = 1; }
+    else if (put_out(j, text - hs, k)) to = 1;
+    else fo_refused((coax_v_t_FrameObserved){server->st.frames.e,1},(int64_t)k);
     /* counted by type (room-stats.h); a D frame (one seat's) with no more parts ends a joiner's first snapshot */
     int64_t t0 = now_us();
-    int f = st_frame_out(server->rout.e, (size_t)len, to, k);
-    if(f>=0&&!(f&2)&&to==1){int64_t at=rm_st_sent_ack(view(),last,(coax_string){(const char *)server->rout.e,len});if(at>=0)st_queued_ack_add(last,now_ms()-at);}
-    if (f >= 0 && !(f & 2) && to == 1 && st_c[last].burst == 1) { st_c[last].burst = 2; if (!conns[last].on) st_drained(last, now_us()); }
-    if(to==1){uint8_t trace[256];int64_t n=rm_lt_sent(view(),last,(coax_string){(const char *)server->rout.e,len},now_us(),(coax_v_u8){trace,256});latency_out(last,trace,n);}
+    int f = st_frame_out(text, len, to, k);
+    if(f>=0&&!(f&2)&&to==1){int64_t at=rm_st_sent_ack(view(),j,(coax_string){(const char *)text,(int64_t)len});if(at>=0)st_queued_ack_add(j,now_ms()-at);}
+    if (f >= 0 && !(f & 2) && to == 1 && st_c[j].burst == 1) { st_c[j].burst = 2; if (!conns[j].on) st_drained(j, now_us()); }
+    if(to==1){uint8_t trace[256];int64_t n=rm_lt_sent(view(),j,(coax_string){(const char *)text,(int64_t)len},now_us(),(coax_v_u8){trace,256});latency_out(j,trace,n);}
     st_cost_us += now_us() - t0;
   }
 }
@@ -705,7 +712,7 @@ static void frames(int i) {
     int r = ws_parse(c->in, c->n, 4096, &f);
     if (r == 0) return;
     if (r < 0) { doom(i); return; }
-    if (f.opcode == WS_TEXT) {
+    if (f.opcode == WS_TEXT || f.opcode == WS_BINARY) {   /* a binary message is a binary frame (#13278, wire-table.coax): the room reads either by its first byte */
       st_frame_in(f.payload, f.length,f.consumed);
       uint8_t trace[256];coax_string text={(const char *)f.payload,(int64_t)f.length};
       int64_t received=now_us();int64_t observed=rm_lt_request(view(),i,text,received,now_us(),(coax_v_u8){trace,256});

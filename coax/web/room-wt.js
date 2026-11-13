@@ -13,7 +13,10 @@
 //     channel 0 goes as one datagram, the others on one reliable stream, each frame its length (2
 //     bytes, big-endian) and its bytes. On the WebSocket fallback the mark is taken off.
 //   - What the room sends: each datagram is one frame; each stream the room opens carries frames as
-//     above. Every frame reaches the app as a text message.
+//     above. A frame reaches the app as a text message, or, when its first byte is 0x80..0xBF (a binary
+//     frame, #13278), as a binary one: its bytes in an ArrayBuffer.
+//   - send takes text, or a binary frame's bytes (a Uint8Array): the mark is read and taken off either
+//     way, and the bytes go as they are (a binary message on the WebSocket fallback).
 //   - ?wthash=HEX (a local room's self-signed certificate, coax/web/room/wt-cert.sh) is passed as
 //     serverCertificateHashes; a room with a CA certificate needs none.
 // globalThis.coaxial.wt counts what went each way; a check's globalThis.__netTap(way, data) sees each frame
@@ -31,21 +34,24 @@ export function wtSocket(url) {
   const s = { readyState: 0, __wt: false, onopen: null, onmessage: null, onerror: null, onclose: null };
   let ws = null, wt = null, dg = null, out = null, closed = false;
   const done = () => { if (s.readyState === 3) return; s.readyState = 3; s.onclose?.({}); };
-  const message = (bytes) => { c.framesIn++; c.bytesIn += bytes.length; const data = dec.decode(bytes); globalThis.__netTap?.('in', data); s.onmessage?.({ data }); };
+  const message = (bytes) => { c.framesIn++; c.bytesIn += bytes.length; const data = bytes[0] >= 0x80 && bytes[0] <= 0xBF ? bytes.slice().buffer : dec.decode(bytes); globalThis.__netTap?.('in', data); s.onmessage?.({ data }); };
   const useWs = () => {
     if (closed) return;
     c.fallbacks++;
     ws = new WebSocket(wsUrl);
+    ws.binaryType = 'arraybuffer';   // a binary message is passed on as its bytes (#13278)
     ws.onopen = () => { s.readyState = 1; s.onopen?.({}); };
-    ws.onmessage = (m) => { if (typeof m.data === 'string') { c.framesIn++; c.bytesIn += m.data.length; } s.onmessage?.(m); };
+    ws.onmessage = (m) => { if (typeof m.data === 'string') { c.framesIn++; c.bytesIn += m.data.length; } else if (m.data instanceof ArrayBuffer) { c.framesIn++; c.bytesIn += m.data.byteLength; } s.onmessage?.(m); };
     ws.onerror = () => s.onerror?.({});
     ws.onclose = () => done();
   };
   s.send = (text) => {
-    const mark = text.length ? text.charCodeAt(0) - WT_MARK : -1, marked = mark >= 0 && mark < WT_CHANNELS;
+    // text, or a binary frame's bytes (#13278): length and slice mean the same for both
+    const raw = typeof text !== 'string';
+    const mark = text.length ? (raw ? text[0] : text.charCodeAt(0)) - WT_MARK : -1, marked = mark >= 0 && mark < WT_CHANNELS;
     if (ws) { if (ws.readyState === 1) { const t = marked ? text.slice(1) : text; c.framesOut++; c.bytesOut += t.length; ws.send(t); } return; }
     if (!wt || s.readyState !== 1) return;
-    const body = enc.encode(marked ? text.slice(1) : text);
+    const body = raw ? (marked ? text.slice(1) : text) : enc.encode(marked ? text.slice(1) : text);
     c.framesOut++; c.bytesOut += body.length; globalThis.__netTap?.('out', body.length);
     if (marked && mark === 0) { c.dgOut++; dg.write(body).catch(() => {}); return; }
     if (body.length > 65535) return;

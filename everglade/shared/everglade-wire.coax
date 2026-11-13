@@ -853,6 +853,8 @@ wire_put_s_fields :: (out:[]u8,at:int,id:int,back:int,base:[]s32,now:[]s32,allow
 // D frame and the relay's '|' joins carry it as text). A room sends them only to a page whose hello says
 // it reads them (WIRE_HELLO_PACKED); any other page gets "s" rows, and a page reads both.
 WIRE_HELLO_PACKED :: 8;
+// A hello's FLAGS bit: its page reads and writes binary frames from here on (wire-table.coax, #13278).
+WIRE_HELLO_BINARY :: WT_HELLO_BINARY;
 WIRE_B64 :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 WIRE_PACK_ID :: 5; WIRE_PACK_GROUP :: 4; WIRE_PACK_BACK :: 4;   // bits: an id's group, a change's group, BACK (WIRE_BASES 16)
 // MASK in two levels: which of five runs of fields changed (KIND to YAW, the velocity, G to COND, OWNER

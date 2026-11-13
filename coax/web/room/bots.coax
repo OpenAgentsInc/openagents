@@ -114,6 +114,31 @@ BtStats :: struct {
   unplaced: int;                // bots the directory placed where no room answers (three sockets that would not open): out for the run
 }
 
+// These bots speak the room's binary frames (everglade/shared/wire-table.coax, #13278): their hello says so
+// (WIRE_HELLO_BINARY), and each frame after it goes as its binary frame; the relay's own (the clock ping)
+// stays text. What comes back binary is read as the text the table says it is (bt_heard), so one set of
+// readers hears both. OA_BOTS_WIRE=text makes them the text page they were (plain s rows), and
+// OA_BOTS_WIRE=packed a text page that reads packed rows, for measuring one against the other.
+BT_WIRE_TEXT :: 0; BT_WIRE_PACKED :: 1; BT_WIRE_BINARY :: 2;
+bt_wire :: () -> int {
+  e: [16] u8; w := proc_getenv("OA_BOTS_WIRE", e[..]);
+  return ifx w == "text" then BT_WIRE_TEXT else ifx w == "packed" then BT_WIRE_PACKED else BT_WIRE_BINARY;
+}
+bt_wire_flags :: (wire: int) -> int { return ifx wire == BT_WIRE_BINARY then WIRE_HELLO_PACKED | WIRE_HELLO_BINARY else ifx wire == BT_WIRE_PACKED then WIRE_HELLO_PACKED else 0; }
+bt_send :: (c: [] RelayConn, text: string) -> bool {
+  // (the hello and what goes before it are text: a room of any build reads them)
+  if !c[0].binary || wt_stays_text(text) || wt_head_is(text, "P") || wt_head_is(text, "A") || wt_head_is(text, "H") { return relay_conn_send(c, text); }
+  b: [WIRE_FRAME + 64] u8; n := wt_bin(text, b[..]);
+  return n > 0 && relay_conn_send_binary(c, cast(string) b[0..<n]);
+}
+bt_heard :: (b: [] Bot, s: [] BtStats, frame: string, now: int) {
+  if !wt_is_bin(frame) { bt_hear(b, s, frame, now); return; }
+  t: [16384] u8 = ---; n := wt_text(frame, t[..]);
+  if n <= 0 { s[0].bytes += frame.count; return; }
+  // counted as its bytes on the wire, not as the text read from them
+  s[0].bytes += frame.count - n;
+  bt_hear(b, s, cast(string) t[0..<n], now);
+}
 bt_code :: (b: [] Bot) -> string { return cast(string) b[0].code[0..<b[0].code_n]; }
 bt_key :: (b: [] Bot) -> string { return cast(string) b[0].key[0..<b[0].key_n]; }
 bt_keep :: (out: [] u8, s: string) -> int { n := ifx s.count > out.count then out.count else s.count; for i: 0..<n { out[i] = s[i]; } return n; }
@@ -428,16 +453,17 @@ bt_ask :: (o: BtOpts, b: [] Bot, s: [] BtStats, now: int) {
 bt_hello :: (c: [] RelayConn, b: [] Bot, room: int, i: int) -> bool {
   m: [160] u8;
   // the pins of the tables the bots are built with, as a page says its own: the room plays a bot by this checkout's tables
-  ok := relay_conn_send(c, cast(string) m[0..<wire_put_pins(m[..], 0, wire_pins_own())]);
-  if b[0].placed { ok = relay_conn_send(c, cast(string) m[0..<wire_put_at(m[..], 0, WireAt.{x = b[0].x, y = b[0].y, z = b[0].z})]) && ok; }
+  ok := bt_send(c, cast(string) m[0..<wire_put_pins(m[..], 0, wire_pins_own())]);
+  if b[0].placed { ok = bt_send(c, cast(string) m[0..<wire_put_at(m[..], 0, WireAt.{x = b[0].x, y = b[0].y, z = b[0].z})]) && ok; }
   nm: [32] u8; k := rs_int(nm[..], rs_put(nm[..], rs_int(nm[..], rs_put(nm[..], 0, "Bot "), room), "-"), i);
-  n := wire_put_hello(m[..], 0, WireHello.{look = "ranger.0.0.0", kind = RS_CL_KIND[b[0].klass % RS_CL_N], flags = 0, name = cast(string) nm[0..<k]});
-  return relay_conn_send(c, cast(string) m[0..<n]) && ok;
+  n := wire_put_hello(m[..], 0, WireHello.{look = "ranger.0.0.0", kind = RS_CL_KIND[b[0].klass % RS_CL_N], flags = bt_wire_flags(ifx c[0].binary then BT_WIRE_BINARY else bt_wire()), name = cast(string) nm[0..<k]});
+  return bt_send(c, cast(string) m[0..<n]) && ok;
 }
 // Bot b sits on url: its socket open and its hello sent, or it waits and asks again.
 bt_sit :: (c: [] RelayConn, b: [] Bot, s: [] BtStats, url: string, room: int, i: int, now: int) {
   if c[0].h >= 0 { r := relay_conn_close(c, 1000); }
   up := url.count > 0 && relay_conn_open(c, url);
+  c[0].binary = bt_wire() == BT_WIRE_BINARY;
   if !up || !bt_hello(c, b, room, i) {
     // a seat whose room does not answer: asked again 5, 10, then 20 s later, and after three in a row the
     // bot is out (the directory placed it on a shard this environment does not run: staging has one)
@@ -547,11 +573,11 @@ bt_play :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: 
     if yaw > 3.14159265 { yaw -= 6.2831853; }
     b[0].seq += 1; cf_input(b[0].tm[..], b[0].seq, now);
     n := wire_put_in(m[..], 0, WireIn.{seq = b[0].seq, ky = ahead, theta = yaw, b = run, heard = b[0].m[0].heard});
-    if !relay_conn_send(c, cast(string) m[0..<n]) { s[0].lost += 1; b[0].state = BT_WAIT; b[0].until = now + 2000; return; }
+    if !bt_send(c, cast(string) m[0..<n]) { s[0].lost += 1; b[0].state = BT_WAIT; b[0].until = now + 2000; return; }
   }
   if now >= b[0].next_t {
     n := rs_int(m[..], rs_put(m[..], 0, "t "), now);
-    _ := relay_conn_send(c, cast(string) m[0..<n]);
+    _ := bt_send(c, cast(string) m[0..<n]);
     b[0].next_t = now + 1000;
   }
   // by the Warden (where it first stood): it asks for each of his dialogues in turn, and wears what it holds unworn
@@ -566,12 +592,12 @@ bt_play :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: 
       doc: [1] ContentDoc;
       if ct_read(doc[..], EC_SHIPPED) { for r: 0..<ct_rows(doc[..], EC_DIALOGUE) {
         b[0].seq += 1; n := wire_put_use(m[..], 0, WireUse.{seq = b[0].seq, kind = 6, id = ct_get(doc[..], EC_DIALOGUE, r, 0)});
-        _ := relay_conn_send(c, cast(string) m[0..<n]);
+        _ := bt_send(c, cast(string) m[0..<n]);
       } }
     }
     for q: 0..<b[0].item_n { if b[0].item_slot[q] == 0 && bt_wearable(b[0].item_kind[q]) {
       b[0].seq += 1; n := wire_put_use(m[..], 0, WireUse.{seq = b[0].seq, kind = 7, id = b[0].item[q]});
-      _ := relay_conn_send(c, cast(string) m[0..<n]); break;
+      _ := bt_send(c, cast(string) m[0..<n]); break;
     } }
   }
   // a fight over (no monster in sight for 10 s): its buffs are for the next one
@@ -595,7 +621,7 @@ bt_play :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: 
       at_self := q < own;
       b[0].seq += 1; b[0].cast_seq = b[0].seq; b[0].cast_i = plan[q]; cf_input(b[0].tm[..], b[0].seq, now);
       n := wire_put_cast(m[..], 0, WireCast.{seq = b[0].seq, slot = e.slot, ax = ifx at_self then b[0].x else fx, ay = b[0].y + 1, az = ifx at_self then b[0].z else fz});
-      if relay_conn_send(c, cast(string) m[0..<n]) { s[0].casts += 1; }
+      if bt_send(c, cast(string) m[0..<n]) { s[0].casts += 1; }
     }
   }
   if o.travel > 0 && now >= b[0].next_travel && b[0].placed && now < o.until - 30000 {
@@ -608,7 +634,7 @@ bt_play :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: 
       to: [48] u8; k := rs_int(to[..], rs_put(to[..], 0, code[0..<at]), cur % o.rooms + 1);
       b[0].seq += 1; b[0].travel_seq = b[0].seq;
       n := wire_put_travel(m[..], 0, b[0].seq, cast(string) to[0..<k]);
-      if relay_conn_send(c, cast(string) m[0..<n]) { s[0].travels += 1; }
+      if bt_send(c, cast(string) m[0..<n]) { s[0].travels += 1; }
     }
   }
   if o.reconnect > 0 && now >= b[0].next_reconnect && now < o.until - 30000 {
@@ -712,7 +738,7 @@ bt_room :: (o_in: BtOpts, players: int, seconds: int, room: int) -> int {
       while true {
         r := relay_conn_poll(ci, 0);
         if r != RC_TEXT { break; }
-        bt_hear(bi, win[..], cast(string) ci[0].text[0..<ci[0].text_n], rs_now()); got = true;
+        bt_heard(bi, win[..], cast(string) ci[0].text[0..<ci[0].text_n], rs_now()); got = true;
       }
       if ci[0].h < 0 || ci[0].eof { win[0].lost += 1; r := relay_conn_close(ci, 1000); bi[0].state = BT_WAIT; bi[0].until = now + 2000; bi[0].rejoin_from = now; continue; }
       if bi[0].rejoining {   // a reconnect, or a travel taken: the socket goes and the bot sits again

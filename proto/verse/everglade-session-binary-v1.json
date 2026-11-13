@@ -1,11 +1,11 @@
 {
-  "identity": "everglade-session-v8",
-  "check": "coax/web/tool.sh coax/web/room/wire8-profile.coax proto/verse/everglade-session-v8.json",
-  "spec": "docs/protocol/everglade-session-v8.md",
+  "identity": "everglade-session-binary-v1",
+  "check": "coax/web/tool.sh coax/web/room/wire-table-profile.coax proto/verse/everglade-session-binary-v1.json",
+  "spec": "docs/protocol/everglade-session-binary-v1.md",
   "codec": "everglade/shared/wire-table.coax",
   "generated": "by the check with --write, from the codec's table WT; do not edit",
-  "version": 8,
-  "previous": "everglade-session-v7, the same table as text (wt_bin, wt_text)",
+  "text": "everglade-session-v7, the same table as text (wt_bin, wt_text)",
+  "hello_flag": 16,
   "frame": "one opcode byte, 128 + kind, then the kind's fields as bits, the highest first, zero bits to a whole byte",
   "types": {"u": "a whole number 0 or more: groups of `bits` bits, the lowest first, each followed by a bit that says another follows", "i": "either sign: zig-zagged, then as u", "b": "`bits` bits", "w": "a word: its length as u5, zero bits to a whole byte, its bytes", "n": "a name, spaces kept: as a word", "t": "one bit, 0 a number as i7, 1 a word", "?": "one bit: 1 when the fields after it are said"},
   "entry": "in D, after its header and zero bits to a whole byte: each entry's length (one byte under 128, else 128 + the high bits and the low byte), then its bytes, a frame of their own",
@@ -206,7 +206,7 @@
      "note": "the build this page is, before its hello"},
     {"kind": 48, "op": 176, "head": "H", "who": "page",
      "fields": [{"name": "version", "type": "u", "bits": 4}, {"name": "look", "type": "w"}, {"name": "kind", "type": "w"}, {"name": "flags", "type": "u", "bits": 4, "unit": "bits"}, {"name": "name", "type": "n"}],
-     "text": "H 8 ranger.2.1.0 druid 2 Ash Wood", "hex": "b0830072616e6765722e322e312e30286472756964220041736820576f6f64",
+     "text": "H 7 ranger.2.1.0 druid 18 Ash Wood", "hex": "b0730072616e6765722e322e312e30286472756964289041736820576f6f64",
      "note": "hello"},
     {"kind": 49, "op": 177, "head": "I", "who": "page",
      "fields": [{"name": "seq", "type": "u", "bits": 7, "unit": "seq"}, {"name": "kx", "type": "i", "bits": 4, "unit": "percent"}, {"name": "ky", "type": "i", "bits": 4, "unit": "percent"}, {"name": "px", "type": "i", "bits": 4, "unit": "percent"}, {"name": "py", "type": "i", "bits": 4, "unit": "percent"}, {"name": "theta", "type": "i", "bits": 8, "unit": "0.1mrad"}, {"name": "b", "type": "u", "bits": 5, "unit": "bits"}, {"name": "heard", "type": "u", "bits": 7, "unit": "tick"}],
@@ -279,6 +279,6 @@
     {"text": "g 1 2 3 5 40 6 7 8 9 2 1 0 11 1 6", "hex": "8d4865108261c824840b0980"},
     {"text": "v 2 3 900 2700 900 2700", "hex": "8c020d090346429090346428"},
     {"text": "e mon 90 2 3 -1 4", "hex": "a7b4430210"},
-    {"text": "H 8 ranger.0.0.0 srd-fighter 10 -", "hex": "b0830072616e6765722e302e302e30587372642d66696768746572a0402d"}
+    {"text": "H 7 ranger.0.0.0 srd-fighter 26 -", "hex": "b0730072616e6765722e302e302e30587372642d66696768746572a8822d"}
   ]
 }

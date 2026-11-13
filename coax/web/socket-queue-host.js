@@ -21,6 +21,9 @@ export async function openSocketRetention(capacity){
   continue:(n,start,now)=>!!x.socket_queue_continue(BigInt(n),BigInt(start),BigInt(now)),reset:()=>!!x.socket_queue_reset()});
 }
 
+// A binary frame (#13278): its first byte is 0x80..0xBF, which valid UTF-8 text never starts with. On a
+// WebTransport session the app's channel mark (1..5, room-wt.js) comes first, so the byte after it says.
+export const socketBinary=(ws,bytes)=>{const k=bytes[ws?.__wt&&bytes[0]>=1&&bytes[0]<=5?1:0];return k>=0x80&&k<=0xBF;};
 export function makeSocketQueues(retention,{current,deliver,closed,schedule,canDeliver=()=>true,canSend=()=>true}){
  const encoder=new TextEncoder(),decoder=new TextDecoder(),inputScratch=new Uint8Array(retention.info(false)[2]),outputScratch=new Uint8Array(retention.info(true)[2]);
  const input=[],output=[],terminals=new Array(retention.workers).fill(null),failed=Symbol('socket-queue-failed');
@@ -36,9 +39,11 @@ export function makeSocketQueues(retention,{current,deliver,closed,schedule,canD
   try{allocations++;return {bytes:bytes.slice(),lease:r.lease};}catch{retention.release(out,r.lease);return {refused:retention.failure()};}}
  function receive(ws,id,event,text=''){
   if(retired||ws[failed])return false;
-  let encoded;try{encoded=encoder.encodeInto(text,inputScratch);}catch{terminal(ws,id,retention.failure());return false;}
-  if(encoded.read!==text.length){const refused=retention.offer(false,inputScratch.length+1);if(refused.close){terminal(ws,id,refused);return false;}event=refused.error;encoded={written:0};}
-  const row=copy(false,inputScratch.subarray(0,encoded.written));
+  // a binary message (#13278) comes as its bytes and is kept as they are; over the cap it fails as text does
+  const raw=typeof text!=='string';
+  let encoded;try{encoded=raw?{read:text.length,written:Math.min(text.length,inputScratch.length)}:encoder.encodeInto(text,inputScratch);}catch{terminal(ws,id,retention.failure());return false;}
+  if(raw?text.length>inputScratch.length:encoded.read!==text.length){const refused=retention.offer(false,inputScratch.length+1);if(refused.close){terminal(ws,id,refused);return false;}event=refused.error;encoded={written:0};}
+  const row=copy(false,raw?text.subarray(0,encoded.written):inputScratch.subarray(0,encoded.written));
   if(row.refused){terminal(ws,id,row.refused);return false;}
   Object.assign(row,{ws,id,event});input.push(row);schedule();return true;
  }
@@ -50,7 +55,9 @@ export function makeSocketQueues(retention,{current,deliver,closed,schedule,canD
   try{allocations++;row={ws,id,bytes:bytes?new Uint8Array(memory.buffer,address,bytes).slice():new Uint8Array(),lease:grant.lease,sent:false};}
   catch{retention.release(true,grant.lease);terminal(ws,id,retention.failure());return false;}
   try{
-   const sample=trace?.(decoder.decode(row.bytes));
+   // the observer sees a binary frame (#13278) as its bytes, a text one as text
+   row.binary=socketBinary(ws,row.bytes);
+   const sample=trace?.(row.binary?row.bytes:decoder.decode(row.bytes));
    if(sample){const encoded=encoder.encodeInto(sample,outputScratch);if(encoded.read!==sample.length){release(true,row);terminal(ws,id,retention.failure());return false;}
     const stamp=copy(true,outputScratch.subarray(0,encoded.written));if(stamp.refused){release(true,row);terminal(ws,id,stamp.refused);return false;}Object.assign(stamp,{ws,id,sent:false});output.push(stamp);}
   }catch{release(true,row);terminal(ws,id,retention.failure());return false;}
@@ -60,7 +67,7 @@ export function makeSocketQueues(retention,{current,deliver,closed,schedule,canD
   if(retired||timer)return;
   timer=setTimeout(()=>{timer=0;if(retired)return;
    for(let i=0;i<output.length;){const row=output[i];if(row.ws.readyState===3||row.sent&&row.ws.bufferedAmount===0&&(row.ws.bufferedCommands??0)===0||!row.sent&&(!current(row.ws,row.id)||row.ws[failed])){output.splice(i,1);release(true,row);continue;}
-    if(!row.sent&&canSend()&&row.ws.readyState===1){try{row.ws.send(decoder.decode(row.bytes),{bytes:row.bytes.length,lease:row.lease});row.sent=true;}catch{terminal(row.ws,row.id,retention.failure());}}
+    if(!row.sent&&canSend()&&row.ws.readyState===1){try{row.ws.send(row.binary?row.bytes:decoder.decode(row.bytes),{bytes:row.bytes.length,lease:row.lease});row.sent=true;}catch{terminal(row.ws,row.id,retention.failure());}}
     i++;
    }
    if(output.length)pump();

@@ -61,7 +61,7 @@ rm_lt_serialized::(v:[]RmServer,k:int,simulation_end:int,began:int,ended:int) #e
 }
 rm_lt_sent::(v:[]RmServer,conn:int,text:string,now:int,out:[]u8)->int #export_c #effects(all) {
   if conn<0||conn>=CONNS||v[0].conns[conn].latency[0].id==0{return 0;}
-  ks:[2]int;if !rm_st_conn(v,conn,ks[..])||!wire_is(text,"D"){return 0;}
-  r:[1]WireRd;r[0]=wire_rd(text,1);d:=wire_read_d(text,r[..]);if !r[0].ok||(d.f&2)!=0{return 0;}
+  ks:[2]int;if !rm_st_conn(v,conn,ks[..]){return 0;}
+  d:=rm_d_head(text);if d.tick<0||(d.f&2)!=0{return 0;}
   return lat_queued(v[0].conns[conn].latency[0..<1],d.ack,d.tick,now,out);
 }

@@ -112,6 +112,7 @@ typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // ki
 - (void)socket:(NSURLSessionWebSocketTask *)task event:(int)event bytes:(NSData *)bytes;
 - (int32_t)socketOpen:(NSString *)url;
 - (void)socketSend:(int32_t)id text:(NSString *)text;
+- (void)socketSend:(int32_t)id data:(NSData *)data;
 - (void)socketClose:(int32_t)id;
 - (int32_t)http:(NSString *)path body:(NSData *)body flags:(int32_t)flags;
 - (void)after;
@@ -706,8 +707,9 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  __weak AEPageHost *weak = self;
  [s->task receiveMessageWithCompletionHandler:^(NSURLSessionWebSocketMessage *m, NSError *error) {
   AEPageHost *me = weak; if (!me || error) return;   // the task's own end says what happened
-  // a text frame only: a socket is a byte pipe of text, as the browser host passes it
+  // a text frame's bytes, or a binary message's as they are (#13278), as the browser host passes them
   if (m.type == NSURLSessionWebSocketMessageTypeString) [me socket:s->task event:1 bytes:[m.string dataUsingEncoding:NSUTF8StringEncoding]];
+  else if (m.type == NSURLSessionWebSocketMessageTypeData && m.data) [me socket:s->task event:1 bytes:m.data];
   [me listen:s];
  }];
 }
@@ -735,6 +737,12 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  PHSocket *s = id >= 0 && id < 4 ? sockets[id] : nil;
  if (!s || !text || s->task.state != NSURLSessionTaskStateRunning) return;
  [s->task sendMessage:[[NSURLSessionWebSocketMessage alloc] initWithString:text] completionHandler:^(NSError *e) {}];
+}
+// A binary frame (#13278): one binary message of its bytes.
+- (void)socketSend:(int32_t)id data:(NSData *)data {
+ PHSocket *s = id >= 0 && id < 4 ? sockets[id] : nil;
+ if (!s || !data || s->task.state != NSURLSessionTaskStateRunning) return;
+ [s->task sendMessage:[[NSURLSessionWebSocketMessage alloc] initWithData:data] completionHandler:^(NSError *e) {}];
 }
 - (void)socketClose:(int32_t)id {
  PHSocket *s = id >= 0 && id < 4 ? sockets[id] : nil;
@@ -1265,6 +1273,8 @@ PH_IMPORT int32_t coaxial_socket_open(uintptr_t url, uint32_t length) {
 }
 PH_IMPORT void coaxial_socket_send(int32_t id, uintptr_t bytes, uint32_t length) {
  AEPageHost *h = phCurrent; if (!h || !bytes) return;
+ // a frame whose first byte is 0x80..0xBF is binary (#13278): its bytes, copied, as a binary message
+ if (length && (*(const uint8_t *)bytes & 0xC0) == 0x80) { [h socketSend:id data:[NSData dataWithBytes:(void *)bytes length:length]]; return; }
  [h socketSend:id text:[[NSString alloc] initWithBytes:(void *)bytes length:length encoding:NSUTF8StringEncoding]];
 }
 PH_IMPORT void coaxial_socket_close(int32_t id) { [phCurrent socketClose:id]; }

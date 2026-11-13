@@ -57,9 +57,30 @@ FrameObserved::struct{out_b:[FO_KEYS]int;out_n:[FO_KEYS]int;in_b:[128]int;in_n:[
 fo_letter::(c:u8)->int #effects(all) {if (c>='A'&&c<='Z')||(c>='a'&&c<='z'){return cast(int)c;}return cast(int)'?';}
 fo_add::(a:int,b:int,over:[]bool)->int #effects(all) {if b>9223372036854775807-a{over[0]=true;return 9223372036854775807;}return a+b;}
 fo_bump::(o:[]FrameObserved,key:int,bytes:int,n:int) #effects(all) {o[0].out_b[key]=fo_add(o[0].out_b[key],bytes,o[0].overflow[..]);o[0].out_n[key]=fo_add(o[0].out_n[key],n,o[0].overflow[..]);}
+// A binary frame's or entry's letter (#13278): its kind's text head's first letter, so both wires count under one key.
+fo_bin_letter::(t:string)->int #effects(all) {k:=wt_kind(t);if k<0||WT[k].head.count==0{return cast(int)'?';}return fo_letter(WT[k].head[0]);}
+// A binary D's entries, each under its letter with its length's bytes; a run of rows under its first row's id's class.
+fo_out_bin::(o:[]FrameObserved,text:string,to:int,bytes:int)->int #effects(all) {
+  d:=wt_d_get(text);
+  if !d.ok{fo_bump(o,FO_HEADER,bytes*to,to);return -1;}
+  fo_bump(o,FO_HEADER,(d.at+bytes-text.count)*to,to);
+  at:=d.at;
+  while at<text.count{
+    e:=wt_ent(text,at);
+    if !e.ok{fo_bump(o,128+cast(int)'?',(text.count-at)*to,to);break;}
+    en:=text[e.a..<e.b];key:=128+fo_bin_letter(en);
+    if wt_kind(en)==WT_ROWS||wt_kind(en)==WT_ROW{
+      r:[1]WtR;r[0]=wt_r(en,1);if wt_kind(en)==WT_ROWS{ignored:=wt_get(r[..],en,1);}id:=wt_get_u(r[..],en,WT_ID_G);
+      if r[0].ok{key=ifx id>=200000 then FO_MADE else ifx id>=100000 then FO_FOLK else FO_PLAYER;}
+    }
+    fo_bump(o,key,(e.b-at)*to,to);at=e.b;
+  }
+  return d.f;
+}
 fo_out::(o:[]FrameObserved,text:string,to:int,bytes:int)->int #export_c #effects(all) {
   if text.count==0||to<=0||to>512||bytes<text.count||bytes>4300||bytes-text.count>14{return -1;}
   o[0].out_bytes=fo_add(o[0].out_bytes,bytes*to,o[0].overflow[..]);o[0].out_frames=fo_add(o[0].out_frames,to,o[0].overflow[..]);
+  if wt_is_bin(text){fo_bump(o,fo_bin_letter(text),bytes*to,to);if wt_kind(text)!=WT_D{return -1;}return fo_out_bin(o,text,to,bytes);}
   fo_bump(o,fo_letter(text[0]),bytes*to,to);
   if text[0]!='D'{return -1;}
   r:[1]WireRd;r[0]=wire_rd(text,1);d:=wire_read_d(text,r[..]);at:=r[0].at;
@@ -77,7 +98,19 @@ fo_out::(o:[]FrameObserved,text:string,to:int,bytes:int)->int #export_c #effects
 }
 fo_in::(o:[]FrameObserved,text:string,bytes:int) #export_c #effects(all) {
   if text.count==0||bytes<text.count||bytes>4300||bytes-text.count>14{return;}
-  k:=fo_letter(text[0]);o[0].in_b[k]=fo_add(o[0].in_b[k],bytes,o[0].overflow[..]);o[0].in_n[k]=fo_add(o[0].in_n[k],1,o[0].overflow[..]);
+  k:=ifx wt_is_bin(text) then fo_bin_letter(text) else fo_letter(text[0]);o[0].in_b[k]=fo_add(o[0].in_b[k],bytes,o[0].overflow[..]);o[0].in_n[k]=fo_add(o[0].in_n[k],1,o[0].overflow[..]);
   o[0].in_bytes=fo_add(o[0].in_bytes,bytes,o[0].overflow[..]);o[0].in_frames=fo_add(o[0].in_frames,1,o[0].overflow[..]);
 }
 fo_refused::(o:[]FrameObserved,bytes:int) #export_c #effects(all) {if bytes<=0{return;}o[0].refused_bytes=fo_add(o[0].refused_bytes,bytes,o[0].overflow[..]);o[0].refused_frames=fo_add(o[0].refused_frames,1,o[0].overflow[..]);}
+#test "frame observe: a binary frame is counted under its text's letters, its D's entries each with its length" {
+  o:[1]FrameObserved;b:[256]u8;t:="D 7 3 2 0 x 5;s 100004 0 1 7;SBQCEIA;e break 7 0 0 0";
+  n:=wt_bin(t,b[..]);#assert n>0&&fo_out(o[..],cast(string)b[0..<n],2,n+2)==2;
+  #assert o[0].out_frames==2&&o[0].out_bytes==(n+2)*2&&o[0].out_n[cast(int)'D']==2;
+  #assert o[0].out_n[128+cast(int)'x']==2&&o[0].out_n[FO_FOLK]==2&&o[0].out_n[FO_PLAYER]==2&&o[0].out_n[128+cast(int)'e']==2;
+  sum:=o[0].out_b[FO_HEADER];for k:128..<FO_HEADER{sum+=o[0].out_b[k];}#assert sum==o[0].out_bytes;
+  // not a D: its letter only; a D cut short: its header's key holds it all
+  n=wt_bin("r 3 range",b[..]);#assert fo_out(o[..],cast(string)b[0..<n],1,n+2)== -1&&o[0].out_n[cast(int)'r']==1;
+  n=wt_bin(t,b[..]);#assert fo_out(o[..],cast(string)b[0..<2],1,4)== -1;
+  n=wt_bin("zz 1",b[..]);#assert fo_out(o[..],cast(string)b[0..<n],1,n+2)== -1&&o[0].out_n[cast(int)'?']==1;
+  n=wt_bin("I 41 0 100 0 0 -15708 1 900",b[..]);fo_in(o[..],cast(string)b[0..<n],n+6);#assert o[0].in_n[cast(int)'I']==1&&o[0].in_bytes==n+6;
+}

@@ -2,7 +2,8 @@
 // The room server's local host (GitHub #12784; Metaverse Engine book chapter 95). Offline Everglade is a one-seat
 // room: the room server's own simulation (coax/web/room/room-worker.c, built by coax/web/room/worker.coax
 // to build/everglade-room.wasm) runs in a Web Worker, and the page's socket to it (a URL local:PATH)
-// is a loopback over postMessage that carries the same text frames a WebSocket to oa-room carries.
+// is a loopback over postMessage that carries the same frames a WebSocket to oa-room carries: text, and
+// binary ones (first byte 0x80..0xBF, #13278) as their bytes each way.
 // This file decides nothing: it moves frames, keeps the 30 Hz beat, gives the clock and fetches the
 // realm's world document, as room-host.c does over TCP. Every rule is the server's Coax.
 //   localRoomSocket("local:/api/room/relay/everglade/local-1", wasmUrl) -> a WebSocket-shaped object
@@ -53,8 +54,9 @@ function roomWorkerMain() {
     args_sizes_get(a, b) { view().setUint32(a, 0, true); view().setUint32(b, 0, true); return 0; },
     proc_exit(code) { throw new Error("room-worker: the server exited " + code); },
   };
+  // (a binary frame, #13278, comes as its bytes and goes in as they are)
   const put = (t) => {
-    const b = enc.encode(t), p = x.rw_buf(b.length);
+    const b = typeof t === "string" ? enc.encode(t) : t, p = x.rw_buf(b.length);
     new Uint8Array(mem.buffer, p, b.length).set(b);
     return b.length;
   };
@@ -62,8 +64,10 @@ function roomWorkerMain() {
   // Every frame the server queued, to the sockets it names.
   function flush() {
     for (let n; (n = x.rw_next()) > 0;) {
-      const text = dec.decode(new Uint8Array(mem.buffer, x.rw_frame(), n));
-      for (const id of conns) if (x.rw_to(id)) postMessage({ t: "frame", id, text });
+      const raw = new Uint8Array(mem.buffer, x.rw_frame(), n);
+      // a binary frame (#13278) goes as a copy of its bytes, never as text
+      const frame = raw[0] >= 0x80 && raw[0] <= 0xBF ? { bytes: raw.slice() } : { text: dec.decode(raw) };
+      for (const id of conns) if (x.rw_to(id)) postMessage({ t: "frame", id, ...frame });
     }
     for (const id of conns) if (x.rw_kicked(id)) { conns.delete(id); x.rw_left(id); postMessage({ t: "close", id }); }
   }
@@ -140,7 +144,7 @@ function roomWorkerMain() {
         if (start) { x.rw_control(put(start)); start = ""; }   // an event's START, once a seat is in the room
         flush();
         if (!timer) { next = nowMs(); beat(); }
-      } else if (m.t === "frame") { if(conns.has(m.id)){x.rw_heard(m.id, put(m.text));flush();}if(m.ack!==undefined)postMessage({t:"sent",id:m.id,ack:m.ack}); }
+      } else if (m.t === "frame") { if(conns.has(m.id)){x.rw_heard(m.id, put(m.bytes ?? m.text));flush();}if(m.ack!==undefined)postMessage({t:"sent",id:m.id,ack:m.ack}); }
       else if (m.t === "close" && conns.has(m.id)) { conns.delete(m.id); x.rw_left(m.id); flush(); }
       else if (m.t === "control") { x.rw_control(put(m.text)); flush(); }   // roomHost.control
       else if (m.t === "advance") { if (clipMs !== null) { clipMs = Math.max(clipMs, m.ms); if (conns.size) beat(); } postMessage({ t: "advanced", ms: m.ms, scheduled: x.rw_scheduled ? x.rw_scheduled() : -1 }); }
@@ -209,7 +213,7 @@ function roomWorker(wasmUrl) {
     if (!s) return;
     if (m.t === "open") { s.readyState = 1; s.onopen?.(); }
     else if (m.t === "sent") {s.acknowledge(m.ack);host.acknowledgedFrames=(host.acknowledgedFrames||0)+1;}
-    else if (m.t === "frame") s.onmessage?.({ data: m.text });
+    else if (m.t === "frame") s.onmessage?.({ data: m.bytes ? m.bytes.buffer : m.text });   // binary: an ArrayBuffer, as a WebSocket's
     else if (m.t === "close") s.closed();
   };
   worker.onerror = (e) => { host.failed = e.message || "the room worker failed"; for (const k of sockets.values()) k.closed(); };
@@ -237,7 +241,8 @@ export function workerRoomSocket(w,id,path,release){
     get bufferedAmount(){let bytes=0;for(const n of pending.values())bytes+=n;return bytes;},
     get bufferedCommands(){return pending.size;},
     acknowledge(key){pending.delete(key);},
-    send(text,owned) { if(s.readyState!==1)return;const ack=owned?owned.lease.join(':'):undefined;if(owned)pending.set(ack,owned.bytes);try{w.postMessage({t:'frame',id,text,ack});}catch(error){pending.delete(ack);throw error;} },
+    // text, or a binary frame's bytes (a Uint8Array, #13278): the worker gets a copy either way
+    send(text,owned) { if(s.readyState!==1)return;const ack=owned?owned.lease.join(':'):undefined;if(owned)pending.set(ack,owned.bytes);try{w.postMessage(typeof text==='string'?{t:'frame',id,text,ack}:{t:'frame',id,bytes:text,ack});}catch(error){pending.delete(ack);throw error;} },
     close() { if (s.readyState > 1) return; w.postMessage({ t: "close", id }); s.readyState = 3;pending.clear();release(); },
     closed() { if (s.readyState === 3) return; s.readyState = 3;pending.clear();release();s.onclose?.(); },
   };

@@ -78,6 +78,7 @@ CONNS :: 512;
 RmConn :: struct {
   latency: [1] LatServer;
   live: bool; seat: int = -1; relay: int = -1;
+  bin: bool;   // its page reads binary frames (its hello came as one: wire-table.coax, #13278)
   game: int = -1; room: int = -1;   // a game's socket (room-games.coax): which game, and its room in that game's rooms
   // a relay socket's rate limits (room-relay.coax rl_allow): tokens in thousandths, when they were refilled,
   // whether it is over (since when, its last drop), frames dropped, and whether the host should close it
@@ -94,9 +95,13 @@ RmServer :: struct {
   out: [2048] u8;    // the last frame written for the host to send
   // the relay's rooms and the frames waiting to go out (room-relay below)
   relays: [RELAYS] RelayRoom;
-  q: [RELAY_QUEUE] RelayFrame; q_head: int; q_n: int; q_full: int;
-  rout: [RELAY_FRAME] u8;   // the frame rm_relay_next took off the queue
-  rto: [CONNS] bool;        // who it goes to
+  // the out buffer (#13278): each frame once, for one connection, with its WebSocket header before it,
+  // in the order they were written (room-relay.coax ob_put). The host sends each record's bytes as they are.
+  ob: [OB_BYTES] u8; ob_n: int; ob_at: int;   // the records' bytes: their end, and the next one the host takes
+  q_n: int; q_full: int;    // frames waiting, and frames the buffer had no room for
+  rout: [RELAY_FRAME] u8;   // the frame rm_relay_next took off the buffer
+  rto: [CONNS] bool;        // who it goes to: its one connection
+  rto_conn: int;            // that connection + 1 (0 none), so the next frame clears one flag
   mono_ms: int; wall_ms: int;   // the host's clocks (rm_clock)
   eg_test_ticks: int; eg_test_t0: int;   // the checks' ticks and their clock's start (room-everglade.coax eg_test_tick)
   dropped: int;             // frames the rate limits dropped
@@ -140,7 +145,7 @@ rm_init :: (v: [] RmServer) #export_c #effects(all) {
   for r: 0..<RELAYS { v[0].relays[r].live = false; }
   for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
   eg_seats_bind(v);   // each room's seats: its own, until a zone hands room 0 more (eg_zone_use)
-  v[0].q_head = 0; v[0].q_n = 0;
+  v[0].ob_n = 0; v[0].ob_at = 0; v[0].q_n = 0; v[0].rto_conn = 0;
   rm_games_init(v);
   e2zoo_shipped(v);
   v[0].dice_pool[0] = RsDice.{};

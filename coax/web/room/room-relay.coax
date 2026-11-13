@@ -50,8 +50,15 @@ RelayRoom :: struct {
   game: [RELAY_NAME] u8; game_n: int;
   code: [RELAY_NAME] u8; code_n: int;
 }
-// A waiting frame and who it goes to (decided when it was queued).
-RelayFrame :: struct { to: [CONNS] bool; n: int; text: [RELAY_FRAME] u8; }
+// The out buffer's size and a record's head (#13278). A record is one frame for one connection:
+//   bytes 0, 1   the connection, low byte first
+//   byte 2       1 a text message, 2 a binary one (a frame whose first byte is WT_BIN or more)
+//   byte 3       H, the WebSocket header's length (2 under 126 bytes of frame, else 4)
+//   bytes 4-7    N, the frame's length, low byte first
+//   bytes 8-11   the WebSocket header, in the last H of these
+//   bytes 12...  the frame
+// so a WebSocket's bytes are record + 12 - H for H + N, and a datagram's are record + 12 for N.
+OB_BYTES :: 6291456; OB_REC :: 12;
 
 rl_game_seats :: (game: string) -> int { return ifx game == EVERGLADE then RELAY_SEATS else RELAY_GAME_SEATS; }
 
@@ -109,20 +116,47 @@ rl_seat :: (v: [] RmServer, r: int) -> SeatId {
   for seat: 0..<v[0].relays[r].seats { if !taken[seat] { return SeatId.{value = seat}; } }
   return SeatId.{value = -1};
 }
-// A frame onto the queue for one connection (only >= 0) or for everyone in room r but one (but).
-// The host drains the queue after every event, and one event queues at most RELAY_SEATS + 1
-// frames, so it is never full; if it were, the frame is counted in q_full.
+// A frame for one connection (only >= 0) or for everyone in room r but one (but): one record each in
+// the out buffer, which the host drains after every event. A frame the buffer has no room for is
+// counted in q_full.
 rl_queue :: (v: [] RmServer, r: int, only: int, but: int, head: string, body: string) {
   if head.count + body.count > RELAY_FRAME { return; }
-  if v[0].q_n >= RELAY_QUEUE { v[0].q_full += 1; return; }
-  k := (v[0].q_head + v[0].q_n) % RELAY_QUEUE;
-  for i: 0..<CONNS {
-    v[0].q[k].to[i] = ifx only >= 0 then i == only else (v[0].conns[i].live && v[0].conns[i].relay == r && i != but);
+  if only >= 0 { ob_put(v, only, head, body); return; }
+  for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].relay == r && i != but { ob_put(v, i, head, body); } }
+}
+// head and body as one frame for conn, at the out buffer's end. A session frame in text for a seat
+// whose page reads binary goes as its binary frame (wire-table.coax wt_bin).
+ob_put :: (v: [] RmServer, conn: int, head: string, body: string) {
+  n := head.count + body.count;
+  if conn < 0 || conn >= CONNS || n > RELAY_FRAME { return; }
+  if v[0].ob_n + OB_REC + n + 16 > OB_BYTES { v[0].q_full += 1; return; }
+  at := v[0].ob_n + OB_REC;
+  if n > 0 && !wt_is_bin(ifx head.count > 0 then head else body) && !wt_stays_text(ifx head.count > 0 then head else body) && v[0].conns[conn].bin {
+    t: [RELAY_FRAME] u8 = ---;
+    for i: 0..<head.count { t[i] = head[i]; }
+    for i: 0..<body.count { t[head.count + i] = body[i]; }
+    tabled: [1] bool;
+    m := wt_bin_told(cast(string) t[0..<n], v[0].ob[at..<at + n + 16], tabled[..]);
+    if m < 0 { v[0].q_full += 1; return; }
+    if !tabled[0] { v[0].st.wire_any += 1; }
+    ob_seal(v, conn, m);
+    return;
   }
-  for i: 0..<head.count { v[0].q[k].text[i] = head[i]; }
-  for i: 0..<body.count { v[0].q[k].text[head.count + i] = body[i]; }
-  v[0].q[k].n = head.count + body.count;
-  v[0].q_n += 1;
+  for i: 0..<head.count { v[0].ob[at + i] = head[i]; }
+  for i: 0..<body.count { v[0].ob[at + head.count + i] = body[i]; }
+  ob_seal(v, conn, n);
+}
+// The record whose n bytes of frame were just written at the buffer's end: its head, and the buffer's new end.
+ob_seal :: (v: [] RmServer, conn: int, n: int) {
+  r := v[0].ob_n;
+  bin := n > 0 && v[0].ob[r + OB_REC] >= WT_BIN;
+  op: u8 = ifx bin then 0x82 else 0x81;   // a final frame, binary or text
+  v[0].ob[r] = cast(u8) (conn % 256); v[0].ob[r + 1] = cast(u8) (conn / 256);
+  v[0].ob[r + 2] = ifx bin then 2 else 1;
+  v[0].ob[r + 4] = cast(u8) (n % 256); v[0].ob[r + 5] = cast(u8) ((n / 256) % 256); v[0].ob[r + 6] = cast(u8) ((n / 65536) % 256); v[0].ob[r + 7] = 0;
+  if n < 126 { v[0].ob[r + 3] = 2; v[0].ob[r + 10] = op; v[0].ob[r + 11] = cast(u8) n; }
+  else { v[0].ob[r + 3] = 4; v[0].ob[r + 8] = op; v[0].ob[r + 9] = 126; v[0].ob[r + 10] = cast(u8) (n / 256); v[0].ob[r + 11] = cast(u8) (n % 256); }
+  v[0].ob_n = r + OB_REC + n; v[0].q_n += 1;
 }
 // The relay's frames for a seat, written by their codec (relay-wire.coax): "j SEAT", "l SEAT", and
 // the head "m SEAT " of a frame passed on.
@@ -343,7 +377,19 @@ rl_heard :: (v: [] RmServer, conn: int, text: string) {
     return;
   }
   // an everglade room is the server's world: its frames are intents, never passed on
-  if v[0].relays[c.relay].limited { eg_heard(v, c.relay, SeatId.{value = c.seat}, text); return; }
+  if v[0].relays[c.relay].limited {
+    // a binary frame (#13278) is read as the text the table says it is, so one set of readers hears
+    // both; a hello's flag says which its page reads from here on (input.coax eg_heard_hello)
+    if wt_is_bin(text) {
+      tb: [RL_FRAME_BYTES * 4] u8 = ---;
+      m := wt_text(text, tb[..]);
+      if m < 0 { v[0].st.wire_bad += 1; return; }
+      eg_heard(v, c.relay, SeatId.{value = c.seat}, cast(string) tb[0..<m]);
+      return;
+    }
+    eg_heard(v, c.relay, SeatId.{value = c.seat}, text);
+    return;
+  }
   h: [16] u8;
   rl_queue(v, c.relay, -1, conn, rl_said(h[..], SeatId.{value = c.seat}), text);
 }
@@ -395,14 +441,30 @@ rm_relay_kicked :: (v: [] RmServer, conn: int) -> bool #export_c #effects(all) {
 // Frames dropped by the rate limits, and by a full queue, since the start.
 rm_relay_dropped :: (v: [] RmServer) -> int #export_c #effects(all) { return v[0].dropped; }
 rm_relay_queue_full :: (v: [] RmServer) -> int #export_c #effects(all) { return v[0].q_full; }
-// The next frame for the host to send, into rout (who to: rto): its length, or 0 when none waits.
+// The next record for the host to send: where it starts in the out buffer (ob), -1 when none waits.
+// A record whose connection has gone is passed over. The buffer starts again once it is drained.
+rm_out_next :: (v: [] RmServer) -> int #export_c #effects(all) {
+  while v[0].ob_at < v[0].ob_n {
+    r := v[0].ob_at;
+    conn := cast(int) v[0].ob[r] + cast(int) v[0].ob[r + 1] * 256;
+    n := cast(int) v[0].ob[r + 4] + cast(int) v[0].ob[r + 5] * 256 + cast(int) v[0].ob[r + 6] * 65536;
+    v[0].ob_at = r + OB_REC + n; v[0].q_n -= 1;
+    if conn < CONNS && v[0].conns[conn].live { return r; }
+  }
+  v[0].ob_at = 0; v[0].ob_n = 0; v[0].q_n = 0;
+  return -1;
+}
+// The next frame into rout (who to: rto), for a host that takes frames one at a time and for the
+// checks: its length, or 0 when none waits.
 rm_relay_next :: (v: [] RmServer) -> int #export_c #effects(all) {
-  if v[0].q_n == 0 { return 0; }
-  k := v[0].q_head;
-  n := v[0].q[k].n;
-  for i: 0..<n { v[0].rout[i] = v[0].q[k].text[i]; }
-  for i: 0..<CONNS { v[0].rto[i] = v[0].q[k].to[i] && v[0].conns[i].live; }
-  v[0].q_head = (k + 1) % RELAY_QUEUE; v[0].q_n -= 1;
+  if v[0].rto_conn > 0 && v[0].rto_conn <= CONNS { v[0].rto[v[0].rto_conn - 1] = false; }
+  v[0].rto_conn = 0;
+  r := rm_out_next(v);
+  if r < 0 { return 0; }
+  conn := cast(int) v[0].ob[r] + cast(int) v[0].ob[r + 1] * 256;
+  n := cast(int) v[0].ob[r + 4] + cast(int) v[0].ob[r + 5] * 256 + cast(int) v[0].ob[r + 6] * 65536;
+  for i: 0..<n { v[0].rout[i] = v[0].ob[r + OB_REC + i]; }
+  v[0].rto[conn] = true; v[0].rto_conn = conn + 1;
   return n;
 }
 rm_relay_to :: (v: [] RmServer, conn: int) -> bool #export_c #effects(all) { return conn >= 0 && conn < CONNS && v[0].rto[conn]; }
@@ -499,7 +561,8 @@ rm_rooms :: (v: [] RmServer, request: string) -> int #export_c #effects(all) {
   return k;
 }
 
-// What the queue holds, for the checks: every waiting frame for conn, joined by '|'.
+// What the out buffer holds, for the checks: every waiting frame for conn, joined by '|'. A binary
+// frame is read as its text (wire-table.coax wt_text), so a check reads one form whatever its seat speaks.
 rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
   n := 0;
   while true {
@@ -507,6 +570,11 @@ rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
     if got == 0 { break; }
     if !v[0].rto[conn] { continue; }
     if n > 0 { buf[n] = '|'; n += 1; }
+    if wt_is_bin(cast(string) v[0].rout[0..<got]) {
+      m := wt_text(cast(string) v[0].rout[0..<got], buf[n..<buf.count]);
+      if m > 0 { n += m; }
+      continue;
+    }
     for i: 0..<got { buf[n] = v[0].rout[i]; n += 1; }
   }
   return cast(string) buf[0..<n];

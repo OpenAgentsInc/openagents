@@ -83,9 +83,16 @@ rm_st_inputs::(v:[]RmServer,out:[]int) #export_c #effects(all) {
 // The native SDK calls this only after the addressed final D was accepted by
 // its socket buffer. Multipart prefixes, stale sequence and generations do not
 // consume the sample. This is not network transit or client presentation.
+// A sent D's head on either wire (#13278): tick -1 when the frame is no D.
+rm_d_head::(text:string)->WireD #effects(all) {
+  if wt_is_bin(text){d:=wt_d_get(text);return ifx d.ok then WireD.{tick=d.tick,ack=d.ack,f=d.f,part=d.part} else WireD.{tick= -1};}
+  if text.count<2||text[0]!='D'{return WireD.{tick= -1};}
+  r:[1]WireRd;r[0]=wire_rd(text,1);d:=wire_read_d(text,r[..]);
+  return ifx r[0].ok then d else WireD.{tick= -1};
+}
 rm_st_sent_ack::(v:[]RmServer,conn:int,text:string)->int #export_c #effects(all) {
-  ks:[2]int;if !rm_st_conn(v,conn,ks[..])||text.count<2||text[0]!='D'{return -1;}
-  r:[1]WireRd;r[0]=wire_rd(text,1);d:=wire_read_d(text,r[..]);if !r[0].ok||(d.f&2)!=0{return -1;}
+  ks:[2]int;if !rm_st_conn(v,conn,ks[..])||text.count<2{return -1;}
+  d:=rm_d_head(text);if d.tick<0||(d.f&2)!=0{return -1;}
   st:=v[0].eg[ks[0]].seat[ks[1]..<ks[1]+1];
   if d.ack!=st[0].ack||d.ack<=st[0].ack_sent_told||st[0].ack_at<=0{return -1;}
   st[0].ack_sent_told=d.ack;return st[0].ack_at;

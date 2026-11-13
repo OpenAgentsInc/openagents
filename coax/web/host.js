@@ -73,11 +73,12 @@
 //                             never in golden mode: apps/openagents-web/everglade-arrange.coax); others go to the page's
 //                             scripts as a "coaxial" event (0 when an engine loads), which
 //                             answer with coaxial.send(kind, text)
-// and, optionally, sockets: a WebSocket byte pipe, text frames only, at most 4 open. The app (its C face)
+// and, optionally, sockets: a WebSocket byte pipe, text frames and binary ones (#13278), at most 4 open. The app (its C face)
 // imports from "env":
 //   coaxial_socket_open(url, url_len) -> id   0..3, or -1 when 4 are open or the URL is refused; a URL
 //                             local:PATH opens the room server's local host instead (room-worker.js)
-//   coaxial_socket_send(id, ptr, len)         one text frame (UTF-8); dropped unless that socket is open
+//   coaxial_socket_send(id, ptr, len)         one frame; dropped unless that socket is open. A frame whose
+//                             first byte is 0x80..0xBF goes as a binary message, any other as text (UTF-8)
 //   coaxial_socket_close(id)
 // and hears back through the inbox: coaxial_message(state, 256 + 4 * id + event, length), event
 // 0 opened, 1 a frame (the inbox holds its bytes), 2 closed (the slot is free again), 3 an error
@@ -266,7 +267,7 @@ import { startLoading, readBytes } from "./loader.js";
 import { layerFeatures, layerPolicy, warmLayerPolicy, layerBuild, blockLayout, layerTier } from "./layers-host.js";
 import { makeHttpRequests } from "./http-requests.js";
 import { makeHostTransport } from "./host-transport.js";
-import {openSocketRetention,makeSocketQueues} from "./socket-queue-host.js";
+import {openSocketRetention,makeSocketQueues,socketBinary} from "./socket-queue-host.js";
 import {openPackHost,openPackTable} from "./pack-host.js";
 import { layerBitmap, layerPoolWidth, poolLayerLevels, warmLayerPool } from "./layer-pool.js";
 import { fetchPackInWorker, fetchPagedDemand, fetchPagedImage, fetchWholePack } from "./pack-fetch.js";
@@ -704,7 +705,7 @@ const utf8 = (ptr, len) => new TextDecoder().decode(new Uint8Array(memory.buffer
 const SOCKET_BUDGET_MS = 12, socketQueue = [];
 let socketHead = 0, socketTimer = 0, socketDrained = 0, socketFrames = 0;
 function socketQueued(ws, id, event, text = "") {
-  if(event===SOCKET_FRAME)ws.__roomTrace?.receive(text);
+  if(event===SOCKET_FRAME&&typeof text==="string")ws.__roomTrace?.receive(text);   // the observer reads text frames only (#13278)
   if(event===SOCKET_CLOSED||event===SOCKET_ERROR)retireRoomTrace(ws);
   if (event === SOCKET_FRAME) socketFrames++;
   if(ws.__coaxialPolicy&&socketQueues){socketQueues.receive(ws,id,event,text);return;}
@@ -730,13 +731,14 @@ function drainSockets(budget = SOCKET_BUDGET_MS) {
   if (socketHead === socketQueue.length) { socketQueue.length = 0; socketHead = 0; }
   else if (socketHead > 4096) { socketQueue.splice(0, socketHead); socketHead = 0; }
 }
-// An event for socket id: its bytes go in the inbox, as typed text does.
+// An event for socket id: its bytes go in the inbox, as typed text does. A binary message (#13278)
+// comes here as its bytes (a Uint8Array) in text's place and goes in unchanged.
 function socketEvent(id, event, text = "", ws = null, ownedBytes = null, retention = null) {
   if(ws && (ws.__coaxialEngine!==wanted || (sockets[id] && sockets[id]!==ws)))return;
   if (waiting) {if(ownedBytes)throw Error('leased socket callback attempted inside a realm call');waiting.push(() => socketEvent(id, event, text, ws));return; }
   const x = engine?.exports;
   if (!x?.coaxial_message) return;
-  let bytes = ownedBytes ?? new TextEncoder().encode(text);
+  let bytes = ownedBytes ?? (typeof text === "string" ? new TextEncoder().encode(text) : text);
   let kind=SOCKET_KIND+4*id+event;
   if(ws?.__coaxialPolicy){
     const receipt=ws.__coaxialPolicy.socketEvent(ws.__coaxialOwner,event,bytes.length,x.coaxial_inbox_cap());
@@ -768,15 +770,19 @@ const socketImports = {
     if(roomTraceModule)roomTraceModule.then(m=>m.openLatencyObserver()).then(observer=>{if(sockets[id]===ws&&ws.__coaxialEngine===wanted&&ws.readyState<2)ws.__roomTrace=observer;else observer.retire();}).catch(error=>{globalThis.coaxial.roomTraceError=String(error);});
     const mine = () => sockets[id] === ws && ws.__coaxialEngine===wanted;   // a closed socket says nothing more
     ws.onopen = () => mine() && socketQueued(ws, id, SOCKET_OPENED, ws.__wt ? "wt" : "");   // "wt": the room runs on WebTransport
-    ws.onmessage = (m) => mine() && typeof m.data === "string" && socketQueued(ws, id, SOCKET_FRAME, m.data);
+    ws.binaryType = "arraybuffer";   // a binary message arrives as its bytes (#13278)
+    ws.onmessage = (m) => mine() && (typeof m.data === "string" ? socketQueued(ws, id, SOCKET_FRAME, m.data) : m.data instanceof ArrayBuffer && socketQueued(ws, id, SOCKET_FRAME, new Uint8Array(m.data)));
     ws.onerror = () => mine() && socketQueued(ws, id, SOCKET_ERROR);
     ws.onclose = () => mine() && socketQueued(ws, id, SOCKET_CLOSED);   // the slot frees when the app hears it
     return id;
   },
   coaxial_socket_send(id, ptr, len) {
     const ws = sockets[id];
-    if(ws?.__coaxialPolicy&&socketQueues){if(ws.readyState===1&&ws.__coaxialPolicy.socketSend(ws.__coaxialOwner))socketQueues.send(ws,id,memory,ptr,len,text=>ws.__roomTrace?.before(text));return;}
-    if (ws && ws.readyState === 1 && (!ws.__coaxialPolicy || ws.__coaxialPolicy.socketSend(ws.__coaxialOwner))) {const text=utf8(ptr,len),sample=ws.__roomTrace?.before(text);if(sample)ws.send(sample);ws.send(text);}   // WebSocket.OPEN, or a local socket's
+    if(ws?.__coaxialPolicy&&socketQueues){if(ws.readyState===1&&ws.__coaxialPolicy.socketSend(ws.__coaxialOwner))socketQueues.send(ws,id,memory,ptr,len,frame=>ws.__roomTrace?.before(frame));return;}
+    if (ws && ws.readyState === 1 && (!ws.__coaxialPolicy || ws.__coaxialPolicy.socketSend(ws.__coaxialOwner))) {
+      // a binary frame (#13278) goes as a binary message: a copy of its bytes, never a view of wasm memory
+      const raw=new Uint8Array(memory.buffer,ptr,len).slice(),frame=socketBinary(ws,raw)?raw:new TextDecoder().decode(raw),sample=ws.__roomTrace?.before(frame);if(sample)ws.send(sample);ws.send(frame);
+    }   // WebSocket.OPEN, or a local socket's
   },
   coaxial_socket_close(id) {
     const ws = sockets[id];
