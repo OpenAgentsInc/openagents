@@ -20,7 +20,6 @@ adopt metaverse-engine/net/ #13277  # the latency client and its clock feed pred
 adopt metaverse-engine/cam/ #13271  # the camera the client owns: attention filters, the eye's clearance, two-subject framing, frame-rate parity
 
 # P4: creatures and content
-adopt metaverse-engine/actors/ #13293  # compiled archetypes, bounded behaviour and the actor pool become the one server creature runtime
 adopt metaverse-engine/ai/ #13293  # model decisions, steering from colliders and the pilot vocabulary drive the creature runtime
 adopt metaverse-engine/action/break.coax #13293  # breakables and attachments are creature-runtime props
 adopt metaverse-engine/editor/ #13294  # the realm editor edits the content tables: NPC and raid documents, the publish record, published vertices

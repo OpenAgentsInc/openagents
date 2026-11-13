@@ -6716,68 +6716,6 @@ existing paid clock; visual time cannot drive authoritative routines. AESV, ACK1
 HH_Save v1 and server revision/CAS retain their existing contracts. The supported
 bounds and residual adapters are in `metaverse-engine/state/README.md`.
 
-## Actor definitions compile before any instance may publish (#12992)
-
-`metaverse-engine/actors/` compiles typed authored inheritance and declared service inputs
-into owned flat records. Unknown keys, mismatched fact/resource identities,
-cycles and unordered read/write conflicts refuse a complete result. Fixed
-parameter slots and phase order require no runtime name or parent lookup.
-Canonical RCM1 metadata must match its complete retained pin; payload decoding
-and physical resource admission still belong to the shared stream.
-
-A compiled definition is not a spawn grant. The actor pool reserves pending
-instance/work quotas and every root claim atomically. No entity queues until
-all its roots are ready, and it takes part only after the shared entity flush.
-Commands require the full current actor/generation/owner/world key, the live
-entity handle and ID, and ready retained roots. Stop revokes actor admission
-immediately; quotas and claims remain until the entity is gone. A globally
-retired stream may already have revoked those claims, but concrete resources
-still retain allocations through physical destruction and final borrower
-release. An old callback cannot use a replaced actor slot's key. World
-replacement requires a new epoch; old streams retain their outstanding effects.
-
-The pool's common cursor, memory and placement initialization is implemented;
-physical bodies, actual service-hook dispatch and nav/model callback adapters
-remain separate integration requirements. Control transfer rotates ownership
-and cancels the old action without erasing sensed memory; adapters still route
-human/AI input. Pools and receipts are owned records, not decoded wire grants.
-
-Behavior programs bind complete schema and program identities. Selection runs
-once on the exact next paid realm step; refusal preserves the complete cursor
-and emits no command or events. Projected facts include only declared fields;
-context supplies sensed knowledge rather than arbitrary world lookup. Stable
-priority/ID ordering and one random draw per fresh choice make weighted intent
-selection replayable. Body feedback requires the full action correlation key;
-this local check is not proof of live entity ownership. A time jump chooses the
-current schedule row without replaying skipped transitions. A caller must
-complete a refused step with admitted input before publishing that tick.
-Current qualification covers typed intent selection from supplied observations,
-not physical actor execution or playable adoption. Limits and remaining
-integrations are in `metaverse-engine/actors/README.md`.
-
-## Compiled actors share lifecycle, knowledge and body authority (#12992)
-
-`metaverse-engine/actors/` profile 1 compiles versioned stable archetype IDs, inheritance,
-typed field/anchor references and phase dependencies before spawn. Pin its full
-content identity and world schema. Admit complete ready resource closures and
-all instance/work reservations before publishing deferred entity components;
-rollback partial holds. Despawn releases its claims and model ownership once.
-
-Only the existing paid clock advances actors. Preflight scoped transitions for
-all actors before publishing the ordered lifecycle, sensing, choice, movement,
-final-pose and presentation phases. Choices read bounded sensed knowledge, never
-hidden target poses. Sampling, culling, grace, forgetting, weighted randomness,
-cooldowns, search work and retries are explicit bounded data. Navigation replies
-bind entity generation, controller owner, world/nav revision, radius and request.
-Control handoff cancels old navigation/model ownership and leaves one walker in
-charge. Model replies enter the existing replay/decision gate and cannot grant
-new verbs or bypass knowledge. Notices/attributes are observations, not permission.
-
-Actor Lab qualifies the procedural walking profile; it does not migrate
-Everglade's private logic, add seats/attachments, grant combat/dialogue authority
-or define a complete actor save archive. See `metaverse-engine/actors/README.md` and
-`docs/verification/actors-12992/README.md` for the measured scope and residuals.
-
 ## Everglade II's pieces and tufts hold still and only fade (#13023)
 
 Every drawn tree, plant, rock and grass tuft in `/worlds/everglade2` is one

@@ -329,7 +329,6 @@ ocarinalab 190000
 # Declared facts, six-root variants and bounded runtime qualification (#12991).
 # The walker on the broadphase index and the one walk controller (#13279, #13270): 183,825 bytes measured 2026-11-13; about 5% room
 state-lab 193000
-actor-lab 400000
 # The GPU cull lab's streaming and residency (#13008, #13051: inflate and SHA-256 for page admission).
 cullstream 40000
 

@@ -1101,7 +1101,7 @@ LC_T_ALLOW :: "# seed\nengine-up metaverse-engine/net/latency.coax -> everglade/
 }
 #test "support code: tests, checks, tools, examples, the book and programs" {
   #assert lc_support_path("metaverse-engine/tests/walk.coax") && lc_support_path("metaverse-engine/render/tools/bake.coax") && lc_support_path("metaverse-engine/examples/one-press.coax") && lc_support_path("metaverse-engine/book/tools/x.coax") && lc_support_path("metaverse-engine/lab/physics-lab.coax") && lc_support_path("metaverse-engine/space/fixtures/a.coax");
-  #assert lc_support_path("metaverse-engine/anim/bundle-checks.coax") && lc_support_path("metaverse-engine/actors/checks.coax") && lc_support_path("metaverse-engine/host/check-browser.coax") && lc_support_path("metaverse-engine/a_test.coax");
+  #assert lc_support_path("metaverse-engine/anim/bundle-checks.coax") && lc_support_path("metaverse-engine/character/checks.coax") && lc_support_path("metaverse-engine/host/check-browser.coax") && lc_support_path("metaverse-engine/a_test.coax");
   #assert !lc_support_path("metaverse-engine/move/walk.coax") && !lc_support_path("metaverse-engine/render/checker.coax") && !lc_support_path("metaverse-engine/contest/a.coax") && !lc_support_path("metaverse-engine/toolsy/a.coax");
   #assert lc_support("metaverse-engine/host/build-x.coax", LC_T_TOOLS) && !lc_support("metaverse-engine/host/build", LC_T_TOOLS);
   #assert lc_in_tests("metaverse-engine/tests/a.coax") && lc_in_tests("coax/lib/test/a.coax") && !lc_in_tests("metaverse-engine/tests.coax") && !lc_in_tests("metaverse-engine/latest/a.coax");

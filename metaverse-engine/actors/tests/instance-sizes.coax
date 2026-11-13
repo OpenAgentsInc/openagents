@@ -1,6 +1,0 @@
-// Compiler LP64 layout metadata, not a measurement of peak host stack use.
-#import "Basic";
-#load "../instances.coax";
-main :: () #effects(all) {
- print("ActorPool %\nActorSlot %\nActorResources %\nBehaviorState %\n",size_of(ActorPool),size_of(ActorSlot),size_of(ActorResources),size_of(BehaviorState));
-}

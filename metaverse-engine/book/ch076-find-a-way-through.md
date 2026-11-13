@@ -10,9 +10,8 @@
 > ([metaverse-engine/tests/nav-oracle.coax](../../metaverse-engine/tests/nav-oracle.coax)), and
 > [metaverse-engine/tests/nav-deadgears.coax](../../metaverse-engine/tests/nav-deadgears.coax)
 > shows that on Dead Gears' deck it gives the same costs, bit for bit, and
-> the same next cells as `metaverse/deadgears/arena.coax`. Actor Lab adopts
-> the shared solver with fenced requests and bounded retries (below).
-> Everglade's townsfolk keep their
+> the same next cells as `metaverse/deadgears/arena.coax`. Dead Gears
+> runs on the module; Everglade's townsfolk keep their
 > road graph and Hecate's Cemetery its garden paths
 > ([metaverse-engine/world/path-graph.coax](../world/path-graph.coax)). Path graphs, following
 > and crowd avoidance retain their separate adapter work. See [Still to do](#still-to-do).
@@ -351,8 +350,7 @@ the costs a search lowers.
 
 ## Still to do
 
-- **Remaining realm adapters.** Actor Lab now uses the shared grid with fenced
-  requests, bounded search and the shared walker. Dead Gears' `nav_flow_to` and `nav_downhill` call
+- **Realms on the module.** Dead Gears' `nav_flow_to` and `nav_downhill` call
   it since #12854, and its private search is gone; `nav-deadgears.coax` keeps
   that search as the consumer's trace and holds the module to it. Everglade's townsfolk and guide, and Hecate's dog, use path
   graphs instead.
@@ -376,19 +374,16 @@ the costs a search lowers.
   spell's wall or rubble touches a route (`everglade/npc/guide-route.coax`).
   Marking the cells and links an edit covers, so only routes over them
   replan ([chapter 52](ch052-edit-a-realm-in-place.md)), is not built.
-- **Stuck consumers.** The actor profile reports STUCK and retries on authored
-  tick deadlines. Other realms still need their explicit replan/stop policy.
-- **Broader browser qualification.** Actor Lab records native/Wasm route
-  outcomes and complete body/brain digests at 30 cuts across four frame schedules.
-  Full cell-by-cell browser oracles for arbitrary grid profiles remain separate.
+- **Stuck characters.** A character that makes no progress for a stated time
+  replans once and then stops.
+- **Replay in the browser.** The module runs natively in debug and release;
+  a field built in Wasm and compared with native is not recorded.
 - **Other domains.** Swimming at half pace in water, as townsfolk do through
   `metaverse/water-wade.coax`, and flying routes over roofs, as made-realm owls
   do. Space navigation stays in [chapter 42](ch042-reach-a-moving-target.md).
 
 ## What exists today
 
-- [metaverse-engine/actors/](../actors/README.md): owned bounded flow caches, typed
-  failure/retry, current-owner keys and the playable Actor Lab.
 - [metaverse-engine/world/nav/grid.coax](../world/nav/grid.coax): walking grids and flow
   fields, with its oracle and the Dead Gears identity check.
 - [metaverse-engine/world/path-graph.coax](../world/path-graph.coax): the path graph,
@@ -433,7 +428,3 @@ The chapter is done when:
 Chapters 1 (the clock), 6 (entities), 7 (queries), 8 (ground and
 collision), 9 (the walking rules characters share) and 52 (edits that
 invalidate routes). Coax R14 bounded control for fixed-size search state.
-
-## Compiled actor adoption (#12992)
-
-Actor Lab adopts the existing grid flow solver and downhill rule with owned bounded caches. Requests bind actor generation, control owner, world/nav revision, radius and request serial; exhaustion, unreachable goals, invalidation and stuck retries have typed outcomes. Graph routing and crowd avoidance remain adapters. See [the actor guide](../actors/README.md) and [qualification](../../docs/verification/actors-12992/README.md). This bounded adoption does not promote the rest of this chapter.

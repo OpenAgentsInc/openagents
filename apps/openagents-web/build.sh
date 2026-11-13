@@ -471,9 +471,6 @@ cmp -s "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh" || cp "$here/..
 # Engine-owned declared-state adoption and host-conformance fixture (#12991).
 COAXIAL_RUN_STEPS=250000000 timed state-lab "$here/../../coax/web/wasm.sh" "$here/../../metaverse-engine/state/fixture.coax" "$here/state-lab-face.c" "$here/build/state-lab.wasm" &
 state_lab=$!
-# Engine-owned compiled actor adoption (#12992).
-COAXIAL_RUN_STEPS=250000000 timed actor-lab "$here/../../coax/web/wasm.sh" "$here/../../metaverse-engine/actors/lab.coax" "$here/actor-lab-face.c" "$here/build/actor-lab.wasm" &
-actor_lab=$!
 # /worlds: every world you can play, as kit entries beside the site's side (worlds-web.coax, drawn by the
 # browser through coax/web/dom-host.js; its rows in realms/list.coax, written by realms.ts).
 timed worlds-web "$here/../../coax/web/wasm.sh" "$here/worlds-web.coax" "$here/worlds-web-face.c" "$here/build/worlds-web.wasm" &
@@ -607,7 +604,6 @@ wait "$script_host"
 wait "$changelog"
 
 wait "$state_lab"
-wait "$actor_lab"
 # Where the time went: every step of a second or more, in the order they
 # started. A "beside" step ran with others (or in a chain), so the seconds
 # don't add up to the total; the script itself waited on the serial ones.

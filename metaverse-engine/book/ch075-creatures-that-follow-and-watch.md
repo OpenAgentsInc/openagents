@@ -14,9 +14,9 @@
 > and the four digests are equal. The flock
 > ([metaverse-engine/anim/flock.coax](../anim/flock.coax)) keeps its own f32
 > accumulator and reads its target once a frame, so it isn't the same at
-> every frame rate; the example shows that. Actor Lab now adopts bounded
-> compiled choices, semantic sight, knowledge and model gates (below).
-> Everglade's watch and guards retain their own rules. See
+> every frame rate; the example shows that. No realm senses through the
+> module yet: Everglade's watch and guards keep their own rules, and
+> decisions as data and sleep budgets aren't built. See
 > [Still to do](#still-to-do).
 
 A creature in a realm does three things each step: it senses, it decides and
@@ -417,26 +417,26 @@ would change Everglade's companion, so it is left as it is (see below).
   Everglade, which the owner is changing now.
 - **The flock on the fixed step.** `metaverse-engine/anim/flock.coax` on loop.coax's ticks,
   reading its target per tick, with Everglade's companion golden unchanged.
-- **Remaining authored behavior.** Actor Lab now uses bounded compiled guards,
-  weighted choices, cooldowns and interruption. Everglade's beat/combat rules
-  (`GUARD_RUN`, `SWING_EVERY`) retain their realm adapter and combat qualification.
-- **Broader truth isolation.** The actor chooser receives typed knowledge and
-  owned memory, without a world/pose reader. A language-wide effect proof for
-  arbitrary realm decision code remains separate work.
-- **Hosted choices.** Actor Lab composes the existing expiring catalogue gate
-  and accepted-event replay. Hosted transport and Everglade's live policy retain
-  [their own qualification](../../docs/metaverse/pylon-guard-decisions.md).
-- **Remaining sleep consumers.** The actor profile reserves scan/sense/search/
-  action work and applies declared sampling/culling. Moving the flock and other
-  realm/animation consumers onto those budgets remains.
+- **Decisions as data in a realm.** States and transitions (a guard's beat,
+  turning on you, `GUARD_RUN`, `SWING_EVERY`) as typed guards, actions and
+  weighted priority rows, with every input recorded and each rule kept for
+  inspection.
+- **A check against reading truth.** Today a decision reads the memory by
+  convention; nothing refuses one that reads true positions.
+- **Remote choices.** Admission of a decision model's answer only as an enum
+  value, at most one request pending a realm, and a late answer refused for a
+  guard that is no longer calm
+  ([pylon-guard-decisions.md](../../docs/metaverse/pylon-guard-decisions.md),
+  gated today by [metaverse/test_guard_ai.sh](../../metaverse/test_guard_ai.sh)).
+- **Budgets and sleep.** Far creatures stepping less often or sleeping, with
+  rates declared per realm and counted by
+  [chapter 16](ch016-budgets-that-refuse.md).
 - **A recorded fight** replaying to the same digest
   ([chapter 5](ch005-replay-a-session-exactly.md)), and the same digests in
   the browser.
 
 ## What exists today
 
-- [metaverse-engine/actors/](../actors/README.md): compiled guard/villager/control adoption,
-  bounded knowledge/choice scheduling and native/Wasm journey receipts.
 - [metaverse-engine/ai/stimulus.coax](../../metaverse-engine/ai/stimulus.coax): senses, stimuli
   and memory, used by this chapter's example.
 - [metaverse-engine/move/follower.coax](../move/follower.coax): the follower and the
@@ -475,7 +475,3 @@ Chapters 1 (the clock), 5 (replay), 6 (entities), 7 (queries), 16 (budgets)
 and 45 (truth and observation kept apart). Psionic's public decision edge
 ([Psionic chapter 27](../../psionic/book/ch027-a-public-mesh.md)) for remote
 choices. Coax R13 typed clocks for stimulus stamps.
-
-## Compiled actor adoption (#12992)
-
-Actor Lab now adopts shared semantic sight and bounded memory, compiled guarded weighted choices, cooldowns, culling and schedules. Optional model intents use the existing replay/decision gate. The guard, villager and controllable fixture run on one paid clock; Everglade and the flock retain their private adapters. See [the actor guide](../actors/README.md) and [qualification](../../docs/verification/actors-12992/README.md). This bounded adoption does not promote the rest of this chapter.

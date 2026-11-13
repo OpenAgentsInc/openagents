@@ -48,7 +48,6 @@ It builds on what exists today:
 
 - [`metaverse-engine/agent/drive.coax`](../../metaverse-engine/agent/drive.coax)
 - [`metaverse-engine/talk`](../../metaverse-engine/talk)
-- [`metaverse-engine/actors`](../../metaverse-engine/actors)
 - [`apps/everglade-desktop/next.coax`](../../apps/everglade-desktop/next.coax)
 - [`coax/lib/agent/observe/processes.coax`](../../coax/lib/agent/observe/processes.coax)
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)
