@@ -34,9 +34,9 @@ EDIT_PICK :: 56.0;         // CSS pixels from a thing's middle that pick it
 EV_KEY_DELETE :: -12;
 
 edit_on :: (s: [] Everglade) -> bool { return eg_builder(s) && s[0].ev.editing; }
-// A visitor the owner lets build (the layer's SETTINGS): edit mode's things, each sent as a card.
-eg_visitor_builds :: (s: [] Everglade) -> bool { return !s[0].ev.admin && s[0].ev.ed[0].ready && redit_tool(s[0].ev.ed[..], "build"); }
-eg_builder :: (s: [] Everglade) -> bool { return s[0].ev.admin || eg_visitor_builds(s); }
+// Edit mode is its owner's and admins' only. A visitor's BUILD (each thing sent as a card) went with the
+// layer's own placing (#13506): placing is a world edit now, and a world edit is an owner's or admin's.
+eg_builder :: (s: [] Everglade) -> bool { return s[0].ev.admin; }
 // The shared layer's pane (the feature list, settings, the cards) is open: what the HUD draws under
 // it (place names, HP, the chat line, EDITING) stands aside, since text draws over every plate.
 eg_pane_open :: (s: [] Everglade) -> bool { return s[0].ev.editing && s[0].ev.ed[0].pane != REDIT_SHUT; }
@@ -101,7 +101,7 @@ edit_settle :: (s: [] Everglade) {
 }
 edit_publish :: (s: [] Everglade) {
   s[0].ev.due = 0;
-  if !s[0].ev.admin { return; }   // a visitor's things went as cards
+  if !s[0].ev.admin { return; }   // an admin's write only (the server checks it again)
   s[0].ev.post_n = eg_edits_body(s[0].ev.edits, "Edited by hand", s[0].ev.post[..]);
 }
 // Each frame (everglade_voice_actions): a settled change goes out.
@@ -115,21 +115,6 @@ edit_tick :: (s: [] Everglade) {
 // One of item in front of you, picked.
 edit_place_one :: (s: [] Everglade, item: int) {
   n := s[0].ev.edits.n;
-  if !s[0].ev.admin {
-    // a visitor: placed where an admin's would go, then sent to the owner as a card instead
-    before := s[0].ev.edits; undos := s[0].ev.undo_n;
-    edit_place(s, item, 1, false);
-    if s[0].ev.edits.n > n {
-      t := s[0].ev.edits.things[n];
-      name: [16] u8;
-      for i: 0..<EG_EDIT_LABEL[item].count { c := EG_EDIT_LABEL[item][i]; name[i] = ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
-      redit_place(s[0].ev.ed[..], cast(string) name[0..<EG_EDIT_LABEL[item].count], t.x, t.z, t.yaw);
-      ev_line(s, "SENT TO THE OWNER");
-    }
-    s[0].ev.edits = before; s[0].ev.undo_n = undos; s[0].ev.due = 0; s[0].ev.say_n = 0;
-    edit_walls(s);
-    return;
-  }
   edit_place(s, item, 1, false);
   s[0].ev.say_n = 0;
   if s[0].ev.edits.n > n { s[0].ev.picked = s[0].ev.edits.n - 1; }
@@ -219,7 +204,6 @@ edit_original :: (s: [] Everglade) {
 edit_press :: (s: [] Everglade, b: int) {
   if b == EB_EDIT { edit_toggle(s); return; }
   if !edit_on(s) { return; }
-  if !s[0].ev.admin && !(b >= EB_ITEM && b < EB_ITEM + EG_EDIT_BUTTONS) && b != EB_DONE { return; }   // a visitor places and is done
   if b != EB_ORIGINAL { s[0].ev.sure = 0; }
   if b >= EB_ITEM && b < EB_ITEM + EG_EDIT_BUTTONS { edit_place_one(s, b - EB_ITEM); return; }
   if b == EB_UNDO { edit_undo(s, false); s[0].ev.picked = -1; s[0].ev.person = -1; return; }
@@ -275,7 +259,7 @@ everglade_edit_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int)
   for b: 0..<EB_N {
     if in_box(s[0].ev.boxes[b], x, y) { s[0].ev.finger2 = id; s[0].ev.lit = b; edit_press(s, b); return true; }
   }
-  if !s[0].ev.editing || !s[0].ev.admin { return false; }   // a visitor picks nothing
+  if !s[0].ev.editing { return false; }
   k := hi(s[0].dpr, 0.5);
   best := -1; most := f32(EDIT_PICK) * k * f32(EDIT_PICK) * k;
   for i: 0..<s[0].ev.edits.n {
@@ -337,12 +321,12 @@ edit_button :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, b: int, box: B
 // EDIT by MAP for an admin; in edit mode EDITING and what happened over the
 // middle, the picked thing named over it, its row and the hotbar over the
 // hint (whose top is bottom). Returns the vertices drawn so far.
-// How much of the top row EDIT (or BUILD, DONE) takes left of MAP, with its gap; 0 when it isn't drawn.
+// How much of the top row EDIT (or DONE) takes left of MAP, with its gap; 0 when it isn't drawn.
 // join_hud (everglade-join.coax) lays INVITE and CHARACTER out left of it.
 edit_button_room :: (s: [] Everglade) -> f32 {
   if !eg_builder(s) || s[0].talk >= 0 || s[0].board || s[0].above || editor_on(s) { return 0; }
   k := hi(s[0].dpr, 0.5);
-  word := ifx s[0].ev.editing then "DONE" else ifx !s[0].ev.admin then "BUILD" else "EDIT";
+  word := ifx s[0].ev.editing then "DONE" else "EDIT";
   return text_width(word, 9 * k) + 32 * k + 8 * k;
 }
 everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) -> int {
@@ -351,17 +335,15 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   if !eg_builder(s) || s[0].talk >= 0 || s[0].board { s[0].ev.ed[0].pane = REDIT_SHUT; for i: 0..<RB_N { s[0].ev.ed[0].shown[i] = false; } return at; }
   k := hi(s[0].dpr, 0.5);
   n := at;
-  // EDIT, left of MAP: the shared layer's for its owner and admins (THE BOARD, SETTINGS, the cards
-  // under it), BUILD for a visitor the owner lets build
+  // EDIT, left of MAP: the shared layer's for its owner and admins (THE BOARD and the cards under it)
   mb := s[0].map_button;
   bare := editor_on(s);   // The realm editor's panels draw DONE and the rest (everglade-editor.coax)
   if bare { for i: 0..<RB_N { s[0].ev.ed[0].shown[i] = false; } }
   if !s[0].above && !bare {
-    visitor := !s[0].ev.admin;
-    word := ifx s[0].ev.editing then "DONE" else ifx visitor then "BUILD" else "EDIT";
+    word := ifx s[0].ev.editing then "DONE" else "EDIT";
     bw := text_width(word, 9 * k) + 32 * k;
     eb := Box.{x0 = mb.x0 - 8 * k - bw, y0 = mb.y0, x1 = mb.x0 - 8 * k, y1 = mb.y1};
-    if visitor || !s[0].ev.ed[0].ready { n = edit_button(s, out, u, n, EB_EDIT, eb, word, "B", s[0].ev.editing); }
+    if !s[0].ev.ed[0].ready { n = edit_button(s, out, u, n, EB_EDIT, eb, word, "B", s[0].ev.editing); }
     else {
       n = redit_hud(s[0].ev.ed[..], out, n, RBox.{x0 = eb.x0, y0 = eb.y0, x1 = eb.x1, y1 = eb.y1});
       for i: 0..<s[0].ev.ed[0].plate_n {
@@ -397,7 +379,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   }
   // EDITING, and what happened, over the middle (on a phone the open pane says it, and is there)
   w := s[0].width;
-  title := ifx s[0].ev.admin then "EDITING" else "BUILDING · WHAT YOU PLACE GOES TO THE OWNER";
+  title := "EDITING";
   line := ifx s[0].ev.line_n > 0 then cast(string) s[0].ev.line[0..<s[0].ev.line_n] else "";
   ls := 7.5 * k;
   lw := text_width(line, ls);
@@ -543,7 +525,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   #assert everglade_edit_pointer(s[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 0, 1) && !s[0].ev.editing;
 }
 
-#test "the shared layer: a visitor with BUILD gets EDIT, the things only, each sent as a card; no UNDO or ORIGINAL" #steps 530000000 {
+#test "the shared layer: a visitor gets no edit mode, BUILD on or not (placing is a world edit, an owner's or admin's)" #steps 530000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   u: [UNIFORM_FLOATS] f32;
@@ -553,19 +535,17 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   e := s[0].ev.ed[..];
   edit_layer(s[..]);
   #assert e[0].req_ready && cast(string) e[0].req_url[0..<e[0].req_url_n] == "/api/playtest/realms/everglade";
-  // a visitor the owner lets build: BUILD, the things only, each sent as a card
+  // a visitor whose realm still says BUILD: no EDIT, no hotbar, nothing placed or published
   redit_requested(e, 2);
   #assert everglade_voice_message(s[..], HTTP_KIND + 2, "200\nrealm everglade\nrole visitor\nowner 0\ntool map 1\ntool build 1\nthing crate\nthing barrel\nrow flock 1 The bird flock\n");
   edit_layer(s[..]);
   n := everglade_edit_hud(s[..], out[..], u[..], 0, 840);
-  #assert !s[0].ev.admin && s[0].ev.boxes[EB_EDIT].x1 > 0 && !e[0].shown[RB_EDIT];
+  #assert !s[0].ev.admin && n == 0 && s[0].ev.boxes[EB_EDIT].x1 == 0 && edit_button_room(s[..]) == 0;
   edit_press(s[..], EB_EDIT);
-  #assert s[0].ev.editing;
+  #assert !s[0].ev.editing && !everglade_edit_key(s[..], 'b', true) && !s[0].ev.editing;
   s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
   edit_press(s[..], EB_ITEM + 1);
-  #assert s[0].ev.edits.n == 0 && cast(string) e[0].place_thing[0..<e[0].place_thing_n] == "barrel" && s[0].ev.post_n == 0;
-  n = everglade_edit_hud(s[..], out[..], u[..], 0, 840);
-  #assert s[0].ev.boxes[EB_DONE].x1 > 0 && s[0].ev.boxes[EB_UNDO].x1 == 0 && s[0].ev.boxes[EB_ORIGINAL].x1 == 0;   // no UNDO or ORIGINAL for a visitor
+  #assert s[0].ev.edits.n == 0 && s[0].ev.post_n == 0;
 }
 // (its own check: two Everglades and a frame's vertices are over the compile-time storage cap)
 // Native integration program: metaverse-engine/tests/check_native_gameplay.py (compiler storage limit).

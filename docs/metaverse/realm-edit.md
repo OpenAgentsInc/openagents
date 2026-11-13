@@ -196,7 +196,7 @@ not offered (migration 0052 took the engineer's row back off).
 
 | Realm | Rows | Visitor tools | Placed |
 |---|---|---|---|
-| Everglade | flock, floats, undergrowth, daycycle, guards (off: the watch never gives chase), invincible (off by default; on: the owner and admins take no harm, visitors still do) | map, build (BUILD: edit mode's things, each a card) | crate, barrel, bench, fence, stall |
+| Everglade | flock, floats, undergrowth, daycycle, guards (off: the watch never gives chase), invincible (off by default; on: the owner and admins take no harm, visitors still do) | map (its page honours no BUILD since #13506: placing is a world edit, an owner's or admin's) | crate, barrel, bench, fence, stall |
 | The Grid (the homepage's module walked, `newland-walk.coax`; 0082) | walkers (everyone else walking it), names (each project's name over its tree); EDIT left of HOME, under GALAXY on a phone | | |
 | Hecate's Cemetery | flight (off: a visit starts at the gate), fireflies, trail, tips, others | | |
 | Fairy Forest | sparkles, grass, ridges | fly (her wing beats in the air) | |
@@ -212,9 +212,9 @@ moving things, HOLD TO TALK voice edits) stays; the layer's EDIT stands where it
 both, the board and SETTINGS under EDIT and the hotbar along the bottom. DONE closes both. The
 board is typed there (TYPE IT): Everglade's HOLD TO TALK is its voice edits. The realm's owner and
 admin accounts get edit mode as a site admin does, and the server lets them publish its world
-(player.c: a hand-built realm's world routes). A visitor the owner lets build gets BUILD: the
-hotbar's things only, each placed where an admin's would go and sent as a card; ACCEPT on the
-owner's page puts the thing in the city and publishes it as an edit by hand. Its owner and admin
+(player.c: a hand-built realm's world routes). A visitor gets no edit mode: its BUILD
+(each thing sent as a card through `redit_place`) went with the layer's own placing (#13506). ACCEPT
+on the owner's page still puts a card already waiting into the city, published as an edit by hand. Its owner and admin
 accounts make voice edits (HOLD TO TALK, `/api/playtest/realm/everglade/edit`, npc.c) as a site
 admin does; theirs are paced and counted under their key's hash.
 

@@ -70,8 +70,8 @@ EditVoice :: struct {
   built_hidden: u32;                  // the plan's buildings the town was last laid without
   word1: [64] u8; word2: [64] u8; onto_words: [64] u8;   // scratch for what a line says
   spot: [EDIT_SPOTS * 4] f32; spot_k: [EDIT_SPOTS] int; spot_n: int;   // the patches' plants
-  // The shared edit layer: its EDIT is Everglade's (the board and SETTINGS open with edit mode); a
-  // visitor with BUILD places as cards; its owner and admins edit as a site admin does
+  // The shared edit layer: its EDIT is Everglade's (the board opens with edit mode); its owner and
+  // admins edit as a site admin does
   ed: [1] RealmEdit; ed_open: bool;
 }
 
