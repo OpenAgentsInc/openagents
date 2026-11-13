@@ -13,18 +13,29 @@ what was measured and whether the piece stayed.
 | --- | --- | --- |
 | 1. Revert thinking by step | Reverted (26c27d5714) | Round 4: 34 of 42 against 35, 25% more cost a run, the 2x time lead gone |
 | 2. Fresh reader at the finish | Built (6a29b3d144), measured, removed (62d8f074e0) | Changed no outcome in 4 of 4 runs |
-| 3. Models mixed in one run | Built (0190846ae0), measured, removed (93455e7032) | 4 pairs: cost +27%, time +8%, passes equal |
+| 3. Models mixed in one run | Built (17c23f98a0), measured, removed (198eff7da1) | 4 pairs: cost +27%, time +8%, passes equal |
 | 4. Cache hits | Measured; no change made | Steps that add about 600 tokens: 0 of 6 calls cached. About 4,200 tokens: 4 of 6. Explicit caching: Flash yes, Argon no |
 | 5. Seeded first step | Kept (090025aa11) | One call fewer on T1, H7 and H1; H2 in 4 calls against 5 to 7 |
 | 6. H8 and T6 | Checks corrected | 39 of 42 against 40 of 42 when rescored |
 | 6. Harder tasks | Six built, unseen | See "The unseen tasks" |
 | 6. Verdict definition | Committed with this page, before any final run | See "The verdict" |
 | 7. Read budget | Kept (b9795bd7b2) | Views counted apart (512); the ending names the limit |
-| 7. Economy | Kept (913a63b6fb) | Argon: cost about halved on H4, T4 and T5. Carbon on #13263: still no edit |
-| A command's time limit | Kept (66b316de85) | H6's own checks ran (120 s) where they had been killed (30 s) |
+| 7. Economy | Kept (4f715a77f7) | Argon: cost about halved on H4, T4 and T5. Carbon on #13263: still no edit |
+| A command's time limit | Kept (b9efbc6d59) | H6's own checks ran (120 s) where they had been killed (30 s) |
 | A finish that carries edits | Fixed (96ee94bc29) | Flash dropped its edits on the first tiny task; Argon in 2 of 113 finishes |
 | Verdict, both rounds | Run on N1 to N6 | Passes 8 against 10 (not met), cost $25.73 against at least $30.97, median 513 s against 606 s: not better |
 | Field runs on Carbon | Read offline, no change made | 46 runs on real issues: 20 finished, 26 ended on a limit. Every wrong commit traced came from a run that ended on a limit, which the finish reader (item 2) never sees |
+
+The commits in this table are the ones on `main`. Four were rebased before
+they were pushed, and the sections below still name them as they were when
+measured: 0190846ae0 is 17c23f98a0, 93455e7032 is 198eff7da1 (the verdict
+build; `main` had it at 61a4d76fdd), 913a63b6fb is 4f715a77f7 and 66b316de85
+is b9efbc6d59. The rebase changed none of Microcoder's code.
+
+#13325 closed on 2026-11-13 with the verdict below. What it found (the loop
+forgets what it read, and ends at a limit on wide tasks) is taken up in
+#13444 (a working memory) and #13445 (the compiler as the agent's source of
+truth); see [the Microcoder page](../coder/microcoder.md).
 
 The build the verdict runs use is 93455e7032: the round 2 loop of #13231
 with the finish fix, the seeded first step, the read budget, the economy
