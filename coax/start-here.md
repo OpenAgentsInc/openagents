@@ -110,6 +110,11 @@ driver reads the page's elements, by their ids, and takes `tree`, `hit`,
 | `face ID` | Turns you toward an entity |
 | `use ABILITY on ID` | Uses an ability on an entity, through the same deed a player's input makes |
 | `mount ID` | Mounts a mount |
+| `tap ID=WORDS` | Clicks the row under `ID` that says exactly `WORDS` (a list's row, whatever its place) |
+| `swap ID OLD => NEW` | In the field `ID`, the first `OLD` becomes `NEW`, as a person's edit (a line in the editor's Code pane) |
+| `answer PATH FILE` | Answers the page's own requests to `PATH` with `FILE`'s bytes, for a route the dev server doesn't have (a model's) |
+| `swaps`, `swaps until KIND >= N within MS` | Prints what the tab swapped in live (`wasm`, `wgsl`, `asset`), or waits in real time for the Nth and says how long it took |
+| `prefer pointer coarse` | Turns touch on, so `taps` measures the page a phone gets |
 
 The driver opens the page in agent mode ([the agent clock](../docs/metaverse/agent-clock.md)):
 nothing moves between two operations, and the page and the offline room
@@ -119,7 +124,15 @@ a state field compares so. Every session has the same seed, date, locale
 and time zone. Drive scripts land with phase 3: a file of
 these operations with expectations, which is also a replay stream, so a
 playtest recording can become a test. Until they land, read the header of
-`coax/web/drive.coax` for what works today.
+`coax/web/drive.coax` for what works today. `--ops FILE` runs a file of
+operations, one a line, at most 128
+([the editor's acceptance run](../docs/editor/acceptance/README.md) is one).
+With `--live`, the page also takes the dev server's live swaps, so a run can
+save a source and wait for the engine it builds.
+
+If taps stop reaching the page, a page that `shot` left in the checkout's
+shared browser is taking them (#13458). Run `coax/web/tool.sh shot --stop`
+and try again.
 
 ## Look things up
 

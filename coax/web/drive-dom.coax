@@ -80,6 +80,45 @@ dd_target_js :: (id: string, out: [] u8) -> string {
   n = dd_put(out, n, DD_TARGET_TAIL);
   return cast(string) out[0..<n];
 }
+// The target script for a row named by what it says: "file=splice-game.coax" is the element whose id
+// starts with "file." and whose own words are exactly that text (a list's row, whatever its place).
+DD_NAMED_TAIL :: "; const e = [...document.querySelectorAll('[id]')].find((x) => x.id.startsWith(P + '.') && x.textContent.trim() === W); if (!e) return 'no element under that id says that (tree lists them)'; e.scrollIntoView({ block: 'nearest', inline: 'nearest' }); const r = e.getBoundingClientRect(); if (!(r.width > 0 && r.height > 0)) return 'that element does not show'; return Math.round(r.left + r.width / 2) + ' ' + Math.round(r.top + r.height / 2); })()";
+dd_named_js :: (prefix: string, words: string, out: [] u8) -> string {
+  if prefix.count == 0 || words.count == 0 || prefix.count + words.count > 200 { return ""; }
+  for c: prefix { if c == '"' || c == '\\' || c < 32 { return ""; } }
+  for c: words { if c == '"' || c == '\\' || c < 32 { return ""; } }
+  n := dd_put(out, 0, "(() => { const P = \""); n = dd_put(out, n, prefix); n = dd_put(out, n, "\", W = \""); n = dd_put(out, n, words); n = dd_put(out, n, "\"");
+  n = dd_put(out, n, DD_NAMED_TAIL);
+  return cast(string) out[0..<n];
+}
+// Where an id names a row by its words (PREFIX=WORDS): the place of the "=", or -1.
+dd_named_at :: (id: string) -> int {
+  for c, k: id { if c == '=' { return ifx k > 0 && k + 1 < id.count then k else -1; } }
+  return -1;
+}
+// The script that changes a field's text: the first OLD in the field with this id becomes NEW, and the
+// field says it was typed in (its input event), as a person's edit does. OLD and NEW are JavaScript
+// string literals (jo_str's). It answers "ok", or why not.
+dd_swap_js :: (id: string, old_js: string, new_js: string, out: [] u8) -> string {
+  if id.count == 0 || id.count > 200 || old_js.count < 3 { return ""; }
+  for c: id { if c == '"' || c == '\\' || c < 32 { return ""; } }
+  n := dd_put(out, 0, "(() => { const e = document.getElementById(\""); n = dd_put(out, n, id);
+  n = dd_put(out, n, "\"); if (!e || typeof e.value !== 'string') return 'no field with that id on the page'; const a = "); n = dd_put(out, n, old_js);
+  n = dd_put(out, n, ", b = "); n = dd_put(out, n, new_js);
+  n = dd_put(out, n, "; const i = e.value.indexOf(a); if (i < 0) return 'the field does not hold that text'; if (e.value.indexOf(a, i + 1) >= 0) return 'the field holds that text more than once: name more of it'; e.value = e.value.slice(0, i) + b + e.value.slice(i + a.length); e.dispatchEvent(new InputEvent('input', { bubbles: true })); return 'ok'; })()");
+  return ifx n >= out.count then "" else cast(string) out[0..<n];
+}
+// The script that answers the page's own requests to a path with these bytes (a JavaScript string
+// literal), status 200, instead of the server: a scripted answer for a route the dev server does not
+// have, a model's. Every other request goes on as it was.
+dd_answer_js :: (path: string, body_js: string, out: [] u8) -> string {
+  if path.count < 2 || path[0] != '/' || path.count > 200 || body_js.count < 2 { return ""; }
+  for c: path { if c == '"' || c == '\\' || c < 33 || c == '?' { return ""; } }
+  n := dd_put(out, 0, "(() => { const real = globalThis.__driveFetch ||= globalThis.fetch.bind(globalThis); const said = globalThis.__driveAnswers ||= {}; said[\""); n = dd_put(out, n, path);
+  n = dd_put(out, n, "\"] = "); n = dd_put(out, n, body_js);
+  n = dd_put(out, n, "; globalThis.fetch = (u, o) => { const p = new URL(typeof u === 'string' ? u : u.url, location.href).pathname; return p in said ? Promise.resolve(new Response(said[p], { status: 200 })) : real(u, o); }; return 'ok'; })()");
+  return ifx n >= out.count then "" else cast(string) out[0..<n];
+}
 // A whole number of CSS px from a word: -1 when it isn't one (0 to 99999).
 dd_px :: (w: string) -> int {
   if w.count == 0 || w.count > 5 { return -1; }
@@ -118,6 +157,10 @@ dd_has :: (s: string, part: string) -> bool {
   #assert dd_has(t, "const TAP = 44; const kept") && dd_has(t, "!kept(e)") && t.count < b.count;
   #assert dd_has(dd_tree_js(b[..]), "document.querySelectorAll(T)");
   #assert dd_has(dd_target_js("send", b[..]), "document.getElementById(\"send\"); if (!e)");
+  #assert dd_has(dd_named_js("file", "splice-game.coax", b[..]), "const P = \"file\", W = \"splice-game.coax\"; const e = [...document") && dd_named_js("file", "a\"b", b[..]) == "" && dd_named_js("", "x", b[..]) == "";
+  #assert dd_named_at("file=splice-game.coax") == 4 && dd_named_at("file") == -1 && dd_named_at("=x") == -1 && dd_named_at("file=") == -1;
+  #assert dd_has(dd_swap_js("code.text", "\"1.0f32\"", "\"1.5f32\"", b[..]), "const a = \"1.0f32\", b = \"1.5f32\"; const i = e.value.indexOf(a)") && dd_swap_js("a\"b", "\"x\"", "\"y\"", b[..]) == "";
+  #assert dd_has(dd_answer_js("/api/chat/complete", "\"{}\"", b[..]), "said[\"/api/chat/complete\"] = \"{}\"; globalThis.fetch") && dd_answer_js("api", "\"{}\"", b[..]) == "" && dd_answer_js("/a?b", "\"{}\"", b[..]) == "";
   #assert dd_target_js("", b[..]) == "" && dd_target_js("a\"b", b[..]) == "" && dd_target_js("a\\b", b[..]) == "" && dd_target_js("a\nb", b[..]) == "";
   #assert dd_px("0") == 0 && dd_px("1280") == 1280 && dd_px("-1") == -1 && dd_px("") == -1 && dd_px("123456") == -1 && dd_px("1.5") == -1;
 }

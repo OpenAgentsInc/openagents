@@ -749,7 +749,7 @@ cw_turn_send :: (s: [] ChatWeb, model: int, text: string) -> bool {
 // and the chosen model is asked. Nothing is taken while an answer is coming or another request is out.
 cw_send :: (s: [] ChatWeb) {
   if s[0].live || !cw_has_words(s) { return; }
-  if s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT { s[0].send_due = true; return; }   // a background read is out: the message goes when it is back
+  if s[0].flight == CF_LIST || s[0].flight == CF_LOG || s[0].flight == CF_CLAUDE || s[0].flight == CF_IMPORT || s[0].flight == CF_ACCOUNT { s[0].send_due = true; return; }   // a background read is out (the account's, as the page opens, is one): the message goes when it is back
   if s[0].flight != CF_NONE { return; }
   s[0].send_due = false;
   lo := 0; hi := s[0].draft_n;
@@ -1018,7 +1018,7 @@ cw_end :: (s: [] ChatWeb, status: int) {
     s[0].watching = again; s[0].watch_at = s[0].time;
     if !again { s[0].model = CW_HOSTED; s[0].csize = 0; }   // a message here goes on in Claude Code
   }
-  if s[0].send_due && (kind == CF_LIST || kind == CF_LOG || kind == CF_CLAUDE || kind == CF_IMPORT) { cw_send(s); } else if kind == CF_TURN {
+  if s[0].send_due && (kind == CF_LIST || kind == CF_LOG || kind == CF_CLAUDE || kind == CF_IMPORT || kind == CF_ACCOUNT) { cw_send(s); } else if kind == CF_TURN {
     if status == 200 { cw_turn_read(s, body); }
     else if status != 0 { cw_fail(s, status); s[0].turn = 0; }   // with no answer at all, it is read again
   }
@@ -1940,4 +1940,16 @@ cw_test_planned :: (s: [] ChatWeb, content: string) {
   count := s[0].count;
   cw_test_answer(s, 404, "{\"error\":\"not found\"}");
   #assert s[0].count == count;
+}
+
+#test "a message sent in the page's first moment, while the account is still being read, goes when that read is back" {
+  h: [1] CwTest; s := h[0].s[..];
+  n := coaxial_chatweb_frame(s, 0.016, true);
+  #assert s[0].flight == CF_ACCOUNT;
+  coaxial_chatweb_asked(s);
+  cw_test_type(s, "composer", "hello");
+  cw_test_enter(s, "composer");
+  #assert s[0].send_due && s[0].count == 0 && s[0].flight == CF_ACCOUNT;
+  cw_test_answer(s, 404, "{\"error\":\"not found\"}");
+  #assert !s[0].send_due && s[0].count == 2 && cw_text(s, 0) == "hello" && s[0].flight == CF_COMPLETE && cw_test_door(s) == "/api/chat/complete";
 }

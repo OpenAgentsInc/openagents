@@ -300,7 +300,13 @@ is slice 3, E4 is slice 4 and E9 is slices 5-6.
 | E14 | Acceptance: a real-input run of the editor in real Chrome, on a laptop and a phone | #13423 |
 
 The acceptance run that repeats is `docs/editor/acceptance/` (E14, #13423): a
-file of `coax drive` operations and how to run it.
+file of `coax drive` operations and how to run it. One pass on the dev server
+places, moves, turns, edits a content row, removes, undoes and redoes; does
+the same kind of edits through the agent in the editor's foot, with the
+model's answers scripted; and changes a line of game code and a shader from
+the Code pane, each swapped in live with the world's revision and the
+player's place kept. On the build it was written against the engine swapped
+about 1 s after Save and the shaders in 0.2 to 0.6 s.
 
 ## Order
 

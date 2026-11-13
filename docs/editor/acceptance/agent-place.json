@@ -1,0 +1,1 @@
+{"choices":[{"message":{"role":"assistant","content":"{\"route\":\"edit\",\"say\":\"We put two small crates by the bay.\",\"steps\":[{\"tool\":\"place\",\"kind\":117,\"id\":0,\"x\":17800,\"z\":-7500,\"yaw\":0,\"percent\":0},{\"tool\":\"place\",\"kind\":117,\"id\":0,\"x\":17950,\"z\":-7350,\"yaw\":0,\"percent\":0}]}"},"finish_reason":"stop"}]}

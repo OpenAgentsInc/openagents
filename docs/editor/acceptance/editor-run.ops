@@ -1,7 +1,8 @@
 # The editor's acceptance run, for coax drive (docs/editor/acceptance/README.md).
-# Start from an empty world on the dev server. Size 1280x800, query "edit&stage=5".
+# Start from an empty world on the dev server, which must watch and rebuild (start it without --build).
+# Size 1280x800, query "edit&stage=5".
 clock +1500
-clock until page.f.rev >= 0 within 6000
+clock until page.f.rev >= 0 within 20000
 type - key Enter
 clock +800
 # place three pieces with the realm commands: revisions 1 to 3
@@ -41,6 +42,59 @@ tap undo
 clock until game.layer.st.n == 3 within 6000
 tap redo
 clock until game.layer.st.n == 2 within 6000
+# ---- the same kind of edits through an agent: the /chat conversation in the editor's foot.
+# The model's answers are scripted (the dev server has no model). After the answer everything is the real
+# path: the plan, the shell's batch, the world's route and its rules.
+tap agent
+# a turn's edits are one batch: a revision for each edit, and one step to undo
+answer /api/chat/complete docs/editor/acceptance/agent-place.json
+type composer put two small crates by the bay
+type composer key Enter
+clock until page.f.rev == 11 within 6000
+clock until game.layer.st.n == 4 within 6000
+answer /api/chat/complete docs/editor/acceptance/agent-change.json
+type composer move the first one a little and take the other away
+type composer key Enter
+clock until page.f.rev == 13 within 6000
+clock until game.layer.st.n == 3 within 6000
+# undo takes the whole turn back
+answer /api/chat/complete docs/editor/acceptance/agent-undo.json
+type composer undo that
+type composer key Enter
+clock until page.f.rev == 15 within 6000
+clock until game.layer.st.n == 4 within 6000
+# talk changes nothing
+answer /api/chat/complete docs/editor/acceptance/agent-talk.json
+type composer what stands by the bay?
+type composer key Enter
+clock +1500
+clock until page.f.rev == 15 within 500
+tap agent
+# ---- a line of game code and a shader, from the Code pane (the dev server watches and rebuilds)
+tap code
+tap file
+tap file=splice-game.coax
+# one constant, saved: the engine swaps and the run keeps its state; then back, so the file is as it was found
+swap code.text T_HIT_COOL :: 1.0f32 => T_HIT_COOL :: 1.5f32
+tap code.save
+swaps until wasm >= 1 within 4000
+swap code.text T_HIT_COOL :: 1.5f32 => T_HIT_COOL :: 1.0f32
+tap code.save
+swaps until wasm >= 2 within 4000
+# a shader: the Coax that writes Splice's WGSL
+tap file
+tap file=gpu/splice.coax
+swap code.text pow(face,0.85f32) => pow(face,0.80f32)
+tap code.save
+swaps until wgsl >= 1 within 4000
+swap code.text pow(face,0.80f32) => pow(face,0.85f32)
+tap code.save
+swaps until wgsl >= 2 within 4000
+# the world came through the four swaps: the same revision, the same four pieces
+clock until page.f.rev == 15 within 500
+clock until game.layer.st.n == 4 within 500
+tap code
+swaps
 # the run kept its state: the player has not moved from where stage 5 put them
 where
 # what a tap reaches, and the tap targets

@@ -3833,6 +3833,7 @@ function agentTell() {
   const chat = globalThis.coaxialDoms?.[AGENT];
   if (!chat || !agentWorld || agentTold === agentWorld) return;
   chat.after ||= agentActs;
+  chat.still = agentMode;   // on an agent's clock no frame comes by itself: each event is drawn at once
   const cx = chat.exports(), most = Math.min(agentWorld.length, cx.dom_inbox_cap());
   new Uint8Array(chat.memory().buffer, cx.dom_inbox(chat.state()), most).set(agentWorld.subarray(0, most));
   cx.dom_event(chat.state(), 8, 0, most);
@@ -4615,7 +4616,8 @@ async function liveAsset(url, hash) {
 // coaxial.liveSwaps counts what this tab swapped in, each after the frame that drew it
 // (coax/web/live-reload-bench.coax measures an edit to its swap with them).
 const liveSwaps = { wasm: 0, wgsl: 0, asset: 0 };
-const swapped = (kind) => new Promise(requestAnimationFrame).then(() => { liveSwaps[kind] += 1; globalThis.coaxial.liveSwaps = { ...liveSwaps }; });
+// (on an agent's clock the frames are the clock's and none comes by itself, so there a swap counts at once)
+const swapped = (kind) => (agentMode ? Promise.resolve() : new Promise(requestAnimationFrame)).then(() => { liveSwaps[kind] += 1; globalThis.coaxial.liveSwaps = { ...liveSwaps }; });
 function live() {
   const socket = new WebSocket(`ws://${location.host}/coaxial/live`);
   const mine = (path, url) => !path || path === new URL(url, location.href).pathname;
@@ -4693,6 +4695,8 @@ async function main() {
   }
   // a clip is one pass: no live swap (a changed file's "wasm", "wgsl" or "page") mid-recording, which
   // restarted the engine and the film with it (the night raid video cut back to its start at 19.5 s)
-  if (dev && !clipping) live();
+  // An agent's run against the dev server (coax drive --live, ?agent&live) takes them too: it edits a source,
+  // watches the swap and checks the result in one session (#13423).
+  if (dev && (!clipping || (agentMode && new URLSearchParams(location.search).has("live")))) live();
 }
 main();

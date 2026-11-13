@@ -1,0 +1,1 @@
+{"choices":[{"message":{"role":"assistant","content":"{\"route\":\"edit\",\"say\":\"We moved the first crate and took the second away.\",\"steps\":[{\"tool\":\"move\",\"kind\":0,\"id\":4,\"x\":17800,\"z\":-7650,\"yaw\":0,\"percent\":0},{\"tool\":\"remove\",\"kind\":0,\"id\":5,\"x\":0,\"z\":0,\"yaw\":0,\"percent\":0}]}"},"finish_reason":"stop"}]}

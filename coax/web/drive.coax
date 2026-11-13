@@ -49,6 +49,15 @@
 //                                 (realm.result.v1: done with the new revision, or the refusal in words), waits
 //                                 until the page stands at that revision, and names what it touched: the realm,
 //                                 the revision, the build and the page. `world` lists the world (#13415, #13437)
+//   tap ID=WORDS                  a click on the row under ID that says exactly WORDS (a list's row, whatever its place)
+//                                 (a tap, a type or a swap on one of the page's own elements waits up to 4 s of real
+//                                 time for it to be there: a pane that is opening, a file still being read)
+//   swap ID OLD => NEW            the first OLD in the field ID becomes NEW, as a person's edit (a line in the Code pane)
+//   answer PATH FILE              the page's own requests to PATH are answered with FILE's bytes instead of by the
+//                                 server: a scripted answer for a route the dev server does not have (a model's)
+//   swaps | swaps until KIND >= N [within MS]
+//                                 what the tab swapped in live (wasm: the engine, wgsl: shaders, asset); or waits in
+//                                 real time for the Nth, and says how long it took
 //   where                         where the player stands, in centimetres
 //   screenshot OUT.png            the page as it is
 //   logs                          the page's console and errors since the last `logs`
@@ -563,6 +572,45 @@ dv_within :: (op: string, w: int, otherwise: int) -> int {
   #assert dv_within("clock settle within", 2, 10000) == -1 && dv_within("clock settle within 5 6", 2, 10000) == -1 && dv_within("clock until a > 3 within 250", 5, 9) == 250;
 }
 DV_CLOCK_HELP :: "clock takes +MS, settle [within MS] or until PATH [OP VALUE] [within MS] (OP: == != < > <= >=)";
+DV_APPEAR_MS :: 4000;   // real time a tap, a type or a swap waits for one of the page's own elements to be there
+// The words of a row named PREFIX=WORDS in an operation: what follows the "=" to the operation's end for a tap,
+// and to the next word for a type (whose text follows).
+dv_named_words :: (op: string, eq: int) -> string {
+  id := dv_word(op, 1);
+  if dv_word(op, 0) == "tap" { rest := dv_rest(op, 1); return ifx rest.count > eq + 1 then cast(string) rest[eq + 1..<rest.count] else ""; }
+  return cast(string) id[eq + 1..<id.count];
+}
+// swaps: the tab's live swaps so far. swaps until KIND >= N within MS: waits, in real time, until the tab has
+// swapped in N of a kind (wasm: the engine, wgsl: shaders, asset: a pack or a texture), stepping the agent
+// clock so the page draws; it says how long it took and fails past MS (--within).
+DV_SWAPS_JS :: "(() => { const s = globalThis.coaxial?.liveSwaps; return s ? 'wasm ' + (s.wasm || 0) + ' wgsl ' + (s.wgsl || 0) + ' asset ' + (s.asset || 0) + ' failed ' + (s.failed || 0) : 'wasm 0 wgsl 0 asset 0 failed 0'; })()";
+dv_swaps_of :: (line: string, kind: string) -> int {
+  for k: 0..<4 { if dv_word(line, k * 2) == kind { return dv_int(dv_word(line, k * 2 + 1)); } }
+  return -1;
+}
+dv_swaps :: (s: [] DvS, op: string, out: [] Dv) -> bool {
+  if dv_word(op, 1).count == 0 { dv_s(out, dv_eval(s, DV_SWAPS_JS)); return true; }
+  kind := dv_word(op, 2); want := dv_int(dv_word(op, 4));
+  within := dv_within(op, 5, s[0].within);
+  if dv_word(op, 1) != "until" || dv_word(op, 3) != ">=" || want < 0 || within < 0 || dv_swaps_of("wasm 0 wgsl 0 asset 0 failed 0", kind) < 0 {
+    dv_s(out, "swaps, or swaps until wasm|wgsl|asset|failed >= N [within MS]"); return false;
+  }
+  t0 := proc_now_ms(); have := 0;
+  while true {
+    have = dv_swaps_of(dv_eval(s, DV_SWAPS_JS), kind);
+    took := proc_now_ms() - t0;
+    if have >= want { dv_s(out, kind); dv_s(out, " "); dv_i(out, have); dv_s(out, " after "); dv_i(out, took); dv_s(out, " ms"); return true; }
+    if took >= within { break; }
+    if s[0].agent { _ := dv_advance(s, AGENT_POLL_MS); }
+    proc_sleep(50);
+  }
+  dv_s(out, "no row of "); dv_s(out, kind); dv_s(out, " swaps reached "); dv_i(out, want); dv_s(out, " within "); dv_i(out, within); dv_s(out, " ms: it is at "); dv_i(out, have);
+  return false;
+}
+#test "swaps: a kind's count from the page's line" {
+  #assert dv_swaps_of("wasm 2 wgsl 1 asset 0 failed 3", "wasm") == 2 && dv_swaps_of("wasm 2 wgsl 1 asset 0 failed 3", "failed") == 3 && dv_swaps_of("wasm 2 wgsl 1 asset 0 failed 3", "page") == -1;
+  #assert dv_named_words("tap file=splice-game.coax", 4) == "splice-game.coax" && dv_named_words("tap thing=Small crate", 5) == "Small crate" && dv_named_words("type cell=name XL", 4) == "name";
+}
 dv_clock :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   a := dv_word(op, 1);
   if a.count > 1 && a[0] == '+' && dv_int(a[1..<a.count]) >= 0 {
@@ -640,8 +688,8 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   }
   if s[0].dom {
     if w0 == "tree" || w0 == "layout" { js: [16384] u8; dv_s(out, dv_eval(s, dd_tree_js(js[..]))); return true; }
-    if w0 != "tap" && w0 != "type" && w0 != "screenshot" && w0 != "logs" && w0 != "prefer" {
-      dv_s(out, "this page is drawn by the browser and has no world: it takes tree, hit X Y, taps, tap ID, type ID TEXT, screenshot, logs and prefer"); return false;
+    if w0 != "tap" && w0 != "type" && w0 != "swap" && w0 != "answer" && w0 != "screenshot" && w0 != "logs" && w0 != "prefer" {
+      dv_s(out, "this page is drawn by the browser and has no world: it takes tree, hit X Y, taps, tap ID, type ID TEXT, swap, answer, screenshot, logs and prefer"); return false;
     }
   }
   if w0 == "tree" || w0 == "layout" || w0 == "status" || w0 == "target" || w0 == "why" { dv_s(out, dv_send(s, op)); return true; }
@@ -677,16 +725,27 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     }
     if id != "-" {
       jb: [256] u8; tj: [2048] u8;
-      at := ifx s[0].dom then dv_eval(s, dd_target_js(id, tj[..])) else dv_send(s, dv_cat2("target ", id, jb[..]));
+      eq := dd_named_at(id);   // PREFIX=WORDS: a list's row by what it says (the page's own elements)
+      at := ifx eq > 0 then dv_eval(s, dd_named_js(id[0..<eq], dv_named_words(op, eq), tj[..])) else ifx s[0].dom then dv_eval(s, dd_target_js(id, tj[..])) else dv_send(s, dv_cat2("target ", id, jb[..]));
       x := dv_int(dv_word(at, 0)); y := dv_int(dv_word(at, 1));
       // an id the HUD doesn't have may be one of the page's own elements over the canvas (the editor's shell, #13416)
-      if !s[0].dom && (x < 0 || y < 0 || dv_word(at, 2).count > 0) {
+      if !s[0].dom && eq < 0 && (x < 0 || y < 0 || dv_word(at, 2).count > 0) {
         at = dv_eval(s, dd_target_js(id, tj[..]));
+        x = dv_int(dv_word(at, 0)); y = dv_int(dv_word(at, 1));
+      }
+      // one of the page's own elements that is not there yet (a pane opening, a list still read) is waited for, in real time
+      waited := 0;
+      while (x < 0 || y < 0 || dv_word(at, 2).count > 0) && waited < DV_APPEAR_MS && (dv_starts(at, "no element") || dv_starts(at, "that element does not show")) {
+        proc_sleep(100); waited += 100;
+        if s[0].agent && !s[0].dom { _ := dv_advance(s, AGENT_POLL_MS); }
+        at = ifx eq > 0 then dv_eval(s, dd_named_js(id[0..<eq], dv_named_words(op, eq), tj[..])) else dv_eval(s, dd_target_js(id, tj[..]));
         x = dv_int(dv_word(at, 0)); y = dv_int(dv_word(at, 1));
       }
       if x < 0 || y < 0 || dv_word(at, 2).count > 0 { dv_s(out, at); return false; }
       if !dv_mouse(s, "mouseMoved", x, y) || !dv_mouse(s, "mousePressed", x, y) || !dv_mouse(s, "mouseReleased", x, y) { dv_s(out, "the click failed: "); dv_s(out, cdp_error(s[0].c[..])); return false; }
-      dv_s(out, "tapped "); dv_s(out, id); dv_s(out, " at "); dv_s(out, at);
+      dv_s(out, "tapped "); dv_s(out, id);
+      if eq > 0 && dv_word(op, 0) == "tap" { dv_s(out, cast(string) dv_rest(op, 1)[id.count..<dv_rest(op, 1).count]); }
+      dv_s(out, " at "); dv_s(out, at);
     }
     if w0 == "type" {
       if dv_word(op, 2) == "key" {
@@ -702,6 +761,40 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     }
     return true;
   }
+  // swap ID OLD => NEW: the first OLD in a field becomes NEW, as a person's edit (a line of code in the editor's Code pane, #13423)
+  if w0 == "swap" {
+    id := dv_word(op, 1); rest := dv_rest(op, 2); cut := -1;
+    for k: 0..<rest.count - 3 { if cut < 0 && cast(string) rest[k..<k + 4] == " => " { cut = k; } }
+    if id.count == 0 || cut < 1 || cut + 4 >= rest.count { dv_s(out, "swap takes a field's id, the text it holds and the text to put there: swap ID OLD => NEW"); return false; }
+    ob: [2048] u8; nb: [2048] u8; oj: [1] Jo; nj: [1] Jo; js: [8192] u8;
+    jo_start(oj[..], ob[..]); jo_str(oj[..], cast(string) rest[0..<cut]);
+    jo_start(nj[..], nb[..]); jo_str(nj[..], cast(string) rest[cut + 4..<rest.count]);
+    v := dv_eval(s, dd_swap_js(id, jo_text(oj[..]), jo_text(nj[..]), js[..]));
+    // a field still being filled (a file opening) is waited for, in real time
+    waited := 0;
+    while v != "ok" && waited < DV_APPEAR_MS && (dv_starts(v, "no field") || dv_starts(v, "the field does not hold")) {
+      proc_sleep(100); waited += 100;
+      if s[0].agent && !s[0].dom { _ := dv_advance(s, AGENT_POLL_MS); }
+      v = dv_eval(s, dd_swap_js(id, jo_text(oj[..]), jo_text(nj[..]), js[..]));
+    }
+    if v != "ok" { dv_s(out, ifx v.count > 0 then v else "the page gave no answer"); return false; }
+    dv_s(out, "swapped in "); dv_s(out, id);
+    return true;
+  }
+  // answer PATH FILE: the page's requests to PATH are answered with FILE's bytes, not by the server (a model's answer, scripted)
+  if w0 == "answer" {
+    path := dv_word(op, 1); file := dv_word(op, 2);
+    fb: [16384] u8; qb: [40000] u8; j: [1] Jo; js: [49152] u8;
+    fn := ifx file.count > 0 then fs_read(file, fb[..]) else -1;
+    if fn <= 0 { dv_s(out, "answer takes a path of this site and a file with the answer's bytes (at most 16 KB): answer PATH FILE"); return false; }
+    jo_start(j[..], qb[..]); jo_str(j[..], cast(string) fb[0..<fn]);
+    v := dv_eval(s, dd_answer_js(path, jo_text(j[..]), js[..]));
+    if v != "ok" { dv_s(out, ifx v.count > 0 then v else "answer takes a path of this site: answer PATH FILE"); return false; }
+    dv_s(out, "requests to "); dv_s(out, path); dv_s(out, " are answered from "); dv_s(out, file);
+    return true;
+  }
+  // swaps: what this tab swapped in live (code, shaders, assets); swaps until KIND >= N within MS waits for one, in real time
+  if w0 == "swaps" { return dv_swaps(s, op, out); }
   // drag X0 Y0 X1 Y1: a press at one point, a move in steps to another, a release there (a gizmo's drag, #13417)
   if w0 == "drag" {
     x0 := dd_px(dv_word(op, 1)); y0 := dd_px(dv_word(op, 2)); x1 := dd_px(dv_word(op, 3)); y1 := dd_px(dv_word(op, 4));
@@ -751,7 +844,7 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     }
     dv_s(out, "prefer takes color-scheme dark|light, reduced-motion reduce|no-preference, pointer coarse|fine or size WxH"); return false;
   }
-  dv_s(out, "unknown operation '"); dv_s(out, w0); dv_s(out, "': tree, layout, state, why, hit, taps, tap, drag, type, walk-to, face, use, mount, stop, status, clock, screenshot, logs, prefer, perf");
+  dv_s(out, "unknown operation '"); dv_s(out, w0); dv_s(out, "': tree, layout, state, why, hit, taps, tap, drag, type, swap, answer, swaps, walk-to, face, use, mount, stop, status, clock, screenshot, logs, prefer, perf");
   return false;
 }
 // ---- a world's edits (GitHub #13415): the realm commands, sent for the revision the page shows
@@ -879,6 +972,7 @@ dv_usage :: () -> int {
 // The repository's root from this tool's own binary (ROOT/coax/web/build/tools/NAME-HASH, tool.sh).
 dv_root_dir :: (self: string) -> string { r := self; for i: 0..<5 { r = fs_dir(r); } return r; }
 
+DV_OPS :: 128;   // operations one web run takes (the editor's acceptance run is 86)
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   loaded := args_load(a[..]);   // once: a second load lists every argument again
@@ -895,7 +989,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if !loaded || args_count(a[..]) < 3 || args_at(a[..], 0) != "web" { return dv_usage(); }
   app_dir := args_at(a[..], 1); path := args_at(a[..], 2);
   query := ""; size := "1280x800"; port := -1; within := 30000; agent := true; live := "";
-  ops: [64] string; n_ops := 0; ops_file: [16384] u8;
+  ops: [DV_OPS] string; n_ops := 0; ops_file: [16384] u8;
   i := 3;
   while i < args_count(a[..]) {
     x := args_at(a[..], i);
@@ -917,12 +1011,12 @@ tool_main :: () -> int #export_c #effects(all) {
         line := cast(string) ops_file[at..<e];
         at = e + 1;
         if line.count == 0 || line[0] == '#' { continue; }
-        if n_ops >= ops.count { tool_errln("drive: at most 64 operations a run"); return 2; }
+        if n_ops >= ops.count { tool_errln("drive: at most 128 operations a run"); return 2; }
         ops[n_ops] = line; n_ops += 1;
       }
       i += 2; continue;
     }
-    if n_ops >= ops.count { tool_errln("drive: at most 64 operations a run"); return 2; }
+    if n_ops >= ops.count { tool_errln("drive: at most 128 operations a run"); return 2; }
     ops[n_ops] = x; n_ops += 1; i += 1;
   }
   wh := args_size(size);
@@ -1019,6 +1113,7 @@ dv_open :: (s: [] DvS, path: string, query: string, wh: ArgsSize) -> int {
   if s[0].agent {
     // the agent's session: the page in agent mode, pinned (metaverse-engine/agent/pin.coax) before it loads
     dv_s(u[..], ifx query.count > 0 then "&agent" else "?agent");
+    if s[0].live { dv_s(u[..], "&live"); }   // against the dev server the page takes its live swaps too (host.js)
     pin: [1] Dv; dv_s(pin[..], "globalThis.coaxialAgent = { seed: "); dv_i(pin[..], AGENT_SEED); dv_s(pin[..], ", epoch: "); dv_i(pin[..], AGENT_EPOCH_MS);
     dv_s(pin[..], ", locale: '"); dv_s(pin[..], AGENT_LOCALE); dv_s(pin[..], "', timeZone: '"); dv_s(pin[..], AGENT_TIME_ZONE); dv_s(pin[..], "' };");
     a: [1024] u8; aj: [1] Jo; jo_start(aj[..], a[..]); jo_obj(aj[..]); jo_key(aj[..], "source"); jo_str(aj[..], dv_text(pin[..])); jo_end(aj[..]);

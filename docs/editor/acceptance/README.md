@@ -6,16 +6,37 @@ not hold.
 
 ## Run it
 
-1. Start the dev server on your own computer:
+1. Start the dev server on your own computer. It must watch Splice's
+   sources and rebuild them:
 
    ```sh
    coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9538
    ```
 
+   Started like this it builds the whole site first. In a worktree whose
+   pages are already built (`coax/remote/pages.sh`), skip that with
+   `--build true` after building Splice and the site's shaders once in
+   development mode, which is what tells the server which sources to watch:
+
+   ```sh
+   (cd apps/openagents-web && COAXIAL_MODE=dev ../../coax/web/wasm.sh \
+     ../../metaverse/splice/splice.coax ../../metaverse/splice/splice-face.c \
+     build/splice.wasm animelab-style.coax)
+   COAXIAL_MODE=dev coax/web/tool.sh coax/web/wgsl-module.coax --site
+   coax/web/serve.sh apps/openagents-web --listen 127.0.0.1:9538 --build true
+   ```
+
+   The first steps use the command line, so build it too:
+   `apps/openagents-cli/build.sh`.
+
 2. Start from an empty world. Stop the server, delete the files named
    `splice.*` in `apps/openagents-web/build/.worlds/`, and start it again.
 
-3. Run the pass:
+3. Stop the shared headless browser if `shot` was used in this checkout
+   (`coax/web/tool.sh shot --stop`): a page it left open takes the run's taps
+   (#13458).
+
+4. Run the pass:
 
    ```sh
    coax/web/tool.sh drive web apps/openagents-web /worlds/splice \
@@ -23,8 +44,14 @@ not hold.
      --ops docs/editor/acceptance/editor-run.ops
    ```
 
-The run exits 0 when every step holds. It leaves two pictures in
-`apps/openagents-web/build/`: `editor-run.png` and `editor-run-phone.png`.
+The run exits 0 when every step holds: 86 operations, about a minute. It
+leaves two pictures in `apps/openagents-web/build/`: `editor-run.png` and
+`editor-run-phone.png`.
+
+The code steps save two of Splice's sources (`metaverse/splice/splice-game.coax`
+and `gpu/splice.coax`) and then save them back as they were. If the run stops
+between the two saves, `git diff metaverse/splice` shows the one changed
+number; put it back with `git checkout -- metaverse/splice`.
 
 ## What it checks
 
@@ -37,22 +64,43 @@ The run exits 0 when every step holds. It leaves two pictures in
 | Edit a content row | The kind's name changes in place, with no reload. |
 | Remove | The piece is gone, one revision. |
 | Undo, then Redo | The piece comes back, then goes again. |
+| Place through the agent | In the conversation in the editor's foot, a turn places two crates: one batch, a revision for each. |
+| Move and remove through the agent | One turn, one batch. |
+| Undo through the agent | One step takes the whole turn back. |
+| Talk to the agent | Nothing changes. |
+| Change a line of game code | In the Code pane, one constant of `splice-game.coax` is changed and saved. The engine swaps within 4 s (the step says how long it took; the bar is 2 s), and again when it is put back. |
+| Change a shader | The same in `gpu/splice.coax`, the Coax that writes Splice's WGSL. The shaders swap, twice. |
+| The world after four swaps | The same revision and the same pieces: the run kept its state. |
 | Where the player stands | The run kept its state: the player has not moved. |
 | What a tap reaches | The shell's button over the canvas, and the world where no pane is. |
 | A phone's size | The strip wraps and the panes stand side by side over the world. |
 
-Each wait is at most 6,000 ms of the agent's clock. The agent's clock runs
+The swaps are timed in real time. On the build this was written against, on
+a Mac that was busy with other builds, the engine swapped 950 to 1,040 ms
+after Save and the shaders 180 to 550 ms after Save, in two runs.
+
+Each other wait is at most 6,000 ms of the agent's clock. The agent's clock runs
 ahead of the wall clock while it waits for an answer, so a step that passes
 took less than that in real time. On the build this was written against, each
 edit showed after 2,300 to 2,800 ms of the agent's clock.
 
 ## What it does not check
 
-- **A shader and a line of game code.** The code panel is not built
-  (#13421), and this run uses a dev server that does not rebuild.
-- **The same run from `/chat` through an agent.** The agent strip holds the
-  conversation (#13418), and the turn does not carry the selection or the
-  world tools yet.
+- **The model.** The dev server has no model, so the agent's four answers are
+  scripted: `answer /api/chat/complete FILE` gives the page the bytes of
+  `agent-place.json`, `agent-change.json`, `agent-undo.json` and
+  `agent-talk.json` in place of the model's. Everything after the answer is
+  the real path: the chat reads it under the world tools' schema, the shell
+  makes the plan one batch, the page sends it and the world's rules answer.
+  A turn against the real model is for staging, after a deploy.
+- **An agent on your own computer.** The run does not start Claude Code or
+  Codex. Their edits are the realm commands the first steps use (`place`),
+  which is the path their `realm_world` tools take.
+- **A world edit straight after a code swap.** The run does its world edits
+  first and its code edits last. After an engine swap the page can take up
+  to 10 seconds to follow its world again: a request that was in flight at
+  the swap gets no answer, and the follower gives it up only then
+  (#13457).
 - **Real Chrome and a real phone.** This run is headless Chrome. The pass with
   a hand on a mouse and a finger on a phone is the owner's step in
   `NEEDS_OWNER.md`.

@@ -167,8 +167,14 @@ function send(kind, slot, value) {
     new Uint8Array(memory.buffer, x.dom_inbox(state), n).set(encoded.subarray(0, n));
   }
   x.dom_event(state, kind, slot, n);
-  if (own.still && !clipping) frame(performance.now()); else ask();   // on an agent's clock the answer is on the page before the next operation
+  shown();
   own.after?.();
+}
+// What an event changed is drawn: on an agent's clock at once, so the answer is on the page before the next
+// operation (there no frame comes by itself); else with the next frame.
+function shown() {
+  if (!own.still || clipping) { ask(); return; }
+  for (let k = 0; k < 8; k++) { frame(performance.now()); if (!x.dom_busy(state)) break; }   // a change that takes more than one frame (a pane, then its field's text)
 }
 // now(): the frame that would be asked for, drawn at once (a page on an agent's clock, which waits for nothing).
 // still: everything is entered at once, as with reduced motion (the same page: its pictures show what is, not what is arriving).
@@ -203,10 +209,10 @@ function streamOpen(urlAt, urlLen, bodyAt, bodyLen) {
           new Uint8Array(memory.buffer, x.dom_inbox(state), piece.length).set(piece);
           x.dom_event(state, 4, status, piece.length);
         }
-        ask();
+        try { shown(); } catch (error) { console.error(error); }   // a frame's own fault is not the answer's: the stream goes on
       }
     } catch { if (live()) status = 0; }
-    if (live()) { stream = null; x.dom_event(state, 5, status, 0); ask(); own.after?.(); }   // an answer may leave an action for the page that opened this module
+    if (live()) { stream = null; x.dom_event(state, 5, status, 0); shown(); own.after?.(); }   // an answer may leave an action for the page that opened this module
   })();
 }
 
