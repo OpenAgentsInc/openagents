@@ -382,6 +382,86 @@ What changed from the plan:
   same measure.
 - Web build frame time is recorded with the live mesh updating every frame.
 
+**Step 2 result, 2026-11-12: done.** One command exports, and one imports,
+builds and proves the run (`aethyr/export/unreal/README.md`).
+
+| Check | Result |
+|---|---|
+| The scripted run, title to SCENE RESTORED, in the Unreal editor's game | The same ten hashes as the native reference, and every expected fact holds |
+| The same in the packaged web build, forward and deferred tiers, headless Chrome | The same eleven lines as the bundle's `rules/run.expected` |
+| The run played on screen by the game itself (`-AethyrPlay`) | Reaches SCENE RESTORED on both web tiers |
+| Real key presses in the browser | Enter starts the run and holding W walks out through the scanner gate onto the rail ride, on both tiers. G turns the graybox on and off. |
+| Web frame time, the mine, live mesh rebuilt every frame | 16.67 ms (the display's 60 Hz) on both tiers; the host's own work is about 1.2 ms a frame for 16,500 to 20,300 live vertices |
+| Graybox | Toggles in the web build; the interface, world and sky follow the engine's rule |
+
+Frames against the Aethyr page at the same stage (`unreal-frame-compare`,
+1280 by 800, mean difference of 255). These are the first run's numbers, so
+they are the ceiling from here:
+
+| Stage | Mean difference | Pixels within 24 |
+|---|---|---|
+| 1 village at dawn | 10.78 | 63.3% |
+| 3 rail ride | 8.87 | 80.7% |
+| 5 mine | 5.40 | 92.5% |
+| 8 party at night | 34.35 | 47.2% |
+| 10 boss | 9.39 | 84.1% |
+| 12 SCENE RESTORED | 6.90 | 98.8% |
+| 6 edit bay | 3.75 | 97.4% |
+| 13 Imperial Sweep banner | 2.92 | 99.4% |
+| 14 CUT banner | 6.00 | 99.3% |
+
+The party's number is mostly time: the floor tiles change colour on the beat
+and the two captures are at different beats. The rest is what the look does
+not translate yet.
+
+What changed from the plan, and what is not done:
+
+- **The scripted run places the smuggler between beats** (messages 611 to
+  613), as the game's own test does. It is not a walk through the level by
+  keys. Real keys are checked separately and only for the opening.
+- **The hash at each beat is of what a host reads** (overlay, uniforms, both
+  stores), not of the state's bytes, so it does not depend on pointer size.
+- **The look is translated, not matched.** `M_AeCel` and `M_AeSky` carry the
+  cel bands, point lights, rim, aerial fade, tone, saturation and lift, and
+  the sky's gradient, sun band and moon. Not translated: the key light's
+  cast shadows, bloom, the vignette, clouds, stars, the far ridge and the
+  lake, and the rounded corners of the overlay's panels.
+- **The ink pass draws silhouettes only.** It reads depth alone, which is all
+  the forward web tier has. Aethyr also inks the line between two things
+  that touch and creases, which need object numbers and normals.
+- **Glow is inside `M_AeCel`**, not a separate material.
+- **Unreal's tone curve, exposure and lens effects are off** in the game
+  view: the materials write final colour.
+- **The import step names Splice's level** when it plays the run. A second
+  game needs that line generalised.
+
+**Step 3 result, 2026-11-12: done.**
+
+| Check | Result |
+|---|---|
+| The things list leaves the page unchanged | The run's ten hashes are the same with and without it |
+| Every kind drawn by Unreal (`-AethyrNativeThings`) | The run plays to SCENE RESTORED; the party frame differs from the world-drawn one by 0.81 of 255 |
+| A replaced kind survives a re-export | A stand-in designer replaces the raider's model and gives the pickup event a sound. After a new export and import the three override files have the same hashes, and the game uses both |
+| A sound in the web build | `PlaySound2D` is called with the loaded sound six times over the run, on the forward tier. Nothing listens in a headless browser, so audible output is not confirmed |
+| Web frame time, the party | Host work 1.03 ms a frame with the world drawing things, 0.29 ms with Unreal drawing all of them (live vertices 13,500 to 2,340); the frame stays at 16.67 ms |
+
+What changed from the plan:
+
+- **A kind is drawn by Unreal only when it has a model**: an override row, or
+  all kinds with `-AethyrNativeThings`. By default the world still draws
+  everything, because an exported model is the thing at rest: it does not
+  dance, walk or spin its drill.
+- **The models are lifted from the game's own drawing**, not re-described:
+  the exporter runs `g_live` at a moment of the run and moves each thing's
+  vertices into its own space.
+- **Events are the game's own messages** plus two more, so no rule was
+  rewritten to make sounds possible.
+- **Not exported as things:** the rubble, the boss wall, the boss's arm and
+  weak points, the dance floor and beams, the Battery beside the rail, and
+  the rover parked at the mine (it is part of the static world).
+- **World overrides are by mesh group**, which is a material class in a
+  ground cell, not one wall or one rock.
+
 **Step 3. Native things and sound.**
 
 - The game lists its moving things each frame: kind, variant, position,
@@ -396,9 +476,9 @@ What changed from the plan:
 | # | Item | Answer today |
 |---|---|---|
 | R1 | Coax C on 64-bit Wasm inside Unreal's toolchain | Cleared in step 0: same bytes as the web build, in a packaged Unreal Wasm build. |
-| R2 | Updating a dynamic mesh every frame on the web tier | Unknown cost. Measured in step 2. Step 3 removes most of it. |
-| R3 | Look parity with a hand-written material | The Unreal session's first two shaders missed. Step 2's frame comparison is the guard. |
-| R4 | Overlay text drawn with Unreal fonts will not match glyph for glyph | Acceptable if the frame comparison passes. Otherwise the plugin draws from the same atlas layout. |
+| R2 | Updating a dynamic mesh every frame on the web tier | Measured: about 1.2 ms a frame for 20,000 vertices; 60 frames a second holds on both tiers. |
+| R3 | Look parity with a hand-written material | Translated from Aethyr's shader source and measured (step 2's table). Shadows, bloom and full ink are still missing. |
+| R4 | Overlay text drawn with Unreal fonts will not match glyph for glyph | Each glyph is drawn at its own place in its own face; the interface frames differ by 3 to 6 of 255. |
 | R5 | Rules are not editable in Unreal | By design. Rules are edited in the Metaverse Engine and re-exported in seconds. |
 
 Decided, 2026-11-12: the design brief's "Blueprints only" rule does not

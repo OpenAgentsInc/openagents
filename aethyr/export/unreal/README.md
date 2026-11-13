@@ -14,10 +14,39 @@ coax/web/tool.sh verse/splice/splice-export.coax /tmp/splice.aexport
 # 2. Read the bundle back with Aethyr's own glTF reader.
 coax/web/tool.sh aethyr/tools/unreal-export-check.coax /tmp/splice.aexport
 
-# 3. Import into an Unreal project (Mac). Exit 0 means every check passed.
+# 3. Import into an Unreal project (Mac). Exit 0 means every check passed
+#    and the game itself played the bundle's scripted run.
 coax/web/tool.sh aethyr/tools/unreal-import.coax /tmp/splice.aexport \
   ~/UnrealProjects/SpliceExport/AethyrHost.uproject ~/UnrealEngine-5.9/src
+
+# 4. Play it (Mac, from the editor's binaries).
+~/UnrealEngine-5.9/src/Engine/Binaries/Mac/UnrealEditor ~/UnrealProjects/SpliceExport/AethyrHost.uproject \
+  /Game/Aethyr/Splice/Generated/L_Splice -game -windowed -ResX=1280 -ResY=800
+
+# 5. Package for the web and run a browser fixture.
+(cd ~/UnrealEngine-5.9/src && WASM_EMSDK_ROOT=~/emsdk-ue ./Engine/Build/BatchFiles/RunUAT.sh BuildCookRun \
+  -project=$HOME/UnrealProjects/SpliceExport/AethyrHost.uproject -platform=Wasm -clientconfig=Development \
+  -build -cook -stage -pak -iostore -package -archive \
+  -archivedirectory=$HOME/UnrealProjects/SpliceExport/Saved/WasmOut -nocompileeditor -unattended -utf8output)
+(cd ~/UnrealEngine-5.9/src/Engine/Platforms/Wasm/Build/Tools/web && ../../../../../Binaries/ThirdParty/Python3/Mac/bin/python3 webrun.py run \
+  --stage ~/UnrealProjects/SpliceExport/Saved/WasmOut --fixtures $OLDPWD/aethyr/export/unreal/web-fixtures.json \
+  --fixture aethyr-play --headless --query tier=forward --out /tmp/aethyr-web)
+grep AETHYR_ /tmp/aethyr-web/console.log
 ```
+
+The game takes these switches, in the editor's game and (as `--args` or a
+fixture's `args`) in the web build:
+
+| Switch | What it does |
+|---|---|
+| `-AethyrScript` | Runs the bundle's script on its own state and prints the hash lines |
+| `-AethyrPlay` `-AethyrPlaySpeed=N` | Plays the script on screen, N frames a tick |
+| `-AethyrStage=N` | Starts at a moment of the run (the game's stages) |
+| `-AethyrNativeThings` | Unreal draws every kind of thing from its exported model |
+| `-AethyrGray` | Starts in graybox |
+| `-AethyrShot=FILE` `-AethyrShotAfter=N` | Saves a screenshot after N frames and quits |
+| `-AethyrNoInput` | Ignores keys and the mouse |
+| `-AethyrExit` | Quits when a script ends |
 
 Step 3 makes the project when it is named `AethyrHost.uproject` and does not
 exist. It copies the plugin in, builds the editor modules, and runs
@@ -32,6 +61,9 @@ engine shaders for several minutes; later runs take about a minute.
 | `AethyrBridge/` | The Unreal plugin: manifest asset, collision box, marker, and the editor checks Python cannot do |
 | `project/` | A bare host project that receives an export |
 | `import.py` | The importer and its checks |
+| `aethyr_script.c` | Runs a script against a world through the host interface; the bridge compiles the same file |
+| `web-fixtures.json` | Browser runs for the engine's web harness |
+| `probe/make_overrides.py` | Stands in for a designer: a replacement model and a sound |
 | `probe/` | Step 0: the frame-hash probe and the axis fixture |
 
 ## What the importer builds
@@ -41,12 +73,34 @@ rebuilt each time. Nothing else in the project is touched; the importer
 compares every other content file before and after.
 
 - `world/StaticMeshes/`: one static mesh per world group, Nanite off.
-- `Materials/M_AeVertexColour`: unlit, both faces, the vertex colour. This
-  is the stand-in look until the bridge's cel materials exist.
+- `things/StaticMeshes/`: one mesh per kind and variant of moving thing.
+- `Materials/`: `MPC_Aethyr` (the world's uniform block, copied in each
+  frame), `M_AeCel` and `M_AeSky` (the look), `M_AeInk` (silhouette lines,
+  a post-process pass), and `M_AeVertexColour` (plain, for the reference
+  shots).
 - `L_<Game>`: the meshes, one `AethyrCollisionBox` per collision box, one
-  `AethyrMarker` per placement.
+  `AethyrMarker` per placement, the `AethyrGame` host actor, the ink
+  volume, and `AethyrGameMode` as the level's game mode.
 - `DA_<Game>Manifest`: the bundle's hash and every tuning number.
 - `Fonts/`: the two font faces.
+
+## Replacing things
+
+`/Game/<Game>/Overrides/` is yours. The importer makes an empty
+`DT_AethyrOverrides` there the first time and never writes it again. Each
+row's name says what is replaced and its Asset is the replacement:
+
+| Row name | Replaces | With |
+|---|---|---|
+| `thing.raider` | Every raider, drawn by Unreal at the world's place and yaw | A static mesh |
+| `thing.raider_v1` | One variant (here, a raider in a fight) | A static mesh |
+| `world.w_m00_x127_z127` | One world mesh group | A static mesh |
+| `material.cel`, `material.sky` | The look | A material |
+| `event.pickup` | Nothing: adds a sound to the event | A sound |
+
+Kinds and events are listed in the bundle's `manifest.json` (`things`,
+`events`). Layout is Aethyr's: the import report lists generated actors that
+were moved by hand, then rebuilds them.
 
 ## What the importer checks
 

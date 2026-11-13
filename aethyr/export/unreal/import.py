@@ -248,7 +248,7 @@ return ae.post(sky, S18, gr);
 def build_look():
     u = manifest["uniforms"]
     named = {"EYE": u["eye"], "FX": u["fx"], "DRW": u["draw"], "MISC": u["misc"]}
-    for slot in (0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 18):
+    for slot in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 18, 31):
         named["S%d" % slot] = u["style"] + slot * 4
     for k in range(u["light_count"] * 2):
         named["L%d" % k] = u["lights"] + k * 4
@@ -296,7 +296,59 @@ def build_look():
     cel = make("M_AeCel", AE_CEL, {"WP": unreal.MaterialExpressionWorldPosition, "NW": unreal.MaterialExpressionVertexNormalWS, "VC": unreal.MaterialExpressionVertexColor,
                                    "UVA": unreal.MaterialExpressionTextureCoordinate, "UVB": unreal.MaterialExpressionTextureCoordinate})
     sky = make("M_AeSky", AE_SKY, {"WP": unreal.MaterialExpressionWorldPosition})
-    return collection, cel, sky
+
+    # the ink: a post-process pass from depth alone (the forward web tier has no normals to read),
+    # so it draws silhouettes and not creases. A pixel is inked when a neighbour is farther by
+    # more than 4 percent of its own distance and 0.15 m (verse_style_anime_ink_edge's silhouette).
+    ink = tools.create_asset("M_AeInk", GEN + "/Materials", unreal.Material, unreal.MaterialFactoryNew())
+    ink.set_editor_property("material_domain", unreal.MaterialDomain.MD_POST_PROCESS)
+    ink.set_editor_property("blendable_location", unreal.BlendableLocation.BL_SCENE_COLOR_BEFORE_BLOOM)
+    node = mel.create_material_expression(ink, unreal.MaterialExpressionCustom, -300, 0)
+    node.set_editor_property("code", """
+float d = D0.r * 0.01;
+float gap = max(max(D1.r, D2.r), max(D3.r, D4.r)) * 0.01 - d;
+float lim = max(0.04 * d, 0.15);
+float edge = saturate((gap - lim) / (lim * 0.25)) * saturate(S31.x);
+return lerp(C.rgb, C.rgb * max(S6.w, 0.04), edge);
+""")
+    node.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
+    keys = ["D0", "D1", "D2", "D3", "D4", "C", "S6", "S31"]
+    entries = []
+    for key in keys:
+        entry = unreal.CustomInput()
+        entry.set_editor_property("input_name", key)
+        entries.append(entry)
+    node.set_editor_property("inputs", entries)
+    centre = mel.create_material_expression(ink, unreal.MaterialExpressionSceneTexture, -900, -400)
+    centre.set_editor_property("scene_texture_id", unreal.SceneTextureId.PPI_SCENE_DEPTH)
+    mel.connect_material_expressions(centre, "Color", node, "D0")
+    screen = mel.create_material_expression(ink, unreal.MaterialExpressionScreenPosition, -1700, 0)
+    texel = mel.create_material_expression(ink, unreal.MaterialExpressionSceneTexelSize, -1700, 200)
+    for k, (dx, dy) in enumerate(((1, 0), (-1, 0), (0, 1), (0, -1))):
+        step = mel.create_material_expression(ink, unreal.MaterialExpressionConstant2Vector, -1700, 400 + k * 100)
+        step.set_editor_property("r", float(dx))
+        step.set_editor_property("g", float(dy))
+        scaled = mel.create_material_expression(ink, unreal.MaterialExpressionMultiply, -1450, 400 + k * 100)
+        mel.connect_material_expressions(texel, "", scaled, "A")
+        mel.connect_material_expressions(step, "", scaled, "B")
+        moved_uv = mel.create_material_expression(ink, unreal.MaterialExpressionAdd, -1200, 400 + k * 100)
+        mel.connect_material_expressions(screen, "ViewportUV", moved_uv, "A")
+        mel.connect_material_expressions(scaled, "", moved_uv, "B")
+        depth = mel.create_material_expression(ink, unreal.MaterialExpressionSceneTexture, -900, 400 + k * 100)
+        depth.set_editor_property("scene_texture_id", unreal.SceneTextureId.PPI_SCENE_DEPTH)
+        mel.connect_material_expressions(moved_uv, "", depth, "UVs")
+        mel.connect_material_expressions(depth, "Color", node, "D%d" % (k + 1))
+    colour = mel.create_material_expression(ink, unreal.MaterialExpressionSceneTexture, -900, -200)
+    colour.set_editor_property("scene_texture_id", unreal.SceneTextureId.PPI_POST_PROCESS_INPUT0)
+    mel.connect_material_expressions(colour, "Color", node, "C")
+    for key in ("S6", "S31"):
+        src = mel.create_material_expression(ink, unreal.MaterialExpressionCollectionParameter, -900, 900 + (60 if key == "S31" else 0))
+        src.set_editor_property("collection", collection)
+        src.set_editor_property("parameter_name", "U%d" % named[key])
+        mel.connect_material_expressions(src, "", node, key)
+    mel.connect_material_property(node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    mel.recompile_material(ink)
+    return collection, cel, sky, ink
 
 manifest = json.load(open(os.path.join(BUNDLE, "manifest.json")))
 check(manifest.get("aexport") == 1, "manifest version is not 1")
@@ -493,9 +545,9 @@ errors = list(checks.material_errors(material))
 check(len(errors) == 0, "M_AeVertexColour did not compile: " + "; ".join(str(e) for e in errors)[:400])
 for name, mesh in meshes.items():
     check(mesh.get_material(0) == material, "mesh %s does not use M_AeVertexColour" % name)
-look_collection, cel_material, sky_material = build_look()
+look_collection, cel_material, sky_material, ink_material = build_look()
 checks.finish_compiling()
-for look_material in (cel_material, sky_material):
+for look_material in (cel_material, sky_material, ink_material):
     errors = list(checks.material_errors(look_material))
     check(len(errors) == 0, "%s did not compile: %s" % (look_material.get_name(), "; ".join(str(e) for e in errors)[:600]))
 
@@ -692,6 +744,16 @@ for s in shots["list"]:
 report["shots"] = shot_rows
 actors.destroy_actor(camera)
 host.sky.set_visibility(True)
+
+# the ink pass covers the whole level. A volume's settings come back as a copy: change it, then
+# put it back, or the volume never has the material.
+ink_volume = actors.spawn_actor_from_class(unreal.PostProcessVolume, unreal.Vector(0, 0, 0))
+ink_volume.set_actor_label("AethyrInk")
+ink_volume.set_editor_property("unbound", True)
+ink_settings = ink_volume.get_editor_property("settings")
+ink_settings.set_editor_property("weighted_blendables", unreal.WeightedBlendables(array=[unreal.WeightedBlendable(weight=1.0, object=ink_material)]))
+ink_volume.set_editor_property("settings", ink_settings)
+check(len(ink_volume.get_editor_property("settings").get_editor_property("weighted_blendables").get_editor_property("array")) == 1, "the ink material is not on the post-process volume")
 
 # the shots are taken with the plain vertex colour; the world wears the cel look from here
 for mesh in list(meshes.values()) + list(thing_meshes.values()):
