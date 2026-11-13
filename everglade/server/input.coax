@@ -5,7 +5,7 @@
 // A seat's frame (past the relay's rate limits and pings).
 eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   k := eg_room_at(v, r);
-  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1") || wire_is(text,"M1") || wire_is(text,"M3") || wire_is(text,"M4") || wire_is(text,"M5") || wire_is(text,"M6") || wire_is(text,"M7"))) { return; }
+  if k < 0 || seat < 0 || seat >= eg_cap(v, k) || !v[0].eg[k].seat[seat].live || text.count < 3 || (text[1] != ' ' && !(wire_is(text,"J1") || wire_is(text,"U1") || wire_is(text,"M1") || wire_is(text,"M3") || wire_is(text,"M4") || wire_is(text,"M5") || wire_is(text,"M6") || wire_is(text,"M7"))) { return; }
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
@@ -74,7 +74,7 @@ eg_seat_heard :: (v: [] RmServer, k: int, seat_id: SeatId, heard: int) { seat :=
   wire_seat_ack(st[0].rep[..], v[0].eg[k].hist[..], heard);
   if st[0].rep[0].heard != heard { return; }
   bit := 1 << (heard % WIRE_ACKS);
-  for q: 0..<EG_SEATS {
+  for q: 0..<eg_cap(v, k) {
     if (st[0].n_bits[q] & bit) != 0 && heard >= st[0].n_t[q] - WIRE_ACKS + 1 { st[0].n_ok[q] = true; }
     if (st[0].w_bits[q] & bit) != 0 && heard >= st[0].w_t[q] - WIRE_ACKS + 1 { st[0].w_ok[q] = true; }
   }
@@ -86,7 +86,7 @@ eg_end_now :: (v: [] RmServer, k: int, seat_id: SeatId, seq: int, slot: int) { s
 }
 // The ends that waited for the inputs before them (eg_heard): each once those are stepped.
 eg_ends_due :: (v: [] RmServer, k: int) {
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     st := v[0].eg[k].seat[s..<s + 1];
     while st[0].ends_n > 0 && (!st[0].live || st[0].q_n == 0 || st[0].q[0].seq > st[0].ends[0].seq) {
       e := st[0].ends[0];

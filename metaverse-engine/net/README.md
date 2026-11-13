@@ -90,9 +90,9 @@ channel is its own stream, so a resend in one never holds up another.
   ([doc](../../docs/protocol/everglade-familiar-v2.md)); a familiar itself
   is a row (session v7). Their checks,
   `coax/web/room/transport-profile.coax` and `combat-profile.coax`, run the
-  codecs. [`room-relay-v1.json`](../../proto/verse/room-relay-v1.json) pins
+  codecs. [`room-relay-v2.json`](../../proto/verse/room-relay-v2.json) pins
   the relay room's own frames (`y j l m` and the clock's ping and pong,
-  [doc](../../docs/protocol/room-relay-v1.md)); `relay-wire.coax` is their
+  [doc](../../docs/protocol/room-relay-v2.md)); `relay-wire.coax` is their
   one codec, for the room and for every page in a relay room, and
   `coax/web/room/relay-profile.coax` runs it.
 - **The overlay.** `?net` shows `LINK WT LOSS 1.2%` (state ticks lost on the

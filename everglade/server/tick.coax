@@ -15,7 +15,7 @@ rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) {
   if !rm_work_begin(v,k){return false;}
   v[0].eg[k].tick += 1;
   now := v[0].mono_ms;
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     st := v[0].eg[k].seat[s..<s + 1];
     if !st[0].live { continue; }
     st[0].took = 0;
@@ -36,7 +36,7 @@ rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) {
 // Seat s's next input to step this tick, EG_IN_FIELDS into out (SEQ KX KY PX PY THETA B); false when
 // none is queued, none owed, or EG_TICK_STEPS were stepped this tick.
 rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #export_c #effects(all) { s := s_id.value;
-  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < EG_IN_FIELDS { return false; }
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= eg_cap(v, k) || out.count < EG_IN_FIELDS { return false; }
   st := v[0].eg[k].seat[s..<s + 1];
   if !st[0].live || !st[0].placed || st[0].q_n == 0 || !net_credit_can_step(eg_credit_profile(),st[0].bank,st[0].took) { return false; }
   if eg_waits(v, k, s_id, st[0].q[0].seq) { return false; }
@@ -52,7 +52,7 @@ rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #expo
 }
 // Where seat s stands after the step of input seq (0: just placed), as the step left it.
 rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, g: int, clip: int, carry: int) #export_c #effects(all) { s := s_id.value;
-  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].live || !v[0].eg[k].seat[s].live { return; }
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= eg_cap(v, k) || !v[0].eg[k].live || !v[0].eg[k].seat[s].live { return; }
   st := v[0].eg[k].seat[s..<s + 1];
   was := st[0].pose; was_placed := st[0].placed;
   st[0].pose = EgPose.{x = x, y = y, z = z, yaw = yaw, vx = vx, vy = vy, vz = vz, g = g, clip = clip, carry = carry};
@@ -71,7 +71,7 @@ rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, 
 // Whether seat s sits and is still to be put in the world. An Everglade II seat waits for its hello
 // (EG_E2_HELLO_MS at most), which its page's A comes just before (#13057).
 rm_eg_unplaced :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value;
-  if !(k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].live && v[0].eg[k].seat[s].live && !v[0].eg[k].seat[s].placed && (v[0].eg[k].seat[s].checkpoint_hello || eg_ticket(v,k, s_id).schema!=2)) { return false; }
+  if !(k >= 0 && k < EG_ROOMS && s >= 0 && s < eg_cap(v, k) && v[0].eg[k].live && v[0].eg[k].seat[s].live && !v[0].eg[k].seat[s].placed && (v[0].eg[k].seat[s].checkpoint_hello || eg_ticket(v,k, s_id).schema!=2)) { return false; }
   st := v[0].eg[k].seat[s];
   return st.hello || v[0].mono_ms - st.joined_ms >= EG_E2_HELLO_MS;
 }
@@ -93,7 +93,7 @@ e2_stand_near :: (x: f32, z: f32, tx: f32, tz: f32) -> E2Spot {
   return E2Spot.{x = x, z = z};
 }
 rm_e2_place :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool #export_c #effects(all) { s := s_id.value;
-  if !rm_eg_live(v, k) || s < 0 || s >= EG_SEATS || out.count < 3 || !v[0].eg[k].seat[s].live { return false; }
+  if !rm_eg_live(v, k) || s < 0 || s >= eg_cap(v, k) || out.count < 3 || !v[0].eg[k].seat[s].live { return false; }
   st := v[0].eg[k].seat[s];
   // a local --dev room (room-dev.coax) takes the page's own place as it is: a capture's or a check's
   // ?at= start down the path (everglade/client/client.coax e2_query_local); production never does
@@ -143,13 +143,15 @@ RM_GLADE_FLAG :: 128;   // everglade/legacy/v1/glade-zone.coax EZ_GLADE_FLAG (th
 // A seat whose hello came from Character Create (FLAGS EZ_GLADE_FLAG, apps/openagents-web/everglade-create.coax):
 // it is seated at the glade's clearing south of the gate, where that page stands you (room-tick.c everglade_place).
 rm_eg_glade :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value;
-  return k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].live && (v[0].eg[k].seat[s].flags & RM_GLADE_FLAG) != 0;
+  return k >= 0 && k < EG_ROOMS && s >= 0 && s < eg_cap(v, k) && v[0].eg[k].seat[s].live && (v[0].eg[k].seat[s].flags & RM_GLADE_FLAG) != 0;
 }
 rm_eg_rooms :: () -> int #export_c #effects(all) { return EG_ROOMS; }
-rm_eg_seats :: () -> int #export_c #effects(all) { return EG_SEATS; }
+// the seats a zone may declare at most (room-world.h WORLD_SEATS: the host's bodies have room for them), and room k's own
+rm_eg_seats :: () -> int #export_c #effects(all) { return EG_ZONE_SEATS; }
+rm_eg_cap :: (v: [] RmServer, k: int) -> int #export_c #effects(all) { return eg_cap(v, k); }
 rm_eg_hz :: () -> int #export_c #effects(all) { return EG_HZ; }
 rm_eg_live :: (v: [] RmServer, k: int) -> bool #export_c #effects(all) { return k >= 0 && k < EG_ROOMS && v[0].eg[k].live; }
-rm_eg_seat_live :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value; return rm_eg_live(v, k) && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].live; }
+rm_eg_seat_live :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c #effects(all) { s := s_id.value; return rm_eg_live(v, k) && s >= 0 && s < eg_cap(v, k) && v[0].eg[k].seat[s].live; }
 // Summoned creatures: how many places, where q stands (x, z) when it is on, and the ground's height
 // under it, which the host's world knows (before rm_eg_end: a new one is heard once it has it).
 rm_eg_beasts :: () -> int #export_c #effects(all) { return EGB_BEASTS; }
@@ -187,7 +189,7 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c #effects(all) {
 }
 rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || v[0].eg[k].tick % EG_SEND != 0 { return; }
-  for s:0..<EG_SEATS {
+  for s:0..<eg_cap(v, k) {
     if !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].placed || v[0].eg[k].seat[s].conn<0 { continue; }
     // a restored seat waiting for its first receipt is held: no world yet, while the others play on (#13185)
     if !ck_can_play(v,k,SeatId.{value=s}) { continue; }
@@ -198,10 +200,10 @@ rm_eg_send :: (v: [] RmServer, k: int) #export_c #effects(all) {
 }
 // Where a TGT code is now (a seat's place, a summoned creature's), else (x, z).
 eg_where :: (v: [] RmServer, k: int, tgt: int, x: f32, z: f32) -> EgPose {
-  if tgt >= EG_TGT_SEAT && tgt < EG_TGT_SEAT + EG_SEATS { return v[0].eg[k].seat[tgt - EG_TGT_SEAT].pose; }
+  if tgt >= EG_TGT_SEAT && tgt < EG_TGT_SEAT + eg_cap(v, k) { return v[0].eg[k].seat[tgt - EG_TGT_SEAT].pose; }
   if tgt > EGB_TGT_BEAST {
     i := egb_of_tgt(v[0].eg[k].rules[..], tgt);
-    if i >= 0 { bt := v[0].eg[k].rules[0].beasts[i - EGB_BEAST0]; return EgPose.{x = bt.x, y = bt.y, z = bt.z}; }
+    if i >= 0 { bt := v[0].eg[k].rules[0].beasts[i - egb0(v, k)]; return EgPose.{x = bt.x, y = bt.y, z = bt.z}; }
   }
   return EgPose.{x = x, z = z};
 }

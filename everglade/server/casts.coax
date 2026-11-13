@@ -50,8 +50,8 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   gfoe := ifx revive || area || egb_helps(e.ab) then -1 else e2_guard_target(v, k, wc.ax, wc.az);
   foe := ifx gfoe >= 0 || revive || area || egb_helps(e.ab) then gfoe else e2_monster_target(v, k, wc.ax, wc.az);
   foe_hp := ifx foe >= 0 then r[0].b[0].c[foe].hp else 0;
-  before: [EGB_BEASTS] int; for q: 0..<EGB_BEASTS { before[q] = r[0].b[0].c[EGB_BEAST0 + q].hp; }
-  helps := egb_helps(e.ab); was: [EG_SEATS] int; if helps { for o: 0..<EG_SEATS { was[o] = r[0].b[0].c[EGB_SEAT + o].hp; } }
+  before: [EGB_BEASTS] int; for q: 0..<EGB_BEASTS { before[q] = r[0].b[0].c[egb0(v, k) + q].hp; }
+  helps := egb_helps(e.ab); was: [EG_ZONE_SEATS] int; if helps { for o: 0..<eg_cap(v, k) { was[o] = r[0].b[0].c[EGB_SEAT + o].hp; } }
   done:=ifx revive then e2r_request(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-EGB_CL0,wc.slot,null,eg_e2_corpse(v,k,seat),open)
     else e2r_press(r[0].b[..],r[0].seat[seat..<seat+1],r[0].klass[seat]-EGB_CL0,wc.slot,egb_sq(wc.ax),egb_z_cell(r,wc.az),foe,open);
   if !done { eg_refuse(v,k,seat_id,wc.seq,cr_word(CR_NO)); return; }
@@ -59,7 +59,7 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
   else if foe >= 0 { e2_monster_struck(v, k, seat, foe, foe_hp); }
   else if area { e2_area_struck(v, k, seat, before[..]); }
   // a heal is a threat to whatever fights the healed: half the Hit Points it gave (#13293; creatures.coax e2_monster_healed)
-  if helps { for o: 0..<EG_SEATS { if r[0].b[0].c[EGB_SEAT + o].hp > was[o] { e2_monster_healed(v, k, seat, o, r[0].b[0].c[EGB_SEAT + o].hp - was[o]); } } }
+  if helps { for o: 0..<eg_cap(v, k) { if r[0].b[0].c[EGB_SEAT + o].hp > was[o] { e2_monster_healed(v, k, seat, o, r[0].b[0].c[EGB_SEAT + o].hp - was[o]); } } }
   // what the cast left of its reagents and of the seat's turn
   xr_keep(st[0].stock[..],r[0].b[0].c[EGB_SEAT+seat].materials[..]);
   turn := r[0].seat[seat].turn;
@@ -76,7 +76,7 @@ eg_e2_cast :: (v: [] RmServer, k: int, seat_id: SeatId, wc: WireCast) { seat := 
 e2_area_struck :: (v: [] RmServer, k: int, s: int, before: [] const int) {
   r := v[0].eg[k].rules[..]; g := v[0].eg[k].guard[0];
   for q: 0..<EGB_BEASTS {
-    i := EGB_BEAST0 + q;
+    i := egb0(v, k) + q;
     if r[0].beasts[q].id == 0 || r[0].b[0].c[i].hp >= before[q] { continue; }
     if g.q == q { e2_guard_struck(v, k, s, before[q]); } else { e2_monster_struck(v, k, s, i, before[q]); }
   }
@@ -110,7 +110,7 @@ e2_cast_sight :: (v: [] RmServer, k: int, me: EgPose, ax: f32, az: f32) -> bool 
 eg_e2_corpse :: (v: [] RmServer, k: int, s: int) -> int {
   room:=v[0].eg[k..<k+1]; rules:=room[0].rules[..]; b:=rules[0].b[..];
   best:=1.524f32*1.524f32*2; target:=-1;
-  for j:0..<EG_SEATS {
+  for j:0..<room[0].seat.count {
     if j==s || !room[0].seat[j].live || !room[0].seat[j].placed || !rules[0].live[j] { continue; }
     if im_blocked(room[0].im[..], s, j) || im_blocked(room[0].im[..], j, s) { continue; }
     if !b[0].c[EGB_SEAT+j].dead { continue; }

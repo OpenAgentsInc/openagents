@@ -758,6 +758,11 @@ WIRE_WARP_M :: 3.0;           // m: a move this far in one tick is a jump (WARP)
 // entity ids: a seat SS, a townsperson WIRE_ID_FOLK + I, what the server made WIRE_ID_MADE + EID
 WIRE_ID_FOLK :: 100000; WIRE_ID_MADE :: 200000;
 WIRE_SLOTS :: FOREST_SLOTS;   // original 256 plus the forest's separate sparse slots (#12940)
+// A zone's table (#13275): a zone seats up to WIRE_ZONE_SEATS (docs/decisions/0003-150-a-zone.md). Seats past the
+// first WIRE_SEATS have their rows after the last slot of the layout above, so a room of WIRE_SEATS
+// has the slots it always had. A table holds WireHist.slots of them: WIRE_SLOTS unless its zone says more.
+// After those seats' rows come their familiars' (a seat's familiar is a row, #13276): wire_fam_slot.
+WIRE_ZONE_SEATS :: 150; WIRE_ZMORE :: WIRE_ZONE_SEATS - WIRE_SEATS; WIRE_ZSLOTS :: WIRE_SLOTS + WIRE_ZMORE * 2;
 WIRE_BASES :: 16;             // ticks back a base may be; a page keeps each entity's last WIRE_BASES rows
 WIRE_ACKS :: 32;              // ticks of sends a seat remembers for HEARD, a bit each
 WIRE_RESEND :: 10;            // ticks a row or an x sent and not yet acknowledged waits before it goes again
@@ -1045,16 +1050,17 @@ wire_mirror_frame :: (m: [] WireMirror, t: string) -> WireD {
 // The room's rows, tick by tick (WIRE_BASES ticks of them): what every seat's rows are cut from.
 WireHist :: struct {
   tick: [WIRE_BASES] int;                       // the tick each place in the ring holds
-  id: [WIRE_BASES * WIRE_SLOTS] s32;            // each slot's entity then: its id + 1, 0 none
-  f: [WIRE_BASES * WIRE_SLOTS * WIRE_SF] s32;
+  id: [WIRE_BASES * WIRE_ZSLOTS] s32;            // each slot's entity then: its id + 1, 0 none
+  f: [WIRE_BASES * WIRE_ZSLOTS * WIRE_SF] s32;
   // now's: where each is (m), its weight, and whether every seat hears it however far (a player)
-  x: [WIRE_SLOTS] f32; y: [WIRE_SLOTS] f32; z: [WIRE_SLOTS] f32; w: [WIRE_SLOTS] f32; all: [WIRE_SLOTS] bool;
-  life: [WIRE_SLOTS] s32 #counter; warp: [WIRE_SLOTS] s32 #counter;   // each slot's entity's LIFE and WARP now (wire_count_next only, #12927)
+  x: [WIRE_ZSLOTS] f32; y: [WIRE_ZSLOTS] f32; z: [WIRE_ZSLOTS] f32; w: [WIRE_ZSLOTS] f32; all: [WIRE_ZSLOTS] bool;
+  life: [WIRE_ZSLOTS] s32 #counter; warp: [WIRE_ZSLOTS] s32 #counter;   // each slot's entity's LIFE and WARP now (wire_count_next only, #12927)
   // the next row of each slot is a new life (born: a new player in the seat, its id the same) or a
   // jump (cut: a teleport, a placing, a seat into or out of a boat, however short), as its world says (#12835)
-  born: [WIRE_SLOTS] bool; cut: [WIRE_SLOTS] bool;
-  last: [WIRE_SLOTS] s32;    // id + 1 of the entity the slot last held, kept through ticks it held none
+  born: [WIRE_ZSLOTS] bool; cut: [WIRE_ZSLOTS] bool;
+  last: [WIRE_ZSLOTS] s32;    // id + 1 of the entity the slot last held, kept through ticks it held none
   now: int;
+  slots: int = WIRE_SLOTS;   // the slots this table holds (WIRE_ZSLOTS at most): the layout's, and a zone's seats past WIRE_SEATS after them (#13275)
 }
 // LIFE and WARP run from 1 to WIRE_LIFE_MAX - 1 and then from 1 again: never 0 (no life yet), never
 // past what a row's field holds (wire_s32), so they never stick at its clamp. A page only asks whether
@@ -1064,6 +1070,12 @@ WireHist :: struct {
 // page could still hold the number it repeats. The step is the named add_sat, so a debug and a release
 // room count the same (#12927).
 WIRE_LIFE_MAX :: 2000000000;
+// The slot of seat s's row in a zone's table, and the seat whose row slot q holds (-1: not a seat's): the
+// first WIRE_SEATS seats have the layout's first slots, the rest come after its last (WIRE_ZSLOTS, #13275).
+wire_seat_slot :: (s: int) -> int { return ifx s < WIRE_SEATS then s else WIRE_SLOTS + s - WIRE_SEATS; }
+// The slot of the familiar of a seat past WIRE_SEATS (the first WIRE_SEATS seats' have the layout's: seat.coax EG_SLOT_FAM).
+wire_fam_slot :: (s: int) -> int { return WIRE_SLOTS + WIRE_ZMORE + s - WIRE_SEATS; }
+wire_slot_seat :: (q: int) -> int { if q < 0 || q >= WIRE_SLOTS + WIRE_ZMORE { return -1; } if q < WIRE_SEATS { return q; } return ifx q >= WIRE_SLOTS then q - WIRE_SLOTS + WIRE_SEATS else -1; }
 wire_count_next :: (c: int) -> int { n := add_sat(ifx c < 0 then 0 else c % WIRE_LIFE_MAX, 1); return ifx n >= WIRE_LIFE_MAX then 1 else n; }
 // The table's lives begin at numbers of this room's own (#12835): a room made again, in this process
 // or after a restart, never starts its slots' lives where an earlier room's were, so a page that
@@ -1072,7 +1084,7 @@ wire_count_next :: (c: int) -> int { n := add_sat(ifx c < 0 then 0 else c % WIRE
 // room's wall-clock start and its relay room); each slot's from it by a Park-Miller step.
 wire_hist_scope :: (h: [] WireHist, scope: int) {
   a := (ifx scope < 0 then -scope else scope) % 2147483647;
-  for q: 0..<WIRE_SLOTS {
+  for q: 0..<WIRE_ZSLOTS {
     a = ((a + q * 7919 + 1) % 2147483647) * 48271 % 2147483647;
     h[0].life[q] = cast(s32) (a % (WIRE_LIFE_MAX - 1)); h[0].warp[q] = 0; h[0].last[q] = 0;
   }
@@ -1084,25 +1096,25 @@ wire_hist_scope :: (h: [] WireHist, scope: int) {
 // so one gone a tick and back may be someone else, and a new player says so (wire_hist_born).
 wire_made :: (kind: int) -> bool { return kind == WK_PACK || kind == WK_FROG || kind == WK_BEAST || (kind >= WK_STONE && kind <= WK_ZONE); }
 // Slot q's next row begins a new life of its entity, though the id and the slot are the same (#12835).
-wire_hist_born :: (h: [] WireHist, q: int) { if q >= 0 && q < WIRE_SLOTS { h[0].born[q] = true; } }
+wire_hist_born :: (h: [] WireHist, q: int) { if q >= 0 && q < WIRE_ZSLOTS { h[0].born[q] = true; } }
 // Slot q's next row is a jump (WARP), however short: a page draws nothing between it and the last (#12835).
-wire_hist_cut :: (h: [] WireHist, q: int) { if q >= 0 && q < WIRE_SLOTS { h[0].cut[q] = true; } }
+wire_hist_cut :: (h: [] WireHist, q: int) { if q >= 0 && q < WIRE_ZSLOTS { h[0].cut[q] = true; } }
 // A new tick's table: empty until wire_hist_put fills it.
 wire_hist_begin :: (h: [] WireHist, tick: int) {
   row := tick % WIRE_BASES;
   h[0].tick[row] = tick; h[0].now = tick;
-  for q: 0..<WIRE_SLOTS { h[0].id[row * WIRE_SLOTS + q] = 0; }
+  for q: 0..<h[0].slots { h[0].id[row * WIRE_ZSLOTS + q] = 0; }
 }
 // Entity e in slot q this tick, weighing w (wire_rel), heard by every seat however far (all). One
 // whose velocity the world doesn't keep (moved) has it from where it was last tick, to 0.1 m/s, so a
 // steady walker's stays the same row to row.
 wire_hist_put :: (h: [] WireHist, q: int, e: WireS, w: f32, all: bool, moved: bool) {
-  if q < 0 || q >= WIRE_SLOTS || e.id < 0 { return; }
+  if q < 0 || q >= h[0].slots || e.id < 0 { return; }
   now := h[0].now; row := now % WIRE_BASES;
   m := e;
   // the same entity as last tick, or a new life of its id; and in one tick a walk, or a jump
   was := (now - 1 + WIRE_BASES) % WIRE_BASES;
-  same := now > 0 && h[0].tick[was] == now - 1 && cast(int) h[0].id[was * WIRE_SLOTS + q] == e.id + 1;
+  same := now > 0 && h[0].tick[was] == now - 1 && cast(int) h[0].id[was * WIRE_ZSLOTS + q] == e.id + 1;
   // the rules' own: the same life while the id is (wire_made); its velocity still only tick to tick
   life_same := ifx wire_made(e.kind) then cast(int) h[0].last[q] == e.id + 1 else same;
   dx := e.x - h[0].x[q]; dy := e.y - h[0].y[q]; dz := e.z - h[0].z[q];
@@ -1114,9 +1126,9 @@ wire_hist_put :: (h: [] WireHist, q: int, e: WireS, w: f32, all: bool, moved: bo
   if moved && same && !jump {
     m.vx = wire_tenth(dx * f32(WIRE_HZ)); m.vy = wire_tenth(dy * f32(WIRE_HZ)); m.vz = wire_tenth(dz * f32(WIRE_HZ));
   }
-  a := (row * WIRE_SLOTS + q) * WIRE_SF;
+  a := (row * WIRE_ZSLOTS + q) * WIRE_SF;
   wire_s_pack(m, h[0].f[a..<a + WIRE_SF]); wire_kind_keep(m.kind, h[0].f[a..<a + WIRE_SF]);
-  h[0].id[row * WIRE_SLOTS + q] = wire_s32(e.id + 1); h[0].last[q] = wire_s32(e.id + 1);
+  h[0].id[row * WIRE_ZSLOTS + q] = wire_s32(e.id + 1); h[0].last[q] = wire_s32(e.id + 1);
   h[0].x[q] = e.x; h[0].y[q] = e.y; h[0].z[q] = e.z; h[0].w[q] = w; h[0].all[q] = all;
 }
 wire_tenth :: (v: f32) -> f32 { if v != v || v > 1000 || v < -1000 { return 0; } return f32(cast(int) floor(v * 10 + 0.5)) / 10; }
@@ -1124,8 +1136,8 @@ wire_tenth :: (v: f32) -> f32 { if v != v || v > 1000 || v < -1000 { return 0; }
 wire_hist_at :: (h: [] WireHist, t: int, q: int, id1: int) -> int {
   if t <= 0 || t > h[0].now || h[0].now - t >= WIRE_BASES { return -1; }
   row := t % WIRE_BASES;
-  if h[0].tick[row] != t || cast(int) h[0].id[row * WIRE_SLOTS + q] != id1 { return -1; }
-  return (row * WIRE_SLOTS + q) * WIRE_SF;
+  if h[0].tick[row] != t || cast(int) h[0].id[row * WIRE_ZSLOTS + q] != id1 { return -1; }
+  return (row * WIRE_ZSLOTS + q) * WIRE_SF;
 }
 wire_rows_same :: (f: [] s32, a: int, b: int) -> bool {
   return wire_rows_same_fields(f,a,b,(1<<WIRE_SF)-1);
@@ -1196,18 +1208,18 @@ wire_kind_keep :: (kind: int, f: [] s32) {
 
 // What one seat's page holds, as far as the server knows (all zeros: nothing; the C server's memory starts so).
 WireSeat :: struct {
-  allowed:[WIRE_SLOTS]int;wanted:[WIRE_SLOTS]int; // explicit last-sent and current recipient fields
-  held: [WIRE_SLOTS] s32;     // id + 1 of what the page holds in each slot, 0 nothing
-  base: [WIRE_SLOTS] int;     // the tick of the newest row of it the page acknowledged, 0 none
-  sent: [WIRE_SLOTS] int;     // bit t % WIRE_ACKS: a row of it went out at tick t
-  last: [WIRE_SLOTS] int;     // the tick its last row went out
-  gone: [WIRE_SLOTS] s32;     // id + 1 of what is to go (x), until a tick that held the x is acknowledged
-  gone_t: [WIRE_SLOTS] int;   // the tick that x last went out, 0 not yet
+  allowed:[WIRE_ZSLOTS]int;wanted:[WIRE_ZSLOTS]int; // explicit last-sent and current recipient fields
+  held: [WIRE_ZSLOTS] s32;     // id + 1 of what the page holds in each slot, 0 nothing
+  base: [WIRE_ZSLOTS] int;     // the tick of the newest row of it the page acknowledged, 0 none
+  sent: [WIRE_ZSLOTS] int;     // bit t % WIRE_ACKS: a row of it went out at tick t
+  last: [WIRE_ZSLOTS] int;     // the tick its last row went out
+  gone: [WIRE_ZSLOTS] s32;     // id + 1 of what is to go (x), until a tick that held the x is acknowledged
+  gone_t: [WIRE_ZSLOTS] int;   // the tick that x last went out, 0 not yet
   // The slot's earlier x, still unacknowledged when the entity after it left too (#12900); the slot's
   // next row waits until it is acknowledged, so a slot never owes more than these two.
-  gone2: [WIRE_SLOTS] s32; gone2_t: [WIRE_SLOTS] int;
-  acc: [WIRE_SLOTS] f32;      // priority, gained each tick something is left to send
-  since: [WIRE_SLOTS] int;    // the tick its row began waiting to go (changed, not yet sent), 0 none
+  gone2: [WIRE_ZSLOTS] s32; gone2_t: [WIRE_ZSLOTS] int;
+  acc: [WIRE_ZSLOTS] f32;      // priority, gained each tick something is left to send
+  since: [WIRE_ZSLOTS] int;    // the tick its row began waiting to go (changed, not yet sent), 0 none
   heard: int;                 // the newest tick acknowledged
   bytes: int;                 // this tick's rows' bytes (its own player's and the aged in them), for vitals
   left: int;                  // rows this tick left for a later one (the budget spent)
@@ -1234,15 +1246,15 @@ wire_replica_set :: (st:[]WireSeat,q:int,r:NetReplica) {
   st[0].acc[q]=r.priority;st[0].since[q]=r.since;
 }
 wire_seat_reset :: (st: [] WireSeat) {
-  for q:0..<WIRE_SLOTS {st[0].allowed[q]=0;st[0].wanted[q]=0;}
-  for q: 0..<WIRE_SLOTS { st[0].held[q] = 0; st[0].base[q] = 0; st[0].sent[q] = 0; st[0].last[q] = 0; st[0].gone[q] = 0; st[0].gone_t[q] = 0; st[0].gone2[q] = 0; st[0].gone2_t[q] = 0; st[0].acc[q] = 0; st[0].since[q] = 0; }
+  for q:0..<WIRE_ZSLOTS {st[0].allowed[q]=0;st[0].wanted[q]=0;}
+  for q: 0..<WIRE_ZSLOTS { st[0].held[q] = 0; st[0].base[q] = 0; st[0].sent[q] = 0; st[0].last[q] = 0; st[0].gone[q] = 0; st[0].gone_t[q] = 0; st[0].gone2[q] = 0; st[0].gone2_t[q] = 0; st[0].acc[q] = 0; st[0].since[q] = 0; }
   st[0].heard = 0; st[0].bytes = 0; st[0].left = 0; st[0].aged = 0; st[0].oldest = 0;
 }
 // The page heard tick `heard` whole (I's HEARD): what went out that tick is its own.
 wire_seat_ack :: (st: [] WireSeat, h: [] WireHist, heard: int) {
   if !net_replica_ack_allowed(heard,st[0].heard,h[0].now,WIRE_ACKS) { return; }
   st[0].heard = heard;
-  for q: 0..<WIRE_SLOTS {
+  for q: 0..<h[0].slots {
     if st[0].sent[q]!=0 || st[0].gone[q]!=0 || st[0].gone2[q]!=0 {
       wire_replica_set(st,q,net_replica_ack(wire_replica(st,q),heard,WIRE_ACKS));
     }
@@ -1252,11 +1264,11 @@ wire_seat_ack :: (st: [] WireSeat, h: [] WireHist, heard: int) {
 // still has it; the seat notes it went out.
 wire_seat_put :: (st: [] WireSeat, h: [] WireHist, q: int, out: [] u8, at: int) -> int {
   now := h[0].now; row := now % WIRE_BASES;
-  id1 := cast(int) h[0].id[row * WIRE_SLOTS + q];
+  id1 := cast(int) h[0].id[row * WIRE_ZSLOTS + q];
   if st[0].allowed[q]!=st[0].wanted[q] {
     wire_replica_set(st,q,net_replica_fields(wire_replica(st,q),st[0].allowed[q],st[0].wanted[q]));
   }
-  cur := (row * WIRE_SLOTS + q) * WIRE_SF;
+  cur := (row * WIRE_ZSLOTS + q) * WIRE_SF;
   b := ifx cast(int) st[0].held[q] == id1 then wire_hist_at(h, st[0].base[q], q, id1) else -1;
   zero: [WIRE_SF] s32;
   back := ifx b >= 0 then now - st[0].base[q] else 0;
@@ -1283,10 +1295,10 @@ wire_every :: (d2: f32, w: f32) -> int {
 // sits at (px, pz) hears what is within `view` m, and every entity marked all. The bytes written.
 wire_seat_frame :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f32, view: f32, budget: int, out: [] u8) -> int {
   row := h[0].now % WIRE_BASES;
-  pick: [WIRE_SLOTS] f32;
-  for q: 0..<WIRE_SLOTS {
+  pick: [WIRE_ZSLOTS] f32;
+  for q: 0..<h[0].slots {
     dx := h[0].x[q] - px; dz := h[0].z[q] - pz;
-    pick[q] = ifx h[0].id[row * WIRE_SLOTS + q] != 0 && (h[0].all[q] || dx * dx + dz * dz <= view * view) then 0.0f32 else -1.0f32;
+    pick[q] = ifx h[0].id[row * WIRE_ZSLOTS + q] != 0 && (h[0].all[q] || dx * dx + dz * dz <= view * view) then 0.0f32 else -1.0f32;
   }
   return wire_seat_frame_in(st, h, me, px, pz, pick[..], budget, out);
 }
@@ -1296,7 +1308,7 @@ wire_seat_frame :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f32, 
 // (the room-wide ones: Darian, the ward stones, zones).
 WIRE_PICK_OWN :: 4.0; WIRE_PICK_ROOM :: 2.0;
 wire_seat_frame_in :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f32, pick: [] f32, budget: int, out: [] u8) -> int {
-  fields:[WIRE_SLOTS]int;for q:0..<WIRE_SLOTS {fields[q]=(1<<WIRE_SF)-1;}
+  fields:[WIRE_ZSLOTS]int;for q:0..<WIRE_ZSLOTS {fields[q]=(1<<WIRE_SF)-1;}
   return wire_seat_frame_fields(st,h,me,px,pz,pick,fields[..],budget,out);
 }
 wire_seat_frame_fields :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]f32,fields:[]int,budget:int,out:[]u8)->int {
@@ -1318,17 +1330,18 @@ WireLook :: struct { fx: f32; fz: f32; }
 // (behind, or a tick the link skips) only the x's, its own row and what is on it go, and the rest
 // wait with their priority and age, never queued.
 // The lesser of a row's budget and what out still holds: a row is noted sent only when it is written.
+WIRE_TRY_MISSES :: 16;   // rows in a row that did not fit a seat's budget before the rest wait unwritten (wire_seat_frame_look)
 wire_fit :: (budget: int, left: int) -> int { return ifx budget < left then budget else left; }
 wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]f32,fields:[]int,look:WireLook,combat:[]int,budget:int,out:[]u8)->int {
   now := h[0].now; row := now % WIRE_BASES;
   n := 0; e: [WIRE_ROW] u8;
   life := 0;   // this tick's x bytes (WIRE_LIFE_BUDGET)
-  cand: [WIRE_SLOTS] int; cn := 0;
-  spawn: [WIRE_SLOTS] int; sn := 0;
-  mine: [WIRE_SLOTS] int; mn := 0;
+  cand: [WIRE_ZSLOTS] int; cn := 0;
+  spawn: [WIRE_ZSLOTS] int; sn := 0;
+  mine: [WIRE_ZSLOTS] int; mn := 0;
   ordered := !st[0].datagrams;
-  for q: 0..<WIRE_SLOTS {
-    id1 := cast(int) h[0].id[row * WIRE_SLOTS + q];
+  for q: 0..<h[0].slots {
+    id1 := cast(int) h[0].id[row * WIRE_ZSLOTS + q];
     if id1!=0 || st[0].held[q]!=0 {st[0].wanted[q]=ifx q<fields.count then fields[q] else 0;}
     dx := h[0].x[q] - px; dz := h[0].z[q] - pz; d2 := dx * dx + dz * dz;
     pk := ifx q < pick.count then pick[q] else -1.0f32;
@@ -1356,7 +1369,7 @@ wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]
     if !seen || q == me { st[0].since[q] = 0; continue; }
     r := wire_replica(st,q);
     if !net_replica_ready(r) { continue; }
-    cur := (row * WIRE_SLOTS + q) * WIRE_SF;
+    cur := (row * WIRE_ZSLOTS + q) * WIRE_SF;
     // the page has it as it is now: nothing to send
     if cast(int) st[0].held[q] == id1 && st[0].allowed[q]==st[0].wanted[q] {
       b := wire_hist_at(h, st[0].base[q], q, id1);
@@ -1392,22 +1405,22 @@ wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]
   st[0].spawn_wait = 0;
   // the reliable lane: the spawns. Your own player's (and what is on you) whatever the budget, then
   // the others', the aged first, from the budget; one that doesn't fit waits with its age
-  own_live := me >= 0 && me < WIRE_SLOTS && st[0].wanted[me]!=0 && h[0].id[row * WIRE_SLOTS + me] != 0 && net_replica_ready(wire_replica(st,me));
-  own_spawn := own_live && net_spawn_row(wire_replica(st,me), cast(int) h[0].id[row * WIRE_SLOTS + me]);
+  own_live := me >= 0 && me < h[0].slots && st[0].wanted[me]!=0 && h[0].id[row * WIRE_ZSLOTS + me] != 0 && net_replica_ready(wire_replica(st,me));
+  own_spawn := own_live && net_spawn_row(wire_replica(st,me), cast(int) h[0].id[row * WIRE_ZSLOTS + me]);
   if own_spawn {
     if n > 0 { n = wire_sep(out, n); }
     was := n; n = wire_seat_put(st, h, me, out, n); wrote += n - was;
   }
   for c: 0..<mn {
     q := mine[c];
-    if !net_spawn_row(wire_replica(st,q), cast(int) h[0].id[row * WIRE_SLOTS + q]) { continue; }
+    if !net_spawn_row(wire_replica(st,q), cast(int) h[0].id[row * WIRE_ZSLOTS + q]) { continue; }
     m := wire_seat_put_try(st, h, q, e[..], out.count - n - 1);   // (never noted sent when out can't hold it)
     if m <= 0 || n + m + 1 > out.count { continue; }
     if n > 0 { n = wire_sep(out, n); }
     for i: 0..<m { out[n + i] = e[i]; }
     n += m; wrote += m;
   }
-  order: [WIRE_SLOTS] int;
+  order: [WIRE_ZSLOTS] int;
   room := WIRE_AGED_BUDGET;   // the aged rows' own bytes, spawns' and updates' alike
   st[0].aged = 0;
   if budget > 0 && sn > 0 {
@@ -1456,11 +1469,16 @@ wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]
     }
     st[0].aged_all += st[0].aged;
   }
+  // A row is written to learn whether it fits. In a crowd most of a seat's rows don't (150 players in
+  // one place: 135 rows waiting on 500 bytes), so once WIRE_TRY_MISSES in a row did not fit, the rest
+  // wait unwritten: they are lower in priority, and the bytes left are too few (#13275).
+  misses := 0;
   for c: 0..<cn {
     q := ifx budget > 0 then order[c] else cand[c];
     if st[0].last[q] == now { continue; }   // gone for its age
-    m := wire_seat_put_try(st, h, q, e[..], wire_fit(budget - pre - spent, out.count - n - 1));
-    if m <= 0 || n + m + 1 > out.count { left += 1; if now - st[0].since[q] > oldest { oldest = now - st[0].since[q]; } continue; }
+    m := ifx misses >= WIRE_TRY_MISSES then 0 else wire_seat_put_try(st, h, q, e[..], wire_fit(budget - pre - spent, out.count - n - 1));
+    if m <= 0 || n + m + 1 > out.count { misses += 1; left += 1; if now - st[0].since[q] > oldest { oldest = now - st[0].since[q]; } continue; }
+    misses = 0;
     if n > 0 { n = wire_sep(out, n); }
     for i: 0..<m { out[n + i] = e[i]; }
     n += m; wrote += m; spent += m;
@@ -1498,10 +1516,10 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
 }
 
 #test "wire (#13178): spawns lead the frame on the reliable lane; on datagrams an unheard spawn's updates wait and it goes again each WIRE_RESEND ticks" {
-  pick: [WIRE_SLOTS] f32; buf: [4096] u8;
+  pick: [WIRE_ZSLOTS] f32; buf: [4096] u8;
   for dg: 0..<2 {
     h: [1] WireHist; st: [1] WireSeat; st[0].datagrams = dg == 1;
-    for q: 0..<WIRE_SLOTS { pick[q] = -1; }
+    for q: 0..<WIRE_ZSLOTS { pick[q] = -1; }
     pick[20] = 0; pick[21] = 0;
     sent: [16] bool;
     for t: 1..<16 {
@@ -1525,8 +1543,8 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
 }
 #test "wire (#12845): recipient field changes reset baselines and a refused row retains its earlier send state" {
   h:[1]WireHist;st:[1]WireSeat;m:[1]WireMirror;
-  pick:[WIRE_SLOTS]f32;fields:[WIRE_SLOTS]int;
-  for q:0..<WIRE_SLOTS {pick[q]=-1;}
+  pick:[WIRE_ZSLOTS]f32;fields:[WIRE_ZSLOTS]int;
+  for q:0..<WIRE_ZSLOTS {pick[q]=-1;}
   pick[4]=1;fields[4]=(1<<WIRE_SF)-1;
   buf:[4096]u8;row:=WireS.{id=9,x=5,z=7,hp=8,max=11,life=1};
   wire_hist_begin(h[..],1);wire_test_put(h[..],4,row);
@@ -1853,7 +1871,7 @@ WIRE_TEST_QN :: 64; WIRE_TEST_QB :: 4096;   // the throttle check's socket queue
   h: [1] WireHist; st: [1] WireSeat; m: [1] WireMirror;
   // 60 townsfolk walking near you fill a budget of about 2 rows a tick; seat 3, 40 m off, holds you
   // from tick 20 (Hold Person: its DUR counts down each tick); the room's pick has it on you (WIRE_PICK_OWN)
-  pick: [WIRE_SLOTS] f32;
+  pick: [WIRE_ZSLOTS] f32;
   buf: [8192] u8;
   for t: 1..<91 {
     wire_hist_begin(h[..], t);
@@ -1862,7 +1880,7 @@ WIRE_TEST_QN :: 64; WIRE_TEST_QB :: 4096;   // the throttle check's socket queue
     for i: 0..<60 { wire_test_put(h[..], 16 + i, WireS.{id = WIRE_ID_FOLK + i, kind = WK_FOLK, x = 2 + f32(i) * 0.2, z = f32(t) * 0.04, vz = 1.2, clip = 1, p1 = i}); }
     if t >= 20 { wire_test_put(h[..], 90, WireS.{id = WIRE_ID_MADE + 7, kind = WK_EFFECT, owner = WIRE_TGT_SEAT, p1 = 4, p2 = 2, t0 = 20, dur = 200 - t}); }
     row := t % WIRE_BASES;
-    for q: 0..<WIRE_SLOTS { pick[q] = ifx h[0].id[row * WIRE_SLOTS + q] == 0 then -1.0f32 else (ifx q == 90 then f32(WIRE_PICK_OWN) else 0.0f32); }
+    for q: 0..<h[0].slots { pick[q] = ifx h[0].id[row * WIRE_ZSLOTS + q] == 0 then -1.0f32 else (ifx q == 90 then f32(WIRE_PICK_OWN) else 0.0f32); }
     wire_seat_ack(st[..], h[..], m[0].heard);
     n := wire_put_d(buf[..], 0, WireD.{tick = t, ack = 0, f = ifx t == 1 then 1 else 0, part = 0});
     // behind from tick 50 to 60: a budget of 0
@@ -1990,7 +2008,7 @@ WIRE_TEST_QN :: 64; WIRE_TEST_QB :: 4096;   // the throttle check's socket queue
 }
 
 wire_test_row :: (h: [] WireHist, q: int, t: int) -> WireS {
-  a := ((t % WIRE_BASES) * WIRE_SLOTS + q) * WIRE_SF;
+  a := ((t % WIRE_BASES) * WIRE_ZSLOTS + q) * WIRE_SF;
   return wire_s_unpack(0, h[0].f[a..<a + WIRE_SF]);
 }
 #test "wire: an id gone a tick and back is a new LIFE; a jump of more than WIRE_WARP_M in a tick is a WARP, its velocity none" {

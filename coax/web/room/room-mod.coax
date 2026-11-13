@@ -43,7 +43,7 @@ RmMod :: struct {
 rm_mod_line :: (text: string) -> bool { return moderation_read(text, 2).ok; }
 // The live seat in everglade room k whose ticket names player pid (-1 none).
 rm_mod_seat :: (v: [] RmServer, k: int, pid: string) -> int {
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     if !v[0].eg[k].seat[s].live { continue; }
     tk := eg_ticket(v, k, SeatId.{value = s});
     if tk.ok && cast(string) tk.pid[0..<tk.pid_n] == pid { return s; }
@@ -113,7 +113,7 @@ rm_mod_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
 }
 // The host's tick (room-tick.c, through rm_e2_admin_warp): a moderator's move of seat s, taken once, into out (x, z, yaw).
 rm_mod_warp :: (v: [] RmServer, k: int, s: int, out: [] f32) -> bool {
-  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < 3 || v[0].mod.warp[k] != s + 1 { return false; }
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= eg_cap(v, k) || out.count < 3 || v[0].mod.warp[k] != s + 1 { return false; }
   v[0].mod.warp[k] = 0;
   out[0] = v[0].mod.warp_x[k]; out[1] = v[0].mod.warp_z[k]; out[2] = v[0].mod.warp_yaw[k];
   return true;

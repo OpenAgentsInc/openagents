@@ -132,7 +132,7 @@ e2_familiar_asked :: (v:[]RmServer,k:int,id:SeatId,ask:E2FamiliarAsk) {
   req:=v[0].eg[k].seat[id.value].familiar;
   if seq<=req.last { return; }
   req.last=seq;
-  valid:=ifx touch then choice>=0 && choice<EG_SEATS else ifx lifecycle then step || sense || (choice>=E2_FAMILIAR_POCKET && choice<=E2_FAMILIAR_RELEASE) else choice>=0 && choice<RS_FAMILIAR_FORMS.count && slot>=0 && slot<=9 &&
+  valid:=ifx touch then choice>=0 && choice<eg_cap(v, k) else ifx lifecycle then step || sense || (choice>=E2_FAMILIAR_POCKET && choice<=E2_FAMILIAR_RELEASE) else choice>=0 && choice<RS_FAMILIAR_FORMS.count && slot>=0 && slot<=9 &&
     spirit>=RS_FAMILIAR_FEY && spirit<=RS_FAMILIAR_FIEND;
   if req.pending>0 || req.active>0 || !valid {
     eg_refuse(v,k,id,seq,E2_FAMILIAR_REFUSED);
@@ -157,7 +157,7 @@ e2_familiar_heal_target :: (v:[]RmServer,k:int,s:int,target:int)->bool {
 
 e2_familiar_sights :: (v:[]RmServer,k:int,first:int)->int {
   room:=v[0].eg[k..<k+1]; b:=room[0].rules[0].b[..]; next:=first;
-  for s:0..<EG_SEATS {
+  for s:0..<eg_cap(v, k) {
     st:=room[0].seat[s..<s+1]; req:=st[0].familiar;
     if req.pending<=0 && req.active<=0 { continue; }
     req.ray=-1; req.clear=false;
@@ -202,7 +202,7 @@ e2_familiar_sights :: (v:[]RmServer,k:int,first:int)->int {
 }
 e2_familiar_ray :: (v:[]RmServer,k:int,q:int,out:[]f32)->bool {
   seats:=v[0].eg[k].seat[..]; rules:=v[0].eg[k].rules[..];
-  for s:0..<EG_SEATS {
+  for s:0..<eg_cap(v, k) {
     req:=seats[s].familiar;
     if req.ray<0 || (req.pending<=0 && req.active<=0) { continue; }
     if req.order==4 && q>req.ray {
@@ -236,7 +236,7 @@ e2_familiar_ray :: (v:[]RmServer,k:int,q:int,out:[]f32)->bool {
   return false;
 }
 e2_familiar_seen :: (v:[]RmServer,k:int,q:int,clear:bool) {
-  for s:0..<EG_SEATS {
+  for s:0..<eg_cap(v, k) {
     st:=v[0].eg[k].seat[s..<s+1];
     req:=st[0].familiar;
     if req.ray<0 || (req.pending<=0 && req.active<=0) { continue; }
@@ -341,7 +341,7 @@ e2_familiar_sense_mode :: (v:[]RmServer,k:int,s:int)->int {
 }
 e2_familiar_commit :: (v:[]RmServer,k:int) {
   room:=v[0].eg[k..<k+1];
-  for s:0..<EG_SEATS {
+  for s:0..<eg_cap(v, k) {
     st:=room[0].seat[s..<s+1]; req:=st[0].familiar;
     if (req.pending<=0 && req.active<=0) || !st[0].live || st[0].conn<0 { continue; }
     id:=SeatId.{value=s};
@@ -382,12 +382,12 @@ e2_familiar_form :: (form:int)->int {
 e2_familiars_rows :: (v:[]RmServer,k:int) {
   room:=v[0].eg[k..<k+1]; rules:=room[0].rules[..]; b:=rules[0].b[..]; h:=room[0].hist[..];
   if !rules[0].familiar_ready { return; }
-  for owner:0..<EG_SEATS {
+  for owner:0..<eg_cap(v, k) {
     if !room[0].seat[owner].live || !room[0].seat[owner].placed { continue; }
     f:=rules[0].familiar[owner].me; c:=b[0].c[f..<f+1];
     form:=e2_familiar_form(c[0].familiar_form);
     if c[0].dead || c[0].hp<=0 || form<0 { continue; }
-    wire_hist_put(h,EG_SLOT_FAM+owner,WireS.{id=WIRE_ID_MADE+WIRE_FAM_EID+owner,kind=WK_FAMILIAR,x=egb_cell_m(c[0].x),z=egb_cell_z(rules,c[0].y),
+    wire_hist_put(h,(ifx owner<WIRE_SEATS then EG_SLOT_FAM+owner else wire_fam_slot(owner)),WireS.{id=WIRE_ID_MADE+WIRE_FAM_EID+owner,kind=WK_FAMILIAR,x=egb_cell_m(c[0].x),z=egb_cell_z(rules,c[0].y),
       g=e2_familiar_sense_mode(v,k,owner),hp=c[0].hp,max=c[0].hp_max,owner=WIRE_TGT_SEAT+owner,p1=form},wire_rel(WK_FAMILIAR),false,false);
   }
 }
@@ -528,7 +528,7 @@ e2_familiars_rows :: (v:[]RmServer,k:int) {
   out:[16384]u8; hd:[1]EgInbox;
   eg_test_drain(v[..],hd[..]);
   // no familiar out: no row, in anyone's table
-  #assert h[0].id[(h[0].now%WIRE_BASES)*WIRE_SLOTS+slot]==0;
+  #assert h[0].id[(h[0].now%WIRE_BASES)*WIRE_ZSLOTS+slot]==0;
   // a form past the rules' is refused by the room, an ID past the packing's is no request at all
   rm_heard(v[..],0,"E 1 9 99"); #assert eg_test_has(e2rt_heard(v[..],0,out[..]),"r 1 familiar");
   rm_heard(v[..],0,"E 2 9 10000"); #assert room[0].seat[0].familiar.last==1;
@@ -537,7 +537,7 @@ e2_familiars_rows :: (v:[]RmServer,k:int) {
   #assert rs_up(b[0].c[f]) && b[0].c[f].familiar_form==MON_OWL && b[0].c[f].familiar_spirit==RS_FAMILIAR_FEY;
   // its row: its owner, its form, its Hit Points, its owner's own senses
   w:=wire_test_row(h,slot,h[0].now);
-  #assert cast(int)h[0].id[(h[0].now%WIRE_BASES)*WIRE_SLOTS+slot]==fid+1 && w.kind==WK_FAMILIAR && w.owner==WIRE_TGT_SEAT && w.p1==8 && w.hp==b[0].c[f].hp && w.max==b[0].c[f].hp_max && w.hp>0 && w.g==E2_SENSE_OWNER;
+  #assert cast(int)h[0].id[(h[0].now%WIRE_BASES)*WIRE_ZSLOTS+slot]==fid+1 && w.kind==WK_FAMILIAR && w.owner==WIRE_TGT_SEAT && w.p1==8 && w.hp==b[0].c[f].hp && w.max==b[0].c[f].hp_max && w.hp>0 && w.g==E2_SENSE_OWNER;
   #assert abs(w.x-egb_cell_m(b[0].c[f].x))<0.01 && abs(w.z-egb_cell_z(r,b[0].c[f].y))<0.01 && w.vx==0 && w.vz==0;
   // the asker hears the answer and the row; the wire 7 page beside it the row and no answer; neither an m frame
   eg_test_drain(v[..],hd[..]);
@@ -567,7 +567,7 @@ e2_familiars_rows :: (v:[]RmServer,k:int) {
   life:=wire_test_row(h,slot,h[0].now).life;
   egb_step(r,b[0].c[0].turn_at+100000);
   rm_heard(v[..],0,"E 3 11 1"); rc_test_tick(v[..],k,true);
-  #assert b[0].c[f].dead && h[0].id[(h[0].now%WIRE_BASES)*WIRE_SLOTS+slot]==0 && eg_test_has(e2rt_heard(v[..],0,out[..]),"e fam 3 1 0");
+  #assert b[0].c[f].dead && h[0].id[(h[0].now%WIRE_BASES)*WIRE_ZSLOTS+slot]==0 && eg_test_has(e2rt_heard(v[..],0,out[..]),"e fam 3 1 0");
   egb_step(r,b[0].c[0].turn_at+100000);
   rm_heard(v[..],0,"E 4 11 2"); rc_test_tick(v[..],k,true);
   #assert !b[0].c[f].dead && eg_test_has(e2rt_heard(v[..],0,out[..]),"e fam 4 2 0");
@@ -576,7 +576,7 @@ e2_familiars_rows :: (v:[]RmServer,k:int) {
   b[0].c[0].long_rest.phase=3;
   #assert rs_long_rest_apply(b,0) && b[0].c[f].dead;
   rc_test_tick(v[..],k,true);
-  #assert h[0].id[(h[0].now%WIRE_BASES)*WIRE_SLOTS+slot]==0;
+  #assert h[0].id[(h[0].now%WIRE_BASES)*WIRE_ZSLOTS+slot]==0;
 }
 
 #test "e2 familiar rows: the step, the cure and the borrowed senses answer as e entries, and the senses ride the familiar's row" #steps 4000000000 {
@@ -624,7 +624,7 @@ e2_familiars_rows :: (v:[]RmServer,k:int) {
   rm_heard(v[..],0,"E 5 11 3"); rc_test_tick(v[..],k,true);
   if !b[0].c[f].dead { egb_step(r,b[0].c[0].turn_at+100000); rm_heard(v[..],0,"E 6 11 3"); rc_test_tick(v[..],k,true); }
   got=e2rt_heard(v[..],0,out[..]);
-  #assert b[0].c[f].dead && (eg_test_has(got,"e fam 5 3 0") || eg_test_has(got,"e fam 6 3 0")) && h[0].id[(h[0].now%WIRE_BASES)*WIRE_SLOTS+slot]==0;
+  #assert b[0].c[f].dead && (eg_test_has(got,"e fam 5 3 0") || eg_test_has(got,"e fam 6 3 0")) && h[0].id[(h[0].now%WIRE_BASES)*WIRE_ZSLOTS+slot]==0;
 }
 
 #test "e2 familiar rows: the Wizard's Find Familiar is an E kind with its spirit, and its cast's steps are e entries" #steps 4000000000 {

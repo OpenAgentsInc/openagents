@@ -205,8 +205,8 @@ e2nv_built :: (v: [] RmServer, cx: int, cz: int) -> int {
 // answered at once, at the manifest's digest. Between e2nv_enter and e2nv_leave.
 e2nv_cells_step :: (v: [] RmServer, k: int) {
   w := v[0].nav[0].world[..];
-  at: [EG_SEATS * 2] f64; n := 0;
-  for s: 0..<EG_SEATS {
+  at: [EG_ZONE_SEATS * 2] f64; n := 0;
+  for s: 0..<eg_cap(v, k) {
     st := v[0].eg[k].seat[s..<s + 1];
     if !st[0].live || !st[0].placed { continue; }
     at[n * 2] = f64(st[0].pose.x); at[n * 2 + 1] = f64(st[0].pose.z); n += 1;

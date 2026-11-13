@@ -1,0 +1,113 @@
+// The checks of a zone's storage (#13275, docs/decisions/0007): a room's seats are a view, its own
+// EG_SEATS unless its zone hands it more, and a zone of EG_ZONE_SEATS seats sits, steps and tells every
+// seat in one room. Loaded by coax/web/room/room-everglade.coax with #test.
+
+// A check's storage for a zone of the most a zone declares: what room-host.c allocates for
+// OA_ROOM_ZONE_SEATS, here as one value a check holds.
+EzStore :: struct { seat: [EG_ZONE_SEATS] EgSeat; c: [EG_ZONE_SEATS * 2 + EGB_BEASTS] RsCreature; occ: [RS_SQUARES] int; held: [EG_ZONE_SEATS * IM_ENTS] int; reveal: [EG_ZONE_SEATS * IM_ENTS] int; }
+ez_use :: (v: [] RmServer, z: [] EzStore, seats: int) -> bool {
+  if seats < 0 || seats > EG_ZONE_SEATS { return false; }
+  return rm_zone_use(v, z[0].seat[0..<seats], z[0].c[0..<rm_zone_creatures(seats)], z[0].occ[..], z[0].held[0..<rm_zone_interest(seats)], z[0].reveal[0..<rm_zone_interest(seats)]);
+}
+EZ_ASK :: "GET /api/room/relay/everglade/pair-e2-zone HTTP/1.1\r\n\r\n";
+// What a tick queued, taken off: the D frames each of the first `conns` sockets was sent, and conn
+// `watch`'s into its mirror.
+ez_drain :: (v: [] RmServer, conns: int, got: [] int, watch: int, m: [] WireMirror) {
+  while true {
+    n := rm_relay_next(v);
+    if n == 0 { break; }
+    if n < 2 || v[0].rout[0] != 'D' || v[0].rout[1] != ' ' { continue; }
+    for c: 0..<conns { if v[0].rto[c] { got[c] += 1; } }
+    if watch >= 0 && v[0].rto[watch] { _ := wire_mirror_frame(m, cast(string) v[0].rout[0..<n]); }
+  }
+}
+
+#test "zone: a room handed no storage has its own EG_SEATS, bound at the server's start, and seats no more" {
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  for k: 0..<EG_ROOMS { #assert eg_cap(v[..], k) == EG_SEATS && v[0].eg[k].seat.count == EG_SEATS; }
+  #assert eg_cap(v[..], -1) == 0 && eg_cap(v[..], EG_ROOMS) == 0 && !eg_zoned(v[..]) && eg_room_seats(v[..]) == EG_SEATS;
+  for c: 0..<EG_SEATS { #assert rm_join(v[..], c, EZ_ASK) == c; }
+  #assert rm_join(v[..], EG_SEATS, EZ_ASK) < 0;   // the 17th: no seat
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  #assert k == 0 && v[0].eg[k].hist[0].slots == WIRE_SLOTS && v[0].eg[k].rules[0].seats == EG_SEATS && egb0(v[..], k) == EGB_BEAST0;
+  #assert v[0].eg[k].rules[0].b[0].c.count == RS_MAX;   // the battle's own table
+}
+
+#test "zone: storage is taken whole or refused: the cap's seats, a creature for each seat, beast and familiar, the rules' squares, interest's rows, and before any room opens" {
+  v: [1] RmServer; z: [1] EzStore; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  n := EG_ZONE_SEATS;
+  seats := z[0].seat[0..<n]; c := z[0].c[..]; occ := z[0].occ[..]; held := z[0].held[..]; reveal := z[0].reveal[..];
+  #assert rm_zone_creatures(n) == n * 2 + EGB_BEASTS && rm_zone_creatures(17) == 34 + EGB_BEASTS && rm_zone_squares() == RS_SQUARES && rm_zone_interest(n) == n * IM_ENTS;
+  #assert !ez_use(v[..], z[..], EG_SEATS) && !ez_use(v[..], z[..], 0) && !ez_use(v[..], z[..], n + 1);   // a room's own count is no zone
+  #assert !rm_zone_use(v[..], seats, c[0..<c.count - 1], occ, held, reveal) && !rm_zone_use(v[..], seats, c, occ[0..<RS_SQUARES - 1], held, reveal);
+  #assert !rm_zone_use(v[..], seats, c, occ, held[0..<held.count - IM_ENTS], reveal) && !rm_zone_use(v[..], seats, c, occ, held, reveal[0..<reveal.count - 1]);
+  #assert !rm_zone_use(v[..], z[0].seat[0..<EG_SEATS + 1], c, occ, held, reveal);   // creatures for another cap
+  #assert !eg_zoned(v[..]) && eg_cap(v[..], 0) == EG_SEATS && im_seats(v[0].eg[0].im[..]) == 0;
+  // a room open: too late
+  w: [1] RmServer; rm_init(w[..]); rm_clock(w[..], 0, 1762190000000);
+  #assert rm_join(w[..], 0, EZ_ASK) == 0 && !ez_use(w[..], z[..], n) && !eg_zoned(w[..]) && im_seats(w[0].eg[0].im[..]) == IM_SEATS;
+  // the least and the most a zone declares
+  #assert ez_use(v[..], z[..], EG_SEATS + 1);
+  #assert eg_zoned(v[..]) && eg_cap(v[..], 0) == EG_SEATS + 1 && eg_room_seats(v[..]) == EG_SEATS + 1 && eg_cap(v[..], 1) == EG_SEATS && im_seats(v[0].eg[0].im[..]) == EG_SEATS + 1;
+  #assert ez_use(v[..], z[..], n) && eg_cap(v[..], 0) == n && im_seats(v[0].eg[0].im[..]) == n;
+}
+
+#test "zone: 150 players sit in one zone, the 151st is refused, and a second room never opens" {
+  v: [1] RmServer; z: [1] EzStore; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  #assert ez_use(v[..], z[..], EG_ZONE_SEATS);
+  for c: 0..<EG_ZONE_SEATS { #assert rm_join(v[..], c, EZ_ASK) == c; }
+  #assert rm_join(v[..], EG_ZONE_SEATS, EZ_ASK) < 0;
+  // another instance asked of a zone's process: no room for it (room 0 is the process's one)
+  #assert rm_join(v[..], EG_ZONE_SEATS + 1, "GET /api/room/relay/everglade/pair-e2-other HTTP/1.1\r\n\r\n") < 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  #assert k == 0 && eg_cap(v[..], k) == EG_ZONE_SEATS && !v[0].eg[1].live;
+  room := v[0].eg[k..<k + 1];
+  #assert room[0].hist[0].slots == WIRE_ZSLOTS && room[0].rules[0].seats == EG_ZONE_SEATS && egb0(v[..], k) == EG_ZONE_SEATS;
+  #assert room[0].rules[0].b[0].c.count == rm_zone_creatures(EG_ZONE_SEATS) && room[0].rules[0].familiar_ready;
+  #assert room[0].rules[0].familiar[EG_ZONE_SEATS - 1].me == room[0].rules[0].b[0].c.count - 1;
+  live := 0; for s: 0..<EG_ZONE_SEATS { if room[0].seat[s].live && room[0].seat[s].conn == s && room[0].rules[0].live[s] { live += 1; } }
+  #assert live == EG_ZONE_SEATS;
+}
+
+// (A check's budget holds a tick or two of 150 seats; 40 seats run every path a seat past WIRE_SEATS
+// takes. 150 seats' ticks are measured on a build host: coax/web/room/bots.coax --zone.)
+EZ_PLAY :: 40;
+#test "zone: in a zone of 40 every seat is stepped and told each tick; a seat past WIRE_SEATS has its row after the layout's slots, and its page holds itself and its neighbours" {
+  v: [1] RmServer; z: [1] EzStore; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  #assert ez_use(v[..], z[..], EZ_PLAY);
+  for c: 0..<EZ_PLAY { #assert rm_join(v[..], c, EZ_ASK) == c; rm_heard(v[..], c, "H 6 ranger.0.0.0 druid 0 -"); }
+  #assert rm_join(v[..], EZ_PLAY, EZ_ASK) < 0;
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  room := v[0].eg[k..<k + 1];
+  #assert room[0].hist[0].slots == WIRE_SLOTS + WIRE_ZMORE + EZ_PLAY - WIRE_SEATS && egb0(v[..], k) == EZ_PLAY && room[0].rules[0].b[0].c.count == EZ_PLAY * 2 + EGB_BEASTS;
+  got: [EZ_PLAY] int; m: [1] WireMirror; last := EZ_PLAY - 1;
+  b: [96] u8;
+  for t: 1..<12 {
+    // every seat walks: an input a tick
+    for c: 0..<EZ_PLAY { n := wire_put_in(b[..], 0, WireIn.{seq = t, kx = ifx c % 2 == 0 then 100 else -100, px = 40, heard = t - 1}); rm_heard(v[..], c, cast(string) b[0..<n]); }
+    eg_test_tick(v[..], k);
+    ez_drain(v[..], EZ_PLAY, got[..], last, m[..]);
+  }
+  placed := 0;
+  for s: 0..<EZ_PLAY { if room[0].seat[s].placed { placed += 1; } #assert room[0].seat[s].live && room[0].seat[s].ack > 0 && got[s] >= 8; }
+  #assert placed == EZ_PLAY;
+  // the last seat's row stands in the table after the layout's slots, and its page holds itself
+  h := room[0].hist[..]; row := h[0].now % WIRE_BASES;
+  #assert wire_seat_slot(last) == WIRE_SLOTS + last - WIRE_SEATS && wire_fam_slot(last) < room[0].hist[0].slots && cast(int) h[0].id[row * WIRE_ZSLOTS + wire_seat_slot(last)] == last + 1;
+  me := wire_mirror_of(m[..], last);
+  #assert me.kind == WK_PLAYER && me.id == last && me.owner == last;
+  // and its neighbours on both sides of WIRE_SEATS: each seat stands a metre from the next (eg_test_tick), well inside interest
+  #assert wire_mirror_of(m[..], last - 1).kind == WK_PLAYER && wire_mirror_of(m[..], WIRE_SEATS).kind == WK_PLAYER && wire_mirror_of(m[..], 0).kind == WK_PLAYER;
+  #assert wire_mirror_of(m[..], last - 1).id == last - 1 && wire_mirror_of(m[..], WIRE_SEATS).id == WIRE_SEATS;
+}
+
+#test "zone: a seat of a full zone leaves and the rest stay; its seat is the next player's" {
+  v: [1] RmServer; z: [1] EzStore; rm_init(v[..]); rm_clock(v[..], 0, 1762190000000);
+  #assert ez_use(v[..], z[..], EG_ZONE_SEATS);
+  for c: 0..<EG_ZONE_SEATS { #assert rm_join(v[..], c, EZ_ASK) == c; }
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  rm_left(v[..], 140);
+  sat := 0; for s: 0..<EG_ZONE_SEATS { if v[0].eg[k].seat[s].live && !v[0].eg[k].seat[s].held { sat += 1; } }
+  #assert sat == EG_ZONE_SEATS - 1 && !v[0].eg[k].seat[140].live;
+  #assert rm_join(v[..], 140, EZ_ASK) == 140 && v[0].eg[k].seat[140].live && rm_join(v[..], 200, EZ_ASK) < 0;
+}

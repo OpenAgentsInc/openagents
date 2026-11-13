@@ -29,7 +29,7 @@ static coax_v_t_RmServer view(coax_t_RmServer *s) { return (coax_v_t_RmServer){s
 static void take(void) {
   for (int k = 0; k < 16; k++) {
     live_was[k] = v->eg.e[k].live;
-    if (live_was[k]) for (int s = 0; s < 16; s++) if (k != 0 || s != 0) seat_was[k][s] = v->eg.e[k].seat.e[s];
+    if (live_was[k]) for (int s = 0; s < 16; s++) if (k != 0 || s != 0) seat_was[k][s] = v->eg.e[k].seat.data[s];
   }
   for (int c = 1; c < PEERS; c++) { conn_was[c] = v->conns.e[c]; wt_was[c] = v->wt.e[c]; }
 }
@@ -38,20 +38,27 @@ static void take(void) {
 static int changed(void) {
   for (int k = 0; k < 16; k++) {
     if (v->eg.e[k].live != live_was[k]) return 1;
-    if (live_was[k]) for (int s = 0; s < 16; s++) if ((k != 0 || s != 0) && memcmp(&seat_was[k][s], &v->eg.e[k].seat.e[s], sizeof seat_was[k][s])) return 1;
+    if (live_was[k]) for (int s = 0; s < 16; s++) if ((k != 0 || s != 0) && memcmp(&seat_was[k][s], &v->eg.e[k].seat.data[s], sizeof seat_was[k][s])) return 1;
   }
   for (int c = 1; c < PEERS; c++) if (memcmp(&conn_was[c], &v->conns.e[c], sizeof conn_was[c]) || memcmp(&wt_was[c], &v->wt.e[c], sizeof wt_was[c])) return 1;
   return 0;
 }
 static void bad(const char *why) { fprintf(stderr, "fuzz-room: %s\n", why); abort(); }
+/* A room's seats are a view of its own storage (everglade/server/seat.coax seat_own, #13275): an address,
+   so a server copied from a fresh one has its views set to its own memory again. */
+static void rebind(void) {
+  for (size_t k = 0; k < sizeof v->eg.e / sizeof v->eg.e[0]; k++) if (v->eg.e[k].seat.count) v->eg.e[k].seat.data = v->eg.e[k].seat_own.e;
+}
 static void reset(int m) {
 #ifdef __linux__
   if (fresh_fd[m] >= 0) {
     if (mmap(v, sizeof *v, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED, fresh_fd[m], 0) != v) bad("no map");
+    rebind();
     return;
   }
 #endif
   memcpy(v, fresh[m], sizeof *v);
+  rebind();
 }
 int LLVMFuzzerInitialize(int *argc, char ***argv) {
   (void)argc; (void)argv;

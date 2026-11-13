@@ -159,7 +159,7 @@ rv_back :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
 // For the host, placing seat s of room k: 1 when it goes back where its player stood, then (field 1
 // to 4) that place's x, y, z and facing; 0 to the gate.
 rm_eg_back :: (v: [] RmServer, k: int, s_id: SeatId, field: int) -> f32 #export_c #effects(all) { s := s_id.value;
-  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].back { return 0; }
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= eg_cap(v, k) || !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].back { return 0; }
   st := v[0].eg[k].seat[s];
   if field == 1 { return st.back_x; }
   if field == 2 { return st.back_y; }
@@ -216,7 +216,7 @@ rm_vitals_due :: (v: [] RmServer) -> int #export_c #effects(all) {
     v[0].vit.last = v[0].wall_ms;
     for k: 0..<EG_ROOMS {
       if !v[0].eg[k].live { continue; }
-      for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { rv_note_seat(v, k, SeatId.{value = s}); } }
+      for s: 0..<eg_cap(v, k) { if v[0].eg[k].seat[s].live { rv_note_seat(v, k, SeatId.{value = s}); } }
     }
   }
   // a revision unsaved for VITALS_OUTBOX_MS is given up

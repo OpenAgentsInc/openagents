@@ -6,7 +6,7 @@
 //   /api/room/relay/GAME/CODE        GAME and CODE: 1 to RELAY_NAME of [a-z0-9-]
 // and up to rl_game_seats(GAME) players sit in it (16 for everglade, 4 for every other game),
 // the first in seat 0. Seats and counts are decimal numbers. What each hears (the frames' codec is
-// metaverse-engine/net/relay-wire.coax, their profile proto/verse/room-relay-v1.json):
+// metaverse-engine/net/relay-wire.coax, their profile proto/verse/room-relay-v2.json):
 //   y SEAT N T      you are in, at SEAT, with N others; T is the server's wall clock in ms (the first frame)
 //   y SEAT N T G    in an everglade room: G is the seat's generation, one more each time a socket takes it
 //                   (#12792). A closed socket's seat, when its ticket names the player, is held
@@ -28,6 +28,7 @@
 
 RELAYS :: 64;
 RELAY_SEATS :: 16;        // the most any game seats (everglade, verse.room_max())
+RELAY_ZONE_SEATS :: 150;  // the most a zone declares (EG_ZONE_SEATS, #13275): an Everglade room's seats are its zone's cap (eg_room_seats)
 RELAY_GAME_SEATS :: 4;    // every other game's seats
 RELAY_NAME :: 24;
 RELAY_PATH :: "/api/room/relay/";
@@ -94,18 +95,17 @@ rl_find :: (v: [] RmServer, game: string, code: string) -> int {
   for i: 0..<game.count { v[0].relays[free].game[i] = game[i]; }
   for i: 0..<code.count { v[0].relays[free].code[i] = code[i]; }
   v[0].relays[free].game_n = game.count; v[0].relays[free].code_n = code.count;
-  v[0].relays[free].seats = rl_game_seats(game);
+  v[0].relays[free].seats = ifx game == EVERGLADE then eg_room_seats(v) else rl_game_seats(game);
   v[0].relays[free].limited = game == EVERGLADE;
   return free;
 }
 rl_seat :: (v: [] RmServer, r: int) -> SeatId {
-  taken: [RELAY_SEATS] bool;
+  taken: [RELAY_ZONE_SEATS] bool;
   for i: 0..<CONNS {
-    c := v[0].conns[i];
-    if c.live && c.relay == r && c.seat >= 0 && c.seat < RELAY_SEATS { taken[c.seat] = true; }
+    if v[0].conns[i].live && v[0].conns[i].relay == r && v[0].conns[i].seat >= 0 && v[0].conns[i].seat < RELAY_ZONE_SEATS { taken[v[0].conns[i].seat] = true; }
   }
   k := ifx v[0].relays[r].limited then eg_room_at(v, r) else -1;
-  if k >= 0 { for s: 0..<EG_SEATS { if eg_held(v, k, SeatId.{value = s}) || v[0].eg[k].seat_life[s]==EV_SEAT_GENERATION_MAX { taken[s] = true; } } }
+  if k >= 0 { for s: 0..<eg_cap(v, k) { if eg_held(v, k, SeatId.{value = s}) || v[0].eg[k].seat_life[s]==EV_SEAT_GENERATION_MAX { taken[s] = true; } } }
   for seat: 0..<v[0].relays[r].seats { if !taken[seat] { return SeatId.{value = seat}; } }
   return SeatId.{value = -1};
 }
@@ -206,13 +206,12 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
   k := ifx eg >= 0 then rlw_put_you_gen(you[..], seat, others, v[0].wall_ms, gen.value) else rlw_put_you(you[..], seat, others, v[0].wall_ms);
   rl_queue(v, r, conn, -1, cast(string) you[0..<k], "");
   // who else sits: the other sockets' seats and the held ones, once each
-  sat: [RELAY_SEATS] bool;
+  sat: [RELAY_ZONE_SEATS] bool;
   for i: 0..<CONNS {
-    c := v[0].conns[i];
-    if i != conn && c.live && !c.kicked && c.relay == r && c.seat >= 0 && c.seat < RELAY_SEATS && c.seat != seat { sat[c.seat] = true; }
+    if i != conn && v[0].conns[i].live && !v[0].conns[i].kicked && v[0].conns[i].relay == r && v[0].conns[i].seat >= 0 && v[0].conns[i].seat < RELAY_ZONE_SEATS && v[0].conns[i].seat != seat { sat[v[0].conns[i].seat] = true; }
   }
-  if eg >= 0 { for s: 0..<EG_SEATS { if s != seat && eg_held(v, eg, SeatId.{value = s}) { sat[s] = true; } } }
-  for s: 0..<RELAY_SEATS { if sat[s] { rl_queue(v, r, conn, -1, rl_joined(h[..], SeatId.{value = s}), ""); } }
+  if eg >= 0 { for s: 0..<eg_cap(v, eg) { if s != seat && eg_held(v, eg, SeatId.{value = s}) { sat[s] = true; } } }
+  for s: 0..<v[0].relays[r].seats { if sat[s] { rl_queue(v, r, conn, -1, rl_joined(h[..], SeatId.{value = s}), ""); } }
   if back { eg_rejoin(v, r, conn, SeatId.{value = seat}); return seat; }   // the others still have them
   rl_queue(v, r, -1, conn, rl_joined(h[..], SeatId.{value = seat}), "");
   if v[0].relays[r].limited { eg_join(v, r, conn, SeatId.{value = seat}); }
@@ -227,12 +226,12 @@ RL_STALE_MS :: 3000;      // a socket of a joiner's own silent this long is thei
 rl_take_back :: (v: [] RmServer, r: int, pid: string, owner: int) -> int {
   k := eg_room_at(v, r);
   if k < 0 { return -1; }
-  for s: 0..<EG_SEATS { if eg_held(v, k, SeatId.{value = s}) && eg_held_for(v, k, SeatId.{value = s}, pid) { return s; } }
+  for s: 0..<eg_cap(v, k) { if eg_held(v, k, SeatId.{value = s}) && eg_held_for(v, k, SeatId.{value = s}, pid) { return s; } }
   seat := -1;
   for i: 0..<CONNS {
     c := v[0].conns[i];
     if !c.live || c.relay != r || c.kicked || !c.ticket.ok || cast(string) c.ticket.pid[0..<c.ticket.pid_n] != pid { continue; }
-    if c.seat < 0 || c.seat >= EG_SEATS { continue; }
+    if c.seat < 0 || c.seat >= eg_cap(v, k) { continue; }
     older := owner > 0 && c.ticket.owner > 0 && c.ticket.owner < owner;
     silent := v[0].mono_ms - v[0].eg[k].seat[c.seat].heard_ms >= RL_STALE_MS;
     if !silent && !older { continue; }
@@ -265,7 +264,7 @@ rl_owner_newest :: (v: [] RmServer, pid: string) -> int {
   }
   for k: 0..<EG_ROOMS {
     if !v[0].eg[k].live { continue; }
-    for s: 0..<EG_SEATS {
+    for s: 0..<eg_cap(v, k) {
       if eg_held(v, k, SeatId.{value = s}) && eg_held_for(v, k, SeatId.{value = s}, pid) && v[0].eg[k].tk[s].owner > best { best = v[0].eg[k].tk[s].owner; }
     }
   }
@@ -294,7 +293,7 @@ rl_owner_drop :: (v: [] RmServer, pid: string, below: int, but: int) -> int {
   for k: 0..<EG_ROOMS {
     r := v[0].eg[k].relay;
     if !v[0].eg[k].live || r < 0 || r == but { continue; }
-    for s: 0..<EG_SEATS {
+    for s: 0..<eg_cap(v, k) {
       if !v[0].eg[k].live || !v[0].eg[k].seat[s].live { continue; }
       tk := eg_ticket(v, k, SeatId.{value = s});
       if !tk.ok || tk.owner <= 0 || tk.owner >= below || cast(string) tk.pid[0..<tk.pid_n] != pid { continue; }
@@ -352,7 +351,7 @@ rl_current :: (v: [] RmServer, conn: int) -> bool {
   c := v[0].conns[conn];
   if c.kicked { return false; }
   k := eg_room_at(v, c.relay);
-  if k < 0 || c.seat < 0 || c.seat >= EG_SEATS { return true; }
+  if k < 0 || c.seat < 0 || c.seat >= eg_cap(v, k) { return true; }
   st := v[0].eg[k].seat[c.seat..<c.seat + 1];
   return st[0].live && st[0].conn == conn && net_session_current(st[0].gen,c.gen);
 }
@@ -360,7 +359,7 @@ rl_left :: (v: [] RmServer, conn: int) {
   c := v[0].conns[conn];
   v[0].conns[conn].live = false;
   k := ifx v[0].relays[c.relay].limited then eg_room_at(v, c.relay) else -1;
-  if k >= 0 && c.seat >= 0 && c.seat < EG_SEATS && v[0].eg[k].seat[c.seat].live {
+  if k >= 0 && c.seat >= 0 && c.seat < eg_cap(v, k) && v[0].eg[k].seat[c.seat].live {
     // a socket its player's newer one took the seat from: the seat is that one's now
     if v[0].eg[k].seat[c.seat].conn != conn || !net_session_current(v[0].eg[k].seat[c.seat].gen,c.gen) {
       if rl_people(v, c.relay) == 0 { v[0].relays[c.relay].live = false; }
@@ -369,7 +368,7 @@ rl_left :: (v: [] RmServer, conn: int) {
     // closed (not kicked), with a ticket naming its player: the seat waits for them (#12792), unless
     // its page was sent to another room (room-travel.coax): then the seat goes at once
     if !c.kicked && c.ticket.ok && c.ticket.pid_n > 0 && !eg_travelling(v, k, SeatId.{value = c.seat}) { eg_hold(v, k, SeatId.{value = c.seat}); return; }
-  } else if k >= 0 && c.seat >= 0 && c.seat < EG_SEATS {
+  } else if k >= 0 && c.seat >= 0 && c.seat < eg_cap(v, k) {
     // its seat already went (a newer ticket ended it, rl_owner_drop): the others heard l then
     if rl_people(v, c.relay) == 0 { v[0].relays[c.relay].live = false; }
     return;
@@ -384,7 +383,7 @@ rl_people :: (v: [] RmServer, r: int) -> int {
   n := 0;
   for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].relay == r { n += 1; } }
   k := ifx v[0].relays[r].limited then eg_room_at(v, r) else -1;
-  if k >= 0 { for s: 0..<EG_SEATS { if eg_held(v, k, SeatId.{value = s}) { n += 1; } } }
+  if k >= 0 { for s: 0..<eg_cap(v, k) { if eg_held(v, k, SeatId.{value = s}) { n += 1; } } }
   return n;
 }
 // The clocks the host keeps: monotonic ms (rate limits) and wall ms (y and t), set before each event.
@@ -442,7 +441,7 @@ rl_with :: (v: [] RmServer, slug: string, pid: string) -> int {
   for k: 0..<EG_ROOMS {
     if !v[0].eg[k].live || v[0].eg[k].relay < 0 { continue; }
     x := v[0].relays[v[0].eg[k].relay];
-    for s: 0..<EG_SEATS {
+    for s: 0..<eg_cap(v, k) {
       if !eg_held(v, k, SeatId.{value = s}) || !eg_held_for(v, k, SeatId.{value = s}, pid) { continue; }
       n := rl_instance(cast(string) x.code[0..<x.code_n], slug);
       if n > 0 { return n; }
@@ -480,12 +479,12 @@ rm_rooms :: (v: [] RmServer, request: string) -> int #export_c #effects(all) {
     ns[at] = n; ps[at] = rl_people(v, r); m += 1;
   }
   join := 1;
-  for i: 0..<m { if ns[i] == join && ps[i] >= RELAY_SEATS { join += 1; } }
+  for i: 0..<m { if ns[i] == join && ps[i] >= eg_room_seats(v) { join += 1; } }
   // ?with=PID (spec 8.1, #12716): the instance that player sits in now, when it has a free seat
   with := rl_with(v, slug, rl_query(request, "with"));
   if with > 0 { join = with; }
   o := v[0].jout[..];
-  k := put(o, 0, "{\"realm\":\""); k = put(o, k, slug); k = put(o, k, "\",\"game\":\"everglade\",\"seats\":"); k = put_int(o, k, RELAY_SEATS);
+  k := put(o, 0, "{\"realm\":\""); k = put(o, k, slug); k = put(o, k, "\",\"game\":\"everglade\",\"seats\":"); k = put_int(o, k, eg_room_seats(v));
   k = put(o, k, ",\"join\":\""); k = put(o, k, slug); k = put(o, k, "-"); k = put_int(o, k, join);
   if with > 0 { k = put(o, k, "\",\"with\":\""); k = put(o, k, slug); k = put(o, k, "-"); k = put_int(o, k, with); }
   k = put(o, k, "\",\"rooms\":[");

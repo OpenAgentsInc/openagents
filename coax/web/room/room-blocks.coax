@@ -13,10 +13,10 @@ eg_im_table :: (v: [] RmServer, k: int) {
   rm := v[0].eg[k..<k + 1];
   h := rm[0].hist[..]; im := rm[0].im[..];
   now := h[0].now; row := now % WIRE_BASES;
-  for q: 0..<WIRE_SLOTS {
-    id1 := cast(int) h[0].id[row * WIRE_SLOTS + q];
+  for q: 0..<h[0].slots {
+    id1 := cast(int) h[0].id[row * WIRE_ZSLOTS + q];
     if id1 == 0 { continue; }
-    a := (row * WIRE_SLOTS + q) * WIRE_SF;
+    a := (row * WIRE_ZSLOTS + q) * WIRE_SF;
     kind := cast(int) h[0].f[a + WS_KIND];
     of := -1; flags := 0; x := h[0].x[q]; z := h[0].z[q];
     if kind == WK_PLAYER {
@@ -24,10 +24,10 @@ eg_im_table :: (v: [] RmServer, k: int) {
       if (cast(int) h[0].f[a + WS_COND] & IM_WIRE_COND_INVISIBLE) != 0 { flags = IM_HIDDEN; }
     } else if kind == WK_EFFECT {
       on := cast(int) h[0].f[a + WS_OWNER] - WIRE_TGT_SEAT;
-      if on >= 0 && on < EG_SEATS {
-        of = on; x = h[0].x[on]; z = h[0].z[on];
-        b := (row * WIRE_SLOTS + on) * WIRE_SF;
-        if h[0].id[row * WIRE_SLOTS + on] != 0 && (cast(int) h[0].f[b + WS_COND] & IM_WIRE_COND_INVISIBLE) != 0 { flags = IM_HIDDEN; }
+      if on >= 0 && on < eg_cap(v, k) {
+        of = on; os := wire_seat_slot(on); x = h[0].x[os]; z = h[0].z[os];
+        b := (row * WIRE_ZSLOTS + os) * WIRE_SF;
+        if h[0].id[row * WIRE_ZSLOTS + os] != 0 && (cast(int) h[0].f[b + WS_COND] & IM_WIRE_COND_INVISIBLE) != 0 { flags = IM_HIDDEN; }
       }
     } else if kind == WK_FAMILIAR {
       // a familiar rides on its owner's seat and stands where it is: its owner hears it however far, and
@@ -45,7 +45,7 @@ eg_im_table :: (v: [] RmServer, k: int) {
 }
 // Seat s's pick this tick as the send path takes it: each table slot's priority (-1 not for this seat).
 eg_im_pick :: (v: [] RmServer, k: int, s_id: SeatId, x: f32, z: f32, pick: [] f32) { s := s_id.value;
-  fields:[WIRE_SLOTS]int;eg_im_pick_fields(v,k,s_id,x,z,pick,fields[..]);
+  fields:[WIRE_ZSLOTS]int;eg_im_pick_fields(v,k,s_id,x,z,pick,fields[..]);
   // The frozen pre-v3 codec cannot express a partial player. Withhold that entity entirely.
   for q:0..<pick.count {if fields[q]!=((1<<WIRE_SF)-1) {pick[q]=-1;}}
 }
@@ -75,8 +75,8 @@ eg_im_blocks :: (v: [] RmServer, k: int, s_id: SeatId, q_id: SeatId) -> bool { q
 // left) must reach everyone.
 eg_im_unseen :: (v: [] RmServer, k: int, s_id: SeatId, pick: [] f32, out: [] int) { s := s_id.value;
   slot_set_clear(out); slot_set_join(out, im_blocks_of(v[0].eg[k].im[..], s));
-  for q: 0..<IM_SEATS {
-    if q != s && q < pick.count && pick[q] < 0 && v[0].eg[k].seat[q].live && v[0].eg[k].seat[q].placed { _ := slot_set_put(out, q, true); }
+  for q: 0..<eg_cap(v, k) {
+    if q != s && wire_seat_slot(q) < pick.count && pick[wire_seat_slot(q)] < 0 && v[0].eg[k].seat[q].live && v[0].eg[k].seat[q].placed { _ := slot_set_put(out, q, true); }
   }
   _ := slot_set_put(out, s, false);
 }
@@ -93,14 +93,14 @@ eg_im_event_seats :: (v: [] RmServer, k: int, q: int, m: [] int) {
   what := wire_word(text, r[..]);
   if what == "cast" || what == "stop" || what == "xp" || what == "level" {
     ss := wire_num(text, r[..]);
-    if r[0].ok && ss < IM_SEATS { _ := slot_set_put(m, ss, true); }
+    if r[0].ok && ss < IM_ZONE_SEATS { _ := slot_set_put(m, ss, true); }
   }
   if what == "hit" || what == "heal" || what == "die" {
     for f: 0..<(ifx what == "hit" then 2 else 1) {
       code := wire_num(text, r[..]);
       if !r[0].ok { return; }
       ss := code - WIRE_TGT_SEAT;
-      if ss < IM_SEATS { _ := slot_set_put(m, ss, true); }
+      if ss < IM_ZONE_SEATS { _ := slot_set_put(m, ss, true); }
     }
   }
 }
@@ -120,7 +120,7 @@ eg_im_event_withheld :: (v: [] RmServer, k: int, s_id: SeatId, q_id: SeatId, uns
 // presses). Kept by id, so a blocked player who sits later is withheld from the tick they sit.
 ImBlockList :: struct { id: [WIRE_BLOCKS * TICKET_PID] u8; id_n: [WIRE_BLOCKS] int; n: int; }
 im_heard_blocks :: (v: [] RmServer, k: int, s_id: SeatId, text: string) { s := s_id.value;
-  if k < 0 || k >= EG_ROOMS || s < 0 || s >= IM_SEATS { return; }
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= eg_cap(v, k) { return; }
   l := v[0].eg[k].im_blk[s..<s + 1];
   l[0].n = 0;
   r: [1] WireRd; r[0] = wire_rd(text, 1);
@@ -136,16 +136,16 @@ im_heard_blocks :: (v: [] RmServer, k: int, s_id: SeatId, text: string) { s := s
 // Each seat's blocks (a set of seats) from the lists and who sits now: after a K, a join and a leave.
 im_room_blocks :: (v: [] RmServer, k: int) {
   if k < 0 || k >= EG_ROOMS { return; }
-  for s: 0..<IM_SEATS {
+  for s: 0..<eg_cap(v, k) {
     set: [IM_SEAT_WORDS] int;
-    l := v[0].eg[k].im_blk[s];
-    if v[0].eg[k].seat[s].live && l.n > 0 {
-      for q: 0..<IM_SEATS {
+    if v[0].eg[k].seat[s].live && v[0].eg[k].im_blk[s].n > 0 {
+      l := v[0].eg[k].im_blk[s..<s + 1];
+      for q: 0..<eg_cap(v, k) {
         if q == s { continue; }
         tq := eg_ticket(v, k, SeatId.{value = q});
         if !tq.ok { continue; }
         pid := cast(string) tq.pid[0..<tq.pid_n];
-        for b: 0..<l.n { if cast(string) l.id[b * TICKET_PID..<b * TICKET_PID + l.id_n[b]] == pid { _ := slot_set_put(set[..], q, true); } }
+        for b: 0..<l[0].n { if cast(string) l[0].id[b * TICKET_PID..<b * TICKET_PID + l[0].id_n[b]] == pid { _ := slot_set_put(set[..], q, true); } }
       }
     }
     im_blocks(v[0].eg[k].im[..], SeatId.{value = s}, set[..]);

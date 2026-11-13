@@ -15,7 +15,7 @@ eg_test_tick :: (v: [] RmServer, k: int) {
   eg_test_clock(v);
   if !rm_eg_begin(v, k) { return; }
   in: [EG_IN_FIELDS] int;
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     if rm_eg_unplaced(v, k, SeatId.{value = s}) { rm_eg_moved(v, k, SeatId.{value = s}, 0, f32(s), 0, 0, 0, 0, 0, 0, 1, 0, 0); }
     while rm_eg_input(v, k, SeatId.{value = s}, in[..]) {
       p := v[0].eg[k].seat[s].pose;
@@ -66,7 +66,7 @@ eg_test_drain :: (v: [] RmServer, box: [] EgInbox) {
     if box[0].deaf[c] || box[0].m[c].heard == 0 { continue; }
     for k: 0..<EG_ROOMS {
       if !v[0].eg[k].live { continue; }
-      for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].conn == c && v[0].conns[c].relay == v[0].eg[k].relay { eg_seat_heard(v, k, SeatId.{value = s}, box[0].m[c].heard); } }
+      for s: 0..<eg_cap(v, k) { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].conn == c && v[0].conns[c].relay == v[0].eg[k].relay { eg_seat_heard(v, k, SeatId.{value = s}, box[0].m[c].heard); } }
     }
   }
 }

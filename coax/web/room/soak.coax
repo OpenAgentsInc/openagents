@@ -7,7 +7,7 @@
 //   coax/web/tool.sh coax/web/room/soak.coax run --origin https://staging.openagents.com
 //        --vitals https://room-staging.openagents.com/api/room/s1/vitals --players 32 --seconds 7200
 //        [--out FILE] [--day YYYY-MM-DD] [--commit HEX] [--env staging] [--realm pair-e2-soak]
-//        [--reconnect 900] [--travel 600] [--direct]
+//        [--reconnect 900] [--travel 600] [--direct] [--zone]
 //     Starts the bots, and while they play reads the room's last 10 s window every 5 s (its tick's
 //     p50, p95 and p99, its players, its resident memory, its oldest unsaved checkpoint) and times
 //     the API's health. At the end it prints the record and the verdict's words, and writes the
@@ -22,6 +22,9 @@
 //     A --dev room of ROOM_BIN on this machine, played by PLAYERS bots (16) for SECONDS, with the same
 //     verdict: the 30-minute run a change to the room's creatures is held to (`local BIN 1800`,
 //     docs/metaverse/navigation.md).
+//   coax/web/tool.sh coax/web/room/soak.coax zone ROOM_BIN SECONDS [PORT] [PLAYERS]
+//     The same with the room started as one zone of PLAYERS seats (150; OA_ROOM_ZONE_SEATS) and every bot
+//     in that one room (bots.coax --zone): the 150 players in one zone of #13275. Run it on a quiet host.
 //   coax/web/tool.sh coax/web/room/soak.coax publish FILE ORIGIN
 //     Posts FILE's record to ORIGIN's API (POST /api/playtest/capacity-record), signed as a room's
 //     `capacity` write with OA_ROOM_WRITE_KEY or OA_ROOM_TICKET_KEY from the environment.
@@ -41,6 +44,7 @@ SO_ROOMS :: 32;
 SoOpts :: struct {
   origin: string; vitals: string; players: int; seconds: int; out: string; day: string; commit: string; env: string;
   realm: string; reconnect: int; travel: int; direct: bool;
+  zone: bool;        // every bot in one room (bots.coax --zone): the 150 players in one zone of #13275
   key_env: string;   // "OA_ROOM_TICKET_KEY=..." for the bots, when the run's room has a key of its own (the self-check's --dev room)
 }
 SoRun :: struct {
@@ -206,6 +210,7 @@ so_play :: (o: SoOpts, r: [] SoRun) -> bool {
         proc_arg(h, "--realm") && proc_arg(h, o.realm) && proc_arg(h, "--reconnect") && proc_arg(h, cast(string) rb[0..<rs_int(rb[..], 0, o.reconnect)]) &&
         proc_arg(h, "--travel") && proc_arg(h, cast(string) tb[0..<rs_int(tb[..], 0, o.travel)]) && proc_arg(h, "--window") && proc_arg(h, "60");
   if o.direct { ok = ok && proc_arg(h, "--direct"); }
+  if o.zone { ok = ok && proc_arg(h, "--zone"); }
   if o.key_env.count > 0 { ok = ok && proc_env(h, o.key_env); }
   if !ok || proc_start(h) != 0 { r0 := proc_release(h); return false; }
   w: [1] HttpWork; body: [SO_VITALS] u8; line: [8192] u8; none: [1] string;
@@ -266,15 +271,18 @@ so_run :: (o: SoOpts, bits: [] int) -> int {
 
 // A --dev room of `bin` on `port` (with `env` set for it, "" none), played by `players` bots for `seconds`:
 // so_run's answer (0 holds, 1 fails, 2 it could not run), and bits[0] its verdict.
-so_local :: (bin: string, port: int, env: string, players: int, seconds: int, reconnect: int, bits: [] int) -> int {
+so_local :: (bin: string, port: int, env: string, players: int, seconds: int, reconnect: int, zone: bool, bits: [] int) -> int {
   pb: [16] u8; ps := cast(string) pb[0..<rs_int(pb[..], 0, port)];
   h := proc_new();
   ok := proc_arg(h, bin) && proc_arg(h, "--port") && proc_arg(h, ps) && proc_arg(h, "--dev") && proc_arg(h, "coax/web/room/dev") &&
         proc_env(h, "OA_ROOM_TICKET_KEY=local-development-room-ticket-key-not-a-secret") && proc_quiet(h);
   if env.count > 0 { ok = ok && proc_env(h, env); }
+  // one zone of `players` seats: the room declares its cap (room-host.c OA_ROOM_ZONE_SEATS), and every bot sits in it
+  zb: [48] u8;
+  if zone { ok = ok && proc_env(h, cast(string) zb[0..<rs_int(zb[..], rs_put(zb[..], 0, "OA_ROOM_ZONE_SEATS="), players)]); }
   if !ok || proc_start(h) != 0 { r := proc_release(h); tool_errln("soak: the room did not start"); return 2; }
   ob: [128] u8; vb: [128] u8;
-  o := SoOpts.{players = players, seconds = seconds, env = "local", commit = "0000000", realm = "pair-e2-soak", reconnect = reconnect, travel = 0, direct = true,
+  o := SoOpts.{players = players, seconds = seconds, env = "local", commit = "0000000", realm = "pair-e2-soak", reconnect = reconnect, travel = 0, direct = true, zone = zone,
                   key_env = "OA_ROOM_TICKET_KEY=local-development-room-ticket-key-not-a-secret"};
   o.origin = cast(string) ob[0..<rs_int(ob[..], rs_put(ob[..], 0, "ws://localhost:"), port)];
   o.vitals = cast(string) vb[0..<rs_put(vb[..], rs_int(vb[..], rs_put(vb[..], 0, "http://127.0.0.1:"), port), "/api/room/vitals")];
@@ -295,7 +303,7 @@ so_self :: (bin: string, port: int) -> int {
   want := [3] int.[0, SK_SLOW_TICK, SK_LEAK];
   failed := 0;
   for k: 0..<3 {
-    bits: [1] int; st := so_local(bin, port + k, envs[k], 16, 60, 20, bits[..]);
+    bits: [1] int; st := so_local(bin, port + k, envs[k], 16, 60, 20, false, bits[..]);
     if st == 2 && bits[0] == 0 { tool_errln("soak: the local room could not be played"); }
     // the fault's own failure and no other of the room's (lost or blind would be the harness's)
     good := st != 2 && (ifx want[k] == 0 then bits[0] == 0 else (bits[0] & want[k]) != 0);
@@ -321,12 +329,16 @@ so_publish :: (file: string, origin: string) -> int {
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh coax/web/room/soak.coax run --origin URL --vitals URL --players N --seconds S [--out FILE] | self-check ROOM_BIN [PORT] | local ROOM_BIN SECONDS [PORT] [PLAYERS] | publish FILE ORIGIN"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh coax/web/room/soak.coax run --origin URL --vitals URL --players N --seconds S [--out FILE] | self-check ROOM_BIN [PORT] | local ROOM_BIN SECONDS [PORT] [PLAYERS] | zone ROOM_BIN SECONDS [PORT] [PLAYERS] | publish FILE ORIGIN"); return 2; }
   cmd := args_at(a[..], 0);
   if cmd == "self-check" && args_count(a[..]) >= 2 { return so_self(args_at(a[..], 1), ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 2)) else 28470); }
   if cmd == "local" && args_count(a[..]) >= 3 {
     bits: [1] int;
-    return so_local(args_at(a[..], 1), ifx args_count(a[..]) > 3 then rs_num(args_at(a[..], 3)) else 28480, "", ifx args_count(a[..]) > 4 then rs_num(args_at(a[..], 4)) else 16, rs_num(args_at(a[..], 2)), 300, bits[..]);
+    return so_local(args_at(a[..], 1), ifx args_count(a[..]) > 3 then rs_num(args_at(a[..], 3)) else 28480, "", ifx args_count(a[..]) > 4 then rs_num(args_at(a[..], 4)) else 16, rs_num(args_at(a[..], 2)), 300, false, bits[..]);
+  }
+  if cmd == "zone" && args_count(a[..]) >= 3 {
+    bits: [1] int;
+    return so_local(args_at(a[..], 1), ifx args_count(a[..]) > 3 then rs_num(args_at(a[..], 3)) else 28490, "", ifx args_count(a[..]) > 4 then rs_num(args_at(a[..], 4)) else 150, rs_num(args_at(a[..], 2)), 0, true, bits[..]);
   }
   if cmd == "publish" && args_count(a[..]) == 3 { return so_publish(args_at(a[..], 1), args_at(a[..], 2)); }
   if cmd != "run" { tool_errln("soak: run, self-check, local or publish"); return 2; }
@@ -334,7 +346,7 @@ tool_main :: () -> int #export_c #effects(all) {
   o.origin = args_value(a[..], "--origin", ""); o.vitals = args_value(a[..], "--vitals", "");
   o.players = rs_num(args_value(a[..], "--players", "96")); o.seconds = rs_num(args_value(a[..], "--seconds", "7200"));
   o.out = args_value(a[..], "--out", ""); o.day = args_value(a[..], "--day", ""); o.commit = args_value(a[..], "--commit", "0000000");
-  o.direct = args_has(a[..], "--direct");
+  o.direct = args_has(a[..], "--direct"); o.zone = args_has(a[..], "--zone");
   o.env = args_value(a[..], "--env", ifx o.direct then "local" else "staging"); o.realm = args_value(a[..], "--realm", "pair-e2-soak");
   o.reconnect = rs_num(args_value(a[..], "--reconnect", "900")); o.travel = rs_num(args_value(a[..], "--travel", "600"));
   if o.origin.count == 0 || o.vitals.count == 0 || o.players < 1 || o.seconds < 30 { tool_errln("soak: --origin, --vitals, --players >= 1, --seconds >= 30"); return 2; }

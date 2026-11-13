@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #define WORLD_ROOMS 4   /* everglade/server/seat.coax EG_ROOMS */
-#define WORLD_SEATS 16   /* EG_SEATS */
+#define WORLD_SEATS 150   /* EG_ZONE_SEATS: the most a zone declares (#13275); a room's own count is rm_eg_cap */
 #define WORLD_HZ 30      /* EG_HZ */
 #define WORLD_IN 7       /* EG_IN_FIELDS: SEQ KX KY PX PY THETA B */
 #define WORLD_POSE 10    /* X Y Z YAW VX VY VZ G CLIP CARRY */

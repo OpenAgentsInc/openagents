@@ -24,12 +24,12 @@ EV_CALM_S :: 30;                // s since a seat last cast or lost Hit Points b
 EvDials :: struct { reward: int = 100; }
 RmEvents :: struct { d: EvDials; }
 EvRoom :: struct {
-  earned: [EG_SEATS] bool;             // the seats that earned XP here
-  xp: [EG_SEATS] int;
-  demo: [EG_SEATS] bool;               // an admin asked for Everglade's own character (EV_DEMO_FLAG)
-  down: [EG_SEATS] int;                // each seat: the seconds it has lain dead (ev_rise)
-  fought: [EG_SEATS] int;              // each seat: the tick + 1 it last cast or lost Hit Points (0 never), for the Long Rest
-  hp_was: [EG_SEATS] int;              // its Hit Points at the last second (ev_calm)
+  earned: [EG_ZONE_SEATS] bool;             // the seats that earned XP here
+  xp: [EG_ZONE_SEATS] int;
+  demo: [EG_ZONE_SEATS] bool;               // an admin asked for Everglade's own character (EV_DEMO_FLAG)
+  down: [EG_ZONE_SEATS] int;                // each seat: the seconds it has lain dead (ev_rise)
+  fought: [EG_ZONE_SEATS] int;              // each seat: the tick + 1 it last cast or lost Hit Points (0 never), for the Long Rest
+  hp_was: [EG_ZONE_SEATS] int;              // its Hit Points at the last second (ev_calm)
 }
 
 ev_clamp :: (v: int, a: int, b: int) -> int { return ifx v < a then a else (ifx v > b then b else v); }
@@ -54,13 +54,13 @@ ev_hello :: (v: [] RmServer, k: int, s_id: SeatId, flags: int) { s := s_id.value
 }
 // XP for seat s (times the reward dial), its gain heard by everyone near it, a level-up by everyone.
 ev_award :: (v: [] RmServer, k: int, s_id: SeatId, base: int) { s := s_id.value;
-  if base <= 0 || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live { return; }
+  if base <= 0 || s < 0 || s >= eg_cap(v, k) || !v[0].eg[k].seat[s].live { return; }
   ev_gain(v, k, s_id, rs_max(base * v[0].evc.d.reward / 100, 1));
 }
 // XP for seat s as it stands: a quest's reward, which the character's record already has (room-items.coax),
 // and an award's after the dial.
 ev_gain :: (v: [] RmServer, k: int, s_id: SeatId, amount: int) { s := s_id.value;
-  if amount <= 0 || k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live { return; }
+  if amount <= 0 || k < 0 || k >= EG_ROOMS || s < 0 || s >= eg_cap(v, k) || !v[0].eg[k].seat[s].live { return; }
   v[0].ev[k].xp[s] = rs_min(v[0].ev[k].xp[s] + amount, EV_XP_MAX);
   v[0].ev[k].earned[s] = true;
   p := v[0].eg[k].seat[s].pose;
@@ -96,7 +96,7 @@ ev_join :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   // a returning player's HP is theirs at the new level too
   rv_hp_back(v, k, s_id);
 }
-ev_xp_of :: (v: [] RmServer, k: int, s_id: SeatId) -> int { s := s_id.value; return ifx k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS then v[0].ev[k].xp[s] else 0; }
+ev_xp_of :: (v: [] RmServer, k: int, s_id: SeatId) -> int { s := s_id.value; return ifx k >= 0 && k < EG_ROOMS && s >= 0 && s < eg_cap(v, k) then v[0].ev[k].xp[s] else 0; }
 
 // Once a second (tick.coax): the rises and the calm.
 ev_tick :: (v: [] RmServer, k: int) {
@@ -108,7 +108,7 @@ ev_tick :: (v: [] RmServer, k: int) {
 ev_rise :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
   b := v[0].eg[k].rules[0].b[..];
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     i := EGB_SEAT + s;
     if !v[0].eg[k].seat[s].live || !v[0].eg[k].rules[0].live[s] || (!b[0].c[i].dead && b[0].c[i].hp > 0) { e[0].down[s] = 0; continue; }
     e[0].down[s] += 1;
@@ -125,7 +125,7 @@ ev_rise :: (v: [] RmServer, k: int) {
 ev_calm :: (v: [] RmServer, k: int) {
   e := v[0].ev[k..<k + 1];
   b := v[0].eg[k].rules[0].b[..];
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     if !v[0].eg[k].seat[s].live || !v[0].eg[k].rules[0].live[s] { e[0].fought[s] = 0; e[0].hp_was[s] = 0; continue; }
     hp := b[0].c[EGB_SEAT + s].hp;
     if hp < e[0].hp_was[s] { e[0].fought[s] = v[0].eg[k].tick + 1; }
@@ -134,7 +134,7 @@ ev_calm :: (v: [] RmServer, k: int) {
 }
 // Whether seat s may take a Long Rest now: alive, and EV_CALM_S out of combat.
 ev_rest_ok :: (v: [] RmServer, k: int, s_id: SeatId) -> bool { s := s_id.value;
-  if s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live || !v[0].eg[k].rules[0].live[s] { return false; }
+  if s < 0 || s >= eg_cap(v, k) || !v[0].eg[k].seat[s].live || !v[0].eg[k].rules[0].live[s] { return false; }
   c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + s];
   if c.dead || c.hp <= 0 { return false; }
   f := v[0].ev[k].fought[s];

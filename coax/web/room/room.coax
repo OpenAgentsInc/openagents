@@ -122,6 +122,9 @@ RmServer :: struct {
   zoo: [1] E2Zoo;                        // the creatures a room's monsters and guard are, from the content tables (everglade/server/creatures.coax, #13293)
   nav: [1] E2NavShared;                  // the navigation pages every Everglade room shares, and their builder (everglade/server/nav.coax, #13281)
   dice_pool: [1] RsDice;                 // where each room's rules' dice come from: the host's OS random key (rm_dice_key, #13258); never on the wire
+  // a zone of more than EG_SEATS seats (everglade/server/seats.coax eg_zone_use, #13275): its battle's creatures and squares,
+  // the zone's storage as its seats are (EgRoom.seat); none in a process of rooms
+  zone_c: [] RsCreature; zone_occ: [] int;
 }
 
 // book:begin server-start
@@ -133,6 +136,7 @@ rm_init :: (v: [] RmServer) #export_c #effects(all) {
   for i: 0..<CONNS { v[0].conns[i] = RmConn.{}; }
   for r: 0..<RELAYS { v[0].relays[r].live = false; }
   for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
+  eg_seats_bind(v);   // each room's seats: its own, until a zone hands room 0 more (eg_zone_use)
   v[0].q_head = 0; v[0].q_n = 0;
   rm_games_init(v);
   e2zoo_shipped(v);
@@ -176,10 +180,17 @@ rm_start_check :: (v: [] RmServer) -> int #export_c #effects(all) {
 // raising these together).
 #test "start: a room seats WIRE_SEATS players, the number the pages say" {
   #assert EG_SEATS == WIRE_SEATS && RELAY_SEATS == WIRE_SEATS;
-  #assert IM_SEATS == EG_SEATS && EGB_SEATS == EG_SEATS && NET_PAST_BODIES >= EG_SEATS;
-  #assert EG_SEAT_WORDS == slot_set_words(EG_SEATS) && IM_SEAT_WORDS == EG_SEAT_WORDS;
+  #assert IM_SEATS == EG_SEATS && EGB_SEATS == EG_SEATS;
+  // a zone declares more, up to one number too (docs/decisions/0003-150-a-zone.md): what every seat-keyed table has room for
+  #assert EG_ZONE_SEATS == WIRE_ZONE_SEATS && IM_ZONE_SEATS == EG_ZONE_SEATS && EGB_ZONE_SEATS == EG_ZONE_SEATS && RELAY_ZONE_SEATS == EG_ZONE_SEATS;
+  #assert EG_SEAT_ROWS >= EG_ROOMS * EG_SEATS && EG_SEAT_ROWS >= EG_ZONE_SEATS && EG_ZONE_SEATS <= CONNS;
+  #assert EG_SEAT_WORDS == slot_set_words(EG_ZONE_SEATS) && IM_SEAT_WORDS == EG_SEAT_WORDS;
   // the table: the players first, a slot a seat, then every other kind's slots after them, inside the table
-  #assert EG_SLOT_FOLK == EG_SEATS && EG_SLOT_AB < EG_SLOT_BOAT && EG_SLOT_DOORS + 1 == EG_SLOT_TREE && EG_SLOT_GUARD < WIRE_SLOTS && IM_ENTS == WIRE_SLOTS;
+  #assert EG_SLOT_FOLK == EG_SEATS && EG_SLOT_AB < EG_SLOT_BOAT && EG_SLOT_DOORS + 1 == EG_SLOT_TREE && EG_SLOT_GUARD < WIRE_SLOTS && IM_ENTS == WIRE_ZSLOTS;
+  // a zone's seats past WIRE_SEATS: their rows after the layout's last slot, a slot each, and back
+  #assert wire_seat_slot(0) == 0 && wire_seat_slot(WIRE_SEATS - 1) == WIRE_SEATS - 1 && wire_seat_slot(WIRE_SEATS) == WIRE_SLOTS && wire_seat_slot(WIRE_ZONE_SEATS - 1) == WIRE_SLOTS + WIRE_ZMORE - 1 && wire_fam_slot(WIRE_SEATS) == WIRE_SLOTS + WIRE_ZMORE && wire_fam_slot(WIRE_ZONE_SEATS - 1) == WIRE_ZSLOTS - 1;
+  for s: 0..<WIRE_ZONE_SEATS { #assert wire_slot_seat(wire_seat_slot(s)) == s; }
+  #assert wire_slot_seat(WIRE_SEATS) == -1 && wire_slot_seat(WIRE_SLOTS - 1) == -1 && wire_slot_seat(-1) == -1 && wire_slot_seat(WIRE_ZSLOTS) == -1 && wire_slot_seat(wire_fam_slot(WIRE_SEATS)) == -1;
 }
 
 #test "start: rm_init keeps every declared default (the reward 100, seats -1)" {
@@ -342,7 +353,7 @@ rm_realm :: (realm:int)->NetRealm {
 rm_net_observation :: (v:[]RmServer,realm:int,room:int,metric:int)->int #export_c #effects(all) {
   if realm==RM_REALM_EVERGLADE {
     if room<0 || room>=EG_ROOMS || !v[0].eg[room].live {return -1;}
-    seats:=0;for s:0..<EG_SEATS {if v[0].eg[room].seat[s].live {seats+=1;}}
+    seats:=0;for s:0..<eg_cap(v, room) {if v[0].eg[room].seat[s].live {seats+=1;}}
     return net_observation_metric(net_observe(rm_realm(realm),v[0].eg[room].initialized,
       v[0].eg[room].live,v[0].eg[room].tick,seats,-1,-1,-1),metric);
   }

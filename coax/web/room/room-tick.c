@@ -68,7 +68,7 @@ static bool everglade2_room_tick(int k, int64_t room_work_start) {
   /* the trunks round him, which his steps go round (everglade/server/guard.coax) */
   float near[E2G_NEAR_C * 3];
   rm_e2_guard_near(view(), k, (coax_v_f32){near, guard_on ? world2_near(guard[0], guard[1], near, E2G_NEAR_C) * 3 : 0});
-  for (int s = 0; s < WORLD_SEATS; s++) {
+  for (int s = 0, seats = (int)rm_eg_cap(view(), k); s < seats; s++) {
     everglade2_place(k, s, pose);
     /* admin mode's teleport (everglade/server/admin.coax): asked of a local room only */
     float warp[3];
@@ -91,7 +91,7 @@ static bool everglade2_room_tick(int k, int64_t room_work_start) {
     if (rm_eg_sight(view(), k, q, query))
       rm_eg_sight_is(view(), k, q, world2_contact(ray, ray + 3));
   rm_eg_rules(view(), k);
-  for (int s = 0; s < WORLD_SEATS; s++) if (world_cut_take(k, s)) rm_eg_cut(view(), k, (coax_t_SeatId){ s});
+  for (int s = 0, seats = (int)rm_eg_cap(view(), k); s < seats; s++) if (world_cut_take(k, s)) rm_eg_cut(view(), k, (coax_t_SeatId){ s});
   int64_t tw = now_us(); part_us[PART_RULES] += tw - te;
   rm_eg_send(view(), k);
   ROOM_LATENCY_SERIALIZED(k,tw,tw,now_us());
@@ -112,7 +112,7 @@ static bool everglade_room_tick(int k) {
     ROOM_PROFILE_PHASE(0,phase_start);
     /* Placement resolves the capture's standing height, without advancing a
        paused encounter. The initial durable capture must precede gameplay. */
-    if (rm_checkpoint_paused(view(), k)) for (int s = 0; s < WORLD_SEATS; s++) everglade2_place(k, s, pose);
+    if (rm_checkpoint_paused(view(), k)) for (int s = 0, seats = (int)rm_eg_cap(view(), k); s < seats; s++) everglade2_place(k, s, pose);
     return false;
   }
   ROOM_PROFILE_PHASE(0,phase_start);

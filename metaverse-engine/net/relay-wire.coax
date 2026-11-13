@@ -1,9 +1,9 @@
 // The relay room's own frames (coax/web/room/room-relay.coax): the one codec both sides load. The
 // room writes y, j, l, m and the pong and reads the ping; every page that sits in a relay room reads
 // them and writes the ping with this file (everglade/client/net.coax, apps/openagents-web/
-// everglade-net.coax, lockroom.coax, oneshot.coax). Profile proto/verse/room-relay-v1.json, doc
-// docs/protocol/room-relay-v1.md (#13245); its check runs these functions:
-//   coax/web/tool.sh coax/web/room/relay-profile.coax proto/verse/room-relay-v1.json
+// everglade-net.coax, lockroom.coax, oneshot.coax). Profile proto/verse/room-relay-v2.json, doc
+// docs/protocol/room-relay-v2.md (#13245); its check runs these functions:
+//   coax/web/tool.sh coax/web/room/relay-profile.coax proto/verse/room-relay-v2.json
 // Text frames, fields one space apart, whole numbers in decimal.
 //   y SEAT N T      you are in, at SEAT, with N others; T is the server's wall clock in ms
 //   y SEAT N T G    in an everglade room: G is the seat's generation
@@ -16,7 +16,7 @@
 // is none. N, T and G are the room's to say: a page uses what it needs of them.
 //   coax/bin/coax test metaverse-engine/net/relay-wire.coax
 
-RLW_SEATS :: 16;     // a SEAT is below this (room-relay.coax RELAY_SEATS)
+RLW_SEATS :: 150;    // a SEAT is below this: the most a zone declares (room-relay.coax RELAY_ZONE_SEATS, #13275). v1 said 16, a room's seats; a reader of this version reads every v1 frame
 RLW_HEAD :: 24;      // "m SEAT " and each frame but m fit in this and RLW_FRAME
 RLW_FRAME :: 96;
 RLW_YOU :: 'y'; RLW_JOIN :: 'j'; RLW_LEFT :: 'l'; RLW_SAID :: 'm'; RLW_PONG :: 't';
@@ -123,15 +123,15 @@ rlw_read :: (t: string) -> RlwFrame {
   n = rlw_put_you_gen(b[..], 12, 15, 1762190000123, 2);
   #assert cast(string) b[0..<n] == "y 12 15 1762190000123 2";
   y = rlw_read(cast(string) b[0..<n]); #assert y.ok && y.seat == 12 && y.others == 15 && y.clock == 1762190000123 && y.gen_said && y.gen == 2;
-  for bad: [9] string.["y", "y 1", "y 1 1", "y 16 0 7", "y -1 0 7", "y 1 1 7 2 3", "y 1 x 7", "y 1 1 7 ", "y  1 1 7"] { #assert !rlw_read(bad).ok; }
+  for bad: [9] string.["y", "y 1", "y 1 1", "y 150 0 7", "y -1 0 7", "y 1 1 7 2 3", "y 1 x 7", "y 1 1 7 ", "y  1 1 7"] { #assert !rlw_read(bad).ok; }
   n = rlw_put_join(b[..], 13); #assert cast(string) b[0..<n] == "j 13" && rlw_read("j 13").ok && rlw_read("j 13").kind == RLW_JOIN && rlw_read("j 13").seat == 13;
   n = rlw_put_left(b[..], 3); #assert cast(string) b[0..<n] == "l 3" && rlw_read("l 3").ok && rlw_read("l 3").kind == RLW_LEFT && rlw_read("l 3").seat == 3;
-  for bad: [6] string.["j", "j x", "j 16", "j 1 2", "l -1", "l 3 "] { #assert !rlw_read(bad).ok; }
+  for bad: [6] string.["j", "j x", "j 150", "j 1 2", "l -1", "l 3 "] { #assert !rlw_read(bad).ok; }
   n = rlw_put_said(b[..], 0); #assert cast(string) b[0..<n] == "m 0 ";
   m := rlw_read("m 0 o 12 place 40 1"); #assert m.ok && m.kind == RLW_SAID && m.seat == 0 && m.body == "o 12 place 40 1";
   m = rlw_read("m 15  two"); #assert m.ok && m.seat == 15 && m.body == " two";
   m = rlw_read("m 2 "); #assert m.ok && m.body == "";
-  for bad: [4] string.["m 2", "m 16 x", "m x y", "m"] { #assert !rlw_read(bad).ok; }
+  for bad: [4] string.["m 2", "m 150 x", "m x y", "m"] { #assert !rlw_read(bad).ok; }
   n = rlw_put_ping(b[..], 5000); #assert cast(string) b[0..<n] == "t 5000" && rlw_ping("t 5000") && rlw_ping("t -5") && rlw_ping("t 123456789012345");
   for bad: [7] string.["t", "t ", "t -", "t 5 6", "t 5x", "t 1234567890123456789", "u 5"] { #assert !rlw_ping(bad); }
   n = rlw_put_pong(b[..], "t 5000", 1762190000123); #assert cast(string) b[0..<n] == "t 5000 1762190000123";

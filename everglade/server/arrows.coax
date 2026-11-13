@@ -74,9 +74,9 @@ e2a_bodies :: (v: [] RmServer, k: int, tick: int, out: [] arch.ArcheryBody) -> i
 }
 // The rules' creature for body b now (-1: it no longer stands).
 e2a_creature :: (v: [] RmServer, k: int, b: int) -> int {
-  if b == E2AR_GUARD { g := v[0].eg[k].guard[0]; return ifx g.q >= 0 && g.state != E2G_DOWN && g.state != E2G_NONE then EGB_BEAST0 + g.q else -1; }
+  if b == E2AR_GUARD { g := v[0].eg[k].guard[0]; return ifx g.q >= 0 && g.state != E2G_DOWN && g.state != E2G_NONE then egb0(v, k) + g.q else -1; }
   if b < 0 || b >= E2M_N || !e2mo_up(v, k, b) { return -1; }
-  return EGB_BEAST0 + e2mo_room(v, k)[0].mon[b].q;
+  return egb0(v, k) + e2mo_room(v, k)[0].mon[b].q;
 }
 e2a_say_end :: (v: [] RmServer, k: int, id: int, kind: int, at: [3] f32, dir: [3] f32, body: int) {
   out: [160] u8;
@@ -147,7 +147,7 @@ e2a_fly :: (v: [] RmServer, k: int, tick: int) {
 }
 // The archer's rules for its Attack, when its seat still holds that class's slot: (rules, seat, class).
 e2a_archer_ok :: (v: [] RmServer, k: int, tag: E2ArrowTag) -> bool {
-  if tag.seat < 0 || tag.seat >= EG_SEATS || !v[0].eg[k].seat[tag.seat].live { return false; }
+  if tag.seat < 0 || tag.seat >= eg_cap(v, k) || !v[0].eg[k].seat[tag.seat].live { return false; }
   r := v[0].eg[k].rules[..];
   return xk_entry_at(r[0].klass[tag.seat] - EGB_CL0, r[0].b[0].c[EGB_SEAT + tag.seat].level, tag.slot).ok;
 }
@@ -290,7 +290,7 @@ e2at_shoot :: (v: [] RmServer, k: int, seq: int, to: [3] f32, view_tick: int) {
 // An arrow's word (a, d: metaverse-engine/net/projectile.coax) to every placed seat within EG_VIEW m of (x, z).
 e2ar_say :: (v: [] RmServer, k: int, text: string, x: f32, z: f32) {
   room := v[0].eg[k..<k + 1];
-  for o: 0..<EG_SEATS {
+  for o: 0..<room[0].seat.count {
     st := room[0].seat[o..<o + 1];
     if !st[0].live || !st[0].placed || st[0].conn < 0 || e2mo_dist(st[0].pose.x, st[0].pose.z, x, z) > f32(EG_VIEW) { continue; }
     rl_queue(v, room[0].relay, st[0].conn, -1, text, "");

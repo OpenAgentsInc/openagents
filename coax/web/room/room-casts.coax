@@ -30,7 +30,7 @@ rm_eg_sight_is :: (v: [] RmServer, k: int, q: int, clear: bool) #export_c #effec
 rm_scheduled :: (v: [] RmServer) -> int #export_c #effects(all) { return 0; }
 // Each tick, before the rules' step: the world's harm (a guard's blade, a fall), after the heals.
 rc_tick_first :: (v: [] RmServer, k: int) {
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     u := hb_take(v[0].eg[k].hurts[..],s);
     if rm_eg_seat_live(v, k, SeatId.{value = s}) { egb_hurt(v[0].eg[k].rules[..], EG_TGT_SEAT + s, u.amount, u.by); }
   }
@@ -44,7 +44,7 @@ rc_test_tick :: (v: [] RmServer, k: int, clear: bool) {
   eg_test_clock(v);
   if !rm_eg_begin(v, k) { return; }
   in: [EG_IN_FIELDS] int;
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     if rm_eg_unplaced(v, k, SeatId.{value = s}) { rm_eg_moved(v, k, SeatId.{value = s}, 0, f32(s), 0, 0, 0, 0, 0, 0, 1, 0, 0); }
     while rm_eg_input(v, k, SeatId.{value = s}, in[..]) {
       p := v[0].eg[k].seat[s].pose;

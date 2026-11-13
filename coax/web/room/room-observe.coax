@@ -14,7 +14,7 @@
 rm_st_inputs::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   if out.count<5{return;}for q:0..<5{out[q]=0;}
   for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}
-    for s:0..<EG_SEATS{st:=v[0].eg[k].seat[s..<s+1];if !st[0].live{continue;}
+    for s:0..<eg_cap(v[..], k){st:=v[0].eg[k].seat[s..<s+1];if !st[0].live{continue;}
       out[0]+=st[0].q_n;out[2]=rs_max(out[2],st[0].q_n);out[3]+=st[0].late;
       for q:0..<st[0].q_n{at:=st[0].q[q].at;if at>v[0].mono_ms{out[4]+=1;}else{out[1]=rs_max(out[1],v[0].mono_ms-at);}}
     }
@@ -91,7 +91,7 @@ rm_st_sent_ack::(v:[]RmServer,conn:int,text:string)->int #export_c #effects(all)
   st[0].ack_sent_told=d.ack;return st[0].ack_at;
 }
 rm_st_saved::(v:[]RmServer,k:int, s_id: SeatId,out:[]int)->bool #export_c #effects(all) { s := s_id.value;
-  if out.count<12||!rm_eg_live(v,k)||s<0||s>=EG_SEATS||!v[0].eg[k].seat[s].live{return false;}
+  if out.count<12||!rm_eg_live(v,k)||s<0||s>=eg_cap(v, k)||!v[0].eg[k].seat[s].live{return false;}
   for q:0..<12{out[q]=0;}out[4]= -1;out[5]= -1;tk:=eg_ticket(v,k, s_id);out[1]=tk.owner;
   if tk.schema==2{
     out[0]=2;i:=ck_slot_seat(v,k, s_id);if i<0{return true;}e:=v[0].ck.slot[i..<i+1];
@@ -135,13 +135,13 @@ rm_st_saves::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   out[0]=rm_checkpoint_pending(v);out[1]=ifx v[0].ck.fly then 1 else 0;
   out[2]=v[0].ck.posts;out[3]=v[0].ck.retries;out[4]=v[0].ck.failures;out[5]=v[0].ck.applied;out[6]=v[0].ck.duplicates;out[7]=v[0].ck.late;out[8]=v[0].ck.refused;out[9]=v[0].ck.fenced;
   for i:0..<CF_CAP{e:=v[0].ck.slot[i..<i+1];if !e[0].live{continue;}out[10]+=1;if e[0].accepted{out[11]+=1;out[12]=rs_max(out[12],v[0].mono_ms-e[0].accepted_mono);out[13]=rs_max(out[13],v[0].mono_ms-e[0].receipt_mono);}}
-  for k:0..<EG_ROOMS{if rm_checkpoint_paused(v,k){out[14]+=1;}if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live{out[26]=rs_max(out[26],eg_ticket(v,k, SeatId.{value = s}).owner);}}}
+  for k:0..<EG_ROOMS{if rm_checkpoint_paused(v,k){out[14]+=1;}if !v[0].eg[k].live{continue;}for s:0..<eg_cap(v, k){if v[0].eg[k].seat[s].live{out[26]=rs_max(out[26],eg_ticket(v,k, SeatId.{value = s}).owner);}}}
   out[15]=ifx v[0].ck.finalizing then 1 else 0;out[16]=rm_vitals_pending(v);out[17]=ifx v[0].vit.fly then 1 else 0;
   out[18]=v[0].vit.posts;out[19]=v[0].vit.retried;out[20]=v[0].vit.failed;out[21]=v[0].vit.applied;out[22]=v[0].vit.dup;out[23]=v[0].vit.fenced;out[24]=v[0].vit.gave_up;out[25]=v[0].vit.evicted;out[27]=v[0].st.refused[ST_ELSEWHERE];
 }
 rm_st_rows::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   if out.count<9{return;}for q:0..<9{out[q]=0;}out[0]=v[0].st.rows;out[1]=v[0].st.row_bytes;out[2]=v[0].st.rows_deferred;out[5]= -1;out[6]= -1;
-  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if !v[0].eg[k].seat[s].live||!v[0].eg[k].seat[s].placed{continue;}
+  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<eg_cap(v, k){if !v[0].eg[k].seat[s].live||!v[0].eg[k].seat[s].placed{continue;}
     at:=k*EG_SEATS+s;n:=v[0].st.rows_last[at];left:=v[0].st.left_last[at];out[3]+=n;out[4]+=left;
     if out[5]<0||n+left>out[7]+out[8]{out[5]=k;out[6]=s;out[7]=n;out[8]=left;}
   }}
@@ -149,7 +149,7 @@ rm_st_rows::(v:[]RmServer,out:[]int) #export_c #effects(all) {
 rm_st_capacity::(v:[]RmServer,out:[]int) #export_c #effects(all) {
   if out.count<6{return;}for q:0..<6{out[q]=0;}out[0]=EG_ROOMS;
   for k:0..<EG_ROOMS{if !v[0].eg[k].live{out[2]+=1;continue;}out[1]+=1;
-    for s:0..<EG_SEATS{st:=v[0].eg[k].seat[s];if !st.live{continue;}
+    for s:0..<eg_cap(v, k){st:=v[0].eg[k].seat[s];if !st.live{continue;}
       if st.conn>=0{out[3]+=1;}if eg_held(v,k, SeatId.{value = s}){out[4]+=1;}if !st.placed{out[5]+=1;}
     }
   }

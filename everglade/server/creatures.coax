@@ -275,7 +275,7 @@ e2mo_room :: (v: [] RmServer, k: int) -> [] E2Monsters { return v[0].eg[k].monst
 e2mo_safe :: (x: f32, z: f32) -> bool { return z > f32(E2M_SAFE_Z); }
 // Seat s as a monster's quarry: placed, alive and up, and out of the glade.
 e2mo_quarry :: (v: [] RmServer, k: int, s: int) -> bool {
-  if s < 0 || s >= EG_SEATS { return false; }
+  if s < 0 || s >= eg_cap(v, k) { return false; }
   st := v[0].eg[k].seat[s..<s + 1]; r := v[0].eg[k].rules[..];
   if !st[0].live || !st[0].placed || !r[0].live[s] { return false; }
   c := r[0].b[0].c[EGB_SEAT + s..<EGB_SEAT + s + 1];
@@ -291,7 +291,7 @@ e2mo_spawn :: (v: [] RmServer, k: int, m: int) -> bool {
   if q < 0 { return false; }
   row := e2mo_row(v, m); tp := v[0].zoo[0].tpl[row.tpl];
   h := e2mo_home(v, m);
-  i := EGB_BEAST0 + q;
+  i := egb0(v, k) + q;
   c := e2mo_rules_creature(tp.block);
   c.x = egb_sq(h[0]); c.y = egb_z_cell(r, h[1]); c.turn_at = b[0].clock + 100000; c.round_at = b[0].clock;
   b[0].c[i] = c;
@@ -302,12 +302,12 @@ e2mo_spawn :: (v: [] RmServer, k: int, m: int) -> bool {
                  x = h[0], z = h[1], yaw = h[2], hx = h[0], hz = h[1], hyaw = h[2], spin = ifx m % 2 == 0 then 1.0f32 else -1.0f32};
   return true;
 }
-e2mo_creature :: (mo: E2Mon) -> int { return ifx mo.q < 0 then -1 else EGB_BEAST0 + mo.q; }
+e2mo_creature :: (v: [] RmServer, k: int, mo: E2Mon) -> int { return ifx mo.q < 0 then -1 else egb0(v, k) + mo.q; }
 // Whether monster m is up in the battle (its slot still its own).
 e2mo_up :: (v: [] RmServer, k: int, m: int) -> bool {
   mo := e2mo_room(v, k)[0].mon[m..<m + 1];
   if mo[0].q < 0 || mo[0].state == E2M_DEAD || mo[0].state == E2M_GONE { return false; }
-  q := mo[0].q; bt := v[0].eg[k].rules[0].beasts[q..<q + 1]; c := v[0].eg[k].rules[0].b[0].c[EGB_BEAST0 + q..<EGB_BEAST0 + q + 1];
+  q := mo[0].q; bt := v[0].eg[k].rules[0].beasts[q..<q + 1]; c := v[0].eg[k].rules[0].b[0].c[egb0(v, k) + q..<egb0(v, k) + q + 1];
   return bt[0].wild && bt[0].id == mo[0].id && !c[0].dead && c[0].hp > 0;
 }
 
@@ -352,7 +352,7 @@ e2mo_rouse :: (v: [] RmServer, k: int, group: int, s: int) {
 e2mo_home_again :: (mo: [] E2Mon) { mo[0].state = E2M_RETURN; mo[0].foe = -1; mo[0].act = 0; mo[0].threat_n = 0; }
 // Monster m is at home, whole again, as an MMO's monster is: its place, its Hit Points and its conditions.
 e2mo_rest_home :: (v: [] RmServer, k: int, m: int) {
-  mo := e2mo_room(v, k)[0].mon[m..<m + 1]; b := v[0].eg[k].rules[0].b[..]; i := e2mo_creature(mo[0]);
+  mo := e2mo_room(v, k)[0].mon[m..<m + 1]; b := v[0].eg[k].rules[0].b[..]; i := e2mo_creature(v, k, mo[0]);
   mo[0].x = mo[0].hx; mo[0].z = mo[0].hz; mo[0].yaw = mo[0].hyaw;
   b[0].c[i].hp = b[0].c[i].hp_max; b[0].c[i].cond = 0; b[0].c[i].temp = 0;
   mo[0].state = E2M_IDLE; slot_set_clear(mo[0].hurt_by[..]); mo[0].act = 0; mo[0].foe = -1; mo[0].home_t = 0; mo[0].threat_n = 0;
@@ -393,7 +393,7 @@ e2_monsters_tick :: (v: [] RmServer, k: int) {
       }
       e2mo_step(v, k, m, t, dt); e2nv_look(v, k, m, mo[0].x, mo[0].z, true);
     }
-    bt := r[0].beasts[mo[0].q..<mo[0].q + 1]; i := EGB_BEAST0 + mo[0].q;
+    bt := r[0].beasts[mo[0].q..<mo[0].q + 1]; i := egb0(v, k) + mo[0].q;
     bt[0].x = mo[0].x; bt[0].z = mo[0].z; bt[0].yaw = mo[0].yaw;
     b[0].c[i].x = egb_sq(mo[0].x); b[0].c[i].y = egb_z_cell(r, mo[0].z);
   }
@@ -405,7 +405,7 @@ e2_monsters_tick :: (v: [] RmServer, k: int) {
 }
 // Whether a placed player stands within E2M_UNSEEN m of (x, z).
 e2mo_seen :: (v: [] RmServer, k: int, x: f32, z: f32) -> bool {
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     st := v[0].eg[k].seat[s..<s + 1];
     if st[0].live && st[0].placed && e2mo_dist(st[0].pose.x, st[0].pose.z, x, z) < f32(E2M_UNSEEN) { return true; }
   }
@@ -413,7 +413,7 @@ e2mo_seen :: (v: [] RmServer, k: int, x: f32, z: f32) -> bool {
 }
 e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
   ms := e2mo_room(v, k); mo := ms[0].mon[m..<m + 1]; r := v[0].eg[k].rules[..]; b := r[0].b[..];
-  tp := e2mo_tpl(v, mo[0]); style := E2M_STYLE[tp.style]; i := e2mo_creature(mo[0]);
+  tp := e2mo_tpl(v, mo[0]); style := E2M_STYLE[tp.style]; i := e2mo_creature(v, k, mo[0]);
   run := tp.run;
   if mo[0].state == E2M_IDLE {
     // home: it faces the way it stands, and wakes for the one its line of sight found last tick
@@ -498,7 +498,7 @@ e2mo_step :: (v: [] RmServer, k: int, m: int, t: int, dt: f32) {
 e2mo_blow :: (v: [] RmServer, k: int, m: int, s: int) {
   mo := e2mo_room(v, k)[0].mon[m..<m + 1]; b := v[0].eg[k].rules[0].b[..];
   j := EGB_SEAT + s; was := b[0].c[j].hp;
-  _ := e2mo_strike(b, e2mo_creature(mo[0]), j, e2mo_melee(e2mo_tpl(v, mo[0]).block), 1);
+  _ := e2mo_strike(b, e2mo_creature(v, k, mo[0]), j, e2mo_melee(e2mo_tpl(v, mo[0]).block), 1);
   mo[0].hit_t = v[0].eg[k].tick; mo[0].hit_seat = s;
   e2mo_tell(v, k, 1, m, s, rs_max(was - b[0].c[j].hp, 0), mo[0].x, mo[0].z);
 }
@@ -538,7 +538,7 @@ e2mo_arrows :: (v: [] RmServer, k: int, t: int) {
     p := v[0].eg[k].seat[s].pose;
     if !e2mo_quarry(v, k, s) || e2mo_dist(p.x, p.z, sh[0].tx, sh[0].tz) > 1.0 { e2mo_tell(v, k, 1, sh[0].m, s, 0, mo.x, mo.z); continue; }
     j := EGB_SEAT + s; was := b[0].c[j].hp;
-    _ := e2mo_strike(b, e2mo_creature(mo), j, e2mo_ranged(e2mo_tpl(v, mo).block), 2);
+    _ := e2mo_strike(b, e2mo_creature(v, k, mo), j, e2mo_ranged(e2mo_tpl(v, mo).block), 2);
     e2mo_tell(v, k, 1, sh[0].m, s, rs_max(was - b[0].c[j].hp, 0), mo.x, mo.z);
   }
 }
@@ -549,16 +549,16 @@ e2_monsters_after :: (v: [] RmServer, k: int) {
   for m: 0..<E2M_N {
     mo := ms[0].mon[m..<m + 1];
     if mo[0].q < 0 || mo[0].state == E2M_DEAD || mo[0].state == E2M_GONE { continue; }
-    i := EGB_BEAST0 + mo[0].q; id := r[0].beasts[mo[0].q].id;
+    i := egb0(v, k) + mo[0].q; id := r[0].beasts[mo[0].q].id;
     if id == mo[0].id && !b[0].c[i].dead && b[0].c[i].hp > 0 { continue; }
     if id == mo[0].id { egb_beast_gone(r, mo[0].q); }
     mo[0].state = E2M_DEAD; mo[0].down_t = t; mo[0].act = 0; mo[0].foe = -1; mo[0].threat_n = 0;
     e2mo_tell(v, k, 4, m, -1, 0, mo[0].x, mo[0].z);
     // its SRD XP, split evenly among the seats that hurt it
-    n := 0; for s: 0..<EG_SEATS { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { n += 1; } }
-    if n > 0 { for s: 0..<EG_SEATS { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { ev_award(v, k, SeatId.{value = s}, rs_max(e2mo_tpl(v, mo[0]).xp / n, 1)); } } }
+    n := 0; for s: 0..<eg_cap(v, k) { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { n += 1; } }
+    if n > 0 { for s: 0..<eg_cap(v, k) { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { ev_award(v, k, SeatId.{value = s}, rs_max(e2mo_tpl(v, mo[0]).xp / n, 1)); } } }
     // its drop and its place in their quests, by the content tables (coax/web/room/room-items.coax, #13291, #13292)
-    for s: 0..<EG_SEATS { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { ri_kill(v, k, SeatId.{value = s}, e2mo_tpl(v, mo[0]).creature); } }
+    for s: 0..<eg_cap(v, k) { if slot_set_has(mo[0].hurt_by[..], s) && v[0].eg[k].seat[s].live { ri_kill(v, k, SeatId.{value = s}, e2mo_tpl(v, mo[0]).creature); } }
   }
 }
 
@@ -571,7 +571,7 @@ e2_monster_target :: (v: [] RmServer, k: int, ax: f32, az: f32) -> int {
     mo := ms[0].mon[m];
     if !e2mo_up(v, k, m) || mo.state == E2M_RETURN { continue; }
     d := e2mo_dist(ax, az, mo.x, mo.z);
-    if d <= best { best = d; got = EGB_BEAST0 + mo.q; }
+    if d <= best { best = d; got = egb0(v, k) + mo.q; }
   }
   return got;
 }
@@ -581,7 +581,7 @@ e2_monster_struck :: (v: [] RmServer, k: int, s: int, i: int, hp_before: int) {
   ms := e2mo_room(v, k);
   for m: 0..<E2M_N {
     mo := ms[0].mon[m..<m + 1];
-    if mo[0].q < 0 || EGB_BEAST0 + mo[0].q != i { continue; }
+    if mo[0].q < 0 || egb0(v, k) + mo[0].q != i { continue; }
     hp := v[0].eg[k].rules[0].b[0].c[i].hp;
     _ := slot_set_put(mo[0].hurt_by[..], s, true);
     if mo[0].state != E2M_RETURN { e2th_add(mo, s, rs_max(hp_before - hp, 1)); }
@@ -594,7 +594,7 @@ e2_monster_struck :: (v: [] RmServer, k: int, s: int, i: int, hp_before: int) {
 // on its list, the healer is half of that more of a threat, and has taken part in its fall.
 e2_monster_healed :: (v: [] RmServer, k: int, healer: int, healed: int, amount: int) {
   ms := e2mo_room(v, k);
-  if amount <= 0 || healer < 0 || healer >= EG_SEATS { return; }
+  if amount <= 0 || healer < 0 || healer >= eg_cap(v, k) { return; }
   for m: 0..<E2M_N {
     mo := ms[0].mon[m..<m + 1];
     if !e2mo_up(v, k, m) || mo[0].state == E2M_IDLE || mo[0].state == E2M_RETURN || e2th_of(mo[0], healed) <= 0 { continue; }
@@ -606,7 +606,7 @@ e2_monster_taunted :: (v: [] RmServer, k: int, s: int, i: int) {
   ms := e2mo_room(v, k);
   for m: 0..<E2M_N {
     mo := ms[0].mon[m..<m + 1];
-    if mo[0].q < 0 || EGB_BEAST0 + mo[0].q != i || !e2mo_up(v, k, m) || mo[0].state == E2M_RETURN || !e2mo_quarry(v, k, s) { continue; }
+    if mo[0].q < 0 || egb0(v, k) + mo[0].q != i || !e2mo_up(v, k, m) || mo[0].state == E2M_RETURN || !e2mo_quarry(v, k, s) { continue; }
     e2th_taunt(mo, s);
     if mo[0].state == E2M_IDLE { e2mo_rouse(v, k, mo[0].group, s); }
   }
@@ -621,7 +621,7 @@ e2_monster_assailant :: (v: [] RmServer, k: int, x: f32, z: f32, reach: f32) -> 
     p := v[0].eg[k].seat[mo.hit_seat].pose;
     if e2mo_dist(p.x, p.z, x, z) > reach { continue; }
     d := e2mo_dist(mo.x, mo.z, x, z);
-    if d < best { best = d; got = EGB_BEAST0 + mo.q; }
+    if d < best { best = d; got = egb0(v, k) + mo.q; }
   }
   return got;
 }
@@ -632,12 +632,12 @@ e2_monster_guarded_at :: (v: [] RmServer, k: int, tick: int, i: int, amount: int
   ms := e2mo_room(v, k);
   for m: 0..<E2M_N {
     mo := ms[0].mon[m..<m + 1];
-    if mo[0].q >= 0 && EGB_BEAST0 + mo[0].q == i { e2mo_tell_at(v, k, tick, 2, m, -1, amount, mo[0].x, mo[0].z); return; }
+    if mo[0].q >= 0 && egb0(v, k) + mo[0].q == i { e2mo_tell_at(v, k, tick, 2, m, -1, amount, mo[0].x, mo[0].z); return; }
   }
 }
 e2_monster_at :: (v: [] RmServer, k: int, i: int) -> [2] f32 {
   ms := e2mo_room(v, k);
-  for m: 0..<E2M_N { mo := ms[0].mon[m]; if mo.q >= 0 && EGB_BEAST0 + mo.q == i { return [2] f32.[mo.x, mo.z]; } }
+  for m: 0..<E2M_N { mo := ms[0].mon[m]; if mo.q >= 0 && egb0(v, k) + mo.q == i { return [2] f32.[mo.x, mo.z]; } }
   return [2] f32.[0, 0];
 }
 
@@ -653,7 +653,7 @@ e2_monster_sights :: (v: [] RmServer, k: int, first: int) -> int {
     s := -1;
     if mo[0].state == E2M_IDLE {
       best := e2mo_tpl(v, mo[0]).notice + 0.001;
-      for o: 0..<EG_SEATS {
+      for o: 0..<eg_cap(v, k) {
         if !e2mo_quarry(v, k, o) { continue; }
         p := v[0].eg[k].seat[o].pose; d := e2mo_dist(p.x, p.z, mo[0].x, mo[0].z);
         if d < best { best = d; s = o; }
@@ -703,7 +703,7 @@ e2_monsters_rows :: (v: [] RmServer, k: int) {
     mo := ms[0].mon[m..<m + 1];
     if mo[0].state == E2M_GONE { continue; }
     hp := 0; max := 1;
-    if mo[0].q >= 0 && mo[0].state != E2M_DEAD { i := EGB_BEAST0 + mo[0].q; hp = room[0].rules[0].b[0].c[i].hp; max = room[0].rules[0].b[0].c[i].hp_max; }
+    if mo[0].q >= 0 && mo[0].state != E2M_DEAD { i := egb0(v, k) + mo[0].q; hp = room[0].rules[0].b[0].c[i].hp; max = room[0].rules[0].b[0].c[i].hp_max; }
     if mo[0].told_life != mo[0].life { wire_hist_born(h, EG_SLOT_MON + m); mo[0].told_life = mo[0].life; }
     wire_hist_put(h, EG_SLOT_MON + m, WireS.{id = WIRE_ID_MADE + WIRE_MON_EID + m, kind = WK_MONSTER, x = mo[0].x, z = mo[0].z, yaw = e2mo_wrap(mo[0].yaw),
       g = mo[0].state, clip = mo[0].act, hp = hp, max = max, owner = ifx mo[0].foe >= 0 then WIRE_TGT_SEAT + mo[0].foe else -1, p1 = m, p2 = mo[0].kind,
@@ -738,8 +738,8 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
   // every standing monster has its row, in its own slot, with its fields from its record and the battle
   for m: 0..<E2M_N {
     w := wire_test_row(h, EG_SLOT_MON + m, now); o := ms[0].mon[m];
-    if e2mo_retired(v[..], m) { #assert o.state == E2M_GONE && h[0].id[(now % WIRE_BASES) * WIRE_SLOTS + EG_SLOT_MON + m] == 0; continue; }   // a retired row never stands, and has no row
-    #assert o.state != E2M_GONE && cast(int) h[0].id[(now % WIRE_BASES) * WIRE_SLOTS + EG_SLOT_MON + m] == WIRE_ID_MADE + WIRE_MON_EID + m + 1;
+    if e2mo_retired(v[..], m) { #assert o.state == E2M_GONE && h[0].id[(now % WIRE_BASES) * WIRE_ZSLOTS + EG_SLOT_MON + m] == 0; continue; }   // a retired row never stands, and has no row
+    #assert o.state != E2M_GONE && cast(int) h[0].id[(now % WIRE_BASES) * WIRE_ZSLOTS + EG_SLOT_MON + m] == WIRE_ID_MADE + WIRE_MON_EID + m + 1;
     #assert w.kind == WK_MONSTER && w.p1 == m && w.p2 == o.kind && w.g == o.state && w.hp > 0 && w.max == room[0].rules[0].b[0].c[EGB_BEAST0 + o.q].hp_max && w.life > 0;
     #assert abs(w.x - o.x) < 0.006 && abs(w.z - o.z) < 0.006 && w.cond == 0 && w.dur == 0 && w.form == 0;
     #assert e2_monster_of_beast(v[..], k, o.q) == m;
@@ -748,7 +748,7 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
   // no monster is also a summoned creature's row, though each stands in the rules as one
   for q: 0..<EGB_BEASTS { egb_beast_ground(room[0].rules[..], q, 0); }
   e2mt_tick(v[..], k); now = h[0].now;
-  for q: 0..<EGB_BEASTS { if e2_monster_of_beast(v[..], k, q) >= 0 || room[0].guard[0].q == q { #assert h[0].id[(now % WIRE_BASES) * WIRE_SLOTS + EG_SLOT_BEAST + q] == 0; } }
+  for q: 0..<EGB_BEASTS { if e2_monster_of_beast(v[..], k, q) >= 0 || room[0].guard[0].q == q { #assert h[0].id[(now % WIRE_BASES) * WIRE_ZSLOTS + EG_SLOT_BEAST + q] == 0; } }
   // interest: the seat 30 m off is sent its row; a seat past the exit radius is not
   eg_im_pick(v[..], k, SeatId.{value = 0}, room[0].seat[0].pose.x, room[0].seat[0].pose.z, pick[..]);
   #assert pick[EG_SLOT_MON] >= 0;
@@ -758,8 +758,8 @@ e2mt_count :: (v: [] RmServer, k: int, states: int) -> int {
   // one that is gone has no row; the next there is a new life of the same id
   life := wire_test_row(h, EG_SLOT_MON, h[0].now).life;
   ms[0].mon[0].state = E2M_GONE; wire_hist_begin(h, h[0].now + 1); e2_monsters_rows(v[..], k);
-  #assert h[0].id[(h[0].now % WIRE_BASES) * WIRE_SLOTS + EG_SLOT_MON] == 0 && e2_monster_of_beast(v[..], k, mo.q) < 0;
-  #assert h[0].id[(h[0].now % WIRE_BASES) * WIRE_SLOTS + EG_SLOT_MON + 3] != 0;
+  #assert h[0].id[(h[0].now % WIRE_BASES) * WIRE_ZSLOTS + EG_SLOT_MON] == 0 && e2_monster_of_beast(v[..], k, mo.q) < 0;
+  #assert h[0].id[(h[0].now % WIRE_BASES) * WIRE_ZSLOTS + EG_SLOT_MON + 3] != 0;
   ms[0].mon[0].state = E2M_IDLE; ms[0].mon[0].life += 1; wire_hist_begin(h, h[0].now + 1); e2_monsters_rows(v[..], k);
   w := wire_test_row(h, EG_SLOT_MON, h[0].now);
   #assert w.kind == WK_MONSTER && w.life != life && ms[0].mon[0].told_life == ms[0].mon[0].life;

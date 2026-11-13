@@ -116,7 +116,7 @@ ck_find :: (v:[]RmServer,pid:string)->int {
   for i:0..<CF_CAP{e:=v[0].ck.slot[i..<i+1];if e[0].live&&cast(string)e[0].pid[0..<e[0].pid_n]==pid{return i;}}return -1;
 }
 ck_seated :: (v:[]RmServer,pid:string)->bool {
-  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if !v[0].eg[k].seat[s].live{continue;}tk:=eg_ticket(v,k, SeatId.{value = s});if tk.ok&&tk.schema==2&&cast(string)tk.pid[0..<tk.pid_n]==pid{return true;}}}return false;
+  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<eg_cap(v, k){if !v[0].eg[k].seat[s].live{continue;}tk:=eg_ticket(v,k, SeatId.{value = s});if tk.ok&&tk.schema==2&&cast(string)tk.pid[0..<tk.pid_n]==pid{return true;}}}return false;
 }
 ck_reserve :: (v:[]RmServer,tk:Ticket)->bool {
   if tk.schema!=2{return true;}pid:=tk.pid;name:=cast(string)pid[0..<tk.pid_n];i:=ck_find(v,name);
@@ -205,13 +205,13 @@ ck_can_play :: (v:[]RmServer,k:int, s_id: SeatId)->bool {
 }
 rm_checkpoint_paused :: (v:[]RmServer,k:int)->bool #export_c #effects(all) {
   if k<0||k>=EG_ROOMS||!v[0].eg[k].live{return false;}
-  for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live&&v[0].eg[k].seat[s].checkpoint_hello&&(v[0].ck.finalizing||ck_stale(v,k, SeatId.{value = s})){return true;}}return false;
+  for s:0..<eg_cap(v, k){if v[0].eg[k].seat[s].live&&v[0].eg[k].seat[s].checkpoint_hello&&(v[0].ck.finalizing||ck_stale(v,k, SeatId.{value = s})){return true;}}return false;
 }
 ck_pause :: (v:[]RmServer,k:int) {
-  for s:0..<EG_SEATS{st:=v[0].eg[k].seat[s..<s+1];if !st[0].live{continue;}st[0].q_n=0;st[0].bank=0;st[0].sat_ms=v[0].mono_ms;st[0].earned=0;}
+  for s:0..<eg_cap(v, k){st:=v[0].eg[k].seat[s..<s+1];if !st[0].live{continue;}st[0].q_n=0;st[0].bank=0;st[0].sat_ms=v[0].mono_ms;st[0].earned=0;}
 }
 rm_checkpoint_flush :: (v:[]RmServer) #export_c #effects(all) {
-  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live{ck_capture(v,k, SeatId.{value = s});}}}
+  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<eg_cap(v, k){if v[0].eg[k].seat[s].live{ck_capture(v,k, SeatId.{value = s});}}}
 }
 rm_checkpoint_finish :: (v:[]RmServer) #export_c #effects(all) {rm_checkpoint_flush(v);v[0].ck.finalizing=true;}
 rm_checkpoint_clean :: (v:[]RmServer)->bool #export_c #effects(all) {return rm_checkpoint_pending(v)==0&&!v[0].ck.fly;}

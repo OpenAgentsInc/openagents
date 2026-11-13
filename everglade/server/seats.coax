@@ -44,6 +44,40 @@ eg_e2_code :: (code: string) -> bool {
 }
 // Room k runs Everglade II's world (the host steps its seats on world2_*, room-tick.c).
 
+// ---- a room's seats: the zone's storage (#13275, docs/decisions/0007)
+
+// Room k's seats: the cap its zone declared (EG_SEATS for a room handed none), 0 for a room that is none.
+eg_cap :: (v: [] RmServer, k: int) -> int { return ifx k >= 0 && k < EG_ROOMS then v[0].eg[k].seat.count else 0; }
+// Where room k's summoned creatures start in its battle: after its seats (everglade/server/battle.coax).
+egb0 :: (v: [] RmServer, k: int) -> int { return v[0].eg[k].rules[0].seats; }
+// Every room handed no seats has its own EG_SEATS: at the server's start (rm_init), and as a room opens.
+eg_seats_bind :: (v: [] RmServer) {
+  for k: 0..<EG_ROOMS { if v[0].eg[k].seat.count == 0 { v[0].eg[k].seat = v[0].eg[k].seat_own[..]; } }
+}
+// A zone of more than EG_SEATS seats: this process's one room (room 0) is handed its storage, sized by the cap
+// the zone declares. Taken whole or refused: `seats` is the cap (more than EG_SEATS, EG_ZONE_SEATS at most),
+// `creatures` a creature for each seat, each summoned creature and each seat's familiar, `squares` the rules'
+// square index (RS_SQUARES), `held` and `reveal` interest's per-seat tables (IM_ENTS a seat); and no room may be open yet. From then on the process opens room 0 only.
+eg_zone_creatures :: (seats: int) -> int { return seats * 2 + EGB_BEASTS; }
+eg_zone_use :: (v: [] RmServer, seats: [] EgSeat, creatures: [] RsCreature, squares: [] int, held: [] int, reveal: [] int) -> bool {
+  if seats.count <= EG_SEATS || seats.count > EG_ZONE_SEATS || creatures.count != eg_zone_creatures(seats.count) || squares.count != RS_SQUARES { return false; }
+  if held.count != seats.count * IM_ENTS || reveal.count != held.count { return false; }
+  for k: 0..<EG_ROOMS { if v[0].eg[k].live { return false; } }
+  if !im_use(v[0].eg[0].im[..], held, reveal) { return false; }
+  for s: 0..<seats.count { seats[s] = EgSeat.{}; }
+  v[0].eg[0].seat = seats; v[0].zone_c = creatures; v[0].zone_occ = squares;
+  return true;
+}
+// The host's word (room-host.c OA_ROOM_ZONE_SEATS): the storage it made for the cap its zone declares.
+rm_zone_use :: (v: [] RmServer, seats: [] EgSeat, creatures: [] RsCreature, squares: [] int, held: [] int, reveal: [] int) -> bool #export_c #effects(all) { return eg_zone_use(v, seats, creatures, squares, held, reveal); }
+rm_zone_interest :: (seats: int) -> int #export_c #effects(all) { return seats * IM_ENTS; }
+rm_zone_creatures :: (seats: int) -> int #export_c #effects(all) { return eg_zone_creatures(seats); }
+rm_zone_squares :: () -> int #export_c #effects(all) { return RS_SQUARES; }
+// Whether this process runs one zone of its own cap (eg_zone_use): room 0 alone.
+eg_zoned :: (v: [] RmServer) -> bool { return v[0].zone_c.count > 0; }
+// The seats an Everglade room of this process has: the zone's cap, or EG_SEATS.
+eg_room_seats :: (v: [] RmServer) -> int { return ifx eg_zoned(v) then v[0].eg[0].seat.count else EG_SEATS; }
+
 eg_room_at :: (v: [] RmServer, r: int) -> int {
   for k: 0..<EG_ROOMS { if v[0].eg[k].live && v[0].eg[k].relay == r { return k; } }
   return -1;
@@ -55,12 +89,15 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
   // every room is Everglade II's (docs/decisions/0005-production-room-runs-everglade-ii.md, #13267):
   // a v1 room's code has no simulation here (v1's room is the frozen build's, everglade/server/legacy/v1.sh)
   if !(r >= 0 && r < RELAYS && v[0].relays[r].live && eg_e2_code(cast(string) v[0].relays[r].code[0..<v[0].relays[r].code_n])) { return -1; }
-  for q: 0..<EG_ROOMS {
+  eg_seats_bind(v);
+  for q: 0..<(ifx eg_zoned(v) then 1 else EG_ROOMS) {   // a zone's process opens room 0 only
     if v[0].eg[q].live { continue; }
+    cap := v[0].eg[q].seat.count;
+    v[0].eg[q].hist[0].slots = ifx cap > WIRE_SEATS then WIRE_SLOTS + WIRE_ZMORE + cap - WIRE_SEATS else WIRE_SLOTS;   // a zone: its seats' rows past the layout, then their familiars'
     v[0].eg[q].initialized=false;v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0; v[0].eg[q].cache_tick = -1;
     v[0].eg[q].work[0]=WorkBudget.{};
     for t: 0..<WIRE_BASES { v[0].eg[q].hist[0].tick[t] = -1; }
-    for t: 0..<WIRE_SLOTS { v[0].eg[q].fight_t[t] = 0; }
+    for t: 0..<WIRE_ZSLOTS { v[0].eg[q].fight_t[t] = 0; }
     v[0].eg[q].combat_n = 0;
     im_clear(v[0].eg[q].im[..]);   // its interest from nothing: a slot's last room's entities and picks are not this one's (#13178)
     // its entities' lives numbered its own (a restart, or this slot's last room, never repeats one: #12835)
@@ -68,11 +105,14 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     // the cosmetic seed (weather, cast looks): it goes to every seat in W and casts derive from it,
     // so the rules' dice never do (they come from the host's OS random key: rm_dice_draw, #13258)
     v[0].eg[q].seed = 1 + (v[0].wall_ms / 7 + r * 7919) % 999999937;
-    for s: 0..<EG_SEATS { v[0].eg[q].seat[s] = EgSeat.{}; }
+    for s: 0..<eg_cap(v, q) { v[0].eg[q].seat[s] = EgSeat.{}; }
     v[0].eg[q].hurts[0] = HbBatch.{};
     v[0].eg[q].ev_n = 0; v[0].eg[q].ev_bytes = 0;
     v[0].eg[q].place_stamp = 0;
-    for s: 0..<EG_SEATS { v[0].eg[q].wanted[s] = 0; }
+    for s: 0..<eg_cap(v, q) { v[0].eg[q].wanted[s] = 0; }
+    // the battle's creatures: its own table for a room of EG_SEATS, the zone's for more (rules/srd/battle-grid.coax rs_use, #13285)
+    v[0].eg[q].rules[0].seats = cap;
+    if eg_zoned(v) { rs_use(v[0].eg[q].rules[0].b[..], v[0].zone_c, v[0].zone_occ); }
     egb_start(v[0].eg[q].rules[..], 1);
     v[0].eg[q].rules[0].b[0].dice[0].state = rm_dice_draw(v);   // never from the seed above (#13258)
     v[0].eg[q].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v);   // a local room told "dice fixed" (room-control.coax)
@@ -94,7 +134,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
 // its first D is a snapshot. The host puts it in the world (rm_eg_unplaced, rm_eg_moved) first.
 eg_join :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_id.value;
   k := eg_room_of(v, r);
-  if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
+  if k < 0 || seat < 0 || seat >= eg_cap(v, k) { return; }
   if v[0].eg[k].seat_life[seat]==EV_SEAT_GENERATION_MAX {return;}
   v[0].eg[k].seat_life[seat]=add_sat(v[0].eg[k].seat_life[seat],1);
   v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_JOIN_BANK, fresh = true, born = true, gen = v[0].conns[conn].gen, joined_ms = v[0].mono_ms};
@@ -113,7 +153,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_i
   w := eg_sky_world(v, k); v[0].eg[k].sky = w.weather;
   n := wire_put_world(b[..], 0, w);
   rl_queue(v, r, conn, -1, cast(string) b[0..<n], "");
-  for s: 0..<EG_SEATS { v[0].eg[k].seat[s].heard_n[seat] = 0; }
+  for s: 0..<eg_cap(v, k) { v[0].eg[k].seat[s].heard_n[seat] = 0; }
   v[0].eg[k].im_blk[seat] = ImBlockList.{};   // its page sends its blocks after its hello
   im_seat_reset(v[0].eg[k].im[..], seat_id); im_room_blocks(v, k);
 }
@@ -126,7 +166,7 @@ EG_GRACE_MS :: LIFECYCLE_HOLD_MS;   // the session lifecycle's hold (metaverse-e
 // count from the new page's first, and it hears the world's header again. The others never saw it go.
 eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_id.value;
   k := eg_room_at(v, r);
-  if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live { return; }
+  if k < 0 || seat < 0 || seat >= eg_cap(v, k) || !v[0].eg[k].seat[seat].live { return; }
   o := v[0].eg[k].seat[seat];
   n := EgSeat.{live = true, conn = conn, full = true, gen = v[0].conns[conn].gen};
   v[0].eg[k].tk[seat] = v[0].conns[conn].ticket;
@@ -173,7 +213,7 @@ eg_held :: (v: [] RmServer, k: int, s_id: SeatId) -> bool { s := s_id.value; ret
 eg_grace_ends :: (v: [] RmServer, k: int) {
   r := v[0].eg[k].relay;
   out := false;
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     if !v[0].eg[k].seat[s].held || !v[0].eg[k].live || !eg_held(v, k, SeatId.{value = s}) || net_session_holds(EG_GRACE_MS,v[0].eg[k].seat[s].held_at,v[0].mono_ms) { continue; }
     h: [16] u8;
     rl_queue(v, r, -1, -1, rl_gone(h[..], SeatId.{value = s}), "");
@@ -184,7 +224,7 @@ eg_grace_ends :: (v: [] RmServer, k: int) {
 }
 eg_left :: (v: [] RmServer, r: int, seat_id: SeatId) { seat := seat_id.value;
   k := eg_room_at(v, r);
-  if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
+  if k < 0 || seat < 0 || seat >= eg_cap(v, k) { return; }
   ck_capture(v, k, seat_id); rv_note_seat(v, k, seat_id);   // its HP kept for its player (room-vitals.coax, #12715)
   ri_left(v, k, seat_id);   // its ledger operations still leave (room-items.coax)
   v[0].vit.flush = true;      // and posted at the host's next second; the note stays until a receipt covers it (#12793)
@@ -192,7 +232,7 @@ eg_left :: (v: [] RmServer, r: int, seat_id: SeatId) { seat := seat_id.value;
   egb_leave(v[0].eg[k].rules[..], seat);
   v[0].eg[k].im_blk[seat] = ImBlockList.{}; im_seat_reset(v[0].eg[k].im[..], seat_id); im_room_blocks(v, k);
   any := false;
-  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { any = true; } }
+  for s: 0..<eg_cap(v, k) { if v[0].eg[k].seat[s].live { any = true; } }
   if !any { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
 }
 eg_refuse :: (v: [] RmServer, k: int, seat_id: SeatId, seq: int, why: string) { seat := seat_id.value;
@@ -214,7 +254,7 @@ eg_event :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool) { 
 // The same, aimed at seat `to` too (what a monster did to it, its own gain): it hears the event
 // wherever it stands. -1, or a seat that is none: aimed at nobody.
 eg_event_to :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool, to: int) {
-  who := ifx to >= 0 && to < EG_SEATS then to + 1 else 0;
+  who := ifx to >= 0 && to < eg_cap(v, k) then to + 1 else 0;
   e := v[0].eg[k].ev_n;
   out := eg_ev_outcome(text);
   // (one aimed at a seat has the outcomes' room too: it is on that player; and what a monster or the

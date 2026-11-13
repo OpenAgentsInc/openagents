@@ -422,9 +422,9 @@ static void everglade_tick(void) {
     part_us[PART_SEND] += now_us() - tf;
     /* each seat's input that this tick's D acknowledges: heard to sent, plus its socket's round trip */
     int64_t tk = now_us(), ms = now_ms();
-    for (int s = 0; s < WORLD_SEATS; s++) {
+    for (int s = 0, seats = (int)rm_eg_cap(view(), k); s < seats; s++) {
       int64_t at = rm_st_ack(view(), k, (coax_t_SeatId){ s});
-      int c = at >= 0 ? (int)server->eg.e[k].seat.e[s].conn : -1;
+      int c = at >= 0 ? (int)server->eg.e[k].seat.data[s].conn : -1;
       if (c >= 0 && c < CONNS) st_ack_add(c, ms - at + (st_c[c].rtt_ms > 0 ? st_c[c].rtt_ms : 0));
     }
     st_cost_us += now_us() - tk;
@@ -1129,6 +1129,20 @@ static void crash_post(void) {
 
 /* The server's memory with every field at its declared default (coax_default_t_RmServer), then rm_init
    (room.coax): never the zeros calloc gives, which would read the level cap as 0 (#12774). */
+/* A zone of its own cap (#13275, docs/decisions/0007 "one zone to a process"): OA_ROOM_ZONE_SEATS=N hands
+   this process's one room storage for N seats, made once and sized by N: its seats, and its battle's
+   creatures and squares (everglade/server/seats.coax eg_zone_use). Taken whole or refused. */
+static bool zone_make(int seats) {
+  if (seats <= 0 || seats > WORLD_SEATS) return false;
+  int64_t nc = rm_zone_creatures(seats), nq = rm_zone_squares();
+  coax_t_EgSeat *zs = calloc((size_t)seats, sizeof *zs);
+  coax_t_RsCreature *zc = calloc((size_t)nc, sizeof *zc);
+  int64_t *zq = calloc((size_t)nq, sizeof *zq);
+  int64_t ni = rm_zone_interest(seats);   /* interest's per-seat rows (room-interest.coax im_use) */
+  int64_t *zh = calloc((size_t)ni, sizeof *zh), *zr = calloc((size_t)ni, sizeof *zr);
+  if (!zs || !zc || !zq || !zh || !zr) return false;
+  return rm_zone_use(view(), (coax_v_t_EgSeat){zs, seats}, (coax_v_t_RsCreature){zc, nc}, (coax_v_s64){zq, nq}, (coax_v_s64){zh, ni}, (coax_v_s64){zr, ni});
+}
 static coax_t_RmServer *server_new(void) {
   coax_t_RmServer *s = malloc(sizeof *s);
   if (!s) return NULL;
@@ -1146,6 +1160,12 @@ static int start_check(void) {
   coax_default_t_RmServer(b);
   rm_init((coax_v_t_RmServer){b, 1});
   int64_t bad = rm_start_check((coax_v_t_RmServer){a, 1});
+  /* each room's seats are a view of its own storage (rm_init, #13275): an address, each server's own, so
+     the two are compared with the views let go, once each is seen to hold the room's own seats */
+  for (int k = 0; k < WORLD_ROOMS; k++) {
+    if (a->eg.e[k].seat.data != a->eg.e[k].seat_own.e || b->eg.e[k].seat.data != b->eg.e[k].seat_own.e || a->eg.e[k].seat.count != b->eg.e[k].seat.count) bad++;
+    memset(&a->eg.e[k].seat, 0, sizeof a->eg.e[k].seat); memset(&b->eg.e[k].seat, 0, sizeof b->eg.e[k].seat);
+  }
   bool same = !memcmp(a, b, sizeof *a);
   printf("room: start check: %lld fields off their defaults, %s\n", (long long)bad, same ? "the same from any memory" : "differs with the memory it started in");
   return bad == 0 && same ? 0 : 1;
@@ -1184,6 +1204,11 @@ int main(int argc, char **argv) {
   started_ok = rm_start_check(view()) == 0;   /* readiness needs the started server to hold its defaults (#12797) */
   if (!dice_key_in()) { fprintf(stderr, "room: no OS random source for the dice (getentropy)\n"); return 1; }   /* #13258 */
   if (!world_sizes_agree()) { fprintf(stderr, "room: room-world.h's rooms, seats or tick are not the room's (everglade/server/seat.coax)\n"); return 1; }   /* #13275 */
+  { const char *zs = getenv("OA_ROOM_ZONE_SEATS");
+    if (zs && *zs) {
+      if (!zone_make(atoi(zs))) { fprintf(stderr, "room: OA_ROOM_ZONE_SEATS=%s: a zone declares more than a room's seats, %d at most\n", zs, WORLD_SEATS); return 1; }
+      printf("room: one zone of %d seats (OA_ROOM_ZONE_SEATS)\n", atoi(zs));
+    } }
   rm_vitals_gen(view(), wall_ms());   /* this process's generation, in every vitals operation ID (#12793) */
   { const char *dg = getenv("OA_ROOM_DIR_GEN"); if (dg && !strcmp(dg, "1")) rm_dir_gen(view(), true); }   /* the directory's fence (#12797) */
   signal(SIGTERM, on_term);

@@ -17,9 +17,10 @@
 // room and are not here (docs/decisions/0005-production-room-runs-everglade-ii.md).
 
 EGB_SEATS :: 16;
+EGB_ZONE_SEATS :: 150;                        // the most a zone declares (EG_ZONE_SEATS, #13275): what the seat-keyed tables have room for
 EGB_SEAT :: 0;                                // seat s is creature s (here written s alone)
 EGB_BEASTS :: 96;                             // creatures at once: guards and monsters
-EGB_BEAST0 :: EGB_SEATS;                      // creature q is creature EGB_BEAST0 + q
+EGB_BEAST0 :: EGB_SEATS;                      // creature q is creature EGB_BEAST0 + q   // in a battle of EGB_SEATS seats; the battle's own count is EgBattle.seats (egb_seats)
 EGB_EV_FLOATS :: 8;                           // kind, spell, by, to, amount, damage, x, z (metres)
 EGB_TGT_SEAT :: 1000;
 EGB_TGT_BEAST :: 2000;
@@ -53,19 +54,22 @@ EgBeast :: struct {
 EgBattle :: struct {
   b: [1] RsBattle;
   z_shift: int;
-  seat: [EGB_SEATS] FbSeat;
-  live: [EGB_SEATS] bool;
-  familiar: [EGB_SEATS] FbSeat;
+  seat: [EGB_ZONE_SEATS] FbSeat;
+  live: [EGB_ZONE_SEATS] bool;
+  familiar: [EGB_ZONE_SEATS] FbSeat;
   familiar_ready: bool;
   bar: [FB_EG_SLOTS] FbAb;
   wbar: [FB_WL_SLOTS] FbAb;                   // the Warlock's bar: slots FB_WL0 + k
   cbar: [FB_CL_N] FbAb;                       // Character Create's classes' abilities: slots FB_CL0 + class
-  klass: [EGB_SEATS] int;
+  klass: [EGB_ZONE_SEATS] int;
   beasts: [EGB_BEASTS] EgBeast;
   seen: int;
   started: bool;
   pvp: bool;                                  // the realm's pvp row (room-control.coax): harm reaches other players too
   next_id: int;                               // the next creature's id (everglade/server/guard.coax, creatures.coax)
+  // its seats (#13275): seat s is creature s, summoned creature q is creature seats + q, the familiars come after.
+  // EGB_SEATS unless its zone declared more (the room sets it before egb_start, which keeps it).
+  seats: int = EGB_SEATS;
 }
 
 // ---- the grid
@@ -77,15 +81,15 @@ egb_cell_z :: (r: [] EgBattle, y: int) -> f32 #effects(all) { return egb_cell_m(
 // ---- who a TGT code names
 // A creature's TGT code: a seat's 1000 + s, a creature's 2000 + its last id, -1 for none.
 egb_tgt :: (r: [] EgBattle, i: int) -> int #effects(all) {
-  if i >= 0 && i < EGB_SEATS { return EGB_TGT_SEAT + i; }
-  if i >= EGB_BEAST0 && i < EGB_BEAST0 + EGB_BEASTS { t := r[0].beasts[i - EGB_BEAST0].tag; return ifx t > 0 then EGB_TGT_BEAST + t else -1; }
+  if i >= 0 && i < r[0].seats { return EGB_TGT_SEAT + i; }
+  if i >= r[0].seats && i < r[0].seats + EGB_BEASTS { t := r[0].beasts[i - r[0].seats].tag; return ifx t > 0 then EGB_TGT_BEAST + t else -1; }
   return -1;
 }
 // The creature a TGT code names (a seat, or a creature on now), -1 for none.
 egb_of_tgt :: (r: [] EgBattle, t: int) -> int #effects(all) {
-  if t >= EGB_TGT_SEAT && t < EGB_TGT_SEAT + EGB_SEATS { return t - EGB_TGT_SEAT; }
+  if t >= EGB_TGT_SEAT && t < EGB_TGT_SEAT + r[0].seats { return t - EGB_TGT_SEAT; }
   if t <= EGB_TGT_BEAST { return -1; }
-  for q: 0..<EGB_BEASTS { if r[0].beasts[q].id == t - EGB_TGT_BEAST { return EGB_BEAST0 + q; } }
+  for q: 0..<EGB_BEASTS { if r[0].beasts[q].id == t - EGB_TGT_BEAST { return r[0].seats + q; } }
   return -1;
 }
 
@@ -130,7 +134,7 @@ egb_start :: (r: [] EgBattle, seed: int) #effects(all) {
   for k: 0..<RS_ZONES { b[0].zone[k].on = false; }
   b[0].truth_zones = 0;
   b[0].dice[0].state = cast(u64) seed * 7919 + 3;
-  for s: 0..<EGB_SEATS {
+  for s: 0..<r[0].seats {
     o := fb_everglade_hero("Player", 0);
     o.hp = 0; o.dead = true;
     _ = rs_add(b, o, EGB_AWAY, EGB_AWAY);
@@ -143,11 +147,11 @@ egb_start :: (r: [] EgBattle, seed: int) #effects(all) {
     r[0].beasts[q] = EgBeast.{};
   }
   rs_begin(b);
-  for s: 0..<EGB_SEATS { r[0].seat[s] = FbSeat.{me = s}; }
+  for s: 0..<r[0].seats { r[0].seat[s] = FbSeat.{me = s}; }
   _ = fb_everglade(r[0].bar[..]);
   _ = fb_warlock_bar(r[0].wbar[..]);
   _ = fb_cl_bar(r[0].cbar[..]);
-  for s: 0..<EGB_SEATS { r[0].klass[s] = 0; }
+  for s: 0..<r[0].seats { r[0].klass[s] = 0; }
   r[0].seen = b[0].book[0].seq;
   r[0].started = true;
   r[0].next_id = 1;
@@ -158,8 +162,8 @@ egb_start :: (r: [] EgBattle, seed: int) #effects(all) {
 egb_enable_familiars :: (r: [] EgBattle) #effects(all) {
   if r[0].familiar_ready { return; }
   b := r[0].b[..];
-  if b[0].n + EGB_SEATS > b[0].c.count { return; }
-  for s: 0..<EGB_SEATS {
+  if b[0].n + r[0].seats > b[0].c.count { return; }
+  for s: 0..<r[0].seats {
     f := b[0].n;
     b[0].c[f] = RsCreature.{dead = true, familiar_owner = s + 1, x = -1, y = -1};
     b[0].n += 1;
@@ -175,7 +179,7 @@ egb_reset_familiar :: (r: [] EgBattle, s: int) #effects(all) {
 }
 // Seat s's Wild Companion (bar slot `slot`) in form `form` at square (x, y): whether it came.
 egb_wild_companion :: (r: [] EgBattle, s: int, slot: int, form: int, x: int, y: int) -> bool #effects(all) {
-  if !r[0].familiar_ready || s < 0 || s >= EGB_SEATS || !r[0].live[s] { return false; }
+  if !r[0].familiar_ready || s < 0 || s >= r[0].seats || !r[0].live[s] { return false; }
   b := r[0].b[..]; seat := r[0].seat[s..<s + 1];
   if !seat[0].open { return false; }
   fb_seat_in(b, seat);
@@ -186,7 +190,7 @@ egb_wild_companion :: (r: [] EgBattle, s: int, slot: int, form: int, x: int, y: 
 // A player sits at seat s as class klass at `level` (a Character Create class: 1 to 6, its hello's
 // srd-CLASS-LEVEL, #13046; else 0), at (x, z): a fresh character, full Hit Points.
 egb_join :: (r: [] EgBattle, s: int, x: f32, z: f32, klass: int, level: int) #effects(all) {
-  if !r[0].started || s < 0 || s >= EGB_SEATS { return; }
+  if !r[0].started || s < 0 || s >= r[0].seats { return; }
   b := r[0].b[..];
   i := s;
   t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
@@ -203,7 +207,7 @@ egb_join :: (r: [] EgBattle, s: int, x: f32, z: f32, klass: int, level: int) #ef
 // The player at seat s left the battle. What it concentrates on stays until the spell would end
 // (spec 6.3), or until someone else takes the seat: leaving is not lethal damage.
 egb_leave :: (r: [] EgBattle, s: int) #effects(all) {
-  if !r[0].started || s < 0 || s >= EGB_SEATS || !r[0].live[s] { return; }
+  if !r[0].started || s < 0 || s >= r[0].seats || !r[0].live[s] { return; }
   b := r[0].b[..];
   i := s;
   b[0].c[i].x = EGB_AWAY; b[0].c[i].y = EGB_AWAY;
@@ -212,7 +216,7 @@ egb_leave :: (r: [] EgBattle, s: int) #effects(all) {
 }
 // Where seat s stands now (metres).
 egb_place :: (r: [] EgBattle, s: int, x: f32, z: f32) #effects(all) {
-  if !r[0].started || s < 0 || s >= EGB_SEATS || !r[0].live[s] { return; }
+  if !r[0].started || s < 0 || s >= r[0].seats || !r[0].live[s] { return; }
   i := s;
   r[0].b[0].c[i].x = egb_sq(x); r[0].b[0].c[i].y = egb_z_cell(r, z);
 }
@@ -227,14 +231,14 @@ egb_step :: (r: [] EgBattle, clock: int) #effects(all) {
   dt := clock - b[0].clock;
   if dt <= 0 { return; }
   rs_tick_ticks(b, dt);
-  for s: 0..<EGB_SEATS {
+  for s: 0..<r[0].seats {
     if !r[0].live[s] { continue; }
     fb_seat_step(b, r[0].seat[s..<s + 1]);
     if r[0].familiar_ready { fb_seat_step(b, r[0].familiar[s..<s + 1]); }
   }
   // each creature read in place, not copied whole, every tick
   for q: 0..<EGB_BEASTS {
-    i := EGB_BEAST0 + q;
+    i := r[0].seats + q;
     if r[0].beasts[q].id == 0 || b[0].c[i].dead || b[0].c[i].turn_at > b[0].clock { continue; }
     rs_start_turn(b, i);   // its turn: whose (b[0].who) until it ends
     if r[0].beasts[q].patrol { egb_patrol_turn(r, q); }
@@ -247,7 +251,7 @@ egb_step :: (r: [] EgBattle, clock: int) #effects(all) {
 // the room has brought it within reach. It never chooses a foe: the room sets one only on a creature
 // that harmed it. `swing` keeps the battle's clock of its last blow, which the room tells the pages.
 egb_patrol_turn :: (r: [] EgBattle, q: int) #effects(all) {
-  bt := r[0].beasts[q..<q + 1]; b := r[0].b[..]; i := EGB_BEAST0 + q;
+  bt := r[0].beasts[q..<q + 1]; b := r[0].b[..]; i := r[0].seats + q;
   foe := bt[0].foe;
   if foe < 0 { return; }
   if foe >= b[0].n || b[0].c[foe].dead || b[0].c[foe].hp <= 0 || b[0].c[foe].x == EGB_AWAY { bt[0].foe = -1; return; }
@@ -269,7 +273,7 @@ egb_patrol_turn :: (r: [] EgBattle, q: int) #effects(all) {
 // Creature q is gone: off the list, its creature dead and away.
 egb_beast_gone :: (r: [] EgBattle, q: int) #effects(all) {
   r[0].beasts[q].id = 0;
-  i := EGB_BEAST0 + q;
+  i := r[0].seats + q;
   b := r[0].b[..];
   b[0].c[i].dead = true; b[0].c[i].hp = 0; b[0].c[i].x = EGB_AWAY; b[0].c[i].y = EGB_AWAY;
 }
@@ -280,14 +284,14 @@ egb_beasts_check :: (r: [] EgBattle) #effects(all) {
   for q: 0..<EGB_BEASTS {
     if r[0].beasts[q].id == 0 { continue; }   // read in place: most are off
     bt := r[0].beasts[q];
-    i := EGB_BEAST0 + q;
+    i := r[0].seats + q;
     held := bt.patrol || bt.wild || b[0].c[rs_max(bt.by, 0)].conc == bt.spell;
     if b[0].c[i].dead || b[0].c[i].hp <= 0 || !held { egb_beast_gone(r, q); }
   }
 }
 // Seat s ends what bar slot k holds up: its concentration, when that is k's spell. Whether it did.
 egb_end :: (r: [] EgBattle, s: int, k: int) -> bool #effects(all) {
-  if !r[0].started || s < 0 || s >= EGB_SEATS || !r[0].live[s] || !egb_has(k) { return false; }
+  if !r[0].started || s < 0 || s >= r[0].seats || !r[0].live[s] || !egb_has(k) { return false; }
   b := r[0].b[..];
   i := s;
   a := egb_entry(r, k);
@@ -324,7 +328,7 @@ EGB_OUT_FLOATS :: 8;
 EGB_C_HALTED :: 131072;     // Command's Halt: it doesn't move and takes no action
 EGB_C_BANED :: 262144; EGB_C_BLESSED :: 524288; EGB_C_FAITH :: 1048576; EGB_C_ENFEEBLED :: 2097152; EGB_C_HEXED :: 4194304;
 egb_seat_out :: (r: [] EgBattle, s: int, out: [] f32) #effects(all) {
-  if s < 0 || s >= EGB_SEATS || out.count < EGB_OUT_FLOATS { return; }
+  if s < 0 || s >= r[0].seats || out.count < EGB_OUT_FLOATS { return; }
   b := r[0].b[..]; i := s;
   out[0] = f32(b[0].c[i].hp); out[1] = f32(b[0].c[i].hp_max); out[2] = f32(b[0].c[i].temp); out[3] = f32(b[0].c[i].cond | egb_effect_bits(b, i));
   out[4] = ifx b[0].c[i].dead then 1.0f32 else 0.0f32; out[5] = f32(b[0].c[i].conc);
@@ -373,7 +377,7 @@ EGB_BEAST_FLOATS :: 10;
 egb_beast :: (r: [] EgBattle, q: int, out: [] f32) -> int #effects(all) {
   if q < 0 || q >= EGB_BEASTS || r[0].beasts[q].id == 0 || out.count < EGB_BEAST_FLOATS { return 0; }
   bt := r[0].beasts[q];
-  c := r[0].b[0].c[EGB_BEAST0 + q];
+  c := r[0].b[0].c[r[0].seats + q];
   out[0] = bt.x; out[1] = bt.y; out[2] = bt.z; out[3] = bt.yaw; out[4] = f32(c.hp); out[5] = f32(c.hp_max);
   out[6] = f32(bt.by); out[7] = f32(bt.form); out[8] = ifx bt.moving then 1.0f32 else 0.0f32; out[9] = ifx bt.grounded then 1.0f32 else 0.0f32;
   return bt.id;

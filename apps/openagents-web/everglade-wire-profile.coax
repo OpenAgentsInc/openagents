@@ -10,7 +10,7 @@
 //     fields: written from its base (zeros, or "base") it is the frame, and read onto that base it is
 //     the row again ("expect": fields after the delta);
 //   - the relay's own frames (y, j, l, t) are written and read by their codec, metaverse-engine/net/relay-wire.coax
-//     (their own profile is proto/verse/room-relay-v1.json);
+//     (their own profile is proto/verse/room-relay-v2.json);
 //   - the seat ticket (owner generation and the rest, room-ticket.coax tk_check) reads to "expect" under
 //     its key, and each of "refused" is refused;
 //   - each named ACK, baseline and lifecycle field ("ack", "lifecycle") is a field of a message above,

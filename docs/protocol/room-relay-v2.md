@@ -3,7 +3,7 @@
 A relay room (`/api/room/relay/GAME/CODE`, `coax/web/room/room-relay.coax`)
 seats the players of any game and passes each one's text frames to the
 others. These are the relay's own frames. Profile:
-[`room-relay-v1.json`](../../proto/verse/room-relay-v1.json). Codec:
+[`room-relay-v2.json`](../../proto/verse/room-relay-v2.json). Codec:
 `metaverse-engine/net/relay-wire.coax`. The room writes the frames with it, and every
 page that sits in a relay room reads them with it: Everglade II
 (`everglade/client/net.coax`), Everglade (`apps/openagents-web/everglade-net.coax`),
@@ -21,14 +21,14 @@ Text frames. Fields are one space apart, and numbers are whole and decimal.
 | `t` | page | `MS`: a clock ping. MS is the page's own clock value: up to 15 digits, with an optional minus |
 | `t` | room | `MS T`: the pong, to the sender only: the ping as it was sent, then the server's wall clock in ms |
 
-A SEAT is from 0 to 15. A reader takes a frame whole or not at all: a
+A SEAT is from 0 to 149: a room seats 16 (0 to 15), a zone up to 150 (#13275). Version 1 said 0 to 15; a version 2 reader reads every version 1 frame, so pages moved first. A reader takes a frame whole or not at all: a
 missing or extra field, or a SEAT out of range, drops the frame. A page
 uses what it needs of N, T and G.
 
 Check:
 
 ```sh
-coax/web/tool.sh coax/web/room/relay-profile.coax proto/verse/room-relay-v1.json
+coax/web/tool.sh coax/web/room/relay-profile.coax proto/verse/room-relay-v2.json
 ```
 
 The list of an Everglade realm's rooms (`GET /api/playtest/rooms/SLUG`) is

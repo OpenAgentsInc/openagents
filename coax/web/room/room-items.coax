@@ -68,7 +68,7 @@ RmItems :: struct {
   doc: [1] ContentDoc; content: bool;
   prev: [1] ContentDoc; prev_on: bool;   // the release before's tables, when they are the revision before doc's (rm_content_prev)
   c: [RI_CHARS] RiChar;
-  at: [EG_ROOMS * EG_SEATS] int;   // each seat's character, plus 1 (0 none)
+  at: [EG_SEAT_ROWS] int;   // each seat's character, plus 1 (0 none)
   box: [RI_BOX] RiOp; seq: int; ids: int;
   fly: bool; fly_i: int; fly_at: int; request: int; retry_at: int; fails: int;   // fails: failed posts in a row
   out: [IO_ASK] u8; out_n: int; mac: [64] u8;
@@ -114,7 +114,7 @@ rm_content_rev :: (v: [] RmServer) -> int #export_c #effects(all) { return ifx v
 ri_pid :: (v: [] RmServer, c: int) -> string { return cast(string) v[0].itm.c[c].pid[0..<v[0].itm.c[c].pid_n]; }
 // The character seated at seat s of room k, or -1.
 ri_seat :: (v: [] RmServer, k: int, s: int) -> int {
-  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS { return -1; }
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= eg_cap(v, k) { return -1; }
   return v[0].itm.at[k * EG_SEATS + s] - 1;
 }
 // Whether any waiting operation is character c's.
@@ -140,7 +140,7 @@ ri_open :: (v: [] RmServer, k: int, s: int, pid: string, gen: int) -> int {
 // Seat s of room k sat (seats.coax eg_join): its ticket's player and owner generation.
 ri_join :: (v: [] RmServer, k: int, seat_id: SeatId) {
   tk := eg_ticket(v, k, seat_id);
-  if !tk.ok || k < 0 || k >= EG_ROOMS || seat_id.value < 0 || seat_id.value >= EG_SEATS { return; }
+  if !tk.ok || k < 0 || k >= EG_ROOMS || seat_id.value < 0 || seat_id.value >= eg_cap(v, k) { return; }
   _ := ri_open(v, k, seat_id.value, cast(string) tk.pid[0..<tk.pid_n], tk.owner);
 }
 // Seat s of room k left: its character keeps its place only while operations of its are still to leave.
@@ -409,7 +409,7 @@ ri_bare :: (v: [] RmServer, k: int, seat_id: SeatId, slot: int) -> bool {
 ri_tick :: (v: [] RmServer, k: int) {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return; }
   second := v[0].eg[k].tick % EG_HZ == 0;
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     c := ri_seat(v, k, s);
     if c < 0 || !v[0].eg[k].seat[s].live { continue; }
     ri_tell(v, c);

@@ -55,7 +55,7 @@ rm_lt_active::(v:[]RmServer,k:int, s_id: SeatId)->bool #export_c #effects(all) {
   ks:[2]int;return rm_st_conn(v,conn,ks[..])&&ks[0]==k&&ks[1]==s;
 }
 rm_lt_serialized::(v:[]RmServer,k:int,simulation_end:int,began:int,ended:int) #export_c #effects(all) {
-  if !rm_eg_live(v,k){return;}for s:0..<EG_SEATS{if !rm_lt_active(v,k, SeatId.{value = s}){continue;}conn:=v[0].eg[k].seat[s].conn;
+  if !rm_eg_live(v,k){return;}for s:0..<eg_cap(v, k){if !rm_lt_active(v,k, SeatId.{value = s}){continue;}conn:=v[0].eg[k].seat[s].conn;
     lat_serialized(v[0].conns[conn].latency[0..<1],simulation_end,began,ended);
   }
 }

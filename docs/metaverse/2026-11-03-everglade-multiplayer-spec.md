@@ -269,8 +269,8 @@ In `coax/web/room/room-relay.coax`, `room.coax` and `room-host.c`:
    character, and the first frame is `y SEAT N T`: `T` is the server's wall
    clock in ms (Unix epoch), for clock sync. The room and every page read
    and write the relay's frames with one codec, `metaverse-engine/net/relay-wire.coax`
-   (profile `proto/verse/room-relay-v1.json`,
-   [room-relay-v1.md](../protocol/room-relay-v1.md)); `relay-check.coax`
+   (profile `proto/verse/room-relay-v2.json`,
+   [room-relay-v2.md](../protocol/room-relay-v2.md)); `relay-check.coax`
    checks the running relay. The Healer's Kit's `U1` and `u1` have one
    codec too, `everglade/server/kit-wire.coax`.
 2. `CONNS` 512, `RELAYS` 64, `RELAY_QUEUE` 1024. Each frame's recipients are

@@ -32,9 +32,10 @@
 // im_counts gives the counts for the room's vitals (#12791): picked whole, picked health-only, withheld
 // as blocked and withheld as hidden, per seat, from the last pick.
 
-IM_SEATS :: 16;                 // EG_SEATS
-IM_SEAT_WORDS :: (IM_SEATS + SLOT_SET_BITS - 1) / SLOT_SET_BITS;   // a set of seats' words (metaverse-engine/core/slot-set.coax)
-IM_ENTS :: 512;                 // original entities plus the separate forest records (#12940)
+IM_SEATS :: 16;                 // a room's seats unless its zone declares more (EG_SEATS)
+IM_ZONE_SEATS :: 150;           // the most a zone declares (EG_ZONE_SEATS): what the per-seat tables have room for (#13275)
+IM_SEAT_WORDS :: (IM_ZONE_SEATS + SLOT_SET_BITS - 1) / SLOT_SET_BITS;   // a set of seats' words (metaverse-engine/core/slot-set.coax)
+IM_ENTS :: 780;                 // a zone's table at most (WIRE_ZSLOTS): the layout's 512 slots, a zone's seats past 16 and their familiars (#12940, #13275)
 IM_PICKS :: IM_ENTS;
 IM_KEYS :: 1024;                // the ID table's lists (a power of two)
 IM_ENTER :: 110.0;              // m: an entity comes into a seat's view within this
@@ -59,36 +60,48 @@ Interest :: struct {
   free: [IM_ENTS] int; free_n: int;
   key: [IM_KEYS] int;                     // each ID list's first slot, plus 1 (0 empty)
   grid: [1] NetGrid;                      // where each slot stands (metaverse-engine/net/grid.coax), made for IM_EXIT
-  own: [IM_SEATS] int;                    // each seat's list's first slot, plus 1
+  own: [IM_ZONE_SEATS] int;                    // each seat's list's first slot, plus 1
   room: [IM_ENTS] int; room_n: int;       // the room-wide slots
   // per seat
-  blocks: [IM_SEATS * IM_SEAT_WORDS] int; // the seats it blocks: a set of seats each (im_blocks_of), whatever the seats' number
-  party: [IM_SEATS] int;                  // its party (0 none)
-  serial: [IM_SEATS] int;                 // its picks so far
-  had: [IM_SEATS * IM_ENTS] int;          // the serial of its last pick that held each slot (hysteresis)
-  reveal: [IM_SEATS * IM_ENTS] int;       // the tick each hidden slot is revealed to it until (0 none)
+  blocks: [IM_ZONE_SEATS * IM_SEAT_WORDS] int; // the seats it blocks: a set of seats each (im_blocks_of), whatever the seats' number
+  party: [IM_ZONE_SEATS] int;                  // its party (0 none)
+  serial: [IM_ZONE_SEATS] int;                 // its picks so far
+  // per seat and slot, IM_ENTS a seat: the serial of its last pick that held each slot (hysteresis), and the
+  // tick each hidden slot is revealed to it until (0 none). The zone's storage, sized by the seats it declared
+  // (#13275): its own IM_SEATS seats' (bound by im_clear) unless it was handed more (im_use)
+  had: [] int; reveal: [] int;
+  had_own: [IM_SEATS * IM_ENTS] int; reveal_own: [IM_SEATS * IM_ENTS] int;
   mark: [IM_ENTS] int; mark_n: int;       // the pick that last took each slot (no slot twice)
-  n_full: [IM_SEATS] int; n_health: [IM_SEATS] int; n_blocked: [IM_SEATS] int; n_hidden: [IM_SEATS] int;
+  n_full: [IM_ZONE_SEATS] int; n_health: [IM_ZONE_SEATS] int; n_blocked: [IM_ZONE_SEATS] int; n_hidden: [IM_ZONE_SEATS] int;
   over: int;                              // entities not held for want of a slot, since im_clear
   visits: int;                            // entities im_pick has looked at, all seats, since im_clear (the cost)
 }
 
 // The seats seat s blocks, as a set (metaverse-engine/core/slot-set.coax); the empty set for a seat that is none.
 im_blocks_of :: (im: [] Interest, s: int) -> [] int {
-  if s < 0 || s >= IM_SEATS { return im[0].blocks[0..<0]; }
+  if s < 0 || s >= IM_ZONE_SEATS { return im[0].blocks[0..<0]; }
   return im[0].blocks[s * IM_SEAT_WORDS..<(s + 1) * IM_SEAT_WORDS];
 }
 // Whether seat s blocks seat q.
-im_blocked :: (im: [] Interest, s: int, q: int) -> bool { return q < IM_SEATS && slot_set_has(im_blocks_of(im, s), q); }
+im_blocked :: (im: [] Interest, s: int, q: int) -> bool { return q < IM_ZONE_SEATS && slot_set_has(im_blocks_of(im, s), q); }
+// The seats it has per-seat storage for: IM_SEATS, or what its zone handed it.
+im_seats :: (im: [] Interest) -> int { return im[0].had.count / IM_ENTS; }
+// A zone's storage for more seats than IM_SEATS: IM_ENTS of each a seat, IM_ZONE_SEATS seats at most. Taken whole or refused.
+im_use :: (im: [] Interest, had: [] int, reveal: [] int) -> bool {
+  if had.count != reveal.count || had.count % IM_ENTS != 0 || had.count <= IM_SEATS * IM_ENTS || had.count > IM_ZONE_SEATS * IM_ENTS { return false; }
+  im[0].had = had; im[0].reveal = reveal;
+  return true;
+}
 im_clear :: (im: [] Interest) {
+  if im[0].had.count == 0 { im[0].had = im[0].had_own[..]; im[0].reveal = im[0].reveal_own[..]; }
   im[0].used = 0; im[0].free_n = 0; im[0].room_n = 0; im[0].mark_n = 0; im[0].visits = 0; im[0].over = 0;
   for q: 0..<IM_KEYS { im[0].key[q] = 0; }
   net_grid_init(im[0].grid[..], f32(IM_EXIT));
-  for s: 0..<IM_SEATS {
+  for s: 0..<IM_ZONE_SEATS {
     im[0].own[s] = 0; slot_set_clear(im_blocks_of(im, s)); im[0].party[s] = 0; im[0].serial[s] = 0;
     im[0].n_full[s] = 0; im[0].n_health[s] = 0; im[0].n_blocked[s] = 0; im[0].n_hidden[s] = 0;
   }
-  for q: 0..<IM_SEATS * IM_ENTS { im[0].had[q] = 0; im[0].reveal[q] = 0; }
+  for q: 0..<im[0].had.count { im[0].had[q] = 0; im[0].reveal[q] = 0; }
   for q: 0..<IM_ENTS { im[0].e[q] = ImEnt.{}; im[0].mark[q] = 0; }
 }
 
@@ -103,14 +116,14 @@ im_find :: (im: [] Interest, identity: EntityId) -> int { id := identity.value;
 
 im_own_unlink :: (im: [] Interest, i: int) {
   e := im[0].e[i];
-  if e.of < 0 || e.of >= IM_SEATS { return; }
+  if e.of < 0 || e.of >= IM_ZONE_SEATS { return; }
   if e.oprev >= 0 { im[0].e[e.oprev].onext = e.onext; } else { im[0].own[e.of] = e.onext + 1; }
   if e.onext >= 0 { im[0].e[e.onext].oprev = e.oprev; }
   im[0].e[i].onext = -1; im[0].e[i].oprev = -1;
 }
 im_own_link :: (im: [] Interest, i: int, of_id: SeatId) { of := of_id.value;
   im[0].e[i].of = of;
-  if of < 0 || of >= IM_SEATS { im[0].e[i].of = -1; return; }
+  if of < 0 || of >= IM_ZONE_SEATS { im[0].e[i].of = -1; return; }
   head := im[0].own[of] - 1;
   im[0].e[i].oprev = -1; im[0].e[i].onext = head;
   if head >= 0 { im[0].e[head].oprev = i; }
@@ -141,7 +154,7 @@ im_put_at :: (im: [] Interest, tick: int, identity: EntityId, tag: int, x: f32, 
     im[0].e[i] = ImEnt.{on = true, id = id};
     k := im_key(identity);
     im[0].e[i].knext = im[0].key[k] - 1; im[0].key[k] = i + 1;
-    for s: 0..<IM_SEATS { im[0].had[s * IM_ENTS + i] = 0; im[0].reveal[s * IM_ENTS + i] = 0; }
+    for s: 0..<im_seats(im) { im[0].had[s * IM_ENTS + i] = 0; im[0].reveal[s * IM_ENTS + i] = 0; }
     im_own_link(im, i, of_id);
   } else if im[0].e[i].of != of {
     im_own_unlink(im, i); im_own_link(im, i, of_id);
@@ -172,7 +185,7 @@ im_sweep :: (im: [] Interest, tick: int) {
 }
 
 im_block :: (im: [] Interest, s_id: SeatId, q_id: SeatId, on: bool) { q := q_id.value; s := s_id.value;
-  if s < 0 || s >= IM_SEATS || q < 0 || q >= IM_SEATS || s == q { return; }
+  if s < 0 || s >= IM_ZONE_SEATS || q < 0 || q >= IM_ZONE_SEATS || s == q { return; }
   _ := slot_set_put(im_blocks_of(im, s), q, on);
 }
 // Seat s blocks the seats in `set` and no others (a set of seats; its own place in it is ignored).
@@ -181,17 +194,17 @@ im_blocks :: (im: [] Interest, s_id: SeatId, set: [] int) { s := s_id.value;
   slot_set_clear(b); slot_set_join(b, set);
   _ := slot_set_put(b, s, false);
 }
-im_party :: (im: [] Interest, s_id: SeatId, party: int) { s := s_id.value; if s >= 0 && s < IM_SEATS { im[0].party[s] = party; } }
+im_party :: (im: [] Interest, s_id: SeatId, party: int) { s := s_id.value; if s >= 0 && s < IM_ZONE_SEATS { im[0].party[s] = party; } }
 // Seat s sees hidden entity id until tick until.
 im_reveal :: (im: [] Interest, identity: EntityId, s_id: SeatId, until: int) { s := s_id.value;
   i := im_find(im, identity);
-  if i >= 0 && s >= 0 && s < IM_SEATS { im[0].reveal[s * IM_ENTS + i] = until; }
+  if i >= 0 && s >= 0 && s < im_seats(im) { im[0].reveal[s * IM_ENTS + i] = until; }
 }
 // Seat s sat or left: what it held and blocked is forgotten.
 im_seat_reset :: (im: [] Interest, s_id: SeatId) { s := s_id.value;
-  if s < 0 || s >= IM_SEATS { return; }
+  if s < 0 || s >= im_seats(im) { return; }
   slot_set_clear(im_blocks_of(im, s)); im[0].party[s] = 0;
-  for q: 0..<IM_SEATS { _ := slot_set_put(im_blocks_of(im, q), s, false); }
+  for q: 0..<IM_ZONE_SEATS { _ := slot_set_put(im_blocks_of(im, q), s, false); }
   for i: 0..<IM_ENTS { im[0].had[s * IM_ENTS + i] = 0; im[0].reveal[s * IM_ENTS + i] = 0; }
 }
 
@@ -214,7 +227,7 @@ im_near :: (d2: f32) -> f32 { d := sqrt(d2); return ifx d >= f32(IM_EXIT) then 0
 // What seat s, standing at (x, z), may receive at tick: out filled with each entity's wire ID, priority
 // and channel; the count back. Call it once per seat per tick, after the tick's puts and sweep.
 im_pick :: (im: [] Interest, s_id: SeatId, x: f32, z: f32, tick: int, out: [] ImPick) -> int { s := s_id.value;
-  if s < 0 || s >= IM_SEATS { return 0; }
+  if s < 0 || s >= im_seats(im) { return 0; }
   im[0].mark_n += 1;
   was := im[0].serial[s];
   im[0].serial[s] = was + 1;
@@ -253,7 +266,7 @@ im_pick :: (im: [] Interest, s_id: SeatId, x: f32, z: f32, tick: int, out: [] Im
   }
   // party members out of range: their health only
   if im[0].party[s] != 0 {
-    for q: 0..<IM_SEATS {
+    for q: 0..<im_seats(im) {
       // the roster's visibility (metaverse-engine/session/party.coax): the same party, neither blocking the other
       blocked := im_blocked(im, s, q) || im_blocked(im, q, s);
       if q == s || !party_sees(im[0].party[q] == im[0].party[s], false, false, blocked) { continue; }
@@ -268,7 +281,7 @@ im_pick :: (im: [] Interest, s_id: SeatId, x: f32, z: f32, tick: int, out: [] Im
 
 // Seat s's counts from its last pick: [picked whole, picked health-only, withheld blocked, withheld hidden].
 im_counts :: (im: [] Interest, s_id: SeatId, out: [] int) { s := s_id.value;
-  if s < 0 || s >= IM_SEATS || out.count < 4 { return; }
+  if s < 0 || s >= IM_ZONE_SEATS || out.count < 4 { return; }
   out[0] = im[0].n_full[s]; out[1] = im[0].n_health[s]; out[2] = im[0].n_blocked[s]; out[3] = im[0].n_hidden[s];
 }
 im_has :: (p: [] ImPick, n: int, identity: EntityId) -> int { id := identity.value;

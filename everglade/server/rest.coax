@@ -84,7 +84,7 @@ e2_rest_tell :: (v: [] RmServer, k: int, s_id: SeatId, seq: int) { s := s_id.val
 }
 // After the rules' tick: each seat whose rest changed (or whose socket is new) hears it.
 e2_rest_tell_all :: (v: [] RmServer, k: int) {
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     st := v[0].eg[k].seat[s];
     if !st.live || st.conn < 0 || !v[0].eg[k].rules[0].live[s] { continue; }
     c := v[0].eg[k].rules[0].b[0].c[EGB_SEAT + s];
@@ -124,7 +124,7 @@ e2_kit_tell :: (v: [] RmServer, k: int, s_id: SeatId, always: bool) { s := s_id.
 }
 // After the rules' tick: a sixth of the seats each tick, so each is looked at five times a second.
 e2_kit_tell_all :: (v: [] RmServer, k: int) {
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     if (v[0].eg[k].tick + s) % 6 != 0 && v[0].eg[k].seat[s].kit_told != -1 { continue; }
     st := v[0].eg[k].seat[s];
     if !st.live || st.conn < 0 || !v[0].eg[k].rules[0].live[s] { continue; }

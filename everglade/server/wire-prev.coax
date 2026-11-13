@@ -42,7 +42,7 @@
 
 // Whether seat s speaks the previous wire: its hello said WIRE_MIN, and that is not this room's own.
 wprev_seat :: (v: [] RmServer, k: int, s: int) -> bool {
-  return WIRE_MIN < WIRE_VERSION && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].wire == WIRE_MIN;
+  return WIRE_MIN < WIRE_VERSION && s >= 0 && s < eg_cap(v, k) && v[0].eg[k].seat[s].wire == WIRE_MIN;
 }
 
 
@@ -93,7 +93,7 @@ wprev_familiar_snapshot :: (v: [] RmServer, k: int, s: int) {
   if !rules[0].familiar_ready { return; }
   st := room[0].seat[s..<s + 1];
   rows: [960] u8; size := 0; count := 0;
-  for owner: 0..<EG_SEATS {
+  for owner: 0..<eg_cap(v, k) {
     if !room[0].seat[owner].live || !room[0].seat[owner].placed { continue; }
     if im_blocked(room[0].im[..], s, owner) || im_blocked(room[0].im[..], owner, s) { continue; }
     f := rules[0].familiar[owner].me; c := b[0].c[f..<f + 1];

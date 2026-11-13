@@ -32,14 +32,14 @@ e2_aid_sights :: (v:[] RmServer,k:int)->int {
   room:=v[0].eg[k..<k+1];
   rules:=room[0].rules[..]; b:=rules[0].b[..];
   next:=0;
-  for s:0..<EG_SEATS {
+  for s:0..<room[0].seat.count {
     st:=room[0].seat[s..<s+1];
     if st[0].aid.pending<=0 { continue; }
     st[0].aid.target=-1; st[0].aid.ray=-1; st[0].aid.clear=false;
     if !st[0].live || !st[0].placed || !rules[0].live[s] { continue; }
     best:=1.524f32*1.524f32;
     target:=-1;
-    for j:0..<EG_SEATS {
+    for j:0..<room[0].seat.count {
       if j==s || !room[0].seat[j].live || !room[0].seat[j].placed || !rules[0].live[j] { continue; }
       if im_blocked(room[0].im[..], s, j) || im_blocked(room[0].im[..], j, s) { continue; }
       c:=b[0].c[EGB_SEAT+j];
@@ -55,7 +55,7 @@ e2_aid_sights :: (v:[] RmServer,k:int)->int {
 
 e2_aid_ray :: (v:[] RmServer,k:int,q:int,out:[] f32)->bool {
   seats:=v[0].eg[k].seat[..];
-  for s:0..<EG_SEATS {
+  for s:0..<seats.count {
     aid:=seats[s].aid;
     if aid.pending<=0 || aid.ray!=q || aid.target<0 { continue; }
     a:=seats[s].pose; b:=seats[aid.target].pose;
@@ -67,7 +67,7 @@ e2_aid_ray :: (v:[] RmServer,k:int,q:int,out:[] f32)->bool {
 }
 
 e2_aid_seen :: (v:[] RmServer,k:int,q:int,clear:bool) {
-  for s:0..<EG_SEATS {
+  for s:0..<eg_cap(v, k) {
     st:=v[0].eg[k].seat[s..<s+1];
     if st[0].aid.pending>0 && st[0].aid.ray==q { st[0].aid.clear=clear; return; }
   }
@@ -76,7 +76,7 @@ e2_aid_seen :: (v:[] RmServer,k:int,q:int,clear:bool) {
 e2_aid_commit :: (v:[] RmServer,k:int) {
   room:=v[0].eg[k..<k+1];
   rules:=room[0].rules[..]; b:=rules[0].b[..];
-  for s:0..<EG_SEATS {
+  for s:0..<room[0].seat.count {
     st:=room[0].seat[s..<s+1]; aid:=st[0].aid;
     if aid.pending<=0 { continue; }
     st[0].aid=E2Aid.{last=aid.last};

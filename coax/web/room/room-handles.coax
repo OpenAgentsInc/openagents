@@ -1,12 +1,12 @@
 // A reference is to a character's lifetime, independent of its current socket.
 #authority;
 eg_seat_ref :: (v:[]RmServer,k:int,s:SeatId)->Handle(EvergladeSeat) #effects(all) {
-  if k<0 || k>=EG_ROOMS || s.value<0 || s.value>=EG_SEATS {return Handle(EvergladeSeat).{};}
+  if k<0 || k>=EG_ROOMS || s.value<0 || s.value>=eg_cap(v, k) {return Handle(EvergladeSeat).{};}
   if !v[0].eg[k].seat[s.value].live {return Handle(EvergladeSeat).{};}
   return ev_seat_reference(s.value,v[0].eg[k].seat_life[s.value]);
 }
 eg_seat_get :: (v:[]RmServer,k:int,h:Handle(EvergladeSeat))->([]EgSeat)? #effects(all) {
-  if k<0 || k>=EG_ROOMS || !handle_present(h) || handle_slot(h)>=EG_SEATS {return null;}
+  if k<0 || k>=EG_ROOMS || !handle_present(h) || handle_slot(h)>=eg_cap(v, k) {return null;}
   slot:=handle_slot(h);
   if !ev_seat_reference_live(h,v[0].eg[k].seat[slot].live,v[0].eg[k].seat_life[slot]) {return null;}
   return some(v[0].eg[k].seat[slot..<slot+1]);

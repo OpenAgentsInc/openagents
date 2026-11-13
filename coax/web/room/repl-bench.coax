@@ -142,7 +142,7 @@ rb_glade :: (after: bool) -> RbGlade {
       wire_test_put(h[..], 16 + i, WireS.{id = WIRE_ID_FOLK + i, kind = WK_FOLK, x = px[i], z = pz[i], vx = pvx[i], vz = pvz[i], clip = 1, p1 = i});
     }
     row := t % WIRE_BASES;
-    for q: 0..<WIRE_SLOTS { pick[q] = ifx h[0].id[row * WIRE_SLOTS + q] == 0 then -1.0f32 else 0.0f32; }
+    for q: 0..<WIRE_SLOTS { pick[q] = ifx h[0].id[row * WIRE_ZSLOTS + q] == 0 then -1.0f32 else 0.0f32; }
     if t > 3 { wire_seat_ack(st[..], h[..], t - 3); }
     n := 0;
     if after {

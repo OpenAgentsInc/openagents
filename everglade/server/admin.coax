@@ -37,7 +37,7 @@ e2_admin_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
   s := seat_id.value;
   // a moderator's command (#13302): any room takes it, from a seat whose signed ticket has the moderator bit (coax/web/room/room-mod.coax)
   if rm_mod_line(text) { rm_mod_heard(v, k, seat_id, text); return; }
-  if !v[0].adm.local || s < 0 || s >= EG_SEATS { v[0].adm.dropped += 1; return; }
+  if !v[0].adm.local || s < 0 || s >= eg_cap(v, k) { v[0].adm.dropped += 1; return; }
   v[0].adm.heard += 1;
   rd: [1] WireRd; rd[0] = wire_rd(text, 1);
   line := wire_read_admin(text, rd[..]);
@@ -58,7 +58,7 @@ e2_admin_heard :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
   if verb == WIRE_X_CLASS { if egb_klass_of(arg) >= EGB_CL0 { eg_seat_kind(v, k, seat_id, arg); } return; }
   if verb == WIRE_X_GUARD {
     g := v[0].eg[k].guard[..]; r := v[0].eg[k].rules[..];
-    if arg == "kill" { if g[0].q >= 0 && r[0].beasts[g[0].q].id == g[0].id { b[0].c[EGB_BEAST0 + g[0].q].hp = 0; } return; }
+    if arg == "kill" { if g[0].q >= 0 && r[0].beasts[g[0].q].id == g[0].id { b[0].c[egb0(v, k) + g[0].q].hp = 0; } return; }
     if arg == "reset" || arg == "off" {
       if g[0].q >= 0 && r[0].beasts[g[0].q].id == g[0].id { egb_beast_gone(r, g[0].q); }
       g[0].q = -1; g[0].state = E2G_NONE; g[0].foe = -1; g[0].hp = 0; g[0].down_at = -1;
@@ -77,14 +77,14 @@ e2_admin_before :: (v: [] RmServer, k: int) {
 e2_admin_after :: (v: [] RmServer, k: int) {
   if !v[0].adm.local { return; }
   b := v[0].eg[k].rules[0].b[..];
-  for s: 0..<EG_SEATS {
+  for s: 0..<eg_cap(v, k) {
     if !slot_set_has(e2_admin_set(v[0].adm.god[..], k), s) || !v[0].eg[k].seat[s].live { continue; }
     c := b[0].c[EGB_SEAT + s..<EGB_SEAT + s + 1];
     c[0].hp = c[0].hp_max; c[0].dead = false; if (c[0].cond & RS_UNCONSCIOUS) != 0 { c[0].cond -= RS_UNCONSCIOUS; }
   }
   g := v[0].eg[k].guard[0];
-  if g.q >= 0 && g.foe < EG_SEATS && slot_set_has(e2_admin_set(v[0].adm.ko[..], k), g.foe) {
-    c := b[0].c[EGB_BEAST0 + g.q..<EGB_BEAST0 + g.q + 1];
+  if g.q >= 0 && g.foe < eg_cap(v, k) && slot_set_has(e2_admin_set(v[0].adm.ko[..], k), g.foe) {
+    c := b[0].c[egb0(v, k) + g.q..<egb0(v, k) + g.q + 1];
     if c[0].hp <= 0 { c[0].hp = 1; c[0].dead = false; c[0].cond = c[0].cond | RS_UNCONSCIOUS; }
   }
 }
@@ -92,7 +92,7 @@ e2_admin_after :: (v: [] RmServer, k: int) {
 rm_e2_admin_warp :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) -> bool #export_c #effects(all) {
   s := s_id.value;
   if rm_mod_warp(v, k, s, out) { return true; }   // a moderator's move, in any room (coax/web/room/room-mod.coax, #13302)
-  if !v[0].adm.local || k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < 3 { return false; }
+  if !v[0].adm.local || k < 0 || k >= EG_ROOMS || s < 0 || s >= eg_cap(v, k) || out.count < 3 { return false; }
   if v[0].adm.warp[k] != s + 1 { return false; }
   v[0].adm.warp[k] = 0;
   out[0] = v[0].adm.warp_x[k]; out[1] = v[0].adm.warp_z[k]; out[2] = v[0].adm.warp_yaw[k];

@@ -52,7 +52,7 @@ rm_st_pin :: (v: [] RmServer, i: int) -> int #export_c #effects(all) {
 RmStats :: struct {
   frames:[1]FrameObserved; // exact accepted application frames for the current report window
   rows:int;row_bytes:int;rows_deferred:int;link_cuts:int;   // link_cuts: seat ticks its link was congested (#13178)
-  rows_last:[EG_ROOMS*EG_SEATS]int;left_last:[EG_ROOMS*EG_SEATS]int;
+  rows_last:[EG_SEAT_ROWS]int;left_last:[EG_SEAT_ROWS]int;
   refused: [ST_REASONS] int;
   re_tries: int; re_ok: int;      // joins with re=1, and those seated
   re_seat: int;                   // joins that took back their player's held seat (room-relay.coax rl_take_back, #12792)
@@ -87,7 +87,7 @@ rm_st_conn :: (v: [] RmServer, conn: int, out: [] int) -> bool #export_c #effect
   if conn < 0 || conn >= CONNS || out.count < 2 || !v[0].conns[conn].live || v[0].conns[conn].relay < 0 { return false; }
   k := eg_room_at(v, v[0].conns[conn].relay);
   s := v[0].conns[conn].seat;
-  if k < 0 || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live || v[0].eg[k].seat[s].conn != conn { return false; }
+  if k < 0 || s < 0 || s >= eg_cap(v, k) || !v[0].eg[k].seat[s].live || v[0].eg[k].seat[s].conn != conn { return false; }
   out[0] = k; out[1] = s;
   return true;
 }
@@ -124,7 +124,7 @@ rm_st_relevant :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c #effec
 rm_st_interest :: (v:[]RmServer,out:[]int) #export_c #effects(all) {
   if out.count<15{return;}for i:0..<15{out[i]=0;}out[9]=-1;out[10]=-1;
   best:=-1;
-  for k:0..<EG_ROOMS{for s:0..<EG_SEATS{
+  for k:0..<EG_ROOMS{for s:0..<eg_cap(v, k){
     if !rm_eg_seat_live(v,k, SeatId.{value = s})||!v[0].eg[k].seat[s].placed{continue;}
     c:[4]int;im_counts(v[0].eg[k].im[..], SeatId.{value = s},c[..]);out[0]+=1;
     for i:0..<4{out[1+i]+=c[i];if c[i]>out[5+i]{out[5+i]=c[i];}}

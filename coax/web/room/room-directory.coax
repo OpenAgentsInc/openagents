@@ -106,7 +106,7 @@ dir_int :: (b: [] u8, n: int, x: int) -> int {
 // in rooms[0] how many rooms it names.
 dir_lines :: (v: [] RmServer, b: [] u8, rooms: [] int) -> int {
   free := 0;
-  for k: 0..<EG_ROOMS { if !v[0].eg[k].live { free += 1; } }
+  for k: 0..<(ifx eg_zoned(v) then 1 else EG_ROOMS) { if !v[0].eg[k].live { free += 1; } }   // a zone's process has the one room (seats.coax eg_zone_use)
   n := dir_put(b, 0, "s "); n = dir_int(b, n, v[0].shard); n = dir_put(b, n, " "); n = dir_int(b, n, free); n = dir_put(b, n, "\n");
   if v[0].dir_gen && v[0].vit.gen > 0 {
     n = dir_put(b, n, "g "); n = dir_int(b, n, v[0].vit.gen); n = dir_put(b, n, ifx v[0].drain || rc_closed(v) then " d\n" else "\n");   // d: draining, or out of rotation by the API's flag (room-control.coax rc_closed, #13299)
@@ -124,7 +124,7 @@ dir_lines :: (v: [] RmServer, b: [] u8, rooms: [] int) -> int {
       n = dir_put(b, n, " "); n = dir_put(b, n, cast(string) c.ticket.pid[0..<c.ticket.pid_n]);
     }
     // and those whose seats are held for them (#12792): still in the room
-    for s: 0..<EG_SEATS {
+    for s: 0..<eg_cap(v, k) {
       if !eg_held(v, k, SeatId.{value = s}) || !v[0].eg[k].tk[s].ok { continue; }
       tk := v[0].eg[k].tk[s..<s + 1];
       n = dir_put(b, n, " "); n = dir_put(b, n, cast(string) tk[0].pid[0..<tk[0].pid_n]);
@@ -206,7 +206,7 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c #effects(all) {
   told := 0;
   for k: 0..<EG_ROOMS {
     if !v[0].eg[k].live { continue; }
-    for s: 0..<EG_SEATS {
+    for s: 0..<eg_cap(v, k) {
       st := v[0].eg[k].seat[s..<s + 1];
       if !st[0].live || st[0].conn < 0 || st[0].conn >= CONNS || !v[0].conns[st[0].conn].live || v[0].conns[st[0].conn].kicked { continue; }
       eg_refuse(v, k, SeatId.{value = s}, 0, WIRE_REFUSE_RESTARTING);

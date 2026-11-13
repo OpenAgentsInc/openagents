@@ -28,12 +28,17 @@ EG_RESNAP :: 60;
 EG_OUT_SAY :: 15;
 // book:begin room-size
 EG_ROOMS :: 4;                  // simulated rooms at once (64 players): the directory gives a shard 2 (verse.room_shards.rooms_cap), a 150-seat zone 1 (docs/decisions/0007)
-EG_SEATS :: 16;
+EG_SEATS :: 16;                 // a room's seats unless its zone declares more (eg_zone_use): the wire's WIRE_SEATS, and the seats a room holds in its own record
+EG_ZONE_SEATS :: WIRE_ZONE_SEATS;   // the most a zone declares (docs/decisions/0003-150-a-zone.md, #13275): what a seat-keyed table has room for
 EG_HZ :: 30;
 // book:end room-size
 // A set of seats (who a seat cannot see this tick, who hurt a creature, whom an admin's mode is on)
 // is one bit a seat in this many words (metaverse-engine/core/slot-set.coax): no shape holds the seats' number (#13275).
-EG_SEAT_WORDS :: (EG_SEATS + SLOT_SET_BITS - 1) / SLOT_SET_BITS;
+// The seat-keyed tables a process keeps beside its rooms (row k * EG_SEATS + s: the room's stats, each
+// seat's character) hold this many rows: every room of EG_SEATS, or the one zone of more that a process
+// runs alone as room 0 (eg_zone_use; docs/decisions/0007 "one zone to a process").
+EG_SEAT_ROWS :: EG_ZONE_SEATS;
+EG_SEAT_WORDS :: (EG_ZONE_SEATS + SLOT_SET_BITS - 1) / SLOT_SET_BITS;
 // A D frame every tick (30 Hz). At every 2 ticks (15 Hz), an input stepped on the odd tick waited a
 // tick for its ACK, up to 66 ms on top of the round trip (#12731); the table every seat's rows are cut
 // from is filled once a tick (eg_table).
@@ -149,8 +154,8 @@ EgSeat :: struct {
   kit_told: int = -1;   // Everglade II: the hash of the bar state it last heard (b, everglade/server/rest.coax e2_kit_tell)
   checkpoint_hello: bool;        // a schema 2 character is built/restored once, not reset by repeated H
   heard_ms: int;                 // when its page last sent a frame (G's AWAY bit after WIRE_AWAY_MS)
-  heard_n: [EG_SEATS] int;                            // a hash of who it last heard each seat is (0 nothing)
-  heard_w: [EG_SEATS] int;                            // the WANTED level it last heard of each seat, plus 1 (0 nothing)
+  heard_n: [EG_ZONE_SEATS] int;                            // a hash of who it last heard each seat is (0 nothing)
+  heard_w: [EG_ZONE_SEATS] int;                            // the WANTED level it last heard of each seat, plus 1 (0 nothing)
   rep: [1] WireSeat;                                  // what its page holds of the table (everglade-wire.coax)
   // its link (metaverse-engine/net/budget.coax, #13178): the bytes of rows it may be sent a tick, lowered and
   // spaced while its socket queues or its HEARD lags; and the last second's sums for its overlay (k)
@@ -158,8 +163,8 @@ EgSeat :: struct {
   cam: f32; cam_on: bool;                             // its camera's yaw (rad), from its last input
   // its n and w entries of each seat: the tick each last went out, the ticks it went out in (a bit
   // each, as WireSeat's sent), and whether a tick its page heard held it
-  n_t: [EG_SEATS] int; n_bits: [EG_SEATS] int; n_ok: [EG_SEATS] bool;
-  w_t: [EG_SEATS] int; w_bits: [EG_SEATS] int; w_ok: [EG_SEATS] bool;
+  n_t: [EG_ZONE_SEATS] int; n_bits: [EG_ZONE_SEATS] int; n_ok: [EG_ZONE_SEATS] bool;
+  w_t: [EG_ZONE_SEATS] int; w_bits: [EG_ZONE_SEATS] int; w_ok: [EG_ZONE_SEATS] bool;
   // its D's are snapshots (F 1: the page forgets everything first) from its first, until its page
   // says it heard one (full_t: the first's tick)
   full: bool; full_t: int;
@@ -189,7 +194,7 @@ EG_ENDS :: 4;
 EgEnd :: struct { seq: int; slot: int; }
 EgRoom :: struct {
   initialized:bool;
-  seat_life: [EG_SEATS] u32 #counter; // character lifetime; a socket rejoin keeps it
+  seat_life: [EG_ZONE_SEATS] u32 #counter; // character lifetime; a socket rejoin keeps it
   work:[1]WorkBudget;
   stale_n: int;        // hellos refused for another WIRE_VERSION (#12788)
   behind_n: int;       // seat ticks whose rows waited, its socket behind
@@ -200,13 +205,17 @@ EgRoom :: struct {
   tick: int; seed: int;
   ev_dropped: int;               // events a tick had no room for (EG_EVENTS, EG_EV_BYTES), since the host last asked
   sky: int;                      // the weather its seats last heard, as W has it (room-sky.coax)
-  seat: [EG_SEATS] EgSeat;
-  familiar_reactions: [EG_SEATS] E2StepReactions;
+  // Its seats: the zone's storage, sized by the cap the zone declared (#13275, docs/decisions/0007). A room
+  // nobody gave storage has its own EG_SEATS (seat_own, bound by eg_seats_bind); a zone of more is handed its
+  // seats (eg_zone_use). Every loop over a room's seats runs to seat.count (eg_cap), never to a constant.
+  seat: [] EgSeat;
+  seat_own: [EG_SEATS] EgSeat;
+  familiar_reactions: [EG_ZONE_SEATS] E2StepReactions;
   guard: [1] E2Guard;   // Everglade II's path guard (everglade/server/guard.coax)
   monsters: [1] E2Monsters;      // Everglade II's wolves and goblins (everglade/server/creatures.coax)
   nav: [1] E2RoomNav;            // its cells and its creatures' navigation (everglade/server/nav.coax, #13280, #13281)
   arrows: [1] E2Arrows;          // Everglade II's arrows in the air (everglade/server/arrows.coax)
-  tk: [EG_SEATS] Ticket;         // who each seat's ticket says its player is, kept while the seat is held (#12792)
+  tk: [EG_ZONE_SEATS] Ticket;         // who each seat's ticket says its player is, kept while the seat is held (#12792)
   hurts: [1] HbBatch;   // one whole-tick world damage snapshot per seat, dealt after heals
   rules: [1] EgBattle;
   // the events since the last D, as entry text, each with where it happened
@@ -214,16 +223,16 @@ EgRoom :: struct {
   ev_at: [EG_EVENTS + EG_EV_KEEP] int; ev_len: [EG_EVENTS + EG_EV_KEEP] int; ev_x: [EG_EVENTS + EG_EV_KEEP] f32; ev_z: [EG_EVENTS + EG_EV_KEEP] f32; ev_all: [EG_EVENTS + EG_EV_KEEP] bool;
   ev_out: [EG_EVENTS + EG_EV_KEEP] bool;   // an outcome (eg_ev_outcome), not a cue
   ev_to: [EG_EVENTS + EG_EV_KEEP] int;        // the seat an event is aimed at beyond its own fields, plus 1 (0 none; room-blocks.coax eg_im_event_seats)
-  wanted: [EG_SEATS] int;
+  wanted: [EG_ZONE_SEATS] int;
   place_stamp: int;                                // the newest place line's STAMP this room laid (room-control.coax "place"; 0 none)
   // every entity's state this tick, filled once (eg_table) for every seat's rows to be cut from, and
   // each player's n entry with its hash
   cache_tick: int = -1;
   hist: [1] WireHist;
-  fx_slot: [EG_SEATS * WE_WATCH] int;  // and each seat's watch effect's (SS * WE_WATCH + cause), from the same pool
-  cn: [EG_SEATS * EG_ENT] u8; cn_n: [EG_SEATS] int; cn_h: [EG_SEATS] int;
+  fx_slot: [EG_ZONE_SEATS * WE_WATCH] int;  // and each seat's watch effect's (SS * WE_WATCH + cause), from the same pool
+  cn: [EG_ZONE_SEATS * EG_ENT] u8; cn_n: [EG_ZONE_SEATS] int; cn_h: [EG_ZONE_SEATS] int;
   // who may receive what (room-interest.coax, #12789), and each seat's blocks by player id (K)
-  im: [1] Interest; im_blk: [EG_SEATS] ImBlockList;
-  fight_t: [WIRE_SLOTS] int;   // the tick each slot's Hit Points last moved, 0 never (eg_combat, #13178)
-  combat_q: [WIRE_SLOTS] int; combat_n: int;   // this tick's slots that may be in combat with a seat: players, a seat's targets and makings, the fighting
+  im: [1] Interest; im_blk: [EG_ZONE_SEATS] ImBlockList;
+  fight_t: [WIRE_ZSLOTS] int;   // the tick each slot's Hit Points last moved, 0 never (eg_combat, #13178)
+  combat_q: [WIRE_ZSLOTS] int; combat_n: int;   // this tick's slots that may be in combat with a seat: players, a seat's targets and makings, the fighting
 }
