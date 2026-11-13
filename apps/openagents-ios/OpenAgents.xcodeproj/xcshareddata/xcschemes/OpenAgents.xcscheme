@@ -52,7 +52,8 @@
          </TestableReference>
          <TestableReference
             skipped = "NO"
-            parallelizable = "NO">
+            parallelizable = "NO"
+            useTestSelectionWhitelist = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "D6306D13CC52B0771CBD18E6"
@@ -60,6 +61,11 @@
                BlueprintName = "OpenAgentsUITests"
                ReferencedContainer = "container:OpenAgents.xcodeproj">
             </BuildableReference>
+            <SelectedTests>
+               <Test
+                  Identifier = "StarterUITests/testEmbeddedCoaxModuleRunsOfflineAndChangesSharedState">
+               </Test>
+            </SelectedTests>
          </TestableReference>
       </Testables>
       <CommandLineArguments>
@@ -85,8 +91,6 @@
             ReferencedContainer = "container:OpenAgents.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <CommandLineArguments>
-      </CommandLineArguments>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

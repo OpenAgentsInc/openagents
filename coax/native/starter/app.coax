@@ -1,0 +1,54 @@
+// The first app in the OpenAgents book. Product behavior and presentation
+// are Coax; this module is replaced over the air without changing its host.
+#load "../../../components/kit/frames.coax";
+#load "../../../components/backend/dom.coax";
+#load "../../lib/json/json.coax";
+
+Starter :: struct { ready: bool; dirty: bool = true; time: f32; taps: int; action: int; tree: [1] Tree; dom: [1] Dom; ui: [1] Ui; sets: [MF_COUNT] AfSettings; css: [24576] u8; inbox: [8192] u8; note: [1024] u8; note_n: int; }
+#test "the starter action changes shared state and emits one host request" {
+  s: [1] Starter;
+  st_action(s[..],1); #assert s[0].taps == 1 && s[0].dirty;
+  st_action(s[..],2); #assert s[0].action == 1;
+  st_action(s[..],3); #assert s[0].action == 2;
+  st_done(s[..]); #assert s[0].action == 0;
+}
+st_done :: (s:[]Starter) #export_c #effects(all) {s[0].action=0;}
+st_action :: (s: [] Starter, action: int) {
+  s[0].dirty = true;
+  if action == 1 { s[0].taps += 1; }
+  if action == 2 { s[0].action = 1; }
+  if action == 3 { s[0].action = 2; }
+}
+st_frame :: (s: [] Starter, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if !s[0].ready { s[0].ready = true; n := mono_frames(s[0].sets[..]); }
+  if dt > 0 && dt < 1 { s[0].time += dt; }
+  if !s[0].dirty && !s[0].ui[0].busy { return 0; }
+  d := s[0].dom[..]; t := s[0].tree[..]; u := s[0].ui[..];
+  if !d[0].styled {
+    n := mono_css(s[0].css[..]);
+    n = mc(s[0].css[..],n,"body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}.starter{max-width:540px;margin:0 auto;padding:48px 24px;display:flex;flex-direction:column;gap:24px}.starter>*{margin:0}.starter h1{font-size:36px;line-height:1.1}.starter p{color:var(--ink-muted)}.starter .btn{min-height:48px}.starter .count{font-size:48px;color:var(--ink)}");
+    dm_style(d,cast(string)s[0].css[0..<n]);
+  }
+  ui_begin(u,s[0].time,reduced); tr_begin(t);
+  root := tr_open(t,"starter",TG_MAIN,"starter");
+  x := k_text(t,u,"starter.label",TG_P,"","OPENAGENTS / COAX NATIVE");
+  x = k_text(t,u,"starter.title",TG_H1,"","Start here.");
+  x = k_text(t,u,"starter.about",TG_P,"","One Coax app. A native shell. Signed updates, ready when you are.");
+  count: [32] u8; o: [1] Jo; jo_start(o[..],count[..]); jo_int(o[..],s[0].taps); n := o[0].n;
+  x = k_text(t,u,"starter.count",TG_P,"count",cast(string)count[0..<n]);
+  x = k_button(t,u,"starter.tap","Try the starter",BS_PRIMARY);
+  x = k_button(t,u,"starter.updates","Check for updates",BS_PLAIN);
+  x = k_button(t,u,"starter.details","Build and update details",BS_PLAIN);
+  if s[0].note_n > 0 { x = k_text(t,u,"starter.note",TG_P,"",cast(string)s[0].note[0..<s[0].note_n]); }
+  tr_close(t); ui_end(u); s[0].dirty = false;
+  return dm_flush(d,t,s[0].sets[..]);
+}
+st_event :: (s: [] Starter, kind: int, slot: int, n: int) #export_c #effects(all) {
+  if kind == 1 {
+    i := -1; for k: 0..<s[0].tree[0].n { if s[0].dom[0].of[k] == slot { i = k; break; } }
+    id := tr_id(s[0].tree[..],i);
+    st_action(s,ifx id == "starter.tap" then 1 else ifx id == "starter.updates" then 2 else ifx id == "starter.details" then 3 else 0);
+  }
+  if kind == 20 && n >= 0 && n <= 1024 { s[0].note_n = n; for i: 0..<n { s[0].note[i] = s[0].inbox[i]; } s[0].dirty = true; }
+}
+st_size :: (s: [] Starter, slot: int, w: f32, h: f32) #export_c #effects(all) { if dm_size(s[0].dom[..],slot,w,h) { s[0].dirty = true; } }

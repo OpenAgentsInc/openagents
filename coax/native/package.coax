@@ -1,0 +1,33 @@
+// Package construction uses the one manifest codec. Signing and uploads are
+// separate SDK/platform effects; this command never sees the private key.
+#load "updates-wire.coax";
+#load "../lib/crypto/sha256-kernel.coax";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) {return 2;}
+  if args_count(a[..])==4 && args_at(a[..],0)=="--seal" {
+    raw:[16384]u8;sig:[64]u8;out:[16456]u8;
+    n:=fs_read(args_at(a[..],1),raw[..]);ns:=fs_read(args_at(a[..],2),sig[..]);
+    if n<0 || ns!=64 {return 1;}k:=cnu_wrap(raw[0..<n],sig[..],out[..]);
+    return ifx k>0 && fs_write(args_at(a[..],3),cast(string)out[0..<k]) then 0 else 1;
+  }
+  if args_count(a[..]) < 6 { tool_errln("package DIR APP RUNTIME GENERATION OUT FILE..."); return 2; }
+  dir := args_at(a[..],0); app := args_at(a[..],1); runtime := args_at(a[..],2);
+  g := args_at(a[..],3); gen := 0; for c:g { if c < '0' || c > '9' || gen > 214748364 { return 2; } gen = gen*10+cast(int)(c-'0'); }
+  m: [1] CnuManifest; m[0].generation = gen; m[0].app_n = app.count;
+  if app.count > 80 || !cnu_hex(runtime) { return 2; }
+  for c,i:app { m[0].app[i]=c; } for c,i:runtime { m[0].runtime[i]=c; }
+  data: [8388608] u8; path: [4096] u8;
+  m[0].n = args_count(a[..])-5; if m[0].n > CNU_FILES { return 2; }
+  for i:0..<m[0].n {
+    name := args_at(a[..],i+5); if !cnu_path(name) { return 2; }
+    file := fs_join(dir,name,path[..]); n := fs_read(file,data[..]); if n < 0 { tool_errln(file); return 1; }
+    m[0].files[i].path_n = name.count; m[0].files[i].bytes = n;
+    for c,k:name { m[0].files[i].path[k]=c; }
+    if !S_hex(S_hash(cast(string)data[0..<n]),m[0].files[i].hash[..]) { return 1; }
+  }
+  out: [16384] u8; n := cnu_write(m[..],out[..]);
+  if n < 0 || !fs_write(args_at(a[..],4),cast(string)out[0..<n]) { return 1; }
+  print("package: % files, generation %\n",m[0].n,gen); return 0;
+}

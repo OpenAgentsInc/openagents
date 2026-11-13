@@ -1,0 +1,14 @@
+// The published golden manifest must keep its exact canonical bytes.
+#load "updates-wire.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/tool.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  raw:[16384]u8;out:[16384]u8;envelope:[16456]u8;sig:[64]u8;
+  n:=fs_read("proto/coax-native/package-v1.json",raw[..]);if n<1 {return 1;}
+  if raw[n-1]=='\n' {n-=1;}
+  m:=[1]CnuManifest.[cnu_read(cast(string)raw[0..<n])];
+  k:=cnu_write(m[..],out[..]);if k!=n || cast(string)out[0..<k]!=cast(string)raw[0..<n] {return 1;}
+  size:=cnu_wrap(raw[0..<n],sig[..],envelope[..]);
+  if size!=n+72 || cnu_unwrap(envelope[0..<size],0,out[..])!=n || cast(string)out[0..<n]!=cast(string)raw[0..<n] {return 1;}
+  print("coax.native.package.v1: exact manifest and envelope pass\n");return 0;
+}

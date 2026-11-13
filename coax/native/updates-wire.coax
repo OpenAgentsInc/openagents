@@ -1,0 +1,121 @@
+// Coax Native's signed package manifest. The exact UTF-8 bytes are signed;
+// the Swift SDK verifies Ed25519 before this codec admits any file.
+#load "../lib/json/json.coax";
+
+CNU_SCHEMA :: "coax.native.package.v1";
+CNU_FILES :: 24;
+CnuFile :: struct { path: [128] u8; path_n: int; hash: [64] u8; bytes: int; }
+CnuManifest :: struct { generation: int = -1; app: [80] u8; app_n: int; runtime: [64] u8; files: [CNU_FILES] CnuFile; n: int; }
+
+#test "package codec roundtrips the whole manifest and refuses ambiguous records" {
+  m: [1] CnuManifest; m[0].generation = 1; m[0].n = 1;
+  m[0].app_n = 3; for c,i: "a.b" { m[0].app[i] = c; }
+  for i: 0..<64 { m[0].runtime[i] = 'a'; m[0].files[0].hash[i] = 'b'; }
+  m[0].files[0].path_n = 10; m[0].files[0].bytes = 42;
+  for c,i: "index.html" { m[0].files[0].path[i] = c; }
+  out: [8192] u8; n := cnu_write(m[..], out[..]); #assert n > 0;
+  text := cast(string) out[0..<n]; r := cnu_read(text);
+  #assert r.generation == 1 && r.n == 1 && r.files[0].bytes == 42;
+  #assert cnu_number(out[0..<n], -1) == 1 && cnu_number(out[0..<n], -2) == 1;
+  #assert cnu_number(out[0..<n], 0) == 42 && cnu_number(out[0..<n], 1) == -1;
+  tmp: [128] u8;
+  #assert cnu_text(out[0..<n], -1, 0, tmp[..]) == 3;
+  #assert cnu_text(out[0..<n], -1, 1, tmp[..]) == 64;
+  #assert cnu_text(out[0..<n], 0, 0, tmp[..]) == 10;
+  #assert cnu_text(out[0..<n], 0, 1, tmp[..]) == 64;
+  #assert cnu_text(out[0..<n], 1, 0, tmp[..]) == -1;
+  #assert cnu_read("{}").generation == -1;
+  #assert cnu_read(text[0..<text.count - 1]).generation == -1;
+  #assert cnu_write(m[..], out[0..<2]) == -1;
+}
+#test "package paths never escape their release directory" {
+  for s: [12]string.["", "/a", "a/../b", "../a", "a//b", "a\\b", "a%2fb", "a/./b", "a?b", "a#b", ".", "a/"] { #assert !cnu_path(s); }
+  #assert cnu_path("index.html") && cnu_path("coaxial/dom-host.js") && cnu_path("build/starter.wasm");
+}
+#test "envelope boundaries and exact signed bytes" {
+  raw:=[3]u8.[97,98,99];sig:[64]u8;out:[128]u8;body:[64]u8;
+  n:=cnu_wrap(raw[..],sig[..],out[..]);#assert n==75;
+  #assert cnu_unwrap(out[0..<n],0,body[..])==3 && body[0]==97 && body[2]==99;
+  #assert cnu_unwrap(out[0..<n],1,body[..])==64;
+  #assert cnu_unwrap(out[0..<n-1],0,body[..]) == -1;
+  out[0]=0;#assert cnu_unwrap(out[0..<n],0,body[..]) == -1;
+  #assert cnu_wrap(raw[..],sig[0..<63],out[..]) == -1;
+}
+cnu_wrap :: (raw:[]u8,signature:[]u8,out:[]u8)->int {
+  if raw.count>16384 || signature.count!=64 || out.count<raw.count+72 {return -1;}
+  for c,i:"CNU1" {out[i]=c;}
+  v:=raw.count;for i:0..<4 {out[4+i]=cast,trunc(u8)v;v=v>>8;}
+  for c,i:raw {out[8+i]=c;}for c,i:signature {out[8+raw.count+i]=c;}return raw.count+72;
+}
+cnu_unwrap :: (raw:[]u8,part:int,out:[]u8)->int #export_c #effects(all) {
+  if raw.count<72 || raw.count>16456 || cast(string)raw[0..<4]!="CNU1" || part<0 || part>1 {return -1;}
+  n:=0;for i:0..<4 {n=n | (cast(int)raw[4+i] << (i*8));}
+  if n>16384 || n+72!=raw.count {return -1;}
+  at:=ifx part==0 then 8 else 8+n;count:=ifx part==0 then n else 64;
+  if out.count<count {return -1;}for i:0..<count {out[i]=raw[at+i];}return count;
+}
+cnu_path :: (s: string) -> bool #export_c #effects(all) {
+  if s.count < 1 || s.count > 128 { return false; }
+  start := 0;
+  for c,i: s {
+    if c == '/' { if i == start || s[start..<i] == "." || s[start..<i] == ".." { return false; } start = i + 1; }
+    else if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_') { return false; }
+  }
+  return start < s.count && s[start..<s.count] != "." && s[start..<s.count] != "..";
+}
+cnu_hex :: (s: string) -> bool {
+  if s.count != 64 { return false; }
+  for c: s { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+cnu_read :: (text: string) -> CnuManifest {
+  bad: CnuManifest;
+  if text.count > 16384 { return bad; }
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return bad; }
+  v := d[0];
+  if jv_kind(v,0) != JV_OBJECT || jv_len(v,0) != 5 { return bad; }
+  if jv_kind(v,jv_get(v,0,"schema")) != JV_STRING || jv_raw(v,jv_get(v,0,"schema")) != CNU_SCHEMA { return bad; }
+  app := jv_raw(v,jv_get(v,0,"app")); runtime := jv_raw(v,jv_get(v,0,"runtime"));
+  gen := jv_int(v,jv_get(v,0,"generation"),-1); list := jv_get(v,0,"files");
+  if !cnu_path(app) || app.count > 80 || !cnu_hex(runtime) || gen < 1 || gen > 2147483647 || jv_kind(v,list) != JV_ARRAY { return bad; }
+  n := jv_len(v,list); if n < 1 || n > CNU_FILES { return bad; }
+  m: CnuManifest; m.generation = gen; m.app_n = app.count; m.n = n;
+  for c,i: app { m.app[i] = c; } for c,i: runtime { m.runtime[i] = c; }
+  total := 0; entry := false;
+  for i: 0..<n {
+    row := jv_at(v,list,i);
+    if jv_kind(v,row) != JV_OBJECT || jv_len(v,row) != 3 { return bad; }
+    path := jv_raw(v,jv_get(v,row,"path")); hash := jv_raw(v,jv_get(v,row,"sha256")); bytes := jv_int(v,jv_get(v,row,"bytes"),-1);
+    if !cnu_path(path) || !cnu_hex(hash) || bytes < 0 || bytes > 8388608 { return bad; }
+    total += bytes; if total > 33554432 { return bad; }
+    for j: 0..<i { if cast(string) m.files[j].path[0..<m.files[j].path_n] == path { return bad; } }
+    if path == "index.html" { entry = true; }
+    m.files[i].path_n = path.count; m.files[i].bytes = bytes;
+    for c,k: path { m.files[i].path[k] = c; } for c,k: hash { m.files[i].hash[k] = c; }
+  }
+  return ifx entry then m else bad;
+}
+cnu_write :: (m: [] CnuManifest, out: [] u8) -> int {
+  if m.count != 1 || m[0].n < 1 || m[0].n > CNU_FILES { return -1; }
+  o: [1] Jo; jo_start(o[..],out); jo_obj(o[..]);
+  jo_key(o[..],"schema"); jo_str(o[..],CNU_SCHEMA);
+  jo_key(o[..],"app"); jo_str(o[..],cast(string)m[0].app[0..<m[0].app_n]);
+  jo_key(o[..],"runtime"); jo_str(o[..],cast(string)m[0].runtime[..]);
+  jo_key(o[..],"generation"); jo_int(o[..],m[0].generation);
+  jo_key(o[..],"files"); jo_arr(o[..]);
+  for i: 0..<m[0].n { f := m[0].files[i]; jo_obj(o[..]); jo_key(o[..],"path"); jo_str(o[..],cast(string)f.path[0..<f.path_n]); jo_key(o[..],"sha256"); jo_str(o[..],cast(string)f.hash[..]); jo_key(o[..],"bytes"); jo_int(o[..],f.bytes); jo_end(o[..]); }
+  jo_end(o[..]); jo_end(o[..]);
+  n := ifx o[0].bad then -1 else o[0].n; if n < 0 || cnu_read(cast(string)out[0..<n]).generation < 1 { return -1; } return n;
+}
+cnu_number :: (raw: [] u8, i: int) -> int #export_c #effects(all) {
+  m := cnu_read(cast(string)raw); if m.generation < 1 { return -1; }
+  if i == -1 { return m.generation; } if i == -2 { return m.n; }
+  return ifx i >= 0 && i < m.n then m.files[i].bytes else -1;
+}
+cnu_text :: (raw: [] u8, i: int, field: int, out: [] u8) -> int #export_c #effects(all) {
+  m := cnu_read(cast(string)raw); if m.generation < 1 || i < -1 || i >= m.n || field < 0 || field > 1 { return -1; }
+  s := ifx i == -1 then ifx field == 0 then cast(string)m.app[0..<m.app_n] else cast(string)m.runtime[..]
+       else ifx field == 0 then cast(string)m.files[i].path[0..<m.files[i].path_n] else cast(string)m.files[i].hash[..];
+  if s.count > out.count { return -1; } for c,k: s { out[k] = c; } return s.count;
+}

@@ -30,6 +30,12 @@ screen, all from one set of shared actions. Chapter 12 puts the first real
 agent behind that screen, and every later chapter adds one capability to an
 app that already runs.
 
+Begin with the [Coax Native starter](../../coax/native/README.md), including
+optional signed Updates. The first iOS starter installs native account and
+chat services; the book adds application behavior in Coax and can deliver
+compatible Wasm changes over the air. This starter is a running foundation,
+not completion of the chapter's web/iPhone acceptance contract.
+
 Each chapter cites the episodes where an idea was first tried, the old
 crates that implemented it in the Rust tree that ended at `coder-v1.0.0`,
 and the NIPs that carry it. Then it says what we build now, what it builds

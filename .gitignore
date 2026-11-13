@@ -88,3 +88,6 @@ metaverse-engine/lab/.cache/
 # libsodium for the Ed25519 differential test (ed25519_libsodium.py); never committed or shipped.
 coax/tests/auth/.cache/
 build/pipeline/
+# Coax Native generated package and immutable runtime configuration.
+/apps/openagents-ios/Starter/
+/apps/openagents-ios/Native.plist

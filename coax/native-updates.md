@@ -1,5 +1,12 @@
 # Coax Native Updates
 
+An initial iOS WebKit/Wasm delivery profile is implemented in
+[`native/`](native/README.md). Its published contract is
+[`coax.native.package.v1`](../docs/protocol/coax-native-package-v1.md).
+It provides signed whole packages, installed runtime matching, generation
+replay protection, staged activation and local fallback. The broader design
+below also describes capabilities that this first profile does not implement.
+
 Written 2026-11-13. Status: proposed specification, extending
 [Coax Native](native.md). No update client, service, general app interpreter
 or new compiler target is implemented by this document. Assign an implementer,

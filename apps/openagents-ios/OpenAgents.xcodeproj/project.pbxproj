@@ -7,134 +7,26 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0167B4B96147DF241BCBC57A /* haunt-boom.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 510FD4EF2AF0506D173467F2 /* haunt-boom.mp3 */; };
-		07D8E60384FD1648FCC9CB66 /* EngineHotbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1F14129101E502D2EB4F25C /* EngineHotbar.swift */; };
-		08FD3CD4E2C9A833159DF179 /* R0FrameCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0352C38343854AA2099AA493 /* R0FrameCapture.swift */; };
-		134C346710A1B507C12206DD /* haunt-jump.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = AB94FB3266A42BB8002A0185 /* haunt-jump.mp3 */; };
-		167FF29401030EEEBAF05EF9 /* Cast.c in Sources */ = {isa = PBXBuildFile; fileRef = 14A5AEE208B95F199A14645E /* Cast.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		17F2106EC04AC44C22D86F88 /* WalletBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB0BC4905938FB8D95D3F8F0 /* WalletBackup.swift */; };
-		1A440D16806FE261B821F982 /* WalletScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52FBE5EE627E3362DB400F23 /* WalletScreens.swift */; };
-		1FD760B12034E884AAC44570 /* haunt-bubble.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 8F9A88BD7F66AA9706624E3E /* haunt-bubble.mp3 */; };
-		22618E1526104535A83FA537 /* haunt-layer26.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 9B7CE77A2EE685E4D933032D /* haunt-layer26.jpg */; };
-		26A051AF597CE318F9BFD252 /* cast-layer5.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A0E91A4368889291453CA5E9 /* cast-layer5.jpg */; };
-		28CB577DF874ECB4A0F99997 /* HomeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */; };
-		2A42795BDB2590814E540D07 /* WalletBackupScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BF02A2773E09D9A2A6D306 /* WalletBackupScreens.swift */; };
-		2DB579BCA956E7BF63349ADD /* HudChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72745517BDD6D929C45F607A /* HudChrome.swift */; };
-		2F7550EF7E1770994106353D /* Cast.bin in Resources */ = {isa = PBXBuildFile; fileRef = 06BB7B8BF39C34AF7C7ACAE5 /* Cast.bin */; };
-		30138E51AD9DABB194DD92AF /* hello-foreman.wav in Resources */ = {isa = PBXBuildFile; fileRef = 98C9675F63CA0181693012F2 /* hello-foreman.wav */; };
-		30F5EC4492D04035068E1DBD /* LightningAddressCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 534C81AABC4F67536A70C634 /* LightningAddressCard.swift */; };
-		31C5CA0430EE53640AF7D09E /* NostrKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE2C59DEAC80496452B46A2F /* NostrKey.swift */; };
-		356E949698BDD70EBC4FEC2D /* NostrSign.c in Sources */ = {isa = PBXBuildFile; fileRef = C982D84F055B8ABBAD50C802 /* NostrSign.c */; };
-		35A3B13C150F78FD4C9E753E /* Grid.c in Sources */ = {isa = PBXBuildFile; fileRef = 3BE259AB44E619C281EC401B /* Grid.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		36365D7C247809A11218E088 /* HauntBuffer.c in Sources */ = {isa = PBXBuildFile; fileRef = A6E0D2F142DFE9C221574028 /* HauntBuffer.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		370C18328EFAC5841A1E0DA7 /* BIP39.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00755E361D10FD9EA268AF3 /* BIP39.swift */; };
-		3894A2ED21D7B03892405193 /* cast-layer9.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 2470A951A569419B3A288638 /* cast-layer9.jpg */; };
-		3AAEA724068A1CCBDC757EFB /* Haunt.vertices in Resources */ = {isa = PBXBuildFile; fileRef = 77DC63ED359C367DA403C413 /* Haunt.vertices */; };
-		3BA8AAF9A2533E65EE0FE7F9 /* WalletBackupFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E23C802FEB3B439385EBAE5 /* WalletBackupFlow.swift */; };
-		3D33289F296E68FB9545BEE1 /* Michroma-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7F622BCB7F4702C028D100FB /* Michroma-Regular.ttf */; };
-		40EBE76A352087D40B6D5955 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B73CC5A17FE246BB0A3643 /* App.swift */; };
-		414AAE983A6CE10602E30984 /* bip39-english.txt in Resources */ = {isa = PBXBuildFile; fileRef = 00B098BC3A77B9FE2543DB88 /* bip39-english.txt */; };
-		425686EF9F339C9F8AF36F0B /* HomeRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D9CCE7A321B824A05570718 /* HomeRenderer.swift */; };
+		03AF362E64D9222AA06F0E40 /* NativePolicy.c in Sources */ = {isa = PBXBuildFile; fileRef = DCD62FA8D277D57B999CBF47 /* NativePolicy.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
+		081BC189AB524F65D78C03E4 /* AppAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABE3F6DB32D91F73A83323E9 /* AppAnalytics.swift */; };
+		1F3972F80AD727788C1649CC /* NostrSign.c in Sources */ = {isa = PBXBuildFile; fileRef = 0B12460F6D71E6EC127D760A /* NostrSign.c */; };
+		370177B40FC83B533F660A4C /* NostrKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0083B1697095508B0B534B8B /* NostrKey.swift */; };
+		3EEE9F6858832B4BED499CC2 /* NativeWire.c in Sources */ = {isa = PBXBuildFile; fileRef = 5DE15337BAC2E10225C3C1CB /* NativeWire.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
+		43A5D1535C05B29C381D5FFF /* NativeUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */; };
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
-		471BAC12DE71796F5764F900 /* WalletKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC1295D990A18154D988C5E /* WalletKeychain.swift */; };
-		48D8AB0609CBD93A7C48EA74 /* haunt-layer19.jpg in Resources */ = {isa = PBXBuildFile; fileRef = D2B60B64BD044AC100DF2301 /* haunt-layer19.jpg */; };
-		4C69FA4A0896E6468FBDE87E /* LightningAddressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667672595D97D45FB8F092AC /* LightningAddressTests.swift */; };
-		4D13D1CE142E9E69C7438C66 /* SignInScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D5957996BC1975E50D7DFFF /* SignInScreens.swift */; };
-		4D24F2312B26BE146D8EAA1D /* haunt-click.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 114569F7448EC07E9EB3739A /* haunt-click.mp3 */; };
-		502E6C47D6754A400252B96D /* WalletRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1041A12F3949F189557F595D /* WalletRules.swift */; };
-		52405A25E8238A6D9F22D14F /* HauntAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A3C742E2035F083D5EBF027 /* HauntAssets.swift */; };
-		529AB0A622B860AA1C24C4F2 /* WalletVaultUnit.c in Sources */ = {isa = PBXBuildFile; fileRef = C6DC0AEF16E8EF546683C253 /* WalletVaultUnit.c */; };
-		5AB9283993700A2B487118E8 /* VoiceEngine.c in Sources */ = {isa = PBXBuildFile; fileRef = 8CDE427D09F63A4EFD8DFEBB /* VoiceEngine.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		5D9EDB16B7C36F347C949BAA /* haunt-step_metal_1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 32566D9487BC88F307E50D66 /* haunt-step_metal_1.mp3 */; };
-		5E9D4E76D332C1D063811712 /* VoiceMeter.c in Sources */ = {isa = PBXBuildFile; fileRef = C8689A231995DC9878827291 /* VoiceMeter.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */ = {isa = PBXBuildFile; productRef = 6A07344B6842FB168B7EEED5 /* BreezSdkSpark */; };
 		5FCD0C43CB70DA62BB5DE214 /* precomputed_ecmult.c in Sources */ = {isa = PBXBuildFile; fileRef = FA482D60928E6CCB2F0BDDA5 /* precomputed_ecmult.c */; settings = {COMPILER_FLAGS = "-DECMULT_WINDOW_SIZE=8"; }; };
-		6133DCAD289B23FA746D37E4 /* haunt-layer18.jpg in Resources */ = {isa = PBXBuildFile; fileRef = B419AFF111A98FABC2F131D5 /* haunt-layer18.jpg */; };
-		6367A5818F65ABDE05883A8E /* precomputed_ecmult_gen.c in Sources */ = {isa = PBXBuildFile; fileRef = BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */; };
-		6692EBECFA658A019AEA0004 /* haunt-hiss.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 77D49D6E856A70EFF171D148 /* haunt-hiss.mp3 */; };
-		6AA7D24AF6649B718917BB9B /* haunt-layer2.jpg in Resources */ = {isa = PBXBuildFile; fileRef = EB24C563C6E6C235C493BCE9 /* haunt-layer2.jpg */; };
-		6AC1798BF278EC6C6B37F0A8 /* haunt-land.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 53CB5C1F96F76F902F8CD7C8 /* haunt-land.mp3 */; };
+		6367A5818F65ABDE05883A8E /* precomputed_ecmult_gen.c in Sources */ = {isa = PBXBuildFile; fileRef = BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */; settings = {COMPILER_FLAGS = "-DECMULT_WINDOW_SIZE=8"; }; };
+		647B0F6C417120E15A1A68A3 /* StarterUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */; };
+		658B4C2F5F7EABC4715EB1E4 /* Native.plist in Resources */ = {isa = PBXBuildFile; fileRef = DA6976CE4AA8C31947C48C5D /* Native.plist */; };
+		6E5DC168044EA02417ED816B /* StarterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3236A8315C98ABF86224CB /* StarterApp.swift */; };
 		6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0AAC9508FA4369A9715A69 /* AppAuth.swift */; };
-		70C89FC5E833650BE80DB073 /* R0UITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE6C64A9D3D62AAAF87BEADC /* R0UITests.swift */; };
-		71E7318F739A0B4939C83A4C /* wait-stop.wav in Resources */ = {isa = PBXBuildFile; fileRef = A552CDD5935D80B4192A9E4D /* wait-stop.wav */; };
-		777987D602FE02582208A54B /* haunt-step_grass_1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = B92DC9E803C0D83793130EE0 /* haunt-step_grass_1.mp3 */; };
-		7859D5562411497FB00B8FFE /* haunt-layer0.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 4A29BCBC72FC7A99126C9D1E /* haunt-layer0.jpg */; };
-		78B8BF182A2A8E0DC101918C /* NostrSign.c in Sources */ = {isa = PBXBuildFile; fileRef = C982D84F055B8ABBAD50C802 /* NostrSign.c */; };
-		78FC01DBBAB02183BA2A18CC /* AppAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7059FB56C33A4938F817F834 /* AppAuthTests.swift */; };
-		7936085AF00569E867930063 /* Haunt.pb in Resources */ = {isa = PBXBuildFile; fileRef = 14166A55B3401A60E8955D9E /* Haunt.pb */; };
-		7C03BECB12D4D71352A3A98D /* SparkHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DCA95D29E37C09C798B337E /* SparkHost.swift */; };
-		839CBB38B37EEC8B8173B356 /* haunt-step_stone_1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = E63041B894166B46A3E46D9D /* haunt-step_stone_1.mp3 */; };
-		83FD88F53E028589CEE45BCA /* Player.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EA8BD95327E6ECD1A97B685 /* Player.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		858FC488AF4AF7D7FB911540 /* haunt-step_stone_3.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = B77B7DF646997E598E8E9C76 /* haunt-step_stone_3.mp3 */; };
-		882DE814F326D410CE807EA2 /* cast-layer16.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1F408C8FDC3DB39479826802 /* cast-layer16.jpg */; };
-		891D28F63E61B5E75B3A3549 /* michroma-ofl.txt in Resources */ = {isa = PBXBuildFile; fileRef = 75264437CFF5986509BFE1BF /* michroma-ofl.txt */; };
-		8C1B12994A825FF8013B031C /* haunt-step_grass_2.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 99E1E3472391E665C5D030F9 /* haunt-step_grass_2.mp3 */; };
-		8C9A8101023ABDB4F42F9783 /* garden-pause.wav in Resources */ = {isa = PBXBuildFile; fileRef = D32F73555F56FD1F4D920AD5 /* garden-pause.wav */; };
-		90A1BF200BAEF60AB8A87530 /* Benchmarks.c in Sources */ = {isa = PBXBuildFile; fileRef = C5CE6939C532C3B73247777F /* Benchmarks.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		92A7139DA066857E95DF7C5C /* haunt-layer27.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 64067442BA5A73442D8D93AD /* haunt-layer27.jpg */; };
-		93E7DBE6FD41AD35B62FF52D /* SignInLiveUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3948A19798BF6501022C32EA /* SignInLiveUITests.swift */; };
-		942FD4A2E4B76AE6B67327C2 /* HauntUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1FF8EBFA4A63F702F0F578A /* HauntUITests.swift */; };
-		964E12F58676563856602927 /* VoiceFrames.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF4AC2C3883CA39BBC7789FC /* VoiceFrames.swift */; };
-		9827B36D7AD36932D42A88A3 /* haunt-layer1.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 7AD563F88EE767B0FD1AEEAE /* haunt-layer1.jpg */; };
-		9AF85440740B534156609E06 /* SignInUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 606032151FD904348CDAA7FE /* SignInUITests.swift */; };
-		9B64E81CED3EE607C7477FCD /* Camera.c in Sources */ = {isa = PBXBuildFile; fileRef = 94FB25EB951B7C4EB8547F7A /* Camera.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		9B72B16D20FCCB863A22AF4B /* haunt-layer22.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 9AE44FED01ADF77410F4FD26 /* haunt-layer22.jpg */; };
-		9C0AF6CE296A8B39C6C153CF /* Home.pb in Resources */ = {isa = PBXBuildFile; fileRef = A8590DE7BE9F641F9A440194 /* Home.pb */; };
-		9E6A509AF86952ABEE9A15A8 /* Haunt.indices in Resources */ = {isa = PBXBuildFile; fileRef = E89FB258FB2F619B8111905A /* Haunt.indices */; };
-		9EED5DD2800A579F6A8A3F63 /* CrashReports.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01E2A14F3ED8ADBAAEB6C1A /* CrashReports.swift */; };
-		A007E91AC2431354B09B57F2 /* cast-layer12.jpg in Resources */ = {isa = PBXBuildFile; fileRef = B39219FCD634F147CEECDE36 /* cast-layer12.jpg */; };
-		A203994108226A5200DF11E6 /* WalletUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED5025FC8A374A284612812 /* WalletUITests.swift */; };
-		A20413F0FFC11E920FDE5682 /* haunt-thunder.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = C44F943A8802BF3449385B8F /* haunt-thunder.mp3 */; };
-		A299A8D58CA91E6634CE03C7 /* haunt-step_stone_2.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = E4D57E9776762973386F3D8E /* haunt-step_stone_2.mp3 */; };
-		A5B6AF72BD610C316262A8C2 /* haunt-boo.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = DC6C49C69E0079F4626B3B80 /* haunt-boo.mp3 */; };
-		A711923FCA51E11FAD70A5A7 /* precomputed_ecmult_gen.c in Sources */ = {isa = PBXBuildFile; fileRef = BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */; };
-		A82532704621FA268D0CA249 /* secp256k1.c in Sources */ = {isa = PBXBuildFile; fileRef = 29CE2F09F9A0B3457456014E /* secp256k1.c */; settings = {COMPILER_FLAGS = "-DENABLE_MODULE_EXTRAKEYS=1 -DENABLE_MODULE_SCHNORRSIG=1 -DECMULT_WINDOW_SIZE=8 -Wno-unused-function -Wno-shorten-64-to-32"; }; };
-		A95DFBD890907028562D37A4 /* PhoneTurn.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51B7CDE8E484F58DDB2D8EE /* PhoneTurn.swift */; };
-		AB6D5B362735767EF7D5E89E /* Hud.c in Sources */ = {isa = PBXBuildFile; fileRef = FE9115742188118078C4592C /* Hud.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		AE693718C3CEF6987F044510 /* HomeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */; };
-		B249BB3820777CB13E66E317 /* haunt-step_metal_3.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 57F9F980CEAB73A38FBA7D8F /* haunt-step_metal_3.mp3 */; };
-		B5B1AF1B14C0810ADDFF3B1F /* Wallet.c in Sources */ = {isa = PBXBuildFile; fileRef = 4176C3BB15A8996C7FB6B383 /* Wallet.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		B6E9C67AAD7759EDBB58A904 /* BuyScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3D607A7C86F793A71BBD7F4 /* BuyScreen.swift */; };
-		B846A94D0DF0DDDAD61A67FA /* cast-layer10.jpg in Resources */ = {isa = PBXBuildFile; fileRef = FF206467CC283E67E24BBD6E /* cast-layer10.jpg */; };
-		B91C651142B692097D663832 /* WalletBackup.c in Sources */ = {isa = PBXBuildFile; fileRef = 1BAF3BEACAA172C1587306AD /* WalletBackup.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		BA35BAB96B0D3158F066A2E2 /* cast-layer11.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 253FC1C27AD8C916C9806C5D /* cast-layer11.jpg */; };
-		BCF4E35944DC9701FA808F45 /* BreezKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD722D77A3244F05AAF6E9AA /* BreezKey.swift */; };
-		C81BC5971C4C8962601CCFF7 /* VoiceFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219AD682C44ECBE0620A279B /* VoiceFixture.swift */; };
-		C88A368231BDEF444BAC3EB7 /* VoiceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EEAD5AF6BC22A503783C2DC /* VoiceBar.swift */; };
-		CA73A901ED4FB77F95048C73 /* AppAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40876E5DB7A6133051DEFA5D /* AppAnalytics.swift */; };
-		D0D8E0EE075F0E31B1586907 /* voice.c in Sources */ = {isa = PBXBuildFile; fileRef = 0003C41E79E3C2F240E09456 /* voice.c */; };
-		D1B29687D239E5915B47D8CD /* VoiceWire.c in Sources */ = {isa = PBXBuildFile; fileRef = ED2325E916319DB296E06C49 /* VoiceWire.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		D328C9F22130AC7EA46B176A /* WalletBackupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D19665C11DF2D4FFB557D1D /* WalletBackupTests.swift */; };
-		D38C966A113E24135AE7FFCA /* PhoneSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84398239DF707163D47256C2 /* PhoneSignIn.swift */; };
+		9EDFF85EEFA09C5E405F0C99 /* Starter in Resources */ = {isa = PBXBuildFile; fileRef = 312A9EE9333FE46FFAED3D6F /* Starter */; };
+		A82532704621FA268D0CA249 /* secp256k1.c in Sources */ = {isa = PBXBuildFile; fileRef = 29CE2F09F9A0B3457456014E /* secp256k1.c */; settings = {COMPILER_FLAGS = "-DENABLE_MODULE_EXTRAKEYS=1 -DENABLE_MODULE_SCHNORRSIG=1 -DECMULT_WINDOW_SIZE=8"; }; };
+		B90F7595EC11FE241CB77910 /* NativeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01C83152B91DFEEF873AAD56 /* NativeHost.swift */; };
+		C0B0BC79860337C450B78A5D /* PhoneSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */; };
 		D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */; };
-		D3F2FF4DDECBBBEF441BECFC /* haunt-step_wood_1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 72C6BDFF8688434D7DE8F49C /* haunt-step_wood_1.mp3 */; };
-		D73FEB5A299519039A1EF73D /* Haunt-NOTICE.txt in Resources */ = {isa = PBXBuildFile; fileRef = A5AF4B4DE64CEBF4D5D102A6 /* Haunt-NOTICE.txt */; };
-		D80CC444251F6E8198061D7F /* haunt-slam.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 9F87878C2541D03D0BB35D30 /* haunt-slam.mp3 */; };
-		DB9631A6BD923E61989895B2 /* haunt-chime.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 6217EAD9E2040A38F41730D0 /* haunt-chime.mp3 */; };
-		DF636597608A11F38C221B24 /* haunt-step_wood_3.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 4281FC9167BC6662FEB38F4B /* haunt-step_wood_3.mp3 */; };
-		DFAB32CEAEA4828324CE0761 /* haunt-step_grass_3.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 68E7BC528083770536878DDA /* haunt-step_grass_3.mp3 */; };
-		E042C58657667D51A54A789B /* HomeShaders.txt in Resources */ = {isa = PBXBuildFile; fileRef = BA3BE377FA296AF9793FA2A8 /* HomeShaders.txt */; };
-		E16E57A4265C2A0D9DDF39BF /* VoiceRing.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40E6FB07620FC5FF713635D /* VoiceRing.swift */; };
-		E29DF63A3F2D00F83783EF03 /* haunt-layer28.jpg in Resources */ = {isa = PBXBuildFile; fileRef = BE67C56D03E3CF12EC67C5CC /* haunt-layer28.jpg */; };
-		E59717FE6B25E96D3BE61CD0 /* precomputed_ecmult.c in Sources */ = {isa = PBXBuildFile; fileRef = FA482D60928E6CCB2F0BDDA5 /* precomputed_ecmult.c */; settings = {COMPILER_FLAGS = "-DECMULT_WINDOW_SIZE=8"; }; };
-		EA8B2ED90489BD67E4CD3168 /* Haunt.c in Sources */ = {isa = PBXBuildFile; fileRef = CA28D2490F29A69E702341D4 /* Haunt.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		EBB43D3BF878EDAF7FDCE61F /* secp256k1.c in Sources */ = {isa = PBXBuildFile; fileRef = 29CE2F09F9A0B3457456014E /* secp256k1.c */; settings = {COMPILER_FLAGS = "-DENABLE_MODULE_EXTRAKEYS=1 -DENABLE_MODULE_SCHNORRSIG=1 -DECMULT_WINDOW_SIZE=8 -Wno-unused-function -Wno-shorten-64-to-32"; }; };
-		EE5A398B1BC024E0E38DCCD9 /* LightningAddress.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AFA4A3212449D69603FC202 /* LightningAddress.swift */; };
-		EF21CDB56CA1090F8B6AB09B /* haunt-wind_loop.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F143D07CA3DB048AFD8682B9 /* haunt-wind_loop.mp3 */; };
-		F00BEDDD5F191D796915C44E /* haunt-step_wood_2.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 1F0BB5C1FEBCC604A19475A8 /* haunt-step_wood_2.mp3 */; };
-		F4F275877B25EE6C8FCD494C /* Home.c in Sources */ = {isa = PBXBuildFile; fileRef = CA34DB580151D40597358639 /* Home.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		F4F3F74BFA70EF47DC1AEE8E /* WebGridViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F085B718701CD4BF59EC41F /* WebGridViewController.swift */; };
-		F5D72357EDBC9C2C7A705B08 /* host.c in Sources */ = {isa = PBXBuildFile; fileRef = 4B5B3339D798BBE8F8C653F5 /* host.c */; };
-		F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EB43B9790841620D29A9F92 /* PhoneSignin.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		F7115CC7DD2F3496387C333A /* haunt-creak.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 996C843717D33E65529B5F2B /* haunt-creak.mp3 */; };
-		F71F068782B0F62282780EF9 /* haunt-layer24.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 44EB04B4572B424A9CCF7255 /* haunt-layer24.jpg */; };
-		F8FDCEAEDA12A944EA90C876 /* VoiceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F001EE4412E8F1ACF286BF01 /* VoiceSession.swift */; };
-		F962058982567BC884FC31EE /* HauntViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1234748589E6A08771C35B9E /* HauntViewController.swift */; };
-		F9B094E95D05DCBFD43F7558 /* VoiceFloor.c in Sources */ = {isa = PBXBuildFile; fileRef = AC28403A12E4EEEBE6C0CB2B /* VoiceFloor.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
-		F9D5F9215FC257A2461957DC /* haunt-layer20.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 317B94CAFFEDC4F181368BFA /* haunt-layer20.jpg */; };
-		FBA1D1CFD5995FD7A90E92B2 /* VoiceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2A091B46A3D2D9144CFE4C /* VoiceUITests.swift */; };
-		FCD7CBE64D465956F9E50CA3 /* haunt-step_metal_2.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 765E5981C38494428FB71480 /* haunt-step_metal_2.mp3 */; };
-		FEBC9257EE7B916388ACED02 /* haunt-layer21.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 21F22E3C15BA8552B95E9ABE /* haunt-layer21.jpg */; };
+		DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */; };
+		F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EB43B9790841620D29A9F92 /* PhoneSignin.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable"; }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -155,270 +47,48 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0003C41E79E3C2F240E09456 /* voice.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = voice.c; sourceTree = "<group>"; };
-		00B098BC3A77B9FE2543DB88 /* bip39-english.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "bip39-english.txt"; sourceTree = "<group>"; };
-		0352C38343854AA2099AA493 /* R0FrameCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = R0FrameCapture.swift; sourceTree = "<group>"; };
-		06BB7B8BF39C34AF7C7ACAE5 /* Cast.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = Cast.bin; sourceTree = "<group>"; };
-		0D9CCE7A321B824A05570718 /* HomeRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeRenderer.swift; sourceTree = "<group>"; };
-		0EC1295D990A18154D988C5E /* WalletKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletKeychain.swift; sourceTree = "<group>"; };
-		1041A12F3949F189557F595D /* WalletRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletRules.swift; sourceTree = "<group>"; };
-		1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewController.swift; sourceTree = "<group>"; };
-		114569F7448EC07E9EB3739A /* haunt-click.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-click.mp3"; sourceTree = "<group>"; };
-		1234748589E6A08771C35B9E /* HauntViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HauntViewController.swift; sourceTree = "<group>"; };
-		14166A55B3401A60E8955D9E /* Haunt.pb */ = {isa = PBXFileReference; path = Haunt.pb; sourceTree = "<group>"; };
-		14A5AEE208B95F199A14645E /* Cast.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Cast.c; sourceTree = "<group>"; };
-		1BAF3BEACAA172C1587306AD /* WalletBackup.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = WalletBackup.c; sourceTree = "<group>"; };
-		1EA8BD95327E6ECD1A97B685 /* Player.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Player.c; sourceTree = "<group>"; };
+		0083B1697095508B0B534B8B /* NostrKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrKey.swift; sourceTree = "<group>"; };
+		01C83152B91DFEEF873AAD56 /* NativeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeHost.swift; sourceTree = "<group>"; };
+		0B12460F6D71E6EC127D760A /* NostrSign.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NostrSign.c; sourceTree = "<group>"; };
 		1EB43B9790841620D29A9F92 /* PhoneSignin.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = PhoneSignin.c; sourceTree = "<group>"; };
-		1F0BB5C1FEBCC604A19475A8 /* haunt-step_wood_2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_wood_2.mp3"; sourceTree = "<group>"; };
-		1F408C8FDC3DB39479826802 /* cast-layer16.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer16.jpg"; sourceTree = "<group>"; };
-		219AD682C44ECBE0620A279B /* VoiceFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceFixture.swift; sourceTree = "<group>"; };
-		21F22E3C15BA8552B95E9ABE /* haunt-layer21.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer21.jpg"; sourceTree = "<group>"; };
-		2470A951A569419B3A288638 /* cast-layer9.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer9.jpg"; sourceTree = "<group>"; };
-		253FC1C27AD8C916C9806C5D /* cast-layer11.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer11.jpg"; sourceTree = "<group>"; };
 		285CD8F8F9EFEFB6BCC6933D /* OpenAgentsTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		29CE2F09F9A0B3457456014E /* secp256k1.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = secp256k1.c; sourceTree = "<group>"; };
-		2DCA95D29E37C09C798B337E /* SparkHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkHost.swift; sourceTree = "<group>"; };
-		317B94CAFFEDC4F181368BFA /* haunt-layer20.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer20.jpg"; sourceTree = "<group>"; };
-		32566D9487BC88F307E50D66 /* haunt-step_metal_1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_metal_1.mp3"; sourceTree = "<group>"; };
-		3948A19798BF6501022C32EA /* SignInLiveUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInLiveUITests.swift; sourceTree = "<group>"; };
-		3AFA4A3212449D69603FC202 /* LightningAddress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningAddress.swift; sourceTree = "<group>"; };
-		3BE259AB44E619C281EC401B /* Grid.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Grid.c; sourceTree = "<group>"; };
-		3C2A091B46A3D2D9144CFE4C /* VoiceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceUITests.swift; sourceTree = "<group>"; };
-		40876E5DB7A6133051DEFA5D /* AppAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAnalytics.swift; sourceTree = "<group>"; };
-		4176C3BB15A8996C7FB6B383 /* Wallet.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Wallet.c; sourceTree = "<group>"; };
-		4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeUITests.swift; sourceTree = "<group>"; };
-		4281FC9167BC6662FEB38F4B /* haunt-step_wood_3.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_wood_3.mp3"; sourceTree = "<group>"; };
-		42BF02A2773E09D9A2A6D306 /* WalletBackupScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletBackupScreens.swift; sourceTree = "<group>"; };
-		44EB04B4572B424A9CCF7255 /* haunt-layer24.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer24.jpg"; sourceTree = "<group>"; };
-		4A29BCBC72FC7A99126C9D1E /* haunt-layer0.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer0.jpg"; sourceTree = "<group>"; };
-		4B5B3339D798BBE8F8C653F5 /* host.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = host.c; sourceTree = "<group>"; };
-		510FD4EF2AF0506D173467F2 /* haunt-boom.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-boom.mp3"; sourceTree = "<group>"; };
-		52FBE5EE627E3362DB400F23 /* WalletScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletScreens.swift; sourceTree = "<group>"; };
-		534C81AABC4F67536A70C634 /* LightningAddressCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningAddressCard.swift; sourceTree = "<group>"; };
-		53CB5C1F96F76F902F8CD7C8 /* haunt-land.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-land.mp3"; sourceTree = "<group>"; };
-		57F9F980CEAB73A38FBA7D8F /* haunt-step_metal_3.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_metal_3.mp3"; sourceTree = "<group>"; };
-		5A3C742E2035F083D5EBF027 /* HauntAssets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HauntAssets.swift; sourceTree = "<group>"; };
-		5E23C802FEB3B439385EBAE5 /* WalletBackupFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletBackupFlow.swift; sourceTree = "<group>"; };
-		606032151FD904348CDAA7FE /* SignInUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInUITests.swift; sourceTree = "<group>"; };
-		6217EAD9E2040A38F41730D0 /* haunt-chime.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-chime.mp3"; sourceTree = "<group>"; };
-		64067442BA5A73442D8D93AD /* haunt-layer27.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer27.jpg"; sourceTree = "<group>"; };
-		667672595D97D45FB8F092AC /* LightningAddressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningAddressTests.swift; sourceTree = "<group>"; };
-		68E7BC528083770536878DDA /* haunt-step_grass_3.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_grass_3.mp3"; sourceTree = "<group>"; };
-		6D5957996BC1975E50D7DFFF /* SignInScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInScreens.swift; sourceTree = "<group>"; };
-		7059FB56C33A4938F817F834 /* AppAuthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuthTests.swift; sourceTree = "<group>"; };
-		72745517BDD6D929C45F607A /* HudChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HudChrome.swift; sourceTree = "<group>"; };
-		72C6BDFF8688434D7DE8F49C /* haunt-step_wood_1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_wood_1.mp3"; sourceTree = "<group>"; };
-		73B73CC5A17FE246BB0A3643 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
-		75264437CFF5986509BFE1BF /* michroma-ofl.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "michroma-ofl.txt"; sourceTree = "<group>"; };
-		765E5981C38494428FB71480 /* haunt-step_metal_2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_metal_2.mp3"; sourceTree = "<group>"; };
+		2C3236A8315C98ABF86224CB /* StarterApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterApp.swift; sourceTree = "<group>"; };
+		303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUpdates.swift; sourceTree = "<group>"; };
+		312A9EE9333FE46FFAED3D6F /* Starter */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Starter; sourceTree = SOURCE_ROOT; };
+		5DE15337BAC2E10225C3C1CB /* NativeWire.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativeWire.c; sourceTree = "<group>"; };
+		7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePackageTests.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		77D49D6E856A70EFF171D148 /* haunt-hiss.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-hiss.mp3"; sourceTree = "<group>"; };
-		77DC63ED359C367DA403C413 /* Haunt.vertices */ = {isa = PBXFileReference; path = Haunt.vertices; sourceTree = "<group>"; };
-		7AD563F88EE767B0FD1AEEAE /* haunt-layer1.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer1.jpg"; sourceTree = "<group>"; };
-		7EEAD5AF6BC22A503783C2DC /* VoiceBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceBar.swift; sourceTree = "<group>"; };
-		7F622BCB7F4702C028D100FB /* Michroma-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Michroma-Regular.ttf"; sourceTree = "<group>"; };
 		8229C5D27BC40A99010E48D9 /* OpenAgents.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenAgents.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		84398239DF707163D47256C2 /* PhoneSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSignIn.swift; sourceTree = "<group>"; };
-		8CDE427D09F63A4EFD8DFEBB /* VoiceEngine.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = VoiceEngine.c; sourceTree = "<group>"; };
-		8F9A88BD7F66AA9706624E3E /* haunt-bubble.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-bubble.mp3"; sourceTree = "<group>"; };
+		88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarterUITests.swift; sourceTree = "<group>"; };
 		910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		94FB25EB951B7C4EB8547F7A /* Camera.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Camera.c; sourceTree = "<group>"; };
-		98C9675F63CA0181693012F2 /* hello-foreman.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "hello-foreman.wav"; sourceTree = "<group>"; };
-		996C843717D33E65529B5F2B /* haunt-creak.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-creak.mp3"; sourceTree = "<group>"; };
-		99E1E3472391E665C5D030F9 /* haunt-step_grass_2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_grass_2.mp3"; sourceTree = "<group>"; };
-		9AE44FED01ADF77410F4FD26 /* haunt-layer22.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer22.jpg"; sourceTree = "<group>"; };
-		9B7CE77A2EE685E4D933032D /* haunt-layer26.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer26.jpg"; sourceTree = "<group>"; };
-		9D19665C11DF2D4FFB557D1D /* WalletBackupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletBackupTests.swift; sourceTree = "<group>"; };
+		9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSignIn.swift; sourceTree = "<group>"; };
 		9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceKey.swift; sourceTree = "<group>"; };
-		9F085B718701CD4BF59EC41F /* WebGridViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebGridViewController.swift; sourceTree = "<group>"; };
-		9F87878C2541D03D0BB35D30 /* haunt-slam.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-slam.mp3"; sourceTree = "<group>"; };
-		A0E91A4368889291453CA5E9 /* cast-layer5.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer5.jpg"; sourceTree = "<group>"; };
-		A552CDD5935D80B4192A9E4D /* wait-stop.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "wait-stop.wav"; sourceTree = "<group>"; };
-		A5AF4B4DE64CEBF4D5D102A6 /* Haunt-NOTICE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Haunt-NOTICE.txt"; sourceTree = "<group>"; };
-		A6E0D2F142DFE9C221574028 /* HauntBuffer.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = HauntBuffer.c; sourceTree = "<group>"; };
-		A8590DE7BE9F641F9A440194 /* Home.pb */ = {isa = PBXFileReference; path = Home.pb; sourceTree = "<group>"; };
-		AB94FB3266A42BB8002A0185 /* haunt-jump.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-jump.mp3"; sourceTree = "<group>"; };
-		AC28403A12E4EEEBE6C0CB2B /* VoiceFloor.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = VoiceFloor.c; sourceTree = "<group>"; };
-		AD722D77A3244F05AAF6E9AA /* BreezKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreezKey.swift; sourceTree = "<group>"; };
-		B1F14129101E502D2EB4F25C /* EngineHotbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineHotbar.swift; sourceTree = "<group>"; };
-		B39219FCD634F147CEECDE36 /* cast-layer12.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer12.jpg"; sourceTree = "<group>"; };
-		B419AFF111A98FABC2F131D5 /* haunt-layer18.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer18.jpg"; sourceTree = "<group>"; };
-		B77B7DF646997E598E8E9C76 /* haunt-step_stone_3.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_stone_3.mp3"; sourceTree = "<group>"; };
-		B92DC9E803C0D83793130EE0 /* haunt-step_grass_1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_grass_1.mp3"; sourceTree = "<group>"; };
-		BA3BE377FA296AF9793FA2A8 /* HomeShaders.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = HomeShaders.txt; sourceTree = "<group>"; };
+		ABE3F6DB32D91F73A83323E9 /* AppAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAnalytics.swift; sourceTree = "<group>"; };
 		BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = precomputed_ecmult_gen.c; sourceTree = "<group>"; };
-		BE67C56D03E3CF12EC67C5CC /* haunt-layer28.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer28.jpg"; sourceTree = "<group>"; };
 		BF0AAC9508FA4369A9715A69 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
-		C40E6FB07620FC5FF713635D /* VoiceRing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRing.swift; sourceTree = "<group>"; };
-		C44F943A8802BF3449385B8F /* haunt-thunder.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-thunder.mp3"; sourceTree = "<group>"; };
-		C5CE6939C532C3B73247777F /* Benchmarks.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Benchmarks.c; sourceTree = "<group>"; };
-		C66F7AEEF75B7AFDC508706C /* Bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Bridge.h; sourceTree = "<group>"; };
-		C6DC0AEF16E8EF546683C253 /* WalletVaultUnit.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = WalletVaultUnit.c; sourceTree = "<group>"; };
-		C8689A231995DC9878827291 /* VoiceMeter.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = VoiceMeter.c; sourceTree = "<group>"; };
-		C8DDA0AB27D9D685102BD465 /* TestBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TestBridge.h; sourceTree = "<group>"; };
-		C982D84F055B8ABBAD50C802 /* NostrSign.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NostrSign.c; sourceTree = "<group>"; };
-		CA28D2490F29A69E702341D4 /* Haunt.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Haunt.c; sourceTree = "<group>"; };
-		CA34DB580151D40597358639 /* Home.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Home.c; sourceTree = "<group>"; };
-		D00755E361D10FD9EA268AF3 /* BIP39.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BIP39.swift; sourceTree = "<group>"; };
-		D1FF8EBFA4A63F702F0F578A /* HauntUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HauntUITests.swift; sourceTree = "<group>"; };
-		D2B60B64BD044AC100DF2301 /* haunt-layer19.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer19.jpg"; sourceTree = "<group>"; };
-		D32F73555F56FD1F4D920AD5 /* garden-pause.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "garden-pause.wav"; sourceTree = "<group>"; };
-		D3D607A7C86F793A71BBD7F4 /* BuyScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuyScreen.swift; sourceTree = "<group>"; };
-		D51B7CDE8E484F58DDB2D8EE /* PhoneTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneTurn.swift; sourceTree = "<group>"; };
-		DC6C49C69E0079F4626B3B80 /* haunt-boo.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-boo.mp3"; sourceTree = "<group>"; };
-		E01E2A14F3ED8ADBAAEB6C1A /* CrashReports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReports.swift; sourceTree = "<group>"; };
-		E4D57E9776762973386F3D8E /* haunt-step_stone_2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_stone_2.mp3"; sourceTree = "<group>"; };
-		E63041B894166B46A3E46D9D /* haunt-step_stone_1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_stone_1.mp3"; sourceTree = "<group>"; };
-		E824C093116E047A24374032 /* NostrSign.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NostrSign.h; sourceTree = "<group>"; };
-		E89FB258FB2F619B8111905A /* Haunt.indices */ = {isa = PBXFileReference; path = Haunt.indices; sourceTree = "<group>"; };
-		EB0BC4905938FB8D95D3F8F0 /* WalletBackup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletBackup.swift; sourceTree = "<group>"; };
-		EB24C563C6E6C235C493BCE9 /* haunt-layer2.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer2.jpg"; sourceTree = "<group>"; };
-		ED2325E916319DB296E06C49 /* VoiceWire.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = VoiceWire.c; sourceTree = "<group>"; };
-		EE2C59DEAC80496452B46A2F /* NostrKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrKey.swift; sourceTree = "<group>"; };
-		EED5025FC8A374A284612812 /* WalletUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletUITests.swift; sourceTree = "<group>"; };
-		F001EE4412E8F1ACF286BF01 /* VoiceSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSession.swift; sourceTree = "<group>"; };
-		F143D07CA3DB048AFD8682B9 /* haunt-wind_loop.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-wind_loop.mp3"; sourceTree = "<group>"; };
+		DA6976CE4AA8C31947C48C5D /* Native.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Native.plist; sourceTree = "<group>"; };
+		DCD62FA8D277D57B999CBF47 /* NativePolicy.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = NativePolicy.c; sourceTree = "<group>"; };
 		FA482D60928E6CCB2F0BDDA5 /* precomputed_ecmult.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = precomputed_ecmult.c; sourceTree = "<group>"; };
-		FE6C64A9D3D62AAAF87BEADC /* R0UITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = R0UITests.swift; sourceTree = "<group>"; };
-		FE9115742188118078C4592C /* Hud.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Hud.c; sourceTree = "<group>"; };
-		FF206467CC283E67E24BBD6E /* cast-layer10.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer10.jpg"; sourceTree = "<group>"; };
-		FF4AC2C3883CA39BBC7789FC /* VoiceFrames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceFrames.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFrameworksBuildPhase section */
-		EAD68FE7753AB46CBC2F55C3 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				5EF5B3C074C0073B2BDA8D7C /* BreezSdkSpark in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXFrameworksBuildPhase section */
-
 /* Begin PBXGroup section */
-		00BFE8813FC6529C85B1547B /* Resources */ = {
+		45BCF8879F8A49E40240BBF7 /* SignIn */ = {
 			isa = PBXGroup;
 			children = (
-				00B098BC3A77B9FE2543DB88 /* bip39-english.txt */,
-				A0E91A4368889291453CA5E9 /* cast-layer5.jpg */,
-				2470A951A569419B3A288638 /* cast-layer9.jpg */,
-				FF206467CC283E67E24BBD6E /* cast-layer10.jpg */,
-				253FC1C27AD8C916C9806C5D /* cast-layer11.jpg */,
-				B39219FCD634F147CEECDE36 /* cast-layer12.jpg */,
-				1F408C8FDC3DB39479826802 /* cast-layer16.jpg */,
-				06BB7B8BF39C34AF7C7ACAE5 /* Cast.bin */,
-				DC6C49C69E0079F4626B3B80 /* haunt-boo.mp3 */,
-				510FD4EF2AF0506D173467F2 /* haunt-boom.mp3 */,
-				8F9A88BD7F66AA9706624E3E /* haunt-bubble.mp3 */,
-				6217EAD9E2040A38F41730D0 /* haunt-chime.mp3 */,
-				114569F7448EC07E9EB3739A /* haunt-click.mp3 */,
-				996C843717D33E65529B5F2B /* haunt-creak.mp3 */,
-				77D49D6E856A70EFF171D148 /* haunt-hiss.mp3 */,
-				AB94FB3266A42BB8002A0185 /* haunt-jump.mp3 */,
-				53CB5C1F96F76F902F8CD7C8 /* haunt-land.mp3 */,
-				4A29BCBC72FC7A99126C9D1E /* haunt-layer0.jpg */,
-				7AD563F88EE767B0FD1AEEAE /* haunt-layer1.jpg */,
-				EB24C563C6E6C235C493BCE9 /* haunt-layer2.jpg */,
-				B419AFF111A98FABC2F131D5 /* haunt-layer18.jpg */,
-				D2B60B64BD044AC100DF2301 /* haunt-layer19.jpg */,
-				317B94CAFFEDC4F181368BFA /* haunt-layer20.jpg */,
-				21F22E3C15BA8552B95E9ABE /* haunt-layer21.jpg */,
-				9AE44FED01ADF77410F4FD26 /* haunt-layer22.jpg */,
-				44EB04B4572B424A9CCF7255 /* haunt-layer24.jpg */,
-				9B7CE77A2EE685E4D933032D /* haunt-layer26.jpg */,
-				64067442BA5A73442D8D93AD /* haunt-layer27.jpg */,
-				BE67C56D03E3CF12EC67C5CC /* haunt-layer28.jpg */,
-				A5AF4B4DE64CEBF4D5D102A6 /* Haunt-NOTICE.txt */,
-				9F87878C2541D03D0BB35D30 /* haunt-slam.mp3 */,
-				B92DC9E803C0D83793130EE0 /* haunt-step_grass_1.mp3 */,
-				99E1E3472391E665C5D030F9 /* haunt-step_grass_2.mp3 */,
-				68E7BC528083770536878DDA /* haunt-step_grass_3.mp3 */,
-				32566D9487BC88F307E50D66 /* haunt-step_metal_1.mp3 */,
-				765E5981C38494428FB71480 /* haunt-step_metal_2.mp3 */,
-				57F9F980CEAB73A38FBA7D8F /* haunt-step_metal_3.mp3 */,
-				E63041B894166B46A3E46D9D /* haunt-step_stone_1.mp3 */,
-				E4D57E9776762973386F3D8E /* haunt-step_stone_2.mp3 */,
-				B77B7DF646997E598E8E9C76 /* haunt-step_stone_3.mp3 */,
-				72C6BDFF8688434D7DE8F49C /* haunt-step_wood_1.mp3 */,
-				1F0BB5C1FEBCC604A19475A8 /* haunt-step_wood_2.mp3 */,
-				4281FC9167BC6662FEB38F4B /* haunt-step_wood_3.mp3 */,
-				C44F943A8802BF3449385B8F /* haunt-thunder.mp3 */,
-				F143D07CA3DB048AFD8682B9 /* haunt-wind_loop.mp3 */,
-				E89FB258FB2F619B8111905A /* Haunt.indices */,
-				14166A55B3401A60E8955D9E /* Haunt.pb */,
-				77DC63ED359C367DA403C413 /* Haunt.vertices */,
-				A8590DE7BE9F641F9A440194 /* Home.pb */,
-				75264437CFF5986509BFE1BF /* michroma-ofl.txt */,
-				7F622BCB7F4702C028D100FB /* Michroma-Regular.ttf */,
+				0083B1697095508B0B534B8B /* NostrKey.swift */,
+				9399FC48E429A1D3E4E5FAB5 /* PhoneSignIn.swift */,
 			);
-			path = Resources;
-			sourceTree = "<group>";
-		};
-		096FEE54A4134EDBF2DDAFD7 /* Voice */ = {
-			isa = PBXGroup;
-			children = (
-				7EEAD5AF6BC22A503783C2DC /* VoiceBar.swift */,
-				219AD682C44ECBE0620A279B /* VoiceFixture.swift */,
-				FF4AC2C3883CA39BBC7789FC /* VoiceFrames.swift */,
-				C40E6FB07620FC5FF713635D /* VoiceRing.swift */,
-				F001EE4412E8F1ACF286BF01 /* VoiceSession.swift */,
-				3A9C812E2B5DC80E1443A532 /* Fixtures */,
-			);
-			path = Voice;
-			sourceTree = "<group>";
-		};
-		2B3DDEC1B150BF9146AE0B93 /* platform */ = {
-			isa = PBXGroup;
-			children = (
-				4B5B3339D798BBE8F8C653F5 /* host.c */,
-				0003C41E79E3C2F240E09456 /* voice.c */,
-			);
-			name = platform;
-			path = ../../metaverse/platform;
-			sourceTree = "<group>";
-		};
-		3A9C812E2B5DC80E1443A532 /* Fixtures */ = {
-			isa = PBXGroup;
-			children = (
-				D32F73555F56FD1F4D920AD5 /* garden-pause.wav */,
-				98C9675F63CA0181693012F2 /* hello-foreman.wav */,
-				A552CDD5935D80B4192A9E4D /* wait-stop.wav */,
-			);
-			path = Fixtures;
-			sourceTree = "<group>";
-		};
-		4D7B029870A78279D13B70E1 /* SignIn */ = {
-			isa = PBXGroup;
-			children = (
-				EE2C59DEAC80496452B46A2F /* NostrKey.swift */,
-				84398239DF707163D47256C2 /* PhoneSignIn.swift */,
-				6D5957996BC1975E50D7DFFF /* SignInScreens.swift */,
-			);
-			path = SignIn;
+			name = SignIn;
+			path = OpenAgents/SignIn;
 			sourceTree = "<group>";
 		};
 		5B366C12F710C7D176CACD52 /* Generated */ = {
 			isa = PBXGroup;
 			children = (
-				C5CE6939C532C3B73247777F /* Benchmarks.c */,
-				94FB25EB951B7C4EB8547F7A /* Camera.c */,
-				14A5AEE208B95F199A14645E /* Cast.c */,
-				3BE259AB44E619C281EC401B /* Grid.c */,
-				CA28D2490F29A69E702341D4 /* Haunt.c */,
-				A6E0D2F142DFE9C221574028 /* HauntBuffer.c */,
-				CA34DB580151D40597358639 /* Home.c */,
-				BA3BE377FA296AF9793FA2A8 /* HomeShaders.txt */,
-				FE9115742188118078C4592C /* Hud.c */,
+				DCD62FA8D277D57B999CBF47 /* NativePolicy.c */,
+				5DE15337BAC2E10225C3C1CB /* NativeWire.c */,
 				1EB43B9790841620D29A9F92 /* PhoneSignin.c */,
-				1EA8BD95327E6ECD1A97B685 /* Player.c */,
-				8CDE427D09F63A4EFD8DFEBB /* VoiceEngine.c */,
-				AC28403A12E4EEEBE6C0CB2B /* VoiceFloor.c */,
-				C8689A231995DC9878827291 /* VoiceMeter.c */,
-				ED2325E916319DB296E06C49 /* VoiceWire.c */,
-				4176C3BB15A8996C7FB6B383 /* Wallet.c */,
-				1BAF3BEACAA172C1587306AD /* WalletBackup.c */,
 			);
 			path = Generated;
 			sourceTree = "<group>";
@@ -427,21 +97,28 @@
 			isa = PBXGroup;
 			children = (
 				BF0AAC9508FA4369A9715A69 /* AppAuth.swift */,
-				E01E2A14F3ED8ADBAAEB6C1A /* CrashReports.swift */,
 				9DC4C63FE7746025804A2FA9 /* DeviceKey.swift */,
 			);
 			name = apple;
 			path = ../shared/host/apple;
 			sourceTree = "<group>";
 		};
-		653E7B06FDCB7DAD944BCD01 /* UnitTests */ = {
+		71A2ECE12A4F32216053EEC0 /* StarterTests */ = {
 			isa = PBXGroup;
 			children = (
-				7059FB56C33A4938F817F834 /* AppAuthTests.swift */,
-				667672595D97D45FB8F092AC /* LightningAddressTests.swift */,
-				9D19665C11DF2D4FFB557D1D /* WalletBackupTests.swift */,
+				7375466F7AAF56C1CB56F434 /* NativePackageTests.swift */,
 			);
-			path = UnitTests;
+			path = StarterTests;
+			sourceTree = "<group>";
+		};
+		882357AF20ADF9EB870C07F6 /* Platform */ = {
+			isa = PBXGroup;
+			children = (
+				ABE3F6DB32D91F73A83323E9 /* AppAnalytics.swift */,
+				0B12460F6D71E6EC127D760A /* NostrSign.c */,
+			);
+			name = Platform;
+			path = OpenAgents/Platform;
 			sourceTree = "<group>";
 		};
 		8A366ADC38979696589B7858 /* src */ = {
@@ -455,40 +132,6 @@
 			path = Vendor/secp256k1/src;
 			sourceTree = "<group>";
 		};
-		956B19516518C8B6A6AB7CBA /* Tests */ = {
-			isa = PBXGroup;
-			children = (
-				D1FF8EBFA4A63F702F0F578A /* HauntUITests.swift */,
-				4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */,
-				FE6C64A9D3D62AAAF87BEADC /* R0UITests.swift */,
-				3948A19798BF6501022C32EA /* SignInLiveUITests.swift */,
-				606032151FD904348CDAA7FE /* SignInUITests.swift */,
-				C8DDA0AB27D9D685102BD465 /* TestBridge.h */,
-				3C2A091B46A3D2D9144CFE4C /* VoiceUITests.swift */,
-				EED5025FC8A374A284612812 /* WalletUITests.swift */,
-			);
-			path = Tests;
-			sourceTree = "<group>";
-		};
-		9A66F17929CA2AB167552B4E /* Wallet */ = {
-			isa = PBXGroup;
-			children = (
-				D00755E361D10FD9EA268AF3 /* BIP39.swift */,
-				AD722D77A3244F05AAF6E9AA /* BreezKey.swift */,
-				D3D607A7C86F793A71BBD7F4 /* BuyScreen.swift */,
-				3AFA4A3212449D69603FC202 /* LightningAddress.swift */,
-				534C81AABC4F67536A70C634 /* LightningAddressCard.swift */,
-				2DCA95D29E37C09C798B337E /* SparkHost.swift */,
-				EB0BC4905938FB8D95D3F8F0 /* WalletBackup.swift */,
-				5E23C802FEB3B439385EBAE5 /* WalletBackupFlow.swift */,
-				42BF02A2773E09D9A2A6D306 /* WalletBackupScreens.swift */,
-				0EC1295D990A18154D988C5E /* WalletKeychain.swift */,
-				1041A12F3949F189557F595D /* WalletRules.swift */,
-				52FBE5EE627E3362DB400F23 /* WalletScreens.swift */,
-			);
-			path = Wallet;
-			sourceTree = "<group>";
-		};
 		A399D11B8F0035506E68EDB0 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -499,37 +142,28 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		A7B7CA3CC18D3E4990CFBB72 /* Platform */ = {
+		ABD48D4B1B28A57624675E53 /* native */ = {
 			isa = PBXGroup;
 			children = (
-				40876E5DB7A6133051DEFA5D /* AppAnalytics.swift */,
-				C66F7AEEF75B7AFDC508706C /* Bridge.h */,
-				B1F14129101E502D2EB4F25C /* EngineHotbar.swift */,
-				5A3C742E2035F083D5EBF027 /* HauntAssets.swift */,
-				1234748589E6A08771C35B9E /* HauntViewController.swift */,
-				0D9CCE7A321B824A05570718 /* HomeRenderer.swift */,
-				72745517BDD6D929C45F607A /* HudChrome.swift */,
-				C982D84F055B8ABBAD50C802 /* NostrSign.c */,
-				E824C093116E047A24374032 /* NostrSign.h */,
-				0352C38343854AA2099AA493 /* R0FrameCapture.swift */,
-				C6DC0AEF16E8EF546683C253 /* WalletVaultUnit.c */,
+				01C83152B91DFEEF873AAD56 /* NativeHost.swift */,
+				303E971BCD43D4E6656E4CA6 /* NativeUpdates.swift */,
 			);
-			path = Platform;
+			name = native;
+			path = ../shared/native;
+			sourceTree = "<group>";
+		};
+		C9674C796927111E3430D894 /* StarterUITests */ = {
+			isa = PBXGroup;
+			children = (
+				88DAD8B0C2CFFD99B8FB4D20 /* StarterUITests.swift */,
+			);
+			path = StarterUITests;
 			sourceTree = "<group>";
 		};
 		EBA77022E6429671290CDE34 /* OpenAgents */ = {
 			isa = PBXGroup;
 			children = (
-				73B73CC5A17FE246BB0A3643 /* App.swift */,
 				776F82566A59AA4CF6654437 /* Assets.xcassets */,
-				1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */,
-				D51B7CDE8E484F58DDB2D8EE /* PhoneTurn.swift */,
-				9F085B718701CD4BF59EC41F /* WebGridViewController.swift */,
-				A7B7CA3CC18D3E4990CFBB72 /* Platform */,
-				00BFE8813FC6529C85B1547B /* Resources */,
-				4D7B029870A78279D13B70E1 /* SignIn */,
-				096FEE54A4134EDBF2DDAFD7 /* Voice */,
-				9A66F17929CA2AB167552B4E /* Wallet */,
 			);
 			path = OpenAgents;
 			sourceTree = "<group>";
@@ -537,13 +171,18 @@
 		FBEEA9C0EAC50ADFE9507F40 = {
 			isa = PBXGroup;
 			children = (
+				DA6976CE4AA8C31947C48C5D /* Native.plist */,
+				312A9EE9333FE46FFAED3D6F /* Starter */,
+				2C3236A8315C98ABF86224CB /* StarterApp.swift */,
 				61353A3754B849E19D09A2E0 /* apple */,
 				5B366C12F710C7D176CACD52 /* Generated */,
+				ABD48D4B1B28A57624675E53 /* native */,
 				EBA77022E6429671290CDE34 /* OpenAgents */,
-				2B3DDEC1B150BF9146AE0B93 /* platform */,
+				882357AF20ADF9EB870C07F6 /* Platform */,
+				45BCF8879F8A49E40240BBF7 /* SignIn */,
 				8A366ADC38979696589B7858 /* src */,
-				956B19516518C8B6A6AB7CBA /* Tests */,
-				653E7B06FDCB7DAD944BCD01 /* UnitTests */,
+				71A2ECE12A4F32216053EEC0 /* StarterTests */,
+				C9674C796927111E3430D894 /* StarterUITests */,
 				A399D11B8F0035506E68EDB0 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -555,10 +194,8 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 253E4EC9238928672F45C092 /* Build configuration list for PBXNativeTarget "OpenAgents" */;
 			buildPhases = (
-				3F79C09B618CB9409299A799 /* Generate Coax product code */,
 				3021F9601449A7901737DC0B /* Sources */,
 				9EB07DEE9BD5341EBD04A0A2 /* Resources */,
-				EAD68FE7753AB46CBC2F55C3 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -566,7 +203,6 @@
 			);
 			name = OpenAgents;
 			packageProductDependencies = (
-				6A07344B6842FB168B7EEED5 /* BreezSdkSpark */,
 			);
 			productName = OpenAgents;
 			productReference = 8229C5D27BC40A99010E48D9 /* OpenAgents.app */;
@@ -641,17 +277,14 @@
 			);
 			mainGroup = FBEEA9C0EAC50ADFE9507F40;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (
-				C7203DC7EB9877FDCF25971A /* XCRemoteSwiftPackageReference "breez-sdk-spark-swift" */,
-			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A399D11B8F0035506E68EDB0 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				037A81F78D877520A602A5C1 /* OpenAgents */,
-				D6306D13CC52B0771CBD18E6 /* OpenAgentsUITests */,
 				FAB980B9658225CB7383114B /* OpenAgentsTests */,
+				D6306D13CC52B0771CBD18E6 /* OpenAgentsUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -662,183 +295,33 @@
 			buildActionMask = 2147483647;
 			files = (
 				43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */,
-				2F7550EF7E1770994106353D /* Cast.bin in Resources */,
-				D73FEB5A299519039A1EF73D /* Haunt-NOTICE.txt in Resources */,
-				9E6A509AF86952ABEE9A15A8 /* Haunt.indices in Resources */,
-				7936085AF00569E867930063 /* Haunt.pb in Resources */,
-				3AAEA724068A1CCBDC757EFB /* Haunt.vertices in Resources */,
-				9C0AF6CE296A8B39C6C153CF /* Home.pb in Resources */,
-				E042C58657667D51A54A789B /* HomeShaders.txt in Resources */,
-				3D33289F296E68FB9545BEE1 /* Michroma-Regular.ttf in Resources */,
-				414AAE983A6CE10602E30984 /* bip39-english.txt in Resources */,
-				B846A94D0DF0DDDAD61A67FA /* cast-layer10.jpg in Resources */,
-				BA35BAB96B0D3158F066A2E2 /* cast-layer11.jpg in Resources */,
-				A007E91AC2431354B09B57F2 /* cast-layer12.jpg in Resources */,
-				882DE814F326D410CE807EA2 /* cast-layer16.jpg in Resources */,
-				26A051AF597CE318F9BFD252 /* cast-layer5.jpg in Resources */,
-				3894A2ED21D7B03892405193 /* cast-layer9.jpg in Resources */,
-				8C9A8101023ABDB4F42F9783 /* garden-pause.wav in Resources */,
-				A5B6AF72BD610C316262A8C2 /* haunt-boo.mp3 in Resources */,
-				0167B4B96147DF241BCBC57A /* haunt-boom.mp3 in Resources */,
-				1FD760B12034E884AAC44570 /* haunt-bubble.mp3 in Resources */,
-				DB9631A6BD923E61989895B2 /* haunt-chime.mp3 in Resources */,
-				4D24F2312B26BE146D8EAA1D /* haunt-click.mp3 in Resources */,
-				F7115CC7DD2F3496387C333A /* haunt-creak.mp3 in Resources */,
-				6692EBECFA658A019AEA0004 /* haunt-hiss.mp3 in Resources */,
-				134C346710A1B507C12206DD /* haunt-jump.mp3 in Resources */,
-				6AC1798BF278EC6C6B37F0A8 /* haunt-land.mp3 in Resources */,
-				7859D5562411497FB00B8FFE /* haunt-layer0.jpg in Resources */,
-				9827B36D7AD36932D42A88A3 /* haunt-layer1.jpg in Resources */,
-				6133DCAD289B23FA746D37E4 /* haunt-layer18.jpg in Resources */,
-				48D8AB0609CBD93A7C48EA74 /* haunt-layer19.jpg in Resources */,
-				6AA7D24AF6649B718917BB9B /* haunt-layer2.jpg in Resources */,
-				F9D5F9215FC257A2461957DC /* haunt-layer20.jpg in Resources */,
-				FEBC9257EE7B916388ACED02 /* haunt-layer21.jpg in Resources */,
-				9B72B16D20FCCB863A22AF4B /* haunt-layer22.jpg in Resources */,
-				F71F068782B0F62282780EF9 /* haunt-layer24.jpg in Resources */,
-				22618E1526104535A83FA537 /* haunt-layer26.jpg in Resources */,
-				92A7139DA066857E95DF7C5C /* haunt-layer27.jpg in Resources */,
-				E29DF63A3F2D00F83783EF03 /* haunt-layer28.jpg in Resources */,
-				D80CC444251F6E8198061D7F /* haunt-slam.mp3 in Resources */,
-				777987D602FE02582208A54B /* haunt-step_grass_1.mp3 in Resources */,
-				8C1B12994A825FF8013B031C /* haunt-step_grass_2.mp3 in Resources */,
-				DFAB32CEAEA4828324CE0761 /* haunt-step_grass_3.mp3 in Resources */,
-				5D9EDB16B7C36F347C949BAA /* haunt-step_metal_1.mp3 in Resources */,
-				FCD7CBE64D465956F9E50CA3 /* haunt-step_metal_2.mp3 in Resources */,
-				B249BB3820777CB13E66E317 /* haunt-step_metal_3.mp3 in Resources */,
-				839CBB38B37EEC8B8173B356 /* haunt-step_stone_1.mp3 in Resources */,
-				A299A8D58CA91E6634CE03C7 /* haunt-step_stone_2.mp3 in Resources */,
-				858FC488AF4AF7D7FB911540 /* haunt-step_stone_3.mp3 in Resources */,
-				D3F2FF4DDECBBBEF441BECFC /* haunt-step_wood_1.mp3 in Resources */,
-				F00BEDDD5F191D796915C44E /* haunt-step_wood_2.mp3 in Resources */,
-				DF636597608A11F38C221B24 /* haunt-step_wood_3.mp3 in Resources */,
-				A20413F0FFC11E920FDE5682 /* haunt-thunder.mp3 in Resources */,
-				EF21CDB56CA1090F8B6AB09B /* haunt-wind_loop.mp3 in Resources */,
-				30138E51AD9DABB194DD92AF /* hello-foreman.wav in Resources */,
-				891D28F63E61B5E75B3A3549 /* michroma-ofl.txt in Resources */,
-				71E7318F739A0B4939C83A4C /* wait-stop.wav in Resources */,
+				658B4C2F5F7EABC4715EB1E4 /* Native.plist in Resources */,
+				9EDFF85EEFA09C5E405F0C99 /* Starter in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		3F79C09B618CB9409299A799 /* Generate Coax product code */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Generate Coax product code";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(SRCROOT)/Generated/Home.c",
-				"$(SRCROOT)/Generated/Home.h",
-				"$(SRCROOT)/Generated/Player.c",
-				"$(SRCROOT)/Generated/Player.h",
-				"$(SRCROOT)/Generated/Grid.c",
-				"$(SRCROOT)/Generated/Grid.h",
-				"$(SRCROOT)/Generated/Cast.c",
-				"$(SRCROOT)/Generated/Cast.h",
-				"$(SRCROOT)/Generated/Camera.c",
-				"$(SRCROOT)/Generated/Camera.h",
-				"$(SRCROOT)/Generated/Wallet.c",
-				"$(SRCROOT)/Generated/Wallet.h",
-				"$(SRCROOT)/Generated/Haunt.c",
-				"$(SRCROOT)/Generated/Haunt.h",
-				"$(SRCROOT)/Generated/HauntBuffer.c",
-				"$(SRCROOT)/Generated/HauntBuffer.h",
-				"$(SRCROOT)/Generated/Hud.c",
-				"$(SRCROOT)/Generated/Hud.h",
-				"$(SRCROOT)/Generated/VoiceEngine.c",
-				"$(SRCROOT)/Generated/VoiceEngine.h",
-				"$(SRCROOT)/Generated/VoiceWire.c",
-				"$(SRCROOT)/Generated/VoiceWire.h",
-				"$(SRCROOT)/Generated/VoiceFloor.c",
-				"$(SRCROOT)/Generated/VoiceFloor.h",
-				"$(SRCROOT)/Generated/VoiceMeter.c",
-				"$(SRCROOT)/Generated/VoiceMeter.h",
-				"$(SRCROOT)/Generated/PhoneSignin.c",
-				"$(SRCROOT)/Generated/PhoneSignin.h",
-				"$(SRCROOT)/Generated/WalletBackup.c",
-				"$(SRCROOT)/Generated/WalletBackup.h",
-				"$(SRCROOT)/Generated/WalletVault.c",
-				"$(SRCROOT)/Generated/WalletVault.h",
-				"$(SRCROOT)/Generated/HomeShaders.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"$SRCROOT/generate.sh\"";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		3021F9601449A7901737DC0B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				40EBE76A352087D40B6D5955 /* App.swift in Sources */,
-				CA73A901ED4FB77F95048C73 /* AppAnalytics.swift in Sources */,
+				081BC189AB524F65D78C03E4 /* AppAnalytics.swift in Sources */,
 				6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */,
-				370C18328EFAC5841A1E0DA7 /* BIP39.swift in Sources */,
-				90A1BF200BAEF60AB8A87530 /* Benchmarks.c in Sources */,
-				BCF4E35944DC9701FA808F45 /* BreezKey.swift in Sources */,
-				B6E9C67AAD7759EDBB58A904 /* BuyScreen.swift in Sources */,
-				9B64E81CED3EE607C7477FCD /* Camera.c in Sources */,
-				167FF29401030EEEBAF05EF9 /* Cast.c in Sources */,
-				9EED5DD2800A579F6A8A3F63 /* CrashReports.swift in Sources */,
 				D3B1BBC9420E21741699D348 /* DeviceKey.swift in Sources */,
-				07D8E60384FD1648FCC9CB66 /* EngineHotbar.swift in Sources */,
-				35A3B13C150F78FD4C9E753E /* Grid.c in Sources */,
-				EA8B2ED90489BD67E4CD3168 /* Haunt.c in Sources */,
-				52405A25E8238A6D9F22D14F /* HauntAssets.swift in Sources */,
-				36365D7C247809A11218E088 /* HauntBuffer.c in Sources */,
-				F962058982567BC884FC31EE /* HauntViewController.swift in Sources */,
-				F4F275877B25EE6C8FCD494C /* Home.c in Sources */,
-				425686EF9F339C9F8AF36F0B /* HomeRenderer.swift in Sources */,
-				AE693718C3CEF6987F044510 /* HomeViewController.swift in Sources */,
-				AB6D5B362735767EF7D5E89E /* Hud.c in Sources */,
-				2DB579BCA956E7BF63349ADD /* HudChrome.swift in Sources */,
-				EE5A398B1BC024E0E38DCCD9 /* LightningAddress.swift in Sources */,
-				30F5EC4492D04035068E1DBD /* LightningAddressCard.swift in Sources */,
-				31C5CA0430EE53640AF7D09E /* NostrKey.swift in Sources */,
-				78B8BF182A2A8E0DC101918C /* NostrSign.c in Sources */,
-				D38C966A113E24135AE7FFCA /* PhoneSignIn.swift in Sources */,
+				B90F7595EC11FE241CB77910 /* NativeHost.swift in Sources */,
+				03AF362E64D9222AA06F0E40 /* NativePolicy.c in Sources */,
+				43A5D1535C05B29C381D5FFF /* NativeUpdates.swift in Sources */,
+				3EEE9F6858832B4BED499CC2 /* NativeWire.c in Sources */,
+				370177B40FC83B533F660A4C /* NostrKey.swift in Sources */,
+				1F3972F80AD727788C1649CC /* NostrSign.c in Sources */,
+				C0B0BC79860337C450B78A5D /* PhoneSignIn.swift in Sources */,
 				F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */,
-				A95DFBD890907028562D37A4 /* PhoneTurn.swift in Sources */,
-				83FD88F53E028589CEE45BCA /* Player.c in Sources */,
-				08FD3CD4E2C9A833159DF179 /* R0FrameCapture.swift in Sources */,
-				4D13D1CE142E9E69C7438C66 /* SignInScreens.swift in Sources */,
-				7C03BECB12D4D71352A3A98D /* SparkHost.swift in Sources */,
-				C88A368231BDEF444BAC3EB7 /* VoiceBar.swift in Sources */,
-				5AB9283993700A2B487118E8 /* VoiceEngine.c in Sources */,
-				C81BC5971C4C8962601CCFF7 /* VoiceFixture.swift in Sources */,
-				F9B094E95D05DCBFD43F7558 /* VoiceFloor.c in Sources */,
-				964E12F58676563856602927 /* VoiceFrames.swift in Sources */,
-				5E9D4E76D332C1D063811712 /* VoiceMeter.c in Sources */,
-				E16E57A4265C2A0D9DDF39BF /* VoiceRing.swift in Sources */,
-				F8FDCEAEDA12A944EA90C876 /* VoiceSession.swift in Sources */,
-				D1B29687D239E5915B47D8CD /* VoiceWire.c in Sources */,
-				B5B1AF1B14C0810ADDFF3B1F /* Wallet.c in Sources */,
-				B91C651142B692097D663832 /* WalletBackup.c in Sources */,
-				17F2106EC04AC44C22D86F88 /* WalletBackup.swift in Sources */,
-				3BA8AAF9A2533E65EE0FE7F9 /* WalletBackupFlow.swift in Sources */,
-				2A42795BDB2590814E540D07 /* WalletBackupScreens.swift in Sources */,
-				471BAC12DE71796F5764F900 /* WalletKeychain.swift in Sources */,
-				502E6C47D6754A400252B96D /* WalletRules.swift in Sources */,
-				1A440D16806FE261B821F982 /* WalletScreens.swift in Sources */,
-				529AB0A622B860AA1C24C4F2 /* WalletVaultUnit.c in Sources */,
-				F4F3F74BFA70EF47DC1AEE8E /* WebGridViewController.swift in Sources */,
-				F5D72357EDBC9C2C7A705B08 /* host.c in Sources */,
+				6E5DC168044EA02417ED816B /* StarterApp.swift in Sources */,
 				5FCD0C43CB70DA62BB5DE214 /* precomputed_ecmult.c in Sources */,
 				6367A5818F65ABDE05883A8E /* precomputed_ecmult_gen.c in Sources */,
 				A82532704621FA268D0CA249 /* secp256k1.c in Sources */,
-				D0D8E0EE075F0E31B1586907 /* voice.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -846,17 +329,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				942FD4A2E4B76AE6B67327C2 /* HauntUITests.swift in Sources */,
-				28CB577DF874ECB4A0F99997 /* HomeUITests.swift in Sources */,
-				356E949698BDD70EBC4FEC2D /* NostrSign.c in Sources */,
-				70C89FC5E833650BE80DB073 /* R0UITests.swift in Sources */,
-				93E7DBE6FD41AD35B62FF52D /* SignInLiveUITests.swift in Sources */,
-				9AF85440740B534156609E06 /* SignInUITests.swift in Sources */,
-				FBA1D1CFD5995FD7A90E92B2 /* VoiceUITests.swift in Sources */,
-				A203994108226A5200DF11E6 /* WalletUITests.swift in Sources */,
-				E59717FE6B25E96D3BE61CD0 /* precomputed_ecmult.c in Sources */,
-				A711923FCA51E11FAD70A5A7 /* precomputed_ecmult_gen.c in Sources */,
-				EBB43D3BF878EDAF7FDCE61F /* secp256k1.c in Sources */,
+				647B0F6C417120E15A1A68A3 /* StarterUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -864,9 +337,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				78FC01DBBAB02183BA2A18CC /* AppAuthTests.swift in Sources */,
-				4C69FA4A0896E6468FBDE87E /* LightningAddressTests.swift in Sources */,
-				D328C9F22130AC7EA46B176A /* WalletBackupTests.swift in Sources */,
+				DACD4EFCA7D115FAA1A3D126 /* NativePackageTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -892,22 +363,22 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1067;
+				CURRENT_PROJECT_VERSION = 1068;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/Generated",
-					"$(SRCROOT)/../../metaverse/platform",
 				);
 				INFOPLIST_FILE = OpenAgents/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "OpenAgents uses the camera to scan bitcoin and Lightning payment QR codes.";
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "OpenAgents asks for Face ID before it sends bitcoin.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents listens while voice is on, so you can talk to agents hands-free.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "OpenAgents uses the camera when you choose to scan a code.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "OpenAgents verifies your identity when you approve a protected action.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents listens only when you turn voice on.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -916,7 +387,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app;
 				PRODUCT_NAME = OpenAgents;
 				SDKROOT = iphoneos;
-				SWIFT_OBJC_BRIDGING_HEADER = OpenAgents/Platform/Bridge.h;
+				SWIFT_OBJC_BRIDGING_HEADER = NativeBridge.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -926,19 +397,15 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(SRCROOT)/Generated",
-					"$(SRCROOT)/../../metaverse/platform",
-				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app.starter.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenAgents.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/OpenAgents";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenAgents.app/OpenAgents";
 			};
 			name = Release;
 		};
@@ -947,19 +414,15 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(SRCROOT)/Generated",
-					"$(SRCROOT)/../../metaverse/platform",
-				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app.starter.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenAgents.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/OpenAgents";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenAgents.app/OpenAgents";
 			};
 			name = Debug;
 		};
@@ -1028,23 +491,22 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1067;
-				EXCLUDED_SOURCE_FILE_NAMES = "*.wav";
+				CURRENT_PROJECT_VERSION = 1068;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/Generated",
-					"$(SRCROOT)/../../metaverse/platform",
 				);
 				INFOPLIST_FILE = OpenAgents/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSCameraUsageDescription = "OpenAgents uses the camera to scan bitcoin and Lightning payment QR codes.";
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "OpenAgents asks for Face ID before it sends bitcoin.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents listens while voice is on, so you can talk to agents hands-free.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "OpenAgents uses the camera when you choose to scan a code.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "OpenAgents verifies your identity when you approve a protected action.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents listens only when you turn voice on.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1053,7 +515,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app;
 				PRODUCT_NAME = OpenAgents;
 				SDKROOT = iphoneos;
-				SWIFT_OBJC_BRIDGING_HEADER = OpenAgents/Platform/Bridge.h;
+				SWIFT_OBJC_BRIDGING_HEADER = NativeBridge.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -1134,9 +596,8 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app.uitests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app.starter.uitests;
 				SDKROOT = iphoneos;
-				SWIFT_OBJC_BRIDGING_HEADER = Tests/TestBridge.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = OpenAgents;
 			};
@@ -1152,9 +613,8 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app.uitests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.openagents.app.starter.uitests;
 				SDKROOT = iphoneos;
-				SWIFT_OBJC_BRIDGING_HEADER = Tests/TestBridge.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = OpenAgents;
 			};
@@ -1200,25 +660,6 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		C7203DC7EB9877FDCF25971A /* XCRemoteSwiftPackageReference "breez-sdk-spark-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/breez/breez-sdk-spark-swift.git";
-			requirement = {
-				kind = exactVersion;
-				version = 0.27.2;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		6A07344B6842FB168B7EEED5 /* BreezSdkSpark */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = C7203DC7EB9877FDCF25971A /* XCRemoteSwiftPackageReference "breez-sdk-spark-swift" */;
-			productName = BreezSdkSpark;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = D73FDB66A38EC188DC701EB0 /* Project object */;
 }

@@ -13,6 +13,13 @@ chapter keeps.
 
 ## Draft
 
+Begin from the [Coax Native starter](../../coax/native/README.md), with
+Updates enabled or omitted. Its first iOS profile runs Coax-generated Wasm
+inside WebKit using shared DOM components. Native account services are
+installed ahead of the login and chat chapters so compatible application
+code can arrive over the air. The native-control renderer and this chapter's
+complete two-host acceptance case remain planned.
+
 [Episode 289](../../docs/transcripts/289.md) says it plainly: go to
 openagents.com, or open the terminal, desktop or mobile app, and you are
 talking to the same thing. That is promise P1. It is a rule about code as

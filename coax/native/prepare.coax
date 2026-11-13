@@ -1,0 +1,24 @@
+// Assemble generated resources from their canonical shared sources. The only
+// persistent config is the platform's property-list format.
+#load "updates-wire.coax";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+tool_main :: () -> int #export_c #effects(all) {
+  a:[1]Args; if !args_load(a[..]) { return 2; }
+  updates := !args_has(a[..],"--without-updates");
+  r:[64]u8; key:[80]u8;
+  nr:=fs_read("apps/openagents-ios/Generated/runtime.txt",r[..]); nk:=fs_read("coax/native/openagents-public-key.txt",key[..]);
+  if nr!=64 || nk!=44 || !cnu_hex(cast(string)r[..]) { return 1; }
+  config:[2048]u8;o:[1]Jo;jo_start(o[..],config[..]);
+  jo_put(o[..],"<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>runtime</key><string>");jo_put(o[..],cast(string)r[..]);
+  jo_put(o[..],"</string><key>publicKey</key><string>");jo_put(o[..],cast(string)key[0..<nk]);
+  jo_put(o[..],"</string><key>updatesEnabled</key>");jo_put(o[..],ifx updates then "<true/>" else "<false/>");
+  jo_put(o[..],"<key>endpoints</key><array><string>https://updates.openagents.com</string><string>https://oa-updates-157437760789.us-central1.run.app</string></array></dict></plist>");
+  if !fs_write("apps/openagents-ios/Native.plist",jo_text(o[..])) { return 1; }
+  names:=[8]string.["coax/native/starter/index.html","coax/native/starter/native.js","coax/web/dom-host.js","coax/web/shell.js","components/zeron/fonts/Geist.ttf","components/zeron/fonts/Geist-Medium.ttf","components/zeron/fonts/Geist-SemiBold.ttf","components/zeron/fonts/GeistMono.ttf"];
+  targets:=[8]string.["index.html","native.js","coaxial/dom-host.js","coaxial/shell.js","build/zeron/Geist.ttf","build/zeron/Geist-Medium.ttf","build/zeron/Geist-SemiBold.ttf","build/zeron/GeistMono.ttf"];
+  data:[2097152]u8; path:[4096]u8;
+  ok:=fs_mkdir("apps/openagents-ios/Starter/coaxial");ok=fs_mkdir("apps/openagents-ios/Starter/build/zeron");
+  for i:0..<8 {n:=fs_read(names[i],data[..]);if n<0 || !fs_write(fs_join("apps/openagents-ios/Starter",targets[i],path[..]),cast(string)data[0..<n]) {return 1;}}
+  print("starter: Updates %\n",ifx updates then "enabled" else "disabled");return 0;
+}

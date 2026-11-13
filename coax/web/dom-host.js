@@ -393,6 +393,7 @@ async function start() {
   reduced.addEventListener("change", ask);
   globalThis.coaxialDom ||= own;
   (globalThis.coaxialDoms ||= {})[named.get("as") || app] = own;
+  dispatchEvent(new CustomEvent("coaxial-dom-ready", { detail: { app, host: own } }));
   if (clipping) {
     // the first nodes and the stylesheet, then every face it names, so no text is measured in a fallback face
     clipFrame(0); clipSizes(); clipFrame(0);

@@ -1,309 +1,52 @@
 # OpenAgents iOS
 
-A minimal native home, ported from the engine's native iOS app into **Coax**.
-It opens directly onto the monochrome animated graph, drifting dust and
-chamfered HUD bar. Touch nodes to light them; **Start** emits an actual
-`openagents.engine.v1.HudInvocation` and opens **the Grid**, the bare Metaverse
-realm: ground lines out to 264 m and a wire figure standing in for your
-character. Drag on the left half to walk (push past the ring to run), drag on
-the right half to look, and tap the right half to jump.
+The replacement app is the [Coax Native starter](../../coax/native/README.md):
+one Coax/Wasm module, shared DOM components inside WebKit, native account
+services, and optional signed Updates. The OpenAgents book starts here and
+adds login and agent chat as Coax application functionality.
 
-The Grid's **Haunted House** arch opens the native house world. It includes
-its original rooms, props, NPCs, scares, spatial audio, first/third/top views,
-compact engine hotbar, object/character/zone editing and local proto saves.
-The World menu creates personal copies, imports/shares actual world files,
-and switches between saved copies. Public server publishing is not restored;
-see [the world contract](../../docs/protocol/verse-haunt.md).
+Bundle `com.openagents.app`, team HQWSG26L43, version 1.0.0, existing icons
+and entitlements are preserved. Build 1068 introduces the replacement. The
+earlier Metal world, wallet and voice screens are excluded from this target;
+their Keychain namespaces are retained. Their implementation notes are in
+[README-legacy.md](README-legacy.md).
 
-## Build and run
+## Build and check
 
-Requires macOS, Xcode with an iOS SDK/simulator, a C++20 host compiler, and
-XcodeGen (`xcodegen`). No package download or backend account is required.
+`apps/openagents-ios/build.sh` generates on a remote build host and builds
+with Xcode on this Mac's slots. XcodeGen is required. No simulator window
+needs to be opened.
 
 ```sh
+coax/remote/remote.sh run -- bash coax/native/check.sh
 apps/openagents-ios/build.sh
-xcrun simctl install booted apps/openagents-ios/build/Build/Products/Debug-iphonesimulator/OpenAgents.app
-xcrun simctl launch booted com.openagents.app
+coax/remote/remote.sh run --local -- xcodebuild \
+  -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents \
+  -destination 'platform=iOS Simulator,name=Coax Native Starter' \
+  -derivedDataPath /tmp/coax-native-sim CODE_SIGNING_ALLOWED=NO test
 ```
 
-Or open `OpenAgents.xcodeproj`, choose a simulator and Run. The checked-in
-project has a build phase that builds coax0 when needed, generates the C11
-library/header, and combines generated scalar Metal functions with native
-stage bindings. Normal app builds use the checked-in protobuf resource and
-need neither Python nor protoc. The Coax importer linked into coax0 expands the
-`ios-home` descriptor into generated Coax codecs, using the runtime embedded
-in the compiler binary. Its two-stage bootstrap compiles the checked Coax
-lexer, language parser, type checker, descriptor parser/generator and
-SHA-256/provenance modules to C11, then links them into the standalone compiler.
-The generated lexer, parser and checker seeds must regenerate
-exactly before that compiler is published. No helper script/runtime files are loaded and no
-protobuf or Python runtime is bundled with the app. Test/schema and App Store
-administration scripts still use Python separately. Xcode compiles the
-product C for its target SDK. If it rebuilds coax0, the bootstrap is explicitly
-targeted at the host Mac with its macOS SDK, so inherited iOS deployment
-settings cannot turn the build tool into an iOS executable. Metal compiles the bundled shader source at
-runtime; the optional command-line Metal toolchain component is not needed.
-The generator declares its C, header and shader outputs to Xcode, so dependency
-scanning waits for them even when `Generated/` starts empty.
-
-The bundle identifier is `com.openagents.app`. This is a minimal home
-shell. Distribution continues the existing OpenAgents App Store Connect record
-at version 1.0.0; `CURRENT_PROJECT_VERSION` in `project.yml` is the build number.
-The home is the Grid from high above under a Start bar; Start dollies the
-camera down to your character. Once there, the balance of the person's
-existing Spark wallet sits top right; tapping it opens the wallet. You can:
-- receive with one QR for Lightning and on-chain together, or with a
-  Lightning invoice, an on-chain address or a Spark address;
-- send to a Lightning invoice, a Lightning address or LNURL, a bitcoin
-  address (fast, normal or slow fee) or a Spark address, by paste or scan;
-- take LNURL withdrawals, claim on-chain deposits, and see activity and each
-  payment's details.
-- get a Lightning Address (`yourname@openagents.com`, GitHub #13209): the card at the
-  top of the wallet suggests a name, checks it as you type and claims it on one
-  tap; the wallet's Spark key signs the proof the server asks for. Then Copy,
-  Share, a QR, and Turn off / Turn on. Nothing is claimed without the tap, and
-  the limits are on the card (`Wallet/LightningAddress.swift`,
-  `Wallet/LightningAddressCard.swift`, `UnitTests/LightningAddressTests.swift`).
-- buy bitcoin with dollars (Buy bitcoin): MoonPay sends it on-chain to the
-  wallet's own address, Cash App pays a Lightning invoice the wallet made.
-  The screen shows the most adding an on-chain purchase costs at today's
-  fees, then the incoming payment as the SDK reports it.
-
-Every send goes through a review screen and the phone's owner check, and
-`pay/wallet.coax` decides whether it may go. The wallet opens from the
-Keychain seed the earlier app saved, through Breez's Spark SDK (`breez-sdk-spark-swift` 0.27.2, pinned in
-`Package.resolved`). See [`docs/lightning/`](../../docs/lightning/README.md).
-
-On the Grid, the microphone button at the top left turns voice on: tap it
-once and talk hands-free, tap it again to stop. The first time, the app says
-that your speech goes to our voice server, which uses Google to recognize it
-and to speak replies. Five bars beside the button follow every 20 ms frame's
-level and light up while `metaverse/voice.coax` hears you speaking; the
-caption under it shows the partial transcript, then the final one, then the
-reply word by word as it plays. Talking over a reply stops it within a frame.
-The phone talks only to a voice host (`metaverse/voice-host/`) over a
-WebSocket, never to Google. In the simulator the host defaults to
-`ws://127.0.0.1:8787`; set another with the launch argument
-`-OAVoiceHost ws://…` or by holding the button. A phone has no default host
-yet, so voice on a device needs one set this way. No login, chat or FM code is
-restored; the Grid has no buildings or other players yet.
-
-## Sign in to openagents.com
-
-SIGN IN, top right, shows the phone's Nostr key (an npub) and scans or
-pastes a code. The key is made on first use and kept in the Keychain
-(service `com.openagents.app.nostr`, account `nsec-v1`, this device only,
-not synced), so it stays across reinstalls like the wallet seed; it is a
-software key signed with in app memory by libsecp256k1
-(`Vendor/secp256k1/`, `OpenAgents/Platform/NostrSign.c`), not the Secure
-Enclave. `metaverse/phone-signin.coax` (`#authority`) decides which codes the
-phone signs for: `https://openagents.com/login#c=…` (log that browser in)
-and `/projects/<slug>#invite=…` (a member invite), on openagents.com or
-staging.openagents.com, opened as `openagents://HOST/…`, a universal link,
-a scan or a paste. Every one asks first; Approve sends a NIP-98 signed POST
-to `/api/auth/phone/approve` or `/api/private/<slug>/claim`.
-
-A login to your account (an email code, a passkey or the phone's key;
-`../shared/host/apple/AppAuth.swift`, shared with the Mac app) is tied to this phone. At login the app
-makes a device key in the Secure Enclave, silently, with no Face ID or
-passcode prompt (`apps/shared/host/apple/DeviceKey.swift`, shared with the
-Mac apps), and sends its public half; the server binds the login to it. Each
-time the app renews its tokens it signs the request with that key
-(`OA-Device-Proof`), so a refresh token copied off the phone is useless. The
-Simulator has no Secure Enclave: there the key is an ordinary one, and the
-server's devices list says so. Logging out forgets the key. See
-[docs/auth](../../docs/auth/sessions-and-tokens.md#native-refresh-tokens-bound-to-a-device-key)
-and [/settings/devices](https://openagents.com/settings/devices).
-
-Security notices reach the phone as push (#13233): once someone is logged in,
-the app asks Apple for its push token and gives it to the server
-(`AppAuth.pushTarget`, `NoticePush` in `OpenAgents/App.swift`). Tapping a
-notice opens the Security screen (`SecurityViewController`; also Log in ▸
-Security), which shows the newest notices and a waiting recovery, and has
-Cancel recovery and Freeze account. The app asks whether notices may show
-only after the server has taken the token. A test run never registers. The
-`aps-environment` entitlement needs Push Notifications on the bundle id:
-`tools/app_store.py profile` turns it on and makes a new profile when a
-release needs one.
-
-## The wallet's backup and daily limit
-
-The wallet's seed is sealed on the phone and we store only the ciphertext
-(decision D4, [docs/auth](../../docs/auth/wallets-and-custody.md#what-is-built),
-#13217). Coax seals, opens and decides (`coax/lib/nostr/vault-wallet.coax`,
-`pay/wallet-vault.coax` and `pay/wallet-backup.coax`, generated as `WalletVault.h` and `WalletBackup.h`); Swift does the
-effects (`OpenAgents/Wallet/WalletBackup.swift`, `WalletBackupFlow.swift`,
-`WalletBackupScreens.swift`).
-
-- **Back up.** The wallet screen offers it the moment the wallet holds
-  money. One tap shows the passkey prompt, which also evaluates WebAuthn's
-  PRF extension; the PRF output never leaves the phone. Then the app shows
-  a 24-word recovery code once. An account with no passkey gets one first
-  (one more prompt).
-- **Bring it back.** On a phone with no wallet, logging in with the passkey
-  opens the account's backup with that same prompt and puts the seed in the
-  Keychain. The recovery code works when the passkey can't. A phone that
-  has a wallet keeps it: `WalletKeychain.addSeed` never replaces a seed.
-- **The daily limit** (20,000 sats until you change it) is in Wallet safety.
-  Before each payment the app asks `POST /api/wallet/spend`; past the limit
-  it shows the passkey prompt. When it can't ask, it uses its own count of
-  the last 24 hours. A phone that has had a limit doesn't pay while logged
-  out. We can't stop a payment made with the wallet's words elsewhere.
-- **One seed** is off unless you turn on "Use my wallet words for my Nostr
-  identity" in Wallet safety, which warns once.
-
-Coax keeps its working memory on the stack, more than a queue's thread
-has, so the vault's calls run on a 16 MiB thread (`WalletVault.onBigStack`).
-
-```sh
-# backup, a lost phone and both ways back, against a fake server and a software passkey (7 tests)
-xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents \
-  -destination 'platform=iOS Simulator,name=OpenAgents iPhone' -derivedDataPath apps/openagents-ios/build \
-  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= -parallel-testing-enabled NO \
-  -only-testing:OpenAgentsTests/WalletBackupTests test
-```
-
-The Simulator has no synced passkey for openagents.com, so the system's own
-prompt and its PRF output are proven on a phone
-(`NEEDS_OWNER.md`); the same ceremony with a real WebAuthn PRF runs in
-headless Chrome against the live site (`coax/tests/auth/wallet-live.coax`).
-
-```sh
-# the fake-server flow and BIP-340 vectors; sign ad hoc so the Keychain works in the simulator
-xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents \
-  -destination 'platform=iOS Simulator,name=OpenAgents iPhone' -derivedDataPath apps/openagents-ios/build \
-  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= -parallel-testing-enabled NO \
-  -only-testing:OpenAgentsUITests/SignInUITests test
-# against a real server: log in with this phone's key, then log out
-TEST_RUNNER_OA_LIVE_ORIGIN=https://staging.openagents.com xcodebuild … -only-testing:OpenAgentsUITests/SignInLiveUITests/testKeyLoginLive test
-# a fresh code from the /login page's QR (opens it through the system, approves, prints the result)
-TEST_RUNNER_OA_SIGNIN_CODE='https://staging.openagents.com/login#c=…' xcodebuild … -only-testing:OpenAgentsUITests/SignInLiveUITests/testApproveLoginPageLive test
-```
-
-## Engine measurements and debugging
-
-Debug generation writes original Coax line information and source maps beside
-the main generated libraries. See [native debugging](../../coax/DEBUGGING.md)
-for LLDB commands, source-hash checks and native optimization limits. Maps
-and matching objects must stay with the exact executable being inspected.
-
-An explicit `-OABenchmark` Debug launch records the normal Grid frame path
-under Coax-owned scripted input. `R0UITests` enters the world and waits for
-the capture; `Documents/R0-frame.json` contains raw CPU/GPU samples, counts
-and command errors. Release builds compile the capture adapter out. See
-[the benchmark README](../../metaverse/benchmarks/README.md) for commands and
-the scope of each timer. Simulator timing is not physical-phone performance;
-the updated pinned headless comparison passes the proposed median budget;
-device and frame-tail evidence remain open.
-
-## Ownership
-
-| Source | Responsibility |
-| --- | --- |
-| `../../metaverse/home.coax` | Graph generation, dust, pulses, animation, touch ownership, HUD layout, closed resource admission and generated proto codec calls |
-| `../../metaverse/grid.coax` | The Grid: projecting and fading its ground ring, the view matrix, the move/look/jump touch policy |
-| `../../metaverse-engine/cam/camera.coax` | The home's overview orbit and Start's dolly down to you |
-| `../../metaverse-engine/move/player.coax` | Walking, running, jumping, bumping into the robots and the terminal, and the third-person camera, ported from aethyr-cpp |
-| `../../metaverse/cast.coax` | Your character (skinned, idle/walk/run/jump/dance clips cross-faded) and the six robots, including the Foreman by the start, with a body capsule per robot bone that you collide with; reads and checks `Cast.bin` |
-| `OpenAgents/Resources/Cast.bin`, `cast-layer*.jpg` | Packed by `../../metaverse/tools/pack_cast.py` from aethyr-cpp assets (Quaternius models, CC0) |
-| `../../metaverse/light.coax` | Scalar shader functions: sky, dots, threads, glass bar, bloom, tone mapping |
-| `../../metaverse/platform/host.c` | Bounded resident storage, generation-checked handles, packed draw packets |
-| `OpenAgents/App.swift`, `HomeViewController.swift` | UIKit lifecycle, safe areas, orientation, reduced motion, accessibility, native touch forwarding; routes Start to the Grid and passes numbers between `grid.coax` and `player.coax` each frame |
-| `OpenAgents/Voice/` | Voice's Swift host: the audio session (Bluetooth, AirPlay, car, interruptions, route changes), capture with Apple's voice processing into a preallocated ring, 20 ms frames through `oa_voice_uplink`, the WebSocket to the voice host, reply audio through the jitter buffer and `oa_voice_downlink` into the player, barge-in, playback reports, reconnects, and the toggle/level/caption UI. Bundled `Fixtures/*.wav` are copies of `../../metaverse/voice-host/fixtures/` for tests |
-| `../../metaverse/platform/voice.h`, `voice.c`, `../../metaverse/voice*.coax` | The voice engine both the phone and the voice host link: turns, levels, barge-in, jitter buffer, gain, FrameFeatures, frame decisions and the wire codecs (`openagents.voice.v1alpha1`) |
-| `OpenAgents/Platform/` | CAMetalLayer/Metal resources, triple-buffer transfers, CoreText glyph raster, texture/stage bindings |
-| `../../proto/openagents/metareal/home/v1alpha1/` | HomeConfiguration in the root protocol tree; imports the existing engine HudAction |
-| `../../metaverse/home.textproto` | Human-readable resource; `scripts/proto.sh generate` produces `Home.pb` |
-
-This is a port of the native engine home from source commit
-`69848ca` (the engine repository is identified in the existing Metaverse
-migration registry), not the retired OpenAgents web/mobile app. Only the
-home setup/graph/HUD ideas and the OFL Michroma font are carried over. Scene
-storage remains flat and bounded from the initial port; the newer Coax
-aggregate types have not replaced that resident graph storage path. Config
-parsing and HudInvocation writing now use the generated `ios-home` profile.
-Configuration views borrow a bounded local copy; the native bridge retains
-only copied label bytes and scalar settings. No stack view escapes init.
-The closed resource policy still rejects unknown/duplicate fields and
-non-minimal varints; the general importer remains permissive about legal
-non-minimal encodings unless its minimal-varint decoder is selected.
-The default graph uses seed 42727, 4000 motes and eight satellites; exact native
-floating-point pixels/RNG draw ordering are not a compatibility contract.
-
-The Metal implementation uses one HDR scene target and two quarter-resolution
-blur targets. It recreates targets on resize, holds in-flight resources until
-GPU completion and skips frames when all three upload slots are busy. Reduce
-Motion shows the settled graph without drift/rotation/pulses. Backgrounding
-stops the display link and clears touch ownership; resuming cannot jump time.
-Start uses the same Coax HUD activation policy for touch and VoiceOver.
-
-## Checks
-
-```sh
-coax/build.sh test
-export PROTOC=/path/to/protoc-29.3/bin/protoc
-PROTO_PYTHON=/path/to/python-with-protobuf-5.29.3 scripts/proto.sh check
-python3 metaverse/test_home.py
-metaverse/test_sanitized.sh
-xcodebuild -project apps/openagents-ios/OpenAgents.xcodeproj -scheme OpenAgents \
-  -destination 'platform=iOS Simulator,name=OpenAgents iPhone' \
-  -derivedDataPath apps/openagents-ios/build CODE_SIGNING_ALLOWED=NO \
-  -parallel-testing-enabled NO test
-```
-
-Tests compile real Coax output and verify canonical protobuf interoperability,
-unknown/duplicate/truncated resource rejection, bounded finite draw packets,
-deterministic initialization, reduced motion, resume, stale handles, cancelled
-presses and exact-once invocations. UI tests launch the real Metal app and tap
-the rendered HUD through the native touch path in portrait and landscape.
-
-Voice in the simulator, end to end (builds the app, starts the voice host
-offline on port 8797, boots a `Voice iPhone` simulator and runs
-`Tests/VoiceUITests.swift`; then, when this Mac has Google credentials,
-repeats against the live host with Google speech, once with the echo agent
-and once with Gemini):
-
-```sh
-apps/openagents-ios/tools/voice-sim-test.sh            # offline, then live
-apps/openagents-ios/tools/voice-sim-test.sh --offline
-```
-
-The test launches the app with `-OAVoiceFixture hello-foreman`, which streams
-that bundled 16 kHz recording through the same ring and uplink path as the
-microphone, and checks that the caption shows the final transcript, then the
-agent's reply played until the host's SPEECH_END, and that the level
-indicator moved. `-OAVoiceObserve YES` adds a line of live frame
-measurements and decisions under the caption. Both are test hooks: only
-Debug builds accept them, and the recordings (`*.wav`) are left out of
-Release builds. `-OAVoiceHost` and the long press work in every build.
-
-Haunted House regression checks:
-
-```sh
-metaverse/test_haunt.sh
-# Set PROTOC/PROTO_PYTHON to the pinned proto toolchain for the independent oracle.
-# Native UI: -only-testing:OpenAgentsUITests/HauntUITests
-```
+Checks cover signature tampering, runtime/app mismatch, generation replay,
+artifact corruption, traversal, activation, interrupted-trial recovery and
+the rendered starter. The installed authority is Coax; generated C is not
+committed. See the starter guide for optional offline-only builds, the
+installed service inventory, OTA publication and server configuration.
 
 ## TestFlight
 
-The rebuild retains `com.openagents.app`, team HQWSG26L43 and the existing app
-icon. Increment `CURRENT_PROJECT_VERSION` above the record's highest build,
-then regenerate the Xcode project. The release path targets only OpenAgents.
-Credentials come from the owner's local `~/work/.secrets/appstoreconnect.env`
-or ASC_API_* environment variables; private keys, tokens, profiles and output
-archives stay outside the repository.
+Keep build numbers above App Store Connect's latest build. Credentials come
+from `~/work/.secrets/appstoreconnect.env` or ASC_API_* variables. Archives,
+profiles, private keys and signing material remain outside the repository.
 
 ```sh
-apps/openagents-ios/release.sh /absolute/fresh/output-directory
-# Once Apple reports VALID, set notes and assign the existing internal group:
-python3 apps/openagents-ios/tools/app_store.py status --build 1046
-python3 apps/openagents-ios/tools/app_store.py testflight --build 1046 \
-  --group Owner --notes-file apps/openagents-ios/release-notes/1046.txt
+apps/openagents-ios/release.sh /absolute/fresh/output
+# With ASC_API_* loaded, after Apple reports VALID:
+python3 apps/openagents-ios/tools/app_store.py status --build 1068
+python3 apps/openagents-ios/tools/app_store.py testflight --build 1068 \
+  --group Owner --notes-file apps/openagents-ios/release-notes/1068.txt
 ```
 
-The API commands require ASC_API_* variables in the current environment. The
-release script uses manual distribution signing, preserves the checked-in
-version/build during export and uploads the exported IPA. It returns after
-upload; status and group assignment are explicit steps. It never creates
-testers or external groups and never submits a public App Store release.
+The release script generates resources, signs, archives, exports and uploads.
+Group assignment remains explicit. It never creates testers or submits a
+public App Store release. Keep the released `Generated/runtime.txt` and
+`Native.plist` with its archive: updates target that installed runtime.

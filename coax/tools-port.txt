@@ -16,9 +16,6 @@
 # base: 0c2f9f4cdaff0e9f392a334a288537c452921185
 apps/openagents-desktop/zeron/fixtures/fixture.py
 apps/openagents-desktop/zeron/fixtures/psionic.py
-apps/openagents-ios/build.sh
-apps/openagents-ios/generate.sh
-apps/openagents-ios/release.sh
 apps/openagents-ios/tools/app_store.py
 apps/openagents-ios/tools/test-bip39.sh
 apps/openagents-ios/tools/voice-sim-test.sh

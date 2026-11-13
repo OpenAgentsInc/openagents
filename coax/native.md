@@ -1,5 +1,10 @@
 # Coax Native
 
+The first implemented starter is the [iOS WebKit/Wasm profile](native/README.md),
+with optional signed Updates. It is the OpenAgents book's application starting
+point. The full cross-platform native-control architecture below remains a
+proposal; the starter reuses the existing shared DOM component backend.
+
 Written 2026-11-13. Status: proposed framework specification. This change
 defines the architecture; it does not implement a new runtime or migrate an
 app. Implementation is unassigned and unscheduled. Before a stage starts,

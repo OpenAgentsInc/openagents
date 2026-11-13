@@ -1,0 +1,30 @@
+// Publish immutable artifacts before replacing the signed feed pointer.
+// Arguments are passed directly to SDK processes, never through a shell.
+#load "updates-wire.coax";
+#load "../lib/crypto/sha256-kernel.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/proc.coax";
+np_run :: (argv:[]string)->bool {
+  out:[4096]u8;err:[4096]u8;r:=proc_run(argv,180000,out[..],err[..]);
+  if r.started!=0 || r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=5 {tool_errln("publish DIR MANIFEST ENVELOPE KEY BUCKET");return 2;}
+  dir:=args_at(a[..],0);manifest:=args_at(a[..],1);envelope:=args_at(a[..],2);key:=args_at(a[..],3);bucket:=args_at(a[..],4);
+  raw:[16384]u8;n:=fs_read(manifest,raw[..]);if n<0 {return 1;}m:=cnu_read(cast(string)raw[0..<n]);if m.generation<1 {return 1;}
+  // A separate signature file lets the shared codec own the envelope bytes.
+  sigPath:[4096]u8;sigName:=fs_join(fs_dir(envelope),"signature.bin",sigPath[..]);
+  sign:=[6]string.["swift","coax/native/sign.swift","sign",key,manifest,sigName];if !np_run(sign[..]) {return 1;}
+  sig:[64]u8;sealed:[16456]u8;if fs_read(sigName,sig[..])!=64 {return 1;}
+  size:=cnu_wrap(raw[0..<n],sig[..],sealed[..]);if size<0 || !fs_write(envelope,cast(string)sealed[0..<size]) {return 1;}
+  data:[8388608]u8;source:[4096]u8;target:[4096]u8;object:[256]u8;hex:[64]u8;
+  for i:0..<m.n {
+    f:=m.files[i];file:=fs_join(dir,cast(string)f.path[0..<f.path_n],source[..]);bytes:=fs_read(file,data[..]);
+    if bytes!=f.bytes || !S_hex(S_hash(cast(string)data[0..<bytes]),hex[..]) || cast(string)hex[..]!=cast(string)f.hash[..] {tool_errln("Artifact changed after packaging");return 1;}
+    name:=fs_join("objects",cast(string)f.hash[..],object[..]);dest:=fs_join(bucket,name,target[..]);
+    copy:=[6]string.["gcloud","storage","cp",file,dest,"--quiet"];if !np_run(copy[..]) {return 1;}
+  }
+  dest:=fs_join(bucket,"latest.cnu",target[..]);promote:=[6]string.["gcloud","storage","cp",envelope,dest,"--quiet"];
+  if !np_run(promote[..]) {return 1;}print("Published signed generation % to %\n",m.generation,bucket);return 0;
+}

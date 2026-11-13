@@ -1,0 +1,13 @@
+Coax Native starter: the new foundation for OpenAgents.
+
+Try the counter, then Check for updates. Updates are downloaded as signed,
+runtime-compatible packages; Apply update restarts only this app view.
+The embedded starter works offline and remains a recovery fallback.
+
+This build replaces the prior world/wallet/voice interface. Existing key
+material is retained. Login and agent chat screens will be built from this
+starter and delivered through compatible Coax updates.
+
+Please test cold launch, counter taps, Check for updates, Apply update and
+Build and update details. Report the displayed native build and update
+generation with any issue.

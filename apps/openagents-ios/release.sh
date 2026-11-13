@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Firm reason: 5 (thin Coax generation, signing SDK and upload wrapper).
 # Archive this rebuilt OpenAgents app, export and upload. Processing/group
 # assignment is separate; do not spin or create new testers here.
 # Usage: apps/openagents-ios/release.sh /absolute/output/directory
@@ -22,7 +23,9 @@ uuid="$(security cms -D -i "$out/OpenAgents.mobileprovision" | plutil -extract U
 for profile_dir in "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
   mkdir -p "$profile_dir"; cp "$out/OpenAgents.mobileprovision" "$profile_dir/$uuid.mobileprovision"
 done
-xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -configuration Release \
+cp Native.plist "$out/Native.plist"
+cp Generated/runtime.txt "$out/runtime.txt"
+../../coax/remote/remote.sh run --local -- xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -configuration Release \
   -destination generic/platform=iOS -derivedDataPath "$out/dd" -archivePath "$out/OpenAgents.xcarchive" \
   DEVELOPMENT_TEAM=HQWSG26L43 CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$sha1" \
   PROVISIONING_PROFILE_SPECIFIER="OpenAgents App Store" archive
@@ -34,7 +37,7 @@ with open(sys.argv[1],'wb') as file:
                   'provisioningProfiles':{'com.openagents.app':'OpenAgents App Store'},
                   'manageAppVersionAndBuildNumber':False,'uploadSymbols':True},file)
 PY
-xcodebuild -exportArchive -archivePath "$out/OpenAgents.xcarchive" \
+../../coax/remote/remote.sh run --local -- xcodebuild -exportArchive -archivePath "$out/OpenAgents.xcarchive" \
   -exportOptionsPlist "$out/ExportOptions.plist" -exportPath "$out/upload"
 # The build's dSYMs, kept by UUID so a crash report's frames resolve to lines (#13379,
 # coax/web/symbols.sh app-frame). Never stops a release.

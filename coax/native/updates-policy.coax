@@ -1,0 +1,58 @@
+// Installed update authority: immutable runtime, signature, generation and
+// physical resource observations. Native code supplies facts, not decisions.
+#authority;
+#test "only signed compatible newer complete packages can stage" {
+  #assert cn_stage(true,true,true,2,1,100,1);
+  #assert !cn_stage(false,true,true,2,1,100,1);
+  #assert !cn_stage(true,false,true,2,1,100,1);
+  #assert !cn_stage(true,true,false,2,1,100,1);
+  #assert !cn_stage(true,true,true,1,1,100,1);
+  #assert !cn_stage(true,true,true,0,-1,100,1);
+  #assert !cn_stage(true,true,true,2,1,-1,1);
+  #assert !cn_stage(true,true,true,2,1,33554433,1);
+  #assert !cn_stage(true,true,true,2,1,100,0);
+  #assert !cn_stage(true,true,true,2,1,100,25);
+  #assert cn_stage(true,true,true,2147483647,0,33554432,24);
+  #assert cn_stage(true,true,true,1,0,0,1);
+  #assert !cn_stage(true,true,true,2147483648,0,0,1);
+}
+#test "a payload cannot choose a path or privilege outside the installed service" {
+  #assert cn_api("/api/chat/account") && cn_api("/api/chat/complete") && cn_api("/api/auth/account");
+  for s: [7]string.["https://evil/api/chat", "//evil", "/api/wallet/spend", "/api/auth/../wallet", "/api/chat/x\\y", "/api/chat/x%2fy", "/api/chat/x\n"] { #assert !cn_api(s); }
+}
+#test "request safety checks every boundary before routing" {
+  path:[1026]u8; for i:0..<1026 {path[i]='a';}for c,i:"/api/chat/" {path[i]=c;}
+  #assert cn_api(cast(string)path[0..<1024]);
+  #assert !cn_api(cast(string)path[0..<1025]);
+  #assert cn_api("/api/chat/") && cn_api("/api/chat/a.b") && cn_api("/api/chat/ ");
+  #assert !cn_api("/api/chat/..") && !cn_safe("..") && !cn_safe(".a..");
+  control:=[1]u8.[31];
+  #assert cn_safe("a.b") && cn_safe(".") && cn_safe(" ") && !cn_safe(cast(string)control[..]);
+}
+#test "a trial cannot promote itself before an interactive frame or repeat after failure" {
+  #assert cn_health(true,true,1) && !cn_health(false,true,1) && !cn_health(true,false,1);
+  #assert !cn_health(true,true,0) && !cn_health(true,true,3);
+  #assert cn_health(true,true,2);
+}
+#test "a failed or interrupted trial cannot loop and only a valid healthy owner launches" {
+  #assert cn_launch(true,false,true,false)==2;
+  #assert cn_launch(true,false,false,false)==1;
+  #assert cn_launch(true,false,false,true)==3;
+  #assert cn_launch(false,false,true,false)==0 && cn_launch(true,true,true,false)==0;
+}
+cn_launch :: (valid:bool,failed:bool,healthy:bool,attempted:bool)->int #export_c #effects(all) {
+  if !valid || failed {return 0;}if healthy {return 2;}return ifx attempted then 3 else 1;
+}
+cn_stage :: (signature: bool, app: bool, runtime: bool, generation: int, minimum: int, bytes: int, files: int) -> bool #export_c #effects(all) {
+  return signature && app && runtime && generation > minimum && generation > 0 && generation <= 2147483647 && bytes >= 0 && bytes <= 33554432 && files >= 1 && files <= 24;
+}
+cn_safe :: (path: string) -> bool #effects(all) {
+  if path.count > 1024 { return false; }
+  for c: path { if c < 32 || c == '\\' || c == '%' { return false; } }
+  for i: 0..<path.count - 1 { if path[i] == '.' && path[i + 1] == '.' { return false; } }
+  return true;
+}
+cn_api :: (path: string) -> bool #export_c #effects(all) {
+  return cn_safe(path) && ((path.count >= 10 && path[0..<10] == "/api/chat/") || path == "/api/auth/account");
+}
+cn_health :: (interactive: bool, owner: bool, attempt: int) -> bool #export_c #effects(all) { return interactive && owner && attempt >= 1 && attempt <= 2; }
