@@ -46,7 +46,7 @@ EF_FEATURES :: [11] EfFeature.[
     marks = "_dash dash_ =dash _DASH DASH_ CDASH =Dash",
     files = "dash"},
   EfFeature.{name = "mounts", title = "mounts", required = false, issue = 0,
-    owners = "metaverse-engine/action/mount.coax metaverse-engine/action/ride-pose.coax everglade/mounts.coax everglade/zone-mounts.coax everglade/shared/mount-kinds.coax everglade/server/mounts.coax everglade/server/tests/mounts-fixture.coax everglade/server/mount-wire.coax everglade/server/riding.coax everglade/server/riding-checks.coax everglade/shared/mount-land.coax everglade/client/ride.coax everglade/client/ride-view.coax",
+    owners = "metaverse-engine/action/mount.coax metaverse-engine/action/ride-pose.coax everglade/mounts.coax everglade/zone-mounts.coax everglade/shared/mount-kinds.coax everglade/shared/mount-rules.coax everglade/server/tests/mounts-fixture.coax everglade/server/mount-wire.coax everglade/server/riding.coax everglade/server/riding-checks.coax everglade/shared/mount-land.coax everglade/client/ride.coax everglade/client/ride-view.coax",
     marks = "=Mount =mount Mounted mounted_ mount_up dismount =ride_pose rider_ Steed steed_ Horse horse_",
     files = "mount"},
   EfFeature.{name = "name-plates", title = "name plates", required = true, issue = 13088,

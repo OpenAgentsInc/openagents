@@ -10,14 +10,18 @@
 // holds no seat, socket or frame: the room's tick hands it a seat's number, where that seat stands,
 // whether its conditions let it act, and the boxes near the mount.
 //
+// It lives in everglade/shared/ because a page predicts its own mount with the same step
+// (everglade/shared/mount-land.coax): what both sides run is shared, and no page loads a file of
+// everglade/server/ (layer-check's page-room gate, #13440). The room alone holds the answer.
+//
 // Not here: the mount's row on the wire and the asks' frames (everglade/shared/everglade-wire.coax,
 // a wire change that lands through #13398's mechanism), and the page's prediction and drawing.
-//   coax/bin/coax test everglade/server/mounts.coax --library
-//   coax/bin/coax mutate everglade/server/mounts.coax --library --root-only   (175 of 175 killed, 2026-11-12)
-#module "everglade.server.mounts";
+//   coax/bin/coax test everglade/shared/mount-rules.coax --library
+//   coax/bin/coax mutate everglade/shared/mount-rules.coax --library --root-only   (175 of 175 killed, 2026-11-12)
+#module "everglade.shared.mount_rules";
 #load "../../metaverse-engine/action/mount.coax";
-#load "../shared/mount-kinds.coax";
-#load "tests/mounts-fixture.coax" #test;   // its checks' helpers, kept out of its mutants
+#load "mount-kinds.coax";
+#load "tests/mount-rules-fixture.coax" #test;   // its checks' helpers, kept out of its mutants
 
 E2R_MOUNTS :: 4;   // mounts a zone holds
 // What the room says to an ask.

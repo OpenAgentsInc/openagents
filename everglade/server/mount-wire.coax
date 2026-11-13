@@ -15,7 +15,7 @@
 // SEQ rises with each ask, above 0. A reader takes a word whole or not at all (ok false).
 //   coax/bin/coax test everglade/server/mount-wire.coax --library
 #load "../shared/everglade-wire.coax";
-#load "mounts.coax";
+#load "../shared/mount-rules.coax";
 
 EGM_RIDE_E :: "e ride";
 EGM_CODES :: 11;   // E2R_OK to E2R_GROUND

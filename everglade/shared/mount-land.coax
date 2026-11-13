@@ -9,7 +9,7 @@
 // may stand on (e2m_keep): past its edge it slides along it or stops.
 //   coax/bin/coax test everglade/shared/mount-land.coax --library
 #load "move.coax";
-#load "../server/mounts.coax";
+#load "mount-rules.coax";
 
 E2ML_BOXES :: 96;          // boxes gathered round one mount
 E2ML_TREE_TOP :: 14.0;     // a trunk's box reaches the crown: a dragon on the ground meets it too

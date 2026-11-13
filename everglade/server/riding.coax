@@ -1,4 +1,4 @@
-// Riding in the room (#13268): the room holds its zone's mounts (everglade/server/mounts.coax, the
+// Riding in the room (#13268): the room holds its zone's mounts (everglade/shared/mount-rules.coax, the
 // authority on who may ride), steps each ridden one once for each of its rider's inputs among the
 // land's boxes (everglade/shared/mount-land.coax e2ml_step, the step the rider's page predicts with),
 // answers the asks (everglade/server/mount-wire.coax: E kinds 20 to 22, e ride) and writes each mount

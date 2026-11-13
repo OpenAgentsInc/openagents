@@ -5,7 +5,7 @@
     "everglade/server/arrows.coax",
     "everglade/server/rest.coax",
     "everglade/server/battle.coax",
-    "everglade/server/mounts.coax",
+    "everglade/shared/mount-rules.coax",
     "everglade/server/nav.coax",
     "everglade/server/nav-checks.coax",
     "everglade/server/zone-checks.coax",

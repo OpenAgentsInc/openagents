@@ -1,4 +1,4 @@
-// The helpers of everglade/server/mounts.coax's checks (#13268), loaded there with #test so they are
+// The helpers of everglade/shared/mount-rules.coax's checks (#13268), loaded there with #test so they are
 // no part of its mutants.
 
 // A zone with a horse at the origin facing +Z and a dragon at (40, 0) on ground 2, and no boxes.

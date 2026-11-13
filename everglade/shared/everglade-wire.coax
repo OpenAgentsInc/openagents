@@ -176,7 +176,7 @@ WK_MOUNT :: 16;            // a mount (#13268; everglade/server/riding.coax): G 
                            // T0 the tick its mounting or dismounting began, OWNER its rider as a TGT code (-1 nobody), P1 its kind
                            // (everglade/shared/mount-kinds.coax MK_*), P2 its feet's height over the ground in centimetres (a flier's, a jump's).
                            // Its velocity is its speed along its heading (backing: against it) and its feet's speed up
-WIRE_MOUNTS :: 4;          // the mounts a zone holds (everglade/server/mounts.coax E2R_MOUNTS)
+WIRE_MOUNTS :: 4;          // the mounts a zone holds (everglade/shared/mount-rules.coax E2R_MOUNTS)
 WIRE_MOUNT_EID :: 970300;  // mount M's row id: WIRE_ID_MADE + WIRE_MOUNT_EID + M
 WIRE_MONS :: 12;           // the monsters a room holds at most
 WIRE_MON_EID :: 970000;    // monster M's row id: WIRE_ID_MADE + WIRE_MON_EID + M
