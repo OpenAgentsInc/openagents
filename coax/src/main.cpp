@@ -2217,6 +2217,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     changed_bodies.stop();
     if(ok && skeleton.made) {skeleton_passed(&skeleton,tokens,file);serve_keep_passed(tree_path(src->units[0]->canonical),std::make_shared<PassedSkeleton>(std::move(skeleton.skeleton)));}
     if(ok)ok=check_unit_calls(file);
+    if(ok)ok=inline_notes(file);
     if(ok){TimedPhase phase{"effect contracts"};ok=effect_contracts(file,opts);}
     if(ok)record_tree_costs(file);
     // --run-steps overrides the entry file's #run_steps; either replaces the default.

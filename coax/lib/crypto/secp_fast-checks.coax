@@ -66,13 +66,13 @@ fgt_abs :: (d: int) -> int { return ifx d < 0 then -d else d; }
 
 #test "the table holds G's odd multiples, and the constants are β, n and p - n" #steps 2000000000 #traversal 2000000000 {
   #assert FG_G_ENTRIES == 1 << (FG_G_WINDOW - 2) && FG_P_WINDOW == SM_P_WINDOW && FG_BITS == 129;
-  point := fg_from_affine(fg_g_point(0)); twice := fg_double(point);
+  point := fg_from_affine(fg_g_point(0)); twice := fg_to_affine_vartime(fg_double(point));
   expected := sg_generator(); step := sg_double_valid(expected);
   for i: 0..<FG_G_ENTRIES {
     affine := fg_to_affine_vartime(point);
     for k: 0..<5 { #assert fg_g_point(i).x.n[k] == affine.x.n[k] && fg_g_point(i).y.n[k] == affine.y.n[k]; }
     #assert fgt_same(fg_from_affine(fg_g_point(i)), expected);
-    point = fg_add(point, twice); expected = sg_add_valid(expected, step);
+    point = fg_add_affine(point, twice); expected = sg_add_valid(expected, step);
   }
   #assert fet_same(fg_beta(), GLV_BETA);
   order: [32] u8; rest: [32] u8;
@@ -85,9 +85,6 @@ fgt_abs :: (d: int) -> int { return ifx d < 0 then -d else d; }
   a := fgt_multiple(i, 2 * i); b := fgt_multiple(j, 2 * j + 1);
   sum := sg_add_valid(a.reference, b.reference);
   difference := sg_add_valid(a.reference, sg_negate(b.reference).value);
-  #assert fgt_same(fg_add(a.fast, b.fast), sum) && fgt_same(fg_add(b.fast, a.fast), sum);
-  #assert fgt_same(fg_add(a.fast, fgt_negate(b.fast)), difference);
-  #assert fg_add(a.fast, fgt_negate(b.fast)).infinity == (i == j);
   doubled := fg_double(a.fast);
   #assert fgt_same(doubled, sg_double_valid(a.reference)) && doubled.infinity == (i == 0);
   if j > 0 {
@@ -98,7 +95,7 @@ fgt_abs :: (d: int) -> int { return ifx d < 0 then -d else d; }
     #assert fg_add_affine(a.fast, opposite).infinity == (i == j);
     // From a doubling's result, whose coordinates have the largest magnitudes.
     #assert fgt_same(fg_add_affine(doubled, affine), sg_add_valid(sg_double_valid(a.reference), b.reference));
-    #assert fgt_same(fg_add(doubled, fg_double(b.fast)), sg_double_valid(sum));
+    #assert fgt_same(fg_add_affine(doubled, fg_to_affine_vartime(fg_double(b.fast))), sg_double_valid(sum));
     #assert fgt_same(fg_double(doubled), sg_double_valid(sg_double_valid(a.reference)));
     back := fg_to_affine_vartime(b.fast);
     for k: 0..<5 { #assert back.x.n[k] == affine.x.n[k] && back.y.n[k] == affine.y.n[k]; }
@@ -112,7 +109,8 @@ fgt_abs :: (d: int) -> int { return ifx d < 0 then -d else d; }
   if seed == 1 { for i: 0..<4 { k.limbs[i] = 4294967295; } }
   if seed == 2 { k = sc_small(1); }
   if seed == 3 { k = ScScalar.{}; k.limbs[3] = 0x80000000; }
-  recoded := fg_wnaf_vartime(k, w);
+  words := sw_from_scalar(k);
+  recoded := fg_wnaf_vartime(words.n[0], words.n[1], w);
   #assert fgt_wnaf_is(recoded, k);
   wrong := recoded; wrong.digits[seed] += 2; #assert !fgt_wnaf_is(wrong, k);
   last := -9; top := 0;
@@ -127,13 +125,61 @@ fgt_abs :: (d: int) -> int { return ifx d < 0 then -d else d; }
   if seed == 2 { #assert top == 1 && recoded.digits[0] == 1; }
   if seed == 3 { #assert top == 128 && recoded.digits[127] == 1; }
 }
-#forall "each bit recodes to itself, and bits from 256 up read as zero" bit: 0..<128 #steps 2000000000 {
-  k: ScScalar; k.limbs[bit / 32] = cast(u32) 1 << cast(u32) (bit % 32);
-  recoded := fg_wnaf_vartime(k, 5);
+#forall "each bit recodes to itself at every width" bit: 0..<128, w: 2..<9 #steps 2000000000 {
+  lo := ifx bit < 64 then cast(u64) 1 << bit else cast(u64) 0; hi := ifx bit < 64 then cast(u64) 0 else cast(u64) 1 << (bit - 64);
+  recoded := fg_wnaf_vartime(lo, hi, w);
   for i: 0..<FG_BITS { #assert recoded.digits[i] == (ifx i == bit then 1 else 0); }
-  for at: 0..<300 { #assert fg_bit(k, at) == (ifx at == bit then 1 else 0); }
-  high: ScScalar; high.limbs[7] = 0x80000000;
-  #assert fg_bit(high, 255) == 1 && fg_bit(high, 256) == 0 && fg_bit(high, 254) == 0;
+  // The largest window: 2^w - 1 at this place is -1 here and +1, w places up.
+  if bit + w <= 128 {
+    ones := (cast(u64) 1 << w) - 1;
+    lo = ifx bit < 64 then ones << bit else cast(u64) 0;
+    hi = ifx bit < 64 then (ifx bit == 0 then cast(u64) 0 else ones >> (64 - bit)) else ones << (bit - 64);
+    recoded = fg_wnaf_vartime(lo, hi, w);
+    for i: 0..<FG_BITS { #assert recoded.digits[i] == (ifx i == bit then -1 else ifx i == bit + w then 1 else 0); }
+  }
+}
+#forall "a scalar splits as chapter 77 splits it, into signed halves" seed: 0..<40 #steps 2000000000 {
+  k := fgt_scalar(seed, 9);
+  if seed < 20 { k = glv_unhex(GLV_NEAR_BOUNDS[seed]); }
+  if seed == 20 { k = ScScalar.{}; }
+  if seed == 21 { k = sc_small(1); }
+  if seed == 22 { k = sc_negate(sc_small(1)); }
+  if seed == 23 { k = GLV_LAMBDA; }
+  if seed == 24 { k = sc_negate(GLV_LAMBDA); }
+  if seed == 25 { k = SC_N; k.limbs[0] += 5; }                 // above n: 5
+  reference := glv_split_vartime(k); split := fg_split_vartime(k);
+  for part: 0..<2 {
+    value := ifx part == 0 then split.r1 else split.r2;
+    old := glv_half_vartime(ifx part == 0 then reference.r1 else reference.r2);
+    half := fg_half_vartime(value, 5);
+    magnitude := value;
+    if half.negative { magnitude = sw_sub(Sw.{}, value).value; }
+    #assert (magnitude.n[2] | magnitude.n[3]) == 0 && sc_equal(sw_to_scalar(magnitude), old.value);
+    #assert half.negative == (old.negative && !sc_is_zero(old.value));
+    #assert fgt_wnaf_is(half.wnaf, old.value);
+  }
+  if seed == 22 { #assert split.r1.n[0] == CB_MAX64 && split.r1.n[3] == CB_MAX64 && (split.r2.n[0] | split.r2.n[3]) == 0; }   // -1 + λ·0
+  if seed == 23 { #assert (split.r1.n[0] | split.r1.n[1]) == 0 && split.r2.n[0] == 1 && split.r2.n[1] == 0; }               // 0 + λ·1
+  if seed == 25 { #assert split.r1.n[0] == 5 && split.r2.n[0] == 0; }
+}
+#forall "the rounded shift and the basis are chapter 77's" seed: 0..<24 #steps 2000000000 {
+  k := fgt_scalar(seed, 10); g := ifx seed % 2 == 0 then GLV_G1 else GLV_G2;
+  if seed == 0 { k = sc_negate(sc_small(1)); }
+  if seed == 1 { k = ScScalar.{}; }
+  shifted := fg_mul_shift(sw_from_scalar(k), sw_from_scalar(g));
+  #assert sc_equal(sw_to_scalar(shifted), glv_mul_shift_vartime(k, g));
+  // Bit 383 rounds up, and the carry crosses both limbs: (2^256 - 1)·(2^256 - 1) / 2^384 rounds to 2^128.
+  ones := Sw.{n=[4] u64.[CB_MAX64, CB_MAX64, CB_MAX64, CB_MAX64]};
+  top := fg_mul_shift(ones, ones); #assert top.n[0] == 0 && top.n[1] == 0 && top.n[2] == 1 && top.n[3] == 0;
+  half: Sw; half.n[2] = cast(u64) 1 << 63; unit: Sw; unit.n[3] = 1 + cast(u64) seed;       // 2^191 · (1+seed)·2^192 / 2^384 = (1+seed)/2
+  low := fg_mul_shift(half, unit); #assert low.n[0] == (1 + cast(u64) seed + 1) / 2 && low.n[1] == 0 && low.n[2] == 0;
+  // A carry into the second limb that stops there: 2^192 · (2^256 - 2^191) / 2^384 rounds to 2^64.
+  shift: Sw; shift.n[3] = 1; full: Sw; full.n[2] = cast(u64) 1 << 63; full.n[3] = CB_MAX64;
+  stop := fg_mul_shift(shift, full); #assert stop.n[0] == 0 && stop.n[1] == 1 && stop.n[2] == 0 && stop.n[3] == 0;
+  // a + b·λ = 0 (mod n) for both basis vectors, with b1 = -GLV_MINUS_B1 and b2 = a1.
+  a1 := sw_to_scalar(fg_a1()); a2 := sw_to_scalar(fg_a2());
+  #assert sc_equal(a1, sc_mul(GLV_MINUS_B1, GLV_LAMBDA)) && sc_is_zero(sc_add(a2, sc_mul(a1, GLV_LAMBDA)));
+  #assert sc_equal(sc_negate(a1), GLV_MINUS_B2) && fg_a2().n[2] == 1 && fg_a2().n[3] == 0 && fg_a1().n[2] == 0;
 }
 #forall "a·G + b·P equals chapter 16's on seeded inputs" seed: 0..<3 #steps 2000000000 #traversal 2000000000 {
   a := fgt_scalar(seed, 5); b := fgt_scalar(seed, 6);
@@ -169,7 +215,7 @@ fgt_abs :: (d: int) -> int { return ifx d < 0 then -d else d; }
 }
 #forall "a digit at any place, the top one included, adds its term" term: 0..<4, place: 0..<3 #steps 2000000000 #traversal 2000000000 {
   p := sg_add_valid(sg_double_valid(sg_generator()), sg_generator());      // 3G
-  table := fg_odd_table(fgt_affine(p)); halves: [4] FgHalf;
+  table: [1] FgTable; table[0] = fg_odd_table(fgt_affine(p)); halves: [4] FgHalf;
   bit := ifx place == 0 then 128 else ifx place == 1 then 127 else 0;
   halves[term].wnaf.digits[bit] = 3; halves[term].negative = place == 1;
   k: ScScalar; k.limbs[bit / 32] = cast(u32) 1 << cast(u32) (bit % 32);    // 2^bit; 2^128 is limb 4
@@ -178,35 +224,47 @@ fgt_abs :: (d: int) -> int { return ifx d < 0 then -d else d; }
   if term == 1 || term == 3 { k = sc_mul(k, GLV_LAMBDA); }
   expected := ifx term < 2 then ecmult_vartime(k, sg_infinity(), sc_small(0)).value else ecmult_vartime(sc_small(0), p, k).value;
   #assert fgt_same(fg_strauss_vartime(halves[0], halves[1], halves[2], halves[3], table[..]), expected);
-  h := fg_half_vartime(sc_small(5), 4); #assert !h.negative && h.wnaf.digits[0] == 5;
-  h = fg_half_vartime(sc_negate(sc_small(5)), 4); #assert h.negative && h.wnaf.digits[0] == 5;
-  h = fg_half_vartime(sc_small(5), 3); #assert h.wnaf.digits[0] == -3 && h.wnaf.digits[3] == 1;
+  five: Sw; five.n[0] = 5; minus := sw_sub(Sw.{}, five).value;
+  h := fg_half_vartime(five, 4); #assert !h.negative && h.wnaf.digits[0] == 5;
+  h = fg_half_vartime(minus, 4); #assert h.negative && h.wnaf.digits[0] == 5;
+  h = fg_half_vartime(five, 3); #assert h.wnaf.digits[0] == -3 && h.wnaf.digits[3] == 1;
+  h = fg_half_vartime(Sw.{}, 5); #assert !h.negative; for i: 0..<FG_BITS { #assert h.wnaf.digits[i] == 0; }
 }
-#test "P's table holds its odd multiples" #steps 2000000000 #traversal 2000000000 {
-  p := ecmult_vartime(sc_small(5), sg_infinity(), sc_small(0)).value;
-  table := fg_odd_table(fgt_affine(p)); expected := sm_odd_table_vartime(p);
+// A point of the table's curve as the point of secp256k1 it stands for.
+fgt_scaled_back :: (e: Fge, z: Fe) -> Fgej { return Fgej.{x=e.x,y=e.y,z=z}; }
+#forall "P's table holds its odd multiples over one denominator" k: 1..<4 #steps 2000000000 #traversal 2000000000 {
+  p := fgt_multiple(2 * k + 1, k).reference;                   // 3G, 5G, 7G
+  table: [1] FgTable; table[0] = fg_odd_table(fgt_affine(p)); expected := sm_odd_table_vartime(p);
+  z := table[0].z;
+  #assert fe_equal_vartime(table[0].z2, fe_sqr(z)) && fe_equal_vartime(table[0].z3, fe_mul(fe_sqr(z), z));
+  #assert fe_equal_vartime(table[0].z2b, fe_mul(fe_sqr(z), fg_beta())) && !fe_is_zero_vartime(z);
   for i: 0..<8 {
-    #assert fgt_same(table[i], expected[i]);
+    e := table[0].entry[i];
+    #assert fgt_same(fgt_scaled_back(e, z), expected[i]);
+    for limb: 0..<4 { #assert e.x.n[limb] <= 2 * FE_M52 && e.y.n[limb] <= 2 * FE_M52; }   // magnitude 1
+    #assert e.x.n[4] <= 2 * FE_M48 && e.y.n[4] <= 2 * FE_M48;
     for negative: 0..<2 {
       for sign: 0..<2 {
         digit := ifx sign == 0 then 2 * i + 1 else -(2 * i + 1);
         want := ifx (sign == 1) != (negative == 1) then sg_negate(expected[i]).value else expected[i];
-        #assert fgt_same(fg_p_entry(table[..], digit, negative == 1, false), want);
-        #assert fgt_same(fg_p_entry(table[..], digit, negative == 1, true), glv_lambda_point(want));
+        #assert fgt_same(fgt_scaled_back(fg_p_entry(table[..], digit, negative == 1, false), z), want);
+        #assert fgt_same(fgt_scaled_back(fg_p_entry(table[..], digit, negative == 1, true), z), glv_lambda_point(want));
       }
     }
   }
   g := sg_generator(); odd := sm_odd_table_vartime(g);
   for i: 0..<8 {
-    #assert fgt_same(fg_from_affine(fg_g_entry(2 * i + 1, false, false)), odd[i]);
-    #assert fgt_same(fg_from_affine(fg_g_entry(-(2 * i + 1), false, false)), sg_negate(odd[i]).value);
-    #assert fgt_same(fg_from_affine(fg_g_entry(2 * i + 1, true, false)), sg_negate(odd[i]).value);
-    #assert fgt_same(fg_from_affine(fg_g_entry(-(2 * i + 1), true, false)), odd[i]);
-    #assert fgt_same(fg_from_affine(fg_g_entry(2 * i + 1, false, true)), glv_lambda_point(odd[i]));
-    #assert fgt_same(fg_from_affine(fg_g_entry(-(2 * i + 1), false, true)), glv_lambda_point(sg_negate(odd[i]).value));
+    #assert fgt_same(fgt_scaled_back(fg_g_entry(table[..], 2 * i + 1, false, false), z), odd[i]);
+    #assert fgt_same(fgt_scaled_back(fg_g_entry(table[..], -(2 * i + 1), false, false), z), sg_negate(odd[i]).value);
+    #assert fgt_same(fgt_scaled_back(fg_g_entry(table[..], 2 * i + 1, true, false), z), sg_negate(odd[i]).value);
+    #assert fgt_same(fgt_scaled_back(fg_g_entry(table[..], -(2 * i + 1), true, false), z), odd[i]);
+    #assert fgt_same(fgt_scaled_back(fg_g_entry(table[..], 2 * i + 1, false, true), z), glv_lambda_point(odd[i]));
+    #assert fgt_same(fgt_scaled_back(fg_g_entry(table[..], -(2 * i + 1), false, true), z), glv_lambda_point(sg_negate(odd[i]).value));
   }
-  last := fg_g_entry(2 * FG_G_ENTRIES - 1, false, false);
-  for k: 0..<5 { #assert last.x.n[k] == fg_g_point(FG_G_ENTRIES - 1).x.n[k]; }
+  last := fgt_scaled_back(fg_g_entry(table[..], 2 * FG_G_ENTRIES - 1, false, false), z);
+  #assert sg_equal_mask(fgt_reference(last), fgt_reference(fg_from_affine(fg_g_point(FG_G_ENTRIES - 1)))) == CB_MAX64;
+  same := fg_signed(table[0].entry[0], false); other := fg_signed(table[0].entry[0], true);
+  #assert fe_equal_vartime(same.y, table[0].entry[0].y) && fe_is_zero_vartime(fe_add(other.y, table[0].entry[0].y)) && fe_equal_vartime(other.x, same.x);
 }
 #forall "public keys decode as chapter 17 decodes them" x: 0..<12 #steps 2000000000 #traversal 2000000000 {
   bytes: [65] u8; bytes[32] = cast(u8) x;

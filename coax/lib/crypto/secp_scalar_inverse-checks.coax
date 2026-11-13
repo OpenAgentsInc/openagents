@@ -72,3 +72,34 @@ swt_scalar :: (seed: int) -> ScScalar {
   #assert sc_equal(sw_to_scalar(sw_sub_mod(sw_from_scalar(a), sw_from_scalar(b))), sc_sub(a, b));
   #assert sc_equal(sw_to_scalar(sw_sub_mod(sw_from_scalar(b), sw_from_scalar(a))), sc_sub(b, a));
 }
+#forall "products equal the reference, and every carry lands" seed: 0..<24 #steps 2000000000 {
+  a := swt_scalar(seed); b := swt_scalar(seed + 200);
+  for i: 4..<8 { a.limbs[i] = 0; }                             // below 2^128
+  for i: 4..<8 { b.limbs[i] = 0; } b.limbs[3] &= 0x7FFFFFFF;  // below 2^127, so a·b is below n
+  low := sw_mul_low(sw_from_scalar(a), sw_from_scalar(b));
+  #assert sc_equal(sw_to_scalar(low), sc_mul(a, b));
+  wide := sw_mul_wide(sw_from_scalar(a), sw_from_scalar(b));
+  for i: 0..<4 { #assert wide[i] == low.n[i] && wide[4 + i] == 0; }
+  // Two whole operands: the product mod n from its two halves, as hi·2^256 + lo.
+  x := swt_scalar(seed + 300); y := swt_scalar(seed + 400);
+  wide = sw_mul_wide(sw_from_scalar(x), sw_from_scalar(y));
+  lo := sw_to_scalar(Sw.{n=[4] u64.[wide[0], wide[1], wide[2], wide[3]]}); hi := sw_to_scalar(Sw.{n=[4] u64.[wide[4], wide[5], wide[6], wide[7]]});
+  ones: ScScalar; for i: 0..<8 { ones.limbs[i] = 4294967295; }
+  two256 := sc_add(ones, sc_small(1));                         // 2^256 mod n
+  #assert sc_equal(sc_add(sc_mul(hi, two256), lo), sc_mul(x, y));
+}
+#test "the largest product: (2^256 - 1)^2 = 2^512 - 2^257 + 1" #steps 2000000000 {
+  ones := Sw.{n=[4] u64.[CB_MAX64, CB_MAX64, CB_MAX64, CB_MAX64]};
+  wide := sw_mul_wide(ones, ones);
+  #assert wide[0] == 1 && wide[1] == 0 && wide[2] == 0 && wide[3] == 0;
+  #assert wide[4] == CB_MAX64 - 1 && wide[5] == CB_MAX64 && wide[6] == CB_MAX64 && wide[7] == CB_MAX64;
+  low := sw_mul_low(ones, ones); #assert low.n[0] == 1 && (low.n[1] | low.n[2] | low.n[3]) == 0;
+  // One limb of each: the product lands in limbs i + j and i + j + 1.
+  for i: 0..<4 {
+    for j: 0..<4 {
+      a: Sw; b: Sw; a.n[i] = CB_MAX64; b.n[j] = CB_MAX64;
+      w := sw_mul_wide(a, b);
+      for k: 0..<8 { #assert w[k] == (ifx k == i + j then cast(u64) 1 else ifx k == i + j + 1 then CB_MAX64 - 1 else cast(u64) 0); }
+    }
+  }
+}

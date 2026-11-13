@@ -31,7 +31,7 @@ const ErrorInfo ERRORS[] = {
     {"E0207", "cannot assign to this expression", "Only a variable, a struct field or an element (a[i]) can be assigned."},
     {"E0208", "expected a name", "A parameter, field, member or loop variable name was expected here."},
     {"E0209", "expected a module name after #import", "Write #import \"Basic\";"},
-    {"E0210", "directive not supported here", "The directive is unknown or not implemented in this position. Procedures accept #export_c; files accept #import and #assert; expressions accept #run."},
+    {"E0210", "directive not supported here", "The directive is unknown or not implemented in this position. Procedures accept #export_c, #foreign and #inline; #inline is refused with either of the other two and on main and recursive procedures. Files accept #import and #assert; expressions accept #run."},
     {"E0211", "retired in 0.2.0", "Was: only procedures can be declared at the top level. Top-level constants arrived in 0.2.0."},
     {"E0212", "global variables are not supported", "Top-level mutable state is not part of coax0. Use constants, or pass state explicitly."},
     {"E0213", "expected a top-level declaration", "The top level holds #import, #assert and declarations 'name :: ...'."},

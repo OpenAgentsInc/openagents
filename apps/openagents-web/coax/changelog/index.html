@@ -34,6 +34,7 @@ html,body{margin:0;min-height:100%;background:#000;color:#eee;font-family:ui-san
 <p>- Add #transaction rollback for escaping errors and optional absence, with transitive effect restrictions and owned refusal payloads. Use it for room actions, repairs, fire batches and the in-memory ledger.</p>
 <p>- Add owned #persisted records and coax compat for concrete published signatures, native LP64 C ABI, effects and saved defaults. Page and room release gates compare production and block new incompatibilities. See checked-state.md for bounds and remaining lifetime work.</p>
 <p><a href="https://github.com/OpenAgentsInc/openagents/blob/main/coax/checked-state.md">checked-state.md</a></p>
+<p>- Follow-up 2026-11-13 (#13450): #inline on a procedure makes native C copy its body into each caller (static inline with always_inline); wasm32, GPU output and --split units keep the call. It is refused with #export_c or #foreign and on main and recursive procedures (E0210), and each instance of a generic procedure carries its template&#39;s note. secp_fe.coax uses it for the field product and square, which makes signature verification about a quarter faster.</p>
 <h2>0.51.2 — Phase Storage Accounting — 2026-11-05</h2>
 <p>Commit: eae6049b87d31768a341397296a9a085c9db14ab</p>
 <p><a href="https://github.com/OpenAgentsInc/openagents/commit/eae6049b87d31768a341397296a9a085c9db14ab">eae6049b87d31768a341397296a9a085c9db14ab</a></p>

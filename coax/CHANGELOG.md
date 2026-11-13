@@ -30,6 +30,13 @@ Commit: [`09101c58f972b76c8fcdd6f9315d1026b6a95837`](https://github.com/OpenAgen
   signatures, native LP64 C ABI, effects and saved defaults. Page and room
   release gates compare production and block new incompatibilities. See
   [checked-state.md](checked-state.md) for bounds and remaining lifetime work.
+- Follow-up 2026-11-13 (#13450): `#inline` on a procedure makes native C copy
+  its body into each caller (`static inline` with `always_inline`); wasm32, GPU
+  output and `--split` units keep the call. It is refused with `#export_c` or
+  `#foreign` and on `main` and recursive procedures (E0210), and each instance
+  of a generic procedure carries its template's note. `secp_fe.coax` uses it
+  for the field product and square, which makes signature verification about
+  a quarter faster.
 
 ## 0.51.2 — Phase Storage Accounting — 2026-11-05
 

@@ -64,7 +64,7 @@ than raw speed.
 
 **Coax is weakest where a node is weakest:**
 
-- **Speed.** Signature verification is about 2.1 times slower than
+- **Speed.** Signature verification is about 1.4 times slower than
   libsecp256k1 (2026-11-13; it was about 45 times slower when this
   analysis was written).
 - **Parallelism.** There are no threads.
@@ -450,9 +450,9 @@ It is the reason this repository could write 56,490 library lines with
 
 ### 4.1 Performance
 
-- **Signature verification is about 2.1 times slower than
-  libsecp256k1:** 28.5 µs against 13.7 µs for ECDSA, and 29.9 µs
-  against 14.1 µs for BIP-340, measured on 2026-11-13
+- **Signature verification is about 1.4 times slower than
+  libsecp256k1:** 20.0 µs against 14.4 µs for ECDSA, and 20.2 µs
+  against 14.7 µs for BIP-340, measured on 2026-11-13
   ([ch77](../../../bitcoin/book/ch077-faster-verification-the-glv-endomorphism.md),
   [issue #13450](https://github.com/OpenAgentsInc/openagents/issues/13450)).
   When this analysis was written it was about 45 times slower: 675 µs
@@ -462,18 +462,19 @@ It is the reason this repository could write 56,490 library lines with
   - complete addition formulas;
   - small precomputed tables.
 - **What closed it:** a 5×52 field on `mul_wide`, Jacobian formulas that
-  branch on public data, a width-8 table for `G`, and a comparison that
-  avoids the division. No compiler change was needed: the C compiler turns
-  the carry tests into add-with-carry instructions.
-- **What remains:** libsecp256k1's faster inverse, its window-15 tables and
-  its shared-`Z` table for the public key. Signing still runs on the
-  26-bit field and is 26 to 98 times slower than
-  libsecp256k1.
+  branch on public data, affine tables for `G` and for the public key, and
+  a comparison that avoids the division. The C compiler turns the carry
+  tests into add-with-carry instructions, so no carry intrinsic was needed.
+  The one compiler change is `#inline`, which copies the field product
+  into each point operation.
+- **What remains:** libsecp256k1's faster inverse and its window-15
+  tables. Signing still runs on the 26-bit field and is 26 to
+  98 times slower than libsecp256k1.
 - **What Coax costs:** checked arithmetic. Release builds use wrapping, but
   every `add_checked` that stays in a hot loop costs a branch.
 - **What Coax lacks for hashing:** SHA-256 is portable code. There is no
   SHA-NI or ARMv8 SHA path.
-- **The verdict:** the 3-times target (audit step 3) is met about seven
+- **The verdict:** the 3-times target (audit step 3) is met about eleven
   times over. Parity with libsecp256k1 needs its inverse and its tables,
   not vector intrinsics.
 
@@ -576,7 +577,7 @@ narrow `#foreign` surface.
 | Layer | Recommendation | Why | What Coax needs |
 | --- | --- | --- | --- |
 | Hashes (SHA-256, RIPEMD-160, SipHash, ChaCha20) | Coax + intrinsic | Correctness is done (NIST, RFC, Wycheproof vectors). Mainnet IBD hashes every transaction, so SHA-NI and ARMv8 SHA matter. | SHA intrinsics with the portable kernel as oracle (§6.4) |
-| secp256k1 field and scalar | Coax; keep 10×26 as the reference and the path for secrets | The 45-times gap was algorithmic. Verification now runs on 5×52 limbs with `mul_wide` and is about 2.1 times slower than libsecp256k1 (2026-11-13). | Limb magnitude checking (§6.4); a 5×52 path for signing |
+| secp256k1 field and scalar | Coax; keep 10×26 as the reference and the path for secrets | The 45-times gap was algorithmic. Verification now runs on 5×52 limbs with `mul_wide` and is about 1.4 times slower than libsecp256k1 (2026-11-13). | Limb magnitude checking (§6.4); a 5×52 path for signing |
 | Verification multiply (wNAF, GLV, tables) | Coax | Public inputs, variable time allowed. Tables can be `#run`-computed constants. | Larger `#run` budgets or `#embed` for tables |
 | Signing, ECDH, BIP-32 private, MuSig2, FROST | Coax, behind the signer | This is where constant time matters, and Coax can enforce it. | Secret types (§6.2); the signer capability (§6.1) |
 | Script interpreter, sighashes | Coax | Already vector-exact; `#authority`; 1,263 of 1,263 Core rows | `coax fuzz` targets; `coax diff` against Core's interpreter |

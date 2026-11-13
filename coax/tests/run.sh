@@ -210,6 +210,7 @@ unit_debugging() { python3 tests/debugging.py; }
 unit_nostr() { python3 tests/nostr.py; }
 unit_constant_time() { python3 tests/constant_time.py; }
 unit_wrapping() { python3 tests/wrapping.py; }
+unit_inline() { python3 tests/inline.py; }
 unit_integer_ops() { python3 tests/integer_ops.py; }
 unit_nominal_ids() { COAX="$COAX_ABS" python3 tests/nominal-ids.py; }
 unit_handles() { "$COAX" test lib/handle.coax --library && "$COAX" mutate lib/handle.coax --library --root-only; }
@@ -283,7 +284,7 @@ unit_spatial() {
 UNITS=(pass fail examples pulse python native strict_math native_checks lexer parser budget strings traversal
   provenance query steps library_checks authority_cache check_reuse serve parallel_checks job_budget loaded release mutation_schedule
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
-  sequence bounded kept clock debugging nostr constant_time wrapping integer_ops nominal_ids handles effect_contracts transactions compat mul_wide cuda proto_cap proto proto_policy
+  sequence bounded kept clock debugging nostr constant_time wrapping inline integer_ops nominal_ids handles effect_contracts transactions compat mul_wide cuda proto_cap proto proto_policy
   proto_message verify wire_checks generated_checks wire_core importer_checks fingerprint_checks
   unit_algebra unit_forms spatial_policy borrow_summary spatial_operators spatial proto_json)
 

@@ -1,4 +1,5 @@
-// 1/a modulo the secp256k1 group order n for public scalars, by the binary
+// Numbers below 2^256 in four 64-bit limbs, for public scalars: sums,
+// differences and products, and 1/a modulo the secp256k1 group order n by the binary
 // extended Euclidean algorithm (Hankerson, Menezes and Vanstone, algorithm
 // 2.22) on four 64-bit limbs. It gives the same value as chapter 14's
 // sc_inverse, which raises a to n - 2 with 512 Montgomery products, in a
@@ -62,6 +63,27 @@ sw_sub_mod :: (x: Sw, y: Sw) -> Sw #effects(all) {
   d := sw_sub(x, y);
   if d.carry == 0 { return d.value; }
   return sw_add(d.value, sw_n()).value;
+}
+// The 512-bit product a·b, least significant limb first. One row for each
+// limb of a: a product, the limb already there and the carry fit in 128
+// bits, so neither addition of a carry overflows.
+sw_mul_wide :: (a: Sw, b: Sw) -> [8] u64 #effects(all) {
+  r: [8] u64;
+  for i: 0..<4 {
+    carry: u64;
+    for j: 0..<4 {
+      p := mul_wide(a.n[i], b.n[j]);
+      low := add_wrap(p.lo, r[i + j]); high := add_wrap(p.hi, ifx low < p.lo then cast(u64) 1 else 0);
+      r[i + j] = add_wrap(low, carry); carry = add_wrap(high, ifx r[i + j] < low then cast(u64) 1 else 0);
+    }
+    r[i + 4] = carry;
+  }
+  return r;
+}
+// a·b mod 2^256.
+sw_mul_low :: (a: Sw, b: Sw) -> Sw #effects(all) {
+  w := sw_mul_wide(a, b);
+  return Sw.{n=[4] u64.[w[0], w[1], w[2], w[3]]};
 }
 sw_is_one :: (a: Sw) -> bool #effects(all) { return a.n[0] == 1 && (a.n[1] | a.n[2] | a.n[3]) == 0; }
 // 1/a mod n. ok is false, and the value zero, for a = 0 mod n. Throughout,

@@ -525,9 +525,12 @@ PS_proc :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)->i
   while PS_at(t,s,6) && s[0].code=="" {
     d:=PS_take(t,s);if d.text=="pure" || d.text=="effects" {PS_effect_decl(t,n,s,out,id,d);}
     else if d.text=="export_c" {n[id].flag=true;}
+    else if d.text=="inline" {n[id].op=1;}  // #inline: the C lowering copies the body into each caller (op 1)
     else if d.text=="foreign" {if n[id].flag2 {PS_fail(s,out,d.loc,"E0210","#foreign is repeated","");return 0;}n[id].flag2=true;if n[id].flag {PS_fail(s,out,d.loc,"E0210","a procedure is either #foreign or #export_c, not both","");return 0;}
     }else {parts:=[3] string.["#",d.text," is not supported on procedures by coax0 yet"];PS_error(s,out,d.loc,"E0210","",parts[..]);return 0;}
   }
+  // An #export_c procedure keeps its C symbol, and a #foreign one has no body here: neither can be copied into its callers.
+  if n[id].op==1 && (n[id].flag || n[id].flag2) {PS_fail(s,out,name.loc,"E0210","#inline is for a procedure only this program calls, not #export_c or #foreign","");return 0;}
   if n[id].flag2 {
     if n[id].flag {PS_fail(s,out,name.loc,"E0210","a procedure is either #foreign or #export_c, not both","");return 0;}
     PS_expect(t,s,out,15,"after #foreign; a foreign procedure has no body");return PS_valid(s,id);
@@ -5467,6 +5470,22 @@ PS_frame_test_tokens :: ()->[19]PS_Token #effects(all) {
   if mode==0 {#assert r==1 && nodes[r].flag && state[0].code=="" && state[0].pos==7 && nodes[nodes[r].d].name=="T";}
   else {#assert r==0 && state[0].code!="";}
   if mode==1 {#assert state[0].code=="E0210" && state[0].loc.offset==30 && cast(string)message[0..<state[0].length]=="#persisted is repeated";}
+}
+#forall "a procedure may be written #inline, but not with #export_c or #foreign" mode:0..<6 {
+  // () #inline {}; () {}; then #inline with #export_c or #foreign, in either order.
+  tokens:=[7]PS_Token.[PS_Token.{kind=8},PS_Token.{kind=9},PS_Token.{kind=6,text="inline"},PS_Token.{kind=6,text="pure"},PS_Token.{kind=10},PS_Token.{kind=11},PS_Token.{}];
+  if mode==1 {tokens[2].text="pure";tokens[3].kind=10;tokens[4].kind=11;tokens[5].kind=0;}
+  if mode==2 {tokens[3].text="export_c";}
+  if mode==3 {tokens[2].text="export_c";tokens[3].text="inline";}
+  if mode==4 {tokens[3].text="foreign";tokens[4].kind=15;tokens[5].kind=0;}
+  if mode==5 {tokens[2].text="foreign";tokens[3].text="inline";tokens[4].kind=15;tokens[5].kind=0;}
+  nodes:[16]PS_Node;state:[1]PS_State;message:[256]u8;r:=PS_proc(tokens[..],nodes[..],state[..],message[..],PS_Token.{text="f",loc=PS_Loc.{column=4}});
+  if mode==0 {#assert r==1 && state[0].code=="" && nodes[r].op==1 && !nodes[r].flag && !nodes[r].flag2 && nodes[r].pure_decl && nodes[r].b!=0;}
+  if mode==1 {#assert r==1 && state[0].code=="" && nodes[r].op==0 && nodes[r].pure_decl;}
+  if mode>1 {
+    #assert r==0 && state[0].code=="E0210" && state[0].loc.column==4;
+    #assert cast(string)message[0..<state[0].length]=="#inline is for a procedure only this program calls, not #export_c or #foreign";
+  }
 }
 #forall "foreign syntax refuses duplicate or contradictory boundary declarations" mode:0..<3 {
   tokens:=[6]PS_Token.[PS_Token.{kind=8},PS_Token.{kind=9},PS_Token.{kind=6,text="foreign"},PS_Token.{kind=6,text="foreign"},PS_Token.{kind=15},PS_Token.{}];

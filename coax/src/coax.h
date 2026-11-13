@@ -612,6 +612,7 @@ struct ProcDecl {
   bool check_unit = false; // check code, never emitted: declared in a check unit (SourceUnit::check_unit) or a caller of such
   bool authority = false; // obligation belongs to the authored source unit
   bool export_c = false;
+  bool inline_c = false;  // #inline: the C lowering copies the body into each caller (inline_notes)
   bool foreign = false;  // #foreign: a C symbol the host provides; no body
   bool generic = false;  // has $T type parameters: checked; only its instances are emitted
   Str key;  // an instance: its bindings, length-prefixed, appended to the template's C name
@@ -773,6 +774,10 @@ std::string emit_c(const File *file, const EmitOptions &opts);
 // Marks the procedures that reach a check unit as check code (never emitted);
 // E0616, and false, when main or an #export_c procedure is one of them.
 bool check_unit_calls(File *file);
+// #inline (spec section 7.1): E0210, and false, when a procedure with the note
+// is main or reaches itself through its calls; there is no one body to copy
+// into such a caller.
+bool inline_notes(File *file);
 // Verification emission borrows the original checked graph. Its procedure
 // and check lists are a separate admitted plan, never a copied or rewritten File.
 struct NativeCheckDomain {

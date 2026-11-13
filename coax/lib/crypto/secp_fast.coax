@@ -1,13 +1,15 @@
 // a·G + b·P on secp256k1 for verification: Jacobian coordinates on the
-// 52-bit-limb field (secp_fe.coax), a doubling and additions that are not
-// complete formulas, and the endomorphism split of chapter 77 over a wider
-// table for G. It gives the same point as chapter 16's ecmult_vartime and
-// chapter 77's ecmult_glv_vartime, which stay as its references.
+// 52-bit-limb field (secp_fe.coax), a doubling and an addition that are not
+// complete formulas, the endomorphism split of chapter 77 over a wider
+// table for G, and a table for P with one shared denominator. It gives the
+// same point as chapter 16's ecmult_vartime and chapter 77's
+// ecmult_glv_vartime, which stay as its references.
 //
 // Every procedure branches and indexes on its inputs. They are for public
 // data only: signing, key generation and ECDH keep their fixed-work paths.
 #load "secp_glv.coax";
 #load "secp_fe.coax";
+#load "secp_scalar_inverse.coax";
 #load "secp_fast-checks.coax" #test;
 #authority;
 // An affine point; never infinity.
@@ -22,6 +24,8 @@ FG_P_WINDOW :: 5;
 FgWnaf :: struct { digits: [129] int; }
 // One half of a split scalar: the wNAF of its magnitude, and its sign.
 FgHalf :: struct { wnaf: FgWnaf; negative: bool; }
+// k = r1 + λ·r2 (mod n): each half is a signed integer, mod 2^256.
+FgSplit :: struct { r1: Sw; r2: Sw; }
 // A nonzero wNAF digit as a table index, (|d| - 1)/2, and its sign.
 FgDigit :: struct { index: int; negative: bool; }
 #load "secp_fast_table.coax";
@@ -50,7 +54,7 @@ fg_double :: (a: Fgej) -> Fgej #effects(all) {
   r.y = fe_add(fe_mul(m, rest), fe_negate(y4, 2)); // mutant: equivalent (a larger multiple of p is the same residue; the sum is 4)
   return r;
 }
-// The end of both additions. With u1, s1 the first point's x and y on the
+// The end of an addition. With u1, s1 the first point's x and y on the
 // common denominator, h = u2 - u1 and i = s1 - s2 (h is not zero):
 // X' = i² - h³ - 2·u1·h² and Y' = i·(X' - u1·h²) - s1·h³, computed from
 // h2 = -h² and h3 = -h³. The result has magnitudes 4 and 2; the caller
@@ -79,23 +83,6 @@ fg_add_affine :: (a: Fgej, b: Fge) -> Fgej #effects(all) {
   }
   r := fg_add_finish(a.x, a.y, h, i);
   r.z = fe_mul(a.z, h);
-  return r;
-}
-// a + b for two Jacobian points (twelve multiplications and four squarings).
-fg_add :: (a: Fgej, b: Fgej) -> Fgej #effects(all) {
-  if a.infinity { return b; }
-  if b.infinity { return a; }
-  z22 := fe_sqr(b.z); z12 := fe_sqr(a.z);
-  u1 := fe_mul(a.x, z22); u2 := fe_mul(b.x, z12);
-  s1 := fe_mul(fe_mul(a.y, z22), b.z); s2 := fe_mul(fe_mul(b.y, z12), a.z);
-  h := fe_add(fe_negate(u1, 1), u2); // mutant: equivalent (a larger multiple of p is the same residue; the sum is 3)
-  i := fe_add(fe_negate(s2, 1), s1); // mutant: equivalent (a larger multiple of p is the same residue; the sum is 3)
-  if fe_is_zero_vartime(h) {
-    if fe_is_zero_vartime(i) { return fg_double(a); }
-    return fg_infinity();
-  }
-  r := fg_add_finish(u1, s1, h, i);
-  r.z = fe_mul(fe_mul(a.z, b.z), h);
   return r;
 }
 // The affine point, with both coordinates below p. a must not be infinity.
@@ -133,28 +120,56 @@ fg_decode_vartime :: (bytes: [] u8) -> FgeResult #effects(all) {
   return FgeResult.{value=Fge.{x=x.value,y=y.value},ok=true};
 }
 
-// ---- recoding
-// Bit `at` of k; zero from bit 256 up.
-fg_bit :: (k: ScScalar, at: int) -> int #effects(all) {
-  if at >= 256 { return 0; }
-  return cast(int) ((k.limbs[at / 32] >> cast(u32) (at % 32)) & 1);
+// ---- splitting and recoding
+// The short basis of chapter 77's lattice, {a1 + b1·λ, a2 + b2·λ}, as
+// integers: a1, -b1 and a2 (b2 = a1). Procedures, not constants, so that
+// loading this file spends none of a compile's compile-time steps.
+fg_a1 :: () -> Sw #effects(all) { return Sw.{n=[4] u64.[0xE86C90E49284EB15, 0x3086D221A7D46BCD, 0, 0]}; }
+fg_a2 :: () -> Sw #effects(all) { return Sw.{n=[4] u64.[0x57C1108D9D44CFD8, 0x14CA50F7A8E2F3F6, 1, 0]}; }
+// round(k·g / 2^384): chapter 77's glv_mul_shift_vartime on 64-bit limbs.
+fg_mul_shift :: (k: Sw, g: Sw) -> Sw #effects(all) {
+  w := sw_mul_wide(k, g); r: Sw; round := w[5] >> 63;
+  r.n[0] = add_wrap(w[6], round);
+  carry := ifx r.n[0] < round then cast(u64) 1 else 0;
+  r.n[1] = add_wrap(w[7], carry);
+  r.n[2] = ifx r.n[1] < carry then cast(u64) 1 else 0;
+  return r;
 }
-// The width-w wNAF of k, which must be below 2^128; w is from 2 to 8. Each
-// nonzero digit is odd, below 2^(w-1) in absolute value, and followed by at
-// least w - 1 zeros. A window is read where the bit differs from the carry;
-// a window of 2^(w-1) or more becomes negative and carries one into the
-// next. Bits from 128 up are zero, so a carry lands at bit 128 at the latest.
-fg_wnaf_vartime :: (k: ScScalar, w: int) -> FgWnaf #effects(all) {
-  r: FgWnaf; carry := 0; bit := 0;
-  while bit < FG_BITS { // mutant: equivalent (bit 129 is zero like the carry by then, so nothing is written)
-    if fg_bit(k, bit) == carry { bit += 1; continue; }
-    word := carry;
-    for i: 0..<w { word += fg_bit(k, bit + i) << i; }
+// k = r1 + λ·r2 (mod n), as chapter 77's glv_split_vartime splits it, with
+// each half a signed integer mod 2^256 instead of a residue mod n. With
+// the same c1 and c2, r2 = c1·(-b1) - c2·b2 and r1 = k - c1·a1 - c2·a2 hold
+// as integers, because a + b·λ = 0 (mod n) for both basis vectors. Both are
+// below 2^128 in absolute value, so arithmetic mod 2^256 gives them exactly
+// and no product needs a reduction mod n.
+fg_split_vartime :: (k: ScScalar) -> FgSplit #effects(all) {
+  x := sw_from_scalar(sc_normalize(k));
+  c1 := fg_mul_shift(x, sw_from_scalar(GLV_G1)); c2 := fg_mul_shift(x, sw_from_scalar(GLV_G2));
+  r2 := sw_sub(sw_mul_low(c1, sw_from_scalar(GLV_MINUS_B1)), sw_mul_low(c2, fg_a1())).value;
+  r1 := sw_sub(sw_sub(x, sw_mul_low(c1, fg_a1())).value, sw_mul_low(c2, fg_a2())).value;
+  return FgSplit.{r1=r1,r2=r2};
+}
+// The width-w wNAF of hi·2^64 + lo; w is from 2 to 8. Each nonzero digit is
+// odd, below 2^(w-1) in absolute value, and followed by at least w - 1
+// zeros. A window is read where the low bit differs from the carry; a
+// window of 2^(w-1) or more becomes negative and carries one into the next.
+// The number is below 2^128, so a carry lands at bit 128 at the latest.
+fg_wnaf_vartime :: (low: u64, high: u64, w: int) -> FgWnaf #effects(all) {
+  r: FgWnaf; lo := low; hi := high; carry: u64; bit := 0; mask := (cast(u64) 1 << w) - 1;
+  while bit < FG_BITS { // mutant: equivalent (from bit 129 on the number and the carry are zero, so nothing is written)
+    if (lo & 1) == carry { lo = (lo >> 1) | (hi << 63); hi = hi >> 1; bit += 1; continue; }
+    word := (lo & mask) + carry;
     carry = (word >> (w - 1)) & 1;
-    r.digits[bit] = word - (carry << w);
-    bit += w;
+    r.digits[bit] = cast(int) word - cast(int) (carry << w);
+    lo = (lo >> w) | (hi << (64 - w)); hi = hi >> w; bit += w;
   }
   return r;
+}
+// One half of a split, as the wNAF of its magnitude and its sign.
+fg_half_vartime :: (r: Sw, w: int) -> FgHalf #effects(all) {
+  negative := r.n[3] != 0; m := r;     // below 2^128 in absolute value: the top limb is zero or all ones
+  if negative { m = sw_sub(Sw.{}, r).value; }
+  #assert (m.n[2] | m.n[3]) == 0; // mutant: equivalent (libsecp256k1's bound holds for every split, so the assertion never fails)
+  return FgHalf.{wnaf=fg_wnaf_vartime(m.n[0], m.n[1], w),negative=negative};
 }
 fg_digit :: (digit: int) -> FgDigit #effects(all) {
   if digit < 0 { return FgDigit.{index=(-digit - 1) / 2,negative=true}; }
@@ -162,55 +177,80 @@ fg_digit :: (digit: int) -> FgDigit #effects(all) {
 }
 
 // ---- the multiplication
-// The table entry for one signed digit d of a half: |d|·G, with x times β
-// for the λ half, negated when d and the half's sign differ.
-fg_g_entry :: (digit: int, negative: bool, lambda: bool) -> Fge #effects(all) {
-  d := fg_digit(digit); e := fg_g_point(d.index);
+// The table entry for one signed digit d of a half: |d| times the table's
+// point, negated when d and the half's sign differ. Its y has magnitude 1.
+fg_signed :: (e: Fge, negate: bool) -> Fge #effects(all) {
+  if !negate { return e; }
+  return Fge.{x=e.x,y=fe_negate(e.y, 1)}; // mutant: equivalent (a larger multiple of p is the same residue)
+}
+// P's odd multiples P, 3P, ..., 15P with one shared denominator, so that the
+// chain adds them with the affine formula. entry[i] is (x·z², y·z³) for
+// (2i+1)·P = (x, y): each entry is an affine point of the curve scaled by z,
+// y² = x³ + 7·z⁶, which has the same addition and doubling. z2 and z3 are z²
+// and z³, and z2b is β·z², for moving G's entries onto that curve.
+FgTable :: struct { entry: [8] Fge; z: Fe; z2: Fe; z3: Fe; z2b: Fe; }
+// Build the table without a division. 2P = (dx/dz², dy/dz³), so on the curve
+// scaled by dz it is the affine point (dx, dy) and P is (x·dz², y·dz³). The
+// odd multiples follow by affine additions there, each multiplying Z by its
+// h. Scaling entry i by Z7/Zi, the product of the later h, gives every entry
+// the last one's Z7; with dz, the shared denominator is z = Z7·dz. P is a
+// point of the curve, so no multiple here equals or opposes 2P and no h is 0.
+fg_odd_table :: (point: Fge) -> FgTable #effects(all) {
+  twice := fg_double(fg_from_affine(point));
+  dz2 := fe_sqr(twice.z); step := Fge.{x=twice.x,y=twice.y};
+  t: [8] Fgej; h: [8] Fe;
+  t[0] = Fgej.{x=fe_mul(point.x, dz2),y=fe_mul(fe_mul(point.y, dz2), twice.z),z=fe_one()};
+  for i: 1..<8 {
+    h[i] = fe_add(fe_negate(t[i-1].x, 6), fe_mul(step.x, fe_sqr(t[i-1].z))); // mutant: equivalent (a larger multiple of p is the same residue)
+    t[i] = fg_add_affine(t[i-1], step);
+  }
+  r: FgTable; k := fe_one();
+  r.entry[7] = Fge.{x=fe_weak(t[7].x),y=fe_weak(t[7].y)};
+  for back: 1..<8 {
+    i := 7 - back; k = fe_mul(k, h[i + 1]); k2 := fe_sqr(k);                // k = Z7/Zi
+    r.entry[i] = Fge.{x=fe_mul(t[i].x, k2),y=fe_mul(fe_mul(t[i].y, k2), k)};
+  }
+  r.z = fe_mul(t[7].z, twice.z); r.z2 = fe_sqr(r.z); r.z3 = fe_mul(r.z2, r.z); r.z2b = fe_mul(r.z2, fg_beta());
+  return r;
+}
+// G's entry for a digit, on the table's curve: (x·z², y·z³), or
+// (x·β·z², y·z³) for the λ half.
+fg_g_entry :: (table: [] FgTable, digit: int, negative: bool, lambda: bool) -> Fge #effects(all) {
+  d := fg_digit(digit); g := fg_g_point(d.index);
+  e := Fge.{x=fe_mul(g.x, ifx lambda then table[0].z2b else table[0].z2),y=fe_mul(g.y, table[0].z3)};
+  return fg_signed(e, d.negative != negative);
+}
+// P's entry for a digit: λ·(x, y) = (β·x, y) on the scaled curve too.
+fg_p_entry :: (table: [] FgTable, digit: int, negative: bool, lambda: bool) -> Fge #effects(all) {
+  d := fg_digit(digit); e := table[0].entry[d.index];
   if lambda { e.x = fe_mul(e.x, fg_beta()); }
-  if d.negative != negative { e.y = fe_negate(e.y, 1); } // mutant: equivalent (a larger multiple of p is the same residue)
-  return e;
-}
-// The same for P's table of Jacobian odd multiples.
-fg_p_entry :: (table: [] Fgej, digit: int, negative: bool, lambda: bool) -> Fgej #effects(all) {
-  d := fg_digit(digit); e := table[d.index];
-  if lambda { e.x = fe_mul(e.x, fg_beta()); }
-  if d.negative != negative { e.y = fe_negate(e.y, 4); } // mutant: equivalent (a larger multiple of p is the same residue)
-  return e;
-}
-// P, 3P, ..., 15P.
-fg_odd_table :: (point: Fge) -> [8] Fgej #effects(all) {
-  table: [8] Fgej;
-  table[0] = fg_from_affine(point);
-  twice := fg_double(table[0]);
-  for i: 1..<8 { table[i] = fg_add(table[i-1], twice); }
-  return table;
-}
-fg_half_vartime :: (r: ScScalar, w: int) -> FgHalf #effects(all) {
-  h := glv_half_vartime(r);
-  return FgHalf.{wnaf=fg_wnaf_vartime(h.value, w),negative=h.negative};
+  return fg_signed(e, d.negative != negative);
 }
 // The sum of four terms on one chain of doublings (Strauss): g1 over G,
-// g2 over λG, p1 over the table's point and p2 over λ times it. Doubling
-// infinity, before the first digit, costs nothing.
-fg_strauss_vartime :: (g1: FgHalf, g2: FgHalf, p1: FgHalf, p2: FgHalf, table: [] Fgej) -> Fgej #effects(all) {
+// g2 over λG, p1 over the table's point and p2 over λ times it. The chain
+// runs on the table's curve, and the last step returns to secp256k1:
+// (X, Y, Z) there is (X, Y, Z·z) here. Doubling infinity, before the first
+// digit, costs nothing.
+fg_strauss_vartime :: (g1: FgHalf, g2: FgHalf, p1: FgHalf, p2: FgHalf, table: [] FgTable) -> Fgej #effects(all) {
   r := fg_infinity();
   for round: 0..<FG_BITS {
     bit := FG_BITS - 1 - round;
     r = fg_double(r);
-    if g1.wnaf.digits[bit] != 0 { r = fg_add_affine(r, fg_g_entry(g1.wnaf.digits[bit], g1.negative, false)); }
-    if g2.wnaf.digits[bit] != 0 { r = fg_add_affine(r, fg_g_entry(g2.wnaf.digits[bit], g2.negative, true)); }
-    if p1.wnaf.digits[bit] != 0 { r = fg_add(r, fg_p_entry(table, p1.wnaf.digits[bit], p1.negative, false)); }
-    if p2.wnaf.digits[bit] != 0 { r = fg_add(r, fg_p_entry(table, p2.wnaf.digits[bit], p2.negative, true)); }
+    if g1.wnaf.digits[bit] != 0 { r = fg_add_affine(r, fg_g_entry(table, g1.wnaf.digits[bit], g1.negative, false)); }
+    if g2.wnaf.digits[bit] != 0 { r = fg_add_affine(r, fg_g_entry(table, g2.wnaf.digits[bit], g2.negative, true)); }
+    if p1.wnaf.digits[bit] != 0 { r = fg_add_affine(r, fg_p_entry(table, p1.wnaf.digits[bit], p1.negative, false)); }
+    if p2.wnaf.digits[bit] != 0 { r = fg_add_affine(r, fg_p_entry(table, p2.wnaf.digits[bit], p2.negative, true)); }
   }
+  if !r.infinity { r.z = fe_mul(r.z, table[0].z); }
   return r;
 }
-// a·G + b·P. Both scalars split as chapter 77 splits them, a = a1 + λ·a2
-// and b = b1 + λ·b2 with halves below 2^128. G's halves use the width-8
-// table of affine points, and λ·(x, y) = (β·x, y) gives the other two
-// tables.
+// a·G + b·P for a point P of the curve. Both scalars split as chapter 77
+// splits them, a = a1 + λ·a2 and b = b1 + λ·b2 with halves below 2^128.
+// G's halves use the width-8 table of affine points, and
+// λ·(x, y) = (β·x, y) gives the other two tables.
 fg_ecmult_vartime :: (a: ScScalar, point: Fge, b: ScScalar) -> Fgej #effects(all) {
-  sa := glv_split_vartime(a); sb := glv_split_vartime(b);
-  table := fg_odd_table(point);
+  sa := fg_split_vartime(a); sb := fg_split_vartime(b);
+  table: [1] FgTable; table[0] = fg_odd_table(point);
   return fg_strauss_vartime(fg_half_vartime(sa.r1, FG_G_WINDOW), fg_half_vartime(sa.r2, FG_G_WINDOW),
                             fg_half_vartime(sb.r1, FG_P_WINDOW), fg_half_vartime(sb.r2, FG_P_WINDOW), table[..]);
 }

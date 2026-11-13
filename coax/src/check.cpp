@@ -341,7 +341,7 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
       else if(v.kind==COAX_CK_Tag_stmt_assign){p->target=checked_ref<Expr>(objects,v.c);p->op=(Tok)v.op;}
       else {p->then_=checked_ref<Stmt>(objects,v.c);p->else_=checked_ref<Stmt>(objects,v.d);}}
     else switch(v.kind){
-      case COAX_CK_Tag_proc:{auto *p=checked_ref<ProcDecl>(objects,id);p->loc=loc;p->name=name;p->ret_expr=checked_ref<TypeExpr>(objects,v.a);p->body=checked_ref<Stmt>(objects,v.b);p->ret=ty;p->export_c=v.flag;p->foreign=v.flag2;p->generic=v.generic;p->scope=v.collides?(int32_t)v.scope:0;p->key=checked_string(arena,v.key);p->origin=checked_ref<ProcDecl>(objects,v.origin);p->effect_present=v.effect_present;p->pure_decl=v.pure_decl;p->effect_loc=checked_loc(v.effect_loc);break;}
+      case COAX_CK_Tag_proc:{auto *p=checked_ref<ProcDecl>(objects,id);p->loc=loc;p->name=name;p->ret_expr=checked_ref<TypeExpr>(objects,v.a);p->body=checked_ref<Stmt>(objects,v.b);p->ret=ty;p->export_c=v.flag;p->inline_c=v.op==1;p->foreign=v.flag2;p->generic=v.generic;p->scope=v.collides?(int32_t)v.scope:0;p->key=checked_string(arena,v.key);p->origin=checked_ref<ProcDecl>(objects,v.origin);p->effect_present=v.effect_present;p->pure_decl=v.pure_decl;p->effect_loc=checked_loc(v.effect_loc);break;}
       case COAX_CK_Tag_constant:{auto *p=checked_ref<ConstDecl>(objects,id);p->loc=loc;p->name=name;p->expr=checked_ref<Expr>(objects,v.a);p->type=ty;p->checked=(uint8_t)v.mark;break;}
       case COAX_CK_Tag_struct_:{auto *p=checked_ref<StructDecl>(objects,id);p->identity=v.quantity==3?1:v.quantity==4?2:0;p->loc=loc;p->persisted=v.flag;
         std::string facts=";quantity="+std::to_string(v.quantity);
@@ -390,7 +390,7 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
   std::vector<StructDecl*> structs,templates;for(auto *d:file->structs)(d->generic?templates:structs).push_back(d);
   for(int64_t id=state.instances;id;id=nodes[(size_t)id].chain){
     if(nodes[(size_t)id].kind==COAX_CK_Tag_struct_){auto *d=checked_ref<StructDecl>(objects,id);d->end=d->origin->end;if(!d->generic)structs.push_back(d);continue;}
-    auto *p=checked_ref<ProcDecl>(objects,id);const auto *o=p->origin;p->end=o->end;p->authority=nodes[(size_t)id].origin==id?false:o->authority;p->root_source=nodes[(size_t)id].origin==id?false:o->root_source;p->check_unit=nodes[(size_t)id].origin==id?false:o->check_unit;concrete.push_back(p);}
+    auto *p=checked_ref<ProcDecl>(objects,id);const auto *o=p->origin;p->end=o->end;p->inline_c=o->inline_c;p->authority=nodes[(size_t)id].origin==id?false:o->authority;p->root_source=nodes[(size_t)id].origin==id?false:o->root_source;p->check_unit=nodes[(size_t)id].origin==id?false:o->check_unit;concrete.push_back(p);}
   file->procs=to_slice(arena,concrete);file->generics=to_slice(arena,generic);file->structs=to_slice(arena,structs);file->generic_structs=to_slice(arena,templates);
   file->check_input.reset();laps.lap("check.transfer");return true;
 }

@@ -12,7 +12,8 @@
 #include <time.h>
 #define N 256
 #define PASSES 7
-static uint8_t secret[N][32], hash[N][32], pub33[N][33], xonly[N][32], ecdsa[N][64], schnorr[N][64], aux[N][32];
+// Slot N is scratch for the `agree` mode.
+static uint8_t secret[N + 1][32], hash[N + 1][32], pub33[N + 1][33], xonly[N + 1][32], ecdsa[N + 1][64], schnorr[N + 1][64], aux[N + 1][32];
 static secp256k1_context *ctx;
 static uint64_t seed = 0x13450;
 static uint8_t next_byte(void) { seed = seed * 6364136223846793005ULL + 1442695040888963407ULL; return (uint8_t)(seed >> 56); }
@@ -103,6 +104,38 @@ int main(int argc, char **argv) {
     }
   }
   printf("agreement: %d decisions equal libsecp256k1's\n", checked);
+  // `secp_bench N agree COUNT`: COUNT more seeded cases, each a signature with one of nine
+  // changes (none; a bit of the hash, r, s or the key; the key's prefix; n - s; r or s set to
+  // 0, n, n - 1, p or all ones). Both libraries must decide every case the same way.
+  if (argc > 3 && !strcmp(argv[2], "agree")) {
+    static const uint8_t order[32] = {255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,254,186,174,220,230,175,72,160,59,191,210,94,140,208,54,65,65};
+    static const uint8_t prime[32] = {255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,254,255,255,252,47};
+    long count = atol(argv[3]), accepted[2] = {0, 0};
+    for (long c = 0; c < count; c++) {
+      int i = next_byte(), kind = next_byte() % 9, at = next_byte() % 32, bit = 1 << (next_byte() % 8);
+      memcpy(hash[N], hash[i], 32); memcpy(pub33[N], pub33[i], 33); memcpy(xonly[N], xonly[i], 32);
+      memcpy(ecdsa[N], ecdsa[i], 64); memcpy(schnorr[N], schnorr[i], 64);
+      if (kind == 1) hash[N][at] ^= bit;
+      if (kind == 2) { ecdsa[N][at] ^= bit; schnorr[N][at] ^= bit; }
+      if (kind == 3) { ecdsa[N][32 + at] ^= bit; schnorr[N][32 + at] ^= bit; }
+      if (kind == 4) { pub33[N][1 + at] ^= bit; xonly[N][at] ^= bit; }
+      if (kind == 5) pub33[N][0] = (uint8_t)(next_byte() % 8);
+      if (kind == 6) { int borrow = 0; for (int j = 31; j >= 0; j--) { int d = order[j] - ecdsa[i][32 + j] - borrow; borrow = d < 0; ecdsa[N][32 + j] = (uint8_t)(d + 256 * borrow); } }
+      if (kind == 7 || kind == 8) {
+        uint8_t value[32] = {0}; int which = next_byte() % 5, half = kind == 7 ? 0 : 32;
+        if (which == 1 || which == 2) memcpy(value, order, 32);
+        if (which == 2) value[31] -= 1;
+        if (which == 3) memcpy(value, prime, 32);
+        if (which == 4) memset(value, 255, 32);
+        memcpy(ecdsa[N] + half, value, 32); memcpy(schnorr[N] + half, value, 32);
+      }
+      int e = ref_ecdsa(N, ecdsa[N]), s = ref_schnorr(N, schnorr[N]);
+      if (coax_ecdsa(N, ecdsa[N]) != e || coax_schnorr(N, schnorr[N]) != s) { printf("FAIL: disagreement at case %ld (key %d, change %d)\n", c, i, kind); return 1; }
+      accepted[0] += e; accepted[1] += s;
+    }
+    printf("agreement: %ld more cases, ECDSA and BIP-340 each; libsecp256k1 accepts %ld and %ld of them\n", count, accepted[0], accepted[1]);
+    return 0;
+  }
   // `secp_bench N ecdsa|schnorr SECONDS` only loops one Coax verifier, for a profiler.
   if (argc > 3) {
     double until = now() + atof(argv[3]) * 1e6; long done = 0;

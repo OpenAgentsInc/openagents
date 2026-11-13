@@ -287,6 +287,17 @@ static inline uint32_t coax_value_barrier_u32(uint32_t x){__asm__("" : "+r"(x));
 #endif
 )COAXRT";
 
+// Emitted only into programs with an #inline procedure, so the seeds stay as they are.
+static const char *INLINE_RUNTIME = R"COAXRT(/* #inline (spec section 7.1): the C compiler copies the body into each
+   caller. wasm32 keeps the call: a 128-bit product is four 32-bit ones
+   there, and a module would grow by the whole body at every call. */
+#if defined(__GNUC__) && !defined(__wasm__)
+#define COAX_INLINE static inline __attribute__((always_inline))
+#else
+#define COAX_INLINE static
+#endif
+)COAXRT";
+
 /* Loop versioning (Emitter::versioned_for): a loop whose indexes are affine
    in for-counters with invariant bounds first computes each index's
    interval, and every subexpression's, in exact int64 endpoints. When every
@@ -1209,6 +1220,7 @@ struct Emitter {
   bool intops = false;                        // add_checked..mul_sat are used: emit their helpers
   bool wide = false;
   bool barrier = false;                       // value_barrier is used: emit its helpers
+  bool inlined = false;                       // an #inline procedure is emitted: define COAX_INLINE
   bool strict_math = false;
   bool transactions = false;
   std::map<size_t,std::string> transaction_scopes;
@@ -2466,7 +2478,10 @@ struct Emitter {
   // ---- declarations ----
 
   std::string prototype(const ProcDecl *p, bool header = false) {
-    std::string s = (opts.cuda ? "static __device__ " : opts.metal_compute ? "static inline " : header || (p->export_c && !verification) ? "" : p->foreign && !check_binary ? "extern " : split ? "" : "static ") + c_type(p->ret) + " " +
+    // #inline, where this unit holds the one definition: not a device kernel's helper, a header or a --split unit.
+    const bool inline_here = p->inline_c && !header && !split && !opts.cuda && !opts.metal_compute;
+    inlined = inlined || inline_here;
+    std::string s = (opts.cuda ? "static __device__ " : opts.metal_compute ? "static inline " : header || (p->export_c && !verification) ? "" : p->foreign && !check_binary ? "extern " : split ? "" : inline_here ? "COAX_INLINE " : "static ") + c_type(p->ret) + " " +
                     proc_name(p) + (n32 && n32->proc == p ? "_n32" : "") + "(";
     if (p->params.count == 0 && !opts.metal_compute) s += "void";
     for (int32_t i = 0; i < p->params.count; i++) {
@@ -3707,6 +3722,54 @@ static std::set<const ProcDecl *> called_instances(const File *file) {
   return reached;
 }
 
+// #inline (spec section 7.1). A procedure with the note has one body that the
+// C compiler copies into each caller; a generic procedure's instances carry
+// their template's note (check.cpp). main has no caller here, and a body that
+// reaches itself can't be copied into itself: each is E0210.
+bool inline_notes(File *file) {
+  bool any = false;
+  for (const ProcDecl *p : file->procs) any = any || p->inline_c;
+  if (!any) return true;
+  // The procedures a body calls, and through them every procedure it reaches.
+  std::vector<const ProcDecl *> seen;
+  std::function<void(const ProcDecl *)> reach;
+  std::function<void(const Expr *)> expr = [&](const Expr *e) {
+    if (!e) return;
+    if (e->proc) reach(e->proc);
+    expr(e->lhs); expr(e->rhs); expr(e->third);
+    for (const Expr *a : e->args) expr(a);
+    for (const FieldInit &f : e->fields) expr(f.value);
+  };
+  std::function<void(const Stmt *)> stmt = [&](const Stmt *st) {
+    if (!st) return;
+    expr(st->expr); expr(st->expr2); expr(st->target);
+    for (const Stmt *c : st->body) stmt(c);
+    stmt(st->then_); stmt(st->else_);
+    for (const SwitchCase *arm : st->cases) stmt(arm->body);
+  };
+  reach = [&](const ProcDecl *p) {
+    for (const ProcDecl *q : seen) if (q == p) return;
+    seen.push_back(p);
+    stmt(p->body);
+  };
+  bool ok = true;
+  for (const ProcDecl *p : file->procs) {
+    if (!p->inline_c) continue;
+    std::string why;
+    if (str_eq(p->name, "main")) why = "main";
+    else {
+      seen.clear();
+      stmt(p->body);
+      for (const ProcDecl *q : seen) if (q == p) why = "a procedure that calls itself, directly or through others";
+    }
+    if (why.empty()) continue;
+    error_at(file->src, p->loc, "E0210", "#inline is not supported on " + why,
+             "remove #inline from '" + to_std(p->name) + "'; the C compiler still inlines small procedures on its own");
+    ok = false;
+  }
+  return ok;
+}
+
 // Check code and E0616. A check unit (one the entry reaches only through
 // `#load "FILE" #test;`) is checked with the program and never emitted. A
 // procedure that calls one of its procedures, directly or through others, is
@@ -3884,6 +3947,7 @@ static std::string emit_c_split(const File *file, const EmitOptions &opts, uint6
   if (em.transactions) s += transaction_runtime();
   if (em.erasure) s += ZERO_RUNTIME;
   if (em.barrier) s += BARRIER_RUNTIME;
+  if (em.inlined) s += INLINE_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
   if (em.intops) s += INTOPS_RUNTIME;
   if (em.versioned) s += IV_RUNTIME;
@@ -3971,6 +4035,7 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   if (em.transactions) s += transaction_runtime();
   if (em.erasure) s += ZERO_RUNTIME;
   if (em.barrier) s += BARRIER_RUNTIME;
+  if (em.inlined) s += INLINE_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
   if (em.intops) s += INTOPS_RUNTIME;
   if (em.versioned) s += IV_RUNTIME;
@@ -4110,6 +4175,7 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
   if (em.transactions) s += transaction_runtime();
   if (em.erasure) s += ZERO_RUNTIME;
   if (em.barrier) s += BARRIER_RUNTIME;
+  if (em.inlined) s += INLINE_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
   if (em.intops) s += INTOPS_RUNTIME;
   s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
@@ -4226,6 +4292,7 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
   if (em.transactions) prelude += transaction_runtime();
   if (em.erasure) prelude += ZERO_RUNTIME;
   if (em.barrier) prelude += BARRIER_RUNTIME;
+  if (em.inlined) prelude += INLINE_RUNTIME;
   if (em.wrapping) prelude += WRAP_RUNTIME;
   if (em.intops) prelude += INTOPS_RUNTIME;
   if (em.versioned) prelude += IV_RUNTIME;

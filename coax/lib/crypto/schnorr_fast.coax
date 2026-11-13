@@ -1,4 +1,9 @@
-// Experimental public-data BIP-340 verifier; no secret timing claim.
+// Public-data BIP-340 verification for callers that named the faster of two
+// verifiers; no secret timing claim. Since 2026-11-13 both entries run
+// chapter 77's fast path (schnorr.coax, secp_fast.coax), which is about 27
+// times faster than the 32-bit-limb verifier that was here. That verifier
+// stays as sfv_verify_vartime, a second reference the entry is checked
+// against.
 #load "schnorr.coax";
 #load "ecdh_fast.coax";
 #authority;
@@ -8,13 +13,18 @@ SFV_TEST_SIG :: [64]u8.[233,7,131,31,128,132,141,16,105,165,55,27,64,36,16,54,75
 #test "noncanonical r, s and public key refuse" {
   message:[32]u8;key:=SFV_TEST_KEY;sig:=SFV_TEST_SIG;
   for i:0..<32 {sig[i]=255;}#assert !schnorr_fast_verify_vartime(message[..],key[..],sig[..]);
+  #assert !sfv_verify_vartime(message[..],key[..],sig[..]);
   sig=SFV_TEST_SIG;for i:32..<64 {sig[i]=255;}#assert !schnorr_fast_verify_vartime(message[..],key[..],sig[..]);
+  #assert !sfv_verify_vartime(message[..],key[..],sig[..]);
   sig=SFV_TEST_SIG;for i:0..<32 {key[i]=255;}#assert !schnorr_fast_verify_vartime(message[..],key[..],sig[..]);
+  #assert !sfv_verify_vartime(message[..],key[..],sig[..]);
 }
 #test "fast verification refuses malformed view lengths" {
   message:[1]u8;key:[32]u8;sig:[64]u8;
   #assert !schnorr_fast_verify_vartime(message[..],key[0..<31],sig[..]);
+  #assert !sfv_verify_vartime(message[..],key[0..<31],sig[..]);
   #assert !schnorr_fast_verify_vartime(message[..],key[..],sig[0..<63]);
+  #assert !sfv_verify_vartime(message[..],key[..],sig[0..<63]);
 }
 
 #test "fast Nostr entry enforces the exact 32-byte event id" {
@@ -62,14 +72,17 @@ SFV_TEST_SIG :: [64]u8.[233,7,131,31,128,132,141,16,105,165,55,27,64,36,16,54,75
 #test "official BIP-340 vector zero reaches real byte verification" #steps 100000000 {
   message:[32]u8;public_key:=SFV_TEST_KEY;signature:=SFV_TEST_SIG;
   #assert schnorr_fast_verify_vartime(message[..],public_key[..],signature[..]);
+  #assert sfv_verify_vartime(message[..],public_key[..],signature[..]);
 }
 #test "modified message refuses after the full equation" #steps 100000000 {
   message:[32]u8;message[0]=1;public_key:=SFV_TEST_KEY;signature:=SFV_TEST_SIG;
   #assert !schnorr_fast_verify_vartime(message[..],public_key[..],signature[..]);
+  #assert !sfv_verify_vartime(message[..],public_key[..],signature[..]);
 }
 #test "modified in-range signature refuses after the full equation" #steps 100000000 {
   message:[32]u8;public_key:=SFV_TEST_KEY;signature:=SFV_TEST_SIG;signature[63]^=1;
   #assert !schnorr_fast_verify_vartime(message[..],public_key[..],signature[..]);
+  #assert !sfv_verify_vartime(message[..],public_key[..],signature[..]);
 }
 
 // All point values here are public and originate from a successful lift or
@@ -109,6 +122,11 @@ sfv_multiply :: (g_scalar:ScScalar,point:Sg32,p_scalar:ScScalar)->Sg32 #effects(
   return result;
 }
 schnorr_fast_verify_vartime :: (message:[]u8,public_key:[]u8,signature:[]u8)->bool #export_c #effects(all) {
+  return schnorr_verify_vartime(message,public_key,signature);
+}
+// The 32-bit-limb verifier: chapter 23's preparation, then s·G - e·P on
+// ecdh_fast.coax's field.
+sfv_verify_vartime :: (message:[]u8,public_key:[]u8,signature:[]u8)->bool #effects(all) {
   prepared:=sv_prepare_vartime(message,public_key,signature);if !prepared.ready {return false;}
   result:=sfv_multiply(prepared.s,sg32_from_point(prepared.point),prepared.negative_e);
   return sfv_affine_match(sg32_from_field(prepared.r),result);

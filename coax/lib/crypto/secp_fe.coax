@@ -54,7 +54,7 @@ fw_shr52 :: (a: CoaxU64Product) -> CoaxU64Product #effects(all) {
 // above bit 48 stands at 2^256 = FE_R1 (mod p) and goes to limbs 0 and 1.
 // The limbs are then below 2^64, and one more such step leaves limbs 0 to
 // 3 below 2^52 + 2^49 and limb 4 below 2^48 + 2^12.
-fe_reduce :: (t: [9] CoaxU64Product) -> Fe #effects(all) {
+fe_reduce :: (t: [9] CoaxU64Product) -> Fe #inline #effects(all) {
   c0 := fw_mac(t[0], t[5].lo & FE_M52, FE_R);
   c1 := fw_mac(t[1], (t[6].lo & FE_M52) + fw_shr52(t[5]).lo, FE_R);
   c2 := fw_mac(t[2], (t[7].lo & FE_M52) + fw_shr52(t[6]).lo, FE_R);
@@ -71,8 +71,10 @@ fe_reduce :: (t: [9] CoaxU64Product) -> Fe #effects(all) {
                         (r3 & FE_M52) + (r2 >> 52), (r4 & FE_M48) + (r3 >> 52)]};
 }
 // a·b mod p. Both operands have magnitude at most 8; the result has
-// magnitude 1.
-fe_mul :: (a: Fe, b: Fe) -> Fe #effects(all) {
+// magnitude 1. #inline: a point operation is a chain of products and
+// squares, and a call for each would copy five limbs in and out of memory
+// between them; inlined, verification is about a quarter faster.
+fe_mul :: (a: Fe, b: Fe) -> Fe #inline #effects(all) {
   t: [9] CoaxU64Product;
   t[0] = mul_wide(a.n[0], b.n[0]);
   t[1] = fw_mac(mul_wide(a.n[0], b.n[1]), a.n[1], b.n[0]);
@@ -87,7 +89,7 @@ fe_mul :: (a: Fe, b: Fe) -> Fe #effects(all) {
 }
 // a² mod p, with each cross product taken once on a doubled limb. The
 // operand has magnitude at most 8; the result has magnitude 1.
-fe_sqr :: (a: Fe) -> Fe #effects(all) {
+fe_sqr :: (a: Fe) -> Fe #inline #effects(all) {
   a0 := a.n[0] << 1; a1 := a.n[1] << 1; a2 := a.n[2] << 1; a3 := a.n[3] << 1;
   t: [9] CoaxU64Product;
   t[0] = mul_wide(a.n[0], a.n[0]);

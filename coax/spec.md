@@ -486,6 +486,23 @@ elements may be written, since they belong to the caller's array.
 `name :: (...) -> T #export_c { }` gives a procedure its own C name and the C
 calling convention for `coax lib` and `coax header`.
 
+`name :: (...) -> T #inline { }` asks the C lowering to copy the procedure's
+body into each caller, so a call costs no call and no copies of its
+arguments and result. The C compiler decides this on its own for small
+procedures; the note is for a larger one that a hot loop calls many times,
+such as a field multiplication. It changes no result: arguments still
+execute once, left to right, and checks, `#run` and mutation testing see an
+ordinary procedure. Native C emits the definition as `static inline` with
+`always_inline` under GCC and Clang, at every optimization level. wasm32
+keeps the call, because a `mul_wide` is four 32-bit products there and a
+module would grow by the whole body at every call. CUDA, Metal, SPIR-V and
+WGSL output and `--split` units ignore the note. `#inline` is refused
+(E0210) together with `#export_c` or `#foreign`, on `main`, and on a
+procedure that reaches itself through its calls. Each instance of a generic
+procedure carries its template's note. A source with no `#inline` compiles
+to the same C as before. The keywords
+`inline` and `no_inline` stay reserved for control at a call.
+
 `name :: (...) -> T #foreign;` declares a host C procedure. Its parameters
 are integers, floats, `bool` or **borrowed views** of them (`[] u8`,
 `[] s16`, `[] f32`, `[] bool`, ...); its result is one of those scalars or

@@ -89,7 +89,7 @@ Say this part plainly. It earns trust with the technical crowd.
 > Coax doesn't have everything yet. Some things are missing, and we're going
 > to add them.
 
-- **Speed.** Our signature checks run about 2.1 times slower than
+- **Speed.** Our signature checks run about 1.4 times slower than
   libsecp256k1, the library Bitcoin Core uses (measured 2026-11-13). They
   were about 45 times slower when we recorded; the cause was how our field
   arithmetic was written, and we rewrote it.

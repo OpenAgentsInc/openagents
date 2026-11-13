@@ -28,7 +28,8 @@ spend or an event relies on it.
 | | `nostr_verify_vartime(event_id, public_key, signature)` | the same, for exactly 32 bytes of event ID |
 | | `sv_prepare_vartime` | checks lengths, `r`, `s` and the key, and hashes `e` |
 | | `sv_prepared_matches_vartime` | computes `R` and makes the final comparison |
-| [schnorr_fast.coax](../../coax/lib/crypto/schnorr_fast.coax) | `schnorr_fast_verify_vartime`, `nostr_fast_verify_vartime` | the same checks, with a faster multiplication |
+| [schnorr_fast.coax](../../coax/lib/crypto/schnorr_fast.coax) | `schnorr_fast_verify_vartime`, `nostr_fast_verify_vartime` | the names Nostr's code calls; since 2026-11-13 they run the same fast path as `schnorr_verify_vartime` |
+| | `sfv_verify_vartime` | the earlier verifier on eight 32-bit limbs, kept as a second reference |
 | [schnorr_admission.coax](../../coax/lib/crypto/schnorr_admission.coax) | `sig_admit` | the host-memory admission for a C caller's signing views |
 
 All inputs are raw bytes. The public key is 32 bytes of x coordinate, the
@@ -148,15 +149,23 @@ flag to be zero (chapter 15). Row 3 has the message `ff...ff`, larger than
 
 ## Two paths
 
-`schnorr_fast_verify_vartime` runs the same preparation, `sv_prepare_vartime`,
-and then a different multiplication: signed width-5 windows for both `G` and
+`sfv_verify_vartime` runs the same preparation, `sv_prepare_vartime`, and
+then a different multiplication: signed width-5 windows for both `G` and
 `P`, eight precomputed odd multiples of `G`, and a field type with eight
-32-bit limbs and a fused multiply. In the interpreter, the 2026-10-29
-record measured vector 0 on the fast path at 18,328,270 steps; the reference
-path runs out of a 20 million step budget on the same vector. The two
-paths share the admission and the challenge, so they can differ only in the
-equation and the comparison, and the checks compare them on every vector
-and on fresh signatures.
+32-bit limbs and a fused multiply. Until 2026-11-13 it was the body of
+`schnorr_fast_verify_vartime`. In the interpreter, the 2026-10-29 record
+measured vector 0 on it at 18,328,270 steps; the reference path runs out of
+a 20 million step budget on the same vector. The two paths share the
+admission and the challenge, so they can differ only in the equation and
+the comparison, and the checks compare them on every vector and on fresh
+signatures.
+
+Chapter 77's fast path is faster than both: 20 µs for a verification where
+`sfv_verify_vartime` takes 539 µs natively, and 90 µs where it takes 747 µs
+in Wasm. `schnorr_fast_verify_vartime` and `nostr_fast_verify_vartime` now
+call `schnorr_verify_vartime`, so every caller of either name gets that
+path, and `sfv_verify_vartime` stays as a second reference that the entry
+is checked against.
 
 ## The example
 

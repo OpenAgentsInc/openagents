@@ -28,8 +28,10 @@ proto-import = "#import_proto", string, "as", identifier, ";" ;
    descriptors, naming, budgets, borrowed lifetimes and strict wire policy. *)
 procedure = identifier, "::", "(", [ parameters ], ")",
             [ "->", type ], { procedure-directive }, ( block | ";" ) ;
-procedure-directive = "#foreign" | "#export_c" | "#pure" | "#effects", "(", [ identifier, { ",", identifier } ], ")" ;
+procedure-directive = "#foreign" | "#export_c" | "#inline" | "#pure" | "#effects", "(", [ identifier, { ",", identifier } ], ")" ;
 (* Foreign procedures end in a semicolon; other procedures have a body.
+   #inline: the C lowering copies the body into each caller. It is refused
+   with #export_c or #foreign and on main and recursive procedures (E0210).
    At most one #effects/#pure declaration; each capability occurs once.
    Enforced capabilities and required declarations: checked-state.md. *)
 parameters = parameter, { ",", parameter }, [ "," ] ;

@@ -5,6 +5,7 @@
 #
 #   coax/tests/bitcoin/secp_bench.sh [--release | --checked] [SIGN_COUNT]
 #   coax/tests/bitcoin/secp_bench.sh [--release | --checked] --wasm
+#   coax/tests/bitcoin/secp_bench.sh [--release | --checked] 0 agree COUNT
 #
 # --release (default) is `coax lib --release`: wrapping integers, cc -O2.
 # --checked is `coax lib --opt 2`: checked integers, cc -O2. The oracle is
@@ -15,6 +16,8 @@
 # can lower the number of signatures timed. --wasm builds the same C for
 # wasm32 (coax/web/toolchain.sh's clang) and times the two verifiers in Node
 # on the same keys and signatures; libsecp256k1 is not built for Wasm here.
+# `0 agree COUNT` times nothing: it compares both libraries' decisions on
+# COUNT more seeded cases, most of them changed signatures, keys and hashes.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd -P)"
 root="$(cd "$here/../../.." && pwd -P)"
