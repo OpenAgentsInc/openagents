@@ -10,7 +10,8 @@
 //   NAME   what the use key's prompt says: "Enter the rover", 1 to 32 bytes
 //   FROM   where you take it: "kind K", beside any placed thing of the realm's kind K (a content ID),
 //          or "at X Z", at a point in whole centimetres
-//   TO     where it takes you: "X Z", whole centimetres
+//   TO     where it takes you: "X Z", whole centimetres; or "ride X Z": the vehicle you are in takes
+//          you there, a drive you watch from outside it (the realm draws and times the ride)
 //   YAW    the way you face there, whole degrees, -179 to 180
 //   R      how near FROM counts, centimetres, 50 to 1000. For a placed thing it is measured from the
 //          thing's middle, so a long thing needs a long reach
@@ -34,6 +35,7 @@ Portal :: struct {
   kind: int;               // FROM "kind K": K; 0 for a point
   x: int; z: int;          // FROM "at X Z": the point, centimetres
   to_x: int; to_z: int;    // TO, centimetres
+  ride: bool;              // TO "ride X Z": a drive there, not a step through a door
   yaw: int;                // degrees
   r: int;                  // reach, centimetres
 }
@@ -43,7 +45,7 @@ prt_why :: (why: int) -> string {
   if why == PRT_BAD_ID { return "a portal's ID is 1 and up"; }
   if why == PRT_BAD_NAME { return "a portal's NAME is what the use key's prompt says: 1 to 32 bytes"; }
   if why == PRT_BAD_FROM { return "FROM is kind K (a content ID) or at X Z (whole centimetres)"; }
-  if why == PRT_BAD_TO { return "TO is X Z, whole centimetres"; }
+  if why == PRT_BAD_TO { return "TO is X Z, or ride X Z for a drive there: whole centimetres"; }
   if why == PRT_BAD_YAW { return "YAW is whole degrees, -179 to 180"; }
   if why == PRT_BAD_R { return "R is how near FROM counts: 50 to 1000 centimetres"; }
   return "";
@@ -72,10 +74,11 @@ prt_read :: (id: int, name: string, from: string, to: string, yaw: int, r: int, 
   } else if from.count > 3 && from[0..<3] == "at " && prt_numbers(from[3..<from.count], v[..], 2) {
     p[0].x = v[0]; p[0].z = v[1];
   } else { return PRT_BAD_FROM; }
-  if !prt_numbers(to, v[..], 2) { return PRT_BAD_TO; }
+  ride := to.count > 5 && to[0..<5] == "ride ";
+  if !prt_numbers(ifx ride then to[5..<to.count] else to, v[..], 2) { return PRT_BAD_TO; }
   if yaw < -179 || yaw > 180 { return PRT_BAD_YAW; }
   if r < PRT_R_MIN || r > PRT_R_MAX { return PRT_BAD_R; }
-  p[0].id = id; p[0].to_x = v[0]; p[0].to_z = v[1]; p[0].yaw = yaw; p[0].r = r;
+  p[0].id = id; p[0].to_x = v[0]; p[0].to_z = v[1]; p[0].ride = ride; p[0].yaw = yaw; p[0].r = r;
   for c, i: name { p[0].name[i] = c; }
   p[0].name_n = name.count;
   p[0].ok = true;
@@ -126,7 +129,10 @@ prt_d2 :: (ax: f32, az: f32, bx: f32, bz: f32) -> f32 { return (ax - bx) * (ax -
   #assert p[0].ok && p[0].kind == 120 && p[0].to_x == -9000 && p[0].to_z == 25000 && p[0].yaw == 180 && p[0].r == 600 && prt_name(p[..], 0) == "Enter the rover";
   #assert prt_read(2, "Leave the rover", "at -9000 24600", "1200 3000", -179, 50, p[..]) == PRT_OK;
   #assert p[0].kind == 0 && p[0].x == -9000 && p[0].z == 24600 && p[0].to_x == 1200 && p[0].r == 50;
-  #assert prt_read(3, "x", "at 0 0", "0 0", 0, 1000, p[..]) == PRT_OK;
+  #assert prt_read(3, "x", "at 0 0", "0 0", 0, 1000, p[..]) == PRT_OK && !p[0].ride;
+  // a drive: the vehicle takes you there (#13505)
+  #assert prt_read(4, "Drive to the garage", "kind 125", "ride 0 1000", 180, 300, p[..]) == PRT_OK;
+  #assert p[0].ride && p[0].to_x == 0 && p[0].to_z == 1000 && p[0].kind == 125;
 }
 #test "a portal row that does not read says why, and is not ok" {
   p: [1] Portal;
@@ -138,7 +144,7 @@ prt_d2 :: (ax: f32, az: f32, bx: f32, bz: f32) -> f32 { return (ax - bx) * (ax -
   for f: bad_from { #assert prt_read(1, "a", f, "0 0", 0, 100, p[..]) == PRT_BAD_FROM && !p[0].ok; }
   #assert prt_read(1, "a", "kind 1000001", "0 0", 0, 100, p[..]) == PRT_BAD_FROM && prt_read(1, "a", "kind 1000000", "0 0", 0, 100, p[..]) == PRT_OK;
   #assert prt_read(1, "a", "at 1000001 0", "0 0", 0, 100, p[..]) == PRT_BAD_FROM && prt_read(1, "a", "at -1000000 0", "0 0", 0, 100, p[..]) == PRT_OK;
-  bad_to := [6] string.["", "1", "1 2 3", "x 1", "1  2", "1000001 0"];
+  bad_to := [10] string.["", "1", "1 2 3", "x 1", "1  2", "1000001 0", "ride", "ride ", "ride 1", "drive 1 2"];
   for t: bad_to { #assert prt_read(1, "a", "kind 1", t, 0, 100, p[..]) == PRT_BAD_TO; }
   #assert prt_read(1, "a", "kind 1", "0 0", -180, 100, p[..]) == PRT_BAD_YAW && prt_read(1, "a", "kind 1", "0 0", 181, 100, p[..]) == PRT_BAD_YAW;
   #assert prt_read(1, "a", "kind 1", "0 0", 0, 49, p[..]) == PRT_BAD_R && prt_read(1, "a", "kind 1", "0 0", 0, 1001, p[..]) == PRT_BAD_R;
