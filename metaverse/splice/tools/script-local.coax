@@ -1,0 +1,149 @@
+// A world's realm scripts on this computer (GitHub #13485): what `coax serve` answers for
+// /api/worlds/splice/scripts... on the dev server, so `openagents realm world-script-compile`,
+// `world-script-put`, `world-scripts` and the page's own fetches work before anything is deployed.
+// It is the API's route (coax/web/api/scripts.c) with the same Coax: the module check, the manifest
+// and every byte answered are script-store.coax's (metaverse-engine/script). Only where the modules
+// live differs: files under DIR, one world a directory.
+//   DIR/ID.scripts/HASH.wasm .json .coax   a module, its manifest, and the source it was compiled from
+// Everyone on this computer is the admin: the dev server listens on 127.0.0.1 only, and it keeps no
+// day's counts (a server's limits are the API's).
+//
+//   coax/web/tool.sh metaverse/splice/tools/script-local.coax DIR METHOD URL [BODY_FILE [EXTRA_FILE [SOURCE_FILE]]]
+//   GET  /api/worlds/ID/scripts                     world.scripts.v1
+//   GET  /api/worlds/ID/scripts/HASH                the module's bytes
+//   GET  /api/worlds/ID/scripts/HASH/source         its source
+//   POST /api/worlds/ID/scripts?name=NAME           BODY: a module; EXTRA: its state fields (JSON), optional
+//   POST /api/worlds/ID/scripts/compiled?name=NAME  BODY: what the compile job made; EXTRA: the job's manifest;
+//                                                   SOURCE: the source (serve.c runs the job, coax/web/script-job.sh)
+//   POST /api/worlds/ID/scripts/refused             BODY: the job's words: the compile refusal
+// It prints the status, a newline, and the answer's bytes, and exits 0 when it answered.
+// tool.sh: run-steps 250000000
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "../world-api.coax";
+#load "../../../coax/web/api/script-store.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+
+SlLocal :: struct {
+  w: [1] SsWork;
+  dir: [700] u8; dir_n: int;
+  path: [800] u8;
+  bin: [65536] u8; made: [SM_TEXT] u8; source: [65536] u8; fields: [4096] u8;
+  names: [1] FsList;
+}
+sl_say :: (status: int, body: string) -> int { print("%\n%", status, body); return 0; }
+sl_out :: (t: [] SlLocal, status: int) -> int {
+  s := wsp_out(t[0].w[..]);
+  if s.count == 0 { return sl_say(500, "{\"error\":\"not written\"}"); }
+  return sl_say(status, s);
+}
+sl_refuse :: (t: [] SlLocal, code: int, words: string) -> int {
+  if wsp_refuse(t[0].w[..], code, words, 0, 0) == 0 { return sl_say(500, "{\"error\":\"not written\"}"); }
+  return sl_out(t, wsp_status(code));
+}
+// DIR/ID.scripts/HASH then the ending, in t's path buffer.
+sl_file :: (t: [] SlLocal, hash: string, end: string) -> string {
+  k := ct_put(t[0].path[..], 0, cast(string) t[0].dir[0..<t[0].dir_n]);
+  if hash.count > 0 { k = ct_put(t[0].path[..], k, "/"); k = ct_put(t[0].path[..], k, hash); k = ct_put(t[0].path[..], k, end); }
+  return ifx k > t[0].path.count then "" else cast(string) t[0].path[0..<k];
+}
+// A checked module stored with its manifest (and its source): the manifest, as the API answers it.
+sl_store :: (t: [] SlLocal, bytes: string, source: string) -> int {
+  h := wsp_hash(t[0].w[..]); m := wsp_manifest(t[0].w[..]);
+  if h.count != 64 || m.count < 1 { return sl_say(500, "{\"error\":\"not written\"}"); }
+  _ := fs_mkdir(sl_file(t, "", ""));
+  was := fs_read(sl_file(t, h, ".json"), t[0].made[..]);
+  if was > 0 { m = cast(string) t[0].made[0..<was]; }   // the module is stored: its manifest stands
+  else {
+    names := fs_list(sl_file(t, "", ""), t[0].names[..]);
+    stored := 0;
+    for i: 0..<ifx names < 0 then 0 else names { e := fs_entry(t[0].names[..], i); if e.count == 69 && e[64..<69] == ".json" { stored += 1; } }
+    code := wsp_put(false, 0, false, stored);
+    if code != 0 { return sl_refuse(t, code, ""); }
+    if !fs_write(sl_file(t, h, ".wasm"), bytes) || !fs_write(sl_file(t, h, ".json"), m) { return sl_say(500, "{\"error\":\"not saved\"}"); }
+  }
+  if source.count > 0 && !fs_write(sl_file(t, h, ".coax"), source) { return sl_say(500, "{\"error\":\"not saved\"}"); }
+  return sl_say(200, m);
+}
+sl_list :: (t: [] SlLocal, id: string) -> int {
+  w := t[0].w[..];
+  if !wsp_list_begin(w, id, true) { return sl_say(500, "{\"error\":\"not written\"}"); }
+  names := fs_list(sl_file(t, "", ""), t[0].names[..]);
+  first := true;
+  for i: 0..<ifx names < 0 then 0 else names {
+    e := fs_entry(t[0].names[..], i);
+    if e.count != 69 || e[64..<69] != ".json" { continue; }
+    h := e[0..<64];
+    n := fs_read(sl_file(t, h, ".json"), t[0].made[..]);
+    if n <= 0 { continue; }
+    has_source := fs_read(sl_file(t, h, ".coax"), t[0].source[..]) > 0;
+    if !wsp_list_add(w, cast(string) t[0].made[0..<n], false, "", has_source, first) { return sl_say(500, "{\"error\":\"not written\"}"); }
+    first = false;
+  }
+  if wsp_list_end(w) == 0 { return sl_say(500, "{\"error\":\"not written\"}"); }
+  return sl_out(t, 200);
+}
+sl_query :: (query: string, key: string) -> string {
+  for k: 0..<ct_parts(query, '&') {
+    p := ct_part(query, '&', k);
+    if p.count > key.count && p[0..<key.count] == key && p[key.count] == '=' { return p[key.count + 1..<p.count]; }
+  }
+  return "";
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 3 || args_count(a[..]) > 6 { tool_errln("usage: script-local DIR METHOD URL [BODY_FILE [EXTRA_FILE [SOURCE_FILE]]]"); return 2; }
+  t := [1] SlLocal.[SlLocal.{}];
+  dir := args_at(a[..], 0); method := args_at(a[..], 1); url := args_at(a[..], 2);
+  root := "/api/worlds/";
+  if dir.count == 0 || url.count <= root.count || url[0..<root.count] != root { return sl_say(404, "{\"error\":\"not found\"}"); }
+  rest := url[root.count..<url.count];
+  path := ct_part(rest, '?', 0); query := ifx ct_parts(rest, '?') > 1 then rest[path.count + 1..<rest.count] else "";
+  id := ct_part(path, '/', 0);
+  if id != SPW_ID || ct_parts(path, '/') < 2 || ct_part(path, '/', 1) != "scripts" { return sl_say(404, "{\"error\":\"no such world\"}"); }
+  // DIR/ID.scripts
+  k := ct_put(t[0].dir[..], 0, dir); k = ct_put(t[0].dir[..], k, "/"); k = ct_put(t[0].dir[..], k, id); k = ct_put(t[0].dir[..], k, ".scripts");
+  if k > t[0].dir.count { return sl_say(500, "{\"error\":\"not read\"}"); }
+  t[0].dir_n = k;
+  _ := fs_mkdir(dir);
+  part := ifx ct_parts(path, '/') > 2 then ct_part(path, '/', 2) else "";
+  more := ifx ct_parts(path, '/') > 3 then ct_part(path, '/', 3) else "";
+  if method == "GET" {
+    if part == "" { return sl_list(t[..], id); }
+    if !wsp_hash_ok(part) || (more != "" && more != "source") || ct_parts(path, '/') > 4 { return sl_say(404, "{\"error\":\"not found\"}"); }
+    if more == "source" {
+      n := fs_read(sl_file(t[..], part, ".coax"), t[0].source[..]);
+      if n <= 0 { return sl_refuse(t[..], wsp_get(false, false), "this world keeps no source for that script"); }
+      return sl_say(200, cast(string) t[0].source[0..<n]);
+    }
+    n := fs_read(sl_file(t[..], part, ".wasm"), t[0].bin[..]);
+    if n <= 0 { return sl_refuse(t[..], wsp_get(false, false), ""); }
+    return sl_say(200, cast(string) t[0].bin[0..<n]);
+  }
+  if method != "POST" || more != "" { return sl_say(404, "{\"error\":\"not found\"}"); }
+  name := sl_query(query, "name");
+  body_n := ifx args_count(a[..]) >= 4 then fs_read(args_at(a[..], 3), t[0].bin[..]) else -1;
+  if part == "refused" {
+    words := ifx body_n > 0 then cast(string) t[0].bin[0..<lo_i(body_n, 590)] else "the compile job refused the source";
+    return sl_refuse(t[..], wsp_source(), words);
+  }
+  if body_n < 8 || !wsp_name_ok(name) { return sl_refuse(t[..], wsp_bad(), ""); }
+  bytes := cast(string) t[0].bin[0..<body_n];
+  if part == "" {
+    fn := ifx args_count(a[..]) >= 5 then fs_read(args_at(a[..], 4), t[0].fields[..]) else 0;
+    status := wsp_module(t[0].w[..], t[0].bin[0..<body_n], name, cast(string) t[0].fields[0..<ifx fn > 0 then fn else 0]);
+    if status != 200 { return sl_out(t[..], status); }
+    return sl_store(t[..], bytes, "");
+  }
+  if part == "compiled" && args_count(a[..]) == 6 {
+    mn := fs_read(args_at(a[..], 4), t[0].made[..]);
+    sn := fs_read(args_at(a[..], 5), t[0].source[..]);
+    if mn <= 0 || sn <= 0 { return sl_refuse(t[..], wsp_source(), "the compile job made no module"); }
+    status := wsp_compiled(t[0].w[..], t[0].bin[0..<body_n], name, cast(string) t[0].made[0..<mn]);
+    if status != 200 { return sl_out(t[..], status); }
+    return sl_store(t[..], bytes, cast(string) t[0].source[0..<sn]);
+  }
+  return sl_say(404, "{\"error\":\"not found\"}");
+}

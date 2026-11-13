@@ -62,8 +62,21 @@ an editor can open the script again. `limits.compiler` in `world.scripts.v1`
 is 1 when this server has a job and 0 when it has none; with none the route
 answers 503 and the page says compiling is not available here.
 
+### On a dev server
+
+`coax/web/serve.sh` answers the same routes for its own world, so
+`openagents realm world-scripts`, `world-script-put` and `world-script-compile`
+work with `--origin http://127.0.0.1:PORT`, and the page fetches the modules
+its rows name, before anything is deployed (#13485). The checks, the manifest
+and every refusal are the API's (`metaverse/splice/tools/script-local.coax`
+loads `coax/web/api/script-store.coax`). The modules are files under
+`apps/openagents-web/build/.worlds/ID.scripts/`: `HASH.wasm`, `HASH.json` (its
+manifest) and `HASH.coax` (the source, for a compiled one). The dev server runs
+`coax/web/script-job.sh` for a compile, keeps no day's counts, and treats
+everyone on the computer as an admin, since it listens on 127.0.0.1 only.
+
 Scripts are stored for a world whose content tables can name them. Today
-that is Splice. A realm's world (kind `realm`, #13422) has no scripts table,
+that is Splice Bots. A realm's world (kind `realm`, #13422) has no scripts table,
 and these routes answer 404 for it.
 
 ## Who may store

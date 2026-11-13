@@ -76,6 +76,7 @@ The rows of `proto/registry.json` whose codec or files are this realm's (under `
 | `world.edit.v1` | profile | realm-authoring | `proto/world/edit-v1.json` |
 | `world.doc.v1` | profile | realm-authoring | `proto/world/doc-v1.json` |
 | `editor.model.v1` | profile | realm-authoring | `proto/world/model-v1.json` |
+| `world.scripts.v1` | profile | engine | `proto/world/script-store-v1.json` |
 | `world.assets.v1` | profile | realm-authoring | `proto/world/assets-v1.json` |
 | `world.asset.import.v1` | profile | realm-authoring | `proto/world/assets-v1.json` |
 | `world.asset.upload.v1` | profile | realm-authoring | `proto/world/assets-v1.json` |
@@ -203,4 +204,4 @@ table actors id name:text
 1|Raider 1
 ```
 
-reference sha256: 442da139384b6339d46830e4bea65e039c314c9bfb168c314a09466e7df9b7f7
+reference sha256: 72587ea2f3adc4bdca2e216c6a5d5e372f0204cf868b47f5e4f6bdf92229ad58

@@ -68,6 +68,7 @@ The rows of `proto/registry.json` whose codec or files are this realm's (under `
 | Id | Kind | Owner | Schema |
 | --- | --- | --- | --- |
 | `everglade-session-v7` | profile | room-session | `proto/verse/everglade-session-v7.json` |
+| `everglade-session-v8` | profile | room-session | `proto/verse/everglade-session-v8.json` |
 | `everglade-link-input-v1` | profile | room-session | `proto/verse/everglade-link-input-v1.json` |
 | `everglade-familiar-v1` | profile | world | `proto/verse/everglade-familiar-v1.json` |
 | `everglade-find-familiar-v1` | profile | world | `proto/verse/everglade-find-familiar-v1.json` |
@@ -194,4 +195,4 @@ table ability id name:text
 128|Rage
 ```
 
-reference sha256: 4cc9e2a2df8d7be57b4dad960f2f3a654f969e2bbf623c884f163568b4863155
+reference sha256: c29739f64b4ece788d3b796dfc7179924c80f3f2fe1e6c8828240895b90c86d3

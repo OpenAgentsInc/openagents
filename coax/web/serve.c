@@ -533,6 +533,94 @@ static void worlds_local(client *c, const char *method, const char *url) {
   free(out);
   drop(c);
 }
+// A world's realm scripts on the dev server (#13485): GET .../scripts lists them (world.scripts.v1),
+// GET .../scripts/HASH answers a module's bytes (the page's script host fetches them) and .../source its
+// source, POST .../scripts?name=NAME stores a module (X-Script-Fields: its state fields), and POST
+// .../scripts/compile?name=NAME compiles a source with the compile job (coax/web/script-job.sh, the
+// API's OA_SCRIPT_JOB) and stores what it made. The world's script tool answers
+// (metaverse/splice/tools/script-local.coax: the API's checks, files under APP_DIR/build/.worlds).
+static bool scripts_route(const char *url) {
+  char id[40]; int end = 0;
+  if (sscanf(url, "/api/worlds/%39[a-z0-9-]/scripts%n", id, &end) != 1 || end == 0) return false;
+  return !url[end] || url[end] == '?' || url[end] == '/';
+}
+static void scripts_local(client *c, const char *method, const char *url) {
+  char dir[PATH_MAX + 32], cmd[PATH_MAX * 4 + 3000], tmp[PATH_MAX], body[PATH_MAX + 32] = "", extra[PATH_MAX + 32] = "", src[PATH_MAX + 64] = "", out[PATH_MAX + 32] = "";
+  char path[1024], name[64] = "", tail[1100] = "";
+  snprintf(dir, sizeof dir, "%s/build/.worlds", app_dir);
+  for (const char *p = url; *p; p++)   // the URL goes into a shell command: only what a route's URL holds
+    if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || strchr("/?&=-_.", *p))) { respond(c->fd, 404, "Not Found", "application/json", "{\"error\":\"not found\"}", 21); drop(c); return; }
+  bool post = !strcmp(method, "POST");
+  if (!post && strcmp(method, "GET")) { respond(c->fd, 405, "Method Not Allowed", "application/json", "{\"error\":\"not found\"}", 21); drop(c); return; }
+  snprintf(path, sizeof path, "%.*s", (int)strcspn(url, "?"), url);
+  const char *q = strstr(url, "name=");
+  if (q) { size_t i = 0; for (q += 5; *q && *q != '&' && i < sizeof name - 1; q++) name[i++] = *q; name[i] = 0; }
+  // a directory of the request's own, outside the app: the compile job may write only there (script-job.sh)
+  const char *td = getenv("TMPDIR");
+  snprintf(tmp, sizeof tmp, "%s/oa-script-local-XXXXXX", td && *td ? td : "/tmp");
+  mkdir(dir, 0755);
+  if (!mkdtemp(tmp)) { respond(c->fd, 500, "Error", "application/json", "{\"error\":\"not saved\"}", 21); drop(c); return; }
+  if (post) {
+    const char *end = strstr(c->buf, "\r\n\r\n");
+    size_t head = end ? (size_t)(end - c->buf) + 4 : c->n;
+    bool compile = strlen(path) > 8 && !strcmp(path + strlen(path) - 8, "/compile");
+    snprintf(body, sizeof body, "%s/body", tmp);
+    FILE *f = fopen(body, "wb");
+    bool ok = f && fwrite(c->buf + head, 1, c->n - head, f) == c->n - head;
+    if (f) fclose(f);
+    if (ok && !compile) {
+      // the module's state fields, from its header, for the tool
+      for (const char *p = c->buf; end && (p = strstr(p, "\r\n")) && p < end; p += 2) {
+        if (strncasecmp(p + 2, "X-Script-Fields:", 16)) continue;
+        const char *v = p + 18; while (*v == ' ') v++;
+        size_t n = strcspn(v, "\r");
+        snprintf(extra, sizeof extra, "%s/fields", tmp);
+        FILE *ff = fopen(extra, "wb");
+        if (!ff || fwrite(v, 1, n, ff) != n) ok = false;
+        if (ff) fclose(ff);
+      }
+    }
+    if (ok && compile) {
+      // the job makes the module; the tool checks and stores it, or answers the job's words
+      bool named = name[0] && strspn(name, "abcdefghijklmnopqrstuvwxyz0123456789-") == strlen(name);
+      snprintf(src, sizeof src, "%s/%s.coax", tmp, named ? name : "script");
+      snprintf(out, sizeof out, "%s/out", tmp);
+      snprintf(cmd, sizeof cmd, "cp '%s' '%s' && '%s/script-job.sh' '%s' '%s' '%s' > '%s/log' 2>&1", body, src, host_dir, src, named ? name : "script", out, tmp);
+      int ran = named ? system(cmd) : -1;
+      if (ran == 0) {
+        snprintf(body, sizeof body, "%s/%s.wasm", out, name);
+        snprintf(extra, sizeof extra, "%s/%s.json", out, name);
+        snprintf(path, sizeof path, "%.*s/compiled", (int)(strlen(url) - strlen(strstr(url, "/compile"))), url);
+      } else {
+        snprintf(body, sizeof body, "%s/log", tmp);
+        snprintf(path, sizeof path, "%.*s/refused", (int)(strlen(url) - strlen(strstr(url, "/compile"))), url);
+        src[0] = 0; extra[0] = 0;
+      }
+      snprintf(tail, sizeof tail, "?name=%s", name);
+    } else if (q) snprintf(tail, sizeof tail, "?name=%s", name);
+    if (!ok) { respond(c->fd, 500, "Error", "application/json", "{\"error\":\"not saved\"}", 21); drop(c); return; }
+  }
+  // the files given: BODY, then EXTRA (or none), then SOURCE
+  char files[PATH_MAX * 3 + 64] = "";
+  if (post) snprintf(files, sizeof files, "'%s' '%s'%s%s%s", body, extra[0] ? extra : "/dev/null", src[0] ? " '" : "", src, src[0] ? "'" : "");
+  snprintf(cmd, sizeof cmd, "'%s/tool.sh' '%s/../../metaverse/splice/tools/script-local.coax' '%s' %s '%s%s' %s 2>/dev/null", host_dir, host_dir, dir, post ? "POST" : "GET", path, tail, files);
+  FILE *run = popen(cmd, "r");
+  size_t cap = (1u << 20), n = 0; char *res = malloc(cap); size_t k;
+  while (run && res && n < cap && (k = fread(res + n, 1, cap - n, run)) > 0) n += k;
+  int ended = run ? pclose(run) : -1;
+  snprintf(cmd, sizeof cmd, "rm -rf '%s'", tmp);
+  if (system(cmd) != 0) logf_("scripts: %s was not removed", tmp);
+  char *nl = res ? memchr(res, '\n', n) : NULL;
+  int status = nl ? atoi(res) : 0;
+  if (ended != 0 || status < 100) respond(c->fd, 502, "Bad Gateway", "application/json", "{\"error\":\"the world's script tool did not answer\"}", 49);
+  else {
+    size_t at = (size_t)(nl - res) + 1;
+    const char *type = res[at] == '{' ? "application/json" : (!post && !strstr(path + 12, "/source") && strlen(path) > 64) ? "application/wasm" : "text/plain; charset=utf-8";
+    respond(c->fd, status, status == 200 ? "OK" : "Refused", type, res + at, n - at);
+  }
+  free(res);
+  drop(c);
+}
 // A world's imported assets on the dev server (#13420): GET .../assets lists them (world.assets.v1),
 // GET .../assets/pack answers the import pack, and POST .../assets imports a file
 // (world.asset.import.v1: a line, then the file's bytes). The world's asset tool answers
@@ -744,6 +832,7 @@ static void handle_request(client *c) {
   }
   if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && assets_route(url)) { assets_local(c, method, url); return; }
   if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && files_route(url)) { files_local(c, method, url); return; }
+  if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && scripts_route(url)) { scripts_local(c, method, url); return; }
   if (!static_mode && !realm_request && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/worlds/", 12)) { worlds_local(c, method, url); return; }
   if (!static_mode && !realm_request && !strcmp(method, "POST") && !strcmp(url, "/coaxial/code")) { code_local(c); return; }
   if (api_port && sscanf(c->buf, "%7s %1023s", method, url) == 2 && !strncmp(url, "/api/", 5)) { proxy_api(c); return; }
