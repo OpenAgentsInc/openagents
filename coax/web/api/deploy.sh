@@ -11,12 +11,12 @@
 # stops here, naming the holder. The release itself passes its token (--lock, or OA_STAGING_LOCK).
 #
 # No test pass gates the deploy (owner, 2026-11-01: the 11-minute test.sh held
-# every API change back). Staging's smoke still gates production. test.sh runs
-# after the rollout, in the background on its own worktree, as a report:
-# ${TMPDIR:-/tmp}/api-tests-<commit>.log.
-# OA_API_DEPLOY_TESTS=1 runs it first and gates on it, as before.
-# OA_API_DEPLOY_REPORT=0 skips the report: the deployer ran the suite on a build host already
-# (coax/remote/remote.sh run -- coax/web/api/test.sh), so this computer doesn't run it again.
+# every API change back). Staging's smoke still gates production. The suite's
+# report for a commit is main's after-landing check, which runs it in two parts
+# on the build hosts whenever a landing reaches the API (coax/remote/after.sh
+# state; coax/remote/check.sh api I/N). This script starts no test run of its
+# own: the suite never runs on this computer (AGENTS.md, "Build and test").
+# OA_API_DEPLOY_TESTS=1 runs test.sh first, here, and gates on it.
 #
 # Services: oa-api-staging (database oa_analytics_staging) and oa-api
 # (oa_analytics), both on the Cloud SQL instance openagents-production-pg,
@@ -193,8 +193,3 @@ deploy() {  # service runtime-secret host agent-projects-secret runner-service d
 deploy oa-api-staging oa-api-staging-database-url staging.openagents.com oa-agent-projects-staging oa-agent-staging staging oa-analytics-staging-database-url
 $prod && deploy oa-api oa-api-database-url openagents.com oa-agent-projects oa-agent production oa-analytics-database-url
 echo "api: deployed $image"
-if [[ -z "${OA_API_DEPLOY_TESTS:-}" && "${OA_API_DEPLOY_REPORT:-1}" != 0 ]]; then
-  report="${TMPDIR:-/tmp}/api-tests-${commit:0:12}.log"
-  nohup bash -c 'd="$(mktemp -d)"; git -C "$1" worktree add --detach "$d/s" "$2" >/dev/null 2>&1 && "$d/s/coax/web/api/test.sh"; echo "test.sh exit $?"; git -C "$1" worktree remove --force "$d/s" >/dev/null 2>&1; rm -rf "$d"' _ "$repo" "$commit" > "$report" 2>&1 < /dev/null &
-  echo "api: test.sh runs after the deploy as a report: $report"
-fi
