@@ -122,6 +122,21 @@ WIRE_ENGINE :: 1; WIRE_RULES :: 1; WIRE_CONTENT :: 1;
 WIRE_CONTENT_IDS :: 55127017896882;
 WirePins :: struct #persisted { engine: int = WIRE_ENGINE; rules: int = WIRE_RULES; content: int = WIRE_CONTENT; }
 WIRE_PINS_FIRST :: WirePins.{engine = 1, rules = 1, content = 1};
+// The content pin of a build whose content tables are at revision `rev` (#13381; aethyr-content-v1,
+// everglade/content/everglade.content): the tables' revision, under WIRE_CONTENT, so a page and a room
+// with other tables never meet, and nor do two builds on either side of a WIRE_CONTENT raise. A build
+// with no tables (rev 0: a room started without them) says WIRE_CONTENT alone. Revision 1 under
+// WIRE_CONTENT 1 is 1, the pin every build before this said.
+WIRE_CONTENT_REVS :: 1000000;   // revisions under one WIRE_CONTENT
+wire_content_pin :: (rev: int) -> int { return ifx rev < 1 || rev >= WIRE_CONTENT_REVS then WIRE_CONTENT else (WIRE_CONTENT - 1) * WIRE_CONTENT_REVS + rev; }
+// This build's pins with its tables at revision `rev`.
+wire_pins_at :: (rev: int) -> WirePins { p := WirePins.{}; p.content = wire_content_pin(rev); return p; }
+#test "the content pin is the tables' revision under WIRE_CONTENT; no tables is WIRE_CONTENT alone" {
+  #assert wire_content_pin(0) == WIRE_CONTENT && wire_content_pin(-3) == WIRE_CONTENT && wire_content_pin(WIRE_CONTENT_REVS) == WIRE_CONTENT;
+  #assert wire_content_pin(1) == (WIRE_CONTENT - 1) * WIRE_CONTENT_REVS + 1 && wire_content_pin(2) == wire_content_pin(1) + 1 && wire_content_pin(2) != wire_content_pin(1);
+  p := wire_pins_at(7); q := WirePins.{};
+  #assert p.engine == q.engine && p.rules == q.rules && p.content == wire_content_pin(7) && wire_pins_at(0).content == q.content;
+}
 WIRE_FRAME :: 1024;        // a page's frame at most
 WIRE_SERVER_FRAME :: 3800; // a server's
 // A heading's units a radian on I's THETA (#12718): 0.1 mrad, where centiradians were 5 mrad

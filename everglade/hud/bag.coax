@@ -1,0 +1,282 @@
+// Everglade's bag, quest log and coin on the HUD, every zone's (#13381): under the map, your coin, the
+// BAG button and the quests you are on with what each asks next; and the bag's window, which lists what
+// you carry, what you wear and every quest, with WEAR and TAKE OFF on the rows that can. Plain data
+// in, vertices out, in Everglade's HUD style (eg_tokens, everglade/hud/parts.coax), as
+// everglade/hud/windows.coax: a zone fills the lines from what its room said and calls.
+// Buttons are 44 CSS px tall, so a finger takes them, and the window is one column on a narrow page.
+//   coax/bin/coax test --library everglade/client/client.coax --only "eg bag"
+
+EG_TRACK_ROWS :: 3;      // quests under the map at most; the bag's window lists them all
+EG_BAG_LINES :: 48;      // lines in the bag's window at most
+EG_BAG_HEAD :: 0;        // a section's heading: a
+EG_BAG_ITEM :: 1;        // something carried: a its name, b its count ("x2", or ""), act WEAR when it can be worn
+EG_BAG_WORN :: 2;        // something worn: a its name, b where, act TAKE OFF
+EG_BAG_QUEST :: 3;       // a quest: a its name, b what it asks next
+EG_BAG_NOTE :: 4;        // a quiet line: a section with nothing in it
+EG_BAG_NO_ACT :: -1;
+EgBagLine :: struct { kind: int; a: string; b: string; act: int = EG_BAG_NO_ACT; }
+
+// ---- under the map: coin, the BAG button, the quests you are on, what just dropped
+
+EgOwn :: struct {
+  on: bool;                 // there is room for it (an open class menu on a narrow page takes its place)
+  phone: bool;              // a phone's page: the column stands where a place's banner crosses, and waits for it to pass
+  x0: f32; x1: f32;         // the column
+  bag: cc.HudPrim;          // the BAG button
+  coin_x: f32; coin_y: f32; // the coin's right end and baseline
+  track: cc.HudPrim;        // the quests' ground
+  row_y: f32; row_h: f32;   // the first quest's top, and a quest's height
+  rows: int;                // quests shown
+  more: int;                // quests not shown here
+  loot_y: f32;              // the dropped item's baseline
+}
+// The column for a page w by h (k device px a CSS px) with `quests` quests under way: where eg_world
+// leaves room under its map (everglade/hud/parts.coax eg_world: the same sizes). cover is an open
+// menu's box (eg_menu_cover).
+eg_own_layout :: (w: f32, h: f32, k: f32, quests: int, cover: cc.HudPrim) -> EgOwn {
+  g: EgOwn;
+  W := w / k; phone := W < 700 || h / k < 500;
+  mr := ifx phone then 40.0f32 else 70.0f32; top := ifx phone then 14.0f32 else 16.0f32;
+  edge := ifx phone then 8.0f32 else 14.0f32; wide := ifx phone then 210.0f32 else 240.0f32;
+  g.phone = phone;
+  if wide > W - 2 * edge { wide = W - 2 * edge; }
+  g.x1 = w - edge * k; g.x0 = g.x1 - wide * k;
+  y := (top + mr + 10 + mr + 56) * k;
+  // a short page (a phone on its side) has no height under the map: the column stands between your
+  // plate and the map, at the top, when there is width for it there
+  if h / k < 500 {
+    plate := cc.eg_world_portrait(w, h, k);
+    right := w - (2 * mr + 44 + 8) * k; left := plate.x1 + 10 * k;
+    if right - left >= 150 * k { g.x1 = right; g.x0 = ifx right - left > wide * k then right - wide * k else left; y = top * k; }
+  }
+  g.bag = cc.hud_box(g.x1 - 92 * k, y, g.x1, y + 44 * k);
+  g.coin_x = g.bag.x0 - 12 * k; g.coin_y = y + 28 * k;
+  g.row_y = y + 44 * k + 16 * k; g.row_h = 44 * k;
+  // the quests stop above the bar and a phone's thumb controls
+  room := cast(int) ((h - 110 * k - g.row_y - 12 * k) / g.row_h);
+  if room < 0 { room = 0; } if room > EG_TRACK_ROWS { room = EG_TRACK_ROWS; }
+  g.rows = ifx quests < room then quests else room; g.more = quests - g.rows;
+  tall := f32(g.rows) * g.row_h + (ifx g.more > 0 then 20 * k else 0.0f32);
+  g.track = cc.hud_box(g.x0, g.row_y - 8 * k, g.x1, g.row_y + tall);
+  g.loot_y = (ifx g.rows > 0 || g.more > 0 then g.track.y1 else g.bag.y1) + 24 * k;
+  g.on = !eg_meets_own(cover, cc.hud_box(g.x0, y, g.x1, g.loot_y));
+  return g;
+}
+eg_meets_own :: (a: cc.HudPrim, b: cc.HudPrim) -> bool { return a.x1 > a.x0 && b.x1 > b.x0 && a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
+// Words at cap, smaller when they would pass `room` (never under seven tenths: past that they run on).
+eg_own_fit :: (t: string, cap: f32, r: cc.HudText, room: f32) -> f32 {
+  wide := cc.face_width(t, cap * r.scale, r.face);
+  if wide <= room || wide <= 0 { return cap; }
+  c := cap * room / wide;
+  return ifx c < cap * 0.7 then cap * 0.7 else c;
+}
+// What the column shows: your coin, the quests (name, what each asks next), how many more the bag
+// lists, what just dropped (alpha 0: nothing), whether the pointer is on the button and a finger plays,
+// and how much of a place's banner shows (a phone's column lets it pass: it thins as the banner stands).
+EgOwnLook :: struct { coin: int; lit: bool; touch: bool; loot: string; loot_a: f32; banner_a: f32; }
+eg_own :: (ui: [] cc.UitTrace, out: [] f32, at: int, g: EgOwn, k: f32, lines: [] EgBagLine, b: EgOwnLook) -> int {
+  if !g.on { return at; }
+  t := cc.eg_tokens(); l: [1] cc.HudList;
+  body := cc.hud_text(t, cc.HUD_TEXT_NUMBER); dim := cc.hud_text(t, cc.HUD_TEXT_LABEL); title := cc.hud_text(t, cc.HUD_TEXT_TITLE);
+  a := ifx g.phone then 1 - b.banner_a else 1.0f32; if a < 0 { a = 0; }
+  cc.hud_button(l[..], t, g.bag, k, b.lit);
+  if g.rows > 0 || g.more > 0 { cc.hud_well(l[..], t, g.track, k, false); }
+  cc.eg_fade_list(l[..], a);
+  v := cc.hud_emit(out, at, l[..]);
+  cc.uit_part(ui, "bag");
+  cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, g.bag.x0, g.bag.y0, g.bag.x1, g.bag.y1, "bag");
+  v = cc.hud_say(out, v, ifx b.touch then "BAG" else "BAG   B", (g.bag.x0 + g.bag.x1) * 0.5, (g.bag.y0 + g.bag.y1) * 0.5 + 4 * k, 11.5 * k, body, a, k, true);
+  cb: [24] u8; cn := cc.eg_int(cb[..], 0, b.coin); cn = cc.eg_put(cb[..], cn, " coin");
+  coin := cast(string) cb[0..<cn];
+  v = cc.hud_say(out, v, coin, g.coin_x - cc.face_width(coin, 14 * k * body.scale, body.face), g.coin_y, 14 * k, body, a, k, false);
+  room := g.x1 - g.x0 - 24 * k;
+  for i: 0..<g.rows {
+    y := g.row_y + f32(i) * g.row_h;
+    v = cc.hud_say(out, v, lines[i].a, g.x0 + 12 * k, y + 13 * k, eg_own_fit(lines[i].a, 11 * k, title, room), title, a, k, false);
+    v = cc.hud_say(out, v, lines[i].b, g.x0 + 12 * k, y + 33 * k, eg_own_fit(lines[i].b, 11.5 * k, body, room), body, a, k, false);
+  }
+  if g.more > 0 {
+    mb: [40] u8; mn := cc.eg_put(mb[..], 0, "and "); mn = cc.eg_int(mb[..], mn, g.more); mn = cc.eg_put(mb[..], mn, " more in your bag");
+    v = cc.hud_say(out, v, cast(string) mb[0..<mn], g.x0 + 12 * k, g.row_y + f32(g.rows) * g.row_h + 12 * k, 11.5 * k, dim, a, k, false);
+  }
+  if b.loot_a > 0 && b.loot.count > 0 {
+    lb: [64] u8; ln := cc.eg_put(lb[..], 0, "You got "); ln = cc.eg_put(lb[..], ln, b.loot);
+    lt := cast(string) lb[0..<ln]; cap := eg_own_fit(lt, 14 * k, body, g.x1 - g.x0);
+    v = cc.hud_say(out, v, lt, g.x1 - cc.face_width(lt, cap * body.scale, body.face), g.loot_y, cap, body, b.loot_a * a, k, false);
+  }
+  return v;
+}
+
+// ---- the bag's window
+
+EgBag :: struct {
+  win: cc.HudPrim; pad: f32; two: bool;
+  close: cc.HudPrim;
+  n: int;                                   // lines laid out
+  row: [EG_BAG_LINES] cc.HudPrim;           // each line's box (empty: no room for it)
+  btn: [EG_BAG_LINES] cc.HudPrim;           // its button (empty: none)
+  cut: [2] int; cut_y: [2] f32; cut_x: [2] f32;   // lines a column had no room for, and where it says so
+}
+eg_bag_tall :: (kind: int, k: f32) -> f32 {
+  if kind == EG_BAG_HEAD { return 34 * k; }
+  if kind == EG_BAG_QUEST { return 60 * k; }
+  if kind == EG_BAG_NOTE { return 30 * k; }
+  return 48 * k;
+}
+// The window for a page w by h: lines[0..<first] down its left column and the rest down its right,
+// or all in one column when the page is narrow. A column with more lines than room says how many
+// more there are.
+eg_bag_layout :: (w: f32, h: f32, k: f32, lines: [] EgBagLine, first: int, n: int) -> EgBag {
+  g: EgBag; g.n = ifx n > EG_BAG_LINES then EG_BAG_LINES else n;
+  mx := 14 * k; my := 12 * k; g.pad = 18 * k; p := g.pad;
+  W := w / k; g.two = W >= 720 && first > 0 && first < g.n;
+  wide := ifx g.two then 760 * k else 440 * k; if wide > w - 2 * mx { wide = w - 2 * mx; }
+  head := 62 * k;
+  // how tall its columns want to be
+  want: [2] f32;
+  for i: 0..<g.n { c := ifx g.two && i >= first then 1 else 0; want[c] += eg_bag_tall(lines[i].kind, k); }
+  tall := ifx want[0] > want[1] then want[0] else want[1];
+  if tall < 120 * k { tall = 120 * k; }
+  whole := p + head + tall + p; if whole > h - 2 * my { whole = h - 2 * my; }
+  x0 := (w - wide) * 0.5; y0 := (h - whole) * 0.5;
+  g.win = cc.hud_box(x0, y0, x0 + wide, y0 + whole);
+  g.close = cc.hud_box(g.win.x1 - p - (ifx g.two then 136 * k else 96 * k), y0 + p, g.win.x1 - p, y0 + p + 44 * k);
+  gap := 20 * k; cw := ifx g.two then (wide - 2 * p - gap) * 0.5 else wide - 2 * p;
+  bottom := g.win.y1 - p;
+  y := [2] f32.[y0 + p + head, y0 + p + head];
+  full := [2] bool.[false, false];
+  for i: 0..<g.n {
+    c := ifx g.two && i >= first then 1 else 0;
+    cx := x0 + p + f32(c) * (cw + gap); th := eg_bag_tall(lines[i].kind, k);
+    // the last line that fits leaves a row for "and N more" when lines follow it in this column
+    last := i == g.n - 1 || (g.two && i == first - 1);
+    need := ifx last then th else th + 24 * k;
+    if full[c] || y[c] + need > bottom + 0.5 { if !full[c] { full[c] = true; g.cut_y[c] = y[c]; g.cut_x[c] = cx; } g.cut[c] += 1; continue; }
+    g.row[i] = cc.hud_box(cx, y[c], cx + cw, y[c] + th - 6 * k);
+    if lines[i].act != EG_BAG_NO_ACT { g.btn[i] = cc.hud_box(cx + cw - 124 * k, y[c], cx + cw, y[c] + 44 * k); g.row[i].y1 = y[c] + 44 * k; }
+    y[c] += th;
+  }
+  return g;
+}
+// The line a point is on by its button (-1 none), or -2 for CLOSE.
+EG_BAG_HIT_CLOSE :: -2;
+eg_bag_hit :: (g: EgBag, x: f32, y: f32) -> int {
+  if eg_win_inside(g.close, x, y) { return EG_BAG_HIT_CLOSE; }
+  for i: 0..<g.n { if g.btn[i].x1 > g.btn[i].x0 && eg_win_inside(g.btn[i], x, y) { return i; } }
+  return -1;
+}
+// What the window shows: your coin, the line or CLOSE the pointer is on, and whether a finger plays.
+EgBagLook :: struct { coin: int; hover: int = -1; touch: bool; }
+eg_bag :: (ui: [] cc.UitTrace, out: [] f32, at: int, g: EgBag, k: f32, lines: [] EgBagLine, b: EgBagLook) -> int {
+  t := cc.eg_tokens(); l: [1] cc.HudList;
+  body := cc.hud_text(t, cc.HUD_TEXT_NUMBER); dim := cc.hud_text(t, cc.HUD_TEXT_LABEL); title := cc.hud_text(t, cc.HUD_TEXT_TITLE);
+  cc.hud_panel(l[..], t, g.win, k);
+  cc.hud_button(l[..], t, g.close, k, b.hover == EG_BAG_HIT_CLOSE);
+  x := g.win.x0 + g.pad;
+  cc.hud_line(l[..], x, g.win.y0 + g.pad + 52 * k, g.win.x1 - g.pad, g.win.y0 + g.pad + 52 * k, 1 * k, cc.hud_fade(t.trim, 0.45));
+  for i: 0..<g.n {
+    r := g.row[i]; if !(r.x1 > r.x0) { continue; }
+    if lines[i].kind == EG_BAG_ITEM || lines[i].kind == EG_BAG_WORN || lines[i].kind == EG_BAG_QUEST { cc.hud_well(l[..], t, r, k, false); }
+    if g.btn[i].x1 > g.btn[i].x0 { cc.hud_button(l[..], t, g.btn[i], k, b.hover == i); }
+  }
+  v := cc.hud_emit(out, at, l[..]);
+  cc.uit_part(ui, "bag-window");
+  cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, g.close.x0, g.close.y0, g.close.x1, g.close.y1, "close");
+  v = cc.hud_say(out, v, "Bag", x, g.win.y0 + g.pad + 30 * k, ifx g.two then 26 * k else 21 * k, title, 1, k, false);
+  cb: [24] u8; cn := cc.eg_int(cb[..], 0, b.coin); cn = cc.eg_put(cb[..], cn, " coin"); coin := cast(string) cb[0..<cn];
+  v = cc.hud_say(out, v, coin, g.close.x0 - 22 * k - cc.face_width(coin, 14 * k * body.scale, body.face), g.win.y0 + g.pad + 28 * k, 14 * k, body, 1, k, false);
+  v = cc.hud_say(out, v, ifx b.touch || !g.two then "CLOSE" else "CLOSE   Esc", (g.close.x0 + g.close.x1) * 0.5, (g.close.y0 + g.close.y1) * 0.5 + 4 * k, 11.5 * k, body, 1, k, true);
+  for i: 0..<g.n {
+    r := g.row[i]; if !(r.x1 > r.x0) { continue; }
+    ln := lines[i]; has := g.btn[i].x1 > g.btn[i].x0;
+    room := (ifx has then g.btn[i].x0 - 10 * k else r.x1) - r.x0 - 14 * k;
+    if ln.kind == EG_BAG_HEAD { v = cc.hud_say(out, v, ln.a, r.x0, r.y0 + 22 * k, 13 * k, title, 1, k, false); continue; }
+    if ln.kind == EG_BAG_NOTE { v = cc.hud_say(out, v, ln.a, r.x0 + 2 * k, r.y0 + 17 * k, 12.5 * k, dim, 1, k, false); continue; }
+    if ln.kind == EG_BAG_QUEST {
+      v = cc.hud_say(out, v, ln.a, r.x0 + 12 * k, r.y0 + 19 * k, eg_own_fit(ln.a, 12 * k, title, room), title, 1, k, false);
+      v = cc.hud_say(out, v, ln.b, r.x0 + 12 * k, r.y0 + 41 * k, eg_own_fit(ln.b, 12 * k, body, room), body, 1, k, false);
+      continue;
+    }
+    if ln.kind == EG_BAG_WORN {   // its name over where it is worn
+      v = cc.hud_say(out, v, ln.a, r.x0 + 12 * k, r.y0 + 19 * k, eg_own_fit(ln.a, 13.5 * k, body, room), body, 1, k, false);
+      v = cc.hud_say(out, v, ln.b, r.x0 + 12 * k, r.y0 + 36 * k, 11 * k, dim, 1, k, false);
+    }
+    // something carried: its name, then its count; then the row's button's word
+    my := (r.y0 + r.y1) * 0.5 + 5 * k;
+    if ln.kind == EG_BAG_ITEM {
+      cap := eg_own_fit(ln.a, 14 * k, body, room - (ifx ln.b.count > 0 then cc.face_width(ln.b, 12 * k * dim.scale, dim.face) + 12 * k else 0.0f32));
+      v = cc.hud_say(out, v, ln.a, r.x0 + 12 * k, my, cap, body, 1, k, false);
+      if ln.b.count > 0 { v = cc.hud_say(out, v, ln.b, r.x0 + 12 * k + cc.face_width(ln.a, cap * body.scale, body.face) + 12 * k, my, 12 * k, dim, 1, k, false); }
+    }
+    if has {
+      word := ifx ln.kind == EG_BAG_WORN then "TAKE OFF" else "WEAR";
+      cc.uit_add(ui, cc.UIT_NONE, cc.UIT_BUTTON, g.btn[i].x0, g.btn[i].y0, g.btn[i].x1, g.btn[i].y1, word);
+      v = cc.hud_say(out, v, word, (g.btn[i].x0 + g.btn[i].x1) * 0.5, (g.btn[i].y0 + g.btn[i].y1) * 0.5 + 4 * k, 11 * k, body, 1, k, true);
+    }
+  }
+  for c: 0..<2 {
+    if g.cut[c] == 0 { continue; }
+    mb: [32] u8; mn := cc.eg_put(mb[..], 0, "and "); mn = cc.eg_int(mb[..], mn, g.cut[c]); mn = cc.eg_put(mb[..], mn, " more");
+    v = cc.hud_say(out, v, cast(string) mb[0..<mn], g.cut_x[c] + 2 * k, g.cut_y[c] + 16 * k, 12.5 * k, dim, 1, k, false);
+  }
+  return v;
+}
+
+#test "eg bag: the column sits under the map with a finger-sized button; a phone's is narrower and keeps clear of the bar" {
+  none := cc.hud_box(0, 0, 0, 0);
+  g := eg_own_layout(1280, 720, 1, 2, none);
+  #assert g.on && g.bag.x1 <= 1280 - 14 + 0.01 && g.bag.y1 - g.bag.y0 >= 44 && g.bag.x1 - g.bag.x0 >= 44 && g.bag.y0 > 16 + 70 + 10 + 70;
+  #assert g.rows == 2 && g.more == 0 && g.track.y1 < 720 - 110 && g.x0 >= 1280 - 14 - 240 - 0.01 && g.coin_x < g.bag.x0;
+  many := eg_own_layout(1280, 720, 1, 7, none); #assert many.rows == EG_TRACK_ROWS && many.more == 4;
+  // a phone upright (390 by 844 CSS px at 3 device px): inside the page, the button still a finger's
+  p := eg_own_layout(1170, 2532, 3, 2, none);
+  #assert p.on && p.x0 >= 0 && p.x1 <= 1170 && (p.bag.y1 - p.bag.y0) / 3 >= 44 && (p.bag.x1 - p.bag.x0) / 3 >= 44 && p.rows == 2;
+  // a phone on its side (760 by 360): between your plate and the map, clear of both and of the bar
+  s := eg_own_layout(760, 360, 1, 3, none); plate := cc.eg_world_portrait(760, 360, 1);
+  #assert s.on && s.rows == 3 && s.more == 0 && s.x0 >= plate.x1 && s.x1 <= 760 - (2 * 40 + 44) && s.bag.y0 == 14 && s.track.y1 <= 360 - 110 + 0.01;
+  // a narrower one (568 by 320) has no width there: under the map, with the quests it has no height for counted
+  n := eg_own_layout(568, 320, 1, 3, none);
+  #assert n.on && n.x1 > 568 - 20 && n.rows + n.more == 3 && n.rows < 3;
+  // an open menu over that corner takes its place
+  #assert !eg_own_layout(1170, 2532, 3, 2, cc.hud_box(0, 0, 1170, 2532)).on;
+  out: [40000] f32; ui: [] cc.UitTrace;
+  lines := [2] EgBagLine.[EgBagLine.{kind = EG_BAG_QUEST, a = "Thin the pack", b = "Slay Wolf  2 / 4"}, EgBagLine.{kind = EG_BAG_QUEST, a = "The goblin camp", b = "Go to Goblin camp"}];
+  v := eg_own(ui, out[..], 0, g, 1, lines[..], EgOwnLook.{coin = 25});
+  #assert v > 0 && eg_own(ui, out[..], 0, g, 1, lines[..], EgOwnLook.{coin = 25, loot = "Wolf pelt", loot_a = 1}) > v;
+  off := g; off.on = false; #assert eg_own(ui, out[..], 0, off, 1, lines[..], EgOwnLook.{}) == 0;
+  body := cc.hud_text(cc.eg_tokens(), cc.HUD_TEXT_NUMBER);
+  #assert eg_own_fit("Wolf", 14, body, 400) == 14 && eg_own_fit("A very long name of a thing that will not fit", 14, body, 60) == 14 * 0.7;
+}
+#test "eg bag: the window lays its lines in two columns when wide and one when narrow, buttons a finger's, and says what it had no room for" {
+  lines: [EG_BAG_LINES] EgBagLine; n := 0;
+  lines[n] = EgBagLine.{kind = EG_BAG_HEAD, a = "WEARING"}; n += 1;
+  lines[n] = EgBagLine.{kind = EG_BAG_WORN, a = "Warden's cloak", b = "Body", act = 7}; n += 1;
+  lines[n] = EgBagLine.{kind = EG_BAG_HEAD, a = "CARRYING"}; n += 1;
+  lines[n] = EgBagLine.{kind = EG_BAG_ITEM, a = "Wolf pelt", b = "x2"}; n += 1;
+  lines[n] = EgBagLine.{kind = EG_BAG_ITEM, a = "Traveller's ring", b = "", act = 9}; n += 1;
+  first := n;
+  lines[n] = EgBagLine.{kind = EG_BAG_HEAD, a = "QUESTS"}; n += 1;
+  lines[n] = EgBagLine.{kind = EG_BAG_QUEST, a = "Thin the pack", b = "Done"}; n += 1;
+  g := eg_bag_layout(1280, 720, 1, lines[..], first, n);
+  #assert g.two && g.n == n && g.cut[0] == 0 && g.cut[1] == 0 && g.win.x1 - g.win.x0 == 760 && g.win.y0 >= 12 && g.win.y1 <= 720 - 12;
+  for i: 0..<n {
+    #assert g.row[i].x1 > g.row[i].x0 && g.row[i].x0 >= g.win.x0 && g.row[i].x1 <= g.win.x1 && g.row[i].y1 <= g.win.y1 && g.row[i].y0 >= g.close.y1;
+    #assert (g.btn[i].x1 > g.btn[i].x0) == (lines[i].act != EG_BAG_NO_ACT);
+    if g.btn[i].x1 > g.btn[i].x0 { #assert g.btn[i].y1 - g.btn[i].y0 >= 44 && g.btn[i].x1 - g.btn[i].x0 >= 44 && g.btn[i].x1 <= g.row[i].x1; }
+  }
+  #assert g.row[first].x0 > g.row[0].x1 && g.row[first].y0 == g.row[0].y0;   // the quests head the right column
+  b := g.btn[1]; #assert eg_bag_hit(g, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5) == 1 && eg_bag_hit(g, g.close.x0 + 2, g.close.y0 + 2) == EG_BAG_HIT_CLOSE;
+  #assert eg_bag_hit(g, g.row[3].x0 + 4, g.row[3].y0 + 4) == -1 && eg_bag_hit(g, 2, 2) == -1;
+  out: [60000] f32; ui: [] cc.UitTrace;
+  #assert eg_bag(ui, out[..], 0, g, 1, lines[..], EgBagLook.{coin = 25, hover = 1}) > 0;
+  // a phone upright: one column, every line under the one before it, inside the page
+  p := eg_bag_layout(1170, 2532, 3, lines[..], first, n);
+  #assert !p.two && p.cut[0] == 0 && p.win.x0 >= 0 && p.win.x1 <= 1170 && p.row[first].x0 == p.row[0].x0 && p.row[first].y0 > p.row[first - 1].y0;
+  #assert (p.btn[1].y1 - p.btn[1].y0) / 3 >= 44 && (p.close.y1 - p.close.y0) / 3 >= 44;
+  // more lines than a short page has room for: the ones that fit, and the count of the rest
+  for i: n..<30 { lines[i] = EgBagLine.{kind = EG_BAG_ITEM, a = "Wolf pelt", b = ""}; }
+  s := eg_bag_layout(760, 360, 1, lines[..], 30, 30);
+  shown := 0; for i: 0..<30 { if s.row[i].x1 > s.row[i].x0 { shown += 1; #assert s.row[i].y1 <= s.win.y1; } }
+  #assert !s.two && shown > 0 && shown < 30 && s.cut[0] == 30 - shown && s.cut_y[0] + 24 <= s.win.y1 + 0.5;
+  #assert eg_bag(ui, out[..], 0, s, 1, lines[..], EgBagLook.{}) > 0;
+}

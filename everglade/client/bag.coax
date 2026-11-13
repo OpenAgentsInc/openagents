@@ -1,0 +1,440 @@
+// Everglade II's bag, quest log and coin on the page (#13381). The room holds your character's record
+// and tells your seat (everglade/client/own.coax: the page's one copy of what it said); the content
+// tables (aethyr-content-v1; everglade/content/everglade.content, built into the page as
+// everglade/content/shipped.coax) name what the record's numbers are: a quest, what it asks next, an
+// item and where it is worn, who says a line and where they stand. This file words the record from the
+// tables and draws it with Everglade's HUD (everglade/hud/bag.coax, everglade/hud/windows.coax):
+//   under the map   your coin, the BAG button (B), the quests you are on and what each asks next, and
+//                   what just dropped for you;
+//   the bag (B)     what you wear (TAKE OFF), what you carry (WEAR on what can be worn) and every quest;
+//   a talk          near where a line's speaker stands, when a quest of yours is offered or asked there,
+//                   a prompt (E, or a tap) asks the room for it; the line the room then tells you opens.
+// The page decides nothing: WEAR, TAKE OFF and a talk are asks (E SEQ 7, 8, 6), and what you see
+// changes only when the room says so. Nothing is drawn before the room has said your record, and
+// nothing is kept in the browser. The tables' revision is this page's content pin (e2i_load).
+//   coax/bin/coax test --library everglade/client/client.coax --only "bag:"
+#load "../content/shipped.coax";
+#load "../model/content.coax";
+
+E2I_NEAR :: 15.0;      // m from where a speaker stands: near enough for the prompt (the room hears you anywhere in the place)
+E2I_LOOT_S :: 5.0;     // s: a drop's line stands this long, fading over the last one
+E2I_TEXT :: 4096;      // bytes of words a frame's lines may hold
+E2I_SLOT :: [10] string.["Head", "Body", "Hands", "Legs", "Feet", "Neck", "Ring", "Main hand", "Off hand", "Ranged"];
+E2I_SAY_CHOICES :: [1] TalkTreeChoice.[TalkTreeChoice.{from = 0, text = "Farewell", to = TALK_TREE_END}];
+
+E2Bag :: struct {
+  doc: [1] ContentDoc; loaded: bool; tried: bool;   // the content tables, read once
+  open: bool; freed: bool; hover: int = -1; lit: bool;   // the bag's window; the line under the pointer; the pointer on BAG
+  near: int;                                         // the dialogue whose prompt shows (0 none)
+  say: int; say_seen: int; say_freed: bool; say_hover: int = -1;   // the line being read (0 none); the room's count of lines seen
+  loot: int; loot_seen: int; loot_at: f32 = -100;    // what last dropped, the room's count of drops seen, and when
+  asked: int; opened: int;
+}
+
+// The content tables, once: the page's copy, read and checked as a room reads its file. Their revision
+// is the content pin this page says in P before its hello (everglade-wire.coax wire_pins_at), so a room
+// with other tables refuses it and it reloads into the build that has them.
+e2i_load :: (s: [] E2) {
+  b := s[0].bag[..]; if b[0].tried { return; }
+  b[0].tried = true;
+  b[0].loaded = ct_read(b[0].doc[..], EC_SHIPPED) && ec_ok(b[0].doc[..]);
+  s[0].net[0].content_rev = ifx b[0].loaded then b[0].doc[0].rev else 0;
+}
+// Your record is known and may be shown: in the world, seated, the room has said it, the tables read.
+e2i_on :: (s: [] E2) -> bool { return s[0].bag[0].loaded && e2p_in_world(s) && e2k_on(s) && e2n_open(s[0].net[..]) && s[0].net[0].own[0].heard; }
+
+// ---- words, from the tables
+
+e2i_put :: (b: [] u8, at: int, t: string) -> int { n := at; for ch: t { if n < b.count { b[n] = ch; n += 1; } } return n; }
+e2i_int :: (b: [] u8, at: int, v: int) -> int {
+  d: [20] u8; c := 0; x := ifx v < 0 then 0 else v;
+  if x == 0 { d[0] = '0'; c = 1; }
+  while x > 0 { d[c] = cast(u8) ('0' + x % 10); x /= 10; c += 1; }
+  n := at; for i: 0..<c { if n < b.count { b[n] = d[c - 1 - i]; n += 1; } }
+  return n;
+}
+// A row's name in table t by its ID ("" when the tables have no such row).
+e2i_name :: (d: [] ContentDoc, t: int, id: int) -> string {
+  r := ct_find(d, t, id);
+  return ifx r < 0 then "" else ct_str(d, t, r, EC_NAME);
+}
+// How far into the step it is on a quest at `stage` is, and that step's count (count 0: not on a step).
+E2iStep :: struct { done: int; count: int; }
+e2i_step_of :: (d: [] ContentDoc, quest: int, stage: int) -> E2iStep {
+  unit := stage - 1; if unit < 0 { return E2iStep.{}; }
+  for r: 0..<ct_rows(d, EC_STEP) {
+    if ct_get(d, EC_STEP, r, EC_STEP_QUEST) != quest { continue; }
+    c := ct_get(d, EC_STEP, r, EC_STEP_COUNT);
+    if unit < c { return E2iStep.{done = unit, count = c}; }
+    unit -= c;
+  }
+  return E2iStep.{};
+}
+// What quest asks next at stage, in a player's words, into b from at: the end. Nothing for a quest the
+// tables don't have.
+e2i_quest_line :: (d: [] ContentDoc, quest: int, stage: int, b: [] u8, at: int) -> int {
+  nx := eq_next(d, quest, stage); n := at;
+  if nx.kind == EQ_KILL || nx.kind == EQ_BRING {
+    st := e2i_step_of(d, quest, stage);
+    n = e2i_put(b, n, ifx nx.kind == EQ_KILL then "Slay " else "Bring ");
+    n = e2i_put(b, n, e2i_name(d, ifx nx.kind == EQ_KILL then EC_CREATURE else EC_ITEM, nx.target));
+    n = e2i_put(b, n, "  "); n = e2i_int(b, n, st.done); n = e2i_put(b, n, " / "); n = e2i_int(b, n, st.count);
+    return n;
+  }
+  if nx.kind == EQ_REACH { n = e2i_put(b, n, "Go to "); return e2i_put(b, n, e2i_name(d, EC_POINT, nx.target)); }
+  if nx.kind == EQ_TALK || nx.kind == EQ_TAKE {
+    r := ct_find(d, EC_DIALOGUE, nx.target); if r < 0 { return n; }
+    n = e2i_put(b, n, "Talk to "); n = e2i_put(b, n, ct_str(d, EC_DIALOGUE, r, EC_NAME));
+    n = e2i_put(b, n, " at "); return e2i_put(b, n, e2i_name(d, EC_POINT, ct_get(d, EC_DIALOGUE, r, EC_DIALOGUE_POINT)));
+  }
+  if nx.kind == EQ_REWARD { return e2i_put(b, n, "Your reward is on its way"); }
+  if nx.kind == EQ_DONE { return e2i_put(b, n, "Done"); }
+  return n;
+}
+// Whether a quest of yours is offered or asked by dialogue `dialogue` now.
+e2i_wants :: (s: [] E2, dialogue: int) -> bool {
+  d := s[0].bag[0].doc[..]; o := s[0].net[0].own[..];
+  for q: 0..<ct_rows(d, EC_QUEST) {
+    quest := ct_get(d, EC_QUEST, q, 0); nx := eq_next(d, quest, e2o_stage(o, quest));
+    if (nx.kind == EQ_TAKE || nx.kind == EQ_TALK) && nx.target == dialogue { return true; }
+  }
+  return false;
+}
+// The dialogue to offer where you stand (0 none): the first, by ID, that a quest of yours wants and
+// whose speaker's place you are in, within E2I_NEAR m of its middle.
+e2i_near :: (s: [] E2) -> int {
+  d := s[0].bag[0].doc[..];
+  for r: 0..<ct_rows(d, EC_DIALOGUE) {
+    id := ct_get(d, EC_DIALOGUE, r, 0); p := ct_find(d, EC_POINT, ct_get(d, EC_DIALOGUE, r, EC_DIALOGUE_POINT));
+    if p < 0 || !e2i_wants(s, id) { continue; }
+    dx := s[0].you_x - f32(ct_get(d, EC_POINT, p, EC_POINT_X)) * 0.01; dz := s[0].you_z - f32(ct_get(d, EC_POINT, p, EC_POINT_Z)) * 0.01;
+    reach := f32(ct_get(d, EC_POINT, p, EC_POINT_R)) * 0.01; if reach > f32(E2I_NEAR) { reach = f32(E2I_NEAR); }
+    if dx * dx + dz * dz <= reach * reach { return id; }
+  }
+  return 0;
+}
+
+// ---- the frame's lines
+
+// The quests you are on (taken, not done), a line each, for under the map: how many.
+e2i_track :: (s: [] E2, lines: [] EgBagLine, tb: [] u8) -> int {
+  d := s[0].bag[0].doc[..]; o := s[0].net[0].own[..]; n := 0; at := 0;
+  for i: 0..<o[0].quest_n {
+    if n >= lines.count { break; }
+    nx := eq_next(d, o[0].quest[i], o[0].stage[i]);
+    if o[0].stage[i] < 1 || nx.kind == EQ_NONE || nx.kind == EQ_DONE { continue; }
+    e := e2i_quest_line(d, o[0].quest[i], o[0].stage[i], tb, at);
+    lines[n] = EgBagLine.{kind = EG_BAG_QUEST, a = e2i_name(d, EC_QUEST, o[0].quest[i]), b = cast(string) tb[at..<e]}; n += 1; at = e;
+  }
+  return n;
+}
+// The bag's window: what you wear, what you carry (one line a kind, with its count), then every quest
+// the room has said. [0] the lines of its first column, [1] all of them. A line's act is the slot to
+// empty (worn) or the item to wear (carried, when its kind is worn somewhere).
+e2i_lines :: (s: [] E2, lines: [] EgBagLine, tb: [] u8) -> [2] int {
+  d := s[0].bag[0].doc[..]; o := s[0].net[0].own[..]; n := 0; at := 0; slots := E2I_SLOT;
+  lines[n] = EgBagLine.{kind = EG_BAG_HEAD, a = "WEARING"}; n += 1; was := n;
+  for slot: 1..<E2O_SLOTS + 1 {
+    i := e2o_worn(o, slot); if i < 0 || n >= lines.count - 6 { continue; }
+    name := e2i_name(d, EC_ITEM, o[0].kind[i]);
+    lines[n] = EgBagLine.{kind = EG_BAG_WORN, a = ifx name.count > 0 then name else "Item", b = slots[slot - 1], act = slot - 1}; n += 1;
+  }
+  if n == was { lines[n] = EgBagLine.{kind = EG_BAG_NOTE, a = "Nothing yet"}; n += 1; }
+  lines[n] = EgBagLine.{kind = EG_BAG_HEAD, a = "CARRYING"}; n += 1; was = n;
+  for i: 0..<o[0].item_n {
+    if o[0].slot[i] != 0 || n >= lines.count - 4 { continue; }
+    first := true; count := 0;
+    for j: 0..<o[0].item_n { if o[0].slot[j] == 0 && o[0].kind[j] == o[0].kind[i] { if j < i { first = false; } count += 1; } }
+    if !first { continue; }   // its kind's line is the first of the kind's
+    name := e2i_name(d, EC_ITEM, o[0].kind[i]); e := at;
+    if count > 1 { e = e2i_int(tb, e2i_put(tb, at, "x"), count); }
+    lines[n] = EgBagLine.{kind = EG_BAG_ITEM, a = ifx name.count > 0 then name else "Item", b = cast(string) tb[at..<e],
+                          act = ifx name.count > 0 && ec_slot(d, o[0].kind[i]) >= 0 then o[0].item[i] else EG_BAG_NO_ACT};
+    n += 1; at = e;
+  }
+  if n == was { lines[n] = EgBagLine.{kind = EG_BAG_NOTE, a = "Empty"}; n += 1; }
+  first_col := n;
+  lines[n] = EgBagLine.{kind = EG_BAG_HEAD, a = "QUESTS"}; n += 1; was = n;
+  for i: 0..<o[0].quest_n {
+    if n >= lines.count || o[0].stage[i] < 1 { continue; }
+    name := e2i_name(d, EC_QUEST, o[0].quest[i]); if name.count == 0 { continue; }
+    e := e2i_quest_line(d, o[0].quest[i], o[0].stage[i], tb, at);
+    lines[n] = EgBagLine.{kind = EG_BAG_QUEST, a = name, b = cast(string) tb[at..<e]}; n += 1; at = e;
+  }
+  if n == was && n < lines.count { lines[n] = EgBagLine.{kind = EG_BAG_NOTE, a = "None yet"}; n += 1; }
+  return [2] int.[first_col, n];
+}
+
+// ---- each frame
+
+e2i_close :: (s: [] E2) {
+  b := s[0].bag[..]; if !b[0].open { return; }
+  b[0].open = false; b[0].hover = -1;
+  if b[0].freed { s[0].ml[0].free = false; b[0].freed = false; }
+}
+e2i_open :: (s: [] E2) {
+  b := s[0].bag[..]; if b[0].open || !e2i_on(s) { return; }
+  b[0].open = true; b[0].hover = -1; b[0].opened += 1; s[0].held = 0;
+  if mlook.ml_wants(s[0].ml[0]) { s[0].ml[0].free = true; b[0].freed = true; }
+}
+e2i_say_close :: (s: [] E2) {
+  b := s[0].bag[..]; if b[0].say == 0 { return; }
+  b[0].say = 0; b[0].say_hover = -1;
+  if b[0].say_freed { s[0].ml[0].free = false; b[0].say_freed = false; }
+}
+// What the room said since the last frame: a line told opens, a drop shows; near or not; and all of
+// it shut when your record isn't known (the socket closed, Character Create, the menu).
+e2i_step :: (s: [] E2) {
+  e2i_load(s);
+  b := s[0].bag[..]; o := s[0].net[0].own[..];
+  if !e2i_on(s) {
+    e2i_close(s); e2i_say_close(s); b[0].near = 0; b[0].lit = false;
+    // a record not known has told nothing: the counts start again with it
+    if !o[0].heard { b[0].say_seen = o[0].said_n; b[0].loot_seen = o[0].loot_n; b[0].loot_at = -100; }
+    return;
+  }
+  if o[0].said_n != b[0].say_seen {
+    b[0].say_seen = o[0].said_n;
+    if ct_find(b[0].doc[..], EC_DIALOGUE, o[0].said) >= 0 {
+      b[0].say = o[0].said; b[0].say_hover = -1; s[0].held = 0; e2i_close(s);
+      if mlook.ml_wants(s[0].ml[0]) { s[0].ml[0].free = true; b[0].say_freed = true; }
+    }
+  }
+  if o[0].loot_n != b[0].loot_seen { b[0].loot_seen = o[0].loot_n; b[0].loot = o[0].loot; b[0].loot_at = s[0].clock; }
+  quiet := !b[0].open && b[0].say == 0 && !s[0].npc[0].talking && !s[0].bench[0].open && !s[0].npc[0].near && !s[0].bench[0].near;
+  b[0].near = ifx quiet then e2i_near(s) else 0;
+}
+// Ask the room for the talk the prompt offers.
+e2i_ask :: (s: [] E2) -> bool {
+  b := s[0].bag[..]; if b[0].near == 0 { return false; }
+  if e2n_use(s[0].net[..], WE_SAY, b[0].near) { b[0].asked += 1; }
+  return true;
+}
+
+// ---- input: before the bench's and Pansopher's, so B and Esc are the bag's while it is open
+
+e2i_key :: (s: [] E2, key: int) -> bool {
+  b := s[0].bag[..];
+  if b[0].say != 0 {
+    if key == E2P_KEY_ESC || key == 'e' || key == 'E' || key == '1' || key == ' ' { e2i_say_close(s); return true; }
+    return false;
+  }
+  if b[0].open {
+    if key == E2P_KEY_ESC || key == 'b' || key == 'B' { e2i_close(s); return true; }
+    return false;
+  }
+  if !e2i_on(s) || s[0].npc[0].talking || s[0].bench[0].open { return false; }
+  if key == 'b' || key == 'B' { e2i_open(s); return true; }
+  if b[0].near != 0 && (key == 'e' || key == 'E') { return e2i_ask(s); }
+  return false;
+}
+// The words of the prompt for dialogue `dialogue`.
+e2i_prompt_text :: (s: [] E2, dialogue: int, t: [] u8) -> string {
+  d := s[0].bag[0].doc[..]; r := ct_find(d, EC_DIALOGUE, dialogue);
+  n := e2i_put(t, 0, ifx s[0].ml[0].touch then "TAP  " else "E  "); n = e2i_put(t, n, "Talk to ");
+  if r >= 0 { n = e2i_put(t, n, ct_str(d, EC_DIALOGUE, r, EC_NAME)); }
+  return cast(string) t[0..<n];
+}
+// The line being read: who says it, the quest it is about (or where they stand), the words.
+E2iSay :: struct { name: string; title: string; line: string; }
+e2i_said :: (s: [] E2) -> E2iSay {
+  d := s[0].bag[0].doc[..]; r := ct_find(d, EC_DIALOGUE, s[0].bag[0].say);
+  if r < 0 { return E2iSay.{}; }
+  quest := ct_get(d, EC_DIALOGUE, r, EC_DIALOGUE_QUEST);
+  title := ifx quest != 0 then e2i_name(d, EC_QUEST, quest) else e2i_name(d, EC_POINT, ct_get(d, EC_DIALOGUE, r, EC_DIALOGUE_POINT));
+  return E2iSay.{name = ct_str(d, EC_DIALOGUE, r, EC_NAME), title = title, line = ct_str(d, EC_DIALOGUE, r, EC_DIALOGUE_LINE)};
+}
+e2i_say_layout :: (s: [] E2) -> EgTalk { c := E2I_SAY_CHOICES; return eg_talk_layout(s[0].width, s[0].height, s[0].k, e2i_said(s).line, c[..], 0, ""); }
+e2i_column :: (s: [] E2, quests: int) -> EgOwn {
+  return eg_own_layout(s[0].width, s[0].height, s[0].k, quests, eg_menu_cover(e2k_facts(s), e2k_side_geo(s), e2k_side_st(s)));
+}
+e2i_pointer :: (s: [] E2, x: f32, y: f32, phase: int) -> bool {
+  b := s[0].bag[..];
+  if b[0].say != 0 {
+    g := e2i_say_layout(s);
+    b[0].say_hover = ifx g.answers > 0 && e2p_inside(g.answer[0], x, y) then 0 else -1;
+    if phase == 0 && b[0].say_hover == 0 { e2i_say_close(s); return true; }
+    return phase == 0 && e2p_inside(g.panel, x, y);
+  }
+  if !e2i_on(s) { return false; }
+  lines: [EG_BAG_LINES] EgBagLine; tb: [E2I_TEXT] u8;
+  if b[0].open {
+    c := e2i_lines(s, lines[..], tb[..]); g := eg_bag_layout(s[0].width, s[0].height, s[0].k, lines[..], c[0], c[1]);
+    b[0].hover = eg_bag_hit(g, x, y);
+    if phase != 0 { return false; }
+    if b[0].hover == EG_BAG_HIT_CLOSE { e2i_close(s); return true; }
+    if b[0].hover >= 0 {
+      ln := lines[b[0].hover];
+      if e2n_use(s[0].net[..], ifx ln.kind == EG_BAG_WORN then WE_BARE else WE_WEAR, ln.act) { b[0].asked += 1; }
+      return true;
+    }
+    return e2p_inside(g.win, x, y);   // a press in the window is its own; off it, the world's
+  }
+  if s[0].npc[0].talking || s[0].bench[0].open { return false; }
+  col := e2i_column(s, e2i_track(s, lines[..], tb[..]));
+  b[0].lit = col.on && e2p_inside(col.bag, x, y);
+  if phase == 0 && b[0].lit { e2i_open(s); return true; }
+  if phase == 0 && b[0].near != 0 {
+    pb: [96] u8;
+    if e2p_inside(eg_prompt_box(e2i_prompt_text(s, b[0].near, pb[..]), s[0].width, s[0].height, s[0].k), x, y) { return e2i_ask(s); }
+  }
+  return false;
+}
+
+// ---- the HUD: the column under the map and the prompt; the bag's window; the line being read
+e2i_overlay :: (s: [] E2, out: [] f32, at: int) -> int {
+  b := s[0].bag[..];
+  if !e2i_on(s) { return at; }
+  // the layout trace: the overlap check's when it attached one (#13076), else the agent driver's
+  ui := ifx s[0].creator[0].ui.count > 0 then s[0].creator[0].ui else drv_trace(s[0].drive[..]); v := at;
+  lines: [EG_BAG_LINES] EgBagLine; tb: [E2I_TEXT] u8;
+  if !s[0].npc[0].talking && !s[0].bench[0].open {
+    n := e2i_track(s, lines[..], tb[..]); col := e2i_column(s, n);
+    age := s[0].clock - b[0].loot_at; fade := ifx age < 0 || age > f32(E2I_LOOT_S) then 0.0f32 else ifx age > f32(E2I_LOOT_S) - 1 then f32(E2I_LOOT_S) - age else 1.0f32;
+    v = eg_own(ui, out, v, col, s[0].k, lines[..], EgOwnLook.{coin = s[0].net[0].own[0].coin, lit = b[0].lit || b[0].open, touch = s[0].ml[0].touch,
+                                                             loot = e2i_name(b[0].doc[..], EC_ITEM, b[0].loot), loot_a = fade,
+                                                             banner_a = cc.hud_banner_alpha(s[0].clock - s[0].zone_at, f32(cc.EG_BANNER_S))});
+  }
+  if b[0].near != 0 && !b[0].open && b[0].say == 0 {
+    pb: [96] u8; t := e2i_prompt_text(s, b[0].near, pb[..]);
+    v = eg_prompt(ui, "talk-prompt", "talk", out, v, eg_prompt_box(t, s[0].width, s[0].height, s[0].k), t, s[0].k);
+  }
+  if b[0].open {
+    c := e2i_lines(s, lines[..], tb[..]);
+    v = eg_bag(ui, out, v, eg_bag_layout(s[0].width, s[0].height, s[0].k, lines[..], c[0], c[1]), s[0].k, lines[..],
+               EgBagLook.{coin = s[0].net[0].own[0].coin, hover = b[0].hover, touch = s[0].ml[0].touch});
+  }
+  if b[0].say != 0 {
+    sy := e2i_said(s); c := E2I_SAY_CHOICES;
+    v = eg_talk(ui, out, v, e2i_say_layout(s), s[0].k, sy.name, sy.title, sy.line, c[..], b[0].say_hover);
+  }
+  return v;
+}
+
+// ---- a dev build's stand-in for the room (?own=N with ?at=: a staged shot has no room): the entries
+// a room would aim at your seat, through the same codec and reader. Never in a release.
+E2I_DEV :: [4] string.[
+  "e coin 0 0",
+  "e coin 0 12;e quest 0 1 3;e item 0 4101 1 0;e loot 0 1",
+  "e coin 0 37;e quest 0 1 9;e quest 0 2 2;e item 0 4101 1 0;e item 0 4102 1 0;e item 0 4107 3 2;e item 0 4110 4 0;e item 0 4111 2 0",
+  "e coin 0 12;e quest 0 1 1;e say 0 1"
+];
+// client.coax calls this only inside `#if BUILD_DEBUG` (as admin mode, everglade/client/admin.coax).
+e2i_dev :: (s: [] E2, which: int) {
+  n := s[0].net[..]; set := E2I_DEV;
+  if which < 1 || which > 4 || n[0].own[0].heard { return; }
+  n[0].state = E2N_OPEN; n[0].seat = 0;
+  t := set[which - 1]; a := 0;
+  for i: 0..<t.count + 1 {
+    if i < t.count && t[i] != ';' { continue; }
+    e2n_entry(n, t[a..<i], WireD.{}); a = i + 1;
+  }
+}
+
+#test "bag: the tables load once, are Everglade's, and their revision is the page's content pin" #steps 400000000 {
+  s: [1] E2; e2i_load(s[..]);
+  #assert s[0].bag[0].loaded && s[0].bag[0].doc[0].rev >= 1 && s[0].net[0].content_rev == s[0].bag[0].doc[0].rev;
+  // the P frame and the seat ticket's build say it
+  b: [64] u8; n := wire_put_pins(b[..], 0, wire_pins_at(s[0].net[0].content_rev)); r: [1] WireRd; t := cast(string) b[0..<n];
+  r[0] = wire_rd(t, 1); p := wire_read_pins(t, r[..]); #assert r[0].ok && p.content == wire_content_pin(s[0].bag[0].doc[0].rev);
+  n = net_put_build_at(b[..], 0, 7); p7 := wire_pins_at(7); q: [64] u8; m := e2i_int(q[..], 0, p7.engine); m = e2i_put(q[..], m, "."); m = e2i_int(q[..], m, p7.rules); m = e2i_put(q[..], m, "."); m = e2i_int(q[..], m, p7.content);
+  #assert cast(string) b[0..<n] == cast(string) q[0..<m] && net_put_build(b[..], 0) == net_put_build_at(b[..], 0, 0);
+}
+e2i_test_line :: (d: [] ContentDoc, quest: int, stage: int, b: [] u8) -> string { return cast(string) b[0..<e2i_quest_line(d, quest, stage, b, 0)]; }
+#test "bag: a quest's line is what it asks next, in the tables' words, with its count" #steps 400000000 {
+  d: [1] ContentDoc; #assert ct_read(d[..], EC_FIXTURE) && ec_ok(d[..]);
+  b: [96] u8;
+  #assert e2i_test_line(d[..], 1, 0, b[..]) == "Talk to Warden at Glade";            // not taken: who offers it
+  #assert e2i_test_line(d[..], 1, 1, b[..]) == "Slay Wolf  0 / 4" && e2i_test_line(d[..], 1, 3, b[..]) == "Slay Wolf  2 / 4";
+  #assert e2i_test_line(d[..], 1, 5, b[..]) == "Bring Wolf pelt  0 / 2" && e2i_test_line(d[..], 1, 6, b[..]) == "Bring Wolf pelt  1 / 2";
+  #assert e2i_test_line(d[..], 1, 7, b[..]) == "Talk to Warden at Glade" && e2i_test_line(d[..], 1, 8, b[..]) == "Your reward is on its way" && e2i_test_line(d[..], 1, 9, b[..]) == "Done";
+  #assert e2i_test_line(d[..], 2, 1, b[..]) == "Go to Goblin camp" && e2i_test_line(d[..], 2, 2, b[..]) == "Slay Goblin Warrior  0 / 2";
+  #assert e2i_test_line(d[..], 9, 1, b[..]) == "" && e2i_test_line(d[..], 1, 40, b[..]) == "";   // no such quest, no such stage
+  #assert e2i_step_of(d[..], 1, 4).done == 3 && e2i_step_of(d[..], 1, 4).count == 4 && e2i_step_of(d[..], 1, 9).count == 0 && e2i_step_of(d[..], 1, 0).count == 0;
+  #assert e2i_name(d[..], EC_ITEM, 3) == "Warden's cloak" && e2i_name(d[..], EC_ITEM, 99) == "";
+}
+// A seat in the room with the bar up, and the room's entries read through the codec (ss the seat).
+e2i_test_seat :: (s: [] E2) { e2_test_cast_state(s, FB_CL_DRUID); s[0].width = 1280; s[0].height = 720; s[0].k = 1; s[0].ml[0].able = true; e2p_step(s, 0.016); e2b_step(s); }
+e2i_test_say :: (s: [] E2, what: int, a: int, b: int, c: int) {
+  t: [48] u8; n := wire_put_own(t[..], 0, what, WireOwn.{ss = s[0].net[0].seat, a = a, b = b, c = c});
+  e2n_entry(s[0].net[..], cast(string) t[0..<n], WireD.{});
+}
+#test "bag: nothing shows until the room says your record; then coin, the quests under way and the bag are the room's" #steps 2000000000 {
+  s: [1] E2; e2i_test_seat(s[..]); e2i_step(s[..]);
+  out: [32768 * E2_VERTEX_FLOATS] f32;
+  #assert s[0].bag[0].loaded && !e2i_on(s[..]) && e2i_overlay(s[..], out[..], 0) == 0 && !e2i_key(s[..], 'b') && !s[0].bag[0].open;
+  // an entry aimed at another seat is not yours
+  t: [48] u8; n := wire_put_own(t[..], 0, WO_COIN, WireOwn.{ss = s[0].net[0].seat + 1, a = 99}); e2n_entry(s[0].net[..], cast(string) t[0..<n], WireD.{});
+  #assert !s[0].net[0].own[0].heard;
+  e2i_test_say(s[..], WO_COIN, 12, 0, 0); e2i_test_say(s[..], WO_QUEST, 1, 3, 0); e2i_test_say(s[..], WO_ITEM, 4101, 1, 0); e2i_test_say(s[..], WO_ITEM, 4102, 1, 0); e2i_test_say(s[..], WO_ITEM, 4107, 3, 0);
+  e2i_step(s[..]);
+  #assert e2i_on(s[..]) && s[0].net[0].own[0].coin == 12 && e2i_overlay(s[..], out[..], 0) > 0;
+  lines: [EG_BAG_LINES] EgBagLine; tb: [E2I_TEXT] u8;
+  #assert e2i_track(s[..], lines[..], tb[..]) == 1 && lines[0].a == "Thin the pack" && lines[0].b == "Slay Wolf  2 / 4";
+  c := e2i_lines(s[..], lines[..], tb[..]);
+  // WEARING (nothing), CARRYING (two pelts on one line, the cloak with WEAR), then QUESTS in the second column
+  #assert c[0] == 5 && c[1] == 7 && lines[0].a == "WEARING" && lines[1].kind == EG_BAG_NOTE && lines[2].a == "CARRYING";
+  #assert lines[3].a == "Wolf pelt" && lines[3].b == "x2" && lines[3].act == EG_BAG_NO_ACT && lines[4].a == "Warden's cloak" && lines[4].b == "" && lines[4].act == 4107;
+  #assert lines[5].a == "QUESTS" && lines[6].a == "Thin the pack" && lines[6].b == "Slay Wolf  2 / 4";
+  // B opens it; WEAR asks the room and changes nothing here; the room's word does
+  #assert e2i_key(s[..], 'b') && s[0].bag[0].open && !mlook.ml_wants(s[0].ml[0]);
+  g := eg_bag_layout(1280, 720, 1, lines[..], c[0], c[1]); w := g.btn[4];
+  sent := s[0].net[0].own[0].use_sent;
+  #assert e2i_pointer(s[..], (w.x0 + w.x1) * 0.5, (w.y0 + w.y1) * 0.5, 0) && s[0].net[0].own[0].use_sent == sent + 1 && e2o_worn(s[0].net[0].own[..], 2) == -1;
+  e2i_test_say(s[..], WO_ITEM, 4107, 3, 2); e2i_step(s[..]);
+  c = e2i_lines(s[..], lines[..], tb[..]);
+  #assert c[0] == 4 && lines[1].kind == EG_BAG_WORN && lines[1].a == "Warden's cloak" && lines[1].b == "Body" && lines[1].act == 1 && lines[3].a == "Wolf pelt";
+  #assert e2i_overlay(s[..], out[..], 0) > 0;
+  // TAKE OFF asks for the slot; a press in the window is its own, off it the world's; Esc shuts it
+  g = eg_bag_layout(1280, 720, 1, lines[..], c[0], c[1]); w = g.btn[1];
+  #assert e2i_pointer(s[..], (w.x0 + w.x1) * 0.5, (w.y0 + w.y1) * 0.5, 0) && s[0].net[0].own[0].use_sent == sent + 2;
+  #assert e2i_pointer(s[..], g.win.x0 + 6, g.win.y0 + 6, 0) && !e2i_pointer(s[..], 2, 2, 0);
+  #assert e2i_key(s[..], E2P_KEY_ESC) && !s[0].bag[0].open && mlook.ml_wants(s[0].ml[0]);
+  // the BAG button under the map opens it too (a tap)
+  col := e2i_column(s[..], 1);
+  #assert col.on && e2i_pointer(s[..], (col.bag.x0 + col.bag.x1) * 0.5, (col.bag.y0 + col.bag.y1) * 0.5, 0) && s[0].bag[0].open;
+  // the socket closes: the record is forgotten and nothing of it is drawn
+  e2n_down(s[0].net[..]); e2i_step(s[..]);
+  #assert !s[0].bag[0].open && !e2i_on(s[..]) && e2i_overlay(s[..], out[..], 0) == 0 && s[0].net[0].own[0].item_n == 0;
+}
+#test "bag: near the speaker a quest's talk is offered; E asks the room, and the line the room tells opens" #steps 2000000000 {
+  s: [1] E2; e2i_test_seat(s[..]);
+  e2i_test_say(s[..], WO_COIN, 0, 0, 0);
+  // far from the Glade's middle: no prompt; at it: the Warden's, who offers "Thin the pack"
+  s[0].you_x = 0; s[0].you_z = -40; e2p_step(s[..], 0.016); e2b_step(s[..]); e2i_step(s[..]); #assert s[0].bag[0].near == 0;
+  s[0].you_x = 6; s[0].you_z = 6; e2p_step(s[..], 0.016); e2b_step(s[..]); e2i_step(s[..]);
+  #assert !s[0].npc[0].near && !s[0].bench[0].near && s[0].bag[0].near == 1;
+  pb: [96] u8; #assert e2i_prompt_text(s[..], 1, pb[..]) == "E  Talk to Warden";
+  out: [32768 * E2_VERTEX_FLOATS] f32; #assert e2i_overlay(s[..], out[..], 0) > 0;
+  sent := s[0].net[0].own[0].use_sent;
+  #assert e2i_key(s[..], 'e') && s[0].net[0].own[0].use_sent == sent + 1 && s[0].bag[0].say == 0;   // asked; nothing opens until the room answers
+  // a tap on the prompt asks too
+  box := eg_prompt_box("E  Talk to Warden", 1280, 720, 1);
+  #assert e2i_pointer(s[..], (box.x0 + box.x1) * 0.5, (box.y0 + box.y1) * 0.5, 0) && s[0].net[0].own[0].use_sent == sent + 2;
+  // the room tells the line and takes the quest: the line opens, the quest is under the map
+  e2i_test_say(s[..], WO_SAY, 1, 0, 0); e2i_test_say(s[..], WO_QUEST, 1, 1, 0); e2i_step(s[..]);
+  sy := e2i_said(s[..]);
+  #assert s[0].bag[0].say == 1 && sy.name == "Warden" && sy.title == "Thin the pack" && sy.line.count > 20 && s[0].bag[0].near == 0 && !mlook.ml_wants(s[0].ml[0]);
+  #assert e2i_overlay(s[..], out[..], 0) > 0 && !e2i_key(s[..], 'b') && e2i_key(s[..], 'e') && s[0].bag[0].say == 0 && mlook.ml_wants(s[0].ml[0]);
+  // taken: the first quest's talk is no longer wanted, the second's is
+  e2i_step(s[..]); #assert s[0].bag[0].near == 2 && e2i_wants(s[..], 2) && !e2i_wants(s[..], 1);
+  // Pansopher's prompt, where he stands, comes before it
+  s[0].you_x = s[0].npc[0].x + 1; s[0].you_z = s[0].npc[0].z; e2p_step(s[..], 0.016); e2b_step(s[..]); e2i_step(s[..]);
+  #assert s[0].npc[0].near && s[0].bag[0].near == 0;
+  // a drop shows for a while
+  s[0].clock = 10; e2i_test_say(s[..], WO_LOOT, 1, 0, 0); e2i_step(s[..]); #assert s[0].bag[0].loot == 1 && s[0].bag[0].loot_at == 10;
+}
+#test "bag: a phone's page keeps the column, the window and its buttons inside the screen" #steps 2000000000 {
+  s: [1] E2; e2i_test_seat(s[..]); s[0].width = 1170; s[0].height = 2532; s[0].k = 3; s[0].ml[0].touch = true;
+  e2i_test_say(s[..], WO_COIN, 37, 0, 0); e2i_test_say(s[..], WO_QUEST, 1, 9, 0); e2i_test_say(s[..], WO_QUEST, 2, 2, 0);
+  e2i_test_say(s[..], WO_ITEM, 4107, 3, 2); e2i_test_say(s[..], WO_ITEM, 4110, 4, 0); e2i_test_say(s[..], WO_ITEM, 4101, 1, 0);
+  e2i_step(s[..]);
+  lines: [EG_BAG_LINES] EgBagLine; tb: [E2I_TEXT] u8;
+  #assert e2i_track(s[..], lines[..], tb[..]) == 1 && lines[0].a == "The goblin camp";   // the done quest is the bag's to list, not the map's
+  col := e2i_column(s[..], 1); #assert col.on && col.x0 >= 0 && col.x1 <= 1170;
+  #assert e2i_pointer(s[..], (col.bag.x0 + col.bag.x1) * 0.5, (col.bag.y0 + col.bag.y1) * 0.5, 0) && s[0].bag[0].open;
+  c := e2i_lines(s[..], lines[..], tb[..]); g := eg_bag_layout(1170, 2532, 3, lines[..], c[0], c[1]);
+  #assert !g.two && g.cut[0] == 0 && g.win.x0 >= 0 && g.win.x1 <= 1170 && g.win.y1 <= 2532;
+  for i: 0..<c[1] { #assert g.row[i].x1 > g.row[i].x0 && g.row[i].x1 <= g.win.x1; if g.btn[i].x1 > g.btn[i].x0 { #assert (g.btn[i].y1 - g.btn[i].y0) / 3 >= 44; } }
+  out: [32768 * E2_VERTEX_FLOATS] f32; v := e2i_overlay(s[..], out[..], 0); #assert v > 0 && v < 32768;
+}

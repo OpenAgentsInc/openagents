@@ -61,6 +61,15 @@ is not the registry's, so the registry can't change without the pin's owner
 seeing it. The hash is two modular sums over every row's `KIND ID KEY` line,
 in one number below 2^53.
 
+The pin a build says also carries its content tables' revision
+([content tables](aethyr-content-v1.md), #13381): `wire_content_pin` is the
+revision, under `WIRE_CONTENT`. A room reads the revision from the tables file
+it loads at start. A page reads it from the copy it is built with. So a page
+and a room with different tables never meet: the room refuses the page, and the
+page reloads into the build that has the room's tables. Revision 1 under
+`WIRE_CONTENT` 1 is pin 1, the value every earlier build says. A room started
+with no tables says `WIRE_CONTENT` alone.
+
 ## What still carries an unregistered number
 
 - `h2`'s `KIND` is Everglade II's monster kind (0 a wolf, 1 a goblin), an enum

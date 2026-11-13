@@ -1,0 +1,110 @@
+// Your character as the room holds it, on the page (#13381): its coin, its quests' stages and the items
+// in its bag with what is worn. The room is the authority (docs/protocol/everglade-item-op-v1.md "What
+// a page hears"): it tells your seat the record when you sit and when it changes, as e coin, e quest,
+// e item, e say and e loot entries, and this is the page's one copy of them, read through the shared
+// codec (everglade/shared/everglade-wire.coax wire_read_own). Nothing here is kept in the browser, and
+// nothing is added that the room did not say: a closed socket forgets it all (e2o_forget), and the
+// record comes again when you sit.
+// everglade/client/net.coax loads this and feeds it; everglade/client/bag.coax draws from it.
+//   coax/bin/coax test --library everglade/client/client.coax --only "own:"
+
+E2O_QUESTS :: 32;   // the record's quests (everglade/model/character.coax CHAR_QUESTS)
+E2O_ITEMS :: 32;    // and its bag (CHAR_BAG)
+E2O_SLOTS :: 10;    // equipment slots (CHAR_WORN): an item's slot is 0 not worn, else 1 to 10
+E2O_ID_MAX :: 2147483647;
+
+E2Own :: struct {
+  heard: bool;                                   // the room has said this seat's coin: the record is known
+  coin: int;
+  quest: [E2O_QUESTS] int; stage: [E2O_QUESTS] int; quest_n: int;
+  item: [E2O_ITEMS] int; kind: [E2O_ITEMS] int; slot: [E2O_ITEMS] int; item_n: int;
+  said: int; said_n: int;                        // the dialogue line you were last told, and how many you were told
+  loot: int; loot_n: int;                        // the kind that last dropped for you, and how many drops were said
+  heard_n: int; odd_n: int;                      // entries taken, and entries that named nothing the record could hold
+  use_sent: int;                                 // your asks sent (E SEQ 6, 7, 8), for their numbers
+}
+
+e2o_forget :: (o: [] E2Own) { sent := o[0].use_sent; o[0] = E2Own.{}; o[0].use_sent = sent; }
+
+// Quest `quest`'s stage as the room last said it (0: not taken, or not said).
+e2o_stage :: (o: [] E2Own, quest: int) -> int {
+  for i: 0..<o[0].quest_n { if o[0].quest[i] == quest { return o[0].stage[i]; } }
+  return 0;
+}
+// How many items of content kind `kind` the bag holds, worn or not.
+e2o_count :: (o: [] E2Own, kind: int) -> int {
+  c := 0; for i: 0..<o[0].item_n { if o[0].kind[i] == kind { c += 1; } }
+  return c;
+}
+// The item worn in slot `slot` (1 to 10): its place in the bag's rows, or -1.
+e2o_worn :: (o: [] E2Own, slot: int) -> int {
+  for i: 0..<o[0].item_n { if o[0].slot[i] == slot && slot > 0 { return i; } }
+  return -1;
+}
+
+// One entry aimed at your seat (what: WO_QUEST, WO_ITEM, WO_COIN, WO_SAY or WO_LOOT; w its numbers as
+// the codec read them). An entry the record could not hold changes nothing and is counted.
+e2o_entry :: (o: [] E2Own, what: int, w: WireOwn) {
+  if w.a < 0 || w.a > E2O_ID_MAX || w.b < 0 || w.b > E2O_ID_MAX || w.c < 0 || w.c > E2O_SLOTS { o[0].odd_n += 1; return; }
+  if what == WO_COIN { o[0].coin = w.a; o[0].heard = true; o[0].heard_n += 1; return; }
+  if what == WO_SAY { if w.a < 1 { o[0].odd_n += 1; return; } o[0].said = w.a; o[0].said_n += 1; o[0].heard_n += 1; return; }
+  if what == WO_LOOT { if w.a < 1 { o[0].odd_n += 1; return; } o[0].loot = w.a; o[0].loot_n += 1; o[0].heard_n += 1; return; }
+  if what == WO_QUEST {
+    if w.a < 1 { o[0].odd_n += 1; return; }
+    for i: 0..<o[0].quest_n { if o[0].quest[i] == w.a { o[0].stage[i] = w.b; o[0].heard_n += 1; return; } }
+    if o[0].quest_n >= E2O_QUESTS { o[0].odd_n += 1; return; }
+    o[0].quest[o[0].quest_n] = w.a; o[0].stage[o[0].quest_n] = w.b; o[0].quest_n += 1; o[0].heard_n += 1;
+    return;
+  }
+  if what != WO_ITEM || w.a < 1 { o[0].odd_n += 1; return; }
+  at := -1;
+  for i: 0..<o[0].item_n { if o[0].item[i] == w.a { at = i; } }
+  if w.b == 0 {   // gone: the rows after it move up, so the bag keeps the order it was told in
+    if at < 0 { return; }
+    for i: at..<o[0].item_n - 1 { o[0].item[i] = o[0].item[i + 1]; o[0].kind[i] = o[0].kind[i + 1]; o[0].slot[i] = o[0].slot[i + 1]; }
+    o[0].item_n -= 1; o[0].heard_n += 1;
+    return;
+  }
+  if at < 0 {
+    if o[0].item_n >= E2O_ITEMS { o[0].odd_n += 1; return; }
+    at = o[0].item_n; o[0].item_n += 1;
+  }
+  // a slot holds one item: what was worn there is not worn any more (its own entry says so too)
+  if w.c > 0 { for i: 0..<o[0].item_n { if i != at && o[0].slot[i] == w.c { o[0].slot[i] = 0; } } }
+  o[0].item[at] = w.a; o[0].kind[at] = w.b; o[0].slot[at] = w.c; o[0].heard_n += 1;
+}
+
+#test "own: the record is what the room's entries say, through the codec, and nothing else" {
+  o: [1] E2Own; b: [48] u8; r: [1] WireRd;
+  #assert !o[0].heard && o[0].quest_n == 0 && o[0].item_n == 0 && e2o_stage(o[..], 1) == 0;
+  // as the room tells a seat (coax/web/room/room-items.coax ri_tell): its coin, each quest, each item
+  t := cast(string) b[0..<wire_put_own(b[..], 0, WO_COIN, WireOwn.{ss = 3, a = 25})];
+  r[0] = wire_rd(t, 6); e2o_entry(o[..], wire_own(t), wire_read_own(t, r[..], WO_COIN)); #assert r[0].ok && o[0].heard && o[0].coin == 25;
+  t = cast(string) b[0..<wire_put_own(b[..], 0, WO_QUEST, WireOwn.{ss = 3, a = 1, b = 4})];
+  r[0] = wire_rd(t, 7); e2o_entry(o[..], wire_own(t), wire_read_own(t, r[..], WO_QUEST)); #assert r[0].ok && e2o_stage(o[..], 1) == 4 && o[0].quest_n == 1;
+  e2o_entry(o[..], WO_QUEST, WireOwn.{ss = 3, a = 1, b = 5}); #assert e2o_stage(o[..], 1) == 5 && o[0].quest_n == 1;   // a stage said again is the same quest
+  t = cast(string) b[0..<wire_put_own(b[..], 0, WO_ITEM, WireOwn.{ss = 3, a = 4107, b = 3, c = 0})];
+  r[0] = wire_rd(t, 6); e2o_entry(o[..], wire_own(t), wire_read_own(t, r[..], WO_ITEM)); #assert r[0].ok && o[0].item_n == 1 && o[0].kind[0] == 3 && o[0].slot[0] == 0;
+  e2o_entry(o[..], WO_ITEM, WireOwn.{ss = 3, a = 4108, b = 1, c = 0}); e2o_entry(o[..], WO_ITEM, WireOwn.{ss = 3, a = 4109, b = 1, c = 0});
+  #assert o[0].item_n == 3 && e2o_count(o[..], 1) == 2 && e2o_count(o[..], 3) == 1 && e2o_worn(o[..], 2) == -1;
+  // worn, then another item into the same slot, then gone
+  e2o_entry(o[..], WO_ITEM, WireOwn.{ss = 3, a = 4107, b = 3, c = 2}); #assert e2o_worn(o[..], 2) == 0 && o[0].item_n == 3;
+  e2o_entry(o[..], WO_ITEM, WireOwn.{ss = 3, a = 4110, b = 3, c = 2}); #assert e2o_worn(o[..], 2) == 3 && o[0].slot[0] == 0;
+  e2o_entry(o[..], WO_ITEM, WireOwn.{ss = 3, a = 4108, b = 0, c = 0}); #assert o[0].item_n == 3 && o[0].item[1] == 4109 && e2o_count(o[..], 1) == 1 && e2o_worn(o[..], 2) == 2;
+  e2o_entry(o[..], WO_ITEM, WireOwn.{ss = 3, a = 9999, b = 0, c = 0}); #assert o[0].item_n == 3;   // one it never had
+  e2o_entry(o[..], WO_SAY, WireOwn.{ss = 3, a = 1}); e2o_entry(o[..], WO_LOOT, WireOwn.{ss = 3, a = 1});
+  #assert o[0].said == 1 && o[0].said_n == 1 && o[0].loot == 1 && o[0].loot_n == 1;
+  // what the record can't hold changes nothing
+  was := o[0].heard_n;
+  e2o_entry(o[..], WO_ITEM, WireOwn.{ss = 3, a = 5, b = 3, c = 11}); e2o_entry(o[..], WO_QUEST, WireOwn.{ss = 3, a = 0, b = 1}); e2o_entry(o[..], WO_COIN, WireOwn.{ss = 3, a = -1});
+  e2o_entry(o[..], WO_SAY, WireOwn.{ss = 3, a = 0}); e2o_entry(o[..], 9, WireOwn.{ss = 3, a = 1});
+  #assert o[0].heard_n == was && o[0].odd_n == 5 && o[0].coin == 25 && o[0].item_n == 3;
+  // a closed socket forgets the record; the asks' count goes on, so their numbers never repeat
+  o[0].use_sent = 4; e2o_forget(o[..]); #assert !o[0].heard && o[0].coin == 0 && o[0].quest_n == 0 && o[0].item_n == 0 && o[0].use_sent == 4;
+}
+#test "own: a bag past the record's size keeps what it holds" {
+  o: [1] E2Own;
+  for i: 0..<E2O_ITEMS + 3 { e2o_entry(o[..], WO_ITEM, WireOwn.{a = 100 + i, b = 1, c = 0}); }
+  for i: 0..<E2O_QUESTS + 3 { e2o_entry(o[..], WO_QUEST, WireOwn.{a = 1 + i, b = 1}); }
+  #assert o[0].item_n == E2O_ITEMS && o[0].quest_n == E2O_QUESTS && o[0].odd_n == 6;
+}

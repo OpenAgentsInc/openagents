@@ -292,8 +292,8 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
     coax_string name = rm_st_reason(r);
     st_line(o, "refused %.*s=%lld", (int)name.count, name.data, (long long)(rm_st_refused(v, r) - st_refused_was[r]));
   }
-  st_line(o, "build engine=%lld rules=%lld content=%lld wire=%lld-%lld schema=%lld", (long long)rm_st_pin(0), (long long)rm_st_pin(1),
-          (long long)rm_st_pin(2), (long long)rm_st_pin(3), (long long)rm_st_pin(4), (long long)rm_st_pin(5));
+  st_line(o, "build engine=%lld rules=%lld content=%lld wire=%lld-%lld schema=%lld", (long long)rm_st_pin(v, 0), (long long)rm_st_pin(v, 1),
+          (long long)rm_st_pin(v, 2), (long long)rm_st_pin(v, 3), (long long)rm_st_pin(v, 4), (long long)rm_st_pin(v, 5));
   st_line(o, "out bytes a second=%.0f", st_out_bytes / secs);
   st_line(o, "out messages a second=%.0f", st_out_frames / secs);
   st_line(o, "in bytes a second=%.0f", st_in_bytes / secs);

@@ -119,6 +119,26 @@ A page asks with `E SEQ KIND ID`: kind 6 talks to dialogue `ID`, kind 7 wears
 item `ID`, kind 8 empties equipment slot `ID`. The room answers `r SEQ no` when
 it doesn't take the ask.
 
+## What a page shows
+
+Everglade's page keeps one copy of these entries
+(`everglade/client/own.coax`) and draws from it (`everglade/client/bag.coax`,
+`everglade/hud/bag.coax`, #13381):
+
+- Under the map: your coin, the BAG button, each quest you are on with what it
+  asks next, and what just dropped.
+- The bag (B, or the button): what you wear, what you carry and every quest.
+  WEAR sends `E SEQ 7 ITEM`. TAKE OFF sends `E SEQ 8 SLOT`.
+- A talk prompt where a line's speaker stands, when a quest of yours is offered
+  or asked there. E or a tap sends `E SEQ 6 DIALOGUE`. The line opens when the
+  room answers with `e say`.
+
+The page changes nothing itself. What you see changes only when the room says
+so. Nothing is drawn before the room has told the seat its record, a closed
+socket forgets the record, and nothing is kept in the browser. Names and quest
+steps come from the [content tables](aethyr-content-v1.md) the page is built
+with.
+
 ## Versions and migration
 
 A change to the fields is a new id (`everglade.item-op.v2`), never an edit in

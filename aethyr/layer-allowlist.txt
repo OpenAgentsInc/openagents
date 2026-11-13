@@ -207,4 +207,5 @@ context coax/web/unlock/unlock-nostr.coax -> coax/lib/nostr/event_sign.coax  # s
 context coax/web/unlock/unlock-nostr.coax -> coax/lib/nostr/nip44-key.coax  # seeded (#13317)
 context everglade/client/class-feel.coax -> rules/srd/condition-bearing.coax  # Everglade's client moved into everglade/client/ (world): it shows the SRD's conditions (#13268)
 context everglade/client/client.coax -> rules/srd/condition-display.coax  # Everglade's client moved into everglade/client/ (world): it shows the SRD's conditions (#13268)
+context everglade/client/bag.coax -> everglade/model/content.coax  # Everglade's page words your quests and items from the content tables, which Everglade's rules for them read (EC_*, eq_next, ec_slot): the page shows the record, the room and the ledger decide it (#13381)
 context coax/lib/media/media.coax -> aethyr/ui/font.coax  # the stroke font moved from apps/openagents-web/ to the engine's UI, beside draw.coax; the load is as old (#13268)

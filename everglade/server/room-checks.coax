@@ -170,7 +170,20 @@ dr_mac :: (key: string, text: string, out: [] u8) {
   #assert eg_admit(v[..], k, SeatId.{value = 0}, WIRE_MIN - 1) == CP_WIRE_OLD && eg_admit(v[..], k, SeatId.{value = 0}, WIRE_VERSION + 1) == CP_WIRE_NEW && eg_admit(v[..], k, SeatId.{value = 0}, WIRE_VERSION) == CP_OK;
   #assert st_compat(CP_WIRE_OLD) == ST_VERSION && st_compat(CP_WIRE_NEW) == ST_VERSION;
   // the build the room view shows
-  #assert rm_st_pin(0) == WIRE_ENGINE && rm_st_pin(1) == WIRE_RULES && rm_st_pin(2) == WIRE_CONTENT && rm_st_pin(3) == WIRE_MIN && rm_st_pin(4) == WIRE_VERSION && rm_st_pin(5) == RV_SCHEMA;
+  #assert rm_st_pin(v[..], 0) == WIRE_ENGINE && rm_st_pin(v[..], 1) == WIRE_RULES && rm_st_pin(v[..], 2) == WIRE_CONTENT && rm_st_pin(v[..], 3) == WIRE_MIN && rm_st_pin(v[..], 4) == WIRE_VERSION && rm_st_pin(v[..], 5) == RV_SCHEMA;
+}
+#test "everglade room (#13381): the content pin is the content tables' revision, and a page with other tables is refused" #steps 4000000000 {
+  v: [1] RmServer; ck_test_init(v[..]);
+  #assert eg_server(v[..]).pins.content == WIRE_CONTENT;   // no tables: the build's constant, as before
+  #assert rm_content_load(v[..], EC_FIXTURE) && eg_server(v[..]).pins.content == wire_content_pin(1) && rm_st_pin(v[..], 2) == wire_content_pin(1);
+  mine := eg_server(v[..]); page := mine.pins;
+  #assert compat_admit(mine, page) == CP_OK;
+  page.content = wire_content_pin(2); #assert compat_admit(mine, page) == CP_CONTENT;
+  // the tables at their next revision: the room's pin moves with them, and the page at the old one is refused
+  o: [CT_BODY] u8; next := ec_swap("aethyr.content.v1 everglade 1\n", "aethyr.content.v1 everglade 2\n", o[..]);
+  w: [1] RmServer; ck_test_init(w[..]);
+  #assert rm_content_load(w[..], next) && rm_content_rev(w[..]) == 2 && eg_server(w[..]).pins.content == wire_content_pin(2);
+  #assert compat_admit(eg_server(w[..]), mine.pins) == CP_CONTENT;
 }
 #test "everglade room (#12845): live storage cannot step before world initialization completes" {
   v:[1]RmServer;rm_init(v[..]);rm_clock(v[..],0,1762190000000);

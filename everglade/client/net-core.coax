@@ -147,8 +147,10 @@ net_json_field :: (t: string, name: string) -> string {
   return "";
 }
 // This page's build, "ENGINE.RULES.CONTENT" (WirePins), at `at` in out: the end.
-net_put_build :: (out: [] u8, at: int) -> int {
-  p := WirePins.{};
+net_put_build :: (out: [] u8, at: int) -> int { return net_put_build_at(out, at, 0); }
+// ... with its content tables at revision `rev` (wire_pins_at; 0: a page that carries none).
+net_put_build_at :: (out: [] u8, at: int, rev: int) -> int {
+  p := wire_pins_at(rev);
   pins := [3] int.[p.engine, p.rules, p.content];
   k := at;
   for i: 0..<3 {

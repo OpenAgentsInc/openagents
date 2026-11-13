@@ -16,6 +16,7 @@
 #load "../sound.coax" as exsound;
 #load "../hud/class-bar.coax";   // Everglade's class menus under your portrait: class features and rest, every zone's (the game)
 #load "../hud/windows.coax";   // Everglade's HUD windows and marks: talk, the workbench, the bar's marks, the wedge (#13083)
+#load "../hud/bag.coax";       // Everglade's bag, quest log and coin: the column under the map and the bag's window (#13381)
 #load "../hud/class-resource.coax";   // Everglade's class resource bar: Rages, Focus (#13084)
 #load "../hud/create.coax";    // Everglade's Character Create panel and the world's menu (#13083)
 #load "sight.coax";   // ... from this zone's land, trunks, rocks and camp
@@ -26,6 +27,7 @@
 #load "wild.coax";   // the glade's cat (everglade/creatures/cat.coax), and ?stage=cat
 #load "npc.coax";    // Pansopher, the Golemancy trainer, and his talk (everglade/world/pansopher.coax)
 #load "bench.coax";  // the Golemancer's Workbench beside him and its window (everglade/world/golem-bench.coax)
+#load "bag.coax";    // your coin, quests and bag as the room holds them, worded from the content tables (#13381)
 #load "../../verse/everglade2/plant.coax";
 #load "../../verse/everglade2/field.coax";
 #load "../../verse/everglade2/ground.coax";   // the ground's admitted tiles, from the pack's record, and the canopy bake (#12995, #13059)
@@ -149,6 +151,8 @@ E2 :: struct {
   wild: [1] E2Wild;                              // the glade's cat (everglade/client/wild.coax)
   npc: [1] E2Npc;                                // Pansopher and his talk (everglade/client/npc.coax)
   bench: [1] E2Bench;                            // the Golemancer's Workbench (everglade/client/bench.coax)
+  bag: [1] E2Bag;                                // your coin, quests and bag, and the content tables that word them (everglade/client/bag.coax)
+  own_dev: int;                                  // ?own=N in a dev build: a stand-in for the room's word on your record (e2i_dev)
   hud_day: f32 = 0.5;                            // the time of day the light is at (e2_light), for the map's clock
   zone: int = -1; zone_at: f32 = -100;           // the place you are in (e2_zone) and when you came to it, for its banner
   drive: [1] Drive;                              // the agent driver (aethyr/agent/drive.coax): off until a driver speaks
@@ -251,6 +255,7 @@ e2_material_facts :: (s: [] E2, t: string) { s[0].film = e2c_fact_has(t, "film")
 e2_material_uniforms :: (s: [] E2, u: [] f32) { u[60] = ifx s[0].film then 1.0f32 else 0.0f32; u[61] = ifx s[0].maps_off then 1.0f32 else 0.0f32; u[62] = e2g_ao(s[0].eg[..], s[0].you_x, s[0].you_z, 1.0); }
 E2_HOST_DRIVE :: 700;   // a driver's command (coax/web/host.js coaxial.drive)
 e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
+  e2i_load(s);   // the content tables, before the page asks for a seat: their revision is its content pin
   if kind == E2_HOST_DRIVE { e2d_message(s, t); return; }
   if kind == 1 { e2c_name_type(s, t); return; }   // typed or pasted text: Character Create's NAME
   if kind == 16 { cc.load_player(s[0].creator[..], t); e2_net_look(s); return; }
@@ -261,6 +266,7 @@ e2_message :: (s: [] E2, kind: int, t: string) #export_c #effects(all) {
   if kind == E2_HOST_GPU { e2_quality_gpu(s, t); return; }
   if kind == E2_HOST_PAGE {
     s[0].play = e2c_play_page(t);
+    #if BUILD_DEBUG { od := net_query(fact_of(t, "url"), "own"); s[0].own_dev = ifx od.count == 1 && od[0] >= '1' && od[0] <= '4' then cast(int) (od[0] - '0') else 0; }
     e2_material_facts(s, t); e2c_facts(s, t); s[0].light_view = envd.env_view_query(t); s[0].net_view = e2_net_query(t); e2_quality_facts(s, t);
     if !s[0].cz[0].on { at := e2_query_at(t); if at > 0 { s[0].start_z = -f32(at); } s[0].autowalk = e2_query_walk(t); e2st_facts(s, t); }
     // a staged shot (?at=, ?walk) and a film stand where they are put: no room; but ?at= with a local
@@ -564,6 +570,7 @@ e2_start :: (s: [] E2) -> bool #export_c #effects(all) {
 e2_key :: (s: [] E2, key: int, mods: int) -> bool #export_c #effects(all) {
   #if BUILD_DEBUG { if e2a_key(s, key) { return true; } }
   if key == -1 && e2k_area_cancel(s) { return true; }   // Esc lets an armed area go before it opens the menu
+  if e2i_key(s, key) { return true; }   // the bag: B opens and shuts it; E asks for a quest's talk; Esc, E or 1 ends a line read
   if e2b_key(s, key) { return true; }   // the workbench's window: E opens it near the bench; 1 to 4 pick a kind, Esc shuts it
   if e2p_key(s, key) { return true; }   // Pansopher's talk: E opens it near him; 1 to 9 answer, Esc ends it
   if e2c_key(s, key) { return true; }
@@ -585,6 +592,7 @@ e2_blur :: (s: [] E2) #export_c #effects(all) { s[0].held = 0; s[0].shift = fals
 e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].ml[0].touch = kind != 0; }
   if e2_quality_pointer(s, x, y, phase, id) { return true; }   // the GFX control
+  if !s[0].cz[0].menu && e2i_pointer(s, x, y, phase) { return true; }   // the bag's button, window and the talk's prompt
   if !s[0].cz[0].menu && e2b_pointer(s, x, y, phase) { return true; }   // the workbench's prompt and window
   if !s[0].cz[0].menu && e2p_pointer(s, x, y, phase) { return true; }   // Pansopher's prompt and answers
   #if BUILD_DEBUG { if e2a_pointer(s, x, y, phase) { return true; } }
@@ -604,6 +612,7 @@ e2_pointer :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int) -> bool
 // (everglade/client/mouse.coax), then the rest as e2_pointer.
 e2_pointer_buttons :: (s: [] E2, x: f32, y: f32, phase: int, kind: int, id: int, button: int) -> bool #export_c #effects(all) {
   if phase == 0 { s[0].ml[0].touch = kind != 0; }
+  if !s[0].cz[0].menu && e2i_pointer(s, x, y, phase) { return true; }   // the bag's window before a click casts
   if !s[0].cz[0].menu && e2b_pointer(s, x, y, phase) { return true; }   // the workbench's window before a click casts
   if !s[0].cz[0].menu && e2p_pointer(s, x, y, phase) { return true; }   // his answers before a click casts
   // an armed area: a left click casts it where it shows, a right click lets it go
@@ -1149,6 +1158,8 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   e2c_arrive_step(s, step);
   e2w_step(s, step);
   e2p_step(s, step); e2b_step(s);
+  #if BUILD_DEBUG { e2i_dev(s, s[0].own_dev); }
+  e2i_step(s);
   chase := figs.cam_shoulder_shot(figs.cam_shot(s[0].view, s[0].orbit, s[0].eye_pitch, s[0].press), s[0].ml[0].shown);
   shot := e2st_shot(s, e2w_shot(s, e2_familiar_shot(s,e2c_view(s, figs.v3(s[0].you_x, s[0].you_y, s[0].you_z), chase, step))));
   f := [3]f32.[shot.at.x - shot.eye.x, shot.at.y - shot.eye.y, shot.at.z - shot.eye.z];
@@ -1191,7 +1202,7 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
 }
 // The HUD's strokes, in the order they are drawn over the world (the overlap check, apps/openagents-web/hud-overlap-everglade2.coax, draws the same).
 e2_overlay :: (s: [] E2, out: [] f32, dt: f32) -> int {
-  return e2b_overlay(s, out, e2p_overlay(s, out, e2_net_readout(s, out, e2_light_readout(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_wedge(s, out, e2_floats_draw(s, out, e2k_area_marks(s, out, e2k_down_line(s, out, e2k_bar_draw(s, out, e2_vignette(s, out, e2c_draw(s, out)))))))))), dt)))));
+  return e2i_overlay(s, out, e2b_overlay(s, out, e2p_overlay(s, out, e2_net_readout(s, out, e2_light_readout(s, out, e2_fps(s, out, e2_world_view(s, out, e2_reticle(s, out, e2_heads(s, out, e2mn_wedge(s, out, e2_floats_draw(s, out, e2k_area_marks(s, out, e2k_down_line(s, out, e2k_bar_draw(s, out, e2_vignette(s, out, e2c_draw(s, out)))))))))), dt))))));
 }
 
 // ---- the light (lighting plan Phase 1, #13066): every lit input the passes read is the camera's

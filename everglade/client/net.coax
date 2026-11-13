@@ -13,6 +13,7 @@
 // comes back on a doubling, jittered wait, each open with a fresh ticket.
 #load "../../coax/web/socket.coax";
 #load "net-core.coax";
+#load "own.coax";   // your character as the room holds it: coin, quests, the bag (#13381)
 #load "../shared/player-name.coax";
 #load "../shared/class-kit.coax";   // the class kits: the hello's class (srd-*), a cast's slot (#13058)
 #load "../../coax/web/analytics.coax";   // fact_of; and the page's Track (everglade/client/track.coax)
@@ -141,6 +142,9 @@ E2Net :: struct {
   // level the room last raised you to (e xp, e level); your last cast's slot; who last hurt you.
   hit_n: [3] int; hurt_n: [3] int; fell_n: [3] int; xp_n: int; level_got: int; cast_slot: int = -1; hurt_by: int = -1;
   mine: [E2N_MONS + 1] bool;   // a monster (or, last, the guard) you hurt and that hasn't fallen yet
+  // your character as the room holds it (everglade/client/own.coax, #13381): its coin, quests and bag
+  own: [1] E2Own;
+  content_rev: int;            // this page's content tables' revision (everglade/client/bag.coax e2i_load): the P frame's content pin
 }
 E2N_FOE_WOLF :: 0; E2N_FOE_GOBLIN :: 1; E2N_FOE_GUARD :: 2;
 E2N_FOE_NAMES :: [3] string.["wolf", "goblin", "guard"];
@@ -250,7 +254,7 @@ e2n_ask_ticket :: (n: [] E2Net) {
   k := wire_put(t[..], 0, "/api/playtest/room-ticket/");
   listed := n[0].code_n == 0;
   k = wire_put(t[..], k, ifx listed then E2N_REALM else cast(string) n[0].code[0..<n[0].code_n]);
-  if listed { k = wire_put(t[..], k, "?realm="); k = wire_put(t[..], k, E2N_REALM); k = net_put_build(t[..], wire_put(t[..], k, "&build=")); k = wire_put(t[..], k, "&checkpoint=2&rest=1"); }
+  if listed { k = wire_put(t[..], k, "?realm="); k = wire_put(t[..], k, E2N_REALM); k = net_put_build_at(t[..], wire_put(t[..], k, "&build="), n[0].content_rev); k = wire_put(t[..], k, "&checkpoint=2&rest=1"); }
   else if e2n_realm_instance(cast(string) n[0].code[0..<n[0].code_n]) {
     // the realm's own instance, asked again (a reconnect): naming the realm, the directory answers
     // its shard and endpoint, or places you on a live shard when that one is down (#13179)
@@ -509,6 +513,7 @@ e2n_opened :: (n: [] E2Net, id: int) { if id < 0 { e2n_down(n); return; } n[0].s
 e2n_down :: (n: [] E2Net) {
   if n[0].seat >= 0 && n[0].lost_at == 0 { n[0].lost_at = ifx n[0].mono > 0 then n[0].mono else 1; }
   _ := net_action_rejoin(n[0].acts[..], n[0].mono);   // what waited on this socket's room will never be answered
+  e2o_forget(n[0].own[..]);   // your record is the room's to say: none while it isn't saying it
   n[0].state = E2N_DOWN; n[0].sock = -1; n[0].seat = -1; n[0].rest_known = false; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000;
   n[0].tries += 1;
   wait := 1000;
@@ -736,6 +741,14 @@ e2n_entry :: (n: [] E2Net, t: string, d: WireD) {
     en[0].name_n = nm;
     return;
   }
+  if c == 'e' && wire_own(t) >= 0 {   // your character's record, aimed at your seat (everglade/client/own.coax)
+    what := wire_own(t);
+    r[0] = wire_rd(t, WIRE_OWN[what].count);
+    w := wire_read_own(t, r[..], what);
+    if !r[0].ok || wire_more(t, r[..]) || w.ss != n[0].seat { return; }
+    e2o_entry(n[0].own[..], what, w);
+    return;
+  }
   if c == 'e' && (wire_is(t, "e xp") || wire_is(t, "e level")) {   // aimed at your seat: counted (everglade/client/track.coax)
     xp := wire_is(t, "e xp");
     r[0] = wire_rd(t, ifx xp then 4 else 7);
@@ -925,7 +938,7 @@ e2n_step :: (n: [] E2Net, mono: int) {
 e2n_hello :: (n: [] E2Net) {
   n[0].hello_due = false;
   look := ifx n[0].look_n > 0 then cast(string) n[0].look[0..<n[0].look_n] else "ranger.0.0.0";
-  e2n_send(n, wire_put_pins(n[0].out[..], 0, WirePins.{}));
+  e2n_send(n, wire_put_pins(n[0].out[..], 0, wire_pins_at(n[0].content_rev)));
   if n[0].again && n[0].at_known { e2n_send(n, wire_put_at(n[0].out[..], 0, WireAt.{x = n[0].at_x, z = n[0].at_z, yaw = n[0].at_yaw})); n[0].agains += 1; }
   n[0].again = false;
   kind: [24] u8; kn := fb_cl_kind_at(e2n_class(n), n[0].level, kind[..]);
@@ -1236,6 +1249,16 @@ e2n_familiar_message :: (n:[]E2Net)->string {
   return ifx n[0].familiar_ok then "COMPANION SUMMONED" else "CAN'T SUMMON COMPANION";
 }
 
+// An ask about your own record (E SEQ KIND ID, #13381): WE_SAY talks to dialogue ID, WE_WEAR wears
+// item ID, WE_BARE empties equipment slot ID (0 to 9). The room decides it and tells your seat what
+// changed (e say, e item); the page changes nothing itself. False with no seat.
+e2n_use :: (n: [] E2Net, kind: int, id: int) -> bool {
+  if !e2n_open(n) || kind < WE_SAY || kind > WE_BARE || id < 0 { return false; }
+  seq := n[0].pred[0].seq + 5000000 + n[0].own[0].use_sent;   // apart from the inputs', the casts', the rests' and the aids' numbers
+  n[0].own[0].use_sent += 1;
+  e2n_send(n, wire_put_use(n[0].out[..], 0, WireUse.{seq = seq, kind = kind, id = id}));
+  return true;
+}
 // A rest request (Z SEQ REQ: RS_REST_*): the room decides it from the body it steps.
 e2n_rest :: (n: [] E2Net, req: int) -> bool {
   if !e2n_open(n) || req < 1 || req > 5 { return false; }

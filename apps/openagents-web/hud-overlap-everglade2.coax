@@ -2,7 +2,8 @@
 // studio's wardrobe and class pane, the bar, its card and the room's rest and aid controls, the GFX
 // control and the frame rate) and, in a dev build, admin mode's CLASSES column, drawn on the four
 // screens of hud-overlap.coax: the studio for every class, the world for every class, in the room
-// with its rest controls, a slot's card shown, and admin mode. It prints each finding once; see
+// with its rest controls, with your coin, the BAG button and your quests under the map (#13381), a
+// slot's card shown, and admin mode. It prints each finding once; see
 // hud-overlap.coax.
 //   coax/web/tool.sh apps/openagents-web/hud-overlap-everglade2.coax
 #load "../../everglade/client/client.coax";
@@ -47,6 +48,15 @@ h2_room :: (s: [] E2) {
   e2n_record(n, cast(string) frame[0..<count]);
   e2n_record(n, "z 0 0 1");
 }
+// The room says your record (#13381): your coin, the BAG button and three quests under way stand under
+// the map (everglade/client/bag.coax), as many as the page ever shows there.
+h2_record :: (s: [] E2) {
+  n := s[0].net[..]; b: [48] u8;
+  told := [5] WireOwn.[WireOwn.{a = 1250}, WireOwn.{a = 1, b = 3}, WireOwn.{a = 2, b = 2}, WireOwn.{a = 4101, b = 1}, WireOwn.{a = 4107, b = 3, c = 2}];
+  what := [5] int.[WO_COIN, WO_QUEST, WO_QUEST, WO_ITEM, WO_ITEM];
+  for i: 0..<5 { w := told[i]; w.ss = n[0].seat; e2n_entry(n, cast(string) b[0..<wire_put_own(b[..], 0, what[i], w)], WireD.{}); }
+  e2i_step(s);
+}
 tool_main :: () -> int #export_c #effects(all) {
   r: [1] HudRun; t: [1] cc.UitTrace; out: [H2_OUT] f32;
   for v: 0..<HUD_VIEWS {
@@ -63,6 +73,8 @@ tool_main :: () -> int #export_c #effects(all) {
       h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world", false);
       h2_room(s[..]);
       h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, rest controls", false);
+      h2_record(s[..]);
+      h2_draw(s[..], t[..], out[..], v); hud_screen(r[..], t[..], v, "world, your record", false);
       // the class menus under your portrait: its tip, its own menu where it has one, then each item's
       // menu open with a row's tip
       ids: [3] int; sn := e2k_side(s[..], ids[..]);

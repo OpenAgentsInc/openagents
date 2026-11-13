@@ -360,6 +360,10 @@ Supported pairs and rollback limits:
 - When you change what a page predicts, raise `WIRE_ENGINE`; what a cast or
   hit does, `WIRE_RULES`; the world the page draws, `WIRE_CONTENT`. Pages of
   the old build then reload once the new rooms are out.
+- The content pin also carries the content tables' revision
+  (`everglade/content/everglade.content`, #13381). After you edit the tables,
+  release the room and the page from the same commit: a page with the old
+  tables is refused by a room with the new ones and reloads.
 - To let pages cached from the last release keep playing over a wire change,
   keep `WIRE_MIN` at the old version, and only while the room still writes
   what that page reads.

@@ -175,7 +175,10 @@ nostr-lab-walk 3630000
 # Main at 97b7c6236a already measured 1,017,486 bytes, over 1,000,000. The HUD parts on Everglade's shared
 # modules (everglade/hud/windows.coax and create.coax, #13083) take it to 1,018,400; about 2.6% headroom.
 # Everglade II online: packed rows and their reader, trunk and rock arrows, the next step drawn (#13165, #13166, #13167): 1,064,446 measured; about 3% room
-everglade2 1100000
+# Your record on the page (#13381): the content tables' reader and Everglade's rules for them
+# (aethyr/content/tables.coax, everglade/model/content.coax), the bag's window, the column under the
+# map and a quest's talk: 1,108,025 bytes measured on a build host (1,071,777 on main before it); about 2.8% headroom.
+everglade2 1140000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 # 1,757,350 bytes measured 2026-11-09 at 1f648c6a67 after the day's shared rules, visibility, sprint and HUD work; about 4% headroom.

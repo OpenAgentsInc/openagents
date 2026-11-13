@@ -105,8 +105,18 @@ coax/web/tool.sh aethyr/tools/content-edit.coax everglade/content/everglade.cont
   row creature '3|Bear|0|450' \
   row loot '5|3|0|100' \
   row spawn '3|3|2|2'
-coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content
+coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content --carry
 ```
+
+`--carry` also writes `everglade/content/shipped.coax`, the copy of the tables
+that Everglade's page is built with (#13381). Commit it with the tables.
+`coax/web/tool.sh everglade-parity` fails when the copy isn't the file's bytes.
+
+A room reads the file at start. A page reads its built-in copy. Each says the
+tables' revision in its content pin
+([the content pin](everglade-content-ids-v1.md#the-content-pin)), so a page and
+a room with different tables never meet. Release the room and the page from the
+same commit after an edit.
 
 | Edit | Meaning |
 | --- | --- |

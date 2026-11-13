@@ -8,6 +8,8 @@
 //     one of its file marks, outside the feature's owners;
 //   a zone declares a feature and its entry units do not #load any of the feature's owners;
 //   a zone lacks a feature the game marks required.
+//   the page's copy of the content tables (everglade/content/shipped.coax) is not the bytes of
+//     everglade/content/everglade.content (#13381).
 // The duplicates and gaps that were there when the check landed are the burn-down (EF_KNOWN,
 // EF_GAPS): each is reported as a warning with its issue, and the check passes. A new one fails.
 // A burn-down entry that no longer matches is reported so the entry can go.
@@ -20,6 +22,7 @@
 #load "../lib/sys/fs.coax";
 #load "../lib/sys/proc.coax";
 #load "../../everglade/features.coax";
+#load "../../everglade/content/shipped.coax";   // the page's copy of the content tables (rule 4, #13381)
 
 EP_TEXT :: 4194304;     // the largest source file read
 EP_PATHS :: 4096;       // files in a load closure
@@ -367,6 +370,13 @@ tool_main :: () -> int #export_c #effects(all) {
         else { fails += 1; print("FAIL %: lacks %, which every zone wires: %\n", z.name, f.title, f.owners); }
       }
     }
+  }
+  // 4. the page's copy of the content tables is the tables (#13381): a page built with other bytes
+  // than the room reads would word your quests and items from rows the room doesn't have
+  cn := fs_read("everglade/content/everglade.content", text[..]);
+  if cn <= 0 || cast(string) text[0..<cn] != EC_SHIPPED {
+    fails += 1;
+    print("FAIL content: everglade/content/shipped.coax is not everglade/content/everglade.content's bytes; write it again: coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content --carry\n");
   }
   for d, k: EF_KNOWN {
     if !seen[k] { print("burned down: \"%\" is no longer found; take it off EF_KNOWN (everglade/features.coax)\n", d); }

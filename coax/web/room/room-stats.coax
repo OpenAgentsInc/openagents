@@ -34,8 +34,8 @@ st_compat :: (why: int) -> int {
   return ST_VERSION;
 }
 // This room's build, for the admins' room view: engine, rules, world, oldest and newest wire, schema.
-rm_st_pin :: (i: int) -> int #export_c #effects(all) {
-  s := eg_server();
+rm_st_pin :: (v: [] RmServer, i: int) -> int #export_c #effects(all) {
+  s := eg_server(v);
   if i == 0 { return s.pins.engine; }
   if i == 1 { return s.pins.rules; }
   if i == 2 { return s.pins.content; }
