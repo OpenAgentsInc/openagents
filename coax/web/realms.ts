@@ -286,14 +286,14 @@ body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;fon
 </style>
 </head>
 <body>
-<div id="page-root"><main>
+<main id="page-root">
 <h1>Worlds</h1>
 <ul>
 ${links}
 </ul>
 <p><a href="/worlds/index.md">Worlds as text</a></p>
-</main></div>
-<div id="side-root"></div>
+</main>
+<p id="side-root"></p>
 <script type="module" src="/coaxial/dom-host.js" data-app="worlds-web" data-root="page-root"></script>
 <script type="module" src="/coaxial/dom-host.js?app=chat-web&amp;root=side-root&amp;path=/side/worlds"></script>
 </body>

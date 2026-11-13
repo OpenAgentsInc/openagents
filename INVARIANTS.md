@@ -5781,6 +5781,12 @@ Allowed HTML, none of it visible to a WebGPU visitor:
   only with `?edit`, on a dev server or for an admin; a visitor never gets it.
   The host builds nothing inside it. `check-visuals.sh` passes only the line
   marked `// editor shell`;
+- a page drawn by a Coax module through `coax/web/dom-host.js` (the site's
+  side and its kit pages, 2026-11-13, #13483: `/`, `/chat`, `/worlds`): empty
+  mounts the module fills (`<main id=...>`, `<p id=...>`), and on `/worlds`
+  the hidden text inside `<main id="page-root">`, which the module draws over.
+  An inert `<template>` (the home page's engine, held until wanted) is never
+  drawn. `check-visuals.sh` checks these pages with the same element list;
 - a realm's loading screen (`coax/web/loader.js`, an owner decision,
   2026-10-30): the realm's name, a bar moved only by what really loads
   (engine bytes, compile, GPU, shader pipelines, asset bytes, textures, the

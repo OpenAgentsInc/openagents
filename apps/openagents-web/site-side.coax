@@ -1,7 +1,6 @@
 // The site's side: the rules behind the left side every page shows someone logged in (docs/app-shell.md).
 // Plain functions, no drawing: which place a page is, who is logged in as the account's lines say, and which section a row of a list falls in. The side is drawn with the kit's pieces
-// (components/kit/frames.coax: k_side, k_side_head, k_side_places, k_side_list, k_side_mark,
-// k_who, k_side_open) by the page that holds it; today that is the app shell (chat-web.coax).
+// (components/kit/frames.coax: k_side, k_side_head, k_side_folds, k_fold, k_who, k_side_open) by the page that holds it; today that is the app shell (chat-web.coax).
 //   coax/bin/coax test apps/openagents-web/site-side.coax
 #load "../../coax/lib/nostr/nip19-core.coax";
 
@@ -101,26 +100,29 @@ ss_section :: (busy: bool, claude: bool) -> int {
 }
 
 // The worlds someone may edit, as GET /api/worlds lists them ("world ID NAME" a line, Splice first), each
-// opening its editor. A line whose ID is not a world's ID form (a lowercase letter or digit, then those and
-// '-', 48 bytes at most) is skipped.
-SS_WORLDS_MAX :: 8;
+// opening its editor, and the projects they are in, as GET /api/projects lists them ("project SLUG NAME"), each
+// opening its page. A line whose ID is not that form (a lowercase letter or digit, then those and '-', 48 bytes
+// at most) is skipped.
+SS_WORLDS_MAX :: 24;   // as many as /api/worlds and /api/projects send
 SsWorld :: struct { id: [48] u8; id_n: int; name: [48] u8; name_n: int; }
 ss_world_id_ok :: (id: string) -> bool {
   if id.count == 0 || id.count > 48 || id[0] == '-' { return false; }
   for c: id { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
   return true;
 }
-ss_worlds_read :: (body: string, out: [] SsWorld) -> int {
-  at := 0; n := 0;
+ss_worlds_read :: (body: string, out: [] SsWorld) -> int { return ss_lines_read(body, "world ", out); }
+ss_projects_read :: (body: string, out: [] SsWorld) -> int { return ss_lines_read(body, "project ", out); }
+ss_lines_read :: (body: string, word: string, out: [] SsWorld) -> int {
+  at := 0; n := 0; w := word.count;
   while at < body.count && n < out.count {
     e := at;
     while e < body.count && body[e] != '\n' { e += 1; }
     line := cast(string) body[at..<e];
     at = e + 1;
-    if line.count < 7 || cast(string) line[0..<6] != "world " { continue; }
-    i := 6;
+    if line.count < w + 1 || cast(string) line[0..<w] != word { continue; }
+    i := w;
     while i < line.count && line[i] != ' ' { i += 1; }
-    id := cast(string) line[6..<i];
+    id := cast(string) line[w..<i];
     if !ss_world_id_ok(id) { continue; }
     name := ifx i + 1 < line.count then cast(string) line[i + 1..<line.count] else id;
     out[n].id_n = ss_put(out[n].id[..], 0, id);
@@ -131,6 +133,12 @@ ss_worlds_read :: (body: string, out: [] SsWorld) -> int {
 }
 // A world's editor: /worlds/ID?edit. Its length in out.
 ss_world_href :: (id: string, out: [] u8) -> int { n := ss_put(out, 0, "/worlds/"); n = ss_put(out, n, id); return ss_put(out, n, "?edit"); }
+// A project's page: /projects/SLUG. Its length in out.
+ss_project_href :: (slug: string, out: [] u8) -> int { n := ss_put(out, 0, "/projects/"); return ss_put(out, n, slug); }
+// Where each heading's + goes: a new chat is made in the shell (""), a new project from /projects' drop, a new
+// world at /worlds/new. What the + says, for a screen reader and the pointer.
+SS_NEW_HREFS :: [3] string.["", "/projects#new", "/worlds/new"];
+SS_NEW_LABELS :: [3] string.["New chat", "New project", "New world"];
 
 #test "an address is its place: the home page, a place or anything under it, or none" {
   #assert ss_place_of("/") == SS_HOME && ss_place_of("") == SS_HOME;
@@ -162,11 +170,16 @@ ss_world_href :: (id: string, out: [] u8) -> int { n := ss_put(out, 0, "/worlds/
   #assert ss_section(false, true) == SS_CLAUDE && ss_section(false, false) == SS_RECENT;
   names := SS_SECTION_NAMES; #assert names[SS_RECENT] == "Recent" && SS_SECTIONS == 3;
 }
-#test "the worlds someone may edit are read from the list's lines, Splice first as it is sent, and each opens its editor" {
+#test "the worlds someone may edit and the projects they are in are read from the lists' lines, in the order sent, each opening its page" {
   w: [SS_WORLDS_MAX] SsWorld;
   n := ss_worlds_read("world splice Splice\nworld my-realm The Harbour\nworld Bad Name\nnoise\nworld -x X\nworld lone\n", w[..]);
   #assert n == 3 && cast(string) w[0].id[0..<w[0].id_n] == "splice" && cast(string) w[0].name[0..<w[0].name_n] == "Splice";
   #assert cast(string) w[1].name[0..<w[1].name_n] == "The Harbour" && cast(string) w[2].name[0..<w[2].name_n] == "lone";
   #assert ss_worlds_read("", w[..]) == 0;
   h: [80] u8; k := ss_world_href("splice", h[..]); #assert cast(string) h[0..<k] == "/worlds/splice?edit";
+  p: [SS_WORLDS_MAX] SsWorld;
+  m := ss_projects_read("project coax Coax\nworld splice Splice\nproject side-list Side List\nproject Up Up\n", p[..]);
+  #assert m == 2 && cast(string) p[0].id[0..<p[0].id_n] == "coax" && cast(string) p[1].name[0..<p[1].name_n] == "Side List";
+  k = ss_project_href("coax", h[..]); #assert cast(string) h[0..<k] == "/projects/coax";
+  news := SS_NEW_HREFS; #assert news[SS_WORLDS] == "/worlds/new" && news[SS_CHATS] == "";
 }

@@ -1071,7 +1071,41 @@ static void world_list(const request *q, PGconn *db) {
   api_respond(q->fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", out, n);
 }
 
+// GET /api/projects: the projects the asker is in, one line each: "project SLUG NAME". A private project lists
+// them when their key is among its members (projects.role); a published project when they dropped it. Someone
+// logged out gets none. The site's side lists them under Projects, each opening /projects/SLUG.
+static void project_list(const request *q, PGconn *db) {
+  const auth_principal *p = auth_principal_of(q);
+  char out[4096]; size_t n = 0;
+  if (p && p->pubkey[0]) {
+    const char *v[1] = {p->pubkey};
+    PGresult *r = PQexecParams(db,
+      "SELECT slug, name FROM ("
+      " SELECT d.slug, coalesce(nullif(d.doc->>'title', ''), d.slug) AS name FROM projects.docs d WHERE projects.role(d.slug, $1) = 'member'"
+      " UNION SELECT j.slug, j.name FROM drops.projects j WHERE j.owner = $1 AND j.published_ms IS NOT NULL"
+      ") x ORDER BY lower(name), slug LIMIT 24", 1, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) != PGRES_TUPLES_OK) { api_log("projects: %s", PQerrorMessage(db)); PQclear(r); refuse(q->fd, 500, cs("not read"), -1); return; }
+    for (int k = 0; k < PQntuples(r); k++) {
+      char name[64];
+      snprintf(name, sizeof name, "%s", PQgetvalue(r, k, 1));
+      for (char *c = name; *c; c++) if ((unsigned char)*c < 32) *c = ' ';
+      int w = snprintf(out + n, sizeof out - n, "project %s %s\n", PQgetvalue(r, k, 0), name);
+      if (w < 0 || (size_t)w >= sizeof out - n) break;
+      n += (size_t)w;
+    }
+    PQclear(r);
+  }
+  api_respond(q->fd, 200, "text/plain; charset=utf-8", "Cache-Control: no-store\r\n", out, n);
+}
+
 bool worlds_route(const request *q) {
+  if (!strcmp(q->path, "/api/projects")) {
+    if (strcmp(q->method, "GET")) { refuse(q->fd, 404, cs("not found"), -1); return true; }
+    PGconn *db = api_db();
+    if (!db) { refuse(q->fd, 503, cs("no database"), -1); return true; }
+    project_list(q, db);
+    return true;
+  }
   if (!strcmp(q->path, "/api/worlds")) {
     if (strcmp(q->method, "GET")) { refuse(q->fd, 404, cs("not found"), -1); return true; }
     PGconn *db = api_db();

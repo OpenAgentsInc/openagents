@@ -164,19 +164,21 @@ wg_build :: (s: [] WebPage) {
   tr_close(t);
   tr_close(t);
 
-  sec = wg_section(t, "sides", "Side", "The frame down the left of every page for someone logged in: the mark and its actions, the places, the page's own list under section heads, and who is logged in at the foot. On a page it stands the window's height.");
+  sec = wg_section(t, "sides", "Side", "The frame down the left of every page for someone logged in: the mark and Hide the side, then Chats, Projects and Worlds as folds that open and shut their lists in place, each with a + at its right that makes a new one, and who is logged in at the foot. On a page it stands the window's height.");
   gs := k_side(t, "side", "Places");
   gh := k_side_head(t, "side.h", "OpenAgents", "/components");
-  gn := k_icon_button(t, "side.new", IC_CHAT_COMPOSE, "New chat");
+  gn := k_icon_button(t, "side.hide", IC_SIDEBAR, "Hide the side");
   tr_close(t);
-  gp := k_side_places(t, "side");
-  p1 := k_place(t, u, "side.chats", IC_CHATS, "Chats", "/components", true);
-  p2 := k_place(t, u, "side.projects", IC_FOLDER, "Projects", "/components", false);
-  p3 := k_place(t, u, "side.worlds", IC_GLOBE, "Worlds", "/components", false);
-  p4 := k_sub_place(t, u, "side.splice", "Splice", "/components");
-  gl := k_side_list(t, "side");
+  gl := k_side_folds(t, "side");
+  sf1 := k_fold(t, u, "side.chats", IC_CHATS, "Chats", true, true, "New chat");
   gm := k_side_mark(t, "side.recent", "Recent", 3);
   for k: 0..<3 { r := k_row(t, u, tr_join(buf[..], "side.row.", k), titles[k], "", k == 0); }
+  tr_close(t);
+  sf2 := k_fold(t, u, "side.projects", IC_FOLDER, "Projects", false, false, "New project");
+  tr_close(t);
+  sf3 := k_fold(t, u, "side.worlds", IC_GLOBE, "Worlds", true, false, "New world");
+  p4 := k_sub_place(t, u, "side.splice", "Splice Bots", "/components");
+  tr_close(t);
   k_side_end(t);
   gw := k_who(t, u, "side.who", "a•••@example.com", "/components", false);
   tr_close(t);

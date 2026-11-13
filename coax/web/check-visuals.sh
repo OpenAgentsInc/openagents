@@ -9,7 +9,8 @@ fail=0
 bad() { echo "check-visuals: $1" >&2; fail=1; }
 while IFS= read -r page; do
   # Visible elements: anything in <body> besides the canvas, the hidden text
-  # (main with h1/p/a) and scripts.
+  # (main with h1/p/a), scripts and <template> (inert, never drawn: the home page's engine, held
+  # until it is wanted).
   # The loading screen (loader.js, realms.ts writes it) is the one block allowed: it covers the
   # page only until the engine draws, and holds only its own elements.
   loader="$(sed -n '/<!-- loader: coax\/web\/loader.js -->/,/<!-- \/loader -->/p' "$page")"
@@ -21,10 +22,11 @@ while IFS= read -r page; do
     grep -q '<div id="coaxial-load"' <<< "$loader" || bad "${page#$app/}: a loader block that isn't the loading screen"
   fi
   body="$(sed -n '/<body>/,/<\/body>/p' "$page" | sed '/<!-- loader: coax\/web\/loader.js -->/,/<!-- \/loader -->/d')"
-  extra="$(printf '%s\n' "$body" | grep -oE '<[a-z][a-z0-9]*' | sort -u | grep -vxE '<(body|canvas|main|h1|h2|p|a|script|ul|li|em|strong|code|table|caption|thead|tbody|tr|th|td)' || true)"
+  extra="$(printf '%s\n' "$body" | grep -oE '<[a-z][a-z0-9]*' | sort -u | grep -vxE '<(body|canvas|main|h1|h2|p|a|script|template|ul|li|em|strong|code|table|caption|thead|tbody|tr|th|td)' || true)"
   [[ -z "$extra" ]] || bad "${page#$app/}: visible elements $(echo $extra)"
-  # Links and text live only inside <main>, which the GPU page clips away.
-  outside="$(printf '%s\n' "$body" | sed '/<main>/,/<\/main>/d' | grep -E '<a |<h1|<p>|<table|<caption|<thead|<tbody|<tr>|<th>|<td>' || true)"
+  # Links and text live only inside <main>, which the GPU page clips away (or, on a page drawn by
+  # dom-host.js, which the module draws over: <main id="page-root">, /worlds).
+  outside="$(printf '%s\n' "$body" | sed '/<main[ >]/,/<\/main>/d' | grep -E '<a |<h1|<p>|<table|<caption|<thead|<tbody|<tr>|<th>|<td>' || true)"
   [[ -z "$outside" ]] || bad "${page#$app/}: text or links outside the hidden <main>"
 # (A realm's own domain's front door and 404, realms/<slug>/domain/, are plain HTML: an owner
 # decision, 2026-11-08, INVARIANTS.md. Its /play page is a realm page and is checked.)

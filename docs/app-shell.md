@@ -1,27 +1,44 @@
 # The app shell and the side
 
-**Since 2026-11-13** (GitHub #13471). Someone logged in sees one side down the
-left of the site: a head with the mark, the name and New chat, and a button that
-puts the side away; the places, Chats (`/chat`), Projects (`/projects`) and
-Worlds (`/worlds`), with the worlds they may edit under Worlds, Splice first, each
-opening its editor (`/worlds/splice?edit`); the page's own list (on the chat, its sessions under section
-heads); and at the foot who is logged in, a link to Settings and
-Log out. It is 300 px wide. Below 760 px it is hidden, as the chat's sidebar was.
+**Since 2026-11-13** (GitHub #13471, #13483). Someone logged in sees one side
+down the left of the site:
+
+- A head with the mark and the name, a link home, and Hide the side (the plain
+  sidebar icon), which puts the side away. The same icon brings it back.
+- Three folds: Chats, Projects and Worlds. Each heading opens and shuts its list
+  in place; it never leaves the page. This browser keeps which folds are shut
+  (`dom_keep`, `shut=N`, bit 1 Chats, 2 Projects, 4 Worlds). At the heading's
+  right a + makes a new one:
+  - **Chats** holds the chat's sessions under section heads (Running, Claude
+    Code, Recent). Its + starts a new chat.
+  - **Projects** holds the projects the person is in, each opening
+    `/projects/SLUG`. Its + opens `/projects#new`, where a new project is
+    dropped.
+  - **Worlds** holds the worlds they may edit, Splice Bots first, each opening its
+    editor (`/worlds/splice?edit`). Its + opens `/worlds/new`.
+- At the foot, who is logged in, a link to Settings, and Log out.
+
+It is 300 px wide. Below 760 px it is hidden, as the chat's sidebar was. Each
+list shows at most 24 rows, as many as its API sends.
 
 ## The pieces
 
 - **Drawing:** the kit's side pieces in `components/kit/frames.coax`: `k_side`,
-  `k_side_head`, `k_side_places`, `k_side_list`, `k_side_mark`,
-  `k_sub_place`, `k_who`, `k_side_open`, styled by `mono_css` (`components/skin/mono.coax`).
-  `/components` shows them.
+  `k_side_head`, `k_side_folds`, `k_fold` (a heading that opens and shuts, with
+  its +), `k_side_mark`, `k_sub_place`, `k_who`, `k_side_open`, styled by
+  `mono_css` (`components/skin/mono.coax`). `/components` shows them.
 - **Rules:** `apps/openagents-web/site-side.coax`: which place an address is,
   which addresses the shell draws itself, the name at the foot (the first email
   from `/api/auth/account?as=lines`, else a short npub), the worlds under
   Worlds and the sections. Plain functions with their checks.
 - **Worlds:** `GET /api/worlds` (`coax/web/api/worlds.c`) lists the worlds the
-  asker may edit, one line each, `world ID NAME`, Splice first. Who may is the
+  asker may edit, one line each, `world ID NAME`, Splice Bots first. Who may is the
   rule a write to the world is held to (`wr_may`: a site admin, or a realm's
   owner and admins). Someone logged out gets an empty list.
+- **Projects:** `GET /api/projects` (`coax/web/api/worlds.c`) lists the
+  projects the asker is in, one line each, `project SLUG NAME`, by name: a
+  private project whose members include their key, and a published project
+  they dropped. Someone logged out gets an empty list.
 - **The shell:** `apps/openagents-web/chat-web.coax`. It draws the side and,
   beside it, either the chat or, at `/`, nothing.
 
@@ -43,14 +60,14 @@ editor's foot) it draws the chat.
   after Back or Forward (event 13). A press on a link in the module is
   reported as a press; when the module answers with a pushed address, the host
   puts it in the address bar with the History API and the browser does not
-  follow the link. Any other link is followed as usual, so Projects, Worlds and
-  Settings are ordinary page loads.
+  follow the link. Any other link is followed as usual, so a project, a world
+  and Settings are ordinary page loads.
 - Moving between `/` and `/chat` never rebuilds the side. A direct load of
   either address works: `/` is `index.html`, `/chat` is `chat/index.html`, and
   both load the same module.
 - For links that still leave the shell, the side is the same module's drawing
-  with its state kept in the browser (whether it is put away, with the agents
-  setting, through `dom_keep`), and the skin turns on cross-document view
+  with its state kept in the browser (whether it is put away, which folds are
+  shut, with the agents setting, through `dom_keep`), and the skin turns on cross-document view
   transitions (`@view-transition { navigation: auto }`, with
   `view-transition-name: side`), so the side stays still between two pages
   that both have it.
@@ -80,13 +97,12 @@ brings it back.
 
 ## What each remaining page needs
 
-- **Projects (`/projects`) and Worlds (`/worlds`)** are drawn by the GPU on a
-  canvas over the whole window (`projects.coax`, the galaxy). To sit in the
-  shell they need the canvas confined to the room right of the side, as the
-  editor already confines a world's canvas to what its panes leave free
-  (`coax/web/host.js`, the editor frame: the canvas set to that rectangle and
-  the pointer offset), and the shell has to open their module beside the side
-  instead of a page load. Until then they are page loads, and they show no side.
+- **The Projects and Worlds lists** live in the side's folds, so the side no
+  longer links to `/projects` or `/worlds`. `/worlds` is a kit page beside the
+  side (`apps/openagents-web/worlds-web.coax`, opened with
+  `dom-host.js?app=worlds-web`). `/projects` is still the GPU galaxy
+  (`projects.coax`) and holds the drop where a new project starts, which the
+  Projects + opens.
 - **The older settings pages and the login** (`/settings/security`, `/data`,
   `/delete`, `/devices`, `/wallet`, `/agents`, `/lightning`, and `/login`) are
   GPU pages too; the same applies. Settings itself is in the shell (below), and

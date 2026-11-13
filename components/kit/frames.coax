@@ -478,6 +478,28 @@ k_sub_place :: (t: [] Tree, u: [] Ui, id: string, title: string, href: string) -
   tr_close(t);
   return i;
 }
+// Fold: a heading of the side that opens and shuts the list under it in place (Chats, Projects, Worlds): its
+// icon, its name and a chevron that points down while it is open, and at its right a + that makes a new one
+// (`add` is what the + says). The current place's heading is raised. Its rows follow while it is open (k_row,
+// k_sub_place); close it with tr_close. The page keeps which are open.
+k_fold :: (t: [] Tree, u: [] Ui, id: string, icon: int, title: string, open: bool, current: bool, add: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8; ide: [UI_ID] u8; idf: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "fold");
+  h := tr_open(t, tr_cat(ida[..], id, ".h"), TG_DIV, "fold-h");
+  b := tr_open(t, tr_cat(idb[..], id, ".b"), TG_BUTTON, "row row-i fold-b");
+  tr_attr(t, b, AT_EXPANDED, ifx open then "true" else "false");
+  if current {
+    tr_frame(t, b, mono_kind(MF_ROW), MF_ROW, ui_progress(u, tr_cat(idc[..], id, ".on"), MONO_ENTER));
+    tr_attr(t, b, AT_CURRENT, "true");
+  }
+  g := k_icon(t, tr_cat(idc[..], id, ".ic"), icon);
+  a := tr_leaf(t, tr_cat(idd[..], id, ".t"), TG_SPAN, "row-t", title);
+  v := k_icon(t, tr_cat(ide[..], id, ".v"), ifx open then IC_CHEVRON_DOWN else IC_CHEVRON_RIGHT);
+  tr_close(t);
+  plus := k_icon_button(t, tr_cat(idf[..], id, ".add"), IC_PLUS, add);
+  tr_close(t);
+  return i;
+}
 // Side: the app's frame down the left of every page for someone logged in (docs/app-shell.md), top to bottom:
 // a head (the product's mark and name, a link home, and the page's actions as icon buttons), the places
 // (k_place rows), the page's own list (it alone scrolls; k_side_mark heads each section of it), and a foot with who is logged in (k_who). The page builds them in that order:
@@ -519,6 +541,11 @@ k_side_list :: (t: [] Tree, id: string) -> int {
   tr_close(t);
   return tr_open(t, tr_cat(ida[..], id, ".l"), TG_DIV, "side-l");
 }
+// The list begins with no places above it: the folds (k_fold) fill it.
+k_side_folds :: (t: [] Tree, id: string) -> int {
+  ida: [UI_ID] u8;
+  return tr_open(t, tr_cat(ida[..], id, ".l"), TG_DIV, "side-l");
+}
 // The list ends; the foot (k_who) follows, then the side closes with tr_close.
 k_side_end :: (t: [] Tree) { tr_close(t); }
 // A section's head in the list: its name and how many are in it.
@@ -547,7 +574,7 @@ k_who :: (t: [] Tree, u: [] Ui, id: string, name: string, href: string, out: boo
 }
 // The side put away: a button at the top left that brings it back.
 k_side_open :: (t: [] Tree, id: string, label: string) -> int {
-  i := k_icon_button(t, id, IC_MENU_SIDEBAR, label);
+  i := k_icon_button(t, id, IC_SIDEBAR, label);
   tr_attr(t, i, AT_STATE, "side");
   return i;
 }
@@ -776,12 +803,31 @@ k_menu :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
 }
 DkDropTest :: struct { t: [1] Tree; u: [1] Ui; }
 
+#test "a fold opens and shuts its rows in place, with a + at its right; the folds fill the side's list" {
+  h: [1] DkDropTest; t := h[0].t[..]; u := h[0].u[..];
+  ui_begin(u, 0, true); tr_begin(t);
+  s := k_side(t, "side", "Places");
+  l := k_side_folds(t, "side");
+  a := k_fold(t, u, "fold.chats", IC_CHATS, "Chats", true, false, "New chat");
+  r := k_row(t, u, "s.0", "A chat", "", false);
+  tr_close(t);
+  b := k_fold(t, u, "fold.worlds", IC_GLOBE, "Worlds", false, true, "New world");
+  tr_close(t);
+  k_side_end(t);
+  tr_close(t);
+  ui_end(u);
+  #assert t[0].lost == 0 && t[0].depth == 0 && tr_class(t, l) == "side-l" && t[0].nodes[a].parent == l && t[0].nodes[r].parent == a;
+  ab := tr_find(t, "fold.chats.b"); bb := tr_find(t, "fold.worlds.b");
+  #assert tr_attr_of(t, ab, AT_EXPANDED) == "true" && tr_attr_of(t, bb, AT_EXPANDED) == "false" && tr_text_of(t, tr_find(t, "fold.chats.t")) == "Chats";
+  #assert t[0].nodes[tr_find(t, "fold.chats.add")].parent == tr_find(t, "fold.chats.h") && tr_attr_of(t, tr_find(t, "fold.chats.add"), AT_LABEL) == "New chat";
+  #assert !tr_has(t, ab, AT_CURRENT) && tr_attr_of(t, bb, AT_CURRENT) == "true";
+}
 #test "a side is a head, places, a list that scrolls with its sections, then who is logged in" {
   h: [1] DkDropTest; t := h[0].t[..]; u := h[0].u[..];
   ui_begin(u, 0, true); tr_begin(t);
   s := k_side(t, "side", "Places");
   hd := k_side_head(t, "side.h", "OpenAgents", "/");
-  x := k_icon_button(t, "side.hide", IC_MENU_SIDEBAR, "Hide the side");
+  x := k_icon_button(t, "side.hide", IC_SIDEBAR, "Hide the side");
   tr_close(t);
   p := k_side_places(t, "side");
   a := k_place(t, u, "place.a", IC_CHATS, "Chats", "/chat", true);

@@ -126,6 +126,15 @@ wc_checks :: (t: [] Ap, w: [] Wc, other: string) {
   st = ap_call(t, "GET", "/api/worlds", "", lh[..]);
   admin_list := ap_starts(ap_body(t), "world splice Splice\n");
   ap_check(t, "world: an admin's worlds start with Splice; someone logged out has none", st == 200 && admin_list && ap_call(t, "GET", "/api/worlds", "", t[0].no[0..<0]) == 200 && ap_body(t) == "" && ap_call(t, "POST", "/api/worlds", "{}", t[0].no[0..<0]) == 404, ap_body(t));
+  pq: [1] Sb; sb(pq[..], "INSERT INTO projects.docs VALUES ('side-list', 1, '{\"title\": \"Side List\", \"members\": [{\"name\": \"Admin\", \"pubkey\": \""); sb(pq[..], ap_env(t, "OA_ADMIN_PUBKEYS")); sb(pq[..], "\"}]}'::jsonb, 1, 'test') ON CONFLICT (slug) DO NOTHING");
+  ap_do(t, sb_text(pq[..]));
+  pu: [1] Sb; sb(pu[..], t[0].api); sb(pu[..], "/api/projects");
+  psig: [4096] u8; ps := ap_nostr(t, t[0].admin_key, "GET", sb_text(pu[..]), "", false, psig[..]);
+  pa: [1] Sb; sb(pa[..], "Authorization: Nostr "); sb(pa[..], ps);
+  ph := [1] string.[sb_text(pa[..])];
+  st = ap_call(t, "GET", "/api/projects", "", ph[..]);
+  member_list := ap_has(ap_body(t), "project side-list Side List\n");
+  ap_check(t, "projects: a member's projects name the ones they are in; someone logged out has none", st == 200 && member_list && ap_call(t, "GET", "/api/projects", "", t[0].no[0..<0]) == 200 && ap_body(t) == "" && ap_call(t, "POST", "/api/projects", "{}", t[0].no[0..<0]) == 404, ap_body(t));
   st = ap_call(t, "GET", "/api/worlds/splice/content", "", t[0].no[0..<0]);
   ap_check(t, "world: the content tables are read to aim an edit: pieces, landmarks and kept-clear zones", st == 200 && ap_starts(ap_body(t), "aethyr.content.v1 splice ") && ap_has(ap_body(t), "\ntable pieces ") && ap_has(ap_body(t), "\ntable landmarks ") && ap_has(ap_body(t), "\ntable kept_clear ") && ap_call(t, "GET", "/api/worlds/nope/content", "", t[0].no[0..<0]) == 404, "");
   // ---- the undo log

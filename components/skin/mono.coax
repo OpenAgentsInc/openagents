@@ -223,6 +223,8 @@ mono_css :: (out: [] u8) -> int {
   n = mc(out, n, ".ib[data-state=side]{position:fixed;left:10px;top:10px;z-index:4;view-transition-name:side}");
   // a place: an icon beside its name, a link
   n = mc(out, n, ".row-i{flex-direction:row;align-items:center;gap:10px;text-decoration:none;box-sizing:border-box}.row.row-i>.ic{position:static;width:16px;height:16px;margin:0;color:inherit;animation:none}.row-i:hover,.row-i:focus-visible{color:#fff;outline:none}");
+  // a fold (k_fold): a heading of the side that opens and shuts its rows, a chevron at its end and a + beside it
+  n = mc(out, n, ".fold-h{display:flex;align-items:center}.fold-b{flex:1;min-width:0}.fold-b>.ic:last-child{margin-left:auto;width:12px;height:12px}.side .fold>.row{padding-left:36px}");
   // the home page for someone logged in: the side and an empty room beside it
   n = mc(out, n, ".home{min-height:100dvh}");
   n = mc(out, n, ".row[data-state=busy]{position:relative;padding-right:32px}.row[data-state=busy] .meta{color:var(--ink)}");
@@ -506,7 +508,7 @@ mono_page_css :: (out: [] u8, at: int) -> int {
   #assert mono_frames(sets[..]) == MF_COUNT && mono_frames(sets[0..<2]) == 0;
   #assert mono_kind(MF_BUTTON) == 3 && mono_kind(MF_PANEL) == 2 && mono_kind(MF_FIELD) == 0 && mono_kind(MF_NOTICE) == 1 && mono_kind(MF_HEADER) == 7;
   #assert sets[MF_BUTTON].square == 8 && sets[MF_PANEL].corner_length == 12;
-  css: [32768] u8; n := mono_css(css[..]);
+  css: [40960] u8; n := mono_css(css[..]);
   #assert n > 4000 && n < 16000;
   // and the stage's rules after them
   #assert mono_kind(MF_STAGE) == 5 && mono_kind(MF_MARK) == 3 && sets[MF_STAGE].square == 14 && sets[MF_BOX].square == 6;
@@ -514,7 +516,7 @@ mono_page_css :: (out: [] u8, at: int) -> int {
   #assert n > 12000 && n < 30000;
   // and the dock's
   m := mono_dock_css(css[..], n);
-  #assert m > n + 800 && m < 32000;
+  #assert m > n + 800 && m < 34000;   // 32,0xx with the side's folds (k_fold, 2026-11-13)
   n = m;
   // every #rgb or #rrggbb in it is a grey: its channels are equal
   i := 0; greys := 0;
