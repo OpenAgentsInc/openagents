@@ -93,7 +93,9 @@ stands (and readers ask "any", so two of one name never add), or a source
 renews its one record.
 
 Everglade's content table `ability` (`everglade/content/everglade.content`)
-has a row for each of the 83 abilities the bars hold, by content ID.
+is still empty. Its 83 rows, one for each ability the bars hold by content ID,
+go in with the next content revision: the tables' revision is a session's
+content pin (#13381), so it changes only at a room release, with the page.
 
 ## Checks
 
