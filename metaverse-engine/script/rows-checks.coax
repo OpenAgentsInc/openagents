@@ -1,0 +1,31 @@
+// Checks of a world's script rows (rows.coax).
+RK_HASH :: "528d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5";
+#test "a row reads to its slot, name, hash and whom it drives" {
+  r: [1] ScriptRow;
+  #assert srw_read(1, "raider", RK_HASH, "kind 1", r[..]) == SRW_OK && r[0].ok && r[0].slot == 0 && r[0].by_kind && r[0].n == 1;
+  #assert cast(string) r[0].name[0..<r[0].name_n] == "raider" && cast(string) r[0].hash[..] == RK_HASH;
+  #assert srw_read(SH_SCRIPTS, "a-2", RK_HASH, "who 99", r[..]) == SRW_OK && !r[0].by_kind && r[0].n == 99 && r[0].slot == SH_SCRIPTS - 1;
+  #assert srw_read(2, "x", RK_HASH, "kind 0", r[..]) == SRW_OK && srw_read(2, "x", RK_HASH, "kind 255", r[..]) == SRW_OK;
+}
+#test "each bad cell has its own reason, and leaves no row" {
+  r: [1] ScriptRow;
+  #assert srw_read(0, "a", RK_HASH, "kind 1", r[..]) == SRW_BAD_ID && !r[0].ok && srw_read(SH_SCRIPTS + 1, "a", RK_HASH, "kind 1", r[..]) == SRW_BAD_ID;
+  names := [5] string.["", "Raider", "9lives", "a_b", "a b"];
+  for name: names { #assert srw_read(1, name, RK_HASH, "kind 1", r[..]) == SRW_BAD_NAME && !r[0].ok; }
+  hashes := [4] string.["", "528d", "528D98A6985890F0D3D78E3DF31BFFA680719EA61722E87D80C6E16166C437A5", "g28d98a6985890f0d3d78e3df31bffa680719ea61722e87d80c6e16166c437a5"];
+  for hash: hashes { #assert srw_read(1, "a", hash, "kind 1", r[..]) == SRW_BAD_HASH; }
+  targets := [11] string.["", "kind", "kind ", "kind 256", "kind -1", "kind 01", "who 0", "who 100", "all", "foe 1", "kind 1 "];
+  for target: targets { #assert srw_read(1, "a", RK_HASH, target, r[..]) == SRW_BAD_FOR && !r[0].ok; }
+  for why: 1..<5 { #assert srw_why(why).count > 20; }
+  #assert srw_why(SRW_OK) == "" && srw_why(9) == "";
+}
+#test "a row for the actor wins over a row for its kind, then the lowest ID" {
+  rows: [4] ScriptRow; one: [1] ScriptRow;
+  ok := srw_read(3, "c", RK_HASH, "kind 1", one[..]); rows[0] = one[0];
+  ok = srw_read(2, "b", RK_HASH, "kind 1", one[..]); rows[1] = one[0];
+  ok = srw_read(4, "d", RK_HASH, "who 7", one[..]); rows[2] = one[0];
+  ok = srw_read(1, "a", RK_HASH, "kind 2", one[..]); rows[3] = one[0];
+  #assert srw_pick(rows[..], 1, 3) == 1 && srw_pick(rows[..], 1, 7) == 3 && srw_pick(rows[..], 2, 0) == 0 && srw_pick(rows[..], 5, 9) == -1;
+  #assert srw_pick(rows[..], 2, 7) == 3 && srw_pick(rows[0..<0], 1, 1) == -1;
+  #assert srw_drives(rows[2], 9, 7) && !srw_drives(rows[2], 9, 0) && !srw_drives(ScriptRow.{}, 0, 0);
+}

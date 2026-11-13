@@ -1,0 +1,93 @@
+// A world's script rows (GitHub #13467, docs/protocol/realm-script-v1.md): how a world document names
+// the scripts it runs. A realm keeps them as rows of a content table, edited like any cell
+// (world.edit.v1 `cell`), so undo, the revision fence, dev and live revisions and the server's checks
+// hold for a script as for every edit. This file is the row's one codec.
+//
+//   table scripts id name:text hash:text for:text
+//   ID|NAME|HASH|FOR
+//   ID     1 to SH_SCRIPTS: the script's place in the world (its number in a frame's `script`, plus one)
+//   NAME   the script's name: lowercase letters, digits and hyphens, a letter first
+//   HASH   the module's SHA-256 as 64 lowercase hex digits. A world names a script by its hash: the
+//          bytes behind a hash never change, so a revision of the world runs the same script for good
+//   FOR    whom it drives: "kind K" (every thing of the realm's kind K) or "who N" (the realm's actor N,
+//          1 and up, as in its plans)
+// A row says nothing of what the script may do: that is the module's manifest, read from the bytes.
+//   coax/bin/coax test metaverse-engine/script/rows.coax --library
+
+#load "frame.coax";
+
+SRW_TABLE :: "table scripts id name:text hash:text for:text";
+SRW_NAME :: 48;
+SRW_KIND_MAX :: 255; SRW_WHO_MAX :: 99;
+ScriptRow :: struct {
+  ok: bool;
+  slot: int;                              // ID - 1
+  name: [SRW_NAME] u8; name_n: int;
+  hash: [64] u8;
+  by_kind: bool;                          // FOR is "kind K"; otherwise "who N"
+  n: int;                                 // K or N
+}
+SRW_OK :: 0; SRW_BAD_ID :: 1; SRW_BAD_NAME :: 2; SRW_BAD_HASH :: 3; SRW_BAD_FOR :: 4;
+
+srw_name_ok :: (name: string) -> bool {
+  if name.count < 1 || name.count > SRW_NAME { return false; }
+  for c, i: name {
+    lower := c >= 'a' && c <= 'z';
+    if !lower && (i == 0 || !((c >= '0' && c <= '9') || c == '-')) { return false; }
+  }
+  return true;
+}
+srw_hash_ok :: (hash: string) -> bool {
+  if hash.count != 64 { return false; }
+  for c: hash { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+// A whole number written without a sign or a leading zero, at most `most`; -1 for anything else.
+srw_number :: (s: string, most: int) -> int {
+  if s.count < 1 || s.count > 4 || (s.count > 1 && s[0] == '0') { return -1; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return ifx v > most then -1 else v;
+}
+// Reads a row's cells. SRW_OK and r filled, or why not.
+srw_read :: (id: int, name: string, hash: string, target: string, r: [] ScriptRow) -> int {
+  r[0] = ScriptRow.{};
+  if id < 1 || id > SH_SCRIPTS { return SRW_BAD_ID; }
+  if !srw_name_ok(name) { return SRW_BAD_NAME; }
+  if !srw_hash_ok(hash) { return SRW_BAD_HASH; }
+  by_kind := target.count > 5 && target[0..<5] == "kind ";
+  by_who := target.count > 4 && target[0..<4] == "who ";
+  if !by_kind && !by_who { return SRW_BAD_FOR; }
+  n := ifx by_kind then srw_number(target[5..<target.count], SRW_KIND_MAX) else srw_number(target[4..<target.count], SRW_WHO_MAX);
+  if n < 0 || (by_who && n < 1) { return SRW_BAD_FOR; }
+  r[0].slot = id - 1; r[0].name_n = name.count; r[0].by_kind = by_kind; r[0].n = n;
+  for c, i: name { r[0].name[i] = c; }
+  for c, i: hash { r[0].hash[i] = c; }
+  r[0].ok = true;
+  return SRW_OK;
+}
+srw_why :: (why: int) -> string {
+  if why == SRW_BAD_ID { return "a script's ID is 1 to 8: a world runs at most 8 scripts"; }
+  if why == SRW_BAD_NAME { return "a script's NAME is lowercase letters, digits and hyphens, a letter first, at most 48"; }
+  if why == SRW_BAD_HASH { return "a script's HASH is its module's SHA-256: 64 lowercase hex digits"; }
+  if why == SRW_BAD_FOR { return "FOR is kind K (0 to 255) or who N (1 to 99)"; }
+  return "";
+}
+// Whether the row's script drives a thing of this kind that is this actor (who: 1 and up, 0 for no actor).
+srw_drives :: (r: ScriptRow, kind: int, who: int) -> bool {
+  if !r.ok { return false; }
+  return ifx r.by_kind then r.n == kind else who >= 1 && r.n == who;
+}
+// The script that drives a thing, among a world's rows: a row for the actor itself wins over a row for
+// its kind, and among equals the lowest ID. -1 for none.
+srw_pick :: (rows: [] ScriptRow, kind: int, who: int) -> int {
+  best := -1; best_who := false;
+  for r: rows {
+    if !srw_drives(r, kind, who) { continue; }
+    mine := !r.by_kind;
+    if best < 0 || (mine && !best_who) || (mine == best_who && r.slot < best) { best = r.slot; best_who = mine; }
+  }
+  return best;
+}
+
+#load "rows-checks.coax" #test;
