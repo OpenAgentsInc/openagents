@@ -63,19 +63,16 @@ world with the camera's turn, `theta`, using `math_sin` and `math_cos`
 
 An admitted step first takes a waiting jump press. Chapter 4's input buffer makes sure
 each press is taken by exactly one step. From the ground, the press sets the
-vertical speed to `JUMP`:
+vertical speed to `JUMP`. The engine's `jump_take`
+([metaverse-engine/move/jump.coax](../move/jump.coax)) holds that rule:
 
 <!-- source: metaverse-engine/move/walk.coax take -->
 ```jai
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
 body_step_fixed :: (w: World, given: Body, dt: f32) -> Body #effects(all) {
   p := given;
-  t := input_take(given.jumps);
-  p.jumps = t.edge;
-  if t.pressed && p.on_ground {
-    p.vel.y = w.locomotion.jump_speed;
-    p.on_ground = false;
-  }
+  t := jump_take(w.locomotion, given.jumps, given.vel.y, given.on_ground);
+  p.jumps = t.presses; p.vel.y = t.vy; p.on_ground = t.on_ground;
   beat := t.pressed && !given.on_ground;   // a press in the air: a wing beat, if the realm flies
 ```
 
@@ -140,7 +137,8 @@ The rest of the step runs in this order:
   above := next.pos.y - ground;
   falls := true;
   next.sliding = false;
-  if above <= w.locomotion.ride_height && next.vel.y <= 0 && stand_steep(under) {
+  steep := above <= w.locomotion.ride_height && next.vel.y <= 0 && stand_steep(under);
+  if steep {
     // Too steep to stand on: it holds you as you slide down it, gravity's pull along it speeding
     // you toward its low edge, and over that you fall.
     gl := sqrt(under.gx * under.gx + under.gz * under.gz);
@@ -151,23 +149,10 @@ The rest of the step runs in this order:
     next.on_ground = false;
     next.sliding = true;
     falls = false;
-  } else if above <= w.locomotion.ride_height && next.vel.y <= 0 {
-    if next.on_ground {
-      // Standing: ease onto the floor.
-      next.vel.y = 0;
-      next.pos.y += (ground - next.pos.y) * lo(1, w.locomotion.step_smooth * dt);
-      falls = false;
-    } else if above + next.vel.y * dt <= 0 {
-      // Lands this step.
-      next.vel.y = 0;
-      next.pos.y = ground;
-      next.on_ground = true;
-      falls = false;
-    }
-  }
-  if falls {
-    next.vel.y -= w.locomotion.gravity * dt;
-    next.on_ground = false;
+  } else {
+    // Standing eases onto the floor, a fall that reaches it lands, and otherwise gravity pulls.
+    s := jump_settle(w.locomotion, next.pos.y, next.vel.y, next.on_ground, ground, dt);
+    next.pos.y = s.y; next.vel.y = s.vy; next.on_ground = s.on_ground; falls = s.falls;
   }
   // A flying realm's hook: in the air, this step's vertical speed is the flight's.
   next.diving = false;
@@ -178,7 +163,7 @@ The rest of the step runs in this order:
     if lift.beat { next.beats += 1; }
   }
   vertical:=ifx w.locomotion.source_velocity && falls then (p.vel.y+next.vel.y)*0.5 else next.vel.y;
-  next.pos.y = hi(next.pos.y + vertical * dt, ground - w.locomotion.sink_limit);
+  next.pos.y = jump_rise(w.locomotion, next.pos.y, vertical, ground, dt);
 
   // Turn toward where you are going.
   if dir.on {

@@ -344,19 +344,17 @@ walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
 ```
 
 Each fixed step first takes a waiting press. If you are on the ground, you
-jump:
+jump. The rule lives in `jump_take`
+([metaverse-engine/move/jump.coax](../move/jump.coax)), so a realm that
+moves you in its own way still jumps the engine's jump:
 
 <!-- source: metaverse-engine/move/walk.coax take -->
 ```jai
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
 body_step_fixed :: (w: World, given: Body, dt: f32) -> Body #effects(all) {
   p := given;
-  t := input_take(given.jumps);
-  p.jumps = t.edge;
-  if t.pressed && p.on_ground {
-    p.vel.y = w.locomotion.jump_speed;
-    p.on_ground = false;
-  }
+  t := jump_take(w.locomotion, given.jumps, given.vel.y, given.on_ground);
+  p.jumps = t.presses; p.vel.y = t.vy; p.on_ground = t.on_ground;
   beat := t.pressed && !given.on_ground;   // a press in the air: a wing beat, if the realm flies
 ```
 

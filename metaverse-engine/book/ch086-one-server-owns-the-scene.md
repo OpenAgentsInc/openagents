@@ -77,7 +77,7 @@ rm_init :: (v: [] RmServer) #export_c #effects(all) {
   for r: 0..<RELAYS { v[0].relays[r].live = false; }
   for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
   eg_seats_bind(v);   // each room's seats: its own, until a zone hands room 0 more (eg_zone_use)
-  v[0].q_head = 0; v[0].q_n = 0;
+  v[0].ob_n = 0; v[0].ob_at = 0; v[0].q_n = 0; v[0].rto_conn = 0;
   rm_games_init(v);
   e2zoo_shipped(v);
   v[0].dice_pool[0] = RsDice.{};

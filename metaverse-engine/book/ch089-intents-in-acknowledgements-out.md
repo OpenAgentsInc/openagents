@@ -48,11 +48,15 @@ send a stick of 500.
 ```jai
 // I SEQ KX KY PX PY THETA B HEARD: one step's input (THETA in WIRE_FINE units), queued for the tick; and the state tick its page
 // heard whole, which is now its page's (wire_seat_ack), and ends its snapshots once it is one of them.
-eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) {
   r: [1] WireRd; link:=wire_is(text,"J1");
   r[0] = wire_rd(text,ifx link then 2 else 1);
   w := wire_read_in(text, r[..]);
   if !r[0].ok || eg_fields(text) != 9 || (link && !wire_link_input_ok(w.b)) { return; }
+  eg_input(v, k, seat_id, w, link);
+}
+// An input read whole, from text or from bits: queued for the tick.
+eg_input :: (v: [] RmServer, k: int, seat_id: SeatId, w: WireIn, link: bool) { seat := seat_id.value;
   eg_seat_heard(v, k, seat_id, w.heard);
   if w.heard > 0 { v[0].eg[k].seat[seat].said_heard = w.heard; v[0].eg[k].seat[seat].said_ms = v[0].mono_ms; }
   if w.theta == w.theta { v[0].eg[k].seat[seat].cam = w.theta; v[0].eg[k].seat[seat].cam_on = true; }   // where it looks: its rows' view (#13178)
