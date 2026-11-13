@@ -1,0 +1,252 @@
+// Everglade II's drift check (#13277): the page played against a room through a shaped network, so
+// "the room and the page agree" rests on a page, not on unit checks alone. Three headless Chromes join
+// one Everglade II room of their own, as players do. A walks for ten seconds, turning all the way,
+// with two jumps. B watches A through the shaped network. C watches A over a clean link: every row the
+// room sent about A reaches it, so its states are the room's word on A, tick by tick.
+//   coax/web/tool.sh everglade2-drift --page ORIGIN --room PORT [--proxy PORT] [--cells LIST] [--seed S] [--out FILE] [--report]
+// Before it: a local room and page (coax/web/tool.sh coax/web/room/local.coax --static prints PAGE= and
+// ROOM=), with this checkout's pages built (coax/remote/pages.sh origin/main, then coax/web/wasm.sh for
+// build/everglade2.wasm). --cells is RTT:LOSS,... (ms, per thousand; the default DD_CELLS: none, then
+// 80 and 250 ms with 1% and 5% of reads lost, ±30 ms of jitter: coax/web/room/net-proxy.coax).
+// What it pins, for each cell:
+//   your own corrections (A)   the room's re-runs that moved A more than 5 cm: at most DD_FIX_RATE a
+//                              second; none over DD_FIX_MOST mm (e2_probe 46, 47)
+//   the others as drawn (B)    how far B draws A from where the room's rows put A at the moment B
+//                              draws (e2_probe 200 and 1200 on, everglade/client/net.coax
+//                              e2n_drift_probe): the 95th percentile and the most, against the cell's
+//                              bounds (dd_bound)
+// and that the walk was real: A went DD_WALK_MM at least and B judged DD_FRAMES frames.
+// One JSON line a cell (appended to --out), a table, then holds or fails (exit 0 or 1). --report
+// judges nothing: the numbers only, for setting the bounds after a change that moves them on purpose.
+// It runs on a machine with a GPU (the pages draw with WebGPU): never on a build host, and its numbers
+// under a loaded machine are not the page's. Nothing opens on screen and no sound plays; each Chrome
+// and proxy this starts is closed before it exits.
+#import "Basic";
+#load "everglade2-pages.coax";
+#load "../lib/sys/args.coax";
+
+cxtool_out_flush :: () -> int #foreign #effects(all);
+
+DD_CELLS :: "0:0,80:10,80:50,250:10,250:50";
+DD_JITTER :: 60;          // ms end to end: ±30 ms
+DD_WALK_MS :: 10000;      // A's walk
+DD_FIX_MM :: 50;          // a correction counted: one that moved A more than this
+DD_FIX_RATE :: 1;         // such corrections a second, at most
+DD_FIX_MOST :: 500;       // mm: no correction past this
+DD_WALK_MM :: 15000;      // A went this far at least, by the room's rows
+DD_FRAMES :: 200;         // frames of B judged at least
+DD_MAX_CELLS :: 8;
+
+DdCell :: struct { rtt: int; loss: int; }
+DdBound :: struct { p95: int; most: int; }
+// The bounds on how far B draws A from the room's word (mm), by the network between them. A page
+// draws the others a jitter buffer behind and between two rows, so on a clean link the difference is
+// the rows' rounding and the buffer's easing: millimetres. This check's link is a WebSocket, so a
+// lost read holds every read after it for a resend (the larger of 200 ms and twice the round trip),
+// past what the buffer holds: the page goes on by the last velocity for NET_AHEAD (150 ms), holds,
+// then eases onto the late rows. The most grows with the round trip and how often with the loss.
+// Measured on 2026-11-12 (an M-series Mac, load 5 to 20, three runs; the worst p95 and the worst most,
+// mm): clean 3 and 4; 80 ms at 1% 125 and 426; 80 ms at 5% 513 and 1315; 250 ms at 1% 881 and 2321
+// (the widest spread: one lost read in ten seconds holds half a second of rows, or none is lost);
+// 250 ms at 5% 1310 and 2758. Each bound is about 1.7 times the worst run, so a loaded machine passes
+// and a page that draws the others twice as far off fails. After a change that moves them on
+// purpose: --report twice, then set these and say what moved in the commit.
+dd_bound :: (c: DdCell) -> DdBound {
+  if c.rtt == 0 && c.loss == 0 { return DdBound.{p95 = 20, most = 60}; }
+  if c.rtt <= 100 { return ifx c.loss <= 10 then DdBound.{p95 = 250, most = 900} else DdBound.{p95 = 900, most = 2400}; }
+  return ifx c.loss <= 10 then DdBound.{p95 = 1500, most = 3800} else DdBound.{p95 = 2200, most = 4500};
+}
+// LIST as cells: RTT:LOSS,RTT:LOSS. The count, or -1 when it is not such a list.
+dd_cells :: (list: string, out: [] DdCell) -> int {
+  n := 0; i := 0;
+  while i < list.count {
+    v := [2] int.[0, 0]; f := 0; digits := 0;
+    while i < list.count && list[i] != ',' {
+      ch := list[i];
+      if ch == ':' { if f == 1 || digits == 0 { return -1; } f = 1; digits = 0; }
+      else if ch >= '0' && ch <= '9' { v[f] = v[f] * 10 + cast(int) (ch - '0'); digits += 1; if v[f] > 100000 { return -1; } }
+      else { return -1; }
+      i += 1;
+    }
+    if f != 1 || digits == 0 || n >= out.count || v[1] > 1000 { return -1; }
+    out[n] = DdCell.{rtt = v[0], loss = v[1]}; n += 1;
+    i += 1;
+  }
+  return ifx n > 0 then n else -1;
+}
+// What a cell's numbers fail, as a word each ("" none): the walk, A's corrections, B's picture of A.
+DdSeen :: struct { judged: int; moved: int; p50: int; p95: int; most: int; reruns: int; over: int; fix_most: int; }
+dd_fails :: (c: DdCell, s: DdSeen, out: [] Buf) -> bool {
+  b := dd_bound(c);
+  if s.judged < DD_FRAMES || s.moved < DD_WALK_MM { bput(out, " walk"); }
+  if s.over > DD_FIX_RATE * DD_WALK_MS / 1000 || s.fix_most > DD_FIX_MOST || s.reruns < 0 { bput(out, " corrections"); }
+  if s.p95 < 0 || s.p95 > b.p95 || s.most > b.most { bput(out, " others"); }
+  return out[0].n > 0;
+}
+// The whole number after "key": in a JSON text, or -1.
+dd_num :: (t: string, key: string) -> int {
+  q: [1] Buf; bput(q[..], "\""); bput(q[..], key); bput(q[..], "\":");
+  k := btext(q[..]); i := 0;
+  while i + k.count <= t.count && t[i..<i + k.count] != k { i += 1; }
+  if i + k.count > t.count { return -1; }
+  i += k.count;
+  if i >= t.count || t[i] < '0' || t[i] > '9' { return -1; }
+  v := 0;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { v = v * 10 + cast(int) (t[i] - '0'); i += 1; if v > 1000000000 { return -1; } }
+  return v;
+}
+#test "the drift check's cells, bounds and verdicts" {
+  c: [DD_MAX_CELLS] DdCell;
+  #assert dd_cells(DD_CELLS, c[..]) == 5 && c[0].rtt == 0 && c[0].loss == 0 && c[2].rtt == 80 && c[2].loss == 50 && c[4].rtt == 250 && c[4].loss == 50;
+  for bad: [8] string.["", "80", "80:", ":10", "80:10:2", "80:x", "80:1001", "1:1,2:2,3:3,4:4,5:5,6:6,7:7,8:8,9:9"] { #assert dd_cells(bad, c[..]) == -1; }
+  #assert dd_cells("120:20", c[..]) == 1 && c[0].rtt == 120 && c[0].loss == 20;
+  // a worse network never has a tighter bound
+  n := dd_cells(DD_CELLS, c[..]);
+  // (more loss at one round trip, a longer round trip at one loss, and any shaping against none)
+  lo := [8] int.[1, 3, 1, 2, 0, 0, 0, 0]; hi := [8] int.[2, 4, 3, 4, 1, 2, 3, 4];
+  for i: 0..<8 { #assert n == 5 && dd_bound(c[hi[i]]).p95 >= dd_bound(c[lo[i]]).p95 && dd_bound(c[hi[i]]).most >= dd_bound(c[lo[i]]).most; }
+  good := DdSeen.{judged = 500, moved = 40000, p50 = 1, p95 = 10, most = 40, reruns = 3, over = 0, fix_most = 20};
+  w: [1] Buf; #assert !dd_fails(c[0], good, w[..]) && btext(w[..]) == "";
+  still := good; still.moved = 900; w[0].n = 0; #assert dd_fails(c[0], still, w[..]) && btext(w[..]) == " walk";
+  few := good; few.judged = DD_FRAMES - 1; w[0].n = 0; #assert dd_fails(c[0], few, w[..]);
+  fix := good; fix.over = DD_FIX_RATE * DD_WALK_MS / 1000 + 1; w[0].n = 0; #assert dd_fails(c[0], fix, w[..]) && btext(w[..]) == " corrections";
+  fix = good; fix.fix_most = DD_FIX_MOST + 1; w[0].n = 0; #assert dd_fails(c[0], fix, w[..]);
+  fix = good; fix.over = DD_FIX_RATE * DD_WALK_MS / 1000; fix.fix_most = DD_FIX_MOST; w[0].n = 0; #assert !dd_fails(c[0], fix, w[..]);
+  far := good; far.p95 = dd_bound(c[0]).p95 + 1; w[0].n = 0; #assert dd_fails(c[0], far, w[..]) && btext(w[..]) == " others";
+  far = good; far.most = dd_bound(c[0]).most + 1; w[0].n = 0; #assert dd_fails(c[0], far, w[..]);
+  far = good; far.p95 = dd_bound(c[0]).p95 + 1; w[0].n = 0; #assert !dd_fails(c[4], far, w[..]);   // the worst cell's bound is wider
+  none := good; none.p95 = -1; w[0].n = 0; #assert dd_fails(c[0], none, w[..]);
+  #assert dd_num("{\"frames\":612,\"judged\":580,\"p95\":41}", "judged") == 580 && dd_num("{\"p95\":41}", "p95") == 41 && dd_num("{\"p95\":-1}", "p95") == -1 && dd_num("{}", "p95") == -1;
+}
+
+// A text longer than a Buf holds: a page's states, and the question that hands them to another page.
+DdBig :: struct { b: [262144] u8; n: int; bad: bool; }
+dd_put :: (o: [] DdBig, s: string) {
+  if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<s.count { o[0].b[o[0].n + k] = s[k]; }
+  o[0].n += s.count;
+}
+dd_usage :: () -> int { tool_errln("usage: coax/web/tool.sh everglade2-drift --page ORIGIN --room PORT [--proxy PORT] [--cells RTT:LOSS,...] [--seed S] [--out FILE] [--report] (from the repository's root)"); return 2; }
+
+// The proxy for a cell on `proxy`, to the room: its handle once it listens, or -1.
+dd_proxy :: (root: string, proxy: int, room: int, c: DdCell, seed: int) -> int {
+  tool: [1] Buf; bput(tool[..], root); bput(tool[..], "/coax/web/tool.sh");
+  np: [1] Buf; bput(np[..], root); bput(np[..], "/coax/web/room/net-proxy.coax");
+  a: [6] [1] Buf;
+  bint(a[0][..], proxy); bint(a[1][..], room); bint(a[2][..], c.rtt); bint(a[3][..], DD_JITTER); bint(a[4][..], c.loss); bint(a[5][..], seed);
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := proc_err_ours(h) && proc_gentle(h);
+  for x: [11] string.[btext(tool[..]), btext(np[..]), btext(a[0][..]), btext(a[1][..]), btext(a[2][..]), btext(a[3][..]), btext(a[4][..]), "900", "0", "", btext(a[5][..])] { ok = ok && proc_arg(h, x); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return -1; }
+  got: [4096] u8;
+  for k: 0..<120 {
+    n := proc_line(h, 1000, got[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n > 0 { t := cast(string) got[0..<n]; for i: 0..<n - 4 { if t[i..<i + 5] == "seed=" { return h; } } }
+  }
+  k := proc_kill(h, 15); w := proc_wait(h, 3000); r := proc_release(h);
+  return -1;
+}
+
+// One cell with its three pages up and opened: seats them, walks A, and reads what each saw.
+dd_play :: (c: [] Cdp, cell: DdCell, seen: [] DdSeen) -> bool {
+  A := c[0..<1]; B := c[1..<2]; C := c[2..<3];
+  if !el_seat(c, -1) { return false; }
+  proc_sleep(1500);
+  seat := el_probe(A, 41);
+  w: [1] Buf; bput(w[..], "__lat.watch("); bint(w[..], seat); bput(w[..], ")");
+  if seat < 0 || el_int(B, btext(w[..]), 0) != 1 || el_int(C, btext(w[..]), 0) != 1 { return el_check(false, "B and C watch A's seat"); }
+  _ := el_int(A, "__lat.lock(1)", 0); proc_sleep(600);
+  t0: [32] u8; from := el_mark(A, t0[..]);
+  // the walk: W held, the mouse turning A all the way round as it goes, a jump a third and two thirds in
+  _ = el_key(A, true);
+  steps := DD_WALK_MS / 100;
+  for k: 0..<steps {
+    _ = el_int(A, "__lat.look(12, 0)", 0);
+    if k == steps / 3 || k == 2 * steps / 3 { _ = el_press(A, true, " ", "Space", 32); }
+    if k == steps / 3 + 1 || k == 2 * steps / 3 + 1 { _ = el_press(A, false, " ", "Space", 32); }
+    proc_sleep(100);
+  }
+  _ = el_key(A, false);
+  // B's frames end with the walk's last rows; C hears on, so the room's word covers every frame of B
+  proc_sleep(400 + cell.rtt * 2); _ = el_int(B, "__lat.watch(-1)", 0);
+  proc_sleep(1200); _ = el_int(C, "__lat.watch(-1)", 0);
+  truth: [1] DdBig; q: [1] DdBig;
+  tn := el_str(C, "__lat.states()", truth[0].b[..]);
+  dd_put(q[..], "__lat.drift("); dd_put(q[..], ifx tn.count > 1 then tn else "[]"); dd_put(q[..], ")");
+  rb: [1024] u8; fb: [1024] u8;
+  drift := ifx q[0].bad then "" else el_str(B, cast(string) q[0].b[0..<q[0].n], rb[..]);
+  f: [1] Buf; bput(f[..], "__lat.fixes("); bput(f[..], from); bput(f[..], ","); bint(f[..], DD_FIX_MM); bput(f[..], ")");
+  fixes := el_str(A, btext(f[..]), fb[..]);
+  seen[0] = DdSeen.{judged = dd_num(drift, "judged"), moved = dd_num(drift, "moved_mm"), p50 = dd_num(drift, "p50"), p95 = dd_num(drift, "p95"), most = dd_num(drift, "max"),
+                    reruns = dd_num(fixes, "reruns"), over = dd_num(fixes, "over"), fix_most = dd_num(fixes, "most_mm")};
+  print("  A: round trip % ms, % re-runs, % over % mm, the most % mm. B: A drawn % ms behind; % frames judged over % mm of A's walk\n", el_probe(A, 55), seen[0].reruns, seen[0].over, DD_FIX_MM, seen[0].fix_most, el_probe(B, 44), seen[0].judged, seen[0].moved);
+  return drift.count > 0 && fixes.count > 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return dd_usage(); }
+  page := args_value(a[..], "--page", ""); room := args_whole(args_value(a[..], "--room", ""));
+  proxy := args_whole(args_value(a[..], "--proxy", "9477")); seed := args_whole(args_value(a[..], "--seed", "13277"));
+  out_file := args_value(a[..], "--out", ""); report := args_has(a[..], "--report");
+  cells: [DD_MAX_CELLS] DdCell; cn := dd_cells(args_value(a[..], "--cells", DD_CELLS), cells[..]);
+  if page.count == 0 || el_origin(page).count == 0 || room <= 0 || proxy <= 0 || seed < 0 || cn < 0 { return dd_usage(); }
+  js: [65536] u8;
+  jn := fs_read("coax/web/everglade2-latency.js", js[..]);
+  if jn <= 0 { tool_errln("everglade2-drift: can't read coax/web/everglade2-latency.js (run it from the repository's root)"); return 2; }
+  rb: [4096] u8; root := proc_getenv("COAX_TOOL_REPO", rb[..]);
+  if root.count == 0 { root = "."; }
+  bad := 0;
+  rows: [1] DdBig;
+  dd_put(rows[..], "| Round trip ms | Loss | A's re-runs | over 5 cm | the most mm | B draws A off by p50 mm | p95 | the most | bound p95 / most | |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
+  for ci: 0..<cn {
+    cell := cells[ci];
+    print("cell: round trip % ms, % in a thousand reads lost\n", cell.rtt, cell.loss); fl := cxtool_out_flush();
+    shaped := cell.rtt > 0 || cell.loss > 0;
+    ph := ifx shaped then dd_proxy(root, proxy, room, cell, seed) else -1;
+    if shaped && ph < 0 { tool_errln("everglade2-drift: the proxy didn't start"); bad += 1; continue; }
+    rnd: [6] u8; hex := "0123456789abcdef"; hx: [1] Buf;
+    if !cdp_draw(6, rnd[..]) { tool_errln("everglade2-drift: no entropy"); return 1; }
+    for byte: rnd { h2: [2] u8; h2[0] = hex[byte / 16]; h2[1] = hex[byte % 16]; bput(hx[..], cast(string) h2[..]); }
+    mark: [1] Buf; bput(mark[..], "pair-check-"); bput(mark[..], btext(hx[..]));
+    url: [2] [1] Buf;   // 0 through the cell's network, 1 the clean link
+    for u: 0..<2 {
+      bput(url[u][..], page); bput(url[u][..], "/worlds/character-creator?relay=ws://localhost:"); bint(url[u][..], ifx u == 0 && shaped then proxy else room);
+      bput(url[u][..], "&transport=ws&room=pair-e2-"); bput(url[u][..], btext(hx[..])); bput(url[u][..], "-1");
+    }
+    c: [3] Cdp; up := 0;
+    for i: 0..<3 {
+      if !cdp_launch(c[i..<i + 1], 960, 540, "coax-e2drift-") { tool_err("everglade2-drift: "); tool_errln(cdp_error(c[i..<i + 1])); break; }
+      up += 1;
+    }
+    seen: [1] DdSeen; played := up == 3;
+    for i: 0..<up { if played && !el_open(c[i..<i + 1], btext(url[ifx i == 2 then 1 else 0][..]), el_origin(page), btext(mark[..]), 960, 540, cast(string) js[0..<jn]) { played = false; } }
+    played = played && dd_play(c[..], cell, seen[..]);
+    for i: 0..<up { cdp_close(c[i..<i + 1]); }
+    if ph >= 0 { k := proc_kill(ph, 15); w := proc_wait(ph, 5000); r := proc_release(ph); }
+    why: [1] Buf; b := dd_bound(cell);
+    failed := !played || (!report && dd_fails(cell, seen[0], why[..]));
+    if failed { bad += 1; }
+    line: [1] Buf;
+    bput(line[..], "{\"rtt_ms\":"); bint(line[..], cell.rtt); bput(line[..], ",\"loss_permille\":"); bint(line[..], cell.loss); bput(line[..], ",\"jitter_ms\":"); bint(line[..], DD_JITTER);
+    bput(line[..], ",\"played\":"); bput(line[..], ifx played then "true" else "false");
+    bput(line[..], ",\"reruns\":"); bint(line[..], seen[0].reruns); bput(line[..], ",\"fix_over\":"); bint(line[..], seen[0].over); bput(line[..], ",\"fix_most_mm\":"); bint(line[..], seen[0].fix_most);
+    bput(line[..], ",\"judged\":"); bint(line[..], seen[0].judged); bput(line[..], ",\"moved_mm\":"); bint(line[..], seen[0].moved);
+    bput(line[..], ",\"p50_mm\":"); bint(line[..], seen[0].p50); bput(line[..], ",\"p95_mm\":"); bint(line[..], seen[0].p95); bput(line[..], ",\"most_mm\":"); bint(line[..], seen[0].most);
+    bput(line[..], ",\"bound_p95_mm\":"); bint(line[..], b.p95); bput(line[..], ",\"bound_most_mm\":"); bint(line[..], b.most); bput(line[..], "}");
+    print("%\n", btext(line[..])); fl = cxtool_out_flush();
+    if out_file.count > 0 && (!fs_append(out_file, btext(line[..])) || !fs_append(out_file, "\n")) { tool_errln("everglade2-drift: can't write --out"); return 1; }
+    row: [1] Buf;
+    bput(row[..], "| "); bint(row[..], cell.rtt); bput(row[..], " | "); bint(row[..], cell.loss / 10); bput(row[..], "."); bint(row[..], cell.loss % 10); bput(row[..], "% | ");
+    bint(row[..], seen[0].reruns); bput(row[..], " | "); bint(row[..], seen[0].over); bput(row[..], " | "); bint(row[..], seen[0].fix_most); bput(row[..], " | ");
+    bint(row[..], seen[0].p50); bput(row[..], " | "); bint(row[..], seen[0].p95); bput(row[..], " | "); bint(row[..], seen[0].most); bput(row[..], " | ");
+    bint(row[..], b.p95); bput(row[..], " / "); bint(row[..], b.most); bput(row[..], " | ");
+    bput(row[..], ifx !played then "did not play" else ifx failed then "FAILS:" else ifx report then "reported" else "holds"); bput(row[..], btext(why[..])); bput(row[..], " |\n");
+    dd_put(rows[..], btext(row[..]));
+  }
+  print("%", cast(string) rows[0].b[0..<rows[0].n]);
+  print("%\n", ifx bad == 0 then "holds" else "fails");
+  return ifx bad == 0 then 0 else 1;
+}

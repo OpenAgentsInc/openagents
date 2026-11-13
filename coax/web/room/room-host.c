@@ -859,7 +859,7 @@ static bool dev_control_changed(void) {
   struct stat st;
   if (n < 0 || (size_t)n >= sizeof path || stat(path, &st)) return false;
 #ifdef __APPLE__
-  struct timespec modified = {st.st_mtime, st.st_mtimensec};
+  struct timespec modified = st.st_mtimespec;   /* (Darwin's name for it, with _DARWIN_C_SOURCE above: st_mtimensec is strict POSIX's only) */
 #else
   struct timespec modified = st.st_mtim;
 #endif

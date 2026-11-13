@@ -23,34 +23,11 @@
 // input was never answered; the numbers are the report (docs/audits/2026-11-10-everglade-multiplayer-audit.md).
 // Nothing opens on screen and no sound plays. Each Chrome this starts is closed before it exits.
 #import "Basic";
-#load "../lib/net/cdp.coax";
+#load "everglade2-pages.coax";
 
 EL_TRIALS :: 16;
 EL_RANGER :: 7;   // everglade/client/create.coax E2C_CLASS_NAMES
 
-Buf :: struct { b: [8192] u8; n: int; bad: bool; }
-bput :: (o: [] Buf, s: string) {
-  if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; }
-  for k: 0..<s.count { o[0].b[o[0].n + k] = s[k]; }
-  o[0].n += s.count;
-}
-bint :: (o: [] Buf, v: int) {
-  if v < 0 { bput(o, "-"); bint(o, -v); return; }
-  d: [20] u8; n := 0; x := v;
-  if x == 0 { d[0] = '0'; n = 1; }
-  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
-  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; bput(o, cast(string) e[..]); }
-}
-btext :: (o: [] Buf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
-el_origin :: (url: string) -> string {
-  i := 0;
-  while i + 2 < url.count && !(url[i] == ':' && url[i + 1] == '/' && url[i + 2] == '/') { i += 1; }
-  if i + 2 >= url.count || i == 0 { return ""; }
-  j := i + 3;
-  while j < url.count && url[j] != '/' && url[j] != '?' && url[j] != '#' { j += 1; }
-  return ifx j > i + 3 then url[0..<j] else "";
-}
-el_has_query :: (url: string) -> bool { for c: url { if c == '?' { return true; } } return false; }
 // The p-th percentile of the first n of v (those at or over 0), -1 with none: the nearest rank.
 el_pct :: (v: [] int, n: int, p: int) -> int {
   s: [EL_TRIALS] int; m := 0;
@@ -67,70 +44,6 @@ el_answered :: (v: [] int, n: int) -> int { c := 0; for i: 0..<n { if i < EL_TRI
   v := [EL_TRIALS] int.[40, 10, -2, 30, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   #assert el_pct(v[..], 5, 50) == 30 && el_pct(v[..], 5, 0) == 10 && el_pct(v[..], 5, 100) == 40 && el_answered(v[..], 5) == 4;
   #assert el_pct(v[..], 0, 50) == -1;
-}
-
-el_int :: (c: [] Cdp, js: string, fallback: int) -> int {
-  v := cdp_evaluate(c, js);
-  return ifx v >= 0 then jv_int(cdp_doc(c), v, fallback) else fallback;
-}
-el_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
-  v := cdp_evaluate(c, js);
-  if v < 0 { return ""; }
-  n := jv_str(cdp_doc(c), v, out);
-  return ifx n > 0 then cast(string) out[0..<n] else "";
-}
-el_probe :: (c: [] Cdp, f: int) -> int { q: [1] Buf; bput(q[..], "__lat.probe("); bint(q[..], f); bput(q[..], ")"); return el_int(c, btext(q[..]), -1); }
-// The page's clock (ms since its epoch) as a whole number in text, for the next question's `from`.
-el_mark :: (c: [] Cdp, out: [] u8) -> string { return el_str(c, "String(Math.floor(__lat.mark()))", out); }
-// __lat.since(NAME, COL, FROM, WITHIN) or, with at, __lat.seen(COL, AT, WITHIN): whole ms.
-el_since :: (c: [] Cdp, name: string, col: string, from: string, within: int) -> int {
-  q: [1] Buf; bput(q[..], "Math.round(__lat.since('"); bput(q[..], name); bput(q[..], "',"); bput(q[..], col); bput(q[..], ","); bput(q[..], from); bput(q[..], ","); bint(q[..], within); bput(q[..], "))");
-  return el_int(c, btext(q[..]), -3);
-}
-el_seen :: (c: [] Cdp, col: string, at: string, within: int) -> int {
-  q: [1] Buf; bput(q[..], "Math.round(__lat.seen("); bput(q[..], col); bput(q[..], ","); bput(q[..], at); bput(q[..], ","); bint(q[..], within); bput(q[..], "))");
-  return el_int(c, btext(q[..]), -3);
-}
-// When input `name` (the first at or after `from`) reached page c's engine, as text.
-el_at :: (c: [] Cdp, name: string, from: string, out: [] u8) -> string {
-  q: [1] Buf; bput(q[..], "String(__lat.at('"); bput(q[..], name); bput(q[..], "',"); bput(q[..], from); bput(q[..], "))");
-  return el_str(c, btext(q[..]), out);
-}
-el_key :: (c: [] Cdp, down: bool) -> bool {
-  return cdp_call(c, "Input.dispatchKeyEvent", ifx down then "{\"type\":\"keyDown\",\"key\":\"w\",\"code\":\"KeyW\",\"windowsVirtualKeyCode\":87,\"nativeVirtualKeyCode\":87,\"text\":\"w\"}" else "{\"type\":\"keyUp\",\"key\":\"w\",\"code\":\"KeyW\",\"windowsVirtualKeyCode\":87,\"nativeVirtualKeyCode\":87}", CDP_CALL_MS) >= 0;
-}
-el_digit :: (c: [] Cdp, d: int) -> bool {
-  q: [1] Buf;
-  bput(q[..], "{\"type\":\"keyDown\",\"key\":\""); bint(q[..], d); bput(q[..], "\",\"code\":\"Digit"); bint(q[..], d);
-  bput(q[..], "\",\"windowsVirtualKeyCode\":"); bint(q[..], 48 + d); bput(q[..], ",\"nativeVirtualKeyCode\":"); bint(q[..], 48 + d); bput(q[..], ",\"text\":\""); bint(q[..], d); bput(q[..], "\"}");
-  down := cdp_call(c, "Input.dispatchKeyEvent", btext(q[..]), CDP_CALL_MS) >= 0;
-  u: [1] Buf;
-  bput(u[..], "{\"type\":\"keyUp\",\"key\":\""); bint(u[..], d); bput(u[..], "\",\"code\":\"Digit"); bint(u[..], d);
-  bput(u[..], "\",\"windowsVirtualKeyCode\":"); bint(u[..], 48 + d); bput(u[..], ",\"nativeVirtualKeyCode\":"); bint(u[..], 48 + d); bput(u[..], "}");
-  return cdp_call(c, "Input.dispatchKeyEvent", btext(u[..]), CDP_CALL_MS) >= 0 && down;
-}
-el_click :: (c: [] Cdp, x: int, y: int) -> bool {
-  q: [1] Buf;
-  bput(q[..], "(() => { for (const t of ['pointerdown', 'pointerup']) dispatchEvent(new PointerEvent(t, {clientX: "); bint(q[..], x);
-  bput(q[..], ", clientY: "); bint(q[..], y); bput(q[..], ", pointerId: 1, pointerType: 'mouse', isPrimary: true, button: 0, buttons: 1, bubbles: true})); return 1; })()");
-  return el_int(c, btext(q[..]), 0) == 1;
-}
-el_open :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int, script: string) -> bool {
-  params: [131072] u8; o: [1] Jo;
-  jo_start(o[..], params[..]);
-  jo_obj(o[..]); jo_key(o[..], "width"); jo_int(o[..], w); jo_key(o[..], "height"); jo_int(o[..], h);
-  jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], 1); jo_key(o[..], "mobile"); jo_bool(o[..], false); jo_end(o[..]);
-  if cdp_call(c, "Emulation.setDeviceMetricsOverride", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
-  if cdp_call(c, "Page.enable", "", CDP_CALL_MS) < 0 { return false; }
-  if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return false; }
-  jo_start(o[..], params[..]);
-  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "verse-automation"); jo_key(o[..], "value"); jo_str(o[..], mark);
-  jo_key(o[..], "url"); jo_str(o[..], origin); jo_end(o[..]);
-  if cdp_call(c, "Network.setCookie", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
-  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "source"); jo_str(o[..], script); jo_end(o[..]);
-  if o[0].bad || cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
-  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
-  return !o[0].bad && cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) >= 0;
 }
 // One frame of page c as DIR/LABEL-WHO-NN.jpg.
 el_shot :: (c: [] Cdp, dir: string, label: string, who: string, k: int) {
@@ -155,13 +68,6 @@ el_film :: (dir: string, label: string, who: string, fps: int) {
   so: [256] u8; se: [1024] u8;
   r := proc_run(all[..], 60000, so[..], se[..]);
   if r.started == 0 && r.status == 0 { print("  clip %\n", btext(o[..])); }
-}
-el_check :: (ok: bool, what: string) -> bool { print("% %\n", ifx ok then "ok  " else "FAIL", what); return ok; }
-// CLASS pressed on its right half until it says klass (e2_probe 28, 102, 103; a phone's CLASS tab first).
-el_pick :: (p: [] Cdp, klass: int) -> bool {
-  if el_probe(p, 62) <= 0 { tx := el_probe(p, 130); ty := el_probe(p, 131); if tx > 0 && ty > 0 { _ := el_click(p, tx, ty); proc_sleep(200); } }
-  for q: 0..<14 { if el_probe(p, 28) == klass { break; } _ := el_click(p, el_probe(p, 102), el_probe(p, 103)); proc_sleep(200); }
-  return el_probe(p, 28) == klass;
 }
 // One line of a metric's trials: how many were answered, the median, the 95th percentile and the most (ms).
 El :: struct { v: [EL_TRIALS] int; n: int; }
@@ -210,36 +116,9 @@ el_run :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int,
   A := c[0..<1]; B := c[1..<2];
   for i: 0..<2 { if !el_open(c[i..<i + 1], url, origin, mark, w, h, script) { tool_errln("everglade2-latency: can't open a page"); print("fails\n"); return 1; } }
   print("room %, mark %\n", url, mark);
-  // Character Create: A the Ranger, then USE IN EVERGLADE on each
-  pressed: [2] bool; left := 2; ranger := false;
-  deadline := proc_now_ms() + 90000;
-  while left > 0 && proc_now_ms() < deadline {
-    proc_sleep(500);
-    for i: 0..<2 {
-      if pressed[i] { continue; }
-      p := c[i..<i + 1];
-      if el_probe(p, 20) != 1 { continue; }
-      bx := el_probe(p, 56); by := el_probe(p, 57);
-      if bx <= 0 || by <= 0 { continue; }
-      proc_sleep(300);
-      if i == 0 && !ranger { ranger = el_pick(p, EL_RANGER); }
-      if i == 1 { sx := el_probe(p, 60); sy := el_probe(p, 61); if sx > 0 && sy > 0 { _ := el_click(p, sx, sy); proc_sleep(250); } }
-      bx = el_probe(p, 56); by = el_probe(p, 57);
-      _ := el_click(p, bx, by);
-      proc_sleep(400);
-      if el_probe(p, 21) == 1 || el_probe(p, 25) == 1 { pressed[i] = true; left -= 1; }
-    }
-  }
-  all := el_check(left == 0 && ranger, "page A is a Ranger, and both pressed USE IN EVERGLADE");
-  if left > 0 { print("fails\n"); return 1; }
-  deadline = proc_now_ms() + 15000; sat := false;
-  while !sat && proc_now_ms() < deadline { proc_sleep(100); sat = el_probe(A, 40) == 2 && el_probe(A, 41) >= 0 && el_probe(B, 40) == 2 && el_probe(B, 41) >= 0; }
-  all = el_check(sat, "both are seated in the room") && all;
-  if !sat { print("fails\n"); return 1; }
-  // the runs end and each draws the other
-  deadline = proc_now_ms() + 60000; done := false;
-  while !done && proc_now_ms() < deadline { proc_sleep(500); done = el_probe(A, 22) != 1 && el_probe(B, 22) != 1 && el_probe(A, 42) >= 1 && el_probe(B, 42) >= 1; }
-  all = el_check(done, "the runs ended and each page draws the other") && all;
+  // Character Create: A the Ranger, then USE IN EVERGLADE on each; both sit, their runs end, each draws the other
+  all := el_seat(c, EL_RANGER);
+  if !all { print("fails\n"); return 1; }
   proc_sleep(1500);
   print("  round trip: A % ms, B % ms; the others drawn % ms behind (A), % ms (B); the buffer wants % ms (A), % ms (B), states' spread % ms (A), % ms (B)\n", el_probe(A, 55), el_probe(B, 55), el_probe(A, 44), el_probe(B, 44), el_probe(A, 43), el_probe(B, 43), el_probe(A, 45) / 100, el_probe(B, 45) / 100);
   t0: [32] u8; t1: [32] u8; at: [32] u8;

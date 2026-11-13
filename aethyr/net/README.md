@@ -109,9 +109,53 @@ Everglade II's guard and monsters are rows (#13276): each is a `NetEnt` of
 the page's one list, drawn from the engine's ring, with its state and its
 act riding the ring so each shows at the moment the room names.
 
+Everglade II's familiars are entities of that list too (#13277): the page
+puts each place the room tells into the familiar's ring and draws it from
+there, so a step is blended at its tick and a recall is never drawn as a
+walk. The room still tells them in `m2` until they are rows (#13276).
+
 Not adopted yet: Orbit League's page draws each complete snapshot as it
-comes and predicts nothing, and Everglade II's familiars are still drawn
-from their own snapshot until they are rows (#13276).
+comes and predicts nothing.
+
+### The drift check
+
+`coax/web/tool.sh everglade2-drift --page ORIGIN --room PORT` plays the page
+against a local room through a shaped network
+(`coax/web/everglade2-drift.coax`). Three headless Chromes join one room. A
+walks for ten seconds, turning, with two jumps. B watches A through the
+shaped network. C watches A over a clean link, so its states are the room's
+rows for A, tick by tick. For each cell (no shaping, then 80 and 250 ms
+round trips with 1% and 5% of reads lost) the check pins:
+
+- **Your own corrections.** The room's re-runs that moved A more than 5 cm:
+  at most one a second, and none over 0.5 m.
+- **The others as drawn.** How far B draws A from where the room's rows put
+  A at the moment B draws: the 95th percentile and the most, against the
+  cell's bounds (`dd_bound`).
+
+Start the room and the page first with
+`coax/web/tool.sh coax/web/room/local.coax --static`, which prints `PAGE=`
+and `ROOM=`. Let it build the room: a remote room check leaves the host's
+Linux binary in `coax/web/room/bin/`, so don't pass `--no-build` after one. The check needs a GPU, so run it on a Mac, not on a build host.
+Its numbers on a loaded machine are not the page's: check `uptime` first.
+`--report` prints the numbers and judges nothing, for setting the bounds
+after a change that moves them on purpose.
+
+Measured on 2026-11-12, three runs, the worst of each (mm):
+
+| Round trip | Reads lost | Your corrections: over 5 cm, the most | B draws A off by: median | 95th percentile | the most | Bound: 95th, the most |
+| --- | --- | --- | --- | --- | --- | --- |
+| none | none | 0, 18 | 1 | 3 | 4 | 20, 60 |
+| 80 ms | 1% | 2, 182 | 3 | 125 | 426 | 250, 900 |
+| 80 ms | 5% | 1, 168 | 138 | 513 | 1,315 | 900, 2,400 |
+| 250 ms | 1% | 0, 50 | 94 | 881 | 2,321 | 1,500, 3,800 |
+| 250 ms | 5% | 0, 23 | 235 | 1,310 | 2,758 | 2,200, 4,500 |
+
+The link is a WebSocket, so a lost read holds every read behind it for a
+resend, and the others are drawn up to metres off for a moment. That is
+what the page does today, pinned so it can't get worse unseen. The check
+does not cover WebTransport, where a lost datagram holds nothing:
+`coax/web/room/net-matrix.coax` times that path.
 
 ## Adoption points
 

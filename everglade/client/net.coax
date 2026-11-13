@@ -25,7 +25,7 @@
 #load "../../aethyr/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
-E2N_ENTS :: 32;                 // the room's players (a room seats 16), monsters and guard this page holds: every entity its rows tell (#13276)
+E2N_ENTS :: 48;                 // the room's players (a room seats 16), monsters, guard and familiars this page holds: every entity it draws (#13276, #13277)
 E2N_REALM :: "everglade2";
 E2N_GAME :: "everglade";        // the room server's game path (/api/room/relay/everglade/CODE)
 E2N_PIPE_TICKET :: 4;           // the pipe's ask for a seat ticket: the API path, a newline, the body (as Everglade's, everglade5e-face.c)
@@ -62,7 +62,14 @@ E2nMon :: struct { t: int; life: int; kind: int; state: int = 4; x: f32; z: f32;
 E2nMonHit :: struct { live: bool; t: int; kind: int; m: int; seat: int; amount: int; fx: f32; fz: f32; tx: f32; tz: f32; fly: f32; }
 E2N_MON_STATE :: 255;   // a monster's state in its ring's flags; its act under way is above it (E2N_MON_ACT)
 E2N_MON_ACT :: 8;
+// A familiar is an entity of the page's one list too (#13277): its owner's seat in owner, its form in
+// p1, drawn from the engine's interpolation buffer (aethyr/net/interp.coax) as every other entity is.
+// The room tells them in m2 (everglade/server/familiar.coax) until they are rows (#13276), so their
+// ids and their kind are the page's own for now: no row has them.
 E2N_FAMILIARS :: 16;
+E2N_FAM_EID :: 970200;          // owner seat S's familiar: WIRE_ID_MADE + E2N_FAM_EID + S
+E2N_ENT_FAMILIAR :: 1015;       // such an entity's kind in ents: no row's kind
+E2N_FAM_JUMP :: 4.0;            // metres: farther than this in one word is a recall or a new summons, never drawn between
 E2nFamiliar :: struct { live:bool; form:int; x:f32; z:f32; hp:int; max:int; }
 E2Net :: struct {
   want: bool;                   // a room: the page facts named a host and this is not a staged shot
@@ -129,7 +136,7 @@ E2Net :: struct {
   cast_said: string; cast_said_at: int; // bounded local feedback from the latest request
   cast_seq: int;                // your last cast's number (the room's r SEQ names it)
   acts: [1] NetLedger;          // your casts and rests that wait for the room: pressed, then confirmed, refused or timed out (aethyr/net/predict.coax)
-  familiar_rows:[E2N_FAMILIARS]E2nFamiliar; familiar_tick:int=-1;
+  familiar_tick:int=-1;
   guard_hits: [E2N_GUARD_HITS] E2nGuardHit;
   mon_hits: [E2N_MON_HITS] E2nMonHit;
   familiar_seq:int=4000000; familiar_at:int=-100000; familiar_ok:bool; familiar_form:int; familiar_slot:int; familiar_spirit:int=RS_FAMILIAR_FEY; familiar_cast:int; familiar_order:int; familiar_heal_cue:bool; familiar_sense:int;
@@ -665,7 +672,8 @@ e2n_record :: (n: [] E2Net, t: string) {
     wire_mirror_end(n[0].mir[..], d);
     if (d.f & 1) != 0 && (d.f & 2) == 0 {
       // a whole snapshot: whoever it doesn't hold has gone
-      for e: 0..<E2N_ENTS { if n[0].ents[e].live && n[0].ents[e].seen != d.tick { n[0].ents[e].live = false; } }
+      // (a familiar is not a row yet: m2's whole list says which are gone, e2n_familiar_snapshot)
+      for e: 0..<E2N_ENTS { if n[0].ents[e].live && n[0].ents[e].kind != E2N_ENT_FAMILIAR && n[0].ents[e].seen != d.tick { n[0].ents[e].live = false; } }
     }
     return;
   }
@@ -1062,7 +1070,7 @@ e2n_clear_familiars :: (n:[]E2Net) {
   for h:0..<E2N_GUARD_HITS { n[0].guard_hits[h].live=false; }
   for h:0..<E2N_MON_HITS { n[0].mon_hits[h].live=false; }
   n[0].familiar_tick=-1; n[0].familiar_cast=0; n[0].familiar_order=0; n[0].familiar_heal_cue=false; n[0].familiar_sense=0;
-  for s:0..<E2N_FAMILIARS { n[0].familiar_rows[s].live=false; }
+  for e:0..<E2N_ENTS { if n[0].ents[e].kind==E2N_ENT_FAMILIAR { n[0].ents[e].live=false; } }
 }
 e2n_familiar_snapshot :: (n:[]E2Net,t:string) {
   if !e2n_open(n) { return; }
@@ -1080,7 +1088,50 @@ e2n_familiar_snapshot :: (n:[]E2Net,t:string) {
     prior=s;
   }
   if wire_more(t,rd[..]) { return; }
-  n[0].familiar_rows=rows; n[0].familiar_tick=tick;
+  n[0].familiar_tick=tick;
+  // the whole list, taken whole: each familiar's place into its entity's ring at the tick the room
+  // names, and one the list leaves out is gone
+  at:=e2n_tick_t(n,tick);
+  for s:0..<E2N_FAMILIARS {
+    eid:=WIRE_ID_MADE+E2N_FAM_EID+s;
+    if !rows[s].live { k:=e2n_ent(n,eid,false); if k>=0 { n[0].ents[k].live=false; } continue; }
+    k:=e2n_ent(n,eid,true);
+    if k<0 { continue; }
+    en:=n[0].ents[k..<k+1];
+    if en[0].ring_n>0 {
+      last:=en[0].ring[en[0].ring_n-1]; dx:=rows[s].x-last.x; dz:=rows[s].z-last.z;
+      if dx*dx+dz*dz>f32(E2N_FAM_JUMP*E2N_FAM_JUMP) || last.t>at { en[0].ring_n=0; en[0].born=at; }
+    }
+    en[0].kind=E2N_ENT_FAMILIAR; en[0].owner=s; en[0].p1=rows[s].form; en[0].hp=rows[s].hp; en[0].max=rows[s].max; en[0].seen=tick;
+    net_push_row(en,NetState.{t=at,x=rows[s].x,z=rows[s].z},n[0].hz);
+    if en[0].ring_n==1 { en[0].shown=en[0].ring[0]; }
+  }
+}
+// Owner seat s's familiar as drawn at the page's moment of the room (rt): from the engine's buffer.
+e2n_familiar_of :: (n:[]E2Net,s:int)->E2nFamiliar {
+  k:=ifx s>=0 && s<E2N_FAMILIARS then e2n_ent(n,WIRE_ID_MADE+E2N_FAM_EID+s,false) else -1;
+  if k<0 || n[0].ents[k].ring_n==0 || n[0].ents[k].kind!=E2N_ENT_FAMILIAR { return E2nFamiliar.{}; }
+  en:=n[0].ents[k..<k+1]; p:=net_state_at(en,n[0].rt);
+  return E2nFamiliar.{live=true,form=en[0].p1,x=p.x,z=p.z,hp=en[0].hp,max=en[0].max};
+}
+#test "a familiar is drawn from the engine's buffer: a step is blended at its moment, a recall never is, and one the list leaves out is gone (#13277)" {
+  n:[1]E2Net; n[0].state=E2N_OPEN; n[0].sock=1; n[0].seat=0; n[0].hz=30; n[0].worlds=1; n[0].w_tick=0; n[0].w_t=0;
+  #assert !e2n_familiar_of(n[..],2).live && !e2n_familiar_of(n[..],-1).live && !e2n_familiar_of(n[..],E2N_FAMILIARS).live;
+  e2n_record(n[..],"m2 30 1 2 8 4000 -6000 3 5");
+  f:=e2n_familiar_of(n[..],2); #assert f.live && f.form==8 && f.x==4 && f.z== -6 && f.hp==3 && f.max==5;
+  // it stood a second, then stepped a square: the step takes the tick it was told at, not the second between
+  e2n_record(n[..],"m2 60 1 2 8 5500 -6000 3 5");
+  n[0].rt=1500; #assert e2n_familiar_of(n[..],2).x==4;
+  n[0].rt=1983; a:=e2n_familiar_of(n[..],2); #assert a.x>4.5 && a.x<5.0;
+  n[0].rt=2000; #assert e2n_familiar_of(n[..],2).x==5.5;
+  // a recall to somewhere else is no walk: nothing is drawn between
+  e2n_record(n[..],"m2 90 1 2 8 5500 -40000 2 5");
+  n[0].rt=2990; b:=e2n_familiar_of(n[..],2); #assert b.z== -40 && b.hp==2;
+  // a whole snapshot of the rows leaves it be (it is no row yet); the next list without it takes it away
+  e2n_record(n[..],"D 91 0 1 0 "); #assert e2n_familiar_of(n[..],2).live;
+  e2n_record(n[..],"m2 92 0"); #assert !e2n_familiar_of(n[..],2).live;
+  e2n_record(n[..],"m2 93 1 2 8 5500 -40000 2 5"); #assert e2n_familiar_of(n[..],2).live;
+  e2n_down(n[..]); #assert !e2n_familiar_of(n[..],2).live;
 }
 // A blow at or by the guard (creature-wire.coax e guard).
 e2n_guard_hit :: (n:[]E2Net,t:string) {
@@ -1226,7 +1277,7 @@ e2n_familiar_heal :: (n:[]E2Net,target:int)->bool {
 }
 e2n_familiar_view :: (n:[]E2Net)->E2nFamiliar {
   own:=n[0].seat;
-  if n[0].familiar_sense>0 && e2n_open(n) && own>=0 && own<E2N_FAMILIARS { return n[0].familiar_rows[own]; }
+  if n[0].familiar_sense>0 && e2n_open(n) { return e2n_familiar_of(n,own); }
   return E2nFamiliar.{};
 }
 e2n_familiar_message :: (n:[]E2Net)->string {
@@ -1361,6 +1412,48 @@ e2n_remote :: (n: [] E2Net, k: int) -> E2Remote {
   return E2Remote.{};
 }
 e2n_remotes :: (n: [] E2Net) -> int { c := 0; while e2n_remote(n, c).ok { c += 1; } return c; }
+// The drift check's probes (coax/web/everglade2-drift.coax, #13277; e2_probe 200, and 1200 on). 200: the
+// moment of the room this frame draws the others at, in thousandths of a tick (-1 before the room's
+// clock is known). 1200 + 64 * SEAT + K: that seat's player as this page has it. K 32 and 33: where it
+// is drawn this frame (mm; -999999 when it is not here). K 4 * I + 0, 1, 2: the I-th state of its
+// buffer, oldest first, as the room's rows said it: its tick (-1 past the last), and its place (mm).
+E2N_DRIFT :: 1200; E2N_DRIFT_SEAT :: 64; E2N_DRIFT_SHOWN :: 32; E2N_DRIFT_NONE :: -999999;
+e2n_mm :: (m: f32) -> int { return cast(int) floor(m * 1000 + 0.5); }
+e2n_drift_probe :: (n: [] E2Net, f: int) -> int {
+  if f == 200 { return ifx n[0].worlds > 0 then (n[0].rt - n[0].w_t) * n[0].hz + n[0].w_tick * 1000 else -1; }
+  if f < E2N_DRIFT || f >= E2N_DRIFT + E2N_DRIFT_SEAT * WIRE_SEATS { return -1; }
+  seat := (f - E2N_DRIFT) / E2N_DRIFT_SEAT; k := (f - E2N_DRIFT) % E2N_DRIFT_SEAT;
+  none := ifx k >= E2N_DRIFT_SHOWN then E2N_DRIFT_NONE else -1;
+  e := ifx seat != n[0].seat then e2n_ent(n, seat, false) else -1;
+  if e < 0 || n[0].ents[e].kind != WK_PLAYER || n[0].ents[e].seat != seat || n[0].ents[e].ring_n == 0 { return none; }
+  en := n[0].ents[e..<e + 1];
+  if k == E2N_DRIFT_SHOWN { return e2n_mm(en[0].shown.x); }
+  if k == E2N_DRIFT_SHOWN + 1 { return e2n_mm(en[0].shown.z); }
+  i := k / 4; j := k % 4;
+  if k > E2N_DRIFT_SHOWN || i >= en[0].ring_n || j == 3 { return none; }
+  st := en[0].ring[i];
+  // the state's time back to its tick: the page's clock of the room follows a drift a few ms at a time, so to the nearest
+  if j == 0 { return n[0].w_tick + ((st.t - n[0].w_t) * n[0].hz + 500 + 1000000000) / 1000 - 1000000; }
+  return e2n_mm(ifx j == 1 then st.x else st.z);
+}
+#test "the drift check's probes: the drawn moment in ticks, a player's drawn place and its buffer's states by tick, never you (#13277)" {
+  n: [1] E2Net; n[0].state = E2N_OPEN; n[0].seat = 0; n[0].hz = 30; n[0].worlds = 1; n[0].w_tick = 600; n[0].w_t = 5000;
+  n[0].rt = 5100; #assert e2n_drift_probe(n[..], 200) == 603000;
+  b := E2N_DRIFT + 3 * E2N_DRIFT_SEAT;
+  #assert e2n_drift_probe(n[..], b) == -1 && e2n_drift_probe(n[..], b + E2N_DRIFT_SHOWN) == E2N_DRIFT_NONE;
+  e2n_test_row(n[..], 630, WireS.{id = 3, kind = WK_PLAYER, x = 1.5, z = -20.25, g = WG_GROUND, hp = 5, max = 5, life = 1});
+  e2n_test_row(n[..], 632, WireS.{id = 3, kind = WK_PLAYER, x = 1.75, z = -20, g = WG_GROUND, hp = 5, max = 5, life = 1});
+  // a row after a tick with none: the last state again a tick before it (aethyr/net/interp.coax net_ring_push_row)
+  #assert e2n_drift_probe(n[..], b) == 630 && e2n_drift_probe(n[..], b + 1) == 1500 && e2n_drift_probe(n[..], b + 2) == -20250;
+  #assert e2n_drift_probe(n[..], b + 4) == 631 && e2n_drift_probe(n[..], b + 5) == 1500 && e2n_drift_probe(n[..], b + 8) == 632 && e2n_drift_probe(n[..], b + 9) == 1750 && e2n_drift_probe(n[..], b + 10) == -20000;
+  #assert e2n_drift_probe(n[..], b + 12) == -1 && e2n_drift_probe(n[..], b + 3) == -1;
+  // where it is drawn is what the frame's step set (shown)
+  k := e2n_ent(n[..], 3, false); n[0].ents[k].shown = NetState.{x = 1.625, z = -20.125};
+  #assert e2n_drift_probe(n[..], b + E2N_DRIFT_SHOWN) == 1625 && e2n_drift_probe(n[..], b + E2N_DRIFT_SHOWN + 1) == -20125;
+  // never you, never a seat past the room's, never a monster
+  #assert e2n_drift_probe(n[..], E2N_DRIFT) == -1 && e2n_drift_probe(n[..], E2N_DRIFT + E2N_DRIFT_SEAT * WIRE_SEATS) == -1 && e2n_drift_probe(n[..], 199) == -1;
+  n[0].worlds = 0; #assert e2n_drift_probe(n[..], 200) == -1;
+}
 #test "the room's rows draw the others a jitter buffer behind, never you, and a snapshot drops who left" {
   n: [1] E2Net; n[0].state = E2N_OPEN; n[0].sock = 1; n[0].mono = 1000;
   e2n_record(n[..], "y 1 0 1000");

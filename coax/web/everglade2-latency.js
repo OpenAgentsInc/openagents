@@ -57,6 +57,11 @@
       if (state > 0) {
         E.state = state;
         if (E.fr.length < 400000) { const row = [now(), now() - t]; for (const f of P) row.push(probe(f)); E.fr.push(row); }
+        if (E.dseat >= 0 && E.dr.length < 100000) {
+          const b = 1200 + 64 * E.dseat, x = probe(b + 32), m = probe(200);
+          if (x !== -999999 && m >= 0) E.dr.push([m, x, probe(b + 33)]);
+          for (let i = 0; i < 8; i++) { const tick = probe(b + 4 * i); if (tick < 0) break; E.dst.set(tick, [probe(b + 4 * i + 1), probe(b + 4 * i + 2)]); }
+        }
       }
       return n;
     };
@@ -85,6 +90,40 @@
   // bytes a second each way and keyframes heard, for the matrix (coax/web/room/net-matrix.coax)
   E.bytes = () => { const n = E.net; if (!n) return '{}'; const t = (performance.now() - n.t0) / 1000; return JSON.stringify({ in_bps: Math.round(n.in_b / t), out_bps: Math.round(n.out_b / t), keyframes: n.keys, wt: !!(globalThis.coaxial && coaxial.wt && coaxial.wt.sessions) }); };
   E.mark = () => now();
+  // The drift check's (coax/web/everglade2-drift.coax, #13277). From watch(SEAT) to watch(-1) each frame
+  // notes the moment of the room it draws the others at (thousandths of a tick), where it draws that
+  // seat's player (mm), and that player's states in the engine's buffer, by tick (the room's rows as
+  // this page heard them: everglade/client/net.coax e2n_drift_probe).
+  E.dseat = -1; E.dr = []; E.dst = new Map();
+  E.watch = (seat) => { if (seat >= 0) { E.dr = []; E.dst = new Map(); } E.dseat = seat; return 1; };
+  // those states, oldest first: [[TICK, X, Z], ...]
+  E.states = () => JSON.stringify([...E.dst.entries()].sort((a, b) => a[0] - b[0]).map(([t, p]) => [t, p[0], p[1]]));
+  // How far (mm) each watched frame drew the player from where `truth` puts it at the frame's own
+  // moment: truth is another page's states(), heard over a clean link, so every row the room sent is
+  // in it. A frame before truth's first state or past its last is not judged. moved_mm is how far the
+  // player went in truth while judged (a check that stood still judged nothing).
+  E.drift = (truth) => {
+    const err = []; let i = 0, moved = 0, last = null;
+    const fr = E.dr.slice().sort((a, b) => a[0] - b[0]);
+    for (const [m, x, z] of fr) {
+      const t = m / 1000;
+      if (!truth.length || t < truth[0][0] || t > truth[truth.length - 1][0]) continue;
+      while (i + 2 < truth.length && truth[i + 1][0] <= t) i++;
+      const a = truth[i], b = truth[Math.min(i + 1, truth.length - 1)];
+      const f = b[0] > a[0] ? Math.min(1, Math.max(0, (t - a[0]) / (b[0] - a[0]))) : 0;
+      const tx = a[1] + (b[1] - a[1]) * f, tz = a[2] + (b[2] - a[2]) * f;
+      err.push(Math.hypot(x - tx, z - tz));
+      if (last) moved += Math.hypot(tx - last[0], tz - last[1]);
+      last = [tx, tz];
+    }
+    return JSON.stringify({ frames: E.dr.length, judged: err.length, p50: Math.round(pct(err, 50)), p95: Math.round(pct(err, 95)), max: Math.round(pct(err, 100)), moved_mm: Math.round(moved), states: truth.length });
+  };
+  // the room's corrections of you since `from`: the re-runs, and those that moved you over `mm`
+  E.fixes = (from, mm) => {
+    const f = E.fr.filter((r) => r[0] >= from); let n = 0, over = 0, most = 0;
+    for (let i = 1; i < f.length; i++) if (f[i][2 + 14] > f[i - 1][2 + 14]) { n += f[i][2 + 14] - f[i - 1][2 + 14]; if (f[i][2 + 15] > mm) over++; if (f[i][2 + 15] > most) most = f[i][2 + 15]; }
+    return JSON.stringify({ reruns: n, over, most_mm: most });
+  };
   // One step of turning your body toward (x, z) m, by the mouse's travel (it faces where the camera
   // looks): returns how far off it still is (mrad). The first steps learn which way the travel turns.
   E.turn = { k: 0.5, last: null };

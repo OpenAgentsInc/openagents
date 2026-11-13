@@ -349,8 +349,8 @@ e2k_step :: (s: [] E2) {
   if n[0].familiar_heal_cue {
     n[0].familiar_heal_cue=false;
     own:=n[0].seat;
-    if own>=0 && own<E2N_FAMILIARS && n[0].familiar_rows[own].live {
-      f:=n[0].familiar_rows[own];
+    f:=e2n_familiar_of(n,own);
+    if f.live {
       cue:=xc_sound(fb_spell(SP_CURE_WOUNDS,1,FB_ALLY),FB_CL_DRUID);
       e2k_cue(s,cue.start,f32(E2K_GAIN_START),f.x,f.z,cue.rate);
     }
@@ -598,8 +598,8 @@ e2k_familiar_on :: (s:[]E2)->bool {
 
 e2k_familiar_heal_target :: (s:[]E2)->int {
   n:=s[0].net[..]; own:=n[0].seat;
-  if own<0 || own>=E2N_FAMILIARS || !n[0].familiar_rows[own].live { return -1; }
-  f:=n[0].familiar_rows[own];
+  f:=e2n_familiar_of(n,own);
+  if !f.live { return -1; }
   best:=-1; nearest:=12.0f32;
   for target:0..<E2N_FAMILIARS {
     row:=wire_mirror_of(n[0].mir[..],target);

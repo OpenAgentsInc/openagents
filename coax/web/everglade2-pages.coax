@@ -1,0 +1,148 @@
+// What Everglade II's page checks share (coax/web/everglade2-latency.coax, coax/web/everglade2-drift.coax):
+// a text being built, a page's probes and inputs over the DevTools protocol, opening a page with the
+// in-page half (coax/web/everglade2-latency.js) and the automation mark, and Character Create's walk to
+// a seat. Nothing opens on screen and no sound plays. Loaded, never run: no tool_main of its own.
+#load "../lib/net/cdp.coax";
+
+Buf :: struct { b: [8192] u8; n: int; bad: bool; }
+bput :: (o: [] Buf, s: string) {
+  if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<s.count { o[0].b[o[0].n + k] = s[k]; }
+  o[0].n += s.count;
+}
+bint :: (o: [] Buf, v: int) {
+  if v < 0 { bput(o, "-"); bint(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; bput(o, cast(string) e[..]); }
+}
+btext :: (o: [] Buf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+el_origin :: (url: string) -> string {
+  i := 0;
+  while i + 2 < url.count && !(url[i] == ':' && url[i + 1] == '/' && url[i + 2] == '/') { i += 1; }
+  if i + 2 >= url.count || i == 0 { return ""; }
+  j := i + 3;
+  while j < url.count && url[j] != '/' && url[j] != '?' && url[j] != '#' { j += 1; }
+  return ifx j > i + 3 then url[0..<j] else "";
+}
+el_has_query :: (url: string) -> bool { for c: url { if c == '?' { return true; } } return false; }
+
+el_int :: (c: [] Cdp, js: string, fallback: int) -> int {
+  v := cdp_evaluate(c, js);
+  return ifx v >= 0 then jv_int(cdp_doc(c), v, fallback) else fallback;
+}
+el_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
+  v := cdp_evaluate(c, js);
+  if v < 0 { return ""; }
+  n := jv_str(cdp_doc(c), v, out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+el_probe :: (c: [] Cdp, f: int) -> int { q: [1] Buf; bput(q[..], "__lat.probe("); bint(q[..], f); bput(q[..], ")"); return el_int(c, btext(q[..]), -1); }
+// The page's clock (ms since its epoch) as a whole number in text, for the next question's `from`.
+el_mark :: (c: [] Cdp, out: [] u8) -> string { return el_str(c, "String(Math.floor(__lat.mark()))", out); }
+// __lat.since(NAME, COL, FROM, WITHIN) or, with at, __lat.seen(COL, AT, WITHIN): whole ms.
+el_since :: (c: [] Cdp, name: string, col: string, from: string, within: int) -> int {
+  q: [1] Buf; bput(q[..], "Math.round(__lat.since('"); bput(q[..], name); bput(q[..], "',"); bput(q[..], col); bput(q[..], ","); bput(q[..], from); bput(q[..], ","); bint(q[..], within); bput(q[..], "))");
+  return el_int(c, btext(q[..]), -3);
+}
+el_seen :: (c: [] Cdp, col: string, at: string, within: int) -> int {
+  q: [1] Buf; bput(q[..], "Math.round(__lat.seen("); bput(q[..], col); bput(q[..], ","); bput(q[..], at); bput(q[..], ","); bint(q[..], within); bput(q[..], "))");
+  return el_int(c, btext(q[..]), -3);
+}
+// When input `name` (the first at or after `from`) reached page c's engine, as text.
+el_at :: (c: [] Cdp, name: string, from: string, out: [] u8) -> string {
+  q: [1] Buf; bput(q[..], "String(__lat.at('"); bput(q[..], name); bput(q[..], "',"); bput(q[..], from); bput(q[..], "))");
+  return el_str(c, btext(q[..]), out);
+}
+el_key :: (c: [] Cdp, down: bool) -> bool {
+  return cdp_call(c, "Input.dispatchKeyEvent", ifx down then "{\"type\":\"keyDown\",\"key\":\"w\",\"code\":\"KeyW\",\"windowsVirtualKeyCode\":87,\"nativeVirtualKeyCode\":87,\"text\":\"w\"}" else "{\"type\":\"keyUp\",\"key\":\"w\",\"code\":\"KeyW\",\"windowsVirtualKeyCode\":87,\"nativeVirtualKeyCode\":87}", CDP_CALL_MS) >= 0;
+}
+el_digit :: (c: [] Cdp, d: int) -> bool {
+  q: [1] Buf;
+  bput(q[..], "{\"type\":\"keyDown\",\"key\":\""); bint(q[..], d); bput(q[..], "\",\"code\":\"Digit"); bint(q[..], d);
+  bput(q[..], "\",\"windowsVirtualKeyCode\":"); bint(q[..], 48 + d); bput(q[..], ",\"nativeVirtualKeyCode\":"); bint(q[..], 48 + d); bput(q[..], ",\"text\":\""); bint(q[..], d); bput(q[..], "\"}");
+  down := cdp_call(c, "Input.dispatchKeyEvent", btext(q[..]), CDP_CALL_MS) >= 0;
+  u: [1] Buf;
+  bput(u[..], "{\"type\":\"keyUp\",\"key\":\""); bint(u[..], d); bput(u[..], "\",\"code\":\"Digit"); bint(u[..], d);
+  bput(u[..], "\",\"windowsVirtualKeyCode\":"); bint(u[..], 48 + d); bput(u[..], ",\"nativeVirtualKeyCode\":"); bint(u[..], 48 + d); bput(u[..], "}");
+  return cdp_call(c, "Input.dispatchKeyEvent", btext(u[..]), CDP_CALL_MS) >= 0 && down;
+}
+el_click :: (c: [] Cdp, x: int, y: int) -> bool {
+  q: [1] Buf;
+  bput(q[..], "(() => { for (const t of ['pointerdown', 'pointerup']) dispatchEvent(new PointerEvent(t, {clientX: "); bint(q[..], x);
+  bput(q[..], ", clientY: "); bint(q[..], y); bput(q[..], ", pointerId: 1, pointerType: 'mouse', isPrimary: true, button: 0, buttons: 1, bubbles: true})); return 1; })()");
+  return el_int(c, btext(q[..]), 0) == 1;
+}
+el_open :: (c: [] Cdp, url: string, origin: string, mark: string, w: int, h: int, script: string) -> bool {
+  params: [131072] u8; o: [1] Jo;
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "width"); jo_int(o[..], w); jo_key(o[..], "height"); jo_int(o[..], h);
+  jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], 1); jo_key(o[..], "mobile"); jo_bool(o[..], false); jo_end(o[..]);
+  if cdp_call(c, "Emulation.setDeviceMetricsOverride", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  if cdp_call(c, "Page.enable", "", CDP_CALL_MS) < 0 { return false; }
+  if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return false; }
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "verse-automation"); jo_key(o[..], "value"); jo_str(o[..], mark);
+  jo_key(o[..], "url"); jo_str(o[..], origin); jo_end(o[..]);
+  if cdp_call(c, "Network.setCookie", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "source"); jo_str(o[..], script); jo_end(o[..]);
+  if o[0].bad || cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+el_check :: (ok: bool, what: string) -> bool { print("% %\n", ifx ok then "ok  " else "FAIL", what); return ok; }
+// CLASS pressed on its right half until it says klass (e2_probe 28, 102, 103; a phone's CLASS tab first).
+el_pick :: (p: [] Cdp, klass: int) -> bool {
+  if el_probe(p, 62) <= 0 { tx := el_probe(p, 130); ty := el_probe(p, 131); if tx > 0 && ty > 0 { _ := el_click(p, tx, ty); proc_sleep(200); } }
+  for q: 0..<14 { if el_probe(p, 28) == klass { break; } _ := el_click(p, el_probe(p, 102), el_probe(p, 103)); proc_sleep(200); }
+  return el_probe(p, 28) == klass;
+}
+
+// A key down or up by its name, code and number, as the browser hands it to the page.
+el_press :: (c: [] Cdp, down: bool, key: string, code: string, vk: int) -> bool {
+  q: [1] Buf;
+  bput(q[..], ifx down then "{\"type\":\"keyDown\",\"key\":\"" else "{\"type\":\"keyUp\",\"key\":\""); bput(q[..], key); bput(q[..], "\",\"code\":\""); bput(q[..], code);
+  bput(q[..], "\",\"windowsVirtualKeyCode\":"); bint(q[..], vk); bput(q[..], ",\"nativeVirtualKeyCode\":"); bint(q[..], vk);
+  if down { bput(q[..], ",\"text\":\""); bput(q[..], key); bput(q[..], "\""); }
+  bput(q[..], "}");
+  return cdp_call(c, "Input.dispatchKeyEvent", btext(q[..]), CDP_CALL_MS) >= 0;
+}
+// The pages of c through Character Create into one room, as players come: each presses USE IN
+// EVERGLADE (page 0 as class `klass` first, when klass is at or over 0), sits, ends its run, and
+// draws the others. A line for each stage; false when one never came.
+el_seat :: (c: [] Cdp, klass: int) -> bool {
+  count := c.count;
+  pressed: [8] bool; left := count; picked := klass < 0;
+  deadline := proc_now_ms() + 90000 + 30000 * (count - 2);
+  while left > 0 && proc_now_ms() < deadline {
+    proc_sleep(500);
+    for i: 0..<count {
+      if pressed[i] { continue; }
+      p := c[i..<i + 1];
+      if el_probe(p, 20) != 1 { continue; }
+      bx := el_probe(p, 56); by := el_probe(p, 57);
+      if bx <= 0 || by <= 0 { continue; }
+      proc_sleep(300);
+      if i == 0 && !picked { picked = el_pick(p, klass); }
+      if i > 0 { sx := el_probe(p, 60); sy := el_probe(p, 61); if sx > 0 && sy > 0 { _ := el_click(p, sx, sy); proc_sleep(250); } }
+      bx = el_probe(p, 56); by = el_probe(p, 57);
+      _ := el_click(p, bx, by);
+      proc_sleep(400);
+      if el_probe(p, 21) == 1 || el_probe(p, 25) == 1 { pressed[i] = true; left -= 1; }
+    }
+  }
+  if !el_check(left == 0 && picked, ifx klass >= 0 then "page A has its class, and every page pressed USE IN EVERGLADE" else "every page pressed USE IN EVERGLADE") || left > 0 { return false; }
+  deadline = proc_now_ms() + 15000; sat := false;
+  while !sat && proc_now_ms() < deadline {
+    proc_sleep(100); sat = true;
+    for i: 0..<count { p := c[i..<i + 1]; if el_probe(p, 40) != 2 || el_probe(p, 41) < 0 { sat = false; } }
+  }
+  if !el_check(sat, "every page is seated in the room") { return false; }
+  deadline = proc_now_ms() + 60000; done := false;
+  while !done && proc_now_ms() < deadline {
+    proc_sleep(500); done = true;
+    for i: 0..<count { p := c[i..<i + 1]; if el_probe(p, 22) == 1 || el_probe(p, 42) < count - 1 { done = false; } }
+  }
+  return el_check(done, "the runs ended and each page draws the others");
+}
