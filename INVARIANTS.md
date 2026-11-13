@@ -5769,6 +5769,13 @@ Allowed HTML, none of it visible to a WebGPU visitor:
 - an invisible `<input>` over a Coax-drawn text field (the rect Coax reports),
   for the keyboard, paste and the context menu; it draws nothing itself;
 - the development-only error note `coax serve` shows on localhost;
+- the editor shell's mount (`host.js` editorOpen, #13416, an owner decision,
+  2026-11-12: the browser editor's panels come from the `/chat` page's
+  components): one empty `<div id="coaxial-editor">` that `coax/web/dom-host.js`
+  fills from a Coax module (`metaverse-engine/editor/shell.coax`). It opens
+  only with `?edit`, on a dev server or for an admin; a visitor never gets it.
+  The host builds nothing inside it. `check-visuals.sh` passes only the line
+  marked `// editor shell`;
 - a realm's loading screen (`coax/web/loader.js`, an owner decision,
   2026-10-30): the realm's name, a bar moved only by what really loads
   (engine bytes, compile, GPU, shader pipelines, asset bytes, textures, the

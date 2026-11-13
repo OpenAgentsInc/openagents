@@ -3802,7 +3802,7 @@ function editorOpen() {
   // the dev server's page opens it for whoever asks; a deployed page only for an admin (who else writes a world: nobody)
   if (!dev && !viewerAdmin) return;
   editorAsked = true;
-  const root = document.createElement("div");
+  const root = document.createElement("div"); // editor shell
   root.id = "coaxial-editor";
   document.body.appendChild(root);
   import(`/coaxial/dom-host.js?app=${EDITOR}&root=${root.id}`).catch((error) => { console.error(error); document.documentElement.dataset.coaxialError = String(error); });

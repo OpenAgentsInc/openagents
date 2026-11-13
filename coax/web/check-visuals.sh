@@ -33,13 +33,15 @@ done < <(find "$app" -name '*.html' -not -path '*/build/*' -not -path '*/node_mo
 # except the keyboard field, the dev note (host.js, localhost), the clipped
 # accessible layer (host.js a11yMirror), the line above the text fallback that
 # says a browser has no WebGPU (host.js noGpuNotice: with no GPU, Coax can't
-# draw it, #13155), the
+# draw it, #13155), the editor shell's empty mount (host.js editorOpen, #13416: the shell
+# is a Coax module drawn by dom-host.js from the /chat components, on ?edit for a dev server
+# or an admin only), the
 # loading screen (loader.js) and the zone frame (zone-host.js: another Coaxial
 # page opened in place, which draws everything in Coax itself), each line marked.
 for f in "$here/host.js" "$here/render.js" "$here/loader.js" "$here/zone-host.js" "$here/drop.js" "$here"/unlock/*.ts; do
   [[ -e "$f" ]] || continue
   case "$f" in *.test.ts) continue ;; esac
-  marked='// (dev only|keyboard field|accessible layer|text fallback)$'
+  marked='// (dev only|keyboard field|accessible layer|text fallback|editor shell)$'
   [[ "$(basename "$f")" == host.js ]] || marked='^$'
   [[ "$(basename "$f")" == loader.js ]] && marked='// loading screen$'
   [[ "$(basename "$f")" == zone-host.js ]] && marked='// zone frame$'

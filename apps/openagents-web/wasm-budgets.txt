@@ -117,7 +117,8 @@ fivelab 3045000
 # The Archery Range as a module of its own (archery-range.coax): an Everglade zone (everglade/zone.coax: the scene,
 # the class bar and its rules, the bow, riding) with the range on it, and none of the 5E Lab's tabletop: 2,749,040 bytes measured on the remote hosts; about 3% headroom. (fivelab without the
 # range's own code: 2,959,794.)
-archery-range 2850000
+# The riding rules shared with the room, the seated pose and the aura list (#13268, #13285): 2,857,162 bytes measured 2026-11-13; about 5% room
+archery-range 3000000
 # Bitcoin Lab's walk (bitcoin-lab-walk.coax): an Everglade zone as the range's, bare and level, with the
 # lesson (the book's SHA-256, hex and base64), the pixel face and the stations' quads. Measured below.
 bitcoin-lab-walk 2950000
@@ -269,7 +270,8 @@ host-services 32000
 # Shared socket retention, packet spans and drain budget (18,523 release bytes).
 host-sockets 24000
 # Bounded VPK1/private reader and exact retained stream ownership (34,411 bytes).
-host-packs 42000
+# Packs paged by world cell, the cells entry (kind 8) and the rig entry (kind 7) (#13304, #13280, #13306): 48,113 bytes measured 2026-11-13; about 5% room
+host-packs 51000
 # Initial procedural Valley Lab and shared walker, no fetched assets.
 valleylab 160000
 # Named face admission, sparse morph playback and source-rate facial-bone overlays (#12962): 85,271 bytes.
@@ -298,7 +300,8 @@ animationlab 460000
 ocarinalab 190000
 
 # Declared facts, six-root variants and bounded runtime qualification (#12991).
-state-lab 170000
+# The walker on the broadphase index and the one walk controller (#13279, #13270): 183,825 bytes measured 2026-11-13; about 5% room
+state-lab 193000
 actor-lab 400000
 # The GPU cull lab's streaming and residency (#13008, #13051: inflate and SHA-256 for page admission).
 cullstream 40000
