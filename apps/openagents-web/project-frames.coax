@@ -304,6 +304,11 @@ pf_9 :: () {
   n := coaxial_project_frame(s[..], t[..], w[..], lv[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
   #assert n > 3000 && w[0].baked == 0 && w[0].live == LIVE_CONNECTING && same(w[0].text, COAX_WORK_ITEMS) && t[0].n == (ifx COAX_COMMITS < MAX_COMMITS then COAX_COMMITS else MAX_COMMITS);
   #assert lv[0].pipe[0].n == 1 && same(pipe_bytes(lv[0].pipe[..], 0), COAX_WORK_RELAY);
+  // The bake is a live read of the relay (build.sh's project snapshot), so whether every baked root is
+  // also in the old capture below changes from build to build (#13459). One root that neither holds
+  // makes the check the same on every bake: the capture lacks an immutable root, so the page keeps
+  // the whole snapshot and goes offline instead of folding the capture.
+  #assert live_known_add(lv[..], "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
   pipe_drained(lv[0].pipe[..]);
   coaxial_project_opened(lv[..], 0);
   fake_message(lv[..], 0, SOCKET_OPENED, "");
@@ -311,9 +316,8 @@ pf_9 :: () {
   #assert lv[0].state == LIVE_SYNCING && !lv[0].dirty;
   finish_fixture_backfill(lv[..], 0);
   n = coaxial_project_frame(s[..], t[..], w[..], lv[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
-  // This historical capture is older than the current baked queue. Missing
-  // immutable roots must retain the full snapshot, never shrink it to the
-  // old fixture just because its watches sent EOSE.
+  // Missing immutable roots must retain the full snapshot, never shrink it to the
+  // old capture just because its watches sent EOSE.
   #assert n > 3000 && w[0].live == LIVE_OFFLINE && lv[0].folds == 0;
   #assert same(w[0].text, COAX_WORK_ITEMS) && same(w[0].details, COAX_WORK_DETAILS);
   #assert same(w[0].name, "Coax") && same(w[0].license, "Apache-2.0") && same(w[0].path, "coax/");
