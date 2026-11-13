@@ -1069,7 +1069,7 @@ static void load_deps(void) {
     if (snprintf(path, sizeof path, "%s/%s", dir, e->d_name) >= (int)sizeof path) continue;
     FILE *f = fopen(path, "r");
     if (!f) continue;
-    unit u = {0};
+    unit u = {0}; bool gone = false;
     bool ok = getline(&line, &cap, f) > 0 && !strcmp(line, "coax-live-1\n");
     ssize_t n;
     while (ok && (n = getline(&line, &cap, f)) > 0) {
@@ -1077,6 +1077,7 @@ static void load_deps(void) {
       if (!strncmp(line, "kind ", 5)) u.wgsl = !strcmp(line + 5, "wgsl");
       else if (!strncmp(line, "out ", 4) && !u.out) u.out = real_out(line + 4);
       else if (!strncmp(line, "cmd ", 4) && !u.cmd) u.cmd = copy(line + 4);
+      else if (!strncmp(line, "src /", 5) && access(line + 4, F_OK) != 0) gone = true;   // a source deleted since
       else if (!strncmp(line, "src /", 5)) {
         u.src = grow(u.src, &u.src_cap, u.nsrc + 1, sizeof *u.src);
         u.src[u.nsrc++] = watch_file(line + 4, ROLE_SRC);
@@ -1084,6 +1085,17 @@ static void load_deps(void) {
       }
     }
     fclose(f);
+    // A unit whose source is gone is a module deleted since it was built (home-web.coax): its list is stale, and
+    // its command can only fail on every change. The list is dropped; were the source to come back, the scan sees
+    // a new file no list names and runs the whole build, which writes the list again.
+    if (ok && gone) {
+      logf_("dropping %s: a source it lists is gone", e->d_name);
+      unlink(path);
+      int stem = (int)strlen(path) - 5;
+      char stamp[PATH_MAX + 1024];
+      if (snprintf(stamp, sizeof stamp, "%.*s.started", stem, path) < (int)sizeof stamp) unlink(stamp);
+      ok = false;
+    }
     if (!ok || !u.out || !u.cmd || !u.nsrc) { free(u.out); free(u.cmd); free(u.src); continue; }
     u.out_mtime = mtime_of(u.out);
     {

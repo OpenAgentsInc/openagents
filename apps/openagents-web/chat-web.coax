@@ -241,7 +241,7 @@ ChatWeb :: struct {
   door: [96] u8; door_n: int;        // where the request goes, for the face
   clip: [CW_DRAFT] u8; clip_n: int;  // text for the host to copy, until it has
   copied: int; copied_at: f32;       // the answer last copied (its number + 1, 0 for none) and when
-  page: int;                         // what the shell shows beside its side: SS_CHATS (the chat), SS_HOME (nothing) or SW_PAGE (Settings)
+  page: int;                         // what the shell shows beside its side: SS_CHATS (the chat), SS_HOME (a new chat, at /) or SW_PAGE (Settings)
   set: [1] SettingsWeb;              // Settings: the section shown, its search, and what it has read
   here: int;                         // the side alone on a place's page (SS_SIDE): the place it lights (ss_side_place), else -2
   side_closed: bool;                 // the side is put away (kept in this browser)
@@ -605,7 +605,7 @@ cw_build :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
   tr_begin(t);
   s[0].marking = false;
-  page := tr_open(t, "chat", TG_MAIN, ifx s[0].page == SS_HOME || s[0].page == SS_SIDE || s[0].page == SW_PAGE || s[0].page == SS_HELD then "home" else "chat");
+  page := tr_open(t, "chat", TG_MAIN, ifx s[0].page == SS_SIDE || s[0].page == SW_PAGE || s[0].page == SS_HELD then "home" else "chat");
   cw_side(s);
   if s[0].page == SS_HELD {   // another page, held in a frame beside the side, under its loading screen until it draws
     ida: [UI_ID] u8;
@@ -614,7 +614,7 @@ cw_build :: (s: [] ChatWeb) {
     if !s[0].held_drawn { l := k_loading(t, u, "loading", name, cast(string) s[0].held_step[0..<s[0].held_step_n], s[0].held_share); }
     tr_close(t); return;
   }
-  if s[0].page == SS_HOME || s[0].page == SS_SIDE { tr_close(t); return; }   // the home page, or the editor's left: the side, and nothing beside it
+  if s[0].page == SS_SIDE { tr_close(t); return; }   // the editor's left: the side, and nothing beside it (the home page is a new chat)
   if s[0].page == SW_PAGE { cw_settings_page(s); tr_close(t); return; }   // Settings, beside the side
   if s[0].count > 0 || s[0].lrun || s[0].error_n > 0 { cw_transcript(s); }   // an error shows in a new chat too
   if s[0].wwire_n > 0 && s[0].view == CW_CHAT {
@@ -764,6 +764,11 @@ cw_clear :: (s: [] ChatWeb) {
   s[0].count = 0; s[0].pool_n = 0; s[0].total = 0; s[0].error_n = 0;
   s[0].live = false; s[0].lrun = false; s[0].echo = false; s[0].stop_due = false; s[0].turn = 0; s[0].conv = 0;
   s[0].goal_n = 0; s[0].opens_n = 0;
+}
+// A new chat: nothing in it, on the model Settings keeps.
+cw_new_chat :: (s: [] ChatWeb) {
+  cw_clear(s); s[0].sel_n = 0; s[0].csel_n = 0; s[0].view = CW_CHAT;
+  if s[0].set[0].kept_model > 0 { s[0].model = s[0].set[0].kept_model - 1; }
 }
 // Shows session id from where its log ends (tail) or starts.
 cw_show :: (s: [] ChatWeb, id: string, tail: bool) {
@@ -1596,12 +1601,13 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     if !cw_keeps(s, url) { cw_go_to(s, url, false); }   // the shell holds a new world's and a new project's pages
   }
   else if kind == CW_CLICK && id == "fold.chats.add" {
-    cw_clear(s); s[0].sel_n = 0; s[0].csel_n = 0; s[0].view = CW_CHAT;
-    if s[0].set[0].kept_model > 0 { s[0].model = s[0].set[0].kept_model - 1; }   // a new chat starts on the model Settings keeps
-    cw_to_chat(s); dm_focus(s[0].dom[..], "composer");
+    cw_new_chat(s); cw_to_chat(s); dm_focus(s[0].dom[..], "composer");
   }
   // the side: home and the chat are drawn here, so their links stay in the shell; the other places are pages of their own
-  else if kind == CW_CLICK && id == "side.h.home" { if s[0].me_n > 0 { s[0].page = SS_HOME; cw_go_to(s, "/", true); } else { return; } }   // logged out, the home page is the public one
+  else if kind == CW_CLICK && id == "side.h.home" {   // home is a new chat, at /; logged out, the home page is the public one
+    if s[0].me_n == 0 { return; }
+    cw_new_chat(s); s[0].page = SS_HOME; cw_go_to(s, "/", true); dm_focus(s[0].dom[..], "composer");
+  }
   else if kind == CW_CLICK && (id == "side.hide" || id == "side.show") { s[0].side_closed = id == "side.hide"; cw_keep(s); }
   else if kind == CW_CLICK && id == "who.out" { s[0].out_due = true; }
   else if kind == CW_CLICK && cw_number(id, "s.") >= 0 {
@@ -2644,12 +2650,12 @@ cw_test_held :: (s: [] ChatWeb, kind: int, slot: int, text: string) {
   #assert s[0].page == SS_CHATS && cw_test_go(s) == "/chat" && coaxial_chatweb_go_push(s);
 }
 
-#test "at / the shell shows the side and nothing else; New chat and the mark move between the two without leaving the page" {
+#test "at / the shell shows the side and a new chat; New chat and the mark move between the two without leaving the page" {
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
   cw_test_path(s, "/");
   t := s[0].tree[..];
-  #assert s[0].page == SS_HOME && tr_class(t, 0) == "home" && tr_find(t, "side") >= 0 && tr_find(t, "composer") < 0 && !tr_has(t, tr_find(t, "fold.chats.b"), AT_CURRENT);
+  #assert s[0].page == SS_HOME && tr_class(t, 0) == "chat" && tr_find(t, "side") >= 0 && tr_find(t, "composer") >= 0 && s[0].count == 0 && !tr_has(t, tr_find(t, "fold.chats.b"), AT_CURRENT);
   cw_test_press(s, "fold.chats.add");
   #assert s[0].page == SS_CHATS && cw_test_go(s) == "/chat" && coaxial_chatweb_go_push(s);
   coaxial_chatweb_go_done(s); n := coaxial_chatweb_frame(s, 0.016, true);

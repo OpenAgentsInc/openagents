@@ -40,7 +40,7 @@ list shows at most 24 rows, as many as its API sends.
   private project whose members include their key, and a published project
   they dropped. Someone logged out gets an empty list.
 - **The shell:** `apps/openagents-web/chat-web.coax`. It draws the side and,
-  beside it, the chat, Settings, nothing (at `/`), or another module's page
+  beside it, the chat, Settings, or another module's page
   held in a frame under its loading screen.
 
 ## How navigation keeps the side
@@ -54,7 +54,8 @@ The side and the chat's session list are one thing (the list is the side's
 middle), so the shell is the chat's own module, `chat-web`, at the top of the
 window. It draws some pages itself and holds the others in a frame.
 
-- **Pages it draws itself:** the home page (`/`), the chat (`/chat`) and
+- **Pages it draws itself:** the home page (`/`, a new chat, so the first
+  thing you can do is type; the address stays `/`), the chat (`/chat`) and
   Settings (`/settings`, `/settings/SECTION`). Moving between them changes the
   module's drawing in place.
 - **Pages it holds:** every other page the side reaches is another module's:
@@ -98,9 +99,10 @@ window. It draws some pages itself and holds the others in a frame.
   some other frame, or a world played, starts as before.
 - **A load of the whole window** (a world to play, `/login`) rebuilds the
   side; its state is kept in the browser (whether it is put away and which
-  folds are shut, through `dom_keep`), and the skin's cross-document view
-  transitions (`view-transition-name: side`) keep it still between two pages
-  that both have it.
+  folds are shut, through `dom_keep`). There is no cross-document view
+  transition: the skin's style comes with the module, after the new page is
+  first shown, so the browser would abort it ("ViewTransition opt-in
+  disabled").
 
 The glue is `coax/web/shell.js`, imported by `host.js` and `dom-host.js`. It
 carries words across the frame and decides no address:
