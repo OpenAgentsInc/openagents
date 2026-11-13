@@ -1,0 +1,22 @@
+// battle-affect.coax's own checks (GitHub #13287): each step's procedure called directly, against its
+// own numbers, its whole event and what it leaves on the creature. battle.coax loads this with `#test`.
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-affect.coax
+
+// The i-th newest event, whole: its kind, spell, caster, target, amount, damage, feature and exact text.
+af_ev :: (b: [] RsBattle, i: int, kind: int, spell: int, by: int, to: int, amount: int, damage: int, feat: int, text: string) -> bool {
+  ev := rs_recent_at(b[0].book[..], i);
+  return ev.kind == kind && ev.spell.value == spell && ev.by.value == by && ev.to.value == to && ev.amount == amount && ev.damage == damage && ev.feat == feat
+    && cast(string) ev.text[0..<ev.text_n] == text;
+}
+
+#test "affect: an Emanation is the spell a creature concentrates on that has a GUARD step: its step, reach, level and name" {
+  none := rs_emanation(-1);
+  #assert !none.on && none.sp == 0 && none.feet == 0;
+  bolt := rs_emanation(SP_FIRE_BOLT);
+  #assert !bolt.on && bolt.sp == 0 && bolt.feet == 0 && bolt.level == 0;
+  s := rs_spell(SP_SPIRIT_GUARDIANS);
+  k := rs_step_at(s, RS_S_GUARD);
+  e := rs_emanation(SP_SPIRIT_GUARDIANS);
+  #assert k >= 0 && e.on && e.sp == SP_SPIRIT_GUARDIANS && e.feet == 15 && e.level == 3 && e.name == "Spirit Guardians";
+  #assert e.st.kind == RS_S_GUARD && e.st.a == s.steps[k].a && e.st.b == 8 && e.st.c == RS_WIS && e.st.a == 3 && e.st.d == 1;
+}

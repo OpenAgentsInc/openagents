@@ -1,0 +1,21 @@
+// battle-strike.coax's own checks (GitHub #13287): each procedure called directly, against its own
+// numbers, its whole events and what it leaves on the creatures. battle.coax loads this with `#test`.
+//   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-strike.coax
+
+// The i-th newest event, whole: its kind, spell, attacker, target, amount, damage, feature and exact text.
+sk_ev :: (b: [] RsBattle, i: int, kind: int, spell: int, by: int, to: int, amount: int, damage: int, feat: int, text: string) -> bool {
+  ev := rs_recent_at(b[0].book[..], i);
+  return ev.kind == kind && ev.spell.value == spell && ev.by.value == by && ev.to.value == to && ev.amount == amount && ev.damage == damage && ev.feat == feat
+    && cast(string) ev.text[0..<ev.text_n] == text;
+}
+
+#test "strike: a creature's own next turn ends a beat after its turn began while it runs, else when its next begins; a dead one has none" {
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].who = -1;
+  a := rs_add(b[..], rs_fighter("Garr", 0, 3), 1, 3);
+  g := rs_add(b[..], rs_fighter("Holt", 1, 3), 2, 3);
+  b[0].c[a].turn_at = 7000; b[0].c[g].turn_at = 9000;
+  #assert rs_turn_owner(b[..]) != a && rs_own_turn_end(b[..], a) == 7000 && rs_own_turn_end(b[..], g) == 9000;
+  #assert rs_effect_owner_turn(b[..], a) == 7000 && rs_effect_owner_turn(b[..], g) == 9000 && rs_effect_owner_turn(b[..], -1) == -1 && rs_effect_owner_turn(b[..], 2) == -1;
+  b[0].c[g].dead = true;
+  #assert rs_effect_owner_turn(b[..], g) == -1 && rs_effect_owner_turn(b[..], a) == 7000;
+}
