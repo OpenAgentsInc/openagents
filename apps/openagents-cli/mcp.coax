@@ -29,34 +29,7 @@ mcp_offered :: (c: CliCommand, read_only: bool) -> bool {
   if c.route == "world" { return c.effect == "read"; }   // a world's rows say what they do (#13435)
   return c.method == "GET" || c.verb == "shot" || (c.route == "seat" && c.verb != "say" && c.verb != "use");
 }
-// The property a positional argument becomes: metres are x then z.
-mcp_arg_name :: (kind: string, index_of_kind: int) -> string {
-  if kind == "newwords" || kind == "words" || kind == "line" { return "words"; }
-  if kind == "metres" { return ifx index_of_kind == 0 then "x" else "z"; }
-  if kind == "onoff" { return "on"; }
-  if kind == "lore" { return "text"; }
-  if kind == "shotfile" { return "out"; }
-  if kind == "cm" { return ifx index_of_kind == 0 then "x" else "z"; }   // a world's place, centimetres
-  if kind == "target" { return "target"; }
-  return kind;
-}
-// The property a flag becomes: --as-me is as_me.
-mcp_flag_name :: (flag: string, out: [] u8) -> string {
-  n := 0;
-  for i: 2..<flag.count { if n < out.count { out[n] = ifx flag[i] == '-' then '_' else flag[i]; n += 1; } }
-  return cast(string) out[0..<n];
-}
-mcp_tool_name :: (verb: string, out: [] u8) -> string {
-  n := copy("realm_", out);
-  for c: verb { if n < out.count { out[n] = ifx c == '-' then '_' else c; n += 1; } }
-  return cast(string) out[0..<n];
-}
-// How many earlier positionals of the row share this kind (the second metres is z).
-mcp_kind_index :: (c: CliCommand, at: int) -> int {
-  kind := cli_field(c.arguments, at); k := 0;
-  for j: 0..<at { if cli_field(c.arguments, j) == kind { k += 1; } }
-  return k;
-}
+// A tool's name and its properties' names are the command table's (commands.coax mcp_tool_name, mcp_arg_name, mcp_kind_index, mcp_flag_name).
 mcp_schema_kind :: (o: [] Jo, kind: string) {
   jo_obj(o);
   b := rc_bound(kind);

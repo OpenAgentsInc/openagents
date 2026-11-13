@@ -1,0 +1,29 @@
+// Writes the page's copy of the realm command table's tool words, apps/openagents-web/realm-tools.coax,
+// from REALM_COMMANDS (commands.coax rc_tools_text): each realm_* MCP tool's name, effect, label and many,
+// which the chat reads a tool call through (#13481). commands.coax checks the copy against the table.
+//   coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write
+//   coax/web/tool.sh apps/openagents-cli/tool-labels.coax --check
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "commands.coax";
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) { return 2; }
+  out: [65536] u8;
+  n := rc_tools_text(out[..]);
+  if n < 0 { tool_errln("the tool words do not fit"); return 1; }
+  text := cast(string) out[0..<n];
+  if args_has(args[..], "--check") {
+    old: [65536] u8;
+    m := fs_read(RC_TOOLS_FILE, old[..]);
+    if m != n || cast(string) old[0..<m] != text { tool_errln("apps/openagents-web/realm-tools.coax is stale: coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write"); return 1; }
+    print("realm tools: % rows, the page's copy is the table's\n", REALM_COMMANDS.count);
+    return 0;
+  }
+  if !args_has(args[..], "--write") { tool_errln("usage: coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write|--check"); return 2; }
+  if !fs_write(RC_TOOLS_FILE, text) { tool_errln("could not write apps/openagents-web/realm-tools.coax"); return 1; }
+  print("realm tools: % rows into %\n", REALM_COMMANDS.count, RC_TOOLS_FILE);
+  return 0;
+}

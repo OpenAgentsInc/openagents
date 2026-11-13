@@ -695,73 +695,198 @@ rc_effect_note :: (c: CliCommand, out: [] u8) -> string #effects(all) {
   #assert rc_effect_note(REALM_COMMANDS[rc_find("move")],nb[0..<10]) == "" && rc_needs_yes(REALM_COMMANDS[rc_find("ask-delete")]) && !rc_needs_yes(REALM_COMMANDS[rc_find("remove")]);
   #assert REALM_COMMANDS[rc_find("new")].effect == "spend" && REALM_COMMANDS[rc_find("say")].effect == "player-facing" && REALM_COMMANDS[rc_find("visibility")].effect == "publish";
 }
-CliCommand :: struct { domain: string = "realm"; verb: string; effect: string; approval: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; }
+// label and many name a call of the row and a run of them for a person (the chat's tool rows, #13481): {PROP} is the
+// value of the MCP tool's property PROP, and a [part] is left out when a property in it has no value.
+CliCommand :: struct { domain: string = "realm"; verb: string; effect: string; approval: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; label: string; many: string; }
 // The seat rows (route "seat") drive one realm open in headless Chrome on this computer, as a
 // visitor (apps/openagents-cli/realm-play.coax, docs/metaverse/realm-seat.md).
 REALM_COMMANDS :: [59] CliCommand.[
-  CliCommand.{verb="list",effect="read",approval="none",method="GET",route="/mine",help="your realms"},
-  CliCommand.{verb="show",effect="read",approval="none",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page"},
-  CliCommand.{verb="new",effect="spend",approval="owner",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan"},
-  CliCommand.{verb="visibility",effect="publish",approval="owner",method="POST",route="/visibility",arguments="slug|visibility",flags="--rev:id",usage="SLUG private|unlisted|public [--rev N]",help="who sees it"},
-  CliCommand.{verb="publish",effect="publish",approval="confirm",method="POST",route="/publish",arguments="slug",flags="--rev:id|--listed:bool|--yes:bool",usage="SLUG [--rev N] [--listed] [--yes]",help="publish the named revision"},
-  CliCommand.{verb="fork",effect="write",approval="owner",method="POST",route="/fork",arguments="slug",flags="--name:who",usage="SLUG [--name NAME]",help="a private copy that you own"},
-  CliCommand.{verb="shot",effect="read",approval="none",method="LOCAL",route="shot",arguments="slug|shotfile",optional=1,flags="--size:size|--phone:bool|--square:bool|--vertical:bool|--wait:waitms|--eval:script|--dark:bool|--fresh:bool|--as-me:bool",usage="SLUG [OUT.png] [--size WxH|--phone|--square|--vertical] [--wait MS] [--eval JS] [--dark] [--fresh] [--as-me]",help="a visitor's PNG in muted headless Chrome, once its scene is drawn; OUT defaults to SLUG.png"},
-  CliCommand.{verb="doc",effect="read",approval="none",method="GET",route="/doc",arguments="slug",usage="SLUG",help="the versioned document and SHA-256"},
-  CliCommand.{verb="asks",effect="read",approval="none",method="GET",route="/asks",arguments="slug",usage="SLUG",help="the feature asks"},
-  CliCommand.{verb="proposals",effect="read",approval="none",method="GET",route="/proposals",arguments="slug",usage="SLUG",help="visitors' proposals"},
-  CliCommand.{verb="panes",effect="read",approval="none",method="GET",route="/panes",arguments="slug",usage="SLUG",help="lore and quests"},
-  CliCommand.{verb="switch",effect="write",approval="owner",method="POST",route="/switch",arguments="slug|row|onoff",flags="--rev:id",usage="SLUG ROW on|off [--rev N]",help="turn a row on or off"},
-  CliCommand.{verb="revise",effect="spend",approval="owner",method="POST",route="/revise",arguments="slug|words",flags="--rev:id",usage="SLUG \"WORDS\" [--rev N]",help="ask the planner to revise the board"},
-  CliCommand.{verb="ask",effect="spend",approval="owner",method="POST",route="/asks",arguments="slug|words",flags="--rev:id|--doc:file",usage="SLUG \"WORDS\" | SLUG --doc FILE [--rev N]",help="add words, or a design document, to the feature list"},
-  CliCommand.{verb="ask-delete",effect="destructive",approval="confirm",method="POST",route="/asks/:id/delete",arguments="slug|id",flags="--rev:id|--yes:bool",usage="SLUG ID [--rev N] [--yes]",help="delete an ask"},
-  CliCommand.{verb="ask-done",effect="spend",approval="owner",method="POST",route="/asks/:id/done",arguments="slug|id",flags="--rev:id|--commit:commit",usage="SLUG ID --commit HASH [--rev N]",help="an admin marks pushed code done"},
-  CliCommand.{verb="row-delete",effect="destructive",approval="confirm",method="POST",route="/rows/:row/delete",arguments="slug|row",flags="--rev:id|--yes:bool",usage="SLUG ROW [--rev N] [--yes]",help="delete a board row"},
-  CliCommand.{verb="move",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity|metres|metres",flags="--rev:id",usage="SLUG ENTITY X Z [--rev N]",help="move a thing (FEATURE:N, such as trees:3) to X Z metres; one save"},
-  CliCommand.{verb="rotate",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity|yaw",flags="--rev:id",usage="SLUG ENTITY DEGREES [--rev N]",help="turn a thing DEGREES from its laid-out way (0 puts it back); one save"},
-  CliCommand.{verb="resize",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity|percent",flags="--rev:id",usage="SLUG ENTITY PERCENT [--rev N]",help="size a thing to PERCENT (25 to 400) of its laid-out size; one save"},
-  CliCommand.{verb="remove",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity",flags="--rev:id",usage="SLUG ENTITY [--rev N]",help="take a thing away (undo brings it back); one save"},
-  CliCommand.{verb="place",effect="write",approval="owner",method="POST",route="/place",arguments="slug|row|metres|metres",flags="--rev:id|--yaw:yaw",usage="SLUG THING X Z [--yaw DEG] [--rev N]",help="place a thing at X Z metres"},
-  CliCommand.{verb="settings",effect="write",approval="owner",method="POST",route="/settings",arguments="slug",flags="--rev:id|--tools:tools",usage="SLUG --tools build,fly,jump,map,talk,voice [--rev N]",help="the tools visitors get"},
-  CliCommand.{verb="lore",effect="write",approval="owner",method="POST",route="/lore",arguments="slug|who|lore",flags="--rev:id",usage="SLUG WHO \"TEXT\" [--rev N]",help="set WHO's lore; \"\" forgets it"},
-  CliCommand.{verb="quest",effect="write",approval="owner",method="POST",route="/quest",arguments="slug|who",flags="--rev:id|--ask:ask|--step:step|--reward:step",usage="SLUG GIVER --ask \"TEXT\" [--step \"TEXT\"]... [--reward \"TEXT\"] [--rev N]",help="set a giver's quest, up to three steps"},
-  CliCommand.{verb="accept",effect="write",approval="owner",method="POST",route="/proposals/:id/accept",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="accept a visitor's proposal"},
-  CliCommand.{verb="decline",effect="write",approval="owner",method="POST",route="/proposals/:id/decline",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="decline a visitor's proposal"},
-  CliCommand.{verb="undo",effect="write",approval="owner",method="POST",route="/undo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="take back the newest step (its own edits only) as a new revision"},
-  CliCommand.{verb="redo",effect="write",approval="owner",method="POST",route="/redo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="apply the step last undone again, as a new revision"},
-  CliCommand.{verb="apply",effect="write",approval="owner",method="LOCAL",route="batch",arguments="slug|file",flags="--rev:id",usage="SLUG FILE.jsonl [--rev N]",help="run JSON-line edits in order (below); consecutive moves share one save"},
-  CliCommand.{verb="play",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug",flags="--phone:bool|--hosted:bool",usage="SLUG [--phone] [--hosted]",help="sit in the realm as your account (headless Chrome here, or the server's with --hosted) and say what you see; others see an agent; the seat stays open for look, go, say, use and bye, and closes after 10 idle minutes"},
-  CliCommand.{verb="look",effect="read",approval="none",method="LOCAL",route="seat",arguments="slug",flags="--turn:turn|--pitch:pitch|--shot:shotfile",usage="SLUG [--turn DEG] [--pitch DEG] [--shot OUT.png]",help="turn right (negative: left) up to 180 degrees; --pitch looks up or down in first person; --shot keeps a picture of the view"},
-  CliCommand.{verb="go",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug|target",flags="--x:metres|--z:metres|--max:seconds",usage="SLUG TARGET | SLUG --x X --z Z [--max S]",help="walk to a character's name, a kind (house, centre, ...), character:N, entity:N, or X Z metres, until 2 m away, blocked, or --max seconds (10; at most 30)"},
-  CliCommand.{verb="say",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug|line",usage="SLUG \"WORDS\"",help="talk to the character within 3.5 m and wait for the answer"},
-  CliCommand.{verb="use",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug|tool|thing",optional=1,usage="SLUG jump|map|build [THING]",help="use a tool the realm has on; build THING (crate, barrel, tree, rock, plant, lantern, fence, chest) asks the owner to place it in front of you"},
-  CliCommand.{verb="bye",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug",usage="SLUG",help="end the talk"},
-  CliCommand.{verb="leave",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug",usage="SLUG",help="close the seat and its browser"},
-  CliCommand.{verb="world",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",flags="--lane:lane",usage="ID [--lane dev|live]",help="a world with an ID, as you need it to aim an edit: its revision and build, its placed things by number, its content tables (pieces, landmarks, kept-clear zones) and its reference page"},
-  CliCommand.{verb="world-place",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|kind|cm|cm",flags="--yaw:yaw|--rev:id|--shot:shotfile",usage="ID KIND X Z [--yaw DEG] [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="place a thing of content ID KIND at X Z centimetres; the answer has its number, the new revision, and any refusal in words"},
-  CliCommand.{verb="world-move",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|id|cm|cm",flags="--rev:id|--shot:shotfile",usage="ID N X Z [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="move placed thing N to X Z centimetres"},
-  CliCommand.{verb="world-turn",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|id|yaw",flags="--rev:id|--shot:shotfile",usage="ID N DEGREES [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="turn placed thing N to DEGREES"},
-  CliCommand.{verb="world-set",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|id|column|value",flags="--rev:id|--shot:shotfile",usage="ID N COLUMN VALUE [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set a column of thing N: x, y, z in centimetres, yaw in degrees, or another column the world takes"},
-  CliCommand.{verb="world-remove",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|id",flags="--rev:id|--shot:shotfile",usage="ID N [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="remove placed thing N (world-undo brings it back)"},
-  CliCommand.{verb="world-undo",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--rev:id|--shot:shotfile",usage="ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="take back the newest step that stands, whoever made it"},
-  CliCommand.{verb="world-redo",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--rev:id|--shot:shotfile",usage="ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="take the step last undone again"},
-  CliCommand.{verb="world-original",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--rev:id|--shot:shotfile",usage="ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="remove every placed thing: the designed world again (world-undo brings them back)"},
-  CliCommand.{verb="world-apply",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|file",flags="--rev:id|--shot:shotfile",usage="ID FILE.jsonl [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="apply world.edit.v1 edits, a JSON object a line, as one batch: all are saved or none"},
-  CliCommand.{verb="world-publish",effect="publish",approval="confirm",method="LOCAL",route="world",arguments="slug|when",flags="--rev:id|--yes:bool",usage="ID now|next [--rev N] [--key K] [--yes]",help="make the dev revision live: for open sessions now, or from each person's next session"},
-  CliCommand.{verb="world-why",effect="read",approval="none",method="LOCAL",route="world",arguments="slug|target",usage="ID THING",help="why a thing (you, piece-N, ...) is not seen, reached or working: the first link that failed, from the world's page"},
-  CliCommand.{verb="world-open",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",usage="ID",help="the address of the page that edits the world"},
-  CliCommand.{verb="world-foes",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",flags="--lane:lane",usage="ID [--lane dev|live]",help="the world's actors by number and name, each one's plan at dawn, day, dusk and night (what it does, its route, speed, notice range and what it does on noticing), the editor's time of day, and the places a route may name"},
-  CliCommand.{verb="world-plan",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|foe|daytime|act",flags="--route:route|--speed:speed|--notice:notice|--on:onnotice|--rev:id|--shot:shotfile",usage="ID FOE WHEN DO [--route \"X Z, X Z\"] [--speed CM/S] [--notice CM] [--on chase|call|flee|ignore] [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set what actor FOE does at WHEN (dawn, day, dusk, night): stand, dance, sleep, guard, patrol, wander or follow; without --route its route is cut or grown to fit; one edit, one undo step"},
-  CliCommand.{verb="world-route",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|foe|daytime|route",flags="--rev:id|--shot:shotfile",usage="ID FOE WHEN \"X Z, X Z\" [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set actor FOE's route at WHEN: X Z points in centimetres joined by commas (patrol 2 to 8, a loop ends where it starts; guard the post then where it looks; wander \"X Z R\"; follow \"foe N\")"},
-  CliCommand.{verb="world-time",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|clock",flags="--rev:id|--shot:shotfile",usage="ID story|dawn|day|dusk|night [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="the editor's time of day: the actors keep it and the light is it (story: the run's own clock); play is not changed"},
+  CliCommand.{verb="list",effect="read",approval="none",method="GET",route="/mine",help="your realms",label="List your realms",many="List your realms"},
+  CliCommand.{verb="show",effect="read",approval="none",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page",label="Show realm {slug}",many="Show realms"},
+  CliCommand.{verb="new",effect="spend",approval="owner",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan",label="Make a realm[: {words}]",many="Make realms"},
+  CliCommand.{verb="visibility",effect="publish",approval="owner",method="POST",route="/visibility",arguments="slug|visibility",flags="--rev:id",usage="SLUG private|unlisted|public [--rev N]",help="who sees it",label="Make {slug} {visibility}",many="Set who sees realms"},
+  CliCommand.{verb="publish",effect="publish",approval="confirm",method="POST",route="/publish",arguments="slug",flags="--rev:id|--listed:bool|--yes:bool",usage="SLUG [--rev N] [--listed] [--yes]",help="publish the named revision",label="Publish {slug}",many="Publish realms"},
+  CliCommand.{verb="fork",effect="write",approval="owner",method="POST",route="/fork",arguments="slug",flags="--name:who",usage="SLUG [--name NAME]",help="a private copy that you own",label="Fork {slug}",many="Fork realms"},
+  CliCommand.{verb="shot",effect="read",approval="none",method="LOCAL",route="shot",arguments="slug|shotfile",optional=1,flags="--size:size|--phone:bool|--square:bool|--vertical:bool|--wait:waitms|--eval:script|--dark:bool|--fresh:bool|--as-me:bool",usage="SLUG [OUT.png] [--size WxH|--phone|--square|--vertical] [--wait MS] [--eval JS] [--dark] [--fresh] [--as-me]",help="a visitor's PNG in muted headless Chrome, once its scene is drawn; OUT defaults to SLUG.png",label="Take a picture of {slug}",many="Take pictures"},
+  CliCommand.{verb="doc",effect="read",approval="none",method="GET",route="/doc",arguments="slug",usage="SLUG",help="the versioned document and SHA-256",label="Read {slug}'s document",many="Read realm documents"},
+  CliCommand.{verb="asks",effect="read",approval="none",method="GET",route="/asks",arguments="slug",usage="SLUG",help="the feature asks",label="Read {slug}'s asks",many="Read asks"},
+  CliCommand.{verb="proposals",effect="read",approval="none",method="GET",route="/proposals",arguments="slug",usage="SLUG",help="visitors' proposals",label="Read {slug}'s proposals",many="Read proposals"},
+  CliCommand.{verb="panes",effect="read",approval="none",method="GET",route="/panes",arguments="slug",usage="SLUG",help="lore and quests",label="Read {slug}'s lore and quests",many="Read lore and quests"},
+  CliCommand.{verb="switch",effect="write",approval="owner",method="POST",route="/switch",arguments="slug|row|onoff",flags="--rev:id",usage="SLUG ROW on|off [--rev N]",help="turn a row on or off",label="Turn row {row} {on}",many="Turn rows on or off"},
+  CliCommand.{verb="revise",effect="spend",approval="owner",method="POST",route="/revise",arguments="slug|words",flags="--rev:id",usage="SLUG \"WORDS\" [--rev N]",help="ask the planner to revise the board",label="Revise {slug}'s board",many="Revise boards"},
+  CliCommand.{verb="ask",effect="spend",approval="owner",method="POST",route="/asks",arguments="slug|words",flags="--rev:id|--doc:file",usage="SLUG \"WORDS\" | SLUG --doc FILE [--rev N]",help="add words, or a design document, to the feature list",label="Add an ask to {slug}",many="Add asks"},
+  CliCommand.{verb="ask-delete",effect="destructive",approval="confirm",method="POST",route="/asks/:id/delete",arguments="slug|id",flags="--rev:id|--yes:bool",usage="SLUG ID [--rev N] [--yes]",help="delete an ask",label="Delete ask {id}",many="Delete asks"},
+  CliCommand.{verb="ask-done",effect="spend",approval="owner",method="POST",route="/asks/:id/done",arguments="slug|id",flags="--rev:id|--commit:commit",usage="SLUG ID --commit HASH [--rev N]",help="an admin marks pushed code done",label="Mark ask {id} done",many="Mark asks done"},
+  CliCommand.{verb="row-delete",effect="destructive",approval="confirm",method="POST",route="/rows/:row/delete",arguments="slug|row",flags="--rev:id|--yes:bool",usage="SLUG ROW [--rev N] [--yes]",help="delete a board row",label="Delete row {row}",many="Delete rows"},
+  CliCommand.{verb="move",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity|metres|metres",flags="--rev:id",usage="SLUG ENTITY X Z [--rev N]",help="move a thing (FEATURE:N, such as trees:3) to X Z metres; one save",label="Move {entity} to {x}, {z}",many="Move things"},
+  CliCommand.{verb="rotate",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity|yaw",flags="--rev:id",usage="SLUG ENTITY DEGREES [--rev N]",help="turn a thing DEGREES from its laid-out way (0 puts it back); one save",label="Turn {entity} {yaw} degrees",many="Turn things"},
+  CliCommand.{verb="resize",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity|percent",flags="--rev:id",usage="SLUG ENTITY PERCENT [--rev N]",help="size a thing to PERCENT (25 to 400) of its laid-out size; one save",label="Size {entity} to {percent} percent",many="Size things"},
+  CliCommand.{verb="remove",effect="write",approval="owner",method="POST",route="/save",arguments="slug|entity",flags="--rev:id",usage="SLUG ENTITY [--rev N]",help="take a thing away (undo brings it back); one save",label="Remove {entity}",many="Remove things"},
+  CliCommand.{verb="place",effect="write",approval="owner",method="POST",route="/place",arguments="slug|row|metres|metres",flags="--rev:id|--yaw:yaw",usage="SLUG THING X Z [--yaw DEG] [--rev N]",help="place a thing at X Z metres",label="Place {row} at {x}, {z}",many="Place things"},
+  CliCommand.{verb="settings",effect="write",approval="owner",method="POST",route="/settings",arguments="slug",flags="--rev:id|--tools:tools",usage="SLUG --tools build,fly,jump,map,talk,voice [--rev N]",help="the tools visitors get",label="Set {slug}'s visitor tools",many="Set visitor tools"},
+  CliCommand.{verb="lore",effect="write",approval="owner",method="POST",route="/lore",arguments="slug|who|lore",flags="--rev:id",usage="SLUG WHO \"TEXT\" [--rev N]",help="set WHO's lore; \"\" forgets it",label="Set {who}'s lore",many="Set lore"},
+  CliCommand.{verb="quest",effect="write",approval="owner",method="POST",route="/quest",arguments="slug|who",flags="--rev:id|--ask:ask|--step:step|--reward:step",usage="SLUG GIVER --ask \"TEXT\" [--step \"TEXT\"]... [--reward \"TEXT\"] [--rev N]",help="set a giver's quest, up to three steps",label="Set {who}'s quest",many="Set quests"},
+  CliCommand.{verb="accept",effect="write",approval="owner",method="POST",route="/proposals/:id/accept",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="accept a visitor's proposal",label="Accept proposal {id}",many="Accept proposals"},
+  CliCommand.{verb="decline",effect="write",approval="owner",method="POST",route="/proposals/:id/decline",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="decline a visitor's proposal",label="Decline proposal {id}",many="Decline proposals"},
+  CliCommand.{verb="undo",effect="write",approval="owner",method="POST",route="/undo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="take back the newest step (its own edits only) as a new revision",label="Undo the last step in {slug}",many="Undo steps"},
+  CliCommand.{verb="redo",effect="write",approval="owner",method="POST",route="/redo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="apply the step last undone again, as a new revision",label="Redo a step in {slug}",many="Redo steps"},
+  CliCommand.{verb="apply",effect="write",approval="owner",method="LOCAL",route="batch",arguments="slug|file",flags="--rev:id",usage="SLUG FILE.jsonl [--rev N]",help="run JSON-line edits in order (below); consecutive moves share one save",label="Apply the edits in {file}",many="Apply edit files"},
+  CliCommand.{verb="play",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug",flags="--phone:bool|--hosted:bool",usage="SLUG [--phone] [--hosted]",help="sit in the realm as your account (headless Chrome here, or the server's with --hosted) and say what you see; others see an agent; the seat stays open for look, go, say, use and bye, and closes after 10 idle minutes",label="Sit in {slug}",many="Sit in realms"},
+  CliCommand.{verb="look",effect="read",approval="none",method="LOCAL",route="seat",arguments="slug",flags="--turn:turn|--pitch:pitch|--shot:shotfile",usage="SLUG [--turn DEG] [--pitch DEG] [--shot OUT.png]",help="turn right (negative: left) up to 180 degrees; --pitch looks up or down in first person; --shot keeps a picture of the view",label="Look around in {slug}",many="Look around"},
+  CliCommand.{verb="go",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug|target",flags="--x:metres|--z:metres|--max:seconds",usage="SLUG TARGET | SLUG --x X --z Z [--max S]",help="walk to a character's name, a kind (house, centre, ...), character:N, entity:N, or X Z metres, until 2 m away, blocked, or --max seconds (10; at most 30)",label="Walk[ to {target}]",many="Walk"},
+  CliCommand.{verb="say",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug|line",usage="SLUG \"WORDS\"",help="talk to the character within 3.5 m and wait for the answer",label="Say \"{words}\"",many="Talk"},
+  CliCommand.{verb="use",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug|tool|thing",optional=1,usage="SLUG jump|map|build [THING]",help="use a tool the realm has on; build THING (crate, barrel, tree, rock, plant, lantern, fence, chest) asks the owner to place it in front of you",label="Use {tool}[ to make {thing}]",many="Use tools"},
+  CliCommand.{verb="bye",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug",usage="SLUG",help="end the talk",label="End the talk",many="End talks"},
+  CliCommand.{verb="leave",effect="player-facing",approval="owner",method="LOCAL",route="seat",arguments="slug",usage="SLUG",help="close the seat and its browser",label="Leave {slug}",many="Leave realms"},
+  CliCommand.{verb="world",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",flags="--lane:lane",usage="ID [--lane dev|live]",help="a world with an ID, as you need it to aim an edit: its revision and build, its placed things by number, its content tables (pieces, landmarks, kept-clear zones) and its reference page",label="Read the world {slug}",many="Read worlds"},
+  CliCommand.{verb="world-place",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|kind|cm|cm",flags="--yaw:yaw|--rev:id|--shot:shotfile",usage="ID KIND X Z [--yaw DEG] [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="place a thing of content ID KIND at X Z centimetres; the answer has its number, the new revision, and any refusal in words",label="Place a thing of kind {kind} at {x}, {z}",many="Place things"},
+  CliCommand.{verb="world-move",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|id|cm|cm",flags="--rev:id|--shot:shotfile",usage="ID N X Z [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="move placed thing N to X Z centimetres",label="Move thing {id} to {x}, {z}",many="Move things"},
+  CliCommand.{verb="world-turn",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|id|yaw",flags="--rev:id|--shot:shotfile",usage="ID N DEGREES [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="turn placed thing N to DEGREES",label="Turn thing {id} to {yaw} degrees",many="Turn things"},
+  CliCommand.{verb="world-set",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|id|column|value",flags="--rev:id|--shot:shotfile",usage="ID N COLUMN VALUE [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set a column of thing N: x, y, z in centimetres, yaw in degrees, or another column the world takes",label="Set thing {id}'s {column} to {value}",many="Set things' columns"},
+  CliCommand.{verb="world-remove",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|id",flags="--rev:id|--shot:shotfile",usage="ID N [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="remove placed thing N (world-undo brings it back)",label="Remove thing {id}",many="Remove things"},
+  CliCommand.{verb="world-undo",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--rev:id|--shot:shotfile",usage="ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="take back the newest step that stands, whoever made it",label="Undo the last step",many="Undo steps"},
+  CliCommand.{verb="world-redo",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--rev:id|--shot:shotfile",usage="ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="take the step last undone again",label="Redo a step",many="Redo steps"},
+  CliCommand.{verb="world-original",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug",flags="--rev:id|--shot:shotfile",usage="ID [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="remove every placed thing: the designed world again (world-undo brings them back)",label="Put the designed world back",many="Put worlds back"},
+  CliCommand.{verb="world-apply",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|file",flags="--rev:id|--shot:shotfile",usage="ID FILE.jsonl [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="apply world.edit.v1 edits, a JSON object a line, as one batch: all are saved or none",label="Apply the edits in {file}",many="Apply edit files"},
+  CliCommand.{verb="world-publish",effect="publish",approval="confirm",method="LOCAL",route="world",arguments="slug|when",flags="--rev:id|--yes:bool",usage="ID now|next [--rev N] [--key K] [--yes]",help="make the dev revision live: for open sessions now, or from each person's next session",label="Publish {slug}[ {when}]",many="Publish worlds"},
+  CliCommand.{verb="world-why",effect="read",approval="none",method="LOCAL",route="world",arguments="slug|target",usage="ID THING",help="why a thing (you, piece-N, ...) is not seen, reached or working: the first link that failed, from the world's page",label="Ask why {target} is not working",many="Ask why"},
+  CliCommand.{verb="world-open",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",usage="ID",help="the address of the page that edits the world",label="Find the editor for {slug}",many="Find editors"},
+  CliCommand.{verb="world-foes",effect="read",approval="none",method="LOCAL",route="world",arguments="slug",flags="--lane:lane",usage="ID [--lane dev|live]",help="the world's actors by number and name, each one's plan at dawn, day, dusk and night (what it does, its route, speed, notice range and what it does on noticing), the editor's time of day, and the places a route may name",label="Read the foes in {slug}",many="Read foes"},
+  CliCommand.{verb="world-plan",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|foe|daytime|act",flags="--route:route|--speed:speed|--notice:notice|--on:onnotice|--rev:id|--shot:shotfile",usage="ID FOE WHEN DO [--route \"X Z, X Z\"] [--speed CM/S] [--notice CM] [--on chase|call|flee|ignore] [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set what actor FOE does at WHEN (dawn, day, dusk, night): stand, dance, sleep, guard, patrol, wander or follow; without --route its route is cut or grown to fit; one edit, one undo step",label="Set foe {foe}'s {daytime} plan: {act}",many="Set foe plans"},
+  CliCommand.{verb="world-route",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|foe|daytime|route",flags="--rev:id|--shot:shotfile",usage="ID FOE WHEN \"X Z, X Z\" [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="set actor FOE's route at WHEN: X Z points in centimetres joined by commas (patrol 2 to 8, a loop ends where it starts; guard the post then where it looks; wander \"X Z R\"; follow \"foe N\")",label="Set foe {foe}'s {daytime} route",many="Set foe routes"},
+  CliCommand.{verb="world-time",effect="write",approval="owner",method="LOCAL",route="world",arguments="slug|clock",flags="--rev:id|--shot:shotfile",usage="ID story|dawn|day|dusk|night [--rev N] [--dry-run] [--key K] [--shot OUT.png]",help="the editor's time of day: the actors keep it and the light is it (story: the run's own clock); play is not changed",label="Set the time of day to {clock}",many="Set the time of day"},
   // a world's attachments and its project's (realm-files.coax, #13468): reference files, never in a pack
-  CliCommand.{verb="files",effect="read",approval="none",method="LOCAL",route="files",arguments="slug",usage="ID",help="the world's attachments, then its project's: each one's FID, scope, kind, name, size, note and tags, and the limits (25 MB a file, 200 files and 1 GB a project)"},
-  CliCommand.{verb="file-read",effect="read",approval="none",method="LOCAL",route="files",arguments="slug|fileid|file",optional=1,usage="ID FID [OUT]",help="an attachment: a Markdown or text document is printed; an image or PDF is saved to OUT (default: its name) for you to open"},
-  CliCommand.{verb="attach",effect="write",approval="owner",method="LOCAL",route="files",arguments="slug|file",flags="--scope:scope|--name:fname|--note:note|--tags:tags",usage="ID FILE|URL [--scope world|project] [--name NAME] [--note \"WORDS\"] [--tags a,b]",help="attach a PNG, JPEG, WebP or GIF image, a Markdown, text or PDF document, or a link, to the world (default) or its project, with a note and tags the agent reads first"},
-  CliCommand.{verb="file-note",effect="write",approval="owner",method="LOCAL",route="files",arguments="slug|fileid",flags="--scope:scope|--name:fname|--note:note|--tags:tags",usage="ID FID [--note \"WORDS\"] [--tags a,b] [--name NAME] [--scope world|project]",help="change an attachment's note, tags, name (a file keeps its extension) or scope; what you leave out stays"},
-  CliCommand.{verb="detach",effect="destructive",approval="confirm",method="LOCAL",route="files",arguments="slug|fileid",flags="--yes:bool",usage="ID FID [--yes]",help="remove an attachment and its stored file"}
+  CliCommand.{verb="files",effect="read",approval="none",method="LOCAL",route="files",arguments="slug",usage="ID",help="the world's attachments, then its project's: each one's FID, scope, kind, name, size, note and tags, and the limits (25 MB a file, 200 files and 1 GB a project)",label="List {slug}'s attachments",many="List attachments"},
+  CliCommand.{verb="file-read",effect="read",approval="none",method="LOCAL",route="files",arguments="slug|fileid|file",optional=1,usage="ID FID [OUT]",help="an attachment: a Markdown or text document is printed; an image or PDF is saved to OUT (default: its name) for you to open",label="Read attachment {fileid}",many="Read attachments"},
+  CliCommand.{verb="attach",effect="write",approval="owner",method="LOCAL",route="files",arguments="slug|file",flags="--scope:scope|--name:fname|--note:note|--tags:tags",usage="ID FILE|URL [--scope world|project] [--name NAME] [--note \"WORDS\"] [--tags a,b]",help="attach a PNG, JPEG, WebP or GIF image, a Markdown, text or PDF document, or a link, to the world (default) or its project, with a note and tags the agent reads first",label="Attach {file}",many="Attach files"},
+  CliCommand.{verb="file-note",effect="write",approval="owner",method="LOCAL",route="files",arguments="slug|fileid",flags="--scope:scope|--name:fname|--note:note|--tags:tags",usage="ID FID [--note \"WORDS\"] [--tags a,b] [--name NAME] [--scope world|project]",help="change an attachment's note, tags, name (a file keeps its extension) or scope; what you leave out stays",label="Change attachment {fileid}",many="Change attachments"},
+  CliCommand.{verb="detach",effect="destructive",approval="confirm",method="LOCAL",route="files",arguments="slug|fileid",flags="--yes:bool",usage="ID FID [--yes]",help="remove an attachment and its stored file",label="Remove attachment {fileid}",many="Remove attachments"}
 ];
 
 rc_find :: (verb: string) -> int #effects(all) { for i: 0..<REALM_COMMANDS.count { if REALM_COMMANDS[i].verb == verb { return i; } } return -1; }
+// A row's MCP tool (mcp.coax): its name is realm_VERB with each '-' a '_'; a positional argument's property is
+// named for its kind (metres and centimetres are x then z), and a flag's for the flag (--as-me is as_me).
+mcp_tool_name :: (verb: string, out: [] u8) -> string #effects(all) {
+  n := forge_put(out, 0, "realm_");
+  for c: verb { if n >= 0 && n < out.count { out[n] = ifx c == '-' then '_' else c; n += 1; } else { n = -1; } }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+mcp_arg_name :: (kind: string, index_of_kind: int) -> string #effects(all) {
+  if kind == "newwords" || kind == "words" || kind == "line" { return "words"; }
+  if kind == "metres" || kind == "cm" { return ifx index_of_kind == 0 then "x" else "z"; }
+  if kind == "onoff" { return "on"; }
+  if kind == "lore" { return "text"; }
+  if kind == "shotfile" { return "out"; }
+  return kind;
+}
+// How many earlier positionals of the row share this kind (the second metres is z).
+mcp_kind_index :: (c: CliCommand, at: int) -> int #effects(all) {
+  kind := cli_field(c.arguments, at); k := 0;
+  for j: 0..<at { if cli_field(c.arguments, j) == kind { k += 1; } }
+  return k;
+}
+mcp_flag_name :: (flag: string, out: [] u8) -> string #effects(all) {
+  n := 0;
+  for i: 2..<flag.count { if n < out.count { out[n] = ifx flag[i] == '-' then '_' else flag[i]; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// Whether the row's tool has a property of this name: a positional's or a flag's.
+rc_has_prop :: (c: CliCommand, name: string) -> bool #effects(all) {
+  i := 0;
+  while cli_field(c.arguments, i) != "" { if mcp_arg_name(cli_field(c.arguments, i), mcp_kind_index(c, i)) == name { return true; } i += 1; }
+  fb: [48] u8; j := 0;
+  while cli_field(c.flags, j) != "" {
+    f := cli_field(c.flags, j); colon := 0;
+    while colon < f.count && f[colon] != ':' { colon += 1; }
+    if mcp_flag_name(f[0..<colon], fb[..]) == name { return true; }
+    j += 1;
+  }
+  return false;
+}
+// Whether a row's label and many are whole: both said, many with no {PROP}, and each {PROP} of the label a
+// property of the row's tool, each [part] closed and none inside another.
+rc_label_ok :: (c: CliCommand) -> bool #effects(all) {
+  if c.label.count == 0 || c.many.count == 0 { return false; }
+  for ch: c.many { if ch == '{' || ch == '}' || ch == '[' || ch == ']' { return false; } }
+  part := false; i := 0;
+  while i < c.label.count {
+    ch := c.label[i];
+    if ch == '[' { if part { return false; } part = true; }
+    else if ch == ']' { if !part { return false; } part = false; }
+    else if ch == '}' { return false; }
+    else if ch == '{' {
+      e := i + 1;
+      while e < c.label.count && c.label[e] != '}' { e += 1; }
+      if e >= c.label.count || !rc_has_prop(c, c.label[i + 1..<e]) { return false; }
+      i = e;
+    }
+    i += 1;
+  }
+  return !part;
+}
+// The page's copy of the table's tool words, apps/openagents-web/realm-tools.coax, as its text: each row's tool
+// name, effect, label and many (the chat reads a tool call through it, #13481). Bytes written, or -1 when it
+// doesn't fit. apps/openagents-cli/tool-labels.coax writes it; a check below holds it to the table.
+RC_TOOLS_FILE :: "apps/openagents-web/realm-tools.coax";
+rc_tools_text :: (out: [] u8) -> int #effects(all) {
+  nb: [64] u8;
+  n := forge_put(out, 0, "// Generated from REALM_COMMANDS (apps/openagents-cli/commands.coax) by\n//   coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write\n// Do not edit: each realm_* MCP tool's name, effect, label and many, for the chat's tool rows (#13481).\n");
+  n = forge_put(out, n, "RealmTool :: struct { name: string; effect: string; label: string; many: string; }\nREALM_TOOLS :: [");
+  n = forge_put_int(out, n, REALM_COMMANDS.count);
+  n = forge_put(out, n, "] RealmTool.[\n");
+  for c, i: REALM_COMMANDS {
+    n = forge_put(out, n, "  RealmTool.{name=\""); n = forge_put(out, n, mcp_tool_name(c.verb, nb[..]));
+    n = forge_put(out, n, "\",effect=\""); n = rc_lit(out, n, c.effect);
+    n = forge_put(out, n, "\",label=\""); n = rc_lit(out, n, c.label);
+    n = forge_put(out, n, "\",many=\""); n = rc_lit(out, n, c.many);
+    n = forge_put(out, n, ifx i + 1 < REALM_COMMANDS.count then "\"},\n" else "\"}\n");
+  }
+  return forge_put(out, n, "];\n");
+}
+// Text into a Coax string literal: a quote and a backslash escaped.
+rc_lit :: (out: [] u8, at: int, text: string) -> int #effects(all) {
+  n := at;
+  for ch: text {
+    if ch == '"' || ch == '\\' { n = forge_put(out, n, "\\"); }
+    if n < 0 || n >= out.count { return -1; }
+    out[n] = ch; n += 1;
+  }
+  return n;
+}
+#test "a row's tool and property names, and its words for the chat: each {PROP} a property, each [part] closed" {
+  nb: [64] u8; fb: [32] u8;
+  #assert mcp_tool_name("world-plan", nb[..]) == "realm_world_plan" && mcp_tool_name("list", nb[..]) == "realm_list" && mcp_tool_name("world-plan", nb[0..<10]) == "";
+  #assert mcp_arg_name("newwords", 0) == "words" && mcp_arg_name("words", 0) == "words" && mcp_arg_name("line", 0) == "words" && mcp_arg_name("metres", 0) == "x" && mcp_arg_name("metres", 1) == "z";
+  #assert mcp_arg_name("cm", 0) == "x" && mcp_arg_name("cm", 1) == "z" && mcp_arg_name("onoff", 0) == "on" && mcp_arg_name("lore", 0) == "text" && mcp_arg_name("shotfile", 0) == "out" && mcp_arg_name("foe", 0) == "foe";
+  #assert mcp_flag_name("--as-me", fb[..]) == "as_me" && mcp_flag_name("--rev", fb[..]) == "rev" && mcp_flag_name("--as-me", fb[0..<2]) == "as";
+  plan := REALM_COMMANDS[rc_find("world-plan")];
+  #assert mcp_kind_index(REALM_COMMANDS[rc_find("world-place")], 3) == 1 && mcp_kind_index(REALM_COMMANDS[rc_find("world-place")], 2) == 0;
+  #assert rc_has_prop(plan, "foe") && rc_has_prop(plan, "daytime") && rc_has_prop(plan, "route") && rc_has_prop(plan, "slug") && !rc_has_prop(plan, "x") && !rc_has_prop(plan, "");
+  #assert rc_has_prop(REALM_COMMANDS[rc_find("shot")], "as_me") && rc_has_prop(REALM_COMMANDS[rc_find("world-place")], "z") && !rc_has_prop(REALM_COMMANDS[rc_find("list")], "slug");
+  for c: REALM_COMMANDS { #assert rc_label_ok(c); }
+  bad := plan;
+  bad.label = "Set {nope}"; #assert !rc_label_ok(bad);
+  bad.label = "Set [a [b]]"; #assert !rc_label_ok(bad);
+  bad.label = "Set [a"; #assert !rc_label_ok(bad);
+  bad.label = "Set a]"; #assert !rc_label_ok(bad);
+  bad.label = "Set {foe"; #assert !rc_label_ok(bad);
+  bad.label = "Set foe}"; #assert !rc_label_ok(bad);
+  bad.label = ""; #assert !rc_label_ok(bad);
+  bad = plan; bad.many = ""; #assert !rc_label_ok(bad);
+  for m: [4] string.["{foe}", "a}", "[a", "a]"] { bad.many = m; #assert !rc_label_ok(bad); }
+  bad = plan; bad.label = "Set [foe {foe}]"; #assert rc_label_ok(bad);
+}
+#load "../openagents-web/realm-tools.coax" #test;
+#test "the page's copy of the tool words is the table's (else: coax/web/tool.sh apps/openagents-cli/tool-labels.coax --write)" {
+  nb: [64] u8;
+  #assert REALM_TOOLS.count == REALM_COMMANDS.count;
+  for c, i: REALM_COMMANDS {
+    r := REALM_TOOLS[i];
+    #assert r.name == mcp_tool_name(c.verb, nb[..]) && r.effect == c.effect && r.label == c.label && r.many == c.many;
+  }
+  out: [32768] u8; n := rc_tools_text(out[..]);
+  #assert n > 1000 && rc_tools_text(out[0..<100]) == -1 && rc_lit(out[..], 0, "a\"b\\c") == 7 && cast(string) out[0..<7] == "a\\\"b\\\\c" && rc_lit(out[0..<2], 0, "abc") == -1;
+}
 CliBound :: struct { min: int; max: int; }
 rc_bound :: (kind: string) -> CliBound #effects(all) {
   if kind == "slug" { return CliBound.{min=1,max=48}; }
