@@ -125,11 +125,16 @@ without it.
 
 ## Everglade II's woods come from the pack (#13150)
 
+Since #13280 the browser's pack carries the woods by world cell, not as one record: see
+[One world in cells](one-world.md), "Paged by cell". The catalog's `P` lines now hold only the
+planting no cell carries, written by `everglade/model/tools/cell-pack.coax`. What follows is how
+it was until then, and is still how a pack with whole `P` lines is read.
+
 Everglade II's first frame planted the woods (`e2_plant`, 71,384 pieces from
 194,000 samples of the land) for 1.8 to 1.9 s on the page's thread. Now
 `build.sh` plants them once, with this tree's `plant.coax`, and writes the
 answer into the `.vpk3`'s catalog as `P` lines
-(`metaverse/tools/assets/everglade2_plant.coax`): base64 of `first[]`, the pieces'
+(`everglade2_plant.coax`, since replaced by `cell-pack.coax`): base64 of `first[]`, the pieces'
 floats as their bits and their kinds, 3.1 MB of text. The tracked
 `everglade2.pack` is unchanged; the planted copy lives only in the build.
 

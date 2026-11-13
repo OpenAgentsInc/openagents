@@ -53,9 +53,9 @@ The page holds the same manifest and steps the same controller
   draws. Land off the manifest is the zone's backdrop: nobody walks it, and it draws by distance.
 - **Loads.** The controller asks for a cell and something answers. The seam is three calls
   (`e2cl_asked`, `e2cl_key`, `e2cl_loaded`); an answer is admitted only for the cell's current
-  request at the manifest's digest. The pack still comes whole, so the page answers its own asks
-  in the same frame, as a room does. A reader that pages by cell answers through the same calls
-  (#13304).
+  request at the manifest's digest. In the browser the pack is paged by cell and the host answers
+  as each cell's bytes arrive: see "Paged by cell". A host that holds the pack whole (the desktop
+  and phone apps) has the page answer its own asks in the same frame, as a room does.
 - **Where you stand.** Every place you may stand is on a cell of the manifest. A step toward a
   cell whose content is not in yet is not taken: the page drops the push from its own input when
   the place 2 m on is in such a cell (`cell-view.coax` `e2cv_holds`, called by `e2_move_in`). The
@@ -71,6 +71,59 @@ The page holds the same manifest and steps the same controller
 
 The glade and the forest path are neighbouring cells of this one world: one page, one room, one
 set of terrain tiles, and no hand-over between them.
+
+## Paged by cell
+
+Everglade II's pack in the browser carries the world by cell, and the page fetches a cell when
+its controller asks for it.
+
+- **The pack.** `apps/openagents-web/build.sh` runs `everglade/model/tools/cell-pack.coax` on the
+  tracked pack (after `rig-pack --into`, before `page-pack`). It moves this tree's planting and
+  the ground's record out of the catalog into one more entry, kind 8 (`PACK_CELLS`, "cells"),
+  which `page-pack` never makes a root. The entry is a run of blobs
+  (`everglade/world/cell-content.coax`): the ground's record, then a cell's planting for each
+  cell of the manifest. The catalog gets a `W` line (the entry's licence) and a `Z` line a cell
+  (`metaverse-engine/host/pack-cells.coax`): the cell's digest, the ground's blob and its own.
+  Today the entry is 3.0 MB: the ground 0.7 MB, and 70,132 pieces in 21 cells, the largest
+  0.3 MB.
+- **Who carries what.** A planting cell (16 m) whose middle is in a world cell is that cell's. A
+  backdrop planting cell rides with the manifest's nearest cell when that cell draws from
+  everywhere the backdrop's pieces can show (`everglade/world/cell-pack.coax`, checked every 8 m
+  of the manifest). The rest stay in the catalog's `P` record and come with the catalog: 28 of
+  the 1,242 planting cells, 1,252 pieces.
+- **The host.** A page that exports `coaxial_cell_asks_v1` gets its `.vpk3` with
+  `loadPaged(pack, {demand: true})`: the roots at the start, in a worker that stays
+  (`coax/web/pack-fetch.js`, `pack-worker.js`). Once a frame `host.js` (`pumpCells`) reads the
+  cells the controller waits for, asks the worker for each one's ranges, copies them into the
+  page and calls `coaxial_cell_loaded_v1`. The sounds' pages follow the first image the same
+  way. A cell with no line, or a fetch that fails, is a failed load after half a second, and the
+  controller asks again.
+- **The page.** `e2_cell_checks` takes a cell's bytes only when they are whole blobs with that
+  cell's planting, its first planting cell is this tree's planting bit for bit, and it fits.
+  Only then is the controller answered with the line's digest, and only when the controller
+  admits the answer is the content taken (`e2_cell_take`): the cell's pieces go into the
+  planting where its planting cells' empty ranges are, so every reader of the planting sees a
+  cell that is not in as empty. The first cell in brings the ground's record, which is published
+  whole or not at all, as before. A cell whose level falls back to absent gives its pieces back
+  (`e2_cells_settle`), and is fetched again if you return.
+- **The start.** The scene draws nothing until every cell within the draw ring of you is in and
+  the ground has settled (`e2_world_ready`), so the woods never arrive in a picture. The host's
+  "scene ready" waits for the first draw, as it always has.
+- **The glade's baked shade** is baked again when a cell with a tree near the glade's tile
+  arrives or leaves, once no load is on its way.
+- **A pack that is not by cell** (no `Z` line: the tracked pack the apps bundle, or an older
+  build's) is read as before: the woods from `P` lines or planted at start, the ground from `G`
+  lines or converted, every cell answered at once. A pack whose planting is another tree's is
+  refused cell by cell, and the catalog's own part sends the page back to planting at start.
+- **Readout.** `coaxial_field_probe(194)` to `(198)`: paged by cell, cells taken, cells let go,
+  the scene may draw, the ground record's status. `coaxial.cellLog()` lists each answer (cell,
+  key, milliseconds, bytes, what the page said). In development `?celldelay=MS` holds each
+  answer back, and `?cellfree=N` lets the first N through.
+
+What this does not do yet: the ground's tiles and the pack's meshes and textures still come with
+the roots, and the ground's record comes whole with the first cell. A step toward a cell that is
+not in is held (above), but a trunk in a neighbouring cell that is not in yet is not there to
+stop you, so on a very slow connection the room may correct a step the page predicted.
 
 ## Cells and the spatial index
 
@@ -105,6 +158,15 @@ radius. Cells sit above it:
   your cell always simulating and everything in reach drawing, inside the budget; a loader 3 s
   late at a gallop never holds you after your first cell; a wrong, old or failed answer is refused;
   a step toward a cell that is not in is held, and one back or off the manifest is not.
+- `everglade/world/cell-content.coax`: cells' planting put in one by one in any order is the
+  whole planting, and taken out again it is gone; a blob that does not read or is another
+  planting's is refused.
+- `everglade/world/cell-pack.coax`: every planting cell has a carrier that is in wherever its
+  pieces show, or stays in the catalog; every piece is in one blob or the catalog's planting.
+- `everglade/model/tools/cell-pack.coax`: a pack takes the cells entry last, each cell's line
+  finds its bytes, and the catalog's planting and every cell's together are the whole planting.
+- `everglade/client/client.coax` ("the world by cell"): a cell's content is taken for its own
+  cell once, and given back when the cell leaves.
 - `everglade/client/walk-test.coax`: you walk the path through the real controller, and a route
   walk for each place (the Glade, the Sunlit Path, the Deep Canopy, the Clearing, the Goblin Camp)
   with the cells stepped as the page steps them. Every place you may stand is on the manifest.
@@ -113,11 +175,11 @@ radius. Cells sit above it:
 
 These are not built. Each is tracked on #13280.
 
-- **Paged packs by cell.** The pack (`.vpk3`, 309 pages) is still fetched whole at the start.
-  The page's side is ready (the three calls above). It needs the pack's pages ordered by cell, a
-  catalog line from a cell to its byte ranges, and the host's reader fetching those ranges when
-  asked (#13304). Everglade's ground is one draw and its planting one record today, so the pack
-  tool has to split both by cell first.
+- **The ground's tiles and meshes by cell.** The planting is paged by cell; the ground's tiles
+  are one draw and one record, and the pack's meshes and textures are roots. Drawing a tile a
+  cell is the frame graph's (#13303).
+- **The native apps** bundle the tracked pack and hold the world whole. Their reader has the same
+  three steps (`aethyr_pack_cell_ranges`, `metaverse-engine/host/README.md`).
 - **The origin on the GPU.** Positions are f32 from the world's middle. Everglade is 736 m long,
   where f32 keeps 0.06 mm, so nothing is wrong yet. The page keeps the origin; the shaders and the
   pack's vertices are still in world coordinates. The renderer's instance rows are where it goes

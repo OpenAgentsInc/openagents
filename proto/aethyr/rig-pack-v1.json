@@ -2,7 +2,7 @@
   "identity": "rig-pack-v1",
   "check": "coax/web/tool.sh metaverse-engine/tools/rig-pack-profile.coax proto/aethyr/rig-pack-v1.json",
   "codec": "metaverse-engine/anim/rig-pack.coax",
-  "carried_by": "the rig entry (kind 7, at most one, the last entry) of an asset pack (asset-pack-v2); written by everglade/model/tools/rig-pack.coax",
+  "carried_by": "the rig entry (kind 7, at most one, after the sounds) of an asset pack (asset-pack-v2); written by everglade/model/tools/rig-pack.coax",
   "magic": "VRG1",
   "version": 1,
   "byte_order": "little endian",

@@ -26,6 +26,7 @@ static bool golden;
 // the most figures) are the Lab's records, in its state: the module's own memory stays under host.js's 8 MiB start.
 static uint8_t catalog[65536];
 static coax_t_People rig;
+static uint8_t rig_file[2097152]; static uint32_t rig_bytes;   /* the pack's rig entry (VRG1, #13306), when the pack carries one: the bake reads its sets first */
 static float bake[6453720];        // everglade/scene/bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
 static uint32_t frames;
@@ -104,7 +105,7 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   int64_t n = lab_frame(at(state), out, u, w, h, scale, dt, still != 0);
   draw_n = 0;
   if (zone_at(state)->bodies.e[0].ready) {
-    if (!baked) { zone_bake(zone(state), (coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}); baked = 1; }
+    if (!baked) { zone_bake_from(zone(state), (coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}, (coax_v_u8){rig_file, rig_bytes}); baked = 1; }
     draw_n = lab_scene(at(state), (coax_v_f32){zone_at(state)->records.e, sizeof zone_at(state)->records.e / sizeof(float)});
   }
   frames += 1;
@@ -112,6 +113,10 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
 }
 
 // ---- the figures: the pack's catalog, and the scene's draws over its vertices and the two stores
+/* the pack's rig entry (kind 7), handed over before the catalog (coax/web/host.js deliverRig): the bake reads it */
+EXPORT("coaxial_pack_rig") cx_face_addr coaxial_pack_rig(cx_face_addr state, uint32_t bytes) { (void)state; return bytes <= sizeof rig_file ? (cx_face_addr)(uintptr_t)rig_file : 0u; }
+EXPORT("coaxial_pack_rig_capacity") uint32_t coaxial_pack_rig_capacity(cx_face_addr state) { (void)state; return (uint32_t)sizeof rig_file; }
+EXPORT("coaxial_pack_rig_ready") void coaxial_pack_rig_ready(cx_face_addr state, uint32_t bytes) { (void)state; rig_bytes = bytes <= sizeof rig_file ? bytes : 0u; }
 EXPORT("coaxial_asset") cx_face_addr coaxial_asset(cx_face_addr state, int32_t i, uint32_t bytes) {
   (void)state;
   return i == 0 && bytes <= sizeof catalog ? (cx_face_addr)(uintptr_t)catalog : 0u;

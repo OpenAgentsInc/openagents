@@ -26,7 +26,7 @@
 #load "../../metaverse-engine/net/relay-wire.coax";   // the relay's own frames: y and the clock's ping and pong (#13245)
 
 E2N_OFF :: 0; E2N_OPENING :: 1; E2N_OPEN :: 2; E2N_DOWN :: 3;
-E2N_ENTS :: 48 + WIRE_MOUNTS;   // the room's players (a room seats 16), monsters, guard, familiars and mounts this page holds: every entity it draws (#13276, #13277, #13268)
+E2N_ENTS :: 48 + WIRE_MOUNTS + WIRE_ZMORE;   // the zone's players (a zone seats 150: the first 16 and WIRE_ZMORE more, #13275), monsters, guard, familiars and mounts this page holds: every entity it draws (#13276, #13277, #13268)
 E2N_REALM :: "everglade2";
 E2N_GAME :: "everglade";        // the room server's game path (/api/room/relay/everglade/CODE)
 E2N_PIPE_TICKET :: 4;           // the pipe's ask for a seat ticket: the API path, a newline, the body (as Everglade's, everglade5e-face.c)

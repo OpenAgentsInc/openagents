@@ -288,9 +288,12 @@ bd_bake :: (d: [] People, out: [] f32) {
 // When it was a local of bd_bake, a development module (wasm.sh builds those in parts, so nothing
 // folds the unused branch away) overflowed Everglade II's 1 MB stack in bd_bake before its first
 // frame: "memory access out of bounds" at 95% (#13303).
-bd_bake_previews :: (out: [] f32, data: [] Preview) {
+// The rig comes from `file` first: the pack's rig entry (VRG1, rig-asset.coax; GitHub #13306). A file
+// without the set (a page whose pack carries no rigs yet passes none) leaves the generated procedure
+// to load it, the same words.
+bd_bake_previews :: (out: [] f32, data: [] Preview, file: [] u8) {
   if out.count < BD_BAKE_FLOATS || data.count < 1 { return; }
-  preview_load(data);
+  if !e2rig_preview(file, data) { preview_load(data); }
   for body:0..<2 {rig:=preview_rig(data,body==1);sk:[1]Skin;
     for c:0..<PREVIEW_BAKED {n:=PREVIEW_FRAMES[c];for f:0..<n {
       t:=f32(f)*rig.duration[c]/f32(n);
@@ -300,9 +303,9 @@ bd_bake_previews :: (out: [] f32, data: [] Preview) {
   }
 }
 // The owned two-handed weapon clips, into their rows (a world whose figures hold weapons bakes them too).
-bd_bake_owned :: (out: [] f32) {
+bd_bake_owned :: (out: [] f32, file: [] u8) {
   if out.count < BD_BAKE_FLOATS { return; }
-  own:[1]Twohand;twohand_load(own[..]);
+  own:[1]Twohand;if !e2rig_twohand(file,own[..]) {twohand_load(own[..]);}
   for body:0..<2 {rig:=twohand_rig(own[..],body==1);sk:[1]Skin;
     for c:0..<TWOHAND_CLIPS {n:=BD_OWN_FRAMES[c];for f:0..<n {
       t:=f32(f)*rig.duration[c]/f32(n);

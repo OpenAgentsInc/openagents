@@ -30,6 +30,7 @@ static coax_v_t_EgZone zone(uint32_t state) { return (coax_v_t_EgZone){zone_at(s
 // The people's catalog; the rig the clips are baked from, and the bake (everglade/scene/bodies.coax BD_BAKE_FLOATS).
 static uint8_t people_catalog[65536];
 static coax_t_People rig;
+static uint8_t rig_file[2097152]; static uint32_t rig_bytes;   /* the pack's rig entry (VRG1, #13306), when the pack carries one: the bake reads its sets first */
 static float bake[6453720];
 static float zone_strokes[250000 * 16];   // the zone's own strokes (everglade/zone.coax MAX_VERTICES, VERTEX_FLOATS): made, never drawn
 static uint32_t baked, frames;
@@ -106,7 +107,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   int64_t n = wbw_frame(walk(state), (coax_v_f32){zone_strokes, sizeof zone_strokes / sizeof zone_strokes[0]}, out, u, w, h, scale, dt, still != 0);
   figure_draws = 0;
   if (zone_at(state)->bodies.e[0].ready) {
-    if (!baked) { zone_bake(zone(state), (coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}); baked = 1; }
+    if (!baked) { zone_bake_from(zone(state), (coax_v_t_People){&rig, 1}, (coax_v_f32){bake, sizeof bake / sizeof bake[0]}, (coax_v_u8){rig_file, rig_bytes}); baked = 1; }
     figure_draws = zone_scene(zone(state), (coax_v_f32){zone_at(state)->records.e, sizeof zone_at(state)->records.e / sizeof(float)});
   }
   wbw_scene(walk(state), figure_draws);
@@ -155,6 +156,10 @@ EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint3
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)state_at(state)->out_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { worldbuilder_action_done(at(state)); }
 
+/* the pack's rig entry (kind 7), handed over before the catalog (coax/web/host.js deliverRig): the bake reads it */
+EXPORT("coaxial_pack_rig") uint32_t coaxial_pack_rig(uint32_t state, uint32_t bytes) { (void)state; return bytes <= sizeof rig_file ? (uint32_t)(uintptr_t)rig_file : 0u; }
+EXPORT("coaxial_pack_rig_capacity") uint32_t coaxial_pack_rig_capacity(uint32_t state) { (void)state; return (uint32_t)sizeof rig_file; }
+EXPORT("coaxial_pack_rig_ready") void coaxial_pack_rig_ready(uint32_t state, uint32_t bytes) { (void)state; rig_bytes = bytes <= sizeof rig_file ? bytes : 0u; }
 EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
   (void)state;
   if (i == PEOPLE_CATALOG) return bytes <= sizeof people_catalog ? (uint32_t)(uintptr_t)people_catalog : 0u;

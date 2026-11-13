@@ -1,0 +1,288 @@
+// A world cell's content as the pack carries it, read on the page (GitHub #13280, AAA P2.7;
+// docs/metaverse/one-world.md, "Paged by cell"). The pack tool (everglade/model/tools/cell-pack.coax,
+// through everglade/world/cell-pack.coax) writes each cell's bytes into the pack's cells entry and a
+// Z line a cell in the catalog (metaverse-engine/host/pack-cells.coax); a host fetches a cell's
+// ranges when the cell controller asks and hands them over joined. What arrives is a run of blobs,
+// each a magic word and its own length:
+//   E2CP  a cell's planting: the cell, its planting cells (16 m, everglade/world/plant.coax) each
+//         with its count, then every piece's eight floats and its kind. A world cell carries the
+//         planting cells whose middle is in it, and the backdrop's planting cells nearest it.
+//   E2CG  the ground's record (E2T1, everglade/world/ground.coax), whole. Every cell's line names
+//         it, so the first cell in brings the ground; it is published whole or not at all, as ever.
+// The page puts a cell's pieces into its planting where the planting cell's empty range is
+// (e2cc_insert) and takes them out when the cell leaves (e2cc_remove). Every reader of the planting
+// walks first[c]..<first[c + 1], so a planting cell that is not in is an empty range to them.
+// Numbers are little-endian u32.
+//   coax/bin/coax test --library everglade/world/cell-content.coax
+#load "plant.coax";
+
+E2CC_PLANT :: 0x50433245;     // "E2CP"
+E2CC_GROUND :: 0x47433245;    // "E2CG"
+E2CC_HEAD :: 8;               // a blob's magic and length
+E2CC_PLANT_HEAD :: 20;        // ... then the cell, its planting cells and its pieces
+E2CC_CELL_MOST :: 157;        // pieces one planting cell holds at most (plant.coax e2p_agrees)
+
+e2cc_u32 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24); }
+e2cc_put32 :: (b: [] u8, at: int, v: int) { for k: 0..<4 { b[at + k] = cast(u8) ((v >> (k * 8)) & 255); } }
+
+// The first blob with `magic` in a cell's bytes, whole; nothing when the bytes are not a run of
+// blobs up to it, or hold none.
+e2cc_blob :: (b: [] u8, magic: int) -> [] u8 {
+  at := 0;
+  while at + E2CC_HEAD <= b.count {
+    n := e2cc_u32(b, at + 4);
+    if n < E2CC_HEAD || n % 4 != 0 || at + n > b.count { return b[0..<0]; }
+    if e2cc_u32(b, at) == magic { return b[at..<at + n]; }
+    at += n;
+  }
+  return b[0..<0];
+}
+// Whether the bytes are a run of whole blobs and nothing else.
+e2cc_whole :: (b: [] u8) -> bool {
+  at := 0;
+  while at < b.count {
+    if at + E2CC_HEAD > b.count { return false; }
+    n := e2cc_u32(b, at + 4);
+    if n < E2CC_HEAD || n % 4 != 0 || at + n > b.count { return false; }
+    at += n;
+  }
+  return b.count > 0;
+}
+// The ground's record in a cell's bytes; nothing when there is none.
+e2cc_ground :: (b: [] u8) -> [] u8 {
+  g := e2cc_blob(b, E2CC_GROUND);
+  if g.count < E2CC_HEAD + 4 { return b[0..<0]; }
+  n := e2cc_u32(g, E2CC_HEAD);
+  if n < 1 || E2CC_HEAD + 4 + n > g.count { return b[0..<0]; }
+  return g[E2CC_HEAD + 4..<E2CC_HEAD + 4 + n];
+}
+
+// A planting blob's layout, checked: the cell, how many planting cells and pieces, and where the
+// list, the floats and the kinds start.
+E2ccPlant :: struct { ok: bool; cell: int; cells: int; items: int; list: int; data: int; kinds: int; }
+e2cc_plant_read :: (b: [] u8) -> E2ccPlant {
+  r: E2ccPlant;
+  if b.count < E2CC_PLANT_HEAD || e2cc_u32(b, 0) != E2CC_PLANT || e2cc_u32(b, 4) != b.count { return r; }
+  cell := e2cc_u32(b, 8); cells := e2cc_u32(b, 12); items := e2cc_u32(b, 16);
+  if cell < 0 || cell > 255 || cells < 0 || cells > E2P_CELLS || items < 0 || items > E2_ITEMS { return r; }
+  list := E2CC_PLANT_HEAD; data := list + cells * 8; kinds := data + items * 4 * E2_ITEM_FLOATS;
+  if ((kinds + items + 3) / 4) * 4 != b.count { return r; }
+  last := -1; sum := 0;
+  for k: 0..<cells {
+    p := e2cc_u32(b, list + k * 8); n := e2cc_u32(b, list + k * 8 + 4);
+    if p <= last || p >= E2P_CELLS || n < 1 || n > E2CC_CELL_MOST { return r; }
+    last = p; sum += n;
+  }
+  if sum != items { return r; }
+  for k: 0..<items { if cast(int) b[kinds + k] >= E2_KITS { return r; } }
+  return E2ccPlant.{ok = true, cell = cell, cells = cells, items = items, list = list, data = data, kinds = kinds};
+}
+// Whether e2cc_insert would take the blob into a planting of n pieces with room for `room` (the
+// floats') and `kinds` (the kinds'): it reads, every planting cell it names is an empty range that
+// no cell holds, and its pieces fit.
+e2cc_fits :: (blob: [] u8, room: int, kinds: int, first: [] int, held: [] int, n: int) -> bool {
+  r := e2cc_plant_read(blob);
+  if !r.ok || n < 0 || first.count < E2P_CELLS + 1 || held.count < E2P_CELLS || first[E2P_CELLS] != n { return false; }
+  if n + r.items > kinds || n + r.items > room { return false; }
+  for k: 0..<r.cells { p := e2cc_u32(blob, r.list + k * 8); if held[p] != 0 || first[p + 1] != first[p] { return false; } }
+  return true;
+}
+// A cell's planting into the page's: each planting cell the blob names takes its pieces where its
+// empty range is, and is marked as held by the cell (held[p] = cell + 1). The pieces planted now,
+// or -1 with nothing changed: the blob does not read, a planting cell it names is already in, or
+// there is no room. One pass from the top, so a piece moves once.
+e2cc_insert :: (blob: [] u8, items: [] f32, kinds: [] u8, first: [] int, held: [] int, n: int) -> int {
+  r := e2cc_plant_read(blob);
+  if !e2cc_fits(blob, items.count / E2_ITEM_FLOATS, kinds.count, first, held, n) { return -1; }
+  add := r.items; src := r.items; k := r.cells - 1; hi := n; c := E2P_CELLS - 1;
+  while c >= 0 && add > 0 {
+    lo := first[c];
+    first[c + 1] = hi + add;
+    if k >= 0 && e2cc_u32(blob, r.list + k * 8) == c {
+      count := e2cc_u32(blob, r.list + k * 8 + 4); add -= count; src -= count;
+      for q: 0..<count {
+        o := (lo + add + q) * E2_ITEM_FLOATS; from := r.data + (src + q) * 4 * E2_ITEM_FLOATS;
+        for w: 0..<E2_ITEM_FLOATS { items[o + w] = f32_from_bits(cast,trunc(u32) e2cc_u32(blob, from + w * 4)); }
+        kinds[lo + add + q] = blob[r.kinds + src + q];
+      }
+      held[c] = r.cell + 1; k -= 1;
+    } else if hi > lo {
+      q := hi - 1;
+      while q >= lo {
+        for w: 0..<E2_ITEM_FLOATS { items[(q + add) * E2_ITEM_FLOATS + w] = items[q * E2_ITEM_FLOATS + w]; }
+        kinds[q + add] = kinds[q]; q -= 1;
+      }
+    }
+    hi = lo; c -= 1;
+  }
+  return n + r.items;
+}
+// A cell's planting out of the page's again: every planting cell it holds becomes an empty range.
+// The pieces planted now.
+e2cc_remove :: (cell: int, items: [] f32, kinds: [] u8, first: [] int, held: [] int, n: int) -> int {
+  gone := 0;
+  for c: 0..<E2P_CELLS {
+    lo := first[c]; hi := first[c + 1];
+    first[c] = lo - gone;
+    if held[c] == cell + 1 { gone += hi - lo; held[c] = 0; continue; }
+    if gone > 0 {
+      for q: lo..<hi {
+        for w: 0..<E2_ITEM_FLOATS { items[(q - gone) * E2_ITEM_FLOATS + w] = items[q * E2_ITEM_FLOATS + w]; }
+        kinds[q - gone] = kinds[q];
+      }
+    }
+  }
+  first[E2P_CELLS] = n - gone;
+  return n - gone;
+}
+// Whether planting cell p of a planting holds what e2_plant_cell plants there, bit for bit.
+e2cc_cell_agrees :: (items: [] f32, kinds: [] u8, first: [] int, p: int) -> bool {
+  a := first[p]; b := first[p + 1];
+  if p < 0 || p >= E2P_CELLS || a < 0 || b < a || b - a > E2CC_CELL_MOST { return false; }
+  out: [E2CC_CELL_MOST * E2_ITEM_FLOATS] f32; k: [E2CC_CELL_MOST] u8;
+  m := e2_plant_cell(out[..], k[..], 0, p % E2_CELLS_X, p / E2_CELLS_X);
+  if m != b - a { return false; }
+  for q: 0..<m {
+    if k[q] != kinds[a + q] { return false; }
+    for w: 0..<E2_ITEM_FLOATS { if f32_bits(out[q * E2_ITEM_FLOATS + w]) != f32_bits(items[(a + q) * E2_ITEM_FLOATS + w]) { return false; } }
+  }
+  return true;
+}
+// Whether a planting blob is this tree's planting: it reads, and the first planting cell it names
+// holds what e2_plant_cell plants there, bit for bit (1.5 ms in a page). The page takes a cell's
+// content only when this holds; a pack built from another planting fails the load.
+e2cc_agrees :: (blob: [] u8) -> bool {
+  r := e2cc_plant_read(blob);
+  if !r.ok { return false; }
+  if r.cells == 0 { return true; }
+  p := e2cc_u32(blob, r.list); n := e2cc_u32(blob, r.list + 4);
+  out: [E2CC_CELL_MOST * E2_ITEM_FLOATS] f32; k: [E2CC_CELL_MOST] u8;
+  m := e2_plant_cell(out[..], k[..], 0, p % E2_CELLS_X, p / E2_CELLS_X);
+  if m != n { return false; }
+  for q: 0..<m {
+    if k[q] != blob[r.kinds + q] { return false; }
+    for w: 0..<E2_ITEM_FLOATS { if cast(int) f32_bits(out[q * E2_ITEM_FLOATS + w]) != e2cc_u32(blob, r.data + (q * E2_ITEM_FLOATS + w) * 4) { return false; } }
+  }
+  return true;
+}
+
+// ---- the writer's half that the reader's checks need: one cell's blob from a whole planting
+// The planting cells p with carrier[p] == cell + 1, out of a whole planting, as a blob into out:
+// its length, or -1 when out is too small.
+e2cc_plant_write :: (items: [] f32, kinds: [] u8, first: [] int, carrier: [] int, cell: int, out: [] u8) -> int {
+  cells := 0; total := 0;
+  for p: 0..<E2P_CELLS { if carrier[p] == cell + 1 && first[p + 1] > first[p] { cells += 1; total += first[p + 1] - first[p]; } }
+  list := E2CC_PLANT_HEAD; data := list + cells * 8; kat := data + total * 4 * E2_ITEM_FLOATS; size := ((kat + total + 3) / 4) * 4;
+  if size > out.count { return -1; }
+  for k: kat..<size { out[k] = 0; }
+  e2cc_put32(out, 0, E2CC_PLANT); e2cc_put32(out, 4, size); e2cc_put32(out, 8, cell); e2cc_put32(out, 12, cells); e2cc_put32(out, 16, total);
+  k := 0; at := 0;
+  for p: 0..<E2P_CELLS {
+    if carrier[p] != cell + 1 || first[p + 1] == first[p] { continue; }
+    e2cc_put32(out, list + k * 8, p); e2cc_put32(out, list + k * 8 + 4, first[p + 1] - first[p]); k += 1;
+    for q: first[p]..<first[p + 1] {
+      for w: 0..<E2_ITEM_FLOATS { e2cc_put32(out, data + (at * E2_ITEM_FLOATS + w) * 4, cast(int) f32_bits(items[q * E2_ITEM_FLOATS + w])); }
+      out[kat + at] = kinds[q]; at += 1;
+    }
+  }
+  return size;
+}
+// The ground's record as a blob into out: its length, or -1.
+e2cc_ground_write :: (rec: [] u8, out: [] u8) -> int {
+  size := ((E2CC_HEAD + 4 + rec.count + 3) / 4) * 4;
+  if size > out.count || rec.count < 1 { return -1; }
+  e2cc_put32(out, 0, E2CC_GROUND); e2cc_put32(out, 4, size); e2cc_put32(out, 8, rec.count);
+  for k: 0..<rec.count { out[E2CC_HEAD + 4 + k] = rec[k]; }
+  for k: E2CC_HEAD + 4 + rec.count..<size { out[k] = 0; }
+  return size;
+}
+
+E2ccCheck :: struct {
+  a: [30000 * E2_ITEM_FLOATS] f32; ak: [30000] u8; af: [E2P_CELLS + 1] int;      // rows planted whole
+  b: [30000 * E2_ITEM_FLOATS] f32; bk: [30000] u8; bf: [E2P_CELLS + 1] int;      // the page's planting
+  carrier: [E2P_CELLS] int; held: [E2P_CELLS] int;
+  blob: [3] [400000] u8; size: [3] int;
+}
+e2cc_test_same :: (t: [] E2ccCheck, n: int) -> bool {
+  for c: 0..<E2P_CELLS + 1 { if t[0].af[c] != t[0].bf[c] { return false; } }
+  for i: 0..<n * E2_ITEM_FLOATS { if f32_bits(t[0].a[i]) != f32_bits(t[0].b[i]) { return false; } }
+  for i: 0..<n { if t[0].ak[i] != t[0].bk[i] { return false; } }
+  return true;
+}
+#test "cells' planting put in one by one, in any order, is the whole planting; taken out again it is gone" #steps 4000000000 {
+  // three rows of the woods, their planting cells dealt to three cells by column
+  t: [1] E2ccCheck; n := e2_plant_rows(t[0].a[..], t[0].ak[..], t[0].af[..], e2_rows(22, 25)); #assert n > 3000 && n < 30000;
+  for p: 0..<E2P_CELLS { t[0].carrier[p] = ifx p / E2_CELLS_X >= 22 && p / E2_CELLS_X < 25 then 1 + (p % E2_CELLS_X) % 3 else 0; }
+  total := 0;
+  for cell: 0..<3 {
+    t[0].size[cell] = e2cc_plant_write(t[0].a[..], t[0].ak[..], t[0].af[..], t[0].carrier[..], cell, t[0].blob[cell][..]);
+    #assert t[0].size[cell] > E2CC_PLANT_HEAD && t[0].size[cell] % 4 == 0;
+    r := e2cc_plant_read(t[0].blob[cell][0..<t[0].size[cell]]); #assert r.ok && r.cell == cell && r.items > 500 && r.cells > 10; total += r.items;
+    #assert e2cc_agrees(t[0].blob[cell][0..<t[0].size[cell]]);
+  }
+  #assert total == n;
+  orders := [3][3] int.[[3] int.[0, 1, 2], [3] int.[2, 0, 1], [3] int.[1, 2, 0]];
+  for order: orders {
+    m := 0; for c: 0..<E2P_CELLS + 1 { t[0].bf[c] = 0; } for p: 0..<E2P_CELLS { t[0].held[p] = 0; }
+    for cell: order {
+      got := e2cc_insert(t[0].blob[cell][0..<t[0].size[cell]], t[0].b[..], t[0].bk[..], t[0].bf[..], t[0].held[..], m); #assert got > m; m = got;
+      // twice is refused, and changes nothing
+      #assert e2cc_insert(t[0].blob[cell][0..<t[0].size[cell]], t[0].b[..], t[0].bk[..], t[0].bf[..], t[0].held[..], m) == -1 && t[0].bf[E2P_CELLS] == m;
+    }
+    #assert m == n && e2cc_test_same(t[..], n);
+    for p: 0..<E2P_CELLS { #assert t[0].held[p] == (ifx t[0].af[p + 1] > t[0].af[p] then t[0].carrier[p] else 0); }
+    // the middle one out: its planting cells are empty ranges, every other cell's pieces are as they were
+    m = e2cc_remove(order[1], t[0].b[..], t[0].bk[..], t[0].bf[..], t[0].held[..], m);
+    #assert m == n - e2cc_plant_read(t[0].blob[order[1]][0..<t[0].size[order[1]]]).items && t[0].bf[E2P_CELLS] == m && t[0].bf[0] == 0;
+    for p: 0..<E2P_CELLS {
+      if t[0].carrier[p] == order[1] + 1 { #assert t[0].bf[p + 1] == t[0].bf[p] && t[0].held[p] == 0; continue; }
+      #assert t[0].bf[p + 1] - t[0].bf[p] == t[0].af[p + 1] - t[0].af[p];
+      for q: 0..<t[0].bf[p + 1] - t[0].bf[p] { #assert t[0].bk[t[0].bf[p] + q] == t[0].ak[t[0].af[p] + q] && f32_bits(t[0].b[(t[0].bf[p] + q) * E2_ITEM_FLOATS]) == f32_bits(t[0].a[(t[0].af[p] + q) * E2_ITEM_FLOATS]); }
+    }
+    // and in again: whole
+    m = e2cc_insert(t[0].blob[order[1]][0..<t[0].size[order[1]]], t[0].b[..], t[0].bk[..], t[0].bf[..], t[0].held[..], m); #assert m == n && e2cc_test_same(t[..], n);
+    // all out: nothing is planted
+    for cell: 0..<3 { m = e2cc_remove(cell, t[0].b[..], t[0].bk[..], t[0].bf[..], t[0].held[..], m); }
+    #assert m == 0; for c: 0..<E2P_CELLS + 1 { #assert t[0].bf[c] == 0; }
+    // taking out a cell that is not in changes nothing
+    #assert e2cc_remove(1, t[0].b[..], t[0].bk[..], t[0].bf[..], t[0].held[..], 0) == 0;
+  }
+}
+#test "a planting blob that does not read, or is another planting's, is refused" #steps 4000000000 {
+  t: [1] E2ccCheck; n := e2_plant_rows(t[0].a[..], t[0].ak[..], t[0].af[..], e2_rows(23, 24)); #assert n > 1000;
+  for p: 0..<E2P_CELLS { t[0].carrier[p] = ifx p / E2_CELLS_X == 23 then 1 else 0; }
+  size := e2cc_plant_write(t[0].a[..], t[0].ak[..], t[0].af[..], t[0].carrier[..], 0, t[0].blob[0][..]); b := t[0].blob[0][..];
+  #assert size > 0 && e2cc_plant_read(b[0..<size]).ok && e2cc_agrees(b[0..<size]) && e2cc_plant_write(t[0].a[..], t[0].ak[..], t[0].af[..], t[0].carrier[..], 0, b[0..<size - 1]) == -1;
+  // short, long, a wrong magic, length, cell, count or kind, planting cells out of order
+  #assert !e2cc_plant_read(b[0..<size - 4]).ok && !e2cc_plant_read(b[0..<size + 4]).ok && !e2cc_plant_read(b[0..<8]).ok;
+  for at: [4] int.[0, 4, 12, 16] { v := e2cc_u32(b, at); e2cc_put32(b, at, v + 1); #assert !e2cc_plant_read(b[0..<size]).ok; e2cc_put32(b, at, v); }
+  e2cc_put32(b, 8, 256); #assert !e2cc_plant_read(b[0..<size]).ok; e2cc_put32(b, 8, 0);
+  r := e2cc_plant_read(b[0..<size]); #assert r.ok && r.cells > 2;
+  p1 := e2cc_u32(b, r.list + 8); e2cc_put32(b, r.list + 8, e2cc_u32(b, r.list)); #assert !e2cc_plant_read(b[0..<size]).ok; e2cc_put32(b, r.list + 8, p1);
+  c1 := e2cc_u32(b, r.list + 4); e2cc_put32(b, r.list + 4, 0); #assert !e2cc_plant_read(b[0..<size]).ok; e2cc_put32(b, r.list + 4, c1);
+  k0 := b[r.kinds]; b[r.kinds] = cast(u8) E2_KITS; #assert !e2cc_plant_read(b[0..<size]).ok; b[r.kinds] = k0;
+  #assert e2cc_plant_read(b[0..<size]).ok;
+  // a moved piece or another kind in the first planting cell: it reads, and is not this planting
+  f0 := e2cc_u32(b, r.data + 4); e2cc_put32(b, r.data + 4, f0 + 1); #assert e2cc_plant_read(b[0..<size]).ok && !e2cc_agrees(b[0..<size]); e2cc_put32(b, r.data + 4, f0);
+  b[r.kinds] = cast(u8) ((cast(int) k0 + 1) % E2_KITS); #assert !e2cc_agrees(b[0..<size]); b[r.kinds] = k0;
+  #assert e2cc_agrees(b[0..<size]);
+  // a planting too full for it takes nothing
+  for c: 0..<E2P_CELLS + 1 { t[0].bf[c] = 0; }
+  #assert e2cc_insert(b[0..<size], t[0].b[0..<(r.items - 1) * E2_ITEM_FLOATS], t[0].bk[..], t[0].bf[..], t[0].held[..], 0) == -1 && t[0].bf[E2P_CELLS] == 0 && t[0].held[e2cc_u32(b, r.list)] == 0;
+  #assert e2cc_insert(b[0..<size], t[0].b[..], t[0].bk[..], t[0].bf[..], t[0].held[..], 1) == -1;
+  #assert e2cc_insert(b[0..<size], t[0].b[..], t[0].bk[..], t[0].bf[..], t[0].held[..], 0) == r.items && e2cc_cell_agrees(t[0].b[..], t[0].bk[..], t[0].bf[..], e2cc_u32(b, r.list));
+  #assert !e2cc_cell_agrees(t[0].b[..], t[0].bk[..], t[0].bf[..], 0) || t[0].af[1] == t[0].af[0];
+}
+#test "a cell's bytes are a run of blobs: the ground's record and the planting are found, and a cut run is refused" {
+  rec := [5] u8.[9, 8, 7, 6, 5]; b: [64] u8;
+  g := e2cc_ground_write(rec[..], b[..]); #assert g == 20 && e2cc_ground_write(rec[..], b[0..<19]) == -1 && e2cc_ground_write(rec[0..<0], b[..]) == -1;
+  // an empty planting blob after it
+  e2cc_put32(b[..], g, E2CC_PLANT); e2cc_put32(b[..], g + 4, E2CC_PLANT_HEAD); e2cc_put32(b[..], g + 8, 3); e2cc_put32(b[..], g + 12, 0); e2cc_put32(b[..], g + 16, 0);
+  all := b[0..<g + E2CC_PLANT_HEAD];
+  #assert e2cc_whole(all) && !e2cc_whole(all[0..<all.count - 4]) && !e2cc_whole(all[0..<0]) && !e2cc_whole(all[0..<6]);
+  got := e2cc_ground(all); #assert got.count == 5 && got[0] == 9 && got[4] == 5;
+  p := e2cc_blob(all, E2CC_PLANT); #assert p.count == E2CC_PLANT_HEAD && e2cc_plant_read(p).ok && e2cc_plant_read(p).cell == 3 && e2cc_agrees(p);
+  #assert e2cc_blob(all[0..<g], E2CC_PLANT).count == 0 && e2cc_ground(all[g..<all.count]).count == 0 && e2cc_blob(all, 7).count == 0;
+  e2cc_put32(b[..], 4, 18); #assert e2cc_blob(all, E2CC_PLANT).count == 0 && !e2cc_whole(all); e2cc_put32(b[..], 4, 20);
+  e2cc_put32(b[..], 8, 9); #assert e2cc_ground(all).count == 0;
+}

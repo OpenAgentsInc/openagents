@@ -532,6 +532,11 @@ fixtures to this module. A host does three things, and decides nothing:
 3. Answers the controller with the digest from step 1 once `hpg_ready` says
    every range is held.
 
+Everglade II is the first pack written this way: its cells entry (kind 8,
+`PACK_CELLS`) and its lines are written by `everglade/model/tools/cell-pack.coax`,
+and the browser's host answers the page's cell controller from them
+(`coax/web/host.js` `pumpCells`; `docs/metaverse/one-world.md`, "Paged by cell").
+
 `coax/web/tool.sh metaverse-engine/host/check-pack-cells.coax ROOT OUT` runs the three
 steps end to end through the browser's module on a pack it writes, and is the
 `pack-cells` step of `coax/remote/check.sh reports`.

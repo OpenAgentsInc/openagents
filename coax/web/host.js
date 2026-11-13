@@ -267,7 +267,7 @@ import { makeHostTransport } from "./host-transport.js";
 import {openSocketRetention,makeSocketQueues} from "./socket-queue-host.js";
 import {openPackHost,openPackTable} from "./pack-host.js";
 import { layerBitmap, layerPoolWidth, poolLayerLevels, warmLayerPool } from "./layer-pool.js";
-import { fetchPackInWorker, fetchPagedImage, fetchWholePack } from "./pack-fetch.js";
+import { fetchPackInWorker, fetchPagedDemand, fetchPagedImage, fetchWholePack } from "./pack-fetch.js";
 import { characterPass } from "./character-host.js";
 import { instanceCull } from "./instance-cull.js";
 import { makeHostLifecycle } from "./host-lifecycle.js";
@@ -1787,12 +1787,57 @@ function packBytes(pack) {
   const paged = /\.vpk3$/.test(pack.url), gzip = pack.url.endsWith(".pack.gz");
   let told = 0;
   const progress = (loaded, total) => { loading.bytes(pack.url, loaded, total); if (performance.now() - told > 100) { told = performance.now(); send(PACK_KIND, `${loaded} ${total}`); } };
-  const here = async () => paged ? fetchPagedImage(packHost ??= await openPackHost(), pack, { owner: pack, progress }) : fetchWholePack(liveUrl(pack.url), { gzip, progress });
-  const job = fetchPackInWorker({ url: new URL(liveUrl(pack.url), location.href).href, gzip, paged, ranges: pack.ranges }, progress);
+  // A page that takes its world by cell (coaxial_cell_asks_v1, GitHub #13280) gets a paged pack's
+  // roots now and each cell's pages when its cell controller asks (pumpCells): got.cells.
+  const demand = paged && !!engine?.exports.coaxial_cell_asks_v1;
+  const here = async () => demand ? fetchPagedDemand(packHost ??= await openPackHost(), pack, { owner: pack, progress })
+    : paged ? fetchPagedImage(packHost ??= await openPackHost(), pack, { owner: pack, progress }) : fetchWholePack(liveUrl(pack.url), { gzip, progress });
+  const job = fetchPackInWorker({ url: new URL(liveUrl(pack.url), location.href).href, gzip, paged, demand, ranges: pack.ranges }, progress);
   loadMark("pack-asked");
   const promise = job.promise.catch((error) => { if (!error.worker) throw error; return here(); }).then((got) => { loadMark("pack-bytes");return got; });
   promise.catch(() => {});   // a page that stops before loadPack never asks
   return { promise, cancel: job.cancel };
+}
+// The world by cell (GitHub #13280; docs/metaverse/one-world.md, "Paged by cell"). A page whose pack is
+// paged by cell exports coaxial_cell_asks_v1: once a frame the host reads the cells its controller
+// waits for, fetches each one's ranges from the pack (cellPack.cells, pack-fetch.js: the catalog's Z
+// line, then the pages that cover it, each admitted by Coax), copies them joined into the page and
+// says so. The page decides: an answer is admitted only for the cell's current request at the
+// manifest's digest. A cell with no line, or one whose fetch failed, is a failed load after a pause,
+// and the controller asks again. A range the page took with one cell is not sent again with another
+// (cellShared: the ground's record, which every cell's line names so the first cell in brings it).
+// In development ?celldelay=MS holds every answer back that long (a slow connection for a check;
+// with ?cellfree=N the first N answers are not held, so the world round the spawn is in and only
+// later cells are slow), and coaxial.cellLog() lists each answer: the cell, its key, the
+// milliseconds from ask to answer, its bytes and what the page said (0: taken).
+let cellPack = null;
+const cellAsks = new Set(), cellLog = [], cellShared = new Map();   // asks in flight; the answers; each range the page took, and the cell it came with
+const cellDelay = dev ? Math.max(0, Number(new URLSearchParams(location.search).get("celldelay")) || 0) : 0;
+let cellFree = dev ? Math.max(0, Number(new URLSearchParams(location.search).get("cellfree")) || 0) : 0;
+function pumpCells(x) {
+  const cells = cellPack?.cells;
+  if (!cells || !x.coaxial_cell_asks_v1 || !x.coaxial_cell_loaded_v1) return;
+  const n = x.coaxial_cell_asks_v1(arena.state), owner = engine, source = cellPack;
+  for (let i = 0; i < n; i++) {
+    const cell = x.coaxial_cell_ask_v1(arena.state, i, 0), request = x.coaxial_cell_ask_v1(arena.state, i, 1), key = x.coaxial_cell_ask_v1(arena.state, i, 2) >>> 0, id = `${cell}:${request}`;
+    if (cellAsks.has(id)) continue;
+    cellAsks.add(id);
+    const began = performance.now(), pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const answer = (got) => {
+      cellAsks.delete(id);
+      if (engine !== owner || cellPack !== source || engine.exports !== x) return;
+      let bytes = 0;
+      if (got) {
+        const total = got.parts.reduce((sum, part) => sum + part.byteLength, 0), at = (x.coaxial_cell_buffer_v1?.(arena.state, total) || 0) >>> 0;
+        if (at && at + total <= memory.buffer.byteLength) { let o = at; for (const part of got.parts) { new Uint8Array(memory.buffer, o, part.byteLength).set(part); o += part.byteLength; } bytes = total; }
+      }
+      const said = x.coaxial_cell_loaded_v1(arena.state, cell, request, bytes ? got.digest : 0, bytes, bytes ? 0 : 1);
+      if (said === 0 && bytes) for (const [from, size] of got.ranges) if (!cellShared.has(`${from}:${size}`)) cellShared.set(`${from}:${size}`, cell);
+      if (cellLog.length < 4096) cellLog.push([cell, key, Math.round(performance.now() - began), bytes, said]);
+      if (cellLog.length === 1) loadMark("cell-first");
+    };
+    cells.cell(key, [...cellShared].filter(([, with_]) => with_ !== cell).map(([range]) => range)).then(async (got) => { await pause(!got ? 500 : cellFree > 0 ? (cellFree--, 0) : cellDelay); answer(got); }, async (error) => { if (dev) console.warn(`${app} cell ${cell}: ${error?.message || error}`); await pause(500); answer(null); });
+  }
 }
 // A big static mesh's runs' boxes (metaverse-engine/render/mesh-cull.coax, #13168), once the pack's catalog
 // is delivered: the face asks with coaxial_mesh_bounds_v1 for one index range, and its runs of
@@ -1851,6 +1896,7 @@ async function loadPack(pack) {
       pack.retainedSource = null;
       const incoming = packIncoming.get(pack.url) || packBytes(pack);packIncoming.delete(pack.url);
       const got = await incoming.promise;bytes = got.bytes;
+      pack.cells?.close();pack.cells = got.cells || null;
       loadMark("pack-decoded");send(PACK_KIND, `${got.loaded} ${got.loaded}`);
     }
     else if (!bytes) {
@@ -1921,7 +1967,16 @@ async function loadPack(pack) {
     loadMark("pack-layers");if (wantsDataLayers()) loading.textures(0, 2 * of(PACK_DATA_LAYER).length);
     layers.dataTexture = wantsDataLayers() && of(PACK_DATA_LAYER).length ? await layerTexture(of(PACK_DATA_LAYER).map((e) => e.bytes), "rgba8unorm") : null;
     if (!parts.every(currentAsset)) return;
-    for (const e of of(PACK_SOUND)) if (!assets.some((a) => a.kind === "sound" && a.name === e.name)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
+    if (pack.cells) {
+      // by cell: the sounds' pages were not fetched with the roots; they follow the first image
+      cellPack = pack;
+      const sounds = of(PACK_SOUND).filter((e) => e.bytes.length), source = pack.cells, owner = engine;
+      if (sounds.length) source.ranges(sounds.map((e) => [e.bytes.byteOffset - bytes.byteOffset, e.bytes.length])).then((parts) => {
+        if (engine !== owner || pack.cells !== source) return;
+        sounds.forEach((e, k) => { if (!assets.some((a) => a.kind === "sound" && a.name === e.name)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: parts[k], done: true }); });
+      }).catch((error) => { if (dev) console.warn(`${app} pack sounds: ${error?.message || error}`); });
+    }
+    else for (const e of of(PACK_SOUND)) if (!assets.some((a) => a.kind === "sound" && a.name === e.name)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
     if (!pack.broker && typeof WeakRef === "function" && engine === owner && wanted === generation && parts.every(a => !a.failed))
       pack.retainedSource = { owner: new WeakRef(owner), generation, bytes };
   } catch (e) { pack.retainedSource = null;for (const a of parts) a.failed = true; if (dev) console.error(`${app} asset pack: ${e.message}`); if (pack.live) pack.live.reason = e.message; else if (!pack.quiet) say(`${app}: ${e.message}`, true); }
@@ -3549,6 +3604,7 @@ function draw(now) {
   if (loading.on) loading.frame(globalThis.coaxial.sceneReady);
   if (readback) report(readback, texture);
   if (!hostTransport&&x.coaxial_sounds) playSounds(x);
+  if (cellPack) pumpCells(x);
   after(false);
 }
 
@@ -3738,7 +3794,7 @@ function send(kind, text = "") {
   }
   after(false);
 }
-globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => loadMarks.map((row) => row.slice()), facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
+globalThis.coaxial = { send, ready: false, sceneReady: false, loadMarks: () => loadMarks.map((row) => row.slice()), cellLog: () => cellLog.map((row) => row.slice()), facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
   roomTrace:()=>({active:sockets.flatMap(ws=>ws?.__roomTrace?[ws.__roomTrace.snapshot()]:[]),retired:roomTraceRetired.map(x=>x.snapshot()),error:globalThis.coaxial.roomTraceError||null}),
   framePlan: () => ({ ...planStats }), storeUploads: () => ({ frames: storeUploads.frames, total: storeUploads.total, last: storeUploads.last.slice(0, gpu?.stores?.length || 0) }), setWorldPaused, worldLoop: () => ({paused:worldPaused,frames:worldFrames,submissions:worldSubmissions,shadowTiles:shadowTilesDrawn,socketFrames,pending:gpu?.device.__coaxialFrames||0}),
   takeFrameTrace: () => frameTrace?.splice(0) ?? [], takePassTimes: () => passTimes?.splice(0) ?? [],
@@ -4341,6 +4397,8 @@ function stopEngine() {
   globalThis.coaxial.fastEdit?.stop();delete globalThis.coaxial.fastEdit;
   retireTransport();
   engine = null;
+  if (cellPack) { cellPack.cells?.close();cellPack.cells = null;cellPack = null; }
+  cellAsks.clear();cellShared.clear();
   if (gpu) { gpu.bg = null;gpu.renderer?.destroy();gpu.renderer = null; }
   retirePacks();
   globalThis.coaxial.ready = false;globalThis.coaxial.sceneReady = false;

@@ -12,10 +12,16 @@
   "registry_max_assets": 64,
   "registry_oversize_behavior": "atomic refusal; no partial admission",
   "rig_entry": {
-    "about": "A pack may carry its rigs as one more entry (#13306): kind 7, at most one, the last entry of the table, with a catalog line that names it and its licensed source. Its bytes are a VRG1 file (proto/aethyr/rig-pack-v1.json, metaverse-engine/anim/rig-pack.coax).",
+    "about": "A pack may carry its rigs as one more entry (#13306): kind 7, at most one, after the sounds, with a catalog line that names it and its licensed source. Its bytes are a VRG1 file (proto/aethyr/rig-pack-v1.json, metaverse-engine/anim/rig-pack.coax).",
     "kind": 7,
     "line": "R NAME K",
-    "order": "after every layer, data layer and sound; an entry after it is out of order"
+    "order": "after every layer, data layer and sound; only the cells entry may follow it"
+  },
+  "cells_entry": {
+    "about": "A pack paged by world cell may carry its cells' content as one more entry (#13280): kind 8, at most one, the last entry of the table, with a catalog line that names it and its licensed source. Its bytes are the realm's; the catalog's cell lines (cell_lines) name each cell's byte ranges, which lie in it. A paged file (VPK3) does not make its pages roots, so the pack publishes without them and a host fetches a cell's pages when the cell is asked for.",
+    "kind": 8,
+    "line": "W NAME K",
+    "order": "after every other entry, the rigs too; an entry after it is out of order"
   },
   "cell_lines": {
     "about": "A pack paged by world cell (metaverse-engine/host/pack-cells.coax, #13304 for #13280) says in its catalog which bytes of its image each cell's content is, a line a cell. A host turns a cell's key into these ranges and fetches the pages that cover them (metaverse-engine/host/page-stream.coax hpg_cover). A pack with no such line is unchanged.",

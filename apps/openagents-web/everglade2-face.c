@@ -26,10 +26,14 @@ IMPORT("coaxial_http") int32_t coaxial_http(cx_face_addr url, uint32_t url_len, 
 IMPORT("coaxial_now_ms") int64_t coaxial_now_ms(void);
 
 static uint8_t inbox[4096];
-static uint8_t catalog[8388608];   /* the pack's catalog, with the ground's record in its G lines (#13059) and the woods in its P lines (#13150) */
+static uint8_t catalog[5242880];   /* the pack's catalog: 0.1 MB by cell (#13280), 1 MB in the tracked pack with the ground's record in its G lines (#13059), 4.3 MB in a pack built before the cells with the whole planting in its P lines (#13150) */
 static uint8_t ground_record[1048576], catalog_rest[65536];   /* that record decoded, and the catalog without it */
 static coax_t_E2Tiles ground_tiles[2];   /* the ground's tile sets, published and staged (everglade/world/ground.coax) */
 static coax_t_E2Cells world_cells;   /* the world's cell controller (everglade/client/cells.coax, #13280); the frame reads its levels from the state's view */
+/* the world by cell (#13280): a cell's bytes as the host hands them over (everglade/world/cell-content.coax: the
+   ground's record's blob and the cell's planting), and the cells the controller has asked for */
+static uint8_t cell_bytes[2097152];
+static int64_t cell_asks[2 * 16], cell_ask_n;
 static coax_t_People rig;
 static uint32_t baked;
 static uint8_t rig_file[262144]; static uint32_t rig_bytes;   /* the pack's rig entry (VRG1, #13306): the people's set */
@@ -261,10 +265,18 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
   draw_n = 0;
   if (e2_at(state)->bodies.e[0].ready) {
     if (!baked) { e2_bake(at(state), (coax_v_t_People){&rig, 1}, (coax_v_u8){rig_file, rig_bytes}); baked = 1; }
-    /* the world's cells round you and the eye, once the woods are in: the pack came whole, so each
-       cell's content is here when it is asked for */
-    if (e2_cells_due(at(state))) e2cl_page_frame((coax_v_t_E2Cells){&world_cells, 1}, e2_cell_view(at(state)), e2_at(state)->you_x, e2_at(state)->you_z, e2_at(state)->eye.e[0], e2_at(state)->eye.e[2], true);
-    draw_n = e2_scene(at(state));
+    /* the world's cells round you and the eye. A pack that came whole has each cell's content when it
+       is asked for. One paged by cell (the catalog's Z lines) answers through coaxial_cell_loaded_v1 as
+       the host fetches each cell; a cell that left gives its planting back, and the scene waits for
+       the cells round you the first time */
+    if (e2_cells_due(at(state))) {
+      coax_v_t_E2Cells cells = {&world_cells, 1};
+      bool paged = e2_paged(at(state));
+      float x = e2_at(state)->you_x, z = e2_at(state)->you_z, ex = e2_at(state)->eye.e[0], ez = e2_at(state)->eye.e[2];
+      e2cl_page_frame(cells, e2_cell_view(at(state)), x, z, ex, ez, !paged);
+      if (paged) e2_cells_settle(at(state), e2cl_near_in(cells, x, z, ex, ez));
+    }
+    draw_n = e2_world_ready(at(state)) ? e2_scene(at(state)) : 0;
   }
   cull_n = draw_n > 0 ? e2_cull_fill(at(state), u, (coax_v_f32){cull_u, 100}, (coax_v_u32){cull_buckets, sizeof cull_buckets / 4},
                                      (coax_v_u32){cull_runs, sizeof cull_runs / 4}, (coax_v_u32){cull_draws, sizeof cull_draws / 4}) : 0;
@@ -298,6 +310,29 @@ EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr st
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   if (i == 0 && bytes > 0 && bytes <= sizeof catalog) e2_catalog(at(state), (coax_string){(const char *)catalog, bytes}, (coax_v_u8){ground_record, sizeof ground_record}, (coax_v_u8){catalog_rest, sizeof catalog_rest});
   else if (i == 0) e2_plant_due(at(state));   /* no catalog: the woods are planted here */
+}
+/* The world by cell (coax/web/host.js pumpCells, #13280). The host asks which cells wait for their content
+   (asks: how many; ask: field 0 the cell, 1 its request, 2 its key for the catalog's line), fetches each
+   one's ranges, copies them joined to the buffer and says so. The answer is admitted only for the cell's
+   current request at the manifest's digest (everglade/client/cells.coax e2cl_loaded), and only then is the
+   content taken; bytes the page can't take are a failed load, which the controller asks for again. */
+EXPORT("coaxial_cell_asks_v1") uint32_t coaxial_cell_asks_v1(cx_face_addr state) {
+  cell_ask_n = e2_paged(at(state)) ? e2cl_asked((coax_v_t_E2Cells){&world_cells, 1}, (coax_v_s64){cell_asks, 32}) : 0;
+  return (uint32_t)cell_ask_n;
+}
+EXPORT("coaxial_cell_ask_v1") uint32_t coaxial_cell_ask_v1(cx_face_addr state, int32_t i, int32_t field) {
+  (void)state;
+  if (i < 0 || i >= cell_ask_n) return 0u;
+  if (field == 2) return (uint32_t)e2cl_key((coax_v_t_E2Cells){&world_cells, 1}, cell_asks[i * 2]);
+  return (uint32_t)cell_asks[i * 2 + (field == 1)];
+}
+EXPORT("coaxial_cell_buffer_v1") cx_face_addr coaxial_cell_buffer_v1(cx_face_addr state, uint32_t bytes) { (void)state; return bytes <= sizeof cell_bytes ? (cx_face_addr)(uintptr_t)cell_bytes : 0u; }
+EXPORT("coaxial_cell_loaded_v1") int32_t coaxial_cell_loaded_v1(cx_face_addr state, int32_t cell, int32_t request, uint32_t digest, uint32_t bytes, uint32_t failed) {
+  coax_v_u8 content = {cell_bytes, bytes <= sizeof cell_bytes ? bytes : 0};
+  bool good = !failed && bytes > 0 && bytes <= sizeof cell_bytes && e2_cell_checks(at(state), cell, content);
+  int64_t said = e2cl_loaded((coax_v_t_E2Cells){&world_cells, 1}, cell, request, good ? (int64_t)digest : 0, !good);
+  if (said == 0 && good) e2_cell_take(at(state), cell, content);   /* CELL_OK */
+  return (int32_t)said;
 }
 EXPORT("coaxial_draws") cx_face_addr coaxial_draws(cx_face_addr state) { return (cx_face_addr)(uintptr_t)e2_at(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(cx_face_addr state) { (void)state; return draw_n > 0 ? (uint32_t)draw_n : 0u; }

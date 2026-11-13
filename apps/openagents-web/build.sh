@@ -184,21 +184,27 @@ host_packs=$!
 # Range-addressable packs (VPK3, metaverse-engine/editor/page-pack.coax, #13001): each .vpk3 a realm names in
 # realms.json is written from its tracked .pack beside it (rewritten only when the pack changed),
 # and so is each block build (metaverse-engine/tools/block-pack.coax) a realm's blocks: asset names.
-# Everglade II's first takes this tree's planting into its catalog (metaverse/tools/assets/
-# everglade2_plant.coax, #13150), so the page reads the woods instead of planting them for 1.8 s.
+# Everglade II's first takes the people's rig as its rig entry (everglade/model/tools/rig-pack.coax,
+# #13306) and this tree's world by cell (everglade/model/tools/cell-pack.coax, #13280): the planting
+# and the ground's record leave the catalog for a cells entry the page fetches cell by cell.
 vpk3s() {
   # Before Everglade II's pack is written, its zone is checked (everglade/model/tools/zone-cells.coax, #13280,
   # #13281): the committed manifest of cells is what this land's colliders build, every spawn and named
   # point can be walked to, and a creature walks the named points' routes on the navigation cells.
   "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/zone-cells.coax" --check "$here/../../everglade/world/zone-cells.coax" "$here/../../everglade/content/everglade.content" > /dev/null
   for vpk3 in "$here"/realms/everglade2/assets/everglade2.vpk3; do
-    planted="$here/build/$(basename "${vpk3%.vpk3}")-planted.pack"
-    "$here/../../coax/web/tool.sh" "$here/../../metaverse/tools/assets/everglade2_plant.coax" "${vpk3%.vpk3}.pack" "$planted" > /dev/null
-    # ... and the people's rig as its rig entry (everglade/model/tools/rig-pack.coax, #13306): the page bakes from it.
-    rigged="${planted%-planted.pack}-rigged.pack"
-    "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/rig-pack.coax" --into "$planted" "$rigged" people > /dev/null
-    "$here/../../coax/web/tool.sh" "$here/../../metaverse-engine/tools/page-pack.coax" "$rigged" "$vpk3" > /dev/null
-    rm -f "$planted" "$rigged"
+    # the people's rig as its rig entry: the page bakes from it. It goes in first, because ...
+    rigged="$here/build/$(basename "${vpk3%.vpk3}")-rigged.pack"
+    "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/rig-pack.coax" --into "${vpk3%.vpk3}.pack" "$rigged" people > /dev/null
+    # ... the world's cells go in last: each cell's line in the catalog names its bytes' place in the pack.
+    # page-pack defers the cells entry, so the pack publishes without it (docs/metaverse/one-world.md).
+    celled="${rigged%-rigged.pack}-celled.pack"
+    "$here/../../coax/web/tool.sh" "$here/../../everglade/model/tools/cell-pack.coax" "$rigged" "$celled" > /dev/null
+    # the pack the page pages is one the admission takes as it is: sealing it changes no byte (#13304)
+    "$here/../../coax/web/tool.sh" "$here/../../metaverse-engine/tools/pack-seal.coax" "$celled" "$celled.sealed" > /dev/null
+    cmp -s "$celled" "$celled.sealed" || { echo "build.sh: Everglade II's pack by cell is not a sealed pack" >&2; exit 1; }
+    "$here/../../coax/web/tool.sh" "$here/../../metaverse-engine/tools/page-pack.coax" "$celled" "$vpk3" > /dev/null
+    rm -f "$rigged" "$celled" "$celled.sealed"
   done
   # Block builds (GitHub #13305): Everglade's layers as GPU blocks with their mip chains, NAME.TAG.vpk3
   # beside the pack, one a format its blocks: asset lists; host.js loads the one this device's GPU takes.

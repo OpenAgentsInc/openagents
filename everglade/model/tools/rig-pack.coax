@@ -14,7 +14,7 @@
 // tool.sh: stack-gib 8
 #import "Basic";
 #load "../../scene/rig-asset.coax";
-#load "../../../metaverse-engine/host/pack-table.coax";
+#load "pack-entry.coax";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../coax/lib/sys/args.coax";
@@ -79,73 +79,21 @@ rgp_agrees :: (file: [] u8, r: [] RgpRigs, g: [] RgpBack) -> bool {
 }
 
 // ---- the pack
-// A catalog without its R lines into out, ending its last line: the length, -1 when out is too small.
-rgp_strip :: (cat: string, out: [] u8) -> int {
-  n := 0; at := 0;
-  while at < cat.count {
-    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
-    if !(e - at > 1 && cat[at] == 'R' && cat[at + 1] == ' ') && e > at {
-      if n + e - at + 1 > out.count { return -1; }
-      for q: at..<e { out[n] = cat[q]; n += 1; }
-      out[n] = '\n'; n += 1;
-    }
-    at = e + 1;
-  }
-  return n;
-}
-// The number K of the first "L K NAME|..." line whose NAME starts with `name`: -1 for none.
-rgp_source :: (cat: string, name: string) -> int {
-  at := 0;
-  while at < cat.count {
-    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
-    if e - at > 4 && cat[at] == 'L' && cat[at + 1] == ' ' {
-      k := 0; q := at + 2; digits := 0;
-      while q < e && cat[q] >= '0' && cat[q] <= '9' { k = k * 10 + cast(int) (cat[q] - '0'); q += 1; digits += 1; }
-      if digits > 0 && digits < 4 && q < e && cat[q] == ' ' && e - q - 1 >= name.count && cast(string) cat[q + 1..<q + 1 + name.count] == name { return k; }
-    }
-    at = e + 1;
-  }
-  return -1;
-}
-rgp_number :: (v: int, out: [] u8) -> int { d: [20] u8; n := 0; x := v; while x > 0 || n == 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; } for k: 0..<n { out[k] = d[n - 1 - k]; } return n; }
 // `pack` with `rigs` as its last entry and its R line, into out: the size, -1 refused. An entry of
-// kind 7 the pack already has is left out. Each entry keeps its order, from a 4-byte boundary, and
-// the catalog's fixed-width "bytes " line states the new size.
+// kind 7 the pack already has is left out. A pack that already carries the world's cells (kind 8,
+// cell-pack.coax) is refused: the cells' lines name places in the pack, so the rigs go in first.
 rgp_into :: (pack: [] u8, rigs: [] u8, out: [] u8, body: [] u8) -> int {
   t: [1] PackTable;
-  if !pack_table(cast(string) pack, pack.count, t[..]) || t[0].count < 1 || t[0].entries[0].kind != PACK_CATALOG || pack_u32(cast(string) pack, 16) != PACK_HEADER { return -1; }
+  if !pack_table(cast(string) pack, pack.count, t[..]) || t[0].count < 1 || t[0].entries[0].kind != PACK_CATALOG { return -1; }
+  for k: 0..<t[0].count { if t[0].entries[k].kind == PACK_CELLS { return -1; } }
   cat := t[0].entries[0];
-  bn := rgp_strip(cast(string) pack[cat.at..<cat.at + cat.n], body);
-  lic := rgp_source(cast(string) pack[cat.at..<cat.at + cat.n], RGP_SOURCE);
+  bn := pke_strip(cast(string) pack[cat.at..<cat.at + cat.n], "R", body);
+  lic := pke_source(cast(string) pack[cat.at..<cat.at + cat.n], RGP_SOURCE);
   if bn < 0 || lic < 0 || lic > 254 || bn + 32 > body.count { return -1; }
-  for ch: "R rigs " { body[bn] = ch; bn += 1; } bn += rgp_number(lic, body[bn..<body.count]); body[bn] = '\n'; bn += 1;
-  kept := 0; for k: 0..<t[0].count { if t[0].entries[k].kind != PACK_RIG { kept += 1; } }
-  if kept + 1 > PACK_TABLE_MAX { return -1; }
-  at := PACK_HEADER + PACK_ENTRY * (kept + 1);
-  if at > out.count { return -1; }
-  for k: 0..<PACK_HEADER { out[k] = pack[k]; }
-  for k: PACK_HEADER..<at { out[k] = 0; }
-  pack_put32(out, 4, kept + 1); pack_put32(out, 20, at);
-  row := PACK_HEADER;
-  for k: 0..<t[0].count + 1 {
-    last := k == t[0].count;
-    if !last && t[0].entries[k].kind == PACK_RIG { continue; }
-    n := ifx last then rigs.count else (ifx k == 0 then bn else t[0].entries[k].n);
-    if at + ((n + 3) / 4) * 4 > out.count { return -1; }
-    if last { out[row] = PACK_RIG; out[row + 1] = cast(u8) lic; for ch, i: "rigs" { out[row + 16 + i] = ch; } for q: 0..<n { out[at + q] = rigs[q]; } }
-    else {
-      old := PACK_HEADER + PACK_ENTRY * k;
-      for q: 0..<PACK_ENTRY { out[row + q] = pack[old + q]; }
-      if k == 0 { for q: 0..<n { out[at + q] = body[q]; } } else { src := t[0].entries[k].at; for q: 0..<n { out[at + q] = pack[src + q]; } }
-    }
-    pack_put32(out, row + 4, at); pack_put32(out, row + 8, n);
-    at += n; while at % 4 != 0 { out[at] = 0; at += 1; }
-    row += PACK_ENTRY;
-  }
-  pack_put32(out, 8, at);
-  cs := pack_u32(cast(string) out, PACK_HEADER + 4); found := false;
-  for k: cs..<cs + bn - 16 { if cast(string) out[k..<k + 6] == "bytes " && (k == cs || out[k - 1] == '\n') { v := at; for j: 0..<10 { out[k + 15 - j] = cast(u8) (48 + v % 10); v /= 10; } found = true; break; } }
-  return ifx found then at else -1;
+  for ch: "R rigs " { body[bn] = ch; bn += 1; } bn += pke_number(lic, body[bn..<body.count]); body[bn] = '\n'; bn += 1;
+  bn = pke_sized(t[..], 1 << PACK_RIG, body, bn, rigs.count);
+  if bn < 0 { return -1; }
+  return pke_into(pack, t[..], 1 << PACK_RIG, body[0..<bn], PACK_RIG, lic, "rigs", rigs, out);
 }
 #test "a pack takes the rigs as its last entry with an R line, and takes them again in place of the first" {
   // a three-entry pack: the catalog, four vertex bytes, a rig entry that is to go
@@ -159,15 +107,15 @@ rgp_into :: (pack: [] u8, rigs: [] u8, out: [] u8, body: [] u8) -> int {
   t: [1] PackTable; #assert pack_table(cast(string) o[0..<n], n, t[..]) && t[0].count == 3 && pack_u32(cast(string) o[..], 20) == 176 && pack_u32(cast(string) o[..], 12) == 4096;
   e := t[0].entries; #assert e[0].kind == 1 && e[0].name == "catalog" && e[1].kind == 2 && e[1].n == 4 && o[e[1].at] == 200 && o[e[1].at + 3] == 203 && e[1].name == "vertices" && e[1].licence == 255;
   #assert e[2].kind == PACK_RIG && e[2].licence == 3 && e[2].name == "rigs" && e[2].n == 5 && o[e[2].at] == 1 && o[e[2].at + 4] == 5 && e[2].at + 8 == n && e[0].at == 176 && e[1].at % 4 == 0 && e[2].at % 4 == 0;
-  c2 := cast(string) o[e[0].at..<e[0].at + e[0].n]; v := 0; for j: 6..<16 { v = v * 10 + cast(int) (c2[j] - '0'); } #assert v == n;
-  #assert c2[16..<c2.count] == "\nL 0 Kit|CC0|u\nL 3 Quaternius Universal Base Characters, and more|CC0|u\nC a 1 2 3\nR rigs 3\n";
+  c2 := cast(string) o[e[0].at..<e[0].at + e[0].n]; tail: [24] u8; tn := pke_bytes(tail[..], 0, n);
+  #assert c2[0..<c2.count - tn] == "L 0 Kit|CC0|u\nL 3 Quaternius Universal Base Characters, and more|CC0|u\nC a 1 2 3\nR rigs 3\n" && c2[c2.count - tn..<c2.count] == cast(string) tail[0..<tn];
   // again: the same bytes
   o2: [1024] u8; n2 := rgp_into(o[0..<n], rigs[..], o2[..], body[..]); #assert n2 == n && cast(string) o2[0..<n] == cast(string) o[0..<n];
   // no source for the rigs, not a pack, no room
   p[176 + 35] = 'q'; #assert rgp_into(p[0..<at], rigs[..], o[..], body[..]) == -1; p[176 + 35] = 'Q';
   #assert rgp_into(p[0..<at - 4], rigs[..], o[..], body[..]) == -1 && rgp_into(p[0..<at], rigs[..], o[0..<n - 1], body[..]) == -1 && rgp_into(p[0..<at], rigs[..], o[0..<n], body[..]) == n;
-  #assert rgp_source("L 12 Quaternius Universal Base|x\n", "Quaternius Universal") == 12 && rgp_source("M L 1 Q\nL x Q\nL 1Q\nL 1 P\n", "Q") == -1 && rgp_source("L 7 Q", "Q") == 7;
-  nb: [4] u8; #assert rgp_number(0, nb[..]) == 1 && nb[0] == '0' && rgp_number(254, nb[..]) == 3 && nb[0] == '2' && nb[2] == '4';
+  // a pack that already carries the world's cells takes no rigs
+  o[128] = cast(u8) PACK_CELLS; #assert rgp_into(o[0..<n], rigs[..], o2[..], body[..]) == -1; o[128] = cast(u8) PACK_RIG;
 }
 #test "the rigs' file fills the three rigs with exactly what the procedures load, and a file short of a set fills none" #steps 400000000 {
   r: [1] RgpRigs; g: [1] RgpBack; file: [RGP_FILE] u8;

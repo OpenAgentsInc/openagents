@@ -13,7 +13,7 @@ E2RideView :: struct {
   phase: [WIRE_MOUNTS] f32; lx: [WIRE_MOUNTS] f32; lz: [WIRE_MOUNTS] f32;   // another's gait, by the ground it covered
   drawn: int; presses: int;               // what the checks read
 }
-E2RvFeet :: struct { on: bool; x: f32; y: f32; z: f32; face: f32; }
+E2RvFeet :: struct { on: bool; x: f32; y: f32; z: f32; face: f32; seat: int; seated: f32; }   // seat: the saddle's fit (figs.BD_SEAT_HORSE, BD_SEAT_DRAGON); seated: how far into the saddle, 0 to 1
 
 e2rv_land :: (s: [] E2) -> E2rpLand { return E2rpLand.{items = s[0].items[..], kinds = s[0].kinds[..], first = s[0].first[..], planted = s[0].plant_done}; }
 e2rv_catalog :: (s: [] E2, text: string) { egm.eg_mounts_catalog(s[0].rv[0].eg[..], text); }
@@ -99,7 +99,7 @@ e2rv_feet :: (s: [] E2, seat: int, tick: int) -> E2RvFeet {
     saddle := egm.eg_saddle(v[0].eg[0], k, e2g_y(s[0].eg[..], h.x, h.z), s[0].clock);
     sx := h.from_x; sz := h.from_z; sy := e2g_y(s[0].eg[..], sx, sz) + f32(E2RV_HIP);
     x := sx + (saddle[0] - sx) * u; y := sy + (saddle[1] - sy) * u; z := sz + (saddle[2] - sz) * u;
-    return E2RvFeet.{on = true, x = x, z = z, y = y - f32(E2RV_HIP) - e2g_y(s[0].eg[..], x, z), face = h.face};
+    return E2RvFeet.{on = true, x = x, z = z, y = y - f32(E2RV_HIP) - e2g_y(s[0].eg[..], x, z), face = h.face, seat = ifx v[0].eg[0].kind[k] == MK_DRAGON then figs.BD_SEAT_DRAGON else figs.BD_SEAT_HORSE, seated = u};
   }
   return E2RvFeet.{};
 }
@@ -115,6 +115,16 @@ e2rv_remote :: (s: [] E2, r: E2Remote) -> E2Remote {
   if !f.on { return r; }
   o := r; o.x = f.x; o.z = f.z; o.y = f.y; o.yaw = f.face; o.air = false; o.speed = 0;
   return o;
+}
+// A rider's figure (GitHub #13268): once more than half into the saddle the legs are the seat's,
+// astride (figs.bd_ride: the hips and legs the saddle's fit, the upper body the idle or a layered
+// action), as the zone pages pose their rider (everglade/zone-mounts.coax). Nobody stands on a saddle.
+e2rv_figure :: (s: [] E2, fig: figs.BdAnim, seat: int, tick: int) -> figs.BdAnim {
+  f := e2rv_feet(s, seat, tick);
+  if !f.on || f.seated <= 0.5 { return fig; }
+  a := fig;
+  if !a.lay { a.clip = figs.BD_IDLE; a.t0 = 0; a.phase = s[0].clock / figs.bd_seconds(figs.BD_IDLE); }
+  return figs.bd_ride(a, f.seat);
 }
 // Each mount's record and draw.
 e2rv_draw :: (s: [] E2, at: E2Drawn, bdt: f32) -> E2Drawn {

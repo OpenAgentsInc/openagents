@@ -1,0 +1,117 @@
+// A pack with one more entry at its end and its catalog rewritten: what Everglade's build tools
+// share when they put an asset into the tracked pack (rig-pack.coax the rigs, kind 7, GitHub #13306;
+// cell-pack.coax the world's cells, kind 8, GitHub #13280). The table is read through the one reader
+// (metaverse-engine/host/pack-table.coax); each entry keeps its order, from a 4-byte boundary, and
+// the catalog's "bytes" line states the new size plainly, as a sealed pack's does
+// (metaverse-engine/editor/pack-seal.coax, GitHub #13304): the tools take the tracked, sealed pack
+// and write a pack the admission's layout rules hold for.
+//   coax/bin/coax test --library everglade/model/tools/pack-entry.coax
+#load "../../../metaverse-engine/host/pack-table.coax";
+
+// A catalog without the lines that start with one of `letters` and a space, without its "bytes"
+// line (pke_bytes writes the new one) and without empty lines, ending its last line, into out: the
+// length, -1 when out is too small.
+pke_strip :: (cat: string, letters: string, out: [] u8) -> int {
+  n := 0; at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    drop := false;
+    if e - at > 1 && cat[at + 1] == ' ' { for ch: letters { if cat[at] == ch { drop = true; } } }
+    if e - at > 5 && cat[at..<at + 6] == "bytes " { drop = true; }
+    if !drop && e > at {
+      if n + e - at + 1 > out.count { return -1; }
+      for q: at..<e { out[n] = cat[q]; n += 1; }
+      out[n] = '\n'; n += 1;
+    }
+    at = e + 1;
+  }
+  return n;
+}
+// The number K of the first "L K NAME|..." line whose NAME starts with `name`: -1 for none.
+pke_source :: (cat: string, name: string) -> int {
+  at := 0;
+  while at < cat.count {
+    e := at; while e < cat.count && cat[e] != '\n' { e += 1; }
+    if e - at > 4 && cat[at] == 'L' && cat[at + 1] == ' ' {
+      k := 0; q := at + 2; digits := 0;
+      while q < e && cat[q] >= '0' && cat[q] <= '9' { k = k * 10 + cast(int) (cat[q] - '0'); q += 1; digits += 1; }
+      if digits > 0 && digits < 4 && q < e && cat[q] == ' ' && e - q - 1 >= name.count && cast(string) cat[q + 1..<q + 1 + name.count] == name { return k; }
+    }
+    at = e + 1;
+  }
+  return -1;
+}
+pke_number :: (v: int, out: [] u8) -> int { d: [20] u8; n := 0; x := v; while x > 0 || n == 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; } for k: 0..<n { out[k] = d[n - 1 - k]; } return n; }
+pke_pad :: (n: int) -> int { return ((n + 3) / 4) * 4; }
+// "bytes TOTAL" and its newline at body[bn]: the catalog's length with it, -1 when body is too small.
+pke_bytes :: (body: [] u8, bn: int, total: int) -> int {
+  if bn + 18 > body.count { return -1; }
+  at := bn; for ch: "bytes " { body[at] = ch; at += 1; }
+  at += pke_number(total, body[at..<body.count]); body[at] = '\n';
+  return at + 1;
+}
+// A catalog of bn bytes in body with its "bytes" line added for the pack it will be in, with one
+// more entry of data_n bytes: the catalog's length, -1 when body is too small. The line's own
+// digits move the size, so it is written until it stands.
+pke_sized :: (t: [] PackTable, drop: int, body: [] u8, bn: int, data_n: int) -> int {
+  total := 0; n := -1;
+  for round: 0..<4 {
+    n = pke_bytes(body, bn, total);
+    if n < 0 { return -1; }
+    size := pke_place(t, drop, n) + pke_pad(data_n);
+    if size == total { return n; }
+    total = size;
+  }
+  return -1;
+}
+pke_kept :: (t: [] PackTable, drop: int) -> int { kept := 0; for k: 0..<t[0].count { if ((drop >> t[0].entries[k].kind) & 1) == 0 { kept += 1; } } return kept; }
+// Where the new entry's bytes will start, for a catalog of bn bytes: a tool whose catalog names
+// places in the pack (cell-pack's Z lines) asks before it writes the lines.
+pke_place :: (t: [] PackTable, drop: int, bn: int) -> int {
+  at := PACK_HEADER + PACK_ENTRY * (pke_kept(t, drop) + 1) + pke_pad(bn);
+  for k: 1..<t[0].count { if ((drop >> t[0].entries[k].kind) & 1) == 0 { at += pke_pad(t[0].entries[k].n); } }
+  return at;
+}
+// `pack` (its table t, the catalog first) with the catalog's text replaced by body and one entry
+// more at its end (kind, licence, name, data), into out: the size, -1 refused. Entries whose kind
+// is in `drop` (bit 1 << kind) are left out.
+pke_into :: (pack: [] u8, t: [] PackTable, drop: int, body: [] u8, kind: int, lic: int, name: string, data: [] u8, out: [] u8) -> int {
+  if !t[0].ok || t[0].count < 1 || t[0].entries[0].kind != PACK_CATALOG || pack_u32(cast(string) pack, 16) != PACK_HEADER || (drop & 2) != 0 || name.count < 1 || name.count > 31 || lic < 0 || lic > 255 { return -1; }
+  kept := pke_kept(t, drop);
+  if kept + 1 > PACK_TABLE_MAX { return -1; }
+  at := PACK_HEADER + PACK_ENTRY * (kept + 1);
+  if at > out.count { return -1; }
+  for k: 0..<PACK_HEADER { out[k] = pack[k]; }
+  for k: PACK_HEADER..<at { out[k] = 0; }
+  pack_put32(out, 4, kept + 1); pack_put32(out, 20, at);
+  row := PACK_HEADER;
+  for k: 0..<t[0].count + 1 {
+    last := k == t[0].count;
+    if !last && ((drop >> t[0].entries[k].kind) & 1) != 0 { continue; }
+    n := ifx last then data.count else (ifx k == 0 then body.count else t[0].entries[k].n);
+    if at + pke_pad(n) > out.count { return -1; }
+    if last { out[row] = cast(u8) kind; out[row + 1] = cast(u8) lic; for ch, i: name { out[row + 16 + i] = ch; } for q: 0..<n { out[at + q] = data[q]; } }
+    else {
+      old := PACK_HEADER + PACK_ENTRY * k;
+      for q: 0..<PACK_ENTRY { out[row + q] = pack[old + q]; }
+      if k == 0 { for q: 0..<n { out[at + q] = body[q]; } } else { src := t[0].entries[k].at; for q: 0..<n { out[at + q] = pack[src + q]; } }
+    }
+    pack_put32(out, row + 4, at); pack_put32(out, row + 8, n);
+    at += n; while at % 4 != 0 { out[at] = 0; at += 1; }
+    row += PACK_ENTRY;
+  }
+  pack_put32(out, 8, at);
+  // more than 48 entries is a VPK2 (pack.coax pack_read)
+  if kept + 1 > 48 { out[3] = '2'; }
+  // the catalog must state this size: a body whose "bytes" line says another is refused
+  line: [24] u8; ln := pke_bytes(line[..], 0, at); found := false;
+  for k: 0..<body.count - ln + 1 { if (k == 0 || body[k - 1] == '\n') && cast(string) body[k..<k + ln] == cast(string) line[0..<ln] { found = true; break; } }
+  return ifx found then at else -1;
+}
+#test "a catalog loses the lines named, a source is found by its name, and a number is written plainly" {
+  o: [128] u8; n := pke_strip("bytes 1\nP abc\n\nG x\nPx y\nbytesize 3\nZ 0 0 1 2 3", "PGZ", o[..]); #assert cast(string) o[0..<n] == "Px y\nbytesize 3\n";
+  #assert pke_strip("a b\nc d\n", "a", o[0..<3]) == -1 && pke_strip("a b\nc d\n", "a", o[0..<4]) == 4 && pke_strip("", "a", o[..]) == 0;
+  #assert pke_source("L 12 Quaternius Universal Base|x\n", "Quaternius Universal") == 12 && pke_source("M L 1 Q\nL x Q\nL 1Q\nL 1 P\n", "Q") == -1 && pke_source("L 7 Q", "Q") == 7;
+  bl: [32] u8; #assert pke_bytes(bl[..], 2, 1234) == 13 && cast(string) bl[2..<13] == "bytes 1234\n" && pke_bytes(bl[0..<17], 0, 1) == -1;
+  nb: [4] u8; #assert pke_number(0, nb[..]) == 1 && nb[0] == '0' && pke_number(254, nb[..]) == 3 && nb[0] == '2' && nb[2] == '4';
+}

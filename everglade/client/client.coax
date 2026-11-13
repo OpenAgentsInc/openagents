@@ -40,6 +40,7 @@
 #load "cull.coax";   // what the host's instance cull reads each frame (#13050)
 #load "../../metaverse-engine/render/frame-plan.coax";   // the frame's order, as words for the host (#13303)
 #load "cell-view.coax";  // the world's cells as the frame reads them; the controller is everglade/client/cells.coax, in the step's unit (#13280)
+#load "../world/cell-content.coax";   // a cell's content as the pack carries it: its planting put in and taken out, the ground's record (#13280)
 #load "../../metaverse-engine/render/environment-frame.coax" as envf;   // the camera's resolved environment, a frame (#13066)
 #load "../world/environment.coax";   // the world's places and their light (#13065)
 #load "../../metaverse-engine/render/environment-debug.coax" as envd;   // ?light=VIEW: the developer's light views (#13067)
@@ -69,9 +70,12 @@ E2_UNIFORM_FLOATS :: 316;     // 79 vec4s (everglade/client/gpu/everglade2.bindi
 E2_U_ENV :: 208;              // the camera's resolved environment, 27 vec4s (metaverse-engine/render/painterly.coax PAINT_ENV_U, env_gpu_pack)
 E2_U_LIGHT_VIEW :: 51;        // the developer's light view (?light=, metaverse-engine/render/environment-debug.coax env_view_word): 0 the ordinary frame
 E2_U_CASCADE :: 104;          // the key light's shadow tiles' rows (metaverse-engine/render/cascades.coax cascade_rows)
-E2_RECORDS :: 256;            // the objects store: the glade, its grass, your character's parts and the others' (11 a body)
-E2_DRAWS :: 640;              // draws a pass at most (the woods' runs, the grass field's blocks, 11 a body)
-E2_REMOTES :: 16;             // other players drawn at most (a room seats 16)
+// A zone seats 150 (everglade-wire.coax WIRE_ZONE_SEATS, #13275), so the page holds and draws that many
+// others (#13268, #13306): the records and draws are sized for 149 bodies of 11 parts beside the world's.
+E2_RECORDS :: 2048;           // the objects store: the glade, its grass, your character's parts and the others' (11 a body)
+E2_DRAWS :: 2560;             // draws a pass at most (the woods' runs, the grass field's blocks, 11 a body)
+E2_REMOTES :: WIRE_ZONE_SEATS - 1;   // other players drawn at most (a zone's seats but yours); the graphics quality's crowd knob draws fewer
+E2_REMOTE_PROBES :: 16;       // the others the crowd check's probes name (66 to 81), whatever is drawn
 E2_FADE_S :: 0.6;             // s: another player thins in as it comes into your view, and out as it leaves
 E2_POP :: 0.25;               // a body cut off while more than this of it showed is a pop (e2_probe 19)
 E2_VISIBLE :: 60000;          // kit pieces drawn a frame at most, both passes
@@ -87,7 +91,12 @@ E2 :: struct {
   hp_trail: [1] cc.HudTrail; hp_trail_at: f32; hp_trail_max: int;   // your health bar's fill and damage trail (metaverse-engine/ui/hud-style.coax), when it was last stepped, and for which maximum
   bodies: [1] figs.Bodies;
   items: [E2_ITEMS * E2_ITEM_FLOATS] f32; kinds: [E2_ITEMS] u8; first: [E2_CELLS_X * E2_CELLS_Z + 1] int; planted: int; plant_done: bool;
-  plant_due: bool; plant_route: int;   // plant here on the next frame; 1 the pack's P lines, 2 planted here (e2_take_planting)
+  plant_due: bool; plant_route: int;   // plant here on the next frame; 1 the pack's P lines, 2 planted here, 3 by cell as each arrives (e2_take_planting)
+  // the world by cell (everglade/world/cell-content.coax, #13280): the pack's catalog has a line a cell, so each
+  // cell's planting comes when the controller asks for it and goes when the cell leaves
+  paged: bool; world_in: bool;                        // ... and the cells round you were in once: the scene may draw
+  plant_held: [E2P_CELLS] int; cell_have: [E2CV_CELLS] bool;   // each planting cell's cell + 1 (0: the catalog's, or not in); the cells whose content is in
+  cells_in: int; cells_out: int; bake_due: bool;      // cells taken and let go; the glade's canopy changed, so its bake is due
   eg: [1] E2Ground;                                   // the ground's tiles and the glade's baked AO (everglade/world/ground.coax)
   cl: [1] E2CellView;                                 // the world's cells round you: each one's level, written by the cell controller once a frame (everglade/client/cells.coax)
   catalog_in: bool; ground_code: int = -1; ground_done: bool;   // the catalog came; its ground record's status (-1 none); the ground settled and baked
@@ -178,9 +187,21 @@ e2_ground_store :: (s: [] E2, sets: [] E2Tiles) #export_c #effects(all) { e2g_st
 // (everglade/client/cells.coax e2cl_page_frame), and whether the woods are in: the cells' content.
 e2_cell_view :: (s: [] E2) -> [] E2CellView #export_c #effects(all) { return s[0].cl[..]; }
 e2_cells_due :: (s: [] E2) -> bool #export_c #effects(all) { return s[0].plant_done; }
+// Whether a catalog has a line a world cell (metaverse-engine/host/pack-cells.coax): the pack is paged by cell.
+e2_catalog_paged :: (t: string) -> bool {
+  at := 0;
+  while at < t.count {
+    if at + 1 < t.count && t[at] == 'Z' && t[at + 1] == ' ' { return true; }
+    while at < t.count && t[at] != '\n' { at += 1; }
+    at += 1;
+  }
+  return false;
+}
 e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effects(all) {
   // the ground's record rides in the catalog as G lines (everglade/world/ground.coax): read and
-  // published now, whole or not at all; the rest is the catalog the others read
+  // published now, whole or not at all; the rest is the catalog the others read. A pack paged by
+  // cell carries the record with its cells (e2_cell_take), and the planting cell by cell.
+  s[0].paged = e2_catalog_paged(whole);
   n := e2g_record_from_catalog(whole, rec);
   s[0].ground_code = ifx n > 0 then e2g_record_read(s[0].eg[..], rec[0..<n]) else -1;
   e2_take_planting(s, whole); s[0].catalog_in = true;
@@ -208,11 +229,70 @@ e2_catalog :: (s: [] E2, whole: string, rec: [] u8, rest: [] u8) #export_c #effe
 e2_take_planting :: (s: [] E2, whole: string) {
   if s[0].plant_done { return; }
   pn := e2p_from_catalog(whole, s[0].items[..], s[0].kinds[..], s[0].first[..]);
+  if s[0].paged {
+    // by cell: the catalog holds only the planting no cell carries (none: nothing is planted yet).
+    // Its first planting cell with pieces must be this tree's; else the pack is another planting's,
+    // and the woods are planted here, whole.
+    if pn == 0 { for c: 0..<E2P_CELLS + 1 { s[0].first[c] = 0; } }
+    good := pn >= 0;
+    if pn > 0 { p := 0; while p < E2P_CELLS - 1 && s[0].first[p + 1] == s[0].first[p] { p += 1; } good = e2cc_cell_agrees(s[0].items[..], s[0].kinds[..], s[0].first[..], p); }
+    for p: 0..<E2P_CELLS { s[0].plant_held[p] = 0; }
+    if good { s[0].planted = pn; s[0].plant_done = true; s[0].plant_route = 3; return; }
+    s[0].paged = false; s[0].plant_due = true; return;
+  }
   if pn > 0 && e2p_agrees(s[0].items[..], s[0].kinds[..], s[0].first[..], pn) { s[0].planted = pn; s[0].plant_done = true; s[0].plant_route = 1; return; }
   s[0].plant_due = true;
 }
 // No catalog came (the pack failed, or it is too big for the face's buffer): plant here.
 e2_plant_due :: (s: [] E2) #export_c #effects(all) { if !s[0].plant_done { s[0].plant_due = true; } }
+// ---- the world by cell (GitHub #13280): what the face asks and tells as cells arrive and leave
+e2_paged :: (s: [] E2) -> bool #export_c #effects(all) { return s[0].paged; }
+// Whether a cell's bytes are content the page can take for that cell: a run of whole blobs with the
+// cell's planting, this tree's, that fits. The face asks before it answers the controller, so a
+// cell is never admitted without its content.
+e2_cell_checks :: (s: [] E2, cell: int, b: [] u8) -> bool #export_c #effects(all) {
+  if !s[0].paged || cell < 0 || cell >= E2CV_CELLS || s[0].cell_have[cell] || !e2cc_whole(b) { return false; }
+  blob := e2cc_blob(b, E2CC_PLANT);
+  return blob.count > 0 && e2cc_plant_read(blob).cell == cell && e2cc_fits(blob, E2_ITEMS, E2_ITEMS, s[0].first[..], s[0].plant_held[..], s[0].planted) && e2cc_agrees(blob);
+}
+// Whether a tree one of the cell's planting cells holds stands where its crown shades the glade's tile.
+e2_cell_shades :: (s: [] E2, cell: int) -> bool {
+  if !s[0].eg[0].ok { return false; }
+  for p: 0..<E2P_CELLS {
+    if s[0].plant_held[p] != cell + 1 { continue; }
+    for q: s[0].first[p]..<s[0].first[p + 1] { if cast(int) s[0].kinds[q] < E2_TREES && e2g_near(s[0].eg[..], s[0].items[q * E2_ITEM_FLOATS], s[0].items[q * E2_ITEM_FLOATS + 2]) { return true; } }
+  }
+  return false;
+}
+// A cell's content, once the controller has admitted the cell (e2_cell_checks held): the ground's
+// record when no ground is published yet, and the cell's planting into the page's.
+e2_cell_take :: (s: [] E2, cell: int, b: [] u8) #export_c #effects(all) {
+  if !e2_cell_checks(s, cell, b) { return; }
+  if !s[0].eg[0].ok && s[0].ground_code != E2G_REC_OK {
+    rec := e2cc_ground(b);
+    if rec.count > 0 { s[0].ground_code = e2g_record_read(s[0].eg[..], rec); }
+  }
+  n := e2cc_insert(e2cc_blob(b, E2CC_PLANT), s[0].items[..], s[0].kinds[..], s[0].first[..], s[0].plant_held[..], s[0].planted);
+  if n < 0 { return; }
+  s[0].planted = n; s[0].cell_have[cell] = true; s[0].cells_in += 1;
+  if e2_cell_shades(s, cell) { s[0].bake_due = true; }
+}
+// Once a frame after the controller has stepped: a cell that left (its level is absent again) gives
+// its planting back. `near_in`: every cell within the draw ring of you is in (cells.coax
+// e2cl_near_in); the first time it is, the world may draw.
+e2_cells_settle :: (s: [] E2, near_in: bool) #export_c #effects(all) {
+  if !s[0].paged { return; }
+  for i: 0..<E2CV_CELLS {
+    if !s[0].cell_have[i] || s[0].cl[0].level[i] != 0 { continue; }
+    if e2_cell_shades(s, i) { s[0].bake_due = true; }
+    s[0].planted = e2cc_remove(i, s[0].items[..], s[0].kinds[..], s[0].first[..], s[0].plant_held[..], s[0].planted);
+    s[0].cell_have[i] = false; s[0].cells_out += 1;
+  }
+  if near_in { s[0].world_in = true; }
+}
+// Whether the scene may draw: with the world by cell, once the cells round you were in and the
+// ground has settled, so the woods never arrive in a picture.
+e2_world_ready :: (s: [] E2) -> bool #export_c #effects(all) { return !s[0].paged || (s[0].world_in && s[0].ground_done); }
 #test "the woods come from the catalog's P lines, or are planted on the next frame" {
   s: [1] E2; rec: [16] u8; rest: [512] u8;
   e2_catalog(s[..], "C glade/environment 9 12 250 100 8 0\n", rec[..], rest[..]);
@@ -220,6 +300,35 @@ e2_plant_due :: (s: [] E2) #export_c #effects(all) { if !s[0].plant_done { s[0].
   // a damaged record is no planting: it is planted here
   s[0].plant_due = false; e2_catalog(s[..], "C glade/environment 9 12 250 100 8 0\nP RTJQMQ==\n", rec[..], rest[..]);
   #assert !s[0].plant_done && s[0].plant_due && cast(string) rest[0..<37] == "C glade/environment 9 12 250 100 8 0\n";
+}
+#test "the world by cell: a cell's content is taken for its own cell once, shows in the planting, and is given back when the cell leaves" #steps 400000000 {
+  s: [1] E2; rec: [16] u8; rest: [512] u8;
+  e2_catalog(s[..], "C glade/environment 9 12 250 100 8 0\nZ 0 0 5 100 20\n", rec[..], rest[..]);
+  #assert s[0].paged && s[0].plant_done && !s[0].plant_due && s[0].plant_route == 3 && s[0].planted == 0 && !e2_world_ready(s[..]) && e2_probe(s[..], 194) == 1;
+  #assert !e2_catalog_paged("C a 1 2 3\nZx 0 0\n") && e2_catalog_paged("Z 1 1 1 1 1") && !e2_catalog_paged("");
+  // cell 2's blob: one planting cell of the woods
+  f: [E2CC_CELL_MOST * E2_ITEM_FLOATS] f32; k: [E2CC_CELL_MOST] u8; first: [E2P_CELLS + 1] int; carrier: [E2P_CELLS] int; b: [8192] u8;
+  pc := 23 * E2_CELLS_X + 13; m := e2_plant_cell(f[..], k[..], 0, 13, 23); #assert m > 20;
+  for c: pc + 1..<E2P_CELLS + 1 { first[c] = m; } carrier[pc] = 3;
+  n := e2cc_plant_write(f[..], k[..], first[..], carrier[..], 2, b[..]); #assert n > 0;
+  // not another cell's, not cut short, not with a moved piece
+  #assert e2_cell_checks(s[..], 2, b[0..<n]) && !e2_cell_checks(s[..], 1, b[0..<n]) && !e2_cell_checks(s[..], 2, b[0..<n - 4]) && !e2_cell_checks(s[..], -1, b[0..<n]);
+  b[E2CC_PLANT_HEAD + 8] += 1; #assert !e2_cell_checks(s[..], 2, b[0..<n]); b[E2CC_PLANT_HEAD + 8] -= 1;
+  e2_cell_take(s[..], 1, b[0..<n]); #assert s[0].planted == 0 && s[0].cells_in == 0;
+  s[0].cl[0].level[2] = cast(u8) E2CV_DRAW;
+  e2_cell_take(s[..], 2, b[0..<n]);
+  #assert s[0].planted == m && s[0].cells_in == 1 && s[0].cell_have[2] && s[0].plant_held[pc] == 3 && s[0].first[pc] == 0 && s[0].first[pc + 1] == m && s[0].first[E2P_CELLS] == m && !e2_cell_checks(s[..], 2, b[0..<n]);
+  for q: 0..<m { #assert s[0].kinds[q] == k[q] && f32_bits(s[0].items[q * E2_ITEM_FLOATS + 2]) == f32_bits(f[q * E2_ITEM_FLOATS + 2]); }
+  // the cells round you are in: the scene waits for the ground too
+  e2_cells_settle(s[..], false); #assert s[0].planted == m && !s[0].world_in;
+  e2_cells_settle(s[..], true); #assert s[0].world_in && !e2_world_ready(s[..]) && e2_probe(s[..], 195) == 1 && e2_probe(s[..], 196) == 0;
+  s[0].ground_done = true; #assert e2_world_ready(s[..]) && e2_probe(s[..], 197) == 1;
+  // the cell leaves: its planting is given back, and it can be taken again
+  s[0].cl[0].level[2] = 0; e2_cells_settle(s[..], false);
+  #assert s[0].planted == 0 && s[0].cells_out == 1 && !s[0].cell_have[2] && s[0].plant_held[pc] == 0 && s[0].first[E2P_CELLS] == 0 && s[0].world_in && e2_cell_checks(s[..], 2, b[0..<n]);
+  // a pack that is not by cell: nothing is taken, and the scene never waits
+  w: [1] E2; e2_catalog(w[..], "C glade/environment 9 12 250 100 8 0\n", rec[..], rest[..]);
+  #assert !w[0].paged && e2_world_ready(w[..]) && !e2_cell_checks(w[..], 2, b[0..<n]);
 }
 // The catalog without its G and P lines (or as it came, when that is too long to copy).
 e2_catalog_rest :: (t: string, out: [] u8) -> string {
@@ -237,7 +346,7 @@ e2_catalog_rest :: (t: string, out: [] u8) -> string {
 // The ground, once the planting and the catalog are in: the pack's record published it, or (no
 // record, or it refused) the land is converted here; then the woods' crowns are baked onto the glade's tile.
 e2_ground :: (s: [] E2) {
-  s[0].ground_done = true;
+  s[0].ground_done = true; s[0].bake_due = false;
   if !s[0].eg[0].ok && !e2g_build(s[0].eg[..]) { return; }
   _b := e2g_bake(s[0].eg[..], s[0].items[..], s[0].kinds[..], s[0].planted);
 }
@@ -1181,7 +1290,9 @@ e2_frame :: (s: [] E2, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32
   if !s[0].plant_done && s[0].plant_due {
     s[0].planted = e2_plant(s[0].items[..], s[0].kinds[..], s[0].first[..]); s[0].plant_done = true; s[0].plant_route = 2;
   }
-  if !s[0].ground_done && s[0].catalog_in { e2_ground(s); }
+  if !s[0].ground_done && s[0].catalog_in && (!s[0].paged || s[0].world_in) { e2_ground(s); }
+  // a cell beside the glade came or went: the canopy's bake again, once nothing is on its way
+  if s[0].ground_done && s[0].bake_due && s[0].cl[0].probe[3] == 0 { s[0].bake_due = false; _b := e2g_bake(s[0].eg[..], s[0].items[..], s[0].kinds[..], s[0].planted); }
   step := ifx still || dt <= 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   s[0].clock += step;
   e2_chase_step(s, step);
@@ -1666,6 +1777,7 @@ e2_scene :: (s: [] E2) -> int #export_c #effects(all) {
   // mouselook backpedal: the rig has no backpedal clip, so the gait plays backwards while you face the camera
   if mlook.ml_on(s[0].ml[0]) && axis(s[0].held, HOLD_W, HOLD_S) < 0 && !s[0].airborne && (fig.clip == figs.BD_RUN || fig.clip == figs.BD_WALK) { fig.phase = -fig.phase; }
   if !e2c_creating(s) { fig = e2m_figure(s, fig); }   // the bow drawn (everglade/client/mouse.coax)
+  if !e2c_creating(s) && e2n_open(s[0].net[..]) { fig = e2rv_figure(s, fig, s[0].net[0].seat, e2rp_tick(s[0].net[0].ride[..], s[0].net[0].pred[0].seq)); }   // riding: seated in the saddle (ride-view.coax)
   #if BUILD_DEBUG { fig = e2a_figure(s, fig); }
   s[0].cz[0].fig0 = rec;
   d := e2_body(s, c, fig, E2Drawn.{rec = rec, n = n, sn = sn});
@@ -1730,7 +1842,7 @@ coaxial_e2_vertex_floats :: () -> int #export_c #effects(all) { return E2_VERTEX
 coaxial_e2_uniform_floats :: () -> int #export_c #effects(all) { return E2_UNIFORM_FLOATS; }
 // Read-only observations for headless checks (coaxial_field_probe): 0 draws, 1 shadow draws, 2 kit
 // pieces stored, 3 pieces planted, 4 kit rows read, 5 your z in centimetres, 173 where the woods came
-// from (0 not yet, 1 the pack's P lines, 2 planted here).
+// from (0 not yet, 1 the pack's P lines, 2 planted here, 3 by cell as each arrives).
 // The page's hash (the face's coaxial_hash). "fly=T,EX,EY,EZ,AX,AY,AZ~...": the flyover benchmark
 // (coax/web/flyover.coax) takes the camera along that path from now and holds its last key; "fly="
 // (or any path metaverse-engine/cam/track.coax's cam_track_fly refuses) hands it back. Nothing else is read.
@@ -1769,6 +1881,10 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   // 191 frames off the manifest, 192 loads asked, 193 answers refused
   if field == 179 { return ifx s[0].rig_packed then 1 else 0; }   // the people's rig came from the pack's rig entry
   if field >= 180 && field < 194 { return e2cv_probe(s[0].cl[..], field - 180); }
+  // the world by cell: 194 the pack is paged by cell, 195 cells taken, 196 cells let go, 197 the cells
+  // round you were in once (the scene may draw), 198 the ground's record's status (0 published, -1 none yet)
+  if field == 194 { return ifx s[0].paged then 1 else 0; } if field == 195 { return s[0].cells_in; } if field == 196 { return s[0].cells_out; }
+  if field == 197 { return ifx e2_world_ready(s) then 1 else 0; } if field == 198 { return s[0].ground_code; }
   // 160 to 168 the graphics quality (e2_knobs_frame): the rung, its tier, the mode, the knobs as the
   // frame uses them (in hundredths: grass, scenery, shadow, post, crowd), the bloom passes
   if field == 160 { return ifx s[0].q_ready then s[0].q[0].rung else -1; } if field == 161 { return ifx s[0].q_ready then quality_tier(s[0].q[..]) else -1; }
@@ -1829,7 +1945,7 @@ e2_probe :: (s: [] E2, field: int) -> int #export_c #effects(all) {
   if field == 82 { return s[0].net[0].cast_sent; } if field == 83 { return s[0].casts[0].others; }
   if field == 88 { return s[0].net[0].cast_mine; } if field == 89 { return s[0].casts[0].audio[0].played; }
   if field == 200 || field >= E2N_DRIFT { return e2n_drift_probe(s[0].net[..], field); }   // the drift check's (everglade/client/net.coax e2n_drift_probe, #13277)
-  if (field >= 40 && field < 66 + E2_REMOTES) || (field >= 84 && field <= 86) { return e2_net_probe(s, field); }   // the room's, and the crowd check's boxes and names (e2_net_probe)
+  if (field >= 40 && field < 66 + E2_REMOTE_PROBES) || (field >= 84 && field <= 86) { return e2_net_probe(s, field); }   // the room's, and the crowd check's boxes and names (e2_net_probe)
   // levels (#13046): 100 to 103 the right halves of Character Create's LEVEL and CLASS boxes (canvas
   // px: x, y, x, y), 104 its level, 105 your bar's slots, 106 the room's word on it known (1), 107
   // refused casts undone, 108 their fades still going, 110 + i what slot i has left (-1 unknown) and
@@ -1933,7 +2049,7 @@ e2_net_probe :: (s: [] E2, f: int) -> int {
   // 66 + K the K-th other's name as 31 bits of FNV-1a (0 none), for a check that names each page
   if f == 62 || f == 63 { b := s[0].cz[0].boxes[E2C_NAME_BOX]; return cast(int)(ifx f == 62 then (b.x0 + b.x1) / 2 else (b.y0 + b.y1) / 2); }
   if f == 64 { return s[0].cz[0].said_n; } if f == 65 { return ifx s[0].cz[0].naming then 1 else 0; }
-  if f >= 66 && f < 66 + E2_REMOTES {
+  if f >= 66 && f < 66 + E2_REMOTE_PROBES {
     r := e2n_remote(s[0].net[..], f - 66); if !r.ok { return 0; }
     en := s[0].net[0].ents[r.slot]; return e2_name_hash(cast(string) en.name[0..<en.name_n]);
   }
@@ -1949,7 +2065,7 @@ e2_name_hash :: (t: string) -> int { h := 2166136261; for ch: t { h = ((h ^ cast
   #assert e2_probe(s[..], 60) > 0 && e2_probe(s[..], 61) > 0 && e2_probe(s[..], 62) == 0 && e2_probe(s[..], 130) > 0 && e2_probe(s[..], 131) > 0;
   s[0].cz[0].tab = E2C_TAB_CLASS; e2c_layout(s[..], 1280, 720, 1);
   #assert e2_probe(s[..], 62) > 0 && e2_probe(s[..], 63) > 0 && e2_probe(s[..], 102) > 0 && e2_probe(s[..], 100) > 0;
-  #assert e2_probe(s[..], 64) == 0 && e2_probe(s[..], 65) == 0 && e2_probe(s[..], 66) == 0 && e2_probe(s[..], 66 + E2_REMOTES) == 0;   // 82 on: the casts' (none sent)
+  #assert e2_probe(s[..], 64) == 0 && e2_probe(s[..], 65) == 0 && e2_probe(s[..], 66) == 0 && e2_probe(s[..], 66 + E2_REMOTE_PROBES) == 0;   // 82 on: the casts' (none sent)
 }
 #test "a name's probe hash is FNV-1a's, 31 bits" { #assert e2_name_hash("") == 2166136261 & 0x7fffffff && e2_name_hash("a") == 0x640c292c && e2_name_hash("Crowd Alpha") != e2_name_hash("Crowd Bravo"); }
 // A remote's look: your creator (its catalog, its parts) with that player's record restored. When the
@@ -2149,6 +2265,7 @@ e2_remote_body :: (s: [] E2, r: E2Remote, slot: int, at: E2Drawn, bdt: f32) -> E
   fig := e2k_figure(e2_jump_figure(a[0], air, s[0].clock, s[0].rair_at[slot], s[0].rland_at[slot]), s[0].casts[0].them[slot], s[0].clock);
   aim := e2_remote_aim(s, slot);   // a Ranger's loose: the drawn bow's pose, then its follow-through
   if aim > 0 && !air { fig = cc.held_bow_layer(fig, aim, 1, false, s[0].clock - s[0].casts[0].them[slot].at, s[0].clock); }
+  fig = e2rv_figure(s, fig, r.seat, s[0].net[0].tick);   // riding: seated in the saddle
   look := cast(string) s[0].rlook[slot * NET_LOOK..<slot * NET_LOOK + s[0].rlook_n[slot]];
   _ := e2_remote_look(s, look); c := s[0].rtmp[0];
   from := at.rec;

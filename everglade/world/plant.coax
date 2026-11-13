@@ -95,10 +95,12 @@ e2_plant_rows :: (out:[]f32,kinds:[]u8,first:[]int,rows:u64)->int {
 }
 // ---- the planting baked into the pack (docs/metaverse/fast-loads.md, #13150)
 // e2_plant takes 1.8 s of a page's first frame, so build.sh plants once and writes the answer into
-// the pack's catalog as P lines (metaverse/tools/assets/everglade2_plant.coax): base64 of a record of
-// "E2P1", the count, the cells, then first[] (u32 each), the pieces' floats (their bits, u32 each)
-// and their kinds (a byte each), little-endian. A page reads it back (e2p_from_catalog) and checks a
-// few cells against e2_plant_cell (e2p_agrees) before it takes it; else it plants as it did.
+// the pack. The record here is a planting as P lines of a catalog: base64 of "E2P1", the count, the
+// cells, then first[] (u32 each), the pieces' floats (their bits, u32 each) and their kinds (a byte
+// each), little-endian. A page reads it back (e2p_from_catalog) and checks cells against
+// e2_plant_cell before it takes it; else it plants as it did. Since the world is paged by cell
+// (GitHub #13280, everglade/model/tools/cell-pack.coax) the pack's P lines hold only the planting
+// cells no world cell carries, and each cell's planting comes with the cell (cell-content.coax).
 #load "../../coax/lib/text/base64.coax";
 E2P_MAGIC :: 0x31503245;                 // "E2P1"
 E2P_CELLS :: E2_CELLS_X*E2_CELLS_Z;
@@ -207,7 +209,7 @@ E2PCheck :: struct {
 #test "the planting baked into P lines reads back as e2_plant plants it, byte for byte" #steps 8000000000 {
  // the six rows the spot check reads (E2P_SPOT), 9,500 pieces: the record's layout, its lines and the
  // spot check are the same for any planting, and the whole one is 6 s of a busy host's 120 (#13392).
- // The build writes the whole planting (metaverse/tools/assets/everglade2_plant.coax) and a page holds it to e2p_agrees.
+ // The build writes this tree's planting (everglade/model/tools/cell-pack.coax) and a page holds what arrives to e2_plant_cell.
  t:[1]E2PCheck;rows:u64=0;for spot:E2P_SPOT {rows=rows|e2_rows(spot[1],spot[1]+1);}
  n:=e2_plant_rows(t[0].a[..],t[0].ak[..],t[0].af[..],rows);#assert n>8000;
  // the lines among a catalog's others

@@ -5,7 +5,9 @@
 //   coax/web/tool.sh metaverse-engine/tools/page-pack.coax IN.pack OUT.vpk3 [--defer sounds|layers|none]
 //   coax/web/tool.sh metaverse-engine/tools/page-pack.coax --check IN.pack OUT.vpk3
 // --defer names the entries that are not roots (default: sounds), so a client publishes the pack
-// without them and they follow. Exit 1 when the pack is refused or the file doesn't read back.
+// without them and they follow. A pack's cells entry (kind 8: a world's content by cell, GitHub
+// #13280) is never a root unless --defer none: a host fetches a cell's pages when the cell is asked
+// for. Exit 1 when the pack is refused or the file doesn't read back.
 // tool.sh: release
 #import "Basic";
 #load "../editor/page-pack.coax";
@@ -19,14 +21,14 @@ tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
   check := args_has(a[..], "--check");
-  paths: [2] string; n := 0; defer_kinds := 1 << PACK_SOUND;
+  paths: [2] string; n := 0; defer_kinds := (1 << PACK_SOUND) | (1 << PACK_CELLS);
   i := 0;
   while i < args_count(a[..]) {
     s := args_at(a[..], i);
     if s == "--check" { i += 1; continue; }
     if s == "--defer" && i + 1 < args_count(a[..]) {
       d := args_at(a[..], i + 1);
-      defer_kinds = ifx d == "none" then 0 else ifx d == "layers" then (1 << PACK_LAYER) | (1 << PACK_SOUND) else 1 << PACK_SOUND;
+      defer_kinds = ifx d == "none" then 0 else ifx d == "layers" then (1 << PACK_LAYER) | (1 << PACK_SOUND) | (1 << PACK_CELLS) else (1 << PACK_SOUND) | (1 << PACK_CELLS);
       i += 2; continue;
     }
     if n == 2 { n = 3; break; }

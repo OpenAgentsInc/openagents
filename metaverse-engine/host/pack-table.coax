@@ -29,7 +29,8 @@ PACK_INDICES :: 3;
 PACK_LAYER :: 4;
 PACK_SOUND :: 5;
 PACK_DATA :: 6;       // linear data layers (normal, ORM): between the texture layers and the sounds
-PACK_RIG :: 7;        // the rigs (VRG1, metaverse-engine/anim/rig-pack.coax): at most one, the last entry
+PACK_RIG :: 7;        // the rigs (VRG1, metaverse-engine/anim/rig-pack.coax): at most one, after the sounds
+PACK_CELLS :: 8;      // a world's content by cell (GitHub #13280): at most one, the last entry; the catalog's Z lines (pack-cells.coax) name each cell's bytes in it
 // One entry as the table has it: its bytes are p[at..<at + n] of the pack read.
 PackEntry :: struct { kind: int; licence: int; at: int; n: int; name: string; }
 // book:end layout

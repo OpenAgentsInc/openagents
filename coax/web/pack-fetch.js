@@ -59,25 +59,55 @@ export async function fetchPagedImage(host, pack, { owner, current, progress } =
   const result = await host.loadPaged(pack, { image: true, owner, current, progress });
   try { await result.complete; return { bytes: result.source.slice(), loaded: result.stored }; } finally { result.close(); }
 }
+// A .vpk3 pack whose world cells come when they are asked for (GitHub #13280; pack-host.js
+// loadPaged demand): the image with its root pages in, and `cells`, which fetches what is left.
+//   cells.cell(key, skip)  a world cell's content: { digest, ranges, parts } once its pages are
+//                       admitted, the parts its ranges' bytes in order; null when the catalog has no
+//                       line for it. A range named in skip ("AT:N", one the page already took with
+//                       another cell: the ground's record, which every cell's line names) is left out
+//   cells.ranges(list)  the bytes of [at, n] ranges of the image (the sounds' entries)
+//   cells.close()       ends the load
+export async function fetchPagedDemand(host, pack, { owner, current, progress } = {}) {
+  const result = await host.loadPaged(pack, { image: true, demand: true, owner, current, progress });
+  const cut = (ranges) => ranges.map(([at, n]) => result.source.slice(at, at + n));
+  return { bytes: result.source.slice(), loaded: result.stored, cells: {
+    async cell(key, skip = []) { const found = result.cell(key); if (!found) return null; const ranges = found.ranges.filter(([at, n]) => !skip.includes(`${at}:${n}`)); await result.more(ranges); return { digest: found.digest, ranges, parts: cut(ranges) }; },
+    async ranges(list) { await result.more(list); return cut(list); },
+    close() { result.close(); } } };
+}
 // The same, in a worker of its own, which ends with the load. cancel() ends it early. Without
 // module workers, or when the worker fails before it answers, promise rejects with .worker set
-// and the caller loads on its own thread.
+// and the caller loads on its own thread. A request with demand (a .vpk3 whose cells come when
+// asked, fetchPagedDemand) keeps its worker after the image: the answer's `cells` asks it for each
+// cell and range, and cells.close() ends it.
 export function fetchPackInWorker(request, progress) {
-  let worker = null, settled = false, fail = null;
+  let worker = null, settled = false, fail = null, live = false;
+  const asks = new Map(); let asked = 0;
+  const drop = (why) => { live = false; for (const ask of asks.values()) ask.reject(new Error(why)); asks.clear(); };
+  const ask = (message) => new Promise((resolve, reject) => {
+    if (!live) { reject(new Error("pack worker closed")); return; }
+    const id = ++asked; asks.set(id, { resolve, reject }); worker.postMessage({ ...message, ask: id });
+  });
+  const cells = {
+    cell: (key, skip = []) => ask({ cell: key, skip }).then((got) => got.none ? null : { digest: got.digest, ranges: got.ranges, parts: got.parts.map((b) => new Uint8Array(b)) }),
+    ranges: (list) => ask({ ranges: list }).then((got) => got.parts.map((b) => new Uint8Array(b))),
+    close() { if (!live) return; drop("pack worker closed"); worker.terminate(); } };
   const promise = new Promise((resolve, reject) => {
     fail = reject;
     try { worker = new Worker(new URL("./pack-worker.js", import.meta.url), { type: "module" }); }
     catch (error) { settled = true; reject(Object.assign(new Error(`pack worker: ${error.message}`), { worker: true })); return; }
     const end = () => { settled = true; worker.terminate(); };
     worker.onmessage = ({ data }) => {
+      if (data.ask !== undefined) { const waiting = asks.get(data.ask); asks.delete(data.ask); if (data.error !== undefined) waiting?.reject(new Error(data.error)); else waiting?.resolve(data); return; }
       if (settled) return;
       if (data.progress) { progress?.(data.loaded, data.total); return; }
+      if (data.demand) { settled = true; live = true; resolve({ bytes: new Uint8Array(data.buffer), loaded: data.loaded, cells }); return; }
       end();
       if (data.error !== undefined) reject(Object.assign(new Error(data.error), { status: data.status }));
       else resolve({ bytes: new Uint8Array(data.buffer), loaded: data.loaded });
     };
-    worker.onerror = (event) => { if (settled) return; event.preventDefault?.(); end(); reject(Object.assign(new Error("pack worker failed"), { worker: true })); };
+    worker.onerror = (event) => { if (live) { drop("pack worker failed"); worker.terminate(); return; } if (settled) return; event.preventDefault?.(); end(); reject(Object.assign(new Error("pack worker failed"), { worker: true })); };
     worker.postMessage(request);
   });
-  return { promise, cancel() { if (settled) return; settled = true; worker?.terminate(); fail(new DOMException("pack load cancelled", "AbortError")); } };
+  return { promise, cancel() { if (live) { cells.close(); return; } if (settled) return; settled = true; worker?.terminate(); fail(new DOMException("pack load cancelled", "AbortError")); } };
 }

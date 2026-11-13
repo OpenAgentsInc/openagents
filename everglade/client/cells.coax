@@ -26,9 +26,11 @@
 //   e2cl_asked(c, out)                       the cells waiting for their content, each (cell, request)
 //   e2cl_key(c, cell)                        that cell's (cx, cz), for the catalog's line of its bytes
 //   e2cl_loaded(c, cell, request, digest, failed)   the answer; what the controller said to it
-// Today the pack comes whole (the `.vpk3` is fetched at the start), so the page answers its own
-// asks at once, as a room does (everglade/server/nav.coax): e2cl_frame with `whole`. A paged host
-// passes whole = false and answers through e2cl_loaded as each cell's bytes arrive.
+// In the browser the pack is paged by cell (docs/metaverse/one-world.md, "Paged by cell"): the face
+// passes whole = false and the host answers through e2cl_loaded as each cell's bytes arrive
+// (apps/openagents-web/everglade2-face.c coaxial_cell_loaded_v1, coax/web/host.js pumpCells). A host
+// that holds the pack whole (the desktop and phone apps) passes whole = true, and the page answers
+// its own asks at once, as a room does (everglade/server/nav.coax).
 //
 // The origin. One floating origin (cells.coax CellOrigin) follows you by cell (cell_rebase):
 // e2cl_local gives a world point from it as f32. The page's shaders still take world f32 (Everglade
@@ -135,6 +137,14 @@ e2cl_page_frame :: (c: [] E2Cells, v: [] E2CellView, x: f32, z: f32, ex: f32, ez
   return e2cl_frame(c, v, x, z, ex, ez, whole);
 }
 
+// Whether every cell within the draw ring of you or the eye is in (resident or more): what the
+// page waits for before its first picture when the pack comes by cell (client.coax e2_world_ready).
+e2cl_near_in :: (c: [] E2Cells, x: f32, z: f32, ex: f32, ez: f32) -> bool #export_c #effects(all) {
+  if !c[0].ready { return false; }
+  w := c[0].w[..]; at := [4] f64.[f64(x), f64(z), f64(ex), f64(ez)]; ring := e2z_page_rings().draw;
+  for i: 0..<w[0].n { if cell_distance_from(w, i, at[..]) <= ring && w[0].cells[i].level < CELL_RESIDENT_LEVEL { return false; } }
+  return true;
+}
 // A world point from the origin, as f32.
 e2cl_local :: (c: [] E2Cells, x: f64, y: f64, z: f64) -> [3] f32 { return cell_local(c[0].origin, x, y, z); }
 // The page's readout (client.coax e2_probe 180 to 193, through the view).

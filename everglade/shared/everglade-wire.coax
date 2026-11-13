@@ -776,6 +776,7 @@ WIRE_SLOTS :: FOREST_SLOTS;   // original 256 plus the forest's separate sparse 
 // has the slots it always had. A table holds WireHist.slots of them: WIRE_SLOTS unless its zone says more.
 // After those seats' rows come their familiars' (a seat's familiar is a row, #13276): wire_fam_slot.
 WIRE_ZONE_SEATS :: 150; WIRE_ZMORE :: WIRE_ZONE_SEATS - WIRE_SEATS; WIRE_ZSLOTS :: WIRE_SLOTS + WIRE_ZMORE * 2;
+#test "a page's mirror holds every slot of a zone" { #assert WIRE_MIRROR == WIRE_ZSLOTS; }
 WIRE_BASES :: 16;             // ticks back a base may be; a page keeps each entity's last WIRE_BASES rows
 WIRE_ACKS :: 32;              // ticks of sends a seat remembers for HEARD, a bit each
 WIRE_RESEND :: 10;            // ticks a row or an x sent and not yet acknowledged waits before it goes again
@@ -792,7 +793,7 @@ WIRE_LIFE_BUDGET :: 240;
 WIRE_MAX_AGE :: 30;
 WIRE_AGED_BUDGET :: 400;
 WIRE_NEAR :: 10.0;            // m: an entity this far off gains half the priority it would at your feet
-WIRE_MIRROR :: FOREST_SLOTS;  // entities a page holds
+WIRE_MIRROR :: FOREST_SLOTS + (150 - 16) * 2;  // entities a page holds: a zone's slots (WIRE_ZSLOTS below; a check holds the two together)
 WIRE_ROW :: 320;              // a row's bytes at most
 
 // A row by name. Players: G bits (WG_*), CLIP the controller's act, HP MAX TEMP COND FORM, CARRY the
