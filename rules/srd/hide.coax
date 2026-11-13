@@ -56,7 +56,7 @@ rs_fast_hands :: (b: [] RsBattle, i: int, dc: int, tools: bool) -> RsAbilityResu
 // a Wizard, its turn begun, with fixed dice (d20 10).
 #test "Hide admits only the acting, concealed, capable, unhidden creature with its action or Cunning Action free" {
   for mode: 0..<12 {
-    b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true; _ := rs_add(b[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(b[..], rs_wizard("Seeker", 1, 1), 2, 1); b[0].c[0].score[RS_DEX] = 6; b[0].c[0].checks.expert = 0; rs_fresh(b[..], 0);   // 10 - 2 + 2: fails DC 15, but the attempt still spends
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true; _ := rs_add(b[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(b[..], rs_wizard("Seeker", 1, 1), 2, 1); b[0].c[0].score[RS_DEX] = 6; b[0].c[0].checks.expert = 0; rs_fresh(b[..], 0);   // 10 - 2 + 2: fails DC 15, but the attempt still spends
     concealed := mode != 1; bonus := mode >= 6;
     if mode == 2 { b[0].who = 1; } else if mode == 3 { b[0].c[0].cond = RS_STUNNED; }
     else if mode == 4 { b[0].turn.action = true; } else if mode == 5 { for k: 0..<RS_EFFECTS { b[0].c[0].eff[k].kind = EF_BLESS; } }
@@ -71,7 +71,7 @@ rs_fast_hands :: (b: [] RsBattle, i: int, dc: int, tools: bool) -> RsAbilityResu
 }
 #test "Hide's DC 15 Stealth: its total is the finder's DC; Perception at or above it finds and ends it" {
   for dex: [2] int.[14, 16] {
-    b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true; _ := rs_add(b[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(b[..], rs_wizard("Seeker", 1, 1), 2, 1); b[0].c[0].score[RS_DEX] = dex; b[0].c[0].checks.expert = 0; rs_fresh(b[..], 0);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true; _ := rs_add(b[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(b[..], rs_wizard("Seeker", 1, 1), 2, 1); b[0].c[0].score[RS_DEX] = dex; b[0].c[0].checks.expert = 0; rs_fresh(b[..], 0);
     r := rs_hide(b[..], 0, true, true);
     #assert r.passed == (dex == 16) && rs_has(b[0].c[0], RS_INVISIBLE) == (dex == 16);
     if dex == 16 {
@@ -84,10 +84,10 @@ rs_fast_hands :: (b: [] RsBattle, i: int, dc: int, tools: bool) -> RsAbilityResu
   }
 }
 #test "an attack roll or a Verbal spell ends hiding; a spell's own Invisible is not hiding" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true; _ := rs_add(b[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(b[..], rs_wizard("Seeker", 1, 1), 2, 1); b[0].c[0].score[RS_DEX] = 20; b[0].c[0].checks.expert = 0; rs_fresh(b[..], 0); b[0].c[1].hp = 200; b[0].c[1].ac = 10;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true; _ := rs_add(b[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(b[..], rs_wizard("Seeker", 1, 1), 2, 1); b[0].c[0].score[RS_DEX] = 20; b[0].c[0].checks.expert = 0; rs_fresh(b[..], 0); b[0].c[1].hp = 200; b[0].c[1].ac = 10;
   #assert rs_hide(b[..], 0, true, false).passed; rs_fresh(b[..], 0);
   #assert rs_attack(b[..], 0, 1, false, -1) && rs_hidden_at(b[0].c[0]) < 0;
-  w: [1] RsBattle; w[0].w = 12; w[0].h = 6; w[0].dice[0].fixed = true; _ = rs_add(w[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(w[..], rs_wizard("Seeker", 1, 1), 2, 1); w[0].c[0].score[RS_DEX] = 20; w[0].c[0].checks.expert = 0; rs_fresh(w[..], 0);
+  w: [1] RsBattle; w_room: [1] RsRoom; rs_have(w[..], w_room[..]); w[0].w = 12; w[0].h = 6; w[0].dice[0].fixed = true; _ = rs_add(w[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(w[..], rs_wizard("Seeker", 1, 1), 2, 1); w[0].c[0].score[RS_DEX] = 20; w[0].c[0].checks.expert = 0; rs_fresh(w[..], 0);
   w[0].c[0] = rs_wizard("Wiz", 0, 3); w[0].c[0].x = 1; w[0].c[0].y = 1; w[0].c[0].score[RS_DEX] = 30;
   #assert rs_hide(w[..], 0, true, false).passed; rs_fresh(w[..], 0);
   #assert rs_cast(w[..], 0, SP_FIRE_BOLT, 0, 0, 0, 1) && rs_hidden_at(w[0].c[0]) < 0;
@@ -97,7 +97,7 @@ rs_fast_hands :: (b: [] RsBattle, i: int, dc: int, tools: bool) -> RsAbilityResu
 }
 #test "Fast Hands: the acting level 3 Rogue's Bonus Action Sleight of Hand, Thieves' Tools only when named" {
   for mode: 0..<6 {
-    b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true; _ := rs_add(b[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(b[..], rs_wizard("Seeker", 1, 1), 2, 1); b[0].c[0].score[RS_DEX] = 10; b[0].c[0].checks.expert = 0; rs_fresh(b[..], 0);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true; _ := rs_add(b[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(b[..], rs_wizard("Seeker", 1, 1), 2, 1); b[0].c[0].score[RS_DEX] = 10; b[0].c[0].checks.expert = 0; rs_fresh(b[..], 0);
     if mode == 1 { b[0].who = 1; } else if mode == 2 { b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_FAST_HANDS, false); } else if mode == 3 { b[0].turn.bonus = true; }
     else if mode == 4 { b[0].c[0].cond = RS_STUNNED; }
     tools := mode != 5;
@@ -106,6 +106,6 @@ rs_fast_hands :: (b: [] RsBattle, i: int, dc: int, tools: bool) -> RsAbilityResu
     #assert r.accepted == ok && b[0].turn.bonus == (ok || mode == 3) && !b[0].turn.action;
     if ok { #assert r.total == 10 + (ifx tools then 2 else 0) && r.passed == tools; }
   }
-  t: [1] RsBattle; t[0].w = 12; t[0].h = 6; t[0].dice[0].fixed = true; _ := rs_add(t[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(t[..], rs_wizard("Seeker", 1, 1), 2, 1); t[0].c[0].score[RS_DEX] = 10; t[0].c[0].checks.expert = 0; rs_fresh(t[..], 0); t[0].c[0].checks.tools = rs_tool_bit(0);
+  t: [1] RsBattle; t_room: [1] RsRoom; rs_have(t[..], t_room[..]); t[0].w = 12; t[0].h = 6; t[0].dice[0].fixed = true; _ := rs_add(t[..], rs_rogue("Nim", 0, 3), 1, 1); _ = rs_add(t[..], rs_wizard("Seeker", 1, 1), 2, 1); t[0].c[0].score[RS_DEX] = 10; t[0].c[0].checks.expert = 0; rs_fresh(t[..], 0); t[0].c[0].checks.tools = rs_tool_bit(0);
   #assert rs_fast_hands(t[..], 0, 12, false).total == 10;   // no tool named, none counted
 }

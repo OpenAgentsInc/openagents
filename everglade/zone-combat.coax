@@ -103,7 +103,7 @@ XcCombat :: struct {
   bar: [XC_SLOTS] FbAb; bar_n: int;
   order: [12] [XC_SLOTS] int; order_n: [12] int;
   arranging: bool; order_dirty: bool; drag_x: f32; drag_y: f32;
-  b: [1] RsBattle; seat: [1] FbSeat;
+  b: [1] RsBattle; room: [1] RsRoom; seat: [1] FbSeat;   // room: the battle's creatures, squares and areas (rs_have)
   target: int = -1;                 // the monster struck at last (0 to 5), -1 none: its Hit Points over the bar
   picked: int = -1;                 // the monster you clicked (#13038): single-target spells go to it while it stands in reach
   cool_at: f32 = -100;              // when the last press was
@@ -238,6 +238,7 @@ xc_order_load :: (x: [] XcCombat, text: string) -> bool {
 xc_start :: (x: [] XcCombat, klass: int) {
   if x[0].started { return; }
   b := x[0].b[..];
+  rs_have(b, x[0].room[..]);
   rs_reset(b);
   b[0].w = XC_SIDE; b[0].h = XC_SIDE;
   world_selected := rs_set_world(b,RS_EVERGLADE_WORLD);   // every declared deviation: world-profile.coax
@@ -632,12 +633,12 @@ xc_hostile_result :: (s:[] EgZone,foe:int,before:int,seq:int,accepted:bool) {
     landed := false;
     for k: 0..<rs_min(b[0].book[0].seq-seq,RS_EVENTS) {
       event := rs_recent(b[0].book[0],k);
-      if event.kind==RS_EV_ATTACK && event.by==foe+1 && event.to==0 { landed=true; }
+      if event.kind==RS_EV_ATTACK && event.by.value==foe+1 && event.to.value==0 { landed=true; }
     }
     // Shield (p.161), cast as your Reaction to the blow: its own sound and barrier
     for k: 0..<rs_min(b[0].book[0].seq-seq,RS_EVENTS) {
       event := rs_recent(b[0].book[0],k);
-      if event.kind==RS_EV_CAST && event.spell==SP_SHIELD && event.by==0 {
+      if event.kind==RS_EV_CAST && event.spell.value==SP_SHIELD && event.by.value==0 {
         shield := fb_spell(SP_SHIELD,1,FB_SELF); xc_cast_sound(s,shield); xc_look(s,shield,-1,cr[0].player_x,cr[0].player_z); x[0].shields+=1;
       }
     }
@@ -3796,7 +3797,7 @@ xc_familiar_draw :: (s:[] EgZone,out:[]f32,n:int)->int {
   xc_sync_world(s[..]);
   #assert b[0].book[0].seq==events+1;
   save:=rs_recent(b[0].book[0],0);
-  #assert save.kind==RS_EV_SAVE && save.spell==SP_ZONE_OF_TRUTH && save.to==1;
+  #assert save.kind==RS_EV_SAVE && save.spell.value==SP_ZONE_OF_TRUTH && save.to.value==1;
   xc_sync_world(s[..]);
   #assert b[0].book[0].seq==events+1;
 }

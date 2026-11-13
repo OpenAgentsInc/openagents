@@ -2,7 +2,7 @@
 #authority;
 
 #test "Familiar touch delivery uses the owner's spell and the familiar's Reaction and reach" {
-  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=25; b[0].h=8; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[3]RsCreature; b[0].c=c[..]; b[0].w=25; b[0].h=8; b[0].dice[0].fixed=true;
   i:=rs_add(b[..],rs_druid("Druid",0,2),1,1);
   j:=rs_add(b[..],rs_fighter("Ally",0,3),22,1);
   picks:=[1]int.[RS_EXEC_SOURCE[SP_CURE_WOUNDS]];
@@ -34,7 +34,7 @@ rs_familiar_touch_ready :: (b:[]RsBattle,i:int,sp:int,origin:int)->bool #effects
 }
 
 #test "Touch delivery rejects unavailable familiars and preserves the caster's attack and spell DC" {
-  b:[1]RsBattle; c:[4]RsCreature; b[0].c=c[..]; b[0].w=25; b[0].h=25; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[4]RsCreature; b[0].c=c[..]; b[0].w=25; b[0].h=25; b[0].dice[0].fixed=true;
   f:=rs_add(b[..],rs_monster(MON_RAT,"Familiar",0),20,20);
   i:=rs_add(b[..],rs_wizard("Wizard",0,2),0,0);
   j:=rs_add(b[..],rs_fighter("Target",1,3),21,20);

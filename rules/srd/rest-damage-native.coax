@@ -2,7 +2,7 @@
 #load "../../coax/lib/sys/tool.coax";
 tool_main :: ()->int #export_c #effects(all) {
   for klass:0..<RS_CLASSES { if klass==RS_MONSTER { continue; } for level:1..<7 {
-    b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
     c[0]=rt_class(klass,level); c[0].hp=3; c[0].temp=1; c[0].reacted=true;
     c[0].uses[RS_USE_RAGE]=0; c[0].uses[RS_USE_FOCUS]=0;
     for u:0..<RS_USES { c[0].uses[u]=0; }
@@ -24,7 +24,7 @@ tool_main :: ()->int #export_c #effects(all) {
     if !c[0].long_rest.completed || c[0].long_rest.finished!=62400000000 || c[0].hp!=c[0].hp_max { return 10; }
   } }
   for spent:0..<2 {
-    b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1; b[0].w=8; b[0].h=8;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1; b[0].w=8; b[0].h=8;
     c[0]=rs_warlock("Sleeper",0,3,SP_ELDRITCH_BLAST); c[1]=rs_fighter("Reactor",1,3);
     c[0].x=2; c[0].y=2; c[1].x=3; c[1].y=2;
     c[0].feats = rs_feature_put(c[0].feats, RS_FT_REBUKE, true); c[0].slots[2]=0; c[0].temp=1;
@@ -38,7 +38,7 @@ tool_main :: ()->int #export_c #effects(all) {
     if c[0].long_rest.phase!=2 || c[0].slots[2]!=(ifx spent==0 then 1 else 2) || c[0].reacted!=(spent==0) { return 14; }
     if b[0].who!=0 || !b[0].turn.action || !b[0].turn.bonus || !b[0].turn.slot_spent || !b[0].turn.leveled { return 15; }
   }
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
   c[0]=rs_zombie("Sleeper",0); c[0].hp=1;
   if !rs_rest_schedule_enable(b[..]) || !rs_long_rest_start_owned(b[..],0,1,true) { return 16; }
   rs_tick(b[..],3600);

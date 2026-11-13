@@ -141,6 +141,8 @@ rs_cf_hero :: (klass: int, level: int) -> RsCreature {
   return rs_wizard("Hero", 0, level);
 }
 // Does the built preset c show feature f? Each reads the state the feature's rules run on.
+// (It names spells: each line asks whether a built creature holds the one spell the SRD's feature
+// names. That is this ledger's question, not a rule's special case, #13285.)
 rs_cf_held :: (c: RsCreature, f: string) -> bool {
   dex := rs_mod(c.score[RS_DEX]); con := rs_mod(c.score[RS_CON]);
   if c.klass == RS_BARBARIAN {
@@ -210,7 +212,7 @@ rs_cf_held :: (c: RsCreature, f: string) -> bool {
     if f == "Spellcasting" { return c.spell_ability == RS_CHA && c.slots_max[1] >= 2; }
     if f == "Weapon Mastery" { return c.mastery_n == 2 && (c.masteries & (1 << M_SAP)) != 0 && (c.masteries & (1 << M_SLOW)) != 0; }
     if f == "Fighting Style" { return rs_class_spell_granted(c, SP_SACRED_FLAME); }   // Blessed Warrior
-    if f == "Paladin's Smite" { return c.free_spell == SP_DIVINE_SMITE && c.uses_max[RS_USE_FREE] == 1 && rs_class_spell_granted(c, SP_DIVINE_SMITE); }
+    if f == "Paladin's Smite" { return c.rank[RS_RK_FREE_SPELL] == SP_DIVINE_SMITE && c.uses_max[RS_USE_FREE] == 1 && rs_class_spell_granted(c, SP_DIVINE_SMITE); }
     if f == "Channel Divinity" { return c.uses_max[RS_USE_CHANNEL] == 2; }
     if f == "Oath of Devotion Spells" { return rs_class_spell_granted(c, SP_SHIELD_OF_FAITH); }
     if f == "Sacred Weapon" { return c.level >= 3; }   // rs_sacred_weapon admits it from level 3
@@ -221,7 +223,7 @@ rs_cf_held :: (c: RsCreature, f: string) -> bool {
   }
   if c.klass == RS_RANGER {
     if f == "Spellcasting" { return c.spell_ability == RS_WIS && c.slots_max[1] >= 2; }
-    if f == "Favored Enemy" { return c.free_spell == SP_HUNTERS_MARK && c.uses_max[RS_USE_FREE] >= 2 && rs_class_spell_granted(c, SP_HUNTERS_MARK); }
+    if f == "Favored Enemy" { return c.rank[RS_RK_FREE_SPELL] == SP_HUNTERS_MARK && c.uses_max[RS_USE_FREE] >= 2 && rs_class_spell_granted(c, SP_HUNTERS_MARK); }
     if f == "Weapon Mastery" { return c.mastery_n == 2 && (c.masteries & (1 << M_VEX)) != 0 && (c.masteries & (1 << M_SLOW)) != 0; }
     if f == "Deft Explorer" { return rs_has_feature(c, RS_FT_DEFT_EXPLORER) && (c.checks.expert & (1 << SK_SURVIVAL)) != 0; }
     if f == "Fighting Style" { return rs_has_feature(c, RS_FT_ARCHERY); }
@@ -303,7 +305,7 @@ rs_cf_held :: (c: RsCreature, f: string) -> bool {
     if f == "Cantrips (3)" { return c.spells.cantrips == 3; }
     if f == "Wild Resurgence" { return rs_has_feature(c, RS_FT_WILD_RESURGENCE); }
     if f == "Circle of the Land Spells (5)" { return rs_class_spell_granted(c, SP_SLEET_STORM); }
-    if f == "Natural Recovery" { return rs_has_feature(c, RS_FT_NATURAL_RECOVERY) && c.free_spell == SP_HOLD_PERSON; }
+    if f == "Natural Recovery" { return rs_has_feature(c, RS_FT_NATURAL_RECOVERY) && c.rank[RS_RK_FREE_SPELL] == SP_HOLD_PERSON; }
     if f == "Wild Shape (3)" { return c.uses_max[RS_USE_WILD] == 3; }
   }
   return false;

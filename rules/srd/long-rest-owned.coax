@@ -6,7 +6,7 @@ RsRestActivity :: struct { admitted:bool; boundary:RsLongRestBoundary; }
 RsRestPlan :: struct { journal:RsLongRest; boundary:RsLongRestBoundary; }
 
 #test "owned rest admits actual sleep and watch and binds the actor to the precise clock" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Reader",0,3); c[0].focus_held=true;
   rs_tick(b[..],1.0/64);
   #assert !rs_long_rest_start_owned(b[..],0,1,false);
@@ -31,7 +31,7 @@ RsRestPlan :: struct { journal:RsLongRest; boundary:RsLongRestBoundary; }
 }
 
 #test "late light reports abandon the old period rather than backfilling sleep" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Reader",0,3);
   #assert rs_long_rest_start_owned(b[..],0,2,true) && !rs_sleeping(c[0]);
   rs_tick(b[..],7201);
@@ -44,7 +44,7 @@ RsRestPlan :: struct { journal:RsLongRest; boundary:RsLongRestBoundary; }
 }
 
 #test "earlier valid completion wins over a later light limit or activity request" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Reader",0,3);
   #assert rs_long_rest_start_owned(b[..],0,1,true);
   rs_tick(b[..],25000);
@@ -56,7 +56,7 @@ RsRestPlan :: struct { journal:RsLongRest; boundary:RsLongRestBoundary; }
 }
 
 #test "exertion reports a single boundary and settled resumption cannot credit the gap" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Reader",0,3);
   #assert !rs_long_rest_resume_owned(b[..],0,1,true);
   #assert rs_long_rest_start_owned(b[..],0,1,true);
@@ -74,7 +74,7 @@ RsRestPlan :: struct { journal:RsLongRest; boundary:RsLongRestBoundary; }
 }
 
 #test "owner validation and sleep capacity refuse without granting a mode or inventing sleep" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Reader",0,3);
   #assert !rs_long_rest_owner_valid(b[..],-1) && !rs_long_rest_owner_valid(b[..],1);
   b[0].reaction_frame.on=true; #assert !rs_long_rest_owner_valid(b[..],0);
@@ -97,7 +97,7 @@ RsRestPlan :: struct { journal:RsLongRest; boundary:RsLongRestBoundary; }
 }
 
 #test "watch admission and resumption wake natural sleep and capacity failure preserves interruption" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Reader",0,3);
   #assert rs_sleep_begin(b[..],0);
   #assert rs_long_rest_start_owned(b[..],0,2,true) && !rs_sleeping(c[0]);

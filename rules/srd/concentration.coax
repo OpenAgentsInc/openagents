@@ -3,7 +3,7 @@
 #authority;
 
 #test "raw zero HP ends self-owned Bless before the next battle death save" {
-  b: [1] RsBattle; a := rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
   b[0].c[a].conc=SP_BLESS; b[0].c[a].conc_until=60;
   #assert rs_put_effect(b[..],a,RsEffect.{kind=EF_BLESS,by=a,spell=SP_BLESS,until=60});
   b[0].c[a].hp=0; b[0].c[a].cond=RS_UNCONSCIOUS|RS_PRONE;
@@ -16,7 +16,7 @@
 
 #test "concentration interruption distinguishes incapacitating conditions from movement and action restrictions" {
   for condition: [13] int.[0,RS_BLINDED,RS_CHARMED,RS_DEAFENED,RS_FRIGHTENED,RS_PRONE,RS_GRAPPLED,RS_RESTRAINED,RS_INCAPACITATED,RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS] {
-    b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
     b[0].c[a].conc=SP_ENTANGLE; b[0].c[a].conc_until=rs_secs(60); b[0].c[a].cond=condition;
     lost := condition==RS_INCAPACITATED || condition==RS_PARALYZED || condition==RS_PETRIFIED || condition==RS_STUNNED || condition==RS_UNCONSCIOUS;
     #assert rs_sync_concentration(b[..],a)==lost;
@@ -27,7 +27,7 @@
   }
 }
 #test "dismissal is free during Halt but invalid or incapacitated dismissal refuses without costs" {
-  b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
   b[0].c[a].conc=SP_ENTANGLE; b[0].c[a].conc_until=60;
   b[0].c[a].cond=RS_INCAPACITATED;
   seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
@@ -51,7 +51,7 @@
 }
 #test "death and zero HP stop concentration while Halt alone does not" {
   for state: 0..<3 {
-    b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
     b[0].c[a].conc=SP_ENTANGLE; b[0].c[a].conc_until=60;
     b[0].c[a].eff[0].kind=EF_HALT;
     if state==0 { b[0].c[a].dead=true; }
@@ -59,7 +59,7 @@
     #assert rs_sync_concentration(b[..],a)==(state<2);
     if state<2 {
       e := rs_recent_at(b[0].book[..],0);
-      #assert e.kind==RS_EV_END && e.spell==SP_ENTANGLE && e.by==a && e.to==-1 && e.amount==0 && e.damage==0;
+      #assert e.kind==RS_EV_END && e.spell.value==SP_ENTANGLE && e.by.value==a && e.to.value==-1 && e.amount==0 && e.damage==0;
       #assert cast(string)e.text[0..<e.text_n]=="Caster's Entangle ends (Incapacitated)";
     }
   }
@@ -67,7 +67,7 @@
 
 #test "unknown concentration identities are refused rather than ended as a fallback spell" {
   for sp: [5] int.[-2,-1,RS_MORE_END,99,104] {
-    b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
     b[0].c[a].conc=sp; b[0].c[a].conc_until=60; b[0].c[a].cond=RS_STUNNED;
     seq := b[0].book[0].seq;
     #assert !rs_sync_concentration(b[..],a);
@@ -101,7 +101,8 @@ rs_end_concentration :: (b: [] RsBattle, i: int, why: string) #effects(all) {
       if b[0].c[j].eff[k].by==i && b[0].c[j].eff[k].spell==sp { rs_drop_effect(b,j,k); }
     }
   }
-  if sp==SP_SPIRIT_GUARDIANS { b[0].guards=rs_max(b[0].guards-1,0); }
+  if rs_step_at(rs_spell(sp), RS_S_GUARD) >= 0 { b[0].guards=rs_max(b[0].guards-1,0); }
+  // Shapechange's own end: its form is state the spell's procedures keep (shapechange.coax), not a step
   if sp==SP_SHAPECHANGE { rs_shape_end(b,i," takes back its own shape"); }
   l: [1] RsLine;
   rs_add_name(l[..],b,i); rs_add_text(l[..],"'s "); rs_add_text(l[..],rs_spell(sp).name); rs_add_text(l[..]," ends"); rs_add_text(l[..],why);

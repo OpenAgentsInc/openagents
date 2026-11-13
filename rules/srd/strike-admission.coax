@@ -14,21 +14,21 @@ rs_strikes_fit :: (b: [] RsBattle, i: int, j: int, w: int, attacks: int, retarge
     // leaves two records (half Speed, and the next attack's Advantage), one when failed
     if rs_mastery(b,i,w,M_SLOW) { need += 1; }
     if rs_stun_weapon(w) && rs_stun_ready(me,b[0].turn.stunned) && !rs_has(b[0].c[t],RS_STUNNED) { need += 2; }
-    if rs_has_feature(me, RS_FT_CUNNING_STRIKE) && me.strike_plan == CS_POISON && rs_has_feature(me, RS_FT_POISON_KIT) && !b[0].turn.sneaked && rs_effect_condition_mask(b[0].c[t],RS_POISONED) != 0 { need += 1; }
+    if rs_has_feature(me, RS_FT_CUNNING_STRIKE) && me.note[RS_NT_STRIKE_PLAN] == CS_POISON && rs_has_feature(me, RS_FT_POISON_KIT) && !b[0].turn.sneaked && rs_effect_condition_mask(b[0].c[t],RS_POISONED) != 0 { need += 1; }
     if rs_effect_free(b[0].c[t]) < need+ifx t == i then own else 0 { return false; }
   }
   return true;
 }
 
 #test "no strike reaches a target behind Total Cover; Three-Quarters Cover still admits it" {
-  b: [1] RsBattle; grapple_field(b[..]); rs_fresh(b[..], 1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]); rs_fresh(b[..], 1);
   #assert rs_strikes_fit(b[..], 1, 0, b[0].c[1].weapon, 1, false);
   #assert rs_cover_put(b[..], 1, 0, RS_COVER_THREE) && rs_strikes_fit(b[..], 1, 0, b[0].c[1].weapon, 1, false);
   #assert rs_cover_put(b[..], 1, 0, RS_COVER_TOTAL) && !rs_strikes_fit(b[..], 1, 0, b[0].c[1].weapon, 1, false);
 }
 #test "the Slow mastery prepays one record on its target however many attacks; Sap prepays one an attack" {
   for attacks: 1..<4 {
-    b: [1] RsBattle;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
     a := rs_add(b[..],rs_ranger("Archer",0,5),1,1);
     t := rs_add(b[..],rs_skeleton("Target",1),2,1);
     #assert rs_mastery(b[..],a,W_LONGBOW,M_SLOW) && !rs_mastery(b[..],a,W_LONGBOW,M_SAP) && !rs_mastery(b[..],a,W_LONGBOW,M_VEX);

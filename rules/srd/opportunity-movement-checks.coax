@@ -1,7 +1,7 @@
 #load "battle.coax";
 
 #test "a legal step resolves selected opportunities before departure and then pays movement" {
-  b:[1] RsBattle; b[0].w=12; b[0].h=12; b[0].dice[0].fixed=true;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=12; b[0].dice[0].fixed=true;
   _:=rs_add(b[..],rs_guard("Reactor",1),3,3); _=rs_add(b[..],rs_barbarian("Mover",0,6),4,3); rs_start_turn(b[..],1);
   hp:=b[0].c[1].hp; choices:=[1]RsOpportunityChoice.[RsOpportunityChoice.{actor=0,weapon=W_SPEAR,seen=true}];
   #assert rs_step_reactions(b[..],1,5,3,choices[..]);
@@ -9,7 +9,7 @@
   #assert b[0].who==1 && b[0].turn.moved && rs_movement_left(b[..],1)==35;
 }
 #test "an opportunity kill cancels departure without refunding its accepted Reaction" {
-  b:[1] RsBattle; b[0].w=12; b[0].h=12; b[0].dice[0].fixed=true;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=12; b[0].dice[0].fixed=true;
   _:=rs_add(b[..],rs_fighter("Reactor",1,3),3,3); _=rs_add(b[..],rs_guard("Mover",0),4,3); rs_start_turn(b[..],1);
   _=rs_add(b[..],rs_guard("Later reactor",1),3,4);
   b[0].c[1].hp=1; b[0].c[1].ac=10; before:=rs_movement_left(b[..],1);
@@ -19,7 +19,7 @@
   #assert !b[0].turn.moved && b[0].turn.move_left*5+b[0].turn.move_feet==before && !b[0].c[2].reacted;
 }
 #test "invalid steps cannot solicit reactions and Disengage prevents a selected attack" {
-  b:[1] RsBattle; b[0].w=12; b[0].h=12; b[0].dice[0].fixed=true;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=12; b[0].dice[0].fixed=true;
   _:=rs_add(b[..],rs_guard("Reactor",1),3,3); _=rs_add(b[..],rs_fighter("Mover",0,3),4,3); rs_start_turn(b[..],1);
   choices:=[1]RsOpportunityChoice.[RsOpportunityChoice.{actor=0,weapon=W_SPEAR,seen=true}];
   rolls:=b[0].dice[0].rolled;
@@ -31,7 +31,7 @@
 
 #test "step admission rejects each independent turn and capability blocker without mutation" {
   for mode:0..<7 {
-    b:[1]RsBattle; b[0].w=8; b[0].h=8; _:=rs_add(b[..],rs_fighter("Mover",0,1),2,2); rs_start_turn(b[..],0);
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; _:=rs_add(b[..],rs_fighter("Mover",0,1),2,2); rs_start_turn(b[..],0);
     if mode==0 { b[0].who=-1; }
     if mode==1 { b[0].c[0].hp=0; }
     if mode==2 { b[0].turn.anchored=true; }
@@ -41,7 +41,7 @@
     if mode==6 { b[0].turn.move_left=0; }
     #assert !rs_step_ready(b[..],0,3,2) && b[0].c[0].x==2 && !b[0].turn.moved;
   }
-  b:[1]RsBattle; b[0].w=8; b[0].h=8; _:=rs_add(b[..],rs_fighter("Mover",0,1),2,2); rs_start_turn(b[..],0);
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; _:=rs_add(b[..],rs_fighter("Mover",0,1),2,2); rs_start_turn(b[..],0);
   b[0].c[1]=b[0].c[0]; b[0].who=1;
   #assert !rs_step_ready(b[..],1,3,2);
   b[0].who=0; b[0].c[0].speed=1; b[0].turn.move_left=1; b[0].turn.move_tracked=false;
@@ -49,7 +49,7 @@
 }
 #test "step admission respects every map edge and occupant zero while allowing boundary squares" {
   for axis:0..<2 { for edge:0..<2 {
-    b:[1]RsBattle; b[0].w=8; b[0].h=8;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
     at:=ifx edge==0 then 0 else 7;
     _:=rs_add(b[..],rs_fighter("Mover",0,1),ifx axis==0 then at else 3,ifx axis==1 then at else 3); rs_start_turn(b[..],0);
     dest:=ifx edge==0 then -1 else 8;
@@ -57,12 +57,12 @@
     rs_place(b[..],0,ifx axis==0 then 1 else 3,ifx axis==1 then 1 else 3);
     #assert rs_step_ready(b[..],0,ifx axis==0 then 0 else 3,ifx axis==1 then 0 else 3);
   } }
-  b:[1]RsBattle; b[0].w=8; b[0].h=8;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],rs_guard("Occupant zero",1),3,2); _=rs_add(b[..],rs_fighter("Mover",0,1),2,2); rs_start_turn(b[..],1);
   #assert !rs_step_ready(b[..],1,3,2) && b[0].c[1].x==2;
 }
 #test "step preflight reprices changing Speed and charges crawling rather than Blindness" {
-  b:[1]RsBattle; b[0].w=8; b[0].h=8; _:=rs_add(b[..],rs_fighter("Mover",0,1),2,2); rs_start_turn(b[..],0);
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; _:=rs_add(b[..],rs_fighter("Mover",0,1),2,2); rs_start_turn(b[..],0);
   b[0].turn.move_tracked=true; b[0].turn.move_basis=30; b[0].turn.move_left=1; b[0].c[0].speed=20;
   #assert !rs_step_ready(b[..],0,3,2) && b[0].turn.move_left==1 && b[0].turn.move_basis==30;
   b[0].c[0].speed=30; b[0].c[0].cond=RS_BLINDED;

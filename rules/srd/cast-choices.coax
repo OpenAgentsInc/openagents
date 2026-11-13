@@ -4,7 +4,7 @@
 RS_CAST_CHOICES :: 16;
 
 #test "chosen requests refuse malformed, dead, distant, duplicate, Self and point-shaped targets" {
-  b: [1] RsBattle; b[0].w = 50; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 50; b[0].h = 8;
   a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Target",1),2,1);
   s := rs_spell(SP_CURE_WOUNDS); picks := [2] int.[t,t];
@@ -31,7 +31,7 @@ RS_CAST_CHOICES :: 16;
   #assert !rs_creature_choices(b[..],a,s,SP_SCORCHING_RAY,2,rays[0..<2]);
 }
 #test "chosen effect preflight aggregates every ray and distinguishes release, immunity and unrelated records" {
-  b: [1] RsBattle;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Target",1),2,1);
   s := rs_spell(SP_BLESS); s.concentration = false; s.step_n = 2;

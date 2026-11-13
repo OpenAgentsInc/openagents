@@ -211,7 +211,7 @@ rs_monster :: (m: int, name: string, team: int) -> RsCreature {
   c[0].undead = k.undead; c[0].fiend = k.fiend; c[0].feats = rs_feature_put(c[0].feats, RS_FT_UNDEAD_FORTITUDE, k.fortitude);
   c[0].spell_ability = -1; c[0].weapon = W_UNARMED; c[0].ranged = -1;
   c[0].dragon = m == MON_ADULT_RED_DRAGON;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].rank[RS_RK_FREE_SPELL] = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   return c[0];
 }
 

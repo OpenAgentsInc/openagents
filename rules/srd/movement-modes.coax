@@ -70,7 +70,7 @@ rs_run_up :: (b: [] RsBattle, i: int, feet: int) #effects(all) {
 }
 
 #test "a step adds climbing, swimming, crawling and Difficult Terrain costs, sparing a matching Speed" {
-  b: [1] RsBattle; jump_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]);
   _ := rs_terrain_put(b[..], TR_CLIMB, 2, 1, 2, 1); _ = rs_terrain_put(b[..], TR_SWIM, 3, 1, 3, 1); _ = rs_terrain_put(b[..], TR_CLIMB | TR_DIFFICULT, 4, 1, 4, 1);
   _ = rs_terrain_put(b[..], TR_SWIM | TR_CLIMB, 5, 1, 5, 1);
   #assert rs_step_cost(b[..], 0, 1, 2) == 5 && rs_step_cost(b[..], 0, 2, 1) == 10 && rs_step_cost(b[..], 0, 3, 1) == 10 && rs_step_cost(b[..], 0, 4, 1) == 15 && rs_step_cost(b[..], 0, 5, 1) == 15;
@@ -79,7 +79,7 @@ rs_run_up :: (b: [] RsBattle, i: int, feet: int) #effects(all) {
   b[0].c[0].climb = 0; b[0].c[0].cond |= RS_PRONE; #assert rs_step_cost(b[..], 0, 4, 1) == 20 && rs_step_cost(b[..], 0, 1, 2) == 10;
 }
 #test "a step that drags an equal-sized creature adds five feet to its movement cost" {
-  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
   a:=rs_add(b[..],rs_fighter("Grappler",0,1),2,1);
   j:=rs_add(b[..],rs_fighter("Held",1,1),1,1);
   c[a].grappling=j;
@@ -87,7 +87,7 @@ rs_run_up :: (b: [] RsBattle, i: int, feet: int) #effects(all) {
 }
 
 #test "a climbing step pays its extra cost through the shared step, and the run-up starts over crawling" {
-  b: [1] RsBattle; jump_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]);
   _ := rs_terrain_put(b[..], TR_CLIMB, 2, 1, 2, 1);
   #assert rs_step_to(b[..], 0, 2, 1) && rs_movement_left(b[..], 0) == 20 && b[0].turn.run_ft == 5;
   #assert rs_step_to(b[..], 0, 3, 1) && b[0].turn.run_ft == 10;
@@ -98,7 +98,7 @@ rs_run_up :: (b: [] RsBattle, i: int, feet: int) #effects(all) {
 }
 #test "a running Long Jump reaches the jump score in feet, a standing one half; a Jumper may use Dexterity" {
   for mode: 0..<8 {
-    b: [1] RsBattle; jump_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]);
     if mode >= 1 { #assert rs_step_to(b[..], 0, 2, 1) && rs_step_to(b[..], 0, 3, 1); }   // 10 feet on foot
     if mode == 2 || mode == 6 { b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_JUMPER, true); } else if mode == 3 { b[0].turn.jumps_doubled = true; }
     else if mode == 4 { b[0].c[0].score[RS_STR] = 9; } else if mode == 7 { b[0].c[0].score[RS_DEX] = 8; b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_JUMPER, true); }
@@ -114,30 +114,30 @@ rs_run_up :: (b: [] RsBattle, i: int, feet: int) #effects(all) {
 }
 #test "a Long Jump needs the feet, an open square on the grid and a creature free to move" {
   for mode: 0..<10 {
-    b: [1] RsBattle; jump_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]);
     x := 2; y := 1;
     if mode == 1 { x = 12; } else if mode == 2 { y = -1; } else if mode == 3 { rs_place(b[..], 1, 2, 1); } else if mode == 4 { b[0].c[0].cond |= RS_PRONE; }
     else if mode == 5 { b[0].turn.anchored = true; } else if mode == 6 { b[0].who = 1; } else if mode == 7 { b[0].turn.move_left = 0; b[0].turn.move_feet = 4; }
     else if mode == 8 { b[0].c[0].cond |= RS_GRAPPLED; } else if mode == 9 { x = 1; y = 6; }
     #assert rs_long_jump(b[..], 0, x, y) == (mode == 0);
   }
-  b: [1] RsBattle; jump_field(b[..]); b[0].c[0].speed = 0; #assert !rs_long_jump(b[..], 0, 2, 1) && rs_high_jump(b[..], 0) == -1;
-  c: [1] RsBattle; jump_field(c[..]); c[0].reaction_frame.on = true; #assert !rs_jump_ready(c[..], 0); c[0].reaction_frame.on = false;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]); b[0].c[0].speed = 0; #assert !rs_long_jump(b[..], 0, 2, 1) && rs_high_jump(b[..], 0) == -1;
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); jump_field(c[..]); c[0].reaction_frame.on = true; #assert !rs_jump_ready(c[..], 0); c[0].reaction_frame.on = false;
   #assert !rs_jump_ready(c[..], -1) && !rs_jump_ready(c[..], 2) && rs_jump_ready(c[..], 0);
   #assert !rs_long_jump(c[..], 0, -1, 1) && !rs_long_jump(c[..], 0, 1, -1) && !rs_long_jump(c[..], 0, 1, 1);
 }
 #test "landing in Difficult Terrain takes DC 10 Acrobatics or the jumper is Prone" {
   for dex: [3] int.[8, 10, 12] {
-    b: [1] RsBattle; jump_field(b[..]); b[0].c[0].score[RS_DEX] = dex; b[0].c[0].checks.skills = 0; b[0].c[0].checks.expert = 0;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]); b[0].c[0].score[RS_DEX] = dex; b[0].c[0].checks.skills = 0; b[0].c[0].checks.expert = 0;
     _ := rs_terrain_put(b[..], TR_DIFFICULT, 2, 1, 2, 1);
     #assert rs_long_jump(b[..], 0, 2, 1) && rs_has(b[0].c[0], RS_PRONE) == (dex == 8) && rs_movement_left(b[..], 0) == 25;
   }
-  i: [1] RsBattle; jump_field(i[..]); i[0].c[0].score[RS_DEX] = 8; i[0].c[0].checks.skills = 0; i[0].c[0].immune_cond = RS_PRONE;
+  i: [1] RsBattle; i_room: [1] RsRoom; rs_have(i[..], i_room[..]); jump_field(i[..]); i[0].c[0].score[RS_DEX] = 8; i[0].c[0].checks.skills = 0; i[0].c[0].immune_cond = RS_PRONE;
   _ := rs_terrain_put(i[..], TR_DIFFICULT, 2, 1, 2, 1);
   #assert rs_long_jump(i[..], 0, 2, 1) && !rs_has(i[0].c[0], RS_PRONE);
 }
 #test "a High Jump rises 3 + Strength modifier feet running, half standing, doubled by Step of the Wind" {
-  b: [1] RsBattle; jump_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]);
   #assert rs_high_jump(b[..], 0) == 2 && rs_movement_left(b[..], 0) == 28;   // standing: (3 + 1) / 2
   #assert rs_step_to(b[..], 0, 2, 1) && rs_step_to(b[..], 0, 3, 1) && rs_high_jump(b[..], 0) == 4 && rs_movement_left(b[..], 0) == 14;
   b[0].turn.jumps_doubled = true; #assert rs_high_jump(b[..], 0) == 4;   // standing again, doubled
@@ -147,13 +147,13 @@ rs_run_up :: (b: [] RsBattle, i: int, feet: int) #effects(all) {
   #assert rs_jump_score(rs_rogue("R", 0, 3)) == rs_max(rs_rogue("R", 0, 3).score[RS_STR], rs_rogue("R", 0, 3).score[RS_DEX]);
 }
 #test "a step's extra feet: Difficult Terrain alone, and any Climb or Swim Speed at all" {
-  b: [1] RsBattle; jump_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]);
   _ := rs_terrain_put(b[..], TR_DIFFICULT, 2, 1, 2, 1); _ = rs_terrain_put(b[..], TR_CLIMB | TR_SWIM, 3, 1, 3, 1);
   #assert rs_step_cost(b[..], 0, 2, 1) == 10 && rs_step_cost(b[..], 0, 3, 1) == 15;
   b[0].c[0].climb = 1; b[0].c[0].swim = 1; #assert rs_step_cost(b[..], 0, 3, 1) == 5;
 }
 #test "jump readiness reads only the turn's own creature in the battle, Blinded or not, with any Speed" {
-  b: [1] RsBattle; jump_field(b[..]); p := rs_add(b[..], rs_rogue("Past", 0, 3), 5, 3); b[0].n -= 1;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]); p := rs_add(b[..], rs_rogue("Past", 0, 3), 5, 3); b[0].n -= 1;
   b[0].who = p; #assert !rs_jump_ready(b[..], p);
   b[0].who = -1; #assert !rs_jump_ready(b[..], -1);
   b[0].who = 0; b[0].c[0].cond = RS_BLINDED; #assert rs_jump_ready(b[..], 0);
@@ -162,7 +162,7 @@ rs_run_up :: (b: [] RsBattle, i: int, feet: int) #effects(all) {
 }
 #test "a Long Jump lands on any open square of the grid, exactly at its reach" {
   for mode: 0..<4 {
-    b: [1] RsBattle; jump_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]);
     x := ifx mode == 0 then 0 else ifx mode == 2 then 11 else 1;
     y := ifx mode == 1 then 0 else ifx mode == 3 then 5 else 1;
     if mode >= 2 { rs_place(b[..], 0, ifx mode == 2 then 10 else 1, ifx mode == 3 then 4 else 1); }
@@ -170,28 +170,28 @@ rs_run_up :: (b: [] RsBattle, i: int, feet: int) #effects(all) {
     if mode == 2 { #assert !rs_long_jump(b[..], 0, 12, 1) && b[0].c[0].x == 11; }
     if mode == 3 { #assert !rs_long_jump(b[..], 0, 1, 6) && b[0].c[0].y == 5; }
   }
-  e: [1] RsBattle; jump_field(e[..]); e[0].c[0].score[RS_STR] = 10;   // standing: 5 feet
+  e: [1] RsBattle; e_room: [1] RsRoom; rs_have(e[..], e_room[..]); jump_field(e[..]); e[0].c[0].score[RS_STR] = 10;   // standing: 5 feet
   #assert rs_long_jump(e[..], 0, 2, 1) && e[0].c[0].x == 2;
 }
 #test "a Long Jump pays from the movement left now, tells itself, closes a rest and brings what it holds" {
-  b: [1] RsBattle; jump_field(b[..]); b[0].c[0].score[RS_STR] = 30; b[0].c[0].speed = 5;   // 15 feet standing, 5 of Speed
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]); b[0].c[0].score[RS_STR] = 30; b[0].c[0].speed = 5;   // 15 feet standing, 5 of Speed
   #assert !rs_long_jump(b[..], 0, 3, 1) && b[0].c[0].x == 1;
-  h: [1] RsBattle; jump_field(h[..]); h[0].c[0].score[RS_STR] = 30; h[0].c[0].speed = 5;
+  h: [1] RsBattle; h_room: [1] RsRoom; rs_have(h[..], h_room[..]); jump_field(h[..]); h[0].c[0].score[RS_STR] = 30; h[0].c[0].speed = 5;
   #assert rs_high_jump(h[..], 0) == -1;
-  r: [1] RsBattle; jump_field(r[..]); r[0].c[0].rest.phase = 1; r[0].c[1].rest.phase = 1;
+  r: [1] RsBattle; r_room: [1] RsRoom; rs_have(r[..], r_room[..]); jump_field(r[..]); r[0].c[0].rest.phase = 1; r[0].c[1].rest.phase = 1;
   rs_place(r[..], 1, 0, 1); grapple_hold(r[..], 0, 1, 12);
   #assert rs_long_jump(r[..], 0, 2, 1) && r[0].c[0].rest.phase == 0 && r[0].c[1].rest.phase == 1;
   #assert r[0].c[1].x == 1 && r[0].c[1].y == 1 && r[0].c[0].grappling == 1;
-  #assert act_last(r[..]).kind == RS_EV_CONDITION && act_last(r[..]).by == 0 && act_said(r[..], "Leaper makes a Long Jump");
+  #assert act_last(r[..]).kind == RS_EV_CONDITION && act_last(r[..]).by.value == 0 && act_said(r[..], "Leaper makes a Long Jump");
   #assert rs_high_jump(r[..], 0) == 2 && act_last(r[..]).kind == RS_EV_CONDITION && act_said(r[..], "Leaper makes a High Jump");
 }
 #test "an Acrobatics-trained jumper keeps its feet; a fall adds Prone alone; the run-up runs while Blinded" {
-  b: [1] RsBattle; jump_field(b[..]); b[0].c[0].score[RS_DEX] = 8; b[0].c[0].checks.skills = 1 << SK_ACROBATICS; b[0].c[0].checks.expert = 0;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]); b[0].c[0].score[RS_DEX] = 8; b[0].c[0].checks.skills = 1 << SK_ACROBATICS; b[0].c[0].checks.expert = 0;
   _ := rs_terrain_put(b[..], TR_DIFFICULT, 2, 1, 2, 1);
   #assert rs_long_jump(b[..], 0, 2, 1) && !rs_has(b[0].c[0], RS_PRONE);
-  f: [1] RsBattle; jump_field(f[..]); f[0].c[0].score[RS_DEX] = 8; f[0].c[0].checks.skills = 0; f[0].c[0].checks.expert = 0;
+  f: [1] RsBattle; f_room: [1] RsRoom; rs_have(f[..], f_room[..]); jump_field(f[..]); f[0].c[0].score[RS_DEX] = 8; f[0].c[0].checks.skills = 0; f[0].c[0].checks.expert = 0;
   _ = rs_terrain_put(f[..], TR_DIFFICULT, 2, 1, 2, 1);
   #assert rs_long_jump(f[..], 0, 2, 1) && f[0].c[0].cond == RS_PRONE;
-  w: [1] RsBattle; jump_field(w[..]); w[0].c[0].cond = RS_BLINDED; rs_run_up(w[..], 0, 5); rs_run_up(w[..], 0, 5); #assert w[0].turn.run_ft == 10;
+  w: [1] RsBattle; w_room: [1] RsRoom; rs_have(w[..], w_room[..]); jump_field(w[..]); w[0].c[0].cond = RS_BLINDED; rs_run_up(w[..], 0, 5); rs_run_up(w[..], 0, 5); #assert w[0].turn.run_ft == 10;
   w[0].c[0].score[RS_STR] = 3; #assert rs_high_jump(w[..], 0) == 0;   // running, never below 0
 }

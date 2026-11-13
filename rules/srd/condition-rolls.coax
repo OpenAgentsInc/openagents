@@ -140,7 +140,7 @@ rs_resisted :: (b: [] RsBattle, j: int, amount: int, kind: int) -> int #effects(
 
 #test "a situational bonus (cover's +2 or +5) adds to the save before rescues are weighed" {
   for plus: 0..<6 {
-    b: [1] RsBattle; grapple_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
     plain := rs_saving_throw_magic(b[..], 1, RS_DEX, 30, 0).total;
     #assert rs_saving_throw_magic_plus(b[..], 1, RS_DEX, 30, 0, plus).total == plain + plus;
     #assert rs_saving_throw_full(b[..], 1, RS_DEX, 30, 0, 0, plus).total == plain + plus;

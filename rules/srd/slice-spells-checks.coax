@@ -12,7 +12,7 @@
   for k:0..<RS_MORE_END { if rs_spell(k).id=="zone-of-truth" { sp=k; } }
   #assert sp>=0 && rs_executable_spell(sp);
   #assert !rs_class_spell_granted(rs_paladin("Paladin",0,4),sp);
-  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[3]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
   a:=rs_add(b[..],rs_paladin("Paladin",0,5),1,1);
   j:=rs_add(b[..],rs_fighter("Inside",0,1),8,1);
   far:=rs_add(b[..],rs_fighter("Outside",0,1),12,1);
@@ -38,7 +38,7 @@
   for k:0..<RS_MORE_END { if rs_spell(k).id=="protection-from-evil-and-good" { sp=k; } }
   #assert sp>=0 && rs_executable_spell(sp);
   #assert !rs_class_spell_granted(rs_paladin("Paladin",0,2),sp);
-  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[3]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8;
   a:=rs_add(b[..],rs_paladin("Paladin",0,3),2,2);
   imp:=rs_add(b[..],rs_monster(MON_IMP,"Imp",1),3,2);
   fighter:=rs_add(b[..],rs_fighter("Fighter",1,1),2,3);
@@ -68,7 +68,7 @@
   for k:0..<RS_MORE_END { if rs_spell(k).id=="guidance" { sp=k; } }
   #assert sp>=0 && rs_executable_spell(sp);
   #assert !rs_class_spell_granted(rs_paladin("Paladin",0,1),sp);
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
   a:=rs_add(b[..],rs_paladin("Paladin",0,2),1,1);
   #assert rs_class_spell_granted(c[a],sp);
   skill:=RsAbilityRequest.{ability=RS_WIS,skill=SK_PERCEPTION,dc=30};
@@ -93,7 +93,7 @@
 }
 
 #test "Guidance needs a willing recipient and only the newest overlapping cast applies" {
-  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[3]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
   a:=rs_add(b[..],rs_paladin("Paladin",0,2),1,1);
   j:=rs_add(b[..],rs_fighter("Ally",0,1),2,1);
   second:=rs_add(b[..],rs_paladin("Other",0,2),3,1);
@@ -128,7 +128,7 @@
   #assert sp>=0 && rs_executable_spell(sp);
   #assert !rs_class_spell_granted(rs_cleric("Cleric",0,2),sp) && rs_class_spell_granted(rs_cleric("Cleric",0,3),sp);
   #assert !rs_class_spell_granted(rs_paladin("Paladin",0,4),sp) && rs_class_spell_granted(rs_paladin("Paladin",0,5),sp);
-  b:[1]RsBattle; c:[4]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=4;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[4]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=4;
   a:=rs_add(b[..],rs_cleric("Cleric",0,5),1,1);
   for k:1..<4 {
     _:=rs_add(b[..],rs_fighter("Ally",0,3),k+1,1);
@@ -149,7 +149,7 @@
 }
 
 #test "Aid prepays all targets and upcasting cannot add a fourth target" {
-  b:[1]RsBattle; c:[5]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=4;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[5]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=4;
   a:=rs_add(b[..],rs_cleric("Cleric",0,5),1,1);
   for k:1..<5 { _:=rs_add(b[..],rs_fighter("Ally",0,3),k+1,1); }
   base:=c[1].hp_max;
@@ -193,7 +193,7 @@
   #assert sp>=0 && rs_executable_spell(sp);
   #assert !rs_class_spell_granted(rs_cleric("Cleric",0,2),sp);
   for condition:[4]int.[RS_BLINDED,RS_DEAFENED,RS_PARALYZED,RS_POISONED] {
-    b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=6; b[0].h=4;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].w=6; b[0].h=4;
     a:=rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
     j:=rs_add(b[..],rs_fighter("Ally",0,3),3,1);
     #assert rs_class_spell_granted(c[a],sp);
@@ -212,7 +212,7 @@
 }
 
 #test "Lesser Restoration chooses one of two active conditions and rejects an invalid choice before payment" {
-  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=5; b[0].h=4;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].w=5; b[0].h=4;
   a:=rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
   j:=rs_add(b[..],rs_fighter("Ally",0,3),2,1);
   c[j].cond=RS_BLINDED|RS_POISONED;
@@ -252,7 +252,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
 
 #test "Inflict Wounds: touch, Con save for half of 2d10 Necrotic, one more d10 a slot level" {
   for slot: [2] int.[1,2] { for strong: 0..<2 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_cleric("Cleric",0,3),1,1); t := rs_add(b[..],rs_sorcerer("Target",1,3),2,1);
     sl_learn(b[..],a,SP_INFLICT_WOUNDS); sl_sturdy(b[..],t,ifx strong == 1 then 30 else 1,10);
     rs_start_turn(b[..],a); slots := b[0].c[a].slots[slot];
@@ -262,7 +262,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
     #assert b[0].c[a].slots[slot] == slots - 1 && b[0].turn.action;
   } }
   // Out of touch reach: refused before anything is spent.
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..],rs_cleric("Cleric",0,3),1,1); t := rs_add(b[..],rs_sorcerer("Target",1,3),4,1);
   sl_learn(b[..],a,SP_INFLICT_WOUNDS); rs_start_turn(b[..],a);
   slots := b[0].c[a].slots[1]; hp := b[0].c[t].hp; rolls := b[0].dice[0].rolled;
@@ -272,7 +272,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
 
 #test "Acid Splash: a Dex save or 1d6 Acid to each creature in the 5-foot Sphere, growing with the caster's level" {
   for level: [2] int.[1,5] { for nimble: 0..<2 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 10; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 10; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_wizard("Wizard",0,level),1,1);
     t := rs_add(b[..],rs_sorcerer("Centre",1,3),8,4); u := rs_add(b[..],rs_sorcerer("Beside",1,3),9,4);
     far := rs_add(b[..],rs_sorcerer("Outside",1,3),12,4);
@@ -285,20 +285,20 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
     #assert 200 - b[0].c[t].hp == dealt && 200 - b[0].c[u].hp == dealt && b[0].c[far].hp == 200;
   } }
   // A point beyond 60 feet is refused.
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 4; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 4; b[0].dice[0].fixed = true;
   a := rs_add(b[..],rs_wizard("Wizard",0,1),0,1); sl_learn(b[..],a,SP_ACID_SPLASH); rs_start_turn(b[..],a);
   #assert !rs_cast(b[..],a,SP_ACID_SPLASH,0,13,1,-1) && !b[0].turn.action;
 }
 
 #test "Magic Missile: three darts of 1d4 + 1 Force that never miss, one more a slot level, split as chosen" {
   for slot: [2] int.[1,2] {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_wizard("Wizard",0,3),1,1); t := rs_add(b[..],rs_sorcerer("Target",1,3),10,1);
     sl_learn(b[..],a,SP_MAGIC_MISSILE); sl_sturdy(b[..],t,10,10); b[0].c[t].ac = 30;
     rs_start_turn(b[..],a); #assert rs_cast(b[..],a,SP_MAGIC_MISSILE,slot,0,0,t);
     #assert 200 - b[0].c[t].hp == 3 * (3 + slot - 1);
   }
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..],rs_wizard("Wizard",0,3),1,1);
   t := rs_add(b[..],rs_sorcerer("One",1,3),10,1); u := rs_add(b[..],rs_sorcerer("Two",1,3),11,2);
   sl_learn(b[..],a,SP_MAGIC_MISSILE); sl_sturdy(b[..],t,10,10); sl_sturdy(b[..],u,10,10);
@@ -306,7 +306,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
   #assert rs_cast_creatures(b[..],a,SP_MAGIC_MISSILE,1,picks[..],false);
   #assert 200 - b[0].c[t].hp == 3 && 200 - b[0].c[u].hp == 6;
   // A fourth dart needs a 2nd-level slot; with a 1st it is refused before spending.
-  b2: [1] RsBattle; b2[0].w = 30; b2[0].h = 8; b2[0].dice[0].fixed = true;
+  b2: [1] RsBattle; b2_room: [1] RsRoom; rs_have(b2[..], b2_room[..]); b2[0].w = 30; b2[0].h = 8; b2[0].dice[0].fixed = true;
   a2 := rs_add(b2[..],rs_wizard("Wizard",0,3),1,1); t2 := rs_add(b2[..],rs_sorcerer("One",1,3),10,1);
   sl_learn(b2[..],a2,SP_MAGIC_MISSILE); rs_start_turn(b2[..],a2); slots := b2[0].c[a2].slots[1];
   four := [4] int.[t2,t2,t2,t2];
@@ -315,7 +315,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
 
 #test "Shield answers Magic Missile once before the darts and then takes none of them" {
   for warded: 0..<2 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_wizard("Wizard",0,3),1,1); t := rs_add(b[..],rs_sorcerer("Warded",1,3),10,1);
     other := rs_add(b[..],rs_sorcerer("Open",1,3),11,1);
     sl_sturdy(b[..],t,10,10); sl_sturdy(b[..],other,10,10);
@@ -330,7 +330,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
   }
   // Without Shield prepared, or with its Reaction spent, every dart lands.
   for spent: 0..<2 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_wizard("Wizard",0,3),1,1); t := rs_add(b[..],rs_sorcerer("Target",1,3),10,1);
     sl_learn(b[..],a,SP_MAGIC_MISSILE); sl_sturdy(b[..],t,10,10);
     if spent == 1 { sl_learn(b[..],t,SP_SHIELD); b[0].c[t].feats = rs_feature_put(b[0].c[t].feats, RS_FT_SHIELD_SPELL, true); b[0].c[t].reacted = true; }
@@ -342,7 +342,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
 #test "Mass Healing Word: a Bonus Action healing up to six chosen creatures 2d4 + modifier, 1d4 more a slot level" {
   // A Bard caster: the preset Cleric's Disciple of Life would add its own healing.
   for slot: [2] int.[3,4] {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_bard("Bard",0,5),1,1);
     // The preset slot table stops at level 6 (the slice); grant the 4th-level slot directly.
     b[0].c[a].slots_max[4] = 1; b[0].c[a].slots[4] = 1;
@@ -355,7 +355,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
     #assert b[0].turn.bonus && !b[0].turn.action && b[0].c[a].slots[slot] == slots - 1;
   }
   // A seventh creature is refused before anything is spent.
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..],rs_bard("Bard",0,5),1,1);
   seven: [7] int;
   for k: 0..<7 { seven[k] = rs_add(b[..],rs_druid("Ally",0,3),2 + k,2); b[0].c[seven[k]].hp = 1; }
@@ -367,7 +367,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
 #test "a Sphere at a point includes its caster; a Cube or Line from the caster does not; Sculpt Spells can spare it" {
   // Fireball (p.131) centred beside its own caster: the caster is in the Sphere and saves like anyone.
   for level: [2] int.[5,6] {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 12; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 12; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_wizard("Wizard",0,level),5,5); t := rs_add(b[..],rs_sorcerer("Foe",1,3),7,5);
     sl_sturdy(b[..],a,10,1); sl_sturdy(b[..],t,10,1);
     sl_learn(b[..],a,SP_FIREBALL); rs_start_turn(b[..],a);
@@ -378,7 +378,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
   }
   // Thunderwave's Cube and Lightning Bolt's Line originate from the caster and leave it out.
   for sp: [2] int.[SP_THUNDERWAVE,SP_LIGHTNING_BOLT] {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 12; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 12; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_wizard("Wizard",0,5),5,5); t := rs_add(b[..],rs_sorcerer("Foe",1,3),6,5);
     sl_sturdy(b[..],a,1,1); sl_sturdy(b[..],t,1,1);
     sl_learn(b[..],a,sp); rs_start_turn(b[..],a);
@@ -390,7 +390,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
 #test "a caster inside its own area needs effect room too, refused before anything is spent" {
   // Hypnotic Pattern's 30-foot Cube at a point covers its own caster, whose possible daze needs a record.
   for full: 0..<2 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 12; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 12; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_wizard("Wizard",0,5),5,5); t := rs_add(b[..],rs_sorcerer("Foe",1,3),6,5);
     sl_sturdy(b[..],a,10,10); sl_sturdy(b[..],t,10,10);
     if full == 1 { for k: 0..<RS_EFFECTS { b[0].c[a].eff[k] = RsEffect.{kind=EF_HEX,by=99,spell=-1,until=100}; } }
@@ -402,7 +402,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
       // The caster saw its own pattern and failed its save (fixed d20 10 + Wis vs its own DC):
       // Charmed and Incapacitated, it loses concentration, so the Pattern and its daze end.
       saved := false;
-      for k: 0..<b[0].book[0].count { e := rs_recent(b[0].book[0],k); if e.kind == RS_EV_SAVE && e.to == a { saved = true; } }
+      for k: 0..<b[0].book[0].count { e := rs_recent(b[0].book[0],k); if e.kind == RS_EV_SAVE && e.to.value == a { saved = true; } }
       #assert saved && b[0].c[a].slots[3] == slots - 1 && b[0].c[a].conc != SP_HYPNOTIC_PATTERN && !rs_has(b[0].c[a],RS_INCAPACITATED);
     }
   }
@@ -410,7 +410,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
 
 #test "a world's declared spare-caster house rule keeps a caster out of its own Sphere and nothing else" {
   for profile: 0..<2 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 12; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 12; b[0].dice[0].fixed = true;
     if profile == 1 { #assert rs_set_areas(b[..],RS_SPARE_CASTER_AREAS); }
     a := rs_add(b[..],rs_wizard("Wizard",0,5),5,5); t := rs_add(b[..],rs_sorcerer("Foe",1,3),7,5);
     sl_sturdy(b[..],a,10,1); sl_sturdy(b[..],t,10,1);
@@ -419,13 +419,13 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
     #assert 200 - b[0].c[t].hp == 24 && 200 - b[0].c[a].hp == (ifx profile == 1 then 0 else 24);
   }
   // Removing the profile (a reset) restores strict areas.
-  b: [1] RsBattle; #assert rs_set_areas(b[..],RS_SPARE_CASTER_AREAS); rs_reset(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); #assert rs_set_areas(b[..],RS_SPARE_CASTER_AREAS); rs_reset(b[..]);
   #assert b[0].areas.kind == RS_AREA_STRICT;
 }
 
 #test "Shatter: a Con save for half of 3d8 Thunder in a 10-foot Sphere, one more d8 a slot level; a Construct saves with Disadvantage" {
   for slot: [2] int.[2,3] { for strong: 0..<2 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 12; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 12; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_wizard("Wizard",0,5),1,1);
     t := rs_add(b[..],rs_sorcerer("Centre",1,3),8,5); u := rs_add(b[..],rs_sorcerer("Edge",1,3),10,5);
     far := rs_add(b[..],rs_sorcerer("Outside",1,3),12,5);
@@ -437,7 +437,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
     #assert 200 - b[0].c[t].hp == dealt && 200 - b[0].c[u].hp == dealt && b[0].c[far].hp == 200;
   } }
   // The Construct rider is a Disadvantage source: it joins other sources before they cancel.
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
   t := rs_add(b[..],rs_sorcerer("Thing",1,3),3,3);
   #assert rs_save_edge_with(b[..],t,RS_CON,rs_save_rider_downs(RS_SAVE_RIDER_CONSTRUCT_DIS,b[0].c[t].construct)) == 0;
   b[0].c[t].construct = true;
@@ -446,7 +446,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
   b[0].c[t].eff = rs_state_put(b[0].c[t].eff, EF_RAGE, true);
   #assert rs_save_edge_with(b[..],t,RS_STR,1) == 0 && rs_save_edge_with(b[..],t,RS_STR,0) == 1;
   // Fixed dice show the second d20 is taken at Disadvantage: the save still rolls once a die.
-  c: [1] RsBattle; c[0].w = 30; c[0].h = 12;
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); c[0].w = 30; c[0].h = 12;
   a := rs_add(c[..],rs_wizard("Wizard",0,5),1,1); g := rs_add(c[..],rs_sorcerer("Golem",1,3),8,5);
   sl_sturdy(c[..],g,10,10); c[0].c[g].construct = true;
   sl_learn(c[..],a,SP_SHATTER); rs_start_turn(c[..],a);
@@ -456,7 +456,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
 }
 
 #test "Revivify returns a recently dead creature at one Hit Point and spends one diamond" {
-  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[3]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
   healer:=rs_add(b[..],rs_cleric("Cleric",0,5),1,1);
   ally:=rs_add(b[..],rs_fighter("Ally",0,1),2,1);
   foe:=rs_add(b[..],rs_fighter("Foe",1,1),3,1);
@@ -475,7 +475,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
 }
 
 #test "Revivify refuses an older death and a living target before spending" {
-  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[3]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
   healer:=rs_add(b[..],rs_cleric("Cleric",0,5),1,1);
   ally:=rs_add(b[..],rs_fighter("Ally",0,1),2,1);
   living:=rs_add(b[..],rs_fighter("Living",0,1),1,2);
@@ -491,7 +491,7 @@ sl_sturdy :: (b: [] RsBattle, j: int, con: int, dex: int) {
 }
 
 #test "Revivify can be delivered by a capable familiar touching the corpse" {
-  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=8;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[3]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=8;
   i:=rs_add(b[..],rs_druid("Druid",0,5),1,1);
   j:=rs_add(b[..],rs_fighter("Ally",0,1),7,1);
   f:=rs_add(b[..],rs_monster(MON_CAT,"Familiar",0),6,1);

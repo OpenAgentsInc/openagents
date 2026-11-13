@@ -38,7 +38,7 @@ rs_step_of_the_wind_focus :: (b: [] RsBattle, i: int) -> bool #effects(all) {
 // counted creatures is out of every feature's reach.
 #test "Uncanny Metabolism takes only a living Monk's unspent use, and only when Focus or Hit Points are down" {
   for mode: 0..<10 {
-    b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
     _ := rs_add(b[..], rs_monk("Sen", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
     b[0].c[0].uses[RS_USE_FOCUS] = 0; b[0].c[0].hp = 3;
     if mode == 1 { b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_METABOLISM, false); } else if mode == 2 { b[0].c[0].uses[RS_USE_METABOLISM] = 0; }
@@ -50,37 +50,37 @@ rs_step_of_the_wind_focus :: (b: [] RsBattle, i: int) -> bool #effects(all) {
     ok := mode != 1 && mode != 2 && mode != 3 && mode != 4 && mode != 6;
     #assert rs_uncanny_metabolism(b[..], 0) == ok && b[0].c[0].uses[RS_USE_METABOLISM] == (ifx ok then uses - 1 else uses);
     #assert b[0].c[0].uses[RS_USE_FOCUS] == (ifx ok then 2 else focus) && b[0].c[0].hp == (ifx ok then rs_min(hp + 3 + 2, b[0].c[0].hp_max) else hp);
-    if ok { e := rs_recent(b[0].book[0], 0); #assert e.kind == RS_EV_HEAL && e.feat == RS_FT_METABOLISM && e.to == 0; }
+    if ok { e := rs_recent(b[0].book[0], 0); #assert e.kind == RS_EV_HEAL && e.feat == RS_FT_METABOLISM && e.to.value == 0; }
   }
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6;
   _ := rs_add(b[..], rs_monk("Sen", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
   b[0].c[0].uses[RS_USE_FOCUS] = 0; b[0].c[2] = b[0].c[0];
   #assert !rs_uncanny_metabolism(b[..], -1) && !rs_uncanny_metabolism(b[..], 2) && b[0].c[2].uses[RS_USE_FOCUS] == 0;
 }
 #test "Slow Fall cuts five times the level with a capable Monk's unspent Reaction, never below 0" {
   for mode: 0..<7 {
-    b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6;
     _ := rs_add(b[..], rs_monk("Sen", 0, 4), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
     if mode == 1 { b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_SLOW_FALL, false); } else if mode == 2 { b[0].c[0].reacted = true; } else if mode == 3 { b[0].c[0].cond = RS_STUNNED; }
     fall := ifx mode == 4 then 0 else ifx mode == 5 then 20 else ifx mode == 6 then 1 else 21;
     ok := mode == 0 || mode == 5 || mode == 6;
     #assert rs_slow_fall(b[..], 0, fall) == (ifx ok then rs_max(fall - 20, 0) else fall) && b[0].c[0].reacted == (ok || mode == 2);
   }
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6;
   _ := rs_add(b[..], rs_monk("Sen", 0, 4), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
   b[0].c[2] = b[0].c[0];
   #assert rs_slow_fall(b[..], 0, -4) == 0 && rs_slow_fall(b[..], -1, 9) == 9 && rs_slow_fall(b[..], 2, 30) == 30 && !b[0].c[0].reacted && !b[0].c[2].reacted;
 }
 #test "Step of the Wind with Focus: one Focus Point, a Bonus Action Dash, and Disengage" {
   for mode: 0..<4 {
-    b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6;
     _ := rs_add(b[..], rs_monk("Sen", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
     if mode == 1 { b[0].c[0].uses[RS_USE_FOCUS] = 0; } else if mode == 2 { b[0].turn.bonus = true; } else if mode == 3 { b[0].c[0].uses[RS_USE_FOCUS] = 1; }
     focus := b[0].c[0].uses[RS_USE_FOCUS]; ok := mode != 1 && mode != 2;
     #assert rs_step_of_the_wind_focus(b[..], 0) == ok && b[0].c[0].uses[RS_USE_FOCUS] == (ifx ok then focus - 1 else focus);
     #assert b[0].turn.disengaged == ok && b[0].turn.jumps_doubled == ok && b[0].turn.move_left == (ifx ok then 6 + 8 else 6);
   }
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6;
   _ := rs_add(b[..], rs_monk("Sen", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); rs_fresh(b[..], 0);
   b[0].c[2] = b[0].c[0]; b[0].who = 2;
   #assert !rs_step_of_the_wind_focus(b[..], -1) && !rs_step_of_the_wind_focus(b[..], 2) && !rs_step_of_the_wind_focus(b[..], b[0].c.count) && b[0].c[2].uses[RS_USE_FOCUS] == 2;

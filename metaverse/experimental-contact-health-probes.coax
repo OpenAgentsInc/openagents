@@ -12,7 +12,7 @@ contact_health_probe :: () -> bool {
   if h[0].hp!=44 || h[0].hits!=0 { return false; }
   actor := hostile.hc_take(h[0].contacts[..]);
   if actor!=0 || hostile.hc_take(h[0].contacts[..]) != -1 { return false; }
-  b: [1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
   _ := rs_add(b[..],rs_fighter("Hero",0,1),1,1);
   foe := rs_add(b[..],rs_guard("Enemy",1),2,1);
   b[0].c[0].ac=10; b[0].c[0].hp=20; b[0].c[0].hp_max=30; b[0].c[0].temp=10;

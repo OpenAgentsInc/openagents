@@ -123,11 +123,58 @@ action timing profile brings them back through the one loop over every pool.
 A character checkpoint carries pools 0 to 13 as before (`RS_USES_KEPT`);
 Rages and Focus come back full on a restore, as they did as fields.
 
-Still fields, and why: `strike_plan` and `stun_ready` (what the deciding
-routine wants of its next hit: a request, not state), `hex_free` and
-`hex_free_after` (Hex and Hunter's Mark ready to move), `resurged_slot`,
-`guard_slot` and `guard_turn` (Spirit Guardians), `free_spell`, and the Wild
-Shape, familiar and Zone of Truth groups.
+What a feature or a spell keeps between events is `note[RS_NT_*]`: the effect
+planned for Cunning Strike, the wish for Stunning Strike on the next hit, a
+curse free to move and the turn after which it may, Wild Resurgence's slot made,
+and the turn a creature last saved against an Emanation. The spell that
+`RS_USE_FREE` casts without a slot is `rank[RS_RK_FREE_SPELL]`. The slot a
+Concentration spell was cast with is `conc_slot`, for any spell. The Wild
+Shape, familiar and Zone of Truth groups are still fields.
+
+**A spell is asked by its record, not by its name** (#13285). What only one
+spell did is a field of `RsSpell` (`rules/srd/spells.coax`) or a step:
+
+| What | Field or step | First spell that sets it |
+| --- | --- | --- |
+| A creature with a feature casts it with no slot, its dice at their highest | `at_will` (an `RS_FT_*`) | False Life, with Fiendish Vigor |
+| A target other than the caster must be willing | `willing` | Guidance, Protection from Evil and Good |
+| What the request chooses | `option` (`RS_OPT_*`) | Blindness/Deafness, Hex, Lesser Restoration, Guidance |
+| It lasts longer from a higher slot | `lasts_from` | Hex |
+| Its casting time beyond the Magic action | `cast_s` | Find Familiar |
+| Shield stops it | `shield_stops` | Magic Missile |
+| Its hit sets things burning | `ignites` | Fire Bolt |
+| An Emanation round its caster | the `RS_S_GUARD` step, read by `rs_emanation` | Spirit Guardians |
+| A part needs its parent still there | `part_of`, read by `rs_part_live` | Produce Flame's hurl, Call Lightning's bolts |
+| Its Aura moves when its bearer drops | the Aura's record, `rs_aura_moves` | Hex, Hunter's Mark |
+
+Ten `== SP_` comparisons are left outside the data files and the checks. Each
+has a comment: five in `class-features.coax` ask whether a built creature holds
+the spell its feature names, four are a spell's own procedure asking for its
+own spell (Shapechange, Find Familiar), and one is in a check.
+
+**A class feature is a row of steps** (`rules/srd/battle-features.coax`,
+`rs_feature`). `rs_feature_use` runs any row: every need first (its turn's
+part, the feature known, a use in its pool, a target in reach), and nothing is
+spent unless all hold; then what it spends, the line it tells and what it
+does, in order. Rage, Second Wind, Action Surge, Wholeness of Body, Lay On
+Hands, Sacred Weapon, Steady Aim, Innate Sorcery, Bardic Inspiration, Font of
+Inspiration, both ways of Wild Resurgence, Turn Undead, Preserve Life and
+Land's Aid are rows. `rs_rage` and the rest are one line each: the row's name.
+A feature that uses the steps there is a row and nothing else. Still
+procedures: the Attack action and what rides on a strike (`battle-strike.coax`),
+and the actions that have a file of their own (Dash, Disengage, Dodge, Hide,
+Wild Shape, the dragon's).
+
+**A battle has no room of its own** (#13285). `RsBattle` holds views of its
+creatures, squares and lasting areas. Whoever keeps a battle keeps them beside
+it: a check or a small world declares an `RsRoom` and gives it with `rs_have`;
+a zone gives its own tables with `rs_use` and `rs_use_zones`.
+
+**Events name the rules' own IDs** (#13286). `RsEvent.spell` is an `RsSpellId`
+and `RsEvent.by` and `.to` are `RsActorId`. The rules never read a world's
+content: a spell's ID is its record's number, which never changes, and
+Everglade's registry maps its `spell` rows onto the same numbers. A world
+reads `.value` where the event leaves the rules.
 
 Everglade's content table `ability` (`everglade/content/everglade.content`)
 has 83 rows since revision 2, one for each ability the bars hold by content

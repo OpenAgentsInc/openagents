@@ -2,7 +2,7 @@
 #load "battle.coax";
 
 #test "a melee knockout leaves a monster at 1 HP, Unconscious and Prone, and starts its Short Rest" {
-  b: [1] RsBattle; ko_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]);
   b[0].c[1].hp=3;
   #assert rs_attack(b[..],0,1,false,-1);
   c:=b[0].c[1];
@@ -11,32 +11,32 @@
   #assert c.eff[0].kind==EF_KNOCKOUT && c.eff[0].by==0;
 }
 #test "a knockout dealt inside a Reaction starts its Short Rest when the Reaction ends (#13039)" {
-  b: [1] RsBattle; ko_field(b[..]); b[0].c[1].hp=3;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]); b[0].c[1].hp=3;
   #assert rs_reaction_frame_begin(b[..],0);
   #assert rs_strike(b[..],0,1,b[0].c[0].weapon,false);
   #assert rs_knocked_out(b[0].c[1]) && b[0].c[1].rest.phase!=1 && b[0].c[1].ko_rest_due;
   rs_reaction_frame_end(b[..]);
   #assert b[0].c[1].rest.phase==1 && !b[0].c[1].ko_rest_due && rs_knocked_out(b[0].c[1]);
   // healed before the Reaction ends: no rest is owed
-  h: [1] RsBattle; ko_field(h[..]); h[0].c[1].hp=3;
+  h: [1] RsBattle; h_room: [1] RsRoom; rs_have(h[..], h_room[..]); ko_field(h[..]); h[0].c[1].hp=3;
   #assert rs_reaction_frame_begin(h[..],0) && rs_strike(h[..],0,1,h[0].c[0].weapon,false);
   rs_knockout_end(h[0].c[1..<2]); rs_reaction_frame_end(h[..]);
   #assert h[0].c[1].rest.phase!=1 && !h[0].c[1].ko_rest_due;
 }
 #test "without the choice the same blow kills the monster outright" {
-  b: [1] RsBattle; ko_field(b[..]); b[0].c[0].knockout=false;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]); b[0].c[0].knockout=false;
   b[0].c[1].hp=3;
   #assert rs_attack(b[..],0,1,false,-1);
   #assert b[0].c[1].dead && b[0].c[1].hp==0 && !rs_knocked_out(b[0].c[1]);
 }
 #test "a knockout replaces massive damage and Undead Fortitude, and a blow that leaves HP is ordinary" {
-  b: [1] RsBattle; ko_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]);
   b[0].c[1]=rs_fighter("Squire",1,1); b[0].c[1].hp=3; b[0].c[1].x=2; b[0].c[1].y=1;
   // 3 HP and far more damage than its maximum: no death, just 1 HP
   b[0].ko_by=1; #assert rs_knockout_due(b[..],0,1,500);
   rs_damage(b[..],0,1,500,RS_SLASHING,false,-1);
   #assert !b[0].c[1].dead && b[0].c[1].hp==1 && rs_knocked_out(b[0].c[1]);
-  z: [1] RsBattle; ko_field(z[..]);
+  z: [1] RsBattle; z_room: [1] RsRoom; rs_have(z[..], z_room[..]); ko_field(z[..]);
   z[0].c[1]=rs_zombie("Zombie",1); z[0].c[1].hp=2; z[0].c[1].x=2; z[0].c[1].y=1;
   rolled:=z[0].dice[0].rolled; z[0].ko_by=1;
   rs_damage(z[..],0,1,9,RS_SLASHING,false,-1);
@@ -48,7 +48,7 @@
   b[0].c[1].hp=0; #assert !rs_knockout_due(b[..],0,1,15);
 }
 #test "only the scoped melee attacker's damage knocks out, never another source or a ranged attack" {
-  b: [1] RsBattle; ko_field(b[..]); b[0].c[1].hp=3;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]); b[0].c[1].hp=3;
   #assert !rs_knockout_due(b[..],0,1,10);           // no attack running
   b[0].ko_by=1;
   #assert rs_knockout_due(b[..],0,1,10) && !rs_knockout_due(b[..],1,1,10) && !rs_knockout_due(b[..],-1,1,10);
@@ -62,13 +62,13 @@
   #assert rs_knockout_due(b[..],0,1,10);
   b[0].ko_by=0;
   // a ranged weapon never knocks out
-  r: [1] RsBattle; ko_field(r[..]); r[0].c[0]=rs_ranger("Archer",0,3); r[0].c[0].knockout=true; r[0].c[0].x=1; r[0].c[0].y=1;
+  r: [1] RsBattle; r_room: [1] RsRoom; rs_have(r[..], r_room[..]); ko_field(r[..]); r[0].c[0]=rs_ranger("Archer",0,3); r[0].c[0].knockout=true; r[0].c[0].x=1; r[0].c[0].y=1;
   r[0].c[1].hp=1; r[0].c[1].x=5;
   #assert rs_strike(r[..],0,1,r[0].c[0].ranged,false) && r[0].c[1].dead;
 }
 #test "the knockout ends on regaining Hit Points, on first aid, or at its Short Rest's end, and Prone stays" {
   for way: 0..<3 {
-    b: [1] RsBattle; ko_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]);
     b[0].c[1].hp=3;
     #assert rs_attack(b[..],0,1,false,-1) && rs_knocked_out(b[0].c[1]);
     if way==0 { #assert rs_heal(b[0].c[1..<2],4)==4; }
@@ -84,7 +84,7 @@
       woke := false;
       for q: 0..<8 {
         e:=rs_recent_at(b[0].book[..],q);
-        if cast(string)e.text[0..<e.text_n]=="Goblin wakes from the knockout" { woke = e.kind==RS_EV_END && e.amount==0 && e.by==1 && e.to==1; }
+        if cast(string)e.text[0..<e.text_n]=="Goblin wakes from the knockout" { woke = e.kind==RS_EV_END && e.amount==0 && e.by.value==1 && e.to.value==1; }
       }
       #assert woke;
     }
@@ -93,7 +93,7 @@
   }
 }
 #test "failed first aid leaves a knockout, and an independent Unconscious owner outlasts it" {
-  b: [1] RsBattle; ko_field(b[..]); b[0].c[0].score[RS_WIS]=6; b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_TACTICAL_MIND, false);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]); b[0].c[0].score[RS_WIS]=6; b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_TACTICAL_MIND, false);
   b[0].c[1].hp=3;
   #assert rs_attack(b[..],0,1,false,-1);
   b[0].turn.action=false;
@@ -107,7 +107,7 @@
   #assert rs_has(c[0],RS_UNCONSCIOUS) && !rs_knocked_out(c[0]);
 }
 #test "a second knockout keeps one record, and a knocked-out creature that drops to 0 follows the zero-HP rules" {
-  b: [1] RsBattle; ko_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]);
   b[0].c[1]=rs_fighter("Squire",1,1); b[0].c[1].x=2; b[0].c[1].y=1; b[0].c[1].hp=2;
   b[0].ko_by=1; rs_damage(b[..],0,1,5,RS_SLASHING,false,-1); rs_damage(b[..],0,1,5,RS_SLASHING,false,-1);
   n:=0; for e: b[0].c[1].eff { if e.kind==EF_KNOCKOUT { n+=1; } }
@@ -117,7 +117,7 @@
   #assert rs_heal(b[0].c[1..<2],1)==1 && !rs_has(b[0].c[1],RS_UNCONSCIOUS);
 }
 #test "a knockout ends concentration through incapacitation" {
-  b: [1] RsBattle; ko_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]);
   b[0].c[1]=rs_cleric("Priest",1,3); b[0].c[1].x=2; b[0].c[1].y=1; b[0].c[1].hp=3;
   b[0].c[1].conc=SP_BLESS; b[0].c[1].conc_until=60;
   b[0].ko_by=1; rs_damage(b[..],0,1,9,RS_SLASHING,false,-1); b[0].ko_by=0;
@@ -125,7 +125,7 @@
 }
 
 #test "knockout admission bounds, thresholds, immunity and record room are exact" {
-  b: [1] RsBattle; ko_field(b[..]); b[0].c[1].hp=3;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]); b[0].c[1].hp=3;
   b[0].c[2].hp=5; b[0].c[2].hp_max=5;               // beyond the battle's creatures: never admitted
   b[0].ko_by=3; #assert !rs_knockout_due(b[..],2,1,10);
   b[0].ko_by=1; #assert !rs_knockout_due(b[..],0,2,10);
@@ -138,16 +138,16 @@
   #assert rs_knockout_due(b[..],0,1,1);              // exactly one free record is enough
 }
 #test "a knockout keeps an independent owner's Unconscious, gives Prone only where allowed, and records its source" {
-  b: [1] RsBattle; ko_field(b[..]); b[0].c[1].hp=1; b[0].c[1].cond=RS_UNCONSCIOUS|RS_BLINDED;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]); b[0].c[1].hp=1; b[0].c[1].cond=RS_UNCONSCIOUS|RS_BLINDED;
   b[0].c[1].eff[0]=RsEffect.{kind=EF_COND,cond=RS_UNCONSCIOUS};
   rs_knock_out(b[..],0,1);
   #assert b[0].c[1].eff[1].kind==EF_KNOCKOUT && b[0].c[1].eff[1].cond==0;
-  r: [1] RsBattle; ko_field(r[..]); r[0].c[1].hp=1; r[0].c[1].cond=RS_UNCONSCIOUS|RS_BLINDED;
+  r: [1] RsBattle; r_room: [1] RsRoom; rs_have(r[..], r_room[..]); ko_field(r[..]); r[0].c[1].hp=1; r[0].c[1].cond=RS_UNCONSCIOUS|RS_BLINDED;
   rs_knock_out(r[..],0,1);
   #assert r[0].c[1].eff[0].kind==EF_KNOCKOUT && r[0].c[1].eff[0].cond==RS_UNCONSCIOUS;   // a raw source is kept, as sleep keeps it
   rs_knockout_end(r[0].c[1..<2]); #assert rs_has(r[0].c[1],RS_UNCONSCIOUS);
   for immune: [2] int.[RS_BLINDED,RS_PRONE] {
-    p: [1] RsBattle; ko_field(p[..]); p[0].c[1].hp=1; p[0].c[1].immune_cond=immune;
+    p: [1] RsBattle; p_room: [1] RsRoom; rs_have(p[..], p_room[..]); ko_field(p[..]); p[0].c[1].hp=1; p[0].c[1].immune_cond=immune;
     rs_knock_out(p[..],0,1);
     #assert rs_has(p[0].c[1],RS_PRONE)==(immune==RS_BLINDED) && rs_has(p[0].c[1],RS_UNCONSCIOUS);
   }

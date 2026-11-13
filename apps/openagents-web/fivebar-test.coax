@@ -13,7 +13,7 @@
 #load "everglade-hotbar.coax";  // Everglade's
 
 #test "Short Rest recovery leaves the saved seat and a surrounding running turn intact" {
-  b:[1]RsBattle; s:[1]FbSeat; ft_field(b[..],s[..],91);
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s:[1]FbSeat; ft_field(b[..],s[..],91);
   b[0].c[FT_HERO]=rs_monk("You",0,5); rs_place(b[..],FT_HERO,10,10);
   b[0].c[FT_HERO].uses[RS_USE_FOCUS]=0; b[0].c[FT_HERO].hp=1; b[0].c[FT_HERO].reacted=true;
   b[0].who=FT_FOE; b[0].turn.action=true; b[0].turn.bonus=true; b[0].turn.slot_spent=true; b[0].turn.move_left=7;
@@ -28,7 +28,7 @@
 
 #test "the existing bar Reaction path interrupts rest only after its actual admitted spell cost" {
   for allowed:0..<2 {
-    b:[1]RsBattle; s:[1]FbSeat; ft_field(b[..],s[..],91);
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s:[1]FbSeat; ft_field(b[..],s[..],91);
     b[0].c[FT_HERO]=rs_wizard("You",0,3); rs_place(b[..],FT_HERO,10,10);
     // The bar's caller owns the fall trigger; this checks payment and rest state.
     #assert rs_grant_spell(b[0].c[FT_HERO..<FT_HERO+1],SP_FEATHER_FALL);
@@ -42,7 +42,7 @@
 }
 
 #test "saved-seat Patient Defense loses Dodge when Restrained even if freed before another roll" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
   b[0].c[FT_HERO] = rs_monk("You",0,3); rs_place(b[..],FT_HERO,10,10);
   #assert fb_seat_use(b[..],s[..],fb_feature(FB_PATIENT,"PATIENT DEFENSE","patient-defense"),FT_FOE,10,10,FT_ALLY);
   #assert rs_effect(b[0].c[FT_HERO], EF_DODGE) && b[0].c[FT_HERO].uses[RS_USE_FOCUS] == 2 && s[0].turn.bonus;
@@ -53,7 +53,7 @@
 }
 
 #test "a dying saved seat receives Bane and rescues on its six-second death save without disturbing another actors turn" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
   b[0].dice[0].fixed = true;
   b[0].c[FT_HERO].hp = 0; b[0].c[FT_HERO].cond = RS_UNCONSCIOUS|RS_PRONE;
   b[0].c[FT_HERO].eff = rs_state_value_put(b[0].c[FT_HERO].eff, EF_INSPIRED, 6);
@@ -70,7 +70,7 @@
 }
 
 #test "a saved seat can dismiss concentration outside its own turn without spending either actor's budget" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
   #assert fb_seat_use(b[..],s[..],fb_spell(SP_FOG_CLOUD,1,FB_POINT),-1,12,12,FT_HERO);
   #assert b[0].zone[0].on && s[0].turn.action && s[0].turn.slot_spent;
   slots := b[0].c[FT_HERO].slots[1]; rolls := b[0].dice[0].rolled;
@@ -85,7 +85,7 @@
 }
 
 #test "component refusal reaches hotbar readiness, saved-seat casting and empty-target casts" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
   me := s[0].me; b[0].c[me].speech_blocked=true;
   a := fb_spell(SP_HEALING_WORD,1,FB_ALLY);
   slots := b[0].c[me].slots[1]; seq := b[0].book[0].seq;
@@ -97,7 +97,7 @@
 }
 
 #test "a real-time seat retains Prone until it explicitly pays to stand in its own turn" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
   b[0].c[FT_HERO].cond |= RS_PRONE;
   b[0].clock = fb_seat_next(b[..],s[..]); fb_seat_step(b[..],s[..]);
   #assert rs_has(b[0].c[FT_HERO],RS_PRONE);
@@ -111,7 +111,7 @@
 
 #test "hotbar ranged spell hits use condition criticals and Petrified resistance at five feet" {
   for mode: 0..<4 {
-    b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],101+mode);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],101+mode);
     b[0].c[FT_HERO] = rs_wizard("You",0,3); rs_place(b[..],FT_HERO,10,10);
     rs_place(b[..],FT_FOE,10,11); b[0].c[FT_FOE].ac = 1;
     conditions := [4] int.[RS_PARALYZED,RS_UNCONSCIOUS,RS_STUNNED,RS_PETRIFIED];
@@ -120,14 +120,14 @@
     #assert fb_seat_use(b[..],s[..],fb_spell(SP_FIRE_BOLT,0,FB_FOE),FT_FOE,10,11,FT_ALLY);
     #assert b[0].c[FT_FOE].hp == 400-damage[mode] && s[0].turn.action && !s[0].turn.slot_spent;
     e := rs_recent_at(b[0].book[..],0);
-    #assert e.kind == RS_EV_DAMAGE && e.spell == SP_FIRE_BOLT && e.amount == damage[mode];
+    #assert e.kind == RS_EV_DAMAGE && e.spell.value == SP_FIRE_BOLT && e.amount == damage[mode];
   }
 }
 
 #test "a hotbar Rogue's Cunning Trip respects automatic saves and leaves rescue resources held" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],111);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],111);
   b[0].c[FT_HERO] = rs_rogue("You",0,5); rs_place(b[..],FT_HERO,10,10);
-  b[0].c[FT_HERO].strike_plan = CS_TRIP;
+  b[0].c[FT_HERO].note[RS_NT_STRIKE_PLAN] = CS_TRIP;
   rs_place(b[..],FT_FOE,10,11); b[0].c[FT_FOE].ac = 1;
   b[0].c[FT_FOE].cond = RS_PARALYZED; b[0].c[FT_FOE].score[RS_DEX] = 30;
   b[0].c[FT_FOE].eff = rs_state_value_put(b[0].c[FT_FOE].eff, EF_INSPIRED, 12); b[0].c[FT_FOE].feats = rs_feature_put(b[0].c[FT_FOE].feats, RS_FT_OWN_LUCK, true); b[0].c[FT_FOE].uses[RS_USE_LUCK] = 1;
@@ -138,7 +138,7 @@
 }
 
 #test "hotbar Healing Word recovers a dying ally without erasing an independent Unconscious source" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
   b[0].dice[0].fixed = true;
   b[0].c[FT_ALLY].hp = 0; b[0].c[FT_ALLY].temp = 7;
   b[0].c[FT_ALLY].cond = RS_PRONE|RS_UNCONSCIOUS;
@@ -150,14 +150,14 @@
   #assert rs_has(b[0].c[FT_ALLY],RS_UNCONSCIOUS) && !rs_can_act(b[0].c[FT_ALLY]);
   #assert b[0].c[FT_HERO].slots[1] == slots-1 && s[0].turn.bonus && s[0].turn.slot_spent;
   event := rs_recent_at(b[0].book[..],0); text := cast(string)event.text[0..<event.text_n];
-  #assert event.kind == RS_EV_HEAL && event.to == FT_ALLY && event.amount == b[0].c[FT_ALLY].hp;
+  #assert event.kind == RS_EV_HEAL && event.to.value == FT_ALLY && event.amount == b[0].c[FT_ALLY].hp;
   #assert text.count >= 11 && text[text.count-11..<text.count] == " Hit Points";
   rs_drop_effect(b[..],FT_ALLY,0);
   #assert !rs_has(b[0].c[FT_ALLY],RS_UNCONSCIOUS) && rs_has(b[0].c[FT_ALLY],RS_PRONE) && rs_can_act(b[0].c[FT_ALLY]);
 }
 
 #test "a real-time seat activates Halt at its next beat but retains an unspent Reaction" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
   #assert rs_effect_add(b[0].c[FT_HERO..<FT_HERO+1],RsEffect.{kind=EF_HALT_PENDING,by=FT_FOE,spell=SP_COMMAND,save=-1});
   attack := fb_feature(FB_ATTACK,"ATTACK","attack"); reaction := fb_art_spell(SP_FEATHER_FALL,FB_SELF,"feather-fall");
   #assert fb_seat_can(b[..],s[..],attack);
@@ -174,7 +174,7 @@
 }
 
 #test "a hotbar weapon attack gets one Bless die and retires all next-roll weaknesses on its missed roll" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],71);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],71);
   b[0].dice[0].fixed = true;
   b[0].c[FT_FOE].ac = 100;
   rs_place(b[..],FT_FOE,10,11);
@@ -194,7 +194,7 @@
   }
   #assert blessings == 3;
   event := rs_recent_at(b[0].book[..],0);
-  #assert event.kind == RS_EV_MISS && event.by == FT_HERO && event.to == FT_FOE;
+  #assert event.kind == RS_EV_MISS && event.by.value == FT_HERO && event.to.value == FT_FOE;
 }
 
 #test "Everglade extra-list and house grants are exactly its declared spell bar and stay off ordinary Druids" {
@@ -222,7 +222,7 @@ ft_field :: (b: [] RsBattle, s: [] FbSeat, seed: int) {
   rs_reset(b);
   b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = 40; b[0].h = 40;
   #assert rs_set_world(b,RS_ACTION_WORLD);   // Everglade's bar: action beats, no caster in its own blast
-  rs_room(b); for k: 0..<b[0].zone.count { b[0].zone[k].on = false; }
+  for k: 0..<b[0].zone.count { b[0].zone[k].on = false; }
   b[0].dice[0].state = cast(u64) seed * 7919 + 3;
   _ := rs_add(b, fb_everglade_hero("You", 0), 10, 10);
   _ = rs_add(b, fb_folk("Guard", 1, 16, 400, [6] int.[13, 12, 12, 10, 11, 10]), 12, 10);
@@ -248,7 +248,7 @@ ft_try :: (b: [] RsBattle, s: [] FbSeat, k: int) -> FtSaw {
   for e: 0..<rs_min(b[0].book[0].seq - seq, RS_EVENTS) {
     ev := rs_recent(b[0].book[0], e);
     if ev.kind == RS_EV_CAST { saw.casted = true; }
-    if ev.to != FT_FOE && ev.to != FT_NEXT && ev.to != FT_ALLY && ev.to != FT_HERO { continue; }
+    if ev.to.value != FT_FOE && ev.to.value != FT_NEXT && ev.to.value != FT_ALLY && ev.to.value != FT_HERO { continue; }
     if ev.kind == RS_EV_ATTACK || ev.kind == RS_EV_MISS { saw.hits += 1; }
     if ev.kind == RS_EV_SAVE { saw.saves += 1; }
     if ev.kind == RS_EV_DAMAGE { saw.damage += ev.amount; }
@@ -260,7 +260,7 @@ ft_try :: (b: [] RsBattle, s: [] FbSeat, k: int) -> FtSaw {
 }
 // Every slot k in from..<to: used, its slot spent at its level, and the engine's rolls on who it reaches.
 ft_slots :: (from: int, to: int) -> int {
-  b: [1] RsBattle; s: [1] FbSeat;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat;
   bar: [FB_EG_SLOTS] FbAb; _ := fb_everglade(bar[..]);
   bad := 0;
   for k: from..<to {
@@ -314,7 +314,7 @@ ft_slots :: (from: int, to: int) -> int {
 #test "the storm and the polar spells, resolved by the engine" #steps 2000000000 { #assert ft_slots(40, 49) == 0; }
 
 #test "Mega Thunderbolt: Dexterity save, 100d10 Lightning, half on a success" #steps 2000000000 {
-  b: [1] RsBattle; s: [1] FbSeat;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat;
   lo := 100000; hi_ := 0;
   for t: 0..<6 {
     ft_field(b[..], s[..], 40 + t);
@@ -329,7 +329,7 @@ ft_slots :: (from: int, to: int) -> int {
 }
 
 #test "Meteor Swarm (Everglade's): both damage types, and a creature is hit once" #steps 2000000000 {
-  b: [1] RsBattle; s: [1] FbSeat;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat;
   ft_field(b[..], s[..], 5);
   seq := b[0].book[0].seq;
   saw := ft_try(b[..], s[..], 0);
@@ -337,8 +337,8 @@ ft_slots :: (from: int, to: int) -> int {
   fire := 0; blunt := 0;
   for e: 0..<rs_min(b[0].book[0].seq - seq, RS_EVENTS) {
     ev := rs_recent(b[0].book[0], e);
-    if ev.kind == RS_EV_DAMAGE && ev.to == FT_FOE && ev.damage == RS_FIRE { fire += 1; }
-    if ev.kind == RS_EV_DAMAGE && ev.to == FT_FOE && ev.damage == RS_BLUDGEONING { blunt += 1; }
+    if ev.kind == RS_EV_DAMAGE && ev.to.value == FT_FOE && ev.damage == RS_FIRE { fire += 1; }
+    if ev.kind == RS_EV_DAMAGE && ev.to.value == FT_FOE && ev.damage == RS_BLUDGEONING { blunt += 1; }
   }
   #assert fire == 1 && blunt == 1;
   // the foe beside it is in the same sphere
@@ -346,7 +346,7 @@ ft_slots :: (from: int, to: int) -> int {
 }
 
 #test "the seat: one action a turn, the next on the next beat; a spent slot back 9 seconds on" #steps 2000000000 {
-  b: [1] RsBattle; s: [1] FbSeat;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat;
   ft_field(b[..], s[..], 9);
   bar: [FB_EG_SLOTS] FbAb; _ := fb_everglade(bar[..]);
   #assert fb_seat_can(b[..], s[..], bar[43]);
@@ -369,7 +369,7 @@ ft_slots :: (from: int, to: int) -> int {
 }
 
 #test "concentration: a second spell held ends the first; a lasting area runs each round" #steps 2000000000 {
-  b: [1] RsBattle; s: [1] FbSeat; z: [FB_ZONES] FbZone;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; z: [FB_ZONES] FbZone;
   ft_field(b[..], s[..], 13);
   bar: [FB_EG_SLOTS] FbAb; _ := fb_everglade(bar[..]);
   #assert ft_try(b[..], s[..], 20).ok && b[0].c[FT_HERO].conc == SP_MOONBEAM;
@@ -384,7 +384,7 @@ ft_slots :: (from: int, to: int) -> int {
 }
 
 #test "Wild Resurgence: a use of Wild Shape, Temporary Hit Points of the Druid's level" #steps 2000000000 {
-  b: [1] RsBattle; s: [1] FbSeat;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat;
   ft_field(b[..], s[..], 17);
   saw := ft_try(b[..], s[..], 42);
   #assert saw.ok && b[0].c[FT_HERO].temp == 9 && b[0].c[FT_HERO].uses[RS_USE_WILD] == 2;
@@ -429,10 +429,10 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
     h := fb_cl_hero(c, "You", 0, 1);
     #assert h.level == 1 && h.klass == FB_CL_ENGINE[c] && h.hp_max == FT_CL_HP[c] && h.ac == FT_CL_AC[c];
     #assert fb_cl_of_kind(FB_CL_KIND[c]) == c;
-    b: [1] RsBattle; s: [1] FbSeat;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat;
     b[0].n = 0; b[0].clock = 0; b[0].who = -1; b[0].w = 40; b[0].h = 40;
     #assert rs_set_timing(b[..],RS_ACTION_TIMING);
-    rs_room(b[..]); for k: 0..<b[0].zone.count { b[0].zone[k].on = false; }
+    for k: 0..<b[0].zone.count { b[0].zone[k].on = false; }
     b[0].dice[0].state = cast(u64) (c + 5) * 7919 + 3;
     _ := rs_add(b[..], h, 10, 10);
     _ = rs_add(b[..], fb_folk("Guard", 1, 16, 400, [6] int.[13, 12, 12, 10, 11, 10]), 11, 10);
@@ -454,7 +454,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
 
 
 #test "each Moonbeam pulse shares damage across its simultaneous saves and renews next round" {
-  b: [1] RsBattle; s: [1] FbSeat; z: [FB_ZONES] FbZone;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; z: [FB_ZONES] FbZone;
   ft_field(b[..],s[..],13); b[0].dice[0].fixed=true;
   bar: [FB_EG_SLOTS] FbAb; _ := fb_everglade(bar[..]);
   #assert ft_try(b[..],s[..],20).ok;
@@ -467,7 +467,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
 }
 
 #test "saved-seat Dash uses current modified Speed and preserves another actors turn" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
   b[0].c[FT_HERO].speed=37; _ := rs_aura_set(b[0].c[FT_HERO..<FT_HERO+1], EF_SLOWED, rs_secs(20)); _ := rs_aura_set(b[0].c[FT_HERO..<FT_HERO+1], EF_HALVED, rs_secs(20));
   s[0].turn.move_left=1; s[0].turn.move_feet=3;
   b[0].who=FT_FOE; b[0].turn.action=true; b[0].turn.move_left=7; b[0].turn.move_feet=2;
@@ -478,7 +478,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
 }
 
 #test "saved-seat Dash credits Exhaustion-adjusted Speed through the shared world adapter" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
   b[0].c[FT_HERO].speed=30;
   #assert rs_gain_exhaustion(b[..],FT_HERO) && rs_gain_exhaustion(b[..],FT_HERO);
   before := s[0].turn.move_left*5+s[0].turn.move_feet;
@@ -487,7 +487,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
 }
 
 #test "saved seats retain movement debt across Speed loss without changing another actors turn" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
   #assert fb_seat_use(b[..],s[..],fb_feature(FB_DASH,"DASH","dash"),-1,0,0,FT_HERO);
   s[0].turn.move_left=1; s[0].turn.move_feet=0; // 35 of the 40 granted feet spent
   b[0].who=FT_FOE; b[0].turn.move_left=7; b[0].turn.move_feet=2;
@@ -501,7 +501,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
 }
 
 #test "a Stunned saved seat can stand and walk while its hotbar actions remain unavailable" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
   #assert rs_put_effect(b[..],FT_HERO,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=FT_FOE,spell=-1,until=60,save=-1});
   b[0].c[FT_HERO].cond|=RS_PRONE;
   b[0].who=FT_FOE; b[0].turn.move_left=7; b[0].turn.move_feet=2;
@@ -515,7 +515,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
 }
 
 #test "saved-seat first aid stabilizes through Medicine and spends only that seats Action" {
-  b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
   b[0].c[FT_HERO].score[RS_WIS]=10;
   b[0].c[FT_FOE].hp=0; b[0].c[FT_FOE].cond=RS_UNCONSCIOUS|RS_PRONE;
   b[0].dice[0].fixed=true; rolls:=b[0].dice[0].rolled;
@@ -533,7 +533,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
 
 #test "saved-seat Help assists another actor while preserving the running actors entire turn" {
   for kind: 0..<2 {
-    b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); s: [1] FbSeat; ft_field(b[..],s[..],91);
     b[0].c[FT_HERO].checks.skills|=1<<SK_ATHLETICS;
     b[0].who=FT_FOE; b[0].turn.action=true; b[0].turn.bonus=true; b[0].turn.move_left=7; b[0].turn.move_feet=2;
     target:=ifx kind==0 then FT_ALLY else FT_FOE;
@@ -555,7 +555,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
 }
 
 #test "a saved seat retains Disengage without changing another actor's turn or Reaction" {
-  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=12;
   _:=rs_add(b[..],rs_rogue("Rogue",0,2),2,2);
   _=rs_add(b[..],rs_guard("Other",1),4,2); rs_start_turn(b[..],1);
   b[0].turn.action=true; b[0].c[0].reacted=true;
@@ -571,7 +571,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
 
 #test "empty-target casting interrupts Long Rest before paying a Pact slot while cantrips preserve it" {
   for leveled:0..<2 {
-    b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
     c[0]=rs_warlock("Watcher",0,3,SP_ELDRITCH_BLAST); c[0].slots[2]=1;
     #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
     rs_tick(b[..],3600); b[0].who=0;
@@ -581,7 +581,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
   }
 }
 #test "bar Reaction interruption recovers before payment and preserves its borrowed turn owner" {
-  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
   c[0]=rs_warlock("Watcher",0,3,SP_ELDRITCH_BLAST); c[1]=rs_fighter("Other",1,3);
   #assert rs_grant_spell(c[0..<1],SP_FEATHER_FALL);
   c[0].slots[2]=1; c[0].component_pouch=true;
@@ -593,11 +593,11 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
 
 #test "empty-target free feature spells preserve slot zero and pay the source feature instead" {
   for vigor:0..<2 {
-    b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
     c[0]=rs_warlock("Watcher",0,3,SP_ELDRITCH_BLAST);
     sp:=ifx vigor==1 then SP_FALSE_LIFE else SP_HEX;
     #assert rs_grant_spell(c[0..<1],sp);
-    c[0].feats = rs_feature_put(c[0].feats, RS_FT_FIENDISH_VIGOR, vigor==1); c[0].free_spell=sp; c[0].uses[RS_USE_FREE]=1;
+    c[0].feats = rs_feature_put(c[0].feats, RS_FT_FIENDISH_VIGOR, vigor==1); c[0].rank[RS_RK_FREE_SPELL]=sp; c[0].uses[RS_USE_FREE]=1;
     #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
     rs_tick(b[..],3600); b[0].who=0;
     #assert fb_cast_at_nothing(b[..],0,sp,0);

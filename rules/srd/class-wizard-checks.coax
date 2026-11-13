@@ -31,7 +31,7 @@ cw_evocations :: (c: RsCreature) -> int {
   for level: [2] int.[1, 5] {
     c := rs_wizard("W", 0, level); #assert rs_rest_slot_budget(c, true) == (level + 1) / 2 && rs_rest_slot_budget(c, false) == 0;
   }
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; _ := rs_add(b[..], rs_wizard("Wiz", 0, 5), 1, 1);   // a spellbook Ritual, unprepared (ritual-cast.coax)
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; _ := rs_add(b[..], rs_wizard("Wiz", 0, 5), 1, 1);   // a spellbook Ritual, unprepared (ritual-cast.coax)
   #assert rs_spellbook_add(b[0].c[0..<1], RS_EXEC_SOURCE[SP_WATER_BREATHING]) && !rs_spell_ready(b[0].c[0], SP_WATER_BREATHING);
   rs_start_turn(b[..], 0); #assert rs_ritual_begin(b[..], 0, SP_WATER_BREATHING) && b[0].c[0].slots[3] == 2;
 }
@@ -51,7 +51,7 @@ cw_evocations :: (c: RsCreature) -> int {
 
 #test "Potent Cantrip p.82: from level 3, a damaging cantrip that misses deals half its damage" {
   for level: [2] int.[2, 3] {
-    b: [1] RsBattle; cf_field(b[..], rs_wizard("Wiz", 0, level), 40);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_wizard("Wiz", 0, level), 40);
     #assert rs_cast(b[..], 0, SP_FIRE_BOLT, 0, 0, 0, 1) && b[0].c[1].hp == 200 - (ifx level == 3 then 5 / 2 else 0);
   }
 }
@@ -68,7 +68,7 @@ cw_evocations :: (c: RsCreature) -> int {
 
 #test "Sculpt Spells p.82: from level 6, an Evocation spares up to 1 + its level allies, who take no damage" {
   for level: [2] int.[5, 6] {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].fixed = true;
     _ := rs_add(b[..], rs_wizard("Wiz", 0, level), 1, 1);
     foe := rs_add(b[..], rs_fighter("Foe", 1, 3), 8, 4); ally := rs_add(b[..], rs_fighter("Ally", 0, 3), 8, 5);
     b[0].c[foe].hp = 100; b[0].c[ally].hp = 100; b[0].c[foe].hp_max = 100; b[0].c[ally].hp_max = 100;

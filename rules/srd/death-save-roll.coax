@@ -3,7 +3,7 @@
 #authority;
 
 #test "an admitted battle death save is abilityless and preserves an unneeded rescue" {
-  b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
   c[0].hp_max = 12; c[0].cond = RS_UNCONSCIOUS; c[0].eff = rs_state_value_put(c[0].eff, EF_INSPIRED, 6);
   b[0].dice[0].fixed = true;
   #assert rs_battle_death_save(b[..],0) == RS_DS_OK;
@@ -12,7 +12,7 @@
 }
 
 #test "the final failed death save records its actual battle time" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].clock=27;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].clock=27;
   c[0].hp_max=12; c[0].death_fail=2; c[0].exhaustion=1;
   b[0].dice[0].fixed=true;
   #assert rs_battle_death_save(b[..],0)==RS_DS_DEAD;

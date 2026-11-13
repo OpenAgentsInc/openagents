@@ -58,7 +58,7 @@ rs_measure_feet :: (measure: int, dx: int, dy: int) -> int #effects(all) {
   } }
 }
 #test "diagonal and straight reach are equal under the straight measure: a 120-foot bolt, a 30-foot aura, a 20-foot sphere" {
-  b: [1] RsBattle; b[0].w = 60; b[0].h = 60;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 60; b[0].h = 60;
   #assert rs_set_world(b[..], RS_EVERGLADE_WORLD) && b[0].measure == RS_MEASURE_STRAIGHT;
   i := rs_add(b[..], rs_wizard("Mordra", 0, 5), 10, 10);
   row := rs_add(b[..], rs_guard("Row", 1), 34, 10);        // 24 squares along the row: 120 feet
@@ -74,7 +74,7 @@ rs_measure_feet :: (measure: int, dx: int, dy: int) -> int #effects(all) {
   z := rs_area(b[..], i, rs_spell(SP_FIREBALL), 40, 40);
   #assert z.measure == RS_MEASURE_STRAIGHT && rs_inside(z, 44, 40) && rs_inside(z, 40, 36) && rs_inside(z, 43, 43) && !rs_inside(z, 44, 43) && !rs_inside(z, 44, 44) && !rs_inside(z, 45, 40);
   // the same battle strict: the grid's count, where the corner is in
-  g: [1] RsBattle; g[0].w = 60; g[0].h = 60;
+  g: [1] RsBattle; g_room: [1] RsRoom; rs_have(g[..], g_room[..]); g[0].w = 60; g[0].h = 60;
   j := rs_add(g[..], rs_wizard("Mordra", 0, 5), 10, 10); k := rs_add(g[..], rs_guard("Far", 1), 28, 28);
   #assert g[0].measure == RS_MEASURE_GRID && rs_feet_to(g[..], j, k) == 90;
   zg := rs_area(g[..], j, rs_spell(SP_FIREBALL), 40, 40);

@@ -5,7 +5,7 @@ RS_REST_SHORT :: 1; RS_REST_SLEEP :: 2; RS_REST_WATCH :: 3;
 RS_REST_END :: 4; RS_REST_DIE :: 5;
 
 #test "observed motion accounts exertion until settled and never manufactures sleep or an early interruption" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Watcher",0,3);
   #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
   rs_tick(b[..],3600);
@@ -20,7 +20,7 @@ RS_REST_END :: 4; RS_REST_DIE :: 5;
   #assert c[0].long_rest.phase==2 && c[0].long_rest.interruptions==1;
 }
 #test "rest controls require scheduled settled ownership and preserve history on explicit ending" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Resting",0,3);
   #assert !rs_rest_control(b[..],0,RS_REST_SLEEP,true);
   #assert rs_rest_schedule_enable(b[..]);
@@ -38,7 +38,7 @@ RS_REST_END :: 4; RS_REST_DIE :: 5;
   #assert !rs_rest_control(b[..],0,RS_REST_WATCH,true);
 }
 #test "Short Rest controls expose sequential chosen Hit Dice and resume a paused Long Rest explicitly" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
   c[0]=rs_fighter("Patient",0,3); c[0].hp=1;
   #assert rs_rest_schedule_enable(b[..]);
   #assert rs_rest_control(b[..],0,RS_REST_SHORT,true);
@@ -53,7 +53,7 @@ RS_REST_END :: 4; RS_REST_DIE :: 5;
   #assert rs_rest_control(b[..],0,RS_REST_SLEEP,true) && c[0].long_rest.phase==1 && c[0].long_rest.interruptions==1;
 }
 #test "control and motion refusal preserve rests for invalid actors requests clocks and borrowed frames" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Watcher",0,3);
   #assert rs_rest_schedule_enable(b[..]) && rs_rest_control(b[..],0,RS_REST_WATCH,true);
   for actor:[2]int.[-1,1] {
@@ -100,7 +100,7 @@ rs_rest_control :: (b:[]RsBattle,i:int,request:int,settled:bool)->bool #effects(
 }
 
 #test "observed motion closes Short Rest even without a Long Rest and idle observations preserve choices" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_fighter("Patient",0,3);
   for phase:1..<3 {
     c[0].rest.phase=phase;
@@ -111,7 +111,7 @@ rs_rest_control :: (b:[]RsBattle,i:int,request:int,settled:bool)->bool #effects(
   }
 }
 #test "ending active sleep closes Short Rest choices without losing dice and refuses pending earned boundaries" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Sleeper",0,3);
   #assert rs_rest_schedule_enable(b[..]) && rs_rest_control(b[..],0,RS_REST_SLEEP,true);
   #assert rs_short_rest_begin(b[..],0); rs_tick(b[..],3600);

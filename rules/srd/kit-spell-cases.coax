@@ -29,7 +29,7 @@ ks_dealt :: (b: [] RsBattle, seq: int, sp: int, kind: int) -> int {
   total := 0;
   for k: 0..<rs_min(b[0].book[0].seq - seq, RS_EVENTS) {
     e := rs_recent(b[0].book[0], k);
-    if e.kind == RS_EV_DAMAGE && e.spell == sp && e.damage == kind { total += e.amount; }
+    if e.kind == RS_EV_DAMAGE && e.spell.value == sp && e.damage == kind { total += e.amount; }
   }
   return total;
 }

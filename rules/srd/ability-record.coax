@@ -4,9 +4,9 @@
 // data, what of the turn it takes (an Action, a Bonus Action, a Reaction), what it costs and from
 // which pool, how it is aimed, its range and area, whether it can harm, and the Aura it leaves. A
 // spell's row is read from its spell record (spells.coax, more.coax); a feature's row is in the
-// table below. Its effect program is the spell record's steps, or the feature's own procedure in
-// the rules (class-features.coax); the record is what a world, a hotbar and a profile read, so
-// none of them carries a second table of costs or timings.
+// table below. Its effect program is the spell record's steps, or the feature's row of steps
+// (battle-features.coax rs_feature, run by rs_feature_use); the record is what a world, a hotbar
+// and a profile read, so none of them carries a second table of costs or timings.
 //
 // An Aura is what lasts on a creature: an RsEffect in its list (engine.coax). Its record says, by
 // kind, where its conditions come from, how it stacks, what ends it besides the clock, and how
@@ -119,6 +119,7 @@ rs_spell_aura :: (s: RsSpell) -> int #effects(all) {
     if st.kind == RS_S_HALT { return EF_HALT_PENDING; }
     if st.kind == RS_S_AID { return EF_AID; }
     if st.kind == RS_S_GLOW { return EF_GLOW; }
+    if st.kind == RS_S_FLAME { return EF_FLAME; }
   }
   return 0;
 }
@@ -188,6 +189,9 @@ RsAura :: struct {
 rs_au_row :: (kind: int, conds: int, cond: int, stack: int, ends: int, secs: int) -> RsAura #effects(all) {
   return RsAura.{kind = kind, conds = conds, cond = cond, stack = stack, ends = ends, secs = secs};
 }
+// An Aura its caster may move to another creature once its bearer has dropped to 0 Hit Points
+// (Hex, Hunter's Mark).
+rs_aura_moves :: (kind: int) -> bool #effects(all) { return kind == EF_HEX || kind == EF_MARK; }
 // The Aura record of an effect kind (EF_*).
 rs_aura_record :: (kind: int) -> RsAura #effects(all) {
   if kind == EF_COND { return rs_au_row(kind, RS_AU_OWN_COND, 0, RS_STACK_EACH, RS_END_SAVE | RS_END_CONC | RS_END_TURN, 0); }
@@ -345,6 +349,7 @@ RS_AB_T_AURA :: [36] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 29, 0, 6
     else if k == RS_S_HALT { want = EF_HALT_PENDING; }
     else if k == RS_S_AID { want = EF_AID; }
     else if k == RS_S_GLOW { want = EF_GLOW; }
+    else if k == RS_S_FLAME { want = EF_FLAME; }
     #assert rs_spell_aura(h) == want;
     h.step_n = 0; #assert rs_spell_aura(h) == 0;
   }
@@ -442,7 +447,7 @@ RS_AU_T_SECS :: [41] int.[0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   #assert RS_EFFECTS == 16;
 }
 #test "an Aura is borne until its tick, and a feature's is granted for its record's seconds" {
-  b: [1] RsBattle; b[0].w = 8; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 8; b[0].h = 8;
   i := rs_add(b[..], rs_paladin("Oriel", 0, 3), 1, 1);
   b[0].clock = rs_secs(5);
   #assert !rs_aura_on(b[0].c[i], EF_SACRED, b[0].clock) && rs_aura_grant(b[..], i, EF_SACRED);

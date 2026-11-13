@@ -59,6 +59,13 @@ E2Cast :: struct {
   rolled: int;                             // your presses whose presentation was taken back (the room refused, or never answered)
 }
 
+// Slot i's name as the bar shows it (#13285): its `ability` content row's, by the slot's content
+// number, in the case the bar draws (xk_shown); the bar's own word until the tables are read.
+e2k_name :: (s: [] E2, i: int, out: [] u8) -> string {
+  k := s[0].casts[..];
+  if !s[0].bag[0].loaded { return k[0].bar[i].name; }
+  return xk_shown(e2i_name(s[0].bag[0].doc[..], EC_ABILITY, k[0].wire[i]), k[0].bar[i].name, out);
+}
 // Your class's bar at its level: once either changes (the druid at 1 until Character Create says).
 e2k_set_class :: (k: [] E2Cast, c: int, level: int) {
   l := xk_level(level);

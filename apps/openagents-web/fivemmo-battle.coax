@@ -31,7 +31,7 @@ MB_ACTOR_FLOATS :: 12;
 MB_SLOT_FLOATS :: 6;
 
 Mb :: struct {
-  battle: [1] RsBattle;
+  battle: [1] RsBattle; room: [1] RsRoom;   // the battle, and its creatures, squares and areas beside it (rs_have)
   seed: u64;
   round: int; wave: int; kills: int;
   over: bool; over_t: f32;
@@ -44,7 +44,7 @@ Mb :: struct {
   seen: int;
   ev: [MB_EVENTS * MB_EV_FLOATS] f32; ev_n: int;   // what the battle told since the face last took it
 }
-bt :: (s: [] Mb) -> [] RsBattle { return s[0].battle[..]; }
+bt :: (s: [] Mb) -> [] RsBattle { rs_have(s[0].battle[..], s[0].room[..]); return s[0].battle[..]; }
 dice :: (s: [] Mb) -> [] RsDice { return s[0].battle[0].dice[..]; }
 put :: (buf: [] u8, at: int, text: string) -> int { return rs_put(buf, at, text); }
 put_int :: (buf: [] u8, at: int, v: int) -> int { return rs_put_int(buf, at, v); }
@@ -69,7 +69,8 @@ hero_for :: (klass: int, name: string, team: int, level: int) -> RsCreature {
 // ---- a battle: you (creature 0) and three casters on the south rows, six Skeletons on the north
 
 mb_new :: (s: [] Mb, pick: int, seed: int) #export_c #effects(all) {
-  rs_reset(s[0].battle[..]);   // in place: a battle is 300 KB (battle.coax RS_MAX), too big for the stack
+  rs_have(s[0].battle[..], s[0].room[..]);
+  rs_reset(s[0].battle[..]);   // in place: a battle's room is 300 KB (battle.coax RsRoom), too big for the stack
   s[0].battle[0].w = COLS; s[0].battle[0].h = ROWS;
   s[0].pick = rs_max(0, rs_min(11, pick));
   s[0].seed = cast(u64) seed;
@@ -194,7 +195,7 @@ pact_turn :: (s: [] Mb, i: int) {
   foe := nearest_foe(s, i);
   if foe < 0 { return; }
   // Hex: moved on, or cast
-  if b[0].c[i].conc == SP_HEX && b[0].c[i].hex_free { ok := rs_hex_move(b, i, foe); }
+  if b[0].c[i].conc == SP_HEX && b[0].c[i].note[RS_NT_CURSE_FREE] != 0 { ok := rs_hex_move(b, i, foe); }
   // a barbarian within 60 feet: Rage does nothing for a Wisdom save, so Hold Person it
   brute := -1;
   for j: 0..<b[0].n {
@@ -316,7 +317,7 @@ monk_turn :: (s: [] Mb, i: int) {
   if j < 0 { return; }
   // from level 5, a Stunning Strike on its hits while it has Focus to spare; from 6, Wholeness of
   // Body when badly hurt
-  b[0].c[i].stun_ready = b[0].c[i].uses[RS_USE_FOCUS] > 2;
+  b[0].c[i].note[RS_NT_STUN] = ifx b[0].c[i].uses[RS_USE_FOCUS] > 2 then 1 else 0;
   ok := rs_attack(b, i, j, false, -1);
   if b[0].c[i].hp * 5 < b[0].c[i].hp_max * 2 { ok = rs_wholeness(b, i); }
   brute := false;
@@ -481,7 +482,7 @@ ranger_turn :: (s: [] Mb, i: int) {
   if rs_has(b[0].c[i], RS_RESTRAINED) { ok := rs_escape(b, i); }
   foe := nearest_foe(s, i);
   if foe < 0 { return; }
-  if b[0].c[i].conc == SP_HUNTERS_MARK && b[0].c[i].hex_free { ok := rs_hex_move(b, i, foe); }
+  if b[0].c[i].conc == SP_HUNTERS_MARK && b[0].c[i].note[RS_NT_CURSE_FREE] != 0 { ok := rs_hex_move(b, i, foe); }
   if b[0].c[i].conc < 0 && rs_feet_to(b, i, foe) <= 90 {
     if !rs_cast(b, i, SP_HUNTERS_MARK, 0, 0, 0, foe) {
       sl := free_slot(s, i, 1);
@@ -507,7 +508,7 @@ rogue_turn :: (s: [] Mb, i: int) {
   if foe < 0 { return; }
   // Cunning Strike: Trip a standing foe, else Withdraw from one at hand
   j := foe_at_hand(s, i, -1);
-  if j >= 0 { b[0].c[i].strike_plan = ifx rs_has(b[0].c[j], RS_PRONE) then CS_WITHDRAW else CS_TRIP; ok := rs_attack(b, i, j, false, -1); walk(s, i, j, 30, 70); return; }
+  if j >= 0 { b[0].c[i].note[RS_NT_STRIKE_PLAN] = ifx rs_has(b[0].c[j], RS_PRONE) then CS_WITHDRAW else CS_TRIP; ok := rs_attack(b, i, j, false, -1); walk(s, i, j, 30, 70); return; }
   d := rs_feet_to(b, i, foe);
   if d >= 15 && d <= 80 { ok := rs_steady_aim(b, i); }
   if !b[0].turn.anchored && !rs_has(b[0].c[i], RS_RESTRAINED) {
@@ -515,9 +516,9 @@ rogue_turn :: (s: [] Mb, i: int) {
     if rs_feet_to(b, i, foe) > 80 { ok := rs_cunning_dash(b, i); walk(s, i, foe, 30, 70); }
   }
   j = foe_at_hand(s, i, -1);
-  if j >= 0 { b[0].c[i].strike_plan = CS_TRIP; ok := rs_attack(b, i, j, false, -1); return; }
+  if j >= 0 { b[0].c[i].note[RS_NT_STRIKE_PLAN] = CS_TRIP; ok := rs_attack(b, i, j, false, -1); return; }
   foe = nearest_foe(s, i);
-  if foe >= 0 { b[0].c[i].strike_plan = ifx rs_has(b[0].c[foe], RS_PRONE) then CS_NONE else CS_TRIP; ok := rs_shoot(b, i, foe); }
+  if foe >= 0 { b[0].c[i].note[RS_NT_STRIKE_PLAN] = ifx rs_has(b[0].c[foe], RS_PRONE) then CS_NONE else CS_TRIP; ok := rs_shoot(b, i, foe); }
 }
 // A Cleric's turn: Turn Undead when three of the dead stand within 30 feet, Preserve Life when two
 // friends near it are Bloodied, Healing Word on the worst hurt; the Mace at a foe beside it, else
@@ -865,10 +866,10 @@ take_events :: (s: [] Mb) {
     k -= 1;
     if s[0].ev_n >= MB_EVENTS { break; }
     o := s[0].ev_n * MB_EV_FLOATS;
-    s[0].ev[o] = f32(e.kind); s[0].ev[o + 1] = f32(e.spell); s[0].ev[o + 2] = f32(e.by); s[0].ev[o + 3] = f32(e.to);
+    s[0].ev[o] = f32(e.kind); s[0].ev[o + 1] = f32(e.spell.value); s[0].ev[o + 2] = f32(e.by.value); s[0].ev[o + 3] = f32(e.to.value);
     s[0].ev[o + 4] = f32(e.amount); s[0].ev[o + 5] = f32(e.damage); s[0].ev[o + 6] = f32(e.x); s[0].ev[o + 7] = f32(e.y);
     s[0].ev_n += 1;
-    if e.kind == RS_EV_DEATH && e.to >= PARTY { s[0].kills += 1; }
+    if e.kind == RS_EV_DEATH && e.to.value >= PARTY { s[0].kills += 1; }
   }
 }
 

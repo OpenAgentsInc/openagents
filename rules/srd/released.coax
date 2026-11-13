@@ -38,7 +38,7 @@ rs_release_fall :: (b: [] RsBattle, i: int, r: RsReleased) #effects(all) {
 }
 
 #test "released: a fallen archer's loosed shot still rolls and harms; it is down again after" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..], rs_fighter("Archer", 0, 3), 1, 3);
   t := rs_add(b[..], rs_fighter("Target", 1, 3), 5, 3);
   b[0].c[a].ranged = W_LONGBOW; b[0].c[t].ac = 1; b[0].c[t].hp = 40; b[0].c[t].hp_max = 40;

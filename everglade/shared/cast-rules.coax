@@ -125,7 +125,7 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
 }
 
 #test "Everglade II uses the shared self feature rather than a presentation-only Rage" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],fb_cl_hero(FB_CL_BARBARIAN,"Barbarian",0,1),2,2);
   seats:[1] FbSeat; seats[0].me=0;
   #assert e2r_use(b[..],seats[..],FB_CL_BARBARIAN,xk_slot(FB_CL_BARBARIAN,0));
@@ -133,7 +133,7 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
 }
 
 #test "Everglade II Aid's self control spends one slot and affects only the selected seat" {
-  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8;
   i:=rs_add(b[..],fb_cl_hero(FB_CL_CLERIC,"Cleric",0,3),2,2);
   j:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Bystander",0,3),3,2);
   seats:[1]FbSeat; seats[0].me=i;
@@ -145,7 +145,7 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
 }
 
 #test "Everglade II commits Zone of Truth at the admitted point and rejects a point outside the grid" {
-  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=8;
   i:=rs_add(b[..],fb_cl_hero(FB_CL_PALADIN,"Paladin",0,5),1,1);
   j:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Speaker",0,1),3,1);
   seats:[1]FbSeat; seats[0].me=i;
@@ -164,7 +164,7 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
 
 
 #test "Everglade II accepts the grid origin for a placed Zone of Truth" {
-  b:[1]RsBattle; b[0].w=8; b[0].h=8;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   i:=rs_add(b[..],fb_cl_hero(FB_CL_PALADIN,"Paladin",0,5),1,2);
   seats:[1]FbSeat; seats[0].me=i;
   slot:=xk_wire(FB_CL_PALADIN,fb_spell(SP_ZONE_OF_TRUTH,2,FB_POINT));
@@ -172,7 +172,7 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
   #assert b[0].zone[0].cx==0 && b[0].zone[0].cy==0;
 }
 #test "Everglade II: a Ranger's Attack reaches the guard at the Longbow's range, never only the shortsword's 5 feet (#13130)" {
-  b:[1] RsBattle; b[0].w=40; b[0].h=8; b[0].dice[0].fixed=true;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=40; b[0].h=8; b[0].dice[0].fixed=true;
   _:=rs_add(b[..],fb_cl_hero(FB_CL_RANGER,"Ranger",0,3),1,2);
   g:=rs_add(b[..],rs_guard("Guard",1),25,2);   // 120 feet off
   b[0].c[g].ac=5; hp:=b[0].c[g].hp;
@@ -185,7 +185,7 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
   #assert e2r_use(b[..],seats[..],FB_CL_RANGER,slot) && seats[0].turn.action && b[0].c[g].hp==hp;
 }
 #test "Everglade II harms only the creature the room names, alive and of another team" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),2,2);
   g:=rs_add(b[..],rs_guard("Guard",1),3,2);
   m:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Mate",0,1),2,3);
@@ -197,7 +197,7 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
   b[0].c[g].dead=false; b[0].c[g].hp=1; #assert e2r_foe(b[..],0,g)==g;
 }
 #test "Everglade II's blow at the named guard is the shared rules' attack; at no one it is an empty swing" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=12345;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].state=12345;
   _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),2,2);
   g:=rs_add(b[..],rs_guard("Guard",1),3,2); b[0].c[g].ac=1; b[0].c[g].hp=40; b[0].c[g].hp_max=40;
   seats:[1] FbSeat; seats[0].me=0;
@@ -206,7 +206,7 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
   #assert e2r_use(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,1)) && seats[0].turn.action && b[0].c[g].hp==hp;
 }
 #test "Everglade II's Produce Flame at the named guard takes the flame to hand, then hurls it" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=777;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].state=777;
   _:=rs_add(b[..],fb_cl_hero(FB_CL_DRUID,"Druid",0,1),2,2);
   g:=rs_add(b[..],rs_guard("Guard",1),4,2); b[0].c[g].ac=1; b[0].c[g].hp=40; b[0].c[g].hp_max=40;
   seats:[1] FbSeat; seats[0].me=0;
@@ -215,13 +215,13 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
 }
 
 #test "a dispatch that names no creature is the same as one at none" {
-  b:[1] RsBattle; b[0].w=12; b[0].h=12; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD);
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=12; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD);
   _:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),3,3); rs_start_turn(b[..],0);
   #assert e2r_dispatch(b[..],0,fb_feature(FB_ATTACK,"Attack","attack")) && b[0].turn.action;
   #assert !e2r_dispatch(b[..],0,fb_feature(FB_ATTACK,"Attack","attack"));
 }
 #test "the guard first in the battle is still the one named, and only when named" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=4242;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].state=4242;
   g:=rs_add(b[..],rs_guard("Guard",1),3,2); b[0].c[g].ac=1; b[0].c[g].hp=40; b[0].c[g].hp_max=40;
   me:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),2,2);
   seats:[1] FbSeat; seats[0].me=me; #assert g==0;
@@ -232,14 +232,14 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
   #assert e2r_use_on(b[..],seats[..],FB_CL_FIGHTER,xk_slot(FB_CL_FIGHTER,1),g) && b[0].c[g].hp<40;
 }
 #test "with no Bonus Action left for the flame, Produce Flame at the guard is refused" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=777;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].state=777;
   _:=rs_add(b[..],fb_cl_hero(FB_CL_DRUID,"Druid",0,1),2,2);
   g:=rs_add(b[..],rs_guard("Guard",1),4,2); b[0].c[g].ac=1; b[0].c[g].hp=40; b[0].c[g].hp_max=40;
   seats:[1] FbSeat; seats[0].me=0; seats[0].turn.bonus=true;
   #assert !e2r_use_on(b[..],seats[..],FB_CL_DRUID,xk_slot(FB_CL_DRUID,1),g) && b[0].c[g].hp==40 && !rs_aura_on(b[0].c[0], EF_FLAME, b[0].clock);
 }
 #test "the room's cast at a point and a named guard strikes him; at the point alone it harms no one" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=4242;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].state=4242;
   me:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),2,2);
   g:=rs_add(b[..],rs_guard("Guard",1),3,2); b[0].c[g].ac=1; b[0].c[g].hp=40; b[0].c[g].hp_max=40;
   seats:[1] FbSeat; seats[0].me=me;
@@ -260,7 +260,7 @@ e2rt_slot :: (klass:int,level:int,kind:int,sp:int)->int #effects(all) {
   return -1;
 }
 #test "the room's press opens a new turn's Action, Bonus Action and slot, each on its own; refused, they stay spent" {
-  b:[1] RsBattle; b[0].w=12; b[0].h=12; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD); b[0].dice[0].fixed=true;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=12; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD); b[0].dice[0].fixed=true;
   i:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,1),3,3);
   g:=rs_add(b[..],rs_guard("Guard",1),4,3); b[0].c[g].ac=1; b[0].c[g].hp=400; b[0].c[g].hp_max=400;
   attack:=e2rt_slot(FB_CL_FIGHTER,1,FB_ATTACK,-1); wind:=e2rt_slot(FB_CL_FIGHTER,1,FB_SECOND,-1);
@@ -298,7 +298,7 @@ e2rt_slot :: (klass:int,level:int,kind:int,sp:int)->int #effects(all) {
   #assert !e2r_area(FbAb.{kind=FB_LANDS,sp=SP_FIREBALL});
 }
 #test "a harmful area is cast at the aimed point: every enemy in its shape, no player, whoever the room named" {
-  b:[1] RsBattle; b[0].w=40; b[0].h=40; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD); b[0].dice[0].fixed=true;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=40; b[0].h=40; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD); b[0].dice[0].fixed=true;
   i:=rs_add(b[..],fb_cl_hero(FB_CL_WIZARD,"Wizard",0,5),10,10);
   mate:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Mate",0,5),20,11);   // in the blast, on the caster's team
   w1:=rs_add(b[..],rs_monster(MON_WOLF,"Wolf one",2),20,10); w2:=rs_add(b[..],rs_monster(MON_WOLF,"Wolf two",2),22,12); w3:=rs_add(b[..],rs_monster(MON_WOLF,"Wolf three",2),18,9);
@@ -316,12 +316,12 @@ e2rt_slot :: (klass:int,level:int,kind:int,sp:int)->int #effects(all) {
   // the grid's own corners are points too
   #assert e2r_press(b[..],seats[..],FB_CL_WIZARD,ball,0,0,-1,XP_TURN) && e2r_press(b[..],seats[..],FB_CL_WIZARD,ball,39,39,-1,XP_TURN)==(b[0].c[i].slots[3]<slots-2);
   // an entry not aimed at a point (FB_FOE) is cast at the point all the same: its area is what it is
-  d:[1] RsBattle; d[0].w=40; d[0].h=40; _d:=rs_set_world(d[..],RS_EVERGLADE_WORLD); d[0].dice[0].fixed=true;
+  d:[1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); d[0].w=40; d[0].h=40; _d:=rs_set_world(d[..],RS_EVERGLADE_WORLD); d[0].dice[0].fixed=true;
   dj:=rs_add(d[..],fb_cl_hero(FB_CL_WIZARD,"Wizard",0,5),10,10); dw:=rs_add(d[..],rs_monster(MON_WOLF,"Wolf",2),20,10);
   rs_start_turn(d[..],dj);
   #assert e2r_dispatch_at(d[..],dj,fb_spell(SP_FIREBALL,3,FB_FOE),-1,some(E2rPoint.{x=21,y=10})) && d[0].c[dw].hp<hp;
   // with no point aimed (a check's e2r_use_on), it is cast at the named creature's square as before
-  c:[1] RsBattle; c[0].w=40; c[0].h=40; _c:=rs_set_world(c[..],RS_EVERGLADE_WORLD); c[0].dice[0].fixed=true;
+  c:[1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); c[0].w=40; c[0].h=40; _c:=rs_set_world(c[..],RS_EVERGLADE_WORLD); c[0].dice[0].fixed=true;
   j:=rs_add(c[..],fb_cl_hero(FB_CL_WIZARD,"Wizard",0,5),10,10);
   x1:=rs_add(c[..],rs_monster(MON_WOLF,"Wolf one",2),20,10); x2:=rs_add(c[..],rs_monster(MON_WOLF,"Wolf two",2),21,11);
   cs:[1] FbSeat; cs[0].me=j;
@@ -330,7 +330,7 @@ e2rt_slot :: (klass:int,level:int,kind:int,sp:int)->int #effects(all) {
 // #13284's "Done when": a level 5 party clears a wolf pack with area spells, runs out of slots, rests
 // and continues. The Warlock's two pact slots are Fireballs; a Short Rest brings them back (p. 71).
 #test "a level 5 party clears a wolf pack with area spells, runs out of slots, rests and goes on" #steps 2000000000 {
-  b:[1] RsBattle; b[0].w=60; b[0].h=40; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD); b[0].dice[0].state=13284;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=60; b[0].h=40; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD); b[0].dice[0].state=13284;
   lock:=rs_add(b[..],fb_cl_hero(FB_CL_WARLOCK,"Warlock",0,5),10,10);
   wiz:=rs_add(b[..],fb_cl_hero(FB_CL_WIZARD,"Wizard",0,5),10,12);
   tank:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fighter",0,5),19,10);   // among the wolves, in every blast
@@ -363,7 +363,7 @@ e2rt_slot :: (klass:int,level:int,kind:int,sp:int)->int #effects(all) {
   #assert b[0].c[lock].slots[3]==0;
 }
 #test "Revivify takes the creature the room names: a dead one within reach, at any place in the battle but none past it" {
-  b:[1] RsBattle; b[0].w=12; b[0].h=12; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD);
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=12; _w:=rs_set_world(b[..],RS_EVERGLADE_WORLD);
   ally:=rs_add(b[..],fb_cl_hero(FB_CL_FIGHTER,"Fallen",0,5),4,3);            // creature 0: the first is a creature too
   i:=rs_add(b[..],fb_cl_hero(FB_CL_CLERIC,"Cleric",0,5),3,3); fb_cleric_revivify_preset(b[0].c[i..<i+1],false);
   rs_begin(b[..]);

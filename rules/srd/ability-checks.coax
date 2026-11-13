@@ -49,7 +49,7 @@ rs_passive_perception :: (b: [] RsBattle, j: int, q: RsAbilityRequest) -> RsAbil
 }
 
 #test "ability checks and Passive Perception accept untrained requests without saving-throw bonuses" {
-  b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
   c[0].level = 1; c[0].score = [6] int.[10,10,10,10,10,10];
   b[0].dice[0].fixed = true;
   r := rs_ability_check(b[..],0,RsAbilityRequest.{ability=RS_STR,dc=10});
@@ -59,7 +59,7 @@ rs_passive_perception :: (b: [] RsBattle, j: int, q: RsAbilityRequest) -> RsAbil
 }
 
 #test "Guidance rolls exactly one d4 on the latest selected skill" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].dice[0].fixed=true;
   c[0].level=1; c[0].score=[6]int.[10,10,10,10,10,10];
   c[0].eff[0]=RsEffect.{kind=EF_GUIDANCE,cond=SK_ATHLETICS,dc=2};
   c[0].eff[1]=RsEffect.{kind=EF_GUIDANCE,cond=SK_PERCEPTION,dc=1};

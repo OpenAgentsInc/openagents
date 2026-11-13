@@ -11,7 +11,7 @@
 #load "class-features.coax";
 
 #test "Rage p.28: a Bonus Action and a use; B/P/S Resistance, +2 Rage Damage on a Strength hit, Advantage on Strength saves, no Concentration" {
-  b: [1] RsBattle; cf_field(b[..], rs_barbarian("Thorn", 0, 1), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_barbarian("Thorn", 0, 1), 10);
   #assert b[0].c[0].uses[RS_USE_RAGE] == 2 && rs_barbarian("T", 0, 3).uses_max[RS_USE_RAGE] == 3 && rs_barbarian("T", 0, 6).uses_max[RS_USE_RAGE] == 4;
   b[0].c[0].conc = SP_ENTANGLE;   // were it holding a spell, Rage ends it
   #assert rs_rage(b[..], 0) && b[0].turn.bonus && !b[0].turn.action && b[0].c[0].uses[RS_USE_RAGE] == 1 && b[0].c[0].conc < 0;
@@ -26,7 +26,7 @@
 }
 
 #test "Rage p.28: it lasts while each turn has an attack, and ends after a turn without one" {
-  b: [1] RsBattle; cf_field(b[..], rs_barbarian("Thorn", 0, 1), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_barbarian("Thorn", 0, 1), 10);
   #assert rs_rage(b[..], 0);
   rs_end_turn(b[..], 0); rs_start_turn(b[..], 0);
   #assert rs_attack(b[..], 0, 1, false, -1);
@@ -41,27 +41,27 @@
 
 #test "Weapon Mastery p.29: two kinds at level 1, three at 4; a Greataxe hit Cleaves into a second foe beside it" {
   #assert rs_barbarian("T", 0, 3).mastery_n == 2 && rs_barbarian("T", 0, 4).mastery_n == 3;
-  b: [1] RsBattle; cf_field(b[..], rs_barbarian("Thorn", 0, 1), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_barbarian("Thorn", 0, 1), 10);
   k := rs_add(b[..], rs_sorcerer("Other", 1, 3), 2, 2); b[0].c[k].hp = 200; b[0].c[k].ac = 10; b[0].c[k].feats = rs_feature_put(b[0].c[k].feats, RS_FT_SHIELD_SPELL, false);
   #assert rs_attack(b[..], 0, 1, false, k);
   #assert b[0].c[1].hp == 200 - 9 && b[0].c[k].hp == 200 - 6;   // Cleave: no ability modifier
 }
 
 #test "Danger Sense p.29: Advantage on Dexterity saves from level 2, not while Incapacitated" {
-  b: [1] RsBattle; cf_field(b[..], rs_barbarian("Thorn", 0, 2), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_barbarian("Thorn", 0, 2), 10);
   #assert rs_save_edge(b[..], 0, RS_DEX) == 1;
   b[0].c[0].cond = RS_INCAPACITATED; #assert rs_save_edge(b[..], 0, RS_DEX) == 0;
-  one: [1] RsBattle; cf_field(one[..], rs_barbarian("Thorn", 0, 1), 10);
+  one: [1] RsBattle; one_room: [1] RsRoom; rs_have(one[..], one_room[..]); cf_field(one[..], rs_barbarian("Thorn", 0, 1), 10);
   #assert rs_save_edge(one[..], 0, RS_DEX) == 0;
 }
 
 #test "Reckless Attack p.29: from level 2, Advantage on its Strength attacks this turn and on attacks against it until its next turn" {
-  b: [1] RsBattle; cf_field(b[..], rs_barbarian("Thorn", 0, 2), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_barbarian("Thorn", 0, 2), 10);
   #assert rs_attack(b[..], 0, 1, true, -1) && rs_aura_on(b[0].c[0], EF_RECKLESS, b[0].clock);
   #assert rs_attack_edge(b[..], 1, 0, true, false) == 1 && rs_attack_edge(b[..], 0, 1, true, true) == 1;
   rs_end_turn(b[..], 0); rs_tick_ticks(b[..],b[0].c[0].turn_at - b[0].clock);
   #assert !rs_aura_on(b[0].c[0], EF_RECKLESS, b[0].clock);
-  one: [1] RsBattle; cf_field(one[..], rs_barbarian("Thorn", 0, 1), 10);
+  one: [1] RsBattle; one_room: [1] RsRoom; rs_have(one[..], one_room[..]); cf_field(one[..], rs_barbarian("Thorn", 0, 1), 10);
   #assert rs_attack(one[..], 0, 1, true, -1) && !rs_aura_on(one[0].c[0], EF_RECKLESS, one[0].clock);
 }
 
@@ -76,10 +76,10 @@
 }
 
 #test "Frenzy p.30: raging and reckless, the first Strength hit on its turn deals Rage Damage d6s more" {
-  b: [1] RsBattle; cf_field(b[..], rs_barbarian("Thorn", 0, 3), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_barbarian("Thorn", 0, 3), 10);
   #assert rs_rage(b[..], 0) && rs_attack(b[..], 0, 1, true, -1);
   #assert b[0].c[1].hp == 200 - (6 + 3 + 2 + 2 * 3);
-  two: [1] RsBattle; cf_field(two[..], rs_barbarian("Thorn", 0, 3), 10);
+  two: [1] RsBattle; two_room: [1] RsRoom; rs_have(two[..], two_room[..]); cf_field(two[..], rs_barbarian("Thorn", 0, 3), 10);
   #assert rs_rage(two[..], 0) && rs_attack(two[..], 0, 1, false, -1) && two[0].c[1].hp == 200 - 11;   // not reckless: no Frenzy
 }
 
@@ -89,9 +89,9 @@
 }
 
 #test "Extra Attack p.29: from level 5 the Attack action makes two attacks" {
-  b: [1] RsBattle; cf_field(b[..], rs_barbarian("Thorn", 0, 5), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_barbarian("Thorn", 0, 5), 10);
   #assert rs_attack(b[..], 0, 1, false, -1) && b[0].c[1].hp == 200 - 2 * (6 + 4);
-  four: [1] RsBattle; cf_field(four[..], rs_barbarian("Thorn", 0, 4), 10);
+  four: [1] RsBattle; four_room: [1] RsRoom; rs_have(four[..], four_room[..]); cf_field(four[..], rs_barbarian("Thorn", 0, 4), 10);
   #assert rs_attack(four[..], 0, 1, false, -1) && four[0].c[1].hp == 200 - (6 + 4);
 }
 
@@ -100,12 +100,12 @@
 }
 
 #test "Mindless Rage p.30: from level 6, entering Rage ends Charmed and Frightened, and it can't gain them while raging" {
-  b: [1] RsBattle; cf_field(b[..], rs_barbarian("Gorr", 0, 6), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_barbarian("Gorr", 0, 6), 10);
   #assert rs_put_effect(b[..], 0, RsEffect.{kind = EF_COND, cond = RS_FRIGHTENED, by = -1, spell = -1, until = 100, save = -1, dc = 0});
   #assert rs_rage(b[..], 0) && !rs_has(b[0].c[0], RS_FRIGHTENED);
   #assert rs_put_effect(b[..], 0, RsEffect.{kind = EF_COND, cond = RS_CHARMED, by = -1, spell = -1, until = 100, save = -1, dc = 0});
   #assert !rs_has(b[0].c[0], RS_CHARMED);
-  five: [1] RsBattle; cf_field(five[..], rs_barbarian("Gorr", 0, 5), 10);
+  five: [1] RsBattle; five_room: [1] RsRoom; rs_have(five[..], five_room[..]); cf_field(five[..], rs_barbarian("Gorr", 0, 5), 10);
   #assert rs_rage(five[..], 0);
   #assert rs_put_effect(five[..], 0, RsEffect.{kind = EF_COND, cond = RS_CHARMED, by = -1, spell = -1, until = 100, save = -1, dc = 0}) && rs_has(five[0].c[0], RS_CHARMED);
 }

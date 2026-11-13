@@ -33,7 +33,7 @@ rs_dash_use :: (b: [] RsBattle, i: int, mode: int) -> bool #effects(all) {
 }
 
 #test "Dash rejects unknown modes before spending and leaves its zero-Speed helper observational" {
-  b: [1] RsBattle; b[0].w=8; b[0].h=8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _ := rs_add(b[..],rs_rogue("Runner",0,3),1,1); rs_start_turn(b[..],0);
   for mode: [3] int.[-1,3,4] {
     #assert !rs_dash_use(b[..],0,mode) && !b[0].turn.action && !b[0].turn.bonus && b[0].turn.move_left==6;

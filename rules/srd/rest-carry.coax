@@ -86,13 +86,13 @@ rs_carry_apply :: (b:[]RsBattle,i:int,in:[]int)->bool #effects(all) {
 }
 
 #test "rest carry: a sleeping Long Rest and its counts resume in a new battle without offline credit and complete once" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Sleeper",0,3); c[0].hp=2;
   #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
   rs_tick(b[..],3*3600);
   carried:[RS_CARRY]int; #assert rs_carry_out(b[..],0,carried[..]);
   #assert carried[6]==1 && carried[7]==1 && carried[8]==10800000 && carried[9]==10800000 && carried[15]==0;
-  d:[1]RsBattle; e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1;
+  d:[1]RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1;
   e[0]=rs_wizard("Sleeper",0,3); e[0].hp=2;
   #assert !rs_carry_in(d[..],0,carried[..]);   // unscheduled
   #assert rs_rest_schedule_enable(d[..]);
@@ -104,7 +104,7 @@ rs_carry_apply :: (b:[]RsBattle,i:int,in:[]int)->bool #effects(all) {
   e[0].hp=2; rs_tick(d[..],3600); #assert e[0].hp==2;
 }
 #test "rest carry: completion history keeps the sixteen-hour gate, Hit Dice and recovery uses carry, and a Short Rest resumes its hour" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
   c[0]=rs_fighter("Patient",0,3);
   #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
   rs_tick(b[..],8*3600); #assert c[0].long_rest.completed;
@@ -115,7 +115,7 @@ rs_carry_apply :: (b:[]RsBattle,i:int,in:[]int)->bool #effects(all) {
   #assert rs_short_rest_begin(b[..],0); rs_tick(b[..],1200);
   carried:[RS_CARRY]int; #assert rs_carry_out(b[..],0,carried[..]);
   #assert carried[0]==1 && carried[1]==1200000 && carried[2]==2 && carried[3]==1 && carried[15]==1 && carried[16]==8400000;
-  d:[1]RsBattle; e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1;
+  d:[1]RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1;
   e[0]=rs_fighter("Patient",0,3); e[0].hp=e[0].hp_max;
   #assert rs_rest_schedule_enable(d[..]); d[0].rest_clock.ticks=RS_CARRY_EPOCH;
   #assert rs_carry_in(d[..],0,carried[..]) && e[0].rest.dice==2 && e[0].rest.phase==1 && e[0].long_rest.completed;
@@ -127,19 +127,19 @@ rs_carry_apply :: (b:[]RsBattle,i:int,in:[]int)->bool #effects(all) {
   rs_tick(d[..],1); #assert rs_long_rest_start_owned(d[..],0,1,true);
   // an old completion is capped at the gate, which a clock at the epoch still represents
   carried[16]=RS_CARRY_GATE; carried[0]=0; carried[1]=0;
-  f:[1]RsBattle; g:[1]RsCreature; f[0].c=g[..]; f[0].n=1; f[0].who = -1; g[0]=rs_fighter("Patient",0,3);
+  f:[1]RsBattle; f_room: [1] RsRoom; rs_have(f[..], f_room[..]); g:[1]RsCreature; f[0].c=g[..]; f[0].n=1; f[0].who = -1; g[0]=rs_fighter("Patient",0,3);
   #assert rs_rest_schedule_enable(f[..]); f[0].rest_clock.ticks=RS_CARRY_EPOCH;
   #assert rs_carry_in(f[..],0,carried[..]) && g[0].long_rest.finished==RS_CARRY_EPOCH-RS_CARRY_GATE*RS_CARRY_MS && rs_long_rest_start_owned(f[..],0,1,true);
 }
 #test "rest carry: an interrupted Long Rest stays interrupted and resumes explicitly; a down body keeps history but no rest" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_cleric("Watcher",0,3);
   #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,2,true);
   #assert rs_rest_observe_motion(b[..],0,true,false,false); rs_tick(b[..],3600);
   #assert c[0].long_rest.phase==2;
   carried:[RS_CARRY]int; #assert rs_carry_out(b[..],0,carried[..]);
   #assert carried[6]==2 && carried[7]==3 && carried[11]==3600000 && carried[12]==1;
-  d:[1]RsBattle; e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1; e[0]=rs_cleric("Watcher",0,3);
+  d:[1]RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1; e[0]=rs_cleric("Watcher",0,3);
   #assert rs_rest_schedule_enable(d[..]); d[0].rest_clock.ticks=RS_CARRY_EPOCH;
   #assert rs_carry_in(d[..],0,carried[..]) && e[0].long_rest.phase==2 && e[0].long_rest.interruptions==1 && !rs_sleeping(e[0]);
   rs_tick(d[..],600); #assert e[0].long_rest.phase==2;
@@ -151,7 +151,7 @@ rs_carry_apply :: (b:[]RsBattle,i:int,in:[]int)->bool #effects(all) {
   for i:0..<RS_CARRY { #assert rs_carry_field(i,0) && rs_carry_field(i,rs_carry_max(i)) && !rs_carry_field(i,-1) && !rs_carry_field(i,rs_carry_max(i)+1); }
   #assert !rs_carry_field(-1,0) && !rs_carry_field(RS_CARRY,0) && rs_carry_max(RS_CARRY)== -1;
   #assert rs_carry_max(1)==3600000 && rs_carry_max(2)==20 && rs_carry_max(7)==3 && rs_carry_max(12)==99 && rs_carry_max(16)==57600000 && rs_carry_max(13)==86400000;
-  d:[1]RsBattle; e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1; e[0]=rs_wizard("Reader",0,3);
+  d:[1]RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1; e[0]=rs_wizard("Reader",0,3);
   #assert rs_rest_schedule_enable(d[..]); d[0].rest_clock.ticks=RS_CARRY_EPOCH;
   ok:[RS_CARRY]int; ok[3]=1; ok[2]=1;
   for bad:0..<9 {
@@ -182,13 +182,13 @@ rs_carry_apply :: (b:[]RsBattle,i:int,in:[]int)->bool #effects(all) {
   for i:0..<19 { #assert rs_carry_max(i)==highs[i]; }
   #assert rs_carry_max(-1)== -1 && rs_carry_max(19)== -1;
   #assert rs_carry_cap(-1,5)==0 && rs_carry_cap(0,5)==0 && rs_carry_cap(3,5)==3 && rs_carry_cap(5,5)==5 && rs_carry_cap(6,5)==5;
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; c[0]=rs_wizard("Keeper",0,3);
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; c[0]=rs_wizard("Keeper",0,3);
   #assert rs_rest_schedule_enable(b[..]); b[0].rest_clock.ticks=RS_CARRY_EPOCH+5; now:=b[0].rest_clock.ticks;
   zero:[RS_CARRY]int; for q:0..<RS_CARRY { zero[q]=7; }
   #assert rs_carry_out(b[..],0,zero[..]); for q:0..<RS_CARRY { #assert zero[q]==0; }
   rs_rest_seed(c[..]); m:=c[0].rest.dice_max; #assert m>=2;
   c[0].rest.phase=2; c[0].rest.started=5; c[0].rest.dice=m-1; c[0].rest.recovery_used=true; c[0].rest.restoration_used=true;
-  d:[1]RsBattle; e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1;
+  d:[1]RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); e:[1]RsCreature; d[0].c=e[..]; d[0].n=1; d[0].who = -1;
   #assert rs_rest_schedule_enable(d[..]); d[0].rest_clock.ticks=RS_CARRY_EPOCH+9;
   want:[RS_CARRY]int; got:[RS_CARRY]int;
   for pass:0..<2 {

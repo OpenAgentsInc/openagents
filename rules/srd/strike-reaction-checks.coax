@@ -5,7 +5,7 @@
 
 #test "a borrowed opportunity frame cannot turn off-turn Rage damage into Frenzy" {
   for own:0..<2 {
-    b:[1]RsBattle; sr_field(b[..]); b[0].c[0]=rs_barbarian("Berserker",1,3); rs_place(b[..],0,3,3);
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sr_field(b[..]); b[0].c[0]=rs_barbarian("Berserker",1,3); rs_place(b[..],0,3,3);
     rs_start_turn(b[..],ifx own==1 then 0 else 1);
     b[0].c[0].eff = rs_state_put(b[0].c[0].eff, EF_RAGE, true); _ := rs_aura_set(b[0].c[0..<0+1], EF_RECKLESS, 100);
     b[0].turn.frenzied=own==0; hp:=b[0].c[1].hp;
@@ -18,8 +18,8 @@
 
 #test "Monk weapon and Unarmed opportunity hits support Stunning Strike off turn" {
   for w:[7]int.[W_UNARMED,W_SHORTSWORD,W_MACE,W_DAGGER,W_SPEAR,W_RITUAL_SICKLE,W_PRIEST_MACE] {
-    b:[1]RsBattle; sr_field(b[..]); b[0].c[0]=rs_monk("Monk",1,5); rs_place(b[..],0,3,3);
-    b[0].c[0].weapon=w; b[0].c[0].stun_ready=true; b[0].c[1].score[RS_CON]=1;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sr_field(b[..]); b[0].c[0]=rs_monk("Monk",1,5); rs_place(b[..],0,3,3);
+    b[0].c[0].weapon=w; b[0].c[0].note[RS_NT_STUN] = 1; b[0].c[1].score[RS_CON]=1;
     rs_start_turn(b[..],1); b[0].c[0].turn_at=6; focus:=b[0].c[0].uses[RS_USE_FOCUS]; b[0].turn.stunned=true;
     r:=rs_opportunity_attack(b[..],0,1,w,RsOpportunityMove.{x=5,y=3,seen=true,movement=true});
     #assert r.admitted && r.hit && rs_has(b[0].c[1],RS_STUNNED);
@@ -29,8 +29,8 @@
 }
 
 #test "a Monk weapons Stunning Strike reserves the targets two retained slots before spending its Reaction" {
-  b:[1]RsBattle; sr_field(b[..]); b[0].c[0]=rs_monk("Monk",1,5); rs_place(b[..],0,3,3);
-  b[0].c[0].weapon=W_SHORTSWORD; b[0].c[0].stun_ready=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sr_field(b[..]); b[0].c[0]=rs_monk("Monk",1,5); rs_place(b[..],0,3,3);
+  b[0].c[0].weapon=W_SHORTSWORD; b[0].c[0].note[RS_NT_STUN] = 1;
   rs_start_turn(b[..],1); b[0].c[0].turn_at=6; b[0].turn.action=true;
   for k:0..<RS_EFFECTS { b[0].c[1].eff[k]=RsEffect.{kind=EF_HEX,by=1,cond=RS_CHA,spell=-1,save=-1}; }
   focus:=b[0].c[0].uses[RS_USE_FOCUS]; hp:=b[0].c[1].hp; seq:=b[0].book[0].seq; rolls:=b[0].dice[0].rolled;
@@ -46,8 +46,8 @@
 }
 
 #test "a successful Stunning Strike save can make an admitted grid departure unaffordable" {
-  b:[1]RsBattle; sr_field(b[..]); b[0].c[0]=rs_monk("Monk",1,5); rs_place(b[..],0,3,3);
-  b[0].c[0].weapon=W_DAGGER; b[0].c[0].stun_ready=true; b[0].c[1].score[RS_CON]=30;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sr_field(b[..]); b[0].c[0]=rs_monk("Monk",1,5); rs_place(b[..],0,3,3);
+  b[0].c[0].weapon=W_DAGGER; b[0].c[0].note[RS_NT_STUN] = 1; b[0].c[1].score[RS_CON]=30;
   rs_start_turn(b[..],1); b[0].c[0].turn_at=6; b[0].turn.move_left=1; b[0].turn.move_basis=30; b[0].turn.move_tracked=true;
   choices:=[1]RsOpportunityChoice.[RsOpportunityChoice.{actor=0,weapon=W_DAGGER,seen=true}];
   focus:=b[0].c[0].uses[RS_USE_FOCUS];
@@ -59,7 +59,7 @@
 
 #test "Dodge requires seeing the attacker but its Dexterity save benefit does not" {
   for mode:0..<2 {
-    b:[1]RsBattle; sr_field(b[..]); b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_DODGE, true);
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sr_field(b[..]); b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_DODGE, true);
     if mode==0 { b[0].c[1].cond=RS_BLINDED; } else { b[0].c[0].cond=RS_INVISIBLE; }
     #assert rs_attack_edge(b[..],0,1,true,false)==1;
     #assert rs_save_edge(b[..],1,RS_DEX)==1 && rs_effect(b[0].c[1], EF_DODGE);
@@ -70,7 +70,7 @@
   flags:=[4]int.[0,1,128,129];
   expected:=[16]int.[0,1,-1,0,-1,0,-1,0,1,1,0,0,0,0,0,0];
   for a:0..<4 { for t:0..<4 {
-    b:[1]RsBattle; sr_field(b[..]); b[0].c[0].cond=flags[a]; b[0].c[1].cond=flags[t];
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sr_field(b[..]); b[0].c[0].cond=flags[a]; b[0].c[1].cond=flags[t];
     #assert rs_attack_edge(b[..],0,1,true,false)==expected[a*4+t];
   } }
 }

@@ -82,7 +82,7 @@ rs_npc :: (name: string, team: int, npc: int, level: int, score: [6] int, ac: in
   c[0].score = score;
   c[0].ac = ac; c[0].hp_max = hp; c[0].hp = hp; c[0].speed = 30;
   c[0].spell_ability = -1; c[0].ranged = -1;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].rank[RS_RK_FREE_SPELL] = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   return c[0];
 }
 rs_npc_slots :: (c: [] RsCreature, level: int, n: int) { c[0].slots_max[level] = n; c[0].slots[level] = n; }

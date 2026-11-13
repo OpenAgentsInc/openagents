@@ -4,7 +4,7 @@
 #authority;
 
 #test "damage interrupts at the current rest boundary even through temporary HP and keeps unconfigured optional recovery closed" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_barbarian("Sleeper",0,3); c[0].hp=5; c[0].temp=2; c[0].uses[RS_USE_RAGE]=0; c[0].reacted=true;
   #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
   rs_tick(b[..],3600);
@@ -25,7 +25,7 @@
 }
 
 #test "zero damage dead recipients and fully protected floor do not interrupt or wake a rest" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Sleeper",0,3);
   #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
   rs_tick(b[..],3599);
@@ -51,7 +51,7 @@
 }
 
 #test "damage wakes only natural sleep and keeps the zero-HP and independent Unconscious owners" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Sleeper",0,3);
   #assert rs_sleep_begin(b[..],0);
   #assert rs_effect_add(c[..],RsEffect.{kind=EF_COND,cond=RS_UNCONSCIOUS,by=-1,spell=-1,until=90000,save=-1});
@@ -68,7 +68,7 @@
 
 #test "Short Rest banks are available before an awakened damage Reaction without renewing its budget" {
   for reacted:0..<2 {
-    b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1;
     c[0]=rs_warlock("Sleeper",0,3,SP_ELDRITCH_BLAST); c[1]=rs_fighter("Striker",1,3);
     c[0].feats = rs_feature_put(c[0].feats, RS_FT_REBUKE, true); c[0].slots[2]=0; c[0].temp=1; c[0].reacted=reacted==1;
     #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
@@ -84,7 +84,7 @@
 }
 
 #test "a successful Undead Fortitude save still interrupts rest when HP protection prevents loss" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_zombie("Sleeper",0); c[0].hp=1; b[0].dice[0].fixed=true;
   #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
   rs_tick(b[..],3600);
@@ -95,7 +95,7 @@
 }
 
 #test "interruption counter exhaustion retires rest and preserves earned recovery without freezing the clock" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_barbarian("Sleeper",0,3); c[0].hp=5; c[0].temp=1; c[0].uses[RS_USE_RAGE]=0;
   #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..],0,1,true);
   rs_tick(b[..],3600); c[0].long_rest.interruptions=9223372036854775807;

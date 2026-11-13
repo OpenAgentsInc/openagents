@@ -48,7 +48,7 @@ RS_SPARE_ALLIES_AREAS :: RsAreaProfile.{kind=RS_AREA_SPARE_ALLIES};
   } }
 }
 #test "a battle starts strict, takes a declared profile before its clock is sealed and resets to strict" {
-  b: [1] RsBattle;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   #assert b[0].areas.kind == RS_AREA_STRICT;
   #assert !rs_set_areas(b[..],RsAreaProfile.{kind=7}) && b[0].areas.kind == RS_AREA_STRICT;
   #assert rs_set_areas(b[..],RS_SPARE_CASTER_AREAS) && b[0].areas.kind == RS_AREA_SPARE_CASTER;

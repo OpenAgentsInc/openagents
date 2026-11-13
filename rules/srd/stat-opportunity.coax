@@ -32,7 +32,7 @@ rs_stat_opportunity_apply :: (b:[]RsBattle,reactor:int,mover:int,a:RsStatAttack,
   return r;
 }
 #test "typed opportunity entry resolves one natural strike and restores the mover" {
-  b:[1]RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
   _:=rs_add(b[..],rs_guard("Reactor",1),2,2); _=rs_add(b[..],rs_barbarian("Mover",0,6),3,2); rs_start_turn(b[..],1);
   a:=RsStatAttack.{id="fixture",name="Claw",bonus=5,dice=1,sides=6,flat=2,kind=RS_SLASHING,ability=RS_STR,reach=5};
   r:=rs_stat_opportunity(b[..],0,1,a,RsOpportunityMove.{x=4,y=2,seen=true,movement=true});

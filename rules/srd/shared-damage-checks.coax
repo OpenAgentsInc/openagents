@@ -3,7 +3,7 @@
 #load "cast-target-checks.coax";
 
 #test "Fireball shares one damage roll while each recipient makes its own save" {
-  b: [1] RsBattle; b[0].w=30; b[0].h=8; b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=30; b[0].h=8; b[0].dice[0].fixed=true;
   a := rs_add(b[..],rs_sorcerer("Caster",0,5),1,3);
   first := rs_add(b[..],rs_fighter("Fail",1,1),10,3);
   second := rs_add(b[..],rs_fighter("Save",1,1),11,3);
@@ -17,7 +17,7 @@
 }
 
 #test "shared damage includes one Enfeeblement die before each save and resistance" {
-  b: [1] RsBattle; b[0].w=30; b[0].h=8; b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=30; b[0].h=8; b[0].dice[0].fixed=true;
   a := rs_add(b[..],rs_sorcerer("Caster",0,6),1,3);
   first := rs_add(b[..],rs_fighter("Fail",1,1),10,3);
   second := rs_add(b[..],rs_fighter("Save",1,1),11,3);

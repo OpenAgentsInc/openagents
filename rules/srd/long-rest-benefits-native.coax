@@ -3,7 +3,7 @@
 tool_main :: ()->int #export_c #effects(all) {
   for klass:0..<RS_CLASSES { if klass==RS_MONSTER { continue; } for level:1..<7 {
     c:[1]RsCreature; c[0]=rt_class(klass,level);
-    b:[1]RsBattle; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].c=c[..]; b[0].n=1; b[0].who = -1;
     maximum:=c[0].hp_max; scores:=c[0].score;
     if !rs_rest_reduce_max(c[..],2).admitted { return 1; }
     for ability:0..<6 { if rs_rest_reduce_score(c[..],ability,1).lost!=1 { return 2; } c[0].score[ability]+=1; }

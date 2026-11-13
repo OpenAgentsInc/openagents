@@ -122,7 +122,7 @@ rs_wild_companion :: (b:[]RsBattle,i:int,slot:int,m:int,x:int,y:int)->bool #effe
 }
 
 #test "Wild Companion creates one Fey ally, never attacks, and expires at a completed Long Rest" {
-  b:[1]RsBattle;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
   _:=rs_add(b[..],rs_druid("Druid",0,2),1,1);
   enemy:=rs_add(b[..],rs_fighter("Enemy",1,1),3,1); #assert enemy==1;
@@ -170,7 +170,7 @@ rs_wild_companion :: (b:[]RsBattle,i:int,slot:int,m:int,x:int,y:int)->bool #effe
 
 
 #test "Wild Companion rejects illegal positions, costs, turn owners and capacity without spending" {
-  b:[1]RsBattle; storage:[3]RsCreature; b[0].c=storage[..];
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); storage:[3]RsCreature; b[0].c=storage[..];
   b[0].w=6; b[0].h=6; b[0].dice[0].fixed=true;
   caster:=rs_add(b[..],rs_druid("Druid",0,2),2,2);
   #assert caster==0;
@@ -226,7 +226,7 @@ rs_wild_companion :: (b:[]RsBattle,i:int,slot:int,m:int,x:int,y:int)->bool #effe
 
 
 #test "Familiar ownership is stable even when a roster restores the familiar before its owner" {
-  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8; b[0].n=2;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8; b[0].n=2;
   c[1]=rs_druid("Owner",0,2); c[1].x=2; c[1].y=2;
   c[0]=rs_monster(MON_RAT,"Familiar",0); c[0].familiar_owner=2; c[0].familiar_form=MON_RAT; c[0].familiar_until_rest=true;
   c[0].x=3; c[0].y=2;
@@ -256,6 +256,7 @@ rs_familiar_begin :: (b:[]RsBattle,i:int,slot:int)->bool #effects(all) {
   rs_say(b,RS_EV_TEXT,i,i,SP_FIND_FAMILIAR," begins casting Find Familiar");
   return true;
 }
+// (Find Familiar's own procedure: it asks whether its own spell's casting is the one now due, #13285.)
 rs_familiar_finish :: (b:[]RsBattle,i:int,m:int,spirit:int,x:int,y:int)->bool #effects(all) {
   if i<0 || i>=b[0].n || b[0].reaction_frame.on || !rs_action_free(b,i) { return false; }
   if spirit<RS_FAMILIAR_FEY || spirit>RS_FAMILIAR_FIEND { return false; }
@@ -274,7 +275,7 @@ rs_familiar_finish :: (b:[]RsBattle,i:int,m:int,spirit:int,x:int,y:int)->bool #e
 }
 
 #test "Find Familiar holds Concentration for an hour and pays incense and slot only on completion" {
-  b:[1]RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
   i:=rs_add(b[..],rs_wizard("Wizard",0,2),2,2);
   c:=b[0].c[i..<i+1]; key:=rs_component_key(SP_FIND_FAMILIAR);
   #assert rs_spellbook_add(c,key);
@@ -303,7 +304,7 @@ rs_familiar_finish :: (b:[]RsBattle,i:int,m:int,spirit:int,x:int,y:int)->bool #e
 }
 
 #test "Find Familiar ritual uses the spellbook, takes seventy minutes and spends no slot" {
-  b:[1]RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
   i:=rs_add(b[..],rs_wizard("Wizard",0,2),2,2);
   c:=b[0].c[i..<i+1]; key:=rs_component_key(SP_FIND_FAMILIAR);
   #assert rs_spellbook_add(c,key);
@@ -333,7 +334,7 @@ rs_familiar_finish :: (b:[]RsBattle,i:int,m:int,spirit:int,x:int,y:int)->bool #e
 }
 
 #test "Find Familiar refuses invalid starts and completions before payment" {
-  b:[1]RsBattle; storage:[2]RsCreature;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); storage:[2]RsCreature;
   b[0].c=storage[..]; b[0].n=1; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
   c:=storage[0..<1]; c[0]=rs_wizard("Wizard",0,2); c[0].x=2; c[0].y=2;
   key:=rs_component_key(SP_FIND_FAMILIAR); picks:=[1]int.[key];
@@ -393,7 +394,7 @@ rs_familiar_finish :: (b:[]RsBattle,i:int,m:int,spirit:int,x:int,y:int)->bool #e
 }
 
 #test "Find Familiar can reform actor zero with the caster at the end of storage" {
-  b:[1]RsBattle; storage:[2]RsCreature; b[0].c=storage[..];
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); storage:[2]RsCreature; b[0].c=storage[..];
   b[0].n=2; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
   storage[0]=rs_monster(MON_RAT,"Familiar",0);
   storage[0].familiar_form=MON_RAT; storage[0].familiar_owner=2;
@@ -410,7 +411,7 @@ rs_familiar_finish :: (b:[]RsBattle,i:int,m:int,spirit:int,x:int,y:int)->bool #e
 }
 
 #test "A pocketed familiar keeps its HP and can return within thirty feet" {
-  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=12; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[3]RsCreature; b[0].c=c[..]; b[0].w=12; b[0].h=12; b[0].dice[0].fixed=true;
   owner:=rs_add(b[..],rs_druid("Owner",0,6),1,1);
   other:=rs_add(b[..],rs_fighter("Other",0,1),2,2);
   #assert owner==0 && other==1;
@@ -470,7 +471,7 @@ rs_familiar_finish :: (b:[]RsBattle,i:int,m:int,spirit:int,x:int,y:int)->bool #e
   swim:=[11]int.[0,0,20,0,0,30,0,0,0,0,0];
   dark:=[11]int.[0,60,30,0,30,30,120,30,0,30,60];
   for k:0..<forms.count {
-    b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[3]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
     i:=rs_add(b[..],rs_druid("Owner",0,2),1,1);
     j:=rs_add(b[..],rs_guard("Guard",1),3,1);
     rs_fresh(b[..],i);

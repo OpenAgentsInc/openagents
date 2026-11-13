@@ -345,7 +345,7 @@ e2g_blows :: (v: [] RmServer, k: int, i: int) {
     kind := 0; by := -1; at := -1; dealt := 0; kind_of := 0;
     if e < fresh {
       x := (b[0].book[0].head + b[0].book[0].count - fresh + e) % RS_EVENTS;
-      kind = b[0].book[0].ev[x].kind; by = b[0].book[0].ev[x].by; at = b[0].book[0].ev[x].to; dealt = b[0].book[0].ev[x].amount; kind_of = b[0].book[0].ev[x].damage;
+      kind = b[0].book[0].ev[x].kind; by = b[0].book[0].ev[x].by.value; at = b[0].book[0].ev[x].to.value; dealt = b[0].book[0].ev[x].amount; kind_of = b[0].book[0].ev[x].damage;
     }
     if by == i && kind == RS_EV_DAMAGE && at == to { amount += dealt; continue; }
     if to >= 0 && (e == fresh || (by == i && (kind == RS_EV_ATTACK || kind == RS_EV_MISS))) {

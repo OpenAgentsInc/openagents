@@ -33,7 +33,7 @@ to_turn :: (b: [] RsBattle, i: int) {
 
 #test "a one-minute effect lasts ten rounds of turns in both profiles and an hour runs on the same clock" {
   for profile: 0..<2 {
-    b: [1] RsBattle; to_field(b[..],profile);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); to_field(b[..],profile);
     #assert rs_effect_add(b[0].c[0..<1],RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=-1,spell=-1,save=-1,until=b[0].clock+rs_secs(60)});
     #assert rs_effect_add(b[0].c[1..<2],RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=-1,spell=-1,save=-1,until=b[0].clock+rs_secs(3600)});
     rounds := 0; turns := 0;
@@ -50,7 +50,7 @@ to_turn :: (b: [] RsBattle, i: int) {
 
 #test "until the end of your next turn holds through that whole turn and ends before anyone else's" {
   for profile: 0..<2 { for whose: 0..<2 {
-    b: [1] RsBattle; to_field(b[..],profile);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); to_field(b[..],profile);
     rs_tick_ticks(b[..],b[0].c[0].turn_at - b[0].clock); rs_start_turn(b[..],0);
     // Guiding Bolt-style: ends at the end of the caster's next turn; Vicious
     // Mockery-style: at the end of the target's own next turn.
@@ -78,7 +78,7 @@ to_turn :: (b: [] RsBattle, i: int) {
 
 #test "start-of-turn triggers fire only at the creature's own turn start: Dodge ends, the Reaction returns, a death save" {
   for profile: 0..<2 {
-    b: [1] RsBattle; to_field(b[..],profile);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); to_field(b[..],profile);
     to_turn(b[..],0);
     b[0].c[0].eff = rs_state_put(b[0].c[0].eff, EF_DODGE, true); b[0].c[0].reacted = true;
     to_turn(b[..],1);
@@ -97,7 +97,7 @@ to_turn :: (b: [] RsBattle, i: int) {
 
 #test "a repeated save is an end-of-turn roll, and simultaneous saves resolve the same in either order" {
   for profile: 0..<2 { for order: 0..<2 {
-    b: [1] RsBattle; to_field(b[..],profile);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); to_field(b[..],profile);
     hold := RsEffect.{kind=EF_COND,cond=RS_BLINDED,by=-1,spell=-1,save=RS_WIS,dc=100,until=rs_secs(1000)};
     ends := RsEffect.{kind=EF_COND,cond=RS_DEAFENED,by=-1,spell=-1,save=RS_CON,dc=1,until=rs_secs(1000)};
     #assert rs_effect_add(b[0].c[0..<1],ifx order == 0 then hold else ends);

@@ -2,7 +2,7 @@
 #load "battle.coax";
 
 #test "strict turn grants retain every foot of current Speed" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8;
   a := rs_add(b[..],rs_fighter("Walker",0,1),1,1);
   b[0].c[a].speed = 7;
   rs_start_turn(b[..],a);
@@ -10,7 +10,7 @@
 }
 
 #test "timing selection rejects unknown and live changes atomically and reset restores strict" {
-  b: [1] RsBattle;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   #assert rs_beat(b[..]) == 6000000 && rs_timing_recharge(b[0].timing) == 0;
   #assert rs_set_timing(b[..],RS_ACTION_TIMING);
   #assert !rs_set_timing(b[..],RsTimingProfile.{kind=3}) && b[0].timing.kind == RS_TIME_ACTION && !b[0].timing_sealed;
@@ -28,7 +28,7 @@
 
 #test "only the declared action profile recharges spent resources on the existing cooldown" {
   for profile: 0..<2 {
-    b: [1] RsBattle; #assert rs_set_timing(b[..],RsTimingProfile.{kind=profile});
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); #assert rs_set_timing(b[..],RsTimingProfile.{kind=profile});
     a := rs_add(b[..],rs_cleric("Actor",0,1),1,1);
     b[0].c[a].slots[1] = 0; b[0].c[a].slots_max[1] = 3;
     b[0].c[a].uses[RS_USE_RAGE] = 0; b[0].c[a].uses_max[RS_USE_RAGE] = 2;
@@ -42,7 +42,7 @@
 
 #test "short action turns renew reactions but death saves and repeat saves remain six-second events" {
   for profile: 0..<2 {
-    b: [1] RsBattle; #assert rs_set_timing(b[..],RsTimingProfile.{kind=profile});
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); #assert rs_set_timing(b[..],RsTimingProfile.{kind=profile});
     a := rs_add(b[..],rs_fighter("Actor",0,1),1,1);
     rs_begin(b[..]); b[0].dice[0].fixed = true;
     baseline := b[0].dice[0].rolled;
@@ -70,7 +70,7 @@
 
 #test "strict and action standing share a policy with an explicitly different movement price" {
   for profile: 0..<2 {
-    b: [1] RsBattle; b[0].w=12; b[0].h=8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8;
     #assert rs_set_timing(b[..],RsTimingProfile.{kind=profile});
     a := rs_add(b[..],rs_fighter("Walker",0,1),1,1); b[0].c[a].cond = RS_PRONE;
     rs_start_turn(b[..],a);

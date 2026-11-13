@@ -122,7 +122,7 @@ rs_hide_concealed :: (b: [] RsBattle, i: int, unseen: bool) -> bool #effects(all
 }
 
 #test "terrain rectangles admit bounded kinds, combine their bits and refuse with no room" {
-  b: [1] RsBattle;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   #assert !rs_terrain_put(b[..], 0, 0, 0, 1, 1) && !rs_terrain_put(b[..], 32, 0, 0, 1, 1) && !rs_terrain_put(b[..], -1, 0, 0, 1, 1);
   #assert !rs_terrain_put(b[..], TR_CLIMB, 2, 0, 1, 1) && !rs_terrain_put(b[..], TR_CLIMB, 0, 2, 1, 1);
   #assert rs_terrain_put(b[..], TR_CLIMB, 1, 1, 2, 3) && rs_terrain_put(b[..], TR_HEAVY, 2, 3, 2, 3) && rs_terrain_put(b[..], 31, 9, 9, 9, 9);
@@ -132,7 +132,7 @@ rs_hide_concealed :: (b: [] RsBattle, i: int, unseen: bool) -> bool #effects(all
   #assert !rs_terrain_put(b[..], TR_SWIM, 6, 6, 6, 6) && rs_terrain_at(b[..], 6, 6) == 0;
 }
 #test "cover facts keep the most protective degree, never a sum, and creatures between give Half" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8;
   a := rs_add(b[..], rs_fighter("Archer", 0, 3), 1, 1); t := rs_add(b[..], rs_fighter("Target", 1, 3), 5, 1); m := rs_add(b[..], rs_fighter("Between", 1, 3), 3, 1);
   #assert rs_cover(b[..], a, t) == RS_COVER_HALF && rs_cover(b[..], t, a) == RS_COVER_HALF;
   b[0].c[m].dead = true; #assert rs_cover(b[..], a, t) == RS_COVER_NONE; b[0].c[m].dead = false;
@@ -170,7 +170,7 @@ rs_hide_concealed :: (b: [] RsBattle, i: int, unseen: bool) -> bool #effects(all
   #assert rs_cover_bonus(RS_COVER_NONE) == 0 && rs_cover_bonus(RS_COVER_HALF) == 2 && rs_cover_bonus(RS_COVER_THREE) == 5 && rs_cover_bonus(RS_COVER_TOTAL) == 0;
 }
 #test "a Heavily Obscured square blinds sight into it both ways; light obscurement does not" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8;
   a := rs_add(b[..], rs_fighter("A", 0, 3), 1, 1); t := rs_add(b[..], rs_fighter("T", 1, 3), 4, 1);
   #assert rs_obscured(b[..], -1) == 0 && rs_obscured(b[..], 2) == 0;
   _ := rs_terrain_put(b[..], TR_HEAVY, 0, 0, 0, 0); #assert rs_obscured(b[..], 2) == 0;   // past the creatures
@@ -183,7 +183,7 @@ rs_hide_concealed :: (b: [] RsBattle, i: int, unseen: bool) -> bool #effects(all
   #assert rs_attack_edge(b[..], a, t, true, true) == -1 && rs_attack_edge(b[..], t, a, true, true) == 1;
 }
 #test "hiding needs heavy obscurement or Three-Quarters Cover from every enemy that is up, and no sight" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8;
   h := rs_add(b[..], rs_rogue("Hider", 0, 3), 1, 1); e := rs_add(b[..], rs_fighter("E1", 1, 3), 6, 1); f := rs_add(b[..], rs_fighter("E2", 1, 3), 6, 5); g := rs_add(b[..], rs_fighter("Ally", 0, 3), 1, 5);
   #assert !rs_hide_concealed(b[..], h, true) && !rs_hide_concealed(b[..], -1, true) && !rs_hide_concealed(b[..], 4, true);
   _ := rs_cover_put(b[..], e, h, RS_COVER_THREE);
@@ -194,9 +194,9 @@ rs_hide_concealed :: (b: [] RsBattle, i: int, unseen: bool) -> bool #effects(all
   b[0].c[f].hp = 10; _ = rs_terrain_put(b[..], TR_HEAVY, 1, 1, 1, 1); #assert rs_hide_concealed(b[..], h, true) && !rs_hide_concealed(b[..], h, false);
   #assert g == 3;
   // an enemy listed first counts too; with no enemy at all, a creature past the list still can't
-  o: [1] RsBattle; o[0].w = 12; o[0].h = 8;
+  o: [1] RsBattle; o_room: [1] RsRoom; rs_have(o[..], o_room[..]); o[0].w = 12; o[0].h = 8;
   first := rs_add(o[..], rs_fighter("First", 1, 3), 6, 1); k := rs_add(o[..], rs_rogue("Hider", 0, 3), 1, 1);
   #assert !rs_hide_concealed(o[..], k, true) && rs_cover_put(o[..], first, k, RS_COVER_TOTAL) && rs_hide_concealed(o[..], k, true);
-  p: [1] RsBattle; p[0].w = 12; p[0].h = 8; alone := rs_add(p[..], rs_rogue("Alone", 0, 3), 1, 1);
+  p: [1] RsBattle; p_room: [1] RsRoom; rs_have(p[..], p_room[..]); p[0].w = 12; p[0].h = 8; alone := rs_add(p[..], rs_rogue("Alone", 0, 3), 1, 1);
   #assert first == 0 && rs_hide_concealed(p[..], alone, true) && !rs_hide_concealed(p[..], 1, true);
 }

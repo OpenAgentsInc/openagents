@@ -3,7 +3,7 @@
 #authority;
 
 #test "pending Long Rest applies once wakes only natural sleep and records the causal finish" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Reader",0,3); maximum:=c[0].hp_max;
   #assert rs_sleep_begin(b[..],0);
   journal:[1]RsLongRest;
@@ -25,7 +25,7 @@
 }
 
 #test "completion refuses before benefits waking or history when admission or late bank fails" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
   c[0]=rs_wizard("Reader",0,3); c[0].slots[1]=0; c[0].temp=7;
   #assert rs_sleep_begin(b[..],0);
   #assert !rs_long_rest_apply(b[..],-1) && !rs_long_rest_apply(b[..],1);

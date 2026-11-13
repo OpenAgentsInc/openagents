@@ -4,7 +4,7 @@
 #load "effect-lifecycle-checks.coax";
 
 #test "accepted Stunned ends concentration and Dodge but allows walking and standing without actions" {
-  b: [1] RsBattle; cp_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cp_field(b[..]);
   #assert rs_cast(b[..],0,SP_BLESS,1,0,0,0);
   rs_dodge_begin(b[..],0); b[0].c[0].cond|=RS_PRONE;
   #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=1,spell=-1,until=60,save=-1});
@@ -21,7 +21,7 @@
 }
 
 #test "Stunned retains its save and attack consequences while another condition can still prevent movement" {
-  b: [1] RsBattle; cp_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cp_field(b[..]);
   #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=1,spell=-1,until=60,save=-1});
   rolls := b[0].dice[0].rolled;
   str := rs_saving_throw(b[..],0,RS_STR,1); dex := rs_saving_throw(b[..],0,RS_DEX,1);
@@ -37,7 +37,7 @@
 }
 
 #test "Stunned refuses Reaction spells without spending their slot or reaction" {
-  b: [1] RsBattle; cp_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cp_field(b[..]);
   b[0].c[0]=rs_sorcerer("Stunned",0,3);
   #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=1,spell=-1,until=60,save=-1});
   slots := b[0].c[0].slots[1];
@@ -47,7 +47,7 @@
 #test "initiative rolls apply incapacitation Disadvantage and Invisible Advantage with ordinary cancellation" {
   for condition: [6] int.[RS_INCAPACITATED,RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS,0] {
     for athlete: 0..<2 { for invisible: 0..<2 {
-      b: [1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+      b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
       c := rs_fighter("Initiative",0,1); c.cond=condition|(ifx invisible==1 then RS_INVISIBLE else 0); c.feats = rs_feature_put(c.feats, RS_FT_ATHLETE, athlete==1);
       _ := rs_add(b[..],c,1,1);
       up := athlete==1 || invisible==1;
@@ -69,7 +69,7 @@ cp_field :: (b: [] RsBattle) {
   #assert cp_native();
 }
 cp_native :: () -> bool {
-  b: [1] RsBattle; cp_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cp_field(b[..]);
   if !rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=RS_STUNNED,by=1,spell=-1,until=60,save=-1}) { return false; }
   b[0].c[0].cond|=RS_PRONE;
   if !rs_stand_up(b[..],0) || !rs_step_to(b[..],0,2,1) || rs_movement_left(b[..],0)!=10 { return false; }
@@ -84,7 +84,7 @@ cp_native :: () -> bool {
 
 #test "initiative chooses the source-required lower or higher face and rolls only once after cancellation" {
   for kind: 0..<3 { for seed: 1..<20 {
-    b: [1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=cast(u64)seed;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].state=cast(u64)seed;
     oracle: [1] RsDice; oracle[0].state=cast(u64)seed;
     first := rs_roll(oracle[..],20); expected := first;
     if kind!=2 { second := rs_roll(oracle[..],20); expected=ifx kind==0 then rs_min(first,second) else rs_max(first,second); }

@@ -4,7 +4,7 @@
 #load "battle.coax";
 
 #test "Halt does not suppress Aura of Protection, Danger Sense or Rage through false incapacitation" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
   p := rs_add(b[..],rs_paladin("Paladin",0,6),1,1);
   ally := rs_add(b[..],rs_druid("Ally",0,1),2,1);
   aura := rs_aura(b[..],ally); #assert aura > 0;
@@ -20,7 +20,7 @@
 }
 
 #test "Command Halt waits for the next logical turn, preserves reactions and ends with that turn" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..],rs_cleric("Caster",0,3),1,1);
   t := rs_add(b[..],rs_sorcerer("Target",1,3),2,1);
   commands := [1] int.[RS_EXEC_SOURCE[SP_COMMAND]]; #assert rs_set_spells(b[0].c[a..<a+1],commands[..]);
@@ -39,7 +39,7 @@
 
 #test "mixed Blindness Deafness choices prepay the actual immunity branch at each recipient" {
   for immune: [2] int.[RS_BLINDED,RS_DEAFENED] {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
     t := rs_add(b[..],rs_skeleton("Deaf choice",1),3,1); b[0].c[t].immune_cond = immune;
     u := rs_add(b[..],rs_skeleton("Blind choice",1),4,1);
@@ -55,13 +55,13 @@
       #assert rs_has(b[0].c[t],RS_DEAFENED) && !rs_has(b[0].c[t],RS_BLINDED);
     } else {
       #assert !rs_has(b[0].c[t],RS_DEAFENED) && !rs_has(b[0].c[t],RS_BLINDED);
-      for k: 0..<b[0].book[0].count { e := rs_recent(b[0].book[0],k); #assert !(e.kind == RS_EV_CONDITION && e.to == t); }
+      for k: 0..<b[0].book[0].count { e := rs_recent(b[0].book[0],k); #assert !(e.kind == RS_EV_CONDITION && e.to.value == t); }
     }
     #assert rs_has(b[0].c[u],RS_BLINDED) && !rs_has(b[0].c[u],RS_DEAFENED);
   }
 }
 #test "malformed or unrelated spell options refuse before costs, rolls or concentration changes" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Target",1),3,1);
   keys := [1] int.[RS_EXEC_SOURCE[SP_BLINDNESS]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
@@ -74,7 +74,7 @@
 }
 
 #test "chosen Blindness Deafness option changes the retained condition, save and deadline" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Target",1),3,1);
   keys := [1] int.[RS_EXEC_SOURCE[SP_BLINDNESS]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
@@ -87,7 +87,7 @@
 }
 #test "Hex retains the chosen ability and uses its source upcast concentration duration" {
   for ability: 0..<6 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
     a := rs_add(b[..],rs_warlock("Caster",0,5,SP_ELDRITCH_BLAST),1,1);
     t := rs_add(b[..],rs_skeleton("Target",1),3,1);
     keys := [1] int.[RS_EXEC_SOURCE[SP_HEX]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
@@ -106,7 +106,7 @@
 
 #test "a chosen self Hold Person cannot leave orphaned effects after concentration breaks" {
   for self_first: 0..<2 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
     a := rs_add(b[..],rs_sorcerer("Caster",0,5),1,1); b[0].c[a].score[RS_WIS] = 1;
     t := rs_add(b[..],rs_skeleton("Other",1),3,1); b[0].c[t].humanoid = true; b[0].c[t].score[RS_WIS] = 1;
     keys := [1] int.[RS_EXEC_SOURCE[SP_HOLD_PERSON]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
@@ -117,7 +117,7 @@
 }
 
 #test "chosen rays resolve separate assignments in their declared order" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..],rs_sorcerer("Caster",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("First",1),3,1);
   u := rs_add(b[..],rs_skeleton("Second",1),4,1);
@@ -130,13 +130,13 @@
   reverse := [3] int.[t,t,u]; found := 0;
   for k: 0..<b[0].book[0].count {
     e := rs_recent(b[0].book[0],k);
-    if e.kind == RS_EV_ATTACK { #assert found < 3 && e.to == reverse[found]; found += 1; }
+    if e.kind == RS_EV_ATTACK { #assert found < 3 && e.to.value == reverse[found]; found += 1; }
   }
   #assert found == 3;
 }
 #test "chosen batches refuse a later full recipient before ordinary and Quickened costs" {
   for quick: 0..<2 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
     a := rs_add(b[..],rs_sorcerer("Caster",0,5),1,1);
     t := rs_add(b[..],rs_skeleton("First",1),3,1); b[0].c[t].humanoid = true;
     u := rs_add(b[..],rs_skeleton("Last",1),4,1); b[0].c[u].humanoid = true;
@@ -158,7 +158,7 @@
   }
 }
 #test "one chosen Hold Person save does not cancel another recipient's concentration effect" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..],rs_druid("Caster",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Saves",1),3,1); b[0].c[t].humanoid = true; b[0].c[t].score[RS_WIS] = 30;
   u := rs_add(b[..],rs_skeleton("Fails",1),4,1); b[0].c[u].humanoid = true;
@@ -169,7 +169,7 @@
   rs_end_concentration(b[..],a,""); #assert !rs_has(b[0].c[u],RS_PARALYZED);
 }
 #test "chosen empty optional casts spend normally and Self casts retain shared feature hooks" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..],rs_cleric("Cleric",0,6),1,1);
   t := rs_add(b[..],rs_skeleton("Patient",0),2,1);
   rs_start_turn(b[..],a); empty: [1] int; slots := b[0].c[a].slots[1];
@@ -180,11 +180,11 @@
   #assert rs_cast_creatures(b[..],a,SP_CURE_WOUNDS,1,picks[..],false) && b[0].c[a].hp == 13 && b[0].c[t].hp > 1;
   rs_end_turn(b[..],a); rs_start_turn(b[..],a); picks[0] = a;
   #assert rs_cast_creatures(b[..],a,SP_SPIRIT_GUARDIANS,3,picks[..],false);
-  #assert b[0].guards == 1 && b[0].c[a].guard_slot == 3 && b[0].c[a].conc == SP_SPIRIT_GUARDIANS;
+  #assert b[0].guards == 1 && b[0].c[a].conc_slot == 3 && b[0].c[a].conc == SP_SPIRIT_GUARDIANS;
 }
 
 #test "chosen Bless recipients include the caster and do not fill unchosen creatures" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Chosen",1),3,1);
   u := rs_add(b[..],rs_skeleton("Unchosen",0),2,1);
@@ -195,7 +195,7 @@
   #assert b[0].c[a].slots[1] == slots-1 && b[0].turn.action;
 }
 #test "chosen upcast Hold Person retains valid targets when another target is invalid or saves" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_druid("Caster",0,5),1,1);
   x := rs_add(b[..],rs_skeleton("Invalid",1),3,1);
   t := rs_add(b[..],rs_skeleton("Humanoid",1),4,1); b[0].c[t].humanoid = true;
@@ -210,7 +210,7 @@
 
 #test "Mage Protective Magic spends a daily use rather than the turn's spell slot" {
   for mode: 0..<3 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
     a := rs_add(b[..],rs_mage("Mage",0),1,1);
     rs_start_turn(b[..],a); b[0].turn.slot_spent = mode == 0; b[0].turn.quickened = mode == 2;
     uses := b[0].c[a].slots[1]; seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
@@ -224,7 +224,7 @@
 
 #test "own-turn reaction spells refuse after a slot spell or Quickened cantrip without changing state" {
   for mode: 0..<2 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
     a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
     t := rs_add(b[..],rs_skeleton("Enemy",1),3,1);
     #assert rs_grant_spell(b[0].c[a..<a+1],SP_SHIELD) && rs_grant_spell(b[0].c[a..<a+1],SP_HELLISH_REBUKE);
@@ -240,7 +240,7 @@
 }
 #test "own-turn reactions spend the turn slot and count as leveled before later spell admission" {
   for kind: 0..<2 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
     a := rs_add(b[..],rs_sorcerer("Caster",0,3),1,1);
     t := rs_add(b[..],rs_skeleton("Enemy",1),3,1);
     #assert rs_grant_spell(b[0].c[a..<a+1],SP_SHIELD) && rs_grant_spell(b[0].c[a..<a+1],SP_HELLISH_REBUKE);
@@ -257,7 +257,7 @@
 }
 #test "off-turn reactions do not inherit or mutate another actor's slot and Quickened restrictions" {
   for kind: 0..<2 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
     a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
     t := rs_add(b[..],rs_skeleton("Enemy",1),3,1);
     #assert rs_grant_spell(b[0].c[a..<a+1],SP_SHIELD) && rs_grant_spell(b[0].c[a..<a+1],SP_HELLISH_REBUKE);
@@ -271,7 +271,7 @@
 }
 
 #test "multi-target casts refuse the whole batch if a later target has no effect room" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_cleric("Cleric",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("First",0),3,1);
   u := rs_add(b[..],rs_skeleton("Second",0),4,1);
@@ -284,7 +284,7 @@
   #assert rs_cast(b[..],a,SP_BLESS,1,3,1,t) && rs_effect(b[0].c[t],EF_BLESS) && rs_effect(b[0].c[u],EF_BLESS);
 }
 #test "concentration release pays for its replacement, immunity and invalid types need no record" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_cleric("Cleric",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Target",0),3,1);
   for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_BLESS,by=a,spell=SP_BLESS,until=100,save=-1}; }
@@ -302,10 +302,10 @@
   #assert rs_cast(b[..],a,SP_HOLD_PERSON,2,3,1,t) && !rs_has(b[0].c[t],RS_PARALYZED);
 }
 #test "weapon and Channel Divinity capacity refusal precedes action, focus and dice" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_monk("Monk",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Target",1),2,1);
-  b[0].c[a].stun_ready = true;
+  b[0].c[a].note[RS_NT_STUN] = 1;
   for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX,by=99,spell=-1,until=100}; }
   rs_start_turn(b[..],a); focus := b[0].c[a].uses[RS_USE_FOCUS]; rolled := b[0].dice[0].rolled; seq := b[0].book[0].seq;
   #assert !rs_attack(b[..],a,t,false,-1) && !rs_bonus_strike(b[..],a,t) && !rs_flurry(b[..],a,t,OH_TOPPLE);
@@ -317,7 +317,7 @@
   #assert b[0].dice[0].rolled == rolled && b[0].book[0].seq == seq;
 }
 #test "escaping a zone frees only that lease and preserves another restraint" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_druid("Druid",0,3),1,1);
   t := rs_add(b[..],rs_barbarian("Strong",1,3),3,1);
   b[0].c[t].score[RS_STR] = 30; b[0].c[a].score[RS_WIS] = 1;
@@ -332,7 +332,7 @@
 
 #test "full effect storage refuses ordinary and Quickened casts before any cost or roll" {
   for quick: 0..<2 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
     a := rs_add(b[..],rs_sorcerer("Caster",0,5),1,1);
     t := rs_add(b[..],rs_skeleton("Target",1),3,1); b[0].c[t].humanoid = true;
     choices := [1] int.[RS_EXEC_SOURCE[SP_HOLD_PERSON]];
@@ -348,7 +348,7 @@
   }
 }
 #test "overlapping zone restraints release only their own lease" {
-  b: [1] RsBattle; _ := rs_add(b[..],rs_druid("Druid",0,3),1,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); _ := rs_add(b[..],rs_druid("Druid",0,3),1,1);
   for k: 0..<2 {
     b[0].zone[k] = RsZone.{on=true,by=0,spell=SP_ENTANGLE,until=60};
     #assert rs_effect_add(b[0].c[0..<1],RsEffect.{kind=EF_ZONE_RESTRAIN,cond=k,by=0,spell=SP_ENTANGLE,until=60,save=-1});
@@ -358,7 +358,7 @@
 }
 
 #test "a full zone array can reuse the concentration being replaced and releases its old restraint" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_druid("Druid",0,3),1,1);
   t := rs_add(b[..],rs_skeleton("Target",1),3,1);
   rs_start_turn(b[..],a);
@@ -378,7 +378,7 @@
   }
 }
 #test "instantaneous casts need no zone slot and a last free slot retains an accepted lasting cast" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_wizard("Wizard",0,5),1,1);
   #assert rs_spellbook_add(b[0].c[a..<a+1],RS_EXEC_SOURCE[SP_FOG_CLOUD]);
   choices := [3] int.[RS_KEY_MAGE_ARMOR,RS_EXEC_SOURCE[SP_FIREBALL],RS_EXEC_SOURCE[SP_FOG_CLOUD]];
@@ -397,7 +397,7 @@
 
 #test "full unrelated zones refuse before ordinary and Quickened cast state changes" {
   for quick: 0..<2 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
     caster := ifx quick == 0 then rs_druid("Druid",0,3) else rs_sorcerer("Sorcerer",0,5);
     a := rs_add(b[..], caster,1,1);
     t := rs_add(b[..], rs_skeleton("Target",1),3,1);
@@ -423,7 +423,7 @@
 
 #test "Self spells refuse another creature before ordinary or Quickened costs" {
   for quick: 0..<2 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
     caster := ifx quick == 0 then rs_wizard("Wizard",0,3) else rs_sorcerer("Sorcerer",0,3);
     a := rs_add(b[..], caster, 1, 1); t := rs_add(b[..], rs_skeleton("Target",1),3,1);
     rs_start_turn(b[..], a);
@@ -444,7 +444,7 @@
 }
 
 #test "unprepared reactions preserve their budgets and selected reactions spend normally" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
   wizard := rs_add(b[..], rs_wizard("Wizard", 0, 1), 1, 1);
   warlock := rs_add(b[..], rs_warlock("Warlock", 0, 1, SP_ELDRITCH_BLAST), 2, 1);
   t := rs_add(b[..], rs_skeleton("Target", 1), 3, 1);
@@ -463,7 +463,7 @@
 }
 
 #test "unprepared eligible spells refuse without spending and helper actions require their selected parent" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
   a := rs_add(b[..], rs_druid("Druid", 0, 1), 1, 1);
   keys := [1] int.[RS_EXEC_SOURCE[SP_ENTANGLE]];
   #assert rs_set_spells(b[0].c[a..<a+1], keys[..]);
@@ -476,7 +476,7 @@
 }
 
 #test "reaction flags do not grant extra-list spells and raging prevents reaction casting" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
   a := rs_add(b[..], rs_druid("Druid", 0, 3), 1, 1);
   t := rs_add(b[..], rs_skeleton("Target", 1), 3, 1);
   b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_SHIELD_SPELL, true); b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_REBUKE, true);
@@ -490,7 +490,7 @@
 }
 
 #test "class access refuses Guiding Bolt for an unmodified Druid without spending" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
   a := rs_add(b[..], rs_druid("Caster", 0, 3), 1, 1);
   t := rs_add(b[..], rs_skeleton("Target", 1), 3, 1);
   rs_start_turn(b[..], a);
@@ -504,7 +504,7 @@
   ids := [6] int.[-1, RS_MORE_END, 99, 104, SP_STARRY_WISP, SP_STARRY_WISP];
   slots := [6] int.[0, 0, 0, 0, -1, 1];
   for k: 0..<6 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
     a := rs_add(b[..], rs_druid("Caster", 0, 3), 1, 1);
     t := rs_add(b[..], rs_skeleton("Target", 1), 3, 1);
     rs_start_turn(b[..], a);
@@ -521,7 +521,7 @@
 }
 
 #test "caller-owned battles retain separate storage, due turns, casting budgets and diagnostics" {
-  b: [1] RsBattle; other: [1] RsBattle;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); other: [1] RsBattle; other_room: [1] RsRoom; rs_have(other[..], other_room[..]);
   creatures: [4] RsCreature; squares: [64] int;
   rs_use(b[..], creatures[..], squares[..]); b[0].w = 8; b[0].h = 8;
   #assert rs_room_for(b[..]) == 4;
@@ -542,7 +542,7 @@
   #assert cast(string) line[0].buf[0..<line[0].n] == "Room 4";
 }
 #test "Monk bonus strike and Step of the Wind share one Bonus Action while Dash spends its action" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..], rs_monk("Monk", 0, 3), 1, 1);
   t := rs_add(b[..], rs_skeleton("Target", 1), 2, 1);
   b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;

@@ -12,6 +12,26 @@
 // https://creativecommons.org/licenses/by/4.0/legalcode.
 #load "../shared/class-kit.coax";
 #load "class-look.coax";
+#load "../content/shipped.coax";
+#load "../model/content.coax";
+
+// The bar reads its names from the `ability` content rows (#13285; everglade/client/cast.coax e2k_name).
+#test "class kits: every ability a bar holds has its content row, and the row's name shown in the bar's case is the name the bar drew before" #steps 400000000 {
+  d: [1] ContentDoc; #assert ct_read(d[..], EC_SHIPPED);
+  rows := 0;
+  for c: 0..<FB_CL_N {
+    cat: [64] FbAb; n := xk_catalog(c, cat[..]);
+    #assert n > 0;
+    for i: 0..<n {
+      r := ct_find(d[..], EC_ABILITY, xk_wire(c, cat[i]));
+      #assert r >= 0;
+      o: [XK_NAME] u8;
+      #assert xk_shown(ct_str(d[..], EC_ABILITY, r, EC_NAME), cat[i].name, o[..]) == cat[i].name;
+      rows += 1;
+    }
+  }
+  #assert rows == ct_rows(d[..], EC_ABILITY) && rows == 83;   // every row is some bar's, and no bar's ability lacks one
+}
 #load "../../rules/srd/catalog.coax";
 #load "../../metaverse-engine/audio/experimental-sfx.coax";
 #load "../../metaverse-engine/audio/everglade-bank.coax";

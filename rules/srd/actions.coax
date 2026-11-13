@@ -84,26 +84,26 @@ rs_utilize :: (b: [] RsBattle, i: int, needs_action: bool) -> bool #effects(all)
 
 #test "Search takes the action with a Wisdom skill it names; Perception finds every hidden enemy it meets" {
   for skill: -1..<RS_SKILLS + 1 {
-    b: [1] RsBattle; act_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]);
     ok := skill == SK_INSIGHT || skill == SK_MEDICINE || skill == SK_PERCEPTION || skill == SK_SURVIVAL;
     r := rs_search(b[..], 0, skill, 11);
     #assert r.accepted == ok && b[0].turn.action == ok;
     if ok { #assert r.total == 11 && r.passed && r.ability == RS_WIS; }
   }
-  b: [1] RsBattle; act_field(b[..]); act_hide(b[..], 1, 11); act_hide(b[..], 2, 5);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]); act_hide(b[..], 1, 11); act_hide(b[..], 2, 5);
   _ := rs_add(b[..], rs_wizard("Deep", 1, 3), 7, 1); act_hide(b[..], 3, 12);
   r := rs_search(b[..], 0, SK_PERCEPTION, 30);
   #assert r.total == 11 && !r.passed && rs_hidden_at(b[0].c[1]) < 0 && rs_hidden_at(b[0].c[3]) >= 0 && rs_hidden_at(b[0].c[2]) >= 0;   // an ally stays hidden
   #assert !rs_search(b[..], 0, SK_PERCEPTION, 10).accepted;   // the action is spent
-  s: [1] RsBattle; act_field(s[..]); act_hide(s[..], 1, 11); q := rs_search(s[..], 0, SK_INSIGHT, 5); #assert q.passed; #assert rs_hidden_at(s[0].c[1]) >= 0;   // only Perception finds
-  n: [1] RsBattle; act_field(n[..]); act_hide(n[..], 1, 3); n[0].c[0].cond |= RS_BLINDED; r = rs_search(n[..], 0, SK_PERCEPTION, 3);
+  s: [1] RsBattle; s_room: [1] RsRoom; rs_have(s[..], s_room[..]); act_field(s[..]); act_hide(s[..], 1, 11); q := rs_search(s[..], 0, SK_INSIGHT, 5); #assert q.passed; #assert rs_hidden_at(s[0].c[1]) >= 0;   // only Perception finds
+  n: [1] RsBattle; n_room: [1] RsRoom; rs_have(n[..], n_room[..]); act_field(n[..]); act_hide(n[..], 1, 3); n[0].c[0].cond |= RS_BLINDED; r = rs_search(n[..], 0, SK_PERCEPTION, 3);
   #assert r.accepted && r.automatic && !r.passed && rs_hidden_at(n[0].c[1]) >= 0;
-  o: [1] RsBattle; act_field(o[..]); act_hide(o[..], 0, 3); r = rs_search(o[..], 0, SK_PERCEPTION, 3); #assert rs_hidden_at(o[0].c[0]) >= 0;   // never itself
-  w: [1] RsBattle; act_field(w[..]); w[0].who = 1; #assert !rs_search(w[..], 0, SK_PERCEPTION, 3).accepted;
+  o: [1] RsBattle; o_room: [1] RsRoom; rs_have(o[..], o_room[..]); act_field(o[..]); act_hide(o[..], 0, 3); r = rs_search(o[..], 0, SK_PERCEPTION, 3); #assert rs_hidden_at(o[0].c[0]) >= 0;   // never itself
+  w: [1] RsBattle; w_room: [1] RsRoom; rs_have(w[..], w_room[..]); act_field(w[..]); w[0].who = 1; #assert !rs_search(w[..], 0, SK_PERCEPTION, 3).accepted;
 }
 #test "searching for enemies all Lightly Obscured has Disadvantage; one in the open does not" {
   for mode: 0..<4 {
-    b: [1] RsBattle; act_field(b[..]); b[0].dice[0].fixed = false; b[0].dice[0].state = 7;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]); b[0].dice[0].fixed = false; b[0].dice[0].state = 7;
     act_hide(b[..], 1, 30);
     if mode >= 1 { _ := rs_terrain_put(b[..], TR_LIGHT, 5, 1, 5, 1); }
     if mode == 2 { _ := rs_add(b[..], rs_wizard("Open", 1, 3), 8, 1); act_hide(b[..], 3, 30); }
@@ -114,17 +114,17 @@ rs_utilize :: (b: [] RsBattle, i: int, needs_action: bool) -> bool #effects(all)
 }
 #test "Study is an Intelligence check with a knowledge skill, spending the action" {
   for skill: -1..<RS_SKILLS + 1 {
-    b: [1] RsBattle; act_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]);
     ok := skill == SK_ARCANA || skill == SK_HISTORY || skill == SK_INVESTIGATION || skill == SK_NATURE || skill == SK_RELIGION;
     r := rs_study(b[..], 0, skill, 10);
     #assert r.accepted == ok && b[0].turn.action == ok;
     if ok { #assert r.total == 10 && r.passed && r.ability == RS_INT; }
   }
-  b: [1] RsBattle; act_field(b[..]); b[0].turn.action = true; #assert !rs_study(b[..], 0, SK_ARCANA, 10).accepted;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]); b[0].turn.action = true; #assert !rs_study(b[..], 0, SK_ARCANA, 10).accepted;
 }
 #test "Influence: willing complies and unwilling refuses with no check; hesitant checks against 15 or Intelligence" {
   for mode: 0..<8 {
-    b: [1] RsBattle; act_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]);
     willing := IN_HESITANT; skill := SK_PERSUASION; attitude := AT_INDIFFERENT;
     if mode == 0 { willing = IN_WILLING; } else if mode == 1 { willing = IN_UNWILLING; } else if mode == 3 { b[0].c[1].score[RS_INT] = 16; }
     else if mode == 4 { b[0].c[0].score[RS_CHA] = 20; } else if mode == 5 { skill = SK_ANIMAL; b[0].c[0].score[RS_WIS] = 20; } else if mode == 6 { skill = SK_ANIMAL; }
@@ -138,13 +138,13 @@ rs_utilize :: (b: [] RsBattle, i: int, needs_action: bool) -> bool #effects(all)
 }
 #test "attitude and charm set the edge; a failure waits 24 hours for the same urging only" {
   for mode: 0..<4 {
-    b: [1] RsBattle; act_field(b[..]); b[0].dice[0].fixed = false; b[0].dice[0].state = 3;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]); b[0].dice[0].fixed = false; b[0].dice[0].state = 3;
     attitude := ifx mode == 1 then AT_FRIENDLY else ifx mode == 2 then AT_HOSTILE else AT_INDIFFERENT;
     if mode == 3 { _ := rs_put_effect(b[..], 1, RsEffect.{kind = EF_COND, cond = RS_CHARMED, by = 0, spell = -1, until = RS_NO_END, save = -1}); }
     r := rs_influence(b[..], 0, 1, SK_INTIMIDATION, IN_HESITANT, attitude, false);
     #assert r.accepted && r.edge == (ifx mode == 1 || mode == 3 then 1 else ifx mode == 2 then -1 else 0);
   }
-  b: [1] RsBattle; act_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]);
   #assert !rs_influence(b[..], 0, 1, SK_INTIMIDATION, IN_HESITANT, AT_HOSTILE, true).passed && rs_influence_wait(b[..], 0, 1, SK_INTIMIDATION) >= 0;
   rs_fresh(b[..], 0); #assert !rs_influence(b[..], 0, 1, SK_INTIMIDATION, IN_WILLING, AT_INDIFFERENT, true).accepted && !b[0].turn.action;
   #assert rs_influence(b[..], 0, 1, SK_PERFORMANCE, IN_HESITANT, AT_INDIFFERENT, true).accepted;
@@ -153,7 +153,7 @@ rs_utilize :: (b: [] RsBattle, i: int, needs_action: bool) -> bool #effects(all)
 }
 #test "Influence refuses, spending nothing, a malformed request, a monster that can't understand, or no room" {
   for mode: 1..<14 {
-    b: [1] RsBattle; act_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]);
     j := 1; skill := SK_PERSUASION; willing := IN_HESITANT; attitude := AT_INDIFFERENT; understands := true;
     if mode == 1 { j = 0; } else if mode == 2 { j = -1; } else if mode == 3 { j = 3; } else if mode == 4 { b[0].c[1].dead = true; } else if mode == 5 { skill = SK_STEALTH; }
     else if mode == 6 { willing = 3; } else if mode == 7 { willing = -1; } else if mode == 8 { attitude = 3; } else if mode == 9 { attitude = -1; }
@@ -161,47 +161,47 @@ rs_utilize :: (b: [] RsBattle, i: int, needs_action: bool) -> bool #effects(all)
     else if mode == 13 { b[0].turn.action = true; }
     #assert !rs_influence(b[..], 0, j, skill, willing, attitude, understands).accepted && b[0].turn.action == (mode == 13);
   }
-  b: [1] RsBattle; act_field(b[..]); for k: 0..<RS_EFFECTS { b[0].c[1].eff[k].kind = EF_BLESS; }
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]); for k: 0..<RS_EFFECTS { b[0].c[1].eff[k].kind = EF_BLESS; }
   #assert rs_influence(b[..], 0, 1, SK_INTIMIDATION, IN_WILLING, AT_INDIFFERENT, false).passed;   // no record needed
-  c: [1] RsBattle; act_field(c[..]); #assert rs_influence(c[..], 0, 1, SK_INTIMIDATION, IN_HESITANT, AT_INDIFFERENT, false).accepted;
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); act_field(c[..]); #assert rs_influence(c[..], 0, 1, SK_INTIMIDATION, IN_HESITANT, AT_INDIFFERENT, false).accepted;
   #assert rs_influence(c[..], 0, 1, SK_PERFORMANCE, IN_HESITANT, AT_INDIFFERENT, false).accepted == false;   // action spent
 }
 #test "Utilize spends the action only for an object that needs one" {
-  b: [1] RsBattle; act_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]);
   #assert !rs_utilize(b[..], 0, false) && !b[0].turn.action && rs_utilize(b[..], 0, true) && b[0].turn.action && !rs_utilize(b[..], 0, true);
 }
 #test "each action tells what it did" {
-  b: [1] RsBattle; act_field(b[..]); act_hide(b[..], 1, 11);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]); act_hide(b[..], 1, 11);
   r := rs_search(b[..], 0, SK_PERCEPTION, 30);
-  #assert act_last(b[..]).kind == RS_EV_CONDITION && act_last(b[..]).by == 0 && act_last(b[..]).amount == r.total && act_said(b[..], "Seeker searches and finds someone hidden");
-  s: [1] RsBattle; act_field(s[..]); act_hide(s[..], 1, 12); r = rs_search(s[..], 0, SK_PERCEPTION, 30);
+  #assert act_last(b[..]).kind == RS_EV_CONDITION && act_last(b[..]).by.value == 0 && act_last(b[..]).amount == r.total && act_said(b[..], "Seeker searches and finds someone hidden");
+  s: [1] RsBattle; s_room: [1] RsRoom; rs_have(s[..], s_room[..]); act_field(s[..]); act_hide(s[..], 1, 12); r = rs_search(s[..], 0, SK_PERCEPTION, 30);
   #assert act_last(s[..]).kind == RS_EV_CONDITION && act_said(s[..], "Seeker searches");
-  t: [1] RsBattle; act_field(t[..]); r = rs_study(t[..], 0, SK_ARCANA, 10);
+  t: [1] RsBattle; t_room: [1] RsRoom; rs_have(t[..], t_room[..]); act_field(t[..]); r = rs_study(t[..], 0, SK_ARCANA, 10);
   #assert act_last(t[..]).kind == RS_EV_CONDITION && act_last(t[..]).amount == r.total && act_said(t[..], "Seeker studies");
-  u: [1] RsBattle; act_field(u[..]); act_hide(u[..], 1, 3); #assert rs_utilize(u[..], 0, true);
+  u: [1] RsBattle; u_room: [1] RsRoom; rs_have(u[..], u_room[..]); act_field(u[..]); act_hide(u[..], 1, 3); #assert rs_utilize(u[..], 0, true);
   #assert act_last(u[..]).kind == RS_EV_CONDITION && act_last(u[..]).amount == 0 && act_said(u[..], "Seeker uses an object");
   for willing: 1..<3 {
-    v: [1] RsBattle; act_field(v[..]); u_r := rs_influence(v[..], 0, 1, SK_PERSUASION, willing, AT_INDIFFERENT, true); #assert u_r.accepted;
+    v: [1] RsBattle; v_room: [1] RsRoom; rs_have(v[..], v_room[..]); act_field(v[..]); u_r := rs_influence(v[..], 0, 1, SK_PERSUASION, willing, AT_INDIFFERENT, true); #assert u_r.accepted;
     e := act_last(v[..]);
-    #assert e.kind == RS_EV_CONDITION && e.by == 0 && e.to == 1 && act_said(v[..], ifx willing == IN_WILLING then "Seeker urges a monster, and it complies" else "Seeker urges a monster, and it refuses");
+    #assert e.kind == RS_EV_CONDITION && e.by.value == 0 && e.to.value == 1 && act_said(v[..], ifx willing == IN_WILLING then "Seeker urges a monster, and it complies" else "Seeker urges a monster, and it refuses");
   }
 }
 #test "Search counts and finds enemies from creature 0 on, never allies" {
   for mode: 0..<2 {
-    b: [1] RsBattle; act_field(b[..]); b[0].dice[0].fixed = false; b[0].dice[0].state = 7;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]); b[0].dice[0].fixed = false; b[0].dice[0].state = 7;
     rs_fresh(b[..], 1); act_hide(b[..], 0, 30);
     _ := rs_terrain_put(b[..], TR_LIGHT, 1, 1, 1, 1);
     if mode == 1 { ally := rs_add(b[..], rs_wizard("Ally", 1, 3), 8, 4); act_hide(b[..], ally, 30); }   // hidden in the open, on the searcher's side
     #assert rs_search(b[..], 1, SK_PERCEPTION, 30).edge == -1;
   }
-  f: [1] RsBattle; act_field(f[..]); rs_fresh(f[..], 1); act_hide(f[..], 0, 5);
+  f: [1] RsBattle; f_room: [1] RsRoom; rs_have(f[..], f_room[..]); act_field(f[..]); rs_fresh(f[..], 1); act_hide(f[..], 0, 5);
   #assert rs_search(f[..], 1, SK_PERCEPTION, 30).accepted && rs_hidden_at(f[0].c[0]) < 0 && act_said(f[..], "Quarry searches and finds someone hidden");
 }
 #test "Influence may urge creature 0, by Deception when it understands; a failure's record is plain" {
-  b: [1] RsBattle; act_field(b[..]); rs_fresh(b[..], 2);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); act_field(b[..]); rs_fresh(b[..], 2);
   #assert rs_influence(b[..], 2, 0, SK_DECEPTION, IN_HESITANT, AT_INDIFFERENT, true).accepted;
-  h: [1] RsBattle; act_field(h[..]); #assert !rs_influence(h[..], 0, 1, SK_HISTORY, IN_HESITANT, AT_INDIFFERENT, true).accepted && !h[0].turn.action;
-  f: [1] RsBattle; act_field(f[..]); #assert !rs_influence(f[..], 0, 1, SK_INTIMIDATION, IN_HESITANT, AT_HOSTILE, true).passed;
+  h: [1] RsBattle; h_room: [1] RsRoom; rs_have(h[..], h_room[..]); act_field(h[..]); #assert !rs_influence(h[..], 0, 1, SK_HISTORY, IN_HESITANT, AT_INDIFFERENT, true).accepted && !h[0].turn.action;
+  f: [1] RsBattle; f_room: [1] RsRoom; rs_have(f[..], f_room[..]); act_field(f[..]); #assert !rs_influence(f[..], 0, 1, SK_INTIMIDATION, IN_HESITANT, AT_HOSTILE, true).passed;
   e := f[0].c[1].eff[rs_influence_wait(f[..], 0, 1, SK_INTIMIDATION)];
   #assert e.spell == -1 && e.save == -1 && e.dc == 0 && e.cond == SK_INTIMIDATION;
 }

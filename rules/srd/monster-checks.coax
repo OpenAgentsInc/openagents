@@ -71,16 +71,16 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
 }
 
 #test "the Imp's Sting adds its Poison, which a poison-immune target ignores" {
-  b: [1] RsBattle; j := mc_field(b[..],MON_IMP,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_IMP,1);
   #assert rs_stat_multiattack(b[..],0,j,rs_monster_action(MON_IMP));
   #assert b[0].c[j].hp==88 && b[0].dice[0].rolled==4 && b[0].turn.action;   // 6 Piercing and 6 Poison
   #assert !rs_stat_multiattack(b[..],0,j,rs_monster_action(MON_IMP)) && b[0].c[j].hp==88;
-  c: [1] RsBattle; k := mc_field(c[..],MON_IMP,1); c[0].c[k].immune=1<<RS_POISON;
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); k := mc_field(c[..],MON_IMP,1); c[0].c[k].immune=1<<RS_POISON;
   #assert rs_stat_multiattack(c[..],0,k,rs_monster_action(MON_IMP)) && c[0].c[k].hp==94;
 }
 
 #test "Magic Resistance gives Advantage on saves against spells, not against other effects" {
-  b: [1] RsBattle; j := mc_field(b[..],MON_IMP,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_IMP,1);
   r := b[0].dice[0].rolled; _ := rs_saving_throw_magic(b[..],0,RS_DEX,30,0); #assert b[0].dice[0].rolled==r+2;
   r = b[0].dice[0].rolled; _ = rs_saving_throw(b[..],0,RS_DEX,30); #assert b[0].dice[0].rolled==r+1;
   r = b[0].dice[0].rolled; _ = rs_saving_throw_magic(b[..],0,RS_DEX,30,1); #assert b[0].dice[0].rolled==r+1;   // and Disadvantage cancels it
@@ -88,7 +88,7 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
   // a spell's save: Sacred Flame at the Imp rolls one die more than at the same Imp without the trait
   rolls: [2] int;
   for mode: 0..<2 {
-    c: [1] RsBattle; c[0].w=10; c[0].h=8; c[0].dice[0].fixed=true;
+    c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); c[0].w=10; c[0].h=8; c[0].dice[0].fixed=true;
     t := rs_add(c[..],rs_monster(MON_IMP,"",1),3,1); if mode==1 { c[0].c[t].form=RS_TINY; }
     p := rs_add(c[..],rs_cleric("Priest",0,1),1,1);
     rs_start_turn(c[..],p); c[0].dice[0].rolled=0;
@@ -99,7 +99,7 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
 }
 
 #test "the Quasit's Rend poisons until the start of its next turn, and refuses with no room for it" {
-  b: [1] RsBattle; j := mc_field(b[..],MON_QUASIT,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_QUASIT,1);
   until := rs_next_turn_tick(b[..],0); seq := b[0].book[0].seq;
   #assert rs_stat_multiattack(b[..],0,j,rs_monster_action(MON_QUASIT));
   #assert b[0].c[j].hp==95 && rs_has(b[0].c[j],RS_POISONED) && mc_has_text(b[..],seq,"  Target is Poisoned");
@@ -107,10 +107,10 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
   for e: b[0].c[j].eff { if e.kind==EF_COND && e.cond==RS_POISONED { #assert e.until==until && e.turn_end == 0 && e.by==0; found=true; } }
   #assert found;
   // immune: no record and no line
-  c: [1] RsBattle; k := mc_field(c[..],MON_QUASIT,1); c[0].c[k].immune_cond=RS_POISONED; seq=c[0].book[0].seq;
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); k := mc_field(c[..],MON_QUASIT,1); c[0].c[k].immune_cond=RS_POISONED; seq=c[0].book[0].seq;
   #assert rs_stat_multiattack(c[..],0,k,rs_monster_action(MON_QUASIT)) && !rs_has(c[0].c[k],RS_POISONED) && !mc_has_text(c[..],seq,"  Target is Poisoned");
   // full effect storage: refused before the Action or a die
-  d: [1] RsBattle; t := mc_field(d[..],MON_QUASIT,1);
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); t := mc_field(d[..],MON_QUASIT,1);
   for q: 0..<RS_EFFECTS { d[0].c[t].eff[q]=RsEffect.{kind=EF_COND,cond=RS_DEAFENED,by=q+10,spell=-1,until=100,save=-1}; }
   #assert !rs_stat_multiattack(d[..],0,t,rs_monster_action(MON_QUASIT)) && !d[0].turn.action && d[0].dice[0].rolled==0;
   #assert !rs_stat_attack(d[..],0,t,rs_monster_action(MON_QUASIT).attacks[0]) && !d[0].turn.action;
@@ -119,35 +119,35 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
 }
 
 #test "the Goblin Warrior's extra die needs Advantage; its Shortbow shoots to long range" {
-  b: [1] RsBattle; j := mc_field(b[..],MON_GOBLIN_WARRIOR,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_GOBLIN_WARRIOR,1);
   #assert rs_stat_multiattack(b[..],0,j,rs_monster_action(MON_GOBLIN_WARRIOR)) && b[0].c[j].hp==95 && b[0].dice[0].rolled==2;
-  c: [1] RsBattle; k := mc_field(c[..],MON_GOBLIN_WARRIOR,1); c[0].c[k].cond=RS_PRONE; seq := c[0].book[0].seq;
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); k := mc_field(c[..],MON_GOBLIN_WARRIOR,1); c[0].c[k].cond=RS_PRONE; seq := c[0].book[0].seq;
   #assert rs_stat_multiattack(c[..],0,k,rs_monster_action(MON_GOBLIN_WARRIOR)) && c[0].c[k].hp==93 && c[0].dice[0].rolled==4;
   #assert mc_has_text(c[..],seq,"  Target takes 2 Slashing more (Advantage)");
   c[0].c[k].resist=1<<RS_SLASHING; rs_start_turn(c[..],0);
   #assert rs_stat_multiattack(c[..],0,k,rs_monster_action(MON_GOBLIN_WARRIOR)) && c[0].c[k].hp==90;   // 5/2 + 2/2
   // ranged: the bow at 30 feet, Disadvantage past 80, nothing past 320
-  d: [1] RsBattle; t := mc_field(d[..],MON_GOBLIN_WARRIOR,6);
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); t := mc_field(d[..],MON_GOBLIN_WARRIOR,6);
   #assert rs_stat_pick(d[..],0,t,rs_monster_action(MON_GOBLIN_WARRIOR))==1 && rs_stat_mode(d[..],0,t,rs_monster_action(MON_GOBLIN_WARRIOR).attacks[1])==2;
   #assert rs_stat_multiattack(d[..],0,t,rs_monster_action(MON_GOBLIN_WARRIOR)) && d[0].c[t].hp==95 && d[0].dice[0].rolled==2;
-  e: [1] RsBattle; u := mc_field(e[..],MON_GOBLIN_WARRIOR,20);
+  e: [1] RsBattle; e_room: [1] RsRoom; rs_have(e[..], e_room[..]); u := mc_field(e[..],MON_GOBLIN_WARRIOR,20);
   #assert rs_stat_multiattack(e[..],0,u,rs_monster_action(MON_GOBLIN_WARRIOR)) && e[0].dice[0].rolled>=3;
-  f: [1] RsBattle; v := mc_field(f[..],MON_GOBLIN_WARRIOR,64);
+  f: [1] RsBattle; f_room: [1] RsRoom; rs_have(f[..], f_room[..]); v := mc_field(f[..],MON_GOBLIN_WARRIOR,64);
   #assert rs_stat_mode(f[..],0,v,rs_monster_action(MON_GOBLIN_WARRIOR).attacks[1])==2;
   rs_place(f[..],v,66,1);
   #assert rs_stat_pick(f[..],0,v,rs_monster_action(MON_GOBLIN_WARRIOR))== -1 && !rs_stat_multiattack(f[..],0,v,rs_monster_action(MON_GOBLIN_WARRIOR)) && !f[0].turn.action;
   // Nimble Escape: Disengage as a Bonus Action, its alone
   #assert rs_disengage_use(f[..],0,RS_DISENGAGE_NIMBLE) && f[0].turn.bonus && f[0].turn.disengaged && !f[0].turn.action;
   #assert !rs_disengage_use(f[..],0,RS_DISENGAGE_NIMBLE);
-  g: [1] RsBattle; w := mc_field(g[..],MON_OGRE,1);
+  g: [1] RsBattle; g_room: [1] RsRoom; rs_have(g[..], g_room[..]); w := mc_field(g[..],MON_OGRE,1);
   #assert !rs_disengage_use(g[..],0,RS_DISENGAGE_NIMBLE) && !g[0].turn.bonus;
 }
 
 #test "the Ogre's space reaches a square further; past it the Javelin is thrown" {
-  b: [1] RsBattle; j := mc_field(b[..],MON_OGRE,2);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_OGRE,2);
   a := rs_monster_action(MON_OGRE);
   #assert rs_stat_pick(b[..],0,j,a)==0 && rs_stat_multiattack(b[..],0,j,a) && b[0].c[j].hp==88;   // 2d8 + 4
-  c: [1] RsBattle; k := mc_field(c[..],MON_OGRE,3);
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); k := mc_field(c[..],MON_OGRE,3);
   #assert rs_stat_pick(c[..],0,k,a)==1 && rs_stat_multiattack(c[..],0,k,a) && c[0].c[k].hp==90;   // 2d6 + 4
   c[0].c[0].form=RS_MEDIUM; rs_place(c[..],k,3,1);
   #assert rs_stat_pick(c[..],0,k,a)==1 && rs_stat_mode(c[..],0,k,a.attacks[0])==0;
@@ -155,26 +155,26 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
 }
 
 #test "the Hill Giant attacks twice, Prone only on a Large or smaller target, and lobs trash that poisons" {
-  b: [1] RsBattle; j := mc_field(b[..],MON_HILL_GIANT,3);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_HILL_GIANT,3);
   a := rs_monster_action(MON_HILL_GIANT);
   #assert rs_stat_multiattack(b[..],0,j,a) && b[0].c[j].hp==66 && rs_has(b[0].c[j],RS_PRONE);
   #assert b[0].dice[0].rolled==9;   // the second roll at a Prone target 15 feet off has Disadvantage
   #assert !rs_stat_multiattack(b[..],0,j,a);
-  c: [1] RsBattle; k := mc_field(c[..],MON_HILL_GIANT,1); c[0].c[k].form=RS_HUGE;
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); k := mc_field(c[..],MON_HILL_GIANT,1); c[0].c[k].form=RS_HUGE;
   #assert rs_stat_multiattack(c[..],0,k,a) && c[0].c[k].hp==66 && !rs_has(c[0].c[k],RS_PRONE);
   c[0].c[k].form=RS_LARGE; c[0].c[k].immune_cond=RS_PRONE; rs_start_turn(c[..],0);
   #assert rs_stat_multiattack(c[..],0,k,a) && !rs_has(c[0].c[k],RS_PRONE);
   // a target dropped by the first attack takes no second
-  d: [1] RsBattle; t := mc_field(d[..],MON_HILL_GIANT,1); d[0].c[t].hp=10;
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); t := mc_field(d[..],MON_HILL_GIANT,1); d[0].c[t].hp=10;
   #assert rs_stat_multiattack(d[..],0,t,a) && d[0].dice[0].rolled==4 && d[0].c[t].hp==0;
   // Trash Lob at 40 feet, twice, Poisoned until the end of the target's next turn
-  e: [1] RsBattle; u := mc_field(e[..],MON_HILL_GIANT,8); until := rs_own_turn_end(e[..],u);
+  e: [1] RsBattle; e_room: [1] RsRoom; rs_have(e[..], e_room[..]); u := mc_field(e[..],MON_HILL_GIANT,8); until := rs_own_turn_end(e[..],u);
   #assert rs_stat_pick(e[..],0,u,a)==1 && rs_stat_multiattack(e[..],0,u,a) && e[0].c[u].hp==70 && rs_has(e[0].c[u],RS_POISONED);
   found := false;
   for f: e[0].c[u].eff { if f.kind==EF_COND && f.cond==RS_POISONED { #assert f.until==until && f.turn_end==u+1; found=true; } }
   #assert found && !rs_has(e[0].c[u],RS_PRONE);
   // two lobs need two free records
-  g: [1] RsBattle; v := mc_field(g[..],MON_HILL_GIANT,8);
+  g: [1] RsBattle; g_room: [1] RsRoom; rs_have(g[..], g_room[..]); v := mc_field(g[..],MON_HILL_GIANT,8);
   for q: 0..<RS_EFFECTS-1 { g[0].c[v].eff[q]=RsEffect.{kind=EF_COND,cond=RS_DEAFENED,by=q+10,spell=-1,until=100,save=-1}; }
   #assert !rs_stat_multiattack(g[..],0,v,a) && !g[0].turn.action && g[0].dice[0].rolled==0;
   rs_place(g[..],v,2,1);   // in Tree Club's reach the lob isn't picked, but the Action is one record still
@@ -182,13 +182,13 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
 }
 
 #test "a Hill Giant's Opportunity Attack swings its Tree Club with its rider" {
-  b: [1] RsBattle; j := mc_field(b[..],MON_HILL_GIANT,2);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_HILL_GIANT,2);
   rs_start_turn(b[..],j);
   m := rs_monster_action(MON_HILL_GIANT);
   #assert rs_stat_melee_pick(m)==0;
   r := rs_stat_opportunity(b[..],0,j,m.attacks[0],RsOpportunityMove.{measured=true,from_feet=10,to_feet=20,seen=true,movement=true});
   #assert r.admitted && r.hit && rs_has(b[0].c[j],RS_PRONE) && b[0].c[0].reacted && b[0].c[j].hp==83;
-  c: [1] RsBattle; k := mc_field(c[..],MON_HILL_GIANT,2); rs_start_turn(c[..],k);
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); k := mc_field(c[..],MON_HILL_GIANT,2); rs_start_turn(c[..],k);
   // a ranged-only record never makes one; nor past the reach of the giant's space
   q := rs_stat_opportunity(c[..],0,k,m.attacks[1],RsOpportunityMove.{measured=true,from_feet=10,to_feet=20,seen=true,movement=true});
   #assert !q.admitted && !c[0].c[0].reacted;
@@ -197,7 +197,7 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
   q = rs_stat_opportunity(c[..],0,k,m.attacks[0],RsOpportunityMove.{measured=true,from_feet=15,to_feet=16,seen=true,movement=true});
   #assert q.admitted;
   // a Quasit's Rend as a Reaction needs room for its Poisoned
-  d: [1] RsBattle; t := mc_field(d[..],MON_QUASIT,1); rs_start_turn(d[..],t);
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); t := mc_field(d[..],MON_QUASIT,1); rs_start_turn(d[..],t);
   for e: 0..<RS_EFFECTS { d[0].c[t].eff[e]=RsEffect.{kind=EF_COND,cond=RS_DEAFENED,by=e+10,spell=-1,until=100,save=-1}; }
   q = rs_stat_opportunity(d[..],0,t,rs_monster_action(MON_QUASIT).attacks[0],RsOpportunityMove.{measured=true,from_feet=5,to_feet=10,seen=true,movement=true});
   #assert !q.admitted && !d[0].c[0].reacted;
@@ -206,7 +206,7 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
 }
 
 #test "Pack Tactics needs an able ally of the wolf within 5 feet of the target" {
-  b: [1] RsBattle; j := mc_field(b[..],MON_WOLF,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_WOLF,1);
   w2 := rs_add(b[..],rs_monster(MON_WOLF,"",0),3,1);
   #assert rs_pack_tactics(b[..],0,j) && !rs_pack_tactics(b[..],j,0) && rs_attack_edge(b[..],0,j,true,true)==1;
   b[0].c[w2].cond=RS_INCAPACITATED; #assert !rs_pack_tactics(b[..],0,j);
@@ -216,15 +216,15 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
   b[0].c[w2].team=1; #assert !rs_pack_tactics(b[..],0,j);
   b[0].c[w2].team=0; b[0].c[0].form=RS_MEDIUM; #assert !rs_pack_tactics(b[..],0,j);
   // an ally at index 0 counts; 10 feet off it doesn't
-  e: [1] RsBattle; e[0].w=12; e[0].h=8; e[0].dice[0].fixed=true;
+  e: [1] RsBattle; e_room: [1] RsRoom; rs_have(e[..], e_room[..]); e[0].w=12; e[0].h=8; e[0].dice[0].fixed=true;
   a0 := rs_add(e[..],rs_monster(MON_WOLF,"",0),3,1); t0 := rs_add(e[..],rs_fighter("T",1,1),2,1); w0 := rs_add(e[..],rs_monster(MON_WOLF,"",0),1,1);
   #assert rs_pack_tactics(e[..],w0,t0); rs_place(e[..],a0,4,1); #assert !rs_pack_tactics(e[..],w0,t0);
   // the target is no ally of itself, and the wolf isn't its own
-  c: [1] RsBattle; k := mc_field(c[..],MON_WOLF,1); c[0].c[k].team=0;
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); k := mc_field(c[..],MON_WOLF,1); c[0].c[k].team=0;
   #assert !rs_pack_tactics(c[..],0,k);
   // the Bite: Advantage with the pack, Prone on a Medium target, not on a Large one
   #assert rs_stat_multiattack(b[..],0,j,rs_monster_action(MON_WOLF)) && b[0].c[j].hp==95 && rs_has(b[0].c[j],RS_PRONE);
-  d: [1] RsBattle; t := mc_field(d[..],MON_WOLF,1); d[0].c[t].form=RS_LARGE;
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); t := mc_field(d[..],MON_WOLF,1); d[0].c[t].form=RS_LARGE;
   #assert rs_stat_multiattack(d[..],0,t,rs_monster_action(MON_WOLF)) && d[0].dice[0].rolled==2 && !rs_has(d[0].c[t],RS_PRONE);
 }
 
@@ -258,7 +258,7 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
   p := RsStatAction.{n=2,count=1}; p.attacks[0]=bow; p.attacks[1]=ok;
   #assert rs_stat_melee_pick(p)==1; p.n=1; #assert rs_stat_melee_pick(p)== -1;
   // a no-mode record is refused, as are malformed Actions and wrong turns
-  b: [1] RsBattle; j := mc_field(b[..],MON_OGRE,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_OGRE,1);
   none := ok; none.reach=0;
   #assert !rs_stat_attack(b[..],0,j,none) && !b[0].turn.action;
   q := rs_monster_action(MON_OGRE); q.count=0;
@@ -273,7 +273,7 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
 }
 
 #test "an attacker dropped by a Reaction stops its Multiattack" {
-  b: [1] RsBattle; j := mc_field(b[..],MON_HILL_GIANT,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_HILL_GIANT,1);
   w := rs_warlock("Rebuker",1,3,SP_ELDRITCH_BLAST); w.feats = rs_feature_put(w.feats, RS_FT_REBUKE, true); w.hp=100; w.hp_max=100; w.ac=12;
   b[0].c[j]=w; rs_place(b[..],j,2,1); b[0].c[0].hp=1;
   #assert rs_stat_multiattack(b[..],0,j,rs_monster_action(MON_HILL_GIANT));
@@ -281,20 +281,20 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
 }
 
 #test "riders tell their conditions as events and keep exact effect records" {
-  b: [1] RsBattle; j := mc_field(b[..],MON_QUASIT,1); seq := b[0].book[0].seq;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_QUASIT,1); seq := b[0].book[0].seq;
   #assert rs_stat_attack(b[..],0,j,rs_monster_action(MON_QUASIT).attacks[0]);
   e := mc_event(b[..],seq,"  Target is Poisoned");
-  #assert e.kind==RS_EV_CONDITION && e.spell== -1 && e.by==0 && e.to==j && e.amount==RS_POISONED && e.damage==0;
+  #assert e.kind==RS_EV_CONDITION && e.spell.value== -1 && e.by.value==0 && e.to.value==j && e.amount==RS_POISONED && e.damage==0;
   for f: b[0].c[j].eff { if f.kind==EF_COND { #assert f.cond==RS_POISONED && f.spell== -1 && f.save== -1 && f.dc==0; } }
-  c: [1] RsBattle; k := mc_field(c[..],MON_WOLF,1); seq = c[0].book[0].seq;
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); k := mc_field(c[..],MON_WOLF,1); seq = c[0].book[0].seq;
   #assert rs_stat_attack(c[..],0,k,rs_monster_action(MON_WOLF).attacks[0]);
   p := mc_event(c[..],seq,"  Target is knocked Prone");
-  #assert p.kind==RS_EV_CONDITION && p.spell== -1 && p.by==0 && p.to==k && p.amount==RS_PRONE && p.damage==0;
+  #assert p.kind==RS_EV_CONDITION && p.spell.value== -1 && p.by.value==0 && p.to.value==k && p.amount==RS_PRONE && p.damage==0;
   // already Prone: no second line
   rs_start_turn(c[..],0); seq = c[0].book[0].seq;
   #assert rs_stat_attack(c[..],0,k,rs_monster_action(MON_WOLF).attacks[0]) && mc_event(c[..],seq,"  Target is knocked Prone").kind== -1;
   // a dead target takes no rider; a poison-immune one but blind-able takes no Poisoned
-  d: [1] RsBattle; t := mc_field(d[..],MON_QUASIT,1); d[0].c[t].immune_cond=RS_POISONED; seq = d[0].book[0].seq;
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); t := mc_field(d[..],MON_QUASIT,1); d[0].c[t].immune_cond=RS_POISONED; seq = d[0].book[0].seq;
   #assert rs_stat_attack(d[..],0,t,rs_monster_action(MON_QUASIT).attacks[0]) && mc_event(d[..],seq,"  Target is Poisoned").kind== -1;
   rs_stat_ride(d[..],0,t,rs_monster_action(MON_WOLF).attacks[0]); #assert rs_has(d[0].c[t],RS_PRONE);
   d[0].c[t].cond=0; d[0].c[t].dead=true; rs_stat_ride(d[..],0,t,rs_monster_action(MON_WOLF).attacks[0]); #assert !rs_has(d[0].c[t],RS_PRONE);
@@ -304,7 +304,7 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
 
 #test "Multiattack's admission bounds, exact rider room and per-attack follow-ups" {
   // a target at index 0 and the attacker after it; index n is no one
-  b: [1] RsBattle; b[0].w=12; b[0].h=8; b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8; b[0].dice[0].fixed=true;
   j := rs_add(b[..],rs_fighter("Target",1,1),2,1); b[0].c[j].hp=100; b[0].c[j].hp_max=100; b[0].c[j].ac=12;
   i := rs_add(b[..],rs_monster(MON_OGRE,"",0),1,1); rs_start_turn(b[..],i); b[0].dice[0].rolled=0;
   #assert !rs_stat_multiattack(b[..],i,b[0].n,rs_monster_action(MON_OGRE)) && !rs_stat_multiattack(b[..],b[0].n,j,rs_monster_action(MON_OGRE));
@@ -312,42 +312,42 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
   for q: 0..<RS_EFFECTS { b[0].c[j].eff[q]=RsEffect.{kind=EF_COND,cond=RS_DEAFENED,by=q+10,spell=-1,until=100,save=-1}; }
   #assert rs_stat_multiattack(b[..],i,j,rs_monster_action(MON_OGRE)) && b[0].c[j].hp==88;
   // two lobs in exactly two free records
-  c: [1] RsBattle; k := mc_field(c[..],MON_HILL_GIANT,8);
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); k := mc_field(c[..],MON_HILL_GIANT,8);
   for q: 0..<RS_EFFECTS-2 { c[0].c[k].eff[q]=RsEffect.{kind=EF_COND,cond=RS_DEAFENED,by=q+10,spell=-1,until=100,save=-1}; }
   #assert rs_stat_multiattack(c[..],0,k,rs_monster_action(MON_HILL_GIANT)) && c[0].c[k].hp==70;
   // an unconscious (not dead) target still takes the first attack
-  d: [1] RsBattle; t := mc_field(d[..],MON_OGRE,1); d[0].c[t].hp=0; d[0].c[t].cond=RS_UNCONSCIOUS;
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); t := mc_field(d[..],MON_OGRE,1); d[0].c[t].hp=0; d[0].c[t].cond=RS_UNCONSCIOUS;
   #assert rs_stat_multiattack(d[..],0,t,rs_monster_action(MON_OGRE)) && d[0].dice[0].rolled>0;
   // Remarkable Athlete's half Speed after a Critical Hit follows each attack
-  e: [1] RsBattle; u := mc_field(e[..],MON_OGRE,1); e[0].c[u].cond=RS_PARALYZED; e[0].c[0].feats = rs_feature_put(e[0].c[0].feats, RS_FT_ATHLETE, true); e[0].turn.move_left=0;
+  e: [1] RsBattle; e_room: [1] RsRoom; rs_have(e[..], e_room[..]); u := mc_field(e[..],MON_OGRE,1); e[0].c[u].cond=RS_PARALYZED; e[0].c[0].feats = rs_feature_put(e[0].c[0].feats, RS_FT_ATHLETE, true); e[0].turn.move_left=0;
   #assert rs_stat_multiattack(e[..],0,u,rs_monster_action(MON_OGRE)) && e[0].turn.move_left==4;
-  f: [1] RsBattle; v := mc_field(f[..],MON_OGRE,1); f[0].c[v].cond=RS_PARALYZED; f[0].c[0].feats = rs_feature_put(f[0].c[0].feats, RS_FT_ATHLETE, true); f[0].turn.move_left=0;
+  f: [1] RsBattle; f_room: [1] RsRoom; rs_have(f[..], f_room[..]); v := mc_field(f[..],MON_OGRE,1); f[0].c[v].cond=RS_PARALYZED; f[0].c[0].feats = rs_feature_put(f[0].c[0].feats, RS_FT_ATHLETE, true); f[0].turn.move_left=0;
   #assert rs_stat_attack(f[..],0,v,rs_monster_action(MON_OGRE).attacks[0]) && f[0].turn.move_left==4;
 }
 
 #test "an Opportunity Attack is melee, needs reach, exact room and a real reactor" {
   // the Ogre's Javelin as a Reaction is thrown as a melee attack (one die, \"attacks\")
-  b: [1] RsBattle; j := mc_field(b[..],MON_OGRE,1); rs_start_turn(b[..],j); seq := b[0].book[0].seq; b[0].dice[0].rolled=0;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_OGRE,1); rs_start_turn(b[..],j); seq := b[0].book[0].seq; b[0].dice[0].rolled=0;
   jav := rs_monster_action(MON_OGRE).attacks[1];
   r := rs_stat_opportunity(b[..],0,j,jav,RsOpportunityMove.{measured=true,from_feet=5,to_feet=15,seen=true,movement=true});
   #assert r.admitted && b[0].dice[0].rolled==3 && mc_has_text(b[..],seq,"Ogre attacks Target with Javelin: 10 + 6 = 16 vs AC 12: hit");
   // a reach-0 record makes none, even from a Huge reactor's space
-  c: [1] RsBattle; k := mc_field(c[..],MON_HILL_GIANT,1); rs_start_turn(c[..],k);
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); k := mc_field(c[..],MON_HILL_GIANT,1); rs_start_turn(c[..],k);
   lob := rs_monster_action(MON_HILL_GIANT).attacks[1];
   #assert !rs_stat_opportunity(c[..],0,k,lob,RsOpportunityMove.{measured=true,from_feet=5,to_feet=10,seen=true,movement=true}).admitted;
   #assert !rs_stat_opportunity(c[..],c[0].c.count,k,rs_monster_action(MON_HILL_GIANT).attacks[0],RsOpportunityMove.{measured=true,from_feet=5,to_feet=20,seen=true,movement=true}).admitted;
   // a one-foot reach record still counts
   one := rs_monster_action(MON_OGRE).attacks[0]; one.reach=1;
-  d: [1] RsBattle; t := mc_field(d[..],MON_WOLF,1); rs_start_turn(d[..],t);
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); t := mc_field(d[..],MON_WOLF,1); rs_start_turn(d[..],t);
   #assert rs_stat_opportunity(d[..],0,t,one,RsOpportunityMove.{measured=true,from_feet=1,to_feet=3,seen=true,movement=true}).admitted;
   // exactly one free record for the Quasit's Poisoned
-  e: [1] RsBattle; u := mc_field(e[..],MON_QUASIT,1); rs_start_turn(e[..],u);
+  e: [1] RsBattle; e_room: [1] RsRoom; rs_have(e[..], e_room[..]); u := mc_field(e[..],MON_QUASIT,1); rs_start_turn(e[..],u);
   for q: 0..<RS_EFFECTS-1 { e[0].c[u].eff[q]=RsEffect.{kind=EF_COND,cond=RS_DEAFENED,by=q+10,spell=-1,until=100,save=-1}; }
   #assert rs_stat_opportunity(e[..],0,u,rs_monster_action(MON_QUASIT).attacks[0],RsOpportunityMove.{measured=true,from_feet=5,to_feet=10,seen=true,movement=true}).admitted;
 }
 
 #test "a stat attack's modes and riders read only their own reach, range and condition bits" {
-  b: [1] RsBattle; j := mc_field(b[..],MON_OGRE,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); j := mc_field(b[..],MON_OGRE,1);
   near := RsStatAttack.{id="x",name="X",bonus=5,dice=1,sides=4,flat=0,kind=RS_SLASHING,ability=RS_STR,reach=1};
   #assert rs_stat_mode(b[..],0,j,near)==1;   // a Large space and 1 foot of reach meet the next square
   none := near; none.reach=0;
@@ -356,10 +356,10 @@ mc_has_text :: (b: [] RsBattle, since: int, text: string) -> bool {
   thrown := none; thrown.long_ft=1; #assert rs_stat_mode(b[..],0,j,thrown)==2;
   // Blinded immunity or Blindness doesn't stop Poisoned or Prone, nor make room for Poisoned
   for pass: 0..<2 {
-    c: [1] RsBattle; t := mc_field(c[..],MON_WOLF,1);
+    c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); t := mc_field(c[..],MON_WOLF,1);
     if pass==0 { c[0].c[t].immune_cond=RS_BLINDED; } else { c[0].c[t].cond=RS_BLINDED; }
     #assert rs_stat_strike(c[..],0,t,rs_monster_action(MON_WOLF).attacks[0],1) && rs_has(c[0].c[t],RS_PRONE);
-    q: [1] RsBattle; u := mc_field(q[..],MON_QUASIT,1);
+    q: [1] RsBattle; q_room: [1] RsRoom; rs_have(q[..], q_room[..]); u := mc_field(q[..],MON_QUASIT,1);
     if pass==0 { q[0].c[u].immune_cond=RS_BLINDED; } else { q[0].c[u].cond=RS_BLINDED; }
     #assert rs_stat_rider_room(q[..],u,rs_monster_action(MON_QUASIT).attacks[0])==1;
     #assert rs_stat_strike(q[..],0,u,rs_monster_action(MON_QUASIT).attacks[0],1) && rs_has(q[0].c[u],RS_POISONED);

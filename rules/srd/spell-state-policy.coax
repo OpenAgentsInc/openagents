@@ -8,11 +8,13 @@ rs_key_eligible_fields :: (klass: int, level: int, key: int) -> bool #effects(al
   s := RS_SPELL_KEYS[key];
   return (s.classes & (1<<source))!=0 && s.level<=rs_prepare_level(klass,level);
 }
-rs_spell_grant_has :: (klass: int, level: int, vigor: bool, grants: [2] u64, sp: int) -> bool #effects(all) {
+// at_will: the creature has the feature the spell's record says casts it at will (RsSpell.at_will:
+// Fiendish Vigor, a Warlock's invocation from level 2).
+rs_spell_grant_has :: (klass: int, level: int, at_will: bool, grants: [2] u64, sp: int) -> bool #effects(all) {
   if !rs_executable_spell(sp) { return false; }
   parent := rs_spell_root(sp);
   if (grants[parent/64] & (cast(u64)1<<(parent%64)))!=0 { return true; }
-  return parent==SP_FALSE_LIFE && klass==RS_WARLOCK && level>=2 && vigor;
+  return at_will && klass==RS_WARLOCK && level>=2;
 }
 
 #test "compact spell policy keeps source level and invocation gates without consulting unrelated creature state" {

@@ -15,21 +15,21 @@ hx_field :: (b: [] RsBattle, c: [] RsCreature) #effects(all) {
   #assert rs_heal(c[..],8)==6 && c[0].hp==20 && c[0].temp==3;
 }
 #test "p.18 Temporary HP are lost first: 5 Temporary HP and 7 damage lose 2 Hit Points" {
-  b: [1] RsBattle; c: [2] RsCreature; hx_field(b[..],c[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; hx_field(b[..],c[..]);
   c[1].hp=20; c[1].temp=5;
   rs_damage(b[..],-1,1,7,RS_FIRE,false,-1);
   #assert c[1].temp==0 && c[1].hp==18;
 }
 #test "p.18 Temporary HP don't stack: the larger grant is kept either way" {
   for start: [3] int.[0,5,10] {
-    b: [1] RsBattle; c: [2] RsCreature; hx_field(b[..],c[..]); b[0].who=0;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; hx_field(b[..],c[..]); b[0].who=0;
     c[0].temp=start;
     #assert rs_cast(b[..],0,SP_FALSE_LIFE,1,1,1,0);
     #assert c[0].temp==rs_max(start,8);   // 2d4 + 4 at fixed dice: 8
   }
 }
 #test "p.18 Temporary HP at 0 HP don't restore consciousness, and damage they absorb still costs a death save" {
-  b: [1] RsBattle; c: [2] RsCreature; hx_field(b[..],c[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; hx_field(b[..],c[..]);
   c[1].hp=0; c[1].cond=RS_UNCONSCIOUS|RS_PRONE; c[1].temp=8;
   #assert rs_has(c[1],RS_UNCONSCIOUS) && rs_death_eligible(c[1]) && !rs_capable(c[1]);
   rs_damage(b[..],-1,1,3,RS_FIRE,false,-1);
@@ -44,7 +44,7 @@ hx_field :: (b: [] RsBattle, c: [] RsCreature) #effects(all) {
   }
 }
 #test "p.17 a monster dies the instant it drops to 0 HP; a character falls Unconscious" {
-  b: [1] RsBattle; c: [2] RsCreature; hx_field(b[..],c[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; hx_field(b[..],c[..]);
   c[0]=rs_monster(MON_GOBLIN_WARRIOR,"Goblin",1); c[0].hp=3;
   rs_damage(b[..],-1,0,3,RS_SLASHING,false,-1);
   rs_damage(b[..],-1,1,c[1].hp,RS_SLASHING,false,-1);
@@ -70,14 +70,14 @@ hx_field :: (b: [] RsBattle, c: [] RsCreature) #effects(all) {
   #assert !rs_has(e[0],RS_UNCONSCIOUS) && rs_has(e[0],RS_PRONE);   // Unconscious ends; Prone remains
 }
 #test "p.18 a Stable creature makes no death saves until it takes damage again" {
-  b: [1] RsBattle; c: [2] RsCreature; hx_field(b[..],c[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; hx_field(b[..],c[..]);
   c[1].hp=0; c[1].stable=true; c[1].cond=RS_UNCONSCIOUS|RS_PRONE;
   #assert rs_battle_death_save(b[..],1)==RS_DS_NONE && c[1].death_fail==0;
   rs_damage(b[..],-1,1,1,RS_FIRE,false,-1);
   #assert !c[1].stable && c[1].death_fail==1 && rs_death_eligible(c[1]);
 }
 #test "p.16 damage order: a -5 aura, Resistance to all, then Vulnerability to Fire turns 28 Fire into 22" {
-  b: [1] RsBattle; c: [2] RsCreature; hx_field(b[..],c[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; hx_field(b[..],c[..]);
   c[1].resist=32767; c[1].vulnerable=1<<RS_FIRE;
   #assert rs_resisted(b[..],1,28-5,RS_FIRE)==22 && rs_resisted(b[..],1,28-5,RS_COLD)==11;
   // no stacking: Necrotic Resistance and Resistance to all halve Necrotic once; Rage and Petrified add nothing more
@@ -90,14 +90,14 @@ hx_field :: (b: [] RsBattle, c: [] RsCreature) #effects(all) {
   #assert rs_resisted(b[..],1,21,RS_SLASHING)==0;
 }
 #test "p.17 knocking out: the same melee blow that would drop a character leaves it at 1 HP and Unconscious" {
-  b: [1] RsBattle; ko_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]);
   b[0].c[1]=rs_fighter("Squire",1,1); b[0].c[1].x=2; b[0].c[1].y=1; b[0].c[1].ac=5; b[0].c[1].hp=2;
   #assert rs_attack(b[..],0,1,false,-1);
   c:=b[0].c[1];
   #assert c.hp==1 && rs_knocked_out(c) && !rs_death_eligible(c) && c.death_fail==0 && c.rest.phase==1;
 }
 #test "p.97 Healer's Kit and p.18 first aid both stabilize without healing; only the kit needs no check" {
-  b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]); c[0].score[RS_WIS]=1; c[0].uses[RS_USE_KIT]=1;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; sa_field(b[..],c[..]); c[0].score[RS_WIS]=1; c[0].uses[RS_USE_KIT]=1;
   r:=rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true});
   #assert r.accepted && !r.passed && !c[1].stable;
   b[0].turn.action=false;
@@ -145,7 +145,7 @@ HX_OWNED :: [9] int.[-1, RS_CHARMED|RS_INCAPACITATED, RS_FRIGHTENED|RS_INCAPACIT
   _ := rs_hurt(c[..],6,false);
   #assert c[0].cond==(RS_UNCONSCIOUS|RS_PRONE) && c[0].eff[0].kind==EF_NONE;
   #assert rs_heal(c[..],1)==1 && c[0].cond==RS_PRONE;
-  b: [1] RsBattle; ko_field(b[..]); b[0].c[1].hp=2;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ko_field(b[..]); b[0].c[1].hp=2;
   #assert rs_attack(b[..],0,1,false,-1) && (b[0].c[1].cond & (RS_UNCONSCIOUS|RS_PRONE))==(RS_UNCONSCIOUS|RS_PRONE);
   #assert rs_sleep_begin(b[..],0) && rs_has(b[0].c[0],RS_UNCONSCIOUS|RS_PRONE);
   rs_sleep_end(b[0].c[0..<1]); #assert !rs_has(b[0].c[0],RS_UNCONSCIOUS) && rs_has(b[0].c[0],RS_PRONE);

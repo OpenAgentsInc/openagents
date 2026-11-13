@@ -25,7 +25,7 @@ rs_reaction_frame_end :: (b:[] RsBattle) #effects(all) {
 }
 
 #test "reaction frame refuses nested loans and restores the original actor" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],rs_fighter("Actor",0,1),2,2); b[0].who=-1; b[0].turn.action=true;
   #assert rs_reaction_frame_begin(b[..],0) && b[0].who==0 && !b[0].turn.action;
   #assert !rs_reaction_frame_begin(b[..],0) && b[0].reaction_frame.who == -1;
@@ -39,7 +39,7 @@ rs_feature_next_turn_at :: (b:[] RsBattle,i:int)->int #effects(all) {
   return b[0].c[i].turn_at+rs_beat(b);
 }
 #test "reaction timing distinguishes actual owner and the off-turn reactor" {
-  b:[1] RsBattle; _:=rs_add(b[..],rs_fighter("Owner",0,3),2,2); _=rs_add(b[..],rs_guard("Reactor",1),3,2);
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); _:=rs_add(b[..],rs_fighter("Owner",0,3),2,2); _=rs_add(b[..],rs_guard("Reactor",1),3,2);
   b[0].who=0; b[0].c[0].turn_at=4; b[0].c[1].turn_at=9;
   #assert rs_turn_owner(b[..])==0 && rs_feature_next_turn_at(b[..],1)==9+rs_beat(b[..]);
   #assert rs_reaction_frame_begin(b[..],1);

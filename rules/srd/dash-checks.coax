@@ -3,7 +3,7 @@
 
 #test "all three Dash producers credit modified walking Speed including residual feet" {
   for mode: 0..<3 {
-    b: [1] RsBattle; dh_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dh_field(b[..]);
     b[0].c[0].speed=37; _ := rs_aura_set(b[0].c[0..<0+1], EF_SLOWED, 10); _ := rs_aura_set(b[0].c[0..<0+1], EF_HALVED, 10);
     rs_start_turn(b[..],0);
     b[0].turn.move_left=1; b[0].turn.move_feet=3;
@@ -18,7 +18,7 @@
 
 #test "Dash with zero Speed spends its action but never creates movement" {
   for state: 0..<5 {
-    b: [1] RsBattle; dh_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dh_field(b[..]);
     b[0].turn.move_left=0; b[0].turn.move_feet=0;
     if state==0 { b[0].c[0].speed=0; }
     if state==1 { b[0].c[0].cond=RS_GRAPPLED; }
@@ -32,7 +32,7 @@
 }
 
 #test "Dash action and bonus feature share movement but pay separate budgets" {
-  b: [1] RsBattle; dh_field(b[..]); b[0].c[0].speed=31; rs_start_turn(b[..],0);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dh_field(b[..]); b[0].c[0].speed=31; rs_start_turn(b[..],0);
   b[0].turn.move_left=0; b[0].turn.move_feet=0;
   #assert rs_dash(b[..],0) && rs_cunning_dash(b[..],0);
   #assert b[0].turn.move_left==12 && b[0].turn.move_feet==2;
@@ -49,7 +49,7 @@ dh_field :: (b: [] RsBattle) {
 
 #test "Dash refuses invalid actors, budgets, incapacity and missing features without changing movement or events" {
   for mode: 0..<3 { for state: 0..<8 {
-    b: [1] RsBattle; dh_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dh_field(b[..]);
     actor := 0;
     if state==0 { actor = -1; b[0].who=actor; }
     if state==1 { actor = b[0].n; b[0].who=actor; b[0].c[actor]=b[0].c[0]; }
@@ -66,7 +66,7 @@ dh_field :: (b: [] RsBattle) {
     #assert b[0].turn.move_left==before.move_left && b[0].turn.move_feet==before.move_feet;
     #assert b[0].book[0].seq==events && b[0].dice[0].rolled==0;
   } }
-  b: [1] RsBattle; dh_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dh_field(b[..]);
   b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_CUNNING_ACTION, false); b[0].c[0].uses_max[RS_USE_FOCUS]=0;
   #assert !rs_cunning_dash(b[..],0) && !rs_step_of_the_wind(b[..],0);
   #assert !b[0].turn.bonus;
@@ -74,21 +74,21 @@ dh_field :: (b: [] RsBattle) {
 
 
 #test "unrelated conditions keep Dash Speed and Step of the Wind spends no Focus and reports its own identity" {
-  b: [1] RsBattle; dh_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dh_field(b[..]);
   b[0].c[0].cond=RS_BLINDED; b[0].c[0].uses_max[RS_USE_FOCUS]=1; b[0].c[0].uses[RS_USE_FOCUS]=0;
   before := b[0].book[0].seq;
   #assert rs_step_of_the_wind(b[..],0);
   #assert b[0].turn.move_left==12 && b[0].turn.move_feet==0 && b[0].c[0].uses[RS_USE_FOCUS]==0;
   #assert b[0].book[0].seq==before+1;
   event := rs_recent(b[0].book[0],0);
-  #assert event.kind==RS_EV_FEAT && event.feat==RS_FT_STEP_OF_THE_WIND && event.by==0 && event.text_n==0;
+  #assert event.kind==RS_EV_FEAT && event.feat==RS_FT_STEP_OF_THE_WIND && event.by.value==0 && event.text_n==0;
 }
 
 #test "native Dash witness checks real wrappers, modifiers, budgets and refusal" {
   #assert dh_native();
 }
 dh_native :: () -> bool {
-  b: [1] RsBattle; dh_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dh_field(b[..]);
   b[0].c[0].speed=37; _ := rs_aura_set(b[0].c[0..<0+1], EF_SLOWED, 10); _ := rs_aura_set(b[0].c[0..<0+1], EF_HALVED, 10);
   rs_start_turn(b[..],0);
   b[0].turn.move_left=1; b[0].turn.move_feet=3;

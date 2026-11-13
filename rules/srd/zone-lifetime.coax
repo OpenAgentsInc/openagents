@@ -3,7 +3,7 @@
 
 #test "zone release is bounded, idempotent and preserves independent condition records" {
   for kind: [4] int.[EF_COND,EF_TURNED,EF_DAZED,EF_VEX] {
-    b: [1] RsBattle; _ := rs_add(b[..],rs_druid("Actor",0,1),1,1);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); _ := rs_add(b[..],rs_druid("Actor",0,1),1,1);
     b[0].zone[0] = RsZone.{on=true,by=0,spell=SP_ENTANGLE,until=rs_secs(6)};
     b[0].c[0].restrained_by = 0; b[0].c[0].cond = RS_RESTRAINED | RS_BLINDED | RS_POISONED;
     b[0].c[0].eff[0] = RsEffect.{kind=kind,cond=RS_RESTRAINED,by=0,spell=-1,until=rs_secs(100)};
@@ -15,14 +15,14 @@
   }
 }
 #test "an unrelated condition does not preserve a zone restraint" {
-  b: [1] RsBattle; _ := rs_add(b[..],rs_druid("Actor",0,1),1,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); _ := rs_add(b[..],rs_druid("Actor",0,1),1,1);
   b[0].zone[0] = RsZone.{on=true,by=0,spell=SP_ENTANGLE,until=rs_secs(6)};
   b[0].c[0].restrained_by = 0; b[0].c[0].cond = RS_RESTRAINED | RS_BLINDED;
   b[0].c[0].eff[0] = RsEffect.{kind=EF_COND,cond=RS_BLINDED,until=rs_secs(100)};
   #assert rs_release_zone(b[..],0) && b[0].c[0].cond == RS_BLINDED;
 }
 #test "zone release drops the first matching restraint record and retains other leases" {
-  b:[1]RsBattle; _:=rs_add(b[..],rs_druid("Actor",0,1),1,1);
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); _:=rs_add(b[..],rs_druid("Actor",0,1),1,1);
   b[0].zone[0]=RsZone.{on=true,spell=SP_ENTANGLE,until=rs_secs(10)};
   b[0].zone[1]=RsZone.{on=true,spell=SP_ENTANGLE,until=rs_secs(15)};
   c:=b[0].c[0..<1];
@@ -34,7 +34,7 @@
   #assert c[0].eff[2].kind==EF_GUIDANCE && b[0].zone[1].on;
 }
 #test "tick expires a non-concentration zone at its deadline and makes its slot reusable once" {
-  b: [1] RsBattle; _ := rs_add(b[..],rs_druid("Actor",0,1),1,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); _ := rs_add(b[..],rs_druid("Actor",0,1),1,1);
   for k: 0..<RS_ZONES { b[0].zone[k] = RsZone.{on=true,by=0,spell=SP_ICE_STORM,until=rs_secs(100)}; }
   b[0].zone[0].until = rs_secs(6); b[0].zone[0].difficult = true; b[0].zone[0].x1 = 2; b[0].zone[0].y1 = 2;
   #assert rs_difficult(b[..],1,1) && rs_zone_slot(b[0].zone[..],false,0,-1) == -1;
@@ -43,8 +43,8 @@
   rs_tick(b[..],1);
   #assert !b[0].zone[0].on && !rs_difficult(b[..],1,1) && rs_zone_slot(b[0].zone[..],false,0,-1) == 0;
   #assert b[0].c[0].conc == -1 && b[0].book[0].seq == 1;
-  e := rs_recent(b[0].book[0],0); #assert e.kind == RS_EV_END && e.spell == SP_ICE_STORM && e.by == 0;
-  #assert e.to == -1 && e.amount == 0 && e.damage == 0 && e.at == rs_secs(6);
+  e := rs_recent(b[0].book[0],0); #assert e.kind == RS_EV_END && e.spell.value == SP_ICE_STORM && e.by.value == 0;
+  #assert e.to.value == -1 && e.amount == 0 && e.damage == 0 && e.at == rs_secs(6);
   #assert cast(string)e.text[0..<e.text_n] == "Area ends";
   rs_tick(b[..],0); #assert b[0].book[0].seq == 1;
   for k: 1..<RS_ZONES { #assert b[0].zone[k].on && b[0].zone[k].until == rs_secs(100); }
@@ -52,7 +52,7 @@
 rs_release_zone :: (b: [] RsBattle, k: int) -> bool #effects(all) {
   if k < 0 || k >= b[0].zone.count || !b[0].zone[k].on { return false; }
   b[0].zone[k].on = false;
-  if b[0].zone[k].spell==SP_ZONE_OF_TRUTH { rs_truth_clear(b,k); }
+  if b[0].zone[k].truth { rs_truth_clear(b,k); }
   for j: 0..<b[0].n {
     for e: 0..<RS_EFFECTS {
       if b[0].c[j].eff[e].kind == EF_ZONE_RESTRAIN && b[0].c[j].eff[e].cond == k { rs_drop_effect(b,j,e); }

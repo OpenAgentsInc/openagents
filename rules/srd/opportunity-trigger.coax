@@ -30,7 +30,7 @@ rs_opportunity_begin :: (c:[] RsCreature) #effects(all) { c[0].eff = rs_state_pu
   rs_opportunity_begin(c[..]); #assert !rs_effect(c[0], EF_ADDLED) && c[0].reacted;
 }
 #test "a default opportunity query cannot silently assume visibility or active movement" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],rs_guard("Guard",1),2,2); _=rs_add(b[..],rs_fighter("Mover",0,1),3,2);
   #assert !rs_opportunity_trigger(b[..],0,1,RsOpportunityMove.{});
 }

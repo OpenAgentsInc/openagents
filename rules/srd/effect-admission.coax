@@ -3,7 +3,7 @@
 #authority;
 
 #test "upcasting a single-target program does not prepay targets the executor will not select" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Target",1),2,1);
   u := rs_add(b[..],rs_skeleton("Other",1),3,1);
@@ -18,14 +18,14 @@
 
 #test "optional hit riders reserve only while their choices and budgets are live" {
   for mode: 0..<9 {
-    b: [1] RsBattle;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
     a := rs_add(b[..],rs_monk("Monk",0,5),1,1);
     t := rs_add(b[..],rs_skeleton("Target",1),2,1);
     for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX}; }
-    b[0].who = a; b[0].c[a].stun_ready = true; b[0].c[a].uses[RS_USE_FOCUS] = 1;
+    b[0].who = a; b[0].c[a].note[RS_NT_STUN] = 1; b[0].c[a].uses[RS_USE_FOCUS] = 1;
     w := W_UNARMED;
     if mode == 1 { b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_STUNNING_STRIKE, false); }
-    else if mode == 2 { b[0].c[a].stun_ready = false; }
+    else if mode == 2 { b[0].c[a].note[RS_NT_STUN] = 0; }
     else if mode == 3 { b[0].c[a].uses[RS_USE_FOCUS] = 0; }
     else if mode == 4 { b[0].turn.stunned = true; }
     else if mode == 5 { b[0].who = t; }
@@ -39,13 +39,13 @@
     #assert rs_strikes_fit(b[..],a,t,w,1,false);
   }
   for mode: 0..<7 {
-    b: [1] RsBattle;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
     a := rs_add(b[..],rs_rogue("Rogue",0,5),1,1);
     t := rs_add(b[..],rs_skeleton("Target",1),2,1); b[0].c[t].immune_cond = 0;
     for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX}; }
-    b[0].c[a].strike_plan = CS_POISON; b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_POISON_KIT, true);
+    b[0].c[a].note[RS_NT_STRIKE_PLAN] = CS_POISON; b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_POISON_KIT, true);
     if mode == 1 { b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_CUNNING_STRIKE, false); }
-    else if mode == 2 { b[0].c[a].strike_plan = CS_TRIP; }
+    else if mode == 2 { b[0].c[a].note[RS_NT_STRIKE_PLAN] = CS_TRIP; }
     else if mode == 3 { b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_POISON_KIT, false); }
     else if mode == 4 { b[0].turn.sneaked = true; }
     else if mode == 5 { b[0].c[t].immune_cond = RS_POISONED; }
@@ -56,7 +56,7 @@
   }
 }
 #test "full unrelated records do not charge an attack for absent masteries or unrelated targets" {
-  b: [1] RsBattle;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   a := rs_add(b[..],rs_paladin("Paladin",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Target",1),2,1);
   u := rs_add(b[..],rs_skeleton("Two squares away",1),3,1);
@@ -65,7 +65,7 @@
   for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX}; }
   #assert rs_strikes_fit(b[..],a,t,W_SLAM,2,true);
   // A low-level caller can target itself: own and target demand share storage.
-  b[0].c[a].masteries = 1 << M_VEX; b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_CUNNING_STRIKE, true); b[0].c[a].strike_plan = CS_POISON; b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_POISON_KIT, true);
+  b[0].c[a].masteries = 1 << M_VEX; b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_CUNNING_STRIKE, true); b[0].c[a].note[RS_NT_STRIKE_PLAN] = CS_POISON; b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_POISON_KIT, true);
   b[0].c[a].eff[RS_EFFECTS-1].kind = EF_NONE;
   #assert !rs_strikes_fit(b[..],a,a,W_SHORTSWORD,1,false);
   b[0].c[a].eff[RS_EFFECTS-2].kind = EF_NONE;
@@ -75,7 +75,7 @@
 #test "casting preflight targets the selected batch, including upcast and maximum target boundaries" {
   for slot: [4] int.[0,1,2,9] {
     for blocked: 0..<11 {
-      b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+      b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
       _ := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
       for j: 1..<11 { added := rs_add(b[..],rs_skeleton("Target",1),1+j,1); }
       for k: 0..<RS_EFFECTS { b[0].c[blocked].eff[k] = RsEffect.{kind=EF_HEX}; }
@@ -87,7 +87,7 @@
 }
 #test "casting preflight pays each repetition before executing the first one" {
   for mode: 0..<5 {
-    b: [1] RsBattle;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
     _ := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
     t := rs_add(b[..],rs_skeleton("Target",1),2,1);
     s := rs_spell(SP_BLESS); s.targets = 1; s.concentration = false;
@@ -102,7 +102,7 @@
   }
 }
 #test "invalid first targets stop the whole cast and new casts repay even an identically named zone lease" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
   a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Invalid target",1),2,1);
   u := rs_add(b[..],rs_skeleton("Humanoid",1),3,1); b[0].c[u].humanoid = true;
@@ -120,7 +120,7 @@
   #assert !rs_cast_effect_room(b[..],a,s,SP_BLESS,1,0,0,a);
 }
 #test "area preflight excludes only outside, dead, invalid types, actually sculpted allies and a caster at its origin" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
   // The caster stands outside this Sphere (it reaches x 7); a caster inside is checked at the end.
   a := rs_add(b[..],rs_wizard("Caster",0,5),12,1);
   t := rs_add(b[..],rs_skeleton("Target",0),3,1);
@@ -168,7 +168,7 @@
   #assert rs_effect_condition_mask(c,RS_FRIGHTENED) == RS_FRIGHTENED;
 }
 #test "weapon batches reserve Sap at every possible foe and Vex on the attacker" {
-  b: [1] RsBattle;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   a := rs_add(b[..],rs_paladin("Paladin",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("First",1),2,1);
   u := rs_add(b[..],rs_skeleton("Next",1),1,2);
@@ -203,7 +203,7 @@
 }
 #test "a Blinded creature in a sight-required area needs no effect room" {
   for blinded: 0..<2 {
-    b: [1] RsBattle; b[0].w=20; b[0].h=20; b[0].dice[0].fixed=true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=20; b[0].h=20; b[0].dice[0].fixed=true;
     i := rs_add(b[..],rs_bard("Bard",0,5),1,1);
     j := rs_add(b[..],rs_fighter("Seen",1,1),6,6);
     for k: 0..<RS_EFFECTS { b[0].c[j].eff[k].kind=EF_HEX; }
@@ -247,7 +247,7 @@ rs_cast_effect_room :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, slot: int, 
   me := b[0].c[i];
   if s.area == RS_A_NONE && s.humanoid_only && !b[0].c[target].humanoid { return true; }
   more: [RS_TARGETS_MAX] int; more_n: int;
-  if s.area == RS_A_NONE && s.targets >= 2 { more_n = rs_more_targets(b,i,target,rs_legacy_target_limit(s,sp,slot)-1,s.range_ft,more[..]); }
+  if s.area == RS_A_NONE && s.targets >= 2 { more_n = rs_more_targets(b,i,target,rs_legacy_target_limit(s,slot)-1,s.range_ft,more[..]); }
   area := rs_area(b,i,s,tx,ty);
   reps := 1;
   for k: 0..<s.step_n { st := s.steps[k]; if st.kind == RS_S_REPEAT { reps = st.a+st.b*rs_max(slot-s.level,0); if st.c == 1 { reps = st.a*rs_cantrip_tier(me.level); } } }
@@ -294,7 +294,7 @@ rs_cast_effect_room :: (b: [] RsBattle, i: int, s: RsSpell, sp: int, slot: int, 
   c.eff[0].cond = 4; #assert rs_effect_demand(c, aid, -1, 0, SP_AID) == RS_EFFECTS + 1;   // one more Hit Point than the ceiling has
 }
 #test "effect room: a spell that is cast once asks its records once of the creature it is cast at" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 12;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 12;
   i := rs_add(b[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 2, 2); j := rs_add(b[..], rs_guard("Foe", 1), 4, 2);
   // one record free on the target: Hex (one record) fits
   for k: 0..<RS_EFFECTS - 1 { b[0].c[j].eff[k] = RsEffect.{kind = EF_MARK, by = 30 + k, spell = SP_HUNTERS_MARK, until = RS_NO_END}; }

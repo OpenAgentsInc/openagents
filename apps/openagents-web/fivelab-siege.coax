@@ -366,7 +366,7 @@ arch_turn :: (s: [] Lab, i: int) {
   t := siege_mark(s, i, 120, 0);
   if t < 0 { return; }
   if b[0].c[i].conc < 0 && !b[0].turn.slot_spent && b[0].c[i].slots[5] >= 2 { ok := rs_cast(b, i, SP_HEX, 5, 0, 0, t); }
-  else if b[0].c[i].conc == SP_HEX && b[0].c[i].hex_free { ok := rs_hex_move(b, i, t); }
+  else if b[0].c[i].conc == SP_HEX && b[0].c[i].note[RS_NT_CURSE_FREE] != 0 { ok := rs_hex_move(b, i, t); }
   ok := rs_cast(b, i, SP_ELDRITCH_BLAST, 0, 0, 0, t);
 }
 

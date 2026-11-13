@@ -16,7 +16,7 @@ RS_BEATS_TIMING :: RsTimingProfile.{kind=RS_TIME_BEATS};
     p := RsTimingProfile.{kind=kind};
     #assert rs_timing_allowed(p,sealed==1) == ((kind==0 || kind==1 || kind==2) && sealed==0);
   } }
-  b: [1] RsBattle;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   #assert rs_set_timing(b[..],RS_ACTION_TIMING) && b[0].timing.kind == RS_TIME_ACTION;
   #assert !rs_set_timing(b[..],RsTimingProfile.{kind=3}) && b[0].timing.kind == RS_TIME_ACTION;
   rs_seal_timing(b[..]);

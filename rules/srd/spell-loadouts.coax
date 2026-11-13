@@ -44,7 +44,7 @@ rs_preset_spells :: (c: [] RsCreature) {
     if c[0].klass == RS_WIZARD && learned < 6 + 2 * (c[0].level - 1) && !rs_wizard_book_has(c[0], key) {
       if rs_spellbook_add(c, key) { learned += 1; }
     }
-    if !rs_spell_grant_has(c[0].klass,c[0].level,rs_has_feature(c[0], RS_FT_FIENDISH_VIGOR),c[0].spell_grants,sp) { _ := rs_select_spell(c, key); }
+    if !rs_spell_grant_has(c[0].klass,c[0].level,rs_spell_at_will(c[0],sp),c[0].spell_grants,sp) { _ := rs_select_spell(c, key); }
   }
   // Fill the Wizard's remaining class-granted research choices, including
   // source spells with no executor yet. This adds no paid copied spells.
@@ -59,7 +59,7 @@ rs_preset_spells :: (c: [] RsCreature) {
   // Always-prepared feature spells do not use up these ordinary choices.
   granted: [6] u64;
   for sp: 0..<RS_MORE_END {
-    if rs_spell_grant_has(c[0].klass,c[0].level,rs_has_feature(c[0], RS_FT_FIENDISH_VIGOR),c[0].spell_grants,sp) {
+    if rs_spell_grant_has(c[0].klass,c[0].level,rs_spell_at_will(c[0],sp),c[0].spell_grants,sp) {
       key := RS_EXEC_SOURCE[sp]; granted[key / 64] |= cast(u64) 1 << (key % 64);
     }
   }

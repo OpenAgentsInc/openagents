@@ -11,27 +11,7 @@ rs_rage_end :: (b: [] RsBattle, i: int, why: string) {
   rs_add_name(l[..], b, i); rs_add_text(l[..], "'s Rage ends"); rs_add_text(l[..], why);
   rs_tell(b, RS_EV_END, -1, i, -1, 0, 0, l[..]);
 }
-// Rage: a Bonus Action, one of its uses. While it lasts: Resistance to Bludgeoning, Piercing and
-// Slashing, its Rage Damage on Strength attacks, Advantage on Strength checks and saves, no
-// Concentration and no spells.
-rs_rage :: (b: [] RsBattle, i: int) -> bool {
-  if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) || b[0].c[i].uses[RS_USE_RAGE] <= 0 || rs_effect(b[0].c[i], EF_RAGE) || !rs_state_room(b[0].c[i], EF_RAGE) { return false; }
-  b[0].turn.bonus = true;
-  b[0].c[i].uses[RS_USE_RAGE] -= 1; b[0].c[i].eff = rs_state_put(b[0].c[i].eff, EF_RAGE, true); b[0].c[i].eff = rs_state_bit(b[0].c[i].eff, EF_RAGE, RS_RAGE_KEPT, true);
-  rs_end_concentration(b, i, " (Rage)");
-  // Mindless Rage: a Charmed or Frightened condition on it ends
-  if rs_has_feature(b[0].c[i], RS_FT_MINDLESS_RAGE) {
-    for k: 0..<RS_EFFECTS {
-      ef := b[0].c[i].eff[k];
-      if (ef.kind == EF_COND || ef.kind == EF_TURNED) && (ef.cond & (RS_CHARMED | RS_FRIGHTENED)) != 0 { rs_drop_effect(b, i, k); }
-    }
-  }
-  l: [1] RsLine;
-  rs_add_name(l[..], b, i); rs_add_text(l[..], " enters a Rage");
-  rs_tell(b, RS_EV_CONDITION, -1, i, i, 0, 0, l[..]);
-  return true;
-}
-
+// (Rage and Wholeness of Body are rows of the feature program: battle-features.coax rs_feature.)
 // Hex and Hunter's Mark: 1d6 more (Necrotic, Force) when their caster i hits j with an attack roll.
 rs_curse_damage :: (b: [] RsBattle, i: int, j: int, crit: bool) {
   mult := ifx crit then 2 else 1;
@@ -150,7 +130,7 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
       b[0].turn.sneaked = true;
       // Cunning Strike (p. 63): a die forgone, before the roll, for the planned effect
       dice_n := me.rank[RS_RK_SNEAK_DICE];
-      if rs_has_feature(me, RS_FT_CUNNING_STRIKE) && me.strike_plan != CS_NONE && (me.strike_plan != CS_POISON || rs_has_feature(me, RS_FT_POISON_KIT)) && dice_n > 1 { dice_n -= 1; plan = me.strike_plan; }
+      if rs_has_feature(me, RS_FT_CUNNING_STRIKE) && me.note[RS_NT_STRIKE_PLAN] != CS_NONE && (me.note[RS_NT_STRIKE_PLAN] != CS_POISON || rs_has_feature(me, RS_FT_POISON_KIT)) && dice_n > 1 { dice_n -= 1; plan = me.note[RS_NT_STRIKE_PLAN]; }
       sneak = rs_sum(b[0].dice[..], dice_n * mult, 6); amount += sneak;
     }
   }
@@ -330,14 +310,6 @@ rs_stunning_strike :: (b: [] RsBattle, i: int, j: int) {
   } else {
     _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = i, spell = -1, until = until, save = -1, dc = 0});
   }
-}
-// Wholeness of Body (Open Hand, p. 52): a Bonus Action, the Martial Arts die + Wisdom (at least 1).
-rs_wholeness :: (b: [] RsBattle, i: int) -> bool {
-  if !rs_bonus_free(b, i) || b[0].c[i].uses[RS_USE_WHOLE] <= 0 || b[0].c[i].hp >= b[0].c[i].hp_max || rs_effect(b[0].c[i], EF_NOHEAL) { return false; }
-  b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_WHOLE] -= 1;
-  rs_say_ft(b, RS_EV_CAST, i, i, 0, RS_FT_WHOLENESS, " draws on Wholeness of Body");
-  got := rs_feature_heal(b, i, i, rs_max(rs_roll(b[0].dice[..], b[0].c[i].rank[RS_RK_MARTIAL_DIE]) + rs_mod(b[0].c[i].score[RS_WIS]), 1), "Wholeness of Body", RS_FT_WHOLENESS);
-  return true;
 }
 // Cunning Strike's effects, after the damage (p. 63): a save against 8 + Dex + Proficiency.
 CS_NONE :: 0; CS_TRIP :: 1; CS_POISON :: 2; CS_WITHDRAW :: 3;

@@ -18,7 +18,7 @@ rs_long_rest_resources :: (c:[]RsCreature)->bool #effects(all) {
   }
   for u:0..<RS_USES { c[0].uses[u]=rs_rest_all(c[0].uses[u],c[0].uses_max[u]); c[0].uses_back[u]=0; }
   c[0].rest.dice=c[0].rest.dice_max;
-  c[0].rest.recovery_used=false; c[0].rest.restoration_used=false; c[0].resurged_slot=false;
+  c[0].rest.recovery_used=false; c[0].rest.restoration_used=false; c[0].note[RS_NT_RESURGED] = 0;
   c[0].temp=0;
   return true;
 }

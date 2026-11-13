@@ -2,7 +2,7 @@
 #load "exhaustion-checks.coax";
 
 #test "a creature stabilized by three death saves regains one HP after its fixed two-hour recovery" {
-  b: [1] RsBattle; c: [1] RsCreature; b[0].c=c[..]; b[0].n=1;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [1] RsCreature; b[0].c=c[..]; b[0].n=1;
   c[0]=rs_druid("Patient",0,3); c[0].hp=0; c[0].cond=RS_UNCONSCIOUS|RS_PRONE;
   b[0].dice[0].fixed=true;
   for turn: 0..<3 { #assert rs_battle_death_save(b[..],0)==(ifx turn==2 then RS_DS_STABLE else RS_DS_OK); }
@@ -14,7 +14,7 @@
 }
 
 #test "first aid spends an Action on a trained Wisdom Medicine check and stabilizes without healing or waking" {
-  b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]); b[0].clock=rs_secs(10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; sa_field(b[..],c[..]); b[0].clock=rs_secs(10);
   c[0]=rs_cleric("Healer",0,3); c[0].score[RS_WIS]=6;
   c[1].death_ok=2; c[1].death_fail=2; c[1].temp=7;
   r:=rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true});
@@ -23,26 +23,26 @@
   #assert c[1].stable && c[1].hp==0 && c[1].temp==7 && c[1].death_ok==0 && c[1].death_fail==0;
   #assert c[1].cond==(RS_UNCONSCIOUS|RS_PRONE) && c[1].stable_due==rs_secs(7210) && b[0].dice[0].rolled==2;
   e:=rs_recent_at(b[0].book[..],0);
-  #assert e.kind==RS_EV_STABLE && e.by==0 && e.to==1 && e.amount==10 && e.spell == -1 && e.damage==0;
+  #assert e.kind==RS_EV_STABLE && e.by.value==0 && e.to.value==1 && e.amount==10 && e.spell.value == -1 && e.damage==0;
   #assert cast(string)e.text[0..<e.text_n]=="Healer gives first aid to Patient: WIS (Medicine) 10 vs DC 10: Stable";
   r=rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true});
   #assert !r.accepted && !r.passed && b[0].dice[0].rolled==2;
 }
 
 #test "failed first aid spends its Action but leaves the death-save track and recovery unmodified" {
-  b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]); c[0].score[RS_WIS]=8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; sa_field(b[..],c[..]); c[0].score[RS_WIS]=8;
   c[1].death_ok=2; c[1].death_fail=1;
   r:=rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true});
   #assert r.accepted && !r.passed && r.total==9 && b[0].turn.action && b[0].dice[0].rolled==1;
   #assert !c[1].stable && c[1].stable_due==0 && c[1].hp==0 && c[1].death_ok==2 && c[1].death_fail==1;
   e:=rs_recent_at(b[0].book[..],0);
-  #assert e.kind==RS_EV_CONDITION && e.by==0 && e.to==1 && e.amount==9;
+  #assert e.kind==RS_EV_CONDITION && e.by.value==0 && e.to.value==1 && e.amount==9;
   #assert cast(string)e.text[0..<e.text_n]=="Healer gives first aid to Patient: WIS (Medicine) 9 vs DC 10: not stabilized";
 }
 
 #test "first aid refusal preserves budgets dice resources events and patient state" {
   for mode: 0..<11 {
-    b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; sa_field(b[..],c[..]);
     i:=0; j:=1; q:=RsFirstAidContext.{contact=true};
     if mode==0 { i = -1; } else if mode==1 { i=2; }
     else if mode==2 { j = -1; } else if mode==3 { j=2; }
@@ -61,7 +61,7 @@
 }
 
 #test "first aid admits patient index zero and refuses an invalid logical actor even when it owns the turn" {
-  b: [1] RsBattle; c: [3] RsCreature; b[0].c=c[..]; b[0].n=2; b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [3] RsCreature; b[0].c=c[..]; b[0].n=2; b[0].dice[0].fixed=true;
   c[0]=rs_druid("Patient",0,3); c[0].hp=0; c[0].cond=RS_UNCONSCIOUS;
   c[1]=rs_druid("Healer",1,3); c[1].score[RS_WIS]=10;
   c[2]=c[1]; b[0].who=2;
@@ -75,7 +75,7 @@
 
 #test "first aid uses shared conditions Exhaustion sense failures and circumstance cancellation" {
   for mode: 0..<7 {
-    b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; sa_field(b[..],c[..]);
     q:=RsFirstAidContext.{contact=true};
     if mode==0 { c[0].cond=RS_POISONED; }
     else if mode==1 { c[0].cond=RS_FRIGHTENED; q.fear_visible=true; }
@@ -96,7 +96,7 @@
 
 #test "first aid retains optional rescue spending and failed Tactical Mind keeps Second Wind" {
   for mode: 0..<3 {
-    b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]); c[0].score[RS_WIS]=6;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; sa_field(b[..],c[..]); c[0].score[RS_WIS]=6;
     if mode==0 { c[0].eff = rs_state_value_put(c[0].eff, EF_INSPIRED, 6); }
     else if mode==1 { c[0].feats = rs_feature_put(c[0].feats, RS_FT_OWN_LUCK, true); c[0].uses[RS_USE_LUCK]=1; }
     else { c[0].feats = rs_feature_put(c[0].feats, RS_FT_TACTICAL_MIND, true); c[0].uses[RS_USE_WIND]=1; c[0].score[RS_WIS]=1; c[0].exhaustion=2; }
@@ -109,7 +109,7 @@
 }
 
 #test "recovery arms only eligible stable actors once and preserves existing deadlines" {
-  b: [1] RsBattle; c: [1] RsCreature; b[0].c=c[..]; b[0].n=1; b[0].clock=rs_secs(100); b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [1] RsCreature; b[0].c=c[..]; b[0].n=1; b[0].clock=rs_secs(100); b[0].dice[0].fixed=true;
   #assert !rs_stable_arm(b[..],-1) && !rs_stable_arm(b[..],1);
   #assert !rs_stable_arm(b[..],0); c[0].stable=true; c[0].dead=true;
   #assert !rs_stable_arm(b[..],0); c[0].dead=false; c[0].hp=1;
@@ -126,7 +126,7 @@
   // Independently computed with BigInt SplitMix64, using the high 32 bits.
   seeds: [4] u64=[4] u64.[1,6,2,13]; hours: [4] int=[4] int.[1,2,3,4];
   for k: 0..<4 {
-    b: [1] RsBattle; c: [1] RsCreature; b[0].c=c[..]; b[0].n=1; b[0].clock=rs_secs(100);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [1] RsCreature; b[0].c=c[..]; b[0].n=1; b[0].clock=rs_secs(100);
     c[0].stable=true; c[0].hp_max=12; c[0].cond=RS_UNCONSCIOUS|RS_PRONE;
     b[0].dice[0].state=seeds[k];
     #assert rs_stable_arm(b[..],0) && c[0].stable_due==rs_secs(100)+rs_secs(hours[k]*3600);
@@ -139,7 +139,7 @@
 }
 
 #test "first aid restarts recovery after damage and never uses a former stable episode deadline" {
-  b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; sa_field(b[..],c[..]);
   #assert rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true}).passed;
   #assert c[1].stable_due==rs_secs(7200);
   rs_tick(b[..],100);
@@ -153,7 +153,7 @@
 }
 
 #test "expiry respects no-healing and another Unconscious owner then recovers once after both effects expire" {
-  b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; sa_field(b[..],c[..]);
   #assert rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true}).passed;
   #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_NOHEAL,until=rs_secs(7201)});
   #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_COND,cond=RS_UNCONSCIOUS,until=rs_secs(7202)});
@@ -164,7 +164,7 @@
   rs_tick(b[..],1);
   #assert c[1].hp==1 && !c[1].stable && c[1].stable_due==0 && rs_has(c[1],RS_UNCONSCIOUS);
   e:=rs_recent_at(b[0].book[..],0);
-  #assert e.kind==RS_EV_UP && e.to==1 && e.by==1 && e.amount==1 && cast(string)e.text[0..<e.text_n]=="Patient regains 1 Hit Point after stabilizing";
+  #assert e.kind==RS_EV_UP && e.to.value==1 && e.by.value==1 && e.amount==1 && cast(string)e.text[0..<e.text_n]=="Patient regains 1 Hit Point after stabilizing";
   rs_tick(b[..],1); #assert !rs_has(c[1],RS_UNCONSCIOUS) && rs_has(c[1],RS_PRONE);
   rolls:=b[0].dice[0].rolled; seq=b[0].book[0].seq;
   rs_tick(b[..],7200); #assert c[1].hp==1 && b[0].book[0].seq==seq && b[0].dice[0].rolled==rolls;
@@ -172,7 +172,7 @@
 
 #test "death damage healing and inactive raw timers cannot revive or publish a false recovery" {
   for mode: 0..<4 {
-    b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; sa_field(b[..],c[..]);
     #assert rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true}).passed;
     if mode==0 { c[1].dead=true; }
     else if mode==1 { rs_damage(b[..],0,1,1,RS_FORCE,false,-1); }
@@ -187,7 +187,7 @@
 }
 
 #test "death-save stabilization restarts the deadline after a damaged stable episode" {
-  b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; sa_field(b[..],c[..]);
   #assert rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true}).passed;
   rs_damage(b[..],0,1,1,RS_FORCE,false,-1);
   c[1].death_ok=2; b[0].clock=rs_secs(100);
@@ -200,14 +200,14 @@
   d: [1] RsDice; d[0].fixed=true;
   for k: 0..<3 { _ := rs_death_save(d[..],patient[..]); }
   #assert patient[0].stable && patient[0].stable_due==0;
-  b: [1] RsBattle; b[0].w=8; b[0].h=8; b[0].clock=rs_secs(100); b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].clock=rs_secs(100); b[0].dice[0].fixed=true;
   #assert rs_add(b[..],patient[0],1,1)==0 && b[0].c[0].stable_due==rs_secs(7300);
   patient[0].stable_due=rs_secs(8000);
   #assert rs_add(b[..],patient[0],2,1)==1 && b[0].c[1].stable_due==rs_secs(8000) && b[0].dice[0].rolled==5;
 }
 
 #test "actual turn start checks an elapsed stable deadline before deciding whether to roll a death save" {
-  b: [1] RsBattle; c: [2] RsCreature; sa_field(b[..],c[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; sa_field(b[..],c[..]);
   #assert rs_first_aid(b[..],0,1,RsFirstAidContext.{contact=true}).passed;
   b[0].clock=rs_secs(7200); rolls:=b[0].dice[0].rolled;
   rs_start_turn(b[..],1);
@@ -221,7 +221,7 @@ sa_field :: (b: [] RsBattle, c: [] RsCreature) {
 }
 
 #test "a new death-save stabilization replaces an inactive retained recovery deadline" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].clock=rs_secs(100); b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].clock=rs_secs(100); b[0].dice[0].fixed=true;
   c[0]=rs_wizard("Restored patient",0,3); c[0].hp=0; c[0].stable=false;
   c[0].death_ok=2; c[0].stable_due=rs_secs(9999);
   #assert rs_battle_death_save(b[..],0)==RS_DS_STABLE;

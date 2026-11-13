@@ -48,7 +48,7 @@ rs_cast_object :: (b: [] RsBattle, i: int, sp: int, o: [] RsObject) -> bool {
   ac := rs_object_ac(o[0].material);
   bonus := rs_spell_attack(me);
   edge := rs_edge(ifx rs_aura_on(me, EF_INNATE, b[0].clock) then 1 else 0, ifx rs_has(me, RS_BLINDED) then 1 else 0);
-  agony := ifx me.rank[RS_RK_AGONIZING] == sp && sp != SP_FLAME_HURL then rs_mod(me.score[RS_CHA]) else 0;
+  agony := ifx me.rank[RS_RK_AGONIZING] == sp then rs_mod(me.score[RS_CHA]) else 0;
   for beam: 0..<beams {
     if o[0].destroyed { break; }
     d := rs_d20(b[0].dice[..], edge);
@@ -63,8 +63,8 @@ rs_cast_object :: (b: [] RsBattle, i: int, sp: int, o: [] RsObject) -> bool {
     taken := rs_object_damage(rolled, kind, o[0].threshold);
     o[0].hp = rs_max(o[0].hp - taken, 0);
     if o[0].hp == 0 { o[0].destroyed = true; o[0].burning = false; }
-    if rs_object_ignites(sp, hit, o[0].flammable, o[0].attended) && !o[0].destroyed { o[0].burning = true; }
-    if sp == SP_STARRY_WISP { o[0].glow_until = me.turn_at + rs_beat(b); }
+    if rs_object_ignites(s.ignites, hit, o[0].flammable, o[0].attended) && !o[0].destroyed { o[0].burning = true; }
+    if rs_step_at(s, RS_S_GLOW) >= 0 { o[0].glow_until = me.turn_at + rs_beat(b); }
     t: [1] RsLine;
     rs_add_text(t[..], "  the "); rs_add_text(t[..], cast(string) o[0].name[0..<o[0].name_n]); rs_add_text(t[..], " takes ");
     rs_add_int(t[..], taken); rs_add_text(t[..], " "); rs_add_text(t[..], RS_DAMAGE[kind]);

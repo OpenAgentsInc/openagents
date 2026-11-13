@@ -2,7 +2,7 @@
 
 #load "../../everglade/shared/fivebar.coax";
 #test "a saved-seat Shield retires at the actual next start despite an already advanced schedule" {
-  b:[1]RsBattle; b[0].w=8; b[0].h=8;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],rs_wizard("Caster",0,3),2,2);
   seat:[1]FbSeat; seat[0].me=0; fb_seat_step(b[..],seat[..]);
   #assert b[0].c[0].turn_at==6000000;

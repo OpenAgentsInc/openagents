@@ -28,7 +28,7 @@ rs_divine_spark :: (b: [] RsBattle, i: int, j: int, heal: bool, kind: int) -> bo
 
 #test "Divine Spark admits the acting level 2 Cleric's Magic action and a use, at another living creature it sees within 30 feet" {
   for mode: 0..<14 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
     _ := rs_add(b[..], rs_cleric("Ama", 0, 2), 1, 1); _ = rs_add(b[..], rs_fighter("Foe", 1, 1), 7, 1); rs_fresh(b[..], 0);
     b[0].c[1].hp = 5;
     j := 1; heal := mode != 11; kind := RS_RADIANT;
@@ -42,14 +42,14 @@ rs_divine_spark :: (b: [] RsBattle, i: int, j: int, heal: bool, kind: int) -> bo
     if ok {
       #assert b[0].c[1].hp == 5 + 4 + 3;   // 1d8 + Wisdom
       told := rs_recent(b[0].book[0], 1); heal_ev := rs_recent(b[0].book[0], 0);
-      #assert told.kind == RS_EV_CAST && told.feat == RS_FT_DIVINE_SPARK && told.amount == 7 && told.by == 0 && told.to == 1;
+      #assert told.kind == RS_EV_CAST && told.feat == RS_FT_DIVINE_SPARK && told.amount == 7 && told.by.value == 0 && told.to.value == 1;
       #assert heal_ev.kind == RS_EV_HEAL && heal_ev.feat == RS_FT_DIVINE_SPARK;
     } else { #assert b[0].c[1].hp == 5 || mode == 7; }
   }
 }
 #test "Divine Spark's harm: a Constitution save, the total on a failure and half on a success, Necrotic or Radiant, resisted" {
   for mode: 0..<4 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
     _ := rs_add(b[..], rs_cleric("Ama", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 7, 1); rs_fresh(b[..], 0);
     b[0].c[1].hp = 100; b[0].c[1].hp_max = 100;
     kind := ifx mode == 1 then RS_NECROTIC else RS_RADIANT;
@@ -59,13 +59,13 @@ rs_divine_spark :: (b: [] RsBattle, i: int, j: int, heal: bool, kind: int) -> bo
     want := ifx mode == 2 then 3 else ifx mode == 3 then 3 else 7;   // 10 + 1 fails DC 13: 7; half: 3
     #assert b[0].c[1].hp == 100 - want;
     found := false;
-    for k: 0..<4 { f := rs_recent(b[0].book[0], k); if f.kind == RS_EV_DAMAGE && f.feat == RS_FT_DIVINE_SPARK { found = f.amount == want && f.damage == kind && f.by == 0 && f.to == 1; } }
+    for k: 0..<4 { f := rs_recent(b[0].book[0], k); if f.kind == RS_EV_DAMAGE && f.feat == RS_FT_DIVINE_SPARK { found = f.amount == want && f.damage == kind && f.by.value == 0 && f.to.value == 1; } }
     #assert found;
   }
 }
 #test "Divine Spark rolls a d8 more at Cleric levels 7, 13 and 18" {
   for level: [7] int.[6, 7, 12, 13, 17, 18, 20] {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
     _ := rs_add(b[..], rs_cleric("Ama", 0, level), 1, 1); _ = rs_add(b[..], rs_fighter("Ally", 0, 1), 2, 1); rs_fresh(b[..], 0);
     b[0].c[1].hp = 1; b[0].c[1].hp_max = 100;
     #assert rs_divine_spark(b[..], 0, 1, true, 0);
@@ -74,31 +74,31 @@ rs_divine_spark :: (b: [] RsBattle, i: int, j: int, heal: bool, kind: int) -> bo
   }
 }
 #test "Divine Spark: a target first in the battle; a d8, not more; a Constitution save that Disadvantage would change" {
-  f: [1] RsBattle; f[0].w = 20; f[0].h = 6; f[0].dice[0].fixed = true;
+  f: [1] RsBattle; f_room: [1] RsRoom; rs_have(f[..], f_room[..]); f[0].w = 20; f[0].h = 6; f[0].dice[0].fixed = true;
   _ := rs_add(f[..], rs_fighter("Ally", 0, 1), 2, 1); _ = rs_add(f[..], rs_cleric("Ama", 0, 2), 1, 1); f[0].c[0].hp = 1; rs_fresh(f[..], 1);
   #assert rs_divine_spark(f[..], 1, 0, true, 0) && f[0].c[0].hp == 1 + 4 + 3;
   // dice state 15 rolls an 8 on a d8 (a 9 on a d9); 313 rolls a 6, then 16 and 2 on d20s
-  h: [1] RsBattle; h[0].w = 20; h[0].h = 6;
+  h: [1] RsBattle; h_room: [1] RsRoom; rs_have(h[..], h_room[..]); h[0].w = 20; h[0].h = 6;
   _ = rs_add(h[..], rs_cleric("Ama", 0, 2), 1, 1); _ = rs_add(h[..], rs_fighter("Ally", 0, 1), 2, 1); rs_fresh(h[..], 0);
   h[0].c[1].hp = 1; h[0].c[1].hp_max = 100; h[0].dice[0].state = 15;
   #assert rs_divine_spark(h[..], 0, 1, true, 0) && h[0].c[1].hp == 1 + 8 + 3;
   seed: u64 = 313;
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 6;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 6;
   _ = rs_add(b[..], rs_cleric("Ama", 0, 2), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 7, 1); rs_fresh(b[..], 0);
   b[0].c[1].hp = 100; b[0].c[1].hp_max = 100; b[0].dice[0].state = seed; seq := b[0].book[0].seq;
   #assert rs_divine_spark(b[..], 0, 1, false, RS_RADIANT) && b[0].c[1].hp == 100 - (6 + 3) / 2;
   #assert rs_saw(b[..], seq, "  Foe takes 4 (Divine Spark)");
   found := false;
-  for k: 0..<4 { e := rs_recent(b[0].book[0], k); if e.kind == RS_EV_DAMAGE && e.feat == RS_FT_DIVINE_SPARK { found = e.spell == -1; } }
+  for k: 0..<4 { e := rs_recent(b[0].book[0], k); if e.kind == RS_EV_DAMAGE && e.feat == RS_FT_DIVINE_SPARK { found = e.spell.value == -1; } }
   #assert found;
 }
 #test "Divine Spark's damage is no Critical Hit and no spell's: a dying creature fails one death save, and its fall is the Cleric's" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 6; b[0].dice[0].fixed = true;
   _ := rs_add(b[..], rs_cleric("Ama", 0, 2), 1, 1); _ = rs_add(b[..], rs_fighter("Ally", 0, 1), 2, 1); rs_fresh(b[..], 0);
   b[0].c[1].hp = 1; seq := b[0].book[0].seq;
   #assert rs_divine_spark(b[..], 0, 1, false, RS_RADIANT) && b[0].c[1].hp == 0 && !b[0].c[1].dead;
   down := false;
-  for k: 0..<6 { e := rs_recent(b[0].book[0], k); if e.kind == RS_EV_DOWN && e.to == 1 { down = e.spell == -1 && e.by == 0; } }
+  for k: 0..<6 { e := rs_recent(b[0].book[0], k); if e.kind == RS_EV_DOWN && e.to.value == 1 { down = e.spell.value == -1 && e.by.value == 0; } }
   #assert down && b[0].c[1].death_fail == 0;
   rs_fresh(b[..], 0);
   #assert rs_divine_spark(b[..], 0, 1, false, RS_RADIANT) && b[0].c[1].death_fail == 1 && !b[0].c[1].dead;

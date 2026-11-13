@@ -4,12 +4,13 @@
 //   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-grid.coax
 #authority;
 
-// The battle's room: its own, unless a world gave it more (rs_use). Every way in that writes a
-// creature or a square calls it first.
-rs_room :: (b: [] RsBattle) #effects(all) {
-  if b[0].c.count == 0 { b[0].c = b[0].own[..]; }
-  if b[0].occ.count == 0 { b[0].occ = b[0].own_occ[..]; }
-  if b[0].zone.count == 0 { b[0].zone = b[0].own_zone[..]; }
+// A battle has no room of its own (#13285): whoever keeps the battle keeps its creatures, squares and
+// lasting areas beside it. rs_have gives a small battle's (a check's, a lab's: an RsRoom); what a
+// world gave already (rs_use, rs_use_zones) stays, each part on its own.
+rs_have :: (b: [] RsBattle, r: [] RsRoom) #effects(all) {
+  if b[0].c.count == 0 { b[0].c = r[0].c[..]; }
+  if b[0].occ.count == 0 { b[0].occ = r[0].occ[..]; }
+  if b[0].zone.count == 0 { b[0].zone = r[0].zone[..]; }
 }
 // A world's own table of lasting areas, for a battle with more casters than RS_ZONES: it starts
 // with no area. The creatures and squares are as they were (give them first with rs_use).
@@ -26,7 +27,7 @@ rs_use :: (b: [] RsBattle, c: [] RsCreature, occ: [] int) #effects(all) {
   rs_reset(b);
 }
 // The most creatures the battle can hold.
-rs_room_for :: (b: [] RsBattle) -> int #effects(all) { rs_room(b); return b[0].c.count; }
+rs_room_for :: (b: [] RsBattle) -> int #effects(all) { return b[0].c.count; }
 // For a world that draws or steps in seconds: ticks as seconds, and seconds as the nearest whole
 // ticks. The rules never read a float time back.
 rs_ticks_s :: (ticks: int) -> f32 #effects(all) { return f32(ticks) / f32(RS_TICKS); }
@@ -60,7 +61,6 @@ rs_indexed :: (b: [] RsBattle) -> bool #effects(all) { return b[0].w > 0 && b[0]
 // Rebuilds the squares' index from where every creature stands (the lowest index wins a square
 // two share, as the scan finds it).
 rs_index :: (b: [] RsBattle) #effects(all) {
-  rs_room(b);
   if !rs_indexed(b) { return; }
   for q: 0..<(b[0].w * b[0].h) { b[0].occ[q] = 0; }
   i := b[0].n - 1;
@@ -73,7 +73,6 @@ rs_index :: (b: [] RsBattle) #effects(all) {
 // Creature i to the square (x, y), keeping the index: a world's own moves (a fresh creature in a
 // slot, a placement) go through here.
 rs_place :: (b: [] RsBattle, i: int, x: int, y: int) #effects(all) {
-  rs_room(b);
   if rs_indexed(b) {
     ox := b[0].c[i].x; oy := b[0].c[i].y;
     if ox >= 0 && oy >= 0 && ox < b[0].w && oy < b[0].h && b[0].occ[oy * b[0].w + ox] == i + 1 { b[0].occ[oy * b[0].w + ox] = 0; }
@@ -83,7 +82,6 @@ rs_place :: (b: [] RsBattle, i: int, x: int, y: int) #effects(all) {
 }
 // A battle cleared in place, for a new one: RsBattle is too big for a stack's copy. Its room stays.
 rs_reset :: (b: [] RsBattle) #effects(all) {
-  rs_room(b);
   blank: RsCreature;
   for i: 0..<b[0].n { b[0].c[i] = blank; }
   b[0].n = 0; b[0].truth_zones=0;
@@ -189,8 +187,8 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
 // ---- checks
 
 #test "a world's table of lasting areas: given whole, with no area and no Zone of Truth left from before" {
-  zones: [70] RsZone; b: [1] RsBattle;
-  rs_room(b[..]); #assert b[0].zone.count == RS_ZONES && rs_truth_zones(b[..]) == RS_ZONES && RS_ZONES < RS_TRUTH_ZONES;
+  zones: [70] RsZone; b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
+  #assert b[0].zone.count == RS_ZONES && rs_truth_zones(b[..]) == RS_ZONES && RS_ZONES < RS_TRUTH_ZONES;
   zones[0] = RsZone.{on = true, difficult = true, x1 = 3, y1 = 3}; zones[69] = RsZone.{on = true}; b[0].truth_zones = 5; b[0].n = 0;
   rs_use_zones(b[..], zones[..]);
   #assert b[0].zone.count == 70 && rs_truth_zones(b[..]) == RS_TRUTH_ZONES && b[0].truth_zones == 0 && !zones[0].on && !zones[0].difficult && !zones[69].on;
@@ -200,16 +198,21 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
   rs_reset(b[..]); #assert b[0].zone.count == 70 && !zones[69].on && !rs_difficult(b[..], 2, 2);
   short: [3] RsZone; rs_use_zones(b[..], short[..]); #assert rs_truth_zones(b[..]) == 3;
 }
-#test "grid: a battle's room is its own until a world gives it more, and a given room starts empty" {
-  b: [1] RsBattle;
-  #assert b[0].c.count == 0 && b[0].occ.count == 0;
-  #assert rs_room_for(b[..]) == RS_MAX && b[0].c.count == RS_MAX && b[0].occ.count == RS_SQUARES && RS_MAX == 216 && RS_SQUARES == 8192;
-  // a room already there is kept: its creatures and its squares each on their own
-  own: [3] RsCreature; occ: [20] int;
-  c: [1] RsBattle; c[0].c = own[..]; rs_room(c[..]); #assert c[0].c.count == 3 && c[0].occ.count == RS_SQUARES;
-  d: [1] RsBattle; d[0].occ = occ[..]; rs_room(d[..]); #assert d[0].c.count == RS_MAX && d[0].occ.count == 20;
+#test "grid: a battle has no room until it is given one, and a given room starts empty" {
+  b: [1] RsBattle; b_room: [1] RsRoom;
+  #assert b[0].c.count == 0 && b[0].occ.count == 0 && b[0].zone.count == 0 && rs_room_for(b[..]) == 0;
+  #assert rs_add(b[..], rs_fighter("None", 0, 1), 1, 1) == -1;   // nowhere to stand
+  rs_have(b[..], b_room[..]);
+  #assert rs_room_for(b[..]) == RS_MAX && b[0].c.count == RS_MAX && b[0].occ.count == RS_SQUARES && b[0].zone.count == RS_ZONES && RS_MAX == 216 && RS_SQUARES == 8192;
+  b[0].c[RS_MAX - 1].hp = 7; b[0].occ[RS_SQUARES - 1] = 3; b[0].zone[RS_ZONES - 1].on = true;
+  #assert b_room[0].c[RS_MAX - 1].hp == 7 && b_room[0].occ[RS_SQUARES - 1] == 3 && b_room[0].zone[RS_ZONES - 1].on;   // the room is the keeper's memory
+  // what is already there is kept: its creatures, its squares and its areas each on their own
+  own: [3] RsCreature; occ: [20] int; zone: [2] RsZone;
+  c: [1] RsBattle; c_room: [1] RsRoom; c[0].c = own[..]; rs_have(c[..], c_room[..]); #assert c[0].c.count == 3 && c[0].occ.count == RS_SQUARES && c[0].zone.count == RS_ZONES;
+  d: [1] RsBattle; d_room: [1] RsRoom; d[0].occ = occ[..]; rs_have(d[..], d_room[..]); #assert d[0].c.count == RS_MAX && d[0].occ.count == 20 && d[0].zone.count == RS_ZONES;
+  z: [1] RsBattle; z_room: [1] RsRoom; z[0].zone = zone[..]; rs_have(z[..], z_room[..]); #assert z[0].c.count == RS_MAX && z[0].occ.count == RS_SQUARES && z[0].zone.count == 2;
   // rs_use: the world's room, emptied, the battle reset
-  e: [1] RsBattle; e[0].w = 4; e[0].h = 4; e[0].clock = 77;
+  e: [1] RsBattle; e_room: [1] RsRoom; rs_have(e[..], e_room[..]); e[0].w = 4; e[0].h = 4; e[0].clock = 77;
   _ := rs_add(e[..], rs_fighter("One", 0, 1), 1, 1);
   own[0].hp = 9; occ[5] = 4; e[0].n = 1;
   rs_use(e[..], own[..], occ[..]);
@@ -219,7 +222,7 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
 }
 #test "grid: ticks and seconds convert to the nearest tick, and the beat is the timing's" {
   #assert rs_ticks_s(0) == 0 && rs_ticks_s(RS_TICKS) == 1 && rs_ticks_s(1500000) == 1.5 && rs_ticks_s(-500000) == -0.5 && RS_TICKS == 1000000;
-  b: [1] RsBattle; b[0].clock = 2250000; #assert rs_clock_s(b[..]) == 2.25;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].clock = 2250000; #assert rs_clock_s(b[..]) == 2.25;
   b[0].clock = 0; #assert rs_clock_s(b[..]) == 0;
   #assert rs_s_ticks(0) == 0 && rs_s_ticks(1) == 1000000 && rs_s_ticks(1.5) == 1500000 && rs_s_ticks(0.25) == 250000;
   // the nearest: half a tick up, under half down
@@ -233,7 +236,7 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
   #assert rs_feet(0, 0, 0, 0) == 0 && rs_feet(1, 1, 4, 1) == 15 && rs_feet(4, 1, 1, 1) == 15 && rs_feet(1, 1, 1, 5) == 20 && rs_feet(1, 5, 1, 1) == 20;
   #assert rs_feet(0, 0, 3, 3) == 15 && rs_feet(0, 0, 2, 5) == 25 && rs_feet(0, 0, 5, 2) == 25 && rs_feet(3, 7, 1, 2) == 25 && rs_feet(7, 3, 2, 1) == 25 && RS_SQUARE == 5;
   // a range is measured as the battle's world declared; between two creatures, from the first to the second
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 20;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 20;
   i := rs_add(b[..], rs_fighter("One", 0, 1), 2, 3); j := rs_add(b[..], rs_fighter("Two", 1, 1), 5, 7);
   #assert rs_range_ft(b[..], 2, 3, 5, 7) == 20 && rs_range_ft(b[..], 5, 7, 2, 3) == 20 && rs_feet_to(b[..], i, j) == 20 && rs_feet_to(b[..], j, i) == 20 && rs_feet_to(b[..], i, i) == 0;
   #assert rs_range_ft(b[..], 0, 0, 3, 0) == 15 && rs_range_ft(b[..], 0, 0, 0, 3) == 15 && rs_range_ft(b[..], 0, 9, 0, 3) == 30 && rs_range_ft(b[..], 9, 0, 3, 0) == 30;
@@ -244,9 +247,9 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
   #assert rs_feet_to(b[..], i, k) == 30 && rs_feet_to(b[..], k, i) == 30 && rs_feet_to(b[..], j, k) == 20 && rs_feet_to(b[..], k, j) == 20;
 }
 #test "grid: who stands on a square, by the index and by the scan, and a stale index falls back to the scan" {
-  b: [1] RsBattle; b[0].w = 6; b[0].h = 4;
+  b: [1] RsBattle; b_room: [1] RsRoom; b[0].w = 6; b[0].h = 4;
   #assert rs_indexed(b[..]) == false;   // no room yet: the squares' count is 0
-  rs_room(b[..]); #assert rs_indexed(b[..]);
+  rs_have(b[..], b_room[..]); #assert rs_indexed(b[..]);
   a := rs_add(b[..], rs_fighter("A", 0, 1), 0, 0); c := rs_add(b[..], rs_fighter("C", 1, 1), 5, 3); d := rs_add(b[..], rs_fighter("D", 1, 1), 2, 1);
   #assert rs_at(b[..], 0, 0) == a && rs_at(b[..], 5, 3) == c && rs_at(b[..], 2, 1) == d && rs_at(b[..], 1, 2) == -1 && rs_at(b[..], 3, 3) == -1;
   #assert b[0].occ[0] == a + 1 && b[0].occ[3 * 6 + 5] == c + 1 && b[0].occ[1 * 6 + 2] == d + 1;
@@ -295,10 +298,10 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
   b[0].w = 8193; #assert !rs_indexed(b[..]);
   b[0].w = 4097; b[0].h = 2; #assert !rs_indexed(b[..]);
   // rs_index takes the battle's own room when it has none
-  f: [1] RsBattle; f[0].w = 2; f[0].h = 2; rs_index(f[..]); #assert f[0].occ.count == RS_SQUARES;
+  f: [1] RsBattle; f_room: [1] RsRoom; rs_have(f[..], f_room[..]); f[0].w = 2; f[0].h = 2; rs_index(f[..]); #assert f[0].occ.count == RS_SQUARES;
 }
 #test "grid: a placement moves a creature and keeps the index: its old square freed only if its own, its new taken only if free" {
-  b: [1] RsBattle; b[0].w = 5; b[0].h = 5;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 5; b[0].h = 5;
   a := rs_add(b[..], rs_fighter("A", 0, 1), 1, 1); c := rs_add(b[..], rs_fighter("C", 1, 1), 3, 3);
   rs_place(b[..], a, 2, 4);
   #assert b[0].c[a].x == 2 && b[0].c[a].y == 4 && b[0].occ[1 * 5 + 1] == 0 && b[0].occ[4 * 5 + 2] == a + 1 && rs_at(b[..], 2, 4) == a && rs_at(b[..], 1, 1) == -1;
@@ -328,13 +331,13 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
   rs_place(b[..], a, 0, 4); #assert b[0].occ[24] == 0 && b[0].occ[20] == a + 1;
   rs_place(b[..], a, 4, 0); #assert b[0].occ[20] == 0 && b[0].occ[4] == a + 1;
   // with no index (no grid), only the creature moves
-  g: [1] RsBattle; h := rs_add(g[..], rs_fighter("H", 0, 1), 1, 1);
+  g: [1] RsBattle; g_room: [1] RsRoom; rs_have(g[..], g_room[..]); h := rs_add(g[..], rs_fighter("H", 0, 1), 1, 1);
   rs_place(g[..], h, 3, 2); #assert g[0].c[h].x == 3 && g[0].c[h].y == 2 && g[0].occ[0] == 0 && g[0].occ.count == RS_SQUARES;
   // and a placement takes the battle's own room when it has none
-  k: [1] RsBattle; k[0].c = k[0].own[..]; k[0].n = 1; rs_place(k[..], 0, 1, 1); #assert k[0].occ.count == RS_SQUARES;
+  k: [1] RsBattle; k_room: [1] RsRoom; rs_have(k[..], k_room[..]); k[0].n = 1; rs_place(k[..], 0, 1, 1); #assert k[0].occ.count == RS_SQUARES;
 }
 #test "grid: a reset clears the battle in place, every part of it, and keeps its room" {
-  b: [1] RsBattle; b[0].w = 6; b[0].h = 6;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 6; b[0].h = 6;
   #assert rs_set_world(b[..], RS_EVERGLADE_WORLD);
   i := rs_add(b[..], rs_wizard("Mordra", 0, 5), 2, 2); j := rs_add(b[..], rs_fighter("Garr", 1, 5), 4, 4);
   rs_begin(b[..]);
@@ -356,10 +359,10 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
   #assert !b[0].timing_sealed && rs_world_deviations(rs_world_of(b[..])) == 0 && b[0].measure == RS_MEASURE_GRID;
   #assert b[0].occ[b[0].occ.count - 1] == 0 && b[0].occ[0] == 0 && b[0].c.count == RS_MAX && b[0].occ.count == RS_SQUARES;
   // only the battle's creatures are blanked, not the room past them
-  d: [1] RsBattle; d[0].c = d[0].own[..]; d[0].n = 1; d[0].c[0].hp = 3; d[0].c[1].hp = 4;
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); d[0].n = 1; d[0].c[0].hp = 3; d[0].c[1].hp = 4;
   rs_reset(d[..]); #assert d[0].c[0].hp == 0 && d[0].c[1].hp == 4;
   // a battle with no room takes its own before it clears
-  e: [1] RsBattle; rs_reset(e[..]); #assert e[0].c.count == RS_MAX && e[0].occ.count == RS_SQUARES;
+  e: [1] RsBattle; e_room: [1] RsRoom; rs_have(e[..], e_room[..]); rs_reset(e[..]); #assert e[0].c.count == RS_MAX && e[0].occ.count == RS_SQUARES;
 }
 #test "grid: a square is in a zone inside its bounds; a round zone and a Line also by distance, a Line by its width and its side" {
   z := RsZone.{on = true, x0 = 2, y0 = 3, x1 = 5, y1 = 7};
@@ -396,7 +399,7 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
   dg.x1 = 2; #assert rs_inside(dg, 2, 2) && !rs_inside(dg, 3, 3);
 }
 #test "grid: Difficult Terrain is a zone's that says so, or the world's own ground" {
-  b: [1] RsBattle; b[0].w = 10; b[0].h = 10; rs_room(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 10; b[0].h = 10;
   #assert !rs_difficult(b[..], 2, 2);
   b[0].zone[RS_ZONES - 1] = RsZone.{on = true, difficult = true, x0 = 1, y0 = 1, x1 = 3, y1 = 3};
   #assert rs_difficult(b[..], 2, 2) && rs_difficult(b[..], 1, 3) && !rs_difficult(b[..], 4, 2) && !rs_difficult(b[..], 2, 0);
@@ -409,7 +412,7 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
 }
 #test "grid: a creature is threatened by another team's creature within 5 feet that can act, in a small battle and a crowd" {
   for crowd: 0..<2 {
-    b: [1] RsBattle; b[0].w = 40; b[0].h = 40;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 40;
     me := rs_add(b[..], rs_ranger("Wren", 0, 3), 5, 5);
     foe := rs_add(b[..], rs_fighter("Foe", 1, 1), 9, 9); mate := rs_add(b[..], rs_fighter("Mate", 0, 1), 9, 5);
     if crowd == 1 { for q: 0..<63 { _ := rs_add(b[..], rs_fighter("Far", 0, 1), 20 + q % 20, 20 + q / 20); } #assert b[0].n == 66; }
@@ -450,7 +453,7 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
     b[0].occ[4 * 40 + 5] = b[0].n + 1; b[0].c[b[0].n] = rs_fighter("Ghost", 1, 1); b[0].c[b[0].n].x = 5; b[0].c[b[0].n].y = 4; #assert !rs_threatened(b[..], me);
   }
   // a crowd on a grid that fills the battle's squares (128 by 64): at its far corner no square past the grid is read
-  big: [1] RsBattle; big[0].w = 128; big[0].h = 64;
+  big: [1] RsBattle; big_room: [1] RsRoom; rs_have(big[..], big_room[..]); big[0].w = 128; big[0].h = 64;
   bm := rs_add(big[..], rs_ranger("Wren", 0, 3), 127, 63); bf := rs_add(big[..], rs_fighter("Foe", 1, 1), 126, 62);
   for q: 0..<64 { _ := rs_add(big[..], rs_fighter("Far", 0, 1), 20 + q % 20, 20 + q / 20); }
   #assert big[0].n == 66 && big[0].w * big[0].h == big[0].occ.count && rs_threatened(big[..], bm) && rs_threatened(big[..], bf);
@@ -459,7 +462,7 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
   rs_place(big[..], bm, 60, 63); #assert !rs_threatened(big[..], bm);
   // 64 creatures still scan; 65 read the squares: the same answers either side of the line
   for n: 64..<66 {
-    b: [1] RsBattle; b[0].w = 40; b[0].h = 40;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 40;
     me := rs_add(b[..], rs_ranger("Wren", 0, 3), 5, 5); foe := rs_add(b[..], rs_fighter("Foe", 1, 1), 6, 6);
     for q: 0..<n - 2 { _ := rs_add(b[..], rs_fighter("Far", 0, 1), 20 + q % 20, 20 + q / 20); } #assert b[0].n == n && rs_threatened(b[..], me);
     // the squares' index wrong for the foe's square: the crowd's read trusts a clean neighbourhood, the scan sees the foe
@@ -487,7 +490,7 @@ rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone #ef
   #assert l.x1 == 7 && l.y1 == 5 && l.x0 == -3 && l.y0 == -3;
 }
 #test "grid: the squares a spell's area covers, by its shape, from its caster or round its point" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 40;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 40;
   i := rs_add(b[..], rs_wizard("Mordra", 0, 5), 10, 10); other := rs_add(b[..], rs_wizard("Other", 0, 5), 20, 14);
   // a sphere round the point: its radius each way, round, the battle's measure, its caster
   ball := rs_area(b[..], i, rs_spell(SP_FIREBALL), 20, 15);

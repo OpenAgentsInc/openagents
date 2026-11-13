@@ -11,7 +11,7 @@
 
 #test "compliance concentration: Stunned interrupts owned effects and dismissal spends no additional action" { #assert sc_concentration(); }
 sc_concentration :: () -> bool {
-  b: [1] RsBattle; b[0].w=12; b[0].h=8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8;
   a := rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
   ally := rs_add(b[..],rs_fighter("Ally",0,1),2,1);
   rs_start_turn(b[..],a);
@@ -31,7 +31,7 @@ sc_concentration :: () -> bool {
 
 #test "compliance components: voice hand and priced-material refusal precede casting costs" { #assert sc_components(); }
 sc_components :: () -> bool {
-  b: [1] RsBattle; b[0].w=12; b[0].h=8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8;
   a := rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
   rs_start_turn(b[..],a); b[0].c[a].speech_blocked=true;
   slots := b[0].c[a].slots[1]; seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
@@ -55,7 +55,7 @@ sc_components :: () -> bool {
 
 #test "compliance timing: declared action movement and recharge cannot leak into reset strict mode" { #assert sc_timing(); }
 sc_timing :: () -> bool {
-  b: [1] RsBattle; b[0].w=12; b[0].h=8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8;
   if rs_beat(b[..]) != RS_ROUND_TICKS || rs_set_timing(b[..],RsTimingProfile.{kind=3}) { return false; }
   if !rs_set_timing(b[..],RS_ACTION_TIMING) { return false; }
   a := rs_add(b[..],rs_cleric("Actor",0,1),1,1);
@@ -75,7 +75,7 @@ sc_timing :: () -> bool {
 
 #test "compliance Prone: optional standing, exact feet, crawling and distance-based attack edges" { #assert sc_prone(); }
 sc_prone :: () -> bool {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8;
   a := rs_add(b[..],rs_fighter("Crawler",0,1),1,1);
   t := rs_add(b[..],rs_fighter("Target",1,1),3,1);
   b[0].c[a].speed = 25; b[0].c[a].cond = RS_PRONE;
@@ -93,7 +93,7 @@ sc_prone :: () -> bool {
   #assert sc_halt_turn();
 }
 sc_halt_turn :: () -> bool {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..],rs_cleric("Caster",0,3),1,1);
   t := rs_add(b[..],rs_sorcerer("Target",1,3),2,1);
   command := [1] int.[RS_EXEC_SOURCE[SP_COMMAND]]; shield := [1] int.[RS_EXEC_SOURCE[SP_SHIELD]];
@@ -111,7 +111,7 @@ sc_halt_turn :: () -> bool {
   #assert sc_spell_options();
 }
 sc_spell_options :: () -> bool {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Deaf",1),3,1);
   u := rs_add(b[..],rs_skeleton("Blind",1),4,1);
@@ -128,7 +128,7 @@ sc_spell_options :: () -> bool {
   return sc_hex_options();
 }
 sc_hex_options :: () -> bool {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
   a := rs_add(b[..],rs_warlock("Caster",0,5,SP_ELDRITCH_BLAST),1,1);
   t := rs_add(b[..],rs_skeleton("Target",1),3,1);
   keys := [1] int.[RS_EXEC_SOURCE[SP_HEX]]; if !rs_set_spells(b[0].c[a..<a+1],keys[..]) { return false; }
@@ -143,7 +143,7 @@ sc_hex_options :: () -> bool {
   #assert sc_chosen_recipients();
 }
 sc_chosen_recipients :: () -> bool {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
   a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Chosen",1),3,1);
   u := rs_add(b[..],rs_skeleton("Unchosen",0),2,1);
@@ -159,7 +159,7 @@ sc_chosen_recipients :: () -> bool {
   #assert sc_reaction_slot();
 }
 sc_reaction_slot :: () -> bool {
-  b: [1] RsBattle; sc_setup(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sc_setup(b[..]);
   b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_SHIELD_SPELL, true);
   if !rs_grant_spell(b[0].c[0..<1],SP_SHIELD) { return false; }
   before := sc_before(b[..]); b[0].turn.slot_spent = true;
@@ -195,7 +195,7 @@ sc_reaction_slot :: () -> bool {
   #assert sc_effect_capacity();
 }
 #test "compliance zones: an available zone retains a lasting cast and spends exactly one slot" {
-  b: [1] RsBattle; sc_setup(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sc_setup(b[..]);
   #assert rs_cast(b[..], 0, SP_ENTANGLE, 1, 3, 1, 1);
   #assert b[0].zone[0].on && b[0].zone[0].spell == SP_ENTANGLE && b[0].zone[0].by == 0;
   #assert b[0].c[0].slots[1] == 3 && b[0].turn.action && b[0].turn.slot_spent;
@@ -230,21 +230,21 @@ sc_unchanged :: (b: [] RsBattle, p: ScBefore) -> bool {
          b[0].c[1].hp == p.hp && b[0].c[1].temp == p.temp && b[0].c[1].cond == p.cond;
 }
 sc_admission_actor :: () -> bool {
-  b: [1] RsBattle; sc_setup(b[..]); p := sc_before(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sc_setup(b[..]); p := sc_before(b[..]);
   return !rs_cast(b[..], -1, SP_CURE_WOUNDS, 1, 0, 0, 0) &&
          !rs_cast(b[..], b[0].n, SP_CURE_WOUNDS, 1, 0, 0, 0) && sc_unchanged(b[..], p);
 }
 sc_admission_slot :: () -> bool {
-  b: [1] RsBattle; sc_setup(b[..]); b[0].c[0].slots[1] = 0; p := sc_before(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sc_setup(b[..]); b[0].c[0].slots[1] = 0; p := sc_before(b[..]);
   return !rs_cast(b[..], 0, SP_CURE_WOUNDS, 1, 0, 0, 0) && sc_unchanged(b[..], p);
 }
 sc_admission_target :: () -> bool {
-  b: [1] RsBattle; sc_setup(b[..]); p := sc_before(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sc_setup(b[..]); p := sc_before(b[..]);
   return !rs_cast(b[..], 0, SP_CURE_WOUNDS, 1, 0, 0, -1) &&
          !rs_cast(b[..], 0, SP_CURE_WOUNDS, 1, 0, 0, b[0].n) && sc_unchanged(b[..], p);
 }
 sc_admission_range :: () -> bool {
-  b: [1] RsBattle; sc_setup(b[..]); p := sc_before(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sc_setup(b[..]); p := sc_before(b[..]);
   return !rs_cast(b[..], 0, SP_CURE_WOUNDS, 1, 0, 0, 1) && sc_unchanged(b[..], p);
 }
 
@@ -253,18 +253,18 @@ sc_admission_range :: () -> bool {
 // external whitelist is supplied. Ray of Sickness would be an ambiguous witness:
 // Circle of the Land can grant it even though the base Druid list does not.
 sc_admission_class :: () -> bool {
-  b: [1] RsBattle; sc_setup(b[..]); p := sc_before(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sc_setup(b[..]); p := sc_before(b[..]);
   return !rs_cast(b[..], 0, SP_GUIDING_BOLT, 1, 0, 0, 1) && sc_unchanged(b[..], p);
 }
 sc_admission_prepared :: () -> bool {
-  b: [1] RsBattle; sc_setup(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sc_setup(b[..]);
   keys := [8] int.[RS_EXEC_SOURCE[SP_STARRY_WISP],RS_EXEC_SOURCE[SP_PRODUCE_FLAME],RS_EXEC_SOURCE[SP_ENTANGLE],RS_EXEC_SOURCE[SP_THUNDERWAVE],RS_EXEC_SOURCE[SP_HEALING_WORD],RS_EXEC_SOURCE[SP_FAERIE_FIRE],RS_EXEC_SOURCE[SP_MOONBEAM],RS_EXEC_SOURCE[SP_SPIKE_GROWTH]];
   if !rs_set_spells(b[0].c[0..<1], keys[..]) { return false; }
   p := sc_before(b[..]);
   return rs_spell_access(b[0].c[0], SP_CURE_WOUNDS) && !rs_cast(b[..], 0, SP_CURE_WOUNDS, 1, 0, 0, 0) && sc_unchanged(b[..], p);
 }
 sc_admission_self :: () -> bool {
-  b: [1] RsBattle; sc_setup(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sc_setup(b[..]);
   b[0].c[0] = rs_wizard("Wizard",0,3); b[0].c[0].x = 1; b[0].c[0].y = 1;
   p := sc_before(b[..]);
   return rs_can_cast(b[..],0,SP_FALSE_LIFE,1) && !rs_cast(b[..],0,SP_FALSE_LIFE,1,0,0,1) && sc_unchanged(b[..],p);
@@ -272,7 +272,7 @@ sc_admission_self :: () -> bool {
 // SRD p.106 Invalid Targets and Hold Person p.141: the Skeleton is not Humanoid.
 // A used slot is expended, the target remains unaffected, and it rolls no save.
 sc_invalid_target_spends :: () -> bool {
-  b: [1] RsBattle; sc_setup(b[..]); p := sc_before(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sc_setup(b[..]); p := sc_before(b[..]);
   accepted := rs_cast(b[..], 0, SP_HOLD_PERSON, 2, 0, 0, 1);
   return accepted && b[0].c[0].slots[2] == p.slots[2] - 1 && b[0].turn.action &&
          b[0].turn.slot_spent && b[0].dice[0].rolled == p.dice.rolled &&
@@ -282,7 +282,7 @@ sc_invalid_target_spends :: () -> bool {
 // must not simply Incapacitate the creature. It retains HP/type and gains form
 // Temporary HP. The current API has no Beast choice; full qualification must add it.
 #test "compliance Polymorph witness uses a prepared spell and an available fourth-level slot" {
-  b: [1] RsBattle; #assert sc_polymorph_setup(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); #assert sc_polymorph_setup(b[..]);
   #assert rs_spell_ready(b[0].c[0], SP_POLYMORPH) && rs_can_cast(b[..], 0, SP_POLYMORPH, 4);
 }
 sc_polymorph_setup :: (b: [] RsBattle) -> bool {
@@ -293,7 +293,7 @@ sc_polymorph_setup :: (b: [] RsBattle) -> bool {
   return rs_set_spells(b[0].c[0..<1], choice[..]);
 }
 sc_polymorph :: () -> bool {
-  b: [1] RsBattle; if !sc_polymorph_setup(b[..]) { return false; }
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); if !sc_polymorph_setup(b[..]) { return false; }
   hp := b[0].c[1].hp; humanoid := b[0].c[1].humanoid;
   accepted := rs_cast(b[..], 0, SP_POLYMORPH, 4, 0, 0, 1);
   return accepted && !rs_has(b[0].c[1], RS_INCAPACITATED) && b[0].c[1].temp > 0 &&
@@ -316,7 +316,7 @@ sc_effect_capacity :: () -> bool {
     if !found { return false; }
   }
   if rs_effect(c[0], EF_NOHEAL) { return false; }
-  b: [1] RsBattle; sc_setup(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sc_setup(b[..]);
   for k: 0..<RS_EFFECTS { b[0].c[1].eff[k] = RsEffect.{kind=EF_HEX,by=100+k,spell=-1,until=100,save=-1}; }
   before := sc_before(b[..]);
   if rs_cast(b[..],0,SP_ENTANGLE,1,3,1,1) || !sc_unchanged(b[..],before) { return false; }
@@ -330,7 +330,7 @@ sc_effect_capacity :: () -> bool {
 // Every zone belongs to a different caster than this cast; ending the caster's
 // existing concentration cannot free one. Full capacity must refuse before spend.
 sc_zone_capacity :: () -> bool {
-  b: [1] RsBattle; sc_setup(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sc_setup(b[..]);
   b[0].c[0].conc = SP_HEX; b[0].c[0].conc_until = 90;
   for k: 0..<RS_ZONES {
     b[0].zone[k] = RsZone.{on = true, spell = SP_FOG_CLOUD, by = 1, x0 = k, x1 = k + 1, until = 100 + k};

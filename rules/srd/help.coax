@@ -71,7 +71,7 @@ rs_help_start_turn :: (b: [] RsBattle, i: int) #effects(all) {
 }
 
 #test "Help entry points retain query consume attack and turn ownership" {
-  b: [1] RsBattle; c: [3] RsCreature; b[0].c=c[..]; b[0].n=3;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [3] RsCreature; b[0].c=c[..]; b[0].n=3;
   for i: 0..<3 { c[i].hp=1; c[i].score[RS_STR]=10; }
   c[0].checks.skills=1<<SK_ATHLETICS; c[2].team=1; b[0].dice[0].fixed=true;
   #assert rs_help_ability(b[..],0,1,RsHelpRequest.{skill=SK_ATHLETICS,possible=true});

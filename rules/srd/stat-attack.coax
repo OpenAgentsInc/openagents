@@ -76,7 +76,7 @@ rs_stat_attack :: (b: [] RsBattle, i: int, j: int, a: RsStatAttack) -> bool #eff
 }
 
 #test "typed stat attack metadata and actual Action share the shared strike executor" {
-  b: [1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
   _ := rs_add(b[..],rs_guard("Attacker",0),1,1);
   j := rs_add(b[..],rs_fighter("Target",1,1),2,1);
   b[0].c[j].hp=100; b[0].c[j].hp_max=100; b[0].c[j].ac=12;
@@ -87,7 +87,7 @@ rs_stat_attack :: (b: [] RsBattle, i: int, j: int, a: RsStatAttack) -> bool #eff
 }
 
 #test "a stat-block attack has no mode at a target behind Total Cover" {
-  b: [1] RsBattle; grapple_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
   a := rs_monster_action(MON_GOBLIN_WARRIOR).attacks[0];
   #assert rs_stat_mode(b[..], 1, 0, a) == 1;
   #assert rs_cover_put(b[..], 1, 0, RS_COVER_THREE) && rs_stat_mode(b[..], 1, 0, a) == 1;

@@ -108,7 +108,7 @@
 #load "cast-choices.coax";
 #load "cast-options.coax";
 
-// Creatures a battle holds of its own. A world that fields more gives the
+// Creatures a small battle's room holds (RsRoom). A world that fields more gives the
 // battle room of its own with rs_use (5E Lab's armies: 1024 heroes and 16384 of the dead), so the
 // other worlds' state stays small. Worlds keep their RsBattle in their state, never on the stack
 // (rs_reset clears one in place).
@@ -123,6 +123,7 @@ RS_SQUARES :: 8192;
 RS_ZONES :: 8;
 RS_TRUTH_ZONES :: 62;
 RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: int; difficult: bool; round: bool; cx: int; cy: int; r_ft: int; truth_dc: int;
+                  truth: bool;    // a Zone of Truth: a TRUTH step's area (zone-of-truth.coax)
                   measure: int;   // how its radius and length are measured (measure.coax): the battle's, from rs_area
                   line: bool; dx: f32; dy: f32; half: f32; }   // a Line: from (cx, cy) along (dx, dy), a unit, r_ft long, half (squares) each side
 // A turn's economy and what has happened in it: moved (Steady Aim needs none), aimed (Steady Aim's
@@ -135,8 +136,8 @@ RsTurn :: struct { disengaged: bool; action: bool; bonus: bool; slot_spent: bool
                    run_ft: int; jumps_doubled: bool; }   // feet walked on foot just before a jump; Step of the Wind's doubled jumps
 RsReactionFrame :: struct { on:bool; who:int = -1; turn:RsTurn; }
 RsBattle :: struct {
-  c: [] RsCreature; n: int;   // the creatures: own's room (rs_room), or a world's (rs_use)
-  zone: [] RsZone;            // the lasting areas: own_zone's room (rs_room), or a world's (rs_use_zones)
+  c: [] RsCreature; n: int;   // the creatures: a room's (rs_have), or a world's (rs_use)
+  zone: [] RsZone;            // the lasting areas: a room's (rs_have), or a world's (rs_use_zones)
   truth_zones:int;
   dice: [1] RsDice;
   book: [1] RsLog;
@@ -171,8 +172,10 @@ RsBattle :: struct {
   // The world moves creatures only through rs_add, rs_place and the engine's own steps and pushes, so
   // the index stays right and a turn's start needn't rebuild it (5E Lab's crowds: 70,000 squares).
   kept: bool;
-  own: [RS_MAX] RsCreature; own_occ: [RS_SQUARES] int; own_zone: [RS_ZONES] RsZone;   // the room a battle has of its own
 }
+// The room of a small battle (a check's, a lab's, a room of 16 seats): its keeper declares it beside
+// the battle and gives it with rs_have. A battle holds none of its own (#13285).
+RsRoom :: struct { c: [RS_MAX] RsCreature; occ: [RS_SQUARES] int; zone: [RS_ZONES] RsZone; }
 #load "battle-grid.coax";   // the grid: room, distance, squares, zones and areas (#13287)
 
 #load "battle-tell.coax";   // telling the world: lines and events (#13287)
@@ -192,7 +195,7 @@ RsBattle :: struct {
 #load "battle-features.coax";   // (#13287)
 
 #test "who stands where: the squares' index follows adds, steps, a world's moves and a reset" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 11;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 11;
   a := rs_add(b[..], rs_druid("Rowan", 0, 3), 1, 1);
   t := rs_add(b[..], rs_skeleton("Skeleton 1", 2), 5, 4);
   #assert rs_at(b[..], 1, 1) == a && rs_at(b[..], 5, 4) == t && rs_at(b[..], 2, 2) == -1;
@@ -213,7 +216,7 @@ RsBattle :: struct {
 }
 
 #test "Starry Wisp: a ranged spell attack, +5, 1d8 Radiant on a hit" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 11;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 11;
   a := rs_add(b[..], rs_druid("Rowan", 0, 3), 1, 1);
   t := rs_add(b[..], rs_druid("Thorn", 1, 3), 8, 1);
   hits := 0; total := 0;
@@ -231,7 +234,7 @@ RsBattle :: struct {
   #assert hits > 80 && hits < 140;
 }
 #test "Cure Wounds heals 2d8 + 3 by touch; a 2nd-level slot heals 4d8 + 3; one slot a turn" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 5;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 5;
   a := rs_add(b[..], rs_druid("Rowan", 0, 3), 1, 1);
   f := rs_add(b[..], rs_druid("Briar", 0, 3), 2, 1);
   far := rs_add(b[..], rs_druid("Fern", 0, 3), 9, 1);
@@ -248,7 +251,7 @@ RsBattle :: struct {
   #assert b[0].c[f].hp >= 4 + 3 && !rs_has(b[0].c[f], RS_UNCONSCIOUS) && b[0].c[a].slots[2] == 1;
 }
 #test "Thunderwave: a 15-foot cube from you, Con save, 2d8 Thunder and pushed 10 feet on a failure" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 3;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 3;
   a := rs_add(b[..], rs_druid("Rowan", 0, 3), 2, 3);
   e := rs_add(b[..], rs_druid("Thorn", 1, 3), 3, 3);
   out := rs_add(b[..], rs_druid("Sable", 1, 3), 7, 3);
@@ -260,7 +263,7 @@ RsBattle :: struct {
   #assert b[0].c[out].hp == b[0].c[out].hp_max;          // outside the cube
 }
 #test "Thunderwave: whoever stands beside you or in your square is in the cube from you; behind you isn't (#12930)" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 3;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 3;
   a := rs_add(b[..], rs_druid("Rowan", 0, 3), 4, 3);
   same := rs_add(b[..], rs_druid("Wren", 1, 3), 4, 3);     // shares your square
   side := rs_add(b[..], rs_druid("Ash", 1, 3), 4, 4);      // at your shoulder
@@ -277,7 +280,7 @@ RsBattle :: struct {
   #assert d.x0 == 1 && d.x1 == 4 && d.y0 == 0 && d.y1 == 3;
 }
 #test "Entangle restrains on a failed Strength save; concentration ends it and lets go" {
-  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 9;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 9;
   a := rs_add(b[..], rs_druid("Rowan", 0, 3), 1, 3);
   held := 0;
   for k: 0..<20 {
@@ -299,7 +302,7 @@ RsBattle :: struct {
   #assert held >= 6 && held <= 18;
 }
 #test "Chill Touch: a melee spell attack; on a hit 1d10 Necrotic and no healing until the end of the caster's next turn" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 31;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 31;
   a := rs_add(b[..], rs_wizard("Mordra", 1, 3), 3, 3);
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 4, 3);
   far := rs_add(b[..], rs_druid("Fern", 0, 3), 9, 3);
@@ -324,7 +327,7 @@ RsBattle :: struct {
   #assert !rs_effect(b[0].c[t], EF_NOHEAL);
 }
 #test "Ray of Sickness poisons until the end of the caster's next turn; a Poisoned attacker has Disadvantage" {
-  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 41;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 41;
   a := rs_add(b[..], rs_wizard("Mordra", 1, 3), 1, 3);
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 8, 3);
   got := false;
@@ -345,7 +348,7 @@ RsBattle :: struct {
   #assert !rs_has(b[0].c[t], RS_POISONED);
 }
 #test "False Life: 2d4 + 4 Temporary Hit Points, 5 more a slot level above 1" {
-  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 3;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 3;
   a := rs_add(b[..], rs_wizard("Mordra", 1, 3), 1, 3);
   rs_start_turn(b[..], a);
   #assert rs_cast(b[..], a, SP_FALSE_LIFE, 1, 0, 0, a) && b[0].c[a].temp >= 6 && b[0].c[a].temp <= 12;
@@ -354,7 +357,7 @@ RsBattle :: struct {
   #assert rs_cast(b[..], a, SP_FALSE_LIFE, 2, 0, 0, a) && b[0].c[a].temp >= 11 && b[0].c[a].temp <= 17;
 }
 #test "Ray of Enfeeblement: on a failed Con save the target's damage loses 1d8, until it saves at the end of a turn" {
-  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 77;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 77;
   a := rs_add(b[..], rs_wizard("Mordra", 1, 3), 1, 3);
   // This scenario chooses Ray of Enfeeblement for its legal prepared list.
   _ := rs_spellbook_add(b[0].c[a..<a+1], RS_EXEC_SOURCE[SP_RAY_OF_ENFEEBLEMENT]);
@@ -377,7 +380,7 @@ RsBattle :: struct {
   #assert !rs_effect(b[0].c[t], EF_ENFEEBLED);
 }
 #test "Blindness/Deafness: Blinded on a failed save; attacks against it have Advantage; it saves to end it" {
-  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 13;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 13;
   a := rs_add(b[..], rs_wizard("Mordra", 1, 3), 1, 3);
   choices := [2] int.[RS_KEY_MAGE_ARMOR, RS_EXEC_SOURCE[SP_BLINDNESS]];
   #assert rs_set_spells(b[0].c[a..<a+1], choices[..]);
@@ -396,7 +399,7 @@ RsBattle :: struct {
   #assert ended;
 }
 #test "Produce Flame: the flame first (a Bonus Action), then a Magic action to hurl it" {
-  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 21;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 21;
   a := rs_add(b[..], rs_druid("Rowan", 0, 3), 1, 3);
   e := rs_add(b[..], rs_druid("Thorn", 1, 3), 9, 3);
   rs_start_turn(b[..], a);
@@ -406,7 +409,7 @@ RsBattle :: struct {
   #assert rs_aura_on(b[0].c[a], EF_FLAME, b[0].clock);
 }
 #test "Eldritch Blast: 1d10 Force + Cha (Agonizing Blast), and a hit pushes 10 feet (Repelling Blast)" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 9;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 9;
   a := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 1, 3);
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 6, 3);
   hit := false;
@@ -424,7 +427,7 @@ RsBattle :: struct {
   #assert rs_cantrip_tier(3) == 1;
 }
 #test "Hex: 1d6 Necrotic more on each hit; it moves on a later turn once its target drops" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 5;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 5;
   a := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 1, 3);
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 10, 3);
   u := rs_add(b[..], rs_druid("Fern", 0, 3), 10, 6);
@@ -438,14 +441,14 @@ RsBattle :: struct {
     b[0].c[t].hp = 21; b[0].c[t].x = 10; b[0].c[t].y = 3; b[0].who = a; b[0].turn.action = false;
     seq := b[0].book[0].seq;
     #assert rs_cast(b[..], a, SP_ELDRITCH_BLAST, 0, 0, 0, t);
-    for e: 0..<(b[0].book[0].seq - seq) { ev := rs_recent(b[0].book[0], e); if ev.spell == SP_HEX && ev.kind == RS_EV_DAMAGE { extra = true; } }
+    for e: 0..<(b[0].book[0].seq - seq) { ev := rs_recent(b[0].book[0], e); if ev.spell.value == SP_HEX && ev.kind == RS_EV_DAMAGE { extra = true; } }
     if extra { break; }
   }
   #assert extra;
   // it drops: not this turn, the next one
   b[0].c[t].hp = 1; b[0].c[t].temp = 0;
   rs_damage(b[..], a, t, 5, RS_FORCE, false, SP_ELDRITCH_BLAST);
-  #assert b[0].c[t].hp == 0 && b[0].c[a].hex_free;
+  #assert b[0].c[t].hp == 0 && b[0].c[a].note[RS_NT_CURSE_FREE] != 0;
   #assert !rs_hex_move(b[..], a, u);
   rs_end_turn(b[..], a);
   rs_tick_ticks(b[..], b[0].c[a].turn_at - b[0].clock);
@@ -453,7 +456,7 @@ RsBattle :: struct {
   #assert rs_hex_move(b[..], a, u) && rs_effect(b[0].c[u], EF_HEX) && !rs_effect(b[0].c[t], EF_HEX) && b[0].c[a].slots[2] == 1;
 }
 #test "Hold Person: Paralyzed on a failed Wis save; it fails Dex saves, and a hit from 5 feet is a Critical Hit" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 21;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 21;
   a := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 1, 3);
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 2, 3);
   held := false;
@@ -485,7 +488,7 @@ RsBattle :: struct {
   #assert !rs_has(b[0].c[t], RS_PARALYZED);
 }
 #test "Scorching Ray: three rays, a ranged spell attack each, 2d6 Fire on a hit; four from a 3rd-level slot" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 2;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 2;
   a := rs_add(b[..], rs_warlock("Vesk", 1, 5, SP_ELDRITCH_BLAST), 1, 3);
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 10, 3);
   b[0].c[t].hp = 200; b[0].c[t].hp_max = 200;
@@ -497,7 +500,7 @@ RsBattle :: struct {
   #assert rolls == 4;
 }
 #test "Dark One's Blessing: Cha + Warlock level Temporary Hit Points when it drops a foe, or one drops within 10 feet" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 4;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 4;
   a := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 1, 3);
   close := rs_add(b[..], rs_druid("Rowan", 0, 3), 3, 3);
   far := rs_add(b[..], rs_druid("Fern", 0, 3), 12, 3);
@@ -510,7 +513,7 @@ RsBattle :: struct {
   #assert b[0].c[a].temp == 6;
 }
 #test "Rage: a Bonus Action; +2 damage on Greataxe hits, Bludgeoning/Piercing/Slashing halved; it ends on a turn without an attack" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 12;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 12;
   a := rs_add(b[..], rs_barbarian("Thorn", 0, 3), 3, 3);
   m := rs_add(b[..], rs_monk("Sen", 1, 3), 4, 3);
   rs_start_turn(b[..], a);
@@ -538,7 +541,7 @@ RsBattle :: struct {
   #assert !rs_effect(b[0].c[a], EF_RAGE);
 }
 #test "Reckless Attack: Advantage on its Strength attacks and on attacks against it; Frenzy adds 2d6 to the first hit" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 8;
   a := rs_add(b[..], rs_barbarian("Thorn", 0, 3), 3, 3);
   m := rs_add(b[..], rs_monk("Sen", 1, 3), 4, 3);
   rs_start_turn(b[..], a);
@@ -559,7 +562,7 @@ RsBattle :: struct {
   #assert !rs_aura_on(b[0].c[a], EF_RECKLESS, b[0].clock);
 }
 #test "Cleave: a Greataxe hit carries into a second foe beside the first, without the Strength modifier" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 3;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 3;
   a := rs_add(b[..], rs_barbarian("Thorn", 0, 3), 3, 3);
   m := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 4, 3);
   n := rs_add(b[..], rs_warlock("Ilse", 1, 3, SP_ELDRITCH_BLAST), 4, 4);
@@ -574,7 +577,7 @@ RsBattle :: struct {
   #assert cleft;
 }
 #test "Flurry of Blows: 1 Focus Point, two Unarmed Strikes (1d6 + 3); Topple knocks a foe Prone on a failed Dex save" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 19;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 19;
   m := rs_add(b[..], rs_monk("Sen", 1, 3), 3, 3);
   t := rs_add(b[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 4, 3);
   b[0].c[t].hp = 200; b[0].c[t].hp_max = 200;
@@ -593,7 +596,7 @@ RsBattle :: struct {
   #assert prone;
 }
 #test "Deflect Attacks: a Monk's Reaction cuts 1d10 + Dex + level from a Greataxe hit, once until its turn" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 6;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 6;
   a := rs_add(b[..], rs_barbarian("Thorn", 0, 3), 3, 3);
   m := rs_add(b[..], rs_monk("Sen", 1, 3), 4, 3);
   for k: 0..<20 {
@@ -606,7 +609,7 @@ RsBattle :: struct {
   #assert b[0].c[m].reacted && 21 - b[0].c[m].hp <= 12 + 3 - (1 + 3 + 3);
 }
 #test "Patient Defense: Dodge until its next turn, Disadvantage on attacks against it and Advantage on Dex saves" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 6;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 6;
   a := rs_add(b[..], rs_barbarian("Thorn", 0, 3), 3, 3);
   m := rs_add(b[..], rs_monk("Sen", 1, 3), 4, 3);
   rs_start_turn(b[..], m);
@@ -619,7 +622,7 @@ RsBattle :: struct {
   #assert rs_attack_edge(b[..], a, m, true, true) == 0;
 }
 #test "the action adapter: a turn every 1.5 seconds, slots back after the cooldown, saves still on 6-second rounds" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 21;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 21;
   #assert rs_set_timing(b[..],RS_ACTION_TIMING);
   a := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 1, 3);
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 9, 3);
@@ -639,7 +642,7 @@ RsBattle :: struct {
   #assert b[0].c[a].slots[2] == 2;
 }
 #test "a Skeleton takes double from a Monk's fists, nothing from Poison Spray, and can't be held by Hold Person" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 14;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 14;
   m := rs_add(b[..], rs_monk("Sen", 0, 3), 3, 3);
   s := rs_add(b[..], rs_skeleton("Skeleton", 2), 4, 3);
   w := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 8, 3);
@@ -669,7 +672,7 @@ RsBattle :: struct {
   }
 }
 #test "a Skeleton's Shortbow: 80 feet, Disadvantage out to 320, and up close Disadvantage while a foe is beside it" {
-  b: [1] RsBattle; b[0].w = 80; b[0].h = 8; b[0].dice[0].state = 2;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 80; b[0].h = 8; b[0].dice[0].state = 2;
   s := rs_add(b[..], rs_skeleton("Skeleton", 2), 1, 3);
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 30, 3);
   rs_start_turn(b[..], s);
@@ -700,7 +703,7 @@ rs_saw :: (b: [] RsBattle, seq: int, needle: string) -> bool {
 rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_left = 6}; b[0].c[i].reacted = false; }
 
 #test "Bardic Inspiration: a Bonus Action gives an ally the d6, spent on its next failed attack roll" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 3;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 3;
   a := rs_add(b[..], rs_bard("Lark", 0, 3), 1, 3);
   f := rs_add(b[..], rs_fighter("Garr", 0, 3), 5, 3);
   t := rs_add(b[..], rs_skeleton("Skeleton", 2), 6, 3);
@@ -716,7 +719,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert rs_state_value(b[0].c[f], EF_INSPIRED) == 0;
 }
 #test "Cutting Words: a Lore Bard's Reaction takes its die off a foe's hit, turning some to misses" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 5;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 5;
   a := rs_add(b[..], rs_bard("Lark", 0, 3), 1, 3);
   t := rs_add(b[..], rs_fighter("Garr", 0, 3), 5, 3);
   s := rs_add(b[..], rs_skeleton("Skeleton", 2), 6, 3);
@@ -731,7 +734,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert cut;
 }
 #test "Vicious Mockery: a failed Wis save, 1d6 Psychic and Disadvantage on its next attack roll" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 8;
   a := rs_add(b[..], rs_bard("Lark", 0, 3), 1, 3);
   t := rs_add(b[..], rs_skeleton("Skeleton", 2), 8, 3);
   mocked := false;
@@ -744,7 +747,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert mocked && rs_attack_edge(b[..], t, a, false, false) == -1 && !rs_effect(b[0].c[t], EF_WEAK);
 }
 #test "Turn Undead: Undead within 30 feet that fail a Wis save are Frightened and Incapacitated until hurt" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 4;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 4;
   a := rs_add(b[..], rs_cleric("Aster", 0, 3), 2, 4);
   for k: 0..<6 { s := rs_add(b[..], rs_skeleton("Skeleton", 2), 4 + k, 4); }
   far := rs_add(b[..], rs_skeleton("Skeleton", 2), 15, 4);
@@ -759,7 +762,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert !rs_effect(b[0].c[turned], EF_TURNED) && rs_can_act(b[0].c[turned]);
 }
 #test "Preserve Life: 15 Hit Points among Bloodied allies within 30 feet, none above half; Disciple of Life adds 2 + slot" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 6;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 6;
   a := rs_add(b[..], rs_cleric("Aster", 0, 3), 2, 4);
   f := rs_add(b[..], rs_fighter("Garr", 0, 3), 3, 4);
   r := rs_add(b[..], rs_rogue("Nim", 0, 3), 4, 5);
@@ -773,7 +776,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert rs_cast(b[..], a, SP_CURE_WOUNDS, 1, 0, 0, f) && b[0].c[f].hp >= 1 + 2 + 3 + 3;
 }
 #test "Guiding Bolt: 4d6 Radiant on a hit, and the next attack roll against it has Advantage; Sacred Flame is a Dex save" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 9;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 9;
   a := rs_add(b[..], rs_cleric("Aster", 0, 3), 2, 4);
   t := rs_add(b[..], rs_fighter("Garr", 1, 3), 10, 4);
   b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
@@ -789,7 +792,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert rs_cast(b[..], a, SP_SACRED_FLAME, 0, 0, 0, t) && rs_saw(b[..], seq, "DEX save") && 500 - b[0].c[t].hp <= 8;
 }
 #test "Second Wind heals 1d10 + 3 as a Bonus Action; Action Surge gives a second Attack action" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 2;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 2;
   f := rs_add(b[..], rs_fighter("Garr", 0, 3), 3, 4);
   t := rs_add(b[..], rs_skeleton("Skeleton", 2), 4, 4);
   b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
@@ -801,7 +804,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert rs_action_surge(b[..], f) && rs_attack(b[..], f, t, false, -1) && b[0].c[f].uses[RS_USE_SURGE] == 0 && !rs_action_surge(b[..], f);
 }
 #test "a feature's events say which feature it is; a Cunning Action Dash is told without a line" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 2;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 2;
   f := rs_add(b[..], rs_fighter("Garr", 0, 3), 3, 4);
   r := rs_add(b[..], rs_rogue("Nim", 0, 3), 6, 4);
   b[0].c[f].hp = 5;
@@ -812,10 +815,10 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   rs_fresh(b[..], r);
   #assert rs_cunning_dash(b[..], r);
   e := rs_recent(b[0].book[0], 0);
-  #assert e.kind == RS_EV_FEAT && e.feat == RS_FT_CUNNING_DASH && e.by == r && e.text_n == 0;
+  #assert e.kind == RS_EV_FEAT && e.feat == RS_FT_CUNNING_DASH && e.by.value == r && e.text_n == 0;
 }
 #test "Improved Critical: the Champion's 19s are Critical Hits; Graze deals the Strength modifier on a miss" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 12;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 12;
   f := rs_add(b[..], rs_fighter("Garr", 0, 3), 3, 4);
   t := rs_add(b[..], rs_fighter("Brand", 1, 3), 4, 4);
   b[0].c[t].ac = 40;   // only Critical Hits land
@@ -832,7 +835,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert crits > 12 && crits < 32 && grazed > 150;
 }
 #test "Divine Smite: a Bonus Action after a melee hit, 2d8 Radiant (3d8 on Undead); once without a slot" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 14;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 14;
   p := rs_add(b[..], rs_paladin("Oriel", 0, 3), 3, 4);
   t := rs_add(b[..], rs_skeleton("Skeleton", 2), 4, 4);
   rs_fresh(b[..], p);
@@ -856,7 +859,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert smote;
 }
 #test "Lay On Hands heals from a 15-point pool by touch; Sacred Weapon adds Cha to hit; Sap weakens a foe hit" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 15;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 15;
   p := rs_add(b[..], rs_paladin("Oriel", 0, 3), 3, 4);
   f := rs_add(b[..], rs_fighter("Garr", 0, 3), 3, 5);
   far := rs_add(b[..], rs_rogue("Nim", 0, 3), 10, 5);
@@ -875,7 +878,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert sapped;
 }
 #test "Hunter's Mark: cast free with Favored Enemy, 1d6 Force on each hit; Colossus Slayer and Slow on a hurt foe" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 16;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 16;
   r := rs_add(b[..], rs_ranger("Wren", 0, 3), 2, 4);
   t := rs_add(b[..], rs_fighter("Brand", 1, 3), 14, 4);
   rs_fresh(b[..], r);
@@ -894,7 +897,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   rs_start_turn(b[..], t); #assert b[0].turn.move_left == 4;
 }
 #test "Sneak Attack: 2d6 once a turn with an ally beside the foe or Advantage; Steady Aim gives Advantage, not after moving" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 17;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 17;
   r := rs_add(b[..], rs_rogue("Nim", 0, 3), 2, 4);
   t := rs_add(b[..], rs_fighter("Brand", 1, 3), 10, 4);
   b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
@@ -914,7 +917,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert sneaky;
 }
 #test "Vex: a Shortsword hit that deals damage gives Advantage on the next attack roll against that foe" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 18;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 18;
   r := rs_add(b[..], rs_rogue("Nim", 0, 3), 3, 4);
   t := rs_add(b[..], rs_fighter("Brand", 1, 3), 4, 4);
   u := rs_add(b[..], rs_fighter("Kell", 1, 3), 4, 5);
@@ -928,7 +931,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert vexed && rs_attack_edge(b[..], r, u, true, false) == 0 && rs_attack_edge(b[..], r, t, true, false) == 1 && !rs_effect(b[0].c[r], EF_VEX);
 }
 #test "Innate Sorcery: +1 DC and Advantage on spell attacks; Quickened Spell casts a cantrip as a Bonus Action" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 19;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 19;
   s := rs_add(b[..], rs_sorcerer("Ember", 0, 3), 2, 4);
   t := rs_add(b[..], rs_fighter("Brand", 1, 3), 14, 4);
   b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
@@ -942,7 +945,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert rs_cast(b[..], s, SP_SCORCHING_RAY, 2, 0, 0, t) && !rs_cast_quick(b[..], s, SP_FIRE_BOLT, 0, 0, 0, t);
 }
 #test "Seeking Spell rerolls a missed spell attack for a Sorcery Point; Draconic Resilience: 20 HP, AC 15" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 20;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 20;
   s := rs_add(b[..], rs_sorcerer("Ember", 0, 3), 2, 4);
   t := rs_add(b[..], rs_fighter("Brand", 1, 3), 14, 4);
   b[0].c[t].ac = 40; b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
@@ -951,7 +954,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert b[0].c[s].hp_max == 20 && b[0].c[s].ac == 15;
 }
 #test "Shield: a Reaction to a hit, +5 AC against it and until the start of the caster's next turn" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 21;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].state = 21;
   w := rs_add(b[..], rs_wizard("Mordra", 1, 3), 4, 4);
   f := rs_add(b[..], rs_fighter("Garr", 0, 3), 3, 4);
   rs_begin(b[..]);
@@ -968,7 +971,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   rs_start_turn(b[..],w); #assert rs_ac(b[..], w) == 15;
 }
 #test "Potent Cantrip: an Evoker's missed Fire Bolt still deals half its damage" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 22;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 22;
   w := rs_add(b[..], rs_wizard("Mordra", 1, 3), 2, 4);
   t := rs_add(b[..], rs_fighter("Garr", 0, 3), 14, 4);
   b[0].c[t].ac = 40; b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
@@ -981,7 +984,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert half;
 }
 #test "Land's Aid: a Wild Shape use, a 10-foot sphere: 2d6 Necrotic on a failed Con save, half on a success, 2d6 back to a friend" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 23;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 23;
   d := rs_add(b[..], rs_druid("Rowan", 0, 3), 2, 4);
   f := rs_add(b[..], rs_fighter("Garr", 0, 3), 9, 4);
   e1 := rs_add(b[..], rs_fighter("Brand", 1, 3), 10, 4);
@@ -995,7 +998,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert b[0].c[f].hp >= 5 + 2 && b[0].c[f].hp <= 5 + 12;
 }
 #test "Remarkable Athlete: a Champion rolls Initiative with Advantage" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 24;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 10; b[0].dice[0].state = 24;
   champ := 0; plain := 0;
   for k: 0..<100 {
     b[0].n = 0;
@@ -1013,7 +1016,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert c.score[RS_STR] == 20 && rs_weapon_attack(c, c.weapon) == 8 && c.rank[RS_RK_EXTRA_ATTACK] == 1 && c.uses_max[RS_USE_WIND] == 3;
   #assert rs_fighter("Garr", 0, 4).score[RS_STR] == 18 && rs_fighter("Garr", 0, 4).rank[RS_RK_EXTRA_ATTACK] == 0;
   #assert c.hp_max == 10 + 2 + 5 * (6 + 2);
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 9;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 9;
   f := rs_add(b[..], c, 3, 3);
   t := rs_add(b[..], rs_skeleton("Skeleton", 2), 4, 3);
   b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
@@ -1036,7 +1039,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
 }
 
 #test "Tactical Mind: a failed Strength (Athletics) check takes 1d10 more from a Second Wind use, spent only when it then succeeds" {
-  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 5;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 5;
   a := rs_add(b[..], rs_druid("Rowan", 0, 3), 1, 3);
   b[0].c[a].score[RS_WIS] = 30;   // DC 8 + 2 + 10 = 20: hard enough that the plants hold
   f := rs_add(b[..], rs_fighter("Garr", 1, 6), 8, 3);
@@ -1064,7 +1067,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   c := rs_barbarian("Gorr", 1, 6);
   #assert c.score[RS_STR] == 18 && rs_weapon_attack(c, c.weapon) == 7 && c.rank[RS_RK_EXTRA_ATTACK] == 1 && c.speed == 40 && c.uses[RS_USE_RAGE] == 4 && rs_has_feature(c, RS_FT_PRIMAL_KNOWLEDGE);
   #assert c.hp_max == 12 + 2 + 5 * (7 + 2) && rs_has_feature(rs_barbarian("Gorr", 1, 5), RS_FT_MINDLESS_RAGE) == false && rs_has_feature(c, RS_FT_MINDLESS_RAGE);
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].state = 4;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].state = 4;
   a := rs_add(b[..], c, 2, 2);
   // Frightened before the Rage: entering it ends the condition
   #assert rs_put_effect(b[..], a, RsEffect.{kind = EF_COND, cond = RS_FRIGHTENED, by = -1, spell = -1, until = 100, save = -1, dc = 0});
@@ -1081,12 +1084,12 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert c.score[RS_DEX] == 18 && c.ac == 15 && c.rank[RS_RK_SNEAK_DICE] == 3 && rs_weapon_attack(c, c.weapon) == 7;
   #assert rs_has_feature(c, RS_FT_CUNNING_STRIKE) && rs_has_feature(c, RS_FT_UNCANNY_DODGE) && c.rank[RS_RK_EXPERTISE] == 4 && rs_has_feature(c, RS_FT_THIEVES_CANT) && rs_has_feature(c, RS_FT_FAST_HANDS) && c.climb == 30 && !rs_has_feature(c, RS_FT_POISON_KIT);
   #assert c.hp_max == 8 + 2 + 5 * (5 + 2);
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].state = 11;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].state = 11;
   r := rs_add(b[..], c, 2, 2);
   t := rs_add(b[..], rs_barbarian("Gorr", 1, 3), 3, 2);
   b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
   // Trip: one die forgone; the target saves or goes Prone
-  b[0].c[r].strike_plan = CS_TRIP;
+  b[0].c[r].note[RS_NT_STRIKE_PLAN] = CS_TRIP;
   tripped := false; tried := false;
   for k: 0..<30 {
     rs_fresh(b[..], r); b[0].turn.aimed = true; seq := b[0].book[0].seq;
@@ -1095,14 +1098,14 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   }
   #assert tried && tripped;
   // Poison needs a Poisoner's Kit: without one no die is forgone and nothing is rolled
-  b[0].c[t].cond = 0; b[0].c[r].strike_plan = CS_POISON;
+  b[0].c[t].cond = 0; b[0].c[r].note[RS_NT_STRIKE_PLAN] = CS_POISON;
   for k: 0..<10 {
     rs_fresh(b[..], r); b[0].turn.aimed = true; seq := b[0].book[0].seq;
     ok := rs_attack(b[..], r, t, false, -1);
     #assert !rs_saw(b[..], seq, "Poison");
   }
   // Withdraw: half its Speed after the attack
-  b[0].c[r].strike_plan = CS_WITHDRAW;
+  b[0].c[r].note[RS_NT_STRIKE_PLAN] = CS_WITHDRAW;
   for k: 0..<30 {
     rs_fresh(b[..], r); b[0].turn.aimed = true; seq := b[0].book[0].seq;
     ok := rs_attack(b[..], r, t, false, -1);
@@ -1120,11 +1123,11 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   c := rs_monk("Sen", 0, 6);
   #assert c.score[RS_DEX] == 18 && c.ac == 16 && c.speed == 45 && c.rank[RS_RK_MARTIAL_DIE] == 8 && c.uses_max[RS_USE_FOCUS] == 6 && c.rank[RS_RK_EXTRA_ATTACK] == 1;
   #assert rs_has_feature(c, RS_FT_STUNNING_STRIKE) && rs_has_feature(c, RS_FT_EMPOWERED_STRIKES) && rs_has_feature(c, RS_FT_METABOLISM) && rs_has_feature(c, RS_FT_SLOW_FALL) && c.uses_max[RS_USE_WHOLE] == 2 && c.hp_max == 8 + 1 + 5 * (5 + 1);
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].state = 21;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].state = 21;
   m := rs_add(b[..], c, 2, 2);
   t := rs_add(b[..], rs_barbarian("Gorr", 1, 3), 3, 2);
   b[0].c[t].hp = 500; b[0].c[t].hp_max = 500; b[0].c[t].eff = rs_state_put(b[0].c[t].eff, EF_RAGE, true);
-  b[0].c[m].stun_ready = true;
+  b[0].c[m].note[RS_NT_STUN] = 1;
   stunned := false; saved := false; forced := false;
   for k: 0..<40 {
     rs_fresh(b[..], m); seq := b[0].book[0].seq;
@@ -1153,7 +1156,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   c := rs_paladin("Ulf", 1, 6);
   #assert c.score[RS_STR] == 18 && rs_weapon_attack(c, c.weapon) == 7 && c.rank[RS_RK_EXTRA_ATTACK] == 1 && c.slots_max[1] == 4 && c.slots_max[2] == 2;
   #assert rs_has_feature(c, RS_FT_AURA_OF_PROTECTION) && rs_has_feature(c, RS_FT_FAITHFUL_STEED) && !rs_has_feature(rs_paladin("Ulf", 1, 5), RS_FT_AURA_OF_PROTECTION) && c.uses_max[RS_USE_LAY] == 30 && c.hp_max == 10 + 1 + 5 * (6 + 1);
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 6; b[0].dice[0].state = 2;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 6; b[0].dice[0].state = 2;
   p := rs_add(b[..], c, 2, 2);
   f := rs_add(b[..], rs_fighter("Garr", 1, 3), 4, 2);
   g := rs_add(b[..], rs_fighter("Hild", 1, 3), 10, 2);
@@ -1170,7 +1173,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   c := rs_ranger("Yen", 0, 6);
   #assert c.score[RS_DEX] == 18 && c.ac == 16 && rs_weapon_attack(c, c.ranged) == 4 + 3 + 2 && c.rank[RS_RK_EXTRA_ATTACK] == 1;
   #assert c.speed == 40 && c.climb == 40 && c.swim == 40 && c.uses_max[RS_USE_FREE] == 3 && c.slots_max[2] == 2 && rs_has_feature(c, RS_FT_DEFT_EXPLORER) && rs_has_feature(c, RS_FT_HUNTERS_LORE);
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 6; b[0].dice[0].state = 6;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 6; b[0].dice[0].state = 6;
   r := rs_add(b[..], c, 2, 2);
   t := rs_add(b[..], rs_skeleton("Skeleton", 2), 14, 2);
   b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
@@ -1190,7 +1193,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert c.score[RS_INT] == 18 && rs_spell_dc(c) == 8 + 3 + 4 && c.slots_max[3] == 3 && rs_has_feature(c, RS_FT_SCULPT) && rs_has_feature(c, RS_FT_RITUAL_ADEPT) && rs_has_feature(c, RS_FT_MEMORIZE);
   #assert rs_wizard("Vesk", 1, 5).slots_max[3] == 2 && !rs_has_feature(rs_wizard("Vesk", 1, 5), RS_FT_SCULPT);
   fb := rs_spell(SP_FIREBALL); #assert fb.level == 3 && fb.area == RS_A_SPHERE && fb.area_ft == 20 && fb.range_ft == 150 && fb.steps[1].a == 8 && fb.page == 131;
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 14; b[0].dice[0].state = 13;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 14; b[0].dice[0].state = 13;
   w := rs_add(b[..], c, 1, 6);
   f := rs_add(b[..], rs_fighter("Garr", 1, 3), 12, 6);   // an ally at the centre
   inner := rs_add(b[..], rs_skeleton("Skeleton", 2), 15, 6);   // 15 feet off the point: inside
@@ -1205,7 +1208,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
 }
 
 #test "Lightning Bolt: a 100-foot Line 5 feet wide from you, Dex save, 8d6 Lightning or half; Burning Hands: 3d6 Fire in 15 feet" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 30; b[0].dice[0].state = 29;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 30; b[0].dice[0].state = 29;
   w := rs_add(b[..], rs_wizard("Vesk", 1, 5), 2, 2);
   choices := [3] int.[RS_KEY_MAGE_ARMOR, RS_EXEC_SOURCE[SP_LIGHTNING_BOLT], RS_EXEC_SOURCE[SP_BURNING_HANDS]];
   #assert rs_set_spells(b[0].c[w..<w+1], choices[..]);
@@ -1234,12 +1237,12 @@ rs_test_saves :: (b: [] RsBattle, seq: int, sp: int, to: [] int) -> int {
   m := rs_min(b[0].book[0].seq - seq, RS_EVENTS);
   for q: 0..<m {
     e := rs_recent_at(b[0].book[..], q);
-    if e.kind == RS_EV_SAVE && e.spell == sp && n < to.count { to[n] = e.to; n += 1; }
+    if e.kind == RS_EV_SAVE && e.spell.value == sp && n < to.count { to[n] = e.to.value; n += 1; }
   }
   return n;
 }
 #test "Gust of Wind: a 60-foot Line 10 feet wide from you, a Strength save or pushed 15 feet, and again for one that ends its turn in it (#12884)" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 20; b[0].dice[0].state = 31;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 20; b[0].dice[0].state = 31;
   d := rs_add(b[..], rs_druid("Rowan", 0, 5), 2, 10);
   choices := [1] int.[RS_EXEC_SOURCE[SP_GUST_OF_WIND]];
   #assert rs_set_spells(b[0].c[d..<d+1], choices[..]);
@@ -1290,7 +1293,7 @@ rs_test_saves :: (b: [] RsBattle, seq: int, sp: int, to: [] int) -> int {
 }
 
 #test "Spirit Guardians: foes ending their turn within 15 feet save or take 3d8 Radiant, once a turn, at half Speed" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 17;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 17;
   c := rs_add(b[..], rs_cleric("Nyx", 0, 5), 4, 3);
   s := rs_add(b[..], rs_skeleton("Skeleton", 2), 6, 3);
   far := rs_add(b[..], rs_skeleton("Skeleton", 2), 12, 3);
@@ -1323,7 +1326,7 @@ rs_test_saves :: (b: [] RsBattle, seq: int, sp: int, to: [] int) -> int {
 // The movement a turn has left, in feet.
 rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_feet; }
 #test "standing up: on its own turn a Prone creature spends half its Speed and is Prone no more; no other creature, turn or state stands it" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
   a := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 2); f := rs_add(b[..], rs_fighter("Foe", 1, 3), 8, 2);
   rs_start_turn(b[..], a);
   #assert !rs_stand_up(b[..], a) && !rs_stand_up(b[..], -1) && !rs_stand_up(b[..], b[0].n);   // not Prone; no such creature
@@ -1343,7 +1346,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   #assert !rs_stand_up(b[..], a) && rs_has(b[0].c[a], RS_PRONE);
 }
 #test "a team's creatures still up: alive and above 0 Hit Points, of that team only" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6;
   for i: 0..<3 { _ := rs_add(b[..], rs_fighter("A", 0, 1), 1 + i, 1); }
   for i: 0..<2 { _ := rs_add(b[..], rs_fighter("B", 1, 1), 1 + i, 4); }
   #assert rs_team_up(b[..], 0) == 3 && rs_team_up(b[..], 1) == 2 && rs_team_up(b[..], 2) == 0;
@@ -1355,7 +1358,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   b[0].c[b[0].n] = rs_fighter("C", 1, 1); #assert rs_team_up(b[..], 1) == 1;
 }
 #test "shaking a creature out of Hypnotic Pattern's stupor: an action from within 5 feet ends it and says so; no stupor, no action spent" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
   a := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 2); j := rs_add(b[..], rs_fighter("Ally", 0, 3), 3, 2); far := rs_add(b[..], rs_fighter("Far", 0, 3), 5, 2);
   daze := RsEffect.{kind = EF_DAZED, cond = RS_CHARMED | RS_INCAPACITATED, by = far, spell = SP_HYPNOTIC_PATTERN, until = RS_NO_END, save = -1};
   rs_fresh(b[..], a);
@@ -1369,12 +1372,12 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   b[0].c[a].cond = 0; seq := b[0].book[0].seq;
   #assert rs_shake(b[..], a, j) && b[0].turn.action && !rs_effect(b[0].c[j], EF_DAZED) && rs_can_act(b[0].c[j]) && rs_effect(b[0].c[far], EF_DAZED);
   e := rs_recent_at(b[0].book[..], 0);
-  #assert b[0].book[0].seq > seq && e.kind == RS_EV_END && e.spell == SP_HYPNOTIC_PATTERN && e.by == a && e.to == j;
+  #assert b[0].book[0].seq > seq && e.kind == RS_EV_END && e.spell.value == SP_HYPNOTIC_PATTERN && e.by.value == a && e.to.value == j;
   // exactly 5 feet is in reach; the diagonal too
   rs_fresh(b[..], a); rs_place(b[..], far, 3, 3); #assert rs_shake(b[..], a, far) && !rs_effect(b[0].c[far], EF_DAZED);
 }
 #test "the Attack action is rs_attack with no Reckless Attack and no Cleave: one action, the weapon's blow, in reach, on its own turn" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
   a := rs_add(b[..], rs_barbarian("Thorn", 0, 3), 2, 2); t := rs_add(b[..], rs_skeleton("Bones", 1), 3, 2); far := rs_add(b[..], rs_skeleton("Far", 1), 6, 2);
   b[0].c[t].hp = 100; b[0].c[t].hp_max = 100; b[0].c[t].ac = 1;
   rs_fresh(b[..], a);
@@ -1384,13 +1387,13 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   hp := b[0].c[t].hp; #assert !rs_attack_action(b[..], a, t) && b[0].c[t].hp == hp;   // one action a turn
   rs_fresh(b[..], t); #assert !rs_attack_action(b[..], a, t);                // not its turn
   // the same blow as rs_attack's, die for die
-  c: [1] RsBattle; c[0].w = 12; c[0].h = 6; c[0].dice[0].fixed = true;
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); c[0].w = 12; c[0].h = 6; c[0].dice[0].fixed = true;
   ca := rs_add(c[..], rs_barbarian("Thorn", 0, 3), 2, 2); ct := rs_add(c[..], rs_skeleton("Bones", 1), 3, 2);
   c[0].c[ct].hp = 100; c[0].c[ct].hp_max = 100; c[0].c[ct].ac = 1; rs_fresh(c[..], ca);
   #assert rs_attack(c[..], ca, ct, false, -1) && c[0].c[ct].hp == hp;
 }
 #test "Martial Arts' Bonus Action strike: an Unarmed Strike in reach, for one with a Martial Arts die, once a turn" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
   m := rs_add(b[..], rs_monk("Ash", 0, 3), 2, 2); t := rs_add(b[..], rs_skeleton("Bones", 1), 3, 2); far := rs_add(b[..], rs_skeleton("Far", 1), 5, 2);
   f := rs_add(b[..], rs_fighter("Garr", 0, 3), 3, 3);
   b[0].c[t].hp = 100; b[0].c[t].hp_max = 100; b[0].c[t].ac = 1;
@@ -1407,7 +1410,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   b[0].c[f].rank[RS_RK_MARTIAL_DIE] = 6; #assert rs_bonus_strike(b[..], f, t) && b[0].turn.bonus;
 }
 #test "Dash is an action and Step of the Wind a Monk's Bonus Action: each adds its Speed to the turn's movement once, and tells of the feature" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 6; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 6; b[0].dice[0].fixed = true;
   m := rs_add(b[..], rs_monk("Ash", 0, 3), 2, 2); f := rs_add(b[..], rs_fighter("Garr", 0, 3), 2, 4);
   rs_start_turn(b[..], f);
   left := rs_turn_feet(b[0].turn); speed := b[0].c[f].speed;
@@ -1419,7 +1422,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   mleft := rs_turn_feet(b[0].turn); mspeed := b[0].c[m].speed; focus := b[0].c[m].uses[RS_USE_FOCUS]; seq := b[0].book[0].seq;
   #assert rs_step_of_the_wind(b[..], m) && b[0].turn.bonus && !b[0].turn.action && b[0].turn.dash_n == 1 && rs_turn_feet(b[0].turn) == mleft + mspeed && b[0].c[m].uses[RS_USE_FOCUS] == focus;
   e := rs_recent_at(b[0].book[..], 0);
-  #assert b[0].book[0].seq == seq + 1 && e.kind == RS_EV_FEAT && e.feat == RS_FT_STEP_OF_THE_WIND && e.by == m;
+  #assert b[0].book[0].seq == seq + 1 && e.kind == RS_EV_FEAT && e.feat == RS_FT_STEP_OF_THE_WIND && e.by.value == m;
   #assert !rs_step_of_the_wind(b[..], m) && b[0].turn.dash_n == 1;                               // one Bonus Action
   // and its action's Dash on top: twice its Speed more
   #assert rs_dash(b[..], m) && b[0].turn.action && b[0].turn.dash_n == 2 && rs_turn_feet(b[0].turn) == mleft + 2 * mspeed;
@@ -1428,7 +1431,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   #assert !rs_dash(b[..], f) && !b[0].turn.action && !rs_dash(b[..], -1) && !rs_dash(b[..], b[0].n);
 }
 #test "a state Aura needs a place: with its list full, Rage, Dodge, Patient Defense, Shield and Bardic Inspiration are refused before any cost, and Addle is not applied" {
-  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 16; b[0].h = 8; b[0].dice[0].fixed = true;
   ba := rs_add(b[..], rs_barbarian("Thorn", 0, 3), 1, 1); mo := rs_add(b[..], rs_monk("Ash", 0, 3), 3, 1);
   wz := rs_add(b[..], rs_wizard("Mira", 0, 3), 5, 1); bd := rs_add(b[..], rs_bard("Lark", 0, 3), 7, 1); fi := rs_add(b[..], rs_fighter("Garr", 0, 3), 9, 1);
   full := RsEffect.{kind = EF_HEX, by = 0, spell = SP_HEX, until = RS_NO_END, save = -1};
@@ -1466,7 +1469,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 }
 #test "a zone's table of lasting areas (one a caster of 150): a ninth caster's area stands, each ends with its own Concentration, and a Zone of Truth takes one of the first 62 places" {
   room: [160] RsCreature; occ: [80 * 80] int; zones: [150] RsZone;
-  b: [1] RsBattle; rs_use(b[..], room[..], occ[..]); rs_use_zones(b[..], zones[..]); b[0].w = 80; b[0].h = 80; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rs_use(b[..], room[..], occ[..]); rs_use_zones(b[..], zones[..]); b[0].w = 80; b[0].h = 80; b[0].dice[0].fixed = true;
   #assert b[0].zone.count == 150 && rs_truth_zones(b[..]) == 62 && RS_ZONES == 8 && RS_TRUTH_ZONES == 62;
   // twelve Druids, each with an Entangle of its own: more areas than a battle's own eight
   for i: 0..<12 { _ := rs_add(b[..], rs_druid("", 0, 3), 2 + i * 6, 2); }
@@ -1489,12 +1492,12 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   b[0].zone[61].on = false; rs_fresh(b[..], c);
   #assert rs_cast(b[..], c, SP_ZONE_OF_TRUTH, 2, 40, 40, -1) && b[0].zone[61].on && b[0].zone[61].spell == SP_ZONE_OF_TRUTH && b[0].truth_zones == 1 << 61 && b[0].c[c].slots[2] == slots - 1;
   // a battle with no table given keeps its own eight
-  own: [1] RsBattle; own[0].w = 8; own[0].h = 8; _ := rs_add(own[..], rs_druid("", 0, 3), 1, 1);
+  own: [1] RsBattle; own_room: [1] RsRoom; rs_have(own[..], own_room[..]); own[0].w = 8; own[0].h = 8; _ := rs_add(own[..], rs_druid("", 0, 3), 1, 1);
   #assert own[0].zone.count == RS_ZONES && rs_truth_zones(own[..]) == RS_ZONES;
 }
 #test "a battle in a zone's room (150 seats, 96 creatures, a familiar a seat): creatures past the rules' own 216 cast, strike, are struck and bear effects as any other" {
   room: [396] RsCreature; occ: [80 * 80] int;
-  b: [1] RsBattle; rs_use(b[..], room[..], occ[..]); b[0].w = 80; b[0].h = 80; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rs_use(b[..], room[..], occ[..]); b[0].w = 80; b[0].h = 80; b[0].dice[0].fixed = true;
   for i: 0..<150 { _ := rs_add(b[..], rs_fighter("", 0, 1), i % 75, i / 75); }           // the seats, 0 to 149
   for i: 0..<96 { _ := rs_add(b[..], rs_skeleton("", 2), 4 + i % 48, 30 + i / 48); }     // the zone's creatures, 150 to 245
   for i: 0..<149 { _ := rs_add(b[..], rs_fighter("", 0, 1), i % 75, 70 + i / 75); }      // the familiars' slots, 246 to 394
@@ -1518,7 +1521,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 }
 
 #test "Call Lightning: a 3d10 bolt within 5 feet of a point, and a Magic action for another while it lasts" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].state = 19;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].state = 19;
   d := rs_add(b[..], rs_druid("Rowan", 0, 5), 1, 3);
   t := rs_add(b[..], rs_skeleton("Skeleton", 2), 15, 3);
   u := rs_add(b[..], rs_skeleton("Skeleton", 2), 16, 3);
@@ -1534,7 +1537,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 }
 
 #test "Hypnotic Pattern: Charmed and Incapacitated at Speed 0 on a failed Wis save, ending when it takes damage" {
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 10; b[0].dice[0].state = 23;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 10; b[0].dice[0].state = 23;
   a := rs_add(b[..], rs_bard("Lark", 0, 5), 1, 4);
   b[0].c[a].score[RS_CHA] = 30;   // a DC no Skeleton makes
   t := rs_add(b[..], rs_skeleton("Skeleton", 2), 12, 4);
@@ -1549,7 +1552,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   c := rs_sorcerer("Ivy", 0, 6);
   #assert c.score[RS_CHA] == 18 && c.ac == 10 + 2 + 4 && c.slots_max[3] == 3 && c.uses_max[RS_USE_SORCERY] == 6 && rs_has_feature(c, RS_FT_RESTORATION);
   #assert c.hp_max == 6 + 1 + 5 * (4 + 1) + 3 + 3 && c.rank[RS_RK_AFFINITY] == RS_FIRE && (c.resist & (1 << RS_FIRE)) != 0;
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].state = 29;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].state = 29;
   s := rs_add(b[..], c, 1, 3);
   t := rs_add(b[..], rs_skeleton("Skeleton", 2), 10, 3);
   b[0].c[t].hp = 500; b[0].c[t].hp_max = 500; b[0].c[t].ac = 1;
@@ -1564,7 +1567,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 #test "a level 6 Life Cleric: Wisdom 18, Spirit Guardians' slots, three Channel Divinity uses, Sear Undead and Blessed Healer" {
   c := rs_cleric("Nyx", 1, 6);
   #assert c.score[RS_WIS] == 18 && rs_spell_dc(c) == 15 && c.slots_max[3] == 3 && c.uses_max[RS_USE_CHANNEL] == 3 && rs_has_feature(c, RS_FT_SEAR_UNDEAD) && rs_has_feature(c, RS_FT_BLESSED_HEALER);
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 31;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 31;
   k := rs_add(b[..], c, 2, 3);
   for q: 0..<4 { s := rs_add(b[..], rs_skeleton("Skeleton", 2), 4 + q, 3); b[0].c[s].hp = 100; b[0].c[s].hp_max = 100; }
   rs_fresh(b[..], k);
@@ -1583,8 +1586,8 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 #test "a level 6 Land Druid: Wisdom 18, three Wild Shape uses, Wild Resurgence both ways, Natural Recovery's free Hold Person, Call Lightning's slots" {
   c := rs_druid("Rowan", 0, 6);
   #assert c.score[RS_WIS] == 18 && rs_spell_dc(c) == 15 && c.uses_max[RS_USE_WILD] == 3 && c.slots_max[3] == 3 && rs_has_feature(c, RS_FT_WILD_COMPANION) && rs_has_feature(c, RS_FT_WILD_RESURGENCE);
-  #assert c.free_spell == SP_HOLD_PERSON && c.uses_max[RS_USE_FREE] == 1;
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 37;
+  #assert c.rank[RS_RK_FREE_SPELL] == SP_HOLD_PERSON && c.uses_max[RS_USE_FREE] == 1;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 37;
   d := rs_add(b[..], c, 2, 3);
   t := rs_add(b[..], rs_fighter("Garr", 1, 3), 8, 3);
   rs_fresh(b[..], d);
@@ -1600,7 +1603,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   c := rs_bard("Lark", 0, 6);
   #assert c.score[RS_CHA] == 18 && rs_spell_dc(c) == 15 && c.uses_max[RS_USE_INSPIRE] == 4 && c.rank[RS_RK_INSPIRATION_DIE] == 8 && c.slots_max[3] == 3;
   #assert rs_has_feature(c, RS_FT_FONT) && rs_has_feature(c, RS_FT_JACK) && c.rank[RS_RK_EXPERTISE] == 2 && c.rank[RS_RK_DISCOVERY + 0] == SP_FIREBALL && c.rank[RS_RK_DISCOVERY + 1] == SP_SPIRIT_GUARDIANS;
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].state = 41;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].state = 41;
   a := rs_add(b[..], c, 1, 3);
   t := rs_add(b[..], rs_skeleton("Skeleton", 2), 14, 3);
   rs_fresh(b[..], a);
@@ -1614,7 +1617,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 #test "a level 6 Fiend Warlock: Charisma 18, two 3rd-level pact slots, Fireball, Dark One's Own Luck on a failed save" {
   c := rs_warlock("Vex", 0, 6, SP_ELDRITCH_BLAST);
   #assert c.score[RS_CHA] == 18 && rs_spell_dc(c) == 15 && c.slots_max[3] == 2 && c.slots_max[2] == 0 && c.uses_max[RS_USE_LUCK] == 4 && rs_has_feature(c, RS_FT_MAGICAL_CUNNING);
-  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].state = 43;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8; b[0].dice[0].state = 43;
   w := rs_add(b[..], c, 1, 3);
   t := rs_add(b[..], rs_skeleton("Skeleton", 2), 14, 3);
   rs_fresh(b[..], w);
@@ -1630,7 +1633,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   #assert c.slots_max[5] == 4 && c.slots_max[3] == 0 && c.slots_max[6] == 1 && c.slots_max[7] == 1 && c.slots_max[9] == 1;
   #assert c.score[RS_CHA] == 20 && rs_spell_dc(c) == 8 + 6 + 5 && rs_cantrip_tier(c.level) == 4;
   #assert rs_warlock("Ilse", 1, 6, SP_ELDRITCH_BLAST).slots_max[3] == 2 && rs_warlock("Ilse", 1, 11, SP_ELDRITCH_BLAST).slots_max[5] == 3;
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 9;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 9;
   a := rs_add(b[..], c, 1, 3);
   t := rs_add(b[..], rs_skeleton("Skeleton", 2), 9, 3);
   b[0].c[t].hp_max = 500; b[0].c[t].hp = 500;
@@ -1644,7 +1647,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 #test "Circle of Death: 8d8 Necrotic in a 60-foot Sphere, Con half; 2d8 more a slot level above 6" {
   cd := rs_spell(SP_CIRCLE_OF_DEATH);
   #assert cd.level == 6 && cd.range_ft == 150 && cd.area == RS_A_SPHERE && cd.area_ft == 60 && cd.steps[0].a == RS_CON && cd.steps[1].a == 8 && cd.steps[1].b == 8 && cd.steps[1].c == RS_NECROTIC && cd.steps[1].d == 2;
-  b: [1] RsBattle; b[0].w = 60; b[0].h = 30; b[0].dice[0].state = 5;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 60; b[0].h = 30; b[0].dice[0].state = 5;
   a := rs_add(b[..], rs_warlock("Vesk", 1, 17, SP_ELDRITCH_BLAST), 1, 15);
   b[0].c[a].materials[0]=RsMaterialStock.{key=RS_KEY_CIRCLE_OF_DEATH,count=1};
   near := rs_add(b[..], rs_skeleton("A", 2), 20, 15); edge := rs_add(b[..], rs_skeleton("B", 2), 31, 15); out := rs_add(b[..], rs_skeleton("C", 2), 34, 15);
@@ -1656,7 +1659,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 #test "Finger of Death: 7d8 + 30 Necrotic, Con half; a Humanoid it kills rises as a Zombie at the start of the caster's next turn" {
   fd := rs_spell(SP_FINGER_OF_DEATH);
   #assert fd.level == 7 && fd.range_ft == 60 && fd.plus == 30 && fd.steps[1].a == 7 && fd.steps[1].b == 8 && fd.steps[2].kind == RS_S_RISE;
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 17;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 17;
   a := rs_add(b[..], rs_warlock("Vesk", 1, 17, SP_ELDRITCH_BLAST), 1, 3);
   t := rs_add(b[..], rs_druid("Rowan", 0, 3), 6, 3);
   sk := rs_add(b[..], rs_skeleton("Skeleton", 2), 6, 5);
@@ -1674,7 +1677,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 #test "the Zombie: AC 8, 15 Hit Points, Slam +3 for 1d8 + 1; Undead Fortitude keeps it at 1 Hit Point on a save" {
   z := rs_zombie("Zombie", 1);
   #assert z.ac == 8 && z.hp_max == 15 && z.speed == 20 && rs_weapon_attack(z, z.weapon) == 3 && z.undead && rs_has_feature(z, RS_FT_UNDEAD_FORTITUDE) && rs_weapon(W_SLAM).sides == 8;
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 3;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 3;
   i := rs_add(b[..], z, 2, 2);
   kept := 0;
   for k: 0..<30 { b[0].c[i].hp = 15; b[0].c[i].dead = false; rs_damage(b[..], -1, i, 15, RS_SLASHING, false, -1); if !b[0].c[i].dead { kept += 1; #assert b[0].c[i].hp == 1; } }
@@ -1689,7 +1692,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   #assert bl.level == 4 && bl.range_ft == 30 && bl.steps[1].a == 8 && bl.steps[1].d == 1 && bl.steps[1].c == RS_NECROTIC;
   dd := rs_spell(SP_DIMENSION_DOOR);
   #assert dd.level == 4 && dd.range_ft == 500 && dd.components == "V" && dd.steps[0].kind == RS_S_TELEPORT;
-  b: [1] RsBattle; b[0].w = 120; b[0].h = 20; b[0].dice[0].state = 3;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 120; b[0].h = 20; b[0].dice[0].state = 3;
   a := rs_add(b[..], rs_warlock("Vesk", 1, 17, SP_ELDRITCH_BLAST), 1, 3);
   o := rs_add(b[..], rs_skeleton("Skeleton", 2), 40, 3);
   rs_start_turn(b[..], a);
@@ -1702,7 +1705,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 }
 
 #test "a siege's stat blocks fight on the rules: extra damage on a hit, Multiattack, Parry, and Hellish Rebuke" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 23;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 23;
   kn := rs_add(b[..], rs_knight("Knight 1", 0), 2, 2);
   cu := rs_add(b[..], rs_fanatic("Cultist Fanatic 1", 1), 3, 2);
   // the Knight's Greatsword: two attacks (Multiattack), each hit 2d6 + 3 Slashing then 1d8 Radiant
@@ -1747,7 +1750,7 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
 }
 
 #test "Bless and Bane: three targets each, 1d4 on attack rolls and saves; Shield of Faith +2 AC; False Life by Fiendish Vigor; Command halts (#12771)" {
-  b: [1] RsBattle; b[0].w = 24; b[0].h = 8; b[0].dice[0].state = 33;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 24; b[0].h = 8; b[0].dice[0].state = 33;
   p := rs_add(b[..], rs_cleric("Cult Priest 1", 1, 3), 2, 3);
   a1 := rs_add(b[..], rs_cultist("Cultist 1", 1), 3, 3); a2 := rs_add(b[..], rs_cultist("Cultist 2", 1), 4, 3);
   a3 := rs_add(b[..], rs_cultist("Cultist 3", 1), 3, 4); far := rs_add(b[..], rs_cultist("Cultist 4", 1), 22, 3);
@@ -1798,4 +1801,72 @@ rs_turn_feet :: (t: RsTurn) -> int { return t.move_left * RS_SQUARE + t.move_fee
   rs_start_turn(b[..], g2); #assert !rs_can_act(b[0].c[g2]) && !rs_can_move(b[0].c[g2]) && !rs_attack(b[..], g2, a2, false, -1); rs_end_turn(b[..], g2);
   rs_tick(b[..], 0.2);
   #assert !rs_effect(b[0].c[g2], EF_HALT) && rs_can_act(b[0].c[g2]);
+}
+// ---- the feature program (#13285): rs_feature's rows, written out a second time, and rs_feature_use
+rs_fs_is :: (f: RsFeature, k: int, kind: int, a: int, b: int, c: int, t: string) -> bool { st := f.st[k]; return k < f.n && st.kind == kind && st.a == a && st.b == b && st.c == c && st.t == t; }
+#test "features: every row holds its steps in order, each with its numbers and its line; no other kind has a row" {
+  f_rs_ab_rage := rs_feature(RS_AB_RAGE); #assert f_rs_ab_rage.n == 9;
+  #assert rs_fs_is(f_rs_ab_rage, 0, RS_FS_N_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_rage, 1, RS_FS_N_USE, RS_USE_RAGE, 0, 0, "") && rs_fs_is(f_rs_ab_rage, 2, RS_FS_N_NO_STATE, EF_RAGE, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_rage, 3, RS_FS_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_rage, 4, RS_FS_SPEND, RS_USE_RAGE, 0, 0, "") && rs_fs_is(f_rs_ab_rage, 5, RS_FS_STATE, EF_RAGE, RS_RAGE_KEPT, 0, "");
+  #assert rs_fs_is(f_rs_ab_rage, 6, RS_FS_END_CONC, 0, 0, 0, " (Rage)") && rs_fs_is(f_rs_ab_rage, 7, RS_FS_UNCHARM, RS_FT_MINDLESS_RAGE, 0, 0, "") && rs_fs_is(f_rs_ab_rage, 8, RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_NONE, " enters a Rage");
+  f_rs_ab_second := rs_feature(RS_AB_SECOND); #assert f_rs_ab_second.n == 8;
+  #assert rs_fs_is(f_rs_ab_second, 0, RS_FS_N_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_second, 1, RS_FS_N_USE, RS_USE_WIND, 0, 0, "") && rs_fs_is(f_rs_ab_second, 2, RS_FS_N_HURT, 0, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_second, 3, RS_FS_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_second, 4, RS_FS_SPEND, RS_USE_WIND, 0, 0, "") && rs_fs_is(f_rs_ab_second, 5, RS_FS_SAY, RS_EV_CAST, RS_TO_SELF, RS_FT_SECOND_WIND, " takes a Second Wind");
+  #assert rs_fs_is(f_rs_ab_second, 6, RS_FS_HEAL, 1, 10, RS_PLUS_LEVEL, "Second Wind") && rs_fs_is(f_rs_ab_second, 7, RS_FS_SHIFT, RS_FT_TACTICAL_SHIFT, 0, 0, "");
+  f_rs_ab_surge := rs_feature(RS_AB_SURGE); #assert f_rs_ab_surge.n == 7;
+  #assert rs_fs_is(f_rs_ab_surge, 0, RS_FS_N_TURN, 0, 0, 0, "") && rs_fs_is(f_rs_ab_surge, 1, RS_FS_N_ACTED, 0, 0, 0, "") && rs_fs_is(f_rs_ab_surge, 2, RS_FS_N_ACT, 0, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_surge, 3, RS_FS_N_USE, RS_USE_SURGE, 0, 0, "") && rs_fs_is(f_rs_ab_surge, 4, RS_FS_SURGE, 0, 0, 0, "") && rs_fs_is(f_rs_ab_surge, 5, RS_FS_SPEND, RS_USE_SURGE, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_surge, 6, RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_ACTION_SURGE, " uses Action Surge");
+  f_rs_ab_whole := rs_feature(RS_AB_WHOLE); #assert f_rs_ab_whole.n == 8;
+  #assert rs_fs_is(f_rs_ab_whole, 0, RS_FS_N_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_whole, 1, RS_FS_N_USE, RS_USE_WHOLE, 0, 0, "") && rs_fs_is(f_rs_ab_whole, 2, RS_FS_N_HURT, 0, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_whole, 3, RS_FS_N_HEALS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_whole, 4, RS_FS_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_whole, 5, RS_FS_SPEND, RS_USE_WHOLE, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_whole, 6, RS_FS_SAY, RS_EV_CAST, RS_TO_SELF, RS_FT_WHOLENESS, " draws on Wholeness of Body") && rs_fs_is(f_rs_ab_whole, 7, RS_FS_HEAL, 1, 0, RS_PLUS_WIS, "Wholeness of Body");
+  f_rs_ab_lay := rs_feature(RS_AB_LAY); #assert f_rs_ab_lay.n == 7;
+  #assert rs_fs_is(f_rs_ab_lay, 0, RS_FS_N_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_lay, 1, RS_FS_N_USE, RS_USE_LAY, 0, 0, "") && rs_fs_is(f_rs_ab_lay, 2, RS_FS_N_GIVE, RS_USE_LAY, 5, 0, "");
+  #assert rs_fs_is(f_rs_ab_lay, 3, RS_FS_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_lay, 4, RS_FS_SPEND_GIVE, RS_USE_LAY, 0, 0, "") && rs_fs_is(f_rs_ab_lay, 5, RS_FS_SAY, RS_EV_CAST, RS_TO_TARGET, RS_FT_LAY_ON_HANDS, " lays on hands");
+  #assert rs_fs_is(f_rs_ab_lay, 6, RS_FS_HEAL_GIVE, 0, 0, 0, "Lay On Hands");
+  f_rs_ab_sacred := rs_feature(RS_AB_SACRED); #assert f_rs_ab_sacred.n == 7;
+  #assert rs_fs_is(f_rs_ab_sacred, 0, RS_FS_N_ACTION, 0, 0, 0, "") && rs_fs_is(f_rs_ab_sacred, 1, RS_FS_N_CLASS, RS_PALADIN, 3, 0, "") && rs_fs_is(f_rs_ab_sacred, 2, RS_FS_N_USE, RS_USE_CHANNEL, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_sacred, 3, RS_FS_N_NO_AURA, EF_SACRED, 0, 0, "") && rs_fs_is(f_rs_ab_sacred, 4, RS_FS_AURA, EF_SACRED, 0, 0, "") && rs_fs_is(f_rs_ab_sacred, 5, RS_FS_SPEND, RS_USE_CHANNEL, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_sacred, 6, RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_SACRED_WEAPON, " raises a Sacred Weapon: +Cha to hit, Radiant on a hit");
+  f_rs_ab_aim := rs_feature(RS_AB_AIM); #assert f_rs_ab_aim.n == 6;
+  #assert rs_fs_is(f_rs_ab_aim, 0, RS_FS_N_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_aim, 1, RS_FS_N_FEAT, RS_FT_STEADY_AIM, 0, 0, "") && rs_fs_is(f_rs_ab_aim, 2, RS_FS_N_STILL, 0, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_aim, 3, RS_FS_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_aim, 4, RS_FS_AIM, 0, 0, 0, "") && rs_fs_is(f_rs_ab_aim, 5, RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_STEADY_AIM, " takes Steady Aim");
+  f_rs_ab_innate := rs_feature(RS_AB_INNATE); #assert f_rs_ab_innate.n == 7;
+  #assert rs_fs_is(f_rs_ab_innate, 0, RS_FS_N_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_innate, 1, RS_FS_N_USE, RS_USE_INNATE, 0, 0, "") && rs_fs_is(f_rs_ab_innate, 2, RS_FS_N_NO_AURA, EF_INNATE, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_innate, 3, RS_FS_AURA, EF_INNATE, 0, 0, "") && rs_fs_is(f_rs_ab_innate, 4, RS_FS_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_innate, 5, RS_FS_SPEND, RS_USE_INNATE, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_innate, 6, RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_INNATE_SORCERY, " unleashes Innate Sorcery");
+  f_rs_ab_inspire := rs_feature(RS_AB_INSPIRE); #assert f_rs_ab_inspire.n == 7;
+  #assert rs_fs_is(f_rs_ab_inspire, 0, RS_FS_N_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_inspire, 1, RS_FS_N_RANK, RS_RK_INSPIRATION_DIE, 0, 0, "") && rs_fs_is(f_rs_ab_inspire, 2, RS_FS_N_USE, RS_USE_INSPIRE, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_inspire, 3, RS_FS_N_OTHER, 60, EF_INSPIRED, 0, "") && rs_fs_is(f_rs_ab_inspire, 4, RS_FS_BONUS, 0, 0, 0, "") && rs_fs_is(f_rs_ab_inspire, 5, RS_FS_SPEND, RS_USE_INSPIRE, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_inspire, 6, RS_FS_INSPIRE, EF_INSPIRED, RS_RK_INSPIRATION_DIE, RS_FT_INSPIRATION, "");
+  f_rs_fp_font := rs_feature(RS_FP_FONT); #assert f_rs_fp_font.n == 7;
+  #assert rs_fs_is(f_rs_fp_font, 0, RS_FS_N_TURN, 0, 0, 0, "") && rs_fs_is(f_rs_fp_font, 1, RS_FS_N_FEAT, RS_FT_FONT, 0, 0, "") && rs_fs_is(f_rs_fp_font, 2, RS_FS_N_POOL_ROOM, RS_USE_INSPIRE, 0, 0, "");
+  #assert rs_fs_is(f_rs_fp_font, 3, RS_FS_N_SLOT, 0, 0, 0, "") && rs_fs_is(f_rs_fp_font, 4, RS_FS_SLOT_SPEND, 0, 0, 0, "") && rs_fs_is(f_rs_fp_font, 5, RS_FS_POOL_ADD, RS_USE_INSPIRE, 0, 0, "");
+  #assert rs_fs_is(f_rs_fp_font, 6, RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_FONT, ": Font of Inspiration, a spell slot for Bardic Inspiration");
+  f_rs_ab_resurge := rs_feature(RS_AB_RESURGE); #assert f_rs_ab_resurge.n == 9;
+  #assert rs_fs_is(f_rs_ab_resurge, 0, RS_FS_N_TURN, 0, 0, 0, "") && rs_fs_is(f_rs_ab_resurge, 1, RS_FS_N_FEAT, RS_FT_WILD_RESURGENCE, 0, 0, "") && rs_fs_is(f_rs_ab_resurge, 2, RS_FS_N_ONCE, 0, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_resurge, 3, RS_FS_N_POOL_NONE, RS_USE_WILD, 0, 0, "") && rs_fs_is(f_rs_ab_resurge, 4, RS_FS_N_SLOT, 0, 0, 0, "") && rs_fs_is(f_rs_ab_resurge, 5, RS_FS_SLOT_SPEND, 0, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_resurge, 6, RS_FS_POOL_ONE, RS_USE_WILD, 0, 0, "") && rs_fs_is(f_rs_ab_resurge, 7, RS_FS_ONCE, 0, 0, 0, "") && rs_fs_is(f_rs_ab_resurge, 8, RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_WILD_RESURGENCE, ": Wild Resurgence, a spell slot for a Wild Shape use");
+  f_rs_fp_resurge_slot := rs_feature(RS_FP_RESURGE_SLOT); #assert f_rs_fp_resurge_slot.n == 8;
+  #assert rs_fs_is(f_rs_fp_resurge_slot, 0, RS_FS_N_TURN, 0, 0, 0, "") && rs_fs_is(f_rs_fp_resurge_slot, 1, RS_FS_N_FEAT, RS_FT_WILD_RESURGENCE, 0, 0, "") && rs_fs_is(f_rs_fp_resurge_slot, 2, RS_FS_N_FRESH, RS_NT_RESURGED, 0, 0, "");
+  #assert rs_fs_is(f_rs_fp_resurge_slot, 3, RS_FS_N_USE, RS_USE_WILD, 0, 0, "") && rs_fs_is(f_rs_fp_resurge_slot, 4, RS_FS_SPEND, RS_USE_WILD, 0, 0, "") && rs_fs_is(f_rs_fp_resurge_slot, 5, RS_FS_SLOT_ADD, 1, 0, 0, "");
+  #assert rs_fs_is(f_rs_fp_resurge_slot, 6, RS_FS_NOTE, RS_NT_RESURGED, 0, 0, "") && rs_fs_is(f_rs_fp_resurge_slot, 7, RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_NONE, ": Wild Resurgence, a Wild Shape use for a 1st-level slot");
+  f_rs_ab_turn := rs_feature(RS_AB_TURN); #assert f_rs_ab_turn.n == 8;
+  #assert rs_fs_is(f_rs_ab_turn, 0, RS_FS_N_ACTION, 0, 0, 0, "") && rs_fs_is(f_rs_ab_turn, 1, RS_FS_N_FEAT, RS_FT_TURN_UNDEAD, 0, 0, "") && rs_fs_is(f_rs_ab_turn, 2, RS_FS_N_USE, RS_USE_CHANNEL, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_turn, 3, RS_FS_N_TURNABLE, 30, 0, 0, "") && rs_fs_is(f_rs_ab_turn, 4, RS_FS_ACTION, 0, 0, 0, "") && rs_fs_is(f_rs_ab_turn, 5, RS_FS_SPEND, RS_USE_CHANNEL, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_turn, 6, RS_FS_SAY, RS_EV_CAST, RS_TO_NONE, RS_FT_TURN_UNDEAD, " presents a holy symbol: Turn Undead") && rs_fs_is(f_rs_ab_turn, 7, RS_FS_TURN_UNDEAD, 30, 0, 0, "");
+  f_rs_ab_preserve := rs_feature(RS_AB_PRESERVE); #assert f_rs_ab_preserve.n == 8;
+  #assert rs_fs_is(f_rs_ab_preserve, 0, RS_FS_N_ACTION, 0, 0, 0, "") && rs_fs_is(f_rs_ab_preserve, 1, RS_FS_N_FEAT, RS_FT_PRESERVE_LIFE, 0, 0, "") && rs_fs_is(f_rs_ab_preserve, 2, RS_FS_N_USE, RS_USE_CHANNEL, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_preserve, 3, RS_FS_N_BLOODIED, 30, 0, 0, "") && rs_fs_is(f_rs_ab_preserve, 4, RS_FS_ACTION, 0, 0, 0, "") && rs_fs_is(f_rs_ab_preserve, 5, RS_FS_SPEND, RS_USE_CHANNEL, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_preserve, 6, RS_FS_SAY, RS_EV_CAST, RS_TO_NONE, RS_FT_PRESERVE_LIFE, " channels divinity: Preserve Life") && rs_fs_is(f_rs_ab_preserve, 7, RS_FS_PRESERVE, 30, 0, 0, "");
+  f_rs_ab_lands := rs_feature(RS_AB_LANDS); #assert f_rs_ab_lands.n == 8;
+  #assert rs_fs_is(f_rs_ab_lands, 0, RS_FS_N_ACTION, 0, 0, 0, "") && rs_fs_is(f_rs_ab_lands, 1, RS_FS_N_FEAT, RS_FT_LANDS_AID, 0, 0, "") && rs_fs_is(f_rs_ab_lands, 2, RS_FS_N_USE, RS_USE_WILD, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_lands, 3, RS_FS_N_POINT, 60, 0, 0, "") && rs_fs_is(f_rs_ab_lands, 4, RS_FS_ACTION, 0, 0, 0, "") && rs_fs_is(f_rs_ab_lands, 5, RS_FS_SPEND, RS_USE_WILD, 0, 0, "");
+  #assert rs_fs_is(f_rs_ab_lands, 6, RS_FS_SAY, RS_EV_CAST, RS_TO_NONE, RS_FT_LANDS_AID, " calls on Land's Aid: flowers and thorns") && rs_fs_is(f_rs_ab_lands, 7, RS_FS_LANDS, 0, 0, 0, "");
+  for kind: -1..<110 {
+    has := kind == RS_AB_RAGE || kind == RS_AB_SECOND || kind == RS_AB_SURGE || kind == RS_AB_WHOLE || kind == RS_AB_LAY || kind == RS_AB_SACRED || kind == RS_AB_AIM || kind == RS_AB_INNATE || kind == RS_AB_INSPIRE || kind == RS_FP_FONT || kind == RS_AB_RESURGE || kind == RS_FP_RESURGE_SLOT || kind == RS_AB_TURN || kind == RS_AB_PRESERVE || kind == RS_AB_LANDS;
+    #assert (rs_feature(kind).n > 0) == has;
+  }
+  #assert RS_FS_DO == 40 && RS_FS_N_BLOODIED < RS_FS_DO && RS_FS_BONUS == RS_FS_DO && RS_FEAT_STEPS == 10 && RS_FP_FONT == 100 && RS_FP_RESURGE_SLOT == 101;
 }

@@ -7,7 +7,7 @@ RsCastOptions :: struct {
 }
 
 #test "option capacity aggregates repeated assignments without borrowing an existing zone lease" {
-  b: [1] RsBattle;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   a := rs_add(b[..],rs_cleric("Caster",0,5),1,1);
   t := rs_add(b[..],rs_skeleton("Repeated",1),2,1);
   u := rs_add(b[..],rs_skeleton("Other",1),3,1);
@@ -80,18 +80,20 @@ RsCastOptions :: struct {
     #assert h.duration_s == seconds[slot];
   }
 }
+// What a request may choose is its spell's record (RsSpell.option, .willing): no spell is asked by name.
 rs_option_valid :: (sp: int, option: RsCastOptions) -> bool #effects(all) {
-  if sp == SP_BLINDNESS {
+  s := rs_spell(sp);
+  if s.option == RS_OPT_BLIND_OR_DEAF {
     if option.blindness != RS_BLINDED && option.blindness != RS_DEAFENED { return false; }
   } else if option.blindness != RS_BLINDED { return false; }
-  if sp == SP_HEX {
+  if s.option == RS_OPT_ABILITY {
     if option.hex_ability < RS_STR || option.hex_ability > RS_CHA { return false; }
   } else if option.hex_ability != RS_STR { return false; }
-  if sp==SP_GUIDANCE {
+  if s.option == RS_OPT_SKILL {
     if option.guidance<0 || option.guidance>=RS_SKILLS { return false; }
-  } else if option.guidance!=SK_PERCEPTION || (option.willing && sp!=SP_PROTECTION_GOOD_EVIL) { return false; }
+  } else if option.guidance!=SK_PERCEPTION || (option.willing && !s.willing) { return false; }
   if option.restoration!=0 {
-    if sp!=SP_LESSER_RESTORATION { return false; }
+    if s.option != RS_OPT_RESTORE { return false; }
     for condition:RS_RESTORABLE { if option.restoration==condition { return true; } }
     return false;
   }
@@ -109,15 +111,15 @@ rs_option_at :: (options: [] const RsCastOptions, k: int) -> RsCastOptions #effe
 rs_spell_variant :: (base: RsSpell, sp: int, slot: int, option: RsCastOptions) -> RsSpell #effects(all) {
   s := base;
   for k: 0..<s.step_n {
-    if sp == SP_BLINDNESS && s.steps[k].kind == RS_S_TIMED { s.steps[k].a = option.blindness; }
-    if sp == SP_HEX && s.steps[k].kind == RS_S_HEX { s.steps[k].a = option.hex_ability; }
-    if sp == SP_LESSER_RESTORATION && s.steps[k].kind == RS_S_RESTORE { s.steps[k].a = option.restoration; }
+    if s.option == RS_OPT_BLIND_OR_DEAF && s.steps[k].kind == RS_S_TIMED { s.steps[k].a = option.blindness; }
+    if s.option == RS_OPT_ABILITY && s.steps[k].kind == RS_S_HEX { s.steps[k].a = option.hex_ability; }
+    if s.option == RS_OPT_RESTORE && s.steps[k].kind == RS_S_RESTORE { s.steps[k].a = option.restoration; }
     if s.steps[k].kind==RS_S_AID { s.steps[k].b=s.steps[k].a*(slot-1); }
-    if sp==SP_GUIDANCE && s.steps[k].kind==RS_S_BOON { s.steps[k].b=option.guidance; }
+    if s.option == RS_OPT_SKILL && s.steps[k].kind==RS_S_BOON { s.steps[k].b=option.guidance; }
   }
-  if sp == SP_HEX {
-    s.duration_s = ifx slot >= 5 then 86400 else ifx slot >= 3 then 28800 else ifx slot >= 2 then 14400 else 3600;
-  }
+  // a spell that lasts longer from a higher slot (Hex): 4, 8 and 24 hours from its record's levels
+  hours := [3] int.[14400, 28800, 86400];
+  for band: 0..<3 { if s.lasts_from[band] > 0 && slot >= s.lasts_from[band] { s.duration_s = hours[band]; } }
   return s;
 }
 // Caller has validated list shape and actor/target identities. Repeated picks

@@ -379,7 +379,7 @@ fb_folk :: (name: string, team: int, ac: int, hp: int, score: [6] int) -> RsCrea
   c[0].team = team; c[0].level = 1; c[0].klass = RS_MONSTER; c[0].humanoid = true;
   c[0].score = score; c[0].ac = ac; c[0].hp_max = rs_max(hp, 1); c[0].hp = c[0].hp_max; c[0].speed = 30;
   c[0].spell_ability = -1; c[0].ranged = -1; c[0].weapon = W_UNARMED;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].rank[RS_RK_FREE_SPELL] = -1; c[0].rank[RS_RK_AGONIZING] = -1; c[0].rank[RS_RK_REPELLING] = -1;
   return c[0];
 }
 

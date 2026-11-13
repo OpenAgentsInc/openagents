@@ -32,7 +32,7 @@ rs_put_effect :: (b: [] RsBattle, j: int, e: RsEffect) -> bool #effects(all) {
 }
 
 #test "an Incapacitated grappler lets go when its sustained effects are interrupted" {
-  b: [1] RsBattle; grapple_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
   #assert rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE) && b[0].c[0].grappling == 1;
   rs_interrupt_incapacitated(b[..], 0); #assert b[0].c[0].grappling == 1;   // still able: it holds on
   b[0].c[0].cond |= RS_STUNNED;

@@ -4,7 +4,7 @@
 #forall "each retained condition interrupts concentration only when it incapacitates" bit: 0..<15 {
   stops := [15] bool.[false,false,false,false,false,false,true,false,true,true,false,false,false,true,true];
   for kind: [3] int.[EF_COND,EF_DAZED,EF_TURNED] {
-    b: [1] RsBattle; el_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); el_field(b[..]);
     b[0].c[1].conc = SP_BLESS; b[0].c[1].conc_until = 60;
     #assert rs_put_effect(b[..],2,RsEffect.{kind=EF_BLESS,by=1,spell=SP_BLESS,until=60,save=-1});
     #assert rs_put_effect(b[..],2,RsEffect.{kind=EF_BLESS,by=0,spell=SP_BLESS,until=60,save=-1});
@@ -22,7 +22,7 @@
 
 #test "incapacitation ends Rage and only that clerics Turn Undead ownership immediately" {
   for condition: [5] int.[RS_INCAPACITATED,RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS] {
-    b: [1] RsBattle; el_field(b[..]); b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_RAGE, true); b[0].c[1].eff = rs_state_bit(b[0].c[1].eff, EF_RAGE, RS_RAGE_KEPT, true);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); el_field(b[..]); b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_RAGE, true); b[0].c[1].eff = rs_state_bit(b[0].c[1].eff, EF_RAGE, RS_RAGE_KEPT, true);
     b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_TURN_UNDEAD, true);
     #assert rs_put_effect(b[..],2,RsEffect.{kind=EF_TURNED,cond=RS_FRIGHTENED|RS_INCAPACITATED,by=1,spell=-1,until=60,save=-1});
     #assert rs_put_effect(b[..],2,RsEffect.{kind=EF_TURNED,cond=RS_FRIGHTENED|RS_INCAPACITATED,by=0,spell=-1,until=60,save=-1});
@@ -35,7 +35,7 @@
 
 #test "refused full storage and immune condition outcomes do not interrupt concentration" {
   for kind: [3] int.[EF_COND,EF_TURNED,EF_DAZED] { for immune: 0..<2 {
-    b: [1] RsBattle; el_field(b[..]); b[0].c[1].conc = SP_BLESS;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); el_field(b[..]); b[0].c[1].conc = SP_BLESS;
     if immune == 1 { b[0].c[1].immune_cond = RS_PARALYZED; }
     else { for k: 0..<RS_EFFECTS { #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_HEX,by=0,spell=SP_HEX,until=60,save=-1}); } }
     before := b[0].book[0].seq;
@@ -46,7 +46,7 @@
 
 #test "noncondition carriers and Command Halt do not infer incapacity from their payload bits" {
   for kind: [5] int.[EF_HEX,EF_BLESS,EF_EXPOSED,EF_HALT_PENDING,EF_HALT] {
-    b: [1] RsBattle; el_field(b[..]); b[0].c[1].conc = SP_BLESS;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); el_field(b[..]); b[0].c[1].conc = SP_BLESS;
     b[0].c[1].immune_cond = RS_INCAPACITATED;
     #assert rs_put_effect(b[..],1,RsEffect.{kind=kind,cond=RS_INCAPACITATED,by=0,spell=-1,until=30,save=-1});
     #assert b[0].c[1].conc == SP_BLESS && b[0].c[1].cond == 0;
@@ -57,7 +57,7 @@
 #test "Mindless Rage filters only condition carriers and preserves every other retained field" {
   for mode: 0..<4 { for kind: [4] int.[EF_COND,EF_TURNED,EF_DAZED,EF_HEX] {
     for mask: [5] int.[RS_CHARMED,RS_FRIGHTENED,RS_CHARMED|RS_FRIGHTENED,RS_BLINDED,RS_CHARMED|RS_FRIGHTENED|RS_BLINDED] {
-      b: [1] RsBattle; el_field(b[..]);
+      b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); el_field(b[..]);
       b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_MINDLESS_RAGE, (mode & 1) != 0); b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_RAGE, (mode & 2) != 0);
       #assert rs_put_effect(b[..],1,RsEffect.{kind=kind,cond=mask,by=2,spell=SP_HEX,until=47,save=RS_WIS,dc=13});
       expected := ifx mode == 3 && kind != EF_HEX then mask & RS_BLINDED else mask;
@@ -73,8 +73,8 @@
 }
 
 #test "Stunning Strike breaks an actual Bless cast immediately and ending Stunned does not resume it" {
-  b: [1] RsBattle; el_field(b[..]);
-  b[0].c[0] = rs_monk("Monk",0,5); rs_place(b[..],0,1,1); b[0].c[0].stun_ready = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); el_field(b[..]);
+  b[0].c[0] = rs_monk("Monk",0,5); rs_place(b[..],0,1,1); b[0].c[0].note[RS_NT_STUN] = 1;
   b[0].c[1] = rs_cleric("Cleric",1,3); rs_place(b[..],1,2,1);
   b[0].c[1].score[RS_CON] = 8; b[0].who = 1;
   #assert rs_cast(b[..],1,SP_BLESS,1,0,0,2) && rs_effect(b[0].c[2],EF_BLESS);
@@ -87,15 +87,15 @@
 }
 
 #test "Stunning Strike against condition immunity does not end Rage without inflicting Stunned" {
-  b: [1] RsBattle; el_field(b[..]);
-  b[0].c[0] = rs_monk("Monk",0,5); rs_place(b[..],0,1,1); b[0].c[0].stun_ready = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); el_field(b[..]);
+  b[0].c[0] = rs_monk("Monk",0,5); rs_place(b[..],0,1,1); b[0].c[0].note[RS_NT_STUN] = 1;
   b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_RAGE, true); b[0].c[1].immune_cond = RS_STUNNED;
   rs_stunning_strike(b[..],0,1);
   #assert !rs_has(b[0].c[1],RS_STUNNED) && rs_effect(b[0].c[1], EF_RAGE);
 }
 
 #test "dropping to zero HP ends Rage immediately rather than at the next turn" {
-  b: [1] RsBattle; el_field(b[..]); b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_RAGE, true);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); el_field(b[..]); b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_RAGE, true);
   rs_damage(b[..],0,1,100,RS_FIRE,false,-1);
   #assert b[0].c[1].hp == 0 && !rs_effect(b[0].c[1], EF_RAGE) && rs_has(b[0].c[1],RS_UNCONSCIOUS);
 }

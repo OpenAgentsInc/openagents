@@ -36,16 +36,21 @@ rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> b
   }
   if t == RS_T_ACTION && b[0].turn.action { return false; }
   if t == RS_T_BONUS && b[0].turn.bonus { return false; }
-  if s.part_of == SP_PRODUCE_FLAME && !rs_aura_on(b[0].c[i], EF_FLAME, b[0].clock) { return false; }
-  if s.part_of == SP_CALL_LIGHTNING && b[0].c[i].conc != SP_CALL_LIGHTNING { return false; }
+  if s.part_of >= 0 && s.level == 0 && !rs_part_live(b, i, s.part_of) { return false; }
   if s.level > 0 {
     if b[0].turn.quickened { return false; }
     if slot == 0 {
-      vigor := sp == SP_FALSE_LIFE && rs_has_feature(b[0].c[i], RS_FT_FIENDISH_VIGOR);
-      if !vigor && !rite && (b[0].c[i].free_spell != sp || b[0].c[i].uses[RS_USE_FREE] <= 0) { return false; }
+      if !rs_at_will(b[0].c[i], s) && !rite && (b[0].c[i].rank[RS_RK_FREE_SPELL] != sp || b[0].c[i].uses[RS_USE_FREE] <= 0) { return false; }
     } else if slot < s.level || slot > 9 || b[0].c[i].slots[slot] <= 0 || b[0].turn.slot_spent { return false; }
   }
   return true;
+}
+// A part with no slot of its own (Produce Flame's hurl, Call Lightning's later bolts) needs its parent
+// still there: the spell its caster concentrates on, or the Aura the parent left on its caster.
+rs_part_live :: (b: [] RsBattle, i: int, parent: int) -> bool {
+  p := rs_spell(parent);
+  if p.concentration { return b[0].c[i].conc == parent; }
+  return rs_aura_on(b[0].c[i], rs_spell_aura(p), b[0].clock);
 }
 rs_can_cast :: (b: [] RsBattle, i: int, sp: int, slot: int) -> bool { return rs_can_cast_as(b, i, sp, slot, false); }
 // Cast spell sp with a slot of level `slot` (0 for a cantrip) at the point (tx, ty), on creature
@@ -87,12 +92,13 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
   smite := rs_is_smite(s);
   delivered := origin != i;
   if delivered && (chosen || s.area != RS_A_NONE || !rs_familiar_touch_ready(b,i,sp,origin)) { return false; }
-  revive := sp==SP_REVIVIFY;
+  revive := rs_step_at(s, RS_S_REVIVE) >= 0;
+  truth := rs_step_at(s, RS_S_TRUTH) >= 0;
   if chosen && !revive && !rs_creature_choices(b,i,s,sp,slot,picks) { return false; }
   // Charmed (p.177): no damaging ability or magical effect targets the charmer
   for j: picks { if chosen && !revive && (!rs_cast_sees(b,i,j,sp) || !rs_cover_targetable(b,i,j) || rs_charmed_by(me,j)) { return false; } }
   if !rs_options_valid(sp,picks.count,options) { return false; }
-  if (sp==SP_GUIDANCE || sp==SP_PROTECTION_GOOD_EVIL) && target!=i {
+  if s.willing && target!=i {
     option:=rs_option_at(options,0);
     if !option.willing { return false; }
   }
@@ -120,7 +126,7 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
   zone_at := -1;
   if zone_required {
     // a Zone of Truth takes one of the first places: each creature keeps one bit a zone for it (zone-of-truth.coax)
-    zone_at = rs_zone_slot(ifx sp == SP_ZONE_OF_TRUTH then b[0].zone[0..<rs_truth_zones(b)] else b[0].zone[..], s.concentration, i, me.conc);
+    zone_at = rs_zone_slot(ifx truth then b[0].zone[0..<rs_truth_zones(b)] else b[0].zone[..], s.concentration, i, me.conc);
     if zone_at < 0 { return false; }
   }
   if chosen {
@@ -139,7 +145,7 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
   if s.level > 0 {
     b[0].turn.leveled = true;
     if slot > 0 { b[0].c[i].slots[slot] -= 1; b[0].turn.slot_spent = true; }
-    else if !rite && !(sp == SP_FALSE_LIFE && rs_has_feature(b[0].c[i], RS_FT_FIENDISH_VIGOR)) { b[0].c[i].uses[RS_USE_FREE] -= 1; }
+    else if !rite && !rs_at_will(b[0].c[i], s) { b[0].c[i].uses[RS_USE_FREE] -= 1; }
   }
   if smite { b[0].turn.last_hit = 0; }
   if s.concentration { rs_end_concentration(b, i, ""); b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + rs_secs(s.duration_s); }
@@ -161,19 +167,19 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
     area = rs_area(b, i, s, tx, ty);
     area.spell = sp;
     area.until = b[0].clock + rs_secs(s.duration_s);
-    if sp==SP_ZONE_OF_TRUTH { area.truth_dc=rs_dc(b,i); }
+    if truth { area.truth = true; area.truth_dc=rs_dc(b,i); }
     for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TERRAIN { area.difficult = true; } }
     if zone_required {
       b[0].zone[zone_at] = area;
-      if sp==SP_ZONE_OF_TRUTH { b[0].truth_zones|=1<<zone_at; }
+      if truth { b[0].truth_zones|=1<<zone_at; }
     }
-    e: RsEvent; e.kind = RS_EV_ZONE; e.spell = sp; e.by = i; e.to = -1; e.x = area.x0; e.y = area.y0; e.amount = area.x1 - area.x0 + 1; e.at = b[0].clock;
+    e: RsEvent; e.kind = RS_EV_ZONE; e.spell.value = sp; e.by.value = i; e.to.value = -1; e.x = area.x0; e.y = area.y0; e.amount = area.x1 - area.x0 + 1; e.at = b[0].clock;
     k := rs_emit(b[0].book[..], e);
   }
-  if sp==SP_ZONE_OF_TRUTH { return true; }
+  if truth { return true; }
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_FLAME { _ := rs_put_effect(b, i, RsEffect.{kind = EF_FLAME, by = i, spell = sp, until = b[0].clock + rs_secs(s.duration_s), save = -1}); } }
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TELEPORT { rs_teleport(b, i, sp, tx, ty); return true; } }
-  if sp == SP_SPIRIT_GUARDIANS { b[0].guards += 1; }
+  if rs_step_at(s, RS_S_GUARD) >= 0 { b[0].guards += 1; }
   damage_scope: [1] RsDamageScope;
   if chosen {
     for pick: 0..<picks.count {
@@ -204,7 +210,7 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
     sculpted := 0;
     // more than one target (Bless, Bane, Command): the target, then the nearest to it of its side within range
     more: [RS_TARGETS_MAX] int; more_n := 0;
-    if s.area == RS_A_NONE && s.targets > 1 { more_n = rs_more_targets(b,i,target,rs_legacy_target_limit(s,sp,slot)-1,s.range_ft,more[..]); }
+    if s.area == RS_A_NONE && s.targets > 1 { more_n = rs_more_targets(b,i,target,rs_legacy_target_limit(s,slot)-1,s.range_ft,more[..]); }
     for j: 0..<b[0].n {
       if !rs_choice_continue(s,b[0].c[i].conc,sp) { break; }
       if s.area == RS_A_NONE {
@@ -235,8 +241,8 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
 }
 
 // Aid's upcast changes its amount and keeps its base target limit.
-rs_legacy_target_limit :: (s:RsSpell,sp:int,slot:int)->int #effects(all) {
-  return ifx sp==SP_AID then s.targets else rs_min(s.targets+rs_max(slot-s.level,0),RS_TARGETS_MAX);
+rs_legacy_target_limit :: (s:RsSpell,slot:int)->int #effects(all) {
+  return rs_min(s.targets+s.target_growth*rs_max(slot-s.level,0),RS_TARGETS_MAX);
 }
 
 // The other targets of a spell with more than one (RsSpell.targets): up to n of the first target's

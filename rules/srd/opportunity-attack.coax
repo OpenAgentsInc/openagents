@@ -34,7 +34,7 @@ rs_opportunity_attack_apply :: (b:[] RsBattle,reactor:int,mover:int,w:int,q:RsOp
 }
 
 #test "opportunity entry resolves one strike and leaves the movement proposal uncommitted" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; b[0].dice[0].fixed=true;
   _:=rs_add(b[..],rs_guard("Reactor",1),2,2); _=rs_add(b[..],rs_barbarian("Mover",0,6),3,2); rs_start_turn(b[..],1);
   q:=RsOpportunityMove.{x=4,y=2,seen=true,movement=true};
   r:=rs_opportunity_attack(b[..],0,1,W_SPEAR,q);

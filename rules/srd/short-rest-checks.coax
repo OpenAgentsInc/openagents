@@ -5,7 +5,7 @@
 #load "dash-checks.coax";
 
 #test "a Short Rest completes once after an actual uninterrupted hour without renewing turn budgets" {
-  b:[1]RsBattle; rt_field(b[..],RS_FIGHTER,3); b[0].clock=7; b[0].rest_clock.ticks=7000000;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_FIGHTER,3); b[0].clock=7; b[0].rest_clock.ticks=7000000;
   b[0].turn.action=true; b[0].turn.bonus=true; b[0].turn.slot_spent=true; b[0].turn.move_left=2;
   b[0].c[0].reacted=true; b[0].c[0].uses[RS_USE_WIND]=0; b[0].c[0].uses[RS_USE_SURGE]=0;
   #assert rs_short_rest_begin(b[..],0) && b[0].c[0].rest.phase==1;
@@ -16,12 +16,12 @@
   #assert !rs_short_rest_finish(b[..],0) && b[0].c[0].uses[RS_USE_WIND]==1;
   #assert b[0].who==1 && b[0].turn.action && b[0].turn.bonus && b[0].turn.slot_spent && b[0].turn.move_left==2 && b[0].c[0].reacted;
   e:=rs_recent_at(b[0].book[..],0);
-  #assert e.by==0 && e.to==0 && e.kind==RS_EV_END && e.amount==0 && e.spell == -1;
+  #assert e.by.value==0 && e.to.value==0 && e.kind==RS_EV_END && e.amount==0 && e.spell.value == -1;
   #assert cast(string)e.text[0..<e.text_n]=="Resting finishes a Short Rest";
 }
 
 #test "the real battle clock completes only the resting actor and never heals without a chosen Hit Die" {
-  b:[1]RsBattle; rt_field(b[..],RS_MONK,5); b[0].c[0].uses[RS_USE_FOCUS]=0; b[0].c[0].hp=1; b[0].c[0].temp=7;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_MONK,5); b[0].c[0].uses[RS_USE_FOCUS]=0; b[0].c[0].hp=1; b[0].c[0].temp=7;
   #assert rs_short_rest_begin(b[..],0);
   rs_tick(b[..],3599); #assert b[0].c[0].uses[RS_USE_FOCUS]==0 && b[0].c[0].rest.phase==1;
   rs_tick(b[..],1); #assert b[0].c[0].uses[RS_USE_FOCUS]==5 && b[0].c[0].rest.phase==2;
@@ -31,7 +31,7 @@
 
 #test "all twelve level one to six class loadouts recover only their declared Short Rest banks" {
   for klass:0..<RS_CLASSES { if klass==RS_MONSTER { continue; } for level:1..<7 {
-    b:[1]RsBattle; rt_field(b[..],klass,level);
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],klass,level);
     for u:0..<RS_USES { b[0].c[0].uses[u]=0; }
     for slot:1..<10 { b[0].c[0].slots[slot]=0; }
     b[0].c[0].uses[RS_USE_FOCUS]=0; b[0].c[0].uses[RS_USE_RAGE]=0; b[0].c[0].hp=1;
@@ -63,7 +63,7 @@
     #assert c[0].rest.dice==(ifx valid then level else 0) && c[0].rest.dice_max==c[0].rest.dice && c[0].rest.seeded;
     c[0].rest.dice=0; rs_rest_seed(c[..]); #assert c[0].rest.dice==0;
   } }
-  b:[1]RsBattle; rt_field(b[..],RS_FIGHTER,2); b[0].c[0].hp=1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_FIGHTER,2); b[0].c[0].hp=1;
   #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
   #assert rs_short_rest_hit_die(b[..],0).admitted && b[0].c[0].rest.dice==1;
   #assert rs_short_rest_begin(b[..],0); b[0].clock=7200; b[0].rest_clock.ticks=7200000000; #assert rs_short_rest_finish(b[..],0);
@@ -73,7 +73,7 @@
 }
 
 #test "Hit Dice are chosen one at a time with current Constitution minimum one and separate temporary HP" {
-  b:[1]RsBattle; rt_field(b[..],RS_WIZARD,2); b[0].c[0].hp=1; b[0].c[0].temp=19;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_WIZARD,2); b[0].c[0].hp=1; b[0].c[0].temp=19;
   b[0].c[0].score[RS_CON]=1; #assert rs_short_rest_begin(b[..],0);
   rolls:=b[0].dice[0].rolled; #assert !rs_short_rest_hit_die(b[..],0).admitted && b[0].dice[0].rolled==rolls;
   b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
@@ -86,7 +86,7 @@
 
 #test "a spent Hit Die respects blocked healing and maximum HP without refunding its chosen die" {
   for blocked:0..<2 {
-    b:[1]RsBattle; rt_field(b[..],RS_FIGHTER,1);
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_FIGHTER,1);
     if blocked==1 { b[0].c[0].hp=1; #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_NOHEAL,by=1,spell=-1,until=10000,save=-1}); }
     hp:=b[0].c[0].hp; #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
     r:=rs_short_rest_hit_die(b[..],0);
@@ -96,7 +96,7 @@
 
 #test "damage interrupts even through temporary HP while zero damage and failed strikes do not" {
   for amount:0..<2 {
-    b:[1]RsBattle; rt_field(b[..],RS_MONK,2); b[0].c[0].uses[RS_USE_FOCUS]=0; b[0].c[0].temp=10;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_MONK,2); b[0].c[0].uses[RS_USE_FOCUS]=0; b[0].c[0].temp=10;
     #assert rs_short_rest_begin(b[..],0); rs_damage(b[..],1,0,amount,RS_FIRE,false,-1);
     #assert b[0].c[0].rest.phase==(ifx amount==0 then 1 else 0);
     b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0)==(amount==0);
@@ -105,21 +105,21 @@
 }
 
 #test "a completed rests Hit Dice choice ends on actual damage but never refunds its recovered resources" {
-  b:[1]RsBattle; rt_field(b[..],RS_MONK,2); b[0].c[0].uses[RS_USE_FOCUS]=0;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_MONK,2); b[0].c[0].uses[RS_USE_FOCUS]=0;
   #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
   rs_damage(b[..],1,0,1,RS_FIRE,false,-1);
   #assert b[0].c[0].rest.phase==0 && b[0].c[0].uses[RS_USE_FOCUS]==2 && !rs_short_rest_hit_die(b[..],0).admitted;
 }
 
 #test "initiative admission ends a carried rest without replenishing its Hit Dice" {
-  b:[1]RsBattle; rt_field(b[..],RS_ROGUE,2); #assert rs_short_rest_begin(b[..],0);
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_ROGUE,2); #assert rs_short_rest_begin(b[..],0);
   c:=b[0].c[0]; c.rest.dice=1; _:=rs_add(b[..],c,5,5);
   #assert b[0].c[2].rest.phase==0 && b[0].c[2].rest.dice==1 && b[0].c[0].rest.phase==1;
 }
 
 #test "accepted leveled spells interrupt a rest while cantrips and refused requests preserve it" {
   for mode:0..<3 {
-    b:[1]RsBattle; rt_field(b[..],RS_WIZARD,3); rs_start_turn(b[..],0);
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_WIZARD,3); rs_start_turn(b[..],0);
     #assert rs_short_rest_begin(b[..],0);
     sp:=ifx mode==0 then SP_FIRE_BOLT else SP_RAY_OF_SICKNESS;
     if mode==2 { b[0].c[0].slots[1]=0; }
@@ -130,7 +130,7 @@
 
 #test "actual Shield interrupts only after accepted component and slot payment" {
   for allowed:0..<2 {
-    b:[1]RsBattle; rt_field(b[..],RS_WIZARD,3); b[0].c[0].reacted=false;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_WIZARD,3); b[0].c[0].reacted=false;
     #assert rs_short_rest_begin(b[..],0); b[0].c[0].speech_blocked=allowed==0;
     #assert rs_shield(b[..],0)==(allowed==1);
     #assert b[0].c[0].rest.phase==(ifx allowed==1 then 0 else 1);
@@ -138,7 +138,7 @@
 }
 
 #test "Arcane Recovery validates complete slot choices and studying the book before changing any slot" {
-  b:[1]RsBattle; rt_field(b[..],RS_WIZARD,5); #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_WIZARD,5); #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
   b[0].c[0].slots[1]=0; b[0].c[0].slots[2]=0; b[0].c[0].slots[3]=0;
   pick:=[2]int.[2,1]; q:=RsRestSlots.{levels=pick[..]}; seq:=b[0].book[0].seq;
   #assert !rs_short_rest_slots(b[..],0,q) && !b[0].c[0].rest.recovery_used && b[0].book[0].seq==seq;
@@ -150,7 +150,7 @@
 
 #test "Natural Recovery belongs to the level six Land Druid and needs no Wizard book" {
   for level:5..<7 {
-    b:[1]RsBattle; rt_field(b[..],RS_DRUID,level); b[0].c[0].slots[3]=0;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_DRUID,level); b[0].c[0].slots[3]=0;
     #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
     pick:=[1]int.[3]; #assert rs_short_rest_slots(b[..],0,RsRestSlots.{levels=pick[..]})==(level==6);
     #assert b[0].c[0].slots[3]==(ifx level==6 then 1 else 0);
@@ -160,7 +160,7 @@
 
 #test "slot recovery refuses empty invalid over-budget and unexpended choices atomically" {
   for mode:0..<8 {
-    b:[1]RsBattle; rt_field(b[..],RS_WIZARD,5); b[0].c[0].slots[1]=0; b[0].c[0].slots[2]=0;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_WIZARD,5); b[0].c[0].slots[1]=0; b[0].c[0].slots[2]=0;
     #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
     pick:=[4]int.[1,1,1,1]; n:=1;
     if mode==0 { n=0; } else if mode==1 { pick[0]=0; } else if mode==2 { pick[0] = -1; }
@@ -176,7 +176,7 @@
 
 #test "Sorcerous Restoration is an explicit once per Long Rest choice with floor half-level limits" {
   for level:4..<7 {
-    b:[1]RsBattle; rt_field(b[..],RS_SORCERER,level); b[0].c[0].uses[RS_USE_SORCERY]=0;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_SORCERER,level); b[0].c[0].uses[RS_USE_SORCERY]=0;
     #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
     #assert !rs_short_rest_sorcery(b[..],0,0) && !rs_short_rest_sorcery(b[..],0,level/2+1);
     #assert rs_short_rest_sorcery(b[..],0,level/2)==(level>=5);
@@ -187,7 +187,7 @@
 
 #test "rest APIs refuse logical actor edges and borrowed reaction frames before writes or dice" {
   for bad:0..<4 {
-    b:[1]RsBattle; rt_field(b[..],RS_WIZARD,5); i:=ifx bad==0 then -1 else ifx bad==1 then 2 else ifx bad==2 then 3 else 0;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_WIZARD,5); i:=ifx bad==0 then -1 else ifx bad==1 then 2 else ifx bad==2 then 3 else 0;
     b[0].c[2]=b[0].c[0]; b[0].c[3]=b[0].c[0]; b[0].clock=3600; b[0].rest_clock.ticks=3600000000;
     if bad==3 { b[0].reaction_frame.on=true; }
     rolls:=b[0].dice[0].rolled; seq:=b[0].book[0].seq;
@@ -204,7 +204,7 @@
 
 #test "unliving zero-HP and reversed-clock rests cannot grant or consume recovery" {
   for mode:0..<4 {
-    b:[1]RsBattle; rt_field(b[..],RS_MONK,2); b[0].c[0].uses[RS_USE_FOCUS]=0;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_MONK,2); b[0].c[0].uses[RS_USE_FOCUS]=0;
     if mode==0 { b[0].c[0].dead=true; } else if mode==1 { b[0].c[0].hp=0; }
     else if mode==2 { b[0].clock = -1; } else { b[0].clock=7; b[0].rest_clock.ticks=7000000; }
     if mode<3 { #assert !rs_short_rest_begin(b[..],0); }
@@ -219,7 +219,7 @@
 
 #test "a real attack or Dash ends downtime only after its own admission" {
   for mode:0..<3 {
-    b:[1]RsBattle; rt_field(b[..],RS_FIGHTER,3); rs_start_turn(b[..],0);
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_FIGHTER,3); rs_start_turn(b[..],0);
     #assert rs_short_rest_begin(b[..],0);
     if mode==0 { b[0].turn.action=true; #assert !rs_dash(b[..],0) && b[0].c[0].rest.phase==1; }
     else if mode==1 { #assert rs_dash(b[..],0) && b[0].c[0].rest.phase==0; }
@@ -228,7 +228,7 @@
 }
 
 #test "a whole Short Rest cannot retain Rage or refill daily Warlock Arcanum or free-cast banks" {
-  b:[1]RsBattle; rt_field(b[..],RS_BARBARIAN,3); b[0].c[0].eff = rs_state_put(b[0].c[0].eff, EF_RAGE, true);
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_BARBARIAN,3); b[0].c[0].eff = rs_state_put(b[0].c[0].eff, EF_RAGE, true);
   #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0) && !rs_effect(b[0].c[0], EF_RAGE);
   c:[1]RsCreature; c[0]=rs_warlock("Warlock",0,17,SP_ELDRITCH_BLAST);
   c[0].slots[5]=0; c[0].slots[6]=0; c[0].slots[9]=0; c[0].uses_max[RS_USE_FREE]=1;
@@ -238,7 +238,7 @@
 
 #test "optional rest recovery refuses malformed resource bounds and unsupported feature provenance" {
   for mode:0..<8 {
-    b:[1]RsBattle; rt_field(b[..],RS_WIZARD,6); b[0].c[0].slots[1]=0;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_WIZARD,6); b[0].c[0].slots[1]=0;
     #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
     if mode==0 { b[0].c[0].slots[1] = -1; }
     else if mode==1 { b[0].c[0].slots_max[1] = -2147483648; b[0].c[0].slots[1]=1; }
@@ -251,7 +251,7 @@
     pick:=[1]int.[1]; #assert !rs_short_rest_slots(b[..],0,RsRestSlots.{levels=pick[..],spellbook=true}) && !b[0].c[0].rest.recovery_used;
   }
   for mode:0..<5 {
-    b:[1]RsBattle; rt_field(b[..],RS_SORCERER,5); b[0].c[0].uses[RS_USE_SORCERY]=0;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_SORCERER,5); b[0].c[0].uses[RS_USE_SORCERY]=0;
     #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
     if mode==0 { b[0].c[0].uses[RS_USE_SORCERY] = -1; }
     else if mode==1 { b[0].c[0].uses_max[RS_USE_SORCERY] = -2147483648; b[0].c[0].uses[RS_USE_SORCERY]=1; }
@@ -263,14 +263,14 @@
 }
 
 #test "borrowed actors seed fresh Hit Dice when rest starts and report the actual begin and die events" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
   c[0]=rs_wizard("Reader",0,1); c[0].hp=1;
   #assert !c[0].rest.seeded && rs_short_rest_begin(b[..],0) && c[0].rest.seeded && c[0].rest.dice==1;
   e:=rs_recent_at(b[0].book[..],0);
-  #assert e.kind==RS_EV_CONDITION && e.by==0 && e.to==0 && e.amount==0 && e.spell == -1 && cast(string)e.text[0..<e.text_n]=="Reader starts a Short Rest";
+  #assert e.kind==RS_EV_CONDITION && e.by.value==0 && e.to.value==0 && e.amount==0 && e.spell.value == -1 && cast(string)e.text[0..<e.text_n]=="Reader starts a Short Rest";
   b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
   r:=rs_short_rest_hit_die(b[..],0); e=rs_recent_at(b[0].book[..],0);
-  #assert r.admitted && e.kind==RS_EV_HEAL && e.by==0 && e.to==0 && e.amount==r.healed && e.spell == -1 && cast(string)e.text[0..<e.text_n]=="Reader spends a Hit Die";
+  #assert r.admitted && e.kind==RS_EV_HEAL && e.by.value==0 && e.to.value==0 && e.amount==r.healed && e.spell.value == -1 && cast(string)e.text[0..<e.text_n]=="Reader spends a Hit Die";
   c[0].rest.dice=1; c[0].rest.die=0; rolls:=b[0].dice[0].rolled;
   #assert !rs_short_rest_hit_die(b[..],0).admitted && b[0].dice[0].rolled==rolls && c[0].rest.dice==1;
 }
@@ -291,7 +291,7 @@
 }
 
 #test "untracked Dash binds its old walking allowance before adding another full current Speed" {
-  b:[1]RsBattle; rt_field(b[..],RS_FIGHTER,3); b[0].who=0; b[0].c[0].speed=37;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_FIGHTER,3); b[0].who=0; b[0].c[0].speed=37;
   b[0].turn.move_left=3; b[0].turn.move_feet=2; #assert !b[0].turn.move_tracked;
   #assert rs_short_rest_begin(b[..],0) && rs_dash(b[..],0);
   #assert b[0].turn.move_left==10 && b[0].turn.move_feet==4 && b[0].turn.move_basis==74 && b[0].turn.dash_n==1 && b[0].turn.move_tracked && b[0].c[0].rest.phase==0;
@@ -301,20 +301,20 @@
   c:RsCreature; c.klass=RS_WIZARD; c.feats = rs_feature_put(c.feats, RS_FT_ARCANE_RECOVERY, true);
   for level:1..<21 { c.level=level; #assert rs_rest_slot_budget(c,true)==(level+1)/2; }
   for mode:0..<2 {
-    b:[1]RsBattle; rt_field(b[..],RS_WIZARD,ifx mode==0 then 5 else 10);
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_WIZARD,ifx mode==0 then 5 else 10);
     pick:=[3]int.[1,1,1]; n:=3;
     if mode==0 { b[0].c[0].slots[1]=1; }
     else { pick[0]=5; n=1; b[0].c[0].slots_max[5]=2; b[0].c[0].slots[5]=1; }
     #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
     #assert rs_short_rest_slots(b[..],0,RsRestSlots.{levels=pick[0..<n],spellbook=true});
     e:=rs_recent_at(b[0].book[..],0);
-    #assert e.kind==RS_EV_FEAT && e.by==0 && e.to==0 && e.amount==(ifx mode==0 then 3 else 5) && e.spell == -1 && cast(string)e.text[0..<e.text_n]=="Resting uses Arcane Recovery";
+    #assert e.kind==RS_EV_FEAT && e.by.value==0 && e.to.value==0 && e.amount==(ifx mode==0 then 3 else 5) && e.spell.value == -1 && cast(string)e.text[0..<e.text_n]=="Resting uses Arcane Recovery";
     if mode==0 { #assert b[0].c[0].slots[1]==4; } else { #assert b[0].c[0].slots[5]==2; }
   }
 }
 
 #test "weighted slot recovery cannot buy two second-level slots with a three-level budget" {
-  b:[1]RsBattle; rt_field(b[..],RS_WIZARD,5); b[0].c[0].slots[2]=0;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_WIZARD,5); b[0].c[0].slots[2]=0;
   #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
   pick:=[2]int.[2,2]; seq:=b[0].book[0].seq;
   #assert !rs_short_rest_slots(b[..],0,RsRestSlots.{levels=pick[..],spellbook=true});
@@ -322,20 +322,20 @@
 }
 
 #test "Natural Recovery and a chosen single Sorcery Point publish their actual recovered amount" {
-  b:[1]RsBattle; rt_field(b[..],RS_DRUID,6); b[0].c[0].slots[3]=0;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_DRUID,6); b[0].c[0].slots[3]=0;
   #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
   pick:=[1]int.[3]; #assert rs_short_rest_slots(b[..],0,RsRestSlots.{levels=pick[..]});
   e:=rs_recent_at(b[0].book[..],0);
-  #assert e.kind==RS_EV_FEAT && e.by==0 && e.to==0 && e.amount==3 && e.spell == -1 && cast(string)e.text[0..<e.text_n]=="Resting uses Natural Recovery";
+  #assert e.kind==RS_EV_FEAT && e.by.value==0 && e.to.value==0 && e.amount==3 && e.spell.value == -1 && cast(string)e.text[0..<e.text_n]=="Resting uses Natural Recovery";
   b[0].c[0]=rs_sorcerer("Sorcerer",0,5); b[0].c[0].uses[RS_USE_SORCERY]=4;
   #assert rs_short_rest_begin(b[..],0); b[0].clock=7200; b[0].rest_clock.ticks=7200000000; #assert rs_short_rest_finish(b[..],0);
   #assert rs_short_rest_sorcery(b[..],0,1) && b[0].c[0].uses[RS_USE_SORCERY]==5;
   e=rs_recent_at(b[0].book[..],0);
-  #assert e.kind==RS_EV_FEAT && e.by==0 && e.to==0 && e.amount==1 && e.spell == -1 && cast(string)e.text[0..<e.text_n]=="Sorcerer uses Sorcerous Restoration";
+  #assert e.kind==RS_EV_FEAT && e.by.value==0 && e.to.value==0 && e.amount==1 && e.spell.value == -1 && cast(string)e.text[0..<e.text_n]=="Sorcerer uses Sorcerous Restoration";
 }
 
 #test "zero-capacity resource banks cannot be manufactured by a rest recovery choice" {
-  b:[1]RsBattle; rt_field(b[..],RS_WIZARD,5); b[0].c[0].slots_max[1]=0; b[0].c[0].slots[1]=0;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rt_field(b[..],RS_WIZARD,5); b[0].c[0].slots_max[1]=0; b[0].c[0].slots[1]=0;
   #assert rs_short_rest_begin(b[..],0); b[0].clock=3600; b[0].rest_clock.ticks=3600000000; #assert rs_short_rest_finish(b[..],0);
   pick:=[1]int.[1]; #assert !rs_short_rest_slots(b[..],0,RsRestSlots.{levels=pick[..],spellbook=true});
   b[0].c[0]=rs_sorcerer("Sorcerer",0,5); b[0].c[0].uses_max[RS_USE_SORCERY]=0; b[0].c[0].uses[RS_USE_SORCERY]=0;

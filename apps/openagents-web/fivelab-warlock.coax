@@ -43,9 +43,9 @@ lw_raise :: (s: [] Lab) {
 }
 // Finger of Death's word that a Humanoid will rise: the dead waits in the rising list.
 lw_heard :: (s: [] Lab, e: RsEvent) {
-  if e.kind != RS_EV_CONDITION || e.spell != SP_FINGER_OF_DEATH || e.to < 0 || s[0].lw_n >= LW_RISING { return; }
-  for k: 0..<s[0].lw_n { if s[0].lw_q[k] == e.to { return; } }
-  s[0].lw_q[s[0].lw_n] = e.to; s[0].lw_n += 1;
+  if e.kind != RS_EV_CONDITION || e.spell.value != SP_FINGER_OF_DEATH || e.to.value < 0 || s[0].lw_n >= LW_RISING { return; }
+  for k: 0..<s[0].lw_n { if s[0].lw_q[k] == e.to.value { return; } }
+  s[0].lw_q[s[0].lw_n] = e.to.value; s[0].lw_n += 1;
 }
 // The dead whose time has come rise in their own square as SRD Zombies on their killer's side, and
 // take their turns like the rest of the dead (a body someone stands on rises beside it).
@@ -102,7 +102,7 @@ lw_test_turn :: (s: [] Lab, me: int, foe: int, a: Ab) -> bool {
   fresh := rs_min(book[0].seq - was, book[0].count);
   for k: 0..<fresh {
     v := rs_recent_at(book, k);
-    if v.by == me && v.spell == a.sp && (v.kind == RS_EV_CAST || v.kind == RS_EV_ATTACK || v.kind == RS_EV_MISS) { return true; }
+    if v.by.value == me && v.spell.value == a.sp && (v.kind == RS_EV_CAST || v.kind == RS_EV_ATTACK || v.kind == RS_EV_MISS) { return true; }
   }
   return false;
 }
@@ -159,7 +159,7 @@ lw_test_turn :: (s: [] Lab, me: int, foe: int, a: Ab) -> bool {
 
 
 #test "Finger of Death does not raise a dying Humanoid that the spell did not kill" {
-  b: [1] RsBattle; b[0].w=12; b[0].h=8; b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8; b[0].dice[0].fixed=true;
   _ := rs_add(b[..],rs_warlock("Caster",0,17,SP_ELDRITCH_BLAST),1,1);
   target := rs_add(b[..],rs_barbarian("Living victim",1,6),3,1);
   // Legal level-six Barbarian maximum is 59. At one HP the fixed 58 damage

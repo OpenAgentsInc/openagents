@@ -44,7 +44,7 @@ rs_stat_multiattack :: (b: [] RsBattle, i: int, j: int, m: RsStatAction) -> bool
 }
 
 #test "a stat Action checks every record, takes melee before ranged and makes each attack" {
-  b: [1] RsBattle; b[0].w=40; b[0].h=8; b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=40; b[0].h=8; b[0].dice[0].fixed=true;
   _ := rs_add(b[..],rs_guard("Attacker",0),1,1);
   j := rs_add(b[..],rs_fighter("Target",1,1),2,1);
   b[0].c[j].hp=100; b[0].c[j].hp_max=100; b[0].c[j].ac=12;

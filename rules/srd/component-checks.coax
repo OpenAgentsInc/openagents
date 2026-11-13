@@ -2,7 +2,7 @@
 #load "cast-target-checks.coax";
 
 #test "a gagged caster cannot cast Healing Word and refusal preserves every resource" {
-  b: [1] RsBattle; b[0].w=12; b[0].h=8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8;
   a := rs_add(b[..],rs_cleric("Cleric",0,1),1,1);
   b[0].c[a].speech_blocked=true;
   rs_start_turn(b[..],a);
@@ -13,7 +13,7 @@
 }
 
 #test "a focus cannot replace a priced Holy Symbol and reusable exact materials survive accepted casts" {
-  b: [1] RsBattle; b[0].w=12; b[0].h=8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8;
   a := rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
   b[0].c[a].materials[0].count=0; b[0].c[a].component_pouch=true;
   rs_start_turn(b[..],a); slots := b[0].c[a].slots[1]; seq := b[0].book[0].seq;
@@ -25,7 +25,7 @@
 }
 
 #test "V-only casting works with full hands while a held focus cannot satisfy Shield's S-only hand requirement" {
-  b: [1] RsBattle; b[0].w=12; b[0].h=8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8;
   a := rs_add(b[..],rs_cleric("Cleric",0,1),1,1);
   b[0].c[a].gesture_hand=false; b[0].c[a].material_hand=false; b[0].c[a].focus_held=false; b[0].c[a].hp=1;
   rs_start_turn(b[..],a); #assert rs_cast(b[..],a,SP_HEALING_WORD,1,0,0,a) && b[0].c[a].hp>1;
@@ -71,7 +71,7 @@
   }
   for sp: 100..<104 { #assert rs_component_mask(sp)==0 && rs_component_key(sp)==-1 && !rs_component_focus(c[0],sp) && rs_cast_components_ready(c[0],sp); }
   #assert !rs_component_focus(c[0],-1);
-  b: [1] RsBattle; #assert !rs_cast_reaction_slot(b[..],-1,SP_SHIELD,1,true) && !rs_cast_reaction_slot(b[..],0,SP_SHIELD,1,true);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); #assert !rs_cast_reaction_slot(b[..],-1,SP_SHIELD,1,true) && !rs_cast_reaction_slot(b[..],0,SP_SHIELD,1,true);
 }
 
 #test "component payment addresses exactly the requested actor and refuses invalid spans" {

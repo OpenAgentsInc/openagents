@@ -107,6 +107,7 @@ rs_shapechange :: (b: [] RsBattle, i: int, m: int) -> bool #effects(all) {
 }
 // book:end shapechange
 // A Magic action while the spell lasts: another eligible form, with no new Temporary Hit Points.
+// (These two are Shapechange's own procedures: each asks whether its own spell is still held, #13285.)
 rs_shapechange_switch :: (b: [] RsBattle, i: int, m: int) -> bool #effects(all) {
   if !rs_action_free(b, i) || b[0].c[i].shape_form == 0 || b[0].c[i].conc != SP_SHAPECHANGE || !rs_shape_eligible(b[0].c[i], m) { return false; }
   temp := b[0].c[i].temp;
@@ -131,7 +132,7 @@ shape_battle :: (b: [] RsBattle, level: int) #effects(all) {
 }
 
 #test "Shapechange: a level 17 Druid becomes an Adult Red Dragon with its 9th-level slot, Action and Concentration" {
-  b: [1] RsBattle; shape_battle(b[..], 17);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); shape_battle(b[..], 17);
   own := b[0].c[0];
   #assert own.slots[9] == 1 && rs_can_cast(b[..], 0, SP_SHAPECHANGE, 9);
   #assert rs_shapechange(b[..], 0, MON_ADULT_RED_DRAGON);
@@ -147,7 +148,7 @@ shape_battle :: (b: [] RsBattle, level: int) #effects(all) {
   #assert c.weapon == W_UNARMED && c.ranged == -1;
 }
 #test "Shapechange ends with Concentration and gives everything back; its Temporary Hit Points go" {
-  b: [1] RsBattle; shape_battle(b[..], 17);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); shape_battle(b[..], 17);
   own := b[0].c[0];
   #assert rs_shapechange(b[..], 0, MON_ADULT_RED_DRAGON) && rs_shapechange_leave(b[..], 0);
   c := b[0].c[0];
@@ -156,26 +157,26 @@ shape_battle :: (b: [] RsBattle, level: int) #effects(all) {
   for ab: 0..<6 { #assert c.score[ab] == own.score[ab] && c.save_prof[ab] == own.save_prof[ab]; }
   #assert !rs_shapechange_leave(b[..], 0);
   // the hour runs out
-  t: [1] RsBattle; shape_battle(t[..], 17);
+  t: [1] RsBattle; t_room: [1] RsRoom; rs_have(t[..], t_room[..]); shape_battle(t[..], 17);
   #assert rs_shapechange(t[..], 0, MON_ADULT_RED_DRAGON);
   rs_tick(t[..], 3601); #assert t[0].c[0].shape_form == 0 && t[0].c[0].ac == own.ac;
   // a failed Concentration save: damage enough to break it
-  k: [1] RsBattle; shape_battle(k[..], 17);
+  k: [1] RsBattle; k_room: [1] RsRoom; rs_have(k[..], k_room[..]); shape_battle(k[..], 17);
   #assert rs_shapechange(k[..], 0, MON_ADULT_RED_DRAGON);
   rs_end_concentration(k[..], 0, ""); #assert k[0].c[0].shape_form == 0 && k[0].c[0].temp == 0;
 }
 #test "Shapechange keeps the caster's own numbers in the battle's side table, and refuses when the table is full" {
-  b: [1] RsBattle; shape_battle(b[..], 17);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); shape_battle(b[..], 17);
   #assert rs_shapechange(b[..], 0, MON_ADULT_RED_DRAGON) && b[0].shape_keeps[rs_shape_keep_at(b[..], 0)].who == 1;
   #assert rs_shapechange_leave(b[..], 0);
   for e: 0..<RS_SHAPE_KEEPS { #assert b[0].shape_keeps[e].who == 0; }
-  c: [1] RsBattle; shape_battle(c[..], 17);
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); shape_battle(c[..], 17);
   for e: 0..<RS_SHAPE_KEEPS { c[0].shape_keeps[e].who = 100 + e; }
   #assert !rs_shapechange(c[..], 0, MON_ADULT_RED_DRAGON) && c[0].c[0].shape_form == 0 && c[0].c[0].slots[9] == 1;
 }
 #test "Shapechange needs level 17's slot, a form of CR no more than its level, and not an Undead" {
   for level: [3] int.[16, 17, 20] {
-    b: [1] RsBattle; shape_battle(b[..], level);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); shape_battle(b[..], level);
     #assert rs_shapechange(b[..], 0, MON_ADULT_RED_DRAGON) == (level >= 17);
   }
   #assert rs_cr_xp(17) == 18000 && rs_monster_block(MON_ADULT_RED_DRAGON).xp == 18000;
@@ -183,12 +184,12 @@ shape_battle :: (b: [] RsBattle, level: int) #effects(all) {
   for m: 1..<MON_N { k := rs_monster_block(m); #assert rs_shape_eligible(c, m) == (!k.undead && k.xp <= 18000); }
   #assert !rs_shape_eligible(c, MON_NONE) && !rs_shape_eligible(c, MON_N);
   // without the circlet
-  n: [1] RsBattle; n[0].w = 24; n[0].h = 24; n[0].dice[0].fixed = true; nd := rs_add(n[..], rs_druid("Rowan", 0, 17), 4, 4);
+  n: [1] RsBattle; n_room: [1] RsRoom; rs_have(n[..], n_room[..]); n[0].w = 24; n[0].h = 24; n[0].dice[0].fixed = true; nd := rs_add(n[..], rs_druid("Rowan", 0, 17), 4, 4);
   _ := rs_select_spell(n[0].c[0..<1], RS_EXEC_SOURCE[SP_SHAPECHANGE]); rs_fresh(n[..], nd);
   #assert !rs_shapechange(n[..], 0, MON_ADULT_RED_DRAGON) && n[0].c[0].slots[9] == 1;
 }
 #test "Shapechange: the dragon's Multiattack is three Rends; a Magic action changes form without new Temporary Hit Points" {
-  b: [1] RsBattle; shape_battle(b[..], 17);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); shape_battle(b[..], 17);
   b[0].c[1].hp = 300; b[0].c[1].hp_max = 300; b[0].c[1].ac = 5;
   b[0].c[1].x = 5; b[0].c[1].y = 4;
   #assert rs_shapechange(b[..], 0, MON_ADULT_RED_DRAGON);

@@ -33,15 +33,15 @@ cc_field :: (b: [] RsBattle, level: int) {
 
 #test "Channel Divinity p.37: two uses from level 2, three at 6; one back on a Short Rest; Divine Spark heals or harms" {
   #assert rs_cleric("A", 0, 1).uses_max[RS_USE_CHANNEL] == 0 && rs_cleric("A", 0, 2).uses_max[RS_USE_CHANNEL] == 2 && rs_cleric("A", 0, 6).uses_max[RS_USE_CHANNEL] == 3;
-  b: [1] RsBattle; cc_field(b[..], 2);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cc_field(b[..], 2);
   #assert rs_divine_spark(b[..], 0, 1, true, 0) && b[0].c[1].hp == 5 + 4 + 3 && b[0].c[0].uses[RS_USE_CHANNEL] == 1;
   b[0].c[0].uses[RS_USE_CHANNEL] = 0; rs_short_rest_resources(b[0].c[0..<1]); #assert b[0].c[0].uses[RS_USE_CHANNEL] == 1;
   #assert rs_long_rest_resources(b[0].c[0..<1]) && b[0].c[0].uses[RS_USE_CHANNEL] == 2;
-  one: [1] RsBattle; cc_field(one[..], 1); #assert !rs_divine_spark(one[..], 0, 1, true, 0);
+  one: [1] RsBattle; one_room: [1] RsRoom; rs_have(one[..], one_room[..]); cc_field(one[..], 1); #assert !rs_divine_spark(one[..], 0, 1, true, 0);
 }
 
 #test "Turn Undead p.37: each Undead foe within 30 feet that fails a Wisdom save is Frightened and Incapacitated" {
-  b: [1] RsBattle; cc_field(b[..], 2);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cc_field(b[..], 2);
   near := rs_add(b[..], rs_skeleton("Near", 1), 7, 1); far := rs_add(b[..], rs_skeleton("Far", 1), 8, 2);
   rs_fresh(b[..], 0);
   #assert rs_turn_undead(b[..], 0) && b[0].c[0].uses[RS_USE_CHANNEL] == 1;
@@ -56,18 +56,18 @@ cc_field :: (b: [] RsBattle, level: int) {
 
 #test "Disciple of Life p.40: from level 3, a slot spell's healing is 2 + the slot's level more" {
   for level: [2] int.[2, 3] {
-    b: [1] RsBattle; cc_field(b[..], level);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cc_field(b[..], level);
     #assert rs_cast(b[..], 0, SP_CURE_WOUNDS, 1, 0, 0, 1);
     #assert b[0].c[1].hp == 5 + 2 * 4 + 3 + (ifx level == 3 then 3 else 0);   // 2d8 + Wisdom, + 2 + 1
   }
 }
 
 #test "Preserve Life p.40: from level 3, five times its level in Hit Points among Bloodied creatures within 30 feet, none above half" {
-  b: [1] RsBattle; cc_field(b[..], 3);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cc_field(b[..], 3);
   #assert rs_preserve_life(b[..], 0) && b[0].c[1].hp == 5 + 15 && b[0].c[0].uses[RS_USE_CHANNEL] == 1;
-  c: [1] RsBattle; cc_field(c[..], 3); c[0].c[1].hp = 18;
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); cc_field(c[..], 3); c[0].c[1].hp = 18;
   #assert rs_preserve_life(c[..], 0) && c[0].c[1].hp == 20;   // no more than half its maximum
-  two: [1] RsBattle; cc_field(two[..], 2); #assert !rs_preserve_life(two[..], 0);
+  two: [1] RsBattle; two_room: [1] RsRoom; rs_have(two[..], two_room[..]); cc_field(two[..], 2); #assert !rs_preserve_life(two[..], 0);
 }
 
 #test "Ability Score Improvement p.37: Wisdom 16 to 18 at level 4" {
@@ -76,7 +76,7 @@ cc_field :: (b: [] RsBattle, level: int) {
 
 #test "Sear Undead p.37: from level 5, Turn Undead's failing Undead take Wisdom-modifier d8s of Radiant damage" {
   for level: [2] int.[4, 5] {
-    b: [1] RsBattle; cc_field(b[..], level);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cc_field(b[..], level);
     u := rs_add(b[..], rs_skeleton("Bones", 1), 4, 1); b[0].c[u].hp = 100; b[0].c[u].hp_max = 100; rs_fresh(b[..], 0);
     #assert rs_turn_undead(b[..], 0) && rs_effect(b[0].c[u], EF_TURNED);
     #assert b[0].c[u].hp == 100 - (ifx level == 5 then 4 * 4 else 0);
@@ -85,9 +85,9 @@ cc_field :: (b: [] RsBattle, level: int) {
 
 #test "Blessed Healer p.40: from level 6, a slot spell that heals another heals the Cleric 2 + the slot's level" {
   for level: [2] int.[5, 6] {
-    b: [1] RsBattle; cc_field(b[..], level); b[0].c[0].hp = 10;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cc_field(b[..], level); b[0].c[0].hp = 10;
     #assert rs_cast(b[..], 0, SP_HEALING_WORD, 1, 0, 0, 1);
     #assert b[0].c[0].hp == 10 + (ifx level == 6 then 3 else 0);
-    if level == 6 { e := rs_recent(b[0].book[0], 0); #assert e.kind == RS_EV_HEAL && e.feat == RS_FT_BLESSED_HEALER && e.to == 0 && e.amount == 3; }
+    if level == 6 { e := rs_recent(b[0].book[0], 0); #assert e.kind == RS_EV_HEAL && e.feat == RS_FT_BLESSED_HEALER && e.to.value == 0 && e.amount == 3; }
   }
 }

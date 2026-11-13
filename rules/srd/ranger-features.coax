@@ -21,7 +21,7 @@ rs_hunters_lore :: (b: [] RsBattle, i: int, j: int) -> RsLore #effects(all) {
 
 #test "Hunter's Lore tells a lore-keeping Ranger its own mark's Immunities, Resistances and Vulnerabilities, and nothing else" {
   for mode: 0..<5 {
-    b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6;
     _ := rs_add(b[..], rs_ranger("Wren", 0, 3), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1); _ = rs_add(b[..], rs_ranger("Kin", 0, 3), 1, 2);
     b[0].c[1].resist = 1 << RS_FIRE; b[0].c[1].vulnerable = 1 << RS_RADIANT; b[0].c[1].immune = 1 << RS_POISON; b[0].c[1].immune_cond = RS_CHARMED;
     by := ifx mode == 2 then 2 else 0; kind := ifx mode == 3 then EF_HEX else EF_MARK;
@@ -37,7 +37,7 @@ rs_hunters_lore :: (b: [] RsBattle, i: int, j: int) -> RsLore #effects(all) {
     #assert !rs_hunters_lore(b[..], 3, 1).known;
   }
   // the marked creature first in the battle
-  f: [1] RsBattle; f[0].w = 12; f[0].h = 6;
+  f: [1] RsBattle; f_room: [1] RsRoom; rs_have(f[..], f_room[..]); f[0].w = 12; f[0].h = 6;
   _ := rs_add(f[..], rs_wizard("Foe", 1, 1), 2, 1); _ = rs_add(f[..], rs_ranger("Wren", 0, 3), 1, 1); f[0].c[0].resist = 1 << RS_COLD;
   #assert rs_put_effect(f[..], 0, RsEffect.{kind = EF_MARK, by = 1, spell = SP_HUNTERS_MARK, until = 60, save = -1});
   #assert rs_hunters_lore(f[..], 1, 0).known && rs_hunters_lore(f[..], 1, 0).resist == 1 << RS_COLD;

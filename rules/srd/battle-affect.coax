@@ -48,7 +48,7 @@ rs_step_save :: (b: [] RsBattle, a: [] RsAffect, i: int, j: int, sp: int, slot: 
 }
 rs_step_damage :: (b: [] RsBattle, a: [] RsAffect, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell, scope: [] RsDamageScope, origin: int, k: int, st: RsStep) {
   count := st.a;
-  if s.level == 0 && a[0].tier_dice && s.part_of != SP_CALL_LIGHTNING { count = st.a * rs_cantrip_tier(b[0].c[i].level); }
+  if a[0].tier_dice && rs_is_cantrip(s) { count = st.a * rs_cantrip_tier(b[0].c[i].level); }
   else { count += st.d * rs_max(slot - s.level, 0); }
   count += a[0].bane;
   if a[0].crit { count *= 2; }
@@ -60,7 +60,7 @@ rs_step_damage :: (b: [] RsBattle, a: [] RsAffect, i: int, j: int, sp: int, slot
   }
   // All damage-roll modifiers precede each recipient's save and defenses.
   agony := 0;
-  if s.level == 0 && b[0].c[i].rank[RS_RK_AGONIZING] == sp && sp != SP_PRODUCE_FLAME { agony = rs_mod(b[0].c[i].score[RS_CHA]); }
+  if s.level == 0 && b[0].c[i].rank[RS_RK_AGONIZING] == sp { agony = rs_mod(b[0].c[i].score[RS_CHA]); }
   roll := rs_damage_roll(b[0].dice[..],scope,k,a[0].ran_save && !a[0].ran_attack,count,st.b,s.plus+affinity,agony,rs_effect(b[0].c[i],EF_ENFEEBLED));
   amount := roll.amount; weak := roll.weak;
   if a[0].ran_save && a[0].saved {
@@ -163,7 +163,7 @@ rs_step_outline :: (b: [] RsBattle, a: [] RsAffect, i: int, j: int, sp: int, slo
 rs_step_temp :: (b: [] RsBattle, a: [] RsAffect, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell, scope: [] RsDamageScope, origin: int, k: int, st: RsStep) {
   amount := rs_sum(b[0].dice[..], st.a, st.b) + st.c + st.d * rs_max(slot - s.level, 0);
   // Fiendish Vigor: no slot, and the die at its highest
-  if sp == SP_FALSE_LIFE && slot == 0 && rs_has_feature(b[0].c[i], RS_FT_FIENDISH_VIGOR) { amount = st.a * st.b + st.c; }
+  if slot == 0 && rs_at_will(b[0].c[i], s) { amount = st.a * st.b + st.c; }
   // Temporary Hit Points don't add up: keep the larger
   b[0].c[j].temp = rs_max(b[0].c[j].temp, amount);
   l: [1] RsLine;
@@ -202,7 +202,7 @@ rs_step_enfeeble :: (b: [] RsBattle, a: [] RsAffect, i: int, j: int, sp: int, sl
 }
 rs_step_hex :: (b: [] RsBattle, a: [] RsAffect, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell, scope: [] RsDamageScope, origin: int, k: int, st: RsStep) {
   _ := rs_put_effect(b, j, RsEffect.{kind = EF_HEX, cond = st.a, by = i, spell = sp, until = b[0].c[i].conc_until, save = -1, dc = 0});
-  b[0].c[i].hex_free = false;
+  b[0].c[i].note[RS_NT_CURSE_FREE] = 0;
   l: [1] RsLine;
   rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is hexed: 1d6 Necrotic more from each of ");
   rs_add_name(l[..], b, i); rs_add_text(l[..], "'s hits, Disadvantage on "); rs_add_text(l[..], RS_ABBR[st.a]); rs_add_text(l[..], " checks");
@@ -237,8 +237,8 @@ rs_step_daze :: (b: [] RsBattle, a: [] RsAffect, i: int, j: int, sp: int, slot: 
   _ := rs_put_effect(b, j, RsEffect.{kind = EF_DAZED, cond = st.a, by = i, spell = sp, until = b[0].c[i].conc_until, save = -1, dc = 0});
 }
 rs_step_guard :: (b: [] RsBattle, a: [] RsAffect, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell, scope: [] RsDamageScope, origin: int, k: int, st: RsStep) {
-  b[0].c[i].guard_slot = slot;
-  l: [1] RsLine; rs_add_text(l[..], "  spirits circle "); rs_add_name(l[..], b, i); rs_add_text(l[..], " 15 feet round");
+  b[0].c[i].conc_slot = slot;
+  l: [1] RsLine; rs_add_text(l[..], "  spirits circle "); rs_add_name(l[..], b, i); rs_add_text(l[..], " "); rs_add_int(l[..], s.area_ft); rs_add_text(l[..], " feet round");
   rs_tell(b, RS_EV_CONDITION, sp, i, i, 0, 0, l[..]);
 }
 rs_step_boon :: (b: [] RsBattle, a: [] RsAffect, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell, scope: [] RsDamageScope, origin: int, k: int, st: RsStep) {
@@ -259,7 +259,7 @@ rs_step_halt :: (b: [] RsBattle, a: [] RsAffect, i: int, j: int, sp: int, slot: 
 }
 rs_step_mark :: (b: [] RsBattle, a: [] RsAffect, i: int, j: int, sp: int, slot: int, zone_at: int, keep_concentration: bool, s: RsSpell, scope: [] RsDamageScope, origin: int, k: int, st: RsStep) {
   _ := rs_put_effect(b, j, RsEffect.{kind = EF_MARK, by = i, spell = sp, until = b[0].c[i].conc_until, save = -1, dc = 0});
-  b[0].c[i].hex_free = false;
+  b[0].c[i].note[RS_NT_CURSE_FREE] = 0;
   l: [1] RsLine;
   rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is marked: 1d6 Force more from each of ");
   rs_add_name(l[..], b, i); rs_add_text(l[..], "'s hits");
@@ -312,10 +312,10 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
   if s.area != RS_A_NONE && rs_cover_area(b, i, j, s) == RS_COVER_TOTAL { return; }
   if rs_effect_free(b[0].c[j]) < rs_effect_demand(b[0].c[j],s,zone_at,i,sp) { return; }
   // Shield (p.161): a target of Magic Missile may react before the darts strike; warded, it takes none
-  missile := sp == SP_MAGIC_MISSILE;
+  missile := s.shield_stops;
   if rs_missile_shield_trigger(missile, rs_effect(b[0].c[j], EF_SHIELD)) { _ := rs_shield(b, j); }
   if rs_missile_blocked(missile, rs_effect(b[0].c[j], EF_SHIELD)) {
-    l: [1] RsLine; rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " takes no damage from Magic Missile (Shield)");
+    l: [1] RsLine; rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " takes no damage from "); rs_add_text(l[..], s.name); rs_add_text(l[..], " (Shield)");
     rs_tell(b, RS_EV_DAMAGE, sp, i, j, 0, RS_FORCE, l[..]);
     return;
   }
@@ -329,7 +329,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
     if a[0].stop { return; }
   }
   // Repelling Blast: a hit with the chosen cantrip pushes the target up to 10 feet straight away
-  if a[0].attack_hit && s.level == 0 && b[0].c[i].rank[RS_RK_REPELLING] == sp && sp != SP_PRODUCE_FLAME && !b[0].c[j].dead {
+  if a[0].attack_hit && s.level == 0 && b[0].c[i].rank[RS_RK_REPELLING] == sp && !b[0].c[j].dead {
     dx := rs_sign(b[0].c[j].x - b[0].c[i].x); dy := rs_sign(b[0].c[j].y - b[0].c[i].y);
     moved := 0;
     for n: 0..<2 {
@@ -350,9 +350,10 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
 rs_hex_move :: (b: [] RsBattle, i: int, j: int) -> bool {
   if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) { return false; }
   sp := b[0].c[i].conc;
-  if (sp != SP_HEX && sp != SP_HUNTERS_MARK) || !b[0].c[i].hex_free || b[0].c[i].turn_at <= b[0].c[i].hex_free_after { return false; }
-  if j < 0 || j >= b[0].n || !rs_up(b[0].c[j]) || rs_feet_to(b, i, j) > rs_spell(sp).range_ft { return false; }
-  kind := ifx sp == SP_HEX then EF_HEX else EF_MARK;
+  s := rs_spell(sp);
+  kind := rs_spell_aura(s);   // the curse it concentrates on: an Aura its record says moves
+  if !rs_aura_moves(kind) || b[0].c[i].note[RS_NT_CURSE_FREE] == 0 || b[0].c[i].turn_at <= b[0].c[i].note[RS_NT_CURSE_AFTER] { return false; }
+  if j < 0 || j >= b[0].n || !rs_up(b[0].c[j]) || rs_feet_to(b, i, j) > s.range_ft { return false; }
   room := rs_effect_free(b[0].c[j]);
   for e: b[0].c[j].eff { if e.kind == kind && e.by == i { room += 1; } }
   if room < 1 { return false; }
@@ -364,10 +365,10 @@ rs_hex_move :: (b: [] RsBattle, i: int, j: int) -> bool {
   }
   b[0].turn.bonus = true;
   l: [1] RsLine;
-  rs_add_name(l[..], b, i); rs_add_text(l[..], " moves "); rs_add_text(l[..], rs_spell(sp).name); rs_add_text(l[..], " to "); rs_add_name(l[..], b, j);
+  rs_add_name(l[..], b, i); rs_add_text(l[..], " moves "); rs_add_text(l[..], s.name); rs_add_text(l[..], " to "); rs_add_name(l[..], b, j);
   rs_tell(b, RS_EV_CAST, sp, i, j, 0, 0, l[..]);
   _ := rs_put_effect(b, j, RsEffect.{kind = kind, cond = ability, by = i, spell = sp, until = b[0].c[i].conc_until, save = -1, dc = 0});
-  b[0].c[i].hex_free = false;
+  b[0].c[i].note[RS_NT_CURSE_FREE] = 0;
   return true;
 }
 
@@ -430,39 +431,57 @@ rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
   if b[0].guards > 0 {
     // into someone's Spirit Guardians, or its own Emanation onto someone
     rs_guardians(b, i);
-    if b[0].c[i].conc == SP_SPIRIT_GUARDIANS { for j: 0..<b[0].n { if j != i && rs_feet_to(b, i, j) <= 15 { rs_guardians(b, j); } } }
+    mine := rs_emanation(b[0].c[i].conc);
+    if mine.on { for j: 0..<b[0].n { if j != i && rs_feet_to(b, i, j) <= mine.feet { rs_guardians(b, j); } } }
   }
   return true;
 }
-// Spirit Guardians on creature j (p. 164): within 15 feet of a foe's casting, a Wisdom save once a
-// turn, 3d8 Radiant (1d8 more a slot level above 3rd) or half on a success. One save a turn covers
-// every caster's.
+// The Emanation of the spell a creature concentrates on (a GUARD step: Spirit Guardians, p. 164): its
+// step, its reach in feet, its level and its name; `on` false when the spell has none.
+RsEmanation :: struct { on: bool; sp: int; st: RsStep; feet: int; level: int; name: string; }
+rs_emanation :: (conc: int) -> RsEmanation {
+  e: RsEmanation;
+  if conc < 0 { return e; }
+  s := rs_spell(conc);
+  k := rs_step_at(s, RS_S_GUARD);
+  if k < 0 { return e; }
+  e.on = true; e.sp = conc; e.st = s.steps[k]; e.feet = s.area_ft; e.level = s.level; e.name = s.name;
+  return e;
+}
+// An Emanation on creature j: within its reach of a foe's casting, the step's save once a turn, its
+// dice of Radiant (more a slot level above the spell's) or half on a success. One save a turn
+// covers every caster's.
 rs_guardians :: (b: [] RsBattle, j: int) {
-  if b[0].guards <= 0 || !rs_up(b[0].c[j]) || b[0].c[j].guard_turn == b[0].turn_no { return; }
+  if b[0].guards <= 0 || !rs_up(b[0].c[j]) || b[0].c[j].note[RS_NT_EMANATION_TURN] == b[0].turn_no + 1 { return; }
   for k: 0..<b[0].n {
-    if b[0].c[k].conc != SP_SPIRIT_GUARDIANS { continue; }
+    em := rs_emanation(b[0].c[k].conc);
+    if !em.on { continue; }
     g := b[0].c[k];
-    if g.conc != SP_SPIRIT_GUARDIANS || g.team == b[0].c[j].team || rs_feet_to(b, k, j) > 15 { continue; }
-    b[0].c[j].guard_turn = b[0].turn_no;
+    if g.team == b[0].c[j].team || rs_feet_to(b, k, j) > em.feet { continue; }
+    b[0].c[j].note[RS_NT_EMANATION_TURN] = b[0].turn_no + 1;
     dc := rs_dc(b, k);
-    saving := rs_saving_throw_magic(b,j,RS_WIS,dc,0);
+    saving := rs_saving_throw_magic(b,j,em.st.c,dc,0);
     total := saving.total; ok := saving.passed;
-    amount := rs_sum(b[0].dice[..], 3 + rs_max(g.guard_slot - 3, 0), 8);
+    amount := rs_sum(b[0].dice[..], em.st.a + em.st.d * rs_max(g.conc_slot - em.level, 0), em.st.b);
     if ok { amount = amount / 2; }
     amount = rs_resisted(b, j, amount, RS_RADIANT);
     l: [1] RsLine;
-    rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " meets "); rs_add_name(l[..], b, k); rs_add_text(l[..], "'s Spirit Guardians: WIS save ");
+    rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " meets "); rs_add_name(l[..], b, k); rs_add_text(l[..], "'s "); rs_add_text(l[..], em.name); rs_add_text(l[..], ": "); rs_add_text(l[..], RS_ABBR[em.st.c]); rs_add_text(l[..], " save ");
     rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
     rs_add_text(l[..], ifx ok then ": half, " else ": "); rs_add_int(l[..], amount); rs_add_text(l[..], " Radiant");
-    rs_tell(b, RS_EV_DAMAGE, SP_SPIRIT_GUARDIANS, k, j, amount, RS_RADIANT, l[..]);
-    rs_damage(b, k, j, amount, RS_RADIANT, false, SP_SPIRIT_GUARDIANS);
+    rs_tell(b, RS_EV_DAMAGE, em.sp, k, j, amount, RS_RADIANT, l[..]);
+    rs_damage(b, k, j, amount, RS_RADIANT, false, em.sp);
     return;
   }
 }
 // Whether a foe's Spirit Guardians reach creature i (its Speed is halved there).
 rs_guarded :: (b: [] RsBattle, i: int) -> bool {
   if b[0].guards <= 0 { return false; }
-  for k: 0..<b[0].n { if b[0].c[k].conc == SP_SPIRIT_GUARDIANS && b[0].c[k].team != b[0].c[i].team && rs_feet_to(b, k, i) <= 15 { return true; } }
+  for k: 0..<b[0].n {
+    if b[0].c[k].conc < 0 || b[0].c[k].team == b[0].c[i].team { continue; }
+    em := rs_emanation(b[0].c[k].conc);
+    if em.on && rs_feet_to(b, k, i) <= em.feet { return true; }
+  }
   return false;
 }
 

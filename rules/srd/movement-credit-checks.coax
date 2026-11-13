@@ -4,7 +4,7 @@
 #load "exhaustion-checks.coax";
 
 #test "Speed loss retains overspent movement as debt so restoration cannot refill the turn" {
-  b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); mv_field(b[..],RS_STRICT_TIMING,30);
   for x: 2..<6 { #assert rs_step_to(b[..],0,x,1); } // twenty feet
   b[0].c[0].speed=15;
   #assert rs_movement_left(b[..],0)==0;
@@ -18,7 +18,7 @@
 }
 
 #test "each Dash is repriced with current Speed while distance already spent remains spent" {
-  b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); mv_field(b[..],RS_STRICT_TIMING,30);
   #assert rs_dash(b[..],0);
   for x: 2..<7 { #assert rs_step_to(b[..],0,x,1); } // twenty-five feet
   _ := rs_aura_set(b[0].c[0..<0+1], EF_SLOWED, 20);
@@ -31,7 +31,7 @@
 }
 
 #test "action timing reprices its ordinary grant and keeps its declared full-Speed Dash" {
-  b: [1] RsBattle; mv_field(b[..],RS_ACTION_TIMING,30);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); mv_field(b[..],RS_ACTION_TIMING,30);
   #assert rs_movement_left(b[..],0)==10 && rs_dash(b[..],0);
   for x: 2..<5 { #assert rs_step_to(b[..],0,x,1); }
   b[0].c[0].speed=20;
@@ -39,7 +39,7 @@
 }
 
 #test "Exhaustion loss and recovery update current-turn credit without resurrecting spent feet" {
-  b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); mv_field(b[..],RS_STRICT_TIMING,30);
   for x: 2..<7 { #assert rs_step_to(b[..],0,x,1); }
   #assert rs_gain_exhaustion(b[..],0) && rs_gain_exhaustion(b[..],0);
   #assert rs_movement_left(b[..],0)==0;
@@ -58,7 +58,7 @@ mv_field :: (b: [] RsBattle, profile: RsTimingProfile, speed: int) {
 }
 
 #test "a legacy caller-supplied turn binds its pre-Dash basis before adding a Dash" {
-  b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); mv_field(b[..],RS_STRICT_TIMING,30);
   b[0].turn=RsTurn.{move_left=6};
   #assert rs_dash(b[..],0) && rs_movement_left(b[..],0)==60;
   #assert b[0].turn.move_tracked && b[0].turn.move_basis==60 && b[0].turn.dash_n==1;
@@ -66,7 +66,7 @@ mv_field :: (b: [] RsBattle, profile: RsTimingProfile, speed: int) {
 
 #test "temporary zero-Speed conditions preserve movement spent and unrelated conditions do not erase credit" {
   for condition: [5] int.[RS_GRAPPLED,RS_RESTRAINED,RS_PARALYZED,RS_PETRIFIED,RS_UNCONSCIOUS] {
-    b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); mv_field(b[..],RS_STRICT_TIMING,30);
     #assert rs_step_to(b[..],0,2,1);
     b[0].c[0].cond=condition;
     #assert rs_movement_left(b[..],0)==0;
@@ -79,7 +79,7 @@ mv_field :: (b: [] RsBattle, profile: RsTimingProfile, speed: int) {
   #assert mv_native();
 }
 mv_native :: () -> bool {
-  b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); mv_field(b[..],RS_STRICT_TIMING,30);
   if !rs_dash(b[..],0) { return false; }
   for x: 2..<7 { if !rs_step_to(b[..],0,x,1) { return false; } }
   b[0].c[0].speed=10;

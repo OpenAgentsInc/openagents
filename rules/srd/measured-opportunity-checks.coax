@@ -1,6 +1,6 @@
 #load "opportunity-checks.coax";
 #test "physical opportunity departure uses measured feet instead of rounded grid cells" {
-  b:[1]RsBattle; b[0].w=8; b[0].h=8;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],rs_guard("Reactor",1),2,2); _=rs_add(b[..],rs_fighter("Mover",0,1),3,2); rs_start_turn(b[..],1);
   q:=RsOpportunityMove.{measured=true,from_feet=5,to_feet=5.01,reach=5,melee=true,seen=true,movement=true};
   #assert rs_opportunity_trigger(b[..],0,1,q);

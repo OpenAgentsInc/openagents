@@ -95,7 +95,18 @@ RsSpell :: struct {
   srd: bool = true;           // the SRD's; false: a house rule (house.coax), not SRD content
   page: int;                  // the SRD 5.2.1 page
   text: string;
+  // What a spell alone used to be asked by name (#13285): each is a field of its record now.
+  at_will: int;               // a creature with this feature (RS_FT_*, 0 none) casts it without a slot, its dice at their highest (Fiendish Vigor's False Life)
+  willing: bool;              // a target other than the caster must be willing (Guidance)
+  option: int;                // what its request chooses (RS_OPT_*)
+  lasts_from: [3] int;        // the slot levels from which it lasts 4, 8 and 24 hours (0: never; Hex)
+  cast_s: int;                // its casting time in seconds beyond the Magic action (Find Familiar's hour)
+  shield_stops: bool;         // a target with Shield up takes none of it, and may cast Shield as it strikes (Magic Missile)
+  ignites: bool;              // its hit sets a flammable object nobody wears or carries burning (Fire Bolt)
 }
+// What a spell's request chooses: nothing; Blinded or Deafened, into its TIMED step; the ability its HEX
+// step curses; the condition its RESTORE step ends; the skill of its BOON step.
+RS_OPT_NONE :: 0; RS_OPT_BLIND_OR_DEAF :: 1; RS_OPT_ABILITY :: 2; RS_OPT_RESTORE :: 3; RS_OPT_SKILL :: 4;
 
 SP_PRODUCE_FLAME :: 0; SP_FLAME_HURL :: 1; SP_STARRY_WISP :: 2; SP_POISON_SPRAY :: 3;
 SP_CURE_WOUNDS :: 4; SP_HEALING_WORD :: 5; SP_THUNDERWAVE :: 6; SP_ENTANGLE :: 7; SP_FAERIE_FIRE :: 8;
@@ -157,6 +168,7 @@ rs_spell :: (i: int) -> RsSpell {
                  concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 129,
                  text = "You gain 2d4 + 4 Temporary Hit Points. Using a Higher-Level Spell Slot. You gain 5 additional Temporary Hit Points for each spell slot level above 1."};
     s.steps[0] = rs_step(RS_S_TEMP, 2, 4, 4, 5); s.step_n = 1;
+    s.at_will = RS_FT_FIENDISH_VIGOR;
   } else if i == SP_RAY_OF_ENFEEBLEMENT {
     s = RsSpell.{id = "ray-of-enfeeblement", name = "Ray of Enfeeblement", level = 2, school = "Necromancy", classes = "Warlock, Wizard",
                  cast_time = RS_T_ACTION, range_ft = 60, components = "V, S", duration = "Concentration, up to 1 minute", duration_s = 60,
@@ -169,7 +181,7 @@ rs_spell :: (i: int) -> RsSpell {
                  concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 113,
                  text = "One creature that you can see within range must succeed on a Constitution saving throw, or it has the Blinded or Deafened condition (your choice) for the duration. At the end of each of its turns, the target repeats the save, ending the spell on itself on a success. Using a Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 2."};
     s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_TIMED, RS_BLINDED, 2, RS_CON, 0); s.step_n = 2;
-    s.targets = 1; s.target_growth = 1;
+    s.targets = 1; s.target_growth = 1; s.option = RS_OPT_BLIND_OR_DEAF;
   } else if i == SP_ELDRITCH_BLAST {
     s = RsSpell.{id = "eldritch-blast", name = "Eldritch Blast", level = 0, school = "Evocation", classes = "Warlock",
                  cast_time = RS_T_ACTION, range_ft = 120, components = "V, S", duration = "Instantaneous", duration_s = 0,
@@ -183,6 +195,7 @@ rs_spell :: (i: int) -> RsSpell {
                  concentration = true, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 140,
                  text = "You place a curse on a creature that you can see within range. Until the spell ends, you deal an extra 1d6 Necrotic damage to the target whenever you hit it with an attack roll. Also, choose one ability when you cast the spell. The target has Disadvantage on ability checks made with the chosen ability. If the target drops to 0 Hit Points before this spell ends, you can take a Bonus Action on a later turn to curse a new creature. Using a Higher-Level Spell Slot. Your Concentration can last longer with a spell slot of level 2 (up to 4 hours), 3–4 (up to 8 hours), or 5+ (24 hours)."};
     s.steps[0] = rs_step(RS_S_HEX, RS_STR, 0, 0, 0); s.step_n = 1;
+    s.option = RS_OPT_ABILITY; s.lasts_from = [3] int.[2, 3, 5];
   } else if i == SP_HOLD_PERSON {
     s = RsSpell.{id = "hold-person", name = "Hold Person", level = 2, school = "Enchantment", classes = "Bard, Cleric, Druid, Sorcerer, Warlock, Wizard",
                  cast_time = RS_T_ACTION, range_ft = 60, components = "V, S, M (a straight piece of iron)", duration = "Concentration, up to 1 minute", duration_s = 60,
@@ -270,6 +283,7 @@ rs_spell :: (i: int) -> RsSpell {
                  concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 132,
                  text = "You hurl a mote of fire at a creature or an object within range. Make a ranged spell attack against the target. On a hit, the target takes 1d10 Fire damage. A flammable object hit by this spell starts burning if it isn't being worn or carried. Cantrip Upgrade. The damage increases by 1d10 when you reach levels 5 (2d10), 11 (3d10), and 17 (4d10)."};
     s.steps[0] = rs_step(RS_S_ATTACK, 0, 0, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 10, RS_FIRE, 0); s.step_n = 2;
+    s.ignites = true;
   } else if i == SP_SHIELD {
     // Cast by the battle as a Reaction to a hit (rs_shield), not through rs_cast.
     s = RsSpell.{id = "shield", name = "Shield", level = 1, school = "Abjuration", classes = "Sorcerer, Wizard",
@@ -307,6 +321,19 @@ rs_spell :: (i: int) -> RsSpell {
   }
   return s;
 }
+// The first step of a kind in a spell's program, -1 none.
+rs_step_at :: (s: RsSpell, kind: int) -> int {
+  for k: 0..<s.step_n { if s.steps[k].kind == kind { return k; } }
+  return -1;
+}
+// A cantrip: level 0, and not a part of a spell that takes a slot (Call Lightning's later bolts).
+rs_is_cantrip :: (s: RsSpell) -> bool {
+  if s.level != 0 { return false; }
+  if s.part_of < 0 { return true; }
+  return rs_spell(s.part_of).level == 0;
+}
+// Whether creature c casts s at will, with no slot (RsSpell.at_will).
+rs_at_will :: (c: RsCreature, s: RsSpell) -> bool { return s.at_will != RS_FT_NONE && rs_has_feature(c, s.at_will); }
 // A cantrip's damage dice by the caster's level (Cantrip Upgrade: levels 5, 11 and 17).
 rs_cantrip_tier :: (level: int) -> int {
   if level >= 17 { return 4; }

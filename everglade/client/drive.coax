@@ -46,8 +46,9 @@ e2d_press :: (s: [] E2) {
   if d[0].op == DRV_RIDE { drv_pressed(d, false, "a mount: Everglade II has none"); return; }
   names: [256] u8; nn := 0;
   for i: 0..<k[0].bar_n {
-    if drv_ability_is(d, k[0].bar[i].name, i + 1) { drv_pressed(d, e2k_press(s, i), k[0].bar[i].name); return; }
-    nn = drv_put_s(names[..], nn, ifx i == 0 then ": " else ", "); nn = drv_put_s(names[..], nn, k[0].bar[i].name);
+    word: [XK_NAME] u8; name := e2k_name(s, i, word[..]);   // the content row's name, as the bar shows it (#13285)
+    if drv_ability_is(d, name, i + 1) { drv_pressed(d, e2k_press(s, i), name); return; }
+    nn = drv_put_s(names[..], nn, ifx i == 0 then ": " else ", "); nn = drv_put_s(names[..], nn, name);
   }
   if k[0].bar_n == 0 { nn = drv_put_s(names[..], 0, ": the bar is empty"); }
   drv_no_ability(d, cast(string) names[0..<nn]);
@@ -58,7 +59,7 @@ e2d_bar :: (s: [] E2) {
   t := drv_trace(s[0].drive[..]); if t.count == 0 || !e2k_on(s) { return; }
   k := s[0].casts[..];
   uit_part(t, "bar");
-  for i: 0..<k[0].bar_n { b := e2k_box(k, i, s[0].width, s[0].height, s[0].k); uit_add(t, UIT_NONE, UIT_BUTTON, b[0], b[1], b[2], b[3], k[0].bar[i].name); }
+  for i: 0..<k[0].bar_n { word: [XK_NAME] u8; b := e2k_box(k, i, s[0].width, s[0].height, s[0].k); uit_add(t, UIT_NONE, UIT_BUTTON, b[0], b[1], b[2], b[3], e2k_name(s, i, word[..])); }
   g := e2k_side_geo(s);
   uit_part(t, "portrait");
   if g.n > 0 { uit_add(t, UIT_NONE, UIT_BUTTON, g.anchor.x0, g.anchor.y0, g.anchor.x1, g.anchor.y1, "portrait"); }

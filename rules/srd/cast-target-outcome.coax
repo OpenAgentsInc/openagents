@@ -4,7 +4,7 @@
 #load "cast-target.coax";
 
 #test "invalid target: Hold Person on an Undead spends a slot but rolls no save or condition" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..], rs_druid("Caster", 0, 3), 1, 1);
   t := rs_add(b[..], rs_skeleton("Target", 1), 3, 1);
   b[0].c[a].conc = SP_HEX; b[0].c[a].conc_until = 80;
@@ -15,11 +15,11 @@
   #assert b[0].dice[0].rolled == rolls && b[0].c[t].hp == hp && b[0].c[t].cond == 0;
   #assert b[0].c[a].conc == -1 && b[0].c[a].conc_until == 0 && !rs_effect(b[0].c[t], EF_HEX);
   e := rs_recent(b[0].book[0], 0);
-  #assert e.kind == RS_EV_SAVE && e.spell == SP_HOLD_PERSON && e.to == t && e.damage == 1 && e.amount == 0;
+  #assert e.kind == RS_EV_SAVE && e.spell.value == SP_HOLD_PERSON && e.to.value == t && e.damage == 1 && e.amount == 0;
 }
 #test "invalid target: malformed, dead and out of range requests preserve all preflight state" {
   for which: 0..<4 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
     a := rs_add(b[..], rs_druid("Caster", 0, 3), 1, 1);
     t := rs_add(b[..], rs_skeleton("Target", 1), 3, 1);
     rs_start_turn(b[..], a);
@@ -35,7 +35,7 @@
   }
 }
 #test "invalid target: a legal Humanoid still makes its normal save and a Quickened invalid cast pays both costs" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8; b[0].dice[0].fixed = true;
   a := rs_add(b[..], rs_sorcerer("Caster", 0, 3), 1, 1);
   t := rs_add(b[..], rs_skeleton("Target", 1), 3, 1);
   b[0].c[t].humanoid = true;
@@ -52,7 +52,7 @@
   #assert b[0].dice[0].rolled == rolls && !rs_has(b[0].c[t], RS_PARALYZED);
 }
 #test "invalid target: outcome handler preserves unrelated concentration and does not touch valid casts" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
   a := rs_add(b[..], rs_druid("Caster", 0, 3), 1, 1);
   t := rs_add(b[..], rs_skeleton("Target", 1), 3, 1);
   b[0].c[a].conc = SP_HEX; b[0].c[a].conc_until = 80;

@@ -137,14 +137,14 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
   m.level = 0; m.score[RS_DEX] = 20; #assert rs_unarmed_dc(m) == 14;
 }
 #test "the target saves with its better of Strength and Dexterity, Strength on a tie" {
-  b: [1] RsBattle; grapple_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
   #assert rs_unarmed_save(b[..], 1) == RS_STR;
   b[0].c[1].score[RS_DEX] = 12; #assert rs_unarmed_save(b[..], 1) == RS_DEX;
   b[0].c[1].score[RS_STR] = 14; #assert rs_unarmed_save(b[..], 1) == RS_STR;
 }
 #test "admission: 5 feet, one size larger at most, a free hand and one held creature, never the charmer or behind Total Cover" {
   for mode: 0..<16 {
-    b: [1] RsBattle; grapple_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
     opt := ifx mode >= 12 then UO_PUSH else UO_GRAPPLE;
     if mode == 1 { rs_place(b[..], 1, 4, 2); } else if mode == 2 { b[0].c[1].form = RS_HUGE; } else if mode == 3 { b[0].c[1].form = RS_LARGE; }
     else if mode == 4 { b[0].c[0].gesture_hand = false; b[0].c[0].material_hand = false; } else if mode == 5 { b[0].c[0].gesture_hand = false; }
@@ -156,27 +156,27 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
     ok := mode == 0 || mode == 3 || mode == 5 || mode == 12 || mode == 14;
     #assert rs_unarmed_fits(b[..], 0, 1, opt) == ok;
   }
-  b: [1] RsBattle; grapple_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
   #assert !rs_unarmed_fits(b[..], 0, 0, UO_PUSH) && !rs_unarmed_fits(b[..], -1, 1, UO_PUSH) && !rs_unarmed_fits(b[..], 0, 2, UO_PUSH) && !rs_unarmed_fits(b[..], 2, 1, UO_PUSH) && !rs_unarmed_fits(b[..], 0, -1, UO_PUSH);
   #assert !rs_unarmed_fits(b[..], 0, 1, 0) && !rs_unarmed_fits(b[..], 0, 1, 4) && rs_unarmed_fits(b[..], 0, 1, UO_PRONE);
 }
 #test "a failed save grapples: Speed 0, held by one hand, Disadvantage on others; a success holds nothing" {
-  b: [1] RsBattle; grapple_field(b[..]);   // d20 10 + 0 vs DC 14: fails
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);   // d20 10 + 0 vs DC 14: fails
   #assert rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE) && b[0].turn.action;
   k := rs_grapple_at(b[0].c[1], 0); e := b[0].c[1].eff[k];
   #assert k >= 0 && e.dc == 14 && e.cond == RS_GRAPPLED && e.save == -1 && e.until == RS_NO_END && b[0].c[0].grappling == 1 && rs_has(b[0].c[1], RS_GRAPPLED) && !rs_can_move(b[0].c[1]);
   #assert rs_grapple_down(b[0].c[1], 2) && !rs_grapple_down(b[0].c[1], 0);
   #assert !rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE);   // the action is spent
-  s: [1] RsBattle; grapple_field(s[..]); s[0].c[1].score[RS_STR] = 18;   // 10 + 4 = 14: succeeds
+  s: [1] RsBattle; s_room: [1] RsRoom; rs_have(s[..], s_room[..]); grapple_field(s[..]); s[0].c[1].score[RS_STR] = 18;   // 10 + 4 = 14: succeeds
   #assert rs_attack_unarmed(s[..], 0, 1, UO_GRAPPLE) && s[0].turn.action && s[0].c[0].grappling < 0 && !rs_has(s[0].c[1], RS_GRAPPLED);
-  r: [1] RsBattle; grapple_field(r[..]); r[0].c[1].immune_cond = 0; r[0].c[1].cond = 0;
+  r: [1] RsBattle; r_room: [1] RsRoom; rs_have(r[..], r_room[..]); grapple_field(r[..]); r[0].c[1].immune_cond = 0; r[0].c[1].cond = 0;
   for k2: 0..<RS_EFFECTS - 1 { r[0].c[1].eff[k2].kind = EF_BLESS; }
   #assert rs_attack_unarmed(r[..], 0, 1, UO_GRAPPLE) && r[0].c[0].grappling == 1;
   #assert !rs_attack_unarmed(r[..], 1, 0, UO_GRAPPLE);   // not its turn
 }
 #test "Shove pushes 5 feet straight away into an open square, or knocks Prone; a success resists" {
   for mode: 0..<6 {
-    b: [1] RsBattle; grapple_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
     if mode == 1 { _ := rs_add(b[..], rs_wizard("Wall", 1, 1), 4, 2); } else if mode == 2 { rs_place(b[..], 1, 9, 2); rs_place(b[..], 0, 8, 2); }
     else if mode == 3 { b[0].c[1].score[RS_STR] = 18; } else if mode == 5 { b[0].c[1].immune_cond = RS_PRONE; }
     opt := ifx mode >= 4 then UO_PRONE else UO_PUSH;
@@ -186,35 +186,35 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
     #assert b[0].c[1].x == ox + (ifx moved then 1 else 0) && b[0].c[1].y == 2 && rs_has(b[0].c[1], RS_PRONE) == (mode == 4);
     if moved { #assert rs_at(b[..], 4, 2) == 1 && rs_at(b[..], 3, 2) < 0; }
   }
-  d: [1] RsBattle; grapple_field(d[..]); rs_place(d[..], 1, 3, 3);
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); grapple_field(d[..]); rs_place(d[..], 1, 3, 3);
   #assert rs_attack_unarmed(d[..], 0, 1, UO_PUSH) && d[0].c[1].x == 4 && d[0].c[1].y == 4;   // diagonal: straight away
-  e: [1] RsBattle; grapple_field(e[..]); rs_place(e[..], 1, 3, 5);  rs_place(e[..], 0, 2, 4);
+  e: [1] RsBattle; e_room: [1] RsRoom; rs_have(e[..], e_room[..]); grapple_field(e[..]); rs_place(e[..], 1, 3, 5);  rs_place(e[..], 0, 2, 4);
   #assert rs_attack_unarmed(e[..], 0, 1, UO_PUSH) && e[0].c[1].y == 5;   // off the grid: stays
-  f: [1] RsBattle; grapple_field(f[..]); rs_place(f[..], 0, 4, 3); rs_place(f[..], 1, 3, 2);
+  f: [1] RsBattle; f_room: [1] RsRoom; rs_have(f[..], f_room[..]); grapple_field(f[..]); rs_place(f[..], 0, 4, 3); rs_place(f[..], 1, 3, 2);
   #assert rs_attack_unarmed(f[..], 0, 1, UO_PUSH) && f[0].c[1].x == 2 && f[0].c[1].y == 1;
-  g: [1] RsBattle; grapple_field(g[..]); rs_place(g[..], 1, 0, 0); rs_place(g[..], 0, 1, 1);
+  g: [1] RsBattle; g_room: [1] RsRoom; rs_have(g[..], g_room[..]); grapple_field(g[..]); rs_place(g[..], 1, 0, 0); rs_place(g[..], 0, 1, 1);
   #assert rs_attack_unarmed(g[..], 0, 1, UO_PUSH) && g[0].c[1].x == 0 && g[0].c[1].y == 0;
 }
 #test "Extra Attack's other attacks follow the Grapple with the weapon" {
-  b: [1] RsBattle; grapple_field(b[..]); b[0].c[1].hp = 200; b[0].c[1].hp_max = 200; b[0].c[1].ac = 5;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]); b[0].c[1].hp = 200; b[0].c[1].hp_max = 200; b[0].c[1].ac = 5;
   #assert b[0].c[0].rank[RS_RK_EXTRA_ATTACK] == 1 && rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE) && b[0].c[1].hp < 200 && rs_has(b[0].c[1], RS_GRAPPLED);
   for bare: 0..<2 {   // the same blow as the weapon's own, ability modifier and all
-    w: [1] RsBattle; grapple_field(w[..]); w[0].c[1].hp = 200; w[0].c[1].hp_max = 200; w[0].c[1].ac = 5; grapple_hold(w[..], 0, 1, 14);
+    w: [1] RsBattle; w_room: [1] RsRoom; rs_have(w[..], w_room[..]); grapple_field(w[..]); w[0].c[1].hp = 200; w[0].c[1].hp_max = 200; w[0].c[1].ac = 5; grapple_hold(w[..], 0, 1, 14);
     _ := rs_strike(w[..], 0, 1, w[0].c[0].weapon, bare == 1);
     #assert (200 - w[0].c[1].hp == 200 - b[0].c[1].hp) == (bare == 0);
   }
-  c: [1] RsBattle; grapple_field(c[..]); c[0].c[1].hp = 1; c[0].c[1].ac = 5; _ := rs_add(c[..], rs_wizard("Next", 1, 1), 2, 3); c[0].c[2].hp = 200; c[0].c[2].hp_max = 200; c[0].c[2].ac = 5;
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); grapple_field(c[..]); c[0].c[1].hp = 1; c[0].c[1].ac = 5; _ := rs_add(c[..], rs_wizard("Next", 1, 1), 2, 3); c[0].c[2].hp = 200; c[0].c[2].hp_max = 200; c[0].c[2].ac = 5;
   c[0].c[1].score[RS_STR] = 18;
   #assert rs_attack_unarmed(c[..], 0, 1, UO_PRONE) && c[0].c[1].hp < 1;   // the second blow fells it
-  n: [1] RsBattle; grapple_field(n[..]); n[0].c[1].hp = 1; n[0].c[1].ac = 5; n[0].c[1].score[RS_STR] = 18;
+  n: [1] RsBattle; n_room: [1] RsRoom; rs_have(n[..], n_room[..]); grapple_field(n[..]); n[0].c[1].hp = 1; n[0].c[1].ac = 5; n[0].c[1].score[RS_STR] = 18;
   #assert rs_attack_unarmed(n[..], 0, 1, UO_PRONE);   // no one beside after the first falls: the rest are lost
-  u: [1] RsBattle; grapple_field(u[..]); u[0].c[1].score[RS_STR] = 18; u[0].c[1].ac = 5; u[0].c[1].hp = 200;
+  u: [1] RsBattle; u_room: [1] RsRoom; rs_have(u[..], u_room[..]); grapple_field(u[..]); u[0].c[1].score[RS_STR] = 18; u[0].c[1].ac = 5; u[0].c[1].hp = 200;
   u[0].c[0].eff[0] = RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = 1, until = 9}; u[0].c[0].cond = RS_STUNNED;
   #assert !rs_attack_unarmed(u[..], 0, 1, UO_PRONE);
 }
 #test "a grapple ends on release, the grappler's incapacity, more than 5 feet between them, or escape" {
   for mode: 0..<6 {
-    b: [1] RsBattle; grapple_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
     #assert rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE) && b[0].c[0].grappling == 1;
     if mode == 0 { rs_grapple_release(b[..], 0); }
     else if mode == 1 { b[0].c[0].cond |= RS_INCAPACITATED; rs_grapple_lapse(b[..], 0); }
@@ -225,10 +225,10 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
     held := mode == 4;
     #assert rs_has(b[0].c[1], RS_GRAPPLED) == held && (b[0].c[0].grappling == 1) == held && (rs_grapple_at(b[0].c[1], 0) >= 0) == held;
   }
-  c: [1] RsBattle; grapple_field(c[..]); #assert rs_attack_unarmed(c[..], 0, 1, UO_GRAPPLE);
+  c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); grapple_field(c[..]); #assert rs_attack_unarmed(c[..], 0, 1, UO_GRAPPLE);
   c[0].c[1].eff[rs_grapple_at(c[0].c[1], 0)].by = 7; rs_grapple_lapse(c[..], 1); #assert !rs_has(c[0].c[1], RS_GRAPPLED) && c[0].c[0].grappling == 1;
   rs_grapple_lapse(c[..], 0); #assert c[0].c[0].grappling == -1;
-  d: [1] RsBattle; grapple_field(d[..]); d[0].c[0].grappling = 9; rs_grapple_lapse(d[..], 0); #assert d[0].c[0].grappling == -1;
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); grapple_field(d[..]); d[0].c[0].grappling = 9; rs_grapple_lapse(d[..], 0); #assert d[0].c[0].grappling == -1;
   rs_grapple_lapse(d[..], -1); rs_grapple_lapse(d[..], 2); rs_grapple_release(d[..], -1); rs_grapple_release(d[..], 2);
   d[0].c[0].grappling = 7; rs_grapple_release(d[..], 0); #assert d[0].c[0].grappling == -1;
   d[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = -1, spell = RS_GRAPPLE_SPELL}; rs_grapple_lapse(d[..], 1); #assert d[0].c[1].eff[0].kind == EF_NONE;
@@ -237,7 +237,7 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
 }
 #test "escaping uses the better of Athletics and Acrobatics against the escape DC, as an action" {
   for mode: 0..<6 {
-    b: [1] RsBattle; grapple_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
     #assert rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE);
     rs_fresh(b[..], 1);
     if mode == 1 { b[0].c[1].score[RS_STR] = 18; } else if mode == 2 { b[0].c[1].score[RS_DEX] = 18; } else if mode == 3 { b[0].turn.action = true; }
@@ -247,13 +247,13 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
     #assert r.accepted == (mode != 3) && rs_has(b[0].c[1], RS_GRAPPLED) == !free && (b[0].c[0].grappling < 0) == free && b[0].turn.action;
     if mode == 4 { #assert r.total == 13 && r.ability == RS_DEX; }   // Dex +1 and proficiency +2: 13 vs 14
   }
-  n: [1] RsBattle; grapple_field(n[..]); rs_fresh(n[..], 1); #assert !rs_grapple_escape(n[..], 1).accepted && !n[0].turn.action;
-  m: [1] RsBattle; grapple_field(m[..]); #assert rs_attack_unarmed(m[..], 0, 1, UO_GRAPPLE); rs_fresh(m[..], 1); m[0].c[1].score[RS_STR] = 18;
+  n: [1] RsBattle; n_room: [1] RsRoom; rs_have(n[..], n_room[..]); grapple_field(n[..]); rs_fresh(n[..], 1); #assert !rs_grapple_escape(n[..], 1).accepted && !n[0].turn.action;
+  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]); grapple_field(m[..]); #assert rs_attack_unarmed(m[..], 0, 1, UO_GRAPPLE); rs_fresh(m[..], 1); m[0].c[1].score[RS_STR] = 18;
   k := rs_grapple_at(m[0].c[1], 0); m[0].c[1].eff[k].by = 9;
   #assert rs_grapple_escape(m[..], 1).passed && m[0].c[0].grappling == 1;
 }
 #test "dragging what it holds costs 5 more feet a square unless it is Tiny or two sizes smaller" {
-  b: [1] RsBattle; grapple_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
   #assert rs_drag_feet(b[..], 0, 1, 2) == 0;
   #assert rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE);
   #assert rs_drag_feet(b[..], 0, 2, 3) == 0 && rs_drag_feet(b[..], 0, 1, 2) == 5;
@@ -270,7 +270,7 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
 }
 
 #test "admission at the index edges: creature 0 as target or held, a creature past the count, immunity to another condition" {
-  b: [1] RsBattle; grapple_field(b[..]); p := grapple_past(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]); p := grapple_past(b[..]);
   #assert p == 2 && rs_unarmed_fits(b[..], 1, 0, UO_PUSH) && rs_unarmed_fits(b[..], 1, 0, UO_GRAPPLE);
   #assert !rs_unarmed_fits(b[..], p, 1, UO_PUSH) && !rs_unarmed_fits(b[..], 0, p, UO_PUSH);
   b[0].c[1].grappling = 0; #assert !rs_unarmed_fits(b[..], 1, 0, UO_GRAPPLE);
@@ -281,14 +281,14 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
   ends := [4] string.["", ": Grappled", ": pushed 5 feet", ": Prone"];
   for opt: 1..<4 {
     for saved: 0..<2 {
-      b: [1] RsBattle; grapple_field(b[..]); b[0].c[0].rest.phase = 1; b[0].c[1].immune_cond = RS_BLINDED;
+      b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]); b[0].c[0].rest.phase = 1; b[0].c[1].immune_cond = RS_BLINDED;
       if saved == 1 { b[0].c[1].score[RS_STR] = 18; }   // 10 + 4 against DC 14
       cond := b[0].c[1].cond;
       rs_unarmed_resolve(b[..], 0, 1, opt);
       e := act_last(b[..]);
       want: [64] u8; n := rs_put(want[..], 0, "Holder"); n = rs_put(want[..], n, names[opt]); n = rs_put(want[..], n, "Held");
       n = rs_put(want[..], n, ifx saved == 1 then ": it slips free" else ends[opt]);
-      #assert act_said(b[..], cast(string) want[0..<n]) && e.kind == RS_EV_CONDITION && e.spell == -1 && e.by == 0 && e.to == 1 && e.amount == 14 && e.damage == 0;
+      #assert act_said(b[..], cast(string) want[0..<n]) && e.kind == RS_EV_CONDITION && e.spell.value == -1 && e.by.value == 0 && e.to.value == 1 && e.amount == 14 && e.damage == 0;
       #assert b[0].c[0].rest.phase == 0;
       #assert b[0].c[1].cond == (ifx saved == 0 && opt == UO_PRONE then cond | RS_PRONE else ifx saved == 0 && opt == UO_GRAPPLE then cond | RS_GRAPPLED else cond);
     }
@@ -298,35 +298,35 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
   tx := [6] int.[1, 2, 0, 2, 9, 2]; ty := [6] int.[2, 1, 2, 0, 2, 5];
   ax := [6] int.[2, 2, 1, 2, 8, 2]; ay := [6] int.[2, 2, 2, 1, 2, 4];
   for mode: 0..<6 {
-    b: [1] RsBattle; grapple_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
     rs_place(b[..], 0, 7, 0); rs_place(b[..], 1, tx[mode], ty[mode]); rs_place(b[..], 0, ax[mode], ay[mode]);
     rs_unarmed_resolve(b[..], 0, 1, UO_PUSH);
     moved := mode < 2;   // to column 0 and row 0; off the grid's four edges it stays
     #assert b[0].c[1].x == tx[mode] + (ifx moved then tx[mode] - ax[mode] else 0) && b[0].c[1].y == ty[mode] + (ifx moved then ty[mode] - ay[mode] else 0);
   }
   // into creature 0's square: it stays
-  w: [1] RsBattle; grapple_field(w[..]); rs_place(w[..], 0, 5, 2); rs_place(w[..], 1, 4, 2);
+  w: [1] RsBattle; w_room: [1] RsRoom; rs_have(w[..], w_room[..]); grapple_field(w[..]); rs_place(w[..], 0, 5, 2); rs_place(w[..], 1, 4, 2);
   q := rs_add(w[..], rs_fighter("Pusher", 0, 5), 3, 2); rs_fresh(w[..], q);
   rs_unarmed_resolve(w[..], q, 1, UO_PUSH); #assert w[0].c[1].x == 4 && w[0].c[0].x == 5;
   // a pusher at the holder's side carries the held creature 10 feet off: the grapple ends
-  g: [1] RsBattle; grapple_field(g[..]); grapple_hold(g[..], 0, 1, 14);
+  g: [1] RsBattle; g_room: [1] RsRoom; rs_have(g[..], g_room[..]); grapple_field(g[..]); grapple_hold(g[..], 0, 1, 14);
   r := rs_add(g[..], rs_fighter("Pusher", 0, 5), 2, 3);
   rs_unarmed_resolve(g[..], r, 1, UO_PUSH);
   #assert g[0].c[1].x == 4 && g[0].c[1].y == 1 && g[0].c[0].grappling == -1 && rs_grapple_at(g[0].c[1], 0) < 0;
 }
 #test "Extra Attack after the option takes the creature beside when the target is down, with the weapon" {
-  b: [1] RsBattle; b[0].w = 10; b[0].h = 6; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 10; b[0].h = 6; b[0].dice[0].fixed = true;
   a := rs_add(b[..], rs_wizard("Sleeper", 1, 3), 3, 2); f := rs_add(b[..], rs_fighter("Champion", 0, 5), 2, 2); d := rs_add(b[..], rs_wizard("Down", 1, 3), 2, 3);
   b[0].c[a].hp = 200; b[0].c[a].hp_max = 200; b[0].c[a].cond |= RS_UNCONSCIOUS; b[0].c[d].hp = 0;
   rs_fresh(b[..], f); moves := b[0].turn.move_left;
   #assert a == 0 && rs_attack_unarmed(b[..], f, d, UO_PRONE) && rs_has(b[0].c[d], RS_PRONE);
   #assert b[0].c[a].hp < 194 && b[0].turn.move_left == moves + 3;   // a weapon's Critical Hit; Remarkable Athlete's half Speed
-  n: [1] RsBattle; n[0].w = 10; n[0].h = 6; n[0].dice[0].fixed = true;
+  n: [1] RsBattle; n_room: [1] RsRoom; rs_have(n[..], n_room[..]); n[0].w = 10; n[0].h = 6; n[0].dice[0].fixed = true;
   f2 := rs_add(n[..], rs_fighter("Alone", 0, 5), 2, 2); d2 := rs_add(n[..], rs_wizard("Down", 1, 3), 2, 3); n[0].c[d2].hp = 0;
   rs_fresh(n[..], f2); #assert rs_attack_unarmed(n[..], f2, d2, UO_PRONE) && n[0].c[d2].hp == 0;   // no one beside: done
 }
 #test "release, lapse and escape read only creatures in the battle" {
-  b: [1] RsBattle; grapple_field(b[..]); p := grapple_past(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]); p := grapple_past(b[..]);
   rs_grapple_release(b[..], 0); #assert b[0].c[0].grappling == -1;   // holding no one
   grapple_hold(b[..], p, 1, 14); rs_grapple_release(b[..], p); #assert b[0].c[p].grappling == 1 && rs_grapple_at(b[0].c[1], p) >= 0;
   b[0].c[p].x = 9; b[0].c[p].y = 5; rs_grapple_lapse(b[..], p); #assert rs_grapple_at(b[0].c[1], p) >= 0;
@@ -346,7 +346,7 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
   rs_grapple_lapse(b[..], p); #assert rs_grapple_at(b[0].c[p], 0) >= 0;
 }
 #test "escape uses the first grapple record, the better skill, tells its result, and frees only that grappler" {
-  b: [1] RsBattle; grapple_field(b[..]); p := grapple_past(b[..]); rs_fresh(b[..], 1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]); p := grapple_past(b[..]); rs_fresh(b[..], 1);
   b[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_BLINDED, by = 0, spell = 5, until = RS_NO_END, save = -1, dc = 1};
   b[0].c[1].eff[1] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = 0, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = 30};
   b[0].c[1].eff[2] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = p, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = 1};
@@ -354,27 +354,27 @@ rs_drag_follow :: (b: [] RsBattle, i: int, ox: int, oy: int) #effects(all) {
   b[0].c[1].score[RS_STR] = 14; b[0].c[1].checks.skills = 1 << SK_ATHLETICS;
   r := rs_grapple_escape(b[..], 1); e := act_last(b[..]);
   #assert r.accepted && !r.passed && r.total == 14 && b[0].c[1].eff[0].kind == EF_COND && b[0].c[1].eff[1].kind == EF_COND && b[0].c[1].eff[2].kind == EF_COND;
-  #assert act_said(b[..], "Held fails to escape the grapple") && e.kind == RS_EV_CONDITION && e.by == 1 && e.to == 1 && e.amount == 14;
+  #assert act_said(b[..], "Held fails to escape the grapple") && e.kind == RS_EV_CONDITION && e.by.value == 1 && e.to.value == 1 && e.amount == 14;
   // a success by the creature past the count, and by one whose hand holds another, frees no hand
-  s: [1] RsBattle; grapple_field(s[..]); q := grapple_past(s[..]); rs_fresh(s[..], 1);
+  s: [1] RsBattle; s_room: [1] RsRoom; rs_have(s[..], s_room[..]); grapple_field(s[..]); q := grapple_past(s[..]); rs_fresh(s[..], 1);
   s[0].c[q].grappling = 1; s[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = q, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = 1};
   r = rs_grapple_escape(s[..], 1); #assert r.passed && s[0].c[1].eff[0].kind == EF_NONE && s[0].c[q].grappling == 1 && act_said(s[..], "Held escapes the grapple");
-  t: [1] RsBattle; grapple_field(t[..]); rs_fresh(t[..], 1);
+  t: [1] RsBattle; t_room: [1] RsRoom; rs_have(t[..], t_room[..]); grapple_field(t[..]); rs_fresh(t[..], 1);
   t[0].c[0].grappling = 7; t[0].c[1].eff[0] = RsEffect.{kind = EF_COND, cond = RS_GRAPPLED, by = 0, spell = RS_GRAPPLE_SPELL, until = RS_NO_END, save = -1, dc = 1};
   r = rs_grapple_escape(t[..], 1); #assert r.passed && t[0].c[0].grappling == 7;
   // a tie between Strength and Dexterity is Strength: a raging creature rolls with Advantage
-  g: [1] RsBattle; grapple_field(g[..]); rs_fresh(g[..], 1); grapple_hold(g[..], 0, 1, 30); g[0].c[1].eff = rs_state_put(g[0].c[1].eff, EF_RAGE, true); g[0].c[1].score[RS_DEX] = 10;
+  g: [1] RsBattle; g_room: [1] RsRoom; rs_have(g[..], g_room[..]); grapple_field(g[..]); rs_fresh(g[..], 1); grapple_hold(g[..], 0, 1, 30); g[0].c[1].eff = rs_state_put(g[0].c[1].eff, EF_RAGE, true); g[0].c[1].score[RS_DEX] = 10;
   rolled := g[0].dice[0].rolled; r = rs_grapple_escape(g[..], 1); #assert g[0].dice[0].rolled == rolled + 2;
 }
 #test "dragging reads only creatures in the battle, creature 0 among them, and never into an occupied square" {
-  b: [1] RsBattle; grapple_field(b[..]); p := grapple_past(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]); p := grapple_past(b[..]);
   grapple_hold(b[..], 1, 0, 12); #assert rs_drag_feet(b[..], 1, 6, 2) == 5 && rs_drag_feet(b[..], 1, 3, 3) == 0;
   rs_place(b[..], 1, 4, 2); rs_drag_follow(b[..], 1, 3, 2); #assert b[0].c[0].x == 3 && b[0].c[0].y == 2 && b[0].c[1].grappling == 0;
   rs_place(b[..], 0, 2, 2); rs_place(b[..], 1, 3, 2); b[0].c[1].grappling = -1; rs_drop_effect(b[..], 0, rs_grapple_at(b[0].c[0], 1));
   b[0].c[0].grappling = p; #assert rs_drag_feet(b[..], 0, 7, 2) == 0;
   b[0].c[p].x = 9; b[0].c[p].y = 5; rs_drag_follow(b[..], 0, 1, 1); #assert b[0].c[p].x == 9 && b[0].c[p].y == 5;
   // the square left holds creature 0: what is dragged stays (and is let go)
-  d: [1] RsBattle; grapple_field(d[..]); h := rs_add(d[..], rs_wizard("Far", 1, 1), 6, 4);
+  d: [1] RsBattle; d_room: [1] RsRoom; rs_have(d[..], d_room[..]); grapple_field(d[..]); h := rs_add(d[..], rs_wizard("Far", 1, 1), 6, 4);
   grapple_hold(d[..], 1, h, 12); rs_drag_follow(d[..], 1, 2, 2); #assert d[0].c[h].x == 6 && d[0].c[h].y == 4 && d[0].c[0].x == 2;
 }
 

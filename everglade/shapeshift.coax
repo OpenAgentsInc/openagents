@@ -202,7 +202,7 @@ sh_battle :: (b: [] RsBattle) {
 }
 
 #test "the change swaps the body and its stats, and Return to Form reverses both" {
-  b: [1] RsBattle; sh_battle(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sh_battle(b[..]);
   own := b[0].c[0];
   s: [1] Shapeshift;
   #assert rs_shapechange(b[..], 0, MON_ADULT_RED_DRAGON) && sh_begin(s[..], SH_DRAGON, 10);
@@ -222,7 +222,7 @@ sh_battle :: (b: [] RsBattle) {
   #assert b[0].c[0].shape_form == 0 && b[0].c[0].ac == own.ac && b[0].c[0].temp == 0 && b[0].c[0].fly == 0;
 }
 #test "Wild Shape's wolf is a body too, with its own camera" {
-  b: [1] RsBattle; sh_battle(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sh_battle(b[..]);
   s: [1] Shapeshift;
   #assert rs_wild_shape(b[..], 0, MON_WOLF) && sh_begin(s[..], SH_WOLF, 0) && sh_body(s[0], 2).kind == SH_WOLF;
   #assert abs(sh_cam_scale(s[0], 2) - f32(SH_CAM_WOLF)) < 0.001 && sh_moments(s[0], 1.5, 1.7) == 0;
@@ -244,7 +244,7 @@ sh_battle :: (b: [] RsBattle) {
   #assert sh_in_breath(m2, 0, -0.785398, 0, 0, 12) && !sh_in_breath(m2, 0, 0, 0, 0, 12);
 }
 #test "hold to aim, release to breathe: the engine's save and damage, then the cone is spent until it recharges" {
-  b: [1] RsBattle; sh_battle(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sh_battle(b[..]);
   f := rs_fighter("Foe", 1, 3); f.hp = 200; f.hp_max = 200; foe := rs_add(b[..], f, 24, 28);
   rs_fresh(b[..], 0);
   #assert rs_shapechange(b[..], 0, MON_ADULT_RED_DRAGON);

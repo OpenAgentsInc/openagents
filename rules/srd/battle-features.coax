@@ -1,4 +1,5 @@
-// The classes' features (GitHub #13287, split from battle.coax): rs_release_turned to rs_dash.
+// The classes' features (GitHub #13287, split from battle.coax): rs_release_turned to rs_dash. A
+// feature is a row of steps (#13285: rs_feature, run by rs_feature_use).
 // Not #authority yet: it owes its mutation pass (and a check for each procedure the issue lists).
 //   coax/bin/coax mutate rules/srd/battle.coax --library --unit rules/srd/battle-features.coax
 
@@ -39,48 +40,268 @@ rs_feature_heal :: (b: [] RsBattle, i: int, j: int, amount: int, what: string, f
   return got;
 }
 
-// Font of Inspiration (p. 32): no action, its lowest spell slot for one Bardic Inspiration use.
-rs_font :: (b: [] RsBattle, i: int) -> bool {
-  if b[0].who != i || !rs_has_feature(b[0].c[i], RS_FT_FONT) || b[0].c[i].uses[RS_USE_INSPIRE] >= b[0].c[i].uses_max[RS_USE_INSPIRE] { return false; }
-  for l: 1..<10 {
-    if b[0].c[i].slots[l] > 0 {
-      b[0].c[i].slots[l] -= 1; b[0].c[i].uses[RS_USE_INSPIRE] += 1;
-      rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_FONT, ": Font of Inspiration, a spell slot for Bardic Inspiration");
-      return true;
+// ---- a feature's record: its program (#13285)
+//
+// A class feature is a row of steps from a closed set, as a spell is (spells.coax): what it needs
+// (its turn's part, the feature known, a use in its pool, a target in reach), what it spends, the
+// line it tells, and what it does. rs_feature_use runs any row: every need first, and nothing is
+// spent unless all hold; then the rest in order. A step that can still refuse (an Aura with no place)
+// stands before any that spends. A feature that uses these steps is a row, and nothing else.
+//
+// The needs (below RS_FS_DO): its turn; able to act; its Bonus Action free; its Action free; its
+// Action spent; feature a known; rank a above 0; a use in pool a; pool a below its maximum; pool a
+// empty; a spell slot; below its Hit Point maximum; able to regain Hit Points; not moved this turn;
+// note a clear; not done this turn; Aura a not on it; state Aura a not on it, with a place for it;
+// class a at level b; a point within a feet; another creature, up, within a feet, with a place for
+// state Aura b and none yet; a creature within a feet that can be healed, and something to give it
+// (at most the pool a, the amount asked and what it lacks); a place on every Undead foe within a
+// feet that would be turned; a Bloodied friend within a feet.
+RS_FS_N_TURN :: 1; RS_FS_N_ACT :: 2; RS_FS_N_BONUS :: 3; RS_FS_N_ACTION :: 4; RS_FS_N_ACTED :: 5; RS_FS_N_FEAT :: 6; RS_FS_N_RANK :: 7;
+RS_FS_N_USE :: 8; RS_FS_N_POOL_ROOM :: 9; RS_FS_N_POOL_NONE :: 10; RS_FS_N_SLOT :: 11; RS_FS_N_HURT :: 12; RS_FS_N_HEALS :: 13;
+RS_FS_N_STILL :: 14; RS_FS_N_FRESH :: 15; RS_FS_N_ONCE :: 16; RS_FS_N_NO_AURA :: 17; RS_FS_N_NO_STATE :: 18; RS_FS_N_CLASS :: 19;
+RS_FS_N_POINT :: 20; RS_FS_N_OTHER :: 21; RS_FS_N_GIVE :: 22; RS_FS_N_TURNABLE :: 23; RS_FS_N_BLOODIED :: 24;
+// What it does (from RS_FS_DO): takes its Bonus Action; takes its Action; gives its Action back;
+// spends one use of pool a; spends from pool a what it gives; spends its lowest spell slot; one more
+// use in pool a; pool a at one; one more slot of level a; note a set; done this turn; tells line t
+// as event a of feature c, to itself (b 0), its target (b 1, with what it gives) or no one (b 2);
+// heals itself a dice of b sides (b 0: its Martial Arts die) plus its level (c 1) or its Wisdom
+// modifier, 1 at least (c 2), named t; heals its target what it gives, named t; half its Speed more
+// with feature a (Tactical Shift); Aura a on itself (refused with no place); state Aura a on, with
+// bit b; ends its Concentration, saying t; ends Charmed and Frightened on it with feature a; Steady
+// Aim's turn; the Bard's die on its target; and three that are one feature's own: Turn Undead,
+// Preserve Life and Land's Aid.
+RS_FS_DO :: 40;
+RS_FS_BONUS :: 40; RS_FS_ACTION :: 41; RS_FS_SURGE :: 42; RS_FS_SPEND :: 43; RS_FS_SPEND_GIVE :: 44; RS_FS_SLOT_SPEND :: 45;
+RS_FS_POOL_ADD :: 46; RS_FS_POOL_ONE :: 47; RS_FS_SLOT_ADD :: 48; RS_FS_NOTE :: 49; RS_FS_ONCE :: 50; RS_FS_SAY :: 51;
+RS_FS_HEAL :: 52; RS_FS_HEAL_GIVE :: 53; RS_FS_SHIFT :: 54; RS_FS_AURA :: 55; RS_FS_STATE :: 56; RS_FS_END_CONC :: 57;
+RS_FS_UNCHARM :: 58; RS_FS_AIM :: 59; RS_FS_INSPIRE :: 60; RS_FS_TURN_UNDEAD :: 61; RS_FS_PRESERVE :: 62; RS_FS_LANDS :: 63;
+RS_TO_SELF :: 0; RS_TO_TARGET :: 1; RS_TO_NONE :: 2;
+RS_PLUS_LEVEL :: 1; RS_PLUS_WIS :: 2;
+// Two features with no ability number of their own (ability-record.coax RS_AB_*): Font of
+// Inspiration, and Wild Resurgence's other way (a Wild Shape use for a 1st-level slot).
+RS_FP_FONT :: 100; RS_FP_RESURGE_SLOT :: 101;
+
+RsFeatStep :: struct { kind: int; a: int; b: int; c: int; t: string; }
+RS_FEAT_STEPS :: 10;
+RsFeature :: struct { st: [RS_FEAT_STEPS] RsFeatStep; n: int; }
+// What a use is aimed at and asks for: a creature (-1 none), a point, an amount (Lay On Hands).
+// `give` is what the needs worked out it gives.
+RsUse :: struct { j: int = -1; x: int; y: int; amount: int; give: int; feat: int; }   // feat: the feature its line told (its heals tell the same)
+rs_fp :: (f: [] RsFeature, kind: int, a: int, b: int, c: int, t: string) { f[0].st[f[0].n] = RsFeatStep.{kind = kind, a = a, b = b, c = c, t = t}; f[0].n += 1; }
+
+// The features' rows (SRD 5.2.1; the page is the feature's). n 0: no such row.
+rs_feature :: (kind: int) -> RsFeature {
+  f: [1] RsFeature;
+  if kind == RS_AB_RAGE {   // Rage (p. 29): a Bonus Action, one of its uses; no Concentration while it lasts
+    rs_fp(f[..], RS_FS_N_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_USE, RS_USE_RAGE, 0, 0, ""); rs_fp(f[..], RS_FS_N_NO_STATE, EF_RAGE, 0, 0, "");
+    rs_fp(f[..], RS_FS_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_SPEND, RS_USE_RAGE, 0, 0, ""); rs_fp(f[..], RS_FS_STATE, EF_RAGE, RS_RAGE_KEPT, 0, "");
+    rs_fp(f[..], RS_FS_END_CONC, 0, 0, 0, " (Rage)"); rs_fp(f[..], RS_FS_UNCHARM, RS_FT_MINDLESS_RAGE, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_NONE, " enters a Rage");
+  } else if kind == RS_AB_SECOND {   // Second Wind (p. 48): a Bonus Action, 1d10 + its Fighter level; Tactical Shift
+    rs_fp(f[..], RS_FS_N_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_USE, RS_USE_WIND, 0, 0, ""); rs_fp(f[..], RS_FS_N_HURT, 0, 0, 0, "");
+    rs_fp(f[..], RS_FS_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_SPEND, RS_USE_WIND, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CAST, RS_TO_SELF, RS_FT_SECOND_WIND, " takes a Second Wind");
+    rs_fp(f[..], RS_FS_HEAL, 1, 10, RS_PLUS_LEVEL, "Second Wind"); rs_fp(f[..], RS_FS_SHIFT, RS_FT_TACTICAL_SHIFT, 0, 0, "");
+  } else if kind == RS_AB_SURGE {   // Action Surge (p. 48): one more action this turn
+    rs_fp(f[..], RS_FS_N_TURN, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_ACTED, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_ACT, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_USE, RS_USE_SURGE, 0, 0, "");
+    rs_fp(f[..], RS_FS_SURGE, 0, 0, 0, ""); rs_fp(f[..], RS_FS_SPEND, RS_USE_SURGE, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_ACTION_SURGE, " uses Action Surge");
+  } else if kind == RS_AB_WHOLE {   // Wholeness of Body (Open Hand, p. 52): a Bonus Action, the Martial Arts die + Wisdom (at least 1)
+    rs_fp(f[..], RS_FS_N_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_USE, RS_USE_WHOLE, 0, 0, ""); rs_fp(f[..], RS_FS_N_HURT, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_HEALS, 0, 0, 0, "");
+    rs_fp(f[..], RS_FS_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_SPEND, RS_USE_WHOLE, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CAST, RS_TO_SELF, RS_FT_WHOLENESS, " draws on Wholeness of Body");
+    rs_fp(f[..], RS_FS_HEAL, 1, 0, RS_PLUS_WIS, "Wholeness of Body");
+  } else if kind == RS_AB_LAY {   // Lay On Hands (p. 53-54): a Bonus Action, touching a creature (itself too), from the pool
+    rs_fp(f[..], RS_FS_N_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_USE, RS_USE_LAY, 0, 0, ""); rs_fp(f[..], RS_FS_N_GIVE, RS_USE_LAY, 5, 0, "");
+    rs_fp(f[..], RS_FS_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_SPEND_GIVE, RS_USE_LAY, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CAST, RS_TO_TARGET, RS_FT_LAY_ON_HANDS, " lays on hands");
+    rs_fp(f[..], RS_FS_HEAL_GIVE, 0, 0, 0, "Lay On Hands");
+  } else if kind == RS_AB_SACRED {   // Sacred Weapon (Oath of Devotion, p. 56): with the Attack action, a Channel Divinity use
+    rs_fp(f[..], RS_FS_N_ACTION, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_CLASS, RS_PALADIN, 3, 0, ""); rs_fp(f[..], RS_FS_N_USE, RS_USE_CHANNEL, 0, 0, ""); rs_fp(f[..], RS_FS_N_NO_AURA, EF_SACRED, 0, 0, "");
+    rs_fp(f[..], RS_FS_AURA, EF_SACRED, 0, 0, ""); rs_fp(f[..], RS_FS_SPEND, RS_USE_CHANNEL, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_SACRED_WEAPON, " raises a Sacred Weapon: +Cha to hit, Radiant on a hit");
+  } else if kind == RS_AB_AIM {   // Steady Aim (p. 62): a Bonus Action, only if it hasn't moved this turn
+    rs_fp(f[..], RS_FS_N_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_FEAT, RS_FT_STEADY_AIM, 0, 0, ""); rs_fp(f[..], RS_FS_N_STILL, 0, 0, 0, "");
+    rs_fp(f[..], RS_FS_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_AIM, 0, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_STEADY_AIM, " takes Steady Aim");
+  } else if kind == RS_AB_INNATE {   // Innate Sorcery (p. 65-66): a Bonus Action, for 1 minute
+    rs_fp(f[..], RS_FS_N_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_USE, RS_USE_INNATE, 0, 0, ""); rs_fp(f[..], RS_FS_N_NO_AURA, EF_INNATE, 0, 0, "");
+    rs_fp(f[..], RS_FS_AURA, EF_INNATE, 0, 0, ""); rs_fp(f[..], RS_FS_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_SPEND, RS_USE_INNATE, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_INNATE_SORCERY, " unleashes Innate Sorcery");
+  } else if kind == RS_AB_INSPIRE {   // Bardic Inspiration (p. 31-32): a Bonus Action and one use; another creature within 60 feet holds the Bard's die
+    rs_fp(f[..], RS_FS_N_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_RANK, RS_RK_INSPIRATION_DIE, 0, 0, ""); rs_fp(f[..], RS_FS_N_USE, RS_USE_INSPIRE, 0, 0, "");
+    rs_fp(f[..], RS_FS_N_OTHER, 60, EF_INSPIRED, 0, "");
+    rs_fp(f[..], RS_FS_BONUS, 0, 0, 0, ""); rs_fp(f[..], RS_FS_SPEND, RS_USE_INSPIRE, 0, 0, ""); rs_fp(f[..], RS_FS_INSPIRE, EF_INSPIRED, RS_RK_INSPIRATION_DIE, RS_FT_INSPIRATION, "");
+  } else if kind == RS_FP_FONT {   // Font of Inspiration (p. 32): no action, its lowest spell slot for one Bardic Inspiration use
+    rs_fp(f[..], RS_FS_N_TURN, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_FEAT, RS_FT_FONT, 0, 0, ""); rs_fp(f[..], RS_FS_N_POOL_ROOM, RS_USE_INSPIRE, 0, 0, ""); rs_fp(f[..], RS_FS_N_SLOT, 0, 0, 0, "");
+    rs_fp(f[..], RS_FS_SLOT_SPEND, 0, 0, 0, ""); rs_fp(f[..], RS_FS_POOL_ADD, RS_USE_INSPIRE, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_FONT, ": Font of Inspiration, a spell slot for Bardic Inspiration");
+  } else if kind == RS_AB_RESURGE {   // Wild Resurgence (p. 43): once a turn, with no Wild Shape use left, its lowest slot for one (no action)
+    rs_fp(f[..], RS_FS_N_TURN, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_FEAT, RS_FT_WILD_RESURGENCE, 0, 0, ""); rs_fp(f[..], RS_FS_N_ONCE, 0, 0, 0, "");
+    rs_fp(f[..], RS_FS_N_POOL_NONE, RS_USE_WILD, 0, 0, ""); rs_fp(f[..], RS_FS_N_SLOT, 0, 0, 0, "");
+    rs_fp(f[..], RS_FS_SLOT_SPEND, 0, 0, 0, ""); rs_fp(f[..], RS_FS_POOL_ONE, RS_USE_WILD, 0, 0, ""); rs_fp(f[..], RS_FS_ONCE, 0, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_WILD_RESURGENCE, ": Wild Resurgence, a spell slot for a Wild Shape use");
+  } else if kind == RS_FP_RESURGE_SLOT {   // and once a Long Rest, a Wild Shape use for a 1st-level slot
+    rs_fp(f[..], RS_FS_N_TURN, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_FEAT, RS_FT_WILD_RESURGENCE, 0, 0, ""); rs_fp(f[..], RS_FS_N_FRESH, RS_NT_RESURGED, 0, 0, "");
+    rs_fp(f[..], RS_FS_N_USE, RS_USE_WILD, 0, 0, "");
+    rs_fp(f[..], RS_FS_SPEND, RS_USE_WILD, 0, 0, ""); rs_fp(f[..], RS_FS_SLOT_ADD, 1, 0, 0, ""); rs_fp(f[..], RS_FS_NOTE, RS_NT_RESURGED, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CONDITION, RS_TO_SELF, RS_FT_NONE, ": Wild Resurgence, a Wild Shape use for a 1st-level slot");
+  } else if kind == RS_AB_TURN {   // Turn Undead (Channel Divinity, p. 37): a Magic action; each Undead foe within 30 feet
+    rs_fp(f[..], RS_FS_N_ACTION, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_FEAT, RS_FT_TURN_UNDEAD, 0, 0, ""); rs_fp(f[..], RS_FS_N_USE, RS_USE_CHANNEL, 0, 0, ""); rs_fp(f[..], RS_FS_N_TURNABLE, 30, 0, 0, "");
+    rs_fp(f[..], RS_FS_ACTION, 0, 0, 0, ""); rs_fp(f[..], RS_FS_SPEND, RS_USE_CHANNEL, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CAST, RS_TO_NONE, RS_FT_TURN_UNDEAD, " presents a holy symbol: Turn Undead"); rs_fp(f[..], RS_FS_TURN_UNDEAD, 30, 0, 0, "");
+  } else if kind == RS_AB_PRESERVE {   // Preserve Life (Life Domain, p. 40): a Magic action and a Channel Divinity use
+    rs_fp(f[..], RS_FS_N_ACTION, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_FEAT, RS_FT_PRESERVE_LIFE, 0, 0, ""); rs_fp(f[..], RS_FS_N_USE, RS_USE_CHANNEL, 0, 0, ""); rs_fp(f[..], RS_FS_N_BLOODIED, 30, 0, 0, "");
+    rs_fp(f[..], RS_FS_ACTION, 0, 0, 0, ""); rs_fp(f[..], RS_FS_SPEND, RS_USE_CHANNEL, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CAST, RS_TO_NONE, RS_FT_PRESERVE_LIFE, " channels divinity: Preserve Life"); rs_fp(f[..], RS_FS_PRESERVE, 30, 0, 0, "");
+  } else if kind == RS_AB_LANDS {   // Land's Aid (Circle of the Land, p. 46): a Magic action and a Wild Shape use, a point within 60 feet
+    rs_fp(f[..], RS_FS_N_ACTION, 0, 0, 0, ""); rs_fp(f[..], RS_FS_N_FEAT, RS_FT_LANDS_AID, 0, 0, ""); rs_fp(f[..], RS_FS_N_USE, RS_USE_WILD, 0, 0, ""); rs_fp(f[..], RS_FS_N_POINT, 60, 0, 0, "");
+    rs_fp(f[..], RS_FS_ACTION, 0, 0, 0, ""); rs_fp(f[..], RS_FS_SPEND, RS_USE_WILD, 0, 0, "");
+    rs_fp(f[..], RS_FS_SAY, RS_EV_CAST, RS_TO_NONE, RS_FT_LANDS_AID, " calls on Land's Aid: flowers and thorns"); rs_fp(f[..], RS_FS_LANDS, 0, 0, 0, "");
+  }
+  return f[0];
+}
+// Whether a need holds for creature i's use u (and, for a gift, what it gives).
+rs_feat_need :: (b: [] RsBattle, i: int, u: [] RsUse, st: RsFeatStep) -> bool {
+  k := st.kind; j := u[0].j;
+  if k == RS_FS_N_TURN { return b[0].who == i; }
+  if k == RS_FS_N_ACT { return rs_can_act(b[0].c[i]); }
+  if k == RS_FS_N_BONUS { return rs_bonus_free(b, i); }
+  if k == RS_FS_N_ACTION { return rs_action_free(b, i); }
+  if k == RS_FS_N_ACTED { return b[0].turn.action; }
+  if k == RS_FS_N_FEAT { return rs_has_feature(b[0].c[i], st.a); }
+  if k == RS_FS_N_RANK { return b[0].c[i].rank[st.a] > 0; }
+  if k == RS_FS_N_USE { return b[0].c[i].uses[st.a] > 0; }
+  if k == RS_FS_N_POOL_ROOM { return b[0].c[i].uses[st.a] < b[0].c[i].uses_max[st.a]; }
+  if k == RS_FS_N_POOL_NONE { return b[0].c[i].uses[st.a] <= 0; }
+  if k == RS_FS_N_SLOT { return rs_lowest_slot(b[0].c[i]) > 0; }
+  if k == RS_FS_N_HURT { return b[0].c[i].hp < b[0].c[i].hp_max; }
+  if k == RS_FS_N_HEALS { return !rs_effect(b[0].c[i], EF_NOHEAL); }
+  if k == RS_FS_N_STILL { return !b[0].turn.moved; }
+  if k == RS_FS_N_FRESH { return b[0].c[i].note[st.a] == 0; }
+  if k == RS_FS_N_ONCE { return !b[0].turn.resurged; }
+  if k == RS_FS_N_NO_AURA { return !rs_aura_on(b[0].c[i], st.a, b[0].clock); }
+  if k == RS_FS_N_NO_STATE { return !rs_effect(b[0].c[i], st.a) && rs_state_room(b[0].c[i], st.a); }
+  if k == RS_FS_N_CLASS { return b[0].c[i].klass == st.a && b[0].c[i].level >= st.b; }
+  if k == RS_FS_N_POINT { return rs_range_ft(b, b[0].c[i].x, b[0].c[i].y, u[0].x, u[0].y) <= st.a; }
+  if k == RS_FS_N_OTHER {
+    if j < 0 || j >= b[0].n || j == i || !rs_up(b[0].c[j]) { return false; }
+    return rs_state_value(b[0].c[j], st.b) <= 0 && rs_state_room(b[0].c[j], st.b) && rs_feet_to(b, i, j) <= st.a;
+  }
+  if k == RS_FS_N_GIVE {
+    if j < 0 || j >= b[0].n || b[0].c[j].dead || rs_feet_to(b, i, j) > st.b || rs_effect(b[0].c[j], EF_NOHEAL) { return false; }
+    u[0].give = rs_min(rs_min(u[0].amount, b[0].c[i].uses[st.a]), b[0].c[j].hp_max - b[0].c[j].hp);
+    return u[0].give > 0;
+  }
+  if k == RS_FS_N_TURNABLE {
+    for q: 0..<b[0].n {
+      c := b[0].c[q];
+      if c.undead && rs_up(c) && c.team != b[0].c[i].team && rs_feet_to(b,i,q) <= st.a && rs_effect_condition_mask(c,RS_FRIGHTENED|RS_INCAPACITATED) != 0 && rs_effect_room(c,false,0,-1) < 1 { return false; }
     }
+    return true;
+  }
+  if k == RS_FS_N_BLOODIED {
+    for q: 0..<b[0].n {
+      c := b[0].c[q];
+      if c.team == b[0].c[i].team && !c.dead && c.hp < c.hp_max / 2 && !rs_effect(c, EF_NOHEAL) && rs_feet_to(b, i, q) <= st.a { return true; }
+    }
+    return false;
   }
   return false;
 }
-// Bardic Inspiration (p. 31-32): a Bonus Action and one use; another creature within 60 feet gains
-// the Bard's die, and adds it to a D20 Test it fails (one die at a time).
-rs_inspire :: (b: [] RsBattle, i: int, j: int) -> bool {
-  if !rs_bonus_free(b, i) || b[0].c[i].rank[RS_RK_INSPIRATION_DIE] <= 0 || b[0].c[i].uses[RS_USE_INSPIRE] <= 0 { return false; }
-  if j < 0 || j >= b[0].n || j == i || !rs_up(b[0].c[j]) || rs_state_value(b[0].c[j], EF_INSPIRED) > 0 || !rs_state_room(b[0].c[j], EF_INSPIRED) || rs_feet_to(b, i, j) > 60 { return false; }
-  b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_INSPIRE] -= 1;
-  b[0].c[j].eff = rs_state_value_put(b[0].c[j].eff, EF_INSPIRED, b[0].c[i].rank[RS_RK_INSPIRATION_DIE]);
-  l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " inspires "); rs_add_name(l[..], b, j); rs_add_text(l[..], ": a Bardic Inspiration d"); rs_add_int(l[..], b[0].c[i].rank[RS_RK_INSPIRATION_DIE]);
-  rs_tell_ft(b, RS_EV_CONDITION, -1, i, j, 0, 0, RS_FT_INSPIRATION, l[..]);
+// A creature's lowest spell slot level with a slot left, 0 none.
+rs_lowest_slot :: (c: RsCreature) -> int {
+  for l: 1..<10 { if c.slots[l] > 0 { return l; } }
+  return 0;
+}
+// One step done for creature i's use u. False: it refused (only a step that stands before any spending can).
+rs_feat_do :: (b: [] RsBattle, i: int, u: [] RsUse, st: RsFeatStep) -> bool {
+  k := st.kind; j := u[0].j;
+  if k == RS_FS_BONUS { b[0].turn.bonus = true; }
+  else if k == RS_FS_ACTION { b[0].turn.action = true; }
+  else if k == RS_FS_SURGE { b[0].turn.action = false; }
+  else if k == RS_FS_SPEND { b[0].c[i].uses[st.a] -= 1; }
+  else if k == RS_FS_SPEND_GIVE { b[0].c[i].uses[st.a] -= u[0].give; }
+  else if k == RS_FS_SLOT_SPEND { b[0].c[i].slots[rs_lowest_slot(b[0].c[i])] -= 1; }
+  else if k == RS_FS_POOL_ADD { b[0].c[i].uses[st.a] += 1; }
+  else if k == RS_FS_POOL_ONE { b[0].c[i].uses[st.a] = 1; }
+  else if k == RS_FS_SLOT_ADD { b[0].c[i].slots[st.a] += 1; }
+  else if k == RS_FS_NOTE { b[0].c[i].note[st.a] = 1; }
+  else if k == RS_FS_ONCE { b[0].turn.resurged = true; }
+  else if k == RS_FS_SAY { u[0].feat = st.c; rs_say_ft(b, st.a, i, ifx st.b == RS_TO_SELF then i else ifx st.b == RS_TO_TARGET then j else -1, u[0].give, st.c, st.t); }
+  else if k == RS_FS_HEAL {
+    sides := ifx st.b > 0 then st.b else b[0].c[i].rank[RS_RK_MARTIAL_DIE];
+    amount := rs_sum(b[0].dice[..], st.a, sides);
+    if st.c == RS_PLUS_LEVEL { amount += b[0].c[i].level; }
+    if st.c == RS_PLUS_WIS { amount = rs_max(amount + rs_mod(b[0].c[i].score[RS_WIS]), 1); }
+    got := rs_feature_heal(b, i, i, amount, st.t, u[0].feat);
+  }
+  else if k == RS_FS_HEAL_GIVE { got := rs_feature_heal(b, i, j, u[0].give, st.t, u[0].feat); }
+  else if k == RS_FS_SHIFT { if rs_has_feature(b[0].c[i], st.a) && !b[0].turn.anchored { b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE / 2; } }
+  else if k == RS_FS_AURA { return rs_aura_grant(b, i, st.a); }
+  else if k == RS_FS_STATE { b[0].c[i].eff = rs_state_put(b[0].c[i].eff, st.a, true); b[0].c[i].eff = rs_state_bit(b[0].c[i].eff, st.a, st.b, true); }
+  else if k == RS_FS_END_CONC { rs_end_concentration(b, i, st.t); }
+  else if k == RS_FS_UNCHARM {
+    if rs_has_feature(b[0].c[i], st.a) {
+      for e: 0..<RS_EFFECTS {
+        ef := b[0].c[i].eff[e];
+        if (ef.kind == EF_COND || ef.kind == EF_TURNED) && (ef.cond & (RS_CHARMED | RS_FRIGHTENED)) != 0 { rs_drop_effect(b, i, e); }
+      }
+    }
+  }
+  else if k == RS_FS_AIM {
+    b[0].turn.aimed = true; b[0].turn.anchored = true; b[0].turn.move_left = 0; b[0].turn.move_feet = 0;
+    _ := rs_dodge_live(b,i);
+  }
+  else if k == RS_FS_INSPIRE {
+    die := b[0].c[i].rank[st.b];
+    b[0].c[j].eff = rs_state_value_put(b[0].c[j].eff, st.a, die);
+    l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " inspires "); rs_add_name(l[..], b, j); rs_add_text(l[..], ": a Bardic Inspiration d"); rs_add_int(l[..], die);
+    rs_tell_ft(b, RS_EV_CONDITION, -1, i, j, 0, 0, st.c, l[..]);
+  }
+  else if k == RS_FS_TURN_UNDEAD { rs_turn_undead_step(b, i, st.a); }
+  else if k == RS_FS_PRESERVE { rs_preserve_life_step(b, i, st.a); }
+  else if k == RS_FS_LANDS { rs_lands_aid_step(b, i, u); }
   return true;
 }
+// Creature i uses the feature `kind` (an RS_AB_* with a row, or an RS_FP_*), aimed as u says. False,
+// and nothing spent or told, when a need does not hold or the feature has no row.
+rs_feature_use :: (b: [] RsBattle, i: int, kind: int, u: RsUse) -> bool {
+  f := rs_feature(kind);
+  if f.n == 0 { return false; }
+  use: [1] RsUse; use[0] = u;
+  for k: 0..<f.n { if f.st[k].kind < RS_FS_DO && !rs_feat_need(b, i, use[..], f.st[k]) { return false; } }
+  for k: 0..<f.n { if f.st[k].kind >= RS_FS_DO && !rs_feat_do(b, i, use[..], f.st[k]) { return false; } }
+  return true;
+}
+// The features by name: each is its row.
+rs_font :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_FP_FONT, RsUse.{}); }
+rs_inspire :: (b: [] RsBattle, i: int, j: int) -> bool { return rs_feature_use(b, i, RS_AB_INSPIRE, RsUse.{j = j}); }
+rs_turn_undead :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_TURN, RsUse.{}); }
+rs_preserve_life :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_PRESERVE, RsUse.{}); }
+rs_second_wind :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_SECOND, RsUse.{}); }
+rs_action_surge :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_SURGE, RsUse.{}); }
+rs_lay_on_hands :: (b: [] RsBattle, i: int, j: int, amount: int) -> bool { return rs_feature_use(b, i, RS_AB_LAY, RsUse.{j = j, amount = amount}); }
+rs_sacred_weapon :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_SACRED, RsUse.{}); }
+rs_steady_aim :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_AIM, RsUse.{}); }
+rs_innate_sorcery :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_INNATE, RsUse.{}); }
+rs_wild_resurgence :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_RESURGE, RsUse.{}); }
+rs_resurge_slot :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_FP_RESURGE_SLOT, RsUse.{}); }
+rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool { return rs_feature_use(b, i, RS_AB_LANDS, RsUse.{j = heal, x = tx, y = ty}); }
+rs_rage :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_RAGE, RsUse.{}); }
+rs_wholeness :: (b: [] RsBattle, i: int) -> bool { return rs_feature_use(b, i, RS_AB_WHOLE, RsUse.{}); }
 
-// Turn Undead (Channel Divinity, p. 37): a Magic action; each Undead foe within 30 feet makes a
-// Wisdom save or is Frightened and Incapacitated for 1 minute, moving away; it ends early if the
-// creature takes damage, or the Cleric is Incapacitated or dies.
-rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
-  if !rs_action_free(b, i) || !rs_has_feature(b[0].c[i], RS_FT_TURN_UNDEAD) || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
-  for j: 0..<b[0].n {
-    c := b[0].c[j];
-    if c.undead && rs_up(c) && c.team != b[0].c[i].team && rs_feet_to(b,i,j) <= 30 && rs_effect_condition_mask(c,RS_FRIGHTENED|RS_INCAPACITATED) != 0 && rs_effect_room(c,false,0,-1) < 1 { return false; }
-  }
-  b[0].turn.action = true; b[0].c[i].uses[RS_USE_CHANNEL] -= 1;
-  rs_say_ft(b, RS_EV_CAST, i, -1, 0, RS_FT_TURN_UNDEAD, " presents a holy symbol: Turn Undead");
+// Turn Undead's own step: each Undead foe within `feet` makes a Wisdom save or is Frightened and
+// Incapacitated for 1 minute; it ends early if the creature takes damage, or the Cleric is
+// Incapacitated or dies.
+rs_turn_undead_step :: (b: [] RsBattle, i: int, feet: int) {
   dc := rs_dc(b, i);
   // Sear Undead: Wisdom-modifier d8s (at least one), rolled once, Radiant on each that fails
   sear := ifx rs_has_feature(b[0].c[i], RS_FT_SEAR_UNDEAD) then rs_sum(b[0].dice[..], rs_max(rs_mod(b[0].c[i].score[RS_WIS]), 1), 8) else 0;
   for j: 0..<b[0].n {
-    if !b[0].c[j].undead || rs_feet_to(b, i, j) > 30 { continue; }
+    if !b[0].c[j].undead || rs_feet_to(b, i, j) > feet { continue; }
     c := b[0].c[j];
-    if !c.undead || !rs_up(c) || c.team == b[0].c[i].team || rs_feet_to(b, i, j) > 30 { continue; }
+    if !c.undead || !rs_up(c) || c.team == b[0].c[i].team || rs_feet_to(b, i, j) > feet { continue; }
     saving := rs_saving_throw_magic(b,j,RS_WIS,dc,0);
     total := saving.total; ok := saving.passed;
     l: [1] RsLine;
@@ -96,28 +317,17 @@ rs_turn_undead :: (b: [] RsBattle, i: int) -> bool {
     }
     if !ok && !b[0].c[j].dead { _ := rs_put_effect(b, j, RsEffect.{kind = EF_TURNED, cond = RS_FRIGHTENED | RS_INCAPACITATED, by = i, spell = -1, until = b[0].clock + rs_secs(60), save = -1, dc = 0}); }
   }
-  return true;
 }
-
-// Preserve Life (Life Domain, p. 40): a Magic action and a Channel Divinity use; five times the
-// Cleric's level in Hit Points, divided among Bloodied creatures within 30 feet (its side, itself
-// too), none above half its Hit Point maximum. The most hurt first.
-rs_preserve_life :: (b: [] RsBattle, i: int) -> bool {
-  if !rs_action_free(b, i) || !rs_has_feature(b[0].c[i], RS_FT_PRESERVE_LIFE) || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
-  any := false;
-  for j: 0..<b[0].n {
-    c := b[0].c[j];
-    if c.team == b[0].c[i].team && !c.dead && c.hp < c.hp_max / 2 && !rs_effect(c, EF_NOHEAL) && rs_feet_to(b, i, j) <= 30 { any = true; }
-  }
-  if !any { return false; }
-  b[0].turn.action = true; b[0].c[i].uses[RS_USE_CHANNEL] -= 1;
-  rs_say_ft(b, RS_EV_CAST, i, -1, 0, RS_FT_PRESERVE_LIFE, " channels divinity: Preserve Life");
+// Preserve Life's own step: five times the Cleric's level in Hit Points, divided among Bloodied
+// creatures within `feet` (its side, itself too), none above half its Hit Point maximum. The most
+// hurt first.
+rs_preserve_life_step :: (b: [] RsBattle, i: int, feet: int) {
   pool := 5 * b[0].c[i].level;
   while pool > 0 {
     best := -1; bv := 2.0f32;
     for j: 0..<b[0].n {
       c := b[0].c[j];
-      if c.team != b[0].c[i].team || c.dead || c.hp >= c.hp_max / 2 || rs_effect(c, EF_NOHEAL) || rs_feet_to(b, i, j) > 30 { continue; }
+      if c.team != b[0].c[i].team || c.dead || c.hp >= c.hp_max / 2 || rs_effect(c, EF_NOHEAL) || rs_feet_to(b, i, j) > feet { continue; }
       v := f32(c.hp) / f32(rs_max(c.hp_max, 1));
       if v < bv { bv = v; best = j; }
     }
@@ -126,106 +336,17 @@ rs_preserve_life :: (b: [] RsBattle, i: int) -> bool {
     pool -= give;
     got := rs_feature_heal(b, i, best, give, "Preserve Life", RS_FT_PRESERVE_LIFE);
   }
-  return true;
 }
-
-// Second Wind (p. 48): a Bonus Action, 1d10 + its Fighter level.
-rs_second_wind :: (b: [] RsBattle, i: int) -> bool {
-  if !rs_bonus_free(b, i) || b[0].c[i].uses[RS_USE_WIND] <= 0 || b[0].c[i].hp >= b[0].c[i].hp_max { return false; }
-  b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_WIND] -= 1;
-  rs_say_ft(b, RS_EV_CAST, i, i, 0, RS_FT_SECOND_WIND, " takes a Second Wind");
-  got := rs_feature_heal(b, i, i, rs_roll(b[0].dice[..], 10) + b[0].c[i].level, "Second Wind", RS_FT_SECOND_WIND);
-  // Tactical Shift (p. 48): half its Speed more (no Opportunity Attacks in this engine to avoid)
-  if rs_has_feature(b[0].c[i], RS_FT_TACTICAL_SHIFT) && !b[0].turn.anchored { b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE / 2; }
-  return true;
-}
-// Action Surge (p. 48): one more action this turn, once.
-rs_action_surge :: (b: [] RsBattle, i: int) -> bool {
-  if b[0].who != i || !b[0].turn.action || !rs_can_act(b[0].c[i]) || b[0].c[i].uses[RS_USE_SURGE] <= 0 { return false; }
-  b[0].turn.action = false; b[0].c[i].uses[RS_USE_SURGE] -= 1;
-  rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_ACTION_SURGE, " uses Action Surge");
-  return true;
-}
-
-// Lay On Hands (p. 53-54): a Bonus Action, touching a creature (itself too), up to `amount` Hit
-// Points from the pool.
-rs_lay_on_hands :: (b: [] RsBattle, i: int, j: int, amount: int) -> bool {
-  if !rs_bonus_free(b, i) || b[0].c[i].uses[RS_USE_LAY] <= 0 { return false; }
-  if j < 0 || j >= b[0].n || b[0].c[j].dead || rs_feet_to(b, i, j) > 5 || rs_effect(b[0].c[j], EF_NOHEAL) { return false; }
-  give := rs_min(rs_min(amount, b[0].c[i].uses[RS_USE_LAY]), b[0].c[j].hp_max - b[0].c[j].hp);
-  if give <= 0 { return false; }
-  b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_LAY] -= give;
-  rs_say_ft(b, RS_EV_CAST, i, j, give, RS_FT_LAY_ON_HANDS, " lays on hands");
-  got := rs_feature_heal(b, i, j, give, "Lay On Hands", RS_FT_LAY_ON_HANDS);
-  return true;
-}
-// Sacred Weapon (Oath of Devotion, p. 56): with the Attack action, a Channel Divinity use; for 10
-// minutes its Charisma modifier on its melee weapon's attack rolls, and Radiant damage if it likes.
-rs_sacred_weapon :: (b: [] RsBattle, i: int) -> bool {
-  if !rs_action_free(b, i) || b[0].c[i].klass != RS_PALADIN || b[0].c[i].level < 3 || b[0].c[i].uses[RS_USE_CHANNEL] <= 0 { return false; }
-  if rs_aura_on(b[0].c[i], EF_SACRED, b[0].clock) || !rs_aura_grant(b, i, EF_SACRED) { return false; }
-  b[0].c[i].uses[RS_USE_CHANNEL] -= 1;
-  rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_SACRED_WEAPON, " raises a Sacred Weapon: +Cha to hit, Radiant on a hit");
-  return true;
-}
-
-// Cunning Action (p. 62): Dash as a Bonus Action.
-rs_cunning_dash :: (b: [] RsBattle, i: int) -> bool {
-  return rs_dash_use(b,i,RS_DASH_CUNNING);
-}
-// Steady Aim (p. 62): a Bonus Action, only if it hasn't moved this turn; Advantage on its next
-// attack roll this turn, and its Speed is 0 until the turn ends.
-rs_steady_aim :: (b: [] RsBattle, i: int) -> bool {
-  if !rs_bonus_free(b, i) || !rs_has_feature(b[0].c[i], RS_FT_STEADY_AIM) || b[0].turn.moved { return false; }
-  b[0].turn.bonus = true; b[0].turn.aimed = true; b[0].turn.anchored = true; b[0].turn.move_left = 0; b[0].turn.move_feet = 0;
-  _ := rs_dodge_live(b,i);
-  rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_STEADY_AIM, " takes Steady Aim");
-  return true;
-}
-
-// Innate Sorcery (p. 65-66): a Bonus Action, for 1 minute: +1 to its spell save DC and Advantage on
-// its spell attack rolls.
-rs_innate_sorcery :: (b: [] RsBattle, i: int) -> bool {
-  if !rs_bonus_free(b, i) || b[0].c[i].uses[RS_USE_INNATE] <= 0 || rs_aura_on(b[0].c[i], EF_INNATE, b[0].clock) || !rs_aura_grant(b, i, EF_INNATE) { return false; }
-  b[0].turn.bonus = true; b[0].c[i].uses[RS_USE_INNATE] -= 1;
-  rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_INNATE_SORCERY, " unleashes Innate Sorcery");
-  return true;
-}
-
-// Wild Resurgence (p. 43): once a turn, with no Wild Shape use left, its lowest slot for one (no
-// action); and once a Long Rest, a Wild Shape use for a 1st-level slot (rs_resurge_slot).
-rs_wild_resurgence :: (b: [] RsBattle, i: int) -> bool {
-  if b[0].who != i || !rs_has_feature(b[0].c[i], RS_FT_WILD_RESURGENCE) || b[0].turn.resurged || b[0].c[i].uses[RS_USE_WILD] > 0 { return false; }
-  for l: 1..<10 {
-    if b[0].c[i].slots[l] > 0 {
-      b[0].c[i].slots[l] -= 1; b[0].c[i].uses[RS_USE_WILD] = 1; b[0].turn.resurged = true;
-      rs_say_ft(b, RS_EV_CONDITION, i, i, 0, RS_FT_WILD_RESURGENCE, ": Wild Resurgence, a spell slot for a Wild Shape use");
-      return true;
-    }
-  }
-  return false;
-}
-rs_resurge_slot :: (b: [] RsBattle, i: int) -> bool {
-  if b[0].who != i || !rs_has_feature(b[0].c[i], RS_FT_WILD_RESURGENCE) || b[0].c[i].resurged_slot || b[0].c[i].uses[RS_USE_WILD] <= 0 { return false; }
-  b[0].c[i].uses[RS_USE_WILD] -= 1; b[0].c[i].slots[1] += 1; b[0].c[i].resurged_slot = true;
-  rs_say(b, RS_EV_CONDITION, i, i, 0, ": Wild Resurgence, a Wild Shape use for a 1st-level slot");
-  return true;
-}
-// Land's Aid (Circle of the Land, p. 46): a Magic action and a Wild Shape use, a point within 60
-// feet: each foe in the 10-foot-radius Sphere makes a Con save, 2d6 Necrotic or half; one creature
-// there (`heal`, -1 none) regains 2d6 Hit Points.
-rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
-  if !rs_action_free(b, i) || !rs_has_feature(b[0].c[i], RS_FT_LANDS_AID) || b[0].c[i].uses[RS_USE_WILD] <= 0 { return false; }
-  if rs_range_ft(b, b[0].c[i].x, b[0].c[i].y, tx, ty) > 60 { return false; }
-  b[0].turn.action = true; b[0].c[i].uses[RS_USE_WILD] -= 1;
+// Land's Aid's own step: each foe in the 10-foot-radius Sphere at the use's point makes a Con save,
+// 2d6 Necrotic or half; one creature there (the use's, -1 none) regains 2d6 Hit Points.
+rs_lands_aid_step :: (b: [] RsBattle, i: int, u: [] RsUse) {
   n6 := ifx b[0].c[i].level >= 14 then 4 else ifx b[0].c[i].level >= 10 then 3 else 2;
-  rs_say_ft(b, RS_EV_CAST, i, -1, 0, RS_FT_LANDS_AID, " calls on Land's Aid: flowers and thorns");
-  e: RsEvent; e.kind = RS_EV_ZONE; e.spell = -1; e.by = i; e.to = -1; e.feat = RS_FT_LANDS_AID; e.x = tx - 2; e.y = ty - 2; e.amount = 5; e.at = b[0].clock;
+  e: RsEvent; e.kind = RS_EV_ZONE; e.spell.value = -1; e.by.value = i; e.to.value = -1; e.feat = RS_FT_LANDS_AID; e.x = u[0].x - 2; e.y = u[0].y - 2; e.amount = 5; e.at = b[0].clock;
   k := rs_emit(b[0].book[..], e);
   dc := rs_dc(b, i);
   for j: 0..<b[0].n {
     c := b[0].c[j];
-    if c.team == b[0].c[i].team || !rs_up(c) || rs_range_ft(b, tx, ty, c.x, c.y) > 10 { continue; }
+    if c.team == b[0].c[i].team || !rs_up(c) || rs_range_ft(b, u[0].x, u[0].y, c.x, c.y) > 10 { continue; }
     saving := rs_saving_throw_magic(b,j,RS_CON,dc,0);
     total := saving.total; ok := saving.passed;
     amount := rs_sum(b[0].dice[..], n6, 6);
@@ -237,12 +358,15 @@ rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
     rs_tell(b, RS_EV_DAMAGE, -1, i, j, amount, RS_NECROTIC, l[..]);
     rs_damage(b, i, j, amount, RS_NECROTIC, false, -1);
   }
-  if heal >= 0 && heal < b[0].n && !b[0].c[heal].dead && rs_range_ft(b, tx, ty, b[0].c[heal].x, b[0].c[heal].y) <= 10 {
-    got := rs_feature_heal(b, i, heal, rs_sum(b[0].dice[..], n6, 6), "Land's Aid", RS_FT_LANDS_AID);
+  if u[0].j >= 0 && u[0].j < b[0].n && !b[0].c[u[0].j].dead && rs_range_ft(b, u[0].x, u[0].y, b[0].c[u[0].j].x, b[0].c[u[0].j].y) <= 10 {
+    got := rs_feature_heal(b, i, u[0].j, rs_sum(b[0].dice[..], n6, 6), "Land's Aid", RS_FT_LANDS_AID);
   }
-  return true;
 }
 
+// Cunning Action (p. 62): Dash as a Bonus Action.
+rs_cunning_dash :: (b: [] RsBattle, i: int) -> bool {
+  return rs_dash_use(b,i,RS_DASH_CUNNING);
+}
 // The Dash action: its Speed again.
 rs_dash :: (b: [] RsBattle, i: int) -> bool {
   return rs_dash_use(b,i,RS_DASH_ACTION);

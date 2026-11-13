@@ -4,7 +4,7 @@
 
 #test "the physical walker driven at its real run speed cannot overspend a strict turn" {
   for dash: 0..<2 {
-    b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,30);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); wt_field(b[..],RS_STRICT_WORLD,30);
     if dash == 1 { #assert rs_dash(b[..],0); }
     w: walk.World; w.locomotion.walk_speed = 3.5; w.locomotion.run_speed = 7.5;
     p := walk.walk_input(walk.walk_place(0,0,0,0),0,1,0,0,true,false,0,0);

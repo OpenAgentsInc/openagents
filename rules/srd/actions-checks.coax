@@ -5,7 +5,7 @@
 #load "battle.coax";
 
 ac_struck :: (cover: int, ac: int) -> bool {
-  b: [1] RsBattle; grapple_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
   b[0].c[1].ac = ac; b[0].c[1].hp = 200; b[0].c[1].hp_max = 200;
   if cover > 0 { _ := rs_cover_put(b[..], 0, 1, cover); }
   _ := rs_attack(b[..], 0, 1, false, -1);
@@ -23,12 +23,12 @@ ac_struck :: (cover: int, ac: int) -> bool {
 }
 
 #test "Total Cover refuses an attack and a targeted spell, spending nothing" {
-  b: [1] RsBattle; grapple_field(b[..]); b[0].c[1].hp = 200; b[0].c[1].hp_max = 200;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]); b[0].c[1].hp = 200; b[0].c[1].hp_max = 200;
   _ := rs_cover_put(b[..], 0, 1, RS_COVER_TOTAL);
   #assert !rs_attack(b[..], 0, 1, false, -1) && !b[0].turn.action && b[0].c[1].hp == 200;
   _ = rs_cover_put(b[..], 0, 1, 0);
   #assert rs_attack(b[..], 0, 1, false, -1) && b[0].turn.action;
-  w: [1] RsBattle; grapple_field(w[..]); rs_fresh(w[..], 1); w[0].c[0].hp = 200; w[0].c[0].hp_max = 200;
+  w: [1] RsBattle; w_room: [1] RsRoom; rs_have(w[..], w_room[..]); grapple_field(w[..]); rs_fresh(w[..], 1); w[0].c[0].hp = 200; w[0].c[0].hp_max = 200;
   _ = rs_cover_put(w[..], 1, 0, RS_COVER_TOTAL);
   #assert !rs_cast(w[..], 1, SP_FIRE_BOLT, 0, 2, 2, 0) && !w[0].turn.action;
   _ = rs_cover_put(w[..], 1, 0, RS_COVER_HALF);
@@ -38,7 +38,7 @@ ac_struck :: (cover: int, ac: int) -> bool {
 #test "an area spares a creature behind Total Cover from its origin and adds cover to Dexterity saves" {
   flipped := false;
   for dex: 1..<31 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 10; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10; b[0].dice[0].fixed = true;
     _ := rs_add(b[..], rs_wizard("Caster", 0, 5), 1, 4);
     for k: 0..<3 { _ = rs_add(b[..], rs_fighter("Foe", 1, 1), 9, 3 + k); b[0].c[1 + k].hp = 200; b[0].c[1 + k].hp_max = 200; b[0].c[1 + k].score[RS_DEX] = dex; }
     #assert rs_cover_put(b[..], RS_COVER_ORIGIN, 2, RS_COVER_THREE) && rs_cover_put(b[..], RS_COVER_ORIGIN, 3, RS_COVER_TOTAL);
@@ -55,21 +55,21 @@ ac_struck :: (cover: int, ac: int) -> bool {
   #assert rs_area_from_point(rs_spell(SP_FIREBALL)) && !rs_area_from_point(rs_spell(SP_THUNDERWAVE)) && !rs_area_from_point(rs_spell(SP_SPIRIT_GUARDIANS)) && !rs_area_from_point(rs_spell(SP_FIRE_BOLT));
   for from: [3] int.[RS_COVER_ORIGIN, -1, 0] {
     for sp: [2] int.[SP_FIREBALL, SP_THUNDERWAVE] {
-      b: [1] RsBattle; b[0].w = 20; b[0].h = 10;
+      b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 10;
       _ := rs_add(b[..], rs_wizard("Caster", 0, 5), 4, 4); _ = rs_add(b[..], rs_fighter("Foe", 1, 1), 5, 4);
       #assert rs_cover_put(b[..], from, 1, RS_COVER_TOTAL);
       covered := from == -1 || (from == RS_COVER_ORIGIN) == (sp == SP_FIREBALL);
       #assert (rs_cover_area(b[..], 0, 1, rs_spell(sp)) == RS_COVER_TOTAL) == covered;
     }
   }
-  b: [1] RsBattle; b[0].w = 4; _ := rs_add(b[..], rs_wizard("Caster", 0, 5), 0, 0);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 4; _ := rs_add(b[..], rs_wizard("Caster", 0, 5), 0, 0);
   #assert !rs_cover_put(b[..], -3, 0, RS_COVER_TOTAL) && !rs_cover_put(b[..], RS_COVER_ORIGIN, 1, RS_COVER_TOTAL);
 }
 
 #test "a hidden attacker rolls with Advantage and gives itself away after the roll" {
   rolls := [2] int.[0, 0];
   for hidden: 0..<2 {
-    b: [1] RsBattle; grapple_field(b[..]); b[0].c[1].hp = 200; b[0].c[1].hp_max = 200; b[0].c[1].ac = 5;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]); b[0].c[1].hp = 200; b[0].c[1].hp_max = 200; b[0].c[1].ac = 5;
     b[0].c[0] = rs_fighter("Lurker", 0, 1); b[0].c[0].x = 2; b[0].c[0].y = 2;
     if hidden == 1 { act_hide(b[..], 0, 15); #assert rs_has(b[0].c[0], RS_INVISIBLE) && rs_attack_edge(b[..], 0, 1, true, true) == 1; }
     before := b[0].dice[0].rolled;
@@ -80,7 +80,7 @@ ac_struck :: (cover: int, ac: int) -> bool {
 }
 
 #test "a grappler's step drags what it holds into the square it left, paying 5 extra feet" {
-  b: [1] RsBattle; grapple_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
   #assert rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE) && b[0].c[0].grappling == 1;
   left := rs_movement_left(b[..], 0);
   #assert rs_step_to(b[..], 0, 2, 3) && rs_movement_left(b[..], 0) == left - 5 && b[0].c[1].x == 3 && b[0].c[1].y == 2;   // still within reach
@@ -89,19 +89,19 @@ ac_struck :: (cover: int, ac: int) -> bool {
 }
 
 #test "a grapple ends when the grappler is Incapacitated or the two are parted" {
-  b: [1] RsBattle; grapple_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); grapple_field(b[..]);
   #assert rs_attack_unarmed(b[..], 0, 1, UO_GRAPPLE);
   #assert rs_put_effect(b[..], 0, RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = 1, spell = -1, until = RS_NO_END, save = -1});
   rs_start_turn(b[..], 1);
   #assert b[0].c[0].grappling == -1 && !rs_has(b[0].c[1], RS_GRAPPLED) && rs_can_move(b[0].c[1]);
-  p: [1] RsBattle; grapple_field(p[..]);
+  p: [1] RsBattle; p_room: [1] RsRoom; rs_have(p[..], p_room[..]); grapple_field(p[..]);
   #assert rs_attack_unarmed(p[..], 0, 1, UO_GRAPPLE);
   rs_place(p[..], 1, 6, 2); rs_start_turn(p[..], 1);
   #assert p[0].c[0].grappling == -1 && !rs_has(p[0].c[1], RS_GRAPPLED);
 }
 
 #test "continuous walking on a climbing surface pays double without a Climb Speed" {
-  b: [1] RsBattle; jump_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); jump_field(b[..]);
   #assert rs_walk_cost(b[..], 0) == 1;
   #assert rs_terrain_put(b[..], TR_CLIMB, 0, 0, 3, 3) && rs_walk_cost(b[..], 0) == 2;
   b[0].c[0].climb = 30; #assert rs_walk_cost(b[..], 0) == 1;

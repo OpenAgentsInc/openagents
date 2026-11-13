@@ -17,7 +17,7 @@ rs_ritual_begin :: (b: [] RsBattle, i: int, sp: int) -> bool {
   book := c.klass == RS_WIZARD && rs_spell_access(c, sp) && rs_rite_book_has(c.spells.known, RS_EXEC_SOURCE[sp]);
   if !rs_rite_admits(s.ritual, ready, book, rs_has_feature(c, RS_FT_RITUAL_ADEPT), b[0].turn.action, b[0].turn.quickened) { return false; }
   if !rs_cast_components_ready(c, sp) { return false; }
-  seconds:=ifx sp==SP_FIND_FAMILIAR then RS_FIND_FAMILIAR_SECONDS+RS_RITE_SECONDS else RS_RITE_SECONDS;
+  seconds:=s.cast_s+RS_RITE_SECONDS;
   rs_rite_open(b,i,sp,seconds,0);
   l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " begins "); rs_add_text(l[..], s.name); rs_add_text(l[..], " as a Ritual");
   rs_tell(b, RS_EV_TEXT, sp, i, -1, 0, 0, l[..]);

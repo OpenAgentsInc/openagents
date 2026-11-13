@@ -57,7 +57,7 @@ rs_rest_queue_apply :: (b: [] RsBattle, i: int) #effects(all) {
 rs_rest_order :: (a: int, b: int, c: int) -> int #effects(all) { return a + 4 * b + 16 * c; }
 
 #test "a queue admits bounded choices and an order naming each kind once" {
-  b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
   ok := RsRestQueue.{dice = 2, slots = 1 + 8 * 2, sorcery = 1, order = rs_rest_order(RQ_SLOTS, RQ_DICE, 0)};
   #assert rs_rest_queue_set(b[..], 0, ok) && c[0].rq_on && rs_rest_queue(c[0]).on && rs_rest_queue(c[0]).dice == 2 && rs_rest_queue(c[0]).order == RQ_SLOTS + 4 * RQ_DICE;
   #assert rs_rest_queue(c[0]).slots == 17 && rs_rest_queue(c[0]).sorcery == 1;
@@ -79,7 +79,7 @@ rs_rest_order :: (a: int, b: int, c: int) -> int #effects(all) { return a + 4 * 
 }
 #test "queued choices apply once, in the controller's order, when a Short Rest's choices open" {
   for order: 0..<2 {
-    b: [1] RsBattle; c: [2] RsCreature; b[0].c = c[..]; b[0].n = 2; b[0].who = -1; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; b[0].c = c[..]; b[0].n = 2; b[0].who = -1; b[0].dice[0].fixed = true;
     c[0] = rs_wizard("Reader", 0, 6); c[1] = rs_sorcerer("Sorcerer", 0, 5);
     c[0].hp = 5; c[0].slots[1] = 0; c[0].slots[2] = 0; c[1].uses[RS_USE_SORCERY] = 0;
     q := RsRestQueue.{dice = 3, slots = 1 + 8 * 2, order = rs_rest_order(RQ_DICE, RQ_SLOTS, 0)};
@@ -95,14 +95,14 @@ rs_rest_order :: (a: int, b: int, c: int) -> int #effects(all) { return a + 4 * 
     #assert (c[0].hp > 5) == (order == 0) && c[1].uses[RS_USE_SORCERY] == 2 && c[1].rest.restoration_used && !c[1].rq_on;
     rs_rest_queue_apply(b[..], 0); #assert c[0].rest.dice == dice - spent;   // once
   }
-  h: [1] RsBattle; c: [1] RsCreature; h[0].c = c[..]; h[0].n = 1; h[0].dice[0].fixed = true;
+  h: [1] RsBattle; h_room: [1] RsRoom; rs_have(h[..], h_room[..]); c: [1] RsCreature; h[0].c = c[..]; h[0].n = 1; h[0].dice[0].fixed = true;
   c[0] = rs_fighter("Nearly whole", 0, 5); c[0].hp = c[0].hp_max - 1; c[0].rest.phase = 2; rs_rest_seed(c[..]);
   #assert rs_rest_queue_set(h[..], 0, RsRestQueue.{dice = 4, slots = 1, sorcery = 3, order = rs_rest_order(RQ_DICE, RQ_SLOTS, RQ_SORCERY)});
   rs_rest_queue_apply(h[..], 0); #assert c[0].rest.dice == 4 && c[0].hp == c[0].hp_max && !c[0].rq_on;   // one die heals it; refused kinds skip
   rs_rest_queue_apply(h[..], -1); rs_rest_queue_apply(h[..], 1);
 }
 #test "an interruption's Short Rest benefits apply the queue before the damage lands" {
-  b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1; b[0].who = -1; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1; b[0].who = -1; b[0].dice[0].fixed = true;
   c[0] = rs_barbarian("Sleeper", 0, 3); c[0].hp = 5;
   #assert rs_rest_queue_set(b[..], 0, RsRestQueue.{dice = 1, order = RQ_DICE});
   #assert rs_rest_schedule_enable(b[..]) && rs_long_rest_start_owned(b[..], 0, 1, true);
@@ -111,7 +111,7 @@ rs_rest_order :: (a: int, b: int, c: int) -> int #effects(all) { return a + 4 * 
   #assert !c[0].rq_on && c[0].rest.dice == 2 && c[0].hp > 5;
 }
 #test "a Short Rest finished on its hour applies the queue at once" {
-  b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1; b[0].who = -1; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1; b[0].who = -1; b[0].dice[0].fixed = true;
   c[0] = rs_wizard("Reader", 0, 3); c[0].hp = 1; c[0].slots[1] = 0;
   #assert rs_rest_queue_set(b[..], 0, RsRestQueue.{dice = 1, slots = 1, order = rs_rest_order(RQ_SLOTS, RQ_DICE, 0)});
   #assert rs_short_rest_begin(b[..], 0);
@@ -119,7 +119,7 @@ rs_rest_order :: (a: int, b: int, c: int) -> int #effects(all) { return a + 4 * 
   #assert rs_short_rest_finish(b[..], 0) && !c[0].rq_on && c[0].hp > 1 && c[0].slots[1] == 1;
 }
 #test "a queue's kinds apply only where its order names them" {
-  b: [1] RsBattle; c: [2] RsCreature; b[0].c = c[..]; b[0].n = 2; b[0].who = -1; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [2] RsCreature; b[0].c = c[..]; b[0].n = 2; b[0].who = -1; b[0].dice[0].fixed = true;
   c[0] = rs_wizard("Reader", 0, 6); c[1] = rs_sorcerer("Sorcerer", 0, 5); c[0].slots[1] = 0; c[1].uses[RS_USE_SORCERY] = 0;
   #assert rs_rest_queue_set(b[..], 0, RsRestQueue.{dice = 1, slots = 1, sorcery = 1, order = RQ_DICE});
   #assert rs_rest_queue_set(b[..], 1, RsRestQueue.{dice = 1, slots = 1, sorcery = 2, order = RQ_DICE});

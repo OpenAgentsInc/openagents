@@ -126,7 +126,7 @@
 }
 
 #test "three real turn saves stabilize once and damage through temporary HP starts a fresh death-save track" {
-  b: [1] RsBattle; b[0].w = 8; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 8; b[0].h = 8;
   _ := rs_add(b[..],hp_dying(),1,1); b[0].dice[0].fixed = true;
   for turn: 0..<3 {
     b[0].clock = rs_secs(turn*6); rs_start_turn(b[..],0);
@@ -146,7 +146,7 @@
 }
 
 #test "natural-twenty healing reports regained HP while another Unconscious source still prevents acting" {
-  b: [1] RsBattle; b[0].w = 8; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 8; b[0].h = 8;
   _ := rs_add(b[..],hp_dying(),1,1);
   #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_COND,cond=RS_UNCONSCIOUS,until=20});
   b[0].dice[0].fixed = false; b[0].dice[0].state = hp_seed(20);
@@ -157,7 +157,7 @@
 }
 
 #test "natural-one turn saves count two failures and publish one terminal death outcome" {
-  b: [1] RsBattle; b[0].w = 8; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 8; b[0].h = 8;
   _ := rs_add(b[..],hp_dying(),1,1);
   b[0].dice[0].fixed = false; b[0].dice[0].state = hp_seed(1);
   rs_start_turn(b[..],0);
@@ -166,7 +166,7 @@
   rs_start_turn(b[..],0);
   #assert b[0].c[0].death_fail == 4 && b[0].c[0].dead;
   e := rs_recent_at(b[0].book[..],0);
-  #assert e.kind == RS_EV_DEATH && e.by == 0 && e.to == 0 && e.amount == RS_DS_DEAD;
+  #assert e.kind == RS_EV_DEATH && e.by.value == 0 && e.to.value == 0 && e.amount == RS_DS_DEAD;
   seq := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
   rs_end_turn(b[..],0); b[0].clock = 12; rs_start_turn(b[..],0);
   #assert b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls;
@@ -174,7 +174,7 @@
 
 #test "Lay On Hands reports waking only when healing actually removes Unconscious" {
   for held: 0..<2 {
-    b: [1] RsBattle; b[0].w = 8; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 8; b[0].h = 8;
     _ := rs_add(b[..],rs_paladin("Healer",0,3),1,1);
     _ = rs_add(b[..],hp_dying(),2,1);
     if held == 1 { #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_COND,cond=RS_UNCONSCIOUS,until=20}); }
@@ -183,7 +183,7 @@
     #assert b[0].turn.bonus && b[0].c[0].uses[RS_USE_LAY] == pool-3 && b[0].c[1].hp == 3;
     #assert rs_has(b[0].c[1],RS_UNCONSCIOUS) == (held == 1) && rs_has(b[0].c[1],RS_PRONE);
     e := rs_recent_at(b[0].book[..],0);
-    #assert e.kind == RS_EV_HEAL && e.feat == RS_FT_LAY_ON_HANDS && e.by == 0 && e.to == 1 && e.amount == 3;
+    #assert e.kind == RS_EV_HEAL && e.feat == RS_FT_LAY_ON_HANDS && e.by.value == 0 && e.to.value == 1 && e.amount == 3;
     expected := ifx held == 1 then "  Patient regains 3 Hit Points from Lay On Hands" else "  Patient regains 3 Hit Points from Lay On Hands and wakes";
     #assert cast(string)e.text[0..<e.text_n] == expected;
   }
@@ -225,14 +225,14 @@
 }
 
 #test "turn reporting never tells a player they recovered while Chill Touch holds them at zero" {
-  b: [1] RsBattle; b[0].w = 8; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 8; b[0].h = 8;
   _ := rs_add(b[..],hp_dying(),1,1);
   #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_NOHEAL,until=20});
   b[0].dice[0].fixed = false; b[0].dice[0].state = hp_seed(20);
   rs_start_turn(b[..],0);
   #assert b[0].c[0].hp == 0 && !rs_can_act(b[0].c[0]);
   e := rs_recent_at(b[0].book[..],0);
-  #assert e.kind != RS_EV_UP && e.to == 0 && e.by == 0;
+  #assert e.kind != RS_EV_UP && e.to.value == 0 && e.by.value == 0;
   #assert cast(string)e.text[0..<e.text_n] == "Patient rolls a 20 on a death save but cannot regain Hit Points";
 }
 

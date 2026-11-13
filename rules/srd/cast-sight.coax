@@ -8,6 +8,7 @@
 #authority;
 RS_SIGHT_NONE :: 0; RS_SIGHT_SEE :: 1; RS_SIGHT_SEE_OR_HEAR :: 2;
 // Reviewed against each canonical description; cast-workflow-checks.coax compares them.
+RS_HEAR_SPELLS :: [1] int.[SP_VICIOUS_MOCKERY];   // "that you can see or hear"
 RS_SIGHT_SPELLS :: [22] int.[SP_HELLISH_REBUKE,SP_HEALING_WORD,SP_BLINDNESS,SP_HEX,SP_HOLD_PERSON,SP_SACRED_FLAME,SP_HUNTERS_MARK,
   SP_CALL_LIGHTNING,SP_CALL_BOLT,SP_CONJURE_ANIMALS,SP_POLYMORPH,SP_MASS_CURE_WOUNDS,SP_LEVITATE,SP_TELEKINESIS,
   SP_BLACK_TENTACLES,SP_METEOR_SWARM,SP_BLIGHT,SP_FINGER_OF_DEATH,SP_BANE,SP_COMMAND,SP_MAGIC_MISSILE,SP_MASS_HEALING_WORD];
@@ -27,7 +28,7 @@ RS_SIGHT_SPELLS :: [22] int.[SP_HELLISH_REBUKE,SP_HEALING_WORD,SP_BLINDNESS,SP_H
   }
 }
 #test "unseen creature and point choices refuse; the caster is never hidden from itself" #steps 100000000 {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
   a := rs_add(b[..],rs_cleric("Cleric",0,5),1,1); t := rs_add(b[..],rs_fighter("Target",1,1),3,1);
   for blind: 0..<2 { for hidden: 0..<2 { for deaf: 0..<2 {
     b[0].c[a].cond = (ifx blind == 1 then RS_BLINDED else 0) | (ifx deaf == 1 then RS_DEAFENED else 0);
@@ -55,7 +56,7 @@ rs_sight_admits :: (form: int, blind: bool, deaf: bool, hidden: bool) -> bool #e
 }
 
 #test "Borrowed Bat Blindsight sees invisible creatures through darkness within 60 feet and stops at Total Cover" {
-  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=4;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[3]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=4;
   owner:=rs_add(b[..],rs_druid("Owner",0,2),1,1);
   target:=rs_add(b[..],rs_fighter("Target",1,1),14,1);
   rs_fresh(b[..],owner);
@@ -98,7 +99,7 @@ rs_sight_admits :: (form: int, blind: bool, deaf: bool, hidden: bool) -> bool #e
   #assert rs_cast_sees(b[..],owner,bat,SP_HOLD_PERSON);
 }
 rs_spell_sight :: (sp: int) -> int #effects(all) {
-  if sp == SP_VICIOUS_MOCKERY { return RS_SIGHT_SEE_OR_HEAR; }
+  for s: RS_HEAR_SPELLS { if s == sp { return RS_SIGHT_SEE_OR_HEAR; } }
   for s: RS_SIGHT_SPELLS { if s == sp { return RS_SIGHT_SEE; } }
   return RS_SIGHT_NONE;
 }

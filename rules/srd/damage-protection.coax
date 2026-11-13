@@ -29,12 +29,12 @@
   #assert rs_fortitude_dc(9223372036854775807)==9223372036854775807;
 }
 #test "Fortitude reports qualifying save outcomes with their source actor and DC" {
-  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].n=2; b[0].who = -1; b[0].dice[0].fixed=true;
   c[0]=rs_cleric("Priest",0,3); c[1]=rs_zombie("Zombie",1); c[1].hp=1;
   #assert rs_damage_protection(b[..],0,1,1,false,false)==1;
   #assert b[0].book[0].count==1;
   e:=b[0].book[0].ev[0];
-  #assert e.kind==RS_EV_SAVE && e.spell == -1 && e.by==0 && e.to==1 && e.amount==13 && e.damage==0 && e.at==0;
+  #assert e.kind==RS_EV_SAVE && e.spell.value == -1 && e.by.value==0 && e.to.value==1 && e.amount==13 && e.damage==0 && e.at==0;
   #assert cast(string)e.text[0..<e.text_n]=="  Zombie Undead Fortitude: Con save 13 vs DC 6: it drops to 1 Hit Point";
   #assert rs_damage_protection(b[..],0,1,100,false,false)==0;
   e=b[0].book[0].ev[1];
@@ -44,7 +44,7 @@
 }
 
 #test "damage with successful HP protection still makes its own concentration save" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1; b[0].dice[0].fixed=true;
   c[0]=rs_zombie("Concentrating defender",0); c[0].hp=1; c[0].score[RS_CON]=2;
   c[0].conc=SP_BLESS; c[0].conc_until=60;
   // Fixed 10 minus four succeeds against Fortitude DC6, then fails the

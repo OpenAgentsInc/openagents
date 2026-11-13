@@ -22,22 +22,22 @@ ck_hero :: (level: int) -> RsCreature { return rs_warlock("Kel", 0, level, SP_EL
 
 #test "Agonizing Blast and Repelling Blast p.72-74: from level 2, Charisma on Eldritch Blast's damage and a 10-foot push" {
   for level: [2] int.[1, 2] {
-    b: [1] RsBattle; cf_field(b[..], ck_hero(level), 10);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], ck_hero(level), 10);
     #assert rs_cast(b[..], 0, SP_ELDRITCH_BLAST, 0, 0, 0, 1);
     #assert b[0].c[1].hp == 200 - 5 - (ifx level == 2 then 3 else 0) && b[0].c[1].x == (ifx level == 2 then 4 else 2);
   }
 }
 
 #test "Fiendish Vigor p.73: from level 5, False Life on itself without a slot, its die at its highest" {
-  b: [1] RsBattle; cf_field(b[..], ck_hero(5), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], ck_hero(5), 10);
   slots := b[0].c[0].slots[3];
   #assert rs_cast(b[..], 0, SP_FALSE_LIFE, 0, 0, 0, 0) && b[0].c[0].temp == 2 * 4 + 4 && b[0].c[0].slots[3] == slots;
-  four: [1] RsBattle; cf_field(four[..], ck_hero(4), 10); #assert !rs_cast(four[..], 0, SP_FALSE_LIFE, 0, 0, 0, 0);
+  four: [1] RsBattle; four_room: [1] RsRoom; rs_have(four[..], four_room[..]); cf_field(four[..], ck_hero(4), 10); #assert !rs_cast(four[..], 0, SP_FALSE_LIFE, 0, 0, 0, 0);
 }
 
 #test "Eldritch Mind p.72: from level 5, Advantage on Constitution saves to keep Concentration" {
   for level: [2] int.[4, 5] {
-    b: [1] RsBattle; cf_field(b[..], ck_hero(level), 10);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], ck_hero(level), 10);
     b[0].dice[0].fixed = false; b[0].dice[0].state = 7;   // d20s of 1, then 16
     b[0].c[0].conc = SP_HEX; b[0].c[0].conc_until = RS_NO_END; b[0].c[0].score[RS_CON] = 1;   // -5: only Advantage's 16 holds DC 10
     rs_damage(b[..], 1, 0, 2, RS_FIRE, false, -1);
@@ -57,14 +57,14 @@ ck_hero :: (level: int) -> RsCreature { return rs_warlock("Kel", 0, level, SP_EL
 
 #test "Magical Cunning p.72: from level 2, a rite's end regains half the Pact Magic slots, rounded up, once a Long Rest" {
   #assert ck_hero(1).uses_max[RS_USE_CUNNING] == 0 && ck_hero(2).uses_max[RS_USE_CUNNING] == 1;
-  b: [1] RsBattle; cf_field(b[..], ck_hero(2), 10); b[0].c[0].slots[1] = 0;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], ck_hero(2), 10); b[0].c[0].slots[1] = 0;
   #assert rs_magical_cunning(b[..], 0) && b[0].c[0].slots[1] == 1 && !rs_magical_cunning(b[..], 0);
   #assert rs_long_rest_resources(b[0].c[0..<1]) && b[0].c[0].uses[RS_USE_CUNNING] == 1;
 }
 
 #test "Dark One's Blessing p.76: from level 3, reducing an enemy to 0 Hit Points gives Charisma + Warlock level Temporary Hit Points" {
   for level: [2] int.[2, 3] {
-    b: [1] RsBattle; cf_field(b[..], ck_hero(level), 10); b[0].c[1].hp = 1;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], ck_hero(level), 10); b[0].c[1].hp = 1;
     #assert rs_cast(b[..], 0, SP_ELDRITCH_BLAST, 0, 0, 0, 1) && b[0].c[1].hp == 0;
     #assert b[0].c[0].temp == (ifx level == 3 then 3 + 3 else 0);
   }
@@ -84,7 +84,7 @@ ck_hero :: (level: int) -> RsCreature { return rs_warlock("Kel", 0, level, SP_EL
 
 #test "Dark One's Own Luck p.76: from level 6, Charisma-modifier uses of a d10 on a failed save or check it can turn" {
   #assert ck_hero(5).uses_max[RS_USE_LUCK] == 0 && ck_hero(6).uses_max[RS_USE_LUCK] == 4;
-  b: [1] RsBattle; cf_field(b[..], ck_hero(6), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], ck_hero(6), 10);
   #assert rs_own_luck(b[..], 0, 12, 12) == 0 && rs_own_luck(b[..], 0, 1, 12) == 0 && b[0].c[0].uses[RS_USE_LUCK] == 4;   // passed, or past reach
   #assert rs_own_luck(b[..], 0, 9, 12) == 5 && b[0].c[0].uses[RS_USE_LUCK] == 3;
 }

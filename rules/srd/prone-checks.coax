@@ -2,7 +2,7 @@
 #load "battle.coax";
 
 #test "Prone remains a choice at turn start and crawling spends extra movement" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8;
   a := rs_add(b[..],rs_fighter("Crawler",0,1),1,1);
   b[0].c[a].cond = RS_PRONE;
   rs_start_turn(b[..],a);
@@ -13,7 +13,7 @@
 }
 
 #test "standing spends current Speed rather than half the remaining movement and preserves residual feet" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8;
   a := rs_add(b[..],rs_fighter("Standing",0,1),1,1);
   b[0].c[a].speed = 25; b[0].c[a].cond = RS_PRONE;
   rs_start_turn(b[..],a); b[0].turn.move_left = 5;
@@ -33,7 +33,7 @@
 }
 
 #test "Prone attack edges cancel with ranged close-combat disadvantage without inventing melee requirements" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8;
   a := rs_add(b[..],rs_fighter("Attacker",0,1),1,1);
   t := rs_add(b[..],rs_fighter("Prone target",1,1),2,1);
   b[0].c[t].cond = RS_PRONE;
@@ -48,7 +48,7 @@
 }
 
 #test "standing refuses a depleted or immobile turn without spending" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8;
   a := rs_add(b[..],rs_fighter("Crawler",0,1),1,1);
   b[0].c[a].cond = RS_PRONE;
   rs_start_turn(b[..],a);
@@ -63,7 +63,7 @@
 }
 
 #test "crawling into overlapping difficult terrain pays fifteen feet once and refuses atomically" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8;
   a := rs_add(b[..],rs_fighter("Crawler",0,1),1,1);
   b[0].c[a].cond = RS_PRONE;
   rs_start_turn(b[..],a);

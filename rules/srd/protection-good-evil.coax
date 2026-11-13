@@ -14,7 +14,7 @@ rs_protection_save_ups :: (b:[]RsBattle,target:int,e:RsEffect)->int #effects(all
 }
 
 #test "Protection is source-specific and wards against all six named creature types" {
-  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].n=2;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].n=2;
   for kind:0..<7 {
     c[0]=RsCreature.{aberration=kind==0,celestial=kind==1,elemental=kind==2,fey=kind==3,fiend=kind==4,undead=kind==5};
     c[1]=RsCreature.{};
@@ -41,7 +41,7 @@ rs_protection_save_ups :: (b:[]RsBattle,target:int,e:RsEffect)->int #effects(all
 
 #test "Protection grants Advantage on the repeat save for a Charmed or Frightened condition already present" {
   for ward:0..<2 {
-    b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].w=8; b[0].h=8;
     i:=rs_add(b[..],rs_monster(MON_IMP,"Fiend",1),1,1);
     j:=rs_add(b[..],rs_fighter("Target",0,1),2,1);
     #assert rs_put_effect(b[..],j,RsEffect.{kind=EF_COND,cond=RS_CHARMED,by=i,spell=-1,save=RS_WIS,dc=99});

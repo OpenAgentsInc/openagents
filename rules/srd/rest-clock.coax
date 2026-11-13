@@ -37,7 +37,7 @@ RsRestClock :: struct { ticks:int; fraction:f64; }
 }
 
 #test "actual battle ticks advance and reset the rest clock and refuse poisoned deltas atomically" {
-  b:[1]RsBattle; b[0].who = -1;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].who = -1;
   for frame:0..<64 { rs_tick(b[..],1.0/64); }
   #assert b[0].rest_clock.ticks==1000000 && b[0].rest_clock.fraction==0 && b[0].clock==1000000;
   #assert rs_tick_admit(b[..],0) && b[0].rest_clock.ticks==1000000;

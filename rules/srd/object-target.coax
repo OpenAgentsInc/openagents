@@ -38,7 +38,7 @@ RS_OBJECT_SPELLS :: [4] int.[SP_ELDRITCH_BLAST, SP_FIRE_BOLT, SP_FLAME_HURL, SP_
     #assert rs_object_spell(sp) == listed;
     for hit: 0..<2 { for flammable: 0..<2 { for attended: 0..<2 {
       expected := sp == SP_FIRE_BOLT && hit == 1 && flammable == 1 && attended == 0;
-      #assert rs_object_ignites(sp, hit == 1, flammable == 1, attended == 1) == expected;
+      #assert rs_object_ignites(rs_spell(sp).ignites, hit == 1, flammable == 1, attended == 1) == expected;
     } } }
   }
 }
@@ -64,8 +64,9 @@ rs_object_spell :: (sp: int) -> bool #effects(all) {
   for s: RS_OBJECT_SPELLS { if s == sp { return true; } }
   return false;
 }
-rs_object_ignites :: (sp: int, hit: bool, flammable: bool, attended: bool) -> bool #effects(all) {
-  return sp == SP_FIRE_BOLT && hit && flammable && !attended;
+// ignites: the spell's record says its hit sets things burning (RsSpell.ignites: Fire Bolt).
+rs_object_ignites :: (ignites: bool, hit: bool, flammable: bool, attended: bool) -> bool #effects(all) {
+  return ignites && hit && flammable && !attended;
 }
 rs_object_hit :: (roll: int, total: int, ac: int) -> bool #effects(all) {
   return roll != 1 && (roll == 20 || total >= ac);

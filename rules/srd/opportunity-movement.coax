@@ -22,7 +22,7 @@ rs_step_reactions :: (b:[] RsBattle,i:int,x:int,y:int,choices:[]RsOpportunityCho
   return rs_step_to(b,i,x,y);
 }
 #test "an empty reaction selection uses ordinary movement admission and payment" {
-  b:[1]RsBattle; b[0].w=8; b[0].h=8; _:=rs_add(b[..],rs_fighter("Mover",0,1),2,2); rs_start_turn(b[..],0);
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8; _:=rs_add(b[..],rs_fighter("Mover",0,1),2,2); rs_start_turn(b[..],0);
   choices:[1]RsOpportunityChoice;
   #assert rs_step_ready(b[..],0,3,2) && !b[0].turn.moved;
   #assert rs_step_reactions(b[..],0,3,2,choices[0..<0]) && b[0].c[0].x==3;

@@ -30,7 +30,7 @@ rs_finish_short_rest_memorizing :: (b: [] RsBattle, i: int, drop: int, add: int)
   #assert drop == 114 && add == 198 && rs_wizard_key_bit(w, w.spells.selected, drop) && rs_wizard_key_bit(w, w.spells.known, add) && !rs_wizard_key_bit(w, w.spells.selected, add);
   #assert rs_wizard_key_bit(w, w.spells.selected, cantrip) && !rs_wizard_key_bit(w, w.spells.selected, splash);
   for mode: 0..<12 {
-    b: [1] RsBattle; b[0].w = 12; b[0].h = 6; _ := rs_add(b[..], rs_wizard("Wiz", 0, 5), 1, 1);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; _ := rs_add(b[..], rs_wizard("Wiz", 0, 5), 1, 1);
     b[0].clock = 7; b[0].rest_clock.ticks = 7000000;
     if mode != 9 { #assert rs_short_rest_begin(b[..], 0); }
     b[0].clock = 3607; b[0].rest_clock.ticks = 3607000000;
@@ -45,14 +45,14 @@ rs_finish_short_rest_memorizing :: (b: [] RsBattle, i: int, drop: int, add: int)
     after := b[0].c[0].spells.selected;
     if ok {
       #assert after[1] == before[1] - (cast(u64) 1 << 50) && after[3] == before[3] + (cast(u64) 1 << 6) && after[0] == before[0] && after[2] == before[2] && after[4] == before[4] && after[5] == before[5];
-      e := rs_recent(b[0].book[0], 0); #assert e.feat == RS_FT_MEMORIZE && e.kind == RS_EV_FEAT && e.amount == add && e.by == 0;
+      e := rs_recent(b[0].book[0], 0); #assert e.feat == RS_FT_MEMORIZE && e.kind == RS_EV_FEAT && e.amount == add && e.by.value == 0;
     } else { for k: 0..<6 { #assert after[k] == before[k]; } }
   }
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; _ := rs_add(b[..], rs_wizard("Wiz", 0, 5), 1, 1); b[0].c[1] = b[0].c[0];
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; _ := rs_add(b[..], rs_wizard("Wiz", 0, 5), 1, 1); b[0].c[1] = b[0].c[0];
   #assert !rs_finish_short_rest_memorizing(b[..], -1, drop, add) && !rs_finish_short_rest_memorizing(b[..], 1, drop, add);
   #assert !rs_memorize_admits(w, drop, RS_SPELL_KEYS.count);
   // Mage Armor (key 194, word 3) for Flaming Sphere (key 128, word 2), put in the book
-  m: [1] RsBattle; m[0].w = 12; m[0].h = 6; _ = rs_add(m[..], rs_wizard("Wiz", 0, 5), 1, 1);
+  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]); m[0].w = 12; m[0].h = 6; _ = rs_add(m[..], rs_wizard("Wiz", 0, 5), 1, 1);
   m[0].clock = 7; m[0].rest_clock.ticks = 7000000; #assert rs_short_rest_begin(m[..], 0);
   m[0].clock = 3607; m[0].rest_clock.ticks = 3607000000;
   armor := 194; m[0].c[0].spells.known[2] |= 1;

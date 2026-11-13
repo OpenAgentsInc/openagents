@@ -5,7 +5,7 @@
 
 #test "removing the world profile gives strict beats, grants, recovery, areas, measuring and walking; no world refills a press" {
   for world: 0..<2 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 8;
     #assert rs_set_world(b[..],ifx world == 1 then RS_EVERGLADE_WORLD else RS_STRICT_WORLD);
     a := rs_add(b[..],rs_rogue("Runner",0,3),1,1);
     b[0].c[a].slots_max[1] = 2; b[0].c[a].slots[1] = 0;
@@ -44,7 +44,7 @@ wt_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.0005; }
 
 #test "continuous walking pays exact feet up to the strict turn's Speed and then stops" {
   for speed: [4] int.[7,25,30,45] {
-    b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,speed);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); wt_field(b[..],RS_STRICT_WORLD,speed);
     #assert rs_walk_pay(b[..],0,1) == 1 && b[0].turn.moved;
     total := 1 + wt_walk(b[..],0.1);
     #assert wt_near(total,f32(speed)*RS_FOOT_M) && total <= f32(speed)*RS_FOOT_M + 0.0001;
@@ -54,7 +54,7 @@ wt_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.0005; }
 
 #test "Difficult Terrain and crawling each cost one extra foot per foot walked" {
   for prone: 0..<2 { for difficult: 0..<2 {
-    b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,30);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); wt_field(b[..],RS_STRICT_WORLD,30);
     if prone == 1 { b[0].c[0].cond = RS_PRONE; }
     if difficult == 1 { b[0].zone[0] = RsZone.{on=true, difficult=true, x0=0, y0=0, x1=29, y1=7}; }
     #assert rs_walk_cost(b[..],0) == 1 + prone + difficult;
@@ -64,7 +64,7 @@ wt_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.0005; }
 }
 
 #test "each Dash adds the walker's current Speed and spent feet stay spent through Speed changes" {
-  b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,30);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); wt_field(b[..],RS_STRICT_WORLD,30);
   #assert rs_dash(b[..],0) && wt_near(rs_walk_left(b[..],0),60);
   #assert wt_near(rs_walk_pay(b[..],0,20*RS_FOOT_M),20*RS_FOOT_M) && wt_near(rs_walk_left(b[..],0),40);
   b[0].c[0].speed = 10;
@@ -74,7 +74,7 @@ wt_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.0005; }
 }
 
 #test "continuous and grid movement spend one budget, carrying part of a foot" {
-  b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,30);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); wt_field(b[..],RS_STRICT_WORLD,30);
   #assert wt_near(rs_walk_pay(b[..],0,12.5*RS_FOOT_M),12.5*RS_FOOT_M);
   #assert rs_movement_left(b[..],0) == 18 && wt_near(b[0].turn.walk_ft,0.5) && wt_near(rs_walk_left(b[..],0),17.5);
   for x: 2..<5 { #assert rs_step_to(b[..],0,x,1); }
@@ -85,7 +85,7 @@ wt_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.0005; }
 }
 
 #test "walking pays nothing outside the walker's own turn, when it cannot move or for an empty request" {
-  b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,30);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); wt_field(b[..],RS_STRICT_WORLD,30);
   _ := rs_add(b[..],rs_rogue("Other",0,3),5,5);
   zero: f32 = 0;
   for metres: [3] f32.[0,-1,zero/zero] { #assert rs_walk_pay(b[..],0,metres) == 0; }
@@ -99,11 +99,11 @@ wt_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.0005; }
 }
 
 #test "declared action timing pays its quarter-round grant; the Everglade world walks unpaid" {
-  b: [1] RsBattle; wt_field(b[..],RS_ACTION_WORLD,30);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); wt_field(b[..],RS_ACTION_WORLD,30);
   #assert wt_near(wt_walk(b[..],0.2),10*RS_FOOT_M) && rs_walk_scale(b[..],0) == 0;
   rs_end_turn(b[..],0); rs_start_turn(b[..],0);
   #assert rs_walk_scale(b[..],0) == 1 && rs_dash(b[..],0) && wt_near(wt_walk(b[..],0.2),40*RS_FOOT_M);
-  e: [1] RsBattle; wt_field(e[..],RS_EVERGLADE_WORLD,30);
+  e: [1] RsBattle; e_room: [1] RsRoom; rs_have(e[..], e_room[..]); wt_field(e[..],RS_EVERGLADE_WORLD,30);
   #assert rs_walk_pay(e[..],0,0) == 0 && !e[0].turn.moved;
   #assert rs_walk_pay(e[..],0,50) == 50 && rs_movement_left(e[..],0) == 10 && rs_walk_scale(e[..],0) == 1 && e[0].turn.moved;
   #assert rs_walk_pay(e[..],0,1e9) == RS_WALK_MAX_M;
@@ -112,12 +112,12 @@ wt_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.0005; }
   e[0].c[0].cond = 0; e[0].who = -1; #assert rs_walk_pay(e[..],-1,1) == 0;
   e[0].who = e[0].n; e[0].c[e[0].n] = e[0].c[0]; #assert rs_walk_pay(e[..],e[0].n,1) == 0;
   // a paid creature with no movement this turn pays and records nothing
-  z: [1] RsBattle; wt_field(z[..],RS_STRICT_WORLD,0);
+  z: [1] RsBattle; z_room: [1] RsRoom; rs_have(z[..], z_room[..]); wt_field(z[..],RS_STRICT_WORLD,0);
   #assert rs_walk_pay(z[..],0,1) == 0 && !z[0].turn.moved && rs_walk_left(z[..],0) == 0;
 }
 
 #test "the walker's step is cut where the turn's movement runs out" {
-  b: [1] RsBattle; wt_field(b[..],RS_STRICT_WORLD,30);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); wt_field(b[..],RS_STRICT_WORLD,30);
   to := rs_walk_take(b[..],0,1,2,4,6);   // 5 metres
   #assert to.x == 4 && to.z == 6 && to.metres == 5;
   to = rs_walk_take(b[..],0,4,6,4,16);
@@ -136,7 +136,7 @@ WT_MARKS :: 64;
 // lasts until the end of the caster's next turn went, the tick a spent slot came back, the tick a
 // ten-minute rite's hour of concentration would end, and how many of the caster's turns began a round.
 wt_aged_fight :: (age: int, out: [] int) -> int {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 8; b[0].dice[0].fixed = true;
   #assert rs_set_world(b[..],RS_ACTION_WORLD);
   rs_reset_timing(b[..]); #assert rs_set_world(b[..],RS_ACTION_WORLD);
   b[0].clock = age; b[0].rest_clock.ticks = age;
@@ -185,7 +185,7 @@ wt_aged_fight :: (age: int, out: [] int) -> int {
 }
 #test "a host's float frames carry no error into an old battle: 30 days on, a second of frames is a second" {
   for age: [2] int.[0, WT_MONTH] {
-    b: [1] RsBattle; b[0].who = -1; b[0].clock = age; b[0].rest_clock.ticks = age;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].who = -1; b[0].clock = age; b[0].rest_clock.ticks = age;
     for frame: 0..<64 { rs_tick(b[..],1.0/64); }
     #assert b[0].clock == age + RS_TICKS && b[0].rest_clock.ticks == age + RS_TICKS;
     for frame: 0..<30 { rs_tick(b[..],1.0/30); }

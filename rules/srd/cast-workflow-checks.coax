@@ -27,7 +27,7 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
 }
 
 #test "a prepared Ritual takes ten more minutes of Magic actions, then its action, and spends no slot" #steps 400000000 {
-  b: [1] RsBattle; a := rt_druid(b[..]); ally := 1; was := b[0].c[a];
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rt_druid(b[..]); ally := 1; was := b[0].c[a];
   #assert rs_ritual_begin(b[..],a,SP_WATER_WALK);
   #assert b[0].turn.action && b[0].turn.leveled && !b[0].turn.slot_spent && b[0].c[a].conc == SP_WATER_WALK && b[0].c[a].rite == SP_WATER_WALK;
   e := rs_recent_at(b[0].book[..],0); #assert e.kind == RS_EV_TEXT && cast(string) e.text[0..<e.text_n] == "Druid begins Water Walk as a Ritual";
@@ -41,7 +41,7 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
   rt_turn(b[..],a);
   #assert !rs_ritual_continue(b[..],a) && !b[0].turn.action;   // ten minutes are up: the action left is the cast
   // a held free cast of the same spell is not what the Ritual spends
-  b[0].c[a].uses_max[RS_USE_FREE] = 1; b[0].c[a].uses[RS_USE_FREE] = 1; b[0].c[a].free_spell = SP_WATER_WALK; was = b[0].c[a];
+  b[0].c[a].uses_max[RS_USE_FREE] = 1; b[0].c[a].uses[RS_USE_FREE] = 1; b[0].c[a].rank[RS_RK_FREE_SPELL] = SP_WATER_WALK; was = b[0].c[a];
   #assert !rs_cast(b[..],a,SP_WATER_WALK,0,0,0,9) && b[0].c[a].rite == SP_WATER_WALK;   // a malformed request spends nothing
   #assert rs_cast(b[..],a,SP_WATER_WALK,0,0,0,ally);
   #assert rt_kept(b[..],a,was) && b[0].c[a].rite == -1 && b[0].c[a].conc == -1 && b[0].turn.action && !b[0].turn.slot_spent;
@@ -51,7 +51,7 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
 }
 #test "a missed Magic action, failed Concentration save, incapacitation, Rage or new Concentration spell fails the Ritual and expends nothing" #steps 400000000 {
   for why: 0..<4 {
-    b: [1] RsBattle; a := rt_druid(b[..]); was := b[0].c[a];
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rt_druid(b[..]); was := b[0].c[a];
     prior := RsEffect.{kind=EF_FAITH,by=a,spell=SP_WATER_WALK,until=9000};
     #assert rs_effect_add(b[0].c[1..<2],prior);   // an earlier copy's effect is not the rite's to end
     #assert rs_ritual_begin(b[..],a,SP_WATER_WALK);
@@ -68,17 +68,17 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
     for k: 0..<rs_min(b[0].book[0].seq,RS_EVENTS) {
       ev := rs_recent_at(b[0].book[..],k);
       t := cast(string) ev.text[0..<ev.text_n];
-      if ev.kind == RS_EV_END && ev.spell == SP_WATER_WALK && t.count >= 25 && t[0..<25] == "Druid's Water Walk Ritual" { found = true; }
+      if ev.kind == RS_EV_END && ev.spell.value == SP_WATER_WALK && t.count >= 25 && t[0..<25] == "Druid's Water Walk Ritual" { found = true; }
     }
     #assert found;
   }
-  b: [1] RsBattle; a := rt_druid(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rt_druid(b[..]);
   #assert rs_ritual_begin(b[..],a,SP_WATER_WALK); rt_turn(b[..],a);
   b[0].c[a].uses[RS_USE_RAGE] = 1; b[0].c[a].uses_max[RS_USE_RAGE] = 1;
   #assert rs_rage(b[..],a) && b[0].c[a].rite == -1 && b[0].c[a].conc == -1;
 }
 #test "beginning a Ritual ends earlier Concentration and interrupts no Concentration-free state when refused" #steps 400000000 {
-  b: [1] RsBattle; a := rt_druid(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rt_druid(b[..]);
   keys := [2] int.[RS_EXEC_SOURCE[SP_WATER_WALK],RS_EXEC_SOURCE[SP_ENTANGLE]];
   #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
   #assert rs_cast(b[..],a,SP_ENTANGLE,1,5,1,-1) && b[0].c[a].conc == SP_ENTANGLE;
@@ -88,7 +88,7 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
   #assert !zone_kept;
   // refusals: no tag, not prepared, action spent, Quickened this turn, raging, not its turn
   for why: 0..<6 {
-    c: [1] RsBattle; d := rt_druid(c[..]);
+    c: [1] RsBattle; c_room: [1] RsRoom; rs_have(c[..], c_room[..]); d := rt_druid(c[..]);
     keys2 := [2] int.[RS_EXEC_SOURCE[SP_WATER_WALK],RS_EXEC_SOURCE[SP_ENTANGLE]];
     #assert rs_set_spells(c[0].c[d..<d+1],keys2[..]);
     #assert rs_cast(c[..],d,SP_ENTANGLE,1,5,1,-1); rt_turn(c[..],d);
@@ -108,7 +108,7 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
 }
 #test "Ritual Adept reads a spellbook Ritual that is not prepared; other casters need it prepared" #steps 400000000 {
   for adept: 0..<2 { for book: 0..<2 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
     a := rs_add(b[..],rs_wizard("Wizard",0,5),1,1);
     keys := [1] int.[RS_EXEC_SOURCE[SP_FIRE_BOLT]]; #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
     if book == 1 { #assert rs_spellbook_add(b[0].c[a..<a+1],RS_EXEC_SOURCE[SP_WATER_BREATHING]); }
@@ -124,7 +124,7 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
   } }
   // a Warlock's prepared Speak with Animals; unprepared, a Warlock cannot
   for prepared: 0..<2 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 8;
     a := rs_add(b[..],rs_warlock("Warlock",0,3,SP_ELDRITCH_BLAST),1,1);
     keys := [1] int.[RS_EXEC_SOURCE[ifx prepared == 1 then SP_SPEAK_WITH_ANIMALS else SP_HEX]];
     #assert rs_set_spells(b[0].c[a..<a+1],keys[..]);
@@ -133,7 +133,7 @@ rt_kept :: (b: [] RsBattle, a: int, was: RsCreature) -> bool {
   }
 }
 #test "only the due rite's caster casts it free; Quickened, early or another spell's slot-0 requests refuse" #steps 400000000 {
-  b: [1] RsBattle; a := rt_druid(b[..]); was := b[0].c[a];
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rt_druid(b[..]); was := b[0].c[a];
   #assert rs_ritual_begin(b[..],a,SP_WATER_WALK);
   for turn: 0..<100 { rt_turn(b[..],a); if turn < 99 { #assert rs_ritual_continue(b[..],a); } }
   b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_QUICKENED, true); b[0].c[a].uses[RS_USE_SORCERY] = 4;
@@ -212,7 +212,7 @@ rc_same :: (b: [] RsBattle, a: int, was: RsCreature, rolled: int, seq: int) -> b
 #test "an unseen creature or point refuses a you-can-see spell before any cost; hearing serves Vicious Mockery" #steps 400000000 {
   spells := [3] int.[SP_HOLD_PERSON,SP_SACRED_FLAME,SP_COMMAND];
   for blind: 0..<2 { for hidden: 0..<2 { for path: 0..<3 {
-    b: [1] RsBattle; a := rc_sight(b[..],rs_cleric("Cleric",0,5),spells[..]); t := 1;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rc_sight(b[..],rs_cleric("Cleric",0,5),spells[..]); t := 1;
     if blind == 1 { b[0].c[a].cond = RS_BLINDED; }
     if hidden == 1 { b[0].c[t].cond = RS_INVISIBLE; }
     was := b[0].c[a]; rolled := b[0].dice[0].rolled; seq := b[0].book[0].seq;
@@ -225,13 +225,13 @@ rc_same :: (b: [] RsBattle, a: int, was: RsCreature, rolled: int, seq: int) -> b
     if !ok { #assert rc_same(b[..],a,was,rolled,seq); }
   } } }
   for deaf: 0..<2 {
-    b: [1] RsBattle; mock := [1] int.[SP_VICIOUS_MOCKERY];
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); mock := [1] int.[SP_VICIOUS_MOCKERY];
     a := rc_sight(b[..],rs_bard("Bard",0,5),mock[..]);
     b[0].c[a].cond = RS_BLINDED | (ifx deaf == 1 then RS_DEAFENED else 0);
     #assert rs_cast(b[..],a,SP_VICIOUS_MOCKERY,0,0,0,1) == (deaf == 0);
   }
   for blind: 0..<2 {
-    b: [1] RsBattle; storm := [1] int.[SP_CALL_LIGHTNING];
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); storm := [1] int.[SP_CALL_LIGHTNING];
     a := rc_sight(b[..],rs_druid("Druid",0,5),storm[..]);
     if blind == 1 { b[0].c[a].cond = RS_BLINDED; }
     was := b[0].c[a]; rolled := b[0].dice[0].rolled; seq := b[0].book[0].seq;
@@ -240,7 +240,7 @@ rc_same :: (b: [] RsBattle, a: int, was: RsCreature, rolled: int, seq: int) -> b
     if !ok { #assert rc_same(b[..],a,was,rolled,seq); }
   }
   for blind: 0..<2 {
-    b: [1] RsBattle; rebuke := [1] int.[SP_HELLISH_REBUKE];
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rebuke := [1] int.[SP_HELLISH_REBUKE];
     a := rc_sight(b[..],rs_warlock("Warlock",0,3,SP_ELDRITCH_BLAST),rebuke[..]);
     b[0].c[a].feats = rs_feature_put(b[0].c[a].feats, RS_FT_REBUKE, true);
     if blind == 1 { b[0].c[a].cond = RS_BLINDED; }

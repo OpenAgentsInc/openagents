@@ -42,7 +42,7 @@ rs_movement_left :: (b: [] RsBattle, i: int) -> int #effects(all) {
 }
 
 #test "movement queries bind only a logical actor in its own turn and preserve unrelated budgets" {
-  b: [1] RsBattle; b[0].w=8; b[0].h=8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _ := rs_add(b[..],rs_rogue("Runner",0,3),1,1); rs_start_turn(b[..],0);
   b[0].turn.action=true; b[0].turn.bonus=true;
   #assert rs_movement_left(b[..],0)==30;

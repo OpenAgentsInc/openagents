@@ -11,7 +11,7 @@
 #load "class-features.coax";
 
 #test "Martial Arts p.50: Unarmed Strikes with Dexterity for the Martial Arts die (d6, d8 at 5), and one as a Bonus Action" {
-  b: [1] RsBattle; cf_field(b[..], rs_monk("Sen", 0, 1), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_monk("Sen", 0, 1), 10);
   #assert rs_weapon_attack(b[0].c[0], W_UNARMED) == 2 + 3;
   #assert rs_attack(b[..], 0, 1, false, -1) && b[0].c[1].hp == 200 - (3 + 3);
   #assert rs_bonus_strike(b[..], 0, 1) && b[0].turn.bonus && b[0].c[1].hp == 200 - 12 && !rs_bonus_strike(b[..], 0, 1);
@@ -24,19 +24,19 @@
 
 #test "Monk's Focus p.50: Focus Points equal to its level from 2; Flurry, Patient Defense and Step of the Wind; all back on a Short Rest" {
   #assert rs_monk("S", 0, 1).uses_max[RS_USE_FOCUS] == 0 && rs_monk("S", 0, 2).uses_max[RS_USE_FOCUS] == 2 && rs_monk("S", 0, 6).uses_max[RS_USE_FOCUS] == 6;
-  b: [1] RsBattle; cf_field(b[..], rs_monk("Sen", 0, 2), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_monk("Sen", 0, 2), 10);
   #assert rs_flurry(b[..], 0, 1, OH_ADDLE) && b[0].c[0].uses[RS_USE_FOCUS] == 1 && b[0].c[1].hp == 200 - 2 * 6;
-  p: [1] RsBattle; cf_field(p[..], rs_monk("Sen", 0, 2), 10);
+  p: [1] RsBattle; p_room: [1] RsRoom; rs_have(p[..], p_room[..]); cf_field(p[..], rs_monk("Sen", 0, 2), 10);
   #assert rs_disengage_use(p[..], 0, RS_DISENGAGE_PATIENT) && p[0].turn.disengaged && p[0].c[0].uses[RS_USE_FOCUS] == 2;   // free: Disengage
-  q: [1] RsBattle; cf_field(q[..], rs_monk("Sen", 0, 2), 10);
+  q: [1] RsBattle; q_room: [1] RsRoom; rs_have(q[..], q_room[..]); cf_field(q[..], rs_monk("Sen", 0, 2), 10);
   #assert rs_patient_defense(q[..], 0) && q[0].c[0].uses[RS_USE_FOCUS] == 1 && rs_attack_edge(q[..], 1, 0, true, true) == -1;   // paid: and Dodge
-  w: [1] RsBattle; cf_field(w[..], rs_monk("Sen", 0, 2), 10);
+  w: [1] RsBattle; w_room: [1] RsRoom; rs_have(w[..], w_room[..]); cf_field(w[..], rs_monk("Sen", 0, 2), 10);
   #assert rs_step_of_the_wind(w[..], 0) && w[0].c[0].uses[RS_USE_FOCUS] == 2 && w[0].turn.move_left == 6 + 8 && !w[0].turn.disengaged;   // free: Dash
-  v: [1] RsBattle; cf_field(v[..], rs_monk("Sen", 0, 2), 10);
+  v: [1] RsBattle; v_room: [1] RsRoom; rs_have(v[..], v_room[..]); cf_field(v[..], rs_monk("Sen", 0, 2), 10);
   #assert rs_step_of_the_wind_focus(v[..], 0) && v[0].c[0].uses[RS_USE_FOCUS] == 1 && v[0].turn.disengaged && v[0].turn.move_left == 6 + 8;   // paid: and Disengage
   #assert !rs_step_of_the_wind_focus(v[..], 0) && v[0].c[0].uses[RS_USE_FOCUS] == 1;   // one Bonus Action
   c: [1] RsCreature; c[0] = rs_monk("Sen", 0, 2); c[0].uses[RS_USE_FOCUS] = 0; rs_short_rest_resources(c[..]); #assert c[0].uses[RS_USE_FOCUS] == 2;
-  none: [1] RsBattle; cf_field(none[..], rs_monk("Sen", 0, 2), 10); none[0].c[0].uses[RS_USE_FOCUS] = 0;
+  none: [1] RsBattle; none_room: [1] RsRoom; rs_have(none[..], none_room[..]); cf_field(none[..], rs_monk("Sen", 0, 2), 10); none[0].c[0].uses[RS_USE_FOCUS] = 0;
   #assert !rs_flurry(none[..], 0, 1, OH_ADDLE) && !rs_step_of_the_wind_focus(none[..], 0) && !none[0].turn.bonus;
 }
 
@@ -45,24 +45,24 @@
 }
 
 #test "Uncanny Metabolism p.51: on rolling Initiative, all Focus back and Martial Arts die + level Hit Points, once a Long Rest" {
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; b[0].dice[0].fixed = true;
   m := rs_monk("Sen", 0, 3); m.uses[RS_USE_FOCUS] = 0; m.hp = 5;
   i := rs_add(b[..], m, 1, 1);   // joining the battle rolls its Initiative
   #assert b[0].c[i].uses[RS_USE_FOCUS] == 3 && b[0].c[i].hp == 5 + 3 + 3 && b[0].c[i].uses[RS_USE_METABOLISM] == 0;
   #assert !rs_uncanny_metabolism(b[..], i);   // spent until a Long Rest
   #assert rs_long_rest_resources(b[0].c[i..<i+1]) && b[0].c[i].uses[RS_USE_METABOLISM] == 1;
-  full: [1] RsBattle; f := rs_add(full[..], rs_monk("Sen", 0, 3), 1, 1);
+  full: [1] RsBattle; full_room: [1] RsRoom; rs_have(full[..], full_room[..]); f := rs_add(full[..], rs_monk("Sen", 0, 3), 1, 1);
   #assert full[0].c[f].uses[RS_USE_METABOLISM] == 1;   // nothing to gain: kept
-  one: [1] RsBattle; o := rs_monk("Sen", 0, 1); o.hp = 5; k := rs_add(one[..], o, 1, 1); #assert one[0].c[k].hp == 5;
+  one: [1] RsBattle; one_room: [1] RsRoom; rs_have(one[..], one_room[..]); o := rs_monk("Sen", 0, 1); o.hp = 5; k := rs_add(one[..], o, 1, 1); #assert one[0].c[k].hp == 5;
 }
 
 #test "Deflect Attacks p.51: from level 3, a Reaction cuts a B/P/S hit by 1d10 + Dex + level; cut to 0, a Focus Point sends 2 dice + Dex back" {
-  b: [1] RsBattle; cf_field(b[..], rs_monk("Sen", 0, 3), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_monk("Sen", 0, 3), 10);
   b[0].c[1] = rs_barbarian("Gorr", 1, 1); b[0].c[1].x = 2; b[0].c[1].y = 1; b[0].c[1].hp = 100; b[0].c[1].score[RS_DEX] = 1;
   b[0].c[0].hp = 100; b[0].c[0].ac = 1; rs_fresh(b[..], 1);
   #assert rs_attack(b[..], 1, 0, false, -1) && b[0].c[0].hp == 100 && b[0].c[0].reacted;   // 9 - (5 + 3 + 3)
   #assert b[0].c[0].uses[RS_USE_FOCUS] == 2 && b[0].c[1].hp == 100 - (2 * 3 + 3);   // redirected: 2d6 + 3
-  two: [1] RsBattle; cf_field(two[..], rs_monk("Sen", 0, 2), 10);
+  two: [1] RsBattle; two_room: [1] RsRoom; rs_have(two[..], two_room[..]); cf_field(two[..], rs_monk("Sen", 0, 2), 10);
   two[0].c[1] = rs_barbarian("Gorr", 1, 1); two[0].c[1].x = 2; two[0].c[1].y = 1;
   two[0].c[0].hp = 100; two[0].c[0].ac = 1; rs_fresh(two[..], 1);
   #assert rs_attack(two[..], 1, 0, false, -1) && two[0].c[0].hp == 100 - 9;
@@ -70,14 +70,14 @@
 
 #test "Open Hand Technique p.52: from level 3 a Flurry hit Addles, Pushes 15 feet on a failed Str save, or Topples on a failed Dex save" {
   for how: [3] int.[OH_ADDLE, OH_PUSH, OH_TOPPLE] {
-    b: [1] RsBattle; cf_field(b[..], rs_monk("Sen", 0, 3), 10);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_monk("Sen", 0, 3), 10);
     b[0].c[1].score[RS_STR] = 1; b[0].c[1].score[RS_DEX] = 1;
     #assert rs_flurry(b[..], 0, 1, how);
     if how == OH_ADDLE { #assert rs_effect(b[0].c[1], EF_ADDLED); }
     if how == OH_PUSH { #assert b[0].c[1].x >= 2 + 3; }
     if how == OH_TOPPLE { #assert rs_has(b[0].c[1], RS_PRONE); }
   }
-  two: [1] RsBattle; cf_field(two[..], rs_monk("Sen", 0, 2), 10); two[0].c[1].score[RS_DEX] = 1;
+  two: [1] RsBattle; two_room: [1] RsRoom; rs_have(two[..], two_room[..]); cf_field(two[..], rs_monk("Sen", 0, 2), 10); two[0].c[1].score[RS_DEX] = 1;
   #assert rs_flurry(two[..], 0, 1, OH_TOPPLE) && !rs_has(two[0].c[1], RS_PRONE);
 }
 
@@ -86,37 +86,37 @@
 }
 
 #test "Slow Fall p.51: from level 4, its Reaction cuts falling damage by five times its level" {
-  b: [1] RsBattle; cf_field(b[..], rs_monk("Sen", 0, 4), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_monk("Sen", 0, 4), 10);
   #assert rs_slow_fall(b[..], 0, 27) == 7 && b[0].c[0].reacted;
   #assert rs_slow_fall(b[..], 0, 27) == 27;   // its Reaction is spent
-  three: [1] RsBattle; cf_field(three[..], rs_monk("Sen", 0, 3), 10);
+  three: [1] RsBattle; three_room: [1] RsRoom; rs_have(three[..], three_room[..]); cf_field(three[..], rs_monk("Sen", 0, 3), 10);
   #assert rs_slow_fall(three[..], 0, 27) == 27 && !three[0].c[0].reacted;
 }
 
 #test "Extra Attack p.51: from level 5, two Unarmed Strikes with the Attack action (1d8 + 4)" {
-  b: [1] RsBattle; cf_field(b[..], rs_monk("Sen", 0, 5), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_monk("Sen", 0, 5), 10);
   #assert rs_attack(b[..], 0, 1, false, -1) && b[0].c[1].hp == 200 - 2 * (4 + 4);
 }
 
 #test "Stunning Strike p.51: from level 5, once a turn on a hit for 1 Focus: a Con save or Stunned until its next turn; a success halves Speed" {
   for strong: 0..<2 {
-    b: [1] RsBattle; cf_field(b[..], rs_monk("Sen", 0, 5), 10);
-    b[0].c[1].score[RS_CON] = ifx strong == 1 then 30 else 1; b[0].c[0].stun_ready = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_monk("Sen", 0, 5), 10);
+    b[0].c[1].score[RS_CON] = ifx strong == 1 then 30 else 1; b[0].c[0].note[RS_NT_STUN] = 1;
     #assert rs_attack(b[..], 0, 1, false, -1) && b[0].c[0].uses[RS_USE_FOCUS] == 4;   // two hits, one Stunning Strike
     #assert rs_has(b[0].c[1], RS_STUNNED) == (strong == 0) && (rs_aura_on(b[0].c[1], EF_HALVED, b[0].clock)) == (strong == 1);
   }
 }
 
 #test "Empowered Strikes p.51: from level 6, an Unarmed Strike can deal Force instead" {
-  b: [1] RsBattle; cf_field(b[..], rs_monk("Sen", 0, 6), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_monk("Sen", 0, 6), 10);
   b[0].c[1].resist = 1 << RS_BLUDGEONING;
   #assert rs_attack(b[..], 0, 1, false, -1) && b[0].c[1].hp == 200 - 2 * (4 + 4);   // Force, not halved
-  five: [1] RsBattle; cf_field(five[..], rs_monk("Sen", 0, 5), 10); five[0].c[1].resist = 1 << RS_BLUDGEONING;
+  five: [1] RsBattle; five_room: [1] RsRoom; rs_have(five[..], five_room[..]); cf_field(five[..], rs_monk("Sen", 0, 5), 10); five[0].c[1].resist = 1 << RS_BLUDGEONING;
   #assert rs_attack(five[..], 0, 1, false, -1) && five[0].c[1].hp == 200 - 2 * ((4 + 4) / 2);
 }
 
 #test "Wholeness of Body p.52: from level 6, a Bonus Action for the Martial Arts die + Wisdom, Wisdom-modifier times a Long Rest" {
-  b: [1] RsBattle; cf_field(b[..], rs_monk("Sen", 0, 6), 10); b[0].c[0].hp = 5;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_monk("Sen", 0, 6), 10); b[0].c[0].hp = 5;
   #assert b[0].c[0].uses[RS_USE_WHOLE] == 2 && rs_wholeness(b[..], 0) && b[0].c[0].hp == 5 + 4 + 2 && b[0].turn.bonus;
   #assert rs_monk("S", 0, 5).uses_max[RS_USE_WHOLE] == 0;
 }

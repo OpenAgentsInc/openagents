@@ -30,13 +30,13 @@ rs_disengage_end :: (b:[] RsBattle,i:int) #effects(all) {
 }
 
 #test "Disengage retirement belongs to the running actor and does not spend another budget" {
-  b:[1] RsBattle; b[0].who=2; b[0].turn.disengaged=true; b[0].turn.bonus=true;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].who=2; b[0].turn.disengaged=true; b[0].turn.bonus=true;
   rs_disengage_end(b[..],1); #assert b[0].turn.disengaged && b[0].turn.bonus;
   rs_disengage_end(b[..],2); #assert !b[0].turn.disengaged && b[0].turn.bonus;
 }
 
 #test "Disengage action entry is available in every engine consumer" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],rs_fighter("Fighter",0,1),2,2); rs_start_turn(b[..],0);
   #assert rs_disengage(b[..],0) && b[0].turn.disengaged && b[0].turn.action;
 }

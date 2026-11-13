@@ -21,7 +21,7 @@ rs_magical_cunning :: (b: [] RsBattle, i: int) -> bool #effects(all) {
 
 #test "Magical Cunning: half the Pact Magic slots (rounded up) back, once a Long Rest, only when some are spent" {
   for mode: 0..<9 {
-    b: [1] RsBattle; b[0].w = 12; b[0].h = 6;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6;
     level := ifx mode == 7 then 2 else 5;
     _ := rs_add(b[..], rs_warlock("Kel", 0, level, SP_ELDRITCH_BLAST), 1, 1); _ = rs_add(b[..], rs_wizard("Foe", 1, 1), 2, 1);
     b[0].c[0].slots[rs_pact_level(b[0].c[0])] = 0;
@@ -33,17 +33,17 @@ rs_magical_cunning :: (b: [] RsBattle, i: int) -> bool #effects(all) {
     #assert rs_magical_cunning(b[..], 0) == ok && b[0].c[0].uses[RS_USE_CUNNING] == (ifx ok then uses - 1 else uses);
     want := ifx !ok then was else ifx mode == 6 then 2 else 1;   // two slots: one back (half, rounded up); one spent: one
     #assert b[0].c[0].slots[l] == want;
-    if ok { e := rs_recent(b[0].book[0], 0); #assert e.feat == RS_FT_MAGICAL_CUNNING && e.kind == RS_EV_FEAT && e.amount == want - was && e.by == 0; }
+    if ok { e := rs_recent(b[0].book[0], 0); #assert e.feat == RS_FT_MAGICAL_CUNNING && e.kind == RS_EV_FEAT && e.amount == want - was && e.by.value == 0; }
   }
-  b: [1] RsBattle; b[0].w = 12; b[0].h = 6; _ := rs_add(b[..], rs_warlock("Kel", 0, 5, SP_ELDRITCH_BLAST), 1, 1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 12; b[0].h = 6; _ := rs_add(b[..], rs_warlock("Kel", 0, 5, SP_ELDRITCH_BLAST), 1, 1);
   b[0].c[0].slots[3] = 0; b[0].c[1] = b[0].c[0];
   #assert !rs_magical_cunning(b[..], -1) && !rs_magical_cunning(b[..], 1) && b[0].c[1].slots[3] == 0;
-  n: [1] RsBattle; n[0].w = 12; n[0].h = 6; _ = rs_add(n[..], rs_warlock("Kel", 0, 5, SP_ELDRITCH_BLAST), 1, 1);
+  n: [1] RsBattle; n_room: [1] RsRoom; rs_have(n[..], n_room[..]); n[0].w = 12; n[0].h = 6; _ = rs_add(n[..], rs_warlock("Kel", 0, 5, SP_ELDRITCH_BLAST), 1, 1);
   for l: 0..<10 { n[0].c[0].slots_max[l] = 0; n[0].c[0].slots[l] = 0; }
   #assert rs_pact_level(n[0].c[0]) == 0 && !rs_magical_cunning(n[..], 0);
   n[0].c[0].slots_max[6] = 1; #assert rs_pact_level(n[0].c[0]) == 0;   // a Mystic Arcanum slot alone
   n[0].c[0].slots_max[1] = 1; #assert rs_pact_level(n[0].c[0]) == 1 && rs_pact_level(rs_warlock("Kel", 0, 1, SP_ELDRITCH_BLAST)) == 1;   // one slot
   // three slots (level 11): two back
-  t: [1] RsBattle; t[0].w = 12; t[0].h = 6; _ = rs_add(t[..], rs_warlock("Kel", 0, 11, SP_ELDRITCH_BLAST), 1, 1);
+  t: [1] RsBattle; t_room: [1] RsRoom; rs_have(t[..], t_room[..]); t[0].w = 12; t[0].h = 6; _ = rs_add(t[..], rs_warlock("Kel", 0, 11, SP_ELDRITCH_BLAST), 1, 1);
   t[0].c[0].slots[5] = 0; #assert rs_pact_level(t[0].c[0]) == 5 && rs_magical_cunning(t[..], 0) && t[0].c[0].slots[5] == 2 && t[0].c[0].slots[6] == 1;
 }

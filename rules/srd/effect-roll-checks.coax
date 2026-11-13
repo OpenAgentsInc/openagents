@@ -3,7 +3,7 @@
 #load "battle.coax";
 
 #test "overlapping Bless and Bane retain their owners but roll one die per spell" {
-  b: [1] RsBattle; er_setup(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); er_setup(b[..]);
   for owner: 0..<3 {
     #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_BLESS,by=owner,spell=SP_BLESS,until=10+owner});
     #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_BANE,by=owner,spell=SP_BANE,until=20+owner});
@@ -20,7 +20,7 @@
 }
 
 #forall "named boon dice are independent of multiplicity and physical slot" bits: 0..<64 {
-  b: [1] RsBattle; er_setup(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); er_setup(b[..]);
   for k: 0..<RS_EFFECTS {
     if (bits & (1 << k)) != 0 { b[0].c[0].eff[k] = RsEffect.{kind=EF_BLESS,by=k,spell=SP_BLESS,until=20}; }
     else { b[0].c[0].eff[k] = RsEffect.{kind=EF_HEX,by=k,spell=SP_HEX,until=20}; }
@@ -32,7 +32,7 @@
 }
 
 #test "a single next attack consumes all weakness riders and preserves unrelated effects" {
-  b: [1] RsBattle; er_setup(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); er_setup(b[..]);
   for k: 0..<RS_EFFECTS {
     b[0].c[0].eff[k] = RsEffect.{kind=ifx k == 2 then EF_BLESS else EF_WEAK,by=k,spell=-1,until=20};
   }
@@ -43,7 +43,7 @@
 }
 
 #test "all pending Vex and Guiding Bolt riders bind one roll and Vex keeps its other target" {
-  b: [1] RsBattle; er_setup(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); er_setup(b[..]);
   for k: 0..<RS_EFFECTS {
     b[0].c[0].eff[k] = RsEffect.{kind=EF_VEX,cond=ifx k == 2 then 2 else 1,by=k,spell=-1,until=20};
     b[0].c[1].eff[k] = RsEffect.{kind=EF_EXPOSED,by=k,spell=SP_GUIDING_BOLT,until=20};
@@ -57,7 +57,7 @@
 }
 
 #test "opposing next-roll sources cancel once and are all consumed even on the canceled roll" {
-  b: [1] RsBattle; er_setup(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); er_setup(b[..]);
   for k: 0..<RS_EFFECTS {
     b[0].c[0].eff[k] = RsEffect.{kind=EF_WEAK,until=20};
     b[0].c[1].eff[k] = RsEffect.{kind=EF_EXPOSED,spell=SP_GUIDING_BOLT,until=20};
@@ -69,7 +69,7 @@
 
 #test "two actual Bless casts keep independent concentration and expiry without stacking dice" {
   for ending: 0..<3 {
-    b: [1] RsBattle; b[0].dice[0].fixed = true; b[0].w = 16; b[0].h = 8;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].dice[0].fixed = true; b[0].w = 16; b[0].h = 8;
     _ := rs_add(b[..],rs_cleric("Earlier",0,3),1,1);
     _ = rs_add(b[..],rs_cleric("Later",0,3),2,1);
     _ = rs_add(b[..],rs_skeleton("Ally",0),3,1);
@@ -94,7 +94,7 @@
 }
 
 #test "a real missed weapon roll consumes all its riders even when opposing sources cancel" {
-  b: [1] RsBattle; er_setup(b[..]); b[0].c[1].ac = 100;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); er_setup(b[..]); b[0].c[1].ac = 100;
   for k: 0..<3 {
     #assert rs_put_effect(b[..],0,RsEffect.{kind=EF_WEAK,by=k,until=20});
     #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_EXPOSED,by=k,spell=SP_GUIDING_BOLT,until=20});
@@ -107,7 +107,7 @@
 
 #test "seeded named-boon rolls use exactly one d4 per named spell in a stable order" {
   for mode: 0..<3 {
-    b: [1] RsBattle; er_setup(b[..]); b[0].dice[0].fixed = false; b[0].dice[0].state = 4729;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); er_setup(b[..]); b[0].dice[0].fixed = false; b[0].dice[0].state = 4729;
     for k: 0..<RS_EFFECTS {
       kind := ifx mode == 0 then EF_BLESS else ifx mode == 1 then EF_BANE else ifx k < 3 then EF_BANE else EF_BLESS;
       b[0].c[0].eff[k] = RsEffect.{kind=kind,by=k,until=20};
@@ -121,7 +121,7 @@
 }
 
 #forall "named boon dice keep the d4 distribution across replay seeds" seed: 1..<65 {
-  b: [1] RsBattle; er_setup(b[..]); b[0].dice[0].fixed = false; b[0].dice[0].state = cast(u64) seed;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); er_setup(b[..]); b[0].dice[0].fixed = false; b[0].dice[0].state = cast(u64) seed;
   b[0].c[0].eff[0] = RsEffect.{kind=EF_BLESS,until=20};
   b[0].c[0].eff[RS_EFFECTS-1] = RsEffect.{kind=EF_BANE,until=20};
   d: [1] RsDice; d[0] = b[0].dice[0];

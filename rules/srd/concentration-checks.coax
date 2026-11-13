@@ -3,7 +3,7 @@
 #load "effect-lifecycle-checks.coax";
 
 #test "interrupted concentration programs cannot create new effects or roll for later recipients" {
-  b: [1] RsBattle; b[0].w=12; b[0].h=8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8;
   a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
   t := rs_add(b[..],rs_fighter("Target",1,1),2,1);
   b[0].c[a].conc=SP_HOLD_PERSON; b[0].c[a].conc_until=60;
@@ -15,7 +15,7 @@
 }
 
 #test "a retained Stunned effect ends the target's concentration and releases only its owned benefits immediately" {
-  b: [1] RsBattle; b[0].w=12; b[0].h=8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8;
   a := rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
   ally := rs_add(b[..],rs_fighter("Ally",0,1),2,1);
   rs_start_turn(b[..],a); #assert rs_cast(b[..],a,SP_BLESS,1,0,0,ally);
@@ -25,7 +25,7 @@
 }
 
 #test "Faerie Fire outlines retain another caster's owner and expiry" {
-  b: [1] RsBattle; b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
   a := rs_add(b[..],rs_druid("First",0,3),1,1);
   other := rs_add(b[..],rs_druid("Second",0,3),2,1);
   near := rs_add(b[..],rs_fighter("Near",1,1),5,2);
@@ -40,8 +40,8 @@
 }
 
 #test "a failed Stunning Strike save interrupts concentration without waiting for the recipient's next turn" {
-  b: [1] RsBattle; b[0].w=12; b[0].h=8; b[0].dice[0].fixed=true;
-  m := rs_add(b[..],rs_monk("Monk",1,5),1,1); b[0].c[m].stun_ready=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8; b[0].dice[0].fixed=true;
+  m := rs_add(b[..],rs_monk("Monk",1,5),1,1); b[0].c[m].note[RS_NT_STUN] = 1;
   // Choose the level-4 Wisdom ASI instead of the default Dexterity ASI.
   b[0].c[m].score[RS_DEX]=16; b[0].c[m].score[RS_WIS]=16;
   t := rs_add(b[..],rs_cleric("Cleric",0,3),2,1);
@@ -53,7 +53,7 @@
 
 #test "clock and turn boundaries reconcile authoritative raw incapacitation and death before continuing" {
   for dead: 0..<2 { for turn: 0..<2 {
-    b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
     b[0].c[a].conc=SP_ENTANGLE; b[0].c[a].conc_until=60;
     if dead==1 { b[0].c[a].dead=true; } else { b[0].c[a].cond=RS_PETRIFIED; }
     if turn==1 { rs_start_turn(b[..],a); } else { rs_tick(b[..],0); }
@@ -63,7 +63,7 @@
 
 #test "immunity empty conditions invalid targets and full effect storage do not manufacture concentration interruption" {
   for immune: 0..<2 {
-    b: [1] RsBattle; a := rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rs_add(b[..],rs_cleric("Cleric",0,3),1,1);
     b[0].c[a].conc=SP_BLESS; b[0].c[a].conc_until=60;
     if immune==1 { b[0].c[a].immune_cond=RS_STUNNED; }
     for k: 0..<RS_EFFECTS { #assert rs_effect_add(b[0].c[a..<a+1],RsEffect.{kind=EF_WEAK,by=3,spell=SP_GUIDING_BOLT,until=60}); }
@@ -79,7 +79,7 @@
 }
 
 #test "ending one Entangle releases its zone and lease while preserving other owners and nonconcentration effects" {
-  b: [1] RsBattle; b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
   a := rs_add(b[..],rs_druid("First",0,3),1,1);
   other := rs_add(b[..],rs_druid("Second",0,3),2,1);
   t := rs_add(b[..],rs_fighter("Target",1,1),4,2); b[0].c[t].score[RS_STR]=8;
@@ -95,7 +95,7 @@
 }
 
 #test "Hypnotic Pattern interruption publishes the condition before ending the recipient's old Bless" {
-  b: [1] RsBattle; b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
   a := rs_add(b[..],rs_bard("Bard",1,5),1,1);
   t := rs_add(b[..],rs_cleric("Cleric",0,3),8,1); b[0].c[t].score[RS_WIS]=8;
   rs_start_turn(b[..],t); #assert rs_cast(b[..],t,SP_BLESS,1,0,0,t); rs_end_turn(b[..],t);
@@ -105,14 +105,14 @@
   condition := -1; ended := -1;
   for q: 0..<b[0].book[0].seq-seq {
     e := rs_recent_at(b[0].book[..],q);
-    if e.kind==RS_EV_CONDITION && e.spell==SP_HYPNOTIC_PATTERN && e.to==t { condition=q; }
-    if e.kind==RS_EV_END && e.spell==SP_BLESS && e.by==t { ended=q; }
+    if e.kind==RS_EV_CONDITION && e.spell.value==SP_HYPNOTIC_PATTERN && e.to.value==t { condition=q; }
+    if e.kind==RS_EV_END && e.spell.value==SP_BLESS && e.by.value==t { ended=q; }
   }
   #assert condition>ended && ended>=0;
 }
 
 #test "a self-owned incapacitating concentration effect releases itself and cannot resume" {
-  b: [1] RsBattle; a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := rs_add(b[..],rs_druid("Caster",0,3),1,1);
   b[0].c[a].conc=SP_HOLD_PERSON; b[0].c[a].conc_until=60;
   #assert rs_put_effect(b[..],a,RsEffect.{kind=EF_COND,cond=RS_PARALYZED,by=a,spell=SP_HOLD_PERSON,until=60});
   #assert b[0].c[a].conc==-1 && !rs_has(b[0].c[a],RS_PARALYZED) && rs_effect_free(b[0].c[a])==RS_EFFECTS;
@@ -120,7 +120,7 @@
 }
 
 #test "Spirit Guardians counter release is once per owner and never negative" {
-  b: [1] RsBattle; b[0].w=20; b[0].h=8;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=20; b[0].h=8;
   a := rs_add(b[..],rs_cleric("First",0,5),1,1);
   other := rs_add(b[..],rs_cleric("Second",0,5),10,1);
   rs_start_turn(b[..],a); #assert rs_cast(b[..],a,SP_SPIRIT_GUARDIANS,3,0,0,a); rs_end_turn(b[..],a);

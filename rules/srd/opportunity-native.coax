@@ -1,7 +1,7 @@
 #load "opportunity-checks.coax";
 #load "../../coax/lib/sys/tool.coax";
 tool_main :: ()->int #export_c #effects(all) {
-  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=12;
   _:=rs_add(b[..],rs_guard("Guard",1),3,3); _=rs_add(b[..],rs_monk("Monk",0,3),4,3);
   rs_start_turn(b[..],1);
   q:=RsOpportunityMove.{x=5,y=3,reach=5,melee=true,seen=true,movement=true};

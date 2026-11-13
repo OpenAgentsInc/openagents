@@ -193,13 +193,18 @@ rs_grant_class_spell :: (c: [] RsCreature, sp: int) -> bool #effects(all) {
   c[0].class_spell_grants[sp/64] |= cast(u64) 1 << (sp%64);
   return true;
 }
+// Whether the creature casts executable sp at will: its record's feature (RsSpell.at_will), read at its root.
+rs_spell_at_will :: (c: RsCreature, sp: int) -> bool #effects(all) {
+  if !rs_executable_spell(sp) { return false; }
+  return rs_at_will(c, rs_spell(rs_spell_root(sp)));
+}
 rs_class_spell_granted :: (c: RsCreature, sp: int) -> bool #effects(all) {
   if !rs_executable_spell(sp) { return false; }
   parent := rs_spell_root(sp);
-  return (c.class_spell_grants[parent/64] & (cast(u64) 1 << (parent%64)))!=0 || (parent==SP_FALSE_LIFE && c.klass==RS_WARLOCK && c.level>=2 && rs_has_feature(c, RS_FT_FIENDISH_VIGOR));
+  return (c.class_spell_grants[parent/64] & (cast(u64) 1 << (parent%64)))!=0 || (rs_spell_at_will(c, parent) && c.klass==RS_WARLOCK && c.level>=2);
 }
 rs_spell_granted :: (c: RsCreature, sp: int) -> bool #effects(all) {
-  return rs_spell_grant_has(c.klass,c.level,rs_has_feature(c, RS_FT_FIENDISH_VIGOR),c.spell_grants,sp);
+  return rs_spell_grant_has(c.klass,c.level,rs_spell_at_will(c,sp),c.spell_grants,sp);
 }
 rs_spell_root :: (sp: int) -> int #effects(all) {
   helper := rs_spell(sp).part_of;

@@ -233,7 +233,7 @@ rs_more_spell :: (i: int) -> RsSpell {
     // Each dart is its own damage roll of 1d4 + 1 (plus); no attack roll, so every dart strikes.
     // A target with Shield up takes none of it (magic-missile-ward.coax).
     s = rs_more("magic-missile", "Magic Missile", 1, "Evocation", "Sorcerer, Wizard", RS_T_ACTION, 120, "Instantaneous", 0, false, RS_A_NONE, 0);
-    s.components = "V, S"; s.page = 146; s.plus = 1;
+    s.components = "V, S"; s.page = 146; s.plus = 1; s.shield_stops = true;
     s.text = "You create three glowing darts of magical force. Each dart strikes a creature of your choice that you can see within range. A dart deals 1d4 + 1 Force damage to its target. The darts all strike simultaneously, and you can direct them to hit one creature or several. Using a Higher-Level Spell Slot. The spell creates one more dart for each spell slot level above 1.";
     s.steps[0] = rs_step(RS_S_REPEAT, 3, 1, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 4, RS_FORCE, 0); s.step_n = 2;
   } else if i == SP_MASS_HEALING_WORD {
@@ -271,11 +271,11 @@ rs_more_spell :: (i: int) -> RsSpell {
   } else if i == SP_FIND_FAMILIAR {
     s = rs_more("find-familiar", "Find Familiar", 1, "Conjuration", "Wizard", RS_T_LONG, 10, "Instantaneous", 0, false, RS_A_NONE, 0);
     s.components = "V, S, M (burning incense worth 10+ GP, consumed)";
-    s.ritual = true; s.page = 130;
+    s.ritual = true; s.page = 130; s.cast_s = 3600;
   } else if i == SP_LESSER_RESTORATION {
     s = rs_more("lesser-restoration", "Lesser Restoration", 2, "Abjuration", "Bard, Cleric, Druid, Paladin, Ranger", RS_T_BONUS, 5, "Instantaneous", 0, false, RS_A_NONE, 0);
     s.components = "V, S"; s.page = 144;
-    s.steps[0] = rs_step(RS_S_RESTORE, 0, 0, 0, 0); s.step_n = 1;
+    s.steps[0] = rs_step(RS_S_RESTORE, 0, 0, 0, 0); s.step_n = 1; s.option = RS_OPT_RESTORE;
   } else if i == SP_AID {
     s = rs_more("aid", "Aid", 2, "Abjuration", "Bard, Cleric, Druid, Paladin, Ranger", RS_T_ACTION, 30, "8 hours", 28800, false, RS_A_NONE, 0);
     s.components = "V, S, M (a strip of white cloth)"; s.page = 107; s.targets = 3; s.targets_optional = true;
@@ -283,11 +283,11 @@ rs_more_spell :: (i: int) -> RsSpell {
   } else if i == SP_GUIDANCE {
     s = rs_more("guidance", "Guidance", 0, "Divination", "Cleric, Druid", RS_T_ACTION, 5, "Concentration, up to 1 minute", 60, true, RS_A_NONE, 0);
     s.components = "V, S"; s.page = 138;
-    s.steps[0] = rs_step(RS_S_BOON, EF_GUIDANCE, SK_PERCEPTION, 0, 0); s.step_n = 1;
+    s.steps[0] = rs_step(RS_S_BOON, EF_GUIDANCE, SK_PERCEPTION, 0, 0); s.step_n = 1; s.willing = true; s.option = RS_OPT_SKILL;
   } else if i == SP_PROTECTION_GOOD_EVIL {
     s = rs_more("protection-from-evil-and-good", "Protection from Evil and Good", 1, "Abjuration", "Cleric, Druid, Paladin, Warlock, Wizard", RS_T_ACTION, 5, "Concentration up to 10 minutes", 600, true, RS_A_NONE, 0);
     s.components = "V, S, M (a flask of Holy Water worth 25+ GP, which the spell consumes)"; s.page = 157;
-    s.steps[0] = rs_step(RS_S_BOON, EF_PROTECTION, 0, 0, 0); s.step_n = 1;
+    s.steps[0] = rs_step(RS_S_BOON, EF_PROTECTION, 0, 0, 0); s.step_n = 1; s.willing = true;
   } else if i == SP_ZONE_OF_TRUTH {
     s = rs_more("zone-of-truth", "Zone of Truth", 2, "Enchantment", "Bard, Cleric, Paladin", RS_T_ACTION, 60, "10 minutes", 600, false, RS_A_SPHERE, 15);
     s.components = "V, S"; s.page = 175;

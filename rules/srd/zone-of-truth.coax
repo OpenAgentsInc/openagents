@@ -2,7 +2,7 @@
 #authority;
 
 rs_truth_contains :: (b:[]RsBattle,i:int,z:RsZone)->bool #effects(all) {
-  return z.spell==SP_ZONE_OF_TRUTH && z.until>b[0].clock && rs_inside(z,b[0].c[i].x,b[0].c[i].y);
+  return z.truth && z.until>b[0].clock && rs_inside(z,b[0].c[i].x,b[0].c[i].y);
 }
 rs_truth_inside :: (b:[]RsBattle,i:int,k:int)->bool #effects(all) {
   return rs_truth_contains(b,i,b[0].zone[k]);
@@ -15,7 +15,7 @@ rs_truth_save :: (b:[]RsBattle,i:int,k:int) #effects(all) {
   l:[1]RsLine;
   rs_add_name(l[..],b,i);
   rs_add_text(l[..],ifx save.passed then " succeeds against Zone of Truth" else " fails against Zone of Truth");
-  rs_tell(b,RS_EV_SAVE,SP_ZONE_OF_TRUTH,z.by,i,save.total,ifx save.passed then 1 else 0,l[..]);
+  rs_tell(b,RS_EV_SAVE,z.spell,z.by,i,save.total,ifx save.passed then 1 else 0,l[..]);
 }
 
 rs_truth_start :: (b:[]RsBattle,i:int) #effects(all) {
@@ -61,7 +61,7 @@ rs_truth_speech :: (b:[]RsBattle,i:int,deliberate_lie:bool)->bool #effects(all) 
 }
 
 #test "Zone of Truth saves once on entry per turn, keeps truth scoped to the sphere, and clears its lease" {
-  b:[1]RsBattle; c:[2]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[2]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
   a:=rs_add(b[..],rs_paladin("Paladin",0,5),1,1);
   j:=rs_add(b[..],rs_fighter("Speaker",0,1),4,1);
   rs_start_turn(b[..],a);
@@ -72,7 +72,7 @@ rs_truth_speech :: (b:[]RsBattle,i:int,deliberate_lie:bool)->bool #effects(all) 
   #assert rs_step_to(b[..],j,5,1);
   #assert b[0].dice[0].rolled==rolls+1 && !rs_truth_speech(b[..],j,true) && rs_truth_speech(b[..],j,false);
   event:=rs_recent(b[0].book[0],0);
-  #assert event.kind==RS_EV_SAVE && event.spell==SP_ZONE_OF_TRUTH && event.by==a && event.to==j && event.damage==0;
+  #assert event.kind==RS_EV_SAVE && event.spell.value==SP_ZONE_OF_TRUTH && event.by.value==a && event.to.value==j && event.damage==0;
   #assert cast(string)event.text[0..<event.text_n]=="Speaker fails against Zone of Truth";
   #assert rs_step_to(b[..],j,4,1) && rs_truth_speech(b[..],j,true);
   #assert rs_step_to(b[..],j,5,1) && b[0].dice[0].rolled==rolls+1;
@@ -91,13 +91,13 @@ rs_truth_clear :: (b:[]RsBattle,k:int) #effects(all) {
 }
 
 #test "Zone of Truth handles independent spheres, later turns, dead actors, and successful saves" {
-  b:[1]RsBattle; c:[3]RsCreature; b[0].c=c[..]; b[0].w=30; b[0].h=8; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[3]RsCreature; b[0].c=c[..]; b[0].w=30; b[0].h=8; b[0].dice[0].fixed=true;
   a:=rs_add(b[..],rs_paladin("Paladin",0,5),1,1);
   j:=rs_add(b[..],rs_fighter("Speaker",0,1),4,1);
   dead:=rs_add(b[..],rs_fighter("Dead",0,1),4,2);
   c[dead].dead=true;
-  b[0].zone[0]=RsZone.{on=true,spell=SP_ZONE_OF_TRUTH,by=a,x0=5,x1=11,y0=0,y1=4,until=8,truth_dc=20};
-  b[0].zone[1]=RsZone.{on=true,spell=SP_ZONE_OF_TRUTH,by=a,x0=6,x1=12,y0=0,y1=4,until=16,truth_dc=1};
+  b[0].zone[0]=RsZone.{on=true,truth=true,spell=SP_ZONE_OF_TRUTH,by=a,x0=5,x1=11,y0=0,y1=4,until=8,truth_dc=20};
+  b[0].zone[1]=RsZone.{on=true,truth=true,spell=SP_ZONE_OF_TRUTH,by=a,x0=6,x1=12,y0=0,y1=4,until=16,truth_dc=1};
   b[0].zone[2]=RsZone.{on=true,spell=SP_ENTANGLE,by=a,x0=5,x1=11,y0=0,y1=4,until=10};
   b[0].truth_zones=3;
   rs_start_turn(b[..],j);
@@ -121,10 +121,10 @@ rs_truth_clear :: (b:[]RsBattle,k:int) #effects(all) {
 
 
 #test "Zone of Truth keeps the first actor's failure in the final slot and releases that slot alone" {
-  b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].w=20; b[0].h=8; b[0].dice[0].fixed=true;
   a:=rs_add(b[..],rs_fighter("Speaker",0,1),2,1);
   k:=RS_ZONES-1; bit:=1<<k;
-  b[0].zone[k]=RsZone.{on=true,spell=SP_ZONE_OF_TRUTH,by=a,x0=5,x1=11,y0=0,y1=4,until=8,truth_dc=20};
+  b[0].zone[k]=RsZone.{on=true,truth=true,spell=SP_ZONE_OF_TRUTH,by=a,x0=5,x1=11,y0=0,y1=4,until=8,truth_dc=20};
   b[0].truth_zones=bit;
   #assert rs_truth_speech(b[..],a,true);
   rs_truth_move(b[..],a,6,1);

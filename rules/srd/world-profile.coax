@@ -79,7 +79,7 @@ rs_reset_world :: (b: [] RsBattle) #effects(reads, writes, traps) {
 }
 
 #test "a world applies all or nothing, the clock seals it and reset restores strict" {
-  b: [1] RsBattle;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]);
   #assert rs_world_deviations(rs_world_of(b[..])) == 0;
   #assert rs_set_world(b[..],RS_ACTION_WORLD) && rs_world_deviations(rs_world_of(b[..])) == 7;
   for bad: 0..<4 {
@@ -102,7 +102,7 @@ rs_reset_world :: (b: [] RsBattle) #effects(reads, writes, traps) {
 // reaches the team.
 #test "Everglade's world: a spent slot comes back by a rest and never by the clock; the action world's comes back in 9 seconds" {
   for world: 0..<2 {
-    b: [1] RsBattle; b[0].w = 20; b[0].h = 20;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 20;
     #assert rs_set_world(b[..],ifx world == 0 then RS_EVERGLADE_WORLD else RS_ACTION_WORLD);
     i := rs_add(b[..],rs_wizard("Mordra",0,5),5,5); rs_begin(b[..]);
     b[0].c[i].slots[3] = 0; b[0].c[i].uses[RS_USE_FREE] = 0; b[0].c[i].uses_max[RS_USE_FREE] = 1;
@@ -113,7 +113,7 @@ rs_reset_world :: (b: [] RsBattle) #effects(reads, writes, traps) {
 }
 #test "Everglade's world: an area that can harm takes every enemy in its shape, never the caster or its team; a helping area reaches the team" {
   for world: 0..<3 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 30; b[0].dice[0].fixed = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 30; b[0].dice[0].fixed = true;
     #assert rs_set_world(b[..],ifx world == 0 then RS_EVERGLADE_WORLD else ifx world == 1 then RS_ACTION_WORLD else RS_STRICT_WORLD);
     i := rs_add(b[..],rs_wizard("Mordra",0,5),10,10);
     mate := rs_add(b[..],rs_fighter("Mate",0,5),11,10);
@@ -130,7 +130,7 @@ rs_reset_world :: (b: [] RsBattle) #effects(reads, writes, traps) {
 }
 #test "Everglade's world: a teammate with no room for an effect doesn't refuse a harmful area it is spared from; an enemy's full list still does" {
   for world: 0..<2 { for full: 0..<3 {
-    b: [1] RsBattle; b[0].w = 30; b[0].h = 30;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 30; b[0].h = 30;
     #assert rs_set_world(b[..],ifx world == 0 then RS_EVERGLADE_WORLD else RS_ACTION_WORLD);
     i := rs_add(b[..],rs_bard("Lark",0,5),5,5);
     mate := rs_add(b[..],rs_fighter("Mate",0,5),15,15); foe := rs_add(b[..],rs_guard("Foe",1),16,15);

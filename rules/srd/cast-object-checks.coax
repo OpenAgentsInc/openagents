@@ -37,7 +37,7 @@ oc_joined :: (text: string, out: [] u8) -> string {
 }
 
 #test "Fire Bolt hits a wooden barrel at its AC, sets it burning, and the burning wears it down" #steps 200000000 {
-  b: [1] RsBattle; a := oc_caster(b[..], rs_wizard("Wiz", 0, 5), SP_FIRE_BOLT, -1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := oc_caster(b[..], rs_wizard("Wiz", 0, 5), SP_FIRE_BOLT, -1);
   barrel := [1] RsObject.[rs_object("barrel", 5, 1, RS_OBJ_WOOD, RS_MEDIUM, true)];
   #assert barrel[0].hp == 18 && barrel[0].flammable && rs_object_ac(barrel[0].material) == 15;
   #assert rs_spell_attack(b[0].c[a]) + 10 >= 15;   // fixed dice roll 10
@@ -50,7 +50,7 @@ oc_joined :: (text: string, out: [] u8) -> string {
 }
 #test "a carried or stone object doesn't catch, a threshold stops a small hit, and a fragile one breaks" #steps 200000000 {
   for pass: 0..<3 {
-    b: [1] RsBattle; a := oc_caster(b[..], rs_wizard("Wiz", 0, 5), SP_FIRE_BOLT, -1);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := oc_caster(b[..], rs_wizard("Wiz", 0, 5), SP_FIRE_BOLT, -1);
     o := [1] RsObject.[rs_object("cloak", 3, 1, RS_OBJ_CLOTH, RS_SMALL, true)];
     if pass == 0 { o[0].attended = true; }
     if pass == 1 { o[0] = rs_object("door", 3, 1, RS_OBJ_STONE, RS_LARGE, true); o[0].threshold = 11; }
@@ -63,7 +63,7 @@ oc_joined :: (text: string, out: [] u8) -> string {
   }
 }
 #test "Eldritch Blast's beams each roll at the object, Agonizing Blast adding to each, and stop once it breaks" #steps 200000000 {
-  b: [1] RsBattle; a := oc_caster(b[..], rs_warlock("Kel", 0, 5, SP_ELDRITCH_BLAST), SP_ELDRITCH_BLAST, -1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := oc_caster(b[..], rs_warlock("Kel", 0, 5, SP_ELDRITCH_BLAST), SP_ELDRITCH_BLAST, -1);
   b[0].c[a].rank[RS_RK_AGONIZING] = SP_ELDRITCH_BLAST;
   cha := rs_mod(b[0].c[a].score[RS_CHA]);
   chest := [1] RsObject.[rs_object("chest", 3, 1, RS_OBJ_WOOD, RS_SMALL, true)];
@@ -77,7 +77,7 @@ oc_joined :: (text: string, out: [] u8) -> string {
   #assert rs_cast_object(b[..], a, SP_ELDRITCH_BLAST, chest[..]) && chest[0].destroyed && b[0].book[0].seq == seq + 3;
 }
 #test "Starry Wisp lights an object it hits and Produce Flame hurls only once in hand" #steps 200000000 {
-  b: [1] RsBattle; a := oc_caster(b[..], rs_druid("Dru", 0, 3), SP_STARRY_WISP, SP_PRODUCE_FLAME);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := oc_caster(b[..], rs_druid("Dru", 0, 3), SP_STARRY_WISP, SP_PRODUCE_FLAME);
   lamp := [1] RsObject.[rs_object("lamp", 3, 1, RS_OBJ_GLASS, RS_SMALL, true)];
   #assert rs_cast_object(b[..], a, SP_STARRY_WISP, lamp[..]) && lamp[0].glow_until > b[0].clock && lamp[0].hp == 6;
   rs_start_turn(b[..], a);
@@ -88,7 +88,7 @@ oc_joined :: (text: string, out: [] u8) -> string {
 }
 #test "a spell that can't take an object, a broken or distant one, a spent action or no components refuses with nothing spent" #steps 200000000 {
   for why: 0..<6 {
-    b: [1] RsBattle; a := oc_caster(b[..], rs_wizard("Wiz", 0, 5), SP_FIRE_BOLT, SP_RAY_OF_SICKNESS);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := oc_caster(b[..], rs_wizard("Wiz", 0, 5), SP_FIRE_BOLT, SP_RAY_OF_SICKNESS);
     o := [1] RsObject.[rs_object("crate", 3, 1, RS_OBJ_WOOD, RS_MEDIUM, true)];
     sp := SP_FIRE_BOLT;
     if why == 0 { sp = SP_RAY_OF_SICKNESS; }
@@ -103,7 +103,7 @@ oc_joined :: (text: string, out: [] u8) -> string {
     #assert oc_same(b[..], a, was, rolled, seq, o[0], kept);
   }
   // 120 feet is in range
-  b: [1] RsBattle; a := oc_caster(b[..], rs_wizard("Wiz", 0, 5), SP_FIRE_BOLT, -1);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); a := oc_caster(b[..], rs_wizard("Wiz", 0, 5), SP_FIRE_BOLT, -1);
   o := [1] RsObject.[rs_object("crate", 25, 1, RS_OBJ_WOOD, RS_MEDIUM, true)];
   #assert rs_cast_object(b[..], a, SP_FIRE_BOLT, o[..]);
 }

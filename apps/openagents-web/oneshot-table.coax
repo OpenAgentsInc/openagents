@@ -211,7 +211,7 @@ os_abilities :: (c: RsCreature, out: [] Ab) -> int {
   m := 0;
   for k: 0..<n {
     a := out[k];
-    if a.kind == AB_SPELL && a.lvl > 0 && c.slots_max[a.lvl] == 0 && c.free_spell != a.sp { continue; }
+    if a.kind == AB_SPELL && a.lvl > 0 && c.slots_max[a.lvl] == 0 && c.rank[RS_RK_FREE_SPELL] != a.sp { continue; }
     if a.kind == AB_RAGE && c.uses_max[RS_USE_RAGE] == 0 { continue; }
     if (a.kind == AB_FLURRY || a.kind == AB_PATIENT) && c.uses_max[RS_USE_FOCUS] == 0 { continue; }
     if a.kind == AB_SHOOT && c.ranged < 0 { continue; }
@@ -244,7 +244,7 @@ os_free_slot :: (c: RsCreature, level: int) -> int {
   return 0;
 }
 os_ab_ready :: (c: RsCreature, a: Ab) -> bool {
-  if a.kind == AB_SPELL { return a.lvl == 0 || os_free_slot(c, a.lvl) > 0 || (c.free_spell == a.sp && c.uses[RS_USE_FREE] > 0); }
+  if a.kind == AB_SPELL { return a.lvl == 0 || os_free_slot(c, a.lvl) > 0 || (c.rank[RS_RK_FREE_SPELL] == a.sp && c.uses[RS_USE_FREE] > 0); }
   if a.kind == AB_RAGE { return c.uses[RS_USE_RAGE] > 0 && !rs_effect(c, EF_RAGE); }
   if a.kind == AB_FLURRY || a.kind == AB_PATIENT || a.kind == AB_WIND { return c.uses[RS_USE_FOCUS] > 0; }
   u := os_use_of(a.kind);
@@ -274,6 +274,7 @@ OsTable :: struct {
   party_n: int;              // the party: the battle's first creatures
   klass: [OS_PARTY] int;
   b: [1] RsBattle;           // the party, and the foes while there is a fight
+  room: [1] RsRoom;          // its creatures, squares and areas (rs_have)
   combat: bool;
   round: int;
   start_at: int;             // the battle clock when the fight began
@@ -283,7 +284,7 @@ OsTable :: struct {
   roll_seq: int;             // the last open roll, for the Table Display's banner
   changed: int;              // bumped on every change the other screens must hear
 }
-os_battle :: (t: [] OsTable) -> [] RsBattle { rs_room(t[0].b[..]); return t[0].b[..]; }   // its room first: the table seats the party by hand
+os_battle :: (t: [] OsTable) -> [] RsBattle { rs_have(t[0].b[..], t[0].room[..]); return t[0].b[..]; }   // its room first: the table seats the party by hand
 os_text :: (l: [] OsLine, k: int) -> string { return cast(string) l[k].text[0..<l[k].n]; }
 
 // A new session for a campaign: the dice seeded (the engine's SplitMix64 stream), no one seated yet.
@@ -332,7 +333,7 @@ os_take :: (t: [] OsTable) {
     e := rs_recent_at(book, k);
     k -= 1;
     if e.text_n == 0 { continue; }
-    foe := e.by >= t[0].party_n && e.by < t[0].b[0].n;
+    foe := e.by.value >= t[0].party_n && e.by.value < t[0].b[0].n;
     // a monster's attack or what it deals stays hidden; what happens to a hero (its death saves, its
     // Hit Points dropping) is the table's
     hidden := t[0].monsters_hidden && foe && e.kind != RS_EV_DOWN && e.kind != RS_EV_DEATH;
@@ -404,7 +405,7 @@ os_start_combat :: (t: [] OsTable) -> bool {
   party: [OS_PARTY] RsCreature;
   for i: 0..<t[0].party_n { party[i] = b[0].c[i]; }
   b[0].n = 0;
-  rs_room(b); for z: 0..<b[0].zone.count { b[0].zone[z] = RsZone.{}; }
+  for z: 0..<b[0].zone.count { b[0].zone[z] = RsZone.{}; }
   for i: 0..<t[0].party_n { h := rs_add(b, party[i], party[i].x, party[i].y); }
   for f: 0..<foes {
     nm: [RS_NAME] u8; nn := os_put(nm[..], 0, "Skeleton "); nn = os_put_int(nm[..], nn, f + 1);
@@ -473,7 +474,7 @@ os_end_combat :: (t: [] OsTable) {
   if b[0].who >= 0 { rs_end_turn(b, b[0].who); }
   os_take(t);
   b[0].n = t[0].party_n; b[0].who = -1;
-  rs_room(b); for z: 0..<b[0].zone.count { b[0].zone[z] = RsZone.{}; }
+  for z: 0..<b[0].zone.count { b[0].zone[z] = RsZone.{}; }
   // the party back in its file
   for i: 0..<t[0].party_n { b[0].c[i].x = 3 + i / 3; b[0].c[i].y = 3 + i % 3; }
   t[0].combat = false;
@@ -539,7 +540,7 @@ os_act :: (t: [] OsTable, i: int, k: int, target: int) -> bool {
     ok = rs_shoot(b, i, foe);
   } else if a.kind == AB_SPELL {
     sl := ifx a.lvl == 0 then 0 else os_free_slot(b[0].c[i], a.lvl);
-    if a.lvl > 0 && sl == 0 && b[0].c[i].free_spell == a.sp { sl = 0; }
+    if a.lvl > 0 && sl == 0 && b[0].c[i].rank[RS_RK_FREE_SPELL] == a.sp { sl = 0; }
     if a.tg == TG_SELF { ok = rs_cast(b, i, a.sp, sl, b[0].c[i].x, b[0].c[i].y, i); }
     else if a.tg == TG_ALLY {
       w := ifx ally >= 0 then ally else os_most_hurt(t, i, 1.01);
@@ -1051,7 +1052,7 @@ os_has_text :: (t: [] OsTable, text: string, hidden: bool) -> bool {
       c := os_hero(k, "Test", lv);
       list: [OS_SLOTS] Ab; n := os_abilities(c, list[..]);
       #assert n >= 1;
-      for q: 0..<n { if list[q].kind == AB_SPELL && list[q].lvl > 0 { #assert c.slots_max[list[q].lvl] > 0 || c.free_spell == list[q].sp; } }
+      for q: 0..<n { if list[q].kind == AB_SPELL && list[q].lvl > 0 { #assert c.slots_max[list[q].lvl] > 0 || c.rank[RS_RK_FREE_SPELL] == list[q].sp; } }
     }
   }
 }

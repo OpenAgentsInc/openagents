@@ -4,7 +4,7 @@
 tool_main :: ()->int #export_c #effects(all) {
   total_frames:=0;
   for pattern:0..<6 {
-    b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
     c[0]=rs_monk("Patient",0,3); c[0].uses[RS_USE_FOCUS]=0;
     b[0].clock=ifx pattern==0 then 0 else 16777216;
     b[0].rest_clock.ticks=12345000000;
@@ -28,7 +28,7 @@ tool_main :: ()->int #export_c #effects(all) {
     if !rs_rest_tick(b[..],1) || c[0].uses[RS_USE_FOCUS]!=0 || rs_short_rest_finish(b[..],0) { return 5; }
   }
   for klass:0..<RS_CLASSES { if klass==RS_MONSTER { continue; } for level:1..<7 {
-    b:[1]RsBattle; c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
+    b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c:[1]RsCreature; b[0].c=c[..]; b[0].n=1; b[0].who = -1;
     c[0]=rt_class(klass,level); c[0].hp=1; c[0].temp=3; c[0].reacted=true; c[0].uses[RS_USE_FOCUS]=0; c[0].uses[RS_USE_RAGE]=0;
     for u:0..<RS_USES { c[0].uses[u]=0; }
     for sl:1..<10 { c[0].slots[sl]=0; }

@@ -28,13 +28,13 @@
 
 #test "Wild Shape p.42: from level 2, two uses (three at 6), a Bonus Action into a known Beast, Temporary Hit Points of its level" {
   for level: 1..<7 { #assert rs_druid("D", 0, level).uses_max[RS_USE_WILD] == (ifx level >= 6 then 3 else ifx level >= 2 then 2 else 0); }
-  b: [1] RsBattle; cf_field(b[..], rs_druid("Rowan", 0, 2), 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_druid("Rowan", 0, 2), 10);
   #assert rs_wild_shape(b[..], 0, MON_WOLF) && b[0].turn.bonus && b[0].c[0].temp == 2 && b[0].c[0].ac == 12 && b[0].c[0].uses[RS_USE_WILD] == 1;
   #assert !rs_cast(b[..], 0, SP_THUNDERWAVE, 1, 2, 1, -1);   // no spellcasting
   #assert rs_attack(b[..], 0, 1, false, -1) && b[0].c[1].hp == 200 - (3 + 2) && rs_has(b[0].c[1], RS_PRONE);   // the Wolf's Bite
   b[0].c[0].uses[RS_USE_WILD] = 0; rs_short_rest_resources(b[0].c[0..<1]); #assert b[0].c[0].uses[RS_USE_WILD] == 1;   // one back on a Short Rest
   #assert rs_long_rest_resources(b[0].c[0..<1]) && b[0].c[0].uses[RS_USE_WILD] == 2;
-  one: [1] RsBattle; cf_field(one[..], rs_druid("Rowan", 0, 1), 10); #assert !rs_wild_shape(one[..], 0, MON_WOLF);
+  one: [1] RsBattle; one_room: [1] RsRoom; rs_have(one[..], one_room[..]); cf_field(one[..], rs_druid("Rowan", 0, 1), 10); #assert !rs_wild_shape(one[..], 0, MON_WOLF);
 }
 
 #test "Wild Shape p.42: four known forms of CR 1/4 at level 2, six of CR 1/2 at 4" {
@@ -59,7 +59,7 @@
 
 #test "Land's Aid p.46: from level 3, a Magic action and a Wild Shape use; 2d6 Necrotic to a foe that fails its Con save" {
   #assert !rs_has_feature(rs_druid("D", 0, 2), RS_FT_LANDS_AID);
-  b: [1] RsBattle; cf_field(b[..], rs_druid("Rowan", 0, 3), 10); b[0].c[1].score[RS_CON] = 1;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_druid("Rowan", 0, 3), 10); b[0].c[1].score[RS_CON] = 1;
   #assert rs_lands_aid(b[..], 0, 2, 1, -1) && b[0].turn.action && b[0].c[0].uses[RS_USE_WILD] == 1 && b[0].c[1].hp == 200 - 2 * 3;
 }
 
@@ -69,18 +69,18 @@
 
 #test "Wild Resurgence p.43: from level 5, a slot for a Wild Shape use when none is left, once a turn" {
   for level: [2] int.[4, 5] {
-    b: [1] RsBattle; cf_field(b[..], rs_druid("Rowan", 0, level), 10); b[0].c[0].uses[RS_USE_WILD] = 0;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..], rs_druid("Rowan", 0, level), 10); b[0].c[0].uses[RS_USE_WILD] = 0;
     #assert rs_wild_resurgence(b[..], 0) == (level == 5) && b[0].c[0].uses[RS_USE_WILD] == (ifx level == 5 then 1 else 0);
   }
 }
 
 #test "Natural Recovery p.46: from level 6, Hold Person once without a slot, and a Short Rest's slots of half its level" {
   #assert !rs_has_feature(rs_druid("D", 0, 5), RS_FT_NATURAL_RECOVERY) && rs_rest_slot_budget(rs_druid("D", 0, 5), false) == 0;
-  c := rs_druid("D", 0, 6); #assert rs_has_feature(c, RS_FT_NATURAL_RECOVERY) && c.free_spell == SP_HOLD_PERSON && rs_rest_slot_budget(c, false) == 3;
+  c := rs_druid("D", 0, 6); #assert rs_has_feature(c, RS_FT_NATURAL_RECOVERY) && c.rank[RS_RK_FREE_SPELL] == SP_HOLD_PERSON && rs_rest_slot_budget(c, false) == 3;
 }
 
 #test "Wild Shape trades one known form after a completed Long Rest" {
-  b:[1]RsBattle; cf_field(b[..],rs_druid("Rowan",0,4),10);
+  b:[1]RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); cf_field(b[..],rs_druid("Rowan",0,4),10);
   c:=b[0].c[0..<1];
   #assert !rs_wild_knows(c[0],MON_CAT) && rs_wild_knows(c[0],MON_WOLF);
   #assert !rs_wild_swap(c,MON_WOLF,MON_CAT) && !rs_long_rest_apply(b[..],0);

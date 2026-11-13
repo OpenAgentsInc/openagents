@@ -3,7 +3,7 @@
 #authority;
 
 #test "Dodge takes one Action and actual turn retirement clears its benefit" {
-  b: [1] RsBattle; c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); c: [1] RsCreature; b[0].c = c[..]; b[0].n = 1;
   c[0].hp = 1; c[0].hp_max = 1; c[0].speed = 30;
   #assert rs_dodge(b[..],0) && b[0].turn.action && rs_effect(c[0], EF_DODGE);
   #assert !rs_dodge(b[..],0);

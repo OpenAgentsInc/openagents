@@ -1,7 +1,7 @@
 #load "battle.coax";
 
 #test "Disengage spends only its Action and lasts through movement until this turn ends" {
-  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=12;
   _:=rs_add(b[..],rs_fighter("Fighter",0,3),3,3); rs_start_turn(b[..],0);
   b[0].c[0].reacted=true;
   #assert rs_disengage(b[..],0) && b[0].turn.disengaged && b[0].turn.action && !b[0].turn.bonus;
@@ -13,7 +13,7 @@
 
 #test "Cunning Action and Patient Defense use distinct free and paid Bonus Action options" {
   for mode:1..<4 {
-    b:[1] RsBattle; b[0].w=12; b[0].h=12;
+    b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=12;
     c:=ifx mode==1 then rs_rogue("Rogue",0,2) else rs_monk("Monk",0,2);
     _:=rs_add(b[..],c,3,3); rs_start_turn(b[..],0);
     b[0].c[0].uses[RS_USE_FOCUS]=ifx mode==3 then 1 else 0;
@@ -25,7 +25,7 @@
 }
 
 #test "Disengage refuses malformed actors modes spent budgets and missing features transactionally" {
-  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=12;
   _:=rs_add(b[..],rs_fighter("Fighter",0,3),3,3); rs_start_turn(b[..],0);
   for i:[3]int.[-1,1,2] { #assert !rs_disengage(b[..],i); }
   for mode:[5]int.[-1,1,2,3,4] { #assert !rs_disengage_use(b[..],0,mode); }
@@ -37,7 +37,7 @@
 }
 
 #test "Disengage allows zero Speed but not incapacitation and never admits an unregistered actor" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],rs_fighter("Fighter",0,3),2,2); rs_start_turn(b[..],0);
   b[0].c[0].cond=RS_GRAPPLED; #assert rs_disengage(b[..],0);
   rs_start_turn(b[..],0); b[0].c[0].cond=RS_STUNNED;
@@ -49,7 +49,7 @@
 }
 
 #test "paid Patient Defense grants Disengage only this turn while Dodge lasts until the next turn" {
-  b:[1] RsBattle; b[0].w=8; b[0].h=8;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=8; b[0].h=8;
   _:=rs_add(b[..],rs_monk("Monk",0,3),2,2); rs_start_turn(b[..],0);
   #assert rs_patient_defense(b[..],0) && b[0].turn.disengaged && rs_effect(b[0].c[0], EF_DODGE) && b[0].c[0].uses[RS_USE_FOCUS]==2;
   rs_end_turn(b[..],0); #assert !b[0].turn.disengaged && rs_effect(b[0].c[0], EF_DODGE);
@@ -57,7 +57,7 @@
 }
 
 #test "Nimble Escape is a Bonus Action Disengage for a creature with the trait alone" {
-  b:[1] RsBattle; b[0].w=12; b[0].h=12;
+  b:[1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=12;
   _:=rs_add(b[..],rs_monster(MON_GOBLIN_WARRIOR,"",0),3,3); _=rs_add(b[..],rs_monster(MON_OGRE,"",1),5,5);
   rs_start_turn(b[..],0); b[0].turn.action=true;
   #assert rs_disengage_use(b[..],0,RS_DISENGAGE_NIMBLE) && b[0].turn.disengaged && b[0].turn.bonus;

@@ -3,7 +3,7 @@
 
 #test "Undead Fortitude uses boon and rescue dice without restoring spent resources from an old creature copy" {
   for rescue: 0..<2 {
-    b: [1] RsBattle; sv_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sv_field(b[..]);
     b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_UNDEAD_FORTITUDE, true); b[0].c[1].hp = 10;
     sv_bless(b[..],1);
     if rescue == 0 { b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6); }
@@ -17,7 +17,7 @@
 
 #test "concentration damage saves can be rescued by Inspiration and Own Luck after Bless" {
   for rescue: 0..<2 {
-    b: [1] RsBattle; sv_field(b[..]); sv_bless(b[..],1);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sv_field(b[..]); sv_bless(b[..],1);
     b[0].c[1].conc = SP_BLESS; b[0].c[1].conc_until = 60;
     if rescue == 0 { b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6); }
     else { b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_OWN_LUCK, true); b[0].c[1].uses[RS_USE_LUCK] = 1; }
@@ -29,7 +29,7 @@
 
 #test "Hellish Rebuke automatic failures roll only damage and preserve every save rescue resource" {
   for condition: [4] int.[RS_PARALYZED,RS_PETRIFIED,RS_STUNNED,RS_UNCONSCIOUS] {
-    b: [1] RsBattle; sv_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sv_field(b[..]);
     b[0].c[0] = rs_siege_attacker(2,0,SP_ELDRITCH_BLAST); rs_place(b[..],0,1,1);
     b[0].c[1].cond = condition; b[0].c[1].score[RS_DEX] = 30;
     b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6); b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_OWN_LUCK, true); b[0].c[1].uses[RS_USE_LUCK] = 1; sv_bless(b[..],1);
@@ -41,7 +41,7 @@
 }
 
 #test "normal Hellish Rebuke includes Bless before rescue and halves the actual damage on a successful save" {
-  b: [1] RsBattle; sv_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sv_field(b[..]);
   b[0].c[0] = rs_siege_attacker(2,0,SP_ELDRITCH_BLAST); rs_place(b[..],0,1,1);
   b[0].c[0].score[RS_CHA] = 14; sv_bless(b[..],1);
   #assert rs_dc(b[..],0) == 12 && rs_hellish_rebuke(b[..],0,1);
@@ -50,10 +50,10 @@
 
 #test "Spirit Guardians and Lands Aid apply Bless to their saving throws" {
   for feature: 0..<2 {
-    b: [1] RsBattle; sv_field(b[..]); sv_bless(b[..],1);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sv_field(b[..]); sv_bless(b[..],1);
     if feature == 0 {
       b[0].guards = 1; b[0].turn_no = 1;
-      b[0].c[0].conc = SP_SPIRIT_GUARDIANS; b[0].c[0].guard_slot = 3;
+      b[0].c[0].conc = SP_SPIRIT_GUARDIANS; b[0].c[0].conc_slot = 3;
       rs_guardians(b[..],1);
       #assert b[0].c[1].hp == 94 && b[0].dice[0].rolled == 5;
     } else {
@@ -67,7 +67,7 @@
 
 #test "end turn repeat saves use Strength Advantage and Dexterity Disadvantage instead of a flat d20" {
   for ability: 0..<2 {
-    b: [1] RsBattle; sv_field(b[..]); b[0].turn.new_round = true;
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sv_field(b[..]); b[0].turn.new_round = true;
     if ability == RS_STR { b[0].c[1].eff = rs_state_put(b[0].c[1].eff, EF_RAGE, true); b[0].c[1].eff = rs_state_bit(b[0].c[1].eff, EF_RAGE, RS_RAGE_KEPT, true); }
     else { b[0].c[1].cond = RS_RESTRAINED; }
     #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_NOHEAL,by=-1,spell=-1,until=60,save=ability,dc=11});
@@ -77,7 +77,7 @@
 }
 
 #test "end turn automatic save failures neither escape their record nor consume dice or rescue resources" {
-  b: [1] RsBattle; sv_field(b[..]); b[0].turn.new_round = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sv_field(b[..]); b[0].turn.new_round = true;
   b[0].c[1].cond = RS_PARALYZED; b[0].c[1].score[RS_DEX] = 30;
   b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6); b[0].c[1].feats = rs_feature_put(b[0].c[1].feats, RS_FT_OWN_LUCK, true); b[0].c[1].uses[RS_USE_LUCK] = 1; sv_bless(b[..],1);
   #assert rs_put_effect(b[..],1,RsEffect.{kind=EF_NOHEAL,by=-1,spell=-1,until=60,save=RS_DEX,dc=10});
@@ -88,11 +88,11 @@
 
 #test "Stunning Strike and Open Hand use the same normal boon and rescue ordering" {
   for feature: 0..<2 {
-    b: [1] RsBattle; sv_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sv_field(b[..]);
     b[0].c[0] = rs_monk("Monk",0,5); rs_place(b[..],0,1,1);
     b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6); sv_bless(b[..],1);
     if feature == 0 {
-      b[0].c[0].stun_ready = true;
+      b[0].c[0].note[RS_NT_STUN] = 1;
       rs_stunning_strike(b[..],0,1);
       #assert !rs_has(b[0].c[1],RS_STUNNED) && rs_aura_on(b[0].c[1], EF_HALVED, 0) && b[0].c[0].uses[RS_USE_FOCUS] == 4;
     } else {
@@ -105,7 +105,7 @@
 
 #test "Open Hand automatic Strength and Dexterity failures do not roll or spend a rescue die" {
   for how: [2] int.[OH_PUSH,OH_TOPPLE] {
-    b: [1] RsBattle; sv_field(b[..]); b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_OPEN_HAND, true);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sv_field(b[..]); b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_OPEN_HAND, true);
     b[0].c[1].cond = RS_PETRIFIED; b[0].c[1].eff = rs_state_value_put(b[0].c[1].eff, EF_INSPIRED, 6);
     rs_open_hand(b[..],0,1,how);
     #assert b[0].dice[0].rolled == 0 && rs_state_value(b[0].c[1], EF_INSPIRED) == 6;
@@ -114,7 +114,7 @@
 }
 
 #test "Turn Undead includes held saving throw bonuses before applying its conditions" {
-  b: [1] RsBattle; sv_field(b[..]); b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_TURN_UNDEAD, true);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sv_field(b[..]); b[0].c[0].feats = rs_feature_put(b[0].c[0].feats, RS_FT_TURN_UNDEAD, true);
   b[0].c[0].uses[RS_USE_CHANNEL] = 1; b[0].c[1].undead = true; sv_bless(b[..],1);
   #assert rs_turn_undead(b[..],0);
   #assert !rs_has(b[0].c[1],RS_FRIGHTENED|RS_INCAPACITATED) && b[0].dice[0].rolled == 2;
@@ -122,7 +122,7 @@
 }
 
 #test "Deflect Attacks redirection lets the attacker use Bless and Inspiration on its Dexterity save" {
-  b: [1] RsBattle; sv_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); sv_field(b[..]);
   b[0].c[1] = rs_monk("Monk",1,3); rs_place(b[..],1,2,1); b[0].c[1].ac = 1;
   b[0].c[1].score[RS_WIS] = 16;
   sv_bless(b[..],0); b[0].c[0].eff = rs_state_value_put(b[0].c[0].eff, EF_INSPIRED, 6);

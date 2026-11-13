@@ -4,7 +4,7 @@
 #load "death-save-checks.coax";
 
 #test "Exhaustion accumulates to six, kills without damage and interrupts owned effects" {
-  b: [1] RsBattle; ex_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ex_field(b[..]);
   #assert rs_cast(b[..],0,SP_BLESS,1,0,0,0);
   b[0].c[0].temp=50; b[0].c[0].floor=1;
   for level: 1..<7 {
@@ -14,7 +14,7 @@
     if level<6 { #assert b[0].c[0].conc==SP_BLESS; }
     event := rs_recent(b[0].book[0],0);
     #assert event.kind==(ifx level==6 then RS_EV_DEATH else RS_EV_CONDITION);
-    #assert event.spell == -1 && event.by == -1 && event.to==0 && event.amount==level && event.damage==RS_EXHAUSTION;
+    #assert event.spell.value == -1 && event.by.value == -1 && event.to.value==0 && event.amount==level && event.damage==RS_EXHAUSTION;
     #assert cast(string)event.text[0..<event.text_n]==(ifx level==6 then "Caster dies from Exhaustion" else "Caster gains an Exhaustion level");
   }
   #assert b[0].c[0].hp==0 && b[0].c[0].conc == -1 && b[0].c[0].conc_until==0;
@@ -24,7 +24,7 @@
 
 #test "each Exhaustion level penalizes attack and saving throw totals without changing natural criticals" {
   for level: 0..<6 {
-    b: [1] RsBattle; ex_field(b[..]);
+    b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ex_field(b[..]);
     for k: 0..<level { #assert rs_gain_exhaustion(b[..],0); }
     attack := rs_roll_attack(b[..],0,1,0,5,20,false);
     #assert attack.roll==10 && attack.total==15-2*level;
@@ -35,7 +35,7 @@
 }
 
 #test "Exhaustion Speed and single-level recovery preserve base Speed and unrelated conditions" {
-  b: [1] RsBattle; ex_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ex_field(b[..]);
   b[0].c[0].cond|=RS_BLINDED;
   for level: 1..<6 {
     #assert rs_gain_exhaustion(b[..],0);
@@ -51,7 +51,7 @@
 }
 
 #test "Exhaustion immunity and malformed recipients preserve state, dice and budgets" {
-  b: [1] RsBattle; ex_field(b[..]); b[0].c[0].immune_cond|=RS_EXHAUSTION;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ex_field(b[..]); b[0].c[0].immune_cond|=RS_EXHAUSTION;
   before := b[0].book[0].seq; rolls := b[0].dice[0].rolled;
   #assert rs_gain_exhaustion(b[..],0);
   #assert !rs_gain_exhaustion(b[..],-1) && !rs_gain_exhaustion(b[..],b[0].n);
@@ -60,7 +60,7 @@
 }
 
 #test "Exhaustion applies to the ordinary death saving throw threshold" {
-  b: [1] RsBattle; ex_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ex_field(b[..]);
   #assert rs_gain_exhaustion(b[..],0);
   b[0].c[0].hp=0; b[0].c[0].cond|=RS_UNCONSCIOUS;
   #assert rs_battle_death_save(b[..],0)==RS_DS_FAIL;
@@ -76,7 +76,7 @@ ex_field :: (b: [] RsBattle) {
 }
 
 #test "Exhaustion affects initiative and Athletics, and Speed zero prevents a paid grid step" {
-  b: [1] RsBattle; b[0].w=12; b[0].h=8; b[0].dice[0].fixed=true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w=12; b[0].h=8; b[0].dice[0].fixed=true;
   c := rs_cleric("Caster",0,3); c.exhaustion=2; c.cond=RS_EXHAUSTION;
   _ := rs_add(b[..],c,1,1);
   #assert b[0].c[0].initiative==10+rs_mod(c.score[RS_DEX])-4;
@@ -93,7 +93,7 @@ ex_field :: (b: [] RsBattle) {
 }
 
 #test "natural attack and death save twenties survive Exhaustion without spending rescue dice" {
-  b: [1] RsBattle; ex_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ex_field(b[..]);
   for k: 0..<5 { #assert rs_gain_exhaustion(b[..],0); }
   b[0].dice[0].fixed=false; b[0].dice[0].state=ex_seed(20);
   b[0].c[1].ac=100;
@@ -111,7 +111,7 @@ ex_field :: (b: [] RsBattle) {
 }
 
 #test "Exhaustion ending at zero Speed permanently ends Dodge without ending concentration early" {
-  b: [1] RsBattle; ex_field(b[..]); b[0].c[0].speed=5;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ex_field(b[..]); b[0].c[0].speed=5;
   #assert rs_dodge(b[..],0) && rs_effect(b[0].c[0], EF_DODGE);
   #assert rs_gain_exhaustion(b[..],0);
   #assert !rs_effect(b[0].c[0], EF_DODGE) && rs_walk_speed(b[..],0)==0;
@@ -130,7 +130,7 @@ ex_seed :: (face: int) -> u64 {
   #assert ex_native();
 }
 ex_native :: () -> bool {
-  b: [1] RsBattle; ex_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ex_field(b[..]);
   if !rs_gain_exhaustion(b[..],0) || b[0].c[0].exhaustion!=1 || rs_walk_speed(b[..],0)!=25 { return false; }
   save := rs_saving_throw(b[..],0,RS_INT,11);
   if save.total!=10+rs_save_in(b[..],0,RS_INT)-2 || save.passed!=(save.total>=11) { return false; }
@@ -141,7 +141,7 @@ ex_native :: () -> bool {
 }
 
 #test "standalone death saving throws apply Exhaustion and Seeking Spell tests the penalized attack" {
-  b: [1] RsBattle; ex_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); ex_field(b[..]);
   #assert rs_gain_exhaustion(b[..],0);
   b[0].c[0].hp=0; b[0].c[0].cond|=RS_UNCONSCIOUS;
   #assert rs_death_save(b[0].dice[..],b[0].c[0..<1])==RS_DS_FAIL && b[0].c[0].death_fail==1;

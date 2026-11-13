@@ -223,7 +223,7 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   #assert rs_in_cone3(4.4, 0, 9, 0, 0, 1, 18.288) && !rs_in_cone3(4.6, 0, 9, 0, 0, 1, 18.288) && !rs_in_cone3(0, 0, 18.5, 0, 0, 1, 18.288);
 }
 #test "Fire Breath: DC 21 Dexterity, 17d6 Fire to each foe in the cone, half on a success; then it's spent" {
-  b: [1] RsBattle; dragon_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dragon_field(b[..]);
   near := dragon_foe(b[..], 10, 14);     // 20 ft ahead
   far := dragon_foe(b[..], 10, 23);      // 65 ft: past the cone
   wide := dragon_foe(b[..], 16, 14);     // 30 ft aside at 20 ft along: outside its width
@@ -236,18 +236,18 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   #assert b[0].c[0].breath_spent && b[0].turn.action && !rs_breath_ready(b[0].c[0]);
   rs_fresh(b[..], 0); #assert rs_fire_breath(b[..], 0, 0, 1) == -1 && b[0].c[near].hp == 200 - 51;
   // a success halves it: a foe whose Dexterity save makes 21
-  s: [1] RsBattle; dragon_field(s[..]); q := dragon_foe(s[..], 10, 14); s[0].c[q].score[RS_DEX] = 20; s[0].c[q].save_prof[RS_DEX] = true; s[0].c[q].level = 20;
+  s: [1] RsBattle; s_room: [1] RsRoom; rs_have(s[..], s_room[..]); dragon_field(s[..]); q := dragon_foe(s[..], 10, 14); s[0].c[q].score[RS_DEX] = 20; s[0].c[q].save_prof[RS_DEX] = true; s[0].c[q].level = 20;
   rs_fresh(s[..], 0);
   #assert rs_fire_breath(s[..], 0, 0, 1) == 1 && s[0].c[q].hp == 200 - 25 && s[0].c[q].burning == 0;
   // Fire immunity: nothing, and nothing burns
-  m: [1] RsBattle; dragon_field(m[..]); r := dragon_foe(m[..], 10, 14); m[0].c[r].immune = 1 << RS_FIRE; rs_fresh(m[..], 0);
+  m: [1] RsBattle; m_room: [1] RsRoom; rs_have(m[..], m_room[..]); dragon_field(m[..]); r := dragon_foe(m[..], 10, 14); m[0].c[r].immune = 1 << RS_FIRE; rs_fresh(m[..], 0);
   #assert rs_fire_breath(m[..], 0, 0, 1) == 1 && m[0].c[r].hp == 200 && m[0].c[r].burning == 0;
   // a druid out of the form doesn't breathe
   #assert !rs_breather(rs_druid("D", 0, 17)) && rs_breather(rs_monster(MON_ADULT_RED_DRAGON, "", 0));
 }
 #test "Recharge 5–6: a 5 or a 6 at the start of its turn brings Fire Breath back" {
   for d6: 1..<7 { #assert rs_recharges(d6) == (d6 >= 5); }
-  b: [1] RsBattle; dragon_field(b[..]); b[0].c[0].breath_spent = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dragon_field(b[..]); b[0].c[0].breath_spent = true;
   rs_dragon_turn_start(b[..], 0); #assert b[0].c[0].breath_spent;   // fixed dice roll a 3
   b[0].dice[0].fixed = false; b[0].dice[0].state = 7;
   back := 0;
@@ -255,7 +255,7 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   #assert back > 150 && back < 250;   // a third of the time
 }
 #test "Burning: 1d4 Fire at the start of each turn for three rounds; an action Prone puts it out" {
-  b: [1] RsBattle; dragon_field(b[..]); f := dragon_foe(b[..], 10, 14); rs_fresh(b[..], 0);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dragon_field(b[..]); f := dragon_foe(b[..], 10, 14); rs_fresh(b[..], 0);
   b[0].c[f].burning = RS_BURN_ROUNDS; b[0].c[f].burn_by = 0;
   #assert rs_burning_tick(b[..], f) == 2 && b[0].c[f].hp == 198 && b[0].c[f].burning == 2;
   rs_dragon_turn_start(b[..], f); #assert b[0].c[f].hp == 196 && b[0].c[f].burning == 1;
@@ -269,7 +269,7 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
 #test "Tail Sweep, Wing Buffet and Frightful Roar: the SRD's DC formula, their reach, damage and conditions" {
   d := rs_monster(MON_ADULT_RED_DRAGON, "", 0);
   #assert rs_dragon_dc(d, RS_STR) == 22 && rs_dragon_dc(d, RS_CHA) == 20 && rs_proficiency(d.level) == 6;
-  b: [1] RsBattle; dragon_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dragon_field(b[..]);
   a := dragon_foe(b[..], 12, 10);   // 10 ft
   c := dragon_foe(b[..], 13, 13);   // 15 ft
   e := dragon_foe(b[..], 14, 10);   // 20 ft
@@ -287,7 +287,7 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   // one Action each
   rs_fresh(b[..], 0); #assert rs_tail_sweep(b[..], 0) >= 0 && rs_wing_buffet(b[..], 0) == -1 && rs_dragon_roar(b[..], 0) == -1;
   // not a dragon
-  n: [1] RsBattle; n[0].w = 20; n[0].h = 20; n[0].dice[0].fixed = true; nd := rs_add(n[..], rs_druid("D", 0, 17), 5, 5); _ := dragon_foe(n[..], 6, 5); rs_fresh(n[..], nd);
+  n: [1] RsBattle; n_room: [1] RsRoom; rs_have(n[..], n_room[..]); n[0].w = 20; n[0].h = 20; n[0].dice[0].fixed = true; nd := rs_add(n[..], rs_druid("D", 0, 17), 5, 5); _ := dragon_foe(n[..], 6, 5); rs_fresh(n[..], nd);
   #assert rs_tail_sweep(n[..], 0) == -1 && rs_fire_breath(n[..], 0, 1, 0) == -1;
 }
 #test "the cone's arithmetic: any length of aim, its exact edge and end, its origin, and no cone with no aim or no length" {
@@ -299,7 +299,7 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   #assert rs_in_cone3(0, 0, 0, 0, 0, 1, 18) && rs_in_cone3(0, 0, 18, 0, 0, 1, 18) && rs_in_cone3(4.5, 0, 9, 0, 0, 1, 18);
 }
 #test "an area's target: in the battle, not the one acting, alive, up and of another team" {
-  b: [1] RsBattle; dragon_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dragon_field(b[..]);
   #assert b[0].w == 40 && b[0].h == 40 && b[0].who == 0 && b[0].turn.move_left == 6 && b[0].dice[0].fixed && b[0].c[0].x == 10 && b[0].c[0].y == 10;
   f := dragon_foe(b[..], 12, 10); g := dragon_foe(b[..], 13, 10);
   #assert b[0].c[f].team == 1 && b[0].c[f].level == 3 && b[0].c[f].hp == 200 && b[0].c[f].hp_max == 200 && b[0].c[f].x == 12;
@@ -313,7 +313,7 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   form.shape_form = MON_ADULT_RED_DRAGON + 1; #assert !rs_breather(form);
 }
 #test "an area's save deals its damage plainly: no Critical Hit, and in no spell's name" {
-  b: [1] RsBattle; dragon_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dragon_field(b[..]);
   // 6 Bludgeoning on a failed save takes a Zombie at 3 to 0; Undead Fortitude's DC 11 against its 13 leaves it at 1
   z := rs_add(b[..], rs_zombie("Zombie", 1), 12, 10); b[0].c[z].hp = 3;
   h := rs_area_save(b[..], 0, z, RS_DEX, 30, 6, RS_BLUDGEONING);
@@ -322,12 +322,12 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   g := rs_area_save(b[..], 0, f, RS_DEX, 30, 13, RS_BLUDGEONING);
   #assert g.failed && g.damage == 13 && b[0].c[f].hp == 0;
   found := false;
-  for k: 0..<b[0].book[0].seq - seq { ev := rs_recent_at(b[0].book[..], k); if ev.kind == RS_EV_DOWN { found = true; #assert ev.spell == -1 && ev.to == f && ev.by == 0; } }
+  for k: 0..<b[0].book[0].seq - seq { ev := rs_recent_at(b[0].book[..], k); if ev.kind == RS_EV_DOWN { found = true; #assert ev.spell.value == -1 && ev.to.value == f && ev.by.value == 0; } }
   #assert found;
 }
 #test "Fire Breath: who can, the cone on the grid to its last square, what it rolls and tells, whom it sets alight and in whose name" {
   // the dragon second in the battle: creature 0 is a foe behind it
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 40; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 40; b[0].dice[0].fixed = true;
   behind := dragon_foe(b[..], 10, 6);
   d := rs_add(b[..], rs_monster(MON_ADULT_RED_DRAGON, "", 0), 10, 10);
   ahead := dragon_foe(b[..], 10, 22);   // 60 feet: the cone's last square
@@ -347,19 +347,19 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   rs_fresh(b[..], d); b[0].c[d].breath_spent = false; b[0].c[east].burning = 0; b[0].c[east].immune = 1;
   #assert rs_fire_breath(b[..], d, 1, 0) == 1 && b[0].c[east].hp == 98 && b[0].c[east].burning == RS_BURN_ROUNDS;
   // told once, with what it rolled: seeded dice, the same 17d6 rolled beside it
-  s: [1] RsBattle; dragon_field(s[..]); s[0].dice[0].fixed = false; s[0].dice[0].state = 99;
+  s: [1] RsBattle; s_room: [1] RsRoom; rs_have(s[..], s_room[..]); dragon_field(s[..]); s[0].dice[0].fixed = false; s[0].dice[0].state = 99;
   beside: [1] RsDice; beside[0] = s[0].dice[0];
   want := rs_sum(beside[..], 17, 6); seq := s[0].book[0].seq;
   #assert rs_fire_breath(s[..], 0, 0, 1) == 0;
   ev := rs_recent_at(s[0].book[..], 0);
-  #assert s[0].book[0].seq == seq + 1 && ev.kind == RS_EV_CONDITION && ev.by == 0 && ev.to == 0 && ev.amount == want && want >= 17 && rs_saw(s[..], seq, " breathes fire");
+  #assert s[0].book[0].seq == seq + 1 && ev.kind == RS_EV_CONDITION && ev.by.value == 0 && ev.to.value == 0 && ev.amount == want && want >= 17 && rs_saw(s[..], seq, " breathes fire");
   // no one outside the battle breathes, however ready its record looks
-  o: [1] RsBattle; dragon_field(o[..]); p: [1] int;
+  o: [1] RsBattle; o_room: [1] RsRoom; rs_have(o[..], o_room[..]); dragon_field(o[..]); p: [1] int;
   o[0].c[o[0].n] = o[0].c[0]; rs_fresh(o[..], o[0].n);
   #assert rs_fire_breath_on(o[..], o[0].n, p[0..<0]) == -1 && rs_fire_breath_on(o[..], -1, p[0..<0]) == -1 && !o[0].turn.action && !o[0].c[o[0].n].breath_spent;
 }
 #test "who is near a dragon, to the room given, and whether it can act" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 40; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 40; b[0].dice[0].fixed = true;
   first := dragon_foe(b[..], 12, 10);   // 10 feet
   d := rs_add(b[..], rs_monster(MON_ADULT_RED_DRAGON, "", 0), 10, 10);
   a := dragon_foe(b[..], 10, 13);       // 15 feet
@@ -379,7 +379,7 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   b[0].c[b[0].n] = b[0].c[d]; rs_fresh(b[..], b[0].n); #assert !rs_dragon_acting(b[..], b[0].n);
 }
 #test "Tail Sweep: Strength's DC against a Dexterity save, Bludgeoning halved by Resistance or a success, Prone and the telling as they are" {
-  b: [1] RsBattle; dragon_field(b[..]);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dragon_field(b[..]);
   quick := dragon_foe(b[..], 12, 10); b[0].c[quick].score[RS_DEX] = 20;   // 10 + 5: under Strength's DC 22, over Dexterity's 14
   tough := dragon_foe(b[..], 10, 12); b[0].c[tough].resist = 1 << RS_BLUDGEONING;
   nimble := dragon_foe(b[..], 8, 10); b[0].c[nimble].score[RS_DEX] = 30; b[0].c[nimble].save_prof[RS_DEX] = true;   // 10 + 10 + 2 makes 22
@@ -389,10 +389,10 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   e := b[0].c[quick].eff[0];
   #assert e.kind == EF_COND && e.cond == RS_PRONE && e.by == 0 && e.spell == -1 && e.until == 0 && e.save == -1 && e.dc == 0 && e.turn_end == 0;
   ev := rs_recent_at(b[0].book[..], 0);
-  #assert ev.kind == RS_EV_CONDITION && ev.by == 0 && ev.to == 0 && ev.amount == 3 && rs_saw(b[..], seq, " sweeps its tail") && b[0].turn.action;
+  #assert ev.kind == RS_EV_CONDITION && ev.by.value == 0 && ev.to.value == 0 && ev.amount == 3 && rs_saw(b[..], seq, " sweeps its tail") && b[0].turn.action;
   // 1d10 and its Strength modifier: seeded dice, the same d10 rolled beside it, on a foe that can't make the save
   for seed: 1..<9 {
-    s: [1] RsBattle; dragon_field(s[..]); slow := dragon_foe(s[..], 12, 10); s[0].c[slow].score[RS_DEX] = 1;
+    s: [1] RsBattle; s_room: [1] RsRoom; rs_have(s[..], s_room[..]); dragon_field(s[..]); slow := dragon_foe(s[..], 12, 10); s[0].c[slow].score[RS_DEX] = 1;
     s[0].dice[0].fixed = false; s[0].dice[0].state = cast(u64) seed; beside: [1] RsDice; beside[0] = s[0].dice[0];
     want := rs_roll(beside[..], 10) + 8;
     rs_fresh(s[..], 0); #assert rs_tail_sweep(s[..], 0) == 1 && s[0].c[slow].hp == 200 - want;
@@ -400,7 +400,7 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
 }
 #test "Wing Buffet: a Strength save; a failure is pushed three squares straight away, to a wall or a creature and no further" {
   // open ground, the dragon second in the battle; creature 0 stands in the way of a creature pushed south
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 20; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 20; b[0].dice[0].fixed = true;
   post := dragon_foe(b[..], 10, 15);
   d := rs_add(b[..], rs_monster(MON_ADULT_RED_DRAGON, "", 0), 10, 10);
   south := dragon_foe(b[..], 10, 12); west := dragon_foe(b[..], 8, 10); north := dragon_foe(b[..], 10, 9); corner := dragon_foe(b[..], 11, 9);
@@ -412,10 +412,10 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   #assert b[0].c[west].x == 5 && b[0].c[west].y == 10 && b[0].c[north].x == 10 && b[0].c[north].y == 6 && b[0].c[corner].x == 14 && b[0].c[corner].y == 6;
   #assert b[0].c[strong].x == 12 && b[0].c[strong].hp == 194 && b[0].c[tough].hp == 194 && b[0].c[tough].x == 6 && b[0].c[tough].y == 14;
   ev := rs_recent_at(b[0].book[..], 0);
-  #assert ev.kind == RS_EV_CONDITION && ev.by == d && ev.to == d && ev.amount == 6 && rs_saw(b[..], seq, " beats its wings") && b[0].turn.action;
+  #assert ev.kind == RS_EV_CONDITION && ev.by.value == d && ev.to.value == d && ev.amount == 6 && rs_saw(b[..], seq, " beats its wings") && b[0].turn.action;
   #assert rs_tail_sweep(b[..], d) == -1;
   // the four walls of a small room
-  w: [1] RsBattle; w[0].w = 8; w[0].h = 8; w[0].dice[0].fixed = true;
+  w: [1] RsBattle; w_room: [1] RsRoom; rs_have(w[..], w_room[..]); w[0].w = 8; w[0].h = 8; w[0].dice[0].fixed = true;
   wd := rs_add(w[..], rs_monster(MON_ADULT_RED_DRAGON, "", 0), 4, 4);
   ww := dragon_foe(w[..], 2, 4); wn := dragon_foe(w[..], 4, 2); we := dragon_foe(w[..], 6, 4); ws := dragon_foe(w[..], 4, 6);
   rs_fresh(w[..], wd);
@@ -423,14 +423,14 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   #assert w[0].c[we].x == 7 && w[0].c[we].y == 4 && w[0].c[ws].x == 4 && w[0].c[ws].y == 7;
   // 1d10 and its Strength modifier, on a foe that can't make the save
   for seed: 1..<9 {
-    s: [1] RsBattle; dragon_field(s[..]); weak := dragon_foe(s[..], 12, 10); s[0].c[weak].score[RS_STR] = 1; s[0].c[weak].save_prof[RS_STR] = false;
+    s: [1] RsBattle; s_room: [1] RsRoom; rs_have(s[..], s_room[..]); dragon_field(s[..]); weak := dragon_foe(s[..], 12, 10); s[0].c[weak].score[RS_STR] = 1; s[0].c[weak].save_prof[RS_STR] = false;
     s[0].dice[0].fixed = false; s[0].dice[0].state = cast(u64) seed; beside: [1] RsDice; beside[0] = s[0].dice[0];
     want := rs_roll(beside[..], 10) + 8;
     rs_fresh(s[..], 0); #assert rs_wing_buffet(s[..], 0) == 1 && s[0].c[weak].hp == 200 - want;
   }
 }
 #test "Frightful Roar: Charisma's DC against a Wisdom save, Frightened of the dragon for six seconds, told with the number it frightened" {
-  b: [1] RsBattle; b[0].w = 40; b[0].h = 40; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 40; b[0].h = 40; b[0].dice[0].fixed = true;
   first := dragon_foe(b[..], 22, 10);   // 60 feet
   d := rs_add(b[..], rs_monster(MON_ADULT_RED_DRAGON, "", 0), 10, 10);
   wise := dragon_foe(b[..], 12, 10); b[0].c[wise].score[RS_WIS] = 30;   // 10 + 10 makes DC 20
@@ -440,11 +440,11 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   e := b[0].c[first].eff[0];
   #assert e.kind == EF_COND && e.cond == RS_FRIGHTENED && e.by == d && e.spell == -1 && e.until == b[0].clock + 6000000 && e.save == -1 && e.dc == 0 && e.turn_end == 0;
   ev := rs_recent_at(b[0].book[..], 0);
-  #assert ev.kind == RS_EV_CONDITION && ev.by == d && ev.to == d && ev.amount == 1 && rs_saw(b[..], seq, " roars") && b[0].turn.action;
+  #assert ev.kind == RS_EV_CONDITION && ev.by.value == d && ev.to.value == d && ev.amount == 1 && rs_saw(b[..], seq, " roars") && b[0].turn.action;
   #assert rs_tail_sweep(b[..], d) == -1;
 }
 #test "Burning: its own bounds, Fire halved by Resistance, never a Critical Hit and no spell's; dousing takes a free Action and a fire to put out" {
-  b: [1] RsBattle; b[0].w = 20; b[0].h = 20; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].w = 20; b[0].h = 20; b[0].dice[0].fixed = true;
   f := dragon_foe(b[..], 3, 3);
   z := rs_add(b[..], rs_zombie("Zombie", 1), 5, 5);
   b[0].c[f].burning = 2; b[0].c[f].burn_by = z;
@@ -459,16 +459,16 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   b[0].c[f].resist = 0; b[0].c[f].hp = 1; b[0].c[f].burning = 1; seq := b[0].book[0].seq;
   #assert rs_burning_tick(b[..], f) == 2 && b[0].c[f].hp == 0;
   found := false;
-  for k: 0..<b[0].book[0].seq - seq { ev := rs_recent_at(b[0].book[..], k); if ev.kind == RS_EV_DOWN { found = true; #assert ev.spell == -1 && ev.to == f && ev.by == z; } }
+  for k: 0..<b[0].book[0].seq - seq { ev := rs_recent_at(b[0].book[..], k); if ev.kind == RS_EV_DOWN { found = true; #assert ev.spell.value == -1 && ev.to.value == f && ev.by.value == z; } }
   #assert found;
   // 1d4: seeded dice, the same d4 rolled beside it
   for seed: 1..<17 {
-    s: [1] RsBattle; s[0].w = 8; s[0].h = 8; g := dragon_foe(s[..], 1, 1); s[0].c[g].burning = 1;
+    s: [1] RsBattle; s_room: [1] RsRoom; rs_have(s[..], s_room[..]); s[0].w = 8; s[0].h = 8; g := dragon_foe(s[..], 1, 1); s[0].c[g].burning = 1;
     s[0].dice[0].state = cast(u64) seed; beside: [1] RsDice; beside[0] = s[0].dice[0];
     #assert rs_burning_tick(s[..], g) == rs_roll(beside[..], 4);
   }
   // dousing
-  o: [1] RsBattle; o[0].w = 8; o[0].h = 8; q := dragon_foe(o[..], 1, 1); rs_fresh(o[..], q);
+  o: [1] RsBattle; o_room: [1] RsRoom; rs_have(o[..], o_room[..]); o[0].w = 8; o[0].h = 8; q := dragon_foe(o[..], 1, 1); rs_fresh(o[..], q);
   #assert !rs_burning_douse(o[..], q) && !o[0].turn.action;                                                        // no fire
   o[0].c[q].burning = 1; o[0].turn.action = true; #assert !rs_burning_douse(o[..], q) && o[0].c[q].burning == 1;   // no Action
   o[0].turn.action = false; #assert rs_burning_douse(o[..], q) && o[0].turn.action && o[0].c[q].burning == 0;
@@ -476,14 +476,14 @@ dragon_foe :: (b: [] RsBattle, x: int, y: int) -> int #effects(all) {
   #assert e.kind == EF_COND && e.cond == RS_PRONE && e.by == -1 && e.spell == -1 && e.until == 0 && e.save == -1 && e.dc == 0 && e.turn_end == 0;
 }
 #test "the start of a turn: only a breather's spent breath is rolled for, and a turn with no fire burns nothing" {
-  b: [1] RsBattle; dragon_field(b[..]); f := dragon_foe(b[..], 12, 10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); dragon_field(b[..]); f := dragon_foe(b[..], 12, 10);
   b[0].dice[0].fixed = false; b[0].dice[0].state = 7; b[0].c[f].breath_spent = true;
   for k: 0..<60 { rs_dragon_turn_start(b[..], f); #assert b[0].c[f].breath_spent; }
   #assert b[0].c[f].hp == 200 && b[0].c[f].burning == 0;
 }
 #test "Fire Breath on a battle larger than the rules' own room: the first RS_MAX creatures in the cone, and no more" {
   room: [RS_MAX + 4] RsCreature; occ: [1] int;
-  b: [1] RsBattle; rs_use(b[..], room[..], occ[..]); b[0].w = 40; b[0].h = 40; b[0].dice[0].fixed = true;
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); rs_use(b[..], room[..], occ[..]); b[0].w = 40; b[0].h = 40; b[0].dice[0].fixed = true;
   d := rs_add(b[..], rs_monster(MON_ADULT_RED_DRAGON, "", 0), 10, 10);
   for k: 0..<RS_MAX + 3 { _ := dragon_foe(b[..], 10, 14); }
   rs_fresh(b[..], d);

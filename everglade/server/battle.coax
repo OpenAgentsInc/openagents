@@ -53,6 +53,7 @@ EgBeast :: struct {
 }
 EgBattle :: struct {
   b: [1] RsBattle;
+  room: [1] RsRoom;                           // a room of EGB_SEATS: its creatures, squares and areas (rs_have); a zone gives its own creatures and squares first (rs_use)
   z_shift: int;
   seat: [EGB_ZONE_SEATS] FbSeat;
   live: [EGB_ZONE_SEATS] bool;
@@ -131,7 +132,7 @@ egb_start :: (r: [] EgBattle, seed: int) #effects(all) {
   b[0].n = 0; b[0].clock = 0; b[0].w = EGB_SIDE;   // who's turn: none (rs_begin)
   b[0].h = EGB_SIDE + EGB_Z_SHIFT;
   _ := rs_set_world(b, RS_EVERGLADE_WORLD);   // every declared deviation: world-profile.coax
-  rs_room(b); for k: 0..<b[0].zone.count { b[0].zone[k].on = false; }
+  rs_have(b, r[0].room[..]); for k: 0..<b[0].zone.count { b[0].zone[k].on = false; }
   b[0].truth_zones = 0;
   b[0].dice[0].state = cast(u64) seed * 7919 + 3;
   for s: 0..<r[0].seats {
@@ -233,7 +234,11 @@ egb_step :: (r: [] EgBattle, clock: int) #effects(all) {
   rs_tick_ticks(b, dt);
   for s: 0..<r[0].seats {
     if !r[0].live[s] { continue; }
+    turn_was := b[0].c[s].turn_at;
     fb_seat_step(b, r[0].seat[s..<s + 1]);
+    // Knocked Prone, a seat stands as its next turn opens, for half its Speed (prone-movement.coax): a
+    // page has no press for it, and nothing else in a room stood a player up (#13287)
+    if b[0].c[s].turn_at != turn_was && rs_has(b[0].c[s], RS_PRONE) { _ := fb_seat_stand(b, r[0].seat[s..<s + 1]); }
     if r[0].familiar_ready { fb_seat_step(b, r[0].familiar[s..<s + 1]); }
   }
   // each creature read in place, not copied whole, every tick
@@ -401,7 +406,7 @@ egb_events :: (r: [] EgBattle, out: [] f32) -> int #effects(all) {
     q -= 1;
     if (n + 1) * EGB_EV_FLOATS > out.count { continue; }
     o := n * EGB_EV_FLOATS;
-    out[o] = f32(e.kind); out[o + 1] = f32(e.spell); out[o + 2] = f32(egb_tgt(r, e.by)); out[o + 3] = f32(egb_tgt(r, e.to));
+    out[o] = f32(e.kind); out[o + 1] = f32(e.spell.value); out[o + 2] = f32(egb_tgt(r, e.by.value)); out[o + 3] = f32(egb_tgt(r, e.to.value));
     out[o + 4] = f32(e.amount); out[o + 5] = f32(e.damage);
     out[o + 6] = egb_cell_m(e.x); out[o + 7] = egb_cell_z(r, e.y);
     n += 1;
@@ -469,7 +474,7 @@ egb_events :: (r: [] EgBattle, out: [] f32) -> int #effects(all) {
   b := r[0].b[..];
   #assert r[0].started && r[0].next_id == 1 && !r[0].familiar_ready && b[0].n == EGB_SEATS + EGB_BEASTS && b[0].who == -1;
   // the dice: the seed's, then each creature's initiative as it is added
-  ref: [1] RsBattle; ref[0].dice[0].state = cast(u64) 5 * 7919 + 3; _ := rs_set_world(ref[..], RS_EVERGLADE_WORLD);
+  ref: [1] RsBattle; ref_room: [1] RsRoom; rs_have(ref[..], ref_room[..]); ref[0].dice[0].state = cast(u64) 5 * 7919 + 3; _ := rs_set_world(ref[..], RS_EVERGLADE_WORLD);
   for q: 0..<EGB_SEATS + EGB_BEASTS {
     o := ifx q < EGB_SEATS then fb_everglade_hero("Player", 0) else rs_monster(MON_WOLF, "Wolf", EGB_BEAST_TEAM);
     o.hp = 0; o.dead = true; _ = rs_add(ref[..], o, EGB_AWAY, EGB_AWAY);
@@ -702,7 +707,7 @@ egb_events :: (r: [] EgBattle, out: [] f32) -> int #effects(all) {
   for k: 0..<RS_EFFECTS { b[0].c[0].eff[k] = RsEffect.{}; }
 }
 #test "battle: what holds a creature longest: what stops it, then a curse, then a blessing" #steps 4000000000 {
-  b: [1] RsBattle; rs_room(b[..]); b[0].n = 1; b[0].clock = rs_secs(10);
+  b: [1] RsBattle; b_room: [1] RsRoom; rs_have(b[..], b_room[..]); b[0].n = 1; b[0].clock = rs_secs(10);
   sp: [1] int;
   #assert egb_hold_left(b[..], 0, sp[..]) == 0 && sp[0] == -1;
   #assert egb_hold_rank(RsEffect.{kind = EF_HALT}) == 3 && egb_hold_rank(RsEffect.{kind = EF_COND, cond = RS_STUNNED}) == 3 && egb_hold_rank(RsEffect.{kind = EF_COND, cond = RS_PARALYZED}) == 3;
@@ -775,7 +780,7 @@ egb_events :: (r: [] EgBattle, out: [] f32) -> int #effects(all) {
   out: [8 * RS_EVENTS] f32;
   _ := egb_events(r[..], out[..]);
   r[0].beasts[2].tag = 5;
-  for q: 0..<3 { _ = rs_emit(b[0].book[..], RsEvent.{kind = q + 1, spell = 10 + q, by = 0, to = EGB_BEAST0 + 2, amount = 20 + q, damage = 30 + q, x = q, y = 352 + q}); }
+  for q: 0..<3 { _ = rs_emit(b[0].book[..], RsEvent.{kind = q + 1, spell = RsSpellId.{value = 10 + q}, by = RsActorId.{value = 0}, to = RsActorId.{value = EGB_BEAST0 + 2}, amount = 20 + q, damage = 30 + q, x = q, y = 352 + q}); }
   small: [17] f32;
   #assert egb_events(r[..], small[..]) == 2 && small[0] == 1 && small[8] == 2 && small[16] == 0;
   #assert small[1] == 10 && small[2] == 1000 && small[3] == 2005 && small[4] == 20 && small[5] == 30 && small[6] == egb_cell_m(0) && small[7] == egb_cell_m(0);

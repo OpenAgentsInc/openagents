@@ -143,7 +143,7 @@ Lab :: struct {
   w: [1] EgZone;   // the zone (everglade/zone.coax): the scene, your class's bar and rules, your body, the keys held, the figures' stores
   aribeth_state:[1]nwna.Aribeth;
   started: bool;
-  battle: [1] RsBattle;
+  battle: [1] RsBattle; zones: [RS_ZONES] RsZone;   // the battle, and its lasting areas (its creatures and squares are army and squares: bt)
   seen: int;                       // the battle log's events already shown
   seed: u64;
   round: int;
@@ -222,7 +222,7 @@ Lab :: struct {
 in_rect :: (b: Rect, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 // The battle, in the room the lab gives it (army and squares: more than a battle holds of its own).
 bt :: (s: [] Lab) -> [] RsBattle {
-  if s[0].battle[0].c.count != LAB_MAX { rs_use(s[0].battle[..], s[0].army[..], s[0].squares[..]); }
+  if s[0].battle[0].c.count != LAB_MAX { rs_use(s[0].battle[..], s[0].army[..], s[0].squares[..]); rs_use_zones(s[0].battle[..], s[0].zones[..]); }
   return s[0].battle[..];
 }
 dice :: (s: [] Lab) -> [] RsDice { return s[0].battle[0].dice[..]; }
@@ -276,7 +276,7 @@ take_events :: (s: [] Lab) {
   g: [1] cc.EgFolds; b0 := bt(s);
   for j: 0..<fresh {
     e := rs_recent_at(book, j);
-    if e.kind == RS_EV_DAMAGE && e.to >= 0 && e.to < b0[0].n { cc.eg_fold_add(g[..], e.by, e.spell, rs_ticks_s(e.at), e.amount, f32(b0[0].c[e.to].x), f32(b0[0].c[e.to].y)); }
+    if e.kind == RS_EV_DAMAGE && e.to.value >= 0 && e.to.value < b0[0].n { cc.eg_fold_add(g[..], e.by.value, e.spell.value, rs_ticks_s(e.at), e.amount, f32(b0[0].c[e.to.value].x), f32(b0[0].c[e.to.value].y)); }
   }
   while k >= 0 {
     e := rs_recent_at(book, k);
@@ -291,18 +291,18 @@ take_events :: (s: [] Lab) {
     if e.kind == RS_EV_END || e.kind == RS_EV_STABLE { c = FAINT; }
     if e.text_n > 0 { add_line(s, t, c); }
     f: Num;
-    if (e.kind == RS_EV_DAMAGE || e.kind == RS_EV_HEAL || e.kind == RS_EV_MISS) && (e.kind != RS_EV_DAMAGE || cc.eg_fold_rises(g[..], e.by, e.spell, rs_ticks_s(e.at), e.amount, e.to == s[0].me || e.to == s[0].target || e.to == s[0].you_me)) {
+    if (e.kind == RS_EV_DAMAGE || e.kind == RS_EV_HEAL || e.kind == RS_EV_MISS) && (e.kind != RS_EV_DAMAGE || cc.eg_fold_rises(g[..], e.by.value, e.spell.value, rs_ticks_s(e.at), e.amount, e.to.value == s[0].me || e.to.value == s[0].target || e.to.value == s[0].you_me)) {
       f.kind = FX_TEXT; f.life = 1.2;
       f.col = ifx e.kind == RS_EV_HEAL then GREEN else ifx e.kind == RS_EV_MISS then DIM else RED;
-      f.ax = f32(s[0].battle[0].c[e.to].x); f.ay = f32(s[0].battle[0].c[e.to].y);
+      f.ax = f32(s[0].battle[0].c[e.to.value].x); f.ay = f32(s[0].battle[0].c[e.to.value].y);
       if e.kind == RS_EV_MISS { f.n = put(f.text[..], 0, "MISS"); }
       else { f.n = put(f.text[..], 0, ifx e.kind == RS_EV_HEAL then "+" else "-"); f.n = put_int(f.text[..], f.n, e.amount); }
       add_num(s, f);
     }
     // the glade's effects: rays and bolts of one cast leave one after another
     if e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS {
-      if e.by == rep_by && e.spell == rep_spell && rs_ticks_s(e.at) - rep_t < 0.01 && e.spell >= 0 { rep_n = rs_min(rep_n + 1, 4); } else { rep_n = 0; }
-      rep_by = e.by; rep_spell = e.spell; rep_t = rs_ticks_s(e.at);
+      if e.by.value == rep_by && e.spell.value == rep_spell && rs_ticks_s(e.at) - rep_t < 0.01 && e.spell.value >= 0 { rep_n = rs_min(rep_n + 1, 4); } else { rep_n = 0; }
+      rep_by = e.by.value; rep_spell = e.spell.value; rep_t = rs_ticks_s(e.at);
     }
     cue_event(s, e);
     lw_heard(s, e);
@@ -323,17 +323,17 @@ take_events :: (s: [] Lab) {
 // hurt figure is knocked back (everglade/scene/bodies.coax figs.bd_cue).
 cue_event :: (s: [] Lab, e: RsEvent) {
   b := bt(s);
-  if e.by < 0 || e.by >= b[0].n { return; }
+  if e.by.value < 0 || e.by.value >= b[0].n { return; }
   now := rs_clock_s(b);
-  aimed := e.to >= 0 && e.to < b[0].n && e.to != e.by;
-  tx := ifx aimed then wx(s, s[0].dx[e.to]) else 0.0f32; tz := ifx aimed then wz(s, s[0].dy[e.to]) else 0.0f32;
+  aimed := e.to.value >= 0 && e.to.value < b[0].n && e.to != e.by;
+  tx := ifx aimed then wx(s, s[0].dx[e.to.value]) else 0.0f32; tz := ifx aimed then wz(s, s[0].dy[e.to.value]) else 0.0f32;
   if (e.kind == RS_EV_ATTACK || e.kind == RS_EV_MISS) && aimed {
-    melee := e.spell < 0 && rs_feet_to(b, e.by, e.to) <= 5;
-    figs.bd_cue(s[0].w[0].bodies[..], e.by, ifx melee then figs.BD_SLASH else figs.BD_SPELL, now, tx, tz, true);
+    melee := e.spell.value < 0 && rs_feet_to(b, e.by.value, e.to.value) <= 5;
+    figs.bd_cue(s[0].w[0].bodies[..], e.by.value, ifx melee then figs.BD_SLASH else figs.BD_SPELL, now, tx, tz, true);
     return;
   }
-  if e.kind == RS_EV_CAST { figs.bd_cue(s[0].w[0].bodies[..], e.by, figs.BD_SPELL, now, tx, tz, aimed); return; }
-  if e.kind == RS_EV_DAMAGE && e.to >= 0 && e.to < b[0].n && b[0].c[e.to].hp > 0 { figs.bd_cue(s[0].w[0].bodies[..], e.to, figs.BD_KNOCK, now, 0, 0, false); }
+  if e.kind == RS_EV_CAST { figs.bd_cue(s[0].w[0].bodies[..], e.by.value, figs.BD_SPELL, now, tx, tz, aimed); return; }
+  if e.kind == RS_EV_DAMAGE && e.to.value >= 0 && e.to.value < b[0].n && b[0].c[e.to.value].hp > 0 { figs.bd_cue(s[0].w[0].bodies[..], e.to.value, figs.BD_KNOCK, now, 0, 0, false); }
 }
 // The figures this frame, from the battle: each creature's look, square and state. It reads the
 // creatures in place (a copy of one is 1.5 KB, and there can be two thousand of them).
@@ -400,10 +400,10 @@ lab_grid :: (s: [] Lab) -> FxeGrid { return FxeGrid.{x0 = -f32(s[0].cols) * f32(
 // foe a Cunning Action's Dash runs from or a Flurry of Blows strikes, and where the figure is drawn.
 lab_effect :: (s: [] Lab, e: RsEvent, seed: f32, t0: f32) {
   b := bt(s);
-  if e.by < 0 || e.by >= b[0].n { return; }
-  foe := ifx e.feat == RS_FT_CUNNING_DASH then nearest_foe(s, e.by) else ifx e.feat == RS_FT_FLURRY then foe_at_hand(s, e.by, -1) else -1;
+  if e.by.value < 0 || e.by.value >= b[0].n { return; }
+  foe := ifx e.feat == RS_FT_CUNNING_DASH then nearest_foe(s, e.by.value) else ifx e.feat == RS_FT_FLURRY then foe_at_hand(s, e.by.value, -1) else -1;
   g := lab_grid(s);
-  fxe_event(s[0].w[0].puffs[..], b, g, e, seed, t0, FxeSeen.{foe = foe, was = fxe_point(g, s[0].dx[e.by], s[0].dy[e.by], 0)});
+  fxe_event(s[0].w[0].puffs[..], b, g, e, seed, t0, FxeSeen.{foe = foe, was = fxe_point(g, s[0].dx[e.by.value], s[0].dy[e.by.value], 0)});
 }
 // What lasts on a creature, as the glade draws it (metaverse-engine/fx/abilities.coax fxp_status): its
 // conditions, concentration, Rage, Sacred Weapon, Innate Sorcery, a flame in hand and a Fiend's
@@ -876,7 +876,7 @@ pact_turn :: (s: [] Lab, i: int) {
   foe := nearest_foe(s, i);
   if foe < 0 { return; }
   // Hex: moved on, or cast
-  if b[0].c[i].conc == SP_HEX && b[0].c[i].hex_free { ok := rs_hex_move(b, i, foe); }
+  if b[0].c[i].conc == SP_HEX && b[0].c[i].note[RS_NT_CURSE_FREE] != 0 { ok := rs_hex_move(b, i, foe); }
   // a barbarian within 60 feet: Rage does nothing for a Wisdom save, so Hold Person it
   brute := -1;
   ids1: [NEAR_MAX] int; m1 := near_ids(s, b[0].c[i].x, b[0].c[i].y, 60, ids1[..]);
@@ -1014,7 +1014,7 @@ monk_turn :: (s: [] Lab, i: int) {
   if j < 0 { return; }
   // from level 5, a Stunning Strike on its hits while it has Focus to spare; from 6, Wholeness of
   // Body when badly hurt
-  b[0].c[i].stun_ready = b[0].c[i].uses[RS_USE_FOCUS] > 2;
+  b[0].c[i].note[RS_NT_STUN] = ifx b[0].c[i].uses[RS_USE_FOCUS] > 2 then 1 else 0;
   ok := rs_attack(b, i, j, false, -1);
   if b[0].c[i].hp * 5 < b[0].c[i].hp_max * 2 { ok = rs_wholeness(b, i); }
   brute := false;
@@ -1192,7 +1192,7 @@ ranger_turn :: (s: [] Lab, i: int) {
   if rs_has(b[0].c[i], RS_RESTRAINED) { ok := rs_escape(b, i); }
   foe := nearest_foe(s, i);
   if foe < 0 { return; }
-  if b[0].c[i].conc == SP_HUNTERS_MARK && b[0].c[i].hex_free { ok := rs_hex_move(b, i, foe); }
+  if b[0].c[i].conc == SP_HUNTERS_MARK && b[0].c[i].note[RS_NT_CURSE_FREE] != 0 { ok := rs_hex_move(b, i, foe); }
   if b[0].c[i].conc < 0 && rs_feet_to(b, i, foe) <= 90 {
     if !rs_cast(b, i, SP_HUNTERS_MARK, 0, 0, 0, foe) {
       sl := free_slot(s, i, 1);
@@ -1218,7 +1218,7 @@ rogue_turn :: (s: [] Lab, i: int) {
   if foe < 0 { return; }
   // Cunning Strike: Trip a standing foe, else Withdraw from one at hand
   j := foe_at_hand(s, i, -1);
-  if j >= 0 { b[0].c[i].strike_plan = ifx rs_has(b[0].c[j], RS_PRONE) then CS_WITHDRAW else CS_TRIP; ok := rs_attack(b, i, j, false, -1); walk(s, i, j, 30, 70); return; }
+  if j >= 0 { b[0].c[i].note[RS_NT_STRIKE_PLAN] = ifx rs_has(b[0].c[j], RS_PRONE) then CS_WITHDRAW else CS_TRIP; ok := rs_attack(b, i, j, false, -1); walk(s, i, j, 30, 70); return; }
   d := rs_feet_to(b, i, foe);
   if d >= 15 && d <= 80 { ok := rs_steady_aim(b, i); }
   if !b[0].turn.anchored && !rs_has(b[0].c[i], RS_RESTRAINED) {
@@ -1226,9 +1226,9 @@ rogue_turn :: (s: [] Lab, i: int) {
     if rs_feet_to(b, i, foe) > 80 { ok := rs_cunning_dash(b, i); walk(s, i, foe, 30, 70); }
   }
   j = foe_at_hand(s, i, -1);
-  if j >= 0 { b[0].c[i].strike_plan = CS_TRIP; ok := rs_attack(b, i, j, false, -1); return; }
+  if j >= 0 { b[0].c[i].note[RS_NT_STRIKE_PLAN] = CS_TRIP; ok := rs_attack(b, i, j, false, -1); return; }
   foe = nearest_foe(s, i);
-  if foe >= 0 { b[0].c[i].strike_plan = ifx rs_has(b[0].c[foe], RS_PRONE) then CS_NONE else CS_TRIP; ok := rs_shoot(b, i, foe); }
+  if foe >= 0 { b[0].c[i].note[RS_NT_STRIKE_PLAN] = ifx rs_has(b[0].c[foe], RS_PRONE) then CS_NONE else CS_TRIP; ok := rs_shoot(b, i, foe); }
 }
 // A Cleric's turn: Turn Undead when three of the dead stand within 30 feet, Preserve Life when two
 // friends near it are Bloodied, Healing Word on the worst hurt; the Mace at a foe beside it, else
@@ -1670,7 +1670,7 @@ lab_prepare_bar :: (c: [] RsCreature) {
   if m == 0 || !rs_set_spells(c, keys[0..<m]) { return; }
   if c[0].klass == RS_WIZARD { _ := rs_select_spell(c, RS_KEY_MAGE_ARMOR); }
   for sp: rs_profile_spells(c[0].klass) {
-    if !rs_spell_grant_has(c[0].klass,c[0].level,rs_has_feature(c[0], RS_FT_FIENDISH_VIGOR),c[0].spell_grants,sp) { _ := rs_select_spell(c, RS_EXEC_SOURCE[sp]); }
+    if !rs_spell_grant_has(c[0].klass,c[0].level,rs_spell_at_will(c[0],sp),c[0].spell_grants,sp) { _ := rs_select_spell(c, RS_EXEC_SOURCE[sp]); }
   }
 }
 // The hero you play: the first of the Living's heroes of the picked class still up, or -1.
@@ -3668,14 +3668,14 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   lab_start(s[..]);
   b := bt(s[..]);
   sk := s[0].heroes;   // a Skeleton
-  e: RsEvent; e.at = b[0].clock; e.by = 0; e.to = 1;
+  e: RsEvent; e.at = b[0].clock; e.by.value = 0; e.to.value = 1;
   kinds := [10] int.[RS_EV_ZONE, RS_EV_ZONE, RS_EV_ATTACK, RS_EV_ATTACK, RS_EV_ATTACK, RS_EV_HEAL, RS_EV_DEATH, RS_EV_CAST, RS_EV_ZONE, RS_EV_ATTACK];
   spells := [10] int.[SP_FIREBALL, SP_THUNDERWAVE, SP_FIRE_BOLT, SP_ELDRITCH_BLAST, -1, -1, -1, SP_SACRED_FLAME, SP_CALL_LIGHTNING, -1];
   want := [10] int.[FXR_FIREBALL, FXR_SHOCK, FXR_FIREBOLT, FXR_ELDRITCH, FXR_HIT, FXR_HEAL, FXR_BONES, FXR_COLUMN, FXR_LIGHTNING, FXR_HIT];
   for q: 0..<10 {
     fxp_clear(s[0].w[0].puffs[..]);
-    e.kind = kinds[q]; e.spell = spells[q]; e.amount = 3; e.x = 10; e.y = 8; e.to = ifx q == 6 then sk else 1;
-    b[0].c[e.to].x = 2 + q; b[0].c[e.to].y = 4;   // apart from the caster, but within reach of a blow
+    e.kind = kinds[q]; e.spell.value = spells[q]; e.amount = 3; e.x = 10; e.y = 8; e.to.value = ifx q == 6 then sk else 1;
+    b[0].c[e.to.value].x = 2 + q; b[0].c[e.to.value].y = 4;   // apart from the caster, but within reach of a blow
     b[0].c[0].x = 1 + q; b[0].c[0].y = 4;
     e.damage = ifx q == 9 then 1 else 0;
     lab_effect(s[..], e, 1.5 + f32(q), rs_ticks_s(e.at));
@@ -3688,7 +3688,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   // a blow from afar is an arrow
   b[0].c[0].x = 1; b[0].c[1].x = 20;
   fxp_clear(s[0].w[0].puffs[..]);
-  e.kind = RS_EV_ATTACK; e.spell = -1; e.to = 1; e.damage = 0;
+  e.kind = RS_EV_ATTACK; e.spell.value = -1; e.to.value = 1; e.damage = 0;
   lab_effect(s[..], e, 3.5, rs_ticks_s(e.at));
   for k: 0..<FX_LIVE { if s[0].w[0].puffs[0].on[k] { #assert s[0].w[0].puffs[0].live[k].recipe == FXR_ARROW; } }
 }
@@ -3699,7 +3699,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   b := bt(s[..]);
   b[0].c[0].x = 4; b[0].c[0].y = 4; b[0].c[1].x = 5; b[0].c[1].y = 4;
   b[0].c[1].team = 1 - b[0].c[0].team;   // a foe beside it, for the Flurry
-  e: RsEvent; e.at = b[0].clock; e.by = 0;
+  e: RsEvent; e.at = b[0].clock; e.by.value = 0;
   feats := [16] int.[RS_FT_ACTION_SURGE, RS_FT_SECOND_WIND, RS_FT_SNEAK_ATTACK, RS_FT_STEADY_AIM, RS_FT_CUNNING_DASH, RS_FT_FLURRY,
                      RS_FT_STUNNING_STRIKE, RS_FT_PATIENT_DEFENSE, RS_FT_STEP_OF_THE_WIND, RS_FT_WHOLENESS, RS_FT_LAY_ON_HANDS,
                      RS_FT_SACRED_WEAPON, RS_FT_PRESERVE_LIFE, RS_FT_INSPIRATION, RS_FT_INNATE_SORCERY, RS_FT_DARK_BLESSING];
@@ -3711,7 +3711,7 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
                     FXR_SACRED, FXR_WAVE, FXR_NOTES, FXR_ARCANE, FXR_FIEND];
   for q: 0..<16 {
     fxp_clear(s[0].w[0].puffs[..]);
-    e.kind = kinds[q]; e.feat = feats[q]; e.spell = -1; e.to = ifx q == 2 || q == 6 || q == 10 || q == 13 then 1 else 0;
+    e.kind = kinds[q]; e.feat = feats[q]; e.spell.value = -1; e.to.value = ifx q == 2 || q == 6 || q == 10 || q == 13 then 1 else 0;
     lab_effect(s[..], e, 2.5 + f32(q), rs_ticks_s(e.at));
     found := -1;
     for k: 0..<FX_LIVE { if s[0].w[0].puffs[0].on[k] { found = s[0].w[0].puffs[0].live[k].recipe; } }
@@ -3719,16 +3719,16 @@ frame_into :: (s: [] Lab, out: [] f32, w: f32, h: f32, dpr: f32, dt: f32) -> int
   }
   // a feature's own healing draws nothing more: its cast showed it
   fxp_clear(s[0].w[0].puffs[..]);
-  e.kind = RS_EV_HEAL; e.feat = RS_FT_SECOND_WIND; e.to = 0;
+  e.kind = RS_EV_HEAL; e.feat = RS_FT_SECOND_WIND; e.to.value = 0;
   lab_effect(s[..], e, 1.5, rs_ticks_s(e.at));
   #assert fxp_live(s[0].w[0].puffs[..]) == 0;
   // the spells that had no look of their own
-  e.feat = RS_FT_NONE; e.kind = RS_EV_CAST; e.to = 1;
+  e.feat = RS_FT_NONE; e.kind = RS_EV_CAST; e.to.value = 1;
   spells := [5] int.[SP_HOLD_PERSON, SP_BLINDNESS, SP_VICIOUS_MOCKERY, SP_SHIELD, SP_DIVINE_SMITE];
   looks := [5] int.[FXR_BIND, FXR_VEIL, FXR_MOCKERY, FXR_BARRIER, FXR_SMITE];
   for q: 0..<5 {
     fxp_clear(s[0].w[0].puffs[..]);
-    e.spell = spells[q]; e.amount = 3;
+    e.spell.value = spells[q]; e.amount = 3;
     lab_effect(s[..], e, 4.5 + f32(q), rs_ticks_s(e.at));
     for k: 0..<FX_LIVE { if s[0].w[0].puffs[0].on[k] { #assert s[0].w[0].puffs[0].live[k].recipe == looks[q]; if q == 4 { #assert s[0].w[0].puffs[0].live[k].big > 1.5; } } }
   }
@@ -4089,7 +4089,7 @@ player_mode_casts :: (kl: int) -> int {
     seq := b[0].book[0].seq; slots := ifx a.lvl > 0 then b[0].c[me].slots[a.lvl] else 0;
     use_ab(s[..], me, a, foe);
     was_cast := false;
-    for q: 0..<rs_min(b[0].book[0].count, b[0].book[0].seq - seq) { ev := rs_recent(b[0].book[0], q); if ev.kind == RS_EV_CAST && ev.spell == a.sp && ev.by == me { was_cast = true; } }
+    for q: 0..<rs_min(b[0].book[0].count, b[0].book[0].seq - seq) { ev := rs_recent(b[0].book[0], q); if ev.kind == RS_EV_CAST && ev.spell.value == a.sp && ev.by.value == me { was_cast = true; } }
     #assert was_cast;
     if a.lvl > 0 { #assert b[0].c[me].slots[a.lvl] == slots - 1; }
     rs_end_turn(b, me);
