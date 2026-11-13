@@ -12,9 +12,15 @@
 // only when coaxialClipStep(frames, fps) says so, each frame exactly 1/fps of the module's time, its
 // commands applied, its frames drawn for the sizes the page then has, and the stylesheet's own
 // animations held at that same moment. A recording then has every frame however slowly it is captured.
-const script = document.querySelector("script[data-app]");
-const app = script.dataset.app;
-const root = document.getElementById(script.dataset.root || "coaxial-root");
+// A page the GPU draws opens one over its canvas by importing this file with the module and the root
+// in the address (host.js, the editor shell): /coaxial/dom-host.js?app=editor-shell&root=coaxial-editor.
+// Each address is its own copy of this host, so a page may hold several. A module may also keep
+// actions for the page that opened it (dom_act_kind, dom_act, dom_act_len, dom_act_done): the page
+// reads them through coaxialDoms[app] and is told of each event by its `after`.
+const named = new URL(import.meta.url).searchParams;
+const script = named.has("app") ? null : document.querySelector("script[data-app]");
+const app = named.get("app") || script.dataset.app;
+const root = document.getElementById(named.get("root") || script?.dataset.root || "coaxial-root");
 const NONE = 0xffff, SVG = "http://www.w3.org/2000/svg", LAYERS = ["fr-bg", "fr-line", "fr-deco"];
 const text = new TextDecoder(), bytes = new TextEncoder();
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
@@ -116,17 +122,17 @@ function frame(now) {
   asked = false;
   const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
   last = now;
-  const n = x.dom_frame(state, dt, reduced.matches ? 1 : 0);
+  const n = x.dom_frame(state, dt, calm());
   if (n < 0) clear();
   else if (n > 0) apply(x.dom_out(state), n);
-  const copy = x.dom_clip_len(state);
+  const copy = x.dom_clip_len?.(state) || 0;
   if (copy) { navigator.clipboard?.writeText(text.decode(new Uint8Array(memory.buffer, x.dom_clip(state), copy))).catch(() => {}); x.dom_clip_done(state); }
   if (x.dom_busy(state)) ask(); else last = 0;
 }
 // Clip mode. One step of the module's time, applied. Then the size of every framed node as the page
 // lays it out now (reading it lays the page out) and, with no time passing, the frames for those sizes.
 function clipFrame(dt) {
-  const n = x.dom_frame(state, dt, reduced.matches ? 1 : 0);
+  const n = x.dom_frame(state, dt, calm());
   if (n < 0) { clear(); clipFrame(0); } else if (n > 0) apply(x.dom_out(state), n);
 }
 function clipSizes() {
@@ -158,7 +164,12 @@ function send(kind, slot, value) {
     new Uint8Array(memory.buffer, x.dom_inbox(state), n).set(encoded.subarray(0, n));
   }
   x.dom_event(state, kind, slot, n); ask();
+  own.after?.();
 }
+// now(): the frame that would be asked for, drawn at once (a page on an agent's clock, which waits for nothing).
+// still: everything is entered at once, as with reduced motion (the same page: its pictures show what is, not what is arriving).
+const calm = () => (reduced.matches || own.still ? 1 : 0);
+const own = { still: false, ask, send, now: () => { if (!clipping) frame(performance.now()); }, state: () => state, exports: () => x, memory: () => memory, after: null };
 
 // A request to this site (a POST of the body, or a GET when there is none) whose answer comes back in pieces as it arrives (the module's dom_stream): each
 // piece goes into the module's inbox as event 4 with the answer's status, and its end is event 5 (status 0
@@ -229,7 +240,8 @@ async function start() {
     if (slot >= 0) { e.preventDefault(); send(2, slot, e.target.value); send(3, slot); }
   });
   reduced.addEventListener("change", ask);
-  globalThis.coaxialDom = { ask, state: () => state, exports: () => x };
+  globalThis.coaxialDom ||= own;
+  (globalThis.coaxialDoms ||= {})[app] = own;
   if (clipping) {
     // the first nodes and the stylesheet, then every face it names, so no text is measured in a fallback face
     clipFrame(0); clipSizes(); clipFrame(0);
@@ -241,8 +253,14 @@ async function start() {
   }
   ask();
   // development: the dev server says when a module was rebuilt
-  if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {
-    try { new WebSocket(`ws://${location.host}/coaxial/live`).onmessage = () => location.reload(); } catch { /* no dev server */ }
+  // (a page that opened this host over its canvas listens itself; a world's write is not a rebuild)
+  if (!named.has("app") && (location.hostname === "127.0.0.1" || location.hostname === "localhost")) {
+    try {
+      new WebSocket(`ws://${location.host}/coaxial/live`).onmessage = (m) => {
+        let kind = ""; try { kind = JSON.parse(m.data).kind || ""; } catch { /* not JSON: a rebuild */ }
+        if (kind !== "world") location.reload();
+      };
+    } catch { /* no dev server */ }
   }
 }
 start().catch((error) => { console.error(error); document.documentElement.dataset.coaxialError = String(error); });

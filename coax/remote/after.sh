@@ -454,7 +454,7 @@ args_for() {   # item job-args...
     module\ *) echo "module ${item#module }" ;;
     compiler\ *) echo "unit ${item#compiler }" ;;
     job\ *) echo "${item#job }" ;;
-    step\ tools-check|step\ after-gates|step\ everglade-parity|step\ wire-check|step\ layer-check|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
+    step\ tools-check|step\ after-gates|step\ everglade-parity|step\ wire-check|step\ layer-check|step\ editor-skin|step\ wgsl|step\ realm-pages|step\ changelog-page|step\ realm-cards) echo "reports" ;;
     step\ room-build) echo "room" ;;
     step\ coder-checks|step\ coder-smoke) echo "coder" ;;
     step\ check-visuals) echo "visuals" ;;

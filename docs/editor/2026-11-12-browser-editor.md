@@ -125,7 +125,21 @@ not a flat folder scan.
   - refusals are `k_notice`s;
   - the agent strip is `k_composer` and the message components.
 
-  New component kinds go into `frames.coax`, never into the editor.
+  New component kinds go into the kit, never into the editor.
+- **As built (E7, #13416):** the shell is a module of its own,
+  `metaverse-engine/editor/shell.coax`, built as `editor-shell.wasm`. The
+  page's host (`coax/web/host.js`) opens it over the canvas with
+  `coax/web/dom-host.js` and carries bytes between the two:
+  - the page tells the shell what its world holds, as `editor.model.v1`
+    ([the shape](../protocol/editor-model-v1.md));
+  - the shell asks the page to send a `world.edit.v1` batch or to select a
+    thing.
+
+  The shell keeps no world and decides nothing. Its panes, props and facts are
+  `components/kit/dock.coax`, shown on `/components`. The editor has no look
+  of its own: `coax/web/tool.sh editor-skin-check` fails when an editor file
+  names a colour, a size or a face, or loads a skin other than mono. On a
+  deployed page the shell opens only for an admin. Splice is the first page.
 - **The agent strip is the `/chat` conversation.** The same thread, the same
   agents and the same transcript appear on `/chat` and in the editor. The
   agent gets `world_*` tools plus the editor's selection and "here" (the last

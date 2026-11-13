@@ -13,6 +13,7 @@ Every component, working:
 - **Notice**: an error, or a request for approval with Allow and Deny.
 - **Row**: a conversation in a list. The current one is bright over an underline.
 - **Menu**: rows in a panel.
+- **Dock**: panes round something that still shows: a strip of actions, a list, and the picked thing's fields and facts. The editor that `?edit` opens over a world is built from it.
 - **Header and text**: the title types in.
 
 **Replay the entrance** enters everything again. If your system asks for reduced motion, nothing animates.

@@ -38,7 +38,8 @@ DM_OUT :: 524288;      // bytes of commands one flush can hold
 DM_ID :: 64;           // bytes of an id kept
 DM_NONE :: 65535;
 DC_MAKE :: 1; DC_REMOVE :: 2; DC_PLACE :: 3; DC_TEXT :: 4; DC_CLASS :: 5; DC_ATTR :: 6; DC_UNATTR :: 7; DC_FRAME :: 8; DC_STYLE :: 9; DC_VALUE :: 10; DC_FOCUS :: 11;
-DM_VALUE :: 1024;      // bytes of a field's value the page can set
+DM_VALUE :: 1024;      // bytes of the fields' values the page can set before a flush
+DM_VALUES :: 16;       // fields the page can set before a flush
 
 DomSlot :: struct {
   live: bool; seen: bool;
@@ -60,8 +61,9 @@ Dom :: struct {
   styled: bool;
   keep: bool;                     // dm_style wrote its command: the next flush adds to it
   sent: int;                      // commands written by the last flush
-  value_id: [DM_ID] u8; value_id_n: int;          // a field whose value the page set (dm_value), until a flush sends it
-  value: [DM_VALUE] u8; value_n: int; value_set: bool;
+  // fields whose values the page set (dm_value), until a flush sends them: each one's id and its part of `value`
+  value_id: [DM_VALUES] [DM_ID] u8; value_id_n: [DM_VALUES] int; value_at: [DM_VALUES] int; value_len: [DM_VALUES] int;
+  value: [DM_VALUE] u8; value_n: int; values: int;
   focus_id: [DM_ID] u8; focus_id_n: int; focus_set: bool;   // a node the page put the caret in (dm_focus), until a flush sends it
 }
 
@@ -111,12 +113,24 @@ dm_size :: (d: [] Dom, slot: int, w: f32, h: f32) -> bool {
   d[0].slots[slot].w = w; d[0].slots[slot].h = h;
   return true;
 }
-// Sets what a field holds (clearing a composer once its message is sent). The next flush sends it.
+// Sets what a field holds (clearing a composer once its message is sent; filling a form's fields).
+// The next flush sends it. Several fields may be set before a flush; past DM_VALUES fields or
+// DM_VALUE bytes in all, the newest takes the last one's place, cut to the room there is. A field
+// set twice holds the later value.
 dm_value :: (d: [] Dom, id: string, text: string) {
-  d[0].value_id_n = 0; d[0].value_n = 0;
-  for c: id { if d[0].value_id_n < DM_ID { d[0].value_id[d[0].value_id_n] = c; d[0].value_id_n += 1; } }
-  for c: text { if d[0].value_n < DM_VALUE { d[0].value[d[0].value_n] = c; d[0].value_n += 1; } }
-  d[0].value_set = true;
+  // a field set twice before a flush holds the later value: the earlier one is forgotten
+  for j: 0..<d[0].values {
+    was := d[0].value_id[j];
+    if cast(string) was[0..<d[0].value_id_n[j]] != id { continue; }
+    if j == d[0].values - 1 { d[0].values -= 1; d[0].value_n = d[0].value_at[j]; } else { d[0].value_id_n[j] = 0; }
+    break;
+  }
+  if d[0].values >= DM_VALUES || (d[0].values > 0 && d[0].value_n + text.count > DM_VALUE) { d[0].values -= 1; d[0].value_n = d[0].value_at[d[0].values]; }
+  k := d[0].values;
+  d[0].value_id_n[k] = 0; d[0].value_at[k] = d[0].value_n; d[0].value_len[k] = 0;
+  for c: id { if d[0].value_id_n[k] < DM_ID { d[0].value_id[k][d[0].value_id_n[k]] = c; d[0].value_id_n[k] += 1; } }
+  for c: text { if d[0].value_n < DM_VALUE { d[0].value[d[0].value_n] = c; d[0].value_n += 1; d[0].value_len[k] += 1; } }
+  d[0].values += 1;
 }
 // Puts the caret in a node (a field, once a choice has been made elsewhere). The next flush sends it.
 dm_focus :: (d: [] Dom, id: string) {
@@ -245,11 +259,12 @@ dm_flush :: (d: [] Dom, t: [] Tree, sets: [] AfSettings) -> int {
       d[0].slots[s].live = false;
     }
   }
-  if d[0].value_set {
-    slot := dm_find(d, cast(string) d[0].value_id[0..<d[0].value_id_n]);
-    if slot >= 0 { dm_u8(d, DC_VALUE); dm_u16(d, slot); dm_str(d, cast(string) d[0].value[0..<d[0].value_n]); d[0].sent += 1; }
-    d[0].value_set = false;
+  for k: 0..<d[0].values {
+    vid := d[0].value_id[k];
+    slot := dm_find(d, cast(string) vid[0..<d[0].value_id_n[k]]);
+    if slot >= 0 { dm_u8(d, DC_VALUE); dm_u16(d, slot); dm_str(d, cast(string) d[0].value[d[0].value_at[k]..<d[0].value_at[k] + d[0].value_len[k]]); d[0].sent += 1; }
   }
+  d[0].values = 0; d[0].value_n = 0;
   if d[0].focus_set {
     slot := dm_find(d, cast(string) d[0].focus_id[0..<d[0].focus_id_n]);
     if slot >= 0 { dm_u8(d, DC_FOCUS); dm_u16(d, slot); d[0].sent += 1; }
@@ -374,4 +389,32 @@ dm_test_u32 :: (d: [] Dom, i: int) -> int {
   dm_fixed(d, 1.5); dm_fixed(d, -1);
   #assert dm_test_u32(d, 0) == 96 && dm_test_u32(d, 4) == 4294967232;
   #assert tr_hash("abc") != tr_hash("abd") && tr_hash("") != tr_hash("a");
+}
+
+#test "several fields' values go in one flush, in order, with the nodes that flush made; a field that is not there gets none; past the room the newest takes the last one's place" {
+  ts: [1] Tree; t := ts[..]; ds: [1] Dom; d := ds[..];
+  sets: [1] AfSettings; sets[0] = af_settings(3);
+  dm_test_page(t, "Send", true);
+  dm_value(d, "send", "one"); dm_value(d, "note", "two"); dm_value(d, "nowhere", "three");
+  n := dm_flush(d, t, sets[..]);
+  #assert dm_test_count(d, n, DC_VALUE) == 2 && d[0].values == 0 && d[0].value_n == 0;
+  n = dm_flush(d, t, sets[..]);
+  #assert n == 0;
+  ids: [DM_VALUES + 3] [8] u8;
+  for k: 0..<DM_VALUES + 3 { dm_value(d, tr_join(ids[k][..], "f.", k), ifx k == DM_VALUES + 2 then "last" else "x"); }
+  #assert d[0].values == DM_VALUES;
+  last := d[0].values - 1;
+  #assert cast(string) d[0].value[d[0].value_at[last]..<d[0].value_at[last] + d[0].value_len[last]] == "last";
+  n = dm_flush(d, t, sets[..]);
+  #assert dm_test_count(d, n, DC_VALUE) == 0 && d[0].values == 0;
+  // a field set twice holds the later value, wherever the first stood
+  dm_value(d, "send", "a"); dm_value(d, "note", "b"); dm_value(d, "send", "c");
+  #assert d[0].values == 3 && d[0].value_id_n[0] == 0;
+  n = dm_flush(d, t, sets[..]);
+  #assert dm_test_count(d, n, DC_VALUE) == 2;
+  long: [DM_VALUE] u8; for i: 0..<DM_VALUE { long[i] = 'a'; }
+  dm_value(d, "send", "short"); dm_value(d, "note", cast(string) long[..]);
+  #assert d[0].values == 1 && d[0].value_len[0] == DM_VALUE && d[0].value_at[0] == 0;
+  n = dm_flush(d, t, sets[..]);
+  #assert dm_test_count(d, n, DC_VALUE) == 1;
 }

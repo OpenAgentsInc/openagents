@@ -22,7 +22,8 @@
 //                                 layout trace where a canvas is on top (metaverse-engine/agent/drive.coax, #13433)
 //   taps                          every tap target audited: under 44 px either way, covered by something drawn over
 //                                 it (an overlay that steals the click), or overlapping another
-//   tap ID                        a click at the centre of HUD widget ID
+//   tap ID                        a click at the centre of HUD widget ID, or of the page's own element with that id
+//                                 (the editor's shell over a canvas)
 //   type ID TEXT | type ID key NAME   tap ID, then the text (or one key: Enter, Escape, 1, w ...);
 //                                 ID - types into the page as it is
 //   walk-to ID | face ID | use ABILITY on ID | mount ID | stop
@@ -660,6 +661,11 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
       jb: [256] u8; tj: [2048] u8;
       at := ifx s[0].dom then dv_eval(s, dd_target_js(id, tj[..])) else dv_send(s, dv_cat2("target ", id, jb[..]));
       x := dv_int(dv_word(at, 0)); y := dv_int(dv_word(at, 1));
+      // an id the HUD doesn't have may be one of the page's own elements over the canvas (the editor's shell, #13416)
+      if !s[0].dom && (x < 0 || y < 0 || dv_word(at, 2).count > 0) {
+        at = dv_eval(s, dd_target_js(id, tj[..]));
+        x = dv_int(dv_word(at, 0)); y = dv_int(dv_word(at, 1));
+      }
       if x < 0 || y < 0 || dv_word(at, 2).count > 0 { dv_s(out, at); return false; }
       if !dv_mouse(s, "mouseMoved", x, y) || !dv_mouse(s, "mousePressed", x, y) || !dv_mouse(s, "mouseReleased", x, y) { dv_s(out, "the click failed: "); dv_s(out, cdp_error(s[0].c[..])); return false; }
       dv_s(out, "tapped "); dv_s(out, id); dv_s(out, " at "); dv_s(out, at);
@@ -839,7 +845,8 @@ dv_root_dir :: (self: string) -> string { r := self; for i: 0..<5 { r = fs_dir(r
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if args_load(a[..]) && args_count(a[..]) >= 3 && args_at(a[..], 0) == "native" {
+  loaded := args_load(a[..]);   // once: a second load lists every argument again
+  if loaded && args_count(a[..]) >= 3 && args_at(a[..], 0) == "native" {
     nops: [64] string; nn := 0; nwithin := 30000;
     j := 2;
     while j < args_count(a[..]) {
@@ -849,7 +856,7 @@ tool_main :: () -> int #export_c #effects(all) {
     }
     return dv_native(args_at(a[..], 1), nops[0..<nn], nwithin);
   }
-  if !args_load(a[..]) || args_count(a[..]) < 3 || args_at(a[..], 0) != "web" { return dv_usage(); }
+  if !loaded || args_count(a[..]) < 3 || args_at(a[..], 0) != "web" { return dv_usage(); }
   app_dir := args_at(a[..], 1); path := args_at(a[..], 2);
   query := ""; size := "1280x800"; port := -1; within := 30000; agent := true; live := "";
   ops: [64] string; n_ops := 0;

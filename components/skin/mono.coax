@@ -320,6 +320,27 @@ mono_stage_css :: (out: [] u8, at: int) -> int {
   return n;
 }
 
+// The dock's rules (components/kit/dock.coax), after mono_css's from `at`: panes round something
+// that still shows. A page that has no dock doesn't send them. Bytes written in all.
+mono_dock_css :: (out: [] u8, at: int) -> int {
+  n := at;
+  // a strip across the top, then a pane each side of what shows through
+  n = mc(out, n, ".dock{display:grid;grid-template:auto minmax(0,1fr)/minmax(0,280px) minmax(0,1fr) minmax(0,300px);gap:10px;height:420px;max-width:100%}");
+  n = mc(out, n, ".dock-over{position:fixed;inset:0;z-index:20;height:auto;padding:10px;pointer-events:none}.dock-over>*{pointer-events:auto}");
+  n = mc(out, n, ".pane{min-width:0;min-height:0;display:flex;flex-direction:column;gap:12px;padding:14px 12px;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".pane-b{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
+  n = mc(out, n, ".pane-t{grid-column:1/-1;padding:8px 12px}.pane-t>.pane-b{flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;overflow:visible}");
+  // a side pane is as tall as what it holds, to the dock's height, so what is under the dock shows below it
+  n = mc(out, n, ".pane-l{grid-column:1;grid-row:2}.pane-r{grid-column:3;grid-row:2}.pane-l,.pane-r{align-self:start;max-height:100%}");
+  n = mc(out, n, ".pane .list{width:100%}.pane .card{padding:12px;gap:10px}.pane .notice{padding:10px 12px}.pane-t .meta{margin-left:auto}");
+  // a prop: its name, then its field
+  n = mc(out, n, ".prop{display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;align-items:center}.prop .field{padding:6px 10px;max-width:none}.fact{overflow-wrap:anywhere}");
+  // a select in a pane opens downward, and in the right pane toward the middle
+  n = mc(out, n, ".pane .menu.pop{bottom:auto;top:calc(100% + 10px)}.pane-r .menu.pop{left:auto;right:0}");
+  n = mc(out, n, "@media (max-width:760px){.dock{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pane-l,.pane-r{max-height:38vh;align-self:start}.pane-r{grid-column:2}}");
+  return n;
+}
+
 #test "every role has an ARWES kind and its settings, and the stylesheet fits and has no hue" {
   sets: [MF_COUNT] AfSettings;
   #assert mono_frames(sets[..]) == MF_COUNT && mono_frames(sets[0..<2]) == 0;
@@ -330,7 +351,11 @@ mono_stage_css :: (out: [] u8, at: int) -> int {
   // and the stage's rules after them
   #assert mono_kind(MF_STAGE) == 5 && mono_kind(MF_MARK) == 3 && sets[MF_STAGE].square == 14 && sets[MF_BOX].square == 6;
   n = mono_stage_css(css[..], n);
-  #assert n > 12000 && n < 32000;
+  #assert n > 12000 && n < 30000;
+  // and the dock's
+  m := mono_dock_css(css[..], n);
+  #assert m > n + 800 && m < 32000;
+  n = m;
   // every #rgb or #rrggbb in it is a grey: its channels are equal
   i := 0; greys := 0;
   while i < n {

@@ -1,0 +1,51 @@
+{
+ "profile": "editor-model-v1",
+ "version": 1,
+ "title": "What a page tells the editor shell v1 (editor.model.v1)",
+ "check": "coax/web/tool.sh metaverse-engine/tools/editor-model-profile.coax proto/world/model-v1.json",
+ "spec": "docs/protocol/editor-model-v1.md",
+ "schema": "editor.model.v1",
+ "about": "The world an engine page has open, as the editor shell draws it (GitHub #13416): its ID, lane and revision, the steps that can be undone and redone, the selected entity, the columns an edit may set, the kinds, the entities and their kinds' content cells, and the last refusal in words. The page's realm writes it; the shell reads it. It never leaves the page.",
+ "limits": {
+  "entities": 256,
+  "kinds": 64,
+  "cells": 256,
+  "name_bytes": 40,
+  "value_bytes": 80,
+  "refusal_bytes": 240,
+  "bytes": 32768
+ },
+ "lines": [
+  "editor.model.v1 WORLD LANE REV UNDO REDO SELECTED",
+  "cols NAME ...",
+  "k KIND NAME",
+  "e ID KIND X Y Z YAW SCALE",
+  "c KIND COLUMN VALUE",
+  "no WORDS"
+ ],
+ "model": {
+  "wire": "editor.model.v1 splice dev 7 3 1 2\ncols x z yaw\nk 1001 Cargo crate\nk 1002 Parked rover\ne 1 1001 350 0 -1200 90 100\ne 2 1002 -40 12 600 -179 100\nc 1002 kit rover\nc 1002 scale 1.5\nno That spot is inside the Scanner gate, which stays clear.\n",
+  "world": "splice",
+  "lane": "dev",
+  "rev": 7,
+  "undo": 3,
+  "redo": 1,
+  "selected": 2,
+  "kinds": 2,
+  "entities": 2,
+  "cells": 2
+ },
+ "empty": {
+  "wire": "editor.model.v1 splice live 0 0 0 0\ncols\n"
+ },
+ "rejected": [
+  "",
+  "editor.model.v2 splice dev 0 0 0 0\ncols\n",
+  "editor.model.v1 Splice dev 0 0 0 0\ncols\n",
+  "editor.model.v1 splice dev 0 0 0 0\ncols\n\n",
+  "editor.model.v1 splice dev 0 0 0 0\ncols\ne 01 5 0 0 0 0 100\n",
+  "editor.model.v1 splice dev 0 0 0 0\ncols\ne 1 5 0 0 0 0 100 extra\n",
+  "editor.model.v1 splice dev 0 0 0 0\ncols\nx what\n",
+  "editor.model.v1 splice test 0 0 0 0\ncols\n"
+ ]
+}

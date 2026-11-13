@@ -37,7 +37,11 @@ chat-web 168000
 nostr-chat 398000
 components 210000
 # /kit, the control kit's page (kit.coax): 80,287 bytes measured 2026-11-11 on a Linux build host; about 10% room.
-kit 90000
+# With the dock (components/kit/dock.coax, #13416: panes, props and facts, and their section on the page): 89,924 bytes measured 2026-11-13 on a Mac; about 11% room.
+kit 100000
+# The editor shell ?edit opens over an engine page (metaverse-engine/editor/shell.coax, #13416): the frames set, the dock,
+# the browser backend, the world edit codec and the editor model's: 103,413 bytes measured 2026-11-13 on a Mac; about 8% room.
+editor-shell 112000
 agents 120000
 # the shared host ABI every renderer carrier exports kept growing on 11-05 (#12869): 81,594 measured at 882146be65; about 5% room (#12922)
 connect-pylon 86000

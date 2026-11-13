@@ -261,6 +261,8 @@ reports() {
   step everglade-content coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content || status=1
   step wire-check coax/web/tool.sh wire-check || status=1
   step layer-check coax/web/tool.sh layer-check || status=1
+  # the editor has no look of its own: the frames set in the mono skin, as the chat page (#13416)
+  step editor-skin coax/web/tool.sh editor-skin-check || status=1
   migrations
   step prepush-replay coax/web/tool.sh prepush --replay-check || status=1
   step wgsl coax/web/tool.sh coax/web/wgsl-module.coax --site --check || status=1

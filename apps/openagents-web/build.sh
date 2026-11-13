@@ -489,6 +489,10 @@ components_page=$!
 # sections 10 and 11). The page above is now /components-gpu.
 timed kit "$here/../../coax/web/wasm.sh" "$here/kit.coax" "$here/kit-face.c" "$here/build/kit.wasm" &
 kit_page=$!
+# The editor shell `?edit` opens over an engine page (metaverse-engine/editor/shell.coax, #13416): the
+# same components and skin, drawn by the browser over the canvas (coax/web/host.js opens it).
+timed editor-shell "$here/../../coax/web/wasm.sh" "$here/editor-shell.coax" "$here/editor-shell-face.c" "$here/build/editor-shell.wasm" &
+editor_shell=$!
 # The icons (components/core/icons.coax): Apps SDK UI's, each its own file, fetched when a page shows it.
 mkdir -p "$here/build/icons"
 cp "$here/../../components/icons/apps-sdk/"*.svg "$here/../../components/icons/NOTICE" "$here/build/icons/"
@@ -514,6 +518,7 @@ wait "$memorial"
 wait "$chat"
 wait "$components_page"
 wait "$kit_page"
+wait "$editor_shell"
 wait "$chat_web"
 wait "$nostr_chat"
 wait "$agents_page"

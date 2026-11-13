@@ -368,6 +368,13 @@ splice_req_url :: (s: [] Splice) -> string #export_c #effects(all) { return wf_u
 splice_req_body :: (s: [] Splice) -> string #export_c #effects(all) { return wf_body(s[0].page[0].f[..]); }
 splice_req_flags :: (s: [] Splice) -> int #export_c #effects(all) { return wf_flags(s[0].page[0].f[..]); }
 splice_req_sent :: (s: [] Splice, id: int) #export_c #effects(all) { wf_sent(s[0].page[0].f[..], id); }
+// What the editor shell is told (world.coax spw_model, editor.model.v1), and a count that changes when it does.
+splice_edit_model :: (s: [] Splice) -> string #export_c #effects(all) { return ifx s.count > 0 && s[0].follow == 2 then spw_model(s[0].game[..], s[0].page[..]) else ""; }
+splice_edit_rev :: (s: [] Splice) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].follow != 2 { return 0; }
+  _ := spw_model(s[0].game[..], s[0].page[..]);
+  return s[0].page[0].model_rev;
+}
 // A fact of the page's place in the world, for a host's checks (coaxial.fieldProbe): 0 the revision
 // it stands at (-1: no document yet), 1 outside edits carried out, 2 placed pieces, 3 pieces rising
 // in, 4 the follower's status (world-follow.coax WFS_*), 5 documents read, 6 requests sent, 7 and 8
@@ -390,6 +397,9 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
   // the world's answers (512 + the host's id: "STATUS\n" then the body), and the dev server's word that it was written
   if kind >= 512 && kind < 520 && s.count > 0 && s[0].follow == 2 { _ := spw_page_answer(s[0].game[..], s[0].page[..], kind - 512, body); return; }
   if kind == 614 && s.count > 0 && s[0].follow == 2 { wf_nudge(s[0].page[0].f[..], body); return; }
+  // the editor shell's actions (metaverse-engine/editor/shell.coax): 520 a batch of edits, sent as this page's own write; 521 the piece to select
+  if kind == 520 && s.count > 0 && s[0].edit && s[0].follow == 2 { _ := spw_shell_batch(s[0].page[..], body); return; }
+  if kind == 521 && s.count > 0 && s[0].edit { spw_select(s[0].game[..], s[0].page[..], sp_whole(body, 0)); return; }
   if kind == 610 && s.count > 0 && body.count > 0 {   // a moment of the game to stand in: "0" to "10"
     n := 0;
     for i: 0..<body.count { d := cast(int) body[i] - 48; if d >= 0 && d <= 9 { n = n * 10 + d; } }

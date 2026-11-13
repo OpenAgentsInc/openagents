@@ -203,3 +203,51 @@ spt_round :: (x: [] SptPage, dt: f32, text: string) -> int {
   // a page told to reload stops asking
   #assert spw_page_open(g, x[0].p[..], WL_LIVE) && spt_round(x[..], 0.016, "409\n{\"error\":\"reload\"}") == WFQ_DOC && f[0].status == WFS_RELOAD && spt_round(x[..], 60, "") == -1;
 }
+
+SptShell :: struct { m: [1] EdModel; scratch: [EM_BYTES] u8; name: [EM_NAME] u8; }
+
+#test "the editor shell is told the page's world: its pieces by kind, the selection, what a write made undoable, and a refusal; and only when one of them changed" #steps 4000000000 #traversal 2000000000 {
+  x := [1] SptPage.[SptPage.{}]; g := x[0].g[..]; t := x[0].t[..]; p := x[0].p[..]; f := p[0].f[..];
+  k := [1] SptShell.[SptShell.{}]; m := k[0].m[..];
+  empty := spw_empty(t[0].g[..], t[0].x[0].k[..], t[0].doc[..]);
+  b := spw_batch(t[0].g[..], t[0].x[..], empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  g_reset(g);
+  #assert spw_page_open(g, p, WL_DEV) && spt_round(x[..], 0.016, spt_state(x[..], WL_DEV, 2, cast(string) t[0].next[0..<b.doc])) == WFQ_DOC;
+  // the model reads: two pieces, each of a kind the content names, and the columns a piece's edit may set
+  #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && p[0].model_rev == 1;
+  #assert m[0].ne == 2 && m[0].rev == 2 && m[0].lane == 0 && m[0].sel == 0 && m[0].nk == g[0].c[0].piece_n && m[0].nc == 4 * m[0].nk && m[0].no_n == 0;
+  #assert m[0].e_id[0] == 1 && m[0].e_kind[0] == 113 && m[0].e_x[0] == 17720 && m[0].e_z[0] == -7060 && m[0].e_id[1] == 2 && m[0].e_kind[1] == 117;
+  #assert m[0].cols[WEC_X] && m[0].cols[WEC_Z] && m[0].cols[WEC_YAW] && !m[0].cols[WEC_Y] && !m[0].cols[WEC_KIND];
+  #assert em_kind_name(m, 113, k[0].name[..]).count > 0 && em_kind_name(m, 113, k[0].name[..]) == sc_piece_name(g[0].c[..], sc_piece(g[0].c[..], 113));
+  // asked again with nothing changed, it is the same bytes and the same count
+  again := spw_model(g, p);
+  #assert p[0].model_rev == 1 && again.count == p[0].model_n;
+  // a selection: a piece that is there; one that is not selects nothing
+  spw_select(g, p, 2);
+  #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].sel == 2 && p[0].model_rev == 2;
+  spw_select(g, p, 9);
+  #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].sel == 0;
+  // the shell's batch goes as this page's own write; while it is in flight a second is said, not sent
+  move := "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"set\",\"id\":2,\"col\":\"x\",\"v\":300}]}";
+  #assert spw_shell_batch(p, move) && wf_body(f) == "" && f[0].body_n == move.count;
+  #assert !spw_shell_batch(p, move) && em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].no_n > 0;
+  // the write stood: its answer says one step can be undone, and its event moves the piece in the model
+  did := "{\"schema\":\"world.edit.v1\",\"rev\":2,\"do\":\"apply\",\"edits\":[{\"op\":\"move\",\"id\":2,\"x\":300,\"y\":0,\"z\":150}]}";
+  v := WorldState.{lane = WL_DEV, rev = 3, dev = 3, undo = 1};
+  n := ct_put(x[0].state[..], 0, "200\n");
+  made := we_state_write(v, SPW_ID, "", did, x[0].state[n..<x[0].state.count]);
+  f[0].refused_n = 0;
+  #assert made.count > 0 && spt_round(x[..], 0.016, cast(string) x[0].state[0..<n + made.count]) == WFQ_POST && f[0].undo == 1 && p[0].own_rev == 3;
+  #assert spt_round(x[..], 0.016, spt_events(x[..], did, 3)) == WFQ_EVENTS && f[0].rev == 3;
+  #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].rev == 3 && m[0].undo == 1 && m[0].redo == 0 && m[0].e_x[1] == 300 && m[0].no_n == 0;
+  // a refusal from the server is in the model, in its words
+  #assert spw_shell_batch(p, move);
+  #assert spt_round(x[..], 0.016, "422\n{\"error\":\"in the kept-clear zone 'Scanner gate'\",\"edit\":0}") == WFQ_POST;
+  #assert em_read(m, spw_model(g, p), k[0].scratch[..]);
+  no := m[0].no;
+  #assert cast(string) no[0..<m[0].no_n] == "in the kept-clear zone 'Scanner gate'";
+  // an edit from elsewhere leaves undo and redo open: the server answers what they do
+  out := "{\"schema\":\"world.edit.v1\",\"rev\":3,\"do\":\"apply\",\"edits\":[{\"op\":\"despawn\",\"id\":1}]}";
+  #assert spt_round(x[..], 1.1, spt_events(x[..], out, 4)) == WFQ_EVENTS && f[0].rev == 4;
+  #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].ne == 1 && m[0].undo == 1 && m[0].redo == 1 && m[0].e_id[0] == 2;
+}

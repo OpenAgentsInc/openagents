@@ -1,0 +1,5 @@
+// The editor shell `?edit` opens over an engine page (metaverse-engine/editor/shell.coax,
+// GitHub #13416): the frames set in the mono skin, drawn by the browser. This is its module for
+// coax/web/wasm.sh, with editor-shell-face.c; the host is coax/web/dom-host.js, opened by
+// coax/web/host.js.
+#load "../../metaverse-engine/editor/shell.coax";

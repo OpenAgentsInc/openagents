@@ -45,6 +45,10 @@ static void world_request(uint32_t state) {
 }
 
 // A fact of the page for a headless check (coaxial.fieldProbe): its place in the world, and from 100 the run's.
+// The editor shell's model of this page's world (coax/web/host.js carries it to the shell on ?edit).
+EXPORT("coaxial_edit_rev") int32_t coaxial_edit_rev(uint32_t state) { return (int32_t)splice_edit_rev(at(state)); }
+EXPORT("coaxial_edit_model") uint32_t coaxial_edit_model(uint32_t state) { return (uint32_t)(uintptr_t)splice_edit_model(at(state)).data; }
+EXPORT("coaxial_edit_model_len") uint32_t coaxial_edit_model_len(uint32_t state) { return (uint32_t)splice_edit_model(at(state)).count; }
 EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state, int32_t field) { return (int32_t)splice_world_fact(at(state), field); }
 
 EXPORT("coaxial_frame")

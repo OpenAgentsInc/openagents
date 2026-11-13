@@ -1,0 +1,523 @@
+// The editor shell (GitHub #13416, the browser editor's E7;
+// docs/editor/2026-11-12-browser-editor.md): what `?edit` opens over an engine page. A strip of
+// actions, the world's things in a list, and the selected thing's place and facts, built from
+// the components the chat page is built from (components/kit/frames.coax and dock.coax, in the
+// mono skin) and drawn by the browser (components/backend/dom.coax), so its text is real text:
+// select it, find it, zoom it.
+//
+// The shell is a module of its own beside the page's. The page tells it what the world holds
+// (shell-model.coax, editor.model.v1) and the shell asks the page to act: a batch of edits
+// (world-edit.coax, world.edit.v1) the page sends as its own, or a thing to select. It keeps no
+// world and decides nothing: whether an edit stands is the server's answer, which comes back in
+// the next model as new places or as a refusal in words.
+//
+// It has no look of its own. Every node is a kit component, the stylesheet is the skin's, and
+// this file names no colour, face or size (coax/web/tool.sh editor-skin-check).
+//   coax/bin/coax test metaverse-engine/editor/shell.coax --library
+#load "../../components/kit/dock.coax";
+#load "../../components/backend/dom.coax";
+#load "shell-model.coax";
+
+ES_INBOX :: 32768;     // a model, or a field's text, from the host (EM_BYTES)
+ES_CSS :: 24576;
+ES_ACT :: 2048;        // bytes one action for the page takes
+ES_ACTS :: 4;          // actions that wait for the page
+ES_DRAFT :: 16;        // bytes typed into a number's field
+ES_CLICK :: 1; ES_INPUT :: 2; ES_SUBMIT :: 3; ES_MODEL :: 6;
+ES_BATCH :: 520;       // an action: a world.edit.v1 batch for the page to send
+ES_SELECT :: 521;      // an action: the ID of the thing to select, 0 for none
+// What a column is called beside its field, and what its number counts.
+ES_COL_NAME :: [WE_COLS] string.["X cm", "Y cm", "Z cm", "Turn °", "Speed X", "Speed Y", "Speed Z", "Radius cm", "Height cm", "Health", "Health max", "Kind", "Row"];
+ES_WHEN :: [2] string.["Now", "Next session"];
+ES_WHEN_NOTE :: [2] string.["People in the world see it at once", "People see it the next time they come in"];
+
+EdShell :: struct {
+  ready: bool; time: f32; dirty: bool; animating: bool;
+  have: bool;                            // a model came
+  when: int; when_open: bool;            // when a publish reaches people: 0 now, 1 next session
+  kind_open: bool;                       // the selected thing's kinds are listed, to pick another
+  said: [EM_WORDS] u8; said_n: int;      // the shell's own word about what was typed, until the next action
+  draft: [WE_COLS] [ES_DRAFT] u8; draft_n: [WE_COLS] int;
+  shown_sel: int; shown_rev: int;        // the thing and the revision the fields were last filled for
+  acts: [ES_ACTS] [ES_ACT] u8; act_n: [ES_ACTS] int; act_kind: [ES_ACTS] int; nacts: int;
+  inbox: [ES_INBOX] u8;
+  scratch: [EM_BYTES] u8;
+  model: [1] EdModel;
+  sets: [MF_COUNT] AfSettings;
+  css: [ES_CSS] u8;
+  ui: [1] Ui;
+  tree: [1] Tree;
+  dom: [1] Dom;
+}
+
+// ---- actions for the page
+
+es_act :: (s: [] EdShell, kind: int, body: string) -> bool {
+  if s[0].nacts >= ES_ACTS || body.count > ES_ACT || body.count == 0 { return false; }
+  k := s[0].nacts;
+  for i: 0..<body.count { s[0].acts[k][i] = body[i]; }
+  s[0].act_n[k] = body.count; s[0].act_kind[k] = kind; s[0].nacts += 1;
+  return true;
+}
+es_say :: (s: [] EdShell, words: string) { s[0].said_n = em_copy(s[0].said[..], words); }
+// A batch of one kind (undo, redo, a publish) or of one edit, made from the model's revision.
+es_batch :: (s: [] EdShell, what: int, e: WorldEdit) {
+  edits: [1] WorldEdit; edits[0] = e;
+  out: [ES_ACT] u8;
+  text := we_batch_write(s[0].model[0].rev, what, edits[..], ifx what == WB_APPLY then 1 else 0, out[..]);
+  s[0].said_n = 0;
+  if !es_act(s, ES_BATCH, text) { es_say(s, "That did not go: the page is still busy with the last change. Try again."); }
+}
+es_select :: (s: [] EdShell, id: int) {
+  out: [12] u8; n := ct_put_int(out[..], 0, id);
+  _ := es_act(s, ES_SELECT, cast(string) out[0..<n]);
+}
+
+// ---- the tree
+
+es_id_is :: (id: string, part: string) -> bool { return id.count > part.count && cast(string) id[0..<part.count] == part; }
+// The whole number after a part ("thing.12" after "thing." is 12), or -1.
+es_index :: (id: string, part: string) -> int {
+  if !es_id_is(id, part) { return -1; }
+  v := ct_num(id[part.count..<id.count]);
+  return ifx v.ok && v.v >= 0 then v.v else -1;
+}
+
+es_build :: (s: [] EdShell) {
+  t := s[0].tree[..]; u := s[0].ui[..]; m := s[0].model[..];
+  buf: [UI_ID] u8; buf2: [UI_ID] u8; name: [EM_NAME] u8; line: [EM_WORDS] u8;
+  tr_begin(t);
+  dock := k_dock(t, "editor", true);
+  if !s[0].have {
+    bar := k_pane(t, u, "bar", DK_TOP, "");
+    wait := tr_leaf(t, "bar.wait", TG_SPAN, "meta", "Opening the world");
+    k_pane_end(t);
+    tr_close(t);
+    return;
+  }
+  sel := em_entity_at(m, m[0].sel);
+
+  // the strip: what can be done to the world as a whole
+  bar := k_pane(t, u, "bar", DK_TOP, "");
+  tr_attr(t, bar, AT_LABEL, "Editor");
+  undo := k_button(t, u, "undo", "Undo", ifx m[0].undo > 0 then BS_PLAIN else BS_DISABLED);
+  redo := k_button(t, u, "redo", "Redo", ifx m[0].redo > 0 then BS_PLAIN else BS_DISABLED);
+  pub := k_button(t, u, "publish", "Publish", BS_PRIMARY);
+  whens := ES_WHEN; notes := ES_WHEN_NOTE;
+  k_select_begin(t, u, "when", whens[s[0].when], "When a publish reaches people", s[0].when_open);
+  if s[0].when_open { for k: 0..<2 { r := k_row(t, u, tr_join(buf[..], "when.", k), whens[k], notes[k], k == s[0].when); } }
+  k_select_end(t, s[0].when_open);
+  w := m[0].world;
+  n := ct_put(line[..], 0, cast(string) w[0..<m[0].world_n]);
+  n = ct_put(line[..], n, " · revision "); n = ct_put_int(line[..], n, m[0].rev);
+  rev := tr_leaf(t, "bar.rev", TG_SPAN, "meta", cast(string) line[0..<n]);
+  k_pane_end(t);
+
+  // the world's things
+  left := k_pane(t, u, "things", DK_LEFT, "Things");
+  if m[0].ne == 0 { none := k_meta(t, "things.none", "Nothing is placed yet."); }
+  else {
+    list := tr_open(t, "things.list", TG_NAV, "list");
+    tr_attr(t, list, AT_LABEL, "Things in the world");
+    for k: 0..<m[0].ne {
+      n = ct_put(line[..], 0, "No. "); n = ct_put_int(line[..], n, m[0].e_id[k]);
+      kind := em_kind_name(m, m[0].e_kind[k], name[..]);
+      r := k_row(t, u, tr_join(buf[..], "thing.", m[0].e_id[k]), ifx kind.count > 0 then kind else "Thing", cast(string) line[0..<n], k == sel);
+    }
+    tr_close(t);
+  }
+  k_pane_end(t);
+
+  // the selected thing, and what was refused
+  right := k_pane(t, u, "one", DK_RIGHT, "Selected");
+  if s[0].said_n > 0 { a := k_notice(t, u, "said", "Not done", cast(string) s[0].said[0..<s[0].said_n]); tr_close(t); }
+  else if m[0].no_n > 0 { a := k_notice(t, u, "refused", "Not done", cast(string) m[0].no[0..<m[0].no_n]); tr_close(t); }
+  if sel < 0 { none := k_meta(t, "one.none", "Pick a thing from the list."); }
+  else {
+    kind := em_kind_name(m, m[0].e_kind[sel], name[..]);
+    card := k_card(t, u, "one.card", ifx kind.count > 0 then kind else "Thing");
+    names := ES_COL_NAME;
+    for c: 0..<WE_COLS { if m[0].cols[c] && c != WEC_KIND { f := k_prop(t, u, tr_join(buf[..], "col.", c), names[c], "0"); } }
+    // where a thing's kind may be set, it is picked from the kinds the world has
+    if m[0].cols[WEC_KIND] && m[0].nk > 0 {
+      k_select_begin(t, u, "kind", ifx kind.count > 0 then kind else "Kind", "What kind of thing this is", s[0].kind_open);
+      if s[0].kind_open {
+        for k: 0..<m[0].nk {
+          kn := m[0].kind_name[k];
+          r := k_row(t, u, tr_join(buf[..], "kind.", m[0].kind_id[k]), cast(string) kn[0..<m[0].kind_n[k]], "", m[0].kind_id[k] == m[0].e_kind[sel]);
+        }
+      }
+      k_select_end(t, s[0].kind_open);
+    }
+    acts := tr_open(t, "one.acts", TG_DIV, "rowf");
+    rm := k_icon_button(t, "remove", IC_TRASH, "Remove this thing");
+    off := k_icon_button(t, "deselect", IC_X, "Select nothing");
+    tr_close(t);
+    tr_close(t);
+    // its kind's content row
+    cells := 0;
+    for k: 0..<m[0].nc { if m[0].c_kind[k] == m[0].e_kind[sel] { cells += 1; } }
+    if cells > 0 {
+      facts := k_card(t, u, "one.kind", "Its kind");
+      for k: 0..<m[0].nc {
+        if m[0].c_kind[k] != m[0].e_kind[sel] { continue; }
+        col := m[0].c_col[k]; val := m[0].c_val[k];
+        g := k_fact(t, tr_join(buf2[..], "fact.", k), cast(string) col[0..<m[0].c_col_n[k]], cast(string) val[0..<m[0].c_val_n[k]]);
+      }
+      tr_close(t);
+    }
+  }
+  k_pane_end(t);
+  tr_close(t);
+}
+
+// ---- what a press and a field do
+
+// A column's value on the selected thing, as the model has it.
+es_value :: (m: [] EdModel, at: int, col: int) -> int {
+  if col == WEC_X { return m[0].e_x[at]; } if col == WEC_Y { return m[0].e_y[at]; } if col == WEC_Z { return m[0].e_z[at]; }
+  if col == WEC_YAW { return m[0].e_yaw[at]; } if col == WEC_KIND { return m[0].e_kind[at]; }
+  return 0;
+}
+es_click :: (s: [] EdShell, id: string) {
+  m := s[0].model[..];
+  if id == "when" { s[0].when_open = !s[0].when_open; s[0].kind_open = false; return; }
+  if id == "kind" { s[0].kind_open = !s[0].kind_open; s[0].when_open = false; return; }
+  if es_index(id, "when.") >= 0 && es_index(id, "when.") < 2 { s[0].when = es_index(id, "when."); s[0].when_open = false; return; }
+  s[0].when_open = false; s[0].kind_open = false;
+  if !s[0].have { return; }
+  none: WorldEdit;
+  picked := es_index(id, "kind.");
+  if picked >= 0 && m[0].cols[WEC_KIND] && em_entity_at(m, m[0].sel) >= 0 {
+    if picked != m[0].e_kind[em_entity_at(m, m[0].sel)] { es_batch(s, WB_APPLY, WorldEdit.{ok = true, op = WE_SET, id = m[0].sel, col = WEC_KIND, v = picked}); }
+    return;
+  }
+  if id == "undo" && m[0].undo > 0 { es_batch(s, WB_UNDO, none); }
+  else if id == "redo" && m[0].redo > 0 { es_batch(s, WB_REDO, none); }
+  else if id == "publish" { es_batch(s, ifx s[0].when == 1 then WB_PUBLISH_NEXT else WB_PUBLISH_NOW, none); }
+  else if id == "remove" && em_entity_at(m, m[0].sel) >= 0 { es_batch(s, WB_APPLY, WorldEdit.{ok = true, op = WE_DESPAWN, id = m[0].sel}); }
+  else if id == "deselect" { es_select(s, 0); }
+  else if es_index(id, "thing.") > 0 { es_select(s, es_index(id, "thing.")); }
+}
+// Enter in a column's field: the number typed becomes an edit, or the shell says why it is not one.
+es_submit :: (s: [] EdShell, col: int) {
+  m := s[0].model[..];
+  at := em_entity_at(m, m[0].sel);
+  if at < 0 || col < 0 || col >= WE_COLS || !m[0].cols[col] { return; }
+  d := s[0].draft[col];
+  v := ct_num(cast(string) d[0..<s[0].draft_n[col]]);
+  names := ES_COL_NAME;
+  if !v.ok {
+    out: [EM_WORDS] u8;
+    n := ct_put(out[..], 0, names[col]); n = ct_put(out[..], n, " takes a whole number.");
+    es_say(s, cast(string) out[0..<n]);
+    return;
+  }
+  if v.v == es_value(m, at, col) { s[0].said_n = 0; return; }
+  es_batch(s, WB_APPLY, WorldEdit.{ok = true, op = WE_SET, id = m[0].sel, col = col, v = v.v});
+}
+// The model the page sent is in the inbox.
+es_model :: (s: [] EdShell, length: int) {
+  n := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+  // bytes that are not a model close the lists: the shell shows nothing it was not told
+  if !em_read(s[0].model[..], cast(string) s[0].inbox[0..<n], s[0].scratch[..]) { s[0].have = false; return; }
+  s[0].have = true;
+}
+
+// ---------------------------------------------------------------- the face's calls
+
+// One frame: builds and flushes if something changed or is entering. Bytes of commands to apply.
+coaxial_editor_frame :: (s: [] EdShell, dt: f32, reduced: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if !s[0].ready {
+    n := mono_frames(s[0].sets[..]);
+    s[0].ready = true; s[0].dirty = true; s[0].shown_sel = -1;
+  }
+  step := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += step;
+  if !s[0].dirty && !s[0].animating { return 0; }
+  d := s[0].dom[..]; m := s[0].model[..];
+  if !d[0].styled {
+    n := mono_dock_css(s[0].css[..], mono_css(s[0].css[..]));
+    dm_style(d, cast(string) s[0].css[0..<n]);
+  }
+  ui_begin(s[0].ui[..], s[0].time, reduced);
+  es_build(s);
+  ui_end(s[0].ui[..]);
+  // the fields hold the selected thing's numbers: filled when the thing or the world's revision
+  // changes, in the flush that makes them, so nothing typed after is written over
+  at := ifx s[0].have then em_entity_at(m, m[0].sel) else -1;
+  if s[0].have && (m[0].sel != s[0].shown_sel || m[0].rev != s[0].shown_rev) {
+    s[0].shown_sel = m[0].sel; s[0].shown_rev = m[0].rev;
+    buf: [UI_ID] u8;
+    for c: 0..<WE_COLS {
+      if at < 0 || !m[0].cols[c] { continue; }
+      n := ct_put_int(s[0].draft[c][..], 0, es_value(m, at, c));
+      s[0].draft_n[c] = n;
+      dr := s[0].draft[c];
+      dm_value(d, tr_join(buf[..], "col.", c), cast(string) dr[0..<n]);
+    }
+  }
+  s[0].animating = s[0].ui[0].busy;
+  s[0].dirty = false;
+  bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
+  if d[0].overflow { dm_reset(d); s[0].dirty = true; s[0].shown_sel = -1; return -1; }
+  return bytes;
+}
+coaxial_editor_busy :: (s: [] EdShell) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
+// A press (1), a field's text (2) or Enter in a field (3) on the node in this slot; or the page's model (6), in the inbox.
+coaxial_editor_event :: (s: [] EdShell, kind: int, slot: int, length: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].dirty = true;
+  if kind == ES_MODEL { es_model(s, length); return; }
+  id := dm_slot_id(s[0].dom[..], slot);
+  if id.count == 0 { return; }
+  if kind == ES_CLICK { es_click(s, id); }
+  col := es_index(id, "col.");
+  if col < 0 || col >= WE_COLS { return; }
+  if kind == ES_INPUT {
+    // spaces round a number are not part of it
+    lo := 0; hi := ifx length < 0 then 0 else ifx length > ES_INBOX then ES_INBOX else length;
+    while lo < hi && (s[0].inbox[lo] == ' ' || s[0].inbox[lo] == '\n') { lo += 1; }
+    while hi > lo && (s[0].inbox[hi - 1] == ' ' || s[0].inbox[hi - 1] == '\n') { hi -= 1; }
+    n := ifx hi - lo > ES_DRAFT then 0 else hi - lo;   // longer than any number: not one
+    for i: 0..<n { s[0].draft[col][i] = s[0].inbox[lo + i]; }
+    s[0].draft_n[col] = n;
+  }
+  if kind == ES_SUBMIT { es_submit(s, col); }
+}
+coaxial_editor_size :: (s: [] EdShell, slot: int, w: f32, h: f32) #export_c #effects(all) {
+  if s.count > 0 && dm_size(s[0].dom[..], slot, w, h) { s[0].dirty = true; }
+}
+coaxial_editor_inbox_cap :: () -> int #export_c #effects(all) { return ES_INBOX; }
+// The action that waits for the page: its kind (0: none) and its bytes (at acts[0]); done takes it away.
+coaxial_editor_act_kind :: (s: [] EdShell) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].nacts > 0 then s[0].act_kind[0] else 0; }
+coaxial_editor_act_len :: (s: [] EdShell) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].nacts > 0 then s[0].act_n[0] else 0; }
+coaxial_editor_act_done :: (s: [] EdShell) #export_c #effects(all) {
+  if s.count < 1 || s[0].nacts < 1 { return; }
+  for k: 1..<s[0].nacts { s[0].acts[k - 1] = s[0].acts[k]; s[0].act_n[k - 1] = s[0].act_n[k]; s[0].act_kind[k - 1] = s[0].act_kind[k]; }
+  s[0].nacts -= 1;
+}
+
+// ---------------------------------------------------------------- checks
+
+EsTest :: struct { s: [1] EdShell; text: [EM_BYTES] u8; edits: [WE_BATCH] WorldEdit; }
+// The model fixture, given to the shell as the host gives it.
+es_test_model :: (h: [] EsTest, sel: int, rev: int, undo: int, refused: string) {
+  s := h[0].s[..]; out := h[0].text[..];
+  cols: [WE_COLS] bool; cols[WEC_X] = true; cols[WEC_Z] = true; cols[WEC_YAW] = true;
+  n := em_begin(out, "splice", 0, rev, undo, 0, sel);
+  n = em_cols(out, n, cols[..]);
+  n = em_kind(out, n, 1001, "Cargo crate");
+  n = em_kind(out, n, 1002, "Parked rover");
+  n = em_entity(out, n, 1, 1001, 350, 0, -1200, 90, 100);
+  n = em_entity(out, n, 2, 1002, -40, 12, 600, -179, 100);
+  n = em_cell(out, n, 1002, "kit", "rover");
+  if refused.count > 0 { n = em_no(out, n, refused); }
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n);
+}
+es_test_type :: (h: [] EsTest, id: string, text: string) {
+  s := h[0].s[..];
+  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
+  coaxial_editor_event(s, ES_INPUT, dm_find(s[0].dom[..], id), text.count);
+  coaxial_editor_event(s, ES_SUBMIT, dm_find(s[0].dom[..], id), 0);
+}
+// The waiting action as the batch it is: its kind of batch, or -1.
+es_test_batch :: (h: [] EsTest, rev: int) -> int {
+  s := h[0].s[..];
+  if coaxial_editor_act_kind(s) != ES_BATCH { return -1; }
+  a := s[0].acts[0];
+  b := we_batch_read(cast(string) a[0..<coaxial_editor_act_len(s)], h[0].edits[..]);
+  return ifx b.ok && b.rev == rev then b.what else -1;
+}
+// The same world where a thing's kind may be set too.
+es_test_kinds :: (h: [] EsTest) {
+  s := h[0].s[..]; out := h[0].text[..];
+  cols: [WE_COLS] bool; cols[WEC_X] = true; cols[WEC_KIND] = true;
+  n := em_begin(out, "splice", 0, 4, 0, 0, 1);
+  n = em_cols(out, n, cols[..]);
+  n = em_kind(out, n, 1001, "Cargo crate");
+  n = em_kind(out, n, 1002, "Parked rover");
+  n = em_entity(out, n, 1, 1001, 350, 0, -1200, 90, 100);
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n);
+}
+es_test_frames :: (h: [] EsTest, n: int) { for k: 0..<n { _ := coaxial_editor_frame(h[0].s[..], 0.016, true); } }
+
+#test "before a model the shell says it is opening; with one it lists the world's things by kind" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  n := coaxial_editor_frame(s, 0.016, true);
+  #assert n > 1000 && tr_find(t, "bar.wait") > 0 && tr_find(t, "things") < 0 && s[0].dom[0].out[0] == DC_STYLE;
+  es_test_model(h[..], 0, 7, 3, "");
+  n = coaxial_editor_frame(s, 0.016, true);
+  #assert t[0].lost == 0 && t[0].depth == 0 && tr_find(t, "bar.wait") < 0;
+  #assert tr_text_of(t, tr_find(t, "thing.1.t")) == "Cargo crate" && tr_text_of(t, tr_find(t, "thing.2.t")) == "Parked rover" && tr_text_of(t, tr_find(t, "thing.2.m")) == "No. 2";
+  #assert tr_text_of(t, tr_find(t, "bar.rev")) == "splice · revision 7" && tr_find(t, "one.none") > 0 && tr_find(t, "one.card") < 0;
+  #assert !tr_has(t, tr_find(t, "undo"), AT_DISABLED) && tr_has(t, tr_find(t, "redo"), AT_DISABLED);
+  es_test_frames(h[..], 3);
+  #assert !coaxial_editor_busy(s) && coaxial_editor_frame(s, 0.016, true) == 0;
+}
+
+#test "a press on a thing asks the page to select it; the selected thing shows its fields filled and its kind's facts" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..];
+  es_test_model(h[..], 0, 7, 3, "");
+  es_test_frames(h[..], 1);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "thing.2"), 0);
+  a := s[0].acts[0];
+  #assert coaxial_editor_act_kind(s) == ES_SELECT && cast(string) a[0..<coaxial_editor_act_len(s)] == "2";
+  coaxial_editor_act_done(s);
+  #assert coaxial_editor_act_kind(s) == 0 && coaxial_editor_act_len(s) == 0;
+  // the page selects it and says so
+  es_test_model(h[..], 2, 7, 3, "");
+  n := coaxial_editor_frame(s, 0.016, true);
+  #assert tr_has(t, tr_find(t, "thing.2"), AT_CURRENT) && !tr_has(t, tr_find(t, "thing.1"), AT_CURRENT);
+  #assert tr_text_of(t, tr_find(t, "one.card.h")) == "Parked rover" && tr_find(t, "col.0") > 0 && tr_find(t, "col.2") > 0 && tr_find(t, "col.3") > 0 && tr_find(t, "col.1") < 0;
+  #assert tr_text_of(t, tr_find(t, "col.3.n")) == "Turn °" && tr_text_of(t, tr_find(t, "fact.0.n")) == "kit" && tr_text_of(t, tr_find(t, "fact.0.v")) == "rover";
+  // its three fields were filled in the flush that made them, and the shell is still
+  values := dm_test_count(d, n, DC_VALUE);
+  dx := s[0].draft[WEC_X]; dz := s[0].draft[WEC_Z]; dy := s[0].draft[WEC_YAW];
+  #assert values == 3 && cast(string) dx[0..<s[0].draft_n[WEC_X]] == "-40" && cast(string) dz[0..<s[0].draft_n[WEC_Z]] == "600" && cast(string) dy[0..<s[0].draft_n[WEC_YAW]] == "-179";
+  #assert !coaxial_editor_busy(s);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "deselect"), 0);
+  b := s[0].acts[0];
+  #assert coaxial_editor_act_kind(s) == ES_SELECT && cast(string) b[0..<coaxial_editor_act_len(s)] == "0";
+}
+
+#test "a number typed and entered is one set edit from the model's revision; what is not a number is said, and the same number asks nothing" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  es_test_model(h[..], 2, 7, 3, "");
+  es_test_frames(h[..], 5);
+  es_test_type(h[..], "col.0", " 125 ");
+  #assert es_test_batch(h[..], 7) == WB_APPLY;
+  e := h[0].edits[0];
+  #assert e.op == WE_SET && e.id == 2 && e.col == WEC_X && e.v == 125 && s[0].nacts == 1;
+  coaxial_editor_act_done(s);
+  es_test_type(h[..], "col.3", "ninety");
+  es_test_frames(h[..], 1);
+  #assert s[0].nacts == 0 && tr_text_of(t, tr_find(t, "said.t")) == "Turn ° takes a whole number." && tr_text_of(t, tr_find(t, "said.k")) == "Not done";
+  es_test_type(h[..], "col.3", "12345678901234567");
+  #assert s[0].nacts == 0 && s[0].said_n > 0;
+  es_test_type(h[..], "col.2", "600");
+  es_test_frames(h[..], 1);
+  #assert s[0].nacts == 0 && s[0].said_n == 0 && tr_find(t, "said") < 0;
+  es_test_type(h[..], "col.2", "-600");
+  #assert es_test_batch(h[..], 7) == WB_APPLY && h[0].edits[0].col == WEC_Z && h[0].edits[0].v == -600;
+}
+
+#test "undo, redo, remove and publish are batches; a button that can do nothing asks nothing; the choice of when is kept" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..];
+  es_test_model(h[..], 2, 9, 1, "");
+  es_test_frames(h[..], 5);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "undo"), 0);
+  #assert es_test_batch(h[..], 9) == WB_UNDO;
+  coaxial_editor_act_done(s);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "redo"), 0);
+  #assert s[0].nacts == 0;
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "remove"), 0);
+  #assert es_test_batch(h[..], 9) == WB_APPLY && h[0].edits[0].op == WE_DESPAWN && h[0].edits[0].id == 2;
+  coaxial_editor_act_done(s);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "publish"), 0);
+  #assert es_test_batch(h[..], 9) == WB_PUBLISH_NOW;
+  coaxial_editor_act_done(s);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "when"), 0);
+  es_test_frames(h[..], 1);
+  #assert s[0].when_open && tr_find(t, "when.1") > 0 && tr_text_of(t, tr_find(t, "when.1.m")) == "People see it the next time they come in";
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "when.1"), 0);
+  es_test_frames(h[..], 1);
+  #assert !s[0].when_open && s[0].when == 1 && tr_find(t, "when.1") < 0 && tr_text_of(t, tr_find(t, "when.l")) == "Next session";
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "publish"), 0);
+  #assert es_test_batch(h[..], 9) == WB_PUBLISH_NEXT;
+}
+
+#test "a refusal in the model is a notice in its words; a new revision fills the fields again; a model that is not one closes the lists" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..];
+  es_test_model(h[..], 2, 7, 3, "That spot is inside the Scanner gate, which stays clear.");
+  es_test_frames(h[..], 5);
+  #assert tr_text_of(t, tr_find(t, "refused.t")) == "That spot is inside the Scanner gate, which stays clear." && tr_attr_of(t, tr_find(t, "refused"), AT_ROLE) == "status";
+  es_test_model(h[..], 2, 8, 4, "");
+  n := coaxial_editor_frame(s, 0.016, true);
+  #assert dm_test_count(d, n, DC_VALUE) == 3 && tr_find(t, "refused") < 0 && tr_text_of(t, tr_find(t, "bar.rev")) == "splice · revision 8";
+  // more actions than wait is said, not lost quietly
+  for k: 0..<ES_ACTS + 1 { coaxial_editor_event(s, ES_CLICK, dm_find(d, "undo"), 0); }
+  #assert s[0].nacts == ES_ACTS && s[0].said_n > 0;
+  bad := "editor.model.v9 nothing";
+  for i: 0..<bad.count { s[0].inbox[i] = bad[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, bad.count);
+  es_test_frames(h[..], 1);
+  #assert !s[0].have && tr_find(t, "bar.wait") > 0 && tr_find(t, "thing.1") < 0;
+}
+
+#test "the stylesheet is the skin's own and nothing more" {
+  h: [1] EsTest; s := h[0].s[..];
+  n := coaxial_editor_frame(s, 0.016, true);
+  css: [ES_CSS] u8;
+  want := mono_dock_css(css[..], mono_css(css[..]));
+  d := s[0].dom[..];
+  // the first command is the stylesheet: its opcode, its length, its bytes
+  #assert d[0].out[0] == DC_STYLE && want < ES_CSS;
+  got := cast(int) d[0].out[1] + cast(int) d[0].out[2] * 256 + cast(int) d[0].out[3] * 65536;
+  #assert got == want;
+  same := true;
+  for i: 0..<want { if d[0].out[5 + i] != css[i] { same = false; } }
+  #assert same;
+}
+
+// Whether the stylesheet has a rule for a class: ".name" with no more of a name after it.
+es_test_styled :: (css: string, name: string) -> bool {
+  for i: 0..<css.count {
+    if css[i] != '.' || i + 1 + name.count > css.count || cast(string) css[i + 1..<i + 1 + name.count] != name { continue; }
+    after := i + 1 + name.count;
+    if after >= css.count { return true; }
+    b := css[after];
+    if !((b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '-' || b == '_') { return true; }
+  }
+  return false;
+}
+// Classes the kit gives a node to name it for scripts and readers, with no rule of their own in the skin.
+ES_TEST_BARE :: [2] string.["btn-l", "sel-l"];   // a button's and a select's label (frames.coax k_button, k_select_begin)
+
+#test "every class on every node of the shell, in each of its states, is one the skin has a rule for" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..];
+  css: [ES_CSS] u8;
+  sheet := cast(string) css[0..<mono_dock_css(css[..], mono_css(css[..]))];
+  seen := 0;
+  for state: 0..<4 {
+    if state == 1 { es_test_model(h[..], 0, 7, 3, ""); }
+    if state == 2 { es_test_model(h[..], 2, 7, 3, "That spot is inside the Scanner gate, which stays clear."); coaxial_editor_event(s, ES_CLICK, dm_find(d, "when"), 0); }
+    if state == 3 { es_test_model(h[..], 2, 8, 0, ""); es_test_type(h[..], "col.0", "far"); }
+    es_test_frames(h[..], 2);
+    for i: 0..<t[0].n {
+      cls := tr_class(t, i);
+      for k: 0..<ct_parts(cls, ' ') {
+        word := ct_part(cls, ' ', k);
+        if word.count == 0 { continue; }
+        bare := ES_TEST_BARE;
+        #assert es_test_styled(sheet, word) || word == bare[0] || word == bare[1];
+        seen += 1;
+      }
+    }
+  }
+  #assert seen > 120 && es_test_styled(sheet, "pane-l") && !es_test_styled(sheet, "pane-x") && !es_test_styled(sheet, "pan");
+}
+
+#test "where a kind may be set it is a select of the world's kinds: picking another is one set edit, picking the same asks nothing, and it has no number field" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; d := s[0].dom[..];
+  es_test_kinds(h[..]);
+  es_test_frames(h[..], 2);
+  #assert tr_find(t, "kind") > 0 && tr_text_of(t, tr_find(t, "kind.l")) == "Cargo crate" && tr_find(t, "col.11") < 0 && tr_find(t, "col.0") > 0 && tr_find(t, "kind.1002") < 0;
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "kind"), 0);
+  es_test_frames(h[..], 1);
+  #assert s[0].kind_open && tr_has(t, tr_find(t, "kind.1001"), AT_CURRENT) && !tr_has(t, tr_find(t, "kind.1002"), AT_CURRENT);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "kind.1001"), 0);
+  es_test_frames(h[..], 1);
+  #assert !s[0].kind_open && s[0].nacts == 0;
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "kind"), 0);
+  es_test_frames(h[..], 1);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "kind.1002"), 0);
+  #assert es_test_batch(h[..], 4) == WB_APPLY && h[0].edits[0].op == WE_SET && h[0].edits[0].col == WEC_KIND && h[0].edits[0].v == 1002 && h[0].edits[0].id == 1 && !s[0].kind_open;
+  // the two selects are never open together
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "kind"), 0);
+  coaxial_editor_event(s, ES_CLICK, dm_find(d, "when"), 0);
+  #assert s[0].when_open && !s[0].kind_open;
+}

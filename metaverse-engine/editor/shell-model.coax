@@ -1,0 +1,232 @@
+// What a page tells the editor shell (GitHub #13416, the browser editor's E7;
+// docs/editor/2026-11-12-browser-editor.md, docs/protocol/editor-model-v1.md): the world it has
+// open, its entities, the kinds they are, and the last refusal. The page's realm writes it; the
+// shell (shell.coax), a module of its own, reads it and draws the outliner and the inspector
+// from it. This file is the one codec (proto/world/model-v1.json holds the bytes).
+//
+// The model is lines of text:
+//   editor.model.v1 WORLD LANE REV UNDO REDO SELECTED   the world's ID, its lane (dev or live), the
+//                                       lane's revision, the steps that can be undone and redone, and
+//                                       the selected entity's ID (0: none)
+//   cols NAME ...                       the World columns an edit may set on an entity (world-edit.coax WE_COL)
+//   k KIND NAME                         a kind: its content ID and its name
+//   e ID KIND X Y Z YAW SCALE           an entity: its ID on the wire, its kind, where it stands in whole
+//                                       centimetres, its turn in whole degrees, its size in whole percent
+//   c KIND COLUMN VALUE                 a cell of a kind's content row
+//   no WORDS                            the last refusal, in words
+// Lines come in that order. Every number is whole. A name and a value are one line of printable
+// bytes. em_read refuses any bytes but the ones em_write writes (it writes what it read and
+// compares).
+//   coax/bin/coax test metaverse-engine/editor/shell-model.coax --library
+#load "world-edit.coax";
+
+EM_SCHEMA :: "editor.model.v1";
+EM_ENTS :: 256;        // entities a model lists
+EM_KINDS :: 64;        // kinds
+EM_CELLS :: 256;       // content cells
+EM_NAME :: 40;         // bytes in a kind's name
+EM_VALUE :: 80;        // bytes in a cell's value
+EM_WORDS :: 240;       // bytes in a refusal
+EM_BYTES :: 32768;     // bytes a model may take
+
+EdModel :: struct {
+  ok: bool;
+  world: [WE_WORLD] u8; world_n: int;
+  lane: int; rev: int; undo: int; redo: int; sel: int;
+  cols: [WE_COLS] bool;
+  nk: int; kind_id: [EM_KINDS] int; kind_name: [EM_KINDS] [EM_NAME] u8; kind_n: [EM_KINDS] int;
+  ne: int; e_id: [EM_ENTS] int; e_kind: [EM_ENTS] int; e_x: [EM_ENTS] int; e_y: [EM_ENTS] int; e_z: [EM_ENTS] int; e_yaw: [EM_ENTS] int; e_scale: [EM_ENTS] int;
+  nc: int; c_kind: [EM_CELLS] int; c_col: [EM_CELLS] [WE_NAME] u8; c_col_n: [EM_CELLS] int; c_val: [EM_CELLS] [EM_VALUE] u8; c_val_n: [EM_CELLS] int;
+  no: [EM_WORDS] u8; no_n: int;
+}
+
+// One line of printable bytes, with no space at either end.
+em_text_ok :: (s: string, most: int) -> bool {
+  if s.count < 1 || s.count > most || s[0] == ' ' || s[s.count - 1] == ' ' { return false; }
+  for b: s { if b < 32 || b == 127 { return false; } }
+  return true;
+}
+
+// ---- the writer, a line at a time (n: bytes written so far; past out.count when it does not fit)
+
+em_begin :: (out: [] u8, world: string, lane: int, rev: int, undo: int, redo: int, sel: int) -> int {
+  lanes := WE_LANE;
+  if !we_world_ok(world) || lane < 0 || lane > 1 || rev < 0 || undo < 0 || redo < 0 || sel < 0 { return out.count + 1; }
+  n := ct_put(out, 0, EM_SCHEMA); n = ct_put(out, n, " "); n = ct_put(out, n, world);
+  n = ct_put(out, n, " "); n = ct_put(out, n, lanes[lane]);
+  n = ct_put(out, n, " "); n = ct_put_int(out, n, rev);
+  n = ct_put(out, n, " "); n = ct_put_int(out, n, undo);
+  n = ct_put(out, n, " "); n = ct_put_int(out, n, redo);
+  n = ct_put(out, n, " "); n = ct_put_int(out, n, sel);
+  return ct_put(out, n, "\n");
+}
+em_cols :: (out: [] u8, at: int, cols: [] bool) -> int {
+  names := WE_COL;
+  n := ct_put(out, at, "cols");
+  for k: 0..<WE_COLS { if k < cols.count && cols[k] { n = ct_put(out, n, " "); n = ct_put(out, n, names[k]); } }
+  return ct_put(out, n, "\n");
+}
+em_kind :: (out: [] u8, at: int, id: int, name: string) -> int {
+  if id < 0 || !em_text_ok(name, EM_NAME) { return out.count + 1; }
+  n := ct_put(out, at, "k "); n = ct_put_int(out, n, id); n = ct_put(out, n, " "); n = ct_put(out, n, name);
+  return ct_put(out, n, "\n");
+}
+em_entity :: (out: [] u8, at: int, id: int, kind: int, x: int, y: int, z: int, yaw: int, scale: int) -> int {
+  if id < 1 || kind < 0 { return out.count + 1; }
+  n := ct_put(out, at, "e "); n = ct_put_int(out, n, id);
+  n = ct_put(out, n, " "); n = ct_put_int(out, n, kind);
+  n = ct_put(out, n, " "); n = ct_put_int(out, n, x);
+  n = ct_put(out, n, " "); n = ct_put_int(out, n, y);
+  n = ct_put(out, n, " "); n = ct_put_int(out, n, z);
+  n = ct_put(out, n, " "); n = ct_put_int(out, n, yaw);
+  n = ct_put(out, n, " "); n = ct_put_int(out, n, scale);
+  return ct_put(out, n, "\n");
+}
+em_cell :: (out: [] u8, at: int, kind: int, col: string, value: string) -> int {
+  if kind < 0 || !ct_name_ok(col) || !em_text_ok(value, EM_VALUE) { return out.count + 1; }
+  n := ct_put(out, at, "c "); n = ct_put_int(out, n, kind);
+  n = ct_put(out, n, " "); n = ct_put(out, n, col); n = ct_put(out, n, " "); n = ct_put(out, n, value);
+  return ct_put(out, n, "\n");
+}
+em_no :: (out: [] u8, at: int, words: string) -> int {
+  if !em_text_ok(words, EM_WORDS) { return out.count + 1; }
+  n := ct_put(out, at, "no "); n = ct_put(out, n, words);
+  return ct_put(out, n, "\n");
+}
+
+// A whole model, as its bytes ("" when it does not fit).
+em_write :: (m: [] EdModel, out: [] u8) -> string {
+  n := em_begin(out, cast(string) m[0].world[0..<m[0].world_n], m[0].lane, m[0].rev, m[0].undo, m[0].redo, m[0].sel);
+  n = em_cols(out, n, m[0].cols[..]);
+  for k: 0..<m[0].nk { n = em_kind(out, n, m[0].kind_id[k], cast(string) m[0].kind_name[k][0..<m[0].kind_n[k]]); }
+  for k: 0..<m[0].ne { n = em_entity(out, n, m[0].e_id[k], m[0].e_kind[k], m[0].e_x[k], m[0].e_y[k], m[0].e_z[k], m[0].e_yaw[k], m[0].e_scale[k]); }
+  for k: 0..<m[0].nc { n = em_cell(out, n, m[0].c_kind[k], cast(string) m[0].c_col[k][0..<m[0].c_col_n[k]], cast(string) m[0].c_val[k][0..<m[0].c_val_n[k]]); }
+  if m[0].no_n > 0 { n = em_no(out, n, cast(string) m[0].no[0..<m[0].no_n]); }
+  if n > out.count { return ""; }
+  return cast(string) out[0..<n];
+}
+
+// ---- the reader
+
+// The rest of a line after its first `skip` words.
+em_rest :: (line: string, skip: int) -> string {
+  at := 0; seen := 0;
+  while at < line.count && seen < skip { if line[at] == ' ' { seen += 1; } at += 1; }
+  return ifx seen < skip then "" else line[at..<line.count];
+}
+em_copy :: (to: [] u8, s: string) -> int {
+  n := ifx s.count > to.count then to.count else s.count;
+  for i: 0..<n { to[i] = s[i]; }
+  return n;
+}
+// The model in text, into m. False (and m not ok) for any bytes em_write would not write.
+em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
+  m[0].ok = false; m[0].nk = 0; m[0].ne = 0; m[0].nc = 0; m[0].no_n = 0; m[0].world_n = 0;
+  for k: 0..<WE_COLS { m[0].cols[k] = false; }
+  if text.count < EM_SCHEMA.count || text.count > EM_BYTES { return false; }
+  lines := ct_parts(text, '\n');
+  head := ct_part(text, '\n', 0);
+  if ct_part(head, ' ', 0) != EM_SCHEMA || ct_parts(head, ' ') != 7 { return false; }
+  m[0].world_n = em_copy(m[0].world[..], ct_part(head, ' ', 1));
+  lane := ct_part(head, ' ', 2);
+  m[0].lane = ifx lane == "live" then 1 else 0;
+  m[0].rev = ct_num(ct_part(head, ' ', 3)).v; m[0].undo = ct_num(ct_part(head, ' ', 4)).v;
+  m[0].redo = ct_num(ct_part(head, ' ', 5)).v; m[0].sel = ct_num(ct_part(head, ' ', 6)).v;
+  for i: 1..<lines {
+    line := ct_part(text, '\n', i);
+    word := ct_part(line, ' ', 0);
+    if word == "cols" {
+      for k: 1..<ct_parts(line, ' ') { c := we_col(ct_part(line, ' ', k)); if c >= 0 { m[0].cols[c] = true; } }
+    } else if word == "k" && m[0].nk < EM_KINDS {
+      k := m[0].nk;
+      m[0].kind_id[k] = ct_num(ct_part(line, ' ', 1)).v;
+      m[0].kind_n[k] = em_copy(m[0].kind_name[k][..], em_rest(line, 2));
+      m[0].nk += 1;
+    } else if word == "e" && m[0].ne < EM_ENTS {
+      k := m[0].ne;
+      m[0].e_id[k] = ct_num(ct_part(line, ' ', 1)).v; m[0].e_kind[k] = ct_num(ct_part(line, ' ', 2)).v;
+      m[0].e_x[k] = ct_num(ct_part(line, ' ', 3)).v; m[0].e_y[k] = ct_num(ct_part(line, ' ', 4)).v; m[0].e_z[k] = ct_num(ct_part(line, ' ', 5)).v;
+      m[0].e_yaw[k] = ct_num(ct_part(line, ' ', 6)).v; m[0].e_scale[k] = ct_num(ct_part(line, ' ', 7)).v;
+      m[0].ne += 1;
+    } else if word == "c" && m[0].nc < EM_CELLS {
+      k := m[0].nc;
+      m[0].c_kind[k] = ct_num(ct_part(line, ' ', 1)).v;
+      m[0].c_col_n[k] = em_copy(m[0].c_col[k][..], ct_part(line, ' ', 2));
+      m[0].c_val_n[k] = em_copy(m[0].c_val[k][..], em_rest(line, 3));
+      m[0].nc += 1;
+    } else if word == "no" {
+      m[0].no_n = em_copy(m[0].no[..], em_rest(line, 1));
+    }
+  }
+  // only the bytes the writer writes
+  m[0].ok = em_write(m, scratch) == text;
+  return m[0].ok;
+}
+
+// A kind's name ("" when the model names no such kind).
+em_kind_name :: (m: [] EdModel, kind: int, out: [] u8) -> string {
+  for k: 0..<m[0].nk { if m[0].kind_id[k] == kind { n := em_copy(out, cast(string) m[0].kind_name[k][0..<m[0].kind_n[k]]); return cast(string) out[0..<n]; } }
+  return "";
+}
+// The entity with this ID: its place in the model, or -1.
+em_entity_at :: (m: [] EdModel, id: int) -> int {
+  for k: 0..<m[0].ne { if m[0].e_id[k] == id && id > 0 { return k; } }
+  return -1;
+}
+
+// ---- checks
+
+EmTest :: struct { m: [1] EdModel; out: [EM_BYTES] u8; scratch: [EM_BYTES] u8; }
+// The fixture proto/world/model-v1.json holds.
+em_test_text :: (out: [] u8) -> string {
+  cols: [WE_COLS] bool; cols[WEC_X] = true; cols[WEC_Z] = true; cols[WEC_YAW] = true;
+  n := em_begin(out, "splice", 0, 7, 3, 1, 2);
+  n = em_cols(out, n, cols[..]);
+  n = em_kind(out, n, 1001, "Cargo crate");
+  n = em_kind(out, n, 1002, "Parked rover");
+  n = em_entity(out, n, 1, 1001, 350, 0, -1200, 90, 100);
+  n = em_entity(out, n, 2, 1002, -40, 12, 600, -179, 100);
+  n = em_cell(out, n, 1002, "kit", "rover");
+  n = em_cell(out, n, 1002, "scale", "1.5");
+  n = em_no(out, n, "That spot is inside the Scanner gate, which stays clear.");
+  return ifx n > out.count then "" else cast(string) out[0..<n];
+}
+
+#test "a model written is the model read, and it writes the same bytes again" {
+  h: [1] EmTest; m := h[0].m[..];
+  text := em_test_text(h[0].out[..]);
+  #assert text.count > 200 && em_read(m, text, h[0].scratch[..]);
+  w := m[0].world;
+  #assert cast(string) w[0..<m[0].world_n] == "splice" && m[0].lane == 0 && m[0].rev == 7 && m[0].undo == 3 && m[0].redo == 1 && m[0].sel == 2;
+  #assert m[0].cols[WEC_X] && m[0].cols[WEC_Z] && m[0].cols[WEC_YAW] && !m[0].cols[WEC_Y] && !m[0].cols[WEC_KIND];
+  #assert m[0].nk == 2 && m[0].ne == 2 && m[0].nc == 2 && m[0].no_n == 56;
+  #assert m[0].e_id[1] == 2 && m[0].e_kind[1] == 1002 && m[0].e_x[1] == -40 && m[0].e_y[1] == 12 && m[0].e_z[1] == 600 && m[0].e_yaw[1] == -179 && m[0].e_scale[1] == 100;
+  name: [EM_NAME] u8;
+  #assert em_kind_name(m, 1002, name[..]) == "Parked rover" && em_kind_name(m, 7, name[..]) == "";
+  #assert em_entity_at(m, 2) == 1 && em_entity_at(m, 3) == -1 && em_entity_at(m, 0) == -1;
+}
+
+#test "a model with nothing in it reads, and bytes the writer would not write are refused" {
+  h: [1] EmTest; m := h[0].m[..];
+  none: [WE_COLS] bool;
+  n := em_begin(h[0].out[..], "splice", 1, 0, 0, 0, 0);
+  n = em_cols(h[0].out[..], n, none[..]);
+  #assert em_read(m, cast(string) h[0].out[0..<n], h[0].scratch[..]) && m[0].lane == 1 && m[0].ne == 0 && m[0].no_n == 0;
+  #assert !em_read(m, "editor.model.v2 splice dev 0 0 0 0\ncols\n", h[0].scratch[..]);
+  #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\ne 1 5 0 0 0 0 100 extra\n", h[0].scratch[..]);
+  #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\ne 01 5 0 0 0 0 100\n", h[0].scratch[..]);
+  #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nx what\n", h[0].scratch[..]);
+  #assert !em_read(m, "editor.model.v1 Splice dev 0 0 0 0\ncols\n", h[0].scratch[..]);
+  #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\n\n", h[0].scratch[..]);
+  #assert !em_read(m, "", h[0].scratch[..]);
+}
+
+#test "what does not fit, or is not a name, a place or a line, is not written" {
+  h: [1] EmTest; small: [24] u8;
+  #assert em_begin(small[..], "splice", 0, 1, 0, 0, 0) > small.count;
+  #assert em_begin(h[0].out[..], "Splice", 0, 1, 0, 0, 0) > EM_BYTES && em_begin(h[0].out[..], "splice", 2, 1, 0, 0, 0) > EM_BYTES;
+  #assert em_kind(h[0].out[..], 0, 1, "") > EM_BYTES && em_kind(h[0].out[..], 0, 1, "two\nlines") > EM_BYTES && em_kind(h[0].out[..], 0, 1, " lead") > EM_BYTES;
+  #assert em_entity(h[0].out[..], 0, 0, 1, 0, 0, 0, 0, 100) > EM_BYTES;
+  #assert em_cell(h[0].out[..], 0, 1, "Kit", "v") > EM_BYTES && em_cell(h[0].out[..], 0, 1, "kit", "") > EM_BYTES;
+  #assert em_no(h[0].out[..], 0, "") > EM_BYTES;
+}

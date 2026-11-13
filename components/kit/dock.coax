@@ -1,0 +1,77 @@
+// The dock: the frames set's pieces for panes that stand round something else (a canvas, a
+// document, a map) and leave it showing (GitHub #13416). A dock is a layer over the page that
+// takes no press itself; a pane is a panel on one of its sides with a strip of controls or a
+// body that scrolls inside it; a prop is a field with its name beside it. Each builds nodes in
+// the tree and nothing else; every look is the skin's (components/skin/mono.coax, mono_dock_css).
+//   coax/bin/coax test components/kit/dock.coax
+
+#load "frames.coax";
+
+DK_TOP :: 0; DK_LEFT :: 1; DK_RIGHT :: 2;
+DK_SIDES :: [3] string.["pane pane-t", "pane pane-l", "pane pane-r"];
+
+// Dock: opens the layer. `over`: it lies over the whole window, and what is under it shows and
+// takes the pointer wherever no pane is; else it stands in the page where it is put, as tall as
+// the skin says. Close it with tr_close.
+k_dock :: (t: [] Tree, id: string, over: bool) -> int { return tr_open(t, id, TG_DIV, ifx over then "dock dock-over" else "dock"); }
+// Pane: a panel on a side of the dock, with its title when it has one. The top pane is a strip:
+// its controls stand in a row. A side pane's content scrolls inside it. Close it with k_pane_end.
+k_pane :: (t: [] Tree, u: [] Ui, id: string, side: int, title: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  sides := DK_SIDES;
+  i := k_frame(t, u, id, TG_SECTION, sides[ifx side < 0 || side > 2 then 0 else side], MF_PANEL);
+  if title.count > 0 {
+    tr_attr(t, i, AT_LABEL, title);
+    h := tr_leaf(t, tr_cat(ida[..], id, ".h"), TG_H2, "sec-h", title);
+  }
+  b := tr_open(t, tr_cat(idb[..], id, ".b"), TG_DIV, "pane-b");
+  return i;
+}
+k_pane_end :: (t: [] Tree) { tr_close(t); tr_close(t); }
+// Prop: a one-line field with its name before it. Answers the field's node (its id is `id`).
+k_prop :: (t: [] Tree, u: [] Ui, id: string, name: string, placeholder: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  p := tr_open(t, tr_cat(ida[..], id, ".prop"), TG_DIV, "prop");
+  n := tr_leaf(t, tr_cat(idb[..], id, ".n"), TG_SPAN, "meta", name);
+  f := k_field(t, u, id, placeholder, name);
+  tr_close(t);
+  return f;
+}
+// Fact: a name and what it is, as text, set as a prop is.
+k_fact :: (t: [] Tree, id: string, name: string, value: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  p := tr_open(t, id, TG_DIV, "prop");
+  n := tr_leaf(t, tr_cat(ida[..], id, ".n"), TG_SPAN, "meta", name);
+  v := tr_leaf(t, tr_cat(idb[..], id, ".v"), TG_SPAN, "fact", value);
+  tr_close(t);
+  return p;
+}
+
+DkTest :: struct { t: [1] Tree; u: [1] Ui; }
+
+#test "a dock holds a strip and side panes, each a framed section whose body is its own node" {
+  h: [1] DkTest; t := h[0].t[..]; u := h[0].u[..];
+  ui_begin(u, 0, true); tr_begin(t);
+  d := k_dock(t, "dock", true);
+  a := k_pane(t, u, "bar", DK_TOP, "");
+  b1 := k_button(t, u, "undo", "Undo", BS_PLAIN);
+  k_pane_end(t);
+  b := k_pane(t, u, "things", DK_LEFT, "Things");
+  r := k_row(t, u, "thing.1", "Cargo crate", "", true);
+  k_pane_end(t);
+  c := k_pane(t, u, "one", DK_RIGHT, "Selected");
+  f := k_prop(t, u, "x", "X cm", "0");
+  g := k_fact(t, "kit", "Kit", "rover");
+  k_pane_end(t);
+  tr_close(t);
+  ui_end(u);
+  #assert t[0].lost == 0 && t[0].depth == 0;
+  #assert tr_class(t, d) == "dock dock-over" && tr_class(t, a) == "pane pane-t" && tr_class(t, b) == "pane pane-l" && tr_class(t, c) == "pane pane-r";
+  #assert tr_find(t, "bar.h") < 0 && tr_text_of(t, tr_find(t, "things.h")) == "Things" && tr_find(t, "one.b") > 0;
+  #assert f == tr_find(t, "x") && tr_text_of(t, tr_find(t, "x.n")) == "X cm" && tr_class(t, tr_find(t, "x.prop")) == "prop";
+  #assert tr_class(t, g) == "prop" && tr_text_of(t, tr_find(t, "kit.n")) == "Kit" && tr_text_of(t, tr_find(t, "kit.v")) == "rover";
+  tr_begin(t);
+  d = k_dock(t, "dock", false);
+  tr_close(t);
+  #assert tr_class(t, d) == "dock";
+}

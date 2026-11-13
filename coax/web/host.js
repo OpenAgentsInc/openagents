@@ -638,6 +638,7 @@ async function loadEngine(bytes, generation) {
   if (x.coaxial_player_appearance_v1?.() === 1) {const appearance=local("aethyr.player.appearance.v1");if (appearance) send(16,appearance);}
   globalThis.coaxial.ready = true;loadMark("engine-ready");
   if (x.coaxial_message) send(PAGE_KIND, pageFacts());
+  editorOpen();
   // A page opening in place under another (zone-host.js) is out of sight until it is shown: its app
   // hears so (message 601), then 602 with the wall clock (now=) when the page is handed over.
   if (x.coaxial_message && (() => { try { return window.top !== window && window.frameElement?.dataset.zone === "1"; } catch { return false; } })()) send(HIDDEN_KIND);
@@ -1000,8 +1001,9 @@ function viewer() {
   fetch("/api/auth/viewer", { credentials: "same-origin" })
     // read the body either way: an unread one never finishes loading
     .then((r) => r.text().then((t) => (r.ok ? t : "")), () => "")
-    .then((t) => send(VIEWER_KIND, t), () => send(VIEWER_KIND, ""));
+    .then((t) => { viewerAdmin = /(^|\n)A\|1(\n|$)/.test(t); send(VIEWER_KIND, t); editorOpen(); }, () => send(VIEWER_KIND, ""));
 }
+let viewerAdmin = false;   // the viewer's lines said A|1: an admin, who may edit a world (the server decides each write)
 const randomId = () => [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
 // `store` gives the storage: naming it can throw too, in a sandboxed page with no origin (a realm on
 // the realm origin, #13432), so it is asked for inside the try.
@@ -3190,6 +3192,7 @@ function draw(now) {
     const engineStart = traceRow ? performance.now() : 0;
     n = engine.exports.coaxial_frame(trap ? -16 : arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
     if (traceRow) {traceRow[1] = performance.now() - engineStart;for(let i=0;i<3;i++)traceRow[11+i]=engine.exports.coaxial_frame_parts?.(arena.state,i)||0;}
+    editorStep();
     if (gpu.gpuiOn) gpuiFrame(dpr);
   } catch (e) { trapped(e); return; }
   if (gpu.renderer) {
@@ -3783,6 +3786,59 @@ function player() {
   catch { return null; }
 }
 
+// The editor shell (?edit; metaverse-engine/editor/shell.coax, GitHub #13416): a module of its own
+// that the browser draws over the canvas (dom-host.js), on a page whose app tells what its world
+// holds (coaxial_edit_model, editor.model.v1). This host only carries bytes between the two: the
+// model to the shell whenever the app's changes (coaxial_edit_rev), and the shell's actions to the
+// app as messages of the kind the shell names (520 a batch of edits, 521 a selection). It decides nothing
+// but whether to open: on a deployed page, only for an admin (the viewer's lines), since the server lets
+// nobody else write a world.
+const EDITOR = "editor-shell";
+// A press, a key or a paste on the shell is the shell's: the world under it hears nothing of it.
+const inEditor = (e) => !!e.target?.closest?.("#coaxial-editor");
+let editorAsked = false, editorRev = -1, editorFor = null;
+function editorOpen() {
+  if (editorAsked || !engine?.exports.coaxial_edit_model || !new URLSearchParams(location.search).has("edit")) return;
+  // the dev server's page opens it for whoever asks; a deployed page only for an admin (who else writes a world: nobody)
+  if (!dev && !viewerAdmin) return;
+  editorAsked = true;
+  const root = document.createElement("div");
+  root.id = "coaxial-editor";
+  document.body.appendChild(root);
+  import(`/coaxial/dom-host.js?app=${EDITOR}&root=${root.id}`).catch((error) => { console.error(error); document.documentElement.dataset.coaxialError = String(error); });
+}
+let editorIn = false;
+function editorStep() {
+  const shell = globalThis.coaxialDoms?.[EDITOR], x = engine?.exports;
+  if (!shell || !x?.coaxial_edit_model || editorIn || !arena) return;
+  editorIn = true;
+  try { editorCarry(shell, x); } finally { editorIn = false; }
+}
+function editorCarry(shell, x) {
+  shell.after ||= () => { editorActs(); after(false); };
+  shell.still = agentMode;
+  const rev = x.coaxial_edit_rev(arena.state);
+  if (rev !== editorRev || editorFor !== engine) {
+    editorRev = rev; editorFor = engine;
+    const n = x.coaxial_edit_model_len(arena.state);
+    const sx = shell.exports(), most = Math.min(n, sx.dom_inbox_cap());
+    new Uint8Array(shell.memory().buffer, sx.dom_inbox(shell.state()), most).set(new Uint8Array(memory.buffer, x.coaxial_edit_model(arena.state), most));
+    sx.dom_event(shell.state(), 6, 0, most);
+    if (agentMode) shell.now(); else shell.ask();   // on an agent's clock the shell shows it before the next operation
+  }
+  editorActs();
+}
+function editorActs() {
+  const shell = globalThis.coaxialDoms?.[EDITOR];
+  if (!shell) return;
+  const sx = shell.exports(), st = shell.state();
+  for (let kind; (kind = sx.dom_act_kind(st)); ) {
+    const body = new Uint8Array(shell.memory().buffer, sx.dom_act(st), sx.dom_act_len(st)).slice();
+    sx.dom_act_done(st);
+    send(kind, body);
+  }
+}
+
 function send(kind, text = "") {
   if (waiting) { waiting.push(() => send(kind, text));return; }
   const x = engine?.exports;
@@ -3790,6 +3846,7 @@ function send(kind, text = "") {
   const bytes = (text instanceof Uint8Array?text:new TextEncoder().encode(text)).subarray(0, x.coaxial_inbox_cap());
   new Uint8Array(memory.buffer, x.coaxial_inbox(arena.state), bytes.length).set(bytes);
   x.coaxial_message(arena.state, kind, bytes.length);
+  editorStep();   // an answer may have changed what the editor's shell shows, whether or not a frame follows
   if(kind===607&&mediaNoticeTrace){
     if(mediaNoticeTrace.length<112)mediaNoticeTrace.push({kind,bytes:Array.from(bytes)});
     else mediaNoticeDropped++;
@@ -4206,7 +4263,7 @@ function focusField() {
 const keyOf = (e) => KEYS[e.key] ?? ([...e.key].length === 1 ? e.key.codePointAt(0) : 0);
 const modsOf = (e) => (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
 addEventListener("keydown", (e) => {
-  if (!engine || e.isComposing) return;
+  if (!engine || e.isComposing || inEditor(e)) return;
   // the accessible layer's own keys: Tab moves through it, Enter and Space press what has focus
   if (a11y.root && ((e.key === "Tab" && !(call("coaxial_mouselook") > 0)) || (a11y.root.contains(e.target) && (e.key === "Enter" || e.key === " ")))) return;
   startAudio();
@@ -4220,7 +4277,7 @@ addEventListener("keydown", (e) => {
   after(true);
 });
 addEventListener("keyup", (e) => {
-  if (!engine?.exports.coaxial_key_up || e.isComposing) return;
+  if (!engine?.exports.coaxial_key_up || e.isComposing || inEditor(e)) return;
   const key = keyOf(e);
   if (key && call("coaxial_key_up", key, modsOf(e))) e.preventDefault();
 });
@@ -4233,7 +4290,7 @@ canvas.addEventListener("wheel", (e) => {
   call("coaxial_wheel", e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1));
 }, { passive: false });
 addEventListener("paste", (e) => {
-  if (e.target === field || !engine) return;
+  if (e.target === field || !engine || inEditor(e)) return;
   const text = e.clipboardData?.getData("text") || "";
   if (text) { e.preventDefault(); send(1, text); }
 });
@@ -4248,7 +4305,7 @@ canvas?.addEventListener("touchmove", (e) => { if (e.cancelable) e.preventDefaul
 canvas?.addEventListener("contextmenu", (e) => e.preventDefault());
 for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup", 2], ["pointercancel", 3]])
   addEventListener(type, (e) => {
-    if (!engine) return;
+    if (!engine || inEditor(e)) return;
     const touch = e.pointerType !== "mouse", now = performance.now();
     if (touch) touchAt = now;
     else if (now - touchAt < AFTER_TOUCH_MS) return;

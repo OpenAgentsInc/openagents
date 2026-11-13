@@ -20,6 +20,7 @@
 #load "../../metaverse-engine/editor/world-doc.coax";
 #load "../../metaverse-engine/editor/world-live.coax";
 #load "../../metaverse-engine/editor/world-follow.coax";
+#load "../../metaverse-engine/editor/shell-model.coax";
 
 SPW_ID :: "splice";
 SPW_ENGINE :: 1;     // the document's reader: raised when world.doc.v1's reading here changes
@@ -270,7 +271,13 @@ spw_empty :: (g: [] SpGame, k: [] SpwScratch, out: [] u8) -> string {
 
 SPW_INBOX :: 131072;   // bytes one answer may be: the page's inbox (splice-face.c)
 // What a page keeps to follow the world: its place (world-follow.coax) and room to read an answer.
-SpwPage :: struct { f: [1] WorldFollow; k: [1] SpwScratch; doc: [SPW_DOC] u8; did: [64] u8; scratch: [SPW_INBOX] u8; loads: int; }
+SpwPage :: struct {
+  f: [1] WorldFollow; k: [1] SpwScratch; doc: [SPW_DOC] u8; did: [64] u8; scratch: [SPW_INBOX] u8; loads: int;
+  // what the editor shell is told (shell-model.coax, GitHub #13416): the selected piece's number on the
+  // wire (0: none), the revision this page's last write made, and the model with what it was made from
+  sel: int; own_rev: int = -1;
+  model: [EM_BYTES] u8; model_n: int; model_rev: int; model_key: [8] int;
+}
 // The page opens the world on a lane: dev for someone who edits, live for someone who plays.
 spw_page_open :: (g: [] SpGame, p: [] SpwPage, lane: int) -> bool { return wf_open(p[0].f[..], SPW_ID, lane, spw_pins(g)); }
 // The lane's document, answered: its pieces become the layer's, and the run goes on as it was
@@ -321,6 +328,71 @@ spw_page_answer :: (g: [] SpGame, p: [] SpwPage, host_id: int, text: string) -> 
   a := wf_answer(p[0].f[..], host_id, text);
   if a.what == WFQ_DOC { ok := spw_page_doc(g, p, a); }
   if a.what == WFQ_EVENTS { n := spw_page_events(g, p, a); }
-  if a.what == WFQ_POST { wf_posted(p[0].f[..], a); }
+  if a.what == WFQ_POST {
+    wf_posted(p[0].f[..], a);
+    // a write that stood says what can now be undone and redone (it carries no document: its batch goes where one would)
+    if a.status == 200 {
+      v := we_state_read(a.body, p[0].did[..], p[0].doc[..], p[0].scratch[..]);
+      if v.ok { p[0].f[0].undo = v.undo; p[0].f[0].redo = v.redo; p[0].own_rev = v.rev; }
+    }
+  }
   return a.what;
+}
+
+// ---- what the editor shell is told (GitHub #13416, the browser editor's E7)
+
+// The shell selects a piece by its number on the wire; 0, or a number no piece has, selects nothing.
+spw_select :: (g: [] SpGame, p: [] SpwPage, id: int) { p[0].sel = ifx id > 0 && sl_item(g, id - 1) >= 0 then id else 0; }
+// The page's model for the shell, made again only when what it is made from changed: the layer,
+// the page's place in the world, the selection or the last refusal. model_rev counts the makings.
+// A piece can be moved and turned (spw_edit), so those are the columns an edit may set.
+spw_model :: (g: [] SpGame, p: [] SpwPage) -> string {
+  f := p[0].f[..]; l := g[0].layer[..]; c := g[0].c[..];
+  if p[0].sel > 0 && sl_item(g, p[0].sel - 1) < 0 { p[0].sel = 0; }
+  // edits from elsewhere may have changed what can be undone: the buttons stay open and the server answers
+  if f[0].lane == WL_DEV && f[0].rev > p[0].own_rev && p[0].own_rev >= 0 {
+    if f[0].undo < 1 { f[0].undo = 1; } if f[0].redo < 1 { f[0].redo = 1; }
+    p[0].own_rev = f[0].rev;
+  }
+  key: [8] int;
+  key[0] = l[0].rev; key[1] = f[0].rev; key[2] = f[0].undo; key[3] = f[0].redo; key[4] = p[0].sel;
+  key[5] = f[0].refused_n * 1000 + f[0].refused_status; key[6] = f[0].status; key[7] = f[0].sent;
+  same := p[0].model_n > 0;
+  for k: 0..<7 { if key[k] != p[0].model_key[k] { same = false; } }
+  // (a refusal in the same words as the last is a new one when a request went between them)
+  if key[7] != p[0].model_key[7] && f[0].refused_n > 0 { same = false; }
+  if same { return cast(string) p[0].model[0..<p[0].model_n]; }
+  p[0].model_key = key;
+  out := p[0].model[..];
+  cols: [WE_COLS] bool; cols[WEC_X] = true; cols[WEC_Z] = true; cols[WEC_YAW] = true;
+  n := em_begin(out, SPW_ID, f[0].lane, ifx f[0].rev < 0 then 0 else f[0].rev, f[0].undo, f[0].redo, p[0].sel);
+  n = em_cols(out, n, cols[..]);
+  for r: 0..<c[0].piece_n { n = em_kind(out, n, c[0].pieces[r].id, sc_piece_name(c, r)); }
+  for i: 0..<l[0].st[0].n {
+    item := l[0].items[i];
+    n = em_entity(out, n, item.id + 1, item.mesh, we_cm(item.x), we_cm(item.y), we_cm(item.z), we_deg(item.yaw), 100);
+  }
+  // a kind's facts, as a person reads them
+  num: [16] u8;
+  names := [4] string.["size", "width", "depth", "height"];
+  units := [4] string.[" %", " cm", " cm", " cm"];
+  for r: 0..<c[0].piece_n {
+    pc := c[0].pieces[r];
+    vals := [4] int.[cast(int) (pc.scale * 100 + 0.5), cast(int) (pc.hx * 200 + 0.5), cast(int) (pc.hz * 200 + 0.5), cast(int) (pc.top * 100 + 0.5)];
+    for k: 0..<4 {
+      m := ct_put_int(num[..], 0, vals[k]); m = ct_put(num[..], m, units[k]);
+      n = em_cell(out, n, pc.id, names[k], cast(string) num[0..<m]);
+    }
+  }
+  if f[0].refused_n > 0 { n = em_no(out, n, wf_refused(f)); }
+  p[0].model_n = ifx n > out.count then 0 else n;
+  p[0].model_rev += 1;
+  return cast(string) p[0].model[0..<p[0].model_n];
+}
+// The shell's batch (world.edit.v1), sent as this page's own write. False while one is in flight.
+spw_shell_batch :: (p: [] SpwPage, body: string) -> bool {
+  f := p[0].f[..];
+  if wf_post(f, body) { return true; }
+  f[0].refused_n = em_copy(f[0].refused[..], "The last change is still on its way. Try again."); f[0].refused_status = 1;
+  return false;
 }
