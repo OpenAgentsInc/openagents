@@ -54,8 +54,11 @@ folded=()
 fold_libraries() {
   folded=()
   [[ ${#libraries[@]} -gt 0 && -f "$repo/$carrier" ]] || return 0
-  local sources kept=() library
-  sources="$(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size sources "$carrier" 2> /dev/null)" || return 0
+  local sources kept=() library status=0
+  # Exit 3 is a full list whose closure has an #import_proto (the Haunted
+  # House's descriptors): its .coax files are all there, so it folds too (#13513).
+  sources="$(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size sources "$carrier" 2> /dev/null)" || status=$?
+  [[ $status == 0 || $status == 3 ]] || return 0
   for library in "${libraries[@]}"; do
     if grep -qxF "$library" <<< "$sources"; then folded+=("$library"); else kept+=("$library"); fi
   done
@@ -68,18 +71,19 @@ if [[ "$render" == auto ]]; then
   # the carrier and a library both load is defined twice at the link (#12661:
   # the renderer and YOUR COMPUTER's wire both load sha256-kernel.coax, for
   # S_hash and S_hex). Libraries the carrier loads are folded into it; if one
-  # it doesn't load still shares an export, the app builds without its
-  # carrier, and says so; COAXIAL_RENDER=1 asks for the carrier and fails,
-  # naming the units.
+  # it doesn't load still shares an export, the build fails and names the
+  # units: the fix is for the carrier to #load that library. It used to build
+  # without the carrier and only warn, and /realm shipped so (#13513). An
+  # explicit COAXIAL_RENDER=0 still builds the producer-only module.
   if [[ "$render" == 1 ]]; then
-    all_libraries=(${libraries[@]+"${libraries[@]}"}); fold_libraries
+    fold_libraries
   fi
   if [[ "$render" == 1 && ${#libraries[@]} -gt 0 ]]; then
     if ! twice="$(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size exports "$carrier" "${libraries[@]}" 2>&1 > /dev/null)"; then
-      libraries=("${all_libraries[@]}"); folded=()
-      render=0
-      echo "wasm.sh: $(basename "$out"): built without its renderer carrier:" >&2
+      echo "wasm.sh: $(basename "$out"): can't link its renderer carrier ($carrier):" >&2
       grep '^wasm-size: ' <<< "$twice" | sed 's/^wasm-size: /  /' >&2 || true
+      echo "  #load the library in $carrier so one unit owns the export (as carriers/myrealm.coax and carriers/realm.coax do)." >&2
+      exit 1
     fi
   fi
 fi

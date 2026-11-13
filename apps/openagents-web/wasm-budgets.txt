@@ -260,7 +260,8 @@ private 280000
 project 2400000
 projects 110000
 pylon 110000
-realm 545000
+# The Haunted House links its renderer carrier again (carriers/realm.coax loads metaverse/haunt.coax, #13513): 584,383 bytes measured on Linux; about 5% room.
+realm 615000
 speedrunhud 120000
 splash 90000
 splatlab 120000

@@ -1,3 +1,7 @@
 // One physical source graph owns the producer and renderer facade.
 #load "../realm.coax";
 #load "../../../metaverse-engine/render/native-host.coax";
+// and the Haunted House the page links beside it: the renderer and the house
+// both load sha256-kernel.coax, so one graph owns S_hash and S_hex (#12661,
+// #13513). wasm.sh folds the library into this unit and gives the face its header.
+#load "../../../metaverse/haunt.coax";
