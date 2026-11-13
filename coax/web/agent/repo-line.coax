@@ -3,6 +3,8 @@
 // model call (ModelLine, answered by our inference route for the turn's asker). Each goes out as
 // one line and comes back as a ReplyLine with its id; a stop that comes first ends the turn.
 // chat.coax and chat-micro.coax load this, after engine-line.coax.
+#load "../../lib/agent/claude/claude.coax";   // ClOut and the JSON fields: loaded here too, so this part checks alone
+#load "engine-line.coax";
 #load "../../lib/repo/wire.coax";
 
 // The next reply to call id, read into line: its status and raw body, or why there is none.
