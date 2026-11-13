@@ -784,7 +784,7 @@ g_stage_set :: (g: [] SpGame, n: int) {
   if n == 8 { return; }
   g[0].taken[PICK_PLUS] = true; g[0].have[H_PLUS] = true; g[0].heat = 45; g[0].px = g[0].at.crate_x + 3; g[0].pz = g[0].at.crate_z; g[0].strip[1] = H_PLUS;
   if n == 9 { g[0].at_crate = true; g[0].mode = M_BAY; return; }
-  g[0].wall_gone = true; g[0].px = 3; g[0].pz = g[0].at.wall_z - 2.5; g[0].yaw = PI; g[0].heat = 40; g[0].boss_t = T_SWEEP_EVERY - 0.3; g[0].stun[0] = 8;
+  g[0].wall_gone = true; g[0].px = 1.5; g[0].pz = g[0].at.wall_z - 2.5; g[0].yaw = PI; g[0].heat = 40; g[0].boss_t = T_SWEEP_EVERY - 0.3; g[0].stun[0] = 8;
   if n == 10 { return; }
   if n == 11 { g[0].have[H_CORE] = true; g[0].mode = M_MEMORY; g[0].mem_t = 6; }
   if n == 12 { g[0].mode = M_RESTORED; g[0].mem_t = T_MEMORY; }
@@ -1996,19 +1996,19 @@ g_play_run :: (g: [] SpGame) -> int {
   g[0].px = g[0].bt[0].mech_x + 2; g[0].pz = g[0].bt[0].mech_z;
   if !(g_key(g, 'e', true) && g[0].bt[0].mech_core) { return 31; }
   g[0].px = 1; g[0].pz = g[0].at.wall_z + 3;
-  for i: 0..<6000 { g_step(g, 0.02); if i >= 200 && dist2(g[0].bt[0].mech_x, g[0].bt[0].mech_z, 0, g[0].at.wall_z + 1) < 12 { break; } }   // it walks over from the empty section
+  for i: 0..<600 { g_step(g, 0.1); if i >= 40 && dist2(g[0].bt[0].mech_x, g[0].bt[0].mech_z, 0, g[0].at.wall_z + 1) < 12 { break; } }   // it walks over from the empty section
   if !(g_key(g, 'e', true) && g[0].bt[0].drill_t > 0) { return 32; }
   for i: 0..<400 { g_step(g, 0.02); }
   if !(g[0].wall_gone) { return 33; }
   // the boss: the mech battles it with keys 1 to 4; while it reels she stuns its three weak points
-  g[0].px = 6; g[0].pz = g[0].at.wall_z - 3;
+  g[0].px = 1.5; g[0].pz = g[0].at.wall_z - 3;
   for i: 0..<6000 {
     g_step(g, 0.02);
     if g[0].mode != M_PLAY || g[0].boss_down { break; }
     _ = g_key(g, '1' + i % 4, true);
     if sb_open(g) {
       for k: 0..<3 { if g[0].stun[k] <= 0 { w := weak_at(g, k); g[0].px = w.x + 0.3; g[0].pz = w.z + 0.3; _ = g_key(g, 'f', true); } }
-      g[0].px = 6; g[0].pz = g[0].at.wall_z - 3;
+      g[0].px = 1.5; g[0].pz = g[0].at.wall_z - 3;
     }
   }
   if !(g[0].boss_down && g[0].phase == PH_NIGHT && g[0].hearts > 0 && !sb_fighting(g)) { return 34; }
@@ -2088,7 +2088,7 @@ FlowTest :: struct { o: [4] [CT_BODY] u8; }
   for i: 0..<200 { g_step(g[..], 0.02); }
   #assert dist2(t[0].mech_x, t[0].mech_z, g[0].px, g[0].pz) < 5 && g[0].bot_x == bx && g[0].bot_z == bz;   // the mech follows; Digger's body waits
   g[0].px = 1; g[0].pz = g[0].at.wall_z + 3;
-  for i: 0..<100 { g_step(g[..], 0.02); }
+  for i: 0..<600 { g_step(g[..], 0.1); if i >= 20 && dist2(t[0].mech_x, t[0].mech_z, 0, g[0].at.wall_z + 1) < 12 { break; } }   // it walks over from the empty section
   #assert g_key(g[..], 'e', true) && t[0].drill_t > 0 && g[0].msg == SBM_DRILLING;
   for i: 0..<400 { g_step(g[..], 0.02); }
   #assert g[0].wall_gone && t[0].drill_t == 0;

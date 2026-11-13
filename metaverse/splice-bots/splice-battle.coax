@@ -156,7 +156,7 @@ sb_stage :: (g: [] SpGame, n: int) {
     crew := [1] int.[SB_SNIPER]; sb_begin(g, SBF_DESERT, crew[..], SB_RAIDER);
     return;
   }
-  if n == 21 { g[0].wall_gone = true; g[0].px = 3; g[0].pz = -64.5; g[0].yaw = PI; g[0].heat = 40; g[0].have[H_PLUS] = true; g[0].taken[PICK_PLUS] = true; }
+  if n == 21 { g[0].wall_gone = true; g[0].px = 1.5; g[0].pz = g[0].at.wall_z - 2.5; g[0].yaw = PI; g[0].heat = 40; g[0].have[H_PLUS] = true; g[0].taken[PICK_PLUS] = true; }
   if n < 10 || (n > 12 && n != 21) { return; }
   t[0].mech_core = true; t[0].mech_used = true; t[0].mech_x = g[0].px + 3.5; t[0].mech_z = g[0].pz - 3; t[0].mech_yaw = PI;   // ahead of her, toward the boss
   if n == 21 { t[0].bots[SB_BOSS].vit.hp = 30; t[0].half = true; t[0].charge_t = SB_CHARGE_EVERY - 1.5; }
