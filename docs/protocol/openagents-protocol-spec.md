@@ -105,31 +105,31 @@ tree. It does not repeat the chapter's 28 package sketches.
 exists and which chapter sends it. This document says what the bytes are. Each
 chapter listed here ends its "What we build" section with a table that names
 the package and message, the carriage, and what is true today. Start with
-[chapter 49](../../openagents/book/ch049-one-schema-three-carriages.md), which is section 8 as a
+[chapter 65](../../openagents/book/ch065-one-schema-three-carriages.md), which is section 8 as a
 chapter.
 
 | Section | Chapters |
 | --- | --- |
-| 5 to 7: names, data classes, canonical bytes | [30](../../openagents/book/ch030-a-claims-key.md), [49](../../openagents/book/ch049-one-schema-three-carriages.md) |
-| 8: one message, three carriages | [46](../../openagents/book/ch046-signed-json-over-websockets.md), [48](../../openagents/book/ch048-the-openagents-api.md), [49](../../openagents/book/ch049-one-schema-three-carriages.md) |
-| 10: the HTTP envelope | [48](../../openagents/book/ch048-the-openagents-api.md) |
-| 11: Nostr as typed mirrors | [46](../../openagents/book/ch046-signed-json-over-websockets.md) |
-| 12: every kind, mapped | [47](../../openagents/book/ch047-every-step-is-an-event.md) |
-| 15: identity, accounts and secrets | [13](../../openagents/book/ch013-memory-and-consent.md), [26](../../openagents/book/ch026-the-authoring-interview.md), [43](../../openagents/book/ch043-one-identity.md), [50](../../openagents/book/ch050-accounts-and-agent-grants.md) |
-| 16: decisions, inference and receipts | [5](../../openagents/book/ch005-decide-before-you-generate.md), [6](../../openagents/book/ch006-measure-the-front.md), [41](../../openagents/book/ch041-metering-and-receipts.md), [54](../../openagents/book/ch054-one-gateway.md), [55](../../openagents/book/ch055-models-we-serve.md), [60](../../openagents/book/ch060-a-decision-in-the-world.md) |
-| 17: conversation and execution jobs | [2](../../openagents/book/ch002-one-runtime-every-surface.md), [9](../../openagents/book/ch009-conversation.md), [10](../../openagents/book/ch010-prepared-answers.md), [14](../../openagents/book/ch014-coder-as-a-member.md), [61](../../openagents/book/ch061-thin-clients.md) |
-| 18: agents, sessions and control | [3](../../openagents/book/ch003-members.md), [15](../../openagents/book/ch015-other-engines.md), [16](../../openagents/book/ch016-subagents-you-can-see.md), [58](../../openagents/book/ch058-agents-you-can-meet.md) |
-| 19: context, policy and capability | [3](../../openagents/book/ch003-members.md), [7](../../openagents/book/ch007-grants-and-approvals.md), [13](../../openagents/book/ch013-memory-and-consent.md), [18](../../openagents/book/ch018-the-command-line-behind-the-agent.md), [20](../../openagents/book/ch020-spending-approval.md), [24](../../openagents/book/ch024-installing-grants-nothing.md), [33](../../openagents/book/ch033-adoption-is-policy.md) |
-| 20: programs, extensions, skills and knowledge | [11](../../openagents/book/ch011-a-knowledge-base.md), [17](../../openagents/book/ch017-programs.md), [22](../../openagents/book/ch022-the-plugin-interface.md), [23](../../openagents/book/ch023-the-sandbox.md), [38](../../openagents/book/ch038-releases-as-signed-events.md), [39](../../openagents/book/ch039-everyone-gets-it.md), [59](../../openagents/book/ch059-realms-and-makers.md) |
-| 21: evaluation, Gym and traces | [8](../../openagents/book/ch008-on-the-record.md), [26](../../openagents/book/ch026-the-authoring-interview.md), [27](../../openagents/book/ch027-test-time-capabilities.md), [28](../../openagents/book/ch028-cases-and-graders.md), [29](../../openagents/book/ch029-a-two-arm-run.md), [30](../../openagents/book/ch030-a-claims-key.md), [31](../../openagents/book/ch031-reproduction-by-another-key.md), [32](../../openagents/book/ch032-external-validation.md), [36](../../openagents/book/ch036-the-gym.md) |
-| 22: durable work | [8](../../openagents/book/ch008-on-the-record.md), [16](../../openagents/book/ch016-subagents-you-can-see.md), [24](../../openagents/book/ch024-installing-grants-nothing.md) |
-| 23: places to run | [21](../../openagents/book/ch021-where-work-runs.md) |
-| 26: money | [19](../../openagents/book/ch019-a-wallet.md), [20](../../openagents/book/ch020-spending-approval.md), [40](../../openagents/book/ch040-paid-calls.md), [41](../../openagents/book/ch041-metering-and-receipts.md), [42](../../openagents/book/ch042-payouts-to-authors.md), [45](../../openagents/book/ch045-markets-for-work.md) |
-| 27: Pylon and attestation | [56](../../openagents/book/ch056-pylons.md), [60](../../openagents/book/ch060-a-decision-in-the-world.md), [63](../../openagents/book/ch063-one-release-pipeline.md) |
-| 28: XP and deploy status | [34](../../openagents/book/ch034-credit.md), [63](../../openagents/book/ch063-one-release-pipeline.md) |
-| 29: Metaverse | [57](../../openagents/book/ch057-the-verse-is-a-surface.md), [59](../../openagents/book/ch059-realms-and-makers.md) |
-| 33, 35 and 36: tooling, conformance and the plan | [52](../../openagents/book/ch052-the-compliance-rule.md) |
-| Sync, which has no section here yet ([docs/sync](../sync/README.md)) | [51](../../openagents/book/ch051-sync-across-devices.md) |
+| 5 to 7: names, data classes, canonical bytes | [46](../../openagents/book/ch046-a-claims-key.md), [65](../../openagents/book/ch065-one-schema-three-carriages.md) |
+| 8: one message, three carriages | [62](../../openagents/book/ch062-signed-json-over-websockets.md), [64](../../openagents/book/ch064-the-openagents-api.md), [65](../../openagents/book/ch065-one-schema-three-carriages.md) |
+| 10: the HTTP envelope | [64](../../openagents/book/ch064-the-openagents-api.md) |
+| 11: Nostr as typed mirrors | [62](../../openagents/book/ch062-signed-json-over-websockets.md) |
+| 12: every kind, mapped | [63](../../openagents/book/ch063-every-step-is-an-event.md) |
+| 15: identity, accounts and secrets | [23](../../openagents/book/ch023-memory-and-consent.md), [42](../../openagents/book/ch042-the-authoring-interview.md), [59](../../openagents/book/ch059-one-identity.md), [8](../../openagents/book/ch008-accounts-and-login.md) |
+| 16: decisions, inference and receipts | [15](../../openagents/book/ch015-decide-before-you-generate.md), [16](../../openagents/book/ch016-measure-the-front.md), [57](../../openagents/book/ch057-metering-and-receipts.md), [68](../../openagents/book/ch068-one-gateway.md), [69](../../openagents/book/ch069-models-we-serve.md), [74](../../openagents/book/ch074-a-decision-in-the-world.md) |
+| 17: conversation and execution jobs | [1](../../openagents/book/ch001-one-app-every-surface.md), [19](../../openagents/book/ch019-conversation.md), [20](../../openagents/book/ch020-prepared-answers.md), [24](../../openagents/book/ch024-coder-as-a-member.md), [75](../../openagents/book/ch075-cross-host-conformance.md) |
+| 18: agents, sessions and control | [13](../../openagents/book/ch013-members.md), [25](../../openagents/book/ch025-other-engines.md), [26](../../openagents/book/ch026-subagents-you-can-see.md), [72](../../openagents/book/ch072-agents-you-can-meet.md) |
+| 19: context, policy and capability | [13](../../openagents/book/ch013-members.md), [17](../../openagents/book/ch017-grants-and-approvals.md), [23](../../openagents/book/ch023-memory-and-consent.md), [28](../../openagents/book/ch028-the-command-line-behind-the-agent.md), [33](../../openagents/book/ch033-spending-approval.md), [40](../../openagents/book/ch040-installing-grants-nothing.md), [49](../../openagents/book/ch049-adoption-is-policy.md) |
+| 20: programs, extensions, skills and knowledge | [21](../../openagents/book/ch021-a-knowledge-base.md), [27](../../openagents/book/ch027-programs.md), [38](../../openagents/book/ch038-the-plugin-interface.md), [39](../../openagents/book/ch039-the-sandbox.md), [54](../../openagents/book/ch054-releases-as-signed-events.md), [55](../../openagents/book/ch055-everyone-gets-it.md), [73](../../openagents/book/ch073-realms-and-makers.md) |
+| 21: evaluation, Gym and traces | [18](../../openagents/book/ch018-on-the-record.md), [42](../../openagents/book/ch042-the-authoring-interview.md), [43](../../openagents/book/ch043-test-time-capabilities.md), [44](../../openagents/book/ch044-cases-and-graders.md), [45](../../openagents/book/ch045-a-two-arm-run.md), [46](../../openagents/book/ch046-a-claims-key.md), [47](../../openagents/book/ch047-reproduction-by-another-key.md), [48](../../openagents/book/ch048-external-validation.md), [52](../../openagents/book/ch052-the-gym.md) |
+| 22: durable work | [18](../../openagents/book/ch018-on-the-record.md), [26](../../openagents/book/ch026-subagents-you-can-see.md), [40](../../openagents/book/ch040-installing-grants-nothing.md) |
+| 23: places to run | [29](../../openagents/book/ch029-where-work-runs.md) |
+| 26: money | [32](../../openagents/book/ch032-a-wallet.md), [33](../../openagents/book/ch033-spending-approval.md), [56](../../openagents/book/ch056-paid-calls.md), [57](../../openagents/book/ch057-metering-and-receipts.md), [58](../../openagents/book/ch058-payouts-to-authors.md), [61](../../openagents/book/ch061-markets-for-work.md) |
+| 27: Pylon and attestation | [70](../../openagents/book/ch070-pylons.md), [74](../../openagents/book/ch074-a-decision-in-the-world.md), [76](../../openagents/book/ch076-releases-from-one-source.md) |
+| 28: XP and deploy status | [50](../../openagents/book/ch050-credit.md), [76](../../openagents/book/ch076-releases-from-one-source.md) |
+| 29: Metaverse | [71](../../openagents/book/ch071-the-verse-is-a-surface.md), [73](../../openagents/book/ch073-realms-and-makers.md) |
+| 33, 35 and 36: tooling, conformance and the plan | [66](../../openagents/book/ch066-the-compliance-rule.md) |
+| Sync, which has no section here yet ([docs/sync](../sync/README.md)) | [35](../../openagents/book/ch035-sync-across-devices.md) |
 
 ## Contents
 
@@ -1017,8 +1017,8 @@ receipt is an HTTP response field, a NIP-AGENT gateway receipt and a Pylon
 receipt input. The protocol defines each record once and maps it to every
 carriage.
 
-In the book: chapters [46](../../openagents/book/ch046-signed-json-over-websockets.md), [48](../../openagents/book/ch048-the-openagents-api.md), [49](../../openagents/book/ch049-one-schema-three-carriages.md) tell this section as a story, and
-[chapter 52](../../openagents/book/ch052-the-compliance-rule.md) gives the rule for the codecs.
+In the book: chapters [62](../../openagents/book/ch062-signed-json-over-websockets.md), [64](../../openagents/book/ch064-the-openagents-api.md), [65](../../openagents/book/ch065-one-schema-three-carriages.md) tell this section as a story, and
+[chapter 66](../../openagents/book/ch066-the-compliance-rule.md) gives the rule for the codecs.
 
 ### 8.1 The rule
 

@@ -73,7 +73,7 @@ you name it.
 > So why do we care? Because of what a signature gives you.
 
 Three properties, from
-[the OpenAgents book, chapter 46](../../openagents/book/ch046-signed-json-over-websockets.md):
+[the OpenAgents book, chapter 62](../../openagents/book/ch062-signed-json-over-websockets.md):
 
 - **It's signed.** You know who said it without trusting the relay that
   handed it to you.
@@ -427,7 +427,7 @@ tour you recorded.
 
 - [Nostr From Scratch, the book](../../nostr/book/README.md) and its
   [handoff note](../../nostr/HANDOFF.md)
-- [The OpenAgents book, chapter 46: Signed JSON over WebSockets](../../openagents/book/ch046-signed-json-over-websockets.md)
+- [The OpenAgents book, chapter 62: Signed JSON over WebSockets](../../openagents/book/ch062-signed-json-over-websockets.md)
 - [Episode 294 show notes: Bitcoin From Scratch](294-show-notes.md)
 - [Episode 289, *OpenAgents*](289.md): 2:30, signed JSON over WebSockets
 - [The OpenAgents NIPs](../../nostr/nips/openagents/README.md)
