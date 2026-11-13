@@ -172,6 +172,15 @@ manifests under `coax/web/compat/`; releases archive them and room images includ
 them. Before this profile existed, the retained production source supplies the
 baseline. The gate never executes scripts from the old checkout.
 
+One planned break is admitted: a wire raise (#13398). The owned hello's
+`version` defaults to `WIRE_VERSION`, so each raise changes that default. The
+gate reads `WIRE_VERSION` from production's wire source and `WIRE_VERSION` and
+`WIRE_LIVE` from the candidate's, requires the reviewed `WIRE_MIN` rule, and
+admits the raise only when `WIRE_MIN` is at or below production's wire, so the
+candidate's rooms seat production's page. Only that one default row is then
+taken from the candidate; every other row, including new frame fields, is
+compared as before. New persisted fields still need an explicit default.
+
 ## Verification
 
 The component mutations, native/evaluator regressions, production-surface

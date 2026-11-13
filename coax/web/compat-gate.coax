@@ -22,7 +22,7 @@ tool_main :: ()->int #export_c #effects(all) {
   modules:=[2]string.["everglade/shared/everglade-wire.coax","metaverse-engine/session/character-checkpoint.coax"];
   // Where a module was before it moved ("" when it never did): production's tree may still have it
   // there. f3fe9a3a2d (#13346) moved the wire module, and production (582fe6415f) is older than that.
-  former:=[2]string.["apps/openagents-web/everglade-wire.coax",""];
+  former:=[2]string.["apps/openagents-web/everglade-wire.coax","aethyr/session/character-checkpoint.coax"];
   facades:=[2]string.["coax/web/compat/everglade-wire.coax","coax/web/compat/character-checkpoint.coax"];
   names:=[2]string.["everglade-wire.surface","character-checkpoint.surface"];
   for module,i:modules {
@@ -41,9 +41,28 @@ tool_main :: ()->int #export_c #effects(all) {
     // Releases before the manifest profile existed have source as their retained
     // contract. Later builds retain the exact manifest checked before publishing.
     contract:=ifx fs_exists(published) then published else baseline;
+    // A deliberate wire raise changes the hello's version default (#13398). When the candidate's
+    // rooms seat production's wire, both production surfaces take the candidate's row for that one
+    // default; every other row, the hello's fields and the new frames' fields are compared as before.
+    adoptedbuf:[4096]u8;baseadoptbuf:[4096]u8;adopting:=false;
+    if i==0 {
+      oldsource:[4194304]u8;newsource:[4194304]u8;on:=fs_read(source,oldsource[..]);nn:=fs_read(module,newsource[..]);
+      if on>0 && nn>0 && cg_wire_raise(cast(string)oldsource[0..<on],cast(string)newsource[0..<nn]) {
+        row:=cg_line(cast(string)actual[0..<an],CG_HELLO_VERSION);
+        adopted:=fs_join(temporary,"production-adopted.surface",adoptedbuf[..]);baseadopted:=fs_join(temporary,"baseline-adopted.surface",baseadoptbuf[..]);
+        pairs:=[2]string.[contract,baseline];targets:=[2]string.[adopted,baseadopted];
+        for from,j:pairs {
+          text:[4194304]u8;tn:=fs_read(from,text[..]);rewritten:[4194304]u8;
+          body:=ifx row!="" && tn>0 then cg_adopt_text(cast(string)text[0..<tn],CG_HELLO_VERSION,row,rewritten[..]) else "";
+          if body=="" || !fs_write(targets[j],body) {tool_errln("compat gate: the wire raise's hello version row is missing");return 1;}
+        }
+        gone:=fs_remove(baseline);contract=adopted;baseline=baseadopted;adopting=true;
+        print("compat gate: wire raise admitted: the rooms seat production's wire\n");
+      }
+    }
     compare:=[6]string.[compiler,"compat",contract,candidate,"--baseline",baseline];
     if cg_run(compare[..],output[..])<0 {return 1;}
-    gone:=fs_remove(baseline);print("compat gate: % against %: compatible, no new regression\n",module,revision);
+    gone:=fs_remove(baseline);if adopting {dropped:=fs_remove(contract);}print("compat gate: % against %: compatible, no new regression\n",module,revision);
   }
   return 0;
 }

@@ -15,7 +15,7 @@ coax.compat.v1
 1	everglade-wire.coax::WireIn	theta	5	f32;counter=0	40	4	0	1	0	0
 1	everglade-wire.coax::WireIn	b	6	int;counter=0	48	8	0	1	0	0
 1	everglade-wire.coax::WireIn	heard	7	int;counter=0	56	8	0	1	0	0
-0		everglade-wire.coax::WireCast	0	struct;c=coax_t_WireCast:id=0;quantity=0,0,0,0,0,0,0;frame=0,0,0,0,0	48	8	0	1	0	0
+0		everglade-wire.coax::WireCast	0	struct;c=coax_t_WireCast:id=0;quantity=0,0,0,0,0,0,0;frame=0,0,0,0,0	56	8	0	1	0	0
 1	everglade-wire.coax::WireCast	seq	0	int;counter=0	0	8	0	1	0	0
 1	everglade-wire.coax::WireCast	slot	1	int;counter=0	8	8	0	1	0	0
 1	everglade-wire.coax::WireCast	ax	2	f32;counter=0	16	4	0	1	0	0
@@ -24,13 +24,15 @@ coax.compat.v1
 1	everglade-wire.coax::WireCast	tgt	5	int;counter=0	32	8	1	1	0	0
 3	everglade-wire.coax::WireCast	tgt	0	integer:64:2cdb26265b4dc65e3b44d694f121fd6de99b9e4b8ae7f08d84bfa9537635ae43	0	0	0	1	0	0
 1	everglade-wire.coax::WireCast	mode	6	int;counter=0	40	8	0	1	0	0
+1	everglade-wire.coax::WireCast	view	7	int;counter=0	48	8	1	1	0	0
+3	everglade-wire.coax::WireCast	view	0	integer:64:5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9	0	0	0	1	0	0
 0		everglade-wire.coax::WireUse	0	struct;c=coax_t_WireUse:id=0;quantity=0,0,0,0,0,0,0;frame=0,0,0,0,0	24	8	0	1	0	0
 1	everglade-wire.coax::WireUse	seq	0	int;counter=0	0	8	0	1	0	0
 1	everglade-wire.coax::WireUse	kind	1	int;counter=0	8	8	0	1	0	0
 1	everglade-wire.coax::WireUse	id	2	int;counter=0	16	8	0	1	0	0
 0		everglade-wire.coax::WireHelloValue	0	struct;c=coax_t_WireHelloValue:id=0;quantity=0,0,0,0,0,0,0;frame=0,0,0,0,0	3120	8	0	1	0	0
 1	everglade-wire.coax::WireHelloValue	version	0	int;counter=0	0	8	1	1	0	0
-3	everglade-wire.coax::WireHelloValue	version	0	integer:64:ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d	0	0	0	1	0	0
+3	everglade-wire.coax::WireHelloValue	version	0	integer:64:7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451	0	0	0	1	0	0
 1	everglade-wire.coax::WireHelloValue	flags	1	int;counter=0	8	8	0	1	0	0
 1	everglade-wire.coax::WireHelloValue	ok	2	bool;counter=0	16	1	0	1	0	0
 1	everglade-wire.coax::WireHelloValue	look	3	[1024]u8;counter=0	17	1024	0	1	0	0

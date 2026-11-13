@@ -21,7 +21,7 @@ CC_COMBAT_HEAD :: 5; CC_AURA :: 8; CC_AURAS :: 16; CC_COMBAT :: CC_COMBAT_HEAD +
 CC_COMBAT_HIGH :: [5]int.[60,15,15,1000,2592000000000];
 CC_AURA_HIGH :: [8]int.[40,2147483647,1,1000,2592000000000,6,99,1];
 CharacterCombat :: struct #persisted {on:bool; n:int; v:[CC_COMBAT]int;}
-CharacterRest :: struct #persisted {on:bool; n:[CC_REST]int; more:bool=false; uses:[CC_MORE]int=[3]int.[0,0,0]; combat:CharacterCombat;}
+CharacterRest :: struct #persisted {on:bool; n:[CC_REST]int; more:bool=false; uses:[CC_MORE]int=[3]int.[0,0,0]; combat:CharacterCombat=CharacterCombat.{};}
 #load "tests/character-checkpoint-fixture.coax" #test;
 #test "character checkpoint: a whole dead character, place and spent resources round trip" {
   c:=cc_fixture();out:[CC_BODY]u8;s:=cc_write(c,out[..]);d:=cc_read(s,true);

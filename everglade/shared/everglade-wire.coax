@@ -229,7 +229,7 @@ WE_MOUNT :: 20; WE_DISMOUNT :: 21; WE_LAND :: 22;
 WE_SAY :: 6; WE_WEAR :: 7; WE_BARE :: 8;   // Everglade II (#13291, #13292): talk to dialogue ID (the content tables'), wear item ID, empty equipment slot ID
 
 WireIn :: struct #persisted { seq: int; kx: int; ky: int; px: int; py: int; theta: f32; b: int; heard: int; }   // theta goes in WIRE_FINE units (0.1 mrad)
-WireCast :: struct #persisted { seq: int; slot: int; ax: f32; ay: f32; az: f32; tgt: int = -1; mode: int; view: int; }   // mode: the spell's (wire_mode), 0 sent as nothing unless a view follows; view: the moment the page drew the others at (#13289), 0 sent as nothing
+WireCast :: struct #persisted { seq: int; slot: int; ax: f32; ay: f32; az: f32; tgt: int = -1; mode: int; view: int = 0; }   // mode: the spell's (wire_mode), 0 sent as nothing unless a view follows; view: the moment the page drew the others at (#13289), 0 sent as nothing
 WireUse :: struct #persisted { seq: int; kind: int; id: int; }
 // The borrowed codec boundary remains available to existing callers. Active
 // page/room hellos use WireHelloValue, which owns every byte of its fields.

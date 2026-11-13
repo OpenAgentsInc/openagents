@@ -48,3 +48,67 @@ cg_contract_emit :: (compiler:string,source:string,facade:string,path:string,leg
   #assert cg_facade_text("/tmp/a \"b\"/wire.coax","f :: () {}\n",out[..])=="#load \"/tmp/a \\\"b\\\"/wire.coax\";\nf :: () {}\n";
   #assert cg_facade_text("wire.coax","body",out[0..<2])=="";
 }
+
+// A deliberate wire raise (#13398). The owned hello's version defaults to WIRE_VERSION, so each raise
+// changes that one persisted default. The gate admits it only when the candidate's rooms seat the
+// wire production's page speaks: WIRE_VERSION rose past production's and WIRE_MIN, computed by the
+// reviewed rule from WIRE_LIVE, is at or below it. Every other row is still compared unchanged.
+CG_WIRE_MIN :: "WIRE_MIN :: ifx WIRE_LIVE < WIRE_VERSION - 1 then WIRE_LIVE else WIRE_VERSION - 1;";
+CG_HELLO_VERSION :: "3\teverglade-wire.coax::WireHelloValue\tversion\t";
+// The first line of TEXT that starts with PREFIX, without its newline ("" when none).
+cg_line :: (text:string,prefix:string)->string {
+  start:=0;
+  while start<text.count {
+    end:=start;while end<text.count && text[end]!=10 {end+=1;}
+    if end-start>=prefix.count && text[start..<start+prefix.count]==prefix {return text[start..<end];}
+    start=end+1;
+  }
+  return "";
+}
+// The decimal literal of `NAME :: N;` at a line's start, or -1 when it is anything else.
+cg_constant :: (text:string,prefix:string)->int {
+  line:=cg_line(text,prefix);if line=="" {return -1;}
+  value:=0;i:=prefix.count;
+  while i<line.count && i-prefix.count<6 && line[i]>='0' && line[i]<='9' {value=value*10+cast(int)(line[i]-'0');i+=1;}
+  if i==prefix.count || i>=line.count || line[i]!=';' {return -1;}
+  return value;
+}
+// PRODUCTION and CANDIDATE are the wire module's source text in each tree.
+cg_wire_raise :: (production:string,candidate:string)->bool {
+  was:=cg_constant(production,"WIRE_VERSION :: ");now:=cg_constant(candidate,"WIRE_VERSION :: ");live:=cg_constant(candidate,"WIRE_LIVE :: ");
+  if was<1 || now<=was || live<1 || cg_line(candidate,"WIRE_MIN :: ")!=CG_WIRE_MIN {return false;}
+  least:=ifx live<now-1 then live else now-1;
+  return least<=was;
+}
+// TEXT with its one line starting with PREFIX replaced by ROW ("" when not exactly one).
+cg_adopt_text :: (text:string,prefix:string,row:string,out:[]u8)->string {
+  writer:[1]Jo;jo_start(writer[..],out);start:=0;found:=0;
+  while start<text.count {
+    end:=start;while end<text.count && text[end]!=10 {end+=1;}
+    line:=text[start..<end];
+    if line.count>=prefix.count && line[0..<prefix.count]==prefix {jo_put(writer[..],row);found+=1;} else {jo_put(writer[..],line);}
+    if end<text.count {jo_put(writer[..],"\n");}
+    start=end+1;
+  }
+  return ifx writer[0].bad || found!=1 then "" else jo_text(writer[..]);
+}
+
+#test "a wire raise is admitted only while the rooms seat production's wire" {
+  five:="x\nWIRE_VERSION :: 5;   // 5: rows\nWIRE_MIN :: 5;\n";
+  #assert cg_wire_raise(five,"WIRE_VERSION :: 7;   // 7\nWIRE_LIVE :: 5;\nWIRE_MIN :: ifx WIRE_LIVE < WIRE_VERSION - 1 then WIRE_LIVE else WIRE_VERSION - 1;\n");
+  #assert cg_wire_raise(five,"WIRE_VERSION :: 6;\nWIRE_LIVE :: 5;\nWIRE_MIN :: ifx WIRE_LIVE < WIRE_VERSION - 1 then WIRE_LIVE else WIRE_VERSION - 1;\n");
+  // WIRE_LIVE raised past production's page: the rooms no longer seat it.
+  #assert !cg_wire_raise(five,"WIRE_VERSION :: 7;\nWIRE_LIVE :: 6;\nWIRE_MIN :: ifx WIRE_LIVE < WIRE_VERSION - 1 then WIRE_LIVE else WIRE_VERSION - 1;\n");
+  // No raise, a lowered version, a hand-set WIRE_MIN or an unreadable constant refuse.
+  #assert !cg_wire_raise(five,"WIRE_VERSION :: 5;\nWIRE_LIVE :: 5;\nWIRE_MIN :: ifx WIRE_LIVE < WIRE_VERSION - 1 then WIRE_LIVE else WIRE_VERSION - 1;\n");
+  #assert !cg_wire_raise(five,"WIRE_VERSION :: 4;\nWIRE_LIVE :: 4;\nWIRE_MIN :: ifx WIRE_LIVE < WIRE_VERSION - 1 then WIRE_LIVE else WIRE_VERSION - 1;\n");
+  #assert !cg_wire_raise(five,"WIRE_VERSION :: 7;\nWIRE_LIVE :: 5;\nWIRE_MIN :: 6;\n");
+  #assert !cg_wire_raise(five,"WIRE_VERSION :: 6 + 1;\nWIRE_LIVE :: 5;\nWIRE_MIN :: ifx WIRE_LIVE < WIRE_VERSION - 1 then WIRE_LIVE else WIRE_VERSION - 1;\n");
+  #assert !cg_wire_raise("WIRE_VERSION :: FIVE;\n","WIRE_VERSION :: 7;\nWIRE_LIVE :: 5;\nWIRE_MIN :: ifx WIRE_LIVE < WIRE_VERSION - 1 then WIRE_LIVE else WIRE_VERSION - 1;\n");
+}
+#test "only the hello's version default is adopted, and only when it appears once" {
+  out:[256]u8;
+  #assert cg_adopt_text("a\n3\tm::H\tversion\told\nb\n","3\tm::H\tversion\t","3\tm::H\tversion\tnew",out[..])=="a\n3\tm::H\tversion\tnew\nb\n";
+  #assert cg_adopt_text("a\nb\n","3\tm::H\tversion\t","x",out[..])=="";
+  #assert cg_adopt_text("3\tm::H\tversion\t1\n3\tm::H\tversion\t2\n","3\tm::H\tversion\t","x",out[..])=="";
+}
