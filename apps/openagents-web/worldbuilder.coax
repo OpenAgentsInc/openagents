@@ -1067,6 +1067,22 @@ put_dollars :: (b: [] u8, at: int, micros: int) -> int {
 }
 put_mb :: (b: [] u8, at: int, bytes: int) -> int { n := put_int(b, at, (bytes + 524288) / 1048576); return put(b, n, " MB"); }
 
+// The words on button `btn`, as drawn.
+wb_button_label :: (s: [] WorldBuilder, btn: int) -> string {
+  if btn == BTN_VIEW { return ifx walking(s) then "OVERVIEW" else "WALK"; }
+  if btn == BTN_FRAME { return "FRAME"; }
+  if btn == BTN_EDIT { return "EDIT"; }
+  return "SEND";
+}
+// What the person reads for control k of the last frame (s[0].hits): a button's words, "chat box" for the
+// field, "" for none. The agent driver lists the controls by it (worldbuilder-walk.coax wbw_controls, #13470).
+worldbuilder_hit_name :: (s: [] WorldBuilder, k: int) -> string {
+  if k < 0 || k >= s[0].nh { return ""; }
+  h := s[0].hits[k];
+  if h.kind == HIT_FIELD { return "chat box"; }
+  if h.kind == HIT_BUTTON { return wb_button_label(s, h.a); }
+  return "";
+}
 wb_button :: (sh: [] Sheet, m: TextMeasure, sk: UiSkin, s: [] WorldBuilder, x: f32, y: f32, label: string, btn: int, primary: bool) -> f32 {
   enabled := button_enabled(s, btn);
   hot := enabled && ((s[0].hover_kind == HIT_BUTTON && s[0].hover_btn == btn) || s[0].press_btn == btn);
@@ -1193,8 +1209,7 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
   // buttons right. On a phone the buttons go above the panel, in as many rows as they need.
   // With the editor's shell over the page there is no EDIT: undo, redo, the things and the land's
   // brush are the shell's.
-  view_label := ifx walking(s) then "OVERVIEW" else "WALK";
-  labels := [3] string.[view_label, "FRAME", "EDIT"];
+  labels := [3] string.[wb_button_label(s, BTN_VIEW), wb_button_label(s, BTN_FRAME), wb_button_label(s, BTN_EDIT)];
   ids := [3] int.[BTN_VIEW, BTN_FRAME, BTN_EDIT];
   first := ifx s[0].walk_ok then 0 else 1;   // no WALK or OVERVIEW until your character is there
   last := ifx s[0].edit then 2 else 3;
@@ -1248,12 +1263,12 @@ draw_ui :: (s: [] WorldBuilder, out: [] f32) -> int {
   fx0 := cx - fw * 0.5;
   fy1 := ry1 - g - (ifx phone then 8.0f32 else 12.0f32);
   fy0 := fy1 - fh;
-  send_w := button_width(m, sk, "SEND");
+  send_w := button_width(m, sk, wb_button_label(s, BTN_SEND));
   sx := fx0 + fw - sk.space - send_w;
   sy := fy0 + sk.space;
 
   _ = panel(sh[..], m, sk, fx0, fy0, fw, fh, "");
-  _ = wb_button(sh[..], m, sk, s, sx, sy, "SEND", BTN_SEND, true);
+  _ = wb_button(sh[..], m, sk, s, sx, sy, wb_button_label(s, BTN_SEND), BTN_SEND, true);
 
   field_w := sx - sk.space - fx0;
   sheet_hit(sh[..], HIT_FIELD, 0, 0, fx0, fy0, field_w, fh);

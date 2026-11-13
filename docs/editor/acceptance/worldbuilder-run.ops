@@ -2,6 +2,8 @@
 # Start from an empty world: the driver's browser has none kept. Size 1280x800, query "edit".
 clock +1500
 clock until b.cat_ready == true within 60000
+# WorldBuilder's own controls, by id (#13470): worldbuilder.frame, worldbuilder.send, worldbuilder.chat-box
+tree
 # the overview, and a tap on the ground: "here"
 type - key Tab
 clock +400
@@ -66,6 +68,7 @@ state b.world.fg.done
 # the overview framed on what was built, and the page drawn at the last revision
 tap tool
 tap tool.1
+tap worldbuilder.frame
 clock +600
 hit 57 35
 hit 640 400

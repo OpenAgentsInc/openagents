@@ -85,7 +85,29 @@ wbw_frame :: (w: [] WalkBuilder, strokes: [] f32, out: [] f32, u: [] f32, width:
     b[0].stick_on = s[0].stick_on;
     b[0].stick[0] = s[0].stick_ox; b[0].stick[1] = s[0].stick_oy; b[0].stick[2] = s[0].stick_px; b[0].stick[3] = s[0].stick_py;
   }
-  return wb.worldbuilder_frame(b, out, u, width, height, dpr, dt, still);
+  n := wb.worldbuilder_frame(b, out, u, width, height, dpr, dt, still);
+  wbw_controls(w);
+  return n;
+}
+// The agent driver's layout trace (coax drive's tree, layout, hit and tap ID, #13470): the page's controls
+// are WorldBuilder's, not the bare zone's HUD, whose strokes are made but never drawn. The zone's frame
+// filled the trace with its own (everglade/zone-drive.coax fd_frame); here it holds WorldBuilder's buttons
+// and chat box instead, from the sheet's hits as the frame just laid them out (CSS px, made device px).
+wbw_controls :: (w: [] WalkBuilder) {
+  d := w[0].z[0].drive;
+  if d.count == 0 { return; }
+  t := drv_trace(d);
+  if t.count == 0 { return; }
+  uit_clear(t);
+  b := w[0].b[..];
+  k := ifx d[0].view.k > 0 then d[0].view.k else b[0].dpr;
+  uit_part(t, "worldbuilder");
+  for i: 0..<b[0].nh {
+    name := wb.worldbuilder_hit_name(b, i);
+    if name.count == 0 { continue; }
+    h := b[0].hits[i];
+    uit_add(t, UIT_NONE, UIT_BUTTON, h.x * k, h.y * k, (h.x + h.w) * k, (h.y + h.h) * k, name);
+  }
 }
 // After the figure's records are made (zone_scene: figures' draws in the zone's bodies): the frame's
 // draws, WorldBuilder's and then the figure's, each figure draw's instances numbered from WBW_FIGURES.
@@ -198,4 +220,26 @@ wbw_uniform_floats :: () -> int #export_c #effects(all) { return wb.UNIFORM_FLOA
   // flying, W is the camera's while it is held, and its release is taken too
   wbw_message(w[..], 522, "fly on");
   #assert wbw_key(w[..], 'w', 0) && w[0].b[0].vkeys[0] && wbw_key_up(w[..], 'w', 0) && !w[0].b[0].vkeys[0];
+}
+#test "worldbuilder walk: the driver's tree lists WorldBuilder's controls, not the bare zone's HUD (#13470)" #steps 4000000000 {
+  w: [1] WalkBuilder; d: [1] Drive;
+  zone_drive_attach(w[0].z[..], d[..]);
+  wbw_message(w[..], HOST_PAGE, "url=https://openagents.com/create-world?edit\n");
+  fd_message(w[0].z[..], "status");
+  #assert d[0].on;
+  // the zone's frame puts its own HUD in the trace; the page's controls take its place
+  drv_frame(d[..], 1280, 800, 1, false);
+  uit_part(drv_trace(d[..]), "portrait"); uit_add(drv_trace(d[..]), UIT_NONE, UIT_BUTTON, 900, 90, 960, 150, "portrait");
+  b := w[0].b[..];
+  b[0].nh = 3; b[0].dpr = 1;
+  b[0].hits[0] = wb.SheetHit.{x = 1100, y = 16, w = 70, h = 32, kind = wb.HIT_BUTTON, a = wb.BTN_FRAME};
+  b[0].hits[1] = wb.SheetHit.{x = 1000, y = 740, w = 60, h = 32, kind = wb.HIT_BUTTON, a = wb.BTN_SEND};
+  b[0].hits[2] = wb.SheetHit.{x = 300, y = 730, w = 690, h = 52, kind = wb.HIT_FIELD};
+  wbw_controls(w[..]);
+  fd_message(w[0].z[..], "tree");
+  tree := cast(string) zone_drive_out(w[0].z[..]);
+  #assert !wb.has(tree, "portrait") && wb.has(tree, "worldbuilder.frame button \"FRAME\" at 1100 16 size 70x32");
+  #assert wb.has(tree, "worldbuilder.send button \"SEND\"") && wb.has(tree, "worldbuilder.chat-box button \"chat box\"");
+  fd_message(w[0].z[..], "hit 1130 30");
+  #assert wb.has(cast(string) zone_drive_out(w[0].z[..]), "worldbuilder.frame");
 }

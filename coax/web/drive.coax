@@ -805,7 +805,8 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
       if !dv_mouse(s, "mouseMoved", x, y) || !dv_mouse(s, "mousePressed", x, y) || !dv_mouse(s, "mouseReleased", x, y) { dv_s(out, "the click failed: "); dv_s(out, cdp_error(s[0].c[..])); return false; }
       dv_s(out, "tapped "); dv_s(out, id);
       if eq > 0 && dv_word(op, 0) == "tap" { dv_s(out, cast(string) dv_rest(op, 1)[id.count..<dv_rest(op, 1).count]); }
-      dv_s(out, " at "); dv_s(out, at);
+      // the point clicked, the window's (`at` may name it in the canvas's own pixels, and its text is not kept)
+      dv_s(out, " at "); dv_i(out, x); dv_s(out, " "); dv_i(out, y);
     }
     if w0 == "type" {
       if dv_word(op, 2) == "key" {

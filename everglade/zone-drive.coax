@@ -20,9 +20,10 @@ fd_frame :: (s: [] EgZone) {
   if !d[0].on || !fd_on(s) { return; }
   h := s[0].creator[0].hostiles[..]; b := x[0].b[..];
   drv_add(d, DRV_PLAYER, "you", -1, FB_CL_NAME[ifx x[0].klass >= 0 && x[0].klass < 12 then x[0].klass else 3], s[0].you_x, s[0].you_y, s[0].you_z, h[0].hp, h[0].max_hp, h[0].hp <= 0);
+  // a bare zone (zone.coax `bare`: Bitcoin Lab, WorldBuilder's walk) has no monsters, no bar and no portrait
   for i: 0..<XC_FOES {
     e := h[0].enemies[i];
-    if e.inactive || 1 + i >= b[0].n { continue; }
+    if s[0].bare || e.inactive || 1 + i >= b[0].n { continue; }
     k := hostile.hostile_kind(i); name := XC_FOE_NAMES[ifx k >= 0 && k < XC_FOE_NAMES.count then k else 1];
     c := b[0].c[1 + i];
     drv_add(d, DRV_MONSTER, name, i, name, e.x, s[0].you_y, e.z, c.hp, c.hp_max, e.dead);
@@ -39,7 +40,7 @@ fd_frame :: (s: [] EgZone) {
     for i: 0..<ft.n { if i < FD_FACE_IDS.count { f := ft.face[i]; drv_add(d, DRV_OBJECT, FD_FACE_IDS[i], i, FD_FACE_IDS[i], f.x, f.y, f.z, -1, -1, false); } }
   }
   t := drv_trace(d);
-  if t.count == 0 || !x[0].started { return; }
+  if t.count == 0 || !x[0].started || s[0].bare { return; }
   uit_part(t, "bar");
   for i: 0..<x[0].bar_n { r := xc_slot(x, i); uit_add(t, UIT_NONE, UIT_BUTTON, r[0], r[1], r[2], r[3], x[0].bar[i].name); }
   // your portrait (a press opens the class menus) and the open menu's rows (everglade/hud/class-bar.coax)
@@ -83,4 +84,12 @@ zone_drive_out :: (s: [] EgZone) -> [] u8 #export_c #effects(all) { return ifx s
   d: [1] Drive; zone_drive_attach(s[..], d[..]);
   fd_message(s[..], "status"); #assert cast(string) zone_drive_out(s[..]) == "none: idle" && d[0].on;
   fd_message(s[..], "walk-to imp-0"); #assert cast(string) zone_drive_out(s[..]) == "no entity imp-0 in the tree";
+}
+#test "a bare zone lists no monsters and no bar for the driver (#13470)" {
+  s: [1] EgZone; d: [1] Drive; zone_drive_attach(s[..], d[..]);
+  fd_message(s[..], "status");
+  s[0].creator[0].experimental = true; s[0].you_on = true; s[0].bare = true;
+  x := s[0].xc[..]; x[0].w = 1280; x[0].h = 800; x[0].k = 1; x[0].started = true; x[0].bar_n = 2;
+  fd_frame(s[..]);
+  #assert d[0].n == 1 && d[0].ents[0].kind == DRV_PLAYER && d[0].trace[0].n == 0;
 }
