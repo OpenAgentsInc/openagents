@@ -96,6 +96,9 @@ CW_AGENTS :: 5;
 CW_AGENT_NAMES :: [5] string.["OpenAgents", "Claude Code", "Codex", "Antigravity", "Microcoder"];
 CW_LM :: 5;   // a local agent's models, at most
 CW_LM_N :: [4] int.[4, 1, 3, 3];
+// The model each local agent starts on until this browser picks another (#13465, #13466): Claude Code on Haiku 5.5,
+// the quick, cheap one for a turn in the editor; the pick is kept in this browser (cw_keep, "lmA=K").
+CW_LM_DEFAULT :: [4] int.[3, 0, 0, 0];
 // Each named for what it is: an agent's own "default" was whatever its config file on this machine said.
 CW_LM_NAMES :: [20] string.["Opus 5.5", "Fable 5.2", "Sonnet 5.5", "Haiku 5.5", "",   "GPT 6.1 Sol", "", "", "", "",
   "Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "", "",   "Gemini 3.8 Flash", "Gemini 4 Argon", "Gemini 4 Carbon", "", ""];
@@ -144,7 +147,7 @@ ChatWeb :: struct {
   menu: bool;                        // the model menu is open
   amenu: bool;                       // the agent menu is open
   hosted: int;                       // the model OpenAgents last had, for coming back to it
-  lm: [4] int;                       // each local agent's chosen model
+  lm: [4] int;                       // each local agent's chosen model + 1 (0: none chosen, CW_LM_DEFAULT)
   model: int;                        // the model the next message goes to
   known: bool;                       // the account has been read
   known_asked: bool;                 // and that it has been asked for, whatever came back
@@ -288,8 +291,8 @@ cw_model :: (s: [] ChatWeb) -> int {
 cw_agent :: (s: [] ChatWeb) -> int { m := cw_model(s); return ifx cw_local_model(m) then m - CW_HOSTED + 1 else 0; }
 // A local agent's chosen model, within its list.
 cw_lm :: (s: [] ChatWeb, agent: int) -> int {
-  counts := CW_LM_N; k := s[0].lm[agent - 1];
-  return ifx k < 0 || k >= counts[agent - 1] then 0 else k;
+  counts := CW_LM_N; first := CW_LM_DEFAULT; k := s[0].lm[agent - 1] - 1;
+  return ifx k < 0 || k >= counts[agent - 1] then first[agent - 1] else k;
 }
 cw_sel :: (s: [] ChatWeb) -> string { return cast(string) s[0].sel[0..<s[0].sel_n]; }
 // A request for the host: a POST of the body, or a GET when there is none. False while another is in flight.
@@ -374,11 +377,24 @@ cw_side_keeps :: (s: [] ChatWeb, k: int, claude: bool, sec: int) -> bool {
 cw_go_to :: (s: [] ChatWeb, url: string, push: bool) { s[0].go_n = cw_put(s[0].go[..], 0, url); s[0].go_push = push; }
 // The shell shows the chat, at its own address.
 cw_to_chat :: (s: [] ChatWeb) { if s[0].page != SS_CHATS { s[0].page = SS_CHATS; } cw_go_to(s, "/chat", true); }
-// What this browser keeps for the page: whether the agents on this machine are off, and whether the side is put away.
+// What this browser keeps for the page: whether the agents on this machine are off, whether the side is put away,
+// and each local agent's chosen model ("lm1=3": Claude Code's fourth).
 cw_keep :: (s: [] ChatWeb) {
   n := cw_put(s[0].keep[..], 0, ifx s[0].local_off then "local=off" else "local=on");
   if s[0].side_closed { n = cw_put(s[0].keep[..], n, "&side=closed"); }
+  for a: 0..<4 {
+    if s[0].lm[a] > 0 { d := [1] u8.[cast(u8) ('0' + a + 1)]; e := [1] u8.[cast(u8) ('0' + s[0].lm[a] - 1)]; n = cw_put(s[0].keep[..], n, "&lm"); n = cw_put(s[0].keep[..], n, cast(string) d[..]); n = cw_put(s[0].keep[..], n, "="); n = cw_put(s[0].keep[..], n, cast(string) e[..]); }
+  }
   s[0].keep_n = n;
+}
+// A local agent's model kept in this browser ("lmA=K"): K + 1, or 0 when none was kept.
+cw_kept_lm :: (kept: string, agent: int) -> int {
+  i := 0;
+  while i + 5 <= kept.count {
+    if kept[i] == 'l' && kept[i + 1] == 'm' && kept[i + 2] == cast(u8) ('0' + agent) && kept[i + 3] == '=' && kept[i + 4] >= '0' && kept[i + 4] <= '9' { return cast(int) (kept[i + 4] - '0') + 1; }
+    i += 1;
+  }
+  return 0;
 }
 cw_kept_has :: (kept: string, word: string) -> bool {
   i := 0;
@@ -1260,6 +1276,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     kept := cast(string) s[0].inbox[0..<n];
     s[0].local_off = cw_kept_has(kept, "local=off");
     s[0].side_closed = cw_kept_has(kept, "side=closed");
+    for a: 0..<4 { s[0].lm[a] = cw_kept_lm(kept, a + 1); }
     s[0].dirty = true; return;
   }
   if kind == CW_PATH {
@@ -1347,7 +1364,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
   }
   else if kind == CW_CLICK && cw_index(id, "lm.") >= 0 {
     counts := CW_LM_N; agent := cw_agent(s); m := cw_index(id, "lm.");
-    if agent > 0 && m < counts[agent - 1] { s[0].lm[agent - 1] = m; }
+    if agent > 0 && m < counts[agent - 1] { s[0].lm[agent - 1] = m + 1; cw_keep(s); }
     s[0].menu = false;
     dm_focus(s[0].dom[..], "composer");
   }
@@ -1818,7 +1835,7 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
   s[0].model = 7;
   cw_test_type(s, "composer", "fix it");
   cw_test_enter(s, "composer");
-  #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/run" && cw_test_body(s) == "{\"task\":\"fix it\",\"engine\":\"claude\",\"model\":\"claude-opus-5-5\"}";
+  #assert coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/run" && cw_test_body(s) == "{\"task\":\"fix it\",\"engine\":\"claude\",\"model\":\"claude-haiku-5-5\"}";
   #assert s[0].count == 1 && s[0].lrun && s[0].echo && !s[0].live;
   cw_test_answer(s, 200, "20261112-050000-001\n");
   #assert cw_sel(s) == "20261112-050000-001" && s[0].log_next == 0;
@@ -1884,7 +1901,7 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
   s[0].model = 7;
   cw_test_enter(s, "composer");
   if cw_test_door(s) != "/local/run" { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS); }
-  #assert cw_test_door(s) == "/local/run" && cw_test_body(s) == "{\"task\":\"/goal all tests pass\",\"engine\":\"claude\",\"model\":\"claude-opus-5-5\"}";
+  #assert cw_test_door(s) == "/local/run" && cw_test_body(s) == "{\"task\":\"/goal all tests pass\",\"engine\":\"claude\",\"model\":\"claude-haiku-5-5\"}";
   #assert cast(string) s[0].goal[0..<s[0].goal_n] == "all tests pass";
   cw_test_answer(s, 200, "20261112-060000-001\n");
   b := coaxial_chatweb_frame(s, 0.016, true);
@@ -2008,14 +2025,14 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
   #assert s[0].flight == CF_LOG && cw_test_door(s) == "/local/log?id=20261112-042601-123&after=-1";
 }
 
-#test "Claude Code's models are named, never \"Default\": it starts on Opus 5.5, and the one chosen goes with the message" {
+#test "Claude Code's models are named, never \"Default\": it starts on Haiku 5.5, the one chosen goes with the message, and this browser keeps it" {
   ts: [1] CwTest; s := ts[0].s[..];
   cw_test_local(s, CW_T_SESSIONS);
   s[0].model = CW_HOSTED;
   b := coaxial_chatweb_frame(s, 0.016, true);
   cw_test_press(s, "model"); b = coaxial_chatweb_frame(s, 0.016, true);
   t := s[0].tree[..];
-  #assert tr_text_of(t, tr_find(t, "model.l")) == "Opus 5.5" && tr_text_of(t, tr_find(t, "lm.0.t")) == "Opus 5.5" && tr_text_of(t, tr_find(t, "lm.1.t")) == "Fable 5.2" && tr_text_of(t, tr_find(t, "lm.3.t")) == "Haiku 5.5" && tr_find(t, "lm.4") < 0;
+  #assert tr_text_of(t, tr_find(t, "model.l")) == "Haiku 5.5" && tr_text_of(t, tr_find(t, "lm.0.t")) == "Opus 5.5" && tr_text_of(t, tr_find(t, "lm.1.t")) == "Fable 5.2" && tr_text_of(t, tr_find(t, "lm.3.t")) == "Haiku 5.5" && tr_find(t, "lm.4") < 0;
   // no agent's list has a "Default"
   names := CW_LM_NAMES; for i: 0..<20 { #assert names[i] != "Default"; }
   cw_test_press(s, "lm.1");
@@ -2023,6 +2040,13 @@ CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"}
   cw_test_enter(s, "composer");
   if cw_test_door(s) != "/local/run" { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS); }
   #assert cw_test_body(s) == "{\"task\":\"go\",\"engine\":\"claude\",\"model\":\"claude-fable-5-2\"}";
+  // the pick is kept in this browser, and a page that starts with it starts on it
+  #assert coaxial_chatweb_keep_len(s) == 14 && cast(string) s[0].keep[0..<14] == "local=on&lm1=1";
+  #assert cw_kept_lm("local=on&lm1=1", 1) == 2 && cw_kept_lm("local=on&lm1=1", 2) == 0 && cw_kept_lm("lm1=", 1) == 0 && cw_kept_lm("lm3=2&lm1=0", 1) == 1;
+  ks: [1] CwTest; k := ks[0].s[..];
+  w := "local=on&lm1=1"; for i: 0..<w.count { k[0].inbox[i] = w[i]; }
+  coaxial_chatweb_event(k, CW_KEPT, 0, w.count);
+  #assert cw_lm(k, 1) == 1 && cw_lm(k, 2) == 0;
 }
 
 // ---- in the editor (E9, #13418): the world goes with each turn, and a hosted turn may plan
