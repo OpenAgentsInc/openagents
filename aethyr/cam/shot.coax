@@ -1,4 +1,4 @@
-// Aethyr's camera shots (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md, book
+// The Metaverse Engine's camera shots (the Metaverse Engine core, GitHub #12609, docs/verse/engine-core.md, book
 // chapter 10). Every camera makes one `CameraShot`, an eye and the point it looks at, from state
 // that is already drawn between steps, so a realm can cut or blend from one camera to another and
 // no camera steps physics:

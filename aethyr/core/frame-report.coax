@@ -1,4 +1,4 @@
-// A realm's frames, measured (Aethyr book chapter 83): the frame statistics and the 60 FPS rule
+// A realm's frames, measured (Metaverse Engine book chapter 83): the frame statistics and the 60 FPS rule
 // every realm is held to, and the record of one frame's stages.
 //   - frame_stats: a run of frame times (whole microseconds) as its count, total, median, 95th
 //     percentile, longest frame and frames over 20 ms;

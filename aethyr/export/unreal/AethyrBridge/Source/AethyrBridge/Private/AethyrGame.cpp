@@ -47,7 +47,7 @@ namespace
 {
 	const float Units = 100.0f;   // Unreal centimetres a metre
 
-	// Aethyr metres, y up, right-handed -> Unreal centimetres, z up (measured: GitHub #13399)
+	// Metaverse Engine metres, y up, right-handed -> Unreal centimetres, z up (measured: GitHub #13399)
 	FVector ToUnreal(float X, float Y, float Z) { return FVector(X * Units, Z * Units, Y * Units); }
 	FVector DirToUnreal(float X, float Y, float Z) { return FVector(X, Z, Y); }
 

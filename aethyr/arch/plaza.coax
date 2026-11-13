@@ -1,4 +1,4 @@
-// Aethyr's architecture kit, a town square: what stands in a plaza, as generators. Each writes one
+// The Metaverse Engine's architecture kit, a town square: what stands in a plaza, as generators. Each writes one
 // part at the origin with the ground at y 0, and its solids with it (aethyr/arch/mesh.coax), so a
 // flight of steps can be climbed, a terrace stood on, and nothing drawn here can be walked through.
 //

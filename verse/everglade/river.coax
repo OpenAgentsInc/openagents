@@ -53,7 +53,7 @@
 
 #load "../water-look.coax";
 #load "../water-wade.coax";
-#load "../../aethyr/core/loop.coax";   // the floats' fixed steps: Aethyr's one clock (aethyr/book ch001)
+#load "../../aethyr/core/loop.coax";   // the floats' fixed steps: the Metaverse Engine's one clock (aethyr/book ch001)
 
 RIVER_X :: 88.0;          // the plan's river runs along x = 88 (EG_RIVER_X)
 RIVER_NORTH :: 176.0;     // from the north edge of the ground, flowing south

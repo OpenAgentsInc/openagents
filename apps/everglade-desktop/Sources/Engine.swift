@@ -45,8 +45,8 @@ struct Pack {
   }
 }
 
-// The place on the GPU: the temple's parts (everglade/workshop/temple.coax, built from Aethyr's
-// architecture kit) and the Aethyr shaders that draw them (everglade/workshop/gpu/temple.coax,
+// The place on the GPU: the temple's parts (everglade/workshop/temple.coax, built from the Metaverse Engine's
+// architecture kit) and the Metaverse Engine shaders that draw them (everglade/workshop/gpu/temple.coax,
 // emitted for Metal by `coax metal` at build time). The host uploads three buffers once and
 // issues the draws; it decides nothing about what is where or how it looks.
 //

@@ -1,4 +1,4 @@
-// Metal binding of Aethyr's twelve-float stroke stream (aethyr/ui/draw.coax).
+// Metal binding of the Metaverse Engine's twelve-float stroke stream (aethyr/ui/draw.coax).
 // Premultiplied alpha lets the native HUD composite over the existing world.
 #include <metal_stdlib>
 using namespace metal;

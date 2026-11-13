@@ -1,5 +1,5 @@
 // A bounded external actor's steering vocabulary. Facts come from its adapter, not engine truth.
-// Reuses Aethyr Intent and replay event envelopes; does not run another game's physics.
+// Reuses Metaverse Engine Intent and replay event envelopes; does not run another game's physics.
 #authority;
 #load "../core/input.coax";
 #load "../core/replay.coax";

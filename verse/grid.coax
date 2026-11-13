@@ -1,7 +1,7 @@
 #load "../coax/lib/quantity.coax" as quantities;
 #load "../aethyr/core/sticks.coax";   // the touch controls (the move stick, the look finger, the hotbar's slot)
 #load "grid-render.coax"; // shared frame/pass/binding admission for the matrix output
-// The Grid: the bare Verse world, as aethyr-cpp's src/grid.cpp draws it. A
+// The Grid: the bare Metaverse realm, as aethyr-cpp's src/grid.cpp draws it. A
 // ground of lines every 4 m out to 264 m, brighter on the street lines every
 // 24 m, fading into the black field from 6 m to 110 m, with a ring at your
 // feet. You walk it with aethyr/move/player.coax; your character and the robots

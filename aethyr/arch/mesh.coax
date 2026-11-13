@@ -1,4 +1,4 @@
-// Aethyr's architecture kit, its mesh pen: triangles written into a buffer the caller owns, for
+// The Metaverse Engine's architecture kit, its mesh pen: triangles written into a buffer the caller owns, for
 // buildings made from parts (aethyr/arch/classical.coax builds columns, balusters and the rest with
 // it). A part is built once and drawn many times: a realm keeps where each part's vertices start
 // and how many there are, and places it with records (aethyr/arch/place.coax).

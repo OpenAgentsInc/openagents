@@ -1,4 +1,4 @@
-"""Chapter 150's Verse character slice: the skeleton of Verse's Cast.bin
+"""Chapter 150's Metaverse character slice: the skeleton of the Metaverse's Cast.bin
 (parents and bind positions) and the first frame of its idle clip, written
 as a Coax fixture.
 

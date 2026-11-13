@@ -1,5 +1,5 @@
 // Firm reason: 6 (AppKit, WebKit and AVFoundation effects; world, setup, chat and voice decisions are Coax).
-// Aethyrforge for Mac on the shared Mac host (apps/shared/host/apple/ui-host.m, the ui-host.h
+// The Metaverse Engine for Mac on the shared Mac host (apps/shared/host/apple/ui-host.m, the ui-host.h
 // contract OpenAgents and Everglade use; GitHub #13156). The host owns the window, the event loop,
 // the menus, the setup panel's components and its pictures; this app holds the world (a WKWebView,
 // or the native Metal realm, MetalWorld.swift), the Coder chat's native text views and its HUD

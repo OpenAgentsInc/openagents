@@ -1,4 +1,4 @@
-// Verse OS: your hand as the pointer (docs/os/2026-11-02-verse-os.md, V6). The camera daemon
+// Metaverse OS: your hand as the pointer (docs/os/2026-11-02-verse-os.md, V6). The camera daemon
 // (os/camera-serve.coax, its hand tracker os/hands.coax) publishes a line per frame on its hands
 // socket: {"timestamp":..,"hands":[{"landmarks":[21 of {"x":..,"y":..,"z":..}],"pose":".."}],..}.
 // vk-realm.c --hands SOCKET reads them and asks this where the pointer is and whether it is down:

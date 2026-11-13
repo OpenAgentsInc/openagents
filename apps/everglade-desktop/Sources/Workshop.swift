@@ -6,7 +6,7 @@
 // Workshop) through face.h. Escape is the list; --scene N opens on world N (1 Everglade, 2 the
 // Workshop, 3 the Archery Range, 4 Experimental). Everglade itself is the web's everglade2 realm
 // (Character Create, then the glade), and the Archery Range and Experimental are the web's
-// archery-range and fivelab realms, each run natively by Aethyr's page host (aethyr/host/apple/
+// archery-range and fivelab realms, each run natively by the Metaverse Engine's page host (aethyr/host/apple/
 // page-host.h; the rows are Realms.swift's, shared with the iOS host): while one is open this app
 // hands it the frames, keys and presses, draws its picture under the Worlds button, and plays its
 // sound through the Apple audio host (aethyr/host/apple/PageAudio.swift).
@@ -114,7 +114,7 @@ final class Workshop {
     queue = (Unmanaged<AnyObject>.fromOpaque(ui_queue(h)!).takeUnretainedValue() as! MTLCommandQueue)
     let url = Bundle.main.url(forResource: "default", withExtension: "metallib")!
     let lib = try! device.makeLibrary(URL: url)
-    // The place: the temple's parts and Aethyr's shaders. Without them there is nowhere to stand.
+    // The place: the temple's parts and the Metaverse Engine's shaders. Without them there is nowhere to stand.
     guard let pl = Place(device: device, color: format) else {
       FileHandle.standardError.write(Data("Everglade: the temple did not build or its shaders are missing. Rebuild with apps/everglade-desktop/build.sh.\n".utf8))
       exit(1)

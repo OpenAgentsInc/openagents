@@ -1,4 +1,4 @@
-// Water for Verse, phase W7: under the water. The CPU half of the old
+// Water for the Metaverse, phase W7: under the water. The CPU half of the old
 // `verse_pbr::water::under` and `verse_engine::audio::Underwater` (`git show
 // 0b401561a0^:crates/verse-pbr/src/water/under.rs`; the design is
 // verse/everglade/previous/water.md, "Shaders per tier", W7's status):

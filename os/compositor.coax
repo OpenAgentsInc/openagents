@@ -36,7 +36,7 @@
 //   quit
 // --desk-socket PATH also serves the desk protocol (generation 1, os/desk.coax's) there, one JSON line
 // a request: list, focused, screens, open, move, click, close (by handle) and shot; the rest are
-// refused with code not_supported. Verse OS's session points CODER_DESK_SOCKET at it.
+// refused with code not_supported. Metaverse OS's session points CODER_DESK_SOCKET at it.
 // Effects (sockets, descriptors, shared memory) are coax/platform/wayland-native.c; the protocol,
 // every object and every decision is here.
 #import "Basic";

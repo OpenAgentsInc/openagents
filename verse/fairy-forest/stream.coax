@@ -17,7 +17,7 @@
 //   coax/bin/coax test --library verse/fairy-forest/stream.coax --steps 2000000000
 
 #load "../water-look.coax";
-#load "../../aethyr/core/loop.coax";   // the floats' fixed steps: Aethyr's one clock (aethyr/book ch001)
+#load "../../aethyr/core/loop.coax";   // the floats' fixed steps: the Metaverse Engine's one clock (aethyr/book ch001)
 
 STREAM_CONTROLS :: 16;    // the page's control points, at most
 STREAM_PER :: 4;          // spline points between two controls

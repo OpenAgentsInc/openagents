@@ -262,7 +262,7 @@ body_feet :: (b: Body) -> Vec3 #effects(all) { return mix3(b.prev_pos, b.pos, lo
 body_face :: (b: Body) -> f32 #effects(all) {
   return wrap_angle(b.prev_face + wrap_angle(b.face - b.prev_face) * loop_alpha(b.clock));
 }
-// The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
+// The camera this frame, the Metaverse Engine's third-person shot: what it looks at, and where it is. A wall
 // pulls the camera in at once, so it is never shown further out than the last step.
 walk_shot :: (p: Player) -> CameraShot #effects(all) { return follow_shot(follow_of(p), wp(p.cam.prev_target), p.cam.prev_dist, alpha(p)); }
 walk_at :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).at); }
@@ -351,7 +351,7 @@ drawn this frame:
 
 <!-- source: aethyr/move/walk.coax views -->
 ```jai
-// The camera a mode shows, as one of Aethyr's shots (aethyr/cam/follow.coax): first person, the
+// The camera a mode shows, as one of the Metaverse Engine's shots (aethyr/cam/follow.coax): first person, the
 // follow behind you, or top down. Each reads only what is drawn this frame.
 walk_view :: (p: Player, mode: int) -> CameraShot #effects(all) {
   if mode == 0 { return follow_first_shot(follow_of(p), wp(walk_feet(p))); }
@@ -747,7 +747,7 @@ mixed one changes the move by more than three times the bound:
 
 <!-- source: verse/gridwalk.coax smooth -->
 ```jai
-// The camera follows without a jump (Aethyr's follow, aethyr/cam/follow.coax, book chapter 10): at
+// The camera follows without a jump (the Metaverse Engine's follow, aethyr/cam/follow.coax, book chapter 10): at
 // 60 FPS the 64 Hz steps don't land one to a frame, yet as you walk, run and jump the eye drawn
 // each frame moves no further than you can in a frame, its move changes by at most 0.016 m from
 // one frame to the next (measured 0.013 m), and on a jump's rising arc it rises every frame.

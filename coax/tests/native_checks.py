@@ -7,7 +7,7 @@ authored checks agree across the evaluator, checked -O0 and checked -O2
 emitter defects are counterexamples, minimised to one test cut after the
 disagreeing assertion; ineligible checks, files that don't run, a missing
 compiler and timeouts are never "passed"; the harness never reaches product
-emission. The last test runs the documented selection of real Verse and
+emission. The last test runs the documented selection of real Metaverse and
 Psionic checks (coax/tests/native-checks.json).
 """
 import importlib.util

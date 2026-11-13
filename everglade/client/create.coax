@@ -56,7 +56,7 @@ E2Create :: struct {
   walking: bool;   // USE IN EVERGLADE taken: the run plays, the wardrobe gone
   run_t: f32;      // seconds since the record was kept
   handed: bool;    // the run is over: the follow camera and the keys are yours
-  cut: [1] figs.CamCut;   // the run as an Aethyr cinematic (aethyr/cam/handback.coax): its hand-back retains the run's look
+  cut: [1] figs.CamCut;   // the run as a Metaverse Engine cinematic (aethyr/cam/handback.coax): its hand-back retains the run's look
   address: bool;   // the address bar still to say /worlds/everglade2
   boxes: [E2C_BOXES] cc.Box; mobile: bool;
   wide: bool; tab: int; card: cc.Box; sheet: cc.Box;   // a phone held sideways; its chosen tab; the panels (e2c_layout)
@@ -852,7 +852,7 @@ e2c_wheel :: (s: [] E2, dy: f32) -> bool {
 }
 
 // ---- the camera, your pose
-// Character Create's cameras are Aethyr's (aethyr/cam/studio.coax): the studio, Experimental's too,
+// Character Create's cameras are the Metaverse Engine's (aethyr/cam/studio.coax): the studio, Experimental's too,
 // from your feet, held 0.28 m over this land; then after USE IN EVERGLADE the run (from the studio's
 // shot it swings round behind you over E2C_SWING s, keeps its own track through the run, held 0.5 m
 // over the land, then eases into the follow camera `chase` over E2C_EASE s, the orbit turned first

@@ -1,5 +1,5 @@
 // Runnable file-backed live stream: real incremental partials, then one
-// final answer through Aethyr's existing replay/event gate. Capture is an
+// final answer through the Metaverse Engine's existing replay/event gate. Capture is an
 // explicit caller effect; this example never opens a microphone.
 #import "Basic";
 #load "../lib/incremental/voice.coax";

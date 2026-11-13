@@ -1,4 +1,4 @@
-// Aethyr's World (GitHub #13274, the AAA audit's G6): one place a realm's entities live, on the
+// The Metaverse Engine's World (GitHub #13274, the AAA audit's G6): one place a realm's entities live, on the
 // client, in the room and in the offline worker. It is four parts.
 //
 //   The entity store    aethyr/core/entity.coax: handles, EntityIds, spawns and despawns at the flush.

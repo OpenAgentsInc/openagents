@@ -1,4 +1,4 @@
-/* The host interface of an Aethyr world for a native host (the Unreal bridge,
+/* The host interface of a Metaverse Engine world for a native host (the Unreal bridge,
  * docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md). It is the browser host's
  * interface (coax/web/host.js, a world's -face.c) with real pointers: the web face passes every
  * pointer as a 32-bit offset into WebAssembly.Memory, which a 64-bit target cannot hold.

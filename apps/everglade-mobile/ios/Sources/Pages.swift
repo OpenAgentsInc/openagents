@@ -1,6 +1,6 @@
 // Firm reason: 6 (UIKit and Metal have no C API; this host holds no product logic).
 // The web's realms in the iPhone app (everglade/docs/app-scenes-spec.md, section 4): Everglade
-// itself, the Archery Range and Experimental run natively through Aethyr's page host
+// itself, the Archery Range and Experimental run natively through the Metaverse Engine's page host
 // (aethyr/host/apple/page-host.h), the one the Mac app opens them with, from the same table of
 // rows (apps/everglade-desktop/Sources/Realms.swift). This file opens a row's page from the app's
 // own files, steps it, and hands it fingers as a browser hands a page touches: each with its own

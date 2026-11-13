@@ -1,4 +1,4 @@
-// Aethyr's mesh cull (GitHub #13168): one big static mesh (a glade's whole environment, a zone's
+// The Metaverse Engine's mesh cull (GitHub #13168): one big static mesh (a glade's whole environment, a zone's
 // world) drawn as the runs of its triangles a view can see, not as one draw the GPU runs every
 // vertex of. The mesh is cut into runs of MESH_CULL_TRIS triangles in its own index order, and
 // each run gets a box. A pack's builder writes its meshes' triangles object by object, so a run is
@@ -42,7 +42,7 @@ MeshCull :: struct { ask: [MC_ASK_WORDS] u32; box: [MESH_CULL_RUNS * MC_BOX_FLOA
 // height over its focal length (the larger side of the centre, for an off-centre one).
 MeshView :: struct { ex: f32; ey: f32; ez: f32; fx: f32; fy: f32; fz: f32; rx: f32; ry: f32; rz: f32; ux: f32; uy: f32; uz: f32; hx: f32; hy: f32; }
 
-// A view from a camera block of 16 floats as Aethyr's realms write it (u[16..<32]: the eye and the
+// A view from a camera block of 16 floats as the Metaverse Engine's realms write it (u[16..<32]: the eye and the
 // focal length, forward and the centre's x, right and the centre's y, up), and the picture's size.
 // ok false for a block with no focal length or picture.
 MeshViewOk :: struct { ok: bool; v: MeshView; }

@@ -201,7 +201,7 @@ static char *online_facts(char *text, size_t *n, const char *dir) {
 }
 
 // --activity FILE (docs/os/2026-11-02-verse-os.md, V5): every input marks the person present, and
-// the file's time is set to now at most once a second, so the session can tell how long the Verse
+// the file's time is set to now at most once a second, so the session can tell how long the Metaverse
 // has been left alone (os/verse-pylon-policy.coax decides what that means).
 static const char *activity;
 static double touched_at;

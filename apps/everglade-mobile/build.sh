@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around coax, clang, metal, swiftc and simctl; holds no logic)
 # Builds Everglade for the iOS simulator (apps/everglade-mobile/README.md): the same Coax as the
-# desktop app (the scene, your model, the temple's parts and Aethyr shaders) with the iOS host, and
+# desktop app (the scene, your model, the temple's parts and Metaverse Engine shaders) with the iOS host, and
 # the web's realms run natively as the Mac app runs them (Everglade itself, everglade2; the Archery
-# Range, archery-range; Experimental, fivelab) through Aethyr's page host (aethyr/host/apple/).
+# Range, archery-range; Experimental, fivelab) through the Metaverse Engine's page host (aethyr/host/apple/).
 #   apps/everglade-mobile/build.sh           builds build/ios/Everglade.app
 #   apps/everglade-mobile/build.sh --open    builds, then installs and opens it in a simulator
 #   apps/everglade-mobile/build.sh --device  builds build/ios-device/Everglade.app for a phone, unsigned
@@ -31,7 +31,7 @@ cc=(xcrun -sdk "$sdk" clang -target "$target" -std=c11 -O2 -ffp-contract=off -fn
 "$coax" c "$repo/everglade/workshop/temple.coax" --library --header "$work/c/temple.h" > "$work/c/temple.c"
 for unit in workshop model temple; do "${cc[@]}" -c "$work/c/$unit.c" -o "$work/c/$unit.o"; done
 for face in face model-face place-face; do "${cc[@]}" -c "$desk/$face.c" -o "$work/c/$face.o"; done
-# The shaders: the strokes and your model's, and Aethyr's for the temple, emitted from Coax.
+# The shaders: the strokes and your model's, and the Metaverse Engine's for the temple, emitted from Coax.
 xcrun -sdk "$sdk" metal -w $min "$desk/Workshop.metal" "$desk/Model.metal" -o "$app/default.metallib"
 for pair in sky scene light; do
   "$coax" metal "$repo/everglade/workshop/gpu/temple.coax" --vertex "temple_${pair}_vs" --fragment "temple_${pair}_fs" -o "$work/c/temple-$pair.metal" 2> "$work/c/temple-$pair.bind"
@@ -112,8 +112,8 @@ xcrun -sdk "$sdk" clang -target "$target" -fobjc-arc -fmodules -O2 -Wno-shadow-i
 # A phone's tier for the pack's layers is Coax's (aethyr/render/texture-format.coax tf_side).
 "$coax" c "$repo/aethyr/render/texture-format.coax" --library --header "$work/c/texture-format.h" > "$work/c/texture-format.c"
 "${cc[@]}" -c "$work/c/texture-format.c" -o "$work/c/texture-format.o"
-# The realms' sound, as on the Mac: Aethyr's Apple audio host (aethyr/host/apple/audio-host.h,
-# PageAudio.swift and Aethyrforge's MetalAudio.swift) over the shared Coax audio authorities,
+# The realms' sound, as on the Mac: the Metaverse Engine's Apple audio host (aethyr/host/apple/audio-host.h,
+# PageAudio.swift and the desktop app's MetalAudio.swift) over the shared Coax audio authorities,
 # native-audio.coax as C, and the site's sound files a page names with their PCM companions.
 "$coax" c "$repo/aethyr/host/native-audio.coax" --library --header "$work/c/native-audio.h" > "$work/c/native-audio.c"
 "${cc[@]}" -c "$work/c/native-audio.c" -o "$work/c/native-audio.o"

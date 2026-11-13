@@ -4,7 +4,7 @@ CANYON_TRIANGLES :: 999995;
 CANYON_VERTICES :: 504367;
 CANYON_CATALOG :: "VALLEY_CANYON_PAIR_V1 / 504367 vertices / 999995 triangles / source geometry / 4096 albedo + roughness";
 CanyonPose :: struct {translation:Point;q:Point;w:f32;scale:Point;}
-// glTF / Aethyr coordinates: metres, +Y up. UE coordinates: centimetres, +Z up.
+// glTF / Metaverse Engine coordinates: metres, +Y up. UE coordinates: centimetres, +Z up.
 // C swaps Y/Z, so quaternion xyz is -C*q, scale is C*s. Subtract ONE source origin for both instances.
 canyon_pose :: (instance:int)->CanyonPose {
   if instance==0 {return CanyonPose.{translation=v3(0,0,0),q=v3(-0.7128280109211552,-0.06243538988172812,-0.6842124226114596),w=0.14082403765893914,scale=v3(7.585967715019824,7.585967150477727,7.5859691926934065)};}

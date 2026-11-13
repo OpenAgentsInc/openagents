@@ -1,4 +1,4 @@
-// Link source playback on the existing Aethyr walk, fixed-step, follow and touch systems.
+// Link source playback on the existing Metaverse Engine walk, fixed-step, follow and touch systems.
 #load "rig-policy.coax";
 #load "pack-policy.coax";
 #load "scene-water-policy.coax";

@@ -1,4 +1,4 @@
-// Aethyr's input (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md): keys,
+// The Metaverse Engine's input (the Metaverse Engine core, GitHub #12609, docs/verse/engine-core.md): keys,
 // touch and pads become one typed Intent a frame, and the simulation reads it once per fixed
 // step (aethyr/core/loop.coax). Levels (an axis held, run) are whatever is held at the step.
 // Edges (jump, act) are counted when they happen and each is taken by exactly one step, the

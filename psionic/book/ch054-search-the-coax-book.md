@@ -180,7 +180,7 @@ wrong label presents unbuilt work as shipped:
 <!-- source: psionic/lib/book-search/rank.coax status -->
 ```jai
 // A chapter's status comes from its own file: the plan is planned work; a
-// third line that is Psionic's or Aethyr's draft marker makes a design draft,
+// third line that is Psionic's or the Metaverse Engine's draft marker makes a design draft,
 // and one that is the Coax book's planned-feature note makes it planned;
 // every other chapter is implemented. Inside an implemented chapter, a
 // section whose heading says "(planned)" or "(later)" is planned.

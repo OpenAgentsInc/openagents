@@ -1,7 +1,7 @@
-// Aethyr's architecture kit, its solids as colliders: every part a generator writes carries the
+// The Metaverse Engine's architecture kit, its solids as colliders: every part a generator writes carries the
 // shapes that block a walker (aethyr/arch/mesh.coax arch_solid_box, arch_solid_round), a scene
-// stands them with its records (aethyr/arch/place.coax), and this hands them to Aethyr's queries
-// (aethyr/physics/query.coax Colliders) and walks among them with Aethyr's walking capsule
+// stands them with its records (aethyr/arch/place.coax), and this hands them to the Metaverse Engine's queries
+// (aethyr/physics/query.coax Colliders) and walks among them with the Metaverse Engine's walking capsule
 // (aethyr/physics/collide.coax). So a world built from the kit can't be walked through, and whatever is
 // low enough to step onto (a stair, a kerb, a terrace reached by its steps) is ground.
 //
@@ -89,7 +89,7 @@ arch_colliders :: (c: [] ArchColliders, boxes: [] f32, capsules: [] f32, hulls: 
   c[0].boxes = boxes; c[0].capsules = capsules; c[0].hulls = hulls; c[0].box_n = 0; c[0].capsule_n = 0; c[0].hull_floats = 0; c[0].full = false;
   for i: 0..<count { if (i + 1) * ARCH_PLACED_FLOATS <= placed.count { arch_collider(c, placed, i * ARCH_PLACED_FLOATS); } }
 }
-// The ground table's heights alone, a float a node, as Aethyr's height field reads them. False
+// The ground table's heights alone, a float a node, as the Metaverse Engine's height field reads them. False
 // when `out` is too short.
 arch_heights :: (out: [] f32, g: ArchGround, table: [] f32) -> bool {
   nodes := (g.n + 1) * (g.n + 1);
@@ -97,7 +97,7 @@ arch_heights :: (out: [] f32, g: ArchGround, table: [] f32) -> bool {
   for i: 0..<nodes { out[i] = table[i * ARCH_GROUND_FLOATS]; }
   return true;
 }
-// A realm's colliders for Aethyr's queries: the ground's height field and what arch_colliders wrote.
+// A realm's colliders for the Metaverse Engine's queries: the ground's height field and what arch_colliders wrote.
 arch_query :: (c: [] ArchColliders, field: [] QueryHeightfield) -> Colliders {
   q: Colliders;
   q.ground = -1000; q.ground_enabled = field.count == 0;
@@ -112,7 +112,7 @@ arch_field :: (g: ArchGround, heights: [] f32) -> QueryHeightfield {
   return f;
 }
 
-// A walker: Aethyr's walking capsule (0.3 m round, 1.8 m tall, stepping up 0.55 m).
+// A walker: the Metaverse Engine's walking capsule (0.3 m round, 1.8 m tall, stepping up 0.55 m).
 ARCH_WALK_STRIDE :: 0.14;      // the most one pass moves: under the capsule's own limit
 // One move of feet at `feet` by (dx, dz) along the ground: in strides, each slid along what
 // blocks it (first the whole stride, then each axis of it alone), then stood on the highest

@@ -1,5 +1,5 @@
 // Firm reason: 6 (AppKit, WebKit and AVFoundation effects; world, setup, chat and voice decisions are Coax).
-// Aethyrforge for Mac on the shared Mac host (Forge.h). The host owns the window, the event loop and
+// The Metaverse Engine for Mac on the shared Mac host (Forge.h). The host owns the window, the event loop and
 // the menus; the world (WKWebView, or the native Metal realm), the chat's text views and the
 // notice are native children under its layer (ui_child), and its layer draws the chat's HUD and
 // the setup panel's components (chrome.coax) over them.

@@ -1,4 +1,4 @@
-// Aethyr's fixed-step kinematic walker, extracted from aethyr/move/player.coax.
+// The Metaverse Engine's fixed-step kinematic walker, extracted from aethyr/move/player.coax.
 // The original controller ports aethyr-cpp src/player_core.cpp and
 // three-player-controller (hh-hang/three-player-controller, MIT).
 //
@@ -27,7 +27,7 @@
 #load "../core/input.coax";
 #load "../physics/query.coax";   // the ground under you: one query for every walking realm
 #load "../core/math.coax";    // sine, cosine and powers with the same bits natively and in the browser
-#load "../cam/follow.coax";  // the camera: Aethyr's follow, which every realm shares
+#load "../cam/follow.coax";  // the camera: the Metaverse Engine's follow, which every realm shares
 #load "../physics/collide.coax"; // checked capsule resolution and the trusted legacy adapters
 #load "../physics/collision-profiles.coax" as realm_collision;
 #load "player-collision-checks.coax" #test;
@@ -192,7 +192,7 @@ atan2 :: (y: f32, x: f32) -> f32 #effects(all) {
 
 // ---- The world ----
 
-// The world as Aethyr's colliders: the ground, the walls as boxes, the bodies as capsules and
+// The world as the Metaverse Engine's colliders: the ground, the walls as boxes, the bodies as capsules and
 // the floors (aethyr/physics/query.coax).
 colliders :: (w: World) -> Colliders #effects(all) {
   return Colliders.{ground = w.ground, boxes = w.walls, capsules = w.bodies, floors = w.floors, heightfields = w.heightfields, hulls = w.hulls};
@@ -241,7 +241,7 @@ times :: (a: Vec3, k: f32) -> Vec3 #effects(all) { return v3(a.x * k, a.y * k, a
 dot :: (a: Vec3, b: Vec3) -> f32 #effects(all) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
 // Compatibility for callers inspecting segment parameters. The actual closest
-// pair comes from Aethyr; recovering its parameters does not resolve contacts.
+// pair comes from the Metaverse Engine; recovering its parameters does not resolve contacts.
 Closest :: struct { s: f32; t: f32; p: Vec3; q: Vec3; }
 closest :: (p0: Vec3, p1: Vec3, q0: Vec3, q1: Vec3) -> Closest #effects(all) {
   pair := collide_closest(wp(p0), wp(p1), wp(q0), wp(q1), 0.000001);
@@ -275,7 +275,7 @@ camera_room :: (w: World, target: Vec3, offset: Vec3, max: f32) -> f32 #effects(
   return follow_room(colliders(w), w.room, wp(target), wp(offset), max);
 }
 
-// The camera as Aethyr's follow (aethyr/cam/follow.coax): the player keeps its camera's fields, as
+// The camera as the Metaverse Engine's follow (aethyr/cam/follow.coax): the player keeps its camera's fields, as
 // the realms' C faces read them, and each call copies back the fields the follow moved.
 wp :: (v: Vec3) -> WorldPoint #effects(all) { return world_point(v.x, v.y, v.z); }
 vp :: (w: WorldPoint) -> Vec3 #effects(all) { return Vec3.{x = w.x, y = w.y, z = w.z}; }
@@ -854,7 +854,7 @@ body_feet :: (b: Body) -> Vec3 #effects(all) { return mix3(b.prev_pos, b.pos, lo
 body_face :: (b: Body) -> f32 #effects(all) {
   return wrap_angle(b.prev_face + wrap_angle(b.face - b.prev_face) * loop_alpha(b.clock));
 }
-// The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
+// The camera this frame, the Metaverse Engine's third-person shot: what it looks at, and where it is. A wall
 // pulls the camera in at once, so it is never shown further out than the last step.
 walk_shot :: (p: Player) -> CameraShot #effects(all) { return follow_shot(follow_of(p), wp(p.cam.prev_target), p.cam.prev_dist, alpha(p)); }
 walk_at :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).at); }
@@ -1909,7 +1909,7 @@ desk :: (out: [] f32) #effects(all) {
   #assert walk_view_eye(p, 3).y == f.y;    // any other mode is the follow
 }
 // book:begin views
-// The camera a mode shows, as one of Aethyr's shots (aethyr/cam/follow.coax): first person, the
+// The camera a mode shows, as one of the Metaverse Engine's shots (aethyr/cam/follow.coax): first person, the
 // follow behind you, or top down. Each reads only what is drawn this frame.
 walk_view :: (p: Player, mode: int) -> CameraShot #effects(all) {
   if mode == 0 { return follow_first_shot(follow_of(p), wp(walk_feet(p))); }
@@ -2339,7 +2339,7 @@ advance_scaled_in :: (w:World,given:Player,frame:f32)->Player #effects(all) {
 
 // ---- Source velocity ----
 // Scalar ground velocity path ported from installed UE 5.8 CharacterMovementComponent
-// CalcVelocity/ApplyVelocityBraking, in metres. Aethyr retains collision and its paid fixed steps.
+// CalcVelocity/ApplyVelocityBraking, in metres. The Metaverse Engine retains collision and its paid fixed steps.
 SourceVelocity :: struct {x:f32;z:f32;}
 #test "source velocity accelerates brakes turns and never reverses while stopping" {
  a:=source_velocity(0,0,0,1,1,4.27,5,4,10,2,1.0/64.0);#assert a.x==0 && a.z==0.078125;

@@ -1,5 +1,5 @@
 // Content tables (#13294, AAA P4.5; docs/protocol/aethyr-content-v1.md): a game's data as versioned
-// tables of rows, in one text document a room and a page load at start and Aethyrforge edits
+// tables of rows, in one text document a room and a page load at start and the realm editor edits
 // (aethyr/forge/content-edit.coax). This file is the document's one codec and its validator; a game
 // names the tables it needs (Everglade: everglade/model/content.coax).
 //

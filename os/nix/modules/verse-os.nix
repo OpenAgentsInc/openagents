@@ -1,10 +1,10 @@
-# Verse OS's boot session (docs/os/2026-11-02-verse-os.md, milestone V0).
+# Metaverse OS's boot session (docs/os/2026-11-02-verse-os.md, milestone V0).
 #
-# A VT whose login shows the Verse instead of a shell: the login runs
+# A VT whose login shows the Metaverse instead of a shell: the login runs
 # verse-session (os/verse-session.coax), which waits until that VT is on the
 # screen, runs the first realm on the bare display (verse/gpu/vk-realm.c), and
 # follows travel between realms. Escape held a second hands the screen to
-# `leaveTo`; switching back to the VT starts the Verse again where you were.
+# `leaveTo`; switching back to the VT starts the Metaverse again where you were.
 #
 # The realms are not built by Nix yet. `verse/gpu/realm.sh local install DIR`
 # builds them from an openagents checkout into `dir`, the update agent's job

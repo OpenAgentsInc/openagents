@@ -1,6 +1,6 @@
 // The turn runner (docs/apps/2026-11-10-apps-roadmap.md, Step 2): one
 // headless turn, for any owner, the way `coder run --stream-json` runs it.
-// Aethyrforge's chat calls it in its own process; Coder's plain stream-json
+// The Metaverse Engine's chat calls it in its own process; Coder's plain stream-json
 // runs call it too, so the two cannot drift.
 //
 // Per session: route (System One's pick, the task gated on the owner's
@@ -1266,7 +1266,7 @@ tr_micro_stop :: (r: [] TrRun) {
 // ---------------------------------------------------------------- an owner's buffers
 
 // Every engine and buffer a runner needs, for an owner that keeps none of its
-// own (Aethyrforge's chat): allocate one, then tr_buffers.
+// own (the Metaverse Engine's chat): allocate one, then tr_buffers.
 TrBuffers :: struct {
   log: [1] SwLog; out: [1048576] u8;
   eng: [1] Engine; ses: [1] Session; ses_pool: [2097152] u8;

@@ -214,7 +214,7 @@ tq_synthetic_normal :: (side: int, img: []u8) {
 
 // A pack's table entry k as the browser's pack reader takes it (48 bytes from offset 32: kind,
 // licence, then the offset and length, then the name), bounds checked. The layers are what this
-// tool reads, so it walks the table itself: Aethyrforge's reader keeps VPK1's 48-entry ceiling,
+// tool reads, so it walks the table itself: the Metaverse Engine's reader keeps VPK1's 48-entry ceiling,
 // and Character Create's glade pack has more.
 TqEntry :: struct { ok: bool; kind: int; at: int; n: int; name: string; }
 tq_entry :: (p: []u8, k: int) -> TqEntry {

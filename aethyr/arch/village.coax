@@ -1,4 +1,4 @@
-// Aethyr's architecture kit, a village: buildings, walls and street furniture as generators. Each
+// The Metaverse Engine's architecture kit, a village: buildings, walls and street furniture as generators. Each
 // takes a record of its sizes and colours and writes one part (aethyr/arch/mesh.coax ArchPart) at
 // the origin, its front facing +z and the ground at y 0; a realm stands it with a record
 // (aethyr/arch/place.coax). A new variant is a change of parameters, never a new mesh.

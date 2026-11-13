@@ -1,4 +1,4 @@
-// Aethyr's asset identity (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md, book
+// The Metaverse Engine's asset identity (the Metaverse Engine core, GitHub #12609, docs/verse/engine-core.md, book
 // chapter 16). An asset is known by its content: its `AssetId` is the SHA-256 of its bytes, so two
 // realms that use one mesh share it, and a changed texture is a new asset under a new name.
 //

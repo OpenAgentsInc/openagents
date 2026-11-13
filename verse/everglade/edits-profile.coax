@@ -1,5 +1,5 @@
 // Holds the Everglade city edits profile (proto/verse/everglade-edits-v1.json, #13250) to the one
-// codec the pages and Aethyrforge load, edits.coax:
+// codec the pages and the realm editor load, edits.coax:
 //   - each "lists" entry: eg_edits_text writes exactly its text from its things, hidden buildings
 //     and people taken away, and eg_edits_read gives them back from the text;
 //   - each "read_only" text is read, and written back as its "rewritten" text, which reads the same;

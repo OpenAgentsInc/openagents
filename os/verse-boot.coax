@@ -1,4 +1,4 @@
-// Verse OS's boot lines (docs/os/2026-11-02-verse-os.md, V1): what the machine has, read from the
+// Metaverse OS's boot lines (docs/os/2026-11-02-verse-os.md, V1): what the machine has, read from the
 // kernel's files when the session starts, as the `boot=LABEL|VALUE|STATE` page facts the Grid draws
 // as its boot sequence (apps/openagents-web/newland-boot.coax). Every line is a fact read now, not
 // decoration: a missing GPU, a dark link or no identity shows FAILED or WAITING and says so.

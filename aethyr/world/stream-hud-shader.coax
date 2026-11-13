@@ -1,5 +1,5 @@
 // Texture-free HUD pass over the final corridor image, with premultiplied
-// alpha blending and depth disabled. Inputs are Aethyr's 12-word HUD vertices.
+// alpha blending and depth disabled. Inputs are the Metaverse Engine's 12-word HUD vertices.
 #module "aethyr.world.streamhudshader";
 #load "../gpu/shader.coax";
 ShVertex :: struct {a: V4; b: V4; c: V4;}

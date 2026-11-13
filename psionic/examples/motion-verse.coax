@@ -1,5 +1,5 @@
 // Chapter 150: generated motion toward a destination, retargeted onto the
-// Verse character's skeleton, written into a Cast's dance slot and played
+// Metaverse character's skeleton, written into a Cast's dance slot and played
 // by verse/cast.coax, fading in from the idle and out to the walk.
 #import "Basic";
 #load "../lib/motion-verse.coax";
@@ -9,7 +9,7 @@ mvx_mm :: (x:f64)->int {return cast(int)floor(x*1000+0.5);}
 mvx_v :: (p:Vec3)->[3]f64 {return [3]f64.[f64(p.x),f64(p.y),f64(p.z)];}
 mvx_far :: (a:[3]f64,b:[3]f64)->f64 {return mb_larger(abs(a[0]-b[0]),mb_larger(abs(a[1]-b[1]),abs(a[2]-b[2])));}
 
-// Verse poses the character at the origin facing +Z, or says why not.
+// The Metaverse poses the character at the origin facing +Z, or says why not.
 mvx_pose :: (b:[]u8,c:Cast,a:Anim,now:f64,out:[]Joint) {if !verse_cast_pose(b,c,a,now,0,0,0,0,out) {print("pose refused\n");}}
 
 // A front view, 4 cm a character: '#' a joint, '.' empty.

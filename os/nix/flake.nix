@@ -9,7 +9,7 @@
     let
       system = "x86_64-linux";
       # A host with nothing but the module, for the evaluation check: a
-      # stand-in disk and boot loader, one account, the Verse on tty3.
+      # stand-in disk and boot loader, one account, the Metaverse on tty3.
       example = nixpkgs.lib.nixosSystem {
         inherit system;
         modules = [

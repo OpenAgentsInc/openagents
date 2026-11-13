@@ -1,4 +1,4 @@
-// Aethyr's scores: a tempo grid in ticks, keys and chords, patterns stepped on the grid,
+// The Metaverse Engine's scores: a tempo grid in ticks, keys and chords, patterns stepped on the grid,
 // stereo buses with a reverb send, gain automation and the master (normalise, automate,
 // saturate, 16-bit). Built on synth.coax: integers only, no clock, so a score and its seed
 // render the same samples on every build and target (aethyr/book/ch066 and ch067).

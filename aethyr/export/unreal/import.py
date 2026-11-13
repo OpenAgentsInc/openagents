@@ -1,5 +1,5 @@
 # Firm reason: 6 (the Unreal Editor's asset and level API exists only in Python and C++).
-# Imports an Aethyr export bundle into the open Unreal project
+# Imports a Metaverse Engine export bundle into the open Unreal project
 # (docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md, step 1; GitHub #13400).
 #
 #   AETHYR_BUNDLE=/abs/splice.aexport AETHYR_REPORT=/abs/report.json \
@@ -46,7 +46,7 @@ def check(ok, text):
 
 
 def to_unreal(p):
-    # Aethyr metres, y up, right-handed -> Unreal centimetres, z up (measured, #13399)
+    # Metaverse Engine metres, y up, right-handed -> Unreal centimetres, z up (measured, #13399)
     return unreal.Vector(p[0] * UNITS, p[2] * UNITS, p[1] * UNITS)
 
 
@@ -144,7 +144,7 @@ def content_outside(content_dir, generated_rel):
 
 
 
-# ---- the look: Aethyr's cel shading and sky, translated from its own shader source
+# ---- the look: the Metaverse Engine's cel shading and sky, translated from its own shader source
 # (apps/openagents-web/gpu/animelab.coax scene_fs, al_sky and post_fs; verse/style.coax). The
 # materials are unlit and write the picture's final colour, so they need no buffer the web's
 # forward tier lacks. What the bridge copies into the collection each frame is the world's own
@@ -420,7 +420,7 @@ colours_are_srgb = srgb_votes >= linear_votes
 report["vertex_samples"] = samples
 report["vertex_colours"] = {"stored_as": "sRGB bytes" if colours_are_srgb else "linear bytes", "srgb_matches": srgb_votes, "linear_matches": linear_votes}
 
-# ---- the stand-in look: unlit, both faces, the vertex colour as it was in Aethyr
+# ---- the stand-in look: unlit, both faces, the vertex colour as it was in the Metaverse Engine
 mel = unreal.MaterialEditingLibrary
 material = tools.create_asset("M_AeVertexColour", GEN + "/Materials", unreal.Material, unreal.MaterialFactoryNew())
 material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)

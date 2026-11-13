@@ -1,4 +1,4 @@
-// Verse motions: emotes and other moves as small keyframe documents that an
+// Metaverse motions: emotes and other moves as small keyframe documents that an
 // agent can write from a description ("she always spins twice before lying
 // down") and the engine checks, plays and blends over a figure's gait
 // (aethyr/anim/figure.coax). A motion is text, a statement a line (or separated

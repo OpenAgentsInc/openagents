@@ -1,5 +1,5 @@
 // A bounded streaming HUD text feed. The realm supplies monotonic milliseconds;
-// Aethyr owns retention and completion lifetime. No platform timers or widgets.
+// the Metaverse Engine owns retention and completion lifetime. No platform timers or widgets.
 HUD_FEED_BYTES :: 32768;
 // Mirroring the ring makes its current tail one contiguous view, without
 // shifting the whole transcript on every arriving token.

@@ -1,11 +1,11 @@
-// Verse OS: your desk as a panel over the Verse (docs/os/2026-11-02-verse-os.md, V3). Linux programs
+// Metaverse OS: your desk as a panel over the Metaverse (docs/os/2026-11-02-verse-os.md, V3). Linux programs
 // run on a headless Coax compositor (os/compositor.coax, its windows tiled by os/wm.coax) that the
 // session's realm host starts (verse/gpu/vk-realm.c --desk); this decides how it is shown and who
 // gets your input, and the host only does it:
 //   - F9 opens the desk as a panel held in your view (the right part of the screen, the realm still
 //     playing beside it), and closes it.
 //   - F10 is flat mode: the desk fills the screen, the CoderOS desktop as it was. F10 again, or F9,
-//     goes back to the Verse.
+//     goes back to the Metaverse.
 //   - F8 puts the desk in the world: on the screen the realm stands for it (the Grid's, a few metres
 //     ahead), drawn where the realm says that screen is this frame, so it moves as you walk.
 //     There the keyboard stays the realm's (you walk up to it); the pointer over it is the desk's.

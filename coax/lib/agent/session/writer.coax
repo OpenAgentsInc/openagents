@@ -1,6 +1,6 @@
 // The session log as a turn writes it, one JSON object a line, for any owner
 // (docs/apps/2026-11-10-apps-roadmap.md, Step 2): Coder's terminal and its
-// runs, and the turn runner (coax/lib/agent/engine/run.coax) that Aethyrforge
+// runs, and the turn runner (coax/lib/agent/engine/run.coax) that the Metaverse Engine
 // calls. The file is ~/.openagents/coder/sessions/ID.jsonl ($CODER_HOME
 // before $HOME); `coder ls`, `coder status`, `coder log`, a fork (fork.coax)
 // and the shared reader (log.coax) read it. Moved from coder/tui/session.coax

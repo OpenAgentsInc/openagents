@@ -2,7 +2,7 @@
 // the message, a word at a time like a stream: the first word 300 ms after
 // the message, then one every 45 ms, then the turn ends finished. Owners'
 // own checks run on it (Coder's terminal and its pseudo-terminal checks,
-// Aethyrforge's native chat). Moved from coder/tui/coder.coax.
+// the Metaverse Engine's native chat). Moved from coder/tui/coder.coax.
 //
 //   ech_send   the message (what the engine is sent) at now_ms
 //   ech_poll   at now_ms: ECH_WAIT, ECH_WORD with the next word, or ECH_DONE once

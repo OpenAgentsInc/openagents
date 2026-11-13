@@ -123,7 +123,7 @@ int32_t nxp_golems_action(void *panel, uint8_t *out, int32_t cap);
 void nxp_golems_view(void *panel, int32_t view);
 
 // The place (everglade/workshop/temple.coax, place-face.c): the temple's parts as one mesh, the
-// records that stand them, and the draws, built once from Aethyr's architecture kit.
+// records that stand them, and the draws, built once from the Metaverse Engine's architecture kit.
 void *plc_new(void);            // builds it; NULL when it did not fit
 int32_t plc_vertex_floats(void);
 int32_t plc_record_floats(void);

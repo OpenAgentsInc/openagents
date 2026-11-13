@@ -1,4 +1,4 @@
-// Aethyr's UI tree (book chapter 15): the screen's elements as one table that is drawn, hit-tested
+// The Metaverse Engine's UI tree (book chapter 15): the screen's elements as one table that is drawn, hit-tested
 // and focused from the same rectangles, so no realm keeps separate touch geometry. Each element has
 // a role, a label (a text ID), its state and the action `activate` produces. The table is also the
 // accessibility tree: an interactive element without a label is refused, focus moves in reading

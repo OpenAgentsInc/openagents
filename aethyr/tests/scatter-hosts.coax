@@ -1,4 +1,4 @@
-// Scatter and ground from a seed, the same natively and in the browser (Aethyr book chapter 80).
+// Scatter and ground from a seed, the same natively and in the browser (Metaverse Engine book chapter 80).
 // Each case is one digest: a forest over a built ground with keep-outs, its trees' heights on
 // that ground, a second layer, a window split in two, another generator version and another
 // seed. aethyr/examples/scatter-from-a-seed.coax prints them natively; coax/web/replay-hosts.coax

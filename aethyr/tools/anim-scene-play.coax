@@ -1,4 +1,4 @@
-// Native headless film renderer. Verse produces every pixel; ffmpeg only
+// Native headless film renderer. The Metaverse produces every pixel; ffmpeg only
 // encodes the measured PNGs and muxes the independently sampled PCM at the end.
 #load "anim-scene-io.coax";
 #load "../../coax/lib/media/media.coax";

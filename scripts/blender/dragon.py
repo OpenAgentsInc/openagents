@@ -29,7 +29,7 @@ scalloped between them. The wings are rigged spread (the bind pose) and fold
 along the flanks on the ground. The `saddle` bone, on the chest, marks where
 a rider sits.
 
-Clips, in Verse's clip vocabulary: `idle` (breathing, the tail swaying),
+Clips, in the Metaverse's clip vocabulary: `idle` (breathing, the tail swaying),
 `walk` (a four-beat walk), `fly` (wingbeats), `glide` (wings held, the
 tail streaming), `bite`, `breath` (drawing in, then a breath held with the
 jaws wide), `roar` (rearing, wings half open), `sweep` (the tail swung

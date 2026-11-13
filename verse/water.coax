@@ -1,4 +1,4 @@
-// Water for Verse, phase W1: bodies of water, their gameplay surface,
+// Water for the Metaverse, phase W1: bodies of water, their gameplay surface,
 // currents, and the forces they put on rigid bodies. A port of the previous
 // engine's `physics::water` (`git show b399fa2dbe:crates/physics/src/water/`,
 // the W1 commit; later phases grew the same files), with its tests as the

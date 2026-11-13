@@ -1,4 +1,4 @@
-// Aethyr's baked light (GitHub #12995, book chapter 13): ambient occlusion and diffuse bounce
+// The Metaverse Engine's baked light (GitHub #12995, book chapter 13): ambient occlusion and diffuse bounce
 // baked on a terrain tile's samples, admitted whole and published only onto the geometry and world
 // state they were baked for.
 //

@@ -1,4 +1,4 @@
-// Aethyr's sampled ground: the same south-west to north-east triangles that are drawn.
+// The Metaverse Engine's sampled ground: the same south-west to north-east triangles that are drawn.
 // Coordinates and returned heights are metres. The caller owns the read-only height view.
 // Invalid descriptors, coordinates or sampled corners return an empty (ok false) answer.
 // The descriptor retains aethyr/world/terrain.coax's field order and defaults for its C boundary.

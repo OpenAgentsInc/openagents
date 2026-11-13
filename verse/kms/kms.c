@@ -1,4 +1,4 @@
-// verse-kms: a Verse realm on the display hardware, with no compositor and
+// verse-kms: a Metaverse realm on the display hardware, with no compositor and
 // no browser. Linux DRM/KMS dumb buffers for the screen, evdev for the
 // keyboard, and a CPU rasterizer spread over every core that calls the
 // realm's light (its -light.coax) for each pixel. The realm's Coax steps

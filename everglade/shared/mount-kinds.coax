@@ -1,5 +1,5 @@
 // Everglade's kinds of mount, as the room and every page know them (everglade/docs/mounts-spec.md,
-// #13268): the SRD's Riding Horse and Adult Red Dragon as Aethyr mounts (aethyr/action/mount.coax), the
+// #13268): the SRD's Riding Horse and Adult Red Dragon as Metaverse Engine mounts (aethyr/action/mount.coax), the
 // dragon's wings, and a rider's keys as a mount's steering. The room steps a ridden mount with these
 // (everglade/server/mounts.coax) and a page predicts its own with the same, so they are written once.
 // What a page draws and says (frames, saddles, prompts, deeds) is everglade/mounts.coax's.

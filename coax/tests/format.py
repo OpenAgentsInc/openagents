@@ -13,7 +13,7 @@ fixtures run the built tool:
   its line and never written;
 - --check lists what would change and modifies nothing;
 - --write refuses a stale revision and leaves the file as it was;
-- a deliberately messy copy of frozen Verse and Psionic fixtures formats back
+- a deliberately messy copy of frozen Metaverse and Psionic fixtures formats back
   to the original bytes, checks the same, and its authored checks agree with
   the original's on the evaluator and checked -O0/-O2 native code.
 No repository file is rewritten.

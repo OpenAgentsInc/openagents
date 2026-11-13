@@ -1,4 +1,4 @@
-// Aethyr's spaces (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md): a
+// The Metaverse Engine's spaces (the Metaverse Engine core, GitHub #12609, docs/verse/engine-core.md): a
 // position is typed by the space it is in, and moves between spaces only through the named
 // functions here. Mixing them is a type error: a WorldPoint is not a ViewPoint, a GridPoint
 // is not a WorldPoint, and a distance in metres is not one in grid units (coax/lib/quantity.coax,

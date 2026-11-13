@@ -1,4 +1,4 @@
-# The Verse's realms and the boot session, built for an image (docs/os/2026-11-02-verse-os.md, V7).
+# The Metaverse's realms and the boot session, built for an image (docs/os/2026-11-02-verse-os.md, V7).
 #
 # `src` is what `verse/gpu/realm.sh local ship DIR` writes: each realm's Coax as C, its specs,
 # packs and render assets, the network helper's and verse-session's C, and the shared Vulkan host.

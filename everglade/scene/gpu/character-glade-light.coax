@@ -1,5 +1,5 @@
 // Character Create's glade light, now the shared painterly default (lighting plan Phase 1 step 0,
-// GitHub #13060). The functions and numbers live in Aethyr: the profile's numbers in
+// GitHub #13060). The functions and numbers live in the Metaverse Engine: the profile's numbers in
 // aethyr/world/environment.coax (ENV_GLADE_*, env_glade_profile), their evaluation in
 // aethyr/render/painterly.coax, the transfer helpers in aethyr/render/transfer.coax and the normal
 // packing in aethyr/render/contact-shade.coax, with their checks. The cg_* names below are thin

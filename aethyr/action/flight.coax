@@ -3,7 +3,7 @@
 // everything that flies on wings: Everglade's shapeshifting (everglade/shapeshift.coax) and its
 // mounts both step one WingState with wing_step.
 //
-// The vertical rule is Aethyr's flight rule (aethyr/move/flight.coax, flight_vertical): a beat is a
+// The vertical rule is the Metaverse Engine's flight rule (aethyr/move/flight.coax, flight_vertical): a beat is a
 // jump press in the air, a held jump climbs, between beats you glide and a held dive folds the
 // wings. This module adds what a big flier needs round it:
 //   - the ground: you walk at the walk pace; a jump press takes off

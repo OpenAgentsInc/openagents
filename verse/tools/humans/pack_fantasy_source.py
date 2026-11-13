@@ -1,6 +1,6 @@
 # Firm reason: 6 (Blender's source .blend loader and evaluated mesh/skin API export the Source artwork).
 """Blender --background --disable-autoexec --python pack_fantasy_source.py -- SOURCE BASE_PACK OUTPUT
-Append every individual Fantasy Source garment and all three base-color ways to Aethyr's existing
+Append every individual Fantasy Source garment and all three base-color ways to the Metaverse Engine's existing
 people pack, retaining its independently checked heads/hair and animation skeleton identity.
 """
 import bpy,struct,sys,json,hashlib,math,tempfile
@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory() as temp:
      pairs=sorted([(g.weight,joints.index(obj.vertex_groups[g.group].name)) for g in v.groups if obj.vertex_groups[g.group].name in joints and g.weight>0],reverse=True)[:4];assert pairs
      sums=sum(w for w,j in pairs);ws=[int(w/sums*255) for w,j in pairs];ws[0]+=255-sum(ws);js=[j for w,j in pairs]
      while len(ws)<4:ws.append(0);js.append(0)
-     # The imported evaluated surface supplies the canonical Aethyr vertex encoder.
+     # The imported evaluated surface supplies the canonical Metaverse Engine vertex encoder.
      uvco=uv.data[li].uv
      sys.path.insert(0,str(Path(__file__).resolve().parents[1]));import people
      record={'p':p,'n':nrm,'uv':(uvco.x,1-uvco.y),'j':js,'w':ws}

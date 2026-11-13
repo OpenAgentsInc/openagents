@@ -1,6 +1,6 @@
 // Live audio against offline synthesis (GitHub #12628, aethyr/book/ch068): a realm's
 // sound as the browser host plays it, in headless, muted Chrome, never to speakers.
-//   1. Offline: Aethyr's synthesizer renders a declared score and seed to 16-bit stereo
+//   1. Offline: the Metaverse Engine's synthesizer renders a declared score and seed to 16-bit stereo
 //      at the live context's rate (aethyr/audio/epic.coax), and its samples' hash.
 //   2. Decode: the host's decodeAudioData gives each 16-bit step by Chrome's rule (la_decode).
 //   3. The voice graph (coax/web/host.js soundVoice: buffer, gain, stereo pan) rendered in

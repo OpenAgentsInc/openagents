@@ -1,4 +1,4 @@
-// Aethyr's architecture kit, wild land: cliffs, boulders, water and what crosses it, as
+// The Metaverse Engine's architecture kit, wild land: cliffs, boulders, water and what crosses it, as
 // generators. Each writes one part at the origin (aethyr/arch/mesh.coax ArchPart) with the solids
 // that block a walker; a realm stands it with a record.
 //

@@ -239,7 +239,7 @@ ev_castle_near :: (out:[]EvNear,x:f32,z:f32,reach:f32,ground:f32) {
  }
 }
 // ---- sight (#13073): the village's and castle's walls, the scene's solid props, the dungeon (its
-// roof too) and the meadow's land, as Aethyr's visibility service takes them. Bushes don't hide.
+// roof too) and the meadow's land, as the Metaverse Engine's visibility service takes them. Bushes don't hide.
 // The walls are gathered EV_SIGHT_CHUNK metres of the line at a time, in world heights.
 EV_SIGHT_CHUNK :: 8.0;
 EV_SIGHT_BOXES :: 1024;

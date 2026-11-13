@@ -1,4 +1,4 @@
-// Aethyr's terrain tiles and material tables (GitHub #12995, book chapters 8, 12 and 80): the
+// The Metaverse Engine's terrain tiles and material tables (GitHub #12995, book chapters 8, 12 and 80): the
 // versioned, content-addressed records a realm's ground is admitted from, and the one sampler that
 // drawing and ground queries share.
 //

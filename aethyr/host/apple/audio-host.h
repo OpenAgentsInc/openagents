@@ -1,8 +1,8 @@
 // The Apple audio host's C side (aethyr/host/README.md, Audio): scalar wrappers over the shared
 // Coax audio authorities (aethyr/host/native-audio.coax: the PCM interpreter, the session, the bank,
 // the memory tickets, the WAV and Opus plans and the Everglade PCM assets), and the four calls a
-// realm host answers for its page: its sound bank and its sound packets. Aethyrforge's realm host
-// (apps/aethyrforge-desktop/MetalRealm.m) and Aethyr's page host (aethyr/host/apple/PageHost.m)
+// realm host answers for its page: its sound bank and its sound packets. The Metaverse Engine desktop app's realm host
+// (apps/aethyrforge-desktop/MetalRealm.m) and the Metaverse Engine's page host (aethyr/host/apple/PageHost.m)
 // each answer those four; the wrappers are audio-host.c, built into the TU that has the Coax
 // types. The Swift side is apps/aethyrforge-desktop/Sources/MetalAudio.swift.
 #ifndef AETHYR_APPLE_AUDIO_HOST_H

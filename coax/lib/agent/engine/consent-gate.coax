@@ -3,7 +3,7 @@
 // goes to System One only under a grant recorded for it, and each send or
 // refusal is logged in the hash-chained ledger first
 // (psionic/lib/harness/consent.coax). The owner names its ledger; Coder's is
-// ~/.openagents/coder/consent/events.jsonl, and Aethyrforge's chat uses the
+// ~/.openagents/coder/consent/events.jsonl, and the Metaverse Engine's chat uses the
 // same one. Moved from coder/tui/gate.coax and memory.coax.
 //
 //   cg_session_to_so   the gate on one message to System One, on the ledger at path

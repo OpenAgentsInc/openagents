@@ -83,7 +83,7 @@ LabWalk :: struct {
   look: bool;                         // the world asks: when you stand still at a station, the camera turns toward it on any screen
   still_x: f32; still_z: f32; still_for: f32;   // where you last stood, and for how long you have stood there
   looked: bool; pitch0: f32;          // the camera has looked up at a station, and its pitch before
-  in_app: bool;                       // in the Everglade apps (Aethyr's page host): the app draws its own Worlds button, at the top's middle
+  in_app: bool;                       // in the Everglade apps (the Metaverse Engine's page host): the app draws its own Worlds button, at the top's middle
   framed: bool;                       // the camera's first frame set: further back on an upright screen, where the stations are off to the sides
   narrow: bool;                       // the screen is upright: a hub's floor signs are small enough to read whole across it
   // a hub (lab_districts): its districts, each an avenue off the plaza; d_n 0 is the one lane

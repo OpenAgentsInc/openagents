@@ -23,7 +23,7 @@ typedef struct {
   void (*encode)(void *user, void *enc, uint32_t w, uint32_t h, float dpr);
   // Optional: whether the layer's picture changed since the last frame (1) or not (0). With it,
   // a frame is drawn only when this or the components changed, and ui_frame waits for events as
-  // it does without a layer (an app's overlay that is still most of the time: Aethyrforge's chat).
+  // it does without a layer (an app's overlay that is still most of the time: the Metaverse Engine's chat).
   int (*changed)(void *user);
 } UiLayer;
 void ui_layer(UiHost *h, const UiLayer *layer);

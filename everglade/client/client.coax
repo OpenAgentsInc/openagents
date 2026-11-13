@@ -682,7 +682,7 @@ e2_look :: (s: [] E2, dyaw: f32, dpitch: f32, zoom: f32) #export_c #effects(all)
 }
 
 // ---- the frame: the follow camera, the uniforms
-// ---- the look up: Aethyr's centred follow mode (aethyr/cam/modes.coax, #12994), first written here
+// ---- the look up: the Metaverse Engine's centred follow mode (aethyr/cam/modes.coax, #12994), first written here
 // from Everglade Experimental's camera. The pitch goes 1.2 rad above the horizon (the shared orbit
 // stops at 0.55). The eye sits on a line straight back from your head, centred on you at every pitch.
 // Looking up swings the eye down behind you until it meets the land, 0.2 m over it; past that the eye

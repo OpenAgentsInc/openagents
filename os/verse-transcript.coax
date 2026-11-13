@@ -1,4 +1,4 @@
-// Verse OS: an agent's transcript, readable, for the desk (docs/os/2026-11-02-verse-os.md, V4). When you
+// Metaverse OS: an agent's transcript, readable, for the desk (docs/os/2026-11-02-verse-os.md, V4). When you
 // click an agent standing in the Grid, the session opens this on the desk in a terminal, following the
 // file as the agent writes it. It reads Claude Code's lines ({"type":"user"|"assistant","message":
 // {"content": text or [{"type":"text","text":..}, {"type":"tool_use","name":..}, ..]}}) and Codex's

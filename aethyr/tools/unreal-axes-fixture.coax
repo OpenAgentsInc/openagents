@@ -1,5 +1,5 @@
 // Writes the axis fixture for the Unreal exporter (GitHub #13399): three unit cubes at known
-// Aethyr positions, one per axis and each a different distance out, so the importing side can
+// Metaverse Engine positions, one per axis and each a different distance out, so the importing side can
 // read back where +x, +y and +z land and which way the faces wind.
 //   marker_x10 centre (10, 0, 0) red, marker_y5 (0, 5, 0) green, marker_z20 (0, 0, 20) blue
 //   coax/web/tool.sh aethyr/tools/unreal-axes-fixture.coax OUT.glb

@@ -1,6 +1,6 @@
-// Aethyr's architecture kit, its stylized materials: what a surface is made of, as the number a
+// The Metaverse Engine's architecture kit, its stylized materials: what a surface is made of, as the number a
 // vertex carries (aethyr/arch/mesh.coax, float 6). The village and flora generators
-// (aethyr/arch/village.coax, flora.coax) write these, and Aethyr's stylized shading
+// (aethyr/arch/village.coax, flora.coax) write these, and the Metaverse Engine's stylized shading
 // (aethyr/render/stylized.coax) paints each one: its colour, its pattern and how it takes light.
 // A vertex's tint (the pen's, arch_tint) replaces the colour of a material that takes one.
 //

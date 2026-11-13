@@ -1,4 +1,4 @@
-// Aethyr's key-light shadow cascades (GitHub #13016, part of #12998). The one 2048 map that
+// The Metaverse Engine's key-light shadow cascades (GitHub #13016, part of #12998). The one 2048 map that
 // light.coax describes reaches 60 m and is drawn again every frame. Cascades split that into
 // tiles of one depth atlas, each a ring further out, and a tile is drawn again only when its
 // snapped view changes:

@@ -1,4 +1,4 @@
-// Aethyr's layout trace (GitHub #13076): the HUD's widgets as rectangles, recorded as they are
+// The Metaverse Engine's layout trace (GitHub #13076): the HUD's widgets as rectangles, recorded as they are
 // drawn, and a check that finds the ones that collide. A HUD part that draws a button, a run of
 // words, a panel or a bar also puts its rectangle here when a trace is attached; with none attached
 // (an empty view, the default) every call returns at once and nothing is kept, so a shipped frame

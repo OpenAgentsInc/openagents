@@ -1,4 +1,4 @@
-// Derive Aethyr's bounded collision boxes from the pinned Godot collision meshes.
+// Derive the Metaverse Engine's bounded collision boxes from the pinned Godot collision meshes.
 // The source package is read as data; its project scripts are never executed.
 // tool.sh: release
 // tool.sh: stack-gib 8

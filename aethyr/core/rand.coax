@@ -1,4 +1,4 @@
-// Aethyr's random streams (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md):
+// The Metaverse Engine's random streams (the Metaverse Engine core, GitHub #12609, docs/verse/engine-core.md):
 // a draw is a pure function of a seed, a stream and a counter, with no generator state. A
 // realm gives each system or entity its own stream and counts its own draws, so a new
 // system, or one that draws more or less, never shifts another stream's numbers. Replay

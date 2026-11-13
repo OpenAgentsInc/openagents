@@ -13,7 +13,7 @@
 //   coax/bin/coax test apps/openagents-web/starcatch.coax --steps 2000000000
 
 #load "font.coax";
-#load "../../aethyr/core/loop.coax";   // the fixed steps: Aethyr's one clock (aethyr/book ch001)
+#load "../../aethyr/core/loop.coax";   // the fixed steps: the Metaverse Engine's one clock (aethyr/book ch001)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 12000;
@@ -298,7 +298,7 @@ draw_hud :: (s: [] Catch, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
   return n;
 }
 
-// A frame's fixed steps, on Aethyr's one clock (aethyr/core/loop.coax): the frame counts for at most
+// A frame's fixed steps, on the Metaverse Engine's one clock (aethyr/core/loop.coax): the frame counts for at most
 // 0.1 s, its steps are 1/60 s, at most 8 run, and a backlog past that is dropped, never run later.
 // The drawn clock moves by what the frame counted for.
 catch_run :: (s: [] Catch, dt: f32) {

@@ -3,7 +3,7 @@
 // model server answers on this machine) go to System One as typed questions,
 // and the answer names the engine, how hard the task is and the effort to
 // give it. It is a decision, never a keyword rule. Coder asks when no
-// --engine is given; Aethyrforge asks for every conversation's first turn.
+// --engine is given; the Metaverse Engine asks for every conversation's first turn.
 //
 // A shared router.json (~/.openagents/coder/router.json) selects local
 // Elephant or an explicit Pylon System One door. Without that configuration

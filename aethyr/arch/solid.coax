@@ -1,4 +1,4 @@
-// Aethyr's architecture kit, flat-faced solids measured in metres: the pieces a vernacular building
+// The Metaverse Engine's architecture kit, flat-faced solids measured in metres: the pieces a vernacular building
 // is made of (aethyr/arch/village.coax). Where aethyr/arch/mesh.coax's shapes run u and v from 0 to
 // 1, these give every face its real size, u along it and v up it in metres, so a shader can lay
 // courses of stone, tiles and boards at their true scale (aethyr/render/stylized.coax).

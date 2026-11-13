@@ -78,7 +78,7 @@ tool_main :: () -> int #export_c #effects(all) {
   jo_obj(j);
   ex_int(j, "aexport", EX_VERSION);
   jo_key(j, "game"); jo_obj(j); ex_str(j, "id", "splice"); ex_str(j, "name", "Splice"); ex_str(j, "source", "verse/splice/splice-game.coax"); jo_end(j);
-  // Aethyr: metres, right-handed, y up (glTF's own convention). Measured with Unreal 5.9's default
+  // The Metaverse Engine: metres, right-handed, y up (glTF's own convention). Measured with Unreal 5.9's default
   // glTF import (GitHub #13399): Unreal X = x, Y = z, Z = y, centimetres.
   jo_key(j, "axes"); jo_obj(j); ex_str(j, "aethyr", "metres, right-handed, y up"); ex_str(j, "unreal_x", "x"); ex_str(j, "unreal_y", "z"); ex_str(j, "unreal_z", "y"); ex_num(j, "unreal_units_per_metre", 100); jo_end(j);
 

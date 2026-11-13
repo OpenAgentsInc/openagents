@@ -1,5 +1,5 @@
 // Firm reason: 6 (AppKit, WebKit, Metal and IOKit measurements; each check's verdict reads Coax state).
-// Aethyrforge's checks (Forge.h): each runs off the main thread after startup, drives the real
+// The Metaverse Engine's checks (Forge.h): each runs off the main thread after startup, drives the real
 // window, world, chat and children, writes its report, and ends the app.
 #import "Forge.h"
 #import "Aethyrforge-Swift.h"

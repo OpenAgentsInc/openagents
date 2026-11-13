@@ -1,4 +1,4 @@
-// Verse OS: the GPU's power ceiling, applied (docs/os/2026-11-02-verse-os.md, V5): reads the card's
+// Metaverse OS: the GPU's power ceiling, applied (docs/os/2026-11-02-verse-os.md, V5): reads the card's
 // limits from nvidia-smi and sets what os/gpu-limits-policy.coax (#authority) decides, as
 // os/cpu-limits.coax does for the CPU. Setting a limit needs root: the NixOS module runs it as a
 // unit at boot (os/nix/modules/verse-os.nix, verseos.gpuLimits); --dry-run says what it would do.

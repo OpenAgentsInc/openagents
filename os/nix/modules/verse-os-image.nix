@@ -1,11 +1,11 @@
-# Verse OS as an image (docs/os/2026-11-02-verse-os.md, "Base system" and V7): a disk image a machine
-# boots straight into the Verse from, which nobody configures and nothing rebuilds on the machine.
+# Metaverse OS as an image (docs/os/2026-11-02-verse-os.md, "Base system" and V7): a disk image a machine
+# boots straight into the Metaverse from, which nobody configures and nothing rebuilds on the machine.
 #
 #   - The disk: an ESP (systemd-boot and a unified kernel image), a read-only root holding the
 #     system's store (slot A), and room for a second (slot B). Built on our machines with
 #     image.repart; `nix build .#nixosConfigurations.verse-os-image.config.system.build.image`.
 #   - Updates: systemd-sysupdate fetches the next version's root and UKI into the slot not in use,
-#     and the boot loader tries it next boot. A version that does not reach the Verse is not
+#     and the boot loader tries it next boot. A version that does not reach the Metaverse is not
 #     blessed (boot counting), and the loader falls back to the one before.
 #   - Your data: /home on its own partition, made and encrypted (TPM2) by systemd-repart on first
 #     boot. An update never touches it.
@@ -138,7 +138,7 @@ in
         };
       };
     };
-    # an image that reached the Verse is good: systemd-bless-boot marks it once boot-complete.target is
+    # an image that reached the Metaverse is good: systemd-bless-boot marks it once boot-complete.target is
     # reached, which verse-session's first frame on tty1 stands for
     systemd.targets.boot-complete.wantedBy = [ "multi-user.target" ];
 
@@ -153,7 +153,7 @@ in
       serviceConfig.Type = "oneshot";
       script = "install -d -m 0700 -o pilot -g users /home/pilot";
     };
-    # one person, logged in on tty1, where the Verse runs
+    # one person, logged in on tty1, where the Metaverse runs
     users.users.pilot = { isNormalUser = true; extraGroups = [ "input" "video" ]; };
     services.getty.autologinUser = "pilot";
     verseos.session = {

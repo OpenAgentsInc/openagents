@@ -3,7 +3,7 @@
 # A module has a product consumer when a file outside aethyr/ that is not a test, tool, example, book
 # or document loads it, directly or through another module. A module with none needs a line here:
 #   adopt PREFIX #ISSUE     an open issue of the AAA program (#13257) takes it into the product
-#   book PREFIX CHAPTER     it is the Aethyr book's own implementation; CHAPTER names it
+#   book PREFIX CHAPTER     it is the Metaverse Engine book's own implementation; CHAPTER names it
 #   built PREFIX SCRIPT     no file loads it: SCRIPT compiles it by name
 #   pipeline PREFIX TOOL    an offline tool that makes a shipped thing loads it
 # The longest prefix covers a module. A line that covers nothing now fails: take it out when its
@@ -25,7 +25,7 @@ adopt aethyr/cam/ #13271  # the camera the client owns: attention filters, the e
 adopt aethyr/actors/ #13293  # compiled archetypes, bounded behaviour and the actor pool become the one server creature runtime
 adopt aethyr/ai/ #13293  # model decisions, steering from colliders and the pilot vocabulary drive the creature runtime
 adopt aethyr/action/break.coax #13293  # breakables and attachments are creature-runtime props
-adopt aethyr/forge/ #13294  # Aethyrforge edits the content tables: NPC and raid documents, the publish record, published vertices
+adopt aethyr/forge/ #13294  # the realm editor edits the content tables: NPC and raid documents, the publish record, published vertices
 adopt aethyr/talk/ #13293  # the bounded conversation profile is how a server creature answers a player
 
 # P6: one renderer, one host
@@ -43,7 +43,7 @@ built aethyr/render/film.coax verse/gpu/realm.sh  # the film profile, compiled t
 pipeline aethyr/render/exr.coax aethyr/tools/film-frames.coax  # the film encoder writes its layers as OpenEXR
 pipeline aethyr/audio/measure.coax aethyr/audio/sfx-tool.coax  # the sound-effect bank is judged by loudness when it is built
 
-# The Aethyr book's own implementations: a chapter builds each and its example runs it
+# The Metaverse Engine book's own implementations: a chapter builds each and its example runs it
 book aethyr/physics/sim/particles.coax aethyr/book/ch023-particles-and-their-neighbors.md
 book aethyr/physics/sim/sph.coax aethyr/book/ch024-liquids-from-particles.md
 book aethyr/physics/sim/pbd.coax aethyr/book/ch025-cloth-and-rope-from-constraints.md

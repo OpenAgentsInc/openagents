@@ -1,4 +1,4 @@
-// The Parakeet recognizer through the actual voice host into Aethyr's event gate
+// The Parakeet recognizer through the actual voice host into the Metaverse Engine's event gate
 // (GitHub #12669), with recorded audio only: no microphone and no speaker.
 //   coax/web/tool.sh verse/voice-host/parakeet-check.coax [MODEL_DIR [CASE]]
 // CASE runs one group only: fixtures, long, silence, cancel or realm.
@@ -13,7 +13,7 @@
 //   cancel, and a barge-in's new epoch, while the first turn is recognized:
 //     its transcript is never delivered, and the next turn's is;
 //   a realm that cancelled on its own: the host's late transcript is refused
-//     as stale by Aethyr's gate.
+//     as stale by the Metaverse Engine's gate.
 // Each run is a whole-model decision on original weights, on the GPU (Metal
 // on macOS, CUDA on Linux; about two minutes). Run it to qualify a change,
 // not as a routine check.
@@ -222,7 +222,7 @@ tool_main :: () -> int #export_c #effects(all) {
     print("     %\n", last_line(host, verdicts[m]));
   }
 
-  // 5. The realm cancelled on its own: the host delivers, Aethyr's gate refuses it as stale.
+  // 5. The realm cancelled on its own: the host delivers, the Metaverse Engine's gate refuses it as stale.
   if only == "" || only == "realm" {
     argv := [17] string.[clientbin, "--url", url, "--hold", "--aethyr", "--timeout", "600", "--after-end", "realm",
                          "--then", wait, "--exact", WAIT, "--turns", "2", "--quiet", hello];

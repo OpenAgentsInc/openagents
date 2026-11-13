@@ -1,4 +1,4 @@
-// Native integration: Aethyrforge's chat on the shared turn runner, in this
+// Native integration: the Metaverse Engine's chat on the shared turn runner, in this
 // process, using echo and an isolated CODER_HOME. No browser, provider login
 // or GPU is used here.
 #load "linux-native.coax";

@@ -1,4 +1,4 @@
-// Exact piecewise-planar rays through Aethyr's heightfield, with a declared cell budget.
+// Exact piecewise-planar rays through the Metaverse Engine's heightfield, with a declared cell budget.
 // This is a ray helper, not sphere overlap or swept-capsule collision.
 #module "aethyr.ground.query";
 #load "ground.coax";

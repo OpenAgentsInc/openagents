@@ -46,7 +46,7 @@ The imported module names identify the API; physical source ownership and
 
 <!-- checked-source: examples/ch26_verse.coax -->
 ```jai
-// The same caller-owned byte operation used by Verse's pass formatter and
+// The same caller-owned byte operation used by the Metaverse's pass formatter and
 // Psionic's HTTP response rotation. No GPU execution or ownership is implied.
 #import "Basic";
 #load "../../lib/sequence.coax" as sequence;

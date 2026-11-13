@@ -1,4 +1,4 @@
-// Aethyr's light and shadow (book chapter 13): one key light from the realm's clock, hemisphere
+// The Metaverse Engine's light and shadow (book chapter 13): one key light from the realm's clock, hemisphere
 // ambient, a shadow map that holds still as the eye moves, a mover's contact shadow, height haze
 // and bounded local lights. Every material reads the same numbers.
 //

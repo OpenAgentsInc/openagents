@@ -1,4 +1,4 @@
-// Aethyr's pose (book chapter 14): a joint's local pose, the rotations it is made of, a cross-fade
+// The Metaverse Engine's pose (book chapter 14): a joint's local pose, the rotations it is made of, a cross-fade
 // blended joint by joint, the posed skeleton chained from the root, and the skinning palette's
 // three rows of four. aethyr/anim/skin.coax plays clips through these (Everglade's Ranger, its people
 // and the 5E lab's bodies); the arithmetic is the one skin.coax had before it moved here, in the

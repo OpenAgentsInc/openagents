@@ -116,7 +116,7 @@ fragment float4 slot_fragment(SlotOut in [[stage_in]],constant View& v [[buffer(
   return float4(float3(g+glow),clamp(a,0.,1.));
 }
 
-// Verse rigid-world binding: transforms, light values and draw groups are
+// Metaverse rigid-world binding: transforms, light values and draw groups are
 // produced by Coax. The vertex layout is Resource's documented 48-byte span.
 struct HauntVertex {packed_float3 p;packed_float3 n;float2 uv;uchar4 color;packed_uint3 reserved;};
 struct HauntInstance {float4 r0;float4 r1;float4 r2;float4 material;};

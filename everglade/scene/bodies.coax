@@ -25,7 +25,7 @@
 // Player mode's camera (fivelab.coax lab_chase_step): Everglade's follow camera, aethyr/cam/camera.coax's free
 // orbit. It loads here, not in fivelab.coax, as it shares points.coax with the figures' skin.
 #load "../../aethyr/cam/camera.coax";
-// Aethyr's shared camera modes and cinematic hand-back (#12994), in the same module as the orbit.
+// The Metaverse Engine's shared camera modes and cinematic hand-back (#12994), in the same module as the orbit.
 #load "../../aethyr/cam/modes.coax";
 #load "../../aethyr/cam/handback.coax";
 // The zones' follow, Character Create, over-the-shoulder and overhead cameras (#13087): every zone's.

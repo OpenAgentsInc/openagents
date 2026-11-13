@@ -1,4 +1,4 @@
-// Aethyrforge's own setup/status chrome on the shared Zeron primitives.
+// The Metaverse Engine's own setup/status chrome on the shared Zeron primitives.
 // The realm's HUD is independent. AppKit supplies input and font rasterization.
 #load "../../components/zeron/gpui.coax";
 #load "setup.coax";

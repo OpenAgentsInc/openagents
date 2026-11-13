@@ -1,11 +1,11 @@
-// Aethyr's agent driver (GitHub #13095; docs/research/exact/03-what-to-adapt.md): what an agent
+// The Metaverse Engine's agent driver (GitHub #13095; docs/research/exact/03-what-to-adapt.md): what an agent
 // sees of a realm and the world operations it may ask for, the same in every realm. `coax drive`
 // (coax/web/drive.coax) sends a realm one command at a time through the host (message 700,
 // coax/web/host.js coaxial.drive) and reads the answer back as text.
 //
 // What it sees (`tree`, `layout`): the world's entities by stable id (you, the monsters, the
 // people, mounts and placed things: `goblin-3`, `guard`, `horse-white`), which the realm puts
-// here each frame from what it draws, and the HUD's widgets from Aethyr's layout trace
+// here each frame from what it draws, and the HUD's widgets from the Metaverse Engine's layout trace
 // (aethyr/ui/trace.coax) with ids made from their part and name (`bar.fire-bolt`).
 //
 // What it asks for: `walk-to ID`, `face ID`, `use ABILITY on ID` and `mount ID`. None of them moves

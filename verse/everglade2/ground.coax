@@ -1,5 +1,5 @@
 // Everglade II's admitted ground (GitHub #12995, #13052, #13059; book chapters 8, 12 and 13): the
-// land as a set of Aethyr terrain tiles (aethyr/world/terrain-tile.coax, `aethyr.terrain.tile.v1`) against
+// land as a set of Metaverse Engine terrain tiles (aethyr/world/terrain-tile.coax, `aethyr.terrain.tile.v1`) against
 // Everglade II's ground material table, and the canopy's ambient occlusion baked on the glade's tile
 // (aethyr/render/bake.coax, `aethyr.bake.grid.v1`). The realm supplies content and this adapter; the
 // engine admits, samples and publishes.

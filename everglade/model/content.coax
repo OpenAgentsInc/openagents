@@ -1,7 +1,7 @@
 // Everglade's content tables (#13294, AAA P4.5) and the rules that read them: which tables the game
 // needs, what a creature drops (#13291) and what a quest asks next (#13292). The document is
 // aethyr/content/tables.coax's (profile aethyr-content-v1); the tables are data in
-// everglade/content/everglade.content, which a room loads at start and Aethyrforge edits. Nothing
+// everglade/content/everglade.content, which a room loads at start and the realm editor edits. Nothing
 // here is a zone's: a new creature, item, loot row or quest is a row, not code.
 //
 //   ability   id name                                  abilities and auras, by content ID (#13286)

@@ -1,4 +1,4 @@
-// Summarize raw WKWebView timing observations with Aethyr's frame statistics.
+// Summarize raw WKWebView timing observations with the Metaverse Engine's frame statistics.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";

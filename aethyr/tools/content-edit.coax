@@ -1,4 +1,4 @@
-// Edits a content tables file through Aethyrforge's edit log (#13294; aethyr/forge/content-edit.coax):
+// Edits a content tables file through the Metaverse Engine's edit log (#13294; aethyr/forge/content-edit.coax):
 // each edit is one typed step, and the file is written, at its next revision, only when every table
 // still holds its rules.
 // Usage: coax/web/tool.sh aethyr/tools/content-edit.coax FILE check

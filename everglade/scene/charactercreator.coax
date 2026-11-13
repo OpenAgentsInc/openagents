@@ -1,4 +1,4 @@
-// Aethyr's live Quaternius wardrobe. Shared people parts, skinning and baked clips;
+// The Metaverse Engine's live Quaternius wardrobe. Shared people parts, skinning and baked clips;
 // no cloned geometry or per-outfit skeleton. Used by fivelab's character-creator route.
 #module "openagents.charactercreator";
 #load "../../aethyr/ui/font.coax";
@@ -508,7 +508,7 @@ cc_room_min :: (room:[]f32,row:int,r:[3]f32) { for i:0..<3 {if r[i]<room[row*3+i
  for r:12..<18 {#assert room[r*3]>=CC_CLEAR && room[r*3+1]>=CC_CLEAR && room[r*3+2]>=0;}
 }
 // ---- the bow through the body (#13073): every pose the Ranger shows, the bow's limbs, its string and
-// the nocked arrow tested against the body's capsules with Aethyr's attachment overlap check
+// the nocked arrow tested against the body's capsules with the Metaverse Engine's attachment overlap check
 // (aethyr/action/attach-overlap.coax). The bow is placed as held_weapon places it (bow_matrix,
 // bow_string_points); the body's capsules are joint to joint, metres round:
 CC_BODY_N :: 11;
@@ -1489,9 +1489,9 @@ stage_camera :: (s:Creator,u:[]f32,w:f32,h:f32) {
   s.stage_view=trk.CamView.{ex=3,ey=12,ez=1,lx=0,ly=0,lz=0};cc_view(s,u[..],1920,1080,1);
   #assert u[21]< -0.9 && u[25]==0 && u[29]>0 && abs(u[20]*u[24]+u[21]*u[25]+u[22]*u[26])<0.0001 && abs(u[20]*u[28]+u[21]*u[29]+u[22]*u[30])<0.0001;
 }
-// The camera's uniforms: a ?stage= setup's eye and look; else Experimental's world through Aethyr's
+// The camera's uniforms: a ?stage= setup's eye and look; else Experimental's world through the Metaverse Engine's
 // over-the-shoulder boom (aethyr/cam/boom.coax), before the village's walls, this meadow's land and
-// the eye's last distance; the studio through Aethyr's studio camera (aethyr/cam/studio.coax), held
+// the eye's last distance; the studio through the Metaverse Engine's studio camera (aethyr/cam/studio.coax), held
 // over the glade.
 cc_view :: (s:Creator,u:[]f32,w:f32,h:f32,k:f32) {
   if s.stage_on {stage_camera(s,u,w,h);return;}

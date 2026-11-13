@@ -1,4 +1,4 @@
-// Two-client Verse presence over a real relay (issue #12630, chapter 101's
+// Two-client Metaverse presence over a real relay (issue #12630, chapter 101's
 // next exit). One process is one client: it signs NIP-MV pose frames
 // (kind 23300, ephemeral) with its TEST key, publishes them to the relay on
 // one connection, and on another subscribes to the other client's frames,

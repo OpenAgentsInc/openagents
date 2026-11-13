@@ -1,4 +1,4 @@
-// Lab composition of Aethyr's existing rigid/contact/SAT kernels with caller-owned large storage.
+// Lab composition of the Metaverse Engine's existing rigid/contact/SAT kernels with caller-owned large storage.
 #load "physics-record.coax";
 #load "../physics/sim/narrow.coax";
 

@@ -1,4 +1,4 @@
-// Aethyr's sound from numbers: oscillators, seeded noise, envelopes, a one-pole filter,
+// The Metaverse Engine's sound from numbers: oscillators, seeded noise, envelopes, a one-pole filter,
 // constant-power panning, soft saturation and Schroeder reverb lines, all in integers.
 // A sample is a Q16 fixed-point value (AU_ONE is full scale), a phase is a 32-bit
 // fraction of one cycle, and time is a whole number of samples. Nothing here reads a

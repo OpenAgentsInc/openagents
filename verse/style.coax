@@ -8,8 +8,8 @@
 // channel at a time (the Metal scalar profile has no vectors).
 //
 //   coax/bin/coax test verse/style.coax
-#load "../aethyr/render/material.coax";   // surface shading: bands, cool shadows, rim (Aethyr book chapter 12)
-#load "../aethyr/render/light.coax";      // ambient, the shadow map, contact and haze (Aethyr book chapter 13)
+#load "../aethyr/render/material.coax";   // surface shading: bands, cool shadows, rim (Metaverse Engine book chapter 12)
+#load "../aethyr/render/light.coax";      // ambient, the shadow map, contact and haze (Metaverse Engine book chapter 13)
 #load "../aethyr/render/shadow-filter.coax";
 #load "../aethyr/render/sky.coax";
 #load "../aethyr/render/vegetation.coax";

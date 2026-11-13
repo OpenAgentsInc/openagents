@@ -1,4 +1,4 @@
-// Aethyr's flight rule (the Aethyr engine core, GitHub #12609): the per-step hook a walking
+// The Metaverse Engine's flight rule (the Metaverse Engine core, GitHub #12609): the per-step hook a walking
 // realm declares to fly. The walker (aethyr/move/walk.coax) calls `flight_vertical` once a fixed
 // step, after gravity and before it moves you up or down, whenever you are in the air and
 // your realm declares a profile that is on. So a beat, a climb, a glide and a dive set the

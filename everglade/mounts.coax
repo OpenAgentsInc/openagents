@@ -1,5 +1,5 @@
 // Everglade's mounts (everglade/docs/mounts-spec.md): the game layer every Everglade zone shares, on
-// Aethyr's mounts (aethyr/action/mount.coax, the mount, its gaits, steering, mounting and riding
+// the Metaverse Engine's mounts (aethyr/action/mount.coax, the mount, its gaits, steering, mounting and riding
 // collision; aethyr/action/ride-pose.coax, the rider's seat). This module owns what makes them
 // Everglade's: the SRD's Riding Horse handling, the white horse's baked frames in a zone's pack
 // (glade/horse0..35: Idle, Walk, Gallop, twelve frames each; verse/tools/assets/horse_pack.coax) and
@@ -9,7 +9,7 @@
 //
 // The red dragon is the same kind of mount with wings (eg_dragon_add): its frames are the pack's
 // glade/dragon0..74 (everglade/dragon-clips.coax), its saddle the model's `saddle` bone at the base of
-// the neck, and it flies on Aethyr's shared winged flight (aethyr/action/flight.coax) at the SRD Adult
+// the neck, and it flies on the Metaverse Engine's shared winged flight (aethyr/action/flight.coax) at the SRD Adult
 // Red Dragon's speeds: Speed 40 ft, Fly 80 ft. Space takes off, beats and climbs, Shift dives, X lands;
 // nobody gets off in the air ("Land first").
 //

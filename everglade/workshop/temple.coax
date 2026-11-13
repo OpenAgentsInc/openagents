@@ -1,6 +1,6 @@
-// The Golemancers' Workshop, built: a round marble temple put together from Aethyr's architecture
+// The Golemancers' Workshop, built: a round marble temple put together from the Metaverse Engine's architecture
 // kit (aethyr/arch/). Each part is built once into one mesh; records stand it where layout.coax
-// says; draws name a part and its records. The host uploads the three and Aethyr's shaders
+// says; draws name a part and its records. The host uploads the three and the Metaverse Engine's shaders
 // (gpu/temple.coax) draw them. Nothing here is a picture: it is parts and places.
 //
 // Three groups of draws:

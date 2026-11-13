@@ -1,5 +1,5 @@
-// Verse OS: when the machine serves the mesh as a Pylon (docs/os/2026-11-02-verse-os.md, V5). The
-// GPU is yours while you are in the Verse; when you have left it alone long enough, the session
+// Metaverse OS: when the machine serves the mesh as a Pylon (docs/os/2026-11-02-verse-os.md, V5). The
+// GPU is yours while you are in the Metaverse; when you have left it alone long enough, the session
 // lends it to the mesh, and the moment you touch a key or the mouse it takes it back. It spends
 // power and earns money, so it is #authority: these rules decide, and os/verse-session.coax only
 // runs `openagents pylon start` and `stop` when they say so.

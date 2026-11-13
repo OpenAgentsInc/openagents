@@ -1,4 +1,4 @@
-// Water for Verse, phase W2: the CPU side of the water shader. A port of
+// Water for the Metaverse, phase W2: the CPU side of the water shader. A port of
 // the previous engine's `verse_pbr::water` at its W2 commit (`git show
 // 32e4d59fc2:crates/verse-pbr/src/water/`: terms.rs, frame.rs, preset.rs,
 // bake.rs, mod.rs), feeding the WGSL port of its water.wgsl

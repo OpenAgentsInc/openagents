@@ -1,4 +1,4 @@
-// Aethyr's graphics quality (docs/verse/2026-11-03-adaptive-graphics-quality.md): how much a realm
+// The Metaverse Engine's graphics quality (docs/verse/2026-11-03-adaptive-graphics-quality.md): how much a realm
 // draws, set from the device at the start and then by the frames themselves. A realm keeps one
 // `Quality`, gives it its page's facts once (`quality_start`), every frame's length
 // (`quality_frame`), and reads the knobs the quality is at (`quality_knobs`). It never decides

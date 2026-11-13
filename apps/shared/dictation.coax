@@ -1,4 +1,4 @@
-// In-memory dictation audio, using the Verse's existing resampler and VAD.
+// In-memory dictation audio, using the Metaverse's existing resampler and VAD.
 #load "dictation-policy.coax";
 #load "dictation-device.coax";
 #load "../../verse/voice.coax";

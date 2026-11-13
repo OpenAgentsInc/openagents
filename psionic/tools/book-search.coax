@@ -1,4 +1,4 @@
-// Search the Coax, Psionic and Aethyr books (Psionic chapter 54).
+// Search the Coax, Psionic and Metaverse Engine books (Psionic chapter 54).
 //   coax/web/tool.sh psionic/tools/book-search.coax "how do I keep a model resident"
 //   ... "query" --k 10 --book psionic --mode bm25|dense|fused --json
 //   ... --eval psionic/fixtures/book-search/heldout.tsv [--json]
@@ -98,7 +98,7 @@ file_rev :: (b: Bs, f: int) -> string {
 read_books :: (s: [] Bs, root: string) -> bool {
   s[0].file_n = 0; s[0].text_n = 0; s[0].names_n = 0;
   dir: [4096] u8; full: [4096] u8;
-  // Aethyr, Coax, Psionic: the paths come out sorted, which find_file and
+  // The Metaverse Engine, Coax, Psionic: the paths come out sorted, which find_file and
   // the freshness check rely on.
   order := [3] int.[2, 0, 1];
   for book: order {

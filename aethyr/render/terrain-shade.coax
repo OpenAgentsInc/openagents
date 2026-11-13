@@ -1,5 +1,5 @@
 // Terrain material and baked-light shading (GitHub #12995, book chapters 12 and 13): the scalar
-// functions a realm's ground shader and Aethyr's CPU reference both call, so the GPU and the
+// functions a realm's ground shader and the Metaverse Engine's CPU reference both call, so the GPU and the
 // checks evaluate one set of equations. Each lowers to WGSL as `coax_p_<name>`.
 //
 // Materials (aethyr/world/terrain-tile.coax, `aethyr.terrain.materials.v1`): a procedural albedo is

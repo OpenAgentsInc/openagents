@@ -4,8 +4,8 @@
 //
 //   arena_blocked   a small sphere resting on the deck meets a wall or cover
 //   arena_sight     nothing stands between two points (3D, so low cover lets
-//                   you look over it): Aethyr's query_clear over the boxes
-//   arena_sees      what a creature sees at chest height: Aethyr's sense_sight
+//                   you look over it): the Metaverse Engine's query_clear over the boxes
+//   arena_sees      what a creature sees at chest height: the Metaverse Engine's sense_sight
 //   arena_sweep     how far a sphere moves before it meets a wall or cover,
 //                   so a fast crate or bolt cannot step through thin cover
 //   arena_walk      a character's circle walks, sliding along what it meets
@@ -17,12 +17,12 @@
 //   coax/bin/coax test --library verse/deadgears/arena.coax --steps 40000000   (the flow-field check walks ~25M)
 
 #load "../../aethyr/core/points.coax";
-#load "../../aethyr/world/nav/grid.coax";   // the walking grid's fields and steps (Aethyr book chapter 76)
-#load "../../aethyr/ai/stimulus.coax";   // sight through the shared ray query (Aethyr book chapter 75)
+#load "../../aethyr/world/nav/grid.coax";   // the walking grid's fields and steps (Metaverse Engine book chapter 76)
+#load "../../aethyr/ai/stimulus.coax";   // sight through the shared ray query (Metaverse Engine book chapter 75)
 
 BOXES :: 16;
 Block :: struct { lo: Point; hi: Point; }
-// `solid` holds the same boxes as Aethyr's colliders (aethyr/physics/query.coax: min x, y, z, max x, y, z).
+// `solid` holds the same boxes as the Metaverse Engine's colliders (aethyr/physics/query.coax: min x, y, z, max x, y, z).
 Arena :: struct { boxes: [BOXES] Block; n: int; solid: [96] f32; }
 
 arena_add :: (a: Arena, low: Point, high: Point) -> Arena {
@@ -37,7 +37,7 @@ arena_add :: (a: Arena, low: Point, high: Point) -> Arena {
   return next;
 }
 
-// The arena as Aethyr's colliders: its boxes, and a ground far below the deck, so a sight line
+// The arena as the Metaverse Engine's colliders: its boxes, and a ground far below the deck, so a sight line
 // is only ever stopped by a wall or a cover.
 ARENA_GROUND :: -100.0;
 arena_colliders :: (a: [] Arena) -> Colliders {
@@ -102,7 +102,7 @@ arena_enter :: (b: Block, g: f32, p: Point, d: Point) -> f32 {
   return t0;
 }
 
-// Nothing (wall or cover) stands on the segment from p to q: Aethyr's line-of-sight query over the
+// Nothing (wall or cover) stands on the segment from p to q: the Metaverse Engine's line-of-sight query over the
 // arena's boxes. Starting inside a box sees nothing.
 arena_sight :: (a: [] Arena, p: Point, q: Point) -> bool {
   d := sub(q, p); far: f32 = 1;
@@ -111,7 +111,7 @@ arena_sight :: (a: [] Arena, p: Point, q: Point) -> bool {
 }
 
 // What a Dead Gears creature sees across the deck: eyes and target at chest height (1.3 m), no
-// range of its own (a caller that has one checks it), through Aethyr's senses.
+// range of its own (a caller that has one checks it), through the Metaverse Engine's senses.
 ARENA_SENSES :: Senses.{sight = SENSE_REACH, eye = 1.3};
 arena_sees :: (a: [] Arena, p: Point, q: Point) -> bool {
   eye := v3(p.x, 1.3, p.z);
@@ -298,7 +298,7 @@ nav_nearest :: (n: [] Nav, p: Point, r: f32) -> int {
 }
 
 // The deck as aethyr/world/nav/grid.coax's grid: the fields, the steps and the next cell are the
-// module's (Aethyr book chapter 76), the same bit for bit as the private search they replaced
+// module's (Metaverse Engine book chapter 76), the same bit for bit as the private search they replaced
 // (aethyr/tests/nav-deadgears.coax keeps that trace).
 nav_grid :: () -> NavGrid { return NavGrid.{nx = NAV_NX, nz = NAV_NZ, cell = f32(NAV_CELL), x0 = f32(NAV_X0), z0 = f32(NAV_Z0)}; }
 nav_step :: (n: [] Nav, c: int, k: int) -> int { return nav_grid_step(nav_grid(), n[0].walk[..], c, k); }

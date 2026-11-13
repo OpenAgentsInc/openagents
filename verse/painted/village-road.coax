@@ -6,11 +6,11 @@
 //   benches and bunting stand round it, trees behind, pale mountains beyond.
 // You walk from one into the other.
 //
-// Nothing is modelled here. Every part comes from Aethyr's architecture kit as a generator with
+// Nothing is modelled here. Every part comes from the Metaverse Engine's architecture kit as a generator with
 // parameters (aethyr/arch/village.coax: houses, the church, walls, street furniture;
 // aethyr/arch/plaza.coax: steps, the terrace, piers, the fountain, benches, stalls;
 // aethyr/arch/flora.coax: trees, bushes, hills, the ground); this file says which, with what
-// parameters, and where they stand. Aethyr's stylized shading (aethyr/render/stylized.coax) draws
+// parameters, and where they stand. The Metaverse Engine's stylized shading (aethyr/render/stylized.coax) draws
 // them, and every part brings its own solids (aethyr/arch/solids.coax), so what you see you can
 // walk to and nothing you see can be walked through.
 //
@@ -52,7 +52,7 @@ VillageRoad :: struct {
   records: [VR_RECORDS * ARCH_RECORD_FLOATS] f32; record_n: int;
   draws: [VR_DRAWS * 4] u32; draw_n: int;
   table: [VR_NODES * ARCH_GROUND_FLOATS] f32;
-  heights: [VR_NODES] f32;           // the table's heights, for Aethyr's height field
+  heights: [VR_NODES] f32;           // the table's heights, for the Metaverse Engine's height field
   local: [VR_LOCAL_SOLIDS * ARCH_SOLID_FLOATS] f32;
   placed: [VR_PLACED * ARCH_PLACED_FLOATS] f32; placed_n: int;
   solid_draw: int;                   // the draw that shows the solids themselves (the last one)
@@ -157,7 +157,7 @@ vr_camera :: (shot: int) -> StyCamera {
   if shot >= 5 && shot <= 12 { return vw_camera(shot); }
   return vr_shot_camera();
 }
-// The look: Aethyr's stylized default (warm daylight from behind the village, soft blue shade),
+// The look: the Metaverse Engine's stylized default (warm daylight from behind the village, soft blue shade),
 // light haze, and a clear sky with one great heap of cloud and two small ones.
 vr_look :: () -> StyLook {
   l: StyLook;
@@ -200,7 +200,7 @@ vr_frame :: (u: [] f32, look: StyLook, eye: StyCamera) -> int {
   return sty_grass_field(u, look, eye.x + sin(eye.yaw) * 22 - half, eye.z - cos(eye.yaw) * 22 - half, VR_GRASS_COLS, VR_GRASS_ROWS);
 }
 // One move of a walker whose feet are at `feet`: slid along the village's solids, stood on its
-// ground, its steps and its terrace (Aethyr's walking capsule, aethyr/arch/solids.coax).
+// ground, its steps and its terrace (the Metaverse Engine's walking capsule, aethyr/arch/solids.coax).
 vr_walk :: (v: [] VillageRoad, feet: WorldPoint, dx: f32, dz: f32) -> WorldPoint {
   field: [1] QueryHeightfield; field[0] = arch_field(vr_ground(), v[0].heights[..]);
   return arch_walk_among(v[0].placed[..], v[0].placed_n, field[..], feet, dx, dz);

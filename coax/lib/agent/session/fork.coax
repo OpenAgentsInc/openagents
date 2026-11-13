@@ -7,7 +7,7 @@
 // the fork's first message as text ("Earlier in this conversation: ...
 // Now: ..."). A context file is related material an owner hands the first
 // turn (an issue and its comments for Coder's Router, the scene for
-// Aethyrforge): it goes ahead of the first message, and the owner logs it
+// the Metaverse Engine): it goes ahead of the first message, and the owner logs it
 // as a "context" line so a replay rebuilds what was sent.
 //
 //   sf_fork          what a fork of a parent's log carries: its turns as text, or the engine's resume

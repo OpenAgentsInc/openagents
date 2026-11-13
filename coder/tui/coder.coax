@@ -2475,7 +2475,7 @@ cd_cmd_stop :: (id_in: string, json: bool) -> int {
 
 // A plain `coder run` or `fork` with --stream-json that asks nothing of
 // anyone runs on the shared turn runner (coax/lib/agent/engine/run.coax),
-// the one Aethyrforge's chat calls: no --ask, policy, realm or Coder tools,
+// the one the Metaverse Engine's chat calls: no --ask, policy, realm or Coder tools,
 // plugin hooks, goal, deadline, ask file, "$ " command or slash command.
 // Everything else runs here, on the terminal's own engine code.
 cd_any_hook :: (a: [] App) -> bool {

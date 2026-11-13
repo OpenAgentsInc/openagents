@@ -1,4 +1,4 @@
-// Which of Aethyr's shared modules each realm runs on (Aethyr book chapter 64, ec-migrate): for
+// Which of the Metaverse Engine's shared modules each realm runs on (Metaverse Engine book chapter 64, ec-migrate): for
 // every realm below, its engine's units (the module and the libraries beside it, as
 // apps/openagents-web/build.sh builds them), each unit's #load closure from `coax deps`, and the
 // shared modules in it. Each realm has the modules it is recorded to run on (INV_REALMS); a realm that no longer

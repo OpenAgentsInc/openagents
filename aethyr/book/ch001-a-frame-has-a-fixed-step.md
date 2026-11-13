@@ -264,7 +264,7 @@ body_feet :: (b: Body) -> Vec3 #effects(all) { return mix3(b.prev_pos, b.pos, lo
 body_face :: (b: Body) -> f32 #effects(all) {
   return wrap_angle(b.prev_face + wrap_angle(b.face - b.prev_face) * loop_alpha(b.clock));
 }
-// The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
+// The camera this frame, the Metaverse Engine's third-person shot: what it looks at, and where it is. A wall
 // pulls the camera in at once, so it is never shown further out than the last step.
 walk_shot :: (p: Player) -> CameraShot #effects(all) { return follow_shot(follow_of(p), wp(p.cam.prev_target), p.cam.prev_dist, alpha(p)); }
 walk_at :: (p: Player) -> Vec3 #effects(all) { return vp(walk_shot(p).at); }

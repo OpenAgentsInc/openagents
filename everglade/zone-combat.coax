@@ -21,7 +21,7 @@
 // through the same shared Hit Points and Temporary Hit Points as hostile attacks.
 //
 // Weapons: a melee class holds its weapon in the right hand (xc_kit; charactercreator.coax
-// held_weapon). A blow with it is an Aethyr action (aethyr/action/, #12993): the swing's clip is its
+// held_weapon). A blow with it is a Metaverse Engine action (aethyr/action/, #12993): the swing's clip is its
 // definition, timed in fixed 1/64 s ticks, with a sensor window round the swing's impact. Each tick
 // of that window the blade's actual pose (the swing clip's baked hands through the same weapon matrix
 // that draws it, sampled within the tick) sweeps the monsters' hurt capsules; the first accepted
@@ -307,7 +307,7 @@ xc_square :: (d: f32) -> int {
 }
 // What kind of aim ability a takes, and its reach in metres (class-kit.coax xc_aim_for), for the weapon you hold.
 xc_aim_kind :: (s: [] EgZone, a: FbAb) -> XcAim { return xc_aim_for(a, s[0].xc[0].b[0].c[0].weapon); }
-// A single-target spell's monster: Aethyr's attention query (aethyr/cam/attention.coax) for an action
+// A single-target spell's monster: the Metaverse Engine's attention query (aethyr/cam/attention.coax) for an action
 // target within reach in a 30 degree cone ahead, the nearest first (angle-weighted), ties by id. The
 // SRD still decides what the spell does; this only says at whom. -1 when none.
 xc_attend :: (s: [] EgZone, fx: f32, fz: f32, reach: f32) -> int {
@@ -326,7 +326,7 @@ xc_attend :: (s: [] EgZone, fx: f32, fz: f32, reach: f32) -> int {
   c: aq.Colliders; c.ground = -1000;   // the meadow fight has no walls between you and a monster
   return attn.attn_step(attn.AttnState.{}, q, ts[0..<tn], c, 0, false, false).target;
 }
-// Your target: the monster you struck at, held by Aethyr's attention (lock-on capability). Nothing is
+// Your target: the monster you struck at, held by the Metaverse Engine's attention (lock-on capability). Nothing is
 // acquired for you (acquire 0): it is set only by a strike, kept within 24 m all round you for at least
 // the hold, kept through a second of being out of reach (the grace), and released at once when it falls.
 XC_LOCK_HOLD :: 16; XC_LOCK_GRACE :: 64;

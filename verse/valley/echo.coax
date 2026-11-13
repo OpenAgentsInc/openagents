@@ -1,4 +1,4 @@
-// Echo as an Aethyr character (aethyr/character/): her catalog admission, her orb-hand capsules and
+// Echo as a Metaverse Engine character (aethyr/character/): her catalog admission, her orb-hand capsules and
 // her idle face segments. The runtime is shared; only Echo's declarations live here. Raw data stays private.
 #load "echo-rig-policy.coax";
 #load "../../aethyr/character/character.coax";

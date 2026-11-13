@@ -1,4 +1,4 @@
-// Verse's native home. Scene generation, animation, layout, touch ownership
+// The Metaverse's native home. Scene generation, animation, layout, touch ownership
 // and protobuf admission run in Coax. The host owns bounded memory/GPU handles.
 // Port source: the native home/graph and HUD in the engine source archive.
 

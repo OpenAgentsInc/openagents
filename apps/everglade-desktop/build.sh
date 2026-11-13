@@ -24,7 +24,7 @@ cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-
 /usr/bin/clang "${cflags[@]}" -c "$here/next-face.c" -o "$work/c/next-face.o"
 /usr/bin/clang -std=gnu11 -O2 -w -I"$repo/coax/platform" -c "$repo/coax/platform/process-native.c" -o "$work/c/process.o"
 xcrun -sdk macosx metal "$here/Workshop.metal" "$here/Model.metal" -o "$app/Contents/Resources/default.metallib"
-# The place: the temple's parts (Aethyr's architecture kit) compiled to C, and Aethyr's shaders for
+# The place: the temple's parts (the Metaverse Engine's architecture kit) compiled to C, and the Metaverse Engine's shaders for
 # it emitted from Coax for Metal, a library a pair (each emission carries its own helpers).
 "$coax" c "$repo/everglade/workshop/temple.coax" --library --header "$work/c/temple.h" > "$work/c/temple.c"
 /usr/bin/clang "${cflags[@]}" -w -c "$work/c/temple.c" -o "$work/c/temple.o"
@@ -35,7 +35,7 @@ for pair in sky scene light; do
 done
 # The realms: the Everglade row is the web's everglade2 realm (Character Create, then the glade),
 # and the Experimental row is the web's fivelab realm on its Experimental page, both natively,
-# drawn by Aethyr's page host for Metal (aethyr/host/apple/). A realm's Coax as C and its face are
+# drawn by the Metaverse Engine's page host for Metal (aethyr/host/apple/). A realm's Coax as C and its face are
 # built as verse/native/build.sh builds any realm, into a library the host loads; its shaders are
 # the web's own Coax (apps/openagents-web/gpu/), emitted for Metal a pair at a time, each with the
 # list of what it reads (.bind). The C takes over a minute to emit, so it is kept until its sources
@@ -107,8 +107,8 @@ emit_page bitcoin-lab-walk charactercreator charactercreator bitcoin-lab-fx qfx
 "$coax" c "$repo/aethyr/host/pack-table-face.coax" --library --header "$work/c/aethyr-pack-table.h" > "$work/c/aethyr-pack-table.c"
 /usr/bin/clang "${cflags[@]}" -w -c "$work/c/aethyr-pack-table.c" -o "$work/c/aethyr-pack-table.o"
 /usr/bin/clang -fobjc-arc -fmodules -O2 -Wno-shadow-ivar -I"$work/c" -c "$repo/aethyr/host/apple/PageHost.m" -o "$work/c/page-host.o"
-# The realms' sound: Aethyr's Apple audio host (aethyr/host/apple/audio-host.h, PageAudio.swift and
-# Aethyrforge's MetalAudio.swift) over the shared Coax audio authorities, native-audio.coax as C,
+# The realms' sound: the Metaverse Engine's Apple audio host (aethyr/host/apple/audio-host.h, PageAudio.swift and
+# the desktop app's MetalAudio.swift) over the shared Coax audio authorities, native-audio.coax as C,
 # and the site's sound files a page names (/realms/everglade/sfx/ and their PCM companions).
 "$coax" c "$repo/aethyr/host/native-audio.coax" --library --header "$work/c/native-audio.h" > "$work/c/native-audio.c"
 /usr/bin/clang "${cflags[@]}" -w -c "$work/c/native-audio.c" -o "$work/c/native-audio.o"

@@ -20,7 +20,7 @@
 //   its gait (mount_clip, mount_frame): idle, walk or gallop by speed, played by the ground covered
 //   so the hooves keep pace; the trot is the walk played faster, the canter the gallop slower;
 //   the seat (mount_seat): a model-space saddle point (a game's per-frame table) placed in the world;
-//   flying mounts (mount_place_wings, mount_step_wings): a mount with wings steps Aethyr's shared
+//   flying mounts (mount_place_wings, mount_step_wings): a mount with wings steps the Metaverse Engine's shared
 //   winged flight (aethyr/action/flight.coax, wing_step) instead of the gaits: the rider's jump takes
 //   off and beats, a held jump climbs, the dive folds the wings, land comes down; A and D steer it round
 //   and it banks; aloft it clears the boxes it flies over; nobody gets off in the air.

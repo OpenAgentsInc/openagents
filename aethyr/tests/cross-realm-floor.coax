@@ -1,4 +1,4 @@
-// Cross-realm check (the Aethyr engine core, GitHub #12609): the Grid's floor grid
+// Cross-realm check (the Metaverse Engine core, GitHub #12609): the Grid's floor grid
 // (verse/grid.coax) is one world-space lattice from any position. Its own file because
 // verse/grid.coax has no #module and declares names (Vec3, reach) the walker's modules also use;
 // the other cross-realm checks are aethyr/tests/cross-realm.coax.

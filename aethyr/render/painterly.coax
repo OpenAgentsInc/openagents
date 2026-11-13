@@ -91,7 +91,7 @@
 
 // ---- the key and the ambient
 
-// The one key light every glade material reads (Aethyr book ch. 13: one lighting record).
+// The one key light every glade material reads (Metaverse Engine book ch. 13: one lighting record).
 paint_sun_dir :: ()->V3 {return normalize3(v3(ENV_GLADE_SUN_X,ENV_GLADE_SUN_Y,ENV_GLADE_SUN_Z));}
 // Ore's Ocarina noon: a 4500 K sun under 6500 K white balance (aethyr/render/light.coax 4c), decoded once.
 paint_sun_colour :: ()->V3 {

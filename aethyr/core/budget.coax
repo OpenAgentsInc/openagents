@@ -1,4 +1,4 @@
-// Aethyr's frame budgets (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md, book
+// The Metaverse Engine's frame budgets (the Metaverse Engine core, GitHub #12609, docs/verse/engine-core.md, book
 // chapter 16). A realm declares what one frame may use: fixed simulation steps, vertices, draw
 // records and the bytes its host holds for it. A `BudgetMeter` counts what each frame takes.
 // A take that doesn't fit is refused whole, never in part, and counted, and the frame is over

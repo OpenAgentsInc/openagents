@@ -1,7 +1,7 @@
 // The pack's layout and the one table read (GitHub #13304). Every host finds a pack's entries
 // through pack_table here and reads no header or table itself: the browser (coax/web/pack-face.c,
 // in the pack reactor), iOS and the Mac (aethyr/host/apple/PageHost.m, apps/everglade-desktop),
-// Android (apps/everglade-mobile/android/host.c) and the Coax tools. Aethyrforge's pack.coax
+// Android (apps/everglade-mobile/android/host.c) and the Coax tools. The realm editor's pack.coax
 // (aethyr/forge/pack.coax: the full admission, the catalog, the writer) loads this file for the
 // layout, so the format is stated once.
 //

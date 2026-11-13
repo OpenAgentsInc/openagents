@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Book tooling: closed example inventory, exact source listings, links and runs.
 
-One checker serves the Psionic, Aethyr, Nostr, Coder and Bitcoin books
+One checker serves the Psionic, Metaverse Engine, Nostr, Coder and Bitcoin books
 (`--book psionic|aethyr|nostr|coder|bitcoin`). Each book keeps chapters as
 chNNN-slug.md, an examples.json inventory of its examples/*.coax programs, and
 a status marker on every design draft. Coder has no example programs of its
@@ -54,7 +54,7 @@ BOOKS = {
 BORROWED = {"coder": "psionic"}
 # Fences a book may use besides jai, shell and text.
 FENCES = {"coder": ("```json", "```sh")}
-# Aethyr's engine-core tasks each own one chapter, named in its status block.
+# The Metaverse Engine's engine-core tasks each own one chapter, named in its status block.
 TASKS = {"aethyr": "apps/openagents-web/projects/verse/work/engine-core.json"}
 DRAFT = "> **Status: unimplemented — design draft.**"
 # Kinds a book's library must never build (Nostr chapter 74: Cashu and

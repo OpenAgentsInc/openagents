@@ -1,4 +1,4 @@
-// The scene: Aethyr Part IV's container (book chapter 17). A Scene_Spec
+// The scene: Metaverse Engine Part IV's container (book chapter 17). A Scene_Spec
 // describes a world as data: entities, each a shape (geometry and pose), a
 // material (which solver, and its parameters) and an appearance (how it is
 // drawn, and nothing else). scene_build admits the spec against a published

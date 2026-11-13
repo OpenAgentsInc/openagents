@@ -1,4 +1,4 @@
-// Aethyr's film profile (GitHub #13004, phase F1 of
+// The Metaverse Engine's film profile (GitHub #13004, phase F1 of
 // docs/research/vork/2026-11-07-desktop-film-renderer.md): how a native host renders one film
 // frame as the average of N deterministic renders over pixel jitter, shutter time and lens
 // aperture. It is not a rung on aethyr/core/quality.coax's ladder, which exists to hold 60 FPS; a film

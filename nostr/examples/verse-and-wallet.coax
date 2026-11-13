@@ -29,7 +29,7 @@ MS :: 1790000000000;                    // the same instant in milliseconds
 RELAY :: "wss://relay.example.com";
 GARDEN :: "33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:garden";
 
-// The presence budget. Aethyr chapter 49: a move is drawn on the other
+// The presence budget. Metaverse Engine chapter 49: a move is drawn on the other
 // screen within one second (coax/web/presence-pair.coax's budget).
 POST_MS :: 250;     // a client posts a frame every 250 ms (Fairy Forest's FF_ROOM_EVERY)
 NET_MS :: 40;       // assumed one-way time, client to relay and relay to client
@@ -162,7 +162,7 @@ receive :: (c: [] Client, conn: [] Conn, k: int, w: MvWorld, arrive_ms: int) {
   print("s % n %, % at (%, %, %), drawn at +% ms\n", f.s, f.n, poses[0].id, poses[0].p[0], poses[0].p[1], poses[0].p[2], drawn - MS);
 }
 // Where a remote avatar is drawn at now_ms: D behind, between the two
-// samples around that time, holding the last one past it (Aethyr 49).
+// samples around that time, holding the last one past it (Metaverse Engine 49).
 draw_x :: (x1: f64, t1: int, x2: f64, t2: int, now_ms: int) -> f64 {
   at := now_ms - DRAW_MS;
   if at <= t1 { return x1; }

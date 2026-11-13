@@ -1,4 +1,4 @@
-// The host of an Aethyr world inside Unreal: what coax/web/host.js is in the browser. One actor
+// The host of a Metaverse Engine world inside Unreal: what coax/web/host.js is in the browser. One actor
 // owns the world's state, steps it each tick through aethyr_host.h, and shows what it writes:
 // the live store as a procedural mesh, the camera, the look's numbers in a material parameter
 // collection, and the overlay through AAethyrHUD. Keys, the pointer and the mouse go back in.

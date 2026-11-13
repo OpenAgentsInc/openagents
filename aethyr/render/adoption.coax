@@ -181,7 +181,7 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effe
   if slug == "one-shot" && app == "oneshot" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "audio-lab" && app == "audiolab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "penultimate-frontier" && app == "newland" { return RenderAdoption.{tracked_legacy = true}; }
-  if slug == "painted-village" && app == "painted" { return RenderAdoption.{tracked_legacy = true}; }   // Aethyr's stylized shading (aethyr/render/stylized.coax) on the page's own passes
+  if slug == "painted-village" && app == "painted" { return RenderAdoption.{tracked_legacy = true}; }   // the Metaverse Engine's stylized shading (aethyr/render/stylized.coax) on the page's own passes
   if slug == "create-world" && app == "worldbuilder" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "splice" && app == "splice" { return RenderAdoption.{tracked_legacy = true}; }   // Splice: Mars at dusk on Anime Lab's shading (verse/splice/splice.coax)   // WorldBuilder: chat a world onto the Grid, on its own passes
   return RenderAdoption.{};

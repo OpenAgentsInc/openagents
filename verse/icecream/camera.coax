@@ -1,4 +1,4 @@
-// Ice Cream Man's third-person view, on Aethyr's follow camera (aethyr/cam/follow.coax, Aethyr
+// Ice Cream Man's third-person view, on the Metaverse Engine's follow camera (aethyr/cam/follow.coax, Metaverse Engine
 // book chapter 10). Once a rules step the follow's target springs to the kid's head (over the
 // right shoulder in Shift Lock), and the camera pulls in at once short of every wall, piece of
 // furniture, doorway lintel, the floor and the ceiling, and backs out gently (`cam_track`).

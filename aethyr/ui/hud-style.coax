@@ -1,6 +1,6 @@
 // HUD styles: how a realm's HUD looks, apart from what it shows. A realm picks one style
 // (hud_style_named, from its config) and draws every HUD part through it. Two styles exist:
-//  - SCIFI: the Verse's instrument look (verse/hud/frame.coax, aethyr/ui/draw.coax and the Arwes
+//  - SCIFI: the Metaverse's instrument look (verse/hud/frame.coax, aethyr/ui/draw.coax and the Arwes
 //    frames in aethyr/ui/arwes-frames.coax): grey and cyan glow lines, cut corners, thin bars.
 //    The realms that use it keep their own drawing code; these tokens name its values.
 //  - FANTASY: dark iron and bronze frames, warm gold type, parchment, rounded corners with
@@ -66,7 +66,7 @@ HudTokens :: struct {
   #assert a.banner == HUD_BANNER_RULES && b.banner == HUD_BANNER_RIBBON;
   #assert a.damage_style == HUD_DAMAGE_PLAIN && b.damage_style == HUD_DAMAGE_OUTLINED && b.damage_scale > a.damage_scale;
   #assert a.title_face == HUD_FACE_BODY && b.title_face == HUD_FACE_TITLE;
-  // SCIFI's palette is the Verse HUD's: grey-white text and the Arwes cyan accent
+  // SCIFI's palette is the Metaverse HUD's: grey-white text and the Arwes cyan accent
   #assert a.text.r == 0.94 && a.trim.r == 0.216 && a.trim.g == 0.851;
   // FANTASY's text is warm: more red than blue, everywhere it is read
   for c: [4] HudRgba.[b.text, b.title, b.trim, b.parchment] { #assert c.r > c.b + 0.15; }

@@ -94,7 +94,7 @@ new epoch, so a transcript still on its way is stale.
 #load "../audio/voice.coax";
 #import "Basic";
 
-// Aethyrforge's HOLD TO TALK through Aethyr's event gate (aethyr/audio/voice.coax). Each hold is a
+// The Metaverse Engine's HOLD TO TALK through its event gate (aethyr/audio/voice.coax). Each hold is a
 // question the realm asks; the voice host's final transcript (Parakeet, run locally:
 // verse/voice-host --recognizer parakeet) is its answer. The transcripts below are the ones the
 // host returned for the committed fixtures (docs/verification/verse-parakeet-2026-11-02).

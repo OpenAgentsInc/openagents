@@ -1,4 +1,4 @@
-// Build the Coax streaming engine and file-backed Aethyr consumer. Each
+// Build the Coax streaming engine and file-backed Metaverse Engine consumer. Each
 // subprocess is bounded; no CUDA toolkit or Python is a runtime dependency.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";

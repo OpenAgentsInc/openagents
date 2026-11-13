@@ -73,7 +73,7 @@ the right leg 60 to 64. The character faces +Z, so +X is its left.
 
 <!-- source: psionic/lib/motion-verse.coax rig -->
 ```jai
-// The Verse character's skeleton, read exactly from the fixture: each
+// The Metaverse character's skeleton, read exactly from the fixture: each
 // joint's parent and its bind position, in metres, Y up, facing +Z.
 MvRig :: struct {count:int;parent:[MV_JOINTS]int;bind:[MV_JOINTS][3]f64;}
 mv_verse_rig :: ()->MvRig {
@@ -108,9 +108,9 @@ a hip 0.1 m to its side, a knee 0.4 m below and an ankle 0.42 m below that
 
 <!-- source: psionic/lib/motion-verse.coax map -->
 ```jai
-// Source joint j drives Verse joint target[j]; -1 is no target. Every
+// Source joint j drives Metaverse joint target[j]; -1 is no target. Every
 // source joint needs one, no two share one, and a joint's parent must map
-// to its target's parent, so local rotations carry over unchanged. Verse
+// to its target's parent, so local rotations carry over unchanged. Metaverse
 // joints no source joint maps to keep their bind pose.
 MvMap :: struct {count:int;target:[POSE_JOINTS]int;}
 MvCheck :: struct {status:MvStatus;joint:int;}
@@ -127,8 +127,8 @@ mv_map_check :: (m:MvMap,from:PoseSkeleton,rig:MvRig)->MvCheck {
     out.joint= -1;
     return out;
 }
-// The mapped part of the Verse skeleton as a chapter 147 skeleton: the
-// source's joints and parents with Verse's bone offsets. The root's offset
+// The mapped part of the Metaverse skeleton as a chapter 147 skeleton: the
+// source's joints and parents with the Metaverse's bone offsets. The root's offset
 // is zero: the clip's root translation is the root joint itself.
 mv_sub :: (m:MvMap,from:PoseSkeleton,rig:MvRig)->PoseSkeleton {
     k:=from;k.offset[0]=[3]f64.[0,0,0];
@@ -167,9 +167,9 @@ The chain from the hips to the ankle is 1.0042 m on the Metaverse's leg and
 
 <!-- source: psionic/lib/motion-verse.coax handoff -->
 ```jai
-// A generated clip handed to Verse: the clip in Verse's convention,
+// A generated clip handed to the Metaverse: the clip in the Metaverse's convention,
 // retargeted and in place; the ground travel taken out of it; and per
-// frame and Verse joint the skinning transform Cast.bin stores, rotation
+// frame and Metaverse joint the skinning transform Cast.bin stores, rotation
 // q (w, x, y, z) and translation t, so that a bind-pose point v moves to
 // q v + t.
 MvHandoff :: struct {
@@ -178,11 +178,11 @@ MvHandoff :: struct {
     travel:[MV_FRAMES][2]f64;q:[MV_FRAMES][MV_JOINTS][4]f64;t:[MV_FRAMES][MV_JOINTS][3]f64;
 }
 // 1. Check the map. 2. Convert the clip and the source skeleton to
-// Verse's convention (chapter 147). 3. Retarget the clip onto the mapped
-// Verse bones, scaling the root by the
+// the Metaverse's convention (chapter 147). 3. Retarget the clip onto the mapped
+// Metaverse bones, scaling the root by the
 // chain lengths up from `foot`. 4. Put it in place: the root keeps its
 // height, its ground position goes to `travel` and it stands over its
-// target's bind position. 5. Pose every Verse joint, parents first:
+// target's bind position. 5. Pose every Metaverse joint, parents first:
 //   R_k = R_parent L_k,  P_k = P_parent + R_parent (bind_k - bind_parent),
 // with L_k the mapped joint's rotation or the identity, the root target at
 // the clip's root, and a joint without a parent at its bind position.

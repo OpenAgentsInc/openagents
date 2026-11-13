@@ -1,4 +1,4 @@
-// Water for Verse, phase W9: weather. A port of the old
+// Water for the Metaverse, phase W9: weather. A port of the old
 // `physics::water::weather` (`git show
 // 0b401561a0^:crates/physics/src/water/weather.rs` and `weather_tests.rs`;
 // the design is verse/everglade/previous/water.md, "Weather").

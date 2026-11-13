@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The events and invoice of chapter 101, The Verse and the wallet, computed
+"""The events and invoice of chapter 101, The Metaverse and the wallet, computed
 independently.
 
 Written from NIP-01, NIP-MV, NIP-57, NIP-75, LUD-06/LUD-16, BIP-173 and

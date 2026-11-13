@@ -1,4 +1,4 @@
-// Water for Verse, phase W4: the spectral sea. A port of the previous
+// Water for the Metaverse, phase W4: the spectral sea. A port of the previous
 // engine's `physics::water::{spectrum, fft}` (`git show
 // 0b401561a0^:crates/physics/src/water/spectrum.rs`, `fft.rs` and
 // `spectrum_tests.rs`) and of `verse-pbr`'s baked low-tier tile

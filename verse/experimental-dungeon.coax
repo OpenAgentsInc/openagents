@@ -253,7 +253,7 @@ dg_blocked :: (x:f32,z:f32,pad:f32)->bool {
 }
 // Whether one standing at (x0, z0) sees (x1, z1): no wall or arch between, inside the dungeon or
 // across its outer wall. Furnishings do not hide you. The line runs DG_SIGHT_EYE over the floor
-// through Aethyr's visibility service (aethyr/physics/visibility.coax, #13073), against the walls' and
+// through the Metaverse Engine's visibility service (aethyr/physics/visibility.coax, #13073), against the walls' and
 // arches' boxes (dg_boxes, tall), gathered DG_SIGHT_CHUNK metres of the line at a time.
 DG_SIGHT_EYE :: 1.5;
 DG_SIGHT_CHUNK :: 10.0;

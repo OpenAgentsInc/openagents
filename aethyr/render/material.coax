@@ -1,4 +1,4 @@
-// Aethyr's materials (book chapter 12): how a surface answers light. A material is a small typed
+// The Metaverse Engine's materials (book chapter 12): how a surface answers light. A material is a small typed
 // record (linear albedo, a texture layer, the style that draws it, how strongly it asks for an
 // outline and what it emits), kept in a realm's table and admitted whole before anything draws.
 //

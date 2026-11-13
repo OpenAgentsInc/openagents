@@ -1009,7 +1009,7 @@ redit_settings_tool :: (e: [] RealmEdit, r: int) -> int {
   return -1;
 }
 
-// ---- the look: Filament on the Verse HUD's plates (gold and parchment, as every realm's HUD)
+// ---- the look: Filament on the Metaverse HUD's plates (gold and parchment, as every realm's HUD)
 
 REDIT_GAP :: 0.5; REDIT_SPACE :: 1.2;
 redit_ink :: (k: f32, light: f32, r: f32, g: f32, b: f32) -> Ink {

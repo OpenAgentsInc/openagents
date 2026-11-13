@@ -1,4 +1,4 @@
-// Reads an export bundle back with Aethyr's own glTF reader (aethyr/anim/gltf-access.coax, not
+// Reads an export bundle back with the Metaverse Engine's own glTF reader (aethyr/anim/gltf-access.coax, not
 // the writer's code) and checks world.glb against manifest.json: its SHA-256, the mesh count,
 // each mesh's vertex and triangle counts and bounds, every index in range, and the totals.
 // docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md, step 1 (GitHub #13400).

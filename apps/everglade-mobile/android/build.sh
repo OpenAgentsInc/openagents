@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around coax, the NDK's clang and glslc, aapt2, apksigner and adb; holds no logic)
 # Builds Everglade for Android (apps/everglade-mobile/README.md): the same Coax as the desktop and
-# iOS apps (the scene, your model, the temple's parts and Aethyr shaders) with the Vulkan host.
+# iOS apps (the scene, your model, the temple's parts and Metaverse Engine shaders) with the Vulkan host.
 #   apps/everglade-mobile/android/build.sh           builds build/android/everglade.apk (arm64-v8a)
 #   apps/everglade-mobile/android/build.sh --open    builds, then installs and opens it on the
 #                                                    device or emulator adb sees (starting an emulator
@@ -50,7 +50,7 @@ for piece in device-key app-login; do "${cc[@]}" -c "$repo/apps/shared/host/andr
 "${cc[@]}" -shared -u ANativeActivity_onCreate "$work/c/host.o" "$work/c/glue.o" "${objects[@]}" \
   -landroid -llog -lvulkan -ljnigraphics -lm -o "$work/apk/lib/arm64-v8a/libeverglade.so"
 "$llvm/bin/llvm-strip" --strip-unneeded "$work/apk/lib/arm64-v8a/libeverglade.so"
-# The shaders: Aethyr's for the temple, emitted from Coax, and the strokes and your model's.
+# The shaders: the Metaverse Engine's for the temple, emitted from Coax, and the strokes and your model's.
 for pair in sky scene light; do
   "$coax" spirv "$repo/everglade/workshop/gpu/temple.coax" --vertex "temple_${pair}_vs" --fragment "temple_${pair}_fs" -o "$work/apk/assets/temple-$pair.spv" 2> "$work/c/temple-$pair.spv.bind"
 done

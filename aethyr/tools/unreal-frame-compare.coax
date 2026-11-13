@@ -1,4 +1,4 @@
-// Compares two pictures of the same moment, one from the Aethyr page and one from the Unreal
+// Compares two pictures of the same moment, one from the Metaverse Engine page and one from the Unreal
 // build: the mean difference of their colour bytes, and the share of pixels within 24 of each
 // other on every channel (docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md, step 2).
 // Both are PNGs of the same size. With a third argument, the mean must be at most that number.

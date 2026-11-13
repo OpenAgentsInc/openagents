@@ -1,4 +1,4 @@
-// Aethyr's architecture kit, its classical parts: what a Greek or Roman building is made of, each
+// The Metaverse Engine's architecture kit, its classical parts: what a Greek or Roman building is made of, each
 // built once into a pen (aethyr/arch/mesh.coax) and placed as often as a realm likes
 // (aethyr/arch/place.coax). Every part stands on y = 0 at the origin and takes the pen's material.
 // Sizes are in metres. The Golemancers' Workshop (everglade/workshop/temple.coax) is their first user.

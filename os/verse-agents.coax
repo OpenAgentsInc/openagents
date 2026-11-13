@@ -1,4 +1,4 @@
-// Verse OS: the agents on this machine, for the Grid to show as figures (docs/os/2026-11-02-verse-os.md,
+// Metaverse OS: the agents on this machine, for the Grid to show as figures (docs/os/2026-11-02-verse-os.md,
 // V4). Every few seconds the session looks at where each agent writes its transcript — Claude Code
 // (~/.claude/projects/PROJECT/SESSION.jsonl), Codex (~/.codex/sessions/YYYY/MM/DD/*.jsonl), Coder
 // (~/.openagents/coder/sessions/*.jsonl) and Antigravity

@@ -1,4 +1,4 @@
-// Aethyr's compile-time refusals, checked: each fixture under aethyr/tests/<dir>/ names on
+// The Metaverse Engine's compile-time refusals, checked: each fixture under aethyr/tests/<dir>/ names on
 // its first line what the compiler must say about it, `// expect: ok` (it compiles: the
 // control) or `// expect: E0822 ...` (it is refused with that code). Mixing spaces must
 // fail to compile (aethyr/core/space.coax), and this is the check that it does.

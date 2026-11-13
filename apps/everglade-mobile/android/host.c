@@ -1,7 +1,7 @@
 // Firm reason: 6 (Android's window, input and Vulkan are C APIs; this host holds no product logic).
 // Everglade for Android, the host (apps/everglade-mobile/README.md): a NativeActivity, a Vulkan
 // swapchain and touch. Everything drawn comes from the same Coax as the desktop and iOS apps: the
-// scene (workshop.coax), the temple's parts and Aethyr shaders (emitted by `coax spirv`), and your
+// scene (workshop.coax), the temple's parts and Metaverse Engine shaders (emitted by `coax spirv`), and your
 // model. This file is to Android what Engine.swift and ios/Sources/main.swift are to iOS.
 //
 // Your account: the list's Log in opens a card (account.coax) whose requests app-login.c sends on
@@ -255,7 +255,7 @@ static void gpu_open(void) {
   if ((r != VK_SUCCESS && r != VK_INCOMPLETE) || n == 0) STOP("Everglade needs a Vulkan GPU, and this device reports none.");
   VkPhysicalDeviceProperties props; vkGetPhysicalDeviceProperties(g.gpu, &props);
   if (props.apiVersion < VK_API_VERSION_1_1) STOP("Everglade needs Vulkan 1.1, and %s has an older one.", props.deviceName);
-  // Aethyr's emitted shaders count in 64-bit integers.
+  // The Metaverse Engine's emitted shaders count in 64-bit integers.
   VkPhysicalDeviceFeatures has; vkGetPhysicalDeviceFeatures(g.gpu, &has);
   if (!has.shaderInt64) STOP("Everglade's shaders need 64-bit integers (shaderInt64), which %s lacks.", props.deviceName);
   vkGetPhysicalDeviceMemoryProperties(g.gpu, &g.memory);
@@ -486,7 +486,7 @@ static void window_open(void) {
 
 // What is made once the first window has said its format: the layouts, sets and pipelines.
 static void pipelines_open(void) {
-  // An emitted Aethyr shader takes its resources at fixed places: the uniform floats at 0, the
+  // An emitted Metaverse Engine shader takes its resources at fixed places: the uniform floats at 0, the
   // mesh at 1, the records at 2, and for the scene the mirror image at 3 and its sampler at 4.
   const VkDescriptorType place_types[5] = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_DESCRIPTOR_TYPE_SAMPLER };
   const VkDescriptorType model_types[5] = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER };

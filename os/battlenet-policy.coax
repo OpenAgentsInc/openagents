@@ -1,4 +1,4 @@
-// App admission to the Verse desk, independent of the legacy runner's effects.
+// App admission to the Metaverse desk, independent of the legacy runner's effects.
 #authority;
 #test "launch requires this desk, its X display, the installed game and the runner" {
   #assert bn_admit(true, true, true, true, false) == 0;

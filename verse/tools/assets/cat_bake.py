@@ -2,7 +2,7 @@
 """Build and bake Everglade's cat (everglade/creatures/cat.coax): a black and white tuxedo cat.
 
 No CC0 animated cat with a sit exists, so this script builds one, an OpenAgents original (CC0), as a
-stylised low-poly cat for the Verse's look. It is made of smooth closed surfaces placed as a cat's
+stylised low-poly cat for the Metaverse's look. It is made of smooth closed surfaces placed as a cat's
 anatomy: a round, wide head with a very short muzzle, a small pink nose, large green eyes and big
 upright triangular ears; a short neck and a compact body; a long tail. The coat is a tuxedo: black
 head, back, body and tail, with a white bib, muzzle, chin and paws, and pale whiskers.

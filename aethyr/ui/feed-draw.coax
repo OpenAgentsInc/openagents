@@ -1,4 +1,4 @@
-// Shared text-only streaming feed, using Aethyr's existing font and stroke
+// Shared text-only streaming feed, using the Metaverse Engine's existing font and stroke
 // components. Latest wrapped rows remain in view; no panel or background.
 #load "feed.coax";
 #load "draw.coax";

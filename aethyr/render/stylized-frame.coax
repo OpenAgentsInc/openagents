@@ -1,4 +1,4 @@
-// Aethyr's stylized shading, a frame's numbers: the look (the sun, the sky, the haze, the clouds,
+// The Metaverse Engine's stylized shading, a frame's numbers: the look (the sun, the sky, the haze, the clouds,
 // the grass), the camera, the sun's shadow box, the ground table and the dirt paths, written into a
 // page's uniform floats where aethyr/render/stylized.coax's shaders read them
 // (aethyr/render/stylized-layout.coax has the offsets). Any world that draws with the stylized

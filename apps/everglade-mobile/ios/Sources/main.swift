@@ -1,9 +1,9 @@
 // Firm reason: 6 (UIKit and Metal have no C API; this host holds no product logic).
 // Everglade for iOS, the host (apps/everglade-mobile/README.md): a full-screen Metal view and
 // touch. Everything drawn comes from the same Coax as the desktop app: the scene (workshop.coax),
-// the temple's parts and Aethyr shaders, and your model. What the hosts share on the GPU is
+// the temple's parts and Metaverse Engine shaders, and your model. What the hosts share on the GPU is
 // apps/everglade-desktop/Sources/Engine.swift. The web's realms (Everglade itself, the Archery
-// Range, Experimental) run through Aethyr's page host, as on the Mac (Pages.swift): while one is
+// Range, Experimental) run through the Metaverse Engine's page host, as on the Mac (Pages.swift): while one is
 // open its picture fills the screen inside the notch and the home bar, every finger is the realm's
 // as a browser's touch is, and only a touch that begins on the Worlds button is this app's.
 //

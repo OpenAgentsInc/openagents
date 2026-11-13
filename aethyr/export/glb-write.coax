@@ -1,7 +1,7 @@
 // Writes cel vertices (aethyr/render/cel-mesh.coax: six words a vertex) as glTF 2.0 binary, for
 // the Unreal exporter (docs/unreal/2026-11-12-aethyr-to-unreal-exporter-spec.md). One buffer;
 // each part is a run of vertices and becomes one named mesh and node, its triangles in order
-// with no index. Positions stay in Aethyr's metres and axes: the reader's side maps them.
+// with no index. Positions stay in the Metaverse Engine's metres and axes: the reader's side maps them.
 // Two writers. glb_from_cel is the plain one (the axis fixture, GitHub #13399): vertices in
 // order, colours as the pen's sRGB bytes. glb_world is the exporter's (#13400): triangles
 // grouped by material class and ground cell, vertices welded behind an index, colours linear

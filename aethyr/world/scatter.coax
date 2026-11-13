@@ -1,4 +1,4 @@
-// Scatter from a seed (Aethyr book chapter 80): trees, rocks and plants on a jittered grid of
+// Scatter from a seed (Metaverse Engine book chapter 80): trees, rocks and plants on a jittered grid of
 // world cells, kept clear of what must stay open. A cell's draws come from aethyr/core/rand.coax,
 // keyed by the realm's seed, the layer's stable ID, the generator's version and the property
 // (position, size, turn, kind, whether the cell is filled), with the cell's own grid

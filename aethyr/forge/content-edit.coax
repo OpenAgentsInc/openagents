@@ -1,4 +1,4 @@
-// Aethyrforge's content tables editor (#13294, AAA P4.5): every table of a content document
+// The Metaverse Engine's content tables editor (#13294, AAA P4.5): every table of a content document
 // (aethyr/content/tables.coax, profile aethyr-content-v1) is edited through the realm edit log
 // (edit.coax), so a row set or dropped is one typed step with its inverse, undo and redo walk the
 // same log, and a save names the revision it was made from.

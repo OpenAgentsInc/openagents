@@ -1,4 +1,4 @@
-// Verse figures: characters built from a few dozen rounded bones, for the
+// Metaverse figures: characters built from a few dozen rounded bones, for the
 // realms that draw characters as soft shapes rather than skinned meshes (a
 // shadow visitor, a pet). A figure is a rig (a person or a four-legged
 // animal), a shape (its build, set by an agent or a slider) and a pose

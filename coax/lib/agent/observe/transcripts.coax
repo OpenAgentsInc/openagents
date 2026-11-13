@@ -1,7 +1,7 @@
 // Where the agents on this machine write their transcripts, walked once for
 // everything that shows who is working (docs/apps/2026-11-10-apps-roadmap.md,
 // Step 2, "Observation"): the Golems board (apps/everglade-desktop/golems.coax),
-// Verse OS (os/verse-agents.coax) and whatever comes next. Read-only: it
+// Metaverse OS (os/verse-agents.coax) and whatever comes next. Read-only: it
 // lists folders and reads a file's time, never its contents.
 //
 //   Claude Code   ~/.claude/projects/PROJECT/SESSION.jsonl, and the agents a

@@ -1,4 +1,4 @@
-// Dead Gears' rules on Aethyr's entities (aethyr/core/entity.coax, with the
+// Dead Gears' rules on the Metaverse Engine's entities (aethyr/core/entity.coax, with the
 // component bits in ecs.coax), ported from
 // aethyr-demo's src/dead_gears_rules.cpp: waves of mutants, the cutter and
 // its three modes (Sever, Head, Core), reloads, cover, telekinetic Lift and
@@ -1012,7 +1012,7 @@ ROLE_REACTOR :: 3;  // a crawler: makes for the reactor while you are far from i
 ROLE_IDLE :: 4;     // it doesn't know where you are: it prowls round the reactor, which you defend
 
 // ---- what a mutant knows (#12854): it acts on where it last sensed you, not where you are. It
-// senses you on the fighting step through Aethyr's senses (aethyr/ai/stimulus.coax): sight across
+// senses you on the fighting step through the Metaverse Engine's senses (aethyr/ai/stimulus.coax): sight across
 // the deck at chest height (low cover lets it peek, as you do), your shots within MIND_HEAR, and
 // touch. Out of sight it goes to the spot it last sensed you at, turns there looking for you, and
 // gives up when the memory is MIND_SENSES.forget steps old (4 s): then it prowls round the

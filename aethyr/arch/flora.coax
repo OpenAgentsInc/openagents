@@ -1,4 +1,4 @@
-// Aethyr's architecture kit, what grows and the land it grows on: stylized trees, far hills and
+// The Metaverse Engine's architecture kit, what grows and the land it grows on: stylized trees, far hills and
 // the ground, as generators. Each writes one part at the origin (aethyr/arch/mesh.coax ArchPart);
 // a realm stands it with a record, and a record's tint and scale make one tree a wood.
 //

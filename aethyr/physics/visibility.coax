@@ -1,4 +1,4 @@
-// Aethyr's visibility service (GitHub #13073): whether a point sees a target. Name plates, health
+// The Metaverse Engine's visibility service (GitHub #13073): whether a point sees a target. Name plates, health
 // bars, damage numbers, targeting and monster sight all ask this one question, so no realm keeps
 // its own line-of-sight walk.
 //

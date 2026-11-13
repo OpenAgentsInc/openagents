@@ -1,4 +1,4 @@
-// Linux binding of the shared desktop chat model and Aethyr HUD, not a
+// Linux binding of the shared desktop chat model and Metaverse Engine HUD, not a
 // second Coder or realm engine. Every mutable field is host-owned state.
 #load "chat.coax";
 #load "startup.coax";

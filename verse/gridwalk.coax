@@ -1,5 +1,5 @@
 // The Grid's session (openagents.com/realms/the-grid): you, the phone's thumbs and the record of
-// what you did, stepped on Aethyr's engine core. The page's C face keeps a GridWalk and calls
+// what you did, stepped on the Metaverse Engine's engine core. The page's C face keeps a GridWalk and calls
 // gridwalk_frame once a frame with what the devices said (the keys held, the drag, the wheel)
 // and the frame's time; touches go to gridwalk_touch as they happen. The face only reads where
 // to draw you and the camera.
@@ -626,7 +626,7 @@ gridwalk_pose :: (g: [] GridWalk, field: int) -> f32 #export_c #effects(all) {
 }
 
 // book:begin smooth
-// The camera follows without a jump (Aethyr's follow, aethyr/cam/follow.coax, book chapter 10): at
+// The camera follows without a jump (the Metaverse Engine's follow, aethyr/cam/follow.coax, book chapter 10): at
 // 60 FPS the 64 Hz steps don't land one to a frame, yet as you walk, run and jump the eye drawn
 // each frame moves no further than you can in a frame, its move changes by at most 0.016 m from
 // one frame to the next (measured 0.013 m), and on a jump's rising arc it rises every frame.

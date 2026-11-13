@@ -1,5 +1,5 @@
-// Verse OS's boot session (docs/os/2026-11-02-verse-os.md, milestone V0): the program a VT's login
-// runs so the machine shows the Verse instead of a desktop. It waits until its VT is the one on the
+// Metaverse OS's boot session (docs/os/2026-11-02-verse-os.md, milestone V0): the program a VT's login
+// runs so the machine shows the Metaverse instead of a desktop. It waits until its VT is the one on the
 // screen, runs the first realm there on the bare display (verse/gpu/vk-realm.c, which takes the
 // screen as this login's own, no root), follows travel from realm to realm as realm.sh's screen mode
 // does, and when the person leaves (Escape held a second) vk-realm shows the VT it was told to, and
@@ -170,7 +170,7 @@ vs_wait_for :: (n: int, py: [] VsPylon) {
 VS_IDENTITY :: "verse-os-identity";
 
 // The Pylon's state as this session knows it: whether it may serve, whether it started one, when
-// you last touched the Verse, and when it last stopped one.
+// you last touched the Metaverse, and when it last stopped one.
 VsPylon :: struct {
   allowed: bool; running: bool;
   input_ms: int; mtime: int; stopped_ms: int;

@@ -2,11 +2,11 @@
 // time in 20 ms frames, deciding turns with oa_voice_uplink exactly as the
 // phone does, prints every event, and saves the reply audio. See docs/voice/dev.md.
 //
-// --hold sends the file as one held turn (hold to talk, as Aethyrforge's forge
+// --hold sends the file as one held turn (hold to talk, as the Metaverse Engine's forge
 // bar does) instead of letting the engine find turns; --then FILE holds a
 // second turn after it, and --after-end cancel|barge|realm cancels the first
 // turn's recognition (on the host, by a barge-in's new epoch, or only in the
-// realm). --aethyr passes each final transcript through Aethyr's event gate
+// realm). --aethyr passes each final transcript through the Metaverse Engine's event gate
 // (aethyr/audio/voice.coax), as a realm does, and replays the record at the end.
 #include "../platform/voice.h"
 #include "AethyrVoice.h"

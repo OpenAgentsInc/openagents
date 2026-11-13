@@ -1,6 +1,6 @@
 // Spoken requests into a realm (GitHub #12669, docs/verse/aethyrforge.md's HOLD TO TALK):
 // a hold is a question the realm asks (replay_ask on REPLAY_MODEL), and the voice host's
-// final transcript for that hold is its answer, offered through Aethyr's one event gate
+// final transcript for that hold is its answer, offered through the Metaverse Engine's one event gate
 // (aethyr/core/replay.coax). So a transcript is admitted at most once, only for the hold that asked
 // for it and only in that hold's epoch: a duplicate, an answer after the realm cancelled
 // (released into a cancel, left the forge, reconnected) and an answer to a question never asked
@@ -76,7 +76,7 @@ aethyr_voice_init :: (r: [] VoiceRealm, seed: int) #export_c #effects(all) {
   r[0].state = VOICE_INITIAL;
 }
 
-// The player's controls, as Aethyr's control events (REPLAY_ACTIONS), so a replay asks the
+// The player's controls, as the Metaverse Engine's control events (REPLAY_ACTIONS), so a replay asks the
 // same questions at the same steps: hold to talk (the realm asks, at the step the press
 // applies; each press is its own question, answered or not) and cancel (every answer still on
 // its way is stale).

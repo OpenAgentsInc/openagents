@@ -1,4 +1,4 @@
-// Cross-realm checks (the Aethyr engine core, GitHub #12609, acceptance "Cross-realm checks").
+// Cross-realm checks (the Metaverse Engine core, GitHub #12609, acceptance "Cross-realm checks").
 // Every walking realm steps the one controller, aethyr/move/walk.coax, with its own declared
 // collision profile (aethyr/physics/collision-profiles.coax). Each check here runs the same session in
 // every one of them: a walk, a run, two jumps, a 0.4 m step up and back down, at 60 FPS

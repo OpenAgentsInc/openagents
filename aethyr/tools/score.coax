@@ -1,4 +1,4 @@
-// Render an Aethyr score to a 16-bit stereo WAV file (aethyr/book/ch067). Never plays it.
+// Render a Metaverse Engine score to a 16-bit stereo WAV file (aethyr/book/ch067). Never plays it.
 //   coax/web/tool.sh aethyr/tools/score.coax promo-epic OUT.wav [--seconds S] [--downbeat S]
 //       [--hold S] [--belt S] [--orbit S] [--home S] [--riser S] [--fade S] [--rate HZ] [--seed N]
 // Prints the frames, the peak before normalising, the voices and the samples' FNV-1a hash;

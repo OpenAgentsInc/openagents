@@ -1,4 +1,4 @@
-// The Golemancers' Workshop, lit: Aethyr shaders, written in Coax and emitted for each GPU
+// The Golemancers' Workshop, lit: Metaverse Engine shaders, written in Coax and emitted for each GPU
 // (`coax metal`, `coax wgsl`, `coax spirv`), that draw what temple.coax builds.
 //
 //   temple_sky_vs / temple_sky_fs      the night behind everything: stars, the moon, a sea of cloud
@@ -27,7 +27,7 @@ temple_cyan :: ()->V3 {return v3(0.42f32,0.82f32,1.0f32);}
 temple_amber :: ()->V3 {return v3(1.0f32,0.58f32,0.24f32);}
 temple_core :: ()->V3 {return v3(0.0f32,WK_CORE_Y,WK_CORE_Z);}
 
-// Smooth noise on Aethyr's lattice hash (aethyr/render/noise.coax): the hash gives one value a
+// Smooth noise on the Metaverse Engine's lattice hash (aethyr/render/noise.coax): the hash gives one value a
 // whole-number cell, and these blend the cells' corners.
 temple_cell :: (x:f32)->u32 {return cast,trunc(u32)(cast(s32)floor(fmin(fmax(x,0.0f32-33554432.0f32),33554430.0f32)));}
 temple_hash2 :: (x:f32,y:f32)->f32 {return render_noise_unit(render_noise_mix2(temple_cell(x),temple_cell(y)));}

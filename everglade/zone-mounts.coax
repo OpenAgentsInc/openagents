@@ -1,7 +1,7 @@
 // Everglade's horse and red dragon standing in a zone (everglade/docs/mounts-spec.md), game-wide:
 // Everglade Experimental and the Archery Range ride through this one file. It places one white horse
 // and one red dragon where the zone says, hands Everglade's mounts (everglade/mounts.coax, on
-// Aethyr's aethyr/action/mount.coax) the zone's ground and the boxes its walker collides with, takes
+// the Metaverse Engine's aethyr/action/mount.coax) the zone's ground and the boxes its walker collides with, takes
 // E and the rider's keys (xh_key, xh_ride_keys), and draws the prompt (xh_prompt_draw). A zone only
 // passes its keys in and plays the yes it is handed (the footfall, the dust).
 //

@@ -4,7 +4,7 @@
 # The Coax engine (verse/voice*.coax) becomes one C library per file with
 # coax/bin/coax, exactly as apps/openagents-ios/generate.sh does for the app;
 # verse/platform/voice.c is the C face over it. The client also links
-# Aethyr's spoken-request gate (aethyr/audio/voice.coax). Every host links Psionic's
+# the Metaverse Engine's spoken-request gate (aethyr/audio/voice.coax). Every host links Psionic's
 # resident Parakeet (libpsionic-parakeet.a from psionic/platform/parakeet-build.sh;
 # Metal on macOS; on Linux CUDA, opened at run time, or the CPU). On macOS libcurl comes from the SDK and
 # the psionic provider links Psionic's Whisper (whisper-build.sh) and Metal;

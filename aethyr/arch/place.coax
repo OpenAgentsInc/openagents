@@ -1,4 +1,4 @@
-// Aethyr's architecture kit, placing parts: a part (aethyr/arch/mesh.coax ArchPart) is built once
+// The Metaverse Engine's architecture kit, placing parts: a part (aethyr/arch/mesh.coax ArchPart) is built once
 // and stood wherever a realm wants it by a record, and a draw names a part and a run of records.
 //
 // A record is ARCH_RECORD_FLOATS floats: where (x, y, z) and its turn about y; its scale, a motion
@@ -23,7 +23,7 @@ ArchScene :: struct {
 }
 // A placed solid is ARCH_PLACED_FLOATS floats in the world: its kind (ARCH_SOLID_BOX,
 // ARCH_SOLID_ROUND), its middle on the ground (x, z), its half sizes, its turn about y, its foot
-// and its top. aethyr/arch/solids.coax hands them to Aethyr's queries and its walker.
+// and its top. aethyr/arch/solids.coax hands them to the Metaverse Engine's queries and its walker.
 ARCH_PLACED_FLOATS :: 8;
 // Keep solids: `local` is the pen's (arch_pen_solids), `placed` is where the scene's go. Every
 // draw after this stands its part's solids with its records.

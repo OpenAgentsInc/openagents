@@ -3,7 +3,7 @@
 // (docs/apps/2026-11-10-apps-roadmap.md, Step 2; docs/protocol/session-log-v1.md).
 // It is Coder's session log (~/.openagents/coder/sessions/ID.jsonl), which
 // Coder's terminal and runs, the turn runner, `coder import`, the desktop app,
-// Aethyrforge's chat and the agent boards write and read. This file is its one
+// the Metaverse Engine's chat and the agent boards write and read. This file is its one
 // writer and its one reader: every line of every kind is built here (sl_session ...
 // sl_job) and read here (sl_next, sl_read: "the reader" below; C2, #13239), and
 // the shape is pinned by proto/coder/session-log-v1.json (the check:

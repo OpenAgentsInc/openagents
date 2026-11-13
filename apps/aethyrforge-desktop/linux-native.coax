@@ -1,4 +1,4 @@
-// Aethyrforge's native Linux model. The same Bitcoin Lab producer and desktop
+// The Metaverse Engine's native Linux model. The same Bitcoin Lab producer and desktop
 // Coder HUD run as ordinary Coax-generated C in the Wayland/Vulkan host. A
 // chat turn runs in this process on the shared turn runner
 // (chat-run.coax over coax/lib/agent/engine/run.coax, as chat-launch.coax says): its session's

@@ -1,4 +1,4 @@
-// Walking grids and flow fields (Aethyr book chapter 76). A grid is nx by nz square cells,
+// Walking grids and flow fields (Metaverse Engine book chapter 76). A grid is nx by nz square cells,
 // `cell` metres each, from its south-west corner (x0, z0); cell c is column c % nx and row
 // c / nx. The caller says which cells a character fits in (walk) and owns the storage, so one
 // module serves a 6 by 5 example and Dead Gears' 64 by 76 deck alike.

@@ -1,4 +1,4 @@
-// Editing an Aethyr terrain tile (aethyr/world/terrain-tile.coax, `aethyr.terrain.tile.v1`) by brush: raise,
+// Editing a Metaverse Engine terrain tile (aethyr/world/terrain-tile.coax, `aethyr.terrain.tile.v1`) by brush: raise,
 // lower, smooth and flatten its heights, and paint its material influences. Every editor of ground
 // uses these (WorldBuilder first, GitHub #13225), so a brush feels the same in each and what it
 // leaves is always a tile terrain_tile_admit takes: finite heights inside the editor's limit, each

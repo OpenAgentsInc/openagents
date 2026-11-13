@@ -1,4 +1,4 @@
-// Read an asset pack whole with Aethyrforge's reader (aethyr/forge/pack.coax, book chapter 53),
+// Read an asset pack whole with the Metaverse Engine's reader (aethyr/forge/pack.coax, book chapter 53),
 // write it again from what was read, and admit it into a realm's assets under its own budget.
 //   coax/web/tool.sh aethyr/tools/pack-check.coax PACK...
 // Prints each pack's entries, its sources and its SHA-256 (the hex sha256sum prints), and whether

@@ -1,4 +1,4 @@
-// Verse OS: the GPU's power ceiling (docs/os/2026-11-02-verse-os.md, V5), as os/cpu-limits-policy.coax
+// Metaverse OS: the GPU's power ceiling (docs/os/2026-11-02-verse-os.md, V5), as os/cpu-limits-policy.coax
 // is the CPU's. It spends power, so it is #authority: os/gpu-limits.coax reads the card's limits
 // (nvidia-smi) and writes what this decides, nothing else.
 //   - While you play, the card's own default (the realm gets every frame it can).

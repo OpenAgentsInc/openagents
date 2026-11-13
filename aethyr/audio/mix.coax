@@ -14,7 +14,7 @@
 //   brick-wall limiter (host.js soundBus) catch what a control rate cannot.
 //   Ducking: a big event (a Fireball, the horn, a falling house) lowers the town's bed for
 //   MIX_DUCK_HOLD seconds, and it eases back.
-//   The room: an impulse response from Aethyr's reverb (synth.coax au_reverb), sent to the host as
+//   The room: an impulse response from the Metaverse Engine's reverb (synth.coax au_reverb), sent to the host as
 //   a sound once; each voice sends some of itself there (more the farther it is).
 //
 // Lines (host.js): NAME GAIN PAN DELAY LOWPASS RATE WET ID for a voice, -ID to stop one early,

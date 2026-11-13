@@ -71,7 +71,7 @@
 #load "../aethyr/physics/rigid.coax";
 #load "../aethyr/world/terrain.coax";
 #load "../aethyr/physics/stand.coax";
-#load "../aethyr/core/loop.coax";   // the steps are Aethyr's one clock's
+#load "../aethyr/core/loop.coax";   // the steps are the Metaverse Engine's one clock's
 
 DEMO_PIECES :: 6000;
 DEMO_MESHES :: 96;

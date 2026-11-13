@@ -1,6 +1,6 @@
 // A game's sound effects from numbers: each effect is a recipe of a few layers (an
 // oscillator or seeded noise, a pitch sweep, an envelope, a one-pole lowpass and highpass
-// that can sweep), rendered once to 16-bit mono WAV bytes with Aethyr's synthesizer
+// that can sweep), rendered once to 16-bit mono WAV bytes with the Metaverse Engine's synthesizer
 // (synth.coax). Nothing is recorded or downloaded: a page renders its effects when its
 // audio starts, so the sounds cost no download and are ours to license (CC0, see
 // aethyr/audio/SOURCES.md). Integers only, so an effect renders the same bytes on every

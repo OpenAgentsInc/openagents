@@ -1,4 +1,4 @@
-// Dead Gears' components on Aethyr's entities (aethyr/core/entity.coax), and its
+// Dead Gears' components on the Metaverse Engine's entities (aethyr/core/entity.coax), and its
 // clock and per-system timing. It was a private entity store ported from
 // aethyr-demo's src/ecs; the store is now entity.coax's EntityStore, and
 // this file keeps only what Dead Gears adds to it.
@@ -19,7 +19,7 @@
 // replays, determinism) and the only one there is.
 //
 // Systems run in the order the world calls them; ecs_clock_frame says how
-// many fixed 1/60 s steps a frame covers, on Aethyr's one clock
+// many fixed 1/60 s steps a frame covers, on the Metaverse Engine's one clock
 // (aethyr/core/loop.coax: a frame clamped to 0.1 s, at most 8 steps), and
 // Stats keeps each system's last and smoothed milliseconds, read off the
 // host's clock, for the stats overlay and the frame budget.
@@ -33,7 +33,7 @@
 
 ECS_NONE :: ENTITY_NONE;   // no entity
 
-// Aethyr's store, and the component bits beside it.
+// The Metaverse Engine's store, and the component bits beside it.
 Entities :: struct {
   s: EntityStore;     // who is alive (aethyr/core/entity.coax)
   mask: [] int;       // each slot's component bits

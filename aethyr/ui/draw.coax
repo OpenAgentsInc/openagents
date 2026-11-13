@@ -1,4 +1,4 @@
-// Aethyr's HUD drawing components. Screen points become the existing
+// The Metaverse Engine's HUD drawing components. Screen points become the existing
 // projects shader's twelve-float stroke/sans vertices. No platform effects.
 // Demo labels and numbers describe synthetic instrumentation, not live work.
 // coax/bin/coax test aethyr/ui/draw.coax --library

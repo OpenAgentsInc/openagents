@@ -1,5 +1,5 @@
-// Aethyr's stylized shading: the hand-painted look as an engine feature, written in Coax and
-// emitted for each GPU (`coax wgsl`, `coax spirv`, `coax metal`). Any world built from Aethyr's
+// The Metaverse Engine's stylized shading: the hand-painted look as an engine feature, written in Coax and
+// emitted for each GPU (`coax wgsl`, `coax spirv`, `coax metal`). Any world built from the Metaverse Engine's
 // architecture kit (aethyr/arch/) draws with it: load this file from the world's gpu module and
 // name these entries (the world's .module strips the `stylized_` prefix):
 //
@@ -46,7 +46,7 @@ StyBlade :: struct {pos:V4; world:V3; colour:V3; along:f32;}
 
 STY_TAU :: 6.2831853f32;
 
-// ---- noise on Aethyr's lattice hash (aethyr/render/noise.coax)
+// ---- noise on the Metaverse Engine's lattice hash (aethyr/render/noise.coax)
 sty_cell :: (x:f32)->u32 {return cast,trunc(u32)(cast(s32)floor(fmin(fmax(x,0.0f32-33554432.0f32),33554430.0f32)));}
 sty_hash2 :: (x:f32,y:f32)->f32 {return render_noise_unit(render_noise_mix2(sty_cell(x),sty_cell(y)));}
 sty_noise2 :: (x:f32,y:f32)->f32 {

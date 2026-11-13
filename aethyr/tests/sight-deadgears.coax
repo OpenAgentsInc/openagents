@@ -1,4 +1,4 @@
-// Dead Gears' sight on Aethyr's ray query and senses (#12854): verse/deadgears/arena.coax's
+// Dead Gears' sight on the Metaverse Engine's ray query and senses (#12854): verse/deadgears/arena.coax's
 // arena_sight now asks aethyr/physics/query.coax's query_ray, and arena_wall_ray (what a mutant, the
 // support engineer and your aim assist see across the deck) asks aethyr/ai/stimulus.coax's
 // sense_sight. This file keeps the private slab test they replaced (sdg_old_*, the consumer's

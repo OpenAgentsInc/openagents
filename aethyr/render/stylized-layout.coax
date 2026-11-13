@@ -1,4 +1,4 @@
-// Aethyr's stylized shading, its frame block: where each number of the look sits in a page's
+// The Metaverse Engine's stylized shading, its frame block: where each number of the look sits in a page's
 // uniform floats. aethyr/render/stylized-frame.coax writes them on the CPU and
 // aethyr/render/stylized.coax's shaders read them, so both load this file and neither repeats an
 // offset. A block is STY_UNIFORM_FLOATS floats: STY_UNIFORM_FLOATS / 4 vec4f in a page's bindings.
