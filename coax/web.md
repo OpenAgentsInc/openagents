@@ -234,6 +234,33 @@ sockets and the build pipe are close-on-exec; a builder cannot retain the
 listening port or accepted clients after the server stops. The physical
 regression is `coax/web/tool.sh serve-build-check` after building `serve.sh`.
 
+The watcher follows what the build read, not a fixed folder list (#13410). In
+dev mode each build step writes a dependency list next to its output,
+`APP/build/.live/NAME.deps` (`coax-live-1`: `kind wasm|wgsl`, `out`, `cmd`
+and one `src` line per file). `wasm.sh` takes the sources from `coax deps`
+of each unit and library plus `clang -M` of the face; `wgsl-module.coax`
+takes them from `coax deps` of the shader. A save to a listed source, inside
+the app or in a shared folder such as `metaverse-engine/` or `components/`,
+reruns only that step's `cmd`; serve tells `wasm` as soon as the module is
+written, and the next edit does not wait for the rest of the step (drive
+files, the new list). A source no list names (a new app file, a
+rules change) runs the whole build. The app folder is watched at every depth
+for pages, and a `.wgsl` the whole build rewrites is told as `wgsl`. There is
+no cap on the number of watched files.
+
+Packs and textures are swapped by content. An open tab sends `watch URL...`
+for the packs and textures it loaded; when one changes on disk, serve hashes
+it (SHA-256) and sends `{"kind":"asset","url","hash"}` only when the bytes
+changed. `host.js` fetches it again as `URL?live=HASH` and swaps it in. A
+swap the page refused counts in `coaxial.liveSwaps.failed`.
+
+Dev builds split the generated C into 16 parts with an object cache per
+part, so a one-file edit recompiles one part. Checks:
+`coax/web/tool.sh serve-live-check` (9 cases against a fixture app, 301
+sources) and `coax/web/tool.sh live-reload-bench URL KIND FILE OLD NEW...`,
+which times a saved edit until the page has swapped it in and drawn a frame
+(headless Chrome).
+
 | Change | What happens | Target, save to new frame |
 | --- | --- | --- |
 | Data (world layout, HUD layout, `home.textproto`, tuning) | Re-encoded, pushed, the engine re-admits it through the same checks as at load | under 50 ms |

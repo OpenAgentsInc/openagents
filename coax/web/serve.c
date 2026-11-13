@@ -1,14 +1,30 @@
 // coax serve: Coaxial's development server. One event loop; shaped file
 // connections use children so a slow download cannot stall the other clients.
 //
-// It serves an app directory over HTTP, watches the app's files and the
-// browser host, rebuilds what changed, and tells every open tab over a
-// WebSocket (/coaxial/live) what to swap:
-//   .coax / .c   rebuild the engine (the app's build script), then "wasm"
+// It serves an app directory over HTTP, watches every file the app's build
+// read, rebuilds what changed, and tells every open tab over a WebSocket
+// (/coaxial/live) what to swap:
+//   a module's source   rebuild that module alone, then "wasm" naming it
+//   a Coax shader's source   write its WGSL again, then "wgsl" naming it
 //   .wgsl        "wgsl": the tab recompiles its shaders
 //   .html .js .md .svg   "page": the tab reloads
+//   a pack or texture a tab loaded   "asset" with its URL and SHA-256
 // A failed build sends "error" with the compiler's output; the tab keeps
 // running the last good engine.
+//
+// What the build read is its dependency lists (#13410), APP_DIR/build/.live/*.deps,
+// one per module or shader, written by coax/web/wasm.sh (COAXIAL_MODE=dev) and
+// coax/web/wgsl-module.coax:
+//   coax-live-1
+//   kind wasm|wgsl
+//   out ABSOLUTE_PATH          what the unit writes
+//   cmd SHELL COMMAND          builds this unit alone again
+//   src ABSOLUTE_PATH          one line for each file the build read
+// A change to a listed source runs only the commands of the units that read it,
+// side by side. A watched .coax, .c or .h in the app's folders that no list
+// names runs the whole build (--build), as does the first build. A tab names
+// the packs and textures it loaded ("watch URL..."), and those files are
+// watched too. The watch has no fixed size.
 //
 //   serve APP_DIR [--listen HOST:PORT] [--build CMD] [--host-dir DIR] [--static] [--cache SECONDS] [--api PORT]
 //     [--throttle-mbps N] [--latency-ms M]
@@ -43,6 +59,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -52,19 +69,16 @@
 
 #include "../../metaverse/voice-host/ws.h"
 #include "http-range.h"
+#include "sha256-kernel.h"
 #include "site-routes.h"
 
 #define MAX_CLIENTS 64
-#define MAX_WATCH 256
 #define REQ_MAX 16384
 #define HTTP_REQUEST_MAX 65536 // inline take64 query; live/build messages keep REQ_MAX
 
 typedef struct { int fd; bool ws; size_t n; char buf[HTTP_REQUEST_MAX]; } client;
-typedef struct { char path[PATH_MAX + 1024]; struct timespec mtime; } watched;
 
 static client clients[MAX_CLIENTS];
-static watched files[MAX_WATCH];
-static int file_count;
 // realpath's buffers are PATH_MAX: glibc's _FORTIFY_SOURCE (on by default under Nix) aborts a smaller one.
 static char app_dir[PATH_MAX], host_dir[PATH_MAX], build_cmd[PATH_MAX + 64];
 static bool static_mode;
@@ -80,7 +94,14 @@ static int build_fd = -1;
 static double build_started;
 static char build_log[REQ_MAX / 2];
 static size_t build_used;
-static bool build_shaders, build_page;
+static bool build_page;
+static bool build_targeted;   // the running build is the changed units' own commands, not --build
+// A targeted build whose modules are all written and told: wasm.sh still writes its drive
+// files and dependency list, but the next edit doesn't wait for that. Reaped quietly.
+typedef struct { pid_t pid; int fd; } tail;
+static tail *tails;
+static int tail_count, tail_cap;
+static void tab_says(const uint8_t *text, size_t n);
 
 // This server forks only on its event-loop thread. Mark every owned socket
 // and pipe before the next fork, including accepted live-channel clients.
@@ -450,12 +471,19 @@ static void handle_request(client *c) {
 
 static void on_readable(client *c) {
   if (c->ws) {
-    // Tabs only listen; read and discard (a close frame or EOF drops them).
-    uint8_t tmp[4096];
-    ssize_t k = recv(c->fd, tmp, sizeof tmp, 0);
+    // A tab says only which files it loaded ("watch URL..."); a close frame or EOF drops it.
+    ssize_t k = recv(c->fd, c->buf + c->n, sizeof c->buf - c->n, 0);
     if (k <= 0) { drop(c); return; }
-    if (k >= 2 && (tmp[0] & 0x0f) == WS_CLOSE) drop(c);
-    return;
+    c->n += (size_t)k;
+    for (;;) {
+      ws_frame f;
+      int r = ws_parse((uint8_t *)c->buf, c->n, sizeof c->buf - 16, &f);
+      if (r < 0 || (r == 0 && c->n >= sizeof c->buf)) { drop(c); return; }
+      if (r == 0) return;
+      if (f.opcode == WS_CLOSE) { drop(c); return; }
+      if (f.opcode == WS_TEXT && f.fin) tab_says(f.payload, f.length);
+      memmove(c->buf, c->buf + f.consumed, c->n - f.consumed); c->n -= f.consumed;
+    }
   }
   ssize_t k = recv(c->fd, c->buf + c->n, sizeof c->buf - 1 - c->n, 0);
   if (k <= 0) { drop(c); return; }
@@ -465,27 +493,254 @@ static void on_readable(client *c) {
 }
 
 // ---- watching
-static bool watched_kind(const char *name) {
-  return ends_with(name, ".coax") || ends_with(name, ".c") || ends_with(name, ".h") || ends_with(name, ".wgsl") ||
-         ends_with(name, ".html") || ends_with(name, ".js") || ends_with(name, ".md") || ends_with(name, ".svg");
+// Files: one row a path, in a table that grows (no cap), found by a hash of the
+// path. A row is watched for what put it there: SCAN (a page, shader or source
+// file found in the app's folders) or SRC (a unit's dependency list names it).
+enum { ROLE_SCAN = 1, ROLE_SRC = 2 };
+typedef struct { char *path; struct timespec mtime; int roles; } watched;
+// A unit: one module or shader the build writes, from its .live/NAME.deps.
+typedef struct { bool wgsl; char *out, *cmd; int *src; int nsrc, src_cap; struct timespec out_mtime; bool dirty, told; } unit;
+// A file a tab loaded (a pack, a texture), by its URL; hash is its SHA-256 when known.
+typedef struct { char *url, *path; struct timespec mtime; char hash[65]; } loaded;
+static watched *files; static int file_count, file_cap;
+static int *slots; static int slot_cap;   // indexes into files, -1 empty; a power of two
+static unit *units; static int unit_count, unit_cap;
+static loaded *assets; static int asset_count, asset_cap;
+static char **notes; static int note_count, note_cap;   // .wgsl paths changed, told once each
+
+static void *grow(void *p, int *cap, int need, size_t size) {
+  if (need <= *cap) return p;
+  int next = *cap ? *cap : 64;
+  while (next < need) next *= 2;
+  void *q = realloc(p, (size_t)next * size);
+  if (!q) { logf_("out of memory watching files"); exit(1); }
+  *cap = next; return q;
+}
+static char *copy(const char *s) { char *t = strdup(s); if (!t) { logf_("out of memory watching files"); exit(1); } return t; }
+static bool same_time(struct timespec a, struct timespec b) { return a.tv_sec == b.tv_sec && a.tv_nsec == b.tv_nsec; }
+static struct timespec mtime_of(const char *path) {
+  struct stat st; struct timespec none = {0, 0};
+  return stat(path, &st) == 0 ? MTIME(st) : none;
+}
+static uint64_t path_hash(const char *s) { uint64_t h = 1469598103934665603ull; for (; *s; s++) h = (h ^ (uint8_t)*s) * 1099511628211ull; return h; }
+static int find_file(const char *path) {
+  if (!slot_cap) return -1;
+  for (uint64_t at = path_hash(path) & (uint64_t)(slot_cap - 1);; at = (at + 1) & (uint64_t)(slot_cap - 1)) {
+    if (slots[at] < 0) return -1;
+    if (!strcmp(files[slots[at]].path, path)) return slots[at];
+  }
+}
+static void place(int i) {
+  uint64_t at = path_hash(files[i].path) & (uint64_t)(slot_cap - 1);
+  while (slots[at] >= 0) at = (at + 1) & (uint64_t)(slot_cap - 1);
+  slots[at] = i;
+}
+// The row for path (added with the file's time now: a missing file is time 0, so its
+// appearing is a change), with role added.
+static int watch_file(const char *path, int role) {
+  int i = find_file(path);
+  if (i < 0) {
+    if ((file_count + 1) * 2 > slot_cap) {   // keep the table at most half full
+      int next = slot_cap ? slot_cap * 2 : 1024;
+      while ((file_count + 1) * 2 > next) next *= 2;
+      int *s = realloc(slots, (size_t)next * sizeof *s);
+      if (!s) { logf_("out of memory watching files"); exit(1); }
+      slots = s; slot_cap = next;
+      for (int k = 0; k < slot_cap; k++) slots[k] = -1;
+      for (int k = 0; k < file_count; k++) place(k);
+    }
+    files = grow(files, &file_cap, file_count + 1, sizeof *files);
+    i = file_count++;
+    files[i] = (watched){copy(path), mtime_of(path), 0};
+    place(i);
+  }
+  files[i].roles |= role;
+  return i;
+}
+static void watch_reset(void) {
+  for (int i = 0; i < file_count; i++) free(files[i].path);
+  for (int i = 0; i < unit_count; i++) { free(units[i].out); free(units[i].cmd); free(units[i].src); }
+  file_count = unit_count = 0;
+  for (int k = 0; k < slot_cap; k++) slots[k] = -1;
 }
 
-static void scan_dir(const char *dir, bool add) {
+static bool engine_kind(const char *name) { return ends_with(name, ".coax") || ends_with(name, ".c") || ends_with(name, ".h"); }
+static bool page_kind(const char *name) {
+  return ends_with(name, ".html") || ends_with(name, ".js") || ends_with(name, ".md") || ends_with(name, ".svg");
+}
+// The app's folders, all the way down (nested app folders: realms/NAME/index.html), but not
+// build/ (what the build writes) or a dot folder. sources: also .coax, .c and .h, which run the
+// whole build when no unit's list names them. The host folder is only its top level.
+static void scan_dir(const char *dir, bool deep, bool sources) {
   DIR *d = opendir(dir);
   if (!d) return;
   struct dirent *e;
   while ((e = readdir(d))) {
-    if (e->d_name[0] == '.' || !watched_kind(e->d_name)) continue;
+    if (e->d_name[0] == '.') continue;
     char path[PATH_MAX + 1024];
-    snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
-    if (add && file_count < MAX_WATCH) {
-      struct stat st;
-      if (stat(path, &st)) continue;
-      snprintf(files[file_count].path, sizeof files[0].path, "%s", path);
-      files[file_count++].mtime = MTIME(st);
+    if (snprintf(path, sizeof path, "%s/%s", dir, e->d_name) >= (int)sizeof path) continue;
+    struct stat st;
+    if (lstat(path, &st)) continue;
+    if (S_ISDIR(st.st_mode)) {
+      if (deep && strcmp(e->d_name, "build") && strcmp(e->d_name, "node_modules")) scan_dir(path, deep, sources);
+      continue;
     }
+    if (!S_ISREG(st.st_mode)) continue;
+    if (page_kind(e->d_name) || ends_with(e->d_name, ".wgsl") || (sources && engine_kind(e->d_name))) watch_file(path, ROLE_SCAN);
   }
   closedir(d);
+}
+// A unit's output with its folder's symlinks resolved, as app_dir is (/tmp is /private/tmp
+// on a Mac), so url_of finds it; as written when the folder doesn't resolve.
+static char *real_out(const char *path) {
+  char dir[PATH_MAX + 1024], real[PATH_MAX], joined[PATH_MAX + 1024];
+  const char *slash = strrchr(path, '/');
+  if (!slash || slash == path || (size_t)(slash - path) >= sizeof dir) return copy(path);
+  memcpy(dir, path, (size_t)(slash - path)); dir[slash - path] = 0;
+  if (!realpath(dir, real) || snprintf(joined, sizeof joined, "%s%s", real, slash) >= (int)sizeof joined) return copy(path);
+  return copy(joined);
+}
+// Every APP_DIR/build/.live/*.deps: the units and every file each one read.
+static void load_deps(void) {
+  char dir[PATH_MAX + 64];
+  snprintf(dir, sizeof dir, "%s/build/.live", app_dir);
+  DIR *d = opendir(dir);
+  if (!d) return;
+  struct dirent *e;
+  char *line = NULL; size_t cap = 0;
+  while ((e = readdir(d))) {
+    if (e->d_name[0] == '.' || !ends_with(e->d_name, ".deps")) continue;
+    char path[PATH_MAX + 1024];
+    if (snprintf(path, sizeof path, "%s/%s", dir, e->d_name) >= (int)sizeof path) continue;
+    FILE *f = fopen(path, "r");
+    if (!f) continue;
+    unit u = {0};
+    bool ok = getline(&line, &cap, f) > 0 && !strcmp(line, "coax-live-1\n");
+    ssize_t n;
+    while (ok && (n = getline(&line, &cap, f)) > 0) {
+      if (line[n - 1] == '\n') line[--n] = 0;
+      if (!strncmp(line, "kind ", 5)) u.wgsl = !strcmp(line + 5, "wgsl");
+      else if (!strncmp(line, "out ", 4) && !u.out) u.out = real_out(line + 4);
+      else if (!strncmp(line, "cmd ", 4) && !u.cmd) u.cmd = copy(line + 4);
+      else if (!strncmp(line, "src /", 5)) {
+        u.src = grow(u.src, &u.src_cap, u.nsrc + 1, sizeof *u.src);
+        u.src[u.nsrc++] = watch_file(line + 4, ROLE_SRC);
+      }
+    }
+    fclose(f);
+    if (!ok || !u.out || !u.cmd || !u.nsrc) { free(u.out); free(u.cmd); free(u.src); continue; }
+    u.out_mtime = mtime_of(u.out);
+    units = grow(units, &unit_cap, unit_count + 1, sizeof *units);
+    units[unit_count++] = u;
+  }
+  free(line);
+  closedir(d);
+}
+// What is watched, read again: after every build (its lists may name new files, and new
+// files may be in the folders), so each row's time is the time after that build.
+static void watch_all(void) {
+  watch_reset();
+  scan_dir(app_dir, true, true);
+  scan_dir(host_dir, false, false);
+  load_deps();
+}
+
+// A watched path as the URL a tab asks for (/build/x.wasm, /coaxial/host.js): false when none.
+static bool url_of(const char *path, char *out, size_t cap) {
+  size_t a = strlen(app_dir), h = strlen(host_dir);
+  if (!strncmp(path, app_dir, a) && path[a] == '/') return snprintf(out, cap, "%s", path + a) < (int)cap;
+  if (!strncmp(path, host_dir, h) && path[h] == '/') return snprintf(out, cap, "/coaxial%s", path + h) < (int)cap;
+  return false;
+}
+static void note_wgsl(const char *path) {
+  for (int i = 0; i < note_count; i++) if (!strcmp(notes[i], path)) return;
+  notes = grow(notes, &note_cap, note_count + 1, sizeof *notes);
+  notes[note_count++] = copy(path);
+}
+// "wgsl" for each changed shader, naming it (a tab whose shaders are another file ignores it).
+static void tell_wgsl(void) {
+  for (int i = 0; i < note_count; i++) {
+    char url[PATH_MAX + 1024], msg[PATH_MAX + 1100];
+    if (url_of(notes[i], url, sizeof url)) snprintf(msg, sizeof msg, "{\"kind\":\"wgsl\",\"path\":\"%s\"}", url);
+    else snprintf(msg, sizeof msg, "{\"kind\":\"wgsl\"}");
+    logf_("shader changed: %s", strrchr(notes[i], '/') + 1);
+    broadcast(msg);
+    free(notes[i]);
+  }
+  note_count = 0;
+}
+// "wasm" naming one unit's module, once, when it has been written.
+static void tell_wasm(unit *u) {
+  char url[PATH_MAX + 1024], msg[PATH_MAX + 1100];
+  u->told = true;
+  if (!url_of(u->out, url, sizeof url)) return;   // nothing a tab loads
+  double ms = monotonic_ms() - build_started;
+  logf_("%s rebuilt in %.0f ms", strrchr(u->out, '/') + 1, ms);
+  snprintf(msg, sizeof msg, "{\"kind\":\"wasm\",\"ms\":%.0f,\"path\":\"%s\"}", ms, url);
+  broadcast(msg);
+}
+// While the changed units build: a module written is told at once, before its builder
+// exits (wasm.sh writes the module, then its drive files).
+static void poll_outputs(void) {
+  for (int i = 0; i < unit_count; i++) {
+    unit *u = &units[i];
+    if (!u->dirty || u->told || u->wgsl) continue;
+    if (!same_time(mtime_of(u->out), u->out_mtime)) tell_wasm(u);
+  }
+}
+
+// ---- the files tabs loaded (packs, textures): "watch URL..." from a tab
+// The file's SHA-256 as 64 hex digits into hex; false when it can't be read.
+static bool file_sha256(const char *path, char *hex) {
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return false;
+  struct stat st;
+  if (fstat(fd, &st) || !S_ISREG(st.st_mode)) { close(fd); return false; }
+  void *p = st.st_size ? mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0) : NULL;
+  close(fd);
+  if (st.st_size && p == MAP_FAILED) return false;
+  coax_t_S_Digest digest = S_hash((coax_string){st.st_size ? p : "", (int64_t)st.st_size});
+  char out[64];
+  bool ok = !digest.error && S_hex(digest, (coax_v_u8){(uint8_t *)out, 64});
+  if (st.st_size) munmap(p, (size_t)st.st_size);
+  if (ok) { memcpy(hex, out, 64); hex[64] = 0; }
+  return ok;
+}
+static void watch_url(const char *url) {
+  for (int i = 0; i < asset_count; i++) if (!strcmp(assets[i].url, url)) return;
+  char path[PATH_MAX + 1024];
+  if (url[0] != '/' || strstr(url, "/coaxial/live") || !resolve(url, path, sizeof path)) return;
+  assets = grow(assets, &asset_cap, asset_count + 1, sizeof *assets);
+  assets[asset_count++] = (loaded){copy(url), copy(path), mtime_of(path), ""};
+}
+// "watch URL URL...": what the tab loaded, as a text frame.
+static void tab_says(const uint8_t *text, size_t n) {
+  if (n < 6 || memcmp(text, "watch ", 6)) return;
+  char url[1024];
+  for (size_t i = 6; i < n;) {
+    while (i < n && text[i] == ' ') i++;
+    size_t j = i;
+    while (j < n && text[j] != ' ') j++;
+    if (j > i && j - i < sizeof url) { memcpy(url, text + i, j - i); url[j - i] = 0; watch_url(url); }
+    i = j;
+  }
+}
+// A loaded file whose bytes changed: "asset" with its URL and new SHA-256 (a touch that
+// leaves the bytes as they were tells nothing).
+static void check_assets(void) {
+  for (int i = 0; i < asset_count; i++) {
+    loaded *a = &assets[i];
+    struct timespec t = mtime_of(a->path);
+    if (same_time(t, a->mtime)) continue;
+    a->mtime = t;
+    char hex[65];
+    if (!file_sha256(a->path, hex) || !strcmp(hex, a->hash)) continue;
+    memcpy(a->hash, hex, sizeof hex);
+    char msg[1200];
+    snprintf(msg, sizeof msg, "{\"kind\":\"asset\",\"url\":\"%s\",\"hash\":\"%s\"}", a->url, a->hash);
+    logf_("asset changed: %s", a->url);
+    broadcast(msg);
+  }
 }
 
 static void json_escape(const char *in, char *out, size_t cap) {
@@ -506,32 +761,58 @@ static void build_finished(bool success) {
   build_pid = 0;
   if (build_fd >= 0) { close(build_fd); build_fd = -1; }
   build_log[build_used] = 0;
-  // Rebaseline generated files before notifying clients. An edit made in
-  // response to the completion message must belong to the next build.
-  for (int i = 0; i < file_count; i++) {
-    struct stat st;
-    if (stat(files[i].path, &st) == 0) files[i].mtime = MTIME(st);
+  // A .wgsl the build wrote (WGSL generated from Coax) is a changed shader. Before #13410 the
+  // times below were reset without telling the tabs.
+  for (int i = 0; i < file_count; i++)
+    if ((files[i].roles & ROLE_SCAN) && ends_with(files[i].path, ".wgsl") && !same_time(mtime_of(files[i].path), files[i].mtime)) note_wgsl(files[i].path);
+  for (int i = 0; i < unit_count; i++) {
+    unit *u = &units[i];
+    if (!u->dirty || u->told || same_time(mtime_of(u->out), u->out_mtime)) continue;
+    if (u->wgsl) note_wgsl(u->out);
+    else tell_wasm(u);
   }
-  if (success) {
+  // An edit saved while the changed units built, or just after a tab was told, is the next
+  // build's: a targeted build keeps every source's time from before the rescan, so only its
+  // module outputs count as its own. Only a whole build writes sources (the realms' tables).
+  typedef struct { char *path; struct timespec mtime; } seen;
+  seen *kept = NULL; int kept_count = 0, kept_cap = 0;
+  for (int i = 0; build_targeted && i < file_count; i++) {
+    if (ends_with(files[i].path, ".wgsl")) continue;
+    bool out = false;
+    for (int k = 0; k < unit_count && !out; k++) out = !strcmp(units[k].out, files[i].path);
+    if (out) continue;
+    kept = grow(kept, &kept_cap, kept_count + 1, sizeof *kept);
+    kept[kept_count++] = (seen){copy(files[i].path), files[i].mtime};
+  }
+  if (success && !build_targeted) {
     char msg[128];
     snprintf(msg, sizeof msg, "{\"kind\":\"wasm\",\"ms\":%.0f}", ms);
     logf_("engine rebuilt in %.0f ms", ms);
     broadcast(msg);
-  } else {
+  } else if (!success) {
     logf_("build failed in %.0f ms:\n%s", ms, build_log);
     json_escape(build_log, escaped, sizeof escaped - 32);
     char msg[REQ_MAX + 64];
     snprintf(msg, sizeof msg, "{\"kind\":\"error\",\"text\":\"%s\"}", escaped);
     broadcast(msg);
   }
-  if (build_shaders) broadcast("{\"kind\":\"wgsl\"}");
+  tell_wgsl();
   if (build_page) broadcast("{\"kind\":\"page\"}");
-  build_shaders = build_page = false;
+  build_page = false;
+  // What is watched again, at its times now: generated files the build wrote don't start
+  // another build. An edit made in response to the completion message belongs to the next one.
+  watch_all();
+  for (int i = 0; i < kept_count; i++) {
+    int at = find_file(kept[i].path);
+    if (at >= 0) files[at].mtime = kept[i].mtime;
+    free(kept[i].path);
+  }
+  free(kept);
 }
 
-static void build_start(void) {
+static void build_start(const char *cmd, bool targeted) {
   int p[2];
-  build_used = 0; build_started = monotonic_ms();
+  build_used = 0; build_started = monotonic_ms(); build_targeted = targeted;
   if (pipe(p)) goto failed;
   p[0] = private_fd(p[0]); p[1] = private_fd(p[1]);
   if (p[0] < 0 || p[1] < 0) goto close_failed;
@@ -544,7 +825,7 @@ static void build_start(void) {
     if (dup2(p[1], STDOUT_FILENO) < 0 || dup2(p[1], STDERR_FILENO) < 0) _exit(127);
     if (p[1] > STDERR_FILENO) close(p[1]);
     signal(SIGPIPE, SIG_DFL);
-    execl("/bin/sh", "sh", "-c", build_cmd, (char *)NULL);
+    execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
     _exit(127);
   }
   close(p[1]); build_fd = p[0]; build_pid = pid;
@@ -576,9 +857,34 @@ static void build_drain(void) {
   }
 }
 
+// The running targeted build has written and told every module it builds (no shader).
+static bool units_all_told(void) {
+  bool any = false;
+  for (int i = 0; i < unit_count; i++) {
+    if (!units[i].dirty) continue;
+    if (units[i].wgsl || !units[i].told) return false;
+    any = true;
+  }
+  return any;
+}
+// The build is done as far as the tabs and the watcher go; its tail runs on (see tail).
+static void release_build(void) {
+  build_drain();
+  tails = grow(tails, &tail_cap, tail_count + 1, sizeof *tails);
+  tails[tail_count++] = (tail){build_pid, build_fd};
+  build_fd = -1;
+  build_finished(true);
+}
+
 static void reap_children(void) {
   int status; pid_t pid;
   while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+    for (int i = 0; i < tail_count; i++) {
+      if (tails[i].pid != pid) continue;
+      if (tails[i].fd >= 0) close(tails[i].fd);
+      tails[i] = tails[--tail_count];
+      break;
+    }
     if (pid == build_pid) {
       build_drain();
       build_finished(WIFEXITED(status) && WEXITSTATUS(status) == 0);
@@ -587,25 +893,56 @@ static void reap_children(void) {
   }
 }
 
+// The changed units' own commands, side by side, as one shell script; its status is 1 when
+// any failed.
+static char *units_script(void) {
+  size_t n = 64;
+  for (int i = 0; i < unit_count; i++) if (units[i].dirty) n += strlen(units[i].cmd) + 64;
+  char *s = malloc(n);
+  if (!s) { logf_("out of memory starting a build"); exit(1); }
+  size_t at = (size_t)snprintf(s, n, "s=0\n");
+  for (int i = 0; i < unit_count; i++)
+    if (units[i].dirty) at += (size_t)snprintf(s + at, n - at, "(%s) & p%d=$!\n", units[i].cmd, i);
+  for (int i = 0; i < unit_count; i++)
+    if (units[i].dirty) at += (size_t)snprintf(s + at, n - at, "wait $p%d || s=1\n", i);
+  snprintf(s + at, n - at, "exit $s\n");
+  return s;
+}
 static void check_changes(void) {
-  bool engine = false, shaders = false, page = false;
+  bool whole = false, page = false, some = false;
+  check_assets();
   for (int i = 0; i < file_count; i++) {
-    struct stat st;
-    if (stat(files[i].path, &st)) continue;
-    if (MTIME(st).tv_sec == files[i].mtime.tv_sec && MTIME(st).tv_nsec == files[i].mtime.tv_nsec) continue;
-    files[i].mtime = MTIME(st);
+    struct timespec t = mtime_of(files[i].path);
+    if (same_time(t, files[i].mtime)) continue;
+    files[i].mtime = t;
     const char *p = files[i].path;
-    if (ends_with(p, ".coax") || ends_with(p, ".c") || ends_with(p, ".h")) engine = true;
-    else if (ends_with(p, ".wgsl")) shaders = true;
-    else page = true;
     logf_("changed %s", strrchr(p, '/') + 1);
+    bool read = false;   // a unit's list names it
+    if (files[i].roles & ROLE_SRC)
+      for (int k = 0; k < unit_count; k++)
+        for (int j = 0; j < units[k].nsrc; j++)
+          if (units[k].src[j] == i) { units[k].dirty = true; read = some = true; break; }
+    if (read) continue;
+    if (engine_kind(p)) whole = true;
+    else if (ends_with(p, ".wgsl")) note_wgsl(p);
+    else page = true;
   }
-  if (engine) {
-    build_shaders = shaders; build_page = page;
-    build_start();
+  if (whole || some) {
+    // A watched source no list names: the whole build, as before lists (a unit it builds is
+    // told in the whole build's one "wasm").
+    build_page = page;
+    for (int k = 0; whole && k < unit_count; k++) units[k].dirty = false;
+    for (int k = 0; k < unit_count; k++) units[k].told = false;
+    if (whole) { build_start(build_cmd, false); return; }
+    char *script = units_script(), names[1024] = "";
+    for (int k = 0; k < unit_count; k++)
+      if (units[k].dirty && strlen(names) + strlen(units[k].out) + 3 < sizeof names) { if (names[0]) strcat(names, ", "); strcat(names, strrchr(units[k].out, '/') + 1); }
+    logf_("building %s", names);
+    build_start(script, true);
+    free(script);
     return;
   }
-  if (shaders) broadcast("{\"kind\":\"wgsl\"}");
+  tell_wgsl();
   if (page) broadcast("{\"kind\":\"page\"}");
 }
 
@@ -666,9 +1003,8 @@ int main(int argc, char **argv) {
   }
   for (int i = 0; i < MAX_CLIENTS; i++) clients[i].fd = -1;
   if (!static_mode) {
-    scan_dir(app_dir, true);
-    scan_dir(host_dir, true);
-    build_start();
+    watch_all();
+    build_start(build_cmd, false);
   }
   printf("coax serve: http://%s:%d/  (app %s, %s)\n", host, port, app_dir, static_mode ? "static" : "watching");
   fflush(stdout);
@@ -698,7 +1034,15 @@ int main(int argc, char **argv) {
       }
     }
     reap_children();
-    if (!static_mode && !build_pid && now_ms() - last_scan >= 50) { last_scan = now_ms(); check_changes(); }
+    if (!static_mode && now_ms() - last_scan >= 50) {
+      last_scan = now_ms();
+      if (!build_pid) check_changes();
+      else if (build_targeted) { poll_outputs(); if (units_all_told()) release_build(); }
+      for (int i = 0; i < tail_count; i++) {   // a tail's report is not read; its pipe never fills
+        char scratch[4096];
+        while (tails[i].fd >= 0 && read(tails[i].fd, scratch, sizeof scratch) > 0) {}
+      }
+    }
   }
   return 0;
 }

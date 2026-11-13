@@ -28,6 +28,7 @@ relative() {
 }
 coax_file="$(relative "$coax_file")"
 for i in ${libraries[@]+"${!libraries[@]}"}; do libraries[i]="$(relative "${libraries[i]}")"; done
+given_libraries=(${libraries[@]+"${libraries[@]}"})   # before any fold: the command that builds this again (live_deps)
 face="$(cd "$(dirname "$face")" && pwd)/$(basename "$face")"
 mkdir -p "$(dirname "$out")"; out="$(cd "$(dirname "$out")" && pwd)/$(basename "$out")"
 source "$repo/coax/web/toolchain.sh"
@@ -172,7 +173,11 @@ if [[ -n "$cache" ]]; then
   # Homebrew Cellar path names its build), not by hashing its bytes each build.
   tool_id() { local at; at="$(command -v "$1")" && printf '%s\n' "$(realpath "$at")" && "$at" --version; }
   flags_sum="$({ tool_id "$clang"; printf '%s\n' "${cflags[@]}"; } | shasum -a 256 | cut -c1-16)"
-  find "$cache" -maxdepth 1 -type f -mtime +14 -delete 2> /dev/null || true
+  # Entries unused for two weeks go, at most once an hour: the sweep reads every entry (160 ms on
+  # the Mac), a tenth of a live reload (#13410).
+  if [[ -z "$(find "$cache/.swept" -mmin -60 2> /dev/null)" ]]; then
+    touch "$cache/.swept"; find "$cache" -maxdepth 1 -type f -mtime +14 -delete 2> /dev/null || true
+  fi
 fi
 # The shared tier (#13119, docs/metaverse/remote-builds.md): a Cloud Storage bucket
 # behind this disk cache, under the same keys (wasm/KEY.c, .h, .notes, .o,
@@ -195,10 +200,15 @@ check_cache="${COAX_CHECK_CACHE:-$HOME/.cache/coax-check}"
 # of procedures' C (COAXIAL_SPLIT_UNIT bytes) and emits a unit under four
 # parts' worth whole. Each part includes the prelude every part shares (the
 # runtime, the types and the prototypes).
-split="${COAXIAL_SPLIT:-}"
-[[ -n "$split" ]] || { split=0; [[ "$render" == 1 ]] && split=16; }
+# In development (COAXIAL_MODE=dev, what coax serve builds) every module is split, in parts of
+# 128 KiB of procedures' C, so a saved edit compiles again only the part it changed (#13410):
+# Splice's 1.8 MB of C took 1.5 s of clang as one unit and takes 0.2 s as parts.
+split="${COAXIAL_SPLIT:-}"; split_unit_bytes="${COAXIAL_SPLIT_UNIT:-}"
+dev_split=0; [[ "$mode" == dev && -z "${COAX_FAST_EDIT:-}" ]] && dev_split=1
+[[ -n "$split" ]] || { split=0; [[ "$render" == 1 || "$dev_split" == 1 ]] && split=16; }
+[[ -n "$split_unit_bytes" || "$dev_split" == 0 ]] || split_unit_bytes=131072
 [[ "$split" =~ ^[0-9]+$ && "$split" -le 256 ]] || { echo "COAXIAL_SPLIT must be a count from 0 to 256" >&2; exit 2; }
-split_unit=(); [[ -z "${COAXIAL_SPLIT_UNIT:-}" ]] || split_unit=(--split-unit "$COAXIAL_SPLIT_UNIT")
+split_unit=(); [[ -z "$split_unit_bytes" ]] || split_unit=(--split-unit "$split_unit_bytes")
 unit_split() { [[ "$1" == "${units[0]%%:*}" && "$split" != 0 ]] && echo "$split" || echo 0; }   # unit: its --split count
 unit_key() {   # unit header-base: the cache key, or nothing (not cacheable)
   local list
@@ -207,7 +217,7 @@ unit_key() {   # unit header-base: the cache key, or nothing (not cacheable)
   [[ -z "${COAX_FAST_EDIT:-}" ]] || return 0
   list="$(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size sources "$1")" && [[ -n "$list" ]] || return 0
   { printf '%s\n' coax-wasm-c-1 "$compiler_sum" "$1" "$2" ${run_steps[@]+"${run_steps[@]}"}
-    [[ "$(unit_split "$1")" == 0 ]] || printf 'split %s %s\n' "$(unit_split "$1")" "${COAXIAL_SPLIT_UNIT:-}"
+    [[ "$(unit_split "$1")" == 0 ]] || printf 'split %s %s\n' "$(unit_split "$1")" "$split_unit_bytes"
     ! (cd "$repo" && grep -q 'BUILD_DEBUG' $list) || printf 'profile %s\n' "${profile[1]}"
     (cd "$repo" && shasum -a 256 $list); } | shasum -a 256 | cut -c1-64
 }
@@ -416,7 +426,7 @@ budget_check() {   # [named]: $work/output.wasm against its budget; named: name 
 # renderer face). Two builds with the same sum read the same sources.
 inputs_sum() {
   local text
-  text="$( printf '%s\n' coax-wasm-inputs-1 "$mode" "$render" "${profile[1]}" "$split" "${COAXIAL_SPLIT_UNIT:-}" ${run_steps[@]+"${run_steps[@]}"}
+  text="$( printf '%s\n' coax-wasm-inputs-1 "$mode" "$render" "${profile[1]}" "$split" "$split_unit_bytes" ${run_steps[@]+"${run_steps[@]}"}
     printf 'unit %s\n' "${units[@]}"; printf 'folded %s\n' ${folded[@]+"${folded[@]}"}
     for unit in "${units[@]}"; do
       list="$(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size sources "${unit%%:*}")" && [[ -n "$list" ]] || exit 1
@@ -460,12 +470,10 @@ fi
 # (#13154). COAXIAL_DRIVE=0 (release.sh: nothing drives a release's own tree) writes neither and
 # removes the ones there, which would name other sources.
 drive_files() {
-  local began layout_job; began="$(now)"
+  local began; began="$(now)"
   drive_dir="$(dirname "$out")/.drive"; mkdir -p "$drive_dir"
   if [[ "${COAXIAL_DRIVE:-1}" == 0 ]]; then rm -f "$drive_dir/$module.layout" "$drive_dir/$module.sources"; return 0; fi
-  drive_layout & layout_job=$!
-  drive_sources
-  wait "$layout_job" || true
+  drive_sources   # the layout runs beside it (layout_job): a dev module waits for that alone
   step module drive off "$began"
 }
 drive_layout() {
@@ -488,14 +496,47 @@ drive_sources() {
     } > "$drive_dir/$module.sources.tmp.$$" && mv -f "$drive_dir/$module.sources.tmp.$$" "$drive_dir/$module.sources"
   else echo "wasm.sh: $module: no source list for coax drive" >&2; fi
 }
+# The module's dependency list for coax serve (#13410), in development only: every file this
+# build read (each unit's sources as `coax deps` names them, the face and the headers it
+# includes) and the command that builds this module alone again, in
+# .live/MODULE.deps beside it. serve watches those files, runs the command when one changes,
+# and tells the tabs when the module is written (coax/web/serve.c, "What the build read").
+live_deps() {
+  [[ "$mode" == dev && -z "${COAX_FAST_EDIT:-}" ]] || return 0
+  local dir unit deps f v env_words=() cmd
+  dir="$(dirname "$out")/.live"; mkdir -p "$dir"
+  for v in COAXIAL_RENDER COAXIAL_RUN_STEPS COAXIAL_SPLIT COAXIAL_SPLIT_UNIT COAXIAL_WASM_CACHE; do [[ -z "${!v+x}" ]] || env_words+=("$v=${!v}"); done
+  cmd="cd $(printf '%q' "$repo") && env COAXIAL_MODE=dev"
+  for v in ${env_words[@]+"${env_words[@]}"} coax/web/wasm.sh "$coax_file" "$face" "$out" ${given_libraries[@]+"${given_libraries[@]}"}; do cmd+=" $(printf '%q' "$v")"; done
+  {
+    printf '%s\n' coax-live-1 "kind wasm" "out $out" "cmd $cmd"
+    {
+      for unit in "${units[@]}" ${given_libraries[@]+"${given_libraries[@]}"}; do
+        deps="$(cd "$repo" && "$coax_driver" deps "${unit%%:*}" --library 2> /dev/null)" || return 1
+        grep -o '"sources":\[[^]]*\]' <<< "$deps" | grep -o '"[^"]*"' | tr -d '"' | grep -v '^sources$' || true
+      done
+      echo "$face"
+      "$clang" "${cflags[@]}" -I"$work" -I"$(dirname "$face")" "$face" -M -MT o 2> /dev/null | sed 's/^o://; s/\\$//' | tr ' ' '\n' || true
+      [[ "$render" != 1 ]] || echo "$repo/coax/web/render-face.c"
+    } | while IFS= read -r f; do
+      [[ -n "$f" ]] || continue
+      [[ "$f" == /* ]] || f="$repo/$f"
+      # not the build's own C and headers (in .c/), and not the toolchain's
+      [[ -f "$f" && "$f" == "$repo"/* && "$f" != "$work_root"/* ]] && echo "src $f" || true
+    done | sort -u
+  } > "$dir/$module.deps.$$" && mv -f "$dir/$module.deps.$$" "$dir/$module.deps" || { rm -f "$dir/$module.deps.$$"; echo "wasm.sh: $module: no dependency list for coax serve" >&2; }
+}
 if [[ -n "${COAX_FAST_EDIT:-}" && "${COAX_FAST_EDIT_ORACLE:-0}" != 1 ]]; then units+=("coax/web/fast-edit-offer.coax:fast-edit-policy"); fi
 for unit in "${units[@]}"; do
   emit "${unit%%:*}" "${unit##*:}" & gen+=($!)
 done
 for pid in "${gen[@]}"; do wait "$pid"; done
 [[ "$mode" == dev ]] || headroom_check || exit 1
+layout_job=""
+if [[ "${COAXIAL_DRIVE:-1}" != 0 ]]; then mkdir -p "$(dirname "$out")/.drive"; drive_dir="$(dirname "$out")/.drive"; drive_layout & layout_job=$!; fi
 drive_files & drive_job=$!
-trap 'kill "$drive_job" 2> /dev/null || true; rm -rf "$work"' EXIT
+live_job=""
+trap 'kill "$drive_job" $layout_job $live_job 2> /dev/null || true; rm -rf "$work"' EXIT
 if [[ -n "${COAX_FAST_EDIT:-}" && "${COAX_FAST_EDIT_ORACLE:-0}" != 1 ]]; then
   [[ "$mode" == dev ]] || { echo 'COAX_FAST_EDIT requires COAXIAL_MODE=dev' >&2; exit 2; }
   # Cache entries remain ordinary checked C; object keys hash the private
@@ -508,6 +549,7 @@ for library in ${folded[@]+"${folded[@]}"}; do
   base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
   cp "$work/$name.h" "$work/$base.h"
 done
+live_deps & live_job=$!   # the units' headers are all in $work now: the face's includes resolve
 if [[ -n "${COAXIAL_ADMITTED_DIR:-}" ]]; then
   mkdir -p "$COAXIAL_ADMITTED_DIR"
   cp "$work/"*.c "$work/"*.h "$COAXIAL_ADMITTED_DIR/"
@@ -615,7 +657,13 @@ fi
 # cache's part in it, each compiler run's phases, checks, capacities and its
 # costliest declarations (coax --timings), and the machine and its load.
 # COAXIAL_WASM_TIMES=0 keeps the line quiet; the report is still written.
-wait "$drive_job" || true   # its step is in the report
+published=0
+publish() {   # the module and its names into place, once; the server never serves a half-written module
+  (( ! published )) || return 0; published=1
+  if [[ -s "$work/output.syms" ]]; then mv "$work/output.syms" "$out.syms"; else rm -f "$out.syms"; fi
+  mv "$work/output.wasm" "$out"
+}
+[[ -z "$layout_job" ]] || wait "$layout_job" || true   # the state table below reads it
 # A development module carries its state's field table, the layout just written, in a
 # "coaxial.state" custom section (#13411): on an engine swap host.js carries the running state into
 # the new module's layout field by field (coax/web/state-keep.js) instead of starting it over.
@@ -626,10 +674,16 @@ if [[ "$mode" == dev && "${COAXIAL_DRIVE:-1}" != 0 && -s "$state_layout" ]]; the
   if (cd "$repo" && "$repo/coax/web/tool.sh" wasm-size state "$work/output.wasm" "$state_layout" "$work/tabled.wasm"); then mv "$work/tabled.wasm" "$work/output.wasm"
   else rm -f "$work/tabled.wasm"; echo "wasm.sh: $module: no state table in the module (a swap that changes its state's layout starts the state over)" >&2; fi
 fi
+module_bytes="$(wc -c < "$work/output.wasm" | tr -d ' ')"
+# In development the module goes into place before the source list is done: coax serve tells
+# the tabs as soon as it is written (#13410), and a dev module has no budget or record to wait on.
+[[ "$mode" != dev ]] || publish
+wait "$drive_job" || true   # its step is in the report
+[[ -z "$live_job" ]] || wait "$live_job" || true
 report="${COAXIAL_WASM_REPORT:-$work_root/$(basename "$out" .wasm).timings.json}"
 seconds() { printf '%d.%06d' $(( $1 / 1000000 )) $(( $1 % 1000000 )); }
 {
-  ended="$(now)"; bytes="$(wc -c < "$work/output.wasm" | tr -d ' ')"
+  ended="$(now)"; bytes="$module_bytes"
   load="$( { cat /proc/loadavg 2> /dev/null || sysctl -n vm.loadavg 2> /dev/null; } | tr -d '{}' | awk '{print $1}')"
   cores="$(getconf _NPROCESSORS_ONLN 2> /dev/null || echo 0)"
   printf '{"schema_version":1,"module":"%s","source":"%s","mode":"%s","render":%s,"output_bytes":%s,"seconds":%s,' \
@@ -650,7 +704,7 @@ if [[ "${COAXIAL_WASM_TIMES:-}" != 0 ]]; then
     { s = ($5 - $4) / 1e6; if (s > most[$2]) most[$2] = s; if ($3 == "hit" || $3 == "shared") hits[$2]++; n[$2]++ }
     END { printf "%.1f s: Coax to C %.1f s (%d/%d cached), clang %.1f s (%d/%d cached), link %.1f s, wasm-opt %.1f s, drive files %.1f s (beside them)", total / 1e6,
           most["coax_to_c"], hits["coax_to_c"], n["coax_to_c"], most["clang"], hits["clang"], n["clang"], most["link"], most["wasm_opt"], most["drive"] }' "$work/steps")"
-  echo "wasm.sh: $(basename "$out"): $summary; $(wc -c < "$work/output.wasm" | tr -d ' ') bytes; report $report" >&2
+  echo "wasm.sh: $(basename "$out"): $summary; $module_bytes bytes; report $report" >&2
 fi
 budget_check named || exit 1
 # The built-module record (#13119): beside the report, .c/MODULE.built names
@@ -666,5 +720,4 @@ if [[ "$mode" != dev && -z "${COAX_FAST_EDIT:-}" ]]; then
   fi
 fi
 # the module's function names beside it (NAME.wasm.syms); a dev module has none apart
-if [[ -s "$work/output.syms" ]]; then mv "$work/output.syms" "$out.syms"; else rm -f "$out.syms"; fi
-mv "$work/output.wasm" "$out"   # the server never serves a half-written module
+publish

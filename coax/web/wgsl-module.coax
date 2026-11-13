@@ -12,11 +12,17 @@
 // read without a build, so they must be what their Coax writes. --check, after either form,
 // writes nothing: it names each .wgsl that differs from what its Coax writes now and fails (1).
 //   coax/web/tool.sh coax/web/wgsl-module.coax --site --check
+// In development (COAXIAL_MODE=dev, what coax serve builds) each module also gets its
+// dependency list, APP/build/.live/NAME.wgsl.deps beside the app that loads it (#13410): every
+// file its `coax wgsl` read (what `coax deps` names, the options and bindings files) and the
+// command that writes this module alone again. coax serve watches those files, runs the command
+// when one changes, and tells the tabs "wgsl" (coax/web/serve.c, "What the build read").
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
 #load "../lib/sys/args.coax";
 #load "../lib/sys/proc.coax";
+#load "../lib/json/json.coax";
 
 WM_PAGE :: 4194304;
 WM_TIMEOUT_MS :: 300000;   // each coax wgsl (wm_module)
@@ -125,10 +131,64 @@ wm_module :: (file: string, into: string, options: string, check: bool) -> int {
   text := cast(string) page[0..<pn];
   was: [WM_PAGE] u8;
   wn := fs_read(into, was[..]);
-  if wn >= 0 && cast(string) was[0..<wn] == text { return WM_SAME; }
-  if check { return WM_STALE; }
+  same := wn >= 0 && cast(string) was[0..<wn] == text;
+  if same || check { if !check { wm_live(file, into, options, argv[3..<m + 3], false); } return ifx same then WM_SAME else WM_STALE; }
   if !fs_write(into, text) { tool_err("wgsl-module: cannot write "); tool_errln(into); return WM_FAILED; }
+  wm_live(file, into, options, argv[3..<m + 3], true);
   return WM_WRITTEN;
+}
+// The module's dependency list for coax serve, in development only. Written again when the
+// module was (its Coax changed, so its loads may have), or when the list is missing or older
+// than the module's Coax. A list that can't be made is said, and the module still counts.
+wm_live :: (file: string, into: string, options: string, words: [] string, written: bool) {
+  mb: [16] u8;
+  if proc_getenv("COAXIAL_MODE", mb[..]) != "dev" { return; }
+  cb: [1024] u8; cwd := fs_cwd(cb[..]);
+  lb: [2048] u8; pb: [2048] u8; ob: [2048] u8;
+  app := fs_dir(into);
+  live := wm_path(lb[..], app, "build", "/.live");
+  at := wm_add(pb[..], 0, live); at = wm_add(pb[..], at, "/"); at = wm_add(pb[..], at, fs_base(into)); at = wm_add(pb[..], at, ".deps");
+  if cwd.count == 0 || live.count == 0 || at < 0 { tool_err("wgsl-module: no dependency list for coax serve: "); tool_errln(into); return; }
+  list := cast(string) pb[0..<at];
+  if !written && fs_kind(list) == FS_FILE && fs_mtime_ns(list) >= fs_mtime_ns(file) { return; }
+  argv := [5] string.["coax/bin/coax", "deps", file, "--library", ""];
+  out: [262144] u8; err: [16384] u8;
+  r := proc_run(argv[0..<4], WM_TIMEOUT_MS, out[..], err[..]);
+  page: [524288] u8;
+  n := ifx r.started == 0 && r.status == 0 && !r.cut && !r.timed_out then wm_deps_text(page[..], cwd, file, into, options, words, cast(string) out[0..<r.out_n]) else -1;
+  bin := wm_path(ob[..], app, "build", "");
+  made := n > 0 && (fs_kind(bin) == FS_DIR || fs_mkdir(bin)) && (fs_kind(live) == FS_DIR || fs_mkdir(live));
+  tmp: [2100] u8; tn := wm_add(tmp[..], 0, list); tn = wm_add(tmp[..], tn, ".tmp");
+  if !made || tn < 0 || !fs_write(cast(string) tmp[0..<tn], cast(string) page[0..<n]) || !fs_rename(cast(string) tmp[0..<tn], list) {
+    tool_err("wgsl-module: no dependency list for coax serve: "); tool_errln(into);
+  }
+}
+// The list's text into out from `coax deps FILE` (deps, its JSON) in the folder cwd: its
+// length, or -1 when it does not fit or deps names no sources. Paths are absolute; the options
+// file and the bindings file its words name are sources too.
+wm_deps_text :: (out: [] u8, cwd: string, file: string, into: string, options: string, words: [] string, deps: string) -> int {
+  nodes: [8192] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], deps, nodes[..]) { return -1; }
+  sources := jv_get(d[0], 0, "sources");
+  if jv_len(d[0], sources) < 1 { return -1; }
+  n := wm_add(out, 0, "coax-live-1\nkind wgsl\nout "); n = wm_abs(out, n, cwd, into);
+  n = wm_add(out, n, "\ncmd cd '"); n = wm_add(out, n, cwd); n = wm_add(out, n, "' && env COAXIAL_MODE=dev coax/web/tool.sh coax/web/wgsl-module.coax '");
+  n = wm_add(out, n, file); n = wm_add(out, n, "' '"); n = wm_add(out, n, into); n = wm_add(out, n, "' '"); n = wm_add(out, n, options); n = wm_add(out, n, "'\n");
+  for i: 0..<jv_len(d[0], sources) {
+    sb: [4096] u8; k := jv_str(d[0], jv_at(d[0], sources, i), sb[..]);
+    if k < 1 { return -1; }
+    n = wm_add(out, n, "src "); n = wm_abs(out, n, cwd, cast(string) sb[0..<k]); n = wm_add(out, n, "\n");
+  }
+  n = wm_add(out, n, "src "); n = wm_abs(out, n, cwd, options); n = wm_add(out, n, "\n");
+  for i: 0..<words.count {
+    if words[i] == "--bindings" && i + 1 < words.count { n = wm_add(out, n, "src "); n = wm_abs(out, n, cwd, words[i + 1]); n = wm_add(out, n, "\n"); }
+  }
+  return n;
+}
+// path after the n bytes of out, under cwd when it is relative; -1 when it does not fit.
+wm_abs :: (out: [] u8, n: int, cwd: string, path: string) -> int {
+  if path.count > 0 && path[0] == '/' { return wm_add(out, n, path); }
+  m := wm_add(out, n, cwd); m = wm_add(out, m, "/"); return wm_add(out, m, path);
 }
 // s after the n bytes of out; -1 when it does not fit (or n was already -1).
 wm_add :: (out: [] u8, n: int, s: string) -> int {
@@ -147,6 +207,20 @@ wm_words :: (text: string, into: [] string) -> int {
     into[n] = text[i..<j]; n += 1; i = j;
   }
   return n;
+}
+#test "a module's dependency list for coax serve" {
+  o: [1024] u8;
+  words := [4] string.["--vertices", "a", "--bindings", "apps/x/gpu/s.bindings"];
+  deps := "{\"schema_version\":1,\"sources\":[\"/r/apps/x/gpu/s.coax\",\"/r/engine/gpu/shader.coax\"],\"descriptors\":[]}";
+  n := wm_deps_text(o[..], "/r", "apps/x/gpu/s.coax", "apps/x/s.wgsl", "apps/x/gpu/s.module", words[..], deps);
+  #assert n > 0;
+  #assert cast(string) o[0..<n] == "coax-live-1\nkind wgsl\nout /r/apps/x/s.wgsl\ncmd cd '/r' && env COAXIAL_MODE=dev coax/web/tool.sh coax/web/wgsl-module.coax 'apps/x/gpu/s.coax' 'apps/x/s.wgsl' 'apps/x/gpu/s.module'\nsrc /r/apps/x/gpu/s.coax\nsrc /r/engine/gpu/shader.coax\nsrc /r/apps/x/gpu/s.module\nsrc /r/apps/x/gpu/s.bindings\n";
+  // no sources, not JSON, or too long: no list
+  #assert wm_deps_text(o[..], "/r", "f", "i", "m", words[0..<0], "{\"sources\":[]}") == -1;
+  #assert wm_deps_text(o[..], "/r", "f", "i", "m", words[0..<0], "nope") == -1;
+  #assert wm_deps_text(o[0..<40], "/r", "apps/x/gpu/s.coax", "apps/x/s.wgsl", "apps/x/gpu/s.module", words[..], deps) == -1;
+  #assert wm_abs(o[..], 0, "/r", "/abs") == 4 && cast(string) o[0..<4] == "/abs";
+  #assert wm_abs(o[..], 0, "/r", "rel") == 6 && cast(string) o[0..<6] == "/r/rel";
 }
 #test "an options file's words" {
   w: [3] string;

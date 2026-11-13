@@ -1762,8 +1762,8 @@ function packBytes(pack) {
   const paged = /\.vpk3$/.test(pack.url), gzip = pack.url.endsWith(".pack.gz");
   let told = 0;
   const progress = (loaded, total) => { loading.bytes(pack.url, loaded, total); if (performance.now() - told > 100) { told = performance.now(); send(PACK_KIND, `${loaded} ${total}`); } };
-  const here = async () => paged ? fetchPagedImage(packHost ??= await openPackHost(), pack, { owner: pack, progress }) : fetchWholePack(pack.url, { gzip, progress });
-  const job = fetchPackInWorker({ url: new URL(pack.url, location.href).href, gzip, paged, ranges: pack.ranges }, progress);
+  const here = async () => paged ? fetchPagedImage(packHost ??= await openPackHost(), pack, { owner: pack, progress }) : fetchWholePack(liveUrl(pack.url), { gzip, progress });
+  const job = fetchPackInWorker({ url: new URL(liveUrl(pack.url), location.href).href, gzip, paged, ranges: pack.ranges }, progress);
   loadMark("pack-asked");
   const promise = job.promise.catch((error) => { if (!error.worker) throw error; return here(); }).then((got) => { loadMark("pack-bytes");return got; });
   promise.catch(() => {});   // a page that stops before loadPack never asks
@@ -2005,7 +2005,7 @@ function assetGateV1(a, x) {
 async function pageBytesV1(a, x, owner) {
   const owned = () => gpu === owner && !owner.retired && engine?.exports === x;
   if (a.pageBytes) {if (!x.coaxial_asset_extent_v1(a.i, 0, a.pageBytes.length)) throw Error("Coax refused retained asset span");return a.pageBytes;}
-  const r = await fetch(a.url);if (!r.ok) throw Error(`${a.url}: ${r.status}`);
+  const r = await fetch(liveUrl(a.url));if (!r.ok) throw Error(`${a.url}: ${r.status}`);
   const reader = r.body.getReader(), chunks = [];let held = 0, complete = false;
   try {
     for (;;) {const row = await reader.read();if (!owned()) return null;if (row.done) {complete = true;break;}
@@ -2047,7 +2047,7 @@ async function loadAsset(a) {
       if (renderUrl) await renderReload;if (!currentAsset(a)) return;
       const canonical = Boolean(gpu.renderer?.canonicalLayers);
       const images = await Promise.all(a.urls.map(async (u) => {
-        const r = await fetch(u);
+        const r = await fetch(liveUrl(u));
         if (!r.ok) throw new Error(`${u}: ${r.status}`);
         const bytes = await readBytes(r, (l, t) => loading.bytes(u, l, t));
         if (canonical) return bytes;
@@ -2099,7 +2099,7 @@ async function loadAsset(a) {
 const fetches = new Map();
 function fetchedOnce(url) {
   if (!fetches.has(url)) fetches.set(url, (async () => {
-    const r = await fetch(url);
+    const r = await fetch(liveUrl(url));
     if (!r.ok) throw new Error(`${url}: ${r.status}`);
     return readBytes(r, (l, t) => loading.bytes(url, l, t));
   })());
@@ -4095,18 +4095,58 @@ function stopEngine() {
   globalThis.coaxial.ready = false;globalThis.coaxial.sceneReady = false;
 }
 
+// The packs and textures this tab loaded, by URL, for `coax serve` to watch (#13410). One that
+// changes is told as "asset" with its URL and SHA-256, fetched again by that hash and swapped.
+function liveUrls() {
+  const urls = new Set();
+  for (const a of assets) {
+    if (a.pack) { if (!a.pack.broker && !a.pack.away) urls.add(a.pack.url); }
+    else if (!a.away) for (const u of a.urls || (a.url ? [a.url] : [])) urls.add(u);
+  }
+  return [...urls].filter((u) => u.startsWith("/") && !/\s/.test(u));
+}
+const liveHashes = new Map();   // URL -> the SHA-256 of its bytes here, as coax serve told it
+function liveUrl(url) { const h = liveHashes.get(url); return h ? `${url}${url.includes("?") ? "&" : "?"}live=${h}` : url; }
+async function liveAsset(url, hash) {
+  if (liveHashes.get(url) === hash || !engine || !gpu) return false;
+  const packs = new Set(assets.filter((a) => a.pack?.url === url).map((a) => a.pack));
+  const rows = assets.filter((a) => !a.pack && (a.url === url || a.urls?.includes(url)));
+  if (!packs.size && !rows.length) return false;
+  liveHashes.set(url, hash);
+  for (const pack of packs) {
+    await retirePacks((group) => group.pack === pack);
+    pack.retainedSource = null; packIncoming.delete(pack.url); Object.assign(pack, { done: false, fetching: false });
+    for (const a of assets) if (a.pack === pack) Object.assign(a, { done: false, fetching: false, failed: false });
+    await loadPack(pack);
+  }
+  for (const a of rows) { fetches.delete(a.url); Object.assign(a, { done: false, fetching: false, failed: false, pageBytes: null }); await loadAsset(a); }
+  if ([...rows, ...assets.filter((a) => packs.has(a.pack))].some((a) => a.failed)) throw new Error(`${url.split("/").pop()} did not load`);
+  return true;
+}
+// coaxial.liveSwaps counts what this tab swapped in, each after the frame that drew it
+// (coax/web/live-reload-bench.coax measures an edit to its swap with them).
+const liveSwaps = { wasm: 0, wgsl: 0, asset: 0 };
+const swapped = (kind) => new Promise(requestAnimationFrame).then(() => { liveSwaps[kind] += 1; globalThis.coaxial.liveSwaps = { ...liveSwaps }; });
 function live() {
   const socket = new WebSocket(`ws://${location.host}/coaxial/live`);
+  const mine = (path, url) => !path || path === new URL(url, location.href).pathname;
+  socket.onopen = () => { const urls = liveUrls(); if (urls.length) socket.send(`watch ${urls.join(" ")}`); };
   socket.onmessage = async (event) => {
     const m = JSON.parse(event.data);
     const t0 = performance.now();
     if (m.kind === "page") { location.reload(); return; }
     if (m.kind === "error") { say(m.text, true); return; }
-    if (m.kind === "wgsl" && gpu) { if (await loadShaders()) say(`shaders swapped in ${Math.round(performance.now() - t0)} ms`); return; }
-    if (m.kind === "wasm") {
+    // A message naming another page's module or shaders is not this tab's.
+    if (m.kind === "wgsl" && gpu && (mine(m.path, wgslUrl) || assets.some((a) => a.url === m.path))) { if (await loadShaders()) { say(`shaders swapped in ${Math.round(performance.now() - t0)} ms`); swapped("wgsl"); } return; }
+    if (m.kind === "asset" && typeof m.url === "string" && /^[0-9a-f]{64}$/.test(m.hash)) {
+      try { if (await liveAsset(m.url, m.hash)) { say(`${m.url.split("/").pop()} swapped in ${Math.round(performance.now() - t0)} ms`); swapped("asset"); } }
+      catch (e) { say(`${app}: ${e.message}`, true); liveSwaps.failed = (liveSwaps.failed || 0) + 1; globalThis.coaxial.liveSwaps = { ...liveSwaps }; }
+      return;
+    }
+    if (m.kind === "wasm" && mine(m.path, wasmUrl)) {
       const generation = beginEngine();
       try {
-        if (await fetchEngine(generation)) say(`${app} rebuilt in ${m.ms} ms, swapped in ${Math.round(performance.now() - t0)} ms${stateSaid && `\n${stateSaid}`}`);
+        if (await fetchEngine(generation)) { say(`${app} rebuilt in ${m.ms} ms, swapped in ${Math.round(performance.now() - t0)} ms${stateSaid && `\n${stateSaid}`}`); swapped("wasm"); }
       } catch (e) { say(`${app}: ${e.message}`, true); }
     }
   };

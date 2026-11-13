@@ -1,0 +1,226 @@
+// What coax serve watches is what the build read (#13410): a physical check of coax/web/serve.c
+// with a fixture build of shell commands. No browser or GPU.
+// Build serve.sh first, then: coax/web/tool.sh serve-live-check [SERVE_BINARY]
+// It covers, each with a line:
+//   a .wgsl the whole build writes (WGSL generated from Coax) is told as "wgsl", naming it;
+//   a shared module outside the app (a dependency list's source) runs only that unit's command
+//   and is told as "wasm" naming the module, as soon as the module is written;
+//   an edit saved while that unit still builds is not lost;
+//   a list of 300 sources is watched whole (serve once held 256 files);
+//   a Coax shader's source writes its WGSL again and is told as "wgsl", naming it;
+//   a pack a tab names ("watch URL") is told as "asset" with the SHA-256 of its new bytes, and
+//   a touch that leaves its bytes as they were tells nothing;
+//   a page in a nested app folder is told as "page";
+//   a watched source no list names runs the whole build;
+//   a unit whose command fails is told as "error".
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/net/socket_foreign.coax";
+#load "../lib/net/ws.coax";
+#load "../lib/json/json.coax";
+#load "../lib/crypto/sha256-kernel.coax";
+
+SL_FILES :: 300;   // sources in the module's list: more than serve's old cap of 256
+
+// One live channel and what it has read but not yet handed out.
+SlLive :: struct { h: int = -1; buf: [65536] u8; used: int; }
+// One message: its kind, and its path, url and hash when it has them.
+SlEvent :: struct { ok: bool; kind: [16] u8; kind_n: int; path: [512] u8; path_n: int; url: [512] u8; url_n: int; hash: [80] u8; hash_n: int; }
+
+#test "a message's fields" {
+  e := sl_parse("{\"kind\":\"wasm\",\"ms\":3,\"path\":\"/build/unit.wasm\"}");
+  #assert e.ok && cast(string) e.kind[0..<e.kind_n] == "wasm" && cast(string) e.path[0..<e.path_n] == "/build/unit.wasm" && e.url_n == 0;
+  e = sl_parse("{\"kind\":\"asset\",\"url\":\"/a.pack\",\"hash\":\"ab\"}");
+  #assert e.ok && cast(string) e.kind[0..<e.kind_n] == "asset" && cast(string) e.url[0..<e.url_n] == "/a.pack" && cast(string) e.hash[0..<e.hash_n] == "ab";
+  #assert !sl_parse("nope").ok && !sl_parse("{\"ms\":1}").ok;
+}
+#test "a fixture's numbered source names" {
+  o: [64] u8;
+  #assert sl_numbered(o[..], "/d/f", 7, ".coax") == "/d/f007.coax" && sl_numbered(o[..], "/d/f", 299, ".coax") == "/d/f299.coax";
+}
+
+sl_parse :: (text: string) -> SlEvent {
+  e: SlEvent; d: [1] Jv; nodes: [64] JvNode;
+  if !jv_parse(d[..], text, nodes[..]) { return e; }
+  e.kind_n = jv_str(d[0], jv_get(d[0], 0, "kind"), e.kind[..]);
+  p := jv_get(d[0], 0, "path"); if p >= 0 { e.path_n = jv_str(d[0], p, e.path[..]); }
+  u := jv_get(d[0], 0, "url"); if u >= 0 { e.url_n = jv_str(d[0], u, e.url[..]); }
+  h := jv_get(d[0], 0, "hash"); if h >= 0 { e.hash_n = jv_str(d[0], h, e.hash[..]); }
+  e.ok = e.kind_n > 0 && e.path_n >= 0 && e.url_n >= 0 && e.hash_n >= 0;
+  return e;
+}
+sl_numbered :: (out: [] u8, stem: string, i: int, ext: string) -> string {
+  n := ws_put(out, 0, stem);
+  if i < 100 { n = ws_put(out, n, "0"); } if i < 10 { n = ws_put(out, n, "0"); }
+  n = ws_digits(out, n, i); n = ws_put(out, n, ext);
+  return cast(string) out[0..<n];
+}
+sl_join :: (dir: string, name: string, out: [] u8) -> string { return fs_join(dir, name, out); }
+sl_connect :: (port: int) -> int {
+  for ch: "127.0.0.1" { if cxsock_host_push(cast(int) ch) != 0 { return -1; } }
+  return cxsock_connect(port, 500);
+}
+sl_send :: (h: int, bytes: string) -> bool {
+  for ch: bytes { if cxsock_write(h, cast(int) ch) != 0 { return false; } }
+  return cxsock_flush(h, 500) == 0;
+}
+// The live channel, opened (its handshake read whole), into l.
+sl_open :: (l: [] SlLive, port: int) -> bool {
+  h := sl_connect(port); if h < 0 { return false; }
+  b: [8192] u8; n := ws_request("127.0.0.1", port, "/coaxial/live", "dGhlIHNhbXBsZSBub25jZQ==", b[..]);
+  ok := n > 0 && sl_send(h, cast(string) b[0..<n]); used := 0; end := proc_now_ms() + 2000;
+  while ok && proc_now_ms() < end {
+    k := cxsock_read(h, 100); if k == -2 { continue; } if k <= 0 || k > b.count - used { break; }
+    for i: 0..<k { b[used + i] = cast,trunc(u8) cxsock_byte(h, i); } used += k;
+    r := ws_response(cast(string) b[0..<used], "dGhlIHNhbXBsZSBub25jZQ==");
+    if r.status == WS_HELLO_OK && r.consumed == used { l[0].h = h; l[0].used = 0; return true; }
+    if r.status != WS_HELLO_MORE { break; }
+  }
+  closed := cxsock_close(h); return false;
+}
+// A text message from the tab to the server (masked, as a browser sends it).
+sl_say :: (l: [] SlLive, text: string) -> bool {
+  mask := [4] u8.[1, 2, 3, 4]; out: [1024] u8;
+  n := ws_frame_write(WS_OP_TEXT, true, text, mask[..], out[..]);
+  return n > 0 && sl_send(l[0].h, cast(string) out[0..<n]);
+}
+// The next message within ms, or one with ok false.
+sl_next :: (l: [] SlLive, ms: int) -> SlEvent {
+  none: SlEvent; end := proc_now_ms() + ms;
+  while true {
+    f := ws_frame_read(cast(string) l[0].buf[0..<l[0].used], l[0].buf.count);
+    if f.status == WS_FRAME_OK {
+      e := ifx f.op == WS_OP_TEXT && f.fin then sl_parse(cast(string) l[0].buf[f.header..<f.total]) else none;
+      rest := l[0].used - f.total;
+      for i: 0..<rest { l[0].buf[i] = l[0].buf[f.total + i]; }
+      l[0].used = rest;
+      return e;
+    }
+    if f.status != WS_FRAME_MORE || proc_now_ms() >= end { return none; }
+    k := cxsock_read(l[0].h, 50); if k == -2 { continue; } if k <= 0 || k > l[0].buf.count - l[0].used { return none; }
+    for i: 0..<k { l[0].buf[l[0].used + i] = cast,trunc(u8) cxsock_byte(l[0].h, i); } l[0].used += k;
+  }
+  return none;
+}
+// The next message is kind (and path, when path isn't ""); says what came otherwise.
+sl_expect :: (l: [] SlLive, kind: string, path: string, ms: int) -> bool {
+  e := sl_next(l, ms);
+  if e.ok && cast(string) e.kind[0..<e.kind_n] == kind && (path == "" || cast(string) e.path[0..<e.path_n] == path) { return true; }
+  tool_err("FAIL wanted "); tool_err(kind); tool_err(" "); tool_err(path); tool_err(", got ");
+  if e.ok { tool_err(cast(string) e.kind[0..<e.kind_n]); tool_err(" "); tool_errln(cast(string) e.path[0..<e.path_n]); } else { tool_errln("nothing"); }
+  return false;
+}
+// The lines in a log file the fixture's commands append to.
+sl_lines :: (path: string) -> int {
+  b: [4096] u8; n := fs_read(path, b[..]); if n <= 0 { return 0; }
+  c := 0; for i: 0..<n { if b[i] == '\n' { c += 1; } }
+  return c;
+}
+sl_put :: (out: [] u8, at: int, parts: [] string) -> int {
+  n := at; for p: parts { n = ws_put(out, n, p); }
+  return n;
+}
+// The fixture: an app, a shared folder outside it, and two units' lists.
+sl_setup :: (dir: string) -> bool {
+  a: [1024] u8; s: [1024] u8; g: [1024] u8; p: [1024] u8;
+  app := sl_join(dir, "app", a[..]); shared := sl_join(dir, "shared", s[..]); gpu := sl_join(dir, "gpu", g[..]);
+  ok := fs_mkdir(app) && fs_mkdir(shared) && fs_mkdir(gpu);
+  ok = ok && fs_mkdir(sl_join(app, "build", p[..]));
+  bd: [1024] u8; build := sl_join(app, "build", bd[..]); lv: [1024] u8; live := sl_join(build, ".live", lv[..]);
+  sb: [1024] u8; sub := sl_join(app, "sub", sb[..]);
+  ok = ok && fs_mkdir(live) && fs_mkdir(sub);
+  ok = ok && fs_write(sl_join(app, "index.html", p[..]), "live\n") && fs_write(sl_join(sub, "page.html", p[..]), "nested\n");
+  ok = ok && fs_write(sl_join(sub, "rules.coax", p[..]), "r1") && fs_write(sl_join(app, "a.pack", p[..]), "pack-1");
+  ok = ok && fs_write(sl_join(app, "gen.wgsl", p[..]), "g0") && fs_write(sl_join(gpu, "gen.coax", p[..]), "g1");
+  ok = ok && fs_write(sl_join(shared, "mod.coax", p[..]), "v1") && fs_write(sl_join(gpu, "shade.coax", p[..]), "s1");
+  // the module: built from mod.coax and 300 more sources; its command writes the module, then
+  // takes 600 ms more (as wasm.sh writes its drive files after the module)
+  t: [65536] u8; n := 0; f: [1024] u8; stem: [1024] u8; st := sl_join(shared, "f", stem[..]);
+  parts := [11] string.["coax-live-1\nkind wasm\nout ", app, "/build/unit.wasm\ncmd ! grep -q fail '", shared, "/mod.coax' && cat '", shared, "/mod.coax' > '", app, "/build/unit.wasm' && echo built >> '", dir, "/units.log' && sleep 0.6\n"];
+  n = sl_put(t[..], 0, parts[..]);
+  n = ws_put(t[..], n, "src "); n = ws_put(t[..], n, shared); n = ws_put(t[..], n, "/mod.coax\n");
+  for i: 0..<SL_FILES {
+    name := sl_numbered(f[..], st, i, ".coax");
+    ok = ok && fs_write(name, "x");
+    n = ws_put(t[..], n, "src "); n = ws_put(t[..], n, name); n = ws_put(t[..], n, "\n");
+  }
+  ok = ok && n > 0 && n < t.count && fs_write(sl_join(live, "unit.deps", p[..]), cast(string) t[0..<n]);
+  shade := [9] string.["coax-live-1\nkind wgsl\nout ", app, "/shade.wgsl\ncmd cat '", gpu, "/shade.coax' > '", app, "/shade.wgsl'\nsrc ", gpu, "/shade.coax\n"];
+  n = sl_put(t[..], 0, shade[..]);
+  return ok && fs_write(sl_join(app, "shade.wgsl", p[..]), "s0") && fs_write(sl_join(live, "shade.wgsl.deps", p[..]), cast(string) t[0..<n]);
+}
+sl_run :: (dir: string, port: int, l: [] SlLive) -> bool {
+  a: [1024] u8; p: [1024] u8; s: [1024] u8; g: [1024] u8; w: [1024] u8; u: [1024] u8; f: [1024] u8; stem: [1024] u8;
+  app := sl_join(dir, "app", a[..]); shared := sl_join(dir, "shared", s[..]); gpu := sl_join(dir, "gpu", g[..]);
+  whole := sl_join(dir, "whole.log", w[..]); units := sl_join(dir, "units.log", u[..]);
+  opened := false; until := proc_now_ms() + 5000;
+  while !opened && proc_now_ms() < until { opened = sl_open(l, port); if !opened { proc_sleep(50); } }
+  if !opened { tool_errln("FAIL live channel"); return false; }
+  if !fs_write(sl_join(dir, "go", p[..]), "go") || !sl_expect(l, "wasm", "", 5000) || !sl_expect(l, "wgsl", "/gen.wgsl", 2000) { return false; }
+  print("PASS the whole build's generated .wgsl is told as wgsl /gen.wgsl\n");
+  proc_sleep(200);
+  t0 := proc_now_ms();
+  if !fs_write(sl_join(shared, "mod.coax", p[..]), "v2") || !sl_expect(l, "wasm", "/build/unit.wasm", 5000) { return false; }
+  early := proc_now_ms() - t0 < 600;   // told before the command's last 600 ms
+  // saved while the told unit's command still runs: the next build starts without waiting for it
+  t1 := proc_now_ms();
+  if !fs_write(sl_numbered(f[..], sl_join(shared, "f", stem[..]), 0, ".coax"), "y") || !sl_expect(l, "wasm", "/build/unit.wasm", 5000) { return false; }
+  again := proc_now_ms() - t1 < 600;
+  proc_sleep(100);
+  if !early || !again || sl_lines(whole) != 1 || sl_lines(units) != 2 { print("FAIL told early %, next edit told without waiting %, whole builds % (want 1), unit builds % (want 2)\n", early, again, sl_lines(whole), sl_lines(units)); return false; }
+  print("PASS a shared module outside the app builds only its unit, told as wasm /build/unit.wasm once written; an edit saved while that build's command still runs is built at once\n");
+  proc_sleep(800);
+  if !fs_write(sl_numbered(f[..], sl_join(shared, "f", stem[..]), SL_FILES - 1, ".coax"), "y") || !sl_expect(l, "wasm", "/build/unit.wasm", 5000) { return false; }
+  print("PASS the last of % sources is watched\n", SL_FILES + 1);
+  proc_sleep(800);
+  if !fs_write(sl_join(gpu, "shade.coax", p[..]), "s2") || !sl_expect(l, "wgsl", "/shade.wgsl", 5000) { return false; }
+  sw: [16] u8; sn := fs_read(sl_join(app, "shade.wgsl", p[..]), sw[..]);
+  if sn != 2 || cast(string) sw[0..<2] != "s2" { tool_errln("FAIL the shader's command did not run"); return false; }
+  print("PASS a Coax shader's source writes its WGSL again, told as wgsl /shade.wgsl\n");
+  if !sl_say(l, "watch /a.pack /missing.png") { return false; }
+  proc_sleep(300);
+  if !fs_write(sl_join(app, "a.pack", p[..]), "pack-2") { return false; }
+  e := sl_next(l, 3000);
+  hex: [64] u8; hashed := S_hex(S_hash("pack-2"), hex[..]);
+  if !e.ok || cast(string) e.kind[0..<e.kind_n] != "asset" || cast(string) e.url[0..<e.url_n] != "/a.pack" || !hashed || cast(string) e.hash[0..<e.hash_n] != cast(string) hex[..] {
+    tool_errln("FAIL the pack's change was not told with its SHA-256"); return false;
+  }
+  proc_sleep(300);
+  // the same bytes again (a touch), then a page in a nested folder: only the page is told
+  if !fs_write(sl_join(app, "a.pack", p[..]), "pack-2") { return false; }
+  proc_sleep(300);
+  if !fs_write(sl_join(app, "sub/page.html", p[..]), "nested 2\n") || !sl_expect(l, "page", "", 3000) { return false; }
+  print("PASS a pack a tab watches is told as asset with its SHA-256; the same bytes again tell nothing; a nested page is told as page\n");
+  if !fs_write(sl_join(app, "sub/rules.coax", p[..]), "r2") || !sl_expect(l, "wasm", "", 5000) || !sl_expect(l, "wgsl", "/gen.wgsl", 2000) || sl_lines(whole) != 2 { tool_errln("FAIL a source no list names did not run the whole build"); return false; }
+  print("PASS a watched source no list names runs the whole build\n");
+  proc_sleep(300);
+  if !fs_write(sl_join(shared, "mod.coax", p[..]), "fail") || !sl_expect(l, "error", "", 5000) { return false; }
+  print("PASS a unit whose command fails is told as error\n");
+  return true;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args; if !args_load(args[..]) { return 2; }
+  temp: [1024] u8; dir := fs_temp("coax-serve-live-", temp[..]); if dir == "" { return 1; }
+  ok := sl_setup(dir);
+  if !ok { tool_errln("FAIL fixture"); return 1; }
+  listener := cxsock_listen(0); if listener < 0 { return 1; } port := cxsock_port(listener); closed := cxsock_close(listener);
+  address: [64] u8; n := ws_put(address[..], 0, "127.0.0.1:"); n = ws_digits(address[..], n, port);
+  a: [1024] u8; app := sl_join(dir, "app", a[..]);
+  cmd: [4096] u8;
+  parts := [9] string.["while [ ! -e '", dir, "/go' ]; do sleep 0.01; done; echo whole >> '", dir, "/whole.log'; cat '", dir, "/gpu/gen.coax' > '", app, "/gen.wgsl'"];
+  c := sl_put(cmd[..], 0, parts[..]);
+  h := proc_new();
+  argv := [8] string.[ifx args_count(args[..]) > 0 then args_at(args[..], 0) else "coax/web/build/serve", app, "--listen", cast(string) address[0..<n], "--host-dir", app, "--build", cast(string) cmd[0..<c]];
+  for x: argv { ok = ok && proc_arg(h, x); }
+  ok = ok && proc_start(h) == 0;
+  l: [1] SlLive;
+  if ok { ok = sl_run(dir, port, l[..]); }
+  if !ok { said: [8192] u8; tool_errln("serve said:"); tool_errln(proc_stderr(h, said[..])); }
+  if l[0].h >= 0 { closed = cxsock_close(l[0].h); }
+  released := proc_release(h); proc_sleep(100);
+  removed := fs_remove(dir);
+  if ok { print("serve-live-check: 9 cases passed\n"); }
+  return ifx ok then 0 else 1;
+}

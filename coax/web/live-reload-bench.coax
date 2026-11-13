@@ -1,0 +1,134 @@
+// How long a saved edit takes to reach a running page through coax serve's live channel
+// (#13410): the clock starts just before the edit is written, and stops when the page has
+// swapped the change in and drawn a frame with it (host.js counts each in coaxial.liveSwaps).
+//   coax/web/tool.sh live-reload-bench URL KIND FILE OLD NEW... [--settle MS]
+//   coax/web/tool.sh live-reload-bench URL KIND FILE --from PATH... [--settle MS]
+// KIND is wasm, wgsl or asset, the swap waited on. Start coax/web/serve.sh on the page's app
+// first. Each NEW replaces the text before it in FILE (OLD for the first edit), which must
+// occur there exactly once; with --from, each PATH's bytes are written over FILE in turn (a
+// pack or a texture). A swap the page refused (coaxial.liveSwaps.failed) fails the bench. Between edits the bench waits --settle MS (default 2000) for the
+// server to finish the last build. FILE is put back as it was, whatever happens. Headless
+// Chrome, muted, on its own profile (coax/lib/net/cdp.coax). Prints one JSON line.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+LR_FILE :: 4194304;   // the largest FILE
+
+#test "an edit replaces the one place its text is" {
+  o: [64] u8;
+  #assert lr_replace("a v3(-150) b", "v3(-150)", "v3(-151)", o[..]) == 12 && cast(string) o[0..<12] == "a v3(-151) b";
+  #assert lr_replace("x", "x", "yy", o[..]) == 2 && cast(string) o[0..<2] == "yy";
+  // not there, there twice, nothing to look for, or too long: no edit
+  #assert lr_replace("a b", "c", "d", o[..]) == -1;
+  #assert lr_replace("c c", "c", "d", o[..]) == -1;
+  #assert lr_replace("a", "", "d", o[..]) == -1;
+  #assert lr_replace("abc", "b", "0123456789", o[0..<5]) == -1;
+}
+#test "the median of the samples" {
+  a := [5] int.[30, 10, 50, 20, 40];
+  #assert lr_median(a[..]) == 30 && lr_median(a[0..<4]) == 25 && lr_median(a[0..<1]) == 30 && lr_median(a[0..<0]) == -1;
+}
+#test "the swap the bench waits on" {
+  #assert lr_kind("wasm") && lr_kind("wgsl") && lr_kind("asset") && !lr_kind("page") && !lr_kind("");
+}
+
+lr_kind :: (k: string) -> bool { return k == "wasm" || k == "wgsl" || k == "asset"; }
+// text with its one old replaced by new, into out: the length, or -1.
+lr_replace :: (text: string, old: string, new: string, out: [] u8) -> int {
+  if old.count == 0 || old.count > text.count { return -1; }
+  at := -1;
+  for i: 0..<text.count - old.count + 1 {
+    if text[i..<i + old.count] == old { if at >= 0 { return -1; } at = i; }
+  }
+  if at < 0 || text.count - old.count + new.count > out.count { return -1; }
+  n := 0;
+  for i: 0..<at { out[n] = text[i]; n += 1; }
+  for c: new { out[n] = c; n += 1; }
+  for i: at + old.count..<text.count { out[n] = text[i]; n += 1; }
+  return n;
+}
+lr_median :: (a: [] int) -> int {
+  if a.count == 0 { return -1; }
+  s: [64] int; n := ifx a.count < 64 then a.count else 64;
+  for i: 0..<n { s[i] = a[i]; }
+  for i: 1..<n { j := i; while j > 0 && s[j - 1] > s[j] { t := s[j]; s[j] = s[j - 1]; s[j - 1] = t; j -= 1; } }
+  return ifx n % 2 == 1 then s[n / 2] else (s[n / 2 - 1] + s[n / 2]) / 2;
+}
+// The page's count of KIND swaps, or -1.
+lr_count :: (c: [] Cdp, kind: string) -> int {
+  e: [256] u8; n := 0;
+  for p: [3] string.["(globalThis.coaxial?.liveSwaps?.", kind, " ?? 0)"] { for ch: p { e[n] = ch; n += 1; } }
+  v := cdp_evaluate(c, cast(string) e[0..<n]);
+  return ifx v < 0 then -1 else jv_int(cdp_doc(c), v, -1);
+}
+// Waits in the page until its count of KIND swaps passes base: true when it did.
+lr_wait :: (c: [] Cdp, kind: string, base: int, timeout_ms: int) -> bool {
+  e: [512] u8; n := 0; d: [32] u8; dn := ws_digits(d[..], 0, base); t: [32] u8; tn := ws_digits(t[..], 0, timeout_ms);
+  parts := [7] string.["new Promise(r=>{const end=performance.now()+", cast(string) t[0..<tn], ";const f=()=>(globalThis.coaxial?.liveSwaps?.", kind, " ?? 0)>", cast(string) d[0..<dn], "?r(true):performance.now()>end?r(false):setTimeout(f,2);f()})"];
+  for p: parts { for ch: p { e[n] = ch; n += 1; } }
+  v := cdp_evaluate(c, cast(string) e[0..<n]);
+  return v >= 0 && jv_raw(cdp_doc(c), v) == "true";
+}
+lr_ready :: (c: [] Cdp, timeout_ms: int) -> bool {
+  end := proc_now_ms() + timeout_ms;
+  while proc_now_ms() < end {
+    v := cdp_evaluate(c, "globalThis.coaxial?.ready === true");
+    if v >= 0 && jv_raw(cdp_doc(c), v) == "true" { return true; }
+    proc_sleep(100);
+  }
+  return false;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 5 { tool_errln("usage: live-reload-bench URL KIND FILE OLD NEW... [--settle MS]"); return 2; }
+  count := args_count(a[..]); settle := 2000;
+  if count >= 7 && args_at(a[..], count - 2) == "--settle" {
+    v := args_number(args_at(a[..], count - 1)); if !v.ok || v.value < 0 || v.value > 60000 { return 2; }
+    settle = cast(int) v.value; count -= 2;
+  }
+  url := args_at(a[..], 0); kind := args_at(a[..], 1); file := args_at(a[..], 2);
+  if !lr_kind(kind) || count < 5 { tool_errln("live-reload-bench: KIND is wasm, wgsl or asset, and one NEW at least"); return 2; }
+  original: [LR_FILE] u8; on := fs_read(file, original[..]);
+  if on < 0 || on == LR_FILE { tool_err("live-reload-bench: cannot read "); tool_errln(file); return 1; }
+  c: [1] Cdp;
+  if !cdp_launch_background(c[..], 1280, 720, "live-reload-bench-") { tool_errln(cdp_error(c[..])); return 1; }
+  j: [1] Jo; b: [4096] u8;
+  jo_start(j[..], b[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], url); jo_end(j[..]);
+  ok := cdp_call(c[..], "Page.enable", "", 30000) >= 0 && cdp_call(c[..], "Page.navigate", jo_text(j[..]), 60000) >= 0 && lr_ready(c[..], 180000);
+  if !ok { tool_errln("live-reload-bench: the page did not get ready"); cdp_close(c[..]); return 1; }
+  proc_sleep(settle);   // the page's live channel opens after it is ready
+  samples: [64] int; got := 0; failed := false;
+  text: [LR_FILE] u8; tn := on; for i: 0..<on { text[i] = original[i]; }
+  next: [LR_FILE] u8;
+  whole := args_at(a[..], 3) == "--from";
+  for e: 4..<count {
+    if got == samples.count { break; }
+    old := args_at(a[..], e - 1);
+    nn := ifx whole then fs_read(args_at(a[..], e), next[..]) else lr_replace(cast(string) text[0..<tn], old, args_at(a[..], e), next[..]);
+    if nn < 0 || nn == LR_FILE { tool_err("live-reload-bench: no edit from "); tool_errln(ifx whole then args_at(a[..], e) else old); failed = true; break; }
+    base := lr_count(c[..], kind);
+    if base < 0 { failed = true; break; }
+    t0 := proc_now_ms();
+    if !fs_write(file, cast(string) next[0..<nn]) { failed = true; break; }
+    seen := lr_wait(c[..], kind, base, 30000);
+    t1 := proc_now_ms();
+    for i: 0..<nn { text[i] = next[i]; } tn = nn;
+    if !seen { tool_err("live-reload-bench: no swap within 30 s of the edit to "); tool_errln(args_at(a[..], e)); failed = true; break; }
+    samples[got] = t1 - t0; got += 1;
+    tool_err("live-reload-bench: "); tool_err(kind); tool_err(" swapped in after the edit ("); tool_err(args_at(a[..], e)); tool_errln(")");
+    proc_sleep(settle);
+  }
+  refused := lr_count(c[..], "failed");
+  restored := fs_write(file, cast(string) original[0..<on]);
+  cdp_close(c[..]);
+  if refused != 0 { tool_errln("live-reload-bench: the page refused a swap (coaxial.liveSwaps.failed)"); failed = true; }
+  most := 0; for i: 0..<got { if samples[i] > most { most = samples[i]; } }
+  jo_start(j[..], b[..]); jo_obj(j[..]);
+  jo_key(j[..], "url"); jo_str(j[..], url); jo_key(j[..], "kind"); jo_str(j[..], kind); jo_key(j[..], "file"); jo_str(j[..], file);
+  jo_key(j[..], "samplesMs"); jo_arr(j[..]); for i: 0..<got { jo_int(j[..], samples[i]); } jo_end(j[..]);
+  jo_key(j[..], "medianMs"); jo_int(j[..], lr_median(samples[0..<got])); jo_key(j[..], "maxMs"); jo_int(j[..], most);
+  jo_end(j[..]);
+  print("%\n", jo_text(j[..]));
+  if !restored { tool_err("live-reload-bench: could not put back "); tool_errln(file); return 1; }
+  return ifx failed || got == 0 then 1 else 0;
+}
