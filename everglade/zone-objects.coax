@@ -42,7 +42,7 @@ xc_object_pick :: (s:[] EgZone,fx:f32,fz:f32,reach:f32)->int {
 xc_object_apply :: (b:[]RsBattle,seat:[]FbSeat,o:[]RsObject,a:FbAb)->bool? #effects(all) {
   #transaction {
     fb_seat_in(b,seat);
-    if a.conjure && b[0].c[0].flame_until<=b[0].clock {
+    if a.conjure && !rs_aura_on(b[0].c[0], EF_FLAME, b[0].clock) {
       if !rs_cast(b,0,SP_PRODUCE_FLAME,0,0,0,0) { return null; }
     }
     if !rs_cast_object(b,0,a.sp,o) { return null; }

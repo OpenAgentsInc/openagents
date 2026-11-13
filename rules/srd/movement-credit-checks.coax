@@ -21,12 +21,12 @@
   b: [1] RsBattle; mv_field(b[..],RS_STRICT_TIMING,30);
   #assert rs_dash(b[..],0);
   for x: 2..<7 { #assert rs_step_to(b[..],0,x,1); } // twenty-five feet
-  b[0].c[0].slowed_until=20;
+  _ := rs_aura_set(b[0].c[0..<0+1], EF_SLOWED, 20);
   #assert rs_movement_left(b[..],0)==15; // 20 + 20 - 25
   #assert rs_cunning_dash(b[..],0) && rs_movement_left(b[..],0)==35;
-  b[0].c[0].halved_until=20;
+  _ := rs_aura_set(b[0].c[0..<0+1], EF_HALVED, 20);
   #assert rs_movement_left(b[..],0)==5; // 10 + 10 + 10 - 25
-  b[0].c[0].slowed_until=0; b[0].c[0].halved_until=0;
+  _ := rs_aura_set(b[0].c[0..<0+1], EF_SLOWED, 0); _ := rs_aura_set(b[0].c[0..<0+1], EF_HALVED, 0);
   #assert rs_movement_left(b[..],0)==65;
 }
 

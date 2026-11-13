@@ -94,7 +94,7 @@
     if feature == 0 {
       b[0].c[0].stun_ready = true;
       rs_stunning_strike(b[..],0,1);
-      #assert !rs_has(b[0].c[1],RS_STUNNED) && b[0].c[1].halved_until > 0 && b[0].c[0].focus == 4;
+      #assert !rs_has(b[0].c[1],RS_STUNNED) && rs_aura_on(b[0].c[1], EF_HALVED, 0) && b[0].c[0].focus == 4;
     } else {
       rs_open_hand(b[..],0,1,OH_TOPPLE);
       #assert !rs_has(b[0].c[1],RS_PRONE);

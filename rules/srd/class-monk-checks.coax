@@ -103,7 +103,7 @@
     b: [1] RsBattle; cf_field(b[..], rs_monk("Sen", 0, 5), 10);
     b[0].c[1].score[RS_CON] = ifx strong == 1 then 30 else 1; b[0].c[0].stun_ready = true;
     #assert rs_attack(b[..], 0, 1, false, -1) && b[0].c[0].focus == 4;   // two hits, one Stunning Strike
-    #assert rs_has(b[0].c[1], RS_STUNNED) == (strong == 0) && (b[0].c[1].halved_until > b[0].clock) == (strong == 1);
+    #assert rs_has(b[0].c[1], RS_STUNNED) == (strong == 0) && (rs_aura_on(b[0].c[1], EF_HALVED, b[0].clock)) == (strong == 1);
   }
 }
 

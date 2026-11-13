@@ -3313,8 +3313,8 @@ xc_play_kit :: (c: int) {
   s:[1] EgZone; xc_test_lab(s[..],FB_CL_MONK,0);
   s[0].xc[0].level=6; xc_set_class(s[0].xc[..],FB_CL_MONK);
   b:=s[0].xc[0].b[..]; #assert b[0].c[0].speed==45 && zone_move_scale(s[..])==f32(1.5);
-  b[0].c[0].halved_until=60; #assert zone_move_scale(s[..])==f32(22)/30;
-  b[0].c[0].halved_until=0; b[0].c[0].cond|=RS_PRONE; #assert zone_move_scale(s[..])==f32(0.75);
+  _ := rs_aura_set(b[0].c[0..<0+1], EF_HALVED, 60); #assert zone_move_scale(s[..])==f32(22)/30;
+  _ := rs_aura_set(b[0].c[0..<0+1], EF_HALVED, 0); b[0].c[0].cond|=RS_PRONE; #assert zone_move_scale(s[..])==f32(0.75);
   b[0].c[0].cond|=RS_GRAPPLED; #assert zone_move_scale(s[..])==0;
 }
 xc_check_ai_rate :: (speed:int)->bool {

@@ -27,10 +27,10 @@
   for mode: 0..<3 {
     b: [1] RsBattle; dg_field(b[..]); #assert rs_patient_defense(b[..],0);
     if mode == 0 { b[0].c[0].speed = 0; }
-    else if mode == 1 { b[0].c[0].speed = 10; b[0].c[0].slowed_until = 20; }
-    else { b[0].c[0].speed = 1; b[0].c[0].halved_until = 20; }
+    else if mode == 1 { b[0].c[0].speed = 10; _ := rs_aura_set(b[0].c[0..<0+1], EF_SLOWED, 20); }
+    else { b[0].c[0].speed = 1; _ := rs_aura_set(b[0].c[0..<0+1], EF_HALVED, 20); }
     #assert rs_save_edge(b[..],0,RS_DEX) == 0 && !b[0].c[0].dodging;
-    b[0].c[0].speed = 30; b[0].c[0].slowed_until = 0; b[0].c[0].halved_until = 0;
+    b[0].c[0].speed = 30; _ := rs_aura_set(b[0].c[0..<0+1], EF_SLOWED, 0); _ := rs_aura_set(b[0].c[0..<0+1], EF_HALVED, 0);
     #assert rs_attack_edge(b[..],1,0,true,false) == 0;
   }
 }
@@ -92,8 +92,8 @@
   b[0].c[0].speed = 10; b[0].c[0].ac = 1; b[0].c[0].deflect = false;
   b[0].c[1].masteries = 1 << M_SLOW;
   #assert rs_strike(b[..],1,0,W_LONGBOW,false);
-  #assert b[0].c[0].slowed_until > 0 && !b[0].c[0].dodging;
-  b[0].c[0].slowed_until = 0;
+  #assert rs_aura_on(b[0].c[0], EF_SLOWED, 0) && !b[0].c[0].dodging;
+  _ := rs_aura_set(b[0].c[0..<0+1], EF_SLOWED, 0);
   #assert !rs_dodge_live(b[..],0);
 }
 

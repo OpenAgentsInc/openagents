@@ -709,10 +709,10 @@ druid_turn :: (s: [] Mb, i: int) {
   }
   if !b[0].turn.action {
     // a cantrip: Produce Flame lit with the Bonus Action and hurled, or Starry Wisp, or Poison Spray up close
-    if !b[0].turn.bonus && b[0].c[i].flame_until <= b[0].clock && d <= 60 && rs_unit(dice(s)) < 0.35 {
+    if !b[0].turn.bonus && !rs_aura_on(b[0].c[i], EF_FLAME, b[0].clock) && d <= 60 && rs_unit(dice(s)) < 0.35 {
       ok := rs_cast(b, i, SP_PRODUCE_FLAME, 0, 0, 0, i);
     }
-    if b[0].c[i].flame_until > b[0].clock && d <= 60 { ok := rs_cast(b, i, SP_FLAME_HURL, 0, 0, 0, foe); }
+    if rs_aura_on(b[0].c[i], EF_FLAME, b[0].clock) && d <= 60 { ok := rs_cast(b, i, SP_FLAME_HURL, 0, 0, 0, foe); }
     else if d <= 30 && rs_unit(dice(s)) < 0.5 { ok := rs_cast(b, i, SP_POISON_SPRAY, 0, 0, 0, foe); }
     else if d <= 60 { ok := rs_cast(b, i, SP_STARRY_WISP, 0, 0, 0, foe); }
   }
@@ -924,7 +924,7 @@ mb_actors :: (s: [] Mb, out: [] f32) -> int #export_c #effects(all) {
     if c[0].ranged >= 0 { fl += 32; }
     out[o + 7] = f32(fl);
     out[o + 8] = rs_ticks_s(c[0].turn_at); out[o + 9] = f32(c[0].conc);
-    slow := 0; if c[0].slowed_until > b[0].clock { slow = 10; }
+    slow := 0; if rs_aura_on(c[0], EF_SLOWED, b[0].clock) { slow = 10; }
     feet := ifx rs_can_move(c[0]) then c[0].speed - slow else 0;
     out[o + 10] = f32(feet); out[o + 11] = f32(c[0].ac);
   }

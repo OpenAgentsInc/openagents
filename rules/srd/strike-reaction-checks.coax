@@ -7,7 +7,7 @@
   for own:0..<2 {
     b:[1]RsBattle; sr_field(b[..]); b[0].c[0]=rs_barbarian("Berserker",1,3); rs_place(b[..],0,3,3);
     rs_start_turn(b[..],ifx own==1 then 0 else 1);
-    b[0].c[0].raging=true; b[0].c[0].reckless_until=100;
+    b[0].c[0].raging=true; _ := rs_aura_set(b[0].c[0..<0+1], EF_RECKLESS, 100);
     b[0].turn.frenzied=own==0; hp:=b[0].c[1].hp;
     r:=rs_opportunity_attack(b[..],0,1,W_GREATAXE,RsOpportunityMove.{x=5,y=3,seen=true,reaction=true});
     #assert r.admitted && r.hit && b[0].c[1].hp==hp-(ifx own==1 then 17 else 11);
@@ -28,7 +28,7 @@
   }
 }
 
-#test "a Monk weapons Stunning Strike reserves the targets retained slot before spending its Reaction" {
+#test "a Monk weapons Stunning Strike reserves the targets two retained slots before spending its Reaction" {
   b:[1]RsBattle; sr_field(b[..]); b[0].c[0]=rs_monk("Monk",1,5); rs_place(b[..],0,3,3);
   b[0].c[0].weapon=W_SHORTSWORD; b[0].c[0].stun_ready=true;
   rs_start_turn(b[..],1); b[0].c[0].turn_at=6; b[0].turn.action=true;
@@ -38,7 +38,10 @@
   #assert !rs_opportunity_attack(b[..],0,1,W_SHORTSWORD,q).admitted;
   #assert !b[0].c[0].reacted && b[0].c[0].focus==focus && b[0].c[1].hp==hp;
   #assert b[0].book[0].seq==seq && b[0].dice[0].rolled==rolls && b[0].turn.action && b[0].who==1 && !b[0].reaction_frame.on;
+  // one free record is not enough: saved against, the strike leaves half Speed and an opening
   b[0].c[1].eff[RS_EFFECTS-1].kind=EF_NONE;
+  #assert !rs_opportunity_attack(b[..],0,1,W_SHORTSWORD,q).admitted && !b[0].c[0].reacted && b[0].c[0].focus==focus && b[0].book[0].seq==seq;
+  b[0].c[1].eff[RS_EFFECTS-2].kind=EF_NONE;
   #assert rs_opportunity_attack(b[..],0,1,W_SHORTSWORD,q).admitted && b[0].c[0].focus==focus-1;
 }
 
@@ -50,7 +53,7 @@
   focus:=b[0].c[0].focus;
   #assert !rs_step_reactions(b[..],1,5,3,choices[..]);
   #assert b[0].c[1].x==4 && b[0].c[0].reacted && b[0].c[0].focus==focus-1 && !rs_has(b[0].c[1],RS_STUNNED);
-  #assert b[0].c[1].halved_until==6;
+  #assert rs_aura_on(b[0].c[1], EF_HALVED, 5) && !rs_aura_on(b[0].c[1], EF_HALVED, 6);
   #assert rs_movement_left(b[..],1)==0 && b[0].turn.move_debt==10;
 }
 

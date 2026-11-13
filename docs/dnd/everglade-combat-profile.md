@@ -92,6 +92,15 @@ from each seat of a raid. Two stacking rules exist: each source's record
 stands (and readers ask "any", so two of one name never add), or a source
 renews its one record.
 
+Eight things that were a field of their own on every creature are Auras now:
+Sacred Weapon, Innate Sorcery, Starry Wisp's light, Reckless Attack, the Slow
+mastery, a saved Stunning Strike's half Speed, Faerie Fire's outline and
+Produce Flame's flame. Each is one record a source: struck twice by the Slow
+mastery, a creature still loses 10 feet. A weapon attack prepays the records
+its riders can leave (`rules/srd/strike-admission.coax`): one for Slow, two for
+a Stunning Strike. Faerie Fire's outline is a record a caster, so two casters'
+outlines on one creature end separately.
+
 Everglade's content table `ability` (`everglade/content/everglade.content`)
 is still empty. Its 83 rows, one for each ability the bars hold by content ID,
 go in with the next content revision: the tables' revision is a session's

@@ -210,8 +210,8 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
   _:=rs_add(b[..],fb_cl_hero(FB_CL_DRUID,"Druid",0,1),2,2);
   g:=rs_add(b[..],rs_guard("Guard",1),4,2); b[0].c[g].ac=1; b[0].c[g].hp=40; b[0].c[g].hp_max=40;
   seats:[1] FbSeat; seats[0].me=0;
-  #assert b[0].c[0].flame_until<=b[0].clock;
-  #assert e2r_use_on(b[..],seats[..],FB_CL_DRUID,xk_slot(FB_CL_DRUID,1),g) && b[0].c[0].flame_until>b[0].clock && b[0].c[g].hp<40;
+  #assert !rs_aura_on(b[0].c[0], EF_FLAME, b[0].clock);
+  #assert e2r_use_on(b[..],seats[..],FB_CL_DRUID,xk_slot(FB_CL_DRUID,1),g) && rs_aura_on(b[0].c[0], EF_FLAME, b[0].clock) && b[0].c[g].hp<40;
 }
 
 #test "a dispatch that names no creature is the same as one at none" {
@@ -236,7 +236,7 @@ e2r_dispatch_at :: (b:[] RsBattle,i:int,a:FbAb,foe:int,point:E2rPoint?)->bool #e
   _:=rs_add(b[..],fb_cl_hero(FB_CL_DRUID,"Druid",0,1),2,2);
   g:=rs_add(b[..],rs_guard("Guard",1),4,2); b[0].c[g].ac=1; b[0].c[g].hp=40; b[0].c[g].hp_max=40;
   seats:[1] FbSeat; seats[0].me=0; seats[0].turn.bonus=true;
-  #assert !e2r_use_on(b[..],seats[..],FB_CL_DRUID,xk_slot(FB_CL_DRUID,1),g) && b[0].c[g].hp==40 && b[0].c[0].flame_until<=b[0].clock;
+  #assert !e2r_use_on(b[..],seats[..],FB_CL_DRUID,xk_slot(FB_CL_DRUID,1),g) && b[0].c[g].hp==40 && !rs_aura_on(b[0].c[0], EF_FLAME, b[0].clock);
 }
 #test "the room's cast at a point and a named guard strikes him; at the point alone it harms no one" {
   b:[1] RsBattle; b[0].w=8; b[0].h=8; b[0].dice[0].state=4242;

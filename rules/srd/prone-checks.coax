@@ -27,7 +27,7 @@
   #assert !rs_stand_up(b[..],-1) && !rs_stand_up(b[..],b[0].n) && !rs_stand_up(b[..],a);
   #assert b[0].book[0].seq == seq && b[0].dice[0].rolled == rolls;
   b[0].c[a].cond |= RS_PRONE; b[0].turn.move_left = 6;
-  b[0].c[a].slowed_until = 10; b[0].c[a].halved_until = 10;
+  _ := rs_aura_set(b[0].c[a..<a+1], EF_SLOWED, 10); _ := rs_aura_set(b[0].c[a..<a+1], EF_HALVED, 10);
   // (25-10)/2 = Speed 7. Reprice 33 credited feet by -18, then pay 3 to stand.
   #assert rs_stand_up(b[..],a) && b[0].turn.move_left == 2 && b[0].turn.move_feet == 2;
 }

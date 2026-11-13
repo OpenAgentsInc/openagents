@@ -172,6 +172,11 @@ EF_SENSE :: 22; // Divine Sense (p. 54), on the Paladin: Celestials, Fiends and 
 // Auras that were a field of their own on every creature (#13285, ability-record.coax): Sacred Weapon
 // (p. 56) and Innate Sorcery (p. 65) on their user, Starry Wisp's Dim Light (p. 165) on its target
 EF_SACRED :: 28; EF_INNATE :: 29; EF_GLOW :: 30;
+// Reckless Attack (p. 29) on the Barbarian; the Slow mastery (p. 91) and a saved Stunning Strike's
+// half Speed (p. 51) on the one struck; Faerie Fire's outline (p. 132) on each creature it holds;
+// Produce Flame's flame (p. 158) in its caster's hand
+EF_RECKLESS :: 31; EF_SLOWED :: 32; EF_HALVED :: 33; EF_OUTLINED :: 34; EF_FLAME :: 35;
+RS_EF_KINDS :: 36;   // one past the last EF_* kind
 
 // The classes a creature can be built as (-1 for a stat block).
 RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4; RS_MONSTER :: 5;
@@ -261,9 +266,6 @@ RsCreature :: struct {
   conc_until: int;          // when it ends, on the world's clock
   rite: int = -1;           // the spell it is casting as a Ritual (ritual.coax), -1 none
   rite_until: int; rite_owed: bool;   // when its extra minutes end; this turn's Magic action still owed
-  flame_until: int;         // Produce Flame in hand until (0: none)
-  outlined_until: int;      // Faerie Fire: attacks against it have Advantage, it can't be Invisible
-  outlined_by: int;         // whose spell (a creature index)
   restrained_by: int;       // the zone that restrains it (-1 none)
   // Warlock features: the cantrips Agonizing Blast and Repelling Blast were chosen for (-1 none),
   // the Fiend's Dark One's Blessing, and Hex ready to move to a new creature after its target
@@ -286,9 +288,8 @@ RsCreature :: struct {
   reacted: bool;            // its Reaction is spent until its next turn starts
   opportunity_blocked: bool; // Addle: until actual next turn start
   dodging: bool;            // Dodge until actual next turn start, or lost to incapacity/Speed zero
-  // Barbarian: Rage, Reckless Attack, Danger Sense, the Berserker's Frenzy
+  // Barbarian: Rage, Danger Sense, the Berserker's Frenzy (Reckless Attack is the Aura EF_RECKLESS)
   rages: int; rages_max: int; rage_bonus: int; raging: bool; rage_kept: bool; struck_round: bool;
-  reckless_until: int;
   danger_sense: bool; frenzy: bool;
   // Monk: the Martial Arts die, Focus Points, Deflect Attacks, the Open Hand's techniques
   martial_die: int; focus: int; focus_max: int;
@@ -320,7 +321,7 @@ RsCreature :: struct {
   // the Monk's: Uncanny Metabolism (on Initiative: all Focus back, and Martial Arts die + level Hit
   // Points; a battle here starts fresh, so it changes nothing), Slow Fall (falls only), Stunning
   // Strike (stun_ready: the deciding routine wants it on its next hit), Empowered Strikes; a Stunning
-  // Strike saved against halves Speed until (halved_until)
+  // Strike saved against halves Speed (the Aura EF_HALVED)
   explorer: bool; lore: bool; swim: int;   // the Ranger's Deft Explorer, Hunter's Lore (record), a swim Speed
   ritual: bool; arcane_recovery: bool; natural_recovery:bool; scholar: bool; savant: bool; memorize: bool; // Scholar's selected Expertise is in checks
   sculpt: bool;                    // Sculpt Spells (Evoker)
@@ -338,7 +339,7 @@ RsCreature :: struct {
   restoration: bool; affinity: int;   // Sorcerous Restoration (a rest), Elemental Affinity's damage type (Draconic)
   guard_slot: int; guard_turn: int = -1;   // Spirit Guardians: the slot it was cast with; the turn this creature last saved against one (-1 none yet)
   aura: bool; steed: bool;          // Aura of Protection; Faithful Steed (Find Steed, a summoning this engine doesn't model)
-  metabolism: bool; slow_fall: bool; stunning: bool; stun_ready: bool; empowered: bool; halved_until: int;
+  metabolism: bool; slow_fall: bool; stunning: bool; stun_ready: bool; empowered: bool;
   // Ranger: the Hunter's Colossus Slayer (the Paladin's Sacred Weapon is the Aura EF_SACRED)
   colossus: bool;
   // Rogue: Sneak Attack dice (d6s), Cunning Action, Steady Aim
@@ -347,7 +348,6 @@ RsCreature :: struct {
   // Evoker's Potent Cantrip; the Circle of the Land's Land's Aid
   quickened: bool; seeking: bool; shield_spell: bool; shield_active: bool;
   potent: bool; lands_aid: bool;
-  slowed_until: int;        // the Slow mastery: 10 feet less Speed until then
   // the declared action timing profile: when the next spent slot of each level, Rage or
   // Focus Point comes back, and when its next 6-second round begins
   slot_back: [10] int; rage_back: int; focus_back: int;
@@ -443,7 +443,7 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
     if level >= 19 { c[0].slots_max[6] = 2; } if level >= 20 { c[0].slots_max[7] = 2; }
   }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   // Primal Order: Warden (p. 42). Wild Companion at 2 (p. 43), Wild Resurgence at 5 (p. 43), Call
   // Lightning with its 3rd-level slots; Natural Recovery at 6 (p. 46): one circle spell (Hold Person)
   // without a slot.
@@ -494,7 +494,7 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].slots[1] -= 1;   // Mage Armor
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   // Shield's reaction is available only when selected (p.161); the Evoker's
   // Potent Cantrip begins at level 3 (p.82).
   c[0].shield_spell = true; c[0].potent = level >= 3; c[0].weapon = W_DAGGER;
@@ -550,7 +550,7 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
     for a: 6..<10 { if level >= 11 + 2 * (a - 6) { c[0].slots_max[a] = 1; } }
   }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1;
   c[0].agonizing = -1; c[0].repelling = -1;
   if level >= 2 { c[0].agonizing = blast; c[0].repelling = blast; }
   c[0].dark_blessing = level >= 3;
@@ -599,7 +599,7 @@ rs_barbarian :: (name: string, team: int, level: int) -> RsCreature {
   c[0].primal = level >= 3; c[0].mindless = level >= 6;
   if level >= 4 { c[0].score[RS_STR] = rs_min(c[0].score[RS_STR] + 2, 20); }
   if level >= 5 { c[0].extra_attack = 1; c[0].speed += 10; }
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }
 
@@ -634,7 +634,7 @@ rs_monk :: (name: string, team: int, level: int) -> RsCreature {
   if level >= 5 { c[0].extra_attack = 1; }
   if level >= 6 { rs_use_set(c[..], RS_USE_WHOLE, rs_max(rs_mod(c[0].score[RS_WIS]), 1)); }
   if level >= 2 { rs_use_set(c[..], RS_USE_METABOLISM, 1); }
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }
 
@@ -653,7 +653,7 @@ rs_skeleton :: (name: string, team: int) -> RsCreature {
   c[0].weapon = W_SHORTSWORD; c[0].ranged = W_SHORTBOW;
   c[0].undead = true;
   c[0].vulnerable = 1 << RS_BLUDGEONING; c[0].immune = 1 << RS_POISON; c[0].immune_cond = RS_POISONED | RS_EXHAUSTION;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }
 
@@ -672,7 +672,7 @@ rs_zombie :: (name: string, team: int) -> RsCreature {
   c[0].weapon = W_SLAM; c[0].ranged = -1;
   c[0].undead = true; c[0].fortitude = true;
   c[0].immune = 1 << RS_POISON; c[0].immune_cond = RS_POISONED | RS_EXHAUSTION;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }
 
@@ -721,7 +721,7 @@ rs_hero :: (name: string, team: int, level: int, klass: int, score: [6] int, sav
   c[0].hp = c[0].hp_max;
   c[0].speed = 30;
   c[0].spell_ability = -1;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }
 // Full casters' slots by level (Bard, Cleric, Sorcerer: 2, 3, then 4 1st and 2 2nd at 3); half

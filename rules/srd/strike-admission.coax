@@ -10,7 +10,10 @@ rs_strikes_fit :: (b: [] RsBattle, i: int, j: int, w: int, attacks: int, retarge
   for t: 0..<b[0].n {
     if t != j && !(retarget && t != i && b[0].c[t].team != me.team && rs_up(b[0].c[t]) && rs_feet_to(b,i,t) < 2*RS_SQUARE) { continue; }
     need := ifx rs_mastery(b,i,w,M_SAP) then attacks else 0;
-    if rs_stun_weapon(w) && rs_stun_ready(me,b[0].turn.stunned) && !rs_has(b[0].c[t],RS_STUNNED) { need += 1; }
+    // the Slow mastery's Aura is one a source however many hits; a Stunning Strike saved against
+    // leaves two records (half Speed, and the next attack's Advantage), one when failed
+    if rs_mastery(b,i,w,M_SLOW) { need += 1; }
+    if rs_stun_weapon(w) && rs_stun_ready(me,b[0].turn.stunned) && !rs_has(b[0].c[t],RS_STUNNED) { need += 2; }
     if me.cunning_strike && me.strike_plan == CS_POISON && me.poison_kit && !b[0].turn.sneaked && rs_effect_condition_mask(b[0].c[t],RS_POISONED) != 0 { need += 1; }
     if rs_effect_free(b[0].c[t]) < need+ifx t == i then own else 0 { return false; }
   }
@@ -22,4 +25,24 @@ rs_strikes_fit :: (b: [] RsBattle, i: int, j: int, w: int, attacks: int, retarge
   #assert rs_strikes_fit(b[..], 1, 0, b[0].c[1].weapon, 1, false);
   #assert rs_cover_put(b[..], 1, 0, RS_COVER_THREE) && rs_strikes_fit(b[..], 1, 0, b[0].c[1].weapon, 1, false);
   #assert rs_cover_put(b[..], 1, 0, RS_COVER_TOTAL) && !rs_strikes_fit(b[..], 1, 0, b[0].c[1].weapon, 1, false);
+}
+#test "the Slow mastery prepays one record on its target however many attacks; Sap prepays one an attack" {
+  for attacks: 1..<4 {
+    b: [1] RsBattle;
+    a := rs_add(b[..],rs_ranger("Archer",0,5),1,1);
+    t := rs_add(b[..],rs_skeleton("Target",1),2,1);
+    #assert rs_mastery(b[..],a,W_LONGBOW,M_SLOW) && !rs_mastery(b[..],a,W_LONGBOW,M_SAP) && !rs_mastery(b[..],a,W_LONGBOW,M_VEX);
+    for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX}; }
+    #assert !rs_strikes_fit(b[..],a,t,W_LONGBOW,attacks,false);
+    b[0].c[t].eff[RS_EFFECTS-1].kind = EF_NONE;
+    #assert rs_strikes_fit(b[..],a,t,W_LONGBOW,attacks,false);
+    // a weapon whose mastery it has not: nothing prepaid
+    for k: 0..<RS_EFFECTS { b[0].c[t].eff[k] = RsEffect.{kind=EF_HEX}; }
+    #assert rs_strikes_fit(b[..],a,t,W_GREATAXE,attacks,false);
+    // Slow and Sap together (a Paladin's Longsword has Sap, its masteries hold both): Sap's alone
+    p := rs_add(b[..],rs_paladin("Knight",0,5),3,1);
+    #assert rs_mastery(b[..],p,W_LONGSWORD,M_SAP) && !rs_mastery(b[..],p,W_LONGSWORD,M_SLOW);
+    for k: 0..<attacks { b[0].c[t].eff[k].kind = EF_NONE; }
+    #assert rs_strikes_fit(b[..],p,t,W_LONGSWORD,attacks,false) && !rs_strikes_fit(b[..],p,t,W_LONGSWORD,attacks+1,false);
+  }
 }

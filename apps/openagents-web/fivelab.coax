@@ -361,7 +361,7 @@ put_bodies :: (s: [] Lab) {
     // the second of each class, and every other skeleton, looks a little different
     v := ifx kl == RS_MONSTER then (i * 7 / 3) % 2 else (i / 12) % 2;
     look := ifx b[0].c[i].npc != RS_NPC_NONE then siege_look(b[0].c[i].npc) else look_of(kl);
-    figs.bd_put(s[0].w[0].bodies[..], i, s[0].fresh[i], look, v, wx(s, s[0].dx[i]), wz(s, s[0].dy[i]), state, f32(marks), ifx b[0].c[i].outlined_by >= 0 then 1.0f32 else 0.0f32, rs_clock_s(b));
+    figs.bd_put(s[0].w[0].bodies[..], i, s[0].fresh[i], look, v, wx(s, s[0].dx[i]), wz(s, s[0].dy[i]), state, f32(marks), ifx rs_effect(b[0].c[i], EF_OUTLINED) then 1.0f32 else 0.0f32, rs_clock_s(b));
     s[0].fresh[i] = false;
   }
   s[0].shown_n = b[0].n;
@@ -418,7 +418,7 @@ fx_marks :: (s: [] Lab, i: int) -> int {
   if b[0].c[i].raging { f = f | FXS_RAGING; }
   if rs_aura_on(b[0].c[i], EF_SACRED, now) { f = f | FXS_SACRED; }
   if rs_aura_on(b[0].c[i], EF_INNATE, now) { f = f | FXS_INNATE; }
-  if b[0].c[i].flame_until > now { f = f | FXS_FLAME; }
+  if rs_aura_on(b[0].c[i], EF_FLAME, now) { f = f | FXS_FLAME; }
   if b[0].c[i].dark_blessing && b[0].c[i].temp > 0 { f = f | FXS_FIEND; }
   return f;
 }
@@ -1424,10 +1424,10 @@ druid_turn :: (s: [] Lab, i: int) {
   }
   if !b[0].turn.action {
     // a cantrip: Produce Flame lit with the Bonus Action and hurled, or Starry Wisp, or Poison Spray up close
-    if !b[0].turn.bonus && b[0].c[i].flame_until <= b[0].clock && d <= 60 && rs_unit(dice(s)) < 0.35 {
+    if !b[0].turn.bonus && !rs_aura_on(b[0].c[i], EF_FLAME, b[0].clock) && d <= 60 && rs_unit(dice(s)) < 0.35 {
       ok := rs_cast(b, i, SP_PRODUCE_FLAME, 0, 0, 0, i);
     }
-    if b[0].c[i].flame_until > b[0].clock && d <= 60 { ok := rs_cast(b, i, SP_FLAME_HURL, 0, 0, 0, foe); }
+    if rs_aura_on(b[0].c[i], EF_FLAME, b[0].clock) && d <= 60 { ok := rs_cast(b, i, SP_FLAME_HURL, 0, 0, 0, foe); }
     else if d <= 30 && rs_unit(dice(s)) < 0.5 { ok := rs_cast(b, i, SP_POISON_SPRAY, 0, 0, 0, foe); }
     else if d <= 60 { ok := rs_cast(b, i, SP_STARRY_WISP, 0, 0, 0, foe); }
   }
@@ -2128,7 +2128,7 @@ draw_tokens :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
     down := cr[0].hp == 0;
     light: f32 = ifx down then 0.35 else 0.95;
     if down { col = DIM; }
-    if cr[0].outlined_by >= 0 { n = ring(out, n, x, y, r * 1.12, 2.2 * k, 0.55 + 0.25 * sin(t * 5), VIOLET); }
+    if rs_effect(cr[0], EF_OUTLINED) { n = ring(out, n, x, y, r * 1.12, 2.2 * k, 0.55 + 0.25 * sin(t * 5), VIOLET); }
     if c >= 14 * k { n = ring(out, n, x, y, r * 0.55, 1.1 * k, light * 0.5, col); }
     if down {
       // Unconscious: the death saves, as ticks
@@ -2145,7 +2145,7 @@ draw_tokens :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
         n = seg(out, n, x + cos(a) * r * 1.05, y + sin(a) * r * 1.05, x + cos(a + 0.9) * r * 0.75, y + sin(a + 0.9) * r * 0.75, 1.6 * k, 0.8, g);
       }
     }
-    if cr[0].flame_until > b[0].clock {
+    if rs_aura_on(cr[0], EF_FLAME, b[0].clock) {
       fl := spell_rgb(SP_PRODUCE_FLAME);
       fx := x + r * 0.95; fy := y - r * 0.85;
       n = seg(out, n, fx, fy + 3 * k, fx + sin(t * 9) * 1.5 * k, fy - 5 * k, 3 * k, 0.9, fl);
@@ -2258,7 +2258,7 @@ lab_heads3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
         n = seg(out, n, tick_x, by + 11 * k, tick_x + 0.5, by + 11 * k, 3 * k, 0.9, ifx ok then GREEN else ifx bad then RED else FAINT);
       }
     }
-    if cr[0].flame_until > b[0].clock {
+    if rs_aura_on(cr[0], EF_FLAME, b[0].clock) {
       fl := spell_rgb(SP_PRODUCE_FLAME);
       fq := proj(s, plate.x + 0.42, 2.0, plate.z + 0.08);
       if fq.z > 0 { n = seg(out, n, fq.x, fq.y + 3 * k, fq.x + sin(t * 9) * 1.5 * k, fq.y - 7 * k, 4 * k, 1.0, fl); }
@@ -2403,13 +2403,13 @@ lab_panel_view :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
       if rs_has(cr, RS_PRONE) { m = put(l[..], m, "  PRONE"); }
       if rs_effect(cr, EF_MARK) { m = put(l[..], m, "  MARKED"); }
       if rs_effect(cr, EF_EXPOSED) { m = put(l[..], m, "  LIT"); }
-      if cr.slowed_until > b[0].clock { m = put(l[..], m, "  SLOWED"); }
+      if rs_aura_on(cr, EF_SLOWED, b[0].clock) { m = put(l[..], m, "  SLOWED"); }
       if cr.inspired > 0 { m = put(l[..], m, "  INSPIRED"); }
       if rs_aura_on(cr, EF_INNATE, b[0].clock) { m = put(l[..], m, "  INNATE SORCERY"); }
       if cr.shield_active { m = put(l[..], m, "  SHIELD"); }
       if rs_aura_on(cr, EF_SACRED, b[0].clock) { m = put(l[..], m, "  SACRED WEAPON"); }
       if cr.raging { m = put(l[..], m, "  RAGING"); }
-      if cr.reckless_until > b[0].clock { m = put(l[..], m, "  RECKLESS"); }
+      if rs_aura_on(cr, EF_RECKLESS, b[0].clock) { m = put(l[..], m, "  RECKLESS"); }
       if cr.dodging { m = put(l[..], m, "  DODGING"); }
       if cr.conc >= 0 { m = put(l[..], m, "  CONC: "); m = put(l[..], m, rs_spell(cr.conc).name); }
     }

@@ -9,9 +9,9 @@
   } } }
   b[0].c[0].speed=30; b[0].c[0].cond=RS_GRAPPLED; #assert rs_locomotion_scale(b[..],0)==0;
   b[0].c[0].cond=RS_STUNNED; b[0].zone[0].on=false; #assert rs_locomotion_scale(b[..],0)==1;
-  b[0].c[0].cond=0; b[0].c[0].slowed_until=60; #assert rs_locomotion_scale(b[..],0)==f32(20)/30;
-  b[0].c[0].halved_until=60; #assert rs_locomotion_scale(b[..],0)==f32(10)/30;
+  b[0].c[0].cond=0; _ := rs_aura_set(b[0].c[0..<0+1], EF_SLOWED, 60); #assert rs_locomotion_scale(b[..],0)==f32(20)/30;
+  _ := rs_aura_set(b[0].c[0..<0+1], EF_HALVED, 60); #assert rs_locomotion_scale(b[..],0)==f32(10)/30;
   b[0].c[b[0].n]=rs_guard("Unused",0);
-  b[0].c[0].slowed_until=0; b[0].c[0].halved_until=0; b[0].c[0].cond=RS_BLINDED; #assert rs_locomotion_scale(b[..],0)==1;
+  _ := rs_aura_set(b[0].c[0..<0+1], EF_SLOWED, 0); _ := rs_aura_set(b[0].c[0..<0+1], EF_HALVED, 0); b[0].c[0].cond=RS_BLINDED; #assert rs_locomotion_scale(b[..],0)==1;
   #assert rs_locomotion_scale(b[..],-1)==0 && rs_locomotion_scale(b[..],b[0].n)==0;
 }

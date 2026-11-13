@@ -206,6 +206,11 @@ rs_aura_record :: (kind: int) -> RsAura #effects(all) {
   if kind == EF_SACRED { return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_RENEW, 0, 600); }       // Sacred Weapon (p. 56): 10 minutes
   if kind == EF_INNATE { return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_RENEW, 0, 60); }        // Innate Sorcery (p. 65): 1 minute
   if kind == EF_GLOW { return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_RENEW, 0, 0); }   // Starry Wisp's Dim Light (p. 165): its caster's next turn's end, as a tick
+  // Until the start of its source's next turn, as a tick: Reckless Attack (p. 29), the Slow mastery
+  // (p. 91: struck twice, still 10 feet), a saved Stunning Strike's half Speed (p. 51). Produce
+  // Flame's flame (p. 158) lasts its spell's duration.
+  if kind == EF_RECKLESS || kind == EF_SLOWED || kind == EF_HALVED || kind == EF_FLAME { return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_RENEW, 0, 0); }
+  if kind == EF_OUTLINED { return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_RENEW, RS_END_CONC, 0); }   // Faerie Fire (p. 132): while its caster concentrates
   return rs_au_row(kind, RS_AU_NO_COND, 0, RS_STACK_EACH, 0, 0);
 }
 // The conditions an effect record imposes on its bearer.
@@ -225,10 +230,25 @@ rs_aura_renews :: (c: RsCreature, e: RsEffect) -> int #effects(all) {
   }
   return -1;
 }
-// Whether creature c bears Aura `kind` now, and from `by` (rs_aura_by).
+// Whether creature c bears Aura `kind` now, and whether it bears one from creature `by`.
 rs_aura_on :: (c: RsCreature, kind: int, now: int) -> bool #effects(all) {
   for k: 0..<RS_EFFECTS { if c.eff[k].kind == kind && c.eff[k].until > now { return true; } }
   return false;
+}
+rs_aura_from :: (c: RsCreature, kind: int, by: int, now: int) -> bool #effects(all) {
+  for k: 0..<RS_EFFECTS { if c.eff[k].kind == kind && c.eff[k].by == by && c.eff[k].until > now { return true; } }
+  return false;
+}
+// Take every record of Aura `kind` off a creature (a world or a check that ends one by hand).
+rs_aura_lift :: (c: [] RsCreature, kind: int) #effects(all) {
+  for k: 0..<RS_EFFECTS { if c[0].eff[k].kind == kind { rs_effect_end(c, k); } }
+}
+// Leave a creature with exactly one sourceless record of Aura `kind`, ending at tick `until` (none
+// when until is 0 or less): how a world or a check states "it is Slowed until tick 20".
+rs_aura_set :: (c: [] RsCreature, kind: int, until: int) -> bool #effects(all) {
+  rs_aura_lift(c, kind);
+  if until <= 0 { return true; }
+  return rs_effect_add(c, RsEffect.{kind = kind, by = -1, spell = -1, until = until, save = -1});
 }
 // Put a feature's Aura on its user for its record's seconds. False, and nothing changed, when its
 // list is full.
@@ -368,25 +388,26 @@ RS_AB_T_AURA :: [36] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 29, 0, 6
   #assert rs_ability_paid(c, RsAbility.{cost = RS_COST_USE, pool = RS_USE_LAY, amount = 0});
   c.uses[RS_USE_LAY] = 0; #assert !rs_ability_paid(c, RsAbility.{cost = RS_COST_USE, pool = RS_USE_LAY, amount = 0});
 }
-// The Aura rows a second time, by kind (0 to 31): conditions' source, fixed mask, stacking, what ends it, seconds.
-RS_AU_T_CONDS :: [32] int.[0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-RS_AU_T_COND :: [32] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4096, 0, 0, 0, 16384, 16384, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-RS_AU_T_STACK :: [32] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0];
-RS_AU_T_ENDS :: [32] int.[0, 14, 6, 8, 8, 4, 1, 4, 8, 8, 5, 4, 4, 4, 0, 8, 6, 8, 0, 0, 1, 0, 16, 0, 0, 0, 4, 4, 0, 0, 0, 0];
-RS_AU_T_SECS :: [32] int.[0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 600, 0, 0, 0, 0, 0, 600, 60, 0, 0];
+// The Aura rows a second time, by kind (0 to 35): conditions' source, fixed mask, stacking, what ends it, seconds.
+RS_AU_T_CONDS :: [36] int.[0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+RS_AU_T_COND :: [36] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4096, 0, 0, 0, 16384, 16384, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+RS_AU_T_STACK :: [36] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1];
+RS_AU_T_ENDS :: [36] int.[0, 14, 6, 8, 8, 4, 1, 4, 8, 8, 5, 4, 4, 4, 0, 8, 6, 8, 0, 0, 1, 0, 16, 0, 0, 0, 4, 4, 0, 0, 0, 0, 0, 0, 4, 0];
+RS_AU_T_SECS :: [36] int.[0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 600, 0, 0, 0, 0, 0, 600, 60, 0, 0, 0, 0, 0, 0];
 #test "every Aura's record is its row: where its conditions come from, how it stacks, what ends it, how long a feature's lasts" {
-  for k: -1..<32 {
+  for k: -1..<RS_EF_KINDS + 1 {
     a := rs_aura_record(k);
     #assert a.kind == k;
-    if k < 0 { #assert a.conds == 0 && a.cond == 0 && a.stack == 0 && a.ends == 0 && a.secs == 0; continue; }
+    if k < 0 || k >= RS_EF_KINDS { #assert a.conds == 0 && a.cond == 0 && a.stack == 0 && a.ends == 0 && a.secs == 0; continue; }
     #assert a.conds == RS_AU_T_CONDS[k] && a.cond == RS_AU_T_COND[k] && a.stack == RS_AU_T_STACK[k] && a.ends == RS_AU_T_ENDS[k] && a.secs == RS_AU_T_SECS[k];
   }
   #assert RS_END_DAMAGE == 1 && RS_END_SAVE == 2 && RS_END_CONC == 4 && RS_END_TURN == 8 && RS_END_INCAPACITATED == 16;
   #assert RS_RESTRAINED == 4096 && RS_UNCONSCIOUS == 16384 && EF_ZONE_RESTRAIN == 16 && EF_REST_SLEEP == 20 && EF_KNOCKOUT == 21 && EF_SENSE == 22;
   #assert EF_BLESS == 11 && EF_BANE == 12 && EF_FAITH == 13 && EF_PROTECTION == 27 && EF_GUIDANCE == 26 && EF_VEX == 9 && EF_HALT == 15;
+  #assert EF_RECKLESS == 31 && EF_SLOWED == 32 && EF_HALVED == 33 && EF_OUTLINED == 34 && EF_FLAME == 35 && RS_EF_KINDS == 36;
 }
 #test "an effect's conditions are its Aura's: its own mask, a fixed mask, or none" {
-  for k: 0..<32 {
+  for k: 0..<RS_EF_KINDS {
     e := RsEffect.{kind = k, cond = RS_CHARMED | RS_PRONE};
     want := ifx RS_AU_T_CONDS[k] == 1 then RS_CHARMED | RS_PRONE else ifx RS_AU_T_CONDS[k] == 2 then RS_AU_T_COND[k] else 0;
     #assert rs_aura_conditions(e) == want && rs_effect_conditions(e) == want;
@@ -430,4 +451,30 @@ RS_AU_T_SECS :: [32] int.[0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   #assert !rs_aura_grant(b[..], i, EF_SACRED) && !rs_aura_on(b[0].c[i], EF_SACRED, 0);
   // the last record counts
   b[0].c[i].eff[RS_EFFECTS - 1] = RsEffect.{kind = EF_INNATE, until = 9}; #assert rs_aura_on(b[0].c[i], EF_INNATE, 8);
+}
+#test "an Aura from one source is told from another's; lifting takes every record of the kind and no other; setting leaves exactly one" {
+  c: [1] RsCreature;
+  #assert rs_effect_add(c[..], RsEffect.{kind = EF_OUTLINED, by = 2, spell = SP_FAERIE_FIRE, until = 50});
+  #assert rs_aura_from(c[0], EF_OUTLINED, 2, 49) && !rs_aura_from(c[0], EF_OUTLINED, 2, 50) && !rs_aura_from(c[0], EF_OUTLINED, 3, 0) && !rs_aura_from(c[0], EF_SLOWED, 2, 0);
+  // the last record counts, and another source's stands beside the first
+  c[0].eff[RS_EFFECTS - 1] = RsEffect.{kind = EF_OUTLINED, by = 3, until = 9};
+  #assert rs_aura_from(c[0], EF_OUTLINED, 3, 8) && !rs_aura_from(c[0], EF_OUTLINED, 3, 9) && rs_aura_from(c[0], EF_OUTLINED, 2, 9);
+  c[0].eff[1] = RsEffect.{kind = EF_SLOWED, by = 2, until = 50};
+  rs_aura_lift(c[..], EF_OUTLINED);
+  #assert c[0].eff[0].kind == EF_NONE && c[0].eff[RS_EFFECTS - 1].kind == EF_NONE && c[0].eff[1].kind == EF_SLOWED;
+  // lifting ends a record as any end does: Aid's Hit Points go with it
+  c[0].hp = 12; c[0].hp_max = 12; c[0].eff[4] = RsEffect.{kind = EF_AID, cond = 5, until = 50};
+  rs_aura_lift(c[..], EF_AID); #assert c[0].hp_max == 7 && c[0].hp == 7 && c[0].eff[4].kind == EF_NONE;
+  // set: one sourceless record to the tick, replacing every one there was; none for a tick of 0 or less
+  c[0].eff[7] = RsEffect.{kind = EF_SLOWED, by = 5, until = 99};
+  #assert rs_aura_set(c[..], EF_SLOWED, 20);
+  n := 0; for k: 0..<RS_EFFECTS { if c[0].eff[k].kind == EF_SLOWED { n += 1; e := c[0].eff[k]; #assert e.by == -1 && e.spell == -1 && e.until == 20 && e.save == -1; } }
+  #assert n == 1 && rs_aura_on(c[0], EF_SLOWED, 19) && !rs_aura_on(c[0], EF_SLOWED, 20);
+  #assert rs_aura_set(c[..], EF_SLOWED, 1) && rs_aura_on(c[0], EF_SLOWED, 0);
+  #assert rs_aura_set(c[..], EF_SLOWED, 0) && !rs_effect(c[0], EF_SLOWED);
+  #assert rs_aura_set(c[..], EF_SLOWED, 5) && rs_aura_set(c[..], EF_SLOWED, -1) && !rs_effect(c[0], EF_SLOWED);
+  // a full list refuses a new one, and gives the place of one it replaces
+  for k: 0..<RS_EFFECTS { c[0].eff[k] = RsEffect.{kind = EF_HEX, by = k, until = 5}; }
+  #assert !rs_aura_set(c[..], EF_SLOWED, 20) && !rs_effect(c[0], EF_SLOWED);
+  c[0].eff[3] = RsEffect.{kind = EF_SLOWED, until = 5}; #assert rs_aura_set(c[..], EF_SLOWED, 20) && c[0].eff[3].until == 20;
 }

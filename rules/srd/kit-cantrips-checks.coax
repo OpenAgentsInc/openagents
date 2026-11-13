@@ -74,7 +74,7 @@
   // no flame yet: nothing to hurl
   #assert !rs_cast(b[..],0,SP_FLAME_HURL,0,0,0,1) && !b[0].turn.action;
   #assert rs_cast(b[..],0,SP_PRODUCE_FLAME,0,0,0,0) && b[0].turn.bonus && !b[0].turn.action;
-  #assert b[0].c[0].flame_until == b[0].clock + rs_secs(600);   // 10 minutes
+  #assert rs_aura_from(b[0].c[0], EF_FLAME, 0, b[0].clock + rs_secs(600) - 1) && !rs_aura_on(b[0].c[0], EF_FLAME, b[0].clock + rs_secs(600));   // 10 minutes
   #assert rs_cast(b[..],0,SP_FLAME_HURL,0,0,0,1) && b[0].turn.action && b[0].c[1].hp == 196;
   // a level 5 Druid hurls 2d8; 65 feet is out of range
   c: [1] RsBattle; kc_case(c[..],rs_druid("Druid",0,5),SP_PRODUCE_FLAME,10,10); c[0].c[1].ac = 1;

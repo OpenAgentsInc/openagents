@@ -97,7 +97,6 @@ rs_end_concentration :: (b: [] RsBattle, i: int, why: string) #effects(all) {
     if b[0].zone[k].by==i && b[0].zone[k].spell==sp { _ := rs_release_zone(b,k); }
   }
   for j: 0..<b[0].n {
-    if b[0].c[j].outlined_by==i { b[0].c[j].outlined_by=-1; b[0].c[j].outlined_until=0; }
     for k: 0..<RS_EFFECTS {
       if b[0].c[j].eff[k].by==i && b[0].c[j].eff[k].spell==sp { rs_drop_effect(b,j,k); }
     }

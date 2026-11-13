@@ -4,7 +4,7 @@
 #test "all three Dash producers credit modified walking Speed including residual feet" {
   for mode: 0..<3 {
     b: [1] RsBattle; dh_field(b[..]);
-    b[0].c[0].speed=37; b[0].c[0].slowed_until=10; b[0].c[0].halved_until=10;
+    b[0].c[0].speed=37; _ := rs_aura_set(b[0].c[0..<0+1], EF_SLOWED, 10); _ := rs_aura_set(b[0].c[0..<0+1], EF_HALVED, 10);
     rs_start_turn(b[..],0);
     b[0].turn.move_left=1; b[0].turn.move_feet=3;
     ok := ifx mode==0 then rs_dash(b[..],0) else ifx mode==1 then rs_cunning_dash(b[..],0) else rs_step_of_the_wind(b[..],0);
@@ -89,7 +89,7 @@ dh_field :: (b: [] RsBattle) {
 }
 dh_native :: () -> bool {
   b: [1] RsBattle; dh_field(b[..]);
-  b[0].c[0].speed=37; b[0].c[0].slowed_until=10; b[0].c[0].halved_until=10;
+  b[0].c[0].speed=37; _ := rs_aura_set(b[0].c[0..<0+1], EF_SLOWED, 10); _ := rs_aura_set(b[0].c[0..<0+1], EF_HALVED, 10);
   rs_start_turn(b[..],0);
   b[0].turn.move_left=1; b[0].turn.move_feet=3;
   if !rs_dash(b[..],0) || !rs_step_of_the_wind(b[..],0) { return false; }

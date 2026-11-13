@@ -32,11 +32,11 @@
   far := rs_add(b[..],rs_fighter("Far",1,1),12,2);
   rs_start_turn(b[..],a); #assert rs_cast(b[..],a,SP_FAERIE_FIRE,1,5,2,-1); rs_end_turn(b[..],a);
   rs_start_turn(b[..],other); #assert rs_cast(b[..],other,SP_FAERIE_FIRE,1,12,2,-1); rs_end_turn(b[..],other);
-  #assert b[0].c[near].outlined_by==a && b[0].c[far].outlined_by==other;
-  until := b[0].c[far].outlined_until;
+  now := b[0].clock; until := b[0].c[other].conc_until;
+  #assert rs_aura_from(b[0].c[near],EF_OUTLINED,a,now) && !rs_aura_from(b[0].c[near],EF_OUTLINED,other,now) && rs_aura_from(b[0].c[far],EF_OUTLINED,other,now) && !rs_aura_from(b[0].c[far],EF_OUTLINED,a,now);
   rs_end_concentration(b[..],a,"");
-  #assert b[0].c[near].outlined_by==-1 && b[0].c[near].outlined_until==0;
-  #assert b[0].c[far].outlined_by==other && b[0].c[far].outlined_until==until;
+  #assert !rs_effect(b[0].c[near],EF_OUTLINED);
+  #assert rs_aura_from(b[0].c[far],EF_OUTLINED,other,until-1) && !rs_aura_on(b[0].c[far],EF_OUTLINED,until);
 }
 
 #test "a failed Stunning Strike save interrupts concentration without waiting for the recipient's next turn" {

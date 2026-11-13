@@ -378,7 +378,7 @@ rs_can_cast_as :: (b: [] RsBattle, i: int, sp: int, slot: int, quick: bool) -> b
   }
   if t == RS_T_ACTION && b[0].turn.action { return false; }
   if t == RS_T_BONUS && b[0].turn.bonus { return false; }
-  if s.part_of == SP_PRODUCE_FLAME && b[0].c[i].flame_until <= b[0].clock { return false; }
+  if s.part_of == SP_PRODUCE_FLAME && !rs_aura_on(b[0].c[i], EF_FLAME, b[0].clock) { return false; }
   if s.part_of == SP_CALL_LIGHTNING && b[0].c[i].conc != SP_CALL_LIGHTNING { return false; }
   if s.level > 0 {
     if b[0].turn.quickened { return false; }
@@ -512,7 +512,7 @@ rs_cast_request_from :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty
     k := rs_emit(b[0].book[..], e);
   }
   if sp==SP_ZONE_OF_TRUTH { return true; }
-  for k: 0..<s.step_n { if s.steps[k].kind == RS_S_FLAME { b[0].c[i].flame_until = b[0].clock + rs_secs(s.duration_s); } }
+  for k: 0..<s.step_n { if s.steps[k].kind == RS_S_FLAME { _ := rs_put_effect(b, i, RsEffect.{kind = EF_FLAME, by = i, spell = sp, until = b[0].clock + rs_secs(s.duration_s), save = -1}); } }
   for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TELEPORT { rs_teleport(b, i, sp, tx, ty); return true; } }
   if sp == SP_SPIRIT_GUARDIANS { b[0].guards += 1; }
   damage_scope: [1] RsDamageScope;
@@ -736,14 +736,14 @@ rs_attack_edge_from :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: b
   if !sight.target_sees { ups+=1; }
   if !sight.actor_sees { downs+=1; }
   t := b[0].clock;
-  if b[0].c[j].outlined_by >= 0 && b[0].c[j].outlined_until > t { ups += 1; }
+  if rs_aura_on(b[0].c[j], EF_OUTLINED, t) { ups += 1; }
   if rs_take_weak(b, i) { downs += 1; }
   if !melee && rs_threatened(b, i) { downs += 1; }
   ups += rs_prone_ups(rs_has(b[0].c[j],RS_PRONE),rs_feet_to(b,origin,j));
   downs += rs_prone_downs(rs_has(b[0].c[i],RS_PRONE),rs_has(b[0].c[j],RS_PRONE),rs_feet_to(b,origin,j));
   // Reckless Attack: Advantage on its Strength attacks, and on attacks against it
-  if b[0].c[j].reckless_until > t { ups += 1; }
-  if strength && b[0].c[i].reckless_until > t { ups += 1; }
+  if rs_aura_on(b[0].c[j], EF_RECKLESS, t) { ups += 1; }
+  if strength && rs_aura_on(b[0].c[i], EF_RECKLESS, t) { ups += 1; }
   // the Dodge action
   if rs_dodge_live(b,j) && rs_dodge_sight(b[0].c[j],b[0].c[i]) && rs_obscured(b,i) != 2 { downs += 1; }
   // Frightened: Disadvantage on attack rolls while a source of its fear is in line of sight (p.182)
@@ -945,7 +945,7 @@ rs_affect_program_scoped :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int,
       }
     } else if st.kind == RS_S_OUTLINE {
       if ran_save && saved { continue; }
-      b[0].c[j].outlined_by = i; b[0].c[j].outlined_until = b[0].c[i].conc_until;
+      _ := rs_put_effect(b, j, RsEffect.{kind = EF_OUTLINED, by = i, spell = sp, until = b[0].c[i].conc_until, save = -1});
       b[0].c[j].cond = rs_clear(b[0].c[j].cond, RS_INVISIBLE);
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is outlined: attacks against it have Advantage");
@@ -1183,8 +1183,8 @@ rs_guarded :: (b: [] RsBattle, i: int) -> bool {
 
 // Current walking Speed, including the existing tracked Slow and halving effects.
 rs_walk_speed :: (b: [] RsBattle, i: int) -> int {
-  speed := rs_exhaustion_speed(b[0].c[i].exhaustion,b[0].c[i].speed - (ifx b[0].c[i].slowed_until > b[0].clock then 10 else 0));
-  if b[0].c[i].halved_until > b[0].clock { speed = speed/2; }
+  speed := rs_exhaustion_speed(b[0].c[i].exhaustion,b[0].c[i].speed - (ifx rs_aura_on(b[0].c[i], EF_SLOWED, b[0].clock) then 10 else 0));
+  if rs_aura_on(b[0].c[i], EF_HALVED, b[0].clock) { speed = speed/2; }
   if rs_guarded(b,i) { speed = speed/2; }
   return speed;
 }
@@ -1318,9 +1318,7 @@ rs_tick_raw :: (b: [] RsBattle, ticks: int) {
   for i: 0..<b[0].n {
     concentration_lost := rs_sync_concentration(b,i);
     if b[0].c[i].conc >= 0 && b[0].c[i].conc_until <= t { rs_end_concentration(b, i, " (its duration is up)"); }
-    if b[0].c[i].flame_until > 0 && b[0].c[i].flame_until <= t { b[0].c[i].flame_until = 0; }
     if b[0].c[i].wild_form != 0 { rs_wild_shape_lapse(b, i); }
-    if b[0].c[i].outlined_by >= 0 && b[0].c[i].outlined_until <= t { b[0].c[i].outlined_by = -1; }
     for k: 0..<RS_EFFECTS { e := b[0].c[i].eff[k]; if rs_effect_clock_ended(e.kind, e.turn_end - 1, e.until, t, rs_effect_owner_turn(b, e.turn_end - 1), rs_beat(b)) { rs_drop_effect(b, i, k); } }
     _ := rs_stable_recover(b,i);
     rest_finished := rs_short_rest_finish(b,i);
@@ -1589,7 +1587,7 @@ rs_strike_resolved :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool, wp: R
     if rs_mastery(b, i, w, M_VEX) && dealt > 0 {
       _ := rs_put_effect(b, i, RsEffect.{kind = EF_VEX, cond = j, by = i, spell = -1, until = rs_next_turn_tick(b, i), turn_end = i + 1, save = -1, dc = 0});
     }
-    if rs_mastery(b, i, w, M_SLOW) && dealt > 0 { b[0].c[j].slowed_until = rs_next_turn_tick(b, i); _ := rs_dodge_live(b,j); }
+    if rs_mastery(b, i, w, M_SLOW) && dealt > 0 { _ := rs_put_effect(b, j, RsEffect.{kind = EF_SLOWED, by = i, spell = -1, until = rs_next_turn_tick(b, i), save = -1}); }
   }
   // all damage cut away: the Monk may spend a Focus Point to send the force back at a melee attacker
   if cut > 0 && amount - cut <= 0 && b[0].c[j].focus > 0 && rs_up(b[0].c[j]) && rs_up(b[0].c[i]) {
@@ -1625,8 +1623,8 @@ rs_attack :: (b: [] RsBattle, i: int, j: int, reckless: bool, cleave_to: int) ->
   if !rs_strikes_fit(b,i,j,b[0].c[i].weapon,1+b[0].c[i].extra_attack,true) { return false; }
   b[0].turn.action = true;
   w := b[0].c[i].weapon;
-  if reckless && b[0].c[i].level >= 2 && b[0].c[i].klass == RS_BARBARIAN && b[0].c[i].reckless_until <= b[0].clock {
-    b[0].c[i].reckless_until = rs_next_turn_tick(b, i);
+  if reckless && b[0].c[i].level >= 2 && b[0].c[i].klass == RS_BARBARIAN && !rs_aura_on(b[0].c[i], EF_RECKLESS, b[0].clock)
+     && rs_put_effect(b, i, RsEffect.{kind = EF_RECKLESS, by = i, spell = -1, until = rs_next_turn_tick(b, i), save = -1}) {
     l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " attacks recklessly");
     rs_tell(b, RS_EV_CONDITION, -1, i, i, 0, 0, l[..]);
   }
@@ -1672,7 +1670,7 @@ rs_stunning_strike :: (b: [] RsBattle, i: int, j: int) {
   me := b[0].c[i];
   if !rs_stun_ready(me,b[0].turn.stunned) { return; }
   if b[0].c[j].dead || b[0].c[j].hp == 0 || rs_has(b[0].c[j], RS_STUNNED) { return; }
-  if rs_effect_free(b[0].c[j]) < 1 { return; }
+  if rs_effect_free(b[0].c[j]) < 2 { return; }   // saved against: half Speed and the next attack's Advantage
   b[0].turn.stunned = true; b[0].c[i].focus -= 1;
   dc := rs_focus_dc(me);
   saving := rs_saving_throw(b,j,RS_CON,dc);
@@ -1684,8 +1682,7 @@ rs_stunning_strike :: (b: [] RsBattle, i: int, j: int) {
   rs_add_text(l[..], ifx ok then ": success, half Speed and exposed" else ": failure, Stunned");
   rs_tell_ft(b, ifx ok then RS_EV_SAVE else RS_EV_CONDITION, -1, i, j, total, 0, RS_FT_STUNNING_STRIKE, l[..]);
   if ok {
-    b[0].c[j].halved_until = until;
-    still_dodging := rs_dodge_live(b,j);
+    _ := rs_put_effect(b, j, RsEffect.{kind = EF_HALVED, by = i, spell = -1, until = until, save = -1});
     _ := rs_put_effect(b, j, RsEffect.{kind = EF_EXPOSED, by = i, spell = -1, until = until, save = -1, dc = 0});
   } else {
     _ := rs_put_effect(b, j, RsEffect.{kind = EF_COND, cond = RS_STUNNED, by = i, spell = -1, until = until, save = -1, dc = 0});
@@ -2282,7 +2279,7 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   #assert !rs_cast(b[..], a, SP_FLAME_HURL, 0, 0, 0, e);
   #assert rs_cast(b[..], a, SP_PRODUCE_FLAME, 0, 0, 0, a);
   #assert rs_cast(b[..], a, SP_FLAME_HURL, 0, 0, 0, e);
-  #assert b[0].c[a].flame_until > b[0].clock;
+  #assert rs_aura_on(b[0].c[a], EF_FLAME, b[0].clock);
 }
 #test "Eldritch Blast: 1d10 Force + Cha (Agonizing Blast), and a hit pushes 10 feet (Repelling Blast)" {
   b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 9;
@@ -2423,7 +2420,7 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   rs_start_turn(b[..], a);
   #assert rs_rage(b[..], a);
   #assert rs_attack(b[..], a, m, true, -1);
-  #assert b[0].c[a].reckless_until > b[0].clock;
+  #assert rs_aura_on(b[0].c[a], EF_RECKLESS, b[0].clock);
   #assert rs_attack_edge(b[..], m, a, true, false) == 1;
   frenzy := false;
   for k: 0..<10 {
@@ -2435,7 +2432,7 @@ rs_dash :: (b: [] RsBattle, i: int) -> bool {
   rs_end_turn(b[..], a);
   // gone at the start of its next turn
   rs_tick_ticks(b[..], b[0].c[a].turn_at - b[0].clock);
-  #assert b[0].c[a].reckless_until <= b[0].clock;
+  #assert !rs_aura_on(b[0].c[a], EF_RECKLESS, b[0].clock);
 }
 #test "Cleave: a Greataxe hit carries into a second foe beside the first, without the Strength modifier" {
   b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 3;
@@ -2765,7 +2762,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
     rs_fresh(b[..], r); seq := b[0].book[0].seq;
     #assert rs_shoot(b[..], r, t);
     if rs_saw(b[..], seq, "Hunter's Mark") { marked = true; }
-    if rs_saw(b[..], seq, "Colossus Slayer") { slayer = true; #assert b[0].c[t].slowed_until > b[0].clock; }
+    if rs_saw(b[..], seq, "Colossus Slayer") { slayer = true; #assert rs_aura_on(b[0].c[t], EF_SLOWED, b[0].clock); }
     if marked && slayer { break; }
   }
   #assert marked && slayer;
@@ -3008,7 +3005,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   for k: 0..<40 {
     rs_fresh(b[..], m); seq := b[0].book[0].seq;
     for e: 0..<RS_EFFECTS { if b[0].c[t].eff[e].kind != EF_NONE { rs_drop_effect(b[..], t, e); } }
-    b[0].c[t].halved_until = 0; b[0].c[t].raging = true;
+    rs_aura_lift(b[0].c[t..<t+1], EF_HALVED); b[0].c[t].raging = true;
     was := b[0].c[m].focus;
     ok := rs_attack(b[..], m, t, false, -1);
     // Empowered Strikes: Force, which a Rage doesn't halve
@@ -3017,7 +3014,7 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
       // once a turn however many hits, for 1 Focus Point
       #assert b[0].c[m].focus == was - 1 && b[0].turn.stunned;
       if rs_has(b[0].c[t], RS_STUNNED) { stunned = true; #assert rs_can_act(b[0].c[t]) == false && rs_attack_edge(b[..], m, t, true, false) == 1; }
-      else { saved = true; #assert b[0].c[t].halved_until > b[0].clock; }   // its Advantage may be spent by the second attack
+      else { saved = true; #assert rs_aura_on(b[0].c[t], EF_HALVED, b[0].clock); }   // its Advantage may be spent by the second attack
     }
     if b[0].c[m].focus == 0 { b[0].c[m].focus = 6; }
   }

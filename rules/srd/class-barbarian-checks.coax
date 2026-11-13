@@ -57,12 +57,12 @@
 
 #test "Reckless Attack p.29: from level 2, Advantage on its Strength attacks this turn and on attacks against it until its next turn" {
   b: [1] RsBattle; cf_field(b[..], rs_barbarian("Thorn", 0, 2), 10);
-  #assert rs_attack(b[..], 0, 1, true, -1) && b[0].c[0].reckless_until > b[0].clock;
+  #assert rs_attack(b[..], 0, 1, true, -1) && rs_aura_on(b[0].c[0], EF_RECKLESS, b[0].clock);
   #assert rs_attack_edge(b[..], 1, 0, true, false) == 1 && rs_attack_edge(b[..], 0, 1, true, true) == 1;
   rs_end_turn(b[..], 0); rs_tick_ticks(b[..],b[0].c[0].turn_at - b[0].clock);
-  #assert b[0].c[0].reckless_until <= b[0].clock;
+  #assert !rs_aura_on(b[0].c[0], EF_RECKLESS, b[0].clock);
   one: [1] RsBattle; cf_field(one[..], rs_barbarian("Thorn", 0, 1), 10);
-  #assert rs_attack(one[..], 0, 1, true, -1) && one[0].c[0].reckless_until <= one[0].clock;
+  #assert rs_attack(one[..], 0, 1, true, -1) && !rs_aura_on(one[0].c[0], EF_RECKLESS, one[0].clock);
 }
 
 #test "Primal Knowledge p.29: from level 3, while raging, Acrobatics, Intimidation, Perception, Stealth or Survival with Strength" {

@@ -468,7 +468,7 @@ FT_CL_AC :: [12] int.[13, 13, 16, 15, 17, 15, 18, 15, 14, 12, 15, 15];
 
 #test "saved-seat Dash uses current modified Speed and preserves another actors turn" {
   b: [1] RsBattle; s: [1] FbSeat; ft_field(b[..],s[..],91);
-  b[0].c[FT_HERO].speed=37; b[0].c[FT_HERO].slowed_until=rs_secs(20); b[0].c[FT_HERO].halved_until=rs_secs(20);
+  b[0].c[FT_HERO].speed=37; _ := rs_aura_set(b[0].c[FT_HERO..<FT_HERO+1], EF_SLOWED, rs_secs(20)); _ := rs_aura_set(b[0].c[FT_HERO..<FT_HERO+1], EF_HALVED, rs_secs(20));
   s[0].turn.move_left=1; s[0].turn.move_feet=3;
   b[0].who=FT_FOE; b[0].turn.action=true; b[0].turn.move_left=7; b[0].turn.move_feet=2;
   #assert fb_seat_use(b[..],s[..],fb_feature(FB_DASH,"DASH","dash"),-1,0,0,FT_HERO);

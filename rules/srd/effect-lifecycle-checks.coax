@@ -10,12 +10,12 @@
     #assert rs_put_effect(b[..],2,RsEffect.{kind=EF_BLESS,by=0,spell=SP_BLESS,until=60,save=-1});
     b[0].zone[0] = RsZone.{on=true,by=1,spell=SP_BLESS};
     b[0].zone[1] = RsZone.{on=true,by=0,spell=SP_BLESS};
-    b[0].c[2].outlined_by = 1; b[0].c[2].outlined_until = 60;
+    #assert rs_put_effect(b[..],2,RsEffect.{kind=EF_OUTLINED,by=1,spell=SP_BLESS,until=60,save=-1});
     #assert rs_put_effect(b[..],1,RsEffect.{kind=kind,cond=1<<bit,by=0,spell=-1,until=30,save=-1});
     #assert (b[0].c[1].conc == -1) == stops[bit];
     #assert (b[0].c[2].eff[0].kind == EF_NONE) == stops[bit];
     #assert b[0].c[2].eff[1].kind == EF_BLESS && b[0].zone[1].on;
-    #assert b[0].zone[0].on == !stops[bit] && (b[0].c[2].outlined_by == -1) == stops[bit];
+    #assert b[0].zone[0].on == !stops[bit] && rs_effect(b[0].c[2],EF_OUTLINED) == !stops[bit];
     #assert rs_has(b[0].c[1],1<<bit);
   }
 }

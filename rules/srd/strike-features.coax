@@ -3,7 +3,7 @@
 
 #test "Frenzy requires the actual own turn and Stunning Strike requires an unused Focus choice" {
   for mode:0..<7 {
-    c:RsCreature; c.frenzy=true; c.raging=true; c.reckless_until=10;
+    c:RsCreature; c.frenzy=true; c.raging=true; c.eff[RS_EFFECTS-1]=RsEffect.{kind=EF_RECKLESS,until=10};
     own:=true; strength:=true; used:=false; clock:int=0;
     if mode==1 { c.frenzy=false; } else if mode==2 { c.raging=false; }
     else if mode==3 { strength=false; } else if mode==4 { clock=10; }
@@ -24,7 +24,7 @@
 }
 
 rs_frenzy_turn :: (c:RsCreature,strength:bool,clock:int,own:bool,used:bool)->bool #effects(all) {
-  return own && c.frenzy && c.raging && strength && c.reckless_until>clock && !used;
+  return own && c.frenzy && c.raging && strength && rs_aura_on(c, EF_RECKLESS, clock) && !used;
 }
 rs_stun_ready :: (c:RsCreature,used:bool)->bool #effects(all) {
   return c.stunning && c.stun_ready && c.focus>0 && !used;

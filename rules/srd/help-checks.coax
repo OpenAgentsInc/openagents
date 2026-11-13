@@ -280,7 +280,7 @@ hl_field :: (b: [] RsBattle, c: [] RsCreature) {
   b[0].c=c; b[0].n=c.count; b[0].w=10; b[0].h=10; b[0].who=0; b[0].dice[0].fixed=true;
   for i: 0..<c.count {
     c[i]=RsCreature.{}; c[i].level=3; c[i].speed=30; c[i].weapon=W_LONGSWORD;
-    c[i].conc = -1; c[i].restrained_by = -1; c[i].outlined_by = -1;
+    c[i].conc = -1; c[i].restrained_by = -1;
     c[i].checks.skills=(1<<SK_ATHLETICS)|(1<<SK_PERCEPTION);
     c[i].score=[6] int.[10,10,10,10,10,10]; rs_set_name(c[i..<i+1],"Helper");
     c[i].x=1; c[i].y=1; c[i].ac=10; c[i].hp=100; c[i].hp_max=100;

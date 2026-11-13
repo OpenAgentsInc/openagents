@@ -379,7 +379,7 @@ fb_folk :: (name: string, team: int, ac: int, hp: int, score: [6] int) -> RsCrea
   c[0].team = team; c[0].level = 1; c[0].klass = RS_MONSTER; c[0].humanoid = true;
   c[0].score = score; c[0].ac = ac; c[0].hp_max = rs_max(hp, 1); c[0].hp = c[0].hp_max; c[0].speed = 30;
   c[0].spell_ability = -1; c[0].ranged = -1; c[0].weapon = W_UNARMED;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }
 
@@ -644,7 +644,7 @@ fb_cast_levels :: (hero: RsCreature, a: FbAb, out: [] int) -> int {
 // Produce Flame on one slot: to hand first (a Bonus Action), then hurled. False when the flame was
 // needed and could not come.
 fb_conjure :: (b: [] RsBattle, i: int, a: FbAb) -> bool {
-  if !a.conjure || b[0].c[i].flame_until > b[0].clock { return true; }
+  if !a.conjure || rs_aura_on(b[0].c[i], EF_FLAME, b[0].clock) { return true; }
   return rs_cast(b, i, SP_PRODUCE_FLAME, 0, 0, 0, i);
 }
 fb_cast_at_nothing :: (b: [] RsBattle, i: int, sp: int, sl: int) -> bool {
@@ -741,7 +741,7 @@ fb_seat_can :: (b: [] RsBattle, s: [] FbSeat, a: FbAb) -> bool {
   if !rs_can_act(b[0].c[s[0].me]) { return false; }
   if sp.level > 0 && s[0].turn.slot_spent { return false; }
   if sp.cast_time == RS_T_BONUS { return !s[0].turn.bonus; }
-  if a.conjure && b[0].c[s[0].me].flame_until <= b[0].clock && s[0].turn.bonus { return false; }
+  if a.conjure && !rs_aura_on(b[0].c[s[0].me], EF_FLAME, b[0].clock) && s[0].turn.bonus { return false; }
   return !s[0].turn.action;
 }
 // When the seat's next turn opens.
