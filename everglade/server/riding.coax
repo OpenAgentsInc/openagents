@@ -1,7 +1,7 @@
 // Riding in the room (#13268): the room holds its zone's mounts (everglade/server/mounts.coax, the
 // authority on who may ride), steps each ridden one once for each of its rider's inputs among the
 // land's boxes (everglade/shared/mount-land.coax e2ml_step, the step the rider's page predicts with),
-// answers the asks (everglade/shared/mount-wire.coax: E kinds 20 to 22, e ride) and writes each mount
+// answers the asks (everglade/server/mount-wire.coax: E kinds 20 to 22, e ride) and writes each mount
 // as a row (WK_MOUNT, slots EG_SLOT_MOUNT on). A rider's body is where its mount seats it: the host's
 // walker steps it aboard (room-tick.c, room-world.c world2_step's `ride`), not on its own feet.
 //
@@ -11,7 +11,7 @@
 // down). A rider that leaves the room or falls is off its mount at once.
 //   coax/bin/coax test coax/web/room/room.coax   (the room's suite runs the checks in everglade/server/room-checks.coax)
 #load "../shared/mount-land.coax";
-#load "../shared/mount-wire.coax";
+#load "mount-wire.coax";
 
 E2RD_REFUSED :: "ride";   // r SEQ ride: the ask was no riding ask at all
 

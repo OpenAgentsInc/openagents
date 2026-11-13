@@ -237,6 +237,8 @@ EgRoom :: struct {
   cn: [EG_ZONE_SEATS * EG_ENT] u8; cn_n: [EG_ZONE_SEATS] int; cn_h: [EG_ZONE_SEATS] int;
   // who may receive what (room-interest.coax, #12789), and each seat's blocks by player id (K)
   im: [1] Interest; im_blk: [EG_ZONE_SEATS] ImBlockList;
+  // a seat's send's work (eg_send): its rows' bytes, its pick, its fields and its combat, kept here so no seat's send clears 100 KB each tick (#13278)
+  sc_rows: [WIRE_ZSLOTS * 96] u8; sc_pick: [WIRE_ZSLOTS] f32; sc_fields: [WIRE_ZSLOTS] int; sc_combat: [WIRE_ZSLOTS] int;
   fight_t: [WIRE_ZSLOTS] int;   // the tick each slot's Hit Points last moved, 0 never (eg_combat, #13178)
   combat_q: [WIRE_ZSLOTS] int; combat_n: int;   // this tick's slots that may be in combat with a seat: players, a seat's targets and makings, the fighting
 }

@@ -217,7 +217,7 @@ WE_TALK :: 1; WE_DOOR :: 2; WE_BOAT :: 3; WE_BOARD :: 4; WE_END :: 5;
 // summon a companion, begin the Wizard's Find Familiar, pocket recall or release it, step it, have it deliver Cure Wounds,
 // borrow its senses; use the kit on the nearest dying ally
 WE_FAM_SUMMON :: 9; WE_FAM_RITE :: 10; WE_FAM_ORDER :: 11; WE_FAM_STEP :: 12; WE_FAM_CURE :: 13; WE_FAM_SENSES :: 14; WE_KIT :: 15;
-// Riding (#13268; everglade/shared/mount-wire.coax): mount the mount ID, get down (ID 0), bring a flier down (ID 0)
+// Riding (#13268; everglade/server/mount-wire.coax): mount the mount ID, get down (ID 0), bring a flier down (ID 0)
 WE_MOUNT :: 20; WE_DISMOUNT :: 21; WE_LAND :: 22;
 WE_SAY :: 6; WE_WEAR :: 7; WE_BARE :: 8;   // Everglade II (#13291, #13292): talk to dialogue ID (the content tables'), wear item ID, empty equipment slot ID
 
@@ -1073,6 +1073,8 @@ WireHist :: struct {
   born: [WIRE_ZSLOTS] bool; cut: [WIRE_ZSLOTS] bool;
   last: [WIRE_ZSLOTS] s32;    // id + 1 of the entity the slot last held, kept through ticks it held none
   now: int;
+  // a seat's frame's work lists (wire_seat_frame_look), kept here so no seat's send clears 25 KB of them each tick (#13278)
+  sc_cand: [WIRE_ZSLOTS] int; sc_spawn: [WIRE_ZSLOTS] int; sc_mine: [WIRE_ZSLOTS] int; sc_order: [WIRE_ZSLOTS] int;
   slots: int = WIRE_SLOTS;   // the slots this table holds (WIRE_ZSLOTS at most): the layout's, and a zone's seats past WIRE_SEATS after them (#13275)
 }
 // LIFE and WARP run from 1 to WIRE_LIFE_MAX - 1 and then from 1 again: never 0 (no life yet), never
@@ -1351,9 +1353,9 @@ wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]
   now := h[0].now; row := now % WIRE_BASES;
   n := 0; e: [WIRE_ROW] u8;
   life := 0;   // this tick's x bytes (WIRE_LIFE_BUDGET)
-  cand: [WIRE_ZSLOTS] int; cn := 0;
-  spawn: [WIRE_ZSLOTS] int; sn := 0;
-  mine: [WIRE_ZSLOTS] int; mn := 0;
+  cand := h[0].sc_cand[..]; cn := 0;
+  spawn := h[0].sc_spawn[..]; sn := 0;
+  mine := h[0].sc_mine[..]; mn := 0;
   ordered := !st[0].datagrams;
   for q: 0..<h[0].slots {
     id1 := cast(int) h[0].id[row * WIRE_ZSLOTS + q];
@@ -1435,7 +1437,7 @@ wire_seat_frame_look :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]
     for i: 0..<m { out[n + i] = e[i]; }
     n += m; wrote += m;
   }
-  order: [WIRE_ZSLOTS] int;
+  order := h[0].sc_order[..];
   room := WIRE_AGED_BUDGET;   // the aged rows' own bytes, spawns' and updates' alike
   st[0].aged = 0;
   if budget > 0 && sn > 0 {

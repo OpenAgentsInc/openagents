@@ -1,6 +1,6 @@
 // Riding's profile check (#13268): proto/verse/everglade2-riding-v1.json names the mount's row, each
 // ask (an E kind), the room's answer (e ride) and its codes. This program holds the one codec
-// (everglade/shared/mount-wire.coax, which the room and the page both load) to that file: the row's
+// (everglade/server/mount-wire.coax, which the room and the page both load) to that file: the row's
 // kind, ids, count, first slot and fields are the codec's table; each ask's text reads as its values
 // and writes back as the text; each answer the same; the codes are the room's (mounts.coax E2R_*);
 // what is malformed is refused whole. The file's texts are written by hand, not by this codec.

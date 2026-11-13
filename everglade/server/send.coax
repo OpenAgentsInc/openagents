@@ -199,14 +199,14 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   if town_now { st[0].town_end = false; }
   eg_table(v, k);
   rm := v[0].eg[k..<k + 1];
-  rows: [WIRE_ZSLOTS * 96] u8;
+  rows := rm[0].sc_rows[..];
   // a socket still behind (EG_BEHIND bytes waiting when the tick began) gets only its own row and the
   // x's: the rest would be out of date before they went, and the next tick's go against what it heard
   behind := !full && late;
   if behind { v[0].eg[k].behind_n += 1; }
   // what this seat may hear (room-interest.coax, #12789): near it, room-wide, its own; never whom it blocks
-  pick: [WIRE_ZSLOTS] f32;
-  fields:[WIRE_ZSLOTS]int;
+  pick := rm[0].sc_pick[..];
+  fields := rm[0].sc_fields[..];
   eg_im_pick_fields(v,k,s_id,me.x,me.z,pick[..],fields[..]);
   wprev_pick(v, k, s, pick[..]);   // a seat on the previous wire: the rows its page has no reader for are withheld (wire-prev.coax, #13398)
   // its link this tick (#13178): what waits on its socket, and how far its HEARD trails
@@ -216,7 +216,7 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   limit := ifx st[0].link.limit < WIRE_BUDGET then st[0].link.limit else WIRE_BUDGET;
   // what it looks at, and each slot's combat with it
   look := ifx st[0].cam_on then WireLook.{fx = -sin(st[0].cam), fz = -cos(st[0].cam)} else WireLook.{};
-  combat: [WIRE_ZSLOTS] int;
+  combat := rm[0].sc_combat[..];
   eg_combat(v, k, s_id, me, combat[..]);
   // (a WebTransport seat's rows fit its one datagram; the rest wait, by priority)
   room := ifx o[0].dg then EG_DG_ROWS else rm[0].hist[0].slots * 96;

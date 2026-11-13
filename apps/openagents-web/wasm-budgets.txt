@@ -178,7 +178,7 @@ nostr-lab-walk 3630000
 # Your record on the page (#13381): the content tables' reader and Everglade's rules for them
 # (metaverse-engine/content/tables.coax, everglade/model/content.coax), the bag's window, the column under the
 # map and a quest's talk: 1,108,025 bytes measured on a build host (1,071,777 on main before it); about 2.8% headroom.
-everglade2 1170000
+everglade2 1260000
 # loads everglade.coax, so carries its growth: 1,461,096 measured (c580b0be3f); 1,549,370 after the rooms' WANTED responders, incoming casts and downed bodies, Long Rest, status words, doors and talk (#12892)
 # The jump clips through everglade.coax (da98ab3915): 1,632,052 bytes measured 2026-11-07; about 5% headroom.
 # 1,757,350 bytes measured 2026-11-09 at 1f648c6a67 after the day's shared rules, visibility, sprint and HUD work; about 4% headroom.

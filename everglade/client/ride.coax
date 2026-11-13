@@ -9,9 +9,10 @@
 // behind through the page's entity list (net.coax e2n_row, NetEnt).
 //   coax/bin/coax test everglade/client/ride.coax --library
 #load "../shared/mount-land.coax";
-#load "../shared/mount-wire.coax";
+#load "../server/mount-wire.coax";
 
 E2RP_ASKS :: 4;        // asks pressed and not yet answered
+E2RP_HIST :: 128;       // inputs back your mount is kept (4 s: past it a word re-runs from its row)
 E2RP_ASK_KEEP :: 300;  // inputs (10 s) an ask waits for its answer before the page lets it go
 E2rpAsk :: struct { live: bool; seq: int; kind: int; mount: int = -1; at: int; }
 E2Ride :: struct {
@@ -21,7 +22,13 @@ E2Ride :: struct {
   based: bool;
   asks: [E2RP_ASKS] E2rpAsk; asked: int;                 // the ledger; asks made, for their numbers
   refused: int; refused_n: int;                          // the last refusal's code (mounts.coax E2R_*), and how many
-  steps: int; fixes: int;                                // your mount's predicted steps and the re-runs laid over it (the checks read them)
+  steps: int; fixes: int;                                // your mount's predicted steps and the room's words on you (the checks read them)
+  // Your mount after each input you sent, by the input's number: the room's row is held against the
+  // one for the input it acknowledges, and only a difference lays the row over yours and re-runs
+  // (a row is rounded to the wire's centimetre: laying it over a prediction that agrees would
+  // re-run from a rounded place, and a mount at a tree's edge then takes another side of it).
+  hist: [E2RP_HIST] Mount; hist_seq: [E2RP_HIST] int; hist_k: [E2RP_HIST] int;
+  agree: bool; reruns: int;                              // the last word agreed with what you had; the re-runs that didn't
 }
 // The land the page's mounts step on: the page's planting (client.coax's items, kinds and first).
 E2rpLand :: struct { items: [] f32; kinds: [] u8; first: [] int; planted: bool; }
@@ -89,17 +96,51 @@ e2rp_answer :: (r: [] E2Ride, t: string) -> bool {
 // the room has not answered are done again. The re-run of the inputs after `ack` follows (e2rp_step).
 e2rp_fix :: (r: [] E2Ride, seat: int, ack: int, tick: int, x: f32, z: f32, land: E2rpLand) {
   if seat < 0 { return; }
-  r[0].base = tick - ack; r[0].based = true; r[0].fixes += 1;
+  base := tick - ack;
+  r[0].agree = r[0].based && base == r[0].base && e2rp_agrees(r, seat, ack);
+  r[0].base = base; r[0].based = true; r[0].fixes += 1;
+  if r[0].agree { return; }
+  r[0].reruns += 1;
   for k: 0..<WIRE_MOUNTS {
     if !r[0].heard_on[k] { continue; }
     mine := k < r[0].m[0].n && mount_carries(r[0].m[0].m[k], seat);
     if mine || r[0].heard[k].owner == WIRE_TGT_SEAT + seat { took := egm_row_take(r[0].m[..], r[0].heard[k], true); }
   }
+  e2rp_keep(r, ack, e2rp_mine(r, seat));   // what you had after `ack` is the room's word now
   for i: 0..<E2RP_ASKS {
     if !r[0].asks[i].live { continue; }
     if ack - r[0].asks[i].at > E2RP_ASK_KEEP { r[0].asks[i] = E2rpAsk.{}; continue; }
     if r[0].asks[i].at <= ack { code := e2rp_apply(r, seat, r[0].asks[i], x, z, land); }
   }
+}
+// Whether the room's rows agree with what the page had after input `ack`: the mount it had you on
+// then is where, as fast, in the state and since the tick its row says (to the wire's rounding), and
+// no other row names you its rider.
+e2rp_near :: (a: f32, b: f32, by: f32) -> bool { d := a - b; return d <= by && d >= -by; }
+e2rp_agrees :: (r: [] E2Ride, seat: int, ack: int) -> bool {
+  if ack < 0 { return false; }
+  i := ack % E2RP_HIST;
+  if r[0].hist_seq[i] != ack + 1 { return false; }
+  mine := r[0].hist_k[i];
+  for k: 0..<WIRE_MOUNTS {
+    if !r[0].heard_on[k] { if k == mine { return false; } continue; }
+    w := r[0].heard[k]; yours := w.owner == WIRE_TGT_SEAT + seat;
+    if k != mine { if yours { return false; } continue; }
+    h := r[0].hist[i];
+    if !yours || w.g != h.state || w.t0 != h.since_tick { return false; }
+    up := ifx h.flies then h.wing.y else h.hop;
+    speed := ifx h.flies && h.wing.phase != WING_GROUND then h.wing.speed else h.speed;
+    turn := h.face - w.yaw; turn = turn - floor(turn / 6.28318530718 + 0.5) * 6.28318530718;
+    if !e2rp_near(h.x, w.x, 0.011) || !e2rp_near(h.z, w.z, 0.011) || !e2rp_near(up, w.y, 0.011) || !e2rp_near(turn, 0, 0.011) || !e2rp_near(speed, egm_row_speed(w), 0.03) { return false; }
+  }
+  return true;
+}
+// Your mount after input `seq` kept (k -1: on foot then).
+e2rp_keep :: (r: [] E2Ride, seq: int, k: int) {
+  if seq < 0 { return; }
+  i := seq % E2RP_HIST;
+  r[0].hist_seq[i] = seq + 1; r[0].hist_k[i] = k;
+  if k >= 0 { r[0].hist[i] = r[0].m[0].m[k]; }
 }
 // The walk keys and the stick as a mount's steering, -100 to 100 each: the room's reading of an input
 // (everglade/server/riding.coax) is the keys', so the page sends the stick's push as the keys' too.
@@ -111,12 +152,22 @@ e2rp_axis :: (key: f32, pad: f32) -> int {
 // (x, z): where you stand before the step.
 e2rp_step :: (r: [] E2Ride, seat: int, seq: int, kx: int, ky: int, run: bool, jump: bool, x: f32, z: f32, land: E2rpLand, rerun: bool) -> E2RBody {
   if seat < 0 { return E2RBody.{}; }
+  tick := e2rp_tick(r, seq);
+  if rerun && r[0].agree {
+    // the room agreed with what you had: this input's step stands as it was made
+    i := seq % E2RP_HIST;
+    if seq < 0 || r[0].hist_seq[i] != seq + 1 || r[0].hist_k[i] < 0 { return E2RBody.{}; }
+    one: [1] E2Mounts; one[0].n = 1; one[0].m[0] = r[0].hist[i]; one[0].kind[0] = r[0].m[0].kind[r[0].hist_k[i]];
+    if one[0].m[0].state == MOUNT_FREE { return E2RBody.{on = true, x = one[0].m[0].from_x, z = one[0].m[0].from_z, yaw = one[0].m[0].face}; }   // the step that set you down
+    return e2r_body(one[0], 0, tick, WIRE_HZ);
+  }
   if rerun { for i: 0..<E2RP_ASKS { if r[0].asks[i].live && r[0].asks[i].at == seq - 1 { code := e2rp_apply(r, seat, r[0].asks[i], x, z, land); } } }
   k := e2rp_mine(r, seat);
-  if k < 0 { return E2RBody.{}; }
-  none: [] E2Still; tick := e2rp_tick(r, seq);
+  if k < 0 { e2rp_keep(r, seq, -1); return E2RBody.{}; }
+  none: [] E2Still;
   o := e2ml_step(r[0].m[..], k, kx, ky, run, jump, tick, WIRE_HZ, none, land.items, land.kinds, land.first, land.planted);
   r[0].steps += 1;
+  e2rp_keep(r, seq, k);
   if o.off { return E2RBody.{on = true, x = o.x, z = o.z, yaw = r[0].m[0].m[k].face}; }
   return e2r_body(r[0].m[0], k, tick, WIRE_HZ);
 }
@@ -130,6 +181,8 @@ e2rp_peek :: (r: [] E2Ride, seat: int, seq: int, kx: int, ky: int, run: bool, ju
 e2rp_rejoin :: (r: [] E2Ride) {
   for i: 0..<E2RP_ASKS { r[0].asks[i] = E2rpAsk.{}; }
   for k: 0..<WIRE_MOUNTS { if r[0].heard_on[k] { took := egm_row_take(r[0].m[..], r[0].heard[k], true); } }
+  for i: 0..<E2RP_HIST { r[0].hist_seq[i] = 0; }
+  r[0].based = false; r[0].agree = false;
 }
 
 // ---- checks
@@ -165,13 +218,21 @@ e2rp_test_land :: () -> E2rpLand { none_f: [] f32; none_k: [] u8; none_i: [] int
   #assert p[0].m[0].m[0].x == room[0].m[0].x;   // yours: the row waits for the re-run
   e2rp_fix(p[..], seat, 70, 130, bx, bz, land);
   for s: 71..<101 { b := e2rp_step(p[..], seat, s, 20, 100, true, false, bx, bz, land, true); bx = b.x; bz = b.z; }
-  #assert abs(p[0].m[0].m[0].x - room[0].m[0].x) < 0.05 && abs(p[0].m[0].m[0].z - room[0].m[0].z) < 0.05 && abs(p[0].m[0].m[0].speed - room[0].m[0].speed) < 0.05;
+  #assert p[0].m[0].m[0].x == room[0].m[0].x && p[0].m[0].m[0].z == room[0].m[0].z && p[0].m[0].m[0].speed == room[0].m[0].speed && bx == room[0].m[0].x;
+  // a row that differs (the room had it 2 m on): laid over, and the inputs after it re-run from it
+  far := wire_s_unpack(row.id, f[..]); far.z -= 2; e2rp_row(p[..], far, seat); e2rp_fix(p[..], seat, 70, 130, bx, bz, land);
+  #assert !p[0].agree && p[0].reruns == 2 && abs(p[0].m[0].m[0].z - late[0].m[0].z + 2) < 0.011;
+  for s: 71..<101 { b := e2rp_step(p[..], seat, s, 20, 100, true, false, bx, bz, land, true); bx = b.x; bz = b.z; }
+  #assert abs(p[0].m[0].m[0].z - room[0].m[0].z + 2) < 0.3 && p[0].steps == 90;
+  e2rp_row(p[..], wire_s_unpack(row.id, f[..]), seat); e2rp_fix(p[..], seat, 70, 130, bx, bz, land);
+  for s: 71..<101 { b := e2rp_step(p[..], seat, s, 20, 100, true, false, bx, bz, land, true); bx = b.x; bz = b.z; }
+  #assert abs(p[0].m[0].m[0].x - room[0].m[0].x) < 0.05 && abs(p[0].m[0].m[0].z - room[0].m[0].z) < 0.05 && p[0].steps == 120;
   // the answer: the ask leaves the ledger
   out: [48] u8; n := egm_answer_put(out[..], EgmAnswer.{seq = u.seq, code = E2R_OK, mount = 0});
   #assert p[0].asks[0].live && e2rp_answer(p[..], cast(string) out[0..<n]) && !p[0].asks[0].live && p[0].refused_n == 0 && !e2rp_answer(p[..], "e fam 3 0 8");
   // a peek steps nothing
   x0 := p[0].m[0].m[0].x; pk := e2rp_peek(p[..], seat, 101, 0, 100, true, false, bx, bz, land);
-  #assert pk.on && p[0].m[0].m[0].x == x0 && (pk.x != x0 || pk.z != p[0].m[0].m[0].z) && p[0].steps == 90;
+  #assert pk.on && p[0].m[0].m[0].x == x0 && (pk.x != x0 || pk.z != p[0].m[0].m[0].z) && p[0].steps == 120;
   // the stick steers as the keys do, held to a full push
   #assert e2rp_axis(0.5, 0) == 50 && e2rp_axis(0, -0.25) == -25 && e2rp_axis(1, 1) == 100 && e2rp_axis(-1, -1) == -100;
 }
@@ -207,4 +268,72 @@ e2rp_test_land :: () -> E2rpLand { none_f: [] f32; none_k: [] u8; none_i: [] int
   e2rp_fix(p[..], seat, 14 + E2RP_ASK_KEEP + 1, 600, 10.2, 9, land); #assert !p[0].asks[1].live;
   // sat again: nothing owed
   p[0].asks[2] = E2rpAsk.{live = true, seq = 10, kind = WE_LAND, at = 400}; e2rp_rejoin(p[..]); #assert !p[0].asks[2].live;
+}
+// The link as a model: your inputs reach the room `lat` ticks after you send them and its rows reach
+// you `lat` ticks after it writes them, one row in every `lose` lost. What the page shows for each
+// input, against what the room has once it steps that input.
+E2RP_TEST_N :: 360;
+E2rpLink :: struct { ok: bool; n: int; missed: int; worst: f32; reruns: int; }
+e2rp_test_link :: (lat: int, lose: int) -> E2rpLink #effects(all) {
+  land := e2rp_test_land(); none: [] E2Still; seat := 1;
+  room: [1] E2Mounts; e2ml_lay(room[..]);
+  p: [1] E2Ride;
+  px: [E2RP_TEST_N] f32; pz: [E2RP_TEST_N] f32; rx: [E2RP_TEST_N] f32; rz: [E2RP_TEST_N] f32;
+  rows: [E2RP_TEST_N] WireS; row_ack: [E2RP_TEST_N] int;
+  bx: f32 = 10.2; bz: f32 = 9; press := 30; down := 300; asked: WireUse; asked_down: WireUse;
+  // the page heard the room's rows before any of this: the mounts where they are laid, tick `lat` stepped input 0
+  for k: 0..<2 { e2rp_row(p[..], egm_row(room[0], k), seat); }
+  e2rp_fix(p[..], seat, 0, lat, bx, bz, land);
+  for t: 1..<E2RP_TEST_N {
+    kx := ifx (t / 45) % 3 == 0 then 0 else ifx (t / 45) % 3 == 1 then 70 else -90; ky := ifx t > 250 then 0 else 100; run := (t / 80) % 2 == 0;
+    // the room's tick t: it hears what the page sent `lat` ticks ago (an ask, then that tick's input), steps, and writes its row
+    s := t - lat;
+    if s >= 1 {
+      if s == press { code := e2r_mount(room[..], seat, 0, 10.2, 9, true, t); }
+      if s == down { code := e2ml_dismount(room[..], seat, true, t, none, land.items, land.kinds, land.first, false); }
+      sk := ifx (s / 45) % 3 == 0 then 0 else ifx (s / 45) % 3 == 1 then 70 else -90;
+      if e2r_of(room[0], seat) >= 0 { o := e2ml_step(room[..], 0, sk, ifx s > 250 then 0 else 100, (s / 80) % 2 == 0, false, t, WIRE_HZ, none, land.items, land.kinds, land.first, false); }
+      rx[s] = room[0].m[0].x; rz[s] = room[0].m[0].z;
+      f: [WIRE_SF] s32; w := egm_row(room[0], 0); wire_s_pack(w, f[..]); wire_kind_keep(w.kind, f[..]);
+      rows[t] = wire_s_unpack(w.id, f[..]); row_ack[t] = s;
+    }
+    // the page's time t: the row the room wrote `lat` ticks ago arrives (unless lost), then this tick's press and input
+    w := t - lat;
+    if w >= 1 && row_ack[w] >= 1 && (lose == 0 || w % lose != 0) {
+      // the room's answers ride the reliable class with the frame that first follows the ask
+      ab: [48] u8;
+      if asked.seq > 0 && row_ack[w] >= press { ok := e2rp_answer(p[..], cast(string) ab[0..<egm_answer_put(ab[..], EgmAnswer.{seq = asked.seq, code = E2R_OK, mount = 0})]); }
+      if asked_down.seq > 0 && row_ack[w] >= down { ok := e2rp_answer(p[..], cast(string) ab[0..<egm_answer_put(ab[..], EgmAnswer.{seq = asked_down.seq, code = E2R_OK, mount = 0})]); }
+      e2rp_row(p[..], rows[w], seat);
+      e2rp_fix(p[..], seat, row_ack[w], w, bx, bz, land);
+      for q: row_ack[w] + 1..<t {
+        qx := ifx (q / 45) % 3 == 0 then 0 else ifx (q / 45) % 3 == 1 then 70 else -90;
+        b := e2rp_step(p[..], seat, q, qx, ifx q > 250 then 0 else 100, (q / 80) % 2 == 0, false, bx, bz, land, true);
+        if b.on { bx = b.x; bz = b.z; }
+      }
+    }
+    if t == press { asked = e2rp_press(p[..], seat, WE_MOUNT, t - 1, 10.2, 9, land); }
+    if t == down { asked_down = e2rp_press(p[..], seat, WE_DISMOUNT, t - 1, bx, bz, land); }
+    b := e2rp_step(p[..], seat, t, kx, ky, run, false, bx, bz, land, false);
+    if b.on { bx = b.x; bz = b.z; }
+    px[t] = p[0].m[0].m[0].x; pz[t] = p[0].m[0].m[0].z;
+  }
+  if asked.seq == 0 || asked_down.seq == 0 { return E2rpLink.{}; }
+  // every input the room stepped while you rode: how far the page's horse was from the room's. Over
+  // 15 cm is a miss (a page that reads a rounded row meets a tree's edge a hair to one side of where
+  // the room met it, and is put right by the next word).
+  o: E2rpLink; o.ok = room[0].m[0].state == MOUNT_FREE && p[0].m[0].m[0].state == MOUNT_FREE && (abs(room[0].m[0].x - 9) > 5 || abs(room[0].m[0].z - 9) > 5);
+  for s: press + 1..<E2RP_TEST_N - lat - 1 {
+    d := sqrt((px[s] - rx[s]) * (px[s] - rx[s]) + (pz[s] - rz[s]) * (pz[s] - rz[s]));
+    o.n += 1; if d > 0.15 { o.missed += 1; } if d > o.worst { o.worst = d; }
+  }
+  o.reruns = p[0].reruns;
+  return o;
+}
+#test "riding on the page under latency and loss: at 33 to 400 ms a way, with up to half the rows lost, the horse you see is within 15 cm of the room's for 98 inputs in 100, and you end on foot where the room has you" #steps 40000000000 {
+  a := e2rp_test_link(1, 0); #assert a.ok && a.n > 300 && a.missed * 50 <= a.n && a.reruns < 20;
+  b := e2rp_test_link(3, 3); #assert b.ok && b.missed == 0 && b.worst < 0.05;
+  c := e2rp_test_link(6, 3); #assert c.ok && c.missed == 0 && c.worst < 0.05;
+  d := e2rp_test_link(12, 3); #assert d.ok && d.missed == 0 && d.worst < 0.05;
+  e := e2rp_test_link(6, 2); #assert e.ok && e.missed * 50 <= e.n && e.reruns < 20;
 }

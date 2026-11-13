@@ -5,7 +5,7 @@ The room decides who rides which mount and where each mount is. A page asks; the
 writes each mount as a row.
 
 - Profile: `proto/verse/everglade2-riding-v1.json`
-- Codec, loaded by the room and the page: `everglade/shared/mount-wire.coax`
+- Codec, loaded by the room and the page: `everglade/server/mount-wire.coax`
 - Check: `coax/web/tool.sh coax/web/room/riding-profile.coax proto/verse/everglade2-riding-v1.json`
 - Rules: `everglade/server/mounts.coax` (who may ride), `everglade/shared/mount-land.coax` (the step)
 
