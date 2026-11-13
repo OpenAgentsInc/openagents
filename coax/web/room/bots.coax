@@ -20,7 +20,7 @@
 // A process holds at most 16 sockets (CXSOCK_MAX), so `run` starts one `room` process for every 16 bots.
 //
 //   coax/web/tool.sh coax/web/room/bots.coax run ORIGIN PLAYERS SECONDS [--realm pair-e2-soak]
-//        [--direct] [--reconnect 900] [--travel 600] [--window 60] [--stamp N]
+//        [--direct] [--zone] [--reconnect 900] [--travel 600] [--window 60] [--stamp N]
 //     ORIGIN: the API's (https://staging.openagents.com), or with --direct a room's
 //     (ws://localhost:8830; tickets signed with OA_ROOM_TICKET_KEY when the environment has it).
 //     Prints each room process's lines as they come, "B ROOM {json}" a window and "F ROOM {json}" at
@@ -32,6 +32,9 @@
 //     (POST /api/playtest/fault/slow, signed with OA_ROOM_WRITE_KEY or OA_ROOM_TICKET_KEY; an API
 //     without OA_API_FAULTS answers 404). Prints how many it held. Run it beside `run`.
 //
+//     --zone (with --direct): every bot sits in one room, REALM-1, whatever process plays it: the
+//     150 players in one zone of #13275. A room that seats fewer refuses the rest ("ask_failed",
+//     "seated" in the totals say how many it took).
 // The bots are tagged as tests: their realm is pair-* (left out of every rooms list and count), their
 // names "Bot R-K". From one address the API seats at most 120 a minute (its limit, kept on purpose).
 #run_steps 250000000;   // secp256k1's tables: the seat ticket's v5 check (aethyr/session/seat-ticket.coax, #13260)
@@ -243,7 +246,7 @@ bt_hear :: (b: [] Bot, s: [] BtStats, t: string, now: int) {
   #assert s[0].stalls == 1 && s[0].dropped == 2;
 }
 
-BtOpts :: struct { origin: string; realm: string; direct: bool; reconnect: int; travel: int; window: int; rooms: int; stamp: int; until: int; }   // until: when the run ends (no reconnect or travel begins in its last 30 s)
+BtOpts :: struct { origin: string; realm: string; direct: bool; reconnect: int; travel: int; window: int; rooms: int; stamp: int; until: int; zone: bool; }   // until: when the run ends (no reconnect or travel begins in its last 30 s)
 
 // The socket's URL for instance `code` with ticket t (the API's answer `body`), into out.
 bt_url :: (o: BtOpts, body: string, code: string, ticket: string, out: [] u8) -> string {
@@ -339,7 +342,7 @@ bt_answer :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i
 }
 // With no API: a ticket the bot signs itself for REALM-ROOM (or the instance it travelled to).
 bt_direct :: (o: BtOpts, c: [] RelayConn, b: [] Bot, s: [] BtStats, room: int, i: int, now: int) {
-  if b[0].code_n == 0 { cb: [48] u8; k := rs_int(cb[..], rs_put(cb[..], rs_put(cb[..], 0, o.realm), "-"), room); b[0].code_n = bt_keep(b[0].code[..], cast(string) cb[0..<k]); }
+  if b[0].code_n == 0 { cb: [48] u8; k := rs_int(cb[..], rs_put(cb[..], rs_put(cb[..], 0, o.realm), "-"), ifx o.zone then 1 else room); b[0].code_n = bt_keep(b[0].code[..], cast(string) cb[0..<k]); }
   u: [1024] u8; ut: [2048] u8; id: [48] u8;
   n := rs_put(u[..], rs_put(u[..], rs_put(u[..], 0, o.origin), "/api/room/relay/everglade/"), bt_code(b));
   // a stamp in the id: two runs' bots are never one player to a room that still holds the last run's seats
@@ -671,6 +674,7 @@ bt_opts :: (a: [] Args) -> BtOpts {
   o := BtOpts.{};
   o.realm = args_value(a, "--realm", "pair-e2-soak");
   o.direct = args_has(a, "--direct");
+  o.zone = args_has(a, "--zone");   // every bot in one room (#13275)
   o.reconnect = rs_num(args_value(a, "--reconnect", "900"));
   o.travel = rs_num(args_value(a, "--travel", "600"));
   o.window = rs_num(args_value(a, "--window", "60"));
@@ -682,7 +686,7 @@ bt_opts :: (a: [] Args) -> BtOpts {
 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh coax/web/room/bots.coax run ORIGIN PLAYERS SECONDS [--realm R] [--direct] [--reconnect S] [--travel S] [--window S]"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: coax/web/tool.sh coax/web/room/bots.coax run ORIGIN PLAYERS SECONDS [--realm R] [--direct] [--zone] [--reconnect S] [--travel S] [--window S]"); return 2; }
   cmd := args_at(a[..], 0);
   if cmd == "fault" && args_count(a[..]) >= 4 { return bt_fault(args_at(a[..], 1), rs_num(args_at(a[..], 2)), rs_num(args_at(a[..], 3)), ifx args_count(a[..]) > 4 then rs_num(args_at(a[..], 4)) else 2); }
   if cmd == "seat" && args_count(a[..]) == 5 { return bt_seat(args_at(a[..], 1), args_at(a[..], 2), args_at(a[..], 3), args_at(a[..], 4)); }
@@ -700,6 +704,7 @@ tool_main :: () -> int #export_c #effects(all) {
     opts: [16] string; n := 0; rm: [64] u8; rc: [16] u8; tv: [16] u8; wn: [16] u8; st: [16] u8;
     opts[n] = "--realm"; n += 1; opts[n] = o.realm; n += 1;
     if o.direct { opts[n] = "--direct"; n += 1; }
+    if o.zone { opts[n] = "--zone"; n += 1; }
     opts[n] = "--reconnect"; n += 1; opts[n] = cast(string) rc[0..<rs_int(rc[..], 0, o.reconnect)]; n += 1;
     opts[n] = "--travel"; n += 1; opts[n] = cast(string) tv[0..<rs_int(tv[..], 0, o.travel)]; n += 1;
     opts[n] = "--window"; n += 1; opts[n] = cast(string) wn[0..<rs_int(wn[..], 0, o.window)]; n += 1;
