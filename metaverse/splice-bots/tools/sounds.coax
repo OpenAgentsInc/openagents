@@ -1,0 +1,54 @@
+// Splice Bots' placeholder sounds (sound.coax): each row of the sound table rendered by the Metaverse
+// Engine's synthesizer into its file under apps/openagents-web/realms/splice-bots/assets/sounds/.
+// A real sound replaces its file by name; after that, do not write the placeholders again over it.
+// Run at the repository root:
+//   coax/web/tool.sh metaverse/splice-bots/tools/sounds.coax --write   writes every file that is missing
+//   coax/web/tool.sh metaverse/splice-bots/tools/sounds.coax --check   fails when a file is missing or
+//                                                                      realms.json does not list it
+//   coax/web/tool.sh metaverse/splice-bots/tools/sounds.coax --log     the scripted run's sounds, in order
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../splice-game.coax";
+
+SOUNDS_DIR :: "apps/openagents-web/realms/splice-bots/assets/sounds";
+REALMS_JSON :: "apps/openagents-web/realms.json";
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: sounds --write | --check | --log"); return 2; }
+  mode := args_at(a[..], 0);
+  if mode == "--log" {
+    g := [1] SpGame.[SpGame.{}];
+    r := g_play_run(g[..]);
+    s := g[0].snd[0];
+    for i: 0..<s.log_n { l := s.log[i]; print("% % mode % zone % phase %\n", i, SND_ROWS[l.id].name, l.mode, l.zone, l.phase); }
+    print("run: %\n", r);
+    return ifx r == 0 then 0 else 1;
+  }
+  if mode != "--write" && mode != "--check" { tool_errln("usage: sounds --write | --check | --log"); return 2; }
+  realms: [1048576] u8; rn := fs_read(REALMS_JSON, realms[..]);
+  text := cast(string) realms[0..<ifx rn < 0 then 0 else rn];
+  mix: [SND_MAX_FRAMES] int; out: [WAV_HEADER + 2 * SND_MAX_FRAMES] u8; path: [512] u8; want: [256] u8;
+  bad := 0;
+  for id: 0..<SND_COUNT {
+    row := SND_ROWS[id];
+    p := fs_join(SOUNDS_DIR, row.file, path[..]);
+    if mode == "--write" && !fs_exists(p) {
+      r := snd_render(id, mix[..], out[..]);
+      if !r.ok || !fs_write(p, cast(string) out[0..<r.bytes]) { print("sounds: could not write %\n", p); return 1; }
+      print("sounds: wrote % (% bytes)\n", p, r.bytes);
+    }
+    if !fs_exists(p) { print("sounds: % is missing (run --write)\n", p); bad += 1; }
+    n := tput(want[..], 0, "\"sound:"); n = tput(want[..], n, row.name); n = tput(want[..], n, "="); n = tput(want[..], n, SND_DIR); n = tput(want[..], n, row.file); n = tput(want[..], n, "\"");
+    if !sounds_has(text, cast(string) want[0..<n]) { print("sounds: % does not list %\n", REALMS_JSON, cast(string) want[0..<n]); bad += 1; }
+  }
+  if bad > 0 { return 1; }
+  print("sounds: % sounds, each a file listed in %\n", SND_COUNT, REALMS_JSON);
+  return 0;
+}
+sounds_has :: (text: string, part: string) -> bool {
+  if part.count == 0 || part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
+}

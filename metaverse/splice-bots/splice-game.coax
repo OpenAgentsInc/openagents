@@ -21,6 +21,8 @@
 #load "world.coax";
 #load "scripts.coax";              // the foes' realm scripts: the frame out, the commands in (#13467)
 #load "director.coax";             // the Director's keys, Digger's pickups, the inventory, Heat's sensing and health (#13505)
+#load "sound.coax";                // the sound table and the moments each sound plays (#13505)
+#load "sound-checks.coax" #test;
 #load "layer-checks.coax" #test;   // the colliders' and the layer's checks
 #load "walk-checks.coax" #test;    // the walk replay's, the fixture layer's and the kept-clear zones' checks
 #load "replay.coax";
@@ -143,6 +145,7 @@ SpGame :: struct {
   dv: [1] SpDrive;             // the drive to the garage (drive.coax)
   dr: [1] SpDir;               // the Director's systems (director.coax): her stance, Digger's errands and health, the grid, the map, pause
   bt: [1] SpBattle;            // the bots' battles, the drill mech, the raider mech, the boss and the ending (splice-battle.coax)
+  snd: [1] SpSound;            // what sounds, and what the page is told to play (sound.coax)
 }
 
 // ---- Things and events, for a host that shows the game with its own models and sounds
@@ -165,7 +168,7 @@ g_thing :: (g: [] SpGame, p: [] Pen, kind: int, variant: int, f: Frame, scale: f
 }
 // After a thing's shapes: how many vertices it wrote.
 g_thing_end :: (g: [] SpGame, p: [] Pen, k: int) { if k >= 0 && k < THINGS { g[0].thing_count[k] = p[0].n - g[0].thing_first[k]; } }
-g_event :: (g: [] SpGame, e: int) { if g[0].event_n < EVENTS { g[0].events[g[0].event_n] = e; g[0].event_n += 1; } }
+g_event :: (g: [] SpGame, e: int) { if g[0].event_n < EVENTS { g[0].events[g[0].event_n] = e; g[0].event_n += 1; } snd_event(g, e); }
 
 // ---- Colours (the Game UI board): paper, shade, ink, heat orange, glow blue
 PAPER :: () -> KitTint { return kit_tint(0.918, 0.859, 0.769); }
@@ -285,8 +288,10 @@ g_reset :: (g: [] SpGame) {
   imports := g[0].imp[0];   // and so are the meshes it imported
   view := g[0].view; shown := g[0].shown; unseen := g[0].unseen;   // and the editor's clock, its shown foe and Simulate
   front := g[0].fr[0];   // and the front door: your character and the run this browser keeps
+  sound := g[0].snd[0];   // and what the page has been told to play (sound.coax)
   g[0] = SpGame.{};
   g[0].fr[0] = front;
+  g[0].snd[0] = sound; g[0].snd[0].ready = false;
   g[0].view = view; g[0].shown = shown; g[0].unseen = unseen;
   g[0].imp[0] = imports;
   g[0].gray = gray;
@@ -534,6 +539,7 @@ g_jump :: (g: [] SpGame, dt: f32) {
 // The walk, or the board when you ride one.
 g_move :: (g: [] SpGame, dt: f32) { if g_riding(g) { g_ride(g, dt); } else { g_walk(g, dt); g_jump(g, dt); } }
 g_step :: (g: [] SpGame, dt: f32) {
+  snd_tick(g, dt);   // what sounds: what changed since the last step, and the loops for where you are (sound.coax)
   g[0].t += dt;
   // off the board when play stops (the edit bay, the rail, a banner, the front screens) or the world takes it away
   if g_riding(g) && (g[0].mode != M_PLAY || !g_board_given(g)) { board_down(g[0].board[..]); }
@@ -666,12 +672,13 @@ g_beats :: (g: [] SpGame) {
 g_open_bay :: (g: [] SpGame) -> bool {
   if g[0].zone != Z_MINE { return false; }
   // the edit bay is inside Sniper, and only there (director.coax d_in_rover)
-  if d_in_rover(g) { g[0].at_crate = false; g[0].mode = M_BAY; g[0].drag = -1; g[0].dr[0].bag = false; g[0].dr[0].map = false; return true; }
+  if d_in_rover(g) { g[0].at_crate = false; g[0].mode = M_BAY; g[0].drag = -1; g[0].dr[0].bag = false; g[0].dr[0].map = false; snd_bay(g); return true; }
   return false;
 }
 // Put what you carry on the timeline: hardware into its slot, a card onto the strip (at a slot, or the next free one).
 g_place :: (g: [] SpGame, item: int, at: int) {
   if item < 0 || item > H_PLUS || !g[0].have[item] { return; }
+  snd_play(g, SND_SLOT_CLICK);
   if item <= H_BATTERY {
     g[0].slot[item] = true;
     if !g[0].bot && g[0].slot[0] && g[0].slot[1] && g[0].slot[2] { g[0].bot = true; g_bot_home(g); }   // built: it follows you from now on

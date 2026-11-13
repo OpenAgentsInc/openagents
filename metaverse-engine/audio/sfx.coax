@@ -351,15 +351,21 @@ SfxRender :: struct { ok: bool; frames: int; peak: int; bytes: int; }
 // WAV bytes into out: peaks normalised to 0.8 of full scale through a soft saturation,
 // so every effect leaves the synthesizer at one level and a page sets each one's gain.
 sfx_render :: (id: int, rate: int, mix: [] int, out: [] u8) -> SfxRender {
+  if id < 0 || id >= SFX_COUNT { return SfxRender.{}; }
+  return sfx_render_recipe(sfx_recipe(id), id * 977, rate, mix, out);
+}
+// Any recipe rendered as sfx_render renders an Everglade effect: a game keeps its own recipes
+// (metaverse/splice-bots/sound.coax) and renders them here. `seed` seeds the layers' noise
+// (layer j: seed + j * 131 + 7), so one recipe renders the same bytes every time.
+sfx_render_recipe :: (s: Sfx, seed: int, rate: int, mix: [] int, out: [] u8) -> SfxRender {
   r := SfxRender.{};
-  if id < 0 || id >= SFX_COUNT || rate < 8000 { return r; }
-  s := sfx_recipe(id);
+  if rate < 8000 || s.n < 1 { return r; }
   total := (s.ms + s.loop) * rate / 1000;
   n := s.ms * rate / 1000;
   if total > mix.count || n < 1 || out.count < WAV_HEADER + 2 * n { return r; }
   m := mix[0..<total];
   for i: 0..<total { m[i] = 0; }
-  for j: 0..<s.n { sfx_layer(s.layers[j], id * 977 + j * 131 + 7, rate, m); }
+  for j: 0..<s.n { sfx_layer(s.layers[j], seed + j * 131 + 7, rate, m); }
   if s.loop > 0 {
     // fold the tail over the start: the last sample runs into the first
     x := total - n;

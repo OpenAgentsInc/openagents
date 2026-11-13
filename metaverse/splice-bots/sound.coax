@@ -1,0 +1,338 @@
+// Splice Bots' sound: the sound table, the moments that play each sound, and the lines the page
+// plays. A sound is an event with a name; the table gives each name its file, which the page
+// plays by that name (apps/openagents-web/realms.json lists each as a `sound:NAME=URL` asset), and
+// the same name reaches a native host: each sound is also an event (g_event, SND_EVENT_BASE + id),
+// listed by name in the Unreal bundle's manifest (splice-export.coax), so an `event.NAME` row of
+// the overrides table plays its own sound there.
+//
+// The files in apps/openagents-web/realms/splice-bots/assets/sounds/ are placeholders: each one
+// is a recipe below rendered by the Metaverse Engine's synthesizer (metaverse-engine/audio/sfx.coax)
+// with tools/sounds.coax. A real sound replaces a file by its name; nothing else changes.
+//
+// The moments: a message the game says (g_say, through g_event) plays its sound (snd_for_message);
+// the edit bay opening and a slot taking a part call snd_play; the rest the step watches
+// (snd_tick, first thing in g_step): a door in or out of the rover, a robot turning on you, a drill
+// card starting, a blow landing in a bot battle, and the loops (the beds) for where you are.
+#load "../../metaverse-engine/audio/sfx.coax";
+
+SND_PICKUP :: 0; SND_DRILL :: 1; SND_GLITCH :: 2; SND_SUCCESS :: 3; SND_HIT :: 4; SND_SENSOR_PING :: 5;
+SND_SLOT_CLICK :: 6; SND_FILM_WHIR :: 7; SND_ROVER_DOOR :: 8; SND_ROBOT_ALERT :: 9; SND_RAIDER_MECH :: 10;
+SND_BOSS_WAKE :: 11; SND_BOSS_CHARGE :: 12; SND_BOSS_REEL :: 13; SND_BOSS_FALL :: 14;
+SND_HOVER_CASUAL :: 15; SND_HOVER_FAST :: 16; SND_ROVER_LOFI :: 17; SND_DESERT_MUSIC :: 18; SND_RAVE :: 19;
+SND_COUNT :: 20;
+SND_FIRST_BED :: SND_HOVER_CASUAL;   // from here on each sound is a loop: a bed that plays while its place holds
+SND_EVENT_BASE :: 200;               // a sound's event for a native host: SND_EVENT_BASE + id (below 100 a message, 100 on the game's own)
+
+// The sound table: the event's name (the page plays it by this name; a native host's overrides row is
+// event.NAME), its file under apps/openagents-web/realms/splice-bots/assets/sounds/, and its level in
+// thousandths.
+SndRow :: struct { name: string; file: string; gain: int; }
+SND_ROWS :: [SND_COUNT] SndRow.[
+  SndRow.{name = "pickup", file = "pickup.wav", gain = 450},               // a part, a card or a battery cell picked up
+  SndRow.{name = "drill", file = "drill.wav", gain = 450},                 // a drill card starts on the rubble; the drill mech starts on the hallway
+  SndRow.{name = "glitch", file = "glitch.wav", gain = 400},               // a bad cut; the core's memory flickering in
+  SndRow.{name = "success", file = "success.wav", gain = 450},             // the rubble opens, the hallway breaks, a fight won, the scene restored
+  SndRow.{name = "hit", file = "hit.wav", gain = 420},                     // a blow: you hurt, a foe hit, a stun, a hit in a bot battle
+  SndRow.{name = "sensor-ping", file = "sensor-ping.wav", gain = 450},     // the rover's sensor pings and stops it on the rail
+  SndRow.{name = "slot-click", file = "slot-click.wav", gain = 400},       // edit bay: a part or a card set in its slot; a core swapped
+  SndRow.{name = "film-whir", file = "film-whir.wav", gain = 380},         // edit bay: it opens on the film timeline
+  SndRow.{name = "rover-door", file = "rover-door.wav", gain = 420},       // into or out of the rover
+  SndRow.{name = "robot-alert", file = "robot-alert.wav", gain = 420},     // a robot sees you and comes for you
+  SndRow.{name = "raider-mech", file = "raider-mech.wav", gain = 480},     // the raider mech gives chase on the drive
+  SndRow.{name = "boss-wake", file = "boss-wake.wav", gain = 500},         // the boss's battle begins
+  SndRow.{name = "boss-charge", file = "boss-charge.wav", gain = 480},     // phase two: below half health it charges
+  SndRow.{name = "boss-reel", file = "boss-reel.wav", gain = 450},         // it reels after a charge: its weak points open
+  SndRow.{name = "boss-fall", file = "boss-fall.wav", gain = 500},         // it powers down and drops the core; night falls
+  SndRow.{name = "hover-casual", file = "hover-casual.wav", gain = 220},   // loop: the hoverboard at its casual speed
+  SndRow.{name = "hover-fast", file = "hover-fast.wav", gain = 300},       // loop: the hoverboard fast (Q while on it), or super fast
+  SndRow.{name = "rover-lofi", file = "rover-lofi.wav", gain = 300},       // loop: inside the rover (its room, the edit bay)
+  SndRow.{name = "desert-music", file = "desert-music.wav", gain = 320},   // loop: vaporwave on the drive and in the desert
+  SndRow.{name = "rave-loop", file = "rave-loop.wav", gain = 380}          // loop: trance with chanting in the garage at night (the rave)
+];
+SND_DIR :: "/realms/splice-bots/assets/sounds/";
+
+snd_id :: (name: string) -> int { for i: 0..<SND_COUNT { if SND_ROWS[i].name == name { return i; } } return -1; }
+snd_loop :: (id: int) -> bool { return id >= SND_FIRST_BED; }
+
+// The sound a message plays (g_say), or -1.
+snd_for_message :: (m: int) -> int {
+  if m == MSG_PICK || m == MSG_CELL { return SND_PICKUP; }
+  if m == SBM_DRILLING { return SND_DRILL; }
+  if m == MSG_BAD_CUT || m == EV_SPLICE_CORE { return SND_GLITCH; }
+  if m == MSG_OPEN || m == MSG_BROKE || m == MSG_FOE || m == SBM_RM_DOWN || m == MSG_CORE || m == EV_RESTORED { return SND_SUCCESS; }
+  if m == MSG_HIT || m == MSG_SMACK || m == MSG_STUN { return SND_HIT; }
+  if m == MSG_PING { return SND_SENSOR_PING; }
+  if m == SBM_CORE_IN || m == SBM_CORE_OUT || m == SBM_SWAP { return SND_SLOT_CLICK; }
+  if m == SBM_HUNT { return SND_RAIDER_MECH; }
+  if m == SBM_BOSS { return SND_BOSS_WAKE; }
+  if m == SBM_CHARGES { return SND_BOSS_CHARGE; }
+  if m == SBM_OPEN { return SND_BOSS_REEL; }
+  if m == SBM_CORE_DROP { return SND_BOSS_FALL; }
+  return -1;
+}
+
+SND_QUEUE :: 16; SND_LOG :: 200; SND_HIT_GAP :: 0.1f32; SND_BED_EVERY :: 2.0f32;
+// What has sounded, for the checks: each sound's id with the mode, zone and phase it sounded in.
+SndLog :: struct { id: int; mode: int; zone: int; phase: int; }
+SpSound :: struct {
+  q: [SND_QUEUE] int; q_n: int;                 // one-shots for the page to play
+  on: [SND_COUNT] bool; heard: [SND_COUNT] bool;  // the beds playing now, and the beds the page has been told of
+  beds_due: bool; beds_at: f32;
+  log: [SND_LOG] SndLog; log_n: int; fired: [SND_COUNT] int;
+  t: f32; hit_at: f32 = -1;
+  // what the step saw last: the rover, the robots, the Digger's card, a bot battle's health
+  ready: bool; aboard: bool; host: [FOES] bool; bot_state: int; bot_step: int; kind: int; mine: f32; foe: f32;
+}
+
+snd_note :: (g: [] SpGame, id: int) {
+  s := g[0].snd[..];
+  s[0].fired[id] += 1;
+  if s[0].log_n < SND_LOG { s[0].log[s[0].log_n] = SndLog.{id = id, mode = g[0].mode, zone = g[0].zone, phase = g[0].phase}; s[0].log_n += 1; }
+  g_event(g, SND_EVENT_BASE + id);   // a native host plays it by its name
+}
+// A one-shot now.
+snd_play :: (g: [] SpGame, id: int) {
+  if id < 0 || id >= SND_FIRST_BED { return; }
+  s := g[0].snd[..];
+  if id == SND_HIT { if s[0].hit_at >= 0 && s[0].t - s[0].hit_at < SND_HIT_GAP { return; } s[0].hit_at = s[0].t; }
+  snd_note(g, id);
+  if s[0].q_n < SND_QUEUE { s[0].q[s[0].q_n] = id; s[0].q_n += 1; }
+}
+// An event the game raised (g_event): a message's sound.
+snd_event :: (g: [] SpGame, e: int) { if e < SND_EVENT_BASE { snd_play(g, snd_for_message(e)); } }
+
+// In the rover: riding it, on the drive, in its room or its edit bay, or watching the core's memory there.
+snd_aboard :: (g: [] SpGame) -> bool {
+  m := g[0].mode;
+  return m == M_RIDE || m == M_DRIVE || m == M_BAY || m == M_MEMORY || m == M_RESTORED || (m == M_PLAY && g[0].zone == Z_MINE && sp_in_room(g));
+}
+snd_health :: (g: [] SpGame, side: int) -> f32 { return bb_health(bb_active(g[0].bt[0].fight[0], side)); }
+// The bed each place wants: one music loop at a time, and the board's hum under it.
+snd_want :: (g: [] SpGame, id: int) -> bool {
+  m := g[0].mode;
+  inside := m == M_BAY || (m == M_PLAY && g[0].zone == Z_MINE && sp_in_room(g));
+  desert := !inside && (m == M_RIDE || m == M_DRIVE || (m == M_PLAY && g[0].zone == Z_RAIL));
+  rave := !inside && m == M_PLAY && g[0].zone == Z_MINE && g_phase(g) == PH_NIGHT && ga_inside(g, g[0].px, g[0].pz);
+  riding := m == M_PLAY && g_riding(g);
+  if id == SND_ROVER_LOFI { return inside; }
+  if id == SND_DESERT_MUSIC { return desert; }
+  if id == SND_RAVE { return rave; }
+  if id == SND_HOVER_CASUAL { return riding && !g[0].board[0].fast; }
+  if id == SND_HOVER_FAST { return riding && g[0].board[0].fast; }
+  return false;
+}
+
+// First thing in a step: what changed since the last one, and the beds for where you are now.
+snd_tick :: (g: [] SpGame, dt: f32) {
+  s := g[0].snd[..];
+  s[0].t += dt;
+  front := fr_front(g);
+  if !front && s[0].ready {
+    aboard := snd_aboard(g);
+    if aboard != s[0].aboard { snd_play(g, SND_ROVER_DOOR); }
+    for i: 0..<FOES { if g[0].fhost[i] && !s[0].host[i] && g[0].fhp[i] > 0 { snd_play(g, SND_ROBOT_ALERT); break; } }
+    if g[0].bot_state == BOT_RUN && g[0].bot_step != s[0].bot_step && g[0].bot_step >= 0 && g[0].bot_step < g[0].strip_n {
+      c := g[0].strip[g[0].bot_step];
+      if c == H_DRILL || c == H_PLUS { snd_play(g, SND_DRILL); }
+    }
+    t := g[0].bt[0];
+    if t.kind != SBF_NONE && t.kind == s[0].kind && (snd_health(g, 0) < s[0].mine || snd_health(g, 1) < s[0].foe) { snd_play(g, SND_HIT); }
+  }
+  s[0].ready = !front;
+  s[0].aboard = snd_aboard(g);
+  for i: 0..<FOES { s[0].host[i] = g[0].fhost[i]; }
+  s[0].bot_state = g[0].bot_state; s[0].bot_step = g[0].bot_step;
+  s[0].kind = g[0].bt[0].kind;
+  if s[0].kind != SBF_NONE { s[0].mine = snd_health(g, 0); s[0].foe = snd_health(g, 1); }
+  snd_beds(g, front);
+  if s[0].t - s[0].beds_at >= SND_BED_EVERY { s[0].beds_due = true; }   // again now and then: audio may have started since
+}
+
+snd_beds :: (g: [] SpGame, front: bool) {
+  s := g[0].snd[..];
+  for id: SND_FIRST_BED..<SND_COUNT {
+    want := !front && snd_want(g, id);
+    if want == s[0].on[id] { continue; }
+    s[0].on[id] = want; s[0].beds_due = true;
+    if want { snd_note(g, id); }   // a bed's event is its start
+  }
+}
+// The edit bay opens (g_open_bay): the film's whir, and its loop at once (keys work the bay with no step between).
+snd_bay :: (g: [] SpGame) {
+  snd_play(g, SND_FILM_WHIR);
+  if g[0].snd[0].ready { g[0].snd[0].aboard = true; }   // through Sniper's own hatch already: no door
+  snd_beds(g, false);
+}
+
+// The page's lines (coax/web/host.js playSoundText): NAME GAIN PAN for each one-shot, and ~NAME GAIN PAN
+// for each bed the page has heard of (gain 0 when it is not wanted now). Emptied as it is read.
+snd_text :: (g: [] SpGame, out: [] u8) -> int {
+  s := g[0].snd[..]; n := 0;
+  for k: 0..<s[0].q_n { n = snd_line(out, n, "", s[0].q[k], SND_ROWS[s[0].q[k]].gain); }
+  s[0].q_n = 0;
+  if s[0].beds_due {
+    for id: SND_FIRST_BED..<SND_COUNT {
+      if !s[0].on[id] && !s[0].heard[id] { continue; }
+      s[0].heard[id] = true;
+      n = snd_line(out, n, "~", id, ifx s[0].on[id] then SND_ROWS[id].gain else 0);
+    }
+    s[0].beds_due = false; s[0].beds_at = s[0].t;
+  }
+  return n;
+}
+snd_line :: (out: [] u8, at: int, lead: string, id: int, gain: int) -> int {
+  if at + 48 > out.count { return at; }
+  n := tput(out, at, lead); n = tput(out, n, SND_ROWS[id].name); n = tput(out, n, " 0.");
+  if gain < 100 { n = tput(out, n, "0"); } if gain < 10 { n = tput(out, n, "0"); }
+  n = tput_int(out, n, gain); return tput(out, n, " 0\n");
+}
+
+// ---- The placeholders: a recipe for each sound (sfx.coax's layers), rendered by tools/sounds.coax.
+SND_RATE :: 8000;            // placeholders only: small files; a real sound sets its own
+SND_MAX_MS :: 2000;
+SND_MAX_FRAMES :: SND_MAX_MS * SND_RATE / 1000;
+snd_recipe :: (id: int) -> Sfx {
+  s := Sfx.{};
+  if id == SND_PICKUP {               // two bright blips up
+    s = sfx_add(s, sl_curve(sl(SFX_SQUARE, 0, 90, 2, 880, 880, 3000, 3000, 0, 700), 2));
+    s = sfx_add(s, sl_curve(sl(SFX_SQUARE, 80, 160, 2, 1320, 1320, 3000, 2000, 0, 700), 2));
+  } else if id == SND_DRILL {         // a grinding whine spinning up over grit
+    s = sfx_add(s, sl_vib(sl_curve(sl(SFX_SAW, 0, 480, 40, 180, 420, 1800, 2600, 80, 900), 1), 40, 30));
+    s = sfx_add(s, sl_curve(sl(SFX_CRACKLE, 0, 480, 20, 120, 260, 3500, 3500, 400, 600), 1));
+  } else if id == SND_GLITCH {        // a broken buzz that stutters
+    s = sfx_add(s, sl_vib(sl_curve(sl(SFX_SQUARE, 0, 260, 2, 140, 90, 2400, 1200, 0, 900), 1), 400, 23));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 60, 60, 1, 0, 0, 3500, 3500, 800, 600), 1));
+    s = sfx_add(s, sl_curve(sl(SFX_SQUARE, 160, 80, 1, 620, 300, 2500, 2500, 0, 500), 1));
+  } else if id == SND_SUCCESS {       // a rising three-note chime
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 220, 3, 523, 523, 0, 0, 0, 800), 2));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 110, 220, 3, 659, 659, 0, 0, 0, 800), 2));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 220, 320, 3, 784, 784, 0, 0, 0, 900), 2));
+  } else if id == SND_HIT {           // a metal clank
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 70, 1, 0, 0, 5000, 1500, 300, 1000), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 160, 1, 330, 180, 0, 0, 0, 700), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 120, 1, 1450, 1300, 0, 0, 0, 300), 3));
+  } else if id == SND_SENSOR_PING {   // a sonar ping with its echo
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 300, 2, 1600, 1560, 0, 0, 0, 900), 2));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 260, 300, 2, 1600, 1560, 0, 0, 0, 350), 2));
+  } else if id == SND_SLOT_CLICK {    // a latch: two clicks
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 20, 1, 0, 0, 6000, 4000, 1500, 1000), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 0, 40, 1, 2200, 1800, 0, 0, 0, 500), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 45, 25, 1, 0, 0, 5000, 3000, 1200, 700), 3));
+  } else if id == SND_FILM_WHIR {     // a projector's reel winding: a fluttering whir
+    s = sfx_add(s, sl_vib(sl_curve(sl(SFX_SAW, 0, 560, 60, 90, 130, 900, 1400, 60, 700), 1), 300, 18));
+    s = sfx_add(s, sl_curve(sl(SFX_CRACKLE, 0, 560, 40, 36, 36, 3000, 3000, 600, 600), 1));
+  } else if id == SND_ROVER_DOOR {    // a hatch: a hiss, then a thunk
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 260, 20, 0, 0, 4000, 1500, 600, 700), 1));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 230, 160, 1, 120, 70, 0, 0, 0, 1000), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 230, 50, 1, 0, 0, 2000, 800, 100, 600), 3));
+  } else if id == SND_ROBOT_ALERT {   // two quick alarm tones
+    s = sfx_add(s, sl_curve(sl(SFX_SQUARE, 0, 120, 2, 990, 990, 2500, 2500, 0, 800), 0));
+    s = sfx_add(s, sl_curve(sl(SFX_SQUARE, 150, 120, 2, 990, 990, 2500, 2500, 0, 800), 0));
+    s = sfx_add(s, sl_curve(sl(SFX_SQUARE, 0, 270, 2, 740, 740, 2000, 2000, 0, 300), 0));
+  } else if id == SND_RAIDER_MECH {   // a heavy servo roar and a stomp
+    s = sfx_add(s, sl_vib(sl_curve(sl(SFX_SAW, 0, 700, 80, 70, 110, 700, 1200, 40, 900), 1), 60, 9));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 380, 260, 2, 90, 45, 0, 0, 0, 1000), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 380, 120, 1, 0, 0, 1500, 500, 80, 600), 3));
+  } else if id == SND_BOSS_WAKE {     // a deep power-up sweep with a horn under it
+    s = sfx_add(s, sl_curve(sl(SFX_SAW, 0, 900, 300, 50, 160, 400, 1600, 30, 900), 1));
+    s = sfx_add(s, sl_curve(sl(SFX_SQUARE, 300, 600, 100, 110, 110, 800, 800, 0, 500), 1));
+  } else if id == SND_BOSS_CHARGE {   // a winding rush
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 600, 400, 0, 0, 600, 4000, 200, 800), 1));
+    s = sfx_add(s, sl_curve(sl(SFX_SAW, 0, 600, 300, 80, 320, 1200, 2500, 40, 600), 1));
+  } else if id == SND_BOSS_REEL {     // a wobbling power-down
+    s = sfx_add(s, sl_vib(sl_curve(sl(SFX_SAW, 0, 600, 5, 260, 70, 1600, 500, 40, 900), 1), 200, 7));
+    s = sfx_add(s, sl_curve(sl(SFX_CRACKLE, 0, 500, 5, 60, 20, 4000, 2000, 500, 500), 2));
+  } else if id == SND_BOSS_FALL {     // a long fall and a crash
+    s = sfx_add(s, sl_curve(sl(SFX_SAW, 0, 800, 5, 200, 40, 1400, 300, 30, 800), 1));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 600, 500, 2, 0, 0, 2500, 400, 60, 1000), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 600, 400, 2, 70, 35, 0, 0, 0, 1000), 3));
+  } else if id == SND_HOVER_CASUAL {  // loop: a soft hum with a slow wobble
+    s.loop = 100;
+    s = sfx_add(s, sl_curve(sl_vib(sl(SFX_SAW, 0, 1100, 1, 110, 110, 500, 500, 40, 800), 15, 3), 0));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 1100, 1, 0, 0, 900, 900, 200, 250), 0));
+    s.ms = 1000;
+  } else if id == SND_HOVER_FAST {    // loop: a higher, rushing whine
+    s.loop = 100;
+    s = sfx_add(s, sl_curve(sl_vib(sl(SFX_SAW, 0, 1100, 1, 220, 220, 1400, 1400, 60, 800), 25, 6), 0));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 0, 1100, 1, 0, 0, 3000, 3000, 600, 500), 0));
+    s.ms = 1000;
+  } else if id == SND_ROVER_LOFI {    // loop: a warm chord, vinyl crackle, a soft kick and a hat
+    s.loop = 100;
+    s = sfx_add(s, sl_curve(sl_vib(sl(SFX_SINE, 0, 1700, 1, 220, 220, 0, 0, 0, 600), 8, 1), 0));
+    s = sfx_add(s, sl_curve(sl_vib(sl(SFX_SINE, 0, 1700, 1, 277, 277, 0, 0, 0, 450), 8, 1), 0));
+    s = sfx_add(s, sl_curve(sl(SFX_CRACKLE, 0, 1700, 1, 25, 25, 3000, 3000, 500, 300), 0));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 200, 220, 2, 100, 50, 0, 0, 0, 900), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 1000, 80, 2, 0, 0, 7000, 7000, 3000, 300), 3));
+    s.ms = 1600;
+  } else if id == SND_DESERT_MUSIC {  // loop: a slow detuned pad, vaporwave
+    s.loop = 120;
+    s = sfx_add(s, sl_curve(sl_vib(sl(SFX_SAW, 0, 1920, 1, 147, 147, 900, 900, 40, 700), 12, 1), 0));
+    s = sfx_add(s, sl_curve(sl_vib(sl(SFX_SAW, 0, 1920, 1, 175, 175, 900, 900, 40, 600), 14, 1), 0));
+    s = sfx_add(s, sl_curve(sl_vib(sl(SFX_SINE, 0, 1920, 1, 220, 220, 0, 0, 0, 500), 6, 2), 0));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 300, 700, 300, 440, 440, 0, 0, 0, 250), 1));
+    s.ms = 1800;
+  } else if id == SND_RAVE {          // loop: four on the floor, a hat between, a chanted "oh" over it
+    s.loop = 60;
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 100, 200, 1, 150, 45, 0, 0, 0, 1000), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_SINE, 600, 200, 1, 150, 45, 0, 0, 0, 1000), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 350, 60, 1, 0, 0, 8000, 8000, 4000, 400), 3));
+    s = sfx_add(s, sl_curve(sl(SFX_NOISE, 850, 60, 1, 0, 0, 8000, 8000, 4000, 400), 3));
+    s = sfx_add(s, sl_curve(sl_vib(sl(SFX_SAW, 0, 1060, 1, 196, 196, 700, 700, 150, 500), 20, 5), 0));
+    s = sfx_add(s, sl_curve(sl(SFX_SAW, 0, 1060, 1, 98, 98, 400, 400, 40, 450), 0));
+    s.ms = 1000;
+  }
+  return s;
+}
+// Sound `id`'s placeholder as WAV bytes into out.
+snd_render :: (id: int, mix: [] int, out: [] u8) -> SfxRender {
+  if id < 0 || id >= SND_COUNT { return SfxRender.{}; }
+  return sfx_render_recipe(snd_recipe(id), 61001 + id * 977, SND_RATE, mix, out);
+}
+
+#test "every sound has a name, a file named for it, a level and a placeholder that fits" {
+  for i: 0..<SND_COUNT {
+    r := SND_ROWS[i];
+    #assert snd_id(r.name) == i && r.gain > 0 && r.gain < 1000;
+    #assert r.file.count == r.name.count + 4 && r.file[0..<r.name.count] == r.name && r.file[r.name.count..<r.file.count] == ".wav";
+    s := snd_recipe(i);
+    #assert s.n > 0 && s.ms > 0 && s.ms + s.loop <= SND_MAX_MS && (s.loop > 0) == snd_loop(i);
+  }
+  #assert snd_id("nothing") == -1;
+}
+#test "each placeholder renders loud WAV bytes, the same each time, and small" #steps 900000000 {
+  mix: [SND_MAX_FRAMES] int; a: [WAV_HEADER + 2 * SND_MAX_FRAMES] u8; b: [WAV_HEADER + 2 * SND_MAX_FRAMES] u8;
+  for id: 0..<SND_COUNT {
+    r := snd_render(id, mix[..], a[..]);
+    #assert r.ok && r.peak > 0 && r.bytes <= 32000;
+    q := snd_render(id, mix[..], b[..]);
+    same := q.bytes == r.bytes;
+    for i: 0..<r.bytes { if a[i] != b[i] { same = false; } }
+    #assert same;
+  }
+}
+#test "a message plays its sound and its event; a sound's own event plays nothing more" {
+  g := [1] SpGame.[SpGame.{}];
+  g_say(g[..], MSG_PICK);
+  #assert g[0].snd[0].fired[SND_PICKUP] == 1 && g[0].snd[0].q_n == 1 && g[0].event_n == 2 && g[0].events[0] == MSG_PICK && g[0].events[1] == SND_EVENT_BASE + SND_PICKUP;
+  g_say(g[..], MSG_NEED);
+  #assert g[0].snd[0].q_n == 1 && g[0].event_n == 3;
+  o: [256] u8; n := snd_text(g[..], o[..]);
+  #assert cast(string) o[0..<n] == "pickup 0.450 0\n" && g[0].snd[0].q_n == 0;
+  // hits close together are one sound
+  g[0].snd[0].t = 1; g_say(g[..], MSG_HIT); g_say(g[..], MSG_STUN);
+  #assert g[0].snd[0].fired[SND_HIT] == 1;
+  g[0].snd[0].t = 1.2; g_say(g[..], MSG_HIT);
+  #assert g[0].snd[0].fired[SND_HIT] == 2;
+}
+#test "a bed is said once when it starts, and the page is told its level again now and then" {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5); g[0].zone = Z_RAIL; g[0].mode = M_PLAY;
+  snd_tick(g[..], 0.02);
+  #assert g[0].snd[0].on[SND_DESERT_MUSIC] && g[0].snd[0].fired[SND_DESERT_MUSIC] == 1;
+  o: [512] u8; n := snd_text(g[..], o[..]);
+  #assert cast(string) o[0..<n] == "~desert-music 0.320 0\n";
+  snd_tick(g[..], 0.02); #assert snd_text(g[..], o[..]) == 0;
+  snd_tick(g[..], 2.5); n = snd_text(g[..], o[..]); #assert cast(string) o[0..<n] == "~desert-music 0.320 0\n";
+  g[0].zone = Z_MINE; snd_tick(g[..], 0.02); n = snd_text(g[..], o[..]);
+  #assert cast(string) o[0..<n] == "~desert-music 0.000 0\n" && g[0].snd[0].fired[SND_DESERT_MUSIC] == 1;
+}

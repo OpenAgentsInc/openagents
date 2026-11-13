@@ -14,6 +14,7 @@ for people and agents who change the code.
 | `splice-bots.coax` | The page's frame, the still scenes, and the host's exports |
 | `splice-battle.coax` | Bot battles, the drill mech, the raider mech, the boss and the ending (below) |
 | `splice-cast.coax` | The five characters of the slice |
+| `sound.coax`, `sound-checks.coax`, `tools/sounds.coax` | The sound table, the moments each sound plays, its checks, and the tool that writes the placeholder files (below) |
 | `director.coax` | The Director's systems (#13505): the key map, sneaking, Digger picking up parts by his sensor's range, pointing him with a left click, the inventory grid, Heat's sensing range, the health bars, towing and charging Digger, the map and pause |
 | `gpu/splice-bots.coax` | The shaders: Anime Lab's cel pass, the placed pieces' instances, and the ink overlay |
 | `splice-face.c`, `splice-ue-face.c` | The C faces for the browser and for a native host |
@@ -65,7 +66,8 @@ picks).
 | Character | Body, outfit, height, skin, hair and face on the crew document, shown on a turntable. USE THIS CHARACTER keeps it in the crew page's record (`/worlds/crew` reads the same one) and starts a run |
 | Credits | The `credits` table's lines |
 
-There is no SETTINGS row: Splice Bots has no sound and nothing a setting would change yet.
+There is no SETTINGS row: nothing a setting would change yet. Sound has no volume control; it
+starts with your first click or key on the title screen (the browser's rule).
 
 You play as your character. `metaverse-engine/kit/crew-player.coax` writes ten poses of a walk
 cycle from the crew document (the legs and arms swing at the hips and shoulders) into the piece
@@ -159,6 +161,43 @@ to tow him, and Sniper's charger charges him back up. A foe Digger fights strike
   the walk replay's walker, and the run takes the shortcut.
 - **The ending.** SPLICE CORE in Sniper's edit bay plays the 15-second memory hologram with its
   three captions, then SCENE RESTORED, then the mission's teaser with RESTART.
+
+## Sound
+
+`sound.coax` holds the sound table: 20 sounds, each an event with a name, a file and a level. The
+page plays each by its name from `apps/openagents-web/realms/splice-bots/assets/sounds/NAME.wav`
+(`apps/openagents-web/realms.json` lists each as a `sound:` asset). The files there now are
+placeholders from the Metaverse Engine's synthesizer (`metaverse-engine/audio/sfx.coax`), each a few
+KB. To use a real sound, replace the file and keep its name.
+
+| Sound | When it plays |
+| --- | --- |
+| `pickup` | A part, a card or a battery cell picked up |
+| `drill` | Digger's DRILL card starts on the rubble; the drill mech starts on the hallway |
+| `glitch` | A bad cut; the core's memory starting |
+| `success` | The rubble opens, the hallway breaks, a fight won, the raider mech down, the core taken, SCENE RESTORED |
+| `hit` | You hurt, a foe hit, a stun, a blow in a bot battle |
+| `sensor-ping` | The rover's sensor pings and stops it on the rail |
+| `slot-click` | Edit bay: a part or card set in its slot; Digger's core into or out of the drill mech |
+| `film-whir` | The edit bay opens |
+| `rover-door` | Into or out of the rover |
+| `robot-alert` | A robot sees you and comes for you |
+| `raider-mech` | The raider mech gives chase on the drive |
+| `boss-wake`, `boss-charge`, `boss-reel`, `boss-fall` | The boss's battle begins; it charges; it reels; it powers down |
+| `hover-casual`, `hover-fast` | Loops: the hoverboard at each speed |
+| `rover-lofi` | Loop: inside the rover (its room and the edit bay) |
+| `desert-music` | Loop: on the drive and in the desert |
+| `rave-loop` | Loop: in the garage at night |
+
+A sound that a message brings is the message's (`snd_for_message`); the rest are watched each step
+(`snd_tick`). `sound-checks.coax` checks that each sound plays at its moment in the scripted full run,
+and the board, the rave, a robot's alert and the boss's charge and reel in short scenes of their own.
+`coax/web/tool.sh metaverse/splice-bots/tools/sounds.coax --log` prints the run's sounds in order;
+`--write` writes any missing placeholder, `--check` fails when a file or its `sound:` asset is missing.
+
+Each sound is also an event (`splice_events`, number 200 plus its row), named in the Unreal bundle's
+manifest, so a row `event.NAME` of the Unreal host's overrides table plays a sound there. A loop's
+event is its start.
 
 ## Edit layer
 

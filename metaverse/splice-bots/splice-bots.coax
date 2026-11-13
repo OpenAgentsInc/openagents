@@ -675,6 +675,8 @@ splice_events :: (s: [] Splice, out: [] f32) -> int #export_c #effects(all) {
   g[0].event_n = 0;
   return n;
 }
+// The page's sound lines since the last call (sound.coax snd_text): NAME GAIN PAN, ~NAME GAIN PAN for a loop.
+splice_sounds :: (s: [] Splice, out: [] u8) -> int #export_c #effects(all) { return ifx s.count < 1 || s[0].gallery then 0 else snd_text(s[0].game[..], out); }
 splice_world_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].world_n; }
 splice_world_version :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].world_gen; }
 splice_live_n :: (s: [] Splice) -> int #export_c #effects(all) { return s[0].live_n; }

@@ -280,8 +280,10 @@ tool_main :: () -> int #export_c #effects(all) {
   // what aethyr_events reports, by number
   jo_key(j, "events"); jo_obj(j);
   ex_int(j, "bad-cut", MSG_BAD_CUT); ex_int(j, "rubble-open", MSG_OPEN); ex_int(j, "wall-broke", MSG_BROKE); ex_int(j, "boss-down", MSG_DOWN); ex_int(j, "hurt", MSG_HIT);
-  ex_int(j, "stun", MSG_STUN); ex_int(j, "pickup", MSG_PICK); ex_int(j, "core", MSG_CORE); ex_int(j, "ping", MSG_PING); ex_int(j, "foe-down", MSG_FOE);
+  ex_int(j, "stun", MSG_STUN); ex_int(j, "picked-up", MSG_PICK); ex_int(j, "core", MSG_CORE); ex_int(j, "ping", MSG_PING); ex_int(j, "foe-down", MSG_FOE);
   ex_int(j, "cell", MSG_CELL); ex_int(j, "smack", MSG_SMACK); ex_int(j, "splice-core", EV_SPLICE_CORE); ex_int(j, "restored", EV_RESTORED);
+  // each sound by its name in the sound table (sound.coax): an overrides row event.NAME plays it; a loop's event is its start
+  for k: 0..<SND_COUNT { ex_int(j, SND_ROWS[k].name, SND_EVENT_BASE + k); }
   jo_end(j);
 
   // the codes g_key takes: a letter is its character code, the rest are these

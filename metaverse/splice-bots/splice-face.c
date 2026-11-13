@@ -117,6 +117,10 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
 // what moves, written every frame; store 2 the meshes of the kinds of placed piece, written once;
 // store 3 a row for each placed piece, written when the edit layer changes. A kind's placed
 // pieces are one draw of its mesh, an instance each (gpu/splice-bots.coax scene_vs).
+/* the sounds to play now, a line each (sound.coax): read once a frame, after its length */
+static uint8_t sounds[2048];
+EXPORT("coaxial_sounds_len") uint32_t coaxial_sounds_len(uint32_t state) { return (uint32_t)splice_sounds(at(state), (coax_v_u8){sounds, sizeof sounds}); }
+EXPORT("coaxial_sounds") uint32_t coaxial_sounds(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)sounds; }
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)splice_state(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)splice_draw_count(at(state)); }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }

@@ -1,0 +1,102 @@
+// The checks of Splice Bots' sound (sound.coax): each sound at its moment in the scripted full run
+// (g_play_run), and the ones the run does not reach (the board, the rave, a robot's alert, the boss's
+// charge and reel) in a short scene of their own. splice-game.coax loads this file with `#load ... #test;`.
+
+// A sound expected in the log: by name, in this mode, zone and phase.
+SndAt :: struct { name: string; mode: int; zone: int; phase: int; }
+sck_at :: (name: string, mode: int, zone: int, phase: int) -> SndAt { return SndAt.{name = name, mode = mode, zone = zone, phase = phase}; }
+// The first entry from `from` on that is `e`, or -1.
+sck_find :: (s: SpSound, from: int, e: SndAt) -> int {
+  id := snd_id(e.name);
+  for i: from..<s.log_n { l := s.log[i]; if l.id == id && l.mode == e.mode && l.zone == e.zone && l.phase == e.phase { return i; } }
+  return -1;
+}
+sck_heard :: (g: [] SpGame, name: string) -> int { return g[0].snd[0].fired[snd_id(name)]; }
+sck_has :: (t: string, part: string) -> bool {
+  for i: 0..<t.count - part.count + 1 { if t[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+SCK_RUN :: 36;
+#test "the scripted run sounds each sound at its moment, in order" #steps 800000000 {
+  g := [1] SpGame.[SpGame.{}];
+  #assert g_play_run(g[..]) == 0;
+  want := [SCK_RUN] SndAt.[
+    // out of the village aboard the rover, the desert's music, the sensor's ping stops it, the Battery
+    sck_at("rover-door", M_RIDE, Z_RAIL, PH_DAY), sck_at("desert-music", M_RIDE, Z_RAIL, PH_DAY),
+    sck_at("sensor-ping", M_PLAY, Z_RAIL, PH_DAY), sck_at("rover-door", M_PLAY, Z_RAIL, PH_DAY), sck_at("pickup", M_PLAY, Z_RAIL, PH_DAY),
+    // back aboard: the raider mech gives chase, blows in the battle, the mech down
+    sck_at("rover-door", M_RIDE, Z_RAIL, PH_DAY), sck_at("raider-mech", M_RIDE, Z_RAIL, PH_DAY), sck_at("hit", M_RIDE, Z_RAIL, PH_DAY), sck_at("success", M_RIDE, Z_RAIL, PH_DAY),
+    // out at the mine: four pickups, then the edit bay: its whir, its loop, five slots
+    sck_at("rover-door", M_PLAY, Z_MINE, PH_DAY), sck_at("pickup", M_PLAY, Z_MINE, PH_DAY), sck_at("pickup", M_PLAY, Z_MINE, PH_DAY), sck_at("pickup", M_PLAY, Z_MINE, PH_DAY), sck_at("pickup", M_PLAY, Z_MINE, PH_DAY),
+    sck_at("film-whir", M_BAY, Z_MINE, PH_DAY), sck_at("rover-lofi", M_BAY, Z_MINE, PH_DAY),
+    sck_at("slot-click", M_BAY, Z_MINE, PH_DAY), sck_at("slot-click", M_BAY, Z_MINE, PH_DAY), sck_at("slot-click", M_BAY, Z_MINE, PH_DAY), sck_at("slot-click", M_BAY, Z_MINE, PH_DAY), sck_at("slot-click", M_BAY, Z_MINE, PH_DAY),
+    // Digger's DRILL card on the rubble, which opens at dusk; the cell and the special part
+    sck_at("rover-door", M_PLAY, Z_MINE, PH_DAY), sck_at("drill", M_PLAY, Z_MINE, PH_DAY), sck_at("success", M_PLAY, Z_MINE, PH_DUSK),
+    sck_at("pickup", M_PLAY, Z_MINE, PH_DUSK), sck_at("pickup", M_PLAY, Z_MINE, PH_DUSK),
+    // the bay again; Digger's core into the drill mech, its drill, the hallway down
+    sck_at("film-whir", M_BAY, Z_MINE, PH_DUSK), sck_at("slot-click", M_PLAY, Z_MINE, PH_DUSK), sck_at("drill", M_PLAY, Z_MINE, PH_DUSK), sck_at("success", M_PLAY, Z_MINE, PH_DUSK),
+    // the boss wakes, takes blows and falls at night; the core
+    sck_at("boss-wake", M_PLAY, Z_MINE, PH_DUSK), sck_at("hit", M_PLAY, Z_MINE, PH_DUSK), sck_at("boss-fall", M_PLAY, Z_MINE, PH_NIGHT), sck_at("success", M_PLAY, Z_MINE, PH_NIGHT),
+    // the core spliced: the memory glitches in, and the scene is restored
+    sck_at("film-whir", M_BAY, Z_MINE, PH_NIGHT), sck_at("glitch", M_MEMORY, Z_MINE, PH_NIGHT)];
+  s := g[0].snd[0]; at := 0;
+  for e: want { k := sck_find(s, at, e); #assert k >= 0; at = k + 1; }
+  #assert sck_find(s, at, sck_at("success", M_RESTORED, Z_MINE, PH_NIGHT)) >= 0;
+  // the music starts once on the rail, and each sound reached a native host as its event
+  #assert sck_heard(g[..], "desert-music") == 1 && sck_heard(g[..], "rover-lofi") == 3;
+}
+
+#test "the board hums casual and whines fast, and stops when she steps off" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 5); g[0].c[0].board = board_row_read(1, "on", 700, 2200);
+  g_step(g[..], 0.02);
+  #assert sp_q(g[..]); g_step(g[..], 0.02);   // Q: on the board, casual
+  s := g[0].snd[..];
+  #assert s[0].on[SND_HOVER_CASUAL] && !s[0].on[SND_HOVER_FAST] && sck_heard(g[..], "hover-casual") == 1;
+  o: [512] u8; n := snd_text(g[..], o[..]); #assert sck_has(cast(string) o[0..<n], "~hover-casual 0.220 0\n");
+  for i: 0..<30 { g_step(g[..], 0.02); }
+  #assert sp_q(g[..]); g_step(g[..], 0.02);   // Q again: fast
+  #assert s[0].on[SND_HOVER_FAST] && !s[0].on[SND_HOVER_CASUAL] && sck_heard(g[..], "hover-fast") == 1;
+  n = snd_text(g[..], o[..]); #assert sck_has(cast(string) o[0..<n], "~hover-casual 0.000 0\n~hover-fast 0.300 0\n");
+  for i: 0..<30 { g_step(g[..], 0.02); }
+  #assert g_key(g[..], 'q', true); for i: 0..<40 { g_step(g[..], 0.02); } _ = g_key(g[..], 'q', false);   // Q held: off
+  #assert !g_riding(g[..]) && !s[0].on[SND_HOVER_FAST] && !s[0].on[SND_HOVER_CASUAL];
+  n = snd_text(g[..], o[..]);
+  t := cast(string) o[0..<n];   // the page is told both are silent now
+  #assert sck_has(t, "~hover-casual 0.000 0\n") && sck_has(t, "~hover-fast 0.000 0\n");
+}
+
+#test "the garage at night plays the rave, and a robot that sees her sounds its alert" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 8); g[0].heat = 0;
+  g[0].px = g[0].fx[1] + 1.5; g[0].pz = g[0].fz[1];
+  g_step(g[..], 0.02);
+  #assert g[0].snd[0].on[SND_RAVE] && sck_heard(g[..], "rave-loop") == 1 && sck_heard(g[..], "robot-alert") == 0;
+  g[0].px = g[0].fx[5] - 3; g[0].pz = g[0].fz[5] + 1;   // beside an Imperial robot's patrol
+  g_step(g[..], 0.02); g_step(g[..], 0.02);
+  #assert g[0].fhost[5] && sck_heard(g[..], "robot-alert") == 1;
+  // the same garage by day has no rave
+  g[0].phase = PH_DUSK; g_step(g[..], 0.02);
+  #assert !g[0].snd[0].on[SND_RAVE];
+}
+
+#test "the boss's cues: it wakes, charges below half health, and reels after" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 10); for i: 0..<3 { g[0].stun[i] = 0; }
+  t := g[0].bt[..];
+  g_step(g[..], 0.02);
+  #assert sck_heard(g[..], "boss-wake") == 1;
+  t[0].fight[0].sides[1].bots[0].vit.hp = 30; g[0].px = 4; g[0].pz = -76;
+  g_step(g[..], 0.02);
+  #assert sck_heard(g[..], "boss-charge") == 1 && sck_heard(g[..], "boss-reel") == 0;
+  t[0].charge_t = SB_CHARGE_EVERY;
+  for i: 0..<300 { g_step(g[..], 0.02); if t[0].daze > 0 { break; } }
+  #assert t[0].daze > 0 && sck_heard(g[..], "boss-reel") == 1;
+}
+
+#test "a bad cut sounds the glitch, and a native host hears it by its event" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_say(g[..], MSG_BAD_CUT);
+  #assert sck_heard(g[..], "glitch") == 1 && g[0].events[1] == SND_EVENT_BASE + SND_GLITCH;
+}
