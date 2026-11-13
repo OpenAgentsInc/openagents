@@ -150,6 +150,24 @@ not a flat folder scan.
   - a fly camera;
   - play, pause and step on the agent clock;
   - "simulate", which runs the World without the player.
+- **As built (E8, #13417):** `metaverse-engine/editor/viewport.coax` is the
+  one module of the viewport's tools. A realm keeps one `Viewport`, gives it
+  the pointer while a tool is picked, and reads back the selection, the edit a
+  drag made and the view.
+  - A tap picks with `vp_pick`, which is `query_ray` on the realm's colliders,
+    and marks the point as "here".
+  - Move, Turn and Size are drags on the selected thing that end as one typed
+    edit. A move snaps to a grid of 10, 25, 50 or 100 cm, a turn to 15 degrees
+    and a size to 5 percent.
+  - Fly frees the camera: W, S, A and D move it, Q and E lower and raise it,
+    and a drag looks around.
+  - Pause stops the World, Step runs one sixtieth of a second, and Simulate
+    runs the World with the player's hands off.
+
+  The shell's strip picks the tool, the grid and the rest, and Add places a
+  new thing at "here". `coax drive` taps and drags at points of the page
+  (`tap X Y`, `drag X0 Y0 X1 Y1`). Splice is the first realm
+  (`metaverse/splice/world.coax`, `spv_*`).
 - **Assets:** an asset browser over the realm's pack and the shared kits.
   Drop a glTF, PNG or audio file to add it: it is packed with a declared
   licence (`metaverse-engine/editor/pack.coax`) and appears in the browser.

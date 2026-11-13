@@ -21,10 +21,11 @@
   "k KIND NAME",
   "e ID KIND X Y Z YAW SCALE",
   "c KIND COLUMN VALUE",
+  "here X Z",
   "no WORDS"
  ],
  "model": {
-  "wire": "editor.model.v1 splice dev 7 3 1 2\ncols x z yaw\nk 1001 Cargo crate\nk 1002 Parked rover\ne 1 1001 350 0 -1200 90 100\ne 2 1002 -40 12 600 -179 100\nc 1002 kit rover\nc 1002 scale 1.5\nno That spot is inside the Scanner gate, which stays clear.\n",
+  "wire": "editor.model.v1 splice dev 7 3 1 2\ncols x z yaw\nk 1001 Cargo crate\nk 1002 Parked rover\ne 1 1001 350 0 -1200 90 100\ne 2 1002 -40 12 600 -179 100\nc 1002 kit rover\nc 1002 scale 1.5\nhere 420 -75\nno That spot is inside the Scanner gate, which stays clear.\n",
   "world": "splice",
   "lane": "dev",
   "rev": 7,
@@ -33,7 +34,11 @@
   "selected": 2,
   "kinds": 2,
   "entities": 2,
-  "cells": 2
+  "cells": 2,
+  "here": [
+   420,
+   -75
+  ]
  },
  "empty": {
   "wire": "editor.model.v1 splice live 0 0 0 0\ncols\n"
@@ -46,6 +51,7 @@
   "editor.model.v1 splice dev 0 0 0 0\ncols\ne 01 5 0 0 0 0 100\n",
   "editor.model.v1 splice dev 0 0 0 0\ncols\ne 1 5 0 0 0 0 100 extra\n",
   "editor.model.v1 splice dev 0 0 0 0\ncols\nx what\n",
-  "editor.model.v1 splice test 0 0 0 0\ncols\n"
+  "editor.model.v1 splice test 0 0 0 0\ncols\n",
+  "editor.model.v1 splice dev 0 0 0 0\ncols\nhere 1\n"
  ]
 }

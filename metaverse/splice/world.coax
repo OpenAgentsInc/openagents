@@ -21,6 +21,7 @@
 #load "../../metaverse-engine/editor/world-live.coax";
 #load "../../metaverse-engine/editor/world-follow.coax";
 #load "../../metaverse-engine/editor/shell-model.coax";
+#load "../../metaverse-engine/editor/viewport.coax";
 
 SPW_ID :: "splice";
 SPW_ENGINE :: 1;     // the document's reader: raised when world.doc.v1's reading here changes
@@ -276,7 +277,8 @@ SpwPage :: struct {
   // what the editor shell is told (shell-model.coax, GitHub #13416): the selected piece's number on the
   // wire (0: none), the revision this page's last write made, and the model with what it was made from
   sel: int; own_rev: int = -1;
-  model: [EM_BYTES] u8; model_n: int; model_rev: int; model_key: [8] int;
+  here: bool; here_x: int; here_z: int;   // the last point tapped on the ground (viewport.coax), centimetres
+  model: [EM_BYTES] u8; model_n: int; model_rev: int; model_key: [10] int;
 }
 // The page opens the world on a lane: dev for someone who edits, live for someone who plays.
 spw_page_open :: (g: [] SpGame, p: [] SpwPage, lane: int) -> bool { return wf_open(p[0].f[..], SPW_ID, lane, spw_pins(g)); }
@@ -354,11 +356,13 @@ spw_model :: (g: [] SpGame, p: [] SpwPage) -> string {
     if f[0].undo < 1 { f[0].undo = 1; } if f[0].redo < 1 { f[0].redo = 1; }
     p[0].own_rev = f[0].rev;
   }
-  key: [8] int;
+  key: [10] int;
+  key[8] = ifx p[0].here then p[0].here_x else -1; key[9] = ifx p[0].here then p[0].here_z else -1;
   key[0] = l[0].rev; key[1] = f[0].rev; key[2] = f[0].undo; key[3] = f[0].redo; key[4] = p[0].sel;
   key[5] = f[0].refused_n * 1000 + f[0].refused_status; key[6] = f[0].status; key[7] = f[0].sent;
   same := p[0].model_n > 0;
   for k: 0..<7 { if key[k] != p[0].model_key[k] { same = false; } }
+  if key[8] != p[0].model_key[8] || key[9] != p[0].model_key[9] { same = false; }
   // (a refusal in the same words as the last is a new one when a request went between them)
   if key[7] != p[0].model_key[7] && f[0].refused_n > 0 { same = false; }
   if same { return cast(string) p[0].model[0..<p[0].model_n]; }
@@ -384,6 +388,7 @@ spw_model :: (g: [] SpGame, p: [] SpwPage) -> string {
       n = em_cell(out, n, pc.id, names[k], cast(string) num[0..<m]);
     }
   }
+  if p[0].here { n = em_here(out, n, p[0].here_x, p[0].here_z); }
   if f[0].refused_n > 0 { n = em_no(out, n, wf_refused(f)); }
   p[0].model_n = ifx n > out.count then 0 else n;
   p[0].model_rev += 1;
@@ -395,4 +400,77 @@ spw_shell_batch :: (p: [] SpwPage, body: string) -> bool {
   if wf_post(f, body) { return true; }
   f[0].refused_n = em_copy(f[0].refused[..], "The last change is still on its way. Try again."); f[0].refused_status = 1;
   return false;
+}
+
+// ---- the viewport's tools on Splice (GitHub #13417, the browser editor's E8; metaverse-engine/editor/viewport.coax)
+
+// The placed pieces as boxes for a pick: each piece's footprint as it is turned, as tall as its kind.
+SpvWork :: struct { boxes: [SL_ITEMS * QUERY_BOX] f32; ids: [SL_ITEMS] int; n: int; }
+spv_boxes :: (g: [] SpGame, w: [] SpvWork) -> Colliders {
+  l := g[0].layer[..]; c := g[0].c[..]; n := 0;
+  for i: 0..<l[0].st[0].n {
+    item := l[0].items[i];
+    r := sc_piece(c, item.mesh);
+    if r < 0 || n >= SL_ITEMS { continue; }
+    pc := c[0].pieces[r];
+    ex := abs(cos(item.yaw)) * pc.hx + abs(sin(item.yaw)) * pc.hz; ez := abs(sin(item.yaw)) * pc.hx + abs(cos(item.yaw)) * pc.hz;
+    o := n * QUERY_BOX;
+    w[0].boxes[o] = item.x - ex; w[0].boxes[o + 1] = item.y; w[0].boxes[o + 2] = item.z - ez;
+    w[0].boxes[o + 3] = item.x + ex; w[0].boxes[o + 4] = item.y + pc.top; w[0].boxes[o + 5] = item.z + ez;
+    w[0].ids[n] = item.id + 1; n += 1;
+  }
+  w[0].n = n;
+  return Colliders.{ground = ground_y(g, g[0].px, g[0].pz), boxes = w[0].boxes[0..<n * QUERY_BOX]};
+}
+// The selected piece as the gizmo holds it (id 0: none).
+spv_thing :: (g: [] SpGame, p: [] SpwPage) -> VpThing {
+  i := ifx p[0].sel > 0 then sl_item(g, p[0].sel - 1) else -1;
+  if i < 0 { return VpThing.{}; }
+  item := g[0].layer[0].items[i];
+  return VpThing.{id = p[0].sel, x = we_cm(item.x), y = we_cm(item.y), z = we_cm(item.z), yaw = we_deg(item.yaw), scale = 100};
+}
+// The pointer in the world while a tool is picked: a tap selects the piece under it (or nothing) and
+// marks the point as "here"; a drag with the move, turn or size tool ends as one edit, sent as this
+// page's own write; with the camera flying, a drag that holds nothing looks around.
+spv_pointer :: (g: [] SpGame, p: [] SpwPage, vp: [] Viewport, w: [] SpvWork, v: VpView, x: f32, y: f32, phase: int) {
+  if phase == 0 { vp_press(vp, x, y, spv_thing(g, p)); return; }
+  if phase == 1 {
+    if vp[0].down && !vp[0].holding && vp[0].fly { vp_fly_look(vp, x - vp[0].x, y - vp[0].y); }
+    vp_drag(vp, v, x, y);
+    return;
+  }
+  if phase == 3 { vp_cancel(vp); return; }
+  r := vp_release(vp);
+  if r.tap {
+    ray := vp_ray(v, r.x, r.y);
+    hit := query_ray(spv_boxes(g, w), ray.o, ray.d, VP_FAR);
+    spw_select(g, p, ifx hit.hit && hit.shape == QueryShape.box && hit.index >= 0 && hit.index < w[0].n then w[0].ids[hit.index] else 0);
+    if hit.hit { vp_here(vp, VpSpot.{ok = true, x = ray.o.x + ray.d.x * hit.t, z = ray.o.z + ray.d.z * hit.t}); }
+    p[0].here = vp[0].here_ok; p[0].here_x = vp[0].here_x; p[0].here_z = vp[0].here_z;
+    return;
+  }
+  if !r.edit.ok { return; }
+  edits: [1] WorldEdit; edits[0] = r.edit; out: [WE_LINE + 128] u8;
+  _ := spw_shell_batch(p, we_batch_write(p[0].f[0].rev, WB_APPLY, edits[..], 1, out[..]));
+}
+// Where the selected piece is on the screen, as a box round it (x0, y0, x1, y1), for the page to
+// outline: where it stands, or where a drag would leave it. Not ok with nothing selected or it out of view.
+SpvMark :: struct { ok: bool; x0: f32; y0: f32; x1: f32; y1: f32; }
+spv_mark :: (g: [] SpGame, p: [] SpwPage, vp: [] Viewport, v: VpView) -> SpvMark {
+  th := spv_thing(g, p);
+  if th.id == 0 { return SpvMark.{}; }
+  i := sl_item(g, th.id - 1); r := sc_piece(g[0].c[..], g[0].layer[0].items[i].mesh);
+  if r < 0 { return SpvMark.{}; }
+  pc := g[0].c[0].pieces[r];
+  at := ifx vp_dragging(vp) then vp[0].now else th;
+  k := cast(f32) at.scale / 100; reach := hi(pc.hx, pc.hz) * k;
+  cx := cast(f32) at.x / 100; cy := cast(f32) at.y / 100; cz := cast(f32) at.z / 100;
+  m := SpvMark.{x0 = 1000000, y0 = 1000000, x1 = -1000000, y1 = -1000000};
+  for c: 0..<8 {
+    px := vp_project(v, cx + (ifx (c & 1) != 0 then reach else -reach), cy + (ifx (c & 2) != 0 then pc.top * k else 0.0f32), cz + (ifx (c & 4) != 0 then reach else -reach));
+    if !px.ok { return SpvMark.{}; }
+    m.x0 = lo(m.x0, px.x); m.y0 = lo(m.y0, px.y); m.x1 = hi(m.x1, px.x); m.y1 = hi(m.y1, px.y);
+  }
+  m.ok = true;
+  return m;
 }

@@ -24,6 +24,8 @@
 //                                 it (an overlay that steals the click), or overlapping another
 //   tap ID                        a click at the centre of HUD widget ID, or of the page's own element with that id
 //                                 (the editor's shell over a canvas)
+//   tap X Y                       a click at a point of the page (CSS px): a pick in the world
+//   drag X0 Y0 X1 Y1              a press at one point, a move to another and a release there: a gizmo's drag
 //   type ID TEXT | type ID key NAME   tap ID, then the text (or one key: Enter, Escape, 1, w ...);
 //                                 ID - types into the page as it is
 //   walk-to ID | face ID | use ABILITY on ID | mount ID | stop
@@ -442,6 +444,13 @@ dv_mouse :: (s: [] DvS, kind: string, x: int, y: int) -> bool {
   jo_key(j[..], "button"); jo_str(j[..], "left"); jo_key(j[..], "buttons"); jo_int(j[..], ifx kind == "mousePressed" then 1 else 0); jo_key(j[..], "clickCount"); jo_int(j[..], 1); jo_end(j[..]);
   return cdp_call(s[0].c[..], "Input.dispatchMouseEvent", jo_text(j[..]), CDP_CALL_MS) >= 0;
 }
+// The mouse moved with its button held.
+dv_mouse_held :: (s: [] DvS, x: int, y: int) -> bool {
+  p: [512] u8; j: [1] Jo; jo_start(j[..], p[..]);
+  jo_obj(j[..]); jo_key(j[..], "type"); jo_str(j[..], "mouseMoved"); jo_key(j[..], "x"); jo_int(j[..], x); jo_key(j[..], "y"); jo_int(j[..], y);
+  jo_key(j[..], "button"); jo_str(j[..], "left"); jo_key(j[..], "buttons"); jo_int(j[..], 1); jo_end(j[..]);
+  return cdp_call(s[0].c[..], "Input.dispatchMouseEvent", jo_text(j[..]), CDP_CALL_MS) >= 0;
+}
 // A key by name (Enter, Escape, Tab, Backspace, Space, Arrow*, or one character).
 dv_key :: (s: [] DvS, name: string) -> bool {
   key := name; text := ""; code := 0;
@@ -657,6 +666,13 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
   if w0 == "tap" || w0 == "type" {
     id := dv_word(op, 1);
     if id.count == 0 { dv_s(out, w0); dv_s(out, " takes an id from the tree"); return false; }
+    // tap X Y: a press and a release at a point of the page (CSS px), as a finger or a mouse makes: a pick in the world (#13417)
+    if w0 == "tap" && dd_px(id) >= 0 && dd_px(dv_word(op, 2)) >= 0 && dv_word(op, 3).count == 0 {
+      x := dd_px(id); y := dd_px(dv_word(op, 2));
+      if !dv_mouse(s, "mouseMoved", x, y) || !dv_mouse(s, "mousePressed", x, y) || !dv_mouse(s, "mouseReleased", x, y) { dv_s(out, "the click failed: "); dv_s(out, cdp_error(s[0].c[..])); return false; }
+      dv_s(out, "tapped at "); dv_i(out, x); dv_s(out, " "); dv_i(out, y);
+      return true;
+    }
     if id != "-" {
       jb: [256] u8; tj: [2048] u8;
       at := ifx s[0].dom then dv_eval(s, dd_target_js(id, tj[..])) else dv_send(s, dv_cat2("target ", id, jb[..]));
@@ -682,6 +698,17 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
         dv_s(out, ifx id == "-" then "typed \"" else "; typed \""); dv_s(out, text); dv_s(out, "\"");
       }
     }
+    return true;
+  }
+  // drag X0 Y0 X1 Y1: a press at one point, a move in steps to another, a release there (a gizmo's drag, #13417)
+  if w0 == "drag" {
+    x0 := dd_px(dv_word(op, 1)); y0 := dd_px(dv_word(op, 2)); x1 := dd_px(dv_word(op, 3)); y1 := dd_px(dv_word(op, 4));
+    if x0 < 0 || y0 < 0 || x1 < 0 || y1 < 0 || dv_word(op, 5).count > 0 { dv_s(out, "drag takes two points in CSS px: drag X0 Y0 X1 Y1"); return false; }
+    ok := dv_mouse(s, "mouseMoved", x0, y0) && dv_mouse(s, "mousePressed", x0, y0);
+    for k: 1..<9 { ok = ok && dv_mouse_held(s, x0 + (x1 - x0) * k / 8, y0 + (y1 - y0) * k / 8); }
+    ok = ok && dv_mouse(s, "mouseReleased", x1, y1);
+    if !ok { dv_s(out, "the drag failed: "); dv_s(out, cdp_error(s[0].c[..])); return false; }
+    dv_s(out, "dragged from "); dv_i(out, x0); dv_s(out, " "); dv_i(out, y0); dv_s(out, " to "); dv_i(out, x1); dv_s(out, " "); dv_i(out, y1);
     return true;
   }
   if w0 == "clock" { return dv_clock(s, op, out); }
@@ -715,7 +742,7 @@ dv_op :: (s: [] DvS, op: string, out: [] Dv) -> bool {
     }
     dv_s(out, "prefer takes color-scheme dark|light, reduced-motion reduce|no-preference or size WxH"); return false;
   }
-  dv_s(out, "unknown operation '"); dv_s(out, w0); dv_s(out, "': tree, layout, state, why, hit, taps, tap, type, walk-to, face, use, mount, stop, status, clock, screenshot, logs, prefer, perf");
+  dv_s(out, "unknown operation '"); dv_s(out, w0); dv_s(out, "': tree, layout, state, why, hit, taps, tap, drag, type, walk-to, face, use, mount, stop, status, clock, screenshot, logs, prefer, perf");
   return false;
 }
 // ---- a world's edits (GitHub #13415): the realm commands, sent for the revision the page shows

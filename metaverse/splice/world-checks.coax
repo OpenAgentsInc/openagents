@@ -251,3 +251,50 @@ SptShell :: struct { m: [1] EdModel; scratch: [EM_BYTES] u8; name: [EM_NAME] u8;
   #assert spt_round(x[..], 1.1, spt_events(x[..], out, 4)) == WFQ_EVENTS && f[0].rev == 4;
   #assert em_read(m, spw_model(g, p), k[0].scratch[..]) && m[0].ne == 1 && m[0].undo == 1 && m[0].redo == 1 && m[0].e_id[0] == 2;
 }
+
+SptView :: struct { vp: [1] Viewport; w: [1] SpvWork; }
+
+#test "the viewport on Splice: a tap picks the piece under it through query_ray or nothing, and marks here; a move drag is one snapped move sent as the page's write; the selected piece has a mark on the screen" #steps 4000000000 #traversal 2000000000 {
+  x := [1] SptPage.[SptPage.{}]; g := x[0].g[..]; t := x[0].t[..]; p := x[0].p[..]; f := p[0].f[..];
+  k := [1] SptView.[SptView.{}]; vp := k[0].vp[..]; w := k[0].w[..];
+  empty := spw_empty(t[0].g[..], t[0].x[0].k[..], t[0].doc[..]);
+  b := spw_batch(t[0].g[..], t[0].x[..], empty, SPT_TWO, true, t[0].next[..], t[0].did[..], t[0].inv[..], t[0].why[..]);
+  g_reset(g);
+  #assert spw_page_open(g, p, WL_DEV) && spt_round(x[..], 0.016, spt_state(x[..], WL_DEV, 2, cast(string) t[0].next[0..<b.doc])) == WFQ_DOC;
+  // the pieces are boxes a ray can hit, each under its number on the wire
+  c := spv_boxes(g, w);
+  #assert w[0].n == 2 && w[0].ids[0] == 1 && w[0].ids[1] == 2 && c.boxes.count == 2 * QUERY_BOX && w[0].boxes[QUERY_BOX + 3] > w[0].boxes[QUERY_BOX] && w[0].boxes[QUERY_BOX + 4] > w[0].boxes[QUERY_BOX + 1];
+  item := g[0].layer[0].items[1];
+  v := VpView.{ex = item.x, ey = item.y + 6, ez = item.z - 6, ax = item.x, ay = item.y + 0.3, az = item.z, fov = 0.8, w = 1000, h = 500};
+  at := vp_project(v, item.x, item.y + 0.3, item.z);
+  #assert at.ok && vp_act(vp, "tool select", v) && !spv_mark(g, p, vp, v).ok;
+  spv_pointer(g, p, vp, w, v, at.x, at.y, 0); spv_pointer(g, p, vp, w, v, at.x, at.y, 2);
+  #assert p[0].sel == 2 && p[0].here && p[0].here_x > 180 && p[0].here_x < 380 && p[0].here_z > 50 && p[0].here_z < 250;
+  // the selected piece's mark holds its middle on the screen
+  m := spv_mark(g, p, vp, v);
+  #assert m.ok && m.x0 < at.x && m.x1 > at.x && m.y0 < at.y && m.y1 > at.y && m.x1 - m.x0 < 400;
+  // a tap on the ground beside it selects nothing, and is the new here
+  spv_pointer(g, p, vp, w, v, 950, 400, 0); spv_pointer(g, p, vp, w, v, 950, 400, 2);
+  #assert p[0].sel == 0 && p[0].here && (p[0].here_x < 180 || p[0].here_x > 380) && !spv_mark(g, p, vp, v).ok;
+  // the model tells the shell both
+  km := [1] SptShell.[SptShell.{}];
+  #assert em_read(km[0].m[..], spw_model(g, p), km[0].scratch[..]) && km[0].m[0].here && km[0].m[0].here_x == p[0].here_x && km[0].m[0].sel == 0;
+  // a move drag: the piece is selected, then dragged a hand to the side; the write that goes is one move, on the grid
+  spv_pointer(g, p, vp, w, v, at.x, at.y, 0); spv_pointer(g, p, vp, w, v, at.x, at.y, 2);
+  #assert p[0].sel == 2 && vp_act(vp, "tool move", v) && f[0].body_n == 0;
+  spv_pointer(g, p, vp, w, v, at.x, at.y, 0); spv_pointer(g, p, vp, w, v, at.x + 60, at.y, 1);
+  moved := spv_mark(g, p, vp, v);
+  #assert vp_dragging(vp) && moved.ok && moved.x0 != m.x0;
+  spv_pointer(g, p, vp, w, v, at.x + 60, at.y, 2);
+  e: [WE_BATCH] WorldEdit;
+  sent := we_batch_read(cast(string) f[0].body[0..<f[0].body_n], e[..]);
+  #assert sent.ok && sent.rev == 2 && sent.what == WB_APPLY && sent.n == 1 && e[0].op == WE_MOVE && e[0].id == 2 && e[0].x != 280 && e[0].x % 50 == 0 && e[0].z == 150;
+  // a cancel sends nothing, and a tool that holds nothing looks around when the camera flies
+  f[0].body_n = 0;
+  spv_pointer(g, p, vp, w, v, at.x, at.y, 0); spv_pointer(g, p, vp, w, v, at.x + 90, at.y, 1); spv_pointer(g, p, vp, w, v, at.x + 90, at.y, 3);
+  #assert f[0].body_n == 0 && !vp[0].down;
+  #assert vp_act(vp, "tool select", v) && vp_act(vp, "fly on", v);
+  yaw := vp[0].fyaw;
+  spv_pointer(g, p, vp, w, v, 500, 250, 0); spv_pointer(g, p, vp, w, v, 560, 250, 1); spv_pointer(g, p, vp, w, v, 560, 250, 2);
+  #assert vp[0].fyaw != yaw && f[0].body_n == 0;
+}

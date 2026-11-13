@@ -31,6 +31,8 @@ emp_check :: (profile_json: string, w: [] EmpWork) -> bool {
   if emp_str(d, jv_get(d, one, "world"), nb[..]) != cast(string) world[0..<m[0].world_n] || emp_str(d, jv_get(d, one, "lane"), nb[..]) != lanes[m[0].lane] { return false; }
   if jv_int(d, jv_get(d, one, "rev"), -1) != m[0].rev || jv_int(d, jv_get(d, one, "undo"), -1) != m[0].undo || jv_int(d, jv_get(d, one, "redo"), -1) != m[0].redo || jv_int(d, jv_get(d, one, "selected"), -1) != m[0].sel { return false; }
   if jv_int(d, jv_get(d, one, "kinds"), -1) != m[0].nk || jv_int(d, jv_get(d, one, "entities"), -1) != m[0].ne || jv_int(d, jv_get(d, one, "cells"), -1) != m[0].nc || m[0].no_n == 0 { return false; }
+  here := jv_get(d, one, "here");
+  if !m[0].here || jv_int(d, jv_at(d, here, 0), 0) != m[0].here_x || jv_int(d, jv_at(d, here, 1), 0) != m[0].here_z { return false; }
   empty := emp_str(d, jv_get(d, jv_get(d, 0, "empty"), "wire"), w[0].wire[..]);
   if empty.count == 0 || !em_read(m, empty, w[0].scratch[..]) || m[0].ne != 0 || m[0].lane != 1 { return false; }
   rej := jv_get(d, 0, "rejected");

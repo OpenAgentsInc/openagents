@@ -13,6 +13,8 @@
 //   e ID KIND X Y Z YAW SCALE           an entity: its ID on the wire, its kind, where it stands in whole
 //                                       centimetres, its turn in whole degrees, its size in whole percent
 //   c KIND COLUMN VALUE                 a cell of a kind's content row
+//   here X Z                            the last point tapped on the ground, whole centimetres (E8, #13417);
+//                                       left out until a point is tapped
 //   no WORDS                            the last refusal, in words
 // Lines come in that order. Every number is whole. A name and a value are one line of printable
 // bytes. em_read refuses any bytes but the ones em_write writes (it writes what it read and
@@ -37,6 +39,7 @@ EdModel :: struct {
   nk: int; kind_id: [EM_KINDS] int; kind_name: [EM_KINDS] [EM_NAME] u8; kind_n: [EM_KINDS] int;
   ne: int; e_id: [EM_ENTS] int; e_kind: [EM_ENTS] int; e_x: [EM_ENTS] int; e_y: [EM_ENTS] int; e_z: [EM_ENTS] int; e_yaw: [EM_ENTS] int; e_scale: [EM_ENTS] int;
   nc: int; c_kind: [EM_CELLS] int; c_col: [EM_CELLS] [WE_NAME] u8; c_col_n: [EM_CELLS] int; c_val: [EM_CELLS] [EM_VALUE] u8; c_val_n: [EM_CELLS] int;
+  here: bool; here_x: int; here_z: int;
   no: [EM_WORDS] u8; no_n: int;
 }
 
@@ -88,6 +91,11 @@ em_cell :: (out: [] u8, at: int, kind: int, col: string, value: string) -> int {
   n = ct_put(out, n, " "); n = ct_put(out, n, col); n = ct_put(out, n, " "); n = ct_put(out, n, value);
   return ct_put(out, n, "\n");
 }
+em_here :: (out: [] u8, at: int, x: int, z: int) -> int {
+  if x < -WE_REACH || x > WE_REACH || z < -WE_REACH || z > WE_REACH { return out.count + 1; }
+  n := ct_put(out, at, "here "); n = ct_put_int(out, n, x); n = ct_put(out, n, " "); n = ct_put_int(out, n, z);
+  return ct_put(out, n, "\n");
+}
 em_no :: (out: [] u8, at: int, words: string) -> int {
   if !em_text_ok(words, EM_WORDS) { return out.count + 1; }
   n := ct_put(out, at, "no "); n = ct_put(out, n, words);
@@ -101,6 +109,7 @@ em_write :: (m: [] EdModel, out: [] u8) -> string {
   for k: 0..<m[0].nk { n = em_kind(out, n, m[0].kind_id[k], cast(string) m[0].kind_name[k][0..<m[0].kind_n[k]]); }
   for k: 0..<m[0].ne { n = em_entity(out, n, m[0].e_id[k], m[0].e_kind[k], m[0].e_x[k], m[0].e_y[k], m[0].e_z[k], m[0].e_yaw[k], m[0].e_scale[k]); }
   for k: 0..<m[0].nc { n = em_cell(out, n, m[0].c_kind[k], cast(string) m[0].c_col[k][0..<m[0].c_col_n[k]], cast(string) m[0].c_val[k][0..<m[0].c_val_n[k]]); }
+  if m[0].here { n = em_here(out, n, m[0].here_x, m[0].here_z); }
   if m[0].no_n > 0 { n = em_no(out, n, cast(string) m[0].no[0..<m[0].no_n]); }
   if n > out.count { return ""; }
   return cast(string) out[0..<n];
@@ -121,7 +130,7 @@ em_copy :: (to: [] u8, s: string) -> int {
 }
 // The model in text, into m. False (and m not ok) for any bytes em_write would not write.
 em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
-  m[0].ok = false; m[0].nk = 0; m[0].ne = 0; m[0].nc = 0; m[0].no_n = 0; m[0].world_n = 0;
+  m[0].ok = false; m[0].nk = 0; m[0].ne = 0; m[0].nc = 0; m[0].no_n = 0; m[0].world_n = 0; m[0].here = false;
   for k: 0..<WE_COLS { m[0].cols[k] = false; }
   if text.count < EM_SCHEMA.count || text.count > EM_BYTES { return false; }
   lines := ct_parts(text, '\n');
@@ -154,6 +163,8 @@ em_read :: (m: [] EdModel, text: string, scratch: [] u8) -> bool {
       m[0].c_col_n[k] = em_copy(m[0].c_col[k][..], ct_part(line, ' ', 2));
       m[0].c_val_n[k] = em_copy(m[0].c_val[k][..], em_rest(line, 3));
       m[0].nc += 1;
+    } else if word == "here" {
+      m[0].here = true; m[0].here_x = ct_num(ct_part(line, ' ', 1)).v; m[0].here_z = ct_num(ct_part(line, ' ', 2)).v;
     } else if word == "no" {
       m[0].no_n = em_copy(m[0].no[..], em_rest(line, 1));
     }
@@ -188,6 +199,7 @@ em_test_text :: (out: [] u8) -> string {
   n = em_entity(out, n, 2, 1002, -40, 12, 600, -179, 100);
   n = em_cell(out, n, 1002, "kit", "rover");
   n = em_cell(out, n, 1002, "scale", "1.5");
+  n = em_here(out, n, 420, -75);
   n = em_no(out, n, "That spot is inside the Scanner gate, which stays clear.");
   return ifx n > out.count then "" else cast(string) out[0..<n];
 }
@@ -204,6 +216,7 @@ em_test_text :: (out: [] u8) -> string {
   name: [EM_NAME] u8;
   #assert em_kind_name(m, 1002, name[..]) == "Parked rover" && em_kind_name(m, 7, name[..]) == "";
   #assert em_entity_at(m, 2) == 1 && em_entity_at(m, 3) == -1 && em_entity_at(m, 0) == -1;
+  #assert m[0].here && m[0].here_x == 420 && m[0].here_z == -75;
 }
 
 #test "a model with nothing in it reads, and bytes the writer would not write are refused" {
@@ -211,7 +224,9 @@ em_test_text :: (out: [] u8) -> string {
   none: [WE_COLS] bool;
   n := em_begin(h[0].out[..], "splice", 1, 0, 0, 0, 0);
   n = em_cols(h[0].out[..], n, none[..]);
-  #assert em_read(m, cast(string) h[0].out[0..<n], h[0].scratch[..]) && m[0].lane == 1 && m[0].ne == 0 && m[0].no_n == 0;
+  #assert em_read(m, cast(string) h[0].out[0..<n], h[0].scratch[..]) && m[0].lane == 1 && m[0].ne == 0 && m[0].no_n == 0 && !m[0].here;
+  #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nhere 1\n", h[0].scratch[..]) && !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\nhere 1 2 3\n", h[0].scratch[..]);
+  #assert em_here(h[0].out[..], 0, WE_REACH + 1, 0) > EM_BYTES;
   #assert !em_read(m, "editor.model.v2 splice dev 0 0 0 0\ncols\n", h[0].scratch[..]);
   #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\ne 1 5 0 0 0 0 100 extra\n", h[0].scratch[..]);
   #assert !em_read(m, "editor.model.v1 splice dev 0 0 0 0\ncols\ne 01 5 0 0 0 0 100\n", h[0].scratch[..]);

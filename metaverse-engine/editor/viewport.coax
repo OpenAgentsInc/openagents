@@ -1,0 +1,406 @@
+// The editor's viewport tools (GitHub #13417, the browser editor's E8;
+// docs/editor/2026-11-12-browser-editor.md): what a pointer and the keys do to a world's view
+// while it is being edited. One module every realm's editor shares, so picking, snapping and the
+// gizmos are the same everywhere.
+//
+//   picking    a point on the screen becomes a ray from the eye (vp_ray), asked of the realm's
+//              colliders with query_ray (metaverse-engine/physics/query.coax): what it hits, and
+//              where ("here": the last point tapped)
+//   gizmos     move, turn and size: a drag on the selected thing, snapped to a grid, that ends as
+//              one typed edit (world-edit.coax): a move along the ground, a turn in steps of
+//              degrees, a size in steps of percent
+//   fly        a camera that flies free of the player
+//   run        play, pause and one step at a time on a fixed clock; simulate runs the World with
+//              the player's hands off
+// The realm keeps one Viewport, gives it the pointer while a tool other than play is picked, and
+// reads back the selection, the edit a drag made and the view. The editor shell
+// (shell.coax) picks the tool, the grid and the rest by a short action (vp_act).
+//   coax/bin/coax test metaverse-engine/editor/viewport.coax --library
+#load "../physics/query.coax";
+#load "../core/points.coax";
+#load "world-edit.coax";
+
+VT_PLAY :: 0; VT_SELECT :: 1; VT_MOVE :: 2; VT_TURN :: 3; VT_SIZE :: 4;
+VT_TOOLS :: 5;
+VT_TOOL :: [VT_TOOLS] string.["play", "select", "move", "turn", "size"];
+VP_GRIDS :: 4;
+VP_GRID :: [VP_GRIDS] int.[10, 25, 50, 100];   // centimetres a move snaps to
+VP_TURN_STEP :: 15;      // degrees a turn snaps to
+VP_SIZE_STEP :: 5;       // percent a size snaps to
+VP_TURN_PX :: 2.0;       // pixels of drag a degree
+VP_SIZE_PX :: 2.0;       // pixels of drag a percent
+VP_TAP_PX :: 6.0;        // a press that moves less than this is a tap
+VP_STEP :: 0.016666667;  // seconds one step of the clock is: a sixtieth
+VP_FAR :: 400.0;         // metres a pick reaches
+VP_FLY_SPEED :: 8.0;     // metres a second the fly camera moves; four times that when fast
+VP_FLY_LOOK :: 0.004;    // radians a pixel of look
+VP_PITCH :: 1.45;        // radians up or down the fly camera looks, at most
+
+VpView :: struct { ex: f32; ey: f32; ez: f32; ax: f32; ay: f32; az: f32; fov: f32; w: f32; h: f32; }
+VpRay :: struct { ok: bool; o: WorldPoint; d: WorldPoint; }
+VpSpot :: struct { ok: bool; x: f32; z: f32; }
+// The thing a gizmo holds: its ID on the wire and where it stood when the drag began.
+VpThing :: struct { id: int; x: int; y: int; z: int; yaw: int; scale: int = 100; }
+Viewport :: struct {
+  tool: int; grid: int = 50;
+  fly: bool; fx: f32; fy: f32 = 3; fz: f32; fyaw: f32; fpitch: f32 = -0.3;
+  paused: bool; steps: int; sim: bool;
+  // a press in flight: where it began, where it is, and whether it has moved far enough to be a drag
+  down: bool; x0: f32; y0: f32; x: f32; y: f32; far: bool;
+  held: VpThing; holding: bool;        // the thing a drag moves, turns or sizes
+  now: VpThing;                        // where the drag would leave it, snapped
+  here_ok: bool; here_x: int; here_z: int;   // the last point tapped on the ground, centimetres
+}
+
+vp_len :: (x: f32, y: f32, z: f32) -> f32 { return sqrt(x * x + y * y + z * z); }
+// The ray from the eye through a point of the screen (pixels from its top left corner).
+vp_ray :: (v: VpView, px: f32, py: f32) -> VpRay {
+  if v.w <= 0 || v.h <= 0 || v.fov <= 0 { return VpRay.{}; }
+  fx := v.ax - v.ex; fy := v.ay - v.ey; fz := v.az - v.ez;
+  fl := vp_len(fx, fy, fz);
+  if fl <= 0 { return VpRay.{}; }
+  fx /= fl; fy /= fl; fz /= fl;
+  // right = f x up, up = right x f (the page's own view: view_rows)
+  rx := -fz; ry := 0.0f32; rz := fx;
+  rl := vp_len(rx, ry, rz);
+  if rl <= 0 { rx = 1; rz = 0; rl = 1; }
+  rx /= rl; rz /= rl;
+  ux := ry * fz - rz * fy; uy := rz * fx - rx * fz; uz := rx * fy - ry * fx;
+  t := tan(v.fov * 0.5);
+  nx := (px / v.w * 2 - 1) * t * (v.w / v.h); ny := (1 - py / v.h * 2) * t;
+  dx := fx + rx * nx + ux * ny; dy := fy + ry * nx + uy * ny; dz := fz + rz * nx + uz * ny;
+  dl := vp_len(dx, dy, dz);
+  return VpRay.{ok = true, o = WorldPoint.{x = v.ex, y = v.ey, z = v.ez}, d = WorldPoint.{x = dx / dl, y = dy / dl, z = dz / dl}};
+}
+// Where a point of the world is on the screen, in pixels; not ok behind the eye.
+VpPixel :: struct { ok: bool; x: f32; y: f32; }
+vp_project :: (v: VpView, x: f32, y: f32, z: f32) -> VpPixel {
+  if v.w <= 0 || v.h <= 0 || v.fov <= 0 { return VpPixel.{}; }
+  fx := v.ax - v.ex; fy := v.ay - v.ey; fz := v.az - v.ez;
+  fl := vp_len(fx, fy, fz);
+  if fl <= 0 { return VpPixel.{}; }
+  fx /= fl; fy /= fl; fz /= fl;
+  rx := -fz; rz := fx;
+  rl := vp_len(rx, 0, rz);
+  if rl <= 0 { rx = 1; rz = 0; rl = 1; }
+  rx /= rl; rz /= rl;
+  ux := -rz * fy; uy := rz * fx - rx * fz; uz := rx * fy;
+  dx := x - v.ex; dy := y - v.ey; dz := z - v.ez;
+  ahead := dx * fx + dy * fy + dz * fz;
+  if ahead <= 0.01 { return VpPixel.{}; }
+  t := tan(v.fov * 0.5);
+  nx := (dx * rx + dz * rz) / (ahead * t * (v.w / v.h)); ny := (dx * ux + dy * uy + dz * uz) / (ahead * t);
+  return VpPixel.{ok = true, x = (nx + 1) * 0.5 * v.w, y = (1 - ny) * 0.5 * v.h};
+}
+// Where a ray meets the level plane at height y, ahead of the eye.
+vp_ground :: (r: VpRay, y: f32) -> VpSpot {
+  if !r.ok || r.d.y > -0.0001 && r.d.y < 0.0001 { return VpSpot.{}; }
+  t := (y - r.o.y) / r.d.y;
+  if t <= 0 || t > VP_FAR * 4 { return VpSpot.{}; }
+  return VpSpot.{ok = true, x = r.o.x + r.d.x * t, z = r.o.z + r.d.z * t};
+}
+// What a point of the screen picks among the realm's colliders: query_ray's hit.
+vp_pick :: (c: Colliders, v: VpView, px: f32, py: f32) -> QueryHit {
+  r := vp_ray(v, px, py);
+  if !r.ok { return QueryHit.{status = QueryStatus.invalid}; }
+  return query_ray(c, r.o, r.d, VP_FAR);
+}
+// A whole number to the nearest step (halves away from zero).
+vp_snap :: (v: int, step: int) -> int {
+  if step <= 1 { return v; }
+  if v >= 0 { return (v + step / 2) / step * step; }
+  return -((-v + step / 2) / step * step);
+}
+vp_cm :: (m: f32) -> int { return ifx m >= 0 then cast(int) (m * 100 + 0.5) else -cast(int) (0.5 - m * 100); }
+// Degrees kept in -179 to 180.
+vp_wrap :: (deg: int) -> int {
+  d := deg % 360;
+  if d > 180 { d -= 360; }
+  if d <= -180 { d += 360; }
+  return d;
+}
+vp_grid_ok :: (cm: int) -> bool { grids := VP_GRID; for g: grids { if g == cm { return true; } } return false; }
+
+// ---- the pointer
+
+// A press. `thing`: the selected thing under the gizmo (id 0: none is selected).
+vp_press :: (p: [] Viewport, x: f32, y: f32, thing: VpThing) {
+  p[0].down = true; p[0].x0 = x; p[0].y0 = y; p[0].x = x; p[0].y = y; p[0].far = false;
+  p[0].holding = thing.id > 0 && p[0].tool >= VT_MOVE;
+  p[0].held = thing; p[0].now = thing;
+}
+// The pointer moved while pressed: the held thing follows, snapped. `v`: the view the page draws.
+vp_drag :: (p: [] Viewport, v: VpView, x: f32, y: f32) {
+  if !p[0].down { return; }
+  p[0].x = x; p[0].y = y;
+  if abs(x - p[0].x0) + abs(y - p[0].y0) > VP_TAP_PX { p[0].far = true; }
+  if !p[0].holding || !p[0].far { return; }
+  h := p[0].held;
+  if p[0].tool == VT_MOVE {
+    // the thing keeps its place under the pointer: where the pointer's ray meets the ground now, less where it met it at the press
+    a := vp_ground(vp_ray(v, p[0].x0, p[0].y0), cast(f32) h.y / 100); b := vp_ground(vp_ray(v, x, y), cast(f32) h.y / 100);
+    if a.ok && b.ok {
+      p[0].now.x = vp_snap(h.x + vp_cm(b.x - a.x), p[0].grid);
+      p[0].now.z = vp_snap(h.z + vp_cm(b.z - a.z), p[0].grid);
+    }
+  }
+  if p[0].tool == VT_TURN { p[0].now.yaw = vp_wrap(vp_snap(h.yaw + cast(int) ((x - p[0].x0) / VP_TURN_PX), VP_TURN_STEP)); }
+  if p[0].tool == VT_SIZE {
+    s := vp_snap(h.scale + cast(int) ((p[0].y0 - y) / VP_SIZE_PX), VP_SIZE_STEP);
+    p[0].now.scale = ifx s < FORGE_SCALE_MIN then FORGE_SCALE_MIN else ifx s > FORGE_SCALE_MAX then FORGE_SCALE_MAX else s;
+  }
+}
+// The press ended. What it was: a tap (pick at its point), a drag that made an edit, or nothing.
+VpRelease :: struct { tap: bool; x: f32; y: f32; edit: WorldEdit; }
+vp_release :: (p: [] Viewport) -> VpRelease {
+  r := VpRelease.{x = p[0].x, y = p[0].y};
+  if !p[0].down { return r; }
+  p[0].down = false;
+  if !p[0].far { r.tap = true; p[0].holding = false; return r; }
+  if !p[0].holding { return r; }
+  p[0].holding = false;
+  h := p[0].held; n := p[0].now;
+  if p[0].tool == VT_MOVE && (n.x != h.x || n.z != h.z) { r.edit = WorldEdit.{ok = true, op = WE_MOVE, id = h.id, x = n.x, y = h.y, z = n.z}; }
+  if p[0].tool == VT_TURN && n.yaw != h.yaw { r.edit = WorldEdit.{ok = true, op = WE_ROTATE, id = h.id, yaw = n.yaw}; }
+  if p[0].tool == VT_SIZE && n.scale != h.scale { r.edit = WorldEdit.{ok = true, op = WE_SCALE, id = h.id, scale = n.scale}; }
+  return r;
+}
+// The press was taken away (a cancel): nothing is picked or edited.
+vp_cancel :: (p: [] Viewport) { p[0].down = false; p[0].holding = false; p[0].far = false; }
+// A tap's point on the ground is "here".
+vp_here :: (p: [] Viewport, spot: VpSpot) { if spot.ok { p[0].here_ok = true; p[0].here_x = vp_cm(spot.x); p[0].here_z = vp_cm(spot.z); } }
+// Whether the realm should draw the held thing where the drag has it, and not where it stands.
+vp_dragging :: (p: [] Viewport) -> bool { return p[0].down && p[0].holding && p[0].far; }
+
+// ---- the fly camera
+
+// The fly camera starts where the page's own view is.
+vp_fly_from :: (p: [] Viewport, v: VpView) {
+  p[0].fx = v.ex; p[0].fy = v.ey; p[0].fz = v.ez;
+  dx := v.ax - v.ex; dy := v.ay - v.ey; dz := v.az - v.ez;
+  flat := sqrt(dx * dx + dz * dz);
+  p[0].fyaw = ifx flat > 0.0001 then atan2(dx, dz) else 0.0f32;
+  p[0].fpitch = ifx flat > 0.0001 || abs(dy) > 0.0001 then atan2(dy, flat) else 0.0f32;
+  if p[0].fpitch > VP_PITCH { p[0].fpitch = VP_PITCH; } if p[0].fpitch < -VP_PITCH { p[0].fpitch = -VP_PITCH; }
+}
+// One frame of flying: ahead, right and up are -1, 0 or 1 (the keys held).
+vp_fly_step :: (p: [] Viewport, dt: f32, ahead: f32, right: f32, up: f32, fast: bool) {
+  if !p[0].fly { return; }
+  speed := VP_FLY_SPEED * dt * (ifx fast then 4.0f32 else 1.0f32);
+  cy := cos(p[0].fpitch);
+  fx := sin(p[0].fyaw) * cy; fy := sin(p[0].fpitch); fz := cos(p[0].fyaw) * cy;
+  rx := -cos(p[0].fyaw); rz := sin(p[0].fyaw);
+  p[0].fx += (fx * ahead + rx * right) * speed;
+  p[0].fy += (fy * ahead + up) * speed;
+  p[0].fz += (fz * ahead + rz * right) * speed;
+}
+vp_fly_look :: (p: [] Viewport, dx: f32, dy: f32) {
+  if !p[0].fly { return; }
+  p[0].fyaw -= dx * VP_FLY_LOOK;
+  p[0].fpitch -= dy * VP_FLY_LOOK;
+  if p[0].fpitch > VP_PITCH { p[0].fpitch = VP_PITCH; } if p[0].fpitch < -VP_PITCH { p[0].fpitch = -VP_PITCH; }
+}
+// The fly camera's view, in the page's size and field of view.
+vp_fly_view :: (p: [] Viewport, like: VpView) -> VpView {
+  cy := cos(p[0].fpitch);
+  v := like;
+  v.ex = p[0].fx; v.ey = p[0].fy; v.ez = p[0].fz;
+  v.ax = p[0].fx + sin(p[0].fyaw) * cy; v.ay = p[0].fy + sin(p[0].fpitch); v.az = p[0].fz + cos(p[0].fyaw) * cy;
+  return v;
+}
+
+// ---- the clock
+
+// The time the World runs this frame: the frame's own while playing, nothing while paused, and one
+// fixed step for each step asked for (one a frame).
+vp_run_dt :: (p: [] Viewport, dt: f32) -> f32 {
+  if !p[0].paused { return dt; }
+  if p[0].steps > 0 { p[0].steps -= 1; return VP_STEP; }
+  return 0;
+}
+// Whether the player's keys and pointer reach the game: not while a tool is picked, the camera flies or the World is simulated.
+vp_hands :: (p: [] Viewport) -> bool { return p[0].tool == VT_PLAY && !p[0].fly && !p[0].sim; }
+
+// ---- the shell's actions
+
+// One action from the editor shell, as words: "tool NAME", "grid CM", "fly on|off", "run play|pause",
+// "step", "sim on|off". False for anything else, which changes nothing.
+vp_act :: (p: [] Viewport, text: string, v: VpView) -> bool {
+  word := ct_part(text, ' ', 0); arg := ct_part(text, ' ', 1);
+  if ct_parts(text, ' ') > 2 { return false; }
+  if word == "step" && arg.count == 0 { p[0].paused = true; p[0].steps += 1; return true; }
+  if ct_parts(text, ' ') != 2 { return false; }
+  if word == "tool" {
+    tools := VT_TOOL;
+    k := we_index(tools[..], arg);
+    if k < 0 { return false; }
+    p[0].tool = k; vp_cancel(p);
+    return true;
+  }
+  if word == "grid" { g := ct_num(arg); if !g.ok || !vp_grid_ok(g.v) { return false; } p[0].grid = g.v; return true; }
+  on := arg == "on";
+  if word == "fly" && (on || arg == "off") {
+    if on && !p[0].fly { vp_fly_from(p, v); }
+    p[0].fly = on;
+    return true;
+  }
+  if word == "sim" && (on || arg == "off") { p[0].sim = on; return true; }
+  if word == "run" && (arg == "play" || arg == "pause") { p[0].paused = arg == "pause"; p[0].steps = 0; return true; }
+  return false;
+}
+
+// ---- checks
+
+VpTest :: struct { p: [1] Viewport; boxes: [12] f32; }
+// A view from 10 m up and 10 m back, looking at the origin, on a 1000 by 500 screen.
+vp_test_view :: () -> VpView { return VpView.{ex = 0, ey = 10, ez = -10, ax = 0, ay = 0, az = 0, fov = 0.8, w = 1000, h = 500}; }
+vp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.01; }
+
+#test "the middle of the screen looks at what the view looks at, and a ray meets the ground ahead of the eye only" {
+  v := vp_test_view();
+  r := vp_ray(v, 500, 250);
+  g := vp_ground(r, 0);
+  #assert r.ok && g.ok && vp_near(g.x, 0) && vp_near(g.z, 0) && vp_near(vp_len(r.d.x, r.d.y, r.d.z), 1);
+  // right of the middle is to the view's right, and above it is further away
+  right := vp_ground(vp_ray(v, 700, 250), 0); up := vp_ground(vp_ray(v, 500, 150), 0);
+  #assert right.ok && right.x < -0.5 && up.ok && up.z > 1 && vp_near(up.x, 0);
+  // the sky meets no ground; a view with no size, or looking at its own eye, has no ray
+  #assert !vp_ground(vp_ray(v, 500, -4000), 0).ok && !vp_ray(VpView.{fov = 0.8}, 1, 1).ok && !vp_ray(VpView.{w = 10, h = 10, fov = 0.8}, 1, 1).ok;
+  flat := VpRay.{ok = true, o = WorldPoint.{y = 1}, d = WorldPoint.{x = 1}};
+  #assert !vp_ground(flat, 0).ok && !vp_ground(VpRay.{}, 0).ok;
+}
+
+#test "a point of the world lands on the screen where its ray came from; behind the eye it lands nowhere" {
+  v := vp_test_view();
+  g := vp_ground(vp_ray(v, 730, 310), 0);
+  p := vp_project(v, g.x, 0, g.z);
+  #assert g.ok && p.ok && vp_near(p.x, 730) && vp_near(p.y, 310);
+  mid := vp_project(v, 0, 0, 0);
+  #assert mid.ok && vp_near(mid.x, 500) && vp_near(mid.y, 250);
+  #assert !vp_project(v, 0, 20, -20).ok && !vp_project(VpView.{}, 0, 0, 0).ok;
+}
+
+#test "a pick is query_ray's: the box under the pointer, the nearer of two, or the ground" {
+  h: [1] VpTest; v := vp_test_view();
+  // one box at the origin, 1 m tall; another right behind it
+  h[0].boxes = [12] f32.[-0.5, 0, -0.5, 0.5, 1, 0.5, -0.5, 0, 2, 0.5, 1, 3];
+  c := Colliders.{ground = 0, boxes = h[0].boxes[..]};
+  hit := vp_pick(c, v, 500, 250);
+  #assert hit.hit && hit.shape == QueryShape.box && hit.index == 0;
+  // above the first box's top, the ray reaches the one behind
+  far := vp_pick(c, v, 500, 190);
+  #assert far.hit && far.shape == QueryShape.box && far.index == 1;
+  side := vp_pick(c, v, 900, 250);
+  #assert side.hit && side.shape == QueryShape.ground;
+  #assert vp_pick(c, VpView.{}, 1, 1).status == QueryStatus.invalid;
+}
+
+#test "snapping: whole steps, halves away from zero, degrees kept in a turn" {
+  #assert vp_snap(124, 50) == 100 && vp_snap(125, 50) == 150 && vp_snap(-124, 50) == -100 && vp_snap(-125, 50) == -150 && vp_snap(7, 1) == 7 && vp_snap(7, 0) == 7;
+  #assert vp_wrap(190) == -170 && vp_wrap(-180) == 180 && vp_wrap(180) == 180 && vp_wrap(360) == 0 && vp_wrap(-190) == 170;
+  #assert vp_cm(1.234) == 123 && vp_cm(-1.236) == -124 && vp_grid_ok(25) && !vp_grid_ok(30);
+}
+
+#test "a move drag keeps the thing under the pointer, snapped to the grid, and ends as one move edit; a tap is not an edit" {
+  h: [1] VpTest; p := h[0].p[..]; v := vp_test_view();
+  #assert vp_act(p, "tool move", v) && p[0].tool == VT_MOVE && p[0].grid == 50;
+  thing := VpThing.{id = 7, x = 0, y = 0, z = 0, yaw = 30};
+  vp_press(p, 500, 250, thing);
+  vp_drag(p, v, 503, 250);
+  #assert !vp_dragging(p);
+  tap := vp_release(p);
+  #assert tap.tap && !tap.edit.ok && !p[0].down;
+  // a drag to the screen's right: the thing goes to the view's right, by whole grid steps
+  vp_press(p, 500, 250, thing);
+  vp_drag(p, v, 700, 250);
+  #assert vp_dragging(p) && p[0].now.x < -100 && p[0].now.x % 50 == 0 && p[0].now.z == 0;
+  want := p[0].now.x;
+  r := vp_release(p);
+  #assert !r.tap && r.edit.ok && r.edit.op == WE_MOVE && r.edit.id == 7 && r.edit.x == want && r.edit.z == 0 && we_valid(r.edit);
+  // a finer grid lands nearer the pointer; a drag that comes back makes no edit
+  #assert vp_act(p, "grid 10", v);
+  vp_press(p, 500, 250, thing); vp_drag(p, v, 700, 250);
+  #assert p[0].now.x % 10 == 0 && p[0].now.x - want <= 30 && want - p[0].now.x <= 30;
+  vp_drag(p, v, 500, 251);
+  back := vp_release(p);
+  #assert !back.tap && !back.edit.ok;
+  // with nothing selected a drag holds nothing
+  vp_press(p, 500, 250, VpThing.{}); vp_drag(p, v, 700, 250);
+  none := vp_release(p);
+  #assert !vp_dragging(p) && !none.edit.ok && !none.tap;
+}
+
+#test "a turn drag is degrees in steps of 15, a size drag percent in steps of 5 within the limits, and a cancel is nothing" {
+  h: [1] VpTest; p := h[0].p[..]; v := vp_test_view();
+  thing := VpThing.{id = 3, yaw = 170, scale = 100};
+  #assert vp_act(p, "tool turn", v);
+  vp_press(p, 100, 100, thing); vp_drag(p, v, 164, 100);
+  r := vp_release(p);
+  #assert r.edit.ok && r.edit.op == WE_ROTATE && r.edit.yaw == -165 && we_valid(r.edit);
+  #assert vp_act(p, "tool size", v);
+  vp_press(p, 100, 100, thing); vp_drag(p, v, 100, 56);
+  s := vp_release(p);
+  #assert s.edit.ok && s.edit.op == WE_SCALE && s.edit.scale == 120 && we_valid(s.edit);
+  vp_press(p, 100, 100, thing); vp_drag(p, v, 100, -100000);
+  #assert p[0].now.scale == FORGE_SCALE_MAX;
+  vp_cancel(p);
+  #assert !p[0].down && !vp_release(p).edit.ok;
+  // the select tool holds nothing
+  #assert vp_act(p, "tool select", v);
+  vp_press(p, 100, 100, thing); vp_drag(p, v, 300, 100);
+  #assert !vp_dragging(p) && !vp_release(p).edit.ok;
+}
+
+#test "here is the last ground point tapped, in centimetres" {
+  h: [1] VpTest; p := h[0].p[..]; v := vp_test_view();
+  vp_here(p, VpSpot.{});
+  #assert !p[0].here_ok;
+  vp_here(p, vp_ground(vp_ray(v, 500, 250), 0));
+  #assert p[0].here_ok && p[0].here_x >= -1 && p[0].here_x <= 1 && p[0].here_z >= -1 && p[0].here_z <= 1;
+}
+
+#test "the fly camera starts at the page's view, flies where it looks, and its look stops short of straight up" {
+  h: [1] VpTest; p := h[0].p[..]; v := vp_test_view();
+  vp_fly_step(p, 1, 1, 0, 0, false);
+  #assert p[0].fx == 0 && p[0].fz == 0;   // off: it does not move
+  #assert vp_act(p, "fly on", v) && p[0].fly && vp_near(p[0].fx, 0) && vp_near(p[0].fy, 10) && vp_near(p[0].fz, -10);
+  f := vp_fly_view(p, v);
+  // it looks where the page's view looked: at the origin
+  g := vp_ground(vp_ray(f, 500, 250), 0);
+  #assert g.ok && vp_near(g.x, 0) && vp_near(g.z, 0) && f.w == 1000 && f.fov == v.fov;
+  vp_fly_step(p, 0.5, 1, 0, 0, false);
+  #assert p[0].fy < 10 && p[0].fz > -10 && vp_near(vp_len(p[0].fx, p[0].fy - 10, p[0].fz + 10), VP_FLY_SPEED * 0.5);
+  y := p[0].fy;
+  vp_fly_step(p, 0.5, 0, 0, 1, true);
+  #assert vp_near(p[0].fy - y, VP_FLY_SPEED * 2);
+  x := p[0].fx;
+  vp_fly_step(p, 0.5, 0, 1, 0, false);
+  #assert p[0].fx < x - 3;   // right of a view looking along +z is -x
+  vp_fly_look(p, 0, -100000);
+  #assert p[0].fpitch == VP_PITCH;
+  yaw := p[0].fyaw;
+  vp_fly_look(p, 100, 0);
+  #assert vp_near(p[0].fyaw, yaw - 0.4);
+  #assert vp_act(p, "fly off", v) && !p[0].fly;
+}
+
+#test "the clock: play runs the frame's time, pause runs none, a step is one sixtieth; hands are off while a tool, the fly camera or simulate is on" {
+  h: [1] VpTest; p := h[0].p[..]; v := vp_test_view();
+  #assert vp_run_dt(p, 0.02) == 0.02 && vp_hands(p);
+  #assert vp_act(p, "run pause", v) && vp_run_dt(p, 0.02) == 0;
+  #assert vp_act(p, "step", v) && vp_act(p, "step", v) && p[0].steps == 2;
+  #assert vp_run_dt(p, 0.02) == VP_STEP && vp_run_dt(p, 0.5) == VP_STEP && vp_run_dt(p, 0.02) == 0;
+  #assert vp_act(p, "run play", v) && vp_run_dt(p, 0.03) == 0.03 && p[0].steps == 0;
+  // a step while playing pauses first
+  #assert vp_act(p, "step", v) && p[0].paused && vp_run_dt(p, 0.02) == VP_STEP && vp_run_dt(p, 0.02) == 0;
+  #assert vp_act(p, "sim on", v) && !vp_hands(p) && vp_act(p, "sim off", v) && vp_hands(p);
+  #assert vp_act(p, "tool select", v) && !vp_hands(p) && vp_act(p, "tool play", v) && vp_hands(p);
+  #assert vp_act(p, "fly on", v) && !vp_hands(p);
+}
+
+#test "an action that is not one changes nothing" {
+  h: [1] VpTest; p := h[0].p[..]; v := vp_test_view();
+  #assert !vp_act(p, "tool paint", v) && !vp_act(p, "grid 30", v) && !vp_act(p, "grid", v) && !vp_act(p, "fly maybe", v) && !vp_act(p, "run", v);
+  #assert !vp_act(p, "step now", v) && !vp_act(p, "tool move now", v) && !vp_act(p, "", v) && !vp_act(p, "sim", v) && !vp_act(p, "run fast", v);
+  #assert p[0].tool == VT_PLAY && p[0].grid == 50 && !p[0].fly && !p[0].paused && !p[0].sim && p[0].steps == 0;
+}

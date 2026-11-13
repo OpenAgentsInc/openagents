@@ -38,6 +38,9 @@ Splice :: struct {
   follow: int;                // the world `splice`: 1 the page's facts came and it will be opened, 2 it is open (world.coax)
   edit: bool;                 // ?edit: the page joins the dev lane, where edits land; without it, live
   page: [1] SpwPage;          // the page's place in the world, and room to read its answers
+  // the editor's viewport tools (?edit; metaverse-engine/editor/viewport.coax, world.coax spv_*): the tool,
+  // the fly camera and the clock; the view last drawn, in device pixels; and the fly keys held (W S A D Q E)
+  vp: [1] Viewport; vw: [1] SpvWork; vview: VpView; vkeys: [6] bool;
   drive: [1] Drive;           // the agent driver's lists and its last answer (metaverse-engine/agent/drive.coax)
   // In the site's sandboxed frame (metaverse-engine/host/realm-frame.coax, #13432): what the frame is
   // (the host says before each message), and the last answer to the page that holds it.
@@ -400,6 +403,7 @@ splice_message :: (s: [] Splice, kind: int, body: string) #export_c #effects(all
   // the editor shell's actions (metaverse-engine/editor/shell.coax): 520 a batch of edits, sent as this page's own write; 521 the piece to select
   if kind == 520 && s.count > 0 && s[0].edit && s[0].follow == 2 { _ := spw_shell_batch(s[0].page[..], body); return; }
   if kind == 521 && s.count > 0 && s[0].edit { spw_select(s[0].game[..], s[0].page[..], sp_whole(body, 0)); return; }
+  if kind == 522 && s.count > 0 && s[0].edit { _ := vp_act(s[0].vp[..], body, s[0].vview); return; }   // the viewport's tool, grid, camera and clock
   if kind == 610 && s.count > 0 && body.count > 0 {   // a moment of the game to stand in: "0" to "10"
     n := 0;
     for i: 0..<body.count { d := cast(int) body[i] - 48; if d >= 0 && d <= 9 { n = n * 10 + d; } }
@@ -486,8 +490,20 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
     if s[0].follow == 1 { s[0].follow = ifx spw_page_open(g, s[0].page[..], ifx s[0].edit then WL_DEV else WL_LIVE) then 2 else 3; }
     if s[0].follow == 2 { wf_step(s[0].page[0].f[..], step); }
     sl_rise_step(g, step);
-    g_step(g, step);
+    // the editor's clock (pause, step) and hands: while a tool is picked, the camera flies or the World is
+    // simulated, the player's keys do not reach the game
+    vp := s[0].vp[..];
+    if !vp_hands(vp) { g[0].fwd = false; g[0].back = false; g[0].left = false; g[0].right = false; g[0].turn_l = false; g[0].turn_r = false; }
+    g_step(g, vp_run_dt(vp, step));
     view = g_camera(g); key = g_key_light(g); flash = g[0].flash;
+    seen := VpView.{ex = view.eye.x, ey = view.eye.y, ez = view.eye.z, ax = view.at.x, ay = view.at.y, az = view.at.z, fov = view.fov, w = width, h = height};
+    if vp[0].fly {
+      k := s[0].vkeys;
+      vp_fly_step(vp, step, (ifx k[0] then 1.0f32 else 0.0f32) - (ifx k[1] then 1.0f32 else 0.0f32), (ifx k[3] then 1.0f32 else 0.0f32) - (ifx k[2] then 1.0f32 else 0.0f32), (ifx k[5] then 1.0f32 else 0.0f32) - (ifx k[4] then 1.0f32 else 0.0f32), false);
+      seen = vp_fly_view(vp, seen);
+      view.eye = v3(seen.ex, seen.ey, seen.ez); view.at = v3(seen.ax, seen.ay, seen.az);
+    }
+    s[0].vview = seen;
     pen := [1] Pen.[Pen.{graybox = g[0].gray}];
     g_live(g, live, pen[..]);
     s[0].live_n = pen[0].n;
@@ -516,20 +532,37 @@ splice_frame :: (s: [] Splice, out: [] f32, u: [] f32, width: f32, height: f32, 
   if s[0].fixture == 1 { s[0].fixture = 2; _ := sl_fixture(g); }
   sd_meshes(s[0].ld[..], g, pieces); sd_places(s[0].ld[..], g, places);
   s[0].draw_n = sd_draws(s[0].ld[..], g, s[0].draws[..], 2);
-  return g_overlay(g, out, u, width, height);
+  n := g_overlay(g, out, u, width, height);
+  // the selected piece is outlined where it stands, or where a drag would leave it
+  if s[0].edit {
+    mark := spv_mark(g, s[0].page[..], s[0].vp[..], s[0].vview);
+    if mark.ok { n = ui_box(out, n, mark.x0, mark.y0, mark.x1, mark.y1, 3 * lo(width / 1280, height / 800), INK()); }
+  }
+  return n;
 }
 splice_key :: (s: [] Splice, key: int, down: bool) -> bool #export_c #effects(all) {
   if s[0].gallery { return false; }
   if down && (key == 'g' || key == 'G') { s[0].game[0].gray = !s[0].game[0].gray; return true; }   // graybox, in any mode
   if !s[0].started { return false; }
+  // hands off: the keys fly the camera (W S A D, Q down, E up) or do nothing
+  if s[0].edit && !vp_hands(s[0].vp[..]) {
+    names := "wsadqe"; caps := "WSADQE";
+    for i: 0..<6 { if key == cast(int) names[i] || key == cast(int) caps[i] { s[0].vkeys[i] = down; return s[0].vp[0].fly; } }
+    return false;
+  }
   return g_key(s[0].game[..], key, down);
 }
 // Mouse look (the host holds the pointer while you walk): 0 a still scene, 1 the cursor is free, 2 hold it.
-splice_mouselook :: (s: [] Splice) -> int #export_c #effects(all) { if s[0].gallery || !s[0].started { return 0; } return g_mouselook(s[0].game[..]); }
+splice_mouselook :: (s: [] Splice) -> int #export_c #effects(all) {
+  if s[0].gallery || !s[0].started { return 0; }
+  if s[0].edit && !vp_hands(s[0].vp[..]) { return 1; }   // a tool is picked: the cursor is free
+  return g_mouselook(s[0].game[..]);
+}
 splice_look :: (s: [] Splice, dx: f32, dy: f32) #export_c #effects(all) { if !s[0].gallery && s[0].started { g_look(s[0].game[..], dx, dy); } }
 splice_lock :: (s: [] Splice, status: int) #export_c #effects(all) { if !s[0].gallery && s[0].started { g_lock(s[0].game[..], status); } }
 splice_pointer :: (s: [] Splice, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
   if s[0].gallery || !s[0].started { return false; }
+  if s[0].edit && !vp_hands(s[0].vp[..]) { spv_pointer(s[0].game[..], s[0].page[..], s[0].vp[..], s[0].vw[..], s[0].vview, x, y, phase); return true; }
   return g_pointer(s[0].game[..], x, y, phase);
 }
 

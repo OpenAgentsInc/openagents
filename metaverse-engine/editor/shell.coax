@@ -26,6 +26,16 @@ ES_DRAFT :: 16;        // bytes typed into a number's field
 ES_CLICK :: 1; ES_INPUT :: 2; ES_SUBMIT :: 3; ES_MODEL :: 6;
 ES_BATCH :: 520;       // an action: a world.edit.v1 batch for the page to send
 ES_SELECT :: 521;      // an action: the ID of the thing to select, 0 for none
+ES_VIEW :: 522;        // an action for the viewport's tools, as words (viewport.coax vp_act): "tool move", "grid 50", "fly on", "run pause", "step", "sim on"
+// The viewport's tools (viewport.coax VT_*), as a person reads them, and what each does.
+ES_TOOLS :: 5;
+ES_TOOL :: [ES_TOOLS] string.["Play", "Select", "Move", "Turn", "Size"];
+ES_TOOL_WORD :: [ES_TOOLS] string.["play", "select", "move", "turn", "size"];
+ES_TOOL_NOTE :: [ES_TOOLS] string.["Walk the world as a player", "Tap a thing to select it", "Drag the selected thing along the ground", "Drag sideways to turn the selected thing", "Drag up or down to size the selected thing"];
+ES_GRIDS :: 4;
+ES_GRID :: [ES_GRIDS] string.["10 cm", "25 cm", "50 cm", "1 m"];
+ES_GRID_CM :: [ES_GRIDS] int.[10, 25, 50, 100];
+ES_OPEN_NONE :: 0; ES_OPEN_WHEN :: 1; ES_OPEN_KIND :: 2; ES_OPEN_TOOL :: 3; ES_OPEN_GRID :: 4; ES_OPEN_ADD :: 5;
 // What a column is called beside its field, and what its number counts.
 ES_COL_NAME :: [WE_COLS] string.["X cm", "Y cm", "Z cm", "Turn °", "Speed X", "Speed Y", "Speed Z", "Radius cm", "Height cm", "Health", "Health max", "Kind", "Row"];
 ES_WHEN :: [2] string.["Now", "Next session"];
@@ -34,8 +44,10 @@ ES_WHEN_NOTE :: [2] string.["People in the world see it at once", "People see it
 EdShell :: struct {
   ready: bool; time: f32; dirty: bool; animating: bool;
   have: bool;                            // a model came
-  when: int; when_open: bool;            // when a publish reaches people: 0 now, 1 next session
-  kind_open: bool;                       // the selected thing's kinds are listed, to pick another
+  when: int;                             // when a publish reaches people: 0 now, 1 next session
+  open: int;                             // the one select that is open (ES_OPEN_*)
+  tool: int; grid: int = 2;              // the viewport's tool (ES_TOOL) and the grid a move snaps to (ES_GRID)
+  fly: bool; paused: bool; sim: bool;    // the camera flies; the World is paused; the World runs with the player's hands off
   said: [EM_WORDS] u8; said_n: int;      // the shell's own word about what was typed, until the next action
   draft: [WE_COLS] [ES_DRAFT] u8; draft_n: [WE_COLS] int;
   shown_sel: int; shown_rev: int;        // the thing and the revision the fields were last filled for
@@ -104,9 +116,31 @@ es_build :: (s: [] EdShell) {
   redo := k_button(t, u, "redo", "Redo", ifx m[0].redo > 0 then BS_PLAIN else BS_DISABLED);
   pub := k_button(t, u, "publish", "Publish", BS_PRIMARY);
   whens := ES_WHEN; notes := ES_WHEN_NOTE;
-  k_select_begin(t, u, "when", whens[s[0].when], "When a publish reaches people", s[0].when_open);
-  if s[0].when_open { for k: 0..<2 { r := k_row(t, u, tr_join(buf[..], "when.", k), whens[k], notes[k], k == s[0].when); } }
-  k_select_end(t, s[0].when_open);
+  k_select_begin(t, u, "when", whens[s[0].when], "When a publish reaches people", s[0].open == ES_OPEN_WHEN);
+  if s[0].open == ES_OPEN_WHEN { for k: 0..<2 { r := k_row(t, u, tr_join(buf[..], "when.", k), whens[k], notes[k], k == s[0].when); } }
+  k_select_end(t, s[0].open == ES_OPEN_WHEN);
+  // the viewport: the tool the pointer is, the grid a move snaps to, a new thing at the point last tapped, the camera and the clock
+  tools := ES_TOOL; tnotes := ES_TOOL_NOTE; grids := ES_GRID;
+  k_select_begin(t, u, "tool", tools[s[0].tool], "What the pointer does in the world", s[0].open == ES_OPEN_TOOL);
+  if s[0].open == ES_OPEN_TOOL { for k: 0..<ES_TOOLS { r := k_row(t, u, tr_join(buf[..], "tool.", k), tools[k], tnotes[k], k == s[0].tool); } }
+  k_select_end(t, s[0].open == ES_OPEN_TOOL);
+  k_select_begin(t, u, "grid", grids[s[0].grid], "The grid a moved thing snaps to", s[0].open == ES_OPEN_GRID);
+  if s[0].open == ES_OPEN_GRID { for k: 0..<ES_GRIDS { r := k_row(t, u, tr_join(buf[..], "grid.", k), grids[k], "", k == s[0].grid); } }
+  k_select_end(t, s[0].open == ES_OPEN_GRID);
+  if m[0].here && m[0].nk > 0 {
+    k_select_begin(t, u, "add", "Add", "Place a new thing at the point you last tapped", s[0].open == ES_OPEN_ADD);
+    if s[0].open == ES_OPEN_ADD {
+      for k: 0..<m[0].nk {
+        kn := m[0].kind_name[k];
+        r := k_row(t, u, tr_join(buf[..], "add.", m[0].kind_id[k]), cast(string) kn[0..<m[0].kind_n[k]], "", false);
+      }
+    }
+    k_select_end(t, s[0].open == ES_OPEN_ADD);
+  }
+  fly := k_button(t, u, "fly", ifx s[0].fly then "Stop flying" else "Fly", BS_PLAIN);
+  run := k_button(t, u, "run", ifx s[0].paused then "Play" else "Pause", BS_PLAIN);
+  step := k_button(t, u, "step", "Step", BS_PLAIN);
+  sim := k_button(t, u, "sim", ifx s[0].sim then "Stop simulating" else "Simulate", BS_PLAIN);
   w := m[0].world;
   n := ct_put(line[..], 0, cast(string) w[0..<m[0].world_n]);
   n = ct_put(line[..], n, " · revision "); n = ct_put_int(line[..], n, m[0].rev);
@@ -140,14 +174,14 @@ es_build :: (s: [] EdShell) {
     for c: 0..<WE_COLS { if m[0].cols[c] && c != WEC_KIND { f := k_prop(t, u, tr_join(buf[..], "col.", c), names[c], "0"); } }
     // where a thing's kind may be set, it is picked from the kinds the world has
     if m[0].cols[WEC_KIND] && m[0].nk > 0 {
-      k_select_begin(t, u, "kind", ifx kind.count > 0 then kind else "Kind", "What kind of thing this is", s[0].kind_open);
-      if s[0].kind_open {
+      k_select_begin(t, u, "kind", ifx kind.count > 0 then kind else "Kind", "What kind of thing this is", s[0].open == ES_OPEN_KIND);
+      if s[0].open == ES_OPEN_KIND {
         for k: 0..<m[0].nk {
           kn := m[0].kind_name[k];
           r := k_row(t, u, tr_join(buf[..], "kind.", m[0].kind_id[k]), cast(string) kn[0..<m[0].kind_n[k]], "", m[0].kind_id[k] == m[0].e_kind[sel]);
         }
       }
-      k_select_end(t, s[0].kind_open);
+      k_select_end(t, s[0].open == ES_OPEN_KIND);
     }
     acts := tr_open(t, "one.acts", TG_DIV, "rowf");
     rm := k_icon_button(t, "remove", IC_TRASH, "Remove this thing");
@@ -181,11 +215,33 @@ es_value :: (m: [] EdModel, at: int, col: int) -> int {
 }
 es_click :: (s: [] EdShell, id: string) {
   m := s[0].model[..];
-  if id == "when" { s[0].when_open = !s[0].when_open; s[0].kind_open = false; return; }
-  if id == "kind" { s[0].kind_open = !s[0].kind_open; s[0].when_open = false; return; }
-  if es_index(id, "when.") >= 0 && es_index(id, "when.") < 2 { s[0].when = es_index(id, "when."); s[0].when_open = false; return; }
-  s[0].when_open = false; s[0].kind_open = false;
+  // a select opens, or closes if it was the open one; any other press closes whichever is open
+  was := s[0].open; s[0].open = ES_OPEN_NONE;
+  names := [5] string.["when", "kind", "tool", "grid", "add"];
+  for name, k: names { if id == name { s[0].open = ifx was == k + 1 then ES_OPEN_NONE else k + 1; return; } }
+  if es_index(id, "when.") >= 0 && es_index(id, "when.") < 2 { s[0].when = es_index(id, "when."); return; }
+  // the viewport's tools are the shell's to pick and the page's to obey
+  words: [24] u8;
+  if es_index(id, "tool.") >= 0 && es_index(id, "tool.") < ES_TOOLS {
+    s[0].tool = es_index(id, "tool."); tw := ES_TOOL_WORD;
+    n := ct_put(words[..], 0, "tool "); n = ct_put(words[..], n, tw[s[0].tool]);
+    _ := es_act(s, ES_VIEW, cast(string) words[0..<n]);
+    return;
+  }
+  if es_index(id, "grid.") >= 0 && es_index(id, "grid.") < ES_GRIDS {
+    s[0].grid = es_index(id, "grid."); cm := ES_GRID_CM;
+    n := ct_put(words[..], 0, "grid "); n = ct_put_int(words[..], n, cm[s[0].grid]);
+    _ := es_act(s, ES_VIEW, cast(string) words[0..<n]);
+    return;
+  }
+  if id == "fly" { s[0].fly = !s[0].fly; _ := es_act(s, ES_VIEW, ifx s[0].fly then "fly on" else "fly off"); return; }
+  if id == "run" { s[0].paused = !s[0].paused; _ := es_act(s, ES_VIEW, ifx s[0].paused then "run pause" else "run play"); return; }
+  if id == "step" { s[0].paused = true; _ := es_act(s, ES_VIEW, "step"); return; }
+  if id == "sim" { s[0].sim = !s[0].sim; _ := es_act(s, ES_VIEW, ifx s[0].sim then "sim on" else "sim off"); return; }
   if !s[0].have { return; }
+  // a new thing of the kind picked, at the point last tapped
+  add := es_index(id, "add.");
+  if add >= 0 && m[0].here { es_batch(s, WB_APPLY, WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = add, x = m[0].here_x, z = m[0].here_z}); return; }
   none: WorldEdit;
   picked := es_index(id, "kind.");
   if picked >= 0 && m[0].cols[WEC_KIND] && em_entity_at(m, m[0].sel) >= 0 {
@@ -422,10 +478,10 @@ es_test_frames :: (h: [] EsTest, n: int) { for k: 0..<n { _ := coaxial_editor_fr
   coaxial_editor_act_done(s);
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "when"), 0);
   es_test_frames(h[..], 1);
-  #assert s[0].when_open && tr_find(t, "when.1") > 0 && tr_text_of(t, tr_find(t, "when.1.m")) == "People see it the next time they come in";
+  #assert s[0].open == ES_OPEN_WHEN && tr_find(t, "when.1") > 0 && tr_text_of(t, tr_find(t, "when.1.m")) == "People see it the next time they come in";
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "when.1"), 0);
   es_test_frames(h[..], 1);
-  #assert !s[0].when_open && s[0].when == 1 && tr_find(t, "when.1") < 0 && tr_text_of(t, tr_find(t, "when.l")) == "Next session";
+  #assert s[0].open == ES_OPEN_NONE && s[0].when == 1 && tr_find(t, "when.1") < 0 && tr_text_of(t, tr_find(t, "when.l")) == "Next session";
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "publish"), 0);
   #assert es_test_batch(h[..], 9) == WB_PUBLISH_NEXT;
 }
@@ -508,16 +564,95 @@ ES_TEST_BARE :: [2] string.["btn-l", "sel-l"];   // a button's and a select's la
   #assert tr_find(t, "kind") > 0 && tr_text_of(t, tr_find(t, "kind.l")) == "Cargo crate" && tr_find(t, "col.11") < 0 && tr_find(t, "col.0") > 0 && tr_find(t, "kind.1002") < 0;
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "kind"), 0);
   es_test_frames(h[..], 1);
-  #assert s[0].kind_open && tr_has(t, tr_find(t, "kind.1001"), AT_CURRENT) && !tr_has(t, tr_find(t, "kind.1002"), AT_CURRENT);
+  #assert s[0].open == ES_OPEN_KIND && tr_has(t, tr_find(t, "kind.1001"), AT_CURRENT) && !tr_has(t, tr_find(t, "kind.1002"), AT_CURRENT);
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "kind.1001"), 0);
   es_test_frames(h[..], 1);
-  #assert !s[0].kind_open && s[0].nacts == 0;
+  #assert s[0].open == ES_OPEN_NONE && s[0].nacts == 0;
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "kind"), 0);
   es_test_frames(h[..], 1);
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "kind.1002"), 0);
-  #assert es_test_batch(h[..], 4) == WB_APPLY && h[0].edits[0].op == WE_SET && h[0].edits[0].col == WEC_KIND && h[0].edits[0].v == 1002 && h[0].edits[0].id == 1 && !s[0].kind_open;
+  #assert es_test_batch(h[..], 4) == WB_APPLY && h[0].edits[0].op == WE_SET && h[0].edits[0].col == WEC_KIND && h[0].edits[0].v == 1002 && h[0].edits[0].id == 1 && s[0].open == ES_OPEN_NONE;
   // the two selects are never open together
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "kind"), 0);
   coaxial_editor_event(s, ES_CLICK, dm_find(d, "when"), 0);
-  #assert s[0].when_open && !s[0].kind_open;
+  #assert s[0].open == ES_OPEN_WHEN;
+}
+
+// The waiting action's words, when it is one for the viewport ("" otherwise); it is taken.
+es_test_view :: (h: [] EsTest, out: [] u8) -> string {
+  s := h[0].s[..];
+  if coaxial_editor_act_kind(s) != ES_VIEW { return ""; }
+  n := coaxial_editor_act_len(s);
+  for i: 0..<n { out[i] = s[0].acts[0][i]; }
+  coaxial_editor_act_done(s);
+  return cast(string) out[0..<n];
+}
+es_test_press :: (h: [] EsTest, id: string) { s := h[0].s[..]; coaxial_editor_event(s, ES_CLICK, dm_find(s[0].dom[..], id), 0); es_test_frames(h, 1); }
+// The fixture world with a point tapped on the ground.
+es_test_here :: (h: [] EsTest) {
+  s := h[0].s[..]; out := h[0].text[..];
+  cols: [WE_COLS] bool; cols[WEC_X] = true;
+  n := em_begin(out, "splice", 0, 6, 0, 0, 0);
+  n = em_cols(out, n, cols[..]);
+  n = em_kind(out, n, 1001, "Cargo crate");
+  n = em_kind(out, n, 1002, "Parked rover");
+  n = em_here(out, n, 420, -75);
+  for i: 0..<n { s[0].inbox[i] = out[i]; }
+  coaxial_editor_event(s, ES_MODEL, 0, n);
+}
+
+#test "the viewport's strip: a tool and a grid are picked from selects, and fly, pause, step and simulate are buttons that say what they will do next; each tells the page in words" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..]; w: [32] u8;
+  es_test_model(h[..], 0, 7, 3, "");
+  es_test_frames(h[..], 1);
+  #assert tr_text_of(t, tr_find(t, "tool.l")) == "Play" && tr_text_of(t, tr_find(t, "grid.l")) == "50 cm" && tr_find(t, "tool.2") < 0;
+  es_test_press(h[..], "tool");
+  #assert s[0].open == ES_OPEN_TOOL && tr_text_of(t, tr_find(t, "tool.2.t")) == "Move" && tr_text_of(t, tr_find(t, "tool.2.m")) == "Drag the selected thing along the ground" && tr_has(t, tr_find(t, "tool.0"), AT_CURRENT);
+  es_test_press(h[..], "tool.2");
+  #assert es_test_view(h[..], w[..]) == "tool move" && s[0].open == ES_OPEN_NONE && tr_text_of(t, tr_find(t, "tool.l")) == "Move";
+  es_test_press(h[..], "tool"); es_test_press(h[..], "tool.4");
+  #assert es_test_view(h[..], w[..]) == "tool size";
+  es_test_press(h[..], "grid");
+  #assert s[0].open == ES_OPEN_GRID && tr_has(t, tr_find(t, "grid.2"), AT_CURRENT);
+  es_test_press(h[..], "grid.0");
+  #assert es_test_view(h[..], w[..]) == "grid 10" && tr_text_of(t, tr_find(t, "grid.l")) == "10 cm";
+  es_test_press(h[..], "grid"); es_test_press(h[..], "grid.3");
+  #assert es_test_view(h[..], w[..]) == "grid 100" && tr_text_of(t, tr_find(t, "grid.l")) == "1 m";
+  #assert tr_text_of(t, tr_find(t, "fly.l")) == "Fly";
+  es_test_press(h[..], "fly");
+  #assert es_test_view(h[..], w[..]) == "fly on" && tr_text_of(t, tr_find(t, "fly.l")) == "Stop flying";
+  es_test_press(h[..], "fly");
+  #assert es_test_view(h[..], w[..]) == "fly off" && tr_text_of(t, tr_find(t, "fly.l")) == "Fly";
+  es_test_press(h[..], "run");
+  #assert es_test_view(h[..], w[..]) == "run pause" && tr_text_of(t, tr_find(t, "run.l")) == "Play";
+  es_test_press(h[..], "run");
+  #assert es_test_view(h[..], w[..]) == "run play" && tr_text_of(t, tr_find(t, "run.l")) == "Pause";
+  // a step pauses: the button then offers Play
+  es_test_press(h[..], "step");
+  #assert es_test_view(h[..], w[..]) == "step" && s[0].paused && tr_text_of(t, tr_find(t, "run.l")) == "Play";
+  es_test_press(h[..], "sim");
+  #assert es_test_view(h[..], w[..]) == "sim on" && tr_text_of(t, tr_find(t, "sim.l")) == "Stop simulating";
+  es_test_press(h[..], "sim");
+  #assert es_test_view(h[..], w[..]) == "sim off" && s[0].nacts == 0;
+  // one select is open at a time
+  es_test_press(h[..], "tool"); es_test_press(h[..], "grid");
+  #assert s[0].open == ES_OPEN_GRID && tr_find(t, "tool.0") < 0 && tr_find(t, "grid.0") > 0;
+  es_test_press(h[..], "grid");
+  #assert s[0].open == ES_OPEN_NONE;
+}
+
+#test "Add is there once a point was tapped: the kind picked is one spawn edit at that point" {
+  h: [1] EsTest; s := h[0].s[..]; t := s[0].tree[..];
+  es_test_model(h[..], 0, 7, 3, "");
+  es_test_frames(h[..], 1);
+  #assert tr_find(t, "add") < 0;
+  es_test_here(h[..]);
+  es_test_frames(h[..], 1);
+  #assert tr_find(t, "add") > 0 && tr_find(t, "add.1002") < 0;
+  es_test_press(h[..], "add");
+  #assert s[0].open == ES_OPEN_ADD && tr_text_of(t, tr_find(t, "add.1002.t")) == "Parked rover";
+  es_test_press(h[..], "add.1002");
+  #assert es_test_batch(h[..], 6) == WB_APPLY && s[0].open == ES_OPEN_NONE;
+  e := h[0].edits[0];
+  #assert e.op == WE_SPAWN && e.id == 0 && e.kind == 1002 && e.x == 420 && e.z == -75 && e.yaw == 0 && e.scale == 100;
 }

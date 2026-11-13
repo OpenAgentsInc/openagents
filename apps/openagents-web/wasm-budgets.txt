@@ -41,7 +41,8 @@ components 210000
 kit 100000
 # The editor shell ?edit opens over an engine page (metaverse-engine/editor/shell.coax, #13416): the frames set, the dock,
 # the browser backend, the world edit codec and the editor model's: 103,413 bytes measured 2026-11-13 on a Mac; about 8% room.
-editor-shell 112000
+# With the viewport's strip (E8, #13417: tool, grid, Add, fly, pause, step, simulate): 106,452 bytes measured 2026-11-13 on a Mac; about 11% room.
+editor-shell 120000
 agents 120000
 # the shared host ABI every renderer carrier exports kept growing on 11-05 (#12869): 81,594 measured at 882146be65; about 5% room (#12922)
 connect-pylon 86000
@@ -314,4 +315,5 @@ painted 200000
 # ... and it follows the world `splice` (#13412, #13413): the world document's reader (metaverse-engine/editor/world-doc.coax), the edit
 # codec with its JSON (world-edit.coax), the page's follower (world-follow.coax) and Splice's own carrying out of an edit (world.coax):
 # 335,873 bytes measured 2026-11-13 on a Linux build host; about 5% room.
-splice 355000
+# With the editor's model for the shell (E7, #13416) and the viewport's tools on the page (E8, #13417: picking through query_ray, the gizmos, the fly camera, the clock): 362,089 bytes measured 2026-11-13 on a Linux build host; about 6% room.
+splice 385000

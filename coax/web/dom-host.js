@@ -163,7 +163,8 @@ function send(kind, slot, value) {
     n = Math.min(cap, encoded.length);
     new Uint8Array(memory.buffer, x.dom_inbox(state), n).set(encoded.subarray(0, n));
   }
-  x.dom_event(state, kind, slot, n); ask();
+  x.dom_event(state, kind, slot, n);
+  if (own.still && !clipping) frame(performance.now()); else ask();   // on an agent's clock the answer is on the page before the next operation
   own.after?.();
 }
 // now(): the frame that would be asked for, drawn at once (a page on an agent's clock, which waits for nothing).

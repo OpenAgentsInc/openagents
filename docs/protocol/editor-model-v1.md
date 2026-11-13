@@ -24,6 +24,7 @@ The model is lines of text, in this order.
 | `k KIND NAME` | A kind: its content ID and its name. |
 | `e ID KIND X Y Z YAW SCALE` | An entity: its ID on the wire, its kind, its place in whole centimetres, its turn in whole degrees and its size in whole percent. |
 | `c KIND COLUMN VALUE` | A cell of a kind's content row. The shell shows the selected entity's as facts. |
+| `here X Z` | The last point tapped on the ground, in whole centimetres. Left out until a point is tapped. The shell places a new thing there. |
 | `no WORDS` | The last refusal, in words. The shell shows it as a notice. |
 
 A name, a value and a refusal are each one line of printable bytes. `em_read` refuses any bytes
@@ -49,6 +50,7 @@ The shell asks the page to act through the host, as two message kinds:
 | --- | --- | --- |
 | 520 | A `world.edit.v1` batch made from the model's revision (`docs/protocol/world-edit-v1.md`) | Sends it as its own write. The server's answer comes back in the next model: new places, or a `no` line. |
 | 521 | An entity's ID, or 0 | Selects it. |
+| 522 | Words for the viewport's tools (`metaverse-engine/editor/viewport.coax`, `vp_act`): `tool play`, `tool select`, `tool move`, `tool turn`, `tool size`, `grid 10`, `grid 25`, `grid 50`, `grid 100`, `fly on`, `fly off`, `run play`, `run pause`, `step`, `sim on`, `sim off` | Picks the tool, the grid, the camera and the clock. Anything else changes nothing. |
 
 ## A page that wants the shell
 
