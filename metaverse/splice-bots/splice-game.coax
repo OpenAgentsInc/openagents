@@ -2197,6 +2197,17 @@ FlowTest :: struct { o: [4] [CT_BODY] u8; }
   for i: 0..<100 { g_step(g[..], 0.02); }
   #assert !t[0].bots[SB_SNIPER].vit.down && t[0].bots[SB_SNIPER].vit.hp == 24 && g[0].msg == SBM_REPAIR;
 }
+#test "the battles' own stills: 20 is Sniper battling the raider mech, 21 the boss in phase two" #steps 60000000 {
+  g := [1] SpGame.[SpGame.{}];
+  g_stage(g[..], 20);
+  #assert g[0].zone == Z_RAIL && sb_fighting(g[..]) && g[0].bt[0].kind == SBF_DESERT && sb_fielded(g[..]) == SB_SNIPER;
+  g_stage(g[..], 21);
+  #assert !sb_fighting(g[..]) && g[0].wall_gone;
+  for i: 0..<5 { g_step(g[..], 0.02); }
+  #assert g[0].bt[0].kind == SBF_BOSS && g[0].bt[0].half;
+  for i: 0..<150 { g_step(g[..], 0.02); if g[0].bt[0].wind > 0 || g[0].bt[0].rush > 0 { break; } }
+  #assert g[0].bt[0].wind > 0 || g[0].bt[0].rush > 0;
+}
 #test "the ending: three captions over the 15-second hologram, then SCENE RESTORED, then the mission's teaser with RESTART" #steps 60000000 {
   g := [1] SpGame.[SpGame.{}];
   #assert sb_caption(1) == "The orders kept coming. No one was giving them." && sb_caption(7) == "The Emperor has been gone for years. Only his machines remained." && sb_caption(12) == "Someone has to tell the others, Director.";

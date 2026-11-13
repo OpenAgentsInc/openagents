@@ -131,11 +131,23 @@ sb_dino_home :: (g: [] SpGame) {
   t[0].dino_x = g[0].at.boss_x; t[0].dino_z = g[0].at.boss_z; t[0].dino_yaw = 0;
   t[0].charge_t = 0; t[0].wind = 0; t[0].rush = 0; t[0].daze = 0; t[0].half = false;
 }
-// The stills and checks stand in a moment of the run (g_stage): from the boss chamber on, Digger's core is in the mech beside you.
+// The stills and checks stand in a moment of the run (g_stage): from the boss chamber on, Digger's core is in the mech
+// beside you. Two moments of the battles' own: 20, Sniper battling the raider mech at the rail stop; 21, the boss
+// below half health, about to charge.
 sb_stage :: (g: [] SpGame, n: int) {
-  if n < 10 || n > 12 { return; }
   t := g[0].bt[..];
-  t[0].mech_core = true; t[0].mech_used = true; t[0].mech_x = g[0].px - 3; t[0].mech_z = g[0].pz + 2; t[0].mech_yaw = PI;
+  if n == 20 {
+    g[0].zone = Z_RAIL; g[0].phase = PH_DAY; g[0].rail_s = T_RAIL_PING; g[0].pinged = true; g[0].mode = M_PLAY;
+    c := rail_at(g, T_RAIL_PING); g[0].px = c.x + 9; g[0].pz = c.z - 3; g[0].yaw = atan2(-7.5f32, 7.0f32);   // off to the side: Sniper and the raider mech in view
+    g_bot_home(g);
+    t[0].rm_x = c.x + 3; t[0].rm_z = c.z + 9; t[0].rm_hunt = true;
+    crew := [2] int.[SB_SNIPER, SB_DIGGER]; sb_begin(g, SBF_DESERT, crew[..], SB_RAIDER);
+    return;
+  }
+  if n == 21 { g[0].wall_gone = true; g[0].px = 3; g[0].pz = -64.5; g[0].yaw = PI; g[0].heat = 40; g[0].have[H_PLUS] = true; g[0].taken[PICK_PLUS] = true; }
+  if n < 10 || (n > 12 && n != 21) { return; }
+  t[0].mech_core = true; t[0].mech_used = true; t[0].mech_x = g[0].px + 3.5; t[0].mech_z = g[0].pz - 3; t[0].mech_yaw = PI;   // ahead of her, toward the boss
+  if n == 21 { t[0].bots[SB_BOSS].vit.hp = 30; t[0].half = true; t[0].charge_t = SB_CHARGE_EVERY - 1.5; }
 }
 
 // ---- where things are
@@ -673,7 +685,7 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
   n = ui_title(out, n, sb_bot_name(t.foe), fx0 + 14 * k, fy + 22 * k, 10 * k, ifx t.foe == SB_BOSS then GLOW_INK() else ink);
   n = ui_right(out, n, num(buf[..], "", bb_hp(foe), num_tail(foe)), fx1 - 14 * k, fy + 22 * k, 9 * k, ink);
   n = sb_bar(out, n, fx0 + 14 * k, fy + 38 * k, fx1 - 14 * k, k, bb_health(foe), ifx t.foe == SB_BOSS then GLOW() else HEAT());
-  if t.foe == SB_BOSS && t.half { n = ui_mid(out, n, "PHASE 2 · IT CHARGES", w * 0.5, fy + 70 * k, 8 * k, HEAT()); }
+  if t.foe == SB_BOSS { n = ui_mid(out, n, ifx t.half then "PHASE 2 · IT CHARGES" else "PHASE 1 · ITS ARM SWEEPS", w * 0.5, fy + 22 * k, 8 * k, ifx t.half then HEAT() else ink); }
   // yours: the fielded bot, its health and battery, and its four cards on keys 1 to 4
   me := bb_active(f, 0); who := sb_fielded(g);
   mx0 := w * 0.5 - 220 * k; mx1 := w * 0.5 + 220 * k; my0 := h - pad - 100 * k; my1 := h - pad;
@@ -697,9 +709,9 @@ sb_hud :: (g: [] SpGame, out: [] f32, u: [] f32, q: Ui, n0: int) -> int {
     if l.cool > 0 { n = ui_fill(out, n, x1 - (x1 - x0) * l.cool, y0, x1, y1, t3(0.55, 0.50, 0.44)); }
     fg := ifx ready && !blue then paper else ink;
     n = ui_cap(out, n, num(buf[..], "", i + 1, ""), x0 + 8 * k, y0 + 6 * k, 20 * k, fg);
-    n = ui_title(out, n, sb_card_name(c.id), x0 + 36 * k, y0 + 22 * k, 8.5 * k, fg);
-    n = ui_text(out, n, num(buf[..], "", c.cost, " charge"), x0 + 10 * k, y1 - 10 * k, 7 * k, ifx l.paid then fg else HEAT());
-    n = ui_right(out, n, num(buf[..], "", c.power, " dmg"), x1 - 8 * k, y1 - 10 * k, 7 * k, fg);
+    n = ui_title(out, n, sb_card_name(c.id), x0 + 32 * k, y0 + 22 * k, 7.5 * k, fg);
+    n = ui_text(out, n, num(buf[..], "", c.cost, " BAT"), x0 + 10 * k, y1 - 10 * k, 7 * k, ifx l.paid then fg else HEAT());   // the battery charge it costs
+    n = ui_right(out, n, num(buf[..], "", c.power, " DMG"), x1 - 8 * k, y1 - 10 * k, 7 * k, fg);
   }
   // the last hit's number, over the bot it struck
   if t.hit_t > 0 && t.hit_dmg > 0 {
