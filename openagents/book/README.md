@@ -4,10 +4,14 @@ Building the OpenAgents web and mobile apps, and the general agent behind
 them, in [Coax](../../coax/book/README.md) on
 [Coax Native](../../coax/native.md).
 
-> **Status: design drafts, for the owner to edit.** 75 chapters are design
-> drafts and three are planned outlines. Restructured on 2026-11-13
+> **Status: design drafts, for the owner to edit, and the first milestone.**
+> Chapter 11 is implemented: login, one message, a fixture reply and Stop run
+> on the web and in the iPhone simulator
+> ([#13516](https://github.com/OpenAgentsInc/openagents/issues/13516)).
+> Chapter 6 is partly implemented, 73 chapters are design drafts and three
+> are planned outlines. Restructured on 2026-11-13
 > ([#13512](https://github.com/OpenAgentsInc/openagents/issues/13512)) so that
-> working web and iPhone apps come first. No chapter is implemented yet.
+> working web and iPhone apps come first.
 > Where a piece already runs in the repository, such as the login, the web
 > chat and the iPhone wallet, the chapter says so and builds on it.
 > [CONTRACT.md](CONTRACT.md) says what moves a chapter forward. The book
@@ -151,7 +155,7 @@ NIPs, old crates and protocol packages.
 | [3. Components](ch003-components.md) | Unimplemented: design draft |
 | [4. Routes and navigation](ch004-routes-and-navigation.md) | Unimplemented: design draft |
 | [5. Effects, services and time](ch005-effects-services-and-time.md) | Unimplemented: design draft |
-| [6. One case on the web and the iPhone](ch006-one-case-on-the-web-and-the-iphone.md) | Unimplemented: design draft |
+| [6. One case on the web and the iPhone](ch006-one-case-on-the-web-and-the-iphone.md) | Partly implemented: login cases, web and iPhone simulator |
 
 ### II. OpenAgents on the web and phone
 
@@ -161,7 +165,7 @@ NIPs, old crates and protocol packages.
 | [8. Accounts and login](ch008-accounts-and-login.md) | Unimplemented: design draft |
 | [9. The API the apps call](ch009-the-api-the-apps-call.md) | Unimplemented: design draft |
 | [10. The logged-in shell](ch010-the-logged-in-shell.md) | Unimplemented: design draft |
-| [11. A conversation screen](ch011-a-conversation-screen.md) | Unimplemented: design draft |
+| [11. A conversation screen](ch011-a-conversation-screen.md) | Runnable: first milestone, recorded fakes |
 
 ### III. One general agent
 

@@ -1,7 +1,10 @@
 # 6. One case on the web and the iPhone
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The login case and the cancellation case
+> run with byte-equal traces in headless Chrome and in the iPhone simulator
+> ([#13516](https://github.com/OpenAgentsInc/openagents/issues/13516)). The
+> independent check does not pass yet: the iPhone's XCTest sign-in UI tests
+> fail in an unsigned simulator build. See "What remains".
 
 ## Premise
 
@@ -89,7 +92,45 @@ It builds on what exists today:
 - **Independent check:** the iPhone app's existing XCTest sign-in tests
   still pass, until the portable cases cover their behavior.
 
-Planned paths: `openagents/examples/cases/`.
+Recorded on 2026-11-13, with the runner of chapter 11
+([`apps/shared/cases.coax`](../../apps/shared/cases.coax)):
+
+```shell
+coax/web/tool.sh apps/shared/cases.coax web login login-cancel
+coax/web/tool.sh apps/shared/cases.coax ios-simulator DEVICE login login-cancel
+```
+
+Both cases match
+[`login.trace`](../examples/cases/login.trace) and
+[`login-cancel.trace`](../examples/cases/login-cancel.trace) on web
+(headless Chrome on macOS) and on ios-simulator (iPhone 17, iOS 26.5). The
+iPhone app answers `coax drive` when it is launched with `-OADrive SOCKET`,
+through [`apps/shared/host/drive.c`](../../apps/shared/host/drive.c) and
+[`apple/phone-drive.c`](../../apps/shared/host/apple/phone-drive.c). It
+refuses an operation it lacks, and it refuses a driver tap on a shown
+control that no real press delivered. The case is over the shared app of
+chapter 11
+([`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax)),
+because chapters 2 to 5 have no separate module yet.
+
+## What remains
+
+- **The independent check.** The unit tests `AppAuthTests` (20 tests) pass
+  in the simulator. In the UI tests `SignInUITests`, `testSchnorrVectors`
+  passes and the other four fail. In the unsigned simulator build the app
+  says "The phone's key isn't available right now", so the fake server gets
+  no request. Those failures are in the phone-key path, which these cases
+  don't use. They have to pass, or be replaced by portable cases, before
+  this chapter is implemented
+  ([#13518](https://github.com/OpenAgentsInc/openagents/issues/13518)).
+- **Stale builds.** The iPhone driver doesn't check yet that the app was
+  built from the source under test. The web driver does.
+- **Devices.** `ios-device` is not run
+  ([#13517](https://github.com/OpenAgentsInc/openagents/issues/13517)), and
+  neither is Android.
+
+Planned paths: none new. The cases are in
+[`openagents/examples/cases`](../examples/cases).
 
 ## Sources
 

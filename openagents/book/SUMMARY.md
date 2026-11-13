@@ -12,7 +12,7 @@
 - [3. Components](ch003-components.md) — design draft
 - [4. Routes and navigation](ch004-routes-and-navigation.md) — design draft
 - [5. Effects, services and time](ch005-effects-services-and-time.md) — design draft
-- [6. One case on the web and the iPhone](ch006-one-case-on-the-web-and-the-iphone.md) — design draft
+- [6. One case on the web and the iPhone](ch006-one-case-on-the-web-and-the-iphone.md) — partly implemented
 
 ## II. OpenAgents on the web and phone
 
@@ -20,7 +20,7 @@
 - [8. Accounts and login](ch008-accounts-and-login.md) — design draft
 - [9. The API the apps call](ch009-the-api-the-apps-call.md) — design draft
 - [10. The logged-in shell](ch010-the-logged-in-shell.md) — design draft
-- [11. A conversation screen](ch011-a-conversation-screen.md) — design draft
+- [11. A conversation screen](ch011-a-conversation-screen.md)
 
 ## III. One general agent
 

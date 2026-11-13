@@ -1,7 +1,12 @@
 # 11. A conversation screen
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: implemented — the first milestone on the web and the iPhone
+> simulator, with recorded fakes.** Login, one message, a fixture reply and
+> Stop run from one shared module, and the same five cases give byte-equal
+> traces on the build host, in headless Chrome and in the iPhone simulator
+> ([#13516](https://github.com/OpenAgentsInc/openagents/issues/13516)). A
+> physical iPhone, Android and the live chat page are not covered yet: see
+> "What remains".
 
 ## Premise
 
@@ -11,7 +16,7 @@ fixtures. It is the first milestone: on the website and the iPhone, the same
 actions open login, log you in, send a message, receive a reply and cancel a
 pending one.
 
-## Draft
+## The screen
 
 The screen is a transcript with a composer at its foot: a real text field
 and Send. You send a message, it appears in the transcript, and the reply
@@ -45,15 +50,45 @@ and draws the record that comes back. Chapter 37 gives every turn one
 execution owner, so a second screen open on the same conversation shows the
 reply and never runs it again.
 
-## What we build
+## What we built
 
-A plan for what this chapter ships once the draft is approved:
+- The shared app,
+  [`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax):
+  routes (home, login, chats, chat), the login of
+  [`app-login-flow.coax`](../../apps/shared/app-login-flow.coax), and the
+  conversation screen's state and actions (draft, send, stream, stop, copy)
+  over the session record in
+  [`coax/lib/agent/session/session.coax`](../../coax/lib/agent/session/session.coax).
+  It also holds the fake services. Each request is held until the test clock
+  releases it, and it is answered from a recording: the code request, the
+  code check (code `123456`), the account, and a reply in three parts. The
+  module answers the shared `coax drive` operations (`tree`, `tap`, `type`,
+  `state`, `clock`, `logs`) itself, so every host gives the same answers.
+- The website's page,
+  [`apps/openagents-web/milestone.coax`](../../apps/openagents-web/milestone.coax),
+  served at `/milestone`. It draws the shared view with the kit's components
+  on the mono skin, through the browser
+  ([`coax/web/dom-host.js`](../../coax/web/dom-host.js)).
+- The iPhone's screen,
+  [`SharedAppViewController.swift`](../../apps/openagents-ios/OpenAgents/Shared/SharedAppViewController.swift),
+  which draws the same view with UIKit controls. Launched with `-OADrive
+  SOCKET`, the app answers `coax drive` on that socket through the native
+  hosts' driver,
+  [`apps/shared/host/drive.c`](../../apps/shared/host/drive.c), using
+  [`apple/phone-drive.c`](../../apps/shared/host/apple/phone-drive.c).
+- The cases, in
+  [`openagents/examples/cases/`](../examples/cases): `login`,
+  `login-cancel`, `first-milestone`, `logout-pending` and `reconnect`, each
+  an `.ops` file and its `.trace`. The runner,
+  [`apps/shared/cases.coax`](../../apps/shared/cases.coax), plays them on
+  one host and compares the output with the trace byte for byte.
 
-- The conversation screen's state and actions in the shared app: draft,
-  send, stream, stop and copy.
-- A fake conversation service with recorded replies.
-- The first milestone's cases, on the web and the iPhone: log in, send,
-  receive the fixture reply, and cancel a pending turn.
+On both hosts, `tap` and `type` go through the platform's own input. In
+Chrome they are a real click and real typing. On the iPhone they are the
+button's own action and the text field's own text input. The driver then
+asks the app what reached it (`input`). Both hosts refuse a driver tap on a
+shown control that no real press delivered. A matching trace therefore
+shows that the browser's and UIKit's controls reached the shared app.
 
 It builds on what exists today:
 
@@ -70,24 +105,75 @@ On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):
 | Record | Schema | Carriage | Today |
 | --- | --- | --- | --- |
 | The session record a screen draws | Coder's transcript log, id `openagents.session.v1` on disk; planned package `openagents.session.log.v1alpha1` ([compliance plan](../../docs/protocol/2026-11-11-compliance-plan.md), step C1) | Not sent yet | Planned. Written by hand in `coax/lib/agent/session/log.coax` |
-| A message and its reply | `openagents.chat.v1` ([spec 17.1](../../docs/protocol/openagents-protocol-spec.md#171-openagentschatv1)) | HTTP stream | Spec sketch; no `.proto` file |
+| A message and its reply | `openagents.chat.v1` ([spec 17.1](../../docs/protocol/openagents-protocol-spec.md#171-openagentschatv1)) | HTTP stream | Spec sketch; no `.proto` file. The fixture answers in the app, with no carriage |
 
 ### The chapter's check
 
-- **Source:** the conversation module in `apps/shared/` and
-  `openagents/examples/cases/first-milestone.ops`.
-- **Trace:** `tap home.login`, the login operations of chapter 8, `type
-  composer.input "hello"`, `tap composer.send`, `clock data release` for each
-  fixture part, then `state transcript`; the web and iPhone traces match.
-- **Refusal:** send, `tap composer.stop`, then release the held parts; the
-  transcript ends at the stop, and the trace prints `late part dropped`. A
-  second case logs out with a turn pending and gets the same result.
-- **Independent check:** the session record's own checks in
-  `coax/lib/agent/session/`, and a reconnect case that resends with the same
-  operation ID and gets one stored message.
+Run it from the repository's root:
 
-Planned paths: `openagents/examples/cases/first-milestone.ops`; the screen
-module goes in [`apps/shared`](../../apps/shared).
+```shell
+coax/bin/coax test apps/shared/openagents-app.coax
+coax/web/tool.sh apps/shared/cases.coax cpu
+coax/web/tool.sh apps/shared/cases.coax web
+coax/web/tool.sh apps/shared/cases.coax ios-simulator DEVICE
+```
+
+`web` serves `apps/openagents-web` as built: build the page with
+`coax/web/wasm.sh apps/openagents-web/milestone.coax
+apps/openagents-web/milestone-face.c apps/openagents-web/build/milestone.wasm`.
+`ios-simulator` takes a booted simulator's name or UDID that has the app
+from `apps/openagents-ios/build.sh` installed.
+
+- **Source:** the shared app,
+  [`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax),
+  and
+  [`openagents/examples/cases/first-milestone.ops`](../examples/cases/first-milestone.ops).
+  The case logs in, sends `hello`, releases the reply's three parts,
+  copies the reply, then sends again and stops.
+- **Trace:**
+  [`first-milestone.trace`](../examples/cases/first-milestone.trace), 33
+  operations. The build host, headless Chrome and the iPhone simulator
+  print the same bytes after the host's name line. That line is `drive:
+  ... ready` on the web and on the iPhone, and the cpu host has none.
+  `state transcript` after the reply prints `you: hello` and `reply:
+  Hello! This is a fixture reply.`
+- **Refusal:** in the same case, `tap composer.stop` with two parts and the
+  end still held. Each later `clock data release` answers `late part
+  dropped`, the transcript ends at the stop with `notice: Stopped`, and
+  `logs` lists the three drops. Before that, `tap composer.send` with an
+  empty draft answers `composer.send can't be pressed now`.
+  [`logout-pending.ops`](../examples/cases/logout-pending.ops) logs out
+  with a turn pending: the late part is dropped the same way, and the
+  transcript is empty after logout.
+- **Independent check:** the session record's own checks
+  (`coax/bin/coax test coax/lib/agent/session/session.coax`, 6 checks), which
+  were written before this chapter, and the expected values written by hand
+  in the shared app's 149 checks. The
+  [`reconnect`](../examples/cases/reconnect.ops) case loses the send's
+  answer, sends again with the same operation ID (`op-1`), and the service
+  stores one message.
+
+Recorded on 2026-11-13: all five cases passed on cpu, on web (headless
+Chrome on macOS) and on ios-simulator (iPhone 17, iOS 26.5).
+
+## What remains
+
+- **A physical iPhone and Android.** The cases have run only in the
+  simulator. A device run also checks the keyboard's input methods,
+  VoiceOver and backgrounding. Those are device targets (CONTRACT.md) and
+  stay unnamed until they run
+  ([#13517](https://github.com/OpenAgentsInc/openagents/issues/13517)). The Android app has no host for the shared
+  app yet.
+- **The live chat page.** `/chat`
+  ([`chat-web.coax`](../../apps/openagents-web/chat-web.coax)) still keeps
+  its own state. Moving it onto the shared app's conversation state is
+  chapter 12's work, when a real loop replaces the fixture.
+- **Markdown.** The fixture reply is plain text. The shared view gives the
+  reply a role, and each host draws it as text.
+
+Planned paths: none new. The screen module is
+[`apps/shared/openagents-app.coax`](../../apps/shared/openagents-app.coax),
+and its cases are in [`openagents/examples/cases`](../examples/cases).
 
 ## Sources
 
