@@ -131,6 +131,14 @@ for f in pages:
         # preloaded, it downloads beside the script (crossorigin: the same request host.js's fetch makes).
         return f'<link rel="preload" href="{wasm}" as="fetch" crossorigin><script type="module" src="{host_url}" data-app="{name}"{rest} data-wasm="{wasm}" data-wgsl="{wgsl}">'
     text = re.sub(r'<script type="module" src="/coaxial/host.js" data-app="[^"]+"([^>]*)>', tag, text)
+    # A page's own script (/login/key.js: passkeys and NIP-07 beside the engine) ships named by its
+    # content too. Without this the page asked for a file the site never had, and its passkey and
+    # key buttons did nothing. A script the page names and the app lacks stops the build.
+    def page_script(m):
+        src = os.path.join(app, m.group(2)[1:])
+        if not os.path.isfile(src): sys.exit(f"deploy: {f} names the script {m.group(2)}, which is not in the app")
+        return m.group(1) + put(src, "build/" + m.group(2)[1:]) + m.group(3)
+    text = re.sub(r'(<script type="module" src=")(/(?!coaxial/|build/)[^"]+\.js)(")', page_script, text)
     open(os.path.join(site, f), "w", encoding="utf-8").write(text)
     # A directory's page also answers at the bare path (/projects/coax), which
     # the bucket can't map to index.html on its own; upload.py serves it as HTML.
