@@ -1,0 +1,55 @@
+# The editor's acceptance run, for coax drive (docs/editor/acceptance/README.md).
+# Start from an empty world on the dev server. Size 1280x800, query "edit&stage=5".
+clock +1500
+clock until page.f.rev >= 0 within 6000
+type - key Enter
+clock +800
+# place three pieces with the realm commands: revisions 1 to 3
+place 117 17500 -7500
+place 117 17650 -7350
+place 116 17350 -7350
+clock until game.layer.st.n == 3 within 6000
+# the select tool: a tap in the world picks the crate under it and marks the point
+tap tool
+tap tool.1
+tap 820 480
+clock until page.sel == 3 within 6000
+tap 465 500
+clock until page.sel == 2 within 6000
+# move it with the gizmo: one snapped move, revision 4
+tap tool
+tap tool.2
+drag 465 500 400 600
+clock until page.f.rev == 4 within 6000
+# turn it: revision 5
+tap thing.2
+tap tool
+tap tool.3
+drag 465 560 525 560
+clock until page.f.rev == 5 within 6000
+# edit a content row: the kind's name, in place, revision 6
+type cell.112  XL
+type cell.112 key Enter
+clock until page.f.rev == 6 within 6000
+clock until page.tables_gen >= 1 within 6000
+# delete the selected piece: revision 7
+tap remove
+clock until page.f.rev == 7 within 6000
+clock until game.layer.st.n == 2 within 6000
+# undo brings it back, redo removes it again
+tap undo
+clock until game.layer.st.n == 3 within 6000
+tap redo
+clock until game.layer.st.n == 2 within 6000
+# the run kept its state: the player has not moved from where stage 5 put them
+where
+# what a tap reaches, and the tap targets
+hit 57 35
+hit 640 300
+screenshot apps/openagents-web/build/editor-run.png
+# a phone's size: the strip wraps, the two panes stand side by side over the world
+prefer size 390x844
+clock +300
+hit 60 35
+screenshot apps/openagents-web/build/editor-run-phone.png
+logs

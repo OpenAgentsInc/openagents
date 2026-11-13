@@ -1,6 +1,7 @@
 // coax drive (GitHub #13095; docs/research/exact/03-what-to-adapt.md): an agent drives a realm by
 // ids, one operation an argument, in one live session of headless Chrome (no window, muted).
-//   coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--live ORIGIN] [--within MS] [--real-time] OP...
+//   coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--live ORIGIN] [--within MS] [--real-time] [--ops FILE] OP...
+// --ops FILE takes the operations from a file, one a line (a line that starts with # is a note): a run that repeats.
 //   coax/web/tool.sh drive web apps/openagents-web /worlds/everglade2 tree "walk-to guard" \
 //     "use 1 on goblin-5" "clock +2000" "state you_x" "screenshot out.png"
 // With --live ORIGIN (http://127.0.0.1:PORT) it drives the dev server that is already running there
@@ -860,7 +861,7 @@ dv_native :: (sock: string, ops: [] string, within: int) -> int {
 }
 
 dv_usage :: () -> int {
-  tool_errln("usage: coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--within MS] [--real-time] OP...");
+  tool_errln("usage: coax/web/tool.sh drive web APP_DIR PATH [--query Q] [--size WxH] [--port N] [--live ORIGIN] [--within MS] [--real-time] [--ops FILE] OP...");
   tool_errln("  OP: tree, layout, state [PATH], tap ID, type ID TEXT, type ID key NAME, walk-to ID, face ID,");
   tool_errln("      use ABILITY on ID, mount ID, stop, status, screenshot OUT.png, logs, prefer K V, perf,");
   tool_errln("      clock +MS, clock settle [within MS], clock until PATH [OP VALUE] [within MS]");
@@ -886,7 +887,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if !loaded || args_count(a[..]) < 3 || args_at(a[..], 0) != "web" { return dv_usage(); }
   app_dir := args_at(a[..], 1); path := args_at(a[..], 2);
   query := ""; size := "1280x800"; port := -1; within := 30000; agent := true; live := "";
-  ops: [64] string; n_ops := 0;
+  ops: [64] string; n_ops := 0; ops_file: [16384] u8;
   i := 3;
   while i < args_count(a[..]) {
     x := args_at(a[..], i);
@@ -897,6 +898,22 @@ tool_main :: () -> int #export_c #effects(all) {
     }
     if x == "--live" && i + 1 < args_count(a[..]) { live = args_at(a[..], i + 1); i += 2; continue; }
     if x == "--real-time" { agent = false; i += 1; continue; }
+    // --ops FILE: the run's operations from a file, one a line (a line that starts with # is a note), so a run repeats
+    if x == "--ops" && i + 1 < args_count(a[..]) {
+      fn := fs_read(args_at(a[..], i + 1), ops_file[..]);
+      if fn <= 0 { tool_err("drive: cannot read the operations in "); tool_errln(args_at(a[..], i + 1)); return 2; }
+      at := 0;
+      while at < fn {
+        e := at;
+        while e < fn && ops_file[e] != '\n' { e += 1; }
+        line := cast(string) ops_file[at..<e];
+        at = e + 1;
+        if line.count == 0 || line[0] == '#' { continue; }
+        if n_ops >= ops.count { tool_errln("drive: at most 64 operations a run"); return 2; }
+        ops[n_ops] = line; n_ops += 1;
+      }
+      i += 2; continue;
+    }
     if n_ops >= ops.count { tool_errln("drive: at most 64 operations a run"); return 2; }
     ops[n_ops] = x; n_ops += 1; i += 1;
   }

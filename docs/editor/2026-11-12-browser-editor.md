@@ -246,6 +246,9 @@ is slice 3, E4 is slice 4 and E9 is slices 5-6.
 | E13 | The four editors move onto the shell: Everglade EDIT, WorldBuilder, the realm edit layer and Splice | #13422 |
 | E14 | Acceptance: a real-input run of the editor in real Chrome, on a laptop and a phone | #13423 |
 
+The acceptance run that repeats is `docs/editor/acceptance/` (E14, #13423): a
+file of `coax drive` operations and how to run it.
+
 ## Order
 
 1. **E1 and E2,** the dev loop. These help every realm today, so they come
