@@ -643,6 +643,18 @@ OA_MAC_PROFILE="$HOME/Downloads/OpenAgents_Mac_Push.provisionprofile" \
 - `codesign` reads the identity's key from the Keychain, which can show a
   prompt. Agents never set these two variables: a person runs this build.
 
+The signing steps are `apps/openagents-desktop/sign.sh`, which `build.sh`
+sources. `apps/openagents-desktop/tests/sign-check.sh` runs them on a copy of
+the built app with no identity and no Keychain (it is a step of
+`apps/shared/host/apple/check.sh`):
+
+| Checked without an identity | Not checked |
+| --- | --- |
+| The default build is ad hoc, with no profile in the bundle and no entitlements | A real identity's signature |
+| A profile is read, lands in the bundle, and its entitlements and the hardened runtime are in the signature (signed ad hoc, with the identity `-`) | That macOS launches the signed build |
+| A development profile compiles the app to name `apns_sandbox`, a production one `apns` | A push token from Apple, and a notice arriving |
+| A profile with no push entitlement, a file that is no profile and a missing file stop the build before anything compiles | |
+
 To see it work: log in, allow notices when macOS asks, and start a recovery
 for the account from another device. The notice arrives as a banner, and a
 click opens OpenAgents ▸ Security… with Cancel Recovery.

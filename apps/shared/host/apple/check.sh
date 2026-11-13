@@ -23,6 +23,7 @@ step everglade-mac "$repo/apps/everglade-desktop/build.sh"
 step everglade-iphone-simulator "$repo/apps/everglade-mobile/build.sh"
 step openagents-mac "$repo/apps/openagents-desktop/build.sh"
 step openagents-mac-account "$repo/apps/openagents-desktop/tests/account-check.sh"
+step openagents-mac-signing "$repo/apps/openagents-desktop/tests/sign-check.sh"
 step device-key "$here/device-key-check.sh"
 cd "$repo/apps/openagents-ios"
 step openagents-iphone-generate ./generate.sh

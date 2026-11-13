@@ -16,6 +16,10 @@ coax="${COAX:-$repo/coax/bin/coax}"
 work="$here/build"
 app="$work/OpenAgents.app"
 mkdir -p "$work/c" "$app/Contents/MacOS" "$app/Contents/Resources"
+# Signing (sign.sh, #13388): ad hoc unless OA_MAC_SIGN_IDENTITY and OA_MAC_PROFILE ask for a build signed
+# for push. The profile is read before anything compiles, so a wrong one stops the build at once.
+source "$here/sign.sh"
+sign_prepare "$work/c"
 cflags=(-O2 -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$here" -I"$repo/apps/shared/host/linux" -I"$repo/apps/shared/host/apple" -I"$repo/coax/platform" -I"$repo/psionic/platform")
 # The app's Coax (the Linux app's unit: settings.coax and what it loads, and the Coax atlas, which the Mac does not use).
 "$coax" c "$here/zeron/linux.coax" --library --header "$work/c/zeron.h" > "$work/c/zeron.c"
@@ -26,22 +30,6 @@ cflags=(-O2 -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$here" -I"$repo/a
 /usr/bin/clang -std=gnu11 "${cflags[@]}" -DS_hash=oa_lab_S_hash -DS_hex=oa_lab_S_hex -c "$work/c/lab-sign.c" -o "$work/c/lab-sign-all.o"
 # It carries its own copy of the hashes the app's unit also exports: only its one entry point stays visible (objcopy on Linux).
 ld -r "$work/c/lab-sign-all.o" -exported_symbol _coaxial_lab_nip98 -exported_symbol '_coaxial_account_*' -o "$work/c/lab-sign.o"
-# Signing for push (#13388). A development build is signed ad hoc: no Keychain, no prompt, and no
-# push token (Apple gives one only to a build signed with the push entitlement and a provisioning
-# profile). OA_MAC_SIGN_IDENTITY (a signing identity's name) with OA_MAC_PROFILE (a
-# .provisionprofile for com.openagents.desktop that has Push Notifications) signs the build for
-# push: the profile goes into the bundle and the build takes the profile's own entitlements. A
-# development profile's token is only good on Apple's sandbox, so the app then names that service
-# (OA_PUSH_SANDBOX, AppAuth.pushService). codesign reads the identity's key from the Keychain, so
-# only a person runs it this way (docs/desktop/coax-desktop.md, "A build signed for push").
-push_env="" swift_defs=()
-if [[ -n "${OA_MAC_SIGN_IDENTITY:-}" && -n "${OA_MAC_PROFILE:-}" ]]; then
-  security cms -D -i "$OA_MAC_PROFILE" > "$work/c/profile.plist"
-  /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' "$work/c/profile.plist" > "$work/c/OpenAgents.entitlements"
-  push_env="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.aps-environment' "$work/c/OpenAgents.entitlements" 2> /dev/null || true)"
-  [[ "$push_env" == development || "$push_env" == production ]] || { echo "build.sh: $OA_MAC_PROFILE has no push entitlement: turn on Push Notifications for com.openagents.desktop and make the profile again" >&2; exit 1; }
-  [[ "$push_env" != development ]] || swift_defs=(-D OA_PUSH_SANDBOX)
-fi
 # The account's login (Account.swift): the iPhone app's AppAuth.swift and DeviceKey.swift, one Swift object.
 xcrun -sdk macosx swiftc -O ${swift_defs[@]+"${swift_defs[@]}"} -suppress-warnings -parse-as-library -wmo -module-name OpenAgentsAccount -import-objc-header "$here/account-mac.h" -emit-object \
   "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" -o "$work/c/account.o"
@@ -69,15 +57,7 @@ rm -rf "$app/Contents/Resources/fonts" "$app/Contents/Resources/icons" "$app/Con
 # Geist, its OFL, Zeron's icons and the NOTICE live beside the shared components (components/zeron/).
 cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$app/Contents/Resources/"
 cp "$repo/components/zeron/NOTICE" "$app/Contents/Resources/NOTICE"
-# Signing: ad hoc unless the build was asked to sign for push (above).
-if [[ -n "$push_env" ]]; then
-  cp "$OA_MAC_PROFILE" "$app/Contents/embedded.provisionprofile"
-  codesign --force --options runtime --entitlements "$work/c/OpenAgents.entitlements" --sign "$OA_MAC_SIGN_IDENTITY" "$app" >/dev/null
-  echo "signed for push ($push_env) with $OA_MAC_SIGN_IDENTITY"
-else
-  rm -f "$app/Contents/embedded.provisionprofile"
-  codesign --force --sign - "$app" >/dev/null
-fi
+sign_bundle "$app" "$work/c"
 echo "built $app"
 [[ "${1:-}" == --open ]] && open "$app"
 exit 0
