@@ -69,6 +69,12 @@ vb_header :: (head: string, name: string) -> string {
 }
 
 // A pack session for name from ip; its status, the answer in ap_body.
+// A setting by its name, else by the name it had before the Metaverse rename (#13405).
+vp_env :: (name: string, was: string, out: [] u8) -> string {
+  v := proc_getenv(name, out);
+  if v.count > 0 { return v; }
+  return proc_getenv(was, out);
+}
 vp_session :: (t: [] Ap, name: string, ip: string) -> int {
   p: [1] Sb; sb(p[..], "/api/verse/packs/"); sb(p[..], name);
   x: [1] Sb; sb(x[..], "X-Forwarded-For: "); sb(x[..], ip); sb(x[..], ", 130.211.0.1");
@@ -93,7 +99,7 @@ vp_wire :: (t: [] Ap, st: int) {
   }
   if n < 0 || cast(string) back[0..<n] != B { ap_check(t, "a packs answer is its codec's bytes", false, B); }
   eb: [8] u8;
-  if proc_getenv("VERSE_PACK_CAPTURE", eb[..]) == "1" { print("CAPTURE % %\n", st, B); }
+  if vp_env("METAVERSE_PACK_CAPTURE", "VERSE_PACK_CAPTURE", eb[..]) == "1" { print("CAPTURE % %\n", st, B); }
 }
 // a contains b's first 64 bytes somewhere.
 vp_holds :: (a: string, b: string) -> bool { return b.count >= 64 && ap_has(a, b[0..<64]); }
@@ -216,8 +222,8 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   t: [1] Ap;
   if !ap_open(t[..]) { return 2; }
-  db: [4096] u8; dir := proc_getenv("VERSE_PACK_DIR", db[..]);
-  gp: [32] u8; port := proc_getenv("VERSE_GCS_PORT", gp[..]);
+  db: [4096] u8; dir := vp_env("METAVERSE_PACK_DIR", "VERSE_PACK_DIR", db[..]);
+  gp: [32] u8; port := vp_env("METAVERSE_GCS_PORT", "VERSE_GCS_PORT", gp[..]);
   if dir == "" || port == "" { tool_errln("verse_packs: VERSE_PACK_DIR and VERSE_GCS_PORT come from test.sh"); return 2; }
   // the bucket, with the stored object under the plain pack's digest
   pb: [4200] u8; plain: [VP_MAX] u8; pn := fs_read(fs_join(dir, "plain", pb[..]), plain[..]);

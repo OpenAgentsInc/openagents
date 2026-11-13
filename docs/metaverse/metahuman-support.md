@@ -174,9 +174,9 @@ the DCC bundle.
 Each limit answers with a 429 and its reason, and the page then draws the
 capsules:
 
-- 12 sessions per address per hour (`OA_VERSE_PACK_PER_HOUR`). The address
+- 12 sessions per address per hour (`OA_METAVERSE_PACK_PER_HOUR`). The address
   is kept only as its SHA-256, and rows are deleted after two days.
-- 40 GB fetched per UTC day across all visitors (`OA_VERSE_PACK_DAILY_GB`),
+- 40 GB fetched per UTC day across all visitors (`OA_METAVERSE_PACK_DAILY_GB`),
   which caps egress at about $4.80 a day, or $144 a month, whatever happens.
 
 ### Threat model

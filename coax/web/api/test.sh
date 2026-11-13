@@ -126,7 +126,7 @@ lap "the API built (and in the checks' part, its NIP-98 check)"
 # (test_zchat.py's fake on CHAT_PORT + 1 and runner on + 2).
 "$here/../tool.sh" "$here/port_locks.coax" "$work/ports" $$ API_PORT:7000:1 NPC_PORT:7800:1 PIECE_PORT:8600:1 BUILDER_PORT:9400:1 \
   GCS_PORT:10200:1 RELAY_PORT:11000:1 NOTICE_RELAY_PORT:11800:1 WAKE_PORT:12600:8 INFER_PORT:13400:1 SPARK_PORT:14200:1 \
-  RESEND_PORT:15000:1 TOKENINFO_PORT:15800:1 CHAT_PORT:16600:3 VERSE_GCS_PORT:17400:1 ANIME_PORT:18200:1 \
+  RESEND_PORT:15000:1 TOKENINFO_PORT:15800:1 CHAT_PORT:16600:3 METAVERSE_GCS_PORT:17400:1 ANIME_PORT:18200:1 \
   > /dev/null 2> "$work/ports.err" & ports_pid=$!
 for _ in $(seq 1200); do [[ -s "$work/ports" ]] && break; kill -0 "$ports_pid" 2>/dev/null || break; sleep 0.1; done
 [[ -s "$work/ports" ]] || { echo "test.sh: no ports for the fake services" >&2; cat "$work/ports.err" >&2; exit 1; }
@@ -205,15 +205,16 @@ export TOKENINFO_PORT
 # /chat (test_zchat.py): its own runner on CHAT_PORT, a $1 daily cap.
 export CHAT_PORT
 # Private human packs (tests/verse_packs.coax): a made-up pack, gzipped and stored under a key of its own
-# as upload_packs.coax does, served by a fake bucket on VERSE_GCS_PORT; three sessions an address an hour.
-export VERSE_GCS_PORT VERSE_PACK_DIR="$work/verse-pack"
-mkdir -p "$VERSE_PACK_DIR"; head -c 300000 /dev/urandom > "$VERSE_PACK_DIR/plain"
-gzip -9 -n -c "$VERSE_PACK_DIR/plain" > "$VERSE_PACK_DIR/plain.gz"
-vk="$(openssl rand -hex 32)" viv="$(openssl rand -hex 8)0000000000000000" vsha="$(shasum -a 256 "$VERSE_PACK_DIR/plain" | cut -c1-64)"
-openssl enc -aes-256-ctr -K "$vk" -iv "$viv" -in "$VERSE_PACK_DIR/plain.gz" -out "$VERSE_PACK_DIR/object"
-export OA_VERSE_PACKS="master $(openssl rand -hex 32)
-pack test-human $vsha $(wc -c < "$VERSE_PACK_DIR/plain" | tr -d ' ') $(wc -c < "$VERSE_PACK_DIR/object" | tr -d ' ') packs/$vsha $vk $viv"
-export OA_VERSE_PACKS_GCS="http://127.0.0.1:$VERSE_GCS_PORT" OA_VERSE_PACKS_BUCKET=verse-test OA_VERSE_PACK_PER_HOUR=3
+# as upload_packs.coax does, served by a fake bucket on METAVERSE_GCS_PORT; three sessions an address an hour.
+export METAVERSE_GCS_PORT METAVERSE_PACK_DIR="$work/verse-pack"
+mkdir -p "$METAVERSE_PACK_DIR"; head -c 300000 /dev/urandom > "$METAVERSE_PACK_DIR/plain"
+gzip -9 -n -c "$METAVERSE_PACK_DIR/plain" > "$METAVERSE_PACK_DIR/plain.gz"
+vk="$(openssl rand -hex 32)" viv="$(openssl rand -hex 8)0000000000000000" vsha="$(shasum -a 256 "$METAVERSE_PACK_DIR/plain" | cut -c1-64)"
+openssl enc -aes-256-ctr -K "$vk" -iv "$viv" -in "$METAVERSE_PACK_DIR/plain.gz" -out "$METAVERSE_PACK_DIR/object"
+export OA_METAVERSE_PACKS="master $(openssl rand -hex 32)
+pack test-human $vsha $(wc -c < "$METAVERSE_PACK_DIR/plain" | tr -d ' ') $(wc -c < "$METAVERSE_PACK_DIR/object" | tr -d ' ') packs/$vsha $vk $viv"
+export OA_METAVERSE_PACKS_GCS="http://127.0.0.1:$METAVERSE_GCS_PORT" OA_METAVERSE_PACKS_BUCKET=verse-test
+export OA_VERSE_PACK_PER_HOUR=3   # by its old name on purpose: the API still reads it (the names before #13405)
 # Anime's checks own a separate Coax selector; it has no model credentials.
 export ANIME_PORT
 # The checks ask a fake model on INFER_PORT, five requests a day. Serving a page with a token, the model is Vertex's.

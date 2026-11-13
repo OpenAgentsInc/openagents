@@ -24,13 +24,13 @@
 // HMAC-SHA256(master, "key:" SID) (iv: the first 8 bytes of HMAC(master, "iv:" SID), then 8 zero
 // bytes, so WebCrypto's 64-bit counter and OpenSSL's agree), so no key is stored per session.
 //
-// Limits (shown to the page as the 429's reason): OA_VERSE_PACK_PER_HOUR sessions an address an
-// hour (default 12), OA_VERSE_PACK_DAILY_GB gigabytes fetched a UTC day across everyone (default
+// Limits (shown to the page as the 429's reason): OA_METAVERSE_PACK_PER_HOUR sessions an address an
+// hour (default 12), OA_METAVERSE_PACK_DAILY_GB gigabytes fetched a UTC day across everyone (default
 // 40, about $4.80 of egress at most). The manifest (Secret Manager, read again after 60 s):
 //   master HEX64
 //   pack NAME SHA256 PLAIN_BYTES STORED_BYTES OBJECT KEY_HEX64 IV_HEX32
-// OA_VERSE_PACKS gives it inline (the tests); OA_VERSE_PACKS_SECRET names another secret;
-// OA_VERSE_PACKS_GCS another storage endpoint; OA_VERSE_PACKS_BUCKET another bucket.
+// OA_METAVERSE_PACKS gives it inline (the tests); OA_METAVERSE_PACKS_SECRET names another secret;
+// OA_METAVERSE_PACKS_GCS another storage endpoint; OA_METAVERSE_PACKS_BUCKET another bucket.
 #include "api.h"
 #include "packs-wire.generated.h"
 #include <ctype.h>
@@ -51,7 +51,10 @@
 typedef struct { char name[65], sha256[65], object[200]; long long plain, stored; unsigned char key[32], iv[16]; } pack_entry;
 static struct { unsigned char master[32]; bool has_master; pack_entry packs[PACKS_MAX]; int n; double at; } manifest;
 
-static const char *env_or(const char *name, const char *fallback) { const char *v = getenv(name); return v && *v ? v : fallback; }
+// A setting by its name, else by the name it had before the Metaverse rename (OA_VERSE_...; kept
+// until no deployment sets one: docs/naming/2026-11-12-metaverse-rename.md), else the fallback.
+static const char *env_was(const char *name, const char *was) { const char *v = getenv(name); return v && *v ? v : getenv(was); }
+static const char *env_or(const char *name, const char *was, const char *fallback) { const char *v = env_was(name, was); return v && *v ? v : fallback; }
 static bool unhex(const char *s, unsigned char *out, size_t n) {
   if (strlen(s) != 2 * n) return false;
   for (size_t i = 0; i < n; i++) {
@@ -109,14 +112,14 @@ static void parse(const char *text) {
 
 // Secret Manager's latest version of the manifest, read with the service's own token.
 static bool load(void) {
-  const char *inline_text = getenv("OA_VERSE_PACKS");
+  const char *inline_text = env_was("OA_METAVERSE_PACKS", "OA_VERSE_PACKS");
   if (inline_text && *inline_text) { if (!manifest.at) { parse(inline_text); manifest.at = api_now_ms(); } return manifest.has_master; }
   if (manifest.at && api_now_ms() - manifest.at < 60000) return manifest.has_master;
   char tok[4096];
   if (!drops_token(tok, sizeof tok)) { api_log("verse packs: no token"); return manifest.has_master; }
   char url[512], auth[4200];
   snprintf(url, sizeof url, "https://secretmanager.googleapis.com/v1/%s/versions/latest:access",
-           env_or("OA_VERSE_PACKS_SECRET", "projects/openagentsgemini/secrets/verse-private-packs"));
+           env_or("OA_METAVERSE_PACKS_SECRET", "OA_VERSE_PACKS_SECRET", "projects/openagentsgemini/secrets/verse-private-packs"));
   snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
   CURL *h = curl_easy_init();
   if (!h) return manifest.has_master;
@@ -197,8 +200,8 @@ static void issue(const request *q, const char *name) {
   if (!db) { fail(q->fd, 503, "no database"); return; }
   char ip[128], per_hour[24], daily[32], stored[24];
   visitor(q, ip);
-  snprintf(per_hour, sizeof per_hour, "%d", atoi(env_or("OA_VERSE_PACK_PER_HOUR", "12")));
-  snprintf(daily, sizeof daily, "%lld", (long long)(atof(env_or("OA_VERSE_PACK_DAILY_GB", "40")) * 1e9));
+  snprintf(per_hour, sizeof per_hour, "%d", atoi(env_or("OA_METAVERSE_PACK_PER_HOUR", "OA_VERSE_PACK_PER_HOUR", "12")));
+  snprintf(daily, sizeof daily, "%lld", (long long)(atof(env_or("OA_METAVERSE_PACK_DAILY_GB", "OA_VERSE_PACK_DAILY_GB", "40")) * 1e9));
   snprintf(stored, sizeof stored, "%lld", p->stored);
   unsigned char raw[16]; char sid[33];
   if (RAND_bytes(raw, sizeof raw) != 1) { fail(q->fd, 503, "no randomness"); return; }
@@ -275,8 +278,8 @@ static void stream_pack(int fd, const pack_entry *p, const char *sid) {
     if (isalnum((unsigned char)*c) || *c == '-' || *c == '_' || *c == '.') object[o++] = *c;
     else o += (size_t)snprintf(object + o, sizeof object - o, "%%%02X", (unsigned char)*c);
   object[o] = 0;
-  snprintf(url, sizeof url, "%s/storage/v1/b/%s/o/%s?alt=media", env_or("OA_VERSE_PACKS_GCS", "https://storage.googleapis.com"),
-           env_or("OA_VERSE_PACKS_BUCKET", "openagentsgemini-verse-private-assets"), object);
+  snprintf(url, sizeof url, "%s/storage/v1/b/%s/o/%s?alt=media", env_or("OA_METAVERSE_PACKS_GCS", "OA_VERSE_PACKS_GCS", "https://storage.googleapis.com"),
+           env_or("OA_METAVERSE_PACKS_BUCKET", "OA_VERSE_PACKS_BUCKET", "openagentsgemini-verse-private-assets"), object);
   snprintf(auth, sizeof auth, "Authorization: Bearer %s", tok);
   CURL *h = have ? curl_easy_init() : NULL;
   long status = 0;
