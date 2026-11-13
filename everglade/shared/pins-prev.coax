@@ -1,0 +1,159 @@
+// The previous pins, for one release (#13408; docs/protocol/everglade-previous-pins.md).
+//
+// The rule. A page says its build before its hello: its engine, its rules and its content pin
+// (everglade-wire.coax WIRE_ENGINE, WIRE_RULES, and WIRE_CONTENT with its content tables' revision).
+// A room seats two builds: its own, and the release before's. A release moves its rooms before its
+// page, and a page a player has open is the release before's until they reload. So a room must seat
+// that page and serve it what its build reads, or every player is refused between the two steps of a
+// release (#13391). This is the wire rule (everglade/server/wire-prev.coax, #13398) for the pins.
+//
+// This file says which build is the release before's, and decides what a room seats. What a room
+// does for a seat on that build is in everglade/server/pins-prev.coax.
+//
+// How a pin is raised (the mechanism), all in the commit that raises it:
+//   1. Set PPREV_SERVES to the pins production runs, and PPREV_UNDER to this build's. The checks here
+//      fail until PPREV_UNDER is this build's WIRE_ENGINE, WIRE_RULES and WIRE_CONTENT, and each pin
+//      of PPREV_SERVES is that value or the one below it. One raise a release.
+//   2. The content tables' revision: before the edit, write the tables production runs to
+//      everglade/content/everglade.previous.content (content-check --keep). A room carries them
+//      (everglade/content/previous.coax) and a seat on that revision plays by them.
+//   3. WIRE_ENGINE or WIRE_RULES: write what the room does for a seat on the old value in
+//      everglade/server/pins-prev.coax (pprev_seat_engine, pprev_seat_rules say which seats).
+//   4. The pair check (coax/remote/check.sh e2 PROD, "e2 prev-pins") holds production's pins and
+//      tables to what this build seats, and "e2 prev-wire" plays production's bots on this room.
+//   coax/bin/coax test everglade/shared/pins-prev.coax --library
+//   coax/bin/coax mutate everglade/shared/pins-prev.coax --library --root-only
+#authority;
+#load "everglade-wire.coax";
+
+PPREV_UNDER :: WirePins.{engine = 1, rules = 1, content = 1};    // this build's WIRE_ENGINE, WIRE_RULES and WIRE_CONTENT when this was written
+PPREV_SERVES :: WirePins.{engine = 1, rules = 1, content = 1};   // the release before's
+
+// Whether `before` is a value a build at `now` may name as the release before's: the same, or one below.
+pprev_step :: (now: int, before: int) -> bool #effects(all) { return before == now || before == now - 1; }
+// Whether two builds' pins are the same.
+pprev_same :: (a: WirePins, b: WirePins) -> bool #effects(all) { return a.engine == b.engine && a.rules == b.rules && a.content == b.content; }
+// Whether a declaration (written under `under`, serving `serves`) holds for a build whose three
+// constants are `now`: it was written for this build, and each pin it serves is this one or the one
+// below. A pin raised without the declaration rewritten fails here.
+pprev_declared :: (now: WirePins, under: WirePins, serves: WirePins) -> bool #effects(all) {
+  return pprev_same(now, under) && pprev_step(under.engine, serves.engine) && pprev_step(under.rules, serves.rules) && pprev_step(under.content, serves.content);
+}
+// The content pin of a build whose WIRE_CONTENT is `content` and whose tables are at revision `rev`
+// (wire_content_pin, for any WIRE_CONTENT: the release before's may be one below).
+pprev_pin :: (content: int, rev: int) -> int #effects(all) { return ifx rev < 1 || rev >= WIRE_CONTENT_REVS then content else (content - 1) * WIRE_CONTENT_REVS + rev; }
+// Whether tables at revision `was` are the revision before tables at `rev`: the only tables a room
+// keeps beside its own.
+pprev_rev_before :: (rev: int, was: int) -> bool #effects(all) { return was >= 1 && was == rev - 1; }
+// Whether a tables file at revision `was` may stand as the release before's for tables at `rev`:
+// the revision before, or the same revision with the same bytes (the tables did not change in this
+// release). Anything else is a second raise in one release, or a file nobody kept.
+pprev_tables :: (rev: int, was: int, same_bytes: bool) -> bool #effects(all) { return pprev_rev_before(rev, was) || (was == rev && rev >= 1 && same_bytes); }
+// The tables' revision a page of the release before has, for a room whose tables are at `rev` and
+// which carries the previous tables at `was` (0 none): `was` when they are the revision before, else
+// the room's own (the tables did not change in this release).
+pprev_rev :: (rev: int, was: int) -> int #effects(all) { return ifx pprev_rev_before(rev, was) then was else rev; }
+// The release before's pins, as its page says them, for a build that serves `serves` with those tables.
+pprev_pins :: (serves: WirePins, rev: int, was: int) -> WirePins #effects(all) {
+  return WirePins.{engine = serves.engine, rules = serves.rules, content = pprev_pin(serves.content, pprev_rev(rev, was))};
+}
+// The revision a content tables document says in its first line ("aethyr.content.v1 NAME REV",
+// metaverse-engine/content/tables.coax): 0 when the text does not begin with such a line. For a tool that may
+// not load the tables' reader (coax/web/release-set.coax: the page's own pin); a room and a page
+// read the whole document.
+PPREV_DOC :: "aethyr.content.v1 ";
+pprev_doc_rev :: (text: string) -> int #effects(all) {
+  for i: 0..<PPREV_DOC.count { if i >= text.count || text[i] != PPREV_DOC[i] { return 0; } }
+  at := PPREV_DOC.count;   // the name: up to the next space
+  while at < text.count && text[at] != ' ' && text[at] != '\n' { at += 1; }
+  if at == PPREV_DOC.count || at >= text.count || text[at] != ' ' { return 0; }
+  at += 1; first := at; n := 0;
+  while at < text.count && text[at] >= '0' && text[at] <= '9' && at - first < 6 { n = n * 10 + cast(int) (text[at] - '0'); at += 1; }   // (under WIRE_CONTENT_REVS)
+  if at >= text.count || text[at] != '\n' || text[first] == '0' { return 0; }
+  return n;
+}
+// Whether a room whose pins are `own` seats a second build at all: the release before's differs from it.
+pprev_on :: (own: WirePins, before: WirePins) -> bool #effects(all) { return !pprev_same(own, before); }
+// Whether a room (pins `own`, the release before's `before`) seats a page that says `page`.
+pprev_seats :: (own: WirePins, before: WirePins, page: WirePins) -> bool #effects(all) { return pprev_same(own, page) || pprev_same(before, page); }
+// Which pins a seated page (`page`) holds at the release before's value where the room's differs:
+// PPREV_ENGINE, PPREV_RULES and PPREV_CONTENT, as bits. 0 for a page on the room's own build.
+PPREV_ENGINE :: 1; PPREV_RULES :: 2; PPREV_CONTENT :: 4;
+pprev_behind :: (own: WirePins, before: WirePins, page: WirePins) -> int #effects(all) {
+  if pprev_same(own, page) || !pprev_same(before, page) { return 0; }
+  return (ifx page.engine != own.engine then PPREV_ENGINE else 0) | (ifx page.rules != own.rules then PPREV_RULES else 0) | (ifx page.content != own.content then PPREV_CONTENT else 0);
+}
+
+// ---- checks
+#test "previous pins: this declaration was written for this build, one raise at most a pin" {
+  // A change that raises WIRE_ENGINE, WIRE_RULES or WIRE_CONTENT fails here until PPREV_UNDER and
+  // PPREV_SERVES are rewritten for it (the header says how).
+  #assert pprev_declared(WirePins.{}, PPREV_UNDER, PPREV_SERVES);
+}
+#test "previous pins: a declaration holds only for the build it was written under, and serves each pin or the one below" {
+  now := WirePins.{engine = 4, rules = 9, content = 3};
+  #assert pprev_declared(now, now, now) && pprev_declared(now, now, WirePins.{engine = 3, rules = 8, content = 2});
+  #assert pprev_declared(now, now, WirePins.{engine = 3, rules = 9, content = 3}) && pprev_declared(now, now, WirePins.{engine = 4, rules = 8, content = 3}) && pprev_declared(now, now, WirePins.{engine = 4, rules = 9, content = 2});
+  // written under another build: each pin alone
+  #assert !pprev_declared(now, WirePins.{engine = 3, rules = 9, content = 3}, WirePins.{engine = 3, rules = 9, content = 3});
+  #assert !pprev_declared(now, WirePins.{engine = 4, rules = 8, content = 3}, WirePins.{engine = 4, rules = 8, content = 3});
+  #assert !pprev_declared(now, WirePins.{engine = 4, rules = 9, content = 2}, WirePins.{engine = 4, rules = 9, content = 2});
+  // two below, or above: each pin alone
+  #assert !pprev_declared(now, now, WirePins.{engine = 2, rules = 9, content = 3}) && !pprev_declared(now, now, WirePins.{engine = 5, rules = 9, content = 3});
+  #assert !pprev_declared(now, now, WirePins.{engine = 4, rules = 7, content = 3}) && !pprev_declared(now, now, WirePins.{engine = 4, rules = 10, content = 3});
+  #assert !pprev_declared(now, now, WirePins.{engine = 4, rules = 9, content = 1}) && !pprev_declared(now, now, WirePins.{engine = 4, rules = 9, content = 4});
+  #assert pprev_step(5, 5) && pprev_step(5, 4) && !pprev_step(5, 3) && !pprev_step(5, 6) && !pprev_step(4, 5);
+  #assert pprev_same(now, now) && !pprev_same(now, WirePins.{engine = 5, rules = 9, content = 3}) && !pprev_same(now, WirePins.{engine = 4, rules = 8, content = 3}) && !pprev_same(now, WirePins.{engine = 4, rules = 9, content = 4});
+}
+#test "previous pins: the content pin under any WIRE_CONTENT is the session's, and the tables before are one revision below" {
+  #assert pprev_pin(WIRE_CONTENT, 0) == wire_content_pin(0) && pprev_pin(WIRE_CONTENT, 1) == wire_content_pin(1) && pprev_pin(WIRE_CONTENT, 7) == wire_content_pin(7);
+  #assert pprev_pin(WIRE_CONTENT, WIRE_CONTENT_REVS - 1) == wire_content_pin(WIRE_CONTENT_REVS - 1) && pprev_pin(WIRE_CONTENT, WIRE_CONTENT_REVS) == wire_content_pin(WIRE_CONTENT_REVS);
+  #assert pprev_pin(1, 0) == 1 && pprev_pin(1, 1) == 1 && pprev_pin(1, 2) == 2 && pprev_pin(3, 0) == 3 && pprev_pin(3, -1) == 3 && pprev_pin(3, 1) == 2 * WIRE_CONTENT_REVS + 1 && pprev_pin(3, 5) == 2 * WIRE_CONTENT_REVS + 5;
+  #assert pprev_pin(3, WIRE_CONTENT_REVS - 1) == 3 * WIRE_CONTENT_REVS - 1 && pprev_pin(3, WIRE_CONTENT_REVS) == 3 && pprev_pin(3, WIRE_CONTENT_REVS + 1) == 3;
+  #assert pprev_rev_before(2, 1) && pprev_rev_before(9, 8) && !pprev_rev_before(2, 2) && !pprev_rev_before(3, 1) && !pprev_rev_before(1, 0) && !pprev_rev_before(0, -1) && !pprev_rev_before(2, 3);
+  #assert pprev_tables(2, 1, false) && pprev_tables(2, 1, true) && pprev_tables(2, 2, true) && !pprev_tables(2, 2, false) && !pprev_tables(3, 1, true) && !pprev_tables(2, 3, true) && !pprev_tables(1, 0, true);
+  #assert pprev_tables(1, 1, true) && !pprev_tables(0, 0, true) && !pprev_tables(0, -1, false) && !pprev_tables(-1, -1, true);
+  #assert pprev_rev(2, 1) == 1 && pprev_rev(2, 2) == 2 && pprev_rev(3, 1) == 3 && pprev_rev(1, 0) == 1 && pprev_rev(0, 0) == 0;
+}
+#test "previous pins: a tables document's revision is read from its first line, and from nothing else" {
+  #assert pprev_doc_rev("aethyr.content.v1 everglade 1\nreach 100000\n") == 1 && pprev_doc_rev("aethyr.content.v1 everglade 27\n") == 27 && pprev_doc_rev("aethyr.content.v1 e 999999\n") == 999999;
+  #assert pprev_doc_rev("aethyr.content.v1 everglade 2\nx 9\n") == 2 && pprev_doc_rev("aethyr.content.v1 a 10\n") == 10;
+  // no newline, no name, no number, a leading zero, too long, another document
+  #assert pprev_doc_rev("aethyr.content.v1 everglade 1") == 0 && pprev_doc_rev("aethyr.content.v1 7\n") == 0 && pprev_doc_rev("aethyr.content.v1 everglade\n") == 0 && pprev_doc_rev("aethyr.content.v1 everglade \n") == 0;
+  #assert pprev_doc_rev("aethyr.content.v1 everglade 01\n") == 0 && pprev_doc_rev("aethyr.content.v1 everglade 0\n") == 0 && pprev_doc_rev("aethyr.content.v1 everglade 1000000\n") == 0;
+  #assert pprev_doc_rev("aethyr.content.v2 everglade 1\n") == 0 && pprev_doc_rev("") == 0 && pprev_doc_rev("aethyr.content.v1 ") == 0 && pprev_doc_rev("aethyr.content.v1 \n") == 0 && pprev_doc_rev("aethyr.content.v1 e3\n") == 0;
+  #assert pprev_doc_rev("aethyr.content.v1 e\nx 3\n") == 0 && pprev_doc_rev("aethyr.content.v") == 0 && pprev_doc_rev("aethyr.content.v1") == 0 && pprev_doc_rev("bethyr.content.v1 e 3\n") == 0;
+  #assert pprev_doc_rev("aethyr.content.v1 e 3:\n") == 0 && pprev_doc_rev("aethyr.content.v1 e /3\n") == 0 && pprev_doc_rev("aethyr.content.v1 e 3/\n") == 0 && pprev_doc_rev("aethyr.content.v1 e 9\n") == 9 && pprev_doc_rev("aethyr.content.v1 e 90\n") == 90;
+  #assert pprev_doc_rev("aethyr.content.v1 e 3") == 0 && pprev_doc_rev("aethyr.content.v1 e ") == 0 && pprev_doc_rev("aethyr.content.v1 e") == 0 && pprev_doc_rev("aethyr.content.v1 e\n3\n") == 0 && pprev_doc_rev("aethyr.content.v1 e 123456\n") == 123456 && pprev_doc_rev("aethyr.content.v1 e 1234567\n") == 0;
+  #assert pprev_doc_rev("aethyr.content.v1 e 3x\n") == 0 && pprev_doc_rev("aethyr.content.v1 e -3\n") == 0 && pprev_doc_rev("aethyr.content.v1  3\n") == 0 && pprev_doc_rev("aethyr.content.v1 e 3\n") == 3;
+}
+#test "previous pins: a room seats its own build and the release before's, and knows which pins a seat is behind on" {
+  serves := WirePins.{engine = 4, rules = 9, content = 3};
+  // the tables moved 6 to 7 and nothing else: the release before's page says the same build with revision 6
+  own := WirePins.{engine = 4, rules = 9, content = pprev_pin(3, 7)};
+  before := pprev_pins(serves, 7, 6);
+  #assert before.engine == 4 && before.rules == 9 && before.content == pprev_pin(3, 6) && pprev_on(own, before);
+  #assert pprev_seats(own, before, own) && pprev_seats(own, before, before) && pprev_behind(own, before, own) == 0 && pprev_behind(own, before, before) == PPREV_CONTENT;
+  two := before; two.content = pprev_pin(3, 5);
+  #assert !pprev_seats(own, before, two) && pprev_behind(own, before, two) == 0;
+  // nothing moved: one build, and no second one seated
+  same := pprev_pins(serves, 7, 7);
+  #assert pprev_same(same, own) && !pprev_on(own, same) && pprev_seats(own, same, own) && !pprev_seats(own, same, before) && pprev_behind(own, same, own) == 0;
+  // tables that are not the revision before are not kept: the room's own revision stands
+  #assert pprev_same(pprev_pins(serves, 7, 5), own) && pprev_same(pprev_pins(serves, 7, 0), own);
+  // the rules moved 8 to 9, the engine 3 to 4, WIRE_CONTENT 2 to 3: each pin a seat is behind on is named
+  rules := pprev_pins(WirePins.{engine = 4, rules = 8, content = 3}, 7, 7);
+  #assert pprev_on(own, rules) && pprev_behind(own, rules, rules) == PPREV_RULES && pprev_seats(own, rules, rules);
+  engine := pprev_pins(WirePins.{engine = 3, rules = 9, content = 3}, 7, 7);
+  #assert pprev_on(own, engine) && pprev_behind(own, engine, engine) == PPREV_ENGINE;
+  world := pprev_pins(WirePins.{engine = 4, rules = 9, content = 2}, 7, 7);
+  #assert world.content == pprev_pin(2, 7) && pprev_on(own, world) && pprev_behind(own, world, world) == PPREV_CONTENT;
+  all := pprev_pins(WirePins.{engine = 3, rules = 8, content = 2}, 7, 6);
+  #assert all.content == pprev_pin(2, 6) && pprev_behind(own, all, all) == (PPREV_ENGINE | PPREV_RULES | PPREV_CONTENT) && pprev_behind(own, all, own) == 0;
+  // a page on a mix of the two builds is seated by neither, and behind on nothing
+  mix := all; mix.engine = own.engine;
+  #assert !pprev_seats(own, all, mix) && pprev_behind(own, all, mix) == 0;
+  mix = all; mix.rules = own.rules; #assert !pprev_seats(own, all, mix);
+  mix = all; mix.content = own.content; #assert !pprev_seats(own, all, mix);
+  mix = own; mix.engine = all.engine; #assert !pprev_seats(own, all, mix);
+}

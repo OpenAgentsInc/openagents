@@ -1,0 +1,129 @@
+// The previous pins in the room, for one release (#13408; docs/protocol/everglade-previous-pins.md).
+//
+// everglade/shared/pins-prev.coax says which build is the release before's (PPREV_SERVES) and decides
+// what a room seats. This file is what the room does for a seat on that build:
+//
+//   Admitted. eg_server (input.coax) names the release before's pins beside the room's own, and
+//   metaverse-engine/session/compat.coax seats a page on exactly those three. A page on any other build is
+//   refused as before ("r 0 version").
+//
+//   Content. A seat whose content pin is the one before plays by the tables before
+//   (coax/web/room/room-items.coax ri_doc): its quests' steps and rewards, its drops, the dialogue it
+//   may hear and the slot an item is worn in are that revision's rows, so the room names no row its
+//   page lacks. The room carries those tables itself (everglade/content/previous.coax).
+//
+//   Rules and engine. PPREV_SERVES is this build's own today, so no seat is behind on either. The
+//   change that raises WIRE_RULES or WIRE_ENGINE writes here what the room does for a seat whose
+//   pprev_seat_behind has PPREV_RULES or PPREV_ENGINE: the old rule or step for that seat, kept for
+//   one release, as wire-prev.coax keeps the old frames. A raise with nothing written fails
+//   "previous pins: this declaration was written for this build" until PPREV_UNDER is rewritten, and
+//   the commit that rewrites it is the one that says here what such a seat gets.
+//   coax/bin/coax test coax/web/room/room.coax --only "previous pins"
+
+// This room's pins, and the release before's as its page says them.
+pprev_room :: (v: [] RmServer) -> WirePins { return wire_pins_at(rm_content_rev(v)); }
+pprev_room_before :: (v: [] RmServer) -> WirePins { return pprev_pins(PPREV_SERVES, rm_content_rev(v), rm_content_was(v)); }
+// What the room's server names for admission (compat.coax CompatPrev): on only when the release
+// before's build is another than this one.
+pprev_compat :: (v: [] RmServer) -> CompatPrev {
+  b := pprev_room_before(v);
+  return CompatPrev.{on = pprev_on(pprev_room(v), b), engine = b.engine, rules = b.rules, content = b.content};
+}
+// The pins seat s of room k is behind on (PPREV_ENGINE, PPREV_RULES, PPREV_CONTENT; 0: it is this
+// room's build, or nobody sits there): its page said the release before's value, and this room's is another.
+pprev_seat_behind :: (v: [] RmServer, k: int, s: int) -> int {
+  if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS { return 0; }
+  st := v[0].eg[k].seat[s];
+  if !st.live { return 0; }
+  return pprev_behind(pprev_room(v), pprev_room_before(v), ifx st.pinned then st.pins else WIRE_PINS_FIRST);
+}
+
+// ---- checks
+// The fixture at its next revision, into out (a, b: room to work in): revision 2, where a Wolf always
+// drops a Traveller's ring (revision 1: a pelt, 60 in 100), and the Warden has a third line, in the
+// Wolf woods.
+ppt_next :: (a: [] u8, b: [] u8, out: [] u8) -> string {
+  one := ec_swap("aethyr.content.v1 everglade 1\n", "aethyr.content.v1 everglade 2\n", a);
+  two := ec_sub(one, "1|1|1|60\n2|1|0|40\n", "1|1|4|100\n2|1|0|0\n", b);
+  return ec_sub(two, "table item id", "3|Warden|2|0|The woods are quieter for it.\ntable item id", out);
+}
+// A room on `tables` with two seats: conn 0's page says the pins `p0` before its hello, conn 1's `p1`.
+ppt_room :: (v: [] RmServer, code: string, tables: string, before: string, p0: WirePins, p1: WirePins) -> int {
+  rm_init(v); rm_clock(v, 1000, 1762190000000);
+  if !rm_content_load(v, tables) { return -1; }
+  _ := rm_content_prev(v, before);
+  path: [128] u8; n := wire_put(path[..], 0, "GET /api/room/relay/everglade/"); n = wire_put(path[..], n, code); n = wire_put(path[..], n, " HTTP/1.1\r\n\r\n");
+  if rm_join(v, 0, cast(string) path[0..<n]) != 0 || rm_join(v, 1, cast(string) path[0..<n]) != 1 { return -1; }
+  k := eg_room_at(v, v[0].conns[0].relay);
+  for c: 0..<2 {
+    f: [64] u8; m := wire_put_pins(f[..], 0, ifx c == 0 then p0 else p1);
+    rm_heard(v, c, cast(string) f[0..<m]);
+    h: [64] u8; m = wire_put(h[..], wire_int(h[..], wire_put(h[..], 0, "H"), WIRE_VERSION), " ranger.0.0.0 srd-fighter 0 -");
+    rm_heard(v, c, cast(string) h[0..<m]);
+  }
+  eg_test_tick(v, k);
+  return k;
+}
+
+#test "previous pins: a page on the tables before sits beside one on this room's; two revisions back, or the next, is refused" #steps 4000000000 #traversal 1073741824 {
+  a: [CT_BODY] u8; b: [CT_BODY] u8; o: [CT_BODY] u8; next := ppt_next(a[..], b[..], o[..]);
+  v: [1] RmServer; k := ppt_room(v[..], "pair-e2-pins-sit", next, EC_FIXTURE, wire_pins_at(1), wire_pins_at(2)); #assert k >= 0;
+  #assert pprev_doc_rev(next) == 2 && pprev_doc_rev(EC_FIXTURE) == 1 && pprev_doc_rev(EC_PREVIOUS) == v[0].itm.prev[0].rev;   // the first line's revision is the reader's
+  #assert rm_content_rev(v[..]) == 2 && rm_content_was(v[..]) == 1 && v[0].eg[k].stale_n == 0 && !v[0].conns[0].kicked && !v[0].conns[1].kicked;
+  mine := eg_server(v[..]);
+  #assert mine.pins.content == wire_content_pin(2) && mine.prev.on && mine.prev.content == wire_content_pin(1) && mine.prev.engine == PPREV_SERVES.engine && mine.prev.rules == PPREV_SERVES.rules;
+  #assert pprev_seat_behind(v[..], k, 0) == PPREV_CONTENT && pprev_seat_behind(v[..], k, 1) == 0;
+  // the room's report names both builds
+  #assert rm_st_pin(v[..], 2) == wire_content_pin(2) && rm_st_pin(v[..], 6) == PPREV_SERVES.engine && rm_st_pin(v[..], 7) == PPREV_SERVES.rules && rm_st_pin(v[..], 8) == wire_content_pin(1) && rm_st_pin(v[..], 5) == RV_SCHEMA;
+  #assert pprev_seat_behind(v[..], -1, 0) == 0 && pprev_seat_behind(v[..], EG_ROOMS, 0) == 0 && pprev_seat_behind(v[..], k, -1) == 0 && pprev_seat_behind(v[..], k, EG_SEATS) == 0 && pprev_seat_behind(v[..], k, 2) == 0;
+  // a page from before P is the first build's (revision 1's pin): seated here as the release before's
+  #assert eg_admit(v[..], k, SeatId.{value = 2}, WIRE_VERSION) == CP_OK;
+  // two revisions back, and the one after this room's: refused for their content, and counted so
+  w: [1] RmServer; k2 := ppt_room(w[..], "pair-e2-pins-old", next, EC_FIXTURE, wire_pins_at(3), wire_pins_at(1)); #assert k2 >= 0;
+  #assert w[0].conns[0].kicked && !w[0].conns[1].kicked && w[0].eg[k2].stale_n == 1 && rm_st_refused(w[..], ST_CONTENT) == 1;
+  bb: [CT_BODY] u8; three := ec_sub(next, "everglade 2\n", "everglade 3\n", bb[..]);
+  x: [1] RmServer; k3 := ppt_room(x[..], "pair-e2-pins-two", three, EC_FIXTURE, wire_pins_at(1), wire_pins_at(3)); #assert k3 >= 0;
+  #assert rm_content_rev(x[..]) == 3 && rm_content_was(x[..]) == 0 && !eg_server(x[..]).prev.on && x[0].conns[0].kicked && !x[0].conns[1].kicked && rm_st_refused(x[..], ST_CONTENT) == 1;
+  // a page on this room's tables but another engine or other rules is no build this room seats
+  odd := wire_pins_at(1); odd.rules = WIRE_RULES + 1;
+  y: [1] RmServer; k4 := ppt_room(y[..], "pair-e2-pins-mix", next, EC_FIXTURE, odd, wire_pins_at(2)); #assert k4 >= 0;
+  #assert y[0].conns[0].kicked && !y[0].conns[1].kicked && rm_st_refused(y[..], ST_RULES) == 1;
+}
+#test "previous pins: the tables before are kept only when they are Everglade's, this document's, and the revision just before" #steps 4000000000 #traversal 1073741824 {
+  a: [CT_BODY] u8; b: [CT_BODY] u8; o: [CT_BODY] u8; next := ppt_next(a[..], b[..], o[..]);
+  v: [1] RmServer; rm_init(v[..]); rm_clock(v[..], 1000, 1762190000000);
+  // no tables of its own: none before either
+  #assert !rm_content_prev(v[..], EC_FIXTURE) && rm_content_was(v[..]) == 0 && !pprev_compat(v[..]).on;
+  #assert rm_content_load(v[..], next) && rm_content_prev(v[..], EC_FIXTURE) && rm_content_was(v[..]) == 1 && pprev_compat(v[..]).on;
+  // the same revision, not a document, not Everglade's, another document's: not kept, and the room seats its own build alone
+  #assert !rm_content_prev(v[..], next) && rm_content_was(v[..]) == 0 && !pprev_compat(v[..]).on && pprev_same(pprev_room_before(v[..]), pprev_room(v[..]));
+  #assert rm_content_prev(v[..], EC_FIXTURE) && !rm_content_prev(v[..], "nope") && rm_content_was(v[..]) == 0;
+  #assert rm_content_prev(v[..], EC_FIXTURE) && !rm_content_prev(v[..], "aethyr.content.v1 everglade 1\nreach 1\n") && rm_content_was(v[..]) == 0;
+  c: [CT_BODY] u8; other := ec_swap("aethyr.content.v1 everglade 1\n", "aethyr.content.v1 elsewhere 1\n", c[..]);
+  #assert ec_takes(other) && rm_content_prev(v[..], EC_FIXTURE) && !rm_content_prev(v[..], other) && rm_content_was(v[..]) == 0;
+  // a room's tables that do not read drop the ones before with them
+  #assert rm_content_prev(v[..], EC_FIXTURE) && !rm_content_load(v[..], "nope") && rm_content_was(v[..]) == 0 && rm_content_rev(v[..]) == 0;
+  // the tables a room is built with (EC_PREVIOUS) are loaded with its own: this fixture is revision 1, so they are not the revision before
+  #assert rm_content_load(v[..], EC_FIXTURE) && rm_content_was(v[..]) == 0;
+}
+#test "previous pins: a seat on the tables before plays by them: its drops, its dialogue and its quests are that revision's" #steps 4000000000 #traversal 1073741824 {
+  a: [CT_BODY] u8; b: [CT_BODY] u8; o: [CT_BODY] u8; next := ppt_next(a[..], b[..], o[..]);
+  v: [1] RmServer; k := ppt_room(v[..], "pair-e2-pins-play", next, EC_FIXTURE, wire_pins_at(1), wire_pins_at(2)); #assert k >= 0;
+  st: [1] RiStore; old := SeatId.{value = 0}; new := SeatId.{value = 1};
+  co := ri_open(v[..], k, 0, "p-old", 7); cn := ri_open(v[..], k, 1, "p-new", 7); ri_test_drain(v[..], st[..]);
+  #assert co == 0 && cn == 1 && ri_doc(v[..], co)[0].rev == 1 && ri_doc(v[..], cn)[0].rev == 2 && v[0].itm.c[co].old && !v[0].itm.c[cn].old;
+  // the Warden's third line is revision 2's: the page on revision 1 has no such row, and is not told it
+  v[0].eg[k].seat[0].pose.x = 0.0; v[0].eg[k].seat[0].pose.z = -175.0; v[0].eg[k].seat[1].pose.x = 0.0; v[0].eg[k].seat[1].pose.z = -175.0;
+  #assert !ri_say(v[..], k, old, 3) && ri_say(v[..], k, new, 3);
+  // twenty Wolves each. Revision 2 drops a ring every time; revision 1 a pelt in 60 of 100, and never a ring
+  for i: 0..<20 { ri_kill(v[..], k, old, 0); ri_kill(v[..], k, new, 0); ri_test_drain(v[..], st[..]); }
+  ro := v[0].itm.c[co]; rn := v[0].itm.c[cn]; old_ring := 0; old_pelt := 0; new_ring := 0; new_other := 0;
+  for i: 0..<ro.rec.bag_n { if ro.kinds[i] == 4 { old_ring += 1; } if ro.kinds[i] == 1 { old_pelt += 1; } }
+  for i: 0..<rn.rec.bag_n { if rn.kinds[i] == 4 { new_ring += 1; } else { new_other += 1; } }
+  #assert old_ring == 0 && old_pelt > 0 && old_pelt == ro.rec.bag_n && new_ring > 0 && new_other == 0;
+  // the seat leaves: its character keeps the tables it sat with while its operations leave
+  ri_left(v[..], k, old); #assert v[0].itm.c[co].old || !v[0].itm.c[co].live;
+  // a room that keeps no tables before has every character on its own
+  _ := rm_content_prev(v[..], "nope"); #assert ri_doc(v[..], cn)[0].rev == 2 && !v[0].itm.c[cn].old;
+  c2 := ri_open(v[..], k, 0, "p-old", 7); #assert ri_doc(v[..], c2)[0].rev == 2 && !v[0].itm.c[c2].old;
+}

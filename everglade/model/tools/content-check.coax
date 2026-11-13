@@ -5,24 +5,54 @@
 //        ... everglade/content/everglade.content --carry    also writes everglade/content/shipped.coax, the
 //        copy of the tables a page is built with (#13381); coax/web/tool.sh everglade-parity fails when
 //        that copy is not the file's bytes, so run it after every edit of the tables.
+// The tables before (#13408, docs/protocol/everglade-previous-pins.md): FILE's neighbour
+// everglade/content/everglade.previous.content holds the tables of the release before, which a room
+// carries (everglade/content/previous.coax) for the pages still on them. The check fails unless they
+// are Everglade's, this document's, and the revision before FILE's or FILE's own bytes.
+//        ... everglade/content/everglade.content --keep     writes FILE's bytes there: run it before an
+//        edit, when FILE is what production runs. --carry writes previous.coax beside shipped.coax.
 #import "Basic";
 #load "../content.coax";
 #load "../../../coax/lib/sys/tool.coax";
 #load "../../../coax/lib/sys/fs.coax";
 #load "../../../metaverse-engine/tools/content-carry.coax";
+#load "../../shared/pins-prev.coax";
 
 CARRY_PATH :: "everglade/content/shipped.coax";
 CARRY_HEAD :: "// Everglade's content tables as a page is built with them (#13381): the bytes of\n// everglade/content/everglade.content, written by\n//   coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content --carry\n// Never edit it by hand: edit the tables (docs/protocol/aethyr-content-v1.md) and write it again.\n// coax/web/tool.sh everglade-parity fails when the two differ. A room reads the file itself at start.\nEC_SHIPPED :: \"";
 
+WAS_FILE :: "everglade/content/everglade.previous.content";
+WAS_PATH :: "everglade/content/previous.coax";
+WAS_HEAD :: "// Everglade's content tables of the release before (#13408): the bytes of\n// everglade/content/everglade.previous.content, written by\n//   coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content --carry\n// Never edit it by hand. A room is built with it, and a seat whose page is still the release before's\n// plays by these tables (docs/protocol/everglade-previous-pins.md). coax/web/tool.sh everglade-parity\n// fails when the two differ.\nEC_PREVIOUS :: \"";
+
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 || (args_count(a[..]) == 2 && args_at(a[..], 1) != "--carry") { tool_errln("usage: content-check FILE [--carry]"); return 2; }
+  if !args_load(a[..]) || args_count(a[..]) < 1 || args_count(a[..]) > 2 || (args_count(a[..]) == 2 && args_at(a[..], 1) != "--carry" && args_at(a[..], 1) != "--keep") { tool_errln("usage: content-check FILE [--carry|--keep]"); return 2; }
   raw: [CT_BODY] u8; n := fs_read(args_at(a[..], 0), raw[..]);
   d: [1] ContentDoc;
   if n <= 0 || !ct_read(d[..], cast(string) raw[0..<n]) { print("everglade content: not a content document\n"); return 1; }
   if !ec_ok(d[..]) { print("everglade content: a content document, but not Everglade's tables or rules\n"); return 1; }
   print("everglade content: revision % holds (% creatures, % items, % loot rows, % quests, % steps)\n", d[0].rev, ct_rows(d[..], EC_CREATURE), ct_rows(d[..], EC_ITEM), ct_rows(d[..], EC_LOOT), ct_rows(d[..], EC_QUEST), ct_rows(d[..], EC_STEP));
-  if args_count(a[..]) == 2 {
+  if args_count(a[..]) == 2 && args_at(a[..], 1) == "--keep" {
+    if !fs_write(WAS_FILE, cast(string) raw[0..<n]) { print("everglade content: could not write %\n", WAS_FILE); return 1; }
+    print("everglade content: % written (revision %): the tables of the release before\n", WAS_FILE, d[0].rev);
+  }
+  // the tables before: Everglade's, this document's, and the revision before or these bytes
+  was: [CT_BODY] u8; wn := fs_read(WAS_FILE, was[..]);
+  w: [1] ContentDoc;
+  if wn <= 0 || !ct_read(w[..], cast(string) was[0..<wn]) || !ec_ok(w[..]) || ct_doc_name(w[..]) != ct_doc_name(d[..]) {
+    print("everglade content: % is not this document's tables of the release before\n", WAS_FILE); return 1;
+  }
+  if !pprev_tables(d[0].rev, w[0].rev, cast(string) was[0..<wn] == cast(string) raw[0..<n]) {
+    print("everglade content: the tables are revision % and % holds revision %. It must be the revision before, or the same bytes: one raise a release (docs/protocol/everglade-previous-pins.md)\n", d[0].rev, WAS_FILE, w[0].rev);
+    return 1;
+  }
+  print("everglade content: the tables before are revision %\n", w[0].rev);
+  if args_count(a[..]) == 2 && args_at(a[..], 1) == "--carry" {
+    po: [2 * CT_BODY + 2048] u8;
+    kept := content_carry(WAS_HEAD, cast(string) was[0..<wn], po[..]);
+    if kept.count == 0 || !fs_write(WAS_PATH, kept) { print("everglade content: could not write %\n", WAS_PATH); return 1; }
+    print("everglade content: % written (revision %)\n", WAS_PATH, w[0].rev);
     // the same bytes as a Coax string (metaverse-engine/tools/content-carry.coax)
     o: [2 * CT_BODY + 2048] u8;
     carried := content_carry(CARRY_HEAD, cast(string) raw[0..<n], o[..]);

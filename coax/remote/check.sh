@@ -255,6 +255,8 @@ reports() {
   step everglade-parity coax/web/tool.sh everglade-parity || status=1
   # Splice's page is built with its content tables' own bytes (#13404)
   step splice-content coax/web/tool.sh verse/splice/tools/content-check.coax verse/splice/content/splice.content --check || status=1
+  # Everglade's tables hold their rules, and the kept tables of the release before are the revision before them (#13408)
+  step everglade-content coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content || status=1
   step wire-check coax/web/tool.sh wire-check || status=1
   step layer-check coax/web/tool.sh layer-check || status=1
   migrations
@@ -331,6 +333,8 @@ room() {
 #   the room's tick p95 is over production's by more than OA_E2_TICK_US (300 µs) and half of it
 #   the input-to-ACK p95 is over production's by more than OA_E2_ACK_MS (25 ms)
 #   the bytes a player hears a second are over production's by more than OA_E2_BYTES_PCT (25%)
+#   production's own bots are refused or fight nothing on this commit's room (e2_prev, "e2 prev-wire")
+#   production's pins or content tables are not ones this commit's room seats (e2_pins, "e2 prev-pins")
 # The margins come from the noise measured on 2026-11-11 (the doc). Each failing measure is a line
 # "e2 NAME" in failed; e2.tsv has every round's numbers.
 e2_gate() {   # prod
@@ -383,6 +387,7 @@ e2_gate() {   # prod
     e2_one prod "$pt/room" "$pt/tree" "$r"
   done
   e2_prev "$pt" "$key" || true
+  e2_pins "$prod" || true
   cp "$w/e2.tsv" "$out/e2.tsv"
   sed 's/^/  /' "$w/e2.tsv" >> "$log"
   awk -F'\t' -v tick="${OA_E2_TICK_US:-300}" -v ack="${OA_E2_ACK_MS:-25}" -v pct="${OA_E2_BYTES_PCT:-25}" -v prod="${prod:0:10}" '
@@ -440,6 +445,19 @@ e2_prev() {   # pt key
     echo "e2 prev-wire: this commit's room does not serve production's client (its wire or what it reads). See everglade/server/wire-prev.coax" >> "$log"
   fi
 }
+# The previous pins (#13408, everglade/shared/pins-prev.coax; docs/protocol/everglade-previous-pins.md):
+# production's page says its engine, its rules and its content pin, and this commit's room must seat
+# them: they are this build's own or the release before's that it names, over the same content tables.
+# "e2 prev-pins" when coax/web/room/pins-pair.coax says it does not: a pin raised twice in one release,
+# or without the value production runs kept. e2_prev's bots then show the same room refusing them.
+e2_pins() {   # prod
+  local prod="$1" tables="-" rc
+  git show "$prod:everglade/shared/everglade-wire.coax" > "$w/prod-wire.coax" 2> /dev/null || { echo "e2 prev-pins: production's wire file could not be read; not judged" >> "$log"; return 0; }
+  ! git show "$prod:everglade/content/everglade.content" > "$w/prod.content" 2> /dev/null || tables="$w/prod.content"
+  coax/web/tool.sh coax/web/room/pins-pair.coax "$w/prod-wire.coax" "$tables" "${prod:0:10}" > "$w/pins.out" 2>&1; rc=$?
+  sed 's/^/e2 prev-pins: /' "$w/pins.out" >> "$log"
+  if [[ "$rc" -eq 1 ]]; then echo "e2 prev-pins" >> "$w/prev.worse"; elif [[ "$rc" -ne 0 ]]; then echo "e2 prev-pins: not judged" >> "$log"; fi
+}
 # The allowlist counts (coax/remote/counts.sh, #13266): none that a commit since BASE raised. Each
 # raised count is a line "count NAME" in failed.
 counts_since() {
@@ -476,6 +494,7 @@ reports_since() {
     step tools-check coax/web/tool.sh tools-check || status=1
     step everglade-parity coax/web/tool.sh everglade-parity || status=1
     step splice-content coax/web/tool.sh verse/splice/tools/content-check.coax verse/splice/content/splice.content --check || status=1
+    step everglade-content coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content || status=1   # and the kept tables before (#13408)
     # every wire shape registered (proto/registry.json, #13236); the allowlist against the base's copy
     step wire-check coax/web/tool.sh wire-check --base "$arg" || status=1
     # no load up the layers (metaverse-engine/README.md "Layers", #13264); the allowlist against the base's copy

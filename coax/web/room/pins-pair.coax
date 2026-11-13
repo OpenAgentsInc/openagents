@@ -1,0 +1,94 @@
+// Hold this commit's room to production's page, by their pins (#13408;
+// docs/protocol/everglade-previous-pins.md). A release moves its rooms before its page, so the room
+// of this commit must seat the page production serves: that page's engine, rules and content pin are
+// this build's own, or the release before's that it names (everglade/shared/pins-prev.coax), and the
+// content tables behind that pin are the bytes this build holds for it. A pin raised twice in one
+// release, or raised without the release before's value kept, fails here.
+//   coax/web/tool.sh coax/web/room/pins-pair.coax PROD_WIRE PROD_TABLES [NAME]
+//     PROD_WIRE     production's everglade/shared/everglade-wire.coax
+//     PROD_TABLES   production's everglade/content/everglade.content ("-": it has none)
+//     NAME          what to call production in the report (its commit)
+//   Run from the root of this commit; coax/remote/check.sh e2 PROD runs it as "e2 prev-pins".
+#import "Basic";
+#load "../../../everglade/shared/pins-prev.coax";
+#load "../../../everglade/model/content.coax";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+
+PP_WIRE :: 262144;
+PP_NONE :: -1;
+// A whole-number constant's value in Coax source: "NAME :: N;" with NAME a whole word. PP_NONE when
+// the source does not say it so.
+pp_const :: (text: string, name: string) -> int {
+  mark := " :: ";
+  for a: 0..<text.count - name.count - mark.count {
+    if text[a..<a + name.count] != name || text[a + name.count..<a + name.count + mark.count] != mark { continue; }
+    if a > 0 { b := text[a - 1]; if (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '_' { continue; } }
+    n := 0; at := a + name.count + mark.count; any := false;
+    while at < text.count && text[at] >= '0' && text[at] <= '9' && n < 100000000 { n = n * 10 + cast(int) (text[at] - '0'); at += 1; any = true; }
+    if any && at < text.count && text[at] == ';' { return n; }
+  }
+  return PP_NONE;
+}
+// Whether this build's room (pins `own`, the release before's `before`) serves production's page:
+// 0 it does. 1: its pins are neither build's. 2: its pin is this build's own and its tables are other
+// bytes. 3: its pin is the release before's and the tables this build keeps for it are other bytes.
+// same_own, same_before: production's tables are this build's own bytes, or the ones it keeps (a
+// production with no tables file is the same as either).
+pp_serves :: (own: WirePins, before: WirePins, prod: WirePins, same_own: bool, same_before: bool) -> int {
+  if !pprev_seats(own, before, prod) { return 1; }
+  if pprev_same(own, prod) { return ifx same_own then 0 else 2; }
+  return ifx same_before then 0 else 3;
+}
+#test "a constant is read from its own line of source, as a whole word, and nothing else is taken for it" {
+  src := "WIRE_VERSION :: 6;   // rows\nWIRE_ENGINE :: 1; WIRE_RULES :: 12; WIRE_CONTENT :: 3;\nWIRE_CONTENT_IDS :: 55127017896882;\nXWIRE_MIN :: 4;\nWIRE_MIN :: WIRE_VERSION - 1;\nWIRE_NONE :: ;\n";
+  #assert pp_const(src, "WIRE_VERSION") == 6 && pp_const(src, "WIRE_ENGINE") == 1 && pp_const(src, "WIRE_RULES") == 12 && pp_const(src, "WIRE_CONTENT") == 3;
+  #assert pp_const(src, "WIRE_MIN") == PP_NONE && pp_const(src, "WIRE_NONE") == PP_NONE && pp_const(src, "WIRE_ABSENT") == PP_NONE && pp_const("", "WIRE_RULES") == PP_NONE;
+  #assert pp_const("A :: 7;", "A") == 7 && pp_const("A :: 7", "A") == PP_NONE && pp_const("_A :: 7;", "A") == PP_NONE && pp_const("9A :: 7;", "A") == PP_NONE && pp_const("aA :: 7; A :: 8;", "A") == 8 && pp_const("(A :: 7;", "A") == 7;
+}
+#test "a room serves production's page on its own build or the release before's, with that build's tables, and no other" {
+  own := WirePins.{engine = 4, rules = 9, content = pprev_pin(3, 7)}; before := pprev_pins(WirePins.{engine = 4, rules = 9, content = 3}, 7, 6);
+  #assert pp_serves(own, before, own, true, false) == 0 && pp_serves(own, before, before, false, true) == 0;
+  // the same pin over other bytes: tables edited with no new revision, or the wrong tables kept
+  #assert pp_serves(own, before, own, false, true) == 2 && pp_serves(own, before, before, true, false) == 3;
+  // two revisions back, or another build
+  two := before; two.content = pprev_pin(3, 5); #assert pp_serves(own, before, two, true, true) == 1;
+  odd := own; odd.rules = 8; #assert pp_serves(own, before, odd, true, true) == 1;
+  // nothing raised: one build
+  #assert pp_serves(own, own, own, true, true) == 0 && pp_serves(own, own, before, true, true) == 1 && pp_serves(own, own, own, false, true) == 2;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 || args_count(a[..]) > 3 { tool_errln("usage: pins-pair PROD_WIRE PROD_TABLES|- [NAME]"); return 2; }
+  name := ifx args_count(a[..]) == 3 then args_at(a[..], 2) else "production";
+  src: [PP_WIRE] u8; sn := fs_read(args_at(a[..], 0), src[..]);
+  if sn <= 0 { print("pins-pair: % could not be read\n", args_at(a[..], 0)); return 2; }
+  text := cast(string) src[0..<sn];
+  pe := pp_const(text, "WIRE_ENGINE"); pr := pp_const(text, "WIRE_RULES"); pc := pp_const(text, "WIRE_CONTENT");
+  if pe == PP_NONE || pr == PP_NONE || pc == PP_NONE { print("pins-pair: %'s wire file does not say WIRE_ENGINE, WIRE_RULES and WIRE_CONTENT\n", name); return 2; }
+  // production's tables (none: its pin is WIRE_CONTENT alone)
+  praw: [CT_BODY] u8; pn := 0; prev := 0; pd: [1] ContentDoc;
+  if args_at(a[..], 1) != "-" {
+    pn = fs_read(args_at(a[..], 1), praw[..]);
+    if pn <= 0 || !ct_read(pd[..], cast(string) praw[0..<pn]) { print("pins-pair: %'s content tables do not read\n", name); return 2; }
+    prev = pd[0].rev;
+  }
+  prod := WirePins.{engine = pe, rules = pr, content = pprev_pin(pc, prev)};
+  // this build's tables and the ones it keeps
+  raw: [CT_BODY] u8; n := fs_read("everglade/content/everglade.content", raw[..]); d: [1] ContentDoc;
+  was: [CT_BODY] u8; wn := fs_read("everglade/content/everglade.previous.content", was[..]); w: [1] ContentDoc;
+  if n <= 0 || !ct_read(d[..], cast(string) raw[0..<n]) || !ec_ok(d[..]) { print("pins-pair: this commit's content tables do not read\n"); return 1; }
+  kept := 0;
+  if wn > 0 && ct_read(w[..], cast(string) was[0..<wn]) && ec_ok(w[..]) && ct_doc_name(w[..]) == ct_doc_name(d[..]) && pprev_rev_before(d[0].rev, w[0].rev) { kept = w[0].rev; }
+  own := wire_pins_at(d[0].rev); before := pprev_pins(PPREV_SERVES, d[0].rev, kept);
+  same_own := pn == 0 || cast(string) praw[0..<pn] == cast(string) raw[0..<n];
+  same_before := pn == 0 || (wn > 0 && cast(string) praw[0..<pn] == cast(string) was[0..<wn]);
+  why := pp_serves(own, before, prod, same_own, same_before);
+  print("pins-pair: % says engine % rules % content %; this room is % % % and also seats % % %\n", name, prod.engine, prod.rules, prod.content, own.engine, own.rules, own.content, before.engine, before.rules, before.content);
+  if why == 1 { print("pins-pair: FAILED. This room refuses %'s page: its pins are neither this build's nor the release before's. Keep the value production runs (everglade/shared/pins-prev.coax PPREV_SERVES; the tables: content-check --keep), one raise a release. docs/protocol/everglade-previous-pins.md\n", name); }
+  if why == 2 { print("pins-pair: FAILED. %'s content tables are revision % with other bytes than this commit's revision %: tables changed without a new revision\n", name, prev, d[0].rev); }
+  if why == 3 { print("pins-pair: FAILED. everglade/content/everglade.previous.content is not the tables % runs at revision %: a seat on that page would play by rows it does not have\n", name, prev); }
+  if why == 0 { print("pins-pair: holds\n"); }
+  return ifx why == 0 then 0 else 1;
+}

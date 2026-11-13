@@ -202,11 +202,12 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
 // saved-data schema it reads (RV_SCHEMA). A seat's pins are its page's P (a page from before P is
 // WIRE_PINS_FIRST's build), its hello's wire, and the schema of the data its ticket brings back.
 // Its content pin is its content tables' revision (wire_content_pin, #13381; none loaded: WIRE_CONTENT
-// alone), so a page whose tables are another revision is refused as any other build is.
+// alone), so a page whose tables are another revision is refused as any other build is. One other build
+// is seated for one release: the release before's (pins-prev.coax pprev_compat, #13408).
 eg_server :: (v: [] RmServer) -> CompatServer {
   p := wire_pins_at(rm_content_rev(v));
   return CompatServer.{pins = CompatPins.{engine = p.engine, rules = p.rules, content = p.content, wire = WIRE_VERSION, schema = RV_SCHEMA},
-                       wire_min = WIRE_MIN, up = true, ready = true, room = 1};
+                       wire_min = WIRE_MIN, up = true, ready = true, room = 1, prev = pprev_compat(v)};
 }
 eg_pins :: (v: [] RmServer, k: int, seat_id: SeatId, wire: int) -> CompatPins { seat := seat_id.value;
   st := v[0].eg[k].seat[seat];

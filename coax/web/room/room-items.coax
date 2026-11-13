@@ -17,10 +17,17 @@
 // The content. Loot tables, quests, dialogue and points are the content tables' (metaverse-engine/content/tables.coax,
 // everglade/model/content.coax), loaded at start (rm_content_load); a room with no content grants nothing.
 //
+// The tables before. A room also carries the content tables of the release before its own
+// (everglade/content/previous.coax; #13408, docs/protocol/everglade-previous-pins.md). A character
+// whose page said that revision plays by those tables (ri_doc): its quests, its drops, its dialogue
+// and what it may wear are the rows its page has, for the one release a room seats that page.
+//
 // The stand-in. A --dev room with no API answers each operation itself (rm_items_local), with the same
 // rules: the ledger's in-memory store and the record's claim.
 #load "../../../everglade/model/item-op.coax";
 #load "../../../everglade/model/content.coax";
+#load "../../../everglade/content/previous.coax";    // the release before's tables (EC_PREVIOUS, #13408)
+#load "../../../everglade/shared/pins-prev.coax";    // which build is the release before's
 
 RI_CHARS :: 320;          // characters with a seat here, or operations still to leave
 RI_BOX :: 256;            // operations waiting
@@ -40,6 +47,7 @@ RiChar :: struct {
   synced: bool;                  // an answer has brought its record
   rec: Character; kinds: [CHAR_BAG] int; ver: int;
   tell: int = -1;                // the next entry its seat is to be told (-1: all told)
+  old: bool;                     // its page is the release before's: it plays by the tables before (ri_doc)
   gone: [RI_GONE] int; gone_n: int;
 }
 RiOp :: struct {
@@ -58,6 +66,7 @@ RiStore :: struct {
 }
 RmItems :: struct {
   doc: [1] ContentDoc; content: bool;
+  prev: [1] ContentDoc; prev_on: bool;   // the release before's tables, when they are the revision before doc's (rm_content_prev)
   c: [RI_CHARS] RiChar;
   at: [EG_ROOMS * EG_SEATS] int;   // each seat's character, plus 1 (0 none)
   box: [RI_BOX] RiOp; seq: int; ids: int;
@@ -71,9 +80,30 @@ RmItems :: struct {
 // ---- the content
 
 // The content tables, at start (room-host.c reads OA_ROOM_CONTENT): true when they are Everglade's.
+// With them, the release before's (EC_PREVIOUS), kept when they are the revision before these.
 rm_content_load :: (v: [] RmServer, text: string) -> bool #export_c #effects(all) {
   v[0].itm.content = ct_read(v[0].itm.doc[..], text) && ec_ok(v[0].itm.doc[..]);
+  _ := rm_content_prev(v, EC_PREVIOUS);
   return v[0].itm.content;
+}
+// The tables of the release before (#13408): kept, true, only when they are Everglade's, of the same
+// document, and the revision just before the room's own (pprev_rev_before). Any others are not kept,
+// and the room then seats no page on another revision.
+rm_content_prev :: (v: [] RmServer, text: string) -> bool #effects(all) {
+  v[0].itm.prev_on = v[0].itm.content && ct_read(v[0].itm.prev[..], text) && ec_ok(v[0].itm.prev[..])
+                     && ct_doc_name(v[0].itm.prev[..]) == ct_doc_name(v[0].itm.doc[..]) && pprev_rev_before(v[0].itm.doc[0].rev, v[0].itm.prev[0].rev);
+  return v[0].itm.prev_on;
+}
+// The revision of the tables before that the room keeps (0 none).
+rm_content_was :: (v: [] RmServer) -> int #export_c #effects(all) { return ifx v[0].itm.prev_on then v[0].itm.prev[0].rev else 0; }
+// The tables character c plays by: the room's, or the release before's while its page is that
+// release's (pins-prev.coax pprev_seat_behind: its content pin is the one before). A character with
+// no seat left keeps the tables it sat with, for the operations of its that are still to leave.
+ri_doc :: (v: [] RmServer, c: int) -> [] ContentDoc {
+  ch := v[0].itm.c[c];
+  if ch.k >= 0 && ch.seat >= 0 { v[0].itm.c[c].old = v[0].itm.prev_on && (pprev_seat_behind(v, ch.k, ch.seat) & PPREV_CONTENT) != 0; }
+  if v[0].itm.c[c].old && v[0].itm.prev_on { return v[0].itm.prev[..]; }
+  return v[0].itm.doc[..];
 }
 // The content's revision (0 none): what the room's start line and its stats name.
 rm_content_rev :: (v: [] RmServer) -> int #export_c #effects(all) { return ifx v[0].itm.content then v[0].itm.doc[0].rev else 0; }
@@ -285,7 +315,7 @@ ri_spare :: (v: [] RmServer, c: int, kind: int) -> int {
 // from the stage it is at, so none is ever applied twice.
 ri_pump :: (v: [] RmServer, c: int) {
   if !v[0].itm.content || !v[0].itm.c[c].synced { return; }
-  d := v[0].itm.doc[..]; rec := v[0].itm.c[c].rec;
+  d := ri_doc(v, c); rec := v[0].itm.c[c].rec;
   for q: 0..<ct_rows(d, EC_QUEST) {
     quest := ct_get(d, EC_QUEST, q, 0);
     for round: 0..<RI_TELL {
@@ -308,7 +338,7 @@ ri_pump :: (v: [] RmServer, c: int) {
 // reached, a talk; EQ_TAKE and EQ_TALK together for one dialogue): each quest it advances moves one stage.
 ri_happened :: (v: [] RmServer, c: int, kind: int, target: int) {
   if !v[0].itm.content || !v[0].itm.c[c].synced { return; }
-  d := v[0].itm.doc[..];
+  d := ri_doc(v, c);
   for q: 0..<ct_rows(d, EC_QUEST) {
     quest := ct_get(d, EC_QUEST, q, 0); soon := ri_soon(v, c, quest);
     if eq_advances(d, quest, soon, kind, target) || (kind == EQ_TALK && eq_advances(d, quest, soon, EQ_TAKE, target)) {
@@ -330,15 +360,16 @@ ri_roll :: (v: [] RmServer) -> int {
 ri_kill :: (v: [] RmServer, k: int, seat_id: SeatId, kind: int) {
   c := ri_seat(v, k, seat_id.value);
   if c < 0 || !v[0].itm.content { return; }
-  creature := ec_creature(v[0].itm.doc[..], kind);
+  d := ri_doc(v, c);
+  creature := ec_creature(d, kind);
   if creature == 0 { return; }
-  drop := ec_drop(v[0].itm.doc[..], creature, ri_roll(v));
+  drop := ec_drop(d, creature, ri_roll(v));
   if drop != 0 { _ := ri_push(v, c, RI_LOOT, LOP_GRANT, 0, drop, CharClaim.{}); }
   ri_happened(v, c, EQ_KILL, creature);
 }
-// Whether seat s of room k stands within content point `point`'s radius.
-ri_near :: (v: [] RmServer, k: int, s: int, point: int) -> bool {
-  d := v[0].itm.doc[..]; r := ct_find(d, EC_POINT, point);
+// Whether seat s of room k stands within point `point`'s radius, by the tables d (its character's: ri_doc).
+ri_near :: (v: [] RmServer, d: [] ContentDoc, k: int, s: int, point: int) -> bool {
+  r := ct_find(d, EC_POINT, point);
   if r < 0 { return false; }
   p := v[0].eg[k].seat[s].pose;
   dx := cast(int) (p.x * 100) - ct_get(d, EC_POINT, r, EC_POINT_X); dz := cast(int) (p.z * 100) - ct_get(d, EC_POINT, r, EC_POINT_Z);
@@ -350,8 +381,8 @@ ri_near :: (v: [] RmServer, k: int, s: int, point: int) -> bool {
 ri_say :: (v: [] RmServer, k: int, seat_id: SeatId, dialogue: int) -> bool {
   c := ri_seat(v, k, seat_id.value);
   if c < 0 || !v[0].itm.content { return false; }
-  d := v[0].itm.doc[..]; r := ct_find(d, EC_DIALOGUE, dialogue);
-  if r < 0 || !ri_near(v, k, seat_id.value, ct_get(d, EC_DIALOGUE, r, EC_DIALOGUE_POINT)) { return false; }
+  d := ri_doc(v, c); r := ct_find(d, EC_DIALOGUE, dialogue);
+  if r < 0 || !ri_near(v, d, k, seat_id.value, ct_get(d, EC_DIALOGUE, r, EC_DIALOGUE_POINT)) { return false; }
   _ := ri_event(v, c, WO_SAY, dialogue, 0, 0);
   ri_happened(v, c, EQ_TALK, dialogue);
   return true;
@@ -362,7 +393,7 @@ ri_wear :: (v: [] RmServer, k: int, seat_id: SeatId, item: int) -> bool {
   if c < 0 || !v[0].itm.content || !v[0].itm.c[c].synced || item < 1 { return false; }
   r := v[0].itm.c[c].rec;
   for b: 0..<r.bag_n {
-    slot := ec_slot(v[0].itm.doc[..], v[0].itm.c[c].kinds[b]);
+    slot := ec_slot(ri_doc(v, c), v[0].itm.c[c].kinds[b]);
     if r.bag[b] == item && slot >= 0 { return ri_push(v, c, RI_WEAR, LOP_CLAIM, 0, 0, CharClaim.{slot = slot, item = item}); }
   }
   return false;
@@ -383,10 +414,10 @@ ri_tick :: (v: [] RmServer, k: int) {
     if c < 0 || !v[0].eg[k].seat[s].live { continue; }
     ri_tell(v, c);
     if !second || !v[0].itm.content || !v[0].itm.c[c].synced { continue; }
-    d := v[0].itm.doc[..];
+    d := ri_doc(v, c);
     for q: 0..<ct_rows(d, EC_QUEST) {
       n := eq_next(d, ct_get(d, EC_QUEST, q, 0), ri_soon(v, c, ct_get(d, EC_QUEST, q, 0)));
-      if n.kind == EQ_REACH && ri_near(v, k, s, n.target) { ri_happened(v, c, EQ_REACH, n.target); }
+      if n.kind == EQ_REACH && ri_near(v, d, k, s, n.target) { ri_happened(v, c, EQ_REACH, n.target); }
     }
   }
 }

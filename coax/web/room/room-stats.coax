@@ -33,9 +33,14 @@ st_compat :: (why: int) -> int {
   if why == CP_SCHEMA { return ST_SCHEMA; }
   return ST_VERSION;
 }
-// This room's build, for the admins' room view: engine, rules, world, oldest and newest wire, schema.
+// This room's build, for the admins' room view: engine, rules, world, oldest and newest wire, schema;
+// then (6, 7, 8) the engine, rules and world of the release before, which it also seats (#13408).
 rm_st_pin :: (v: [] RmServer, i: int) -> int #export_c #effects(all) {
   s := eg_server(v);
+  if i >= 6 {
+    b := pprev_room_before(v);
+    return ifx i == 6 then b.engine else (ifx i == 7 then b.rules else b.content);
+  }
   if i == 0 { return s.pins.engine; }
   if i == 1 { return s.pins.rules; }
   if i == 2 { return s.pins.content; }

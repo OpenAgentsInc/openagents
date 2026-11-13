@@ -108,15 +108,26 @@ coax/web/tool.sh metaverse-engine/tools/content-edit.coax everglade/content/ever
 coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content --carry
 ```
 
+Before the first edit after a release, keep the tables production runs, so
+rooms can serve the pages still on them
+([the previous pins](everglade-previous-pins.md), #13408):
+
+```sh
+coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content --keep
+```
+
 `--carry` also writes `everglade/content/shipped.coax`, the copy of the tables
-that Everglade's page is built with (#13381). Commit it with the tables.
-`coax/web/tool.sh everglade-parity` fails when the copy isn't the file's bytes.
+that Everglade's page is built with (#13381), and
+`everglade/content/previous.coax`, the room's copy of the kept tables. Commit
+them with the tables. `coax/web/tool.sh everglade-parity` fails when a copy
+isn't its file's bytes.
 
 A room reads the file at start. A page reads its built-in copy. Each says the
 tables' revision in its content pin
 ([the content pin](everglade-content-ids-v1.md#the-content-pin)), so a page and
-a room with different tables never meet. Release the room and the page from the
-same commit after an edit.
+a room with different tables never meet, except that a room seats the revision
+just before its own for one release and serves that seat from the kept tables.
+Release the room and the page from the same commit after an edit.
 
 | Edit | Meaning |
 | --- | --- |

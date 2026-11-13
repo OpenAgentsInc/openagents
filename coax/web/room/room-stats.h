@@ -298,6 +298,8 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   }
   st_line(o, "build engine=%lld rules=%lld content=%lld wire=%lld-%lld schema=%lld", (long long)rm_st_pin(v, 0), (long long)rm_st_pin(v, 1),
           (long long)rm_st_pin(v, 2), (long long)rm_st_pin(v, 3), (long long)rm_st_pin(v, 4), (long long)rm_st_pin(v, 5));
+  /* the release before's build, which this room also seats for one release (#13408): the build's own when nothing was raised */
+  st_line(o, "seats-before engine=%lld rules=%lld content=%lld", (long long)rm_st_pin(v, 6), (long long)rm_st_pin(v, 7), (long long)rm_st_pin(v, 8));
   st_line(o, "out bytes a second=%.0f", st_out_bytes / secs);
   st_line(o, "out messages a second=%.0f", st_out_frames / secs);
   st_line(o, "in bytes a second=%.0f", st_in_bytes / secs);

@@ -30,8 +30,9 @@ for N+1.
 
 A room reports the range on its vitals: `build engine=1 rules=1 content=1 wire=5-6 schema=2`.
 
-The engine, rules and content pins are not covered by this rule. A page and a
-room whose pins differ never meet, in any version.
+The engine, rules and content pins have the same rule beside this one: a room
+seats the release before's pins for one release
+([the previous pins](everglade-previous-pins.md), #13408).
 
 ## How to raise the wire version
 

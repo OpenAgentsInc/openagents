@@ -1,7 +1,10 @@
 // Sessions pinned to engine, rules, content, wire and schema across overlapping releases (GitHub
 // #12839). A session is admitted against explicit identities and keeps them until it ends:
 // - engine, rules and content (the world revision) must match the server exactly: one encounter
-//   never mixes two rule sets or two worlds;
+//   never mixes two rule sets or two worlds. A server may also name the pins of the release before
+//   its own (CompatPrev, #13408): a page on exactly those three is seated too, and the realm serves
+//   that seat what its build reads. A release moves its servers before its page, so without this
+//   every page is refused between the two steps;
 // - wire: a server speaks a range of wire versions (wire_min..wire), so a page cached from the
 //   previous release still joins while its version is in range; below the range it is told to
 //   reload;
@@ -31,15 +34,23 @@ CP_GONE :: 8;          // the server a reconnect names has stopped
 
 // What a client or session carries, and what a server is.
 CompatPins :: struct { engine: int; rules: int; content: int; wire: int; schema: int; }
-CompatServer :: struct { pins: CompatPins; wire_min: int; up: bool; ready: bool; draining: bool; room: int; }
+// The engine, rules and content of the release before a server's own (on false: it seats its own alone).
+CompatPrev :: struct { on: bool; engine: int; rules: int; content: int; }
+CompatServer :: struct { pins: CompatPins; wire_min: int; up: bool; ready: bool; draining: bool; room: int; prev: CompatPrev; }
 CompatRoute :: struct { status: int; server: int = -1; }
 // book:end compat-profile
 
 // Whether a client with pins `c` (its wire, and the schema of its durable data) may join server s.
+// Whether a client's engine, rules and content are, all three, the release before server s's own.
+compat_prev :: (s: CompatServer, c: CompatPins) -> bool #effects(all) {
+  return s.prev.on && c.engine == s.prev.engine && c.rules == s.prev.rules && c.content == s.prev.content;
+}
 compat_admit :: (s: CompatServer, c: CompatPins) -> int #effects(all) {
-  if c.engine != s.pins.engine { return CP_ENGINE; }
-  if c.rules != s.pins.rules { return CP_RULES; }
-  if c.content != s.pins.content { return CP_CONTENT; }
+  if !compat_prev(s, c) {
+    if c.engine != s.pins.engine { return CP_ENGINE; }
+    if c.rules != s.pins.rules { return CP_RULES; }
+    if c.content != s.pins.content { return CP_CONTENT; }
+  }
   if c.wire < s.wire_min { return CP_WIRE_OLD; }
   if c.wire > s.pins.wire { return CP_WIRE_NEW; }
   if c.schema > s.pins.schema { return CP_SCHEMA; }
@@ -86,6 +97,28 @@ compat_server :: (p: CompatPins, wire_min: int, room: int) -> CompatServer #effe
   // older data reads; newer data refuses
   c = COMPAT_NEW; c.schema = 1; #assert compat_admit(s, c) == CP_OK;
   c.schema = 4; #assert compat_admit(s, c) == CP_SCHEMA;
+}
+
+#test "compat: a server seats the release before's pins, all three together, and no other" {
+  s := compat_server(COMPAT_NEW, 5, 4);
+  old := COMPAT_NEW; old.engine = COMPAT_OLD.engine; old.rules = COMPAT_OLD.rules; old.content = COMPAT_OLD.content;
+  // not named: the old build is refused, by the first identity that differs
+  #assert !compat_prev(s, old) && compat_admit(s, old) == CP_ENGINE;
+  s.prev = CompatPrev.{on = true, engine = COMPAT_OLD.engine, rules = COMPAT_OLD.rules, content = COMPAT_OLD.content};
+  #assert compat_prev(s, old) && compat_admit(s, old) == CP_OK && compat_admit(s, COMPAT_NEW) == CP_OK && !compat_prev(s, COMPAT_NEW);
+  // a mix of the two builds is neither: each identity alone on the old value is refused by name
+  c := COMPAT_NEW; c.engine = COMPAT_OLD.engine; #assert !compat_prev(s, c) && compat_admit(s, c) == CP_ENGINE;
+  c = COMPAT_NEW; c.rules = COMPAT_OLD.rules; #assert !compat_prev(s, c) && compat_admit(s, c) == CP_RULES;
+  c = COMPAT_NEW; c.content = COMPAT_OLD.content; #assert !compat_prev(s, c) && compat_admit(s, c) == CP_CONTENT;
+  c = old; c.engine = COMPAT_NEW.engine; #assert !compat_prev(s, c) && compat_admit(s, c) == CP_RULES;
+  c = old; c.rules = COMPAT_NEW.rules; #assert !compat_prev(s, c) && compat_admit(s, c) == CP_ENGINE;
+  c = old; c.content = COMPAT_NEW.content; #assert !compat_prev(s, c) && compat_admit(s, c) == CP_ENGINE;
+  // the pins are beside the wire and the schema: the old build's page is still held to both
+  c = old; c.wire = 4; #assert compat_admit(s, c) == CP_WIRE_OLD;
+  c = old; c.wire = 7; #assert compat_admit(s, c) == CP_WIRE_NEW;
+  c = old; c.schema = 4; #assert compat_admit(s, c) == CP_SCHEMA;
+  // named but off: nobody sits on them
+  s.prev.on = false; #assert !compat_prev(s, old) && compat_admit(s, old) == CP_ENGINE;
 }
 
 #test "compat: during a rollout, new pages go to new servers and old encounters finish on old ones" {

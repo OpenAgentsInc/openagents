@@ -70,6 +70,11 @@ page reloads into the build that has the room's tables. Revision 1 under
 `WIRE_CONTENT` 1 is pin 1, the value every earlier build says. A room started
 with no tables says `WIRE_CONTENT` alone.
 
+One other pin is seated: the release before's. A room carries the tables of
+the revision before its own, and a seat whose page is still on them plays by
+them ([the previous pins](everglade-previous-pins.md), #13408). So the tables'
+revision rises through that rule, one raise a release.
+
 ## What still carries an unregistered number
 
 - `h2`'s `KIND` is Everglade II's monster kind (0 a wolf, 1 a goblin), an enum

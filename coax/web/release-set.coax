@@ -54,6 +54,8 @@
 #load "release-set-policy.coax";
 #load "api/soak-record.coax";
 #load "../../everglade/shared/everglade-wire.coax";   // WirePins: the build this checkout's page is
+#load "../../everglade/shared/pins-prev.coax";       // the revision in a tables document's first line
+#load "../../everglade/content/shipped.coax";        // the tables this checkout's page is built with: its content pin (#13381, #13408)
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/args.coax";
 #load "../lib/sys/proc.coax";
@@ -167,6 +169,12 @@ rl_value :: (text: string, key: string, scale: int) -> int {
     if dot { if div < 1000 { frac = frac * 10 + cast(int) (c - '0'); div *= 10; } } else { whole = whole * 10 + cast(int) (c - '0'); }
   }
   return whole * scale + (frac * scale + div / 2) / div;
+}
+// The pins this checkout's page says in P: its build's constants, with its content tables' revision
+// (everglade/client/bag.coax: the tables it is built with, everglade/content/shipped.coax).
+rl_page_pins :: () -> WirePins { return wire_pins_at(pprev_doc_rev(EC_SHIPPED)); }
+#test "this checkout's page says its content tables' revision in its content pin" {
+  #assert pprev_doc_rev(EC_SHIPPED) >= 1 && rl_page_pins().content == wire_content_pin(pprev_doc_rev(EC_SHIPPED)) && rl_page_pins().engine == WIRE_ENGINE && rl_page_pins().rules == WIRE_RULES;
 }
 // A report's pins: "build engine=E rules=R content=C wire=A-B schema=S".
 rl_pins :: (text: string, p: [] RsPins) -> bool {
@@ -466,7 +474,7 @@ rl_ship_locked :: (a: [] Args, e: RlEnv, head: string, version: string, lock: st
   if !rs_may(RS_PAGE, moved) { return 2; }
   if args_has(a, "--skip-page") { print("  page: skipped (taken as moved)\n"); }
   else {
-    mine := WirePins.{}; page := RsPins.{engine = mine.engine, rules = mine.rules, content = mine.content, wire_lo = WIRE_VERSION, wire_hi = WIRE_VERSION};
+    mine := rl_page_pins(); page := RsPins.{engine = mine.engine, rules = mine.rules, content = mine.content, wire_lo = WIRE_VERSION, wire_hi = WIRE_VERSION};
     live := 0; matching := 0; body: [32768] u8;
     for q: 1..<e.shards + 1 {
       p: [1] RsPins;
@@ -574,7 +582,7 @@ rl_status :: (a: [] Args) -> int {
   page := rl_get(rl_text(u[..]), body[..]); build := ""; mark := "data-text=\"build ";
   for i: 0..<page.count - mark.count - 40 { if page[i..<i + mark.count] == mark { build = page[i + mark.count..<i + mark.count + 40]; break; } }
   print("page   %\n", ifx build.count > 0 then build else "unread");
-  mine := WirePins.{}; live := 0; vb: [32768] u8;
+  mine := rl_page_pins(); live := 0; vb: [32768] u8;
   for q: 1..<e.shards + 1 {
     p: [1] RsPins;
     if !rl_pins(rl_vitals(e, q, vb[..]), p[..]) { print("shard % unread\n", q); continue; }

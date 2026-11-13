@@ -1289,10 +1289,15 @@ parent leaves. Neither admission nor HTTP success substitutes for the complete
 checkpoint receipt. Checks: independent lane, clock, identity and publication
 boundaries; actual native HTTP outage in `background-check.coax`.
 
-## An Everglade room seats only a page of its own build
+## An Everglade room seats only a page of its own build, or of the release before
 
 A room admits a hello only when the page's engine, rules and world numbers
-(its `P` frame; a page from before `P` is build 1 1 1) equal the room's, its
+(its `P` frame; a page from before `P` is build 1 1 1) equal the room's, or
+all three equal the release before's, which the room names and serves for one
+release (`everglade/shared/pins-prev.coax`, `#authority`; a seat on the content
+tables before plays by those tables, `everglade/server/pins-prev.coax`, #13408;
+a pin raised without the release before's value kept fails the room's checks
+and `e2 prev-pins`), its
 wire is in `WIRE_MIN..WIRE_VERSION` (`WIRE_MIN` is always the version before
 `WIRE_VERSION`, and the room writes a seat on it what that page reads:
 `everglade/server/wire-prev.coax`, #13398), and the saved data its ticket brings
@@ -1303,6 +1308,9 @@ rolled back below newer saved data reads none of it. The rule is
 `metaverse-engine/session/compat.coax` (`#authority`, mutation-checked) applied by
 `coax/web/room/room-everglade.coax` `eg_admit`. Checks: compat.coax and
 room-everglade.coax "a hello is admitted against its page's build" (#12839).
+The previous pins: compat.coax "a server seats the release before's pins",
+pins-prev.coax (both files) "previous pins: ...", and
+`coax/web/room/pins-pair.coax` against production's commit.
 
 The directory places a page that names its build only on a shard that runs
 that build or whose build is unknown (no stats for 60 s), when any shard

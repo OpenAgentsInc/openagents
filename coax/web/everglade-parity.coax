@@ -22,6 +22,7 @@
 #load "../lib/sys/fs.coax";
 #load "../lib/sys/proc.coax";
 #load "../../everglade/features.coax";
+#load "../../everglade/content/previous.coax";   // the room's copy of the tables before (rule 4, #13408)
 #load "../../everglade/content/shipped.coax";   // the page's copy of the content tables (rule 4, #13381)
 
 EP_TEXT :: 4194304;     // the largest source file read
@@ -377,6 +378,12 @@ tool_main :: () -> int #export_c #effects(all) {
   if cn <= 0 || cast(string) text[0..<cn] != EC_SHIPPED {
     fails += 1;
     print("FAIL content: everglade/content/shipped.coax is not everglade/content/everglade.content's bytes; write it again: coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content --carry\n");
+  }
+  // and the room's copy of the tables before is the kept file's bytes (#13408)
+  pn := fs_read("everglade/content/everglade.previous.content", text[..]);
+  if pn <= 0 || cast(string) text[0..<pn] != EC_PREVIOUS {
+    fails += 1;
+    print("FAIL content: everglade/content/previous.coax is not everglade/content/everglade.previous.content's bytes; write it again: coax/web/tool.sh everglade/model/tools/content-check.coax everglade/content/everglade.content --carry\n");
   }
   for d, k: EF_KNOWN {
     if !seen[k] { print("burned down: \"%\" is no longer found; take it off EF_KNOWN (everglade/features.coax)\n", d); }

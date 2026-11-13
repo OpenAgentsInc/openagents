@@ -988,6 +988,7 @@ static void content_load(void) {
     fprintf(stderr, "room: %s is not Everglade's content tables (coax/web/tool.sh everglade/model/tools/content-check.coax FILE)\n", path); exit(1);
   }
   printf("room: content tables revision %lld loaded from %s\n", (long long)rm_content_rev(view()), path);
+  if (rm_content_was(view()) > 0) printf("room: pages on content tables revision %lld are seated too, and play by those tables (the release before's)\n", (long long)rm_content_was(view()));
 }
 static void checkpoint_post(void) {
   const char *dev_url=getenv("OA_ROOM_CHECKPOINT_URL");

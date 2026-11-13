@@ -54,6 +54,13 @@ one wire version ahead of the page passes. A release two versions ahead does
 not: ship the version between first. When the live page's version can't be
 read, that is not held against the promotion.
 
+The engine, rules and content pins have the same rule: a room seats the build
+of the release before its own for one release
+([the previous pins](../protocol/everglade-previous-pins.md), #13408). The
+promotion does not read those pins. The landing check does
+(`coax/remote/check.sh e2 PROD`, line `e2 prev-pins`): a commit whose room
+would not seat production's page goes red on `main` before any release.
+
 **A release holds staging's lock.** `release-set ship` takes the lock before
 its first step and releases it after its last, whether it ships or stops. The
 lock is one line in `/opt/oa-room/staging.lock` on the room VM: a token, when
