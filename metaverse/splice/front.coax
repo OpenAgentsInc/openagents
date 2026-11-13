@@ -443,14 +443,13 @@ fr_overlay :: (g: [] SpGame, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
       n = ui_put(out, n, F_MONO, v, (l.x0 + r.x1) * 0.5 - ui_w(F_MONO, v, 8.4 * k) * 0.5 + 4 * k, cy, 8.4 * k, ink, 1);
     }
     nb: [48] u8; nl := ct_put(nb[..], 0, "PLAYING AS "); nl = ct_put(nb[..], nl, name);
-    n = ui_put(out, n, F_MONO, upper(cast(string) nb[0..<lo_int(nl, nb.count)], buf[..]), f.left, f.foot - 21 * k, 8.4 * k, FR_MUTED(), 1);
-    n = ui_put(out, n, F_MONO, "EVERY NUMBER: OPENAGENTS.COM/WORLDS/CREW", f.left, f.foot, 8.4 * k, FR_MUTED(), 1);
+    n = ui_put(out, n, F_MONO, upper(cast(string) nb[0..<lo_int(nl, nb.count)], buf[..]), f.left, f.foot, 8.4 * k, FR_MUTED(), 1);
     keys := [3] string.["ENTER", "A D", "ESC"]; words := [3] string.["SELECT", "CHANGE", "BACK"];
     return fr_hints(g, out, u, n, f, keys[..], words[..]);
   }
   if g[0].mode == M_CREDITS {
     n = fr_head(g, out, u, n, f, "REEL 01 // CREDITS", "CREDITS", "", 30);
-    for i: 0..<c[0].credits { n = ui_put(out, n, F_MONO, sc_credit(c, i), f.left, 214 * k + cast(f32) i * 26 * k, 8.4 * k, ifx i == 0 then FR_CREAM() else FR_HINT(), 1); }
+    for i: 0..<c[0].credits { n = ui_put(out, n, F_MONO, sc_credit(c, i), f.left, 214 * k + cast(f32) i * 26 * k, 8.4 * k, ifx i < 2 then FR_CREAM() else FR_HINT(), 1); }
     n = fr_row(g, out, u, n, f, scr_row_box(f, fs[0].back[..], 0), "BACK", true);
     keys := [2] string.["ENTER", "ESC"]; words := [2] string.["SELECT", "BACK"];
     return fr_hints(g, out, u, n, f, keys[..], words[..]);

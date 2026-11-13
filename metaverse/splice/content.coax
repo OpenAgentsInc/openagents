@@ -652,7 +652,7 @@ sc_cm :: (m: f32) -> int { return cast(int) floor(m * 100 + 0.5); }
   #assert !sc_load(c[..], sc_swap("2|new|NEW RUN\n", "2|settings|NEW RUN\n", o[..])) && !sc_load(c[..], sc_swap("2|new|NEW RUN\n", "2|new|\n", o[..]));
   bad = sc_swap("|0|150|0|12\n", "|0|150|0|0\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the title camera's path has 1 to 8 rows, each taking 1 second or more";
-  bad = sc_swap("1|SPLICE BOTS: A METAVERSE ENGINE GAME\n", "1|SPLICE BOTS: A METAVERSE ENGINE GAME BY OPENAGENTS, MORE THAN FITS\n", o[..]);
+  bad = sc_swap("2|BY OPENAGENTS\n", "2|BY OPENAGENTS, AND A LINE LONGER THAN THE SCREEN TAKES\n", o[..]);
   #assert !sc_load(c[..], bad) && sc_plans_words(bad, w[..]) == "the credits are at most 12 lines of at most 48 bytes";
 }
 
