@@ -62,6 +62,7 @@ hc_after_shot :: () -> bool {
 }
 
 tool_main :: () -> int #export_c #effects(all) {
+  ka: [1] Args; if args_load(ka[..]) { kept := rs_keeper_call(ka[..]); if kept >= 0 { return kept; } }
   c: [1] Cdp;
   if !cdp_launch(c[..], 800, 600, "coax-drive-hit-") { tool_err("drive-hit-check: "); tool_errln(cdp_error(c[..])); return 2; }
   q: [8192] u8; k: [1] Jo;

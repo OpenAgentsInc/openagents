@@ -368,6 +368,15 @@ rs_stop :: (r: [] Rs) -> bool {
   return had;
 }
 
+// Every tool that loads this file is run again as `SELF --keeper DIR` to keep the browser (rs_spawn_keeper),
+// so each must answer that call first thing in tool_main: -1 when this run is not that call, else the
+// keeper's exit status. A tool that does not answer it runs its own work again in the keeper's place, and
+// that run starts keepers of its own: without end (2026-11-13: drive-hit-check, hundreds of browsers).
+rs_keeper_call :: (a: [] Args) -> int {
+  if args_count(a) >= 2 && args_at(a, 0) == "--keeper" && args_at(a, 1).count > 0 { return rs_keeper(args_at(a, 1), RS_IDLE_MS); }
+  if args_count(a) >= 1 && args_at(a, 0) == "--keeper" { return 2; }
+  return -1;
+}
 rs_spawn_keeper :: (dir: string) -> bool {
   self: [4096] u8;
   n := cxproc_self_path(self[..]);

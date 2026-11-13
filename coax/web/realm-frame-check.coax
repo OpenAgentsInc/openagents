@@ -73,6 +73,7 @@ rc_ask :: (c: [] Cdp, text: string, buf: [] u8, within_ms: int) -> string {
 
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args; if !args_load(args[..]) { return 2; }
+  kept := rs_keeper_call(args[..]); if kept >= 0 { return kept; }
   serve := ifx args_count(args[..]) > 0 then args_at(args[..], 0) else "coax/web/build/serve";
   app := ifx args_count(args[..]) > 1 then args_at(args[..], 1) else "apps/openagents-web";
   if fs_kind(serve) != FS_FILE { tool_errln("realm-frame-check: no dev server at coax/web/build/serve (coax/web/serve.sh builds it)"); return 2; }

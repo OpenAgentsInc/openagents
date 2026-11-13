@@ -27,6 +27,7 @@ clip_ms :: (label: string, ms: int) { b: [24] u8; n := ws_digits(b[..], 0, ms); 
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   ok := args_load(a[..]);
+  if ok { kept := rs_keeper_call(a[..]); if kept >= 0 { return kept; } }
   url := args_at(a[..], 0); out := args_at(a[..], 1);
   if !ok || url.count == 0 || out.count == 0 || (url.count >= 2 && url[0] == '-' && url[1] == '-') {
     tool_errln("usage: coax/web/tool.sh clip URL OUT.mp4 [--size WxH] [--seconds S] [--fps N] [--skip S] [--eval JS] [--frames DIR] [--audio] [--require JS] [--keep] [--fresh] [--times]");

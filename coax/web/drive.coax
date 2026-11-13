@@ -999,6 +999,7 @@ DV_OPS :: 128;   // operations one web run takes (the editor's acceptance run is
 tool_main :: () -> int #export_c #effects(all) {
   a: [1] Args;
   loaded := args_load(a[..]);   // once: a second load lists every argument again
+  if loaded { kept := rs_keeper_call(a[..]); if kept >= 0 { return kept; } }
   if loaded && args_count(a[..]) >= 3 && args_at(a[..], 0) == "native" {
     nops: [64] string; nn := 0; nwithin := 30000;
     j := 2;
