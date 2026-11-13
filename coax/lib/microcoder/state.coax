@@ -72,6 +72,7 @@ McState :: struct {
   results_at: int;               // where the open action's results start in log
   notes: [] u8; nn: int;
   facts: [] u8; task_buf: [] u8; route_buf: [] u8;
+  mem: [] u8; nmem: int;         // the working memory's views as a JSON object (mc_memory_set); nmem 0: the state has no memory key
 }
 
 // environment and route are JSON objects (anything else is kept as a string).
@@ -440,6 +441,37 @@ mc_json_or_string :: (out: [] u8, at: int, s: string) -> int {
   return json_write_string(out, at, s);
 }
 
+// The working memory in the state (GitHub #13444; coax/lib/agent/workmem/): the run store's
+// views, which the loop's owner renders before each step, each inside its byte budget.
+//   "memory": {"findings": "...", "changed": "...", "open": "..."}
+// findings: the model's notes that are still current. changed: every edit and the lines it
+// wrote. open: what stops the run finishing. They are never compacted: a step that left the
+// recent steps is still in them.
+//
+// Where it goes: after actions, before notes. A request's cached prefix ends where the first
+// byte differs from the last request's, and actions grows at its end every step, so nothing
+// after actions is ever served from the cache, wherever it stands there. Before actions, each
+// new finding or edit would move the recent steps (up to 144 KB) out of the cached prefix. So
+// the memory costs its own bytes each step and no more. Inside it, findings and changed come
+// first because they only gain lines at their end, and open, which changes with every edit
+// and run, comes last, next to notes.
+MC_MEM_FINDINGS :: 4000;         // bytes of each view, at most
+MC_MEM_CHANGED :: 2000;
+MC_MEM_OPEN :: 1500;
+MC_MEM_BYTES :: 16384;           // the buffer the owner gives: the three views escaped, and their keys
+
+// Gives the state a buffer for its memory key (the owner's: it lives as long as the state).
+mc_memory_on :: (st: [] McState, buf: [] u8) { st[0].mem = buf; st[0].nmem = 0; }
+// Sets the views the next state shows. Each is cut to its budget; a state with no buffer takes none.
+mc_memory_set :: (st: [] McState, findings: string, changed: string, open: string) {
+  b := st[0].mem;
+  n := json_raw(b, 0, "{\"findings\":"); n = json_write_string(b, n, cast(string) findings[0..<ifx findings.count > MC_MEM_FINDINGS then mc_back(findings, MC_MEM_FINDINGS) else findings.count]);
+  n = json_raw(b, n, ",\"changed\":"); n = json_write_string(b, n, cast(string) changed[0..<ifx changed.count > MC_MEM_CHANGED then mc_back(changed, MC_MEM_CHANGED) else changed.count]);
+  n = json_raw(b, n, ",\"open\":"); n = json_write_string(b, n, cast(string) open[0..<ifx open.count > MC_MEM_OPEN then mc_back(open, MC_MEM_OPEN) else open.count]);
+  n = json_raw(b, n, "}");
+  st[0].nmem = ifx n < 0 then 0 else n;
+}
+
 
 // The state as the prompt's JSON object, into out; "" when it doesn't fit. The facts, task and
 // route come first and never change; earlier only grows at its end between its rare losses;
@@ -461,7 +493,9 @@ mc_state_json :: (st: [] McState, out: [] u8) -> string {
   closed := ifx st[0].open >= 0 then st[0].nacts - 1 else st[0].nacts;
   end := ifx closed < st[0].nacts then st[0].act_at[closed] else st[0].nlog;
   if closed > 0 { n = json_raw(out, n, cast(string) st[0].log[st[0].act_at[0] + 1..<end]); }
-  n = json_raw(out, n, "],\"notes\":");
+  n = json_raw(out, n, "]");
+  if st[0].nmem > 0 { n = json_raw(out, n, ",\"memory\":"); n = json_raw(out, n, cast(string) st[0].mem[0..<st[0].nmem]); }
+  n = json_raw(out, n, ",\"notes\":");
   n = json_write_string(out, n, cast(string) st[0].notes[0..<st[0].nn]);
   n = json_raw(out, n, "}");
   if n < 0 { return ""; }
@@ -491,6 +525,38 @@ McStateTest :: struct { b: [1] McStateBuffers; out: [MC_PROMPT_BYTES] u8; }
   j := mc_state_json(st[..], t[0].out[..]);
   #assert json_valid(j);
   #assert j == "{\"environment\":{\"os\":\"macOS\",\"cwd\":\"/tmp/demo\"},\"task\":\"how many swift files?\",\"route\":{\"route\":\"other\",\"local_work\":0.9},\"actions\":[{\"step\":1,\"rationale\":\"count them\",\"results\":[{\"edit\":\"n.txt\",\"applied\":true},{\"command\":\"ls *.swift | wc -l\",\"exit\":0,\"output\":\"3\\n\"},{\"view\":\"a.swift\",\"content\":\"print(1)\\n\"}]}],\"notes\":\"a note\\n\"}";
+}
+
+#test "the memory key: absent until the owner sets it, then after actions and before notes, each view inside its budget" {
+  t: [1] McStateTest; st: [1] McState; mb: [MC_MEM_BYTES] u8;
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  mc_action_begin(st[..], "look"); mc_action_command(st[..], "ls", 0, false, "a\n"); mc_action_end(st[..]);
+  mc_note(st[..], "a note");
+  off := "{\"environment\":{},\"task\":\"x\",\"route\":{},\"actions\":[{\"step\":1,\"rationale\":\"look\",\"results\":[{\"command\":\"ls\",\"exit\":0,\"output\":\"a\\n\"}]}],\"notes\":\"a note\\n\"}";
+  #assert mc_state_json(st[..], t[0].out[..]) == off;
+  // set with no buffer: still no key
+  mc_memory_set(st[..], "F0 guess: x\n", "", "");
+  #assert st[0].nmem == 0 && mc_state_json(st[..], t[0].out[..]) == off;
+  mc_memory_on(st[..], mb[..]);
+  #assert mc_state_json(st[..], t[0].out[..]) == off;
+  mc_memory_set(st[..], "Findings (current):\nF0 guess: \"x\"\n", "", "Open:\ncheck sh t.sh: check never ran: sh t.sh\n");
+  j := mc_state_json(st[..], t[0].out[..]);
+  #assert j == "{\"environment\":{},\"task\":\"x\",\"route\":{},\"actions\":[{\"step\":1,\"rationale\":\"look\",\"results\":[{\"command\":\"ls\",\"exit\":0,\"output\":\"a\\n\"}]}],\"memory\":{\"findings\":\"Findings (current):\\nF0 guess: \\\"x\\\"\\n\",\"changed\":\"\",\"open\":\"Open:\\ncheck sh t.sh: check never ran: sh t.sh\\n\"},\"notes\":\"a note\\n\"}";
+  // a compaction leaves it as it is
+  mc_compact(st[..], 0);
+  j = mc_state_json(st[..], t[0].out[..]);
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert json_valid(j) && st[0].nearly == 1 && cl_str(ar[..], j, "memory.findings") == "Findings (current):\nF0 guess: \"x\"\n";
+  // views over their budgets are cut to them
+  big: [8000] u8; for i: 0..<big.count { big[i] = 'f'; }
+  mc_memory_set(st[..], cast(string) big[..], cast(string) big[..], cast(string) big[..]);
+  j = mc_state_json(st[..], t[0].out[..]);
+  ar[0].at = 0;
+  #assert json_valid(j) && cl_str(ar[..], j, "memory.findings").count == MC_MEM_FINDINGS && cl_str(ar[..], j, "memory.changed").count == MC_MEM_CHANGED && cl_str(ar[..], j, "memory.open").count == MC_MEM_OPEN;
+  #assert MC_MEM_BYTES >= 2 * (MC_MEM_FINDINGS + MC_MEM_CHANGED + MC_MEM_OPEN) + 64;
+  // a new state has none
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  #assert st[0].nmem == 0 && st[0].mem.count == 0;
 }
 
 #test "each step's prompt starts with the one before it: the log only grows at its end" {

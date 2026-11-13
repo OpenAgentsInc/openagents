@@ -1,0 +1,587 @@
+// Microcoder with the compiler's answers and a working memory (GitHub #13444, #13445;
+// docs/coder/microcoder.md, "Compiler questions and working memory"). Two modes a run's owner
+// turns on, each alone or both. Off, nothing here is called and a run is as it was.
+//
+//   intel    the Coax compiler answers the action's questions (coax/lib/agent/intel/compiler.coax);
+//            a view ends with the file's hash; an edit may name the hash it read (seen), and is
+//            refused as stale when the file is no longer that; an edit may replace a whole
+//            declaration by name; an applied edit of a .coax file returns its check
+//   memory   the run store (coax/lib/agent/workmem/): every view, edit and command is recorded
+//            as it happens; the action's notes are findings; the state shows the store's views;
+//            a view of lines the store already has says so; a finish is refused while a check
+//            the task names has not passed on the files as they are
+//
+// The same things are in the RLM coder (coax/lib/rlm/code.coax, --intel and --memory), over the
+// same two libraries. This file is the effects: run.coax calls it for a run whose McRun has an
+// McAware. The pure parts (the action's members, the held finish, the state's memory key) are
+// action.coax, loop.coax and state.coax.
+//
+// McAware holds the compiler session (about 50 MB) and the store (about 6 MB), so it is its
+// owner's storage, not McRun's: a driver that never turns a mode on never has one.
+//
+// Checks: coax/web/tool.sh coax/lib/microcoder/aware-selftest.coax (a scratch Coax repo, the real
+// compiler, a scripted model). `coax test` reaches only the pure checks at the end of this file.
+
+#load "tools.coax";
+#load "../agent/intel/compiler.coax";
+#load "../agent/workmem/git.coax";
+
+MC_AW_ANS :: 11000;              // bytes of one compiler answer, at most: under the state's 6,000 + 6,000 cut of an output
+MC_AW_CHECK :: 2400;             // bytes of the check an applied edit returns
+MC_AW_VIEW_MORE :: 200;          // bytes a view gains here: the line of a repeat read and the hash's line
+MC_AW_DECLS :: 80; MC_AW_USES :: 40; MC_AW_DIAGS :: 20; MC_AW_FX :: 24;   // records one answer shows at most
+MC_AW_SHOWN :: MC_AW_ANS + 1024;    // an edit's result (its lines, the hash, the check), or a declaration show reads
+
+McAware :: struct {
+  intel: bool; memory: bool;
+  cwd: string; profile: string; coax: string;
+  cwdb: [FS_PATH_MAX] u8; profileb: [64] u8; coaxb: [FS_PATH_MAX] u8;
+  // the compiler session, opened at the first question (ix_state 1: open, 2: no compiler answers)
+  ix_state: int;
+  ix: [1] Ix;
+  decls: [MC_AW_DECLS] IxDecl; uses: [MC_AW_USES] IxUse; diags: [MC_AW_DIAGS] IxDiag; fx: [MC_AW_FX] IxEffect;
+  via: [FS_PATH_MAX] u8;
+  // the run store; read_step: the step each read row was first read at (0: in an earlier run)
+  wm: [1] Wmf;
+  wg: [1] WmGit;                // in a checkout: the commit each file's baseline is read from (workmem/git.coax)
+  read_step: [WM_READS] int;
+  task: [1] WmTask;              // the task's backtick spans (workmem/task.coax)
+  mem: [MC_MEM_BYTES] u8;        // the state's memory key
+  v1: [MC_MEM_FINDINGS] u8; v2: [MC_MEM_CHANGED] u8; v3: [MC_MEM_OPEN] u8;
+  unproven: [MC_MEM_OPEN] u8; nunproven: int;      // what was open when the run ended (mc_aw_close)
+  // work
+  before: [MC_EDIT_BYTES] u8; after: [MC_EDIT_BYTES] u8;      // a file's text before an edit, and now
+  ans: [MC_AW_ANS + 1024] u8;    // one answer
+  text: [65536 + 1024] u8;       // a view with its added lines
+  shown: [MC_AW_SHOWN] u8;       // an edit's result
+  label: [1200] u8; why: [900] u8; name: [FS_PATH_MAX] u8; kind: [64] u8; hash: [IX_HASH] u8;
+  // counts, for the run's report (mc_aw_report)
+  asked: int; unanswered: int; stale_edits: int; qops: [9] int;
+  reads: int; repeats: int; notes: int;
+}
+
+mc_aw_cut :: (s: string, most: int) -> string { return cast(string) s[0..<ifx s.count > most then mc_back(s, most) else s.count]; }
+
+// Sets the modes up for the run in l (after mc_init): the request's schema and system prompt
+// (mc_aware), and, with memory, the store in memory_dir (made when new, opened again when not)
+// and the state's memory key. coax is the compiler ("": the library's own search). "" when it is
+// set up, else why not; then the run has no mode.
+mc_aw_start :: (aw: [] McAware, l: [] McLoop, lb: [] McLoopBuffers, intel: bool, memory: bool, coax: string, memory_dir: string, cwd: string, profile: string) -> string {
+  aw[0].intel = false; aw[0].memory = false; aw[0].ix_state = 0;
+  aw[0].asked = 0; aw[0].unanswered = 0; aw[0].stale_edits = 0; aw[0].reads = 0; aw[0].repeats = 0; aw[0].notes = 0; aw[0].nunproven = 0;
+  for i: 0..<aw[0].qops.count { aw[0].qops[i] = 0; }
+  if !intel && !memory { return ""; }
+  aw[0].cwd = ix_copy(aw[0].cwdb[..], cwd); aw[0].profile = ix_copy(aw[0].profileb[..], profile); aw[0].coax = ix_copy(aw[0].coaxb[..], coax);
+  if aw[0].cwd.count == 0 { return "a mode needs the working directory"; }
+  if memory {
+    if memory_dir.count == 0 { return "the memory has no folder: give memory_dir, or a session"; }
+    if !wmf_open(aw[0].wm[..], memory_dir, fs_base(memory_dir), aw[0].cwd) { return "the memory's folder could not be made or opened (or its log is not a working memory's)"; }
+    if aw[0].wm[0].s[0].root != aw[0].cwd { return "that memory is of another folder: give another session or memory_dir"; }
+    for i: 0..<WM_READS { aw[0].read_step[i] = 0; }
+    started := wmg_start(aw[0].wm[..], aw[0].wg[..]);      // in a checkout: the commit the files' baselines are read from
+    wm_task_scan(l[0].st[0].task, aw[0].task[..]);
+  }
+  if !mc_aware(l, lb, intel, memory) { return "the system prompt and schema do not fit"; }
+  aw[0].intel = intel; aw[0].memory = memory;
+  if memory { mc_memory_on(l[0].st[..], aw[0].mem[..]); mc_aw_render(aw, l); }
+  return "";
+}
+
+// The compiler session, opened at the first question. False when no compiler answers. One
+// compiler run gets what is left of the run's time (left_ms), a minute at most.
+mc_aw_ix :: (aw: [] McAware, left_ms: int) -> bool {
+  if aw[0].ix_state == 0 {
+    aw[0].ix_state = ifx ix_open(aw[0].ix[..], aw[0].cwd, aw[0].coax) then 1 else 2;
+    if aw[0].ix_state == 1 { aw[0].ix[0].profile = aw[0].profile; }
+  }
+  if aw[0].ix_state != 1 { return false; }
+  aw[0].ix[0].timeout_ms = ifx left_ms > 60000 then 60000 else ifx left_ms < 1000 then 1000 else left_ms;
+  return true;
+}
+
+// path as the store and the compiler name it: relative to the working directory, no "./" before it.
+mc_aw_rel :: (aw: [] McAware, path: string) -> string {
+  p := path;
+  if p.count > aw[0].cwd.count + 1 && p[0] == '/' { p = cast(string) p[aw[0].cwd.count + 1..<p.count]; }
+  while p.count > 2 && p[0] == '.' && p[1] == '/' { p = cast(string) p[2..<p.count]; }
+  return p;
+}
+
+// A file's whole text under the working directory, into buf: for its hash and for the store.
+// Not ok when the path leaves the directory, there is no such file, or it is larger than buf.
+McAwFile :: struct { ok: bool; text: string; }
+mc_aw_file :: (aw: [] McAware, path: string, buf: [] u8) -> McAwFile {
+  if !mc_path_inside(aw[0].cwd, path) { return McAwFile.{}; }
+  pb: [FS_PATH_MAX] u8;
+  full := fs_join(aw[0].cwd, mc_aw_rel(aw, path), pb[..]);
+  if full.count == 0 || fs_kind(full) != FS_FILE || fs_size(full) > buf.count { return McAwFile.{}; }
+  n := fs_read(full, buf);
+  if n < 0 { return McAwFile.{}; }
+  return McAwFile.{ok = true, text = cast(string) buf[0..<n]};
+}
+
+// The first 12 hex digits of text's SHA-256 (in aw.hash).
+mc_aw_hash12 :: (aw: [] McAware, text: string) -> string { return ix_hash12(ix_hash(text, aw[0].hash[..])); }
+
+// The first and last line a view shows: the numbers before its numbered lines (rp_numbered writes
+// each as "     N<tab>"); 0 and 0 when it shows none.
+McAwSpan :: struct { from: int; to: int; }
+mc_aw_span :: (content: string) -> McAwSpan {
+  r := McAwSpan.{}; i := 0;
+  while i < content.count {
+    e := i;
+    while e < content.count && content[e] != '\n' { e += 1; }
+    k := i;
+    while k < e && content[k] == ' ' { k += 1; }
+    d := k; v := 0;
+    while d < e && content[d] >= '0' && content[d] <= '9' && d - k < 9 { v = v * 10 + cast(int) (content[d] - '0'); d += 1; }
+    if d > k && d < e && content[d] == 9 { if r.from == 0 { r.from = v; } r.to = v; }
+    i = e + 1;
+  }
+  return r;
+}
+
+// The store hears that lines from..to of path, whose whole content is text, went to the model at
+// this step. -1 when they were new to it; else the store already had every one of them at this
+// content: the step they were first read at (0: in an earlier run on this memory).
+//
+// TEMPORARY COPY: this is rc_wm_read of coax/lib/rlm/code.coax with "turn" read as "step". It
+// should be one procedure beside wmf_read in coax/lib/agent/workmem/file.coax, which another
+// change holds now; when it is there, both loops call it and this goes.
+mc_aw_read :: (aw: [] McAware, path: string, text: string, from: int, to: int, step: int) -> int {
+  w := aw[0].wm[..]; s := w[0].s[..];
+  before := s[0].nreads;
+  p := wmf_read(w, path, text, from, to);
+  aw[0].reads += 1;
+  if !p.ok || p.id < 0 || p.id >= WM_READS { return -1; }
+  if !p.known { if s[0].nreads > before { aw[0].read_step[p.id] = step; } return -1; }
+  aw[0].repeats += 1;
+  if s[0].nreads == before { return aw[0].read_step[p.id]; }
+  // a new row inside rows the store had: the step of the one that holds its first line
+  first := 0; row := s[0].reads[p.id];
+  for i: 0..<p.id {
+    x := s[0].reads[i];
+    if x.file == row.file && x.from <= row.from && x.to >= row.from && wm_same(x.hash, row.hash) { first = aw[0].read_step[i]; break; }
+  }
+  aw[0].read_step[p.id] = first;
+  return first;
+}
+// The line a repeat read starts with (again: mc_aw_read's answer, 0 or more), at out[at..].
+mc_aw_again :: (out: [] u8, at: int, again: int) -> int {
+  n := rp_put(out, at, "[already read ");
+  if again > 0 { n = rp_put(out, n, "at step "); n = rp_put_int(out, n, again); } else { n = rp_put(out, n, "in an earlier run"); }
+  return rp_put(out, n, ": these lines have not changed since]\n");
+}
+
+// A view (mc_view_lines) for a run with a mode. With the memory the store hears which lines went
+// to the model, and a repeat read starts with a line that says so. With intel the view ends with
+// a line that gives the file's hash, for an edit's seen. A saved output, a binary file and a
+// file over 512 KB are shown as they are.
+mc_aw_view :: (aw: [] McAware, entry: string, spill: string, room: int, step: int, b: [] McToolBuffers) -> McViewResult {
+  v := mc_view_lines(aw[0].cwd, entry, aw[0].profile, spill, room - MC_AW_VIEW_MORE, b);
+  spec := mc_view_spec(entry);
+  if !v.found || v.content == MC_VIEW_BINARY || mc_spill_inside(spill, spec.path) { return v; }
+  f := mc_aw_file(aw, spec.path, aw[0].after[..]);
+  if !f.ok { return v; }
+  again := -1;
+  if aw[0].memory {
+    span := mc_aw_span(v.content);
+    if span.from > 0 { again = mc_aw_read(aw, mc_aw_rel(aw, spec.path), f.text, span.from, span.to, step); }
+  }
+  o := aw[0].text[..]; n := 0;
+  if again >= 0 { n = mc_aw_again(o, 0, again); }
+  n = rp_put(o, n, v.content);
+  if aw[0].intel {
+    if n > 0 && o[n - 1] != '\n' { n = rp_put(o, n, "\n"); }
+    n = rp_put(o, n, "[file hash "); n = rp_put(o, n, mc_aw_hash12(aw, f.text)); n = rp_put(o, n, "]");
+  }
+  return McViewResult.{found = true, content = cast(string) o[0..<n]};
+}
+
+
+// How a note, a question or an edit went. No text is returned: a note's and a question's is
+// aw.ans[0..<n], an edit's why is aw.why[0..<nwhy] and what it shows aw.shown[0..<nshown]. (A
+// procedure here that returned strings out of McAware ran the checker's borrow analysis past its
+// steps, E0381; the counts keep each procedure small for it.)
+McAwDone :: struct { exit: int; n: int; }
+mc_aw_text :: (aw: [] McAware, d: McAwDone) -> string { return cast(string) aw[0].ans[0..<d.n]; }
+
+// a, b (cut to 400 bytes) and c into aw.ans: the count.
+mc_aw_say :: (aw: [] McAware, a: string, b: string, c: string) -> int {
+  o := aw[0].ans[..];
+  n := rp_put(o, 0, a); n = rp_put(o, n, mc_aw_cut(b, 400));
+  return rp_put(o, n, c);
+}
+
+// A note of the action: a finding in the store, a guess (no run shows it). A note that starts
+// "PATH:A-B " is about those lines of that file as it is now, and goes stale when the file
+// changes; any other is kept as it is.
+mc_aw_note :: (aw: [] McAware, note: string) -> McAwDone {
+  w := aw[0].wm[..];
+  sp := 0;
+  while sp < note.count && note[sp] != ' ' { sp += 1; }
+  spec := mc_view_spec(cast(string) note[0..<sp]);
+  id := -1; placed := false;
+  if spec.ranged && sp + 1 < note.count {
+    f := mc_aw_file(aw, spec.path, aw[0].after[..]);
+    if f.ok {
+      rel := mc_aw_rel(aw, spec.path);
+      seen := wmf_observe(w, rel, f.text);
+      total := rp_lines(f.text);
+      a := spec.from; z := ifx spec.to > 0 then spec.to else spec.from;
+      if z < a || z > total { z = ifx total < a then a else total; }
+      p := wmf_finding_at(w, cast(string) note[sp + 1..<note.count], -1, rel, a, z);
+      if p.ok { id = p.id; }
+      placed = true;
+    }
+  }
+  if !placed { none: [1] WmSrc; p := wmf_finding(w, note, -1, none[0..<0]); if p.ok { id = p.id; } }
+  if id < 0 { return McAwDone.{exit = 1, n = mc_aw_say(aw, "not recorded: the memory is full, or the note is over 32 KB", "", "")}; }
+  aw[0].notes += 1;
+  o := aw[0].ans[..];
+  n := rp_put(o, 0, "noted F"); n = rp_put_int(o, n, id);
+  if placed { n = rp_put(o, n, ", about "); n = rp_put(o, n, mc_aw_cut(cast(string) note[0..<sp], 300)); }
+  return McAwDone.{n = n};
+}
+
+// What a question gets when the compiler gave no answer: that, why, and what to use for it.
+// (why is the session's or a constant: never in aw.ans.)
+mc_aw_no :: (aw: [] McAware, q: string, why: string) -> McAwDone {
+  aw[0].unanswered += 1;
+  o := aw[0].ans[..];
+  n := rp_put(o, 0, "no answer: the compiler could not answer "); n = rp_put(o, n, mc_aw_cut(q, 160)); n = rp_put(o, n, ": ");
+  n = rp_put(o, n, ifx why.count > 0 then mc_aw_cut(why, 400) else "it said nothing"); n = rp_put(o, n, ". Use git grep and view for this.");
+  return McAwDone.{exit = 1, n = n};
+}
+
+// The bytes of aw.ans one answer may fill: cap, and MC_AW_ANS at most.
+mc_aw_most :: (cap: int) -> int { return ifx cap < MC_AW_ANS then (ifx cap < 0 then 0 else cap) else MC_AW_ANS; }
+
+// defines NAME, exports FILE, depends FILE: declarations, a line each.
+mc_aw_q_decls :: (aw: [] McAware, p: McQuestion, q: string, most: int) -> McAwDone {
+  s := aw[0].ix[..]; o := aw[0].ans[0..<most];
+  a := IxAnswer.{}; none := "no declaration has this name";
+  if p.op == MC_Q_DEFINES { a = ix_defines(s, p.a, aw[0].decls[0..<16]); }
+  else if p.op == MC_Q_EXPORTS { a = ix_exports(s, p.a, aw[0].decls[..]); none = "the file declares nothing"; }
+  else { a = ix_depends_on(s, p.a, aw[0].decls[..]); none = "it uses no declaration of another file"; }
+  if !a.ok { return mc_aw_no(aw, q, a.why); }
+  if a.n == 0 { return McAwDone.{n = ix_none(o, a, none)}; }
+  return McAwDone.{n = ix_left_out(o, ix_decls_text(aw[0].decls[0..<a.n], o, 0), a, "declarations")};
+}
+// uses NAME [FILE]: each place, with what it is written in.
+mc_aw_q_uses :: (aw: [] McAware, p: McQuestion, q: string, most: int) -> McAwDone {
+  s := aw[0].ix[..]; o := aw[0].ans[0..<most];
+  a := ix_uses_of(s, p.a, p.b, aw[0].decls[0..<8], aw[0].uses[..]);
+  if !a.ok { return mc_aw_no(aw, q, a.why); }
+  n := ifx a.n == 0 then ix_none(o, a, "nothing uses this name") else ix_uses_text(aw[0].uses[0..<a.n], a.defs > 1, o, 0);
+  return McAwDone.{n = ix_left_out(o, n, a, "uses")};
+}
+// effects FILE [PROC]: what a procedure may do, with a path to each.
+mc_aw_q_effects :: (aw: [] McAware, p: McQuestion, q: string, most: int) -> McAwDone {
+  s := aw[0].ix[..]; o := aw[0].ans[0..<most];
+  a := ix_effects_of(s, p.a, p.b, aw[0].fx[..]);
+  if !a.ok { return mc_aw_no(aw, q, a.why); }
+  if a.n == 0 { return McAwDone.{n = ix_none(o, a, "no effects are recorded for it")}; }
+  return McAwDone.{n = ix_left_out(o, ix_effects_text(aw[0].fx[0..<a.n], o, 0), a, "effects")};
+}
+// explain CODE, vocab NAME: what the compiler prints.
+mc_aw_q_said :: (aw: [] McAware, p: McQuestion, q: string, most: int) -> McAwDone {
+  s := aw[0].ix[..]; o := aw[0].ans[0..<most];
+  t := IxText.{};
+  if p.op == MC_Q_EXPLAIN { t = ix_explain(s, p.a, o); } else { t = ix_vocab(s, p.a, o); }
+  if !t.ok { return mc_aw_no(aw, q, t.why); }
+  return McAwDone.{n = t.text.count};
+}
+// check FILE: its diagnostics; a part is checked through the file that loads it.
+mc_aw_q_check :: (aw: [] McAware, p: McQuestion, q: string, most: int) -> McAwDone {
+  s := aw[0].ix[..]; o := aw[0].ans[0..<most];
+  c := ix_check_via(s, p.a, IxAnswer.{}, false, aw[0].diags[..], aw[0].via[..]);
+  if !c.a.ok { return mc_aw_no(aw, q, c.a.why); }
+  return McAwDone.{n = ix_checked_text(aw[0].diags[0..<c.a.n], o, 0, c)};
+}
+// show NAME [FILE]: one declaration's lines numbered, under a line with its file, lines, its
+// hash and the file's. With the memory the store hears the lines, and a repeat says so.
+mc_aw_q_show :: (aw: [] McAware, p: McQuestion, q: string, most: int, step: int) -> McAwDone {
+  s := aw[0].ix[..]; o := aw[0].ans[0..<most];
+  sh := ix_show(s, p.a, p.b, aw[0].shown[0..<ifx most > 600 then most - 600 else 0]);
+  n := 0;
+  if !sh.ok {
+    if sh.found > 1 { n = rp_put(o, 0, "more than one declaration has this name: say which file (show NAME FILE)\n"); return McAwDone.{n = rp_put(o, n, sh.text)}; }
+    // the library's two answers of "nothing has this name"; anything else is the compiler failing
+    if ps_find(sh.why, "no declaration has this name") == 0 || ps_find(sh.why, "no .coax file under the root names it") == 0 { n = rp_put(o, 0, "none: "); n = rp_put(o, n, sh.why); return McAwDone.{n = rp_put(o, n, "\n")}; }
+    return mc_aw_no(aw, q, sh.why);
+  }
+  file := ix_copy(aw[0].name[..], sh.file); from := sh.from; to := ifx sh.cut then sh.next - 1 else sh.to;
+  again := -1;
+  if aw[0].memory && to >= from {
+    f := mc_aw_file(aw, file, aw[0].after[..]);
+    if f.ok { again = mc_aw_read(aw, file, f.text, from, to, step); }
+  }
+  if again >= 0 { n = mc_aw_again(o, 0, again); }
+  n = rp_put(o, n, file); n = rp_put(o, n, ":"); n = rp_put_int(o, n, sh.from); n = rp_put(o, n, "-"); n = rp_put_int(o, n, sh.to);
+  n = rp_put(o, n, "  "); n = rp_put(o, n, sh.decl.kind); n = rp_put(o, n, " "); n = rp_put(o, n, sh.decl.name);
+  n = rp_put(o, n, "  hash "); n = rp_put(o, n, ix_hash12(sh.hash)); n = rp_put(o, n, "  file hash "); n = rp_put(o, n, ix_hash12(sh.file_hash)); n = rp_put(o, n, "\n");
+  n = rp_put(o, n, sh.text);
+  if sh.cut { n = rp_put(o, n, "[cut: view "); n = rp_put(o, n, file); n = rp_put(o, n, ":"); n = rp_put_int(o, n, sh.next); n = rp_put(o, n, "-"); n = rp_put_int(o, n, sh.to); n = rp_put(o, n, " for the rest]\n"); }
+  return McAwDone.{n = n};
+}
+
+// One compiler question (action.coax mc_question), answered as text in at most cap bytes (and
+// MC_AW_ANS). exit 0 when the compiler answered, also with no records; 1 when it could not, with
+// a text that starts "no answer:", or when it was not asked; 2 when q is no question. A file the
+// question names is held to the working directory as a view is.
+mc_aw_ask :: (aw: [] McAware, q: string, left_ms: int, cap: int, step: int) -> McAwDone {
+  p := mc_question(q);
+  if p.op < 0 {
+    o := aw[0].ans[..];
+    n := rp_put(o, 0, "not a question ("); n = rp_put(o, n, p.why); n = rp_put(o, n, "): "); n = rp_put(o, n, mc_aw_cut(q, 160));
+    n = rp_put(o, n, ". The questions are: ");
+    return McAwDone.{exit = 2, n = rp_put(o, n, MC_Q_FORMS)};
+  }
+  file_first := p.op == MC_Q_EXPORTS || p.op == MC_Q_CHECK || p.op == MC_Q_EFFECTS || p.op == MC_Q_DEPENDS;
+  file := ifx file_first then p.a else ifx p.op == MC_Q_USES || p.op == MC_Q_SHOW then p.b else "";
+  if file.count > 0 {
+    if !mc_path_inside(aw[0].cwd, file) { return McAwDone.{exit = 1, n = mc_aw_say(aw, "not asked: the path leaves the working directory: ", file, "")}; }
+    pb: [FS_PATH_MAX] u8;
+    if fs_kind(fs_join(aw[0].cwd, mc_aw_rel(aw, file), pb[..])) != FS_FILE { return McAwDone.{exit = 1, n = mc_aw_say(aw, "not asked: no such file: ", file, "")}; }
+  }
+  aw[0].asked += 1; aw[0].qops[p.op] += 1;
+  if !mc_aw_ix(aw, left_ms) { return mc_aw_no(aw, q, "no Coax compiler answers here"); }
+  most := mc_aw_most(cap);
+  if p.op == MC_Q_DEFINES || p.op == MC_Q_EXPORTS || p.op == MC_Q_DEPENDS { return mc_aw_q_decls(aw, p, q, most); }
+  if p.op == MC_Q_USES { return mc_aw_q_uses(aw, p, q, most); }
+  if p.op == MC_Q_EFFECTS { return mc_aw_q_effects(aw, p, q, most); }
+  if p.op == MC_Q_EXPLAIN || p.op == MC_Q_VOCAB { return mc_aw_q_said(aw, p, q, most); }
+  if p.op == MC_Q_CHECK { return mc_aw_q_check(aw, p, q, most); }
+  return mc_aw_q_show(aw, p, q, most, step);
+}
+
+// Whether path names a Coax source file.
+mc_aw_coax :: (path: string) -> bool { return path.count > 5 && cast(string) path[path.count - 5..<path.count] == ".coax"; }
+
+// How an edit went: applied (ok), refused as stale, or failed. Its reason is aw.why[0..<nwhy],
+// and what it shows (the new lines, or the nearest ones) is aw.shown[0..<nshown], lines from..to.
+McAwEdit :: struct { ok: bool; stale: bool; from: int; to: int; nwhy: int; nshown: int; }
+mc_aw_edit_why :: (aw: [] McAware, e: McAwEdit) -> string { return cast(string) aw[0].why[0..<e.nwhy]; }
+mc_aw_edit_shown :: (aw: [] McAware, e: McAwEdit) -> string { return cast(string) aw[0].shown[0..<e.nshown]; }
+
+// a, b (cut to 400 bytes) and c into aw.why: the count.
+mc_aw_because :: (aw: [] McAware, a: string, b: string, c: string) -> int {
+  o := aw[0].why[..];
+  n := rp_put(o, 0, a); n = rp_put(o, n, mc_aw_cut(b, 400));
+  return rp_put(o, n, c);
+}
+
+// An edit that names a declaration: the declaration of e.name in e.path becomes e.text, through
+// the library's edit by the hash that was read (ix_replace), when e.seen is still the hash of
+// the declaration or of its file.
+mc_aw_edit_named :: (aw: [] McAware, e: McEdit, left_ms: int) -> McAwEdit {
+  r := McAwEdit.{};
+  if !mc_aw_ix(aw, left_ms) { r.nwhy = mc_aw_because(aw, "no Coax compiler answers here, so a declaration can't be replaced by name: edit with old and new", "", ""); return r; }
+  s := aw[0].ix[..];
+  a := ix_defines(s, e.name, aw[0].decls[0..<16]);
+  if !a.ok { r.nwhy = mc_aw_because(aw, "the compiler could not find the declaration (", a.why, "): edit with old and new"); return r; }
+  pick := ix_pick(aw[0].decls[0..<a.n], ix_file(s, e.path));
+  if pick.count == 0 { r.nwhy = mc_aw_because(aw, "no declaration has this name in that file (ask defines NAME): ", e.name, ""); return r; }
+  if pick.count > 1 { r.nwhy = mc_aw_because(aw, "more than one declaration has this name in that file: edit with old and new: ", e.name, ""); return r; }
+  d := aw[0].decls[pick.at];
+  // the session's strings end at its next question
+  kind := ix_copy(aw[0].kind[..], d.kind); file := ix_copy(aw[0].name[..], d.file);
+  x := ix_replace(s, IxEdit.{file = file, from = d.line, to = d.end_line, seen = e.seen, text = e.text}, aw[0].ans[0..<MC_EDIT_SHOW], aw[0].diags[..]);
+  o := aw[0].shown[..];
+  if x.stale {
+    y := aw[0].why[..];
+    n := rp_put(y, 0, "stale: "); n = rp_put(y, n, mc_aw_cut(e.name, 200)); n = rp_put(y, n, " is not what you read: its hash is "); n = rp_put(y, n, ix_hash12(x.hash));
+    n = rp_put(y, n, " now (the file's is "); n = rp_put(y, n, ix_hash12(x.file_hash)); n = rp_put(y, n, "). Nothing was written. These are its lines as they are now");
+    r.stale = true; r.nwhy = n; r.from = x.from; r.to = x.to; r.nshown = rp_put(o, 0, x.text);
+    return r;
+  }
+  if !x.ok { r.nwhy = mc_aw_because(aw, "", x.why, ""); return r; }
+  // what it wrote, with the declaration's new hash; the file's hash and the check follow (mc_aw_edit)
+  n := rp_put(o, 0, "replaced "); n = rp_put(o, n, kind); n = rp_put(o, n, " "); n = rp_put(o, n, mc_aw_cut(e.name, 200)); n = rp_put(o, n, ": lines "); n = rp_put_int(o, n, x.from); n = rp_put(o, n, "-"); n = rp_put_int(o, n, x.to);
+  if x.hash.count > 0 { n = rp_put(o, n, "  hash "); n = rp_put(o, n, ix_hash12(x.hash)); }
+  n = rp_put(o, n, "\n"); n = rp_put(o, n, x.text);
+  if x.cut { n = rp_put(o, n, "[cut: the rest is in the file]\n"); }
+  r.ok = true; r.from = x.from; r.to = x.to; r.nshown = n;
+  return r;
+}
+
+// The exact edit (mc_edit_file). With intel and e.seen given, it is refused as stale when the
+// file's hash is not e.seen: nothing is written, and the result gives the hash as it is now and
+// the nearest lines, as a failed edit does. have, nwas: the file's text now is aw.before[0..<nwas].
+mc_aw_edit_exact :: (aw: [] McAware, e: McEdit, have: bool, nwas: int, b: [] McToolBuffers) -> McAwEdit {
+  r := McAwEdit.{};
+  if aw[0].intel && e.seen.count > 0 {
+    was := cast(string) aw[0].before[0..<nwas];
+    hb: [IX_HASH] u8;
+    now := ifx have then ix_hash(was, hb[..]) else "";
+    if !ix_hash_is(e.seen, now) {
+      r.stale = true;
+      y := aw[0].why[..];
+      n := rp_put(y, 0, "stale: ");
+      if have { n = rp_put(y, n, "the file is not what you read: its hash is "); n = rp_put(y, n, ix_hash12(now)); n = rp_put(y, n, " now, not "); n = rp_put(y, n, mc_aw_cut(e.seen, 64)); n = rp_put(y, n, ". Nothing was written. Read the lines as they are now, then edit again with this hash"); }
+      else { n = rp_put(y, n, "there is no such file now (or it is over 512 KB), so it is not what you read. Nothing was written"); }
+      r.nwhy = n;
+      // the nearest lines, as a failed edit shows them
+      near := McNear.{};
+      if have { near = mc_nearest(was, e.old); }
+      if near.line > 0 {
+        lines := rp_lines(was);
+        r.from = ifx near.line > 3 then near.line - 3 else 1; r.to = near.line + near.count + 2;
+        if r.to > lines { r.to = lines; }
+        r.nshown = mc_edit_lines(was, e.path, r.from, r.to, aw[0].shown[..]).count;
+      }
+      return r;
+    }
+  }
+  res := mc_edit_file(aw[0].cwd, e, aw[0].profile, b);
+  r.ok = res.ok; r.from = res.from; r.to = res.to;
+  r.nwhy = mc_aw_because(aw, "", res.why, "");
+  r.nshown = rp_put(aw[0].shown[..], 0, res.shown);
+  return r;
+}
+
+// One edit of the action: by name (mc_aw_edit_named) when intel is on and e.name is set, else
+// the exact edit (mc_aw_edit_exact). An applied edit returns, after what it wrote, the file's
+// new hash, and for a .coax file its check (check false leaves the check to a later edit of the
+// same file in this step). With the memory the store gets the texts before and after.
+mc_aw_edit :: (aw: [] McAware, e: McEdit, check: bool, left_ms: int, b: [] McToolBuffers) -> McAwEdit {
+  rel := mc_aw_rel(aw, e.path);
+  was := mc_aw_file(aw, e.path, aw[0].before[..]);
+  nwas := was.text.count;
+  r := McAwEdit.{};
+  if aw[0].intel && e.name.count > 0 { r = mc_aw_edit_named(aw, e, left_ms); } else { r = mc_aw_edit_exact(aw, e, was.ok, nwas, b); }
+  if r.stale { aw[0].stale_edits += 1; }
+  if !r.ok { return r; }
+  now := mc_aw_file(aw, e.path, aw[0].after[..]);
+  if !now.ok { return r; }
+  if aw[0].memory { put := wmf_change(aw[0].wm[..], rel, cast(string) aw[0].before[0..<nwas], now.text); }
+  if !aw[0].intel { return r; }
+  o := aw[0].shown[..]; n := r.nshown;
+  if n > 0 && o[n - 1] != '\n' { n = rp_put(o, n, "\n"); }
+  n = rp_put(o, n, "[file hash "); n = rp_put(o, n, mc_aw_hash12(aw, now.text)); n = rp_put(o, n, "]\n");
+  if check && mc_aw_coax(rel) && mc_aw_ix(aw, left_ms) {
+    c := ix_check_via(aw[0].ix[..], rel, IxAnswer.{}, false, aw[0].diags[..], aw[0].via[..]);
+    most := ifx n + MC_AW_CHECK < o.count then n + MC_AW_CHECK else o.count;
+    n = ix_checked_text(aw[0].diags[0..<c.a.n], o[0..<most], n, c);
+  }
+  r.nshown = n;
+  return r;
+}
+
+// A command ran: the store sees which files it changed, then keeps the run, as a run of the
+// task's check it is (the check's row is made at its first run).
+//
+// TEMPORARY COPY: this is rc_wm_ran of coax/lib/rlm/code.coax. It should be one procedure in
+// coax/lib/agent/workmem/file.coax (the store, the task's spans, the command and its result in),
+// which another change holds now; when it is there, both loops call it and this goes.
+mc_aw_ran :: (aw: [] McAware, cmd: string, exit: int, timed_out: bool, ms: int, output: string) {
+  w := aw[0].wm[..];
+  x := wmf_refresh(w);
+  check := wm_task_check(aw[0].task[..], cmd);
+  if check.count > 0 {
+    have := false;
+    for i: 0..<w[0].s[0].nchecks { if w[0].s[0].checks[i].name == check { have = true; } }
+    if !have && !wmf_check(w, check, check).ok { check = ""; }
+  }
+  y := wmf_run(w, cmd, check, exit, timed_out, ms, output);
+}
+
+// What stops a finish now (the finish rule, workmem/finish.coax), as lines; "" when the run may finish.
+mc_aw_open :: (aw: [] McAware) -> string {
+  x := wmg_refresh(aw[0].wm[..], aw[0].wg[..]);
+  why: [WM_REQS + WM_CHECKS + 16] WfReason;
+  if wmf_may_finish(aw[0].wm[..], why[..]).ok { return ""; }
+  return wmf_view_open(aw[0].wm[..], MC_MEM_OPEN, aw[0].v3[..]);
+}
+// The note a refused finish leaves for the next step (refused: how many were refused before it).
+mc_aw_refusal :: (aw: [] McAware, refused: int, open: string) -> string {
+  // is one of the reasons a file the run weakened (finish.coax wf_weakened)?
+  why: [64] WfReason; weak := false;
+  v := wmf_may_finish(aw[0].wm[..], why[..]);
+  for i: 0..<ifx v.count < why.count then v.count else why.count { if wf_weakened(why[i].why) { weak = true; } }
+  o := aw[0].ans[..];
+  n := rp_put(o, 0, "finished was refused ("); n = rp_put_int(o, n, refused + 1); n = rp_put(o, n, " of at most "); n = rp_put_int(o, n, MC_FINISH_REFUSALS);
+  if weak {
+    n = rp_put(o, n, " refusals): the run weakened what checks it (fewer checks or #assert in a file, a lost #authority line, or a changed compatibility baseline).\n"); n = rp_put(o, n, open);
+    n = rp_put(o, n, "Put it back and finish. If the task asks for that change, say why in reply so that a person can decide.");
+    return cast(string) o[0..<n];
+  }
+  n = rp_put(o, n, " refusals): a check the task names has not passed on the files as they are now.\n"); n = rp_put(o, n, open);
+  n = rp_put(o, n, "Run it again and finish when it passes. If it can't pass, say why in reply.");
+  return cast(string) o[0..<n];
+}
+
+// The store's views into the state's memory key, for the next request.
+mc_aw_render :: (aw: [] McAware, l: [] McLoop) {
+  s := aw[0].wm[0].s[..];
+  mc_memory_set(l[0].st[..], wm_view_findings(s, MC_MEM_FINDINGS, aw[0].v1[..]), wm_view_changed(s, MC_MEM_CHANGED, aw[0].v2[..]), wmf_view_open(aw[0].wm[..], MC_MEM_OPEN, aw[0].v3[..]));
+}
+
+// The run's end for the memory: what is still open (the report's unproven).
+mc_aw_close :: (aw: [] McAware) {
+  if !aw[0].memory { return; }
+  x := wmg_refresh(aw[0].wm[..], aw[0].wg[..]);
+  aw[0].nunproven = wmf_view_open(aw[0].wm[..], MC_MEM_OPEN, aw[0].unproven[..]).count;
+}
+
+// The run's counts as one JSON object, with the keys the RLM coder's report gives them
+// (coax/lib/rlm/code.coax rc_report): {"kind":"aware","intel":{...},"memory":{...}}, each part
+// only with its mode. Into out; "" when it doesn't fit or no mode is on.
+mc_aw_report :: (aw: [] McAware, l: [] McLoop, out: [] u8) -> string {
+  if !aw[0].intel && !aw[0].memory { return ""; }
+  ob: [1] Jo; o := ob[..];
+  jo_start(o, out); jo_obj(o);
+  jo_key(o, "kind"); jo_str(o, "aware");
+  if aw[0].intel {
+    jo_key(o, "intel"); jo_obj(o);
+    jo_key(o, "asked"); jo_int(o, aw[0].asked); jo_key(o, "unanswered"); jo_int(o, aw[0].unanswered); jo_key(o, "stale_edits"); jo_int(o, aw[0].stale_edits);
+    for name, i: MC_Q_OPS { jo_key(o, name); jo_int(o, aw[0].qops[i]); }
+    jo_end(o);
+  }
+  if aw[0].memory {
+    s := aw[0].wm[0].s[..];
+    jo_key(o, "memory"); jo_obj(o);
+    jo_key(o, "dir"); jo_str(o, aw[0].wm[0].dir);
+    jo_key(o, "reads"); jo_int(o, aw[0].reads); jo_key(o, "repeat_reads"); jo_int(o, aw[0].repeats);
+    jo_key(o, "notes"); jo_int(o, aw[0].notes); jo_key(o, "finishes_refused"); jo_int(o, l[0].finish_refused);
+    jo_key(o, "checks"); jo_int(o, s[0].nchecks); jo_key(o, "runs"); jo_int(o, s[0].nruns); jo_key(o, "changes"); jo_int(o, s[0].nchanges);
+    // what was still open when the run ended, a line each
+    jo_key(o, "unproven"); jo_arr(o);
+    u := cast(string) aw[0].unproven[0..<aw[0].nunproven]; i := 0; first := true;
+    while i < u.count {
+      x := i; while x < u.count && u[x] != 10 { x += 1; }
+      if !first && x > i { jo_str(o, cast(string) u[i..<x]); }     // the first line is the view's title
+      first = false; i = x + 1;
+    }
+    jo_end(o);
+    jo_end(o);
+  }
+  jo_end(o);
+  if o[0].bad { return ""; }
+  return jo_text(o);
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a view's span is its first and last numbered line; its trailer and a view with none are not lines" {
+  s := mc_aw_span("     3\tUNIT :: 1;\n     4\tarea :: () {}\n    12\t  7\tnot a number line\n[lines 3-12 of 40; next: view a.coax:13-312]");
+  #assert s.from == 3 && s.to == 12;
+  s = mc_aw_span("     1\tone line");
+  #assert s.from == 1 && s.to == 1;
+  s = mc_aw_span("[an empty file]");
+  #assert s.from == 0 && s.to == 0;
+  s = mc_aw_span("[the file has 4 lines: nothing from line 9]");
+  #assert s.from == 0 && mc_aw_span("").to == 0 && mc_aw_span("12 no tab\n").from == 0;
+  s = mc_aw_span("[already read at step 2: these lines have not changed since]\n   100\tx\n   101\ty\n");
+  #assert s.from == 100 && s.to == 101;
+}
+
+#test "the line of a repeat read names the step, or an earlier run; a Coax file is known by its name" {
+  b: [128] u8;
+  #assert cast(string) b[0..<mc_aw_again(b[..], 0, 3)] == "[already read at step 3: these lines have not changed since]\n";
+  #assert cast(string) b[0..<mc_aw_again(b[..], 0, 0)] == "[already read in an earlier run: these lines have not changed since]\n";
+  #assert mc_aw_again(b[..], 0, 12) <= MC_AW_VIEW_MORE - 40;
+  #assert mc_aw_coax("a.coax") && mc_aw_coax("lib/x/y.coax") && !mc_aw_coax(".coax") && !mc_aw_coax("a.coax.txt") && !mc_aw_coax("coax");
+  #assert mc_aw_cut("abcdef", 3) == "abc" && mc_aw_cut("ab", 3) == "ab";
+}

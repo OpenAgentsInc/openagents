@@ -1,0 +1,68 @@
+// The owned worker with the compiler's answers and the working memory turned on by its message
+// (GitHub #13444, #13445): "intel" and "memory" reach the run, the journal's context has the
+// longer system prompt, and after "ended" the worker writes the run's "aware" counts. Recorded
+// replies (GW_REPLAY), no provider credentials. The modes themselves are checked in
+// coax/lib/microcoder/aware-selftest.coax.
+//
+//   coax/web/tool.sh coder/tests/aware-worker.coax
+#import "Basic";
+#load "process.coax";
+#load "../../coax/lib/agent/claude/fields.coax";
+
+aw_send :: (h: int, text: string) { for c: text { #assert cxproc_write(h, cast(int) c) == 0; } #assert cxproc_flush(h) == 0; }
+aw_reply :: (path: string, action: string) {
+  b: [8192] u8; n := json_raw(b[..], 0, "HTTP/1.1 200 OK\r\n\r\ndata: {\"choices\":[{\"delta\":{\"content\":");
+  n = json_write_string(b[..], n, action); n = json_raw(b[..], n, "}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+  #assert n > 0 && fs_write(path, cast(string) b[0..<n]);
+}
+
+aw_has :: (s: string, part: string) -> bool {
+  for i: 0..<s.count - part.count + 1 { if cast(string) s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  wb: [1024] u8; dir := fs_temp("aware-worker-", wb[..]); #assert dir.count > 0; defer { r := fs_remove(dir); }
+  hb: [1024] u8; home := fs_temp("aware-home-", hb[..]); #assert home.count > 0; defer { r := fs_remove(home); }
+  rb: [1200] u8; replies := fs_join(dir, "replies", rb[..]); #assert fs_mkdir(replies);
+  wsb: [1200] u8; ws := fs_join(dir, "ws", wsb[..]); #assert fs_mkdir(ws);
+  mb: [1200] u8; mem := fs_join(dir, "mem", mb[..]);
+  fb: [1200] u8; #assert fs_write(fs_join(ws, "a.txt", fb[..]), "one\ntwo\n");
+  pb: [1200] u8;
+  aw_reply(fs_join(replies, "1.http", pb[..]), "{\"rationale\":\"look\",\"notes\":[\"a.txt:1-2 two lines\"],\"edits\":[],\"questions\":[\"defines nothing_here\"],\"commands\":[],\"view\":[\"a.txt\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+  aw_reply(fs_join(replies, "2.http", pb[..]), "{\"rationale\":\"done\",\"notes\":[],\"edits\":[],\"questions\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}");
+  h := proc_new(); #assert h >= 0;
+  #assert proc_arg(h, "coax/web/tool.sh") && proc_arg(h, "coder/tui/mcworker.coax");
+  env: [1500] u8;
+  for name: [2] string.["HOME=", "CODER_HOME="] { n := json_raw(env[..], 0, name); n = json_raw(env[..], n, home); #assert proc_env(h, cast(string) env[0..<n]); }
+  n := json_raw(env[..], 0, "GW_REPLAY="); n = json_raw(env[..], n, replies); #assert proc_env(h, cast(string) env[0..<n]);
+  #assert proc_start(h) == 0; defer { k := proc_kill(h, 9); r := proc_release(h); }
+  message: [8192] u8;
+  n = json_raw(message[..], 0, "{\"task\":\"read a.txt\",\"local\":true,\"sandbox\":\"workspace-write\",\"intel\":true,\"memory\":true,\"memory_dir\":");
+  n = json_write_string(message[..], n, mem); n = json_raw(message[..], n, ",\"cwd\":"); n = json_write_string(message[..], n, ws); n = json_raw(message[..], n, "}\n");
+  aw_send(h, cast(string) message[0..<n]);
+  line: [65536] u8; arbuf: [65536] u8; ar: [1] ClArena; ar[0].buf = arbuf[..];
+  ended := false; aware := false; journal: [4096] u8; nj := 0;
+  started := proc_now_ms();
+  while proc_now_ms() - started < 120000 {
+    k := proc_line(h, 1000, line[..]); if k == PROC_TIMEOUT { continue; } if k < 0 { break; }
+    text := cast(string) line[0..<k]; ar[0].at = 0; ar[0].full = false; kind := cl_str(ar[..], text, "kind");
+    if kind == "journal" { path := cl_str(ar[..], text, "path"); nj = path.count; #assert nj <= journal.count; for c, i: path { journal[i] = c; } }
+    if kind == "ended" { #assert cl_str(ar[..], text, "ending") == "finished"; ended = true; }
+    if kind == "aware" {
+      #assert ended;     // after the run's end
+      asked := cl_int(text, "intel.asked"); reads := cl_int(text, "memory.reads"); notes := cl_int(text, "memory.notes");
+      #assert asked.ok && asked.value == 1 && cl_str(ar[..], text, "memory.dir") == mem && reads.ok && reads.value == 1 && notes.ok && notes.value == 1;
+      aware = true; break;
+    }
+  }
+  if !aware { err: [8192] u8; error := proc_stderr(h, err[..]); tool_errln(error); return 1; }
+  // the memory is on disk, and the journal's context names the longer system prompt
+  lb: [1200] u8; #assert fs_exists(fs_join(mem, "log.jsonl", lb[..]));
+  closed := proc_close_stdin(h); #assert proc_wait(h, 5000) == 0;
+  bytes: [1048576] u8; nb := fs_read(cast(string) journal[0..<nj], bytes[..]); #assert nb > 0;
+  #assert aw_has(cast(string) bytes[0..<nb], "\\\"questions\\\"");     // the schema in the context, escaped once
+
+  print("aware worker: intel and memory from the message, the counts after the end passed\n");
+  return 0;
+}
