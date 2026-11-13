@@ -12,12 +12,13 @@
 //   coax/bin/coax test components/gallery/web.coax
 
 #load "../kit/dock.coax";
+#load "../kit/settings.coax";
 #load "../backend/dom.coax";
 
 WG_INBOX :: 4096;      // a press's or a field's text from the host
 WG_DRAFT :: 1024;
 WG_SENT :: 4;          // messages the composer has sent, kept
-WG_CSS :: 24576;
+WG_CSS :: 32768;
 WG_CLICK :: 1; WG_INPUT :: 2; WG_SUBMIT :: 3;
 WG_ROWS :: [3] string.["Zero-base the chat", "Why the runner ran out of memory", "Port the frames to SVG"];
 WG_ROW_META :: [3] string.["Opus 5.5 · Nov 11 21:40", "Sonnet 5.5 · Nov 11 14:02", "Haiku 5.5 · Nov 10 09:15"];
@@ -33,6 +34,8 @@ WebPage :: struct {
   tool_open: bool;
   row: int; model: int; thing: int; grouped: [3] bool;
   radius: int = 2;   // the dock's stepper: which of its five steps it stands at
+  switched: bool = true;   // the settings page's switch
+  section: int;            // the settings page's section shown
   answer: int;                       // the approval notice: 0 not answered, 1 allowed, 2 denied
   draft: [WG_DRAFT] u8; draft_n: int;
   sent: [WG_SENT] [WG_DRAFT] u8; sent_n: [WG_SENT] int; nsent: int;
@@ -154,6 +157,27 @@ wg_build :: (s: [] WebPage) {
   tr_close(t);
   tr_close(t);
 
+  sec = wg_section(t, "settings", "Settings", "A settings page beside the side: its sections down the left, the one shown bright on the raised surface, and the section's rows in framed groups. A row is a name, what it is or does, and what changes it at its right: a switch that says On or Off, a button, a link or a value. /settings is built from it.");
+  sp := k_set(t, "st");
+  sn := k_set_nav(t, "st.nav", "Settings");
+  snames := [2] string.["Account", "Appearance"]; sicons := [2] int.[IC_AVATAR_PROFILE, IC_COLOR_THEME];
+  for k: 0..<2 { r := k_place(t, u, tr_join(buf[..], "st.nav.", k), sicons[k], snames[k], "/components", k == s[0].section); }
+  tr_close(t);
+  sb := k_set_body(t, u, "st.b", "Settings", snames[s[0].section]);
+  sg := k_set_group(t, u, "st.g", ifx s[0].section == 0 then "You" else "");
+  if s[0].section == 0 {
+    r1 := k_set_row(t, "st.who", "Logged in as", "a•••@example.com"); k_set_row_end(t);
+    r2 := k_set_row(t, "st.lim", "Email codes sent to one address", ""); v := k_set_value(t, "st.lim.v", "5 an hour"); k_set_row_end(t);
+    r3 := k_set_row(t, "st.sec", "Security", "How you log in: your email, keys and passkeys."); g := k_go(t, "st.sec.go", "Open", "/components"); k_set_row_end(t);
+    r4 := k_set_row(t, "st.out", "Log out", "Log out of this browser."); o := k_button(t, u, "st.out.b", "Log out", BS_PLAIN); k_set_row_end(t);
+  } else {
+    r1 := k_set_row(t, "st.side", "The side", "Places and chats down the left."); sw := k_switch(t, "st.side.sw", "The side", s[0].switched); k_set_row_end(t);
+  }
+  k_set_group_end(t);
+  tr_close(t);
+  tr_close(t);
+  tr_close(t);
+
   sec = wg_section(t, "menus", "Menu", "Rows in a panel: the model for the next turn.");
   menu := k_menu(t, u, "menu", "Model");
   models := WG_MODELS; notes := WG_MODEL_NOTES;
@@ -258,6 +282,8 @@ wg_click :: (s: [] WebPage, id: string) {
   else if id == "dock.radius.less" && s[0].radius > 0 { s[0].radius -= 1; }
   else if id == "dock.radius.more" && s[0].radius < 4 { s[0].radius += 1; }
   else if wg_index(id, "model.") >= 0 { s[0].model = wg_index(id, "model."); }
+  else if wg_index(id, "st.nav.") >= 0 && wg_index(id, "st.nav.") < 2 { s[0].section = wg_index(id, "st.nav."); }
+  else if id == "st.side.sw" { s[0].switched = !s[0].switched; }
 }
 
 // ---------------------------------------------------------------- the face's calls
@@ -274,7 +300,7 @@ coaxial_kit_frame :: (s: [] WebPage, dt: f32, reduced: bool) -> int #export_c #e
   if !s[0].dirty && !s[0].animating { return 0; }
   d := s[0].dom[..];
   if !d[0].styled {
-    n := mono_dock_css(s[0].css[..], mono_css(s[0].css[..]));
+    n := mono_set_css(s[0].css[..], mono_dock_css(s[0].css[..], mono_css(s[0].css[..])));
     dm_style(d, cast(string) s[0].css[0..<n]);
   }
   ui_begin(s[0].ui[..], s[0].time, reduced);
@@ -335,6 +361,19 @@ WgTest :: struct { s: [1] WebPage; }
   coaxial_kit_event(s, WG_CLICK, dm_find(s[0].dom[..], "thing.2.x"), 0);
   n = coaxial_kit_frame(s, 0.016, true);
   #assert s[0].grouped[2] && s[0].thing == 1 && tr_has(t, tr_find(t, "thing.2.x"), AT_PRESSED) && !tr_has(t, tr_find(t, "thing.0.x"), AT_PRESSED);
+}
+
+#test "the settings page: its sections pick, the one shown is bright, and its switch says On or Off" {
+  h: [1] WgTest; s := h[0].s[..];
+  n := coaxial_kit_frame(s, 0.016, true);
+  t := s[0].tree[..];
+  #assert tr_class(t, tr_find(t, "st")) == "st" && tr_attr_of(t, tr_find(t, "st.nav.0"), AT_CURRENT) == "true" && tr_text_of(t, tr_find(t, "st.lim.v")) == "5 an hour" && tr_find(t, "st.side") < 0;
+  coaxial_kit_event(s, WG_CLICK, dm_find(s[0].dom[..], "st.nav.1"), 0);
+  n = coaxial_kit_frame(s, 0.016, true);
+  #assert tr_attr_of(t, tr_find(t, "st.nav.1"), AT_CURRENT) == "true" && !tr_has(t, tr_find(t, "st.nav.0"), AT_CURRENT) && tr_text_of(t, tr_find(t, "st.side.sw.l")) == "On";
+  coaxial_kit_event(s, WG_CLICK, dm_find(s[0].dom[..], "st.side.sw"), 0);
+  n = coaxial_kit_frame(s, 0.016, true);
+  #assert tr_text_of(t, tr_find(t, "st.side.sw.l")) == "Off" && tr_attr_of(t, tr_find(t, "st.side.sw"), AT_PRESSED) == "false";
 }
 
 #test "a press, a pick and an answer each change only their own nodes" {

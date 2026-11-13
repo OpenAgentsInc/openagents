@@ -413,6 +413,37 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
   return n;
 }
 
+// The settings page's rules (components/kit/settings.coax), after mono_css's from `at`: the section list
+// beside the body in the room right of the side, groups of rows in a frame, and the switch. Bytes written in all.
+mono_set_css :: (out: [] u8, at: int) -> int {
+  n := at;
+  n = mc(out, n, ".st{display:flex;align-items:flex-start;min-height:100dvh}.side~.st{margin-left:300px}.ib[data-state=side]~.st>.st-nav{padding-top:56px}.sec>.st{min-height:0;border:1px solid var(--line-dim)}");
+  n = mc(out, n, ".st-nav{position:sticky;top:0;flex:none;width:220px;height:100dvh;overflow-y:auto;box-sizing:border-box;padding:16px 8px;display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--line-dim)}");
+  n = mc(out, n, ".st-nav .row{padding:7px 10px}.st-nav .row-t{font-size:13px}");
+  // the section shown: bright on the raised surface, with no frame under it (as the side's current place)
+  n = mc(out, n, ".st-nav .row[aria-current=true]{color:#fff;background:var(--raised);--frame-bg:transparent;--frame-line:transparent;--frame-deco:transparent}");
+  n = mc(out, n, ".st-b{flex:1;min-width:0;max-width:780px;box-sizing:border-box;padding:22px 28px 96px;display:flex;flex-direction:column;gap:30px}");
+  n = mc(out, n, ".st-h{display:flex;flex-direction:column;gap:4px}.st-t{margin:0;font:600 20px/1.3 var(--sans);color:var(--ink)}");
+  n = mc(out, n, ".st-g{display:flex;flex-direction:column;gap:10px}.st-l{display:flex;flex-direction:column;--frame-line:var(--line-dim);--frame-deco:var(--line)}");
+  n = mc(out, n, ".st-r{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 18px}.st-r+.st-r{border-top:1px solid var(--line-dim)}");
+  n = mc(out, n, ".st-w{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}.st-n{margin:0;font:500 14px/1.4 var(--sans);color:var(--ink)}");
+  n = mc(out, n, ".st-a{margin:0;color:var(--ink-muted);font-size:13px;max-width:62ch;overflow-wrap:anywhere}.st-a+.st-a{margin-top:2px}");
+  n = mc(out, n, ".st-c{flex:none;max-width:55%;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:10px}.st-c:empty{display:none}.st-c .field{width:280px}");
+  n = mc(out, n, ".st-v{font:13px/1.4 var(--mono);color:var(--ink);text-align:right}");
+  // a select in a row opens its menu under it, at the row's right
+  n = mc(out, n, ".st-c .menu.pop{bottom:auto;top:calc(100% + 6px);left:auto;right:0}.st-l:has(.sel[aria-expanded=true]){z-index:3}");
+  // the switch: a knob that moves across, and the word On or Off
+  n = mc(out, n, ".sw{appearance:none;border:0;background:none;color:var(--ink-muted);display:inline-flex;align-items:center;gap:9px;cursor:pointer;padding:6px 0;font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;transition:color .15s}");
+  n = mc(out, n, ".sw-k{position:relative;width:30px;height:16px;box-sizing:border-box;border:1px solid var(--line);transition:border-color .15s}");
+  n = mc(out, n, ".sw-k::after{content:'';position:absolute;top:2px;left:2px;width:10px;height:10px;background:var(--line);transition:left .15s,background .15s}");
+  n = mc(out, n, ".sw[aria-pressed=true]{color:var(--ink)}.sw[aria-pressed=true] .sw-k{border-color:var(--line-bright)}.sw[aria-pressed=true] .sw-k::after{left:16px;background:#fff}");
+  n = mc(out, n, ".sw:hover,.sw:focus-visible{color:#fff;outline:none}.sw:hover .sw-k,.sw:focus-visible .sw-k{border-color:var(--line-bright)}");
+  // narrower: the section list goes above the body; with no side, the page has the whole width; a row's control goes under it
+  n = mc(out, n, "@media (max-width:1060px){.st{flex-direction:column;align-items:stretch}.st-nav{position:static;width:auto;height:auto;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line-dim)}}");
+  n = mc(out, n, "@media (max-width:760px){.side~.st{margin-left:0}}@media (max-width:600px){.st-b{padding:18px 16px 64px}.st-r{flex-direction:column;align-items:stretch;gap:10px}.st-c{max-width:none;justify-content:flex-start}.st-c .field{width:100%}}");
+  return n;
+}
+
 #test "every role has an ARWES kind and its settings, and the stylesheet fits and has no hue" {
   sets: [MF_COUNT] AfSettings;
   #assert mono_frames(sets[..]) == MF_COUNT && mono_frames(sets[0..<2]) == 0;
@@ -441,4 +472,25 @@ mono_dock_css :: (out: [] u8, at: int) -> int {
     } else { i += 1; }
   }
   #assert greys > 20;
+}
+
+#test "the settings page's rules follow the page's, fit, and have no hue" {
+  css: [32768] u8; at := mono_css(css[..]);
+  n := mono_set_css(css[..], at);
+  #assert n > at + 2000 && n < at + 5000;
+  sheet := cast(string) css[at..<n];
+  i := 0; greys := 0;
+  while i < sheet.count {
+    if sheet[i] == '#' {
+      j := i + 1;
+      while j < sheet.count && ((sheet[j] >= '0' && sheet[j] <= '9') || (sheet[j] >= 'a' && sheet[j] <= 'f')) { j += 1; }
+      if j - i - 1 == 3 { #assert sheet[i + 1] == sheet[i + 2] && sheet[i + 2] == sheet[i + 3]; greys += 1; }
+      i = j;
+    } else { i += 1; }
+  }
+  #assert greys >= 2;
+  // the current section is marked by the raised surface, never an underline
+  found := false;
+  for k: 0..<sheet.count - 40 { if cast(string) sheet[k..<k + 40] == ".st-nav .row[aria-current=true]{color:#f" { found = true; } }
+  #assert found;
 }

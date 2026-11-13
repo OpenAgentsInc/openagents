@@ -147,6 +147,13 @@ for f in pages:
     # the bucket can't map to index.html on its own; upload.py serves it as HTML.
     if os.path.basename(f) == "index.html" and os.path.dirname(f):
         shutil.copy(os.path.join(site, f), os.path.join(site, os.path.dirname(f) + ".page"))
+# Settings, About (apps/openagents-web/settings-web.coax) reads /build/about.txt: the commit this build is
+# of and the day it was built. A tree that isn't a git checkout writes none, and the page says so.
+import time
+rev = subprocess.run(["git", "-C", app, "log", "-1", "--format=%h", "--abbrev=10"], capture_output=True, text=True).stdout.strip()
+if re.fullmatch(r"[0-9a-f]{10}", rev):
+    os.makedirs(os.path.join(site, "build"), exist_ok=True)
+    open(os.path.join(site, "build", "about.txt"), "w").write(f"commit {rev}\ndate {time.strftime('%Y-%m-%d', time.gmtime())}\n")
 # The homepage's seed (`openagents project landing`): this build's captured, admitted events, which the
 # page reads itself (build/home-seed/<capture>-<part>.txt, named in its Wasm), so a first visit asks
 # the relay only for what is newer.

@@ -113,14 +113,17 @@ The one command above starts Coder's local side for you
 `BROWSER=/usr/bin/true` so no agent opens a browser sign-in) and passes its
 port as `--local` (#13465). `OA_SERVE_NO_CODER=1` leaves it out.
 
-Settings has a This machine card. It says whether Coder answers and, for each
+The chat's gear opens Settings at Agents and models (`/settings/models`,
+[app-shell.md](app-shell.md#settings)), where the Claude account is connected
+and This machine is. This machine says whether Coder answers and, for each
 agent, whether it is ready or why not: Claude Code needs `claude` on your PATH
 and a login (`claude` once in a terminal, or `ANTHROPIC_API_KEY`), Codex needs
 `codex login`. Coder reports this at `GET /local/agents`. When Coder doesn't
-answer, the card gives the start command. Its Turn off button hides the local
-agents in this browser (the page keeps the choice in localStorage); Turn on
-brings them back. The Agent menu lists only the agents that are ready, so a
-row never fails when you pick it.
+answer, the row gives the start command. Its switch turns the local agents off
+in this browser (the page keeps the choice in localStorage) and on again. The
+Agent menu lists only the agents that are ready, so a row never fails when you
+pick it. The same section sets the agent and model a new chat starts with and
+each local agent's model, kept in this browser.
 
 A Claude Code conversation open in a terminal window is listed under
 Running, from the file each `claude` keeps in `~/.claude/sessions/`; a busy

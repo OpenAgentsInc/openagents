@@ -1,0 +1,126 @@
+// The settings set: the pieces a settings page is built from, in the frames set's way (frames.coax): each
+// builds nodes in the tree and nothing else, and every look is the skin's (components/skin/mono.coax,
+// mono_set_css). The page stands in the room right of the side (docs/app-shell.md, "Settings"):
+//   k_set(t, "set");                                    the page: the section list, then the body
+//     k_set_nav(t, "set.nav", "Settings");              the sections down its left,
+//       k_place(...); ...                                 a k_place each, the one shown bright
+//     tr_close(t);
+//     k_set_body(t, u, "set.b", "Settings", "Account");  the section shown, under its name
+//       k_set_group(t, u, "g", "You");                  a named group of rows in a frame
+//         k_set_row(t, "g.who", "Logged in as", "a•••@example.com");   a row: its name and what it is,
+//           k_button(...) or k_switch(...) or k_go(...);                  and what changes it at its right
+//         k_set_row_end(t);
+//       k_set_group_end(t);
+//     tr_close(t);
+//   tr_close(t);
+// A switch says On or Off in words beside its knob: state is never colour alone.
+//   coax/bin/coax test components/kit/settings.coax
+
+#load "frames.coax";
+
+// The page: the section list and the body side by side. Close it with tr_close.
+k_set :: (t: [] Tree, id: string) -> int { return tr_open(t, id, TG_DIV, "st"); }
+// The section list: a nav named `label`. Its places follow; close it with tr_close.
+k_set_nav :: (t: [] Tree, id: string, label: string) -> int {
+  i := tr_open(t, id, TG_NAV, "st-nav");
+  tr_attr(t, i, AT_LABEL, label);
+  return i;
+}
+// The body: the section shown, under its name, with where it sits (`crumb`) above. Close it with tr_close.
+k_set_body :: (t: [] Tree, u: [] Ui, id: string, crumb: string, title: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "st-b");
+  h := tr_open(t, tr_cat(ida[..], id, ".h"), TG_HEADER, "st-h");
+  c := tr_leaf(t, tr_cat(idb[..], id, ".crumb"), TG_SPAN, "meta", crumb);
+  n := k_text(t, u, tr_cat(idc[..], id, ".t"), TG_H1, "st-t", title);
+  tr_close(t);
+  return i;
+}
+// Group: a named group of rows in a frame, a line between each two. An empty title draws no name. Close it
+// with k_set_group_end.
+k_set_group :: (t: [] Tree, u: [] Ui, id: string, title: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := tr_open(t, id, TG_SECTION, "st-g");
+  if title.count > 0 { h := tr_leaf(t, tr_cat(ida[..], id, ".h"), TG_H2, "sec-h", title); tr_attr(t, i, AT_LABEL, title); }
+  l := k_frame(t, u, tr_cat(idb[..], id, ".l"), TG_DIV, "st-l", MF_PANEL);
+  return i;
+}
+k_set_group_end :: (t: [] Tree) { tr_close(t); tr_close(t); }
+// Setting: one row: its name and, under it, what it does or what it is now (none when `about` is empty).
+// What changes it follows, at the row's right (under it on a narrow window); close the row with
+// k_set_row_end. A row with nothing to change is closed straight away: it is a fact.
+k_set_row :: (t: [] Tree, id: string, name: string, about: string) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8;
+  i := tr_open(t, id, TG_DIV, "st-r");
+  w := tr_open(t, tr_cat(ida[..], id, ".w"), TG_DIV, "st-w");
+  n := tr_leaf(t, tr_cat(idb[..], id, ".n"), TG_H3, "st-n", name);
+  if about.count > 0 { a := tr_leaf(t, tr_cat(idc[..], id, ".a"), TG_P, "st-a", about); }
+  tr_close(t);
+  c := tr_open(t, tr_cat(idd[..], id, ".c"), TG_DIV, "st-c");
+  return i;
+}
+k_set_row_end :: (t: [] Tree) { tr_close(t); tr_close(t); }
+// A value at a row's right, as text (a limit's size: "5 an hour").
+k_set_value :: (t: [] Tree, id: string, text: string) -> int { return tr_leaf(t, id, TG_SPAN, "st-v", text); }
+// Switch: on or off, a press changes it. Its knob and the word On or Off; `label` is what it turns on or off,
+// for a screen reader and the pointer's rest.
+k_switch :: (t: [] Tree, id: string, label: string, on: bool) -> int {
+  ida: [UI_ID] u8; idb: [UI_ID] u8;
+  i := tr_open(t, id, TG_BUTTON, "sw");
+  tr_attr(t, i, AT_PRESSED, ifx on then "true" else "false");
+  tr_attr(t, i, AT_LABEL, label); tr_attr(t, i, AT_TITLE, label);
+  k := tr_leaf(t, tr_cat(ida[..], id, ".k"), TG_SPAN, "sw-k", "");
+  tr_attr(t, k, AT_HIDDEN, "true");
+  w := tr_leaf(t, tr_cat(idb[..], id, ".l"), TG_SPAN, "sw-l", ifx on then "On" else "Off");
+  tr_close(t);
+  return i;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a settings page: the section list beside the body, a group in a frame, a row's name, what it is and its control" {
+  ts: [1] Tree; t := ts[..]; us: [1] Ui; u := us[..];
+  tr_begin(t); ui_begin(u, 0, true);
+  p := k_set(t, "set");
+  nav := k_set_nav(t, "set.nav", "Settings");
+  a := k_place(t, u, "set.nav.0", IC_AVATAR_PROFILE, "Account", "/settings/account", true);
+  b := k_place(t, u, "set.nav.1", IC_AGENT, "Agents and models", "/settings/models", false);
+  tr_close(t);
+  body := k_set_body(t, u, "set.b", "Settings", "Account");
+  g := k_set_group(t, u, "g", "You");
+  r := k_set_row(t, "g.who", "Logged in as", "a•••@example.com");
+  k_set_row_end(t);
+  r2 := k_set_row(t, "g.out", "Log out", "");
+  o := k_button(t, u, "g.out.b", "Log out", BS_PLAIN);
+  k_set_row_end(t);
+  k_set_group_end(t);
+  tr_close(t);
+  tr_close(t);
+  #assert t[0].depth == 0 && t[0].lost == 0;
+  #assert tr_class(t, p) == "st" && t[0].nodes[nav].tag == TG_NAV && tr_attr_of(t, nav, AT_LABEL) == "Settings";
+  #assert tr_attr_of(t, a, AT_CURRENT) == "true" && !tr_has(t, b, AT_CURRENT) && tr_attr_of(t, b, AT_HREF) == "/settings/models";
+  #assert tr_text_of(t, tr_find(t, "set.b.crumb")) == "Settings" && tr_text_of(t, tr_find(t, "set.b.t")) == "Account";
+  #assert t[0].nodes[g].tag == TG_SECTION && tr_text_of(t, tr_find(t, "g.h")) == "You" && t[0].nodes[tr_find(t, "g.l")].frame == mono_kind(MF_PANEL) + 1;
+  #assert t[0].nodes[r].parent == tr_find(t, "g.l") && tr_text_of(t, tr_find(t, "g.who.n")) == "Logged in as" && tr_text_of(t, tr_find(t, "g.who.a")) == "a•••@example.com";
+  #assert tr_find(t, "g.out.a") < 0 && t[0].nodes[o].parent == tr_find(t, "g.out.c") && tr_class(t, tr_find(t, "g.out.c")) == "st-c";
+}
+#test "a group with no title draws no name; a value is text at the row's right" {
+  ts: [1] Tree; t := ts[..]; us: [1] Ui; u := us[..];
+  tr_begin(t); ui_begin(u, 0, true);
+  g := k_set_group(t, u, "g", "");
+  r := k_set_row(t, "g.r", "Email codes sent to one address", "");
+  v := k_set_value(t, "g.r.v", "5 an hour");
+  k_set_row_end(t);
+  k_set_group_end(t);
+  #assert t[0].depth == 0 && tr_find(t, "g.h") < 0 && !tr_has(t, g, AT_LABEL);
+  #assert tr_class(t, v) == "st-v" && tr_text_of(t, v) == "5 an hour" && t[0].nodes[v].parent == tr_find(t, "g.r.c");
+}
+#test "a switch says On or Off in words, and is pressed or not" {
+  ts: [1] Tree; t := ts[..];
+  tr_begin(t);
+  on := k_switch(t, "side", "The side", true);
+  off := k_switch(t, "local", "The agents on this computer", false);
+  #assert t[0].nodes[on].tag == TG_BUTTON && tr_class(t, on) == "sw" && tr_attr_of(t, on, AT_PRESSED) == "true" && tr_text_of(t, tr_find(t, "side.l")) == "On";
+  #assert tr_attr_of(t, off, AT_PRESSED) == "false" && tr_text_of(t, tr_find(t, "local.l")) == "Off" && tr_attr_of(t, off, AT_LABEL) == "The agents on this computer";
+  #assert tr_attr_of(t, tr_find(t, "side.k"), AT_HIDDEN) == "true" && t[0].depth == 0;
+}

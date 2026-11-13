@@ -22,8 +22,8 @@
 //   (coax/web/agent/chat-micro.coax): it reads the public openagents
 //   repository at one commit through the repo service (oa-repo), with no
 //   checkout, and its commands show while it works.
-// The gear opens Settings in the transcript's place: connected accounts,
-// where an Anthropic API key or a Claude subscription token is pasted,
+// The gear opens Settings at Agents and models (/settings/models, chat-settings.coax, docs/app-shell.md):
+// connected accounts, where an Anthropic API key or a Claude subscription token is pasted,
 // checked and sealed by the runner (POST /api/chat/key), and never shown again.
 // Requests and streams are built and read by the gateway's codecs
 // (coax/lib/gateway/chat.coax, sse.coax) and the JSON reader, not by hand.
@@ -47,6 +47,8 @@
 
 #load "../../components/kit/frames.coax";
 #load "site-side.coax";                      // the side's rules: places, who is logged in, search, sections
+#load "settings-web.coax";                   // Settings in the shell: its sections, its search, Account, Limits, About
+#load "chat-settings.coax";                  // and the sections that are this module's state: Agents and models, Appearance
 #load "../../components/backend/dom.coax";
 #load "../../coax/lib/gateway/types.coax";   // the request and the stream's events
 #load "../../coax/lib/gateway/chat.coax";    // Chat Completions: the request's body, a chunk
@@ -56,7 +58,7 @@
 CW_INBOX :: 16384;     // a field's text, or a piece of the answer's stream, from the host
 CW_DRAFT :: 16384;     // a message's most, in bytes: what is typed past it is not taken
 CW_ANSWER :: 49152;    // an answer's most, in bytes
-CW_CSS :: 16384;
+CW_CSS :: 24576;
 CW_MESSAGES :: 128;    // messages kept
 CW_POOL :: 524288;     // bytes of their text kept
 CW_SHOWN :: 98304;     // bytes of text the page shows at once (the tree holds 131072)
@@ -72,7 +74,7 @@ CW_KEY :: 400;         // a pasted key's most
 CW_TOOLS :: 2048;      // the running turn's tools, as lines
 CW_META :: 64;         // the line under an answer
 CW_YOU :: 0; CW_AGENT :: 1; CW_TOOL :: 2; CW_CARD :: 3;   // a message is the person's, an answer, a run of tool calls (a line each), or a world's card (world.card.v1)
-CW_CHAT :: 0; CW_SETTINGS :: 1;
+CW_CHAT :: 0;
 // The models, Gemini's first: a Claude one is offered only while a Claude account is connected.
 // The models: Google's, Claude's on the connected account (the hosted agent), and the agents on this
 // machine through Coder (`coder mcp --http`, coder/tui/mcp_http.coax), offered only where Coder answers.
@@ -112,6 +114,8 @@ CF_AGENTS :: 17;        // which agents on this machine are ready (Coder's /agen
 CF_WHO :: 18;           // who is logged in, for the side's foot (/api/auth/account?as=lines)
 CF_OUT :: 19;           // Log out, from the side's foot
 CF_WORLDS :: 20;        // the worlds the person may edit, under Worlds in the side (/api/worlds)
+CF_LIMITS :: 21;        // Settings, Limits: every login limit (/api/auth/limits?as=lines)
+CF_ABOUT :: 22;         // Settings, About: the release this page is from (/build/about.txt)
 CW_PLAN_ASK :: 24576;   // bytes of the conversation sent with a turn in the editor (the world goes with it)
 CW_CL :: 8;            // Claude Code conversations listed beside the chat
 CW_CL_EVERY :: 5.0;    // seconds between reads of them
@@ -144,7 +148,7 @@ ChatWeb :: struct {
   total: int;                        // messages put in the transcript so far, theirs and the answers: the next one's number
   at: [CW_MESSAGES] int; len: [CW_MESSAGES] int; count: int;   // the kept messages, oldest first, in the pool
   who: [CW_MESSAGES] int;            // CW_YOU or CW_AGENT
-  view: int;                         // CW_CHAT, or CW_SETTINGS in the transcript's place
+  view: int;                         // CW_CHAT (Settings is a page of the shell's own: chat-settings.coax)
   menu: bool;                        // the model menu is open
   amenu: bool;                       // the agent menu is open
   hosted: int;                       // the model OpenAgents last had, for coming back to it
@@ -167,7 +171,7 @@ ChatWeb :: struct {
   meta: [CW_MESSAGES] [CW_META] u8; meta_n: [CW_MESSAGES] int;   // the line under each answer: who wrote it
   local: int;                        // Coder on this machine: 0 not asked yet, 1 it answers, -1 it doesn't
   local_off: bool;                   // the agents on this machine are turned off in this browser (kept by the host)
-  keep: [32] u8; keep_n: int;        // a setting for the host to keep in this browser, until it has
+  keep: [96] u8; keep_n: int;        // a setting for the host to keep in this browser, until it has
   agents_asked: bool;                // Coder was asked which of its agents are ready
   aready: [4] int;                   // each one: 0 not known (offered), 1 ready, -1 not (aword says why; not offered)
   aword: [4] [CW_META * 2] u8; aword_n: [4] int;
@@ -210,7 +214,8 @@ ChatWeb :: struct {
   door: [96] u8; door_n: int;        // where the request goes, for the face
   clip: [CW_DRAFT] u8; clip_n: int;  // text for the host to copy, until it has
   copied: int; copied_at: f32;       // the answer last copied (its number + 1, 0 for none) and when
-  page: int;                         // what the shell shows beside its side: SS_CHATS (the chat) or SS_HOME (nothing)
+  page: int;                         // what the shell shows beside its side: SS_CHATS (the chat), SS_HOME (nothing) or SW_PAGE (Settings)
+  set: [1] SettingsWeb;              // Settings: the section shown, its search, and what it has read
   side_closed: bool;                 // the side is put away (kept in this browser)
   me: [SS_WHO] u8; me_n: int; me_asked: bool;   // who is logged in, as the side's foot names them
   worlds: [SS_WORLDS_MAX] SsWorld; worlds_n: int; worlds_asked: bool;   // the worlds they may edit, under Worlds
@@ -284,8 +289,9 @@ cw_claude_model :: (model: int) -> bool { return model >= CW_GEMINIS && model < 
 cw_local_model :: (model: int) -> bool { return model >= CW_HOSTED; }
 cw_connected :: (s: [] ChatWeb) -> bool { return s[0].claude != CA_NONE && !s[0].expired; }
 // The model the next message goes to: the one chosen, unless it is Claude's and no account is connected.
-cw_model :: (s: [] ChatWeb) -> int {
-  m := s[0].model;
+cw_model :: (s: [] ChatWeb) -> int { return cw_usable(s, s[0].model); }
+// A model as the next message could go to it: itself, or Gemini's first when it can't be had here now.
+cw_usable :: (s: [] ChatWeb, m: int) -> int {
   if m < 0 || m >= CW_MODELS { return 0; }
   if cw_local_model(m) && (s[0].local != 1 || s[0].local_off || s[0].aready[m - CW_HOSTED] < 0) { return 0; }
   return ifx cw_claude_model(m) && !cw_connected(s) then 0 else m;
@@ -396,7 +402,22 @@ cw_keep :: (s: [] ChatWeb) {
   for a: 0..<4 {
     if s[0].lm[a] > 0 { d := [1] u8.[cast(u8) ('0' + a + 1)]; e := [1] u8.[cast(u8) ('0' + s[0].lm[a] - 1)]; n = cw_put(s[0].keep[..], n, "&lm"); n = cw_put(s[0].keep[..], n, cast(string) d[..]); n = cw_put(s[0].keep[..], n, "="); n = cw_put(s[0].keep[..], n, cast(string) e[..]); }
   }
+  // the model a new chat starts with (Settings, Agents and models): "m=K"
+  if s[0].set[0].kept_model > 0 { num: [24] u8; n = cw_put(s[0].keep[..], n, "&m="); n = cw_put(s[0].keep[..], n, tr_join(num[..], "", s[0].set[0].kept_model - 1)); }
   s[0].keep_n = n;
+}
+// The model a new chat starts with, kept in this browser ("&m=K"): K + 1, or 0 when none was kept.
+cw_kept_model :: (kept: string) -> int {
+  i := 0;
+  while i + 3 <= kept.count {
+    if kept[i] == '&' && kept[i + 1] == 'm' && kept[i + 2] == '=' {
+      n := 0; j := i + 3;
+      while j < kept.count && j < i + 5 && kept[j] >= '0' && kept[j] <= '9' { n = n * 10 + cast(int) (kept[j] - '0'); j += 1; }
+      return ifx j > i + 3 && n < CW_MODELS then n + 1 else 0;
+    }
+    i += 1;
+  }
+  return 0;
 }
 // A local agent's model kept in this browser ("lmA=K"): K + 1, or 0 when none was kept.
 cw_kept_lm :: (kept: string, agent: int) -> int {
@@ -411,71 +432,6 @@ cw_kept_has :: (kept: string, word: string) -> bool {
   i := 0;
   while i + word.count <= kept.count { if cast(string) kept[i..<i + word.count] == word { return true; } i += 1; }
   return false;
-}
-// Settings, This machine (#13465): whether Coder on this computer answers, which of its agents can, the one command
-// that starts it when it doesn't, and the switch that turns the agents on this machine on or off in this browser.
-cw_machine_card :: (s: [] ChatWeb) {
-  t := s[0].tree[..]; u := s[0].ui[..];
-  card := k_card(t, u, "machine", "This machine");
-  agents := CW_AGENT_NAMES; buf: [UI_ID] u8;
-  if s[0].local_off { m := tr_leaf(t, "machine.status", TG_P, "set-n", "The agents on this computer are off in this browser. The menu offers our models only."); }
-  else if s[0].local == 1 {
-    m := tr_leaf(t, "machine.status", TG_P, "set-n", "Coder answers on this computer. Choose its agents in the agent menu beside the model.");
-    for a: 1..<CW_AGENTS {
-      st := s[0].aready[a - 1];
-      line := ifx st > 0 then "Ready" else ifx st < 0 then cast(string) s[0].aword[a - 1][0..<s[0].aword_n[a - 1]] else "";
-      lb: [CW_META * 3] u8;
-      n := cw_put(lb[..], 0, agents[a]);
-      if st != 0 { n = cw_put(lb[..], n, ": "); n = cw_put(lb[..], n, ifx line.count > 0 then line else "not ready"); }
-      r := tr_leaf(t, tr_join(buf[..], "machine.agent.", a), TG_P, "set-n", cast(string) lb[0..<n]);
-    }
-  } else if s[0].local < 0 {
-    m := tr_leaf(t, "machine.status", TG_P, "set-n", "Coder isn't answering on this computer. On a dev server, coax/web/serve.sh apps/openagents-web starts it with the page.");
-  }
-  row := tr_open(t, "machine.row", TG_DIV, "rowf");
-  b := k_button(t, u, "machine.switch", ifx s[0].local_off then "Turn on" else "Turn off", BS_PLAIN);
-  tr_close(t);
-  tr_close(t);
-}
-// Turns the agents on this machine on or off in this browser, and asks the host to keep it.
-cw_machine_switch :: (s: [] ChatWeb, off: bool) {
-  s[0].local_off = off;
-  cw_keep(s);
-  if off { s[0].amenu = false; }
-  else if s[0].local < 0 { s[0].local = 0; }   // asked again
-}
-cw_settings_card :: (s: [] ChatWeb) {
-  t := s[0].tree[..]; u := s[0].ui[..];
-  set := tr_open(t, "settings.view", TG_DIV, "settings");
-  hd := k_header(t, u, "settings.title", "Settings");
-  tr_close(t);
-  card := k_card(t, u, "accounts", "Connected accounts");
-  name := tr_leaf(t, "claude.name", TG_P, "set-t", "Claude");
-  line: [CW_ERROR] u8; n := 0;
-  if !s[0].known { n = cw_put(line[..], 0, "Log in as an admin to connect an account. The chat is for admins only for now."); }
-  else if s[0].claude == CA_NONE { n = cw_put(line[..], 0, "Not connected. Connect it to choose Claude models: their turns then run on your account, with no limit from us."); }
-  else {
-    n = cw_put(line[..], 0, ifx s[0].claude == CA_TOKEN then "Connected: a Claude subscription token ending " else "Connected: an Anthropic API key ending ");
-    n = cw_put(line[..], n, cast(string) s[0].last4[0..<s[0].last4_n]);
-    n = cw_put(line[..], n, ifx s[0].expired then ". It has expired: paste a new one." else ".");
-  }
-  status := tr_leaf(t, "claude.status", TG_P, "set-n", cast(string) line[0..<n]);
-  if s[0].known {
-    how := tr_leaf(t, "claude.how", TG_P, "set-n", "Paste an Anthropic API key (it starts sk-ant-api) or a Claude subscription token (run claude setup-token in a terminal; it starts sk-ant-oat). We check it, seal it, and never show it again.");
-    f := k_secret(t, u, "claude.key", ifx s[0].claude == CA_NONE then "sk-ant-..." else "Paste a new one to replace it", "A Claude key or token");
-    row := tr_open(t, "claude.row", TG_DIV, "rowf");
-    checking := s[0].flight == CF_KEY;
-    b := k_button(t, u, "claude.save", ifx checking then "Checking" else "Connect", ifx s[0].key_n > 0 && s[0].flight == CF_NONE then BS_PRIMARY else BS_DISABLED);
-    if s[0].claude != CA_NONE { r := k_button(t, u, "claude.remove", "Disconnect", ifx s[0].flight == CF_NONE then BS_PLAIN else BS_DISABLED); }
-    tr_close(t);
-    if s[0].note_n > 0 { m := tr_leaf(t, "claude.note", TG_P, "set-n", cast(string) s[0].note[0..<s[0].note_n]); tr_attr(t, m, AT_ROLE, "status"); }
-  }
-  tr_close(t);
-  cw_machine_card(s);
-  back := tr_open(t, "settings.foot", TG_DIV, "rowf");
-  bb := k_button(t, u, "settings.back", "Back to the chat", BS_PLAIN);
-  tr_close(t);
-  tr_close(t);
 }
 cw_transcript :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
@@ -562,11 +518,11 @@ cw_build :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
   tr_begin(t);
   s[0].marking = false;
-  page := tr_open(t, "chat", TG_MAIN, ifx s[0].page == SS_HOME || s[0].page == SS_SIDE then "home" else "chat");
+  page := tr_open(t, "chat", TG_MAIN, ifx s[0].page == SS_HOME || s[0].page == SS_SIDE || s[0].page == SW_PAGE then "home" else "chat");
   cw_side(s);
   if s[0].page == SS_HOME || s[0].page == SS_SIDE { tr_close(t); return; }   // the home page, or the editor's left: the side, and nothing beside it
-  if s[0].view == CW_SETTINGS { cw_settings_card(s); }
-  else if s[0].count > 0 || s[0].lrun || s[0].error_n > 0 { cw_transcript(s); }   // an error shows in a new chat too
+  if s[0].page == SW_PAGE { cw_settings_page(s); tr_close(t); return; }   // Settings, beside the side
+  if s[0].count > 0 || s[0].lrun || s[0].error_n > 0 { cw_transcript(s); }   // an error shows in a new chat too
   if s[0].wwire_n > 0 && s[0].view == CW_CHAT {
     // in the editor: what "this" and "here" mean to the agent now
     w := s[0].world[..]; seen: [160] u8; num: [24] u8;
@@ -582,8 +538,7 @@ cw_build :: (s: [] ChatWeb) {
   }
   f := k_composer_begin(t, u, "composer", "Ask anything");
   tr_attr(t, f, AT_FOCUS, "");
-  gear := k_icon_button(t, "settings", IC_SETTINGS, ifx s[0].view == CW_SETTINGS then "Back to the chat" else "Settings");
-  if s[0].view == CW_SETTINGS { tr_attr(t, gear, AT_STATE, "done"); }
+  gear := k_icon_button(t, "settings", IC_SETTINGS, "Settings");
   names := CW_MODEL_NAMES; agents := CW_AGENT_NAMES; lnames := CW_LM_NAMES; counts := CW_LM_N;
   agent := cw_agent(s);
   buf: [UI_ID] u8;
@@ -1118,8 +1073,13 @@ cw_end :: (s: [] ChatWeb, status: int) {
   body := cast(string) s[0].resp[0..<s[0].resp_n];
   if kind == CF_WHO {
     s[0].me_n = ifx status == 200 then ss_who_read(body, s[0].me[..]) else 0;
+    if status == 200 { sw_account_read(s[0].set[..], body); } else { sw_account_read(s[0].set[..], ""); }
   } else if kind == CF_WORLDS {
     s[0].worlds_n = ifx status == 200 then ss_worlds_read(body, s[0].worlds[..]) else 0;
+  } else if kind == CF_LIMITS {
+    sw_limits_read(s[0].set[..], status, body);
+  } else if kind == CF_ABOUT {
+    sw_about_read(s[0].set[..], status, body);
   } else if kind == CF_OUT {
     if status == 200 || status == 204 { s[0].me_n = 0; s[0].worlds_n = 0; cw_go_to(s, "/", false); }   // logged out: the public home page
   } else if kind == CF_ACCOUNT {
@@ -1220,6 +1180,9 @@ cw_tick :: (s: [] ChatWeb) {
   if s[0].out_due { if cw_go(s, CF_OUT, "/api/auth/logout?as=lines", "{}") { s[0].out_due = false; } return; }
   if !s[0].me_asked && s[0].known_asked { if cw_go(s, CF_WHO, "/api/auth/account?as=lines", "") { s[0].me_asked = true; } return; }
   if !s[0].worlds_asked && s[0].me_n > 0 { if cw_go(s, CF_WORLDS, "/api/worlds", "") { s[0].worlds_asked = true; } return; }
+  // Settings: the limits and the release, once each, when its page is open
+  if s[0].page == SW_PAGE && !s[0].set[0].limits_asked { if cw_go(s, CF_LIMITS, "/api/auth/limits?as=lines", "") { s[0].set[0].limits_asked = true; } return; }
+  if s[0].page == SW_PAGE && !s[0].set[0].about_asked { if cw_go(s, CF_ABOUT, "/build/about.txt", "") { s[0].set[0].about_asked = true; } return; }
   if s[0].card_due_n > 0 && !s[0].live {
     url: [96] u8;
     n := cw_put(url[..], 0, "/api/worlds/"); n = cw_put(url[..], n, cast(string) s[0].card_due[0..<s[0].card_due_n]); n = cw_put(url[..], n, "/card");
@@ -1257,7 +1220,7 @@ cw_tick :: (s: [] ChatWeb) {
     if !s[0].cl_asked || s[0].time - s[0].cl_at >= CW_CL_EVERY { if cw_go(s, CF_CLAUDE, "/local/claude", "") { s[0].cl_at = s[0].time; s[0].cl_asked = true; } return; }
     if s[0].time - s[0].list_at >= CW_LIST_EVERY { if cw_go(s, CF_LIST, "/local/sessions", "") { s[0].list_at = s[0].time; } return; }
     // which agents are ready, once Settings or the agent menu shows them
-    if !s[0].agents_asked && (s[0].view == CW_SETTINGS || s[0].amenu) { if cw_go(s, CF_AGENTS, "/local/agents", "") { s[0].agents_asked = true; } return; }
+    if !s[0].agents_asked && (s[0].page == SW_PAGE || s[0].amenu) { if cw_go(s, CF_AGENTS, "/local/agents", "") { s[0].agents_asked = true; } return; }
   }
   if s[0].local == 0 && !s[0].local_off && s[0].known_asked && !s[0].live && s[0].time > 0.2 { if cw_go(s, CF_LIST, "/local/sessions", "") { s[0].list_at = s[0].time; } return; }
   if !s[0].live || s[0].turn <= 0 { return; }
@@ -1300,7 +1263,7 @@ coaxial_chatweb_frame :: (s: [] ChatWeb, dt: f32, reduced: bool) -> int #export_
   if !s[0].dirty && !s[0].animating { return 0; }
   d := s[0].dom[..];
   if !d[0].styled {
-    n := mono_css(s[0].css[..]);
+    n := mono_set_css(s[0].css[..], mono_css(s[0].css[..]));
     dm_style(d, cast(string) s[0].css[0..<n]);
   }
   ui_begin(s[0].ui[..], s[0].time, reduced);
@@ -1328,11 +1291,16 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     s[0].local_off = cw_kept_has(kept, "local=off");
     s[0].side_closed = cw_kept_has(kept, "side=closed");
     for a: 0..<4 { s[0].lm[a] = cw_kept_lm(kept, a + 1); }
+    s[0].set[0].kept_model = cw_kept_model(kept);
+    if s[0].set[0].kept_model > 0 && s[0].count == 0 && s[0].sends == 0 { s[0].model = s[0].set[0].kept_model - 1; }
     s[0].dirty = true; return;
   }
   if kind == CW_PATH {
     n := ifx length < 0 || length > CW_INBOX then 0 else length;
-    s[0].page = ss_page_of(cast(string) s[0].inbox[0..<n]);
+    path := cast(string) s[0].inbox[0..<n];
+    sec := sw_section_of(path);
+    if sec >= 0 { s[0].page = SW_PAGE; s[0].set[0].section = sec; s[0].set[0].menu = 0; }
+    else { s[0].page = ss_page_of(path); }
     s[0].dirty = true; return;
   }
   if kind == CW_WORLD {
@@ -1371,7 +1339,11 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
       dm_focus(s[0].dom[..], "composer");
     }
   }
-  else if kind == CW_CLICK && id == "side.new" { cw_clear(s); s[0].sel_n = 0; s[0].csel_n = 0; s[0].view = CW_CHAT; cw_to_chat(s); dm_focus(s[0].dom[..], "composer"); }
+  else if kind == CW_CLICK && id == "side.new" {
+    cw_clear(s); s[0].sel_n = 0; s[0].csel_n = 0; s[0].view = CW_CHAT;
+    if s[0].set[0].kept_model > 0 { s[0].model = s[0].set[0].kept_model - 1; }   // a new chat starts on the model Settings keeps
+    cw_to_chat(s); dm_focus(s[0].dom[..], "composer");
+  }
   // the side: home and the chat are drawn here, so their links stay in the shell; the other places are pages of their own
   else if kind == CW_CLICK && id == "side.h.home" { if s[0].me_n > 0 { s[0].page = SS_HOME; cw_go_to(s, "/", true); } else { return; } }   // logged out, the home page is the public one
   else if kind == CW_CLICK && id == "place.chats" { cw_to_chat(s); dm_focus(s[0].dom[..], "composer"); }
@@ -1391,11 +1363,7 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
       dm_focus(s[0].dom[..], "composer");
     }
   }
-  else if kind == CW_CLICK && id == "settings" {
-    s[0].view = ifx s[0].view == CW_SETTINGS then CW_CHAT else CW_SETTINGS; s[0].menu = false; s[0].note_n = 0;
-    if s[0].view == CW_SETTINGS { again := cw_go(s, CF_ACCOUNT, "/api/chat/account", ""); }   // the account as it is now (a login since the page opened)
-  }
-  else if kind == CW_CLICK && id == "settings.back" { s[0].view = CW_CHAT; }
+  else if cw_settings_event(s, kind, id, length) {}   // Settings, its links and the gear (chat-settings.coax)
   else if kind == CW_CLICK && id == "machine.switch" { cw_machine_switch(s, !s[0].local_off); }
   else if kind == CW_CLICK && id == "model" { s[0].menu = !s[0].menu; s[0].amenu = false; }
   else if kind == CW_CLICK && id == "agent" { s[0].amenu = !s[0].amenu; s[0].menu = false; }
@@ -1652,53 +1620,6 @@ cw_test_enter :: (s: [] ChatWeb, id: string) { coaxial_chatweb_event(s, CW_SUBMI
   #assert x[0].claude == CA_KEY && !cw_connected(x) && cw_model(x) == 0;
 }
 
-#test "the gear opens Settings in the transcript's place; a key is sent once, wiped, and the account is said back" {
-  h: [1] CwTest; s := h[0].s[..];
-  cw_test_open(s, "{\"claude\":null}");
-  d := s[0].dom[..];
-  cw_test_press(s, "settings");
-  #assert cw_test_door(s) == "/api/chat/account";
-  cw_test_answer(s, 200, "{\"claude\":null}");
-  n := coaxial_chatweb_frame(s, 0.016, true);
-  t := s[0].tree[..];
-  #assert s[0].view == CW_SETTINGS && tr_find(t, "log") < 0 && tr_find(t, "accounts.h") > 0 && tr_attr_of(t, tr_find(t, "settings"), AT_LABEL) == "Back to the chat";
-  #assert cw_test_has(tr_text_of(t, tr_find(t, "claude.status")), "Not connected") && tr_attr_of(t, tr_find(t, "claude.key"), AT_TYPE) == "password";
-  #assert tr_has(t, tr_find(t, "claude.save"), AT_DISABLED) && tr_find(t, "claude.remove") < 0 && tr_find(t, "composer") > 0;
-  cw_test_type(s, "claude.key", "sk-ant-oat01-secretsecret");
-  #assert s[0].key_n == 25 && s[0].inbox[0] == 0;
-  n = coaxial_chatweb_frame(s, 0.016, true);
-  #assert !tr_has(t, tr_find(t, "claude.save"), AT_DISABLED);
-  cw_test_press(s, "claude.save");
-  #assert cw_test_door(s) == "/api/chat/key" && cw_test_body(s) == "{\"credential\":\"sk-ant-oat01-secretsecret\"}" && s[0].key_n == 0 && s[0].key[0] == 0;
-  n = coaxial_chatweb_frame(s, 0.016, true);
-  #assert tr_text_of(t, tr_find(t, "claude.save.l")) == "Checking" && dm_test_count(d, n, DC_VALUE) == 1;
-  coaxial_chatweb_asked(s);
-  #assert s[0].request_n == 0 && s[0].request[14] == 0;   // the key is not kept once it has gone
-  cw_test_piece(s, 400, "{\"error\":\"That key didn't work: the token is invalid\"}");
-  coaxial_chatweb_event(s, CW_END, 400, 0);
-  n = coaxial_chatweb_frame(s, 0.016, true);
-  #assert s[0].claude == CA_NONE && tr_text_of(t, tr_find(t, "claude.note")) == "That key didn't work: the token is invalid";
-  cw_test_type(s, "claude.key", "sk-ant-oat01-good");
-  cw_test_enter(s, "claude.key");
-  cw_test_answer(s, 200, "{\"kind\":\"oauth\",\"label\":\"Claude subscription\",\"last4\":\"good\"}");
-  n = coaxial_chatweb_frame(s, 0.016, true);
-  #assert cw_connected(s) && tr_text_of(t, tr_find(t, "claude.status")) == "Connected: a Claude subscription token ending good." && tr_find(t, "claude.remove") > 0;
-  cw_test_press(s, "claude.remove");
-  #assert cw_test_door(s) == "/api/chat/key_remove";
-  cw_test_answer(s, 200, "{\"removed\":true}");
-  #assert s[0].claude == CA_NONE && cast(string) s[0].note[0..<s[0].note_n] == "Disconnected.";
-  cw_test_press(s, "settings.back");
-  #assert s[0].view == CW_CHAT;
-  // not logged in: Settings says so, and offers no field
-  g: [1] CwTest; c := g[0].s[..];
-  n = coaxial_chatweb_frame(c, 0.016, true);
-  cw_test_answer(c, 401, "{\"error\":\"log in as an admin\"}");
-  cw_test_press(c, "settings");
-  cw_test_answer(c, 401, "{\"error\":\"log in as an admin\"}");
-  n = coaxial_chatweb_frame(c, 0.016, true);
-  #assert !c[0].known && tr_find(c[0].tree[..], "claude.key") < 0 && cw_test_has(tr_text_of(c[0].tree[..], tr_find(c[0].tree[..], "claude.status")), "Log in as an admin");
-}
-
 #test "Microcoder on Gemini needs no account: its message is a turn of the hosted agent, offered once the repo service is live" {
   h: [1] CwTest; s := h[0].s[..];
   cw_test_open(s, "{\"claude\":null}");
@@ -1840,43 +1761,6 @@ CW_T_SESSIONS :: "[{\"id\":\"20261112-042601-123\",\"engine\":\"claude\",\"state
 }
 
 CW_T_AGENTS :: "{\"agents\":[{\"engine\":\"claude\",\"ready\":true,\"why\":\"\"},{\"engine\":\"codex\",\"ready\":false,\"why\":\"Codex isn't installed here.\"},{\"engine\":\"antigravity\",\"ready\":false,\"why\":\"\"},{\"engine\":\"micro\",\"ready\":true,\"why\":\"\"}]}";
-
-#test "Settings, This machine: Coder's agents ready or why not, only ready ones in the menu, and a switch this browser keeps" {
-  ts: [1] CwTest; s := ts[0].s[..];
-  cw_test_local(s, CW_T_SESSIONS);
-  t := s[0].tree[..];
-  cw_test_press(s, "settings");
-  if coaxial_chatweb_asking(s) { cw_test_answer(s, 200, "{\"claude\":null}"); }
-  for i: 0..<6 { b := coaxial_chatweb_frame(s, 0.016, true); if coaxial_chatweb_asking(s) && cw_test_door(s) == "/local/agents" { cw_test_answer(s, 200, CW_T_AGENTS); } else if coaxial_chatweb_asking(s) { cw_test_answer(s, 200, ifx cw_test_door(s) == "/local/claude" then CW_T_CLAUDE else CW_T_SESSIONS); } }
-  #assert s[0].agents_asked && s[0].aready[0] == 1 && s[0].aready[1] == -1 && s[0].aready[2] == -1 && s[0].aready[3] == 1;
-  #assert tr_find(t, "machine") >= 0 && tr_text_of(t, tr_find(t, "machine.agent.1")) == "Claude Code: Ready" && tr_text_of(t, tr_find(t, "machine.agent.2")) == "Codex: Codex isn't installed here.";
-  #assert tr_text_of(t, tr_find(t, "machine.agent.3")) == "Antigravity: not ready" && tr_text_of(t, tr_find(t, "machine.switch.l")) == "Turn off";
-  // the menu: OpenAgents, Claude Code and Microcoder; no dead rows
-  cw_test_press(s, "settings.back"); cw_test_press(s, "agent"); b := coaxial_chatweb_frame(s, 0.016, true);
-  #assert tr_find(t, "agent.0") >= 0 && tr_find(t, "agent.1") >= 0 && tr_find(t, "agent.2") < 0 && tr_find(t, "agent.3") < 0 && tr_find(t, "agent.4") >= 0;
-  cw_test_press(s, "agent.1"); #assert cw_agent(s) == 1;
-  cw_test_press(s, "agent"); b = coaxial_chatweb_frame(s, 0.016, true); cw_test_press(s, "agent.0"); #assert cw_agent(s) == 0;
-  cw_test_press(s, "agent"); b = coaxial_chatweb_frame(s, 0.016, true); cw_test_press(s, "agent.2"); #assert cw_agent(s) == 0 && s[0].amenu;   // not ready: no row to press
-  // off: kept for this browser, the menu is ours only, nothing asks Coder
-  cw_test_press(s, "agent.1"); #assert cw_agent(s) == 1;
-  cw_test_press(s, "settings"); if coaxial_chatweb_asking(s) { cw_test_answer(s, 200, "{\"claude\":null}"); }
-  b = coaxial_chatweb_frame(s, 0.016, true);
-  #assert tr_find(t, "machine.switch") >= 0 && cw_agent(s) == 1;
-  cw_test_press(s, "machine.switch");
-  #assert s[0].local_off && coaxial_chatweb_keep_len(s) == 9 && cast(string) s[0].keep[0..<9] == "local=off" && cw_agent(s) == 0;
-  coaxial_chatweb_keep_done(s);
-  for i: 0..<80 { b = coaxial_chatweb_frame(s, 0.1, true); #assert !coaxial_chatweb_asking(s) || cw_test_door(s)[0..<7] != "/local/"; }
-  #assert tr_text_of(t, tr_find(t, "machine.switch.l")) == "Turn on" && tr_find(t, "agent") < 0 && tr_find(t, "side.run") < 0 && tr_find(t, "s.0") < 0;
-  cw_test_press(s, "machine.switch");
-  #assert !s[0].local_off && cast(string) s[0].keep[0..<s[0].keep_n] == "local=on";
-  // a browser that kept "off" starts with the agents off, and never asks Coder
-  tk: [1] CwTest; k := tk[0].s[..];
-  w := "local=off"; for i: 0..<w.count { k[0].inbox[i] = w[i]; }
-  coaxial_chatweb_event(k, CW_KEPT, 0, w.count);
-  cw_test_open(k, "{\"claude\":null}");
-  for i: 0..<20 { b = coaxial_chatweb_frame(k, 0.1, true); #assert !coaxial_chatweb_asking(k); }
-  #assert k[0].local_off && k[0].local == 0;
-}
 
 #test "a message to an agent on this machine starts a Coder session, and its log fills the transcript" {
   ts: [1] CwTest; s := ts[0].s[..];

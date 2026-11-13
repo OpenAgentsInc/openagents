@@ -59,22 +59,24 @@ ss_who_read :: (body: string, out: [] u8) -> int {
   }
   if !logged { return 0; }
   if email.count > 0 { return ss_put(out, 0, email); }
-  if key.count == 64 {
-    raw: [32] u8;
-    for i: 0..<32 {
-      a := ss_hex(key[2 * i]); b := ss_hex(key[2 * i + 1]);
-      if a < 0 || b < 0 { return ss_put(out, 0, "Your account"); }
-      raw[i] = cast(u8) (a * 16 + b);
-    }
-    npub: [80] u8;
-    r := nip19_encode_checked(N19_NPUB, cast(string) raw[..], npub[..], false);
-    if r.error == NC_OK && r.written > 20 {
-      n := ss_put(out, 0, cast(string) npub[0..<12]);
-      n = ss_put(out, n, "...");
-      return ss_put(out, n, cast(string) npub[r.written - 6..<r.written]);
-    }
+  n := ss_npub_short(key, out);
+  return ifx n > 0 then n else ss_put(out, 0, "Your account");
+}
+// A key given as 64 hex digits, as a short npub ("npub1abcdefg...uvwxyz") in out: its length, 0 when it isn't one.
+ss_npub_short :: (key: string, out: [] u8) -> int {
+  if key.count != 64 { return 0; }
+  raw: [32] u8;
+  for i: 0..<32 {
+    a := ss_hex(key[2 * i]); b := ss_hex(key[2 * i + 1]);
+    if a < 0 || b < 0 { return 0; }
+    raw[i] = cast(u8) (a * 16 + b);
   }
-  return ss_put(out, 0, "Your account");
+  npub: [80] u8;
+  r := nip19_encode_checked(N19_NPUB, cast(string) raw[..], npub[..], false);
+  if r.error != NC_OK || r.written <= 20 { return 0; }
+  n := ss_put(out, 0, cast(string) npub[0..<12]);
+  n = ss_put(out, n, "...");
+  return ss_put(out, n, cast(string) npub[r.written - 6..<r.written]);
 }
 
 // The sections of a list of conversations, top to bottom: those at work now, then Claude Code's here, then
@@ -138,6 +140,8 @@ ss_world_href :: (id: string, out: [] u8) -> int { n := ss_put(out, 0, "/worlds/
   n = ss_who_read("logged_in 1\naccount acct_1\nkind words\n", out[..]);
   #assert cast(string) out[0..<n] == "Your account";
   #assert ss_who_read("logged_in 0\n", out[..]) == 0 && ss_who_read("", out[..]) == 0;
+  n = ss_npub_short("7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e", out[..]);
+  #assert cast(string) out[0..<n] == "npub10elfcs4...zvjptg" && ss_npub_short("7e7e", out[..]) == 0 && ss_npub_short("zz7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e", out[..]) == 0;
 }
 #test "a conversation at work is Running whoever's it is; else Claude Code's, else Recent" {
   #assert ss_section(true, false) == SS_RUNNING && ss_section(true, true) == SS_RUNNING;

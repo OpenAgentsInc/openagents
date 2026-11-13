@@ -74,10 +74,65 @@ finds and rewrites as before. A logged-out visitor pays that one small request
   (`coax/web/host.js`, the editor frame: the canvas set to that rectangle and
   the pointer offset), and the shell has to open their module beside the side
   instead of a page load. Until then they are page loads, and they show no side.
-- **Settings and the account pages (`/settings/*`, `/login`)** are GPU pages
-  too; the same applies.
+- **The older settings pages and the login** (`/settings/security`, `/data`,
+  `/delete`, `/devices`, `/wallet`, `/agents`, `/lightning`, and `/login`) are
+  GPU pages too; the same applies. Settings itself is in the shell (below), and
+  its Account section links to them.
 - **A new page drawn by the browser** joins the shell by adding a view to the
   shell module (as the home page is) or, when it is large, by being opened into
   a slot beside the side with `dom-host.js?app=NAME&root=ID`, as the editor
   opens the chat in its foot.
 - **Resizing the side by dragging** is not built; the width is fixed at 300 px.
+
+## Settings
+
+**Since 2026-11-13** (GitHub #13480). `/settings` and `/settings/SECTION` are a
+page of the shell, so the side stays put: the side's foot (who is logged in)
+opens `/settings`, and the chat's gear opens `/settings/models`. Beside the side
+is a list of sections, the one shown bright on the raised surface, and the
+section's rows in framed groups. A row is a name, what it is or does under it,
+and what changes it at its right: a switch that says On or Off, a button, a
+select, a link or a value. A press on a section pushes its address, so Back and
+Forward move between sections; a direct load of any of them works
+(`settings/index.html` and one `index.html` per section load the shell's module).
+
+| Section | Address | What it holds |
+| --- | --- | --- |
+| Account | `/settings`, `/settings/account` | Who is logged in, every email (masked) and key (a short npub) from `GET /api/auth/account?as=lines`, admin, Log out, and links to the older settings pages |
+| Agents and models | `/settings/models` | The Claude account (key or token, Connect, Disconnect), This machine (Coder's agents, ready or why not, and the switch), the agent and model a new chat starts with, each local agent's model |
+| Appearance | `/settings/appearance` | The side's switch; motion follows the system's setting |
+| Limits | `/settings/limits` | The chat's own limits and every login limit from `GET /api/auth/limits?as=lines`, and a link to `/docs/limits` |
+| About | `/settings/about` | The release's commit and build day from `/build/about.txt` (the release build writes it; a development build says it has none), the source code and the docs |
+
+What the page keeps is kept in this browser with the side's state (`dom_keep`:
+`local=off`, `side=closed`, `lmA=K`, and `m=K` for a new chat's model), except
+the Claude account, which is sealed on the account.
+
+- **Drawing:** the settings set in `components/kit/settings.coax` (`k_set`,
+  `k_set_nav`, `k_set_body`, `k_set_group`, `k_set_row`, `k_set_value`,
+  `k_switch`), styled by `mono_set_css`. `/components` shows them.
+- **Rules and the sections that need nothing of the chat:**
+  `apps/openagents-web/settings-web.coax` (addresses, the account's, limits' and
+  release's lines; Account, Limits, About).
+- **The shell's own sections:** `apps/openagents-web/chat-settings.coax`
+  (Agents and models, Appearance, the presses), loaded by `chat-web.coax`.
+
+Moving an older settings page into the shell means drawing it as a section of
+rows in place of its GPU page: a new section in `settings-web.coax`, its slug in
+`SW_SLUGS`, its requests through the shell's (`cw_go`), and its folder's
+`index.html` switched to the shell's module. What each needs beyond that:
+
+- **Devices** (`devices.coax`): a list from `/api/auth/devices` with a remove
+  per row. Rows and buttons only.
+- **Security** (`security.coax`): passkeys, notices and "This wasn't me". Adding
+  a passkey calls the browser's WebAuthn through the page's own script
+  (`/login/key.js`); `dom-host.js` would need that call, as `host.js` has it.
+- **Data and Delete** (`life.coax`): export, delete and its cancel, freeze and
+  merge, some behind a challenge signed with your key or passkey (`/login/key.js`
+  again), and a confirmation step before a delete.
+- **Lightning** (`lightning.coax`): claim, change and turn off the address
+  (`/api/lightning/address/*`), its own script (`lightning.js`), and a QR code,
+  which needs a QR picture piece in the kit (the GPU page draws it from
+  `coax/lib/qr`).
+- **Wallet** and **Agents** (`wallet.coax`, `agents.coax`) were not in this
+  pass's four; they are GPU pages with no script of their own.

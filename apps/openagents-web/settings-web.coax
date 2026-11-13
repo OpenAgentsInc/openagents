@@ -1,0 +1,366 @@
+// Settings, in the app shell (docs/app-shell.md, "Settings"): the rules and the sections that need nothing of
+// the chat. The page is a list of sections beside the side, each a page of rows (a name, what it is or does,
+// and what changes it at the row's right). /settings/SECTION opens a section;
+// /settings is Account. The shell (chat-web.coax, with chat-settings.coax) draws it and holds the sections
+// that are the chat's own state (Agents and models, Appearance).
+//
+// Here: the sections and their addresses, the account's lines (GET /api/auth/account?as=lines), the limits'
+// lines (GET /api/auth/limits?as=lines), the release's lines (/build/about.txt, which the release build
+// writes; a development build has none), the drawing of a section's groups and rows, and the Account, Limits
+// and About sections.
+// The other settings pages (/settings/security, data, delete, devices, wallet, agents, lightning) are pages
+// of their own, drawn by the GPU; Account links to them.
+//
+// Limits, all shown: SW_EMAILS emails and SW_KEYS keys of an account are listed (the rest are counted), and
+// SW_LIMITS limits.
+//   coax/bin/coax test apps/openagents-web/settings-web.coax
+#load "../../components/kit/settings.coax";
+#load "site-side.coax";
+
+SW_ACCOUNT :: 0; SW_MODELS :: 1; SW_LOOK :: 2; SW_LIMITS_S :: 3; SW_ABOUT :: 4; SW_SECTIONS :: 5;
+SW_NAMES :: [5] string.["Account", "Agents and models", "Appearance", "Limits", "About"];
+SW_SLUGS :: [5] string.["account", "models", "appearance", "limits", "about"];
+SW_PAGE :: 9;          // the shell's page value for Settings (beside site-side's SS_HOME and SS_CHATS)
+SW_EMAILS :: 4; SW_EMAIL :: 96;
+SW_KEYS :: 4;
+SW_LIMITS :: 16; SW_LIMIT_WHAT :: 96; SW_LIMIT_PER :: 24;
+SW_REPO :: "https://github.com/OpenAgentsInc/openagents";
+
+SettingsWeb :: struct {
+  section: int;                      // the section shown (SW_*)
+  // the account, as /api/auth/account?as=lines says
+  logged: bool; read: bool; admin: bool;
+  email: [SW_EMAILS] [SW_EMAIL] u8; email_n: [SW_EMAILS] int; emails: int;   // emails listed; emails counts them all
+  key: [SW_KEYS] [64] u8; keys: int; nkeys: int;   // keys as hex; nkeys counts them all
+  // the limits we enforce on logging in
+  limits_asked: bool; limits_state: int;   // 0 not back yet, 1 read, -1 not to be had
+  nl: int;
+  lwhat: [SW_LIMITS] [SW_LIMIT_WHAT] u8; lwhat_n: [SW_LIMITS] int;
+  lmax: [SW_LIMITS] int;
+  lper: [SW_LIMITS] [SW_LIMIT_PER] u8; lper_n: [SW_LIMITS] int;
+  // the release this page is from
+  about_asked: bool; about_state: int;     // 0 not back yet, 1 a release, -1 a development build
+  commit: [12] u8; commit_n: int; date: [12] u8; date_n: int;
+  menu: int;                          // the select open in a row (the shell's: 0 none)
+  kept_model: int;                    // the model a new chat starts with + 1, kept in this browser (the shell's: 0 none)
+}
+
+sw_put :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+
+// The section an address is: /settings and /settings/ are Account, /settings/SLUG its section, with or
+// without a slash or a query after it. -1 for any other address, the other settings pages among them.
+sw_section_of :: (path: string) -> int {
+  base := "/settings";
+  if path.count < base.count || cast(string) path[0..<base.count] != base { return -1; }
+  rest := cast(string) path[base.count..<path.count];
+  if rest.count == 0 || rest == "/" || rest[0] == '?' { return SW_ACCOUNT; }
+  if rest[0] != '/' { return -1; }
+  slugs := SW_SLUGS;
+  for k: 0..<SW_SECTIONS {
+    sl := slugs[k];
+    if rest.count >= sl.count + 1 && cast(string) rest[1..<sl.count + 1] == sl {
+      after := sl.count + 1;
+      if rest.count == after || (rest.count == after + 1 && rest[after] == '/') || rest[after] == '?' { return k; }
+    }
+  }
+  return -1;
+}
+// A section's address, in out.
+sw_href :: (k: int, out: [] u8) -> string {
+  slugs := SW_SLUGS;
+  n := sw_put(out, 0, "/settings/");
+  n = sw_put(out, n, slugs[ifx k < 0 || k >= SW_SECTIONS then 0 else k]);
+  return cast(string) out[0..<n];
+}
+
+// The account's lines: logged in or not, admin, the emails (masked by the API) and the keys.
+sw_account_read :: (s: [] SettingsWeb, body: string) {
+  s[0].logged = false; s[0].admin = false; s[0].emails = 0; s[0].nkeys = 0; s[0].keys = 0; s[0].read = true;
+  at := 0;
+  while at < body.count {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    if line == "logged_in 1" { s[0].logged = true; }
+    if line == "admin 1" { s[0].admin = true; }
+    if line.count > 6 && cast(string) line[0..<6] == "email " {
+      if s[0].emails < SW_EMAILS { k := s[0].emails; s[0].email_n[k] = sw_put(s[0].email[k][..], 0, cast(string) line[6..<line.count]); }
+      s[0].emails += 1;
+    }
+    if line.count == 68 && cast(string) line[0..<4] == "key " {
+      if s[0].keys < SW_KEYS { for i: 0..<64 { s[0].key[s[0].keys][i] = line[4 + i]; } s[0].keys += 1; }
+      s[0].nkeys += 1;
+    }
+    at = e + 1;
+  }
+}
+// The limits' lines: "limit NAME|MAX|PER|WHAT" each. A line that isn't one is passed over.
+sw_limits_read :: (s: [] SettingsWeb, status: int, body: string) {
+  s[0].nl = 0; s[0].limits_state = ifx status == 200 then 1 else -1;
+  if status != 200 { return; }
+  at := 0;
+  while at < body.count && s[0].nl < SW_LIMITS {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    if line.count < 7 || cast(string) line[0..<6] != "limit " { continue; }
+    // the four fields
+    f: [4] int; g: [4] int; nf := 0; p := 6;
+    while nf < 4 && p <= line.count {
+      q := p;
+      while q < line.count && (line[q] != '|' || nf == 3) { q += 1; }
+      f[nf] = p; g[nf] = q; nf += 1; p = q + 1;
+    }
+    if nf < 4 || g[1] == f[1] { continue; }
+    max := 0; good := true;
+    for i: f[1]..<g[1] { c := line[i]; if c < '0' || c > '9' || max > 100000000 { good = false; break; } max = max * 10 + cast(int) (c - '0'); }
+    if !good || g[3] == f[3] { continue; }
+    k := s[0].nl;
+    s[0].lmax[k] = max;
+    s[0].lper_n[k] = sw_put(s[0].lper[k][..], 0, cast(string) line[f[2]..<g[2]]);
+    s[0].lwhat_n[k] = sw_put(s[0].lwhat[k][..], 0, cast(string) line[f[3]..<g[3]]);
+    s[0].nl += 1;
+  }
+}
+// The release's lines (/build/about.txt): "commit HEX" and "date YYYY-MM-DD". Anything else, or no file,
+// is a development build.
+sw_about_read :: (s: [] SettingsWeb, status: int, body: string) {
+  s[0].commit_n = 0; s[0].date_n = 0;
+  at := 0;
+  while status == 200 && at < body.count {
+    e := at;
+    while e < body.count && body[e] != '\n' { e += 1; }
+    line := cast(string) body[at..<e];
+    at = e + 1;
+    if line.count >= 14 && line.count <= 47 && cast(string) line[0..<7] == "commit " {
+      v := cast(string) line[7..<ifx line.count > 17 then 17 else line.count];
+      good := true;
+      for c: v { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { good = false; } }
+      if good { s[0].commit_n = sw_put(s[0].commit[..], 0, v); }
+    }
+    if line.count == 15 && cast(string) line[0..<5] == "date " {
+      v := cast(string) line[5..<15]; good := true;
+      for i: 0..<10 { c := v[i]; if ifx i == 4 || i == 7 then c != '-' else (c < '0' || c > '9') { good = false; } }
+      if good { s[0].date_n = sw_put(s[0].date[..], 0, v); }
+    }
+  }
+  s[0].about_state = ifx s[0].commit_n > 0 then 1 else -1;
+}
+
+// ---------------------------------------------------------------- drawing
+
+// The page begins: the section list (a place each, the one shown bright) and the body under the section's
+// name. Close it with sw_page_end.
+sw_page_begin :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui) {
+  names := SW_NAMES; icons := [5] int.[IC_AVATAR_PROFILE, IC_AGENT, IC_COLOR_THEME, IC_SPEED, IC_INFO];
+  buf: [UI_ID] u8; href: [40] u8;
+  p := k_set(t, "set");
+  nav := k_set_nav(t, "set.nav", "Settings");
+  for k: 0..<SW_SECTIONS { r := k_place(t, u, tr_join(buf[..], "set.nav.", k), icons[k], names[k], sw_href(k, href[..]), k == s[0].section); }
+  tr_close(t);
+  b := k_set_body(t, u, "set.b", "Settings", names[s[0].section]);
+}
+sw_page_end :: (s: [] SettingsWeb, t: [] Tree) { tr_close(t); tr_close(t); }
+// Whether a section is the one shown, and so drawn in this build.
+sw_section :: (s: [] SettingsWeb, k: int) -> bool { return k == s[0].section; }
+// A group of rows, and its end.
+sw_group :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string, title: string) { g := k_set_group(t, u, id, title); }
+sw_group_end :: (s: [] SettingsWeb, t: [] Tree) { k_set_group_end(t); }
+// A row: its name and what it is or does; what changes it follows, then k_set_row_end. True: it is drawn.
+sw_row :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string, name: string, about: string) -> bool {
+  r := k_set_row(t, id, name, about);
+  return true;
+}
+// A row that is a fact: its name and what it is, nothing to change.
+sw_fact :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string, name: string, about: string) {
+  if sw_row(s, t, u, id, name, about) { k_set_row_end(t); }
+}
+// A row that leads to another page: a link at its right.
+sw_link :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, id: string, name: string, about: string, label: string, href: string) {
+  if !sw_row(s, t, u, id, name, about) { return; }
+  ida: [UI_ID] u8;
+  g := k_go(t, tr_cat(ida[..], id, ".go"), label, href);
+  k_set_row_end(t);
+}
+
+// Account: who is logged in (the name the side's foot shows, every email, every key), Log out, and the pages
+// that hold the rest of the account.
+sw_account :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, who: string) {
+  if !sw_section(s, SW_ACCOUNT) { return; }
+  sw_group(s, t, u, "acct", "You");
+  if !s[0].logged {
+    if sw_row(s, t, u, "acct.in", "Not logged in", ifx s[0].read then "Log in to see your account and change your settings." else "Reading who is logged in.") {
+      if s[0].read { g := k_go(t, "acct.in.go", "Log in", "/login"); }
+      k_set_row_end(t);
+    }
+    sw_group_end(s, t);
+    return;
+  }
+  sw_fact(s, t, u, "acct.who", "Logged in as", who);
+  line: [SW_EMAILS * (SW_EMAIL + 2) + 40] u8; n := 0; num: [24] u8;
+  for k: 0..<s[0].emails { if k < SW_EMAILS { if n > 0 { n = sw_put(line[..], n, ", "); } n = sw_put(line[..], n, cast(string) s[0].email[k][0..<s[0].email_n[k]]); } }
+  if s[0].emails > SW_EMAILS { n = sw_put(line[..], n, ", and "); n = sw_put(line[..], n, tr_join(num[..], "", s[0].emails - SW_EMAILS)); n = sw_put(line[..], n, " more"); }
+  sw_fact(s, t, u, "acct.emails", ifx s[0].emails == 1 then "Email" else "Emails", ifx s[0].emails == 0 then "None. You log in with a key." else cast(string) line[0..<n]);
+  kl: [SW_KEYS * 28 + 40] u8; m := 0;
+  for k: 0..<s[0].keys {
+    short: [40] u8; c := ss_npub_short(cast(string) s[0].key[k][0..<64], short[..]);
+    if c > 0 { if m > 0 { m = sw_put(kl[..], m, ", "); } m = sw_put(kl[..], m, cast(string) short[0..<c]); }
+  }
+  if s[0].nkeys > SW_KEYS { m = sw_put(kl[..], m, ", and "); m = sw_put(kl[..], m, tr_join(num[..], "", s[0].nkeys - SW_KEYS)); m = sw_put(kl[..], m, " more"); }
+  sw_fact(s, t, u, "acct.keys", ifx s[0].nkeys == 1 then "Key" else "Keys", ifx m == 0 then "None yet." else cast(string) kl[0..<m]);
+  if s[0].admin { sw_fact(s, t, u, "acct.admin", "Admin", "You are an admin of this site."); }
+  if sw_row(s, t, u, "acct.out", "Log out", "Log out of this browser.") { b := k_button(t, u, "set.out", "Log out", BS_PLAIN); k_set_row_end(t); }
+  sw_group_end(s, t);
+  sw_group(s, t, u, "acct.more", "More of your account");
+  sw_link(s, t, u, "acct.security", "Security", "How you log in: your email, keys and passkeys.", "Open", "/settings/security");
+  sw_link(s, t, u, "acct.devices", "Devices", "The phones and computers logged in to your account.", "Open", "/settings/devices");
+  sw_link(s, t, u, "acct.agents", "Agents", "Agents that act for you with their own keys, and what each may do.", "Open", "/settings/agents");
+  sw_link(s, t, u, "acct.wallet", "Wallet", "Your wallet's daily limit and its backup.", "Open", "/settings/wallet");
+  sw_link(s, t, u, "acct.lightning", "Lightning Address", "Your name@openagents.com address for payments.", "Open", "/settings/lightning");
+  sw_link(s, t, u, "acct.data", "Your data", "Download what we hold about you.", "Open", "/settings/data");
+  sw_link(s, t, u, "acct.delete", "Delete your account", "Delete your account and what it holds.", "Open", "/settings/delete");
+  sw_group_end(s, t);
+}
+
+// Limits: every limit we enforce on logging in, as the API enforces them, then the chat's own, then where the
+// rest are listed.
+sw_limits :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui, chat_names: [] string, chat_values: [] string) {
+  if !sw_section(s, SW_LIMITS_S) { return; }
+  buf: [UI_ID] u8; bv: [UI_ID] u8; num: [24] u8; val: [SW_LIMIT_PER + 24] u8;
+  sw_group(s, t, u, "lim.chat", "The chat");
+  for k: 0..<chat_names.count {
+    if sw_row(s, t, u, tr_join(buf[..], "lim.chat.", k), chat_names[k], "") { v := k_set_value(t, tr_join(bv[..], "lim.chat.v.", k), chat_values[k]); k_set_row_end(t); }
+  }
+  sw_group_end(s, t);
+  sw_group(s, t, u, "lim.auth", "Logging in");
+  if s[0].limits_state == 0 { sw_fact(s, t, u, "lim.wait", "Reading the limits", ""); }
+  else if s[0].limits_state < 0 { sw_fact(s, t, u, "lim.none", "The limits couldn't be read", "They are listed on the limits page."); }
+  for k: 0..<s[0].nl {
+    n := sw_put(val[..], 0, tr_join(num[..], "", s[0].lmax[k])); n = sw_put(val[..], n, " "); n = sw_put(val[..], n, cast(string) s[0].lper[k][0..<s[0].lper_n[k]]);
+    if sw_row(s, t, u, tr_join(buf[..], "lim.a.", k), cast(string) s[0].lwhat[k][0..<s[0].lwhat_n[k]], "") { v := k_set_value(t, tr_join(bv[..], "lim.a.v.", k), cast(string) val[0..<n]); k_set_row_end(t); }
+  }
+  sw_group_end(s, t);
+  sw_group(s, t, u, "lim.more", "");
+  sw_link(s, t, u, "lim.page", "Every limit", "Logging in and Lightning Addresses, on one page. When you reach a limit, we say which and when it lifts.", "Open", "/docs/limits");
+  sw_group_end(s, t);
+}
+
+// About: the release this page is from (its commit and the day it was built), and where to read more.
+sw_about :: (s: [] SettingsWeb, t: [] Tree, u: [] Ui) {
+  if !sw_section(s, SW_ABOUT) { return; }
+  sw_group(s, t, u, "about.app", "OpenAgents");
+  line: [96] u8; href: [128] u8;
+  if s[0].about_state > 0 {
+    n := sw_put(line[..], 0, "Commit "); n = sw_put(line[..], n, cast(string) s[0].commit[0..<s[0].commit_n]);
+    if s[0].date_n > 0 { n = sw_put(line[..], n, ", built "); n = sw_put(line[..], n, cast(string) s[0].date[0..<s[0].date_n]); }
+    h := sw_put(href[..], 0, SW_REPO); h = sw_put(href[..], h, "/commit/"); h = sw_put(href[..], h, cast(string) s[0].commit[0..<s[0].commit_n]);
+    sw_link(s, t, u, "about.release", "This release", cast(string) line[0..<n], "View the commit", cast(string) href[0..<h]);
+  } else {
+    sw_fact(s, t, u, "about.release", "This release", ifx s[0].about_state < 0 then "A development build: it names no release." else "Reading which release this is.");
+  }
+  sw_link(s, t, u, "about.source", "Source code", "Everything we build is open source.", "GitHub", SW_REPO);
+  sw_group_end(s, t);
+  sw_group(s, t, u, "about.docs", "Read more");
+  sw_link(s, t, u, "about.docs.all", "Documentation", "How OpenAgents works, for people and for agents.", "Open", "/docs");
+  sw_link(s, t, u, "about.docs.limits", "Limits", "Every limit we enforce.", "Open", "/docs/limits");
+  sw_link(s, t, u, "about.docs.kit", "Components", "Every piece these pages are built from.", "Open", "/components");
+  sw_group_end(s, t);
+}
+
+// ---------------------------------------------------------------- checks
+
+SW_T_ACCOUNT :: "logged_in 1\naccount acct_1\nkind email\nlevel L2\nvia email\nadmin 1\nemail a•••@example.com\nemail b•••@x.com\nkey 7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e\n";
+SW_T_LIMITS :: "limit email_hour|5|an hour|Email codes sent to one address\nlimit code_tries|5|per code|Tries at one email code\nnot a limit\nlimit bad|x|an hour|Broken\nlimit nowhat|3|a day|\n";
+SwTest :: struct { s: [1] SettingsWeb; t: [1] Tree; u: [1] Ui; }
+sw_test_build :: (x: [] SwTest, who: string) {
+  s := x[0].s[..]; t := x[0].t[..]; u := x[0].u[..];
+  tr_begin(t); ui_begin(u, 0, true);
+  sw_page_begin(s, t, u);
+  sw_account(s, t, u, who);
+  names := [2] string.["A message", "An answer"]; values := [2] string.["16 KB", "48 KB"];
+  sw_limits(s, t, u, names[..], values[..]);
+  sw_about(s, t, u);
+  sw_page_end(s, t);
+}
+
+#test "an address is its section: /settings is Account, /settings/SLUG its own, the other settings pages none" {
+  #assert sw_section_of("/settings") == SW_ACCOUNT && sw_section_of("/settings/") == SW_ACCOUNT && sw_section_of("/settings?x=1") == SW_ACCOUNT;
+  #assert sw_section_of("/settings/models") == SW_MODELS && sw_section_of("/settings/appearance/") == SW_LOOK && sw_section_of("/settings/limits?a") == SW_LIMITS_S && sw_section_of("/settings/about") == SW_ABOUT;
+  #assert sw_section_of("/settings/account") == SW_ACCOUNT;
+  #assert sw_section_of("/settings/security") == -1 && sw_section_of("/settings/agents") == -1 && sw_section_of("/settings/lightning") == -1;
+  #assert sw_section_of("/settingsx") == -1 && sw_section_of("/settings/aboutx") == -1 && sw_section_of("/chat") == -1 && sw_section_of("/") == -1 && sw_section_of("/settings/about/x") == -1;
+  buf: [40] u8;
+  #assert sw_href(SW_MODELS, buf[..]) == "/settings/models" && sw_href(9, buf[..]) == "/settings/account";
+  for k: 0..<SW_SECTIONS { #assert sw_section_of(sw_href(k, buf[..])) == k; }
+}
+#test "the account's lines: logged in, admin, every email and key; nobody is not logged in" {
+  x: [1] SwTest; s := x[0].s[..];
+  sw_account_read(s, SW_T_ACCOUNT);
+  #assert s[0].logged && s[0].admin && s[0].read && s[0].emails == 2 && cast(string) s[0].email[1][0..<s[0].email_n[1]] == "b•••@x.com" && s[0].keys == 1 && s[0].nkeys == 1;
+  sw_account_read(s, "logged_in 0\n");
+  #assert !s[0].logged && !s[0].admin && s[0].emails == 0 && s[0].keys == 0;
+  // more emails than are listed are counted
+  sw_account_read(s, "logged_in 1\nemail a\nemail b\nemail c\nemail d\nemail e\nemail f\n");
+  #assert s[0].emails == 6 && cast(string) s[0].email[3][0..<s[0].email_n[3]] == "d";
+}
+#test "the limits' lines: each a limit; a line that isn't one is passed over; no answer is said" {
+  x: [1] SwTest; s := x[0].s[..];
+  sw_limits_read(s, 200, SW_T_LIMITS);
+  #assert s[0].limits_state == 1 && s[0].nl == 2 && s[0].lmax[0] == 5 && cast(string) s[0].lper[0][0..<s[0].lper_n[0]] == "an hour";
+  #assert cast(string) s[0].lwhat[1][0..<s[0].lwhat_n[1]] == "Tries at one email code" && cast(string) s[0].lper[1][0..<s[0].lper_n[1]] == "per code";
+  sw_limits_read(s, 503, "");
+  #assert s[0].limits_state == -1 && s[0].nl == 0;
+  sw_limits_read(s, 200, "limit a|7|a minute|What has | in it\n");
+  #assert s[0].nl == 1 && cast(string) s[0].lwhat[0][0..<s[0].lwhat_n[0]] == "What has | in it";
+}
+#test "the release's lines name a commit and a day; anything else is a development build" {
+  x: [1] SwTest; s := x[0].s[..];
+  sw_about_read(s, 200, "commit 4f24ce93e9\ndate 2026-11-13\n");
+  #assert s[0].about_state == 1 && cast(string) s[0].commit[0..<s[0].commit_n] == "4f24ce93e9" && cast(string) s[0].date[0..<s[0].date_n] == "2026-11-13";
+  sw_about_read(s, 200, "commit 4f24ce93e94f24ce93e94f24ce93e94f24ce93\n");
+  #assert s[0].about_state == 1 && s[0].commit_n == 10 && s[0].date_n == 0;
+  sw_about_read(s, 404, "commit 4f24ce93e9\n");
+  #assert s[0].about_state == -1;
+  sw_about_read(s, 200, "commit <script>xx\ndate 2026-1x-13\n");
+  #assert s[0].about_state == -1 && s[0].date_n == 0;
+}
+#test "the page: the section list with the one shown bright, its name above its rows, and only its rows" {
+  x: [1] SwTest; s := x[0].s[..]; t := x[0].t[..];
+  sw_account_read(s, SW_T_ACCOUNT);
+  sw_test_build(x[..], "a•••@example.com");
+  #assert t[0].depth == 0 && t[0].lost == 0;
+  #assert tr_attr_of(t, tr_find(t, "set.nav.0"), AT_CURRENT) == "true" && !tr_has(t, tr_find(t, "set.nav.3"), AT_CURRENT) && tr_attr_of(t, tr_find(t, "set.nav.3"), AT_HREF) == "/settings/limits";
+  #assert tr_text_of(t, tr_find(t, "set.b.t")) == "Account" && tr_text_of(t, tr_find(t, "acct.who.a")) == "a•••@example.com";
+  #assert tr_text_of(t, tr_find(t, "acct.emails.a")) == "a•••@example.com, b•••@x.com" && tr_text_of(t, tr_find(t, "acct.keys.n")) == "Key" && tr_text_of(t, tr_find(t, "acct.keys.a")) == "npub10elfcs4...zvjptg";
+  #assert tr_find(t, "acct.admin") > 0 && tr_text_of(t, tr_find(t, "set.out")) == "" && tr_find(t, "set.out.l") > 0;
+  #assert tr_attr_of(t, tr_find(t, "acct.security.go"), AT_HREF) == "/settings/security" && tr_attr_of(t, tr_find(t, "acct.delete.go"), AT_HREF) == "/settings/delete";
+  #assert tr_find(t, "lim.chat") < 0 && tr_find(t, "about.app") < 0;
+  // nobody logged in: a link to log in, and nothing else of the account
+  sw_account_read(s, "logged_in 0\n");
+  sw_test_build(x[..], "");
+  #assert tr_attr_of(t, tr_find(t, "acct.in.go"), AT_HREF) == "/login" && tr_find(t, "acct.out") < 0 && tr_find(t, "acct.security") < 0;
+}
+#test "Limits shows the chat's and every login limit with its size; About names the release or says it is a development build" {
+  x: [1] SwTest; s := x[0].s[..]; t := x[0].t[..];
+  s[0].section = SW_LIMITS_S;
+  sw_test_build(x[..], "");
+  #assert tr_text_of(t, tr_find(t, "set.b.t")) == "Limits" && tr_text_of(t, tr_find(t, "lim.wait.n")) == "Reading the limits" && tr_text_of(t, tr_find(t, "lim.chat.v.1")) == "48 KB";
+  sw_limits_read(s, 200, SW_T_LIMITS);
+  sw_test_build(x[..], "");
+  #assert tr_find(t, "lim.wait") < 0 && tr_text_of(t, tr_find(t, "lim.a.0.n")) == "Email codes sent to one address" && tr_text_of(t, tr_find(t, "lim.a.v.0")) == "5 an hour" && tr_text_of(t, tr_find(t, "lim.a.v.1")) == "5 per code";
+  #assert tr_attr_of(t, tr_find(t, "lim.page.go"), AT_HREF) == "/docs/limits";
+  s[0].section = SW_ABOUT;
+  sw_test_build(x[..], "");
+  #assert tr_text_of(t, tr_find(t, "about.release.a")) == "Reading which release this is." && tr_find(t, "about.release.go") < 0;
+  sw_about_read(s, 404, "");
+  sw_test_build(x[..], "");
+  #assert tr_text_of(t, tr_find(t, "about.release.a")) == "A development build: it names no release.";
+  sw_about_read(s, 200, "commit 4f24ce93e9\ndate 2026-11-13\n");
+  sw_test_build(x[..], "");
+  #assert tr_text_of(t, tr_find(t, "about.release.a")) == "Commit 4f24ce93e9, built 2026-11-13" && tr_attr_of(t, tr_find(t, "about.release.go"), AT_HREF) == "https://github.com/OpenAgentsInc/openagents/commit/4f24ce93e9";
+}
